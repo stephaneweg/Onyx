@@ -364,8 +364,8 @@ TShutdownMode CKernel::Run (void)
 	// started AFTER a readable pause so the boot log stays on screen first.
 	if (m_bGraphics)
 	{
-		static const char *Names[2] = { "demoA", "demoB" };
-		static const char *Paths[2] = { "SD:demoA.elf", "SD:demoB.elf" };
+		static const char *Names[3] = { "demoA", "demoB", "demoC" };
+		static const char *Paths[3] = { "SD:demoA.elf", "SD:demoB.elf", "SD:demoC.elf" };
 
 		if (!m_bSDMounted)
 		{
@@ -373,7 +373,7 @@ TShutdownMode CKernel::Run (void)
 		}
 		else
 		{
-			for (int i = 0; i < 2; i++)
+			for (int i = 0; i < 3; i++)
 			{
 				unsigned nSize = 0;
 				const u8 *pElf = LoadFileFromSD (Paths[i], &nSize);
