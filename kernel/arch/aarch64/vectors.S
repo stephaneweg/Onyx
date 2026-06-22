@@ -111,14 +111,17 @@ KVectorTable:
 	VEC	BadModeEntry
 
 /*
- * IRQ (shared by EL1h and EL0). FIQ is left masked during handling (deliberate
- * simplification vs Circle, which briefly enables it). Reschedule happens after
- * InterruptHandler has EOI'd, so there is no interrupt-storm risk.
+ * IRQ (shared by EL1t/EL1h/EL0). We MUST enable FIQ during handling: Circle's
+ * InterruptHandler (and registered IRQ handlers) call EnterCritical(IRQ_LEVEL),
+ * which asserts FIQ is not masked (synchronize64.cpp:111). Circle's own IRQStub
+ * does the same DAIFClr/DAIFSet around the handler. Re-mask FIQ before eret.
  */
 IrqEntry:
 	SAVE_TRAP
+	msr	DAIFClr, #1		/* enable FIQ (required by EnterCritical) */
 	bl	InterruptHandler	/* Circle: GIC dispatch + EOI + periodic tick */
-	bl	KernelIRQExit		/* preempt if the time slice expired */
+	bl	KernelIRQExit
+	msr	DAIFSet, #1		/* disable FIQ again before returning */
 	RESTORE_TRAP_ERET
 
 /* Synchronous from EL1 (kernel): SVC test path or kernel panic. */
