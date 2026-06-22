@@ -13,8 +13,15 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the full design.
 
 ## Status
 
-All milestones implemented and **building** (`aarch64-none-elf`, WSL). Runtime is
-validated on real Pi 4 hardware (no QEMU `raspi4b` available here).
+All milestones implemented and **running on real Raspberry Pi 4 hardware**: two
+ELF programs loaded from the SD card run as isolated apps, each animating in its own
+window, composited to HDMI. (Built with `aarch64-none-elf` under WSL; no QEMU
+`raspi4b` available, so it was brought up directly on hardware.)
+
+Scheduling is **cooperative** (apps yield via `present`/`msleep`), matching Circle's
+model where threads run in EL1t (SP_EL0) and exceptions in EL1h — see ARCHITECTURE.md
+§12. Two AArch64 bugs were found and fixed on hardware via the on-screen exception
+dump: EL1t vectors routed to BadMode, and FIQ left masked across `EnterCritical`.
 
 | # | Milestone | |
 |---|---|---|

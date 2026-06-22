@@ -1,11 +1,17 @@
 # Multi-process kernel on Circle (Raspberry Pi 4)
 
-A preemptive, multi-process kernel with MMU isolation, built **on top of Circle**
+A multi-process kernel with per-process MMU isolation, built **on top of Circle**
 ([rsta2/circle](https://github.com/rsta2/circle)) as the hardware-abstraction +
-driver layer. Apps are loaded from the SD card and run isolated in EL0.
+driver layer. Apps are loaded from the SD card and run as EL1 apps in their own
+page tables, calling kernel functions directly (Option C, §11). Scheduling is
+cooperative (§12). **Runs on real Raspberry Pi 4 hardware.**
 
 > Working name only. The `circle/` subdirectory is the upstream Circle clone and is
 > used unmodified where possible. Our code lives in `kernel/`.
+>
+> NOTE: §3–§5 below describe the original *preemptive / EL0* design. The hardware
+> bring-up (§11–§12) changed this to *EL1 apps + cooperative scheduling*; where they
+> conflict, §11–§12 win.
 
 ---
 
@@ -349,3 +355,36 @@ Chosen after #1–#11: instead of isolated EL0 processes + syscalls, apps run in
   `CMouseDevice` "mouse1"), feeding the window manager. Ref: `sample/VMKernel`.
 - **Multi-core (SMP):** deferred — needs an SMP-safe scheduler (per-core current
   task, real spinlocks, IPIs, cross-core TLB) — a milestone of its own.
+
+---
+
+## 12. Hardware bring-up (Raspberry Pi 4) — what it took
+
+The kernel runs on real hardware: two SD-card ELF apps animate in two windows.
+Brought up directly on a Pi 4 (no QEMU raspi4b), debugging via the on-screen
+exception dump (`addr2line` on the faulting PC against `kernel8-rpi4.elf`).
+
+Two AArch64 bugs found and fixed on hardware:
+1. **EL1t exception vectors.** Circle runs the main thread and all tasks in **EL1t**
+   (SP_EL0) — see `startup64.S` ("main thread runs in EL1t and uses sp_el0"); only
+   exceptions run in EL1h. So IRQs/sync from threads arrive via the "Current EL with
+   SP0" vector group. Our `KVectorTable` had routed that group to `BadModeEntry`
+   (assuming EL1t unused) → the first timer IRQ crashed. Fix: route the EL1t group
+   to the real handlers (`SyncEL1Entry`/`IrqEntry`/`FIQStub`), like Circle.
+2. **FIQ masked across `EnterCritical`.** Circle's `InterruptHandler` calls
+   `EnterCritical(IRQ_LEVEL)`, which asserts FIQ is *not* masked
+   (`synchronize64.cpp:111`). Our IRQ stub had left FIQ masked. Fix: `DAIFClr,#1`
+   on entry / `DAIFSet,#1` on exit, as Circle's `IRQStub` does.
+
+**Scheduling is cooperative, not preemptive.** Because threads run in EL1t (SP_EL0)
+while the IRQ handler runs in EL1h (SP_EL1, shared exception stack), a context
+switch from inside the IRQ handler swaps SP_EL1 — it cannot correctly preempt an
+EL1t thread (its stack is SP_EL0). So `KernelIRQExit` no longer reschedules; threads
+switch when they call `Yield`/`MsSleep`/`present` (which the demos do), exactly like
+Circle's own scheduler. The time-slice hook (`OnTimerTick`) is dormant. True
+preemption would need a full trap-frame switch that saves/restores SP_EL0 — future
+work. (This supersedes the "preemptive" framing in §3/§4/§5.)
+
+Other bring-up notes: `config.txt` needs `enable_uart=1` (PL011 clock) for serial;
+the boot log is sent to the HDMI `CScreenDevice` so it is visible without a serial
+cable; `USE_PHYSICAL_COUNTER` is auto-defined by Circle for RPi 4 (CNTPCT_EL0).
