@@ -59,4 +59,15 @@ apps: $(KERNEL_SYMS)
 all: apps
 .DEFAULT_GOAL := apps
 
+# Copy kernel + apps to the SD staging dir TOGETHER. The app ELFs are linked
+# against the kernel's kapi_* addresses (kernel_syms.ld), which move on every
+# kernel rebuild -- so the .img and the .elf on the card MUST come from the same
+# build. Always `make stage` (never copy the kernel alone).
+SDCARD = ../sdcard
+.PHONY: stage
+stage: apps
+	@cp $(TARGET).img $(SDCARD)/
+	@cp ../user/*.elf $(SDCARD)/
+	@echo "  STAGE $(TARGET).img + apps -> $(SDCARD)/"
+
 -include $(DEPS)
