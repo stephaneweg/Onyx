@@ -89,14 +89,17 @@ CWindowManager::CWindowManager (void)
 void CWindowManager::Add (CWindow *pWindow)
 {
 	assert (pWindow != 0);
+	m_SpinLock.Acquire ();
 	if (m_nWindows < WM_MAX_WINDOWS)
 	{
 		m_pWindows[m_nWindows++] = pWindow;
 	}
+	m_SpinLock.Release ();
 }
 
 void CWindowManager::Remove (CWindow *pWindow)
 {
+	m_SpinLock.Acquire ();
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)
@@ -107,21 +110,38 @@ void CWindowManager::Remove (CWindow *pWindow)
 				m_pWindows[j] = m_pWindows[j + 1];
 			}
 			m_pWindows[--m_nWindows] = 0;
-			return;
+			break;
 		}
 	}
+	m_SpinLock.Release ();
 }
 
 void CWindowManager::Composite (GImage *pScreen)
 {
+	// Snapshot the window list under the lock, then blit without holding it (so we
+	// don't keep IRQ masked for the whole frame). Note: a window pointer in the
+	// snapshot must stay valid while we blit -- process teardown removes a window
+	// from the list but does NOT free the CWindow (see CAddressSpace::~), so the
+	// memory remains valid here. (Proper deferred free is future work.)
+	CWindow *pSnapshot[WM_MAX_WINDOWS];
+	unsigned nCount;
+
+	m_SpinLock.Acquire ();
+	nCount = m_nWindows;
+	for (unsigned i = 0; i < nCount; i++)
+	{
+		pSnapshot[i] = m_pWindows[i];
+	}
+	m_SpinLock.Release ();
+
 	pScreen->Clear (WIN_COLOR_DESKTOP);
 
 	// Draw back-to-front; the last (topmost) window is the active one.
-	for (unsigned i = 0; i < m_nWindows; i++)
+	for (unsigned i = 0; i < nCount; i++)
 	{
-		if (m_pWindows[i] != 0)
+		if (pSnapshot[i] != 0)
 		{
-			m_pWindows[i]->DrawTo (pScreen, i == m_nWindows - 1);
+			pSnapshot[i]->DrawTo (pScreen, i == nCount - 1);
 		}
 	}
 }

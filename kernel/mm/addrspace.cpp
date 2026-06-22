@@ -66,14 +66,17 @@ CAddressSpace::CAddressSpace (void)
 
 CAddressSpace::~CAddressSpace (void)
 {
-	// Free this process's window, if any (remove from the compositor first).
+	// Remove this process's window from the compositor (lock-safe). We deliberately
+	// do NOT delete the CWindow here: this runs in scheduler context, and the
+	// compositor may hold a snapshot pointer to it mid-blit. Removing it from the
+	// list is enough to stop future composites; freeing it safely needs deferred
+	// reclamation (future work). The leak is bounded (one window per exited app).
 	if (m_pWindow != 0)
 	{
 		if (CWindowManager::Get () != 0)
 		{
 			CWindowManager::Get ()->Remove (m_pWindow);
 		}
-		delete m_pWindow;
 		m_pWindow = 0;
 	}
 

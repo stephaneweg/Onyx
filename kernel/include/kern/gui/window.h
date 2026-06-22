@@ -11,6 +11,7 @@
 #define _kern_gui_window_h
 
 #include <kern/gui/gimage.h>
+#include <circle/spinlock.h>
 #include <circle/types.h>
 
 // Theme (from SimpleOS): blue title bar.
@@ -80,6 +81,13 @@ public:
 private:
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
+
+	// Protects the window list against concurrent Add (app threads) / Remove
+	// (process teardown, in scheduler context) / Composite (compositor thread).
+	// A spin lock, not a mutex: Remove runs in scheduler context where blocking
+	// is illegal; the lock only ever masks IRQ briefly (Composite snapshots the
+	// list under the lock, then blits outside it).
+	CSpinLock  m_SpinLock;
 
 	static CWindowManager *s_pThis;
 };

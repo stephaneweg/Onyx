@@ -13,6 +13,10 @@ arm_64bit=1
 kernel_address=0x80000
 initial_turbo=0
 
+# Serial console reliability + remove the firmware rainbow splash (debug bring-up)
+enable_uart=1
+disable_splash=1
+
 # Enable this for JTAG / SWD debugging!
 #enable_jtag_gpio=1
 
