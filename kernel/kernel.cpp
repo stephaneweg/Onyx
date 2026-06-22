@@ -128,65 +128,119 @@ private:
 };
 
 //
-// Framebuffer demo (#9 foundation): a kernel thread that animates bouncing boxes
-// into the screen GImage and presents each frame. Proves the C2DGraphics
-// framebuffer + the ported GImage rendering core, and runs concurrently with the
-// other threads via preemption. Precursor to the compositor + windowed demos.
+// Compositor (#10): a kernel thread that composites all windows onto the screen
+// and presents at ~60 fps. It is the single owner of UpdateDisplay(); window
+// owners only draw into their own canvas.
 //
-class CGfxDemoTask : public CTask
+class CCompositorTask : public CTask
 {
 public:
-	CGfxDemoTask (C2DGraphics *p2D, CLogger *pLogger)
-	:	m_p2D (p2D), m_pLogger (pLogger)
+	CCompositorTask (C2DGraphics *p2D, CWindowManager *pWM)
+	:	m_p2D (p2D), m_pWM (pWM)
 	{
-		SetName ("gfx-demo");
+		SetName ("compositor");
 	}
 
 	void Run (void) override
 	{
 		int nW = (int) m_p2D->GetWidth ();
 		int nH = (int) m_p2D->GetHeight ();
-		m_pLogger->Write ("gfx", LogNotice, "framebuffer %dx%d, animating", nW, nH);
-
-		struct TBox { int x, y, dx, dy, size; u32 col; };
-		TBox Boxes[5] =
-		{
-			{  20,  30,  4,  3,  70, 0x00FF5050 },
-			{ 200,  80, -3,  4,  50, 0x0050FF50 },
-			{ 120, 200,  5, -2,  90, 0x005080FF },
-			{ 320, 140, -4, -3,  40, 0x00FFD000 },
-			{  60, 300,  3,  5,  60, 0x00C060FF },
-		};
-		const int nBoxes = 5;
-
 		for (;;)
 		{
 			GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
-			Screen.Clear (0x00202030);		// dark slate background
-
-			for (int i = 0; i < nBoxes; i++)
-			{
-				TBox &b = Boxes[i];
-				b.x += b.dx;
-				b.y += b.dy;
-				if (b.x < 0)            { b.x = 0;            b.dx = -b.dx; }
-				if (b.x + b.size > nW)  { b.x = nW - b.size;  b.dx = -b.dx; }
-				if (b.y < 0)            { b.y = 0;            b.dy = -b.dy; }
-				if (b.y + b.size > nH)  { b.y = nH - b.size;  b.dy = -b.dy; }
-
-				Screen.FillRectangle (b.x, b.y, b.x + b.size, b.y + b.size, b.col);
-				Screen.DrawRectangle (b.x, b.y, b.x + b.size, b.y + b.size, 0x00FFFFFF);
-			}
-
-			m_p2D->UpdateDisplay ();			// present (VSync)
-			CScheduler::Get ()->MsSleep (16);		// ~60 fps
+			m_pWM->Composite (&Screen);
+			m_p2D->UpdateDisplay ();
+			CScheduler::Get ()->MsSleep (16);
 		}
 	}
 
 private:
-	C2DGraphics *m_p2D;
-	CLogger	    *m_pLogger;
+	C2DGraphics    *m_p2D;
+	CWindowManager *m_pWM;
 };
+
+//
+// A windowed animation drawn by a kernel thread (stand-in for an EL0 process until
+// #6). It only touches its own window canvas; the compositor presents it. Two of
+// these with different styles animate concurrently via preemption -- the structure
+// of the end goal (two windowed programs running at the same time).
+//
+class CWindowDemoTask : public CTask
+{
+public:
+	CWindowDemoTask (CWindow *pWindow, unsigned nStyle, const char *pName)
+	:	m_pWindow (pWindow), m_nStyle (nStyle)
+	{
+		SetName (pName);
+	}
+
+	void Run (void) override
+	{
+		GImage *c = m_pWindow->Canvas ();
+		int w = c->Width ();
+		int h = c->Height ();
+		unsigned t = 0;
+
+		// bouncing box state (style 0)
+		int bx = 4, by = 4, dx = 3, dy = 2, bs = 28;
+
+		for (;;)
+		{
+			if (m_nStyle == 0)
+			{
+				c->Clear (0x00101820);
+				bx += dx; by += dy; bs = bs;
+				if (bx < 0)          { bx = 0;          dx = -dx; }
+				if (bx + bs > w)     { bx = w - bs;     dx = -dx; }
+				if (by < 0)          { by = 0;          dy = -dy; }
+				if (by + bs > h)     { by = h - bs;     dy = -dy; }
+				c->FillRectangle (bx, by, bx + bs, by + bs, 0x00FFC040);
+				c->DrawRectangle (bx, by, bx + bs, by + bs, 0x00FFFFFF);
+			}
+			else
+			{
+				// moving rays from the centre
+				c->Clear (0x00201018);
+				int cx = w / 2, cy = h / 2;
+				for (int k = 0; k < 12; k++)
+				{
+					int ang = ((int) t + k * 30) % 360;
+					// crude sin/cos via small integer table-free approximation
+					int ex = cx + (int) ((w / 2 - 4) * CosDeg (ang) / 1000);
+					int ey = cy + (int) ((h / 2 - 4) * SinDeg (ang) / 1000);
+					c->DrawLine (cx, cy, ex, ey, 0x0040FFA0 + (u32) (k * 0x0A0A00));
+				}
+			}
+
+			t++;
+			CScheduler::Get ()->MsSleep (20);	// ~50 fps
+		}
+	}
+
+private:
+	// Tiny fixed-point cos/sin in milli-units (-1000..1000), no FPU/library needed.
+	static int CosDeg (int deg);
+	static int SinDeg (int deg)	{ return CosDeg (deg - 90); }
+
+	CWindow *m_pWindow;
+	unsigned m_nStyle;
+};
+
+// 16-entry quarter-wave cosine table (0..90deg), milli-units; mirrored for full circle.
+int CWindowDemoTask::CosDeg (int deg)
+{
+	static const int Q[16] =
+	{ 1000, 995, 980, 957, 924, 882, 831, 773, 707, 634, 556, 471, 383, 290, 195, 98 };
+
+	deg %= 360; if (deg < 0) deg += 360;
+	int idx, sign;
+	if (deg < 90)        { idx = deg;        sign =  1; }
+	else if (deg < 180)  { idx = 180 - deg;  sign = -1; }
+	else if (deg < 270)  { idx = deg - 180;  sign = -1; }
+	else                 { idx = 360 - deg;  sign =  1; }
+	if (idx >= 90) idx = 89;
+	return sign * Q[idx * 16 / 90];
+}
 
 CKernel::CKernel (void)
 :	m_Timer (&m_Interrupt),
@@ -286,10 +340,22 @@ TShutdownMode CKernel::Run (void)
 	// Milestone #5: an isolated EL0 process loaded into its own address space.
 	new CUserTestTask (&m_Logger);
 
-	// Framebuffer demo (#9): animates concurrently with everything above.
+	// Milestone #10: two windows, each animated by its own (kernel) thread, with a
+	// compositor presenting both. This is the end-goal structure -- two windowed
+	// programs running at the same time -- with the owners becoming EL0 ELF
+	// processes once the loader (#6) lands.
 	if (m_bGraphics)
 	{
-		new CGfxDemoTask (&m_2DGraphics, &m_Logger);
+		CWindow *pWinA = new CWindow (40, 50, 240, 180, "demo A");
+		CWindow *pWinB = new CWindow (330, 130, 260, 200, "demo B");
+		m_WindowManager.Add (pWinA);
+		m_WindowManager.Add (pWinB);
+
+		new CWindowDemoTask (pWinA, 0, "demoA");
+		new CWindowDemoTask (pWinB, 1, "demoB");
+		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
+
+		m_Logger.Write (FromKernel, LogNotice, "compositor + 2 windowed demos started");
 	}
 
 	unsigned nUptime = 0;

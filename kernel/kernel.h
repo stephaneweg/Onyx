@@ -20,6 +20,7 @@
 #include <circle/2dgraphics.h>
 #include <circle/sched/scheduler.h>
 #include <circle/types.h>
+#include <kern/gui/window.h>
 
 #define SCREEN_WIDTH	640
 #define SCREEN_HEIGHT	480
@@ -58,6 +59,7 @@ private:
 	CLogger			m_Logger;
 	C2DGraphics		m_2DGraphics;		// HDMI framebuffer (double-buffered, VSync)
 	CScheduler		m_Scheduler;		// our preemptive-ready scheduler (#3)
+	CWindowManager		m_WindowManager;	// compositor (#10)
 
 	boolean			m_bGraphics;		// framebuffer available?
 };

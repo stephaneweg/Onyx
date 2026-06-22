@@ -21,6 +21,7 @@ OBJS = \
 	sched/task.o \
 	mm/addrspace.o \
 	gui/gimage.o \
+	gui/window.o \
 	sys/syscall.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o \
