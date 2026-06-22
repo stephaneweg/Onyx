@@ -1,0 +1,17 @@
+# Upstream Circle dependency: cloned separately, has its own git history.
+# (Will be promoted to a git submodule when we set up the build.)
+# Clone with:  git clone --recurse-submodules https://github.com/rsta2/circle.git
+/circle/
+
+# Build artifacts
+*.o
+*.a
+*.d
+*.img
+*.elf
+*.lst
+*.map
+*.bin
+
+# Editor / tooling
+.claude/settings.local.json
