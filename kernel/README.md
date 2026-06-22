@@ -25,10 +25,19 @@ kernel/
     scheduler.h     SHADOW of <circle/sched/scheduler.h> (preemption-ready)
   sched/
     scheduler.cpp   our CScheduler (replaces circle/lib/sched/scheduler.cpp)
+    task.cpp        CTask (replaces circle's; TaskEntry enables IRQ for new tasks)
+  arch/aarch64/
+    vectors.S       our VBAR_EL1 table + trap-frame stubs + enter_user
+    exception.cpp   C exception handlers + 100 Hz preemption tick
+  sys/
+    syscall.cpp     syscall dispatch + copy_*_user
+  include/kern/
+    trapframe.h     trap frame layout (asm + C)
+    syscall.h       syscall numbers + ABI
 ```
 
-Source subtrees to come: `arch/aarch64/` (vectors, context switch), `mm/`
-(per-process page tables), `proc/` (process model, ELF loader), `sys/` (syscalls).
+Source subtrees to come: `mm/` (per-process page tables), `proc/` (process model,
+ELF loader), more of `sys/` (file I/O, spawn).
 
 Build wiring for the scheduler (which Circle sched files to replace vs reuse, and
 the `kernel/compat` include-path ordering) is documented in
@@ -38,9 +47,12 @@ the `kernel/compat` include-path ordering) is documented in
 
 - **#1 done** — skeleton, architecture doc, layout header.
 - **#2 done** — `main()` takes over from Circle; serial console + timer heartbeat.
-- **#3 in progress** — `CScheduler` replacement (shadow header + our scheduler.cpp);
-  two demo kernel threads. Cooperative for now; the preemption hook is in place and
-  the timer-IRQ trigger lands in #4. Build deferred (WSL), so nothing is compiled.
+- **#3 done** — `CScheduler` replacement (shadow header + our scheduler.cpp/task.cpp);
+  idle task; two demo kernel threads.
+- **#4 in progress** — our `VBAR_EL1` vectors (EL0/EL1), trap frame, syscall
+  dispatch (self-tested via SVC from EL1), and **preemptive multitasking** (100 Hz
+  tick → reschedule on IRQ exit). `enter_user` built; EL0 round-trip lands with the
+  page tables in #5. Build deferred (WSL), so nothing is compiled yet.
 
 ## Build
 

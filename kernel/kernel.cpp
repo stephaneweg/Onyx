@@ -5,8 +5,27 @@
 #include <circle/machineinfo.h>
 #include <circle/memory.h>
 #include <circle/sched/task.h>
+#include <kern/trapframe.h>
+#include <kern/syscall.h>
 
 static const char FromKernel[] = "kernel";
+
+// Issue a syscall via SVC (AArch64 ABI: x8 = number, x0..x2 = args, x0 = result).
+// Used here for an EL1 self-test of the syscall path before EL0 processes exist.
+static long DoSyscall (unsigned long nNum, unsigned long a0, unsigned long a1, unsigned long a2)
+{
+	register unsigned long x8 asm ("x8") = nNum;
+	register unsigned long x0 asm ("x0") = a0;
+	register unsigned long x1 asm ("x1") = a1;
+	register unsigned long x2 asm ("x2") = a2;
+
+	asm volatile ("svc #0"
+		      : "+r" (x0)
+		      : "r" (x8), "r" (x1), "r" (x2)
+		      : "memory");
+
+	return (long) x0;
+}
 
 //
 // Demo worker for milestone #3: a kernel thread that logs at a fixed interval and
@@ -79,13 +98,22 @@ boolean CKernel::Initialize (void)
 		bOK = m_Timer.Initialize ();
 	}
 
+	if (bOK)
+	{
+		// Take over exception handling from Circle: install our VBAR_EL1 (EL0/EL1
+		// vectors + trap frame + syscall path), and drive the scheduler's time
+		// slice from the 100 Hz timer tick -> preemptive multitasking (#4).
+		install_vectors ();
+		m_Timer.RegisterPeriodicHandler (PeriodicTick);
+	}
+
 	return bOK;
 }
 
 TShutdownMode CKernel::Run (void)
 {
 	m_Logger.Write (FromKernel, LogNotice,
-			"Multi-process kernel on Circle -- milestone #2 (boot + console)");
+			"Multi-process kernel on Circle -- milestone #4 (vectors + preemption)");
 	m_Logger.Write (FromKernel, LogNotice, "Compiled on " __DATE__ " " __TIME__);
 
 	CMachineInfo *pInfo = CMachineInfo::Get ();
@@ -100,6 +128,11 @@ TShutdownMode CKernel::Run (void)
 	// (main) thread also participate. With no preemption yet, control passes
 	// whenever a thread sleeps; the interleaving over serial shows the scheduler
 	// and the block/wake path working.
+	// Self-test the syscall path from EL1 (proves SVC -> our vectors -> dispatch).
+	// Once EL0 processes exist (#6) this same path serves user mode.
+	static const char SyscallMsg[] = "hello from a syscall (SVC trap from EL1)";
+	DoSyscall (SYS_write, /*fd*/ 1, (unsigned long) SyscallMsg, sizeof SyscallMsg - 1);
+
 	m_Logger.Write (FromKernel, LogNotice, "starting scheduler with 2 worker threads");
 
 	new CHeartbeatTask (&m_Logger, "beat-A", 700);

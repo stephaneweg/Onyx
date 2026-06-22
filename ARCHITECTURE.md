@@ -151,13 +151,15 @@ Done with the minimum surface, `circle/` untouched:
   *before* `circle/include` on the include path so `<circle/sched/scheduler.h>`
   resolves to ours. Adds `OnTimerTick()` / `m_bResched` / slice; same public +
   friend API.
-- **Replace** `circle/lib/sched/scheduler.cpp` → compile `kernel/sched/scheduler.cpp`
-  instead (preemption-ready; `wfi`-idle; identical block/wake/timeout protocol).
-- **Reuse unchanged** from `circle/lib/sched/`: `task.cpp`, `taskswitch.S`,
-  `synchronizationevent.cpp`, `mutex.cpp`, `semaphore.cpp`, `pipe.cpp`. They use
-  only `CScheduler`'s public+friend API and compile against our shadow header.
-- Per-process / ASID linkage for a `CTask` (needed in #5) will hang off the
-  existing `TASK_USER_DATA_USER` slot, so `task.h`/`task.cpp` stay unmodified.
+- **Replace** these `circle/lib/sched/` files — compile our versions instead:
+  - `scheduler.cpp` → `kernel/sched/scheduler.cpp` (preemption-ready; `wfi` idle
+    task; identical block/wake/timeout protocol).
+  - `task.cpp` → `kernel/sched/task.cpp` (one change: `TaskEntry` enables IRQ so a
+    freshly-created task does not inherit the switch's IRQ-disabled state).
+- **Reuse unchanged** from `circle/lib/sched/`: `taskswitch.S`,
+  `synchronizationevent.cpp`, `mutex.cpp`, `semaphore.cpp`, `pipe.cpp`.
+- `task.h` is unmodified (`CTask` layout unchanged), so per-process/ASID linkage
+  in #5 can hang off the existing `TASK_USER_DATA_USER` slot.
 
 ---
 
@@ -174,6 +176,23 @@ Done with the minimum surface, `circle/` untouched:
 - **User DMA**: user buffers are not identity-mapped → for v1 use a **bounce
   buffer** (copy user ↔ kernel identity buffer, then DMA); later, walk the user
   table to pin frames and get PAs.
+
+### Implementation (build) — files & integration
+- New files: `kernel/arch/aarch64/vectors.S` (our `KVectorTable` + stubs +
+  `install_vectors` + `enter_user`), `kernel/arch/aarch64/exception.cpp` (C
+  handlers + `PeriodicTick`), `kernel/sys/syscall.cpp` (dispatch + `copy_*_user`),
+  `kernel/include/kern/{trapframe,syscall}.h`.
+- We **keep Circle's** `exceptionstub64.S` / `exceptionhandler64.cpp` /
+  `interruptgic.cpp` compiled and **install our `VBAR_EL1` over** Circle's (after
+  `CExceptionHandler` runs). Our IRQ stub calls Circle's `InterruptHandler`
+  (GIC dispatch + EOI); our FIQ vector branches to Circle's `FIQStub`; EL1 faults
+  reuse Circle's `ExceptionHandler` dump. `CExceptionHandler` must still be
+  instantiated so `ExceptionHandler()` can reach `CExceptionHandler::Get()`.
+- **Preemption correctness**: `Yield` runs the switch with IRQ disabled and
+  restores the *full* prior `DAIF`; the timer tick (`HZ=100`) drives `OnTimerTick`
+  via `CTimer::RegisterPeriodicHandler`; `KernelIRQExit` reschedules post-EOI.
+- **EL0 round-trip** (`enter_user`) is built but not exercised until #5 maps a
+  user page; for now the syscall path is self-tested with an SVC from EL1.
 
 ---
 
@@ -195,8 +214,10 @@ into EL0.
 2. ✅ Own `main()` taking over from Circle; init kept subsystems; serial console.
 3. 🚧 Scheduler replacement + `CScheduler` shadow (kernel threads, cooperative).
    Preemption hook (`OnTimerTick`) in place; timer-IRQ trigger wired in #4.
-4. Exception vectors EL0/EL1 + trap frame + `SVC` round-trip ("hello" from EL0).
-   Also: wire the 100 Hz tick → `OnTimerTick` → IRQ-exit reschedule (preemption).
+4. 🚧 Exception vectors EL0/EL1 + trap frame + syscall path + **preemption**
+   (100 Hz tick → `OnTimerTick` → IRQ-exit reschedule). Syscall self-tested via
+   SVC from EL1; `enter_user` built. The actual EL0 process round-trip is
+   exercised in #5/#6 (needs a mapped user page).
 5. Per-process page tables + TTBR0/ASID switch; verify isolation (EL0→kernel faults).
 6. ELF loader from SD → first real EL0 process.
 7. Multi-process preempted concurrently + core syscalls (read/write/exit/yield/

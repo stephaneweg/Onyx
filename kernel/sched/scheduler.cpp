@@ -25,12 +25,62 @@
 
 static const char FromScheduler[] = "sched";
 
+// ---- local IRQ masking (full-DAIF save/restore around a context switch) ------
+//
+// A context switch must be atomic against the timer IRQ (which calls Yield() via
+// KernelIRQExit) and against device IRQs that call WakeTasks(). We disable IRQ
+// for the whole switch and restore the *full* DAIF that the suspending task had,
+// so voluntary (IRQ-enabled) and preemptive (IRQ-disabled) suspend points each
+// resume with their own correct interrupt state.
+static inline u64 IrqSave (void)
+{
+	u64 nFlags;
+	asm volatile ("mrs %0, daif; msr daifset, #2" : "=r" (nFlags) :: "memory");
+	return nFlags;
+}
+
+static inline void IrqRestore (u64 nFlags)
+{
+	asm volatile ("msr daif, %0" :: "r" (nFlags) : "memory");
+}
+
+static inline void IrqEnable (void)
+{
+	asm volatile ("msr daifclr, #2" ::: "memory");
+}
+
+static inline void IrqDisable (void)
+{
+	asm volatile ("msr daifset, #2" ::: "memory");
+}
+
+// Idle task: runs only when nothing else is ready. Sleeps in wfi (IRQ enabled, so
+// the timer tick wakes it and the IRQ-exit path can preempt it to a woken task).
+class CIdleTask : public CTask
+{
+public:
+	CIdleTask (void)
+	{
+		SetName ("idle");
+	}
+
+	void Run (void) override
+	{
+		for (;;)
+		{
+			asm volatile ("wfi");
+			CScheduler::Get ()->Yield ();
+		}
+	}
+};
+
 CScheduler *CScheduler::s_pThis = 0;
 
 CScheduler::CScheduler (void)
 :	m_nTasks (0),
 	m_pCurrent (0),
 	m_nCurrent (0),
+	m_pIdleTask (0),
 	m_pTaskSwitchHandler (0),
 	m_pTaskTerminationHandler (0),
 	m_iSuspendNewTasks (0),
@@ -43,6 +93,9 @@ CScheduler::CScheduler (void)
 	m_pCurrent = new CTask (0);		// represents the main task currently running
 	assert (m_pCurrent != 0);
 	m_pCurrent->SetName ("main");
+
+	m_pIdleTask = new CIdleTask;		// always-ready fallback (deprioritized)
+	assert (m_pIdleTask != 0);
 }
 
 CScheduler::~CScheduler (void)
@@ -55,43 +108,47 @@ CScheduler::~CScheduler (void)
 
 void CScheduler::Yield (void)
 {
-	// Pick the next ready task. If none is ready (all sleeping/blocked), wait for
-	// an interrupt (timer tick or device IRQ) to make one ready, then rescan.
-	// This replaces Circle's busy-spin + assert(m_nTasks>0). IRQs must be enabled
-	// here (they are at task level); the periodic 100 Hz tick guarantees we wake
-	// at least every 10 ms to re-evaluate sleep/timeout deadlines.
-	while ((m_nCurrent = GetNextTask ()) == MAX_TASKS)
+	// Disable IRQ for the whole switch: this serializes the scheduler against the
+	// timer-IRQ preemption path (KernelIRQExit -> Yield) and device IRQs that call
+	// WakeTasks(), on this core. We restore the FULL prior DAIF after we are
+	// resumed, so each task keeps its own interrupt state across switches.
+	u64 nFlags = IrqSave ();
+
+	unsigned nNext;
+	while ((nNext = GetNextTask ()) == MAX_TASKS)
 	{
+		// The idle task is always ready, so this should not happen. Defensive:
+		// allow an IRQ in (to make progress), then rescan.
+		IrqEnable ();
 		asm volatile ("wfi");
+		IrqDisable ();
 	}
 
-	assert (m_nCurrent < MAX_TASKS);
+	m_nCurrent = nNext;
 	CTask *pNext = m_pTask[m_nCurrent];
 	assert (pNext != 0);
-	if (m_pCurrent == pNext)
-	{
-		// Still the only runnable task: give it a fresh slice and continue.
-		m_nSliceTicks = SCHED_SLICE_TICKS;
-		m_bResched = FALSE;
-		return;
-	}
 
-	TTaskRegisters *pOldRegs = m_pCurrent->GetRegs ();
-	m_pCurrent = pNext;
-	TTaskRegisters *pNewRegs = m_pCurrent->GetRegs ();
-
-	// The task that gets control now starts a fresh time slice.
+	// Whichever task runs now starts a fresh time slice.
 	m_nSliceTicks = SCHED_SLICE_TICKS;
 	m_bResched = FALSE;
 
-	if (m_pTaskSwitchHandler != 0)
+	if (m_pCurrent != pNext)
 	{
-		(*m_pTaskSwitchHandler) (m_pCurrent);
+		TTaskRegisters *pOldRegs = m_pCurrent->GetRegs ();
+		m_pCurrent = pNext;
+		TTaskRegisters *pNewRegs = m_pCurrent->GetRegs ();
+
+		if (m_pTaskSwitchHandler != 0)
+		{
+			(*m_pTaskSwitchHandler) (m_pCurrent);
+		}
+
+		assert (pOldRegs != 0);
+		assert (pNewRegs != 0);
+		TaskSwitch (pOldRegs, pNewRegs);	// returns when WE are scheduled again
 	}
 
-	assert (pOldRegs != 0);
-	assert (pNewRegs != 0);
-	TaskSwitch (pOldRegs, pNewRegs);
+	IrqRestore (nFlags);
 }
 
 void CScheduler::OnTimerTick (void)
@@ -434,6 +491,8 @@ unsigned CScheduler::GetNextTask (void)
 
 	unsigned nTicks = CTimer::Get ()->GetClockTicks ();
 
+	unsigned nIdleIndex = MAX_TASKS;	// remember idle; use only if nothing else
+
 	for (unsigned i = 1; i <= m_nTasks; i++)
 	{
 		if (++nTask >= m_nTasks)
@@ -455,6 +514,13 @@ unsigned CScheduler::GetNextTask (void)
 		switch (pTask->GetState ())
 		{
 		case TaskStateReady:
+			if (pTask == m_pIdleTask)
+			{
+				// Deprioritize: only fall back to idle if no other task
+				// is runnable this round.
+				nIdleIndex = nTask;
+				continue;
+			}
 			return nTask;
 
 		case TaskStateBlocked:
@@ -500,7 +566,8 @@ unsigned CScheduler::GetNextTask (void)
 		}
 	}
 
-	return MAX_TASKS;
+	// No regular task is runnable: fall back to the idle task if it is ready.
+	return nIdleIndex;
 }
 
 CScheduler *CScheduler::Get (void)

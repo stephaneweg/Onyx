@@ -111,6 +111,8 @@ private:
 	CTask *m_pCurrent;
 	unsigned m_nCurrent;	// index into m_pTask
 
+	CTask *m_pIdleTask;	// run only when nothing else is ready (deprioritized)
+
 	TSchedulerTaskHandler *m_pTaskSwitchHandler;
 	TSchedulerTaskHandler *m_pTaskTerminationHandler;
 
