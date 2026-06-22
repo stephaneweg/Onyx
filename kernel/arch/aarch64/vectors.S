@@ -84,11 +84,13 @@
 	.align	11			/* VBAR must be 2KB aligned */
 	.globl	KVectorTable
 KVectorTable:
-	/* Current EL with SP0 (EL1t) -- not used by us */
-	VEC	BadModeEntry
-	VEC	BadModeEntry
-	VEC	BadModeEntry
-	VEC	BadModeEntry
+	/* Current EL with SP0 (EL1t) -- Circle runs the main thread + all tasks HERE
+	   (they use SP_EL0), so normal IRQs/sync come through this group. Must use the
+	   real handlers, NOT BadMode. */
+	VEC	SyncEL1Entry
+	VEC	IrqEntry
+	VEC	FIQStub
+	VEC	BadModeEntry		/* SError */
 
 	/* Current EL with SPx (EL1h) -- kernel threads */
 	VEC	SyncEL1Entry

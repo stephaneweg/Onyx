@@ -200,16 +200,15 @@ boolean CKernel::Initialize (void)
 		m_Scheduler.RegisterTaskTerminationHandler (AddressSpaceTaskTerminate);
 	}
 
-	// Framebuffer is optional (needs an attached display). Do not fail boot if
-	// it is unavailable -- the serial console + scheduler still run.
+	// DIAGNOSTIC: graphics + demos disabled to isolate the kernel core. We do NOT
+	// initialize C2DGraphics (no dual framebuffer), spawn no demos, no compositor.
+	// If the core "alive tick" log below counts up steadily, the scheduler/timer/
+	// SD/core are fine and the black screen is in graphics or the EL1 apps.
 	if (bOK)
 	{
-		m_bGraphics = m_2DGraphics.Initialize ();
-		if (!m_bGraphics)
-		{
-			m_Logger.Write (FromKernel, LogWarning,
-					"no framebuffer/display; graphics demo disabled");
-		}
+		m_bGraphics = FALSE;
+		m_Logger.Write (FromKernel, LogNotice,
+				"DIAG: graphics/demos disabled -- testing kernel core only");
 	}
 
 	// SD card is optional too: mount it so apps can be loaded from the card. If it
@@ -285,9 +284,11 @@ TShutdownMode CKernel::Run (void)
 		m_Logger.Write (FromKernel, LogWarning, "no framebuffer; idling");
 	}
 
+	unsigned nTick = 0;
 	for (;;)
 	{
-		m_Scheduler.MsSleep (1000);
+		m_Scheduler.MsSleep (2000);
+		m_Logger.Write (FromKernel, LogNotice, "DIAG: core alive, tick %u", ++nTick);
 	}
 
 	return ShutdownHalt;

@@ -101,14 +101,13 @@ void BadModeHandler (TTrapFrame *pFrame)
 
 void KernelIRQExit (void)
 {
-	// Called after Circle's InterruptHandler has already EOI'd. If the running
-	// task's time slice expired (OnTimerTick set the flag), reschedule now. The
-	// current task is still ready, so Yield() either switches to another ready
-	// task or returns immediately -- it never enters the idle/wfi path here.
-	if (CScheduler::IsActive () && CScheduler::Get ()->IsReschedPending ())
-	{
-		CScheduler::Get ()->Yield ();
-	}
+	// IMPORTANT: no preemptive reschedule here. Circle runs threads in EL1t
+	// (SP_EL0) while exceptions run in EL1h (SP_EL1, the shared exception stack).
+	// A context switch from the IRQ handler would swap SP_EL1, not the thread's
+	// SP_EL0 -- it cannot correctly preempt an EL1t thread. So we schedule
+	// COOPERATIVELY (like Circle's own scheduler): threads switch when they call
+	// Yield()/MsSleep()/present(). The time-slice flag is left unused for now.
+	// (True preemption would need a full trap-frame switch honoring SP_EL0.)
 }
 
 void PeriodicTick (void)
