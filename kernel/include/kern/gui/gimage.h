@@ -41,6 +41,14 @@ public:
 	void DrawRectangle (int x1, int y1, int x2, int y2, u32 nColor);
 	void FillRectangle (int x1, int y1, int x2, int y2, u32 nColor);
 
+	// Text (Circle's built-in bitmap font; transparent background -- only the glyph
+	// pixels are drawn). Top-left at (x,y).
+	void DrawChar (int x, int y, char chAscii, u32 nColor);
+	void DrawText (int x, int y, const char *pText, u32 nColor);
+	static int FontWidth (void);				// fixed glyph cell width
+	static int FontHeight (void);
+	static int TextWidth (const char *pText);		// pixel width of a string
+
 	// Blit another image at (x,y). With bTransparent, pixels equal to
 	// GIMAGE_TRANSPARENT are skipped. Clipped to this image's bounds.
 	void PutOther (const GImage *pSrc, int x, int y, boolean bTransparent);

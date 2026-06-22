@@ -59,8 +59,9 @@ unsigned *kapi_create_window (int w, int h, const char *pTitle)
 	int y = s_nNextY;
 	s_nNextY += WIN_TITLEBAR_H + h + WIN_BORDER + 12;	// next window below + gap
 
-	(void) pTitle;						// text rendering: font layer TODO
-	CWindow *pWin = new CWindow (x, y, w, h, "app");
+	// pTitle is a pointer in the calling app's address space, which is active here
+	// (EL1) -- CWindow copies it. Fall back to a default if null.
+	CWindow *pWin = new CWindow (x, y, w, h, pTitle != 0 ? pTitle : "app");
 	if (pWin == 0 || !pWin->IsValid ())
 	{
 		return 0;

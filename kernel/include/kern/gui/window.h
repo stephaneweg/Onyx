@@ -61,7 +61,7 @@ public:
 private:
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
-	const char     *m_pTitle;
+	char		m_Title[48];	// owned copy of the title (caller's may be transient)
 	GImage		m_Canvas;	// client-area pixel buffer (wraps m_pRawAlloc)
 	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)
 	u64		m_ulCanvasPhys;	// 64 KB-aligned start of the canvas (== kernel VA)

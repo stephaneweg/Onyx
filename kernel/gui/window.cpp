@@ -8,9 +8,21 @@
 #include <assert.h>
 
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle)
-:	m_nX (x), m_nY (y), m_pTitle (pTitle),
+:	m_nX (x), m_nY (y),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0)
 {
+	// Copy the title (the caller's string may live in a transient address space).
+	m_Title[0] = '\0';
+	if (pTitle != 0)
+	{
+		unsigned i;
+		for (i = 0; i < sizeof (m_Title) - 1 && pTitle[i] != '\0'; i++)
+		{
+			m_Title[i] = pTitle[i];
+		}
+		m_Title[i] = '\0';
+	}
+
 	// Allocate the canvas as a page-aligned, contiguous block: over-allocate from
 	// the (identity-mapped) heap and align the start up to 64 KB, so PA == the
 	// aligned VA and the region can be mapped into a process address space.
@@ -61,9 +73,9 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	pScreen->FillRectangle (x0, y0, x1, y0 + WIN_TITLEBAR_H - 1,
 				bActive ? WIN_COLOR_TITLE_ACT : WIN_COLOR_TITLE);
 
-	// A little title accent (text rendering arrives with the font layer).
-	pScreen->FillRectangle (x0 + 6, y0 + 8, x0 + 6 + 10, y0 + WIN_TITLEBAR_H - 8,
-				0x00FFFFFF);
+	// Title text, vertically centred in the title bar.
+	pScreen->DrawText (x0 + 6, y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
+			   m_Title, 0x00FFFFFF);
 
 	// Client area = the owner's canvas, blitted opaque just below the title bar.
 	pScreen->PutOther (&m_Canvas, x0 + WIN_BORDER, y0 + WIN_TITLEBAR_H, FALSE);

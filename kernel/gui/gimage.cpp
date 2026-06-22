@@ -3,7 +3,11 @@
 //
 #include <kern/gui/gimage.h>
 #include <circle/util.h>		// memset
+#include <circle/chargenerator.h>	// built-in bitmap font
 #include <circle/new.h>
+
+// One shared character generator (default console font). Constructed at static-init.
+static CCharGenerator s_CharGen;
 
 static inline void Fill32 (u32 *pDst, u32 nColor, int nCount)
 {
@@ -250,5 +254,53 @@ void GImage::PutOther (const GImage *pSrc, int x, int y, boolean bTransparent)
 				pD[col] = c;
 			}
 		}
+	}
+}
+
+// ---- text ------------------------------------------------------------------
+
+int GImage::FontWidth (void)	{ return (int) s_CharGen.GetCharWidth (); }
+int GImage::FontHeight (void)	{ return (int) s_CharGen.GetCharHeight (); }
+
+int GImage::TextWidth (const char *pText)
+{
+	int n = 0;
+	while (pText != 0 && *pText++ != '\0')
+	{
+		n++;
+	}
+	return n * FontWidth ();
+}
+
+void GImage::DrawChar (int x, int y, char chAscii, u32 nColor)
+{
+	unsigned nW = s_CharGen.GetCharWidth ();
+	unsigned nH = s_CharGen.GetCharHeight ();
+	for (unsigned cy = 0; cy < nH; cy++)
+	{
+		for (unsigned cx = 0; cx < nW; cx++)
+		{
+			if (s_CharGen.GetPixel (chAscii, cx, cy))
+			{
+				SetPixel (x + (int) cx, y + (int) cy, nColor);
+			}
+		}
+	}
+}
+
+void GImage::DrawText (int x, int y, const char *pText, u32 nColor)
+{
+	if (pText == 0)
+	{
+		return;
+	}
+	int nW = FontWidth ();
+	for (; *pText != '\0'; pText++)
+	{
+		if ((unsigned char) *pText >= ' ')
+		{
+			DrawChar (x, y, *pText, nColor);
+		}
+		x += nW;
 	}
 }
