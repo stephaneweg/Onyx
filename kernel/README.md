@@ -18,20 +18,29 @@ git clone --recurse-submodules https://github.com/rsta2/circle.git
 ```
 kernel/
   main.cpp          entry point (main(), called by Circle's sysinit)
-  kernel.h/.cpp     CKernel: takes over after sysinit, brings up serial console
+  kernel.h/.cpp     CKernel: takes over after sysinit; serial console + sched demo
   include/kern/
     layout.h        address-space map + AArch64 page-table attribute constants
+  compat/circle/sched/
+    scheduler.h     SHADOW of <circle/sched/scheduler.h> (preemption-ready)
+  sched/
+    scheduler.cpp   our CScheduler (replaces circle/lib/sched/scheduler.cpp)
 ```
 
-Source subtrees to come: `arch/aarch64/` (vectors, context switch), `sched/`
-(preemptive scheduler + CScheduler seam), `mm/` (per-process page tables),
-`proc/` (process model, ELF loader), `sys/` (syscalls).
+Source subtrees to come: `arch/aarch64/` (vectors, context switch), `mm/`
+(per-process page tables), `proc/` (process model, ELF loader), `sys/` (syscalls).
+
+Build wiring for the scheduler (which Circle sched files to replace vs reuse, and
+the `kernel/compat` include-path ordering) is documented in
+[../ARCHITECTURE.md](../ARCHITECTURE.md) §5.
 
 ## Status
 
 - **#1 done** — skeleton, architecture doc, layout header.
-- **#2 in progress** — `main()` takes over from Circle; serial console + timer
-  heartbeat. Build is deferred (toolchain via WSL), so this is not yet compiled.
+- **#2 done** — `main()` takes over from Circle; serial console + timer heartbeat.
+- **#3 in progress** — `CScheduler` replacement (shadow header + our scheduler.cpp);
+  two demo kernel threads. Cooperative for now; the preemption hook is in place and
+  the timer-IRQ trigger lands in #4. Build deferred (WSL), so nothing is compiled.
 
 ## Build
 

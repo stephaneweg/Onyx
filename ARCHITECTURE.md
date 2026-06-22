@@ -140,6 +140,25 @@ Plan:
 `x0–x30`, `SP_EL0`, `ELR_EL1`, `SPSR_EL1` (+ FP/SIMD if used). A switch swaps the
 kernel stack pointer / trap frame; "return to user" restores the frame and `ERET`s.
 
+Note: Circle's `TaskSwitch` (callee-saved swap) is sufficient for **both**
+voluntary and preemptive switches, **because** the full trap frame lives on each
+thread's own kernel stack (saved by the IRQ vector) and `TaskSwitch` swaps the
+kernel SP. So we reuse it unchanged.
+
+### File-level replacement (build plan)
+Done with the minimum surface, `circle/` untouched:
+- **Shadow header** `kernel/compat/circle/sched/scheduler.h` — put `kernel/compat`
+  *before* `circle/include` on the include path so `<circle/sched/scheduler.h>`
+  resolves to ours. Adds `OnTimerTick()` / `m_bResched` / slice; same public +
+  friend API.
+- **Replace** `circle/lib/sched/scheduler.cpp` → compile `kernel/sched/scheduler.cpp`
+  instead (preemption-ready; `wfi`-idle; identical block/wake/timeout protocol).
+- **Reuse unchanged** from `circle/lib/sched/`: `task.cpp`, `taskswitch.S`,
+  `synchronizationevent.cpp`, `mutex.cpp`, `semaphore.cpp`, `pipe.cpp`. They use
+  only `CScheduler`'s public+friend API and compile against our shadow header.
+- Per-process / ASID linkage for a `CTask` (needed in #5) will hang off the
+  existing `TASK_USER_DATA_USER` slot, so `task.h`/`task.cpp` stay unmodified.
+
 ---
 
 ## 6. Exceptions & syscalls
@@ -173,9 +192,11 @@ into EL0.
 ## 8. Milestones (bring-up order)
 
 1. ✅ Skeleton + this doc + `layout.h`.
-2. Own `main()` taking over from Circle; init kept subsystems; serial console.
-3. Preemptive scheduler + `CScheduler` seam (kernel threads only).
+2. ✅ Own `main()` taking over from Circle; init kept subsystems; serial console.
+3. 🚧 Scheduler replacement + `CScheduler` shadow (kernel threads, cooperative).
+   Preemption hook (`OnTimerTick`) in place; timer-IRQ trigger wired in #4.
 4. Exception vectors EL0/EL1 + trap frame + `SVC` round-trip ("hello" from EL0).
+   Also: wire the 100 Hz tick → `OnTimerTick` → IRQ-exit reschedule (preemption).
 5. Per-process page tables + TTBR0/ASID switch; verify isolation (EL0→kernel faults).
 6. ELF loader from SD → first real EL0 process.
 7. Multi-process preempted concurrently + core syscalls (read/write/exit/yield/

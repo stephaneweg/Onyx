@@ -17,6 +17,7 @@
 #include <circle/interrupt.h>
 #include <circle/timer.h>
 #include <circle/logger.h>
+#include <circle/sched/scheduler.h>
 #include <circle/types.h>
 
 enum TShutdownMode
@@ -51,6 +52,7 @@ private:
 	CInterruptSystem	m_Interrupt;
 	CTimer			m_Timer;
 	CLogger			m_Logger;
+	CScheduler		m_Scheduler;		// our preemptive-ready scheduler (#3)
 };
 
 #endif
