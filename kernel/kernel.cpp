@@ -7,6 +7,8 @@
 #include <circle/sched/task.h>
 #include <circle/synchronize.h>
 #include <circle/util.h>
+#include <circle/usb/usbkeyboard.h>
+#include <circle/input/mouse.h>
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
@@ -104,14 +106,118 @@ private:
 	CWindowManager *m_pWM;
 };
 
+//
+// Input (#13): a kernel thread that pumps USB plug-and-play and, once a mouse /
+// keyboard appears, wires its events into the window manager. Mouse moves/clicks
+// drive the cursor + window raise/drag in CWindowManager; key presses are logged
+// for now (widget routing arrives with the widget toolkit, #14/#15).
+//
+class CInputTask : public CTask
+{
+public:
+	CInputTask (CUSBHCIDevice *pUSB, CDeviceNameService *pDNS, CDisplay *pDisplay,
+		    CLogger *pLogger)
+	:	m_pUSB (pUSB), m_pDNS (pDNS), m_pDisplay (pDisplay), m_pLogger (pLogger),
+		m_pMouse (0), m_pKeyboard (0)
+	{
+		SetName ("input");
+		s_pThis = this;
+	}
+
+	void Run (void) override
+	{
+		Detect ();			// devices already present at boot
+		for (;;)
+		{
+			if (m_pUSB->UpdatePlugAndPlay () || m_pMouse == 0 || m_pKeyboard == 0)
+			{
+				Detect ();
+			}
+			CScheduler::Get ()->MsSleep (100);
+		}
+	}
+
+private:
+	void Detect (void)
+	{
+		if (m_pKeyboard == 0)
+		{
+			m_pKeyboard = (CUSBKeyboardDevice *)
+				m_pDNS->GetDevice ("ukbd1", FALSE);
+			if (m_pKeyboard != 0)
+			{
+				m_pKeyboard->RegisterRemovedHandler (KeyboardRemoved);
+				m_pKeyboard->RegisterKeyPressedHandler (KeyPressedStub);
+				m_pLogger->Write ("input", LogNotice, "keyboard attached");
+			}
+		}
+
+		if (m_pMouse == 0)
+		{
+			m_pMouse = (CMouseDevice *) m_pDNS->GetDevice ("mouse1", FALSE);
+			if (m_pMouse != 0)
+			{
+				m_pMouse->RegisterRemovedHandler (MouseRemoved);
+				// Cooked mode: absolute coords clamped to the display; bCursor
+				// FALSE -- our compositor draws the cursor itself.
+				if (m_pMouse->Setup (m_pDisplay, FALSE))
+				{
+					m_pMouse->RegisterEventHandler (MouseEventStub);
+					m_pLogger->Write ("input", LogNotice, "mouse attached");
+				}
+			}
+		}
+	}
+
+	static void MouseEventStub (TMouseEvent /*Event*/, unsigned nButtons,
+				    unsigned nPosX, unsigned nPosY, int /*nWheelMove*/)
+	{
+		if (CWindowManager::Get () != 0)
+		{
+			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, nButtons);
+		}
+	}
+
+	static void KeyPressedStub (const char *pString)
+	{
+		if (s_pThis != 0 && s_pThis->m_pLogger != 0)
+		{
+			s_pThis->m_pLogger->Write ("kbd", LogNotice, "key: %s", pString);
+		}
+	}
+
+	static void MouseRemoved (CDevice *, void *)
+	{
+		if (s_pThis != 0) { s_pThis->m_pMouse = 0; }
+	}
+
+	static void KeyboardRemoved (CDevice *, void *)
+	{
+		if (s_pThis != 0) { s_pThis->m_pKeyboard = 0; }
+	}
+
+	CUSBHCIDevice	   *m_pUSB;
+	CDeviceNameService *m_pDNS;
+	CDisplay	   *m_pDisplay;
+	CLogger		   *m_pLogger;
+	CMouseDevice       * volatile m_pMouse;
+	CUSBKeyboardDevice * volatile m_pKeyboard;
+
+	static CInputTask  *s_pThis;
+};
+
+CInputTask *CInputTask::s_pThis = 0;
+
 CKernel::CKernel (void)
 :	m_Screen (SCREEN_WIDTH, SCREEN_HEIGHT),
 	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer),
 	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT, FALSE),	// VSync off: avoid page-flip present
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
+	m_USB (&m_Interrupt, &m_Timer, TRUE),			// TRUE: enable plug-and-play
 	m_bGraphics (FALSE),
-	m_bSDMounted (FALSE)
+	m_bSDMounted (FALSE),
+	m_bUSB (FALSE)
 {
 	m_ActLED.Blink (5);		// visible sign of life before the console is up
 }
@@ -227,6 +333,18 @@ boolean CKernel::Initialize (void)
 		}
 	}
 
+	// USB host (mouse + keyboard). Optional: if it fails, the GUI still runs, just
+	// without input. Initialize() scans for devices already attached at boot; the
+	// input thread later pumps UpdatePlugAndPlay() for hot-plug.
+	if (bOK)
+	{
+		m_bUSB = m_USB.Initialize ();
+		if (!m_bUSB)
+		{
+			m_Logger.Write (FromKernel, LogWarning, "no USB host; input disabled");
+		}
+	}
+
 	return bOK;
 }
 
@@ -278,6 +396,15 @@ TShutdownMode CKernel::Run (void)
 
 		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
+
+		// Start input only after the compositor: the mouse handler drives the
+		// cursor + window raise/drag, which only make sense once we're presenting.
+		if (m_bUSB)
+		{
+			new CInputTask (&m_USB, &m_DeviceNameService,
+					m_2DGraphics.GetDisplay (), &m_Logger);
+			m_Logger.Write (FromKernel, LogNotice, "input started");
+		}
 	}
 	else
 	{

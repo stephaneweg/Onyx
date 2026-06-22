@@ -87,7 +87,10 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 CWindowManager *CWindowManager::s_pThis = 0;
 
 CWindowManager::CWindowManager (void)
-:	m_nWindows (0)
+:	m_nWindows (0),
+	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
+	m_bCursorShown (FALSE), m_nLastButtons (0),
+	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -156,4 +159,102 @@ void CWindowManager::Composite (GImage *pScreen)
 			pSnapshot[i]->DrawTo (pScreen, i == nCount - 1);
 		}
 	}
+
+	// Cursor, drawn last so it floats above everything. A classic top-left arrow:
+	// a black-bordered white triangle whose tip is at the cursor hot-spot (cx,cy).
+	if (m_bCursorShown)
+	{
+		int cx = m_nCursorX;
+		int cy = m_nCursorY;
+		for (int r = 0; r < 16; r++)
+		{
+			for (int c = 0; c <= r; c++)
+			{
+				// White fill, black on the two edges for contrast.
+				u32 col = (c == 0 || c == r) ? 0x00000000 : 0x00FFFFFF;
+				pScreen->SetPixel (cx + c, cy + r, col);
+			}
+			// Close the bottom edge with a black pixel.
+			pScreen->SetPixel (cx + r, cy + r, 0x00000000);
+		}
+	}
+}
+
+// Caller holds m_SpinLock.
+unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
+{
+	*pbOnTitleBar = FALSE;
+	// Top-down: the last window in the list is topmost.
+	for (int i = (int) m_nWindows - 1; i >= 0; i--)
+	{
+		CWindow *pWin = m_pWindows[i];
+		if (pWin == 0)
+		{
+			continue;
+		}
+		int x0 = pWin->X ();
+		int y0 = pWin->Y ();
+		int x1 = x0 + pWin->ClientWidth () + 2 * WIN_BORDER - 1;
+		int y1 = y0 + WIN_TITLEBAR_H + pWin->ClientHeight () + WIN_BORDER - 1;
+		if (x >= x0 && x <= x1 && y >= y0 && y <= y1)
+		{
+			*pbOnTitleBar = (y < y0 + WIN_TITLEBAR_H);
+			return (unsigned) i;
+		}
+	}
+	return ~0u;
+}
+
+void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
+{
+	// Clamp to the screen.
+	if (x < 0) x = 0; else if (x >= SCREEN_WIDTH)  x = SCREEN_WIDTH - 1;
+	if (y < 0) y = 0; else if (y >= SCREEN_HEIGHT) y = SCREEN_HEIGHT - 1;
+
+	m_SpinLock.Acquire ();
+
+	m_nCursorX = x;
+	m_nCursorY = y;
+	m_bCursorShown = TRUE;
+
+	boolean bLeftNow  = (nButtons & 1) != 0;
+	boolean bLeftWas  = (m_nLastButtons & 1) != 0;
+
+	if (bLeftNow && !bLeftWas)
+	{
+		// Press edge: raise the window under the cursor; start a drag if on its
+		// title bar.
+		boolean bOnTitle = FALSE;
+		unsigned nHit = HitTest (x, y, &bOnTitle);
+		if (nHit != ~0u)
+		{
+			CWindow *pWin = m_pWindows[nHit];
+			// Raise: move to the end of the list (topmost + active).
+			for (unsigned j = nHit; j + 1 < m_nWindows; j++)
+			{
+				m_pWindows[j] = m_pWindows[j + 1];
+			}
+			m_pWindows[m_nWindows - 1] = pWin;
+
+			if (bOnTitle)
+			{
+				m_pDragWindow = pWin;
+				m_nDragDX = x - pWin->X ();
+				m_nDragDY = y - pWin->Y ();
+			}
+		}
+	}
+	else if (bLeftNow && bLeftWas && m_pDragWindow != 0)
+	{
+		// Drag: move the window so the grab point tracks the cursor.
+		m_pDragWindow->Move (x - m_nDragDX, y - m_nDragDY);
+	}
+	else if (!bLeftNow)
+	{
+		m_pDragWindow = 0;	// release ends the drag
+	}
+
+	m_nLastButtons = nButtons;
+
+	m_SpinLock.Release ();
 }

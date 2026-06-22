@@ -82,9 +82,26 @@ public:
 	// Clear the desktop and draw every window onto the screen image.
 	void Composite (GImage *pScreen);
 
+	// Mouse input (called from the input thread). Cursor at (x,y); buttons is a
+	// bitmask (bit0 = left). Handles raise-on-click and title-bar dragging.
+	void OnMouse (int x, int y, unsigned nButtons);
+
 private:
+	// Hit-test top-down; returns the topmost window containing (x,y) and whether the
+	// hit landed on its title bar. Caller must hold m_SpinLock. Returns ~0u if none.
+	unsigned HitTest (int x, int y, boolean *pbOnTitleBar);
+
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
+
+	// Cursor + drag state (mutated from the input thread, read by Composite).
+	int	   m_nCursorX;
+	int	   m_nCursorY;
+	boolean	   m_bCursorShown;
+	unsigned   m_nLastButtons;	// previous button bitmask (for press/release edges)
+	CWindow	  *m_pDragWindow;	// window being dragged by its title bar, or 0
+	int	   m_nDragDX;		// cursor-to-window offset captured at drag start
+	int	   m_nDragDY;
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).
