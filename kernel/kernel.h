@@ -12,6 +12,7 @@
 #include <circle/actled.h>
 #include <circle/koptions.h>
 #include <circle/devicenameservice.h>
+#include <circle/screen.h>
 #include <circle/serial.h>
 #include <circle/exceptionhandler.h>
 #include <circle/interrupt.h>
@@ -54,7 +55,8 @@ private:
 	CActLED			m_ActLED;
 	CKernelOptions		m_Options;
 	CDeviceNameService	m_DeviceNameService;
-	CSerialDevice		m_Serial;		// serial console (headless bring-up)
+	CScreenDevice		m_Screen;		// HDMI text console (boot log visible w/o serial)
+	CSerialDevice		m_Serial;		// serial console
 	CExceptionHandler	m_ExceptionHandler;	// Circle's handler (replaced in #4)
 	CInterruptSystem	m_Interrupt;
 	CTimer			m_Timer;

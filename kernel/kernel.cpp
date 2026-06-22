@@ -158,7 +158,8 @@ private:
 };
 
 CKernel::CKernel (void)
-:	m_Timer (&m_Interrupt),
+:	m_Screen (SCREEN_WIDTH, SCREEN_HEIGHT),
+	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer),
 	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT),
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
@@ -208,6 +209,13 @@ boolean CKernel::Initialize (void)
 {
 	boolean bOK = TRUE;
 
+	// Bring up the HDMI text console FIRST (like VMKernel) so the boot log is
+	// visible on screen even without a serial cable.
+	if (bOK)
+	{
+		bOK = m_Screen.Initialize ();
+	}
+
 	if (bOK)
 	{
 		bOK = m_Serial.Initialize (115200);
@@ -215,8 +223,9 @@ boolean CKernel::Initialize (void)
 
 	if (bOK)
 	{
-		// Log straight to the serial port (no framebuffer in this milestone).
-		bOK = m_Logger.Initialize (&m_Serial);
+		// Log to the HDMI screen: if the kernel runs at all, you will SEE the boot
+		// log on the display (replacing the firmware rainbow) -- no serial needed.
+		bOK = m_Logger.Initialize (&m_Screen);
 	}
 
 	if (bOK)
