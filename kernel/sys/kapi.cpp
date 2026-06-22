@@ -214,6 +214,15 @@ void kapi_exit (int /*nStatus*/)
 		}
 	}
 
+	CLogger::Get ()->Write ("app", LogNotice, "exit: window removed, leaving app AS");
+
+	// Switch OFF the app's page table before terminating. Everything from here on
+	// (Terminate -> Yield -> task switch, then the janitor freeing this AS) is
+	// kernel code on the kernel task stack, so it belongs under the kernel address
+	// space. Crucially, the AS we are about to hand to the janitor for freeing must
+	// NOT be the live TTBR0 while it is torn down.
+	ActivateKernelAddressSpace ();
+
 	if (CScheduler::IsActive ())
 	{
 		// Mark this task "ending": it stops being scheduled and is reaped later

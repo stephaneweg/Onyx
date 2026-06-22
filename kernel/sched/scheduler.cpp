@@ -364,13 +364,18 @@ unsigned CScheduler::ReapTerminatedTasks (void)
 
 		// Termination handler frees the address space (page tables, ASID, TLB)
 		// in this safe context, with IRQs enabled.
+		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: '%s' freeing AS",
+					pTask->GetName ());
 		if (m_pTaskTerminationHandler != 0)
 		{
 			(*m_pTaskTerminationHandler) (pTask);
 		}
 
+		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: '%s' removing+delete",
+					pTask->GetName ());
 		RemoveTask (pTask);
 		delete pTask;			// frees the CTask + its stack
+		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: done");
 		nReaped++;
 	}
 
