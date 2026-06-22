@@ -218,7 +218,10 @@ into EL0.
    (100 Hz tick → `OnTimerTick` → IRQ-exit reschedule). Syscall self-tested via
    SVC from EL1; `enter_user` built. The actual EL0 process round-trip is
    exercised in #5/#6 (needs a mapped user page).
-5. Per-process page tables + TTBR0/ASID switch; verify isolation (EL0→kernel faults).
+5. 🚧 Per-process page tables (`CAddressSpace`) + TTBR0/ASID switch on every task
+   switch; first real EL0 process (loads an embedded stub, `enter_user`, does an
+   SVC). Isolation is structural (kernel pages AP=EL1-only). Clean process exit +
+   address-space teardown deferred to #6.
 6. ELF loader from SD → first real EL0 process.
 7. Multi-process preempted concurrently + core syscalls (read/write/exit/yield/
    sleep/brk/spawn), file I/O via FatFs. IPC (pipe/channel) later.
@@ -229,5 +232,21 @@ into EL0.
 
 Toolchain via **WSL** (aarch64 bare-metal GCC). Build Circle's needed libs, then
 link our kernel objects + a linker script producing `kernel8.img`. Boot path on the
-Pi: VideoCore firmware → (optionally U-Boot) → our image. To be fleshed out when we
-turn to building.
+Pi: VideoCore firmware → (optionally U-Boot) → our image.
+
+### Build manifest (so far)
+
+Compile (target **RASPPI=4**, AArch64, 64 KB granule):
+- **Our sources**: `kernel/main.cpp`, `kernel/kernel.cpp`, `kernel/sched/scheduler.cpp`,
+  `kernel/sched/task.cpp`, `kernel/sys/syscall.cpp`, `kernel/mm/addrspace.cpp`,
+  `kernel/arch/aarch64/{vectors,user_stub}.S`, `kernel/arch/aarch64/exception.cpp`.
+- **Include paths (order matters)**: `kernel/compat` **first** (so
+  `<circle/sched/scheduler.h>` resolves to our shadow), then `kernel/include`,
+  then `circle/include`.
+- **Circle**: build its libs, but **exclude** `lib/sched/scheduler.cpp` and
+  `lib/sched/task.cpp` (replaced by ours). Keep everything else (incl.
+  `lib/sched/{taskswitch.S,synchronizationevent,mutex,semaphore,pipe}`,
+  `lib/exceptionstub64.S`, `lib/exceptionhandler64.cpp`, `lib/interruptgic.cpp`).
+- Link our objects + Circle libs with a linker script → `kernel8.img`.
+
+Nothing has been compiled yet; expect the first WSL build to surface fixes.

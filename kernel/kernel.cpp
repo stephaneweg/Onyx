@@ -5,8 +5,12 @@
 #include <circle/machineinfo.h>
 #include <circle/memory.h>
 #include <circle/sched/task.h>
+#include <circle/synchronize.h>
+#include <circle/util.h>
 #include <kern/trapframe.h>
 #include <kern/syscall.h>
+#include <kern/addrspace.h>
+#include <kern/layout.h>
 
 static const char FromKernel[] = "kernel";
 
@@ -62,6 +66,66 @@ private:
 	unsigned    m_nIntervalMs;
 };
 
+//
+// Milestone #5 demo: a kernel thread that builds a private address space, loads
+// the EL0 user stub into it, switches TTBR0, and drops to EL0. From then on this
+// task IS a user process: it runs the stub in EL0, is preempted by the timer, and
+// resumes in EL0 via the trap frame. Proves page-table isolation + the EL0 entry.
+//
+extern "C" u8 user_stub_begin[];
+extern "C" u8 user_stub_end[];
+
+class CUserTestTask : public CTask
+{
+public:
+	CUserTestTask (CLogger *pLogger)
+	:	m_pLogger (pLogger)
+	{
+		SetName ("user-test");
+	}
+
+	void Run (void) override
+	{
+		CAddressSpace *pAS = new CAddressSpace ();
+		if (pAS == 0 || !pAS->IsValid ())
+		{
+			m_pLogger->Write ("user-test", LogError, "address space creation failed");
+			return;
+		}
+
+		// Map and fill the code page (written via its kernel identity address, so
+		// the user RO+X mapping does not block the load).
+		TKPageAttr CodeAttr = KPAGE_ATTR_USER_CODE;
+		void *pCode = pAS->MapNewPage (USER_LOAD_BASE, CodeAttr);
+		TKPageAttr DataAttr = KPAGE_ATTR_USER_DATA;
+		void *pStack = pAS->MapNewPage (USER_STACK_TOP - KPAGE_SIZE, DataAttr);
+		if (pCode == 0 || pStack == 0)
+		{
+			m_pLogger->Write ("user-test", LogError, "user page mapping failed");
+			return;
+		}
+
+		size_t nStubSize = (size_t) (user_stub_end - user_stub_begin);
+		memcpy (pCode, user_stub_begin, nStubSize);
+		SyncDataAndInstructionCache ();		// make the freshly written code executable
+
+		// Become this address space, then drop to EL0 at the stub entry.
+		SetUserData (pAS, TASK_USER_DATA_USER);
+		pAS->Activate ();
+
+		m_pLogger->Write ("user-test", LogNotice,
+				  "entering EL0 at %lp (ASID %u), %u-byte stub",
+				  (void *) USER_LOAD_BASE, (unsigned) pAS->GetASID (),
+				  (unsigned) nStubSize);
+
+		enter_user (USER_LOAD_BASE, USER_STACK_TOP, 0);
+		// not reached
+	}
+
+private:
+	CLogger *m_pLogger;
+};
+
 CKernel::CKernel (void)
 :	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer)
@@ -105,6 +169,11 @@ boolean CKernel::Initialize (void)
 		// slice from the 100 Hz timer tick -> preemptive multitasking (#4).
 		install_vectors ();
 		m_Timer.RegisterPeriodicHandler (PeriodicTick);
+
+		// Per-process address spaces (#5): remember the kernel TTBR0 and switch
+		// TTBR0/ASID on every task switch based on the task's address space.
+		AddrSpaceInit ();
+		m_Scheduler.RegisterTaskSwitchHandler (AddressSpaceTaskSwitch);
 	}
 
 	return bOK;
@@ -133,10 +202,13 @@ TShutdownMode CKernel::Run (void)
 	static const char SyscallMsg[] = "hello from a syscall (SVC trap from EL1)";
 	DoSyscall (SYS_write, /*fd*/ 1, (unsigned long) SyscallMsg, sizeof SyscallMsg - 1);
 
-	m_Logger.Write (FromKernel, LogNotice, "starting scheduler with 2 worker threads");
+	m_Logger.Write (FromKernel, LogNotice, "starting scheduler with 2 worker threads + 1 EL0 process");
 
 	new CHeartbeatTask (&m_Logger, "beat-A", 700);
 	new CHeartbeatTask (&m_Logger, "beat-B", 1100);
+
+	// Milestone #5: an isolated EL0 process loaded into its own address space.
+	new CUserTestTask (&m_Logger);
 
 	unsigned nUptime = 0;
 	while (1)

@@ -40,18 +40,28 @@ int copy_to_user (void *pUserDst, const void *pSrc, size_t nLen)
 
 // ---- individual syscalls -----------------------------------------------------
 
-static long sys_write (unsigned nFD, const void *pBuf, size_t nLen)
+static long sys_write (unsigned nFD, const void *pBuf, size_t nLen, boolean bFromUser)
 {
-	// NOTE: #4 only ever calls this from an EL1 self-test, so pBuf is a kernel
-	// pointer and is read directly. Once real EL0 processes exist (#6), this must
-	// branch on the caller's EL and use copy_from_user() for user buffers.
 	char Tmp[129];
 	size_t n = nLen < sizeof (Tmp) - 1 ? nLen : sizeof (Tmp) - 1;
-	memcpy (Tmp, pBuf, n);
+
+	if (bFromUser)
+	{
+		// EL0 buffer: use unprivileged loads (works under PAN, honors EL0 rights).
+		if (copy_from_user (Tmp, pBuf, n) != SYS_OK)
+		{
+			return SYS_EFAULT;
+		}
+	}
+	else
+	{
+		// EL1 self-test: pBuf is a kernel pointer, read it directly.
+		memcpy (Tmp, pBuf, n);
+	}
 	Tmp[n] = '\0';
 
-	CLogger::Get ()->Write ("syscall", LogNotice,
-				"write(fd=%u, \"%s\", len=%u)", nFD, Tmp, (unsigned) nLen);
+	CLogger::Get ()->Write ("syscall", LogNotice, "write(fd=%u, \"%s\", len=%u) [%s]",
+				nFD, Tmp, (unsigned) nLen, bFromUser ? "user" : "kernel");
 	return (long) nLen;
 }
 
@@ -74,12 +84,16 @@ void SyscallEntry (TTrapFrame *pFrame)
 	unsigned long nNum = pFrame->x[8];
 	long nResult;
 
+	// Caller's exception level: SPSR_EL1.M[3:0] == 0 (EL0t) means a user process.
+	boolean bFromUser = (pFrame->spsr_el1 & 0xF) == 0;
+
 	switch (nNum)
 	{
 	case SYS_write:
 		nResult = sys_write ((unsigned) pFrame->x[0],
 				     (const void *) pFrame->x[1],
-				     (size_t) pFrame->x[2]);
+				     (size_t) pFrame->x[2],
+				     bFromUser);
 		break;
 
 	case SYS_yield:

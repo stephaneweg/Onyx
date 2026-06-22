@@ -25,6 +25,8 @@
 #define SYS_ENOSYS	(-38)	// function not implemented
 #define SYS_EFAULT	(-14)	// bad address
 
+#ifndef __ASSEMBLER__		// the numbers above are also used from user_stub.S
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,5 +41,7 @@ int copy_to_user (void *pUserDst, const void *pSrc, size_t nLen);
 #ifdef __cplusplus
 }
 #endif
+
+#endif // __ASSEMBLER__
 
 #endif // _kern_syscall_h
