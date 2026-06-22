@@ -11,6 +11,7 @@
 #include <kern/syscall.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
+#include <kern/gui/gimage.h>
 
 static const char FromKernel[] = "kernel";
 
@@ -126,9 +127,72 @@ private:
 	CLogger *m_pLogger;
 };
 
+//
+// Framebuffer demo (#9 foundation): a kernel thread that animates bouncing boxes
+// into the screen GImage and presents each frame. Proves the C2DGraphics
+// framebuffer + the ported GImage rendering core, and runs concurrently with the
+// other threads via preemption. Precursor to the compositor + windowed demos.
+//
+class CGfxDemoTask : public CTask
+{
+public:
+	CGfxDemoTask (C2DGraphics *p2D, CLogger *pLogger)
+	:	m_p2D (p2D), m_pLogger (pLogger)
+	{
+		SetName ("gfx-demo");
+	}
+
+	void Run (void) override
+	{
+		int nW = (int) m_p2D->GetWidth ();
+		int nH = (int) m_p2D->GetHeight ();
+		m_pLogger->Write ("gfx", LogNotice, "framebuffer %dx%d, animating", nW, nH);
+
+		struct TBox { int x, y, dx, dy, size; u32 col; };
+		TBox Boxes[5] =
+		{
+			{  20,  30,  4,  3,  70, 0x00FF5050 },
+			{ 200,  80, -3,  4,  50, 0x0050FF50 },
+			{ 120, 200,  5, -2,  90, 0x005080FF },
+			{ 320, 140, -4, -3,  40, 0x00FFD000 },
+			{  60, 300,  3,  5,  60, 0x00C060FF },
+		};
+		const int nBoxes = 5;
+
+		for (;;)
+		{
+			GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
+			Screen.Clear (0x00202030);		// dark slate background
+
+			for (int i = 0; i < nBoxes; i++)
+			{
+				TBox &b = Boxes[i];
+				b.x += b.dx;
+				b.y += b.dy;
+				if (b.x < 0)            { b.x = 0;            b.dx = -b.dx; }
+				if (b.x + b.size > nW)  { b.x = nW - b.size;  b.dx = -b.dx; }
+				if (b.y < 0)            { b.y = 0;            b.dy = -b.dy; }
+				if (b.y + b.size > nH)  { b.y = nH - b.size;  b.dy = -b.dy; }
+
+				Screen.FillRectangle (b.x, b.y, b.x + b.size, b.y + b.size, b.col);
+				Screen.DrawRectangle (b.x, b.y, b.x + b.size, b.y + b.size, 0x00FFFFFF);
+			}
+
+			m_p2D->UpdateDisplay ();			// present (VSync)
+			CScheduler::Get ()->MsSleep (16);		// ~60 fps
+		}
+	}
+
+private:
+	C2DGraphics *m_p2D;
+	CLogger	    *m_pLogger;
+};
+
 CKernel::CKernel (void)
 :	m_Timer (&m_Interrupt),
-	m_Logger (m_Options.GetLogLevel (), &m_Timer)
+	m_Logger (m_Options.GetLogLevel (), &m_Timer),
+	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT),
+	m_bGraphics (FALSE)
 {
 	m_ActLED.Blink (5);		// visible sign of life before the console is up
 }
@@ -176,6 +240,18 @@ boolean CKernel::Initialize (void)
 		m_Scheduler.RegisterTaskSwitchHandler (AddressSpaceTaskSwitch);
 	}
 
+	// Framebuffer is optional (needs an attached display). Do not fail boot if
+	// it is unavailable -- the serial console + scheduler still run.
+	if (bOK)
+	{
+		m_bGraphics = m_2DGraphics.Initialize ();
+		if (!m_bGraphics)
+		{
+			m_Logger.Write (FromKernel, LogWarning,
+					"no framebuffer/display; graphics demo disabled");
+		}
+	}
+
 	return bOK;
 }
 
@@ -209,6 +285,12 @@ TShutdownMode CKernel::Run (void)
 
 	// Milestone #5: an isolated EL0 process loaded into its own address space.
 	new CUserTestTask (&m_Logger);
+
+	// Framebuffer demo (#9): animates concurrently with everything above.
+	if (m_bGraphics)
+	{
+		new CGfxDemoTask (&m_2DGraphics, &m_Logger);
+	}
 
 	unsigned nUptime = 0;
 	while (1)

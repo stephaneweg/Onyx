@@ -242,12 +242,16 @@ Pi: VideoCore firmware → (optionally U-Boot) → our image.
 ```sh
 # one-time: renormalize the Circle clone to LF (it was checked out CRLF on Windows)
 git -C circle config core.autocrlf false && git -C circle rm --cached -rq . && git -C circle reset --hard
-# build Circle's libraries (skip tools/, which are host-only and need host gcc)
-cd circle && ./configure -r 4 -p aarch64-none-elf- -f
+# build Circle's libraries (skip tools/, which are host-only and need host gcc).
+# DEPTH=32 is REQUIRED: our GImage renders 32-bit pixels (Circle defaults to 16).
+cd circle && ./configure -r 4 -p aarch64-none-elf- -d DEPTH=32 -f
 (cd lib && make -j4) && (cd lib/sched && make -j4) && (cd lib/fs && make -j4 && cd fat && make -j4)
 # build our kernel
 cd ../kernel && make            # -> kernel8-rpi4.img
 ```
+
+If you change `DEPTH` later, `make clean` in `circle/lib` before rebuilding (the
+.o files don't depend on Config.mk).
 
 Not yet run: no QEMU in this WSL; runtime test needs `qemu-system-aarch64 -M raspi4b`
 or a real Pi 4 (rename to `kernel8.img`, `arm_64bit=1`).
@@ -257,7 +261,8 @@ or a real Pi 4 (rename to `kernel8.img`, `arm_64bit=1`).
 Compile (target **RASPPI=4**, AArch64, 64 KB granule):
 - **Our sources**: `kernel/main.cpp`, `kernel/kernel.cpp`, `kernel/sched/scheduler.cpp`,
   `kernel/sched/task.cpp`, `kernel/sys/syscall.cpp`, `kernel/mm/addrspace.cpp`,
-  `kernel/arch/aarch64/{vectors,user_stub}.S`, `kernel/arch/aarch64/exception.cpp`.
+  `kernel/gui/gimage.cpp`, `kernel/arch/aarch64/{vectors,user_stub}.S`,
+  `kernel/arch/aarch64/exception.cpp`.
 - **Include paths (order matters)**: `kernel/compat` **first** (so
   `<circle/sched/scheduler.h>` resolves to our shadow), then `kernel/include`,
   then `circle/include`.
@@ -270,3 +275,36 @@ Compile (target **RASPPI=4**, AArch64, 64 KB granule):
   archives), the linker resolves `CScheduler`/`CTask` from them and never pulls
   `libsched.a`'s versions — verified (single `CScheduler::Yield` in the image, no
   duplicate-symbol error). No need to strip `libsched.a`.
+
+---
+
+## 10. GUI: windowed processes (ported from SimpleOS)
+
+Goal: load **two ELF programs from the SD card** and run them **concurrently**, each
+animating in its own **window**. Ported from the user's FreeBASIC `SimpleOS`
+(`C:\Temp\circle\sample\SimpleOS`) — but its model (flat `.bin` blobs whose
+`app_main` runs in kernel context, single address space, cooperative) is replaced
+by **our** isolated EL0 processes + preemption.
+
+What we take from SimpleOS: the **software renderer**. `GImage` (32-bit pixel buffer
++ primitives + transparent-key blit, magenta `0xFF00FF`) is ported to C++
+(`kernel/gui/gimage.cpp`). The widget toolkit (windows → buttons/scrollbars/
+textboxes/skins/desktop, ~2000 lines FB) is ported in later layers.
+
+Architecture:
+- **Framebuffer**: Circle `C2DGraphics` (32 bpp, VSync, HW double buffer). The
+  screen back buffer is wrapped as a `GImage`.
+- **Compositor / window manager** (kernel, EL1): a list of windows (position +
+  `GImage` buffer); `composite()` blits them onto the screen `GImage`; a ~60 Hz
+  compositor thread presents via `UpdateDisplay()`.
+- **Drawing model = shared buffer + present** (chosen): on `create_window(w,h)` the
+  kernel allocates the window's `GImage` buffer and **maps it into the process's
+  user VA** (`CAddressSpace::MapPage`). The process draws directly (no per-pixel
+  syscall), then calls **`present()`**. New syscalls: `create_window`, `present`,
+  `get_ticks`, plus real `exit` + address-space teardown.
+- **Two demos**: each an EL0 ELF (loaded by #6); both animate; preemption (#4)
+  interleaves them → they run "at the same time"; the compositor shows both windows.
+
+Build status: `GImage` + framebuffer demo (bouncing boxes, `CGfxDemoTask`) compile
+and link into the image. Runtime needs the real Pi 4 (HDMI). Next layers:
+compositor + window struct, then the ELF loader (#6), window syscalls, two demos.
