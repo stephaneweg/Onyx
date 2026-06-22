@@ -73,6 +73,16 @@ static void propagate (void)
 	}
 }
 
+// "Color" button handler: cycle the fire palette (red -> green -> blue), exactly
+// like the original btnClick (fcolor = (fcolor+1) mod 3). Runs in this app's
+// context when we pump events.
+static void on_color (unsigned long sender, int event, long value)
+{
+	(void) sender; (void) event; (void) value;
+	mode = (mode + 1) % 3;
+	build_palette (mode);
+}
+
 static void render (void)
 {
 	for (int dy = 0; dy < FIRE_PX; dy++)
@@ -105,14 +115,20 @@ int main (void)
 
 	build_palette (mode);
 
-	for (;;)
+	// "Color" button in the strip below the fire (like the original at y=205).
+	add_button (10, FIRE_PX + 5, 80, 26, "Color", on_color);
+
+	// Animation loop: render, dispatch GUI events (the Color click), and check
+	// whether the window's close box asked us to quit -> clean exit.
+	while (!should_exit ())
 	{
 		seed_bottom_row ();
 		propagate ();
 		render ();
 		present ();
+		pump_events ();				// dispatch on_color() if clicked
 		msleep (20);				// ~50 fps cap
 	}
 
-	return 0;
+	return 0;					// task terminates: frees window
 }

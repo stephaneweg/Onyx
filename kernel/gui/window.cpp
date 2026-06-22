@@ -9,8 +9,14 @@
 
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle)
 :	m_nX (x), m_nY (y),
-	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0)
+	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
+	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
+	for (unsigned i = 0; i < WIN_MAX_WIDGETS; i++)
+	{
+		m_Widgets[i].bUsed = FALSE;
+	}
+
 	// Copy the title (the caller's string may live in a transient address space).
 	m_Title[0] = '\0';
 	if (pTitle != 0)
@@ -77,11 +83,130 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	pScreen->DrawText (x0 + 6, y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
 			   m_Title, 0x00FFFFFF);
 
+	// Close box [x] at the right of the title bar.
+	int cbx0, cby0, cbx1, cby1;
+	CloseBoxRect (&cbx0, &cby0, &cbx1, &cby1);
+	pScreen->FillRectangle (cbx0, cby0, cbx1, cby1, 0x00C03020);
+	pScreen->DrawRectangle (cbx0, cby0, cbx1, cby1, 0x00000000);
+	pScreen->DrawLine (cbx0 + 3, cby0 + 3, cbx1 - 3, cby1 - 3, 0x00FFFFFF);
+	pScreen->DrawLine (cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
+
 	// Client area = the owner's canvas, blitted opaque just below the title bar.
-	pScreen->PutOther (&m_Canvas, x0 + WIN_BORDER, y0 + WIN_TITLEBAR_H, FALSE);
+	int clientX = x0 + WIN_BORDER;
+	int clientY = y0 + WIN_TITLEBAR_H;
+	pScreen->PutOther (&m_Canvas, clientX, clientY, FALSE);
+
+	// Widgets, drawn over the canvas (client-relative coords + client origin).
+	for (unsigned i = 0; i < m_nWidgets; i++)
+	{
+		const GWidget *pW = &m_Widgets[i];
+		if (!pW->bUsed)
+		{
+			continue;
+		}
+		int bx0 = clientX + pW->nX;
+		int by0 = clientY + pW->nY;
+		int bx1 = bx0 + pW->nW - 1;
+		int by1 = by0 + pW->nH - 1;
+		if (pW->nType == GW_BUTTON)
+		{
+			pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00606878);
+			pScreen->DrawRectangle (bx0, by0, bx1, by1, 0x00000000);
+			int tx = bx0 + (pW->nW - GImage::TextWidth (pW->Label)) / 2;
+			int ty = by0 + (pW->nH - GImage::FontHeight ()) / 2;
+			pScreen->DrawText (tx, ty, pW->Label, 0x00FFFFFF);
+		}
+	}
 
 	// Outline.
 	pScreen->DrawRectangle (x0, y0, x1, y1, 0x00000000);
+}
+
+void CWindow::CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const
+{
+	int nSize = WIN_TITLEBAR_H - 10;		// square inset in the title bar
+	int x1 = m_nX + m_Canvas.Width () + 2 * WIN_BORDER - 1;
+	*px1 = x1 - 4;
+	*px0 = *px1 - nSize;
+	*py0 = m_nY + 5;
+	*py1 = *py0 + nSize;
+}
+
+boolean CWindow::HitCloseBox (int sx, int sy) const
+{
+	int x0, y0, x1, y1;
+	CloseBoxRect (&x0, &y0, &x1, &y1);
+	return sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
+}
+
+GWidget *CWindow::AddWidget (int nType, int x, int y, int w, int h,
+			     const char *pLabel, u64 ulHandler)
+{
+	if (m_nWidgets >= WIN_MAX_WIDGETS)
+	{
+		return 0;
+	}
+	GWidget *pW = &m_Widgets[m_nWidgets];
+	pW->nType = nType;
+	pW->nX = x; pW->nY = y; pW->nW = w; pW->nH = h;
+	pW->ulHandler = ulHandler;
+	pW->nState = 0;
+	pW->bUsed = TRUE;
+
+	pW->Label[0] = '\0';
+	if (pLabel != 0)
+	{
+		unsigned i;
+		for (i = 0; i < sizeof (pW->Label) - 1 && pLabel[i] != '\0'; i++)
+		{
+			pW->Label[i] = pLabel[i];
+		}
+		pW->Label[i] = '\0';
+	}
+
+	m_nWidgets++;
+	return pW;
+}
+
+GWidget *CWindow::HitWidget (int cx, int cy)
+{
+	for (unsigned i = 0; i < m_nWidgets; i++)
+	{
+		GWidget *pW = &m_Widgets[i];
+		if (pW->bUsed
+		    && cx >= pW->nX && cx < pW->nX + pW->nW
+		    && cy >= pW->nY && cy < pW->nY + pW->nH)
+		{
+			return pW;
+		}
+	}
+	return 0;
+}
+
+void CWindow::PushEvent (const GUIEvent &Event)
+{
+	m_EvLock.Acquire ();
+	unsigned nNext = (m_nEvHead + 1) % WIN_EVENT_QUEUE;
+	if (nNext != m_nEvTail)			// drop if the ring is full
+	{
+		m_Events[m_nEvHead] = Event;
+		m_nEvHead = nNext;
+	}
+	m_EvLock.Release ();
+}
+
+boolean CWindow::PopEvent (GUIEvent *pEvent)
+{
+	boolean bGot = FALSE;
+	m_EvLock.Acquire ();
+	if (m_nEvTail != m_nEvHead)
+	{
+		*pEvent = m_Events[m_nEvTail];
+		m_nEvTail = (m_nEvTail + 1) % WIN_EVENT_QUEUE;
+		bGot = TRUE;
+	}
+	m_EvLock.Release ();
+	return bGot;
 }
 
 CWindowManager *CWindowManager::s_pThis = 0;
@@ -222,8 +347,8 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 
 	if (bLeftNow && !bLeftWas)
 	{
-		// Press edge: raise the window under the cursor; start a drag if on its
-		// title bar.
+		// Press edge: raise the window under the cursor; then close box / title
+		// bar drag / widget click depending on where the press landed.
 		boolean bOnTitle = FALSE;
 		unsigned nHit = HitTest (x, y, &bOnTitle);
 		if (nHit != ~0u)
@@ -236,11 +361,31 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 			}
 			m_pWindows[m_nWindows - 1] = pWin;
 
-			if (bOnTitle)
+			if (pWin->HitCloseBox (x, y))
+			{
+				pWin->RequestExit ();		// app polls / wakes and exits
+			}
+			else if (bOnTitle)
 			{
 				m_pDragWindow = pWin;
 				m_nDragDX = x - pWin->X ();
 				m_nDragDY = y - pWin->Y ();
+			}
+			else
+			{
+				// Client area: hit-test widgets in canvas-relative coords.
+				int cx = x - (pWin->X () + WIN_BORDER);
+				int cy = y - (pWin->Y () + WIN_TITLEBAR_H);
+				GWidget *pW = pWin->HitWidget (cx, cy);
+				if (pW != 0 && pW->ulHandler != 0)
+				{
+					GUIEvent Ev;
+					Ev.ulHandler = pW->ulHandler;
+					Ev.ulSender  = (u64) pW;
+					Ev.nEvent    = GUI_EVENT_CLICK;
+					Ev.lValue    = 0;
+					pWin->PushEvent (Ev);
+				}
 			}
 		}
 	}

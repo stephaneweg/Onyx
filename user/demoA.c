@@ -56,7 +56,7 @@ int main (void)
 	}
 
 	int x = 10, y = 10, dx = 3, dy = 2, s = 36;
-	for (;;)
+	while (!should_exit ())
 	{
 		clear (0x00102030);
 
@@ -71,6 +71,7 @@ int main (void)
 		fillrect (x + 6, y + 6, x + s - 6, y + s - 6, 0x00804000);
 
 		present ();
+		pump_events ();
 		msleep (16);
 	}
 

@@ -27,6 +27,41 @@
 #define WIN_COLOR_DESKTOP	0x00204060
 
 #define WM_MAX_WINDOWS		16
+#define WIN_MAX_WIDGETS		16
+#define WIN_EVENT_QUEUE		32
+
+// Widget kinds (button is the first; label/checkbox/textbox arrive in #15).
+#define GW_BUTTON		1
+
+// Event kinds delivered to an app's pump. Kept numerically identical to the
+// values in user/kapi.h so the app and the kernel agree.
+#define GUI_EVENT_CLICK		1
+#define GUI_EVENT_CHECK_CHANGED	2
+#define GUI_EVENT_TEXT_CHANGED	3
+
+// A kernel-owned widget belonging to a CWindow. The compositor draws it (over
+// the app's canvas) and the window manager hit-tests it. The handler is an app
+// callback ADDRESS (opaque to the kernel): void (*)(unsigned long sender,
+// int event, long value). The kernel never calls it -- it enqueues an event to
+// the owning app, whose pump dispatches it in the app's own context.
+struct GWidget
+{
+	int	 nType;
+	int	 nX, nY, nW, nH;	// relative to the client (canvas) origin
+	char	 Label[32];
+	u64	 ulHandler;		// app callback address
+	int	 nState;		// e.g. checkbox checked (future)
+	boolean	 bUsed;
+};
+
+// An event queued for the owning app's pump.
+struct GUIEvent
+{
+	u64	ulHandler;		// callback to invoke (app address)
+	u64	ulSender;		// widget handle the app received (a GWidget *)
+	int	nEvent;			// GUI_EVENT_*
+	long	lValue;			// event payload (0 for a click)
+};
 
 class CWindow
 {
@@ -55,10 +90,32 @@ public:
 	int Y (void) const		{ return m_nY; }
 	void Move (int x, int y)	{ m_nX = x; m_nY = y; }
 
-	// Blit frame + title bar + canvas onto the screen image.
+	// Blit frame + title bar + close box + canvas + widgets onto the screen image.
 	void DrawTo (GImage *pScreen, boolean bActive);
 
+	// --- widgets ---------------------------------------------------------
+	// Add a widget (coords relative to the client area). Returns the widget
+	// (the app uses the pointer as an opaque handle / event sender), or 0 if full.
+	GWidget *AddWidget (int nType, int x, int y, int w, int h,
+			    const char *pLabel, u64 ulHandler);
+
+	// Hit-test widgets at client-relative (cx,cy). Returns the widget or 0.
+	GWidget *HitWidget (int cx, int cy);
+
+	// --- event queue (WM pushes, app pump pops) --------------------------
+	void PushEvent (const GUIEvent &Event);
+	boolean PopEvent (GUIEvent *pEvent);
+
+	// --- lifecycle -------------------------------------------------------
+	void RequestExit (void)		{ m_bExitRequested = TRUE; }
+	boolean ShouldExit (void) const	{ return m_bExitRequested; }
+
+	// Close box hit-test (screen coords). True if (sx,sy) is on the [x] box.
+	boolean HitCloseBox (int sx, int sy) const;
+
 private:
+	void CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const;
+
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
 	char		m_Title[48];	// owned copy of the title (caller's may be transient)
@@ -66,6 +123,17 @@ private:
 	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)
 	u64		m_ulCanvasPhys;	// 64 KB-aligned start of the canvas (== kernel VA)
 	unsigned	m_nCanvasPages;	// 64 KB pages spanned by the canvas
+
+	GWidget		m_Widgets[WIN_MAX_WIDGETS];
+	unsigned	m_nWidgets;
+
+	// Event ring: the WM (input thread) pushes, the owning app's pump pops.
+	GUIEvent	m_Events[WIN_EVENT_QUEUE];
+	volatile unsigned m_nEvHead;	// next slot to write
+	volatile unsigned m_nEvTail;	// next slot to read
+	CSpinLock	m_EvLock;
+
+	volatile boolean m_bExitRequested;
 };
 
 class CWindowManager

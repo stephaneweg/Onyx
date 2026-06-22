@@ -19,6 +19,26 @@ void      kapi_msleep (unsigned ms);
 void      kapi_yield (void);
 void      kapi_exit (int status);
 
+// Widgets + events ----------------------------------------------------------
+// Event kinds (must match kern/gui/window.h).
+#define GUI_EVENT_CLICK		1
+#define GUI_EVENT_CHECK_CHANGED	2
+#define GUI_EVENT_TEXT_CHANGED	3
+
+// Widget event handler: sender = the widget handle returned at creation, event =
+// GUI_EVENT_*, value = payload (0 for a click). The kernel runs it in THIS app's
+// context when the app pumps events.
+typedef void (*gui_handler) (unsigned long sender, int event, long value);
+
+// Add a button to this app's window (coords relative to the client area).
+// Returns an opaque widget handle (also passed back as `sender`), 0 on failure.
+unsigned long kapi_add_button (int x, int y, int w, int h, const char *label,
+			       gui_handler handler);
+
+void      kapi_pump_events (void);	// dispatch pending events, non-blocking
+void      kapi_wait_for_exit (void);	// pump until the close box is clicked
+int       kapi_should_exit (void);	// 1 if the app was asked to close
+
 // Console
 int       kapi_write (int fd, const void *buf, unsigned len);
 
@@ -37,5 +57,8 @@ static inline unsigned *create_window (int w, int h, const char *t) { return kap
 static inline void      present (void)             { kapi_present (); }
 static inline unsigned  get_ticks (void)           { return kapi_get_ticks (); }
 static inline void      msleep (unsigned ms)       { kapi_msleep (ms); }
+static inline unsigned long add_button (int x, int y, int w, int h, const char *l, gui_handler h2) { return kapi_add_button (x, y, w, h, l, h2); }
+static inline void      pump_events (void)         { kapi_pump_events (); }
+static inline int       should_exit (void)         { return kapi_should_exit (); }
 
 #endif

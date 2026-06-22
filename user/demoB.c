@@ -18,7 +18,7 @@ int main (void)
 	}
 
 	unsigned t = 0;
-	for (;;)
+	while (!should_exit ())
 	{
 		for (int y = 0; y < H; y++)
 		{
@@ -33,6 +33,7 @@ int main (void)
 
 		t += 4;
 		present ();
+		pump_events ();
 		msleep (20);
 	}
 

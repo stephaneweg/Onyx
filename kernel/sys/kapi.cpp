@@ -88,6 +88,84 @@ void kapi_present (void)
 	}
 }
 
+// --- widgets + events --------------------------------------------------------
+//
+// A widget stores the app's callback ADDRESS. On a click the window manager (the
+// input thread) enqueues an event to this app's window; the app's pump
+// (kapi_pump_events / kapi_wait_for_exit) dispatches it HERE, in the app's own
+// context (its page table + stack are active) -- so the callback runs as if the
+// app called it. handler signature: void (sender, int event, long value).
+
+unsigned long kapi_add_button (int x, int y, int w, int h, const char *pLabel,
+			       void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0)
+	{
+		return 0;
+	}
+	CWindow *pWin = pAS->GetWindow ();
+	if (pWin == 0)
+	{
+		return 0;
+	}
+	GWidget *pW = pWin->AddWidget (GW_BUTTON, x, y, w, h, pLabel, (u64) pHandler);
+	return (unsigned long) pW;
+}
+
+void kapi_pump_events (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0)
+	{
+		return;
+	}
+	CWindow *pWin = pAS->GetWindow ();
+	if (pWin == 0)
+	{
+		return;
+	}
+
+	GUIEvent Ev;
+	while (pWin->PopEvent (&Ev))
+	{
+		if (Ev.ulHandler != 0)
+		{
+			((void (*) (unsigned long, int, long)) Ev.ulHandler)
+				(Ev.ulSender, Ev.nEvent, Ev.lValue);
+		}
+	}
+}
+
+int kapi_should_exit (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0)
+	{
+		return 1;
+	}
+	CWindow *pWin = pAS->GetWindow ();
+	return (pWin != 0 && pWin->ShouldExit ()) ? 1 : 0;
+}
+
+void kapi_wait_for_exit (void)
+{
+	// Blocking message pump for passive apps: dispatch events until the window's
+	// close box is clicked (RequestExit), then return so the app can clean up.
+	for (;;)
+	{
+		kapi_pump_events ();
+		if (kapi_should_exit ())
+		{
+			return;
+		}
+		if (CScheduler::IsActive ())
+		{
+			CScheduler::Get ()->MsSleep (16);
+		}
+	}
+}
+
 unsigned kapi_get_ticks (void)
 {
 	return CTimer::Get ()->GetTicks ();			// HZ ticks since boot
