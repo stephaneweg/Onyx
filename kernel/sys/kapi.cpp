@@ -48,16 +48,26 @@ unsigned *kapi_create_window (int w, int h, const char *pTitle)
 		return (unsigned *) USER_WINDOW_CANVAS;		// one window per process
 	}
 
-	// Place windows down the RIGHT edge, stacked one below the other.
-	static int s_nNextY = 10;
-	int nOuterW = w + 2 * WIN_BORDER;
-	int x = SCREEN_WIDTH - nOuterW - 8;			// right-aligned (8 px margin)
-	if (x < 0)
+	// Place the window at a pseudo-random position, fully on screen. The LCG state
+	// persists across calls (so successive windows differ) and is seeded from the
+	// timer (so it varies run to run). We keep a left margin to dodge the defective
+	// left edge of the display.
+	static unsigned s_nRng = 0;
+	if (s_nRng == 0)
 	{
-		x = 0;
+		s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
 	}
-	int y = s_nNextY;
-	s_nNextY += WIN_TITLEBAR_H + h + WIN_BORDER + 12;	// next window below + gap
+
+	int nOuterW = w + 2 * WIN_BORDER;
+	int nOuterH = WIN_TITLEBAR_H + h + WIN_BORDER;
+	int nXMin   = SCREEN_WIDTH / 5;				// skip the leftmost fifth
+	int nXRange = SCREEN_WIDTH  - nOuterW - nXMin;
+	int nYRange = SCREEN_HEIGHT - nOuterH;
+
+	s_nRng = s_nRng * 1103515245u + 12345u;
+	int x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
+	s_nRng = s_nRng * 1103515245u + 12345u;
+	int y = nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0;
 
 	// pTitle is a pointer in the calling app's address space, which is active here
 	// (EL1) -- CWindow copies it. Fall back to a default if null.
@@ -189,9 +199,26 @@ void kapi_yield (void)
 
 void kapi_exit (int /*nStatus*/)
 {
+	// Detach the window from the compositor NOW, in the app's own context (IRQs
+	// enabled), so the compositor stops drawing it the instant the app exits --
+	// well before the janitor reaps the address space. This closes the window
+	// immediately and removes any chance of the compositor touching a window that
+	// belongs to a task being torn down.
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS != 0)
+	{
+		CWindow *pWin = pAS->GetWindow ();
+		if (pWin != 0 && CWindowManager::Get () != 0)
+		{
+			CWindowManager::Get ()->Remove (pWin);
+		}
+	}
+
 	if (CScheduler::IsActive ())
 	{
-		CScheduler::Get ()->GetCurrentTask ()->Terminate ();	// frees the AS + window
+		// Mark this task "ending": it stops being scheduled and is reaped later
+		// by the janitor (ReapTerminatedTasks) in a safe context.
+		CScheduler::Get ()->GetCurrentTask ()->Terminate ();
 	}
 	for (;;) { }						// not reached
 }

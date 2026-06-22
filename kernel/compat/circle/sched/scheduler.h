@@ -71,6 +71,15 @@ public:
 
 	void ListTasks (CDevice *pTarget);
 
+	/// \brief Free tasks that have ended (TaskStateTerminated). Call from a normal
+	///	   task context (e.g. the kernel main/janitor loop) -- NOT from inside
+	///	   the scheduler core. A terminated task stops being scheduled
+	///	   immediately (GetNextTask skips it); this reaps it later in a safe
+	///	   context: runs the termination handler (frees the address space),
+	///	   removes it from the task list and deletes it.
+	/// \return number of tasks reaped this call.
+	unsigned ReapTerminatedTasks (void);
+
 	// ---- Additions for preemption (milestone #4 wires the call site) --------
 
 	/// \brief Account one scheduler tick (call from the timer IRQ, 100 Hz).

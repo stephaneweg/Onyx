@@ -411,9 +411,13 @@ TShutdownMode CKernel::Run (void)
 		m_Logger.Write (FromKernel, LogWarning, "no framebuffer; idling");
 	}
 
+	// Janitor loop: reap tasks that have ended (closed apps) in a safe context,
+	// freeing their address spaces. Terminated tasks stop being scheduled
+	// immediately; this is the "en amont du scheduler" reclamation stage.
 	for (;;)
 	{
-		m_Scheduler.MsSleep (1000);
+		m_Scheduler.ReapTerminatedTasks ();
+		m_Scheduler.MsSleep (100);
 	}
 
 	return ShutdownHalt;

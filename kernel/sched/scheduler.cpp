@@ -344,6 +344,39 @@ void CScheduler::ListTasks (CDevice *pTarget)
 	}
 }
 
+unsigned CScheduler::ReapTerminatedTasks (void)
+{
+	// Runs in normal task context (the kernel janitor loop). A terminated task is
+	// quiescent: GetNextTask() skips it, so it is suspended at its final Yield()
+	// and will never run again -- safe to tear down and delete here. We never reap
+	// the current task (it would delete the stack we run on).
+	unsigned nReaped = 0;
+
+	for (unsigned i = 0; i < m_nTasks; i++)
+	{
+		CTask *pTask = m_pTask[i];
+		if (   pTask == 0
+		    || pTask == m_pCurrent
+		    || pTask->GetState () != TaskStateTerminated)
+		{
+			continue;
+		}
+
+		// Termination handler frees the address space (page tables, ASID, TLB)
+		// in this safe context, with IRQs enabled.
+		if (m_pTaskTerminationHandler != 0)
+		{
+			(*m_pTaskTerminationHandler) (pTask);
+		}
+
+		RemoveTask (pTask);
+		delete pTask;			// frees the CTask + its stack
+		nReaped++;
+	}
+
+	return nReaped;
+}
+
 void CScheduler::AddTask (CTask *pTask)
 {
 	assert (pTask != 0);
@@ -545,20 +578,12 @@ unsigned CScheduler::GetNextTask (void)
 			return nTask;
 
 		case TaskStateTerminated:
-			if (pTask == m_pCurrent)
-			{
-				// Cannot delete the currently executing task (we run on its
-				// stack!). Wait for another task to yield and sweep it.
-				continue;
-			}
-
-			if (m_pTaskTerminationHandler != 0)
-			{
-				(*m_pTaskTerminationHandler) (pTask);
-			}
-			RemoveTask (pTask);
-			delete pTask;
-			return MAX_TASKS;
+			// "Ending": no longer schedulable. We do NOT free it here -- doing
+			// the heavy teardown (address-space free, TLB ops, heap frees, WM
+			// lock) inside the scheduler core, with IRQ masked, is fragile.
+			// ReapTerminatedTasks(), called from the kernel janitor loop in a
+			// normal context, reaps it safely.
+			continue;
 
 		default:
 			assert (0);
