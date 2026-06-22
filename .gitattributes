@@ -1,0 +1,10 @@
+# We build under WSL/Linux: keep LF line endings in the repo regardless of the
+# checkout platform, so .S assembly and sources stay consistent.
+* text=auto eol=lf
+
+# Binary assets must never be normalized.
+*.png  binary
+*.jpg  binary
+*.bin  binary
+*.img  binary
+*.elf  binary
