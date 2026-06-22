@@ -172,9 +172,43 @@ CKernel::CKernel (void)
 :	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer),
 	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT),
-	m_bGraphics (FALSE)
+	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
+	m_bGraphics (FALSE),
+	m_bSDMounted (FALSE)
 {
 	m_ActLED.Blink (5);		// visible sign of life before the console is up
+}
+
+// Read a whole file from the mounted SD card into a freshly allocated buffer.
+// Returns the buffer (caller may leak it for a one-shot process load) + its size,
+// or 0 on any error.
+static u8 *LoadFileFromSD (const char *pPath, unsigned *pSize)
+{
+	FIL File;
+	if (f_open (&File, pPath, FA_READ) != FR_OK)
+	{
+		return 0;
+	}
+
+	unsigned nSize = (unsigned) f_size (&File);
+	u8 *pBuffer = new u8[nSize];
+	if (pBuffer == 0)
+	{
+		f_close (&File);
+		return 0;
+	}
+
+	UINT nRead = 0;
+	if (f_read (&File, pBuffer, nSize, &nRead) != FR_OK || nRead != nSize)
+	{
+		delete [] pBuffer;
+		f_close (&File);
+		return 0;
+	}
+
+	f_close (&File);
+	*pSize = nSize;
+	return pBuffer;
 }
 
 CKernel::~CKernel (void)
@@ -233,6 +267,22 @@ boolean CKernel::Initialize (void)
 		}
 	}
 
+	// SD card is optional too: mount it so apps can be loaded from the card. If it
+	// is absent, we fall back to the ELF images embedded in the kernel.
+	if (bOK)
+	{
+		if (m_EMMC.Initialize () && f_mount (&m_FileSystem, "SD:", 1) == FR_OK)
+		{
+			m_bSDMounted = TRUE;
+			m_Logger.Write (FromKernel, LogNotice, "SD card mounted (SD:)");
+		}
+		else
+		{
+			m_Logger.Write (FromKernel, LogWarning,
+					"no SD card; using embedded apps");
+		}
+	}
+
 	return bOK;
 }
 
@@ -276,12 +326,40 @@ TShutdownMode CKernel::Run (void)
 	if (m_bGraphics)
 	{
 		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
-		new CUserProcessTask (demoA_elf_begin,
-				      (unsigned) (demoA_elf_end - demoA_elf_begin),
-				      "demoA", &m_Logger);
-		new CUserProcessTask (demoB_elf_begin,
-				      (unsigned) (demoB_elf_end - demoB_elf_begin),
-				      "demoB", &m_Logger);
+
+		// Launch each demo from "SD:<name>.elf" if the card is mounted, otherwise
+		// from the ELF image embedded in the kernel.
+		struct TApp { const char *pName; const char *pPath; u8 *pBegin; u8 *pEnd; };
+		TApp Apps[2] =
+		{
+			{ "demoA", "SD:demoA.elf", demoA_elf_begin, demoA_elf_end },
+			{ "demoB", "SD:demoB.elf", demoB_elf_begin, demoB_elf_end },
+		};
+
+		for (int i = 0; i < 2; i++)
+		{
+			const u8 *pElf = 0;
+			unsigned nSize = 0;
+
+			if (m_bSDMounted)
+			{
+				pElf = LoadFileFromSD (Apps[i].pPath, &nSize);
+			}
+			if (pElf != 0)
+			{
+				m_Logger.Write (FromKernel, LogNotice, "%s: loaded from %s (%u bytes)",
+						Apps[i].pName, Apps[i].pPath, nSize);
+			}
+			else
+			{
+				pElf = Apps[i].pBegin;
+				nSize = (unsigned) (Apps[i].pEnd - Apps[i].pBegin);
+				m_Logger.Write (FromKernel, LogNotice, "%s: using embedded image (%u bytes)",
+						Apps[i].pName, nSize);
+			}
+
+			new CUserProcessTask (pElf, nSize, Apps[i].pName, &m_Logger);
+		}
 
 		m_Logger.Write (FromKernel, LogNotice, "compositor + 2 windowed ELF demos started");
 	}

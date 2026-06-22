@@ -20,6 +20,8 @@
 #include <circle/2dgraphics.h>
 #include <circle/sched/scheduler.h>
 #include <circle/types.h>
+#include <SDCard/emmc.h>
+#include <fatfs/ff.h>
 #include <kern/gui/window.h>
 
 #define SCREEN_WIDTH	640
@@ -58,10 +60,13 @@ private:
 	CTimer			m_Timer;
 	CLogger			m_Logger;
 	C2DGraphics		m_2DGraphics;		// HDMI framebuffer (double-buffered, VSync)
+	CEMMCDevice		m_EMMC;			// SD card (#11)
+	FATFS			m_FileSystem;		// FatFs mount of the SD card
 	CScheduler		m_Scheduler;		// our preemptive-ready scheduler (#3)
 	CWindowManager		m_WindowManager;	// compositor (#10)
 
 	boolean			m_bGraphics;		// framebuffer available?
+	boolean			m_bSDMounted;		// SD card mounted?
 };
 
 #endif

@@ -34,6 +34,9 @@ INCLUDE = -I compat -I include
 
 LIBS = \
 	$(CIRCLEHOME)/lib/sched/libsched.a \
+	$(CIRCLEHOME)/addon/fatfs/libfatfs.a \
+	$(CIRCLEHOME)/addon/SDCard/libsdcard.a \
+	$(CIRCLEHOME)/lib/fs/libfs.a \
 	$(CIRCLEHOME)/lib/libcircle.a
 
 include $(CIRCLEHOME)/Rules.mk
