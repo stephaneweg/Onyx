@@ -111,4 +111,20 @@ struct TKPageAttr
 #define KPAGE_ATTR_USER_RWX \
 	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_ALL,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 0 }
 
+//
+// ---- Option C: apps run in EL1 (privileged) with per-process page tables ----
+//
+// Apps are NOT isolated from the kernel (they can call kernel code directly), but
+// each has its own ASID-tagged address space, so apps are isolated from EACH OTHER.
+// These pages are therefore EL1-accessible (AP=*_EL1), executable at EL1 for code
+// (PXN=0), and never executable at EL0 (UXN=1). nG=1 keeps them ASID-tagged.
+//
+// App code: EL1 read+execute, no write.
+#define KPAGE_ATTR_APP_CODE \
+	{ ATTRINDX_NORMAL, ATTRIB_AP_RO_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 0, 1 }
+
+// App data / stack / window canvas: EL1 read/write, never executable.
+#define KPAGE_ATTR_APP_DATA \
+	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
+
 #endif // _kern_layout_h

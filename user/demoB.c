@@ -2,7 +2,7 @@
 // demoB.c -- EL0 windowed demo: an animated colour field. Independent process from
 // demoA; both run at the same time (preemption) and the compositor shows both.
 //
-#include "usys.h"
+#include "kapi.h"
 
 #define W 260
 #define H 200

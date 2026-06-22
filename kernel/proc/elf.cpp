@@ -94,8 +94,8 @@ boolean LoadELF (const void *pImage, size_t nSize, CAddressSpace *pAS, u64 *pEnt
 			return FALSE;
 		}
 
-		TKPageAttr Code = KPAGE_ATTR_USER_CODE;
-		TKPageAttr Data = KPAGE_ATTR_USER_DATA;
+		TKPageAttr Code = KPAGE_ATTR_APP_CODE;	// EL1 RX (Option C: apps run in EL1)
+		TKPageAttr Data = KPAGE_ATTR_APP_DATA;	// EL1 RW
 		const TKPageAttr &Attr = (pPhdr->p_flags & PF_X) ? Code : Data;
 
 		if (!LoadSegment (pAS, pPhdr->p_vaddr, pBytes + pPhdr->p_offset,

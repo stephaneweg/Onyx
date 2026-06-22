@@ -2,7 +2,7 @@
 // demoA.c -- EL0 windowed demo: a bouncing box. Draws directly into the window
 // canvas the kernel mapped in (shared-buffer model), then present()s each frame.
 //
-#include "usys.h"
+#include "kapi.h"
 
 #define W 240
 #define H 180
@@ -34,6 +34,21 @@ static void fillrect (int x0, int y0, int x1, int y1, unsigned c)
 
 int main (void)
 {
+	// Demonstrate direct file access (Option C): read our own ELF off the SD card
+	// and report it over the kernel console -- no syscall, a direct kapi call.
+	void *f = kapi_open ("SD:demoA.elf");
+	if (f != 0)
+	{
+		unsigned char hdr[4] = {0, 0, 0, 0};
+		kapi_read (f, hdr, 4);
+		if (hdr[0] == 0x7F && hdr[1] == 'E' && hdr[2] == 'L' && hdr[3] == 'F')
+		{
+			const char ok[] = "demoA: read own ELF header from SD (file API works)";
+			kapi_write (1, ok, sizeof (ok) - 1);
+		}
+		kapi_close (f);
+	}
+
 	fb = create_window (W, H, "demo A: bouncing box");
 	if (fb == 0)
 	{

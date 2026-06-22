@@ -69,19 +69,20 @@ private:
 };
 
 //
-// CUserProcessTask (#6): launches an embedded ELF as an isolated EL0 process. The
-// kernel thread builds a private address space, loads the ELF segments into it
-// (LoadELF), maps a user stack, switches TTBR0, and drops to EL0 at the entry
-// point. From then on this task IS the user process, preempted like any other.
+// CUserProcessTask (Option C): launch an ELF as an EL1 app in its own address
+// space. The thread builds a private address space, loads the ELF segments
+// (EL1-executable), activates the space, and CALLS the entry point directly --
+// the app runs in EL1 on this thread's (large) stack and calls kapi_* kernel
+// functions directly (resolved at link). Apps are isolated from each other (own
+// page tables) but not from the kernel. The thread is preempted like any other.
 //
-extern "C" u8 hello_elf_begin[];
-extern "C" u8 hello_elf_end[];
-
 class CUserProcessTask : public CTask
 {
 public:
+	// Large stack: the app and the kernel functions it calls share this thread stack.
 	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger)
-	:	m_pELF (pELF), m_nSize (nSize), m_pName (pName), m_pLogger (pLogger)
+	:	CTask (0x40000),	// 256 KB
+		m_pELF (pELF), m_nSize (nSize), m_pName (pName), m_pLogger (pLogger)
 	{
 		SetName (pName);
 	}
@@ -103,23 +104,18 @@ public:
 			return;
 		}
 
-		// User stack (one page below USER_STACK_TOP).
-		TKPageAttr StackAttr = KPAGE_ATTR_USER_DATA;
-		if (pAS->MapNewPage (USER_STACK_TOP - KPAGE_SIZE, StackAttr) == 0)
-		{
-			m_pLogger->Write (m_pName, LogError, "stack mapping failed");
-			delete pAS;
-			return;
-		}
-
+		// Become this address space (kernel stays mapped + EL1-accessible).
 		SetUserData (pAS, TASK_USER_DATA_USER);
 		pAS->Activate ();
 
-		m_pLogger->Write (m_pName, LogNotice, "entering EL0 at %lp (ASID %u)",
+		m_pLogger->Write (m_pName, LogNotice, "running (EL1) entry %lp ASID %u",
 				  (void *) ulEntry, (unsigned) pAS->GetASID ());
 
-		enter_user (ulEntry, USER_STACK_TOP, 0);
-		// not reached
+		// Direct EL1 call into the app. It calls kapi_* directly; loops or exits.
+		((void (*) (void)) ulEntry) ();
+
+		// App returned: terminate (frees the address space + window).
+		CScheduler::Get ()->GetCurrentTask ()->Terminate ();
 	}
 
 private:
@@ -160,13 +156,6 @@ private:
 	C2DGraphics    *m_p2D;
 	CWindowManager *m_pWM;
 };
-
-// Embedded windowed demo programs (EL0 ELFs). Each create_window()s and animates;
-// both run concurrently via preemption and the compositor shows both.
-extern "C" u8 demoA_elf_begin[];
-extern "C" u8 demoA_elf_end[];
-extern "C" u8 demoB_elf_begin[];
-extern "C" u8 demoB_elf_end[];
 
 CKernel::CKernel (void)
 :	m_Timer (&m_Interrupt),
@@ -314,12 +303,7 @@ TShutdownMode CKernel::Run (void)
 	new CHeartbeatTask (&m_Logger, "beat-A", 700);
 	new CHeartbeatTask (&m_Logger, "beat-B", 1100);
 
-	// Milestone #6: an isolated EL0 process loaded from an embedded ELF image.
-	new CUserProcessTask (hello_elf_begin,
-			      (unsigned) (hello_elf_end - hello_elf_begin),
-			      "hello", &m_Logger);
-
-	// End goal: two EL0 ELF processes, each in its own window, animating at the
+	// End goal: two EL1 ELF processes, each in its own window, animating at the
 	// same time (preemption), with the compositor presenting both. demoA/demoB
 	// create their windows via the create_window syscall and draw into the shared
 	// canvas the kernel maps into their address space.
@@ -327,41 +311,34 @@ TShutdownMode CKernel::Run (void)
 	{
 		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 
-		// Launch each demo from "SD:<name>.elf" if the card is mounted, otherwise
-		// from the ELF image embedded in the kernel.
-		struct TApp { const char *pName; const char *pPath; u8 *pBegin; u8 *pEnd; };
-		TApp Apps[2] =
-		{
-			{ "demoA", "SD:demoA.elf", demoA_elf_begin, demoA_elf_end },
-			{ "demoB", "SD:demoB.elf", demoB_elf_begin, demoB_elf_end },
-		};
+		// Load the two demos from the SD card (Option C: apps link against the
+		// kernel's exported symbols, so they cannot be embedded -- they live on
+		// the card as distinct ELF files).
+		static const char *Names[2] = { "demoA", "demoB" };
+		static const char *Paths[2] = { "SD:demoA.elf", "SD:demoB.elf" };
 
-		for (int i = 0; i < 2; i++)
+		if (!m_bSDMounted)
 		{
-			const u8 *pElf = 0;
-			unsigned nSize = 0;
-
-			if (m_bSDMounted)
+			m_Logger.Write (FromKernel, LogError, "no SD card: cannot load demos");
+		}
+		else
+		{
+			for (int i = 0; i < 2; i++)
 			{
-				pElf = LoadFileFromSD (Apps[i].pPath, &nSize);
-			}
-			if (pElf != 0)
-			{
+				unsigned nSize = 0;
+				const u8 *pElf = LoadFileFromSD (Paths[i], &nSize);
+				if (pElf == 0)
+				{
+					m_Logger.Write (FromKernel, LogError, "cannot load %s", Paths[i]);
+					continue;
+				}
 				m_Logger.Write (FromKernel, LogNotice, "%s: loaded from %s (%u bytes)",
-						Apps[i].pName, Apps[i].pPath, nSize);
+						Names[i], Paths[i], nSize);
+				new CUserProcessTask (pElf, nSize, Names[i], &m_Logger);
 			}
-			else
-			{
-				pElf = Apps[i].pBegin;
-				nSize = (unsigned) (Apps[i].pEnd - Apps[i].pBegin);
-				m_Logger.Write (FromKernel, LogNotice, "%s: using embedded image (%u bytes)",
-						Apps[i].pName, nSize);
-			}
-
-			new CUserProcessTask (pElf, nSize, Apps[i].pName, &m_Logger);
 		}
 
-		m_Logger.Write (FromKernel, LogNotice, "compositor + 2 windowed ELF demos started");
+		m_Logger.Write (FromKernel, LogNotice, "compositor + windowed app(s) started");
 	}
 
 	unsigned nUptime = 0;

@@ -1,11 +1,13 @@
 # A multi-process kernel on Circle (Raspberry Pi 4)
 
-A small **preemptive, multi-process kernel with MMU isolation**, built on top of
+A small **preemptive, multi-process kernel** built on top of
 [Circle](https://github.com/rsta2/circle) (used as the hardware/driver layer). It
-loads **ELF programs from the SD card** and runs them as **isolated EL0 processes**;
-the showcase is **two windowed graphical demos animating at the same time**, drawn
-by a software compositor whose rendering core is ported from the user's FreeBASIC
-`SimpleOS` GUI.
+loads **ELF programs from the SD card** and runs them as **EL1 apps, each in its own
+page table**, that **call kernel functions directly** (resolved at link time —
+SimpleOS-style; apps are isolated from each other, the kernel is not protected — see
+ARCHITECTURE.md §11). The showcase is **two windowed graphical demos animating at the
+same time**, drawn by a software compositor whose rendering core is ported from the
+user's FreeBASIC `SimpleOS` GUI.
 
 See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the full design.
 
@@ -48,10 +50,12 @@ cd circle && ./configure -r 4 -p aarch64-none-elf- -d DEPTH=32 -f
 (cd lib && make -j4) && (cd lib/sched && make -j4) && (cd lib/fs && make -j4) \
   && (cd addon/SDCard && make -j4) && (cd addon/fatfs && make -j4) && cd ..
 
-# build the userland demos and the kernel
-(cd user && make) && (cd kernel && make)     # -> kernel/kernel8-rpi4.img
+# build the kernel; this also exports the kapi_* symbols and then builds the
+# userland apps against them (apps must be built after the kernel)
+(cd kernel && make)     # -> kernel/kernel8-rpi4.img + user/demoA.elf, demoB.elf
 ```
 
 Then copy the contents of [`sdcard/`](sdcard/README.md) (plus the freshly built
 `kernel8-rpi4.img`, `demoA.elf`, `demoB.elf`) onto a FAT32 SD card and boot a Pi 4
-with HDMI + serial (115200).
+with HDMI + serial (115200). The two demos are **distinct ELF files on the card**
+(`demoA.elf`, `demoB.elf`), loaded independently.

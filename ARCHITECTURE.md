@@ -306,3 +306,46 @@ Architecture:
 Build status: `GImage` + framebuffer demo (bouncing boxes, `CGfxDemoTask`) compile
 and link into the image. Runtime needs the real Pi 4 (HDMI). Next layers:
 compositor + window struct, then the ELF loader (#6), window syscalls, two demos.
+
+---
+
+## 11. App execution model — Option C (EL1 apps + direct kernel calls)
+
+Chosen after #1–#11: instead of isolated EL0 processes + syscalls, apps run in
+**EL1** (privileged) each in **their own page table**, and call kernel functions
+**directly** — no `SVC` trap — with addresses resolved at link time (SimpleOS-style).
+
+- **Isolation:** apps are isolated from **each other** (separate ASID-tagged TTBR0;
+  one app can't see another's pages). The kernel is **not** protected — an EL1 app
+  can touch kernel memory. This is the deliberate trade for direct-call ergonomics.
+- **Page attributes:** app pages are EL1-accessible (`KPAGE_ATTR_APP_CODE` =
+  AP=RO_EL1 + PXN=0 so code is EL1-executable; `KPAGE_ATTR_APP_DATA` = AP=RW_EL1).
+- **Launch:** `CUserProcessTask` loads the ELF into a `CAddressSpace`, activates it,
+  and **calls the entry point directly** (`((void(*)())entry)()`) on the thread's
+  (256 KB) kernel stack — no `enter_user`/EL0. The app is preempted like any thread.
+- **Kernel API (`kapi_*`, `kernel/sys/kapi.cpp`):** `extern "C"` functions —
+  `create_window`, `present`, `get_ticks`, `msleep`, `yield`, `exit`, `write`, and
+  **files** (`open`/`read`/`fsize`/`close`, the motivating case). They run in the
+  app's context (kernel mapped, args are plain pointers in the active AS — no
+  copy_from_user).
+- **Link-time resolution:** the kernel build runs `nm` over the kernel ELF and
+  writes `user/kernel_syms.ld` (`kapi_x = 0xADDR;`); `user/user.ld` `INCLUDE`s it.
+  Apps `bl kapi_*`; since the app is at 8 GB and the kernel at <4 GB, `ld` inserts
+  long-branch veneers automatically. **Consequence:** apps can't be embedded (they
+  depend on the linked kernel) — they live on the **SD card** as distinct ELFs, and
+  must be rebuilt after the kernel (`make` in `kernel/` does kernel → syms → apps).
+- The EL0/`SVC` machinery (#4 `enter_user`, syscall dispatch) is kept but **inert** —
+  available if isolated EL0 apps are wanted later.
+
+### Build manifest delta (Option C)
+- Add `kernel/sys/kapi.cpp`; remove `proc/embedded_apps.S` + the EL0 `user_stub.S`.
+- `kernel/Makefile` `.DEFAULT_GOAL := apps`: builds the kernel, generates
+  `user/kernel_syms.ld`, then `make -C ../user`. Apps no longer embedded.
+- `user/`: `kapi.h` (replaces `usys.h`), `crt0.S` calls `kapi_exit`, `user.ld`
+  `INCLUDE`s `kernel_syms.ld`; programs `demoA`/`demoB` (SD only).
+
+### Pending (per the latest discussion)
+- **Mouse/keyboard:** Circle USB HID (`CUSBHCIDevice` + `CUSBKeyboardDevice` "ukbd1",
+  `CMouseDevice` "mouse1"), feeding the window manager. Ref: `sample/VMKernel`.
+- **Multi-core (SMP):** deferred — needs an SMP-safe scheduler (per-core current
+  task, real spinlocks, IPIs, cross-core TLB) — a milestone of its own.

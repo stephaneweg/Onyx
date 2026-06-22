@@ -23,8 +23,8 @@ OBJS = \
 	gui/gimage.o \
 	gui/window.o \
 	proc/elf.o \
-	proc/embedded_apps.o \
 	sys/syscall.o \
+	sys/kapi.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 
@@ -41,15 +41,20 @@ LIBS = \
 
 include $(CIRCLEHOME)/Rules.mk
 
-# Userland ELFs are embedded by proc/embedded_apps.S (.incbin). Build them first
-# (the sub-make does its own up-to-date check) and re-embed if they change.
-USER_ELFS = ../user/hello.elf ../user/demoA.elf ../user/demoB.elf
+# Option C: export the kernel's kapi_* symbol addresses so the app ELFs can be
+# linked against them (user.ld INCLUDEs this). Then build the apps.
+KERNEL_SYMS = ../user/kernel_syms.ld
 
-proc/embedded_apps.o: $(USER_ELFS)
+$(KERNEL_SYMS): $(TARGET).img
+	@echo "  SYMS  $@"
+	@$(PREFIX64)nm $(TARGET).elf | grep -E ' [TtWw] kapi_' | awk '{print $$3" = 0x"$$1";"}' > $@
 
-.PHONY: build-user
-$(USER_ELFS): build-user
-build-user:
+.PHONY: apps
+apps: $(KERNEL_SYMS)
 	@$(MAKE) --no-print-directory -C ../user
+
+# `make` builds the kernel, exports kapi_* symbols, then builds the apps.
+all: apps
+.DEFAULT_GOAL := apps
 
 -include $(DEPS)
