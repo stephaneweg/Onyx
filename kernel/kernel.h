@@ -23,10 +23,7 @@
 #include <circle/types.h>
 #include <SDCard/emmc.h>
 #include <fatfs/ff.h>
-#include <kern/gui/window.h>
-
-#define SCREEN_WIDTH	640
-#define SCREEN_HEIGHT	480
+#include <kern/gui/window.h>		// also defines SCREEN_WIDTH / SCREEN_HEIGHT
 
 enum TShutdownMode
 {

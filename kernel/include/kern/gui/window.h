@@ -14,6 +14,10 @@
 #include <circle/spinlock.h>
 #include <circle/types.h>
 
+// Screen dimensions (the framebuffer we request). Shared by the kernel + kapi.
+#define SCREEN_WIDTH		640
+#define SCREEN_HEIGHT		480
+
 // Theme (from SimpleOS): blue title bar.
 #define WIN_TITLEBAR_H		24
 #define WIN_BORDER		2

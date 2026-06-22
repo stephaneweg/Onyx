@@ -48,10 +48,16 @@ unsigned *kapi_create_window (int w, int h, const char *pTitle)
 		return (unsigned *) USER_WINDOW_CANVAS;		// one window per process
 	}
 
-	static unsigned s_nPlaced = 0;
-	int x = 30 + (int) (s_nPlaced * 70);
-	int y = 40 + (int) (s_nPlaced * 55);
-	s_nPlaced++;
+	// Place windows down the RIGHT edge, stacked one below the other.
+	static int s_nNextY = 10;
+	int nOuterW = w + 2 * WIN_BORDER;
+	int x = SCREEN_WIDTH - nOuterW - 8;			// right-aligned (8 px margin)
+	if (x < 0)
+	{
+		x = 0;
+	}
+	int y = s_nNextY;
+	s_nNextY += WIN_TITLEBAR_H + h + WIN_BORDER + 12;	// next window below + gap
 
 	(void) pTitle;						// text rendering: font layer TODO
 	CWindow *pWin = new CWindow (x, y, w, h, "app");
