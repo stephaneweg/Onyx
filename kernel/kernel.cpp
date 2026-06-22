@@ -8,65 +8,12 @@
 #include <circle/synchronize.h>
 #include <circle/util.h>
 #include <kern/trapframe.h>
-#include <kern/syscall.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
 
 static const char FromKernel[] = "kernel";
-
-// Issue a syscall via SVC (AArch64 ABI: x8 = number, x0..x2 = args, x0 = result).
-// Used here for an EL1 self-test of the syscall path before EL0 processes exist.
-static long DoSyscall (unsigned long nNum, unsigned long a0, unsigned long a1, unsigned long a2)
-{
-	register unsigned long x8 asm ("x8") = nNum;
-	register unsigned long x0 asm ("x0") = a0;
-	register unsigned long x1 asm ("x1") = a1;
-	register unsigned long x2 asm ("x2") = a2;
-
-	asm volatile ("svc #0"
-		      : "+r" (x0)
-		      : "r" (x8), "r" (x1), "r" (x2)
-		      : "memory");
-
-	return (long) x0;
-}
-
-//
-// Demo worker for milestone #3: a kernel thread that logs at a fixed interval and
-// then sleeps, yielding the CPU. Two of these at different intervals make the
-// scheduler's interleaving visible over the serial console. (Cooperative for now:
-// the sleep is what yields; timer-IRQ preemption arrives in #4.)
-//
-class CHeartbeatTask : public CTask
-{
-public:
-	CHeartbeatTask (CLogger *pLogger, const char *pName, unsigned nIntervalMs)
-	:	m_pLogger (pLogger),
-		m_pName (pName),
-		m_nIntervalMs (nIntervalMs)
-	{
-		SetName (pName);
-	}
-
-	void Run (void) override
-	{
-		unsigned nCount = 0;
-		while (1)
-		{
-			m_pLogger->Write (m_pName, LogNotice, "beat %u (every %u ms)",
-					  ++nCount, m_nIntervalMs);
-
-			CScheduler::Get ()->MsSleep (m_nIntervalMs);
-		}
-	}
-
-private:
-	CLogger	   *m_pLogger;
-	const char *m_pName;
-	unsigned    m_nIntervalMs;
-};
 
 //
 // CUserProcessTask (Option C): launch an ELF as an EL1 app in its own address
@@ -161,7 +108,7 @@ CKernel::CKernel (void)
 :	m_Screen (SCREEN_WIDTH, SCREEN_HEIGHT),
 	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer),
-	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT),
+	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT, FALSE),	// VSync off: avoid page-flip present
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
 	m_bGraphics (FALSE),
 	m_bSDMounted (FALSE)
@@ -287,7 +234,7 @@ boolean CKernel::Initialize (void)
 TShutdownMode CKernel::Run (void)
 {
 	m_Logger.Write (FromKernel, LogNotice,
-			"Multi-process kernel on Circle -- milestone #4 (vectors + preemption)");
+			"Multi-process kernel on Circle (EL1 apps + direct kapi calls)");
 	m_Logger.Write (FromKernel, LogNotice, "Compiled on " __DATE__ " " __TIME__);
 
 	CMachineInfo *pInfo = CMachineInfo::Get ();
@@ -295,34 +242,11 @@ TShutdownMode CKernel::Run (void)
 			pInfo->GetMachineName (),
 			(unsigned long) (CMemorySystem::Get ()->GetMemSize () / 0x100000));
 
-	// --- Milestone #3 demo: kernel threads scheduled by our CScheduler ---------
-	//
-	// m_Scheduler is already constructed (it created the "main" task -- this very
-	// context). Spawn two worker threads with different periods, then let this
-	// (main) thread also participate. With no preemption yet, control passes
-	// whenever a thread sleeps; the interleaving over serial shows the scheduler
-	// and the block/wake path working.
-	// Self-test the syscall path from EL1 (proves SVC -> our vectors -> dispatch).
-	// Once EL0 processes exist (#6) this same path serves user mode.
-	static const char SyscallMsg[] = "hello from a syscall (SVC trap from EL1)";
-	DoSyscall (SYS_write, /*fd*/ 1, (unsigned long) SyscallMsg, sizeof SyscallMsg - 1);
-
-	m_Logger.Write (FromKernel, LogNotice, "starting scheduler with 2 worker threads + 1 EL0 process");
-
-	new CHeartbeatTask (&m_Logger, "beat-A", 700);
-	new CHeartbeatTask (&m_Logger, "beat-B", 1100);
-
-	// End goal: two EL1 ELF processes, each in its own window, animating at the
-	// same time (preemption), with the compositor presenting both. demoA/demoB
-	// create their windows via the create_window syscall and draw into the shared
-	// canvas the kernel maps into their address space.
+	// Load + spawn the two demos (Option C: EL1 apps that link against kapi_*).
+	// They create their windows and draw into the shared canvas; the compositor is
+	// started AFTER a readable pause so the boot log stays on screen first.
 	if (m_bGraphics)
 	{
-		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
-
-		// Load the two demos from the SD card (Option C: apps link against the
-		// kernel's exported symbols, so they cannot be embedded -- they live on
-		// the card as distinct ELF files).
 		static const char *Names[2] = { "demoA", "demoB" };
 		static const char *Paths[2] = { "SD:demoA.elf", "SD:demoB.elf" };
 
@@ -347,14 +271,23 @@ TShutdownMode CKernel::Run (void)
 			}
 		}
 
-		m_Logger.Write (FromKernel, LogNotice, "compositor + windowed app(s) started");
+		// Keep the boot log readable for a few seconds, THEN start the compositor
+		// (which takes over the display). If the screen goes black only after this,
+		// the problem is the framebuffer present, not the boot/loading path.
+		m_Logger.Write (FromKernel, LogNotice, "boot OK -- starting graphics in 6 s ...");
+		m_Scheduler.MsSleep (6000);
+
+		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
+		m_Logger.Write (FromKernel, LogNotice, "compositor started");
+	}
+	else
+	{
+		m_Logger.Write (FromKernel, LogWarning, "no framebuffer; idling");
 	}
 
-	unsigned nUptime = 0;
-	while (1)
+	for (;;)
 	{
-		m_Scheduler.MsSleep (5000);
-		m_Logger.Write (FromKernel, LogNotice, "main: uptime ~%u s", nUptime += 5);
+		m_Scheduler.MsSleep (1000);
 	}
 
 	return ShutdownHalt;
