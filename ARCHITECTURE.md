@@ -212,19 +212,17 @@ into EL0.
 
 1. ✅ Skeleton + this doc + `layout.h`.
 2. ✅ Own `main()` taking over from Circle; init kept subsystems; serial console.
-3. 🚧 Scheduler replacement + `CScheduler` shadow (kernel threads, cooperative).
-   Preemption hook (`OnTimerTick`) in place; timer-IRQ trigger wired in #4.
-4. 🚧 Exception vectors EL0/EL1 + trap frame + syscall path + **preemption**
-   (100 Hz tick → `OnTimerTick` → IRQ-exit reschedule). Syscall self-tested via
-   SVC from EL1; `enter_user` built. The actual EL0 process round-trip is
-   exercised in #5/#6 (needs a mapped user page).
-5. 🚧 Per-process page tables (`CAddressSpace`) + TTBR0/ASID switch on every task
-   switch; first real EL0 process (loads an embedded stub, `enter_user`, does an
-   SVC). Isolation is structural (kernel pages AP=EL1-only). Clean process exit +
-   address-space teardown deferred to #6.
-6. ELF loader from SD → first real EL0 process.
-7. Multi-process preempted concurrently + core syscalls (read/write/exit/yield/
-   sleep/brk/spawn), file I/O via FatFs. IPC (pipe/channel) later.
+3. ✅ Scheduler replacement + `CScheduler` shadow; preemption hook.
+4. ✅ Exception vectors EL0/EL1 + trap frame + syscall path + **preemption**
+   (100 Hz tick → `OnTimerTick` → IRQ-exit reschedule); `enter_user`.
+5. ✅ Per-process page tables (`CAddressSpace`) + TTBR0/ASID switch on every task
+   switch; EL0 entry; process exit + address-space teardown.
+6. ✅ ELF64 loader → EL0 process (embedded, then from SD).
+7/11. ✅ Two windowed EL0 demos preempted concurrently; window syscalls
+   (create_window / present / get_ticks / msleep); loaded from the SD card
+   (EMMC + FatFs), embedded fallback. (Full widget toolkit + IPC: future.)
+
+All milestones build. Boot files for hardware are staged in `sdcard/`.
 
 ---
 

@@ -13,5 +13,9 @@
 *.map
 *.bin
 
+# SD staging: firmware blobs are large/redistributable; keep README + config.txt
+*.dat
+*.dtb
+
 # Editor / tooling
 .claude/settings.local.json
