@@ -40,6 +40,12 @@ public:
 	int ClientWidth (void) const	{ return m_Canvas.Width (); }
 	int ClientHeight (void) const	{ return m_Canvas.Height (); }
 
+	// The canvas is a page-aligned, physically-contiguous region (identity-mapped
+	// in the kernel) so it can be both composited here and mapped into a process's
+	// address space (shared-buffer drawing model). PA == kernel VA (identity).
+	u64 CanvasPhys (void) const	{ return m_ulCanvasPhys; }
+	unsigned CanvasPages (void) const { return m_nCanvasPages; }
+
 	int X (void) const		{ return m_nX; }
 	int Y (void) const		{ return m_nY; }
 	void Move (int x, int y)	{ m_nX = x; m_nY = y; }
@@ -51,7 +57,10 @@ private:
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
 	const char     *m_pTitle;
-	GImage		m_Canvas;	// client-area pixel buffer (owned)
+	GImage		m_Canvas;	// client-area pixel buffer (wraps m_pRawAlloc)
+	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)
+	u64		m_ulCanvasPhys;	// 64 KB-aligned start of the canvas (== kernel VA)
+	unsigned	m_nCanvasPages;	// 64 KB pages spanned by the canvas
 };
 
 class CWindowManager

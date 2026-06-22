@@ -15,6 +15,8 @@
 #include <kern/layout.h>		// page-table structs (via armv8mmu.h) + attrs
 #include <circle/types.h>
 
+class CWindow;
+
 class CAddressSpace
 {
 public:
@@ -26,6 +28,9 @@ public:
 	// Map one 64 KB user page (ulVA, ulPA both 64 KB-aligned, ulVA in user range).
 	boolean MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &Attr);
 
+	// Map nPages consecutive 64 KB pages [ulVA..] -> [ulPhys..] (e.g. a window canvas).
+	void MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr);
+
 	// Allocate a fresh physical frame and map it at ulVA. Returns the frame's
 	// kernel (identity) address so the caller can fill it, or 0 on failure.
 	void *MapNewPage (uintptr ulVA, const TKPageAttr &Attr);
@@ -35,12 +40,17 @@ public:
 
 	u8 GetASID (void) const			{ return m_nASID; }
 
+	// The window owned by this process (if any); freed when the space is destroyed.
+	void SetWindow (CWindow *pWindow)	{ m_pWindow = pWindow; }
+	CWindow *GetWindow (void)		{ return m_pWindow; }
+
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
 
 private:
 	TARMV8MMU_LEVEL2_DESCRIPTOR *m_pL2;	// this process's L2 table (one 64 KB page)
 	u8			     m_nASID;
+	CWindow			    *m_pWindow;
 };
 
 // Capture the kernel's TTBR0 base (call once, after the MMU is up) so kernel-only
@@ -54,5 +64,9 @@ void ActivateKernelAddressSpace (void);
 // in the task's TASK_USER_DATA_USER slot.
 class CTask;
 void AddressSpaceTaskSwitch (CTask *pTask);
+
+// Scheduler task-termination handler: free the address space owned by a terminating
+// process. Register with CScheduler::RegisterTaskTerminationHandler().
+void AddressSpaceTaskTerminate (CTask *pTask);
 
 #endif // _kern_addrspace_h

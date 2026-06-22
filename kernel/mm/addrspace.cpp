@@ -2,6 +2,7 @@
 // addrspace.cpp
 //
 #include <kern/addrspace.h>
+#include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
 #include <circle/synchronize.h>		// DataSyncBarrier
@@ -41,7 +42,8 @@ static void FreeASID (u8 nASID)
 
 CAddressSpace::CAddressSpace (void)
 :	m_pL2 (0),
-	m_nASID (0)
+	m_nASID (0),
+	m_pWindow (0)
 {
 	assert (s_ulKernelTTBR0 != 0);		// AddrSpaceInit() must run first
 
@@ -64,6 +66,17 @@ CAddressSpace::CAddressSpace (void)
 
 CAddressSpace::~CAddressSpace (void)
 {
+	// Free this process's window, if any (remove from the compositor first).
+	if (m_pWindow != 0)
+	{
+		if (CWindowManager::Get () != 0)
+		{
+			CWindowManager::Get ()->Remove (m_pWindow);
+		}
+		delete m_pWindow;
+		m_pWindow = 0;
+	}
+
 	if (m_pL2 == 0)
 	{
 		return;
@@ -156,6 +169,14 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 	return TRUE;
 }
 
+void CAddressSpace::MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr)
+{
+	for (unsigned i = 0; i < nPages; i++)
+	{
+		MapPage (ulVA + (u64) i * KPAGE_SIZE, ulPhys + (u64) i * KPAGE_SIZE, Attr);
+	}
+}
+
 void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 {
 	void *pFrame = palloc ();		// identity-mapped: kernel VA == PA
@@ -204,5 +225,17 @@ void AddressSpaceTaskSwitch (CTask *pTask)
 	else
 	{
 		ActivateKernelAddressSpace ();
+	}
+}
+
+void AddressSpaceTaskTerminate (CTask *pTask)
+{
+	// Called when a terminated task is reaped (it is not the current task and its
+	// address space is not active). Free the address space, if any.
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS != 0)
+	{
+		pTask->SetUserData (0, TASK_USER_DATA_USER);
+		delete pAS;
 	}
 }

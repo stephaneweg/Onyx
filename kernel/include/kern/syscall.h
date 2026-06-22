@@ -11,12 +11,16 @@
 #define _kern_syscall_h
 
 // Syscall numbers
-#define SYS_write	1	// ssize_t write(int fd, const void *buf, size_t len)
-#define SYS_yield	2	// void yield(void)
-#define SYS_exit	3	// void exit(int status)
-#define SYS_getpid	4	// int getpid(void)
+#define SYS_write		1	// ssize_t write(int fd, const void *buf, size_t len)
+#define SYS_yield		2	// void yield(void)
+#define SYS_exit		3	// void exit(int status)
+#define SYS_getpid		4	// int getpid(void)
+#define SYS_create_window	5	// void *create_window(int w, int h, const char *title)
+#define SYS_present		6	// void present(void)  -- recomposite this window
+#define SYS_get_ticks		7	// unsigned get_ticks(void)  -- HZ ticks since boot
+#define SYS_msleep		8	// void msleep(unsigned ms)
 
-#define SYS_MAX		5
+#define SYS_MAX			9
 
 // Minimal errno-style returns
 #define SYS_OK		0

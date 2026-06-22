@@ -2,17 +2,45 @@
 // window.cpp
 //
 #include <kern/gui/window.h>
-#include <circle/util.h>		// strlen
+#include <kern/layout.h>		// KPAGE_SIZE / KPAGE_MASK
+#include <circle/util.h>		// memset
+#include <circle/new.h>
 #include <assert.h>
 
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle)
-:	m_nX (x), m_nY (y), m_pTitle (pTitle)
+:	m_nX (x), m_nY (y), m_pTitle (pTitle),
+	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0)
 {
-	m_Canvas.SetSize (nClientW, nClientH);
+	// Allocate the canvas as a page-aligned, contiguous block: over-allocate from
+	// the (identity-mapped) heap and align the start up to 64 KB, so PA == the
+	// aligned VA and the region can be mapped into a process address space.
+	unsigned nBytes = (unsigned) (nClientW * nClientH) * sizeof (u32);
+	m_nCanvasPages = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
+	if (m_nCanvasPages == 0)
+	{
+		m_nCanvasPages = 1;
+	}
+
+	m_pRawAlloc = new u8[m_nCanvasPages * KPAGE_SIZE + KPAGE_SIZE];
+	if (m_pRawAlloc == 0)
+	{
+		return;
+	}
+
+	uintptr ulAligned = ((uintptr) m_pRawAlloc + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
+	m_ulCanvasPhys = ulAligned;		// identity region: PA == kernel VA
+	memset ((void *) ulAligned, 0, m_nCanvasPages * KPAGE_SIZE);
+
+	m_Canvas.Wrap ((u32 *) ulAligned, nClientW, nClientH);
 }
 
 CWindow::~CWindow (void)
 {
+	if (m_pRawAlloc != 0)
+	{
+		delete [] (u8 *) m_pRawAlloc;
+		m_pRawAlloc = 0;
+	}
 }
 
 void CWindow::DrawTo (GImage *pScreen, boolean bActive)

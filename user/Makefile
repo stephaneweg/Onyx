@@ -1,0 +1,21 @@
+#
+# Makefile -- userland ELF programs (EL0), built with the same aarch64-none-elf
+# toolchain, linked at USER_VA_BASE (user.ld). Integer-only (-mgeneral-regs-only):
+# the kernel's preemptive trap frame does not save FP/SIMD yet.
+#
+PREFIX ?= aarch64-none-elf-
+CC      = $(PREFIX)gcc
+
+CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
+	  -O2 -Wall -Wextra -fno-stack-protector
+LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
+
+PROGS   = hello.elf demoA.elf demoB.elf
+
+all: $(PROGS)
+
+%.elf: %.c crt0.S user.ld usys.h
+	$(CC) $(CFLAGS) $(LDFLAGS) crt0.S $< -o $@
+
+clean:
+	rm -f *.elf *.o

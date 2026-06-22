@@ -59,6 +59,9 @@
 #define USER_STACK_TOP		(16ULL * GIGABYTE)	// 0x4_0000_0000
 #define USER_STACK_SIZE		(1ULL * 0x100000)	// 1 MB initial (64 KB-aligned)
 
+// Where a process's window canvas is mapped (shared with the kernel compositor).
+#define USER_WINDOW_CANVAS	(12ULL * GIGABYTE)	// 0x3_0000_0000
+
 #define IS_USER_VA(va) \
 	((u64)(va) >= USER_VA_BASE && (u64)(va) < USER_VA_END)
 

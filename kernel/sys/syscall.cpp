@@ -7,7 +7,12 @@
 //
 #include <kern/syscall.h>
 #include <kern/trapframe.h>
+#include <kern/addrspace.h>
+#include <kern/layout.h>
+#include <kern/gui/window.h>
 #include <circle/sched/scheduler.h>
+#include <circle/sched/task.h>
+#include <circle/timer.h>
 #include <circle/logger.h>
 #include <circle/util.h>
 #include <circle/types.h>
@@ -65,6 +70,49 @@ static long sys_write (unsigned nFD, const void *pBuf, size_t nLen, boolean bFro
 	return (long) nLen;
 }
 
+// create_window(w, h, title): give the calling process a window whose canvas is
+// mapped into its address space at USER_WINDOW_CANVAS. Returns that address (the
+// pixel buffer) or 0 on failure. Title text is not rendered yet (font layer TODO).
+static long sys_create_window (int w, int h, const char * /*pUserTitle*/)
+{
+	if (!CScheduler::IsActive ())
+	{
+		return 0;
+	}
+	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0 || w <= 0 || h <= 0 || w > 1024 || h > 768)
+	{
+		return 0;
+	}
+	if (pAS->GetWindow () != 0)
+	{
+		return (long) USER_WINDOW_CANVAS;	// one window per process for now
+	}
+
+	// Stagger window placement.
+	static unsigned s_nPlaced = 0;
+	int x = 30 + (int) (s_nPlaced * 70);
+	int y = 40 + (int) (s_nPlaced * 55);
+	s_nPlaced++;
+
+	CWindow *pWin = new CWindow (x, y, w, h, "app");
+	if (pWin == 0 || !pWin->IsValid ())
+	{
+		return 0;
+	}
+
+	TKPageAttr Attr = KPAGE_ATTR_USER_DATA;
+	pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
+	pAS->SetWindow (pWin);
+	if (CWindowManager::Get () != 0)
+	{
+		CWindowManager::Get ()->Add (pWin);
+	}
+
+	return (long) USER_WINDOW_CANVAS;
+}
+
 static long sys_exit (int nStatus)
 {
 	// For an EL0 process this will terminate the process (#6). For the current
@@ -110,6 +158,33 @@ void SyscallEntry (TTrapFrame *pFrame)
 
 	case SYS_getpid:
 		nResult = 1;		// placeholder until the process model (#5/#6)
+		break;
+
+	case SYS_create_window:
+		nResult = sys_create_window ((int) pFrame->x[0], (int) pFrame->x[1],
+					     (const char *) pFrame->x[2]);
+		break;
+
+	case SYS_present:
+		// The compositor reads the shared canvas continuously; just yield so it
+		// and the other process get the CPU promptly.
+		if (CScheduler::IsActive ())
+		{
+			CScheduler::Get ()->Yield ();
+		}
+		nResult = SYS_OK;
+		break;
+
+	case SYS_get_ticks:
+		nResult = (long) CTimer::Get ()->GetTicks ();		// HZ ticks since boot
+		break;
+
+	case SYS_msleep:
+		if (CScheduler::IsActive ())
+		{
+			CScheduler::Get ()->MsSleep ((unsigned) pFrame->x[0]);
+		}
+		nResult = SYS_OK;
 		break;
 
 	default:

@@ -22,10 +22,11 @@ OBJS = \
 	mm/addrspace.o \
 	gui/gimage.o \
 	gui/window.o \
+	proc/elf.o \
+	proc/embedded_apps.o \
 	sys/syscall.o \
 	arch/aarch64/vectors.o \
-	arch/aarch64/exception.o \
-	arch/aarch64/user_stub.o
+	arch/aarch64/exception.o
 
 # Our include dirs must come BEFORE Circle's (Rules.mk appends -I$(CIRCLEHOME)/include),
 # so <circle/sched/scheduler.h> resolves to our shadow in compat/.
@@ -36,5 +37,16 @@ LIBS = \
 	$(CIRCLEHOME)/lib/libcircle.a
 
 include $(CIRCLEHOME)/Rules.mk
+
+# Userland ELFs are embedded by proc/embedded_apps.S (.incbin). Build them first
+# (the sub-make does its own up-to-date check) and re-embed if they change.
+USER_ELFS = ../user/hello.elf ../user/demoA.elf ../user/demoB.elf
+
+proc/embedded_apps.o: $(USER_ELFS)
+
+.PHONY: build-user
+$(USER_ELFS): build-user
+build-user:
+	@$(MAKE) --no-print-directory -C ../user
 
 -include $(DEPS)

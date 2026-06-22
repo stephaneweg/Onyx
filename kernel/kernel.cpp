@@ -11,6 +11,7 @@
 #include <kern/syscall.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
+#include <kern/elf.h>
 #include <kern/gui/gimage.h>
 
 static const char FromKernel[] = "kernel";
@@ -68,21 +69,21 @@ private:
 };
 
 //
-// Milestone #5 demo: a kernel thread that builds a private address space, loads
-// the EL0 user stub into it, switches TTBR0, and drops to EL0. From then on this
-// task IS a user process: it runs the stub in EL0, is preempted by the timer, and
-// resumes in EL0 via the trap frame. Proves page-table isolation + the EL0 entry.
+// CUserProcessTask (#6): launches an embedded ELF as an isolated EL0 process. The
+// kernel thread builds a private address space, loads the ELF segments into it
+// (LoadELF), maps a user stack, switches TTBR0, and drops to EL0 at the entry
+// point. From then on this task IS the user process, preempted like any other.
 //
-extern "C" u8 user_stub_begin[];
-extern "C" u8 user_stub_end[];
+extern "C" u8 hello_elf_begin[];
+extern "C" u8 hello_elf_end[];
 
-class CUserTestTask : public CTask
+class CUserProcessTask : public CTask
 {
 public:
-	CUserTestTask (CLogger *pLogger)
-	:	m_pLogger (pLogger)
+	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger)
+	:	m_pELF (pELF), m_nSize (nSize), m_pName (pName), m_pLogger (pLogger)
 	{
-		SetName ("user-test");
+		SetName (pName);
 	}
 
 	void Run (void) override
@@ -90,41 +91,42 @@ public:
 		CAddressSpace *pAS = new CAddressSpace ();
 		if (pAS == 0 || !pAS->IsValid ())
 		{
-			m_pLogger->Write ("user-test", LogError, "address space creation failed");
+			m_pLogger->Write (m_pName, LogError, "address space creation failed");
 			return;
 		}
 
-		// Map and fill the code page (written via its kernel identity address, so
-		// the user RO+X mapping does not block the load).
-		TKPageAttr CodeAttr = KPAGE_ATTR_USER_CODE;
-		void *pCode = pAS->MapNewPage (USER_LOAD_BASE, CodeAttr);
-		TKPageAttr DataAttr = KPAGE_ATTR_USER_DATA;
-		void *pStack = pAS->MapNewPage (USER_STACK_TOP - KPAGE_SIZE, DataAttr);
-		if (pCode == 0 || pStack == 0)
+		u64 ulEntry = 0;
+		if (!LoadELF (m_pELF, m_nSize, pAS, &ulEntry))
 		{
-			m_pLogger->Write ("user-test", LogError, "user page mapping failed");
+			m_pLogger->Write (m_pName, LogError, "ELF load failed");
+			delete pAS;
 			return;
 		}
 
-		size_t nStubSize = (size_t) (user_stub_end - user_stub_begin);
-		memcpy (pCode, user_stub_begin, nStubSize);
-		SyncDataAndInstructionCache ();		// make the freshly written code executable
+		// User stack (one page below USER_STACK_TOP).
+		TKPageAttr StackAttr = KPAGE_ATTR_USER_DATA;
+		if (pAS->MapNewPage (USER_STACK_TOP - KPAGE_SIZE, StackAttr) == 0)
+		{
+			m_pLogger->Write (m_pName, LogError, "stack mapping failed");
+			delete pAS;
+			return;
+		}
 
-		// Become this address space, then drop to EL0 at the stub entry.
 		SetUserData (pAS, TASK_USER_DATA_USER);
 		pAS->Activate ();
 
-		m_pLogger->Write ("user-test", LogNotice,
-				  "entering EL0 at %lp (ASID %u), %u-byte stub",
-				  (void *) USER_LOAD_BASE, (unsigned) pAS->GetASID (),
-				  (unsigned) nStubSize);
+		m_pLogger->Write (m_pName, LogNotice, "entering EL0 at %lp (ASID %u)",
+				  (void *) ulEntry, (unsigned) pAS->GetASID ());
 
-		enter_user (USER_LOAD_BASE, USER_STACK_TOP, 0);
+		enter_user (ulEntry, USER_STACK_TOP, 0);
 		// not reached
 	}
 
 private:
-	CLogger *m_pLogger;
+	const u8   *m_pELF;
+	unsigned    m_nSize;
+	const char *m_pName;
+	CLogger	   *m_pLogger;
 };
 
 //
@@ -159,88 +161,12 @@ private:
 	CWindowManager *m_pWM;
 };
 
-//
-// A windowed animation drawn by a kernel thread (stand-in for an EL0 process until
-// #6). It only touches its own window canvas; the compositor presents it. Two of
-// these with different styles animate concurrently via preemption -- the structure
-// of the end goal (two windowed programs running at the same time).
-//
-class CWindowDemoTask : public CTask
-{
-public:
-	CWindowDemoTask (CWindow *pWindow, unsigned nStyle, const char *pName)
-	:	m_pWindow (pWindow), m_nStyle (nStyle)
-	{
-		SetName (pName);
-	}
-
-	void Run (void) override
-	{
-		GImage *c = m_pWindow->Canvas ();
-		int w = c->Width ();
-		int h = c->Height ();
-		unsigned t = 0;
-
-		// bouncing box state (style 0)
-		int bx = 4, by = 4, dx = 3, dy = 2, bs = 28;
-
-		for (;;)
-		{
-			if (m_nStyle == 0)
-			{
-				c->Clear (0x00101820);
-				bx += dx; by += dy; bs = bs;
-				if (bx < 0)          { bx = 0;          dx = -dx; }
-				if (bx + bs > w)     { bx = w - bs;     dx = -dx; }
-				if (by < 0)          { by = 0;          dy = -dy; }
-				if (by + bs > h)     { by = h - bs;     dy = -dy; }
-				c->FillRectangle (bx, by, bx + bs, by + bs, 0x00FFC040);
-				c->DrawRectangle (bx, by, bx + bs, by + bs, 0x00FFFFFF);
-			}
-			else
-			{
-				// moving rays from the centre
-				c->Clear (0x00201018);
-				int cx = w / 2, cy = h / 2;
-				for (int k = 0; k < 12; k++)
-				{
-					int ang = ((int) t + k * 30) % 360;
-					// crude sin/cos via small integer table-free approximation
-					int ex = cx + (int) ((w / 2 - 4) * CosDeg (ang) / 1000);
-					int ey = cy + (int) ((h / 2 - 4) * SinDeg (ang) / 1000);
-					c->DrawLine (cx, cy, ex, ey, 0x0040FFA0 + (u32) (k * 0x0A0A00));
-				}
-			}
-
-			t++;
-			CScheduler::Get ()->MsSleep (20);	// ~50 fps
-		}
-	}
-
-private:
-	// Tiny fixed-point cos/sin in milli-units (-1000..1000), no FPU/library needed.
-	static int CosDeg (int deg);
-	static int SinDeg (int deg)	{ return CosDeg (deg - 90); }
-
-	CWindow *m_pWindow;
-	unsigned m_nStyle;
-};
-
-// 16-entry quarter-wave cosine table (0..90deg), milli-units; mirrored for full circle.
-int CWindowDemoTask::CosDeg (int deg)
-{
-	static const int Q[16] =
-	{ 1000, 995, 980, 957, 924, 882, 831, 773, 707, 634, 556, 471, 383, 290, 195, 98 };
-
-	deg %= 360; if (deg < 0) deg += 360;
-	int idx, sign;
-	if (deg < 90)        { idx = deg;        sign =  1; }
-	else if (deg < 180)  { idx = 180 - deg;  sign = -1; }
-	else if (deg < 270)  { idx = deg - 180;  sign = -1; }
-	else                 { idx = 360 - deg;  sign =  1; }
-	if (idx >= 90) idx = 89;
-	return sign * Q[idx * 16 / 90];
-}
+// Embedded windowed demo programs (EL0 ELFs). Each create_window()s and animates;
+// both run concurrently via preemption and the compositor shows both.
+extern "C" u8 demoA_elf_begin[];
+extern "C" u8 demoA_elf_end[];
+extern "C" u8 demoB_elf_begin[];
+extern "C" u8 demoB_elf_end[];
 
 CKernel::CKernel (void)
 :	m_Timer (&m_Interrupt),
@@ -292,6 +218,7 @@ boolean CKernel::Initialize (void)
 		// TTBR0/ASID on every task switch based on the task's address space.
 		AddrSpaceInit ();
 		m_Scheduler.RegisterTaskSwitchHandler (AddressSpaceTaskSwitch);
+		m_Scheduler.RegisterTaskTerminationHandler (AddressSpaceTaskTerminate);
 	}
 
 	// Framebuffer is optional (needs an attached display). Do not fail boot if
@@ -337,25 +264,26 @@ TShutdownMode CKernel::Run (void)
 	new CHeartbeatTask (&m_Logger, "beat-A", 700);
 	new CHeartbeatTask (&m_Logger, "beat-B", 1100);
 
-	// Milestone #5: an isolated EL0 process loaded into its own address space.
-	new CUserTestTask (&m_Logger);
+	// Milestone #6: an isolated EL0 process loaded from an embedded ELF image.
+	new CUserProcessTask (hello_elf_begin,
+			      (unsigned) (hello_elf_end - hello_elf_begin),
+			      "hello", &m_Logger);
 
-	// Milestone #10: two windows, each animated by its own (kernel) thread, with a
-	// compositor presenting both. This is the end-goal structure -- two windowed
-	// programs running at the same time -- with the owners becoming EL0 ELF
-	// processes once the loader (#6) lands.
+	// End goal: two EL0 ELF processes, each in its own window, animating at the
+	// same time (preemption), with the compositor presenting both. demoA/demoB
+	// create their windows via the create_window syscall and draw into the shared
+	// canvas the kernel maps into their address space.
 	if (m_bGraphics)
 	{
-		CWindow *pWinA = new CWindow (40, 50, 240, 180, "demo A");
-		CWindow *pWinB = new CWindow (330, 130, 260, 200, "demo B");
-		m_WindowManager.Add (pWinA);
-		m_WindowManager.Add (pWinB);
-
-		new CWindowDemoTask (pWinA, 0, "demoA");
-		new CWindowDemoTask (pWinB, 1, "demoB");
 		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
+		new CUserProcessTask (demoA_elf_begin,
+				      (unsigned) (demoA_elf_end - demoA_elf_begin),
+				      "demoA", &m_Logger);
+		new CUserProcessTask (demoB_elf_begin,
+				      (unsigned) (demoB_elf_end - demoB_elf_begin),
+				      "demoB", &m_Logger);
 
-		m_Logger.Write (FromKernel, LogNotice, "compositor + 2 windowed demos started");
+		m_Logger.Write (FromKernel, LogNotice, "compositor + 2 windowed ELF demos started");
 	}
 
 	unsigned nUptime = 0;
