@@ -46,7 +46,14 @@ public:
 		}
 
 		u64 ulEntry = 0;
-		if (!LoadELF (m_pELF, m_nSize, pAS, &ulEntry))
+		boolean bLoaded = LoadELF (m_pELF, m_nSize, pAS, &ulEntry);
+
+		// The file image is no longer needed: LoadELF copied the segments into the
+		// app's own frames. Free it now (it was new[]'d by LoadFileFromSD).
+		delete [] (u8 *) m_pELF;
+		m_pELF = 0;
+
+		if (!bLoaded)
 		{
 			m_pLogger->Write (m_pName, LogError, "ELF load failed");
 			delete pAS;

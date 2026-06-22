@@ -240,6 +240,10 @@ void CWindowManager::Add (CWindow *pWindow)
 void CWindowManager::Remove (CWindow *pWindow)
 {
 	m_SpinLock.Acquire ();
+	if (m_pDragWindow == pWindow)
+	{
+		m_pDragWindow = 0;		// don't dereference a removed/freed window
+	}
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)

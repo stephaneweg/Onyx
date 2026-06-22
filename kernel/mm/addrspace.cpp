@@ -12,6 +12,10 @@
 // Kernel TTBR0 base (L2 table, ASID 0), captured once by AddrSpaceInit().
 static u64 s_ulKernelTTBR0 = 0;
 
+// Software bit (in an L3 page descriptor's Ignored field) flagging a frame that
+// this address space palloc'd and must pfree on teardown.
+#define PAGE_SW_OWNED		1
+
 // ---- ASID allocation (8-bit; ASID 0 reserved for the kernel/global pages) ----
 
 static boolean s_bASIDUsed[ASID_COUNT];
@@ -66,17 +70,20 @@ CAddressSpace::CAddressSpace (void)
 
 CAddressSpace::~CAddressSpace (void)
 {
-	// Remove this process's window from the compositor (lock-safe). We deliberately
-	// do NOT delete the CWindow here: this runs in scheduler context, and the
-	// compositor may hold a snapshot pointer to it mid-blit. Removing it from the
-	// list is enough to stop future composites; freeing it safely needs deferred
-	// reclamation (future work). The leak is bounded (one window per exited app).
+	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the
+	// scheduler core: IRQs are enabled and the task is already quiescent, so it is
+	// safe to do the full teardown (free frames, free the window, TLB ops).
+	//
+	// The window was already removed from the compositor at kapi_exit (in the app's
+	// own context, >=100 ms ago), so no in-flight composite references it; we can
+	// now free the CWindow + its canvas. Remove() again is a harmless no-op.
 	if (m_pWindow != 0)
 	{
 		if (CWindowManager::Get () != 0)
 		{
 			CWindowManager::Get ()->Remove (m_pWindow);
 		}
+		delete m_pWindow;		// frees the canvas buffer too (~CWindow)
 		m_pWindow = 0;
 	}
 
@@ -85,15 +92,31 @@ CAddressSpace::~CAddressSpace (void)
 		return;
 	}
 
-	// Free the user L3 tables we allocated (any valid entry in the user range).
+	// Walk the user range: free every frame we own (palloc'd via MapNewPage), then
+	// the L3 table itself. Frames not flagged PAGE_SW_OWNED are owned elsewhere
+	// (e.g. the window canvas) and must NOT be freed here.
 	unsigned nFirst = L2_INDEX (USER_VA_BASE);
 	unsigned nLast  = L2_INDEX (USER_VA_END - 1);
 	for (unsigned i = nFirst; i <= nLast; i++)
 	{
-		if (m_pL2[i].Table.Value11 == 3)
+		if (m_pL2[i].Table.Value11 != 3)
 		{
-			pfree (ARMV8MMUL2TABLEPTR ((u64) m_pL2[i].Table.TableAddress));
+			continue;
 		}
+
+		TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *)
+			ARMV8MMUL2TABLEPTR ((u64) m_pL2[i].Table.TableAddress);
+
+		for (unsigned j = 0; j < L3_ENTRIES; j++)
+		{
+			TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[j].Page;
+			if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
+			{
+				pfree (ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress));
+			}
+		}
+
+		pfree (pL3);
 	}
 
 	pfree (m_pL2);
@@ -138,7 +161,8 @@ TARMV8MMU_LEVEL3_DESCRIPTOR *CAddressSpace::GetOrCreateL3 (unsigned nL2Index)
 	return pL3;
 }
 
-boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &Attr)
+boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &Attr,
+				boolean bOwned)
 {
 	assert ((ulVA & KPAGE_MASK) == 0);
 	assert ((ulPA & KPAGE_MASK) == 0);
@@ -165,7 +189,7 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 	pPage->Continous     = 0;
 	pPage->PXN	     = Attr.PXN;
 	pPage->UXN	     = Attr.UXN;
-	pPage->Ignored	     = 0;
+	pPage->Ignored	     = bOwned ? PAGE_SW_OWNED : 0;
 
 	DataSyncBarrier ();
 
@@ -189,7 +213,7 @@ void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 	}
 	memset (pFrame, 0, KPAGE_SIZE);
 
-	if (!MapPage (ulVA, (uintptr) pFrame, Attr))
+	if (!MapPage (ulVA, (uintptr) pFrame, Attr, TRUE))	// TRUE: we own this frame
 	{
 		pfree (pFrame);
 		return 0;

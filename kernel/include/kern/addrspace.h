@@ -26,7 +26,11 @@ public:
 	boolean IsValid (void) const		{ return m_pL2 != 0; }
 
 	// Map one 64 KB user page (ulVA, ulPA both 64 KB-aligned, ulVA in user range).
-	boolean MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &Attr);
+	// bOwned marks the frame as kernel-allocated (palloc'd) for this space, so it
+	// is pfree'd when the space is destroyed. Leave FALSE for frames owned
+	// elsewhere (e.g. a window canvas owned by its CWindow).
+	boolean MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &Attr,
+			 boolean bOwned = FALSE);
 
 	// Map nPages consecutive 64 KB pages [ulVA..] -> [ulPhys..] (e.g. a window canvas).
 	void MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr);
