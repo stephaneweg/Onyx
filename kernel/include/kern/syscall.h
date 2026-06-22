@@ -10,8 +10,6 @@
 #ifndef _kern_syscall_h
 #define _kern_syscall_h
 
-#include <circle/types.h>
-
 // Syscall numbers
 #define SYS_write	1	// ssize_t write(int fd, const void *buf, size_t len)
 #define SYS_yield	2	// void yield(void)
@@ -26,6 +24,8 @@
 #define SYS_EFAULT	(-14)	// bad address
 
 #ifndef __ASSEMBLER__		// the numbers above are also used from user_stub.S
+
+#include <circle/types.h>
 
 #ifdef __cplusplus
 extern "C" {

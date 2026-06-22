@@ -234,7 +234,25 @@ Toolchain via **WSL** (aarch64 bare-metal GCC). Build Circle's needed libs, then
 link our kernel objects + a linker script producing `kernel8.img`. Boot path on the
 Pi: VideoCore firmware → (optionally U-Boot) → our image.
 
-### Build manifest (so far)
+### Status: builds ✅
+
+`#1`–`#5` compile and link into `kernel8-rpi4.img` (~80 KB) with the
+`aarch64-none-elf` (GCC 10.3) toolchain under WSL. Confirmed steps:
+
+```sh
+# one-time: renormalize the Circle clone to LF (it was checked out CRLF on Windows)
+git -C circle config core.autocrlf false && git -C circle rm --cached -rq . && git -C circle reset --hard
+# build Circle's libraries (skip tools/, which are host-only and need host gcc)
+cd circle && ./configure -r 4 -p aarch64-none-elf- -f
+(cd lib && make -j4) && (cd lib/sched && make -j4) && (cd lib/fs && make -j4 && cd fat && make -j4)
+# build our kernel
+cd ../kernel && make            # -> kernel8-rpi4.img
+```
+
+Not yet run: no QEMU in this WSL; runtime test needs `qemu-system-aarch64 -M raspi4b`
+or a real Pi 4 (rename to `kernel8.img`, `arm_64bit=1`).
+
+### Build manifest
 
 Compile (target **RASPPI=4**, AArch64, 64 KB granule):
 - **Our sources**: `kernel/main.cpp`, `kernel/kernel.cpp`, `kernel/sched/scheduler.cpp`,
@@ -247,6 +265,8 @@ Compile (target **RASPPI=4**, AArch64, 64 KB granule):
   `lib/sched/task.cpp` (replaced by ours). Keep everything else (incl.
   `lib/sched/{taskswitch.S,synchronizationevent,mutex,semaphore,pipe}`,
   `lib/exceptionstub64.S`, `lib/exceptionhandler64.cpp`, `lib/interruptgic.cpp`).
-- Link our objects + Circle libs with a linker script → `kernel8.img`.
-
-Nothing has been compiled yet; expect the first WSL build to surface fixes.
+- Link our objects + Circle libs with a linker script → `kernel8-rpi4.img`.
+  Because our `scheduler.o`/`task.o` are in `OBJS` (before the `--start-group`
+  archives), the linker resolves `CScheduler`/`CTask` from them and never pulls
+  `libsched.a`'s versions — verified (single `CScheduler::Yield` in the image, no
+  duplicate-symbol error). No need to strip `libsched.a`.

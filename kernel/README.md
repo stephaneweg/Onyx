@@ -66,5 +66,12 @@ compile, include-path order, which Circle files to exclude).
 
 ## Build
 
-Deferred. Target: aarch64 bare-metal GCC under WSL, linking Circle's static libs,
-producing `kernel8.img` for Raspberry Pi 4. See ARCHITECTURE.md §9.
+Builds with `aarch64-none-elf` GCC under WSL → `kernel8-rpi4.img`. See
+ARCHITECTURE.md §9 for the confirmed steps (renormalize Circle to LF, build its
+libs, then `make` here). Not yet run on QEMU/hardware.
+
+```sh
+cd ../circle && ./configure -r 4 -p aarch64-none-elf- -f && (cd lib && make -j4) \
+  && (cd lib/sched && make -j4) && (cd lib/fs && make -j4 && cd fat && make -j4)
+cd ../kernel && make
+```
