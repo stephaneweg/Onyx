@@ -249,6 +249,18 @@ CTask *CScheduler::GetRunningTask (const char *pTaskName)
 	return 0;
 }
 
+void CScheduler::TerminateTask (CTask *pTask)
+{
+	if (pTask == 0 || pTask == m_pCurrent)
+	{
+		return;				// can't externally kill the running task
+	}
+	if (IsValidTask (pTask) && pTask->GetState () != TaskStateTerminated)
+	{
+		pTask->SetState (TaskStateTerminated);	// GetNextTask skips it; reaper frees it
+	}
+}
+
 boolean CScheduler::IsValidTask (CTask *pTask)
 {
 	for (unsigned i = 0; i < m_nTasks; i++)

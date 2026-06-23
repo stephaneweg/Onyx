@@ -59,6 +59,11 @@ public:
 	CTask *GetRunningTask (const char *pTaskName);
 	boolean IsValidTask (CTask *pTask);
 
+	// Externally terminate another task (e.g. the task manager killing an app): mark
+	// it Terminated so GetNextTask skips it and the reaper frees it. No-op on the
+	// current task (a task ends itself by returning / kapi_exit).
+	void TerminateTask (CTask *pTask);
+
 	void RegisterTaskSwitchHandler (TSchedulerTaskHandler *pHandler);
 	void RegisterTaskTerminationHandler (TSchedulerTaskHandler *pHandler);
 

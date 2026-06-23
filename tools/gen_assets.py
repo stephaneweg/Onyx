@@ -246,6 +246,16 @@ def icon_eyes():		# two googly eyes
     pdisc(px, 28, 20, 9, (255, 255, 255)); pdisc(px, 30, 22, 3, (24, 24, 32))
     return px
 
+def icon_taskman():		# a list of tasks (status dot + bar)
+    px = blank()
+    prect(px, 6, 7, 33, 33, (40, 48, 58))
+    pframe(px, 6, 7, 33, 33, (90, 100, 114))
+    for i in range(4):
+        y = 11 + i * 6
+        prect(px, 9, y, 12, y + 2, (96, 200, 120))
+        prect(px, 15, y, 30, y + 2, (150, 160, 170))
+    return px
+
 def icon_sheet():		# a grid with a header row
     px = blank()
     prect(px, 6, 7, 33, 33, (236, 236, 238))
@@ -262,7 +272,7 @@ ICONS = {
     "2048": icon_2048, "life": icon_life, "pong": icon_pong, "sokoban": icon_sokoban,
     "calendar": icon_calendar, "mandelbrot": icon_mandel,
     "minesweeper": icon_mines, "paint": icon_paint,
-    "eyes": icon_eyes, "sheet": icon_sheet,
+    "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
 }
 
 

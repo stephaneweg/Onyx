@@ -761,6 +761,75 @@ int kapi_list_windows (char *pBuf, unsigned nBufSize)
 	return Ctx.nCount;
 }
 
+// List ALL tasks for the task manager: one line per task "<state><kind> <name>",
+// where state is R/S/B/N, and kind is 'a' (app: has an address space, killable) or
+// 'k' (kernel task: protected). Terminated tasks are skipped.
+static boolean TaskListCallback (CTask *pTask, const char *pName, TTaskState State,
+				 TTaskFlags Flags, void *pParam)
+{
+	(void) Flags;
+	if (State == TaskStateTerminated)
+	{
+		return TRUE;
+	}
+	char sc = State == TaskStateReady ? 'R'
+		: State == TaskStateSleeping ? 'S'
+		: (State == TaskStateBlocked || State == TaskStateBlockedWithTimeout) ? 'B'
+		: State == TaskStateNew ? 'N' : '?';
+	char kc = pTask->GetUserData (TASK_USER_DATA_USER) != 0 ? 'a' : 'k';
+
+	WinListCtx *pCtx = (WinListCtx *) pParam;
+	if (pCtx->nPos + 4 < pCtx->nSize)
+	{
+		pCtx->pBuf[pCtx->nPos++] = sc;
+		pCtx->pBuf[pCtx->nPos++] = kc;
+		pCtx->pBuf[pCtx->nPos++] = ' ';
+	}
+	for (unsigned j = 0; pName[j] != '\0'; j++)
+		if (pCtx->nPos + 2 < pCtx->nSize) pCtx->pBuf[pCtx->nPos++] = pName[j];
+	if (pCtx->nPos + 1 < pCtx->nSize) pCtx->pBuf[pCtx->nPos++] = '\n';
+	pCtx->nCount++;
+	return TRUE;
+}
+
+int kapi_list_tasks (char *pBuf, unsigned nBufSize)
+{
+	if (pBuf == 0 || nBufSize == 0)
+	{
+		return 0;
+	}
+	pBuf[0] = '\0';
+	if (!CScheduler::IsActive ())
+	{
+		return 0;
+	}
+	WinListCtx Ctx = { pBuf, nBufSize, 0, 0 };
+	CScheduler::Get ()->EnumerateTasks (TaskListCallback, &Ctx);
+	pBuf[Ctx.nPos] = '\0';
+	return Ctx.nCount;
+}
+
+// Kill an app by name (refuses kernel tasks -- those have no address space -- and
+// the caller itself). Returns 1 if killed, 0 otherwise.
+int kapi_kill (const char *pName)
+{
+	if (pName == 0 || !CScheduler::IsActive ())
+	{
+		return 0;
+	}
+	CTask *pTask = CScheduler::Get ()->GetRunningTask (pName);
+	if (pTask == 0 || pTask == CScheduler::Get ()->GetCurrentTask ())
+	{
+		return 0;
+	}
+	if (pTask->GetUserData (TASK_USER_DATA_USER) == 0)
+	{
+		return 0;			// kernel task (compositor/reaper/input): protected
+	}
+	CScheduler::Get ()->TerminateTask (pTask);
+	return 1;
+}
+
 // The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name
 // is the app's folder basename. Returns the string length. Used by the shared app
 // lib to find an app's config.ini.

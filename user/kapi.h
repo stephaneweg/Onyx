@@ -50,6 +50,8 @@ static inline int  kapi_launch (const char *n) { return KT->launch (n); }
 static inline int  kapi_toggle_app (const char *n) { return KT->toggle_app (n); }
 static inline int  kapi_raise_app (const char *n) { return KT->raise_app (n); }
 static inline int  kapi_list_windows (char *b, unsigned s) { return KT->list_windows (b, s); }
+static inline int  kapi_list_tasks (char *b, unsigned s) { return KT->list_tasks (b, s); }
+static inline int  kapi_kill (const char *name) { return KT->kill (name); }
 static inline int  kapi_set_wallpaper (const char *p) { return KT->set_wallpaper (p); }
 static inline int  kapi_wallpaper_generate (unsigned base, int pts, unsigned seed) { return KT->wallpaper_generate (base, pts, seed); }
 static inline void kapi_present (void) { KT->present (); }

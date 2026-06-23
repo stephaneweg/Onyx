@@ -21,6 +21,8 @@ int kapi_launch (const char *);
 int kapi_toggle_app (const char *);
 int kapi_raise_app (const char *);
 int kapi_list_windows (char *, unsigned);
+int kapi_list_tasks (char *, unsigned);
+int kapi_kill (const char *);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -169,6 +171,8 @@ void KApiTableInit (void)
 	t->remove            = kapi_remove;
 	t->rename            = kapi_rename;
 	t->cursor_pos        = kapi_cursor_pos;
+	t->list_tasks        = kapi_list_tasks;
+	t->kill              = kapi_kill;
 
 	t->pipe              = kapi_pipe;
 	t->file_in           = kapi_file_in;
