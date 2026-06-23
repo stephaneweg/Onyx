@@ -127,4 +127,8 @@ struct TKPageAttr
 #define KPAGE_ATTR_APP_DATA \
 	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
 
+// App read-only data (the shared kapi ABI table): EL1 read-only, never executable.
+#define KPAGE_ATTR_APP_RODATA \
+	{ ATTRINDX_NORMAL, ATTRIB_AP_RO_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
+
 #endif // _kern_layout_h

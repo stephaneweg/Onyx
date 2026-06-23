@@ -13,6 +13,7 @@
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
+#include <kern/kapitable.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
@@ -494,6 +495,10 @@ boolean CKernel::Initialize (void)
 		AddrSpaceInit ();
 		m_Scheduler.RegisterTaskSwitchHandler (AddressSpaceTaskSwitch);
 		m_Scheduler.RegisterTaskTerminationHandler (AddressSpaceTaskTerminate);
+
+		// Publish the kapi ABI table (apps call the kernel through it). Must run
+		// before any address space is built (each one maps the table).
+		KApiTableInit ();
 	}
 
 	// Framebuffer is optional (needs an attached display). Do not fail boot if it

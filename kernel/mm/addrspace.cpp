@@ -3,6 +3,8 @@
 //
 #include <kern/addrspace.h>
 #include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
+#include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA for the kapi table)
+#include <kern/kapitable.h>		// KApiTablePhys
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
 #include <circle/synchronize.h>		// DataSyncBarrier
@@ -64,6 +66,13 @@ CAddressSpace::CAddressSpace (void)
 		KPAGE_SIZE);
 
 	m_nASID = AllocASID ();
+
+	// Publish the kapi ABI table read-only at the fixed user VA, so apps call the
+	// kernel through it (no linking against kernel addresses). The table page is a
+	// kernel global (not owned by this space), so teardown frees the L3 we add here
+	// but never the page itself.
+	TKPageAttr ApiAttr = KPAGE_ATTR_APP_RODATA;
+	MapContig (KAPI_TABLE_VA, KApiTablePhys (), 1, ApiAttr);
 
 	DataSyncBarrier ();
 }

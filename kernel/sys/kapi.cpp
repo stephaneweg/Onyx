@@ -746,6 +746,35 @@ int kapi_list_windows (char *pBuf, unsigned nBufSize)
 	return Ctx.nCount;
 }
 
+// The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name
+// is the app's folder basename. Returns the string length. Used by the shared app
+// lib to find an app's config.ini.
+int kapi_app_dir (char *pBuf, unsigned nMax)
+{
+	if (pBuf == 0 || nMax == 0)
+	{
+		return 0;
+	}
+	const char *pName = "app";
+	if (CScheduler::IsActive ())
+	{
+		CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
+		if (pTask != 0)
+		{
+			pName = pTask->GetName ();
+		}
+	}
+
+	unsigned p = 0;
+	const char *pPre = "SD:apps/";
+	const char *pSuf = ".app/";
+	for (unsigned i = 0; pPre[i] != '\0' && p + 1 < nMax; i++) pBuf[p++] = pPre[i];
+	for (unsigned i = 0; pName[i] != '\0' && p + 1 < nMax; i++) pBuf[p++] = pName[i];
+	for (unsigned i = 0; pSuf[i] != '\0' && p + 1 < nMax; i++) pBuf[p++] = pSuf[i];
+	pBuf[p] = '\0';
+	return (int) p;
+}
+
 // Current local date/time, broken down. Any pointer may be 0. Returns 1 if the
 // clock holds a real wall-clock time, 0 if it is still only uptime (no RTC/NTP yet,
 // so the fields then reflect seconds-since-boot mapped onto 1970).

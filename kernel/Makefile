@@ -26,6 +26,7 @@ OBJS = \
 	proc/elf.o \
 	sys/syscall.o \
 	sys/kapi.o \
+	sys/kapitable.o \
 	sys/debugcon.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
@@ -45,26 +46,20 @@ LIBS = \
 
 include $(CIRCLEHOME)/Rules.mk
 
-# Option C: export the kernel's kapi_* symbol addresses so the app ELFs can be
-# linked against them (user.ld INCLUDEs this). Then build the apps.
-KERNEL_SYMS = ../user/kernel_syms.ld
-
-$(KERNEL_SYMS): $(TARGET).img
-	@echo "  SYMS  $@"
-	@$(PREFIX64)nm $(TARGET).elf | grep -E ' [TtWw] kapi_' | awk '{print $$3" = 0x"$$1";"}' > $@
-
+# Apps call the kernel through the kapi ABI table at a fixed VA (see
+# kern/kapi_abi.h), NOT by linking against kernel addresses -- so they no longer
+# depend on the kernel build and need not be rebuilt when the kernel changes.
 .PHONY: apps
-apps: $(KERNEL_SYMS)
+apps:
 	@$(MAKE) --no-print-directory -C ../user
 
-# `make` builds the kernel, exports kapi_* symbols, then builds the apps.
-all: apps
-.DEFAULT_GOAL := apps
+# `make` builds the kernel, then (for convenience) the apps.
+all: $(TARGET).img apps
+.DEFAULT_GOAL := all
 
-# Copy kernel + apps to the SD staging dir TOGETHER. The app ELFs are linked
-# against the kernel's kapi_* addresses (kernel_syms.ld), which move on every
-# kernel rebuild -- so the .img and the .elf on the card MUST come from the same
-# build. Always `make stage` (never copy the kernel alone).
+# Copy kernel + apps to the SD staging dir. The app ELFs are ABI-stable now, so a
+# kernel-only change just needs the new .img; the .elf's can stay. `make stage`
+# still refreshes both for convenience.
 #
 # Each app lives in its own folder:  apps/<name>.app/main.elf  (the Maynard-style
 # layout). The app name is the ELF basename; autostart.txt names them per line.
