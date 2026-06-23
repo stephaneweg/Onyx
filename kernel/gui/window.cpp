@@ -73,15 +73,22 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	int x1 = m_nX + cw + 2 * WIN_BORDER - 1;
 	int y1 = m_nY + WIN_TITLEBAR_H + ch + WIN_BORDER - 1;
 
-	// Frame.
-	pScreen->FillRectangle (x0, y0, x1, y1, WIN_COLOR_FRAME);
+	// Frame + title bar: the window skin (wings.bmp, 7/7/32/7) draws the whole
+	// chrome; otherwise a flat frame + title bar.
+	if (g_pWindowSkin != 0)
+	{
+		g_pWindowSkin->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, TRUE);
+	}
+	else
+	{
+		pScreen->FillRectangle (x0, y0, x1, y1, WIN_COLOR_FRAME);
+		pScreen->FillRectangle (x0, y0, x1, y0 + WIN_TITLEBAR_H - 1,
+					bActive ? WIN_COLOR_TITLE_ACT : WIN_COLOR_TITLE);
+	}
 
-	// Title bar.
-	pScreen->FillRectangle (x0, y0, x1, y0 + WIN_TITLEBAR_H - 1,
-				bActive ? WIN_COLOR_TITLE_ACT : WIN_COLOR_TITLE);
-
-	// Title text, vertically centred in the title bar.
-	pScreen->DrawText (x0 + 6, y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
+	// Title text, vertically centred in the title bar (inside the left border).
+	pScreen->DrawText (x0 + WIN_BORDER + 2,
+			   y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
 			   m_Title, 0x00FFFFFF);
 
 	// Close box [x] at the right of the title bar (skinned if available).
@@ -216,8 +223,11 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 		}
 	}
 
-	// Outline.
-	pScreen->DrawRectangle (x0, y0, x1, y1, 0x00000000);
+	// Outline (only for the flat frame; the skin draws its own border).
+	if (g_pWindowSkin == 0)
+	{
+		pScreen->DrawRectangle (x0, y0, x1, y1, 0x00000000);
+	}
 }
 
 void CWindow::CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const

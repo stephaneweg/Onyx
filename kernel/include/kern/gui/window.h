@@ -18,9 +18,10 @@
 #define SCREEN_WIDTH		640
 #define SCREEN_HEIGHT		480
 
-// Theme (from SimpleOS): blue title bar.
-#define WIN_TITLEBAR_H		24
-#define WIN_BORDER		2
+// Theme + chrome metrics. Match the window skin (wings.bmp, margins 7/7/32/7):
+// a 32 px title-bar region on top and 7 px borders. Used both skinned and flat.
+#define WIN_TITLEBAR_H		32
+#define WIN_BORDER		7
 #define WIN_COLOR_FRAME		0x00202028
 #define WIN_COLOR_TITLE		0x000000AA
 #define WIN_COLOR_TITLE_ACT	0x000000FF

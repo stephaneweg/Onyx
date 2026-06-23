@@ -411,7 +411,7 @@ boolean CKernel::Initialize (void)
 			// gui.bas. Missing skins -> flat fallback drawing.
 			g_pButtonSkin = LoadSkin ("SD:skins/button.bmp",   3, 6, 6, 6, 6);
 			g_pCloseSkin  = LoadSkin ("SD:skins/closebgs.bmp", 3, 5, 5, 5, 5);
-			g_pWindowSkin = LoadSkin ("SD:skins/window.bmp",   1, 45, 45, 45, 45);
+			g_pWindowSkin = LoadSkin ("SD:skins/wings.bmp",    1, 7, 7, 32, 7);
 			m_Logger.Write (FromKernel, LogNotice, "skins: button=%d close=%d window=%d",
 					g_pButtonSkin != 0, g_pCloseSkin != 0, g_pWindowSkin != 0);
 		}
