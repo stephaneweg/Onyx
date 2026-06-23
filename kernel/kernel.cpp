@@ -442,9 +442,20 @@ TShutdownMode CKernel::Run (void)
 	// Janitor loop: reap tasks that have ended (closed apps) in a safe context,
 	// freeing their address spaces. Terminated tasks stop being scheduled
 	// immediately; this is the "en amont du scheduler" reclamation stage.
+	//
+	// Heartbeat (only once the debug console owns the screen, i.e. after an app
+	// exited): proves the kernel is still alive AFTER a reap -- if "alive N" keeps
+	// incrementing past "reap: done", the close succeeded and the static screen is
+	// just the stopped compositor, not a crash.
+	unsigned nTick = 0;
 	for (;;)
 	{
 		m_Scheduler.ReapTerminatedTasks ();
+		if (DebugConsoleActive () && (nTick % 10) == 0)
+		{
+			m_Logger.Write (FromKernel, LogNotice, "janitor: alive %u", nTick / 10);
+		}
+		nTick++;
 		m_Scheduler.MsSleep (100);
 	}
 
