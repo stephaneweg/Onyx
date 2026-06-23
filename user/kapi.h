@@ -163,6 +163,9 @@ static inline void *kapi_stdin (void) { return KT->stdin_stream (); }
 static inline void *kapi_stdout (void) { return KT->stdout_stream (); }
 // Read the next kernel log event (real-time tee). 1 + fills fields, or 0 if empty.
 static inline int  kapi_klog_read (int *sev, char *src, unsigned sc, char *msg, unsigned mc) { return KT->klog_read (sev, src, sc, msg, mc); }
+// Verbose kernel logging: toggle (1/0) at runtime + read the current state.
+static inline int  kapi_set_verbose (int on) { return KT->set_verbose (on); }
+static inline int  kapi_get_verbose (void) { return KT->get_verbose (); }
 
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }

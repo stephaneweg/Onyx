@@ -41,6 +41,8 @@ int kapi_getcwd (char *, unsigned);
 void *kapi_stdin (void);
 void *kapi_stdout (void);
 int kapi_klog_read (int *, char *, unsigned, char *, unsigned);
+int kapi_set_verbose (int);
+int kapi_get_verbose (void);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -224,4 +226,6 @@ void KApiTableInit (void)
 	t->stdin_stream      = kapi_stdin;
 	t->stdout_stream     = kapi_stdout;
 	t->klog_read         = kapi_klog_read;
+	t->set_verbose       = kapi_set_verbose;
+	t->get_verbose       = kapi_get_verbose;
 }

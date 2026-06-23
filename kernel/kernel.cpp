@@ -26,6 +26,12 @@ static const char FromKernel[] = "kernel";
 // framebuffer so an exception is visible after the compositor takes the screen.
 void SetPanicGraphics (C2DGraphics *p2D);
 
+// Verbose logging flag: when on, the kernel logs app lifecycle events (spawn / exit
+// / orphan kill). Set at boot from SD:system.ini (verbose=1) and toggled at runtime
+// via kapi_set_verbose / the `verbose` command. VLOG(...) is a gated CLogger::Write.
+boolean g_bVerbose = FALSE;
+#define VLOG(...)	do { if (g_bVerbose) CLogger::Get ()->Write (__VA_ARGS__); } while (0)
+
 //
 // CUserProcessTask (Option C): launch an ELF as an EL1 app in its own address
 // space. The thread builds a private address space, loads the ELF segments
@@ -191,7 +197,12 @@ static void TerminateOrphans (void)
 	{
 		boolean bAlive = FALSE;
 		for (int j = 0; j < s.npids; j++) if (s.pids[j] == s.kidparent[i]) { bAlive = TRUE; break; }
-		if (!bAlive) CScheduler::Get ()->TerminateTask (s.kid[i]);
+		if (!bAlive)
+		{
+			VLOG ("proc", LogNotice, "orphan %s (parent pid %u gone) terminated",
+			      s.kid[i]->GetName (), s.kidparent[i]);
+			CScheduler::Get ()->TerminateTask (s.kid[i]);
+		}
 	}
 }
 
@@ -384,6 +395,14 @@ void KernelInitKeyMap (const char *pName)
 	g_szKeyMap[i] = '\0';
 }
 
+// Verbose flag control, exposed to the kapi layer (kapi_set_verbose / get_verbose).
+void KernelSetVerbose (boolean bOn)
+{
+	g_bVerbose = bOn;
+	CLogger::Get ()->Write ("verbose", LogNotice, "verbose logging %s", bOn ? "ON" : "OFF");
+}
+boolean KernelGetVerbose (void) { return g_bVerbose; }
+
 // Resolution: cmdline.txt "width="/"height=" override the defaults (1024x768).
 // m_Options is constructed before m_Screen/m_2DGraphics, so it is safe to query here.
 #define OPT_W(opt)	((opt).GetWidth ()  != 0 ? (int) (opt).GetWidth ()  : SCREEN_WIDTH)
@@ -557,6 +576,33 @@ static void ReadWindowTheme (u32 *pAct, u32 *pInact, u32 *pText)
 	delete [] pData;
 }
 
+// Read SD:system.ini at boot for system-wide settings (currently just verbose=0/1).
+static void ReadSystemConfig (void)
+{
+	unsigned nSize = 0;
+	u8 *pData = LoadFileFromSD ("SD:system.ini", &nSize);
+	if (pData == 0) return;
+	const char *p = (const char *) pData, *pEnd = p + nSize;
+	while (p < pEnd)
+	{
+		const char *ls = p;
+		while (p < pEnd && *p != '\n' && *p != '\r') p++;
+		const char *le = p;
+		while (p < pEnd && (*p == '\n' || *p == '\r')) p++;
+		while (ls < le && (*ls == ' ' || *ls == '\t')) ls++;
+		if (ls >= le || *ls == '#' || *ls == ';') continue;
+		const char *eq = ls;
+		while (eq < le && *eq != '=') eq++;
+		if (eq >= le) continue;
+		const char *ke = eq;
+		while (ke > ls && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
+		const char *vs = eq + 1;
+		while (vs < le && (*vs == ' ' || *vs == '\t')) vs++;
+		if (KeyEq (ls, ke, "verbose")) g_bVerbose = (vs < le && *vs == '1');
+	}
+	delete [] pData;
+}
+
 // Re-tint the window chrome at runtime (the theme editor's Apply). Reloads wings.bmp
 // and bakes the new active/inactive tints, sets the title text colour. Atomic w.r.t.
 // the compositor: cooperative scheduling means no task switch happens between the
@@ -640,6 +686,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 
 	new CUserProcessTask (pElf, nSize, pElfPath, CLogger::Get (),
 			      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid);
+	VLOG ("proc", LogNotice, "spawn %s (parent pid %u)", pElfPath, nParentPid);
 	return pProc;
 }
 
@@ -873,6 +920,8 @@ boolean CKernel::Initialize (void)
 		{
 			m_bSDMounted = TRUE;
 			m_Logger.Write (FromKernel, LogNotice, "SD card mounted (SD:)");
+
+			ReadSystemConfig ();		// SD:system.ini -> verbose flag, etc.
 
 			// Load the widget skins (9-slice BMPs). Margins match SimpleOS's
 			// gui.bas. Missing skins -> flat fallback drawing.

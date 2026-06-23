@@ -35,4 +35,10 @@ const char *KernelGetKeyMap (void);
 // Re-tint the window chrome at runtime (theme editor Apply). Defined in kernel.cpp.
 void ApplyWindowTheme (u32 nActiveTint, u32 nInactiveTint, u32 nTitleTextColor);
 
+// Verbose-logging flag (defined in kernel.cpp): gates kernel lifecycle logs. The
+// extern lets other TUs gate their own logs with `if (g_bVerbose)`.
+extern boolean g_bVerbose;
+void KernelSetVerbose (boolean bOn);
+boolean KernelGetVerbose (void);
+
 #endif // _kern_applaunch_h

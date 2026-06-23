@@ -6,6 +6,8 @@
 #include <kern/stream.h>		// CStream + CProcess (stdio teardown)
 #include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA for the kapi table)
 #include <kern/kapitable.h>		// KApiTablePhys
+#include <kern/applaunch.h>		// g_bVerbose (gated lifecycle logging)
+#include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
 #include <circle/synchronize.h>		// DataSyncBarrier
@@ -367,6 +369,9 @@ void AddressSpaceTaskTerminate (CTask *pTask)
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
 	if (pAS != 0)
 	{
+		if (g_bVerbose)
+			CLogger::Get ()->Write ("proc", LogNotice, "exit: %s (pid %u)",
+						pTask->GetName (), pAS->GetPid ());
 		pTask->SetUserData (0, TASK_USER_DATA_USER);
 		delete pAS;
 	}

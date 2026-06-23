@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	19
+#define KAPI_ABI_VERSION	20
 
 #ifdef __cplusplus
 extern "C" {
@@ -211,6 +211,12 @@ struct TKApiTable
 	// their normal output). 1 + fills severity (0=panic..4=debug)/source/message, or
 	// 0 if empty. For a real-time log viewer (kmsg).
 	int (*klog_read) (int *severity, char *src, unsigned src_cap, char *msg, unsigned msg_cap);
+
+	// --- v20 additions (verbose logging) ---
+	// Toggle / read the kernel's verbose-logging flag (app lifecycle logs). The
+	// `verbose` command persists the choice in SD:system.ini.
+	int (*set_verbose) (int on);
+	int (*get_verbose) (void);
 };
 
 #ifdef __cplusplus

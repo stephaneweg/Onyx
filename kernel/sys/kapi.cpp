@@ -1056,6 +1056,11 @@ int kapi_set_keymap (const char *pName)
 	return KernelSetKeyMap (pName) ? 1 : 0;
 }
 
+// Verbose kernel logging: toggle (KernelSetVerbose, defined in kernel.cpp) + read.
+// The `verbose` command persists the choice to SD:system.ini itself.
+int kapi_set_verbose (int bOn) { KernelSetVerbose (bOn ? TRUE : FALSE); return 1; }
+int kapi_get_verbose (void) { return KernelGetVerbose () ? 1 : 0; }
+
 // Current layout name into pBuf (empty = boot default). Returns the length.
 int kapi_get_keymap (char *pBuf, unsigned nMax)
 {
