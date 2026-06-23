@@ -10,7 +10,8 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../../kernel/include
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf
+PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
+	  rm.elf mkdir.elf touch.elf cp.elf mv.elf
 
 all: $(PROGS)
 

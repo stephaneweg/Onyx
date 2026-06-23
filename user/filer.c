@@ -22,6 +22,10 @@ static char     g_isdir[MAXE];
 static int      g_count = 0;
 static int      g_sel = 0, g_top = 0;
 
+static int      g_mode = 0;		// 0 browse, 1 rename, 2 new folder
+static char     g_inb[NAMELEN];
+static int      g_inlen = 0;
+
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy (char *d, const char *s, int cap)
 {
@@ -117,10 +121,63 @@ static void fix_scroll (void)
 	if (g_top < 0) g_top = 0;
 }
 
+// Build "<g_path>/<name>" into out.
+static void full_path (const char *name, char *out, int cap)
+{
+	int p = 0;
+	for (; g_path[p] && p < cap - 1; p++) out[p] = g_path[p];
+	if (p > 0 && out[p - 1] != '/' && p < cap - 1) out[p++] = '/';
+	for (int k = 0; name[k] && p < cap - 1; k++) out[p++] = name[k];
+	out[p] = '\0';
+}
+
+static void delete_sel (void)
+{
+	if (g_sel < 0 || g_sel >= g_count) return;
+	if (g_isdir[g_sel] && g_name[g_sel][0] == '.' && g_name[g_sel][1] == '.') return;	// not ".."
+	char path[300];
+	full_path (g_name[g_sel], path, sizeof path);
+	kapi_remove (path);			// fails on non-empty dirs (FatFs)
+	read_dir ();
+}
+
+static void commit_input (void)
+{
+	g_inb[g_inlen] = '\0';
+	if (g_inlen > 0)
+	{
+		char dst[300];
+		full_path (g_inb, dst, sizeof dst);
+		if (g_mode == 1 && g_sel >= 0 && g_sel < g_count)
+		{
+			char src[300];
+			full_path (g_name[g_sel], src, sizeof src);
+			kapi_rename (src, dst);
+		}
+		else if (g_mode == 2)
+		{
+			kapi_mkdir (dst);
+		}
+	}
+	g_mode = 0; g_inlen = 0; g_inb[0] = '\0';
+	read_dir ();
+}
+
 static void on_key (unsigned long s, int ev, long key)
 {
 	(void) s;
 	if (ev != GUI_EVENT_KEY) return;
+
+	if (g_mode != 0)			// rename / new-folder input
+	{
+		if (key == KEY_ENTER) commit_input ();
+		else if (key == 27) { g_mode = 0; g_inlen = 0; }	// Esc cancels
+		else if (key == KEY_BACKSPACE) { if (g_inlen > 0) g_inb[--g_inlen] = '\0'; }
+		else if (key >= ' ' && key < 0x7f && g_inlen < (int) sizeof g_inb - 1)
+			{ g_inb[g_inlen++] = (char) key; g_inb[g_inlen] = '\0'; }
+		return;
+	}
+
 	switch (key)
 	{
 	case KEY_UP:   g_sel--; break;
@@ -129,6 +186,17 @@ static void on_key (unsigned long s, int ev, long key)
 	case KEY_PGDN: g_sel += g_rows; break;
 	case KEY_ENTER: open_sel (); break;
 	case KEY_BACKSPACE: go_up (); break;
+	case KEY_DEL: case 'd': case 'D': delete_sel (); break;
+	case 'r': case 'R':			// rename selected (prefill its name)
+		if (g_sel >= 0 && g_sel < g_count && g_name[g_sel][0] != '.')
+		{
+			g_mode = 1; g_inlen = 0;
+			for (int i = 0; g_name[g_sel][i] && g_inlen < (int) sizeof g_inb - 1; i++)
+				g_inb[g_inlen++] = g_name[g_sel][i];
+			g_inb[g_inlen] = '\0';
+		}
+		break;
+	case 'n': case 'N': g_mode = 2; g_inlen = 0; g_inb[0] = '\0'; break;	// new folder
 	}
 	fix_scroll ();
 }
@@ -159,6 +227,7 @@ static void redraw (void)
 	fill_rect (0, 0, W, H, 0x00202830);
 	fill_rect (0, 0, W, LISTY - 2, 0x00303d4d);
 	kapi_draw_text (8, 9, g_path, 0x00e0e0e0);
+	kapi_draw_text (W - 150, 9, "d:del r:ren n:new", 0x0090a0b0);
 
 	for (int r = 0; r < g_rows; r++)
 	{
@@ -182,6 +251,17 @@ static void redraw (void)
 			int tx = W - 12 - slen (sz) * g_fw;
 			kapi_draw_text (tx, y + 1, sz, 0x0090a0a8);
 		}
+	}
+
+	if (g_mode != 0)			// rename / new-folder input bar
+	{
+		int y = H - g_fh - 4;
+		fill_rect (0, y - 2, W, g_fh + 6, 0x00102030);
+		const char *lbl = (g_mode == 1) ? "rename: " : "new folder: ";
+		kapi_draw_text (6, y, lbl, 0x00ffd070);
+		int lx = 6 + slen (lbl) * g_fw;
+		kapi_draw_text (lx, y, g_inb, 0x00ffffff);
+		fill_rect (lx + g_inlen * g_fw, y, 2, g_fh, 0x0060ff90);
 	}
 }
 

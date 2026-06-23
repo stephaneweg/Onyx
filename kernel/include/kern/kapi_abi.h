@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	6
+#define KAPI_ABI_VERSION	7
 
 #ifdef __cplusplus
 extern "C" {
@@ -134,6 +134,12 @@ struct TKApiTable
 	// --- v6 additions ---
 	void  (*stream_eof) (void *h);		// signal EOF to readers (writer done)
 	int   (*proc_done) (void *proc);	// 1 if a spawned process has finished
+
+	// --- v7 additions ---
+	int   (*mkdir) (const char *path);	// 0 ok / -1
+	int   (*remove) (const char *path);	// file or empty dir
+	int   (*rename) (const char *from, const char *to);
+	void  (*cursor_pos) (int *x, int *y);	// cursor, relative to this window's client
 };
 
 #ifdef __cplusplus

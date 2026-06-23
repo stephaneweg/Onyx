@@ -72,6 +72,10 @@ void kapi_set_click_handler (gui_handler);
 void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
+int kapi_mkdir (const char *);
+int kapi_remove (const char *);
+int kapi_rename (const char *, const char *);
+void kapi_cursor_pos (int *, int *);
 
 void *kapi_pipe (void);
 void *kapi_file_in (const char *);
@@ -161,6 +165,10 @@ void KApiTableInit (void)
 	t->opendir           = kapi_opendir;
 	t->readdir           = kapi_readdir;
 	t->closedir          = kapi_closedir;
+	t->mkdir             = kapi_mkdir;
+	t->remove            = kapi_remove;
+	t->rename            = kapi_rename;
+	t->cursor_pos        = kapi_cursor_pos;
 
 	t->pipe              = kapi_pipe;
 	t->file_in           = kapi_file_in;

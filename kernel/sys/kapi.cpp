@@ -1048,6 +1048,44 @@ void kapi_closedir (void *pHandle)
 	}
 }
 
+// --- file operations ---------------------------------------------------------
+
+int kapi_mkdir (const char *pPath)
+{
+	return (pPath != 0 && f_mkdir (pPath) == FR_OK) ? 0 : -1;
+}
+
+int kapi_remove (const char *pPath)		// file or empty directory
+{
+	return (pPath != 0 && f_unlink (pPath) == FR_OK) ? 0 : -1;
+}
+
+int kapi_rename (const char *pFrom, const char *pTo)
+{
+	return (pFrom != 0 && pTo != 0 && f_rename (pFrom, pTo) == FR_OK) ? 0 : -1;
+}
+
+// Current cursor position relative to the calling window's client origin (so a
+// gadget can make its eyes follow the mouse even when it's outside the window).
+void kapi_cursor_pos (int *pX, int *pY)
+{
+	int cx = 0, cy = 0;
+	if (CWindowManager::Get () != 0)
+	{
+		cx = CWindowManager::Get ()->CursorX ();
+		cy = CWindowManager::Get ()->CursorY ();
+	}
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0)
+	{
+		cx -= pWin->X () + pWin->ChromeL ();
+		cy -= pWin->Y () + pWin->ChromeT ();
+	}
+	if (pX) *pX = cx;
+	if (pY) *pY = cy;
+}
+
 // Write a whole file (create/truncate). Returns bytes written, or -1 on error.
 int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 {

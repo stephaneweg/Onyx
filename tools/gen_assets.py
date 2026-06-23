@@ -240,6 +240,21 @@ def icon_paint():		# a palette with colour dabs
     pdisc(px, 18, 27, 3, (224, 192, 64))
     return px
 
+def icon_eyes():		# two googly eyes
+    px = blank()
+    pdisc(px, 14, 20, 9, (255, 255, 255)); pdisc(px, 16, 22, 3, (24, 24, 32))
+    pdisc(px, 28, 20, 9, (255, 255, 255)); pdisc(px, 30, 22, 3, (24, 24, 32))
+    return px
+
+def icon_sheet():		# a grid with a header row
+    px = blank()
+    prect(px, 6, 7, 33, 33, (236, 236, 238))
+    prect(px, 6, 7, 33, 12, (80, 150, 96))
+    pframe(px, 6, 7, 33, 33, (120, 120, 130))
+    for i in range(1, 4): prect(px, 6 + i * 7, 12, 6 + i * 7, 33, (175, 184, 190))
+    for j in range(1, 4): prect(px, 6, 12 + j * 5, 33, 12 + j * 5, (175, 184, 190))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -247,6 +262,7 @@ ICONS = {
     "2048": icon_2048, "life": icon_life, "pong": icon_pong, "sokoban": icon_sokoban,
     "calendar": icon_calendar, "mandelbrot": icon_mandel,
     "minesweeper": icon_mines, "paint": icon_paint,
+    "eyes": icon_eyes, "sheet": icon_sheet,
 }
 
 

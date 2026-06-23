@@ -234,6 +234,10 @@ public:
 	// window isn't registered.
 	void Raise (CWindow *pWindow);
 
+	// Current cursor position (screen coords). For gadgets that track the mouse.
+	int CursorX (void) const	{ return m_nCursorX; }
+	int CursorY (void) const	{ return m_nCursorY; }
+
 	// Clear the desktop and draw every window onto the screen image.
 	void Composite (GImage *pScreen);
 
