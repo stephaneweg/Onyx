@@ -866,8 +866,9 @@ boolean CKernel::Initialize (void)
 
 TShutdownMode CKernel::Run (void)
 {
+	m_Logger.Write (FromKernel, LogNotice, "Onyx -- a lean OS on Circle (codename Zircon)");
 	m_Logger.Write (FromKernel, LogNotice,
-			"Multi-process kernel on Circle (EL1 apps + direct kapi calls)");
+			"Multi-process kernel + GUI, EL1 apps via direct kapi calls");
 	m_Logger.Write (FromKernel, LogNotice, "Compiled on " __DATE__ " " __TIME__);
 
 	CMachineInfo *pInfo = CMachineInfo::Get ();

@@ -328,7 +328,7 @@ int main (void)
 	g_vcols = (W - 8) / g_fw; if (g_vcols < 1) g_vcols = 1;
 
 	kapi_set_key_handler (on_key);
-	term_puts ("Zircon terminal -- try: ls /bin | grep e\n");
+	term_puts ("Onyx terminal -- try: ls /bin | grep e\n");
 
 	while (!should_exit ())
 	{
