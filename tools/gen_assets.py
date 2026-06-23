@@ -83,7 +83,7 @@ def main():
         "demoA": (200, 60, 60),   "demoB": (60, 170, 80),
         "demoC": (220, 130, 40),  "demoD": (60, 110, 210),
         "demoE": (150, 80, 200),  "demoF": (40, 170, 175),
-        "tinypad": (230, 220, 210),
+        "tinypad": (230, 220, 210), "tinycalc": (90, 150, 120),
     }
     for name, col in colors.items():
         gen_icon(os.path.join(APPS, name + ".app", "icon.bmp"), col)

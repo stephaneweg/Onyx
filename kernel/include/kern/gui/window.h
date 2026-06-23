@@ -28,7 +28,7 @@
 #define WIN_COLOR_DESKTOP	0x00204060
 
 #define WM_MAX_WINDOWS		16
-#define WIN_MAX_WIDGETS		24	// panel taskbar needs quicklaunch + open-apps pool
+#define WIN_MAX_WIDGETS		40	// calculator needs a full scientific button grid
 #define WIN_EVENT_QUEUE		32
 
 // Window creation flags (kept numerically identical to user/kapi.h).

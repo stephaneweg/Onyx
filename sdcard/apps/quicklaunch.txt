@@ -2,6 +2,6 @@
 # (top to bottom). Blank lines and lines starting with '#' are ignored. The "apps"
 # button (below) opens the full list of every installed app.
 tinypad
+tinycalc
 demoA
 demoC
-demoD
