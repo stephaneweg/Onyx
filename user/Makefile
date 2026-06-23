@@ -14,7 +14,7 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
-	  panel.elf applist.elf tinypad.elf tinycalc.elf
+	  panel.elf applist.elf tinypad.elf tinycalc.elf inidemo.elf
 
 all: $(PROGS)
 
