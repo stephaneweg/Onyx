@@ -447,20 +447,29 @@ TShutdownMode CKernel::Run (void)
 	// exited): proves the kernel is still alive AFTER a reap -- if "alive N" keeps
 	// incrementing past "reap: done", the close succeeded and the static screen is
 	// just the stopped compositor, not a crash.
-	unsigned nTick = 0;
 	for (;;)
 	{
 		m_Scheduler.ReapTerminatedTasks ();
-		if (DebugConsoleActive () && (nTick % 5) == 0)
+
+		// Markers use WriteNoAlloc: NO heap allocation, so they still print even if
+		// delete pTask corrupted the heap. Long lines so the tail shows past the
+		// dead pixels. A = after the reap (before the yield); B = after the yield.
+		// If A shows but B never does -> the Yield hangs (your hypothesis). If
+		// neither shows after 'reap: done' -> the reap loop/return hangs. If both
+		// alternate -> the kernel is alive and only an allocation hangs.
+		if (DebugConsoleActive ())
 		{
-			// Long line, counter at the END so it shows past the dead pixels on
-			// the left of the display.
-			m_Logger.Write (FromKernel, LogNotice,
-					"kernel janitor still running and scheduling -- heartbeat tick = %u",
-					nTick / 5);
+			m_Logger.WriteNoAlloc (FromKernel, LogNotice,
+				"MARKER-A reaped, about to yield <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 		}
-		nTick++;
-		m_Scheduler.MsSleep (100);
+
+		m_Scheduler.MsSleep (100);			// -> Yield()
+
+		if (DebugConsoleActive ())
+		{
+			m_Logger.WriteNoAlloc (FromKernel, LogNotice,
+				"MARKER-B yield returned, kernel alive <<<<<<<<<<<<<<<<<<<<<<<");
+		}
 	}
 
 	return ShutdownHalt;
