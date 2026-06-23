@@ -1,7 +1,8 @@
 //
-// mandelbrot -- a fixed-point Mandelbrot explorer (Q8.24 in int64, no FP). Click to
-// zoom in (recenters on the click), 'o' zooms out, 'r' resets. Iteration count maps
-// to colour. Renders progressively (yields between row bands).
+// fractal browser -- a fixed-point escape-time explorer (Q4.28 in int64, no FP).
+// A dropdown (top-left) picks the fractal: Mandelbrot / Julia / Burning Ship /
+// Tricorn. Click to zoom in (recenters on the click), 'o' zooms out, 'r' resets.
+// Iteration count maps to colour. Renders progressively (yields between row bands).
 //
 #include "kapi.h"
 #include "applib.h"
@@ -9,6 +10,12 @@
 #define W	340
 #define RH	240			// render height (rows); status below
 #define H	(RH + 16)
+
+// Fractal types (dropdown order).
+#define FR_MANDEL	0
+#define FR_JULIA	1
+#define FR_SHIP		2
+#define FR_TRICORN	3
 
 // Fixed-point Q4.28 in int64: 28 fractional bits (was 24). During iteration |z|<2
 // until escape, so |a|,|b| <= 2^29 and a*b <= 2^58 -- safe in signed i64 (< 2^63).
@@ -24,11 +31,23 @@ static unsigned *fb;
 static i64 g_cx, g_cy, g_span;		// view center + width in the complex plane
 static int g_zoom = 0;			// zoom level (drives the iteration budget)
 static int g_maxit = MINITER;		// current iteration count (set per render)
+static int g_type = FR_MANDEL;		// current fractal
 static int g_dirty = 1;
+
+// Julia additive constant (~ -0.8 + 0.156i), a classic dendrite.
+#define JCR	(-(FONE * 4 / 5))
+#define JCI	(FONE * 156 / 1000)
+
+// Fractal-type dropdown (top-left, drawn over the canvas; see applib.h).
+static const char *const FRACTALS[] = { "Mandelbrot", "Julia", "Burning Ship", "Tricorn" };
+static ax_dropdown g_dd = { 4, 4, 120, 18, FRACTALS, 4, FR_MANDEL, 0 };
 
 static void reset_view (void)
 {
-	g_cx = -(FONE / 2); g_cy = 0; g_span = 3 * FONE;	// x in [-2, 1]
+	// Mandelbrot is centred on the cardioid; the others look best centred on 0.
+	g_cx = (g_type == FR_MANDEL) ? -(FONE / 2) : 0;
+	g_cy = 0;
+	g_span = 3 * FONE;
 	g_zoom = 0;
 	g_dirty = 1;
 }
@@ -62,14 +81,24 @@ static void render (void)
 		for (int px = 0; px < W; px++)
 		{
 			i64 cr = x0 + (i64) px * stepx;
-			i64 zr = 0, zi = 0;
+			// z starts at the pixel for Julia (c is fixed), at 0 otherwise (c = pixel).
+			i64 zr, zi, ar, ai;
+			if (g_type == FR_JULIA) { zr = cr; zi = ci; ar = JCR; ai = JCI; }
+			else                    { zr = 0;  zi = 0;  ar = cr;  ai = ci; }
 			int it = 0;
 			for (; it < g_maxit; it++)
 			{
-				i64 zr2 = fmul (zr, zr), zi2 = fmul (zi, zi);
+				i64 xr = zr, xi = zi;
+				if (g_type == FR_SHIP)		// burning ship folds onto |Re|,|Im|
+				{
+					if (xr < 0) xr = -xr;
+					if (xi < 0) xi = -xi;
+				}
+				i64 zr2 = fmul (xr, xr), zi2 = fmul (xi, xi);
 				if (zr2 + zi2 > esc) break;
-				zi = 2 * fmul (zr, zi) + ci;
-				zr = zr2 - zi2 + cr;
+				i64 cross = 2 * fmul (xr, xi);
+				zi = (g_type == FR_TRICORN ? -cross : cross) + ai;	// tricorn = conj(z)^2
+				zr = zr2 - zi2 + ar;
 			}
 			fb[py * W + px] = color (it);
 		}
@@ -91,6 +120,21 @@ static void on_click (unsigned long s, int ev, long val)
 	(void) s;
 	if (ev != GUI_EVENT_CANVAS_CLICK) return;
 	int px = (int) ((val >> 16) & 0xFFFF), py = (int) (val & 0xFFFF);
+
+	// The fractal-type dropdown takes the click first (open / close / select).
+	int wasopen = g_dd.open, old = g_dd.sel;
+	if (ax_dropdown_click (&g_dd, px, py))
+	{
+		if (g_dd.sel != old) { g_type = g_dd.sel; reset_view (); }
+		g_dirty = 1;			// re-render to erase the (closed) list area
+		return;
+	}
+	if (wasopen && !g_dd.open)		// click-away dismissed the list: just close it
+	{
+		g_dirty = 1;
+		return;
+	}
+
 	if (py >= RH) return;
 	// Stop zooming once a pixel step would lose sub-pixel precision (fixed-point
 	// floor), otherwise the whole view collapses to one colour. ~20 levels at Q4.28.
@@ -113,7 +157,7 @@ static void on_key (unsigned long s, int ev, long key)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "mandelbrot");
+	fb = kapi_create_window (W, H, "fractal");
 	if (fb == 0) return 1;
 	reset_view ();
 	kapi_set_click_handler (on_click);
@@ -122,6 +166,7 @@ int main (void)
 	{
 		pump_events ();
 		if (g_dirty) render ();
+		ax_dropdown_draw (&g_dd, fb, W, H);	// overlay on top, every frame
 		msleep (30);
 	}
 	return 0;

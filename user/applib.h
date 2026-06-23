@@ -171,4 +171,139 @@ static inline int app_ini_get_int (const char *section, const char *key, int def
 	return (int) (neg ? -r : r);
 }
 
+// ---- app-drawn widgets: dropdown + colour picker ----------------------------
+//
+// These are NOT kernel widgets: the app renders them into its own window canvas
+// (fb, width W, height H) and routes clicks through its canvas-click handler. The
+// owning app redraws each frame; the open "overlay" (list / palette) is drawn last
+// so it sits on top. Click handlers return 1 if they consumed the click.
+//
+// Drawing primitives into the app canvas (clipped to W x H).
+static inline void ax_fill (unsigned *fb, int W, int H, int x, int y, int w, int h, unsigned c)
+{
+	for (int yy = y; yy < y + h; yy++)
+		if (yy >= 0 && yy < H)
+			for (int xx = x; xx < x + w; xx++)
+				if (xx >= 0 && xx < W) fb[yy * W + xx] = c;
+}
+static inline void ax_frame (unsigned *fb, int W, int H, int x, int y, int w, int h, unsigned c)
+{
+	ax_fill (fb, W, H, x, y, w, 1, c);
+	ax_fill (fb, W, H, x, y + h - 1, w, 1, c);
+	ax_fill (fb, W, H, x, y, 1, h, c);
+	ax_fill (fb, W, H, x + w - 1, y, 1, h, c);
+}
+
+// ---- dropdown ----
+typedef struct {
+	int x, y, w, h;			// closed box rect (canvas coords)
+	const char *const *opts;	// option labels
+	int nopts;
+	int sel;			// selected index
+	int open;			// list expanded?
+} ax_dropdown;
+
+static inline void ax_dropdown_draw (ax_dropdown *d, unsigned *fb, int W, int H)
+{
+	ax_fill (fb, W, H, d->x, d->y, d->w, d->h, 0x00203040);
+	ax_frame (fb, W, H, d->x, d->y, d->w, d->h, 0x00708ca8);
+	if (d->sel >= 0 && d->sel < d->nopts)
+		kapi_draw_text (d->x + 6, d->y + (d->h - 16) / 2, d->opts[d->sel], 0x00e6e6e6);
+	kapi_draw_text (d->x + d->w - 14, d->y + (d->h - 16) / 2, d->open ? "^" : "v", 0x0090b0c8);
+	if (d->open)
+		for (int i = 0; i < d->nopts; i++)
+		{
+			int ry = d->y + d->h + i * d->h;
+			ax_fill (fb, W, H, d->x, ry, d->w, d->h, i == d->sel ? 0x00355070 : 0x00182838);
+			ax_frame (fb, W, H, d->x, ry, d->w, d->h, 0x00405468);
+			kapi_draw_text (d->x + 6, ry + (d->h - 16) / 2, d->opts[i], 0x00e6e6e6);
+		}
+}
+
+// Route a canvas click. Returns 1 if consumed (opened/closed/selected). When an
+// option is picked, sel is updated and the list closes.
+static inline int ax_dropdown_click (ax_dropdown *d, int cx, int cy)
+{
+	if (d->open)
+	{
+		if (cx >= d->x && cx < d->x + d->w && cy >= d->y + d->h
+		    && cy < d->y + d->h * (1 + d->nopts))
+		{
+			d->sel = (cy - (d->y + d->h)) / d->h;
+			d->open = 0;
+			return 1;
+		}
+		d->open = 0;		// click elsewhere: close
+	}
+	if (cx >= d->x && cx < d->x + d->w && cy >= d->y && cy < d->y + d->h)
+	{
+		d->open = !d->open;
+		return 1;
+	}
+	return 0;
+}
+
+// ---- colour picker (fixed palette grid) ----
+#define AX_PAL_COLS	8
+#define AX_PAL_ROWS	5
+#define AX_PAL_CELL	18
+
+// 40-colour palette: a grey ramp + four hue rows at increasing brightness.
+static inline unsigned ax_palette_color (int i)
+{
+	static const unsigned pal[AX_PAL_COLS * AX_PAL_ROWS] = {
+		0x00000000,0x00202020,0x00404040,0x00606060,0x00909090,0x00c0c0c0,0x00e8e8e8,0x00ffffff,
+		0x00400000,0x00800000,0x00c02020,0x00ff4040,0x00ff8080,0x00ffc0c0,0x00ffe0a0,0x00ffd040,
+		0x00204000,0x00308020,0x0040c040,0x0060ff60,0x00a0ffa0,0x0020c0a0,0x0040e0d0,0x00a0ffe0,
+		0x00002040,0x00204080,0x004078c0,0x004890e0,0x0080b0ff,0x00a0c8ff,0x00c0d8ff,0x00e0ecff,
+		0x00200040,0x00502080,0x008040c0,0x00b060e0,0x00d0a0ff,0x00ff60c0,0x00ffa0d8,0x00ffd0a0,
+	};
+	return (i >= 0 && i < AX_PAL_COLS * AX_PAL_ROWS) ? pal[i] : 0;
+}
+
+typedef struct {
+	int x, y, w, h;		// swatch rect
+	unsigned color;		// current colour (0x00RRGGBB)
+	int open;		// palette expanded?
+} ax_colorpick;
+
+static inline void ax_colorpick_draw (ax_colorpick *p, unsigned *fb, int W, int H)
+{
+	ax_fill (fb, W, H, p->x, p->y, p->w, p->h, p->color);
+	ax_frame (fb, W, H, p->x, p->y, p->w, p->h, 0x00ffffff);
+	ax_frame (fb, W, H, p->x - 1, p->y - 1, p->w + 2, p->h + 2, 0x00000000);
+	if (p->open)
+		for (int r = 0; r < AX_PAL_ROWS; r++)
+			for (int c = 0; c < AX_PAL_COLS; c++)
+			{
+				int gx = p->x + c * AX_PAL_CELL, gy = p->y + p->h + 2 + r * AX_PAL_CELL;
+				ax_fill (fb, W, H, gx, gy, AX_PAL_CELL, AX_PAL_CELL,
+					 ax_palette_color (r * AX_PAL_COLS + c));
+				ax_frame (fb, W, H, gx, gy, AX_PAL_CELL, AX_PAL_CELL, 0x00303030);
+			}
+}
+
+static inline int ax_colorpick_click (ax_colorpick *p, int cx, int cy)
+{
+	if (p->open)
+	{
+		int gx0 = p->x, gy0 = p->y + p->h + 2;
+		if (cx >= gx0 && cx < gx0 + AX_PAL_COLS * AX_PAL_CELL
+		    && cy >= gy0 && cy < gy0 + AX_PAL_ROWS * AX_PAL_CELL)
+		{
+			int c = (cx - gx0) / AX_PAL_CELL, r = (cy - gy0) / AX_PAL_CELL;
+			p->color = ax_palette_color (r * AX_PAL_COLS + c);
+			p->open = 0;
+			return 1;
+		}
+		p->open = 0;
+	}
+	if (cx >= p->x && cx < p->x + p->w && cy >= p->y && cy < p->y + p->h)
+	{
+		p->open = !p->open;
+		return 1;
+	}
+	return 0;
+}
+
 #endif
