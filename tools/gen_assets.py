@@ -8,11 +8,12 @@
 #
 # Run from the repo root:  python3 tools/gen_assets.py
 #
-import os, struct
+import os, struct, math
 
 ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APPS    = os.path.join(ROOT, "sdcard", "apps")
 MAGENTA = (255, 0, 255)          # GIMAGE_TRANSPARENT key (R,G,B)
+SZ      = 40                     # icon size
 
 
 def write_bmp(path, w, h, pixels):
@@ -59,6 +60,107 @@ def gen_icon(path, fill):
     write_bmp(path, 40, 40, rounded_tile(40, 40, fill))
 
 
+# ---- small drawing primitives on a 40x40 (magenta-transparent) canvas ----------
+
+def blank():
+    return [MAGENTA] * (SZ * SZ)
+
+def pset(px, x, y, c):
+    if 0 <= x < SZ and 0 <= y < SZ:
+        px[y * SZ + x] = c
+
+def prect(px, x0, y0, x1, y1, c):
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            pset(px, x, y, c)
+
+def pframe(px, x0, y0, x1, y1, c):
+    for x in range(x0, x1 + 1):
+        pset(px, x, y0, c); pset(px, x, y1, c)
+    for y in range(y0, y1 + 1):
+        pset(px, x0, y, c); pset(px, x1, y, c)
+
+def pdisc(px, cx, cy, r, c):
+    for y in range(cy - r, cy + r + 1):
+        for x in range(cx - r, cx + r + 1):
+            if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                pset(px, x, y, c)
+
+# ---- evocative per-app icons ----------------------------------------------------
+
+def icon_tinypad():		# a text document with lines
+    px = blank()
+    white, ink, bord = (245, 245, 245), (70, 100, 150), (90, 90, 110)
+    prect(px, 8, 4, 31, 35, white)
+    pframe(px, 8, 4, 31, 35, bord)
+    for i, yy in enumerate(range(10, 33, 5)):
+        prect(px, 12, yy, 12 + (19 if i % 2 == 0 else 12), yy + 1, ink)
+    return px
+
+def icon_tinycalc():		# a calculator: screen + button grid
+    px = blank()
+    body, scr, btn = (70, 80, 95), (150, 230, 170), (205, 210, 220)
+    prect(px, 6, 4, 33, 35, body)
+    pframe(px, 6, 4, 33, 35, (40, 46, 56))
+    prect(px, 9, 7, 30, 13, scr)
+    for r in range(3):
+        for c in range(3):
+            x, y = 9 + c * 8, 17 + r * 6
+            prect(px, x, y, x + 5, y + 3, btn)
+    return px
+
+def icon_inidemo():		# a gear (settings/config)
+    px = blank()
+    steel, hole = (195, 165, 85), (60, 55, 40)
+    cx, cy = 20, 20
+    for k in range(8):
+        a = k * math.pi / 4
+        tx, ty = int(cx + 13 * math.cos(a)), int(cy + 13 * math.sin(a))
+        prect(px, tx - 3, ty - 3, tx + 3, ty + 3, steel)
+    pdisc(px, cx, cy, 11, steel)
+    pdisc(px, cx, cy, 4, hole)
+    return px
+
+def icon_tetris():		# a purple T-tetromino
+    px = blank()
+    fill, edge = (180, 75, 210), (115, 40, 150)
+    b = 10
+    for (gx, gy) in [(0, 0), (1, 0), (2, 0), (1, 1)]:
+        x, y = 5 + gx * b, 9 + gy * b
+        prect(px, x, y, x + b - 2, y + b - 2, fill)
+        pframe(px, x, y, x + b - 2, y + b - 2, edge)
+    return px
+
+def icon_snake():		# a green snake + red food
+    px = blank()
+    body, edge, red, eye = (50, 195, 80), (20, 120, 45), (235, 70, 70), (10, 10, 10)
+    b = 8
+    for (gx, gy) in [(0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (3, 0)]:
+        x, y = 4 + gx * b, 8 + gy * b
+        prect(px, x, y, x + b - 1, y + b - 1, body)
+        pframe(px, x, y, x + b - 1, y + b - 1, edge)
+    hx, hy = 4 + 3 * b, 8                       # head: add an eye
+    pset(px, hx + 5, hy + 2, eye); pset(px, hx + 5, hy + 3, eye)
+    pdisc(px, 33, 31, 3, red)                   # food
+    return px
+
+def icon_same():		# a grid of 4 coloured blocks (SameGame)
+    px = blank()
+    cols = [(224, 80, 80), (80, 176, 96), (64, 128, 224), (224, 192, 64)]
+    pat = [[0, 1, 2, 3], [1, 1, 0, 2], [2, 0, 3, 3], [3, 2, 1, 0]]
+    b = 9
+    for r in range(4):
+        for c in range(4):
+            x, y = 4 + c * b, 4 + r * b
+            prect(px, x, y, x + b - 2, y + b - 2, cols[pat[r][c]])
+    return px
+
+ICONS = {
+    "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
+    "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
+}
+
+
 def gen_apps_glyph(path, w=40, h=40):
     # Nine white squares (3x3) on a magenta (transparent) field.
     px = [MAGENTA] * (w * h)
@@ -79,16 +181,18 @@ def main():
     #  CWindowManager::GenerateWallpaper / kapi_wallpaper_generate.)
     gen_apps_glyph(os.path.join(APPS, "panel.app", "apps.bmp"))
 
-    colors = {
-        "demoA": (200, 60, 60),   "demoB": (60, 170, 80),
-        "demoC": (220, 130, 40),  "demoD": (60, 110, 210),
-        "demoE": (150, 80, 200),  "demoF": (40, 170, 175),
-        "tinypad": (230, 220, 210), "tinycalc": (90, 150, 120),
-        "inidemo": (170, 130, 60),
-        "tetris": (180, 60, 200), "snake": (80, 200, 90), "same": (220, 180, 40),
+    # Demos keep plain coloured tiles.
+    demos = {
+        "demoA": (200, 60, 60),  "demoB": (60, 170, 80),
+        "demoC": (220, 130, 40), "demoD": (60, 110, 210),
+        "demoE": (150, 80, 200), "demoF": (40, 170, 175),
     }
-    for name, col in colors.items():
+    for name, col in demos.items():
         gen_icon(os.path.join(APPS, name + ".app", "icon.bmp"), col)
+
+    # Real apps get evocative icons.
+    for name, fn in ICONS.items():
+        write_bmp(os.path.join(APPS, name + ".app", "icon.bmp"), SZ, SZ, fn())
     print("done.")
 
 
