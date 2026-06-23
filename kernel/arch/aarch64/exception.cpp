@@ -6,12 +6,49 @@
 // InterruptHandler() for GIC dispatch (called directly from the IRQ stub).
 //
 #include <kern/trapframe.h>
+#include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
+#include <circle/2dgraphics.h>
+#include <circle/string.h>
 #include <circle/exception.h>		// EXCEPTION_* codes
 #include <circle/exceptionstub.h>	// TAbortFrame, ExceptionHandler()
 #include <circle/logger.h>
 #include <circle/startup.h>		// halt()
 #include <circle/types.h>
+
+// Panic surface: the framebuffer actually shown on HDMI (the compositor's
+// C2DGraphics). Once the compositor runs, the boot console (m_Screen) is no
+// longer scanned out, so an exception dump there is invisible. We paint a
+// visible red panic with the key registers onto the displayed buffer instead.
+static C2DGraphics *s_pPanicGraphics = 0;
+
+void SetPanicGraphics (C2DGraphics *p2D)
+{
+	s_pPanicGraphics = p2D;
+}
+
+static void PanicToScreen (unsigned nEC, u64 ulELR, u64 ulFAR, u64 ulSPSR)
+{
+	if (s_pPanicGraphics == 0)
+	{
+		return;
+	}
+
+	int nW = (int) s_pPanicGraphics->GetWidth ();
+	int nH = (int) s_pPanicGraphics->GetHeight ();
+	GImage Img ((u32 *) s_pPanicGraphics->GetBuffer (), nW, nH);
+
+	Img.Clear (0x00500000);						// dark red
+	Img.DrawText (16, 16, "*** KERNEL PANIC (exception) ***", 0x00FFFFFF);
+
+	CString Line;
+	Line.Format ("EC=0x%x  ELR=%lp", nEC, (void *) ulELR);
+	Img.DrawText (16, 40, (const char *) Line, 0x00FFFF00);
+	Line.Format ("FAR=%lp  SPSR=%lp", (void *) ulFAR, (void *) ulSPSR);
+	Img.DrawText (16, 56, (const char *) Line, 0x00FFFF00);
+
+	s_pPanicGraphics->UpdateDisplay ();				// push to the display
+}
 
 // ESR_EL1 exception classes we care about
 #define EC_SVC64		0x15	// SVC from AArch64
@@ -47,6 +84,11 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 	Frame.sp_el1   = (u64) pFrame + TF_SIZE;	// kernel SP at the moment of trap
 	Frame.far_el1  = ReadFAR ();
 	Frame.unused   = 0;
+
+	// Paint a visible panic on the displayed framebuffer FIRST (the boot console
+	// is no longer on screen once the compositor runs).
+	PanicToScreen ((unsigned) ((Frame.esr_el1 >> 26) & 0x3F),
+		       pFrame->elr_el1, Frame.far_el1, pFrame->spsr_el1);
 
 	ExceptionHandler (nException, &Frame);		// never returns
 

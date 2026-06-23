@@ -25,6 +25,7 @@
 #include <SDCard/emmc.h>
 #include <fatfs/ff.h>
 #include <kern/gui/window.h>		// also defines SCREEN_WIDTH / SCREEN_HEIGHT
+#include <kern/debugcon.h>		// on-screen debug console (post-mortem visibility)
 
 enum TShutdownMode
 {
@@ -65,6 +66,8 @@ private:
 	CUSBHCIDevice		m_USB;			// USB host: mouse + keyboard (#13)
 	CScheduler		m_Scheduler;		// our preemptive-ready scheduler (#3)
 	CWindowManager		m_WindowManager;	// compositor (#10)
+	CFbConsole		m_FbConsole;		// debug console on the displayed FB
+	CLogSwitch		m_LogSwitch;		// logger target: boot console -> debug FB
 
 	boolean			m_bGraphics;		// framebuffer available?
 	boolean			m_bSDMounted;		// SD card mounted?

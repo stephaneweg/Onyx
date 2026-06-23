@@ -25,6 +25,7 @@ OBJS = \
 	proc/elf.o \
 	sys/syscall.o \
 	sys/kapi.o \
+	sys/debugcon.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 

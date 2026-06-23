@@ -13,6 +13,7 @@
 #include <kern/addrspace.h>
 #include <kern/layout.h>
 #include <kern/gui/window.h>
+#include <kern/debugcon.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -214,6 +215,11 @@ void kapi_exit (int /*nStatus*/)
 		}
 	}
 
+	// Switch the display to the debug console at the exit of the run: stop the
+	// compositor, clear the screen, and route ALL logger output to the displayed
+	// framebuffer. From here on every message (and the last line before a hang) is
+	// visible -- this is the diagnostic channel for the teardown path.
+	DebugConsoleTakeover ();
 	CLogger::Get ()->Write ("app", LogNotice, "exit: window removed, leaving app AS");
 
 	// Switch OFF the app's page table before terminating. Everything from here on

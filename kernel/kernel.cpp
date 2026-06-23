@@ -17,6 +17,10 @@
 
 static const char FromKernel[] = "kernel";
 
+// Defined in arch/aarch64/exception.cpp: route kernel panics to this displayed
+// framebuffer so an exception is visible after the compositor takes the screen.
+void SetPanicGraphics (C2DGraphics *p2D);
+
 //
 // CUserProcessTask (Option C): launch an ELF as an EL1 app in its own address
 // space. The thread builds a private address space, loads the ELF segments
@@ -101,6 +105,13 @@ public:
 		int nH = (int) m_p2D->GetHeight ();
 		for (;;)
 		{
+			if (DebugConsoleActive ())
+			{
+				// An app exited: the debug console owns the display now. Stop
+				// presenting so we don't fight it for the framebuffer.
+				CScheduler::Get ()->MsSleep (100);
+				continue;
+			}
 			GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
 			m_pWM->Composite (&Screen);
 			m_p2D->UpdateDisplay ();
@@ -222,6 +233,7 @@ CKernel::CKernel (void)
 	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT, FALSE),	// VSync off: avoid page-flip present
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
 	m_USB (&m_Interrupt, &m_Timer, TRUE),			// TRUE: enable plug-and-play
+	m_FbConsole (&m_2DGraphics),
 	m_bGraphics (FALSE),
 	m_bSDMounted (FALSE),
 	m_bUSB (FALSE)
@@ -283,9 +295,12 @@ boolean CKernel::Initialize (void)
 
 	if (bOK)
 	{
-		// Log to the HDMI screen: if the kernel runs at all, you will SEE the boot
-		// log on the display (replacing the firmware rainbow) -- no serial needed.
-		bOK = m_Logger.Initialize (&m_Screen);
+		// Log through a switch: normally the HDMI boot console (m_Screen). When an
+		// app exits we flip it to the framebuffer console so messages stay visible
+		// after the compositor takes the display.
+		m_LogSwitch.SetNormal (&m_Screen);
+		DebugConsoleRegister (&m_LogSwitch, &m_FbConsole);
+		bOK = m_Logger.Initialize (&m_LogSwitch);
 	}
 
 	if (bOK)
@@ -321,6 +336,12 @@ boolean CKernel::Initialize (void)
 		if (!m_bGraphics)
 		{
 			m_Logger.Write (FromKernel, LogWarning, "no framebuffer/display");
+		}
+		else
+		{
+			// Route kernel panics to the displayed framebuffer (the boot console
+			// stops being scanned out once the compositor takes over).
+			SetPanicGraphics (&m_2DGraphics);
 		}
 	}
 
