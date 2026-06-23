@@ -16,6 +16,8 @@
 #include <circle/types.h>
 
 class CWindow;
+class CStream;
+struct CProcess;
 
 class CAddressSpace
 {
@@ -48,6 +50,18 @@ public:
 	void SetWindow (CWindow *pWindow)	{ m_pWindow = pWindow; }
 	CWindow *GetWindow (void)		{ return m_pWindow; }
 
+	// stdio: streams owned by this process (released on teardown; stdout gets a
+	// CloseWrite so its reader sees EOF). A spawned process also has a CProcess
+	// handle (its done/status set on teardown) and an argv string.
+	void SetStdin (CStream *p)		{ m_pStdin = p; }
+	CStream *GetStdin (void)		{ return m_pStdin; }
+	void SetStdout (CStream *p)		{ m_pStdout = p; }
+	CStream *GetStdout (void)		{ return m_pStdout; }
+	void SetProcess (CProcess *p)		{ m_pProcess = p; }
+	void SetExitStatus (int n)		{ m_nExitStatus = n; }
+	void SetArgs (const char *pArgs);
+	const char *GetArgs (void)		{ return m_Args; }
+
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
 
@@ -55,6 +69,12 @@ private:
 	TARMV8MMU_LEVEL2_DESCRIPTOR *m_pL2;	// this process's L2 table (one 64 KB page)
 	u8			     m_nASID;
 	CWindow			    *m_pWindow;
+
+	CStream			    *m_pStdin;	// stdio streams (refs released on teardown)
+	CStream			    *m_pStdout;
+	CProcess		    *m_pProcess; // spawn handle (done/status set on teardown)
+	int			     m_nExitStatus;
+	char			     m_Args[256]; // argv string for the child (kapi_get_args)
 };
 
 // Capture the kernel's TTBR0 base (call once, after the MMU is up) so kernel-only

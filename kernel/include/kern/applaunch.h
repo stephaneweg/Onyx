@@ -14,4 +14,11 @@
 
 boolean LaunchAppByName (const char *pName);
 
+// Spawn a console process (ELF at pElfPath) with stdin/stdout streams + argv.
+// Returns a CProcess* handle, or 0 on failure. Defined in kernel.cpp.
+class CStream;
+struct CProcess;
+CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
+			CStream *pStdin, CStream *pStdout);
+
 #endif // _kern_applaunch_h

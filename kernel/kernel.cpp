@@ -13,6 +13,7 @@
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
+#include <kern/stream.h>
 #include <kern/kapitable.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
@@ -37,11 +38,21 @@ class CUserProcessTask : public CTask
 {
 public:
 	// Large stack: the app and the kernel functions it calls share this thread stack.
-	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger)
+	// pStdin/pStdout/pProcess/pArgs are for spawned processes (default 0 for plain
+	// launches): the streams + spawn handle are installed into the address space so
+	// the app's stdio + exit status work; pArgs becomes kapi_get_args.
+	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger,
+			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
+			  const char *pArgs = 0)
 	:	CTask (0x40000),	// 256 KB
-		m_pELF (pELF), m_nSize (nSize), m_pLogger (pLogger)
+		m_pELF (pELF), m_nSize (nSize), m_pLogger (pLogger),
+		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess)
 	{
 		SetName (pName);	// copies into CTask::m_Name (caller's may be transient)
+		unsigned i = 0;
+		if (pArgs != 0)
+			for (; pArgs[i] != '\0' && i < sizeof (m_Args) - 1; i++) m_Args[i] = pArgs[i];
+		m_Args[i] = '\0';
 	}
 
 	void Run (void) override
@@ -50,8 +61,16 @@ public:
 		if (pAS == 0 || !pAS->IsValid ())
 		{
 			m_pLogger->Write (GetName (), LogError, "address space creation failed");
+			if (m_pProcess != 0) { m_pProcess->nStatus = -1; m_pProcess->bDone = TRUE; }
 			return;
 		}
+
+		// Install stdio + spawn handle + argv before the app runs (the AS owns the
+		// stream refs from here, and releases them / marks the process on teardown).
+		pAS->SetStdin (m_pStdin);
+		pAS->SetStdout (m_pStdout);
+		pAS->SetProcess (m_pProcess);
+		pAS->SetArgs (m_Args);
 
 		u64 ulEntry = 0;
 		boolean bLoaded = LoadELF (m_pELF, m_nSize, pAS, &ulEntry);
@@ -86,6 +105,10 @@ private:
 	const u8   *m_pELF;
 	unsigned    m_nSize;
 	CLogger	   *m_pLogger;
+	CStream	   *m_pStdin;
+	CStream	   *m_pStdout;
+	CProcess   *m_pProcess;
+	char	    m_Args[256];
 };
 
 //
@@ -357,6 +380,41 @@ boolean LaunchAppByName (const char *pName)
 		return FALSE;
 	}
 	return LaunchApp (pName, CLogger::Get ());
+}
+
+// Spawn a console process: load the ELF at pElfPath and run it with the given
+// stdin/stdout streams + argv. Returns a CProcess handle (poll/free with kapi_wait),
+// or 0 on failure. The child address space takes a ref on each stream (the caller
+// keeps its own); the handle's done/status are set when the child exits.
+CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
+			CStream *pStdin, CStream *pStdout)
+{
+	if (pElfPath == 0)
+	{
+		return 0;
+	}
+	unsigned nSize = 0;
+	const u8 *pElf = LoadFileFromSD (pElfPath, &nSize);
+	if (pElf == 0)
+	{
+		return 0;
+	}
+
+	CProcess *pProc = new CProcess;
+	if (pProc == 0)
+	{
+		delete [] (u8 *) pElf;
+		return 0;
+	}
+	pProc->bDone = FALSE;
+	pProc->nStatus = 0;
+
+	if (pStdin  != 0) pStdin->AddRef ();		// the child AS will release these
+	if (pStdout != 0) pStdout->AddRef ();
+
+	new CUserProcessTask (pElf, nSize, pElfPath, CLogger::Get (),
+			      pStdin, pStdout, pProc, pArgs);
+	return pProc;
 }
 
 // Log the .app subdirectories of /apps (validates FatFs directory enumeration;

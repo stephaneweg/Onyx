@@ -106,6 +106,19 @@ static inline void *kapi_opendir (const char *p) { return KT->opendir (p); }
 static inline int  kapi_readdir (void *d, struct kapi_dirent *e) { return KT->readdir (d, e); }
 static inline void kapi_closedir (void *d) { KT->closedir (d); }
 
+// --- stdio / streams / processes ---------------------------------------------
+static inline void *kapi_pipe (void) { return KT->pipe (); }
+static inline void *kapi_file_in (const char *p) { return KT->file_in (p); }
+static inline void *kapi_file_out (const char *p, int append) { return KT->file_out (p, append); }
+static inline int  kapi_stream_read (void *h, void *b, unsigned n) { return KT->stream_read (h, b, n); }
+static inline int  kapi_stream_write (void *h, const void *b, unsigned n) { return KT->stream_write (h, b, n); }
+static inline void kapi_stream_close (void *h) { KT->stream_close (h); }
+static inline int  kapi_stdin_read (void *b, unsigned n) { return KT->stdin_read (b, n); }
+static inline int  kapi_stdout_write (const void *b, unsigned n) { return KT->stdout_write (b, n); }
+static inline void *kapi_spawn (const char *path, const char *args, void *in, void *out) { return KT->spawn (path, args, in, out); }
+static inline int  kapi_wait (void *proc) { return KT->wait (proc); }
+static inline int  kapi_get_args (char *b, unsigned n) { return KT->get_args (b, n); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }

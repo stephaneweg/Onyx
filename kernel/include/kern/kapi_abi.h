@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	3
+#define KAPI_ABI_VERSION	4
 
 #ifdef __cplusplus
 extern "C" {
@@ -114,6 +114,19 @@ struct TKApiTable
 	void *(*opendir) (const char *path);
 	int   (*readdir) (void *dir, struct kapi_dirent *ent);
 	void  (*closedir) (void *dir);
+
+	// --- v4 additions (stdio / streams / processes) ---
+	void *(*pipe) (void);				// in-memory FIFO stream
+	void *(*file_in) (const char *path);		// file -> stream (read)
+	void *(*file_out) (const char *path, int append); // stream -> file (trunc/append)
+	int   (*stream_read) (void *h, void *buf, unsigned len);   // 0 = EOF
+	int   (*stream_write) (void *h, const void *buf, unsigned len);
+	void  (*stream_close) (void *h);		// drop a ref
+	int   (*stdin_read) (void *buf, unsigned len);	// this task's stdin (0 = EOF)
+	int   (*stdout_write) (const void *buf, unsigned len);	// this task's stdout
+	void *(*spawn) (const char *path, const char *args, void *in, void *out); // -> proc
+	int   (*wait) (void *proc);			// block (cooperative) -> exit status
+	int   (*get_args) (char *buf, unsigned size);	// this task's argv string
 };
 
 #ifdef __cplusplus

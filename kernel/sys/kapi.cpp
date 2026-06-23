@@ -12,6 +12,7 @@
 //
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
+#include <kern/stream.h>		// CStream / CPipeStream / CFileStream / CProcess
 #include <kern/kapi_abi.h>		// struct kapi_dirent
 #include <kern/layout.h>
 #include <kern/gui/window.h>
@@ -611,7 +612,7 @@ void kapi_yield (void)
 	}
 }
 
-void kapi_exit (int /*nStatus*/)
+void kapi_exit (int nStatus)
 {
 	// Detach the window from the compositor NOW, in the app's own context (IRQs
 	// enabled), so the compositor stops drawing it the instant the app exits --
@@ -627,6 +628,7 @@ void kapi_exit (int /*nStatus*/)
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS != 0)
 	{
+		pAS->SetExitStatus (nStatus);		// surfaced to a waiter via kapi_wait
 		CWindow *pWin = pAS->GetWindow ();
 		if (pWin != 0 && CWindowManager::Get () != 0)
 		{
@@ -869,6 +871,107 @@ void kapi_close (void *pHandle)
 		f_close ((FIL *) pHandle);
 		delete (FIL *) pHandle;
 	}
+}
+
+// --- streams / stdio / processes ---------------------------------------------
+
+void *kapi_pipe (void)
+{
+	return new CPipeStream;
+}
+
+void *kapi_file_in (const char *pPath)
+{
+	CFileStream *pFile = new CFileStream (pPath, 0);
+	if (pFile == 0) return 0;
+	if (!pFile->IsValid ()) { delete pFile; return 0; }
+	return pFile;
+}
+
+void *kapi_file_out (const char *pPath, int bAppend)
+{
+	CFileStream *pFile = new CFileStream (pPath, bAppend ? 2 : 1);
+	if (pFile == 0) return 0;
+	if (!pFile->IsValid ()) { delete pFile; return 0; }
+	return pFile;
+}
+
+int kapi_stream_read (void *pHandle, void *pBuf, unsigned nLen)
+{
+	return pHandle != 0 ? ((CStream *) pHandle)->Read (pBuf, nLen) : 0;
+}
+
+int kapi_stream_write (void *pHandle, const void *pBuf, unsigned nLen)
+{
+	return pHandle != 0 ? ((CStream *) pHandle)->Write (pBuf, nLen) : -1;
+}
+
+void kapi_stream_close (void *pHandle)
+{
+	if (pHandle != 0) ((CStream *) pHandle)->Release ();
+}
+
+// Read from this task's stdin (0 = EOF / no stdin).
+int kapi_stdin_read (void *pBuf, unsigned nLen)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CStream *pStream = pAS != 0 ? pAS->GetStdin () : 0;
+	return pStream != 0 ? pStream->Read (pBuf, nLen) : 0;
+}
+
+// Write to this task's stdout; if none (e.g. launched from the panel), log it.
+int kapi_stdout_write (const void *pBuf, unsigned nLen)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CStream *pStream = pAS != 0 ? pAS->GetStdout () : 0;
+	if (pStream != 0)
+	{
+		return pStream->Write (pBuf, nLen);
+	}
+	char Tmp[129];
+	unsigned n = nLen < sizeof (Tmp) - 1 ? nLen : sizeof (Tmp) - 1;
+	memcpy (Tmp, pBuf, n);
+	Tmp[n] = '\0';
+	CLogger::Get ()->Write ("app", LogNotice, "%s", Tmp);
+	return (int) nLen;
+}
+
+// Spawn a console program (ELF at pPath) with stdin/stdout streams + argv. Returns
+// a process handle for kapi_wait, or 0 on failure.
+void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStdout)
+{
+	return SpawnProcess (pPath, pArgs, (CStream *) pStdin, (CStream *) pStdout);
+}
+
+// Wait (cooperatively) for a spawned process to finish; returns its exit status and
+// frees the handle.
+int kapi_wait (void *pProc)
+{
+	CProcess *p = (CProcess *) pProc;
+	if (p == 0) return -1;
+	while (!p->bDone)
+	{
+		if (!CScheduler::IsActive ()) break;
+		CScheduler::Get ()->MsSleep (5);
+	}
+	int nStatus = p->nStatus;
+	delete p;
+	return nStatus;
+}
+
+// Copy this task's argv string (set at spawn) into pBuf. Returns length.
+int kapi_get_args (char *pBuf, unsigned nMax)
+{
+	if (pBuf == 0 || nMax == 0) return 0;
+	CAddressSpace *pAS = CurrentAS ();
+	const char *pArgs = pAS != 0 ? pAS->GetArgs () : 0;
+	unsigned i = 0;
+	if (pArgs != 0)
+	{
+		for (; pArgs[i] != '\0' && i < nMax - 1; i++) pBuf[i] = pArgs[i];
+	}
+	pBuf[i] = '\0';
+	return (int) i;
 }
 
 // --- directory listing -------------------------------------------------------

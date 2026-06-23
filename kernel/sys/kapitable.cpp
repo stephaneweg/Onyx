@@ -73,6 +73,18 @@ void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
 
+void *kapi_pipe (void);
+void *kapi_file_in (const char *);
+void *kapi_file_out (const char *, int);
+int kapi_stream_read (void *, void *, unsigned);
+int kapi_stream_write (void *, const void *, unsigned);
+void kapi_stream_close (void *);
+int kapi_stdin_read (void *, unsigned);
+int kapi_stdout_write (const void *, unsigned);
+void *kapi_spawn (const char *, const char *, void *, void *);
+int kapi_wait (void *);
+int kapi_get_args (char *, unsigned);
+
 }  // extern "C"
 
 // The table, on its own 64 KB page so a single mapping covers it exactly.
@@ -146,4 +158,16 @@ void KApiTableInit (void)
 	t->opendir           = kapi_opendir;
 	t->readdir           = kapi_readdir;
 	t->closedir          = kapi_closedir;
+
+	t->pipe              = kapi_pipe;
+	t->file_in           = kapi_file_in;
+	t->file_out          = kapi_file_out;
+	t->stream_read       = kapi_stream_read;
+	t->stream_write      = kapi_stream_write;
+	t->stream_close      = kapi_stream_close;
+	t->stdin_read        = kapi_stdin_read;
+	t->stdout_write      = kapi_stdout_write;
+	t->spawn             = kapi_spawn;
+	t->wait              = kapi_wait;
+	t->get_args          = kapi_get_args;
 }

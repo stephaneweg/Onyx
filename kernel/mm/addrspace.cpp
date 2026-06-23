@@ -3,6 +3,7 @@
 //
 #include <kern/addrspace.h>
 #include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
+#include <kern/stream.h>		// CStream + CProcess (stdio teardown)
 #include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA for the kapi table)
 #include <kern/kapitable.h>		// KApiTablePhys
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
@@ -49,8 +50,14 @@ static void FreeASID (u8 nASID)
 CAddressSpace::CAddressSpace (void)
 :	m_pL2 (0),
 	m_nASID (0),
-	m_pWindow (0)
+	m_pWindow (0),
+	m_pStdin (0),
+	m_pStdout (0),
+	m_pProcess (0),
+	m_nExitStatus (0)
 {
+	m_Args[0] = '\0';
+
 	assert (s_ulKernelTTBR0 != 0);		// AddrSpaceInit() must run first
 
 	m_pL2 = (TARMV8MMU_LEVEL2_DESCRIPTOR *) palloc ();
@@ -77,8 +84,42 @@ CAddressSpace::CAddressSpace (void)
 	DataSyncBarrier ();
 }
 
+void CAddressSpace::SetArgs (const char *pArgs)
+{
+	unsigned i = 0;
+	if (pArgs != 0)
+	{
+		for (; pArgs[i] != '\0' && i < sizeof (m_Args) - 1; i++)
+		{
+			m_Args[i] = pArgs[i];
+		}
+	}
+	m_Args[i] = '\0';
+}
+
 CAddressSpace::~CAddressSpace (void)
 {
+	// stdio teardown: signal EOF to whoever reads our stdout, drop our stream refs,
+	// and mark the spawn handle done (so a waiter unblocks). Done first so the
+	// terminal sees the child finish promptly.
+	if (m_pStdout != 0)
+	{
+		m_pStdout->CloseWrite ();
+		m_pStdout->Release ();
+		m_pStdout = 0;
+	}
+	if (m_pStdin != 0)
+	{
+		m_pStdin->Release ();
+		m_pStdin = 0;
+	}
+	if (m_pProcess != 0)
+	{
+		m_pProcess->nStatus = m_nExitStatus;
+		m_pProcess->bDone = TRUE;
+		m_pProcess = 0;
+	}
+
 	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the
 	// scheduler core: IRQs are enabled and the task is already quiescent, so it is
 	// safe to do the full teardown (free frames, free the window, TLB ops).
