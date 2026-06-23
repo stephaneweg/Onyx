@@ -31,4 +31,7 @@ boolean ExecPath (const char *pElfPath, const char *pArgs);
 boolean KernelSetKeyMap (const char *pName);
 const char *KernelGetKeyMap (void);
 
+// Re-tint the window chrome at runtime (theme editor Apply). Defined in kernel.cpp.
+void ApplyWindowTheme (u32 nActiveTint, u32 nInactiveTint, u32 nTitleTextColor);
+
 #endif // _kern_applaunch_h

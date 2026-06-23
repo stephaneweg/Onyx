@@ -60,6 +60,8 @@ static inline int  kapi_kill_pid (int pid, int force) { return KT->kill_pid (pid
 // Keyboard layout: switch among the compiled-in country maps; read the current one.
 static inline int  kapi_set_keymap (const char *name) { return KT->set_keymap (name); }
 static inline int  kapi_get_keymap (char *b, unsigned s) { return KT->get_keymap (b, s); }
+// Re-tint window chrome at runtime (theme editor): active/inactive skin + title text.
+static inline void kapi_set_window_theme (unsigned a, unsigned i, unsigned t) { KT->set_window_theme (a, i, t); }
 
 // Modal message box (blocks until answered). Returns 1 (OK/Yes) or 0 (Cancel/No).
 #define MB_OK		0

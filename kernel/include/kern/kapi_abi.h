@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	15
+#define KAPI_ABI_VERSION	16
 
 #ifdef __cplusplus
 extern "C" {
@@ -187,6 +187,11 @@ struct TKApiTable
 	// "IT","DV"); 1 ok / 0 unknown-or-no-keyboard. get_keymap: current name into buf.
 	int (*set_keymap) (const char *name);
 	int (*get_keymap) (char *buf, unsigned size);
+
+	// --- v16 additions (theme editor) ---
+	// Re-tint the window chrome at runtime: active + inactive skin tints + title text
+	// colour (0x00RRGGBB). Persist by also writing SD:skins/theme.txt (read at boot).
+	void (*set_window_theme) (unsigned active, unsigned inactive, unsigned text);
 };
 
 #ifdef __cplusplus

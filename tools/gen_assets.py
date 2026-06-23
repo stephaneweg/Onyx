@@ -275,6 +275,18 @@ def icon_voronoy():		# blue cellular blobs (the Voronoi wallpaper generator)
     pframe(px, 5, 5, 34, 34, (20, 40, 80))
     return px
 
+def icon_theme():		# a colour-swatch palette (theme editor)
+    px = blank()
+    prect(px, 5, 5, 34, 34, (44, 50, 60))
+    sw = [(224,80,80),(96,200,120),(72,144,224),(230,200,80),
+          (200,96,208),(72,200,200),(230,230,230),(120,120,130)]
+    for i, c in enumerate(sw):
+        x0 = 8 + (i % 4) * 7
+        y0 = 10 + (i // 4) * 12
+        prect(px, x0, y0, x0 + 5, y0 + 9, c)
+    pframe(px, 5, 5, 34, 34, (90, 100, 114))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -283,7 +295,7 @@ ICONS = {
     "calendar": icon_calendar, "mandelbrot": icon_mandel,
     "minesweeper": icon_mines, "paint": icon_paint,
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
-    "voronoy": icon_voronoy,
+    "voronoy": icon_voronoy, "theme": icon_theme,
 }
 
 

@@ -998,6 +998,13 @@ int kapi_get_keymap (char *pBuf, unsigned nMax)
 	return (int) i;
 }
 
+// Re-tint the window chrome at runtime (theme editor Apply): active + inactive skin
+// tints and the title text colour, all 0x00RRGGBB.
+void kapi_set_window_theme (unsigned nActive, unsigned nInactive, unsigned nText)
+{
+	ApplyWindowTheme (nActive, nInactive, nText);
+}
+
 // The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name
 // is the app's folder basename. Returns the string length. Used by the shared app
 // lib to find an app's config.ini.

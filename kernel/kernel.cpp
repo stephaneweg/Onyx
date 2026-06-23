@@ -498,6 +498,25 @@ static void ReadWindowTheme (u32 *pAct, u32 *pInact, u32 *pText)
 	delete [] pData;
 }
 
+// Re-tint the window chrome at runtime (the theme editor's Apply). Reloads wings.bmp
+// and bakes the new active/inactive tints, sets the title text colour. Atomic w.r.t.
+// the compositor: cooperative scheduling means no task switch happens between the
+// swap and the free (LoadSkin/new/delete don't yield), so the compositor never sees
+// a half-freed skin.
+void ApplyWindowTheme (u32 nAct, u32 nInact, u32 nText)
+{
+	g_WinTitleTextColor = nText;
+
+	CSkin *pA = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
+	CSkin *pI = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
+	if (pA != 0) pA->Colorize (nAct);
+	if (pI != 0) pI->Colorize (nInact);
+
+	CSkin *pOldA = g_pWindowSkin, *pOldI = g_pWindowSkinInactive;
+	if (pA != 0) { g_pWindowSkin = pA; if (pOldA != 0) delete pOldA; }
+	if (pI != 0) { g_pWindowSkinInactive = pI; if (pOldI != 0) delete pOldI; }
+}
+
 // Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
