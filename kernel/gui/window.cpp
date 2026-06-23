@@ -8,8 +8,9 @@
 #include <circle/new.h>
 #include <assert.h>
 
-CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle)
-:	m_nX (x), m_nY (y),
+CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
+		  unsigned nFlags)
+:	m_nX (x), m_nY (y), m_nFlags (nFlags),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
@@ -123,50 +124,54 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	int cw = m_Canvas.Width ();
 	int ch = m_Canvas.Height ();
 
-	// Outer rectangle: border + title bar + client area.
+	// Outer rectangle: chrome (border + title bar) + client area. A borderless
+	// window has zero chrome, so the client area fills the whole window.
 	int x0 = m_nX;
 	int y0 = m_nY;
-	int x1 = m_nX + cw + 2 * WIN_BORDER - 1;
-	int y1 = m_nY + WIN_TITLEBAR_H + ch + WIN_BORDER - 1;
+	int x1 = m_nX + cw + ChromeL () + ChromeR () - 1;
+	int y1 = m_nY + ChromeT () + ch + ChromeB () - 1;
 
-	// Frame + title bar: the window skin (wings.bmp, 7/7/32/7) draws the whole
-	// chrome; otherwise a flat frame + title bar.
-	if (g_pWindowSkin != 0)
+	if (!Borderless ())
 	{
-		g_pWindowSkin->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, TRUE);
-	}
-	else
-	{
-		pScreen->FillRectangle (x0, y0, x1, y1, WIN_COLOR_FRAME);
-		pScreen->FillRectangle (x0, y0, x1, y0 + WIN_TITLEBAR_H - 1,
-					bActive ? WIN_COLOR_TITLE_ACT : WIN_COLOR_TITLE);
+		// Frame + title bar: the window skin (wings.bmp, 7/7/32/7) draws the whole
+		// chrome; otherwise a flat frame + title bar.
+		if (g_pWindowSkin != 0)
+		{
+			g_pWindowSkin->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, TRUE);
+		}
+		else
+		{
+			pScreen->FillRectangle (x0, y0, x1, y1, WIN_COLOR_FRAME);
+			pScreen->FillRectangle (x0, y0, x1, y0 + WIN_TITLEBAR_H - 1,
+						bActive ? WIN_COLOR_TITLE_ACT : WIN_COLOR_TITLE);
+		}
+
+		// Title text, vertically centred in the title bar (inside the left border).
+		pScreen->DrawText (x0 + WIN_BORDER + 2,
+				   y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
+				   m_Title, 0x00FFFFFF);
+
+		// Close box [x] at the right of the title bar (skinned if available).
+		int cbx0, cby0, cbx1, cby1;
+		CloseBoxRect (&cbx0, &cby0, &cbx1, &cby1);
+		if (g_pCloseSkin != 0)
+		{
+			g_pCloseSkin->DrawOn (pScreen, 0, cbx0, cby0,
+					      cbx1 - cbx0 + 1, cby1 - cby0 + 1, TRUE);
+		}
+		else
+		{
+			pScreen->FillRectangle (cbx0, cby0, cbx1, cby1, 0x00C03020);
+			pScreen->DrawRectangle (cbx0, cby0, cbx1, cby1, 0x00000000);
+		}
+		// X glyph on top so the close box is always recognizable.
+		pScreen->DrawLine (cbx0 + 3, cby0 + 3, cbx1 - 3, cby1 - 3, 0x00FFFFFF);
+		pScreen->DrawLine (cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
 	}
 
-	// Title text, vertically centred in the title bar (inside the left border).
-	pScreen->DrawText (x0 + WIN_BORDER + 2,
-			   y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
-			   m_Title, 0x00FFFFFF);
-
-	// Close box [x] at the right of the title bar (skinned if available).
-	int cbx0, cby0, cbx1, cby1;
-	CloseBoxRect (&cbx0, &cby0, &cbx1, &cby1);
-	if (g_pCloseSkin != 0)
-	{
-		g_pCloseSkin->DrawOn (pScreen, 0, cbx0, cby0,
-				      cbx1 - cbx0 + 1, cby1 - cby0 + 1, TRUE);
-	}
-	else
-	{
-		pScreen->FillRectangle (cbx0, cby0, cbx1, cby1, 0x00C03020);
-		pScreen->DrawRectangle (cbx0, cby0, cbx1, cby1, 0x00000000);
-	}
-	// X glyph on top so the close box is always recognizable.
-	pScreen->DrawLine (cbx0 + 3, cby0 + 3, cbx1 - 3, cby1 - 3, 0x00FFFFFF);
-	pScreen->DrawLine (cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
-
-	// Client area = the owner's canvas, blitted opaque just below the title bar.
-	int clientX = x0 + WIN_BORDER;
-	int clientY = y0 + WIN_TITLEBAR_H;
+	// Client area = the owner's canvas, blitted opaque inside the chrome.
+	int clientX = x0 + ChromeL ();
+	int clientY = y0 + ChromeT ();
 	pScreen->PutOther (&m_Canvas, clientX, clientY, FALSE);
 
 	// Widgets, drawn over the canvas (client-relative coords + client origin).
@@ -330,6 +335,10 @@ void CWindow::CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const
 
 boolean CWindow::HitCloseBox (int sx, int sy) const
 {
+	if (Borderless ())
+	{
+		return FALSE;			// no close box on a borderless window
+	}
 	int x0, y0, x1, y1;
 	CloseBoxRect (&x0, &y0, &x1, &y1);
 	return sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
@@ -536,11 +545,13 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 		}
 		int x0 = pWin->X ();
 		int y0 = pWin->Y ();
-		int x1 = x0 + pWin->ClientWidth () + 2 * WIN_BORDER - 1;
-		int y1 = y0 + WIN_TITLEBAR_H + pWin->ClientHeight () + WIN_BORDER - 1;
+		int x1 = x0 + pWin->ClientWidth () + pWin->ChromeL () + pWin->ChromeR () - 1;
+		int y1 = y0 + pWin->ChromeT () + pWin->ClientHeight () + pWin->ChromeB () - 1;
 		if (x >= x0 && x <= x1 && y >= y0 && y <= y1)
 		{
-			*pbOnTitleBar = (y < y0 + WIN_TITLEBAR_H);
+			// Borderless windows have no title bar (ChromeT == 0), so a hit is
+			// always in the client area -- never a drag region.
+			*pbOnTitleBar = !pWin->Borderless () && (y < y0 + pWin->ChromeT ());
 			return (unsigned) i;
 		}
 	}
@@ -563,8 +574,8 @@ GWidget *CWindowManager::WidgetUnderCursor (int x, int y, CWindow **ppWindow)
 	{
 		return 0;
 	}
-	int cx = x - (pWin->X () + WIN_BORDER);
-	int cy = y - (pWin->Y () + WIN_TITLEBAR_H);
+	int cx = x - (pWin->X () + pWin->ChromeL ());
+	int cy = y - (pWin->Y () + pWin->ChromeT ());
 	GWidget *pW = pWin->HitWidget (cx, cy);
 	if (pW != 0)
 	{
@@ -599,12 +610,12 @@ static void ValueFromCursor (CWindow *pWin, GWidget *pW, int x, int y)
 	int nPos, nStart, nLen;
 	if (pW->nType == GW_SCROLLV)
 	{
-		nStart = pWin->Y () + WIN_TITLEBAR_H + pW->nY;
+		nStart = pWin->Y () + pWin->ChromeT () + pW->nY;
 		nPos = y; nLen = pW->nH;
 	}
 	else	// GW_SLIDER, GW_SCROLLH
 	{
-		nStart = pWin->X () + WIN_BORDER + pW->nX;
+		nStart = pWin->X () + pWin->ChromeL () + pW->nX;
 		nPos = x; nLen = pW->nW;
 	}
 	if (nLen <= 1)
@@ -685,8 +696,8 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 			}
 			else
 			{
-				int cx = x - (pWin->X () + WIN_BORDER);
-				int cy = y - (pWin->Y () + WIN_TITLEBAR_H);
+				int cx = x - (pWin->X () + pWin->ChromeL ());
+				int cy = y - (pWin->Y () + pWin->ChromeT ());
 				GWidget *pW = pWin->HitWidget (cx, cy);
 
 				// Focus follows clicks: a textbox/textarea gains focus,

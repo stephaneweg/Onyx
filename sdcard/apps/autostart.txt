@@ -1,8 +1,7 @@
 # autostart.txt -- apps started automatically at boot, one per line.
-# Each name is the folder basename under /apps (i.e. "demoA" => apps/demoA.app/main.elf).
+# Each name is the folder basename under /apps (i.e. "demoF" => apps/demoF.app/main.elf).
 # Blank lines and lines starting with '#' are ignored.
-demoA
-demoB
-demoC
-demoD
-demoE
+#
+# demoF is a borderless proto-panel: click its A-E buttons to launch the demos
+# (kapi_launch). To auto-start a demo directly instead, add its name on its own line.
+demoF

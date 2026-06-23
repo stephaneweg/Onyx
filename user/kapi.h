@@ -13,6 +13,20 @@ extern "C" {
 
 // Windowing
 unsigned *kapi_create_window (int w, int h, const char *title);  // -> canvas (u32 0x00RRGGBB)
+
+// Window creation flags (must match kern/gui/window.h).
+#define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
+
+// Create a window at an explicit outer position with flags. Pass x<0 or y<0 to
+// auto-place (like kapi_create_window). flags = WIN_FLAG_* (e.g. borderless for a
+// panel / popup). Returns the canvas, or 0 on failure.
+unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *title,
+				 unsigned flags);
+
+// Spawn another app by folder name ("xxx" => apps/xxx.app/main.elf). The shell
+// uses this for quicklaunch + the app-list popup. Returns 1 on success.
+int       kapi_launch (const char *name);
+
 void      kapi_present (void);
 unsigned  kapi_get_ticks (void);				// HZ ticks since boot
 void      kapi_msleep (unsigned ms);

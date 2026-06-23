@@ -12,6 +12,7 @@
 #include <circle/input/mouse.h>
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
+#include <kern/applaunch.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
@@ -344,6 +345,17 @@ static boolean LaunchApp (const char *pName, CLogger *pLogger)
 	pLogger->Write (FromKernel, LogNotice, "launch: %s (%u bytes)", pName, nSize);
 	new CUserProcessTask (pElf, nSize, pName, pLogger);
 	return TRUE;
+}
+
+// Non-static wrapper exported to the rest of the kernel (kapi_launch). Spawns an
+// app by folder name from any task context; logs via the global logger.
+boolean LaunchAppByName (const char *pName)
+{
+	if (pName == 0 || pName[0] == '\0')
+	{
+		return FALSE;
+	}
+	return LaunchApp (pName, CLogger::Get ());
 }
 
 // Log the .app subdirectories of /apps (validates FatFs directory enumeration;

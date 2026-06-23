@@ -11,6 +11,7 @@
 // extern "C": stable, unmangled names for the symbol-export/link step.
 //
 #include <kern/addrspace.h>
+#include <kern/applaunch.h>
 #include <kern/layout.h>
 #include <kern/gui/window.h>
 #include <kern/debugcon.h>
@@ -37,7 +38,12 @@ extern "C" {
 
 // --- windowing ---------------------------------------------------------------
 
-unsigned *kapi_create_window (int w, int h, const char *pTitle)
+// Create the calling app's window. (x,y) is the outer top-left; pass x<0 or y<0 to
+// auto-place at a pseudo-random on-screen position (normal apps). nFlags is a mask
+// of WIN_FLAG_* (e.g. WIN_FLAG_BORDERLESS for the shell's panel/popup). Returns the
+// canvas VA (USER_WINDOW_CANVAS) or 0 on failure. One window per process.
+static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
+			       unsigned nFlags)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS == 0 || w <= 0 || h <= 0 || w > 1024 || h > 768)
@@ -49,30 +55,33 @@ unsigned *kapi_create_window (int w, int h, const char *pTitle)
 		return (unsigned *) USER_WINDOW_CANVAS;		// one window per process
 	}
 
-	// Place the window at a pseudo-random position, fully on screen. The LCG state
+	boolean bBorderless = (nFlags & WIN_FLAG_BORDERLESS) != 0;
+	int nOuterW = w + (bBorderless ? 0 : 2 * WIN_BORDER);
+	int nOuterH = h + (bBorderless ? 0 : WIN_TITLEBAR_H + WIN_BORDER);
+
+	// Auto-placement (only when the caller didn't pin a position). The LCG state
 	// persists across calls (so successive windows differ) and is seeded from the
 	// timer (so it varies run to run). We keep a left margin to dodge the defective
 	// left edge of the display.
-	static unsigned s_nRng = 0;
-	if (s_nRng == 0)
+	if (x < 0 || y < 0)
 	{
-		s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
+		static unsigned s_nRng = 0;
+		if (s_nRng == 0)
+		{
+			s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
+		}
+		int nXMin   = SCREEN_WIDTH / 5;				// skip the leftmost fifth
+		int nXRange = SCREEN_WIDTH  - nOuterW - nXMin;
+		int nYRange = SCREEN_HEIGHT - nOuterH;
+		s_nRng = s_nRng * 1103515245u + 12345u;
+		x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
+		s_nRng = s_nRng * 1103515245u + 12345u;
+		y = nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0;
 	}
-
-	int nOuterW = w + 2 * WIN_BORDER;
-	int nOuterH = WIN_TITLEBAR_H + h + WIN_BORDER;
-	int nXMin   = SCREEN_WIDTH / 5;				// skip the leftmost fifth
-	int nXRange = SCREEN_WIDTH  - nOuterW - nXMin;
-	int nYRange = SCREEN_HEIGHT - nOuterH;
-
-	s_nRng = s_nRng * 1103515245u + 12345u;
-	int x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
-	s_nRng = s_nRng * 1103515245u + 12345u;
-	int y = nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0;
 
 	// pTitle is a pointer in the calling app's address space, which is active here
 	// (EL1) -- CWindow copies it. Fall back to a default if null.
-	CWindow *pWin = new CWindow (x, y, w, h, pTitle != 0 ? pTitle : "app");
+	CWindow *pWin = new CWindow (x, y, w, h, pTitle != 0 ? pTitle : "app", nFlags);
 	if (pWin == 0 || !pWin->IsValid ())
 	{
 		return 0;
@@ -87,6 +96,24 @@ unsigned *kapi_create_window (int w, int h, const char *pTitle)
 	}
 
 	return (unsigned *) USER_WINDOW_CANVAS;
+}
+
+unsigned *kapi_create_window (int w, int h, const char *pTitle)
+{
+	return CreateWindow (-1, -1, w, h, pTitle, 0);		// auto-placed, normal chrome
+}
+
+unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *pTitle,
+				 unsigned nFlags)
+{
+	return CreateWindow (x, y, w, h, pTitle, nFlags);
+}
+
+// Launch another app by folder name (apps/<name>.app/main.elf) as a new process.
+// Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
+int kapi_launch (const char *pName)
+{
+	return LaunchAppByName (pName) ? 1 : 0;
 }
 
 void kapi_present (void)

@@ -31,6 +31,9 @@
 #define WIN_MAX_WIDGETS		16
 #define WIN_EVENT_QUEUE		32
 
+// Window creation flags (kept numerically identical to user/kapi.h).
+#define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
+
 // Widget kinds.
 #define GW_BUTTON		1	// fires CLICK on release-inside
 #define GW_LABEL		2	// static text
@@ -88,10 +91,21 @@ public:
 	// canvas is nClientW x nClientH. The canvas buffer is allocated here; if it is
 	// to be shared with an EL0 process, the loader maps this buffer into the
 	// process's address space (drawing model: shared buffer + present).
-	CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle);
+	// nFlags: WIN_FLAG_* (e.g. WIN_FLAG_BORDERLESS for a panel/popup).
+	CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
+		 unsigned nFlags = 0);
 	~CWindow (void);
 
 	boolean IsValid (void) const	{ return m_Canvas.IsValid (); }
+
+	// Chrome insets: a normal window has a title bar on top and borders around the
+	// client; a borderless window has none (client area == whole window). The WM and
+	// the renderer use these instead of the raw WIN_* constants so both kinds work.
+	boolean Borderless (void) const	{ return (m_nFlags & WIN_FLAG_BORDERLESS) != 0; }
+	int ChromeL (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
+	int ChromeR (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
+	int ChromeT (void) const	{ return Borderless () ? 0 : WIN_TITLEBAR_H; }
+	int ChromeB (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 
 	GImage *Canvas (void)		{ return &m_Canvas; }	// the client-area buffer
 	u32 *CanvasBuffer (void)	{ return m_Canvas.Buffer (); }
@@ -136,6 +150,7 @@ private:
 
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
+	unsigned	m_nFlags;	// WIN_FLAG_* (borderless, ...)
 	char		m_Title[48];	// owned copy of the title (caller's may be transient)
 	GImage		m_Canvas;	// client-area pixel buffer (wraps m_pRawAlloc)
 	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)

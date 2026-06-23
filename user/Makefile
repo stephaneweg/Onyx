@@ -10,7 +10,7 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 	  -O2 -Wall -Wextra -fno-stack-protector
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf
+PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf
 
 all: $(PROGS)
 
