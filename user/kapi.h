@@ -50,6 +50,11 @@ int       kapi_list_windows (char *buf, unsigned buf_size);
 // it. Returns 1 on success.
 int       kapi_set_wallpaper (const char *bmp_path);
 
+// Generate the wallpaper at runtime: a toroidal-Voronoi cellular pattern tinted onto
+// base_color (0x00RRGGBB), with `points` seeds. seed 0 => vary per boot (timer).
+// Returns 1 on success.
+int       kapi_wallpaper_generate (unsigned base_color, int points, unsigned seed);
+
 void      kapi_present (void);
 unsigned  kapi_get_ticks (void);				// HZ ticks since boot
 void      kapi_msleep (unsigned ms);

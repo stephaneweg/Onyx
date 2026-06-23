@@ -206,6 +206,11 @@ public:
 	// Pass 0 to clear it (back to the solid desktop colour).
 	void SetWallpaper (GImage *pImage);
 
+	// Generate a screen-sized toroidal-Voronoi wallpaper (cellular "distance to the
+	// nearest of nPoints seeds", tinted onto nBaseColor) and install it. Ported from
+	// SimpleOS (temp/Background.bas). nSeed must be non-zero (the RNG seed).
+	void GenerateWallpaper (u32 nBaseColor, int nPoints, unsigned nSeed);
+
 	// Mouse input (called from the input thread). Cursor at (x,y); buttons is a
 	// bitmask (bit0 = left). Handles raise-on-click, title-bar dragging, widget
 	// hover/press/release (click fires on release-inside), and focus.

@@ -192,7 +192,9 @@ int main (void)
 	fb = kapi_create_window_ex (2, 4, W, WINH, "panel", WIN_FLAG_BORDERLESS);
 	if (fb == 0) return 1;
 	clear_to (WINH);
-	kapi_set_wallpaper ("SD:apps/panel.app/wallpaper.bmp");
+	// Generate the wallpaper once at startup (toroidal Voronoi, blue base, varies
+	// per boot) instead of loading a BMP.
+	kapi_wallpaper_generate (0x004878B0, 28, 0);
 
 	// Apps button (top), then the pinned quicklaunch icons.
 	g_apps_handle = kapi_add_icon (X, 4, ICON, ICON, "SD:apps/panel.app/apps.bmp",

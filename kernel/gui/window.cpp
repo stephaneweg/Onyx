@@ -640,6 +640,102 @@ void CWindowManager::SetWallpaper (GImage *pImage)
 	}
 }
 
+// Integer square root (no FP: apps/kernel build with -mgeneral-regs-only).
+static unsigned IntSqrt (unsigned n)
+{
+	if (n == 0)
+	{
+		return 0;
+	}
+	unsigned x = n, y = (x + 1) / 2;
+	while (y < x)
+	{
+		x = y;
+		y = (x + n / x) / 2;
+	}
+	return x;
+}
+
+// Tint nBase by a brightness derived from the distance (near a seed = dark cell
+// centre, far = bright edge), with a floor so cells never go fully black. Ported
+// from SimpleOS ComputeColor() (temp/Background.bas).
+static u32 VoronoiTint (u32 nBase, unsigned nDist)
+{
+	const unsigned nMin = 96;
+	unsigned cc = nMin + nDist * (255 - nMin) / 255;	// 96..255
+	if (cc > 255) cc = 255;
+	unsigned r = (((nBase >> 16) & 0xFF) * cc) >> 8;
+	unsigned g = (((nBase >> 8)  & 0xFF) * cc) >> 8;
+	unsigned b = (( nBase        & 0xFF) * cc) >> 8;
+	return (r << 16) | (g << 8) | b;			// 0x00RRGGBB
+}
+
+void CWindowManager::GenerateWallpaper (u32 nBaseColor, int nPoints, unsigned nSeed)
+{
+	const int adiv = 2;				// render at half-res, then upscale
+	const int nW = SCREEN_WIDTH;
+	const int nH = SCREEN_HEIGHT;
+	const int mx = nW / adiv;
+	const int my = nH / adiv;
+
+	if (nPoints < 1)  nPoints = 1;
+	if (nPoints > 64) nPoints = 64;
+	if (nSeed == 0)   nSeed = 1;
+
+	int px[64], py[64];				// seed points (half-res space)
+	unsigned nRng = nSeed;
+	for (int i = 0; i < nPoints; i++)
+	{
+		nRng = nRng * 1103515245u + 12345u; px[i] = (int) (nRng % (unsigned) mx);
+		nRng = nRng * 1103515245u + 12345u; py[i] = (int) (nRng % (unsigned) my);
+	}
+
+	GImage *pImg = new GImage;
+	if (pImg == 0)
+	{
+		return;
+	}
+	pImg->SetSize (nW, nH);
+	if (!pImg->IsValid ())
+	{
+		delete pImg;
+		return;
+	}
+	u32 *pBuf = pImg->Buffer ();
+
+	for (int y = 0; y < my; y++)
+	{
+		for (int x = 0; x < mx; x++)
+		{
+			unsigned nBest = 0xFFFFFFFF;
+			for (int i = 0; i < nPoints; i++)
+			{
+				// Toroidal axis distance, normalised to 0..128 (wraps at 128
+				// so the field tiles seamlessly).
+				int dx = x > px[i] ? x - px[i] : px[i] - x;
+				dx = dx * 256 / mx; if (dx > 128) dx = 256 - dx;
+				int dy = y > py[i] ? y - py[i] : py[i] - y;
+				dy = dy * 256 / my; if (dy > 128) dy = 256 - dy;
+
+				unsigned d = IntSqrt ((unsigned) (dx * dx + dy * dy));
+				if (d > 255) d = 255;
+				if (d < nBest) nBest = d;
+			}
+
+			u32 nCol = VoronoiTint (nBaseColor, nBest);
+			for (int j = 0; j < adiv; j++)		// upscale the half-res cell
+			{
+				for (int k = 0; k < adiv; k++)
+				{
+					pBuf[(y * adiv + j) * nW + (x * adiv + k)] = nCol;
+				}
+			}
+		}
+	}
+
+	SetWallpaper (pImg);				// WM takes ownership
+}
+
 // Caller holds m_SpinLock.
 unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 {

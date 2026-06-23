@@ -430,6 +430,23 @@ int kapi_set_wallpaper (const char *pBmpPath)
 	return 1;
 }
 
+// Generate the desktop wallpaper at runtime: a toroidal-Voronoi cellular pattern
+// tinted onto base_color, with `points` seeds. seed 0 => seed from the timer (varies
+// per boot). Replaces loading a wallpaper BMP from a file. Returns 1 on success.
+int kapi_wallpaper_generate (unsigned nBaseColor, int nPoints, unsigned nSeed)
+{
+	if (CWindowManager::Get () == 0)
+	{
+		return 0;
+	}
+	if (nSeed == 0)
+	{
+		nSeed = CTimer::Get ()->GetTicks () | 1u;
+	}
+	CWindowManager::Get ()->GenerateWallpaper (nBaseColor, nPoints, nSeed);
+	return 1;
+}
+
 // Checkbox state (1 = checked).
 int kapi_widget_get_checked (unsigned long hWidget)
 {

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 #
-# gen_assets.py -- generate the desktop assets (wallpaper, "apps" button glyph, and
-# per-app icon tiles) as 24-bpp uncompressed BMPs that the kernel's GImage::LoadBMP
-# can decode (bottom-up, BGR, 4-byte row padding). Magenta (0xFF00FF) is the
-# transparency key, so icon corners/background use it for a rounded look.
+# gen_assets.py -- generate the desktop assets (the "apps" button glyph and per-app
+# icon tiles) as 24-bpp uncompressed BMPs that the kernel's GImage::LoadBMP can
+# decode (bottom-up, BGR, 4-byte row padding). Magenta (0xFF00FF) is the transparency
+# key, so icon corners/background use it for a rounded look.
+# (The wallpaper is generated at runtime by the kernel, not shipped as a file.)
 #
 # Run from the repo root:  python3 tools/gen_assets.py
 #
@@ -31,21 +32,6 @@ def write_bmp(path, w, h, pixels):
     with open(path, "wb") as f:
         f.write(hdr + dib + img)
     print("  %-48s %dx%d" % (os.path.relpath(path, ROOT), w, h))
-
-
-def gen_wallpaper(path, w=640, h=480):
-    # Diagonal blue->slate gradient with a faint grid, for a Maynard-ish desktop.
-    px = []
-    for y in range(h):
-        for x in range(w):
-            t = (x + y) / (w + h)
-            r = int(24 + t * 36)
-            g = int(40 + t * 50)
-            b = int(72 + t * 70)
-            if x % 32 == 0 or y % 32 == 0:
-                r = min(255, r + 8); g = min(255, g + 8); b = min(255, b + 10)
-            px.append((r, g, b))
-    write_bmp(path, w, h, px)
 
 
 def rounded_tile(w, h, fill, border=(0, 0, 0), radius=6):
@@ -89,7 +75,8 @@ def gen_apps_glyph(path, w=40, h=40):
 
 def main():
     print("Generating desktop assets under sdcard/apps/ ...")
-    gen_wallpaper(os.path.join(APPS, "panel.app", "wallpaper.bmp"))
+    # (The wallpaper is now generated at runtime by the kernel -- see
+    #  CWindowManager::GenerateWallpaper / kapi_wallpaper_generate.)
     gen_apps_glyph(os.path.join(APPS, "panel.app", "apps.bmp"))
 
     colors = {
