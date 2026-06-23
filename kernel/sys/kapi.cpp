@@ -1266,6 +1266,20 @@ int kapi_stdout_write (const void *pBuf, unsigned nLen)
 	return (int) nLen;
 }
 
+// This task's own stdin / stdout stream handles, so a shell (cmd) can wire them into
+// the children it spawns (first stage reads the shell's stdin, last stage's output is
+// drained by the shell). 0 if none.
+void *kapi_stdin (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	return pAS != 0 ? (void *) pAS->GetStdin () : 0;
+}
+void *kapi_stdout (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	return pAS != 0 ? (void *) pAS->GetStdout () : 0;
+}
+
 // Spawn a console program (ELF at pPath) with stdin/stdout streams + argv. Returns
 // a process handle for kapi_wait, or 0 on failure.
 void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStdout)

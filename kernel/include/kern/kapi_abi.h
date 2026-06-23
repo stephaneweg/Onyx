@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	17
+#define KAPI_ABI_VERSION	18
 
 #ifdef __cplusplus
 extern "C" {
@@ -199,6 +199,12 @@ struct TKApiTable
 	// and a spawned child inherits the spawner's cwd.
 	int (*chdir) (const char *path);
 	int (*getcwd) (char *buf, unsigned size);
+
+	// --- v18 additions (shell as a process) ---
+	// This task's own stdin/stdout stream handles, to wire into spawned children
+	// (the cmd shell passes its stdin to the first stage; 0 if none).
+	void *(*stdin_stream) (void);
+	void *(*stdout_stream) (void);
 };
 
 #ifdef __cplusplus

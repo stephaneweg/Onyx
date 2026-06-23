@@ -158,6 +158,9 @@ static inline int  kapi_stdout_write (const void *b, unsigned n) { return KT->st
 static inline void *kapi_spawn (const char *path, const char *args, void *in, void *out) { return KT->spawn (path, args, in, out); }
 static inline int  kapi_wait (void *proc) { return KT->wait (proc); }
 static inline int  kapi_get_args (char *b, unsigned n) { return KT->get_args (b, n); }
+// This task's own stdin/stdout stream handles (for a shell wiring children). 0 = none.
+static inline void *kapi_stdin (void) { return KT->stdin_stream (); }
+static inline void *kapi_stdout (void) { return KT->stdout_stream (); }
 
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
