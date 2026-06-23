@@ -87,12 +87,6 @@ CAddressSpace::~CAddressSpace (void)
 		m_pWindow = 0;
 	}
 
-	// BISECT step B: do ONLY the window delete; SKIP the page-table/frame pfree,
-	// the tlbi and FreeASID (they leak for this test). If close now works, the
-	// culprit is the page-table free / tlbi / FreeASID; if it still hangs, it's
-	// delete m_pWindow.
-	return;
-
 	if (m_pL2 == 0)
 	{
 		return;
@@ -127,6 +121,11 @@ CAddressSpace::~CAddressSpace (void)
 
 	pfree (m_pL2);
 	m_pL2 = 0;
+
+	// BISECT step C: window delete + page-table/frame pfree are now ENABLED; SKIP
+	// the tlbi + FreeASID below. If close now works, the tlbi/FreeASID is the
+	// culprit; if it hangs, the page-table/frame pfree is. (ASID leaks this test.)
+	return;
 
 	// Drop any TLB entries tagged with this ASID before recycling it.
 	u64 ulArg = (u64) m_nASID << TTBR0_ASID_SHIFT;
