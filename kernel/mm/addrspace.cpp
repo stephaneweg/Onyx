@@ -145,10 +145,22 @@ CAddressSpace::~CAddressSpace (void)
 			TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[j].Page;
 			if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
 			{
-				pfree (ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress));
+				u64 ulFrame = (u64) ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress);
+				// Never free the shared kapi ABI table page: it is a kernel global
+				// aliased read-only into every address space (mapped not-owned, so
+				// this should already be skipped -- but guard explicitly: freeing it
+				// would corrupt the table for every app).
+				if (ulFrame == KApiTablePhys ())
+				{
+					continue;
+				}
+				pfree ((void *) ulFrame);
 			}
 		}
 
+		// Free this AS's private L3 (the table page it pointed to is NOT freed: it is
+		// either a kernel-shared frame, the window canvas, or the kapi table -- all
+		// owned elsewhere).
 		pfree (pL3);
 	}
 
