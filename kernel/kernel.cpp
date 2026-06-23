@@ -451,9 +451,13 @@ TShutdownMode CKernel::Run (void)
 	for (;;)
 	{
 		m_Scheduler.ReapTerminatedTasks ();
-		if (DebugConsoleActive () && (nTick % 10) == 0)
+		if (DebugConsoleActive () && (nTick % 5) == 0)
 		{
-			m_Logger.Write (FromKernel, LogNotice, "janitor: alive %u", nTick / 10);
+			// Long line, counter at the END so it shows past the dead pixels on
+			// the left of the display.
+			m_Logger.Write (FromKernel, LogNotice,
+					"kernel janitor still running and scheduling -- heartbeat tick = %u",
+					nTick / 5);
 		}
 		nTick++;
 		m_Scheduler.MsSleep (100);
