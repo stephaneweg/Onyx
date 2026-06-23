@@ -449,8 +449,11 @@ TShutdownMode CKernel::Run (void)
 	// just the stopped compositor, not a crash.
 	for (;;)
 	{
-		m_Scheduler.ReapTerminatedTasks ();
-		m_Scheduler.MsSleep (100);			// -> Yield() -> idle -> wfi (IRQ)
+		// ISOLATION TEST: reaping disabled. Terminated tasks are just left alone
+		// (skipped by GetNextTask), nothing is freed. If close now works (GUI stays
+		// live), the reap/teardown is the culprit.
+		// m_Scheduler.ReapTerminatedTasks ();
+		m_Scheduler.MsSleep (100);
 	}
 
 	return ShutdownHalt;

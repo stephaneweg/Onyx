@@ -205,34 +205,30 @@ void kapi_exit (int /*nStatus*/)
 	// well before the janitor reaps the address space. This closes the window
 	// immediately and removes any chance of the compositor touching a window that
 	// belongs to a task being torn down.
+	// ISOLATION TEST (user's idea): on exit, ONLY remove the window from the GUI and
+	// stop scheduling this task. Do NOT reap/free anything (no delete pTask, no AS
+	// free) and do NOT take over the screen -- the compositor keeps running. If the
+	// system stays alive afterwards, the teardown/reap is what breaks the IRQ; if it
+	// still hangs, the Terminate/Yield itself is the cause. The AS/window/task leak
+	// for now (bounded, one per closed app).
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS != 0)
 	{
 		CWindow *pWin = pAS->GetWindow ();
 		if (pWin != 0 && CWindowManager::Get () != 0)
 		{
-			CWindowManager::Get ()->Remove (pWin);
+			CWindowManager::Get ()->Remove (pWin);	// vanish from the compositor
 		}
 	}
 
-	// Switch the display to the debug console at the exit of the run: stop the
-	// compositor, clear the screen, and route ALL logger output to the displayed
-	// framebuffer. From here on every message (and the last line before a hang) is
-	// visible -- this is the diagnostic channel for the teardown path.
-	DebugConsoleTakeover ();
-	CLogger::Get ()->Write ("app", LogNotice, "exit: window removed, leaving app AS");
-
-	// Switch OFF the app's page table before terminating. Everything from here on
-	// (Terminate -> Yield -> task switch, then the janitor freeing this AS) is
-	// kernel code on the kernel task stack, so it belongs under the kernel address
-	// space. Crucially, the AS we are about to hand to the janitor for freeing must
-	// NOT be the live TTBR0 while it is torn down.
+	// Leave the app's page table before terminating (kernel code on the kernel
+	// stack from here on).
 	ActivateKernelAddressSpace ();
 
 	if (CScheduler::IsActive ())
 	{
-		// Mark this task "ending": it stops being scheduled and is reaped later
-		// by the janitor (ReapTerminatedTasks) in a safe context.
+		// Terminated => GetNextTask() skips it forever (never scheduled again).
+		// Nothing reaps it -> it just sits there. No teardown at all.
 		CScheduler::Get ()->GetCurrentTask ()->Terminate ();
 	}
 	for (;;) { }						// not reached
