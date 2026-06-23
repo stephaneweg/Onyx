@@ -518,6 +518,40 @@ int kapi_wallpaper_generate (unsigned nBaseColor, int nPoints, unsigned nSeed)
 	return 1;
 }
 
+// Map the shared desktop-wallpaper buffer (screen-sized, 0x00RRGGBB) into the calling
+// app at USER_WALLPAPER_CANVAS and return that VA (+ dims). The app draws into it,
+// then calls kapi_wallpaper_commit to make it the live background. The frames are
+// kernel-owned, so the wallpaper persists after the writer app exits. Returns 0 on
+// failure.
+unsigned *kapi_wallpaper_buffer (int *pW, int *pH)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pAS == 0 || pWM == 0)
+	{
+		return 0;
+	}
+	u64 ulPhys = 0; unsigned nPages = 0;
+	if (pWM->EnsureWallpaperBuffer (g_nScreenWidth, g_nScreenHeight, &ulPhys, &nPages) == 0)
+	{
+		return 0;
+	}
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW, ASID-tagged
+	pAS->MapContig (USER_WALLPAPER_CANVAS, ulPhys, nPages, Attr);
+	if (pW != 0) *pW = g_nScreenWidth;
+	if (pH != 0) *pH = g_nScreenHeight;
+	return (unsigned *) USER_WALLPAPER_CANVAS;
+}
+
+// Make the (app-written) wallpaper buffer the live desktop background.
+void kapi_wallpaper_commit (void)
+{
+	if (CWindowManager::Get () != 0)
+	{
+		CWindowManager::Get ()->CommitWallpaper ();
+	}
+}
+
 // Checkbox state (1 = checked).
 int kapi_widget_get_checked (unsigned long hWidget)
 {

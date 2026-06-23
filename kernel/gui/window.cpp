@@ -513,6 +513,7 @@ int g_nScreenHeight = SCREEN_HEIGHT;
 
 CWindowManager::CWindowManager (void)
 :	m_nWindows (0), m_pWallpaper (0), m_pCursor (0),
+	m_pWallRaw (0), m_ulWallPhys (0), m_nWallPages (0), m_bLiveWall (FALSE),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
@@ -609,7 +610,9 @@ void CWindowManager::Composite (GImage *pScreen)
 	{
 		pSnapshot[i] = m_pWindows[i];
 	}
-	pWall = m_pWallpaper;
+	// A committed app-written wallpaper (m_WallImage) takes priority over the
+	// kernel-set one (m_pWallpaper).
+	pWall = (m_bLiveWall && m_WallImage.IsValid ()) ? &m_WallImage : m_pWallpaper;
 	m_SpinLock.Release ();
 
 	// Desktop background: the wallpaper if set (filled behind it for any margin),
@@ -668,6 +671,30 @@ void CWindowManager::SetWallpaper (GImage *pImage)
 	{
 		delete pOld;
 	}
+}
+
+// Allocate (once) a page-aligned, contiguous, screen-sized wallpaper buffer the same
+// way a window canvas is allocated, so the kapi layer can map it into a writer app.
+// Returns the buffer's physical (== kernel VA) address + page count.
+u32 *CWindowManager::EnsureWallpaperBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages)
+{
+	if (m_pWallRaw == 0)
+	{
+		unsigned nBytes = (unsigned) (nW * nH) * sizeof (u32);
+		m_nWallPages = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
+		if (m_nWallPages == 0) m_nWallPages = 1;
+
+		m_pWallRaw = new u8[m_nWallPages * KPAGE_SIZE + KPAGE_SIZE];
+		if (m_pWallRaw == 0) { m_nWallPages = 0; return 0; }
+
+		uintptr ulAligned = ((uintptr) m_pWallRaw + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
+		m_ulWallPhys = ulAligned;		// identity region: PA == kernel VA
+		memset ((void *) ulAligned, 0, m_nWallPages * KPAGE_SIZE);
+		m_WallImage.Wrap ((u32 *) ulAligned, nW, nH);
+	}
+	if (pPhys)   *pPhys   = m_ulWallPhys;
+	if (pnPages) *pnPages = m_nWallPages;
+	return (u32 *) m_ulWallPhys;
 }
 
 // Integer square root (no FP: apps/kernel build with -mgeneral-regs-only).

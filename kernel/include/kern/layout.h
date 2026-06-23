@@ -62,6 +62,12 @@
 // Where a process's window canvas is mapped (shared with the kernel compositor).
 #define USER_WINDOW_CANVAS	(12ULL * GIGABYTE)	// 0x3_0000_0000
 
+// Where the shared desktop-wallpaper buffer is mapped for a wallpaper-writer app
+// (e.g. voronoy.app). Sits in the gap between the window canvas (12 GB) and the
+// kapi table (14 GB). The frames are kernel-owned, so the wallpaper persists after
+// the writer app exits.
+#define USER_WALLPAPER_CANVAS	(13ULL * GIGABYTE)	// 0x3_4000_0000
+
 #define IS_USER_VA(va) \
 	((u64)(va) >= USER_VA_BASE && (u64)(va) < USER_VA_END)
 

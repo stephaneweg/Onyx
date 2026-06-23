@@ -29,6 +29,8 @@ int kapi_file_save (char *, unsigned, const char *, const char *);
 int kapi_exec (const char *, const char *);
 void kapi_screen_size (int *, int *);
 void kapi_move_window (int, int);
+unsigned *kapi_wallpaper_buffer (int *, int *);
+void kapi_wallpaper_commit (void);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -200,4 +202,6 @@ void KApiTableInit (void)
 	t->exec              = kapi_exec;
 	t->screen_size       = kapi_screen_size;
 	t->move_window       = kapi_move_window;
+	t->wallpaper_buffer  = kapi_wallpaper_buffer;
+	t->wallpaper_commit  = kapi_wallpaper_commit;
 }

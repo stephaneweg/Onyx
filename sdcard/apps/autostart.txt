@@ -2,6 +2,8 @@
 # Each name is the folder basename under /apps ("panel" => apps/panel.app/main.elf).
 # Blank lines and lines starting with '#' are ignored.
 #
-# The panel is the shell: it draws the left sidebar, sets the wallpaper, and opens
-# the app-list popup. Add more names here to auto-start additional apps.
+# voronoy paints the desktop wallpaper into the kernel's shared wallpaper buffer,
+# then exits. The panel is the shell: sidebar + taskbar + app-list popup. Add more
+# names here to auto-start additional apps.
+voronoy
 panel

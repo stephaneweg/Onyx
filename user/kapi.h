@@ -68,6 +68,9 @@ static inline int  kapi_exec (const char *path, const char *args) { return KT->e
 static inline void kapi_screen_size (int *w, int *h) { KT->screen_size (w, h); }
 static inline int  kapi_set_wallpaper (const char *p) { return KT->set_wallpaper (p); }
 static inline int  kapi_wallpaper_generate (unsigned base, int pts, unsigned seed) { return KT->wallpaper_generate (base, pts, seed); }
+// App-drawn wallpaper: get the shared screen-sized buffer, draw into it, then commit.
+static inline unsigned *kapi_wallpaper_buffer (int *w, int *h) { return KT->wallpaper_buffer (w, h); }
+static inline void kapi_wallpaper_commit (void) { KT->wallpaper_commit (); }
 static inline void kapi_present (void) { KT->present (); }
 static inline unsigned kapi_get_ticks (void) { return KT->get_ticks (); }
 static inline void kapi_msleep (unsigned ms) { KT->msleep (ms); }

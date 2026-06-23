@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	12
+#define KAPI_ABI_VERSION	13
 
 #ifdef __cplusplus
 extern "C" {
@@ -167,6 +167,13 @@ struct TKApiTable
 	// Move the calling app's window (outer top-left, screen coords). For borderless
 	// windows that re-position themselves, e.g. the panel keeping itself centered.
 	void  (*move_window) (int x, int y);
+
+	// --- v13 additions (app-drawn desktop wallpaper) ---
+	// Map the shared screen-sized wallpaper buffer (0x00RRGGBB) into this app and
+	// return its VA (+ dims via w/h). Draw into it, then wallpaper_commit() to make
+	// it the live background. Frames are kernel-owned -> persists after the app exits.
+	unsigned *(*wallpaper_buffer) (int *w, int *h);
+	void      (*wallpaper_commit) (void);
 };
 
 #ifdef __cplusplus

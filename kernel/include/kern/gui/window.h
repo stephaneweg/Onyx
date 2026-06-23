@@ -272,6 +272,14 @@ public:
 	// unset, the compositor falls back to a drawn arrow.
 	void SetCursor (GImage *pImage)	{ m_pCursor = pImage; }
 
+	// Shared wallpaper buffer for a wallpaper-writer app. EnsureWallpaperBuffer
+	// allocates (once) a frame-backed, page-aligned screen-sized buffer and returns
+	// its physical (== kernel VA) address + page count so the kapi layer can map it
+	// into the app. The app draws into it; CommitWallpaper makes it the live desktop
+	// background. The frames are kernel-owned, so the wallpaper outlives the app.
+	u32 *EnsureWallpaperBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages);
+	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; }
+
 	// Set the desktop wallpaper (takes ownership of pImage; deletes any previous).
 	// Pass 0 to clear it (back to the solid desktop colour).
 	void SetWallpaper (GImage *pImage);
@@ -310,6 +318,13 @@ private:
 
 	GImage	  *m_pWallpaper;	// desktop background (owned), or 0 for the solid colour
 	GImage	  *m_pCursor;		// mouse cursor bitmap (owned), or 0 for a drawn arrow
+
+	// App-writable wallpaper (mapped into a writer app; kernel-owned frames).
+	u8	  *m_pWallRaw;		// raw allocation backing the buffer (0 = none yet)
+	u64	   m_ulWallPhys;	// 64 KB-aligned start (== kernel VA, identity region)
+	unsigned   m_nWallPages;	// 64 KB pages spanned
+	GImage	   m_WallImage;		// wraps the buffer
+	boolean	   m_bLiveWall;		// committed? (drawn instead of m_pWallpaper)
 
 	// Cursor + drag state (mutated from the input thread, read by Composite).
 	int	   m_nCursorX;

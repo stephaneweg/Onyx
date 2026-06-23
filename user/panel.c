@@ -258,9 +258,8 @@ int main (void)
 	fb = kapi_create_window_ex (x0, y0, win_w, win_h, "panel", WIN_FLAG_BORDERLESS);
 	if (fb == 0) return 1;
 	clear_used (MAXLEN);
-	// Generate the wallpaper once at startup (toroidal Voronoi, blue base, varies
-	// per boot) instead of loading a BMP.
-	kapi_wallpaper_generate (0x004878B0, 28, 0);
+	// The wallpaper is painted by the voronoy app (autostart), not the panel -- the
+	// kernel no longer hardcodes a wallpaper style.
 
 	// Apps button (at the pinned corner), then the pinned quicklaunch icons.
 	g_apps_handle = kapi_add_icon (0, 0, ICON, ICON, "SD:apps/panel.app/apps.bmp",

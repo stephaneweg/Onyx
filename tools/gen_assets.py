@@ -265,6 +265,16 @@ def icon_sheet():		# a grid with a header row
     for j in range(1, 4): prect(px, 6, 12 + j * 5, 33, 12 + j * 5, (175, 184, 190))
     return px
 
+def icon_voronoy():		# blue cellular blobs (the Voronoi wallpaper generator)
+    px = blank()
+    prect(px, 5, 5, 34, 34, (30, 60, 110))
+    pdisc(px, 13, 14, 8, (60, 110, 170))
+    pdisc(px, 28, 12, 7, (40, 90, 150))
+    pdisc(px, 13, 29, 7, (84, 134, 194))
+    pdisc(px, 29, 29, 8, (50, 100, 160))
+    pframe(px, 5, 5, 34, 34, (20, 40, 80))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -273,6 +283,7 @@ ICONS = {
     "calendar": icon_calendar, "mandelbrot": icon_mandel,
     "minesweeper": icon_mines, "paint": icon_paint,
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
+    "voronoy": icon_voronoy,
 }
 
 
