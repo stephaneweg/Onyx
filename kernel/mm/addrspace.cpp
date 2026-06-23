@@ -92,6 +92,20 @@ CAddressSpace::~CAddressSpace (void)
 		return;
 	}
 
+	// BISECT step F: is pfree ITSELF the problem in this context? alloc + free a
+	// throwaway page (NOT one of demoC's), and leak demoC's tables/frames. If close
+	// works -> the issue is specific to demoC's pages (still referenced?); if it
+	// hangs -> any pfree breaks the IRQ (page-allocator/pfree itself).
+	{
+		void *pDummy = palloc ();
+		if (pDummy != 0)
+		{
+			pfree (pDummy);
+		}
+	}
+	m_pL2 = 0;
+	return;
+
 	// Walk the user range: free every frame we own (palloc'd via MapNewPage), then
 	// the L3 table itself. Frames not flagged PAGE_SW_OWNED are owned elsewhere
 	// (e.g. the window canvas) and must NOT be freed here.
