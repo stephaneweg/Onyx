@@ -2,6 +2,7 @@
 // window.cpp
 //
 #include <kern/gui/window.h>
+#include <kern/gui/gimage.h>		// GImage (icon widgets own a decoded BMP)
 #include <kern/gui/skin.h>		// 9-slice widget skins (button/close/window)
 #include <kern/layout.h>		// KPAGE_SIZE / KPAGE_MASK
 #include <circle/util.h>		// memset
@@ -62,6 +63,11 @@ CWindow::~CWindow (void)
 		{
 			delete [] m_Widgets[i].pText;
 			m_Widgets[i].pText = 0;
+		}
+		if (m_Widgets[i].pIcon != 0)		// GW_ICON decoded image
+		{
+			delete (GImage *) m_Widgets[i].pIcon;
+			m_Widgets[i].pIcon = 0;
 		}
 	}
 	if (m_pRawAlloc != 0)
@@ -313,6 +319,47 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 			}
 			break;
 		}
+
+		case GW_ICON:
+		{
+			// Hover / press highlight behind the icon.
+			if (pW->bMousePressed)
+			{
+				pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00405468);
+			}
+			else if (pW->bMouseOver)
+			{
+				pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00303f50);
+			}
+
+			// Reserve a line at the bottom for the label (if any). The icon image
+			// (magenta-keyed) is centred in the remaining area.
+			int nLabelH = (pW->Label[0] != '\0') ? fh + 2 : 0;
+			const GImage *pImg = (const GImage *) pW->pIcon;
+			if (pImg != 0 && pImg->IsValid ())
+			{
+				int iw = pImg->Width ();
+				int ih = pImg->Height ();
+				int ix = bx0 + (pW->nW - iw) / 2;
+				int iy = by0 + ((pW->nH - nLabelH) - ih) / 2;
+				pScreen->PutOther (pImg, ix, iy, TRUE);
+			}
+			else
+			{
+				int m = 6;			// placeholder square when no image
+				pScreen->FillRectangle (bx0 + m, by0 + m, bx1 - m,
+							by1 - m - nLabelH, 0x00808890);
+				pScreen->DrawRectangle (bx0 + m, by0 + m, bx1 - m,
+							by1 - m - nLabelH, 0x00000000);
+			}
+
+			if (pW->Label[0] != '\0')
+			{
+				int tx = bx0 + (pW->nW - GImage::TextWidth (pW->Label)) / 2;
+				pScreen->DrawText (tx, by1 - fh, pW->Label, 0x00FFFFFF);
+			}
+			break;
+		}
 		}
 	}
 
@@ -363,6 +410,7 @@ GWidget *CWindow::AddWidget (int nType, int x, int y, int w, int h,
 
 	// A textarea owns a heap text buffer (the inline Label is too small).
 	pW->pText = 0;
+	pW->pIcon = 0;				// GW_ICON image attached by the caller (kapi)
 	if (nType == GW_TEXTAREA)
 	{
 		pW->pText = new char[GW_AREA_CAP];
@@ -708,6 +756,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 
 				if (pW != 0 && (pW->nType == GW_BUTTON
 						|| pW->nType == GW_CHECKBOX
+						|| pW->nType == GW_ICON
 						|| IsValueWidget (pW)))
 				{
 					pW->bMousePressed = TRUE;	// armed; fires on release
@@ -746,7 +795,8 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 				PostWidgetEvent (m_pPressedWindow, pW,
 						 GUI_EVENT_CHECK_CHANGED, pW->nState);
 			}
-			else if (pW->bMouseOver && pW->nType == GW_BUTTON)
+			else if (pW->bMouseOver && (pW->nType == GW_BUTTON
+						    || pW->nType == GW_ICON))
 			{
 				PostWidgetEvent (m_pPressedWindow, pW, GUI_EVENT_CLICK, 0);
 			}

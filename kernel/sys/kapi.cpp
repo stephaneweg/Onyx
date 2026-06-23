@@ -15,9 +15,11 @@
 #include <kern/layout.h>
 #include <kern/gui/window.h>
 #include <kern/debugcon.h>
+#include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
+#include <circle/time.h>
 #include <circle/logger.h>
 #include <circle/new.h>
 #include <circle/util.h>
@@ -234,6 +236,68 @@ unsigned long kapi_add_scrollbar_h (int x, int y, int w, int h, void *pHandler)
 	return AddWidgetToCurrent (GW_SCROLLH, x, y, w, h, "", pHandler);
 }
 
+// Read an entire SD file into a freshly new[]'d buffer; caller delete[]s. 0 on error.
+static u8 *ReadWholeFile (const char *pPath, unsigned *pSize)
+{
+	FIL File;
+	if (pPath == 0 || f_open (&File, pPath, FA_READ) != FR_OK)
+	{
+		return 0;
+	}
+	unsigned nSize = (unsigned) f_size (&File);
+	u8 *pBuf = new u8[nSize];
+	UINT nRead = 0;
+	if (pBuf == 0 || f_read (&File, pBuf, nSize, &nRead) != FR_OK || nRead != nSize)
+	{
+		delete [] pBuf;
+		f_close (&File);
+		return 0;
+	}
+	f_close (&File);
+	*pSize = nSize;
+	return pBuf;
+}
+
+// Add a clickable icon: a (magenta-keyed) 24-bpp BMP loaded from pBmpPath, with an
+// optional label below. Fires GUI_EVENT_CLICK like a button. pBmpPath may be 0 (a
+// placeholder square is drawn). The decoded image is owned by the widget.
+unsigned long kapi_add_icon (int x, int y, int w, int h, const char *pBmpPath,
+			     const char *pLabel, void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0)
+	{
+		return 0;
+	}
+
+	GImage *pImg = 0;
+	if (pBmpPath != 0)
+	{
+		unsigned nSize = 0;
+		u8 *pData = ReadWholeFile (pBmpPath, &nSize);
+		if (pData != 0)
+		{
+			pImg = new GImage;
+			if (pImg != 0 && !pImg->LoadBMP (pData, nSize))
+			{
+				delete pImg;
+				pImg = 0;
+			}
+			delete [] pData;
+		}
+	}
+
+	GWidget *pW = pWin->AddWidget (GW_ICON, x, y, w, h, pLabel, (u64) pHandler);
+	if (pW == 0)
+	{
+		delete pImg;			// window full: don't leak the image
+		return 0;
+	}
+	pW->pIcon = pImg;
+	return (unsigned long) pW;
+}
+
 // Checkbox state (1 = checked).
 int kapi_widget_get_checked (unsigned long hWidget)
 {
@@ -377,6 +441,93 @@ void kapi_exit (int /*nStatus*/)
 		CScheduler::Get ()->GetCurrentTask ()->Terminate ();
 	}
 	for (;;) { }						// not reached
+}
+
+// --- app enumeration + clock -------------------------------------------------
+
+// List installed apps: write each app's folder basename (the "xxx" of "xxx.app")
+// under /apps into pBuf, one per line ('\n'-separated, NUL-terminated). Returns the
+// number of apps found (some may be omitted if pBuf is too small). The shell uses
+// this for the app-list popup.
+int kapi_list_apps (char *pBuf, unsigned nBufSize)
+{
+	if (pBuf == 0 || nBufSize == 0)
+	{
+		return 0;
+	}
+	pBuf[0] = '\0';
+
+	DIR Dir;
+	if (f_opendir (&Dir, "SD:apps") != FR_OK)
+	{
+		return 0;
+	}
+
+	unsigned nPos = 0, nCount = 0;
+	for (;;)
+	{
+		FILINFO Info;
+		if (f_readdir (&Dir, &Info) != FR_OK || Info.fname[0] == '\0')
+		{
+			break;
+		}
+		if (!(Info.fattrib & AM_DIR))
+		{
+			continue;
+		}
+
+		// Copy the name and strip a trailing ".app"; skip non-".app" dirs.
+		char Name[64];
+		unsigned k = 0;
+		for (; Info.fname[k] != '\0' && k < sizeof (Name) - 1; k++)
+		{
+			Name[k] = Info.fname[k];
+		}
+		Name[k] = '\0';
+		if (k < 4 || Name[k-4] != '.' || Name[k-3] != 'a'
+		    || Name[k-2] != 'p' || Name[k-1] != 'p')
+		{
+			continue;
+		}
+		Name[k-4] = '\0';
+
+		for (unsigned j = 0; Name[j] != '\0'; j++)
+		{
+			if (nPos + 2 < nBufSize)
+			{
+				pBuf[nPos++] = Name[j];
+			}
+		}
+		if (nPos + 1 < nBufSize)
+		{
+			pBuf[nPos++] = '\n';
+		}
+		nCount++;
+	}
+
+	f_closedir (&Dir);
+	pBuf[nPos] = '\0';
+	return (int) nCount;
+}
+
+// Current local date/time, broken down. Any pointer may be 0. Returns 1 if the
+// clock holds a real wall-clock time, 0 if it is still only uptime (no RTC/NTP yet,
+// so the fields then reflect seconds-since-boot mapped onto 1970).
+int kapi_get_datetime (int *pYear, int *pMonth, int *pDay,
+		       int *pHour, int *pMinute, int *pSecond)
+{
+	unsigned nSeconds = CTimer::Get ()->GetLocalTime ();
+	CTime Time;
+	Time.Set ((time_t) nSeconds);
+
+	if (pYear)   *pYear   = (int) Time.GetYear ();
+	if (pMonth)  *pMonth  = (int) Time.GetMonth ();
+	if (pDay)    *pDay    = (int) Time.GetMonthDay ();
+	if (pHour)   *pHour   = (int) Time.GetHours ();
+	if (pMinute) *pMinute = (int) Time.GetMinutes ();
+	if (pSecond) *pSecond = (int) Time.GetSeconds ();
+
+	return nSeconds > 60u * 60 * 24 * 365 ? 1 : 0;	// > ~1 year => a real date
 }
 
 // --- console -----------------------------------------------------------------

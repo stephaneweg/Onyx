@@ -44,6 +44,7 @@
 #define GW_TEXTAREA		7	// editable multi-line text (focus; nState = top line)
 #define GW_SCROLLV		8	// vertical scrollbar   (nState = 0..100, draggable)
 #define GW_SCROLLH		9	// horizontal scrollbar (nState = 0..100, draggable)
+#define GW_ICON			10	// clickable image (pIcon) + optional label; fires CLICK
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree.
@@ -67,6 +68,7 @@ struct GWidget
 	int	 nX, nY, nW, nH;	// relative to the client (canvas) origin
 	char	 Label[GW_TEXT_MAX];	// button/checkbox label, or textbox content
 	char	*pText;			// textarea content (heap, GW_AREA_CAP); else 0
+	void	*pIcon;			// GW_ICON: heap GImage* (owns its pixels); else 0
 	u64	 ulHandler;		// app callback address
 	int	 nState;		// checkbox: 0/1; slider/progress/scrollbar: 0..100
 	boolean	 bMouseOver;		// cursor is over this widget (hover)

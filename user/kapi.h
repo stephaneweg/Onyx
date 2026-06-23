@@ -62,6 +62,8 @@ unsigned long kapi_add_scrollbar_v (int x, int y, int w, int h,
 				    gui_handler handler);  // vertical; VALUE_CHANGED (0..100)
 unsigned long kapi_add_scrollbar_h (int x, int y, int w, int h,
 				    gui_handler handler);  // horizontal; VALUE_CHANGED
+unsigned long kapi_add_icon     (int x, int y, int w, int h, const char *bmp_path,
+				 const char *label, gui_handler handler); // CLICK; bmp may be 0
 
 // Query / update widget state.
 int  kapi_widget_get_text    (unsigned long widget, char *buf, unsigned max); // -> length
@@ -73,6 +75,15 @@ void kapi_widget_set_value   (unsigned long widget, int value);
 void      kapi_pump_events (void);	// dispatch pending events, non-blocking
 void      kapi_wait_for_exit (void);	// pump until the close box is clicked
 int       kapi_should_exit (void);	// 1 if the app was asked to close
+
+// App enumeration + clock
+// List installed apps: app folder basenames under /apps, one per '\n'-separated
+// line in buf (NUL-terminated). Returns the count. (For the app-list popup.)
+int       kapi_list_apps (char *buf, unsigned buf_size);
+// Current local date/time (any pointer may be 0). Returns 1 if a real wall-clock
+// time, 0 if only uptime is available (no RTC/NTP yet).
+int       kapi_get_datetime (int *year, int *month, int *day,
+			     int *hour, int *minute, int *second);
 
 // Console
 int       kapi_write (int fd, const void *buf, unsigned len);
