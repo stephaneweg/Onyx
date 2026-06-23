@@ -15,7 +15,7 @@ LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
 	  panel.elf applist.elf tinypad.elf tinycalc.elf inidemo.elf \
-	  tetris.elf snake.elf same.elf
+	  tetris.elf snake.elf same.elf filer.elf
 
 all: $(PROGS)
 

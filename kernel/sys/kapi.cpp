@@ -12,6 +12,7 @@
 //
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
+#include <kern/kapi_abi.h>		// struct kapi_dirent
 #include <kern/layout.h>
 #include <kern/gui/window.h>
 #include <kern/debugcon.h>
@@ -867,6 +868,58 @@ void kapi_close (void *pHandle)
 	{
 		f_close ((FIL *) pHandle);
 		delete (FIL *) pHandle;
+	}
+}
+
+// --- directory listing -------------------------------------------------------
+
+void *kapi_opendir (const char *pPath)
+{
+	if (pPath == 0)
+	{
+		return 0;
+	}
+	DIR *pDir = new DIR;
+	if (pDir == 0)
+	{
+		return 0;
+	}
+	if (f_opendir (pDir, pPath) != FR_OK)
+	{
+		delete pDir;
+		return 0;
+	}
+	return pDir;
+}
+
+int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
+{
+	if (pHandle == 0 || pEnt == 0)
+	{
+		return 0;
+	}
+	FILINFO Info;
+	if (f_readdir ((DIR *) pHandle, &Info) != FR_OK || Info.fname[0] == '\0')
+	{
+		return 0;			// error or end of directory
+	}
+	unsigned i = 0;
+	for (; Info.fname[i] != '\0' && i < sizeof (pEnt->name) - 1; i++)
+	{
+		pEnt->name[i] = Info.fname[i];
+	}
+	pEnt->name[i] = '\0';
+	pEnt->size = (unsigned) Info.fsize;
+	pEnt->is_dir = (Info.fattrib & AM_DIR) ? 1 : 0;
+	return 1;
+}
+
+void kapi_closedir (void *pHandle)
+{
+	if (pHandle != 0)
+	{
+		f_closedir ((DIR *) pHandle);
+		delete (DIR *) pHandle;
 	}
 }
 

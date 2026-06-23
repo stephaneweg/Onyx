@@ -101,6 +101,11 @@ static inline unsigned kapi_fsize (void *h) { return KT->fsize (h); }
 static inline void kapi_close (void *h) { KT->close (h); }
 static inline int  kapi_save_file (const char *p, const void *b, unsigned n) { return KT->save_file (p, b, n); }
 
+// --- directory listing -------------------------------------------------------
+static inline void *kapi_opendir (const char *p) { return KT->opendir (p); }
+static inline int  kapi_readdir (void *d, struct kapi_dirent *e) { return KT->readdir (d, e); }
+static inline void kapi_closedir (void *d) { KT->closedir (d); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }

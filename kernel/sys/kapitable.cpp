@@ -69,6 +69,9 @@ int kapi_save_file (const char *, const void *, unsigned);
 
 int kapi_app_dir (char *, unsigned);
 void kapi_set_click_handler (gui_handler);
+void *kapi_opendir (const char *);
+int kapi_readdir (void *, struct kapi_dirent *);
+void kapi_closedir (void *);
 
 }  // extern "C"
 
@@ -140,4 +143,7 @@ void KApiTableInit (void)
 
 	t->app_dir           = kapi_app_dir;
 	t->set_click_handler = kapi_set_click_handler;
+	t->opendir           = kapi_opendir;
+	t->readdir           = kapi_readdir;
+	t->closedir          = kapi_closedir;
 }

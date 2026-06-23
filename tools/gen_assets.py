@@ -155,9 +155,18 @@ def icon_same():		# a grid of 4 coloured blocks (SameGame)
             prect(px, x, y, x + b - 2, y + b - 2, cols[pat[r][c]])
     return px
 
+def icon_filer():		# a manila folder
+    px = blank()
+    body, tab, edge = (225, 190, 90), (236, 208, 120), (150, 120, 40)
+    prect(px, 7, 9, 18, 14, tab)
+    prect(px, 7, 13, 33, 31, body)
+    pframe(px, 7, 13, 33, 31, edge)
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
+    "filer": icon_filer,
 }
 
 

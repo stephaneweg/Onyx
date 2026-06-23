@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	2
+#define KAPI_ABI_VERSION	3
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +25,14 @@ extern "C" {
 
 // Widget / key event callback: void (sender, GUI_EVENT_*, value).
 typedef void (*gui_handler) (unsigned long sender, int event, long value);
+
+// A directory entry from kapi_readdir.
+struct kapi_dirent
+{
+	char     name[128];
+	unsigned size;		// bytes (0 for directories)
+	int      is_dir;	// 1 if a directory
+};
 
 struct TKApiTable
 {
@@ -99,6 +107,13 @@ struct TKApiTable
 	// Canvas-click handler: GUI_EVENT_CANVAS_CLICK with (clientX<<16)|clientY when a
 	// press lands in the client area on no widget. For app-drawn mouse UIs.
 	void (*set_click_handler) (gui_handler);
+
+	// --- v3 additions ---
+	// Directory listing (FatFs). opendir returns a handle (0 on failure); readdir
+	// fills *ent and returns 1, or 0 at end; closedir releases it.
+	void *(*opendir) (const char *path);
+	int   (*readdir) (void *dir, struct kapi_dirent *ent);
+	void  (*closedir) (void *dir);
 };
 
 #ifdef __cplusplus
