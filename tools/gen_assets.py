@@ -275,6 +275,16 @@ def icon_voronoy():		# blue cellular blobs (the Voronoi wallpaper generator)
     pframe(px, 5, 5, 34, 34, (20, 40, 80))
     return px
 
+def icon_config():		# a key/value list (config editor): two columns of bars
+    px = blank()
+    prect(px, 5, 6, 34, 33, (236, 236, 238))
+    pframe(px, 5, 6, 34, 33, (110, 116, 126))
+    for i in range(4):
+        y = 10 + i * 6
+        prect(px, 8, y, 18, y + 2, (90, 150, 110))     # key column
+        prect(px, 21, y, 31, y + 2, (170, 160, 90))    # value column
+    return px
+
 def icon_theme():		# a colour-swatch palette (theme editor)
     px = blank()
     prect(px, 5, 5, 34, 34, (44, 50, 60))
@@ -295,7 +305,7 @@ ICONS = {
     "calendar": icon_calendar, "mandelbrot": icon_mandel,
     "minesweeper": icon_mines, "paint": icon_paint,
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
-    "voronoy": icon_voronoy, "theme": icon_theme,
+    "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
 }
 
 

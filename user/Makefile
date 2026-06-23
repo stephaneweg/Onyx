@@ -18,7 +18,7 @@ PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
 	  tetris.elf snake.elf same.elf filer.elf terminal.elf \
 	  2048.elf life.elf pong.elf sokoban.elf \
 	  calendar.elf mandelbrot.elf minesweeper.elf paint.elf \
-	  eyes.elf sheet.elf taskman.elf voronoy.elf theme.elf
+	  eyes.elf sheet.elf taskman.elf voronoy.elf theme.elf config.elf
 
 all: $(PROGS) bin
 
