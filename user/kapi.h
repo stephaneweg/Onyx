@@ -57,6 +57,9 @@ static inline int  kapi_kill (const char *name) { return KT->kill (name); }
 // force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
 static inline int  kapi_list_procs (char *b, unsigned s) { return KT->list_procs (b, s); }
 static inline int  kapi_kill_pid (int pid, int force) { return KT->kill_pid (pid, force); }
+// Keyboard layout: switch among the compiled-in country maps; read the current one.
+static inline int  kapi_set_keymap (const char *name) { return KT->set_keymap (name); }
+static inline int  kapi_get_keymap (char *b, unsigned s) { return KT->get_keymap (b, s); }
 
 // Modal message box (blocks until answered). Returns 1 (OK/Yes) or 0 (Cancel/No).
 #define MB_OK		0

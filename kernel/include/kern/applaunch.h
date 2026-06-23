@@ -25,4 +25,10 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 // wait handle). Task name is derived from the path. Defined in kernel.cpp.
 boolean ExecPath (const char *pElfPath, const char *pArgs);
 
+// Keyboard layout control (defined in kernel.cpp): switch the live keyboard to a
+// compiled-in country map and read the current layout name. Declared here (a plain
+// C++ header) so sys/kapi.cpp sees C++ linkage, matching the kernel.cpp definitions.
+boolean KernelSetKeyMap (const char *pName);
+const char *KernelGetKeyMap (void);
+
 #endif // _kern_applaunch_h

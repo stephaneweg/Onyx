@@ -180,6 +180,10 @@ public:
 // drive the cursor + window raise/drag in CWindowManager; key presses are logged
 // for now (widget routing arrives with the widget toolkit, #14/#15).
 //
+// Current keyboard layout name (e.g. "FR"); empty => Circle's compiled default. Set
+// at boot from cmdline (keymap=) and by the keyb command / kapi_set_keymap.
+static char g_szKeyMap[8] = "";
+
 class CInputTask : public CTask
 {
 public:
@@ -190,6 +194,17 @@ public:
 	{
 		SetName ("input");
 		s_pThis = this;
+	}
+
+	// Switch the live keyboard's layout to a compiled-in country map (LoadMap).
+	// Returns FALSE if no keyboard is attached or the locale is unknown.
+	static boolean SetKeyMap (const char *pName)
+	{
+		if (s_pThis == 0 || s_pThis->m_pKeyboard == 0 || pName == 0)
+		{
+			return FALSE;
+		}
+		return s_pThis->m_pKeyboard->GetKeyMap ()->LoadMap (pName);
 	}
 
 	void Run (void) override
@@ -216,6 +231,8 @@ private:
 			{
 				m_pKeyboard->RegisterRemovedHandler (KeyboardRemoved);
 				m_pKeyboard->RegisterKeyPressedHandler (KeyPressedStub);
+				if (g_szKeyMap[0] != '\0')	// apply the configured layout
+					m_pKeyboard->GetKeyMap ()->LoadMap (g_szKeyMap);
 				m_pLogger->Write ("input", LogNotice, "keyboard attached");
 			}
 		}
@@ -278,6 +295,36 @@ private:
 
 CInputTask *CInputTask::s_pThis = 0;
 
+// Keyboard-layout control exposed to the kapi layer (sys/kapi.cpp). SetKeyMap loads a
+// compiled-in country map onto the live keyboard and remembers the name (so a later
+// hot-plug re-applies it); GetKeyMap returns the current name ("" = boot default).
+boolean KernelSetKeyMap (const char *pName)
+{
+	if (pName == 0 || pName[0] == '\0' || !CInputTask::SetKeyMap (pName))
+	{
+		return FALSE;
+	}
+	unsigned i = 0;
+	for (; pName[i] != '\0' && i < sizeof (g_szKeyMap) - 1; i++) g_szKeyMap[i] = pName[i];
+	g_szKeyMap[i] = '\0';
+	return TRUE;
+}
+
+const char *KernelGetKeyMap (void)
+{
+	return g_szKeyMap;
+}
+
+// Record the boot-time layout name (from cmdline keymap=) so ps/keyb can report it
+// and a keyboard hot-plug re-applies it. The map itself is loaded by Circle's CKeyMap.
+void KernelInitKeyMap (const char *pName)
+{
+	unsigned i = 0;
+	if (pName != 0)
+		for (; pName[i] != '\0' && i < sizeof (g_szKeyMap) - 1; i++) g_szKeyMap[i] = pName[i];
+	g_szKeyMap[i] = '\0';
+}
+
 // Resolution: cmdline.txt "width="/"height=" override the defaults (1024x768).
 // m_Options is constructed before m_Screen/m_2DGraphics, so it is safe to query here.
 #define OPT_W(opt)	((opt).GetWidth ()  != 0 ? (int) (opt).GetWidth ()  : SCREEN_WIDTH)
@@ -301,6 +348,10 @@ CKernel::CKernel (void)
 	// dialog centering, kapi_screen_size) uses the real size, not the defaults.
 	g_nScreenWidth  = OPT_W (m_Options);
 	g_nScreenHeight = OPT_H (m_Options);
+
+	// Record the boot keyboard layout (cmdline keymap=, e.g. "fr"); the map itself is
+	// loaded by Circle's CKeyMap. keyb / the theme editor can switch it at runtime.
+	KernelInitKeyMap (m_Options.GetKeyMap ());
 }
 
 // Read a whole file from the mounted SD card into a freshly allocated buffer.

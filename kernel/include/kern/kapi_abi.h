@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	14
+#define KAPI_ABI_VERSION	15
 
 #ifdef __cplusplus
 extern "C" {
@@ -181,6 +181,12 @@ struct TKApiTable
 	// returns 1 killed/signalled, 0 no such pid, -1 protected (kernel task or self).
 	int (*list_procs) (char *buf, unsigned size);
 	int (*kill_pid) (int pid, int force);
+
+	// --- v15 additions (keyboard layout) ---
+	// set_keymap: switch to a compiled-in country map ("FR","US","DE","UK","ES",
+	// "IT","DV"); 1 ok / 0 unknown-or-no-keyboard. get_keymap: current name into buf.
+	int (*set_keymap) (const char *name);
+	int (*get_keymap) (char *buf, unsigned size);
 };
 
 #ifdef __cplusplus

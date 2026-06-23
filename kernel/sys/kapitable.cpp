@@ -33,6 +33,8 @@ unsigned *kapi_wallpaper_buffer (int *, int *);
 void kapi_wallpaper_commit (void);
 int kapi_list_procs (char *, unsigned);
 int kapi_kill_pid (int, int);
+int kapi_set_keymap (const char *);
+int kapi_get_keymap (char *, unsigned);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -208,4 +210,6 @@ void KApiTableInit (void)
 	t->wallpaper_commit  = kapi_wallpaper_commit;
 	t->list_procs        = kapi_list_procs;
 	t->kill_pid          = kapi_kill_pid;
+	t->set_keymap        = kapi_set_keymap;
+	t->get_keymap        = kapi_get_keymap;
 }

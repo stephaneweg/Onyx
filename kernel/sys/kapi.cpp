@@ -979,6 +979,25 @@ int kapi_kill_pid (int nPid, int nForce)
 	return 1;
 }
 
+// --- keyboard layout (kernel.cpp drives the Circle CKeyMap; decls in applaunch.h) --
+// Switch the keyboard layout to a compiled-in country map ("FR","US","DE","UK",
+// "ES","IT","DV"). Returns 1 on success, 0 if unknown / no keyboard.
+int kapi_set_keymap (const char *pName)
+{
+	return KernelSetKeyMap (pName) ? 1 : 0;
+}
+
+// Current layout name into pBuf (empty = boot default). Returns the length.
+int kapi_get_keymap (char *pBuf, unsigned nMax)
+{
+	if (pBuf == 0 || nMax == 0) return 0;
+	const char *p = KernelGetKeyMap ();
+	unsigned i = 0;
+	for (; p[i] != '\0' && i < nMax - 1; i++) pBuf[i] = p[i];
+	pBuf[i] = '\0';
+	return (int) i;
+}
+
 // The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name
 // is the app's folder basename. Returns the string length. Used by the shared app
 // lib to find an app's config.ini.
