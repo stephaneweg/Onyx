@@ -154,13 +154,13 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	if (!Borderless ())
 	{
 		// Frame + title bar: the window skin (wings.bmp, 7/7/32/7) draws the whole
-		// chrome; otherwise a flat frame + title bar. The skin is grayscale and gets
-		// colorized by multiply -- a warm accent when active, dimmer when inactive.
-		if (g_pWindowSkin != 0)
+		// chrome; otherwise a flat frame + title bar. The skin was pre-tinted at load
+		// (Colorize) into an active + a dimmer inactive copy -- pick by focus.
+		CSkin *pChrome = bActive ? g_pWindowSkin
+				 : (g_pWindowSkinInactive ? g_pWindowSkinInactive : g_pWindowSkin);
+		if (pChrome != 0)
 		{
-			u32 nTint = bActive ? WIN_SKIN_TINT_ACTIVE : WIN_SKIN_TINT_INACTIVE;
-			g_pWindowSkin->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1,
-					       TRUE, nTint);
+			pChrome->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, TRUE);
 		}
 		else
 		{
@@ -506,8 +506,13 @@ boolean CWindow::PopEvent (GUIEvent *pEvent)
 
 CWindowManager *CWindowManager::s_pThis = 0;
 
+// Actual framebuffer size in use; initialised to the compile-time defaults and
+// overwritten at boot (CKernel) once the chosen resolution is known.
+int g_nScreenWidth  = SCREEN_WIDTH;
+int g_nScreenHeight = SCREEN_HEIGHT;
+
 CWindowManager::CWindowManager (void)
-:	m_nWindows (0), m_pWallpaper (0),
+:	m_nWindows (0), m_pWallpaper (0), m_pCursor (0),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
@@ -624,22 +629,30 @@ void CWindowManager::Composite (GImage *pScreen)
 		}
 	}
 
-	// Cursor, drawn last so it floats above everything. A classic top-left arrow:
-	// a black-bordered white triangle whose tip is at the cursor hot-spot (cx,cy).
+	// Cursor, drawn last so it floats above everything. Prefer the loaded cursor
+	// bitmap (mousecur.bin); its hot-spot is the top-left corner. Without it, fall
+	// back to a drawn black-bordered white arrow whose tip is at (cx,cy).
 	if (m_bCursorShown)
 	{
 		int cx = m_nCursorX;
 		int cy = m_nCursorY;
-		for (int r = 0; r < 16; r++)
+		if (m_pCursor != 0 && m_pCursor->IsValid ())
 		{
-			for (int c = 0; c <= r; c++)
+			pScreen->PutOther (m_pCursor, cx, cy, TRUE);
+		}
+		else
+		{
+			for (int r = 0; r < 16; r++)
 			{
-				// White fill, black on the two edges for contrast.
-				u32 col = (c == 0 || c == r) ? 0x00000000 : 0x00FFFFFF;
-				pScreen->SetPixel (cx + c, cy + r, col);
+				for (int c = 0; c <= r; c++)
+				{
+					// White fill, black on the two edges for contrast.
+					u32 col = (c == 0 || c == r) ? 0x00000000 : 0x00FFFFFF;
+					pScreen->SetPixel (cx + c, cy + r, col);
+				}
+				// Close the bottom edge with a black pixel.
+				pScreen->SetPixel (cx + r, cy + r, 0x00000000);
 			}
-			// Close the bottom edge with a black pixel.
-			pScreen->SetPixel (cx + r, cy + r, 0x00000000);
 		}
 	}
 }
@@ -690,8 +703,8 @@ static u32 VoronoiTint (u32 nBase, unsigned nDist)
 void CWindowManager::GenerateWallpaper (u32 nBaseColor, int nPoints, unsigned nSeed)
 {
 	const int adiv = 2;				// render at half-res, then upscale
-	const int nW = SCREEN_WIDTH;
-	const int nH = SCREEN_HEIGHT;
+	const int nW = g_nScreenWidth;
+	const int nH = g_nScreenHeight;
 	const int mx = nW / adiv;
 	const int my = nH / adiv;
 
@@ -862,8 +875,8 @@ static boolean IsValueWidget (const GWidget *pW)
 void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 {
 	// Clamp to the screen.
-	if (x < 0) x = 0; else if (x >= SCREEN_WIDTH)  x = SCREEN_WIDTH - 1;
-	if (y < 0) y = 0; else if (y >= SCREEN_HEIGHT) y = SCREEN_HEIGHT - 1;
+	if (x < 0) x = 0; else if (x >= g_nScreenWidth)  x = g_nScreenWidth - 1;
+	if (y < 0) y = 0; else if (y >= g_nScreenHeight) y = g_nScreenHeight - 1;
 
 	m_SpinLock.Acquire ();
 

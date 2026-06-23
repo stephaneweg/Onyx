@@ -17,8 +17,16 @@
 class CDialog;
 
 // Screen dimensions (the framebuffer we request). Shared by the kernel + kapi.
-#define SCREEN_WIDTH		640
-#define SCREEN_HEIGHT		480
+// Default framebuffer size; overridable at boot via cmdline.txt (width=/height=).
+// The actual size in use is published in g_nScreenWidth / g_nScreenHeight below.
+#define SCREEN_WIDTH		1024
+#define SCREEN_HEIGHT		768
+
+// Actual framebuffer size in use, set once at boot (from cmdline width=/height= or
+// the defaults above). Runtime code should prefer these over the compile-time
+// defaults so a cmdline override takes effect everywhere.
+extern int g_nScreenWidth;
+extern int g_nScreenHeight;
 
 // Theme + chrome metrics. Match the window skin (wings.bmp, margins 7/7/32/7):
 // a 32 px title-bar region on top and 7 px borders. Used both skinned and flat.
@@ -260,6 +268,10 @@ public:
 	// Clear the desktop and draw every window onto the screen image.
 	void Composite (GImage *pScreen);
 
+	// Install the mouse-cursor image (a transparent GImage; takes ownership). If
+	// unset, the compositor falls back to a drawn arrow.
+	void SetCursor (GImage *pImage)	{ m_pCursor = pImage; }
+
 	// Set the desktop wallpaper (takes ownership of pImage; deletes any previous).
 	// Pass 0 to clear it (back to the solid desktop colour).
 	void SetWallpaper (GImage *pImage);
@@ -297,6 +309,7 @@ private:
 	unsigned   m_nWindows;
 
 	GImage	  *m_pWallpaper;	// desktop background (owned), or 0 for the solid colour
+	GImage	  *m_pCursor;		// mouse cursor bitmap (owned), or 0 for a drawn arrow
 
 	// Cursor + drag state (mutated from the input thread, read by Composite).
 	int	   m_nCursorX;

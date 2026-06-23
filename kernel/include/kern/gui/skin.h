@@ -26,10 +26,13 @@ public:
 	int StateWidth (void) const	{ return m_nSkinW; }
 	int StateHeight (void) const	{ return m_nSkinH; }
 
-	// Draw state nNum at (x,y) sized w x h onto pTarget (9-slice). nTint multiplies
-	// the (grayscale) skin to colorize it; 0x00FFFFFF leaves it unchanged.
+	// Draw state nNum at (x,y) sized w x h onto pTarget (9-slice).
 	void DrawOn (GImage *pTarget, unsigned nNum, int x, int y, int w, int h,
-		     boolean bTransparent, u32 nTint = 0x00FFFFFF);
+		     boolean bTransparent);
+
+	// Multiply every (non-transparent) pixel by nTint/255 in place -- bakes a colour
+	// into a grayscale skin ONCE at load time, so DrawOn/PutOtherPart stay tint-free.
+	void Colorize (u32 nTint);
 
 private:
 	GImage	 m_Image;
@@ -40,8 +43,11 @@ private:
 };
 
 // Skins loaded at boot from SD:/skins (0 if unavailable -> flat fallback drawing).
+// The window skin is loaded twice and pre-tinted: an "active" copy and a dimmer
+// "inactive" copy, so the compositor just picks one (no per-pixel tint at draw).
 extern CSkin *g_pButtonSkin;
 extern CSkin *g_pCloseSkin;
-extern CSkin *g_pWindowSkin;
+extern CSkin *g_pWindowSkin;		// active (focused) window chrome
+extern CSkin *g_pWindowSkinInactive;	// background windows
 
 #endif // _kern_gui_skin_h

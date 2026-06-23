@@ -75,9 +75,9 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 		{
 			s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
 		}
-		int nXMin   = SCREEN_WIDTH / 5;				// skip the leftmost fifth
-		int nXRange = SCREEN_WIDTH  - nOuterW - nXMin;
-		int nYRange = SCREEN_HEIGHT - nOuterH;
+		int nXMin   = g_nScreenWidth / 5;			// skip the leftmost fifth
+		int nXRange = g_nScreenWidth  - nOuterW - nXMin;
+		int nYRange = g_nScreenHeight - nOuterH;
 		s_nRng = s_nRng * 1103515245u + 12345u;
 		x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
 		s_nRng = s_nRng * 1103515245u + 12345u;
@@ -189,8 +189,8 @@ int kapi_exec (const char *pPath, const char *pArgs)
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
 void kapi_screen_size (int *pW, int *pH)
 {
-	if (pW != 0) *pW = SCREEN_WIDTH;
-	if (pH != 0) *pH = SCREEN_HEIGHT;
+	if (pW != 0) *pW = g_nScreenWidth;
+	if (pH != 0) *pH = g_nScreenHeight;
 }
 
 // Toggle a named app: if an app with this folder name is already running, ask it to
@@ -1193,11 +1193,11 @@ int kapi_message_box (const char *pTitle, const char *pText, int nButtons)
 		x = pOwner->X () + (pOwner->ClientWidth () - w) / 2;
 		y = pOwner->Y () + (pOwner->ClientHeight () - h) / 2;
 	}
-	else { x = (SCREEN_WIDTH - w) / 2; y = (SCREEN_HEIGHT - h) / 2; }
+	else { x = (g_nScreenWidth - w) / 2; y = (g_nScreenHeight - h) / 2; }
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
-	if (x + w > SCREEN_WIDTH)  x = SCREEN_WIDTH - w;
-	if (y + h > SCREEN_HEIGHT) y = SCREEN_HEIGHT - h;
+	if (x + w > g_nScreenWidth)  x = g_nScreenWidth - w;
+	if (y + h > g_nScreenHeight) y = g_nScreenHeight - h;
 
 	CWindow *pDlgWin = new CWindow (x, y, w, h, "", WIN_FLAG_BORDERLESS);
 	if (pDlgWin == 0 || !pDlgWin->IsValid ()) { delete pDlgWin; return 0; }
@@ -1241,11 +1241,11 @@ static int RunFileDialog (int nType, const char *pTitle, char *pOut, unsigned nC
 		x = pOwner->X () + (pOwner->ClientWidth () - w) / 2;
 		y = pOwner->Y () + (pOwner->ClientHeight () - h) / 2;
 	}
-	else { x = (SCREEN_WIDTH - w) / 2; y = (SCREEN_HEIGHT - h) / 2; }
+	else { x = (g_nScreenWidth - w) / 2; y = (g_nScreenHeight - h) / 2; }
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
-	if (x + w > SCREEN_WIDTH)  x = SCREEN_WIDTH - w;
-	if (y + h > SCREEN_HEIGHT) y = SCREEN_HEIGHT - h;
+	if (x + w > g_nScreenWidth)  x = g_nScreenWidth - w;
+	if (y + h > g_nScreenHeight) y = g_nScreenHeight - h;
 
 	CWindow *pDlgWin = new CWindow (x, y, w, h, "", WIN_FLAG_BORDERLESS);
 	if (pDlgWin == 0 || !pDlgWin->IsValid ()) { delete pDlgWin; return 0; }

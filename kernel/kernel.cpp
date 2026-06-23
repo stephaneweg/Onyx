@@ -278,11 +278,16 @@ private:
 
 CInputTask *CInputTask::s_pThis = 0;
 
+// Resolution: cmdline.txt "width="/"height=" override the defaults (1024x768).
+// m_Options is constructed before m_Screen/m_2DGraphics, so it is safe to query here.
+#define OPT_W(opt)	((opt).GetWidth ()  != 0 ? (int) (opt).GetWidth ()  : SCREEN_WIDTH)
+#define OPT_H(opt)	((opt).GetHeight () != 0 ? (int) (opt).GetHeight () : SCREEN_HEIGHT)
+
 CKernel::CKernel (void)
-:	m_Screen (SCREEN_WIDTH, SCREEN_HEIGHT),
+:	m_Screen (OPT_W (m_Options), OPT_H (m_Options)),
 	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer),
-	m_2DGraphics (SCREEN_WIDTH, SCREEN_HEIGHT, FALSE),	// VSync off: avoid page-flip present
+	m_2DGraphics (OPT_W (m_Options), OPT_H (m_Options), FALSE),	// VSync off: avoid page-flip present
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
 	m_USB (&m_Interrupt, &m_Timer, TRUE),			// TRUE: enable plug-and-play
 	m_FbConsole (&m_2DGraphics),
@@ -291,6 +296,11 @@ CKernel::CKernel (void)
 	m_bUSB (FALSE)
 {
 	m_ActLED.Blink (5);		// visible sign of life before the console is up
+
+	// Publish the chosen resolution so the GUI (compositor, wallpaper, cursor clamp,
+	// dialog centering, kapi_screen_size) uses the real size, not the defaults.
+	g_nScreenWidth  = OPT_W (m_Options);
+	g_nScreenHeight = OPT_H (m_Options);
 }
 
 // Read a whole file from the mounted SD card into a freshly allocated buffer.
@@ -349,6 +359,33 @@ static CSkin *LoadSkin (const char *pPath, unsigned nCount,
 		return 0;
 	}
 	return pSkin;
+}
+
+// Load a mouse-cursor bitmap (SimpleOS mousecur.bin): w*h raw bytes, one per pixel,
+// 1 = white, 2 = black, anything else = transparent. Returns a GImage (with the
+// magenta transparency key) the compositor blits, or 0 if unavailable.
+static GImage *LoadCursor (const char *pPath, int nW, int nH)
+{
+	unsigned nSize = 0;
+	u8 *pData = LoadFileFromSD (pPath, &nSize);
+	if (pData == 0)
+	{
+		return 0;
+	}
+	GImage *pImg = new GImage;
+	if (pImg == 0) { delete [] pData; return 0; }
+	pImg->SetSize (nW, nH);
+	if (!pImg->IsValid ()) { delete [] pData; delete pImg; return 0; }
+
+	for (int i = 0; i < nW * nH; i++)
+	{
+		u8 code = ((unsigned) i < nSize) ? pData[i] : 0;
+		u32 col = (code == 1) ? 0x00FFFFFF
+			: (code == 2) ? 0x00000000 : GIMAGE_TRANSPARENT;
+		pImg->SetPixel (i % nW, i / nW, col);
+	}
+	delete [] pData;
+	return pImg;
 }
 
 // Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
@@ -652,7 +689,18 @@ boolean CKernel::Initialize (void)
 			// gui.bas. Missing skins -> flat fallback drawing.
 			g_pButtonSkin = LoadSkin ("SD:skins/button.bmp",   3, 6, 6, 6, 6);
 			g_pCloseSkin  = LoadSkin ("SD:skins/closebgs.bmp", 3, 5, 5, 5, 5);
+			// Window chrome: load wings.bmp twice and bake a colour into each (the
+			// skin is grayscale, meant to be colorized by multiply) -- a warm accent
+			// for the active window, a muted slate for inactive ones.
 			g_pWindowSkin = LoadSkin ("SD:skins/wings.bmp",    1, 7, 7, 32, 7);
+			if (g_pWindowSkin != 0) g_pWindowSkin->Colorize (WIN_SKIN_TINT_ACTIVE);
+			g_pWindowSkinInactive = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
+			if (g_pWindowSkinInactive != 0)
+				g_pWindowSkinInactive->Colorize (WIN_SKIN_TINT_INACTIVE);
+
+			// Mouse cursor: SimpleOS mousecur.bin -- 12x19 bytes, 1=white 2=black
+			// else transparent. Built into a GImage the compositor blits.
+			m_WindowManager.SetCursor (LoadCursor ("SD:skins/mousecur.bin", 12, 19));
 			m_Logger.Write (FromKernel, LogNotice, "skins: button=%d close=%d window=%d",
 					g_pButtonSkin != 0, g_pCloseSkin != 0, g_pWindowSkin != 0);
 		}
