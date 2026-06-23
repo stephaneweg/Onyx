@@ -54,6 +54,7 @@ CAddressSpace::CAddressSpace (void)
 :	m_pL2 (0),
 	m_nASID (0),
 	m_nPid (s_nNextPid++),
+	m_nParentPid (0),
 	m_pWindow (0),
 	m_pStdin (0),
 	m_pStdout (0),

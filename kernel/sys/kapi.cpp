@@ -1308,10 +1308,12 @@ void *kapi_stdout (void)
 // a process handle for kapi_wait, or 0 on failure.
 void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStdout)
 {
-	// Resolve the program path against the caller's cwd, and pass that cwd to the
-	// child so it inherits the working directory (relative file ops resolve there).
+	// Resolve the program path against the caller's cwd, pass that cwd to the child,
+	// and record the spawner as the child's parent (so killing the parent cascades).
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
-	return SpawnProcess (abs, pArgs, (CStream *) pStdin, (CStream *) pStdout, CurCwd ());
+	CAddressSpace *pAS = CurrentAS ();
+	unsigned nParent = pAS != 0 ? pAS->GetPid () : 0;
+	return SpawnProcess (abs, pArgs, (CStream *) pStdin, (CStream *) pStdout, CurCwd (), nParent);
 }
 
 // Change the calling task's working directory: resolve pPath, verify it is a real

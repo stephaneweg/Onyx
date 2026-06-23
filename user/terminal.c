@@ -163,17 +163,15 @@ int main (void)
 	{
 		drain_cmd ();			// show cmd's output (incl. the prompt) first,
 		pump_events ();			// then echo the keys typed this frame after it
-		if (g_cmd && kapi_proc_done (g_cmd))		// shell exited (Ctrl-D / exit): restart it
+		if (g_cmd && kapi_proc_done (g_cmd))		// the shell ended (exit / killed):
 		{
-			kapi_wait (g_cmd);
-			if (g_to_cmd) kapi_stream_close (g_to_cmd);
-			if (g_from_cmd) kapi_stream_close (g_from_cmd);
-			g_cmd = g_to_cmd = g_from_cmd = 0;
-			term_puts ("\n[cmd exited -- restarting]\n");
-			start_cmd ();
+			kapi_wait (g_cmd);			// the terminal closes with it
+			break;
 		}
 		redraw ();
 		msleep (16);
 	}
+	if (g_to_cmd)   kapi_stream_close (g_to_cmd);
+	if (g_from_cmd) kapi_stream_close (g_from_cmd);
 	return 0;
 }

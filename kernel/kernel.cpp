@@ -43,10 +43,11 @@ public:
 	// the app's stdio + exit status work; pArgs becomes kapi_get_args.
 	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
-			  const char *pArgs = 0, const char *pCwd = 0)
+			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
 	:	CTask (0x40000),	// 256 KB
 		m_pELF (pELF), m_nSize (nSize), m_pLogger (pLogger),
-		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess)
+		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
+		m_nParentPid (nParentPid)
 	{
 		SetName (pName);	// copies into CTask::m_Name (caller's may be transient)
 		unsigned i = 0;
@@ -76,6 +77,7 @@ public:
 		pAS->SetProcess (m_pProcess);
 		pAS->SetArgs (m_Args);
 		if (m_Cwd[0] != '\0') pAS->SetCwd (m_Cwd);	// else keep the default root
+		pAS->SetParentPid (m_nParentPid);		// 0 = no parent (drawer launch)
 
 		u64 ulEntry = 0;
 		boolean bLoaded = LoadELF (m_pELF, m_nSize, pAS, &ulEntry);
@@ -115,6 +117,7 @@ private:
 	CProcess   *m_pProcess;
 	char	    m_Args[256];
 	char	    m_Cwd[256];
+	unsigned    m_nParentPid;
 };
 
 //
@@ -156,6 +159,42 @@ private:
 	CWindowManager *m_pWM;
 };
 
+// Cascade kill: when a process dies, its still-running children must die too (e.g.
+// killing the terminal also kills its shell + whatever the shell spawned). We track
+// each app's parent pid; here we terminate any app whose parent pid is no longer a
+// live task. Run from the reaper (a normal task context), so over a few passes a
+// dead parent's whole subtree is torn down. Parent pid 0 = no parent (never orphaned).
+struct OrphanScan
+{
+	unsigned pids[MAX_TASKS]; int npids;
+	CTask   *kid[MAX_TASKS]; unsigned kidparent[MAX_TASKS]; int nkid;
+};
+static boolean OrphanCollect (CTask *pTask, const char *, TTaskState State,
+			      TTaskFlags, void *pParam)
+{
+	if (State == TaskStateTerminated) return TRUE;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0) return TRUE;				// kernel task: no pid/parent
+	OrphanScan *s = (OrphanScan *) pParam;
+	if (s->npids < MAX_TASKS) s->pids[s->npids++] = pAS->GetPid ();
+	unsigned par = pAS->GetParentPid ();
+	if (par != 0 && s->nkid < MAX_TASKS) { s->kid[s->nkid] = pTask; s->kidparent[s->nkid] = par; s->nkid++; }
+	return TRUE;
+}
+static void TerminateOrphans (void)
+{
+	if (!CScheduler::IsActive ()) return;
+	static OrphanScan s;					// static: keep it off the stack
+	s.npids = 0; s.nkid = 0;
+	CScheduler::Get ()->EnumerateTasks (OrphanCollect, &s);
+	for (int i = 0; i < s.nkid; i++)
+	{
+		boolean bAlive = FALSE;
+		for (int j = 0; j < s.npids; j++) if (s.pids[j] == s.kidparent[i]) { bAlive = TRUE; break; }
+		if (!bAlive) CScheduler::Get ()->TerminateTask (s.kid[i]);
+	}
+}
+
 //
 // Reaper: a dedicated kernel thread that reclaims tasks which have ended (closed
 // apps) -- freeing their address space, window, and the CTask + stack. Kept as a
@@ -174,6 +213,7 @@ public:
 	{
 		for (;;)
 		{
+			TerminateOrphans ();			// kill children of dead parents
 			CScheduler::Get ()->ReapTerminatedTasks ();
 			CScheduler::Get ()->MsSleep (50);
 		}
@@ -572,7 +612,8 @@ boolean LaunchAppByName (const char *pName)
 // or 0 on failure. The child address space takes a ref on each stream (the caller
 // keeps its own); the handle's done/status are set when the child exits.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
-			CStream *pStdin, CStream *pStdout, const char *pCwd)
+			CStream *pStdin, CStream *pStdout, const char *pCwd,
+			unsigned nParentPid)
 {
 	if (pElfPath == 0)
 	{
@@ -598,7 +639,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	if (pStdout != 0) pStdout->AddRef ();
 
 	new CUserProcessTask (pElf, nSize, pElfPath, CLogger::Get (),
-			      pStdin, pStdout, pProc, pArgs, pCwd);
+			      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid);
 	return pProc;
 }
 

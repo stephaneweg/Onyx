@@ -49,6 +49,11 @@ public:
 	// Process id: a small monotonic number assigned at creation, for ps/kill.
 	unsigned GetPid (void) const		{ return m_nPid; }
 
+	// Parent pid: the spawner's pid (0 = no parent / launched from the drawer). When
+	// the parent dies, the reaper terminates its still-running children (cascade).
+	void SetParentPid (unsigned n)		{ m_nParentPid = n; }
+	unsigned GetParentPid (void) const	{ return m_nParentPid; }
+
 	// The window owned by this process (if any); freed when the space is destroyed.
 	void SetWindow (CWindow *pWindow)	{ m_pWindow = pWindow; }
 	CWindow *GetWindow (void)		{ return m_pWindow; }
@@ -77,6 +82,7 @@ private:
 	TARMV8MMU_LEVEL2_DESCRIPTOR *m_pL2;	// this process's L2 table (one 64 KB page)
 	u8			     m_nASID;
 	unsigned		     m_nPid;	// process id (monotonic, for ps/kill)
+	unsigned		     m_nParentPid;	// spawner's pid (0 = none); cascade on death
 	CWindow			    *m_pWindow;
 
 	CStream			    *m_pStdin;	// stdio streams (refs released on teardown)
