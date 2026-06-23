@@ -107,24 +107,25 @@ CAddressSpace::~CAddressSpace (void)
 		TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *)
 			ARMV8MMUL2TABLEPTR ((u64) m_pL2[i].Table.TableAddress);
 
-		for (unsigned j = 0; j < L3_ENTRIES; j++)
-		{
-			TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[j].Page;
-			if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
-			{
-				pfree (ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress));
-			}
-		}
+		// BISECT step D: SKIP freeing the FRAMES (the app's code/data pages); only
+		// free the L3/L2 TABLE pages below. Works -> freeing FRAMES is the culprit;
+		// hangs -> freeing TABLES (L3/L2) is. (Frames leak this test.)
+		// for (unsigned j = 0; j < L3_ENTRIES; j++)
+		// {
+		//	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[j].Page;
+		//	if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
+		//	{
+		//		pfree (ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress));
+		//	}
+		// }
 
-		pfree (pL3);
+		pfree (pL3);			// free the L3 TABLE page
 	}
 
-	pfree (m_pL2);
+	pfree (m_pL2);			// free the L2 TABLE page
 	m_pL2 = 0;
 
-	// BISECT step C: window delete + page-table/frame pfree are now ENABLED; SKIP
-	// the tlbi + FreeASID below. If close now works, the tlbi/FreeASID is the
-	// culprit; if it hangs, the page-table/frame pfree is. (ASID leaks this test.)
+	// (tlbi + FreeASID still skipped from step C.)
 	return;
 
 	// Drop any TLB entries tagged with this ASID before recycling it.
