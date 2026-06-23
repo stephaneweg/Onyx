@@ -161,6 +161,8 @@ static inline int  kapi_get_args (char *b, unsigned n) { return KT->get_args (b,
 // This task's own stdin/stdout stream handles (for a shell wiring children). 0 = none.
 static inline void *kapi_stdin (void) { return KT->stdin_stream (); }
 static inline void *kapi_stdout (void) { return KT->stdout_stream (); }
+// Read the next kernel log event (real-time tee). 1 + fills fields, or 0 if empty.
+static inline int  kapi_klog_read (int *sev, char *src, unsigned sc, char *msg, unsigned mc) { return KT->klog_read (sev, src, sc, msg, mc); }
 
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }

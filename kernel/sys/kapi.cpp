@@ -1266,6 +1266,30 @@ int kapi_stdout_write (const void *pBuf, unsigned nLen)
 	return (int) nLen;
 }
 
+// Read the next kernel log event from CLogger's ring (a tee: the logs still go to
+// their normal target, this just also exposes them). Returns 1 + fills severity
+// (0=panic..4=debug) / source / message, or 0 if the queue is empty. A real-time
+// kernel log viewer (kmsg) polls this; nothing needs redirecting or restoring.
+int kapi_klog_read (int *pSeverity, char *pSrc, unsigned nSrcCap, char *pMsg, unsigned nMsgCap)
+{
+	TLogSeverity Sev; char Src[LOG_MAX_SOURCE]; char Msg[LOG_MAX_MESSAGE];
+	time_t t; unsigned ht; int tz;
+	if (!CLogger::Get ()->ReadEvent (&Sev, Src, Msg, &t, &ht, &tz))
+	{
+		return 0;
+	}
+	if (pSeverity != 0) *pSeverity = (int) Sev;
+	if (pSrc != 0 && nSrcCap > 0)
+	{
+		unsigned i = 0; for (; Src[i] != '\0' && i < nSrcCap - 1; i++) pSrc[i] = Src[i]; pSrc[i] = '\0';
+	}
+	if (pMsg != 0 && nMsgCap > 0)
+	{
+		unsigned i = 0; for (; Msg[i] != '\0' && i < nMsgCap - 1; i++) pMsg[i] = Msg[i]; pMsg[i] = '\0';
+	}
+	return 1;
+}
+
 // This task's own stdin / stdout stream handles, so a shell (cmd) can wire them into
 // the children it spawns (first stage reads the shell's stdin, last stage's output is
 // drained by the shell). 0 if none.

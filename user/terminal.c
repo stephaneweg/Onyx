@@ -102,6 +102,7 @@ static void on_key (unsigned long s, int ev, long key)
 	case KEY_BACKSPACE:
 		if (g_inlen > 0) { g_inlen--; g_input[g_inlen] = '\0'; term_putc ('\b'); }
 		break;
+	case 3:	/* Ctrl-C */ if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x03", 1); break;
 	case 4:	/* Ctrl-D */ if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x04", 1); break;
 	case KEY_PGUP: g_scroll += g_vrows - 2; break;
 	case KEY_PGDN: g_scroll -= g_vrows - 2; if (g_scroll < 0) g_scroll = 0; break;

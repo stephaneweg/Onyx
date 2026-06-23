@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	18
+#define KAPI_ABI_VERSION	19
 
 #ifdef __cplusplus
 extern "C" {
@@ -205,6 +205,12 @@ struct TKApiTable
 	// (the cmd shell passes its stdin to the first stage; 0 if none).
 	void *(*stdin_stream) (void);
 	void *(*stdout_stream) (void);
+
+	// --- v19 additions (kernel log viewer) ---
+	// Read the next kernel log event (a tee of CLogger's ring; the logs still go to
+	// their normal output). 1 + fills severity (0=panic..4=debug)/source/message, or
+	// 0 if empty. For a real-time log viewer (kmsg).
+	int (*klog_read) (int *severity, char *src, unsigned src_cap, char *msg, unsigned msg_cap);
 };
 
 #ifdef __cplusplus
