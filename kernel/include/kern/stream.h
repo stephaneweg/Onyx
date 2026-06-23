@@ -24,6 +24,9 @@ public:
 	// Read up to nLen bytes. Blocks (cooperatively) until >=1 byte or EOF; returns
 	// the count, or 0 at EOF, or -1 on error.
 	virtual int Read (void *pBuf, unsigned nLen) = 0;
+	// Non-blocking read: >0 bytes, 0 = EOF, -1 = would block (no data yet). Default
+	// just blocks (fine for files, which never "would block").
+	virtual int ReadNonBlocking (void *pBuf, unsigned nLen) { return Read (pBuf, nLen); }
 	// Write nLen bytes (may block until space). Returns bytes written, or -1.
 	virtual int Write (const void *pBuf, unsigned nLen) = 0;
 	// Signal "no more data will be written" so readers see EOF.
@@ -42,6 +45,7 @@ class CPipeStream : public CStream
 public:
 	CPipeStream (void);
 	int Read (void *pBuf, unsigned nLen) override;
+	int ReadNonBlocking (void *pBuf, unsigned nLen) override;
 	int Write (const void *pBuf, unsigned nLen) override;
 	void CloseWrite (void) override;
 

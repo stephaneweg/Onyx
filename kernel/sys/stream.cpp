@@ -55,6 +55,22 @@ int CPipeStream::Write (const void *pBuf, unsigned nLen)
 	return (int) n;
 }
 
+int CPipeStream::ReadNonBlocking (void *pBuf, unsigned nLen)
+{
+	if (m_nHead == m_nTail)
+	{
+		return m_bWriteClosed ? 0 : -1;		// EOF, or "no data yet"
+	}
+	u8 *p = (u8 *) pBuf;
+	unsigned n = 0;
+	while (n < nLen && m_nTail != m_nHead)
+	{
+		p[n++] = m_Buf[m_nTail];
+		m_nTail = (m_nTail + 1) % PIPE_CAP;
+	}
+	return (int) n;
+}
+
 void CPipeStream::CloseWrite (void)
 {
 	m_bWriteClosed = TRUE;

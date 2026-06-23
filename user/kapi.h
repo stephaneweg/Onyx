@@ -111,8 +111,11 @@ static inline void *kapi_pipe (void) { return KT->pipe (); }
 static inline void *kapi_file_in (const char *p) { return KT->file_in (p); }
 static inline void *kapi_file_out (const char *p, int append) { return KT->file_out (p, append); }
 static inline int  kapi_stream_read (void *h, void *b, unsigned n) { return KT->stream_read (h, b, n); }
+static inline int  kapi_stream_read_nb (void *h, void *b, unsigned n) { return KT->stream_read_nb (h, b, n); }
 static inline int  kapi_stream_write (void *h, const void *b, unsigned n) { return KT->stream_write (h, b, n); }
 static inline void kapi_stream_close (void *h) { KT->stream_close (h); }
+static inline void kapi_stream_eof (void *h) { KT->stream_eof (h); }
+static inline int  kapi_proc_done (void *proc) { return KT->proc_done (proc); }
 static inline int  kapi_stdin_read (void *b, unsigned n) { return KT->stdin_read (b, n); }
 static inline int  kapi_stdout_write (const void *b, unsigned n) { return KT->stdout_write (b, n); }
 static inline void *kapi_spawn (const char *path, const char *args, void *in, void *out) { return KT->spawn (path, args, in, out); }

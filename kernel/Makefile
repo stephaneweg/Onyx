@@ -73,6 +73,11 @@ stage: apps
 		mkdir -p $(SDCARD)/apps/$$name.app; \
 		cp $$elf $(SDCARD)/apps/$$name.app/main.elf; \
 	done
-	@echo "  STAGE $(TARGET).img + apps/*.app/main.elf -> $(SDCARD)/"
+	@mkdir -p $(SDCARD)/bin
+	@for elf in ../user/bin/*.elf; do \
+		[ -e "$$elf" ] || continue; \
+		cp $$elf $(SDCARD)/bin/$$(basename $$elf); \
+	done
+	@echo "  STAGE $(TARGET).img + apps/*.app/main.elf + bin/*.elf -> $(SDCARD)/"
 
 -include $(DEPS)

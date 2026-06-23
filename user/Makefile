@@ -15,12 +15,18 @@ LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
 	  panel.elf applist.elf tinypad.elf tinycalc.elf inidemo.elf \
-	  tetris.elf snake.elf same.elf filer.elf
+	  tetris.elf snake.elf same.elf filer.elf terminal.elf
 
-all: $(PROGS)
+all: $(PROGS) bin
+
+# /bin console tools live in bin/ (their own Makefile).
+.PHONY: bin
+bin:
+	@$(MAKE) --no-print-directory -C bin
 
 %.elf: %.c crt0.S user.ld kapi.h applib.h
 	$(CC) $(CFLAGS) $(LDFLAGS) crt0.S $< -o $@
 
 clean:
 	rm -f *.elf *.o
+	@$(MAKE) --no-print-directory -C bin clean

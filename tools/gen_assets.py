@@ -163,10 +163,21 @@ def icon_filer():		# a manila folder
     pframe(px, 7, 13, 33, 31, edge)
     return px
 
+def icon_terminal():		# a black console with a green prompt
+    px = blank()
+    body, scr, prompt = (40, 44, 52), (16, 22, 18), (80, 230, 120)
+    prect(px, 5, 6, 34, 33, body)
+    pframe(px, 5, 6, 34, 33, (20, 24, 30))
+    prect(px, 8, 9, 31, 30, scr)
+    prect(px, 11, 13, 15, 14, prompt)	# ">"
+    prect(px, 16, 13, 17, 14, prompt)
+    prect(px, 19, 13, 26, 14, (90, 150, 110))	# cursor line
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
-    "filer": icon_filer,
+    "filer": icon_filer, "terminal": icon_terminal,
 }
 
 

@@ -901,6 +901,13 @@ int kapi_stream_read (void *pHandle, void *pBuf, unsigned nLen)
 	return pHandle != 0 ? ((CStream *) pHandle)->Read (pBuf, nLen) : 0;
 }
 
+// Non-blocking read: >0 bytes, 0 = EOF, -1 = would block. For the terminal, which
+// drains a child's stdout without freezing its own UI loop.
+int kapi_stream_read_nb (void *pHandle, void *pBuf, unsigned nLen)
+{
+	return pHandle != 0 ? ((CStream *) pHandle)->ReadNonBlocking (pBuf, nLen) : 0;
+}
+
 int kapi_stream_write (void *pHandle, const void *pBuf, unsigned nLen)
 {
 	return pHandle != 0 ? ((CStream *) pHandle)->Write (pBuf, nLen) : -1;
@@ -909,6 +916,13 @@ int kapi_stream_write (void *pHandle, const void *pBuf, unsigned nLen)
 void kapi_stream_close (void *pHandle)
 {
 	if (pHandle != 0) ((CStream *) pHandle)->Release ();
+}
+
+// Signal EOF to readers of this stream (the writer is done). The terminal uses it
+// on its keyboard pipe so a stdin-reading child (e.g. cat) ends on Ctrl-D.
+void kapi_stream_eof (void *pHandle)
+{
+	if (pHandle != 0) ((CStream *) pHandle)->CloseWrite ();
 }
 
 // Read from this task's stdin (0 = EOF / no stdin).
@@ -957,6 +971,14 @@ int kapi_wait (void *pProc)
 	int nStatus = p->nStatus;
 	delete p;
 	return nStatus;
+}
+
+// Non-blocking poll: 1 if the spawned process has finished (else 0). Does NOT free
+// the handle (kapi_wait does). Lets the terminal detect completion without blocking.
+int kapi_proc_done (void *pProc)
+{
+	CProcess *p = (CProcess *) pProc;
+	return (p == 0 || p->bDone) ? 1 : 0;
 }
 
 // Copy this task's argv string (set at spawn) into pBuf. Returns length.

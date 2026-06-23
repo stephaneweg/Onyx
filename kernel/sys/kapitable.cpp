@@ -77,8 +77,11 @@ void *kapi_pipe (void);
 void *kapi_file_in (const char *);
 void *kapi_file_out (const char *, int);
 int kapi_stream_read (void *, void *, unsigned);
+int kapi_stream_read_nb (void *, void *, unsigned);
 int kapi_stream_write (void *, const void *, unsigned);
 void kapi_stream_close (void *);
+void kapi_stream_eof (void *);
+int kapi_proc_done (void *);
 int kapi_stdin_read (void *, unsigned);
 int kapi_stdout_write (const void *, unsigned);
 void *kapi_spawn (const char *, const char *, void *, void *);
@@ -170,4 +173,7 @@ void KApiTableInit (void)
 	t->spawn             = kapi_spawn;
 	t->wait              = kapi_wait;
 	t->get_args          = kapi_get_args;
+	t->stream_read_nb    = kapi_stream_read_nb;
+	t->stream_eof        = kapi_stream_eof;
+	t->proc_done         = kapi_proc_done;
 }

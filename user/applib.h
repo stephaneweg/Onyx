@@ -32,6 +32,29 @@ static inline int ax_streq (const char *a, const char *b)
 	return *a == *b;
 }
 
+static inline int ax_strlen (const char *s)
+{
+	int n = 0;
+	while (s[n] != '\0') n++;
+	return n;
+}
+
+// Console helpers for /bin tools: write a string / a line to stdout.
+static inline void ax_puts (const char *s)  { kapi_stdout_write (s, (unsigned) ax_strlen (s)); }
+static inline void ax_putln (const char *s) { ax_puts (s); kapi_stdout_write ("\n", 1); }
+
+// Signed int -> string. Returns length.
+static inline int ax_itoa (int v, char *b)
+{
+	char t[12]; int n = 0, p = 0;
+	if (v < 0) { b[p++] = '-'; v = -v; }
+	if (v == 0) t[n++] = '0';
+	while (v) { t[n++] = (char) ('0' + v % 10); v /= 10; }
+	while (n) b[p++] = t[--n];
+	b[p] = '\0';
+	return p;
+}
+
 // Two-digit zero-padded decimal into d[0],d[1].
 static inline void ax_fmt2 (char *d, int v)
 {
