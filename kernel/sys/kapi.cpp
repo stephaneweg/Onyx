@@ -118,6 +118,34 @@ int kapi_launch (const char *pName)
 	return LaunchAppByName (pName) ? 1 : 0;
 }
 
+// Toggle a named app: if an app with this folder name is already running, ask it to
+// close (set its window's exit flag) and return 0; otherwise launch it and return 1
+// (-1 on error). The shell's "apps" button uses this so a second click closes the
+// popup -- no IPC needed.
+int kapi_toggle_app (const char *pName)
+{
+	if (pName == 0 || pName[0] == '\0' || !CScheduler::IsActive ())
+	{
+		return -1;
+	}
+
+	CTask *pTask = CScheduler::Get ()->GetRunningTask (pName);
+	if (pTask != 0)
+	{
+		// Running: close it via its window's exit flag (its pump loop then ends).
+		CAddressSpace *pAS =
+			(CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+		CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+		if (pWin != 0)
+		{
+			pWin->RequestExit ();
+		}
+		return 0;			// toggled OFF
+	}
+
+	return LaunchAppByName (pName) ? 1 : -1;	// toggled ON
+}
+
 void kapi_present (void)
 {
 	// The compositor reads the shared canvas continuously; yield so it and the
@@ -296,6 +324,38 @@ unsigned long kapi_add_icon (int x, int y, int w, int h, const char *pBmpPath,
 	}
 	pW->pIcon = pImg;
 	return (unsigned long) pW;
+}
+
+// Set the desktop wallpaper from a 24-bpp BMP on the SD card (drawn behind every
+// window by the compositor). Pass 0 to clear it. Returns 1 on success.
+int kapi_set_wallpaper (const char *pBmpPath)
+{
+	if (CWindowManager::Get () == 0)
+	{
+		return 0;
+	}
+	if (pBmpPath == 0)
+	{
+		CWindowManager::Get ()->SetWallpaper (0);
+		return 1;
+	}
+
+	unsigned nSize = 0;
+	u8 *pData = ReadWholeFile (pBmpPath, &nSize);
+	if (pData == 0)
+	{
+		return 0;
+	}
+	GImage *pImg = new GImage;
+	boolean bOK = pImg != 0 && pImg->LoadBMP (pData, nSize);
+	delete [] pData;
+	if (!bOK)
+	{
+		delete pImg;
+		return 0;
+	}
+	CWindowManager::Get ()->SetWallpaper (pImg);	// WM takes ownership
+	return 1;
 }
 
 // Checkbox state (1 = checked).

@@ -479,7 +479,7 @@ boolean CWindow::PopEvent (GUIEvent *pEvent)
 CWindowManager *CWindowManager::s_pThis = 0;
 
 CWindowManager::CWindowManager (void)
-:	m_nWindows (0),
+:	m_nWindows (0), m_pWallpaper (0),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
@@ -539,6 +539,7 @@ void CWindowManager::Composite (GImage *pScreen)
 	// memory remains valid here. (Proper deferred free is future work.)
 	CWindow *pSnapshot[WM_MAX_WINDOWS];
 	unsigned nCount;
+	GImage  *pWall;
 
 	m_SpinLock.Acquire ();
 	nCount = m_nWindows;
@@ -546,9 +547,16 @@ void CWindowManager::Composite (GImage *pScreen)
 	{
 		pSnapshot[i] = m_pWindows[i];
 	}
+	pWall = m_pWallpaper;
 	m_SpinLock.Release ();
 
+	// Desktop background: the wallpaper if set (filled behind it for any margin),
+	// otherwise the solid desktop colour.
 	pScreen->Clear (WIN_COLOR_DESKTOP);
+	if (pWall != 0 && pWall->IsValid ())
+	{
+		pScreen->PutOther (pWall, 0, 0, FALSE);
+	}
 
 	// Draw back-to-front; the last (topmost) window is the active one.
 	for (unsigned i = 0; i < nCount; i++)
@@ -576,6 +584,19 @@ void CWindowManager::Composite (GImage *pScreen)
 			// Close the bottom edge with a black pixel.
 			pScreen->SetPixel (cx + r, cy + r, 0x00000000);
 		}
+	}
+}
+
+void CWindowManager::SetWallpaper (GImage *pImage)
+{
+	m_SpinLock.Acquire ();
+	GImage *pOld = m_pWallpaper;
+	m_pWallpaper = pImage;
+	m_SpinLock.Release ();
+
+	if (pOld != 0)				// free the previous wallpaper outside the lock
+	{
+		delete pOld;
 	}
 }
 

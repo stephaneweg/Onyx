@@ -54,6 +54,9 @@ public:
 
 	CTask *GetCurrentTask (void);
 	CTask *GetTask (const char *pTaskName);
+	// Like GetTask but skips tasks that have already terminated (awaiting reap), so
+	// a name that briefly survives teardown isn't mistaken for a live task.
+	CTask *GetRunningTask (const char *pTaskName);
 	boolean IsValidTask (CTask *pTask);
 
 	void RegisterTaskSwitchHandler (TSchedulerTaskHandler *pHandler);

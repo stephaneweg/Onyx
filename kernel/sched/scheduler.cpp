@@ -230,6 +230,25 @@ CTask *CScheduler::GetTask (const char *pTaskName)
 	return 0;
 }
 
+CTask *CScheduler::GetRunningTask (const char *pTaskName)
+{
+	assert (pTaskName != 0);
+
+	for (unsigned i = 0; i < m_nTasks; i++)
+	{
+		CTask *pTask = m_pTask[i];
+
+		if (   pTask != 0
+		    && pTask->GetState () != TaskStateTerminated
+		    && strcmp (pTask->GetName (), pTaskName) == 0)
+		{
+			return pTask;
+		}
+	}
+
+	return 0;
+}
+
 boolean CScheduler::IsValidTask (CTask *pTask)
 {
 	for (unsigned i = 0; i < m_nTasks; i++)

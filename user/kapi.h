@@ -27,6 +27,15 @@ unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *title,
 // uses this for quicklaunch + the app-list popup. Returns 1 on success.
 int       kapi_launch (const char *name);
 
+// Toggle a named app: launch it if not running (returns 1), else ask it to close
+// (returns 0; -1 on error). The "apps" button uses this so a re-click closes the
+// popup.
+int       kapi_toggle_app (const char *name);
+
+// Set the desktop wallpaper from a 24-bpp BMP (drawn behind all windows). 0 clears
+// it. Returns 1 on success.
+int       kapi_set_wallpaper (const char *bmp_path);
+
 void      kapi_present (void);
 unsigned  kapi_get_ticks (void);				// HZ ticks since boot
 void      kapi_msleep (unsigned ms);

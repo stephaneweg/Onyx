@@ -1,0 +1,7 @@
+# quicklaunch.txt -- apps pinned to the panel sidebar, one folder name per line
+# (top to bottom). Blank lines and lines starting with '#' are ignored. The "apps"
+# button (below) opens the full list of every installed app.
+demoA
+demoC
+demoD
+demoE

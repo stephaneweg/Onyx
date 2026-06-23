@@ -185,6 +185,10 @@ public:
 	// Clear the desktop and draw every window onto the screen image.
 	void Composite (GImage *pScreen);
 
+	// Set the desktop wallpaper (takes ownership of pImage; deletes any previous).
+	// Pass 0 to clear it (back to the solid desktop colour).
+	void SetWallpaper (GImage *pImage);
+
 	// Mouse input (called from the input thread). Cursor at (x,y); buttons is a
 	// bitmask (bit0 = left). Handles raise-on-click, title-bar dragging, widget
 	// hover/press/release (click fires on release-inside), and focus.
@@ -208,6 +212,8 @@ private:
 
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
+
+	GImage	  *m_pWallpaper;	// desktop background (owned), or 0 for the solid colour
 
 	// Cursor + drag state (mutated from the input thread, read by Composite).
 	int	   m_nCursorX;
