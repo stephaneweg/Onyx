@@ -53,6 +53,10 @@ static inline int  kapi_raise_app (const char *n) { return KT->raise_app (n); }
 static inline int  kapi_list_windows (char *b, unsigned s) { return KT->list_windows (b, s); }
 static inline int  kapi_list_tasks (char *b, unsigned s) { return KT->list_tasks (b, s); }
 static inline int  kapi_kill (const char *name) { return KT->kill (name); }
+// ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid:
+// force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
+static inline int  kapi_list_procs (char *b, unsigned s) { return KT->list_procs (b, s); }
+static inline int  kapi_kill_pid (int pid, int force) { return KT->kill_pid (pid, force); }
 
 // Modal message box (blocks until answered). Returns 1 (OK/Yes) or 0 (Cancel/No).
 #define MB_OK		0

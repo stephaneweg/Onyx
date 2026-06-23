@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	13
+#define KAPI_ABI_VERSION	14
 
 #ifdef __cplusplus
 extern "C" {
@@ -174,6 +174,13 @@ struct TKApiTable
 	// it the live background. Frames are kernel-owned -> persists after the app exits.
 	unsigned *(*wallpaper_buffer) (int *w, int *h);
 	void      (*wallpaper_commit) (void);
+
+	// --- v14 additions (ps / kill by PID) ---
+	// list_procs: one line per task "<pid> <a|k> <state> <name>" (pid 0 = kernel
+	// task). kill_pid: nForce 0 = clean close (window exit flag), 1 = hard terminate;
+	// returns 1 killed/signalled, 0 no such pid, -1 protected (kernel task or self).
+	int (*list_procs) (char *buf, unsigned size);
+	int (*kill_pid) (int pid, int force);
 };
 
 #ifdef __cplusplus

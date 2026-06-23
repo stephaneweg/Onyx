@@ -891,6 +891,94 @@ int kapi_kill (const char *pName)
 	return 1;
 }
 
+// --- ps / kill by PID --------------------------------------------------------
+
+static void ProcAppStr (WinListCtx *c, const char *s)
+{
+	for (unsigned j = 0; s[j] != '\0'; j++)
+		if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = s[j];
+}
+static void ProcAppUInt (WinListCtx *c, unsigned v)
+{
+	char t[12]; int n = 0;
+	if (v == 0) t[n++] = '0';
+	while (v) { t[n++] = (char) ('0' + v % 10); v /= 10; }
+	while (n > 0) { n--; if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = t[n]; }
+}
+
+// One line per task: "<pid> <a|k> <R|S|B|N> <name>". pid is the address-space id for
+// apps, 0 for kernel tasks (which have no address space and are unkillable).
+static boolean ProcListCallback (CTask *pTask, const char *pName, TTaskState State,
+				 TTaskFlags Flags, void *pParam)
+{
+	(void) Flags;
+	if (State == TaskStateTerminated) return TRUE;
+	WinListCtx *c = (WinListCtx *) pParam;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+
+	char st = State == TaskStateReady ? 'R'
+		: State == TaskStateSleeping ? 'S'
+		: (State == TaskStateBlocked || State == TaskStateBlockedWithTimeout) ? 'B'
+		: State == TaskStateNew ? 'N' : '?';
+
+	ProcAppUInt (c, pAS != 0 ? pAS->GetPid () : 0);
+	ProcAppStr (c, pAS != 0 ? " a " : " k ");
+	if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = st;
+	if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = ' ';
+	ProcAppStr (c, pName);
+	if (c->nPos + 1 < c->nSize) c->pBuf[c->nPos++] = '\n';
+	c->nCount++;
+	return TRUE;
+}
+
+int kapi_list_procs (char *pBuf, unsigned nBufSize)
+{
+	if (pBuf == 0 || nBufSize == 0) return 0;
+	pBuf[0] = '\0';
+	if (!CScheduler::IsActive ()) return 0;
+	WinListCtx Ctx = { pBuf, nBufSize, 0, 0 };
+	CScheduler::Get ()->EnumerateTasks (ProcListCallback, &Ctx);
+	pBuf[Ctx.nPos] = '\0';
+	return Ctx.nCount;
+}
+
+struct KillByPidCtx { unsigned nPid; CTask *pFound; };
+static boolean FindByPid (CTask *pTask, const char *pName, TTaskState State,
+			  TTaskFlags Flags, void *pParam)
+{
+	(void) pName; (void) Flags;
+	if (State == TaskStateTerminated) return TRUE;
+	KillByPidCtx *c = (KillByPidCtx *) pParam;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS != 0 && pAS->GetPid () == c->nPid) c->pFound = pTask;	// pids unique
+	return TRUE;
+}
+
+// Kill an app by PID. nForce == 0: ask it to close cleanly (raise its window's exit
+// flag, so its pump loop ends and main() returns -- the app gets to clean up); a
+// windowless app with nothing to signal falls through to a hard terminate. nForce:
+// terminate immediately. Returns 1 (signalled/killed), 0 (no such pid), -1 (kernel
+// task or the caller itself -- protected).
+int kapi_kill_pid (int nPid, int nForce)
+{
+	if (nPid <= 0 || !CScheduler::IsActive ()) return 0;
+	KillByPidCtx Ctx = { (unsigned) nPid, 0 };
+	CScheduler::Get ()->EnumerateTasks (FindByPid, &Ctx);
+	CTask *pTask = Ctx.pFound;
+	if (pTask == 0) return 0;
+	if (pTask == CScheduler::Get ()->GetCurrentTask ()) return -1;	// self
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0) return -1;					// kernel task
+	if (!nForce)
+	{
+		CWindow *pWin = pAS->GetWindow ();
+		if (pWin != 0) { pWin->RequestExit (); return 1; }	// clean close
+		// else: no window to signal -> hard terminate below
+	}
+	CScheduler::Get ()->TerminateTask (pTask);
+	return 1;
+}
+
 // The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name
 // is the app's folder basename. Returns the string length. Used by the shared app
 // lib to find an app's config.ini.

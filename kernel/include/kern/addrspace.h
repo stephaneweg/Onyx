@@ -46,6 +46,9 @@ public:
 
 	u8 GetASID (void) const			{ return m_nASID; }
 
+	// Process id: a small monotonic number assigned at creation, for ps/kill.
+	unsigned GetPid (void) const		{ return m_nPid; }
+
 	// The window owned by this process (if any); freed when the space is destroyed.
 	void SetWindow (CWindow *pWindow)	{ m_pWindow = pWindow; }
 	CWindow *GetWindow (void)		{ return m_pWindow; }
@@ -68,6 +71,7 @@ private:
 private:
 	TARMV8MMU_LEVEL2_DESCRIPTOR *m_pL2;	// this process's L2 table (one 64 KB page)
 	u8			     m_nASID;
+	unsigned		     m_nPid;	// process id (monotonic, for ps/kill)
 	CWindow			    *m_pWindow;
 
 	CStream			    *m_pStdin;	// stdio streams (refs released on teardown)

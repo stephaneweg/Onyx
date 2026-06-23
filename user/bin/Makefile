@@ -11,7 +11,7 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
-	  rm.elf mkdir.elf touch.elf cp.elf mv.elf
+	  rm.elf mkdir.elf touch.elf cp.elf mv.elf ps.elf kill.elf
 
 all: $(PROGS)
 

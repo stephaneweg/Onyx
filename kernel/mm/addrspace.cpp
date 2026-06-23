@@ -47,9 +47,13 @@ static void FreeASID (u8 nASID)
 
 // ---- CAddressSpace -----------------------------------------------------------
 
+// Monotonic process-id source (1..). 0 means "kernel task" (no address space).
+static unsigned s_nNextPid = 1;
+
 CAddressSpace::CAddressSpace (void)
 :	m_pL2 (0),
 	m_nASID (0),
+	m_nPid (s_nNextPid++),
 	m_pWindow (0),
 	m_pStdin (0),
 	m_pStdout (0),
