@@ -92,23 +92,18 @@ CAddressSpace::~CAddressSpace (void)
 		return;
 	}
 
-	// BISECT step F: is pfree ITSELF the problem in this context? alloc + free a
-	// throwaway page (NOT one of demoC's), and leak demoC's tables/frames. If close
-	// works -> the issue is specific to demoC's pages (still referenced?); if it
-	// hangs -> any pfree breaks the IRQ (page-allocator/pfree itself).
-	{
-		void *pDummy = palloc ();
-		if (pDummy != 0)
-		{
-			pfree (pDummy);
-		}
-	}
-	m_pL2 = 0;
-	return;
+	// Invalidate the TLB + walk-cache for this ASID BEFORE freeing its page tables.
+	// These pages were LIVE page tables, so the CPU cached their translation walks;
+	// freeing and recycling them while a cached walk still references them breaks
+	// later translations -- a fresh, never-walked page frees fine, which was the
+	// tell. So invalidate first, while the tables are still intact (the old code
+	// did this AFTER the frees -- too late).
+	u64 ulArg = (u64) m_nASID << TTBR0_ASID_SHIFT;
+	asm volatile ("tlbi aside1is, %0; dsb ish; isb" :: "r" (ulArg) : "memory");
 
-	// Walk the user range: free every frame we own (palloc'd via MapNewPage), then
-	// the L3 table itself. Frames not flagged PAGE_SW_OWNED are owned elsewhere
-	// (e.g. the window canvas) and must NOT be freed here.
+	// Now free every frame we own (palloc'd via MapNewPage), then each L3 table,
+	// then the L2. Frames not flagged PAGE_SW_OWNED are owned elsewhere (the window
+	// canvas) and must NOT be freed here.
 	unsigned nFirst = L2_INDEX (USER_VA_BASE);
 	unsigned nLast  = L2_INDEX (USER_VA_END - 1);
 	for (unsigned i = nFirst; i <= nLast; i++)
@@ -121,32 +116,20 @@ CAddressSpace::~CAddressSpace (void)
 		TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *)
 			ARMV8MMUL2TABLEPTR ((u64) m_pL2[i].Table.TableAddress);
 
-		// BISECT step D: SKIP freeing the FRAMES (the app's code/data pages); only
-		// free the L3/L2 TABLE pages below. Works -> freeing FRAMES is the culprit;
-		// hangs -> freeing TABLES (L3/L2) is. (Frames leak this test.)
-		// for (unsigned j = 0; j < L3_ENTRIES; j++)
-		// {
-		//	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[j].Page;
-		//	if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
-		//	{
-		//		pfree (ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress));
-		//	}
-		// }
+		for (unsigned j = 0; j < L3_ENTRIES; j++)
+		{
+			TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[j].Page;
+			if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
+			{
+				pfree (ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress));
+			}
+		}
 
-		pfree (pL3);			// free the L3 TABLE page
+		pfree (pL3);
 	}
 
-	// BISECT step E: free the L3 tables (above) but SKIP the L2. Works -> freeing
-	// the L2 (demoC's copy of the kernel L2) is the culprit; hangs -> freeing an L3.
-	// pfree (m_pL2);			// free the L2 TABLE page
+	pfree (m_pL2);
 	m_pL2 = 0;
-
-	// (tlbi + FreeASID still skipped from step C.)
-	return;
-
-	// Drop any TLB entries tagged with this ASID before recycling it.
-	u64 ulArg = (u64) m_nASID << TTBR0_ASID_SHIFT;
-	asm volatile ("tlbi aside1is, %0; dsb ish; isb" :: "r" (ulArg) : "memory");
 
 	FreeASID (m_nASID);
 }
