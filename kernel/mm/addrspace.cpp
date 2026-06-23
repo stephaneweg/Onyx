@@ -122,7 +122,9 @@ CAddressSpace::~CAddressSpace (void)
 		pfree (pL3);			// free the L3 TABLE page
 	}
 
-	pfree (m_pL2);			// free the L2 TABLE page
+	// BISECT step E: free the L3 tables (above) but SKIP the L2. Works -> freeing
+	// the L2 (demoC's copy of the kernel L2) is the culprit; hangs -> freeing an L3.
+	// pfree (m_pL2);			// free the L2 TABLE page
 	m_pL2 = 0;
 
 	// (tlbi + FreeASID still skipped from step C.)
