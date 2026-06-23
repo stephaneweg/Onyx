@@ -370,12 +370,14 @@ unsigned CScheduler::ReapTerminatedTasks (void)
 			continue;
 		}
 
-		// Termination handler frees the address space (page tables, ASID, TLB);
-		// then remove from the list and free the CTask + its stack.
-		if (m_pTaskTerminationHandler != 0)
-		{
-			(*m_pTaskTerminationHandler) (pTask);
-		}
+		// BISECT step A: free ONLY the CTask + stack; SKIP the address-space free
+		// (page tables, ASID, TLB, window). If close now works, ~CAddressSpace is
+		// the culprit; if it still hangs, delete pTask is. (The AS + window leak
+		// during this test.)
+		// if (m_pTaskTerminationHandler != 0)
+		// {
+		//	(*m_pTaskTerminationHandler) (pTask);
+		// }
 		RemoveTask (pTask);
 		delete pTask;			// frees the CTask + its stack
 		nReaped++;
