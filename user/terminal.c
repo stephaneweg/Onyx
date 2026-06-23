@@ -67,13 +67,15 @@ static void term_puts (const char *s) { for (int i = 0; s[i]; i++) term_putc (s[
 static void scopy (char *d, const char *s, int cap)
 { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
 
-// Resolve a redirection filename to a FatFs path (prefix SD:/ if no volume given).
-static void resolve (char *dst, int cap, const char *name)
+// Build the prompt prefix "<cwd> $ " (cwd shortened to the last component if long).
+static void prompt_prefix (char *dst, int cap)
 {
-	int has = 0; for (int i = 0; name[i]; i++) if (name[i] == ':') { has = 1; break; }
+	char cwd[256]; kapi_getcwd (cwd, sizeof cwd);
 	int p = 0;
-	if (!has) { const char *r = "SD:/"; for (int i = 0; r[i] && p < cap - 1; i++) dst[p++] = r[i]; }
-	for (int i = 0; name[i] && p < cap - 1; i++) dst[p++] = name[i];
+	for (int i = 0; cwd[i] && p < cap - 3; i++) dst[p++] = cwd[i];
+	if (p < cap - 3) dst[p++] = ' ';
+	if (p < cap - 3) dst[p++] = '$';
+	if (p < cap - 2) dst[p++] = ' ';
 	dst[p] = '\0';
 }
 
@@ -158,6 +160,20 @@ static void run (void)
 	if (ns == 1 && ax_streq (g_stage[0].cmd, "clear"))
 	{ g_rcount = g_rfirst = g_curlen = g_scroll = 0; g_cur[0] = '\0'; return; }
 
+	// cd / pwd are shell builtins (must change the terminal's own cwd, not a child's).
+	if (ns == 1 && ax_streq (g_stage[0].cmd, "cd"))
+	{
+		const char *dir = g_stage[0].args[0] ? g_stage[0].args : "SD:/";
+		if (!kapi_chdir (dir)) { term_puts ("cd: no such directory: "); term_puts (dir); term_putc ('\n'); }
+		return;
+	}
+	if (ns == 1 && ax_streq (g_stage[0].cmd, "pwd"))
+	{
+		char cwd[256]; kapi_getcwd (cwd, sizeof cwd);
+		term_puts (cwd); term_putc ('\n');
+		return;
+	}
+
 	g_nproc = g_nowned = 0; g_in = g_out = 0;
 	void *prev = 0; int failed = 0;
 	for (int s = 0; s < ns; s++)
@@ -169,8 +185,8 @@ static void run (void)
 		{
 			if (g_stage[0].infile[0])
 			{
-				char path[112]; resolve (path, sizeof path, g_stage[0].infile);
-				sin = kapi_file_in (path);
+				// Raw path: the kernel resolves it against the cwd (relative/absolute).
+				sin = kapi_file_in (g_stage[0].infile);
 				if (!sin) { term_puts ("cannot open input file\n"); failed = 1; break; }
 				own (sin);
 			}
@@ -182,8 +198,7 @@ static void run (void)
 		{
 			if (g_stage[s].outfile[0])
 			{
-				char path[112]; resolve (path, sizeof path, g_stage[s].outfile);
-				sout = kapi_file_out (path, g_stage[s].append);
+				sout = kapi_file_out (g_stage[s].outfile, g_stage[s].append);
 				if (!sout) { term_puts ("cannot open output file\n"); failed = 1; break; }
 				own (sout); g_out = 0;
 			}
@@ -236,8 +251,8 @@ static void submit_line (void)
 	}
 	else
 	{
-		char line[260]; int p = 0;
-		line[p++] = '$'; line[p++] = ' ';
+		char line[320]; int p = 0;
+		prompt_prefix (line, sizeof line); p = ax_strlen (line);
 		for (int i = 0; g_input[i] && p < (int) sizeof line - 1; i++) line[p++] = g_input[i];
 		line[p] = '\0';
 		term_puts (line); term_putc ('\n');
@@ -293,8 +308,8 @@ static void redraw (void)
 
 	// Input line at the bottom.
 	int y = 4 + content_rows * g_fh;
-	char ln[300]; int p = 0;
-	if (!g_running) { ln[p++] = '$'; ln[p++] = ' '; }
+	char ln[320]; int p = 0;
+	if (!g_running) { prompt_prefix (ln, sizeof ln); p = ax_strlen (ln); }
 	for (int i = 0; g_input[i] && p < (int) sizeof ln - 1; i++) ln[p++] = g_input[i];
 	ln[p] = '\0';
 	fill_rect (0, y, W, g_fh, 0x00182028);

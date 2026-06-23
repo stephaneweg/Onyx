@@ -1,6 +1,6 @@
 //
-// ls -- list a directory. Usage: ls [path]   (default: SD:/). One entry per line;
-// directories get a trailing '/'. A /bin console tool: writes to stdout.
+// ls -- list a directory. Usage: ls [path]   (default: the current directory).
+// One entry per line; directories get a trailing '/'. Writes to stdout.
 //
 #include "kapi.h"
 #include "applib.h"
@@ -16,7 +16,7 @@ int main (void)
 	while (args[i] == ' ') i++;
 	while (args[i] && args[i] != ' ' && p < (int) sizeof (path) - 1) path[p++] = args[i++];
 	path[p] = '\0';
-	if (p == 0) { path[0] = 'S'; path[1] = 'D'; path[2] = ':'; path[3] = '/'; path[4] = '\0'; }
+	if (p == 0) { path[0] = '.'; path[1] = '\0'; }		// "." resolves to the cwd
 
 	void *d = kapi_opendir (path);
 	if (d == 0)

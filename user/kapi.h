@@ -130,6 +130,9 @@ static inline int  kapi_read (void *h, void *b, unsigned n) { return KT->read (h
 static inline unsigned kapi_fsize (void *h) { return KT->fsize (h); }
 static inline void kapi_close (void *h) { KT->close (h); }
 static inline int  kapi_save_file (const char *p, const void *b, unsigned n) { return KT->save_file (p, b, n); }
+// Working directory: chdir (1/0) + getcwd. Relative paths in file ops resolve here.
+static inline int  kapi_chdir (const char *p) { return KT->chdir (p); }
+static inline int  kapi_getcwd (char *b, unsigned n) { return KT->getcwd (b, n); }
 
 // --- directory listing -------------------------------------------------------
 static inline void *kapi_opendir (const char *p) { return KT->opendir (p); }

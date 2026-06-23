@@ -36,6 +36,8 @@ int kapi_kill_pid (int, int);
 int kapi_set_keymap (const char *);
 int kapi_get_keymap (char *, unsigned);
 void kapi_set_window_theme (unsigned, unsigned, unsigned);
+int kapi_chdir (const char *);
+int kapi_getcwd (char *, unsigned);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -214,4 +216,6 @@ void KApiTableInit (void)
 	t->set_keymap        = kapi_set_keymap;
 	t->get_keymap        = kapi_get_keymap;
 	t->set_window_theme  = kapi_set_window_theme;
+	t->chdir             = kapi_chdir;
+	t->getcwd            = kapi_getcwd;
 }

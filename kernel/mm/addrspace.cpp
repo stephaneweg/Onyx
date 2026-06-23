@@ -61,6 +61,7 @@ CAddressSpace::CAddressSpace (void)
 	m_nExitStatus (0)
 {
 	m_Args[0] = '\0';
+	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
 
 	assert (s_ulKernelTTBR0 != 0);		// AddrSpaceInit() must run first
 
@@ -99,6 +100,23 @@ void CAddressSpace::SetArgs (const char *pArgs)
 		}
 	}
 	m_Args[i] = '\0';
+}
+
+void CAddressSpace::SetCwd (const char *pCwd)
+{
+	unsigned i = 0;
+	if (pCwd != 0)
+	{
+		for (; pCwd[i] != '\0' && i < sizeof (m_Cwd) - 1; i++)
+		{
+			m_Cwd[i] = pCwd[i];
+		}
+	}
+	m_Cwd[i] = '\0';
+	if (m_Cwd[0] == '\0')		// never empty: default to root
+	{
+		m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';
+	}
 }
 
 CAddressSpace::~CAddressSpace (void)

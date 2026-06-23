@@ -39,6 +39,75 @@ static CAddressSpace *CurrentAS (void)
 	return (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
 }
 
+// The calling task's current working directory (FatFs absolute path), or root.
+static const char *CurCwd (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	return (pAS != 0) ? pAS->GetCwd () : "SD:/";
+}
+
+// Resolve an app-supplied path to a clean absolute FatFs path in pOut. A path that
+// already starts with "SD:" is taken as absolute; "/x" is volume-root-relative; any
+// other form (incl. "./x", "../x", "x") is relative to the current working dir.
+// ".", ".." and redundant slashes are normalised away. Lets ls/cat/redirection/etc.
+// use relative or absolute paths transparently.
+static void ResolvePath (const char *pIn, char *pOut, unsigned nCap)
+{
+	if (pIn == 0) { pOut[0] = '\0'; return; }
+
+	char raw[512];
+	unsigned r = 0;
+	if (pIn[0] == 'S' && pIn[1] == 'D' && pIn[2] == ':')		// already absolute
+	{
+		for (unsigned i = 0; pIn[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = pIn[i];
+	}
+	else if (pIn[0] == '/')						// volume-root-relative
+	{
+		const char *p = "SD:";
+		while (*p && r < sizeof (raw) - 1) raw[r++] = *p++;
+		for (unsigned i = 0; pIn[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = pIn[i];
+	}
+	else								// relative to cwd
+	{
+		const char *cwd = CurCwd ();
+		for (unsigned i = 0; cwd[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = cwd[i];
+		if (r < sizeof (raw) - 1) raw[r++] = '/';
+		for (unsigned i = 0; pIn[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = pIn[i];
+	}
+	raw[r] = '\0';
+
+	// Normalise the part after "SD:": process '.', '..' and collapse '/' runs.
+	unsigned starts[64]; int depth = 0;
+	unsigned o = 0;
+	if (nCap >= 4) { pOut[o++] = 'S'; pOut[o++] = 'D'; pOut[o++] = ':'; }
+	unsigned i = 3;					// skip "SD:"
+	while (raw[i] != '\0')
+	{
+		while (raw[i] == '/') i++;
+		if (raw[i] == '\0') break;
+		unsigned j = i;
+		while (raw[j] != '\0' && raw[j] != '/') j++;
+		unsigned len = j - i;
+		if (len == 1 && raw[i] == '.')
+		{
+			// "." : stay
+		}
+		else if (len == 2 && raw[i] == '.' && raw[i + 1] == '.')
+		{
+			if (depth > 0) o = starts[--depth];	// pop one component
+		}
+		else
+		{
+			if (depth < 64) starts[depth++] = o;	// remember this component's start
+			if (o < nCap - 1) pOut[o++] = '/';
+			for (unsigned k = i; k < j && o < nCap - 1; k++) pOut[o++] = raw[k];
+		}
+		i = j;
+	}
+	if (o == 3 && nCap > 4) pOut[o++] = '/';		// nothing left => root "SD:/"
+	pOut[o] = '\0';
+}
+
 extern "C" {
 
 // --- windowing ---------------------------------------------------------------
@@ -1072,12 +1141,13 @@ int kapi_write (int /*fd*/, const void *pBuf, unsigned nLen)
 
 void *kapi_open (const char *pPath)
 {
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	FIL *pFile = new FIL;
 	if (pFile == 0)
 	{
 		return 0;
 	}
-	if (f_open (pFile, pPath, FA_READ) != FR_OK)
+	if (f_open (pFile, abs, FA_READ) != FR_OK)
 	{
 		delete pFile;
 		return 0;
@@ -1126,7 +1196,8 @@ void *kapi_pipe (void)
 
 void *kapi_file_in (const char *pPath)
 {
-	CFileStream *pFile = new CFileStream (pPath, 0);
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	CFileStream *pFile = new CFileStream (abs, 0);
 	if (pFile == 0) return 0;
 	if (!pFile->IsValid ()) { delete pFile; return 0; }
 	return pFile;
@@ -1134,7 +1205,8 @@ void *kapi_file_in (const char *pPath)
 
 void *kapi_file_out (const char *pPath, int bAppend)
 {
-	CFileStream *pFile = new CFileStream (pPath, bAppend ? 2 : 1);
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	CFileStream *pFile = new CFileStream (abs, bAppend ? 2 : 1);
 	if (pFile == 0) return 0;
 	if (!pFile->IsValid ()) { delete pFile; return 0; }
 	return pFile;
@@ -1198,7 +1270,35 @@ int kapi_stdout_write (const void *pBuf, unsigned nLen)
 // a process handle for kapi_wait, or 0 on failure.
 void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStdout)
 {
-	return SpawnProcess (pPath, pArgs, (CStream *) pStdin, (CStream *) pStdout);
+	// Resolve the program path against the caller's cwd, and pass that cwd to the
+	// child so it inherits the working directory (relative file ops resolve there).
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	return SpawnProcess (abs, pArgs, (CStream *) pStdin, (CStream *) pStdout, CurCwd ());
+}
+
+// Change the calling task's working directory: resolve pPath, verify it is a real
+// directory (f_opendir), and store it. Returns 1 on success, 0 otherwise.
+int kapi_chdir (const char *pPath)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || pPath == 0) return 0;
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	DIR Dir;
+	if (f_opendir (&Dir, abs) != FR_OK) return 0;	// not a directory
+	f_closedir (&Dir);
+	pAS->SetCwd (abs);
+	return 1;
+}
+
+// Current working directory into pBuf. Returns the length.
+int kapi_getcwd (char *pBuf, unsigned nMax)
+{
+	if (pBuf == 0 || nMax == 0) return 0;
+	const char *p = CurCwd ();
+	unsigned i = 0;
+	for (; p[i] != '\0' && i < nMax - 1; i++) pBuf[i] = p[i];
+	pBuf[i] = '\0';
+	return (int) i;
 }
 
 // Wait (cooperatively) for a spawned process to finish; returns its exit status and
@@ -1248,12 +1348,13 @@ void *kapi_opendir (const char *pPath)
 	{
 		return 0;
 	}
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	DIR *pDir = new DIR;
 	if (pDir == 0)
 	{
 		return 0;
 	}
-	if (f_opendir (pDir, pPath) != FR_OK)
+	if (f_opendir (pDir, abs) != FR_OK)
 	{
 		delete pDir;
 		return 0;
@@ -1296,17 +1397,25 @@ void kapi_closedir (void *pHandle)
 
 int kapi_mkdir (const char *pPath)
 {
-	return (pPath != 0 && f_mkdir (pPath) == FR_OK) ? 0 : -1;
+	if (pPath == 0) return -1;
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	return (f_mkdir (abs) == FR_OK) ? 0 : -1;
 }
 
 int kapi_remove (const char *pPath)		// file or empty directory
 {
-	return (pPath != 0 && f_unlink (pPath) == FR_OK) ? 0 : -1;
+	if (pPath == 0) return -1;
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	return (f_unlink (abs) == FR_OK) ? 0 : -1;
 }
 
 int kapi_rename (const char *pFrom, const char *pTo)
 {
-	return (pFrom != 0 && pTo != 0 && f_rename (pFrom, pTo) == FR_OK) ? 0 : -1;
+	if (pFrom == 0 || pTo == 0) return -1;
+	char absF[300], absT[300];
+	ResolvePath (pFrom, absF, sizeof absF);
+	ResolvePath (pTo, absT, sizeof absT);
+	return (f_rename (absF, absT) == FR_OK) ? 0 : -1;
 }
 
 // Current cursor position relative to the calling window's client origin (so a
@@ -1458,8 +1567,9 @@ int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 	{
 		return -1;
 	}
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	FIL File;
-	if (f_open (&File, pPath, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+	if (f_open (&File, abs, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
 	{
 		return -1;
 	}

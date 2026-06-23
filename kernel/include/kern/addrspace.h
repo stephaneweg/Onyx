@@ -65,6 +65,11 @@ public:
 	void SetArgs (const char *pArgs);
 	const char *GetArgs (void)		{ return m_Args; }
 
+	// Current working directory (FatFs absolute path, e.g. "SD:/foo"; "SD:/" = root).
+	// Inherited from the spawner; relative paths in file kapis resolve against it.
+	void SetCwd (const char *pCwd);
+	const char *GetCwd (void)		{ return m_Cwd; }
+
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
 
@@ -79,6 +84,7 @@ private:
 	CProcess		    *m_pProcess; // spawn handle (done/status set on teardown)
 	int			     m_nExitStatus;
 	char			     m_Args[256]; // argv string for the child (kapi_get_args)
+	char			     m_Cwd[256]; // current working directory (FatFs abs path)
 };
 
 // Capture the kernel's TTBR0 base (call once, after the MMU is up) so kernel-only

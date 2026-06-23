@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	16
+#define KAPI_ABI_VERSION	17
 
 #ifdef __cplusplus
 extern "C" {
@@ -192,6 +192,13 @@ struct TKApiTable
 	// Re-tint the window chrome at runtime: active + inactive skin tints + title text
 	// colour (0x00RRGGBB). Persist by also writing SD:skins/theme.txt (read at boot).
 	void (*set_window_theme) (unsigned active, unsigned inactive, unsigned text);
+
+	// --- v17 additions (working directory) ---
+	// chdir: set the calling task's cwd (path resolved + verified as a dir); 1/0.
+	// getcwd: current cwd into buf. All file kapis resolve relative paths against it,
+	// and a spawned child inherits the spawner's cwd.
+	int (*chdir) (const char *path);
+	int (*getcwd) (char *buf, unsigned size);
 };
 
 #ifdef __cplusplus

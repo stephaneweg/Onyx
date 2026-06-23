@@ -43,7 +43,7 @@ public:
 	// the app's stdio + exit status work; pArgs becomes kapi_get_args.
 	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
-			  const char *pArgs = 0)
+			  const char *pArgs = 0, const char *pCwd = 0)
 	:	CTask (0x40000),	// 256 KB
 		m_pELF (pELF), m_nSize (nSize), m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess)
@@ -53,6 +53,10 @@ public:
 		if (pArgs != 0)
 			for (; pArgs[i] != '\0' && i < sizeof (m_Args) - 1; i++) m_Args[i] = pArgs[i];
 		m_Args[i] = '\0';
+		unsigned k = 0;		// inherited working directory (empty => child defaults to root)
+		if (pCwd != 0)
+			for (; pCwd[k] != '\0' && k < sizeof (m_Cwd) - 1; k++) m_Cwd[k] = pCwd[k];
+		m_Cwd[k] = '\0';
 	}
 
 	void Run (void) override
@@ -71,6 +75,7 @@ public:
 		pAS->SetStdout (m_pStdout);
 		pAS->SetProcess (m_pProcess);
 		pAS->SetArgs (m_Args);
+		if (m_Cwd[0] != '\0') pAS->SetCwd (m_Cwd);	// else keep the default root
 
 		u64 ulEntry = 0;
 		boolean bLoaded = LoadELF (m_pELF, m_nSize, pAS, &ulEntry);
@@ -109,6 +114,7 @@ private:
 	CStream	   *m_pStdout;
 	CProcess   *m_pProcess;
 	char	    m_Args[256];
+	char	    m_Cwd[256];
 };
 
 //
@@ -553,7 +559,7 @@ boolean LaunchAppByName (const char *pName)
 // or 0 on failure. The child address space takes a ref on each stream (the caller
 // keeps its own); the handle's done/status are set when the child exits.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
-			CStream *pStdin, CStream *pStdout)
+			CStream *pStdin, CStream *pStdout, const char *pCwd)
 {
 	if (pElfPath == 0)
 	{
@@ -579,7 +585,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	if (pStdout != 0) pStdout->AddRef ();
 
 	new CUserProcessTask (pElf, nSize, pElfPath, CLogger::Get (),
-			      pStdin, pStdout, pProc, pArgs);
+			      pStdin, pStdout, pProc, pArgs, pCwd);
 	return pProc;
 }
 

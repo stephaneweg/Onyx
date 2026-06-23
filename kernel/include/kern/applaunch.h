@@ -19,7 +19,7 @@ boolean LaunchAppByName (const char *pName);
 class CStream;
 struct CProcess;
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
-			CStream *pStdin, CStream *pStdout);
+			CStream *pStdin, CStream *pStdout, const char *pCwd = 0);
 
 // Run an ELF by absolute path with an argv string, fire-and-forget (no stdio, no
 // wait handle). Task name is derived from the path. Defined in kernel.cpp.
