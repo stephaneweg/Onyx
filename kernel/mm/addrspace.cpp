@@ -101,6 +101,11 @@ CAddressSpace::~CAddressSpace (void)
 	u64 ulArg = (u64) m_nASID << TTBR0_ASID_SHIFT;
 	asm volatile ("tlbi aside1is, %0; dsb ish; isb" :: "r" (ulArg) : "memory");
 
+	// Kernel L2 (this AS was built by memcpy-ing it): used to detect L3 tables that
+	// are SHARED with the kernel (same descriptor) so we never free a kernel table.
+	const TARMV8MMU_LEVEL2_DESCRIPTOR *pKernelL2 =
+		(const TARMV8MMU_LEVEL2_DESCRIPTOR *) s_ulKernelTTBR0;
+
 	// Now free every frame we own (palloc'd via MapNewPage), then each L3 table,
 	// then the L2. Frames not flagged PAGE_SW_OWNED are owned elsewhere (the window
 	// canvas) and must NOT be freed here.
@@ -109,6 +114,16 @@ CAddressSpace::~CAddressSpace (void)
 	for (unsigned i = nFirst; i <= nLast; i++)
 	{
 		if (m_pL2[i].Table.Value11 != 3)
+		{
+			continue;
+		}
+
+		// Skip L3 tables shared with the kernel (copied from the kernel L2 at
+		// construction): freeing them would corrupt the kernel's page tables and
+		// break translation for everyone -- including the IRQ page walk.
+		if (pKernelL2[i].Table.Value11 == 3
+		    && (u64) pKernelL2[i].Table.TableAddress
+			 == (u64) m_pL2[i].Table.TableAddress)
 		{
 			continue;
 		}
