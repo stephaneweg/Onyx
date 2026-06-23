@@ -28,7 +28,7 @@
 #define WIN_COLOR_DESKTOP	0x00204060
 
 #define WM_MAX_WINDOWS		16
-#define WIN_MAX_WIDGETS		16
+#define WIN_MAX_WIDGETS		24	// panel taskbar needs quicklaunch + open-apps pool
 #define WIN_EVENT_QUEUE		32
 
 // Window creation flags (kept numerically identical to user/kapi.h).
@@ -45,6 +45,7 @@
 #define GW_SCROLLV		8	// vertical scrollbar   (nState = 0..100, draggable)
 #define GW_SCROLLH		9	// horizontal scrollbar (nState = 0..100, draggable)
 #define GW_ICON			10	// clickable image (pIcon) + optional label; fires CLICK
+					// (nState != 0 => draw an "open/running" triangle badge)
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree.
@@ -111,8 +112,18 @@ public:
 
 	GImage *Canvas (void)		{ return &m_Canvas; }	// the client-area buffer
 	u32 *CanvasBuffer (void)	{ return m_Canvas.Buffer (); }
-	int ClientWidth (void) const	{ return m_Canvas.Width (); }
-	int ClientHeight (void) const	{ return m_Canvas.Height (); }
+
+	// The client (composited + hit-tested) size. This is the LOGICAL size, which may
+	// be smaller than the allocated canvas: a window can shrink/grow within its
+	// over-allocated buffer (e.g. the taskbar panel resizing as apps open/close)
+	// without reallocating or remapping. The app keeps drawing into the full canvas
+	// (row stride = allocated width); only the top-left logical area is shown.
+	int ClientWidth (void) const	{ return m_nLogicalW; }
+	int ClientHeight (void) const	{ return m_nLogicalH; }
+
+	// Resize the logical client area (clamped to the allocated canvas). Width/height
+	// in pixels; the canvas buffer is not touched.
+	void SetLogicalSize (int w, int h);
 
 	// The canvas is a page-aligned, physically-contiguous region (identity-mapped
 	// in the kernel) so it can be both composited here and mapped into a process's
@@ -153,6 +164,8 @@ private:
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
 	unsigned	m_nFlags;	// WIN_FLAG_* (borderless, ...)
+	int		m_nLogicalW;	// composited/hit-tested client size (<= canvas alloc)
+	int		m_nLogicalH;
 	char		m_Title[48];	// owned copy of the title (caller's may be transient)
 	GImage		m_Canvas;	// client-area pixel buffer (wraps m_pRawAlloc)
 	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)
@@ -181,6 +194,10 @@ public:
 	// Register a window (the topmost added is drawn last = on top + active).
 	void Add (CWindow *pWindow);
 	void Remove (CWindow *pWindow);
+
+	// Raise a window to the top of the z-order (e.g. a taskbar click). No-op if the
+	// window isn't registered.
+	void Raise (CWindow *pWindow);
 
 	// Clear the desktop and draw every window onto the screen image.
 	void Composite (GImage *pScreen);

@@ -23,6 +23,11 @@ unsigned *kapi_create_window (int w, int h, const char *title);  // -> canvas (u
 unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *title,
 				 unsigned flags);
 
+// Resize the window's logical client area (clamped to the size it was CREATED with;
+// create at the max you'll need, then grow/shrink). Canvas/VA unchanged. For the
+// taskbar panel that grows as apps open. Returns the canvas, or 0.
+unsigned *kapi_resize_window (int w, int h);
+
 // Spawn another app by folder name ("xxx" => apps/xxx.app/main.elf). The shell
 // uses this for quicklaunch + the app-list popup. Returns 1 on success.
 int       kapi_launch (const char *name);
@@ -31,6 +36,15 @@ int       kapi_launch (const char *name);
 // (returns 0; -1 on error). The "apps" button uses this so a re-click closes the
 // popup.
 int       kapi_toggle_app (const char *name);
+
+// Raise the named running app's window to the front. Returns 1 if raised, 0 if it
+// isn't running. The panel/taskbar uses this so clicking an already-open app's icon
+// brings its window forward instead of launching a second instance.
+int       kapi_raise_app (const char *name);
+
+// List currently-open apps (folder names of running, windowed tasks), one per
+// '\n'-separated line in buf. Returns the count. Backs the taskbar section.
+int       kapi_list_windows (char *buf, unsigned buf_size);
 
 // Set the desktop wallpaper from a 24-bpp BMP (drawn behind all windows). 0 clears
 // it. Returns 1 on success.
@@ -79,7 +93,9 @@ int  kapi_widget_get_text    (unsigned long widget, char *buf, unsigned max); //
 void kapi_widget_set_text    (unsigned long widget, const char *text);
 int  kapi_widget_get_checked (unsigned long widget);	// checkbox: 1 = checked
 int  kapi_widget_get_value   (unsigned long widget);	// slider/progress: 0..100
-void kapi_widget_set_value   (unsigned long widget, int value);
+void kapi_widget_set_value   (unsigned long widget, int value);	// icon: !=0 => triangle badge
+void kapi_widget_set_rect    (unsigned long widget, int x, int y, int w, int h); // move/resize/hide
+void kapi_widget_set_icon    (unsigned long widget, const char *bmp_path); // reload icon image
 
 void      kapi_pump_events (void);	// dispatch pending events, non-blocking
 void      kapi_wait_for_exit (void);	// pump until the close box is clicked

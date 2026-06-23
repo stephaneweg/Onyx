@@ -111,6 +111,22 @@ unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *pTitle,
 	return CreateWindow (x, y, w, h, pTitle, nFlags);
 }
 
+// Resize the calling app's window to w x h (logical; clamped to the canvas it was
+// created with). The canvas buffer/VA is unchanged -- create the window at the
+// MAX size you'll need, then shrink/grow with this (e.g. a taskbar panel). Returns
+// the canvas VA, or 0 on failure.
+unsigned *kapi_resize_window (int w, int h)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0)
+	{
+		return 0;
+	}
+	pWin->SetLogicalSize (w, h);
+	return (unsigned *) USER_WINDOW_CANVAS;
+}
+
 // Launch another app by folder name (apps/<name>.app/main.elf) as a new process.
 // Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
 int kapi_launch (const char *pName)
@@ -144,6 +160,29 @@ int kapi_toggle_app (const char *pName)
 	}
 
 	return LaunchAppByName (pName) ? 1 : -1;	// toggled ON
+}
+
+// Raise the named running app's window to the front (taskbar / quicklaunch click on
+// an already-open app). Returns 1 if raised, 0 if not running / no window.
+int kapi_raise_app (const char *pName)
+{
+	if (pName == 0 || !CScheduler::IsActive () || CWindowManager::Get () == 0)
+	{
+		return 0;
+	}
+	CTask *pTask = CScheduler::Get ()->GetRunningTask (pName);
+	if (pTask == 0)
+	{
+		return 0;
+	}
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0)
+	{
+		return 0;
+	}
+	CWindowManager::Get ()->Raise (pWin);
+	return 1;
 }
 
 void kapi_present (void)
@@ -326,6 +365,39 @@ unsigned long kapi_add_icon (int x, int y, int w, int h, const char *pBmpPath,
 	return (unsigned long) pW;
 }
 
+// Replace an icon widget's image (reloads the BMP). pBmpPath may be 0 to clear it.
+// Lets the panel repurpose a taskbar slot for a different app. Cheap enough when
+// called only on changes (not every frame).
+void kapi_widget_set_icon (unsigned long hWidget, const char *pBmpPath)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	if (pW == 0)
+	{
+		return;
+	}
+
+	GImage *pImg = 0;
+	if (pBmpPath != 0)
+	{
+		unsigned nSize = 0;
+		u8 *pData = ReadWholeFile (pBmpPath, &nSize);
+		if (pData != 0)
+		{
+			pImg = new GImage;
+			if (pImg != 0 && !pImg->LoadBMP (pData, nSize))
+			{
+				delete pImg;
+				pImg = 0;
+			}
+			delete [] pData;
+		}
+	}
+
+	GImage *pOld = (GImage *) pW->pIcon;
+	pW->pIcon = pImg;			// publish before freeing (cooperative: safe)
+	delete pOld;
+}
+
 // Set the desktop wallpaper from a 24-bpp BMP on the SD card (drawn behind every
 // window by the compositor). Pass 0 to clear it. Returns 1 on success.
 int kapi_set_wallpaper (const char *pBmpPath)
@@ -391,6 +463,18 @@ void kapi_widget_set_value (unsigned long hWidget, int nValue)
 	}
 	if (nValue < 0) nValue = 0; else if (nValue > 100) nValue = 100;
 	pW->nState = nValue;
+}
+
+// Move/resize a widget after creation (client-relative). Set w=h=0 to hide it
+// (drawn empty, never hit). Used by the panel to lay out its dynamic taskbar.
+void kapi_widget_set_rect (unsigned long hWidget, int x, int y, int w, int h)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	if (pW == 0)
+	{
+		return;
+	}
+	pW->nX = x; pW->nY = y; pW->nW = w; pW->nH = h;
 }
 
 void kapi_pump_events (void)
@@ -568,6 +652,51 @@ int kapi_list_apps (char *pBuf, unsigned nBufSize)
 	f_closedir (&Dir);
 	pBuf[nPos] = '\0';
 	return (int) nCount;
+}
+
+// List currently-open apps: the folder name of every non-terminated task that owns
+// a window, one per '\n'-separated line in pBuf. Backs the panel's taskbar section.
+struct WinListCtx { char *pBuf; unsigned nSize; unsigned nPos; int nCount; };
+
+static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState State,
+				TTaskFlags Flags, void *pParam)
+{
+	(void) Flags;
+	if (State == TaskStateTerminated)
+	{
+		return TRUE;					// keep going
+	}
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0 || pAS->GetWindow () == 0)
+	{
+		return TRUE;					// not a windowed app
+	}
+
+	WinListCtx *pCtx = (WinListCtx *) pParam;
+	for (unsigned j = 0; pName[j] != '\0'; j++)
+	{
+		if (pCtx->nPos + 2 < pCtx->nSize) pCtx->pBuf[pCtx->nPos++] = pName[j];
+	}
+	if (pCtx->nPos + 1 < pCtx->nSize) pCtx->pBuf[pCtx->nPos++] = '\n';
+	pCtx->nCount++;
+	return TRUE;
+}
+
+int kapi_list_windows (char *pBuf, unsigned nBufSize)
+{
+	if (pBuf == 0 || nBufSize == 0)
+	{
+		return 0;
+	}
+	pBuf[0] = '\0';
+	if (!CScheduler::IsActive ())
+	{
+		return 0;
+	}
+	WinListCtx Ctx = { pBuf, nBufSize, 0, 0 };
+	CScheduler::Get ()->EnumerateTasks (WinListCallback, &Ctx);
+	pBuf[Ctx.nPos] = '\0';
+	return Ctx.nCount;
 }
 
 // Current local date/time, broken down. Any pointer may be 0. Returns 1 if the

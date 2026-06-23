@@ -12,6 +12,7 @@
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 		  unsigned nFlags)
 :	m_nX (x), m_nY (y), m_nFlags (nFlags),
+	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
@@ -77,6 +78,16 @@ CWindow::~CWindow (void)
 	}
 }
 
+void CWindow::SetLogicalSize (int w, int h)
+{
+	int maxW = m_Canvas.Width ();
+	int maxH = m_Canvas.Height ();
+	if (w < 1) w = 1; else if (w > maxW) w = maxW;
+	if (h < 1) h = 1; else if (h > maxH) h = maxH;
+	m_nLogicalW = w;
+	m_nLogicalH = h;
+}
+
 // Render a multi-line editable text area: white field, char-wrapped lines clipped
 // to the box, auto-scrolled to the bottom (cursor end), with a caret when focused.
 static void DrawTextArea (GImage *pScreen, const GWidget *pW,
@@ -127,8 +138,8 @@ static void DrawTextArea (GImage *pScreen, const GWidget *pW,
 
 void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 {
-	int cw = m_Canvas.Width ();
-	int ch = m_Canvas.Height ();
+	int cw = ClientWidth ();		// logical size (may be < allocated canvas)
+	int ch = ClientHeight ();
 
 	// Outer rectangle: chrome (border + title bar) + client area. A borderless
 	// window has zero chrome, so the client area fills the whole window.
@@ -175,18 +186,19 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 		pScreen->DrawLine (cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
 	}
 
-	// Client area = the owner's canvas, blitted opaque inside the chrome.
+	// Client area = the owner's canvas, blitted opaque inside the chrome. Only the
+	// logical sub-rect is shown (the canvas may be over-allocated for resizing).
 	int clientX = x0 + ChromeL ();
 	int clientY = y0 + ChromeT ();
-	pScreen->PutOther (&m_Canvas, clientX, clientY, FALSE);
+	pScreen->PutOtherPart (&m_Canvas, clientX, clientY, 0, 0, cw, ch, FALSE);
 
 	// Widgets, drawn over the canvas (client-relative coords + client origin).
 	for (unsigned i = 0; i < m_nWidgets; i++)
 	{
 		const GWidget *pW = &m_Widgets[i];
-		if (!pW->bUsed)
+		if (!pW->bUsed || pW->nW <= 0 || pW->nH <= 0)
 		{
-			continue;
+			continue;			// w=h=0 hides a widget (taskbar slot)
 		}
 		int bx0 = clientX + pW->nX;
 		int by0 = clientY + pW->nY;
@@ -358,6 +370,16 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 				int tx = bx0 + (pW->nW - GImage::TextWidth (pW->Label)) / 2;
 				pScreen->DrawText (tx, by1 - fh, pW->Label, 0x00FFFFFF);
 			}
+
+			// "open/running" badge: a small green triangle in the bottom-left.
+			if (pW->nState != 0)
+			{
+				for (int t = 0; t < 9; t++)
+				{
+					pScreen->DrawLine (bx0 + 2, by1 - 2 - t,
+							   bx0 + 2 + (8 - t), by1 - 2 - t, 0x0040E060);
+				}
+			}
 			break;
 		}
 		}
@@ -524,6 +546,24 @@ void CWindowManager::Remove (CWindow *pWindow)
 				m_pWindows[j] = m_pWindows[j + 1];
 			}
 			m_pWindows[--m_nWindows] = 0;
+			break;
+		}
+	}
+	m_SpinLock.Release ();
+}
+
+void CWindowManager::Raise (CWindow *pWindow)
+{
+	m_SpinLock.Acquire ();
+	for (unsigned i = 0; i < m_nWindows; i++)
+	{
+		if (m_pWindows[i] == pWindow)
+		{
+			for (unsigned j = i; j + 1 < m_nWindows; j++)
+			{
+				m_pWindows[j] = m_pWindows[j + 1];
+			}
+			m_pWindows[m_nWindows - 1] = pWindow;	// move to top (drawn last)
 			break;
 		}
 	}
