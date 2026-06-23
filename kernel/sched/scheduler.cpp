@@ -371,9 +371,9 @@ unsigned CScheduler::ReapTerminatedTasks (void)
 			(*m_pTaskTerminationHandler) (pTask);
 		}
 
-		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: '%s' removing+delete",
-					pTask->GetName ());
+		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: removing from list");
 		RemoveTask (pTask);
+		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: deleting task+stack");
 		delete pTask;			// frees the CTask + its stack
 		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: done");
 		nReaped++;
