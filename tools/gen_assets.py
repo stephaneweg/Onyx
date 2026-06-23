@@ -204,11 +204,49 @@ def icon_sokoban():		# a box on a target
     prect(px, 18, 18, 22, 22, (180, 90, 90))		# target dot
     return px
 
+def icon_calendar():		# a calendar page with a red header
+    px = blank()
+    prect(px, 6, 7, 33, 33, (235, 235, 240))
+    prect(px, 6, 7, 33, 13, (210, 70, 70))
+    pframe(px, 6, 7, 33, 33, (120, 120, 130))
+    for r in range(3):
+        for c in range(4):
+            x, y = 10 + c * 6, 18 + r * 5
+            prect(px, x, y, x + 2, y + 2, (150, 160, 170))
+    return px
+
+def icon_mandel():		# coloured field with dark bulbs
+    px = [(((x * 5) & 255), ((y * 4) & 255), 120) for y in range(SZ) for x in range(SZ)]
+    pdisc(px, 23, 20, 9, (0, 0, 0))
+    pdisc(px, 12, 20, 5, (0, 0, 0))
+    return px
+
+def icon_mines():		# a mine on grey
+    px = blank()
+    prect(px, 5, 5, 34, 34, (88, 100, 114))
+    pframe(px, 5, 5, 34, 34, (40, 46, 54))
+    prect(px, 19, 8, 21, 32, (20, 20, 20))
+    prect(px, 8, 19, 32, 21, (20, 20, 20))
+    pdisc(px, 20, 20, 8, (20, 20, 20))
+    pdisc(px, 17, 17, 2, (220, 220, 220))
+    return px
+
+def icon_paint():		# a palette with colour dabs
+    px = blank()
+    pdisc(px, 20, 22, 14, (225, 210, 180))
+    pdisc(px, 14, 18, 3, (224, 80, 80))
+    pdisc(px, 22, 15, 3, (80, 176, 96))
+    pdisc(px, 27, 21, 3, (64, 128, 224))
+    pdisc(px, 18, 27, 3, (224, 192, 64))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
     "filer": icon_filer, "terminal": icon_terminal,
     "2048": icon_2048, "life": icon_life, "pong": icon_pong, "sokoban": icon_sokoban,
+    "calendar": icon_calendar, "mandelbrot": icon_mandel,
+    "minesweeper": icon_mines, "paint": icon_paint,
 }
 
 
