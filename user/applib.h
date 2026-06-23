@@ -89,16 +89,11 @@ static inline void ax_ini_range (char *dst, const char *buf, int s, int e)
 	dst[j] = '\0';
 }
 
-// Load <appdir>/filename (e.g. "config.ini"). Returns entry count, or -1 if absent.
-static inline int app_ini_load (const char *filename)
+// Load an explicit absolute path (any app, not just one's own folder). Returns the
+// entry count, or -1 if the file is absent.
+static inline int app_ini_load_path (const char *path)
 {
 	g_ini_n = 0;
-
-	char path[96];
-	int pn = kapi_app_dir (path, sizeof (path));		// "SD:apps/<self>.app/"
-	for (int i = 0; filename[i] != '\0' && pn < (int) sizeof (path) - 1; i++)
-		path[pn++] = filename[i];
-	path[pn] = '\0';
 
 	void *f = kapi_open (path);
 	if (f == 0) return -1;
@@ -139,6 +134,18 @@ static inline int app_ini_load (const char *filename)
 		g_ini_n++;
 	}
 	return g_ini_n;
+}
+
+// Load <appdir>/filename (e.g. "config.ini") from the calling app's OWN folder.
+// Returns entry count, or -1 if absent.
+static inline int app_ini_load (const char *filename)
+{
+	char path[96];
+	int pn = kapi_app_dir (path, sizeof (path));		// "SD:apps/<self>.app/"
+	for (int i = 0; filename[i] != '\0' && pn < (int) sizeof (path) - 1; i++)
+		path[pn++] = filename[i];
+	path[pn] = '\0';
+	return app_ini_load_path (path);
 }
 
 // Look up a value. section may be 0/"" for keys before any [section]. Returns def

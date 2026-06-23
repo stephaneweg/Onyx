@@ -26,6 +26,8 @@ int kapi_kill (const char *);
 int kapi_message_box (const char *, const char *, int);
 int kapi_file_open (char *, unsigned, const char *);
 int kapi_file_save (char *, unsigned, const char *, const char *);
+int kapi_exec (const char *, const char *);
+void kapi_screen_size (int *, int *);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -194,4 +196,6 @@ void KApiTableInit (void)
 	t->message_box       = kapi_message_box;
 	t->file_open         = kapi_file_open;
 	t->file_save         = kapi_file_save;
+	t->exec              = kapi_exec;
+	t->screen_size       = kapi_screen_size;
 }

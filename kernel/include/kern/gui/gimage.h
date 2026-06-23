@@ -57,8 +57,11 @@ public:
 
 	// Blit a sub-rectangle [srcX,srcY,w,h] of pSrc to (dstX,dstY). Used by the
 	// 9-slice skin engine. Clipped to both images; transparent skips magenta.
+	// nTint multiplies each source channel by tint/255 (0x00FFFFFF = no change),
+	// so a grayscale skin can be colorized on the fly.
 	void PutOtherPart (const GImage *pSrc, int dstX, int dstY,
-			   int srcX, int srcY, int w, int h, boolean bTransparent);
+			   int srcX, int srcY, int w, int h, boolean bTransparent,
+			   u32 nTint = 0x00FFFFFF);
 
 	// Decode an uncompressed 24-bit BMP from memory into this image (owned buffer).
 	// Returns FALSE if the data is not a 24-bpp uncompressed BMP.

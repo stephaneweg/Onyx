@@ -258,7 +258,8 @@ void GImage::PutOther (const GImage *pSrc, int x, int y, boolean bTransparent)
 }
 
 void GImage::PutOtherPart (const GImage *pSrc, int dstX, int dstY,
-			   int srcX, int srcY, int w, int h, boolean bTransparent)
+			   int srcX, int srcY, int w, int h, boolean bTransparent,
+			   u32 nTint)
 {
 	if (m_pBuffer == 0 || pSrc == 0 || !pSrc->IsValid () || w <= 0 || h <= 0)
 	{
@@ -282,28 +283,29 @@ void GImage::PutOtherPart (const GImage *pSrc, int dstX, int dstY,
 	if (dstY + h > m_nHeight) h = m_nHeight - dstY;
 	if (w <= 0 || h <= 0) return;
 
+	const boolean bTint = (nTint & 0xFFFFFF) != 0x00FFFFFF;
+	const unsigned tr = (nTint >> 16) & 0xFF, tg = (nTint >> 8) & 0xFF, tb = nTint & 0xFF;
+
 	const u32 *pSrcBuf = pSrc->Buffer ();
 	for (int row = 0; row < h; row++)
 	{
 		const u32 *pS = pSrcBuf + (srcY + row) * nSrcW + srcX;
 		u32 *pD = m_pBuffer + (dstY + row) * m_nWidth + dstX;
-		if (bTransparent)
+		for (int col = 0; col < w; col++)
 		{
-			for (int col = 0; col < w; col++)
+			u32 c = pS[col];
+			if (bTransparent && (c & 0xFFFFFF) == GIMAGE_TRANSPARENT)
 			{
-				u32 c = pS[col];
-				if ((c & 0xFFFFFF) != GIMAGE_TRANSPARENT)
-				{
-					pD[col] = c;
-				}
+				continue;
 			}
-		}
-		else
-		{
-			for (int col = 0; col < w; col++)
+			if (bTint)		// multiply (colorize) each channel by tint/255
 			{
-				pD[col] = pS[col];
+				unsigned r = (((c >> 16) & 0xFF) * tr) / 255;
+				unsigned g = (((c >> 8)  & 0xFF) * tg) / 255;
+				unsigned b = ((c & 0xFF) * tb) / 255;
+				c = (r << 16) | (g << 8) | b;
 			}
+			pD[col] = c;
 		}
 	}
 }

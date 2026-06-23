@@ -29,6 +29,12 @@ class CDialog;
 #define WIN_COLOR_TITLE_ACT	0x000000FF
 #define WIN_COLOR_DESKTOP	0x00204060
 
+// Multiply-tint applied to the grayscale window skin (wings.bmp). The active window
+// gets a warm gold/amber accent; inactive windows a muted slate so focus reads at a
+// glance. 0x00FFFFFF would leave the skin untouched.
+#define WIN_SKIN_TINT_ACTIVE	0x00FFC878
+#define WIN_SKIN_TINT_INACTIVE	0x008090A0
+
 #define WM_MAX_WINDOWS		16
 #define WIN_MAX_WIDGETS		40	// calculator needs a full scientific button grid
 #define WIN_EVENT_QUEUE		32

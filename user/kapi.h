@@ -61,6 +61,10 @@ static inline int  kapi_message_box (const char *title, const char *text, int bu
 // Modal file dialogs (block until chosen/cancelled). Return 1 + fill `out`, or 0.
 static inline int  kapi_file_open (char *out, unsigned cap, const char *start_dir) { return KT->file_open (out, cap, start_dir); }
 static inline int  kapi_file_save (char *out, unsigned cap, const char *start_dir, const char *def_name) { return KT->file_save (out, cap, start_dir, def_name); }
+// Run an ELF at an absolute path with an argv string (fire-and-forget). 1/0.
+static inline int  kapi_exec (const char *path, const char *args) { return KT->exec (path, args); }
+// Framebuffer size in pixels (for edge-pinned borderless windows).
+static inline void kapi_screen_size (int *w, int *h) { KT->screen_size (w, h); }
 static inline int  kapi_set_wallpaper (const char *p) { return KT->set_wallpaper (p); }
 static inline int  kapi_wallpaper_generate (unsigned base, int pts, unsigned seed) { return KT->wallpaper_generate (base, pts, seed); }
 static inline void kapi_present (void) { KT->present (); }

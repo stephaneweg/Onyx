@@ -154,10 +154,13 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	if (!Borderless ())
 	{
 		// Frame + title bar: the window skin (wings.bmp, 7/7/32/7) draws the whole
-		// chrome; otherwise a flat frame + title bar.
+		// chrome; otherwise a flat frame + title bar. The skin is grayscale and gets
+		// colorized by multiply -- a warm accent when active, dimmer when inactive.
 		if (g_pWindowSkin != 0)
 		{
-			g_pWindowSkin->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, TRUE);
+			u32 nTint = bActive ? WIN_SKIN_TINT_ACTIVE : WIN_SKIN_TINT_INACTIVE;
+			g_pWindowSkin->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1,
+					       TRUE, nTint);
 		}
 		else
 		{

@@ -1,7 +1,9 @@
 //
-// panel.c -- the Maynard-style sidebar, which doubles as a taskbar. A borderless,
-// left-pinned window whose height grows/shrinks as apps open and close
-// (kapi_resize_window over an over-allocated canvas). Top to bottom:
+// panel.c -- the Maynard-style launcher bar, which doubles as a taskbar. A
+// borderless window pinned to one edge of the screen; its position is configurable
+// via SD:apps/panel.app/config.ini (position = 1 left, 2 top, 3 right, 4 bottom).
+// Left/right give a vertical bar, top/bottom a horizontal one. Along the bar's main
+// axis, from the pinned corner outward:
 //
 //   [apps] button (9-squares) -- toggles the app-list popup
 //   --- separator ---
@@ -11,26 +13,32 @@
 //   --- separator ---
 //   clock (kapi_get_datetime)
 //
-// An open app shows a green triangle badge on its icon (whether pinned or in the
-// open-apps section); clicking an open app's icon raises its window instead of
-// launching a new instance. Sets the desktop wallpaper at startup.
+// An open app shows a green triangle badge on its icon; clicking an open app's icon
+// raises its window instead of launching a new instance. Sets the wallpaper at boot.
 //
 #include "kapi.h"
 #include "applib.h"
 
-#define W		60
-#define WINH		472		// max (over-allocated) canvas height
+#define BAR		60		// bar thickness (cross axis)
+#define MAXLEN		760		// over-allocated canvas length (main axis)
 #define ICON		40
-#define X		10
+#define INSET		10		// cross-axis inset for icons
 #define STEP		44
 #define QMAX		6		// max quicklaunch icons
 #define TMAX		4		// max open-apps (taskbar) slots
 #define OMAX		16		// max windows reported
+#define CLOCK_W		44		// clock width when horizontal
 
 #define BG		0x00222a36
 #define SEP		0x00425068
 
 static unsigned     *fb;
+
+// Orientation / placement (resolved from config.ini at startup).
+static int           g_pos = 1;		// 1 left / 2 top / 3 right / 4 bottom
+static int           g_vert = 1;	// vertical bar (left/right)?
+static int           g_stride = BAR;	// canvas row width (BAR vertical, MAXLEN horiz)
+static int           g_sw = 800, g_sh = 600;	// screen size
 
 // Quicklaunch (pinned) icons.
 static char          g_ql_name[QMAX][24];
@@ -44,7 +52,7 @@ static unsigned long g_tb_handle[TMAX];
 static unsigned long g_apps_handle = 0;
 static unsigned long g_clock_handle = 0;
 
-static int           g_tb_start = 0;		// canvas-y where the taskbar section begins
+static int           g_tb_start = 0;		// main-axis offset where the taskbar begins
 static int           g_last_tb_count = -1;	// to detect layout changes
 static int           g_last_min = -1;
 
@@ -55,6 +63,39 @@ static void copy_name (char *dst, const char *src)
 	int k = 0;
 	for (; src[k] != '\0' && k < 23; k++) dst[k] = src[k];
 	dst[k] = '\0';
+}
+
+// Place an icon at main-axis offset `a` (cross axis = INSET).
+static void place_icon (unsigned long h, int a)
+{
+	if (g_vert) kapi_widget_set_rect (h, INSET, a, ICON, ICON);
+	else        kapi_widget_set_rect (h, a, INSET, ICON, ICON);
+}
+
+// Draw a separator (2 px line perpendicular to the main axis) at offset `a`.
+static void sep_at (int a)
+{
+	for (int t = 0; t < 2; t++)
+	{
+		if (g_vert)
+			for (int x = 4; x < BAR - 4; x++) fb[(a + t) * g_stride + x] = SEP;
+		else
+			for (int y = 4; y < BAR - 4; y++) fb[y * g_stride + (a + t)] = SEP;
+	}
+}
+
+// Clear the used part of the canvas (main-axis length `len`).
+static void clear_used (int len)
+{
+	if (g_vert)
+	{
+		for (int i = 0; i < BAR * len; i++) fb[i] = BG;
+	}
+	else
+	{
+		for (int y = 0; y < BAR; y++)
+			for (int x = 0; x < len; x++) fb[y * g_stride + x] = BG;
+	}
 }
 
 // Find the app name bound to a clicked widget handle (quicklaunch or taskbar).
@@ -129,25 +170,23 @@ static int is_pinned (const char *n)
 
 // ---- layout / drawing -------------------------------------------------------
 
-static void clear_to (int h)
-{
-	for (int i = 0; i < W * h; i++) fb[i] = BG;
-}
-
-static void hline (int y)
-{
-	for (int t = 0; t < 2; t++)
-		for (int x = 4; x < W - 4; x++)
-			fb[(y + t) * W + x] = SEP;
-}
-
 // Redraw the canvas background + separators for a given taskbar count.
-static void redraw_bg (int tb_count, int content_h)
+static void redraw_bg (int tb_count, int content_len)
 {
-	clear_to (content_h);
-	hline (48);						// below the apps button
-	hline (g_tb_start - 4);					// launchers | running
-	hline (g_tb_start + tb_count * STEP + 1);		// running | clock
+	clear_used (content_len);
+	sep_at (48);						// below the apps button
+	sep_at (g_tb_start - 4);				// launchers | running
+	sep_at (g_tb_start + tb_count * STEP + 1);		// running | clock
+}
+
+// Move the clock label to the far end of the bar (main-axis = content_len).
+static void place_clock (int content_len)
+{
+	if (g_vert)
+		kapi_widget_set_rect (g_clock_handle, 6, content_len - 18, BAR - 8, 16);
+	else
+		kapi_widget_set_rect (g_clock_handle, content_len - CLOCK_W - 4,
+				      (BAR - 16) / 2, CLOCK_W, 16);
 }
 
 // ---- main -------------------------------------------------------------------
@@ -162,7 +201,6 @@ static void load_quicklaunch (void)
 	if (n <= 0) return;
 	buf[n] = '\0';
 
-	int ql_start = 54;
 	int i = 0;
 	while (i < n && g_ql_count < QMAX)
 	{
@@ -181,24 +219,51 @@ static void load_quicklaunch (void)
 		char path[64];
 		ax_app_path (path, sizeof (path), g_ql_name[g_ql_count], ".app/icon.bmp");
 		g_ql_handle[g_ql_count] =
-			kapi_add_icon (X, ql_start + g_ql_count * STEP, ICON, ICON,
-				       path, "", on_icon);
+			kapi_add_icon (0, 0, ICON, ICON, path, "", on_icon);
+		place_icon (g_ql_handle[g_ql_count], 54 + g_ql_count * STEP);
 		g_ql_count++;
 	}
 }
 
 int main (void)
 {
-	fb = kapi_create_window_ex (2, 4, W, WINH, "panel", WIN_FLAG_BORDERLESS);
+	// Resolve placement from config.ini (own folder); default to the left edge.
+	app_ini_load ("config.ini");
+	g_pos = app_ini_get_int (0, "position", 1);
+	if (g_pos < 1 || g_pos > 4) g_pos = 1;
+	g_vert = (g_pos == 1 || g_pos == 3);
+
+	kapi_screen_size (&g_sw, &g_sh);
+	if (g_sw < 320) g_sw = 800;			// sane fallback
+	if (g_sh < 240) g_sh = 600;
+
+	// Window geometry: a bar of thickness BAR, over-allocated to MAXLEN along its
+	// main axis, pinned to the chosen edge. It resizes down to fit its content.
+	int win_w, win_h, x0, y0;
+	if (g_vert)
+	{
+		win_w = BAR; win_h = MAXLEN; g_stride = BAR;
+		x0 = (g_pos == 1) ? 2 : g_sw - BAR - 2;		// left or right
+		y0 = 4;
+	}
+	else
+	{
+		win_w = MAXLEN; win_h = BAR; g_stride = MAXLEN;
+		x0 = 4;
+		y0 = (g_pos == 2) ? 2 : g_sh - BAR - 2;		// top or bottom
+	}
+
+	fb = kapi_create_window_ex (x0, y0, win_w, win_h, "panel", WIN_FLAG_BORDERLESS);
 	if (fb == 0) return 1;
-	clear_to (WINH);
+	clear_used (MAXLEN);
 	// Generate the wallpaper once at startup (toroidal Voronoi, blue base, varies
 	// per boot) instead of loading a BMP.
 	kapi_wallpaper_generate (0x004878B0, 28, 0);
 
-	// Apps button (top), then the pinned quicklaunch icons.
-	g_apps_handle = kapi_add_icon (X, 4, ICON, ICON, "SD:apps/panel.app/apps.bmp",
+	// Apps button (at the pinned corner), then the pinned quicklaunch icons.
+	g_apps_handle = kapi_add_icon (0, 0, ICON, ICON, "SD:apps/panel.app/apps.bmp",
 				       "", on_apps);
+	place_icon (g_apps_handle, 4);
 	load_quicklaunch ();
 	g_tb_start = 54 + g_ql_count * STEP + 6;
 
@@ -209,8 +274,8 @@ int main (void)
 		g_tb_handle[s] = kapi_add_icon (0, 0, 0, 0, 0, "", on_icon);
 	}
 
-	// Clock (repositioned to the bottom on every resize).
-	g_clock_handle = kapi_add_label (6, WINH - 22, W - 8, 16, "--:--");
+	// Clock (repositioned to the far end on every layout change).
+	g_clock_handle = kapi_add_label (0, 0, CLOCK_W, 16, "--:--");
 
 	for (;;)
 	{
@@ -257,8 +322,7 @@ int main (void)
 			}
 			if (s < tb_count)
 			{
-				kapi_widget_set_rect (g_tb_handle[s], X,
-						      g_tb_start + s * STEP, ICON, ICON);
+				place_icon (g_tb_handle[s], g_tb_start + s * STEP);
 				kapi_widget_set_value (g_tb_handle[s], 1);	// running badge
 			}
 			else
@@ -267,15 +331,17 @@ int main (void)
 			}
 		}
 
-		// Resize the panel to fit, and (only when the count changes) move the clock
+		// Resize the bar to fit, and (only when the count changes) move the clock
 		// and repaint the separators.
-		int content_h = g_tb_start + tb_count * STEP + 6 + 18;
-		if (content_h > WINH) content_h = WINH;
-		kapi_resize_window (W, content_h);
+		int clock_len = g_vert ? 22 : (CLOCK_W + 8);
+		int content_len = g_tb_start + tb_count * STEP + 6 + clock_len;
+		if (content_len > MAXLEN) content_len = MAXLEN;
+		if (g_vert) kapi_resize_window (BAR, content_len);
+		else        kapi_resize_window (content_len, BAR);
 		if (tb_count != g_last_tb_count)
 		{
-			redraw_bg (tb_count, content_h);
-			kapi_widget_set_rect (g_clock_handle, 6, content_h - 18, W - 8, 16);
+			redraw_bg (tb_count, content_len);
+			place_clock (content_len);
 			g_last_tb_count = tb_count;
 		}
 

@@ -87,9 +87,32 @@ static void add_apps (void)
 	}
 }
 
+// Mirror the panel's edge metrics so the popup hugs the "apps" button.
+#define BAR	60
+
 int main (void)
 {
-	fb = kapi_create_window_ex (72, 48, W, H, "applist", WIN_FLAG_BORDERLESS);
+	// Open next to the panel's apps button, on whichever edge the panel uses.
+	int pos = 1;
+	if (app_ini_load_path ("SD:apps/panel.app/config.ini") > 0)
+		pos = app_ini_get_int (0, "position", 1);
+	if (pos < 1 || pos > 4) pos = 1;
+
+	int sw = 800, sh = 600;
+	kapi_screen_size (&sw, &sh);
+	if (sw < 320) sw = 800;
+	if (sh < 240) sh = 600;
+
+	int x0, y0;
+	switch (pos)
+	{
+	case 3:  x0 = sw - BAR - 4 - W; y0 = 48;            break;	// right bar -> left of it
+	case 2:  x0 = 4;                y0 = BAR + 4;        break;	// top bar -> below
+	case 4:  x0 = 4;                y0 = sh - BAR - 4 - H; break;	// bottom bar -> above
+	default: x0 = BAR + 4;          y0 = 48;            break;	// left bar -> right of it
+	}
+
+	fb = kapi_create_window_ex (x0, y0, W, H, "applist", WIN_FLAG_BORDERLESS);
 	if (fb == 0)
 	{
 		return 1;

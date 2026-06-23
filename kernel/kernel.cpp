@@ -417,6 +417,69 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	return pProc;
 }
 
+// Derive a short task name from an ELF path. "SD:apps/tinypad.app/main.elf" -> the
+// parent folder minus ".app" ("tinypad"); "SD:/bin/ls.elf" -> the basename minus
+// ".elf" ("ls"). Falls back to "app". Writes up to nCap-1 chars into pOut.
+static void NameFromPath (const char *pPath, char *pOut, unsigned nCap)
+{
+	if (nCap == 0) return;
+	unsigned nLen = 0;
+	while (pPath[nLen] != '\0') nLen++;
+
+	// Find the last '/' and the segment after it.
+	int nSlash = -1;
+	for (unsigned i = 0; i < nLen; i++) if (pPath[i] == '/') nSlash = (int) i;
+	const char *pSeg = pPath + nSlash + 1;	// basename ("main.elf" or "ls.elf")
+
+	// If the basename is "main.elf", use the parent dir name instead.
+	boolean bMain = pSeg[0] == 'm' && pSeg[1] == 'a' && pSeg[2] == 'i' && pSeg[3] == 'n'
+			&& pSeg[4] == '.';
+	const char *pStart; int nSegLen;
+	if (bMain && nSlash > 0)
+	{
+		int nPrev = -1;
+		for (int i = nSlash - 1; i >= 0; i--) if (pPath[i] == '/') { nPrev = i; break; }
+		pStart = pPath + nPrev + 1;
+		nSegLen = nSlash - (nPrev + 1);
+		// Strip a trailing ".app".
+		if (nSegLen >= 4 && pStart[nSegLen - 4] == '.' && pStart[nSegLen - 3] == 'a'
+		    && pStart[nSegLen - 2] == 'p' && pStart[nSegLen - 1] == 'p')
+			nSegLen -= 4;
+	}
+	else
+	{
+		pStart = pSeg;
+		nSegLen = 0;
+		while (pStart[nSegLen] != '\0' && pStart[nSegLen] != '.') nSegLen++;	// drop ".elf"
+	}
+
+	if (nSegLen <= 0) { pStart = "app"; nSegLen = 3; }
+	unsigned j = 0;
+	for (int i = 0; i < nSegLen && j < nCap - 1; i++) pOut[j++] = pStart[i];
+	pOut[j] = '\0';
+}
+
+// Run an arbitrary ELF by absolute path with an argv string. Fire-and-forget: no
+// stdio streams and no CProcess handle (nothing to wait on / free), so the task
+// just terminates and the reaper reclaims it. Returns TRUE if the ELF loaded.
+boolean ExecPath (const char *pElfPath, const char *pArgs)
+{
+	if (pElfPath == 0 || pElfPath[0] == '\0')
+	{
+		return FALSE;
+	}
+	unsigned nSize = 0;
+	const u8 *pElf = LoadFileFromSD (pElfPath, &nSize);
+	if (pElf == 0)
+	{
+		return FALSE;
+	}
+	char Name[40];
+	NameFromPath (pElfPath, Name, sizeof (Name));
+	new CUserProcessTask (pElf, nSize, Name, CLogger::Get (), 0, 0, 0, pArgs);
+	return TRUE;
+}
+
 // Log the .app subdirectories of /apps (validates FatFs directory enumeration;
 // the basis for the shell's app list later).
 static void EnumerateApps (CLogger *pLogger)

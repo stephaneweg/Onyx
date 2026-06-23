@@ -179,6 +179,20 @@ int kapi_launch (const char *pName)
 	return LaunchAppByName (pName) ? 1 : 0;
 }
 
+// Run an ELF by absolute path with an argv string (e.g. the file manager opening a
+// document in an editor, or launching a program). Fire-and-forget.
+int kapi_exec (const char *pPath, const char *pArgs)
+{
+	return ExecPath (pPath, pArgs ? pArgs : "") ? 1 : 0;
+}
+
+// Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
+void kapi_screen_size (int *pW, int *pH)
+{
+	if (pW != 0) *pW = SCREEN_WIDTH;
+	if (pH != 0) *pH = SCREEN_HEIGHT;
+}
+
 // Toggle a named app: if an app with this folder name is already running, ask it to
 // close (set its window's exit flag) and return 0; otherwise launch it and return 1
 // (-1 on error). The shell's "apps" button uses this so a second click closes the

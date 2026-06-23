@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	10
+#define KAPI_ABI_VERSION	11
 
 #ifdef __cplusplus
 extern "C" {
@@ -154,6 +154,14 @@ struct TKApiTable
 	// Returns 1 + fills out[] with the chosen path, or 0 if cancelled.
 	int   (*file_open) (char *out, unsigned cap, const char *start_dir);
 	int   (*file_save) (char *out, unsigned cap, const char *start_dir, const char *def_name);
+
+	// --- v11 additions ---
+	// Run an ELF at an absolute SD path with an argv string (fire-and-forget: no
+	// stdio, no wait handle; the task name is derived from the path). Returns 1/0.
+	// Used by the file manager to open documents (app + file) and run programs.
+	int   (*exec) (const char *path, const char *args);
+	// Framebuffer dimensions (for edge-pinned/borderless windows like the panel).
+	void  (*screen_size) (int *w, int *h);
 };
 
 #ifdef __cplusplus

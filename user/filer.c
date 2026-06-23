@@ -34,6 +34,24 @@ static void scopy (char *d, const char *s, int cap)
 	d[i] = '\0';
 }
 
+// Case-insensitive check that `name` ends with ".<ext>".
+static int ext_is (const char *name, const char *ext)
+{
+	int n = slen (name), e = slen (ext);
+	if (n < e + 1 || name[n - e - 1] != '.') return 0;
+	const char *p = name + n - e;
+	for (int i = 0; i < e; i++)
+	{
+		char a = p[i], b = ext[i];
+		if (a >= 'A' && a <= 'Z') a += 32;
+		if (b >= 'A' && b <= 'Z') b += 32;
+		if (a != b) return 0;
+	}
+	return 1;
+}
+
+static void open_file (int idx);		// defined after full_path
+
 static int itoa (int v, char *b)
 {
 	char t[12]; int n = 0, p = 0;
@@ -109,7 +127,7 @@ static void open_sel (void)
 		if (g_name[g_sel][0] == '.' && g_name[g_sel][1] == '.') go_up ();
 		else enter_dir (g_name[g_sel]);
 	}
-	// files: selection only (open/run comes once apps take arguments)
+	else open_file (g_sel);				// .txt/.ini -> tinypad, .elf -> run
 }
 
 static void fix_scroll (void)
@@ -129,6 +147,28 @@ static void full_path (const char *name, char *out, int cap)
 	if (p > 0 && out[p - 1] != '/' && p < cap - 1) out[p++] = '/';
 	for (int k = 0; name[k] && p < cap - 1; k++) out[p++] = name[k];
 	out[p] = '\0';
+}
+
+// Open a file by double-click / Enter: text-ish types open in tinypad (file passed
+// as argv); .elf programs are run directly. Other types are left alone.
+static void open_file (int idx)
+{
+	if (idx < 0 || idx >= g_count) return;
+	char path[300];
+	full_path (g_name[idx], path, sizeof path);
+
+	if (ext_is (g_name[idx], "txt") || ext_is (g_name[idx], "ini") ||
+	    ext_is (g_name[idx], "md")  || ext_is (g_name[idx], "log") ||
+	    ext_is (g_name[idx], "cfg") || ext_is (g_name[idx], "conf") ||
+	    ext_is (g_name[idx], "csv") || ext_is (g_name[idx], "c") ||
+	    ext_is (g_name[idx], "h")   || ext_is (g_name[idx], "sh"))
+	{
+		kapi_exec ("SD:apps/tinypad.app/main.elf", path);	// open in the editor
+	}
+	else if (ext_is (g_name[idx], "elf"))
+	{
+		kapi_exec (path, "");					// run the program
+	}
 }
 
 static void delete_sel (void)
@@ -202,6 +242,11 @@ static void on_key (unsigned long s, int ev, long key)
 	fix_scroll ();
 }
 
+// Single click selects a row; a second click on the same row within ~0.4 s is a
+// double-click: it opens the entry (folder -> enter, file -> tinypad/run).
+static unsigned g_last_tick = 0;
+static int      g_last_idx = -1;
+
 static void on_click (unsigned long s, int ev, long val)
 {
 	(void) s;
@@ -211,9 +256,22 @@ static void on_click (unsigned long s, int ev, long val)
 	if (row < 0) return;
 	int idx = g_top + row;
 	if (idx >= g_count) return;
+
+	// kapi_get_ticks is HZ(=100) ticks since boot, so ~40 ticks is about 0.4 s.
+	unsigned now = kapi_get_ticks ();
+	int dbl = (idx == g_last_idx) && (now - g_last_tick) < 40;
 	g_sel = idx;
-	if (g_isdir[idx]) open_sel ();			// click a folder to enter it
 	fix_scroll ();
+	if (dbl)
+	{
+		g_last_idx = -1;			// consume, so a 3rd click starts over
+		open_sel ();
+	}
+	else
+	{
+		g_last_idx = idx;
+		g_last_tick = now;
+	}
 }
 
 static void fill_rect (int x, int y, int w, int h, unsigned c)

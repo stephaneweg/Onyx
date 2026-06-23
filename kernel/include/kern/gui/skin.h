@@ -26,9 +26,10 @@ public:
 	int StateWidth (void) const	{ return m_nSkinW; }
 	int StateHeight (void) const	{ return m_nSkinH; }
 
-	// Draw state nNum at (x,y) sized w x h onto pTarget (9-slice).
+	// Draw state nNum at (x,y) sized w x h onto pTarget (9-slice). nTint multiplies
+	// the (grayscale) skin to colorize it; 0x00FFFFFF leaves it unchanged.
 	void DrawOn (GImage *pTarget, unsigned nNum, int x, int y, int w, int h,
-		     boolean bTransparent);
+		     boolean bTransparent, u32 nTint = 0x00FFFFFF);
 
 private:
 	GImage	 m_Image;

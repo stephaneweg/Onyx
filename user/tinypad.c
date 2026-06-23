@@ -338,6 +338,15 @@ int main (void)
 
 	g_text[0][0] = '\0';
 
+	// Opened with a file argument (e.g. the file manager): load it on startup.
+	char args[100];
+	int an = kapi_get_args (args, sizeof (args));
+	if (an > 0 && args[0] != '\0')
+	{
+		kapi_widget_set_text (g_fnbox, args);
+		load_file ();
+	}
+
 	while (!should_exit ())
 	{
 		pump_events ();

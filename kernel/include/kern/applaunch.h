@@ -21,4 +21,8 @@ struct CProcess;
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout);
 
+// Run an ELF by absolute path with an argv string, fire-and-forget (no stdio, no
+// wait handle). Task name is derived from the path. Defined in kernel.cpp.
+boolean ExecPath (const char *pElfPath, const char *pArgs);
+
 #endif // _kern_applaunch_h
