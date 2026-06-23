@@ -6,6 +6,7 @@
 #include <circle/memory.h>
 #include <circle/sched/task.h>
 #include <circle/synchronize.h>
+#include <circle/string.h>
 #include <circle/util.h>
 #include <circle/usb/usbkeyboard.h>
 #include <circle/input/mouse.h>
@@ -36,9 +37,9 @@ public:
 	// Large stack: the app and the kernel functions it calls share this thread stack.
 	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger)
 	:	CTask (0x40000),	// 256 KB
-		m_pELF (pELF), m_nSize (nSize), m_pName (pName), m_pLogger (pLogger)
+		m_pELF (pELF), m_nSize (nSize), m_pLogger (pLogger)
 	{
-		SetName (pName);
+		SetName (pName);	// copies into CTask::m_Name (caller's may be transient)
 	}
 
 	void Run (void) override
@@ -46,7 +47,7 @@ public:
 		CAddressSpace *pAS = new CAddressSpace ();
 		if (pAS == 0 || !pAS->IsValid ())
 		{
-			m_pLogger->Write (m_pName, LogError, "address space creation failed");
+			m_pLogger->Write (GetName (), LogError, "address space creation failed");
 			return;
 		}
 
@@ -60,7 +61,7 @@ public:
 
 		if (!bLoaded)
 		{
-			m_pLogger->Write (m_pName, LogError, "ELF load failed");
+			m_pLogger->Write (GetName (), LogError, "ELF load failed");
 			delete pAS;
 			return;
 		}
@@ -69,7 +70,7 @@ public:
 		SetUserData (pAS, TASK_USER_DATA_USER);
 		pAS->Activate ();
 
-		m_pLogger->Write (m_pName, LogNotice, "running (EL1) entry %lp ASID %u",
+		m_pLogger->Write (GetName (), LogNotice, "running (EL1) entry %lp ASID %u",
 				  (void *) ulEntry, (unsigned) pAS->GetASID ());
 
 		// Direct EL1 call into the app. It calls kapi_* directly; loops or exits.
@@ -82,7 +83,6 @@ public:
 private:
 	const u8   *m_pELF;
 	unsigned    m_nSize;
-	const char *m_pName;
 	CLogger	   *m_pLogger;
 };
 
@@ -326,6 +326,109 @@ static CSkin *LoadSkin (const char *pPath, unsigned nCount,
 	return pSkin;
 }
 
+// Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
+// Safe to call from any task context (cooperative); the new task runs when scheduled.
+static boolean LaunchApp (const char *pName, CLogger *pLogger)
+{
+	CString Path;
+	Path.Format ("SD:apps/%s.app/main.elf", pName);
+
+	unsigned nSize = 0;
+	const u8 *pElf = LoadFileFromSD ((const char *) Path, &nSize);
+	if (pElf == 0)
+	{
+		pLogger->Write (FromKernel, LogError, "launch: cannot load %s",
+				(const char *) Path);
+		return FALSE;
+	}
+	pLogger->Write (FromKernel, LogNotice, "launch: %s (%u bytes)", pName, nSize);
+	new CUserProcessTask (pElf, nSize, pName, pLogger);
+	return TRUE;
+}
+
+// Log the .app subdirectories of /apps (validates FatFs directory enumeration;
+// the basis for the shell's app list later).
+static void EnumerateApps (CLogger *pLogger)
+{
+	DIR Dir;
+	if (f_opendir (&Dir, "SD:apps") != FR_OK)
+	{
+		pLogger->Write (FromKernel, LogWarning, "no /apps directory");
+		return;
+	}
+	unsigned nCount = 0;
+	for (;;)
+	{
+		FILINFO Info;
+		if (f_readdir (&Dir, &Info) != FR_OK || Info.fname[0] == '\0')
+		{
+			break;
+		}
+		if (Info.fattrib & AM_DIR)
+		{
+			pLogger->Write (FromKernel, LogNotice, "  app dir: %s", Info.fname);
+			nCount++;
+		}
+	}
+	f_closedir (&Dir);
+	pLogger->Write (FromKernel, LogNotice, "/apps: %u entries", nCount);
+}
+
+// Spawn the apps listed in SD:apps/autostart.txt -- one app folder name per line
+// (the "xxx" of "xxx.app"). Blank lines and lines starting with '#' are ignored;
+// leading/trailing whitespace is trimmed. Replaces the old hardcoded demo list.
+void CKernel::StartAutostart (void)
+{
+	unsigned nSize = 0;
+	u8 *pList = LoadFileFromSD ("SD:apps/autostart.txt", &nSize);
+	if (pList == 0)
+	{
+		m_Logger.Write (FromKernel, LogWarning, "no apps/autostart.txt -- nothing to start");
+		return;
+	}
+
+	char Name[40];
+	unsigned nLen = 0;
+	for (unsigned i = 0; i <= nSize; i++)
+	{
+		// Treat EOF as an implicit newline so the last (unterminated) line runs.
+		char c = (i < nSize) ? (char) pList[i] : '\n';
+		if (c == '\n' || c == '\r')
+		{
+			Name[nLen] = '\0';
+
+			// Trim leading whitespace.
+			char *p = Name;
+			while (*p == ' ' || *p == '\t')
+			{
+				p++;
+			}
+			// Trim trailing whitespace.
+			unsigned len = 0;
+			while (p[len] != '\0')
+			{
+				len++;
+			}
+			while (len > 0 && (p[len - 1] == ' ' || p[len - 1] == '\t'))
+			{
+				p[--len] = '\0';
+			}
+
+			if (*p != '\0' && *p != '#')
+			{
+				LaunchApp (p, &m_Logger);
+			}
+			nLen = 0;
+		}
+		else if (nLen < sizeof (Name) - 1)
+		{
+			Name[nLen++] = c;
+		}
+	}
+
+	delete [] pList;
+}
+
 CKernel::~CKernel (void)
 {
 }
@@ -453,29 +556,14 @@ TShutdownMode CKernel::Run (void)
 	// started AFTER a readable pause so the boot log stays on screen first.
 	if (m_bGraphics)
 	{
-		static const char *Names[5] = { "demoA", "demoB", "demoC", "demoD", "demoE" };
-		static const char *Paths[5] = { "SD:demoA.elf", "SD:demoB.elf", "SD:demoC.elf",
-						"SD:demoD.elf", "SD:demoE.elf" };
-
 		if (!m_bSDMounted)
 		{
-			m_Logger.Write (FromKernel, LogError, "no SD card: cannot load demos");
+			m_Logger.Write (FromKernel, LogError, "no SD card: cannot launch apps");
 		}
 		else
 		{
-			for (int i = 0; i < 5; i++)
-			{
-				unsigned nSize = 0;
-				const u8 *pElf = LoadFileFromSD (Paths[i], &nSize);
-				if (pElf == 0)
-				{
-					m_Logger.Write (FromKernel, LogError, "cannot load %s", Paths[i]);
-					continue;
-				}
-				m_Logger.Write (FromKernel, LogNotice, "%s: loaded from %s (%u bytes)",
-						Names[i], Paths[i], nSize);
-				new CUserProcessTask (pElf, nSize, Names[i], &m_Logger);
-			}
+			EnumerateApps (&m_Logger);
+			StartAutostart ();		// spawn the apps listed in autostart.txt
 		}
 
 		// Keep the boot log readable for a few seconds, THEN start the compositor

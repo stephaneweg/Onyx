@@ -1,0 +1,8 @@
+# autostart.txt -- apps started automatically at boot, one per line.
+# Each name is the folder basename under /apps (i.e. "demoA" => apps/demoA.app/main.elf).
+# Blank lines and lines starting with '#' are ignored.
+demoA
+demoB
+demoC
+demoD
+demoE

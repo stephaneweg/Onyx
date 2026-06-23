@@ -65,11 +65,18 @@ all: apps
 # against the kernel's kapi_* addresses (kernel_syms.ld), which move on every
 # kernel rebuild -- so the .img and the .elf on the card MUST come from the same
 # build. Always `make stage` (never copy the kernel alone).
+#
+# Each app lives in its own folder:  apps/<name>.app/main.elf  (the Maynard-style
+# layout). The app name is the ELF basename; autostart.txt names them per line.
 SDCARD = ../sdcard
 .PHONY: stage
 stage: apps
 	@cp $(TARGET).img $(SDCARD)/
-	@cp ../user/*.elf $(SDCARD)/
-	@echo "  STAGE $(TARGET).img + apps -> $(SDCARD)/"
+	@for elf in ../user/*.elf; do \
+		name=$$(basename $$elf .elf); \
+		mkdir -p $(SDCARD)/apps/$$name.app; \
+		cp $$elf $(SDCARD)/apps/$$name.app/main.elf; \
+	done
+	@echo "  STAGE $(TARGET).img + apps/*.app/main.elf -> $(SDCARD)/"
 
 -include $(DEPS)

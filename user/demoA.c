@@ -36,7 +36,7 @@ int main (void)
 {
 	// Demonstrate direct file access (Option C): read our own ELF off the SD card
 	// and report it over the kernel console -- no syscall, a direct kapi call.
-	void *f = kapi_open ("SD:demoA.elf");
+	void *f = kapi_open ("SD:apps/demoA.app/main.elf");
 	if (f != 0)
 	{
 		unsigned char hdr[4] = {0, 0, 0, 0};

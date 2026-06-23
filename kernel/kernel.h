@@ -45,6 +45,9 @@ public:
 	TShutdownMode Run (void);
 
 private:
+	// Spawn the apps listed in SD:apps/autostart.txt (one folder name per line).
+	void StartAutostart (void);
+
 	// Do not change this order: members are constructed top-to-bottom and some
 	// constructors depend on earlier ones (m_Timer needs m_Interrupt; m_Logger
 	// needs m_Options and m_Timer). Mirrors Circle's documented convention.
