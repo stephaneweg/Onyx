@@ -32,12 +32,15 @@
 #define WIN_EVENT_QUEUE		32
 
 // Widget kinds.
-#define GW_BUTTON		1
+#define GW_BUTTON		1	// fires CLICK on release-inside
 #define GW_LABEL		2	// static text
 #define GW_CHECKBOX		3	// box + label, toggles on click
 #define GW_TEXTBOX		4	// editable single-line text (keyboard focus)
 #define GW_PROGRESS		5	// progress bar (nState = 0..100, display only)
 #define GW_SLIDER		6	// horizontal slider (nState = 0..100, draggable)
+#define GW_TEXTAREA		7	// editable multi-line text (focus; nState = top line)
+#define GW_SCROLLV		8	// vertical scrollbar   (nState = 0..100, draggable)
+#define GW_SCROLLH		9	// horizontal scrollbar (nState = 0..100, draggable)
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree.
@@ -53,16 +56,19 @@
 // callback ADDRESS (opaque to the kernel): void (*)(unsigned long sender,
 // int event, long value). The kernel never calls it -- it enqueues an event to
 // the owning app, whose pump dispatches it in the app's own context.
+#define GW_AREA_CAP		512	// textarea content capacity (heap-allocated)
+
 struct GWidget
 {
 	int	 nType;
 	int	 nX, nY, nW, nH;	// relative to the client (canvas) origin
 	char	 Label[GW_TEXT_MAX];	// button/checkbox label, or textbox content
+	char	*pText;			// textarea content (heap, GW_AREA_CAP); else 0
 	u64	 ulHandler;		// app callback address
-	int	 nState;		// checkbox: 0/1 checked
+	int	 nState;		// checkbox: 0/1; slider/progress/scrollbar: 0..100
 	boolean	 bMouseOver;		// cursor is over this widget (hover)
 	boolean	 bMousePressed;		// left button held down on this widget
-	boolean	 bFocused;		// has keyboard focus (textbox)
+	boolean	 bFocused;		// has keyboard focus (textbox / textarea)
 	boolean	 bUsed;
 };
 

@@ -42,6 +42,12 @@ unsigned long kapi_add_textbox  (int x, int y, int w, int h,
 unsigned long kapi_add_progress (int x, int y, int w, int h);	// display only (0..100)
 unsigned long kapi_add_slider   (int x, int y, int w, int h,
 				 gui_handler handler);	// fires GUI_EVENT_VALUE_CHANGED
+unsigned long kapi_add_textarea (int x, int y, int w, int h,
+				 gui_handler handler);	// multi-line editable; TEXT_CHANGED
+unsigned long kapi_add_scrollbar_v (int x, int y, int w, int h,
+				    gui_handler handler);  // vertical; VALUE_CHANGED (0..100)
+unsigned long kapi_add_scrollbar_h (int x, int y, int w, int h,
+				    gui_handler handler);  // horizontal; VALUE_CHANGED
 
 // Query / update widget state.
 int  kapi_widget_get_text    (unsigned long widget, char *buf, unsigned max); // -> length

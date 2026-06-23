@@ -153,7 +153,7 @@ unsigned long kapi_add_textbox (int x, int y, int w, int h, void *pHandler)
 	return AddWidgetToCurrent (GW_TEXTBOX, x, y, w, h, "", pHandler);
 }
 
-// Read a widget's text (label / textbox content) into pBuf. Returns length.
+// Read a widget's text (label / textbox / textarea content) into pBuf. Returns len.
 int kapi_widget_get_text (unsigned long hWidget, char *pBuf, unsigned nMax)
 {
 	GWidget *pW = (GWidget *) hWidget;
@@ -161,16 +161,17 @@ int kapi_widget_get_text (unsigned long hWidget, char *pBuf, unsigned nMax)
 	{
 		return 0;
 	}
+	const char *pSrc = pW->pText != 0 ? pW->pText : pW->Label;	// textarea uses pText
 	unsigned i = 0;
-	for (; i + 1 < nMax && pW->Label[i] != '\0'; i++)
+	for (; i + 1 < nMax && pSrc[i] != '\0'; i++)
 	{
-		pBuf[i] = pW->Label[i];
+		pBuf[i] = pSrc[i];
 	}
 	pBuf[i] = '\0';
 	return (int) i;
 }
 
-// Set a widget's text (label / textbox content).
+// Set a widget's text (label / textbox / textarea content).
 void kapi_widget_set_text (unsigned long hWidget, const char *pText)
 {
 	GWidget *pW = (GWidget *) hWidget;
@@ -178,15 +179,32 @@ void kapi_widget_set_text (unsigned long hWidget, const char *pText)
 	{
 		return;
 	}
+	char    *pDst = pW->pText != 0 ? pW->pText : pW->Label;
+	unsigned nCap = pW->pText != 0 ? GW_AREA_CAP : GW_TEXT_MAX;
 	unsigned i = 0;
 	if (pText != 0)
 	{
-		for (; i < GW_TEXT_MAX - 1 && pText[i] != '\0'; i++)
+		for (; i < nCap - 1 && pText[i] != '\0'; i++)
 		{
-			pW->Label[i] = pText[i];
+			pDst[i] = pText[i];
 		}
 	}
-	pW->Label[i] = '\0';
+	pDst[i] = '\0';
+}
+
+unsigned long kapi_add_textarea (int x, int y, int w, int h, void *pHandler)
+{
+	return AddWidgetToCurrent (GW_TEXTAREA, x, y, w, h, "", pHandler);
+}
+
+unsigned long kapi_add_scrollbar_v (int x, int y, int w, int h, void *pHandler)
+{
+	return AddWidgetToCurrent (GW_SCROLLV, x, y, w, h, "", pHandler);
+}
+
+unsigned long kapi_add_scrollbar_h (int x, int y, int w, int h, void *pHandler)
+{
+	return AddWidgetToCurrent (GW_SCROLLH, x, y, w, h, "", pHandler);
 }
 
 // Checkbox state (1 = checked).

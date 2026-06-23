@@ -55,10 +55,66 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle)
 
 CWindow::~CWindow (void)
 {
+	for (unsigned i = 0; i < m_nWidgets; i++)
+	{
+		if (m_Widgets[i].pText != 0)		// textarea heap buffers
+		{
+			delete [] m_Widgets[i].pText;
+			m_Widgets[i].pText = 0;
+		}
+	}
 	if (m_pRawAlloc != 0)
 	{
 		delete [] (u8 *) m_pRawAlloc;
 		m_pRawAlloc = 0;
+	}
+}
+
+// Render a multi-line editable text area: white field, char-wrapped lines clipped
+// to the box, auto-scrolled to the bottom (cursor end), with a caret when focused.
+static void DrawTextArea (GImage *pScreen, const GWidget *pW,
+			  int bx0, int by0, int bx1, int by1)
+{
+	pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00FFFFFF);
+	pScreen->DrawRectangle (bx0, by0, bx1, by1,
+				pW->bFocused ? 0x000000FF : 0x00808080);
+
+	const char *t = pW->pText != 0 ? pW->pText : "";
+	int nFW = GImage::FontWidth ();
+	int nFH = GImage::FontHeight ();
+	int nCols = (pW->nW - 8) / nFW;
+	int nVis  = (pW->nH - 6) / nFH;
+	if (nCols < 1) nCols = 1;
+	if (nVis  < 1) nVis  = 1;
+
+	// Pass 1: count wrapped lines to auto-scroll to the bottom.
+	int nTotal = 1, nCol = 0;
+	for (const char *p = t; *p != '\0'; p++)
+	{
+		if (*p == '\n') { nTotal++; nCol = 0; }
+		else { if (++nCol >= nCols) { nTotal++; nCol = 0; } }
+	}
+	int nTop = nTotal > nVis ? nTotal - nVis : 0;
+
+	// Pass 2: draw only the visible lines.
+	int nLine = 0; nCol = 0;
+	for (const char *p = t; *p != '\0'; p++)
+	{
+		char c = *p;
+		if (c == '\n') { nLine++; nCol = 0; continue; }
+		if (nLine >= nTop && nLine < nTop + nVis)
+		{
+			pScreen->DrawChar (bx0 + 4 + nCol * nFW,
+					   by0 + 3 + (nLine - nTop) * nFH, c, 0x00000000);
+		}
+		if (++nCol >= nCols) { nLine++; nCol = 0; }
+	}
+
+	if (pW->bFocused && nLine >= nTop && nLine < nTop + nVis)	// caret at end
+	{
+		int cx = bx0 + 4 + nCol * nFW;
+		int cy = by0 + 3 + (nLine - nTop) * nFH;
+		pScreen->DrawLine (cx, cy, cx, cy + nFH - 1, 0x00000000);
 	}
 }
 
@@ -220,6 +276,38 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 			pScreen->DrawRectangle (nThumb, by0, nThumb + 7, by1, 0x00000000);
 			break;
 		}
+
+		case GW_TEXTAREA:
+			DrawTextArea (pScreen, pW, bx0, by0, bx1, by1);
+			break;
+
+		case GW_SCROLLV:
+		case GW_SCROLLH:
+		{
+			pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00303840);   // track
+			pScreen->DrawRectangle (bx0, by0, bx1, by1, 0x00000000);
+			int nVal = pW->nState;
+			if (nVal < 0) nVal = 0; else if (nVal > 100) nVal = 100;
+			u32 nThumbCol = pW->bMousePressed ? 0x00FFFFFF
+				      : (pW->bMouseOver  ? 0x00E0E0E0 : 0x00A0A0C0);
+			if (pW->nType == GW_SCROLLV)
+			{
+				int nTH = pW->nH / 4; if (nTH < 16) nTH = 16;
+				if (nTH > pW->nH) nTH = pW->nH;
+				int ty = by0 + nVal * (pW->nH - nTH) / 100;
+				pScreen->FillRectangle (bx0 + 1, ty, bx1 - 1, ty + nTH - 1, nThumbCol);
+				pScreen->DrawRectangle (bx0 + 1, ty, bx1 - 1, ty + nTH - 1, 0x00000000);
+			}
+			else
+			{
+				int nTW = pW->nW / 4; if (nTW < 16) nTW = 16;
+				if (nTW > pW->nW) nTW = pW->nW;
+				int tx = bx0 + nVal * (pW->nW - nTW) / 100;
+				pScreen->FillRectangle (tx, by0 + 1, tx + nTW - 1, by1 - 1, nThumbCol);
+				pScreen->DrawRectangle (tx, by0 + 1, tx + nTW - 1, by1 - 1, 0x00000000);
+			}
+			break;
+		}
 		}
 	}
 
@@ -263,6 +351,17 @@ GWidget *CWindow::AddWidget (int nType, int x, int y, int w, int h,
 	pW->bMousePressed = FALSE;
 	pW->bFocused = FALSE;
 	pW->bUsed = TRUE;
+
+	// A textarea owns a heap text buffer (the inline Label is too small).
+	pW->pText = 0;
+	if (nType == GW_TEXTAREA)
+	{
+		pW->pText = new char[GW_AREA_CAP];
+		if (pW->pText != 0)
+		{
+			pW->pText[0] = '\0';
+		}
+	}
 
 	pW->Label[0] = '\0';
 	if (pLabel != 0)
@@ -489,21 +588,42 @@ static void PostWidgetEvent (CWindow *pWin, GWidget *pW, int nEvent, long lValue
 	pWin->PushEvent (Ev);
 }
 
-// Set a slider's value (0..100) from the absolute cursor X; fire on change.
-static void SliderSetFromCursor (CWindow *pWin, GWidget *pW, int nCursorX)
+// Set a value widget's value (0..100) from the cursor; fire on change. Vertical
+// scrollbars track the cursor Y; sliders + horizontal scrollbars track X.
+static void ValueFromCursor (CWindow *pWin, GWidget *pW, int x, int y)
 {
-	if (pWin == 0 || pW == 0 || pW->nW <= 8)
+	if (pWin == 0 || pW == 0)
 	{
 		return;
 	}
-	int nLeft = pWin->X () + WIN_BORDER + pW->nX;
-	int v = (nCursorX - nLeft) * 100 / (pW->nW - 8);
+	int nPos, nStart, nLen;
+	if (pW->nType == GW_SCROLLV)
+	{
+		nStart = pWin->Y () + WIN_TITLEBAR_H + pW->nY;
+		nPos = y; nLen = pW->nH;
+	}
+	else	// GW_SLIDER, GW_SCROLLH
+	{
+		nStart = pWin->X () + WIN_BORDER + pW->nX;
+		nPos = x; nLen = pW->nW;
+	}
+	if (nLen <= 1)
+	{
+		return;
+	}
+	int v = (nPos - nStart) * 100 / nLen;
 	if (v < 0) v = 0; else if (v > 100) v = 100;
 	if (v != pW->nState)
 	{
 		pW->nState = v;
 		PostWidgetEvent (pWin, pW, GUI_EVENT_VALUE_CHANGED, v);
 	}
+}
+
+static boolean IsValueWidget (const GWidget *pW)
+{
+	return pW->nType == GW_SLIDER || pW->nType == GW_SCROLLV
+	    || pW->nType == GW_SCROLLH;
 }
 
 void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
@@ -569,21 +689,22 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 				int cy = y - (pWin->Y () + WIN_TITLEBAR_H);
 				GWidget *pW = pWin->HitWidget (cx, cy);
 
-				// Focus follows clicks: a textbox gains focus, anything else
-				// (incl. empty area) clears it.
-				SetFocusWidget ((pW != 0 && pW->nType == GW_TEXTBOX) ? pW : 0,
-						pW != 0 ? pWin : 0);
+				// Focus follows clicks: a textbox/textarea gains focus,
+				// anything else (incl. empty area) clears it.
+				boolean bEditable = pW != 0 && (pW->nType == GW_TEXTBOX
+								|| pW->nType == GW_TEXTAREA);
+				SetFocusWidget (bEditable ? pW : 0, bEditable ? pWin : 0);
 
 				if (pW != 0 && (pW->nType == GW_BUTTON
 						|| pW->nType == GW_CHECKBOX
-						|| pW->nType == GW_SLIDER))
+						|| IsValueWidget (pW)))
 				{
 					pW->bMousePressed = TRUE;	// armed; fires on release
 					m_pPressedWidget = pW;
 					m_pPressedWindow = pWin;
-					if (pW->nType == GW_SLIDER)
+					if (IsValueWidget (pW))
 					{
-						SliderSetFromCursor (pWin, pW, x);  // jump to click
+						ValueFromCursor (pWin, pW, x, y);  // jump to click
 					}
 				}
 			}
@@ -596,9 +717,9 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		{
 			m_pDragWindow->Move (x - m_nDragDX, y - m_nDragDY);
 		}
-		else if (m_pPressedWidget != 0 && m_pPressedWidget->nType == GW_SLIDER)
+		else if (m_pPressedWidget != 0 && IsValueWidget (m_pPressedWidget))
 		{
-			SliderSetFromCursor (m_pPressedWindow, m_pPressedWidget, x);
+			ValueFromCursor (m_pPressedWindow, m_pPressedWidget, x, y);
 		}
 	}
 	else if (!bLeftNow && bLeftWas)
@@ -660,29 +781,43 @@ void CWindowManager::OnKey (const char *pString)
 
 	GWidget *pW = m_pFocusWidget;
 	CWindow *pWin = m_pFocusWindow;
-	if (pW != 0 && pW->nType == GW_TEXTBOX)
+	if (pW != 0 && (pW->nType == GW_TEXTBOX || pW->nType == GW_TEXTAREA))
 	{
+		// Textbox edits its inline Label (single line); textarea edits its heap
+		// buffer (multi-line: Enter inserts a newline).
+		boolean bMulti = (pW->nType == GW_TEXTAREA && pW->pText != 0);
+		char    *pBuf  = bMulti ? pW->pText : pW->Label;
+		unsigned nCap  = bMulti ? GW_AREA_CAP : GW_TEXT_MAX;
+
 		boolean bChanged = FALSE;
 		for (const char *p = pString; *p != '\0'; p++)
 		{
 			unsigned char c = (unsigned char) *p;
 			unsigned nLen = 0;
-			while (pW->Label[nLen] != '\0') nLen++;
+			while (pBuf[nLen] != '\0') nLen++;
 
 			if (c == '\b' || c == 0x7F)		// backspace
 			{
-				if (nLen > 0) { pW->Label[nLen - 1] = '\0'; bChanged = TRUE; }
+				if (nLen > 0) { pBuf[nLen - 1] = '\0'; bChanged = TRUE; }
 			}
-			else if (c >= ' ' && c < 0x7F)		// printable
+			else if ((c == '\n' || c == '\r') && bMulti)	// newline
 			{
-				if (nLen < GW_TEXT_MAX - 1)
+				if (nLen + 1 < nCap)
 				{
-					pW->Label[nLen] = (char) c;
-					pW->Label[nLen + 1] = '\0';
+					pBuf[nLen] = '\n';
+					pBuf[nLen + 1] = '\0';
 					bChanged = TRUE;
 				}
 			}
-			// other keys (arrows, enter, ...) ignored for now
+			else if (c >= ' ' && c < 0x7F)		// printable
+			{
+				if (nLen + 1 < nCap)
+				{
+					pBuf[nLen] = (char) c;
+					pBuf[nLen + 1] = '\0';
+					bChanged = TRUE;
+				}
+			}
 		}
 		if (bChanged)
 		{
