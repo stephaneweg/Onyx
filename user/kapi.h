@@ -30,10 +30,20 @@ void      kapi_exit (int status);
 // context when the app pumps events.
 typedef void (*gui_handler) (unsigned long sender, int event, long value);
 
-// Add a button to this app's window (coords relative to the client area).
-// Returns an opaque widget handle (also passed back as `sender`), 0 on failure.
-unsigned long kapi_add_button (int x, int y, int w, int h, const char *label,
-			       gui_handler handler);
+// Widgets (coords relative to the client area). Each returns an opaque handle
+// (also passed back to the handler as `sender`), or 0 on failure.
+unsigned long kapi_add_button   (int x, int y, int w, int h, const char *label,
+				 gui_handler handler);	// fires GUI_EVENT_CLICK
+unsigned long kapi_add_label    (int x, int y, int w, int h, const char *text);
+unsigned long kapi_add_checkbox (int x, int y, int w, int h, const char *label,
+				 gui_handler handler);	// fires GUI_EVENT_CHECK_CHANGED
+unsigned long kapi_add_textbox  (int x, int y, int w, int h,
+				 gui_handler handler);	// fires GUI_EVENT_TEXT_CHANGED
+
+// Query / update widget state.
+int  kapi_widget_get_text    (unsigned long widget, char *buf, unsigned max); // -> length
+void kapi_widget_set_text    (unsigned long widget, const char *text);
+int  kapi_widget_get_checked (unsigned long widget);	// checkbox: 1 = checked
 
 void      kapi_pump_events (void);	// dispatch pending events, non-blocking
 void      kapi_wait_for_exit (void);	// pump until the close box is clicked

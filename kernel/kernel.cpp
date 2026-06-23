@@ -223,9 +223,11 @@ private:
 
 	static void KeyPressedStub (const char *pString)
 	{
-		if (s_pThis != 0 && s_pThis->m_pLogger != 0)
+		// Route to the focused widget (a textbox); the WM edits its text + posts a
+		// TEXT_CHANGED event to the owning app.
+		if (CWindowManager::Get () != 0)
 		{
-			s_pThis->m_pLogger->Write ("kbd", LogNotice, "key: %s", pString);
+			CWindowManager::Get ()->OnKey (pString);
 		}
 	}
 
@@ -451,8 +453,9 @@ TShutdownMode CKernel::Run (void)
 	// started AFTER a readable pause so the boot log stays on screen first.
 	if (m_bGraphics)
 	{
-		static const char *Names[3] = { "demoA", "demoB", "demoC" };
-		static const char *Paths[3] = { "SD:demoA.elf", "SD:demoB.elf", "SD:demoC.elf" };
+		static const char *Names[4] = { "demoA", "demoB", "demoC", "demoD" };
+		static const char *Paths[4] = { "SD:demoA.elf", "SD:demoB.elf",
+						"SD:demoC.elf", "SD:demoD.elf" };
 
 		if (!m_bSDMounted)
 		{
@@ -460,7 +463,7 @@ TShutdownMode CKernel::Run (void)
 		}
 		else
 		{
-			for (int i = 0; i < 3; i++)
+			for (int i = 0; i < 4; i++)
 			{
 				unsigned nSize = 0;
 				const u8 *pElf = LoadFileFromSD (Paths[i], &nSize);

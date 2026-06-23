@@ -118,25 +118,72 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 		int by0 = clientY + pW->nY;
 		int bx1 = bx0 + pW->nW - 1;
 		int by1 = by0 + pW->nH - 1;
-		if (pW->nType == GW_BUTTON)
+		int fh  = GImage::FontHeight ();
+
+		switch (pW->nType)
 		{
+		case GW_BUTTON:
+		{
+			// Skin row: 0 normal / 1 hover / 2 pressed.
+			unsigned nSt = pW->bMousePressed ? 2 : (pW->bMouseOver ? 1 : 0);
 			u32 nTextColor;
 			if (g_pButtonSkin != 0)
 			{
-				// nState selects the skin row: 0 normal / 1 hover / 2 pressed.
-				g_pButtonSkin->DrawOn (pScreen, (unsigned) pW->nState,
-						       bx0, by0, pW->nW, pW->nH, TRUE);
-				nTextColor = 0x00000000;	// skin bg is light
+				g_pButtonSkin->DrawOn (pScreen, nSt, bx0, by0, pW->nW, pW->nH, TRUE);
+				nTextColor = 0x00000000;
 			}
 			else
 			{
-				pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00606878);
+				u32 bg = pW->bMousePressed ? 0x00404850
+				       : (pW->bMouseOver  ? 0x00707888 : 0x00606878);
+				pScreen->FillRectangle (bx0, by0, bx1, by1, bg);
 				pScreen->DrawRectangle (bx0, by0, bx1, by1, 0x00000000);
 				nTextColor = 0x00FFFFFF;
 			}
 			int tx = bx0 + (pW->nW - GImage::TextWidth (pW->Label)) / 2;
-			int ty = by0 + (pW->nH - GImage::FontHeight ()) / 2;
+			int ty = by0 + (pW->nH - fh) / 2;
 			pScreen->DrawText (tx, ty, pW->Label, nTextColor);
+			break;
+		}
+
+		case GW_LABEL:
+			pScreen->DrawText (bx0, by0 + (pW->nH - fh) / 2, pW->Label, 0x00FFFFFF);
+			break;
+
+		case GW_CHECKBOX:
+		{
+			int nBox = pW->nH < 16 ? pW->nH : 16;
+			int nBoxY = by0 + (pW->nH - nBox) / 2;
+			pScreen->FillRectangle (bx0, nBoxY, bx0 + nBox - 1, nBoxY + nBox - 1,
+						pW->bMouseOver ? 0x00FFFFFF : 0x00DDDDDD);
+			pScreen->DrawRectangle (bx0, nBoxY, bx0 + nBox - 1, nBoxY + nBox - 1,
+						0x00000000);
+			if (pW->nState)		// check mark
+			{
+				pScreen->DrawLine (bx0 + 3, nBoxY + nBox / 2,
+						   bx0 + nBox / 2, nBoxY + nBox - 3, 0x00007000);
+				pScreen->DrawLine (bx0 + nBox / 2, nBoxY + nBox - 3,
+						   bx0 + nBox - 3, nBoxY + 3, 0x00007000);
+			}
+			pScreen->DrawText (bx0 + nBox + 6, by0 + (pW->nH - fh) / 2,
+					   pW->Label, 0x00FFFFFF);
+			break;
+		}
+
+		case GW_TEXTBOX:
+		{
+			pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00FFFFFF);
+			pScreen->DrawRectangle (bx0, by0, bx1, by1,
+						pW->bFocused ? 0x000000FF : 0x00808080);
+			int ty = by0 + (pW->nH - fh) / 2;
+			pScreen->DrawText (bx0 + 4, ty, pW->Label, 0x00000000);
+			if (pW->bFocused)	// caret after the text
+			{
+				int cx = bx0 + 4 + GImage::TextWidth (pW->Label);
+				pScreen->DrawLine (cx, by0 + 3, cx, by1 - 3, 0x00000000);
+			}
+			break;
+		}
 		}
 	}
 
@@ -173,6 +220,9 @@ GWidget *CWindow::AddWidget (int nType, int x, int y, int w, int h,
 	pW->nX = x; pW->nY = y; pW->nW = w; pW->nH = h;
 	pW->ulHandler = ulHandler;
 	pW->nState = 0;
+	pW->bMouseOver = FALSE;
+	pW->bMousePressed = FALSE;
+	pW->bFocused = FALSE;
 	pW->bUsed = TRUE;
 
 	pW->Label[0] = '\0';
@@ -237,7 +287,9 @@ CWindowManager::CWindowManager (void)
 :	m_nWindows (0),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
-	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0)
+	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
+	m_pHoverWidget (0), m_pPressedWidget (0), m_pPressedWindow (0),
+	m_pFocusWidget (0), m_pFocusWindow (0)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -262,10 +314,11 @@ void CWindowManager::Add (CWindow *pWindow)
 void CWindowManager::Remove (CWindow *pWindow)
 {
 	m_SpinLock.Acquire ();
-	if (m_pDragWindow == pWindow)
-	{
-		m_pDragWindow = 0;		// don't dereference a removed/freed window
-	}
+	// Drop any references into this window's widgets (it may be freed after).
+	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
+	if (m_pPressedWindow == pWindow)	{ m_pPressedWindow = 0; m_pPressedWidget = 0; }
+	if (m_pFocusWindow == pWindow)		{ m_pFocusWindow = 0; m_pFocusWidget = 0; }
+	m_pHoverWidget = 0;			// recomputed on the next mouse move
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)
@@ -356,6 +409,47 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 	return ~0u;
 }
 
+// Caller holds m_SpinLock. Topmost window's widget under the cursor (client area
+// only, not the title bar or close box); returns the widget + its window, or 0.
+GWidget *CWindowManager::WidgetUnderCursor (int x, int y, CWindow **ppWindow)
+{
+	*ppWindow = 0;
+	boolean bOnTitle = FALSE;
+	unsigned nHit = HitTest (x, y, &bOnTitle);
+	if (nHit == ~0u || bOnTitle)
+	{
+		return 0;
+	}
+	CWindow *pWin = m_pWindows[nHit];
+	if (pWin->HitCloseBox (x, y))
+	{
+		return 0;
+	}
+	int cx = x - (pWin->X () + WIN_BORDER);
+	int cy = y - (pWin->Y () + WIN_TITLEBAR_H);
+	GWidget *pW = pWin->HitWidget (cx, cy);
+	if (pW != 0)
+	{
+		*ppWindow = pWin;
+	}
+	return pW;
+}
+
+// Push an event for a widget to its window (handler/sender/event/value).
+static void PostWidgetEvent (CWindow *pWin, GWidget *pW, int nEvent, long lValue)
+{
+	if (pWin == 0 || pW == 0 || pW->ulHandler == 0)
+	{
+		return;
+	}
+	GUIEvent Ev;
+	Ev.ulHandler = pW->ulHandler;
+	Ev.ulSender  = (u64) pW;
+	Ev.nEvent    = nEvent;
+	Ev.lValue    = lValue;
+	pWin->PushEvent (Ev);
+}
+
 void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 {
 	// Clamp to the screen.
@@ -368,19 +462,35 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	m_nCursorY = y;
 	m_bCursorShown = TRUE;
 
-	boolean bLeftNow  = (nButtons & 1) != 0;
-	boolean bLeftWas  = (m_nLastButtons & 1) != 0;
+	boolean bLeftNow = (nButtons & 1) != 0;
+	boolean bLeftWas = (m_nLastButtons & 1) != 0;
+
+	// --- hover tracking (interactive widgets only) -----------------------
+	CWindow *pHoverWin = 0;
+	GWidget *pHover = WidgetUnderCursor (x, y, &pHoverWin);
+	if (pHover != 0 && pHover->nType == GW_LABEL)
+	{
+		pHover = 0;			// labels don't react
+	}
+	if (pHover != m_pHoverWidget)
+	{
+		if (m_pHoverWidget != 0) m_pHoverWidget->bMouseOver = FALSE;
+		m_pHoverWidget = pHover;
+		if (m_pHoverWidget != 0) m_pHoverWidget->bMouseOver = TRUE;
+	}
 
 	if (bLeftNow && !bLeftWas)
 	{
-		// Press edge: raise the window under the cursor; then close box / title
-		// bar drag / widget click depending on where the press landed.
+		// Press edge: raise the window under the cursor, then dispatch.
 		boolean bOnTitle = FALSE;
 		unsigned nHit = HitTest (x, y, &bOnTitle);
-		if (nHit != ~0u)
+		if (nHit == ~0u)
+		{
+			SetFocusWidget (0, 0);		// clicked the desktop -> unfocus
+		}
+		else
 		{
 			CWindow *pWin = m_pWindows[nHit];
-			// Raise: move to the end of the list (topmost + active).
 			for (unsigned j = nHit; j + 1 < m_nWindows; j++)
 			{
 				m_pWindows[j] = m_pWindows[j + 1];
@@ -389,7 +499,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 
 			if (pWin->HitCloseBox (x, y))
 			{
-				pWin->RequestExit ();		// app polls / wakes and exits
+				pWin->RequestExit ();
 			}
 			else if (bOnTitle)
 			{
@@ -399,33 +509,119 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 			}
 			else
 			{
-				// Client area: hit-test widgets in canvas-relative coords.
 				int cx = x - (pWin->X () + WIN_BORDER);
 				int cy = y - (pWin->Y () + WIN_TITLEBAR_H);
 				GWidget *pW = pWin->HitWidget (cx, cy);
-				if (pW != 0 && pW->ulHandler != 0)
+
+				// Focus follows clicks: a textbox gains focus, anything else
+				// (incl. empty area) clears it.
+				SetFocusWidget ((pW != 0 && pW->nType == GW_TEXTBOX) ? pW : 0,
+						pW != 0 ? pWin : 0);
+
+				if (pW != 0 && (pW->nType == GW_BUTTON || pW->nType == GW_CHECKBOX))
 				{
-					GUIEvent Ev;
-					Ev.ulHandler = pW->ulHandler;
-					Ev.ulSender  = (u64) pW;
-					Ev.nEvent    = GUI_EVENT_CLICK;
-					Ev.lValue    = 0;
-					pWin->PushEvent (Ev);
+					pW->bMousePressed = TRUE;	// armed; fires on release
+					m_pPressedWidget = pW;
+					m_pPressedWindow = pWin;
 				}
 			}
 		}
 	}
 	else if (bLeftNow && bLeftWas && m_pDragWindow != 0)
 	{
-		// Drag: move the window so the grab point tracks the cursor.
 		m_pDragWindow->Move (x - m_nDragDX, y - m_nDragDY);
 	}
-	else if (!bLeftNow)
+	else if (!bLeftNow && bLeftWas)
 	{
-		m_pDragWindow = 0;	// release ends the drag
+		// Release edge: fire the pressed widget only if still over it.
+		if (m_pPressedWidget != 0)
+		{
+			GWidget *pW = m_pPressedWidget;
+			pW->bMousePressed = FALSE;
+			if (pW->bMouseOver)
+			{
+				if (pW->nType == GW_CHECKBOX)
+				{
+					pW->nState ^= 1;
+					PostWidgetEvent (m_pPressedWindow, pW,
+							 GUI_EVENT_CHECK_CHANGED, pW->nState);
+				}
+				else	// GW_BUTTON
+				{
+					PostWidgetEvent (m_pPressedWindow, pW,
+							 GUI_EVENT_CLICK, 0);
+				}
+			}
+			m_pPressedWidget = 0;
+			m_pPressedWindow = 0;
+		}
+		m_pDragWindow = 0;
 	}
 
 	m_nLastButtons = nButtons;
+
+	m_SpinLock.Release ();
+}
+
+// Caller holds m_SpinLock. Move keyboard focus to pW (a textbox) in pWin.
+void CWindowManager::SetFocusWidget (GWidget *pW, CWindow *pWin)
+{
+	if (m_pFocusWidget == pW)
+	{
+		return;
+	}
+	if (m_pFocusWidget != 0)
+	{
+		m_pFocusWidget->bFocused = FALSE;
+	}
+	m_pFocusWidget = pW;
+	m_pFocusWindow = pWin;
+	if (m_pFocusWidget != 0)
+	{
+		m_pFocusWidget->bFocused = TRUE;
+	}
+}
+
+void CWindowManager::OnKey (const char *pString)
+{
+	if (pString == 0)
+	{
+		return;
+	}
+
+	m_SpinLock.Acquire ();
+
+	GWidget *pW = m_pFocusWidget;
+	CWindow *pWin = m_pFocusWindow;
+	if (pW != 0 && pW->nType == GW_TEXTBOX)
+	{
+		boolean bChanged = FALSE;
+		for (const char *p = pString; *p != '\0'; p++)
+		{
+			unsigned char c = (unsigned char) *p;
+			unsigned nLen = 0;
+			while (pW->Label[nLen] != '\0') nLen++;
+
+			if (c == '\b' || c == 0x7F)		// backspace
+			{
+				if (nLen > 0) { pW->Label[nLen - 1] = '\0'; bChanged = TRUE; }
+			}
+			else if (c >= ' ' && c < 0x7F)		// printable
+			{
+				if (nLen < GW_TEXT_MAX - 1)
+				{
+					pW->Label[nLen] = (char) c;
+					pW->Label[nLen + 1] = '\0';
+					bChanged = TRUE;
+				}
+			}
+			// other keys (arrows, enter, ...) ignored for now
+		}
+		if (bChanged)
+		{
+			PostWidgetEvent (pWin, pW, GUI_EVENT_TEXT_CHANGED, 0);
+		}
+	}
 
 	m_SpinLock.Release ();
 }

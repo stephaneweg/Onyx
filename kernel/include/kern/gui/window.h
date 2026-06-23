@@ -30,14 +30,19 @@
 #define WIN_MAX_WIDGETS		16
 #define WIN_EVENT_QUEUE		32
 
-// Widget kinds (button is the first; label/checkbox/textbox arrive in #15).
+// Widget kinds.
 #define GW_BUTTON		1
+#define GW_LABEL		2	// static text
+#define GW_CHECKBOX		3	// box + label, toggles on click
+#define GW_TEXTBOX		4	// editable single-line text (keyboard focus)
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree.
 #define GUI_EVENT_CLICK		1
 #define GUI_EVENT_CHECK_CHANGED	2
 #define GUI_EVENT_TEXT_CHANGED	3
+
+#define GW_TEXT_MAX		48	// label / textbox content capacity
 
 // A kernel-owned widget belonging to a CWindow. The compositor draws it (over
 // the app's canvas) and the window manager hit-tests it. The handler is an app
@@ -48,9 +53,12 @@ struct GWidget
 {
 	int	 nType;
 	int	 nX, nY, nW, nH;	// relative to the client (canvas) origin
-	char	 Label[32];
+	char	 Label[GW_TEXT_MAX];	// button/checkbox label, or textbox content
 	u64	 ulHandler;		// app callback address
-	int	 nState;		// e.g. checkbox checked (future)
+	int	 nState;		// checkbox: 0/1 checked
+	boolean	 bMouseOver;		// cursor is over this widget (hover)
+	boolean	 bMousePressed;		// left button held down on this widget
+	boolean	 bFocused;		// has keyboard focus (textbox)
 	boolean	 bUsed;
 };
 
@@ -151,13 +159,25 @@ public:
 	void Composite (GImage *pScreen);
 
 	// Mouse input (called from the input thread). Cursor at (x,y); buttons is a
-	// bitmask (bit0 = left). Handles raise-on-click and title-bar dragging.
+	// bitmask (bit0 = left). Handles raise-on-click, title-bar dragging, widget
+	// hover/press/release (click fires on release-inside), and focus.
 	void OnMouse (int x, int y, unsigned nButtons);
+
+	// Keyboard input (called from the input thread): route a key string to the
+	// focused textbox (printable chars append; backspace deletes).
+	void OnKey (const char *pString);
 
 private:
 	// Hit-test top-down; returns the topmost window containing (x,y) and whether the
 	// hit landed on its title bar. Caller must hold m_SpinLock. Returns ~0u if none.
 	unsigned HitTest (int x, int y, boolean *pbOnTitleBar);
+
+	// Widget under the cursor in the topmost window (client area only). Returns the
+	// widget and, via ppWindow, its window; 0 if none. Caller holds m_SpinLock.
+	GWidget *WidgetUnderCursor (int x, int y, CWindow **ppWindow);
+
+	// Move keyboard focus to pW (a textbox) in pWin, or clear it. Caller holds lock.
+	void SetFocusWidget (GWidget *pW, CWindow *pWindow);
 
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
@@ -170,6 +190,13 @@ private:
 	CWindow	  *m_pDragWindow;	// window being dragged by its title bar, or 0
 	int	   m_nDragDX;		// cursor-to-window offset captured at drag start
 	int	   m_nDragDY;
+
+	// Widget interaction state.
+	GWidget	  *m_pHoverWidget;	// widget currently under the cursor (or 0)
+	GWidget	  *m_pPressedWidget;	// widget the left button was pressed on (or 0)
+	CWindow	  *m_pPressedWindow;	// its window (for event delivery)
+	GWidget	  *m_pFocusWidget;	// textbox with keyboard focus (or 0)
+	CWindow	  *m_pFocusWindow;	// its window
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).

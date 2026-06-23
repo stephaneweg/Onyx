@@ -124,6 +124,78 @@ unsigned long kapi_add_button (int x, int y, int w, int h, const char *pLabel,
 	return (unsigned long) pW;
 }
 
+// Helper: add a widget of nType to the calling app's window. Returns its handle.
+static unsigned long AddWidgetToCurrent (int nType, int x, int y, int w, int h,
+					 const char *pLabel, void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0)
+	{
+		return 0;
+	}
+	return (unsigned long) pWin->AddWidget (nType, x, y, w, h, pLabel, (u64) pHandler);
+}
+
+unsigned long kapi_add_label (int x, int y, int w, int h, const char *pText)
+{
+	return AddWidgetToCurrent (GW_LABEL, x, y, w, h, pText, 0);
+}
+
+unsigned long kapi_add_checkbox (int x, int y, int w, int h, const char *pLabel,
+				 void *pHandler)
+{
+	return AddWidgetToCurrent (GW_CHECKBOX, x, y, w, h, pLabel, pHandler);
+}
+
+unsigned long kapi_add_textbox (int x, int y, int w, int h, void *pHandler)
+{
+	return AddWidgetToCurrent (GW_TEXTBOX, x, y, w, h, "", pHandler);
+}
+
+// Read a widget's text (label / textbox content) into pBuf. Returns length.
+int kapi_widget_get_text (unsigned long hWidget, char *pBuf, unsigned nMax)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	if (pW == 0 || pBuf == 0 || nMax == 0)
+	{
+		return 0;
+	}
+	unsigned i = 0;
+	for (; i + 1 < nMax && pW->Label[i] != '\0'; i++)
+	{
+		pBuf[i] = pW->Label[i];
+	}
+	pBuf[i] = '\0';
+	return (int) i;
+}
+
+// Set a widget's text (label / textbox content).
+void kapi_widget_set_text (unsigned long hWidget, const char *pText)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	if (pW == 0)
+	{
+		return;
+	}
+	unsigned i = 0;
+	if (pText != 0)
+	{
+		for (; i < GW_TEXT_MAX - 1 && pText[i] != '\0'; i++)
+		{
+			pW->Label[i] = pText[i];
+		}
+	}
+	pW->Label[i] = '\0';
+}
+
+// Checkbox state (1 = checked).
+int kapi_widget_get_checked (unsigned long hWidget)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	return pW != 0 ? pW->nState : 0;
+}
+
 void kapi_pump_events (void)
 {
 	CAddressSpace *pAS = CurrentAS ();
