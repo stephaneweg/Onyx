@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	8
+#define KAPI_ABI_VERSION	9
 
 #ifdef __cplusplus
 extern "C" {
@@ -144,6 +144,11 @@ struct TKApiTable
 	// --- v8 additions ---
 	int   (*list_tasks) (char *buf, unsigned size);	// "<state><kind> <name>" per line
 	int   (*kill) (const char *name);		// kill an app by name (not kernel/self)
+
+	// --- v9 additions ---
+	// Modal message box (sync): blocks until answered. buttons = MB_OK/MB_OKCANCEL/
+	// MB_YESNO. Returns 1 (OK/Yes) or 0 (Cancel/No).
+	int   (*message_box) (const char *title, const char *text, int buttons);
 };
 
 #ifdef __cplusplus

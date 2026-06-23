@@ -16,6 +16,7 @@
 #include <kern/kapi_abi.h>		// struct kapi_dirent
 #include <kern/layout.h>
 #include <kern/gui/window.h>
+#include <kern/dialog.h>		// CDialog (modal dialogs)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
@@ -1153,6 +1154,61 @@ void kapi_cursor_pos (int *pX, int *pY)
 	}
 	if (pX) *pX = cx;
 	if (pY) *pY = cy;
+}
+
+// --- modal dialogs -----------------------------------------------------------
+
+// Show a modal message box centered on the calling app's window and block (yield)
+// until a button is clicked or Enter/Esc is pressed. Returns 1 (OK/Yes) or 0
+// (Cancel/No). The dialog is a kernel-drawn window the WM keeps above the (blocked)
+// owner; other apps stay usable.
+int kapi_message_box (const char *pTitle, const char *pText, int nButtons)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0)
+	{
+		return 0;
+	}
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pOwner = pAS != 0 ? pAS->GetWindow () : 0;
+
+	int w = CDialog::Width (DLG_MSGBOX), h = CDialog::Height (DLG_MSGBOX);
+	int x, y;
+	if (pOwner != 0)
+	{
+		x = pOwner->X () + (pOwner->ClientWidth () - w) / 2;
+		y = pOwner->Y () + (pOwner->ClientHeight () - h) / 2;
+	}
+	else { x = (SCREEN_WIDTH - w) / 2; y = (SCREEN_HEIGHT - h) / 2; }
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+	if (x + w > SCREEN_WIDTH)  x = SCREEN_WIDTH - w;
+	if (y + h > SCREEN_HEIGHT) y = SCREEN_HEIGHT - h;
+
+	CWindow *pDlgWin = new CWindow (x, y, w, h, "", WIN_FLAG_BORDERLESS);
+	if (pDlgWin == 0 || !pDlgWin->IsValid ()) { delete pDlgWin; return 0; }
+	CDialog *pDlg = new CDialog (DLG_MSGBOX, pTitle, pText, nButtons);
+	if (pDlg == 0) { delete pDlgWin; return 0; }
+	pDlg->Attach (pDlgWin);
+	pDlgWin->SetDialog (pDlg);
+	pDlg->Draw ();
+
+	if (pOwner != 0) pOwner->SetModalChild (pDlgWin);
+	pWM->Add (pDlgWin);
+	pWM->Raise (pDlgWin);
+
+	while (!pDlg->IsDone ())		// block: input task drives the dialog
+	{
+		if (!CScheduler::IsActive ()) break;
+		CScheduler::Get ()->MsSleep (10);
+	}
+
+	int nResult = pDlg->Result ();
+	if (pOwner != 0) pOwner->SetModalChild (0);
+	pWM->Remove (pDlgWin);			// off the compositor list (under its lock)
+	delete pDlgWin;				// frees the canvas (no yield since Remove)
+	delete pDlg;
+	return nResult;
 }
 
 // Write a whole file (create/truncate). Returns bytes written, or -1 on error.

@@ -52,6 +52,12 @@ static inline int  kapi_raise_app (const char *n) { return KT->raise_app (n); }
 static inline int  kapi_list_windows (char *b, unsigned s) { return KT->list_windows (b, s); }
 static inline int  kapi_list_tasks (char *b, unsigned s) { return KT->list_tasks (b, s); }
 static inline int  kapi_kill (const char *name) { return KT->kill (name); }
+
+// Modal message box (blocks until answered). Returns 1 (OK/Yes) or 0 (Cancel/No).
+#define MB_OK		0
+#define MB_OKCANCEL	1
+#define MB_YESNO	2
+static inline int  kapi_message_box (const char *title, const char *text, int buttons) { return KT->message_box (title, text, buttons); }
 static inline int  kapi_set_wallpaper (const char *p) { return KT->set_wallpaper (p); }
 static inline int  kapi_wallpaper_generate (unsigned base, int pts, unsigned seed) { return KT->wallpaper_generate (base, pts, seed); }
 static inline void kapi_present (void) { KT->present (); }

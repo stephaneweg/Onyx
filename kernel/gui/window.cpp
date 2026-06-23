@@ -3,6 +3,7 @@
 //
 #include <kern/gui/window.h>
 #include <kern/gui/gimage.h>		// GImage (icon widgets own a decoded BMP)
+#include <kern/dialog.h>		// CDialog (kernel modal dialogs)
 #include <kern/gui/skin.h>		// 9-slice widget skins (button/close/window)
 #include <kern/layout.h>		// KPAGE_SIZE / KPAGE_MASK
 #include <circle/util.h>		// memset
@@ -15,6 +16,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_ulKeyHandler (0), m_ulClickHandler (0),
+	m_pDialog (0), m_pModalChild (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
 	for (unsigned i = 0; i < WIN_MAX_WIDGETS; i++)
@@ -554,9 +556,9 @@ void CWindowManager::Remove (CWindow *pWindow)
 	m_SpinLock.Release ();
 }
 
-void CWindowManager::Raise (CWindow *pWindow)
+// Caller holds m_SpinLock.
+void CWindowManager::RaiseLocked (CWindow *pWindow)
 {
-	m_SpinLock.Acquire ();
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)
@@ -568,6 +570,16 @@ void CWindowManager::Raise (CWindow *pWindow)
 			m_pWindows[m_nWindows - 1] = pWindow;	// move to top (drawn last)
 			break;
 		}
+	}
+}
+
+void CWindowManager::Raise (CWindow *pWindow)
+{
+	m_SpinLock.Acquire ();
+	RaiseLocked (pWindow);
+	if (pWindow->ModalChild () != 0)
+	{
+		RaiseLocked (pWindow->ModalChild ());	// keep the dialog glued above its owner
 	}
 	m_SpinLock.Release ();
 }
@@ -885,13 +897,23 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		else
 		{
 			CWindow *pWin = m_pWindows[nHit];
-			for (unsigned j = nHit; j + 1 < m_nWindows; j++)
-			{
-				m_pWindows[j] = m_pWindows[j + 1];
-			}
-			m_pWindows[m_nWindows - 1] = pWin;
 
-			if (pWin->HitCloseBox (x, y))
+			if (pWin->Dialog () != 0)
+			{
+				// Click inside a modal dialog: hand it to the kernel dialog.
+				RaiseLocked (pWin);
+				pWin->Dialog ()->OnClick (x - (pWin->X () + pWin->ChromeL ()),
+							  y - (pWin->Y () + pWin->ChromeT ()));
+				pWin->Dialog ()->Draw ();
+			}
+			else if (pWin->ModalChild () != 0)
+			{
+				// Owner of an open dialog: it is blocked -- don't deliver input,
+				// just surface its dialog in front of it.
+				RaiseLocked (pWin);
+				RaiseLocked (pWin->ModalChild ());
+			}
+			else if (RaiseLocked (pWin), pWin->HitCloseBox (x, y))
 			{
 				pWin->RequestExit ();
 			}
@@ -990,6 +1012,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		{
 			CWindow *pWin = m_pWindows[nHit];
 			u64 ulCH = pWin->ClickHandler ();
+			if (pWin->ModalChild () != 0 || pWin->Dialog () != 0) ulCH = 0;	// blocked owner / dialog
 			int cx = x - (pWin->X () + pWin->ChromeL ());
 			int cy = y - (pWin->Y () + pWin->ChromeT ());
 			if (ulCH != 0 && !pWin->HitCloseBox (x, y) && pWin->HitWidget (cx, cy) == 0)
@@ -1086,6 +1109,17 @@ void CWindowManager::OnKey (const char *pString)
 	}
 
 	m_SpinLock.Acquire ();
+
+	// A modal dialog (topmost window) takes all keys: Enter/Esc + (later) typing.
+	CWindow *pTopWin = m_nWindows > 0 ? m_pWindows[m_nWindows - 1] : 0;
+	if (pTopWin != 0 && pTopWin->Dialog () != 0)
+	{
+		const char *pk = pString; int kc;
+		while ((kc = NextKey (&pk)) != 0) pTopWin->Dialog ()->OnKey (kc);
+		pTopWin->Dialog ()->Draw ();
+		m_SpinLock.Release ();
+		return;
+	}
 
 	GWidget *pW = m_pFocusWidget;
 	CWindow *pFWin = m_pFocusWindow;

@@ -135,6 +135,7 @@ static void delete_sel (void)
 {
 	if (g_sel < 0 || g_sel >= g_count) return;
 	if (g_isdir[g_sel] && g_name[g_sel][0] == '.' && g_name[g_sel][1] == '.') return;	// not ".."
+	if (!kapi_message_box ("Delete", g_name[g_sel], MB_YESNO)) return;	// confirm
 	char path[300];
 	full_path (g_name[g_sel], path, sizeof path);
 	kapi_remove (path);			// fails on non-empty dirs (FatFs)

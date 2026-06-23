@@ -14,6 +14,8 @@
 #include <circle/spinlock.h>
 #include <circle/types.h>
 
+class CDialog;
+
 // Screen dimensions (the framebuffer we request). Shared by the kernel + kapi.
 #define SCREEN_WIDTH		640
 #define SCREEN_HEIGHT		480
@@ -183,6 +185,15 @@ public:
 	void SetClickHandler (u64 ulHandler)	{ m_ulClickHandler = ulHandler; }
 	u64  ClickHandler (void) const		{ return m_ulClickHandler; }
 
+	// --- modal dialogs ---------------------------------------------------
+	// A kernel-drawn dialog occupies its own window (m_pDialog set); the WM routes
+	// input to it directly. An app window with an open dialog points to it via
+	// m_pModalChild, so the WM keeps the dialog glued above the (blocked) owner.
+	void SetDialog (CDialog *p)	{ m_pDialog = p; }
+	CDialog *Dialog (void)		{ return m_pDialog; }
+	void SetModalChild (CWindow *p)	{ m_pModalChild = p; }
+	CWindow *ModalChild (void)	{ return m_pModalChild; }
+
 	// --- lifecycle -------------------------------------------------------
 	void RequestExit (void)		{ m_bExitRequested = TRUE; }
 	boolean ShouldExit (void) const	{ return m_bExitRequested; }
@@ -206,6 +217,8 @@ private:
 
 	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
 	u64		m_ulClickHandler; // app canvas-click callback, or 0
+	CDialog	       *m_pDialog;	// this window IS a kernel dialog (else 0)
+	CWindow	       *m_pModalChild;	// this (owner) window has an open dialog (else 0)
 
 	GWidget		m_Widgets[WIN_MAX_WIDGETS];
 	unsigned	m_nWidgets;
@@ -270,6 +283,9 @@ private:
 
 	// Move keyboard focus to pW (a textbox) in pWin, or clear it. Caller holds lock.
 	void SetFocusWidget (GWidget *pW, CWindow *pWindow);
+
+	// Move a window to the top of the z-order. Caller holds m_SpinLock.
+	void RaiseLocked (CWindow *pWindow);
 
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
