@@ -798,12 +798,71 @@ def app_panel():
     cv.text(6, 290, "13:37", C(0xFFFFFF))
     return cv
 
+def swatch(cv, x, y, w, h, color):           # applib ax_colorpick (closed)
+    cv.fill(x, y, w, h, C(color)); cv.frame(x, y, w, h, C(0xFFFFFF)); cv.frame(x-1, y-1, w+2, h+2, C(0x000000))
+def dropdown(cv, x, y, w, h, text, arrow="v"):  # applib ax_dropdown (closed)
+    cv.fill(x, y, w, h, C(0x203040)); cv.frame(x, y, w, h, C(0x708CA8))
+    cv.text(x+6, y+(h-16)//2, text, C(0xE6E6E6)); cv.text(x+w-14, y+(h-16)//2, arrow, C(0x90B0C8))
+def parse_ini_flat(path):                     # config.c's flat key=value reader
+    rows = []
+    if os.path.exists(path):
+        for line in open(path, encoding="utf-8", errors="replace"):
+            s = line.strip()
+            if not s or s[0] in ";#[": continue
+            if "=" in s:
+                k, v = s.split("=", 1); rows.append((k.strip(), v.strip()))
+    return rows
+
+def app_config():
+    W, H, LW, LISTY, KEYX, VALX, BTN_Y = 560, 400, 150, 28, 158, 332, 368
+    pitch = FH + 2                            # config.c: g_fh = font_height + 2 = 21
+    cv = Canvas(W, H, C(0x202830))
+    cv.fill(0, 0, LW, H, C(0x283440)); cv.text(8, 6, "Apps", C(0x90C0FF))
+    apps = sorted(d[:-4] for d in os.listdir(os.path.join(SD, "apps")) if d.endswith(".app"))
+    cur = "inidemo"; sel = apps.index(cur) if cur in apps else 0
+    vis = (BTN_Y - LISTY) // pitch
+    for r in range(min(vis, len(apps))):
+        y = LISTY + r * pitch
+        if r == sel: cv.fill(0, y, LW, pitch, C(0x355070))
+        cv.text(8, y + 1, apps[r], C(0xE0E0E0))
+    cv.text(KEYX, 6, cur, C(0xFFD070))
+    rows = parse_ini_flat(os.path.join(SD, "apps", cur + ".app", "config.ini"))
+    for r, (k, v) in enumerate(rows):
+        if r >= vis: break
+        y = LISTY + r * pitch
+        cv.fill(KEYX, y, VALX - KEYX - 4, pitch - 2, C(0x303D4D))
+        cv.fill(VALX, y, W - VALX - 6, pitch - 2, C(0x303D4D))
+        cv.text(KEYX + 4, y + 1, k, C(0xC8E0C8)); cv.text(VALX + 4, y + 1, v, C(0xE8E8C0))
+    if rows:                                  # caret in the first value cell (focused)
+        cv.fill(VALX + 4 + len(rows[0][1]) * FW, LISTY, 2, pitch - 2, C(0x60FF90))
+    cv.fill(380, BTN_Y, 80, 24, C(0x306030)); cv.frame(380, BTN_Y, 80, 24, C(0xC0C0C0))
+    cv.text(404, BTN_Y + 4, "Apply", C(0xFFFFFF))
+    cv.fill(470, BTN_Y, 80, 24, C(0x603030)); cv.frame(470, BTN_Y, 80, 24, C(0xC0C0C0))
+    cv.text(486, BTN_Y + 4, "Discard", C(0xFFFFFF))
+    return cv
+
+def app_theme():
+    W, H, BTN_Y = 380, 340, 300; cv = Canvas(W, H, C(0x202833))
+    cv.text(12, 8, "Theme editor", C(0xFFD070))
+    labels = ["Active tint", "Inactive tint", "Title text", "Wallpaper"]
+    colors = [0xFFC878, 0x8090A0, 0xFFFFFF, 0x4878B0]
+    for i in range(4):
+        y = 70 + i * 30
+        cv.text(12, y + 1, labels[i], C(0xD0D8E0)); swatch(cv, 130, y, 70, 20, colors[i])
+    cv.text(12, 37, "Keymap", C(0xD0D8E0)); dropdown(cv, 130, 36, 90, 18, "FR")
+    cv.fill(130, BTN_Y, 80, 24, C(0x306030)); cv.frame(130, BTN_Y, 80, 24, C(0xC0C0C0))
+    cv.text(144, BTN_Y + 4, "Apply", C(0xFFFFFF))
+    cv.fill(220, BTN_Y, 80, 24, C(0x603030)); cv.frame(220, BTN_Y, 80, 24, C(0xC0C0C0))
+    cv.text(234, BTN_Y + 4, "Discard", C(0xFFFFFF))
+    return cv
+
 if __name__ == "__main__":
     # windowed apps: (folder, title, client builder) -> wrapped in skinned chrome.
     WINAPPS = [
         ("terminal","terminal",app_terminal), ("filer","filer",app_filer),
-        ("fractal","fractal",app_fractal), ("tinycalc","tinycalc",app_tinycalc),
+        ("mandelbrot","fractal",app_fractal), ("tinycalc","tinycalc",app_tinycalc),
         ("tinypad","tinypad",app_tinypad), ("calendar","calendar",app_calendar),
+        ("config","config",app_config), ("theme","theme",app_theme),
         ("paint","paint",app_paint), ("taskman","taskman",app_taskman),
         ("2048","2048",app_2048), ("minesweeper","minesweeper",app_minesweeper),
         ("eyes","eyes",app_eyes), ("inidemo","inidemo",app_inidemo),
