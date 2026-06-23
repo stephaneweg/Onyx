@@ -94,11 +94,20 @@ static void parse_stage (const char *s, struct Stage *st)
 	{
 		while (s[i] == ' ') i++;
 		if (!s[i]) break;
-		if (s[i] == '<') { i++; while (s[i] == ' ') i++; i = read_word (s, i, st->infile, sizeof st->infile); continue; }
+		if (s[i] == '<')
+		{
+			i++;
+			while (s[i] == ' ') i++;
+			i = read_word (s, i, st->infile, sizeof st->infile);
+			continue;
+		}
 		if (s[i] == '>')
 		{
-			i++; if (s[i] == '>') { st->append = 1; i++; }
-			while (s[i] == ' ') i++; i = read_word (s, i, st->outfile, sizeof st->outfile); continue;
+			i++;
+			if (s[i] == '>') { st->append = 1; i++; }
+			while (s[i] == ' ') i++;
+			i = read_word (s, i, st->outfile, sizeof st->outfile);
+			continue;
 		}
 		char tok[96];
 		i = read_word (s, i, tok, sizeof tok);

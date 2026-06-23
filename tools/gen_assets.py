@@ -174,10 +174,41 @@ def icon_terminal():		# a black console with a green prompt
     prect(px, 19, 13, 26, 14, (90, 150, 110))	# cursor line
     return px
 
+def icon_2048():		# four coloured tiles
+    px = blank()
+    cols = [(238, 228, 218), (242, 177, 121), (237, 204, 97), (245, 124, 95)]
+    for i in range(4):
+        x, y = 6 + (i % 2) * 15, 6 + (i // 2) * 15
+        prect(px, x, y, x + 12, y + 12, cols[i])
+    return px
+
+def icon_life():		# a glider
+    px = blank()
+    g = (96, 230, 144)
+    for (cx, cy) in [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)]:
+        x, y = 8 + cx * 8, 8 + cy * 8
+        prect(px, x, y, x + 6, y + 6, g)
+    return px
+
+def icon_pong():		# two paddles + ball
+    px = blank()
+    prect(px, 6, 10, 9, 28, (235, 235, 235))
+    prect(px, 31, 14, 34, 32, (235, 235, 235))
+    prect(px, 18, 19, 23, 24, (96, 230, 144))
+    return px
+
+def icon_sokoban():		# a box on a target
+    px = blank()
+    prect(px, 13, 13, 27, 27, (60, 192, 96))		# box (on target = green)
+    pframe(px, 13, 13, 27, 27, (30, 110, 50))
+    prect(px, 18, 18, 22, 22, (180, 90, 90))		# target dot
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
     "filer": icon_filer, "terminal": icon_terminal,
+    "2048": icon_2048, "life": icon_life, "pong": icon_pong, "sokoban": icon_sokoban,
 }
 
 
