@@ -28,6 +28,10 @@ class CDialog;
 extern int g_nScreenWidth;
 extern int g_nScreenHeight;
 
+// Window-chrome theme, applied at boot (SD:skins/theme.txt). The two tints are baked
+// into the window skin (active/inactive); the text colour is the title text.
+extern u32 g_WinTitleTextColor;
+
 // Theme + chrome metrics. Match the window skin (wings.bmp, margins 7/7/32/7):
 // a 32 px title-bar region on top and 7 px borders. Used both skinned and flat.
 #define WIN_TITLEBAR_H		32

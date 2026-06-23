@@ -12,9 +12,29 @@
 #include "kapi.h"
 #include "applib.h"
 
-#define NPTS	28			// Voronoi seed count
+#define NPTS	28			// default Voronoi seed count (config: points)
+#define NPTS_MAX 64			// fixed array bound
 #define ADIV	2			// render at half-res, then upscale (faster)
-#define BASE	0x004878B0		// blue base colour, tinted by cell distance
+#define BASE	0x004878B0		// default base colour (config: base = 0xRRGGBB)
+
+// Parse "0xRRGGBB" (or a decimal) from a config string; def if empty/invalid.
+static unsigned parse_color (const char *s, unsigned def)
+{
+	if (s == 0) return def;
+	while (*s == ' ' || *s == '\t') s++;
+	unsigned v = 0; int any = 0, hex = 0;
+	if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) { s += 2; hex = 1; }
+	while (*s != '\0')
+	{
+		char c = *s; int d;
+		if (c >= '0' && c <= '9') d = c - '0';
+		else if (hex && c >= 'a' && c <= 'f') d = c - 'a' + 10;
+		else if (hex && c >= 'A' && c <= 'F') d = c - 'A' + 10;
+		else break;
+		v = v * (hex ? 16 : 10) + d; s++; any = 1;
+	}
+	return any ? v : def;
+}
 
 // Integer square root (no FP in EL1 apps).
 static unsigned isqrt (unsigned n)
@@ -47,10 +67,21 @@ int main (void)
 	int mx = w / ADIV, my = h / ADIV;
 	if (mx < 1 || my < 1) return 1;
 
+	// Config (own folder): base colour + seed count, both optional.
+	unsigned base = BASE;
+	int npts = NPTS;
+	if (app_ini_load ("config.ini") >= 0)
+	{
+		base = parse_color (app_ini_get (0, "base", 0), BASE);
+		npts = app_ini_get_int (0, "points", NPTS);
+	}
+	if (npts < 1) npts = 1;
+	if (npts > NPTS_MAX) npts = NPTS_MAX;
+
 	// Seed points (half-res space). Seed the RNG from the timer so it varies per run.
-	int px[NPTS], py[NPTS];
+	int px[NPTS_MAX], py[NPTS_MAX];
 	unsigned rng = kapi_get_ticks () | 1u;
-	for (int i = 0; i < NPTS; i++)
+	for (int i = 0; i < npts; i++)
 	{
 		rng = rng * 1103515245u + 12345u; px[i] = (int) (rng % (unsigned) mx);
 		rng = rng * 1103515245u + 12345u; py[i] = (int) (rng % (unsigned) my);
@@ -61,7 +92,7 @@ int main (void)
 		for (int x = 0; x < mx; x++)
 		{
 			unsigned best = 0xFFFFFFFF;
-			for (int i = 0; i < NPTS; i++)
+			for (int i = 0; i < npts; i++)
 			{
 				// Toroidal axis distance, normalised to 0..128 (wraps at 128
 				// so the field tiles seamlessly).
@@ -74,7 +105,7 @@ int main (void)
 				if (d > 255) d = 255;
 				if (d < best) best = d;
 			}
-			unsigned col = tint (BASE, best);
+			unsigned col = tint (base, best);
 			for (int j = 0; j < ADIV; j++)			// upscale the half-res cell
 				for (int k = 0; k < ADIV; k++)
 					bg[(y * ADIV + j) * w + (x * ADIV + k)] = col;

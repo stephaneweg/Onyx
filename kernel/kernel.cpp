@@ -439,6 +439,65 @@ static GImage *LoadCursor (const char *pPath, int nW, int nH)
 	return pImg;
 }
 
+// Parse "0xRRGGBB" / "RRGGBB" between [s,e); returns def if no hex digits found.
+static u32 ParseHexColor (const char *s, const char *e, u32 def)
+{
+	while (s < e && (*s == ' ' || *s == '\t')) s++;
+	if (s + 1 < e && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+	u32 v = 0; int any = 0;
+	while (s < e)
+	{
+		char c = *s; int d;
+		if (c >= '0' && c <= '9') d = c - '0';
+		else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+		else break;
+		v = v * 16 + d; s++; any = 1;
+	}
+	return any ? v : def;
+}
+
+static boolean KeyEq (const char *s, const char *e, const char *pLit)
+{
+	while (s < e && *pLit != '\0' && *s == *pLit) { s++; pLit++; }
+	return s == e && *pLit == '\0';
+}
+
+// Read the window-chrome theme from SD:skins/theme.txt (keys: active/inactive/text =
+// 0xRRGGBB), falling back to the compiled-in defaults. Lets the user (or the theme
+// editor) recolour window chrome without rebuilding.
+static void ReadWindowTheme (u32 *pAct, u32 *pInact, u32 *pText)
+{
+	*pAct = WIN_SKIN_TINT_ACTIVE; *pInact = WIN_SKIN_TINT_INACTIVE; *pText = 0x00FFFFFF;
+
+	unsigned nSize = 0;
+	u8 *pData = LoadFileFromSD ("SD:skins/theme.txt", &nSize);
+	if (pData == 0) return;
+
+	const char *p = (const char *) pData, *pEnd = p + nSize;
+	while (p < pEnd)
+	{
+		const char *ls = p;
+		while (p < pEnd && *p != '\n' && *p != '\r') p++;
+		const char *le = p;
+		while (p < pEnd && (*p == '\n' || *p == '\r')) p++;
+
+		while (ls < le && (*ls == ' ' || *ls == '\t')) ls++;
+		if (ls >= le || *ls == '#' || *ls == ';') continue;
+		const char *eq = ls;
+		while (eq < le && *eq != '=') eq++;
+		if (eq >= le) continue;
+		const char *ke = eq;
+		while (ke > ls && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
+		const char *vs = eq + 1;
+
+		if      (KeyEq (ls, ke, "active"))   *pAct   = ParseHexColor (vs, le, *pAct);
+		else if (KeyEq (ls, ke, "inactive")) *pInact = ParseHexColor (vs, le, *pInact);
+		else if (KeyEq (ls, ke, "text"))     *pText  = ParseHexColor (vs, le, *pText);
+	}
+	delete [] pData;
+}
+
 // Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
@@ -741,13 +800,16 @@ boolean CKernel::Initialize (void)
 			g_pButtonSkin = LoadSkin ("SD:skins/button.bmp",   3, 6, 6, 6, 6);
 			g_pCloseSkin  = LoadSkin ("SD:skins/closebgs.bmp", 3, 5, 5, 5, 5);
 			// Window chrome: load wings.bmp twice and bake a colour into each (the
-			// skin is grayscale, meant to be colorized by multiply) -- a warm accent
-			// for the active window, a muted slate for inactive ones.
+			// skin is grayscale, meant to be colorized by multiply). The tints + the
+			// title text colour come from SD:skins/theme.txt (defaults if absent).
+			u32 nTintAct, nTintInact, nTitleText;
+			ReadWindowTheme (&nTintAct, &nTintInact, &nTitleText);
+			g_WinTitleTextColor = nTitleText;
 			g_pWindowSkin = LoadSkin ("SD:skins/wings.bmp",    1, 7, 7, 32, 7);
-			if (g_pWindowSkin != 0) g_pWindowSkin->Colorize (WIN_SKIN_TINT_ACTIVE);
+			if (g_pWindowSkin != 0) g_pWindowSkin->Colorize (nTintAct);
 			g_pWindowSkinInactive = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
 			if (g_pWindowSkinInactive != 0)
-				g_pWindowSkinInactive->Colorize (WIN_SKIN_TINT_INACTIVE);
+				g_pWindowSkinInactive->Colorize (nTintInact);
 
 			// Mouse cursor: SimpleOS mousecur.bin -- 12x19 bytes, 1=white 2=black
 			// else transparent. Built into a GImage the compositor blits.

@@ -172,7 +172,7 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 		// Title text, vertically centred in the title bar (inside the left border).
 		pScreen->DrawText (x0 + WIN_BORDER + 2,
 				   y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
-				   m_Title, 0x00FFFFFF);
+				   m_Title, g_WinTitleTextColor);
 
 		// Close box [x] at the right of the title bar (skinned if available).
 		int cbx0, cby0, cbx1, cby1;
@@ -510,6 +510,9 @@ CWindowManager *CWindowManager::s_pThis = 0;
 // overwritten at boot (CKernel) once the chosen resolution is known.
 int g_nScreenWidth  = SCREEN_WIDTH;
 int g_nScreenHeight = SCREEN_HEIGHT;
+
+// Title-bar text colour (overridable at boot from SD:skins/theme.txt).
+u32 g_WinTitleTextColor = 0x00FFFFFF;
 
 CWindowManager::CWindowManager (void)
 :	m_nWindows (0), m_pWallpaper (0), m_pCursor (0),
