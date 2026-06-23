@@ -260,12 +260,25 @@ private:
 		}
 	}
 
-	static void MouseEventStub (TMouseEvent /*Event*/, unsigned nButtons,
+	// Circle's cooked mouse reports the *changed button mask* on MouseDown/MouseUp
+	// (not the full state) and the full state only on MouseMove. If we forwarded that
+	// raw value, a release (MouseUp, mask=1) would look like "still pressed", so the
+	// WM would miss the press edge of a second click -- breaking double-click. So we
+	// reconstruct the real button bitmask: Down sets the bit, Up clears it, Move syncs.
+	static void MouseEventStub (TMouseEvent Event, unsigned nButtons,
 				    unsigned nPosX, unsigned nPosY, int /*nWheelMove*/)
 	{
+		static unsigned s_nButtons = 0;
+		switch (Event)
+		{
+		case MouseEventMouseDown: s_nButtons |= nButtons;  break;	// nButtons = changed mask
+		case MouseEventMouseUp:   s_nButtons &= ~nButtons; break;
+		case MouseEventMouseMove: s_nButtons = nButtons;   break;	// full state
+		default: break;							// wheel etc.
+		}
 		if (CWindowManager::Get () != 0)
 		{
-			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, nButtons);
+			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, s_nButtons);
 		}
 	}
 

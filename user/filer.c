@@ -11,6 +11,7 @@
 #define MAXE	256
 #define NAMELEN	96
 #define LISTY	34
+#define CLICK_DELAY	70	// double-click window in HZ(=100) ticks (~700 ms)
 
 static unsigned *fb;
 static int g_fw = 8, g_fh = 16, g_rows = 1;
@@ -260,10 +261,11 @@ static void on_click (unsigned long s, int ev, long val)
 	int idx = g_top + row;
 	if (idx >= g_count) return;
 
-	// kapi_get_ticks is HZ(=100) ticks since boot; ~60 ticks ~= 0.6 s is a forgiving
-	// double-click window (keyboard Space/Enter are the deterministic alternative).
+	// Double-click: same row, clicked again within CLICK_DELAY. (kapi_get_ticks is in
+	// HZ=100 ticks; the fix that makes a 2nd press actually arrive is in the kernel
+	// mouse stub.) Keyboard Space/Enter remain the deterministic alternative.
 	unsigned now = kapi_get_ticks ();
-	int dbl = (idx == g_last_idx) && (now - g_last_tick) < 60;
+	int dbl = (idx == g_last_idx) && (now - g_last_tick) < CLICK_DELAY;
 	g_sel = idx;
 	fix_scroll ();
 	if (dbl)
