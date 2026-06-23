@@ -196,6 +196,34 @@ int kapi_widget_get_checked (unsigned long hWidget)
 	return pW != 0 ? pW->nState : 0;
 }
 
+unsigned long kapi_add_progress (int x, int y, int w, int h)
+{
+	return AddWidgetToCurrent (GW_PROGRESS, x, y, w, h, "", 0);
+}
+
+unsigned long kapi_add_slider (int x, int y, int w, int h, void *pHandler)
+{
+	return AddWidgetToCurrent (GW_SLIDER, x, y, w, h, "", pHandler);
+}
+
+// Slider / progress value (0..100).
+int kapi_widget_get_value (unsigned long hWidget)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	return pW != 0 ? pW->nState : 0;
+}
+
+void kapi_widget_set_value (unsigned long hWidget, int nValue)
+{
+	GWidget *pW = (GWidget *) hWidget;
+	if (pW == 0)
+	{
+		return;
+	}
+	if (nValue < 0) nValue = 0; else if (nValue > 100) nValue = 100;
+	pW->nState = nValue;
+}
+
 void kapi_pump_events (void)
 {
 	CAddressSpace *pAS = CurrentAS ();

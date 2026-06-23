@@ -39,11 +39,16 @@ unsigned long kapi_add_checkbox (int x, int y, int w, int h, const char *label,
 				 gui_handler handler);	// fires GUI_EVENT_CHECK_CHANGED
 unsigned long kapi_add_textbox  (int x, int y, int w, int h,
 				 gui_handler handler);	// fires GUI_EVENT_TEXT_CHANGED
+unsigned long kapi_add_progress (int x, int y, int w, int h);	// display only (0..100)
+unsigned long kapi_add_slider   (int x, int y, int w, int h,
+				 gui_handler handler);	// fires GUI_EVENT_VALUE_CHANGED
 
 // Query / update widget state.
 int  kapi_widget_get_text    (unsigned long widget, char *buf, unsigned max); // -> length
 void kapi_widget_set_text    (unsigned long widget, const char *text);
 int  kapi_widget_get_checked (unsigned long widget);	// checkbox: 1 = checked
+int  kapi_widget_get_value   (unsigned long widget);	// slider/progress: 0..100
+void kapi_widget_set_value   (unsigned long widget, int value);
 
 void      kapi_pump_events (void);	// dispatch pending events, non-blocking
 void      kapi_wait_for_exit (void);	// pump until the close box is clicked

@@ -184,6 +184,35 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 			}
 			break;
 		}
+
+		case GW_PROGRESS:
+		{
+			pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00303030);
+			int nFill = pW->nState;
+			if (nFill < 0) nFill = 0; else if (nFill > 100) nFill = 100;
+			int nFW = (pW->nW - 2) * nFill / 100;
+			if (nFW > 0)
+			{
+				pScreen->FillRectangle (bx0 + 1, by0 + 1, bx0 + nFW, by1 - 1,
+							0x0030C030);
+			}
+			pScreen->DrawRectangle (bx0, by0, bx1, by1, 0x00000000);
+			break;
+		}
+
+		case GW_SLIDER:
+		{
+			int nMidY = by0 + pW->nH / 2;
+			pScreen->DrawLine (bx0 + 2, nMidY, bx1 - 2, nMidY, 0x00C0C0C0);   // groove
+			int nVal = pW->nState;
+			if (nVal < 0) nVal = 0; else if (nVal > 100) nVal = 100;
+			int nThumb = bx0 + nVal * (pW->nW - 8) / 100;	// thumb left
+			u32 nThumbCol = pW->bMousePressed ? 0x00FFFFFF
+				      : (pW->bMouseOver  ? 0x00E0E0E0 : 0x00A0A0C0);
+			pScreen->FillRectangle (nThumb, by0, nThumb + 7, by1, nThumbCol);
+			pScreen->DrawRectangle (nThumb, by0, nThumb + 7, by1, 0x00000000);
+			break;
+		}
 		}
 	}
 
@@ -450,6 +479,23 @@ static void PostWidgetEvent (CWindow *pWin, GWidget *pW, int nEvent, long lValue
 	pWin->PushEvent (Ev);
 }
 
+// Set a slider's value (0..100) from the absolute cursor X; fire on change.
+static void SliderSetFromCursor (CWindow *pWin, GWidget *pW, int nCursorX)
+{
+	if (pWin == 0 || pW == 0 || pW->nW <= 8)
+	{
+		return;
+	}
+	int nLeft = pWin->X () + WIN_BORDER + pW->nX;
+	int v = (nCursorX - nLeft) * 100 / (pW->nW - 8);
+	if (v < 0) v = 0; else if (v > 100) v = 100;
+	if (v != pW->nState)
+	{
+		pW->nState = v;
+		PostWidgetEvent (pWin, pW, GUI_EVENT_VALUE_CHANGED, v);
+	}
+}
+
 void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 {
 	// Clamp to the screen.
@@ -468,9 +514,9 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	// --- hover tracking (interactive widgets only) -----------------------
 	CWindow *pHoverWin = 0;
 	GWidget *pHover = WidgetUnderCursor (x, y, &pHoverWin);
-	if (pHover != 0 && pHover->nType == GW_LABEL)
+	if (pHover != 0 && (pHover->nType == GW_LABEL || pHover->nType == GW_PROGRESS))
 	{
-		pHover = 0;			// labels don't react
+		pHover = 0;			// static widgets don't react
 	}
 	if (pHover != m_pHoverWidget)
 	{
@@ -518,18 +564,32 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 				SetFocusWidget ((pW != 0 && pW->nType == GW_TEXTBOX) ? pW : 0,
 						pW != 0 ? pWin : 0);
 
-				if (pW != 0 && (pW->nType == GW_BUTTON || pW->nType == GW_CHECKBOX))
+				if (pW != 0 && (pW->nType == GW_BUTTON
+						|| pW->nType == GW_CHECKBOX
+						|| pW->nType == GW_SLIDER))
 				{
 					pW->bMousePressed = TRUE;	// armed; fires on release
 					m_pPressedWidget = pW;
 					m_pPressedWindow = pWin;
+					if (pW->nType == GW_SLIDER)
+					{
+						SliderSetFromCursor (pWin, pW, x);  // jump to click
+					}
 				}
 			}
 		}
 	}
-	else if (bLeftNow && bLeftWas && m_pDragWindow != 0)
+	else if (bLeftNow && bLeftWas)
 	{
-		m_pDragWindow->Move (x - m_nDragDX, y - m_nDragDY);
+		// Held: drag a window by its title bar, or drag a slider thumb.
+		if (m_pDragWindow != 0)
+		{
+			m_pDragWindow->Move (x - m_nDragDX, y - m_nDragDY);
+		}
+		else if (m_pPressedWidget != 0 && m_pPressedWidget->nType == GW_SLIDER)
+		{
+			SliderSetFromCursor (m_pPressedWindow, m_pPressedWidget, x);
+		}
 	}
 	else if (!bLeftNow && bLeftWas)
 	{
@@ -538,20 +598,17 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		{
 			GWidget *pW = m_pPressedWidget;
 			pW->bMousePressed = FALSE;
-			if (pW->bMouseOver)
+			if (pW->bMouseOver && pW->nType == GW_CHECKBOX)
 			{
-				if (pW->nType == GW_CHECKBOX)
-				{
-					pW->nState ^= 1;
-					PostWidgetEvent (m_pPressedWindow, pW,
-							 GUI_EVENT_CHECK_CHANGED, pW->nState);
-				}
-				else	// GW_BUTTON
-				{
-					PostWidgetEvent (m_pPressedWindow, pW,
-							 GUI_EVENT_CLICK, 0);
-				}
+				pW->nState ^= 1;
+				PostWidgetEvent (m_pPressedWindow, pW,
+						 GUI_EVENT_CHECK_CHANGED, pW->nState);
 			}
+			else if (pW->bMouseOver && pW->nType == GW_BUTTON)
+			{
+				PostWidgetEvent (m_pPressedWindow, pW, GUI_EVENT_CLICK, 0);
+			}
+			// slider already fired during press/drag
 			m_pPressedWidget = 0;
 			m_pPressedWindow = 0;
 		}

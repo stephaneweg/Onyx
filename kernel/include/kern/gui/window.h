@@ -35,12 +35,15 @@
 #define GW_LABEL		2	// static text
 #define GW_CHECKBOX		3	// box + label, toggles on click
 #define GW_TEXTBOX		4	// editable single-line text (keyboard focus)
+#define GW_PROGRESS		5	// progress bar (nState = 0..100, display only)
+#define GW_SLIDER		6	// horizontal slider (nState = 0..100, draggable)
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree.
 #define GUI_EVENT_CLICK		1
 #define GUI_EVENT_CHECK_CHANGED	2
 #define GUI_EVENT_TEXT_CHANGED	3
+#define GUI_EVENT_VALUE_CHANGED	4	// slider moved (lValue = 0..100)
 
 #define GW_TEXT_MAX		48	// label / textbox content capacity
 

@@ -6,11 +6,12 @@
 #include "kapi.h"
 
 #define W 300
-#define H 190
+#define H 220
 
 static unsigned     *fb;
 static unsigned long g_Label;		// status label (handle)
 static unsigned long g_Text;		// textbox (handle)
+static unsigned long g_Progress;	// progress bar (handle)
 
 static void clear (unsigned c)
 {
@@ -51,6 +52,22 @@ static void on_button (unsigned long sender, int event, long value)
 	kapi_widget_set_text (g_Label, "button clicked!");
 }
 
+static void on_slider (unsigned long sender, int event, long value)
+{
+	(void) sender; (void) event;
+	kapi_widget_set_value (g_Progress, (int) value);	// slider drives the bar
+	char msg[24];
+	unsigned n = scopy (msg, "slider: ", sizeof msg);
+	// itoa for 0..100
+	int v = (int) value, i = 0; char tmp[4];
+	if (v == 0) tmp[i++] = '0';
+	while (v > 0) { tmp[i++] = (char) ('0' + v % 10); v /= 10; }
+	while (i > 0 && n + 1 < sizeof msg) msg[n++] = tmp[--i];
+	if (n + 1 < sizeof msg) msg[n++] = '%';
+	msg[n] = '\0';
+	kapi_widget_set_text (g_Label, msg);
+}
+
 int main (void)
 {
 	fb = create_window (W, H, "widget gallery");
@@ -60,10 +77,12 @@ int main (void)
 	}
 	clear (0x00283848);
 
-	g_Label = kapi_add_label   (10, 10, 280, 16, "type below; toggle; click OK");
-	g_Text  = kapi_add_textbox (10, 38, 220, 22, on_text);
-	(void)    kapi_add_checkbox(10, 74, 220, 18, "enable feature", on_check);
-	(void)    kapi_add_button  (10, 108, 90, 30, "OK", on_button);
+	g_Label    = kapi_add_label    (10, 10, 280, 16, "type; toggle; slide; click OK");
+	g_Text     = kapi_add_textbox  (10, 38, 220, 22, on_text);
+	(void)       kapi_add_checkbox (10, 74, 220, 18, "enable feature", on_check);
+	(void)       kapi_add_button   (10, 108, 90, 30, "OK", on_button);
+	(void)       kapi_add_slider   (10, 150, 220, 18, on_slider);
+	g_Progress = kapi_add_progress (10, 178, 220, 16);
 
 	while (!should_exit ())
 	{
