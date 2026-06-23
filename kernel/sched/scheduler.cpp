@@ -114,6 +114,13 @@ void CScheduler::Yield (void)
 	// resumed, so each task keeps its own interrupt state across switches.
 	u64 nFlags = IrqSave ();
 
+	// Before selecting the next task, reap any task that has ended (closed app):
+	// free its address space, window, and the CTask + stack. Done here -- with IRQ
+	// masked, so atomic against the timer IRQ -- and never touches m_pCurrent (we
+	// run on its stack), so the just-terminated task is reclaimed the next time
+	// ANOTHER task yields.
+	ReapTerminatedTasks ();
+
 	unsigned nNext;
 	while ((nNext = GetNextTask ()) == MAX_TASKS)
 	{
@@ -346,10 +353,11 @@ void CScheduler::ListTasks (CDevice *pTarget)
 
 unsigned CScheduler::ReapTerminatedTasks (void)
 {
-	// Runs in normal task context (the kernel janitor loop). A terminated task is
-	// quiescent: GetNextTask() skips it, so it is suspended at its final Yield()
-	// and will never run again -- safe to tear down and delete here. We never reap
-	// the current task (it would delete the stack we run on).
+	// Called at the top of Yield() with IRQ masked. A terminated task is quiescent
+	// (GetNextTask skips it, so it never runs again) -- safe to tear down here. We
+	// never reap m_pCurrent (we run on its stack); it is reclaimed the next time
+	// another task yields. IRQ-masked => the teardown (page-table frees, TLB ops)
+	// is atomic against the timer IRQ.
 	unsigned nReaped = 0;
 
 	for (unsigned i = 0; i < m_nTasks; i++)
@@ -362,20 +370,14 @@ unsigned CScheduler::ReapTerminatedTasks (void)
 			continue;
 		}
 
-		// Termination handler frees the address space (page tables, ASID, TLB)
-		// in this safe context, with IRQs enabled.
-		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: '%s' freeing AS",
-					pTask->GetName ());
+		// Termination handler frees the address space (page tables, ASID, TLB);
+		// then remove from the list and free the CTask + its stack.
 		if (m_pTaskTerminationHandler != 0)
 		{
 			(*m_pTaskTerminationHandler) (pTask);
 		}
-
-		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: removing from list");
 		RemoveTask (pTask);
-		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: deleting task+stack");
 		delete pTask;			// frees the CTask + its stack
-		CLogger::Get ()->Write (FromScheduler, LogNotice, "reap: done");
 		nReaped++;
 	}
 
