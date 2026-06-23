@@ -24,7 +24,9 @@
 #define GUI_EVENT_TEXT_CHANGED	3
 #define GUI_EVENT_VALUE_CHANGED	4
 #define GUI_EVENT_KEY		5	// key pressed; value = char or KEY_* code
-#define GUI_EVENT_CANVAS_CLICK	6	// client-area click; value = (clientX<<16)|clientY
+#define GUI_EVENT_CANVAS_CLICK	6	// client-area press; value = (buttons<<32)|(x<<16)|y
+#define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area; same value
+					// buttons: bit0 left, bit1 right
 
 // Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 #define KEY_BACKSPACE		8

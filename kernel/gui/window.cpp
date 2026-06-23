@@ -504,6 +504,7 @@ CWindowManager *CWindowManager::s_pThis = 0;
 CWindowManager::CWindowManager (void)
 :	m_nWindows (0), m_pWallpaper (0),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
+	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
 	m_pHoverWidget (0), m_pPressedWidget (0), m_pPressedWindow (0),
@@ -933,7 +934,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 					Ev.ulHandler = pWin->ClickHandler ();
 					Ev.ulSender  = 0;
 					Ev.nEvent    = GUI_EVENT_CANVAS_CLICK;
-					Ev.lValue    = ((long) cx << 16) | (cy & 0xFFFF);
+					Ev.lValue    = ((long) 1 << 32) | ((long) cx << 16) | (cy & 0xFFFF);
 					pWin->PushEvent (Ev);
 				}
 			}
@@ -976,6 +977,46 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		m_pDragWindow = 0;
 	}
 
+	// --- canvas mouse for app-drawn UIs: right-click + drag motion -----------
+	// Delivered to the topmost window's click handler (no widget under the cursor),
+	// alongside the left-press canvas click above. The app branches on the event.
+	boolean bRightNow = (nButtons & 2) != 0;
+	boolean bRightWas = (m_nLastButtons & 2) != 0;
+	if (!m_pDragWindow && !m_pPressedWidget)
+	{
+		boolean bOnTitle = FALSE;
+		unsigned nHit = HitTest (x, y, &bOnTitle);
+		if (nHit != ~0u && !bOnTitle)
+		{
+			CWindow *pWin = m_pWindows[nHit];
+			u64 ulCH = pWin->ClickHandler ();
+			int cx = x - (pWin->X () + pWin->ChromeL ());
+			int cy = y - (pWin->Y () + pWin->ChromeT ());
+			if (ulCH != 0 && !pWin->HitCloseBox (x, y) && pWin->HitWidget (cx, cy) == 0)
+			{
+				unsigned nBtn = (bLeftNow ? 1 : 0) | (bRightNow ? 2 : 0);
+				long lValue = ((long) nBtn << 32) | ((long) cx << 16) | (cy & 0xFFFF);
+				GUIEvent Ev;
+				Ev.ulHandler = ulCH;
+				Ev.ulSender  = 0;
+				Ev.lValue    = lValue;
+				if (bRightNow && !bRightWas)		// right-button press edge
+				{
+					Ev.nEvent = GUI_EVENT_CANVAS_CLICK;
+					pWin->PushEvent (Ev);
+				}
+				else if ((bLeftNow || bRightNow)	// drag: a button held + moved
+					 && (x != m_nPrevX || y != m_nPrevY))
+				{
+					Ev.nEvent = GUI_EVENT_CANVAS_MOTION;
+					pWin->PushEvent (Ev);
+				}
+			}
+		}
+	}
+
+	m_nPrevX = x;
+	m_nPrevY = y;
 	m_nLastButtons = nButtons;
 
 	m_SpinLock.Release ();

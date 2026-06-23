@@ -54,8 +54,10 @@
 #define GUI_EVENT_TEXT_CHANGED	3
 #define GUI_EVENT_VALUE_CHANGED	4	// slider moved (lValue = 0..100)
 #define GUI_EVENT_KEY		5	// key pressed (lValue = char or KEY_* code)
-#define GUI_EVENT_CANVAS_CLICK	6	// click in the client area, no widget hit
-					// (lValue = (clientX << 16) | clientY)
+#define GUI_EVENT_CANVAS_CLICK	6	// press in the client area, no widget hit
+#define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area
+					// both: lValue = (buttons<<32)|(clientX<<16)|clientY
+					// buttons bit0 = left, bit1 = right
 
 // Logical key codes delivered as GUI_EVENT_KEY lValue. Printable keys are their
 // ASCII value (32..126); these are the special keys (Circle cooked-mode escapes).
@@ -273,6 +275,8 @@ private:
 	// Cursor + drag state (mutated from the input thread, read by Composite).
 	int	   m_nCursorX;
 	int	   m_nCursorY;
+	int	   m_nPrevX;		// previous cursor pos (drag-motion dedup)
+	int	   m_nPrevY;
 	boolean	   m_bCursorShown;
 	unsigned   m_nLastButtons;	// previous button bitmask (for press/release edges)
 	CWindow	  *m_pDragWindow;	// window being dragged by its title bar, or 0
