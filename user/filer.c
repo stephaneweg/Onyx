@@ -225,7 +225,10 @@ static void on_key (unsigned long s, int ev, long key)
 	case KEY_DOWN: g_sel++; break;
 	case KEY_PGUP: g_sel -= g_rows; break;
 	case KEY_PGDN: g_sel += g_rows; break;
-	case KEY_ENTER: open_sel (); break;
+	case KEY_ENTER: open_sel (); break;		// open file / run .elf (also enters dirs)
+	case ' ':					// space: enter the selected folder
+		if (g_sel >= 0 && g_sel < g_count && g_isdir[g_sel]) open_sel ();
+		break;
 	case KEY_BACKSPACE: go_up (); break;
 	case KEY_DEL: case 'd': case 'D': delete_sel (); break;
 	case 'r': case 'R':			// rename selected (prefill its name)
@@ -257,9 +260,10 @@ static void on_click (unsigned long s, int ev, long val)
 	int idx = g_top + row;
 	if (idx >= g_count) return;
 
-	// kapi_get_ticks is HZ(=100) ticks since boot, so ~40 ticks is about 0.4 s.
+	// kapi_get_ticks is HZ(=100) ticks since boot; ~60 ticks ~= 0.6 s is a forgiving
+	// double-click window (keyboard Space/Enter are the deterministic alternative).
 	unsigned now = kapi_get_ticks ();
-	int dbl = (idx == g_last_idx) && (now - g_last_tick) < 40;
+	int dbl = (idx == g_last_idx) && (now - g_last_tick) < 60;
 	g_sel = idx;
 	fix_scroll ();
 	if (dbl)

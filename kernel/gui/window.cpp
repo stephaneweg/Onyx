@@ -1114,7 +1114,13 @@ static int NextKey (const char **pp)
 		return NextKey (pp);
 	}
 	*pp = p + 1;
-	return (unsigned char) p[0];
+	// Normalise the keys Circle's keymap delivers as raw control bytes: Enter comes
+	// as '\n' (and some keyboards send '\r'), Backspace as DEL (0x7F). Map both to the
+	// KEY_* codes apps expect, so every app/dialog sees a single consistent value.
+	unsigned char ch = (unsigned char) p[0];
+	if (ch == '\n' || ch == '\r') return KEY_ENTER;
+	if (ch == 0x7F)               return KEY_BACKSPACE;
+	return ch;
 }
 
 void CWindowManager::OnKey (const char *pString)
