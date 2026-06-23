@@ -125,6 +125,30 @@ private:
 };
 
 //
+// Reaper: a dedicated kernel thread that reclaims tasks which have ended (closed
+// apps) -- freeing their address space, window, and the CTask + stack. Kept as a
+// proper scheduler task (like the compositor), separate from CKernel::Run (the
+// special "main" task), so the teardown always runs in a normal task context.
+//
+class CReaperTask : public CTask
+{
+public:
+	CReaperTask (void)
+	{
+		SetName ("reaper");
+	}
+
+	void Run (void) override
+	{
+		for (;;)
+		{
+			CScheduler::Get ()->ReapTerminatedTasks ();
+			CScheduler::Get ()->MsSleep (50);
+		}
+	}
+};
+
+//
 // Input (#13): a kernel thread that pumps USB plug-and-play and, once a mouse /
 // keyboard appears, wires its events into the window manager. Mouse moves/clicks
 // drive the cursor + window raise/drag in CWindowManager; key presses are logged
@@ -425,6 +449,11 @@ TShutdownMode CKernel::Run (void)
 		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
 
+		// Reaper: reclaims closed apps (address space + window + task) in its own
+		// task context.
+		new CReaperTask;
+		m_Logger.Write (FromKernel, LogNotice, "reaper started");
+
 		// Start input only after the compositor: the mouse handler drives the
 		// cursor + window raise/drag, which only make sense once we're presenting.
 		if (m_bUSB)
@@ -439,21 +468,11 @@ TShutdownMode CKernel::Run (void)
 		m_Logger.Write (FromKernel, LogWarning, "no framebuffer; idling");
 	}
 
-	// Janitor loop: reap tasks that have ended (closed apps) in a safe context,
-	// freeing their address spaces. Terminated tasks stop being scheduled
-	// immediately; this is the "en amont du scheduler" reclamation stage.
-	//
-	// Heartbeat (only once the debug console owns the screen, i.e. after an app
-	// exited): proves the kernel is still alive AFTER a reap -- if "alive N" keeps
-	// incrementing past "reap: done", the close succeeded and the static screen is
-	// just the stopped compositor, not a crash.
+	// The "main" task has nothing left to do; reaping is the dedicated reaper task's
+	// job now. Just idle.
 	for (;;)
 	{
-		// ISOLATION TEST: reaping disabled. Terminated tasks are just left alone
-		// (skipped by GetNextTask), nothing is freed. If close now works (GUI stays
-		// live), the reap/teardown is the culprit.
-		// m_Scheduler.ReapTerminatedTasks ();
-		m_Scheduler.MsSleep (100);
+		m_Scheduler.MsSleep (1000);
 	}
 
 	return ShutdownHalt;

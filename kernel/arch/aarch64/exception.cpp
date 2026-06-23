@@ -7,7 +7,6 @@
 //
 #include <kern/trapframe.h>
 #include <kern/gui/gimage.h>
-#include <kern/debugcon.h>		// DebugConsoleActive()
 #include <circle/sched/scheduler.h>
 #include <circle/2dgraphics.h>
 #include <circle/string.h>
@@ -88,20 +87,11 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 
 	unsigned nEC = (unsigned) ((Frame.esr_el1 >> 26) & 0x3F);
 
-	// Log EC/ELR/FAR to the FbConsole FIRST -- in case the graphics panic painter
-	// (UpdateDisplay) hangs, we still get the fault address on screen. The reap's
-	// %s logs proved heap alloc works post-close, so the formatted Write is safe.
-	CLogger::Get ()->WriteNoAlloc ("exc", LogError,
-		">>> FAULT in handler/IRQ (EC/ELR/FAR below) >>>>>>>>>>>>>>>>>>>>");
-	CLogger::Get ()->Write ("exc", LogError,
-		"FAULT EC=0x%x ELR=%lp FAR=%lp SPSR=%lp >>>>>>>>>>",
-		nEC, (void *) pFrame->elr_el1, (void *) Frame.far_el1,
-		(void *) pFrame->spsr_el1);
-
-	// Then the visible red panic on the displayed framebuffer.
+	// Paint a visible red panic (EC/ELR/FAR) on the displayed framebuffer -- the
+	// boot console is no longer scanned out once the compositor runs.
 	PanicToScreen (nEC, pFrame->elr_el1, Frame.far_el1, pFrame->spsr_el1);
 
-	ExceptionHandler (nException, &Frame);		// never returns
+	ExceptionHandler (nException, &Frame);		// logs all registers; never returns
 
 	halt ();
 }
@@ -163,24 +153,9 @@ void KernelIRQExit (void)
 	// (True preemption would need a full trap-frame switch honoring SP_EL0.)
 }
 
-// Counts timer IRQs (diagnostic: is the timer IRQ still firing after a close?).
-volatile unsigned g_nTimerTicks = 0;
-
 void PeriodicTick (void)
 {
 	// Runs inside the timer IRQ (within InterruptHandler), 100 times per second.
-	g_nTimerTicks++;
-
-	// Diagnostic: once the debug console owns the screen (an app exited), prove the
-	// timer IRQ still reaches its handler. If we see this AND it then hangs, the
-	// fault is in the IRQ exit path; if we never see it, the IRQ entry/dispatch
-	// hangs or faults before here. Rate-limited to avoid flooding the slow FbConsole.
-	if (DebugConsoleActive () && (g_nTimerTicks % 25) == 0)
-	{
-		CLogger::Get ()->WriteNoAlloc ("irq", LogNotice,
-			"IRQ: timer reached PeriodicTick (handler runs) >>>>>>>>>>>>>");
-	}
-
 	if (CScheduler::IsActive ())
 	{
 		CScheduler::Get ()->OnTimerTick ();

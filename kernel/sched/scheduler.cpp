@@ -114,13 +114,6 @@ void CScheduler::Yield (void)
 	// resumed, so each task keeps its own interrupt state across switches.
 	u64 nFlags = IrqSave ();
 
-	// Before selecting the next task, reap any task that has ended (closed app):
-	// free its address space, window, and the CTask + stack. Done here -- with IRQ
-	// masked, so atomic against the timer IRQ -- and never touches m_pCurrent (we
-	// run on its stack), so the just-terminated task is reclaimed the next time
-	// ANOTHER task yields.
-	ReapTerminatedTasks ();
-
 	unsigned nNext;
 	while ((nNext = GetNextTask ()) == MAX_TASKS)
 	{
@@ -353,13 +346,16 @@ void CScheduler::ListTasks (CDevice *pTarget)
 
 unsigned CScheduler::ReapTerminatedTasks (void)
 {
-	// Called at the top of Yield() with IRQ masked. A terminated task is quiescent
-	// (GetNextTask skips it, so it never runs again) -- safe to tear down here. We
-	// never reap m_pCurrent (we run on its stack); it is reclaimed the next time
-	// another task yields. IRQ-masked => the teardown (page-table frees, TLB ops)
-	// is atomic against the timer IRQ.
-	unsigned nReaped = 0;
+	// Reap tasks that have ended (closed apps): run the termination handler (frees
+	// the address space), remove from the list, and free the CTask + its stack.
+	// Called from the dedicated reaper task. A terminated task is quiescent
+	// (GetNextTask skips it, so it never runs again) and is never m_pCurrent here.
+	//
+	// IRQ is masked for the whole teardown so it is atomic against the timer IRQ
+	// (the teardown frees page tables + invalidates the TLB); restored on return.
+	u64 nFlags = IrqSave ();
 
+	unsigned nReaped = 0;
 	for (unsigned i = 0; i < m_nTasks; i++)
 	{
 		CTask *pTask = m_pTask[i];
@@ -370,16 +366,16 @@ unsigned CScheduler::ReapTerminatedTasks (void)
 			continue;
 		}
 
-		// AS free confirmed as the culprit -- now bisecting INSIDE ~CAddressSpace.
 		if (m_pTaskTerminationHandler != 0)
 		{
-			(*m_pTaskTerminationHandler) (pTask);
+			(*m_pTaskTerminationHandler) (pTask);	// frees the address space
 		}
 		RemoveTask (pTask);
 		delete pTask;			// frees the CTask + its stack
 		nReaped++;
 	}
 
+	IrqRestore (nFlags);
 	return nReaped;
 }
 
