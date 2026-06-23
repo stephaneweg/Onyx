@@ -152,9 +152,13 @@ void KernelIRQExit (void)
 	// (True preemption would need a full trap-frame switch honoring SP_EL0.)
 }
 
+// Counts timer IRQs (diagnostic: is the timer IRQ still firing after a close?).
+volatile unsigned g_nTimerTicks = 0;
+
 void PeriodicTick (void)
 {
 	// Runs inside the timer IRQ (within InterruptHandler), 100 times per second.
+	g_nTimerTicks++;
 	if (CScheduler::IsActive ())
 	{
 		CScheduler::Get ()->OnTimerTick ();

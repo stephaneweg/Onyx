@@ -460,7 +460,28 @@ TShutdownMode CKernel::Run (void)
 		if (DebugConsoleActive ())
 		{
 			m_Logger.WriteNoAlloc (FromKernel, LogNotice,
-				"MARKER-A reaped, about to yield <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+				"MARKER-A reaped, testing timer IRQ <<<<<<<<<<<<<<<<<<<<<<<<<<");
+
+			// Busy-wait ~200 ms on the free-running clock (NO yield), counting
+			// timer IRQs. If none fire, the IRQ is dead -> idle's wfi can never
+			// wake -> the yield 'hangs'. This pinpoints the cause without yielding.
+			extern volatile unsigned g_nTimerTicks;
+			unsigned nBefore = g_nTimerTicks;
+			unsigned nStart  = CTimer::Get ()->GetClockTicks ();
+			while (CTimer::Get ()->GetClockTicks () - nStart < CLOCKHZ / 5)
+			{
+				// spin
+			}
+			if (g_nTimerTicks == nBefore)
+			{
+				m_Logger.WriteNoAlloc (FromKernel, LogError,
+					"RESULT: timer IRQ is DEAD (no tick in 200ms) <<<<<<<<<<<<");
+			}
+			else
+			{
+				m_Logger.WriteNoAlloc (FromKernel, LogNotice,
+					"RESULT: timer IRQ is ALIVE (ticks fired in 200ms) <<<<<<<");
+			}
 		}
 
 		m_Scheduler.MsSleep (100);			// -> Yield()
