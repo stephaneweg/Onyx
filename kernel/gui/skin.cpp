@@ -97,8 +97,9 @@ void CSkin::DrawOn (GImage *pTarget, unsigned nNum, int x, int y, int w, int h,
 			pTarget->PutOtherPart (&m_Image, tx, y, lw, sy, tw, th, bTransparent);
 			if (nMidH > 0)
 			{
+				int ch = nMidH > nOutH ? nOutH : nMidH;	// crop to the fill height
 				pTarget->PutOtherPart (&m_Image, tx, y + th, lw, sy + th,
-						       tw, nMidH, bTransparent);
+						       tw, ch, bTransparent);
 			}
 			pTarget->PutOtherPart (&m_Image, tx, y + h - bh, lw, sy + sh - bh,
 					       tw, bh, bTransparent);
