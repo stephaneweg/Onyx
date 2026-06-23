@@ -1211,6 +1211,72 @@ int kapi_message_box (const char *pTitle, const char *pText, int nButtons)
 	return nResult;
 }
 
+// Shared driver for the file open/save dialogs (sync, app-modal).
+static int RunFileDialog (int nType, const char *pTitle, char *pOut, unsigned nCap,
+			  const char *pStartDir, const char *pDefName)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0) return 0;
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pOwner = pAS != 0 ? pAS->GetWindow () : 0;
+
+	int w = CDialog::Width (nType), h = CDialog::Height (nType);
+	int x, y;
+	if (pOwner != 0)
+	{
+		x = pOwner->X () + (pOwner->ClientWidth () - w) / 2;
+		y = pOwner->Y () + (pOwner->ClientHeight () - h) / 2;
+	}
+	else { x = (SCREEN_WIDTH - w) / 2; y = (SCREEN_HEIGHT - h) / 2; }
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+	if (x + w > SCREEN_WIDTH)  x = SCREEN_WIDTH - w;
+	if (y + h > SCREEN_HEIGHT) y = SCREEN_HEIGHT - h;
+
+	CWindow *pDlgWin = new CWindow (x, y, w, h, "", WIN_FLAG_BORDERLESS);
+	if (pDlgWin == 0 || !pDlgWin->IsValid ()) { delete pDlgWin; return 0; }
+	CDialog *pDlg = new CDialog (nType, pTitle, "", 0);
+	if (pDlg == 0) { delete pDlgWin; return 0; }
+	pDlg->Attach (pDlgWin);
+	pDlgWin->SetDialog (pDlg);
+	pDlg->InitFile (pStartDir, pDefName);
+	pDlg->Draw ();
+
+	if (pOwner != 0) pOwner->SetModalChild (pDlgWin);
+	pWM->Add (pDlgWin);
+	pWM->Raise (pDlgWin);
+
+	while (!pDlg->IsDone ())
+	{
+		if (!CScheduler::IsActive ()) break;
+		CScheduler::Get ()->MsSleep (10);
+	}
+
+	int nResult = pDlg->Result ();
+	if (nResult && pOut != 0 && nCap > 0)
+	{
+		const char *pp = pDlg->ResultPath ();
+		unsigned i = 0;
+		for (; pp[i] != '\0' && i < nCap - 1; i++) pOut[i] = pp[i];
+		pOut[i] = '\0';
+	}
+	if (pOwner != 0) pOwner->SetModalChild (0);
+	pWM->Remove (pDlgWin);
+	delete pDlgWin;
+	delete pDlg;
+	return nResult;
+}
+
+int kapi_file_open (char *pOut, unsigned nCap, const char *pStartDir)
+{
+	return RunFileDialog (DLG_FOPEN, "Open file", pOut, nCap, pStartDir, 0);
+}
+
+int kapi_file_save (char *pOut, unsigned nCap, const char *pStartDir, const char *pDefName)
+{
+	return RunFileDialog (DLG_FSAVE, "Save file", pOut, nCap, pStartDir, pDefName);
+}
+
 // Write a whole file (create/truncate). Returns bytes written, or -1 on error.
 int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 {

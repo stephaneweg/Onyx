@@ -70,7 +70,7 @@ static void on_mouse (unsigned long s, int ev, long val)
 	paint_at (x, y, (btn & 2) ? 0x00f0f0f0 : g_col);	// right = erase
 }
 
-static void save_bmp (void)
+static void save_bmp (const char *path)
 {
 	// 24-bpp BMP of the canvas area (bottom-up, BGR, 4-byte row padding).
 	static unsigned char bmp[W * (H - PAL_H) * 3 + 64];
@@ -95,7 +95,7 @@ static void save_bmp (void)
 		}
 		for (int x = 0; x < pad; x++) bmp[o++] = 0;
 	}
-	kapi_save_file ("SD:/paint.bmp", bmp, (unsigned) total);
+	kapi_save_file (path, bmp, (unsigned) total);
 }
 
 static void on_key (unsigned long s, int ev, long key)
@@ -105,7 +105,12 @@ static void on_key (unsigned long s, int ev, long key)
 	if (key == '[') { if (g_brush > 1) g_brush--; }
 	else if (key == ']') { if (g_brush < 20) g_brush++; }
 	else if (key == 'c' || key == 'C') clear_canvas ();
-	else if (key == 's' || key == 'S') save_bmp ();
+	else if (key == 's' || key == 'S')
+	{
+		char path[100];
+		if (kapi_file_save (path, sizeof path, "SD:/", "paint.bmp"))
+			save_bmp (path);
+	}
 }
 
 int main (void)

@@ -58,6 +58,9 @@ static inline int  kapi_kill (const char *name) { return KT->kill (name); }
 #define MB_OKCANCEL	1
 #define MB_YESNO	2
 static inline int  kapi_message_box (const char *title, const char *text, int buttons) { return KT->message_box (title, text, buttons); }
+// Modal file dialogs (block until chosen/cancelled). Return 1 + fill `out`, or 0.
+static inline int  kapi_file_open (char *out, unsigned cap, const char *start_dir) { return KT->file_open (out, cap, start_dir); }
+static inline int  kapi_file_save (char *out, unsigned cap, const char *start_dir, const char *def_name) { return KT->file_save (out, cap, start_dir, def_name); }
 static inline int  kapi_set_wallpaper (const char *p) { return KT->set_wallpaper (p); }
 static inline int  kapi_wallpaper_generate (unsigned base, int pts, unsigned seed) { return KT->wallpaper_generate (base, pts, seed); }
 static inline void kapi_present (void) { KT->present (); }

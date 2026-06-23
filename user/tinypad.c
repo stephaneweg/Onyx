@@ -224,8 +224,27 @@ static void save_file (void)
 
 // ---- handlers ---------------------------------------------------------------
 
-static void on_open (unsigned long s, int e, long v) { (void) s; (void) e; (void) v; load_file (); }
-static void on_save (unsigned long s, int e, long v) { (void) s; (void) e; (void) v; save_file (); }
+static void on_open (unsigned long s, int e, long v)
+{
+	(void) s; (void) e; (void) v;
+	char path[100];
+	if (kapi_file_open (path, sizeof path, "SD:/"))
+	{
+		kapi_widget_set_text (g_fnbox, path);	// reflect in the filename box
+		load_file ();				// reads the box
+	}
+}
+static void on_save (unsigned long s, int e, long v)
+{
+	(void) s; (void) e; (void) v;
+	char cur[100]; get_filename (cur);		// current name = default
+	char path[100];
+	if (kapi_file_save (path, sizeof path, "SD:/", cur))
+	{
+		kapi_widget_set_text (g_fnbox, path);
+		save_file ();
+	}
+}
 
 static void on_key (unsigned long sender, int ev, long key)
 {

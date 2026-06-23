@@ -30,18 +30,28 @@ public:
 	void Attach (CWindow *pWin)	{ m_pWin = pWin; }
 	CWindow *Window (void)		{ return m_pWin; }
 
+	// File dialogs: set the start directory + (save) default filename, then read it.
+	void InitFile (const char *pStartDir, const char *pDefName);
+
 	void Draw (void);			// render into the window canvas
 	void OnClick (int cx, int cy);		// client-relative
 	void OnKey (int nCode);
 
 	boolean IsDone (void) const	{ return m_bDone; }
 	int Result (void) const		{ return m_nResult; }
+	const char *ResultPath (void) const { return m_Path; }	// file dialogs
 
 	static int Width (int nType)	{ return nType == DLG_MSGBOX ? 300 : 360; }
 	static int Height (int nType)	{ return nType == DLG_MSGBOX ? 120 : 300; }
 
 private:
 	void LayoutButtons (void);
+	void DrawMsgBox (void);
+	void DrawFile (void);
+	void ReadDir (void);
+	void EnterDir (const char *pName);
+	void Confirm (void);
+	void BuildPath (const char *pName, char *pOut, int nCap);
 
 	int	 m_nType;
 	char	 m_Title[64];
@@ -54,6 +64,17 @@ private:
 	boolean	 m_bDone;
 	int	 m_nResult;
 	CWindow	*m_pWin;
+
+	// --- file-dialog state ---
+	char	 m_Dir[256];
+	char	 m_Ent[64][48];
+	char	 m_EntDir[64];
+	int	 m_nEnt;
+	int	 m_Sel, m_Top, m_VisRows;
+	int	 m_ListTop, m_RowH;
+	char	 m_Fname[64];			// save: editable filename
+	int	 m_FnLen;
+	char	 m_Path[300];			// chosen result path
 };
 
 #endif // _kern_dialog_h

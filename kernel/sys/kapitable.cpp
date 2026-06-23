@@ -24,6 +24,8 @@ int kapi_list_windows (char *, unsigned);
 int kapi_list_tasks (char *, unsigned);
 int kapi_kill (const char *);
 int kapi_message_box (const char *, const char *, int);
+int kapi_file_open (char *, unsigned, const char *);
+int kapi_file_save (char *, unsigned, const char *, const char *);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -190,4 +192,6 @@ void KApiTableInit (void)
 	t->stream_eof        = kapi_stream_eof;
 	t->proc_done         = kapi_proc_done;
 	t->message_box       = kapi_message_box;
+	t->file_open         = kapi_file_open;
+	t->file_save         = kapi_file_save;
 }
