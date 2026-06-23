@@ -14,6 +14,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 :	m_nX (x), m_nY (y), m_nFlags (nFlags),
 	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
+	m_ulKeyHandler (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
 	for (unsigned i = 0; i < WIN_MAX_WIDGETS; i++)
@@ -988,6 +989,43 @@ void CWindowManager::SetFocusWidget (GWidget *pW, CWindow *pWin)
 	}
 }
 
+// Parse the next logical key from a Circle cooked-mode string, advancing *pp.
+// Returns 0 at end of string. Printable/control bytes return their value; VT100
+// escape sequences (cursor/home/end/page/del) map to KEY_* codes.
+static int NextKey (const char **pp)
+{
+	const char *p = *pp;
+	if (*p == '\0')
+	{
+		return 0;
+	}
+	if (p[0] == 0x1b && p[1] == '[')
+	{
+		int code = 0, adv = 0;
+		switch (p[2])
+		{
+		case 'A': code = KEY_UP;    adv = 3; break;
+		case 'B': code = KEY_DOWN;  adv = 3; break;
+		case 'C': code = KEY_RIGHT; adv = 3; break;
+		case 'D': code = KEY_LEFT;  adv = 3; break;
+		case '1': if (p[3] == '~') { code = KEY_HOME; adv = 4; } break;
+		case '3': if (p[3] == '~') { code = KEY_DEL;  adv = 4; } break;
+		case '4': if (p[3] == '~') { code = KEY_END;  adv = 4; } break;
+		case '5': if (p[3] == '~') { code = KEY_PGUP; adv = 4; } break;
+		case '6': if (p[3] == '~') { code = KEY_PGDN; adv = 4; } break;
+		}
+		if (adv != 0)
+		{
+			*pp = p + adv;
+			return code;
+		}
+		*pp = p + 2;			// unknown escape: skip ESC '[' and continue
+		return NextKey (pp);
+	}
+	*pp = p + 1;
+	return (unsigned char) p[0];
+}
+
 void CWindowManager::OnKey (const char *pString)
 {
 	if (pString == 0)
@@ -998,48 +1036,65 @@ void CWindowManager::OnKey (const char *pString)
 	m_SpinLock.Acquire ();
 
 	GWidget *pW = m_pFocusWidget;
-	CWindow *pWin = m_pFocusWindow;
+	CWindow *pFWin = m_pFocusWindow;
+	const char *p = pString;
+	int code;
+
 	if (pW != 0 && (pW->nType == GW_TEXTBOX || pW->nType == GW_TEXTAREA))
 	{
 		// Textbox edits its inline Label (single line); textarea edits its heap
-		// buffer (multi-line: Enter inserts a newline).
+		// buffer (multi-line: Enter inserts a newline). Special keys are ignored.
 		boolean bMulti = (pW->nType == GW_TEXTAREA && pW->pText != 0);
 		char    *pBuf  = bMulti ? pW->pText : pW->Label;
 		unsigned nCap  = bMulti ? GW_AREA_CAP : GW_TEXT_MAX;
 
 		boolean bChanged = FALSE;
-		for (const char *p = pString; *p != '\0'; p++)
+		while ((code = NextKey (&p)) != 0)
 		{
-			unsigned char c = (unsigned char) *p;
 			unsigned nLen = 0;
 			while (pBuf[nLen] != '\0') nLen++;
 
-			if (c == '\b' || c == 0x7F)		// backspace
+			if (code == KEY_BACKSPACE || code == 0x7F)
 			{
 				if (nLen > 0) { pBuf[nLen - 1] = '\0'; bChanged = TRUE; }
 			}
-			else if ((c == '\n' || c == '\r') && bMulti)	// newline
+			else if ((code == '\n' || code == KEY_ENTER) && bMulti)
 			{
 				if (nLen + 1 < nCap)
 				{
-					pBuf[nLen] = '\n';
-					pBuf[nLen + 1] = '\0';
-					bChanged = TRUE;
+					pBuf[nLen] = '\n'; pBuf[nLen + 1] = '\0'; bChanged = TRUE;
 				}
 			}
-			else if (c >= ' ' && c < 0x7F)		// printable
+			else if (code >= ' ' && code < 0x7F)
 			{
 				if (nLen + 1 < nCap)
 				{
-					pBuf[nLen] = (char) c;
-					pBuf[nLen + 1] = '\0';
-					bChanged = TRUE;
+					pBuf[nLen] = (char) code; pBuf[nLen + 1] = '\0'; bChanged = TRUE;
 				}
 			}
 		}
 		if (bChanged)
 		{
-			PostWidgetEvent (pWin, pW, GUI_EVENT_TEXT_CHANGED, 0);
+			PostWidgetEvent (pFWin, pW, GUI_EVENT_TEXT_CHANGED, 0);
+		}
+	}
+	else
+	{
+		// No focused editable widget: deliver keys to the topmost window's app-level
+		// key handler (e.g. the text editor, which draws + edits its own text).
+		CWindow *pTop = m_nWindows > 0 ? m_pWindows[m_nWindows - 1] : 0;
+		u64 ulKeyHandler = pTop != 0 ? pTop->KeyHandler () : 0;
+		if (pTop != 0 && ulKeyHandler != 0)
+		{
+			while ((code = NextKey (&p)) != 0)
+			{
+				GUIEvent Ev;
+				Ev.ulHandler = ulKeyHandler;
+				Ev.ulSender  = 0;
+				Ev.nEvent    = GUI_EVENT_KEY;
+				Ev.lValue    = code;
+				pTop->PushEvent (Ev);
+			}
 		}
 	}
 

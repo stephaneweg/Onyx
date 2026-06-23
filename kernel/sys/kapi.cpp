@@ -127,6 +127,36 @@ unsigned *kapi_resize_window (int w, int h)
 	return (unsigned *) USER_WINDOW_CANVAS;
 }
 
+// Draw text into the calling app's window canvas using the kernel bitmap font
+// (transparent background -- only glyph pixels are written). Apps have no font of
+// their own, so this is how an app-drawn UI (e.g. the editor) renders text.
+void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || pStr == 0)
+	{
+		return;
+	}
+	pWin->Canvas ()->DrawText (x, y, pStr, (u32) nColor);
+}
+
+int kapi_font_width  (void) { return GImage::FontWidth (); }	// glyph cell width
+int kapi_font_height (void) { return GImage::FontHeight (); }	// glyph cell height
+
+// Register an app-level key handler for THIS window (void (sender=0, GUI_EVENT_KEY,
+// keycode)). Keys reach it when the window is topmost and no textbox/textarea is
+// focused. Pass 0 to clear.
+void kapi_set_key_handler (void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0)
+	{
+		pWin->SetKeyHandler ((u64) pHandler);
+	}
+}
+
 // Launch another app by folder name (apps/<name>.app/main.elf) as a new process.
 // Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
 int kapi_launch (const char *pName)
@@ -797,6 +827,24 @@ void kapi_close (void *pHandle)
 		f_close ((FIL *) pHandle);
 		delete (FIL *) pHandle;
 	}
+}
+
+// Write a whole file (create/truncate). Returns bytes written, or -1 on error.
+int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
+{
+	if (pPath == 0)
+	{
+		return -1;
+	}
+	FIL File;
+	if (f_open (&File, pPath, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+	{
+		return -1;
+	}
+	UINT nWritten = 0;
+	FRESULT Res = f_write (&File, pBuf, nLen, &nWritten);
+	f_close (&File);
+	return (Res == FR_OK) ? (int) nWritten : -1;
 }
 
 }  // extern "C"

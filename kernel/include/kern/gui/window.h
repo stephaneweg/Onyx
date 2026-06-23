@@ -53,6 +53,22 @@
 #define GUI_EVENT_CHECK_CHANGED	2
 #define GUI_EVENT_TEXT_CHANGED	3
 #define GUI_EVENT_VALUE_CHANGED	4	// slider moved (lValue = 0..100)
+#define GUI_EVENT_KEY		5	// key pressed (lValue = char or KEY_* code)
+
+// Logical key codes delivered as GUI_EVENT_KEY lValue. Printable keys are their
+// ASCII value (32..126); these are the special keys (Circle cooked-mode escapes).
+#define KEY_BACKSPACE		8
+#define KEY_TAB			9
+#define KEY_ENTER		13
+#define KEY_UP			0x100
+#define KEY_DOWN		0x101
+#define KEY_LEFT		0x102
+#define KEY_RIGHT		0x103
+#define KEY_HOME		0x104
+#define KEY_END			0x105
+#define KEY_PGUP		0x106
+#define KEY_PGDN		0x107
+#define KEY_DEL			0x108
 
 #define GW_TEXT_MAX		48	// label / textbox content capacity
 
@@ -151,6 +167,13 @@ public:
 	void PushEvent (const GUIEvent &Event);
 	boolean PopEvent (GUIEvent *pEvent);
 
+	// --- keyboard --------------------------------------------------------
+	// An app-level key handler (callback address). When this window is topmost and
+	// no editable widget is focused, the WM posts GUI_EVENT_KEY events here. Used by
+	// app-drawn UIs that manage their own text (e.g. the editor).
+	void SetKeyHandler (u64 ulHandler)	{ m_ulKeyHandler = ulHandler; }
+	u64  KeyHandler (void) const		{ return m_ulKeyHandler; }
+
 	// --- lifecycle -------------------------------------------------------
 	void RequestExit (void)		{ m_bExitRequested = TRUE; }
 	boolean ShouldExit (void) const	{ return m_bExitRequested; }
@@ -171,6 +194,8 @@ private:
 	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)
 	u64		m_ulCanvasPhys;	// 64 KB-aligned start of the canvas (== kernel VA)
 	unsigned	m_nCanvasPages;	// 64 KB pages spanned by the canvas
+
+	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
 
 	GWidget		m_Widgets[WIN_MAX_WIDGETS];
 	unsigned	m_nWidgets;

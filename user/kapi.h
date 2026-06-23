@@ -66,6 +66,22 @@ void      kapi_exit (int status);
 #define GUI_EVENT_CLICK		1
 #define GUI_EVENT_CHECK_CHANGED	2
 #define GUI_EVENT_TEXT_CHANGED	3
+#define GUI_EVENT_VALUE_CHANGED	4
+#define GUI_EVENT_KEY		5	// key pressed; value = char or KEY_* code
+
+// Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
+#define KEY_BACKSPACE		8
+#define KEY_TAB			9
+#define KEY_ENTER		13
+#define KEY_UP			0x100
+#define KEY_DOWN		0x101
+#define KEY_LEFT		0x102
+#define KEY_RIGHT		0x103
+#define KEY_HOME		0x104
+#define KEY_END			0x105
+#define KEY_PGUP		0x106
+#define KEY_PGDN		0x107
+#define KEY_DEL			0x108
 
 // Widget event handler: sender = the widget handle returned at creation, event =
 // GUI_EVENT_*, value = payload (0 for a click). The kernel runs it in THIS app's
@@ -106,6 +122,14 @@ void      kapi_pump_events (void);	// dispatch pending events, non-blocking
 void      kapi_wait_for_exit (void);	// pump until the close box is clicked
 int       kapi_should_exit (void);	// 1 if the app was asked to close
 
+// App-drawn text + keyboard (for UIs that manage their own text, e.g. the editor).
+void      kapi_draw_text (int x, int y, const char *str, unsigned color); // into canvas
+int       kapi_font_width (void);	// kernel glyph cell width
+int       kapi_font_height (void);	// kernel glyph cell height
+// Register a key handler: void (sender=0, GUI_EVENT_KEY, keycode). Keys arrive when
+// this window is topmost and no textbox/textarea is focused.
+void      kapi_set_key_handler (gui_handler handler);
+
 // App enumeration + clock
 // List installed apps: app folder basenames under /apps, one per '\n'-separated
 // line in buf (NUL-terminated). Returns the count. (For the app-list popup.)
@@ -118,11 +142,12 @@ int       kapi_get_datetime (int *year, int *month, int *day,
 // Console
 int       kapi_write (int fd, const void *buf, unsigned len);
 
-// Files (read-only) -- the motivation for direct calls
+// Files -- the motivation for direct calls
 void     *kapi_open (const char *path);				// 0 on failure
 int       kapi_read (void *handle, void *buf, unsigned len);	// bytes read, <0 error
 unsigned  kapi_fsize (void *handle);
 void      kapi_close (void *handle);
+int       kapi_save_file (const char *path, const void *buf, unsigned len); // -> bytes, <0 err
 
 #ifdef __cplusplus
 }
