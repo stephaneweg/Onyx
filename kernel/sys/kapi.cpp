@@ -130,6 +130,18 @@ unsigned *kapi_resize_window (int w, int h)
 	return (unsigned *) USER_WINDOW_CANVAS;
 }
 
+// Move the calling app's window (outer top-left, screen coords). Used by borderless
+// windows that re-position themselves (e.g. the panel keeping itself centered).
+void kapi_move_window (int x, int y)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0)
+	{
+		pWin->Move (x, y);
+	}
+}
+
 // Draw text into the calling app's window canvas using the kernel bitmap font
 // (transparent background -- only glyph pixels are written). Apps have no font of
 // their own, so this is how an app-drawn UI (e.g. the editor) renders text.

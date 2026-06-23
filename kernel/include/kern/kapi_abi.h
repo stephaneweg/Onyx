@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	11
+#define KAPI_ABI_VERSION	12
 
 #ifdef __cplusplus
 extern "C" {
@@ -162,6 +162,11 @@ struct TKApiTable
 	int   (*exec) (const char *path, const char *args);
 	// Framebuffer dimensions (for edge-pinned/borderless windows like the panel).
 	void  (*screen_size) (int *w, int *h);
+
+	// --- v12 additions ---
+	// Move the calling app's window (outer top-left, screen coords). For borderless
+	// windows that re-position themselves, e.g. the panel keeping itself centered.
+	void  (*move_window) (int x, int y);
 };
 
 #ifdef __cplusplus

@@ -46,6 +46,7 @@
 static inline unsigned *kapi_create_window (int w, int h, const char *t) { return KT->create_window (w, h, t); }
 static inline unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *t, unsigned f) { return KT->create_window_ex (x, y, w, h, t, f); }
 static inline unsigned *kapi_resize_window (int w, int h) { return KT->resize_window (w, h); }
+static inline void kapi_move_window (int x, int y) { KT->move_window (x, y); }
 static inline int  kapi_launch (const char *n) { return KT->launch (n); }
 static inline int  kapi_toggle_app (const char *n) { return KT->toggle_app (n); }
 static inline int  kapi_raise_app (const char *n) { return KT->raise_app (n); }

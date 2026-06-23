@@ -103,13 +103,17 @@ int main (void)
 	if (sw < 320) sw = 800;
 	if (sh < 240) sh = 600;
 
+	// The bar is centered along its edge, so center the popup the same way: on the
+	// cross axis it hugs the bar's edge; on the main axis it is screen-centered.
+	int cy = (sh - H) / 2; if (cy < 4) cy = 4;	// vertical-bar: center popup vertically
+	int cx = (sw - W) / 2; if (cx < 4) cx = 4;	// horizontal-bar: center popup horizontally
 	int x0, y0;
 	switch (pos)
 	{
-	case 3:  x0 = sw - BAR - 4 - W; y0 = 48;            break;	// right bar -> left of it
-	case 2:  x0 = 4;                y0 = BAR + 4;        break;	// top bar -> below
-	case 4:  x0 = 4;                y0 = sh - BAR - 4 - H; break;	// bottom bar -> above
-	default: x0 = BAR + 4;          y0 = 48;            break;	// left bar -> right of it
+	case 3:  x0 = sw - BAR - 4 - W; y0 = cy;            break;	// right bar -> left of it
+	case 2:  x0 = cx;               y0 = BAR + 4;        break;	// top bar -> below
+	case 4:  x0 = cx;               y0 = sh - BAR - 4 - H; break;	// bottom bar -> above
+	default: x0 = BAR + 4;          y0 = cy;            break;	// left bar -> right of it
 	}
 
 	fb = kapi_create_window_ex (x0, y0, W, H, "applist", WIN_FLAG_BORDERLESS);

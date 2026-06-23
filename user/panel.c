@@ -238,19 +238,21 @@ int main (void)
 	if (g_sh < 240) g_sh = 600;
 
 	// Window geometry: a bar of thickness BAR, over-allocated to MAXLEN along its
-	// main axis, pinned to the chosen edge. It resizes down to fit its content.
-	int win_w, win_h, x0, y0;
+	// main axis, pinned to the chosen edge and CENTERED along it. cross0 is the fixed
+	// cross-axis edge origin; the main-axis origin is recomputed (centered) whenever
+	// the bar grows/shrinks, via kapi_move_window.
+	int win_w, win_h, x0, y0, cross0;
 	if (g_vert)
 	{
 		win_w = BAR; win_h = MAXLEN; g_stride = BAR;
-		x0 = (g_pos == 1) ? 2 : g_sw - BAR - 2;		// left or right
-		y0 = 4;
+		cross0 = (g_pos == 1) ? 2 : g_sw - BAR - 2;	// left or right edge
+		x0 = cross0; y0 = 2;				// y centered in the loop
 	}
 	else
 	{
 		win_w = MAXLEN; win_h = BAR; g_stride = MAXLEN;
-		x0 = 4;
-		y0 = (g_pos == 2) ? 2 : g_sh - BAR - 2;		// top or bottom
+		cross0 = (g_pos == 2) ? 2 : g_sh - BAR - 2;	// top or bottom edge
+		x0 = 2; y0 = cross0;				// x centered in the loop
 	}
 
 	fb = kapi_create_window_ex (x0, y0, win_w, win_h, "panel", WIN_FLAG_BORDERLESS);
@@ -342,6 +344,11 @@ int main (void)
 		{
 			redraw_bg (tb_count, content_len);
 			place_clock (content_len);
+			// Re-center the bar along its main axis on the chosen edge.
+			int main0 = ((g_vert ? g_sh : g_sw) - content_len) / 2;
+			if (main0 < 2) main0 = 2;
+			if (g_vert) kapi_move_window (cross0, main0);
+			else        kapi_move_window (main0, cross0);
 			g_last_tb_count = tb_count;
 		}
 
