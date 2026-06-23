@@ -14,7 +14,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 :	m_nX (x), m_nY (y), m_nFlags (nFlags),
 	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
-	m_ulKeyHandler (0),
+	m_ulKeyHandler (0), m_ulClickHandler (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
 	for (unsigned i = 0; i < WIN_MAX_WIDGETS; i++)
@@ -924,6 +924,17 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 					{
 						ValueFromCursor (pWin, pW, x, y);  // jump to click
 					}
+				}
+				else if (pW == 0 && pWin->ClickHandler () != 0)
+				{
+					// No widget under the cursor: deliver a canvas click (client
+					// coords) to the app for app-drawn mouse UIs (e.g. SameGame).
+					GUIEvent Ev;
+					Ev.ulHandler = pWin->ClickHandler ();
+					Ev.ulSender  = 0;
+					Ev.nEvent    = GUI_EVENT_CANVAS_CLICK;
+					Ev.lValue    = ((long) cx << 16) | (cy & 0xFFFF);
+					pWin->PushEvent (Ev);
 				}
 			}
 		}

@@ -157,6 +157,18 @@ void kapi_set_key_handler (void *pHandler)
 	}
 }
 
+// Register a canvas-click handler for THIS window: void (sender=0,
+// GUI_EVENT_CANVAS_CLICK, (clientX<<16)|clientY) when a press hits no widget.
+void kapi_set_click_handler (void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0)
+	{
+		pWin->SetClickHandler ((u64) pHandler);
+	}
+}
+
 // Launch another app by folder name (apps/<name>.app/main.elf) as a new process.
 // Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
 int kapi_launch (const char *pName)

@@ -54,6 +54,8 @@
 #define GUI_EVENT_TEXT_CHANGED	3
 #define GUI_EVENT_VALUE_CHANGED	4	// slider moved (lValue = 0..100)
 #define GUI_EVENT_KEY		5	// key pressed (lValue = char or KEY_* code)
+#define GUI_EVENT_CANVAS_CLICK	6	// click in the client area, no widget hit
+					// (lValue = (clientX << 16) | clientY)
 
 // Logical key codes delivered as GUI_EVENT_KEY lValue. Printable keys are their
 // ASCII value (32..126); these are the special keys (Circle cooked-mode escapes).
@@ -174,6 +176,11 @@ public:
 	void SetKeyHandler (u64 ulHandler)	{ m_ulKeyHandler = ulHandler; }
 	u64  KeyHandler (void) const		{ return m_ulKeyHandler; }
 
+	// App-level click handler: GUI_EVENT_CANVAS_CLICK with client coords when a
+	// press lands in the client area on no widget (for app-drawn mouse UIs).
+	void SetClickHandler (u64 ulHandler)	{ m_ulClickHandler = ulHandler; }
+	u64  ClickHandler (void) const		{ return m_ulClickHandler; }
+
 	// --- lifecycle -------------------------------------------------------
 	void RequestExit (void)		{ m_bExitRequested = TRUE; }
 	boolean ShouldExit (void) const	{ return m_bExitRequested; }
@@ -196,6 +203,7 @@ private:
 	unsigned	m_nCanvasPages;	// 64 KB pages spanned by the canvas
 
 	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
+	u64		m_ulClickHandler; // app canvas-click callback, or 0
 
 	GWidget		m_Widgets[WIN_MAX_WIDGETS];
 	unsigned	m_nWidgets;

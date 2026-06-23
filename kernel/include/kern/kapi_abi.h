@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	1
+#define KAPI_ABI_VERSION	2
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,6 +94,11 @@ struct TKApiTable
 	// --- v1 additions (append below; bump KAPI_ABI_VERSION) ---
 	// The calling app's folder: "SD:apps/<name>.app/" into buf. Returns length.
 	int (*app_dir) (char *buf, unsigned size);
+
+	// --- v2 additions ---
+	// Canvas-click handler: GUI_EVENT_CANVAS_CLICK with (clientX<<16)|clientY when a
+	// press lands in the client area on no widget. For app-drawn mouse UIs.
+	void (*set_click_handler) (gui_handler);
 };
 
 #ifdef __cplusplus

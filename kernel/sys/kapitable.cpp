@@ -68,6 +68,7 @@ void kapi_close (void *);
 int kapi_save_file (const char *, const void *, unsigned);
 
 int kapi_app_dir (char *, unsigned);
+void kapi_set_click_handler (gui_handler);
 
 }  // extern "C"
 
@@ -138,4 +139,5 @@ void KApiTableInit (void)
 	t->save_file         = kapi_save_file;
 
 	t->app_dir           = kapi_app_dir;
+	t->set_click_handler = kapi_set_click_handler;
 }

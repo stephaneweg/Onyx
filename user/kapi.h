@@ -24,6 +24,7 @@
 #define GUI_EVENT_TEXT_CHANGED	3
 #define GUI_EVENT_VALUE_CHANGED	4
 #define GUI_EVENT_KEY		5	// key pressed; value = char or KEY_* code
+#define GUI_EVENT_CANVAS_CLICK	6	// client-area click; value = (clientX<<16)|clientY
 
 // Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 #define KEY_BACKSPACE		8
@@ -85,6 +86,7 @@ static inline void kapi_draw_text (int x, int y, const char *s, unsigned c) { KT
 static inline int  kapi_font_width (void) { return KT->font_width (); }
 static inline int  kapi_font_height (void) { return KT->font_height (); }
 static inline void kapi_set_key_handler (gui_handler fn) { KT->set_key_handler (fn); }
+static inline void kapi_set_click_handler (gui_handler fn) { KT->set_click_handler (fn); }
 
 // --- enumeration + clock -----------------------------------------------------
 static inline int  kapi_list_apps (char *b, unsigned s) { return KT->list_apps (b, s); }
