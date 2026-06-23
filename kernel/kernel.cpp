@@ -14,6 +14,7 @@
 #include <kern/layout.h>
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
+#include <kern/gui/skin.h>
 
 static const char FromKernel[] = "kernel";
 
@@ -297,6 +298,32 @@ static u8 *LoadFileFromSD (const char *pPath, unsigned *pSize)
 	return pBuffer;
 }
 
+// Load a 9-slice skin BMP from the SD card. The BMP is decoded into the skin's
+// own buffer, so the file buffer is freed here. Returns 0 if unavailable (the
+// GUI then falls back to flat drawing).
+static CSkin *LoadSkin (const char *pPath, unsigned nCount,
+			int nLeft, int nRight, int nTop, int nBottom)
+{
+	unsigned nSize = 0;
+	u8 *pData = LoadFileFromSD (pPath, &nSize);
+	if (pData == 0)
+	{
+		return 0;
+	}
+
+	CSkin *pSkin = new CSkin;
+	boolean bOK = pSkin != 0
+		   && pSkin->LoadFromBuffer (pData, nSize, nCount, nLeft, nRight, nTop, nBottom);
+	delete [] pData;
+
+	if (!bOK)
+	{
+		delete pSkin;
+		return 0;
+	}
+	return pSkin;
+}
+
 CKernel::~CKernel (void)
 {
 }
@@ -377,6 +404,14 @@ boolean CKernel::Initialize (void)
 		{
 			m_bSDMounted = TRUE;
 			m_Logger.Write (FromKernel, LogNotice, "SD card mounted (SD:)");
+
+			// Load the widget skins (9-slice BMPs). Margins match SimpleOS's
+			// gui.bas. Missing skins -> flat fallback drawing.
+			g_pButtonSkin = LoadSkin ("SD:skins/button.bmp",   3, 6, 6, 6, 6);
+			g_pCloseSkin  = LoadSkin ("SD:skins/closebgs.bmp", 3, 5, 5, 5, 5);
+			g_pWindowSkin = LoadSkin ("SD:skins/window.bmp",   1, 45, 45, 45, 45);
+			m_Logger.Write (FromKernel, LogNotice, "skins: button=%d close=%d window=%d",
+					g_pButtonSkin != 0, g_pCloseSkin != 0, g_pWindowSkin != 0);
 		}
 		else
 		{

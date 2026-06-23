@@ -55,6 +55,15 @@ public:
 	// Blit a raw source buffer (opaque), clipped.
 	void PutOtherRaw (const u32 *pSrc, int nSrcW, int nSrcH, int x, int y);
 
+	// Blit a sub-rectangle [srcX,srcY,w,h] of pSrc to (dstX,dstY). Used by the
+	// 9-slice skin engine. Clipped to both images; transparent skips magenta.
+	void PutOtherPart (const GImage *pSrc, int dstX, int dstY,
+			   int srcX, int srcY, int w, int h, boolean bTransparent);
+
+	// Decode an uncompressed 24-bit BMP from memory into this image (owned buffer).
+	// Returns FALSE if the data is not a 24-bpp uncompressed BMP.
+	boolean LoadBMP (const u8 *pData, unsigned nSize);
+
 private:
 	void CreateBuffer (void);
 

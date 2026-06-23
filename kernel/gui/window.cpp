@@ -2,6 +2,7 @@
 // window.cpp
 //
 #include <kern/gui/window.h>
+#include <kern/gui/skin.h>		// 9-slice widget skins (button/close/window)
 #include <kern/layout.h>		// KPAGE_SIZE / KPAGE_MASK
 #include <circle/util.h>		// memset
 #include <circle/new.h>
@@ -83,11 +84,20 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	pScreen->DrawText (x0 + 6, y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
 			   m_Title, 0x00FFFFFF);
 
-	// Close box [x] at the right of the title bar.
+	// Close box [x] at the right of the title bar (skinned if available).
 	int cbx0, cby0, cbx1, cby1;
 	CloseBoxRect (&cbx0, &cby0, &cbx1, &cby1);
-	pScreen->FillRectangle (cbx0, cby0, cbx1, cby1, 0x00C03020);
-	pScreen->DrawRectangle (cbx0, cby0, cbx1, cby1, 0x00000000);
+	if (g_pCloseSkin != 0)
+	{
+		g_pCloseSkin->DrawOn (pScreen, 0, cbx0, cby0,
+				      cbx1 - cbx0 + 1, cby1 - cby0 + 1, TRUE);
+	}
+	else
+	{
+		pScreen->FillRectangle (cbx0, cby0, cbx1, cby1, 0x00C03020);
+		pScreen->DrawRectangle (cbx0, cby0, cbx1, cby1, 0x00000000);
+	}
+	// X glyph on top so the close box is always recognizable.
 	pScreen->DrawLine (cbx0 + 3, cby0 + 3, cbx1 - 3, cby1 - 3, 0x00FFFFFF);
 	pScreen->DrawLine (cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
 
@@ -110,11 +120,23 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 		int by1 = by0 + pW->nH - 1;
 		if (pW->nType == GW_BUTTON)
 		{
-			pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00606878);
-			pScreen->DrawRectangle (bx0, by0, bx1, by1, 0x00000000);
+			u32 nTextColor;
+			if (g_pButtonSkin != 0)
+			{
+				// nState selects the skin row: 0 normal / 1 hover / 2 pressed.
+				g_pButtonSkin->DrawOn (pScreen, (unsigned) pW->nState,
+						       bx0, by0, pW->nW, pW->nH, TRUE);
+				nTextColor = 0x00000000;	// skin bg is light
+			}
+			else
+			{
+				pScreen->FillRectangle (bx0, by0, bx1, by1, 0x00606878);
+				pScreen->DrawRectangle (bx0, by0, bx1, by1, 0x00000000);
+				nTextColor = 0x00FFFFFF;
+			}
 			int tx = bx0 + (pW->nW - GImage::TextWidth (pW->Label)) / 2;
 			int ty = by0 + (pW->nH - GImage::FontHeight ()) / 2;
-			pScreen->DrawText (tx, ty, pW->Label, 0x00FFFFFF);
+			pScreen->DrawText (tx, ty, pW->Label, nTextColor);
 		}
 	}
 

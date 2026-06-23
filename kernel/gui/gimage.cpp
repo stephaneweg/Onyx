@@ -257,6 +257,115 @@ void GImage::PutOther (const GImage *pSrc, int x, int y, boolean bTransparent)
 	}
 }
 
+void GImage::PutOtherPart (const GImage *pSrc, int dstX, int dstY,
+			   int srcX, int srcY, int w, int h, boolean bTransparent)
+{
+	if (m_pBuffer == 0 || pSrc == 0 || !pSrc->IsValid () || w <= 0 || h <= 0)
+	{
+		return;
+	}
+
+	int nSrcW = pSrc->Width ();
+	int nSrcH = pSrc->Height ();
+
+	// Clip the source rectangle to the source image.
+	if (srcX < 0) { w += srcX; dstX -= srcX; srcX = 0; }
+	if (srcY < 0) { h += srcY; dstY -= srcY; srcY = 0; }
+	if (srcX + w > nSrcW) w = nSrcW - srcX;
+	if (srcY + h > nSrcH) h = nSrcH - srcY;
+	if (w <= 0 || h <= 0) return;
+
+	// Clip the destination rectangle to this image.
+	if (dstX < 0) { w += dstX; srcX -= dstX; dstX = 0; }
+	if (dstY < 0) { h += dstY; srcY -= dstY; dstY = 0; }
+	if (dstX + w > m_nWidth)  w = m_nWidth - dstX;
+	if (dstY + h > m_nHeight) h = m_nHeight - dstY;
+	if (w <= 0 || h <= 0) return;
+
+	const u32 *pSrcBuf = pSrc->Buffer ();
+	for (int row = 0; row < h; row++)
+	{
+		const u32 *pS = pSrcBuf + (srcY + row) * nSrcW + srcX;
+		u32 *pD = m_pBuffer + (dstY + row) * m_nWidth + dstX;
+		if (bTransparent)
+		{
+			for (int col = 0; col < w; col++)
+			{
+				u32 c = pS[col];
+				if ((c & 0xFFFFFF) != GIMAGE_TRANSPARENT)
+				{
+					pD[col] = c;
+				}
+			}
+		}
+		else
+		{
+			for (int col = 0; col < w; col++)
+			{
+				pD[col] = pS[col];
+			}
+		}
+	}
+}
+
+boolean GImage::LoadBMP (const u8 *pData, unsigned nSize)
+{
+	if (pData == 0 || nSize < 54 || pData[0] != 'B' || pData[1] != 'M')
+	{
+		return FALSE;
+	}
+
+	u32 nOffset = (u32) pData[10] | ((u32) pData[11] << 8)
+		    | ((u32) pData[12] << 16) | ((u32) pData[13] << 24);
+	int nW = (int) ((u32) pData[18] | ((u32) pData[19] << 8)
+		      | ((u32) pData[20] << 16) | ((u32) pData[21] << 24));
+	int nH = (int) ((u32) pData[22] | ((u32) pData[23] << 8)
+		      | ((u32) pData[24] << 16) | ((u32) pData[25] << 24));
+	unsigned nBpp  = (unsigned) pData[28] | ((unsigned) pData[29] << 8);
+	u32      nComp = (u32) pData[30] | ((u32) pData[31] << 8)
+		       | ((u32) pData[32] << 16) | ((u32) pData[33] << 24);
+
+	if (nBpp != 24 || nComp != 0)
+	{
+		return FALSE;			// only uncompressed 24-bpp supported
+	}
+
+	boolean bBottomUp = TRUE;
+	if (nH < 0) { nH = -nH; bBottomUp = FALSE; }	// top-down if height is negative
+	if (nW <= 0 || nH <= 0)
+	{
+		return FALSE;
+	}
+
+	SetSize (nW, nH);			// allocate an owned buffer
+	if (!IsValid ())
+	{
+		return FALSE;
+	}
+
+	int nRowBytes = (nW * 3 + 3) & ~3;	// rows padded to 4 bytes
+	for (int y = 0; y < nH; y++)
+	{
+		int nSrcRow = bBottomUp ? (nH - 1 - y) : y;
+		unsigned nRowOff = nOffset + (unsigned) nSrcRow * nRowBytes;
+		if (nRowOff + (unsigned) (nW * 3) > nSize)
+		{
+			break;			// truncated file
+		}
+		const u8 *p = pData + nRowOff;
+		u32 *d = m_pBuffer + (unsigned) y * nW;
+		for (int x = 0; x < nW; x++)
+		{
+			u8 b = p[x * 3 + 0];
+			u8 g = p[x * 3 + 1];
+			u8 r = p[x * 3 + 2];
+			d[x] = ((u32) r << 16) | ((u32) g << 8) | (u32) b;
+		}
+	}
+
+	return TRUE;
+}
+
 // ---- text ------------------------------------------------------------------
 
 int GImage::FontWidth (void)	{ return (int) s_CharGen.GetCharWidth (); }
