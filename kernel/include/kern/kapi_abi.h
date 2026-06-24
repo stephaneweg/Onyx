@@ -21,7 +21,7 @@
 // table consolidated (no gaps), so old app binaries must be rebuilt. (Retro-compat was
 // explicitly waived; every app is rebuilt from this tree.)
 // v30: + random() -- hardware RNG (Pi RNG) for cryptographic seeding (TLS entropy).
-#define KAPI_ABI_VERSION	30
+#define KAPI_ABI_VERSION	31
 
 #ifdef __cplusplus
 extern "C" {
@@ -150,15 +150,8 @@ struct TKApiTable
 	int   (*list_tasks) (char *buf, unsigned size);	// "<state><kind> <name>" per line
 	int   (*kill) (const char *name);		// kill an app by name (not kernel/self)
 
-	// --- v9 additions ---
-	// Modal message box (sync): blocks until answered. buttons = MB_OK/MB_OKCANCEL/
-	// MB_YESNO. Returns 1 (OK/Yes) or 0 (Cancel/No).
-	int   (*message_box) (const char *title, const char *text, int buttons);
-
-	// --- v10 additions (modal file dialogs, sync) ---
-	// Returns 1 + fills out[] with the chosen path, or 0 if cancelled.
-	int   (*file_open) (char *out, unsigned cap, const char *start_dir);
-	int   (*file_save) (char *out, unsigned cap, const char *start_dir, const char *def_name);
+	// (v9/v10 message_box + file_open/file_save were removed: kernel modal dialogs are
+	// gone -- apps use the user-side uidialog.hpp (ui::MessageBox / ui::FileDialog).)
 
 	// --- v11 additions ---
 	// Run an ELF at an absolute SD path with an argv string (fire-and-forget: no

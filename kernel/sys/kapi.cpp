@@ -16,7 +16,6 @@
 #include <kern/kapi_abi.h>		// struct kapi_dirent
 #include <kern/layout.h>
 #include <kern/gui/window.h>
-#include <kern/dialog.h>		// CDialog (modal dialogs)
 #include <kern/net.h>		// NetTcpConnect/Send/Recv/Close/Status (socket backend)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
@@ -29,7 +28,9 @@
 #include <circle/util.h>
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
-#include <circle/bcmrandom.h>		// CBcmRandomNumberGenerator (kapi_random)
+#include <circle/bcm2835.h>		// ARM_HW_RNG_BASE (RNG200 base on the Pi 4) -- kapi_random
+#include <circle/memio.h>		// read32 / write32
+#include <circle/synchronize.h>		// PeripheralEntry / PeripheralExit
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -937,19 +938,64 @@ int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 	return KernelSetKeyMapData (pName, p + 8, nTable) ? 1 : 0;
 }
 
-// Fill pBuf[nLen] with random bytes from the Pi's hardware RNG (lazily constructed on
-// first use). For cryptographic seeding -- the TLS entropy source (onyx_tls.hpp) feeds
-// mbedTLS's CTR_DRBG from here. Returns the number of bytes written (== nLen).
+// RNG200 (BCM2711 / Pi 4) registers, relative to ARM_HW_RNG_BASE (0xFE104000).
+// IMPORTANT: Circle's CBcmRandomNumberGenerator is the LEGACY BCM2835 driver and HANGS
+// on the Pi 4 -- it spins on a "words available" status at +0x04, but on the RNG200
+// +0x04 is the soft-reset register (never sets), so the loop never ends and, with
+// cooperative scheduling, freezes the whole machine. We drive the RNG200 directly and,
+// crucially, BOUND every poll so kapi_random can never spin forever.
+#define RNG200_CTRL		(ARM_HW_RNG_BASE + 0x00)	// bit0 = RBGEN (enable)
+#define RNG200_SOFT_RESET	(ARM_HW_RNG_BASE + 0x04)
+#define RNG200_RBG_SOFT_RESET	(ARM_HW_RNG_BASE + 0x08)
+#define RNG200_INT_STATUS	(ARM_HW_RNG_BASE + 0x18)	// bit17 = startup transitions met
+#define RNG200_FIFO_DATA	(ARM_HW_RNG_BASE + 0x20)
+#define RNG200_FIFO_COUNT	(ARM_HW_RNG_BASE + 0x24)	// bits[7:0] = words available
+
+static void Rng200Init (void)
+{
+	PeripheralEntry ();
+	write32 (RNG200_CTRL, 0);			// disable while resetting
+	write32 (RNG200_INT_STATUS, 0xFFFFFFFF);	// clear status
+	write32 (RNG200_RBG_SOFT_RESET, 1);
+	for (volatile unsigned d = 0; d < 1000; d++) { }
+	write32 (RNG200_RBG_SOFT_RESET, 0);
+	write32 (RNG200_SOFT_RESET, 1);
+	for (volatile unsigned d = 0; d < 1000; d++) { }
+	write32 (RNG200_SOFT_RESET, 0);
+	for (unsigned i = 0; i < 100000; i++)		// bounded wait for warm-up
+		if (read32 (RNG200_INT_STATUS) & 0x00020000) break;
+	write32 (RNG200_CTRL, 1);			// RBGEN: enable
+	PeripheralExit ();
+}
+
+// Fill pBuf[nLen] with random bytes from the Pi 4 hardware RNG (RNG200). The FIFO poll
+// is BOUNDED: if the HW does not produce in time we fall back to a timer-mixed value
+// rather than spin (a spin would freeze the cooperative scheduler). For TLS seeding
+// (onyx_tls.hpp feeds mbedTLS's CTR_DRBG from here). Returns the bytes written (nLen).
 int kapi_random (void *pBuf, unsigned nLen)
 {
 	if (pBuf == 0) return 0;
-	static CBcmRandomNumberGenerator *s_pRng = 0;
-	if (s_pRng == 0) s_pRng = new CBcmRandomNumberGenerator;
+	static boolean s_bInit = FALSE;
+	if (!s_bInit) { Rng200Init (); s_bInit = TRUE; }
+
+	static u32 s_soft = 0;				// software fallback state
 	unsigned char *p = (unsigned char *) pBuf;
 	unsigned i = 0;
 	while (i < nLen)
 	{
-		u32 r = s_pRng->GetNumber ();
+		u32 r = 0;
+		boolean bHave = FALSE;
+		PeripheralEntry ();
+		for (unsigned spins = 0; spins < 100000; spins++)
+			if ((read32 (RNG200_FIFO_COUNT) & 0xFF) != 0) { bHave = TRUE; break; }
+		if (bHave) r = read32 (RNG200_FIFO_DATA);
+		PeripheralExit ();
+		if (!bHave)				// HW stalled -> never hang; mix the timer
+		{
+			s_soft ^= CTimer::Get ()->GetClockTicks ();
+			s_soft = s_soft * 1664525u + 1013904223u;
+			r = s_soft ^ (s_soft >> 13);
+		}
 		for (int b = 0; b < 4 && i < nLen; b++, i++)
 			p[i] = (unsigned char) (r >> (b * 8));
 	}
@@ -1385,125 +1431,6 @@ void kapi_cursor_pos (int *pX, int *pY)
 }
 
 // --- modal dialogs -----------------------------------------------------------
-
-// Show a modal message box centered on the calling app's window and block (yield)
-// until a button is clicked or Enter/Esc is pressed. Returns 1 (OK/Yes) or 0
-// (Cancel/No). The dialog is a kernel-drawn window the WM keeps above the (blocked)
-// owner; other apps stay usable.
-int kapi_message_box (const char *pTitle, const char *pText, int nButtons)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0)
-	{
-		return 0;
-	}
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pOwner = pAS != 0 ? pAS->GetWindow () : 0;
-
-	int w = CDialog::Width (DLG_MSGBOX), h = CDialog::Height (DLG_MSGBOX);
-	int x, y;
-	if (pOwner != 0)
-	{
-		x = pOwner->X () + (pOwner->ClientWidth () - w) / 2;
-		y = pOwner->Y () + (pOwner->ClientHeight () - h) / 2;
-	}
-	else { x = (g_nScreenWidth - w) / 2; y = (g_nScreenHeight - h) / 2; }
-	if (x < 0) x = 0;
-	if (y < 0) y = 0;
-	if (x + w > g_nScreenWidth)  x = g_nScreenWidth - w;
-	if (y + h > g_nScreenHeight) y = g_nScreenHeight - h;
-
-	CWindow *pDlgWin = new CWindow (x, y, w, h, "", WIN_FLAG_BORDERLESS);
-	if (pDlgWin == 0 || !pDlgWin->IsValid ()) { delete pDlgWin; return 0; }
-	CDialog *pDlg = new CDialog (DLG_MSGBOX, pTitle, pText, nButtons);
-	if (pDlg == 0) { delete pDlgWin; return 0; }
-	pDlg->Attach (pDlgWin);
-	pDlgWin->SetDialog (pDlg);
-	pDlg->Draw ();
-
-	if (pOwner != 0) pOwner->SetModalChild (pDlgWin);
-	pWM->Add (pDlgWin);
-	pWM->Raise (pDlgWin);
-
-	while (!pDlg->IsDone ())		// block: input task drives the dialog
-	{
-		if (!CScheduler::IsActive ()) break;
-		CScheduler::Get ()->MsSleep (10);
-	}
-
-	int nResult = pDlg->Result ();
-	if (pOwner != 0) pOwner->SetModalChild (0);
-	pWM->Remove (pDlgWin);			// off the compositor list (under its lock)
-	delete pDlgWin;				// frees the canvas (no yield since Remove)
-	delete pDlg;
-	return nResult;
-}
-
-// Shared driver for the file open/save dialogs (sync, app-modal).
-static int RunFileDialog (int nType, const char *pTitle, char *pOut, unsigned nCap,
-			  const char *pStartDir, const char *pDefName)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0) return 0;
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pOwner = pAS != 0 ? pAS->GetWindow () : 0;
-
-	int w = CDialog::Width (nType), h = CDialog::Height (nType);
-	int x, y;
-	if (pOwner != 0)
-	{
-		x = pOwner->X () + (pOwner->ClientWidth () - w) / 2;
-		y = pOwner->Y () + (pOwner->ClientHeight () - h) / 2;
-	}
-	else { x = (g_nScreenWidth - w) / 2; y = (g_nScreenHeight - h) / 2; }
-	if (x < 0) x = 0;
-	if (y < 0) y = 0;
-	if (x + w > g_nScreenWidth)  x = g_nScreenWidth - w;
-	if (y + h > g_nScreenHeight) y = g_nScreenHeight - h;
-
-	CWindow *pDlgWin = new CWindow (x, y, w, h, "", WIN_FLAG_BORDERLESS);
-	if (pDlgWin == 0 || !pDlgWin->IsValid ()) { delete pDlgWin; return 0; }
-	CDialog *pDlg = new CDialog (nType, pTitle, "", 0);
-	if (pDlg == 0) { delete pDlgWin; return 0; }
-	pDlg->Attach (pDlgWin);
-	pDlgWin->SetDialog (pDlg);
-	pDlg->InitFile (pStartDir, pDefName);
-	pDlg->Draw ();
-
-	if (pOwner != 0) pOwner->SetModalChild (pDlgWin);
-	pWM->Add (pDlgWin);
-	pWM->Raise (pDlgWin);
-
-	while (!pDlg->IsDone ())
-	{
-		if (!CScheduler::IsActive ()) break;
-		CScheduler::Get ()->MsSleep (10);
-	}
-
-	int nResult = pDlg->Result ();
-	if (nResult && pOut != 0 && nCap > 0)
-	{
-		const char *pp = pDlg->ResultPath ();
-		unsigned i = 0;
-		for (; pp[i] != '\0' && i < nCap - 1; i++) pOut[i] = pp[i];
-		pOut[i] = '\0';
-	}
-	if (pOwner != 0) pOwner->SetModalChild (0);
-	pWM->Remove (pDlgWin);
-	delete pDlgWin;
-	delete pDlg;
-	return nResult;
-}
-
-int kapi_file_open (char *pOut, unsigned nCap, const char *pStartDir)
-{
-	return RunFileDialog (DLG_FOPEN, "Open file", pOut, nCap, pStartDir, 0);
-}
-
-int kapi_file_save (char *pOut, unsigned nCap, const char *pStartDir, const char *pDefName)
-{
-	return RunFileDialog (DLG_FSAVE, "Save file", pOut, nCap, pStartDir, pDefName);
-}
 
 // Write a whole file (create/truncate). Returns bytes written, or -1 on error.
 int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)

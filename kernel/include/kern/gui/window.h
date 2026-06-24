@@ -14,8 +14,6 @@
 #include <circle/spinlock.h>
 #include <circle/types.h>
 
-class CDialog;
-
 // Screen dimensions (the framebuffer we request). Shared by the kernel + kapi.
 // Default framebuffer size; overridable at boot via cmdline.txt (width=/height=).
 // The actual size in use is published in g_nScreenWidth / g_nScreenHeight below.
@@ -48,31 +46,14 @@ extern u32 g_WinTitleTextColor;
 #define WIN_SKIN_TINT_INACTIVE	0x008090A0
 
 #define WM_MAX_WINDOWS		16
-#define WIN_MAX_WIDGETS		40	// calculator needs a full scientific button grid
 #define WIN_EVENT_QUEUE		32
 
 // Window creation flags (kept numerically identical to user/kapi.h).
 #define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
 
-// Widget kinds.
-#define GW_BUTTON		1	// fires CLICK on release-inside
-#define GW_LABEL		2	// static text
-#define GW_CHECKBOX		3	// box + label, toggles on click
-#define GW_TEXTBOX		4	// editable single-line text (keyboard focus)
-#define GW_PROGRESS		5	// progress bar (nState = 0..100, display only)
-#define GW_SLIDER		6	// horizontal slider (nState = 0..100, draggable)
-#define GW_TEXTAREA		7	// editable multi-line text (focus; nState = top line)
-#define GW_SCROLLV		8	// vertical scrollbar   (nState = 0..100, draggable)
-#define GW_SCROLLH		9	// horizontal scrollbar (nState = 0..100, draggable)
-#define GW_ICON			10	// clickable image (pIcon) + optional label; fires CLICK
-					// (nState != 0 => draw an "open/running" triangle badge)
-
 // Event kinds delivered to an app's pump. Kept numerically identical to the
-// values in user/kapi.h so the app and the kernel agree.
-#define GUI_EVENT_CLICK		1
-#define GUI_EVENT_CHECK_CHANGED	2
-#define GUI_EVENT_TEXT_CHANGED	3
-#define GUI_EVENT_VALUE_CHANGED	4	// slider moved (lValue = 0..100)
+// values in user/kapi.h so the app and the kernel agree. (The kernel-drawn widget
+// events 1..4 are gone -- apps build their UI with the user-side uikit toolkit.)
 #define GUI_EVENT_KEY		5	// key pressed (lValue = char or KEY_* code)
 #define GUI_EVENT_CANVAS_CLICK	6	// press in the client area, no widget hit
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area
@@ -102,37 +83,13 @@ extern u32 g_WinTitleTextColor;
 #define KEY_PGDN		0x107
 #define KEY_DEL			0x108
 
-#define GW_TEXT_MAX		48	// label / textbox content capacity
-
-// A kernel-owned widget belonging to a CWindow. The compositor draws it (over
-// the app's canvas) and the window manager hit-tests it. The handler is an app
-// callback ADDRESS (opaque to the kernel): void (*)(unsigned long sender,
-// int event, long value). The kernel never calls it -- it enqueues an event to
-// the owning app, whose pump dispatches it in the app's own context.
-#define GW_AREA_CAP		512	// textarea content capacity (heap-allocated)
-
-struct GWidget
-{
-	int	 nType;
-	int	 nX, nY, nW, nH;	// relative to the client (canvas) origin
-	char	 Label[GW_TEXT_MAX];	// button/checkbox label, or textbox content
-	char	*pText;			// textarea content (heap, GW_AREA_CAP); else 0
-	void	*pIcon;			// GW_ICON: heap GImage* (owns its pixels); else 0
-	u64	 ulHandler;		// app callback address
-	int	 nState;		// checkbox: 0/1; slider/progress/scrollbar: 0..100
-	boolean	 bMouseOver;		// cursor is over this widget (hover)
-	boolean	 bMousePressed;		// left button held down on this widget
-	boolean	 bFocused;		// has keyboard focus (textbox / textarea)
-	boolean	 bUsed;
-};
-
-// An event queued for the owning app's pump.
+// An event queued for the owning app's pump (key, canvas-click/motion, pointer stream).
 struct GUIEvent
 {
-	u64	ulHandler;		// callback to invoke (app address)
-	u64	ulSender;		// widget handle the app received (a GWidget *)
+	u64	ulHandler;		// app callback address to invoke
+	u64	ulSender;		// 0 (kernel widgets are gone)
 	int	nEvent;			// GUI_EVENT_*
-	long	lValue;			// event payload (0 for a click)
+	long	lValue;			// event payload
 };
 
 class CWindow
@@ -196,17 +153,8 @@ public:
 	void Move (int x, int y)	{ m_nX = x; m_nY = y; }
 	const char *Title (void) const	{ return m_Title; }
 
-	// Blit frame + title bar + close box + canvas + widgets onto the screen image.
+	// Blit the (app-drawn) chrome + client canvas onto the screen image.
 	void DrawTo (GImage *pScreen, boolean bActive);
-
-	// --- widgets ---------------------------------------------------------
-	// Add a widget (coords relative to the client area). Returns the widget
-	// (the app uses the pointer as an opaque handle / event sender), or 0 if full.
-	GWidget *AddWidget (int nType, int x, int y, int w, int h,
-			    const char *pLabel, u64 ulHandler);
-
-	// Hit-test widgets at client-relative (cx,cy). Returns the widget or 0.
-	GWidget *HitWidget (int cx, int cy);
 
 	// --- event queue (WM pushes, app pump pops) --------------------------
 	void PushEvent (const GUIEvent &Event);
@@ -228,15 +176,6 @@ public:
 	// Opt-in: when set, the WM streams enter/leave/move/down/up (client coords) here.
 	void SetPointerHandler (u64 ulHandler)	{ m_ulPointerHandler = ulHandler; }
 	u64  PointerHandler (void) const	{ return m_ulPointerHandler; }
-
-	// --- modal dialogs ---------------------------------------------------
-	// A kernel-drawn dialog occupies its own window (m_pDialog set); the WM routes
-	// input to it directly. An app window with an open dialog points to it via
-	// m_pModalChild, so the WM keeps the dialog glued above the (blocked) owner.
-	void SetDialog (CDialog *p)	{ m_pDialog = p; }
-	CDialog *Dialog (void)		{ return m_pDialog; }
-	void SetModalChild (CWindow *p)	{ m_pModalChild = p; }
-	CWindow *ModalChild (void)	{ return m_pModalChild; }
 
 	// --- lifecycle -------------------------------------------------------
 	void RequestExit (void)		{ m_bExitRequested = TRUE; }
@@ -268,11 +207,6 @@ private:
 	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
 	u64		m_ulClickHandler; // app canvas-click callback, or 0
 	u64		m_ulPointerHandler; // app pointer-stream callback (GUI_EVENT_PTR_*), or 0
-	CDialog	       *m_pDialog;	// this window IS a kernel dialog (else 0)
-	CWindow	       *m_pModalChild;	// this (owner) window has an open dialog (else 0)
-
-	GWidget		m_Widgets[WIN_MAX_WIDGETS];
-	unsigned	m_nWidgets;
 
 	// Event ring: the WM (input thread) pushes, the owning app's pump pops.
 	GUIEvent	m_Events[WIN_EVENT_QUEUE];
@@ -340,13 +274,6 @@ private:
 	// hit landed on its title bar. Caller must hold m_SpinLock. Returns ~0u if none.
 	unsigned HitTest (int x, int y, boolean *pbOnTitleBar);
 
-	// Widget under the cursor in the topmost window (client area only). Returns the
-	// widget and, via ppWindow, its window; 0 if none. Caller holds m_SpinLock.
-	GWidget *WidgetUnderCursor (int x, int y, CWindow **ppWindow);
-
-	// Move keyboard focus to pW (a textbox) in pWin, or clear it. Caller holds lock.
-	void SetFocusWidget (GWidget *pW, CWindow *pWindow);
-
 	// Move a window to the top of the z-order. Caller holds m_SpinLock.
 	void RaiseLocked (CWindow *pWindow);
 
@@ -377,13 +304,6 @@ private:
 	CWindow	  *m_pDragWindow;	// window being dragged by its title bar, or 0
 	int	   m_nDragDX;		// cursor-to-window offset captured at drag start
 	int	   m_nDragDY;
-
-	// Widget interaction state.
-	GWidget	  *m_pHoverWidget;	// widget currently under the cursor (or 0)
-	GWidget	  *m_pPressedWidget;	// widget the left button was pressed on (or 0)
-	CWindow	  *m_pPressedWindow;	// its window (for event delivery)
-	GWidget	  *m_pFocusWidget;	// textbox with keyboard focus (or 0)
-	CWindow	  *m_pFocusWindow;	// its window
 
 	// Pointer-stream state for app-side toolkits (windows with a PointerHandler).
 	CWindow	  *m_pPtrOverWindow;	// window the cursor is currently over (for enter/leave)

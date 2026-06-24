@@ -23,7 +23,6 @@ OBJS = \
 	gui/gimage.o \
 	gui/window.o \
 	gui/skin.o \
-	gui/dialog.o \
 	proc/elf.o \
 	sys/syscall.o \
 	sys/kapi.o \

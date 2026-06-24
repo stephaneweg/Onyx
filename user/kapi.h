@@ -75,14 +75,11 @@ static inline int  kapi_get_keymap (char *b, unsigned s) { return KT->get_keymap
 // Re-tint window chrome at runtime (theme editor): active/inactive skin + title text.
 static inline void kapi_set_window_theme (unsigned a, unsigned i, unsigned t) { KT->set_window_theme (a, i, t); }
 
-// Modal message box (blocks until answered). Returns 1 (OK/Yes) or 0 (Cancel/No).
+// Modal-dialog button sets (used by the user-side ui::MessageBox in uidialog.hpp;
+// the kernel message_box/file dialogs were removed -- the toolkit draws its own).
 #define MB_OK		0
 #define MB_OKCANCEL	1
 #define MB_YESNO	2
-static inline int  kapi_message_box (const char *title, const char *text, int buttons) { return KT->message_box (title, text, buttons); }
-// Modal file dialogs (block until chosen/cancelled). Return 1 + fill `out`, or 0.
-static inline int  kapi_file_open (char *out, unsigned cap, const char *start_dir) { return KT->file_open (out, cap, start_dir); }
-static inline int  kapi_file_save (char *out, unsigned cap, const char *start_dir, const char *def_name) { return KT->file_save (out, cap, start_dir, def_name); }
 // Run an ELF at an absolute path with an argv string (fire-and-forget). 1/0.
 static inline int  kapi_exec (const char *path, const char *args) { return KT->exec (path, args); }
 // Framebuffer size in pixels (for edge-pinned borderless windows).
