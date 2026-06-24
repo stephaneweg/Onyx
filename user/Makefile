@@ -17,36 +17,31 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-PROGS   = demoA.elf demoB.elf demoC.elf demoF.elf \
-	  inidemo.elf \
-	  tetris.elf snake.elf same.elf filer.elf terminal.elf \
-	  2048.elf life.elf pong.elf sokoban.elf \
-	  calendar.elf mandelbrot.elf minesweeper.elf paint.elf \
-	  eyes.elf sheet.elf taskman.elf voronoy.elf theme.elf config.elf \
-	  irc.elf memmon.elf cppdemo.elf
+# All graphical apps live in Apps/<name>/main.{c,cpp} (one folder per app) and build to
+# <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf). The /bin
+# console tools stay in bin/. APPS_CPP are on the C++ uikit toolkit; APPS_C are the
+# app-drawn apps still in C (being ported to C++).
+APPS_CPP = tinycalc wpaconf tinypad applist panel demoD demoE cppdemo
+APPS_C   = demoA demoB demoC demoF inidemo \
+	   tetris snake same filer terminal \
+	   2048 life pong sokoban \
+	   calendar mandelbrot minesweeper paint \
+	   eyes sheet taskman voronoy theme config irc memmon
 
-# Per-app subfolder C++ apps: user/<name>/main.cpp -> <name>.elf (uikit.hpp toolkit).
-# This is the target layout as apps are rewritten in C++ (one folder per app).
-SUBAPPS  = tinycalc wpaconf demoD demoE tinypad applist panel
-SUBPROGS = $(SUBAPPS:=.elf)
+APP_ELFS = $(APPS_CPP:=.elf) $(APPS_C:=.elf)
 
-all: $(PROGS) $(SUBPROGS) bin
+all: $(APP_ELFS) bin
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
 bin:
 	@$(MAKE) --no-print-directory -C bin
 
-%.elf: %.c crt0.S user.ld kapi.h applib.h httpc.h uikit.h umm.h
-	$(CC) $(CFLAGS) $(LDFLAGS) crt0.S $< -o $@
+# -I. so a nested Apps/<name>/main.* finds the user-side headers (kapi.h, uikit.hpp, ...).
+$(APPS_C:=.elf): %.elf: Apps/%/main.c crt0.S user.ld kapi.h applib.h httpc.h uikit.h umm.h
+	$(CC) $(CFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
 
-# C++ apps (e.g. cppdemo): g++ + the C++ runtime support header (onyxpp.hpp).
-%.elf: %.cpp crt0.S user.ld kapi.h umm.h onyxpp.hpp
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) crt0.S $< -o $@
-
-# Subfolder C++ apps: <name>/main.cpp -> <name>.elf. -I. so they find the user-side
-# headers (kapi.h, uikit.hpp, ...) from a nested directory.
-$(SUBPROGS): %.elf: %/main.cpp crt0.S user.ld kapi.h uikit.hpp umm.h onyxpp.hpp
+$(APPS_CPP:=.elf): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h uikit.hpp bmp.hpp umm.h onyxpp.hpp
 	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
 
 clean:
