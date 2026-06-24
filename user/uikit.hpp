@@ -133,6 +133,45 @@ public:
 	void draw (Ui &ui) override;
 };
 
+// Multi-line editable text area: own heap buffer ('\n'-separated lines), caret-driven
+// vertical+horizontal scroll, click to position. Used by tinypad (body) + demoE.
+class Textarea : public Widget
+{
+public:
+	char *buf; int cap, len, caret, top, left;
+	bool readonly;
+	Textarea (int x, int y, int w, int h, int capacity)
+	  : Widget (x, y, w, h, "", 0), cap (capacity < 16 ? 16 : capacity),
+	    len (0), caret (0), top (0), left (0), readonly (false)
+	{ buf = new char[cap]; buf[0] = '\0'; }
+	~Textarea () override { delete[] buf; }
+	const char *content () const { return buf; }		// the whole text (getText is the 64B caption)
+	int  length () const { return len; }
+	void setContent (const char *s);
+	void draw (Ui &ui) override;
+	void onPress (Ui &ui, int px, int py) override;
+	void key (Ui &ui, long k) override;
+private:
+	int  lineStart (int i) const { while (i > 0 && buf[i - 1] != '\n') i--; return i; }
+	int  lineEnd   (int i) const { while (buf[i] != '\0' && buf[i] != '\n') i++; return i; }
+	void insertAt (int ch);
+	void deleteAt (int i);
+};
+
+// Draggable scrollbar (vertical or horizontal), value in [0,vmax]; cb fires on change.
+// Standalone (the app wires the value to whatever it scrolls).
+class Scrollbar : public Widget
+{
+public:
+	bool vertical; int value, vmax;
+	Scrollbar (int x, int y, int w, int h, bool vert, int maxv, int val, Action cb)
+	  : Widget (x, y, w, h, "", cb), vertical (vert), value (val), vmax (maxv < 1 ? 1 : maxv) {}
+	void draw (Ui &ui) override;
+	void onPress (Ui &ui, int px, int py) override { setFromXY (ui, px, py); }
+	void onDrag  (Ui &ui, int px, int py) override { setFromXY (ui, px, py); }
+	void setFromXY (Ui &ui, int px, int py);
+};
+
 // ============================================================================
 // Ui -- the widget container + event/draw pump. Owns its widgets.
 // ============================================================================
@@ -187,6 +226,10 @@ public:
 	{ Slider   *p = new Slider   (x, y, w, h, lo, hi, val, cb); add (p); return *p; }
 	Progress &progress (int x, int y, int w, int h, int lo, int hi, int val)
 	{ Progress *p = new Progress (x, y, w, h, lo, hi, val); add (p); return *p; }
+	Textarea &textarea (int x, int y, int w, int h, int capacity)
+	{ Textarea *p = new Textarea (x, y, w, h, capacity); add (p); return *p; }
+	Scrollbar &scrollbar (int x, int y, int w, int h, bool vert, int maxv, int val, Action cb)
+	{ Scrollbar *p = new Scrollbar (x, y, w, h, vert, maxv, val, cb); add (p); return *p; }
 
 	void setFocus (Widget &widget) { int i = indexOf (&widget); if (i >= 0) { focus = i; dirtyFlag = true; } }
 
@@ -381,6 +424,124 @@ inline void Progress::draw (Ui &ui)
 	if (fw > w) fw = w;
 	if (fw > 0) ui.fill (x, y, fw, h, ui.col_accent);
 	ui.frame (x, y, w, h, ui.col_border);
+}
+
+// ---- Textarea ----------------------------------------------------------------
+inline void Textarea::insertAt (int ch)
+{
+	if (len >= cap - 1) return;
+	for (int i = len; i > caret; i--) buf[i] = buf[i - 1];
+	buf[caret] = (char) ch; len++; caret++; buf[len] = '\0';
+}
+inline void Textarea::deleteAt (int i)
+{
+	if (i < 0 || i >= len) return;
+	for (int j = i; j < len; j++) buf[j] = buf[j + 1];
+	len--;
+}
+inline void Textarea::setContent (const char *s)
+{
+	len = 0; caret = 0; top = 0; left = 0;
+	if (s) while (s[len] != '\0' && len < cap - 1) { buf[len] = s[len]; len++; }
+	buf[len] = '\0';
+}
+inline void Textarea::onPress (Ui &ui, int px, int py)
+{
+	const int pad = 4;
+	int row = (py - (y + 2)) / ui.fh;
+	int col = (px - (x + pad)) / (ui.fw > 0 ? ui.fw : 8);
+	if (row < 0) row = 0;
+	if (col < 0) col = 0;
+	int wantLine = top + row, wantCol = left + col, i = 0, line = 0;
+	while (line < wantLine && buf[i] != '\0') { if (buf[i] == '\n') line++; i++; }
+	int le = lineEnd (i), c = i + wantCol;
+	if (c > le) c = le;
+	caret = c; (void) ui;
+}
+inline void Textarea::key (Ui &ui, long k)
+{
+	(void) ui;
+	if (k >= 32 && k <= 126)          { if (!readonly) insertAt ((int) k); }
+	else if (k == KEY_ENTER)          { if (!readonly) insertAt ('\n'); }
+	else if (k == KEY_TAB)            { if (!readonly) { insertAt (' '); insertAt (' '); } }
+	else if (k == KEY_BACKSPACE)      { if (!readonly && caret > 0) { deleteAt (caret - 1); caret--; } }
+	else if (k == KEY_DEL)            { if (!readonly) deleteAt (caret); }
+	else if (k == KEY_LEFT)           { if (caret > 0) caret--; }
+	else if (k == KEY_RIGHT)          { if (caret < len) caret++; }
+	else if (k == KEY_HOME)             caret = lineStart (caret);
+	else if (k == KEY_END)              caret = lineEnd (caret);
+	else if (k == KEY_UP)
+	{
+		int ls = lineStart (caret), col = caret - ls;
+		if (ls > 0) { int pls = lineStart (ls - 1), ple = ls - 1, c = pls + col; caret = c > ple ? ple : c; }
+	}
+	else if (k == KEY_DOWN)
+	{
+		int ls = lineStart (caret), col = caret - ls, le = lineEnd (caret);
+		if (buf[le] == '\n') { int nls = le + 1, nle = lineEnd (nls), c = nls + col; caret = c > nle ? nle : c; }
+	}
+}
+inline void Textarea::draw (Ui &ui)
+{
+	const int pad = 4;
+	int fw = ui.fw > 0 ? ui.fw : 8;
+	int visRows = (h - 4) / ui.fh; if (visRows < 1) visRows = 1;
+	int visCols = (w - 2 * pad) / fw; if (visCols < 1) visCols = 1; if (visCols > 159) visCols = 159;
+
+	int cl = 0; for (int i = 0; i < caret; i++) if (buf[i] == '\n') cl++;	// caret line/col
+	int cc = caret - lineStart (caret);
+	if (cl < top) top = cl;					// keep caret visible
+	if (cl >= top + visRows) top = cl - visRows + 1;
+	if (cc < left) left = cc;
+	if (cc >= left + visCols) left = cc - visCols + 1;
+	if (top < 0) top = 0;
+	if (left < 0) left = 0;
+
+	ui.fill  (x, y, w, h, disabled ? ui.col_face_dn : ui.col_field);
+	ui.frame (x, y, w, h, ui.col_border);
+	if (focused && !disabled) ui.frame (x + 1, y + 1, w - 2, h - 2, ui.col_accent);
+
+	int i = 0, line = 0;
+	while (line < top && buf[i] != '\0') { if (buf[i] == '\n') line++; i++; }
+	for (int r = 0; r < visRows; r++)
+	{
+		int le = lineEnd (i);
+		char vis[160]; int j = 0;
+		for (int c = i + left; c < le && j < visCols; c++) vis[j++] = buf[c];
+		vis[j] = '\0';
+		if (j > 0) kapi_draw_text (x + pad, y + 2 + r * ui.fh, vis, disabled ? ui.col_dis : ui.col_text);
+		if (buf[le] != '\n') break;			// end of buffer
+		i = le + 1;
+	}
+	if (focused && !disabled)				// caret
+	{
+		int cx = x + pad + (cc - left) * fw, cy = y + 2 + (cl - top) * ui.fh;
+		if (cy >= y && cy < y + h - 2) ui.fill (cx, cy, 1, ui.fh, ui.col_accent);
+	}
+}
+
+// ---- Scrollbar ---------------------------------------------------------------
+inline void Scrollbar::setFromXY (Ui &ui, int px, int py)
+{
+	int pos = vertical ? (py - y) : (px - x), span = vertical ? h : w;
+	if (pos < 0) pos = 0;
+	if (pos > span) pos = span;
+	int nv = vmax * pos / (span > 0 ? span : 1);
+	if (nv < 0) nv = 0;
+	if (nv > vmax) nv = vmax;
+	if (nv != value) { value = nv; if (cb) cb (*this); }
+	ui.markDirty ();
+}
+inline void Scrollbar::draw (Ui &ui)
+{
+	ui.fill  (x, y, w, h, ui.col_field);
+	ui.frame (x, y, w, h, ui.col_border);
+	int span = vertical ? h : w;
+	int thumb = span / 5; if (thumb < 14) thumb = 14; if (thumb > span) thumb = span;
+	int pos = (span - thumb) * value / (vmax > 0 ? vmax : 1);
+	unsigned face = (hover || pressed) ? ui.col_face_hi : ui.col_face;
+	if (vertical) ui.fill (x + 1, y + pos, w - 2, thumb, face);
+	else          ui.fill (x + pos, y + 1, thumb, h - 2, face);
 }
 
 } // namespace ui

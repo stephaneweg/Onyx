@@ -17,8 +17,8 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-PROGS   = demoA.elf demoB.elf demoC.elf demoE.elf demoF.elf \
-	  panel.elf applist.elf tinypad.elf inidemo.elf \
+PROGS   = demoA.elf demoB.elf demoC.elf demoF.elf \
+	  panel.elf applist.elf inidemo.elf \
 	  tetris.elf snake.elf same.elf filer.elf terminal.elf \
 	  2048.elf life.elf pong.elf sokoban.elf \
 	  calendar.elf mandelbrot.elf minesweeper.elf paint.elf \
@@ -27,7 +27,7 @@ PROGS   = demoA.elf demoB.elf demoC.elf demoE.elf demoF.elf \
 
 # Per-app subfolder C++ apps: user/<name>/main.cpp -> <name>.elf (uikit.hpp toolkit).
 # This is the target layout as apps are rewritten in C++ (one folder per app).
-SUBAPPS  = tinycalc wpaconf demoD
+SUBAPPS  = tinycalc wpaconf demoD demoE tinypad
 SUBPROGS = $(SUBAPPS:=.elf)
 
 all: $(PROGS) $(SUBPROGS) bin
