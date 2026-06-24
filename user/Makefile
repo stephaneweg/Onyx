@@ -21,14 +21,15 @@ LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 # <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf). The /bin
 # console tools stay in bin/. APPS_CPP are on the C++ uikit toolkit; APPS_C are the
 # app-drawn apps still in C (being ported to C++).
-APPS_CPP = tinycalc wpaconf tinypad applist panel demoD demoE cppdemo
-APPS_C   = demoA demoB demoC demoF inidemo \
-	   tetris snake same filer terminal \
-	   2048 life pong sokoban \
-	   calendar mandelbrot minesweeper paint \
-	   eyes sheet taskman voronoy theme config irc memmon
+# Every graphical app is C++ now (Apps/<name>/main.cpp). The /bin console tools stay C.
+APPS = tinycalc wpaconf tinypad applist panel cppdemo \
+       demoA demoB demoC demoD demoE demoF inidemo \
+       tetris snake same filer terminal \
+       2048 life pong sokoban \
+       calendar mandelbrot minesweeper paint \
+       eyes sheet taskman voronoy theme config irc memmon
 
-APP_ELFS = $(APPS_CPP:=.elf) $(APPS_C:=.elf)
+APP_ELFS = $(APPS:=.elf)
 
 all: $(APP_ELFS) bin
 
@@ -37,11 +38,8 @@ all: $(APP_ELFS) bin
 bin:
 	@$(MAKE) --no-print-directory -C bin
 
-# -I. so a nested Apps/<name>/main.* finds the user-side headers (kapi.h, uikit.hpp, ...).
-$(APPS_C:=.elf): %.elf: Apps/%/main.c crt0.S user.ld kapi.h applib.h httpc.h uikit.h umm.h
-	$(CC) $(CFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
-
-$(APPS_CPP:=.elf): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h uikit.hpp bmp.hpp umm.h onyxpp.hpp
+# Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h uikit.hpp bmp.hpp umm.h onyxpp.hpp
 	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
 
 clean:
