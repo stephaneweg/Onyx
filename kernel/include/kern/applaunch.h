@@ -34,9 +34,6 @@ boolean KernelSetKeyMapData (const char *pName, const void *pData, unsigned nLen
 const char *KernelGetKeyMap (void);
 boolean KernelKeyboardReady (void);		// is a USB keyboard attached? (kapi_kbd_ready)
 
-// Re-tint the window chrome at runtime (theme editor Apply). Defined in kernel.cpp.
-void ApplyWindowTheme (u32 nActiveTint, u32 nInactiveTint, u32 nTitleTextColor);
-
 // Verbose-logging flag (defined in kernel.cpp): gates kernel lifecycle logs. The
 // extern lets other TUs gate their own logs with `if (g_bVerbose)`.
 extern boolean g_bVerbose;
