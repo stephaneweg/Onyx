@@ -1,9 +1,13 @@
-# autostart.txt -- apps started automatically at boot, one per line.
-# Each name is the folder basename under /apps ("panel" => apps/panel.app/main.elf).
-# Blank lines and lines starting with '#' are ignored.
+# autostart.txt -- programs started automatically at boot, one per line.
 #
-# voronoy paints the desktop wallpaper into the kernel's shared wallpaper buffer,
-# then exits. The panel is the shell: sidebar + taskbar + app-list popup. Add more
-# names here to auto-start additional apps.
-voronoy
-panel
+# Each line is "<name>[.app] [args...]":
+#   - a ".app" name  -> DESKTOP app at /apps/<name>/main.elf   (e.g. panel.app)
+#   - a name with no extension -> /bin CONSOLE tool at /bin/<name>.elf  (e.g. keyb FR)
+# The rest of the line is passed as arguments. Blank/'#' lines are ignored.
+#
+# voronoy paints the desktop wallpaper into the kernel's shared buffer, then exits.
+# panel is the shell (sidebar + taskbar + app-list popup).
+voronoy.app
+panel.app
+# Example console tool with an argument (set the French keyboard layout at boot):
+keyb FR

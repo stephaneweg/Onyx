@@ -366,8 +366,11 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
 
 ### Startup and pinned apps
 
-- **`SD:apps/autostart.txt`**: one app per line, launched at boot (folder name without
-  `.app`). By default `voronoy` then `panel`.
+- **`SD:apps/autostart.txt`**: one program per line, launched at boot, as
+  `<name>[.app] [args…]`. A **`.app`** name is a desktop app (`/apps/<name>/main.elf`);
+  a name **without an extension** is a `/bin` console tool (`/bin/<name>.elf`); the
+  rest of the line is passed as arguments. Defaults: `voronoy.app` then `panel.app`
+  (e.g. add `keyb FR` to set the keyboard layout at boot).
 - **`SD:apps/quicklaunch.txt`**: the apps pinned to the panel (top→bottom).
 
 ### Wallpaper

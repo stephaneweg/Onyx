@@ -910,7 +910,10 @@ void CKernel::StartAutostart (void)
 		return;
 	}
 
-	char Name[40];
+	// Each line is "<name>[.app] [args...]". A ".app" name is a DESKTOP app at
+	// apps/<name>/main.elf; a name with no extension is a /bin CONSOLE tool at
+	// bin/<name>.elf. The rest of the line is passed as argv (e.g. "keyb FR").
+	char Line[256];
 	unsigned nLen = 0;
 	for (unsigned i = 0; i <= nSize; i++)
 	{
@@ -918,34 +921,39 @@ void CKernel::StartAutostart (void)
 		char c = (i < nSize) ? (char) pList[i] : '\n';
 		if (c == '\n' || c == '\r')
 		{
-			Name[nLen] = '\0';
+			Line[nLen] = '\0';
 
-			// Trim leading whitespace.
-			char *p = Name;
-			while (*p == ' ' || *p == '\t')
-			{
-				p++;
-			}
-			// Trim trailing whitespace.
-			unsigned len = 0;
-			while (p[len] != '\0')
-			{
-				len++;
-			}
-			while (len > 0 && (p[len - 1] == ' ' || p[len - 1] == '\t'))
-			{
-				p[--len] = '\0';
-			}
+			char *p = Line;					// trim leading WS
+			while (*p == ' ' || *p == '\t') p++;
+			unsigned len = 0; while (p[len] != '\0') len++;	// trim trailing WS
+			while (len > 0 && (p[len - 1] == ' ' || p[len - 1] == '\t')) p[--len] = '\0';
 
 			if (*p != '\0' && *p != '#')
 			{
-				LaunchApp (p, &m_Logger);
+				// Split into the first token (the name) and the rest (argv).
+				char *pArgs = p;
+				while (*pArgs != '\0' && *pArgs != ' ' && *pArgs != '\t') pArgs++;
+				if (*pArgs != '\0') { *pArgs++ = '\0'; while (*pArgs == ' ' || *pArgs == '\t') pArgs++; }
+
+				unsigned tl = 0; while (p[tl] != '\0') tl++;	// ".app" suffix?
+				boolean bApp = tl >= 4 && p[tl-4] == '.' && p[tl-3] == 'a'
+					    && p[tl-2] == 'p' && p[tl-1] == 'p';
+
+				CString Path;
+				if (bApp) Path.Format ("SD:apps/%s/main.elf", p);
+				else      Path.Format ("SD:bin/%s.elf", p);
+
+				m_Logger.Write (FromKernel, LogNotice, "autostart: %s %s",
+						(const char *) Path, pArgs);
+				if (!ExecPath ((const char *) Path, pArgs))
+					m_Logger.Write (FromKernel, LogWarning,
+							"autostart: cannot run %s", (const char *) Path);
 			}
 			nLen = 0;
 		}
-		else if (nLen < sizeof (Name) - 1)
+		else if (nLen < sizeof (Line) - 1)
 		{
-			Name[nLen++] = c;
+			Line[nLen++] = c;
 		}
 	}
 
