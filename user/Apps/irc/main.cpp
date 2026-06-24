@@ -50,6 +50,23 @@ static int  g_inlen = 0;
 static char g_rx[1024];
 static int  g_rxlen = 0;
 
+// Connect bar: an editable "host[:port]" address + a [Connect] button + a clickable
+// history of servers you've joined (persisted to SD:apps/irc.app/servers.txt).
+static char g_addr[96] = "";
+static int  g_addrlen = 0;
+static bool g_addrfocus = false;	// true => typed keys edit the address, not the chat
+#define HISTMAX 8
+static char g_hist[HISTMAX][96];	// most-recent first
+static int  g_histn = 0;
+static int  g_chat_y = 4;		// top of the chat area (below the 2-row connect bar)
+// Hit rects (filled by redraw, read by the pointer handler).
+static int  g_barY0, g_barY1, g_addrX0, g_addrX1, g_btnX0, g_btnX1;
+static int  g_recY0, g_recY1, g_recX0[HISTMAX], g_recX1[HISTMAX];
+
+static void redraw (void);		// forward decls (definitions interleaved below)
+static void connect_now (void);
+static void set_server_from (const char *spec);
+
 // ---- tiny string helpers (freestanding: no libc) ----------------------------
 
 static int  slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
@@ -238,6 +255,105 @@ static void drain_socket (void)
 
 // ---- commands + input --------------------------------------------------------
 
+// ---- server history + (re)connect --------------------------------------------
+
+#define HISTPATH "SD:apps/irc.app/servers.txt"
+
+static void hist_save (void)
+{
+	char buf[HISTMAX * 98]; int n = 0;
+	for (int i = 0; i < g_histn; i++)
+	{
+		for (int k = 0; g_hist[i][k] && n < (int) sizeof buf - 2; k++) buf[n++] = g_hist[i][k];
+		buf[n++] = '\n';
+	}
+	kapi_save_file (HISTPATH, buf, (unsigned) n);
+}
+
+static void hist_load (void)
+{
+	void *f = kapi_open (HISTPATH);
+	if (f == 0) return;
+	static char buf[HISTMAX * 98];
+	int got = kapi_read (f, buf, sizeof buf - 1);
+	kapi_close (f);
+	if (got < 0) got = 0;
+	buf[got] = '\0';
+	int i = 0;
+	while (buf[i] && g_histn < HISTMAX)
+	{
+		char line[96]; int j = 0;
+		while (buf[i] && buf[i] != '\n' && buf[i] != '\r' && j < 95) line[j++] = buf[i++];
+		line[j] = '\0';
+		while (buf[i] == '\n' || buf[i] == '\r') i++;
+		if (j > 0) { scpy (g_hist[g_histn], sizeof g_hist[0], line); g_histn++; }
+	}
+}
+
+// Push "host[:port]" to the front of the history (dedup), cap HISTMAX, persist.
+static void hist_add (const char *host, unsigned port)
+{
+	char entry[96]; int n = 0;
+	for (int k = 0; host[k] && n < 80; k++) entry[n++] = host[k];
+	if (port != 6667) { entry[n++] = ':'; n += ax_itoa ((int) port, entry + n); }
+	entry[n] = '\0';
+
+	int found = -1;
+	for (int i = 0; i < g_histn; i++) if (ax_streq (g_hist[i], entry)) { found = i; break; }
+	int start = (found >= 0) ? found : (g_histn < HISTMAX ? g_histn : HISTMAX - 1);
+	for (int i = start; i > 0; i--) scpy (g_hist[i], sizeof g_hist[0], g_hist[i - 1]);
+	scpy (g_hist[0], sizeof g_hist[0], entry);
+	if (found < 0 && g_histn < HISTMAX) g_histn++;
+	hist_save ();
+}
+
+// (Re)connect to g_server:g_port -- closes any current link, then NICK/USER register.
+static void connect_now (void)
+{
+	if (g_sock >= 0) { send_line ("QUIT :reconnecting"); kapi_tcp_close (g_sock); g_sock = -1; }
+	char m[COLS + 1]; m[0] = '\0';
+	scat (m, sizeof m, "* connecting to "); scat (m, sizeof m, g_server); show (m);
+	redraw (); present ();				// paint before the blocking connect
+	g_sock = kapi_tcp_connect (g_server, g_port);
+	if (g_sock >= 0)
+	{
+		char l[160];
+		scpy (l, sizeof l, "NICK "); scat (l, sizeof l, g_nick); send_line (l);
+		scpy (l, sizeof l, "USER "); scat (l, sizeof l, g_user);
+		scat (l, sizeof l, " 0 * :"); scat (l, sizeof l, g_real); send_line (l);
+		show ("* registering ...");
+		g_state = 1;
+		hist_add (g_server, g_port);
+	}
+	else { show ("* connect failed"); g_state = 3; }
+}
+
+// Parse "host[:port]" then (re)connect. Used by the Connect button, a history click,
+// and the /server command.
+static void set_server_from (const char *spec)
+{
+	while (*spec == ' ') spec++;
+	if (*spec == '\0') return;
+	char host[80]; int n = 0; unsigned port = 6667;
+	while (*spec && *spec != ':' && *spec != ' ' && n < 79) host[n++] = *spec++;
+	host[n] = '\0';
+	if (*spec == ':')
+	{
+		spec++; port = 0;
+		while (*spec >= '0' && *spec <= '9') port = port * 10 + (unsigned) (*spec++ - '0');
+		if (port == 0) port = 6667;
+	}
+	scpy (g_server, sizeof g_server, host);
+	g_port = port;
+	connect_now ();
+}
+
+static void connect_from_addr (void)		// the Connect button / Enter in the address bar
+{
+	g_addrfocus = false;
+	if (g_addr[0] != '\0') set_server_from (g_addr);
+}
+
 // Send a typed line. '/'-prefixed lines are commands; otherwise it's a message to
 // the current channel (echoed locally, since the server doesn't echo our PRIVMSGs).
 static void submit (char *s)
@@ -303,6 +419,10 @@ static void submit (char *s)
 		scat (j, sizeof j, arg[0] ? arg : "Onyx IRC"); send_line (j);
 		kapi_exit (0);
 	}
+	else if ((ax_streq (cmd, "server") || ax_streq (cmd, "connect")) && arg[0])
+	{
+		set_server_from (arg);			// /server host[:port] -- reconnect elsewhere
+	}
 	else if (ax_streq (cmd, "raw") && arg[0])
 	{
 		send_line (arg);
@@ -319,6 +439,17 @@ static void on_key (unsigned long s, int ev, long key)
 {
 	(void) s;
 	if (ev != GUI_EVENT_KEY) return;
+
+	if (g_addrfocus)				// editing the connect-bar address field
+	{
+		if (key == KEY_ENTER)            connect_from_addr ();
+		else if (key == 27)              g_addrfocus = false;	// Esc -> back to chat
+		else if (key == KEY_BACKSPACE)   { if (g_addrlen > 0) g_addr[--g_addrlen] = '\0'; }
+		else if (key >= ' ' && key < 0x7f && g_addrlen < (int) sizeof g_addr - 1)
+			{ g_addr[g_addrlen++] = (char) key; g_addr[g_addrlen] = '\0'; }
+		return;
+	}
+
 	switch (key)
 	{
 	case KEY_ENTER:
@@ -348,9 +479,55 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
 }
 
+static void frame_rect (int x, int y, int w, int h, unsigned c)
+{
+	fill_rect (x, y, w, 1, c); fill_rect (x, y + h - 1, w, 1, c);
+	fill_rect (x, y, 1, h, c); fill_rect (x + w - 1, y, 1, h, c);
+}
+
+// The connect bar: "Server:" + an editable address field + a [Connect] button on the
+// first row, and a clickable "Recent:" server history on the second. Hit rects are
+// stashed in globals for the pointer handler.
+static void draw_connect_bar (void)
+{
+	int by = 3;					// row 0 baseline
+	g_barY0 = 0; g_barY1 = g_fh + 3;
+	kapi_draw_text (4, by, "Server:", 0x0090a0b0);
+
+	int ax = 4 + 8 * g_fw;				// address field box
+	int aw = 30 * g_fw;
+	g_addrX0 = ax; g_addrX1 = ax + aw;
+	fill_rect (ax, by - 1, aw, g_fh + 2, g_addrfocus ? 0x00203040 : 0x00181e26);
+	frame_rect (ax, by - 1, aw, g_fh + 2, g_addrfocus ? 0x0060ff90 : 0x00404a5a);
+	kapi_draw_text (ax + 3, by, g_addr, 0x00ffffff);
+	if (g_addrfocus) fill_rect (ax + 3 + g_addrlen * g_fw, by, 2, g_fh, 0x0060ff90);
+
+	int bx = ax + aw + 8;				// [Connect] button
+	int bw = 9 * g_fw + 6;
+	g_btnX0 = bx; g_btnX1 = bx + bw;
+	fill_rect (bx, by - 1, bw, g_fh + 2, 0x00355070);
+	frame_rect (bx, by - 1, bw, g_fh + 2, 0x0060a0e0);
+	kapi_draw_text (bx + 3, by, "Connect", 0x00ffffff);
+
+	int ry = by + g_fh + 4;				// row 1: recent-server history
+	g_recY0 = ry - 1; g_recY1 = ry + g_fh;
+	kapi_draw_text (4, ry, "Recent:", 0x0090a0b0);
+	int rx = 4 + 8 * g_fw;
+	for (int i = 0; i < g_histn && i < HISTMAX; i++)
+	{
+		int w = slen (g_hist[i]) * g_fw;
+		if (rx + w > W - 4) break;
+		g_recX0[i] = rx; g_recX1[i] = rx + w;
+		kapi_draw_text (rx, ry, g_hist[i], 0x0080c8ff);
+		rx += w + 2 * g_fw;
+	}
+	fill_rect (0, ry + g_fh + 2, W, 1, 0x00303840);	// separator under the bar
+}
+
 static void redraw (void)
 {
 	fill_rect (0, 0, W, H, 0x00101418);
+	draw_connect_bar ();
 
 	int total = g_rcount;
 	int maxscroll = total - g_chatrows; if (maxscroll < 0) maxscroll = 0;
@@ -365,11 +542,11 @@ static void redraw (void)
 		unsigned col = 0x00c8d0c0;
 		if (line[0] == '*') col = 0x0080b0ff;		// status lines in blue
 		else if (line[0] == '-') col = 0x00ffc060;	// notices in amber
-		kapi_draw_text (4, 4 + r * g_fh, line, col);
+		kapi_draw_text (4, g_chat_y + r * g_fh, line, col);
 	}
 
 	// Input row: separator + "[channel] " prompt + the line being typed + caret.
-	int iy = 4 + g_chatrows * g_fh + 2;
+	int iy = g_chat_y + g_chatrows * g_fh + 2;
 	fill_rect (0, iy - 2, W, 1, 0x00303840);
 	char prompt[80]; prompt[0] = '\0';
 	scat (prompt, sizeof prompt, "["); scat (prompt, sizeof prompt, g_channel);
@@ -379,6 +556,30 @@ static void redraw (void)
 	kapi_draw_text (px, iy, g_input, 0x00ffffff);
 	int cx = px + g_inlen * g_fw;
 	fill_rect (cx, iy, 2, g_fh, 0x0060ff90);
+}
+
+// Pointer: click the address field to edit it, the Connect button or a Recent server
+// to (re)connect; a click elsewhere returns typing focus to the chat input.
+static void on_ptr (unsigned long s, int ev, long v)
+{
+	(void) s;
+	if (ev != GUI_EVENT_PTR_DOWN || !(GUI_PTR_CHANGED (v) & 1)) return;
+	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v);
+	if (y >= g_barY0 && y <= g_barY1)
+	{
+		if (x >= g_addrX0 && x <= g_addrX1) { g_addrfocus = true;   return; }
+		if (x >= g_btnX0  && x <= g_btnX1)  { connect_from_addr (); return; }
+	}
+	if (y >= g_recY0 && y <= g_recY1)
+		for (int i = 0; i < g_histn; i++)
+			if (x >= g_recX0[i] && x <= g_recX1[i])
+			{
+				scpy (g_addr, sizeof g_addr, g_hist[i]);
+				g_addrlen = slen (g_addr);
+				connect_from_addr ();
+				return;
+			}
+	g_addrfocus = false;
 }
 
 // ---- main --------------------------------------------------------------------
@@ -396,18 +597,29 @@ int main (void)
 		g_port = (unsigned) app_ini_get_int ("irc", "port", (int) g_port);
 	}
 
+	// Seed the connect-bar address from the configured server; load server history.
+	scpy (g_addr, sizeof g_addr, g_server);
+	if (g_port != 6667)
+	{
+		int n = slen (g_addr); g_addr[n++] = ':';
+		n += ax_itoa ((int) g_port, g_addr + n); g_addr[n] = '\0';
+	}
+	g_addrlen = slen (g_addr);
+	hist_load ();
+
 	fb = kapi_create_window (W, H, "irc");
 	if (fb == 0) return 1;
 	ui::decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_vrows = (H - 8) / g_fh; if (g_vrows < 3) g_vrows = 3;
-	g_chatrows = g_vrows - 2;			// reserve a row for input + a gap
+	g_chat_y = 4 + 2 * g_fh + 6;			// below the 2-row connect bar + separator
+	g_chatrows = g_vrows - 4; if (g_chatrows < 1) g_chatrows = 1;	// bar + input reserved
 
 	kapi_set_key_handler (on_key);
+	kapi_set_pointer_handler (on_ptr);
 
 	show ("Onyx IRC -- waiting for network ...");
-	int announced_connecting = 0;
 
 	while (!should_exit ())
 	{
@@ -419,30 +631,10 @@ int main (void)
 			char ip[32];
 			if (kapi_net_status (ip, sizeof ip))
 			{
-				if (!announced_connecting)
-				{
-					char m[COLS + 1]; m[0] = '\0';
-					scat (m, sizeof m, "* network up (");
-					scat (m, sizeof m, ip); scat (m, sizeof m, ") -- connecting to ");
-					scat (m, sizeof m, g_server); show (m);
-					announced_connecting = 1;
-					redraw (); present ();		// paint before the blocking connect
-				}
-				g_sock = kapi_tcp_connect (g_server, g_port);
-				if (g_sock >= 0)
-				{
-					char l[160];
-					scpy (l, sizeof l, "NICK "); scat (l, sizeof l, g_nick); send_line (l);
-					scpy (l, sizeof l, "USER "); scat (l, sizeof l, g_user);
-					scat (l, sizeof l, " 0 * :"); scat (l, sizeof l, g_real); send_line (l);
-					show ("* registering ...");
-					g_state = 1;
-				}
-				else
-				{
-					show ("* connect failed -- /raw or restart to retry");
-					g_state = 3;
-				}
+				char m[COLS + 1]; m[0] = '\0';
+				scat (m, sizeof m, "* network up ("); scat (m, sizeof m, ip);
+				scat (m, sizeof m, ")"); show (m);
+				connect_now ();			// connect to g_server:g_port (sets g_state)
 			}
 		}
 
