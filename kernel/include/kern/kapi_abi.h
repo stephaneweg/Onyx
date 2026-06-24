@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	26
+#define KAPI_ABI_VERSION	27
 
 #ifdef __cplusplus
 extern "C" {
@@ -265,6 +265,14 @@ struct TKApiTable
 	// any keyboard layout from cmdline; the `keyb` tool (run from autostart) polls
 	// this then calls set_keymap -- it may start before USB enumeration finishes.
 	int (*kbd_ready) (void);
+
+	// --- v27 additions (file-based keymaps) ---
+	// Load a keyboard layout from a SD:/etc/keymaps/<X>.kmap blob: header "OKM1" +
+	// u16 rows(128) + u16 cols(5) + rows*cols u16 table (row-major m_KeyMap[phy][tab]).
+	// The kernel validates + copies it into the live keyboard; the caller frees the
+	// buffer. `name` is recorded for get_keymap. Returns 1 on success, 0 otherwise.
+	// New layouts can be added as files with no kernel rebuild (see tools/keymaps).
+	int (*set_keymap_data) (const char *name, const void *data, unsigned len);
 };
 
 #ifdef __cplusplus

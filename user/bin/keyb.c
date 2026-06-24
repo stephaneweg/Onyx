@@ -48,7 +48,28 @@ int main (void)
 		return 1;
 	}
 
-	if (kapi_set_keymap (name))
+	// Prefer a layout file SD:/etc/keymaps/<NAME>.kmap (so new layouts need no kernel
+	// rebuild); the kernel copies the table, so our buffer is transient. Fall back to
+	// the compiled-in country map if the file is missing/invalid.
+	char path[64]; int p = 0;
+	const char *pre = "SD:/etc/keymaps/";
+	for (int k = 0; pre[k]; k++) path[p++] = pre[k];
+	for (int k = 0; name[k] && p < (int) sizeof path - 6; k++) path[p++] = name[k];
+	const char *suf = ".kmap"; for (int k = 0; suf[k]; k++) path[p++] = suf[k];
+	path[p] = '\0';
+
+	int ok = 0;
+	void *f = kapi_open (path);
+	if (f)
+	{
+		static unsigned char buf[2048];
+		int n = kapi_read (f, buf, sizeof buf);
+		kapi_close (f);
+		if (n > 0) ok = kapi_set_keymap_data (name, buf, (unsigned) n);
+	}
+	if (!ok) ok = kapi_set_keymap (name);		// fallback: compiled-in country map
+
+	if (ok)
 	{
 		ax_puts ("keyboard layout -> ");
 		ax_putln (name);

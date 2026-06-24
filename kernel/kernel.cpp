@@ -9,6 +9,7 @@
 #include <circle/string.h>
 #include <circle/util.h>
 #include <circle/usb/usbkeyboard.h>
+#include <circle/input/keymap.h>		// CKeyMap, PHY_MAX_CODE, K_CTRLTAB (SetKeyMapData)
 #include <circle/input/mouse.h>
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
@@ -283,6 +284,29 @@ public:
 		return s_pThis->m_pKeyboard->GetKeyMap ()->LoadMap (pName);
 	}
 
+	// Load a raw keymap table onto the live keyboard: (PHY_MAX_CODE+1) x (K_CTRLTAB+1)
+	// u16 entries, row-major (m_KeyMap[phyCode][table]). The bytes come from a
+	// SD:/etc/keymaps/<X>.kmap file (via kapi_set_keymap_data); we copy each entry
+	// through the public SetEntry, so new layouts need no kernel rebuild. Returns
+	// FALSE if no keyboard is attached or the size is wrong.
+	static boolean SetKeyMapData (const void *pData, unsigned nLen)
+	{
+		if (s_pThis == 0 || s_pThis->m_pKeyboard == 0 || pData == 0)
+		{
+			return FALSE;
+		}
+		if (nLen != (unsigned) (PHY_MAX_CODE + 1) * (K_CTRLTAB + 1) * sizeof (u16))
+		{
+			return FALSE;
+		}
+		const u16 *pMap = (const u16 *) pData;
+		CKeyMap *pKeyMap = s_pThis->m_pKeyboard->GetKeyMap ();
+		for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
+			for (u8 nPhy = 1; nPhy <= PHY_MAX_CODE; nPhy++)
+				pKeyMap->SetEntry (nTable, nPhy, pMap[nPhy * (K_CTRLTAB + 1) + nTable]);
+		return TRUE;
+	}
+
 	// Is a USB keyboard attached and ready right now? Exposed to userspace via
 	// kapi_kbd_ready so the `keyb` tool can poll before applying a layout at boot
 	// (it may run before USB enumeration finishes).
@@ -400,6 +424,22 @@ boolean KernelSetKeyMap (const char *pName)
 	}
 	unsigned i = 0;
 	for (; pName[i] != '\0' && i < sizeof (g_szKeyMap) - 1; i++) g_szKeyMap[i] = pName[i];
+	g_szKeyMap[i] = '\0';
+	return TRUE;
+}
+
+// Load a keymap from a raw table (validated SD:/etc/keymaps/<X>.kmap payload) and
+// record its name for reporting. Used by kapi_set_keymap_data so layouts can be added
+// as files without recompiling the kernel.
+boolean KernelSetKeyMapData (const char *pName, const void *pData, unsigned nLen)
+{
+	if (!CInputTask::SetKeyMapData (pData, nLen))
+	{
+		return FALSE;
+	}
+	unsigned i = 0;
+	if (pName != 0)
+		for (; pName[i] != '\0' && i < sizeof (g_szKeyMap) - 1; i++) g_szKeyMap[i] = pName[i];
 	g_szKeyMap[i] = '\0';
 	return TRUE;
 }

@@ -101,6 +101,7 @@ int kapi_meminfo (unsigned long *, unsigned long *, unsigned long *, unsigned *)
 void *kapi_sbrk (long);
 void kapi_reboot (void);
 int kapi_kbd_ready (void);
+int kapi_set_keymap_data (const char *, const void *, unsigned);
 void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
@@ -248,4 +249,5 @@ void KApiTableInit (void)
 	t->sbrk              = kapi_sbrk;
 	t->reboot            = kapi_reboot;
 	t->kbd_ready         = kapi_kbd_ready;
+	t->set_keymap_data   = kapi_set_keymap_data;
 }

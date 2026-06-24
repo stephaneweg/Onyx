@@ -111,6 +111,12 @@ Then copy **all** of the contents of `sdcard/` onto a **FAT32** card and boot th
 Pi 4. See the [user guide](04-USER-GUIDE.md) for details about the card and
 the configuration files.
 
+**Keyboard layouts** live as binary files in `sdcard/etc/keymaps/<NAME>.kmap` (the
+`keyb` tool loads one and sends it to the kernel via `kapi_set_keymap_data`, v27 — no
+kernel rebuild to add a layout). Regenerate the stock set from Circle's tables with
+`python tools/keymaps/genkeymaps.py`; the `.kmap` format is `"OKM1"` + `u16` rows/cols +
+the `u16[128][5]` table (see the script header).
+
 ## 5. The application model
 
 A Onyx application is a **single `.c` file** compiled into a **freestanding ELF** and

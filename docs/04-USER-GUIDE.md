@@ -345,6 +345,13 @@ runs early. To change it **on the fly**:
   live.
 - **Permanently**: edit the `keyb` line in `SD:/etc/autostart`.
 
+The layouts themselves live as files in **`SD:/etc/keymaps/`** — `DE.kmap`, `DV.kmap`,
+`ES.kmap`, `FR.kmap`, `IT.kmap`, `UK.kmap`, `US.kmap` (small binary tables). `keyb XX`
+loads `XX.kmap` and hands it to the kernel; if the file is missing it falls back to the
+copy built into the kernel. **You can add a new layout without rebuilding the kernel**:
+drop a new `<NAME>.kmap` in that folder (regenerate the stock ones, or seed a custom one,
+with `tools/keymaps/genkeymaps.py`) and use `keyb <NAME>`.
+
 ## 11. Customizing the appearance
 
 ### The theme editor (`theme`)

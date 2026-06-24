@@ -30,6 +30,7 @@ boolean ExecPath (const char *pElfPath, const char *pArgs);
 // compiled-in country map and read the current layout name. Declared here (a plain
 // C++ header) so sys/kapi.cpp sees C++ linkage, matching the kernel.cpp definitions.
 boolean KernelSetKeyMap (const char *pName);
+boolean KernelSetKeyMapData (const char *pName, const void *pData, unsigned nLen);	// .kmap file
 const char *KernelGetKeyMap (void);
 boolean KernelKeyboardReady (void);		// is a USB keyboard attached? (kapi_kbd_ready)
 

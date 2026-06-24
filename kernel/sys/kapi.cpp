@@ -1082,6 +1082,24 @@ int kapi_kbd_ready (void)
 	return KernelKeyboardReady () ? 1 : 0;
 }
 
+// Load a keymap from a SD:/etc/keymaps/<X>.kmap blob (ABI v27): header "OKM1" + u16
+// rows(128) + u16 cols(5) + rows*cols u16 table. The kernel validates + copies it
+// into the live keyboard; the caller (keyb) frees its buffer. name is recorded for
+// get_keymap/ps. Returns 1 on success, 0 on bad blob / no keyboard. Lets layouts be
+// added as files without recompiling the kernel.
+int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
+{
+	const unsigned char *p = (const unsigned char *) pData;
+	if (p == 0 || nLen < 8) return 0;
+	if (!(p[0] == 'O' && p[1] == 'K' && p[2] == 'M' && p[3] == '1')) return 0;
+	unsigned nRows = (unsigned) p[4] | ((unsigned) p[5] << 8);
+	unsigned nCols = (unsigned) p[6] | ((unsigned) p[7] << 8);
+	if (nRows != 128 || nCols != 5) return 0;
+	unsigned nTable = nRows * nCols * 2;
+	if (nLen < 8 + nTable) return 0;
+	return KernelSetKeyMapData (pName, p + 8, nTable) ? 1 : 0;
+}
+
 // Verbose kernel logging: toggle (KernelSetVerbose, defined in kernel.cpp) + read.
 // The `verbose` command persists the choice to SD:system.ini itself.
 int kapi_set_verbose (int bOn) { KernelSetVerbose (bOn ? TRUE : FALSE); return 1; }

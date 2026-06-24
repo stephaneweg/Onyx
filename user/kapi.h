@@ -203,6 +203,10 @@ static inline void kapi_reboot (void) { KT->reboot (); }
 // this at boot before applying a layout (it can run before USB enumeration finishes).
 static inline int kapi_kbd_ready (void) { return KT->kbd_ready (); }
 
+// Load a keyboard layout from a .kmap blob (ABI v27): "OKM1" + u16 rows + u16 cols +
+// table. The kernel copies it; the caller frees `data`. 1 on success. See /etc/keymaps.
+static inline int kapi_set_keymap_data (const char *name, const void *data, unsigned len) { return KT->set_keymap_data (name, data, len); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }
