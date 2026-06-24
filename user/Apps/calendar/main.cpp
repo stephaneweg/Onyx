@@ -4,6 +4,7 @@
 // to save it (per-day, in SD:/apps/calendar.app/agenda.txt). Backspace edits.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	392
@@ -219,6 +220,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "calendar");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	kapi_get_datetime (&g_ty, &g_tm, &g_td, 0, 0, 0);
 	if (g_ty < 1970) { g_ty = 2026; g_tm = 1; g_td = 1; }	// uptime clock fallback
 	g_year = g_ty; g_month = g_tm;

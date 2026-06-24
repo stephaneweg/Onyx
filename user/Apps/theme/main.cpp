@@ -9,6 +9,7 @@
 // are drawn into our own canvas via the applib widgets and hit-tested by on_click.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	380
@@ -201,6 +202,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "theme");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	for (int i = 0; i < 4; i++) { pk[i].x = 130; pk[i].y = 70 + i * 30; pk[i].w = 70; pk[i].h = 20; }
 	scan_keymaps ();		// fill the keymap dropdown from SD:/etc/keymaps/*.kmap

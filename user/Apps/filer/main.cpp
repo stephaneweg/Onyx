@@ -5,6 +5,7 @@
 // open a folder, Backspace to go up.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 
 #define W	460
 #define H	380
@@ -334,6 +335,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "filer");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_rows = (H - LISTY) / g_fh;

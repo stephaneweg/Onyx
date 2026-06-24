@@ -6,6 +6,7 @@
 // saves the file; Discard reloads it. Fully app-drawn (canvas + click/key handlers).
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	560
@@ -233,6 +234,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "config");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_fh += 2;					// row pitch

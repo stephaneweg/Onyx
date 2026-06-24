@@ -66,8 +66,17 @@
 #define USER_HEAP_BASE		(10ULL * GIGABYTE)	// 0x2_8000_0000
 #define USER_HEAP_MAX		USER_WINDOW_CANVAS	// ceiling (12 GB): 2 GB of heap VA
 
-// Where a process's window canvas is mapped (shared with the kernel compositor).
-#define USER_WINDOW_CANVAS	(12ULL * GIGABYTE)	// 0x3_0000_0000
+// Where a process's window canvas is mapped (shared with the kernel compositor). The
+// 12-13 GB slot is carved into three regions, each with 256 MB of VA headroom (a
+// fullscreen canvas/chrome copy is <=3.4 MB): the content canvas at the base, and the
+// active + inactive window-chrome copies 512/768 MB up. The app draws its title bar /
+// borders into the chrome copies; the compositor picks the one matching focus and
+// blits it (window chrome moved user-side). The copies are SEPARATE allocations so
+// each stays under the kernel heap's top bucket (a single combined block would exceed
+// it for a large window and be lost on free -- see the heap large-block note).
+#define USER_WINDOW_CANVAS		(12ULL * GIGABYTE)			// content
+#define USER_WINDOW_CHROME		(USER_WINDOW_CANVAS + 0x20000000ULL)	// +512 MB active
+#define USER_WINDOW_CHROME_INACTIVE	(USER_WINDOW_CANVAS + 0x30000000ULL)	// +768 MB inactive
 
 // Where the shared desktop-wallpaper buffer is mapped for a wallpaper-writer app
 // (e.g. voronoy.app). Sits in the gap between the window canvas (12 GB) and the

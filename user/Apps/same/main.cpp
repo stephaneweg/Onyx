@@ -5,6 +5,7 @@
 // event (kapi_set_click_handler); 'r' starts a new board.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 
 #define GW	18
 #define GH	13
@@ -169,6 +170,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "same");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_click_handler (on_click);

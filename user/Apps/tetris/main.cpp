@@ -5,6 +5,7 @@
 // 'r' restart.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 
 #define COLS	10
 #define ROWS	20
@@ -192,6 +193,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "tetris");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);

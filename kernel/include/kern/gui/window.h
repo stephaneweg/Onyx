@@ -179,9 +179,22 @@ public:
 	u64 CanvasPhys (void) const	{ return m_ulCanvasPhys; }
 	unsigned CanvasPages (void) const { return m_nCanvasPages; }
 
+	// Window-chrome buffers (user-drawn decorations): two SEPARATE OuterW x OuterH
+	// copies (active [0], inactive [1] = client + chrome insets), mapped into the app
+	// at USER_WINDOW_CHROME / _INACTIVE. The app draws its title bar / borders / close
+	// box into both; the compositor picks the copy matching focus and blits it (magenta
+	// = transparent). Separate (not one combined) so each stays under the heap's top
+	// bucket. 0 for a borderless window (no chrome) or if allocation failed.
+	boolean HasChrome (void) const		{ return m_ulChromePhys[0] != 0; }
+	u64 ChromePhys (int i) const		{ return m_ulChromePhys[i]; }
+	unsigned ChromePages (int i) const	{ return m_nChromePages[i]; }
+	int OuterW (void) const			{ return m_nOuterW; }
+	int OuterH (void) const			{ return m_nOuterH; }
+
 	int X (void) const		{ return m_nX; }
 	int Y (void) const		{ return m_nY; }
 	void Move (int x, int y)	{ m_nX = x; m_nY = y; }
+	const char *Title (void) const	{ return m_Title; }
 
 	// Blit frame + title bar + close box + canvas + widgets onto the screen image.
 	void DrawTo (GImage *pScreen, boolean bActive);
@@ -245,6 +258,12 @@ private:
 	void	       *m_pRawAlloc;	// the over-allocated block (freed on destroy)
 	u64		m_ulCanvasPhys;	// 64 KB-aligned start of the canvas (== kernel VA)
 	unsigned	m_nCanvasPages;	// 64 KB pages spanned by the canvas
+
+	void	       *m_pChromeRaw[2];	// over-allocated chrome blocks (active, inactive); 0 = none
+	u64		m_ulChromePhys[2]; // 64 KB-aligned chrome starts (== kernel VA); [0]=0 means none
+	unsigned	m_nChromePages[2]; // 64 KB pages per chrome copy
+	int		m_nOuterW;	// chrome (outer window) dims = client + chrome insets
+	int		m_nOuterH;
 
 	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
 	u64		m_ulClickHandler; // app canvas-click callback, or 0

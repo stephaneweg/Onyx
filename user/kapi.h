@@ -125,6 +125,12 @@ static inline int  kapi_should_exit (void) { return KT->should_exit (); }
 
 // --- app-drawn text + keyboard -----------------------------------------------
 static inline void kapi_draw_text (int x, int y, const char *s, unsigned c) { KT->draw_text (x, y, s, c); }
+// Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. a window-
+// chrome copy from kapi_get_chrome). Transparent background; dst must be a user VA.
+static inline void kapi_draw_text_buf (unsigned *dst, int dw, int dh, int x, int y, const char *s, unsigned c) { KT->draw_text_buf (dst, dw, dh, x, y, s, c); }
+// Window surfaces for a user-side chrome drawer (ABI v28). Returns 1 + fills *out
+// (content canvas + active/inactive chrome copies + insets + title), or 0 if no window.
+static inline int  kapi_get_chrome (struct kapi_chrome *out) { return KT->get_chrome (out); }
 static inline int  kapi_font_width (void) { return KT->font_width (); }
 static inline int  kapi_font_height (void) { return KT->font_height (); }
 static inline void kapi_set_key_handler (gui_handler fn) { KT->set_key_handler (fn); }

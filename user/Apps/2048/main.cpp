@@ -2,6 +2,7 @@
 // 2048 -- slide tiles with the arrow keys; equal tiles merge. 'r' restarts.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define N	4
@@ -152,6 +153,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "2048");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);
 	restart ();

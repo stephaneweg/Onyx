@@ -5,6 +5,7 @@
 // Iteration count maps to colour. Renders progressively (yields between row bands).
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	340
@@ -159,6 +160,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "fractal");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	reset_view ();
 	kapi_set_click_handler (on_click);
 	kapi_set_key_handler (on_key);

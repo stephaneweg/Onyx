@@ -4,6 +4,7 @@
 // move it like any window.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 
 #define W	180
 #define H	110
@@ -52,6 +53,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "eyes");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	while (!should_exit ())
 	{

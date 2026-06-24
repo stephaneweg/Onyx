@@ -6,6 +6,7 @@
 // -nostdlib -fno-exceptions -fno-rtti. No STL.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "onyxpp.hpp"
 
 #define W	360
@@ -44,6 +45,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "cppdemo");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	for (int i = 0; i < N; i++)			// heap-allocate a mix of subclasses
 	{

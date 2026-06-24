@@ -166,6 +166,11 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 
 	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW, ASID-tagged
 	pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
+	if (pWin->HasChrome ())					// user-drawn window chrome buffers
+	{
+		pAS->MapContig (USER_WINDOW_CHROME,          pWin->ChromePhys (0), pWin->ChromePages (0), Attr);
+		pAS->MapContig (USER_WINDOW_CHROME_INACTIVE, pWin->ChromePhys (1), pWin->ChromePages (1), Attr);
+	}
 	pAS->SetWindow (pWin);
 	if (CWindowManager::Get () != 0)
 	{
@@ -226,6 +231,65 @@ void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
 		return;
 	}
 	pWin->Canvas ()->DrawText (x, y, pStr, (u32) nColor);
+}
+
+// Report the calling app's window surfaces so a user-side toolkit can draw the window
+// chrome (decorations). Fills *out with the content canvas and, for a normal window,
+// the active + inactive chrome copies (in the chrome buffer mapped at
+// USER_WINDOW_CHROME), the chrome insets, and the title. For a borderless window the
+// chrome pointers are 0. Returns 1, or 0 if the app has no window. The kernel keeps
+// chrome BEHAVIOUR (title-bar drag, close-box hit-test) -- only the drawing moves here.
+int kapi_get_chrome (struct kapi_chrome *out)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || out == 0)
+	{
+		return 0;
+	}
+	memset (out, 0, sizeof *out);
+	out->content   = (unsigned *) USER_WINDOW_CANVAS;
+	out->content_w = pWin->ClientWidth ();
+	out->content_h = pWin->ClientHeight ();
+	if (pWin->HasChrome ())
+	{
+		out->active   = (unsigned *) USER_WINDOW_CHROME;
+		out->inactive = (unsigned *) USER_WINDOW_CHROME_INACTIVE;
+		out->chrome_w = pWin->OuterW ();
+		out->chrome_h = pWin->OuterH ();
+		out->inset_l  = pWin->ChromeL ();
+		out->inset_r  = pWin->ChromeR ();
+		out->inset_t  = pWin->ChromeT ();
+		out->inset_b  = pWin->ChromeB ();
+	}
+	const char *pTitle = pWin->Title ();
+	unsigned i;
+	for (i = 0; i + 1 < sizeof out->title && pTitle[i] != '\0'; i++)
+	{
+		out->title[i] = pTitle[i];
+	}
+	out->title[i] = '\0';
+	return 1;
+}
+
+// Draw kernel-font text (transparent background) into an arbitrary app-mapped
+// 0x00RRGGBB buffer (dst, dstW x dstH) at (x,y). Lets a user-side toolkit render text
+// into surfaces other than the main canvas -- e.g. the window-chrome buffers (the
+// kernel bitmap font is the only font apps have). dst must lie in user space.
+void kapi_draw_text_buf (unsigned *dst, int dstW, int dstH, int x, int y,
+			 const char *pStr, unsigned nColor)
+{
+	if (dst == 0 || pStr == 0 || dstW <= 0 || dstH <= 0)
+	{
+		return;
+	}
+	u64 nBytes = (u64) dstW * dstH * sizeof (u32);
+	if (!IS_USER_VA (dst) || !IS_USER_VA ((u8 *) dst + nBytes - 1))
+	{
+		return;
+	}
+	GImage Img ((u32 *) dst, dstW, dstH);
+	Img.DrawText (x, y, pStr, (u32) nColor);
 }
 
 int kapi_font_width  (void) { return GImage::FontWidth (); }	// glyph cell width

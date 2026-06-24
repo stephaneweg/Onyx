@@ -3,6 +3,7 @@
 // First to 9 wins; 'r' resets. App-drawn; integer physics.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	480
@@ -93,6 +94,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "pong");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	kapi_set_key_handler (on_key);
 	reset ();
 	while (!should_exit ()) { pump_events (); step (); redraw (); msleep (16); }

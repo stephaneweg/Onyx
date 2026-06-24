@@ -6,6 +6,7 @@
 // change -- no rebuild needed.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	380
@@ -46,6 +47,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "inidemo");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	for (int i = 0; i < W * H; i++) fb[i] = 0x00202832;
 
 	int n = app_ini_load ("config.ini");

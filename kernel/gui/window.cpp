@@ -15,6 +15,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 :	m_nX (x), m_nY (y), m_nFlags (nFlags),
 	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
+	m_nOuterW (0), m_nOuterH (0),
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_pDialog (0), m_pModalChild (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
@@ -57,6 +58,38 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	memset ((void *) ulAligned, 0, m_nCanvasPages * KPAGE_SIZE);
 
 	m_Canvas.Wrap ((u32 *) ulAligned, nClientW, nClientH);
+
+	// Chrome buffers (normal windows only): two SEPARATE page-aligned, contiguous
+	// copies (active, inactive), each OuterW x OuterH. The app draws its decorations
+	// into them (via USER_WINDOW_CHROME / _INACTIVE); the compositor blits the focused
+	// copy. Separate allocations keep each copy small enough for the heap to reuse on
+	// free. Borderless windows have no chrome, so we skip it.
+	m_pChromeRaw[0] = m_pChromeRaw[1] = 0;
+	m_ulChromePhys[0] = m_ulChromePhys[1] = 0;
+	m_nChromePages[0] = m_nChromePages[1] = 0;
+	if ((nFlags & WIN_FLAG_BORDERLESS) == 0)
+	{
+		m_nOuterW = nClientW + 2 * WIN_BORDER;
+		m_nOuterH = nClientH + WIN_TITLEBAR_H + WIN_BORDER;
+		unsigned nCopyBytes = (unsigned) (m_nOuterW * m_nOuterH) * sizeof (u32);
+		unsigned nPages = (nCopyBytes + KPAGE_MASK) / KPAGE_SIZE;
+		if (nPages == 0)
+		{
+			nPages = 1;
+		}
+		for (int i = 0; i < 2; i++)
+		{
+			m_pChromeRaw[i] = new u8[nPages * KPAGE_SIZE + KPAGE_SIZE];
+			if (m_pChromeRaw[i] == 0)
+			{
+				break;				// HasChrome() stays false if [0] failed
+			}
+			uintptr ulC = ((uintptr) m_pChromeRaw[i] + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
+			m_ulChromePhys[i] = ulC;
+			m_nChromePages[i] = nPages;
+			memset ((void *) ulC, 0, nPages * KPAGE_SIZE);
+		}
+	}
 }
 
 CWindow::~CWindow (void)
@@ -78,6 +111,14 @@ CWindow::~CWindow (void)
 	{
 		delete [] (u8 *) m_pRawAlloc;
 		m_pRawAlloc = 0;
+	}
+	for (int i = 0; i < 2; i++)
+	{
+		if (m_pChromeRaw[i] != 0)
+		{
+			delete [] (u8 *) m_pChromeRaw[i];
+			m_pChromeRaw[i] = 0;
+		}
 	}
 }
 
@@ -144,52 +185,21 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	int cw = ClientWidth ();		// logical size (may be < allocated canvas)
 	int ch = ClientHeight ();
 
-	// Outer rectangle: chrome (border + title bar) + client area. A borderless
-	// window has zero chrome, so the client area fills the whole window.
+	// Outer top-left (chrome + client). A borderless window has zero chrome, so the
+	// client area fills the whole window.
 	int x0 = m_nX;
 	int y0 = m_nY;
-	int x1 = m_nX + cw + ChromeL () + ChromeR () - 1;
-	int y1 = m_nY + ChromeT () + ch + ChromeB () - 1;
 
-	if (!Borderless ())
+	// Window chrome is now drawn USER-SIDE: the app renders its title bar / borders /
+	// close box into two pre-composited copies (active + inactive, stacked in the
+	// chrome buffer). The compositor simply picks the copy matching focus and blits it
+	// (magenta = transparent, so the skin's rounded corners show the desktop). The
+	// kernel keeps only the chrome BEHAVIOUR (title-bar drag, close-box hit-test).
+	if (!Borderless () && m_ulChromePhys[0] != 0)
 	{
-		// Frame + title bar: the window skin (wings.bmp, 7/7/32/7) draws the whole
-		// chrome; otherwise a flat frame + title bar. The skin was pre-tinted at load
-		// (Colorize) into an active + a dimmer inactive copy -- pick by focus.
-		CSkin *pChrome = bActive ? g_pWindowSkin
-				 : (g_pWindowSkinInactive ? g_pWindowSkinInactive : g_pWindowSkin);
-		if (pChrome != 0)
-		{
-			pChrome->DrawOn (pScreen, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, TRUE);
-		}
-		else
-		{
-			pScreen->FillRectangle (x0, y0, x1, y1, WIN_COLOR_FRAME);
-			pScreen->FillRectangle (x0, y0, x1, y0 + WIN_TITLEBAR_H - 1,
-						bActive ? WIN_COLOR_TITLE_ACT : WIN_COLOR_TITLE);
-		}
-
-		// Title text, vertically centred in the title bar (inside the left border).
-		pScreen->DrawText (x0 + WIN_BORDER + 2,
-				   y0 + (WIN_TITLEBAR_H - GImage::FontHeight ()) / 2,
-				   m_Title, g_WinTitleTextColor);
-
-		// Close box [x] at the right of the title bar (skinned if available).
-		int cbx0, cby0, cbx1, cby1;
-		CloseBoxRect (&cbx0, &cby0, &cbx1, &cby1);
-		if (g_pCloseSkin != 0)
-		{
-			g_pCloseSkin->DrawOn (pScreen, 0, cbx0, cby0,
-					      cbx1 - cbx0 + 1, cby1 - cby0 + 1, TRUE);
-		}
-		else
-		{
-			pScreen->FillRectangle (cbx0, cby0, cbx1, cby1, 0x00C03020);
-			pScreen->DrawRectangle (cbx0, cby0, cbx1, cby1, 0x00000000);
-		}
-		// X glyph on top so the close box is always recognizable.
-		pScreen->DrawLine (cbx0 + 3, cby0 + 3, cbx1 - 3, cby1 - 3, 0x00FFFFFF);
-		pScreen->DrawLine (cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
+		u32 *pCopy = (u32 *) m_ulChromePhys[bActive ? 0 : 1];
+		GImage Chrome (pCopy, m_nOuterW, m_nOuterH);
+		pScreen->PutOther (&Chrome, x0, y0, TRUE);
 	}
 
 	// Client area = the owner's canvas, blitted opaque inside the chrome. Only the
@@ -389,12 +399,6 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 			break;
 		}
 		}
-	}
-
-	// Outline (only for the flat frame; the skin draws its own border).
-	if (g_pWindowSkin == 0)
-	{
-		pScreen->DrawRectangle (x0, y0, x1, y1, 0x00000000);
 	}
 }
 

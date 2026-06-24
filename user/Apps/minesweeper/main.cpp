@@ -3,6 +3,7 @@
 // neighbours; hit a mine and you lose; clear all safe cells to win. 'r' restarts.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define GW	16
@@ -136,6 +137,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "minesweeper");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_click_handler (on_click);
 	kapi_set_key_handler (on_key);

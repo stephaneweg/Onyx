@@ -3,6 +3,7 @@
 // c clear, r random. App-drawn grid via canvas-click.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 
 #define GW	48
 #define GH	34
@@ -88,6 +89,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "life");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);
 	kapi_set_click_handler (on_click);

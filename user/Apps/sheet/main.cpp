@@ -4,6 +4,7 @@
 // (A1, B2, ...). Values are fixed-decimal (3 places). Recomputed after each edit.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define COLS	8			// A..H
@@ -235,6 +236,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "sheet");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	for (int r = 0; r < ROWS; r++) for (int c = 0; c < COLS; c++) g_raw[r][c][0] = '\0';
 	recompute ();
 	load_edit ();

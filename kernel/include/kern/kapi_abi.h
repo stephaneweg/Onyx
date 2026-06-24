@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	27
+#define KAPI_ABI_VERSION	28
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,6 +32,23 @@ struct kapi_dirent
 	char     name[128];
 	unsigned size;		// bytes (0 for directories)
 	int      is_dir;	// 1 if a directory
+};
+
+// The calling app's window surfaces, for a user-side chrome (decoration) drawer
+// (ABI v28, kapi_get_chrome). `content` is the client canvas; `active`/`inactive` are
+// the two pre-composited chrome copies the app draws its title bar / borders / close
+// box into (the compositor blits the one matching focus, magenta = transparent). Both
+// chrome pointers are 0 for a borderless window. Insets give the client offset inside
+// the chrome (client origin = active + (inset_t * chrome_w + inset_l)).
+struct kapi_chrome
+{
+	unsigned *content;		// client canvas (== USER_WINDOW_CANVAS)
+	int       content_w, content_h;
+	unsigned *active;		// active-focus chrome copy   (0 if borderless)
+	unsigned *inactive;		// inactive (unfocused) copy  (0 if borderless)
+	int       chrome_w, chrome_h;	// outer size of each chrome copy
+	int       inset_l, inset_r, inset_t, inset_b;	// chrome insets (client offset)
+	char      title[48];		// window title (kernel-owned copy)
 };
 
 struct TKApiTable
@@ -273,6 +290,18 @@ struct TKApiTable
 	// buffer. `name` is recorded for get_keymap. Returns 1 on success, 0 otherwise.
 	// New layouts can be added as files with no kernel rebuild (see tools/keymaps).
 	int (*set_keymap_data) (const char *name, const void *data, unsigned len);
+
+	// --- v28 additions (user-side window chrome) ---
+	// get_chrome: fill *out with the calling app's window surfaces (content canvas +
+	// the active/inactive chrome copies + insets + title) so a user-side toolkit can
+	// draw the title bar / borders / close box. Returns 1, or 0 if the app has no
+	// window. draw_text_buf: render kernel-font text (transparent background) into an
+	// arbitrary app-mapped 0x00RRGGBB buffer (dstW x dstH) at (x,y) -- used to draw the
+	// title into the chrome buffer (the kernel font is the only font apps have). The
+	// kernel still owns chrome BEHAVIOUR (title-bar drag, close-box hit-test).
+	int  (*get_chrome) (struct kapi_chrome *out);
+	void (*draw_text_buf) (unsigned *dst, int dstW, int dstH, int x, int y,
+			       const char *s, unsigned color);
 };
 
 #ifdef __cplusplus

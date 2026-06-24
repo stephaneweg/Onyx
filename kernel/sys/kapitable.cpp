@@ -102,6 +102,8 @@ void *kapi_sbrk (long);
 void kapi_reboot (void);
 int kapi_kbd_ready (void);
 int kapi_set_keymap_data (const char *, const void *, unsigned);
+int kapi_get_chrome (struct kapi_chrome *);
+void kapi_draw_text_buf (unsigned *, int, int, int, int, const char *, unsigned);
 void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
@@ -250,4 +252,6 @@ void KApiTableInit (void)
 	t->reboot            = kapi_reboot;
 	t->kbd_ready         = kapi_kbd_ready;
 	t->set_keymap_data   = kapi_set_keymap_data;
+	t->get_chrome        = kapi_get_chrome;
+	t->draw_text_buf     = kapi_draw_text_buf;
 }

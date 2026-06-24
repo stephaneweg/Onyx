@@ -4,6 +4,7 @@
 // brush size, c clears, s saves the canvas to SD:/paint.bmp.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define W	420
@@ -117,6 +118,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "paint");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 	clear_canvas ();
 	kapi_set_click_handler (on_mouse);
 	kapi_set_key_handler (on_key);

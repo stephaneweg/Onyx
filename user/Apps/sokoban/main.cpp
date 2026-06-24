@@ -5,6 +5,7 @@
 // with an embedded fallback.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 #include "applib.h"
 
 #define GW	24
@@ -138,6 +139,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "sokoban");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	void *f = kapi_open ("SD:/apps/sokoban.app/levels.txt");
 	if (f != 0)

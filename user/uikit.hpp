@@ -221,8 +221,13 @@ public:
 		ml = l; mr = r; mt = t; mb = b;
 		return sh > 0;
 	}
-	void blit (Ui &ui, int sx, int sy, int bw, int bh, int dx, int dy);	// magenta-keyed sub-rect
-	void drawOn (Ui &ui, int state, int x, int y, int w, int h);		// 9-slice
+	// Draw into a raw 0x00RRGGBB target (fb, W x H) -- the content canvas or a window-
+	// chrome buffer. `tint` multiplies each pixel (0xFFFFFF = untouched); magenta is
+	// the transparency key (skipped). blit = a magenta-keyed sub-rect; drawOn = 9-slice.
+	void blit (unsigned *fb, int W, int H, int sx, int sy, int bw, int bh, int dx, int dy,
+		   unsigned tint = 0xFFFFFF);
+	void drawOn (unsigned *fb, int W, int H, int state, int x, int y, int w, int h,
+		     unsigned tint = 0xFFFFFF);
 };
 
 // The shared button skin, loaded once on first use (flat fallback if absent).
@@ -231,6 +236,69 @@ static inline Skin &buttonSkin ()
 	static Skin s; static bool tried = false;
 	if (!tried) { tried = true; s.load ("SD:/skins/button.bmp", 3, 6, 6, 6, 6); }
 	return s;
+}
+// The window-chrome skins (loaded once): wings.bmp = frame + title bar (grayscale, tinted
+// per focus), closebgs.bmp = close box. Margins match the kernel's old LoadSkin calls.
+static inline Skin &windowSkin () { static Skin s; static bool t = false; if (!t) { t = true; s.load ("SD:/skins/wings.bmp", 1, 7, 7, 32, 7); } return s; }
+static inline Skin &closeSkin ()  { static Skin s; static bool t = false; if (!t) { t = true; s.load ("SD:/skins/closebgs.bmp", 3, 5, 5, 5, 5); } return s; }
+
+// Tint copies of the window chrome (active = warm gold, inactive = muted slate), matching
+// the kernel's old WIN_SKIN_TINT_* so focus reads at a glance.
+#define UI_CHROME_TINT_ACTIVE	0x00FFC878
+#define UI_CHROME_TINT_INACTIVE	0x008090A0
+
+// Plot a clipped line into a raw 0x00RRGGBB buffer (for the close-box X glyph).
+static inline void uk_line (unsigned *fb, int W, int H, int x0, int y0, int x1, int y1, unsigned c)
+{
+	int dx = x1 - x0, dy = y1 - y0;
+	int adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+	int steps = adx > ady ? adx : ady; if (steps < 1) steps = 1;
+	for (int i = 0; i <= steps; i++)
+	{
+		int px = x0 + dx * i / steps, py = y0 + dy * i / steps;
+		if (px >= 0 && px < W && py >= 0 && py < H) fb[py * W + px] = c;
+	}
+}
+
+// Draw the standard window chrome (title bar + borders + close box + title text) into
+// BOTH the active and inactive copies of this window's chrome buffer -- the user-side
+// window decorations. The compositor blits the copy matching focus; the kernel keeps
+// chrome BEHAVIOUR (title-bar drag, close-box hit-test). No-op for a borderless window
+// or if the app has none. Drawn once (guarded); call after kapi_create_window. uikit
+// apps get this automatically from the Ui constructor; app-drawn apps call it directly.
+static inline void decorate_window ()
+{
+	static bool s_done = false;
+	if (s_done) return;
+	s_done = true;
+
+	struct kapi_chrome c;
+	if (!kapi_get_chrome (&c) || c.active == 0) return;	// no window / borderless
+	Skin &ws = windowSkin ();
+	Skin &cs = closeSkin ();
+	int W = c.chrome_w, H = c.chrome_h, T = c.inset_t;
+	int fh = kapi_font_height (); if (fh < 1) fh = 16;
+
+	unsigned *bufs[2]  = { c.active, c.inactive };
+	unsigned  tints[2] = { UI_CHROME_TINT_ACTIVE, UI_CHROME_TINT_INACTIVE };
+	for (int k = 0; k < 2; k++)
+	{
+		unsigned *fb = bufs[k];
+		if (fb == 0) continue;
+		for (int i = 0; i < W * H; i++) fb[i] = 0x00FF00FF;	// magenta = transparent key
+		if (ws.valid ()) ws.drawOn (fb, W, H, 0, 0, 0, W, H, tints[k]);
+
+		// Close box [x] at the right of the title bar -- matches the kernel CloseBoxRect
+		// (square inset = titlebar height - 10, 5 px from the top, ~4-5 px from the right).
+		int nSize = T - 10; if (nSize < 6) nSize = 6;
+		int cbx1 = W - 5, cbx0 = cbx1 - nSize, cby0 = 5, cby1 = cby0 + nSize;
+		if (cs.valid ()) cs.drawOn (fb, W, H, 0, cbx0, cby0, cbx1 - cbx0 + 1, cby1 - cby0 + 1);
+		uk_line (fb, W, H, cbx0 + 3, cby0 + 3, cbx1 - 3, cby1 - 3, 0x00FFFFFF);
+		uk_line (fb, W, H, cbx1 - 3, cby0 + 3, cbx0 + 3, cby1 - 3, 0x00FFFFFF);
+
+		// Title text, vertically centred in the title bar (inside the left border).
+		kapi_draw_text_buf (fb, W, H, c.inset_l + 2, (T - fh) / 2, c.title, 0x00FFFFFF);
+	}
 }
 
 // ============================================================================
@@ -257,6 +325,7 @@ public:
 		col_bg      = 0x00202830; col_face    = 0x00566074; col_face_hi = 0x00697690;
 		col_face_dn = 0x00404a5a; col_border  = 0x00161c24; col_text    = 0x00ffffff;
 		col_accent  = 0x0060ff90; col_dis     = 0x008891a0; col_field   = 0x00141a22;
+		decorate_window ();		// draw this window's chrome (once; no-op if borderless)
 	}
 	~Ui () { for (int i = 0; i < n; i++) delete items[i]; }
 
@@ -393,7 +462,7 @@ inline void Button::draw (Ui &ui)
 	Skin &bs = buttonSkin ();
 	if (bs.valid () && !disabled)				// skinned: 9-slice bitmap + black label
 	{
-		bs.drawOn (ui, pressed ? 2 : (hover ? 1 : 0), x, y, w, h);
+		bs.drawOn (ui.fb, ui.W, ui.H, pressed ? 2 : (hover ? 1 : 0), x, y, w, h);
 		if (focused) ui.frame (x + 1, y + 1, w - 2, h - 2, ui.col_accent);
 		kapi_draw_text (tx, ty, text, 0x00000000);
 		return;
@@ -683,47 +752,64 @@ inline void Icon::draw (Ui &ui)
 		for (int t = 0; t < 9; t++) ui.fill (x + 2, y + h - 2 - t, (8 - t) + 1, 1, 0x0040E060);
 }
 
-// Copy a (bw x bh) sub-rect of the skin image at (sx,sy) to (dx,dy) in the canvas,
-// skipping the magenta transparency key and clipping to the canvas bounds.
-inline void Skin::blit (Ui &ui, int sx, int sy, int bw, int bh, int dx, int dy)
+// Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel / 255). 0xFFFFFF = no-op.
+static inline unsigned uk_tint (unsigned c, unsigned t)
+{
+	if (t == 0xFFFFFF) return c;
+	unsigned r = (((c >> 16) & 0xFF) * ((t >> 16) & 0xFF)) / 255;
+	unsigned g = (((c >> 8)  & 0xFF) * ((t >> 8)  & 0xFF)) / 255;
+	unsigned b = (( c        & 0xFF) * ( t        & 0xFF)) / 255;
+	return (r << 16) | (g << 8) | b;
+}
+
+// Copy a (bw x bh) sub-rect of the skin image at (sx,sy) to (dx,dy) in the target
+// buffer, skipping the magenta key, multiplying by `tint`, clipped to (W,H).
+inline void Skin::blit (unsigned *fb, int W, int H, int sx, int sy, int bw, int bh,
+			int dx, int dy, unsigned tint)
 {
 	for (int yy = 0; yy < bh; yy++)
 	{
 		int py = dy + yy, syy = sy + yy;
-		if (py < 0 || py >= ui.H || syy < 0 || syy >= imgH) continue;
+		if (py < 0 || py >= H || syy < 0 || syy >= imgH) continue;
 		for (int xx = 0; xx < bw; xx++)
 		{
 			int px = dx + xx, sxx = sx + xx;
-			if (px < 0 || px >= ui.W || sxx < 0 || sxx >= imgW) continue;
+			if (px < 0 || px >= W || sxx < 0 || sxx >= imgW) continue;
 			unsigned c = pix[syy * imgW + sxx];
 			if (c == 0x00FF00FF) continue;			// transparent key
-			ui.fb[py * ui.W + px] = c;
+			fb[py * W + px] = uk_tint (c, tint);
 		}
 	}
 }
 
-// 9-slice draw of state `state` into the (x,y,w,h) box: fixed corners, edges tiled along
-// one axis, the centre filled with the skin's middle pixel (port of the kernel CSkin::DrawOn).
-inline void Skin::drawOn (Ui &ui, int state, int x, int y, int w, int h)
+// 9-slice draw of state `state` into the (x,y,w,h) box of (fb,W,H): fixed corners,
+// edges tiled along one axis, the centre filled with the skin's middle pixel (port of
+// the kernel CSkin::DrawOn). `tint` recolours a grayscale skin (e.g. window chrome).
+inline void Skin::drawOn (unsigned *fb, int W, int H, int state, int x, int y, int w, int h,
+			  unsigned tint)
 {
 	if (!valid ()) return;
 	int sy = sh * (state % count);
-	if (w == sw && h == sh) { blit (ui, 0, sy, sw, sh, x, y); return; }	// exact size
+	if (w == sw && h == sh) { blit (fb, W, H, 0, sy, sw, sh, x, y, tint); return; }	// exact size
 
 	int midW = sw - ml - mr, midH = sh - mt - mb;		// source middle band
 	int outW = w  - ml - mr, outH = h  - mt - mb;		// dest middle band
 
 	if (outW > 0 && outH > 0)				// centre fill (single middle pixel)
-		ui.fill (x + ml, y + mt, outW, outH, pix[(sy + sh / 2) * imgW + (sw / 2)]);
-
+	{
+		unsigned c = uk_tint (pix[(sy + sh / 2) * imgW + (sw / 2)], tint);
+		for (int yy = y + mt; yy < y + mt + outH; yy++) if (yy >= 0 && yy < H)
+			for (int xx = x + ml; xx < x + ml + outW; xx++) if (xx >= 0 && xx < W)
+				fb[yy * W + xx] = c;
+	}
 	if (midW > 0 && outW > 0)				// top/bottom edges, tiled horizontally
 	{
 		int fillR = x + w - mr;
 		for (int tx = x + ml; tx < fillR; tx += midW)
 		{
 			int tcw = midW; if (tx + tcw > fillR) tcw = fillR - tx;
-			if (mt > 0) blit (ui, ml, sy,          tcw, mt, tx, y);
-			if (mb > 0) blit (ui, ml, sy + sh - mb, tcw, mb, tx, y + h - mb);
+			if (mt > 0) blit (fb, W, H, ml, sy,          tcw, mt, tx, y,        tint);
+			if (mb > 0) blit (fb, W, H, ml, sy + sh - mb, tcw, mb, tx, y + h - mb, tint);
 		}
 	}
 	if (midH > 0 && outH > 0)				// left/right edges, tiled vertically
@@ -732,14 +818,14 @@ inline void Skin::drawOn (Ui &ui, int state, int x, int y, int w, int h)
 		for (int ty = y + mt; ty < fillB; ty += midH)
 		{
 			int tch = midH; if (ty + tch > fillB) tch = fillB - ty;
-			if (ml > 0) blit (ui, 0,       sy + mt, ml, tch, x, ty);
-			if (mr > 0) blit (ui, sw - mr, sy + mt, mr, tch, x + w - mr, ty);
+			if (ml > 0) blit (fb, W, H, 0,       sy + mt, ml, tch, x,          ty, tint);
+			if (mr > 0) blit (fb, W, H, sw - mr, sy + mt, mr, tch, x + w - mr, ty, tint);
 		}
 	}
-	if (ml > 0 && mt > 0) blit (ui, 0,       sy,          ml, mt, x,          y);		// corners
-	if (mr > 0 && mt > 0) blit (ui, sw - mr, sy,          mr, mt, x + w - mr, y);
-	if (ml > 0 && mb > 0) blit (ui, 0,       sy + sh - mb, ml, mb, x,          y + h - mb);
-	if (mr > 0 && mb > 0) blit (ui, sw - mr, sy + sh - mb, mr, mb, x + w - mr, y + h - mb);
+	if (ml > 0 && mt > 0) blit (fb, W, H, 0,       sy,          ml, mt, x,          y,        tint); // corners
+	if (mr > 0 && mt > 0) blit (fb, W, H, sw - mr, sy,          mr, mt, x + w - mr, y,        tint);
+	if (ml > 0 && mb > 0) blit (fb, W, H, 0,       sy + sh - mb, ml, mb, x,          y + h - mb, tint);
+	if (mr > 0 && mb > 0) blit (fb, W, H, sw - mr, sy + sh - mb, mr, mb, x + w - mr, y + h - mb, tint);
 }
 
 } // namespace ui

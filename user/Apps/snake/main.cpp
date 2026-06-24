@@ -3,6 +3,7 @@
 // reversing), 'r' restarts. Eat food to grow; hitting a wall or yourself ends it.
 //
 #include "kapi.h"
+#include "uikit.hpp"
 
 #define GW	24
 #define GH	18
@@ -125,6 +126,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "snake");
 	if (fb == 0) return 1;
+	ui::decorate_window ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);
