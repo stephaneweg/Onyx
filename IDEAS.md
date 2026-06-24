@@ -12,7 +12,8 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 |------|--------|-------|
 | Cardfile — fiches/formulaires (façon Cardfile Win 3.11) | 💡 | Mode **édition** : définir le formulaire (liste de champs modifiable). Mode **visualisation** : CRUD sur les enregistrements (créer/modifier/lire/supprimer). Stockage des schémas + données sur SD. |
 | Serveur HTTP simple | 💡 | App graphique : on indique le **home directory** à servir, le reste tourne en tâche de fond. Dépend de la pile réseau exposée. **Réf. (meilleure) :** `circle/sample/21-webserver` (à déporter en app) ; aussi `temp/https.asm` (x86, MenuetOS). |
-| Client HTTP | 💡 | Récupération de ressources HTTP (download/fetch). Dépend de la pile réseau exposée. **Réf. (meilleure) :** `circle/sample/31-webclient` — fetch d'un doc HTTP + parseur HTML (`htmlscanner.cpp`) ; aussi `temp/httpc.asm` (x86, MenuetOS). ⚠️ Circle ne gère pas HTTPS nativement (SSL/TLS → circle-stdlib). |
+| Client HTTP | ✅ | Fetch via `/bin/wget <url>` (corps → stdout) sur la lib `user/httpc.h`. HTTP/1.0 + `Connection: close`, pas de chunked, **pas de HTTPS** (TLS absent). Le rendu HTML reste à faire (cf. *Navigateur web*). |
+| Interpréteur BASIC (façon QuickBasic) | 💡 | Éditeur : fenêtre où on écrit le code ; le bloc **sans nom = `main`** (comme en QuickBasic) ; dialogue séparé pour écrire les **SUB / FUNCTION**. Le code est **compilé en bytecode en mémoire** puis exécuté par une **VM**. Langage pas forcément BASIC mais similaire → doit couvrir les fonctions de QBasic. |
 | Breakout (jeu) | 💡 | Casse-briques classique (raquette, balle, briques, niveaux). |
 | Sokoban : niveaux supplémentaires | 💡 | Ajouter ≥ 10 niveaux pour commencer. App existante : `user/sokoban.c`. |
 | Navigateur web | 💡 | Embryon de browser : barre d'URL, fetch via la classe `HttpClient`, rendu HTML basique. Réutiliser le parseur `htmlscanner.cpp` (`circle/sample/31-webclient`) comme point de départ. ⚠️ HTTP seul au début (pas de HTTPS natif). |
@@ -26,7 +27,7 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 | Réseau : exposer la pile TCP/IP de Circle | ✅ | Fait (phase 1, cœur principal) : WLAN `bcm4343` + `wpa_supplicant` + `CNetSubSystem` (DHCP) montés dans un `CNetBringupTask` non bloquant ; sockets TCP via l'ABI v21 (`net_status`/`tcp_connect`/`tcp_send`/`tcp_recv`/`tcp_close`), backend `kernel/sys/net.cpp`. **Reste :** faire tourner la pile sur un **cœur dédié** (phase 2 : `CMultiCoreSupport` + files inter-cœurs). |
 | Réseau : résolveurs ARP / DNS, etc. | ✅ | Fournis par la pile Circle : ARP/ICMP internes ; DNS via `CDNSClient` (utilisé par `tcp_connect` quand l'hôte est un nom). |
 | Réseau : synchro date/heure via NTP | ✅ | `CNTPDaemon` démarré dès que le lien est up ; `system.ini` `timezone=` (minutes UTC) + `ntp=`. **Réf. :** `circle/sample/18-ntptime`. |
-| Classe `HttpClient` (lib) | 💡 | Envoi de requêtes HTTP : GET/POST/PUT/PATCH/DELETE, avec headers et body. Brique réutilisable : 1) clients de services web, 2) socle du futur web browser. S'appuie sur les sockets TCP (ABI v21) ; pas de HTTPS natif (cf. Client HTTP). |
+| Classe `HttpClient` (lib) | ✅ | `user/httpc.h` : header-only, sans allocation (buffer fourni par l'appelant), sur les sockets TCP v21. `http_request(method,url,headers,body,…)` (GET/POST/PUT/… via le verbe) + raccourcis `http_get`/`http_post`. HTTP/1.0, pas de HTTPS. Socle du futur navigateur web. |
 | Compositor : dirty-rect + flush async | 💡 | Aujourd'hui : redraw plein écran chaque frame. Optimisation perf différée. |
 | Port audio : synth FM + tracker | ❄️ | Amener le synth FM + tracker dans Onyx. Fixed-point + PWM. |
 | Filer : associations de fichiers via ini | ❄️ | `[fileassoc] .ext=programme` (aujourd'hui hardcodé dans `open_file`). |

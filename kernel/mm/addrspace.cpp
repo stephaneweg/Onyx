@@ -53,6 +53,9 @@ static void FreeASID (u8 nASID)
 // Monotonic process-id source (1..). 0 means "kernel task" (no address space).
 static unsigned s_nNextPid = 1;
 
+// Total 64 KB frames owned by all user address spaces (see kern/addrspace.h).
+unsigned g_nUserPages = 0;
+
 CAddressSpace::CAddressSpace (void)
 :	m_pL2 (0),
 	m_nASID (0),
@@ -62,7 +65,8 @@ CAddressSpace::CAddressSpace (void)
 	m_pStdin (0),
 	m_pStdout (0),
 	m_pProcess (0),
-	m_nExitStatus (0)
+	m_nExitStatus (0),
+	m_nOwnedPages (0)
 {
 	m_Args[0] = '\0';
 	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
@@ -74,6 +78,7 @@ CAddressSpace::CAddressSpace (void)
 	{
 		return;
 	}
+	m_nOwnedPages++; g_nUserPages++;	// the L2 table
 
 	// Share all kernel mappings: copy the kernel L2 table verbatim. Its valid
 	// entries point at the kernel's L3 tables (global, identity, EL1-only) and are
@@ -234,6 +239,9 @@ CAddressSpace::~CAddressSpace (void)
 	pfree (m_pL2);
 	m_pL2 = 0;
 
+	if (g_nUserPages >= m_nOwnedPages) g_nUserPages -= m_nOwnedPages;
+	m_nOwnedPages = 0;
+
 	FreeASID (m_nASID);
 }
 
@@ -252,6 +260,7 @@ TARMV8MMU_LEVEL3_DESCRIPTOR *CAddressSpace::GetOrCreateL3 (unsigned nL2Index)
 	{
 		return 0;
 	}
+	m_nOwnedPages++; g_nUserPages++;	// an L3 table
 	memset (pL3, 0, KPAGE_SIZE);
 
 	pDesc->Value11	    = 3;
@@ -326,6 +335,7 @@ void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 		pfree (pFrame);
 		return 0;
 	}
+	m_nOwnedPages++; g_nUserPages++;	// a user data frame (MapPage may also add an L3)
 
 	return pFrame;
 }

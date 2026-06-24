@@ -7,6 +7,7 @@
 // operators); the display is drawn with kapi_draw_text.
 //
 #include "kapi.h"
+#include "uikit.h"		// user-side widget toolkit (retained-mode, fixed pool)
 
 typedef long long          i64;
 typedef unsigned long long u64;
@@ -224,7 +225,6 @@ static int   g_op = 0;			// pending operator code (0 = none)
 static int   g_deg = 0;
 static int   g_dirty = 1;
 static int   g_fw = 8, g_fh = 16;
-static unsigned long g_deg_btn = 0;
 
 static void set_entry (fix v) { format_fix (v, g_entry); g_entering = 0; }
 
@@ -318,32 +318,36 @@ static void action (int code)
 	case F_POW:							// x^y: y is the next entry
 		do_op (F_POW); break;
 	case DEG:
-		g_deg ^= 1;
-		kapi_widget_set_text (g_deg_btn, g_deg ? "DEG" : "RAD");
+		g_deg ^= 1;		// the toolkit button's label is updated by its callback
 		break;
 	default: do_unary (code); break;
 	}
 	g_dirty = 1;
 }
 
-// ---- UI ---------------------------------------------------------------------
+// ---- UI (user-side toolkit: uikit.h) ----------------------------------------
+//
+// The widgets live in g_pool (this app's .bss -> its own address space; freed when
+// the app exits). The kernel only streams pointer events to us via the v22 pointer
+// handler; we own all the widget logic here.
 
 #define NB	40
-static unsigned long g_bh[NB];
-static int           g_bc[NB];
-static int           g_nb = 0;
+static ui_widget g_pool[NB];
+static ui_context g_ui;
+static int       g_code_for[NB];	// widget id -> calculator action code
+static int       g_deg_id = -1;
 
-static void on_btn (unsigned long sender, int ev, long v)
+static void on_widget (int id)		// uikit callback: a button was clicked
 {
-	(void) ev; (void) v;
-	for (int i = 0; i < g_nb; i++)
-		if (g_bh[i] == sender) { action (g_bc[i]); return; }
+	if (id < 0 || id >= NB) return;
+	int code = g_code_for[id];
+	action (code);
+	if (code == DEG) ui_set_text (&g_ui, id, g_deg ? "DEG" : "RAD");
 }
 
-static void on_deg (unsigned long sender, int ev, long v)
+static void on_ptr (unsigned long sender, int ev, long v)	// pointer stream -> toolkit
 {
-	(void) sender; (void) ev; (void) v;
-	action (DEG);
+	ui_on_event (&g_ui, sender, ev, v);
 }
 
 static void on_key (unsigned long sender, int ev, long key)
@@ -406,30 +410,36 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	fill_rect (0, 0, W, H, 0x00283038);		// window background
+	ui_init (&g_ui, g_pool, NB, fb, W, H);
+	g_ui.col_bg = 0x00283038;			// match the calculator background
 
-	// DEG/RAD toggle on the display row (right).
-	g_deg_btn = kapi_add_button (W - 56, DISPY, 48, DISPH, "RAD", on_deg);
+	// DEG/RAD toggle on the display row (right), then the 5x6 button grid.
+	g_deg_id = ui_button (&g_ui, W - 56, DISPY, 48, DISPH, "RAD", on_widget);
+	g_code_for[g_deg_id] = DEG;
 
-	// 5x6 button grid.
 	const int x0 = 8, y0 = 52, bw = 48, bh = 34, sx = 54, sy = 40;
 	for (int r = 0; r < 6; r++)
-	{
 		for (int c = 0; c < 5; c++)
 		{
 			int idx = r * 5 + c;
-			unsigned long h = kapi_add_button (x0 + c * sx, y0 + r * sy, bw, bh,
-							   g_lbl[idx], on_btn);
-			if (g_nb < NB) { g_bh[g_nb] = h; g_bc[g_nb] = g_code[idx]; g_nb++; }
+			int id = ui_button (&g_ui, x0 + c * sx, y0 + r * sy, bw, bh,
+					    g_lbl[idx], on_widget);
+			if (id >= 0) g_code_for[id] = g_code[idx];
 		}
-	}
 
-	kapi_set_key_handler (on_key);
+	kapi_set_pointer_handler (on_ptr);		// mouse -> toolkit (widgets are ours)
+	kapi_set_key_handler (on_key);			// keys -> calculator directly
 
 	while (!should_exit ())
 	{
 		pump_events ();
-		if (g_dirty) { draw_display (); g_dirty = 0; }
+		if (g_dirty || ui_dirty (&g_ui))	// calc state OR widget hover/press changed
+		{
+			ui_background (&g_ui);		// clear
+			draw_display ();		// our display area
+			ui_draw (&g_ui);		// the buttons on top
+			g_dirty = 0;
+		}
 		msleep (16);
 	}
 	return 0;

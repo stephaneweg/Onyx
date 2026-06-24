@@ -27,6 +27,18 @@
 #define GUI_EVENT_CANVAS_CLICK	6	// client-area press; value = (buttons<<32)|(x<<16)|y
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area; same value
 					// buttons: bit0 left, bit1 right
+// Full pointer stream (ABI v22, opt-in via kapi_set_pointer_handler) for app-side
+// widget toolkits (uikit.h). value packs (changed<<40)|(buttons<<32)|(x<<16)|y, all
+// client-relative; decode with the GUI_PTR_* macros below.
+#define GUI_EVENT_PTR_MOVE	8	// cursor moved
+#define GUI_EVENT_PTR_DOWN	9	// a button went down (changed = which: 1/2/4)
+#define GUI_EVENT_PTR_UP	10	// a button went up (changed = which)
+#define GUI_EVENT_PTR_ENTER	11	// cursor entered the client area
+#define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
+#define GUI_PTR_Y(v)		((int) ((unsigned long) (v) & 0xFFFF))
+#define GUI_PTR_X(v)		((int) (((unsigned long) (v) >> 16) & 0xFFFF))
+#define GUI_PTR_BUTTONS(v)	((int) (((unsigned long) (v) >> 32) & 0xFF))	// held mask
+#define GUI_PTR_CHANGED(v)	((int) (((unsigned long) (v) >> 40) & 0xFF))	// 1 left/2 right/4 mid
 
 // Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 #define KEY_BACKSPACE		8
@@ -117,6 +129,9 @@ static inline int  kapi_font_width (void) { return KT->font_width (); }
 static inline int  kapi_font_height (void) { return KT->font_height (); }
 static inline void kapi_set_key_handler (gui_handler fn) { KT->set_key_handler (fn); }
 static inline void kapi_set_click_handler (gui_handler fn) { KT->set_click_handler (fn); }
+static inline void kapi_set_pointer_handler (gui_handler fn) { KT->set_pointer_handler (fn); }
+// Memory snapshot (KB): total RAM, free, app-owned, page size. Any pointer may be 0.
+static inline int kapi_meminfo (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb) { return KT->meminfo (total_kb, free_kb, app_kb, page_kb); }
 
 // --- enumeration + clock -----------------------------------------------------
 static inline int  kapi_list_apps (char *b, unsigned s) { return KT->list_apps (b, s); }

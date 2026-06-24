@@ -19,7 +19,7 @@ PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
 	  2048.elf life.elf pong.elf sokoban.elf \
 	  calendar.elf mandelbrot.elf minesweeper.elf paint.elf \
 	  eyes.elf sheet.elf taskman.elf voronoy.elf theme.elf config.elf \
-	  irc.elf
+	  irc.elf memmon.elf
 
 all: $(PROGS) bin
 
@@ -28,7 +28,7 @@ all: $(PROGS) bin
 bin:
 	@$(MAKE) --no-print-directory -C bin
 
-%.elf: %.c crt0.S user.ld kapi.h applib.h
+%.elf: %.c crt0.S user.ld kapi.h applib.h httpc.h uikit.h
 	$(CC) $(CFLAGS) $(LDFLAGS) crt0.S $< -o $@
 
 clean:

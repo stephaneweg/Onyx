@@ -46,6 +46,11 @@ public:
 
 	u8 GetASID (void) const			{ return m_nASID; }
 
+	// Physical 64 KB pages this address space owns (palloc'd: its L2 + L3 tables +
+	// every MapNewPage frame). For ps / the memory monitor. Excludes shared mappings
+	// like a window canvas (owned by its CWindow).
+	unsigned GetPages (void) const		{ return m_nOwnedPages; }
+
 	// Process id: a small monotonic number assigned at creation, for ps/kill.
 	unsigned GetPid (void) const		{ return m_nPid; }
 
@@ -91,7 +96,13 @@ private:
 	int			     m_nExitStatus;
 	char			     m_Args[256]; // argv string for the child (kapi_get_args)
 	char			     m_Cwd[256]; // current working directory (FatFs abs path)
+	unsigned		     m_nOwnedPages; // palloc'd 64 KB frames owned (for ps/meminfo)
 };
+
+// Total 64 KB physical pages currently owned by all user address spaces (sum of
+// every CAddressSpace::GetPages()). Maintained as spaces are built/torn down; read
+// by the meminfo kapi / memory monitor.
+extern unsigned g_nUserPages;
 
 // Capture the kernel's TTBR0 base (call once, after the MMU is up) so kernel-only
 // tasks can be switched back to the kernel address space.

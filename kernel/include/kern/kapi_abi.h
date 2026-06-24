@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	21
+#define KAPI_ABI_VERSION	23
 
 #ifdef __cplusplus
 extern "C" {
@@ -231,6 +231,21 @@ struct TKApiTable
 	int  (*tcp_send) (int sock, const void *buf, unsigned len);
 	int  (*tcp_recv) (int sock, void *buf, unsigned len);
 	void (*tcp_close) (int sock);
+
+	// --- v22 additions (full pointer stream for app-side widget toolkits) ---
+	// Opt-in: register a handler that receives GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE
+	// for this window's client area, with value = (changed<<40)|(buttons<<32)|
+	// (x<<16)|y (client coords; `changed` = the button 1/2/4 for DOWN/UP). Lets a
+	// user-space toolkit (uikit.h) own its widgets. The legacy set_click_handler is
+	// unchanged.
+	void (*set_pointer_handler) (gui_handler fn);
+
+	// --- v23 additions (memory info) ---
+	// System memory snapshot, all in KB: *total RAM, *free (unallocated page region +
+	// free heap), *app (owned by user processes), *page_kb (page size). Any pointer
+	// may be 0. Returns 1. For the memory monitor + accounting.
+	int (*meminfo) (unsigned long *total_kb, unsigned long *free_kb,
+			unsigned long *app_kb, unsigned *page_kb);
 };
 
 #ifdef __cplusplus

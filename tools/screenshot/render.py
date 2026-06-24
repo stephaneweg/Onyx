@@ -252,18 +252,24 @@ def app_fractal():
     return cv
 
 def app_tinycalc():
+    # tinycalc now draws its buttons with the user-side toolkit (uikit.h), not the
+    # kernel skin: flat face + border, centred white label, hover = lighter face.
     W, H = 280, 296; cv = Canvas(W, H, C(0x283038))
+    def uibtn(x, y, w, h, label, hover=False):
+        cv.fill(x, y, w, h, C(0x697690 if hover else 0x566074))
+        cv.frame(x, y, w, h, C(0x161C24))
+        cv.ctext(x, w, y + (h - FH)//2, label, C(0xFFFFFF))
     DISPX, DISPY, DISPW, DISPH = 8, 8, W - 72, 36
     cv.fill(DISPX, DISPY, DISPW, DISPH, C(0x101820))
     s = "3.14159265"
     cv.text(DISPX + DISPW - len(s)*FW - 8, DISPY + (DISPH - FH)//2, s, C(0x60FF90))
-    button(cv, W - 56, DISPY, 48, DISPH, "RAD")
+    uibtn(W - 56, DISPY, 48, DISPH, "RAD")
     lbl = ["sin","cos","tan","ln","log","sqrt","x^2","x^y","1/x","e^x",
            "7","8","9","/","C","4","5","6","*","+/-","1","2","3","-","%","0",".","pi","=","+"]
     x0, y0, bw, bh, sxx, syy = 8, 52, 48, 34, 54, 40
     for r in range(6):
         for c in range(5):
-            button(cv, x0 + c*sxx, y0 + r*syy, bw, bh, lbl[r*5 + c])
+            uibtn(x0 + c*sxx, y0 + r*syy, bw, bh, lbl[r*5 + c], hover=(r*5+c == 28))
     return cv
 
 def app_tinypad():
@@ -358,6 +364,23 @@ def app_taskman():
         cv.text(8, y + 1, st, C(0xFFD070))
         cv.text(26, y + 1, name, C(0x808890) if kern else C(0xE8E8E8))
         if kern: cv.text(W - 60, y + 1, "kernel", C(0x606870))
+    return cv
+
+def app_memmon():
+    W, H = 440, 380; cv = Canvas(W, H, C(0x181C24))
+    cv.text(8, 8, "Memory monitor", C(0xFFFFFF))
+    bx, by, bw, bh = 8, 30, W - 16, 22                # usage bar (~18% used)
+    cv.fill(bx, by, bw, bh, C(0x283040)); cv.frame(bx, by, bw, bh, C(0x404A5A))
+    cv.fill(bx + 1, by + 1, int((bw - 2) * 0.18), bh - 2, C(0xD08040))
+    cv.ctext(bx, bw, by + (bh - FH)//2, "18%", C(0xFFFFFF))
+    y = 62
+    for label, val in [("Total: 3936 MB",0),("Used:  118208 KB",0),
+                       ("Free:  3912448 KB",0),("Apps:  2304 KB",0),("Page:  64 KB",0)]:
+        cv.text(8, y, label, C(0xD0D8E0)); y += FH
+    y += 6; cv.text(8, y, "By pages owned:", C(0x90A0B0)); y += FH
+    for pg, name, kern in [(9,"fractal",0),(7,"terminal",0),(6,"tinycalc",0),
+                           (5,"memmon",0),(4,"panel",0),(3,"taskman",0)]:
+        cv.text(8, y, ("%4dp  %s" % (pg, name)), C(0xC8D0C0)); y += FH
     return cv
 
 def app_2048():
@@ -893,7 +916,7 @@ if __name__ == "__main__":
         ("paint","paint",app_paint), ("taskman","taskman",app_taskman),
         ("2048","2048",app_2048), ("minesweeper","minesweeper",app_minesweeper),
         ("eyes","eyes",app_eyes), ("inidemo","inidemo",app_inidemo),
-        ("irc","irc",app_irc),
+        ("irc","irc",app_irc), ("memmon","memmon",app_memmon),
         ("life","life",app_life), ("pong","pong",app_pong), ("snake","snake",app_snake),
         ("tetris","tetris",app_tetris), ("same","same",app_same),
         ("sokoban","sokoban",app_sokoban), ("sheet","sheet",app_sheet),

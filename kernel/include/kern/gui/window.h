@@ -76,6 +76,14 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_KEY		5	// key pressed (lValue = char or KEY_* code)
 #define GUI_EVENT_CANVAS_CLICK	6	// press in the client area, no widget hit
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area
+// Full pointer stream for app-side widget toolkits (ABI v22, opt-in via
+// set_pointer_handler). lValue packs (changed<<40)|(buttons<<32)|(x<<16)|y, all
+// client-relative; `changed` = the button (1/2/4) for DOWN/UP, 0 otherwise.
+#define GUI_EVENT_PTR_MOVE	8	// cursor moved over the client area
+#define GUI_EVENT_PTR_DOWN	9	// a button went down
+#define GUI_EVENT_PTR_UP	10	// a button went up
+#define GUI_EVENT_PTR_ENTER	11	// cursor entered the client area
+#define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
 					// both: lValue = (buttons<<32)|(clientX<<16)|clientY
 					// buttons bit0 = left, bit1 = right
 
@@ -203,6 +211,11 @@ public:
 	void SetClickHandler (u64 ulHandler)	{ m_ulClickHandler = ulHandler; }
 	u64  ClickHandler (void) const		{ return m_ulClickHandler; }
 
+	// Full pointer-event handler (GUI_EVENT_PTR_*) for app-side widget toolkits.
+	// Opt-in: when set, the WM streams enter/leave/move/down/up (client coords) here.
+	void SetPointerHandler (u64 ulHandler)	{ m_ulPointerHandler = ulHandler; }
+	u64  PointerHandler (void) const	{ return m_ulPointerHandler; }
+
 	// --- modal dialogs ---------------------------------------------------
 	// A kernel-drawn dialog occupies its own window (m_pDialog set); the WM routes
 	// input to it directly. An app window with an open dialog points to it via
@@ -235,6 +248,7 @@ private:
 
 	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
 	u64		m_ulClickHandler; // app canvas-click callback, or 0
+	u64		m_ulPointerHandler; // app pointer-stream callback (GUI_EVENT_PTR_*), or 0
 	CDialog	       *m_pDialog;	// this window IS a kernel dialog (else 0)
 	CWindow	       *m_pModalChild;	// this (owner) window has an open dialog (else 0)
 
@@ -317,6 +331,10 @@ private:
 	// Move a window to the top of the z-order. Caller holds m_SpinLock.
 	void RaiseLocked (CWindow *pWindow);
 
+	// Push one GUI_EVENT_PTR_* event (client coords) to a window's pointer handler.
+	void EmitPointer (CWindow *pWin, int nEvent, int cx, int cy,
+			  unsigned nButtons, unsigned nChanged);
+
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
 
@@ -347,6 +365,10 @@ private:
 	CWindow	  *m_pPressedWindow;	// its window (for event delivery)
 	GWidget	  *m_pFocusWidget;	// textbox with keyboard focus (or 0)
 	CWindow	  *m_pFocusWindow;	// its window
+
+	// Pointer-stream state for app-side toolkits (windows with a PointerHandler).
+	CWindow	  *m_pPtrOverWindow;	// window the cursor is currently over (for enter/leave)
+	CWindow	  *m_pPtrCaptureWindow;	// window holding pointer capture during a button-drag
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).

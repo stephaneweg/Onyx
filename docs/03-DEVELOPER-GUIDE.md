@@ -257,6 +257,25 @@ The existing tools to study: `ls`, `cat`, `grep`, `wc`, `echo`, `page`, `rm`, `m
   `*_click(...)`. The app draws them in its canvas and routes the clicks via its
   `set_click_handler`. Used by `theme.c` and `mandelbrot.c`.
 
+There is also [`user/httpc.h`](../user/httpc.h) — a header-only **HTTP/1.0 client**
+over the v21 TCP socket calls. It does **no allocation** (the caller passes the
+response buffer, so all memory stays in the app's address space): `http_get(url, buf,
+cap, &resp)`, `http_post(...)`, or the general `http_request(method, url, headers,
+body, len, buf, cap, &resp)`. Plain HTTP only (no TLS). Used by `/bin/wget`. This is
+the recommended pattern for application-level protocols: build them in a user library
+on top of the kernel's transport kapis, rather than adding them to the ABI.
+
+And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
+entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
+`set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE` with client coords).
+Same memory model as the rest: widgets live in a caller-provided **fixed pool**
+(`ui_widget pool[N]` in the app's `.bss`, freed automatically on exit — no user
+`malloc`, no kernel object behind a widget). `ui_init`, `ui_button`/`ui_label`/
+`ui_checkbox`, `ui_on_event` (fed from the app's pointer + key handlers), `ui_draw`.
+`tinycalc` uses it. This is the forward path for widgets: new ones are added here,
+in userland, with no kernel/ABI change. The older **kernel-drawn widgets**
+(`add_button`…, §earlier) still work and coexist; apps choose one model per window.
+
 ## 9. Packaging an app: `.app`, icons, `config.ini`
 
 Layout of an application on the card (produced by `make stage`):

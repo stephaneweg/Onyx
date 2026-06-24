@@ -15,7 +15,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 :	m_nX (x), m_nY (y), m_nFlags (nFlags),
 	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
-	m_ulKeyHandler (0), m_ulClickHandler (0),
+	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_pDialog (0), m_pModalChild (0),
 	m_nWidgets (0), m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
 {
@@ -522,7 +522,8 @@ CWindowManager::CWindowManager (void)
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
 	m_pHoverWidget (0), m_pPressedWidget (0), m_pPressedWindow (0),
-	m_pFocusWidget (0), m_pFocusWindow (0)
+	m_pFocusWidget (0), m_pFocusWindow (0),
+	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -551,6 +552,8 @@ void CWindowManager::Remove (CWindow *pWindow)
 	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
 	if (m_pPressedWindow == pWindow)	{ m_pPressedWindow = 0; m_pPressedWidget = 0; }
 	if (m_pFocusWindow == pWindow)		{ m_pFocusWindow = 0; m_pFocusWidget = 0; }
+	if (m_pPtrOverWindow == pWindow)	{ m_pPtrOverWindow = 0; }
+	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
 	m_pHoverWidget = 0;			// recomputed on the next mouse move
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
@@ -1084,11 +1087,86 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		}
 	}
 
+	// --- pointer stream for app-side widget toolkits (opt-in PointerHandler) -----
+	// Additive to the above: a toolkit window has no kernel widgets and no click
+	// handler, so the legacy paths are inert for it. We stream enter/leave/move/
+	// down/up in client coords; a button-drag captures the pointer so the stream
+	// keeps going to that window even past its edges (sliders, drags).
+	{
+		boolean bOnTitleP = FALSE;
+		unsigned nHitP = HitTest (x, y, &bOnTitleP);
+		CWindow *pOver = 0;
+		if (nHitP != ~0u)
+		{
+			CWindow *pW = m_pWindows[nHitP];
+			if (pW->PointerHandler () != 0 && !bOnTitleP && !pW->HitCloseBox (x, y)
+			    && pW->ModalChild () == 0 && pW->Dialog () == 0)
+				pOver = pW;
+		}
+
+		// enter / leave (suppressed during capture: a drag shouldn't leave its window)
+		if (m_pPtrCaptureWindow == 0 && pOver != m_pPtrOverWindow)
+		{
+			if (m_pPtrOverWindow != 0)
+				EmitPointer (m_pPtrOverWindow, GUI_EVENT_PTR_LEAVE,
+					m_nPrevX - (m_pPtrOverWindow->X () + m_pPtrOverWindow->ChromeL ()),
+					m_nPrevY - (m_pPtrOverWindow->Y () + m_pPtrOverWindow->ChromeT ()),
+					nButtons, 0);
+			m_pPtrOverWindow = pOver;
+			if (pOver != 0)
+				EmitPointer (pOver, GUI_EVENT_PTR_ENTER,
+					x - (pOver->X () + pOver->ChromeL ()),
+					y - (pOver->Y () + pOver->ChromeT ()), nButtons, 0);
+		}
+
+		CWindow *pTarget = m_pPtrCaptureWindow ? m_pPtrCaptureWindow : pOver;
+		if (pTarget != 0)
+		{
+			int cx = x - (pTarget->X () + pTarget->ChromeL ());
+			int cy = y - (pTarget->Y () + pTarget->ChromeT ());
+			for (unsigned b = 1; b <= 4; b <<= 1)		// left=1 right=2 middle=4
+			{
+				boolean now = (nButtons & b) != 0, was = (m_nLastButtons & b) != 0;
+				if (now && !was)
+				{
+					if (m_pPtrCaptureWindow == 0 && pOver != 0)
+						m_pPtrCaptureWindow = pOver;	// begin capture
+					EmitPointer (pTarget, GUI_EVENT_PTR_DOWN, cx, cy, nButtons, b);
+				}
+				else if (!now && was)
+					EmitPointer (pTarget, GUI_EVENT_PTR_UP, cx, cy, nButtons, b);
+			}
+			if (x != m_nPrevX || y != m_nPrevY)
+				EmitPointer (pTarget, GUI_EVENT_PTR_MOVE, cx, cy, nButtons, 0);
+		}
+		if ((nButtons & 7) == 0)	// all buttons up -> release capture
+			m_pPtrCaptureWindow = 0;
+	}
+
 	m_nPrevX = x;
 	m_nPrevY = y;
 	m_nLastButtons = nButtons;
 
 	m_SpinLock.Release ();
+}
+
+// Push one GUI_EVENT_PTR_* event to a window's pointer handler (client coords,
+// clamped non-negative; the toolkit treats out-of-bounds as "over no widget").
+void CWindowManager::EmitPointer (CWindow *pWin, int nEvent, int cx, int cy,
+				  unsigned nButtons, unsigned nChanged)
+{
+	if (pWin == 0) return;
+	u64 ulH = pWin->PointerHandler ();
+	if (ulH == 0) return;
+	if (cx < 0) cx = 0; else if (cx > 0xFFFF) cx = 0xFFFF;
+	if (cy < 0) cy = 0; else if (cy > 0xFFFF) cy = 0xFFFF;
+	GUIEvent Ev;
+	Ev.ulHandler = ulH;
+	Ev.ulSender  = 0;
+	Ev.nEvent    = nEvent;
+	Ev.lValue    = ((long) (nChanged & 0xFF) << 40) | ((long) (nButtons & 0xFF) << 32)
+		     | ((long) (cx & 0xFFFF) << 16) | (long) (cy & 0xFFFF);
+	pWin->PushEvent (Ev);
 }
 
 // Caller holds m_SpinLock. Move keyboard focus to pW (a textbox) in pWin.

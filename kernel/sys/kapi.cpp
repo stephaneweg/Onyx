@@ -27,6 +27,7 @@
 #include <circle/logger.h>
 #include <circle/new.h>
 #include <circle/util.h>
+#include <circle/memory.h>		// CMemorySystem (meminfo)
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -251,6 +252,18 @@ void kapi_set_click_handler (void *pHandler)
 	if (pWin != 0)
 	{
 		pWin->SetClickHandler ((u64) pHandler);
+	}
+}
+
+// Register a full pointer-event handler for THIS window (GUI_EVENT_PTR_* stream).
+// For app-side widget toolkits (uikit.h). See kapi_abi.h v22 for the value layout.
+void kapi_set_pointer_handler (void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0)
+	{
+		pWin->SetPointerHandler ((u64) pHandler);
 	}
 }
 
@@ -976,8 +989,9 @@ static void ProcAppUInt (WinListCtx *c, unsigned v)
 	while (n > 0) { n--; if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = t[n]; }
 }
 
-// One line per task: "<pid> <a|k> <R|S|B|N> <name>". pid is the address-space id for
-// apps, 0 for kernel tasks (which have no address space and are unkillable).
+// One line per task: "<pid> <a|k> <R|S|B|N> <pages> <name>". pid is the address-space
+// id for apps, 0 for kernel tasks (which have no address space and are unkillable);
+// <pages> is the count of 64 KB physical frames the app owns (0 for kernel tasks).
 static boolean ProcListCallback (CTask *pTask, const char *pName, TTaskState State,
 				 TTaskFlags Flags, void *pParam)
 {
@@ -994,6 +1008,8 @@ static boolean ProcListCallback (CTask *pTask, const char *pName, TTaskState Sta
 	ProcAppUInt (c, pAS != 0 ? pAS->GetPid () : 0);
 	ProcAppStr (c, pAS != 0 ? " a " : " k ");
 	if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = st;
+	if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = ' ';
+	ProcAppUInt (c, pAS != 0 ? pAS->GetPages () : 0);	// owned 64 KB pages
 	if (c->nPos + 2 < c->nSize) c->pBuf[c->nPos++] = ' ';
 	ProcAppStr (c, pName);
 	if (c->nPos + 1 < c->nSize) c->pBuf[c->nPos++] = '\n';
@@ -1643,5 +1659,25 @@ int kapi_tcp_connect (const char *pHost, unsigned nPort)
 int  kapi_tcp_send  (int hSock, const void *pBuf, unsigned nLen) { return NetTcpSend (hSock, pBuf, nLen); }
 int  kapi_tcp_recv  (int hSock, void *pBuf, unsigned nLen)       { return NetTcpRecv (hSock, pBuf, nLen); }
 void kapi_tcp_close (int hSock)                                  { NetTcpClose (hSock); }
+
+// --- memory info -------------------------------------------------------------
+// System memory snapshot (all sizes in KB): total RAM, free (page-allocator region
+// not yet handed out + free heap), memory owned by user apps (g_nUserPages frames),
+// and the page size. For the memory monitor + a future user allocator.
+int kapi_meminfo (unsigned long *pTotalKB, unsigned long *pFreeKB,
+		  unsigned long *pAppKB, unsigned *pPageKB)
+{
+	CMemorySystem *pMem = CMemorySystem::Get ();
+	unsigned long nTotal = pMem != 0 ? (unsigned long) pMem->GetMemSize () : 0;
+	unsigned long nHeap  = pMem != 0 ? (unsigned long) pMem->GetHeapFreeSpace (HEAP_ANY) : 0;
+	unsigned long nPager = (unsigned long) CMemorySystem::GetPagerFreeSpace ();
+	unsigned long nApp   = (unsigned long) g_nUserPages * (unsigned long) KPAGE_SIZE;
+
+	if (pTotalKB) *pTotalKB = nTotal / 1024;
+	if (pFreeKB)  *pFreeKB  = (nHeap + nPager) / 1024;
+	if (pAppKB)   *pAppKB   = nApp / 1024;
+	if (pPageKB)  *pPageKB  = KPAGE_SIZE / 1024;
+	return 1;
+}
 
 }  // extern "C"
