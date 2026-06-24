@@ -1,7 +1,10 @@
 #
 # Makefile -- userland ELF programs (EL0), built with the same aarch64-none-elf
-# toolchain, linked at USER_VA_BASE (user.ld). Integer-only (-mgeneral-regs-only):
-# the kernel's preemptive trap frame does not save FP/SIMD yet.
+# toolchain, linked at USER_VA_BASE (user.ld). Integer-only by default
+# (-mgeneral-regs-only). An app may opt into hardware float by overriding the
+# flags (drop -mgeneral-regs-only, add -mcpu=cortex-a72): the kernel now saves the
+# full FP/SIMD state on every trap (kern/trapframe.h), so FP is safe across context
+# switches. See user/bin/Makefile (fptest) for the recipe.
 #
 PREFIX ?= aarch64-none-elf-
 CC      = $(PREFIX)gcc

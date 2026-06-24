@@ -156,14 +156,51 @@ max-page-size=0x10000`) so that the loader maps them onto distinct pages.
 
 - `-ffreestanding -nostdlib`: **no libc**. No `printf`, `malloc`, `string.h`…
   use `applib.h` (§8) and static/local buffers.
-- `-mgeneral-regs-only`: **no FP/SIMD** — the kernel trap frame does not save the
-  floating-point registers. Do **integer / fixed-point arithmetic** (see
-  `tinycalc.c`, `mandelbrot.c`).
+- `-mgeneral-regs-only`: integer-only codegen — the **default** for apps. Most apps
+  do **integer / fixed-point arithmetic** (see `tinycalc`, `mandelbrot`).
+- **Hardware float is available (opt-in).** The kernel now saves the full FP/SIMD
+  state on every trap (see [Kernel internals §6](02-KERNEL-INTERNALS.md), trap
+  frame), and FP/SIMD is enabled at EL0 (`CPACR_EL1`). To use `float`/`double` in an
+  app, build it **without** `-mgeneral-regs-only` and **with** `-mcpu=cortex-a72`
+  (the Pi 4 core). Basic FP (`+ - * /`, int↔double) compiles to hardware
+  instructions with **no** soft-float runtime; transcendental math (`sin`/`cos`/
+  `pow`…) lives in newlib's `libm` — see §5.1. For the bare-FP recipe, see the
+  `fptest` target in [`user/bin/Makefile`](../user/bin/Makefile) (a target-specific
+  `CFLAGS` override) and the `fptest` proof tool. Opt **only** the FP app in — leave
+  the rest integer-only.
 - `-I../kernel/include`: to include `<kern/kapi_abi.h>` (the shared ABI structure).
 
 To add an app, create `user/<name>.c` and **add `<name>.elf` to the `PROGS` variable**
 of [`user/Makefile`](../user/Makefile) (and `<tool>.elf` to the `PROGS` of
 [`user/bin/Makefile`](../user/bin/Makefile) for a tool).
+
+### 5.1. Apps using the C library (newlib)
+
+The `aarch64-none-elf` toolchain ships **newlib** (`libc` + `libm`). An app can be
+built against it to use the real `<stdio.h>` (`printf`, `FILE*`, `fopen`/`fseek`),
+`<stdlib.h>` (`malloc`/`qsort`/`strtod`), `<string.h>`, and `<math.h>` instead of the
+freestanding helpers (`applib.h`/`umm.h`). This is the foundation for porting large C
+codebases (e.g. NetSurf).
+
+How it works: [`user/libc/onyx_syscalls.c`](../user/libc/onyx_syscalls.c) implements
+the handful of POSIX stubs newlib bottoms out in (`_sbrk`, `_read`, `_write`, `_open`,
+`_close`, `_lseek`, `_fstat`, `_gettimeofday`, …) on top of the kapi ABI.
+[`user/libc/crt0libc.S`](../user/libc/crt0libc.S) is the entry point — like `crt0.S`
+but it calls `exit(main())` so stdio is flushed on the way out. Build flags drop
+`-ffreestanding`/`-nostdlib` and use `-nostartfiles` (keep our entry, keep `libc`);
+add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`. See
+the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
+tool [`user/bin/libctest.c`](../user/bin/libctest.c).
+
+Notes / caveats:
+- **One allocator.** newlib's `malloc` owns the heap via `_sbrk`→`kapi_sbrk`. Do **not**
+  also link `umm.h` in a newlib app.
+- **Files are buffered in RAM.** The kapi file API is sequential (no seek), so `_open`
+  slurps the whole file into memory to give `fseek`/`ftell` full semantics, and a
+  writable file is written back with `kapi_save_file()` on `close`. Fine for resource
+  files; a future `kapi_lseek` would remove the whole-file buffering.
+- **Size.** Static newlib pulls a fair amount of code (`printf` float support etc.).
+  Acceptable for big apps; a `nano` variant can be revisited later for small tools.
 
 ## 6. Writing a graphical application
 
@@ -279,6 +316,30 @@ cap, &resp)`, `http_post(...)`, or the general `http_request(method, url, header
 body, len, buf, cap, &resp)`. Plain HTTP only (no TLS). Used by `/bin/wget`. This is
 the recommended pattern for application-level protocols: build them in a user library
 on top of the kernel's transport kapis, rather than adding them to the ABI.
+
+For **REST / web-API** clients there is a reusable C++ class,
+[`user/http.hpp`](../user/http.hpp) (`HttpClient`/`HttpResponse`) — a header-only,
+freestanding **HTTP/1.1** client that works in any app (integer-only or newlib). It
+adds, over `httpc.h`: custom default headers (chainable `.bearer(token)`,
+`.accept(type)`, `.header(name,value)`), JSON helpers (`post_json`/`put_json`),
+response-header lookup (`r.header("Content-Type", out, cap)`), and **chunked**
+transfer decoding. Same no-allocation model (the caller passes `char buf[N]`; the body
+points into it, NUL-terminated). Errors are a negative `r.status` (`HttpError`).
+Example: `HttpClient api; api.bearer(tok).accept("application/json"); auto r =
+api.get(url, buf, sizeof buf); if (r.ok()) …`. See `/bin/httpget` for a working demo.
+**HTTPS:** the class has a transport seam (`http://` = plain kapi TCP; `https://` =
+TLS). TLS is provided by [`user/tls/onyx_tls.hpp`](../user/tls/onyx_tls.hpp) — **mbedTLS
+≥3.6.3** over the kapi sockets, with a **buffered** BIO (Circle's `CSocket::Receive`
+discards the remainder of a TCP segment on a short read, so we read whole segments) and
+**software-only crypto** (the Pi 4's Cortex-A72 has no ARMv8 crypto extensions).
+**Verified end-to-end on real hardware** — `httpsget` downloads real pages. Same model
+NetSurf uses (HTTPS from an external stack, libcurl+OpenSSL). To enable it in a **newlib**
+app: `#define ONYX_HTTP_TLS` before `#include "http.hpp"` and link the cross-built mbedTLS
+libs — `make -C user/tls` then `make -C user/bin MBEDTLS_DIR=../tls/mbedtls` (see
+[`user/tls/README.md`](../user/tls/README.md)). The freestanding default (no
+`ONYX_HTTP_TLS`) keeps `http://` only and returns `HTTP_ERR_HTTPS` for `https://`. Demo:
+`/bin/httpsget`. **Not yet secure:** the RNG is a software PRNG (not the HW RNG, which
+stalls on the Pi 4) and certificate verification is OFF — see the TLS README.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
@@ -452,9 +513,12 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 
 ## 13. Known pitfalls
 
-- **Do not save FP/SIMD.** `-mgeneral-regs-only` is mandatory on the app side;
-  use fixed-point. An accidental floating-point use would corrupt the state on a context
-  switch.
+- **Hardware float is opt-in.** Apps are integer-only by default
+  (`-mgeneral-regs-only`); the kernel now saves the full FP/SIMD state on every trap,
+  so an app may opt into `float`/`double` by building without `-mgeneral-regs-only`
+  and with `-mcpu=cortex-a72` (see §5). Caveat: if **preemptive** scheduling is ever
+  enabled (today the scheduler is purely cooperative), it **must** switch via the
+  full trap frame — the FP save lives there, not in the cooperative `TaskSwitch`.
 - **L3 tables shared with the kernel.** On the kernel side, never free an L3 table from the
   user area without checking that it is not shared with the kernel's L2 (cf.
   [Kernel internals §4](02-KERNEL-INTERNALS.md#4-memory-management-caddressspace)). Otherwise: global corruption.

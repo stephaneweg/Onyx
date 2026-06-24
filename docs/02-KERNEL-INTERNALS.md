@@ -281,8 +281,19 @@ tick + EOI) → `KernelIRQExit` (no-op) → re-masks the FIQ → `RESTORE_TRAP` 
 
 ### Trap frame
 
-`TTrapFrame` (272 bytes): `x[0..30]`, `sp_el0`, `elr_el1`, `spsr_el1`. Saved by the
-assembler macro `SAVE_TRAP` onto the stack on exception entry.
+`TTrapFrame` (800 bytes): `x[0..30]`, `sp_el0`, `elr_el1`, `spsr_el1`, then the full
+FP/SIMD state — `v[0..31]` (the 128-bit `q` registers), `fpsr`, `fpcr`. Saved by the
+assembler macro `SAVE_TRAP` onto the stack on exception entry, restored by
+`RESTORE_TRAP_ERET`.
+
+The FP/SIMD block is saved on **every** trap so floating-point user code keeps its
+registers across a context switch. The cooperative `TaskSwitch` (Circle) only
+preserves the callee-saved `d8–d15` mandated by the AArch64 PCS — enough for a
+voluntary `Yield()`, but **not** enough should a trap ever preempt a thread
+mid-computation. Saving the whole register file here makes hardware float correct
+under both the current cooperative scheduling and a future preemptive switch from
+the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`CPACR_EL1`,
+`circle/lib/startup64.S`), so the `stp`/`ldp` `q`-register forms never trap.
 
 ### System calls (dormant)
 
@@ -374,7 +385,9 @@ v2 = `set_click_handler`, v3 = `opendir/readdir`, v4 = streams/spawn, … v16 =
 `set_window_theme`, v17 = `chdir`/`getcwd`, v18 = `stdin_stream`/`stdout_stream`,
 v19 = `klog_read`, v20 = `set_verbose`/`get_verbose`, v21 = the TCP socket calls,
 v22 = `set_pointer_handler`, v23 = `meminfo`, v24 = `sbrk`, v25 = `reboot`,
-v26 = `kbd_ready`, v27 = `set_keymap_data`).
+v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
+(user-side window chrome), v29 = compat break (kernel-drawn widget API removed, table
+consolidated), v30 = `random` (hardware RNG)).
 
 ### Categories of exposed functions
 
@@ -394,6 +407,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`).
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close` |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
+| Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
 
 All the functions **run in the context of the calling app** (its page
 table + its stack are active; the arguments are plain pointers in the current

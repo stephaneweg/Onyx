@@ -28,9 +28,6 @@
 #include <circle/util.h>
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
-#include <circle/bcm2835.h>		// ARM_HW_RNG_BASE (RNG200 base on the Pi 4) -- kapi_random
-#include <circle/memio.h>		// read32 / write32
-#include <circle/synchronize.h>		// PeripheralEntry / PeripheralExit
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -884,66 +881,36 @@ int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 	return KernelSetKeyMapData (pName, p + 8, nTable) ? 1 : 0;
 }
 
-// RNG200 (BCM2711 / Pi 4) registers, relative to ARM_HW_RNG_BASE (0xFE104000).
-// IMPORTANT: Circle's CBcmRandomNumberGenerator is the LEGACY BCM2835 driver and HANGS
-// on the Pi 4 -- it spins on a "words available" status at +0x04, but on the RNG200
-// +0x04 is the soft-reset register (never sets), so the loop never ends and, with
-// cooperative scheduling, freezes the whole machine. We drive the RNG200 directly and,
-// crucially, BOUND every poll so kapi_random can never spin forever.
-#define RNG200_CTRL		(ARM_HW_RNG_BASE + 0x00)	// bit0 = RBGEN (enable)
-#define RNG200_SOFT_RESET	(ARM_HW_RNG_BASE + 0x04)
-#define RNG200_RBG_SOFT_RESET	(ARM_HW_RNG_BASE + 0x08)
-#define RNG200_INT_STATUS	(ARM_HW_RNG_BASE + 0x18)	// bit17 = startup transitions met
-#define RNG200_FIFO_DATA	(ARM_HW_RNG_BASE + 0x20)
-#define RNG200_FIFO_COUNT	(ARM_HW_RNG_BASE + 0x24)	// bits[7:0] = words available
-
-static void Rng200Init (void)
-{
-	PeripheralEntry ();
-	write32 (RNG200_CTRL, 0);			// disable while resetting
-	write32 (RNG200_INT_STATUS, 0xFFFFFFFF);	// clear status
-	write32 (RNG200_RBG_SOFT_RESET, 1);
-	for (volatile unsigned d = 0; d < 1000; d++) { }
-	write32 (RNG200_RBG_SOFT_RESET, 0);
-	write32 (RNG200_SOFT_RESET, 1);
-	for (volatile unsigned d = 0; d < 1000; d++) { }
-	write32 (RNG200_SOFT_RESET, 0);
-	for (unsigned i = 0; i < 100000; i++)		// bounded wait for warm-up
-		if (read32 (RNG200_INT_STATUS) & 0x00020000) break;
-	write32 (RNG200_CTRL, 1);			// RBGEN: enable
-	PeripheralExit ();
-}
-
-// Fill pBuf[nLen] with random bytes from the Pi 4 hardware RNG (RNG200). The FIFO poll
-// is BOUNDED: if the HW does not produce in time we fall back to a timer-mixed value
-// rather than spin (a spin would freeze the cooperative scheduler). For TLS seeding
-// (onyx_tls.hpp feeds mbedTLS's CTR_DRBG from here). Returns the bytes written (nLen).
+// kapi_random: random bytes for cryptographic seeding (the TLS entropy source in
+// user/tls/onyx_tls.hpp feeds mbedTLS's CTR_DRBG from here).
+//
+// This is a SOFTWARE PRNG (splitmix64) seeded from the high-resolution timer. It
+// deliberately does NOT touch the Pi 4 hardware RNG: the BCM2711 RNG200 (at
+// ARM_HW_RNG_BASE) is not enabled/clocked in our setup, so ANY MMIO access to it stalls
+// the AXI bus and HARD-FREEZES the cooperative system -- a bounded poll cannot help
+// because the CPU hangs inside the read itself. (Circle's CBcmRandomNumberGenerator is
+// the legacy BCM2835 driver, also non-functional here.) So we avoid the RNG entirely.
+//
+// STOPGAP: this is NOT cryptographically strong (timer-seeded). It is enough to run TLS
+// (cert verification is also off for now). TODO before trusting HTTPS: bring the RNG200
+// up properly (enable via the VC mailbox / verify on real hardware) for real entropy.
 int kapi_random (void *pBuf, unsigned nLen)
 {
 	if (pBuf == 0) return 0;
-	static boolean s_bInit = FALSE;
-	if (!s_bInit) { Rng200Init (); s_bInit = TRUE; }
 
-	static u32 s_soft = 0;				// software fallback state
+	static u64 s = 0;
+	if (s == 0)
+		s = ((u64) CTimer::Get ()->GetClockTicks () << 16) ^ 0x9E3779B97F4A7C15ULL;
+
 	unsigned char *p = (unsigned char *) pBuf;
-	unsigned i = 0;
-	while (i < nLen)
+	for (unsigned i = 0; i < nLen; i++)
 	{
-		u32 r = 0;
-		boolean bHave = FALSE;
-		PeripheralEntry ();
-		for (unsigned spins = 0; spins < 100000; spins++)
-			if ((read32 (RNG200_FIFO_COUNT) & 0xFF) != 0) { bHave = TRUE; break; }
-		if (bHave) r = read32 (RNG200_FIFO_DATA);
-		PeripheralExit ();
-		if (!bHave)				// HW stalled -> never hang; mix the timer
-		{
-			s_soft ^= CTimer::Get ()->GetClockTicks ();
-			s_soft = s_soft * 1664525u + 1013904223u;
-			r = s_soft ^ (s_soft >> 13);
-		}
-		for (int b = 0; b < 4 && i < nLen; b++, i++)
-			p[i] = (unsigned char) (r >> (b * 8));
+		s += 0x9E3779B97F4A7C15ULL ^ (u64) CTimer::Get ()->GetClockTicks ();
+		u64 z = s;				// splitmix64 finalizer
+		z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+		z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+		z =  z ^ (z >> 31);
+		p[i] = (unsigned char) z;
 	}
 	return (int) nLen;
 }

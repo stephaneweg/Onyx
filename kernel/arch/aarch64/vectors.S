@@ -19,7 +19,12 @@
 
 #include <kern/trapframe.h>
 
-/* Save x0..x30, sp_el0, elr_el1, spsr_el1 onto the current stack. */
+/* Save x0..x30, sp_el0, elr_el1, spsr_el1, then the full FP/SIMD state onto the
+   current stack. The FP block (v0..v31 + fpsr + fpcr) is saved on EVERY trap so
+   floating-point user code keeps its registers across a context switch -- the
+   cooperative TaskSwitch only preserves the callee-saved d8-d15 (AArch64 PCS),
+   which is not enough once a trap may preempt a thread mid-computation. FP/SIMD
+   is enabled at EL0/EL1 (CPACR_EL1, circle/lib/startup64.S) so stp q never traps. */
 	.macro	SAVE_TRAP
 	sub	sp, sp, #TF_SIZE
 	stp	x0,  x1,  [sp, #TF_X(0)]
@@ -44,10 +49,53 @@
 	str	x9,  [sp, #TF_SP_EL0]
 	str	x10, [sp, #TF_ELR]
 	str	x11, [sp, #TF_SPSR]
+	stp	q0,  q1,  [sp, #TF_Q(0)]
+	stp	q2,  q3,  [sp, #TF_Q(2)]
+	stp	q4,  q5,  [sp, #TF_Q(4)]
+	stp	q6,  q7,  [sp, #TF_Q(6)]
+	stp	q8,  q9,  [sp, #TF_Q(8)]
+	stp	q10, q11, [sp, #TF_Q(10)]
+	stp	q12, q13, [sp, #TF_Q(12)]
+	stp	q14, q15, [sp, #TF_Q(14)]
+	stp	q16, q17, [sp, #TF_Q(16)]
+	stp	q18, q19, [sp, #TF_Q(18)]
+	stp	q20, q21, [sp, #TF_Q(20)]
+	stp	q22, q23, [sp, #TF_Q(22)]
+	stp	q24, q25, [sp, #TF_Q(24)]
+	stp	q26, q27, [sp, #TF_Q(26)]
+	stp	q28, q29, [sp, #TF_Q(28)]
+	stp	q30, q31, [sp, #TF_Q(30)]
+	mrs	x9,  fpsr
+	mrs	x10, fpcr
+	str	x9,  [sp, #TF_FPSR]
+	str	x10, [sp, #TF_FPCR]
 	.endm
 
-/* Restore everything and return from the exception. */
+/* Restore everything and return from the exception. The FP/SIMD state is restored
+   first (using x9/x10 as scratch, which the GP restore below reloads anyway); the
+   final eret is a context-synchronization event, so the restored fpcr takes effect
+   for the returned-to context. */
 	.macro	RESTORE_TRAP_ERET
+	ldr	x9,  [sp, #TF_FPSR]
+	ldr	x10, [sp, #TF_FPCR]
+	msr	fpsr, x9
+	msr	fpcr, x10
+	ldp	q0,  q1,  [sp, #TF_Q(0)]
+	ldp	q2,  q3,  [sp, #TF_Q(2)]
+	ldp	q4,  q5,  [sp, #TF_Q(4)]
+	ldp	q6,  q7,  [sp, #TF_Q(6)]
+	ldp	q8,  q9,  [sp, #TF_Q(8)]
+	ldp	q10, q11, [sp, #TF_Q(10)]
+	ldp	q12, q13, [sp, #TF_Q(12)]
+	ldp	q14, q15, [sp, #TF_Q(14)]
+	ldp	q16, q17, [sp, #TF_Q(16)]
+	ldp	q18, q19, [sp, #TF_Q(18)]
+	ldp	q20, q21, [sp, #TF_Q(20)]
+	ldp	q22, q23, [sp, #TF_Q(22)]
+	ldp	q24, q25, [sp, #TF_Q(24)]
+	ldp	q26, q27, [sp, #TF_Q(26)]
+	ldp	q28, q29, [sp, #TF_Q(28)]
+	ldp	q30, q31, [sp, #TF_Q(30)]
 	ldr	x9,  [sp, #TF_SP_EL0]
 	ldr	x10, [sp, #TF_ELR]
 	ldr	x11, [sp, #TF_SPSR]

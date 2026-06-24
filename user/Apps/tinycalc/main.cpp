@@ -1,8 +1,9 @@
 //
-// tinycalc/main.cpp -- scientific calculator (C++ port). The apps build integer-only
-// (-mgeneral-regs-only: no hardware float, and the kernel doesn't save FP state across
-// task switches), so ALL math is fixed-point: Q32.32 in a signed 64-bit int
-// (1.0 == 1<<32). Input is by mouse (button grid, via the C++ uikit.hpp toolkit) OR
+// tinycalc/main.cpp -- scientific calculator (C++ port). This app builds integer-only
+// (-mgeneral-regs-only) and keeps ALL math in fixed-point: Q32.32 in a signed 64-bit
+// int (1.0 == 1<<32). (Hardware float is now available to apps -- the kernel saves the
+// full FP state across switches, see kern/trapframe.h -- but tinycalc stays fixed-point
+// by design.) Input is by mouse (button grid, via the C++ uikit.hpp toolkit) OR
 // keyboard (digits/operators, routed straight to the calculator).
 //
 #include "kapi.h"
