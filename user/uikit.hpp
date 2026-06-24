@@ -66,6 +66,7 @@ public:
 	virtual bool focusable () const { return !disabled; }	// Label overrides -> false
 	virtual void draw (Ui &ui) = 0;
 	virtual void onPress (Ui &ui, int px, int py) { (void) ui; (void) px; (void) py; }
+	virtual void onDrag  (Ui &ui, int px, int py) { (void) ui; (void) px; (void) py; }	// button held + moved
 	virtual void activate (Ui &ui) { (void) ui; if (cb) cb (*this); }
 	virtual void key (Ui &ui, long k);			// default: Enter/Space activate
 };
@@ -106,6 +107,30 @@ public:
 	void onPress (Ui &ui, int px, int py) override;
 	void activate (Ui &ui) override { caret = uk_len (text); (void) ui; }
 	void key (Ui &ui, long k) override;			// editing: caret/insert/delete
+};
+
+// Horizontal slider: integer value in [vmin,vmax]; drag the thumb. cb fires on change.
+class Slider : public Widget
+{
+public:
+	int value, vmin, vmax;
+	Slider (int x, int y, int w, int h, int lo, int hi, int val, Action cb)
+	  : Widget (x, y, w, h, "", cb), value (val), vmin (lo), vmax (hi) {}
+	void draw (Ui &ui) override;
+	void onPress (Ui &ui, int px, int py) override { (void) py; setFromX (ui, px); }
+	void onDrag  (Ui &ui, int px, int py) override { (void) py; setFromX (ui, px); }
+	void setFromX (Ui &ui, int px);				// value from cursor x (+ cb, + dirty)
+};
+
+// Progress bar: non-interactive; fills proportionally to value in [vmin,vmax].
+class Progress : public Widget
+{
+public:
+	int value, vmin, vmax;
+	Progress (int x, int y, int w, int h, int lo, int hi, int val)
+	  : Widget (x, y, w, h, "", 0), value (val), vmin (lo), vmax (hi) {}
+	bool focusable () const override { return false; }
+	void draw (Ui &ui) override;
 };
 
 // ============================================================================
@@ -158,6 +183,10 @@ public:
 	{ Checkbox *p = new Checkbox (x, y, w, h, t, chk, cb); add (p); return *p; }
 	Textbox  &textbox  (int x, int y, int w, int h, const char *t)
 	{ Textbox  *p = new Textbox  (x, y, w, h, t); add (p); return *p; }
+	Slider   &slider   (int x, int y, int w, int h, int lo, int hi, int val, Action cb)
+	{ Slider   *p = new Slider   (x, y, w, h, lo, hi, val, cb); add (p); return *p; }
+	Progress &progress (int x, int y, int w, int h, int lo, int hi, int val)
+	{ Progress *p = new Progress (x, y, w, h, lo, hi, val); add (p); return *p; }
 
 	void setFocus (Widget &widget) { int i = indexOf (&widget); if (i >= 0) { focus = i; dirtyFlag = true; } }
 
@@ -196,6 +225,12 @@ inline void Ui::onEvent (unsigned long sender, int ev, long v)
 	case GUI_EVENT_PTR_MOVE:
 	case GUI_EVENT_PTR_ENTER:
 	{
+		if (pressed >= 0 && pressed < n)	// button held -> drag the pressed widget (slider)
+		{
+			items[pressed]->onDrag (*this, GUI_PTR_X (v), GUI_PTR_Y (v));
+			dirtyFlag = true;
+			break;
+		}
 		int h = hitIndex (GUI_PTR_X (v), GUI_PTR_Y (v));
 		if (h != hover) { hover = h; dirtyFlag = true; }
 		break;
@@ -309,6 +344,43 @@ inline void Textbox::draw (Ui &ui)
 		int cx = x + pad + (caret - start) * fw;
 		if (cx >= x + pad && cx < x + w - 1) ui.fill (cx, ty, 1, ui.fh, ui.col_accent);
 	}
+}
+
+inline void Slider::setFromX (Ui &ui, int px)
+{
+	int range = (vmax > vmin) ? vmax - vmin : 1;
+	int t = px - x;
+	if (t < 0) t = 0;
+	if (t > w) t = w;
+	int nv = vmin + range * t / (w > 0 ? w : 1);
+	if (nv < vmin) nv = vmin;
+	if (nv > vmax) nv = vmax;
+	if (nv != value) { value = nv; if (cb) cb (*this); }
+	ui.markDirty ();
+}
+
+inline void Slider::draw (Ui &ui)
+{
+	int midy = y + h / 2;
+	ui.fill (x, midy - 1, w, 3, ui.col_border);			// track
+	int range = (vmax > vmin) ? vmax - vmin : 1;
+	int tx = x + (value - vmin) * (w - 8) / range;
+	if (tx < x) tx = x;
+	if (tx > x + w - 8) tx = x + w - 8;
+	ui.fill  (tx, y, 8, h, (hover || pressed) ? ui.col_face_hi : ui.col_face);	// thumb
+	ui.frame (tx, y, 8, h, ui.col_border);
+	if (focused && !disabled) ui.frame (tx - 1, y - 1, 10, h + 2, ui.col_accent);
+}
+
+inline void Progress::draw (Ui &ui)
+{
+	ui.fill  (x, y, w, h, ui.col_field);
+	int range = (vmax > vmin) ? vmax - vmin : 1;
+	int fw = (value - vmin) * w / range;
+	if (fw < 0) fw = 0;
+	if (fw > w) fw = w;
+	if (fw > 0) ui.fill (x, y, fw, h, ui.col_accent);
+	ui.frame (x, y, w, h, ui.col_border);
 }
 
 } // namespace ui
