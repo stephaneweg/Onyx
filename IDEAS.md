@@ -15,6 +15,7 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 | Client HTTP | 💡 | Récupération de ressources HTTP (download/fetch). Dépend de la pile réseau exposée. **Réf. (meilleure) :** `circle/sample/31-webclient` — fetch d'un doc HTTP + parseur HTML (`htmlscanner.cpp`) ; aussi `temp/httpc.asm` (x86, MenuetOS). ⚠️ Circle ne gère pas HTTPS nativement (SSL/TLS → circle-stdlib). |
 | Breakout (jeu) | 💡 | Casse-briques classique (raquette, balle, briques, niveaux). |
 | Sokoban : niveaux supplémentaires | 💡 | Ajouter ≥ 10 niveaux pour commencer. App existante : `user/sokoban.c`. |
+| Navigateur web | 💡 | Embryon de browser : barre d'URL, fetch via la classe `HttpClient`, rendu HTML basique. Réutiliser le parseur `htmlscanner.cpp` (`circle/sample/31-webclient`) comme point de départ. ⚠️ HTTP seul au début (pas de HTTPS natif). |
 | Client IRC | ✅ | App GUI `user/irc.c` → `apps/irc.app` : connexion serveur/canal (config.ini), scrollback + saisie, PING/PONG, PRIVMSG/NOTICE/CTCP, commandes `/join /part /nick /msg /me /raw /quit`. Sur les sockets TCP de l'ABI v21. |
 
 ## Fonctionnalités (système / kernel)
@@ -25,6 +26,7 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 | Réseau : exposer la pile TCP/IP de Circle | ✅ | Fait (phase 1, cœur principal) : WLAN `bcm4343` + `wpa_supplicant` + `CNetSubSystem` (DHCP) montés dans un `CNetBringupTask` non bloquant ; sockets TCP via l'ABI v21 (`net_status`/`tcp_connect`/`tcp_send`/`tcp_recv`/`tcp_close`), backend `kernel/sys/net.cpp`. **Reste :** faire tourner la pile sur un **cœur dédié** (phase 2 : `CMultiCoreSupport` + files inter-cœurs). |
 | Réseau : résolveurs ARP / DNS, etc. | ✅ | Fournis par la pile Circle : ARP/ICMP internes ; DNS via `CDNSClient` (utilisé par `tcp_connect` quand l'hôte est un nom). |
 | Réseau : synchro date/heure via NTP | ✅ | `CNTPDaemon` démarré dès que le lien est up ; `system.ini` `timezone=` (minutes UTC) + `ntp=`. **Réf. :** `circle/sample/18-ntptime`. |
+| Classe `HttpClient` (lib) | 💡 | Envoi de requêtes HTTP : GET/POST/PUT/PATCH/DELETE, avec headers et body. Brique réutilisable : 1) clients de services web, 2) socle du futur web browser. S'appuie sur les sockets TCP (ABI v21) ; pas de HTTPS natif (cf. Client HTTP). |
 | Compositor : dirty-rect + flush async | 💡 | Aujourd'hui : redraw plein écran chaque frame. Optimisation perf différée. |
 | Port audio : synth FM + tracker | ❄️ | Amener le synth FM + tracker dans Onyx. Fixed-point + PWM. |
 | Filer : associations de fichiers via ini | ❄️ | `[fileassoc] .ext=programme` (aujourd'hui hardcodé dans `open_file`). |

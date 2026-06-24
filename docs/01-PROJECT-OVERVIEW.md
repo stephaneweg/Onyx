@@ -1,11 +1,5 @@
 # Onyx — Project Overview
 
-> **A note on the name.** **Onyx** is the name of the OS, its kernel, and its GUI.
-> The repository folder is historically named `Zircon/` (a legacy name; unrelated to
-> Google/Fuchsia's *Zircon* microkernel or to *LK*). Onyx is a homemade operating system,
-> written from scratch, that builds on the **Circle** bare-metal framework as its
-> hardware abstraction layer.
-
 ## 1. In one sentence
 
 Onyx is a **small multi-process operating system** for the **Raspberry Pi 4**
@@ -18,7 +12,7 @@ a file manager, and about thirty applications.
 
 It **runs on real Raspberry Pi 4 hardware** (not just in emulation).
 
-![Onyx's Onyx desktop](../screenshots/desktop.png)
+![The Onyx desktop](../screenshots/desktop.png)
 *The Onyx desktop: panel/launcher on the edge, composited windows (fractal
 browser, active terminal, calculator), Voronoi wallpaper. (Simulated screenshot, rendered
 from the real skins/font/icons.)*
