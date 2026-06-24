@@ -235,7 +235,18 @@ public:
 
 	void onEvent (unsigned long sender, int ev, long v);
 	void drawAll ()
-	{ for (int i = 0; i < n; i++) items[i]->draw (*this); dirtyFlag = false; }
+	{
+		for (int i = 0; i < n; i++)
+		{
+			// sync each widget's runtime flags from the Ui's tracked indices, so
+			// hover/press highlights, the focus ring and the textbox/area caret render.
+			items[i]->hover   = (i == hover);
+			items[i]->pressed = (i == pressed);
+			items[i]->focused = (i == focus);
+			items[i]->draw (*this);
+		}
+		dirtyFlag = false;
+	}
 
 private:
 	friend class Widget; friend class Textbox;
