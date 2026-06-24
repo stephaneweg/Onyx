@@ -906,6 +906,39 @@ def app_theme():
     cv.text(234, BTN_Y + 4, "Discard", C(0xFFFFFF))
     return cv
 
+def app_wpaconf():
+    # The Wi-Fi credentials editor, drawn with the user-side toolkit (uikit.h):
+    # dark fields, white labels, accent focus ring + caret. Mirrors user/wpaconf.c.
+    W, H = 380, 308; cv = Canvas(W, H, C(0x283038))
+    FX, FW_, FH_ = 96, 380 - 96 - 12, 24
+    def uitb(x, y, w, h, s, focused=False, password=False):
+        cv.fill(x, y, w, h, C(0x141A22)); cv.frame(x, y, w, h, C(0x161C24))
+        if focused: cv.frame(x+1, y+1, w-2, h-2, C(0x60FF90))
+        disp = "*"*len(s) if password else s
+        cv.text(x + 4, y + (h - FH)//2, disp, C(0xFFFFFF))
+        if focused:
+            cx = x + 4 + len(disp)*FW
+            cv.fill(cx, y + (h - FH)//2, 1, FH, C(0x60FF90))
+    def uibtn(x, y, w, h, s):
+        cv.fill(x, y, w, h, C(0x566074)); cv.frame(x, y, w, h, C(0x161C24))
+        cv.ctext(x, w, y + (h - FH)//2, s, C(0xFFFFFF))
+    def uilbl(x, y, w, h, s): cv.text(x, y + (h - FH)//2, s, C(0xFFFFFF))
+    def uichk(x, y, w, h, s, checked):
+        b = FH; by = y + (h - b)//2
+        cv.fill(x, by, b, b, C(0x566074)); cv.frame(x, by, b, b, C(0x161C24))
+        if checked: cv.fill(x+3, by+3, b-6, b-6, C(0x60FF90))
+        cv.text(x + b + 6, y + (h - FH)//2, s, C(0xFFFFFF))
+    cv.text(12, 10 + (20 - FH)//2, "Wi-Fi Settings", C(0xFFFFFF))
+    uilbl(12, 42, 78, FH_, "SSID");     uitb(FX, 42, FW_, FH_, "Wegener_Wifi", focused=True)
+    uilbl(12, 76, 78, FH_, "Password"); uitb(FX, 76, FW_, FH_, "WegenerFamily", password=True)
+    uichk(FX, 106, 160, 20, "Show password", False)
+    uilbl(12, 136, 78, FH_, "Country"); uitb(FX, 136, FW_, FH_, "BE")
+    uilbl(12, 170, 78, FH_, "Proto");   uitb(FX, 170, FW_, FH_, "WPA2")
+    uilbl(12, 204, 78, FH_, "Key mgmt");uitb(FX, 204, FW_, FH_, "WPA-PSK")
+    uibtn(12, 242, 84, 30, "Save"); uibtn(104, 242, 150, 30, "Save & Reboot"); uibtn(262, 242, 106, 30, "Reload")
+    cv.text(12, 280 + (18 - FH)//2, "Loaded /etc/wpa_supplicant.conf", C(0xFFFFFF))
+    return cv
+
 if __name__ == "__main__":
     # windowed apps: (folder, title, client builder) -> wrapped in skinned chrome.
     WINAPPS = [
@@ -917,6 +950,7 @@ if __name__ == "__main__":
         ("2048","2048",app_2048), ("minesweeper","minesweeper",app_minesweeper),
         ("eyes","eyes",app_eyes), ("inidemo","inidemo",app_inidemo),
         ("irc","irc",app_irc), ("memmon","memmon",app_memmon),
+        ("wpaconf","Wi-Fi Settings",app_wpaconf),
         ("life","life",app_life), ("pong","pong",app_pong), ("snake","snake",app_snake),
         ("tetris","tetris",app_tetris), ("same","same",app_same),
         ("sokoban","sokoban",app_sokoban), ("sheet","sheet",app_sheet),

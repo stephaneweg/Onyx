@@ -274,9 +274,12 @@ entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22
 Same memory model as the rest: widgets live in a caller-provided **fixed pool**
 (`ui_widget pool[N]` in the app's `.bss`, freed automatically on exit — no user
 `malloc`, no kernel object behind a widget). `ui_init`, `ui_button`/`ui_label`/
-`ui_checkbox`, `ui_on_event` (fed from the app's pointer + key handlers), `ui_draw`.
-`tinycalc` uses it. This is the forward path for widgets: new ones are added here,
-in userland, with no kernel/ABI change. The older **kernel-drawn widgets**
+`ui_checkbox`/`ui_textbox`, `ui_on_event` (fed from the app's pointer + key handlers),
+`ui_draw`. The **textbox** is a single-line editor: caret, Backspace/Delete, arrows,
+Home/End, `Tab` to move focus, an optional password mask (`ui_set_password`), read
+with `ui_get_text`. `tinycalc` (buttons) and `wpaconf` (a form of textboxes) use the
+toolkit. This is the forward path for widgets: new ones are added here, in userland,
+with no kernel/ABI change. The older **kernel-drawn widgets**
 (`add_button`…, §earlier) still work and coexist; apps choose one model per window.
 
 ### Dynamic memory + C++ apps
@@ -310,11 +313,25 @@ Layout of an application on the card (produced by `make stage`):
 SD:apps/<nom>.app/
   main.elf       l'ELF de l'app (obligatoire)
   icon.bmp       icône 40×40, BMP 24 bpp ; le magenta 0xFF00FF est transparent (optionnel)
+  app.txt        métadonnées (display name + catégorie) lues par le launcher (optionnel)
   config.ini     configuration de l'app, lue via app_ini_load() (optionnel)
 ```
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
 you put in `autostart.txt`/`quicklaunch.txt` and what `kapi_list_apps` returns.
+
+**`app.txt`** — friendly metadata for launchers (`key = value`, no section, read with
+`app_ini_load_path` / `app_ini_get(0, …)`). Every app under `SD:apps/` ships one:
+
+```ini
+name     = Text Editor          ; display name shown under the icon
+category = Productivity          ; Games, Graphics, Productivity, Internet, System, Demos, Shell
+```
+
+The current app-drawer (`applist`) still labels icons by folder name; `app.txt` is the
+groundwork for a **category-grouping launcher** (groups icons by `category`, shows
+`name`). The two shell components `panel`/`applist` carry `category = Shell` so a
+launcher can exclude them.
 
 **Icons** — [`tools/gen_assets.py`](../tools/gen_assets.py) procedurally generates the
 40×40 BMPs (BGR bottom-up, 4-byte padding) for all the apps (a document for `tinypad`,

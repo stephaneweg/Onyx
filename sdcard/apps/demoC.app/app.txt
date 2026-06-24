@@ -1,0 +1,5 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+#   name     = friendly display name shown under the icon
+#   category = grouping bucket (Games, Graphics, Productivity, Internet, System, Demos, Shell)
+name = Fire Demo
+category = Demos

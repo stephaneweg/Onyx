@@ -117,6 +117,11 @@ The link comes up a few seconds after boot (watch the log, or run `net`). It is 
 optional: if the firmware/credentials are missing, the desktop still works — only the
 networked apps stay offline.
 
+You don't have to edit the file by hand: the **Wi-Fi Settings** app (`wpaconf`, see §12)
+edits SSID / password / country / proto / key&nbsp;mgmt in a small form and rewrites
+`wpa_supplicant.conf` for you. The kernel only reads it at boot, so use its **Save &
+Reboot** button to apply the new credentials.
+
 ## 4. First boot
 
 On power-on:
@@ -417,6 +422,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **mandelbrot** | Fractal explorer (Mandelbrot, Julia, Burning Ship, Tricorn via the dropdown). **Click** = zoom in (re-centers); `o` = zoom out; `r` = reset. |
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
 | **irc** | IRC client over Wi-Fi. Connects to the server/channel from `config.ini`, shows the conversation, type to chat. Commands: `/join #chan`, `/msg nick text`, `/nick name`, `/me action`, `/raw …`, `/quit`. Needs the network up (see §3). |
+| **wpaconf** (Wi-Fi Settings) | Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID, password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **voronoy** | Wallpaper generator (launched at boot; no window). |
 
 ### Games

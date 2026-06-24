@@ -99,6 +99,7 @@ void kapi_set_click_handler (gui_handler);
 void kapi_set_pointer_handler (gui_handler);
 int kapi_meminfo (unsigned long *, unsigned long *, unsigned long *, unsigned *);
 void *kapi_sbrk (long);
+void kapi_reboot (void);
 void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
@@ -244,4 +245,5 @@ void KApiTableInit (void)
 	t->set_pointer_handler = kapi_set_pointer_handler;
 	t->meminfo           = kapi_meminfo;
 	t->sbrk              = kapi_sbrk;
+	t->reboot            = kapi_reboot;
 }

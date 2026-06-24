@@ -23,7 +23,7 @@ PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
 	  2048.elf life.elf pong.elf sokoban.elf \
 	  calendar.elf mandelbrot.elf minesweeper.elf paint.elf \
 	  eyes.elf sheet.elf taskman.elf voronoy.elf theme.elf config.elf \
-	  irc.elf memmon.elf cppdemo.elf
+	  irc.elf memmon.elf cppdemo.elf wpaconf.elf
 
 all: $(PROGS) bin
 

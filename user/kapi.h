@@ -195,6 +195,10 @@ static inline int  kapi_tcp_send (int sock, const void *buf, unsigned len) { ret
 static inline int  kapi_tcp_recv (int sock, void *buf, unsigned len) { return KT->tcp_recv (sock, buf, len); }
 static inline void kapi_tcp_close (int sock) { KT->tcp_close (sock); }
 
+// Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
+// only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
+static inline void kapi_reboot (void) { KT->reboot (); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }

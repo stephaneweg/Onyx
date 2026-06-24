@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	24
+#define KAPI_ABI_VERSION	25
 
 #ifdef __cplusplus
 extern "C" {
@@ -253,6 +253,12 @@ struct TKApiTable
 	// failure. The foundation for a user-space allocator (user/umm.h: malloc/free +
 	// operator new/delete). Heap pages are owned by the address space -> freed on exit.
 	void *(*sbrk) (long increment);
+
+	// --- v25 additions (power) ---
+	// Reboot the machine immediately (Circle reboot(); does not return). Used to
+	// apply settings that are only read at boot -- e.g. wpaconf rewriting the WLAN
+	// config in SD:/etc/wpa_supplicant.conf, which the kernel reads during bring-up.
+	void (*reboot) (void);
 };
 
 #ifdef __cplusplus

@@ -27,6 +27,7 @@
 #include <circle/logger.h>
 #include <circle/new.h>
 #include <circle/util.h>
+#include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
 #include <fatfs/ff.h>
 #include <circle/types.h>
@@ -1692,6 +1693,14 @@ void *kapi_sbrk (long nIncrement)
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS == 0) return (void *) -1;
 	return pAS->Sbrk (nIncrement);
+}
+
+// --- v25: reboot --------------------------------------------------------------
+// Apply boot-time-only settings (e.g. a freshly written wpa_supplicant.conf) by
+// restarting the machine. Circle's reboot() is NORETURN.
+void kapi_reboot (void)
+{
+	reboot ();
 }
 
 }  // extern "C"
