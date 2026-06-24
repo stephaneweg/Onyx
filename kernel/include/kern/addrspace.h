@@ -41,6 +41,12 @@ public:
 	// kernel (identity) address so the caller can fill it, or 0 on failure.
 	void *MapNewPage (uintptr ulVA, const TKPageAttr &Attr);
 
+	// Unix-style sbrk for the per-process heap at USER_HEAP_BASE: move the break by
+	// nIncrement bytes, mapping fresh 64 KB pages (EL1 RW) as it grows. Returns the
+	// PREVIOUS break (a user VA), or (void*)-1 on failure (out of heap VA / OOM).
+	// The user allocator (user/umm.h) calls this through kapi_sbrk.
+	void *Sbrk (long nIncrement);
+
 	// Load TTBR0_EL1 = L2-base | (ASID << 48); isb.
 	void Activate (void);
 
@@ -97,6 +103,8 @@ private:
 	char			     m_Args[256]; // argv string for the child (kapi_get_args)
 	char			     m_Cwd[256]; // current working directory (FatFs abs path)
 	unsigned		     m_nOwnedPages; // palloc'd 64 KB frames owned (for ps/meminfo)
+	u64			     m_ulHeapBrk; // logical heap break (kapi_sbrk), >= USER_HEAP_BASE
+	u64			     m_ulHeapEnd; // page-aligned top of the mapped heap region
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

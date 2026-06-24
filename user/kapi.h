@@ -132,6 +132,9 @@ static inline void kapi_set_click_handler (gui_handler fn) { KT->set_click_handl
 static inline void kapi_set_pointer_handler (gui_handler fn) { KT->set_pointer_handler (fn); }
 // Memory snapshot (KB): total RAM, free, app-owned, page size. Any pointer may be 0.
 static inline int kapi_meminfo (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb) { return KT->meminfo (total_kb, free_kb, app_kb, page_kb); }
+// Per-process heap: move the break by `inc` bytes (Unix sbrk); returns the previous
+// break or (void*)-1. The user allocator (umm.h) is built on this; apps rarely call it.
+static inline void *kapi_sbrk (long inc) { return KT->sbrk (inc); }
 
 // --- enumeration + clock -----------------------------------------------------
 static inline int  kapi_list_apps (char *b, unsigned s) { return KT->list_apps (b, s); }

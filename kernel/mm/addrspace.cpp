@@ -66,7 +66,9 @@ CAddressSpace::CAddressSpace (void)
 	m_pStdout (0),
 	m_pProcess (0),
 	m_nExitStatus (0),
-	m_nOwnedPages (0)
+	m_nOwnedPages (0),
+	m_ulHeapBrk (USER_HEAP_BASE),
+	m_ulHeapEnd (USER_HEAP_BASE)
 {
 	m_Args[0] = '\0';
 	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
@@ -338,6 +340,31 @@ void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 	m_nOwnedPages++; g_nUserPages++;	// a user data frame (MapPage may also add an L3)
 
 	return pFrame;
+}
+
+void *CAddressSpace::Sbrk (long nIncrement)
+{
+	u64 ulOld = m_ulHeapBrk;
+	if (nIncrement == 0) return (void *) ulOld;
+
+	if (nIncrement < 0)			// shrink: lower the break, keep pages mapped
+	{					// (reclaimed wholesale at teardown anyway)
+		u64 ulDec = (u64) (-nIncrement);
+		m_ulHeapBrk = (ulDec >= ulOld - USER_HEAP_BASE) ? USER_HEAP_BASE : ulOld - ulDec;
+		return (void *) ulOld;
+	}
+
+	u64 ulWant = ulOld + (u64) nIncrement;
+	if (ulWant > USER_HEAP_MAX) return (void *) -1;		// out of heap VA
+
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW (apps run in EL1)
+	while (m_ulHeapEnd < ulWant)				// map fresh pages to cover [old,want)
+	{
+		if (MapNewPage (m_ulHeapEnd, Attr) == 0) return (void *) -1;	// OOM
+		m_ulHeapEnd += KPAGE_SIZE;
+	}
+	m_ulHeapBrk = ulWant;
+	return (void *) ulOld;
 }
 
 void CAddressSpace::Activate (void)

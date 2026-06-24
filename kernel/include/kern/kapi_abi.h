@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	23
+#define KAPI_ABI_VERSION	24
 
 #ifdef __cplusplus
 extern "C" {
@@ -246,6 +246,13 @@ struct TKApiTable
 	// may be 0. Returns 1. For the memory monitor + accounting.
 	int (*meminfo) (unsigned long *total_kb, unsigned long *free_kb,
 			unsigned long *app_kb, unsigned *page_kb);
+
+	// --- v24 additions (per-process heap) ---
+	// Unix-style sbrk: move the calling app's heap break by `increment` bytes
+	// (mapping fresh pages as it grows), return the previous break, or (void*)-1 on
+	// failure. The foundation for a user-space allocator (user/umm.h: malloc/free +
+	// operator new/delete). Heap pages are owned by the address space -> freed on exit.
+	void *(*sbrk) (long increment);
 };
 
 #ifdef __cplusplus

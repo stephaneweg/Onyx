@@ -276,6 +276,29 @@ Same memory model as the rest: widgets live in a caller-provided **fixed pool**
 in userland, with no kernel/ABI change. The older **kernel-drawn widgets**
 (`add_button`…, §earlier) still work and coexist; apps choose one model per window.
 
+### Dynamic memory + C++ apps
+
+Apps have **no `malloc` by default** — they use static buffers + the stack (both in
+the app's address space). For dynamic memory, include [`user/umm.h`](../user/umm.h):
+a small user allocator (size-class free lists + a `kapi_sbrk` arena). `umm_malloc` /
+`umm_free` / `umm_calloc` / `umm_realloc`. The heap lives at `USER_HEAP_BASE` (10 GB);
+its pages are owned by the address space, so they are **freed automatically when the
+app exits** and show up in the app's page count (`ps` / `memmon`). `kapi_sbrk` is the
+underlying primitive (rarely called directly). `/bin/heaptest` exercises it.
+
+**C++ apps** are supported (freestanding subset — no exceptions, no RTTI, no STL):
+
+- Name the source `*.cpp`; the user `Makefile` builds it with `g++`
+  (`-fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit`).
+- Include [`user/onyxpp.hpp`](../user/onyxpp.hpp): it defines `operator new`/`delete`
+  (on `umm`) and the runtime stubs (`__cxa_pure_virtual`, `__dso_handle`,
+  `__cxa_atexit`/`atexit` no-ops). Global constructors run via `crt0.S` (the
+  `.init_array` walk); static destructors are **not** run (the app exits and its
+  address space is reclaimed).
+- Classes, inheritance and virtual methods (vtables) work; `new`/`delete` go through
+  the user heap. No `std::string`/`std::vector` — write small containers on `umm` as
+  needed. See [`user/cppdemo.cpp`](../user/cppdemo.cpp) for a working example.
+
 ## 9. Packaging an app: `.app`, icons, `config.ini`
 
 Layout of an application on the card (produced by `make stage`):

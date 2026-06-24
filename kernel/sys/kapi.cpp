@@ -1680,4 +1680,14 @@ int kapi_meminfo (unsigned long *pTotalKB, unsigned long *pFreeKB,
 	return 1;
 }
 
+// Grow/shrink the calling process's heap by nIncrement bytes (Unix sbrk). Returns
+// the previous break, or (void*)-1 on failure. The user-space allocator (user/umm.h)
+// builds malloc/free + operator new/delete on top of this.
+void *kapi_sbrk (long nIncrement)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0) return (void *) -1;
+	return pAS->Sbrk (nIncrement);
+}
+
 }  // extern "C"

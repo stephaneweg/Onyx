@@ -19,6 +19,15 @@ SECTIONS
 	}
 	.rodata : {
 		*(.rodata*)
+		/* C++ global constructors / destructors (empty for C apps). crt0.S walks
+		 * [__init_array_start, __init_array_end) before main. */
+		. = ALIGN(8);
+		__init_array_start = .;
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) .init_array))
+		__init_array_end = .;
+		__fini_array_start = .;
+		KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*) .fini_array))
+		__fini_array_end = .;
 	}
 
 	. = ALIGN(0x10000);

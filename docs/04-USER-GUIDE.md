@@ -304,6 +304,7 @@ the terminal's **current working directory**.
 | `wget` | `wget <url>` | Fetches an HTTP URL (`http://host[:port]/path`) and writes the response body to `stdout` — pipe or redirect it (e.g. `wget http://example.com/ > page.html`). Plain HTTP only (no HTTPS). |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
+| `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
 
 ## 9. The file manager
 
@@ -438,6 +439,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **demoD** | Widget gallery (label, textbox, checkbox, button, slider, progress bar). |
 | **demoE** | Multi-line textarea + scrolling view with scrollbars. |
 | **demoF** | Small borderless launcher (buttons A–E that launch the other demos). |
+| **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
 
 ## 13. Troubleshooting
 

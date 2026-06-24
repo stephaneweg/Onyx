@@ -59,6 +59,13 @@
 #define USER_STACK_TOP		(16ULL * GIGABYTE)	// 0x4_0000_0000
 #define USER_STACK_SIZE		(1ULL * 0x100000)	// 1 MB initial (64 KB-aligned)
 
+// Per-process heap: grows UP from here (kapi_sbrk maps 64 KB pages on demand). Sits
+// in the gap above the app's .text/.data/.bss (which start at 8 GB and are small)
+// and below the window canvas (12 GB). Pages are owned by the address space ->
+// freed on teardown. The user-space allocator (user/umm.h) manages this region.
+#define USER_HEAP_BASE		(10ULL * GIGABYTE)	// 0x2_8000_0000
+#define USER_HEAP_MAX		USER_WINDOW_CANVAS	// ceiling (12 GB): 2 GB of heap VA
+
 // Where a process's window canvas is mapped (shared with the kernel compositor).
 #define USER_WINDOW_CANVAS	(12ULL * GIGABYTE)	// 0x3_0000_0000
 
