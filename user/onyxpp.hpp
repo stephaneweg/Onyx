@@ -26,8 +26,10 @@ inline void *operator new      (onyx_size_t, void *p) noexcept { return p; }	// 
 inline void *operator new[]    (onyx_size_t, void *p) noexcept { return p; }
 
 extern "C" {
-	// Pure-virtual called (should never happen): stop the app cleanly.
-	inline void __cxa_pure_virtual (void) { kapi_exit (127); for (;;) {} }
+	// Pure-virtual called (should never happen): stop the app cleanly. NOT inline --
+	// an abstract class's vtable takes this symbol's address, so it needs a real
+	// definition (onyxpp.hpp is included once per app, so one definition is fine).
+	void __cxa_pure_virtual (void) { kapi_exit (127); for (;;) {} }
 	// Static-destructor registration -- accepted and ignored (see header note).
 	void *__dso_handle = 0;
 	inline int __cxa_atexit (void (*) (void *), void *, void *) { return 0; }

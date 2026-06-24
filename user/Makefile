@@ -18,14 +18,19 @@ CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 PROGS   = demoA.elf demoB.elf demoC.elf demoD.elf demoE.elf demoF.elf \
-	  panel.elf applist.elf tinypad.elf tinycalc.elf inidemo.elf \
+	  panel.elf applist.elf tinypad.elf inidemo.elf \
 	  tetris.elf snake.elf same.elf filer.elf terminal.elf \
 	  2048.elf life.elf pong.elf sokoban.elf \
 	  calendar.elf mandelbrot.elf minesweeper.elf paint.elf \
 	  eyes.elf sheet.elf taskman.elf voronoy.elf theme.elf config.elf \
-	  irc.elf memmon.elf cppdemo.elf wpaconf.elf
+	  irc.elf memmon.elf cppdemo.elf
 
-all: $(PROGS) bin
+# Per-app subfolder C++ apps: user/<name>/main.cpp -> <name>.elf (uikit.hpp toolkit).
+# This is the target layout as apps are rewritten in C++ (one folder per app).
+SUBAPPS  = tinycalc wpaconf
+SUBPROGS = $(SUBAPPS:=.elf)
+
+all: $(PROGS) $(SUBPROGS) bin
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
@@ -38,6 +43,11 @@ bin:
 # C++ apps (e.g. cppdemo): g++ + the C++ runtime support header (onyxpp.hpp).
 %.elf: %.cpp crt0.S user.ld kapi.h umm.h onyxpp.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) crt0.S $< -o $@
+
+# Subfolder C++ apps: <name>/main.cpp -> <name>.elf. -I. so they find the user-side
+# headers (kapi.h, uikit.hpp, ...) from a nested directory.
+$(SUBPROGS): %.elf: %/main.cpp crt0.S user.ld kapi.h uikit.hpp umm.h onyxpp.hpp
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
 
 clean:
 	rm -f *.elf *.o
