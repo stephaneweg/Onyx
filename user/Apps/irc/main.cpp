@@ -77,8 +77,33 @@ static void show (const char *s) { ring_push (s); g_scroll = 0; }
 
 // ---- socket I/O --------------------------------------------------------------
 
-static void send_raw (const char *s) { if (g_sock >= 0) kapi_tcp_send (g_sock, s, (unsigned) slen (s)); }
-static void send_line (const char *s) { send_raw (s); send_raw ("\r\n"); }
+// Send all of buf[len]: kapi_tcp_send may do a partial send, so loop until it's all
+// out (or the socket errors/closes).
+static void send_all (const char *buf, int len)
+{
+	if (g_sock < 0) return;
+	int off = 0;
+	while (off < len)
+	{
+		int n = kapi_tcp_send (g_sock, buf + off, (unsigned) (len - off));
+		if (n <= 0) break;			// closed / error
+		off += n;
+	}
+}
+
+// Send one IRC line: the text + CRLF terminator in a SINGLE send. Sending the "\r\n"
+// as a separate call let it get split off / delayed (Nagle), so the server saw an
+// unterminated line and silently dropped the message -- the bug behind "others don't
+// receive my messages even though my local echo shows them".
+static void send_line (const char *s)
+{
+	char buf[700];
+	int n = 0;
+	for (int i = 0; s[i] != '\0' && n < (int) sizeof buf - 2; i++) buf[n++] = s[i];
+	buf[n++] = '\r';
+	buf[n++] = '\n';
+	send_all (buf, n);
+}
 
 // Find an IRC "trailing" parameter (the text after the first " :"), or 0.
 static char *trailing (char *s)
