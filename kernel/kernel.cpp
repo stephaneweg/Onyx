@@ -910,9 +910,10 @@ void CKernel::StartAutostart (void)
 		return;
 	}
 
-	// Each line is "<name>[.app] [args...]". A ".app" name is a DESKTOP app at
-	// apps/<name>/main.elf; a name with no extension is a /bin CONSOLE tool at
-	// bin/<name>.elf. The rest of the line is passed as argv (e.g. "keyb FR").
+	// Each line is a shell command, run exactly like the cmd shell would: the first
+	// token names a /bin tool (bin/<token>.elf) and the rest is its argv. So
+	// "keyb FR" runs /bin/keyb.elf, and a desktop app is launched with the `run`
+	// tool, e.g. "run panel" -> /bin/run.elf which kapi_launch()es panel.app.
 	char Line[256];
 	unsigned nLen = 0;
 	for (unsigned i = 0; i <= nSize; i++)
@@ -930,18 +931,13 @@ void CKernel::StartAutostart (void)
 
 			if (*p != '\0' && *p != '#')
 			{
-				// Split into the first token (the name) and the rest (argv).
+				// Split into the first token (the /bin tool) and the rest (argv).
 				char *pArgs = p;
 				while (*pArgs != '\0' && *pArgs != ' ' && *pArgs != '\t') pArgs++;
 				if (*pArgs != '\0') { *pArgs++ = '\0'; while (*pArgs == ' ' || *pArgs == '\t') pArgs++; }
 
-				unsigned tl = 0; while (p[tl] != '\0') tl++;	// ".app" suffix?
-				boolean bApp = tl >= 4 && p[tl-4] == '.' && p[tl-3] == 'a'
-					    && p[tl-2] == 'p' && p[tl-1] == 'p';
-
 				CString Path;
-				if (bApp) Path.Format ("SD:apps/%s/main.elf", p);
-				else      Path.Format ("SD:bin/%s.elf", p);
+				Path.Format ("SD:bin/%s.elf", p);		// run it like a shell command
 
 				m_Logger.Write (FromKernel, LogNotice, "autostart: %s %s",
 						(const char *) Path, pArgs);
