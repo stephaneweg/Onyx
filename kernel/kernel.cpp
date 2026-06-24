@@ -638,24 +638,6 @@ static GImage *LoadCursor (const char *pPath, int nW, int nH)
 	return pImg;
 }
 
-// Parse "0xRRGGBB" / "RRGGBB" between [s,e); returns def if no hex digits found.
-static u32 ParseHexColor (const char *s, const char *e, u32 def)
-{
-	while (s < e && (*s == ' ' || *s == '\t')) s++;
-	if (s + 1 < e && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
-	u32 v = 0; int any = 0;
-	while (s < e)
-	{
-		char c = *s; int d;
-		if (c >= '0' && c <= '9') d = c - '0';
-		else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
-		else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
-		else break;
-		v = v * 16 + d; s++; any = 1;
-	}
-	return any ? v : def;
-}
-
 static boolean KeyEq (const char *s, const char *e, const char *pLit)
 {
 	while (s < e && *pLit != '\0' && *s == *pLit) { s++; pLit++; }
