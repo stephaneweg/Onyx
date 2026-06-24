@@ -11,9 +11,10 @@
 #define H	430
 #define CAP	32768			// max document size (Textarea heap buffer)
 
-static ui::Ui       *g_ui;
-static ui::Textbox  *g_fn;	// filename box
-static ui::Textarea *g_body;	// the document
+static ui::Ui        *g_ui;
+static ui::Textbox   *g_fn;	// filename box
+static ui::Textarea  *g_body;	// the document
+static ui::Scrollbar *g_vsb, *g_hsb;	// scroll the body with the mouse
 
 static void load_file (void)
 {
@@ -46,6 +47,8 @@ static void on_save (ui::Widget &)
 	char path[100];
 	if (kapi_file_save (path, sizeof path, "SD:/", g_fn->getText ())) { g_fn->setText (path); save_file (); }
 }
+static void on_vscroll (ui::Widget &w) { g_body->setTop  (((ui::Scrollbar &) w).value); g_ui->markDirty (); }
+static void on_hscroll (ui::Widget &w) { g_body->setLeft (((ui::Scrollbar &) w).value); g_ui->markDirty (); }
 static void on_evt (unsigned long s, int ev, long v) { g_ui->onEvent (s, ev, v); }
 
 int main (void)
@@ -59,7 +62,9 @@ int main (void)
 	g_fn = &ui.textbox (4, 4, W - 160, 20, "SD:notes.txt");
 	       ui.button  (W - 152, 4, 70, 20, "Open", on_open);
 	       ui.button  (W - 78,  4, 70, 20, "Save", on_save);
-	g_body = &ui.textarea (4, 30, W - 8, H - 34, CAP);
+	g_body = &ui.textarea  (4, 30, W - 20, H - 46, CAP);		// leaves room for scrollbars
+	g_vsb  = &ui.scrollbar (W - 14, 30, 12, H - 46, true,  1, 0, on_vscroll);
+	g_hsb  = &ui.scrollbar (4, H - 14, W - 20, 12, false, 1, 0, on_hscroll);
 
 	char args[100];
 	int an = kapi_get_args (args, sizeof args);
@@ -72,6 +77,9 @@ int main (void)
 	while (!should_exit ())
 	{
 		pump_events ();
+		// reflect the body's scroll position in the scrollbars (the caret scrolls it too)
+		int mt = g_body->maxTop  (); g_vsb->vmax = mt > 0 ? mt : 1; g_vsb->value = g_body->topLine ();
+		int ml = g_body->maxLeft (); g_hsb->vmax = ml > 0 ? ml : 1; g_hsb->value = g_body->leftCol ();
 		if (ui.dirty ()) { ui.background (); ui.drawAll (); present (); }
 		msleep (16);
 	}

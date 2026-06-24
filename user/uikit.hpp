@@ -138,16 +138,25 @@ public:
 class Textarea : public Widget
 {
 public:
-	char *buf; int cap, len, caret, top, left;
+	char *buf; int cap, len, caret, top, left, rows, cols;	// rows/cols: visible, set in draw
 	bool readonly;
 	Textarea (int x, int y, int w, int h, int capacity)
 	  : Widget (x, y, w, h, "", 0), cap (capacity < 16 ? 16 : capacity),
-	    len (0), caret (0), top (0), left (0), readonly (false)
+	    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false)
 	{ buf = new char[cap]; buf[0] = '\0'; }
 	~Textarea () override { delete[] buf; }
 	const char *content () const { return buf; }		// the whole text (getText is the 64B caption)
 	int  length () const { return len; }
 	void setContent (const char *s);
+	// scroll state (so an external Scrollbar can drive/reflect the view)
+	int  lineCount () const;				// total lines (>=1)
+	int  longestLine () const;				// longest line length (in columns)
+	int  topLine () const { return top; }
+	int  leftCol () const { return left; }
+	int  maxTop () const  { int m = lineCount () - rows;   return m < 0 ? 0 : m; }
+	int  maxLeft () const { int m = longestLine () - cols; return m < 0 ? 0 : m; }
+	void setTop (int t)  { int m = maxTop ();  top  = t < 0 ? 0 : (t > m ? m : t); }
+	void setLeft (int l) { int m = maxLeft (); left = l < 0 ? 0 : (l > m ? m : l); }
 	void draw (Ui &ui) override;
 	void onPress (Ui &ui, int px, int py) override;
 	void key (Ui &ui, long k) override;
@@ -156,6 +165,7 @@ private:
 	int  lineEnd   (int i) const { while (buf[i] != '\0' && buf[i] != '\n') i++; return i; }
 	void insertAt (int ch);
 	void deleteAt (int i);
+	void ensureVisible (int vr, int vc);			// scroll caret into view (on caret move only)
 };
 
 // Draggable scrollbar (vertical or horizontal), value in [0,vmax]; cb fires on change.
@@ -456,22 +466,39 @@ inline void Textarea::setContent (const char *s)
 	if (s) while (s[len] != '\0' && len < cap - 1) { buf[len] = s[len]; len++; }
 	buf[len] = '\0';
 }
+inline int Textarea::lineCount () const
+{ int n = 1; for (int i = 0; i < len; i++) if (buf[i] == '\n') n++; return n; }
+inline int Textarea::longestLine () const
+{ int best = 0, c = 0; for (int i = 0; i <= len; i++) { if (i == len || buf[i] == '\n') { if (c > best) best = c; c = 0; } else c++; } return best; }
+// Scroll the caret into view -- called only when the caret moves (typing/click/keys),
+// NOT from draw(), so dragging a scrollbar away from the caret sticks.
+inline void Textarea::ensureVisible (int vr, int vc)
+{
+	int cl = 0; for (int i = 0; i < caret; i++) if (buf[i] == '\n') cl++;
+	int cc = caret - lineStart (caret);
+	if (cl < top) top = cl;
+	if (cl >= top + vr) top = cl - vr + 1;
+	if (cc < left) left = cc;
+	if (cc >= left + vc) left = cc - vc + 1;
+	if (top < 0) top = 0;
+	if (left < 0) left = 0;
+}
 inline void Textarea::onPress (Ui &ui, int px, int py)
 {
-	const int pad = 4;
+	const int pad = 4, fw = ui.fw > 0 ? ui.fw : 8;
 	int row = (py - (y + 2)) / ui.fh;
-	int col = (px - (x + pad)) / (ui.fw > 0 ? ui.fw : 8);
+	int col = (px - (x + pad)) / fw;
 	if (row < 0) row = 0;
 	if (col < 0) col = 0;
 	int wantLine = top + row, wantCol = left + col, i = 0, line = 0;
 	while (line < wantLine && buf[i] != '\0') { if (buf[i] == '\n') line++; i++; }
 	int le = lineEnd (i), c = i + wantCol;
 	if (c > le) c = le;
-	caret = c; (void) ui;
+	caret = c;
+	ensureVisible ((h - 4) / ui.fh, (w - 2 * pad) / fw);
 }
 inline void Textarea::key (Ui &ui, long k)
 {
-	(void) ui;
 	if (k >= 32 && k <= 126)          { if (!readonly) insertAt ((int) k); }
 	else if (k == KEY_ENTER)          { if (!readonly) insertAt ('\n'); }
 	else if (k == KEY_TAB)            { if (!readonly) { insertAt (' '); insertAt (' '); } }
@@ -491,22 +518,16 @@ inline void Textarea::key (Ui &ui, long k)
 		int ls = lineStart (caret), col = caret - ls, le = lineEnd (caret);
 		if (buf[le] == '\n') { int nls = le + 1, nle = lineEnd (nls), c = nls + col; caret = c > nle ? nle : c; }
 	}
+	ensureVisible ((h - 4) / ui.fh, (w - 8) / (ui.fw > 0 ? ui.fw : 8));
 }
 inline void Textarea::draw (Ui &ui)
 {
 	const int pad = 4;
 	int fw = ui.fw > 0 ? ui.fw : 8;
-	int visRows = (h - 4) / ui.fh; if (visRows < 1) visRows = 1;
-	int visCols = (w - 2 * pad) / fw; if (visCols < 1) visCols = 1; if (visCols > 159) visCols = 159;
-
-	int cl = 0; for (int i = 0; i < caret; i++) if (buf[i] == '\n') cl++;	// caret line/col
-	int cc = caret - lineStart (caret);
-	if (cl < top) top = cl;					// keep caret visible
-	if (cl >= top + visRows) top = cl - visRows + 1;
-	if (cc < left) left = cc;
-	if (cc >= left + visCols) left = cc - visCols + 1;
-	if (top < 0) top = 0;
-	if (left < 0) left = 0;
+	rows = (h - 4) / ui.fh; if (rows < 1) rows = 1;			// cache visible extent
+	cols = (w - 2 * pad) / fw; if (cols < 1) cols = 1; if (cols > 159) cols = 159;
+	int mt = maxTop ();  if (top  > mt) top  = mt; if (top  < 0) top  = 0;	// clamp (no caret-snap)
+	int ml = maxLeft (); if (left > ml) left = ml; if (left < 0) left = 0;
 
 	ui.fill  (x, y, w, h, disabled ? ui.col_face_dn : ui.col_field);
 	ui.frame (x, y, w, h, ui.col_border);
@@ -514,11 +535,11 @@ inline void Textarea::draw (Ui &ui)
 
 	int i = 0, line = 0;
 	while (line < top && buf[i] != '\0') { if (buf[i] == '\n') line++; i++; }
-	for (int r = 0; r < visRows; r++)
+	for (int r = 0; r < rows; r++)
 	{
 		int le = lineEnd (i);
 		char vis[160]; int j = 0;
-		for (int c = i + left; c < le && j < visCols; c++) vis[j++] = buf[c];
+		for (int c = i + left; c < le && j < cols; c++) vis[j++] = buf[c];
 		vis[j] = '\0';
 		if (j > 0) kapi_draw_text (x + pad, y + 2 + r * ui.fh, vis, disabled ? ui.col_dis : ui.col_text);
 		if (buf[le] != '\n') break;			// end of buffer
@@ -526,8 +547,10 @@ inline void Textarea::draw (Ui &ui)
 	}
 	if (focused && !disabled)				// caret
 	{
+		int cl = 0; for (int c = 0; c < caret; c++) if (buf[c] == '\n') cl++;
+		int cc = caret - lineStart (caret);
 		int cx = x + pad + (cc - left) * fw, cy = y + 2 + (cl - top) * ui.fh;
-		if (cy >= y && cy < y + h - 2) ui.fill (cx, cy, 1, ui.fh, ui.col_accent);
+		if (cy >= y && cy < y + h - 2 && cx >= x + pad && cx < x + w - 1) ui.fill (cx, cy, 1, ui.fh, ui.col_accent);
 	}
 }
 
