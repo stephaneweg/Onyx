@@ -1,0 +1,65 @@
+diff --git a/include/circle/input/keyboardbehaviour.h b/include/circle/input/keyboardbehaviour.h
+index 46b5253c..002e44dc 100644
+--- a/include/circle/input/keyboardbehaviour.h
++++ b/include/circle/input/keyboardbehaviour.h
+@@ -69,6 +69,8 @@ public:
+ 
+ 	u8 GetLEDStatus (void) const;
+ 
++	CKeyMap *GetKeyMap (void)	{ return &m_KeyMap; }	// Zircon: runtime layout switch
++
+ private:
+ 	void GenerateKeyEvent (u8 ucKeyCode);
+ 
+diff --git a/include/circle/input/keymap.h b/include/circle/input/keymap.h
+index 86135405..2076e3e2 100644
+--- a/include/circle/input/keymap.h
++++ b/include/circle/input/keymap.h
+@@ -130,6 +130,10 @@ public:
+ 
+ 	u8 GetLEDStatus (void) const;
+ 
++	// Zircon: switch to another compiled-in country map at runtime ("US","UK","DE",
++	// "FR","ES","IT","DV"). Returns FALSE if the locale is unknown.
++	boolean LoadMap (const char *pLocale);
++
+ private:
+ 	static const void *LookupDefaultMap (const char *pLocale);
+ 
+diff --git a/include/circle/usb/usbkeyboard.h b/include/circle/usb/usbkeyboard.h
+index 373b0d26..21a5c36e 100644
+--- a/include/circle/usb/usbkeyboard.h
++++ b/include/circle/usb/usbkeyboard.h
+@@ -62,6 +62,9 @@ public:
+ 	// works in cooked and raw mode
+ 	boolean SetLEDs (u8 ucStatus);		// must not be called in interrupt context
+ 
++	// Zircon: access the cooked-mode key map so the layout can be switched at runtime.
++	CKeyMap *GetKeyMap (void)	{ return m_Behaviour.GetKeyMap (); }
++
+ private:
+ 	void ReportHandler (const u8 *pReport, unsigned nReportSize);
+ 
+diff --git a/lib/input/keymap.cpp b/lib/input/keymap.cpp
+index 2ac5ef65..64211312 100644
+--- a/lib/input/keymap.cpp
++++ b/lib/input/keymap.cpp
+@@ -156,6 +156,18 @@ CKeyMap::~CKeyMap (void)
+ {
+ }
+ 
++// Zircon: replace the active map with another compiled-in country map at runtime.
++boolean CKeyMap::LoadMap (const char *pLocale)
++{
++	const void *pMap = LookupDefaultMap (pLocale);
++	if (pMap == 0)
++	{
++		return FALSE;
++	}
++	memcpy (m_KeyMap, pMap, sizeof m_KeyMap);
++	return TRUE;
++}
++
+ boolean CKeyMap::ClearTable (u8 nTable)
+ {
+ 	if (nTable > K_CTRLTAB)

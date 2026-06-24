@@ -1,6 +1,7 @@
-# Upstream Circle dependency: cloned separately, has its own git history.
-# (Will be promoted to a git submodule when we set up the build.)
-# Clone with:  git clone --recurse-submodules https://github.com/rsta2/circle.git
+# Upstream Circle dependency (HAL): cloned separately into ../circle, NOT vendored
+# here (it is ~256 MB / 1700+ files). We pin the exact upstream commit and keep our
+# local changes as a tracked patch series -- see circle-patches/README.md to set it
+# up (clone @ Step51 + git apply circle-patches/*.patch).
 /circle/
 
 # Build artifacts
