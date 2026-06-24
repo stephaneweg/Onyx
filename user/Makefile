@@ -39,7 +39,7 @@ bin:
 	@$(MAKE) --no-print-directory -C bin
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h uikit.hpp bmp.hpp umm.h onyxpp.hpp
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h uikit.hpp uidialog.hpp bmp.hpp umm.h onyxpp.hpp
 	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
 
 clean:
