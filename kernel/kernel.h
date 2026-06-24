@@ -48,7 +48,8 @@ public:
 	TShutdownMode Run (void);
 
 private:
-	// Spawn the apps listed in SD:apps/autostart.txt (one folder name per line).
+	// Launch the init program (cmdline "init=", default SD:bin/init.elf); it reads
+	// SD:/etc/autostart and starts the rest of the userland.
 	void StartAutostart (void);
 
 	// Do not change this order: members are constructed top-to-bottom and some

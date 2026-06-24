@@ -21,9 +21,10 @@ import os, re, ast, struct, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 KEYMAP_H = os.path.join(ROOT, "circle", "include", "circle", "input", "keymap.h")
-TBL_DIR  = os.path.join(ROOT, "circle", "lib", "input")
+TBL_DIR  = os.path.join(ROOT, "circle", "lib", "input")       # Circle's stock tables
+CUSTOM_DIR = os.path.join(ROOT, "tools", "keymaps", "maps")   # custom layouts (not in Circle)
 ROWS, COLS = 128, 5                                  # PHY_MAX_CODE+1, K_CTRLTAB+1
-LOCALES = ["DE", "DV", "ES", "FR", "IT", "UK", "US"]
+LOCALES = ["BE", "DE", "DV", "ES", "FR", "IT", "UK", "US"]
 
 # --- parse the TSpecialKey enum from keymap.h (drift-proof: no hand-copied values) --
 def parse_enum():
@@ -62,8 +63,17 @@ def cell_value(tok):
         raise ValueError("unknown key token: " + tok)
     return ENUM[tok]
 
+def src_path(locale):                                # Circle's stock dir, then custom dir
+    for d in (TBL_DIR, CUSTOM_DIR):
+        p = os.path.join(d, "keymap_%s.h" % locale.lower())
+        if os.path.exists(p):
+            return p
+    return None
+
 def compile_table(locale):
-    path = os.path.join(TBL_DIR, "keymap_%s.h" % locale.lower())
+    path = src_path(locale)
+    if path is None:
+        return None                                  # no source -> caller skips
     txt = open(path, encoding="latin-1").read()
     txt = re.sub(r"//[^\n]*", "", txt)               # drop end-of-line comments (0x7F etc.)
     toks = TOKEN.findall(txt)
@@ -76,6 +86,9 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     for lc in LOCALES:
         cells = compile_table(lc)
+        if cells is None:
+            print("skip %s.kmap (no keymap_%s.h in circle/lib/input or tools/keymaps/maps)" % (lc, lc.lower()))
+            continue
         with open(os.path.join(outdir, lc + ".kmap"), "wb") as f:
             f.write(b"OKM1")
             f.write(struct.pack("<HH", ROWS, COLS))

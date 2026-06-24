@@ -29,40 +29,46 @@ git -C circle diff Step51..onyx
 
 | # | Patch | Files touched | Rebuild needed |
 |---|---|---|---|
-| 1 | Runtime keyboard-layout switching · `MAX_TASKS` 20 → 40 | `input/keymap.{h,cpp}`, `usb/usbkeyboard.h`, `input/keyboardbehaviour.h`, `sysconfig.h` | `libinput` (+ kernel for `MAX_TASKS`) |
+| 1 | Keyboard map decoupled from the kernel: no compiled-in country maps, layout loaded at runtime from `.kmap` data · `MAX_TASKS` 20 → 40 | `input/keymap.{h,cpp}`, `usb/usbkeyboard.h`, `input/keyboardbehaviour.h`, `sysconfig.h` | `libinput` (+ kernel for `MAX_TASKS`) |
 | 2 | `CMemorySystem::GetPagerFreeSpace()` accessor | `memory.h` | none (header-only) |
 | 3 | Heap large-block reuse (fix per-launch canvas leak) | `heapallocator.{h,cpp}`, `sysconfig.h` | `libcircle` |
 
 ---
 
-## 1. Runtime keyboard-layout switching (+ `MAX_TASKS`)
+## 1. Keyboard map decoupled from the kernel (+ `MAX_TASKS`)
 
-**Why.** Circle's cooked-mode keyboard loads one country map at boot (`keymap=` on the
-command line) and offers no way to change it afterwards. Onyx wants **live** layout switching
-— the `keyb` tool and the theme editor select among US / UK / DE / FR / ES / IT / DV.
+**Why.** Circle's cooked-mode keyboard bakes the country maps into the binary (one selected
+at boot via `keymap=`) and offers no way to change it afterwards. Onyx wants **live** layout
+switching *and* layouts that ship as **data files** (`SD:/etc/keymaps/*.kmap`), so a new
+layout needs no kernel rebuild — and the kernel carries **no** keyboard tables at all.
 
-**What.** Add `CKeyMap::LoadMap(locale)`, which re-loads a compiled-in country map over the
-active one, and expose the keyboard's `CKeyMap` up the device stack so the kernel can reach
-it.
+**What.**
 
-`lib/input/keymap.cpp` (+ declaration in `include/circle/input/keymap.h`):
+1. **Expose the keyboard's `CKeyMap`** up the device stack: `include/circle/input/keyboardbehaviour.h`
+   and `include/circle/usb/usbkeyboard.h` each gain a `GetKeyMap()` accessor, so the kernel
+   can reach the live map and fill it through the existing public `CKeyMap::SetEntry` /
+   `ClearTable`.
 
-```cpp
-// switch to another compiled-in country map at runtime; FALSE if the locale is unknown
-boolean CKeyMap::LoadMap (const char *pLocale)
-{
-    const void *pMap = LookupDefaultMap (pLocale);
-    if (pMap == 0)
-        return FALSE;
-    memcpy (m_KeyMap, pMap, sizeof m_KeyMap);
-    return TRUE;
-}
-```
+2. **Drop the compiled-in country maps.** `lib/input/keymap.cpp` no longer `#include`s the
+   `keymap_*.h` tables, and `CKeyMap` loses `s_DefaultMap[]`, `s_MapDirectory[]`,
+   `LookupDefaultMap()` and the `LoadMap(locale)` by-name loader. The constructor just
+   zeroes the map (every entry `KeyNone`):
 
-`include/circle/input/keyboardbehaviour.h` and `include/circle/usb/usbkeyboard.h` each gain a
-`GetKeyMap()` accessor, so the kernel can do
-`CUSBKeyboardDevice::GetKeyMap()->LoadMap("FR")`. This backs the `kapi_set_keymap` /
-`kapi_get_keymap` ABI calls (see [Kernel Internals §8](02-KERNEL-INTERNALS.md#8-the-kapi-abi-table)).
+   ```cpp
+   CKeyMap::CKeyMap (void) : m_bCapsLock (FALSE), m_bNumLock (FALSE), m_bScrollLock (FALSE)
+   {
+       memset (m_KeyMap, 0, sizeof m_KeyMap);   // no country map baked in; KeyNone == 0
+   }
+   ```
+
+   The stock layout tables moved out of the Circle tree into the Onyx repo at
+   `tools/keymaps/maps/keymap_*.h`, compiled to `.kmap` blobs by `tools/keymaps/genkeymaps.py`.
+
+The kernel (`kernel.cpp`) keeps the current layout as a plain RAM table and copies a `.kmap`
+payload into the live keyboard via `SetEntry` (`kapi_set_keymap_data`, ABI v27), re-applying
+it whenever a keyboard is (re-)attached so a hot re-plug keeps the layout. `kapi_set_keymap`
+(load a country map *by name*) no longer has anything to load and always returns 0; its ABI
+slot stays (append-only). See [Kernel Internals §8](02-KERNEL-INTERNALS.md#8-the-kapi-abi-table).
 
 **`MAX_TASKS` 20 → 40** (`include/circle/sysconfig.h`): the network stack adds long-lived
 background tasks (net / DHCP / WPA supplicant + NTP + IRC), so Circle's default of 20 task

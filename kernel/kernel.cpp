@@ -257,9 +257,24 @@ public:
 // drive the cursor + window raise/drag in CWindowManager; key presses are logged
 // for now (widget routing arrives with the widget toolkit, #14/#15).
 //
-// Current keyboard layout name (e.g. "FR"); empty => Circle's compiled default. Set
-// at boot from cmdline (keymap=) and by the keyb command / kapi_set_keymap.
+// Current keyboard layout name (e.g. "FR", "BE"); empty => none loaded yet. Set by the
+// keyb command / theme editor via kapi_set_keymap_data; reported by kapi_get_keymap.
 static char g_szKeyMap[8] = "";
+
+// The live keyboard layout, kept as a plain RAM table -- the kernel compiles in NO
+// country map. Zero (all KeyNone) at boot; kapi_set_keymap_data copies a .kmap payload
+// here, then onto the attached keyboard. Re-applied on every keyboard (re-)attach so a
+// hot re-plug keeps the layout (a fresh CKeyMap starts empty). Row-major [phyCode][table].
+static u16 g_KeyMap[PHY_MAX_CODE + 1][K_CTRLTAB + 1];
+
+// Copy a raw row-major [phyCode][table] map onto a CKeyMap through the public SetEntry
+// (phyCode 0 is skipped -- SetEntry rejects it). Used to (re-)apply g_KeyMap to a keyboard.
+static void LoadKeyMapTable (CKeyMap *pKeyMap, const u16 *pMap)
+{
+	for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
+		for (u8 nPhy = 1; nPhy <= PHY_MAX_CODE; nPhy++)
+			pKeyMap->SetEntry (nTable, nPhy, pMap[nPhy * (K_CTRLTAB + 1) + nTable]);
+}
 
 class CInputTask : public CTask
 {
@@ -273,25 +288,16 @@ public:
 		s_pThis = this;
 	}
 
-	// Switch the live keyboard's layout to a compiled-in country map (LoadMap).
-	// Returns FALSE if no keyboard is attached or the locale is unknown.
-	static boolean SetKeyMap (const char *pName)
-	{
-		if (s_pThis == 0 || s_pThis->m_pKeyboard == 0 || pName == 0)
-		{
-			return FALSE;
-		}
-		return s_pThis->m_pKeyboard->GetKeyMap ()->LoadMap (pName);
-	}
-
-	// Load a raw keymap table onto the live keyboard: (PHY_MAX_CODE+1) x (K_CTRLTAB+1)
-	// u16 entries, row-major (m_KeyMap[phyCode][table]). The bytes come from a
-	// SD:/etc/keymaps/<X>.kmap file (via kapi_set_keymap_data); we copy each entry
-	// through the public SetEntry, so new layouts need no kernel rebuild. Returns
-	// FALSE if no keyboard is attached or the size is wrong.
+	// Load a raw keymap table onto the live keyboard AND into the persistent g_KeyMap
+	// snapshot: (PHY_MAX_CODE+1) x (K_CTRLTAB+1) u16 entries, row-major
+	// (m_KeyMap[phyCode][table]). The bytes come from a SD:/etc/keymaps/<X>.kmap file
+	// (via kapi_set_keymap_data); we keep a copy (so a later keyboard re-plug restores
+	// the layout) and push it onto the live keyboard through the public SetEntry, so
+	// layouts need no kernel rebuild. Returns FALSE if the size is wrong or no keyboard
+	// is attached (the snapshot is still updated, and applied when one attaches).
 	static boolean SetKeyMapData (const void *pData, unsigned nLen)
 	{
-		if (s_pThis == 0 || s_pThis->m_pKeyboard == 0 || pData == 0)
+		if (pData == 0)
 		{
 			return FALSE;
 		}
@@ -300,10 +306,14 @@ public:
 			return FALSE;
 		}
 		const u16 *pMap = (const u16 *) pData;
-		CKeyMap *pKeyMap = s_pThis->m_pKeyboard->GetKeyMap ();
 		for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
-			for (u8 nPhy = 1; nPhy <= PHY_MAX_CODE; nPhy++)
-				pKeyMap->SetEntry (nTable, nPhy, pMap[nPhy * (K_CTRLTAB + 1) + nTable]);
+			for (u8 nPhy = 0; nPhy <= PHY_MAX_CODE; nPhy++)
+				g_KeyMap[nPhy][nTable] = pMap[nPhy * (K_CTRLTAB + 1) + nTable];
+		if (s_pThis == 0 || s_pThis->m_pKeyboard == 0)
+		{
+			return FALSE;
+		}
+		LoadKeyMapTable (s_pThis->m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
 		return TRUE;
 	}
 
@@ -336,8 +346,9 @@ private:
 			{
 				m_pKeyboard->RegisterRemovedHandler (KeyboardRemoved);
 				m_pKeyboard->RegisterKeyPressedHandler (KeyPressedStub);
-				if (g_szKeyMap[0] != '\0')	// apply the configured layout
-					m_pKeyboard->GetKeyMap ()->LoadMap (g_szKeyMap);
+				// Apply the current layout snapshot (empty until keyb loads a .kmap),
+				// so a hot re-plug keeps the layout -- a fresh CKeyMap starts empty.
+				LoadKeyMapTable (m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
 				m_pLogger->Write ("input", LogNotice, "keyboard attached");
 			}
 		}
@@ -413,19 +424,15 @@ private:
 
 CInputTask *CInputTask::s_pThis = 0;
 
-// Keyboard-layout control exposed to the kapi layer (sys/kapi.cpp). SetKeyMap loads a
-// compiled-in country map onto the live keyboard and remembers the name (so a later
-// hot-plug re-applies it); GetKeyMap returns the current name ("" = boot default).
+// Keyboard-layout control exposed to the kapi layer (sys/kapi.cpp). The kernel no longer
+// compiles in any country map, so loading one *by name* (kapi_set_keymap) is unsupported
+// and always fails -- layouts ship as SD:/etc/keymaps/*.kmap and are loaded by name+data
+// through KernelSetKeyMapData. The ABI slot stays (append-only); the userspace helper
+// (ax_load_keymap) treats the failure as "no compiled map" and falls back to the file.
 boolean KernelSetKeyMap (const char *pName)
 {
-	if (pName == 0 || pName[0] == '\0' || !CInputTask::SetKeyMap (pName))
-	{
-		return FALSE;
-	}
-	unsigned i = 0;
-	for (; pName[i] != '\0' && i < sizeof (g_szKeyMap) - 1; i++) g_szKeyMap[i] = pName[i];
-	g_szKeyMap[i] = '\0';
-	return TRUE;
+	(void) pName;
+	return FALSE;
 }
 
 // Load a keymap from a raw table (validated SD:/etc/keymaps/<X>.kmap payload) and
@@ -939,14 +946,20 @@ static void EnumerateApps (CLogger *pLogger)
 	pLogger->Write (FromKernel, LogNotice, "/apps: %u entries", nCount);
 }
 
-// Boot the userland: the kernel just launches /bin/init (PID-1 style, no arguments).
-// init reads /etc/autostart and starts everything from there (see user/bin/init.c),
-// so all the launch policy lives in userland, not the kernel.
+// Boot the userland: the kernel just launches the init program (PID-1 style, no
+// arguments). init reads /etc/autostart and starts everything from there (see
+// user/bin/init.c), so all the launch policy lives in userland, not the kernel.
+//
+// Which ELF to run is the cmdline.txt option "init=" (e.g. init=SD:/bin/init.elf);
+// it defaults to SD:bin/init.elf when absent, so existing cards keep booting. This
+// lets you swap the init program (a recovery shell, a different launcher) without
+// rebuilding the kernel.
 void CKernel::StartAutostart (void)
 {
-	if (!ExecPath ("SD:bin/init.elf", ""))
+	const char *pInit = m_Options.GetAppOptionString ("init", "SD:bin/init.elf");
+	if (!ExecPath (pInit, ""))
 	{
-		m_Logger.Write (FromKernel, LogWarning, "cannot start /bin/init.elf");
+		m_Logger.Write (FromKernel, LogWarning, "cannot start init '%s'", pInit);
 	}
 }
 
@@ -1106,7 +1119,7 @@ TShutdownMode CKernel::Run (void)
 		else
 		{
 			EnumerateApps (&m_Logger);
-			StartAutostart ();		// spawn the apps listed in autostart.txt
+			StartAutostart ();		// spawn the init program (cmdline init=)
 		}
 
 		// Keep the boot log readable for a few seconds, THEN start the compositor

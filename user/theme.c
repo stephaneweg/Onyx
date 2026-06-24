@@ -20,8 +20,13 @@ static unsigned *fb;
 static ax_colorpick pk[4];
 static const char *const PK_LABEL[4] = { "Active tint", "Inactive tint", "Title text", "Wallpaper" };
 
-static const char *const KEYMAPS[] = { "US", "UK", "DE", "FR", "ES", "IT", "DV" };
-static ax_dropdown kmdd = { 130, 36, 90, 18, KEYMAPS, 7, 3, 0 };	// at top; list expands down
+// Keymap dropdown -- the option list is filled at startup by scanning the installed
+// SD:/etc/keymaps/*.kmap files (scan_keymaps), so adding a .kmap makes it show up here
+// with no rebuild, and we never list a layout that isn't actually on the card.
+#define MAXKM	24
+static char        g_kmname[MAXKM][12];		// "FR", "BE", ... (".kmap" stripped)
+static const char *g_kmopt[MAXKM];		// pointers into g_kmname[] for the dropdown
+static ax_dropdown kmdd = { 130, 36, 90, 18, 0, 0, 0, 0 };	// opts/nopts set by scan_keymaps
 
 // Apply / Discard buttons (app-drawn).
 #define BTN_Y	300
@@ -56,6 +61,48 @@ static int put_color (char *b, unsigned c)
 	return 8;
 }
 
+// Does `name` end in ".kmap" (case-insensitive)? Returns the basename length (the part
+// before the dot), or -1 if it is not a keymap file.
+static int kmap_base_len (const char *name)
+{
+	int L = 0; while (name[L]) L++;
+	if (L < 6) return -1;				// shortest is "X.kmap"
+	const char *s = name + L - 5;
+	char a = s[1], b = s[2], c = s[3], d = s[4];
+	if (a >= 'A' && a <= 'Z') a += 32;
+	if (b >= 'A' && b <= 'Z') b += 32;
+	if (c >= 'A' && c <= 'Z') c += 32;
+	if (d >= 'A' && d <= 'Z') d += 32;
+	if (s[0] == '.' && a == 'k' && b == 'm' && c == 'a' && d == 'p') return L - 5;
+	return -1;
+}
+
+// Populate the keymap dropdown from the *.kmap files in SD:/etc/keymaps.
+static void scan_keymaps (void)
+{
+	int n = 0;
+	void *dir = kapi_opendir ("SD:/etc/keymaps");
+	if (dir != 0)
+	{
+		struct kapi_dirent ent;
+		while (n < MAXKM && kapi_readdir (dir, &ent))
+		{
+			if (ent.is_dir) continue;
+			int base = kmap_base_len (ent.name);
+			if (base <= 0) continue;
+			if (base > (int) sizeof (g_kmname[0]) - 1) base = (int) sizeof (g_kmname[0]) - 1;
+			int j = 0; for (; j < base; j++) g_kmname[n][j] = ent.name[j];
+			g_kmname[n][j] = '\0';
+			g_kmopt[n] = g_kmname[n];
+			n++;
+		}
+		kapi_closedir (dir);
+	}
+	kmdd.opts  = g_kmopt;
+	kmdd.nopts = n;
+	if (kmdd.sel >= n) kmdd.sel = 0;
+}
+
 // Load the saved values into the widgets (also the Discard action).
 static void load_current (void)
 {
@@ -72,9 +119,10 @@ static void load_current (void)
 	pk[0].color = act; pk[1].color = inact; pk[2].color = text; pk[3].color = wall;
 	for (int i = 0; i < 4; i++) pk[i].open = 0;
 
-	char km[16]; kmdd.sel = 3;		// default FR
+	char km[16];				// select the layout the kernel reports as current
 	kapi_get_keymap (km, sizeof (km));
-	for (int i = 0; i < 7; i++) if (ax_streq (km, KEYMAPS[i])) kmdd.sel = i;
+	kmdd.sel = 0;				// fall back to the first installed layout
+	for (int i = 0; i < kmdd.nopts; i++) if (ax_streq (km, g_kmopt[i])) kmdd.sel = i;
 	kmdd.open = 0;
 }
 
@@ -93,9 +141,12 @@ static void apply (void)
 	ax_strcat (buf, sizeof buf, &p, "points=28\n");
 	kapi_save_file ("SD:apps/voronoy.app/config.ini", buf, p);
 
-	// Apply live: re-tint window chrome, switch keymap, repaint the wallpaper.
+	// Apply live: re-tint window chrome, switch keymap, repaint the wallpaper. Load the
+	// layout from its .kmap file (with a compiled-in fallback) so file-only layouts such
+	// as BE work from the dropdown too -- not just the maps built into the kernel.
 	kapi_set_window_theme (pk[0].color, pk[1].color, pk[2].color);
-	kapi_set_keymap (KEYMAPS[kmdd.sel]);
+	if (kmdd.sel >= 0 && kmdd.sel < kmdd.nopts)
+		ax_load_keymap (g_kmopt[kmdd.sel]);
 	kapi_exec ("SD:apps/voronoy.app/main.elf", "");
 }
 
@@ -152,6 +203,7 @@ int main (void)
 	if (fb == 0) return 1;
 
 	for (int i = 0; i < 4; i++) { pk[i].x = 130; pk[i].y = 70 + i * 30; pk[i].w = 70; pk[i].h = 20; }
+	scan_keymaps ();		// fill the keymap dropdown from SD:/etc/keymaps/*.kmap
 	load_current ();
 
 	kapi_set_click_handler (on_click);

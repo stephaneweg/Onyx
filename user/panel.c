@@ -7,7 +7,7 @@
 //
 //   [apps] button (9-squares) -- toggles the app-list popup
 //   --- separator ---
-//   quicklaunch icons (apps/quicklaunch.txt) -- launch, or RAISE if already open
+//   quicklaunch icons (etc/quicklaunch.txt) -- launch, or RAISE if already open
 //   --- separator ---
 //   open-apps section -- one icon per running app not already pinned
 //   --- separator ---

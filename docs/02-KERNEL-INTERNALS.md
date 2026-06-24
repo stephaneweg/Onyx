@@ -80,8 +80,13 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
 ### `CKernel::Run()` — the service loop
 
 1. Logs machine info.
-2. Reads `SD:apps/autostart.txt` and launches one task per line (`LaunchApp`).
-   By default: `voronoy` (paints the wallpaper then exits) and `panel` (the shell).
+2. Launches the **init program** (`StartAutostart`): the ELF named by the `cmdline.txt`
+   option **`init=`** (e.g. `init=SD:/bin/init.elf`), defaulting to `SD:bin/init.elf`
+   when the option is absent. The kernel does not parse any launch list itself —
+   init (PID-1 style) reads `SD:/etc/autostart` and starts everything from there
+   (by default `voronoy`, which paints the wallpaper then exits, and `panel`, the
+   shell). Pointing `init=` at a different ELF swaps the whole userland launcher
+   (e.g. a recovery shell) without rebuilding the kernel.
 3. Launches the **kernel service tasks**:
    - **`CCompositorTask`** — presents the screen at ~60 Hz (composes the windows then
      `UpdateDisplay()`).
@@ -385,7 +390,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`).
 | Streams/processes | `pipe`, `file_in/out`, `stream_read(_nb)/write/close/eof`, `stdin_read`, `stdout_write`, `spawn`, `wait`, `proc_done`, `get_args` |
 | Modal dialogs | `message_box`, `file_open`, `file_save` |
 | Desktop | `screen_size`, `set_wallpaper`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
-| Appearance/keyboard | `set_window_theme`, `set_keymap`, `get_keymap`, `kbd_ready` (USB keyboard attached? — the `keyb` tool polls it at boot, v26), `set_keymap_data` (load a layout from a `.kmap` blob, v27), `app_dir` |
+| Appearance/keyboard | `set_window_theme`, `set_keymap` (load a country map *by name* — deprecated: the kernel compiles in **no** maps, so it always returns 0; use `set_keymap_data`), `get_keymap`, `kbd_ready` (USB keyboard attached? — the `keyb` tool polls it at boot, v26), `set_keymap_data` (load a layout from a `.kmap` blob, v27), `app_dir` |
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close` |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |

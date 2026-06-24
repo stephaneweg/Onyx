@@ -22,7 +22,7 @@ int main (void)
 		kapi_get_keymap (cur, sizeof (cur));
 		ax_puts ("current: ");
 		ax_putln (cur[0] ? cur : "(boot default)");
-		ax_putln ("available: US UK DE FR ES IT DV");
+		ax_putln ("available: US UK DE FR BE ES IT DV");
 		ax_putln ("usage: keyb <XX>");
 		return 0;
 	}
@@ -49,25 +49,8 @@ int main (void)
 	}
 
 	// Prefer a layout file SD:/etc/keymaps/<NAME>.kmap (so new layouts need no kernel
-	// rebuild); the kernel copies the table, so our buffer is transient. Fall back to
-	// the compiled-in country map if the file is missing/invalid.
-	char path[64]; int p = 0;
-	const char *pre = "SD:/etc/keymaps/";
-	for (int k = 0; pre[k]; k++) path[p++] = pre[k];
-	for (int k = 0; name[k] && p < (int) sizeof path - 6; k++) path[p++] = name[k];
-	const char *suf = ".kmap"; for (int k = 0; suf[k]; k++) path[p++] = suf[k];
-	path[p] = '\0';
-
-	int ok = 0;
-	void *f = kapi_open (path);
-	if (f)
-	{
-		static unsigned char buf[2048];
-		int n = kapi_read (f, buf, sizeof buf);
-		kapi_close (f);
-		if (n > 0) ok = kapi_set_keymap_data (name, buf, (unsigned) n);
-	}
-	if (!ok) ok = kapi_set_keymap (name);		// fallback: compiled-in country map
+	// rebuild); fall back to the compiled-in country map. (See ax_load_keymap.)
+	int ok = ax_load_keymap (name);
 
 	if (ok)
 	{
@@ -77,6 +60,6 @@ int main (void)
 	}
 	ax_puts ("keyb: unknown layout '");
 	ax_puts (name);
-	ax_putln ("' (try US UK DE FR ES IT DV)");
+	ax_putln ("' (try US UK DE FR BE ES IT DV)");
 	return 1;
 }

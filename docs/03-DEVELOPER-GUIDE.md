@@ -112,10 +112,15 @@ Pi 4. See the [user guide](04-USER-GUIDE.md) for details about the card and
 the configuration files.
 
 **Keyboard layouts** live as binary files in `sdcard/etc/keymaps/<NAME>.kmap` (the
-`keyb` tool loads one and sends it to the kernel via `kapi_set_keymap_data`, v27 — no
-kernel rebuild to add a layout). Regenerate the stock set from Circle's tables with
-`python tools/keymaps/genkeymaps.py`; the `.kmap` format is `"OKM1"` + `u16` rows/cols +
-the `u16[128][5]` table (see the script header).
+`keyb` tool — and the theme editor's dropdown, which lists whatever `.kmap` files are
+actually present — load one and send it to the kernel via `kapi_set_keymap_data`, v27).
+**The kernel compiles in no keyboard map at all**: at boot the keyboard table is empty and
+stays so until `keyb` loads a layout from the card (see [Circle Changes §1](05-CIRCLE-CHANGES.md#1-keyboard-map-decoupled-from-the-kernel--max_tasks)),
+so a layout is *only* ever a file — adding one needs no kernel rebuild. Regenerate the
+`.kmap` files with `python tools/keymaps/genkeymaps.py`; it compiles each `<NAME>` from a
+`keymap_<name>.h` table in **`tools/keymaps/maps/`** (the 8 layout sources, incl. `BE` =
+Belgian azerty, all tracked in the Onyx repo — not in the Circle tree). The `.kmap` format
+is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model
 
@@ -324,7 +329,7 @@ SD:apps/<nom>.app/
 ```
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
-you put in `autostart.txt`/`quicklaunch.txt` and what `kapi_list_apps` returns.
+you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` returns.
 
 **`app.txt`** — friendly metadata for launchers (`key = value`, no section, read with
 `app_ini_load_path` / `app_ini_get(0, …)`). Every app under `SD:apps/` ships one:
