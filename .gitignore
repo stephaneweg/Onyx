@@ -17,8 +17,8 @@
 *.dtb
 # WLAN firmware (fetch via circle/addon/wlan/firmware/Makefile, copy to SD:/firmware/)
 /sdcard/firmware/
-# NOTE: sdcard/wpa_supplicant.conf IS tracked, but its psk is redacted on commit by
-# the tools/git-hooks/pre-commit hook (+ skip-worktree). The working copy keeps the
+# NOTE: sdcard/etc/wpa_supplicant.conf IS tracked, but its psk is redacted on commit
+# by the tools/git-hooks/pre-commit hook (+ skip-worktree). The working copy keeps the
 # real key for the SD card; the committed copy never does. See tools/git-hooks/README.
 
 # Scratch / reference material (e.g. MenuetOS .asm sources kept for reference)

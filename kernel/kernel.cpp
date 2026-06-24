@@ -28,7 +28,7 @@ static const char FromKernel[] = "kernel";
 // WLAN firmware (brcmfmac43455-sdio.*) lives here; the user's SSID/PSK go in the
 // config file. Both must be staged on the SD card -- see docs/NETWORK.md.
 #define WLAN_FIRMWARE_PATH	"SD:/firmware/"
-#define WLAN_CONFIG_FILE	"SD:/wpa_supplicant.conf"
+#define WLAN_CONFIG_FILE	"SD:/etc/wpa_supplicant.conf"
 
 // Network globals (declared in kern/net.h). g_pNet is published once the kernel
 // object exists; g_bNetUp flips TRUE when the link is DHCP-bound.

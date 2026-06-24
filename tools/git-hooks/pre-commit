@@ -2,7 +2,7 @@
 #
 # Onyx pre-commit hook -- never let the real Wi-Fi PSK reach git history.
 #
-# If sdcard/wpa_supplicant.conf is staged, rewrite ONLY the staged blob so the
+# If sdcard/etc/wpa_supplicant.conf is staged, rewrite ONLY the staged blob so the
 # committed copy has a redacted psk. The working tree is left untouched: it keeps
 # the real key so the SD card still associates. The file is normally also marked
 # `skip-worktree` (so `git add` ignores it and git status stays clean) -- this hook
@@ -10,7 +10,7 @@
 #
 # Install (once per clone):  git config core.hooksPath tools/git-hooks
 #
-f="sdcard/wpa_supplicant.conf"
+f="sdcard/etc/wpa_supplicant.conf"
 
 if git diff --cached --name-only -z | tr '\0' '\n' | grep -qx "$f"; then
 	mode=$(git ls-files --stage "$f" | awk '{print $1}')

@@ -8,18 +8,18 @@ git config core.hooksPath tools/git-hooks
 
 ## `pre-commit` — redact the Wi-Fi PSK
 
-`sdcard/wpa_supplicant.conf` is tracked so the SSID and structure are versioned, but
+`sdcard/etc/wpa_supplicant.conf` is tracked so the SSID and structure are versioned, but
 its passphrase must never enter git history. Two layers keep it out:
 
 1. **`skip-worktree`** on the file — git ignores local edits, so the real key in the
    working copy (needed for the SD card) is never staged and `git status` stays clean:
 
    ```sh
-   git update-index --skip-worktree sdcard/wpa_supplicant.conf
+   git update-index --skip-worktree sdcard/etc/wpa_supplicant.conf
    ```
 
    To intentionally change what is committed (e.g. the SSID), temporarily clear it:
-   `git update-index --no-skip-worktree sdcard/wpa_supplicant.conf`, edit/commit (the
+   `git update-index --no-skip-worktree sdcard/etc/wpa_supplicant.conf`, edit/commit (the
    hook still redacts the psk), then set `--skip-worktree` again.
 
 2. **`pre-commit` hook** — if the file ever does get staged, it rewrites only the

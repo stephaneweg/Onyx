@@ -100,7 +100,7 @@ Onyx connects over the Pi's on-board Wi-Fi. Two files must be on the SD card:
 - **`SD:/firmware/`** — the BCM/Cypress WLAN firmware. For the Pi 4 (CYW43455):
   `brcmfmac43455-sdio.bin`, `.txt` and `.clm_blob` (fetch them with
   `circle/addon/wlan/firmware/Makefile`, or copy them from a Raspberry Pi OS install).
-- **`SD:/wpa_supplicant.conf`** — your network credentials (⚠️ stored in **clear
+- **`SD:/etc/wpa_supplicant.conf`** — your network credentials (⚠️ stored in **clear
   text** — keep it on the card, do not publish it):
 
   ```
