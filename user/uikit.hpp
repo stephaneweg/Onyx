@@ -26,6 +26,7 @@
 
 #include "kapi.h"
 #include "onyxpp.hpp"		// operator new/delete (umm) + C++ runtime stubs
+#include "bmp.hpp"		// user-side BMP decoder (ui::bmp_decode) for Icon
 
 namespace ui {
 
@@ -182,6 +183,25 @@ public:
 	void setFromXY (Ui &ui, int px, int py);
 };
 
+// Clickable icon: a magenta-keyed BMP (decoded user-side) centred above an optional
+// label; hover/press highlight + an optional "running" badge (green triangle). The
+// shell (panel/applist) uses these. setRect repositions/hides; setIcon swaps the image.
+class Icon : public Widget
+{
+public:
+	unsigned *pix; int iw, ih;	// decoded image (0 = none / placeholder)
+	bool visible, badged;
+	Icon (int x, int y, int w, int h, const char *bmp, const char *label, Action cb)
+	  : Widget (x, y, w, h, label, cb), pix (0), iw (0), ih (0), visible (true), badged (false)
+	{ if (bmp != 0 && bmp[0] != '\0') setIcon (bmp); }
+	~Icon () override { delete[] pix; }
+	void setIcon (const char *bmp);				// (re)load; 0/"" clears
+	void setRect (int X, int Y, int W, int H) { x = X; y = Y; w = W; h = H; visible = (W > 0 && H > 0); }
+	void setBadge (bool b) { badged = b; }
+	bool focusable () const override { return visible && !disabled; }
+	void draw (Ui &ui) override;
+};
+
 // ============================================================================
 // Ui -- the widget container + event/draw pump. Owns its widgets.
 // ============================================================================
@@ -240,6 +260,8 @@ public:
 	{ Textarea *p = new Textarea (x, y, w, h, capacity); add (p); return *p; }
 	Scrollbar &scrollbar (int x, int y, int w, int h, bool vert, int maxv, int val, Action cb)
 	{ Scrollbar *p = new Scrollbar (x, y, w, h, vert, maxv, val, cb); add (p); return *p; }
+	Icon &icon (int x, int y, int w, int h, const char *bmp, const char *label, Action cb)
+	{ Icon *p = new Icon (x, y, w, h, bmp, label, cb); add (p); return *p; }
 
 	void setFocus (Widget &widget) { int i = indexOf (&widget); if (i >= 0) { focus = i; dirtyFlag = true; } }
 
@@ -576,6 +598,49 @@ inline void Scrollbar::draw (Ui &ui)
 	unsigned face = (hover || pressed) ? ui.col_face_hi : ui.col_face;
 	if (vertical) ui.fill (x + 1, y + pos, w - 2, thumb, face);
 	else          ui.fill (x + pos, y + 1, thumb, h - 2, face);
+}
+
+// ---- Icon --------------------------------------------------------------------
+inline void Icon::setIcon (const char *bmp)
+{
+	delete[] pix; pix = 0; iw = 0; ih = 0;
+	if (bmp != 0 && bmp[0] != '\0') pix = bmp_decode (bmp, &iw, &ih);
+}
+inline void Icon::draw (Ui &ui)
+{
+	if (!visible) return;
+	if (pressed)    ui.fill (x, y, w, h, 0x00405468);		// hover/press highlight
+	else if (hover) ui.fill (x, y, w, h, 0x00303f50);
+
+	int labelH = (text[0] != '\0') ? ui.fh + 2 : 0;
+	if (pix != 0 && iw > 0 && ih > 0)				// magenta-keyed image, centred
+	{
+		int ix = x + (w - iw) / 2, iy = y + ((h - labelH) - ih) / 2;
+		for (int yy = 0; yy < ih; yy++)
+			for (int xx = 0; xx < iw; xx++)
+			{
+				unsigned c = pix[yy * iw + xx];
+				if (c == 0x00FF00FF) continue;		// transparent key
+				int px = ix + xx, py = iy + yy;
+				if (px >= x && px < x + w && py >= y && py < y + h &&
+				    px >= 0 && px < ui.W && py >= 0 && py < ui.H)
+					ui.fb[py * ui.W + px] = c;
+			}
+	}
+	else								// placeholder square
+	{
+		int m = 6;
+		ui.fill  (x + m, y + m, w - 2 * m, h - 2 * m - labelH, 0x00808890);
+		ui.frame (x + m, y + m, w - 2 * m, h - 2 * m - labelH, ui.col_border);
+	}
+
+	if (text[0] != '\0')
+	{
+		int tw = uk_len (text) * ui.fw;
+		kapi_draw_text (x + (w - tw) / 2, y + h - ui.fh, text, ui.col_text);
+	}
+	if (badged)							// "running" green triangle, bottom-left
+		for (int t = 0; t < 9; t++) ui.fill (x + 2, y + h - 2 - t, (8 - t) + 1, 1, 0x0040E060);
 }
 
 } // namespace ui
