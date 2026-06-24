@@ -142,10 +142,10 @@ static void apply (void)
 	ax_strcat (buf, sizeof buf, &p, "points=28\n");
 	kapi_save_file ("SD:apps/voronoy.app/config.ini", buf, p);
 
-	// Apply live: re-tint window chrome, switch keymap, repaint the wallpaper. Load the
-	// layout from its .kmap file (with a compiled-in fallback) so file-only layouts such
-	// as BE work from the dropdown too -- not just the maps built into the kernel.
-	kapi_set_window_theme (pk[0].color, pk[1].color, pk[2].color);
+	// Apply live: switch keymap + repaint the wallpaper. (Window chrome is drawn
+	// user-side now, so the active/inactive/text colours are written to theme.txt for
+	// future use but no longer re-tint the kernel chrome live.) Load the keymap from its
+	// .kmap file (compiled-in fallback) so file-only layouts like BE work from here too.
 	if (kmdd.sel >= 0 && kmdd.sel < kmdd.nopts)
 		ax_load_keymap (g_kmopt[kmdd.sel]);
 	kapi_exec ("SD:apps/voronoy.app/main.elf", "");

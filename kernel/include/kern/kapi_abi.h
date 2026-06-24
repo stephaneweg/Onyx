@@ -21,7 +21,7 @@
 // table consolidated (no gaps), so old app binaries must be rebuilt. (Retro-compat was
 // explicitly waived; every app is rebuilt from this tree.)
 // v30: + random() -- hardware RNG (Pi RNG) for cryptographic seeding (TLS entropy).
-#define KAPI_ABI_VERSION	31
+#define KAPI_ABI_VERSION	32
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,7 +68,6 @@ struct TKApiTable
 	int (*toggle_app) (const char *name);
 	int (*raise_app) (const char *name);
 	int (*list_windows) (char *buf, unsigned size);
-	int (*set_wallpaper) (const char *path);
 	int (*wallpaper_generate) (unsigned base, int points, unsigned seed);
 	void (*present) (void);
 	unsigned (*get_ticks) (void);
@@ -186,10 +185,8 @@ struct TKApiTable
 	int (*set_keymap) (const char *name);
 	int (*get_keymap) (char *buf, unsigned size);
 
-	// --- v16 additions (theme editor) ---
-	// Re-tint the window chrome at runtime: active + inactive skin tints + title text
-	// colour (0x00RRGGBB). Persist by also writing SD:skins/theme.txt (read at boot).
-	void (*set_window_theme) (unsigned active, unsigned inactive, unsigned text);
+	// (v16 set_window_theme removed -- window chrome is drawn user-side; runtime
+	// re-theming would be a user-side toolkit concern + a re-decorate broadcast.)
 
 	// --- v17 additions (working directory) ---
 	// chdir: set the calling task's cwd (path resolved + verified as a dir); 1/0.

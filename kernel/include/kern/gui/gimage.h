@@ -60,10 +60,6 @@ public:
 	void PutOtherPart (const GImage *pSrc, int dstX, int dstY,
 			   int srcX, int srcY, int w, int h, boolean bTransparent);
 
-	// Decode an uncompressed 24-bit BMP from memory into this image (owned buffer).
-	// Returns FALSE if the data is not a 24-bpp uncompressed BMP.
-	boolean LoadBMP (const u8 *pData, unsigned nSize);
-
 private:
 	void CreateBuffer (void);
 

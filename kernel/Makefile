@@ -22,7 +22,6 @@ OBJS = \
 	mm/addrspace.o \
 	gui/gimage.o \
 	gui/window.o \
-	gui/skin.o \
 	proc/elf.o \
 	sys/syscall.o \
 	sys/kapi.o \

@@ -416,60 +416,6 @@ void kapi_present (void)
 	}
 }
 
-// Read an entire SD file into a freshly new[]'d buffer; caller delete[]s. 0 on error.
-static u8 *ReadWholeFile (const char *pPath, unsigned *pSize)
-{
-	FIL File;
-	if (pPath == 0 || f_open (&File, pPath, FA_READ) != FR_OK)
-	{
-		return 0;
-	}
-	unsigned nSize = (unsigned) f_size (&File);
-	u8 *pBuf = new u8[nSize];
-	UINT nRead = 0;
-	if (pBuf == 0 || f_read (&File, pBuf, nSize, &nRead) != FR_OK || nRead != nSize)
-	{
-		delete [] pBuf;
-		f_close (&File);
-		return 0;
-	}
-	f_close (&File);
-	*pSize = nSize;
-	return pBuf;
-}
-
-// Set the desktop wallpaper from a 24-bpp BMP on the SD card (drawn behind every
-// window by the compositor). Pass 0 to clear it. Returns 1 on success.
-int kapi_set_wallpaper (const char *pBmpPath)
-{
-	if (CWindowManager::Get () == 0)
-	{
-		return 0;
-	}
-	if (pBmpPath == 0)
-	{
-		CWindowManager::Get ()->SetWallpaper (0);
-		return 1;
-	}
-
-	unsigned nSize = 0;
-	u8 *pData = ReadWholeFile (pBmpPath, &nSize);
-	if (pData == 0)
-	{
-		return 0;
-	}
-	GImage *pImg = new GImage;
-	boolean bOK = pImg != 0 && pImg->LoadBMP (pData, nSize);
-	delete [] pData;
-	if (!bOK)
-	{
-		delete pImg;
-		return 0;
-	}
-	CWindowManager::Get ()->SetWallpaper (pImg);	// WM takes ownership
-	return 1;
-}
-
 // Generate the desktop wallpaper at runtime: a toroidal-Voronoi cellular pattern
 // tinted onto base_color, with `points` seeds. seed 0 => seed from the timer (varies
 // per boot). Replaces loading a wallpaper BMP from a file. Returns 1 on success.
@@ -1016,13 +962,6 @@ int kapi_get_keymap (char *pBuf, unsigned nMax)
 	for (; p[i] != '\0' && i < nMax - 1; i++) pBuf[i] = p[i];
 	pBuf[i] = '\0';
 	return (int) i;
-}
-
-// Re-tint the window chrome at runtime (theme editor Apply): active + inactive skin
-// tints and the title text colour, all 0x00RRGGBB.
-void kapi_set_window_theme (unsigned nActive, unsigned nInactive, unsigned nText)
-{
-	ApplyWindowTheme (nActive, nInactive, nText);
 }
 
 // The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name

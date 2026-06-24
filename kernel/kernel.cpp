@@ -19,7 +19,6 @@
 #include <kern/layout.h>
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
-#include <kern/gui/skin.h>
 #include <kern/net.h>
 #include <circle/net/ipaddress.h>
 #include <circle/net/ntpdaemon.h>
@@ -612,32 +611,6 @@ static u8 *LoadFileFromSD (const char *pPath, unsigned *pSize)
 	return pBuffer;
 }
 
-// Load a 9-slice skin BMP from the SD card. The BMP is decoded into the skin's
-// own buffer, so the file buffer is freed here. Returns 0 if unavailable (the
-// GUI then falls back to flat drawing).
-static CSkin *LoadSkin (const char *pPath, unsigned nCount,
-			int nLeft, int nRight, int nTop, int nBottom)
-{
-	unsigned nSize = 0;
-	u8 *pData = LoadFileFromSD (pPath, &nSize);
-	if (pData == 0)
-	{
-		return 0;
-	}
-
-	CSkin *pSkin = new CSkin;
-	boolean bOK = pSkin != 0
-		   && pSkin->LoadFromBuffer (pData, nSize, nCount, nLeft, nRight, nTop, nBottom);
-	delete [] pData;
-
-	if (!bOK)
-	{
-		delete pSkin;
-		return 0;
-	}
-	return pSkin;
-}
-
 // Load a mouse-cursor bitmap (SimpleOS mousecur.bin): w*h raw bytes, one per pixel,
 // 1 = white, 2 = black, anything else = transparent. Returns a GImage (with the
 // magenta transparency key) the compositor blits, or 0 if unavailable.
@@ -689,41 +662,6 @@ static boolean KeyEq (const char *s, const char *e, const char *pLit)
 	return s == e && *pLit == '\0';
 }
 
-// Read the window-chrome theme from SD:skins/theme.txt (keys: active/inactive/text =
-// 0xRRGGBB), falling back to the compiled-in defaults. Lets the user (or the theme
-// editor) recolour window chrome without rebuilding.
-static void ReadWindowTheme (u32 *pAct, u32 *pInact, u32 *pText)
-{
-	*pAct = WIN_SKIN_TINT_ACTIVE; *pInact = WIN_SKIN_TINT_INACTIVE; *pText = 0x00FFFFFF;
-
-	unsigned nSize = 0;
-	u8 *pData = LoadFileFromSD ("SD:etc/theme.txt", &nSize);
-	if (pData == 0) return;
-
-	const char *p = (const char *) pData, *pEnd = p + nSize;
-	while (p < pEnd)
-	{
-		const char *ls = p;
-		while (p < pEnd && *p != '\n' && *p != '\r') p++;
-		const char *le = p;
-		while (p < pEnd && (*p == '\n' || *p == '\r')) p++;
-
-		while (ls < le && (*ls == ' ' || *ls == '\t')) ls++;
-		if (ls >= le || *ls == '#' || *ls == ';') continue;
-		const char *eq = ls;
-		while (eq < le && *eq != '=') eq++;
-		if (eq >= le) continue;
-		const char *ke = eq;
-		while (ke > ls && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
-		const char *vs = eq + 1;
-
-		if      (KeyEq (ls, ke, "active"))   *pAct   = ParseHexColor (vs, le, *pAct);
-		else if (KeyEq (ls, ke, "inactive")) *pInact = ParseHexColor (vs, le, *pInact);
-		else if (KeyEq (ls, ke, "text"))     *pText  = ParseHexColor (vs, le, *pText);
-	}
-	delete [] pData;
-}
-
 // Read SD:system.ini at boot for system-wide settings (currently just verbose=0/1).
 static void ReadSystemConfig (void)
 {
@@ -766,25 +704,6 @@ static void ReadSystemConfig (void)
 		}
 	}
 	delete [] pData;
-}
-
-// Re-tint the window chrome at runtime (the theme editor's Apply). Reloads wings.bmp
-// and bakes the new active/inactive tints, sets the title text colour. Atomic w.r.t.
-// the compositor: cooperative scheduling means no task switch happens between the
-// swap and the free (LoadSkin/new/delete don't yield), so the compositor never sees
-// a half-freed skin.
-void ApplyWindowTheme (u32 nAct, u32 nInact, u32 nText)
-{
-	g_WinTitleTextColor = nText;
-
-	CSkin *pA = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
-	CSkin *pI = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
-	if (pA != 0) pA->Colorize (nAct);
-	if (pI != 0) pI->Colorize (nInact);
-
-	CSkin *pOldA = g_pWindowSkin, *pOldI = g_pWindowSkinInactive;
-	if (pA != 0) { g_pWindowSkin = pA; if (pOldA != 0) delete pOldA; }
-	if (pI != 0) { g_pWindowSkinInactive = pI; if (pOldI != 0) delete pOldI; }
 }
 
 // Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
@@ -1051,27 +970,10 @@ boolean CKernel::Initialize (void)
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 
-			// Load the widget skins (9-slice BMPs). Margins match SimpleOS's
-			// gui.bas. Missing skins -> flat fallback drawing.
-			g_pButtonSkin = LoadSkin ("SD:skins/button.bmp",   3, 6, 6, 6, 6);
-			g_pCloseSkin  = LoadSkin ("SD:skins/closebgs.bmp", 3, 5, 5, 5, 5);
-			// Window chrome: load wings.bmp twice and bake a colour into each (the
-			// skin is grayscale, meant to be colorized by multiply). The tints + the
-			// title text colour come from SD:skins/theme.txt (defaults if absent).
-			u32 nTintAct, nTintInact, nTitleText;
-			ReadWindowTheme (&nTintAct, &nTintInact, &nTitleText);
-			g_WinTitleTextColor = nTitleText;
-			g_pWindowSkin = LoadSkin ("SD:skins/wings.bmp",    1, 7, 7, 32, 7);
-			if (g_pWindowSkin != 0) g_pWindowSkin->Colorize (nTintAct);
-			g_pWindowSkinInactive = LoadSkin ("SD:skins/wings.bmp", 1, 7, 7, 32, 7);
-			if (g_pWindowSkinInactive != 0)
-				g_pWindowSkinInactive->Colorize (nTintInact);
-
 			// Mouse cursor: SimpleOS mousecur.bin -- 12x19 bytes, 1=white 2=black
-			// else transparent. Built into a GImage the compositor blits.
+			// else transparent. Built into a GImage the compositor blits. (Window
+			// chrome is drawn user-side now, so the kernel loads no skins.)
 			m_WindowManager.SetCursor (LoadCursor ("SD:skins/mousecur.bin", 12, 19));
-			m_Logger.Write (FromKernel, LogNotice, "skins: button=%d close=%d window=%d",
-					g_pButtonSkin != 0, g_pCloseSkin != 0, g_pWindowSkin != 0);
 		}
 		else
 		{

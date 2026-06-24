@@ -72,8 +72,6 @@ static inline int  kapi_kill_pid (int pid, int force) { return KT->kill_pid (pid
 // Keyboard layout: switch among the compiled-in country maps; read the current one.
 static inline int  kapi_set_keymap (const char *name) { return KT->set_keymap (name); }
 static inline int  kapi_get_keymap (char *b, unsigned s) { return KT->get_keymap (b, s); }
-// Re-tint window chrome at runtime (theme editor): active/inactive skin + title text.
-static inline void kapi_set_window_theme (unsigned a, unsigned i, unsigned t) { KT->set_window_theme (a, i, t); }
 
 // Modal-dialog button sets (used by the user-side ui::MessageBox in uidialog.hpp;
 // the kernel message_box/file dialogs were removed -- the toolkit draws its own).
@@ -84,7 +82,6 @@ static inline void kapi_set_window_theme (unsigned a, unsigned i, unsigned t) { 
 static inline int  kapi_exec (const char *path, const char *args) { return KT->exec (path, args); }
 // Framebuffer size in pixels (for edge-pinned borderless windows).
 static inline void kapi_screen_size (int *w, int *h) { KT->screen_size (w, h); }
-static inline int  kapi_set_wallpaper (const char *p) { return KT->set_wallpaper (p); }
 static inline int  kapi_wallpaper_generate (unsigned base, int pts, unsigned seed) { return KT->wallpaper_generate (base, pts, seed); }
 // App-drawn wallpaper: get the shared screen-sized buffer, draw into it, then commit.
 static inline unsigned *kapi_wallpaper_buffer (int *w, int *h) { return KT->wallpaper_buffer (w, h); }
