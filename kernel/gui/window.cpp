@@ -191,15 +191,15 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	int y0 = m_nY;
 
 	// Window chrome is now drawn USER-SIDE: the app renders its title bar / borders /
-	// close box into two pre-composited copies (active + inactive, stacked in the
-	// chrome buffer). The compositor simply picks the copy matching focus and blits it
-	// (magenta = transparent, so the skin's rounded corners show the desktop). The
-	// kernel keeps only the chrome BEHAVIOUR (title-bar drag, close-box hit-test).
+	// close box into two pre-composited copies (active + inactive). The compositor just
+	// picks the copy matching focus and blits it -- OPAQUE: the chrome is a plain
+	// rectangle (no rounded/transparent corners), so we skip the per-pixel transparency
+	// test. The kernel keeps only the chrome BEHAVIOUR (title-bar drag, close-box hit).
 	if (!Borderless () && m_ulChromePhys[0] != 0)
 	{
 		u32 *pCopy = (u32 *) m_ulChromePhys[bActive ? 0 : 1];
 		GImage Chrome (pCopy, m_nOuterW, m_nOuterH);
-		pScreen->PutOther (&Chrome, x0, y0, TRUE);
+		pScreen->PutOther (&Chrome, x0, y0, FALSE);
 	}
 
 	// Client area = the owner's canvas, blitted opaque inside the chrome. Only the

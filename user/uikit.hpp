@@ -242,6 +242,16 @@ static inline Skin &buttonSkin ()
 static inline Skin &windowSkin () { static Skin s; static bool t = false; if (!t) { t = true; s.load ("SD:/skins/wings.bmp", 1, 7, 7, 32, 7); } return s; }
 static inline Skin &closeSkin ()  { static Skin s; static bool t = false; if (!t) { t = true; s.load ("SD:/skins/closebgs.bmp", 3, 5, 5, 5, 5); } return s; }
 
+// Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel / 255). 0xFFFFFF = no-op.
+static inline unsigned uk_tint (unsigned c, unsigned t)
+{
+	if (t == 0xFFFFFF) return c;
+	unsigned r = (((c >> 16) & 0xFF) * ((t >> 16) & 0xFF)) / 255;
+	unsigned g = (((c >> 8)  & 0xFF) * ((t >> 8)  & 0xFF)) / 255;
+	unsigned b = (( c        & 0xFF) * ( t        & 0xFF)) / 255;
+	return (r << 16) | (g << 8) | b;
+}
+
 // Tint copies of the window chrome (active = warm gold, inactive = muted slate), matching
 // the kernel's old WIN_SKIN_TINT_* so focus reads at a glance.
 #define UI_CHROME_TINT_ACTIVE	0x00FFC878
@@ -285,7 +295,11 @@ static inline void decorate_window ()
 	{
 		unsigned *fb = bufs[k];
 		if (fb == 0) continue;
-		for (int i = 0; i < W * H; i++) fb[i] = 0x00FF00FF;	// magenta = transparent key
+		// Opaque background (chrome is a plain rectangle -- no rounded/transparent
+		// corners), so the compositor blits it without a per-pixel transparency test.
+		// Seed with the skin's tinted border tone so the square corners match the edges.
+		unsigned base = ws.valid () ? uk_tint (ws.pix[(ws.sh / 2) * ws.imgW + 3], tints[k]) : 0x00384048;
+		for (int i = 0; i < W * H; i++) fb[i] = base;
 		if (ws.valid ()) ws.drawOn (fb, W, H, 0, 0, 0, W, H, tints[k]);
 
 		// Close box [x] at the right of the title bar -- matches the kernel CloseBoxRect
@@ -750,16 +764,6 @@ inline void Icon::draw (Ui &ui)
 	}
 	if (badged)							// "running" green triangle, bottom-left
 		for (int t = 0; t < 9; t++) ui.fill (x + 2, y + h - 2 - t, (8 - t) + 1, 1, 0x0040E060);
-}
-
-// Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel / 255). 0xFFFFFF = no-op.
-static inline unsigned uk_tint (unsigned c, unsigned t)
-{
-	if (t == 0xFFFFFF) return c;
-	unsigned r = (((c >> 16) & 0xFF) * ((t >> 16) & 0xFF)) / 255;
-	unsigned g = (((c >> 8)  & 0xFF) * ((t >> 8)  & 0xFF)) / 255;
-	unsigned b = (( c        & 0xFF) * ( t        & 0xFF)) / 255;
-	return (r << 16) | (g << 8) | b;
 }
 
 // Copy a (bw x bh) sub-rect of the skin image at (sx,sy) to (dx,dy) in the target

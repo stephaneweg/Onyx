@@ -56,25 +56,6 @@ void kapi_msleep (unsigned);
 void kapi_yield (void);
 void kapi_exit (int);
 
-unsigned long kapi_add_button (int, int, int, int, const char *, gui_handler);
-unsigned long kapi_add_label (int, int, int, int, const char *);
-unsigned long kapi_add_checkbox (int, int, int, int, const char *, gui_handler);
-unsigned long kapi_add_textbox (int, int, int, int, gui_handler);
-unsigned long kapi_add_progress (int, int, int, int);
-unsigned long kapi_add_slider (int, int, int, int, gui_handler);
-unsigned long kapi_add_textarea (int, int, int, int, gui_handler);
-unsigned long kapi_add_scrollbar_v (int, int, int, int, gui_handler);
-unsigned long kapi_add_scrollbar_h (int, int, int, int, gui_handler);
-unsigned long kapi_add_icon (int, int, int, int, const char *, const char *, gui_handler);
-
-int kapi_widget_get_text (unsigned long, char *, unsigned);
-void kapi_widget_set_text (unsigned long, const char *);
-int kapi_widget_get_checked (unsigned long);
-int kapi_widget_get_value (unsigned long);
-void kapi_widget_set_value (unsigned long, int);
-void kapi_widget_set_rect (unsigned long, int, int, int, int);
-void kapi_widget_set_icon (unsigned long, const char *);
-
 void kapi_pump_events (void);
 void kapi_wait_for_exit (void);
 int kapi_should_exit (void);
@@ -104,6 +85,7 @@ int kapi_kbd_ready (void);
 int kapi_set_keymap_data (const char *, const void *, unsigned);
 int kapi_get_chrome (struct kapi_chrome *);
 void kapi_draw_text_buf (unsigned *, int, int, int, int, const char *, unsigned);
+int kapi_random (void *, unsigned);
 void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
@@ -156,25 +138,6 @@ void KApiTableInit (void)
 	t->msleep            = kapi_msleep;
 	t->yield             = kapi_yield;
 	t->exit              = kapi_exit;
-
-	t->add_button        = kapi_add_button;
-	t->add_label         = kapi_add_label;
-	t->add_checkbox      = kapi_add_checkbox;
-	t->add_textbox       = kapi_add_textbox;
-	t->add_progress      = kapi_add_progress;
-	t->add_slider        = kapi_add_slider;
-	t->add_textarea      = kapi_add_textarea;
-	t->add_scrollbar_v   = kapi_add_scrollbar_v;
-	t->add_scrollbar_h   = kapi_add_scrollbar_h;
-	t->add_icon          = kapi_add_icon;
-
-	t->widget_get_text   = kapi_widget_get_text;
-	t->widget_set_text   = kapi_widget_set_text;
-	t->widget_get_checked = kapi_widget_get_checked;
-	t->widget_get_value  = kapi_widget_get_value;
-	t->widget_set_value  = kapi_widget_set_value;
-	t->widget_set_rect   = kapi_widget_set_rect;
-	t->widget_set_icon   = kapi_widget_set_icon;
 
 	t->pump_events       = kapi_pump_events;
 	t->wait_for_exit     = kapi_wait_for_exit;
@@ -254,4 +217,5 @@ void KApiTableInit (void)
 	t->set_keymap_data   = kapi_set_keymap_data;
 	t->get_chrome        = kapi_get_chrome;
 	t->draw_text_buf     = kapi_draw_text_buf;
+	t->random            = kapi_random;
 }

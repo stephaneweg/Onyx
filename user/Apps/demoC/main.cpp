@@ -14,6 +14,7 @@
 // pixel buffer is the window canvas the kernel maps in.
 //
 #include "kapi.h"
+#include "uikit.hpp"		// ui::decorate_window
 
 #define W	320			// window client size
 #define H	240
@@ -113,10 +114,12 @@ int main (void)
 		return 1;
 	}
 
+	ui::decorate_window ();			// user-side window chrome
+
 	build_palette (mode);
 
-	// "Color" button in the strip below the fire (like the original at y=205).
-	add_button (10, FIRE_PX + 5, 80, 26, "Color", on_color);
+	// Cycle the palette on any click in the window (the kernel button widget is gone).
+	kapi_set_click_handler (on_color);
 
 	// Animation loop: render, dispatch GUI events (the Color click), and check
 	// whether the window's close box asked us to quit -> clean exit.

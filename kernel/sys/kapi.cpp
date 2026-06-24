@@ -29,6 +29,7 @@
 #include <circle/util.h>
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
+#include <circle/bcmrandom.h>		// CBcmRandomNumberGenerator (kapi_random)
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -414,114 +415,6 @@ void kapi_present (void)
 	}
 }
 
-// --- widgets + events --------------------------------------------------------
-//
-// A widget stores the app's callback ADDRESS. On a click the window manager (the
-// input thread) enqueues an event to this app's window; the app's pump
-// (kapi_pump_events / kapi_wait_for_exit) dispatches it HERE, in the app's own
-// context (its page table + stack are active) -- so the callback runs as if the
-// app called it. handler signature: void (sender, int event, long value).
-
-unsigned long kapi_add_button (int x, int y, int w, int h, const char *pLabel,
-			       void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	if (pAS == 0)
-	{
-		return 0;
-	}
-	CWindow *pWin = pAS->GetWindow ();
-	if (pWin == 0)
-	{
-		return 0;
-	}
-	GWidget *pW = pWin->AddWidget (GW_BUTTON, x, y, w, h, pLabel, (u64) pHandler);
-	return (unsigned long) pW;
-}
-
-// Helper: add a widget of nType to the calling app's window. Returns its handle.
-static unsigned long AddWidgetToCurrent (int nType, int x, int y, int w, int h,
-					 const char *pLabel, void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0)
-	{
-		return 0;
-	}
-	return (unsigned long) pWin->AddWidget (nType, x, y, w, h, pLabel, (u64) pHandler);
-}
-
-unsigned long kapi_add_label (int x, int y, int w, int h, const char *pText)
-{
-	return AddWidgetToCurrent (GW_LABEL, x, y, w, h, pText, 0);
-}
-
-unsigned long kapi_add_checkbox (int x, int y, int w, int h, const char *pLabel,
-				 void *pHandler)
-{
-	return AddWidgetToCurrent (GW_CHECKBOX, x, y, w, h, pLabel, pHandler);
-}
-
-unsigned long kapi_add_textbox (int x, int y, int w, int h, void *pHandler)
-{
-	return AddWidgetToCurrent (GW_TEXTBOX, x, y, w, h, "", pHandler);
-}
-
-// Read a widget's text (label / textbox / textarea content) into pBuf. Returns len.
-int kapi_widget_get_text (unsigned long hWidget, char *pBuf, unsigned nMax)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	if (pW == 0 || pBuf == 0 || nMax == 0)
-	{
-		return 0;
-	}
-	const char *pSrc = pW->pText != 0 ? pW->pText : pW->Label;	// textarea uses pText
-	unsigned i = 0;
-	for (; i + 1 < nMax && pSrc[i] != '\0'; i++)
-	{
-		pBuf[i] = pSrc[i];
-	}
-	pBuf[i] = '\0';
-	return (int) i;
-}
-
-// Set a widget's text (label / textbox / textarea content).
-void kapi_widget_set_text (unsigned long hWidget, const char *pText)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	if (pW == 0)
-	{
-		return;
-	}
-	char    *pDst = pW->pText != 0 ? pW->pText : pW->Label;
-	unsigned nCap = pW->pText != 0 ? GW_AREA_CAP : GW_TEXT_MAX;
-	unsigned i = 0;
-	if (pText != 0)
-	{
-		for (; i < nCap - 1 && pText[i] != '\0'; i++)
-		{
-			pDst[i] = pText[i];
-		}
-	}
-	pDst[i] = '\0';
-}
-
-unsigned long kapi_add_textarea (int x, int y, int w, int h, void *pHandler)
-{
-	return AddWidgetToCurrent (GW_TEXTAREA, x, y, w, h, "", pHandler);
-}
-
-unsigned long kapi_add_scrollbar_v (int x, int y, int w, int h, void *pHandler)
-{
-	return AddWidgetToCurrent (GW_SCROLLV, x, y, w, h, "", pHandler);
-}
-
-unsigned long kapi_add_scrollbar_h (int x, int y, int w, int h, void *pHandler)
-{
-	return AddWidgetToCurrent (GW_SCROLLH, x, y, w, h, "", pHandler);
-}
-
 // Read an entire SD file into a freshly new[]'d buffer; caller delete[]s. 0 on error.
 static u8 *ReadWholeFile (const char *pPath, unsigned *pSize)
 {
@@ -542,79 +435,6 @@ static u8 *ReadWholeFile (const char *pPath, unsigned *pSize)
 	f_close (&File);
 	*pSize = nSize;
 	return pBuf;
-}
-
-// Add a clickable icon: a (magenta-keyed) 24-bpp BMP loaded from pBmpPath, with an
-// optional label below. Fires GUI_EVENT_CLICK like a button. pBmpPath may be 0 (a
-// placeholder square is drawn). The decoded image is owned by the widget.
-unsigned long kapi_add_icon (int x, int y, int w, int h, const char *pBmpPath,
-			     const char *pLabel, void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0)
-	{
-		return 0;
-	}
-
-	GImage *pImg = 0;
-	if (pBmpPath != 0)
-	{
-		unsigned nSize = 0;
-		u8 *pData = ReadWholeFile (pBmpPath, &nSize);
-		if (pData != 0)
-		{
-			pImg = new GImage;
-			if (pImg != 0 && !pImg->LoadBMP (pData, nSize))
-			{
-				delete pImg;
-				pImg = 0;
-			}
-			delete [] pData;
-		}
-	}
-
-	GWidget *pW = pWin->AddWidget (GW_ICON, x, y, w, h, pLabel, (u64) pHandler);
-	if (pW == 0)
-	{
-		delete pImg;			// window full: don't leak the image
-		return 0;
-	}
-	pW->pIcon = pImg;
-	return (unsigned long) pW;
-}
-
-// Replace an icon widget's image (reloads the BMP). pBmpPath may be 0 to clear it.
-// Lets the panel repurpose a taskbar slot for a different app. Cheap enough when
-// called only on changes (not every frame).
-void kapi_widget_set_icon (unsigned long hWidget, const char *pBmpPath)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	if (pW == 0)
-	{
-		return;
-	}
-
-	GImage *pImg = 0;
-	if (pBmpPath != 0)
-	{
-		unsigned nSize = 0;
-		u8 *pData = ReadWholeFile (pBmpPath, &nSize);
-		if (pData != 0)
-		{
-			pImg = new GImage;
-			if (pImg != 0 && !pImg->LoadBMP (pData, nSize))
-			{
-				delete pImg;
-				pImg = 0;
-			}
-			delete [] pData;
-		}
-	}
-
-	GImage *pOld = (GImage *) pW->pIcon;
-	pW->pIcon = pImg;			// publish before freeing (cooperative: safe)
-	delete pOld;
 }
 
 // Set the desktop wallpaper from a 24-bpp BMP on the SD card (drawn behind every
@@ -698,53 +518,6 @@ void kapi_wallpaper_commit (void)
 	{
 		CWindowManager::Get ()->CommitWallpaper ();
 	}
-}
-
-// Checkbox state (1 = checked).
-int kapi_widget_get_checked (unsigned long hWidget)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	return pW != 0 ? pW->nState : 0;
-}
-
-unsigned long kapi_add_progress (int x, int y, int w, int h)
-{
-	return AddWidgetToCurrent (GW_PROGRESS, x, y, w, h, "", 0);
-}
-
-unsigned long kapi_add_slider (int x, int y, int w, int h, void *pHandler)
-{
-	return AddWidgetToCurrent (GW_SLIDER, x, y, w, h, "", pHandler);
-}
-
-// Slider / progress value (0..100).
-int kapi_widget_get_value (unsigned long hWidget)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	return pW != 0 ? pW->nState : 0;
-}
-
-void kapi_widget_set_value (unsigned long hWidget, int nValue)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	if (pW == 0)
-	{
-		return;
-	}
-	if (nValue < 0) nValue = 0; else if (nValue > 100) nValue = 100;
-	pW->nState = nValue;
-}
-
-// Move/resize a widget after creation (client-relative). Set w=h=0 to hide it
-// (drawn empty, never hit). Used by the panel to lay out its dynamic taskbar.
-void kapi_widget_set_rect (unsigned long hWidget, int x, int y, int w, int h)
-{
-	GWidget *pW = (GWidget *) hWidget;
-	if (pW == 0)
-	{
-		return;
-	}
-	pW->nX = x; pW->nY = y; pW->nW = w; pW->nH = h;
 }
 
 void kapi_pump_events (void)
@@ -1162,6 +935,25 @@ int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 	unsigned nTable = nRows * nCols * 2;
 	if (nLen < 8 + nTable) return 0;
 	return KernelSetKeyMapData (pName, p + 8, nTable) ? 1 : 0;
+}
+
+// Fill pBuf[nLen] with random bytes from the Pi's hardware RNG (lazily constructed on
+// first use). For cryptographic seeding -- the TLS entropy source (onyx_tls.hpp) feeds
+// mbedTLS's CTR_DRBG from here. Returns the number of bytes written (== nLen).
+int kapi_random (void *pBuf, unsigned nLen)
+{
+	if (pBuf == 0) return 0;
+	static CBcmRandomNumberGenerator *s_pRng = 0;
+	if (s_pRng == 0) s_pRng = new CBcmRandomNumberGenerator;
+	unsigned char *p = (unsigned char *) pBuf;
+	unsigned i = 0;
+	while (i < nLen)
+	{
+		u32 r = s_pRng->GetNumber ();
+		for (int b = 0; b < 4 && i < nLen; b++, i++)
+			p[i] = (unsigned char) (r >> (b * 8));
+	}
+	return (int) nLen;
 }
 
 // Verbose kernel logging: toggle (KernelSetVerbose, defined in kernel.cpp) + read.

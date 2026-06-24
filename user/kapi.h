@@ -98,25 +98,8 @@ static inline void kapi_msleep (unsigned ms) { KT->msleep (ms); }
 static inline void kapi_yield (void) { KT->yield (); }
 static inline void kapi_exit (int s) { KT->exit (s); }
 
-// --- widgets -----------------------------------------------------------------
-static inline unsigned long kapi_add_button (int x, int y, int w, int h, const char *l, gui_handler fn) { return KT->add_button (x, y, w, h, l, fn); }
-static inline unsigned long kapi_add_label (int x, int y, int w, int h, const char *t) { return KT->add_label (x, y, w, h, t); }
-static inline unsigned long kapi_add_checkbox (int x, int y, int w, int h, const char *l, gui_handler fn) { return KT->add_checkbox (x, y, w, h, l, fn); }
-static inline unsigned long kapi_add_textbox (int x, int y, int w, int h, gui_handler fn) { return KT->add_textbox (x, y, w, h, fn); }
-static inline unsigned long kapi_add_progress (int x, int y, int w, int h) { return KT->add_progress (x, y, w, h); }
-static inline unsigned long kapi_add_slider (int x, int y, int w, int h, gui_handler fn) { return KT->add_slider (x, y, w, h, fn); }
-static inline unsigned long kapi_add_textarea (int x, int y, int w, int h, gui_handler fn) { return KT->add_textarea (x, y, w, h, fn); }
-static inline unsigned long kapi_add_scrollbar_v (int x, int y, int w, int h, gui_handler fn) { return KT->add_scrollbar_v (x, y, w, h, fn); }
-static inline unsigned long kapi_add_scrollbar_h (int x, int y, int w, int h, gui_handler fn) { return KT->add_scrollbar_h (x, y, w, h, fn); }
-static inline unsigned long kapi_add_icon (int x, int y, int w, int h, const char *bmp, const char *l, gui_handler fn) { return KT->add_icon (x, y, w, h, bmp, l, fn); }
-
-static inline int  kapi_widget_get_text (unsigned long wd, char *b, unsigned m) { return KT->widget_get_text (wd, b, m); }
-static inline void kapi_widget_set_text (unsigned long wd, const char *t) { KT->widget_set_text (wd, t); }
-static inline int  kapi_widget_get_checked (unsigned long wd) { return KT->widget_get_checked (wd); }
-static inline int  kapi_widget_get_value (unsigned long wd) { return KT->widget_get_value (wd); }
-static inline void kapi_widget_set_value (unsigned long wd, int v) { KT->widget_set_value (wd, v); }
-static inline void kapi_widget_set_rect (unsigned long wd, int x, int y, int w, int h) { KT->widget_set_rect (wd, x, y, w, h); }
-static inline void kapi_widget_set_icon (unsigned long wd, const char *bmp) { KT->widget_set_icon (wd, bmp); }
+// (The kernel-drawn widget wrappers -- kapi_add_*/kapi_widget_* -- were removed: every
+// app now builds its UI with the user-side uikit.hpp toolkit. See uikit.hpp.)
 
 // --- events ------------------------------------------------------------------
 static inline void kapi_pump_events (void) { KT->pump_events (); }
@@ -213,12 +196,15 @@ static inline int kapi_kbd_ready (void) { return KT->kbd_ready (); }
 // table. The kernel copies it; the caller frees `data`. 1 on success. See /etc/keymaps.
 static inline int kapi_set_keymap_data (const char *name, const void *data, unsigned len) { return KT->set_keymap_data (name, data, len); }
 
+// Hardware RNG (ABI v30): fill buf[len] with random bytes from the Pi's HW RNG. For
+// cryptographic seeding -- the TLS entropy source uses it. Returns bytes written.
+static inline int kapi_random (void *buf, unsigned len) { return KT->random (buf, len); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }
 static inline unsigned  get_ticks (void)           { return kapi_get_ticks (); }
 static inline void      msleep (unsigned ms)       { kapi_msleep (ms); }
-static inline unsigned long add_button (int x, int y, int w, int h, const char *l, gui_handler h2) { return kapi_add_button (x, y, w, h, l, h2); }
 static inline void      pump_events (void)         { kapi_pump_events (); }
 static inline int       should_exit (void)         { return kapi_should_exit (); }
 

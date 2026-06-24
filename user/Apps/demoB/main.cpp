@@ -3,6 +3,7 @@
 // demoA; both run at the same time (preemption) and the compositor shows both.
 //
 #include "kapi.h"
+#include "uikit.hpp"		// ui::decorate_window
 
 #define W 260
 #define H 200
@@ -16,6 +17,7 @@ int main (void)
 	{
 		return 1;
 	}
+	ui::decorate_window ();			// user-side window chrome
 
 	unsigned t = 0;
 	while (!should_exit ())

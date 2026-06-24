@@ -17,7 +17,11 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	28
+// v29: COMPAT BREAK -- the kernel-drawn widget API was removed from the table and the
+// table consolidated (no gaps), so old app binaries must be rebuilt. (Retro-compat was
+// explicitly waived; every app is rebuilt from this tree.)
+// v30: + random() -- hardware RNG (Pi RNG) for cryptographic seeding (TLS entropy).
+#define KAPI_ABI_VERSION	30
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,26 +76,10 @@ struct TKApiTable
 	void (*yield) (void);
 	void (*exit) (int status);
 
-	// --- widgets ---
-	unsigned long (*add_button) (int, int, int, int, const char *, gui_handler);
-	unsigned long (*add_label) (int, int, int, int, const char *);
-	unsigned long (*add_checkbox) (int, int, int, int, const char *, gui_handler);
-	unsigned long (*add_textbox) (int, int, int, int, gui_handler);
-	unsigned long (*add_progress) (int, int, int, int);
-	unsigned long (*add_slider) (int, int, int, int, gui_handler);
-	unsigned long (*add_textarea) (int, int, int, int, gui_handler);
-	unsigned long (*add_scrollbar_v) (int, int, int, int, gui_handler);
-	unsigned long (*add_scrollbar_h) (int, int, int, int, gui_handler);
-	unsigned long (*add_icon) (int, int, int, int, const char *, const char *,
-				   gui_handler);
-
-	int (*widget_get_text) (unsigned long, char *, unsigned);
-	void (*widget_set_text) (unsigned long, const char *);
-	int (*widget_get_checked) (unsigned long);
-	int (*widget_get_value) (unsigned long);
-	void (*widget_set_value) (unsigned long, int);
-	void (*widget_set_rect) (unsigned long, int, int, int, int);
-	void (*widget_set_icon) (unsigned long, const char *);
+	// (The kernel-drawn widget API -- add_button/label/checkbox/textbox/progress/
+	// slider/textarea/scrollbar/icon + widget_get/set_* -- was removed once every app
+	// moved to the user-side uikit toolkit. Kernel modal dialogs draw their own
+	// controls internally; nothing calls these through the table any more.)
 
 	// --- events ---
 	void (*pump_events) (void);
@@ -302,6 +290,12 @@ struct TKApiTable
 	int  (*get_chrome) (struct kapi_chrome *out);
 	void (*draw_text_buf) (unsigned *dst, int dstW, int dstH, int x, int y,
 			       const char *s, unsigned color);
+
+	// --- v30 additions (hardware RNG) ---
+	// Fill buf[len] with random bytes from the Pi's hardware RNG (Circle
+	// CBcmRandomNumberGenerator). For cryptographic seeding -- e.g. the TLS entropy
+	// source in user/tls/onyx_tls.hpp. Returns the number of bytes written (== len).
+	int (*random) (void *buf, unsigned len);
 };
 
 #ifdef __cplusplus
