@@ -6,6 +6,7 @@
 //
 #include "kapi.h"
 #include "uikit.hpp"
+#include "uidialog.hpp"		// ui::MessageBox (user-side modal dialog)
 
 #define W	460
 #define H	380
@@ -173,11 +174,19 @@ static void open_file (int idx)
 	}
 }
 
+static ui::Ui  *g_ui = 0;			// input hub + modal anchor (filer draws its own list)
+static void on_ptr (unsigned long s, int ev, long val);
+static void on_key (unsigned long s, int ev, long key);
+static void reclaim_input (void) { kapi_set_pointer_handler (on_ptr); kapi_set_key_handler (on_key); }
+
 static void delete_sel (void)
 {
 	if (g_sel < 0 || g_sel >= g_count) return;
 	if (g_isdir[g_sel] && g_name[g_sel][0] == '.' && g_name[g_sel][1] == '.') return;	// not ".."
-	if (!kapi_message_box ("Delete", g_name[g_sel], MB_YESNO)) return;	// confirm
+	ui::MessageBox mb (*g_ui, "Delete", g_name[g_sel], MB_YESNO);
+	bool yes = mb.run (g_ui);		// user-side modal; restores input to g_ui
+	reclaim_input ();			// ...so re-claim it for filer's own handlers
+	if (!yes) return;			// confirm
 	char path[300];
 	full_path (g_name[g_sel], path, sizeof path);
 	kapi_remove (path);			// fails on non-empty dirs (FatFs)
@@ -252,11 +261,14 @@ static void on_key (unsigned long s, int ev, long key)
 static unsigned g_last_tick = 0;
 static int      g_last_idx = -1;
 
-static void on_click (unsigned long s, int ev, long val)
+// We drive input through the pointer stream (so the user-side modal dialogs can swap
+// it cleanly), routing through g_ui first (for any toolkit widgets) then our own list
+// hit-test. A left-button press is the old "canvas click".
+static void on_ptr (unsigned long s, int ev, long val)
 {
-	(void) s;
-	if (ev != GUI_EVENT_CANVAS_CLICK) return;
-	int cy = (int) (val & 0xFFFF);
+	if (g_ui) g_ui->onEvent (s, ev, val);
+	if (ev != GUI_EVENT_PTR_DOWN || !(GUI_PTR_CHANGED (val) & 1)) return;
+	int cy = GUI_PTR_Y (val);
 	int row = (cy - LISTY) / g_fh;
 	if (row < 0) return;
 	int idx = g_top + row;
@@ -335,14 +347,13 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "filer");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	ui::Ui ui (fb, W, H); g_ui = &ui;	// decorates the window; anchors modal dialogs
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_rows = (H - LISTY) / g_fh;
 	if (g_rows < 1) g_rows = 1;
 
-	kapi_set_key_handler (on_key);
-	kapi_set_click_handler (on_click);
+	reclaim_input ();			// set_pointer_handler (on_ptr) + set_key_handler (on_key)
 	read_dir ();
 
 	while (!should_exit ())

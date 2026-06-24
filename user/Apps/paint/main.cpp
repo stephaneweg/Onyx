@@ -5,6 +5,7 @@
 //
 #include "kapi.h"
 #include "uikit.hpp"
+#include "uidialog.hpp"		// ui::FileDialog (user-side modal)
 #include "applib.h"
 
 #define W	420
@@ -52,23 +53,27 @@ static void paint_at (int x, int y, unsigned col)
 	fill_rect (x - g_brush, y - g_brush, g_brush * 2, g_brush * 2, col);
 }
 
-static void on_mouse (unsigned long s, int ev, long val)
-{
-	(void) s;
-	if (ev != GUI_EVENT_CANVAS_CLICK && ev != GUI_EVENT_CANVAS_MOTION) return;
-	unsigned btn = (unsigned) ((val >> 32) & 0xFF);
-	int x = (int) ((val >> 16) & 0xFFFF), y = (int) (val & 0xFFFF);
+static ui::Ui *g_ui = 0;		// decorates the window + anchors the save dialog
 
-	if (y < PAL_H)						// palette: pick a colour
+// Input via the pointer stream (so the user-side file dialog can swap it cleanly).
+// A press picks a palette colour; a press or button-held drag paints (right = erase).
+static void on_ptr (unsigned long s, int ev, long val)
+{
+	if (g_ui) g_ui->onEvent (s, ev, val);
+	if (ev != GUI_EVENT_PTR_DOWN && ev != GUI_EVENT_PTR_MOVE) return;
+	unsigned btn = (unsigned) GUI_PTR_BUTTONS (val);
+	int x = GUI_PTR_X (val), y = GUI_PTR_Y (val);
+
+	if (y < PAL_H)						// palette: pick a colour on a press
 	{
-		if (ev == GUI_EVENT_CANVAS_CLICK)
+		if (ev == GUI_EVENT_PTR_DOWN && (GUI_PTR_CHANGED (val) & 1))
 		{
 			int i = (x - 4) / 26;
 			if (i >= 0 && i < NSW) g_col = SW[i];
 		}
 		return;
 	}
-	paint_at (x, y, (btn & 2) ? 0x00f0f0f0 : g_col);	// right = erase
+	if (btn & 3) paint_at (x, y, (btn & 2) ? 0x00f0f0f0 : g_col);	// right = erase
 }
 
 static void save_bmp (const char *path)
@@ -109,8 +114,16 @@ static void on_key (unsigned long s, int ev, long key)
 	else if (key == 's' || key == 'S')
 	{
 		char path[100];
-		if (kapi_file_save (path, sizeof path, "SD:/", "paint.bmp"))
-			save_bmp (path);
+		// The file dialog is an in-canvas overlay; back up the canvas pixels and
+		// restore them after, so the painting isn't clobbered, then save.
+		unsigned *bak = new unsigned[W * H];
+		if (bak) for (int i = 0; i < W * H; i++) bak[i] = fb[i];
+		ui::FileDialog fd (*g_ui, "SD:/", "paint.bmp", true);
+		bool ok = fd.run (g_ui);
+		kapi_set_pointer_handler (on_ptr);		// re-claim input from the modal
+		kapi_set_key_handler (on_key);
+		if (bak) { for (int i = 0; i < W * H; i++) fb[i] = bak[i]; delete[] bak; present (); }
+		if (ok) { fd.getResult (path, sizeof path); save_bmp (path); }
 	}
 }
 
@@ -118,9 +131,9 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "paint");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	ui::Ui ui (fb, W, H); g_ui = &ui;	// decorates the window; anchors the save dialog
 	clear_canvas ();
-	kapi_set_click_handler (on_mouse);
+	kapi_set_pointer_handler (on_ptr);
 	kapi_set_key_handler (on_key);
 	while (!should_exit ())
 	{
