@@ -174,6 +174,33 @@ def app_terminal():
     cv.fill(4 + len(inp) * FW, iy, 2, FH, C(0x60FF90))
     return cv
 
+def app_irc():
+    # Matches user/irc.c: dark scrollback (status '*' blue, notice '-' amber, msgs
+    # grey) with a bottom input row showing the "[channel] " prompt + typed line.
+    W, H = 680, 440; cv = Canvas(W, H, C(0x101418))
+    lines = [
+        ("Onyx IRC -- waiting for network ...", 0xC8D0C0),
+        ("* network up (192.168.1.42) -- connecting to irc.libera.chat", 0x80B0FF),
+        ("* registered", 0x80B0FF),
+        ("-NickServ- This nickname is registered. Please identify.", 0xFFC060),
+        ("* alice joined #onyx", 0x80B0FF),
+        ("<alice> hey, is this the bare-metal Pi channel?", 0xC8D0C0),
+        ("<bob> yep -- Onyx, a hobby OS on Circle", 0xC8D0C0),
+        ("<onyx-user> hello from Onyx :)", 0xC8D0C0),
+        ("* bob waves", 0x80B0FF),
+    ]
+    for i, (ln, col) in enumerate(lines):
+        cv.text(4, 4 + i * FH, ln, C(col))
+    iy = 4 + 21 * FH                      # bottom input row (under the scrollback)
+    cv.fill(0, iy - 2, W, 1, C(0x303840))
+    prompt = "[#onyx] "
+    cv.text(4, iy, prompt, C(0x60FF90))
+    px = 4 + len(prompt) * FW
+    inp = "what are you all running it on?"
+    cv.text(px, iy, inp, C(0xFFFFFF))
+    cv.fill(px + len(inp) * FW, iy, 2, FH, C(0x60FF90))
+    return cv
+
 def app_filer():
     W, H = 460, 380; LISTY = 34; cv = Canvas(W, H, C(0x202830))
     cv.fill(0, 0, W, LISTY - 2, C(0x303D4D))
@@ -866,6 +893,7 @@ if __name__ == "__main__":
         ("paint","paint",app_paint), ("taskman","taskman",app_taskman),
         ("2048","2048",app_2048), ("minesweeper","minesweeper",app_minesweeper),
         ("eyes","eyes",app_eyes), ("inidemo","inidemo",app_inidemo),
+        ("irc","irc",app_irc),
         ("life","life",app_life), ("pong","pong",app_pong), ("snake","snake",app_snake),
         ("tetris","tetris",app_tetris), ("same","same",app_same),
         ("sokoban","sokoban",app_sokoban), ("sheet","sheet",app_sheet),

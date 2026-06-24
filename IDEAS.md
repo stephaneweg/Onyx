@@ -1,6 +1,6 @@
-# Idées — Zircon
+# Idées — Onyx
 
-Liste vivante des idées de fonctionnalités et d'applications pour Zircon (OS custom sur Circle).
+Liste vivante des idées de fonctionnalités et d'applications pour Onyx (OS custom sur Circle).
 
 Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 
@@ -15,18 +15,18 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 | Client HTTP | 💡 | Récupération de ressources HTTP (download/fetch). Dépend de la pile réseau exposée. **Réf. (meilleure) :** `circle/sample/31-webclient` — fetch d'un doc HTTP + parseur HTML (`htmlscanner.cpp`) ; aussi `temp/httpc.asm` (x86, MenuetOS). ⚠️ Circle ne gère pas HTTPS nativement (SSL/TLS → circle-stdlib). |
 | Breakout (jeu) | 💡 | Casse-briques classique (raquette, balle, briques, niveaux). |
 | Sokoban : niveaux supplémentaires | 💡 | Ajouter ≥ 10 niveaux pour commencer. App existante : `user/sokoban.c`. |
-| Client IRC | 💡 | Connexion à un serveur IRC, channels, chat. Dépend de la pile réseau exposée. **Réf. :** `temp/board.asm` (x86, issu de MenuetOS) comme implémentation de référence. |
+| Client IRC | ✅ | App GUI `user/irc.c` → `apps/irc.app` : connexion serveur/canal (config.ini), scrollback + saisie, PING/PONG, PRIVMSG/NOTICE/CTCP, commandes `/join /part /nick /msg /me /raw /quit`. Sur les sockets TCP de l'ABI v21. |
 
 ## Fonctionnalités (système / kernel)
 
 | Idée | Statut | Notes |
 |------|--------|-------|
 | IPC : mécanisme de communication inter-processus | 💡 | Brique de base. À terme : déporter le serveur graphique (compositeur, gestion fenêtres, souris, clavier) dans un exécutable séparé. |
-| Réseau : exposer la pile TCP/IP de Circle | 💡 | Surfacer la stack réseau de Circle via l'ABI/kapi (sockets pour les apps). Prérequis des autres idées réseau. **Transport :** WiFi d'abord via `circle/addon/wlan` (driver `bcm4343` + `hostap`/wpa_supplicant) ; plus tard, choix WiFi / Ethernet. **Config IP : DHCP par défaut** (`#define USE_DHCP`, `CNetSubSystem` ctor par défaut) ; IP statique seulement si on désactive `USE_DHCP`. |
-| Réseau : résolveurs ARP / DNS, etc. | 💡 | Implémenter ARP, DNS (et autres protocoles utiles) au-dessus de la pile exposée. |
-| Réseau : synchro date/heure via NTP | 💡 | Une fois la couche réseau exposée, récupérer date & heure. **Réf. :** `circle/sample/18-ntptime`. |
+| Réseau : exposer la pile TCP/IP de Circle | ✅ | Fait (phase 1, cœur principal) : WLAN `bcm4343` + `wpa_supplicant` + `CNetSubSystem` (DHCP) montés dans un `CNetBringupTask` non bloquant ; sockets TCP via l'ABI v21 (`net_status`/`tcp_connect`/`tcp_send`/`tcp_recv`/`tcp_close`), backend `kernel/sys/net.cpp`. **Reste :** faire tourner la pile sur un **cœur dédié** (phase 2 : `CMultiCoreSupport` + files inter-cœurs). |
+| Réseau : résolveurs ARP / DNS, etc. | ✅ | Fournis par la pile Circle : ARP/ICMP internes ; DNS via `CDNSClient` (utilisé par `tcp_connect` quand l'hôte est un nom). |
+| Réseau : synchro date/heure via NTP | ✅ | `CNTPDaemon` démarré dès que le lien est up ; `system.ini` `timezone=` (minutes UTC) + `ntp=`. **Réf. :** `circle/sample/18-ntptime`. |
 | Compositor : dirty-rect + flush async | 💡 | Aujourd'hui : redraw plein écran chaque frame. Optimisation perf différée. |
-| Port audio : synth FM + tracker | ❄️ | Amener le synth FM + tracker dans Zircon. Fixed-point + PWM. |
+| Port audio : synth FM + tracker | ❄️ | Amener le synth FM + tracker dans Onyx. Fixed-point + PWM. |
 | Filer : associations de fichiers via ini | ❄️ | `[fileassoc] .ext=programme` (aujourd'hui hardcodé dans `open_file`). |
 | Filer : copier/couper → coller (presse-papiers fichier) | 💡 | Copier/couper mémorise le path ; coller ailleurs fait copy (copier) ou move (couper). |
 

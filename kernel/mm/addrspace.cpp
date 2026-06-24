@@ -7,6 +7,7 @@
 #include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA for the kapi table)
 #include <kern/kapitable.h>		// KApiTablePhys
 #include <kern/applaunch.h>		// g_bVerbose (gated lifecycle logging)
+#include <kern/net.h>			// NetCloseByPid (reclaim a dead process's sockets)
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -372,6 +373,7 @@ void AddressSpaceTaskTerminate (CTask *pTask)
 		if (g_bVerbose)
 			CLogger::Get ()->Write ("proc", LogNotice, "exit: %s (pid %u)",
 						pTask->GetName (), pAS->GetPid ());
+		NetCloseByPid (pAS->GetPid ());		// close any TCP sockets it leaked
 		pTask->SetUserData (0, TASK_USER_DATA_USER);
 		delete pAS;
 	}

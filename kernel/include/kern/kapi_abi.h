@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	20
+#define KAPI_ABI_VERSION	21
 
 #ifdef __cplusplus
 extern "C" {
@@ -217,6 +217,20 @@ struct TKApiTable
 	// `verbose` command persists the choice in SD:system.ini.
 	int (*set_verbose) (int on);
 	int (*get_verbose) (void);
+
+	// --- v21 additions (TCP/IP sockets over WLAN) ---
+	// net_status: 1 + dotted IPv4 into ip[] if the link is up, else 0 (ip="").
+	// tcp_connect: resolve host (dotted-quad or DNS name) + connect; returns a
+	// handle >=0, or <0 on error (-1 no net, -2 too many sockets, -3 DNS fail,
+	// -5 connect fail). tcp_send: blocking send (5 s timeout); bytes sent or <0.
+	// tcp_recv: NON-BLOCKING; >0 bytes, 0 nothing yet, <0 closed/error. tcp_close:
+	// drop the connection + free the handle. Sockets are auto-closed if the owning
+	// process dies.
+	int  (*net_status) (char *ip, unsigned cap);
+	int  (*tcp_connect) (const char *host, unsigned port);
+	int  (*tcp_send) (int sock, const void *buf, unsigned len);
+	int  (*tcp_recv) (int sock, void *buf, unsigned len);
+	void (*tcp_close) (int sock);
 };
 
 #ifdef __cplusplus

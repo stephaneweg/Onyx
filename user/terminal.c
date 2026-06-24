@@ -55,9 +55,12 @@ static void term_putc (char c)
 	if (c == '\n') { flush_cur (); return; }
 	if (c == '\f') { g_rcount = g_rfirst = g_curlen = g_scroll = 0; g_cur[0] = '\0'; return; }
 	if (c == '\b') { if (g_curlen > 0) g_cur[--g_curlen] = '\0'; return; }
-	if (c == '\t') { do { if (g_curlen < COLS) g_cur[g_curlen++] = ' '; } while ((g_curlen % 4) && g_curlen < COLS); return; }
+	if (c == '\t') { do { if (g_curlen < COLS) g_cur[g_curlen++] = ' '; } while ((g_curlen % 4) && g_curlen < COLS); g_cur[g_curlen] = '\0'; return; }
 	if (g_curlen >= COLS) flush_cur ();
 	g_cur[g_curlen++] = c;
+	g_cur[g_curlen] = '\0';			// keep g_cur a valid C-string: without this, a
+						// shorter new line (e.g. the reprinted prompt) leaves
+						// the previous line's tail visible past g_curlen.
 }
 static void term_puts (const char *s) { for (int i = 0; s[i]; i++) term_putc (s[i]); }
 

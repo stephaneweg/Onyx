@@ -16,6 +16,13 @@
 # SD staging: firmware blobs are large/redistributable; keep README + config.txt
 *.dat
 *.dtb
+# WLAN firmware (fetch via circle/addon/wlan/firmware/Makefile, copy to SD:/firmware/)
+/sdcard/firmware/
+# WiFi credentials -- stores the passphrase in CLEAR TEXT; never commit it
+/sdcard/wpa_supplicant.conf
+
+# Scratch / reference material (e.g. MenuetOS .asm sources kept for reference)
+/temp/
 
 # Editor / tooling
 .claude/settings.local.json

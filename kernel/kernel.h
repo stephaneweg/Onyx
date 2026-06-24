@@ -24,6 +24,9 @@
 #include <circle/types.h>
 #include <SDCard/emmc.h>
 #include <fatfs/ff.h>
+#include <wlan/bcm4343.h>				// BCM4343x WLAN driver (SDIO)
+#include <wlan/hostap/wpa_supplicant/wpasupplicant.h>	// WPA2 association
+#include <circle/net/netsubsystem.h>		// TCP/IP stack
 #include <kern/gui/window.h>		// also defines SCREEN_WIDTH / SCREEN_HEIGHT
 #include <kern/debugcon.h>		// on-screen debug console (post-mortem visibility)
 
@@ -67,6 +70,11 @@ private:
 	CEMMCDevice		m_EMMC;			// SD card (#11)
 	FATFS			m_FileSystem;		// FatFs mount of the SD card
 	CUSBHCIDevice		m_USB;			// USB host: mouse + keyboard (#13)
+	// Network stack (brought up in a background task -- never blocks boot). The
+	// WLAN device is a separate SDIO peripheral, independent of the SD card (EMMC).
+	CBcm4343Device		m_WLAN;			// WLAN (firmware from SD:/firmware/)
+	CNetSubSystem		m_Net;			// TCP/IP (DHCP)
+	CWPASupplicant		m_WPASupplicant;	// WPA2 (SD:/wpa_supplicant.conf)
 	CScheduler		m_Scheduler;		// our preemptive-ready scheduler (#3)
 	CWindowManager		m_WindowManager;	// compositor (#10)
 	CFbConsole		m_FbConsole;		// debug console on the displayed FB

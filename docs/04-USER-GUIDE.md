@@ -83,6 +83,40 @@ width=1024 height=768 keymap=FR
 - **`keymap`**: keyboard layout at boot — `US`, `UK`, `DE`, `FR`, `ES`, `IT`, `DV`
   (Dvorak). Can be changed later on the fly (see §10).
 
+### `system.ini`
+
+General settings read at boot (`SD:system.ini`):
+
+```
+verbose=0          # 1 = log app start/stop/kill to the kernel log (see kmsg)
+timezone=120       # minutes offset from UTC (60 = CET, 120 = CEST summer time)
+ntp=pool.ntp.org   # time server to sync against once the WLAN link is up
+```
+
+### Wi-Fi (WLAN)
+
+Onyx connects over the Pi's on-board Wi-Fi. Two files must be on the SD card:
+
+- **`SD:/firmware/`** — the BCM/Cypress WLAN firmware. For the Pi 4 (CYW43455):
+  `brcmfmac43455-sdio.bin`, `.txt` and `.clm_blob` (fetch them with
+  `circle/addon/wlan/firmware/Makefile`, or copy them from a Raspberry Pi OS install).
+- **`SD:/wpa_supplicant.conf`** — your network credentials (⚠️ stored in **clear
+  text** — keep it on the card, do not publish it):
+
+  ```
+  #country=BE
+  network={
+      ssid="YourNetwork"
+      psk="YourPassword"
+      proto=WPA2
+      key_mgmt=WPA-PSK
+  }
+  ```
+
+The link comes up a few seconds after boot (watch the log, or run `net`). It is fully
+optional: if the firmware/credentials are missing, the desktop still works — only the
+networked apps stay offline.
+
 ## 4. First boot
 
 On power-on:
@@ -262,6 +296,14 @@ the terminal's **current working directory**.
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main.elf`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, ES, IT, DV). |
 
+**Networking and logs**
+
+| Tool | Usage | Description |
+|---|---|---|
+| `net` | `net` | Shows the WLAN link status and the IPv4 address (or "link down" if Wi-Fi has not associated — check the firmware and `wpa_supplicant.conf`). |
+| `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events). **Ctrl-C** to quit. |
+| `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
+
 ## 9. The file manager
 
 Launch **`filer`** (pinned by default). It browses the SD card.
@@ -349,6 +391,8 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | *calendar — calendar + notes* | *mandelbrot — fractal explorer* | *eyes — gadget* |
 | ![taskman](../screenshots/taskman.png) | ![2048](../screenshots/2048.png) | ![minesweeper](../screenshots/minesweeper.png) |
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
+| | ![irc](../screenshots/irc.png) | |
+| | *irc — IRC client* | |
 
 ### Productivity and tools
 
@@ -366,6 +410,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **eyes** | Gadget: two eyes whose pupils follow the mouse. |
 | **mandelbrot** | Fractal explorer (Mandelbrot, Julia, Burning Ship, Tricorn via the dropdown). **Click** = zoom in (re-centers); `o` = zoom out; `r` = reset. |
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
+| **irc** | IRC client over Wi-Fi. Connects to the server/channel from `config.ini`, shows the conversation, type to chat. Commands: `/join #chan`, `/msg nick text`, `/nick name`, `/me action`, `/raw …`, `/quit`. Needs the network up (see §3). |
 | **voronoy** | Wallpaper generator (launched at boot; no window). |
 
 ### Games

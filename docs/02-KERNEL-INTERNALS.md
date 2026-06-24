@@ -20,7 +20,8 @@ constants) come from the code; the layout constants live in
 8. [The kapi ABI table](#8-the-kapi-abi-table)
 9. [Stream / stdio subsystem](#9-stream--stdio-subsystem)
 10. [Graphics subsystem (GUI)](#10-graphics-subsystem-gui)
-11. [Post-mortem debug console](#11-post-mortem-debug-console)
+11. [Network subsystem (WLAN, TCP/IP, NTP)](#11-network-subsystem-wlan-tcpip-ntp)
+12. [Post-mortem debug console](#12-post-mortem-debug-console)
 
 ---
 
@@ -360,12 +361,13 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 17`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 21`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
 v2 = `set_click_handler`, v3 = `opendir/readdir`, v4 = streams/spawn, … v16 =
-`set_window_theme`, v17 = `chdir`/`getcwd`).
+`set_window_theme`, v17 = `chdir`/`getcwd`, v18 = `stdin_stream`/`stdout_stream`,
+v19 = `klog_read`, v20 = `set_verbose`/`get_verbose`, v21 = the TCP socket calls).
 
 ### Categories of exposed functions
 
@@ -382,6 +384,8 @@ v2 = `set_click_handler`, v3 = `opendir/readdir`, v4 = streams/spawn, … v16 =
 | Modal dialogs | `message_box`, `file_open`, `file_save` |
 | Desktop | `screen_size`, `set_wallpaper`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
 | Appearance/keyboard | `set_window_theme`, `set_keymap`, `get_keymap`, `app_dir` |
+| Logging | `klog_read`, `set_verbose`, `get_verbose` |
+| Networking (v21) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close` |
 
 All the functions **run in the context of the calling app** (its page
 table + its stack are active; the arguments are plain pointers in the current
@@ -527,7 +531,51 @@ an editable name field.
 
 ---
 
-## 11. Post-mortem debug console
+## 11. Network subsystem (WLAN, TCP/IP, NTP)
+
+Sources: [`kernel/kernel.cpp`](../kernel/kernel.cpp) (`CNetBringupTask`),
+[`kernel/sys/net.cpp`](../kernel/sys/net.cpp) (socket backend),
+[`kernel/include/kern/net.h`](../kernel/include/kern/net.h). Built on Circle's
+`lib/net` (TCP/IP) + the `addon/wlan` BCM4343 driver + `wpa_supplicant`, all linked
+into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
+
+**Phase 1 = the whole stack on the primary core.** The user's goal of a *dedicated
+core* for the network is deferred (it needs `CMultiCoreSupport` + cross-core socket
+queues, a separate sub-project against the single-core cooperative model of §5).
+
+- **Bring-up is non-blocking and non-fatal.** `CNetBringupTask` (a kernel `CTask`,
+  started from `Run()` once the SD card is mounted) runs `CBcm4343Device::Initialize`
+  → `CNetSubSystem::Initialize(FALSE)` → `CWPASupplicant::Initialize`, waits for the
+  DHCP bind, logs `net: up, IP …`, then **returns** (the task ends cleanly). A
+  missing firmware / `wpa_supplicant.conf` / access point only logs a warning — the
+  GUI boots regardless.
+- **Self-driving.** `CNetSubSystem::Initialize` spawns Circle's own `CNetTask` /
+  `CPHYTask`; they run as ordinary cooperative tasks on our scheduler (§5), so no
+  explicit pumping is needed. (This is also why the net task is CPU-busy — a
+  motivation for the future dedicated core.)
+- **Globals.** `g_pNet` (the `CNetSubSystem`) and `g_bNetUp` are published in
+  `net.h`; `NetIsUp()` gates the socket calls.
+- **Sockets.** `sys/net.cpp` keeps a small table of Circle `CSocket`s behind integer
+  handles. `tcp_connect` resolves a dotted-quad or a DNS name (`CDNSClient`) and
+  connects (blocking, cooperative); `tcp_send` blocks with a 5 s timeout; `tcp_recv`
+  is **non-blocking** (so a GUI app polls it from its frame loop); `tcp_close` drops
+  it. Each socket records its **owner pid**, and `AddressSpaceTaskTerminate` calls
+  `NetCloseByPid` so a process that dies without closing does not leak its
+  connections or table slots.
+- **Clock.** Once the link is up the bring-up task starts a `CNTPDaemon`
+  (`system.ini ntp=`), which updates `CTimer`'s wall clock; the boot reads
+  `system.ini timezone=` (minutes from UTC) and calls `CTimer::SetTimeZone` so
+  `get_datetime`, the agenda and the log timestamps show local time.
+- **Caveats.** Plain-text only (no TLS); `MAX_TASKS` was raised to 40 to fit the net
+  workers; the firmware load uses FatFs and is not locked against concurrent app
+  file I/O (low risk, one-shot at boot).
+
+The apps that use it: the **irc** client (`user/irc.c`) and the **`net`** `/bin`
+tool (link status / IP).
+
+---
+
+## 12. Post-mortem debug console
 
 Source: [`kernel/sys/debugcon.cpp`](../kernel/sys/debugcon.cpp),
 [`kernel/include/kern/debugcon.h`](../kernel/include/kern/debugcon.h).
@@ -559,7 +607,8 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 17 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 21 | kapi_abi.h |
+| `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |
 | Kernel stack of an app task | 256 KB | kernel.cpp |
 | Screen resolution | 1024×768 (configurable) | kernel.h / cmdline.txt |

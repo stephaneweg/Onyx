@@ -54,7 +54,7 @@ sources.
   pointers** at a fixed virtual address, mapped read-only into each
   application. Applications call the kernel through this table → **an application
   binary keeps working without recompilation** when the kernel changes
-  (*append-only* contract, current ABI version: **17**).
+  (*append-only* contract, current ABI version: **21**).
 - **Full graphical desktop.** 32-bit software compositor, window manager,
   toolkit of kernel-drawn widgets (buttons, checkboxes, sliders,
   text fields, scroll bars, icons…), windows with themeable decoration,
@@ -68,6 +68,10 @@ sources.
   Game of Life, SameGame).
 - **USB input devices.** Keyboard and mouse (HID), with hot-swappable keyboard
   layout switching (US, UK, DE, FR, ES, IT, Dvorak).
+- **Networking (WLAN).** TCP/IP stack + on-board Wi-Fi (BCM4343 / `wpa_supplicant`)
+  brought up on the primary core, TCP sockets exposed to apps through the ABI, an
+  **IRC client**, and NTP clock synchronisation. (A dedicated network core is a
+  planned next step.)
 
 ## 4. The architecture at a glance
 
@@ -179,3 +183,5 @@ circle/           upstream Circle clone (not committed; cloned separately)
    file manager.
 10. Modal dialogs, themes, app-drawn wallpaper, PID management, keyboard layouts,
     theme editor (ABI v16).
+11. Networking: WLAN bring-up + TCP/IP on the primary core, TCP socket calls
+    (ABI v21), an IRC client, a `/bin/net` tool, and NTP clock sync.

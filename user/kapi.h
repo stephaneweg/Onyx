@@ -167,6 +167,16 @@ static inline int  kapi_klog_read (int *sev, char *src, unsigned sc, char *msg, 
 static inline int  kapi_set_verbose (int on) { return KT->set_verbose (on); }
 static inline int  kapi_get_verbose (void) { return KT->get_verbose (); }
 
+// TCP/IP sockets over WLAN (ABI v21). net_status: 1 + dotted IP into ip[] if the
+// link is up, else 0. tcp_connect: host = dotted-quad or DNS name; >=0 handle / <0
+// error. tcp_send: blocking, bytes sent / <0. tcp_recv: NON-BLOCKING -- >0 bytes,
+// 0 nothing yet, <0 closed/error. tcp_close: drop the connection.
+static inline int  kapi_net_status (char *ip, unsigned cap) { return KT->net_status (ip, cap); }
+static inline int  kapi_tcp_connect (const char *host, unsigned port) { return KT->tcp_connect (host, port); }
+static inline int  kapi_tcp_send (int sock, const void *buf, unsigned len) { return KT->tcp_send (sock, buf, len); }
+static inline int  kapi_tcp_recv (int sock, void *buf, unsigned len) { return KT->tcp_recv (sock, buf, len); }
+static inline void kapi_tcp_close (int sock) { KT->tcp_close (sock); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }

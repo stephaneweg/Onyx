@@ -19,8 +19,27 @@
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
 #include <kern/gui/skin.h>
+#include <kern/net.h>
+#include <circle/net/ipaddress.h>
+#include <circle/net/ntpdaemon.h>
 
 static const char FromKernel[] = "kernel";
+
+// WLAN firmware (brcmfmac43455-sdio.*) lives here; the user's SSID/PSK go in the
+// config file. Both must be staged on the SD card -- see docs/NETWORK.md.
+#define WLAN_FIRMWARE_PATH	"SD:/firmware/"
+#define WLAN_CONFIG_FILE	"SD:/wpa_supplicant.conf"
+
+// Network globals (declared in kern/net.h). g_pNet is published once the kernel
+// object exists; g_bNetUp flips TRUE when the link is DHCP-bound.
+CNetSubSystem	 *g_pNet   = 0;
+volatile boolean  g_bNetUp = FALSE;
+
+// Clock: timezone offset from UTC in minutes (system.ini "timezone="; default CET
+// +60, set "120" for CEST summer time) + the NTP server to sync against once the
+// link is up (system.ini "ntp="). The NTP daemon updates CTimer's wall clock.
+static int  g_nTimeZoneMin = 60;
+static char g_szNtpServer[64] = "pool.ntp.org";
 
 // Defined in arch/aarch64/exception.cpp: route kernel panics to this displayed
 // framebuffer so an exception is visible after the compositor takes the screen.
@@ -403,6 +422,83 @@ void KernelSetVerbose (boolean bOn)
 }
 boolean KernelGetVerbose (void) { return g_bVerbose; }
 
+//
+// CNetBringupTask -- bring up WLAN + the TCP/IP stack on the primary core in the
+// background, so a missing firmware / wpa_supplicant.conf / access point never
+// blocks (or slows) the GUI boot. The order is mandatory: the WLAN device must be
+// up before the net subsystem, and wpa_supplicant associates after the stack is
+// initialized. Once Initialize() returns, Circle's own CNetTask / CPHYTask keep
+// the stack running on our scheduler; this task just waits for the link, logs the
+// address and exits (it has no user address space, so returning is clean).
+//
+class CNetBringupTask : public CTask
+{
+public:
+	CNetBringupTask (CBcm4343Device *pWLAN, CNetSubSystem *pNet,
+			 CWPASupplicant *pWPA, CLogger *pLogger)
+	:	m_pWLAN (pWLAN), m_pNet (pNet), m_pWPA (pWPA), m_pLogger (pLogger)
+	{
+		SetName ("net");
+	}
+
+	void Run (void) override
+	{
+		g_pNet = m_pNet;		// publish (still down until associated)
+
+		m_pLogger->Write (FromKernel, LogNotice,
+				  "net: bringing up WLAN (firmware " WLAN_FIRMWARE_PATH ")");
+		if (!m_pWLAN->Initialize ())
+		{
+			m_pLogger->Write (FromKernel, LogWarning,
+				"net: WLAN init failed -- is " WLAN_FIRMWARE_PATH " present?");
+			return;
+		}
+
+		if (!m_pNet->Initialize (FALSE))	// FALSE: don't block here for activate
+		{
+			m_pLogger->Write (FromKernel, LogWarning, "net: TCP/IP init failed");
+			return;
+		}
+
+		m_pLogger->Write (FromKernel, LogNotice,
+				  "net: associating (" WLAN_CONFIG_FILE ") ...");
+		if (!m_pWPA->Initialize ())
+		{
+			m_pLogger->Write (FromKernel, LogWarning,
+				"net: wpa_supplicant init failed -- is " WLAN_CONFIG_FILE " present?");
+			return;
+		}
+
+		// Wait for the link to come up (DHCP bind). Log progress occasionally so a
+		// stuck association is visible, but never give up -- the AP may appear later.
+		unsigned nWaited = 0;
+		while (!m_pNet->IsRunning ())
+		{
+			CScheduler::Get ()->MsSleep (250);
+			if ((nWaited += 250) % 10000 == 0)
+				m_pLogger->Write (FromKernel, LogNotice,
+						  "net: still associating (%u s) ...", nWaited / 1000);
+		}
+
+		CString IPString;
+		m_pNet->GetConfig ()->GetIPAddress ()->Format (&IPString);
+		m_pLogger->Write (FromKernel, LogNotice, "net: up, IP %s",
+				  (const char *) IPString);
+		g_bNetUp = TRUE;
+
+		// Sync the wall clock over NTP (its own background task; updates CTimer so
+		// kapi_get_datetime / the agenda / log timestamps show real local time).
+		new CNTPDaemon (g_szNtpServer, m_pNet);
+		m_pLogger->Write (FromKernel, LogNotice, "net: NTP started (%s)", g_szNtpServer);
+	}
+
+private:
+	CBcm4343Device *m_pWLAN;
+	CNetSubSystem  *m_pNet;
+	CWPASupplicant *m_pWPA;
+	CLogger	       *m_pLogger;
+};
+
 // Resolution: cmdline.txt "width="/"height=" override the defaults (1024x768).
 // m_Options is constructed before m_Screen/m_2DGraphics, so it is safe to query here.
 #define OPT_W(opt)	((opt).GetWidth ()  != 0 ? (int) (opt).GetWidth ()  : SCREEN_WIDTH)
@@ -415,6 +511,9 @@ CKernel::CKernel (void)
 	m_2DGraphics (OPT_W (m_Options), OPT_H (m_Options), FALSE),	// VSync off: avoid page-flip present
 	m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
 	m_USB (&m_Interrupt, &m_Timer, TRUE),			// TRUE: enable plug-and-play
+	m_WLAN (WLAN_FIRMWARE_PATH),				// WLAN firmware dir on the SD card
+	m_Net (0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN),// DHCP over WLAN
+	m_WPASupplicant (WLAN_CONFIG_FILE),			// SSID/PSK supplied by the user
 	m_FbConsole (&m_2DGraphics),
 	m_bGraphics (FALSE),
 	m_bSDMounted (FALSE),
@@ -599,6 +698,23 @@ static void ReadSystemConfig (void)
 		const char *vs = eq + 1;
 		while (vs < le && (*vs == ' ' || *vs == '\t')) vs++;
 		if (KeyEq (ls, ke, "verbose")) g_bVerbose = (vs < le && *vs == '1');
+		else if (KeyEq (ls, ke, "timezone"))
+		{
+			const char *q = vs; int neg = 0; long v = 0; boolean any = FALSE;
+			if (q < le && (*q == '-' || *q == '+')) { neg = (*q == '-'); q++; }
+			while (q < le && *q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); q++; any = TRUE; }
+			if (any) g_nTimeZoneMin = (int) (neg ? -v : v);
+		}
+		else if (KeyEq (ls, ke, "ntp"))
+		{
+			unsigned i = 0;
+			for (const char *q = vs; q < le && i < sizeof (g_szNtpServer) - 1; q++)
+			{
+				if (*q == ' ' || *q == '\t') break;
+				g_szNtpServer[i++] = *q;
+			}
+			if (i > 0) g_szNtpServer[i] = '\0';
+		}
 	}
 	delete [] pData;
 }
@@ -921,7 +1037,8 @@ boolean CKernel::Initialize (void)
 			m_bSDMounted = TRUE;
 			m_Logger.Write (FromKernel, LogNotice, "SD card mounted (SD:)");
 
-			ReadSystemConfig ();		// SD:system.ini -> verbose flag, etc.
+			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
+			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 
 			// Load the widget skins (9-slice BMPs). Margins match SimpleOS's
 			// gui.bas. Missing skins -> flat fallback drawing.
@@ -1020,6 +1137,15 @@ TShutdownMode CKernel::Run (void)
 	else
 	{
 		m_Logger.Write (FromKernel, LogWarning, "no framebuffer; idling");
+	}
+
+	// Network: bring up WLAN + TCP/IP in the background. Needs the SD card (WLAN
+	// firmware + wpa_supplicant.conf live there). Fully non-fatal -- the GUI runs
+	// whether or not WiFi associates; apps test NetIsUp() before using sockets.
+	if (m_bSDMounted)
+	{
+		new CNetBringupTask (&m_WLAN, &m_Net, &m_WPASupplicant, &m_Logger);
+		m_Logger.Write (FromKernel, LogNotice, "net: bring-up task started");
 	}
 
 	// The "main" task has nothing left to do; reaping is the dedicated reaper task's

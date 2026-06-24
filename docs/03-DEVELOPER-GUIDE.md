@@ -319,7 +319,7 @@ points** to touch (all in the same direction, at the end):
    comment, and **increment `KAPI_ABI_VERSION`**.
 
    ```c
-   // --- v18 additions ---
+   // --- v22 additions ---   (next free version; v21 added the TCP sockets)
    int (*ma_fonction) (int arg);
    ```
 

@@ -43,6 +43,11 @@ void *kapi_stdout (void);
 int kapi_klog_read (int *, char *, unsigned, char *, unsigned);
 int kapi_set_verbose (int);
 int kapi_get_verbose (void);
+int kapi_net_status (char *, unsigned);
+int kapi_tcp_connect (const char *, unsigned);
+int kapi_tcp_send (int, const void *, unsigned);
+int kapi_tcp_recv (int, void *, unsigned);
+void kapi_tcp_close (int);
 int kapi_set_wallpaper (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
@@ -228,4 +233,9 @@ void KApiTableInit (void)
 	t->klog_read         = kapi_klog_read;
 	t->set_verbose       = kapi_set_verbose;
 	t->get_verbose       = kapi_get_verbose;
+	t->net_status        = kapi_net_status;
+	t->tcp_connect       = kapi_tcp_connect;
+	t->tcp_send          = kapi_tcp_send;
+	t->tcp_recv          = kapi_tcp_recv;
+	t->tcp_close         = kapi_tcp_close;
 }

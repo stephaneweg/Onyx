@@ -28,6 +28,7 @@ OBJS = \
 	sys/syscall.o \
 	sys/kapi.o \
 	sys/kapitable.o \
+	sys/net.o \
 	sys/stream.o \
 	sys/debugcon.o \
 	arch/aarch64/vectors.o \
@@ -37,13 +38,20 @@ OBJS = \
 # so <circle/sched/scheduler.h> resolves to our shadow in compat/.
 INCLUDE = -I compat -I include
 
+# Net stack + WLAN (BCM4343 SDIO) + wpa_supplicant. Order matters for static
+# linking: higher-level archives first so the linker can resolve their references
+# in the lower-level ones (wpa -> wlan -> net -> circle). Our scheduler.o/task.o in
+# OBJS still win over libsched.a (OBJS precede the archives), as before.
 LIBS = \
-	$(CIRCLEHOME)/lib/sched/libsched.a \
+	$(CIRCLEHOME)/addon/wlan/hostap/wpa_supplicant/libwpa_supplicant.a \
+	$(CIRCLEHOME)/addon/wlan/libwlan.a \
 	$(CIRCLEHOME)/addon/fatfs/libfatfs.a \
 	$(CIRCLEHOME)/addon/SDCard/libsdcard.a \
-	$(CIRCLEHOME)/lib/fs/libfs.a \
+	$(CIRCLEHOME)/lib/net/libnet.a \
+	$(CIRCLEHOME)/lib/sched/libsched.a \
 	$(CIRCLEHOME)/lib/usb/libusb.a \
 	$(CIRCLEHOME)/lib/input/libinput.a \
+	$(CIRCLEHOME)/lib/fs/libfs.a \
 	$(CIRCLEHOME)/lib/libcircle.a
 
 include $(CIRCLEHOME)/Rules.mk

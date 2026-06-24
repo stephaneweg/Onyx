@@ -17,6 +17,7 @@
 #include <kern/layout.h>
 #include <kern/gui/window.h>
 #include <kern/dialog.h>		// CDialog (modal dialogs)
+#include <kern/net.h>		// NetTcpConnect/Send/Recv/Close/Status (socket backend)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
@@ -1623,5 +1624,24 @@ int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 	f_close (&File);
 	return (Res == FR_OK) ? (int) nWritten : -1;
 }
+
+// --- networking (TCP sockets over WLAN) --------------------------------------
+//
+// Thin shims over the socket backend in sys/net.cpp. These run on the app's task,
+// so Connect/DNS/Send block cooperatively (the rest of the system keeps running);
+// Recv is non-blocking so a GUI app can poll it from its event loop.
+
+int kapi_net_status (char *pIP, unsigned nCap) { return NetStatus (pIP, nCap); }
+
+int kapi_tcp_connect (const char *pHost, unsigned nPort)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	unsigned nPid = (pAS != 0) ? pAS->GetPid () : 0;	// owner -> auto-close on death
+	return NetTcpConnect (pHost, nPort, nPid);
+}
+
+int  kapi_tcp_send  (int hSock, const void *pBuf, unsigned nLen) { return NetTcpSend (hSock, pBuf, nLen); }
+int  kapi_tcp_recv  (int hSock, void *pBuf, unsigned nLen)       { return NetTcpRecv (hSock, pBuf, nLen); }
+void kapi_tcp_close (int hSock)                                  { NetTcpClose (hSock); }
 
 }  // extern "C"
