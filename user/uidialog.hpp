@@ -246,16 +246,6 @@ public:
 	}
 };
 
-// ---- convenience wrappers (unchanged call sites) -----------------------------
-static inline int messagebox (Ui &app, const char *title, const char *text, int buttons)
-{ MessageBox d (app, title, text, buttons); return d.run (&app); }
-static inline int confirm (Ui &app, const char *title, const char *text)
-{ MessageBox d (app, title, text, MB_YESNO); return d.run (&app); }
-static inline int file_open (Ui &app, char *out, unsigned cap, const char *startDir)
-{ FileDialog d (app, startDir, 0, false); int r = d.run (&app); if (r) d.getResult (out, cap); return r; }
-static inline int file_save (Ui &app, char *out, unsigned cap, const char *startDir, const char *defName)
-{ FileDialog d (app, startDir, defName, true); int r = d.run (&app); if (r) d.getResult (out, cap); return r; }
-
 } // namespace ui
 
 #endif // ONYX_UIDIALOG_HPP

@@ -130,7 +130,8 @@ static void on_reload (ui::Widget &) { load_conf (); }
 static void on_reboot (ui::Widget &)
 {
 	if (!save_conf ()) return;
-	if (ui::messagebox (*g_ui, "Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO))
+	ui::MessageBox mb (*g_ui, "Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO);
+	if (mb.run (g_ui))
 		kapi_reboot ();					// does not return
 	else
 		set_status ("Saved. Reboot later to apply.");

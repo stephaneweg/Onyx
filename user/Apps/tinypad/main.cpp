@@ -41,12 +41,14 @@ static void save_file (void)
 static void on_open (ui::Widget &)
 {
 	char path[100];
-	if (ui::file_open (*g_ui, path, sizeof path, "SD:/")) { g_fn->setText (path); load_file (); g_ui->markDirty (); }
+	ui::FileDialog fd (*g_ui, "SD:/", 0, false);
+	if (fd.run (g_ui)) { fd.getResult (path, sizeof path); g_fn->setText (path); load_file (); g_ui->markDirty (); }
 }
 static void on_save (ui::Widget &)
 {
 	char path[100];
-	if (ui::file_save (*g_ui, path, sizeof path, "SD:/", g_fn->getText ())) { g_fn->setText (path); save_file (); }
+	ui::FileDialog fd (*g_ui, "SD:/", g_fn->getText (), true);
+	if (fd.run (g_ui)) { fd.getResult (path, sizeof path); g_fn->setText (path); save_file (); }
 }
 static void on_vscroll (ui::Widget &w) { g_body->setTop  (((ui::Scrollbar &) w).value); g_ui->markDirty (); }
 static void on_hscroll (ui::Widget &w) { g_body->setLeft (((ui::Scrollbar &) w).value); g_ui->markDirty (); }
