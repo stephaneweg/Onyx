@@ -61,6 +61,7 @@ public:
 	virtual ~Widget () {}
 
 	bool contains (int px, int py) const { return px >= x && px < x + w && py >= y && py < y + h; }
+	void setRect (int X, int Y, int W, int H) { x = X; y = Y; w = W; h = H; }	// reposition/resize
 	const char *getText () const { return text; }
 	void setText (const char *t);				// (defined after Ui: marks dirty)
 
