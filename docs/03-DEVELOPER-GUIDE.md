@@ -27,24 +27,25 @@ be aware of. For the details of how things work internally, see
 
 - **AArch64 bare-metal toolchain**: `aarch64-none-elf-` (GCC), used under **WSL** on
   a Windows development machine.
-- **Circle**, cloned **next to** the kernel tree (in `Zircon/circle/`).
+- **Circle**, pulled in as a **git submodule** at `circle/` (our fork
+  `stephaneweg/circle`, branch `onyx`).
 - `make`, `cp`, `mkdir` (standard Unix tools, via WSL).
 - A **FAT32 SD card** and a **Raspberry Pi 4** to run on (there is no QEMU
   `raspi4b` in the reference dev environment; bring-up is done directly on
   hardware).
 
-> **Important — which Circle?** The Circle to modify is **`Zircon/circle`** (the clone next
-> to the kernel), **not** any `C:\Temp\circle`. If you patch Circle (e.g. a
-> keymap), do it in `Zircon/circle` and rebuild the affected library.
+> **Important — which Circle?** `circle/` is a **git submodule** → our fork
+> `stephaneweg/circle` (branch `onyx`), **not** any other clone. Patch Circle *there*
+> (commit on `onyx`), rebuild the affected library, then record the new commit in the
+> superproject (`git add circle && git commit`). The patches are listed in
+> [Circle Changes](05-CIRCLE-CHANGES.md).
 
 ## 2. Building Circle (once)
 
 ```sh
-# From the repo root (Zircon/), clone Circle next to the kernel:
-git clone --recurse-submodules https://github.com/rsta2/circle.git
-
-# Circle was checked out as CRLF on Windows -> renormalize to LF once:
-git -C circle config core.autocrlf false && git -C circle rm --cached -rq . && git -C circle reset --hard
+# Circle is a git submodule (the fork stephaneweg/circle, branch onyx). Fetch it
+# (or clone Onyx with --recurse-submodules in the first place):
+git submodule update --init --recursive
 
 # Configure for RPi 4 / AArch64. DEPTH=32 is REQUIRED: our GImage renders 32-bit
 # pixels (Circle defaults to 16).
