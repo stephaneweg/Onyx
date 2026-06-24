@@ -193,7 +193,7 @@ static void place_clock (int content_len)
 
 static void load_quicklaunch (void)
 {
-	void *f = kapi_open ("SD:apps/quicklaunch.txt");
+	void *f = kapi_open ("SD:etc/quicklaunch.txt");
 	if (f == 0) return;
 	static char buf[512];
 	int n = kapi_read (f, buf, sizeof (buf) - 1);

@@ -27,7 +27,7 @@ int main (void)
 	else { ax_putln ("usage: verbose on|off"); return 1; }
 
 	kapi_set_verbose (on);					// runtime
-	kapi_save_file ("SD:system.ini", on ? "verbose=1\n" : "verbose=0\n",
+	kapi_save_file ("SD:etc/system.ini", on ? "verbose=1\n" : "verbose=0\n",
 			on ? 10u : 10u);			// persist (both strings are 10 bytes)
 	ax_puts ("verbose -> "); ax_putln (on ? "on" : "off");
 	return 0;

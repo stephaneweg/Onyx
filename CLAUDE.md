@@ -11,6 +11,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/02-KERNEL-INTERNALS.md` (kernel internals, excluding Circle)
 - `docs/03-DEVELOPER-GUIDE.md`
 - `docs/04-USER-GUIDE.md`
+- `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by
 **`docs/build_docs.py`** (`python docs/build_docs.py` → `.docx` via pandoc using the themed

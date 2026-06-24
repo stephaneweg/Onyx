@@ -1,0 +1,8 @@
+# Window-chrome theme. Colours are 0xRRGGBB. Edit and reboot to recolour windows.
+# The window skin (wings.bmp) is grayscale; these tints are multiplied onto it.
+#   active   = focused window chrome (border + title bar)
+#   inactive = background windows
+#   text     = title-bar text colour
+active   = 0xFFC878
+inactive = 0x8090A0
+text     = 0xFFFFFF

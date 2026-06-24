@@ -68,6 +68,9 @@ The libraries linked by the kernel (cf. [`kernel/Makefile`](../kernel/Makefile))
 `libsched.a`, `libfatfs.a`, `libsdcard.a`, `libfs.a`, `libusb.a`, `libinput.a`,
 `libcircle.a`.
 
+> The Onyx-specific patches carried by this fork (branch `onyx`, on upstream tag `Step51`)
+> are documented in [Circle Changes](05-CIRCLE-CHANGES.md).
+
 ## 3. Building the kernel and applications
 
 From `kernel/`:

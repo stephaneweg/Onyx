@@ -21,6 +21,7 @@ of the **Circle** bare-metal framework.
 | 02 | **[Kernel Internals](02-KERNEL-INTERNALS.md)** | to understand the kernel | boot, memory/MMU/ASID, scheduling, exceptions, ELF loader, kapi ABI, streams, GUI (excluding Circle) |
 | 03 | **[Developer Guide](03-DEVELOPER-GUIDE.md)** | to build / extend | toolchain, build, app model, writing an app/tool, extending the ABI, conventions, debugging, pitfalls |
 | 04 | **[User Guide](04-USER-GUIDE.md)** | to use it | SD card, boot, Onyx desktop, terminal, files, customization, app catalog |
+| 05 | **[Circle Changes](05-CIRCLE-CHANGES.md)** | HAL maintainers | the patches in our Circle fork vs upstream (runtime keymap, heap large-block reuse, pager accessor) |
 
 ## Formats
 

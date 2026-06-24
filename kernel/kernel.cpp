@@ -648,7 +648,7 @@ static void ReadWindowTheme (u32 *pAct, u32 *pInact, u32 *pText)
 	*pAct = WIN_SKIN_TINT_ACTIVE; *pInact = WIN_SKIN_TINT_INACTIVE; *pText = 0x00FFFFFF;
 
 	unsigned nSize = 0;
-	u8 *pData = LoadFileFromSD ("SD:skins/theme.txt", &nSize);
+	u8 *pData = LoadFileFromSD ("SD:etc/theme.txt", &nSize);
 	if (pData == 0) return;
 
 	const char *p = (const char *) pData, *pEnd = p + nSize;
@@ -679,7 +679,7 @@ static void ReadWindowTheme (u32 *pAct, u32 *pInact, u32 *pText)
 static void ReadSystemConfig (void)
 {
 	unsigned nSize = 0;
-	u8 *pData = LoadFileFromSD ("SD:system.ini", &nSize);
+	u8 *pData = LoadFileFromSD ("SD:etc/system.ini", &nSize);
 	if (pData == 0) return;
 	const char *p = (const char *) pData, *pEnd = p + nSize;
 	while (p < pEnd)
@@ -897,63 +897,15 @@ static void EnumerateApps (CLogger *pLogger)
 	pLogger->Write (FromKernel, LogNotice, "/apps: %u entries", nCount);
 }
 
-// Spawn the apps listed in SD:apps/autostart.txt -- one app folder name per line
-// (the "xxx" of "xxx.app"). Blank lines and lines starting with '#' are ignored;
-// leading/trailing whitespace is trimmed. Replaces the old hardcoded demo list.
+// Boot the userland: the kernel just launches /bin/init (PID-1 style, no arguments).
+// init reads /etc/autostart and starts everything from there (see user/bin/init.c),
+// so all the launch policy lives in userland, not the kernel.
 void CKernel::StartAutostart (void)
 {
-	unsigned nSize = 0;
-	u8 *pList = LoadFileFromSD ("SD:apps/autostart.txt", &nSize);
-	if (pList == 0)
+	if (!ExecPath ("SD:bin/init.elf", ""))
 	{
-		m_Logger.Write (FromKernel, LogWarning, "no apps/autostart.txt -- nothing to start");
-		return;
+		m_Logger.Write (FromKernel, LogWarning, "cannot start /bin/init.elf");
 	}
-
-	// Each line is a shell command, run exactly like the cmd shell would: the first
-	// token names a /bin tool (bin/<token>.elf) and the rest is its argv. So
-	// "keyb FR" runs /bin/keyb.elf, and a desktop app is launched with the `run`
-	// tool, e.g. "run panel" -> /bin/run.elf which kapi_launch()es panel.app.
-	char Line[256];
-	unsigned nLen = 0;
-	for (unsigned i = 0; i <= nSize; i++)
-	{
-		// Treat EOF as an implicit newline so the last (unterminated) line runs.
-		char c = (i < nSize) ? (char) pList[i] : '\n';
-		if (c == '\n' || c == '\r')
-		{
-			Line[nLen] = '\0';
-
-			char *p = Line;					// trim leading WS
-			while (*p == ' ' || *p == '\t') p++;
-			unsigned len = 0; while (p[len] != '\0') len++;	// trim trailing WS
-			while (len > 0 && (p[len - 1] == ' ' || p[len - 1] == '\t')) p[--len] = '\0';
-
-			if (*p != '\0' && *p != '#')
-			{
-				// Split into the first token (the /bin tool) and the rest (argv).
-				char *pArgs = p;
-				while (*pArgs != '\0' && *pArgs != ' ' && *pArgs != '\t') pArgs++;
-				if (*pArgs != '\0') { *pArgs++ = '\0'; while (*pArgs == ' ' || *pArgs == '\t') pArgs++; }
-
-				CString Path;
-				Path.Format ("SD:bin/%s.elf", p);		// run it like a shell command
-
-				m_Logger.Write (FromKernel, LogNotice, "autostart: %s %s",
-						(const char *) Path, pArgs);
-				if (!ExecPath ((const char *) Path, pArgs))
-					m_Logger.Write (FromKernel, LogWarning,
-							"autostart: cannot run %s", (const char *) Path);
-			}
-			nLen = 0;
-		}
-		else if (nLen < sizeof (Line) - 1)
-		{
-			Line[nLen++] = c;
-		}
-	}
-
-	delete [] pList;
 }
 
 CKernel::~CKernel (void)

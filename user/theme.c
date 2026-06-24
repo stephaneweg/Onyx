@@ -60,7 +60,7 @@ static int put_color (char *b, unsigned c)
 static void load_current (void)
 {
 	unsigned act = 0x00FFC878, inact = 0x008090A0, text = 0x00FFFFFF, wall = 0x004878B0;
-	if (app_ini_load_path ("SD:skins/theme.txt") > 0)
+	if (app_ini_load_path ("SD:etc/theme.txt") > 0)
 	{
 		act   = parse_color (app_ini_get (0, "active", 0),   act);
 		inact = parse_color (app_ini_get (0, "inactive", 0), inact);
@@ -81,11 +81,11 @@ static void load_current (void)
 static void apply (void)
 {
 	char buf[160]; int p = 0;
-	// SD:skins/theme.txt
+	// SD:etc/theme.txt
 	ax_strcat (buf, sizeof buf, &p, "active=");   p += put_color (buf + p, pk[0].color); buf[p++] = '\n';
 	ax_strcat (buf, sizeof buf, &p, "inactive="); p += put_color (buf + p, pk[1].color); buf[p++] = '\n';
 	ax_strcat (buf, sizeof buf, &p, "text=");     p += put_color (buf + p, pk[2].color); buf[p++] = '\n';
-	kapi_save_file ("SD:skins/theme.txt", buf, p);
+	kapi_save_file ("SD:etc/theme.txt", buf, p);
 
 	// voronoy wallpaper colour
 	p = 0;

@@ -1669,8 +1669,12 @@ int kapi_meminfo (unsigned long *pTotalKB, unsigned long *pFreeKB,
 {
 	CMemorySystem *pMem = CMemorySystem::Get ();
 	unsigned long nTotal = pMem != 0 ? (unsigned long) pMem->GetMemSize () : 0;
-	unsigned long nHeap  = pMem != 0 ? (unsigned long) pMem->GetHeapFreeSpace (HEAP_ANY) : 0;
-	unsigned long nPager = (unsigned long) CMemorySystem::GetPagerFreeSpace ();
+	// Free = never-allocated region + freed-and-reusable blocks/pages, for both the
+	// heap and the page allocator -- so it rises again when memory is freed.
+	unsigned long nHeap  = pMem != 0 ? (unsigned long) (pMem->GetHeapFreeSpace (HEAP_ANY)
+						 + pMem->GetHeapFreeListSpace ()) : 0;
+	unsigned long nPager = (unsigned long) (CMemorySystem::GetPagerFreeSpace ()
+						 + CMemorySystem::GetPagerFreeListSpace ());
 	unsigned long nApp   = (unsigned long) g_nUserPages * (unsigned long) KPAGE_SIZE;
 
 	if (pTotalKB) *pTotalKB = nTotal / 1024;
