@@ -203,6 +203,36 @@ public:
 	void draw (Ui &ui) override;
 };
 
+// 9-slice bitmap skin (user-side port of the kernel CSkin): a BMP holding `count`
+// states stacked vertically (button.bmp: normal/hover/pressed), margins mark the fixed
+// corners/edges, the middle tiles. Magenta (0xFF00FF) is transparent.
+class Skin
+{
+public:
+	unsigned *pix; int imgW, imgH, count, sw, sh, ml, mr, mt, mb;
+	Skin () : pix (0), imgW (0), imgH (0), count (1), sw (0), sh (0), ml (0), mr (0), mt (0), mb (0) {}
+	~Skin () { delete[] pix; }
+	bool valid () const { return pix != 0 && sh > 0; }
+	bool load (const char *path, int cnt, int l, int r, int t, int b)
+	{
+		delete[] pix; pix = bmp_decode (path, &imgW, &imgH);
+		if (pix == 0) { sh = 0; return false; }
+		count = cnt < 1 ? 1 : cnt; sw = imgW; sh = imgH / count;
+		ml = l; mr = r; mt = t; mb = b;
+		return sh > 0;
+	}
+	void blit (Ui &ui, int sx, int sy, int bw, int bh, int dx, int dy);	// magenta-keyed sub-rect
+	void drawOn (Ui &ui, int state, int x, int y, int w, int h);		// 9-slice
+};
+
+// The shared button skin, loaded once on first use (flat fallback if absent).
+static inline Skin &buttonSkin ()
+{
+	static Skin s; static bool tried = false;
+	if (!tried) { tried = true; s.load ("SD:/skins/button.bmp", 3, 6, 6, 6, 6); }
+	return s;
+}
+
 // ============================================================================
 // Ui -- the widget container + event/draw pump. Owns its widgets.
 // ============================================================================
@@ -358,14 +388,23 @@ inline void Label::draw (Ui &ui)
 
 inline void Button::draw (Ui &ui)
 {
-	unsigned face = ui.col_face;
+	int tw = uk_len (text) * ui.fw;
+	int tx = x + (w - tw) / 2, ty = y + (h - ui.fh) / 2;
+	Skin &bs = buttonSkin ();
+	if (bs.valid () && !disabled)				// skinned: 9-slice bitmap + black label
+	{
+		bs.drawOn (ui, pressed ? 2 : (hover ? 1 : 0), x, y, w, h);
+		if (focused) ui.frame (x + 1, y + 1, w - 2, h - 2, ui.col_accent);
+		kapi_draw_text (tx, ty, text, 0x00000000);
+		return;
+	}
+	unsigned face = ui.col_face;				// flat fallback (no skin / disabled)
 	if (disabled || pressed)     face = ui.col_face_dn;
 	else if (hover)              face = ui.col_face_hi;
 	ui.fill (x, y, w, h, face);
 	ui.frame (x, y, w, h, ui.col_border);
 	if (focused && !disabled) ui.frame (x + 1, y + 1, w - 2, h - 2, ui.col_accent);
-	int tw = uk_len (text) * ui.fw;
-	kapi_draw_text (x + (w - tw) / 2, y + (h - ui.fh) / 2, text, disabled ? ui.col_dis : ui.col_text);
+	kapi_draw_text (tx, ty, text, disabled ? ui.col_dis : ui.col_text);
 }
 
 inline void Checkbox::draw (Ui &ui)
@@ -642,6 +681,65 @@ inline void Icon::draw (Ui &ui)
 	}
 	if (badged)							// "running" green triangle, bottom-left
 		for (int t = 0; t < 9; t++) ui.fill (x + 2, y + h - 2 - t, (8 - t) + 1, 1, 0x0040E060);
+}
+
+// Copy a (bw x bh) sub-rect of the skin image at (sx,sy) to (dx,dy) in the canvas,
+// skipping the magenta transparency key and clipping to the canvas bounds.
+inline void Skin::blit (Ui &ui, int sx, int sy, int bw, int bh, int dx, int dy)
+{
+	for (int yy = 0; yy < bh; yy++)
+	{
+		int py = dy + yy, syy = sy + yy;
+		if (py < 0 || py >= ui.H || syy < 0 || syy >= imgH) continue;
+		for (int xx = 0; xx < bw; xx++)
+		{
+			int px = dx + xx, sxx = sx + xx;
+			if (px < 0 || px >= ui.W || sxx < 0 || sxx >= imgW) continue;
+			unsigned c = pix[syy * imgW + sxx];
+			if (c == 0x00FF00FF) continue;			// transparent key
+			ui.fb[py * ui.W + px] = c;
+		}
+	}
+}
+
+// 9-slice draw of state `state` into the (x,y,w,h) box: fixed corners, edges tiled along
+// one axis, the centre filled with the skin's middle pixel (port of the kernel CSkin::DrawOn).
+inline void Skin::drawOn (Ui &ui, int state, int x, int y, int w, int h)
+{
+	if (!valid ()) return;
+	int sy = sh * (state % count);
+	if (w == sw && h == sh) { blit (ui, 0, sy, sw, sh, x, y); return; }	// exact size
+
+	int midW = sw - ml - mr, midH = sh - mt - mb;		// source middle band
+	int outW = w  - ml - mr, outH = h  - mt - mb;		// dest middle band
+
+	if (outW > 0 && outH > 0)				// centre fill (single middle pixel)
+		ui.fill (x + ml, y + mt, outW, outH, pix[(sy + sh / 2) * imgW + (sw / 2)]);
+
+	if (midW > 0 && outW > 0)				// top/bottom edges, tiled horizontally
+	{
+		int fillR = x + w - mr;
+		for (int tx = x + ml; tx < fillR; tx += midW)
+		{
+			int tcw = midW; if (tx + tcw > fillR) tcw = fillR - tx;
+			if (mt > 0) blit (ui, ml, sy,          tcw, mt, tx, y);
+			if (mb > 0) blit (ui, ml, sy + sh - mb, tcw, mb, tx, y + h - mb);
+		}
+	}
+	if (midH > 0 && outH > 0)				// left/right edges, tiled vertically
+	{
+		int fillB = y + h - mb;
+		for (int ty = y + mt; ty < fillB; ty += midH)
+		{
+			int tch = midH; if (ty + tch > fillB) tch = fillB - ty;
+			if (ml > 0) blit (ui, 0,       sy + mt, ml, tch, x, ty);
+			if (mr > 0) blit (ui, sw - mr, sy + mt, mr, tch, x + w - mr, ty);
+		}
+	}
+	if (ml > 0 && mt > 0) blit (ui, 0,       sy,          ml, mt, x,          y);		// corners
+	if (mr > 0 && mt > 0) blit (ui, sw - mr, sy,          mr, mt, x + w - mr, y);
+	if (ml > 0 && mb > 0) blit (ui, 0,       sy + sh - mb, ml, mb, x,          y + h - mb);
+	if (mr > 0 && mb > 0) blit (ui, sw - mr, sy + sh - mb, mr, mb, x + w - mr, y + h - mb);
 }
 
 } // namespace ui

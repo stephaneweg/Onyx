@@ -32,8 +32,10 @@ extern "C" {
 	void __cxa_pure_virtual (void) { kapi_exit (127); for (;;) {} }
 	// Static-destructor registration -- accepted and ignored (see header note).
 	void *__dso_handle = 0;
-	inline int __cxa_atexit (void (*) (void *), void *, void *) { return 0; }
-	inline int atexit (void (*) (void)) { return 0; }
+	// NOT inline: a function-local static with a non-trivial destructor emits a real
+	// CALL to atexit (we build -fno-use-cxa-atexit), so it needs an emitted definition.
+	int __cxa_atexit (void (*) (void *), void *, void *) { return 0; }
+	int atexit (void (*) (void)) { return 0; }
 }
 
 #endif // ONYX_CPP_HPP
