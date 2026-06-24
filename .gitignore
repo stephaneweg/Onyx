@@ -1,8 +1,6 @@
-# Upstream Circle dependency (HAL): cloned separately into ../circle, NOT vendored
-# here (it is ~256 MB / 1700+ files). We pin the exact upstream commit and keep our
-# local changes as a tracked patch series -- see circle-patches/README.md to set it
-# up (clone @ Step51 + git apply circle-patches/*.patch).
-/circle/
+# Circle (the HAL) is a git SUBMODULE -> our fork github.com/stephaneweg/circle,
+# branch `onyx` (= upstream Step51 + our patches). It is therefore tracked, not
+# ignored. After cloning Onyx:  git submodule update --init  (then build Circle).
 
 # Build artifacts
 *.o

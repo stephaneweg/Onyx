@@ -1,3 +1,4 @@
 [submodule "circle"]
 	path = circle
 	url = https://github.com/stephaneweg/circle.git
+	branch = onyx
