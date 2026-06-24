@@ -361,14 +361,15 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 25`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 26`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
 v2 = `set_click_handler`, v3 = `opendir/readdir`, v4 = streams/spawn, … v16 =
 `set_window_theme`, v17 = `chdir`/`getcwd`, v18 = `stdin_stream`/`stdout_stream`,
 v19 = `klog_read`, v20 = `set_verbose`/`get_verbose`, v21 = the TCP socket calls,
-v22 = `set_pointer_handler`, v23 = `meminfo`, v24 = `sbrk`, v25 = `reboot`).
+v22 = `set_pointer_handler`, v23 = `meminfo`, v24 = `sbrk`, v25 = `reboot`,
+v26 = `kbd_ready`).
 
 ### Categories of exposed functions
 
@@ -384,7 +385,7 @@ v22 = `set_pointer_handler`, v23 = `meminfo`, v24 = `sbrk`, v25 = `reboot`).
 | Streams/processes | `pipe`, `file_in/out`, `stream_read(_nb)/write/close/eof`, `stdin_read`, `stdout_write`, `spawn`, `wait`, `proc_done`, `get_args` |
 | Modal dialogs | `message_box`, `file_open`, `file_save` |
 | Desktop | `screen_size`, `set_wallpaper`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
-| Appearance/keyboard | `set_window_theme`, `set_keymap`, `get_keymap`, `app_dir` |
+| Appearance/keyboard | `set_window_theme`, `set_keymap`, `get_keymap`, `kbd_ready` (USB keyboard attached? — the `keyb` tool polls it at boot, v26), `app_dir` |
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close` |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
@@ -609,7 +610,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 25 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 26 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

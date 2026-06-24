@@ -17,6 +17,7 @@
 #define BTN_Y	368
 #define MAXAPPS	48
 #define MAXKV	32
+#define SBW	12			// app-list scrollbar width
 
 static unsigned *fb;
 static int g_fw = 8, g_fh = 18, g_vis = 1;
@@ -93,22 +94,48 @@ static void save_config (void)
 
 static void fill (int x, int y, int w, int h, unsigned c) { ax_fill (fb, W, H, x, y, w, h, c); }
 
+// App-list scrollbar geometry (x0/track-top/track-h/thumb-y/thumb-h). 0 if not needed.
+static int sb_geom (int *px0, int *pty0, int *pth, int *pthy, int *pthh)
+{
+	if (g_napps <= g_vis) return 0;
+	int ty0 = LISTY, th = g_vis * g_fh, maxtop = g_napps - g_vis;
+	int thh = th * g_vis / g_napps; if (thh < 16) thh = 16;
+	*px0 = LW - SBW; *pty0 = ty0; *pth = th;
+	*pthy = ty0 + (th - thh) * g_apptop / maxtop; *pthh = thh;
+	return 1;
+}
+static void draw_app_scrollbar (void)
+{
+	int x0, ty0, th, thy, thh;
+	if (!sb_geom (&x0, &ty0, &th, &thy, &thh)) return;
+	fill (x0, ty0, SBW, th, 0x00202a34);			// track
+	fill (x0 + 1, thy, SBW - 2, thh, 0x005a7088);		// thumb
+}
+// Keep app `idx` within the visible window (called when the selection changes).
+static void scroll_to_show (int idx)
+{
+	if (idx < g_apptop) g_apptop = idx;
+	if (idx >= g_apptop + g_vis) g_apptop = idx - g_vis + 1;
+}
+
 static void redraw (void)
 {
 	fill (0, 0, W, H, 0x00202830);
 	fill (0, 0, LW, H, 0x00283440);				// left pane
 	kapi_draw_text (8, 6, "Apps", 0x0090c0ff);
-	if (g_appsel >= 0 && g_appsel < g_apptop) g_apptop = g_appsel;
-	if (g_appsel >= g_apptop + g_vis) g_apptop = g_appsel - g_vis + 1;
+	int maxtop = g_napps - g_vis; if (maxtop < 0) maxtop = 0;	// clamp the scroll offset
+	if (g_apptop > maxtop) g_apptop = maxtop;
 	if (g_apptop < 0) g_apptop = 0;
+	int listw = (g_napps > g_vis) ? LW - SBW : LW;			// room for the scrollbar
 	for (int r = 0; r < g_vis; r++)
 	{
 		int idx = g_apptop + r;
 		if (idx >= g_napps) break;
 		int y = LISTY + r * g_fh;
-		if (idx == g_appsel) fill (0, y, LW, g_fh, 0x00355070);
+		if (idx == g_appsel) fill (0, y, listw, g_fh, 0x00355070);
 		kapi_draw_text (8, y + 1, g_app[idx], 0x00e0e0e0);
 	}
+	draw_app_scrollbar ();
 
 	// Right pane header.
 	kapi_draw_text (KEYX, 6, g_cur[0] ? g_cur : "(select an app)", 0x00ffd070);
@@ -155,10 +182,20 @@ static void on_click (unsigned long s, int ev, long val)
 	int row = (y - LISTY) / g_fh;
 	if (y < LISTY || row < 0) { g_focus = -1; return; }
 
-	if (x < LW)						// left: pick an app
+	if (x < LW)						// left pane
 	{
-		int idx = g_apptop + row;
-		if (idx < g_napps) { g_appsel = idx; load_config (g_app[idx]); }
+		int x0, ty0, th, thy, thh;			// scrollbar: jump (thumb-centered)
+		if (sb_geom (&x0, &ty0, &th, &thy, &thh) && x >= x0 && y >= ty0 && y < ty0 + th)
+		{
+			int maxtop = g_napps - g_vis;
+			int t = (y - ty0 - thh / 2) * maxtop / (th - thh);
+			if (t < 0) t = 0;
+			if (t > maxtop) t = maxtop;
+			g_apptop = t;
+			return;
+		}
+		int idx = g_apptop + row;			// else pick an app
+		if (idx < g_napps) { g_appsel = idx; scroll_to_show (idx); load_config (g_app[idx]); }
 		return;
 	}
 	if (g_cur[0] == '\0') return;				// right: edit a cell
@@ -185,8 +222,8 @@ static void on_key (unsigned long s, int ev, long key)
 	}
 	switch (key)						// navigating
 	{
-	case KEY_UP:   if (g_appsel > 0) { g_appsel--; load_config (g_app[g_appsel]); } break;
-	case KEY_DOWN: if (g_appsel < g_napps - 1) { g_appsel++; load_config (g_app[g_appsel]); } break;
+	case KEY_UP:   if (g_appsel > 0) { g_appsel--; scroll_to_show (g_appsel); load_config (g_app[g_appsel]); } break;
+	case KEY_DOWN: if (g_appsel < g_napps - 1) { g_appsel++; scroll_to_show (g_appsel); load_config (g_app[g_appsel]); } break;
 	case KEY_PGUP: g_kvtop -= g_vis - 1; if (g_kvtop < 0) g_kvtop = 0; break;
 	case KEY_PGDN: g_kvtop += g_vis - 1; if (g_kvtop > g_nkv) g_kvtop = g_nkv; break;
 	}

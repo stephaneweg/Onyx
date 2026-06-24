@@ -1074,6 +1074,14 @@ int kapi_set_keymap (const char *pName)
 	return KernelSetKeyMap (pName) ? 1 : 0;
 }
 
+// 1 if a USB keyboard is attached & ready, else 0 (ABI v26). The `keyb` tool polls
+// this at boot before applying a layout, since it may run before USB enumeration
+// completes -- the kernel no longer applies any layout from cmdline.
+int kapi_kbd_ready (void)
+{
+	return KernelKeyboardReady () ? 1 : 0;
+}
+
 // Verbose kernel logging: toggle (KernelSetVerbose, defined in kernel.cpp) + read.
 // The `verbose` command persists the choice to SD:system.ini itself.
 int kapi_set_verbose (int bOn) { KernelSetVerbose (bOn ? TRUE : FALSE); return 1; }

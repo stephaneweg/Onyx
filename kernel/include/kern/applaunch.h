@@ -31,6 +31,7 @@ boolean ExecPath (const char *pElfPath, const char *pArgs);
 // C++ header) so sys/kapi.cpp sees C++ linkage, matching the kernel.cpp definitions.
 boolean KernelSetKeyMap (const char *pName);
 const char *KernelGetKeyMap (void);
+boolean KernelKeyboardReady (void);		// is a USB keyboard attached? (kapi_kbd_ready)
 
 // Re-tint the window chrome at runtime (theme editor Apply). Defined in kernel.cpp.
 void ApplyWindowTheme (u32 nActiveTint, u32 nInactiveTint, u32 nTitleTextColor);

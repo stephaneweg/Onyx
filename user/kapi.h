@@ -199,6 +199,10 @@ static inline void kapi_tcp_close (int sock) { KT->tcp_close (sock); }
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }
 
+// 1 if a USB keyboard is attached & ready, else 0 (ABI v26). The `keyb` tool polls
+// this at boot before applying a layout (it can run before USB enumeration finishes).
+static inline int kapi_kbd_ready (void) { return KT->kbd_ready (); }
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }

@@ -37,6 +37,17 @@ int main (void)
 	}
 	name[n] = '\0';
 
+	// Wait for the keyboard to finish USB enumeration before applying the layout: at
+	// boot, autostart runs `keyb FR` before the keyboard is up. Poll the kernel for
+	// readiness (ABI v26) up to ~5 s. The kernel no longer applies any cmdline layout.
+	int waited = 0;
+	while (!kapi_kbd_ready () && waited < 5000) { kapi_msleep (50); waited += 50; }
+	if (!kapi_kbd_ready ())
+	{
+		ax_putln ("keyb: no keyboard attached");
+		return 1;
+	}
+
 	if (kapi_set_keymap (name))
 	{
 		ax_puts ("keyboard layout -> ");

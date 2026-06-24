@@ -283,6 +283,11 @@ public:
 		return s_pThis->m_pKeyboard->GetKeyMap ()->LoadMap (pName);
 	}
 
+	// Is a USB keyboard attached and ready right now? Exposed to userspace via
+	// kapi_kbd_ready so the `keyb` tool can poll before applying a layout at boot
+	// (it may run before USB enumeration finishes).
+	static boolean HasKeyboard (void) { return s_pThis != 0 && s_pThis->m_pKeyboard != 0; }
+
 	void Run (void) override
 	{
 		Detect ();			// devices already present at boot
@@ -404,14 +409,12 @@ const char *KernelGetKeyMap (void)
 	return g_szKeyMap;
 }
 
-// Record the boot-time layout name (from cmdline keymap=) so ps/keyb can report it
-// and a keyboard hot-plug re-applies it. The map itself is loaded by Circle's CKeyMap.
-void KernelInitKeyMap (const char *pName)
+// Keyboard readiness, exposed to userspace (kapi_kbd_ready). The `keyb` tool polls
+// this at boot and applies the layout only once the keyboard has enumerated -- the
+// kernel no longer applies any layout itself (cmdline keymap= is ignored).
+boolean KernelKeyboardReady (void)
 {
-	unsigned i = 0;
-	if (pName != 0)
-		for (; pName[i] != '\0' && i < sizeof (g_szKeyMap) - 1; i++) g_szKeyMap[i] = pName[i];
-	g_szKeyMap[i] = '\0';
+	return CInputTask::HasKeyboard ();
 }
 
 // Verbose flag control, exposed to the kapi layer (kapi_set_verbose / get_verbose).
@@ -526,9 +529,8 @@ CKernel::CKernel (void)
 	g_nScreenWidth  = OPT_W (m_Options);
 	g_nScreenHeight = OPT_H (m_Options);
 
-	// Record the boot keyboard layout (cmdline keymap=, e.g. "fr"); the map itself is
-	// loaded by Circle's CKeyMap. keyb / the theme editor can switch it at runtime.
-	KernelInitKeyMap (m_Options.GetKeyMap ());
+	// Keyboard layout is NOT applied here: cmdline keymap= is ignored. Userspace owns
+	// it -- the autostart `keyb <XX>` tool polls kapi_kbd_ready then kapi_set_keymap.
 }
 
 // Read a whole file from the mounted SD card into a freshly allocated buffer.

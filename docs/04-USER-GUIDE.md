@@ -334,12 +334,16 @@ top.*
 
 ## 10. Keyboard and layouts
 
-The layout at boot comes from `keymap=` in `cmdline.txt`. To change it **on the fly**:
+The layout at boot is set by the autostart line **`keyb FR`** (in `SD:/etc/autostart`) —
+the kernel no longer reads `keymap=` from `cmdline.txt`. The `keyb` tool waits for the USB
+keyboard to finish enumerating, then applies the layout, so it works even though autostart
+runs early. To change it **on the fly**:
 
 - **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `ES`, `IT`, `DV`). `keyb` alone
   shows the current layout and the list.
 - **Graphically**: the **theme editor** (`theme`) offers a dropdown of layouts, applied
   live.
+- **Permanently**: edit the `keyb` line in `SD:/etc/autostart`.
 
 ## 11. Customizing the appearance
 

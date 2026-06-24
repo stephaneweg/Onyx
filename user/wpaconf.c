@@ -156,7 +156,16 @@ static int save_conf (void)
 static void on_show (int id)  { (void) id; ui_set_password (&g_ui, id_psk, !ui_checked (&g_ui, id_show)); }
 static void on_save (int id)  { (void) id; if (save_conf ()) set_status ("Saved. Reboot to apply."); }
 static void on_reload (int id){ (void) id; load_conf (); }
-static void on_reboot (int id){ (void) id; if (save_conf ()) { set_status ("Saved -- rebooting..."); kapi_reboot (); } }
+static void on_reboot (int id)
+{
+	(void) id;
+	if (!save_conf ()) return;			// validation failed -> status already set
+	// Saved; confirm before the (destructive) reboot. Kernel modal, app-modal + sync.
+	if (kapi_message_box ("Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO))
+		kapi_reboot ();				// does not return
+	else
+		set_status ("Saved. Reboot later to apply.");
+}
 
 static void on_evt (unsigned long s, int ev, long v) { ui_on_event (&g_ui, s, ev, v); }
 

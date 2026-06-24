@@ -100,6 +100,7 @@ void kapi_set_pointer_handler (gui_handler);
 int kapi_meminfo (unsigned long *, unsigned long *, unsigned long *, unsigned *);
 void *kapi_sbrk (long);
 void kapi_reboot (void);
+int kapi_kbd_ready (void);
 void *kapi_opendir (const char *);
 int kapi_readdir (void *, struct kapi_dirent *);
 void kapi_closedir (void *);
@@ -246,4 +247,5 @@ void KApiTableInit (void)
 	t->meminfo           = kapi_meminfo;
 	t->sbrk              = kapi_sbrk;
 	t->reboot            = kapi_reboot;
+	t->kbd_ready         = kapi_kbd_ready;
 }

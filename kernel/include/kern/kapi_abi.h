@@ -17,7 +17,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-#define KAPI_ABI_VERSION	25
+#define KAPI_ABI_VERSION	26
 
 #ifdef __cplusplus
 extern "C" {
@@ -259,6 +259,12 @@ struct TKApiTable
 	// apply settings that are only read at boot -- e.g. wpaconf rewriting the WLAN
 	// config in SD:/etc/wpa_supplicant.conf, which the kernel reads during bring-up.
 	void (*reboot) (void);
+
+	// --- v26 additions (keyboard readiness) ---
+	// 1 if a USB keyboard is attached & ready, else 0. The kernel no longer applies
+	// any keyboard layout from cmdline; the `keyb` tool (run from autostart) polls
+	// this then calls set_keymap -- it may start before USB enumeration finishes.
+	int (*kbd_ready) (void);
 };
 
 #ifdef __cplusplus
