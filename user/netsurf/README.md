@@ -77,9 +77,35 @@ working around the two host tools this environment lacks (`gperf`, and no passwo
 
    → `user/netsurf/<lib>/<lib>.a` for each library.
 
+## Fetcher (brick 8)
+
+[`onyx_fetch.c`](onyx_fetch.c) is an Onyx **fetch scheme handler** for NetSurf — the
+equivalent of `content/fetchers/curl.c` but driving the Onyx TCP kapis instead of libcurl.
+It implements `struct fetcher_operation_table` (modelled on the simple `data:` fetcher):
+`setup()` rings a context, `poll()` runs each fetch to completion and delivers
+`FETCH_HEADER` / `FETCH_DATA` / `FETCH_FINISHED` (or `FETCH_ERROR`) via
+`fetch_send_callback()`. Transport is a blocking HTTP/1.0 GET over
+`kapi_tcp_connect/send/recv/close` into a growable buffer, with **gzip/deflate** decoding
+via zlib. Registered for the `http` scheme by `fetch_onyx_register()`.
+
+It **compiles clean against the real NetSurf fetcher API** (verified with `-fsyntax-only`
+against `content/fetch.h` + `content/fetchers.h` + zlib + the kapi). First cut: `http://`
++ GET + gzip; `https://` registers separately once the C++ TLS transport
+(`user/tls/onyx_tls.hpp`) is wired in; a non-blocking, `fdset`-driven version comes later.
+
+### compat/ — platform shims
+
+NetSurf's `utils/inet.h` (pulled into every core TU via `content/fetch.h`) needs the BSD
+sockets headers. newlib ships `<sys/select.h>` (fd_set) but not `<sys/socket.h>` /
+`<netinet/in.h>` / `<arpa/inet.h>`, so [`compat/`](compat/) provides minimal versions (just
+the types NetSurf references — Onyx does TCP through the kapi, not BSD sockets). These are
+the start of the platform layer the full core build (brick 9) needs.
+
 ## Status
 
 All eight core libraries **cross-build and link clean** against newlib (no undefined
-symbols across the whole stack). Not yet exercised at runtime. Next (brick 8): the NetSurf
-fetch scheme over `HttpClient` (+ gzip via zlib), then the framebuffer frontend wiring it to
-the `user/nsfb` Onyx surface and the `user/img` image decoders.
+symbols across the whole stack), and the Onyx **fetcher compiles against the NetSurf API**.
+Not yet exercised at runtime. The remaining work is **brick 9**: build the NetSurf core +
+desktop with an Onyx frontend (a `gui_table` + the platform compat layer started in
+`compat/`), register `onyx_fetch`, and wire the framebuffer frontend to the `user/nsfb`
+Onyx surface and the `user/img` image decoders. Then brick 10: secure TLS (CA bundle).

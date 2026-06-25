@@ -380,8 +380,12 @@ GCC 10's `-fno-common`), and `pread`/`pwrite` were added to `onyx_syscalls.c`. C
 upstream buildsystem normally generates with host tools is reproduced in the Makefile: perl
 for the libparserutils charset aliases and libhubbub entities, a host-compiled `gen_parser`
 for the libcss property parsers, and a gperf-free element-type table for libhubbub
-([`user/netsurf/gen/`](../user/netsurf/gen/)). This is NetSurf brick 7; the fetcher and
-framebuffer frontend (wiring it to `user/nsfb` + `user/img`) are the remaining bricks.
+([`user/netsurf/gen/`](../user/netsurf/gen/)). This is NetSurf brick 7. Brick 8 — an Onyx
+**fetch scheme handler** ([`user/netsurf/onyx_fetch.c`](../user/netsurf/onyx_fetch.c)) that
+drives the NetSurf fetch API over the Onyx TCP kapis (+ gzip via zlib), the curl-fetcher's
+role without libcurl — is drafted and compiles against the real fetcher API. The remaining
+brick is the NetSurf core + an Onyx framebuffer frontend wiring it all to `user/nsfb` +
+`user/img`.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
