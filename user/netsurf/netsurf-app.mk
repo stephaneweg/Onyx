@@ -145,11 +145,13 @@ link: objs
 # regenerated here, so they are .gitignore'd, not committed. Messages is filtered out of
 # FatMessages directly (the buildsystem's split-messages.pl needs perl HTML::Entities).
 SDCARD ?= $(abspath $(HERE)../../sdcard)
+PYTHON ?= python3
 .PHONY: stage
 stage: link
 	@mkdir -p $(SDCARD)/apps/netsurf.app $(SDCARD)/res/en
 	cp $(OUT)/netsurf.elf $(SDCARD)/apps/netsurf.app/main.elf
 	printf '# Onyx application metadata\nname = NetSurf\ncategory = Internet\n' > $(SDCARD)/apps/netsurf.app/app.txt
+	$(PYTHON) $(HERE)gen-icon.py $(SDCARD)/apps/netsurf.app/icon.bmp
 	grep -E '^en\.(all|framebuffer)\.' $(NS)/resources/FatMessages | sed -E 's/^en\.(all|framebuffer)\.//' > $(SDCARD)/res/Messages
 	for f in default.css quirks.css adblock.css internal.css; do cp $(NS)/resources/$$f $(SDCARD)/res/; done
 	for f in welcome.html credits.html licence.html; do cp $(NS)/resources/en/$$f $(SDCARD)/res/; cp $(NS)/resources/en/$$f $(SDCARD)/res/en/; done
