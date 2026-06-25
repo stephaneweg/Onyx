@@ -66,7 +66,7 @@ FE_SRC := \
   $(wildcard $(FB)/fbtk/*.c)
 
 # Onyx glue
-ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)compat/onyx_compat.c
+ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
 GENFONT := $(OUT)/font-ns-sans.c
 
@@ -116,9 +116,12 @@ $(foreach p,$(FB_IMG),$(eval $(call IMG_RULE,$(p))))
 define CC_RULE
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(1))): $(1) $(OUT)/font-ns-sans.h
 	@mkdir -p $(OUT)/o
-	$(CC) $(CF) $(INC) -c $$< -o $$@
+	$$(CC) $$(CF) $$(INC) -c $$< -o $$@
 endef
 $(foreach s,$(ALL_SRC),$(eval $(call CC_RULE,$(s))))
+
+# the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
+$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
 
 objs: $(ALL_OBJ)
 
@@ -135,6 +138,23 @@ link: objs
 	  $(ALL_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
 	  $(LDLIBS) $(LDFLAGS) -o $(OUT)/netsurf.elf
 	@echo "netsurf.elf: $$(stat -c %s $(OUT)/netsurf.elf 2>/dev/null) bytes"
+
+# ---- stage onto the Onyx SD card ---------------------------------------
+# Installs the browser as a desktop app (apps/netsurf.app) + its runtime resources under
+# res/ (NETSURF_FB_RESPATH=/res -> SD:/res). The NetSurf resources are GPL upstream content
+# regenerated here, so they are .gitignore'd, not committed. Messages is filtered out of
+# FatMessages directly (the buildsystem's split-messages.pl needs perl HTML::Entities).
+SDCARD ?= $(abspath $(HERE)../../sdcard)
+.PHONY: stage
+stage: link
+	@mkdir -p $(SDCARD)/apps/netsurf.app $(SDCARD)/res/en
+	cp $(OUT)/netsurf.elf $(SDCARD)/apps/netsurf.app/main.elf
+	printf '# Onyx application metadata\nname = NetSurf\ncategory = Internet\n' > $(SDCARD)/apps/netsurf.app/app.txt
+	grep -E '^en\.(all|framebuffer)\.' $(NS)/resources/FatMessages | sed -E 's/^en\.(all|framebuffer)\.//' > $(SDCARD)/res/Messages
+	for f in default.css quirks.css adblock.css internal.css; do cp $(NS)/resources/$$f $(SDCARD)/res/; done
+	for f in welcome.html credits.html licence.html; do cp $(NS)/resources/en/$$f $(SDCARD)/res/; cp $(NS)/resources/en/$$f $(SDCARD)/res/en/; done
+	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(NS)/resources/ca-bundle $(SDCARD)/res/
+	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
 
 clean:
 	rm -rf $(OUT)
