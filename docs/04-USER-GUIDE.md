@@ -451,6 +451,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **mandelbrot** | Fractal explorer (Mandelbrot, Julia, Burning Ship, Tricorn via the dropdown). **Click** = zoom in (re-centers); `o` = zoom out; `r` = reset. |
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
 | **irc** | IRC client over Wi-Fi. Connects to the server/channel from `config.ini`, shows the conversation, type to chat. Commands: `/join #chan`, `/msg nick text`, `/nick name`, `/me action`, `/raw …`, `/quit`. Needs the network up (see §3). |
+| **httpc** | A mouse-driven **text web browser** (`http://` and `https://`). Renders the page text with **hyperlinks in blue** (click to follow), and handles simple **forms** (text fields, checkboxes, dropdowns, buttons → GET/POST). Navbar: **<** back, **>** forward, an **address bar** (click to type, Enter or **Go** to load); the right-hand scrollbar (or PgUp/PgDn/arrows) scrolls. Needs the network up (see §3). |
 | **wpaconf** (Wi-Fi Settings) | Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID, password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **voronoy** | Wallpaper generator (launched at boot; no window). |
 
