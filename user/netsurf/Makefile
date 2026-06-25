@@ -37,8 +37,11 @@ GEN := $(CURDIR)/gen
 # Same world as the newlib apps: hardware FP, PIC/SSP off, NOT -nostdlib (these use newlib).
 # -fcommon: this code predates GCC 10's -fno-common default and relies on tentative globals
 # being merged (e.g. libcss's `_ALIGNED`); without it the property parsers multiply-define it.
+# -DNDEBUG: RELEASE build -- disables asserts AND the libraries' debug logging. Crucial:
+# libhubbub's treebuilder otherwise printf()s its insertion mode for EVERY token (a debug
+# hook), which floods the kernel log and is a major slowdown. Always build these -DNDEBUG.
 CF = -mcpu=cortex-a72 -O2 -std=c99 -fno-pic -fno-pie -fno-stack-protector \
-     -ffunction-sections -fdata-sections -fcommon \
+     -ffunction-sections -fdata-sections -fcommon -DNDEBUG \
      -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L
 
 I_WAP := -I$(NS)/libwapcaplet/include

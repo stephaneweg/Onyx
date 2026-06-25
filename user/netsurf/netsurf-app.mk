@@ -35,7 +35,7 @@ JPEG := $(LIBROOT)/jpeg-9f
 ZLIB := $(LIBROOT)/zlib-1.3.1
 
 CF = -mcpu=cortex-a72 -O2 -std=c99 -fno-pic -fno-pie -fno-stack-protector -fcommon \
-     -Dnsframebuffer -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L \
+     -Dnsframebuffer -DNDEBUG -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L \
      -include $(HERE)compat/onyx_nsconfig.h
 INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
       -I$(HERE)compat -I$(HERE)gen -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
