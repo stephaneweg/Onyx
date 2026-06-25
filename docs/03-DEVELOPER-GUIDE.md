@@ -381,11 +381,15 @@ upstream buildsystem normally generates with host tools is reproduced in the Mak
 for the libparserutils charset aliases and libhubbub entities, a host-compiled `gen_parser`
 for the libcss property parsers, and a gperf-free element-type table for libhubbub
 ([`user/netsurf/gen/`](../user/netsurf/gen/)). This is NetSurf brick 7. Brick 8 — an Onyx
-**fetch scheme handler** ([`user/netsurf/onyx_fetch.c`](../user/netsurf/onyx_fetch.c)) that
+**fetch scheme handler** ([`user/netsurf/onyx_fetch.c`](../user/netsurf/onyx_fetch.c)) —
 drives the NetSurf fetch API over the Onyx TCP kapis (+ gzip via zlib), the curl-fetcher's
-role without libcurl — is drafted and compiles against the real fetcher API. The remaining
-brick is the NetSurf core + an Onyx framebuffer frontend wiring it all to `user/nsfb` +
-`user/img`.
+role without libcurl. Brick 9 wires the whole **NetSurf core + its framebuffer frontend** to
+the `user/nsfb` `"onyx"` libnsfb surface + the `user/img` decoders: `make -f
+user/netsurf/netsurf-app.mk stage` builds `netsurf.elf` (182 TUs + the libs) and installs it
+as the `NetSurf` desktop app. **It runs on Onyx** — the window opens and real web pages render
+through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
+`-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
+tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
