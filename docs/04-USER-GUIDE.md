@@ -346,9 +346,12 @@ top.*
 ## 10. Keyboard and layouts
 
 The layout at boot is set by the autostart line **`keyb FR`** (in `SD:/etc/autostart`) —
-the kernel no longer reads `keymap=` from `cmdline.txt`. The `keyb` tool waits for the USB
-keyboard to finish enumerating, then applies the layout, so it works even though autostart
-runs early. To change it **on the fly**:
+the kernel no longer reads `keymap=` from `cmdline.txt`. `keyb` records the layout in a
+persistent kernel snapshot and the kernel installs it on the keyboard the moment it
+enumerates, so `keyb` needs **not** wait for USB — the layout is applied however late the
+keyboard appears. (This removed a boot race where `keyb` could time out before the keyboard
+enumerated and leave it with **no** map at all — a dead keyboard while the mouse worked.) To
+change it **on the fly**:
 
 - **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `BE`, `ES`, `IT`, `DV`). `keyb` alone
   shows the current layout and the list.

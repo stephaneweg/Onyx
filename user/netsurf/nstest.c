@@ -39,6 +39,40 @@ static css_error resolve_url (void *pw, const char *base, lwc_string *rel, lwc_s
 	return CSS_OK;
 }
 
+/* system-colour resolver (default.css styles form elements with system colours) */
+static css_error sys_color (void *pw, lwc_string *name, css_color *color)
+{
+	(void) pw; (void) name;
+	*color = 0xff000000;
+	return CSS_OK;
+}
+
+/* Parse a real CSS file from the SD card exactly as NetSurf's base-sheet path does
+ * (level DEFAULT + resolve + colour callbacks). A data_done != 0 here IS the CSSBase
+ * failure that loops NetSurf on the welcome page. */
+static void parse_css_file (const char *path)
+{
+	printf ("[3b] libcss %s ... ", path); fflush (stdout);
+	FILE *f = fopen (path, "rb");
+	if (!f) { printf ("FAIL open\n"); fflush (stdout); return; }
+	static char buf[20000];
+	size_t n = fread (buf, 1, sizeof buf - 1, f);
+	fclose (f);
+	css_stylesheet_params p; memset (&p, 0, sizeof p);
+	p.params_version = CSS_STYLESHEET_PARAMS_VERSION_1;
+	p.level = CSS_LEVEL_DEFAULT; p.charset = "UTF-8";
+	p.url = path; p.resolve = resolve_url; p.color = sys_color;
+	css_stylesheet *sh = 0;
+	css_error c = css_stylesheet_create (&p, &sh);
+	if (c != CSS_OK) { printf ("FAIL create=%d\n", c); fflush (stdout); return; }
+	css_error a = css_stylesheet_append_data (sh, (const uint8_t *) buf, n);
+	css_error d = css_stylesheet_data_done (sh);
+	printf ("read=%u append=%d data_done=%d %s\n", (unsigned) n, a, d,
+	        d == CSS_OK ? "OK" : "<<< FAILS (this is CSSBase)");
+	css_stylesheet_destroy (sh);
+	fflush (stdout);
+}
+
 int main (void)
 {
 	printf ("nstest: NetSurf brick smoke test\n");
@@ -83,6 +117,13 @@ int main (void)
 		}
 		fflush (stdout);
 	}
+
+	/* 3b -- parse the REAL UA stylesheets from the SD card (the welcome-page loop is
+	 * "CSSBase: Base stylesheet failed to load", i.e. default.css won't convert) */
+	parse_css_file ("/res/default.css");
+	parse_css_file ("/res/quirks.css");
+	parse_css_file ("/res/internal.css");
+	parse_css_file ("/res/user.css");
 
 	/* 4 -- libdom + hubbub: parse HTML into a DOM, read the root element name */
 	step ("4", "libdom+hubbub parse");

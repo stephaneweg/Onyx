@@ -864,10 +864,13 @@ int kapi_kbd_ready (void)
 }
 
 // Load a keymap from a SD:/etc/keymaps/<X>.kmap blob (ABI v27): header "OKM1" + u16
-// rows(128) + u16 cols(5) + rows*cols u16 table. The kernel validates + copies it
-// into the live keyboard; the caller (keyb) frees its buffer. name is recorded for
-// get_keymap/ps. Returns 1 on success, 0 on bad blob / no keyboard. Lets layouts be
-// added as files without recompiling the kernel.
+// rows(128) + u16 cols(5) + rows*cols u16 table. The kernel validates + copies it into
+// a persistent layout snapshot and (if a keyboard is attached) onto the live keyboard;
+// the caller (keyb) frees its buffer. name is recorded for get_keymap/ps. Returns 1
+// once the blob is accepted -- the snapshot is then applied to the keyboard whenever it
+// attaches, so this no longer requires a keyboard to be present (it used to return 0
+// "no keyboard", which lost the layout at boot if USB enumeration was slow). Returns 0
+// only on a malformed blob. Lets layouts be added as files without recompiling the kernel.
 int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 {
 	const unsigned char *p = (const unsigned char *) pData;

@@ -37,19 +37,13 @@ int main (void)
 	}
 	name[n] = '\0';
 
-	// Wait for the keyboard to finish USB enumeration before applying the layout: at
-	// boot, autostart runs `keyb FR` before the keyboard is up. Poll the kernel for
-	// readiness (ABI v26) up to ~5 s. The kernel no longer applies any cmdline layout.
-	int waited = 0;
-	while (!kapi_kbd_ready () && waited < 5000) { kapi_msleep (50); waited += 50; }
-	if (!kapi_kbd_ready ())
-	{
-		ax_putln ("keyb: no keyboard attached");
-		return 1;
-	}
-
-	// Prefer a layout file SD:/etc/keymaps/<NAME>.kmap (so new layouts need no kernel
-	// rebuild); fall back to the compiled-in country map. (See ax_load_keymap.)
+	// Apply the layout. We do NOT wait for / require the keyboard to be enumerated: the
+	// kernel records the layout in a persistent snapshot (kapi_set_keymap_data) and
+	// installs it on the keyboard whenever it attaches -- now or later. This kills the
+	// old boot race where a slow USB enumeration made `keyb` time out (the ~5 s
+	// kapi_kbd_ready poll) and leave the keyboard with no map at all: a dead keyboard
+	// while the mouse worked. A SD:/etc/keymaps/<NAME>.kmap file is preferred (so new
+	// layouts need no kernel rebuild); see ax_load_keymap.
 	int ok = ax_load_keymap (name);
 
 	if (ok)

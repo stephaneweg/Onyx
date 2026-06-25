@@ -292,8 +292,12 @@ public:
 	// (m_KeyMap[phyCode][table]). The bytes come from a SD:/etc/keymaps/<X>.kmap file
 	// (via kapi_set_keymap_data); we keep a copy (so a later keyboard re-plug restores
 	// the layout) and push it onto the live keyboard through the public SetEntry, so
-	// layouts need no kernel rebuild. Returns FALSE if the size is wrong or no keyboard
-	// is attached (the snapshot is still updated, and applied when one attaches).
+	// layouts need no kernel rebuild. Returns FALSE only if the blob is malformed
+	// (null / wrong size). When valid the snapshot is ALWAYS updated and TRUE returned;
+	// it is pushed onto the live keyboard at once if one is attached, otherwise applied
+	// on the next attach (Detect() re-applies g_KeyMap). So a layout set before the
+	// keyboard enumerates is never lost -- this is what kills the boot-time `keyb` race
+	// (slow USB enumeration used to make keyb give up, leaving the keyboard map-less).
 	static boolean SetKeyMapData (const void *pData, unsigned nLen)
 	{
 		if (pData == 0)
@@ -308,11 +312,12 @@ public:
 		for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
 			for (u8 nPhy = 0; nPhy <= PHY_MAX_CODE; nPhy++)
 				g_KeyMap[nPhy][nTable] = pMap[nPhy * (K_CTRLTAB + 1) + nTable];
-		if (s_pThis == 0 || s_pThis->m_pKeyboard == 0)
+		// Apply live if a keyboard is already up; otherwise the snapshot is enough --
+		// Detect() loads g_KeyMap onto the keyboard the moment it attaches.
+		if (s_pThis != 0 && s_pThis->m_pKeyboard != 0)
 		{
-			return FALSE;
+			LoadKeyMapTable (s_pThis->m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
 		}
-		LoadKeyMapTable (s_pThis->m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
 		return TRUE;
 	}
 
@@ -1006,6 +1011,19 @@ TShutdownMode CKernel::Run (void)
 			StartAutostart ();		// spawn the init program (cmdline init=)
 		}
 
+		// Start input BEFORE the boot-log pause. The input task pumps USB plug-and-play,
+		// so the keyboard/mouse enumerate during these 6 s and the layout that autostart's
+		// `keyb` records is installed on the keyboard by the time the desktop appears --
+		// instead of racing the old 6 s delay. The mouse/key handlers guard on
+		// CWindowManager::Get(), so events arriving before the compositor presents are
+		// harmless (nothing is drawn until the compositor takes over the display).
+		if (m_bUSB)
+		{
+			new CInputTask (&m_USB, &m_DeviceNameService,
+					m_2DGraphics.GetDisplay (), &m_Logger);
+			m_Logger.Write (FromKernel, LogNotice, "input started");
+		}
+
 		// Keep the boot log readable for a few seconds, THEN start the compositor
 		// (which takes over the display). If the screen goes black only after this,
 		// the problem is the framebuffer present, not the boot/loading path.
@@ -1019,15 +1037,6 @@ TShutdownMode CKernel::Run (void)
 		// task context.
 		new CReaperTask;
 		m_Logger.Write (FromKernel, LogNotice, "reaper started");
-
-		// Start input only after the compositor: the mouse handler drives the
-		// cursor + window raise/drag, which only make sense once we're presenting.
-		if (m_bUSB)
-		{
-			new CInputTask (&m_USB, &m_DeviceNameService,
-					m_2DGraphics.GetDisplay (), &m_Logger);
-			m_Logger.Write (FromKernel, LogNotice, "input started");
-		}
 	}
 	else
 	{
