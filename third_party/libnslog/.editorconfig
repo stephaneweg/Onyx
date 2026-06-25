@@ -1,0 +1,19 @@
+# This is an EditorConfig file
+# Learn more at http://editorconfig.org
+
+root = true
+
+# All files are UNIX-style and UTF-8
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+trim_trailing_whitespace = true
+
+# Makefiles use tabs
+[Makefile]
+indent_style = tab
+
+# C code uses tabs
+[*.{c,h}]
+indent_style = tab

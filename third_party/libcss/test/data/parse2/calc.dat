@@ -1,0 +1,195 @@
+#data
+* { height: calc(50vh + 10px)}
+#errors
+#expected
+| *
+|  height: /* -> 0px */ calc(50vh 10px + =)
+#reset
+
+#data
+* { line-height: calc(50vh + 10px)}
+#errors
+#expected
+| *
+|  line-height: /* -> 0any */ calc(50vh 10px + =)
+#reset
+
+#data
+* { line-height: calc( / 2)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { line-height: calc( + 2)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { line-height: calc(2 / 2px)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { width: calc(50vh + 10px)}
+#errors
+#expected
+| *
+|  width: /* -> 0px */ calc(50vh 10px + =)
+#reset
+
+#data
+* { z-index: calc(2 * 3)}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(2 3 * =)
+#reset
+
+#data
+* { z-index: calc(4 + 5 / 9)}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(4 5 9 / + =)
+#reset
+
+#data
+* { z-index: calc(1 + 2 + 3 + 4)}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(1 2 + 3 + 4 + =)
+#reset
+
+#data
+* { z-index: calc(1 + 2 * 3 + 4)}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(1 2 3 * + 4 + =)
+#reset
+
+#data
+* { z-index: calc((1 + 2) * (3 + 4))}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(1 2 + 3 4 + * =)
+#reset
+
+#data
+* { z-index: calc(1 + 2}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { z-index: calc(}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { z-index: calc}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { z-index: calc (1 + 2)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { z-index: calc(1)}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(1 =)
+#reset
+
+#data
+* { z-index: calc()}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { z-index: calc((1 + 2)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { z-index: calc(((1 + 2)))}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(1 2 + =)
+#reset
+
+#data
+* { z-index: calc( ( ( 1 + 2 ) ) )}
+#errors
+#expected
+| *
+|  z-index: /* -> 0number */ calc(1 2 + =)
+#reset
+
+#data
+* { z-index: calc( ( 3 / ( 1 + 2 ) ) )}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { width: calc(50vh + 10hz)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { width: calc(50% + 10px)}
+#errors
+#expected
+| *
+|  width: /* -> 0px */ calc(50% 10px + =)
+#reset
+
+#data
+* { word-spacing: calc(50% + 10px)}
+#errors
+#expected
+| *
+#reset
+
+#data
+* { word-spacing: calc(0.4em + 10px)}
+#errors
+#expected
+| *
+|  word-spacing: /* -> 0px */ calc(0.400em 10px + =)
+#reset
+
+#data
+* { width: calc(1em + 1px) !important }
+#errors
+#expected
+| *
+|  width: /* -> 0px */ calc(1em 1px + =) !important
+#reset

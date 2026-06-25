@@ -1,0 +1,71 @@
+libwebpencode_la-near_lossless_enc.lo: near_lossless_enc.c \
+ /usr/aarch64-none-elf/include/assert.h \
+ /usr/aarch64-none-elf/include/_ansi.h \
+ /usr/aarch64-none-elf/include/newlib.h \
+ /usr/aarch64-none-elf/include/_newlib_version.h \
+ /usr/aarch64-none-elf/include/sys/config.h \
+ /usr/aarch64-none-elf/include/machine/ieeefp.h \
+ /usr/aarch64-none-elf/include/sys/features.h \
+ /usr/aarch64-none-elf/include/stdlib.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/stddef.h \
+ /usr/aarch64-none-elf/include/sys/reent.h \
+ /usr/aarch64-none-elf/include/_ansi.h \
+ /usr/aarch64-none-elf/include/sys/_types.h \
+ /usr/aarch64-none-elf/include/machine/_types.h \
+ /usr/aarch64-none-elf/include/machine/_default_types.h \
+ /usr/aarch64-none-elf/include/sys/lock.h \
+ /usr/aarch64-none-elf/include/sys/cdefs.h \
+ /usr/aarch64-none-elf/include/machine/stdlib.h \
+ /usr/aarch64-none-elf/include/alloca.h ../../src/dsp/lossless_common.h \
+ ../../src/dsp/cpu.h ../../src/webp/config.h ../../src/webp/types.h \
+ /usr/aarch64-none-elf/include/inttypes.h \
+ /usr/aarch64-none-elf/include/sys/_intsup.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/stdint.h \
+ /usr/aarch64-none-elf/include/stdint.h \
+ /usr/aarch64-none-elf/include/sys/_stdint.h \
+ /usr/aarch64-none-elf/include/sys/_locale.h ../../src/utils/utils.h \
+ /usr/aarch64-none-elf/include/string.h \
+ /usr/aarch64-none-elf/include/strings.h \
+ /usr/aarch64-none-elf/include/sys/string.h ../../src/enc/vp8li_enc.h \
+ ../../src/enc/backward_references_enc.h ../../src/webp/encode.h \
+ ../../src/webp/./types.h ../../src/webp/format_constants.h \
+ ../../src/enc/histogram_enc.h ../../src/utils/bit_writer_utils.h
+/usr/aarch64-none-elf/include/assert.h:
+/usr/aarch64-none-elf/include/_ansi.h:
+/usr/aarch64-none-elf/include/newlib.h:
+/usr/aarch64-none-elf/include/_newlib_version.h:
+/usr/aarch64-none-elf/include/sys/config.h:
+/usr/aarch64-none-elf/include/machine/ieeefp.h:
+/usr/aarch64-none-elf/include/sys/features.h:
+/usr/aarch64-none-elf/include/stdlib.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/stddef.h:
+/usr/aarch64-none-elf/include/sys/reent.h:
+/usr/aarch64-none-elf/include/_ansi.h:
+/usr/aarch64-none-elf/include/sys/_types.h:
+/usr/aarch64-none-elf/include/machine/_types.h:
+/usr/aarch64-none-elf/include/machine/_default_types.h:
+/usr/aarch64-none-elf/include/sys/lock.h:
+/usr/aarch64-none-elf/include/sys/cdefs.h:
+/usr/aarch64-none-elf/include/machine/stdlib.h:
+/usr/aarch64-none-elf/include/alloca.h:
+../../src/dsp/lossless_common.h:
+../../src/dsp/cpu.h:
+../../src/webp/config.h:
+../../src/webp/types.h:
+/usr/aarch64-none-elf/include/inttypes.h:
+/usr/aarch64-none-elf/include/sys/_intsup.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/stdint.h:
+/usr/aarch64-none-elf/include/stdint.h:
+/usr/aarch64-none-elf/include/sys/_stdint.h:
+/usr/aarch64-none-elf/include/sys/_locale.h:
+../../src/utils/utils.h:
+/usr/aarch64-none-elf/include/string.h:
+/usr/aarch64-none-elf/include/strings.h:
+/usr/aarch64-none-elf/include/sys/string.h:
+../../src/enc/vp8li_enc.h:
+../../src/enc/backward_references_enc.h:
+../../src/webp/encode.h:
+../../src/webp/./types.h:
+../../src/webp/format_constants.h:
+../../src/enc/histogram_enc.h:
+../../src/utils/bit_writer_utils.h:

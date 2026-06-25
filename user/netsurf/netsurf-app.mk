@@ -10,12 +10,16 @@
 #
 PREFIX   ?= aarch64-none-elf-
 CC        = $(PREFIX)gcc
+CXX       = $(PREFIX)g++
 AR        = $(PREFIX)ar
 BUILD_CC ?= x86_64-linux-gnu-gcc
 
 HERE     := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-NS       ?= /mnt/c/Temp/netsurf
-LIBROOT  ?= /mnt/c/Temp
+# Vendored deps live in the repo at third_party/ (sources + prebuilt .a). Override NS /
+# LIBROOT on the command line to build against a copy elsewhere.
+THIRDPARTY ?= $(abspath $(HERE)../../third_party)
+NS       ?= $(THIRDPARTY)/netsurf
+LIBROOT  ?= $(THIRDPARTY)
 ZUSER    ?= $(abspath $(HERE)/..)
 ZKINC    ?= $(abspath $(HERE)/../../kernel/include)
 OUT      ?= /tmp/nsbuild
@@ -33,15 +37,18 @@ NSFB := $(LIBROOT)/libnsfb
 PNG  := $(LIBROOT)/libpng-1.6.44
 JPEG := $(LIBROOT)/jpeg-9f
 ZLIB := $(LIBROOT)/zlib-1.3.1
+WEBP := $(LIBROOT)/libwebp-1.4.0
+# mbedTLS for the https:// transport (user/tls/onyx_tls.hpp)
+MBEDTLS ?= $(LIBROOT)/mbedtls-3.6.3
 
 CF = -mcpu=cortex-a72 -O2 -std=c99 -fno-pic -fno-pie -fno-stack-protector -fcommon \
-     -Dnsframebuffer -DNDEBUG -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L \
+     -Dnsframebuffer -DNDEBUG -DWITH_WEBP -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L \
      -include $(HERE)compat/onyx_nsconfig.h
 INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
       -I$(HERE)compat -I$(HERE)gen -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
       -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \
       -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
-      -I$(DOM)/bindings -I$(DOM)/src -I$(PNG) -I$(JPEG) -I$(ZLIB)
+      -I$(DOM)/bindings -I$(DOM)/src -I$(PNG) -I$(JPEG) -I$(ZLIB) -I$(WEBP)/src
 
 # ---- source lists (excludes documented in README.md) -------------------
 CORE_SRC := \
@@ -55,7 +62,7 @@ CORE_SRC := \
   $(wildcard $(NS)/content/handlers/css/*.c) \
   $(wildcard $(NS)/content/handlers/html/*.c) \
   $(wildcard $(NS)/content/handlers/text/*.c) \
-  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c jpeg.c png.c) \
+  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c jpeg.c png.c webp.c) \
   $(wildcard $(NS)/content/handlers/javascript/*.c) \
   $(wildcard $(NS)/content/handlers/javascript/none/*.c)
 
@@ -123,20 +130,36 @@ $(foreach s,$(ALL_SRC),$(eval $(call CC_RULE,$(s))))
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
 
+# C++ TLS glue (https): onyx_nstls.cpp wraps user/tls/onyx_tls.hpp (mbedTLS). No STL /
+# exceptions / RTTI / static ctors, so it links next to the C objects (link driver = g++).
+CXXF = -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector \
+       -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
+NSTLS_OBJ := $(OUT)/o/onyx_nstls.o
+$(NSTLS_OBJ): $(HERE)onyx_nstls.cpp $(HERE)onyx_nstls.h $(ZUSER)/tls/onyx_tls.hpp
+	@mkdir -p $(OUT)/o
+	$(CXX) $(CXXF) -I$(ZUSER) -I$(ZUSER)/tls -I$(ZKINC) -I$(MBEDTLS)/include -c $< -o $@
+
 objs: $(ALL_OBJ)
 
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
-          -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) \
+          -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-link: objs
-	$(CC) -mcpu=cortex-a72 -O2 -nostartfiles -fno-pic -fno-pie -I$(ZUSER) -I$(ZKINC) \
-	  $(ZUSER)/libc/crt0libc.S $(ZUSER)/libc/onyx_syscalls.c \
-	  $(ALL_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
-	  $(LDLIBS) $(LDFLAGS) -o $(OUT)/netsurf.elf
+# Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by
+# gcc first (g++ would treat the .c/.S as C++), then all objects are linked with g++.
+link: objs $(NSTLS_OBJ)
+	$(CC) -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector -I$(ZUSER) -I$(ZKINC) \
+	  -c $(ZUSER)/libc/crt0libc.S -o $(OUT)/o/crt0libc.o
+	$(CC) -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector -I$(ZUSER) -I$(ZKINC) \
+	  -c $(ZUSER)/libc/onyx_syscalls.c -o $(OUT)/o/onyx_syscalls.o
+	$(CXX) -mcpu=cortex-a72 -O2 -nostartfiles -fno-pic -fno-pie -fno-exceptions -fno-rtti \
+	  $(OUT)/o/crt0libc.o $(OUT)/o/onyx_syscalls.o \
+	  $(ALL_OBJ) $(NSTLS_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
+	  $(LDLIBS) -L$(MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto \
+	  $(LDFLAGS) -o $(OUT)/netsurf.elf
 	@echo "netsurf.elf: $$(stat -c %s $(OUT)/netsurf.elf 2>/dev/null) bytes"
 
 # ---- stage onto the Onyx SD card ---------------------------------------

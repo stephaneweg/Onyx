@@ -11,7 +11,7 @@ PREFIX  ?= aarch64-none-elf-
 CC       = $(PREFIX)gcc
 CXX      = $(PREFIX)g++
 PYTHON  ?= python3
-MBEDTLS_DIR ?= ../tls/mbedtls
+MBEDTLS_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/mbedtls-3.6.3)
 
 CFLAGS_LIBC = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
 	      -nostartfiles -I.. -I../../kernel/include

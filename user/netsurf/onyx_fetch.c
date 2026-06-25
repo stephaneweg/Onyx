@@ -13,10 +13,10 @@
  * (or FETCH_ERROR) via fetch_send_callback(). Blocking is acceptable for a first bring-up
  * (the data: fetcher is synchronous too); a non-blocking, fdset-driven version comes later.
  *
- * Scope of this first cut: http:// only (https:// is registered separately once the C++
- * TLS transport, user/tls/onyx_tls.hpp, is wired in); GET only; gzip/deflate decoding.
- * Builds as part of the NetSurf core (brick 9) -- it needs the core headers + an Onyx
- * frontend to register it via fetch_onyx_register(). See user/netsurf/README.md.
+ * Scope: http:// and https:// (the latter over user/tls/onyx_tls.hpp = mbedTLS on the TCP
+ * kapis, via the C-callable onyx_nstls wrapper); GET only; gzip/deflate decoding. Builds as
+ * part of the NetSurf core (brick 9) -- it needs the core headers + an Onyx frontend to
+ * register it via fetch_onyx_register(). See user/netsurf/README.md.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -37,6 +37,7 @@
 #include "content/fetchers.h"
 
 #include "kapi.h"		/* Onyx TCP transport */
+#include "onyx_nstls.h"		/* C-callable TLS transport (https) */
 
 struct fetch_onyx_context {
 	struct fetch *parent_fetch;
@@ -50,13 +51,13 @@ static struct fetch_onyx_context *ring = NULL;
 
 /* ---- tiny URL split (host / port / path) over nsurl_access() ---------- */
 static bool onyx_split_url(const char *url, char *host, size_t hcap,
-		unsigned *port, char *path, size_t pcap)
+		unsigned *port, char *path, size_t pcap, unsigned default_port)
 {
 	const char *p = url;
 	const char *q;
 	size_t i = 0, j = 0;
 
-	*port = 80;
+	*port = default_port;
 	for (q = url; *q; q++)			/* skip "scheme://" */
 		if (q[0] == ':' && q[1] == '/' && q[2] == '/') { p = q + 3; break; }
 
@@ -79,44 +80,62 @@ static bool onyx_split_url(const char *url, char *host, size_t hcap,
 }
 
 /* ---- blocking HTTP/1.0 GET into a growable buffer --------------------- */
-/* Returns the whole response (status line + headers + body) in out/outlen,
- * or -1 on connect/transport failure. Caller frees the buffer. */
+/* Returns the whole response (status line + headers + body) in out/outlen, or -1 on
+ * connect/transport failure. Caller frees the buffer. `tls` selects the TLS transport
+ * (onyx_nstls, mbedTLS) vs plaintext kapi_tcp -- both share kapi_tcp_recv's >0/0/<0
+ * convention, so the read loop is identical. */
 static int onyx_http_recv(const char *host, unsigned port, const char *path,
-		uint8_t **out, size_t *outlen)
+		bool tls, uint8_t **out, size_t *outlen)
 {
 	char req[1024];
 	size_t cap = 16384, n = 0;
 	uint8_t *buf;
-	int sock, idle = 0;
+	int sock = -1, idle = 0;
+	onyx_tls_sess *ts = NULL;
 	int len;
 
-	sock = kapi_tcp_connect(host, port);
-	if (sock < 0)
-		return -1;
+	if (tls) {
+		ts = onyx_nstls_open(host, port);
+		if (ts == NULL) return -1;
+	} else {
+		sock = kapi_tcp_connect(host, port);
+		if (sock < 0) return -1;
+	}
 
 	len = snprintf(req, sizeof req,
 		"GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: NetSurf (Onyx)\r\n"
 		"Accept: */*\r\nAccept-Encoding: gzip, deflate\r\nConnection: close\r\n\r\n",
 		path, host);
-	if (len <= 0 || len >= (int)sizeof req) { kapi_tcp_close(sock); return -1; }
-	kapi_tcp_send(sock, req, len);
+	if (len <= 0 || len >= (int)sizeof req) {
+		if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
+		return -1;
+	}
+	if (tls) onyx_nstls_send(ts, req, len); else kapi_tcp_send(sock, req, len);
 
 	buf = malloc(cap);
-	if (buf == NULL) { kapi_tcp_close(sock); return -1; }
+	if (buf == NULL) {
+		if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
+		return -1;
+	}
 
 	for (;;) {
 		int r;
 		if (n + 4096 > cap) {
 			uint8_t *nb = realloc(buf, cap * 2);
-			if (nb == NULL) { free(buf); kapi_tcp_close(sock); return -1; }
+			if (nb == NULL) {
+				free(buf);
+				if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
+				return -1;
+			}
 			buf = nb; cap *= 2;
 		}
-		r = kapi_tcp_recv(sock, buf + n, (int)(cap - n));
+		r = tls ? onyx_nstls_recv(ts, buf + n, (int)(cap - n))
+			: kapi_tcp_recv(sock, buf + n, (int)(cap - n));
 		if (r > 0) { n += (size_t)r; idle = 0; }
 		else if (r == 0) { if (++idle > 1000) break; kapi_msleep(10); }
 		else break;			/* peer closed (HTTP/1.0 EOF) */
 	}
-	kapi_tcp_close(sock);
+	if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
 	*out = buf;
 	*outlen = n;
 	return 0;
@@ -269,12 +288,14 @@ static void fetch_onyx_run(struct fetch_onyx_context *c)
 	fetch_msg msg;
 	int code = 0;
 	const char *url = nsurl_access(c->url);
+	bool tls = (strncasecmp(url, "https:", 6) == 0);
 
-	if (!onyx_split_url(url, host, sizeof host, &port, path, sizeof path)) {
+	if (!onyx_split_url(url, host, sizeof host, &port, path, sizeof path,
+			    tls ? 443 : 80)) {
 		fetch_onyx_error(c, "Malformed URL");
 		return;
 	}
-	if (onyx_http_recv(host, port, path, &resp, &resplen) != 0 || resplen == 0) {
+	if (onyx_http_recv(host, port, path, tls, &resp, &resplen) != 0 || resplen == 0) {
 		free(resp);
 		fetch_onyx_error(c, "Connection failed");
 		return;
@@ -360,7 +381,6 @@ static void fetch_onyx_poll(lwc_string *scheme)
 
 nserror fetch_onyx_register(void)
 {
-	lwc_string *scheme = lwc_string_ref(corestring_lwc_http);
 	const struct fetcher_operation_table ops = {
 		.initialise = fetch_onyx_initialise,
 		.acceptable = fetch_onyx_can_fetch,
@@ -371,5 +391,13 @@ nserror fetch_onyx_register(void)
 		.poll       = fetch_onyx_poll,
 		.finalise   = fetch_onyx_finalise,
 	};
-	return fetcher_add(scheme, &ops);
+	nserror ret;
+
+	/* The fetcher is scheme-agnostic: fetch_onyx_run() reads the scheme off the URL
+	 * and selects plaintext vs TLS. Register both http and https. */
+	ret = fetcher_add(lwc_string_ref(corestring_lwc_http), &ops);
+	if (ret != NSERROR_OK)
+		return ret;
+
+	return fetcher_add(lwc_string_ref(corestring_lwc_https), &ops);
 }

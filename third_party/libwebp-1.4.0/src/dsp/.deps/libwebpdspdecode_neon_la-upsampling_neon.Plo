@@ -1,0 +1,67 @@
+libwebpdspdecode_neon_la-upsampling_neon.lo: upsampling_neon.c \
+ ../../src/dsp/dsp.h ../../src/webp/config.h ../../src/dsp/cpu.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/stddef.h \
+ ../../src/webp/types.h /usr/aarch64-none-elf/include/inttypes.h \
+ /usr/aarch64-none-elf/include/newlib.h \
+ /usr/aarch64-none-elf/include/_newlib_version.h \
+ /usr/aarch64-none-elf/include/sys/config.h \
+ /usr/aarch64-none-elf/include/machine/ieeefp.h \
+ /usr/aarch64-none-elf/include/sys/features.h \
+ /usr/aarch64-none-elf/include/sys/_intsup.h \
+ /usr/aarch64-none-elf/include/_ansi.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/stdint.h \
+ /usr/aarch64-none-elf/include/stdint.h \
+ /usr/aarch64-none-elf/include/machine/_default_types.h \
+ /usr/aarch64-none-elf/include/sys/_stdint.h \
+ /usr/aarch64-none-elf/include/sys/_locale.h \
+ /usr/aarch64-none-elf/include/assert.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/arm_neon.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/arm_fp16.h \
+ /usr/lib/gcc/aarch64-none-elf/10.3.1/include/arm_bf16.h \
+ /usr/aarch64-none-elf/include/string.h \
+ /usr/aarch64-none-elf/include/sys/reent.h \
+ /usr/aarch64-none-elf/include/_ansi.h \
+ /usr/aarch64-none-elf/include/sys/_types.h \
+ /usr/aarch64-none-elf/include/machine/_types.h \
+ /usr/aarch64-none-elf/include/sys/lock.h \
+ /usr/aarch64-none-elf/include/sys/cdefs.h \
+ /usr/aarch64-none-elf/include/strings.h \
+ /usr/aarch64-none-elf/include/sys/string.h ../../src/dsp/neon.h \
+ ../../src/dsp/yuv.h ../../src/dec/vp8_dec.h ../../src/webp/decode.h \
+ ../../src/webp/./types.h
+../../src/dsp/dsp.h:
+../../src/webp/config.h:
+../../src/dsp/cpu.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/stddef.h:
+../../src/webp/types.h:
+/usr/aarch64-none-elf/include/inttypes.h:
+/usr/aarch64-none-elf/include/newlib.h:
+/usr/aarch64-none-elf/include/_newlib_version.h:
+/usr/aarch64-none-elf/include/sys/config.h:
+/usr/aarch64-none-elf/include/machine/ieeefp.h:
+/usr/aarch64-none-elf/include/sys/features.h:
+/usr/aarch64-none-elf/include/sys/_intsup.h:
+/usr/aarch64-none-elf/include/_ansi.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/stdint.h:
+/usr/aarch64-none-elf/include/stdint.h:
+/usr/aarch64-none-elf/include/machine/_default_types.h:
+/usr/aarch64-none-elf/include/sys/_stdint.h:
+/usr/aarch64-none-elf/include/sys/_locale.h:
+/usr/aarch64-none-elf/include/assert.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/arm_neon.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/arm_fp16.h:
+/usr/lib/gcc/aarch64-none-elf/10.3.1/include/arm_bf16.h:
+/usr/aarch64-none-elf/include/string.h:
+/usr/aarch64-none-elf/include/sys/reent.h:
+/usr/aarch64-none-elf/include/_ansi.h:
+/usr/aarch64-none-elf/include/sys/_types.h:
+/usr/aarch64-none-elf/include/machine/_types.h:
+/usr/aarch64-none-elf/include/sys/lock.h:
+/usr/aarch64-none-elf/include/sys/cdefs.h:
+/usr/aarch64-none-elf/include/strings.h:
+/usr/aarch64-none-elf/include/sys/string.h:
+../../src/dsp/neon.h:
+../../src/dsp/yuv.h:
+../../src/dec/vp8_dec.h:
+../../src/webp/decode.h:
+../../src/webp/./types.h:

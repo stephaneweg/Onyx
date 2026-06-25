@@ -32,10 +32,10 @@ LIBC_SRC  = ../libc/crt0libc.S ../libc/onyx_syscalls.c
 LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../kapi.h ../user.ld
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-# HTTPS apps need a cross-built mbedTLS (see ../tls/README.md). They are OPT-IN: pass
-# MBEDTLS_DIR to enable them, e.g.  make MBEDTLS_DIR=../tls/mbedtls
-# Left unset, the default build is unchanged (no mbedTLS dependency).
-MBEDTLS_DIR ?=
+# HTTPS apps need a cross-built mbedTLS. It is now vendored in the repo at
+# third_party/mbedtls-3.6.3, so they build by default. Pass MBEDTLS_DIR= (empty) to skip
+# them, or MBEDTLS_DIR=/path to build against a copy elsewhere.
+MBEDTLS_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/mbedtls-3.6.3)
 TLS_PROGS =
 ifneq ($(strip $(MBEDTLS_DIR)),)
 TLS_PROGS = httpsget.elf

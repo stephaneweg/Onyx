@@ -63,14 +63,29 @@ int uname(struct utsname *buf)
 }
 
 /* ---- file-system bits newlib lacks ----------------------------------- */
-/* stat()/link() bottom out in these newlib syscalls. We back stat() with the kapi: a
- * file that opens is a regular file of kapi_fsize() bytes; everything else is ENOENT. */
+/* stat()/link() bottom out in these newlib syscalls. We back stat() with the kapi:
+ * a path that opendir()s is a directory; otherwise a path that open()s is a regular
+ * file of kapi_fsize() bytes; everything else is ENOENT.
+ *
+ * Reporting directories correctly is REQUIRED by NetSurf's filepath_generate(), which
+ * only adds a resource directory to the search path when stat()+S_ISDIR() agree it is
+ * one. Always returning S_IFREG made respaths empty -> every resource: 404'd as
+ * text/html -> the base stylesheet was "unacceptableType" -> CSSBase -> the welcome
+ * page looped on about:query/fetcherror. */
 int _stat(const char *path, struct stat *st)
 {
+	void *d = kapi_opendir(path);
+	if (d != NULL) {
+		kapi_closedir(d);
+		memset(st, 0, sizeof *st);
+		st->st_mode = S_IFDIR | 0755;
+		return 0;
+	}
+
 	void *h = kapi_open(path);
 	if (h == NULL) { errno = ENOENT; return -1; }
 	memset(st, 0, sizeof *st);
-	st->st_mode = S_IFREG;
+	st->st_mode = S_IFREG | 0644;
 	st->st_size = (off_t) kapi_fsize(h);
 	kapi_close(h);
 	return 0;

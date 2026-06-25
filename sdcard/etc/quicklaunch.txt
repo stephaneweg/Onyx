@@ -5,3 +5,4 @@ terminal
 filer
 tinypad
 tinycalc
+netsurf

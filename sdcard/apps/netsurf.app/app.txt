@@ -1,0 +1,3 @@
+# Onyx application metadata
+name = NetSurf
+category = Internet

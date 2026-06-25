@@ -31,7 +31,8 @@ BUILD_CC ?= x86_64-linux-gnu-gcc
 PERL     ?= perl
 GREP     ?= grep
 
-NS  ?= .
+# The library sources + their built .a are vendored in the repo at third_party/.
+NS  ?= $(abspath $(CURDIR)/../../third_party)
 GEN := $(CURDIR)/gen
 
 # Same world as the newlib apps: hardware FP, PIC/SSP off, NOT -nostdlib (these use newlib).

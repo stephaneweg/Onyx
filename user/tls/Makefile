@@ -8,7 +8,8 @@
 # README.md) and python3 (for scripts/config.py). Then:  make -C user/tls
 #
 PREFIX  ?= aarch64-none-elf-
-MBEDTLS ?= mbedtls
+# mbedTLS source + built libs are vendored in the repo at third_party/mbedtls-3.6.3.
+MBEDTLS ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/mbedtls-3.6.3)
 PY      ?= python3
 
 # Same world as the newlib apps: hardware FP (-mcpu=cortex-a72), PIC/SSP off. NOT
