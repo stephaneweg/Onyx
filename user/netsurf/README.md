@@ -165,7 +165,17 @@ NetSurf currently hangs on the Pi with no window. Two-phase plan:
    parse, libdom+hubbub parse, the iconv/dirent/stat shims), printing a flushed line before
    and after every step. Run `nstest` in the terminal: the **last line printed** pinpoints the
    brick that hangs or crashes. (These libs were only ever link-tested, never run on HW.)
-2. **Bisect the startup path** -- once the bricks are known good, instrument NetSurf's start
+   *Result (2026-06-25): all brick tests pass on hardware* -- the libraries run fine, so the
+   hang was in the frontend startup, not the libs.
+
+**Found:** the frontend auto-picks a default libnsfb surface via
+`framebuffer_pick_default_fename` (`if (type < NSFB_SURFACE_COUNT) fename = name`). Our
+`"onyx"` surface registers with a deliberately large private type value, so the picker
+skipped it and fell back to the **off-screen `"ram"` surface** -> NetSurf rendered with no
+window (looked like a hang). Fix: `onyx_main.c` now passes **`-f onyx`** to select our window
+surface explicitly. (Pending re-test on hardware.)
+
+2. **Bisect the startup path** -- if it still hangs after that, instrument NetSurf's start
    (`onyx_main.c` -> the fb frontend `netsurf_main`: `netsurf_init`, message/option load from
    the resource path, fetcher registration, libnsfb surface creation, the first window +
    browser_window_create) with markers written via `kapi_write` (visible in `kmsg`, since a
