@@ -62,7 +62,7 @@ extern "C" {
 // C handlers called from vectors.S
 void SyncHandlerEL0 (TTrapFrame *pFrame);	// SVC -> syscall, abort -> page fault
 void SyncHandlerEL1 (TTrapFrame *pFrame);	// SVC (test) -> syscall, else kernel panic
-void KernelIRQExit (void);			// reschedule on IRQ exit if a slice expired
+void KernelIRQExit (TTrapFrame *pFrame);	// M0: instrument would-be preemption points (no switch yet)
 void BadModeHandler (TTrapFrame *pFrame);	// unexpected vector / SError -> dump + halt
 void SyscallEntry (TTrapFrame *pFrame);		// syscall ABI dispatch (kernel/sys)
 

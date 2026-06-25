@@ -6,6 +6,7 @@
 // InterruptHandler() for GIC dispatch (called directly from the IRQ stub).
 //
 #include <kern/trapframe.h>
+#include <kern/layout.h>		// IS_USER_VA (preempt-gate classification)
 #include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
 #include <circle/2dgraphics.h>
@@ -142,15 +143,61 @@ void BadModeHandler (TTrapFrame *pFrame)
 	DumpAndHalt (EXCEPTION_UNEXPECTED, pFrame);
 }
 
-void KernelIRQExit (void)
+// ---- Track A preemption: the timer-IRQ exit redirect ------------------------
+//
+// Handed to the trampoline (vectors.S) when we preempt an app: its interrupted PC
+// and PSTATE, to be restored when it is rescheduled. C linkage so the asm sees them;
+// the single-core, IRQ-masked write->read handoff makes plain globals safe (nothing
+// else runs between KernelIRQExit writing them and the trampoline reading them).
+extern "C" {
+	void PreemptTrampoline (void);		// vectors.S
+	u64  g_PreemptELR  = 0;
+	u64  g_PreemptSPSR = 0;
+}
+
+// The trampoline bl's this: the ordinary cooperative switch, but reached at EL1t on
+// the preempted app's own SP_EL0 stack -- where Yield's SP_EL0/TTBR0 swap is correct.
+extern "C" void PreemptDoYield (void)
 {
-	// IMPORTANT: no preemptive reschedule here. Circle runs threads in EL1t
-	// (SP_EL0) while exceptions run in EL1h (SP_EL1, the shared exception stack).
-	// A context switch from the IRQ handler would swap SP_EL1, not the thread's
-	// SP_EL0 -- it cannot correctly preempt an EL1t thread. So we schedule
-	// COOPERATIVELY (like Circle's own scheduler): threads switch when they call
-	// Yield()/MsSleep()/present(). The time-slice flag is left unused for now.
-	// (True preemption would need a full trap-frame switch honoring SP_EL0.)
+	CScheduler::Get ()->Yield ();
+}
+
+void KernelIRQExit (TTrapFrame *pFrame)
+{
+	// Track-A preemptive reschedule, run at the end of every IRQ. Switch ONLY when a
+	// time slice has expired AND the interrupted context was an app running its OWN
+	// code -- EL1t (SPSR.M == 0b0100) with a user-VA return PC. The user-VA test IS
+	// the kernel lock: an app inside a kapi_* call has a kernel-VA ELR and is left
+	// alone (it may hold a kernel resource; those kapis yield cooperatively anyway).
+	// Kernel threads (EL1h, or EL1t with a kernel-VA PC) are never preempted.
+	if (   !CScheduler::IsActive ()
+	    || !CScheduler::Get ()->IsReschedPending ())
+	{
+		return;
+	}
+
+	if (   (pFrame->spsr_el1 & 0xF) != 0x4		// not EL1t
+	    || !IS_USER_VA (pFrame->elr_el1))		// not in the app's own code
+	{
+		return;
+	}
+
+	// Redirect the IRQ return to the trampoline, which performs the real switch at
+	// EL1t on the app's stack. Stash the app's PC/PSTATE for it to restore on resume,
+	// and mask IRQ+FIQ so the trampoline can't be re-preempted before it parks.
+	CScheduler::Get ()->ClearResched ();
+	g_PreemptELR     = pFrame->elr_el1;
+	g_PreemptSPSR    = pFrame->spsr_el1;
+	pFrame->elr_el1  = (u64) &PreemptTrampoline;
+	pFrame->spsr_el1 = pFrame->spsr_el1 | (1u << 7) | (1u << 6);	// set I + F
+
+	// Rare trace so preemptions are observable on the log (throttled; remove later).
+	static unsigned long s_nPreempts = 0;
+	if ((++s_nPreempts & 0xFF) == 0)
+	{
+		CLogger::Get ()->Write ("preempt", LogNotice,
+			"M1 #%lu: sliced app at ELR=%lp", s_nPreempts, (void *) g_PreemptELR);
+	}
 }
 
 void PeriodicTick (void)

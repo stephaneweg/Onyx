@@ -483,6 +483,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **demoE** | Multi-line textarea + scrolling view with scrollbars. |
 | **demoF** | Small borderless launcher (buttons A–E that launch the other demos). |
 | **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
+| **spin** | Preemption test: a CPU hog that **never yields**. On a purely cooperative kernel it freezes the whole machine; with preemptive scheduling the rest of the UI (cursor, panel, other apps) stays responsive while it spins. It cannot be closed by its window (it never checks for the close) — **stop it from `taskman`**. |
 
 ## 13. Troubleshooting
 

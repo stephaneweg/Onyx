@@ -30,7 +30,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same filer terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon
+       eyes sheet taskman voronoy theme config irc memmon spin
 
 APP_ELFS = $(APPS:=.elf)
 

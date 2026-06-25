@@ -211,19 +211,39 @@ Source: [`kernel/sched/scheduler.cpp`](../kernel/sched/scheduler.cpp),
 [`kernel/sched/task.cpp`](../kernel/sched/task.cpp),
 [`kernel/compat/circle/sched/scheduler.h`](../kernel/compat/circle/sched/scheduler.h).
 
-### Cooperative, not preemptive (on hardware)
+### Preemptive scheduling (track A)
 
-The kernel was designed for preemption (100 Hz tick, `OnTimerTick` which counts down a
-time slice), **but on hardware preemption from the IRQ is disabled**. The
-reason: Circle runs the main thread and **all tasks in EL1t** (with
-`SP_EL0`), whereas the IRQ handler runs in **EL1h** (with `SP_EL1`, the shared exception
-stack). A context switch from the IRQ would swap `SP_EL1` and not the thread's
-`SP_EL0` stack → impossible to preempt correctly.
+The kernel **preempts application code**. A 100 Hz timer tick drives `OnTimerTick`,
+which counts down the running task's time slice (`SCHED_SLICE_TICKS` = 50 ms) and
+sets a reschedule flag when it expires. `KernelIRQExit()` — run at the end of every
+IRQ — then forces a switch, **but only when it is safe**: the interrupted context
+must be an **application running its own code**, i.e. `SPSR_EL1.M == EL1t` **and**
+the return PC (`ELR_EL1`) lies in the **user VA** range (`IS_USER_VA`). An app
+inside a `kapi_*` call has a *kernel*-VA return PC and is **not** preempted — that PC
+test *is* the kernel lock (the call may hold a kernel resource; such kapis yield
+cooperatively anyway). Kernel threads (EL1h, or EL1t with a kernel-VA PC) are never
+preempted.
 
-→ `KernelIRQExit()` does **not** reschedule. **Tasks switch voluntarily**
-when they call `Yield()`, `MsSleep()`, `present`, `wait`, etc. Real preemption
-would require a context switch with a full save/restore of `SP_EL0` (future
-work). The `OnTimerTick` hook therefore stays dormant.
+**The SP_EL0/SP_EL1 problem and the trampoline.** Circle runs all tasks in EL1t (on
+`SP_EL0`), while the IRQ handler runs in EL1h (on `SP_EL1`). A `TaskSwitch` straight
+from the IRQ would swap `SP_EL1`, not the thread's `SP_EL0` → it cannot preempt an
+EL1t thread. So instead of switching inside the IRQ, `KernelIRQExit` **redirects the
+return**: it stashes the app's `ELR_EL1`/`SPSR_EL1` (in `g_PreemptELR`/`g_PreemptSPSR`),
+points `ELR_EL1` at `PreemptTrampoline` and masks IRQ+FIQ. The IRQ's
+`RESTORE_TRAP_ERET` then `eret`s into the trampoline **at EL1t, on the app's own
+stack**, where it saves the app's full register/FP state and calls the ordinary
+cooperative `Yield()` — which now swaps the correct `SP_EL0` and address space. When
+the task is rescheduled, the trampoline restores the app state and `eret`s back to
+the exact interrupted instruction (original `NZCV` + interrupts restored). A
+preempted task is thus parked **exactly like a voluntary yielder** — one resume
+path. (The app runs on its `CTask` kernel stack, which is in the global identity
+region, so it stays mapped across the address-space switch in `Yield`.)
+
+Because only user-VA application code is preempted, the **kernel itself is
+non-preemptive** (the classic Unix model): a long, non-yielding *kernel* loop would
+still block other tasks — drop a `if (IsReschedPending()) Yield();`
+cooperative-preemption point into any such loop if one appears. Tasks also still
+switch **voluntarily** (`Yield`, `MsSleep`, `present`, `wait`, …), unchanged.
 
 ### `CScheduler` (shadow) and `CTask`
 
@@ -273,7 +293,8 @@ tick crashes.
 
 `IrqEntry`: `SAVE_TRAP` → **unmasks the FIQ** (`DAIFClr,#1`, required by
 Circle's `EnterCritical`) → calls Circle's `InterruptHandler` (GIC dispatch + periodic
-tick + EOI) → `KernelIRQExit` (no-op) → re-masks the FIQ → `RESTORE_TRAP` + `ERET`.
+tick + EOI) → `KernelIRQExit` (**preemptive reschedule** via `PreemptTrampoline` — see
+[§5](#5-scheduling)) → re-masks the FIQ → `RESTORE_TRAP` + `ERET`.
 
 > Bring-up note: leaving the FIQ masked during `EnterCritical` caused a Circle
 > assertion to fail (`synchronize64.cpp`). Hence the `DAIFClr,#1`/`DAIFSet,#1` around the
