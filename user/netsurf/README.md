@@ -101,11 +101,46 @@ sockets headers. newlib ships `<sys/select.h>` (fd_set) but not `<sys/socket.h>`
 the types NetSurf references — Onyx does TCP through the kapi, not BSD sockets). These are
 the start of the platform layer the full core build (brick 9) needs.
 
-## Status
+## Core + frontend (brick 9, in progress)
 
-All eight core libraries **cross-build and link clean** against newlib (no undefined
-symbols across the whole stack), and the Onyx **fetcher compiles against the NetSurf API**.
-Not yet exercised at runtime. The remaining work is **brick 9**: build the NetSurf core +
-desktop with an Onyx frontend (a `gui_table` + the platform compat layer started in
-`compat/`), register `onyx_fetch`, and wire the framebuffer frontend to the `user/nsfb`
-Onyx surface and the `user/img` image decoders. Then brick 10: secure TLS (CA bundle).
+The plan: build NetSurf's **framebuffer frontend** (it already drives libnsfb) on the Onyx
+`"onyx"` libnsfb surface (`user/nsfb`), with the internal bitmap font (no freetype), our
+`onyx_fetch` fetcher, and the `user/img` decoders — bypassing NetSurf's buildsystem and
+compiling the TUs directly (as for the libs). The frontend picks its surface **by name**
+(`nsfb_type_from_name`), so no NetSurf code change is needed — just select `onyx`.
+
+**What compiles today** (`-fsyntax-only` against our libs + the shims below, evidence-based):
+
+| layer | result |
+|---|---|
+| `utils/` + `utils/http/` | 29/29 ✓ |
+| `content/` | 9/10 (only the curl fetcher, which we replace) |
+| `desktop/` | 31/31 ✓ |
+| `content/handlers/{css,html,text}` | all ✓ (incl. the HTML layout engine) |
+| `content/handlers/image` | core formats ✓ (bmp/gif/png + image_cache); optional ones off |
+| `frontends/framebuffer/` (+ fbtk) | 17/21 |
+
+**Platform layer for the core** (newlib gaps the buildsystem/OS normally fill):
+
+- `compat/sys/socket.h`, `netinet/in.h`, `arpa/inet.h` — BSD sockets types (`utils/inet.h`
+  is pulled into every core TU via `content/fetch.h`).
+- `compat/dirent.h` + `compat/sys/utsname.h` + `compat/onyx_compat.c` — directory
+  enumeration (stubbed empty for now) and `uname()`.
+- `compat/onyx_nsconfig.h` — force-included (`-include`) build-config macros the buildsystem
+  normally `-D`s (`NETSURF_BUILTIN_*`, `PATH_MAX`, `NETSURF_HOMEPAGE`, fb paths).
+- `gen/testament.h` — the version stamp NetSurf generates from git.
+
+Compile recipe: `-I` the netsurf root + `include/` + `content/handlers/` + `frontends/` +
+the eight lib includes + `compat/` + `gen/` + zlib/libpng/libjpeg, `-include onyx_nsconfig.h`,
+`-std=c99 -fcommon`. Exclude `content/fetchers/curl.c`, `frontends/framebuffer/font_freetype.c`,
+and the optional image formats (svg/webp/jxl/rosprite/gst — `NETSURF_USE_*=NO`).
+
+**Remaining for a linked, running browser:**
+
+- Internal bitmap font codegen: `font_internal.c` needs `font-ns-*.h` (generated from a font).
+- Resources: the `Messages` strings + default CSS + about: pages bundled in (the buildsystem
+  embeds `resources/`); options wiring (`frontends/framebuffer/options.h` → `NSOPTION_fb_*`).
+- A `netsurf-app` Makefile compiling all the above into objects and **linking** with the eight
+  libs + `libnsfb` (onyx surface) + the codecs + newlib, registering `onyx_fetch` + the
+  file/data/about fetchers, and a `main()` that runs the fb frontend on the onyx surface.
+- `https://` via the C++ TLS transport, then **brick 10**: secure TLS (CA bundle + verify).
