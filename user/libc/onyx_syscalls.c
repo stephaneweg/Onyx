@@ -323,19 +323,30 @@ int _gettimeofday (struct timeval *tv, void *tz)
 	if (!tv)
 		return 0;
 
-	int y, mo, d, h, mi, s;
-	if (kapi_get_datetime (&y, &mo, &d, &h, &mi, &s))
+	// Build the time from the monotonic millisecond tick counter, offset ONCE to the RTC
+	// wall-clock epoch. The RTC alone has only 1-second resolution (tv_usec would be 0),
+	// which throttles every millisecond-scheduled callback to the next whole second -- that
+	// cripples schedulers like NetSurf's (it adds ms deltas to gettimeofday and compares),
+	// making incremental parsing/layout/redraw crawl. Ticks give true ms resolution and are
+	// strictly monotonic; base_sec keeps tv_sec close to real wall-clock seconds.
+	static long base_sec = -1;	// wall-clock second at tick 0 (computed once per process)
+	unsigned ms = kapi_get_ticks ();
+
+	if (base_sec < 0)
 	{
-		long days = days_from_civil (y, mo, d);
-		tv->tv_sec  = ((days * 24 + h) * 60 + mi) * 60 + s;
-		tv->tv_usec = 0;
+		int y, mo, d, h, mi, s;
+		if (kapi_get_datetime (&y, &mo, &d, &h, &mi, &s))
+		{
+			long days = days_from_civil (y, mo, d);
+			long now  = ((days * 24 + h) * 60 + mi) * 60 + s;
+			base_sec  = now - (long) (ms / 1000);
+		}
+		else
+			base_sec = 0;		// no RTC -> seconds since boot
 	}
-	else
-	{
-		unsigned ms = kapi_get_ticks ();	// monotonic, ms since boot
-		tv->tv_sec  = ms / 1000;
-		tv->tv_usec = (ms % 1000) * 1000;
-	}
+
+	tv->tv_sec  = base_sec + (long) (ms / 1000);
+	tv->tv_usec = (long) (ms % 1000) * 1000;	// millisecond resolution, monotonic
 	return 0;
 }
 
