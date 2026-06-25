@@ -281,6 +281,29 @@ int _unlink (const char *name)
 	return -1;
 }
 
+// pread/pwrite: POSIX positioned I/O. Our fds carry no per-call offset, so do it as
+// save-offset / seek / read|write / restore-offset. NOT reentrant -- fine for Onyx's
+// cooperative, single-threaded apps. Used by libnsutils (the NetSurf core libs).
+ssize_t pread (int fd, void *buf, size_t n, off_t off)
+{
+	off_t cur = _lseek (fd, 0, SEEK_CUR);
+	if (cur == (off_t) -1 || _lseek (fd, off, SEEK_SET) == (off_t) -1)
+		return -1;
+	int r = _read (fd, buf, n);
+	_lseek (fd, cur, SEEK_SET);
+	return r;
+}
+
+ssize_t pwrite (int fd, const void *buf, size_t n, off_t off)
+{
+	off_t cur = _lseek (fd, 0, SEEK_CUR);
+	if (cur == (off_t) -1 || _lseek (fd, off, SEEK_SET) == (off_t) -1)
+		return -1;
+	int r = _write (fd, buf, n);
+	_lseek (fd, cur, SEEK_SET);
+	return r;
+}
+
 // ---- time -------------------------------------------------------------------
 
 // Days from 1970-01-01 to y-m-d (proleptic Gregorian). Hinnant's algorithm.

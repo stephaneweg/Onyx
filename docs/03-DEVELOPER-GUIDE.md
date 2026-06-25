@@ -369,6 +369,20 @@ then OPT-IN: `make -C user/bin NSFB_DIR=../nsfb` builds the `/bin/nsfbdemo` demo
 shapes through libnsfb and tracks the cursor). `libnsfb.a` is linked `--whole-archive` so
 the surface's registration constructor is not dropped.
 
+The **NetSurf core library stack** also cross-builds for Onyx — `user/netsurf/` builds
+libwapcaplet, libparserutils, libnsutils, libnsgif, libnsbmp, libhubbub (HTML), libcss
+(CSS) and libdom (DOM) against newlib (`make -C user/netsurf`, versions pinned in
+[`user/netsurf/README.md`](../user/netsurf/README.md)). The whole stack **links clean** —
+no undefined symbols — against `crt0libc` + `onyx_syscalls` + newlib. Three Onyx-side fixes
+made it self-contained: libparserutils is built `-DWITHOUT_ICONV_FILTER` (use its own
+charset codecs; newlib has no `iconv`), everything is built `-fcommon` (the code predates
+GCC 10's `-fno-common`), and `pread`/`pwrite` were added to `onyx_syscalls.c`. Code that the
+upstream buildsystem normally generates with host tools is reproduced in the Makefile: perl
+for the libparserutils charset aliases and libhubbub entities, a host-compiled `gen_parser`
+for the libcss property parsers, and a gperf-free element-type table for libhubbub
+([`user/netsurf/gen/`](../user/netsurf/gen/)). This is NetSurf brick 7; the fetcher and
+framebuffer frontend (wiring it to `user/nsfb` + `user/img`) are the remaining bricks.
+
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
 `set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE` with client coords).
