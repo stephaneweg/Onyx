@@ -158,5 +158,26 @@ stage: link
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(NS)/resources/ca-bundle $(SDCARD)/res/
 	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
 
+# ---- nstest: console smoke test of the library bricks (-> sdcard/bin/nstest.elf) -------
+# Trimmed include set: NO -I$(DOM)/bindings here -- nstest.c includes the binding header
+# <dom/bindings/hubbub/parser.h> (resolved via $(DOM)/include + the bindings symlink), and
+# -I.../bindings would shadow libhubbub's <hubbub/*.h>.
+NSTEST_INC = -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include \
+             -I$(HB)/include -I$(NSU)/include -I$(ZLIB) \
+             -I$(HERE)compat -I$(ZUSER) -I$(ZKINC)
+.PHONY: nstest
+nstest:
+	@mkdir -p $(OUT)/o
+	-ln -sfn ../../bindings $(DOM)/include/dom/bindings
+	$(CC) $(CF) $(NSTEST_INC) -c $(HERE)nstest.c -o $(OUT)/o/nstest.o
+	$(CC) $(CF) $(NSTEST_INC) -c $(HERE)compat/onyx_compat.c -o $(OUT)/o/oc.o
+	$(CC) $(CF) $(NSTEST_INC) -c $(ZUSER)/libc/onyx_syscalls.c -o $(OUT)/o/sys.o
+	$(CC) -mcpu=cortex-a72 -O2 -nostartfiles -fno-pic -fno-pie \
+	  $(ZUSER)/libc/crt0libc.S $(OUT)/o/nstest.o $(OUT)/o/oc.o $(OUT)/o/sys.o \
+	  $(LDLIBS) $(LDFLAGS) -o $(OUT)/nstest.elf
+	@mkdir -p $(SDCARD)/bin
+	cp $(OUT)/nstest.elf $(SDCARD)/bin/nstest.elf
+	@echo "nstest -> $(SDCARD)/bin/nstest.elf ($$(stat -c %s $(OUT)/nstest.elf) bytes)"
+
 clean:
 	rm -rf $(OUT)
