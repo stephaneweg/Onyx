@@ -41,6 +41,14 @@ ifneq ($(strip $(MBEDTLS_DIR)),)
 TLS_PROGS = httpsget.elf
 endif
 
+# Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../img/README.md).
+# OPT-IN: pass IMG_DIR to enable them, e.g.  make IMG_DIR=../img  (after: make -C ../img)
+IMG_DIR ?=
+IMG_PROGS =
+ifneq ($(strip $(IMG_DIR)),)
+IMG_PROGS = imgtest.elf
+endif
+
 PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  rm.elf mkdir.elf touch.elf cp.elf mv.elf ps.elf kill.elf \
 	  run.elf keyb.elf cmd.elf kmsg.elf verbose.elf net.elf wget.elf heaptest.elf \
@@ -53,7 +61,7 @@ LIBC_PROGS = libctest.elf
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -78,6 +86,18 @@ $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o onyx_syscalls.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+	@rm -f crt0libc.o onyx_syscalls.o
+endif
+
+# Image apps (newlib C++ + the codecs). Built only when IMG_DIR is set. Same crt0 split
+# as the TLS apps: C startup + syscalls as C objects (gcc), then linked with g++.
+ifneq ($(strip $(IMG_DIR)),)
+$(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../img/image.hpp
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o crt0libc.o
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o onyx_syscalls.o
+	$(CXX) $(CXXFLAGS_LIBC) -I$(IMG_DIR)/libpng -I$(IMG_DIR)/zlib -I$(IMG_DIR)/libjpeg \
+	  $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
+	  -L$(IMG_DIR)/libpng -L$(IMG_DIR)/zlib -L$(IMG_DIR)/libjpeg -lpng -ljpeg -lz -lm -o $@
 	@rm -f crt0libc.o onyx_syscalls.o
 endif
 

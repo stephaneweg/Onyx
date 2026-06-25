@@ -51,10 +51,13 @@ here: mbedTLS plugged onto our transport primitives (`kapi_tcp_send`/`recv`).
 
 This is a **functional** TLS bring-up, **not yet secure**:
 
-- **Entropy is a placeholder.** `onyx_tls.hpp`'s `onyx_entropy()` is a weak,
-  tick-seeded PRNG — enough to complete a handshake, not cryptographically strong.
-  Replace it with a hardware RNG once the kernel exposes one (a `kapi_random` over
-  Circle's `CBcmRandomNumberGenerator`). It is a single function to swap.
+- **Entropy is weak.** `onyx_tls.hpp`'s `onyx_entropy()` now draws from the kernel via
+  `kapi_random` (ABI v30) — but `kapi_random` is itself a tick-seeded software PRNG
+  (splitmix64 over `CTimer` ticks), enough to complete a handshake, **not**
+  cryptographically strong. It is *not* the Pi 4 hardware RNG: both Circle's legacy
+  `CBcmRandomNumberGenerator` (BCM2835) and the BCM2711 RNG200 block stall the bus on
+  this SoC and hang the kernel. Strengthening entropy is a kernel-side change to
+  `kapi_random` only — `onyx_entropy()` stays as is.
 - **Certificate verification is OFF** (`MBEDTLS_SSL_VERIFY_NONE`): the server identity
   is not checked, so this is open to man-in-the-middle. To fix: ship a CA bundle on the
   SD card, `mbedtls_x509_crt_parse` it, `mbedtls_ssl_conf_ca_chain`, and switch to

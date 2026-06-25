@@ -341,6 +341,19 @@ libs — `make -C user/tls` then `make -C user/bin MBEDTLS_DIR=../tls/mbedtls` (
 `/bin/httpsget`. **Not yet secure:** the RNG is a software PRNG (not the HW RNG, which
 stalls on the Pi 4) and certificate verification is OFF — see the TLS README.
 
+For **images** there is a reusable decoder, [`user/img/image.hpp`](../user/img/image.hpp)
+(`onyximg::decode(data, len, &w, &h)`) — built on the cross-compiled **zlib + libpng +
+libjpeg**. It sniffs the format (PNG signature / JPEG SOI) and decodes a byte buffer into
+a freshly `malloc`'d array of `0xAARRGGBB` pixels (8-bit alpha in the top byte, which the
+canvas ignores when blitting). Same split as TLS: the libraries are cross-built once
+(`make -C user/img`, sources pinned in [`user/img/README.md`](../user/img/README.md) —
+zlib 1.3.1, libpng 1.6.44, libjpeg IJG v9f), the Onyx glue is header-only. It is a
+**newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/bin
+IMG_DIR=../img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
+size). This is the same model NetSurf uses — link libpng/libjpeg/zlib, decode behind one
+wrapper. Note: `image.hpp` is for full-colour web images; keep
+[`user/bmp.hpp`](../user/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
+
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
 `set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE` with client coords).
