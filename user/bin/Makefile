@@ -49,6 +49,14 @@ ifneq ($(strip $(IMG_DIR)),)
 IMG_PROGS = imgtest.elf
 endif
 
+# libnsfb demo needs the cross-built libnsfb (see ../nsfb/README.md). OPT-IN via NSFB_DIR:
+#   make NSFB_DIR=../nsfb  (after: make -C ../nsfb)
+NSFB_DIR ?=
+NSFB_PROGS =
+ifneq ($(strip $(NSFB_DIR)),)
+NSFB_PROGS = nsfbdemo.elf
+endif
+
 PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  rm.elf mkdir.elf touch.elf cp.elf mv.elf ps.elf kill.elf \
 	  run.elf keyb.elf cmd.elf kmsg.elf verbose.elf net.elf wget.elf heaptest.elf \
@@ -61,7 +69,7 @@ LIBC_PROGS = libctest.elf
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -99,6 +107,15 @@ $(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../img/image.hpp
 	  $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
 	  -L$(IMG_DIR)/libpng -L$(IMG_DIR)/zlib -L$(IMG_DIR)/libjpeg -lpng -ljpeg -lz -lm -o $@
 	@rm -f crt0libc.o onyx_syscalls.o
+endif
+
+# libnsfb demo (newlib C + libnsfb). Built only when NSFB_DIR is set. The Onyx surface
+# registers via a constructor, so libnsfb.a is pulled with --whole-archive (otherwise the
+# linker would drop the un-referenced surface object and "onyx" would never register).
+ifneq ($(strip $(NSFB_DIR)),)
+$(NSFB_PROGS): %.elf: %.c $(LIBC_DEP) ../nsfb/onyx_surface.c
+	$(CC) $(CFLAGS_LIBC) -I$(NSFB_DIR)/libnsfb/include $(LDFLAGS) $(LIBC_SRC) $< \
+	  -Wl,--whole-archive -L$(NSFB_DIR)/libnsfb -lnsfb -Wl,--no-whole-archive -lm -o $@
 endif
 
 clean:

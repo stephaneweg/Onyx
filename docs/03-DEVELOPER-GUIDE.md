@@ -354,6 +354,21 @@ size). This is the same model NetSurf uses — link libpng/libjpeg/zlib, decode 
 wrapper. Note: `image.hpp` is for full-colour web images; keep
 [`user/bmp.hpp`](../user/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
 
+For a **NetSurf-style framebuffer GUI** there is an Onyx **libnsfb** surface backend,
+[`user/nsfb/onyx_surface.c`](../user/nsfb/onyx_surface.c). libnsfb is NetSurf's framebuffer
+abstraction (its software plotters draw into a surface buffer); this backend makes an Onyx
+window **content canvas** that surface: `initialise` → `kapi_create_window` (the
+`0x00RRGGBB` canvas *is* the framebuffer), `update` → `kapi_present`, and `input` bridges
+Onyx's callback-driven pointer/key events (`kapi_set_pointer/key_handler` + `pump_events`)
+into libnsfb's poll-style event queue. The format is `NSFB_FMT_XRGB8888` — on little-endian
+the plotter packs `0x00RRGGBB`, exactly the canvas layout (no R/B swap). The vendored
+libnsfb is **unpatched**: the backend registers under the name `"onyx"` (resolved with
+`nsfb_type_from_name("onyx")`) via a constructor that Onyx's `crt0` runs from `.init_array`.
+Cross-built once (`make -C user/nsfb`, pinned in [`user/nsfb/README.md`](../user/nsfb/README.md)),
+then OPT-IN: `make -C user/bin NSFB_DIR=../nsfb` builds the `/bin/nsfbdemo` demo (draws
+shapes through libnsfb and tracks the cursor). `libnsfb.a` is linked `--whole-archive` so
+the surface's registration constructor is not dropped.
+
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
 `set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE` with client coords).
