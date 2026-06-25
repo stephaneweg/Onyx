@@ -34,4 +34,7 @@ struct sockaddr_storage {
 	char        __ss_pad[126];
 };
 
+/* Onyx has no BSD socket() (TCP is via the kapi); declared so core code links. */
+int socket(int domain, int type, int protocol);
+
 #endif /* _ONYX_COMPAT_SYS_SOCKET_H */

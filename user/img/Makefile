@@ -27,10 +27,12 @@ JPEG ?= libjpeg
 CF = -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector \
      -ffunction-sections -fdata-sections
 
-# ---- zlib : the inflate/deflate stream API. The gz* file helpers want POSIX
-#             open/read/close (no fd layer here) and are NOT built -- libpng uses the
-#             stream API, not gzFILE.
-ZSRC = adler32 compress crc32 deflate infback inffast inflate inftrees trees uncompr zutil
+# ---- zlib : inflate/deflate stream API + the gz* file helpers. libpng only needs the
+#             stream API, but NetSurf (utils/messages.c) reads gzipped files via gzopen,
+#             so the gz* TUs are built too -- they bottom out in newlib open/read/close,
+#             resolved at link time in a newlib app.
+ZSRC = adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
+       infback inffast inflate inftrees trees uncompr zutil
 ZOBJ = $(addprefix $(ZLIB)/,$(addsuffix .o,$(ZSRC)))
 
 # ---- libpng : decode + encode core (no the platform-specific arm/ intrinsics TU).

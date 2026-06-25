@@ -106,8 +106,12 @@ CSS_OBJ := $(CSS_SRC:.c=.o)
 $(CSS_OBJ): CINC := -I$(NS)/libcss/include -I$(NS)/libcss/src $(I_WAP) $(I_PU)
 $(NS)/libcss/libcss.a: $(CSS_OBJ); $(AR) rcs $@ $^
 
-# ---- libdom (no codegen) -----------------------------------------------
-DOM_OBJ := $(patsubst %.c,%.o,$(shell find $(NS)/libdom/src -name '*.c'))
+# ---- libdom (+ the hubbub HTML binding, which NetSurf drives via dom_hubbub_parser_*) --
+# The binding lives in libdom/bindings/hubbub/ (not src/) and must be compiled with libdom's
+# OWN includes -- NetSurf also has a utils/, so it must NOT see -Inetsurf.
+DOM_OBJ := $(patsubst %.c,%.o,$(shell find $(NS)/libdom/src -name '*.c') $(wildcard $(NS)/libdom/bindings/hubbub/*.c))
+# NB: do NOT add -I.../bindings -- the binding's own dir is bindings/hubbub/, which would
+# shadow libhubbub's <hubbub/*.h>. Its "parser.h"/"utils.h" are found same-dir (quoted).
 $(DOM_OBJ): CINC := -I$(NS)/libdom/include -I$(NS)/libdom/src $(I_WAP) $(I_PU) $(I_HB)
 $(NS)/libdom/libdom.a: $(DOM_OBJ); $(AR) rcs $@ $^
 

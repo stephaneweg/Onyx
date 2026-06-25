@@ -31,5 +31,8 @@ DIR           *opendir(const char *name);
 struct dirent *readdir(DIR *dirp);
 int            closedir(DIR *dirp);
 void           rewinddir(DIR *dirp);
+int            scandir(const char *dir, struct dirent ***namelist,
+                       int (*filter)(const struct dirent *),
+                       int (*compar)(const struct dirent **, const struct dirent **));
 
 #endif /* _ONYX_COMPAT_DIRENT_H */

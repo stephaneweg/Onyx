@@ -8,6 +8,12 @@
 #ifndef _ONYX_NSCONFIG_H
 #define _ONYX_NSCONFIG_H 1
 
+/* select NetSurf's framebuffer frontend (gates frontends/framebuffer/options.h into the
+ * nsoption table -- see utils/nsoption.h: #if defined(nsframebuffer)). */
+#ifndef nsframebuffer
+#define nsframebuffer 1
+#endif
+
 /* newlib's <limits.h> has no PATH_MAX (no filesystem limit defined) */
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -30,6 +36,14 @@
 #endif
 #ifndef NETSURF_FB_FONTPATH
 #define NETSURF_FB_FONTPATH "/res/fonts"
+#endif
+
+/* build-user identity the buildsystem -D's into about:testament (privacy: keep blank) */
+#ifndef GECOS
+#define GECOS "Onyx"
+#endif
+#ifndef USERNAME
+#define USERNAME "onyx"
 #endif
 
 #endif /* _ONYX_NSCONFIG_H */

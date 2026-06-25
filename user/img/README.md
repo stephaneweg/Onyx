@@ -74,9 +74,10 @@ from `bmp.hpp`, which yields `0x00RRGGBB` magenta-keyed icons from SD files — 
 
 ## Config / build notes
 
-- **zlib**: only the `inflate`/`deflate` *stream* API is built. The `gz*` file helpers
-  want POSIX `open`/`read`/`close` (no fd layer here) and are dropped — libpng uses the
-  stream API, not `gzFILE`.
+- **zlib**: the `inflate`/`deflate` *stream* API plus the `gz*` file helpers. libpng only
+  needs the stream API, but the NetSurf port (brick 9, `utils/messages.c`) reads gzipped
+  files via `gzopen`, so the `gz*` TUs are built too (they bottom out in newlib
+  `open`/`read`/`close`, resolved at link time in a newlib app).
 - **libpng**: built pure-C with `-DPNG_ARM_NEON_OPT=0` (the NEON intrinsics TU is left
   out for a safe first bring-up). Uses the upstream `scripts/pnglibconf.h.prebuilt`.
 - **libjpeg**: the IJG library objects plus `jmemnobs` (the no-temp-file memory
