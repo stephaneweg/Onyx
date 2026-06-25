@@ -154,7 +154,14 @@ stage: link
 	$(PYTHON) $(HERE)gen-icon.py $(SDCARD)/apps/netsurf.app/icon.bmp
 	grep -E '^en\.(all|framebuffer)\.' $(NS)/resources/FatMessages | sed -E 's/^en\.(all|framebuffer)\.//' > $(SDCARD)/res/Messages
 	for f in default.css quirks.css adblock.css internal.css; do cp $(NS)/resources/$$f $(SDCARD)/res/; done
+	# user.css: NetSurf loads it as a UA stylesheet but upstream ships none -> stage an EMPTY
+	# one. A missing resource: makes the fetch fail -> about:query/fetcherror, whose error
+	# page itself reloads the UA stylesheets -> the missing one fails again -> INFINITE LOOP.
+	cp $(NS)/resources/user.css $(SDCARD)/res/ 2>/dev/null || : > $(SDCARD)/res/user.css
 	for f in welcome.html credits.html licence.html; do cp $(NS)/resources/en/$$f $(SDCARD)/res/; cp $(NS)/resources/en/$$f $(SDCARD)/res/en/; done
+	# resource icons NetSurf maps (directory listings / toolbar) -- avoids more fetcherror loops
+	@mkdir -p $(SDCARD)/res/icons
+	for f in arrow-l content directory directory2 hotlist-add hotlist-rmv search; do cp $(NS)/resources/icons/$$f.png $(SDCARD)/res/icons/ 2>/dev/null || true; done
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(NS)/resources/ca-bundle $(SDCARD)/res/
 	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
 
