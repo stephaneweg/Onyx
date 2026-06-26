@@ -74,6 +74,7 @@ int kapi_app_dir (char *, unsigned);
 void kapi_set_click_handler (gui_handler);
 void kapi_set_pointer_handler (gui_handler);
 int kapi_meminfo (unsigned long *, unsigned long *, unsigned long *, unsigned *);
+int kapi_ram_detail (unsigned long *, unsigned long *, unsigned long *, unsigned long *, unsigned *);
 void *kapi_sbrk (long);
 void kapi_reboot (void);
 int kapi_kbd_ready (void);
@@ -208,4 +209,5 @@ void KApiTableInit (void)
 	t->get_chrome        = kapi_get_chrome;
 	t->draw_text_buf     = kapi_draw_text_buf;
 	t->random            = kapi_random;
+	t->ram_detail        = kapi_ram_detail;
 }

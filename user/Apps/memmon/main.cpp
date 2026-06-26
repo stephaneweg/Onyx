@@ -90,6 +90,11 @@ static void redraw (void)
 	kapi_meminfo (&total, &freekb, &appkb, &pagekb);
 	unsigned long used = total > freekb ? total - freekb : 0;
 
+	// ABI v33: physical RAM detected by the firmware, the app page pool (HIGH zone)
+	// total/free, the bytes reclaimed above 4GB, and the high-segment count.
+	unsigned long detected = 0, apppool = 0, appfree = 0, above4g = 0; unsigned nsegs = 0;
+	kapi_ram_detail (&detected, &apppool, &appfree, &above4g, &nsegs);
+
 	fill (0, 0, W, H, 0x00181c24);
 	kapi_draw_text (8, 8, "Memory monitor", 0x00ffffff);
 
@@ -104,11 +109,14 @@ static void redraw (void)
 	kapi_draw_text (bx + bw / 2 - 12, by + (bh - g_fh) / 2, pl, 0x00ffffff);
 
 	int y = 62;
-	kv (8, y, "Total: ", total / 1024, "MB"); y += g_fh;
-	kv (8, y, "Used:  ", used,         "KB"); y += g_fh;
-	kv (8, y, "Free:  ", freekb,       "KB"); y += g_fh;
-	kv (8, y, "Apps:  ", appkb,        "KB"); y += g_fh;
-	kv (8, y, "Page:  ", pagekb,       "KB"); y += g_fh + 6;
+	kv (8, y, "Detected: ", detected / 1024, "MB");  y += g_fh;	// physical board RAM
+	kv (8, y, "Managed:  ", total / 1024,    "MB");  y += g_fh;	// low + full high zone
+	kv (8, y, "App pool: ", apppool / 1024,  "MB");  y += g_fh;	// zone backing app frames
+	kv (8, y, "App free: ", appfree / 1024,  "MB");  y += g_fh;
+	kv (8, y, "Above 4G: ", above4g / 1024,  "MB");  y += g_fh;	// RAM reclaimed > 4 GB
+	kv (8, y, "Segments: ", (unsigned long) nsegs, ""); y += g_fh;	// high-zone segment count
+	kv (8, y, "Free:     ", freekb / 1024,   "MB");  y += g_fh;
+	kv (8, y, "Page:     ", pagekb,          "KB");  y += g_fh + 6;
 
 	kapi_draw_text (8, y, "By pages owned:", 0x0090a0b0); y += g_fh;
 	for (int i = 0; i < g_np && y < H - g_fh; i++)

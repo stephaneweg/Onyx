@@ -14,6 +14,7 @@
 #define NAMELEN	96
 #define LISTY	34
 #define CLICK_DELAY	70	// double-click window in HZ(=100) ticks (~700 ms)
+#define SB_W	14	// scrollbar column width (right edge of the list)
 
 static unsigned *fb;
 static int g_fw = 8, g_fh = 16, g_rows = 1;
@@ -24,6 +25,7 @@ static unsigned g_size[MAXE];
 static char     g_isdir[MAXE];
 static int      g_count = 0;
 static int      g_sel = 0, g_top = 0;
+static ui::Scrollbar *g_sb = 0;			// vertical scrollbar (driven by / driving g_top)
 
 static int      g_mode = 0;		// 0 browse, 1 rename, 2 new folder
 static char     g_inb[NAMELEN];
@@ -142,6 +144,28 @@ static void fix_scroll (void)
 	if (g_top < 0) g_top = 0;
 }
 
+// Largest valid g_top: the listing's last g_rows entries fill the view (0 if it all fits).
+static int max_top (void) { int m = g_count - g_rows; return m < 0 ? 0 : m; }
+
+// Refresh the scrollbar's range from the current entry count and slave its thumb to g_top.
+// Called every frame from redraw(), so keyboard navigation (which moves g_top via fix_scroll)
+// drags the thumb too, and a fresh directory listing rescales it.
+static void sync_sb (void)
+{
+	if (g_top > max_top ()) g_top = max_top ();
+	if (g_top < 0) g_top = 0;
+	if (g_sb) { g_sb->vmax = max_top (); g_sb->value = g_top; }
+}
+
+// Scrollbar drag -> set the view top. We leave g_sel alone: the user is scrolling the view,
+// not moving the selection (matching how desktop file managers behave).
+static void on_scroll (ui::Widget &w)
+{
+	g_top = ((ui::Scrollbar &) w).value;
+	if (g_top > max_top ()) g_top = max_top ();
+	if (g_top < 0) g_top = 0;
+}
+
 // Build "<g_path>/<name>" into out.
 static void full_path (const char *name, char *out, int cap)
 {
@@ -174,7 +198,7 @@ static void open_file (int idx)
 	}
 }
 
-static ui::Ui  *g_ui = 0;			// input hub + modal anchor (filer draws its own list)
+static ui::Ui        *g_ui = 0;			// input hub + modal anchor (filer draws its own list)
 static void on_ptr (unsigned long s, int ev, long val);
 static void on_key (unsigned long s, int ev, long key);
 static void reclaim_input (void) { kapi_set_pointer_handler (on_ptr); kapi_set_key_handler (on_key); }
@@ -266,8 +290,9 @@ static int      g_last_idx = -1;
 // hit-test. A left-button press is the old "canvas click".
 static void on_ptr (unsigned long s, int ev, long val)
 {
-	if (g_ui) g_ui->onEvent (s, ev, val);
+	if (g_ui) g_ui->onEvent (s, ev, val);		// scrollbar drag handled here first
 	if (ev != GUI_EVENT_PTR_DOWN || !(GUI_PTR_CHANGED (val) & 1)) return;
+	if (GUI_PTR_X (val) >= W - SB_W) return;	// clicks in the scrollbar column aren't row hits
 	int cy = GUI_PTR_Y (val);
 	int row = (cy - LISTY) / g_fh;
 	if (row < 0) return;
@@ -302,6 +327,8 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 
 static void redraw (void)
 {
+	sync_sb ();				// clamp g_top + slave the scrollbar thumb to it
+
 	fill_rect (0, 0, W, H, 0x00202830);
 	fill_rect (0, 0, W, LISTY - 2, 0x00303d4d);
 	kapi_draw_text (8, 9, g_path, 0x00e0e0e0);
@@ -312,7 +339,7 @@ static void redraw (void)
 		int idx = g_top + r;
 		if (idx >= g_count) break;
 		int y = LISTY + r * g_fh;
-		if (idx == g_sel) fill_rect (0, y, W, g_fh, 0x00355070);
+		if (idx == g_sel) fill_rect (0, y, W - SB_W, g_fh, 0x00355070);
 
 		unsigned col = g_isdir[idx] ? 0x0080c8ff : 0x00d8d8d8;
 		char line[NAMELEN + 8];
@@ -326,7 +353,7 @@ static void redraw (void)
 		if (!g_isdir[idx])
 		{
 			char sz[16]; itoa ((int) g_size[idx], sz);
-			int tx = W - 12 - slen (sz) * g_fw;
+			int tx = W - SB_W - 12 - slen (sz) * g_fw;
 			kapi_draw_text (tx, y + 1, sz, 0x0090a0a8);
 		}
 	}
@@ -341,6 +368,8 @@ static void redraw (void)
 		kapi_draw_text (lx, y, g_inb, 0x00ffffff);
 		fill_rect (lx + g_inlen * g_fw, y, 2, g_fh, 0x0060ff90);
 	}
+
+	if (g_ui) g_ui->drawAll ();		// paint the scrollbar on top of the list
 }
 
 int main (void)
@@ -352,6 +381,9 @@ int main (void)
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_rows = (H - LISTY) / g_fh;
 	if (g_rows < 1) g_rows = 1;
+
+	// Vertical scrollbar down the right edge of the list (range set later by sync_sb).
+	g_sb = &ui.scrollbar (W - SB_W, LISTY, SB_W, H - LISTY, true, 0, 0, on_scroll);
 
 	reclaim_input ();			// set_pointer_handler (on_ptr) + set_key_handler (on_key)
 	read_dir ();

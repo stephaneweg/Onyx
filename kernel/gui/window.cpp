@@ -505,20 +505,53 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 // Push one GUI_EVENT_PTR_* event to a window's pointer handler (client coords,
 // clamped non-negative; the toolkit treats out-of-bounds as "over no widget").
 void CWindowManager::EmitPointer (CWindow *pWin, int nEvent, int cx, int cy,
-				  unsigned nButtons, unsigned nChanged)
+				  unsigned nButtons, unsigned nChanged, int nWheel)
 {
 	if (pWin == 0) return;
 	u64 ulH = pWin->PointerHandler ();
 	if (ulH == 0) return;
 	if (cx < 0) cx = 0; else if (cx > 0xFFFF) cx = 0xFFFF;
 	if (cy < 0) cy = 0; else if (cy > 0xFFFF) cy = 0xFFFF;
+	if (nWheel >  127) nWheel =  127;			// fits the signed 8-bit wheel field
+	if (nWheel < -128) nWheel = -128;
 	GUIEvent Ev;
 	Ev.ulHandler = ulH;
 	Ev.ulSender  = 0;
 	Ev.nEvent    = nEvent;
-	Ev.lValue    = ((long) (nChanged & 0xFF) << 40) | ((long) (nButtons & 0xFF) << 32)
+	Ev.lValue    = ((long) (nWheel & 0xFF) << 48) | ((long) (nChanged & 0xFF) << 40)
+		     | ((long) (nButtons & 0xFF) << 32)
 		     | ((long) (cx & 0xFFFF) << 16) | (long) (cy & 0xFFFF);
 	pWin->PushEvent (Ev);
+}
+
+// Route a scroll-wheel notch to the window under the cursor (or the pointer-capture
+// window if a drag is in progress) as a GUI_EVENT_PTR_WHEEL pointer event.
+void CWindowManager::OnMouseWheel (int x, int y, int nWheel)
+{
+	if (nWheel == 0) return;
+	if (x < 0) x = 0; else if (x >= g_nScreenWidth)  x = g_nScreenWidth - 1;
+	if (y < 0) y = 0; else if (y >= g_nScreenHeight) y = g_nScreenHeight - 1;
+
+	m_SpinLock.Acquire ();
+	CWindow *pTarget = m_pPtrCaptureWindow;
+	if (pTarget == 0)
+	{
+		boolean bOnTitle = FALSE;
+		unsigned nHit = HitTest (x, y, &bOnTitle);
+		if (nHit != ~0u)
+		{
+			CWindow *pW = m_pWindows[nHit];
+			if (pW->PointerHandler () != 0 && !bOnTitle && !pW->HitCloseBox (x, y))
+				pTarget = pW;
+		}
+	}
+	if (pTarget != 0)
+	{
+		int cx = x - (pTarget->X () + pTarget->ChromeL ());
+		int cy = y - (pTarget->Y () + pTarget->ChromeT ());
+		EmitPointer (pTarget, GUI_EVENT_PTR_WHEEL, cx, cy, m_nLastButtons, 0, nWheel);
+	}
+	m_SpinLock.Release ();
 }
 
 // Parse the next logical key from a Circle cooked-mode string, advancing *pp.

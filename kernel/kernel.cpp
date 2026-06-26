@@ -63,18 +63,25 @@ class CUserProcessTask : public CTask
 {
 public:
 	// Large stack: the app and the kernel functions it calls share this thread stack.
+	// We take the ELF PATH (not a preloaded buffer): the SD read happens in Run(), on
+	// THIS task's thread the first time the scheduler switches to us -- so the launcher /
+	// shell that spawned us is never blocked by the (slow, ~MB) read.
 	// pStdin/pStdout/pProcess/pArgs are for spawned processes (default 0 for plain
 	// launches): the streams + spawn handle are installed into the address space so
 	// the app's stdio + exit status work; pArgs becomes kapi_get_args.
-	CUserProcessTask (const u8 *pELF, unsigned nSize, const char *pName, CLogger *pLogger,
+	CUserProcessTask (const char *pPath, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
 			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
 	:	CTask (0x40000),	// 256 KB
-		m_pELF (pELF), m_nSize (nSize), m_pLogger (pLogger),
+		m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
 		m_nParentPid (nParentPid)
 	{
 		SetName (pName);	// copies into CTask::m_Name (caller's may be transient)
+		unsigned p = 0;		// copy the path (the caller's string may be transient)
+		if (pPath != 0)
+			for (; pPath[p] != '\0' && p < sizeof (m_Path) - 1; p++) m_Path[p] = pPath[p];
+		m_Path[p] = '\0';
 		unsigned i = 0;
 		if (pArgs != 0)
 			for (; pArgs[i] != '\0' && i < sizeof (m_Args) - 1; i++) m_Args[i] = pArgs[i];
@@ -91,12 +98,17 @@ public:
 		if (pAS == 0 || !pAS->IsValid ())
 		{
 			m_pLogger->Write (GetName (), LogError, "address space creation failed");
+			// The AS never took the streams here, so release the caller's refs ourselves.
+			if (m_pStdin  != 0) m_pStdin->Release ();
+			if (m_pStdout != 0) m_pStdout->Release ();
 			if (m_pProcess != 0) { m_pProcess->nStatus = -1; m_pProcess->bDone = TRUE; }
+			delete pAS;
 			return;
 		}
 
 		// Install stdio + spawn handle + argv before the app runs (the AS owns the
-		// stream refs from here, and releases them / marks the process on teardown).
+		// stream refs from here, and releases them / marks the process on teardown -- so
+		// every failure path below just `delete pAS`).
 		pAS->SetStdin (m_pStdin);
 		pAS->SetStdout (m_pStdout);
 		pAS->SetProcess (m_pProcess);
@@ -104,13 +116,54 @@ public:
 		if (m_Cwd[0] != '\0') pAS->SetCwd (m_Cwd);	// else keep the default root
 		pAS->SetParentPid (m_nParentPid);		// 0 = no parent (drawer launch)
 
+		// Load the ELF from SD HERE -- on our own thread, deferred to our first schedule
+		// ("when we are switched to") -- so the launcher/shell wasn't blocked by the read.
+		// Read in chunks, yielding between them, so the compositor + the rest of the UI
+		// keep running while we load (the SD read is the slow part; we're single-core).
+		FIL File;
+		if (f_open (&File, m_Path, FA_READ) != FR_OK)
+		{
+			m_pLogger->Write (GetName (), LogError, "cannot open %s", m_Path);
+			delete pAS;
+			return;
+		}
+		unsigned nSize = (unsigned) f_size (&File);
+		u8 *pELF = new u8[nSize];
+		if (pELF == 0)
+		{
+			f_close (&File);
+			m_pLogger->Write (GetName (), LogError, "out of memory loading %s", m_Path);
+			delete pAS;
+			return;
+		}
+		unsigned nDone = 0; boolean bRead = TRUE;
+		while (nDone < nSize)
+		{
+			unsigned nChunk = nSize - nDone;
+			if (nChunk > 0x20000) nChunk = 0x20000;		// 128 KB, then yield
+			UINT nRead = 0;
+			if (f_read (&File, pELF + nDone, nChunk, &nRead) != FR_OK || nRead == 0)
+			{
+				bRead = FALSE; break;
+			}
+			nDone += nRead;
+			CScheduler::Get ()->Yield ();			// let the UI/compositor run
+		}
+		f_close (&File);
+		if (!bRead)
+		{
+			delete [] pELF;
+			m_pLogger->Write (GetName (), LogError, "read failed %s", m_Path);
+			delete pAS;
+			return;
+		}
+
 		u64 ulEntry = 0;
-		boolean bLoaded = LoadELF (m_pELF, m_nSize, pAS, &ulEntry);
+		boolean bLoaded = LoadELF (pELF, nSize, pAS, &ulEntry);
 
 		// The file image is no longer needed: LoadELF copied the segments into the
-		// app's own frames. Free it now (it was new[]'d by LoadFileFromSD).
-		delete [] (u8 *) m_pELF;
-		m_pELF = 0;
+		// app's own frames. Free it now.
+		delete [] pELF;
 
 		if (!bLoaded)
 		{
@@ -134,8 +187,7 @@ public:
 	}
 
 private:
-	const u8   *m_pELF;
-	unsigned    m_nSize;
+	char	    m_Path[256];	// ELF path; loaded in Run() on our own thread
 	CLogger	   *m_pLogger;
 	CStream	   *m_pStdin;
 	CStream	   *m_pStdout;
@@ -380,7 +432,7 @@ private:
 	// WM would miss the press edge of a second click -- breaking double-click. So we
 	// reconstruct the real button bitmask: Down sets the bit, Up clears it, Move syncs.
 	static void MouseEventStub (TMouseEvent Event, unsigned nButtons,
-				    unsigned nPosX, unsigned nPosY, int /*nWheelMove*/)
+				    unsigned nPosX, unsigned nPosY, int nWheelMove)
 	{
 		static unsigned s_nButtons = 0;
 		switch (Event)
@@ -388,7 +440,11 @@ private:
 		case MouseEventMouseDown: s_nButtons |= nButtons;  break;	// nButtons = changed mask
 		case MouseEventMouseUp:   s_nButtons &= ~nButtons; break;
 		case MouseEventMouseMove: s_nButtons = nButtons;   break;	// full state
-		default: break;							// wheel etc.
+		case MouseEventMouseWheel:					// scroll notch, no button change
+			if (CWindowManager::Get () != 0)
+				CWindowManager::Get ()->OnMouseWheel ((int) nPosX, (int) nPosY, nWheelMove);
+			return;
+		default: break;
 		}
 		if (CWindowManager::Get () != 0)
 		{
@@ -694,6 +750,15 @@ static void ReadSystemConfig (void)
 	delete [] pData;
 }
 
+// Quick existence check (metadata only -- a directory lookup, NOT the file body). Used
+// before deferring an app's load so a missing path fails immediately at the caller (the
+// heavy ~MB read still happens later on the new task's own thread).
+static boolean SdFileExists (const char *pPath)
+{
+	FILINFO Info;
+	return f_stat (pPath, &Info) == FR_OK && !(Info.fattrib & AM_DIR);
+}
+
 // Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
@@ -701,16 +766,22 @@ static boolean LaunchApp (const char *pName, CLogger *pLogger)
 	CString Path;
 	Path.Format ("SD:apps/%s.app/main.elf", pName);
 
-	unsigned nSize = 0;
-	const u8 *pElf = LoadFileFromSD ((const char *) Path, &nSize);
-	if (pElf == 0)
+	// Verify the file exists NOW (cheap) so a bad name fails here, not asynchronously.
+	if (!SdFileExists ((const char *) Path))
 	{
-		pLogger->Write (FromKernel, LogError, "launch: cannot load %s",
-				(const char *) Path);
+		pLogger->Write (FromKernel, LogError, "launch: not found %s", (const char *) Path);
 		return FALSE;
 	}
-	pLogger->Write (FromKernel, LogNotice, "launch: %s (%u bytes)", pName, nSize);
-	new CUserProcessTask (pElf, nSize, pName, pLogger);
+
+	// Deferred load: hand the PATH to the task; it reads the ELF on its own thread when
+	// the scheduler first switches to it, so this caller (often the UI) returns at once.
+	CUserProcessTask *pTask = new CUserProcessTask ((const char *) Path, pName, pLogger);
+	if (pTask == 0)
+	{
+		pLogger->Write (FromKernel, LogError, "launch: out of memory for %s", pName);
+		return FALSE;
+	}
+	pLogger->Write (FromKernel, LogNotice, "launch: %s (deferred)", pName);
 	return TRUE;
 }
 
@@ -737,9 +808,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	{
 		return 0;
 	}
-	unsigned nSize = 0;
-	const u8 *pElf = LoadFileFromSD (pElfPath, &nSize);
-	if (pElf == 0)
+	if (!SdFileExists (pElfPath))		// missing -> immediate failure (shell prints "not found")
 	{
 		return 0;
 	}
@@ -747,7 +816,6 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	CProcess *pProc = new CProcess;
 	if (pProc == 0)
 	{
-		delete [] (u8 *) pElf;
 		return 0;
 	}
 	pProc->bDone = FALSE;
@@ -756,9 +824,18 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	if (pStdin  != 0) pStdin->AddRef ();		// the child AS will release these
 	if (pStdout != 0) pStdout->AddRef ();
 
-	new CUserProcessTask (pElf, nSize, pElfPath, CLogger::Get (),
-			      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid);
-	VLOG ("proc", LogNotice, "spawn %s (parent pid %u)", pElfPath, nParentPid);
+	// Deferred load: the task reads pElfPath on its own thread. If the file is missing,
+	// it marks pProc done (status -1) so a waiter unblocks -- the failure surfaces async.
+	CUserProcessTask *pTask = new CUserProcessTask (pElfPath, pElfPath, CLogger::Get (),
+				      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid);
+	if (pTask == 0)
+	{
+		if (pStdin  != 0) pStdin->Release ();
+		if (pStdout != 0) pStdout->Release ();
+		delete pProc;
+		return 0;
+	}
+	VLOG ("proc", LogNotice, "spawn %s (parent pid %u, deferred)", pElfPath, nParentPid);
 	return pProc;
 }
 
@@ -813,16 +890,14 @@ boolean ExecPath (const char *pElfPath, const char *pArgs)
 	{
 		return FALSE;
 	}
-	unsigned nSize = 0;
-	const u8 *pElf = LoadFileFromSD (pElfPath, &nSize);
-	if (pElf == 0)
+	if (!SdFileExists (pElfPath))		// fail now if missing; body read is still deferred
 	{
 		return FALSE;
 	}
 	char Name[40];
 	NameFromPath (pElfPath, Name, sizeof (Name));
-	new CUserProcessTask (pElf, nSize, Name, CLogger::Get (), 0, 0, 0, pArgs);
-	return TRUE;
+	// Deferred load (see CUserProcessTask): the task reads pElfPath on its own thread.
+	return new CUserProcessTask (pElfPath, Name, CLogger::Get (), 0, 0, 0, pArgs) != 0;
 }
 
 // Log the .app subdirectories of /apps (validates FatFs directory enumeration;
@@ -908,6 +983,24 @@ boolean CKernel::Initialize (void)
 		m_Logger.Write (FromKernel, LogNotice, "ARM clock: %u MHz (max %u MHz)",
 				m_CPUThrottle.GetClockRate () / 1000000,
 				m_CPUThrottle.GetMaxClockRate () / 1000000);
+
+		// Firmware-reported board RAM (4096 / 8192 ...): the truth against which the
+		// high-zone reclaim below is judged. If this says 8192 but "above 4GB" is 0,
+		// the >4GB reclaim fell back (bug); if this says 4096, 0 above 4GB is correct.
+		CMachineInfo *pMI = CMachineInfo::Get ();
+		m_Logger.Write (FromKernel, LogNotice, "board RAM (firmware): %u MB",
+				pMI != 0 ? pMI->GetRAMSize () : 0);
+
+		// High-zone page allocator (app frames). SetupHighMem runs before the logger
+		// exists, so report its result here: total high RAM for apps + how much was
+		// reclaimed above 4GB from the device tree (0 if the board has none).
+		unsigned long nHighMB = (unsigned long)
+			((CMemorySystem::GetPagerHighFreeSpace () + (1024*1024 - 1)) / (1024*1024));
+		unsigned long n4GMB = (unsigned long)
+			((CMemorySystem::GetHighMem4GSize () + (1024*1024 - 1)) / (1024*1024));
+		m_Logger.Write (FromKernel, LogNotice,
+				"high page zone: %lu MB for apps across %u segment(s), %lu MB above 4GB",
+				nHighMB, CMemorySystem::GetHighSegCount (), n4GMB);
 	}
 
 	if (bOK)

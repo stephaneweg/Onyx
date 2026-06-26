@@ -393,7 +393,9 @@ tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
-`set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE` with client coords).
+`set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE/WHEEL` with client coords;
+`GUI_EVENT_PTR_WHEEL` carries a signed notch delta in the `lValue` wheel field, decoded
+with `GUI_PTR_WHEEL` — scrollbars/text areas in both toolkits scroll on it).
 Same memory model as the rest: widgets live in a caller-provided **fixed pool**
 (`ui_widget pool[N]` in the app's `.bss`, freed automatically on exit — no user
 `malloc`, no kernel object behind a widget). `ui_init`, `ui_button`/`ui_label`/

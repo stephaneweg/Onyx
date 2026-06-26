@@ -325,7 +325,12 @@ void CAddressSpace::MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPa
 
 void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 {
-	void *pFrame = palloc ();		// identity-mapped: kernel VA == PA
+	// App data frames (ELF segments + heap) come from the HIGH zone (1-3GB): they are
+	// pure CPU memory (no DMA -- SD I/O is PIO, net buffers are copied kernel-side), and
+	// HIGH gives ~2GB instead of the small low pager. The frame stays identity-mapped
+	// (kernel zeroes/ELF-loads it by identity) and is mapped into the app at ulVA. The
+	// per-AS page tables themselves stay in the low pager (palloc, see GetOrCreateL3).
+	void *pFrame = palloc_high ();		// identity-mapped: kernel VA == PA
 	if (pFrame == 0)
 	{
 		return 0;

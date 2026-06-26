@@ -16,12 +16,16 @@
 
 typedef __SIZE_TYPE__ onyx_size_t;
 
-inline void *operator new      (onyx_size_t n)            { return umm_malloc (n); }
-inline void *operator new[]    (onyx_size_t n)            { return umm_malloc (n); }
-inline void  operator delete   (void *p) noexcept         { umm_free (p); }
-inline void  operator delete[] (void *p) noexcept         { umm_free (p); }
-inline void  operator delete   (void *p, onyx_size_t) noexcept { umm_free (p); }	// sized
-inline void  operator delete[] (void *p, onyx_size_t) noexcept { umm_free (p); }
+// __attribute__((used)) forces emission of ALL these operators in the TU that includes
+// this header (an app includes it once, in main.o) -- so a SEPARATELY-COMPILED library
+// (e.g. wtk/libwtk.a) resolves operator new/delete from the app at link time, even the
+// variants (like sized delete in a deleting destructor) the app never calls directly.
+inline __attribute__ ((used)) void *operator new      (onyx_size_t n)            { return umm_malloc (n); }
+inline __attribute__ ((used)) void *operator new[]    (onyx_size_t n)            { return umm_malloc (n); }
+inline __attribute__ ((used)) void  operator delete   (void *p) noexcept         { umm_free (p); }
+inline __attribute__ ((used)) void  operator delete[] (void *p) noexcept         { umm_free (p); }
+inline __attribute__ ((used)) void  operator delete   (void *p, onyx_size_t) noexcept { umm_free (p); }	// sized
+inline __attribute__ ((used)) void  operator delete[] (void *p, onyx_size_t) noexcept { umm_free (p); }
 inline void *operator new      (onyx_size_t, void *p) noexcept { return p; }	// placement
 inline void *operator new[]    (onyx_size_t, void *p) noexcept { return p; }
 

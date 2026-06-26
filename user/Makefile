@@ -9,6 +9,7 @@
 PREFIX ?= aarch64-none-elf-
 CC      = $(PREFIX)gcc
 CXX     = $(PREFIX)g++
+AR      = $(PREFIX)ar
 
 # -I../kernel/include: apps include <kern/kapi_abi.h> (the shared ABI). Apps call
 # the kernel through the ABI table at a fixed VA, so they DON'T link against kernel
@@ -30,7 +31,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same filer terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -42,8 +43,16 @@ bin:
 	@$(MAKE) --no-print-directory -C bin
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h uikit.hpp uidialog.hpp bmp.hpp umm.h onyxpp.hpp
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< -o $@
+# wtk toolkit: compiled once into a static library, linked into every app.
+WTK_HDR = $(wildcard wtk/*.h)
+WTK_OBJ = $(patsubst %.cpp,%.o,$(wildcard wtk/*.cpp))
+wtk/%.o: wtk/%.cpp $(WTK_HDR)
+	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
+wtk/libwtk.a: $(WTK_OBJ)
+	$(AR) rcs $@ $^
+
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h uikit.hpp uidialog.hpp bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< wtk/libwtk.a -o $@
 
 clean:
 	rm -f *.elf *.o

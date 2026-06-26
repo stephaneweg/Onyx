@@ -28,17 +28,19 @@
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area; same value
 					// buttons: bit0 left, bit1 right
 // Full pointer stream (ABI v22, opt-in via kapi_set_pointer_handler) for app-side
-// widget toolkits (uikit.h). value packs (changed<<40)|(buttons<<32)|(x<<16)|y, all
-// client-relative; decode with the GUI_PTR_* macros below.
+// widget toolkits (uikit.h). value packs (wheel<<48)|(changed<<40)|(buttons<<32)|(x<<16)|y,
+// all client-relative; decode with the GUI_PTR_* macros below.
 #define GUI_EVENT_PTR_MOVE	8	// cursor moved
 #define GUI_EVENT_PTR_DOWN	9	// a button went down (changed = which: 1/2/4)
 #define GUI_EVENT_PTR_UP	10	// a button went up (changed = which)
 #define GUI_EVENT_PTR_ENTER	11	// cursor entered the client area
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
+#define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (GUI_PTR_WHEEL = signed notch delta)
 #define GUI_PTR_Y(v)		((int) ((unsigned long) (v) & 0xFFFF))
 #define GUI_PTR_X(v)		((int) (((unsigned long) (v) >> 16) & 0xFFFF))
 #define GUI_PTR_BUTTONS(v)	((int) (((unsigned long) (v) >> 32) & 0xFF))	// held mask
 #define GUI_PTR_CHANGED(v)	((int) (((unsigned long) (v) >> 40) & 0xFF))	// 1 left/2 right/4 mid
+#define GUI_PTR_WHEEL(v)	((int) (signed char) (((unsigned long) (v) >> 48) & 0xFF)) // +fwd/-back
 
 // Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 #define KEY_BACKSPACE		8
@@ -115,6 +117,10 @@ static inline void kapi_set_click_handler (gui_handler fn) { KT->set_click_handl
 static inline void kapi_set_pointer_handler (gui_handler fn) { KT->set_pointer_handler (fn); }
 // Memory snapshot (KB): total RAM, free, app-owned, page size. Any pointer may be 0.
 static inline int kapi_meminfo (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb) { return KT->meminfo (total_kb, free_kb, app_kb, page_kb); }
+// ABI v33: firmware-detected board RAM + app page-pool (HIGH zone) total/free, the bytes
+// reclaimed above 4GB, and the high-segment count. All KB; any pointer may be 0. (detected =
+// physical board RAM e.g. 8192 MB; apppool = the zone backing app frames via palloc_high.)
+static inline int kapi_ram_detail (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments) { return KT->ram_detail (detected_kb, apppool_kb, apppool_free_kb, above4g_kb, nsegments); }
 // Per-process heap: move the break by `inc` bytes (Unix sbrk); returns the previous
 // break or (void*)-1. The user allocator (umm.h) is built on this; apps rarely call it.
 static inline void *kapi_sbrk (long inc) { return KT->sbrk (inc); }

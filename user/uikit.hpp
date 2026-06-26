@@ -69,6 +69,10 @@ public:
 	virtual void draw (Ui &ui) = 0;
 	virtual void onPress (Ui &ui, int px, int py) { (void) ui; (void) px; (void) py; }
 	virtual void onDrag  (Ui &ui, int px, int py) { (void) ui; (void) px; (void) py; }	// button held + moved
+	// Scroll wheel over this widget; delta is signed (+forward/-back). Return true if
+	// consumed (Scrollbar scrolls); the default ignores it so the Ui can fall back to a
+	// scrollbar elsewhere in the window.
+	virtual bool onWheel (Ui &ui, int delta) { (void) ui; (void) delta; return false; }
 	virtual void activate (Ui &ui) { (void) ui; if (cb) cb (*this); }
 	virtual void key (Ui &ui, long k);			// default: Enter/Space activate
 };
@@ -181,6 +185,7 @@ public:
 	void draw (Ui &ui) override;
 	void onPress (Ui &ui, int px, int py) override { setFromXY (ui, px, py); }
 	void onDrag  (Ui &ui, int px, int py) override { setFromXY (ui, px, py); }
+	bool onWheel (Ui &ui, int delta) override;		// scroll ~3 units per notch
 	void setFromXY (Ui &ui, int px, int py);
 };
 
@@ -455,6 +460,17 @@ inline void Ui::onEvent (unsigned long sender, int ev, long v)
 			pressed = -1; dirtyFlag = true;
 		}
 		break;
+	case GUI_EVENT_PTR_WHEEL:
+	{
+		int d = GUI_PTR_WHEEL (v);
+		// Prefer the widget directly under the cursor; if it doesn't consume the wheel,
+		// fall back to the first scrollbar in the window (the common "scroll the list"
+		// case, where the cursor is over the list, not the thin bar).
+		int h = hitIndex (GUI_PTR_X (v), GUI_PTR_Y (v));
+		bool done = (h >= 0) && items[h]->onWheel (*this, d);
+		if (!done) for (int i = 0; i < n; i++) if (items[i]->onWheel (*this, d)) break;
+		break;
+	}
 	case GUI_EVENT_KEY:
 		if (v == KEY_TAB) { focus = nextFocus (focus < 0 ? -1 : focus); dirtyFlag = true; }
 		else if (focus >= 0 && focus < n) { items[focus]->key (*this, v); dirtyFlag = true; }
@@ -702,14 +718,31 @@ inline void Textarea::draw (Ui &ui)
 // ---- Scrollbar ---------------------------------------------------------------
 inline void Scrollbar::setFromXY (Ui &ui, int px, int py)
 {
-	int pos = vertical ? (py - y) : (px - x), span = vertical ? h : w;
+	// Map the cursor over the THUMB's travel range (span - thumb), centring the thumb on
+	// the cursor -- same geometry as draw(). Mapping over the full span (the old bug) made
+	// value==vmax (the last row) reachable only at the exact bottom pixel, so you could
+	// never scroll all the way down.
+	int span = vertical ? h : w;
+	int thumb = span / 5; if (thumb < 14) thumb = 14; if (thumb > span) thumb = span;
+	int range = span - thumb; if (range < 1) range = 1;
+	int pos = (vertical ? (py - y) : (px - x)) - thumb / 2;		// thumb centred on the cursor
 	if (pos < 0) pos = 0;
-	if (pos > span) pos = span;
-	int nv = vmax * pos / (span > 0 ? span : 1);
+	if (pos > range) pos = range;
+	int nv = vmax * pos / range;
 	if (nv < 0) nv = 0;
 	if (nv > vmax) nv = vmax;
 	if (nv != value) { value = nv; if (cb) cb (*this); }
 	ui.markDirty ();
+}
+// Wheel: scroll ~3 units per notch. A forward notch (delta > 0) scrolls up (toward the
+// top), i.e. decreases the value -- the usual desktop convention.
+inline bool Scrollbar::onWheel (Ui &ui, int delta)
+{
+	int nv = value - delta * 3;
+	if (nv < 0) nv = 0;
+	if (nv > vmax) nv = vmax;
+	if (nv != value) { value = nv; if (cb) cb (*this); ui.markDirty (); }
+	return true;
 }
 inline void Scrollbar::draw (Ui &ui)
 {

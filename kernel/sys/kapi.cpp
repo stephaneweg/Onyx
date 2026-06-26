@@ -28,6 +28,7 @@
 #include <circle/util.h>
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
+#include <circle/machineinfo.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -1387,19 +1388,49 @@ int kapi_meminfo (unsigned long *pTotalKB, unsigned long *pFreeKB,
 		  unsigned long *pAppKB, unsigned *pPageKB)
 {
 	CMemorySystem *pMem = CMemorySystem::Get ();
-	unsigned long nTotal = pMem != 0 ? (unsigned long) pMem->GetMemSize () : 0;
+	// Total managed RAM = low region + the FULL high zone (all pager segments, including
+	// the [3-4GB] and >4GB RAM the zone allocator reclaimed). GetMemSize() only counts
+	// low + seg0, so it under-reports on boards where we reclaimed more -- use the sum.
+	unsigned long nTotal = pMem != 0
+		? (unsigned long) (CMemorySystem::GetLowMemSize () + CMemorySystem::GetHighZoneTotal ())
+		: 0;
 	// Free = never-allocated region + freed-and-reusable blocks/pages, for both the
 	// heap and the page allocator -- so it rises again when memory is freed.
 	unsigned long nHeap  = pMem != 0 ? (unsigned long) (pMem->GetHeapFreeSpace (HEAP_ANY)
 						 + pMem->GetHeapFreeListSpace ()) : 0;
+	// Pager free = low pager (page tables, DMA-critical) + HIGH pager (app frames/heaps).
 	unsigned long nPager = (unsigned long) (CMemorySystem::GetPagerFreeSpace ()
-						 + CMemorySystem::GetPagerFreeListSpace ());
+						 + CMemorySystem::GetPagerFreeListSpace ()
+						 + CMemorySystem::GetPagerHighFreeSpace ()
+						 + CMemorySystem::GetPagerHighFreeListSpace ());
 	unsigned long nApp   = (unsigned long) g_nUserPages * (unsigned long) KPAGE_SIZE;
 
 	if (pTotalKB) *pTotalKB = nTotal / 1024;
 	if (pFreeKB)  *pFreeKB  = (nHeap + nPager) / 1024;
 	if (pAppKB)   *pAppKB   = nApp / 1024;
 	if (pPageKB)  *pPageKB  = KPAGE_SIZE / 1024;
+	return 1;
+}
+
+// Detail beyond meminfo (ABI v33): the firmware-detected physical RAM (e.g. 4096 MB even
+// though meminfo's managed total is ~3 GB), plus the size and free space of the HIGH page
+// zone that backs app frames (palloc_high). All sizes in KB; any out-ptr may be 0.
+int kapi_ram_detail (unsigned long *pDetectedKB, unsigned long *pAppPoolKB,
+		     unsigned long *pAppPoolFreeKB, unsigned long *pAbove4GKB,
+		     unsigned *pNSegments)
+{
+	CMachineInfo *pInfo = CMachineInfo::Get ();
+	unsigned long nDetected = pInfo != 0 ? (unsigned long) pInfo->GetRAMSize () * 1024UL : 0;
+	unsigned long nPool = (unsigned long) (CMemorySystem::GetHighZoneTotal () / 1024);
+	unsigned long nFree = (unsigned long) ((CMemorySystem::GetPagerHighFreeSpace ()
+						 + CMemorySystem::GetPagerHighFreeListSpace ()) / 1024);
+	unsigned long nAbove4G = (unsigned long) (CMemorySystem::GetHighMem4GSize () / 1024);
+
+	if (pDetectedKB)    *pDetectedKB    = nDetected;
+	if (pAppPoolKB)     *pAppPoolKB     = nPool;
+	if (pAppPoolFreeKB) *pAppPoolFreeKB = nFree;
+	if (pAbove4GKB)     *pAbove4GKB     = nAbove4G;
+	if (pNSegments)     *pNSegments     = CMemorySystem::GetHighSegCount ();
 	return 1;
 }
 

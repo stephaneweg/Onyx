@@ -21,7 +21,8 @@
 // table consolidated (no gaps), so old app binaries must be rebuilt. (Retro-compat was
 // explicitly waived; every app is rebuilt from this tree.)
 // v30: + random() -- hardware RNG (Pi RNG) for cryptographic seeding (TLS entropy).
-#define KAPI_ABI_VERSION	32
+// v33: + ram_detail() -- firmware-detected board RAM + app page-pool total/free (memmon).
+#define KAPI_ABI_VERSION	33
 
 #ifdef __cplusplus
 extern "C" {
@@ -286,6 +287,15 @@ struct TKApiTable
 	// CBcmRandomNumberGenerator). For cryptographic seeding -- e.g. the TLS entropy
 	// source in user/tls/onyx_tls.hpp. Returns the number of bytes written (== len).
 	int (*random) (void *buf, unsigned len);
+
+	// --- v33 additions (memory detail for memmon) ---
+	// detected_kb = firmware-reported physical board RAM (CMachineInfo::GetRAMSize) --
+	// e.g. 4 GB even though the managed total (meminfo) is ~3 GB on a 4 GB board.
+	// apppool_kb / apppool_free_kb = total / free of the HIGH page zone that backs app
+	// frames (palloc_high -- ELF segments, heaps, decoded images). Any out-ptr may be 0.
+	int (*ram_detail) (unsigned long *detected_kb, unsigned long *apppool_kb,
+			   unsigned long *apppool_free_kb, unsigned long *above4g_kb,
+			   unsigned *nsegments);
 };
 
 #ifdef __cplusplus

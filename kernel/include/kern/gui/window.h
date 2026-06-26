@@ -58,15 +58,17 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_CANVAS_CLICK	6	// press in the client area, no widget hit
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area
 // Full pointer stream for app-side widget toolkits (ABI v22, opt-in via
-// set_pointer_handler). lValue packs (changed<<40)|(buttons<<32)|(x<<16)|y, all
-// client-relative; `changed` = the button (1/2/4) for DOWN/UP, 0 otherwise.
+// set_pointer_handler). lValue packs (wheel<<48)|(changed<<40)|(buttons<<32)|(x<<16)|y,
+// all client-relative; `changed` = the button (1/2/4) for DOWN/UP, 0 otherwise; `wheel`
+// is a signed 8-bit notch delta, nonzero only on GUI_EVENT_PTR_WHEEL.
 #define GUI_EVENT_PTR_MOVE	8	// cursor moved over the client area
 #define GUI_EVENT_PTR_DOWN	9	// a button went down
 #define GUI_EVENT_PTR_UP	10	// a button went up
 #define GUI_EVENT_PTR_ENTER	11	// cursor entered the client area
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
-					// both: lValue = (buttons<<32)|(clientX<<16)|clientY
-					// buttons bit0 = left, bit1 = right
+#define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (lValue wheel field = signed delta)
+					// all: lValue = (wheel<<48)|(buttons<<32)|(clientX<<16)|clientY
+					// buttons bit0 = left, bit1 = right; wheel +forward / -back
 
 // Logical key codes delivered as GUI_EVENT_KEY lValue. Printable keys are their
 // ASCII value (32..126); these are the special keys (Circle cooked-mode escapes).
@@ -265,6 +267,11 @@ public:
 	// hover/press/release (click fires on release-inside), and focus.
 	void OnMouse (int x, int y, unsigned nButtons);
 
+	// Scroll-wheel input (called from the input thread). Routes a signed notch delta
+	// (+forward / -back) to the pointer handler of the window under (x,y), as a
+	// GUI_EVENT_PTR_WHEEL pointer event.
+	void OnMouseWheel (int x, int y, int nWheel);
+
 	// Keyboard input (called from the input thread): route a key string to the
 	// focused textbox (printable chars append; backspace deletes).
 	void OnKey (const char *pString);
@@ -278,8 +285,9 @@ private:
 	void RaiseLocked (CWindow *pWindow);
 
 	// Push one GUI_EVENT_PTR_* event (client coords) to a window's pointer handler.
+	// nWheel is the signed wheel delta (only meaningful for GUI_EVENT_PTR_WHEEL).
 	void EmitPointer (CWindow *pWin, int nEvent, int cx, int cy,
-			  unsigned nButtons, unsigned nChanged);
+			  unsigned nButtons, unsigned nChanged, int nWheel = 0);
 
 	CWindow	  *m_pWindows[WM_MAX_WINDOWS];
 	unsigned   m_nWindows;
