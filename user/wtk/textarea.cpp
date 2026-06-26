@@ -5,7 +5,7 @@ namespace wtk {
 
 Textarea::Textarea (int l, int t, int w, int h, int capacity)
   : Widget (l, t, w, h), cap (capacity < 16 ? 16 : capacity),
-    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false)
+    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false), barDrag (false)
 { canFocus = true; buf = new char[cap]; buf[0] = '\0'; }
 
 Textarea::~Textarea () { delete [] buf; }
@@ -35,7 +35,7 @@ void Textarea::onDraw ()
 {
 	const int pad = 4; int fw = wk_fw (), fh = wk_fh ();
 	rows = (height - 4) / fh; if (rows < 1) rows = 1;
-	cols = (width - 2 * pad) / fw; if (cols < 1) cols = 1; if (cols > 159) cols = 159;
+	cols = (width - 2 * pad - WK_SBW) / fw; if (cols < 1) cols = 1; if (cols > 159) cols = 159;
 	canvas.clear (disabled ? C_FACE_DN : C_FIELD);
 	canvas.frameRect (0, 0, width, height, C_BORDER);
 	if (hasFocus && !disabled) canvas.frameRect (1, 1, width - 2, height - 2, C_ACCENT);
@@ -56,36 +56,64 @@ void Textarea::onDraw ()
 		int cx = pad + (cc - left) * fw, cy = 2 + (cl - top) * fh;
 		if (cy >= 0 && cy < height - 2 && cx >= pad && cx < width - 1) canvas.fillRect (cx, cy, 1, fh, C_ACCENT);
 	}
+
+	// Auto vertical scrollbar: shown only when the text is taller than the view.
+	int totalLines = 1; for (int c = 0; c < len; c++) if (buf[c] == '\n') totalLines++;
+	int trackH = height - 2;
+	WkThumb th = wk_thumb ((long) totalLines * fh, (long) rows * fh, (long) top * fh, trackH);
+	if (th.show)
+		wk_draw_vscroll (canvas, width - WK_SBW - 1, 1, WK_SBW, trackH, th,
+				 C_FACE_DN, barDrag ? C_FACE_HI : C_FACE);
 }
 
 bool Textarea::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
-	if (mx < 0) { pressed = false; return false; }
+	if (mx < 0) { pressed = false; barDrag = false; return false; }
 	if (disabled) return true;
+	int fh = wk_fh ();
+	int lines = 1; for (int i = 0; i < len; i++) if (buf[i] == '\n') lines++;
+	int mt = lines - rows; if (mt < 0) mt = 0;
 	if (wheel)					// kernel pre-scaled the notch; forward = up
 	{
-		int lines = 1; for (int i = 0; i < len; i++) if (buf[i] == '\n') lines++;
-		int mt = lines - rows; if (mt < 0) mt = 0;
 		int nt = top - wheel;
 		if (nt < 0) nt = 0;
 		if (nt > mt) nt = mt;
 		if (nt != top) { top = nt; invalidate (true); }
 		return true;
 	}
+	// Scrollbar geometry + a px->line helper for dragging the thumb.
+	int trackH = height - 2;
+	WkThumb th = wk_thumb ((long) lines * fh, (long) rows * fh, (long) top * fh, trackH);
+	bool overBar = th.show && mx >= width - WK_SBW - 1;
+	if (bl && barDrag)				// continue an in-progress thumb drag
+	{
+		long pp = wk_thumb_pos (my - 1, trackH, (long) lines * fh, (long) rows * fh, th.h);
+		int nt = (int) ((pp + fh / 2) / fh); if (nt < 0) nt = 0; if (nt > mt) nt = mt;
+		if (nt != top) { top = nt; invalidate (true); }
+		return true;
+	}
 	if (bl && !pressed)
 	{
 		pressed = true; setFocus ();
-		const int pad = 4, fw = wk_fw (), fh = wk_fh ();
+		if (overBar)				// grab the thumb
+		{
+			barDrag = true;
+			long pp = wk_thumb_pos (my - 1, trackH, (long) lines * fh, (long) rows * fh, th.h);
+			int nt = (int) ((pp + fh / 2) / fh); if (nt < 0) nt = 0; if (nt > mt) nt = mt;
+			top = nt; invalidate (true);
+			return true;
+		}
+		const int pad = 4, fw = wk_fw ();
 		int row = (my - 2) / fh, col = (mx - pad) / fw;
 		if (row < 0) row = 0;
 		if (col < 0) col = 0;
 		int wantLine = top + row, wantCol = left + col, i = 0, line = 0;
 		while (line < wantLine && buf[i]) { if (buf[i] == '\n') line++; i++; }
 		int le = lineEnd (i), c = i + wantCol; if (c > le) c = le; caret = c;
-		ensureVisible ((height - 4) / fh, (width - 2 * pad) / fw);
+		ensureVisible ((height - 4) / fh, (width - 2 * pad - WK_SBW) / fw);
 		invalidate (true);
 	}
-	else if (!bl) pressed = false;
+	else if (!bl) { pressed = false; barDrag = false; }
 	return true;
 }
 
@@ -111,7 +139,7 @@ bool Textarea::onKey (long k)
 		if (buf[le] == '\n') { int nls = le + 1, nle = lineEnd (nls), c = nls + col; caret = c > nle ? nle : c; }
 	}
 	else return false;
-	ensureVisible ((height - 4) / wk_fh (), (width - 8) / wk_fw ());
+	ensureVisible ((height - 4) / wk_fh (), (width - 8 - WK_SBW) / wk_fw ());
 	invalidate (true); return true;
 }
 

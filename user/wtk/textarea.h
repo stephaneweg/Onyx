@@ -12,7 +12,7 @@ namespace wtk {
 class Textarea : public Widget
 {
 public:
-	char *buf; int cap, len, caret, top, left, rows, cols; bool readonly;
+	char *buf; int cap, len, caret, top, left, rows, cols; bool readonly, barDrag;
 	Textarea (int l, int t, int w, int h, int capacity);
 	~Textarea () override;
 	const char *content () const { return buf; }

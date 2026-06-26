@@ -107,6 +107,7 @@ private:
 	int *rowStart, *rowH, *rowY;	// rowY has rowN+1 entries (prefix tops + total)
 	int  rowN, rowCap, lastWrapW;
 	bool layoutDirty;
+	bool barDrag;				// dragging the integrated scrollbar thumb
 	void ensureLayout ();
 	void relayout (int wrapW);
 	void rowAt (int s, int wrapW, int &end, int &h, int &nextStart, bool &hard) const;
