@@ -27,6 +27,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <setjmp.h>
+#include <stdio.h>		/* ONYX debug trace */
 
 #include <webp/decode.h>
 
@@ -157,6 +158,17 @@ webp_cache_convert(struct content *c)
 		decoded = WebPDecodeARGBInto(source_data, source_size, pixels,
 				rowstride * webpfeatures.height, rowstride);
 		break;
+	}
+	{	/* ONYX DEBUG: sample row 0 / mid / last to tell apart "libwebp decoded only
+		 * one row" from "decoded fine but mis-rendered". */
+		unsigned h = webpfeatures.height;
+		uint32_t r0 = (decoded && h > 0) ? *(uint32_t *)(void *)pixels : 0;
+		uint32_t rm = (decoded && h > 2) ? *(uint32_t *)(void *)(pixels + rowstride * (h / 2)) : 0;
+		uint32_t rl = (decoded && h > 1) ? *(uint32_t *)(void *)(pixels + rowstride * (h - 1)) : 0;
+		printf("ONYX-WEBP w=%d h=%u stride=%u layout=%d decoded=%p row0=%08x mid=%08x last=%08x\n",
+		       webpfeatures.width, h, (unsigned)rowstride, (int)webp_fmt.layout,
+		       (void *)decoded, r0, rm, rl);
+		fflush(stdout);
 	}
 	if (decoded == NULL) {
 		/* decode failed */

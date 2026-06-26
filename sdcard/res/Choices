@@ -1,0 +1,21 @@
+# Onyx NetSurf options -- NetSurf "Choices" format: one "key:value" per line.
+# Read at startup from SD:/res/Choices. Edit on the card; no rebuild needed, and
+# re-staging keeps your edits (the build only creates this file if it is missing).
+
+# --- Images -----------------------------------------------------------------
+# 1 = load and display images (PNG / JPEG / GIF / BMP / WebP).
+# 0 = do NOT fetch images; show their alt text instead. This is much faster on
+#     heavy pages (it skips dozens of blocking fetches) -- a good "text mode".
+foreground_images:1
+background_images:1
+
+# --- JavaScript (Duktape) ---------------------------------------------------
+# 1 = run page JavaScript (Duktape engine). NOTE: it is old/limited (~ES5) and the
+#     fetch is synchronous, so JS-heavy sites stay slow; 0 disables it.
+enable_javascript:1
+
+# --- Fetch / memory (gentle defaults for the Pi) ----------------------------
+# Cap concurrent fetches and the memory cache so a big page can't run away.
+max_fetchers:2
+max_fetchers_per_host:2
+memory_cache_size:8388608

@@ -1,0 +1,7 @@
+*.o
+genbind
+webidl-lexer.c
+webidl-lexer.h
+webidl-parser.c
+webidl-parser.h
+

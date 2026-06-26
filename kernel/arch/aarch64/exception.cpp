@@ -191,13 +191,11 @@ void KernelIRQExit (TTrapFrame *pFrame)
 	pFrame->elr_el1  = (u64) &PreemptTrampoline;
 	pFrame->spsr_el1 = pFrame->spsr_el1 | (1u << 7) | (1u << 6);	// set I + F
 
-	// Rare trace so preemptions are observable on the log (throttled; remove later).
-	static unsigned long s_nPreempts = 0;
-	if ((++s_nPreempts & 0xFF) == 0)
-	{
-		CLogger::Get ()->Write ("preempt", LogNotice,
-			"M1 #%lu: sliced app at ELR=%lp", s_nPreempts, (void *) g_PreemptELR);
-	}
+	// IMPORTANT: do NOT log (CLogger::Write) here. It writes to the screen and
+	// formats via the heap -- not safe from IRQ context, and doubly unsafe right
+	// before this self-induced context switch (a throttled trace here hung the
+	// machine on the switch that immediately followed a logged preemption). For
+	// observability, bump a plain counter and read it later from a normal task.
 }
 
 void PeriodicTick (void)

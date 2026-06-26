@@ -323,6 +323,27 @@ static void fetch_onyx_run(struct fetch_onyx_context *c)
 	body = blank ? (uint8_t *)blank + 4 : resp + resplen;
 	bodylen = blank ? resplen - (headlen + 4) : 0;
 
+	/* 3xx redirect (but not 304 Not Modified): resolve the Location against the
+	 * request URL and hand NetSurf a FETCH_REDIRECT -- its llcache re-fetches and
+	 * enforces the redirect limit + loop detection. Crucial for http->https sites. */
+	if (code >= 300 && code < 400 && code != 304) {
+		char loc[2048];
+		if (header_value((const char *)resp, headlen, "Location", loc, sizeof loc)) {
+			nsurl *target = NULL;
+			if (nsurl_join(c->url, loc, &target) == NSERROR_OK && target != NULL) {
+				fetch_set_http_code(c->parent_fetch, code);
+				if (!c->aborted) {
+					msg.type = FETCH_REDIRECT;
+					msg.data.redirect = nsurl_access(target);
+					fetch_onyx_send(&msg, c);
+				}
+				nsurl_unref(target);
+				free(resp);
+				return;
+			}
+		}
+	}
+
 	/* inflate gzip/deflate in place (body is a slice of resp; copy out) */
 	if (header_value((const char *)resp, headlen, "Content-Encoding", cenc, sizeof cenc)) {
 		uint8_t *b = malloc(bodylen ? bodylen : 1);

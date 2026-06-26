@@ -48,3 +48,11 @@ __pycache__/
 # libjpeg, zlib. The build points here by default (see user/netsurf/netsurf-app.mk etc.).
 !/third_party/
 !/third_party/**
+# ...but NEVER the intermediate object files under third_party -- keep only the sources +
+# the re-linkable .a libraries (see build-artifacts hygiene). Re-excluded after the negation.
+# (Only *.o: patterns like *.d/*.map would wrongly catch source such as mbedtls/ChangeLog.d/
+# or zlib's version-script zlib.map.)
+third_party/**/*.o
+# nsgenbind's host build output (the x86 binary + objects) -- artifact, not committed; its
+# source IS vendored so it can be rebuilt (flex/bison) to regenerate the duktape bindings.
+third_party/nsgenbind/build-*/

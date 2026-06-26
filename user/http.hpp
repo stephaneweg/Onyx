@@ -188,6 +188,39 @@ namespace http_detail
 		path[j] = '\0';
 		return host[0] != '\0';
 	}
+
+	// Resolve a redirect Location against the current absolute URL `base`, into out[cap].
+	// Handles absolute (http(s)://), protocol-relative (//host/...), absolute-path (/...)
+	// and path-relative Locations. Returns false on parse error.
+	inline bool resolve_redirect (const char *base, const char *loc, char *out, int cap)
+	{
+		if (starts_ci (loc, "http://") || starts_ci (loc, "https://"))
+		{ int o = 0; out[0] = '\0'; cat (out, cap, &o, loc); return out[0] != '\0'; }
+
+		char host[160], path[1024]; unsigned port; bool https;
+		if (!parse_url (base, host, (int) sizeof host, &port, path, (int) sizeof path, &https))
+			return false;
+
+		int o = 0; out[0] = '\0';
+		if (loc[0] == '/' && loc[1] == '/')		// protocol-relative: //host/path
+		{ cat (out, cap, &o, https ? "https:" : "http:"); cat (out, cap, &o, loc); return out[0] != '\0'; }
+
+		cat (out, cap, &o, https ? "https://" : "http://");
+		cat (out, cap, &o, host);
+		if ((https && port != 443) || (!https && port != 80))
+		{ cat (out, cap, &o, ":"); cati (out, cap, &o, (long) port); }
+
+		if (loc[0] == '/')				// absolute path
+		{ cat (out, cap, &o, loc); }
+		else						// relative to the current path's directory
+		{
+			int cut = 0;
+			for (int i = 0; path[i]; i++) if (path[i] == '/') cut = i + 1;
+			catn (out, cap, &o, path, cut);		// up to and including the last '/'
+			cat (out, cap, &o, loc);
+		}
+		return out[0] != '\0';
+	}
 }
 
 // ---- transport: plain TCP, or TLS (mbedTLS) when ONYX_HTTP_TLS is defined --------
@@ -328,9 +361,40 @@ public:
 	HttpResponse put_json (const char *url, const char *json, char *buf, int cap)
 	{ return send ("PUT", url, "application/json", json, http_detail::slen (json), buf, cap); }
 
-	// The general request. method = "GET"/"POST"/...; ctype/body optional. The response
-	// is read into buf[cap]; body/hdr point into it. Negative status = HttpError.
+	// The general request, following up to 8 HTTP 3xx redirects (resolving relative
+	// Locations). 301/302/303 switch a non-GET to GET (curl's default); 307/308 keep
+	// the method + body. Returns the FINAL response (or the last 3xx if it has no
+	// Location / the hop limit is hit). body/hdr point into buf[cap]; <0 = HttpError.
 	HttpResponse send (const char *method, const char *url, const char *ctype,
+			   const void *body, int len, char *buf, int cap)
+	{
+		using namespace http_detail;
+		char cur[2048]; int o = 0; cur[0] = '\0';
+		cat (cur, (int) sizeof cur, &o, url);
+
+		HttpResponse r = send_once (method, cur, ctype, body, len, buf, cap);
+		for (int hop = 0; hop < 8; hop++)
+		{
+			if (r.status < 300 || r.status >= 400 || r.status == 304)
+				return r;			/* not a redirect we follow */
+			char loc[2048];
+			if (r.header ("Location", loc, (int) sizeof loc) <= 0)
+				return r;			/* 3xx without Location: hand it back */
+			char next[2048];
+			if (!resolve_redirect (cur, loc, next, (int) sizeof next))
+				return r;
+			o = 0; cur[0] = '\0';
+			cat (cur, (int) sizeof cur, &o, next);
+			if (r.status != 307 && r.status != 308)
+			{ method = "GET"; body = 0; len = 0; ctype = 0; }	/* 301/302/303 -> GET */
+			r = send_once (method, cur, ctype, body, len, buf, cap);
+		}
+		return r;					/* too many redirects */
+	}
+
+	// One request, no redirect handling. method = "GET"/"POST"/...; ctype/body optional.
+	// The response is read into buf[cap]; body/hdr point into it. Negative status = HttpError.
+	HttpResponse send_once (const char *method, const char *url, const char *ctype,
 			   const void *body, int len, char *buf, int cap)
 	{
 		using namespace http_detail;
