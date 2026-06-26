@@ -124,6 +124,31 @@ namespace onyx_tls
 		mbedtls_ssl_conf_authmode (&s.conf, MBEDTLS_SSL_VERIFY_NONE);	// TODO: CA bundle
 		mbedtls_ssl_conf_rng (&s.conf, mbedtls_ctr_drbg_random, &s.drbg);
 
+		// The Pi 4's Cortex-A72 has NO ARMv8 crypto extensions, so AES-GCM is slow in
+		// software (no hardware AES, and no PMULL for GHASH). Prefer ChaCha20-Poly1305 --
+		// a pure-software AEAD that's fast without any crypto hardware -- and fall back to
+		// AES-GCM only if the server doesn't offer ChaCha. (network lever 1)
+		static const int s_ciphersuites[] = {
+			MBEDTLS_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			MBEDTLS_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			0
+		};
+		mbedtls_ssl_conf_ciphersuites (&s.conf, s_ciphersuites);
+
+		// Prefer X25519 for the ECDHE key exchange (fastest curve in pure software), then
+		// secp256r1 as fallback. (network lever 3; MBEDTLS_HAVE_ASM -- the assembly bignum
+		// -- stays enabled in the mbedTLS config for the rest of the handshake math.)
+		static const uint16_t s_groups[] = {
+			MBEDTLS_SSL_IANA_TLS_GROUP_X25519,
+			MBEDTLS_SSL_IANA_TLS_GROUP_SECP256R1,
+			0
+		};
+		mbedtls_ssl_conf_groups (&s.conf, s_groups);
+
 		if (mbedtls_ssl_setup (&s.ssl, &s.conf) != 0) return -1;
 		mbedtls_ssl_set_hostname (&s.ssl, host);			// SNI
 		mbedtls_ssl_set_bio (&s.ssl, &s, bio_send, bio_recv, 0);	// ctx = Session* (buffered BIO)
