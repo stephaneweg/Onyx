@@ -6,17 +6,19 @@
  * (content/fetchers/curl.c) drives libcurl. Onyx has no libcurl; this fetcher drives the
  * Onyx TCP kapis directly (kapi_tcp_connect/send/recv/close) and inflates gzip/deflate
  * with zlib -- the same transport our HttpClient (user/http.hpp) uses, exposed to the
- * NetSurf core as the "http" scheme.
+ * NetSurf core as the "http"/"https" scheme.
  *
- * Model (mirrors the simple data: fetcher): setup() rings a context, poll() runs each
- * fetch to completion synchronously and delivers FETCH_HEADER* / FETCH_DATA / FETCH_FINISHED
- * (or FETCH_ERROR) via fetch_send_callback(). Blocking is acceptable for a first bring-up
- * (the data: fetcher is synchronous too); a non-blocking, fdset-driven version comes later.
+ * Concurrency model (network lever A): each fetch is a small STATE MACHINE, and
+ * fetch_onyx_poll() advances every active fetch by ONE non-blocking step per call,
+ * so the read (download) phases of all in-flight resources OVERLAP instead of running
+ * one-at-a-time. The connect + (TLS) handshake is still blocking -- but the TLS layer
+ * now resumes sessions (lever B), so a same-host handshake after the first is abbreviated.
+ * (A persistent keep-alive connection pool -- lever C, HTTP/1.1 + Content-Length/chunked
+ * -- is the next step; for now we keep the proven HTTP/1.0 read-to-close framing.)
  *
  * Scope: http:// and https:// (the latter over user/tls/onyx_tls.hpp = mbedTLS on the TCP
  * kapis, via the C-callable onyx_nstls wrapper); GET only; gzip/deflate decoding. Builds as
- * part of the NetSurf core (brick 9) -- it needs the core headers + an Onyx frontend to
- * register it via fetch_onyx_register(). See user/netsurf/README.md.
+ * part of the NetSurf core (brick 9). See user/netsurf/README.md.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -39,12 +41,28 @@
 #include "kapi.h"		/* Onyx TCP transport */
 #include "onyx_nstls.h"		/* C-callable TLS transport (https) */
 
+/* Per-fetch state machine phases. */
+enum onyx_phase {
+	PH_INIT = 0,	/* parse URL, connect, send request (one-shot, blocking) */
+	PH_RECV,	/* non-blocking: accumulate the response until the peer closes */
+	PH_DONE		/* response complete -> deliver + clean up */
+};
+
 struct fetch_onyx_context {
 	struct fetch *parent_fetch;
 	nsurl *url;
 	bool aborted;
 	bool locked;
 	struct fetch_onyx_context *r_next, *r_prev;
+
+	/* --- non-blocking state machine --- */
+	enum onyx_phase phase;
+	bool tls;
+	int sock;			/* plaintext socket, or -1 */
+	onyx_tls_sess *ts;		/* TLS session, or NULL */
+	uint8_t *buf;			/* growable response accumulator (head + body) */
+	size_t cap, len;
+	unsigned t_last;		/* kapi_get_ticks at the last byte received (idle timeout) */
 };
 
 static struct fetch_onyx_context *ring = NULL;
@@ -77,68 +95,6 @@ static bool onyx_split_url(const char *url, char *host, size_t hcap,
 	while (*p && j + 1 < pcap) path[j++] = *p++;
 	path[j] = '\0';
 	return host[0] != '\0';
-}
-
-/* ---- blocking HTTP/1.0 GET into a growable buffer --------------------- */
-/* Returns the whole response (status line + headers + body) in out/outlen, or -1 on
- * connect/transport failure. Caller frees the buffer. `tls` selects the TLS transport
- * (onyx_nstls, mbedTLS) vs plaintext kapi_tcp -- both share kapi_tcp_recv's >0/0/<0
- * convention, so the read loop is identical. */
-static int onyx_http_recv(const char *host, unsigned port, const char *path,
-		bool tls, uint8_t **out, size_t *outlen)
-{
-	char req[1024];
-	size_t cap = 16384, n = 0;
-	uint8_t *buf;
-	int sock = -1, idle = 0;
-	onyx_tls_sess *ts = NULL;
-	int len;
-
-	if (tls) {
-		ts = onyx_nstls_open(host, port);
-		if (ts == NULL) return -1;
-	} else {
-		sock = kapi_tcp_connect(host, port);
-		if (sock < 0) return -1;
-	}
-
-	len = snprintf(req, sizeof req,
-		"GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: NetSurf (Onyx)\r\n"
-		"Accept: */*\r\nAccept-Encoding: gzip, deflate\r\nConnection: close\r\n\r\n",
-		path, host);
-	if (len <= 0 || len >= (int)sizeof req) {
-		if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
-		return -1;
-	}
-	if (tls) onyx_nstls_send(ts, req, len); else kapi_tcp_send(sock, req, len);
-
-	buf = malloc(cap);
-	if (buf == NULL) {
-		if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
-		return -1;
-	}
-
-	for (;;) {
-		int r;
-		if (n + 4096 > cap) {
-			uint8_t *nb = realloc(buf, cap * 2);
-			if (nb == NULL) {
-				free(buf);
-				if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
-				return -1;
-			}
-			buf = nb; cap *= 2;
-		}
-		r = tls ? onyx_nstls_recv(ts, buf + n, (int)(cap - n))
-			: kapi_tcp_recv(sock, buf + n, (int)(cap - n));
-		if (r > 0) { n += (size_t)r; idle = 0; }
-		else if (r == 0) { if (++idle > 1000) break; kapi_msleep(10); }
-		else break;			/* peer closed (HTTP/1.0 EOF) */
-	}
-	if (tls) onyx_nstls_close(ts); else kapi_tcp_close(sock);
-	*out = buf;
-	*outlen = n;
-	return 0;
 }
 
 /* ---- gzip / deflate body inflate (zlib) ------------------------------- */
@@ -185,6 +141,13 @@ static int onyx_inflate(const char *encoding, uint8_t **body, size_t *len)
 	return 0;
 }
 
+/* ---- transport helpers (plaintext or TLS, same non-blocking convention) ---- */
+static void onyx_conn_close(struct fetch_onyx_context *c)
+{
+	if (c->tls) { if (c->ts) onyx_nstls_close(c->ts); c->ts = NULL; }
+	else        { if (c->sock >= 0) kapi_tcp_close(c->sock); c->sock = -1; }
+}
+
 /* ---- fetcher operations ----------------------------------------------- */
 static bool fetch_onyx_initialise(lwc_string *scheme)
 {
@@ -215,6 +178,8 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		return NULL;
 	ctx->parent_fetch = parent_fetch;
 	ctx->url = nsurl_ref(url);
+	ctx->phase = PH_INIT;
+	ctx->sock = -1;
 	RING_INSERT(ring, ctx);
 	return ctx;
 }
@@ -228,6 +193,8 @@ static bool fetch_onyx_start(void *ctx)
 static void fetch_onyx_free(void *ctx)
 {
 	struct fetch_onyx_context *c = ctx;
+	onyx_conn_close(c);
+	free(c->buf);
 	nsurl_unref(c->url);
 	free(c);
 }
@@ -254,7 +221,7 @@ static void fetch_onyx_error(struct fetch_onyx_context *c, const char *err)
 }
 
 /* Locate a header value (case-insensitive) within the response head. Writes a
- * NUL-terminated, lowercased-key-agnostic copy of the value into val[vcap]. */
+ * NUL-terminated copy of the value into val[vcap]. */
 static bool header_value(const char *head, size_t headlen, const char *name,
 		char *val, size_t vcap)
 {
@@ -278,28 +245,64 @@ static bool header_value(const char *head, size_t headlen, const char *name,
 	return false;
 }
 
-static void fetch_onyx_run(struct fetch_onyx_context *c)
+/* PH_INIT: parse the URL, open the connection (blocking; TLS resumes per lever B),
+ * send the request, and allocate the response buffer. Returns true to advance to
+ * PH_RECV, false on a fatal error (an FETCH_ERROR has been delivered). */
+static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 {
-	char host[256], path[1024], ctype[128], cenc[64];
+	char host[256], path[1024], req[1024];
 	unsigned port;
-	uint8_t *resp = NULL, *body;
-	size_t resplen = 0, headlen, bodylen;
+	int len;
+	const char *url = nsurl_access(c->url);
+
+	c->tls = (strncasecmp(url, "https:", 6) == 0);
+	if (!onyx_split_url(url, host, sizeof host, &port, path, sizeof path,
+			    c->tls ? 443 : 80)) {
+		fetch_onyx_error(c, "Malformed URL");
+		return false;
+	}
+
+	if (c->tls) {
+		c->ts = onyx_nstls_open(host, port);		/* connect + (resumed) handshake */
+		if (c->ts == NULL) { fetch_onyx_error(c, "Connection failed"); return false; }
+	} else {
+		c->sock = kapi_tcp_connect(host, port);
+		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
+	}
+
+	len = snprintf(req, sizeof req,
+		"GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: NetSurf (Onyx)\r\n"
+		"Accept: */*\r\nAccept-Encoding: gzip, deflate\r\nConnection: close\r\n\r\n",
+		path, host);
+	if (len <= 0 || len >= (int)sizeof req) {
+		onyx_conn_close(c);
+		fetch_onyx_error(c, "Request too large");
+		return false;
+	}
+	if (c->tls) onyx_nstls_send(c->ts, req, len);
+	else        kapi_tcp_send(c->sock, req, len);
+
+	c->cap = 16384;
+	c->len = 0;
+	c->buf = malloc(c->cap);
+	if (c->buf == NULL) { onyx_conn_close(c); fetch_onyx_error(c, "Out of memory"); return false; }
+
+	c->t_last = kapi_get_ticks();
+	return true;
+}
+
+/* PH_DONE: parse the accumulated response (status / headers / body), follow a
+ * redirect, inflate gzip/deflate, and deliver it to the NetSurf core. */
+static void fetch_onyx_deliver(struct fetch_onyx_context *c)
+{
+	uint8_t *resp = c->buf, *body;
+	size_t resplen = c->len, headlen, bodylen;
 	const char *blank;
+	char ctype[128], cenc[64];
 	fetch_msg msg;
 	int code = 0;
-	const char *url = nsurl_access(c->url);
-	bool tls = (strncasecmp(url, "https:", 6) == 0);
 
-	if (!onyx_split_url(url, host, sizeof host, &port, path, sizeof path,
-			    tls ? 443 : 80)) {
-		fetch_onyx_error(c, "Malformed URL");
-		return;
-	}
-	if (onyx_http_recv(host, port, path, tls, &resp, &resplen) != 0 || resplen == 0) {
-		free(resp);
-		fetch_onyx_error(c, "Connection failed");
-		return;
-	}
+	if (resplen == 0) { fetch_onyx_error(c, "Empty response"); return; }
 
 	/* status line: "HTTP/1.x NNN ..." */
 	{
@@ -323,9 +326,8 @@ static void fetch_onyx_run(struct fetch_onyx_context *c)
 	body = blank ? (uint8_t *)blank + 4 : resp + resplen;
 	bodylen = blank ? resplen - (headlen + 4) : 0;
 
-	/* 3xx redirect (but not 304 Not Modified): resolve the Location against the
-	 * request URL and hand NetSurf a FETCH_REDIRECT -- its llcache re-fetches and
-	 * enforces the redirect limit + loop detection. Crucial for http->https sites. */
+	/* 3xx redirect (but not 304 Not Modified): resolve Location against the request
+	 * URL and hand NetSurf a FETCH_REDIRECT (its llcache enforces the limit + loops). */
 	if (code >= 300 && code < 400 && code != 304) {
 		char loc[2048];
 		if (header_value((const char *)resp, headlen, "Location", loc, sizeof loc)) {
@@ -338,7 +340,6 @@ static void fetch_onyx_run(struct fetch_onyx_context *c)
 					fetch_onyx_send(&msg, c);
 				}
 				nsurl_unref(target);
-				free(resp);
 				return;
 			}
 		}
@@ -350,7 +351,7 @@ static void fetch_onyx_run(struct fetch_onyx_context *c)
 		if (b != NULL) {
 			memcpy(b, body, bodylen);
 			if (onyx_inflate(cenc, &b, &bodylen) == 0)
-				body = b;	/* b now owned; resp freed below either way */
+				body = b;	/* b now owned; freed below */
 			else { free(b); }
 		}
 	}
@@ -380,24 +381,92 @@ static void fetch_onyx_run(struct fetch_onyx_context *c)
 
 	if (body < resp || body >= resp + resplen)
 		free(body);		/* inflated copy */
-	free(resp);
+}
+
+/* Advance one fetch by a single non-blocking step. Returns true when the fetch is
+ * complete (delivered or errored) and should be removed from the ring. */
+static bool fetch_onyx_step(struct fetch_onyx_context *c)
+{
+	int r;
+
+	if (c->phase == PH_INIT) {
+		if (!fetch_onyx_begin(c))	/* connect+send (blocking, once per resource) */
+			return true;		/* error already delivered */
+		c->phase = PH_RECV;
+		return false;			/* yield; recv on subsequent polls */
+	}
+
+	/* PH_RECV: one non-blocking read. Grow the buffer as needed. */
+	if (c->len + 4096 > c->cap) {
+		uint8_t *nb = realloc(c->buf, c->cap * 2);
+		if (nb == NULL) { onyx_conn_close(c); fetch_onyx_error(c, "Out of memory"); return true; }
+		c->buf = nb; c->cap *= 2;
+	}
+
+	r = c->tls ? onyx_nstls_recv(c->ts, c->buf + c->len, (int)(c->cap - c->len))
+		   : kapi_tcp_recv(c->sock, c->buf + c->len, (int)(c->cap - c->len));
+
+	if (r > 0) {
+		c->len += (size_t)r;
+		c->t_last = kapi_get_ticks();
+		return false;			/* more may follow; keep reading next poll */
+	}
+	if (r == 0) {				/* nothing yet -> yield to other fetches */
+		if (kapi_get_ticks() - c->t_last > 30000) {	/* idle too long */
+			onyx_conn_close(c);
+			if (c->len > 0) { fetch_onyx_deliver(c); }	/* deliver what we have */
+			else            { fetch_onyx_error(c, "Timeout"); }
+			return true;
+		}
+		return false;
+	}
+
+	/* r < 0: peer closed -> HTTP/1.0 end-of-response. Deliver. */
+	onyx_conn_close(c);
+	fetch_onyx_deliver(c);
+	return true;
 }
 
 static void fetch_onyx_poll(lwc_string *scheme)
 {
-	struct fetch_onyx_context *c, *save_ring = NULL;
+	struct fetch_onyx_context *active = NULL;	/* fetches still running after this round */
+	struct fetch_onyx_context *c;
+	bool did_connect = false;			/* at most one blocking connect per poll */
 	(void)scheme;
 
+	/* Drain the ring, advance each fetch by ONE non-blocking step, then re-queue the
+	 * ones that aren't finished -- so their read (download) phases overlap across the
+	 * NetSurf main-loop's repeated poll() calls. The only blocking op is a connect in
+	 * PH_INIT; we do at most one per poll so the main loop stays responsive. */
 	while (ring != NULL) {
 		c = ring;
 		RING_REMOVE(ring, c);
-		if (c->locked) { RING_INSERT(save_ring, c); continue; }
-		if (!c->aborted)
-			fetch_onyx_run(c);
-		fetch_remove_from_queues(c->parent_fetch);
-		fetch_free(c->parent_fetch);
+
+		if (c->locked) {			/* mid-callback -> revisit next poll */
+			RING_INSERT(active, c);
+			continue;
+		}
+		if (c->aborted) {
+			fetch_remove_from_queues(c->parent_fetch);
+			fetch_free(c->parent_fetch);	/* -> fetch_onyx_free: closes conn, frees ctx */
+			continue;
+		}
+		if (c->phase == PH_INIT && did_connect) {	/* defer this connect to a later poll */
+			RING_INSERT(active, c);
+			continue;
+		}
+		if (c->phase == PH_INIT)
+			did_connect = true;
+
+		if (fetch_onyx_step(c)) {		/* finished (delivered or errored) */
+			fetch_remove_from_queues(c->parent_fetch);
+			fetch_free(c->parent_fetch);
+			continue;
+		}
+		RING_INSERT(active, c);			/* still in progress -> keep for next poll */
 	}
-	ring = save_ring;
+
+	ring = active;
 }
 
 nserror fetch_onyx_register(void)
@@ -414,8 +483,8 @@ nserror fetch_onyx_register(void)
 	};
 	nserror ret;
 
-	/* The fetcher is scheme-agnostic: fetch_onyx_run() reads the scheme off the URL
-	 * and selects plaintext vs TLS. Register both http and https. */
+	/* The fetcher is scheme-agnostic: it reads the scheme off the URL and selects
+	 * plaintext vs TLS. Register both http and https. */
 	ret = fetcher_add(lwc_string_ref(corestring_lwc_http), &ops);
 	if (ret != NSERROR_OK)
 		return ret;

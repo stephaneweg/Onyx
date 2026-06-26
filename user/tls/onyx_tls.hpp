@@ -102,6 +102,52 @@ namespace onyx_tls
 		return give;
 	}
 
+	// ---- TLS session cache (resumption, network lever B) -------------------
+	// Keyed by host. A NEW connection to a host we've already handshaked with can
+	// RESUME -- skipping the full ECDHE + signature -- which is a big win for pages
+	// that fetch many resources from the same host over separate connections (the
+	// current per-resource-connection model). Per-app (one cache per linked app).
+	enum { TLS_SESS_CACHE_N = 6 };
+	struct SessCacheEntry { char host[128]; mbedtls_ssl_session sess; bool valid; };
+
+	inline bool sess_streq (const char *a, const char *b)
+	{
+		while (*a != '\0' && *a == *b) { a++; b++; }
+		return *a == *b;
+	}
+	inline SessCacheEntry *sess_cache (void)
+	{
+		static SessCacheEntry s_cache[TLS_SESS_CACHE_N];	// zero-init -> valid=false
+		return s_cache;
+	}
+	inline SessCacheEntry *sess_find (const char *host)
+	{
+		SessCacheEntry *c = sess_cache ();
+		for (int i = 0; i < TLS_SESS_CACHE_N; i++)
+			if (c[i].valid && sess_streq (c[i].host, host)) return &c[i];
+		return 0;
+	}
+	// Cache the current (resumable) session of `ssl` under `host`, for next time.
+	inline void sess_save (const char *host, mbedtls_ssl_context *ssl)
+	{
+		SessCacheEntry *c = sess_cache (), *e = sess_find (host);
+		if (e == 0) {					// reuse host slot, else a free one, else evict #0
+			for (int i = 0; i < TLS_SESS_CACHE_N; i++) if (!c[i].valid) { e = &c[i]; break; }
+			if (e == 0) e = &c[0];
+		}
+		if (e->valid) mbedtls_ssl_session_free (&e->sess);
+		mbedtls_ssl_session_init (&e->sess);
+		if (mbedtls_ssl_get_session (ssl, &e->sess) == 0) {
+			unsigned i = 0;
+			for (; host[i] != '\0' && i < sizeof e->host - 1; i++) e->host[i] = host[i];
+			e->host[i] = '\0';
+			e->valid = true;
+		} else {
+			mbedtls_ssl_session_free (&e->sess);
+			e->valid = false;
+		}
+	}
+
 	// ---- session lifecycle -------------------------------------------------
 	// Returns 0 on a completed handshake, -1 on any failure (caller closes the sock).
 	inline int start (Session &s, int sock, const char *host)
@@ -153,6 +199,12 @@ namespace onyx_tls
 		mbedtls_ssl_set_hostname (&s.ssl, host);			// SNI
 		mbedtls_ssl_set_bio (&s.ssl, &s, bio_send, bio_recv, 0);	// ctx = Session* (buffered BIO)
 
+		// Resume a cached session for this host if we have one (abbreviated handshake).
+		{
+			SessCacheEntry *resume = sess_find (host);
+			if (resume != 0) mbedtls_ssl_set_session (&s.ssl, &resume->sess);
+		}
+
 		unsigned start_t = kapi_get_ticks ();
 		int ret;
 		while ((ret = mbedtls_ssl_handshake (&s.ssl)) != 0)
@@ -165,6 +217,7 @@ namespace onyx_tls
 			}
 			return -1;
 		}
+		sess_save (host, &s.ssl);		// cache the (resumable) session for next time
 		return 0;
 	}
 
