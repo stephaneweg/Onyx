@@ -11,6 +11,7 @@
 
 #include <circle/actled.h>
 #include <circle/koptions.h>
+#include <circle/cputhrottle.h>		// pin the ARM clock to max (else the A72 idles slow)
 #include <circle/devicenameservice.h>
 #include <circle/screen.h>
 #include <circle/serial.h>
@@ -60,6 +61,10 @@ private:
 	// that owns the MMU/heap; we reach it via CMemorySystem::Get() when needed.
 	CActLED			m_ActLED;
 	CKernelOptions		m_Options;
+	CCPUThrottle		m_CPUThrottle;		// pin the A72 to its max clock (1.5 GHz);
+							// without this the firmware leaves it at the
+							// ~600 MHz idle default -> ~2.5x slower on all
+							// compute (image decode, TLS, layout)
 	CDeviceNameService	m_DeviceNameService;
 	CScreenDevice		m_Screen;		// HDMI text console (boot log visible w/o serial)
 	CSerialDevice		m_Serial;		// serial console

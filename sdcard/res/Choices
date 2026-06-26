@@ -14,8 +14,11 @@ background_images:1
 #     fetch is synchronous, so JS-heavy sites stay slow; 0 disables it.
 enable_javascript:1
 
-# --- Fetch / memory (gentle defaults for the Pi) ----------------------------
-# Cap concurrent fetches and the memory cache so a big page can't run away.
-max_fetchers:2
-max_fetchers_per_host:2
-memory_cache_size:8388608
+# --- Fetch / memory ---------------------------------------------------------
+# memory_cache_size feeds BOTH the source cache and the decoded-image cache
+# (the latter = size/4). Too small => images get evicted then re-fetched AND
+# re-decoded on every redraw (page stuck "fetching/processing"). RAM is ample
+# here, so keep it generous: 64 MB => 16 MB image cache.
+max_fetchers:4
+max_fetchers_per_host:4
+memory_cache_size:67108864

@@ -16,7 +16,7 @@
 #define COLS		112		// stored chars per line
 
 static unsigned *fb;
-static int g_fw = 8, g_fh = 16, g_vrows = 1;
+static int g_fw = 8, g_fh = 16, g_vrows = 1, g_cols = COLS;	// g_cols = columns that fit the window
 
 // Scrollback ring of finalized lines + the line currently being built (prompt + echo
 // + the program output not yet newline-terminated).
@@ -56,8 +56,8 @@ static void term_putc (char c)
 	if (c == '\n') { flush_cur (); return; }
 	if (c == '\f') { g_rcount = g_rfirst = g_curlen = g_scroll = 0; g_cur[0] = '\0'; return; }
 	if (c == '\b') { if (g_curlen > 0) g_cur[--g_curlen] = '\0'; return; }
-	if (c == '\t') { do { if (g_curlen < COLS) g_cur[g_curlen++] = ' '; } while ((g_curlen % 4) && g_curlen < COLS); g_cur[g_curlen] = '\0'; return; }
-	if (g_curlen >= COLS) flush_cur ();
+	if (c == '\t') { do { if (g_curlen < g_cols) g_cur[g_curlen++] = ' '; } while ((g_curlen % 4) && g_curlen < g_cols); g_cur[g_curlen] = '\0'; return; }
+	if (g_curlen >= g_cols) flush_cur ();		// wrap at the visible width (was COLS, off-screen)
 	g_cur[g_curlen++] = c;
 	g_cur[g_curlen] = '\0';			// keep g_cur a valid C-string: without this, a
 						// shorter new line (e.g. the reprinted prompt) leaves
@@ -160,6 +160,7 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_vrows = (H - 8) / g_fh; if (g_vrows < 2) g_vrows = 2;
+	g_cols = (W - 8) / g_fw; if (g_cols < 8) g_cols = 8; if (g_cols > COLS) g_cols = COLS;	// wrap to window width
 
 	kapi_set_key_handler (on_key);
 	start_cmd ();

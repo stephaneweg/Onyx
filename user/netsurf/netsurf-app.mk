@@ -42,7 +42,7 @@ WEBP := $(LIBROOT)/libwebp-1.4.0
 MBEDTLS ?= $(LIBROOT)/mbedtls-3.6.3
 
 CF = -mcpu=cortex-a72 -O2 -std=c99 -fno-pic -fno-pie -fno-stack-protector -fcommon \
-     -Dnsframebuffer -DNDEBUG -DWITH_WEBP -DDUK_OPT_HAVE_CUSTOM_H \
+     -Dnsframebuffer -DNDEBUG -DWITH_PNG -DWITH_JPEG -DWITH_GIF -DWITH_BMP -DWITH_WEBP -DDUK_OPT_HAVE_CUSTOM_H \
      -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L \
      -include $(HERE)compat/onyx_nsconfig.h
 INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
@@ -199,7 +199,7 @@ stage: link
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(NS)/resources/ca-bundle $(SDCARD)/res/
 	# Options (Choices) -- created only if missing so the user's edits survive a re-stage.
 	# Set foreground_images:0 for a fast text + alt-text browse (skips image fetches).
-	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:2\nmax_fetchers_per_host:2\nmemory_cache_size:8388608\n' > $(SDCARD)/res/Choices
+	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:4\nmax_fetchers_per_host:4\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
 	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
 
 # ---- nstest: console smoke test of the library bricks (-> sdcard/bin/nstest.elf) -------

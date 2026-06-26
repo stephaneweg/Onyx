@@ -559,7 +559,8 @@ private:
 #define OPT_H(opt)	((opt).GetHeight () != 0 ? (int) (opt).GetHeight () : SCREEN_HEIGHT)
 
 CKernel::CKernel (void)
-:	m_Screen (OPT_W (m_Options), OPT_H (m_Options)),
+:	m_CPUThrottle (CPUSpeedMaximum),	// 1.5 GHz from boot, not the ~600 MHz idle default
+	m_Screen (OPT_W (m_Options), OPT_H (m_Options)),
 	m_Timer (&m_Interrupt),
 	m_Logger (m_Options.GetLogLevel (), &m_Timer),
 	m_2DGraphics (OPT_W (m_Options), OPT_H (m_Options), FALSE),	// VSync off: avoid page-flip present
@@ -897,6 +898,16 @@ boolean CKernel::Initialize (void)
 		m_LogSwitch.SetNormal (&m_Screen);
 		DebugConsoleRegister (&m_LogSwitch, &m_FbConsole);
 		bOK = m_Logger.Initialize (&m_LogSwitch);
+	}
+
+	if (bOK)
+	{
+		// The CPU was pinned to its max clock at construction (m_CPUThrottle).
+		// Report it so a slow boot is easy to spot: it should read ~1500 MHz on a
+		// Pi 4, not ~600 MHz.
+		m_Logger.Write (FromKernel, LogNotice, "ARM clock: %u MHz (max %u MHz)",
+				m_CPUThrottle.GetClockRate () / 1000000,
+				m_CPUThrottle.GetMaxClockRate () / 1000000);
 	}
 
 	if (bOK)
