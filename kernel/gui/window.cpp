@@ -206,7 +206,7 @@ CWindowManager::CWindowManager (void)
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
-	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0)
+	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -549,9 +549,18 @@ void CWindowManager::OnMouseWheel (int x, int y, int nWheel)
 	{
 		int cx = x - (pTarget->X () + pTarget->ChromeL ());
 		int cy = y - (pTarget->Y () + pTarget->ChromeT ());
-		EmitPointer (pTarget, GUI_EVENT_PTR_WHEEL, cx, cy, m_nLastButtons, 0, nWheel);
+		EmitPointer (pTarget, GUI_EVENT_PTR_WHEEL, cx, cy, m_nLastButtons, 0,
+			     nWheel * m_nWheelSpeed);		// scale the raw notch to lines
 	}
 	m_SpinLock.Release ();
+}
+
+// System-wide wheel speed (lines per notch); clamped to [1,16].
+void CWindowManager::SetWheelSpeed (int nLinesPerNotch)
+{
+	if (nLinesPerNotch < 1)  nLinesPerNotch = 1;
+	if (nLinesPerNotch > 16) nLinesPerNotch = 16;
+	m_nWheelSpeed = nLinesPerNotch;
 }
 
 // Parse the next logical key from a Circle cooked-mode string, advancing *pp.

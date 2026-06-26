@@ -1434,6 +1434,20 @@ int kapi_ram_detail (unsigned long *pDetectedKB, unsigned long *pAppPoolKB,
 	return 1;
 }
 
+// --- v34: scroll-wheel speed --------------------------------------------------
+// Lines scrolled per wheel notch, applied system-wide (the WM scales the raw notch
+// before delivering GUI_EVENT_PTR_WHEEL). The theme editor persists it in theme.txt.
+void kapi_set_wheel_speed (int nLinesPerNotch)
+{
+	if (CWindowManager::Get () != 0)
+		CWindowManager::Get ()->SetWheelSpeed (nLinesPerNotch);
+}
+
+int kapi_get_wheel_speed (void)
+{
+	return CWindowManager::Get () != 0 ? CWindowManager::Get ()->GetWheelSpeed () : 1;
+}
+
 // Grow/shrink the calling process's heap by nIncrement bytes (Unix sbrk). Returns
 // the previous break, or (void*)-1 on failure. The user-space allocator (user/umm.h)
 // builds malloc/free + operator new/delete on top of this.

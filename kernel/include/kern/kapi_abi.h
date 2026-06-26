@@ -22,7 +22,7 @@
 // explicitly waived; every app is rebuilt from this tree.)
 // v30: + random() -- hardware RNG (Pi RNG) for cryptographic seeding (TLS entropy).
 // v33: + ram_detail() -- firmware-detected board RAM + app page-pool total/free (memmon).
-#define KAPI_ABI_VERSION	33
+#define KAPI_ABI_VERSION	34
 
 #ifdef __cplusplus
 extern "C" {
@@ -296,6 +296,14 @@ struct TKApiTable
 	int (*ram_detail) (unsigned long *detected_kb, unsigned long *apppool_kb,
 			   unsigned long *apppool_free_kb, unsigned long *above4g_kb,
 			   unsigned *nsegments);
+
+	// --- v34 additions (scroll-wheel speed) ---
+	// Lines scrolled per wheel notch, applied system-wide: the WM multiplies the raw
+	// notch by this factor before delivering GUI_EVENT_PTR_WHEEL, so every toolkit/app
+	// feels it at once. set clamps to [1,16]; the theme editor persists it in
+	// SD:/etc/theme.txt (wheelspeed=N) and the kernel restores it at boot.
+	void (*set_wheel_speed) (int lines_per_notch);
+	int  (*get_wheel_speed) (void);
 };
 
 #ifdef __cplusplus

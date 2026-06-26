@@ -673,6 +673,23 @@ static u8 *LoadFileFromSD (const char *pPath, unsigned *pSize)
 	return pBuffer;
 }
 
+// Scan a theme.txt buffer for a "wheelspeed=N" line; returns N, or 0 if absent/invalid.
+static int ParseWheelSpeed (const u8 *p, unsigned n)
+{
+	static const char key[] = "wheelspeed=";
+	const unsigned klen = sizeof key - 1;
+	for (unsigned i = 0; i + klen <= n; i++)
+	{
+		unsigned k = 0;
+		while (k < klen && p[i + k] == (u8) key[k]) k++;
+		if (k != klen) continue;
+		int v = 0; unsigned j = i + klen;
+		while (j < n && p[j] >= '0' && p[j] <= '9') v = v * 10 + (p[j++] - '0');
+		return v;
+	}
+	return 0;
+}
+
 // Load a mouse-cursor bitmap (SimpleOS mousecur.bin): w*h raw bytes, one per pixel,
 // 1 = white, 2 = black, anything else = transparent. Returns a GImage (with the
 // magenta transparency key) the compositor blits, or 0 if unavailable.
@@ -1112,6 +1129,22 @@ TShutdownMode CKernel::Run (void)
 		else
 		{
 			EnumerateApps (&m_Logger);
+
+			// Restore the saved scroll-wheel speed (theme editor persists it).
+			unsigned nThemeSize = 0;
+			u8 *pTheme = LoadFileFromSD ("SD:/etc/theme.txt", &nThemeSize);
+			if (pTheme != 0)
+			{
+				int nSpeed = ParseWheelSpeed (pTheme, nThemeSize);
+				if (nSpeed > 0)
+				{
+					m_WindowManager.SetWheelSpeed (nSpeed);
+					m_Logger.Write (FromKernel, LogNotice,
+							"wheel speed: %d lines/notch", nSpeed);
+				}
+				delete [] pTheme;
+			}
+
 			StartAutostart ();		// spawn the init program (cmdline init=)
 		}
 

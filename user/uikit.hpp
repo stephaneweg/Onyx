@@ -734,11 +734,12 @@ inline void Scrollbar::setFromXY (Ui &ui, int px, int py)
 	if (nv != value) { value = nv; if (cb) cb (*this); }
 	ui.markDirty ();
 }
-// Wheel: scroll ~3 units per notch. A forward notch (delta > 0) scrolls up (toward the
-// top), i.e. decreases the value -- the usual desktop convention.
+// Wheel: the kernel already scaled the notch by the system wheel speed (lines/notch),
+// so scroll by exactly `delta`. A forward notch (delta > 0) scrolls up (decreases value)
+// -- the usual desktop convention.
 inline bool Scrollbar::onWheel (Ui &ui, int delta)
 {
-	int nv = value - delta * 3;
+	int nv = value - delta;
 	if (nv < 0) nv = 0;
 	if (nv > vmax) nv = vmax;
 	if (nv != value) { value = nv; if (cb) cb (*this); ui.markDirty (); }

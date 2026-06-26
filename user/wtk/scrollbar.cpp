@@ -45,7 +45,7 @@ void Scrollbar::onDraw ()
 bool Scrollbar::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
 	if (mx < 0) { if (hover) { hover = false; invalidate (true); } pressed = false; return false; }
-	if (wheel) { scrollBy (-wheel * 3); return true; }	// a forward notch scrolls up
+	if (wheel) { scrollBy (-wheel); return true; }	// kernel pre-scaled; forward notch = up
 	bool wh = hover; hover = true;
 	if (bl) { pressed = true; setFromXY (mx, my); } else pressed = false;
 	if (hover != wh) invalidate (true);

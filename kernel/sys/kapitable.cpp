@@ -75,6 +75,8 @@ void kapi_set_click_handler (gui_handler);
 void kapi_set_pointer_handler (gui_handler);
 int kapi_meminfo (unsigned long *, unsigned long *, unsigned long *, unsigned *);
 int kapi_ram_detail (unsigned long *, unsigned long *, unsigned long *, unsigned long *, unsigned *);
+void kapi_set_wheel_speed (int);
+int kapi_get_wheel_speed (void);
 void *kapi_sbrk (long);
 void kapi_reboot (void);
 int kapi_kbd_ready (void);
@@ -210,4 +212,6 @@ void KApiTableInit (void)
 	t->draw_text_buf     = kapi_draw_text_buf;
 	t->random            = kapi_random;
 	t->ram_detail        = kapi_ram_detail;
+	t->set_wheel_speed   = kapi_set_wheel_speed;
+	t->get_wheel_speed   = kapi_get_wheel_speed;
 }

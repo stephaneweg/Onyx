@@ -269,8 +269,13 @@ public:
 
 	// Scroll-wheel input (called from the input thread). Routes a signed notch delta
 	// (+forward / -back) to the pointer handler of the window under (x,y), as a
-	// GUI_EVENT_PTR_WHEEL pointer event.
+	// GUI_EVENT_PTR_WHEEL pointer event, scaled by the wheel speed.
 	void OnMouseWheel (int x, int y, int nWheel);
+
+	// System-wide wheel speed = lines scrolled per notch (clamped to [1,16]). Set by
+	// the theme editor (kapi_set_wheel_speed) and restored from theme.txt at boot.
+	void SetWheelSpeed (int nLinesPerNotch);
+	int  GetWheelSpeed (void) const { return m_nWheelSpeed; }
 
 	// Keyboard input (called from the input thread): route a key string to the
 	// focused textbox (printable chars append; backspace deletes).
@@ -316,6 +321,7 @@ private:
 	// Pointer-stream state for app-side toolkits (windows with a PointerHandler).
 	CWindow	  *m_pPtrOverWindow;	// window the cursor is currently over (for enter/leave)
 	CWindow	  *m_pPtrCaptureWindow;	// window holding pointer capture during a button-drag
+	int	   m_nWheelSpeed;	// lines per wheel notch (1..16); scales OnMouseWheel
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).

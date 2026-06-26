@@ -62,12 +62,13 @@ bool Textarea::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
 	if (mx < 0) { pressed = false; return false; }
 	if (disabled) return true;
-	if (wheel)					// scroll ~3 lines per notch (forward = up)
+	if (wheel)					// kernel pre-scaled the notch; forward = up
 	{
 		int lines = 1; for (int i = 0; i < len; i++) if (buf[i] == '\n') lines++;
 		int mt = lines - rows; if (mt < 0) mt = 0;
-		int nt = top - wheel * 3;
-		if (nt < 0) nt = 0; if (nt > mt) nt = mt;
+		int nt = top - wheel;
+		if (nt < 0) nt = 0;
+		if (nt > mt) nt = mt;
 		if (nt != top) { top = nt; invalidate (true); }
 		return true;
 	}

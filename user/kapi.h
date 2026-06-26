@@ -121,6 +121,10 @@ static inline int kapi_meminfo (unsigned long *total_kb, unsigned long *free_kb,
 // reclaimed above 4GB, and the high-segment count. All KB; any pointer may be 0. (detected =
 // physical board RAM e.g. 8192 MB; apppool = the zone backing app frames via palloc_high.)
 static inline int kapi_ram_detail (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments) { return KT->ram_detail (detected_kb, apppool_kb, apppool_free_kb, above4g_kb, nsegments); }
+// ABI v34: scroll-wheel speed = lines scrolled per notch, applied system-wide (clamped
+// 1..16). The theme editor sets + persists it (SD:/etc/theme.txt wheelspeed=N).
+static inline void kapi_set_wheel_speed (int lines_per_notch) { KT->set_wheel_speed (lines_per_notch); }
+static inline int  kapi_get_wheel_speed (void) { return KT->get_wheel_speed (); }
 // Per-process heap: move the break by `inc` bytes (Unix sbrk); returns the previous
 // break or (void*)-1. The user allocator (umm.h) is built on this; apps rarely call it.
 static inline void *kapi_sbrk (long inc) { return KT->sbrk (inc); }

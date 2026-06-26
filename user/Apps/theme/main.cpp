@@ -29,6 +29,14 @@ static char        g_kmname[MAXKM][12];		// "FR", "BE", ... (".kmap" stripped)
 static const char *g_kmopt[MAXKM];		// pointers into g_kmname[] for the dropdown
 static ax_dropdown kmdd = { 130, 36, 90, 18, 0, 0, 0, 0 };	// opts/nopts set by scan_keymaps
 
+// Scroll-wheel speed (lines scrolled per notch), adjusted with a +/- stepper. Applied
+// system-wide live via kapi_set_wheel_speed and persisted in theme.txt (wheelspeed=N);
+// the kernel restores it at boot.
+#define WS_Y		200
+#define WS_MINUS_X	130
+#define WS_PLUS_X	184
+static int g_wheelspeed = 1;
+
 // Apply / Discard buttons (app-drawn).
 #define BTN_Y	300
 static int in_rect (int x, int y, int rx, int ry, int rw, int rh)
@@ -60,6 +68,25 @@ static int put_color (char *b, unsigned c)
 	b[0] = '0'; b[1] = 'x';
 	for (int i = 0; i < 6; i++) b[2 + i] = hx[(c >> ((5 - i) * 4)) & 0xF];
 	return 8;
+}
+
+// Write a small non-negative int as decimal; returns the length.
+static int put_int (char *b, int v)
+{
+	if (v < 0) v = 0;
+	char t[8]; int n = 0;
+	do { t[n++] = (char) ('0' + v % 10); v /= 10; } while (v && n < (int) sizeof t);
+	for (int i = 0; i < n; i++) b[i] = t[n - 1 - i];
+	return n;
+}
+
+// Set the wheel speed (clamped 1..16) and apply it system-wide immediately.
+static void set_wheelspeed (int v)
+{
+	if (v < 1)  v = 1;
+	if (v > 16) v = 16;
+	g_wheelspeed = v;
+	kapi_set_wheel_speed (v);
 }
 
 // Does `name` end in ".kmap" (case-insensitive)? Returns the basename length (the part
@@ -108,12 +135,16 @@ static void scan_keymaps (void)
 static void load_current (void)
 {
 	unsigned act = 0x00FFC878, inact = 0x008090A0, text = 0x00FFFFFF, wall = 0x004878B0;
+	int wspeed = kapi_get_wheel_speed ();		// fall back to the kernel's live value
 	if (app_ini_load_path ("SD:etc/theme.txt") > 0)
 	{
 		act   = parse_color (app_ini_get (0, "active", 0),   act);
 		inact = parse_color (app_ini_get (0, "inactive", 0), inact);
 		text  = parse_color (app_ini_get (0, "text", 0),     text);
+		const char *ws = app_ini_get (0, "wheelspeed", 0);
+		if (ws != 0) { int v = 0; for (const char *p = ws; *p >= '0' && *p <= '9'; p++) v = v * 10 + (*p - '0'); if (v > 0) wspeed = v; }
 	}
+	set_wheelspeed (wspeed);			// reflect + apply the saved value live
 	if (app_ini_load_path ("SD:apps/voronoy.app/config.ini") > 0)
 		wall = parse_color (app_ini_get (0, "base", 0), wall);
 
@@ -134,7 +165,9 @@ static void apply (void)
 	ax_strcat (buf, sizeof buf, &p, "active=");   p += put_color (buf + p, pk[0].color); buf[p++] = '\n';
 	ax_strcat (buf, sizeof buf, &p, "inactive="); p += put_color (buf + p, pk[1].color); buf[p++] = '\n';
 	ax_strcat (buf, sizeof buf, &p, "text=");     p += put_color (buf + p, pk[2].color); buf[p++] = '\n';
+	ax_strcat (buf, sizeof buf, &p, "wheelspeed="); p += put_int (buf + p, g_wheelspeed); buf[p++] = '\n';
 	kapi_save_file ("SD:etc/theme.txt", buf, p);
+	kapi_set_wheel_speed (g_wheelspeed);		// already live, re-assert after save
 
 	// voronoy wallpaper colour
 	p = 0;
@@ -167,6 +200,17 @@ static void redraw (void)
 		kapi_draw_text (12, pk[i].y + 1, PK_LABEL[i], 0x00d0d8e0);
 	kapi_draw_text (12, kmdd.y + 1, "Keymap", 0x00d0d8e0);
 
+	// Wheel-speed stepper:  Wheel speed   [-]  N  [+]   (lines per notch)
+	kapi_draw_text (12, WS_Y + 1, "Wheel speed", 0x00d0d8e0);
+	ax_fill  (fb, W, H, WS_MINUS_X, WS_Y - 2, 22, 22, 0x00304050);
+	ax_frame (fb, W, H, WS_MINUS_X, WS_Y - 2, 22, 22, 0x00708ca8);
+	kapi_draw_text (WS_MINUS_X + 7, WS_Y + 1, "-", 0x00ffffff);
+	ax_fill  (fb, W, H, WS_PLUS_X, WS_Y - 2, 22, 22, 0x00304050);
+	ax_frame (fb, W, H, WS_PLUS_X, WS_Y - 2, 22, 22, 0x00708ca8);
+	kapi_draw_text (WS_PLUS_X + 7, WS_Y + 1, "+", 0x00ffffff);
+	char wsv[8]; int wl = put_int (wsv, g_wheelspeed); wsv[wl] = '\0';
+	kapi_draw_text (WS_MINUS_X + 30, WS_Y + 1, wsv, 0x00ffe6a0);
+
 	// Closed widgets + buttons first, then the single open overlay on top.
 	for (int i = 0; i < 4; i++) if (!pk[i].open) ax_colorpick_draw (&pk[i], fb, W, H);
 	if (!kmdd.open) ax_dropdown_draw (&kmdd, fb, W, H);
@@ -191,6 +235,9 @@ static void on_click (unsigned long s, int ev, long val)
 	for (int i = 0; i < 4; i++)
 		if (ax_colorpick_click (&pk[i], x, y)) { close_all_but (i); return; }
 	if (ax_dropdown_click (&kmdd, x, y)) { close_all_but (4); return; }
+
+	if (in_rect (x, y, WS_MINUS_X, WS_Y - 2, 22, 22)) { set_wheelspeed (g_wheelspeed - 1); return; }
+	if (in_rect (x, y, WS_PLUS_X,  WS_Y - 2, 22, 22)) { set_wheelspeed (g_wheelspeed + 1); return; }
 
 	if (in_rect (x, y, 130, BTN_Y, 80, 24)) { apply (); return; }
 	if (in_rect (x, y, 220, BTN_Y, 80, 24)) { load_current (); return; }
