@@ -14,7 +14,7 @@
 // the whole point (it never yields).
 //
 #include "kapi.h"
-#include "uikit.hpp"		// ui::decorate_window
+#include "wtk/wtk.h"		// wtk window decoration
 
 #define W 250
 #define H 116
@@ -31,12 +31,12 @@ int main (void)
 	{
 		fb[i] = 0x00301800;
 	}
-	kapi_draw_text (12, 16, "CPU hog -- never yields.",        0x00FFC040);
-	kapi_draw_text (12, 40, "Cooperative kernel: UI FREEZES.", 0x00FF6060);
-	kapi_draw_text (12, 58, "Preemptive (track A): UI alive.", 0x0080FF80);
-	kapi_draw_text (12, 88, "Stop me from taskman.",           0x00C0C0C0);
+	wtk::draw_text (fb, W, H, 12, 16, "CPU hog -- never yields.",        0x00FFC040);
+	wtk::draw_text (fb, W, H, 12, 40, "Cooperative kernel: UI FREEZES.", 0x00FF6060);
+	wtk::draw_text (fb, W, H, 12, 58, "Preemptive (track A): UI alive.", 0x0080FF80);
+	wtk::draw_text (fb, W, H, 12, 88, "Stop me from taskman.",           0x00C0C0C0);
 	present ();
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	// Pure busy loop in user VA: NO present/yield/msleep anywhere. The empty
 	// `asm volatile` consumes `acc` each iteration, so -O2 cannot optimise the loop

@@ -17,6 +17,7 @@
 
 // Window creation flags (must match kern/gui/window.h).
 #define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
+#define WIN_FLAG_BACKMOST	(1u << 1)	// pinned to the bottom of the z-order (shell desktop)
 
 // Event kinds (must match kern/gui/window.h).
 #define GUI_EVENT_CLICK		1
@@ -203,6 +204,25 @@ static inline int kapi_set_keymap_data (const char *name, const void *data, unsi
 // Hardware RNG (ABI v30): fill buf[len] with random bytes from the Pi's HW RNG. For
 // cryptographic seeding -- the TLS entropy source uses it. Returns bytes written.
 static inline int kapi_random (void *buf, unsigned len) { return KT->random (buf, len); }
+
+// Shell surfaces (ABI v35): shared 0x00RRGGBB pixel buffers for the activity-shell
+// compositor. The shell creates one sized to a viewport, passes its id to an app; both
+// map it (same physical frames, own VA), the app draws + presents, the shell composites.
+static inline int       kapi_surface_create (int w, int h)         { return KT->surface_create (w, h); }
+static inline unsigned *kapi_surface_map (int id)                  { return KT->surface_map (id); }
+static inline int       kapi_surface_size (int id, int *w, int *h) { return KT->surface_size (id, w, h); }
+static inline void      kapi_surface_present (int id)              { KT->surface_present (id); }
+static inline int       kapi_surface_destroy (int id)              { return KT->surface_destroy (id); }
+
+// Activity-shell IPC (ABI v35): the kernel routes opaque {from_pid,type,bytes} messages
+// between per-process mailboxes. A user compositor calls kapi_register_shell to become
+// THE shell; apps post to it with kapi_shell_request; the shell replies / pushes async
+// events with kapi_mailbox_send; both drain with kapi_mailbox_recv (fills *from_pid /
+// *type, returns the payload length, or -1 if empty; blocking != 0 waits).
+static inline int kapi_register_shell (void)                                              { return KT->register_shell (); }
+static inline int kapi_shell_request (int type, const void *in, unsigned len)             { return KT->shell_request (type, in, len); }
+static inline int kapi_mailbox_send (int target_pid, int type, const void *in, unsigned len) { return KT->mailbox_send (target_pid, type, in, len); }
+static inline int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsigned cap, int blocking) { return KT->mailbox_recv (from_pid, type, buf, cap, blocking); }
 
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }

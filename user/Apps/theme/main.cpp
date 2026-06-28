@@ -9,7 +9,7 @@
 // are drawn into our own canvas via the applib widgets and hit-tested by on_click.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	380
@@ -188,28 +188,28 @@ static void draw_button (int x, const char *label, unsigned bg)
 {
 	ax_fill (fb, W, H, x, BTN_Y, 80, 24, bg);
 	ax_frame (fb, W, H, x, BTN_Y, 80, 24, 0x00c0c0c0);
-	kapi_draw_text (x + 14, BTN_Y + 4, label, 0x00ffffff);
+	wtk::draw_text (fb, W, H, x + 14, BTN_Y + 4, label, 0x00ffffff);
 }
 
 static void redraw (void)
 {
 	for (int i = 0; i < W * H; i++) fb[i] = BG;
-	kapi_draw_text (12, 8, "Theme editor", 0x00ffd070);
+	wtk::draw_text (fb, W, H, 12, 8, "Theme editor", 0x00ffd070);
 
 	for (int i = 0; i < 4; i++)
-		kapi_draw_text (12, pk[i].y + 1, PK_LABEL[i], 0x00d0d8e0);
-	kapi_draw_text (12, kmdd.y + 1, "Keymap", 0x00d0d8e0);
+		wtk::draw_text (fb, W, H, 12, pk[i].y + 1, PK_LABEL[i], 0x00d0d8e0);
+	wtk::draw_text (fb, W, H, 12, kmdd.y + 1, "Keymap", 0x00d0d8e0);
 
 	// Wheel-speed stepper:  Wheel speed   [-]  N  [+]   (lines per notch)
-	kapi_draw_text (12, WS_Y + 1, "Wheel speed", 0x00d0d8e0);
+	wtk::draw_text (fb, W, H, 12, WS_Y + 1, "Wheel speed", 0x00d0d8e0);
 	ax_fill  (fb, W, H, WS_MINUS_X, WS_Y - 2, 22, 22, 0x00304050);
 	ax_frame (fb, W, H, WS_MINUS_X, WS_Y - 2, 22, 22, 0x00708ca8);
-	kapi_draw_text (WS_MINUS_X + 7, WS_Y + 1, "-", 0x00ffffff);
+	wtk::draw_text (fb, W, H, WS_MINUS_X + 7, WS_Y + 1, "-", 0x00ffffff);
 	ax_fill  (fb, W, H, WS_PLUS_X, WS_Y - 2, 22, 22, 0x00304050);
 	ax_frame (fb, W, H, WS_PLUS_X, WS_Y - 2, 22, 22, 0x00708ca8);
-	kapi_draw_text (WS_PLUS_X + 7, WS_Y + 1, "+", 0x00ffffff);
+	wtk::draw_text (fb, W, H, WS_PLUS_X + 7, WS_Y + 1, "+", 0x00ffffff);
 	char wsv[8]; int wl = put_int (wsv, g_wheelspeed); wsv[wl] = '\0';
-	kapi_draw_text (WS_MINUS_X + 30, WS_Y + 1, wsv, 0x00ffe6a0);
+	wtk::draw_text (fb, W, H, WS_MINUS_X + 30, WS_Y + 1, wsv, 0x00ffe6a0);
 
 	// Closed widgets + buttons first, then the single open overlay on top.
 	for (int i = 0; i < 4; i++) if (!pk[i].open) ax_colorpick_draw (&pk[i], fb, W, H);
@@ -249,7 +249,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "theme");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	for (int i = 0; i < 4; i++) { pk[i].x = 130; pk[i].y = 70 + i * 30; pk[i].w = 70; pk[i].h = 20; }
 	scan_keymaps ();		// fill the keymap dropdown from SD:/etc/keymaps/*.kmap

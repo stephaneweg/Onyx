@@ -4,7 +4,7 @@
 // protected); Enter raises an app's window; r refreshes now.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	340
@@ -86,16 +86,16 @@ static void redraw (void)
 	char hdr[40]; int p = ax_itoa (g_count, hdr);
 	const char *t = " tasks  k:kill ent:raise"; for (int i = 0; t[i]; i++) hdr[p++] = t[i];
 	hdr[p] = '\0';
-	kapi_draw_text (8, 9, hdr, 0x00e0e0e0);
+	wtk::draw_text (fb, W, H, 8, 9, hdr, 0x00e0e0e0);
 
 	for (int i = 0; i < g_count && i < g_rows; i++)
 	{
 		int y = LISTY + i * g_fh;
 		if (i == g_sel) fill_rect (0, y, W, g_fh, 0x00355070);
 		char st[2] = { g_state[i], 0 };
-		kapi_draw_text (8, y + 1, st, 0x00ffd070);		// state char
-		kapi_draw_text (26, y + 1, g_name[i], g_kernel[i] ? 0x00808890 : 0x00e8e8e8);
-		if (g_kernel[i]) kapi_draw_text (W - 60, y + 1, "kernel", 0x00606870);
+		wtk::draw_text (fb, W, H, 8, y + 1, st, 0x00ffd070);		// state char
+		wtk::draw_text (fb, W, H, 26, y + 1, g_name[i], g_kernel[i] ? 0x00808890 : 0x00e8e8e8);
+		if (g_kernel[i]) wtk::draw_text (fb, W, H, W - 60, y + 1, "kernel", 0x00606870);
 	}
 }
 
@@ -103,7 +103,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "taskman");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_rows = (H - LISTY) / g_fh; if (g_rows < 1) g_rows = 1;

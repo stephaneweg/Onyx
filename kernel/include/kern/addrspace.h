@@ -17,6 +17,7 @@
 
 class CWindow;
 class CStream;
+class CMailbox;
 struct CProcess;
 
 class CAddressSpace
@@ -36,6 +37,12 @@ public:
 
 	// Map nPages consecutive 64 KB pages [ulVA..] -> [ulPhys..] (e.g. a window canvas).
 	void MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr);
+
+	// Map a shell surface (its physical frames) into this space at a fresh VA in the
+	// per-process surface arena [USER_SURFACE_BASE, USER_SURFACE_END). Returns the VA
+	// (a user pointer) or 0 if the arena is exhausted. The frames are owned by the
+	// CSurface, not this space, so teardown drops the mapping but never frees them.
+	void *MapSurface (u64 ulPhys, unsigned nPages);
 
 	// Allocate a fresh physical frame and map it at ulVA. Returns the frame's
 	// kernel (identity) address so the caller can fill it, or 0 on failure.
@@ -69,6 +76,10 @@ public:
 	void SetWindow (CWindow *pWindow)	{ m_pWindow = pWindow; }
 	CWindow *GetWindow (void)		{ return m_pWindow; }
 
+	// IPC mailbox for the activity-shell message router (kapi_mailbox_*). Lazily
+	// created on first use; freed with the address space. Returns 0 only on OOM.
+	CMailbox *GetOrCreateMailbox (void);
+
 	// stdio: streams owned by this process (released on teardown; stdout gets a
 	// CloseWrite so its reader sees EOF). A spawned process also has a CProcess
 	// handle (its done/status set on teardown) and an argv string.
@@ -98,6 +109,7 @@ private:
 
 	CStream			    *m_pStdin;	// stdio streams (refs released on teardown)
 	CStream			    *m_pStdout;
+	CMailbox		    *m_pMailbox; // IPC mailbox (lazy; freed on teardown)
 	CProcess		    *m_pProcess; // spawn handle (done/status set on teardown)
 	int			     m_nExitStatus;
 	char			     m_Args[256]; // argv string for the child (kapi_get_args)
@@ -105,6 +117,7 @@ private:
 	unsigned		     m_nOwnedPages; // palloc'd 64 KB frames owned (for ps/meminfo)
 	u64			     m_ulHeapBrk; // logical heap break (kapi_sbrk), >= USER_HEAP_BASE
 	u64			     m_ulHeapEnd; // page-aligned top of the mapped heap region
+	u64			     m_ulSurfaceNext; // next free VA in the surface arena (bump)
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

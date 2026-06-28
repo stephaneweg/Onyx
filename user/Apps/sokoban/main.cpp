@@ -5,7 +5,7 @@
 // with an embedded fallback.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define GW	24
@@ -120,7 +120,7 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 static void redraw (void)
 {
 	fill_rect (0, 0, W, H, 0x00181c20);
-	kapi_draw_text (8, 8, g_won ? "SOLVED!  n:next r:reset" : "arrows move  r:reset n:next",
+	wtk::draw_text (fb, W, H, 8, 8, g_won ? "SOLVED!  n:next r:reset" : "arrows move  r:reset n:next",
 			g_won ? 0x0060ff90 : 0x0090a0b0);
 	for (int r = 0; r < GH; r++)
 		for (int c = 0; c < GW; c++)
@@ -139,7 +139,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "sokoban");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	void *f = kapi_open ("SD:/apps/sokoban.app/levels.txt");
 	if (f != 0)

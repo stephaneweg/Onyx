@@ -21,17 +21,15 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
-# All graphical apps live in Apps/<name>/main.{c,cpp} (one folder per app) and build to
-# <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf). The /bin
-# console tools stay in bin/. APPS_CPP are on the C++ uikit toolkit; APPS_C are the
-# app-drawn apps still in C (being ported to C++).
-# Every graphical app is C++ now (Apps/<name>/main.cpp). The /bin console tools stay C.
+# All graphical apps live in Apps/<name>/main.cpp (one folder per app) and build to
+# <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf). Every graphical
+# app is C++ on the wtk toolkit now; the /bin console tools stay C in bin/.
 APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
        tetris snake same filer terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -48,10 +46,18 @@ WTK_HDR = $(wildcard wtk/*.h)
 WTK_OBJ = $(patsubst %.cpp,%.o,$(wildcard wtk/*.cpp))
 wtk/%.o: wtk/%.cpp $(WTK_HDR)
 	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
+# canvas.cpp is the hot pixel path (clear/fillRect/putOther): build it with NEON/FP
+# (drop -mgeneral-regs-only, target the A72). The kernel saves full FP/SIMD on every
+# trap, so SIMD is safe even though the rest of wtk and every app stay integer-only --
+# the NEON is confined to this TU and Canvas's public signatures use no FP regs, so the
+# calling ABI is unchanged. This explicit rule overrides the wtk/%.o pattern above.
+CXXFLAGS_NEON = $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72
+wtk/canvas.o: wtk/canvas.cpp $(WTK_HDR)
+	$(CXX) $(CXXFLAGS_NEON) -I. -c $< -o $@
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h uikit.hpp uidialog.hpp bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a
 	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< wtk/libwtk.a -o $@
 
 clean:

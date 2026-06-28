@@ -68,16 +68,34 @@ static inline void wk_draw_vscroll (Canvas &cv, int x, int y, int w, int trackH,
 class Widget;
 typedef void (*Action) (Widget &);		// fired on click/toggle/change; gets the widget
 
+// Anchors (WinForms-style): which parent edges a child keeps a constant distance to as
+// the parent resizes. The DEFAULT container layout() honours these so a child resizes /
+// repositions passively (the app never recomputes geometry on resize):
+//   LEFT+RIGHT  -> width stretches      | LEFT only  -> pinned left (default, fixed w)
+//   TOP+BOTTOM  -> height stretches     | RIGHT only -> rides the right edge (reposition)
+//   FILL        -> stretches both       | BOTTOM only-> rides the bottom edge (reposition)
+// Resizing an anchored child cascades into ITS layout() (e.g. a grid re-flows its keys).
+enum {
+	ANCHOR_LEFT = 1, ANCHOR_TOP = 2, ANCHOR_RIGHT = 4, ANCHOR_BOTTOM = 8,
+	ANCHOR_FILL = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT | ANCHOR_BOTTOM
+};
+
 class Widget
 {
 public:
 	Canvas	 canvas;
 	int	 left, top, width, height;	// geometry RELATIVE to the parent
 	int	 scrollX, scrollY;		// content offset (scrollview)
+	int	 tag;				// app/dialog-defined id (e.g. dialog button result)
+	int	 colSpan, rowSpan;		// cells spanned in a UniformGridLayout (default 1)
+	int	 anchor;			// ANCHOR_* mask (default LEFT|TOP = pinned top-left)
+	int	 lytW, lytH;			// my size at the last layout (for anchor deltas)
 	bool	 transparent;			// blit me with the magenta key?
 	bool	 valid;				// subtree composited & current  (IsValid)
 	bool	 shouldRedraw;			// my own content needs repaint   (ShouldRedraw)
+	bool	 hidden;			// skip me in composite + hit-test (e.g. an inactive tab)
 	bool	 hasFocus, canFocus, catchOutside;
+	bool	 modal;				// a modal child captures ALL of the parent's input
 	bool	 disabled, hover, pressed;	// interaction state (widgets use these)
 
 	Widget	*parent, *firstChild, *lastChild, *prevSib, *nextSib;
@@ -88,7 +106,9 @@ public:
 
 	// ---- damage ----------------------------------------------------------
 	void invalidate (bool redraw);		// redraw=true: repaint me; false: just recompose up
-	void resizeTo   (int w, int h);
+	virtual void resizeTo (int w, int h);	// virtual: a surface-backed view overrides to pin its size
+	void setBounds (int w, int h);		// resize the LOGICAL size (no canvas realloc) + relayout;
+						// for surface-backed widgets (adopted over-allocated buffer)
 
 	// ---- tree ------------------------------------------------------------
 	void addChild    (Widget *c);
@@ -109,6 +129,10 @@ public:
 	virtual void onDraw () {}					// paint own content into `canvas`
 	virtual bool onMouse (int, int, int, int, int, int) { return false; }
 	virtual bool onKey (long) { return false; }
+	// Reposition/resize children on resize / child add/remove. The DEFAULT applies the
+	// children's ANCHOR_* (passive resize); layout containers (Splitter, StackPanel,
+	// UniformGridLayout, TabHost) override with explicit placement. Never call directly.
+	virtual void layout ();
 };
 
 } // namespace wtk

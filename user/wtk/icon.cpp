@@ -16,6 +16,13 @@ Icon::~Icon () { delete [] pix; }
 
 void Icon::setBadge (bool b) { if (b != badged) { badged = b; invalidate (true); } }
 
+void Icon::setIcon (const char *bmp)
+{
+	delete [] pix; pix = 0; iw = 0; ih = 0;
+	if (bmp && bmp[0]) pix = ui::bmp_decode (bmp, &iw, &ih);
+	invalidate (true);
+}
+
 void Icon::onDraw ()
 {
 	canvas.clear (pressed ? 0x00405468 : (hover ? 0x00303F50 : bg));
@@ -31,7 +38,7 @@ void Icon::onDraw ()
 				int dx = ix + xx; if (dx < 0 || dx >= width) continue;
 				unsigned p = pix[yy * iw + xx];
 				if (p == WK_TRANSPARENT_KEY) continue;
-				canvas.px[dy * width + dx] = p;
+				canvas.px[dy * canvas.stride + dx] = p;	// stride, not width (grow-only buffers)
 			}
 		}
 	}

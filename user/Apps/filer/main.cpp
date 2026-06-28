@@ -1,12 +1,14 @@
 //
-// filer.c -- a file manager. Browses the SD card via kapi_opendir/readdir, shows
-// directories (first) and files with sizes, and navigates in/out. Mouse: click a
-// row to select (clicking a folder enters it). Keyboard: up/down to move, Enter to
-// open a folder, Backspace to go up.
+// filer.c -- a file manager (wtk port). Browses the SD card via kapi_opendir/readdir,
+// shows directories (first) and files with sizes, and navigates in/out. The window is a
+// Root subclass that draws the listing itself and routes mouse/keys; a wtk Scrollbar
+// child scrolls the list. Mouse: click a row to select (double-click / Enter opens it).
+// Keyboard: up/down to move, Enter to open a folder, Backspace to go up, d/r/n manage.
 //
 #include "kapi.h"
-#include "uikit.hpp"
-#include "uidialog.hpp"		// ui::MessageBox (user-side modal dialog)
+#include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
+
+using namespace wtk;
 
 #define W	460
 #define H	380
@@ -16,7 +18,6 @@
 #define CLICK_DELAY	70	// double-click window in HZ(=100) ticks (~700 ms)
 #define SB_W	14	// scrollbar column width (right edge of the list)
 
-static unsigned *fb;
 static int g_fw = 8, g_fh = 16, g_rows = 1;
 
 static char     g_path[256] = "SD:/";
@@ -25,7 +26,8 @@ static unsigned g_size[MAXE];
 static char     g_isdir[MAXE];
 static int      g_count = 0;
 static int      g_sel = 0, g_top = 0;
-static ui::Scrollbar *g_sb = 0;			// vertical scrollbar (driven by / driving g_top)
+static Scrollbar *g_sb = 0;			// vertical scrollbar (driven by / driving g_top)
+static Root      *g_root = 0;			// the window (invalidated to repaint the list)
 
 static int      g_mode = 0;		// 0 browse, 1 rename, 2 new folder
 static char     g_inb[NAMELEN];
@@ -148,22 +150,24 @@ static void fix_scroll (void)
 static int max_top (void) { int m = g_count - g_rows; return m < 0 ? 0 : m; }
 
 // Refresh the scrollbar's range from the current entry count and slave its thumb to g_top.
-// Called every frame from redraw(), so keyboard navigation (which moves g_top via fix_scroll)
-// drags the thumb too, and a fresh directory listing rescales it.
+// Called from onDraw, so keyboard navigation (which moves g_top via fix_scroll) drags the
+// thumb too, and a fresh directory listing rescales it.
 static void sync_sb (void)
 {
 	if (g_top > max_top ()) g_top = max_top ();
 	if (g_top < 0) g_top = 0;
-	if (g_sb) { g_sb->vmax = max_top (); g_sb->value = g_top; }
+	if (g_sb && (g_sb->vmax != (max_top () < 1 ? 1 : max_top ()) || g_sb->value != g_top))
+	{ g_sb->vmax = max_top (); g_sb->value = g_top; g_sb->invalidate (true); }
 }
 
 // Scrollbar drag -> set the view top. We leave g_sel alone: the user is scrolling the view,
 // not moving the selection (matching how desktop file managers behave).
-static void on_scroll (ui::Widget &w)
+static void on_scroll (Widget &w)
 {
-	g_top = ((ui::Scrollbar &) w).value;
+	g_top = ((Scrollbar &) w).value;
 	if (g_top > max_top ()) g_top = max_top ();
 	if (g_top < 0) g_top = 0;
+	if (g_root) g_root->invalidate (true);
 }
 
 // Build "<g_path>/<name>" into out.
@@ -198,19 +202,11 @@ static void open_file (int idx)
 	}
 }
 
-static ui::Ui        *g_ui = 0;			// input hub + modal anchor (filer draws its own list)
-static void on_ptr (unsigned long s, int ev, long val);
-static void on_key (unsigned long s, int ev, long key);
-static void reclaim_input (void) { kapi_set_pointer_handler (on_ptr); kapi_set_key_handler (on_key); }
-
 static void delete_sel (void)
 {
 	if (g_sel < 0 || g_sel >= g_count) return;
 	if (g_isdir[g_sel] && g_name[g_sel][0] == '.' && g_name[g_sel][1] == '.') return;	// not ".."
-	ui::MessageBox mb (*g_ui, "Delete", g_name[g_sel], MB_YESNO);
-	bool yes = mb.run (g_ui);		// user-side modal; restores input to g_ui
-	reclaim_input ();			// ...so re-claim it for filer's own handlers
-	if (!yes) return;			// confirm
+	if (!wk_messagebox ("Delete", g_name[g_sel], MB_YESNO)) return;				// confirm
 	char path[300];
 	full_path (g_name[g_sel], path, sizeof path);
 	kapi_remove (path);			// fails on non-empty dirs (FatFs)
@@ -239,160 +235,146 @@ static void commit_input (void)
 	read_dir ();
 }
 
-static void on_key (unsigned long s, int ev, long key)
-{
-	(void) s;
-	if (ev != GUI_EVENT_KEY) return;
-
-	if (g_mode != 0)			// rename / new-folder input
-	{
-		if (key == KEY_ENTER) commit_input ();
-		else if (key == 27) { g_mode = 0; g_inlen = 0; }	// Esc cancels
-		else if (key == KEY_BACKSPACE) { if (g_inlen > 0) g_inb[--g_inlen] = '\0'; }
-		else if (key >= ' ' && key < 0x7f && g_inlen < (int) sizeof g_inb - 1)
-			{ g_inb[g_inlen++] = (char) key; g_inb[g_inlen] = '\0'; }
-		return;
-	}
-
-	switch (key)
-	{
-	case KEY_UP:   g_sel--; break;
-	case KEY_DOWN: g_sel++; break;
-	case KEY_PGUP: g_sel -= g_rows; break;
-	case KEY_PGDN: g_sel += g_rows; break;
-	case KEY_ENTER: open_sel (); break;		// open file / run .elf (also enters dirs)
-	case ' ':					// space: enter the selected folder
-		if (g_sel >= 0 && g_sel < g_count && g_isdir[g_sel]) open_sel ();
-		break;
-	case KEY_BACKSPACE: go_up (); break;
-	case KEY_DEL: case 'd': case 'D': delete_sel (); break;
-	case 'r': case 'R':			// rename selected (prefill its name)
-		if (g_sel >= 0 && g_sel < g_count && g_name[g_sel][0] != '.')
-		{
-			g_mode = 1; g_inlen = 0;
-			for (int i = 0; g_name[g_sel][i] && g_inlen < (int) sizeof g_inb - 1; i++)
-				g_inb[g_inlen++] = g_name[g_sel][i];
-			g_inb[g_inlen] = '\0';
-		}
-		break;
-	case 'n': case 'N': g_mode = 2; g_inlen = 0; g_inb[0] = '\0'; break;	// new folder
-	}
-	fix_scroll ();
-}
-
 // Single click selects a row; a second click on the same row within ~0.4 s is a
 // double-click: it opens the entry (folder -> enter, file -> tinypad/run).
 static unsigned g_last_tick = 0;
 static int      g_last_idx = -1;
 
-// We drive input through the pointer stream (so the user-side modal dialogs can swap
-// it cleanly), routing through g_ui first (for any toolkit widgets) then our own list
-// hit-test. A left-button press is the old "canvas click".
-static void on_ptr (unsigned long s, int ev, long val)
+// The window: draws the listing + the rename/new input bar, and routes mouse/keys. A
+// wtk Scrollbar child (right column) is handled before us, so our onMouse only sees the
+// list area; unfocused keys fall through to onKey (no text widget steals focus).
+class FilerRoot : public Root
 {
-	if (g_ui) g_ui->onEvent (s, ev, val);		// scrollbar drag handled here first
-	if (ev != GUI_EVENT_PTR_DOWN || !(GUI_PTR_CHANGED (val) & 1)) return;
-	if (GUI_PTR_X (val) >= W - SB_W) return;	// clicks in the scrollbar column aren't row hits
-	int cy = GUI_PTR_Y (val);
-	int row = (cy - LISTY) / g_fh;
-	if (row < 0) return;
-	int idx = g_top + row;
-	if (idx >= g_count) return;
+public:
+	FilerRoot (int w, int h, const char *t) : Root (w, h, t) {}
 
-	// Double-click: same row, clicked again within CLICK_DELAY. (kapi_get_ticks is in
-	// HZ=100 ticks; the fix that makes a 2nd press actually arrive is in the kernel
-	// mouse stub.) Keyboard Space/Enter remain the deterministic alternative.
-	unsigned now = kapi_get_ticks ();
-	int dbl = (idx == g_last_idx) && (now - g_last_tick) < CLICK_DELAY;
-	g_sel = idx;
-	fix_scroll ();
-	if (dbl)
+	void onDraw () override
 	{
-		g_last_idx = -1;			// consume, so a 3rd click starts over
-		open_sel ();
-	}
-	else
-	{
-		g_last_idx = idx;
-		g_last_tick = now;
-	}
-}
+		sync_sb ();				// clamp g_top + slave the scrollbar thumb to it
 
-static void fill_rect (int x, int y, int w, int h, unsigned c)
-{
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
-}
+		canvas.clear (0x00202830);
+		canvas.fillRect (0, 0, W, LISTY - 2, 0x00303d4d);
+		canvas.text (8, 9, g_path, 0x00e0e0e0);
+		canvas.text (W - 150, 9, "d:del r:ren n:new", 0x0090a0b0);
 
-static void redraw (void)
-{
-	sync_sb ();				// clamp g_top + slave the scrollbar thumb to it
-
-	fill_rect (0, 0, W, H, 0x00202830);
-	fill_rect (0, 0, W, LISTY - 2, 0x00303d4d);
-	kapi_draw_text (8, 9, g_path, 0x00e0e0e0);
-	kapi_draw_text (W - 150, 9, "d:del r:ren n:new", 0x0090a0b0);
-
-	for (int r = 0; r < g_rows; r++)
-	{
-		int idx = g_top + r;
-		if (idx >= g_count) break;
-		int y = LISTY + r * g_fh;
-		if (idx == g_sel) fill_rect (0, y, W - SB_W, g_fh, 0x00355070);
-
-		unsigned col = g_isdir[idx] ? 0x0080c8ff : 0x00d8d8d8;
-		char line[NAMELEN + 8];
-		int p = 0;
-		if (g_isdir[idx]) line[p++] = '[';
-		for (int i = 0; g_name[idx][i] && p < (int) sizeof (line) - 2; i++) line[p++] = g_name[idx][i];
-		if (g_isdir[idx]) line[p++] = ']';
-		line[p] = '\0';
-		kapi_draw_text (10, y + 1, line, col);
-
-		if (!g_isdir[idx])
+		for (int r = 0; r < g_rows; r++)
 		{
-			char sz[16]; itoa ((int) g_size[idx], sz);
-			int tx = W - SB_W - 12 - slen (sz) * g_fw;
-			kapi_draw_text (tx, y + 1, sz, 0x0090a0a8);
+			int idx = g_top + r;
+			if (idx >= g_count) break;
+			int y = LISTY + r * g_fh;
+			if (idx == g_sel) canvas.fillRect (0, y, W - SB_W, g_fh, 0x00355070);
+
+			unsigned col = g_isdir[idx] ? 0x0080c8ff : 0x00d8d8d8;
+			char line[NAMELEN + 8];
+			int p = 0;
+			if (g_isdir[idx]) line[p++] = '[';
+			for (int i = 0; g_name[idx][i] && p < (int) sizeof (line) - 2; i++) line[p++] = g_name[idx][i];
+			if (g_isdir[idx]) line[p++] = ']';
+			line[p] = '\0';
+			canvas.text (10, y + 1, line, col);
+
+			if (!g_isdir[idx])
+			{
+				char sz[16]; itoa ((int) g_size[idx], sz);
+				int tx = W - SB_W - 12 - slen (sz) * g_fw;
+				canvas.text (tx, y + 1, sz, 0x0090a0a8);
+			}
+		}
+
+		if (g_mode != 0)			// rename / new-folder input bar
+		{
+			int y = H - g_fh - 4;
+			canvas.fillRect (0, y - 2, W, g_fh + 6, 0x00102030);
+			const char *lbl = (g_mode == 1) ? "rename: " : "new folder: ";
+			canvas.text (6, y, lbl, 0x00ffd070);
+			int lx = 6 + slen (lbl) * g_fw;
+			canvas.text (lx, y, g_inb, 0x00ffffff);
+			canvas.fillRect (lx + g_inlen * g_fw, y, 2, g_fh, 0x0060ff90);
 		}
 	}
 
-	if (g_mode != 0)			// rename / new-folder input bar
+	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
-		int y = H - g_fh - 4;
-		fill_rect (0, y - 2, W, g_fh + 6, 0x00102030);
-		const char *lbl = (g_mode == 1) ? "rename: " : "new folder: ";
-		kapi_draw_text (6, y, lbl, 0x00ffd070);
-		int lx = 6 + slen (lbl) * g_fw;
-		kapi_draw_text (lx, y, g_inb, 0x00ffffff);
-		fill_rect (lx + g_inlen * g_fw, y, 2, g_fh, 0x0060ff90);
+		if (mx < 0) { pressed = false; return false; }
+		if (!bl) { pressed = false; return true; }
+		if (pressed) return true;			// only the press edge selects
+		pressed = true;
+		if (mx >= W - SB_W) return true;		// scrollbar column isn't a row hit
+		int row = (my - LISTY) / g_fh;
+		if (row < 0) return true;
+		int idx = g_top + row;
+		if (idx >= g_count) return true;
+
+		// Double-click: same row, clicked again within CLICK_DELAY.
+		unsigned now = kapi_get_ticks ();
+		int dbl = (idx == g_last_idx) && (now - g_last_tick) < CLICK_DELAY;
+		g_sel = idx;
+		fix_scroll ();
+		if (dbl) { g_last_idx = -1; open_sel (); }	// consume, so a 3rd click starts over
+		else     { g_last_idx = idx; g_last_tick = now; }
+		invalidate (true);
+		return true;
 	}
 
-	if (g_ui) g_ui->drawAll ();		// paint the scrollbar on top of the list
-}
+	bool onKey (long key) override
+	{
+		if (g_mode != 0)			// rename / new-folder input
+		{
+			if (key == KEY_ENTER) commit_input ();
+			else if (key == 27) { g_mode = 0; g_inlen = 0; }	// Esc cancels
+			else if (key == KEY_BACKSPACE) { if (g_inlen > 0) g_inb[--g_inlen] = '\0'; }
+			else if (key >= ' ' && key < 0x7f && g_inlen < (int) sizeof g_inb - 1)
+				{ g_inb[g_inlen++] = (char) key; g_inb[g_inlen] = '\0'; }
+			invalidate (true);
+			return true;
+		}
+
+		switch (key)
+		{
+		case KEY_UP:   g_sel--; break;
+		case KEY_DOWN: g_sel++; break;
+		case KEY_PGUP: g_sel -= g_rows; break;
+		case KEY_PGDN: g_sel += g_rows; break;
+		case KEY_ENTER: open_sel (); break;		// open file / run .elf (also enters dirs)
+		case ' ':					// space: enter the selected folder
+			if (g_sel >= 0 && g_sel < g_count && g_isdir[g_sel]) open_sel ();
+			break;
+		case KEY_BACKSPACE: go_up (); break;
+		case KEY_DEL: case 'd': case 'D': delete_sel (); break;
+		case 'r': case 'R':			// rename selected (prefill its name)
+			if (g_sel >= 0 && g_sel < g_count && g_name[g_sel][0] != '.')
+			{
+				g_mode = 1; g_inlen = 0;
+				for (int i = 0; g_name[g_sel][i] && g_inlen < (int) sizeof g_inb - 1; i++)
+					g_inb[g_inlen++] = g_name[g_sel][i];
+				g_inb[g_inlen] = '\0';
+			}
+			break;
+		case 'n': case 'N': g_mode = 2; g_inlen = 0; g_inb[0] = '\0'; break;	// new folder
+		default: return false;
+		}
+		fix_scroll ();
+		invalidate (true);
+		return true;
+	}
+};
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "filer");
-	if (fb == 0) return 1;
-	ui::Ui ui (fb, W, H); g_ui = &ui;	// decorates the window; anchors modal dialogs
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_rows = (H - LISTY) / g_fh;
 	if (g_rows < 1) g_rows = 1;
 
+	FilerRoot root (W, H, "filer");
+	if (root.canvas.px == 0) return 1;
+	g_root = &root;
+
 	// Vertical scrollbar down the right edge of the list (range set later by sync_sb).
-	g_sb = &ui.scrollbar (W - SB_W, LISTY, SB_W, H - LISTY, true, 0, 0, on_scroll);
+	g_sb = new Scrollbar (W - SB_W, LISTY, SB_W, H - LISTY, true, 1, 0, on_scroll);
+	root.addChild (g_sb);
 
-	reclaim_input ();			// set_pointer_handler (on_ptr) + set_key_handler (on_key)
 	read_dir ();
-
-	while (!should_exit ())
-	{
-		pump_events ();
-		redraw ();
-		msleep (16);
-	}
+	root.run ();
 	return 0;
 }

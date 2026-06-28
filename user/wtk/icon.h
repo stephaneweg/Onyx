@@ -16,6 +16,7 @@ public:
 	Icon (int l, int t, int w, int h, const char *bmp, const char *label, Action cb_, unsigned bg_ = C_BG);
 	~Icon () override;
 	void setBadge (bool b);
+	void setIcon (const char *bmp);		// (re)load the image (0/"" clears); repaints
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 };

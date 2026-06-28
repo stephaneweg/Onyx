@@ -22,7 +22,9 @@
 // explicitly waived; every app is rebuilt from this tree.)
 // v30: + random() -- hardware RNG (Pi RNG) for cryptographic seeding (TLS entropy).
 // v33: + ram_detail() -- firmware-detected board RAM + app page-pool total/free (memmon).
-#define KAPI_ABI_VERSION	34
+// v35: + surface_create/map/size/present/destroy -- shared surfaces (activity shell);
+//      + register_shell/shell_request/mailbox_send/mailbox_recv -- activity-shell IPC.
+#define KAPI_ABI_VERSION	35
 
 #ifdef __cplusplus
 extern "C" {
@@ -304,6 +306,31 @@ struct TKApiTable
 	// SD:/etc/theme.txt (wheelspeed=N) and the kernel restores it at boot.
 	void (*set_wheel_speed) (int lines_per_notch);
 	int  (*get_wheel_speed) (void);
+
+	// --- v35 additions (shell surfaces -- activity-shell compositor) ---
+	// A shared pixel surface (0x00RRGGBB). The shell creates one sized to a viewport
+	// (surface_create -> id > 0), passes the id to an app; both map it (surface_map ->
+	// the surface VA in the caller's address space; SAME physical frames, so the app
+	// draws straight into the pixels the shell composes from). surface_size fills the
+	// agreed w/h; surface_present yields toward the compositing shell; surface_destroy
+	// frees it (owner only -- also auto-freed when the owner process dies).
+	int       (*surface_create) (int w, int h);
+	unsigned *(*surface_map) (int id);
+	int       (*surface_size) (int id, int *w, int *h);
+	void      (*surface_present) (int id);
+	int       (*surface_destroy) (int id);
+
+	// Activity-shell IPC (the kernel is a thin message router; see kern/ipc.h). A user
+	// compositor calls register_shell to become THE shell. Apps post to it with
+	// shell_request (the kernel stamps the caller's pid). The shell replies / pushes
+	// async events with mailbox_send(target_pid,...). Both drain with mailbox_recv,
+	// which fills *from_pid / *type and returns the payload length (or -1 if empty;
+	// blocking != 0 waits for a message). Messages are opaque {from_pid,type,bytes};
+	// `type` meaning is the user shell protocol. from_pid 0 == from the kernel.
+	int  (*register_shell) (void);
+	int  (*shell_request) (int type, const void *in, unsigned len);
+	int  (*mailbox_send) (int target_pid, int type, const void *in, unsigned len);
+	int  (*mailbox_recv) (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 };
 
 #ifdef __cplusplus

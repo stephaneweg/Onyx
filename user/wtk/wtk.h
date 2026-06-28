@@ -15,7 +15,9 @@
 #include "onyxpp.hpp"		// operator new/delete (umm) -- ensure it's emitted in the app TU
 
 #include "wtk/canvas.h"
+#include "wtk/font.h"
 #include "wtk/widget.h"
+#include "wtk/skin.h"
 #include "wtk/label.h"
 #include "wtk/panel.h"
 #include "wtk/button.h"
@@ -27,6 +29,12 @@
 #include "wtk/textarea.h"
 #include "wtk/richtextbox.h"
 #include "wtk/icon.h"
+#include "wtk/dropdown.h"
+#include "wtk/colorpick.h"
+#include "wtk/splitter.h"
+#include "wtk/layout.h"
+#include "wtk/tabhost.h"
 #include "wtk/root.h"
+#include "wtk/dialog.h"
 
 #endif

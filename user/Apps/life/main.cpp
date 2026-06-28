@@ -3,7 +3,7 @@
 // c clear, r random. App-drawn grid via canvas-click.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 
 #define GW	48
 #define GH	34
@@ -77,7 +77,7 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 static void redraw (void)
 {
 	fill_rect (0, 0, W, H, 0x00101418);
-	kapi_draw_text (8, 6, g_run ? "running  space:pause s c r" : "paused   space:run s c r",
+	wtk::draw_text (fb, W, H, 8, 6, g_run ? "running  space:pause s c r" : "paused   space:run s c r",
 			0x0090a0b0);
 	for (int r = 0; r < GH; r++)
 		for (int c = 0; c < GW; c++)
@@ -89,7 +89,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "life");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);
 	kapi_set_click_handler (on_click);

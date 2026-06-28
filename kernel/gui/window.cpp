@@ -223,7 +223,17 @@ void CWindowManager::Add (CWindow *pWindow)
 	m_SpinLock.Acquire ();
 	if (m_nWindows < WM_MAX_WINDOWS)
 	{
-		m_pWindows[m_nWindows++] = pWindow;
+		if (pWindow->Backmost ())
+		{
+			// Keep backmost windows (the shell desktop) at the BOTTOM of the z-order.
+			for (unsigned j = m_nWindows; j > 0; j--) m_pWindows[j] = m_pWindows[j - 1];
+			m_pWindows[0] = pWindow;
+			m_nWindows++;
+		}
+		else
+		{
+			m_pWindows[m_nWindows++] = pWindow;	// normal windows open on top
+		}
 	}
 	m_SpinLock.Release ();
 }
@@ -254,6 +264,10 @@ void CWindowManager::Remove (CWindow *pWindow)
 // Caller holds m_SpinLock.
 void CWindowManager::RaiseLocked (CWindow *pWindow)
 {
+	if (pWindow != 0 && pWindow->Backmost ())
+	{
+		return;				// the shell desktop never rises above other windows
+	}
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)

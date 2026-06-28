@@ -4,8 +4,14 @@
 // do NOT include onyxpp.hpp here.
 //
 #include "wtk/richtextbox.h"
+#include "wtk/font.h"		// styled glyphs from the global ns-sans family (SD:/fonts)
 
 namespace wtk {
+
+// Text metrics come from the active face (the global font family) so the layout follows
+// the loaded font's glyph size; they fall back to the kernel font when no .fnt is present.
+static int rt_fw () { return font ().valid () ? font ().width ()  : wk_fw (); }
+static int rt_fh () { return font ().valid () ? font ().height () : wk_fh (); }
 
 // ---- palette + style packing -------------------------------------------------
 
@@ -83,38 +89,60 @@ static inline unsigned blend (unsigned bg, unsigned fg, int a)	// a in 0..255
 	return ((unsigned) r << 16) | ((unsigned) g << 8) | (unsigned) b;
 }
 
-// Rasterise one styled glyph at (px,py) into this widget's canvas. Bold = OR with the
-// left neighbour; italic = per-row right shear; size = integer bilinear upscale (the
+// Rasterise one styled glyph at (px,py) into this widget's canvas. The base mask comes
+// from the matching ns-sans face (real designed bold / italic / bold-italic); if a face
+// failed to load it falls back to synthesising from the kernel font (bold = OR with the
+// left neighbour, italic = per-row right shear). size = integer bilinear upscale (the
 // "lissage"); colour blended over whatever is already there (page/highlight/selection).
 void RichTextBox::drawGlyph (int px, int py, char ch, const RtStyle &st)
 {
-	int fw = wk_fw (), fh = wk_fh ();
-	const unsigned char *m = rawMask ((unsigned char) ch);
-	if (m == 0) return;
-
 	bool bold = (st.flags & RT_BOLD) != 0;
 	bool ital = (st.flags & RT_ITALIC) != 0;
-	int  shearMax = ital ? (fh - 1) / 3 : 0;
-	int  Wm = fw + shearMax + (bold ? 1 : 0);
-	if (Wm > RT_MAXW) Wm = RT_MAXW;
+
+	Font &face = font ();					// the global family
+	int   styleIdx = (bold ? 2 : 0) | (ital ? 1 : 0);
 
 	unsigned char wm[RT_MAXW * RT_MAXH];
-	for (int i = 0; i < Wm * fh; i++) wm[i] = 0;
-	for (int y = 0; y < fh; y++)
+	int Wm, fh;
+	if (face.valid ())					// real designed glyph for this style
 	{
-		int sh = ital ? (fh - 1 - y) / 3 : 0;
-		for (int xx = 0; xx < fw; xx++)
+		Wm = face.width (); fh = face.height ();
+		if (Wm > RT_MAXW) Wm = RT_MAXW;
+		if (fh > RT_MAXH) fh = RT_MAXH;
+		for (int i = 0; i < Wm * fh; i++) wm[i] = 0;
+		const unsigned char *gl = face.glyph ((unsigned char) ch, styleIdx);
+		if (gl)
+			for (int y = 0; y < fh; y++)
+			{
+				unsigned char b = gl[y];
+				for (int x = 0; x < Wm; x++) if (b & (0x80 >> x)) wm[y * Wm + x] = 255;
+			}
+	}
+	else							// fallback: synthesise from the kernel font
+	{
+		int fw = wk_fw (); fh = wk_fh ();
+		const unsigned char *m = rawMask ((unsigned char) ch);
+		if (m == 0) return;
+		int shearMax = ital ? (fh - 1) / 3 : 0;
+		Wm = fw + shearMax + (bold ? 1 : 0);
+		if (Wm > RT_MAXW) Wm = RT_MAXW;
+		for (int i = 0; i < Wm * fh; i++) wm[i] = 0;
+		for (int y = 0; y < fh; y++)
 		{
-			int v = m[y * fw + xx];
-			if (bold && xx > 0) v |= m[y * fw + xx - 1];
-			if (v) { int ox = xx + sh; if (ox >= 0 && ox < Wm) wm[y * Wm + ox] = 255; }
+			int sh = ital ? (fh - 1 - y) / 3 : 0;
+			for (int xx = 0; xx < fw; xx++)
+			{
+				int v = m[y * fw + xx];
+				if (bold && xx > 0) v |= m[y * fw + xx - 1];
+				if (v) { int ox = xx + sh; if (ox >= 0 && ox < Wm) wm[y * Wm + ox] = 255; }
+			}
 		}
 	}
 
 	int s = st.size < 1 ? 1 : st.size;
 	int ow = Wm * s, oh = fh * s;
 	unsigned fg = rt_color (st.fg);
-	int cw = canvas.w, chh = canvas.h; unsigned *P = canvas.px;
+	int cw = canvas.w, chh = canvas.h, cs = canvas.stride; unsigned *P = canvas.px;	// clip to w/h, step by stride
 	for (int oy = 0; oy < oh; oy++)
 	{
 		int dy = py + oy; if (dy < 0 || dy >= chh) continue;
@@ -132,7 +160,7 @@ void RichTextBox::drawGlyph (int px, int py, char ch, const RtStyle &st)
 			int cov = (tv * (256 - fracy) + bv * fracy) >> 16;
 			if (cov <= 0) continue;
 			if (cov > 255) cov = 255;
-			unsigned *q = &P[dy * cw + dx];
+			unsigned *q = &P[dy * cs + dx];
 			*q = blend (*q, fg, cov);
 		}
 	}
@@ -177,7 +205,7 @@ void RichTextBox::setContent (const char *s)
 // ---- editing -----------------------------------------------------------------
 
 int RichTextBox::glyphAdvance (int i) const
-{ int sz = (int) ((attr[i] >> 16) & 0xFF); if (sz < 1) sz = 1; return wk_fw () * sz; }
+{ int sz = (int) ((attr[i] >> 16) & 0xFF); if (sz < 1) sz = 1; return rt_fw () * sz; }
 
 void RichTextBox::selRange (int &a, int &b) const
 { if (sel < caret) { a = sel; b = caret; } else { a = caret; b = sel; } }
@@ -220,7 +248,7 @@ bool RichTextBox::growRows (int need)
 // One visual row starting at char s: walk to the wrap point or the paragraph '\n'.
 void RichTextBox::rowAt (int s, int wrapW, int &end, int &h, int &nextStart, bool &hard) const
 {
-	int fw = wk_fw (), fh = wk_fh ();
+	int fw = rt_fw (), fh = rt_fh ();
 	int pe = s; while (pe < len && buf[pe] != '\n') pe++;
 	int x = 0, hh = fh, i = s;
 	for (; i < pe; i++)
@@ -253,7 +281,7 @@ void RichTextBox::relayout (int wrapW)
 		}
 		i = ns;
 	}
-	if (rowN == 0) { growRows (1); rowStart[0] = 0; rowH[0] = wk_fh (); rowY[0] = 0; rowN = 1; y = wk_fh (); }
+	if (rowN == 0) { growRows (1); rowStart[0] = 0; rowH[0] = rt_fh (); rowY[0] = 0; rowN = 1; y = rt_fh (); }
 	rowY[rowN] = y;					// total content height (sentinel)
 }
 
@@ -261,7 +289,7 @@ void RichTextBox::ensureLayout ()
 {
 	const int pad = 4;
 	int wrapW = width - 2 * pad - WK_SBW;		// reserve the right-edge scrollbar gutter
-	if (wrapW < wk_fw ()) wrapW = wk_fw ();
+	if (wrapW < rt_fw ()) wrapW = rt_fw ();
 	if (!layoutDirty && wrapW == lastWrapW) return;
 	relayout (wrapW); lastWrapW = wrapW; layoutDirty = false;
 	if (top > rowN - 1) top = rowN - 1; if (top < 0) top = 0;
@@ -443,7 +471,7 @@ void RichTextBox::onDraw ()
 		{
 			if (buf[i] == '\n') break;
 			RtStyle st = rt_unpack (attr[i]);
-			int adv = wk_fw () * st.size, gh = wk_fh () * st.size;
+			int adv = rt_fw () * st.size, gh = rt_fh () * st.size;
 			int cy = ry + (rh - gh);			// baseline (bottom) align
 			if (st.flags & RT_HILITE)          canvas.fillRect (x, cy, adv, gh, rt_color (st.bg));
 			if (selA >= 0 && i >= selA && i < selB) canvas.fillRect (x, ry, adv, rh, RT_SEL);

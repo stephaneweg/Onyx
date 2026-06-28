@@ -5,7 +5,7 @@
 // 'r' restart.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 
 #define COLS	10
 #define ROWS	20
@@ -173,19 +173,19 @@ static void redraw (void)
 
 	int sx = FX + COLS * CELL + 12;
 	char buf[16];
-	kapi_draw_text (sx, FY + 4, "SCORE", 0x0090a0b0);
-	itoa (g_score, buf); kapi_draw_text (sx, FY + 18, buf, 0x00ffffff);
-	kapi_draw_text (sx, FY + 44, "LINES", 0x0090a0b0);
-	itoa (g_lines, buf); kapi_draw_text (sx, FY + 58, buf, 0x00ffffff);
-	kapi_draw_text (sx, FY + 92,  "left/right", 0x00708090);
-	kapi_draw_text (sx, FY + 104, "up: rotate", 0x00708090);
-	kapi_draw_text (sx, FY + 116, "dn: soft", 0x00708090);
-	kapi_draw_text (sx, FY + 128, "spc: drop", 0x00708090);
-	kapi_draw_text (sx, FY + 140, "r: restart", 0x00708090);
+	wtk::draw_text (fb, W, H, sx, FY + 4, "SCORE", 0x0090a0b0);
+	itoa (g_score, buf); wtk::draw_text (fb, W, H, sx, FY + 18, buf, 0x00ffffff);
+	wtk::draw_text (fb, W, H, sx, FY + 44, "LINES", 0x0090a0b0);
+	itoa (g_lines, buf); wtk::draw_text (fb, W, H, sx, FY + 58, buf, 0x00ffffff);
+	wtk::draw_text (fb, W, H, sx, FY + 92,  "left/right", 0x00708090);
+	wtk::draw_text (fb, W, H, sx, FY + 104, "up: rotate", 0x00708090);
+	wtk::draw_text (fb, W, H, sx, FY + 116, "dn: soft", 0x00708090);
+	wtk::draw_text (fb, W, H, sx, FY + 128, "spc: drop", 0x00708090);
+	wtk::draw_text (fb, W, H, sx, FY + 140, "r: restart", 0x00708090);
 	if (g_over)
 	{
-		kapi_draw_text (sx, FY + 170, "GAME OVER", 0x00ff6060);
-		kapi_draw_text (sx, FY + 182, "r = retry", 0x00ffa0a0);
+		wtk::draw_text (fb, W, H, sx, FY + 170, "GAME OVER", 0x00ff6060);
+		wtk::draw_text (fb, W, H, sx, FY + 182, "r = retry", 0x00ffa0a0);
 	}
 }
 
@@ -193,7 +193,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "tetris");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);

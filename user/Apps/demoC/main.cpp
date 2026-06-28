@@ -14,7 +14,7 @@
 // pixel buffer is the window canvas the kernel maps in.
 //
 #include "kapi.h"
-#include "uikit.hpp"		// ui::decorate_window
+#include "wtk/wtk.h"		// wtk window decoration
 
 #define W	320			// window client size
 #define H	240
@@ -114,7 +114,7 @@ int main (void)
 		return 1;
 	}
 
-	ui::decorate_window ();			// user-side window chrome
+	wtk::wk_decorate_window ();			// user-side window chrome
 
 	build_palette (mode);
 

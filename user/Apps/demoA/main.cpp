@@ -3,7 +3,7 @@
 // canvas the kernel mapped in (shared-buffer model), then present()s each frame.
 //
 #include "kapi.h"
-#include "uikit.hpp"		// ui::decorate_window
+#include "wtk/wtk.h"		// wtk window decoration
 
 #define W 240
 #define H 180
@@ -55,7 +55,7 @@ int main (void)
 	{
 		return 1;
 	}
-	ui::decorate_window ();			// user-side window chrome
+	wtk::wk_decorate_window ();			// user-side window chrome
 
 	int x = 10, y = 10, dx = 3, dy = 2, s = 36;
 	while (!should_exit ())

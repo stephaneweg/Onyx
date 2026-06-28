@@ -5,7 +5,7 @@
 // event (kapi_set_click_handler); 'r' starts a new board.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 
 #define GW	18
 #define GH	13
@@ -149,9 +149,9 @@ static void redraw (void)
 {
 	fill_rect (0, 0, W, H, 0x00141820);
 	char buf[16]; itoa (g_score, buf);
-	kapi_draw_text (OX, 8, "score:", 0x0090a0b0);
-	kapi_draw_text (OX + 7 * kapi_font_width (), 8, buf, 0x00ffffff);
-	kapi_draw_text (W - 150, 8, "click groups  r:new", 0x00708090);
+	wtk::draw_text (fb, W, H, OX, 8, "score:", 0x0090a0b0);
+	wtk::draw_text (fb, W, H, OX + 7 * kapi_font_width (), 8, buf, 0x00ffffff);
+	wtk::draw_text (fb, W, H, W - 150, 8, "click groups  r:new", 0x00708090);
 
 	for (int r = 0; r < GH; r++)
 		for (int c = 0; c < GW; c++)
@@ -161,8 +161,8 @@ static void redraw (void)
 
 	if (g_over)
 	{
-		kapi_draw_text (W / 2 - 52, OY + GH * CELL / 2 - 4, "NO MORE MOVES", 0x00ffffff);
-		kapi_draw_text (W / 2 - 36, OY + GH * CELL / 2 + 10, "r = new game", 0x00ffd070);
+		wtk::draw_text (fb, W, H, W / 2 - 52, OY + GH * CELL / 2 - 4, "NO MORE MOVES", 0x00ffffff);
+		wtk::draw_text (fb, W, H, W / 2 - 36, OY + GH * CELL / 2 + 10, "r = new game", 0x00ffd070);
 	}
 }
 
@@ -170,7 +170,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "same");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_click_handler (on_click);

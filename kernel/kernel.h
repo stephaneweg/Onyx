@@ -29,6 +29,7 @@
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>	// WPA2 association
 #include <circle/net/netsubsystem.h>		// TCP/IP stack
 #include <kern/gui/window.h>		// also defines SCREEN_WIDTH / SCREEN_HEIGHT
+#include <kern/gui/surface.h>		// CSurfaceManager (shared shell surfaces)
 #include <kern/debugcon.h>		// on-screen debug console (post-mortem visibility)
 
 enum TShutdownMode
@@ -83,6 +84,7 @@ private:
 	CWPASupplicant		m_WPASupplicant;	// WPA2 (SD:/wpa_supplicant.conf)
 	CScheduler		m_Scheduler;		// our preemptive-ready scheduler (#3)
 	CWindowManager		m_WindowManager;	// compositor (#10)
+	CSurfaceManager		m_SurfaceManager;	// shared shell surfaces (activity shell)
 	CFbConsole		m_FbConsole;		// debug console on the displayed FB
 	CLogSwitch		m_LogSwitch;		// logger target: boot console -> debug FB
 

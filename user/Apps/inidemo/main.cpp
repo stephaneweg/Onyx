@@ -6,7 +6,7 @@
 // change -- no rebuild needed.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	380
@@ -40,14 +40,14 @@ static void draw_kv (int x, int y, const char *label, const char *val, unsigned 
 	int p = 0;
 	ax_strcat (line, sizeof (line), &p, label);
 	ax_strcat (line, sizeof (line), &p, val);
-	kapi_draw_text (x, y, line, c);
+	wtk::draw_text (fb, W, H, x, y, line, c);
 }
 
 int main (void)
 {
 	fb = kapi_create_window (W, H, "inidemo");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	for (int i = 0; i < W * H; i++) fb[i] = 0x00202832;
 
 	int n = app_ini_load ("config.ini");
@@ -56,11 +56,11 @@ int main (void)
 
 	if (n < 0)
 	{
-		kapi_draw_text (x, y, "config.ini not found in app folder", 0x00ff6060);
+		wtk::draw_text (fb, W, H, x, y, "config.ini not found in app folder", 0x00ff6060);
 	}
 	else
 	{
-		kapi_draw_text (x, y, "config.ini values:", 0x0080d0ff); y += fh + 6;
+		wtk::draw_text (fb, W, H, x, y, "config.ini values:", 0x0080d0ff); y += fh + 6;
 
 		draw_kv (x, y, "greeting = ", app_ini_get (0, "greeting", "(none)"), 0x00e0e0e0); y += fh + 3;
 		draw_kv (x, y, "[app] name = ", app_ini_get ("app", "name", "(none)"), 0x00e0e0e0); y += fh + 3;

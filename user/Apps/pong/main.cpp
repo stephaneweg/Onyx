@@ -3,7 +3,7 @@
 // First to 9 wins; 'r' resets. App-drawn; integer physics.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	480
@@ -86,15 +86,15 @@ static void redraw (void)
 	fill_rect (W - 16 - PW, g_ry, PW, PH, 0x00ffffff);
 	fill_rect (g_bx, g_by, BS, BS, 0x0060ff90);
 	char l[4], r[4]; ax_itoa (g_ls, l); ax_itoa (g_rs, r);
-	kapi_draw_text (W / 2 - 40, 10, l, 0x00ffffff);
-	kapi_draw_text (W / 2 + 32, 10, r, 0x00ffffff);
+	wtk::draw_text (fb, W, H, W / 2 - 40, 10, l, 0x00ffffff);
+	wtk::draw_text (fb, W, H, W / 2 + 32, 10, r, 0x00ffffff);
 }
 
 int main (void)
 {
 	fb = kapi_create_window (W, H, "pong");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	kapi_set_key_handler (on_key);
 	reset ();
 	while (!should_exit ()) { pump_events (); step (); redraw (); msleep (16); }

@@ -4,7 +4,7 @@
 // (A1, B2, ...). Values are fixed-decimal (3 places). Recomputed after each edit.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define COLS	8			// A..H
@@ -199,8 +199,8 @@ static void redraw (void)
 	char ref[8]; ref[0] = (char) ('A' + g_sc); int rp = 1 + ax_itoa (g_sr + 1, ref + 1);
 	ref[rp++] = ':'; ref[rp] = '\0';
 	fill_rect (0, 0, W, 20, 0x00303d4d);
-	kapi_draw_text (4, 3, ref, 0x00ffd070);
-	kapi_draw_text (4 + rp * kapi_font_width () + 4, 3, g_eb, 0x00ffffff);
+	wtk::draw_text (fb, W, H, 4, 3, ref, 0x00ffd070);
+	wtk::draw_text (fb, W, H, 4 + rp * kapi_font_width () + 4, 3, g_eb, 0x00ffffff);
 	int cx = 4 + rp * kapi_font_width () + 4 + g_eblen * kapi_font_width ();
 	fill_rect (cx, 3, 2, kapi_font_height (), 0x0060ff90);
 
@@ -208,13 +208,13 @@ static void redraw (void)
 	for (int c = 0; c < COLS; c++)
 	{
 		char h[2] = { (char) ('A' + c), 0 };
-		kapi_draw_text (GX0 + c * CW + CW / 2 - 3, 26, h, 0x0090b0d0);
+		wtk::draw_text (fb, W, H, GX0 + c * CW + CW / 2 - 3, 26, h, 0x0090b0d0);
 	}
 	// Row headers + cells.
 	for (int r = 0; r < ROWS; r++)
 	{
 		char rh[4]; ax_itoa (r + 1, rh);
-		kapi_draw_text (4, GY0 + r * CH + 3, rh, 0x0090b0d0);
+		wtk::draw_text (fb, W, H, 4, GY0 + r * CH + 3, rh, 0x0090b0d0);
 		for (int c = 0; c < COLS; c++)
 		{
 			int x = GX0 + c * CW, y = GY0 + r * CH;
@@ -224,10 +224,10 @@ static void redraw (void)
 			if (g_kind[r][c] == 1 || g_kind[r][c] == 2)
 			{
 				int n = fmt_val (g_val[r][c], out);
-				kapi_draw_text (x + CW - 4 - n * kapi_font_width (), y + 3, out, 0x00e8e8e8);
+				wtk::draw_text (fb, W, H, x + CW - 4 - n * kapi_font_width (), y + 3, out, 0x00e8e8e8);
 			}
 			else if (g_raw[r][c][0])
-				kapi_draw_text (x + 3, y + 3, g_raw[r][c], 0x00d0d0c0);
+				wtk::draw_text (fb, W, H, x + 3, y + 3, g_raw[r][c], 0x00d0d0c0);
 		}
 	}
 }
@@ -236,7 +236,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "sheet");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	for (int r = 0; r < ROWS; r++) for (int c = 0; c < COLS; c++) g_raw[r][c][0] = '\0';
 	recompute ();
 	load_edit ();

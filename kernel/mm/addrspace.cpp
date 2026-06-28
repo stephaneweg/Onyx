@@ -3,6 +3,8 @@
 //
 #include <kern/addrspace.h>
 #include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
+#include <kern/gui/surface.h>		// CSurfaceManager (free a dead owner's surfaces)
+#include <kern/ipc.h>			// CMailbox + IpcOnProcessGone (activity-shell IPC)
 #include <kern/stream.h>		// CStream + CProcess (stdio teardown)
 #include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA for the kapi table)
 #include <kern/kapitable.h>		// KApiTablePhys
@@ -64,11 +66,13 @@ CAddressSpace::CAddressSpace (void)
 	m_pWindow (0),
 	m_pStdin (0),
 	m_pStdout (0),
+	m_pMailbox (0),
 	m_pProcess (0),
 	m_nExitStatus (0),
 	m_nOwnedPages (0),
 	m_ulHeapBrk (USER_HEAP_BASE),
-	m_ulHeapEnd (USER_HEAP_BASE)
+	m_ulHeapEnd (USER_HEAP_BASE),
+	m_ulSurfaceNext (USER_SURFACE_BASE)
 {
 	m_Args[0] = '\0';
 	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
@@ -151,6 +155,11 @@ CAddressSpace::~CAddressSpace (void)
 		m_pProcess->nStatus = m_nExitStatus;
 		m_pProcess->bDone = TRUE;
 		m_pProcess = 0;
+	}
+	if (m_pMailbox != 0)
+	{
+		delete m_pMailbox;
+		m_pMailbox = 0;
 	}
 
 	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the
@@ -323,6 +332,34 @@ void CAddressSpace::MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPa
 	}
 }
 
+void *CAddressSpace::MapSurface (u64 ulPhys, unsigned nPages)
+{
+	if (nPages == 0)
+	{
+		return 0;
+	}
+	u64 ulVA   = m_ulSurfaceNext;
+	u64 ulNext = ulVA + (u64) nPages * KPAGE_SIZE;
+	if (ulNext > USER_SURFACE_END)
+	{
+		return 0;				// arena exhausted
+	}
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;		// EL1 RW (frames owned by the CSurface)
+	MapContig (ulVA, ulPhys, nPages, Attr);
+	m_ulSurfaceNext = ulNext;
+	DataSyncBarrier ();
+	return (void *) ulVA;
+}
+
+CMailbox *CAddressSpace::GetOrCreateMailbox (void)
+{
+	if (m_pMailbox == 0)
+	{
+		m_pMailbox = new CMailbox;
+	}
+	return m_pMailbox;
+}
+
 void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 {
 	// App data frames (ELF segments + heap) come from the HIGH zone (1-3GB): they are
@@ -416,6 +453,9 @@ void AddressSpaceTaskTerminate (CTask *pTask)
 			CLogger::Get ()->Write ("proc", LogNotice, "exit: %s (pid %u)",
 						pTask->GetName (), pAS->GetPid ());
 		NetCloseByPid (pAS->GetPid ());		// close any TCP sockets it leaked
+		IpcOnProcessGone (pAS->GetPid ());	// forget it in the IPC router (clears shell)
+		if (CSurfaceManager::Get () != 0)
+			CSurfaceManager::Get ()->DestroyByOwner (pAS->GetPid ());	// free its surfaces
 		pTask->SetUserData (0, TASK_USER_DATA_USER);
 		delete pAS;
 	}

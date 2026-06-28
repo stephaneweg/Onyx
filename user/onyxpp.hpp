@@ -29,17 +29,21 @@ inline __attribute__ ((used)) void  operator delete[] (void *p, onyx_size_t) noe
 inline void *operator new      (onyx_size_t, void *p) noexcept { return p; }	// placement
 inline void *operator new[]    (onyx_size_t, void *p) noexcept { return p; }
 
+// These four runtime symbols need a real (emitted, address-takeable) definition, but
+// they are also pulled into any SEPARATELY-COMPILED translation unit that includes this
+// header transitively (e.g. a wtk library .cpp that includes bmp.hpp). Marking them weak
+// lets those duplicate-but-identical definitions merge at link time instead of clashing
+// with the app's main.o copy.
 extern "C" {
-	// Pure-virtual called (should never happen): stop the app cleanly. NOT inline --
-	// an abstract class's vtable takes this symbol's address, so it needs a real
-	// definition (onyxpp.hpp is included once per app, so one definition is fine).
-	void __cxa_pure_virtual (void) { kapi_exit (127); for (;;) {} }
+	// Pure-virtual called (should never happen): stop the app cleanly. An abstract
+	// class's vtable takes this symbol's address, so it needs a real definition.
+	__attribute__ ((weak)) void __cxa_pure_virtual (void) { kapi_exit (127); for (;;) {} }
 	// Static-destructor registration -- accepted and ignored (see header note).
-	void *__dso_handle = 0;
-	// NOT inline: a function-local static with a non-trivial destructor emits a real
-	// CALL to atexit (we build -fno-use-cxa-atexit), so it needs an emitted definition.
-	int __cxa_atexit (void (*) (void *), void *, void *) { return 0; }
-	int atexit (void (*) (void)) { return 0; }
+	__attribute__ ((weak)) void *__dso_handle = 0;
+	// A function-local static with a non-trivial destructor emits a real CALL to atexit
+	// (we build -fno-use-cxa-atexit), so these need emitted definitions.
+	__attribute__ ((weak)) int __cxa_atexit (void (*) (void *), void *, void *) { return 0; }
+	__attribute__ ((weak)) int atexit (void (*) (void)) { return 0; }
 }
 
 #endif // ONYX_CPP_HPP

@@ -2,7 +2,7 @@
 // 2048 -- slide tiles with the arrow keys; equal tiles merge. 'r' restarts.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define N	4
@@ -129,9 +129,9 @@ static void redraw (void)
 {
 	fill_rect (0, 0, W, H, 0x00bbada0);
 	char buf[16]; ax_itoa (g_score, buf);
-	kapi_draw_text (8, 14, "score:", 0x00ffffff);
-	kapi_draw_text (8 + 7 * kapi_font_width (), 14, buf, 0x00fff0d0);
-	if (g_over) kapi_draw_text (W - 90, 14, "game over r", 0x00ffe0e0);
+	wtk::draw_text (fb, W, H, 8, 14, "score:", 0x00ffffff);
+	wtk::draw_text (fb, W, H, 8 + 7 * kapi_font_width (), 14, buf, 0x00fff0d0);
+	if (g_over) wtk::draw_text (fb, W, H, W - 90, 14, "game over r", 0x00ffe0e0);
 
 	for (int r = 0; r < N; r++)
 		for (int c = 0; c < N; c++)
@@ -144,7 +144,7 @@ static void redraw (void)
 				char t[8]; int n = ax_itoa (v, t);
 				int tx = x + (CELL - n * kapi_font_width ()) / 2;
 				int ty = y + (CELL - kapi_font_height ()) / 2;
-				kapi_draw_text (tx, ty, t, v <= 4 ? 0x00776e65 : 0x00f9f6f2);
+				wtk::draw_text (fb, W, H, tx, ty, t, v <= 4 ? 0x00776e65 : 0x00f9f6f2);
 			}
 		}
 }
@@ -153,7 +153,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "2048");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);
 	restart ();

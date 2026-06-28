@@ -107,6 +107,17 @@ void *kapi_spawn (const char *, const char *, void *, void *);
 int kapi_wait (void *);
 int kapi_get_args (char *, unsigned);
 
+int kapi_surface_create (int, int);
+unsigned *kapi_surface_map (int);
+int kapi_surface_size (int, int *, int *);
+void kapi_surface_present (int);
+int kapi_surface_destroy (int);
+
+int kapi_register_shell (void);
+int kapi_shell_request (int, const void *, unsigned);
+int kapi_mailbox_send (int, int, const void *, unsigned);
+int kapi_mailbox_recv (int *, int *, void *, unsigned, int);
+
 }  // extern "C"
 
 // The table, on its own 64 KB page so a single mapping covers it exactly.
@@ -214,4 +225,15 @@ void KApiTableInit (void)
 	t->ram_detail        = kapi_ram_detail;
 	t->set_wheel_speed   = kapi_set_wheel_speed;
 	t->get_wheel_speed   = kapi_get_wheel_speed;
+
+	t->surface_create    = kapi_surface_create;
+	t->surface_map       = kapi_surface_map;
+	t->surface_size      = kapi_surface_size;
+	t->surface_present   = kapi_surface_present;
+	t->surface_destroy   = kapi_surface_destroy;
+
+	t->register_shell    = kapi_register_shell;
+	t->shell_request     = kapi_shell_request;
+	t->mailbox_send      = kapi_mailbox_send;
+	t->mailbox_recv      = kapi_mailbox_recv;
 }

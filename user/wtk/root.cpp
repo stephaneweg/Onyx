@@ -1,17 +1,27 @@
 #include "wtk/root.h"
+#include "wtk/skin.h"		// wk_decorate_window
+#include "wtk/font.h"		// wtk::init (load the global font family at startup)
 #include "applib.h"		// should_exit, msleep, pump_events
 
 namespace wtk {
 
-Root::Root (int w, int h, const char *title) : Widget (0, 0, w, h)
+Root::Root (int w, int h, const char *title) : Widget (0, 0, w, h), bg (C_BG)
+{ init (kapi_create_window (w, h, title)); }
+
+Root::Root (int x, int y, int w, int h, const char *title, unsigned flags)
+  : Widget (0, 0, w, h), bg (C_BG)
+{ init (kapi_create_window_ex (x, y, w, h, title, flags)); }
+
+void Root::init (unsigned *fb)
 {
-	unsigned *fb = kapi_create_window (w, h, title);
-	canvas.adopt (fb, w, h);			// the root draws straight into the window canvas
+	canvas.adopt (fb, width, height);		// the root draws straight into the window canvas
+	wk_decorate_window ();				// title bar / borders / close box (no-op if borderless)
+	wtk::init ();					// load the global font family once (SD:/fonts/ns-sans.fnt)
 	active () = this;
 	hasFocus = true;
 }
 
-void Root::onDraw () { canvas.clear (C_BG); }		// client-area background
+void Root::onDraw () { canvas.clear (bg); }		// client-area background
 
 void Root::run ()
 {
@@ -26,6 +36,7 @@ void Root::run ()
 }
 
 Root *&Root::active () { static Root *p = 0; return p; }
+Root *Root::current () { return active (); }
 
 void Root::ptrEvent (unsigned long, int ev, long v)
 {

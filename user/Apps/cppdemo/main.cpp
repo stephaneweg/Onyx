@@ -6,7 +6,7 @@
 // -nostdlib -fno-exceptions -fno-rtti. No STL.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "onyxpp.hpp"
 
 #define W	360
@@ -45,7 +45,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "cppdemo");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	for (int i = 0; i < N; i++)			// heap-allocate a mix of subclasses
 	{
@@ -59,7 +59,7 @@ int main (void)
 	{
 		pump_events ();
 		for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) fb[y * W + x] = 0x00202830;
-		kapi_draw_text (8, 8, g_banner.text, 0x00FFFFFF);	// proves the ctor ran
+		wtk::draw_text (fb, W, H, 8, 8, g_banner.text, 0x00FFFFFF);	// proves the ctor ran
 		for (int i = 0; i < N; i++) g_shapes[i]->draw ();	// virtual dispatch
 		msleep (16);
 	}

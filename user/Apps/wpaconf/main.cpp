@@ -1,6 +1,6 @@
 //
 // wpaconf/main.cpp -- GUI editor for the WLAN credentials in SD:/etc/wpa_supplicant.conf
-// (C++ port, on the uikit.hpp toolkit).
+// (C++ port, on the wtk toolkit).
 //
 // The kernel reads that file once, at boot (WLAN bring-up runs before any user
 // process), so it must stay the canonical wpa_supplicant-format file. This editor
@@ -14,10 +14,12 @@
 // next boot -- "Save & Reboot" confirms via a modal, then kapi_reboot (ABI v25).
 //
 #include "kapi.h"
-#include "uikit.hpp"
-#include "uidialog.hpp"		// ui::messagebox (user-side modal, no kernel call)
+#include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
+
+using namespace wtk;
 
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
+#define BGCOL		0x00283038
 #define W		380
 #define H		308
 #define LBLW		78
@@ -62,12 +64,11 @@ static int conf_get (const char *buf, const char *key, char *out, int cap)
 }
 
 // ---- widgets / state ---------------------------------------------------------
-static ui::Ui      *g_ui;
-static ui::Textbox *g_ssid, *g_psk, *g_country, *g_proto, *g_keymgmt;
-static ui::Checkbox *g_show;
-static ui::Label   *g_status;
+static Textbox  *g_ssid, *g_psk, *g_country, *g_proto, *g_keymgmt;
+static Checkbox *g_show;
+static Label    *g_status;
 
-static void set_status (const char *s) { g_status->setText (s); g_ui->markDirty (); }
+static void set_status (const char *s) { g_status->setText (s); }
 
 static void load_conf (void)
 {
@@ -90,13 +91,12 @@ static void load_conf (void)
 	else set_status ("No config yet -- fill in and Save");
 	g_ssid->setText (ssid); g_psk->setText (psk); g_country->setText (country);
 	g_proto->setText (proto); g_keymgmt->setText (keymgmt);
-	g_ui->markDirty ();
 }
 
 static int save_conf (void)
 {
-	const char *ssid = g_ssid->getText (), *psk = g_psk->getText (), *country = g_country->getText ();
-	const char *proto = g_proto->getText (), *keymgmt = g_keymgmt->getText ();
+	const char *ssid = g_ssid->text, *psk = g_psk->text, *country = g_country->text;
+	const char *proto = g_proto->text, *keymgmt = g_keymgmt->text;
 	int sl = slen (ssid), pl = slen (psk);
 	if (sl < 1 || sl > 32) { set_status ("SSID must be 1..32 chars"); return 0; }
 	int psk_mode = 0;
@@ -124,56 +124,48 @@ static int save_conf (void)
 }
 
 // ---- callbacks ---------------------------------------------------------------
-static void on_show   (ui::Widget &) { g_psk->password = !g_show->checked; g_ui->markDirty (); }
-static void on_save   (ui::Widget &) { if (save_conf ()) set_status ("Saved. Reboot to apply."); }
-static void on_reload (ui::Widget &) { load_conf (); }
-static void on_reboot (ui::Widget &)
+static void on_show   (Widget &) { g_psk->password = !g_show->checked; g_psk->invalidate (true); }
+static void on_save   (Widget &) { if (save_conf ()) set_status ("Saved. Reboot to apply."); }
+static void on_reload (Widget &) { load_conf (); }
+static void on_reboot (Widget &)
 {
 	if (!save_conf ()) return;
-	ui::MessageBox mb (*g_ui, "Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO);
-	if (mb.run (g_ui))
+	if (wk_messagebox ("Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO))
 		kapi_reboot ();					// does not return
 	else
 		set_status ("Saved. Reboot later to apply.");
 }
-static void on_evt (unsigned long s, int ev, long v) { g_ui->onEvent (s, ev, v); }
+
+// Add a left-column label (matching the form background).
+static void form_label (Root &root, int x, int y, int w, int h, const char *s)
+{ root.addChild (new Label (x, y, w, h, s, C_TEXT, BGCOL)); }
 
 int main (void)
 {
-	unsigned *fb = kapi_create_window (W, H, "Wi-Fi Settings");
-	if (fb == 0) return 1;
+	Root root (W, H, "Wi-Fi Settings");
+	if (root.canvas.px == 0) return 1;
+	root.setBg (BGCOL);
 
-	ui::Ui ui (fb, W, H); g_ui = &ui;
-	ui.col_bg = 0x00283038;
-
-	ui.label (12, 10, 240, 20, "Wi-Fi Settings");
+	form_label (root, 12, 10, 240, 20, "Wi-Fi Settings");
 
 	int y = 42;
-	ui.label (12, y, LBLW, FH, "SSID");     g_ssid    = &ui.textbox (FX, y, FW, FH, ""); y += 34;
-	ui.label (12, y, LBLW, FH, "Password"); g_psk     = &ui.textbox (FX, y, FW, FH, ""); y += 30;
-	g_show = &ui.checkbox (FX, y, 160, 20, "Show password", false, on_show);            y += 30;
-	ui.label (12, y, LBLW, FH, "Country");  g_country = &ui.textbox (FX, y, FW, FH, ""); y += 34;
-	ui.label (12, y, LBLW, FH, "Proto");    g_proto   = &ui.textbox (FX, y, FW, FH, ""); y += 34;
-	ui.label (12, y, LBLW, FH, "Key mgmt"); g_keymgmt = &ui.textbox (FX, y, FW, FH, ""); y += 38;
+	form_label (root, 12, y, LBLW, FH, "SSID");     g_ssid    = new Textbox (FX, y, FW, FH, ""); root.addChild (g_ssid);    y += 34;
+	form_label (root, 12, y, LBLW, FH, "Password"); g_psk     = new Textbox (FX, y, FW, FH, ""); root.addChild (g_psk);     y += 30;
+	g_show = new Checkbox (FX, y, 160, 20, "Show password", false, on_show, BGCOL); root.addChild (g_show);                 y += 30;
+	form_label (root, 12, y, LBLW, FH, "Country");  g_country = new Textbox (FX, y, FW, FH, ""); root.addChild (g_country); y += 34;
+	form_label (root, 12, y, LBLW, FH, "Proto");    g_proto   = new Textbox (FX, y, FW, FH, ""); root.addChild (g_proto);   y += 34;
+	form_label (root, 12, y, LBLW, FH, "Key mgmt"); g_keymgmt = new Textbox (FX, y, FW, FH, ""); root.addChild (g_keymgmt); y += 38;
 
-	ui.button (12,  y, 84,  30, "Save",          on_save);
-	ui.button (104, y, 150, 30, "Save & Reboot", on_reboot);
-	ui.button (262, y, 106, 30, "Reload",        on_reload);                            y += 38;
+	root.addChild (new Button (12,  y, 84,  30, "Save",          on_save));
+	root.addChild (new Button (104, y, 150, 30, "Save & Reboot", on_reboot));
+	root.addChild (new Button (262, y, 106, 30, "Reload",        on_reload));            y += 38;
 
-	g_status = &ui.label (12, y, W - 24, 18, "");
+	g_status = new Label (12, y, W - 24, 18, "", C_TEXT, BGCOL); root.addChild (g_status);
 
 	g_psk->password = true;				// mask by default
 	load_conf ();
-	ui.setFocus (*g_ssid);				// type into SSID immediately
+	g_ssid->setFocus ();				// type into SSID immediately
 
-	kapi_set_pointer_handler (on_evt);
-	kapi_set_key_handler (on_evt);
-
-	while (!should_exit ())
-	{
-		pump_events ();
-		if (ui.dirty ()) { ui.background (); ui.drawAll (); present (); }
-		msleep (16);
-	}
+	root.run ();
 	return 0;
 }

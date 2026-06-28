@@ -28,9 +28,16 @@ static void onReset (Widget &) { g_n = 0;   g_count->setText ("count: 0"); }
 static void onSlide (Widget &w) { g_prog->setValue (((Slider &) w).value); }		// slider -> progress
 static void onCheck (Widget &w) { g_count->setText (((Checkbox &) w).checked ? "checked" : "unchecked"); }
 
+// Infra demos: modal MessageBox / FileDialog, Dropdown, ColorPicker.
+static const char *const g_dropOpts[] = { "Red", "Green", "Blue", "Yellow" };
+static void onMsg  (Widget &) { int r = wk_messagebox ("Confirm", "Modal dialog from wtk.\nProceed?", MB_YESNO); g_count->setText (r ? "yes" : "no"); }
+static void onOpen (Widget &) { char path[256]; if (wk_file_open (path, sizeof path, "SD:/")) g_count->setText (path); }
+static void onDrop (Widget &w) { g_count->setText (g_dropOpts[((Dropdown &) w).sel]); }
+static void onColor(Widget &) { g_count->setText ("colour picked"); }
+
 int main (void)
 {
-	Root root (460, 350, "wtk demo");
+	Root root (460, 430, "wtk demo");
 
 	root.addChild (new Label (12, 10, 436, 20, "Recursive widget toolkit -- all widgets"));
 
@@ -56,6 +63,12 @@ int main (void)
 	panel->addChild (new Button (10, 36, 150, 28, "Nested +1", onInc));
 	panel->addChild (new Textarea (10, 74, 416, 84, 4096));
 	root.addChild (panel);
+
+	// Infra row: modal dialogs (skinned title bar + buttons), a dropdown, a colour picker.
+	root.addChild (new Button (12, 346, 90, 26, "MsgBox", onMsg));
+	root.addChild (new Button (108, 346, 90, 26, "Open...", onOpen));
+	root.addChild (new Dropdown (210, 348, 110, 22, g_dropOpts, 4, 0, onDrop));
+	root.addChild (new ColorPicker (332, 346, 40, 24, 0x0060FF90, onColor));
 
 	root.run ();
 	return 0;

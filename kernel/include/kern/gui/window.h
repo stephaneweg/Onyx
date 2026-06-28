@@ -50,6 +50,9 @@ extern u32 g_WinTitleTextColor;
 
 // Window creation flags (kept numerically identical to user/kapi.h).
 #define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
+#define WIN_FLAG_BACKMOST	(1u << 1)	// pinned to the BOTTOM of the z-order (the shell
+						// desktop): never raised above other windows, so
+						// floating windows always stay on top of it
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree. (The kernel-drawn widget
@@ -112,6 +115,7 @@ public:
 	// client; a borderless window has none (client area == whole window). The WM and
 	// the renderer use these instead of the raw WIN_* constants so both kinds work.
 	boolean Borderless (void) const	{ return (m_nFlags & WIN_FLAG_BORDERLESS) != 0; }
+	boolean Backmost (void) const	{ return (m_nFlags & WIN_FLAG_BACKMOST) != 0; }
 	int ChromeL (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeR (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeT (void) const	{ return Borderless () ? 0 : WIN_TITLEBAR_H; }

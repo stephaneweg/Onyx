@@ -3,7 +3,7 @@
 // reversing), 'r' restarts. Eat food to grow; hitting a wall or yourself ends it.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 
 #define GW	24
 #define GH	18
@@ -105,8 +105,8 @@ static void redraw (void)
 	fill_rect (0, 0, W, H, 0x00141820);
 	char buf[16];
 	itoa (g_score, buf);
-	kapi_draw_text (OX, 8, "score:", 0x0090a0b0);
-	kapi_draw_text (OX + 7 * kapi_font_width (), 8, buf, 0x00ffffff);
+	wtk::draw_text (fb, W, H, OX, 8, "score:", 0x0090a0b0);
+	wtk::draw_text (fb, W, H, OX + 7 * kapi_font_width (), 8, buf, 0x00ffffff);
 
 	fill_rect (OX - 2, OY - 2, GW * CELL + 3, GH * CELL + 3, 0x00404858);
 	fill_rect (OX, OY, GW * CELL, GH * CELL, 0x000c0e12);
@@ -117,8 +117,8 @@ static void redraw (void)
 
 	if (g_over)
 	{
-		kapi_draw_text (W / 2 - 40, OY + GH * CELL / 2 - 4, "GAME OVER", 0x00ff6060);
-		kapi_draw_text (W / 2 - 44, OY + GH * CELL / 2 + 10, "r = restart", 0x00ffa0a0);
+		wtk::draw_text (fb, W, H, W / 2 - 40, OY + GH * CELL / 2 - 4, "GAME OVER", 0x00ff6060);
+		wtk::draw_text (fb, W, H, W / 2 - 44, OY + GH * CELL / 2 + 10, "r = restart", 0x00ffa0a0);
 	}
 }
 
@@ -126,7 +126,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "snake");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);

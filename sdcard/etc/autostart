@@ -4,10 +4,12 @@
 # tool (/bin/<word>.elf) and the rest are its arguments. Launch a DESKTOP app with
 # the `run` tool. Blank lines and '#' comments are ignored.
 #
-#   run voronoy   -> /bin/run.elf voronoy  -> launches apps/voronoy.app/main.elf
-#   run panel     -> launches apps/panel.app/main.elf (the shell)
+#   run shell     -> launches apps/shell.app/main.elf (the activity shell)
 #   keyb FR       -> /bin/keyb.elf FR      -> set the French keyboard layout
 #
+# The activity shell owns the whole screen (its own background + top/timeline bars).
+# voronoy generates the wallpaper then EXITS; it also serves as the 2nd boot app that
+# masks a pre-existing single-GUI-app-at-boot race (so keep it before the shell).
 run voronoy
-run panel
+run shell
 keyb FR

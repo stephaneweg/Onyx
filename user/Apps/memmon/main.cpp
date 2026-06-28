@@ -5,7 +5,7 @@
 // (no widgets needed -- it's a read-only display).
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	440
@@ -34,7 +34,7 @@ static void kv (int x, int y, const char *label, unsigned long val, const char *
 	line[p++] = ' ';
 	for (int i = 0; unit[i];  i++) line[p++] = unit[i];
 	line[p] = '\0';
-	kapi_draw_text (x, y, line, 0x00d0d8e0);
+	wtk::draw_text (fb, W, H, x, y, line, 0x00d0d8e0);
 }
 
 // ---- process table (parsed from kapi_list_procs, sorted by pages) ------------
@@ -96,7 +96,7 @@ static void redraw (void)
 	kapi_ram_detail (&detected, &apppool, &appfree, &above4g, &nsegs);
 
 	fill (0, 0, W, H, 0x00181c24);
-	kapi_draw_text (8, 8, "Memory monitor", 0x00ffffff);
+	wtk::draw_text (fb, W, H, 8, 8, "Memory monitor", 0x00ffffff);
 
 	// usage bar (used / total)
 	int bx = 8, by = 30, bw = W - 16, bh = 22;
@@ -106,7 +106,7 @@ static void redraw (void)
 	int pc = total ? (int) (used * 100 / total) : 0;
 	char pct[8]; ax_itoa (pc, pct);
 	char pl[12]; int q = 0; for (int i = 0; pct[i]; i++) pl[q++] = pct[i]; pl[q++] = '%'; pl[q] = '\0';
-	kapi_draw_text (bx + bw / 2 - 12, by + (bh - g_fh) / 2, pl, 0x00ffffff);
+	wtk::draw_text (fb, W, H, bx + bw / 2 - 12, by + (bh - g_fh) / 2, pl, 0x00ffffff);
 
 	int y = 62;
 	kv (8, y, "Detected: ", detected / 1024, "MB");  y += g_fh;	// physical board RAM
@@ -118,7 +118,7 @@ static void redraw (void)
 	kv (8, y, "Free:     ", freekb / 1024,   "MB");  y += g_fh;
 	kv (8, y, "Page:     ", pagekb,          "KB");  y += g_fh + 6;
 
-	kapi_draw_text (8, y, "By pages owned:", 0x0090a0b0); y += g_fh;
+	wtk::draw_text (fb, W, H, 8, y, "By pages owned:", 0x0090a0b0); y += g_fh;
 	for (int i = 0; i < g_np && y < H - g_fh; i++)
 	{
 		if (g_ppages[i] == 0 && g_pkind[i] == 'k') continue;	// skip 0-page kernel tasks
@@ -130,7 +130,7 @@ static void redraw (void)
 		line[p++] = 'p'; line[p++] = ' '; line[p++] = ' ';
 		for (int s = 0; g_pname[i][s] && p < 68; s++) line[p++] = g_pname[i][s];
 		line[p] = '\0';
-		kapi_draw_text (8, y, line, g_pkind[i] == 'k' ? 0x00808890 : 0x00c8d0c0);
+		wtk::draw_text (fb, W, H, 8, y, line, g_pkind[i] == 'k' ? 0x00808890 : 0x00c8d0c0);
 		y += g_fh;
 	}
 }
@@ -139,7 +139,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "memmon");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 

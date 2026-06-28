@@ -5,7 +5,7 @@
 // Iteration count maps to colour. Renders progressively (yields between row bands).
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	340
@@ -112,7 +112,7 @@ static void render (void)
 	p += ax_itoa (g_zoom, s + p);
 	s[p++] = ' '; s[p++] = 'i'; s[p++] = 't'; s[p++] = '=';
 	p += ax_itoa (g_maxit, s + p); s[p] = '\0';
-	kapi_draw_text (6, RH + 1, s, 0x0090b0a0);
+	wtk::draw_text (fb, W, H, 6, RH + 1, s, 0x0090b0a0);
 	g_dirty = 0;
 }
 
@@ -160,7 +160,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "fractal");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	reset_view ();
 	kapi_set_click_handler (on_click);
 	kapi_set_key_handler (on_key);

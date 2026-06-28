@@ -4,7 +4,7 @@
 // to save it (per-day, in SD:/apps/calendar.app/agenda.txt). Backspace edits.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	392
@@ -177,11 +177,11 @@ static void redraw (void)
 	const char *mn = MONTHS[g_month - 1];
 	for (int i = 0; mn[i]; i++) hdr[p++] = mn[i];
 	hdr[p++] = ' '; p += ax_itoa (g_year, hdr + p);
-	kapi_draw_text (OX, 10, hdr, 0x00ffffff);
-	kapi_draw_text (W - 130, 10, "<- -> month  ^v year", 0x00708090);
+	wtk::draw_text (fb, W, H, OX, 10, hdr, 0x00ffffff);
+	wtk::draw_text (fb, W, H, W - 130, 10, "<- -> month  ^v year", 0x00708090);
 
 	static const char *wd[7] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
-	for (int c = 0; c < 7; c++) kapi_draw_text (OX + c * CW + 8, 30, wd[c], 0x0090b0d0);
+	for (int c = 0; c < 7; c++) wtk::draw_text (fb, W, H, OX + c * CW + 8, 30, wd[c], 0x0090b0d0);
 
 	int first = dow (g_year, g_month, 1), ndays = dim (g_year, g_month);
 	for (int cell = 0; cell < 42; cell++)
@@ -195,7 +195,7 @@ static void redraw (void)
 		else if (day == g_td && g_month == g_tm && g_year == g_ty) bg = 0x00405028;
 		fill_rect (x, y, CW - 2, CH - 2, bg);
 		char ds[4]; ax_itoa (day, ds);
-		kapi_draw_text (x + 4, y + 3, ds, 0x00e0e0e0);
+		wtk::draw_text (fb, W, H, x + 4, y + 3, ds, 0x00e0e0e0);
 		if (has_note (day)) fill_rect (x + CW - 9, y + 4, 4, 4, 0x0060d0ff);
 	}
 
@@ -206,21 +206,21 @@ static void redraw (void)
 		char lbl[40]; int q = 0;
 		const char *t = "note for day "; for (int i = 0; t[i]; i++) lbl[q++] = t[i];
 		q += ax_itoa (g_sel, lbl + q); lbl[q++] = ':'; lbl[q] = '\0';
-		kapi_draw_text (OX, ny, lbl, 0x0090a0b0);
+		wtk::draw_text (fb, W, H, OX, ny, lbl, 0x0090a0b0);
 		fill_rect (OX, ny + 14, W - 16, 18, 0x00101418);
-		kapi_draw_text (OX + 4, ny + 15, g_note, 0x00ffffff);
+		wtk::draw_text (fb, W, H, OX + 4, ny + 15, g_note, 0x00ffffff);
 		int cx = OX + 4 + g_notelen * kapi_font_width ();
 		fill_rect (cx, ny + 15, 2, kapi_font_height (), 0x0060ff90);
-		kapi_draw_text (OX, ny + 36, "type + Enter to save", 0x00607080);
+		wtk::draw_text (fb, W, H, OX, ny + 36, "type + Enter to save", 0x00607080);
 	}
-	else kapi_draw_text (OX, ny, "click a day to add a note", 0x00708090);
+	else wtk::draw_text (fb, W, H, OX, ny, "click a day to add a note", 0x00708090);
 }
 
 int main (void)
 {
 	fb = kapi_create_window (W, H, "calendar");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	kapi_get_datetime (&g_ty, &g_tm, &g_td, 0, 0, 0);
 	if (g_ty < 1970) { g_ty = 2026; g_tm = 1; g_td = 1; }	// uptime clock fallback
 	g_year = g_ty; g_month = g_tm;

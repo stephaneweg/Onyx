@@ -14,7 +14,7 @@
 // fine for the brief connect and for short chat lines.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W		680
@@ -492,14 +492,14 @@ static void draw_connect_bar (void)
 {
 	int by = 3;					// row 0 baseline
 	g_barY0 = 0; g_barY1 = g_fh + 3;
-	kapi_draw_text (4, by, "Server:", 0x0090a0b0);
+	wtk::draw_text (fb, W, H, 4, by, "Server:", 0x0090a0b0);
 
 	int ax = 4 + 8 * g_fw;				// address field box
 	int aw = 30 * g_fw;
 	g_addrX0 = ax; g_addrX1 = ax + aw;
 	fill_rect (ax, by - 1, aw, g_fh + 2, g_addrfocus ? 0x00203040 : 0x00181e26);
 	frame_rect (ax, by - 1, aw, g_fh + 2, g_addrfocus ? 0x0060ff90 : 0x00404a5a);
-	kapi_draw_text (ax + 3, by, g_addr, 0x00ffffff);
+	wtk::draw_text (fb, W, H, ax + 3, by, g_addr, 0x00ffffff);
 	if (g_addrfocus) fill_rect (ax + 3 + g_addrlen * g_fw, by, 2, g_fh, 0x0060ff90);
 
 	int bx = ax + aw + 8;				// [Connect] button
@@ -507,18 +507,18 @@ static void draw_connect_bar (void)
 	g_btnX0 = bx; g_btnX1 = bx + bw;
 	fill_rect (bx, by - 1, bw, g_fh + 2, 0x00355070);
 	frame_rect (bx, by - 1, bw, g_fh + 2, 0x0060a0e0);
-	kapi_draw_text (bx + 3, by, "Connect", 0x00ffffff);
+	wtk::draw_text (fb, W, H, bx + 3, by, "Connect", 0x00ffffff);
 
 	int ry = by + g_fh + 4;				// row 1: recent-server history
 	g_recY0 = ry - 1; g_recY1 = ry + g_fh;
-	kapi_draw_text (4, ry, "Recent:", 0x0090a0b0);
+	wtk::draw_text (fb, W, H, 4, ry, "Recent:", 0x0090a0b0);
 	int rx = 4 + 8 * g_fw;
 	for (int i = 0; i < g_histn && i < HISTMAX; i++)
 	{
 		int w = slen (g_hist[i]) * g_fw;
 		if (rx + w > W - 4) break;
 		g_recX0[i] = rx; g_recX1[i] = rx + w;
-		kapi_draw_text (rx, ry, g_hist[i], 0x0080c8ff);
+		wtk::draw_text (fb, W, H, rx, ry, g_hist[i], 0x0080c8ff);
 		rx += w + 2 * g_fw;
 	}
 	fill_rect (0, ry + g_fh + 2, W, 1, 0x00303840);	// separator under the bar
@@ -542,7 +542,7 @@ static void redraw (void)
 		unsigned col = 0x00c8d0c0;
 		if (line[0] == '*') col = 0x0080b0ff;		// status lines in blue
 		else if (line[0] == '-') col = 0x00ffc060;	// notices in amber
-		kapi_draw_text (4, g_chat_y + r * g_fh, line, col);
+		wtk::draw_text (fb, W, H, 4, g_chat_y + r * g_fh, line, col);
 	}
 
 	// Input row: separator + "[channel] " prompt + the line being typed + caret.
@@ -551,9 +551,9 @@ static void redraw (void)
 	char prompt[80]; prompt[0] = '\0';
 	scat (prompt, sizeof prompt, "["); scat (prompt, sizeof prompt, g_channel);
 	scat (prompt, sizeof prompt, "] ");
-	kapi_draw_text (4, iy, prompt, 0x0060ff90);
+	wtk::draw_text (fb, W, H, 4, iy, prompt, 0x0060ff90);
 	int px = 4 + slen (prompt) * g_fw;
-	kapi_draw_text (px, iy, g_input, 0x00ffffff);
+	wtk::draw_text (fb, W, H, px, iy, g_input, 0x00ffffff);
 	int cx = px + g_inlen * g_fw;
 	fill_rect (cx, iy, 2, g_fh, 0x0060ff90);
 }
@@ -609,7 +609,7 @@ int main (void)
 
 	fb = kapi_create_window (W, H, "irc");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_vrows = (H - 8) / g_fh; if (g_vrows < 3) g_vrows = 3;

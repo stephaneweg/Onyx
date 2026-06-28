@@ -3,11 +3,12 @@
 // (-mgeneral-regs-only) and keeps ALL math in fixed-point: Q32.32 in a signed 64-bit
 // int (1.0 == 1<<32). (Hardware float is now available to apps -- the kernel saves the
 // full FP state across switches, see kern/trapframe.h -- but tinycalc stays fixed-point
-// by design.) Input is by mouse (button grid, via the C++ uikit.hpp toolkit) OR
-// keyboard (digits/operators, routed straight to the calculator).
+// by design.) Input is by mouse (button grid, via the wtk widget toolkit) OR keyboard
+// (digits/operators, routed straight to the calculator through the Root's onKey).
 //
 #include "kapi.h"
-#include "uikit.hpp"		// C++ retained-mode widget toolkit
+#include "wtk/wtk.h"		// recursive widget toolkit
+#include "embed.h"		// run embedded in the activity shell (surface + mailbox)
 
 typedef long long          i64;
 typedef unsigned long long u64;
@@ -155,8 +156,9 @@ static int   g_entering = 0;
 static fix   g_acc = 0;
 static int   g_op = 0;
 static int   g_deg = 0;
-static int   g_dirty = 1;
 static int   g_fw = 8, g_fh = 16;
+
+static wtk::Widget *g_disp = 0;		// the display widget (invalidated when the entry changes)
 
 static void set_entry (fix v) { format_fix (v, g_entry); g_entering = 0; }
 static fix apply_op (fix a, int op, fix b)
@@ -216,7 +218,7 @@ static void do_unary (int code)
 }
 static void action (int code)
 {
-	if (code >= D0 && code <= D9) { push_digit (code - D0); g_dirty = 1; return; }
+	if (code >= D0 && code <= D9) { push_digit (code - D0); if (g_disp) g_disp->invalidate (true); return; }
 	switch (code)
 	{
 	case DOT:  push_dot (); break;
@@ -229,24 +231,44 @@ static void action (int code)
 	case DEG:  g_deg ^= 1; break;
 	default:   do_unary (code); break;
 	}
-	g_dirty = 1;
+	if (g_disp) g_disp->invalidate (true);
 }
 
-// ---- UI (C++ uikit.hpp) ------------------------------------------------------
-static unsigned   *fb;
-static ui::Ui     *g_ui;
+// ---- UI (wtk) ----------------------------------------------------------------
+using namespace wtk;
 
-static void on_btn (ui::Widget &w)		// one callback for the whole grid (dispatch by tag)
+// The right-aligned numeric display (its own canvas).
+class Display : public Widget
+{
+public:
+	Display (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	void onDraw () override
+	{
+		canvas.clear (0x00101820);
+		const char *s = g_entry;
+		int tw = slen (s) * g_fw, tx = width - tw - 8; if (tx < 4) tx = 4;
+		canvas.text (tx, (height - g_fh) / 2, s, g_error ? 0x00ff6060 : 0x0060ff90);
+	}
+};
+
+// One callback for the whole grid (dispatch by tag). The DEG/RAD button relabels itself.
+static void on_btn (Widget &w)
 {
 	action (w.tag);
-	if (w.tag == DEG) w.setText (g_deg ? "DEG" : "RAD");
+	if (w.tag == DEG)
+	{
+		Button &b = (Button &) w;
+		const char *t = g_deg ? "DEG" : "RAD";
+		int i = 0; for (; t[i]; i++) b.text[i] = t[i]; b.text[i] = '\0';
+		b.invalidate (true);
+	}
 }
-static void on_ptr (unsigned long s, int ev, long v) { g_ui->onEvent (s, ev, v); }
-static void on_key (unsigned long s, int ev, long key)	// keyboard drives the calculator directly
+
+// Keyboard -> calculator. Shared by the standalone window (Root::onKey) and the embedded
+// loop (embed::run forwards SH_KEY here). Returns true if the key was consumed.
+static bool calc_key (int key)
 {
-	(void) s;
-	if (ev != GUI_EVENT_KEY) return;
-	if (key >= '0' && key <= '9') action (D0 + (int) (key - '0'));
+	if (key >= '0' && key <= '9') action (D0 + (key - '0'));
 	else if (key == '.') action (DOT);
 	else if (key == '+') action (ADD);
 	else if (key == '-') action (SUB);
@@ -256,16 +278,19 @@ static void on_key (unsigned long s, int ev, long key)	// keyboard drives the ca
 	else if (key == '=' || key == KEY_ENTER) action (EQ);
 	else if (key == KEY_BACKSPACE) action (BKSP);
 	else if (key == 27 || key == 'c' || key == 'C') action (CLR);
+	else return false;
+	return true;
 }
+static void calc_key_v (int key) { calc_key (key); }	// embed::KeyFn adapter
 
-static void draw_display (void)
+// A Root subclass so the keyboard drives the calculator directly (buttons never steal
+// focus, so unfocused keys fall through to the Root's onKey).
+class Calc : public Root
 {
-	g_ui->fill (DISPX, DISPY, DISPW, DISPH, 0x00101820);
-	const char *s = g_entry;
-	int tw = slen (s) * g_fw;
-	int tx = DISPX + DISPW - tw - 8; if (tx < DISPX + 4) tx = DISPX + 4;
-	kapi_draw_text (tx, DISPY + (DISPH - g_fh) / 2, s, g_error ? 0x00ff6060 : 0x0060ff90);
-}
+public:
+	Calc (int w, int h, const char *t) : Root (w, h, t) {}
+	bool onKey (long key) override { return calc_key ((int) key); }
+};
 
 static const char *g_lbl[30] = {
 	"sin","cos","tan","ln","log", "sqrt","x^2","x^y","1/x","e^x",
@@ -277,41 +302,54 @@ static const int g_code[30] = {
 	D7,D8,D9,DIV,CLR, D4,D5,D6,MUL,NEG, D1,D2,D3,SUB,PCT, D0,DOT,F_PI,EQ,ADD
 };
 
+#define CALC_BG	0x00283038
+
+// Build the calculator UI into a 5-column / 7-row UniformGridLayout filling `root`:
+// row 0 = display (colSpan 4) + DEG/RAD toggle; rows 1-6 = the 30 keys (reading order).
+// Cell height = root height / 7; a small gap between cells.
+static void build_ui (Widget *root, int w, int h)
+{
+	UniformGridLayout *grid = new UniformGridLayout (0, 0, w, h, 5, 0, CALC_BG, 4, 4);
+	grid->anchor = ANCHOR_FILL;		// fills the root; resizing the root re-flows the keys
+	grid->setRows (7);
+
+	g_disp = new Display (0, 0, 10, 10);
+	g_disp->colSpan = 4;			// display spans 4 of the 5 columns
+	grid->addChild (g_disp);
+
+	Button *deg = new Button (0, 0, 10, 10, "RAD", on_btn); deg->tag = DEG;	// DEG/RAD toggle (col 5)
+	grid->addChild (deg);
+
+	for (int i = 0; i < 30; i++)		// rows 1..6: the keypad + functions
+	{
+		Button *b = new Button (0, 0, 10, 10, g_lbl[i], on_btn);
+		b->tag = g_code[i];
+		grid->addChild (b);
+	}
+	root->addChild (grid);
+}
+
 int main (void)
 {
-	fb = kapi_create_window (W, H, "tinycalc");
-	if (fb == 0) return 1;
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	ui::Ui ui (fb, W, H); g_ui = &ui;
-	ui.col_bg = 0x00283038;
-
-	ui.button (W - 56, DISPY, 48, DISPH, "RAD", on_btn).tag = DEG;	// DEG/RAD toggle
-
-	const int x0 = 8, y0 = 52, bw = 48, bh = 34, sx = 54, sy = 40;
-	for (int r = 0; r < 6; r++)
-		for (int c = 0; c < 5; c++)
-		{
-			int idx = r * 5 + c;
-			ui.button (x0 + c * sx, y0 + r * sy, bw, bh, g_lbl[idx], on_btn).tag = g_code[idx];
-		}
-
-	kapi_set_pointer_handler (on_ptr);	// mouse -> toolkit (buttons)
-	kapi_set_key_handler (on_key);		// keys -> calculator
-
-	while (!should_exit ())
+	// Embedded in the activity shell? Register, get a surface viewport, run on it.
+	embed::Host host;
+	if (embed::attach (&host, ROLE_SECONDARY, "calc"))
 	{
-		pump_events ();
-		if (g_dirty || ui.dirty ())
-		{
-			ui.background ();
-			draw_display ();
-			ui.drawAll ();
-			present ();
-			g_dirty = 0;
-		}
-		msleep (16);
+		Panel *root = new Panel (0, 0, host.w, host.h, CALC_BG);
+		root->canvas.adopt (host.pixels, host.w, host.h, host.stride);	// draw into the surface sub-rect
+		build_ui (root, host.w, host.h);
+		embed::run (&host, root, calc_key_v);
+		return 0;
 	}
+
+	// Standalone fallback: our own window.
+	Calc root (W, H, "tinycalc");
+	if (root.canvas.px == 0) return 1;
+	root.setBg (CALC_BG);
+	build_ui (&root, W, H);
+	root.run ();
 	return 0;
 }

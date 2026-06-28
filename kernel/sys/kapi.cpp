@@ -16,6 +16,7 @@
 #include <kern/kapi_abi.h>		// struct kapi_dirent
 #include <kern/layout.h>
 #include <kern/gui/window.h>
+#include <kern/gui/surface.h>		// CSurface / CSurfaceManager (shell surfaces)
 #include <kern/net.h>		// NetTcpConnect/Send/Recv/Close/Status (socket backend)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
@@ -412,6 +413,84 @@ void kapi_present (void)
 	{
 		CScheduler::Get ()->Yield ();
 	}
+}
+
+// ---- shell surfaces (ABI v35) ----------------------------------------------
+// Shared pixel surfaces for the activity-shell compositor: the shell creates one
+// (sized to a viewport), passes its id to an app, both map it (same frames, own VA),
+// the app draws + presents, the shell composites. See kern/gui/surface.h.
+
+int kapi_surface_create (int w, int h)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || CSurfaceManager::Get () == 0)
+	{
+		return 0;
+	}
+	return CSurfaceManager::Get ()->Create (w, h, pAS->GetPid ());
+}
+
+unsigned *kapi_surface_map (int id)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || CSurfaceManager::Get () == 0)
+	{
+		return 0;
+	}
+	CSurface *pS = CSurfaceManager::Get ()->Find (id);
+	if (pS == 0)
+	{
+		return 0;
+	}
+	return (unsigned *) pAS->MapSurface (pS->Phys (), pS->Pages ());
+}
+
+int kapi_surface_size (int id, int *pW, int *pH)
+{
+	if (CSurfaceManager::Get () == 0)
+	{
+		return 0;
+	}
+	CSurface *pS = CSurfaceManager::Get ()->Find (id);
+	if (pS == 0)
+	{
+		return 0;
+	}
+	if (pW != 0) *pW = pS->Width ();
+	if (pH != 0) *pH = pS->Height ();
+	return 1;
+}
+
+void kapi_surface_present (int id)
+{
+	(void) id;
+	// Phase 1: the shell composites surfaces from its own loop, so present just yields
+	// (like kapi_present) to hand the CPU to the shell promptly. A targeted "surface
+	// ready" notify rides the IPC layer (an app may also send a present message).
+	if (CScheduler::IsActive ())
+	{
+		CScheduler::Get ()->Yield ();
+	}
+}
+
+int kapi_surface_destroy (int id)
+{
+	if (CSurfaceManager::Get () == 0)
+	{
+		return 0;
+	}
+	CSurface *pS = CSurfaceManager::Get ()->Find (id);
+	if (pS == 0)
+	{
+		return 0;
+	}
+	CAddressSpace *pAS = CurrentAS ();		// only the owner may destroy it
+	if (pAS != 0 && pS->OwnerPid () != pAS->GetPid ())
+	{
+		return 0;
+	}
+	CSurfaceManager::Get ()->Destroy (id);
+	return 1;
 }
 
 // Generate the desktop wallpaper at runtime: a toroidal-Voronoi cellular pattern

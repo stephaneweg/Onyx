@@ -3,7 +3,7 @@
 // neighbours; hit a mine and you lose; clear all safe cells to win. 'r' restarts.
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define GW	16
@@ -105,7 +105,7 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 static void redraw (void)
 {
 	fill_rect (0, 0, W, H, 0x00202830);
-	kapi_draw_text (8, 8, g_lost ? "BOOM!  r:restart"
+	wtk::draw_text (fb, W, H, 8, 8, g_lost ? "BOOM!  r:restart"
 				     : (g_won ? "CLEARED!  r:restart" : "L:reveal  R:flag  r:restart"),
 			g_lost ? 0x00ff6060 : (g_won ? 0x0060ff90 : 0x0090a0b0));
 
@@ -122,7 +122,7 @@ static void redraw (void)
 				else if (g_adj[r][c])
 				{
 					char d[2] = { (char) ('0' + g_adj[r][c]), 0 };
-					kapi_draw_text (x + CELL / 2 - 3, y + 4, d, numcol[(int) g_adj[r][c]]);
+					wtk::draw_text (fb, W, H, x + CELL / 2 - 3, y + 4, d, numcol[(int) g_adj[r][c]]);
 				}
 			}
 			else
@@ -137,7 +137,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "minesweeper");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_click_handler (on_click);
 	kapi_set_key_handler (on_key);

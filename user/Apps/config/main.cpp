@@ -6,7 +6,7 @@
 // saves the file; Discard reloads it. Fully app-drawn (canvas + click/key handlers).
 //
 #include "kapi.h"
-#include "uikit.hpp"
+#include "wtk/wtk.h"
 #include "applib.h"
 
 #define W	560
@@ -123,7 +123,7 @@ static void redraw (void)
 {
 	fill (0, 0, W, H, 0x00202830);
 	fill (0, 0, LW, H, 0x00283440);				// left pane
-	kapi_draw_text (8, 6, "Apps", 0x0090c0ff);
+	wtk::draw_text (fb, W, H, 8, 6, "Apps", 0x0090c0ff);
 	int maxtop = g_napps - g_vis; if (maxtop < 0) maxtop = 0;	// clamp the scroll offset
 	if (g_apptop > maxtop) g_apptop = maxtop;
 	if (g_apptop < 0) g_apptop = 0;
@@ -134,12 +134,12 @@ static void redraw (void)
 		if (idx >= g_napps) break;
 		int y = LISTY + r * g_fh;
 		if (idx == g_appsel) fill (0, y, listw, g_fh, 0x00355070);
-		kapi_draw_text (8, y + 1, g_app[idx], 0x00e0e0e0);
+		wtk::draw_text (fb, W, H, 8, y + 1, g_app[idx], 0x00e0e0e0);
 	}
 	draw_app_scrollbar ();
 
 	// Right pane header.
-	kapi_draw_text (KEYX, 6, g_cur[0] ? g_cur : "(select an app)", 0x00ffd070);
+	wtk::draw_text (fb, W, H, KEYX, 6, g_cur[0] ? g_cur : "(select an app)", 0x00ffd070);
 
 	// Editable key=value rows + one trailing blank row to add a new key.
 	int shown = g_nkv + 1; if (shown > MAXKV) shown = MAXKV;
@@ -152,8 +152,8 @@ static void redraw (void)
 		const char *vv = (idx < g_nkv) ? g_val[idx] : "";
 		fill (KEYX, y, VALX - KEYX - 4, g_fh - 2, 0x00303d4d);
 		fill (VALX, y, W - VALX - 6, g_fh - 2, 0x00303d4d);
-		kapi_draw_text (KEYX + 4, y + 1, kk, 0x00c8e0c8);
-		kapi_draw_text (VALX + 4, y + 1, vv, 0x00e8e8c0);
+		wtk::draw_text (fb, W, H, KEYX + 4, y + 1, kk, 0x00c8e0c8);
+		wtk::draw_text (fb, W, H, VALX + 4, y + 1, vv, 0x00e8e8c0);
 		if (g_focus >= 0 && g_focus / 2 == idx)
 		{
 			int col = g_focus % 2;
@@ -165,10 +165,10 @@ static void redraw (void)
 
 	// Buttons + status.
 	fill (380, BTN_Y, 80, 24, 0x00306030); ax_frame (fb, W, H, 380, BTN_Y, 80, 24, 0x00c0c0c0);
-	kapi_draw_text (404, BTN_Y + 4, "Apply", 0x00ffffff);
+	wtk::draw_text (fb, W, H, 404, BTN_Y + 4, "Apply", 0x00ffffff);
 	fill (470, BTN_Y, 80, 24, 0x00603030); ax_frame (fb, W, H, 470, BTN_Y, 80, 24, 0x00c0c0c0);
-	kapi_draw_text (486, BTN_Y + 4, "Discard", 0x00ffffff);
-	if (g_msg[0]) kapi_draw_text (KEYX, BTN_Y + 4, g_msg, 0x0090c090);
+	wtk::draw_text (fb, W, H, 486, BTN_Y + 4, "Discard", 0x00ffffff);
+	if (g_msg[0]) wtk::draw_text (fb, W, H, KEYX, BTN_Y + 4, g_msg, 0x0090c090);
 }
 
 static void on_click (unsigned long s, int ev, long val)
@@ -234,7 +234,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "config");
 	if (fb == 0) return 1;
-	ui::decorate_window ();
+	wtk::wk_decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_fh += 2;					// row pitch

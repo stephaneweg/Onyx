@@ -84,6 +84,15 @@
 // the writer app exits.
 #define USER_WALLPAPER_CANVAS	(13ULL * GIGABYTE)	// 0x3_4000_0000
 
+// Per-process arena for shell-allocated SURFACES (kapi_surface_map). Each surface is
+// bump-allocated a 64 KB-aligned VA window here, in the gap between the wallpaper
+// (13 GB) and the kapi table (14 GB). A surface is shared memory: the same physical
+// frames (owned by a CSurface) get mapped into both the shell (to composite) and the
+// owner app (to draw), each at its own VA in its own arena. 512 MB / fullscreen-ish
+// surfaces = plenty for now; not reclaimed within a process (phase-1 simplicity).
+#define USER_SURFACE_BASE	(0x360000000ULL)	// 13.5 GB
+#define USER_SURFACE_END	(14ULL * GIGABYTE)	// 14 GB (kapi table sits just above)
+
 #define IS_USER_VA(va) \
 	((u64)(va) >= USER_VA_BASE && (u64)(va) < USER_VA_END)
 
