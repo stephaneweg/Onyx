@@ -5,6 +5,7 @@
 #include <kern/gui/gimage.h>		// GImage (window canvas + chrome buffers)
 #include <kern/layout.h>		// KPAGE_SIZE / KPAGE_MASK
 #include <circle/util.h>		// memset
+#include <circle/timer.h>		// GetTicks (last-pump stamp for the watchdog)
 #include <circle/new.h>
 #include <assert.h>
 
@@ -15,7 +16,8 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_nOuterW (0), m_nOuterH (0),
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
-	m_nEvHead (0), m_nEvTail (0), m_bExitRequested (FALSE)
+	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
+	m_bExitRequested (FALSE)
 {
 	// Copy the title (the caller's string may live in a transient address space).
 	m_Title[0] = '\0';
@@ -172,12 +174,17 @@ void CWindow::PushEvent (const GUIEvent &Event)
 		m_Events[m_nEvHead] = Event;
 		m_nEvHead = nNext;
 	}
+	else
+	{
+		m_nEvDropped++;
+	}
 	m_EvLock.Release ();
 }
 
 boolean CWindow::PopEvent (GUIEvent *pEvent)
 {
 	boolean bGot = FALSE;
+	m_nLastPump = CTimer::Get ()->GetTicks ();	// the owner is alive and pumping
 	m_EvLock.Acquire ();
 	if (m_nEvTail != m_nEvHead)
 	{
@@ -206,7 +213,8 @@ CWindowManager::CWindowManager (void)
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
-	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2)
+	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2),
+	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -354,6 +362,20 @@ void CWindowManager::Composite (GImage *pScreen)
 			}
 		}
 	}
+
+	m_nFrames++;
+}
+
+unsigned CWindowManager::Snapshot (CWindow **ppOut, unsigned nMax)
+{
+	m_SpinLock.Acquire ();
+	unsigned n = m_nWindows < nMax ? m_nWindows : nMax;
+	for (unsigned i = 0; i < n; i++)
+	{
+		ppOut[i] = m_pWindows[i];
+	}
+	m_SpinLock.Release ();
+	return n;
 }
 
 void CWindowManager::SetWallpaper (GImage *pImage)
@@ -626,6 +648,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	if (y < 0) y = 0; else if (y >= g_nScreenHeight) y = g_nScreenHeight - 1;
 
 	m_SpinLock.Acquire ();
+	m_nMouseEvents++;
 	m_nCursorX = x; m_nCursorY = y; m_bCursorShown = TRUE;
 
 	boolean bLeftNow = (nButtons & 1) != 0;
@@ -764,6 +787,7 @@ void CWindowManager::OnKey (const char *pString)
 {
 	if (pString == 0) return;
 	m_SpinLock.Acquire ();
+	m_nKeyEvents++;
 	// Deliver keys to the topmost window's app-level key handler. Apps own their text
 	// input via the user-side uikit toolkit -- no kernel widgets or dialogs any more.
 	CWindow *pTop = m_nWindows > 0 ? m_pWindows[m_nWindows - 1] : 0;

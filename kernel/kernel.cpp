@@ -39,6 +39,7 @@ volatile boolean  g_bNetUp = FALSE;
 // +60, set "120" for CEST summer time) + the NTP server to sync against once the
 // link is up (system.ini "ntp="). The NTP daemon updates CTimer's wall clock.
 static int  g_nTimeZoneMin = 60;
+static unsigned g_nHeartbeatSec = 5;	// cmdline.txt heartbeat= (0 = off): watchdog summary period
 static char g_szNtpServer[64] = "pool.ntp.org";
 
 // Defined in arch/aarch64/exception.cpp: route kernel panics to this displayed
@@ -300,6 +301,146 @@ public:
 			CScheduler::Get ()->MsSleep (50);
 		}
 	}
+};
+
+//
+// GUI watchdog + heartbeat: a kernel thread that checks once a second that the GUI is
+// alive and logs to the kernel log (read it remotely with `kmsg`, e.g. over telnetd):
+//   * a heartbeat every g_nHeartbeatSec seconds (cmdline.txt heartbeat=, 0 = off):
+//     uptime, frames/s, mouse/key events, tasks by state, and each window with its
+//     queued / dropped events;
+//   * a WARNING when the compositor has produced no frame for 2 s (+ the state of every
+//     task, to see who holds the CPU or what the compositor waits on), and when an app
+//     stops pumping its window's events for 2 s while some are queued (a frozen app).
+// Each warning fires once per episode, with a matching "recovered" line.
+//
+struct TaskStateScan
+{
+	unsigned nByState[6];			// TTaskState counts (new ready block blockT sleep term)
+	char    *pBuf; unsigned nCap, nLen;	// optional "name:state " list
+};
+static boolean TaskStateCollect (CTask *pTask, const char *pName, TTaskState State,
+				 TTaskFlags Flags, void *pParam)
+{
+	static const char *Names[] = { "new", "ready", "block", "blockT", "sleep", "term" };
+	TaskStateScan *s = (TaskStateScan *) pParam;
+	unsigned st = (unsigned) State < 6 ? (unsigned) State : 5;
+	s->nByState[st]++;
+	if (s->pBuf != 0)
+	{
+		const char *pSt = (Flags == TaskFlagRunning) ? "RUN" : Names[st];
+		for (const char *p = pName; *p && s->nLen + 1 < s->nCap; p++) s->pBuf[s->nLen++] = *p;
+		if (s->nLen + 1 < s->nCap) s->pBuf[s->nLen++] = ':';
+		for (const char *p = pSt; *p && s->nLen + 1 < s->nCap; p++) s->pBuf[s->nLen++] = *p;
+		if (s->nLen + 1 < s->nCap) s->pBuf[s->nLen++] = ' ';
+		s->pBuf[s->nLen] = '\0';
+	}
+	return TRUE;
+}
+
+class CGuiWatchdogTask : public CTask
+{
+public:
+	CGuiWatchdogTask (CWindowManager *pWM) : m_pWM (pWM) { SetName ("watchdog"); }
+
+	void Run (void) override
+	{
+		static const char From[] = "gui";
+		unsigned nLastFrames = m_pWM->FrameCount (), nStallSec = 0;
+		unsigned nBeatFrames = nLastFrames, nBeatMouse = m_pWM->MouseCount ();
+		unsigned nBeatKeys = m_pWM->KeyCount (), nSec = 0;
+		boolean bStalled = FALSE;
+		boolean bFrozen[WM_MAX_WINDOWS];
+		CWindow *pFrozenWin[WM_MAX_WINDOWS];
+		for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
+		static char Tasks[512];
+
+		for (;;)
+		{
+			CScheduler::Get ()->MsSleep (1000);
+			nSec++;
+			unsigned nNow = CTimer::Get ()->GetTicks ();
+
+			// 1. Compositor liveness.
+			unsigned nFrames = m_pWM->FrameCount ();
+			nStallSec = (nFrames == nLastFrames) ? nStallSec + 1 : 0;
+			nLastFrames = nFrames;
+			if (nStallSec >= 2 && !bStalled)
+			{
+				bStalled = TRUE;
+				TaskStateScan s = {{0}, Tasks, sizeof Tasks, 0}; Tasks[0] = '\0';
+				CScheduler::Get ()->EnumerateTasks (TaskStateCollect, &s);
+				CLogger::Get ()->Write (From, LogWarning,
+					"compositor STALLED: no frame for %u s; tasks: %s", nStallSec, Tasks);
+			}
+			else if (nStallSec == 0 && bStalled)
+			{
+				bStalled = FALSE;
+				CLogger::Get ()->Write (From, LogWarning, "compositor recovered");
+			}
+
+			// 2. Frozen apps: events queued but not pumped for 2 s.
+			CWindow *pWins[WM_MAX_WINDOWS];
+			unsigned nWins = m_pWM->Snapshot (pWins, WM_MAX_WINDOWS);
+			for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
+			{
+				if (!bFrozen[i]) continue;
+				boolean bStill = FALSE;			// forget windows that went away
+				for (unsigned j = 0; j < nWins; j++) if (pWins[j] == pFrozenWin[i]) bStill = TRUE;
+				if (!bStill) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
+			}
+			for (unsigned j = 0; j < nWins; j++)
+			{
+				CWindow *pW = pWins[j];
+				unsigned nIdle = (nNow - pW->LastPumpTicks ()) / HZ;
+				boolean bNow = pW->QueuedEvents () > 0 && nIdle >= 2;
+				int k = -1;
+				for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) if (bFrozen[i] && pFrozenWin[i] == pW) k = (int) i;
+				if (bNow && k < 0)
+				{
+					for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
+						if (!bFrozen[i]) { bFrozen[i] = TRUE; pFrozenWin[i] = pW; break; }
+					CLogger::Get ()->Write (From, LogWarning,
+						"app '%s' NOT PUMPING events for %u s (%u queued, %u dropped)",
+						pW->Title (), pW->LastPumpTicks () ? nIdle : nSec,
+						pW->QueuedEvents (), pW->DroppedEvents ());
+				}
+				else if (!bNow && k >= 0)
+				{
+					bFrozen[k] = FALSE; pFrozenWin[k] = 0;
+					CLogger::Get ()->Write (From, LogWarning, "app '%s' pumping again", pW->Title ());
+				}
+			}
+
+			// 3. Heartbeat.
+			if (g_nHeartbeatSec == 0 || nSec % g_nHeartbeatSec != 0) continue;
+			unsigned nMouse = m_pWM->MouseCount (), nKeys = m_pWM->KeyCount ();
+			TaskStateScan s = {{0}, 0, 0, 0};
+			CScheduler::Get ()->EnumerateTasks (TaskStateCollect, &s);
+			char Wins[256]; unsigned n = 0; Wins[0] = '\0';
+			for (unsigned j = 0; j < nWins && n + 48 < sizeof Wins; j++)
+			{
+				CString W;
+				W.Format ("%s%s[q%u d%u]", j ? " " : "", pWins[j]->Title (),
+					  pWins[j]->QueuedEvents (), pWins[j]->DroppedEvents ());
+				for (const char *p = (const char *) W; *p && n + 1 < sizeof Wins; p++) Wins[n++] = *p;
+				Wins[n] = '\0';
+			}
+			CLogger::Get ()->Write (From, LogNotice,
+				"heartbeat up %us: %u fps, mouse +%u, keys +%u, tasks %u (ready %u, sleep %u, "
+				"block %u), windows %u: %s",
+				CTimer::Get ()->GetUptime (),
+				(nFrames - nBeatFrames) / g_nHeartbeatSec,
+				nMouse - nBeatMouse, nKeys - nBeatKeys,
+				s.nByState[0] + s.nByState[1] + s.nByState[2] + s.nByState[3] + s.nByState[4],
+				s.nByState[1], s.nByState[4], s.nByState[2] + s.nByState[3],
+				nWins, Wins);
+			nBeatFrames = nFrames; nBeatMouse = nMouse; nBeatKeys = nKeys;
+		}
+	}
+
+private:
+	CWindowManager *m_pWM;
 };
 
 //
@@ -753,6 +894,7 @@ static void ReadSystemConfig (void)
 			while (q < le && *q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); q++; any = TRUE; }
 			if (any) g_nTimeZoneMin = (int) (neg ? -v : v);
 		}
+
 		else if (KeyEq (ls, ke, "ntp"))
 		{
 			unsigned i = 0;
@@ -1174,6 +1316,14 @@ TShutdownMode CKernel::Run (void)
 		// task context.
 		new CReaperTask;
 		m_Logger.Write (FromKernel, LogNotice, "reaper started");
+
+		// GUI watchdog + heartbeat (kmsg): compositor stalls, frozen apps, and a
+		// periodic summary every cmdline.txt heartbeat= seconds (default 5, 0 = off).
+		unsigned nBeat = m_Options.GetAppOptionDecimal ("heartbeat", 5);
+		g_nHeartbeatSec = nBeat == (unsigned) -1 ? 5 : nBeat;
+		new CGuiWatchdogTask (&m_WindowManager);
+		m_Logger.Write (FromKernel, LogNotice, "gui watchdog started (heartbeat %u s)",
+				g_nHeartbeatSec);
 	}
 	else
 	{

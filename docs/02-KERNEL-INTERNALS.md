@@ -94,6 +94,15 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      `CTask` + stack + address space outside the scheduler core).
    - **`CInputTask`** (if USB is present) — pumps keyboard/mouse events to the
      window manager.
+   - **`CGuiWatchdogTask`** — once a second, checks the GUI and writes to the kernel
+     log (`kmsg`): `compositor STALLED` when `CWindowManager::FrameCount()` has not moved
+     for 2 s (with every task's `name:state`), `app '<title>' NOT PUMPING events` when a
+     window has queued events and its owner has not called `PopEvent` for 2 s (plus the
+     matching "recovered" lines), and a **heartbeat** every `heartbeat=` seconds from
+     `cmdline.txt` (default 5, 0 = off): uptime, fps, mouse/key deltas, tasks by state,
+     windows with queued/dropped events. Counters live in `CWindowManager` (frames,
+     `OnMouse`/`OnKey` calls, `Snapshot()`) and `CWindow` (`QueuedEvents`,
+     `DroppedEvents`, `LastPumpTicks`).
 4. The main task runs an idle loop (`MsSleep`).
 
 ---

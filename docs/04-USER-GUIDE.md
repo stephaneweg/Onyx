@@ -76,7 +76,7 @@ max_framebuffers=2
 Parameters read at boot:
 
 ```
-width=1024 height=768 init=SD:/bin/init
+width=1024 height=768 init=SD:/bin/init heartbeat=5
 ```
 
 - **`width` / `height`**: framebuffer resolution (default 1024×768).
@@ -84,6 +84,12 @@ width=1024 height=768 init=SD:/bin/init
   (default `SD:bin/init`). init reads `SD:/etc/autostart` and starts the rest
   of the userland, so pointing `init=` at another ELF (e.g. a recovery shell)
   swaps the whole launcher without rebuilding the kernel.
+- **`heartbeat`**: period in seconds of the kernel's GUI **heartbeat** line in the
+  kernel log (default `5`; `0` = off). Read it with `kmsg` — e.g. remotely over `telnetd`.
+  It shows uptime, frames per second, mouse/key events, tasks by state and every window
+  with its queued (`q`) / dropped (`d`) events. The same GUI watchdog always warns when the
+  compositor stops producing frames (and lists every task's state) and when an app stops
+  pumping its window's events (a frozen app).
 
 ### `system.ini`
 
@@ -518,9 +524,11 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 - **Keyboard in the wrong layout.** Set `keymap=` in `cmdline.txt`, or use `keyb XX` /
   the theme editor on the fly.
 - **Wrong resolution.** Adjust `width=`/`height=` in `cmdline.txt`.
-- **An app stops responding.** Since scheduling is **cooperative**, an app that never
-  yields can freeze the system. If possible, kill it via `taskman` or `kill`; otherwise,
-  restart.
+- **An app stops responding / the desktop freezes.** Connect with the remote shell
+  (`python tools/onyx-telnet.py <pi-ip>`) and run `kmsg`: the GUI watchdog logs
+  `compositor STALLED` (with every task's state) or `app '<title>' NOT PUMPING events`,
+  and the `heartbeat` line shows whether frames and input still flow. Kill a frozen app
+  with `ps` + `kill <pid>` (or `taskman`); otherwise, restart.
 - **No mouse/keyboard.** Check that they are standard **USB HID** devices and that they
   are plugged in at startup (hot-plug is handled, but the initial connection is the most
   reliable).

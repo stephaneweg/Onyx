@@ -183,6 +183,13 @@ public:
 	void SetPointerHandler (u64 ulHandler)	{ m_ulPointerHandler = ulHandler; }
 	u64  PointerHandler (void) const	{ return m_ulPointerHandler; }
 
+	// --- diagnostics (GUI watchdog) --------------------------------------
+	// Events waiting in the ring, events dropped because it was full, and the tick
+	// (CTimer::GetTicks) of the owner's last pump (PopEvent call), 0 = never pumped.
+	unsigned QueuedEvents (void) const	{ return (m_nEvHead + WIN_EVENT_QUEUE - m_nEvTail) % WIN_EVENT_QUEUE; }
+	unsigned DroppedEvents (void) const	{ return m_nEvDropped; }
+	unsigned LastPumpTicks (void) const	{ return m_nLastPump; }
+
 	// --- lifecycle -------------------------------------------------------
 	void RequestExit (void)		{ m_bExitRequested = TRUE; }
 	boolean ShouldExit (void) const	{ return m_bExitRequested; }
@@ -219,6 +226,8 @@ private:
 	volatile unsigned m_nEvHead;	// next slot to write
 	volatile unsigned m_nEvTail;	// next slot to read
 	CSpinLock	m_EvLock;
+	volatile unsigned m_nEvDropped;	// events lost to a full ring (diagnostics)
+	volatile unsigned m_nLastPump;	// ticks of the last PopEvent (diagnostics)
 
 	volatile boolean m_bExitRequested;
 };
@@ -285,6 +294,14 @@ public:
 	// focused textbox (printable chars append; backspace deletes).
 	void OnKey (const char *pString);
 
+	// Diagnostics for the GUI watchdog: counters bumped by Composite / OnMouse /
+	// OnKey, and a snapshot of the window list (bottom -> top). Window pointers stay
+	// valid after Remove (see Composite), so the caller may inspect them unlocked.
+	unsigned FrameCount (void) const	{ return m_nFrames; }
+	unsigned MouseCount (void) const	{ return m_nMouseEvents; }
+	unsigned KeyCount (void) const		{ return m_nKeyEvents; }
+	unsigned Snapshot (CWindow **ppOut, unsigned nMax);
+
 private:
 	// Hit-test top-down; returns the topmost window containing (x,y) and whether the
 	// hit landed on its title bar. Caller must hold m_SpinLock. Returns ~0u if none.
@@ -326,6 +343,10 @@ private:
 	CWindow	  *m_pPtrOverWindow;	// window the cursor is currently over (for enter/leave)
 	CWindow	  *m_pPtrCaptureWindow;	// window holding pointer capture during a button-drag
 	int	   m_nWheelSpeed;	// lines per wheel notch (1..16); scales OnMouseWheel
+
+	volatile unsigned m_nFrames;		// composited frames (watchdog)
+	volatile unsigned m_nMouseEvents;	// OnMouse calls (watchdog)
+	volatile unsigned m_nKeyEvents;		// OnKey calls (watchdog)
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).
