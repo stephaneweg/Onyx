@@ -212,7 +212,10 @@ Notes / caveats:
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
 > launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
 > `clip_set_files (path, cut)`, `clip_get_file` — the kernel keeps one shared clipboard.
-> Your own IPC service: `kapi_ipc_register ("name")`, clients `kapi_ipc_lookup ("name")` +
+> Files: `fsutil.h` (`fs_join`, `fs_exists`, `fs_is_dir`, `fs_copy_tree`,
+> `fs_remove_tree`, `fs_unique_name`) and `trash.h` (`trash_move`, `trash_restore`,
+> `trash_purge`, `trash_empty`, `trash_count` — layout `SD:/.Trash/files` + `info/*.trashinfo`
+> holding `Path=<original>`). Your own IPC service: `kapi_ipc_register ("name")`, clients `kapi_ipc_lookup ("name")` +
 > `kapi_mailbox_send (pid, type, data, len)` (≤ 512 bytes); the service drains with
 > `kapi_mailbox_recv`.
 

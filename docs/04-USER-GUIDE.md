@@ -449,9 +449,15 @@ going back is one click on an earlier column. Launch it from the app list (categ
 - **Keyboard**: **↑/↓**, Page Up/Down, Home/End move in the active column; **→** enters the
   selected folder, **←** or **Backspace** goes back; **Enter** opens; typing a **letter**
   jumps to the next name starting with it.
+- **Trash**: **Del** (File ▸ Move to Trash) moves the selection to the Trash
+  (`SD:/.Trash`, hidden) — nothing is lost. **Go ▸ Trash** shows it (the path bar reads
+  "Trash"): select an item, **Go ▸ Restore from Trash** puts it back where it was (its
+  folder is recreated if needed; a clash gets a "(restored)" name), **Del** there deletes it
+  for good; **Go ▸ Empty Trash…** deletes everything; **Go ▸ SD Card** returns to the card.
+  **File ▸ Delete Permanently…** skips the Trash (with confirmation). Names starting with
+  `.` are hidden. (`rm` in the terminal still deletes for real.)
 - **Operations** (menu bar: **File** and **Edit** menus, on the active column's selection): **New Folder** (Ctrl-N),
-  **Rename** (Ctrl-R), **Delete** (Del — folders are deleted with their content, after
-  confirmation), **Copy** (Ctrl-C), **Cut** (Ctrl-X), **Paste** (Ctrl-V — into the active
+  **Rename** (Ctrl-R), **Copy** (Ctrl-C), **Cut** (Ctrl-X), **Paste** (Ctrl-V — into the active
   column's folder; copies of folders are recursive, a clash gets a "copy" name), **Refresh**
   (Ctrl-L). The status bar shows the item count and the selection.
 

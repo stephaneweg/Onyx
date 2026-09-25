@@ -13,12 +13,17 @@
 // Enter opens, a letter jumps to the next name starting with it, Del deletes,
 // Ctrl-C/X/V copy/cut/paste, Ctrl-N new folder, Ctrl-R rename, Ctrl-L refresh.
 // These commands are in the system menu bar (wtk::Menu): File (Open, New Folder,
-// Rename..., Delete, Refresh) and Edit (Copy, Cut, Paste). Operations act on the
+// Rename..., Move to Trash (Del), Delete Permanently..., Refresh), Edit (Copy, Cut,
+// Paste -- the system clipboard) and Go (SD Card, Trash, Restore from Trash, Empty
+// Trash...). Del moves to SD:/.Trash (trash.h); inside the Trash it deletes for good.
+// Hidden entries (names starting with '.') are not listed. Operations act on the
 // selection of the active column; Paste and New Folder target the active column's folder.
 //
 #include "kapi.h"
 #include "bmp.hpp"
 #include "clipboard.h"
+#include "fsutil.h"
+#include "trash.h"
 #include "notify.h"
 #include "wtk/wtk.h"
 
@@ -134,7 +139,7 @@ static void load_col (int c, const char *path)
 	struct kapi_dirent ent;
 	while (k.count < MAXE && kapi_readdir (d, &ent))
 	{
-		if (ent.name[0] == '.' && (ent.name[1] == '\0' || (ent.name[1] == '.' && ent.name[2] == '\0'))) continue;
+		if (ent.name[0] == '.') continue;		// ".", "..", hidden entries (".Trash")
 		Entry &e = k.e[k.count++];
 		scopy (e.name, ent.name, NAMEL);
 		e.size = ent.size; e.isdir = ent.is_dir ? 1 : 0;
@@ -372,106 +377,15 @@ static void open_entry (int c)
 	else status ("No application to open ", e->name);
 }
 
-// ---- file operations ------------------------------------------------------------------
-static bool exists (const char *path)
-{
-	void *f = kapi_open (path);
-	if (f) { kapi_close (f); return true; }
-	void *d = kapi_opendir (path);
-	if (d) { kapi_closedir (d); return true; }
-	return false;
-}
+// ---- file operations (fsutil.h / trash.h) ----------------------------------------------
+static bool exists (const char *path) { return fs_exists (path); }
+static bool copy_file (const char *src, const char *dst) { return fs_copy_file (src, dst); }
+static bool copy_tree (const char *src, const char *dst, int depth) { return fs_copy_tree (src, dst, depth); }
+static bool remove_tree (const char *path, int depth) { return fs_remove_tree (path, depth); }
+static void unique_name (char *out, int cap, const char *dir, const char *name) { fs_unique_name (out, cap, dir, name); }
 
-static bool copy_file (const char *src, const char *dst)
-{
-	void *f = kapi_open (src);
-	if (!f) return false;
-	unsigned n = kapi_fsize (f);
-	unsigned char *buf = new unsigned char[n ? n : 1];
-	if (!buf) { kapi_close (f); return false; }
-	unsigned done = 0;
-	while (done < n)
-	{
-		int r = kapi_read (f, buf + done, n - done);
-		if (r <= 0) break;
-		done += (unsigned) r;
-	}
-	kapi_close (f);
-	bool ok = done == n && kapi_save_file (dst, buf, n) != 0;
-	delete [] buf;
-	return ok;
-}
-
-static bool copy_tree (const char *src, const char *dst, int depth)
-{
-	if (depth > 12) return false;
-	void *d = kapi_opendir (src);
-	if (!d) return copy_file (src, dst);
-	kapi_mkdir (dst);
-	struct kapi_dirent ent;
-	bool ok = true;
-	while (kapi_readdir (d, &ent))
-	{
-		if (ent.name[0] == '.' && (ent.name[1] == '\0' || ent.name[1] == '.')) continue;
-		char s[300], t[300];
-		join (s, sizeof s, src, ent.name);
-		join (t, sizeof t, dst, ent.name);
-		ok = (ent.is_dir ? copy_tree (s, t, depth + 1) : copy_file (s, t)) && ok;
-	}
-	kapi_closedir (d);
-	return ok;
-}
-
-static bool remove_tree (const char *path, int depth)
-{
-	if (depth > 12) return false;
-	void *d = kapi_opendir (path);
-	if (d)
-	{
-		struct kapi_dirent ent;
-		char names[32][NAMEL]; int dirs[32];
-		for (;;)				// delete in batches (don't modify while iterating)
-		{
-			int n = 0;
-			while (n < 32 && kapi_readdir (d, &ent))
-			{
-				if (ent.name[0] == '.' && (ent.name[1] == '\0' || ent.name[1] == '.')) continue;
-				scopy (names[n], ent.name, NAMEL); dirs[n] = ent.is_dir; n++;
-			}
-			kapi_closedir (d);
-			if (n == 0) break;
-			for (int i = 0; i < n; i++)
-			{
-				char s[300]; join (s, sizeof s, path, names[i]);
-				if (dirs[i]) remove_tree (s, depth + 1); else kapi_remove (s);
-			}
-			d = kapi_opendir (path);
-			if (!d) break;
-		}
-	}
-	return kapi_remove (path) != 0;
-}
-
-// A free name in dir for `name`: "name", then "name copy", "name copy 2", ...
-static void unique_name (char *out, int cap, const char *dir, const char *name)
-{
-	char base[NAMEL], ext[NAMEL] = "";
-	scopy (base, name, sizeof base);
-	int dot = -1;
-	for (int i = 1; base[i]; i++) if (base[i] == '.') dot = i;
-	if (dot > 0) { scopy (ext, base + dot, sizeof ext); base[dot] = '\0'; }
-	for (int n = 0; n < 100; n++)
-	{
-		char cand[NAMEL]; int p = 0;
-		for (int i = 0; base[i] && p < NAMEL - 20; i++) cand[p++] = base[i];
-		if (n > 0) { const char *s = " copy"; for (int i = 0; s[i]; i++) cand[p++] = s[i]; }
-		if (n > 1) { cand[p++] = ' '; if (n >= 10) cand[p++] = (char) ('0' + n / 10); cand[p++] = (char) ('0' + n % 10); }
-		for (int i = 0; ext[i] && p < NAMEL - 1; i++) cand[p++] = ext[i];
-		cand[p] = '\0';
-		join (out, cap, dir, cand);
-		if (!exists (out)) return;
-	}
-}
+// Browsing the trash? (column 0 is then SD:/.Trash/files, shown as "Trash")
+static bool in_trash (void) { return ci_cmp (g_col[0].path, TRASH_FILES) == 0; }
 
 // ---- input dialog (rename / new folder) ----------------------------------------------
 static void dlg_btn (Widget &w) { ((Modal *) w.parent)->onButton (w.tag); }
@@ -543,12 +457,26 @@ static void op_rename ()
 		if (ci_cmp (g_col[g_active].e[i].name, name) == 0) { select (g_active, i); break; }
 	status ("Renamed to ", name);
 }
-static void op_delete ()
+static void op_delete_permanently ();
+static void op_delete ()			// Del: move to the trash (in the trash: for good)
+{
+	const Entry *e = sel_entry (g_active);
+	if (!e) { status ("Select something to delete"); return; }
+	if (in_trash ()) { op_delete_permanently (); return; }
+	char path[300]; join (path, sizeof path, g_col[g_active].path, e->name);
+	char name[NAMEL]; scopy (name, e->name, sizeof name);
+	bool ok = trash_move (path);
+	g_col[g_active].sel = -1; g_ncol = g_active + 1;
+	refresh ();
+	status (ok ? "Moved to the Trash: " : "Could not move to the Trash: ", name);
+}
+
+static void op_delete_permanently ()
 {
 	const Entry *e = sel_entry (g_active);
 	if (!e) { status ("Select something to delete"); return; }
 	char msg[128]; int p = 0;
-	const char *a = e->isdir ? "Delete the folder\n" : "Delete\n";
+	const char *a = e->isdir ? "Delete the folder for good\n" : "Delete for good\n";
 	for (int i = 0; a[i]; i++) msg[p++] = a[i];
 	for (int i = 0; e->name[i] && p < 100; i++) msg[p++] = e->name[i];
 	if (e->isdir) { const char *b = "\nand everything in it?"; for (int i = 0; b[i]; i++) msg[p++] = b[i]; }
@@ -557,10 +485,44 @@ static void op_delete ()
 	if (!wk_messagebox ("Delete", msg, MB_YESNO)) return;
 	char path[300]; join (path, sizeof path, g_col[g_active].path, e->name);
 	char name[NAMEL]; scopy (name, e->name, sizeof name);
-	bool ok = e->isdir ? remove_tree (path, 0) : kapi_remove (path) != 0;
+	bool ok;
+	if (in_trash () && g_active == 0) ok = trash_purge (name);	// drop its info file too
+	else ok = e->isdir ? remove_tree (path, 0) : kapi_remove (path) != 0;
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
 	status (ok ? "Deleted " : "Could not delete ", name);
+}
+
+static void show_root (const char *path)
+{
+	load_col (0, path);
+	g_ncol = 1; g_active = 0; g_first = 0;
+	preview_build ();
+	update_status ();
+}
+static void op_open_trash () { trash_ensure (); show_root (TRASH_FILES); status ("Trash: Restore puts an item back, Del deletes it for good"); }
+static void op_show_sd ()    { show_root ("SD:/"); }
+static void op_restore ()
+{
+	const Entry *e = sel_entry (0);
+	if (!in_trash () || !e || g_active != 0) { status ("Select an item in the Trash to restore"); return; }
+	char name[NAMEL]; scopy (name, e->name, sizeof name);
+	char where[300];
+	bool ok = trash_restore (name, where, sizeof where);
+	g_col[0].sel = -1; g_ncol = 1;
+	refresh ();
+	status (ok ? "Restored to " : "Could not restore ", ok ? where : name);
+	if (ok) notify ("Trash", where);
+}
+static void op_empty_trash ()
+{
+	int n = trash_count ();
+	if (n == 0) { status ("The Trash is empty"); return; }
+	if (!wk_messagebox ("Empty Trash", "Delete everything in the Trash for good?", MB_YESNO)) return;
+	trash_empty ();
+	if (in_trash ()) { g_col[0].sel = -1; g_ncol = 1; refresh (); }
+	status ("The Trash was emptied");
+	notify ("Trash", "The Trash was emptied.");
 }
 // Copy / Cut put the selected path on the SYSTEM clipboard (shared with every app and
 // every File Viewer window); Paste reads it back.
@@ -630,7 +592,7 @@ public:
 		{
 			const char *seg;
 			char buf[NAMEL];
-			if (c == 0) seg = "SD:";
+			if (c == 0) seg = in_trash () ? "Trash" : "SD:";
 			else { const Entry &e = g_col[c - 1].e[g_col[c - 1].sel]; scopy (buf, e.name, sizeof buf); seg = buf; }
 			if (c > 0) { draw_arrow (canvas, x, y + (g_fh - 9) / 2, C_PATHSEP); x += 10; }
 			canvas.text (x, y, seg, c == g_active ? C_ACCENT : C_PATH);
@@ -864,9 +826,16 @@ int main (void)
 	menu.item ("New Folder", "^N",    WK_CTRL ('N'), op_new_folder);
 	menu.item ("Rename...",  "^R",    WK_CTRL ('R'), op_rename);
 	menu.separator ();
-	menu.item ("Delete",     "Del",   KEY_DEL,       op_delete);
+	menu.item ("Move to Trash",       "Del", KEY_DEL, op_delete);
+	menu.item ("Delete Permanently...", "",  0,       op_delete_permanently);
 	menu.separator ();
 	menu.item ("Refresh",    "^L",    WK_CTRL ('L'), op_refresh);
+	menu.menu ("Go");
+	menu.item ("SD Card",    "",      0,             op_show_sd);
+	menu.item ("Trash",      "",      0,             op_open_trash);
+	menu.separator ();
+	menu.item ("Restore from Trash", "", 0,          op_restore);
+	menu.item ("Empty Trash...",     "", 0,          op_empty_trash);
 	menu.menu ("Edit");
 	menu.item ("Copy",       "^C",    WK_CTRL ('C'), op_copy);
 	menu.item ("Cut",        "^X",    WK_CTRL ('X'), op_cut);
