@@ -12,7 +12,7 @@ using namespace wtk;
 
 #define W		240
 #define H		460
-#define MAXAPPS		32
+#define MAXAPPS		96		// (was 32: newer apps past it were silently dropped)
 #define COLS		3
 #define LX		6			// grid left margin
 #define VIEW_Y		28			// grid viewport top
@@ -47,9 +47,19 @@ static void reposition (int top)
 static void on_scroll (Widget &w) { reposition (((Scrollbar &) w).value); }
 static void on_icon (Widget &w) { kapi_launch (g_names[w.tag]); kapi_exit (0); }	// no return
 
+static bool ci_less (const char *a, const char *b)
+{
+	for (;; a++, b++)
+	{
+		char x = (*a >= 'A' && *a <= 'Z') ? (char) (*a + 32) : *a;
+		char y = (*b >= 'A' && *b <= 'Z') ? (char) (*b + 32) : *b;
+		if (x != y || !x) return x < y;
+	}
+}
+
 static void add_apps (Root &root)
 {
-	static char list[1024];
+	static char list[2048];
 	kapi_list_apps (list, sizeof (list));
 	int i = 0;
 	while (list[i] != '\0' && g_count < MAXAPPS)
@@ -60,15 +70,24 @@ static void add_apps (Root &root)
 		name[li] = '\0';
 		if (li == 0) continue;
 		if (ax_streq (name, "panel") || ax_streq (name, "applist")
-		    || ax_streq (name, "shell")) continue;	// hide the shell components
-		int k = 0; for (; name[k] != '\0' && k < 23; k++) g_names[g_count][k] = name[k];
-		g_names[g_count][k] = '\0';
-		char path[64];
-		ax_app_path (path, sizeof (path), g_names[g_count], ".app/icon.bmp");
-		g_icons[g_count] = new Icon (OFFSCREEN, VIEW_Y, CELLW - 8, CELLH - 8, path, g_names[g_count], on_icon, 0x00141c26);
-		g_icons[g_count]->tag = g_count;
-		root.addChild (g_icons[g_count]);
+		    || ax_streq (name, "shell") || ax_streq (name, "menubar")) continue;	// hide the shell components
+		// Insert in alphabetical (case-insensitive) order -- the directory order is just
+		// the order the folders were copied onto the card.
+		int pos = g_count;
+		while (pos > 0 && ci_less (name, g_names[pos - 1])) pos--;
+		for (int j = g_count; j > pos; j--)
+			for (int k = 0; k < 24; k++) g_names[j][k] = g_names[j - 1][k];
+		int k = 0; for (; name[k] != '\0' && k < 23; k++) g_names[pos][k] = name[k];
+		g_names[pos][k] = '\0';
 		g_count++;
+	}
+	for (int n = 0; n < g_count; n++)
+	{
+		char path[64];
+		ax_app_path (path, sizeof (path), g_names[n], ".app/icon.bmp");
+		g_icons[n] = new Icon (OFFSCREEN, VIEW_Y, CELLW - 8, CELLH - 8, path, g_names[n], on_icon, 0x00141c26);
+		g_icons[n]->tag = n;
+		root.addChild (g_icons[n]);
 	}
 }
 
