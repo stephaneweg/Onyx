@@ -188,6 +188,10 @@ static inline int  kapi_tcp_connect (const char *host, unsigned port) { return K
 static inline int  kapi_tcp_send (int sock, const void *buf, unsigned len) { return KT->tcp_send (sock, buf, len); }
 static inline int  kapi_tcp_recv (int sock, void *buf, unsigned len) { return KT->tcp_recv (sock, buf, len); }
 static inline void kapi_tcp_close (int sock) { KT->tcp_close (sock); }
+// TCP server side (ABI v37). tcp_listen: listening handle >=0 / <0 (-6 port in use).
+// tcp_accept: BLOCKS until a peer connects; connected handle >=0 + peer IP / <0.
+static inline int  kapi_tcp_listen (unsigned port) { return KT->tcp_listen (port); }
+static inline int  kapi_tcp_accept (int listen_sock, char *ip, unsigned cap) { return KT->tcp_accept (listen_sock, ip, cap); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

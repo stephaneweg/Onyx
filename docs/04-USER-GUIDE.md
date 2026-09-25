@@ -314,6 +314,7 @@ the terminal's **current working directory**.
 | `wget` | `wget <url>` | Fetches an HTTP URL (`http://host[:port]/path`) and writes the response body to `stdout` — pipe or redirect it (e.g. `wget http://example.com/ > page.html`). Plain HTTP only (no HTTPS). |
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
+| `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves one client at a time with its own `cmd` (see §7). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
@@ -321,6 +322,26 @@ the terminal's **current working directory**.
 | `libctest` | `libctest` | Self-test of the newlib C library on Onyx (`printf`/`malloc`/`qsort`/`fopen`+`fseek`/`sin`/`sqrt`). Prints PASS/FAIL. |
 | `imgtest` | `imgtest` | Self-test of the image codecs (zlib + libpng): decodes an embedded PNG and prints its size and top-left pixel. Prints PASS/FAIL. Opt-in build (needs the cross-built codecs — see `user/img/README.md`). |
 | `nsfbdemo` | `nsfbdemo` | Demo of the NetSurf framebuffer library (libnsfb) on Onyx: opens a window and draws shapes with libnsfb's plotters, then follows the cursor (a trail of dots) and drops a marker on left-click. `q` / Esc or the close box to quit. Opt-in build (needs the cross-built libnsfb — see `user/nsfb/README.md`). |
+
+### Remote shell (`telnetd`)
+
+`telnetd` (started by `SD:/etc/autostart`) lets you use the Onyx shell from another
+computer, in a text terminal. Get the Pi's address with `net`, then connect with:
+
+- **the dedicated client** (only needs Python, Windows or Linux/macOS):
+  `python tools/onyx-telnet.py <pi-ip> [port]`;
+- or any **telnet client**: `telnet <pi-ip>`, or PuTTY with *Connection type: Telnet*.
+
+Each connection gets its own `cmd`, exactly like the terminal app: same commands,
+pipes and redirections, `clear` clears the remote screen. Echo and line editing are done
+by the Pi (Backspace works; no history/arrows). **Ctrl-C** is passed to the running
+command, **`exit`** or **Ctrl-D** on an empty line ends the session (in
+`onyx-telnet.py`, **Ctrl-]** disconnects locally). One client at a time: a second
+connection waits until the first ends.
+
+> ⚠️ Not secure: no authentication and no encryption — anyone who can reach port 23
+> gets a shell. Remove the `telnetd` line from `SD:/etc/autostart` on an untrusted
+> network, or run it by hand (`telnetd 2323`) when needed.
 
 ## 9. The file manager
 
@@ -405,8 +426,8 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
   exactly as if typed in the terminal — the first word is a `/bin` tool
   (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
   ignored. Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run panel`, `keyb FR` (the last
-  sets the keyboard layout at boot). Which program plays the `init` role is itself set
+  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run panel`, `keyb FR` (sets the
+  keyboard layout at boot) and `telnetd` (remote shell, see §8). Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 - **`SD:/etc/quicklaunch.txt`**: the apps pinned to the panel (top→bottom).
 

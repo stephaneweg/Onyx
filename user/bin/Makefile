@@ -64,7 +64,7 @@ endif
 PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  rm.elf mkdir.elf touch.elf cp.elf mv.elf ps.elf kill.elf \
 	  run.elf keyb.elf cmd.elf kmsg.elf verbose.elf net.elf wget.elf heaptest.elf \
-	  fptest.elf init.elf
+	  fptest.elf init.elf telnetd.elf
 
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.

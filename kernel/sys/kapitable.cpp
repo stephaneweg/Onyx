@@ -45,6 +45,8 @@ int kapi_tcp_connect (const char *, unsigned);
 int kapi_tcp_send (int, const void *, unsigned);
 int kapi_tcp_recv (int, void *, unsigned);
 void kapi_tcp_close (int);
+int kapi_tcp_listen (unsigned);
+int kapi_tcp_accept (int, char *, unsigned);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -241,4 +243,7 @@ void KApiTableInit (void)
 	t->memset            = memset;
 	t->memcpy            = memcpy;
 	t->memmove           = memmove;
+
+	t->tcp_listen        = kapi_tcp_listen;
+	t->tcp_accept        = kapi_tcp_accept;
 }

@@ -572,6 +572,10 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   Note the `ELR` (faulting PC).
 - **`addr2line`**: `aarch64-none-elf-addr2line -e kernel8-rpi4.elf <ELR>` to locate
   the faulting line (keep the unstripped `.elf` next to the `.img`).
+- **Remote shell**: `/bin/telnetd` (autostarted, TCP port 23) serves the `cmd` shell over
+  the network; from the dev machine, `python tools/onyx-telnet.py <pi-ip>` (or any telnet
+  client) — handy to run `kmsg`, `ps`, `kill`, tests, without the Pi's keyboard. Its
+  server side uses the ABI v37 `kapi_tcp_listen`/`kapi_tcp_accept`.
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial
   cable.

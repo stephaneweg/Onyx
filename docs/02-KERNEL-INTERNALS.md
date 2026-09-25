@@ -398,7 +398,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 36`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 37`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -411,7 +411,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`).
 
 ### Categories of exposed functions
 
@@ -429,7 +429,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Desktop | `screen_size`, `set_wallpaper`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
 | Appearance/keyboard | `set_window_theme`, `set_keymap` (load a country map *by name* — deprecated: the kernel compiles in **no** maps, so it always returns 0; use `set_keymap_data`), `get_keymap`, `kbd_ready` (USB keyboard attached? v26 — informational; `keyb` no longer needs to poll it), `set_keymap_data` (load a layout from a `.kmap` blob, v27 — records it in a persistent snapshot and installs it on the keyboard whenever it attaches, so it needs no keyboard to be present; returns 1 once the blob is accepted, 0 only on a malformed blob. This removed the old boot race where `keyb` could time out waiting for USB enumeration and leave the keyboard map-less), `app_dir` |
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
-| Networking (v21) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close` |
+| Networking (v21, v37) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close`; server side (v37): `tcp_listen(port)` → listening handle (Circle `CSocket::Bind`+`Listen`; `-6` = port in use), `tcp_accept(h, ip, cap)` → **blocks** until a peer connects, returns a connected handle + the peer IP (Circle `Accept`). All handles share the 16-slot table in `sys/net.cpp` and are reclaimed when the owner dies. Used by `/bin/telnetd`. |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
 | Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
@@ -654,7 +654,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 36 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 37 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

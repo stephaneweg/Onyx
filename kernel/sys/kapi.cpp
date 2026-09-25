@@ -1459,6 +1459,19 @@ int  kapi_tcp_send  (int hSock, const void *pBuf, unsigned nLen) { return NetTcp
 int  kapi_tcp_recv  (int hSock, void *pBuf, unsigned nLen)       { return NetTcpRecv (hSock, pBuf, nLen); }
 void kapi_tcp_close (int hSock)                                  { NetTcpClose (hSock); }
 
+// --- v37: TCP server side ----------------------------------------------------
+int kapi_tcp_listen (unsigned nPort)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	return NetTcpListen (nPort, (pAS != 0) ? pAS->GetPid () : 0);
+}
+
+int kapi_tcp_accept (int hListen, char *pIP, unsigned nCap)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	return NetTcpAccept (hListen, pIP, nCap, (pAS != 0) ? pAS->GetPid () : 0);
+}
+
 // --- memory info -------------------------------------------------------------
 // System memory snapshot (all sizes in KB): total RAM, free (page-allocator region
 // not yet handed out + free heap), memory owned by user apps (g_nUserPages frames),

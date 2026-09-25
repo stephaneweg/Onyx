@@ -26,7 +26,8 @@
 //      + register_shell/shell_request/mailbox_send/mailbox_recv -- activity-shell IPC.
 // v36: + memset/memcpy/memmove -- Circle's kernel implementations, so the calls the
 //      compiler emits on its own (array/struct init and copies) link in every app.
-#define KAPI_ABI_VERSION	36
+// v37: + tcp_listen/tcp_accept -- TCP server side (telnetd remote shell).
+#define KAPI_ABI_VERSION	37
 
 #ifdef __cplusplus
 extern "C" {
@@ -341,6 +342,15 @@ struct TKApiTable
 	void *(*memset) (void *dst, int c, unsigned long n);
 	void *(*memcpy) (void *dst, const void *src, unsigned long n);
 	void *(*memmove) (void *dst, const void *src, unsigned long n);
+
+	// --- v37 additions (TCP server side) ---
+	// tcp_listen: bind + listen on a local port; returns a LISTENING handle >=0 (only
+	// for tcp_accept / tcp_close), or <0 (-1 no net / bad port, -2 too many sockets,
+	// -6 bind failed / port in use). tcp_accept: BLOCKS until a peer connects; returns
+	// a connected handle (tcp_send/recv/close) and the peer's dotted IP in ip[], or <0.
+	// Both handles are auto-closed if the owning process dies.
+	int  (*tcp_listen) (unsigned port);
+	int  (*tcp_accept) (int listen_sock, char *ip, unsigned cap);
 };
 
 #ifdef __cplusplus

@@ -121,6 +121,68 @@ void NetTcpClose (int hSock)
 	}
 }
 
+// Free handle slot, or -1 if the table is full.
+static int FreeSlot (void)
+{
+	for (int i = 0; i < MAX_SOCKETS; i++)
+		if (s_Sockets[i].pSocket == 0) return i;
+	return -1;
+}
+
+// Server side: a socket bound to nPort and listening. The handle is only good for
+// NetTcpAccept (and NetTcpClose); it never carries data itself.
+int NetTcpListen (unsigned nPort, unsigned nOwnerPid)
+{
+	if (!NetIsUp () || nPort == 0 || nPort > 0xFFFF) return -1;
+
+	int h = FreeSlot ();
+	if (h < 0) return -2;					// table full
+
+	CSocket *pSock = new CSocket (g_pNet, IPPROTO_TCP);
+	if (pSock == 0) return -4;
+	if (pSock->Bind ((u16) nPort) < 0 || pSock->Listen () < 0)
+	{
+		delete pSock;
+		return -6;					// port in use / bind failed
+	}
+
+	s_Sockets[h].pSocket   = pSock;
+	s_Sockets[h].nOwnerPid = nOwnerPid;
+	return h;
+}
+
+// Wait (blocking, cooperatively) for the next incoming connection on a listening
+// handle. Returns a new connected handle (use NetTcpSend/Recv/Close on it) and the
+// peer's dotted IP in pIPOut, or <0 on error.
+int NetTcpAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid)
+{
+	CSocket *pListen = SockOf (hListen);
+	if (pListen == 0) return -1;
+
+	CIPAddress IP;
+	u16 nPort = 0;
+	CSocket *pConn = pListen->Accept (&IP, &nPort);		// blocks until a peer connects
+	if (pConn == 0) return -5;
+
+	int h = FreeSlot ();
+	if (h < 0) { delete pConn; return -2; }			// table full -> drop the peer
+	pConn->SetOptionSendTimeout (5000000);			// 5 s, like NetTcpConnect
+
+	s_Sockets[h].pSocket   = pConn;
+	s_Sockets[h].nOwnerPid = nOwnerPid;
+
+	if (pIPOut != 0 && nIPLen > 0)
+	{
+		CString s;
+		IP.Format (&s);
+		const char *p = (const char *) s;
+		unsigned i = 0;
+		for (; p[i] != '\0' && i < nIPLen - 1; i++) pIPOut[i] = p[i];
+		pIPOut[i] = '\0';
+	}
+	return h;
+}
+
 void NetCloseByPid (unsigned nPid)
 {
 	if (nPid == 0) return;
