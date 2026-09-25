@@ -397,6 +397,35 @@ Folders are shown in brackets and in blue; files show their size on the right.
 *The file manager: folders in blue, files with their size, `d`/`r`/`n` shortcuts at the
 top.*
 
+### File Viewer (column browser)
+
+**`fileviewer`** is a NeXTSTEP-style **column browser**: each column lists one folder, and
+selecting a folder opens its content in the next column — the whole path stays visible, so
+going back is one click on an earlier column. Launch it from the app list (category
+*System*), or `run fileviewer SD:/some/folder` to open a given folder.
+
+- **Columns**: plain folders first (blue, with a ▸ arrow), then app bundles (`.app`, green,
+  shown without the extension) and files. When there are more columns than fit (4), the
+  view follows the deepest one; the scrollbar below the columns scrolls back.
+- **Path bar** (above the columns): click a segment (`SD:` ▸ `etc` ▸ …) to jump straight
+  back to that folder.
+- **Preview column**: selecting a file shows its size and type, the first lines of a text
+  file, a scaled-down **BMP** image, or — for an app bundle — its icon and display name.
+- **Mouse**: click = select; **double-click** = open (text files in `tinypad`, programs
+  run, `.app` bundles launch); **wheel** scrolls the column under the cursor.
+- **Keyboard**: **↑/↓**, Page Up/Down, Home/End move in the active column; **→** enters the
+  selected folder, **←** or **Backspace** goes back; **Enter** opens; typing a **letter**
+  jumps to the next name starting with it.
+- **Operations** (toolbar, on the active column's selection): **New Folder** (Ctrl-N),
+  **Rename** (Ctrl-R), **Delete** (Del — folders are deleted with their content, after
+  confirmation), **Copy** (Ctrl-C), **Cut** (Ctrl-X), **Paste** (Ctrl-V — into the active
+  column's folder; copies of folders are recursive, a clash gets a "copy" name), **Refresh**
+  (Ctrl-L). The status bar shows the item count and the selection.
+
+![File Viewer](../screenshots/fileviewer.png)
+*The File Viewer: `SD:` ▸ `etc` in the path bar, one folder per column, and the preview of
+the selected `autostart` file.*
+
 ## 10. Keyboard and layouts
 
 The layout at boot is set by the autostart line **`keyb FR`** (in `SD:/etc/autostart`) —
@@ -501,6 +530,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **paint** | Drawing. Palette of 8 colors at the top; **drag** to paint, **right-click-drag** to erase; `[`/`]` brush size; `c` clears; `s` saves `SD:/paint.bmp`. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). |
 | **filer** | File manager (see §9). |
+| **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
 | **terminal** | Terminal/shell (see §7). |
 | **taskman** | Task manager. Arrows to select; Enter brings the window to the foreground; `k`/Delete kills the app (except kernel tasks); `r` refreshes. |
 | **memmon** | Memory monitor. Shows total / used / free RAM, the memory owned by apps, a usage bar, and the processes ranked by 64 KB pages owned. Refreshes ~1×/s. |

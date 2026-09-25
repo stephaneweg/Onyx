@@ -297,6 +297,23 @@ def icon_theme():		# a colour-swatch palette (theme editor)
     pframe(px, 5, 5, 34, 34, (90, 100, 114))
     return px
 
+def icon_fileviewer():		# a column browser: three panes, selected rows + arrows
+    px = blank()
+    frame, pane, sel, row, arrow = (90, 100, 114), (28, 34, 44), (60, 110, 170), (150, 160, 175), (200, 210, 225)
+    prect(px, 3, 7, 36, 32, pane)
+    pframe(px, 3, 7, 36, 32, frame)
+    prect(px, 4, 8, 35, 10, (70, 84, 104))		# title strip
+    for i, x0 in enumerate((4, 15, 26)):
+        if i:
+            prect(px, x0 - 1, 11, x0 - 1, 31, frame)	# pane separators
+        for r, y in enumerate(range(13, 30, 4)):
+            if r == 1 + i % 2:
+                prect(px, x0, y - 1, x0 + 9, y + 1, sel)
+            prect(px, x0 + 1, y, x0 + 5, y, row)
+            if i < 2:
+                pset(px, x0 + 8, y, arrow)
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -306,6 +323,7 @@ ICONS = {
     "minesweeper": icon_mines, "paint": icon_paint,
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
+    "fileviewer": icon_fileviewer,
 }
 
 

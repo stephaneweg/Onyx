@@ -222,6 +222,58 @@ def app_filer():
             s = str(size); cv.text(W - 12 - len(s) * FW, y + 1, s, C(0x90A0A8))
     return cv
 
+def app_fileviewer():	# NeXTSTEP-style column browser (Apps/fileviewer/main.cpp onDraw)
+    W, H, VIS = 800, 520, 4; COLW = W // VIS
+    TB_H, BC_H, SB_H, ST_H = 36, 24, 12, 20; COL_Y = TB_H + BC_H; COL_H = H - COL_Y - SB_H - ST_H
+    RH = FH + 4; rows = COL_H // RH
+    cv = Canvas(W, H, C(0x202830))
+    cv.fill(0, 0, W, TB_H, C(0x404A5A))
+    x = 6
+    for lbl in ["New Folder", "Rename", "Delete", "Copy", "Cut", "Paste", "Refresh"]:
+        w = len(lbl) * FW + 20; button(cv, x, 4, w, TB_H - 8, lbl); x += w + 6
+    def arrow(x, y, c):
+        for i in range(4): cv.fill(x + i, y + i, 1, 9 - 2 * i, c)
+    root = os.path.join(ROOT, "sdcard")
+    def listing(path):
+        ents = []
+        for n in os.listdir(path):
+            full = os.path.join(path, n); d = os.path.isdir(full)
+            app = d and n.lower().endswith(".app")
+            ents.append((0 if d and not app else 1, n.lower(), n, d, app, 0 if d else os.path.getsize(full)))
+        ents.sort(); return [(n, d, a, sz) for _, _, n, d, a, sz in ents]
+    cols = [(root, "etc"), (os.path.join(root, "etc"), "autostart")]
+    # path bar
+    cv.fill(0, TB_H, W, BC_H, C(0x303D4D)); y = TB_H + (BC_H - FH) // 2; x = 8
+    for i, seg in enumerate(["SD:", "etc"]):
+        if i: arrow(x, y + (FH - 9) // 2, C(0x607080)); x += 10
+        cv.text(x, y, seg, C(0x60FF90) if i == 1 else C(0xE0E0E0)); x += len(seg) * FW + 6
+    for c, (path, sel) in enumerate(cols):
+        x0 = c * COLW
+        cv.fill(x0, COL_Y, COLW, COL_H, C(0x181E26)); cv.fill(x0 + COLW - 1, COL_Y, 1, COL_H, C(0x303A48))
+        for r, (n, d, a, sz) in enumerate(listing(path)[:rows]):
+            yy = COL_Y + r * RH
+            if n == sel: cv.fill(x0, yy, COLW - 1, RH, C(0x355070) if c == 1 else C(0x3A4452))
+            name = n[:-4] if a else n
+            cv.text(x0 + 8, yy + 2, name, C(0x90F0A0) if a else C(0x80C8FF) if d else C(0xD8D8D8))
+            if d and not a: arrow(x0 + COLW - 16, yy + (RH - 9) // 2, C(0x8A96A8))
+    # preview of etc/autostart
+    x0 = 2 * COLW; cv.fill(x0, COL_Y, COLW, COL_H, C(0x181E26))
+    f = os.path.join(root, "etc", "autostart"); txt = open(f, encoding="utf-8").read()
+    y = COL_Y + 8; tx = x0 + 8; mc = (COLW - 16) // FW
+    cv.text(tx, y, "autostart", C(0xFFFFFF)); y += FH + 6
+    cv.text(tx, y, "Text", C(0x8A96A8)); y += FH + 2
+    sz = os.path.getsize(f); cv.text(tx, y, "%d.%d KB" % (sz // 1024, sz % 1024 * 10 // 1024) if sz >= 1024 else "%d B" % sz, C(0x8A96A8)); y += FH + 8
+    cv.fill(x0 + 4, y - 2, COLW - 9, COL_Y + COL_H - y - 2, C(0x141A22))
+    for line in txt.split("\n"):
+        if y + FH >= COL_Y + COL_H - 4: break
+        cv.text(tx, y, line.replace("\t", " ")[:mc], C(0xD8D8D8)); y += FH
+    x0 = 3 * COLW; cv.fill(x0, COL_Y, COLW, COL_H, C(0x181E26))
+    cv.fill(0, COL_Y + COL_H, W, SB_H, C(0x141A22))
+    cv.fill(0, H - ST_H, W, ST_H, C(0x303D4D))
+    n = len(listing(os.path.join(root, "etc")))
+    cv.text(8, H - ST_H + (ST_H - FH) // 2, "%d items   -   autostart (%s)" % (n, "%d B" % sz if sz < 1024 else "%d.%d KB" % (sz // 1024, sz % 1024 * 10 // 1024)), C(0xE0E0E0))
+    return cv
+
 def app_fractal():
     W, RH = 340, 240; H = RH + 16; cv = Canvas(W, H, C(0x000000))
     cxr, cyr, span = -0.5, 0.0, 3.0
@@ -943,6 +995,7 @@ if __name__ == "__main__":
     # windowed apps: (folder, title, client builder) -> wrapped in skinned chrome.
     WINAPPS = [
         ("terminal","terminal",app_terminal), ("filer","filer",app_filer),
+        ("fileviewer","File Viewer",app_fileviewer),
         ("mandelbrot","fractal",app_fractal), ("tinycalc","tinycalc",app_tinycalc),
         ("tinypad","tinypad",app_tinypad), ("calendar","calendar",app_calendar),
         ("config","config",app_config), ("theme","theme",app_theme),
