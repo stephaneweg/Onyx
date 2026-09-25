@@ -572,6 +572,9 @@ private:
 			{
 				m_pKeyboard->RegisterRemovedHandler (KeyboardRemoved);
 				m_pKeyboard->RegisterKeyPressedHandler (KeyPressedStub);
+				// Mixed mode: the raw report too (cooked keys unaffected), for the
+				// modifier state (Ctrl = copy in drag & drop, kapi_get_modifiers).
+				m_pKeyboard->RegisterKeyStatusHandlerRaw (KeyRawStub, TRUE);
 				// Apply the current layout snapshot (empty until keyb loads a .kmap),
 				// so a hot re-plug keeps the layout -- a fresh CKeyMap starts empty.
 				LoadKeyMapTable (m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
@@ -620,6 +623,17 @@ private:
 		{
 			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, s_nButtons);
 		}
+	}
+
+	// USB HID modifier byte: bit0/4 Ctrl, bit1/5 Shift, bit2/6 Alt (left/right).
+	static void KeyRawStub (unsigned char ucModifiers, const unsigned char RawKeys[6])
+	{
+		(void) RawKeys;
+		unsigned nMods = ((ucModifiers & 0x11) ? MOD_CTRL : 0)
+			       | ((ucModifiers & 0x22) ? MOD_SHIFT : 0)
+			       | ((ucModifiers & 0x44) ? MOD_ALT : 0);
+		CWindowManager *pWM = CWindowManager::Get ();
+		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
 	}
 
 	static void KeyPressedStub (const char *pString)

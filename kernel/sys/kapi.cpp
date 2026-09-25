@@ -167,6 +167,7 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 	{
 		return 0;
 	}
+	pWin->SetOwnerPid (pAS->GetPid ());			// drag & drop results name it
 
 	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW, ASID-tagged
 	pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
@@ -1768,6 +1769,66 @@ void kapi_shutdown (int nMode)
 	}
 	CActLED::Get ()->Off ();
 	halt ();
+}
+
+
+// --- v42: drag & drop + keyboard modifiers ----------------------------------------
+// The payload of the current / last drag session (kept until the next drag_begin, so
+// the drop target can read it after GUI_EVENT_DROP).
+#define DND_MAX		4096
+static u8	s_Dnd[DND_MAX];
+static unsigned	s_nDndLen = 0;
+static int	s_nDndType = 0;
+
+// Start dragging (type, data) from the caller's window, with `label` on the cursor
+// badge. The left button must be held (call it from a pointer-move handler once the
+// cursor moved a few pixels with the button down). 1 = started, 0 = not.
+int kapi_drag_begin (int nType, const void *pData, unsigned nLen, const char *pLabel)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindowManager *pWM = CWindowManager::Get ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || pWM == 0)
+	{
+		return 0;
+	}
+	char Label[DND_LABEL_MAX];				// copy out of the app's memory first
+	unsigned i = 0;
+	for (; pLabel != 0 && pLabel[i] != '\0' && i < DND_LABEL_MAX - 1; i++) Label[i] = pLabel[i];
+	Label[i] = '\0';
+	if (nLen > DND_MAX) nLen = DND_MAX;
+	if (pData == 0) nLen = 0;
+	if (!pWM->DragBegin (pWin, Label))
+	{
+		return 0;
+	}
+	if (nLen) memcpy (s_Dnd, pData, nLen);
+	s_nDndLen = nLen;
+	s_nDndType = nType;
+	return 1;
+}
+
+// The dropped payload: copies <= cap bytes, returns the full length (+ its type).
+int kapi_drag_data (int *pType, void *pBuf, unsigned nCap)
+{
+	if (pType != 0) *pType = s_nDndType;
+	unsigned n = s_nDndLen < nCap ? s_nDndLen : nCap;
+	if (pBuf != 0 && n) memcpy (pBuf, s_Dnd, n);
+	return (int) s_nDndLen;
+}
+
+// Current keyboard modifiers (MOD_CTRL / MOD_SHIFT / MOD_ALT).
+unsigned kapi_get_modifiers (void)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	return pWM != 0 ? pWM->Modifiers () : 0;
+}
+
+// vncd: set the modifier state (RFB key events for Control / Shift / Alt).
+void kapi_inject_modifiers (unsigned nMods)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM != 0) pWM->SetModifiers (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));
 }
 
 }  // extern "C"

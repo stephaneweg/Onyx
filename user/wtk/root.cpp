@@ -63,6 +63,22 @@ void Root::ptrEvent (unsigned long, int ev, long v)
 	case GUI_EVENT_PTR_WHEEL:		// route a scroll notch to the widget under the cursor
 		r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v));
 		return;
+	case GUI_EVENT_DROP:			// drag & drop (ABI v42)
+	{
+		static char data[4097];
+		int type = 0, n = kapi_drag_data (&type, data, sizeof data - 1);
+		if (n > (int) sizeof data - 1) n = (int) sizeof data - 1;
+		if (n < 0) n = 0;
+		data[n] = '\0';
+		r->onDrop (GUI_PTR_X (v), GUI_PTR_Y (v), type, data, n, GUI_DND_FLAGS (v));
+		return;
+	}
+	case GUI_EVENT_DRAG_OVER:
+		r->onDragOver (GUI_PTR_X (v), GUI_PTR_Y (v), (GUI_DND_FLAGS (v) & DND_F_LEAVE) != 0, GUI_DND_FLAGS (v));
+		return;
+	case GUI_EVENT_DRAG_DONE:
+		r->onDragDone (GUI_DND_PID (v), GUI_DND_FLAGS (v));
+		return;
 	default:
 		break;
 	}

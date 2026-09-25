@@ -1,0 +1,501 @@
+//
+// shelf -- the Shelf: a strip along the bottom of the screen that keeps references to
+// files, folders and apps, organised in tabs (NeXTSTEP-style shelf).
+//
+//   * Drop files (e.g. from the File Viewer) on it: they are added to the current tab
+//     (or to the tab you drop them on). The files themselves stay where they are.
+//   * Click an item: open it in a NEW instance of its app (SD:/etc/fileassoc.ini;
+//     folders open in the File Viewer, .app bundles and programs run).
+//   * Drag an item: onto a File Viewer folder = move it there (Ctrl = copy); onto an
+//     app window = the app opens it; onto the desktop = remove it from the shelf.
+//   * The Trash, at the right end: drop items on it to move them to the Trash; click it
+//     to open the Trash in the File Viewer.
+//   * Tabs: click to switch, "+" adds one, double-click renames (type, Enter / Esc),
+//     right-click removes an EMPTY tab. The wheel scrolls a long tab.
+//
+// Saved in SD:/etc/shelf.ini ("tab = Name" then "item = path" lines). The window is a
+// normal borderless one (WIN_FLAG_SYSTEM): other windows cover it, a click brings it
+// forward. Uses drag & drop (ABI v42).
+//
+#include "kapi.h"
+#include "applib.h"
+#include "bmp.hpp"
+#include "fsutil.h"
+#include "fileassoc.h"
+#include "trash.h"
+#include "notify.h"
+#include "wtk/wtk.h"
+
+using namespace wtk;
+
+#define SHELF_INI	"SD:/etc/shelf.ini"
+#define SH		100			// window height
+#define TAB_H		22			// tab strip
+#define CELL		80			// item cell width
+#define ICON		40
+#define TRASH_W		84			// trash cell at the right end
+#define MAXTABS		8
+#define MAXI		40
+#define PANEL_BAR	60			// the panel's thickness (panel/main.cpp BAR)
+#define DRAG_START	6
+
+static const unsigned S_BG = 0x001C232C, S_EDGE = 0x00485870, S_TAB = 0x00283240,
+	S_TABON = 0x00303D4D, S_TXT = 0x00E0E6EE, S_DIMT = 0x008A96A8, S_SEL = 0x00355070,
+	S_HOT = 0x0090C0FF;
+
+enum { K_FILE, K_DIR, K_APP, K_PROG, K_IMAGE, K_TEXT };
+
+struct Item { char path[200]; char label[40]; int kind; unsigned *icon; int iw, ih; };
+struct Tab  { char name[24]; Item items[MAXI]; int n; int scroll; };
+
+static Tab  g_tabs[MAXTABS];
+static int  g_ntabs = 0, g_cur = 0;
+static int  g_W = 800, g_fw = 8, g_fh = 16;
+static int  g_tabX[MAXTABS + 1], g_tabRight = 0;	// tab strip hit-test (right edges), "+"
+
+// ---- items --------------------------------------------------------------------------
+static bool ends_ci (const char *s, const char *ext)
+{
+	int n = fs_len (s), e = fs_len (ext);
+	if (n < e) return false;
+	for (int i = 0; i < e; i++) if (fs_lower (s[n - e + i]) != fs_lower (ext[i])) return false;
+	return true;
+}
+
+static void item_init (Item &it, const char *path)
+{
+	fs_copy (it.path, path, sizeof it.path);
+	it.icon = 0; it.iw = it.ih = 0;
+	const char *base = fs_basename (path);
+	fs_copy (it.label, base, sizeof it.label);
+	if (fs_is_dir (path))
+	{
+		it.kind = K_DIR;
+		if (ends_ci (path, ".app"))
+		{
+			it.kind = K_APP;
+			it.label[fs_len (it.label) - 4] = '\0';
+			char p[260];
+			fs_join (p, sizeof p, path, "app.txt");		// friendly name
+			if (app_ini_load_path (p) >= 0)
+			{
+				const char *nm = app_ini_get (0, "name", 0);
+				if (nm && nm[0]) fs_copy (it.label, nm, sizeof it.label);
+			}
+			fs_join (p, sizeof p, path, "icon.bmp");
+			it.icon = ui::bmp_decode (p, &it.iw, &it.ih);
+		}
+		return;
+	}
+	if (ends_ci (path, ".bmp")) it.kind = K_IMAGE;
+	else if (fa_is_program (path)) it.kind = K_PROG;
+	else
+	{
+		char app[48];
+		it.kind = (fa_app_for (path, app, sizeof app) && fs_ci_cmp (app, "tinypad") == 0) ? K_TEXT : K_FILE;
+	}
+}
+
+static void item_free (Item &it) { delete [] it.icon; it.icon = 0; }
+
+static bool tab_has (const Tab &t, const char *path)
+{
+	for (int i = 0; i < t.n; i++) if (fs_ci_cmp (t.items[i].path, path) == 0) return true;
+	return false;
+}
+
+static void tab_add (Tab &t, const char *path)
+{
+	if (t.n >= MAXI || tab_has (t, path) || !fs_exists (path)) return;
+	item_init (t.items[t.n++], path);
+}
+
+static void tab_remove (Tab &t, int i)
+{
+	if (i < 0 || i >= t.n) return;
+	item_free (t.items[i]);
+	for (int j = i; j + 1 < t.n; j++) t.items[j] = t.items[j + 1];
+	t.n--;
+	t.items[t.n].icon = 0;
+}
+
+static void new_tab (const char *name)
+{
+	if (g_ntabs >= MAXTABS) return;
+	Tab &t = g_tabs[g_ntabs++];
+	fs_copy (t.name, name, sizeof t.name);
+	t.n = 0; t.scroll = 0;
+}
+
+// ---- persistence ----------------------------------------------------------------------
+static void save (void)
+{
+	static char buf[MAXTABS * (MAXI * 210 + 40) + 64];
+	int p = 0;
+	const char *hdr = "# Onyx Shelf (apps/shelf): tab = name, then item = path lines\n";
+	for (int i = 0; hdr[i]; i++) buf[p++] = hdr[i];
+	for (int t = 0; t < g_ntabs; t++)
+	{
+		const char *k = "tab = "; for (int i = 0; k[i]; i++) buf[p++] = k[i];
+		for (int i = 0; g_tabs[t].name[i]; i++) buf[p++] = g_tabs[t].name[i];
+		buf[p++] = '\n';
+		for (int j = 0; j < g_tabs[t].n; j++)
+		{
+			const char *q = "item = "; for (int i = 0; q[i]; i++) buf[p++] = q[i];
+			for (int i = 0; g_tabs[t].items[j].path[i]; i++) buf[p++] = g_tabs[t].items[j].path[i];
+			buf[p++] = '\n';
+		}
+	}
+	kapi_save_file (SHELF_INI, buf, (unsigned) p);
+}
+
+static void load (void)
+{
+	void *f = kapi_open (SHELF_INI);
+	if (f != 0)
+	{
+		static char buf[16384];
+		int n = kapi_read (f, buf, sizeof buf - 1);
+		kapi_close (f);
+		if (n < 0) n = 0;
+		buf[n] = '\0';
+		for (int i = 0; i < n; )
+		{
+			char line[256]; int k = 0;
+			while (i < n && buf[i] != '\n') { if (buf[i] != '\r' && k < 255) line[k++] = buf[i]; i++; }
+			i++;
+			line[k] = '\0';
+			int s = 0; while (line[s] == ' ' || line[s] == '\t') s++;
+			if (line[s] == '#' || line[s] == '\0') continue;
+			int eq = s; while (line[eq] && line[eq] != '=') eq++;
+			if (!line[eq]) continue;
+			int ke = eq; while (ke > s && line[ke - 1] == ' ') ke--;
+			line[ke] = '\0';
+			const char *v = line + eq + 1; while (*v == ' ' || *v == '\t') v++;
+			if (fs_ci_cmp (line + s, "tab") == 0) new_tab (v);
+			else if (fs_ci_cmp (line + s, "item") == 0 && g_ntabs > 0) tab_add (g_tabs[g_ntabs - 1], v);
+		}
+	}
+	if (g_ntabs == 0) { new_tab ("Shelf"); new_tab ("Documents"); new_tab ("Apps"); }
+}
+
+// Drop the items whose file is gone (moved away / deleted).
+static bool prune (void)
+{
+	bool changed = false;
+	for (int t = 0; t < g_ntabs; t++)
+		for (int i = g_tabs[t].n - 1; i >= 0; i--)
+			if (!fs_exists (g_tabs[t].items[i].path)) { tab_remove (g_tabs[t], i); changed = true; }
+	return changed;
+}
+
+// ---- geometry -----------------------------------------------------------------------------
+static int items_w (void) { return g_W - TRASH_W; }
+static int item_at (int mx, int my)		// index in the current tab, -1 = none
+{
+	if (my < TAB_H || mx >= items_w ()) return -1;
+	int i = g_tabs[g_cur].scroll + (mx - 4) / CELL;
+	return (mx >= 4 && i < g_tabs[g_cur].n) ? i : -1;
+}
+static bool on_trash (int mx, int my) { return my >= TAB_H && mx >= items_w (); }
+static int tab_at (int mx, int my)		// tab index, MAXTABS = "+", -1 = none
+{
+	if (my >= TAB_H) return -1;
+	for (int t = 0; t < g_ntabs; t++) if (mx < g_tabX[t]) return t;
+	if (mx < g_tabRight) return MAXTABS;
+	return -1;
+}
+
+// ---- glyphs -------------------------------------------------------------------------------
+static void glyph (Canvas &cv, int x, int y, const Item &it)
+{
+	if (it.icon)					// an app icon (magenta = transparent)
+	{
+		for (int j = 0; j < it.ih && j < ICON; j++)
+			for (int i = 0; i < it.iw && i < ICON; i++)
+			{
+				unsigned c = it.icon[j * it.iw + i] & 0xFFFFFF;
+				if (c != 0xFF00FF) cv.pixel (x + i, y + j, c);
+			}
+		return;
+	}
+	switch (it.kind)
+	{
+	case K_DIR:					// a manila folder
+		cv.fillRect (x + 2, y + 8, 16, 6, 0x00C89A48);
+		cv.fillRect (x + 2, y + 12, 36, 24, 0x00E0B45C);
+		cv.frameRect (x + 2, y + 12, 36, 24, 0x00906A28);
+		break;
+	case K_APP: case K_PROG:			// a window with a prompt
+		cv.fillRect (x + 3, y + 6, 34, 28, 0x00101418);
+		cv.frameRect (x + 3, y + 6, 34, 28, 0x0080C8FF);
+		cv.fillRect (x + 3, y + 6, 34, 5, 0x0080C8FF);
+		cv.text (x + 7, y + 14, ">_", 0x0060FF90);
+		break;
+	case K_IMAGE:					// a landscape
+		cv.fillRect (x + 4, y + 6, 32, 28, 0x0070B8F0);
+		cv.fillRect (x + 4, y + 24, 32, 10, 0x0050A050);
+		cv.fillRect (x + 24, y + 10, 6, 6, 0x00FFE070);
+		cv.frameRect (x + 4, y + 6, 32, 28, 0x00E0E6EE);
+		break;
+	default:					// a document (lines if text)
+		cv.fillRect (x + 8, y + 3, 24, 34, 0x00F0F0F0);
+		cv.frameRect (x + 8, y + 3, 24, 34, 0x00808890);
+		if (it.kind == K_TEXT) for (int l = 0; l < 5; l++) cv.fillRect (x + 12, y + 9 + l * 5, 16, 2, 0x00707880);
+		break;
+	}
+}
+
+static void trash_glyph (Canvas &cv, int x, int y, bool full)
+{
+	cv.fillRect (x + 8, y + 6, 24, 3, 0x00A0A8B0);			// lid
+	cv.fillRect (x + 16, y + 3, 8, 3, 0x00A0A8B0);
+	cv.fillRect (x + 10, y + 10, 20, 26, 0x00707880);		// can
+	for (int l = 0; l < 3; l++) cv.fillRect (x + 14 + l * 5, y + 13, 2, 20, 0x00505860);
+	if (full) cv.fillRect (x + 12, y + 7, 16, 3, 0x00F0F0F0);	// paper sticking out
+}
+
+// ---- the window ---------------------------------------------------------------------------
+class ShelfRoot : public Root
+{
+public:
+	int armItem = -1, armX = 0, armY = 0;	// press on an item (click or drag)
+	bool dragging = false;
+	int dragItem = -1, dragTab = -1;	// our drag's source
+	int hotItem = -2, hotTab = -1;		// drop highlight (-1 = items area, -3 = trash)
+	int editTab = -1; char editBuf[24]; int editLen = 0;	// tab rename
+	unsigned lastTabClick = 0; int lastTab = -1;
+	bool trashFull = false;
+
+	ShelfRoot (int x, int y, int w, int h)
+	  : Root (x, y, w, h, "shelf", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM) {}
+
+	void onDraw () override
+	{
+		canvas.clear (S_BG);
+		canvas.fillRect (0, 0, width, 1, S_EDGE);
+		// Tabs.
+		int x = 6;
+		for (int t = 0; t < g_ntabs; t++)
+		{
+			const char *nm = (t == editTab) ? editBuf : g_tabs[t].name;
+			int w = fs_len (nm) * g_fw + 16 + (t == editTab ? g_fw : 0);
+			canvas.fillRect (x, 3, w, TAB_H - 3, t == g_cur ? S_TABON : S_TAB);
+			if (t == g_cur) canvas.fillRect (x, 3, w, 2, S_HOT);
+			if (hotTab == t) canvas.frameRect (x, 3, w, TAB_H - 3, S_HOT);
+			canvas.text (x + 8, 4 + (TAB_H - 3 - g_fh) / 2, nm, t == g_cur ? S_TXT : S_DIMT);
+			if (t == editTab) canvas.fillRect (x + 8 + editLen * g_fw, 6, 2, g_fh, S_HOT);	// caret
+			x += w + 2;
+			g_tabX[t] = x;
+		}
+		canvas.fillRect (x, 3, 22, TAB_H - 3, S_TAB);
+		canvas.text (x + 7, 4 + (TAB_H - 3 - g_fh) / 2, "+", S_DIMT);
+		g_tabRight = x + 22;
+		canvas.fillRect (0, TAB_H, width, 1, S_TABON);
+
+		// Items of the current tab.
+		Tab &tb = g_tabs[g_cur];
+		int maxc = (CELL - 6) / g_fw;
+		for (int i = tb.scroll; i < tb.n; i++)
+		{
+			int cx = 4 + (i - tb.scroll) * CELL;
+			if (cx + CELL > items_w ()) break;
+			if (i == armItem && !dragging) canvas.fillRect (cx + 2, TAB_H + 3, CELL - 4, SH - TAB_H - 6, S_SEL);
+			glyph (canvas, cx + (CELL - ICON) / 2, TAB_H + 6, tb.items[i]);
+			char lab[40]; fs_copy (lab, tb.items[i].label, sizeof lab);
+			if (fs_len (lab) > maxc) { lab[maxc - 2] = '.'; lab[maxc - 1] = '.'; lab[maxc] = '\0'; }
+			int lw = fs_len (lab) * g_fw;
+			canvas.text (cx + (CELL - lw) / 2, TAB_H + 50, lab, S_TXT);
+		}
+		if (tb.n == 0)
+			canvas.text (12, TAB_H + 30, "Drop files, folders or apps here", S_DIMT);
+		if (hotItem == -1) canvas.frameRect (2, TAB_H + 2, items_w () - 4, SH - TAB_H - 4, S_HOT);
+		if (tb.scroll > 0) canvas.text (items_w () - 20, TAB_H + 2, "<", S_DIMT);
+
+		// The Trash.
+		int tx = items_w ();
+		canvas.fillRect (tx, TAB_H + 4, 1, SH - TAB_H - 8, S_TABON);
+		if (hotItem == -3) canvas.fillRect (tx + 3, TAB_H + 3, TRASH_W - 6, SH - TAB_H - 6, S_SEL);
+		trash_glyph (canvas, tx + (TRASH_W - ICON) / 2, TAB_H + 6, trashFull);
+		canvas.text (tx + (TRASH_W - 5 * g_fw) / 2, TAB_H + 50, "Trash", S_TXT);
+	}
+
+	void startEdit (int t)
+	{
+		editTab = t; fs_copy (editBuf, g_tabs[t].name, sizeof editBuf); editLen = fs_len (editBuf);
+	}
+	void endEdit (bool keep)
+	{
+		if (editTab >= 0 && keep && editLen > 0) { fs_copy (g_tabs[editTab].name, editBuf, sizeof g_tabs[editTab].name); save (); }
+		editTab = -1;
+	}
+
+	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
+	{
+		if (mx < 0) { pressed = false; armItem = -1; invalidate (true); return false; }
+		Tab &tb = g_tabs[g_cur];
+		if (wheel)
+		{
+			int vis = (items_w () - 4) / CELL, mx2 = tb.n - vis; if (mx2 < 0) mx2 = 0;
+			tb.scroll -= wheel; if (tb.scroll < 0) tb.scroll = 0; if (tb.scroll > mx2) tb.scroll = mx2;
+			invalidate (true);
+			return true;
+		}
+		if (br && !pressed)				// right-click an empty tab: remove it
+		{
+			pressed = true;
+			int t = tab_at (mx, my);
+			if (t >= 0 && t < g_ntabs && g_tabs[t].n == 0 && g_ntabs > 1)
+			{
+				for (int j = t; j + 1 < g_ntabs; j++) g_tabs[j] = g_tabs[j + 1];
+				g_ntabs--;
+				g_tabs[g_ntabs].n = 0;
+				if (g_cur >= g_ntabs) g_cur = g_ntabs - 1;
+				save ();
+				invalidate (true);
+			}
+			return true;
+		}
+		if (!bl && !br)
+		{
+			if (pressed && armItem >= 0 && !dragging)	// a click (no drag): open it
+			{
+				if (!fa_open (tb.items[armItem].path))
+					notify ("Shelf", "No application to open this item.");
+			}
+			pressed = false; armItem = -1;
+			invalidate (true);
+			return true;
+		}
+		if (pressed)
+		{
+			int dx = mx - armX, dy = my - armY;
+			if (armItem >= 0 && !dragging && dx * dx + dy * dy > DRAG_START * DRAG_START)
+			{
+				const Item &it = tb.items[armItem];
+				if (kapi_drag_begin (DND_FILES, it.path, (unsigned) fs_len (it.path) + 1, it.label))
+				{
+					dragging = true; dragItem = armItem; dragTab = g_cur;
+				}
+				armItem = -1;
+				invalidate (true);
+			}
+			return true;
+		}
+		pressed = true;
+		if (bl)
+		{
+			if (editTab >= 0) endEdit (true);
+			int t = tab_at (mx, my);
+			if (t == MAXTABS)			// "+": a new tab
+			{
+				char nm[24] = "Tab "; int n = 4, v = g_ntabs + 1;
+				if (v >= 10) nm[n++] = (char) ('0' + v / 10);
+				nm[n++] = (char) ('0' + v % 10); nm[n] = '\0';
+				new_tab (nm);
+				g_cur = g_ntabs - 1;
+				save ();
+			}
+			else if (t >= 0)
+			{
+				unsigned now = kapi_get_ticks ();
+				if (t == lastTab && now - lastTabClick < 70) startEdit (t);	// double-click: rename
+				g_cur = t; lastTab = t; lastTabClick = now;
+			}
+			else if (on_trash (mx, my)) fa_open (TRASH_FILES);
+			else { armItem = item_at (mx, my); armX = mx; armY = my; }
+			invalidate (true);
+		}
+		return true;
+	}
+
+	bool onKey (long k) override
+	{
+		if (editTab < 0) return false;
+		if (k == KEY_ENTER) endEdit (true);
+		else if (k == 27) endEdit (false);
+		else if (k == KEY_BACKSPACE) { if (editLen > 0) editBuf[--editLen] = '\0'; }
+		else if (k >= ' ' && k < 127 && editLen < (int) sizeof editBuf - 1) { editBuf[editLen++] = (char) k; editBuf[editLen] = '\0'; }
+		invalidate (true);
+		return true;
+	}
+
+	void onDragOver (int x, int y, bool leave, unsigned) override
+	{
+		int hi = -2, ht = -1;
+		if (!leave)
+		{
+			if (on_trash (x, y)) hi = -3;
+			else if (y >= TAB_H) hi = -1;
+			else { int t = tab_at (x, y); if (t >= 0 && t < g_ntabs) ht = t; }
+		}
+		if (hi != hotItem || ht != hotTab) { hotItem = hi; hotTab = ht; invalidate (true); }
+	}
+
+	void onDrop (int x, int y, int type, const char *data, int, unsigned) override
+	{
+		hotItem = -2; hotTab = -1;
+		if (type != DND_FILES) { invalidate (true); return; }
+		bool toTrash = on_trash (x, y);
+		int t = tab_at (x, y);
+		Tab &dst = (t >= 0 && t < g_ntabs) ? g_tabs[t] : g_tabs[g_cur];
+		int trashed = 0;
+		for (const char *p = data; *p; )
+		{
+			char path[200]; int n = 0;
+			while (*p && *p != '\n') { if (n < (int) sizeof path - 1) path[n++] = *p; p++; }
+			if (*p == '\n') p++;
+			path[n] = '\0';
+			if (n == 0) continue;
+			if (toTrash) { if (trash_move (path)) trashed++; }
+			else tab_add (dst, path);
+		}
+		if (toTrash)
+		{
+			prune ();
+			if (trashed) notify ("Trash", trashed == 1 ? "1 item moved to the Trash." : "Items moved to the Trash.");
+		}
+		save ();
+		trashFull = trash_count () > 0;
+		invalidate (true);
+	}
+
+	void onDragDone (int, unsigned flags) override
+	{
+		dragging = false;
+		// Dragged onto the desktop: take it off the shelf. Moved away by the target (a
+		// File Viewer folder, the Trash): the file is gone, prune drops it.
+		if ((flags & DND_F_DESKTOP) && !(flags & DND_F_CANCEL) && dragTab >= 0 && dragTab < g_ntabs)
+			tab_remove (g_tabs[dragTab], dragItem);
+		prune ();
+		save ();
+		trashFull = trash_count () > 0;
+		dragItem = dragTab = -1;
+		invalidate (true);
+	}
+};
+
+int main (void)
+{
+	int sw = 1024, sh = 768;
+	kapi_screen_size (&sw, &sh);
+	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
+	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
+
+	// Along the bottom edge, clear of the panel (its config.ini position: 1 left /
+	// 2 top / 3 right / 4 bottom).
+	int pos = 3;
+	if (app_ini_load_path ("SD:apps/panel.app/config.ini") >= 0) pos = app_ini_get_int (0, "position", 3);
+	int x0 = 0, y0 = sh - SH, w = sw;
+	if (pos == 1) { x0 = PANEL_BAR + 6; w = sw - x0; }
+	else if (pos == 3) { w = sw - PANEL_BAR - 6; }
+	else if (pos == 4) { y0 = sh - SH - PANEL_BAR - 6; }
+	g_W = w;
+
+	load ();
+	ShelfRoot root (x0, y0, w, SH);
+	if (root.canvas.px == 0) return 1;
+	root.trashFull = trash_count () > 0;
+	root.run ();
+	return 0;
+}

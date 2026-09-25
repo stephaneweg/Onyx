@@ -50,7 +50,13 @@ MessageBox::MessageBox (const char *title, const char *text, int buttons)
 	left = (W - width) / 2; top = (H - height) / 2;		// centre in the window
 	int by = height - 38;
 	Button *b;
-	if (buttons == MB_YESNO)
+	if (buttons == MB_YESNOCANCEL)
+	{
+		b = new Button (width - 268, by, 82, 28, "Yes",    dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 180, by, 82, 28, "No",     dlg_btn); b->tag = 2; addChild (b);
+		b = new Button (width - 92,  by, 82, 28, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+	}
+	else if (buttons == MB_YESNO)
 	{
 		b = new Button (width - 180, by, 82, 28, "Yes", dlg_btn); b->tag = 1; addChild (b);
 		b = new Button (width - 92,  by, 82, 28, "No",  dlg_btn); b->tag = 0; addChild (b);

@@ -11,9 +11,12 @@
 // clipboard, Select All ^A), Format (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller,
 // Bigger), Color (Black/Red/Green/Blue), Style (Normal, Title 1-3). Styles apply to the
 // selection, else to the typing style. The app name menu has Quit (^Q).
+// Drag & drop: a file dropped on the window is opened (after asking to save unsaved
+// changes -- docguard.h); dropped text is inserted at the caret.
 //
 #include "wtk/wtk.h"
 #include "clipboard.h"
+#include "docguard.h"
 
 using namespace wtk;
 
@@ -25,6 +28,10 @@ using namespace wtk;
 static RichTextBox *g_rtb;
 static Label       *g_fn;
 static char         g_path[100] = "SD:doc.txt";
+static unsigned     g_saved;		// doc_hash of the text as last loaded / saved
+
+static void mark_saved () { g_saved = doc_hash (g_rtb->content (), (unsigned) g_rtb->length ()); }
+static bool changed ()    { return doc_hash (g_rtb->content (), (unsigned) g_rtb->length ()) != g_saved; }
 
 // ---- file I/O -----------------------------------------------------------------------
 
@@ -38,7 +45,7 @@ static void do_open ()
 {
 	if (g_path[0] == '\0') return;
 	void *f = kapi_open (g_path);
-	if (f == 0) { g_rtb->setContent (""); g_rtb->setFocus (); return; }
+	if (f == 0) { g_rtb->setContent (""); mark_saved (); g_rtb->setFocus (); return; }
 	static char b[CAP];
 	int n = kapi_read (f, b, sizeof b - 1);
 	kapi_close (f);
@@ -47,15 +54,22 @@ static void do_open ()
 	for (int i = 0; i < n; i++) if (b[i] != '\r') b[j++] = b[i];
 	b[j] = '\0';
 	g_rtb->setContent (b);
+	mark_saved ();
 	g_rtb->setFocus ();
 }
 static void do_save ()
 {
-	if (g_path[0] != '\0') kapi_save_file (g_path, g_rtb->content (), (unsigned) g_rtb->length ());
+	if (g_path[0] != '\0' && kapi_save_file (g_path, g_rtb->content (), (unsigned) g_rtb->length ()) >= 0) mark_saved ();
 }
-static void onNew ()    { g_rtb->setContent (""); set_path ("SD:untitled.txt"); g_rtb->setFocus (); }
+static void onSave ();
+static void onNew ()
+{
+	if (!doc_confirm (g_path, changed (), onSave)) return;
+	g_rtb->setContent (""); set_path ("SD:untitled.txt"); mark_saved (); g_rtb->setFocus ();
+}
 static void onOpen ()
 {
+	if (!doc_confirm (g_path, changed (), onSave)) return;
 	char path[100];
 	if (wk_file_open (path, sizeof path, "SD:/")) { set_path (path); do_open (); }
 	g_rtb->setFocus ();
@@ -97,9 +111,26 @@ static void onT1     () { g_rtb->setLevel (RT_TITLE1); g_rtb->setFocus (); }
 static void onT2     () { g_rtb->setLevel (RT_TITLE2); g_rtb->setFocus (); }
 static void onT3     () { g_rtb->setLevel (RT_TITLE3); g_rtb->setFocus (); }
 
+// The window: a dropped file replaces the document, dropped text goes in at the caret.
+class WriterRoot : public Root
+{
+public:
+	WriterRoot () : Root (W, H, "Writer") {}
+	void onDrop (int, int, int type, const char *data, int, unsigned) override
+	{
+		if (type == DND_TEXT) { g_rtb->insertText (data); g_rtb->setFocus (); return; }
+		char path[100];
+		if (type != DND_FILES || !doc_first_path (data, path, sizeof path)) return;
+		void *d = kapi_opendir (path);
+		if (d) { kapi_closedir (d); return; }		// a folder: nothing to open
+		if (!doc_confirm (g_path, changed (), onSave)) return;
+		set_path (path); do_open ();
+	}
+};
+
 int main (void)
 {
-	Root root (W, H, "Writer");
+	WriterRoot root;
 	root.setBg (0x00303840);
 
 	g_fn = new Label (8, 3, W - 16, PATH_H - 6, g_path, 0x00C8D0DA, 0x00303840);
@@ -154,6 +185,7 @@ int main (void)
 	char args[100];
 	int an = kapi_get_args (args, sizeof args);
 	if (an > 0 && args[0] != '\0') { set_path (args); do_open (); }
+	else mark_saved ();
 
 	g_rtb->setFocus ();
 	root.run ();

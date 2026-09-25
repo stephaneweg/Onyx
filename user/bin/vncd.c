@@ -208,7 +208,19 @@ static int g_px, g_py;
 
 static void key_event (int down, unsigned sym)
 {
-	if (sym == 0xFFE3 || sym == 0xFFE4) { g_ctrl = down; return; }	// Control L/R
+	// Modifiers: keep our Ctrl (control chars) and tell the kernel (drag & drop copy).
+	unsigned m = 0;
+	if (sym == 0xFFE3 || sym == 0xFFE4) m = MOD_CTRL;			// Control L/R
+	else if (sym == 0xFFE1 || sym == 0xFFE2) m = MOD_SHIFT;			// Shift L/R
+	else if (sym == 0xFFE9 || sym == 0xFFEA || sym == 0xFFE7 || sym == 0xFFE8) m = MOD_ALT; // Alt/Meta
+	if (m)
+	{
+		static unsigned mods;
+		mods = down ? (mods | m) : (mods & ~m);
+		if (m == MOD_CTRL) g_ctrl = down;
+		kapi_inject_modifiers (mods);
+		return;
+	}
 	if (!down) return;
 
 	const char *s = 0;

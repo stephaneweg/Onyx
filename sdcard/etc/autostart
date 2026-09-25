@@ -18,6 +18,7 @@ run menubar
 # Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
 run notifyd
 run panel
+run shelf
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,
 # NO encryption: remove this line on an untrusted network.

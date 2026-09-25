@@ -90,6 +90,21 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
 #define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (lValue wheel field = signed delta)
 #define GUI_EVENT_MENU		14	// menu command chosen in the menu bar (lValue = item id)
+// Drag & drop (ABI v42), delivered to the pointer handler:
+#define GUI_EVENT_DROP		15	// dropped on us: lValue = (flags << 32) | (x << 16) | y,
+					// client coords; payload via kapi_drag_data
+#define GUI_EVENT_DRAG_OVER	16	// a drag hovers us: same layout (flags DND_F_LEAVE = gone)
+#define GUI_EVENT_DRAG_DONE	17	// to the source: lValue = (flags << 32) | target pid
+#define DND_F_COPY		1	// Ctrl held at the drop (copy instead of move)
+#define DND_F_CANCEL		2	// DRAG_DONE: cancelled (Esc)
+#define DND_F_DESKTOP		4	// DRAG_DONE: dropped on the desktop / no window
+#define DND_F_LEAVE		8	// DRAG_OVER: the drag left this window
+#define DND_LABEL_MAX		48
+
+// Keyboard modifiers (kapi_get_modifiers): USB report / VNC.
+#define MOD_CTRL		1
+#define MOD_SHIFT		2
+#define MOD_ALT			4
 					// all: lValue = (wheel<<48)|(buttons<<32)|(clientX<<16)|clientY
 					// buttons bit0 = left, bit1 = right; wheel +forward / -back
 
@@ -139,6 +154,10 @@ public:
 	boolean Topmost (void) const	{ return (m_nFlags & WIN_FLAG_TOPMOST) != 0; }
 	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
 	boolean System (void) const	{ return (m_nFlags & WIN_FLAG_SYSTEM) != 0; }
+
+	// The pid of the process owning this window (0 = kernel), for drag & drop results.
+	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
+	unsigned OwnerPid (void) const		{ return m_nOwnerPid; }
 	int MinLogicalHeight (void) const { return m_nMinLogicalH; }	// smallest logical height so far
 	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; ScreenDirty (); }	// 255 = opaque
 	int  Alpha (void) const		{ return m_nAlpha; }
@@ -237,6 +256,7 @@ private:
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
 	unsigned	m_nFlags;	// WIN_FLAG_* (borderless, ...)
+	unsigned	m_nOwnerPid;	// owning process (SetOwnerPid)
 	int		m_nLogicalW;	// composited/hit-tested client size (<= canvas alloc)
 	int		m_nLogicalH;
 	char		m_Title[48];	// owned copy of the title (caller's may be transient)
@@ -336,6 +356,18 @@ public:
 	// focused textbox (printable chars append; backspace deletes).
 	void OnKey (const char *pString);
 
+	// Drag & drop (ABI v42). DragBegin: pSrc starts a drag session (the left button must
+	// be held); a badge with pLabel follows the cursor. While it lasts, the window under
+	// the cursor gets GUI_EVENT_DRAG_OVER; at the left-button release it gets
+	// GUI_EVENT_DROP and the source GUI_EVENT_DRAG_DONE (target pid + DND_F_* flags).
+	// Esc cancels. The payload itself is kept by the kapi layer (kapi_drag_data).
+	boolean DragBegin (CWindow *pSrc, const char *pLabel);
+	boolean DragActive (void) const		{ return m_bDnd; }
+
+	// Keyboard modifiers (MOD_*), from the USB keyboard's raw report or vncd.
+	void SetModifiers (unsigned nMods)	{ m_nModifiers = nMods; ScreenDirty (); }
+	unsigned Modifiers (void) const		{ return m_nModifiers; }
+
 	// Diagnostics for the GUI watchdog: counters bumped by Composite / OnMouse /
 	// OnKey, and a snapshot of the window list (bottom -> top). Window pointers stay
 	// valid after Remove (see Composite), so the caller may inspect them unlocked.
@@ -426,6 +458,13 @@ private:
 	CWindow	  *m_pMenuLast;		// active window at the last GetActiveMenu
 	unsigned   m_nMenuLastGen;	// ... and its MenuGen
 	unsigned   m_nMenuSerial;	// GetActiveMenu change counter
+
+	volatile boolean m_bDnd;	// a drag session is in progress
+	CWindow	  *m_pDndSrc;		// its source window
+	CWindow	  *m_pDndOver;		// the window last sent DRAG_OVER (0 = none)
+	char	   m_DndLabel[DND_LABEL_MAX];
+	volatile unsigned m_nModifiers;	// MOD_*
+	void DndFinishLocked (int x, int y, boolean bCancel);	// drop / cancel
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).

@@ -62,6 +62,10 @@ void kapi_shutdown (int);
 unsigned *kapi_fullscreen_begin (int *, int *);
 void kapi_present_fb (void);
 void kapi_fullscreen_end (void);
+int  kapi_drag_begin (int, const void *, unsigned, const char *);
+int  kapi_drag_data (int *, void *, unsigned);
+unsigned kapi_get_modifiers (void);
+void kapi_inject_modifiers (unsigned);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -280,4 +284,9 @@ void KApiTableInit (void)
 	t->fullscreen_begin  = kapi_fullscreen_begin;
 	t->present_fb        = kapi_present_fb;
 	t->fullscreen_end    = kapi_fullscreen_end;
+
+	t->drag_begin        = kapi_drag_begin;
+	t->drag_data         = kapi_drag_data;
+	t->get_modifiers     = kapi_get_modifiers;
+	t->inject_modifiers  = kapi_inject_modifiers;
 }

@@ -32,7 +32,8 @@
 // v40: + ipc_register/ipc_lookup (named services, 512-byte messages), clipboard_set/get,
 //      set_window_alpha (fades), shutdown (restart / halt).
 // v41: + fullscreen_begin/present_fb/fullscreen_end -- full-screen apps.
-#define KAPI_ABI_VERSION	41
+// v42: + drag_begin/drag_data (drag & drop), get_modifiers/inject_modifiers.
+#define KAPI_ABI_VERSION	42
 
 #ifdef __cplusplus
 extern "C" {
@@ -406,6 +407,22 @@ struct TKApiTable
 	unsigned *(*fullscreen_begin) (int *w, int *h);
 	void      (*present_fb) (void);
 	void      (*fullscreen_end) (void);
+
+	// --- v42 additions (drag & drop, keyboard modifiers) ---
+	// drag_begin: start dragging (type 1 text / 2 file paths '\n'-separated, <= 4 KB)
+	// from the caller's window while the left button is held; `label` rides on the
+	// cursor. The window under the cursor gets GUI_EVENT_DRAG_OVER (16), the one under
+	// the release GUI_EVENT_DROP (15) -- lValue = (flags << 32) | (x << 16) | y, client
+	// coords, flags DND_F_COPY (Ctrl) / DND_F_LEAVE -- and the source GUI_EVENT_DRAG_DONE
+	// (17): lValue = (flags << 32) | target pid, flags DND_F_COPY / DND_F_CANCEL (Esc) /
+	// DND_F_DESKTOP (no window, or the desktop). All go to the pointer handler.
+	// drag_data: the last payload (copies <= cap, returns the full length + type).
+	// get_modifiers: MOD_CTRL 1 / MOD_SHIFT 2 / MOD_ALT 4 (held now);
+	// inject_modifiers: set them (vncd).
+	int      (*drag_begin) (int type, const void *data, unsigned len, const char *label);
+	int      (*drag_data) (int *type, void *buf, unsigned cap);
+	unsigned (*get_modifiers) (void);
+	void     (*inject_modifiers) (unsigned mods);
 };
 
 #ifdef __cplusplus

@@ -225,6 +225,24 @@ Notes / caveats:
 > `kapi_mailbox_send (pid, type, data, len)` (≤ 512 bytes); the service drains with
 > `kapi_mailbox_recv`.
 
+> **Drag & drop (ABI v42).** A **source** calls `kapi_drag_begin (DND_FILES, paths, len,
+> label)` while the left button is held (from `onMouse`, once the cursor moved a few pixels
+> from the press); `paths` is `\n`-separated. A **target** overrides the `wtk::Root`
+> virtuals: `onDrop (x, y, type, data, len, flags)` (data NUL-terminated; `flags &
+> DND_F_COPY` = Ctrl held), `onDragOver (x, y, leave, flags)` (highlight the drop spot),
+> and the source gets `onDragDone (targetPid, flags)` (`DND_F_DESKTOP` = dropped on the
+> desktop, `DND_F_CANCEL` = Esc). `kapi_get_modifiers ()` returns `MOD_CTRL` / `MOD_SHIFT` /
+> `MOD_ALT`. Examples: `fileviewer` (source + target), `shelf`, and the document apps.
+>
+> **File associations**: `#include "fileassoc.h"` — `fa_open (path)` opens a path like a
+> double-click (folder → File Viewer, `.app` / ELF → run, else the app `SD:/etc/fileassoc.ini`
+> maps its extension to, as `SD:apps/<app>.app/main <path>`); `fa_app_for (path, app, cap)`
+> only looks it up. **Unsaved changes**: `#include "docguard.h"` — keep
+> `doc_hash (data, len)` of the document as loaded / saved, and before replacing it call
+> `doc_confirm (name, changed, save_fn)` (a Yes / No / Cancel `MB_YESNOCANCEL` box; false =
+> cancelled). A document app should accept a path argument (`kapi_get_args`) and a dropped
+> file (`onDrop`), so it works with the File Viewer, the Shelf and `fileassoc.ini`.
+
 > **Menus.** Put commands in the **system menu bar**, not in button rows. After creating
 > the `Root`, build a `wtk::Menu` once and publish it:
 >

@@ -326,6 +326,15 @@ def icon_menubar():		# a screen with a menu bar and an open drop-down
         prect(px, 14, y, 22, y, (200, 210, 225))
     return px
 
+def icon_shelf():		# a shelf plank holding a folder, a document and an app
+    px = blank()
+    prect(px, 3, 30, 36, 33, (150, 110, 60)); prect(px, 3, 34, 36, 35, (100, 70, 35))
+    prect(px, 5, 17, 14, 29, (224, 180, 92)); prect(px, 5, 15, 9, 17, (200, 154, 72))
+    prect(px, 17, 11, 25, 29, (240, 240, 240)); pframe(px, 17, 11, 25, 29, (128, 136, 144))
+    for y in (15, 19, 23): prect(px, 19, y, 23, y, (112, 120, 128))
+    prect(px, 28, 18, 35, 29, (16, 20, 24)); pframe(px, 28, 18, 35, 29, (128, 200, 255))
+    return px
+
 def icon_notifyd():		# a speech bubble with lines
     px = blank()
     prect(px, 5, 8, 34, 26, (38, 47, 59)); pframe(px, 5, 8, 34, 26, (96, 255, 144))
@@ -366,7 +375,7 @@ ICONS = {
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
-    "notifyd": icon_notifyd, "shutdown": icon_shutdown, "plasma": icon_plasma,
+    "notifyd": icon_notifyd, "shelf": icon_shelf, "shutdown": icon_shutdown, "plasma": icon_plasma,
 }
 
 

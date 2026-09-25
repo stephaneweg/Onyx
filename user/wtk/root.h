@@ -20,6 +20,16 @@ public:
 	void onDraw () override;
 	void run ();
 
+	// Drag & drop (ABI v42). onDrop: something was dropped at (x,y) (client coords) --
+	// type DND_TEXT / DND_FILES ('\n'-separated paths), data NUL-terminated, flags
+	// DND_F_COPY (Ctrl held). onDragOver: a drag hovers (x,y); leave = it went away
+	// (highlight a drop target). onDragDone: our own drag (kapi_drag_begin) ended --
+	// targetPid (0 = none), flags DND_F_COPY / DND_F_CANCEL / DND_F_DESKTOP.
+	virtual void onDrop (int x, int y, int type, const char *data, int len, unsigned flags)
+	{ (void) x; (void) y; (void) type; (void) data; (void) len; (void) flags; }
+	virtual void onDragOver (int x, int y, bool leave, unsigned flags) { (void) x; (void) y; (void) leave; (void) flags; }
+	virtual void onDragDone (int targetPid, unsigned flags) { (void) targetPid; (void) flags; }
+
 	static Root *current ();		// the active window (for modal dialogs)
 
 private:

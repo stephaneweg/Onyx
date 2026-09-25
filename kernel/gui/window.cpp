@@ -20,6 +20,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
 	m_bExitRequested (FALSE)
 {
+	m_nOwnerPid = 0;
 	m_Menu[0] = '\0';
 
 	// Copy the title (the caller's string may live in a transient address space).
@@ -285,8 +286,10 @@ CWindowManager::CWindowManager (void)
 	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2),
 	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0),
 	m_pFullscreen (0), m_pFsRaw (0), m_ulFsPhys (0), m_nFsPages (0),
-	m_pMenuLast (0), m_nMenuLastGen (0), m_nMenuSerial (1)
+	m_pMenuLast (0), m_nMenuLastGen (0), m_nMenuSerial (1),
+	m_bDnd (FALSE), m_pDndSrc (0), m_pDndOver (0), m_nModifiers (0)
 {
+	m_DndLabel[0] = '\0';
 	assert (s_pThis == 0);
 	s_pThis = this;
 
@@ -337,6 +340,8 @@ void CWindowManager::Remove (CWindow *pWindow)
 	if (m_pPtrOverWindow == pWindow)	{ m_pPtrOverWindow = 0; }
 	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
 	if (m_pFullscreen == pWindow)		{ m_pFullscreen = 0; }	// its app quit: desktop back
+	if (m_pDndOver == pWindow)		{ m_pDndOver = 0; }
+	if (m_bDnd && m_pDndSrc == pWindow)	{ m_bDnd = FALSE; m_pDndSrc = 0; }	// source gone
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)
@@ -555,6 +560,15 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	// A committed app-written wallpaper (m_WallImage) takes priority over the
 	// kernel-set one (m_pWallpaper).
 	pWall = (m_bLiveWall && m_WallImage.IsValid ()) ? &m_WallImage : m_pWallpaper;
+	boolean bDnd = m_bDnd;
+	char DndLabel[DND_LABEL_MAX + 2];
+	if (bDnd)
+	{
+		unsigned i = 0;
+		if (m_nModifiers & MOD_CTRL) { DndLabel[i++] = '+'; }		// copy
+		for (unsigned j = 0; m_DndLabel[j] != '\0' && i < DND_LABEL_MAX; j++) DndLabel[i++] = m_DndLabel[j];
+		DndLabel[i] = '\0';
+	}
 	m_SpinLock.Release ();
 
 	// Desktop background: the wallpaper if set (filled behind it for any margin),
@@ -572,6 +586,17 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 		{
 			pSnapshot[i]->DrawTo (pScreen, pSnapshot[i] == pActive);
 		}
+	}
+
+	// Drag & drop badge: the dragged item's label, just below-right of the cursor.
+	if (bDnd && m_bCursorShown)
+	{
+		int bw = GImage::TextWidth (DndLabel) + 12, bh = GImage::FontHeight () + 6;
+		int bx = m_nCursorX + 16, by = m_nCursorY + 18;
+		pScreen->FillRectangle (bx + 2, by + 2, bx + bw + 1, by + bh + 1, 0x00101418);	// shadow
+		pScreen->FillRectangle (bx, by, bx + bw - 1, by + bh - 1, 0x00303D4D);
+		pScreen->DrawRectangle (bx, by, bx + bw - 1, by + bh - 1, 0x0090C0FF);
+		pScreen->DrawText (bx + 6, by + 3, DndLabel, 0x00FFFFFF);
 	}
 
 	// Cursor, drawn last so it floats above everything. Prefer the loaded cursor
@@ -781,6 +806,69 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 	return ~0u;
 }
 
+// ---- drag & drop (ABI v42) -------------------------------------------------------------
+// Push a drag & drop event to a window's pointer handler: lValue = (flags << 32) |
+// (x << 16) | y (client coords, clamped non-negative) -- or, for DRAG_DONE, the caller's
+// raw value in lRaw.
+static void EmitDnd (CWindow *pWin, int nEvent, int cx, int cy, unsigned nFlags, long lRaw = -1)
+{
+	if (pWin == 0 || pWin->PointerHandler () == 0) return;
+	if (cx < 0) cx = 0; else if (cx > 0xFFFF) cx = 0xFFFF;
+	if (cy < 0) cy = 0; else if (cy > 0xFFFF) cy = 0xFFFF;
+	GUIEvent Ev;
+	Ev.ulHandler = pWin->PointerHandler ();
+	Ev.ulSender  = 0;
+	Ev.nEvent    = nEvent;
+	Ev.lValue    = lRaw >= 0 ? lRaw : ((long) nFlags << 32) | ((long) cx << 16) | (long) cy;
+	pWin->PushEvent (Ev);
+}
+
+boolean CWindowManager::DragBegin (CWindow *pSrc, const char *pLabel)
+{
+	m_SpinLock.Acquire ();
+	boolean bOK = pSrc != 0 && (m_nLastButtons & 1) != 0 && m_pFullscreen == 0;
+	if (bOK)
+	{
+		if (m_bDnd) DndFinishLocked (m_nCursorX, m_nCursorY, TRUE);	// (a stale session)
+		unsigned i = 0;
+		for (; pLabel != 0 && pLabel[i] != '\0' && i < DND_LABEL_MAX - 1; i++) m_DndLabel[i] = pLabel[i];
+		m_DndLabel[i] = '\0';
+		m_pDndSrc = pSrc; m_pDndOver = 0; m_bDnd = TRUE;
+	}
+	m_SpinLock.Release ();
+	ScreenDirty ();
+	return bOK;
+}
+
+// Caller holds m_SpinLock. End the session: DROP to the window under (x,y) (unless
+// cancelled), DRAG_DONE to the source.
+void CWindowManager::DndFinishLocked (int x, int y, boolean bCancel)
+{
+	CWindow *pSrc = m_pDndSrc;
+	m_bDnd = FALSE; m_pDndSrc = 0;
+	if (m_pDndOver != 0) { EmitDnd (m_pDndOver, GUI_EVENT_DRAG_OVER, 0, 0, DND_F_LEAVE); m_pDndOver = 0; }
+	unsigned nFlags = (m_nModifiers & MOD_CTRL) ? DND_F_COPY : 0, nPid = 0;
+	if (bCancel)
+	{
+		nFlags |= DND_F_CANCEL;
+	}
+	else
+	{
+		boolean bTitle = FALSE;
+		unsigned nHit = HitTest (x, y, &bTitle);
+		CWindow *pT = nHit != ~0u ? m_pWindows[nHit] : 0;
+		if (pT == 0 || pT->Backmost ()) nFlags |= DND_F_DESKTOP;
+		if (pT != 0 && pT->PointerHandler () != 0)
+		{
+			EmitDnd (pT, GUI_EVENT_DROP, x - (pT->X () + pT->ChromeL ()),
+				 y - (pT->Y () + pT->ChromeT ()), nFlags & DND_F_COPY);
+			nPid = pT->OwnerPid ();
+		}
+	}
+	EmitDnd (pSrc, GUI_EVENT_DRAG_DONE, 0, 0, 0, ((long) nFlags << 32) | (long) nPid);
+	ScreenDirty ();
+}
+
 // Push one GUI_EVENT_PTR_* event to a window's pointer handler (client coords,
 // clamped non-negative; the toolkit treats out-of-bounds as "over no widget").
 void CWindowManager::EmitPointer (CWindow *pWin, int nEvent, int cx, int cy,
@@ -915,6 +1003,25 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		m_nPrevX = x; m_nPrevY = y; m_nLastButtons = nButtons;
 		m_SpinLock.Release ();
 		return;
+	}
+
+	if (m_bDnd)
+	{
+		// Drag session: DRAG_OVER to the window under the cursor, DROP at the release.
+		// (The normal stream below still reaches the source -- its capture -- so its
+		// widgets see the button go up.)
+		boolean bT = FALSE;
+		unsigned nHit = HitTest (x, y, &bT);
+		CWindow *pOver = nHit != ~0u ? m_pWindows[nHit] : 0;
+		if (pOver != 0 && pOver->PointerHandler () == 0) pOver = 0;
+		if (pOver != m_pDndOver && m_pDndOver != 0)
+			EmitDnd (m_pDndOver, GUI_EVENT_DRAG_OVER, 0, 0, DND_F_LEAVE);
+		if (pOver != 0 && (pOver != m_pDndOver || x != m_nPrevX || y != m_nPrevY))
+			EmitDnd (pOver, GUI_EVENT_DRAG_OVER, x - (pOver->X () + pOver->ChromeL ()),
+				 y - (pOver->Y () + pOver->ChromeT ()),
+				 (m_nModifiers & MOD_CTRL) ? DND_F_COPY : 0);
+		m_pDndOver = pOver;
+		if ((nButtons & 1) == 0) DndFinishLocked (x, y, FALSE);
 	}
 
 	boolean bLeftNow = (nButtons & 1) != 0;
@@ -1058,6 +1165,12 @@ void CWindowManager::OnKey (const char *pString)
 	if (pString == 0) return;
 	m_SpinLock.Acquire ();
 	m_nKeyEvents++;
+	if (m_bDnd && pString[0] == 0x1b && pString[1] == '\0')	// Esc cancels a drag
+	{
+		DndFinishLocked (m_nCursorX, m_nCursorY, TRUE);
+		m_SpinLock.Release ();
+		return;
+	}
 	// Deliver keys to the topmost window's app-level key handler. Apps own their text
 	// input via the user-side uikit toolkit -- no kernel widgets or dialogs any more.
 	CWindow *pTop = KeyTargetLocked ();		// topmost window except the menu bar

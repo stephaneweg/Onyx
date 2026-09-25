@@ -218,13 +218,51 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
 
 Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
 the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
-says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`). It opens **right next to the panel**, beside
+says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `shelf`). It opens **right next to the panel**, beside
 the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
 below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
 scrollbar (or the wheel) if the grid overflows.
 
 ![App list](../screenshots/applist.png)
 *The app list (square, 6-column grid, opened beside the panel's "apps" button).*
+
+### The Shelf (`shelf`)
+
+A strip along the **bottom of the screen** (started by `autostart`, clear of the panel)
+that keeps **references** to files, folders and apps, organised in **tabs** — the files
+themselves stay where they are. Other windows can cover it; click it to bring it forward.
+
+- **Add**: drag files, folders or apps (e.g. from the File Viewer) and drop them on the
+  shelf — on the items area (current tab) or on a tab.
+- **Open**: click an item — it opens in a **new instance** of its app (see *File
+  associations* below; folders open in the File Viewer, apps run).
+- **Drag an item** onto a File Viewer folder to **move** the file there (hold **Ctrl** to
+  **copy**), onto an app window to **open it in that app** (tinypad, Writer, paint ask to
+  save their current document first), or onto the **desktop** to **remove** it from the
+  shelf. **Esc** cancels a drag.
+- **The Trash** (right end): drop items on it to move them to the Trash (`SD:/.Trash`);
+  click it to open the Trash in the File Viewer. A sheet of paper sticks out when it holds
+  something.
+- **Tabs**: click to switch; **+** adds a tab; **double-click** a tab to rename it (type,
+  **Enter** / **Esc**); **right-click** an **empty** tab to remove it. The **wheel**
+  scrolls a long tab.
+- Saved in `SD:/etc/shelf.ini` (`tab = Name`, then `item = path` lines).
+
+![Shelf](../screenshots/shelf.png)
+*The Shelf: tabs, a folder, a document, an image and an app, and the Trash at the right.*
+
+### Drag & drop and file associations
+
+Files are dragged with the **left button**: press on an item, move a few pixels — a label
+follows the cursor. Hold **Ctrl** while dropping to **copy** instead of move (the label
+shows a **+**); **Esc** cancels. Drop targets: File Viewer columns and folders, the Shelf,
+the Trash, and document apps (tinypad, Writer, paint open the dropped file; dropped text
+goes in at the caret).
+
+**`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
+per line (`txt = tinypad`, `bmp = paint`, `doc = writer`, …): opening the file runs
+`SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the Shelf
+(click). Folders open in the File Viewer, `.app` bundles and programs run.
 
 ### Launching, closing, switching
 
@@ -452,8 +490,8 @@ going back is one click on an earlier column. Launch it from the app list (categ
   back to that folder.
 - **Preview column**: selecting a file shows its size and type, the first lines of a text
   file, a scaled-down **BMP** image, or — for an app bundle — its icon, its friendly name and its folder name (`demoB.app`).
-- **Mouse**: click = select; **double-click** = open (text files in `tinypad`, programs
-  run, `.app` bundles launch); **wheel** scrolls the column under the cursor. A column longer than the window gets
+- **Mouse**: click = select; **double-click** = open (a file in the app `SD:/etc/fileassoc.ini`
+  associates with its extension, programs run, `.app` bundles launch); **wheel** scrolls the column under the cursor. A column longer than the window gets
   its own **vertical scrollbar** at its right edge: drag the thumb, or click the track to jump.
 - **Keyboard**: **↑/↓**, Page Up/Down, Home/End move in the active column; **→** enters the
   selected folder, **←** or **Backspace** goes back; **Enter** opens; typing a **letter**
@@ -469,6 +507,11 @@ going back is one click on an earlier column. Launch it from the app list (categ
   **Rename** (Ctrl-R), **Copy** (Ctrl-C), **Cut** (Ctrl-X), **Paste** (Ctrl-V — into the active
   column's folder; copies of folders are recursive, a clash gets a "copy" name), **Refresh**
   (Ctrl-L). The status bar shows the item count and the selection.
+- **Drag & drop**: drag an item (press, move a few pixels) onto a folder — a folder row, or
+  anywhere in a column for that column's folder (the target is outlined) — to **move** it
+  there; hold **Ctrl** to **copy**. Works between File Viewer windows, from/to the Shelf,
+  and in the Trash view (a drop there moves to the Trash). Dropping a file on an app window
+  (tinypad, Writer, paint) opens it there.
 
 ![File Viewer](../screenshots/fileviewer.png)
 *The File Viewer: `SD:` ▸ `etc` in the path bar, one folder per column, and the preview of
@@ -572,13 +615,14 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 
 | App | Description and controls |
 |---|---|
-| **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). |
-| **Writer** | Rich-text editor (bold/italic/underline/strike/highlight, colours, sizes, heading levels) on a word-wrapping document. Select text with the mouse, then use the menus: **File** (New ^N, Open... ^O, Save ^S, Save As...), **Format** (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller, Bigger), **Color** (Black/Red/Green/Blue), **Style** (Normal, Title 1-3). Plain-text load/save. |
+| **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
+| **Writer** | Rich-text editor (bold/italic/underline/strike/highlight, colours, sizes, heading levels) on a word-wrapping document. Select text with the mouse, then use the menus: **File** (New ^N, Open... ^O, Save ^S, Save As...), **Format** (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller, Bigger), **Color** (Black/Red/Green/Blue), **Style** (Normal, Title 1-3). Plain-text load/save (`.doc` files open in Writer). **Drop** a file to open it (asks to save unsaved changes first), or text to insert it. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
-| **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save As... ^S saves a BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). |
+| **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). |
 | **filer** | File manager (see §9). |
+| **shelf** (Shelf) | The bottom strip of file / folder / app references in tabs, with the Trash (see §5, *The Shelf*). Reads/writes `SD:/etc/shelf.ini`. |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
 | **terminal** | Terminal/shell (see §7). |
 | **taskman** | Task manager. Arrows to select; Enter brings the window to the foreground; `k`/Delete kills the app (except kernel tasks); `r` refreshes. |

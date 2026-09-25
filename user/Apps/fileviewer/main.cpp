@@ -25,6 +25,7 @@
 #include "fsutil.h"
 #include "trash.h"
 #include "notify.h"
+#include "fileassoc.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -122,14 +123,6 @@ static int is_program (const char *path)
 	kapi_close (f);
 	return n == 4 && m[0] == 0x7F && m[1] == 'E' && m[2] == 'L' && m[3] == 'F';
 }
-static int is_text_name (const char *n)
-{
-	static const char *ext[] = { "txt", "ini", "md", "log", "cfg", "conf", "csv", "c", "h",
-				     "cpp", "hpp", "sh", "html", "htm", "css", "kmap", "json", 0 };
-	for (int i = 0; ext[i]; i++) if (ends_with (n, ext[i])) return 1;
-	return 0;
-}
-
 // The friendly name of an app bundle: "name = ..." in <appdir>/app.txt. 0 if none.
 static int app_name (const char *appdir, char *out, int cap)
 {
@@ -385,9 +378,14 @@ static void open_entry (int c)
 		status ("Launched ", name);
 	}
 	else if (e->isdir) { if (c + 1 < g_ncol && g_col[c + 1].count > 0) select (c + 1, 0); }
-	else if (is_text_name (e->name)) { kapi_exec ("SD:apps/tinypad.app/main", path); status ("Opened in tinypad: ", e->name); }
-	else if (is_program (path)) { kapi_exec (path, ""); status ("Running ", e->name); }
-	else status ("No application to open ", e->name);
+	else
+	{
+		// SD:/etc/fileassoc.ini ("ext = app"), else an ELF program runs (fileassoc.h).
+		char app[48];
+		if (fa_app_for (path, app, sizeof app) && fa_open (path)) status ("Opened in ", app);
+		else if (fa_open (path)) status ("Running ", e->name);
+		else status ("No application to open ", e->name);
+	}
 }
 
 // ---- file operations (fsutil.h / trash.h) ----------------------------------------------
@@ -548,6 +546,24 @@ static void clip_set (bool cut)
 	clip_set_files (p, cut ? 1 : 0);
 	status (cut ? "Cut: " : "Copied: ", e->name);
 }
+// Move (or copy) src into folder dir under a unique name. false + a status message if it
+// cannot (missing, a folder into itself). Used by Paste and by drag & drop.
+static bool transfer (const char *src, const char *dir, bool move)
+{
+	if (!exists (src)) { status ("No longer exists: ", src); return false; }
+	bool isDir = fs_is_dir (src);
+	char parent[300]; fs_dirname (parent, sizeof parent, src);
+	if (move && ci_cmp (parent, dir) == 0) return true;		// already there
+	int n = slen (src);
+	if (isDir && ci_cmp (dir, src) == 0) { status ("Cannot put a folder into itself"); return false; }
+	bool inside = true; for (int i = 0; i < n; i++) if (lower (dir[i]) != lower (src[i])) { inside = false; break; }
+	if (isDir && inside && dir[n] == '/') { status ("Cannot put a folder inside itself"); return false; }
+	char dst[300];
+	unique_name (dst, sizeof dst, dir, fs_basename (src));
+	if (move) return kapi_rename (src, dst) != 0;
+	return isDir ? copy_tree (src, dst, 0) : copy_file (src, dst);
+}
+
 static void op_copy () { clip_set (false); }
 static void op_cut ()  { clip_set (true); }
 static void op_paste ()
@@ -555,23 +571,13 @@ static void op_paste ()
 	char g_clip[256]; int cutFlag = 0;
 	if (!clip_get_file (g_clip, sizeof g_clip, &cutFlag)) { status ("Nothing to paste"); return; }
 	bool g_clipCut = cutFlag != 0;
-	bool g_clipDir = false;
-	{ void *d = kapi_opendir (g_clip); if (d) { g_clipDir = true; kapi_closedir (d); } }
-	if (!exists (g_clip)) { status ("The copied item no longer exists"); return; }
-	const char *name = g_clip; for (const char *p = g_clip; *p; p++) if (*p == '/') name = p + 1;
 	const char *dir = g_col[g_active].path;
-	char dst[300];
-	unique_name (dst, sizeof dst, dir, name);
-	// Refuse to paste a folder into itself (or below it).
-	int n = slen (g_clip);
-	if (g_clipDir && ci_cmp (dir, g_clip) == 0) { status ("Cannot paste a folder into itself"); return; }
-	bool inside = true; for (int i = 0; i < n; i++) if (lower (dir[i]) != lower (g_clip[i])) { inside = false; break; }
-	if (g_clipDir && inside && dir[n] == '/') { status ("Cannot paste a folder inside itself"); return; }
-	bool ok;
-	if (g_clipCut) { ok = kapi_rename (g_clip, dst) != 0; if (ok) clip_clear (); }
-	else ok = g_clipDir ? copy_tree (g_clip, dst, 0) : copy_file (g_clip, dst);
+	char before[160]; scopy (before, g_status, sizeof before);
+	bool ok = transfer (g_clip, dir, g_clipCut);
+	if (ok && g_clipCut) clip_clear ();
 	refresh ();
-	status (ok ? "Pasted into " : "Paste failed into ", dir);
+	if (ok) status ("Pasted into ", dir);
+	else if (ci_cmp (before, g_status) == 0) status ("Paste failed into ", dir);
 	notify ("File Viewer", ok ? (g_clipCut ? "Item moved." : "Item copied.") : "Paste failed.");
 }
 static void op_refresh () { refresh (); status ("Refreshed"); }
@@ -586,6 +592,36 @@ static void on_hscroll (Widget &w)
 // ---- the window --------------------------------------------------------------------------
 static int g_crumbX[MAXCOL + 1];		// path-bar segment right edges (hit-test)
 static int g_vdrag = -1;			// column whose scrollbar is being dragged
+
+// Drag & drop (ABI v42). Source: press on a row, move > DRAG_START px -> kapi_drag_begin
+// with its path. Target: the folder under the cursor -- a plain-folder row, else the
+// column's own folder -- gets the dropped paths (move; Ctrl = copy; in the Trash view:
+// move to the Trash). g_dropSlot / g_dropRow = the highlighted target (-1 = none).
+#define DRAG_START	6
+static int g_armSlot = -1, g_armRow = -1, g_armX = 0, g_armY = 0;
+static bool g_dragging = false;
+static int g_dropSlot = -1, g_dropRow = -1;
+
+// The drop target folder at (mx,my): its path in out, the slot / row to highlight.
+static bool drop_target_at (int mx, int my, char *out, int cap, int *pSlot, int *pRow)
+{
+	*pSlot = -1; *pRow = -1;
+	if (my < COL_Y || my >= COL_Y + COL_H || mx < 0 || mx >= W) return false;
+	int slot = g_first + mx / COLW;
+	if (slot >= g_ncol) slot = g_ncol - 1;		// the preview / empty slots: deepest folder
+	if (slot < 0) return false;
+	const Column &k = g_col[slot];
+	int row = k.top + (my - COL_Y) / g_rowH;
+	if (slot == g_first + mx / COLW && row < k.count && k.e[row].isdir && !k.e[row].isapp)
+	{
+		join (out, cap, k.path, k.e[row].name);	// onto a folder row: into that folder
+		*pSlot = slot; *pRow = row;
+		return true;
+	}
+	scopy (out, k.path, cap);			// elsewhere in the column: its folder
+	*pSlot = slot;
+	return true;
+}
 
 // Each column has its own vertical scrollbar (WK_SBW px, at its right edge) when its
 // folder has more entries than fit: drag the thumb, or click the track to jump there.
@@ -647,6 +683,13 @@ public:
 			unsigned col = e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
 			canvas.text (x + 8, y + 2, name, col);
 			if (e.isdir && !e.isapp) draw_arrow (canvas, x + COLW - 16, y + (g_rowH - 9) / 2, C_DIMTXT);
+		}
+		if (g_dropSlot == slot)				// drop target highlight
+		{
+			if (g_dropRow >= k.top && g_dropRow < k.top + g_rows)
+				canvas.frameRect (x + 1, COL_Y + (g_dropRow - k.top) * g_rowH, COLW - 3, g_rowH, 0x0090C0FF);
+			else if (g_dropRow < 0)
+				canvas.frameRect (x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 0x0090C0FF);
 		}
 		WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
 		if (t.show) wk_draw_vscroll (canvas, x + COLW - 1 - WK_SBW, COL_Y, WK_SBW, COL_H, t, C_COLSEP,
@@ -777,8 +820,22 @@ public:
 			}
 			return true;
 		}
-		if (!bl) { pressed = false; return true; }
-		if (pressed) return true;
+		if (!bl) { pressed = false; g_armSlot = -1; return true; }
+		if (pressed)
+		{
+			// Button held: past DRAG_START px from the press on a row, start dragging it.
+			int dx = mx - g_armX, dy = my - g_armY;
+			if (g_armSlot >= 0 && !g_dragging && dx * dx + dy * dy > DRAG_START * DRAG_START
+			    && g_armSlot < g_ncol && g_armRow < g_col[g_armSlot].count)
+			{
+				const Entry &e = g_col[g_armSlot].e[g_armRow];
+				char path[300]; join (path, sizeof path, g_col[g_armSlot].path, e.name);
+				if (kapi_drag_begin (DND_FILES, path, (unsigned) slen (path) + 1, e.label))
+					g_dragging = true;
+				g_armSlot = -1;
+			}
+			return true;
+		}
 		pressed = true;
 
 		if (my >= TB_H && my < TB_H + BC_H)			// path bar
@@ -808,6 +865,7 @@ public:
 		int row = g_col[slot].top + (my - COL_Y) / g_rowH;
 		if (row >= g_col[slot].count) { jump_to (slot); invalidate (true); return true; }
 
+		g_armSlot = slot; g_armRow = row; g_armX = mx; g_armY = my;	// a drag may start here
 		bool dbl = slot == g_lastSlot && row == g_lastRow && now - g_lastTick < CLICK_DELAY;
 		if (!(g_col[slot].sel == row && slot + 1 == g_ncol - (g_col[slot].e[row].isdir && !g_col[slot].e[row].isapp ? 1 : 0)))
 			select (slot, row);
@@ -816,6 +874,43 @@ public:
 		else { g_lastSlot = slot; g_lastRow = row; g_lastTick = now; }
 		invalidate (true);
 		return true;
+	}
+
+	void onDragOver (int x, int y, bool leave, unsigned) override
+	{
+		int s = -1, r = -1; char dir[300];
+		if (!leave) drop_target_at (x, y, dir, sizeof dir, &s, &r);
+		if (s != g_dropSlot || r != g_dropRow) { g_dropSlot = s; g_dropRow = r; invalidate (true); }
+	}
+
+	void onDrop (int x, int y, int type, const char *data, int, unsigned flags) override
+	{
+		g_dropSlot = g_dropRow = -1;
+		char dir[300]; int s, r;
+		if (type != DND_FILES || !drop_target_at (x, y, dir, sizeof dir, &s, &r)) { invalidate (true); return; }
+		bool copy = (flags & DND_F_COPY) != 0, toTrash = in_trash () && s >= 0 && ci_cmp (dir, TRASH_FILES) == 0;
+		int done = 0, failed = 0;
+		for (const char *p = data; *p; )
+		{
+			char src[300]; int n = 0;
+			while (*p && *p != '\n') { if (n < (int) sizeof src - 1) src[n++] = *p; p++; }
+			if (*p == '\n') p++;
+			src[n] = '\0';
+			if (n == 0) continue;
+			bool ok = toTrash ? trash_move (src) : transfer (src, dir, !copy);
+			if (ok) done++; else failed++;
+		}
+		refresh ();
+		if (done) status (toTrash ? "Moved to the Trash" : copy ? "Copied into " : "Moved into ", toTrash ? "" : dir);
+		if (failed) notify ("File Viewer", "Some items could not be moved.");
+		invalidate (true);
+	}
+
+	void onDragDone (int, unsigned) override
+	{
+		g_dragging = false;
+		refresh ();				// the target may have moved it away
+		invalidate (true);
 	}
 
 	bool onKey (long key) override
@@ -895,7 +990,9 @@ int main (void)
 	kapi_get_args (args, sizeof args);
 	load_col (0, "SD:/");
 	g_ncol = 1; g_active = 0;
-	if (args[0] == 'S' && args[1] == 'D' && args[2] == ':')
+	if (ci_cmp (args, TRASH_FILES) == 0 || ci_cmp (args, "trash") == 0)	// (hidden: not walkable)
+		op_open_trash ();
+	else if (args[0] == 'S' && args[1] == 'D' && args[2] == ':')
 	{
 		const char *p = args + 3; if (*p == '/') p++;
 		while (*p)

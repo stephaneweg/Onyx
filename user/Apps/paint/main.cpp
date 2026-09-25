@@ -4,13 +4,16 @@
 // status strip at the bottom shows the current colour and brush size.
 //
 // Commands are in the system menu bar (wtk::Menu): File (New ^N clears, Open... ^O loads
-// a 24-bpp BMP, Save As... ^S), Brush (Smaller [, Larger ], sizes 1/3/6/12), Color (the
-// 8 colours). The app name menu has Quit (^Q).
+// a 24-bpp BMP, Save ^S, Save As...), Brush (Smaller [, Larger ], sizes 1/3/6/12), Color
+// (the 8 colours). The app name menu has Quit (^Q). A BMP path as argument is opened
+// (fileassoc.ini: bmp = paint); a BMP dropped on the window too -- after asking to save
+// unsaved changes (docguard.h).
 //
 #include "kapi.h"
 #include "bmp.hpp"
 #include "wtk/wtk.h"		// recursive widget toolkit + wk_file_open / wk_file_save + Menu
 #include "applib.h"
+#include "docguard.h"
 
 using namespace wtk;
 
@@ -36,9 +39,10 @@ static const char *SWNAME[NSW] = { "Black", "White", "Red", "Green", "Blue", "Ye
 class PaintArea : public Widget
 {
 public:
+	bool ready = false;				// the canvas holds the picture already
 	PaintArea (int l, int t, int w, int h) : Widget (l, t, w, h) {}
-	void onDraw () override { canvas.clear (PAPER); }	// runs once (never re-dirtied)
-	void clearCanvas () { canvas.clear (PAPER); invalidate (false); }
+	void onDraw () override { if (!ready) canvas.clear (PAPER); ready = true; }	// once
+	void clearCanvas () { canvas.clear (PAPER); ready = true; invalidate (false); }
 	void stroke (int lx, int ly, unsigned col)
 	{ canvas.fillRect (lx - g_brush, ly - g_brush, g_brush * 2, g_brush * 2, col); invalidate (false); }
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
@@ -71,6 +75,15 @@ public:
 
 static PaintArea *g_area = 0;
 static StatusBar *g_status = 0;
+static char      g_path[100] = "";		// the open / last saved file ("" = none yet)
+static unsigned  g_saved;			// doc_hash of the picture as last loaded / saved
+
+static unsigned pic_hash (void)
+{
+	return doc_hash (g_area->canvas.px, (unsigned) (g_area->canvas.stride * AREA_H * 4));
+}
+static void mark_saved (void) { g_saved = pic_hash (); }
+static bool changed (void)    { return pic_hash () != g_saved; }
 
 static void save_bmp (const char *path)
 {
@@ -98,7 +111,12 @@ static void save_bmp (const char *path)
 		}
 		for (int x = 0; x < pad; x++) bmp[o++] = 0;
 	}
-	kapi_save_file (path, bmp, (unsigned) total);
+	if (kapi_save_file (path, bmp, (unsigned) total) >= 0)
+	{
+		int i = 0; for (; path[i] && i < (int) sizeof g_path - 1; i++) g_path[i] = path[i];
+		g_path[i] = '\0';
+		mark_saved ();
+	}
 }
 
 // Load a 24-bpp BMP into the canvas (top-left aligned, clipped; the rest is paper).
@@ -113,15 +131,28 @@ static void load_bmp (const char *path)
 			g_area->canvas.px[y * g_area->canvas.stride + x] = img[y * bw + x];
 	delete [] img;
 	g_area->invalidate (false);
+	int i = 0; for (; path[i] && i < (int) sizeof g_path - 1; i++) g_path[i] = path[i];
+	g_path[i] = '\0';
+	mark_saved ();
 }
 
 // ---- menu commands ------------------------------------------------------------------------
 static void set_brush (int b) { if (b < 1) b = 1; if (b > 20) b = 20; g_brush = b; g_status->invalidate (true); }
 static void set_col (int i)   { g_col = SW[i]; g_status->invalidate (true); }
 
-static void onNew ()     { g_area->clearCanvas (); }
-static void onOpen ()    { char path[100]; if (wk_file_open (path, sizeof path, "SD:/")) load_bmp (path); }
-static void onSaveAs ()  { char path[100]; if (wk_file_save (path, sizeof path, "SD:/", "paint.bmp")) save_bmp (path); }
+static void onSaveAs ()  { char path[100]; if (wk_file_save (path, sizeof path, "SD:/", g_path[0] ? g_path : "paint.bmp")) save_bmp (path); }
+static void onSave ()    { if (g_path[0]) save_bmp (g_path); else onSaveAs (); }
+static const char *doc_name (void) { return g_path[0] ? g_path : "the picture"; }
+static void onNew ()
+{
+	if (!doc_confirm (doc_name (), changed (), onSave)) return;
+	g_area->clearCanvas (); g_path[0] = '\0'; mark_saved ();
+}
+static void onOpen ()
+{
+	if (!doc_confirm (doc_name (), changed (), onSave)) return;
+	char path[100]; if (wk_file_open (path, sizeof path, "SD:/")) load_bmp (path);
+}
 static void onSmaller () { set_brush (g_brush - 1); }
 static void onLarger ()  { set_brush (g_brush + 1); }
 static void onB1 ()  { set_brush (1); }
@@ -132,9 +163,25 @@ static void c0 () { set_col (0); } static void c1 () { set_col (1); } static voi
 static void c3 () { set_col (3); } static void c4 () { set_col (4); } static void c5 () { set_col (5); }
 static void c6 () { set_col (6); } static void c7 () { set_col (7); }
 
+// The window: a BMP dropped on it replaces the picture.
+class PaintRoot : public Root
+{
+public:
+	PaintRoot () : Root (W, H, "paint") {}
+	void onDrop (int, int, int type, const char *data, int, unsigned) override
+	{
+		char path[100];
+		if (type != DND_FILES || !doc_first_path (data, path, sizeof path)) return;
+		void *d = kapi_opendir (path);
+		if (d) { kapi_closedir (d); return; }		// a folder: nothing to open
+		if (!doc_confirm (doc_name (), changed (), onSave)) return;
+		load_bmp (path);
+	}
+};
+
 int main (void)
 {
-	Root root (W, H, "paint");
+	PaintRoot root;
 	if (root.canvas.px == 0) return 1;
 
 	g_area   = new PaintArea (0, 0, W, AREA_H);   root.addChild (g_area);
@@ -144,7 +191,8 @@ int main (void)
 	menu.menu ("File");
 	menu.item ("New",         "^N", WK_CTRL ('N'), onNew);
 	menu.item ("Open...",     "^O", WK_CTRL ('O'), onOpen);
-	menu.item ("Save As...",  "^S", WK_CTRL ('S'), onSaveAs);
+	menu.item ("Save",        "^S", WK_CTRL ('S'), onSave);
+	menu.item ("Save As...",  "",   0,             onSaveAs);
 	menu.menu ("Brush");
 	menu.item ("Smaller",     "[",  '[',           onSmaller);
 	menu.item ("Larger",      "]",  ']',           onLarger);
@@ -157,6 +205,12 @@ int main (void)
 	static MenuAction cols[NSW] = { c0, c1, c2, c3, c4, c5, c6, c7 };
 	for (int i = 0; i < NSW; i++) menu.item (SWNAME[i], "", 0, cols[i]);
 	menu.publish ();
+
+	g_area->clearCanvas ();			// paper now (not at the first draw): a clean baseline
+	mark_saved ();
+	char args[100];
+	int an = kapi_get_args (args, sizeof args);
+	if (an > 0 && args[0] != '\0') load_bmp (args);
 
 	root.run ();
 	return 0;

@@ -42,6 +42,21 @@
 #define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (GUI_PTR_WHEEL = signed notch delta)
 #define GUI_EVENT_MENU		14	// menu-bar command chosen (value = item id, ABI v39)
 #define MENU_QUIT		(-1)	// kapi_menu_command id: close the active app
+// Drag & drop (ABI v42) -- to the pointer handler (see kapi_drag_begin):
+#define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; kapi_drag_data
+#define GUI_EVENT_DRAG_OVER	16	// a drag hovers us (GUI_DND_FLAGS & DND_F_LEAVE: it left)
+#define GUI_EVENT_DRAG_DONE	17	// to the source: GUI_DND_PID (0 = none) + GUI_DND_FLAGS
+#define GUI_DND_FLAGS(v)	((unsigned) (((unsigned long) (v) >> 32) & 0xFF))
+#define GUI_DND_PID(v)		((int) ((unsigned long) (v) & 0xFFFFFFFF))
+#define DND_F_COPY		1	// Ctrl held: copy instead of move
+#define DND_F_CANCEL		2	// DRAG_DONE: cancelled (Esc)
+#define DND_F_DESKTOP		4	// DRAG_DONE: dropped on the desktop / no window
+#define DND_F_LEAVE		8	// DRAG_OVER: the drag left this window
+#define DND_TEXT		1	// payload types (= CLIP_TEXT / CLIP_FILES)
+#define DND_FILES		2
+#define MOD_CTRL		1	// kapi_get_modifiers
+#define MOD_SHIFT		2
+#define MOD_ALT			4
 #define WIN_MENU_MAX_USER	2048	// max menu spec length (= the kernel's WIN_MENU_MAX)
 #define GUI_PTR_Y(v)		((int) ((unsigned long) (v) & 0xFFFF))
 #define GUI_PTR_X(v)		((int) (((unsigned long) (v) >> 16) & 0xFFFF))
@@ -87,6 +102,7 @@ static inline int  kapi_get_keymap (char *b, unsigned s) { return KT->get_keymap
 #define MB_OK		0
 #define MB_OKCANCEL	1
 #define MB_YESNO	2
+#define MB_YESNOCANCEL	3	// wtk: Yes = 1, No = 2, Cancel / Esc = 0
 // Run an ELF at an absolute path with an argv string (fire-and-forget). 1/0.
 static inline int  kapi_exec (const char *path, const char *args) { return KT->exec (path, args); }
 // Framebuffer size in pixels (for edge-pinned borderless windows).
@@ -237,6 +253,16 @@ static inline void kapi_shutdown (int mode) { KT->shutdown (mode); }
 static inline unsigned *kapi_fullscreen_begin (int *w, int *h) { return KT->fullscreen_begin (w, h); }
 static inline void kapi_present_fb (void) { KT->present_fb (); }
 static inline void kapi_fullscreen_end (void) { KT->fullscreen_end (); }
+
+// Drag & drop (ABI v42). drag_begin: while the left button is held (from a pointer-move
+// handler, after a few pixels of motion), drag (type, data <= 4 KB) with `label` on the
+// cursor -> 1 / 0. The target gets GUI_EVENT_DROP and reads the payload with drag_data
+// (copies <= cap, returns the full length); the source gets GUI_EVENT_DRAG_DONE.
+// get_modifiers: MOD_* held now; inject_modifiers: set them (vncd).
+static inline int  kapi_drag_begin (int type, const void *data, unsigned len, const char *label) { return KT->drag_begin (type, data, len, label); }
+static inline int  kapi_drag_data (int *type, void *buf, unsigned cap) { return KT->drag_data (type, buf, cap); }
+static inline unsigned kapi_get_modifiers (void) { return KT->get_modifiers (); }
+static inline void kapi_inject_modifiers (unsigned mods) { KT->inject_modifiers (mods); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

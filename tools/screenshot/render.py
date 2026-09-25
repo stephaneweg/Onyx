@@ -604,10 +604,59 @@ def app_menubar():	# the bar over a strip of desktop, Writer active, Format open
                         ("Highlight", ""), None, ("Smaller", ""), ("Bigger", "")], hover=2)
     return cv
 
+SHELF_H, SHELF_TAB = 100, 22
+def draw_shelf(cv, x0, y0, w, tabs=("Shelf", "Documents", "Apps"), cur=0, trash_full=True):
+    """The Shelf (Apps/shelf/main.cpp onDraw): tabs, item cells (icon + label), Trash."""
+    CELL, ICON, TW = 80, 40, 84
+    cv.fill(x0, y0, w, SHELF_H, C(0x1C232C)); cv.fill(x0, y0, w, 1, C(0x485870))
+    x = x0 + 6
+    for i, t in enumerate(tabs):
+        tw = len(t) * FW + 16
+        cv.fill(x, y0 + 3, tw, SHELF_TAB - 3, C(0x303D4D if i == cur else 0x283240))
+        if i == cur: cv.fill(x, y0 + 3, tw, 2, C(0x90C0FF))
+        cv.text(x + 8, y0 + 4 + (SHELF_TAB - 3 - FH) // 2, t, C(0xE0E6EE if i == cur else 0x8A96A8))
+        x += tw + 2
+    cv.fill(x, y0 + 3, 22, SHELF_TAB - 3, C(0x283240)); cv.text(x + 7, y0 + 4 + (SHELF_TAB - 3 - FH) // 2, "+", C(0x8A96A8))
+    cv.fill(x0, y0 + SHELF_TAB, w, 1, C(0x303D4D))
+    def g_folder(gx, gy):
+        cv.fill(gx + 2, gy + 8, 16, 6, C(0xC89A48)); cv.fill(gx + 2, gy + 12, 36, 24, C(0xE0B45C)); cv.frame(gx + 2, gy + 12, 36, 24, C(0x906A28))
+    def g_text(gx, gy):
+        cv.fill(gx + 8, gy + 3, 24, 34, C(0xF0F0F0)); cv.frame(gx + 8, gy + 3, 24, 34, C(0x808890))
+        for l in range(5): cv.fill(gx + 12, gy + 9 + l * 5, 16, 2, C(0x707880))
+    def g_image(gx, gy):
+        cv.fill(gx + 4, gy + 6, 32, 28, C(0x70B8F0)); cv.fill(gx + 4, gy + 24, 32, 10, C(0x50A050))
+        cv.fill(gx + 24, gy + 10, 6, 6, C(0xFFE070)); cv.frame(gx + 4, gy + 6, 32, 28, C(0xE0E6EE))
+    def g_app(name):
+        def f(gx, gy): blit_bmp(cv, os.path.join(SD, "apps", name + ".app", "icon.bmp"), gx, gy)
+        return f
+    items = [("Projects", g_folder), ("notes.txt", g_text), ("autostart", g_text),
+             ("sunset.bmp", g_image), ("Text Editor", g_app("tinypad")), ("File Viewer", g_app("fileviewer")),
+             ("Paint", g_app("paint"))]
+    maxc = (CELL - 6) // FW
+    for i, (lab, g) in enumerate(items):
+        cx = x0 + 4 + i * CELL
+        g(cx + (CELL - ICON) // 2, y0 + SHELF_TAB + 6)
+        if len(lab) > maxc: lab = lab[:maxc - 2] + ".."
+        cv.text(cx + (CELL - len(lab) * FW) // 2, y0 + SHELF_TAB + 50, lab, C(0xE0E6EE))
+    tx = x0 + w - TW
+    cv.fill(tx, y0 + SHELF_TAB + 4, 1, SHELF_H - SHELF_TAB - 8, C(0x303D4D))
+    gx, gy = tx + (TW - ICON) // 2, y0 + SHELF_TAB + 6
+    cv.fill(gx + 8, gy + 6, 24, 3, C(0xA0A8B0)); cv.fill(gx + 16, gy + 3, 8, 3, C(0xA0A8B0))
+    cv.fill(gx + 10, gy + 10, 20, 26, C(0x707880))
+    for l in range(3): cv.fill(gx + 14 + l * 5, gy + 13, 2, 20, C(0x505860))
+    if trash_full: cv.fill(gx + 12, gy + 7, 16, 3, C(0xF0F0F0))
+    cv.text(tx + (TW - 5 * FW) // 2, y0 + SHELF_TAB + 50, "Trash", C(0xE0E6EE))
+
+def app_shelf():	# the Shelf alone (as wide as on a 1024-px screen with the panel on the right)
+    W = 1024 - 60 - 6; cv = Canvas(W, SHELF_H, C(0x1C232C))
+    draw_shelf(cv, 0, 0, W)
+    return cv
+
 def render_desktop():
     W, H = 1024, 768
     cv = Canvas(W, H)
     cv.img.paste(voronoi_wallpaper(W, H), (0, 0)); cv.px = cv.img.load(); cv.d = ImageDraw.Draw(cv.img)
+    draw_shelf(cv, 0, H - SHELF_H, W - 60 - 6)         # the Shelf, under the windows
     # cascade: fractal + tinycalc inactive (slate chrome), terminal active (gold) on top
     fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 38))
     cw = window(app_tinycalc(), "tinycalc", False); cv.img.alpha_composite(cw.img, (63, 328))
@@ -1051,7 +1100,7 @@ if __name__ == "__main__":
         window(fn(), title, True).img.save(os.path.join(OUT, fname + ".png"))
         print("wrote", fname + ".png")
     # borderless apps (no chrome): app drawer, demo sidebar, the panel itself
-    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar)]:
+    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar), ("shelf", app_shelf)]:
         fn().img.save(os.path.join(OUT, fname + ".png")); print("wrote", fname + ".png")
     # voronoy is windowless: its "screenshot" is the wallpaper it paints
     voronoi_wallpaper(1024, 768).save(os.path.join(OUT, "voronoy.png")); print("wrote voronoy.png")

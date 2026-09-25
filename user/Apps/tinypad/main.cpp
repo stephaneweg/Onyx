@@ -4,10 +4,13 @@
 // system menu bar (wtk::Menu): File > New (^N), Open... (^O), Save (^S), Save As...
 // (Open / Save As use the wtk file dialogs); Edit > Copy All, Paste (^V) -- the system
 // clipboard. The app name menu has Quit (^Q).
+// Drag & drop: a file dropped on the window is opened (after asking to save unsaved
+// changes -- docguard.h); dropped text is inserted at the caret.
 //
 #include "kapi.h"
 #include "wtk/wtk.h"		// recursive widget toolkit + wk_file_open / wk_file_save + Menu
 #include "clipboard.h"
+#include "docguard.h"
 
 using namespace wtk;
 
@@ -20,13 +23,17 @@ static Label    *g_fn;		// the file's path (read-only)
 static Textarea *g_body;	// the document
 static char      g_path[100] = "SD:notes.txt";
 
+static unsigned  g_saved;	// doc_hash of the document as last loaded / saved
+
 static void show_path (void) { g_fn->setText (g_path); }
+static void mark_saved (void) { g_saved = doc_hash (g_body->content (), (unsigned) g_body->len); }
+static bool changed (void)    { return doc_hash (g_body->content (), (unsigned) g_body->len) != g_saved; }
 
 static void load_file (void)
 {
 	if (g_path[0] == '\0') return;
 	void *f = kapi_open (g_path);
-	if (f == 0) { g_body->setContent (""); return; }
+	if (f == 0) { g_body->setContent (""); mark_saved (); return; }
 	static char buf[CAP];
 	int n = kapi_read (f, buf, sizeof buf - 1);
 	kapi_close (f);
@@ -35,10 +42,11 @@ static void load_file (void)
 	for (int i = 0; i < n; i++) if (buf[i] != '\r') buf[j++] = buf[i];
 	buf[j] = '\0';
 	g_body->setContent (buf);
+	mark_saved ();
 }
 static void save_file (void)
 {
-	if (g_path[0] != '\0') kapi_save_file (g_path, g_body->content (), (unsigned) g_body->len);
+	if (g_path[0] != '\0' && kapi_save_file (g_path, g_body->content (), (unsigned) g_body->len) >= 0) mark_saved ();
 }
 static void set_path (const char *p)
 {
@@ -47,9 +55,15 @@ static void set_path (const char *p)
 	show_path ();
 }
 
-static void on_new (void)     { g_body->setContent (""); set_path ("SD:untitled.txt"); g_body->setFocus (); }
+static void on_save (void);
+static void on_new (void)
+{
+	if (!doc_confirm (g_path, changed (), on_save)) return;
+	g_body->setContent (""); set_path ("SD:untitled.txt"); mark_saved (); g_body->setFocus ();
+}
 static void on_open (void)
 {
+	if (!doc_confirm (g_path, changed (), on_save)) return;
 	char path[100];
 	if (wk_file_open (path, sizeof path, "SD:/")) { set_path (path); load_file (); }
 	g_body->setFocus ();
@@ -72,9 +86,27 @@ static void on_paste (void)
 	g_body->setFocus ();
 }
 
+// The window: a dropped file replaces the document, dropped text goes in at the caret.
+class PadRoot : public Root
+{
+public:
+	PadRoot () : Root (W, H, "tinypad") {}
+	void onDrop (int, int, int type, const char *data, int, unsigned) override
+	{
+		if (type == DND_TEXT) { g_body->insertText (data); g_body->setFocus (); return; }
+		char path[100];
+		if (type != DND_FILES || !doc_first_path (data, path, sizeof path)) return;
+		void *d = kapi_opendir (path);
+		if (d) { kapi_closedir (d); return; }		// a folder: nothing to open
+		if (!doc_confirm (g_path, changed (), on_save)) return;
+		set_path (path); load_file ();
+		g_body->setFocus ();
+	}
+};
+
 int main (void)
 {
-	Root root (W, H, "tinypad");
+	PadRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.setBg (0x00303840);			// path-bar/background tint
 
@@ -96,6 +128,7 @@ int main (void)
 	char args[100];
 	int an = kapi_get_args (args, sizeof args);
 	if (an > 0 && args[0] != '\0') { set_path (args); load_file (); }
+	else mark_saved ();
 	g_body->setFocus ();
 
 	root.run ();
