@@ -1300,6 +1300,12 @@ TShutdownMode CKernel::Run (void)
 				delete [] pTheme;
 			}
 
+			// Reaper first: it also blinks the ACT LED, so a headless Pi shows
+			// signs of life from the very start of the userland (a hang during
+			// app startup freezes the LED early; one at compositor start, ~6 s).
+			new CReaperTask;
+			m_Logger.Write (FromKernel, LogNotice, "reaper started");
+
 			StartAutostart ();		// spawn the init program (cmdline init=)
 		}
 
@@ -1324,11 +1330,6 @@ TShutdownMode CKernel::Run (void)
 
 		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
-
-		// Reaper: reclaims closed apps (address space + window + task) in its own
-		// task context.
-		new CReaperTask;
-		m_Logger.Write (FromKernel, LogNotice, "reaper started");
 
 		// GUI watchdog + heartbeat (kmsg): compositor stalls, frozen apps, and a
 		// periodic summary every cmdline.txt heartbeat= seconds (default 5, 0 = off).

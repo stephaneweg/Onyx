@@ -457,7 +457,8 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
 - **`SD:/etc/autostart`**: one **shell command** per line, run at boot by `init`
   exactly as if typed in the terminal — the first word is a `/bin` tool
   (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
-  ignored. Launch a **desktop app** with the `run` tool (`run <name>` →
+  ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
+  to stagger the startup. Launch a **desktop app** with the `run` tool (`run <name>` →
   `/apps/<name>.app/main`). Defaults: `run voronoy`, `run panel`, `keyb FR` (sets the
   keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).

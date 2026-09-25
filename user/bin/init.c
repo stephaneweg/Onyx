@@ -2,7 +2,8 @@
 // init -- the first program the kernel starts at boot (no arguments). It reads
 // /etc/autostart and runs each line as a shell command, exactly like the terminal:
 // the first word is a /bin tool (/bin/<word>) and the rest is its argv. Desktop
-// apps are launched with the `run` tool (e.g. "run panel"). Blank lines and lines
+// apps are launched with the `run` tool (e.g. "run panel"); the builtin `sleep <s>`
+// pauses init between lines (staggered startup). Blank lines and lines
 // starting with '#' are ignored. Fire-and-forget (kapi_exec): init launches
 // everything and exits; the started programs keep running.
 //
@@ -19,6 +20,16 @@ static void run_line (char *line)
 	char *args = line;					// split: first token + rest
 	while (*args != '\0' && *args != ' ' && *args != '\t') args++;
 	if (*args != '\0') { *args++ = '\0'; while (*args == ' ' || *args == '\t') args++; }
+
+	// Builtin: `sleep <seconds>` pauses init itself before the next line (a /bin tool
+	// would run concurrently, since init launches every line fire-and-forget).
+	if (ax_streq (line, "sleep"))
+	{
+		unsigned s = 0;
+		for (int i = 0; args[i] >= '0' && args[i] <= '9'; i++) s = s * 10 + (unsigned) (args[i] - '0');
+		kapi_msleep (s * 1000);
+		return;
+	}
 
 	char path[128]; int p = 0;				// /bin/<token>
 	ax_strcat (path, sizeof path, &p, "SD:bin/");
