@@ -108,14 +108,16 @@ public:
 	///	   task (the compositor) right away.
 	void YieldTo (CTask *pTask);
 
-	/// \brief Called (IRQ masked) when the current task -- an app in its own code --
-	///	   is preempted: flag it as a CPU hog and open a burst (SCHED_BURST_US) during
-	///	   which GetNextTask skips the preempted tasks, until the burst ends or no
-	///	   other task is ready. Circle's net / WLAN code waits in Yield() loops
+	/// \brief Called when the current task -- an app in its own code -- is preempted
+	///	   (just before its Yield). A task preempted SCHED_HOG_STREAK times in a row
+	///	   without a voluntary yield is a CPU hog: it opens a burst (SCHED_BURST_US)
+	///	   during which GetNextTask skips the hogs, until the burst ends or no other
+	///	   task is ready. (An app that computes > 1 slice now and then but yields in
+	///	   between -- vncd encoding a frame, then sending it -- is not a hog.) Circle's net / WLAN code waits in Yield() loops
 	///	   (qlock, sleep, CNetTask, socket send/recv -- also inside an app's kapi call,
 	///	   e.g. vncd); without the burst every one of those yields would cost a whole
-	///	   hog slice, and a CPU-bound app starves the network. The flag is cleared
-	///	   when the task runs again.
+	///	   hog slice, and a CPU-bound app starves the network. The streak is reset
+	///	   by the task's next voluntary Yield.
 	void OnPreempt (void);
 
 	static CScheduler *Get (void);
@@ -136,6 +138,7 @@ private:
 	void RemoveTask (CTask *pTask);
 	unsigned GetNextTask (void); // returns index into m_pTask or MAX_TASKS if none
 	unsigned ScanTasks (unsigned nTicks, boolean bSkipHogs);	// one round-robin pass
+	unsigned CurrentSlot (void);	// m_pCurrent's index in m_pTask, or MAX_TASKS
 
 private:
 	CTask *m_pTask[MAX_TASKS];
@@ -154,7 +157,9 @@ private:
 	// Preemption state (additions)
 	volatile boolean m_bResched;	// set by OnTimerTick when the slice expires
 	unsigned m_nSliceTicks;		// scheduler ticks left in the current slice
-	boolean m_bPreempted[MAX_TASKS]; // per slot: parked by a preemption (a CPU hog)
+	u8 m_nPreemptStreak[MAX_TASKS];	// per slot: preemptions since its last voluntary
+					// yield (>= SCHED_HOG_STREAK: a CPU hog)
+	boolean m_bPreempting;		// the current Yield comes from OnPreempt
 	volatile boolean m_bBurst;	// burst in progress: hogs are skipped (OnPreempt)
 	unsigned m_nBurstEnd;		// its end, in clock ticks (us)
 
@@ -168,11 +173,16 @@ private:
 #define SCHED_SLICE_TICKS	2		// 20 ms quantum
 #endif
 
-// Length of the burst that follows an app preemption, in microseconds: the tasks that
-// yield voluntarily get up to this much CPU before the hog runs again (= one slice, so
-// a hog keeps at most ~half of the CPU while others need it, and all of it otherwise).
+// Length of the burst that follows a hog's preemption, in microseconds: the tasks that
+// yield voluntarily get up to this much CPU before the hog runs again (it keeps all of
+// the CPU when nobody else needs it).
 #ifndef SCHED_BURST_US
-#define SCHED_BURST_US		20000		// 20 ms
+#define SCHED_BURST_US		60000		// 60 ms: a hog keeps <= ~25 % while others need the CPU
+#endif
+
+// Preemptions in a row (no voluntary yield in between) that make a task a CPU hog.
+#ifndef SCHED_HOG_STREAK
+#define SCHED_HOG_STREAK	2
 #endif
 
 #endif

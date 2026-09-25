@@ -260,18 +260,27 @@ still block other tasks — drop a `if (IsReschedPending()) Yield();`
 cooperative-preemption point into any such loop if one appears. Tasks also still
 switch **voluntarily** (`Yield`, `MsSleep`, `present`, `wait`, …), unchanged.
 
-**Burst after a preemption (CPU hogs vs yielders).** Circle's network and Wi-Fi code
-waits in `Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the
-`CNetTask` `Process` loop, socket send/recv — also inside an app's `kapi_*` call, e.g.
-`vncd`). In plain round-robin, each of those yields hands the CPU to a CPU-bound app for a full
-slice, so the loops advance only ~20–50 times per second. Driver timeouts then expire and
-the Wi-Fi link drops (the `spin` test app took the network down, and VNC/telnet with it).
-So `PreemptDoYield` first calls `CScheduler::OnPreempt()`: it flags the preempted task
-as a **hog** (`m_bPreempted[slot]`, cleared when it runs again) and opens a burst of
-`SCHED_BURST_US` (20 ms). During the burst `GetNextTask` **skips the hogs** (and idle), so
-every task that yields voluntarily — kernel tasks, apps waiting in a kapi, apps coming
-out of `msleep` — is served first. The burst ends early as soon as none of them is ready.
-A hog thus keeps at most about half of the CPU while others need it, and all of it
+**CPU hogs vs yielders (dynamic priority).** Circle's network and Wi-Fi code waits in
+`Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the `CNetTask`
+`Process` loop, socket send/recv — also inside an app's `kapi_*` call, e.g. `vncd`). In
+plain round-robin, each of those yields hands the CPU to a CPU-bound app for a full slice,
+so the loops crawl. Driver timeouts then expire and the Wi-Fi link drops (the `spin` test
+app took the network down, and VNC/telnet with it). So the scheduler lowers the priority
+of the tasks the timer has to preempt:
+
+- `PreemptDoYield` calls `CScheduler::OnPreempt()`, which bumps the task's
+  **preemption streak** (`m_nPreemptStreak[slot]`). Any voluntary `Yield` (a kapi wait,
+  `msleep`, `present`, a kernel task's loop) resets it.
+- A task with a streak ≥ `SCHED_HOG_STREAK` (2) is a **CPU hog**. An app that computes more
+  than a slice now and then but yields in between (`vncd` encoding a frame, then sending
+  it) is not one.
+- A hog's preemption opens a **burst** of `SCHED_BURST_US` (60 ms). During the burst
+  `GetNextTask` **skips the hogs** (and idle): kernel tasks and apps that yield are served
+  first. The burst ends early once none of them is ready.
+- A hog also runs with a **one-tick slice** (≤ 10 ms instead of `SCHED_SLICE_TICKS`), so the
+  kernel's yield loops never wait more than ~10 ms behind it.
+
+A hog thus keeps roughly 15 % of the CPU while others need it, and all of it
 otherwise.
 
 ### `CScheduler` (shadow) and `CTask`

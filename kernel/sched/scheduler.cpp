@@ -94,8 +94,9 @@ CScheduler::CScheduler (void)
 
 	for (unsigned i = 0; i < MAX_TASKS; i++)
 	{
-		m_bPreempted[i] = FALSE;
+		m_nPreemptStreak[i] = 0;
 	}
+	m_bPreempting = FALSE;
 
 	m_pCurrent = new CTask (0);		// represents the main task currently running
 	assert (m_pCurrent != 0);
@@ -121,6 +122,13 @@ void CScheduler::Yield (void)
 	// resumed, so each task keeps its own interrupt state across switches.
 	u64 nFlags = IrqSave ();
 
+	if (!m_bPreempting)			// a voluntary yield: not (or no longer) a hog
+	{
+		unsigned nSlot = CurrentSlot ();
+		if (nSlot < MAX_TASKS) m_nPreemptStreak[nSlot] = 0;
+	}
+	m_bPreempting = FALSE;
+
 	unsigned nNext;
 	while ((nNext = GetNextTask ()) == MAX_TASKS)
 	{
@@ -134,10 +142,10 @@ void CScheduler::Yield (void)
 	m_nCurrent = nNext;
 	CTask *pNext = m_pTask[m_nCurrent];
 	assert (pNext != 0);
-	m_bPreempted[m_nCurrent] = FALSE;	// runs again: no longer parked as a hog
 
-	// Whichever task runs now starts a fresh time slice.
-	m_nSliceTicks = SCHED_SLICE_TICKS;
+	// Whichever task runs now starts a fresh time slice -- a single tick for a CPU hog,
+	// so the kernel's Yield() loops never wait more than ~10 ms behind it.
+	m_nSliceTicks = m_nPreemptStreak[nNext] >= SCHED_HOG_STREAK ? 1 : SCHED_SLICE_TICKS;
 	m_bResched = FALSE;
 
 	if (m_pCurrent != pNext)
@@ -182,13 +190,31 @@ void CScheduler::YieldTo (CTask *pTask)
 void CScheduler::OnPreempt (void)
 {
 	u64 nFlags = IrqSave ();
-	if (m_nCurrent < MAX_TASKS && m_pTask[m_nCurrent] == m_pCurrent)
+	m_bPreempting = TRUE;			// the Yield that follows is not voluntary
+	unsigned nSlot = CurrentSlot ();
+	if (nSlot < MAX_TASKS)
 	{
-		m_bPreempted[m_nCurrent] = TRUE;
+		if (m_nPreemptStreak[nSlot] < 255) m_nPreemptStreak[nSlot]++;
+		if (m_nPreemptStreak[nSlot] >= SCHED_HOG_STREAK)
+		{
+			m_nBurstEnd = CTimer::Get ()->GetClockTicks () + SCHED_BURST_US;
+			m_bBurst = TRUE;
+		}
 	}
-	m_nBurstEnd = CTimer::Get ()->GetClockTicks () + SCHED_BURST_US;
-	m_bBurst = TRUE;
 	IrqRestore (nFlags);
+}
+
+unsigned CScheduler::CurrentSlot (void)
+{
+	if (m_nCurrent < m_nTasks && m_pTask[m_nCurrent] == m_pCurrent)
+	{
+		return m_nCurrent;
+	}
+	for (unsigned i = 0; i < m_nTasks; i++)		// (YieldTo moved the scan start)
+	{
+		if (m_pTask[i] == m_pCurrent) return i;
+	}
+	return MAX_TASKS;
 }
 
 void CScheduler::OnTimerTick (void)
@@ -464,7 +490,7 @@ void CScheduler::AddTask (CTask *pTask)
 		if (m_pTask[i] == 0)
 		{
 			m_pTask[i] = pTask;
-			m_bPreempted[i] = FALSE;
+			m_nPreemptStreak[i] = 0;
 
 			return;
 		}
@@ -475,7 +501,7 @@ void CScheduler::AddTask (CTask *pTask)
 		CLogger::Get ()->Write (FromScheduler, LogPanic, "System limit of tasks exceeded");
 	}
 
-	m_bPreempted[m_nTasks] = FALSE;
+	m_nPreemptStreak[m_nTasks] = 0;
 	m_pTask[m_nTasks++] = pTask;
 }
 
@@ -641,7 +667,7 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 			continue;
 		}
 
-		if (bSkipHogs && (pTask == m_pIdleTask || m_bPreempted[nTask]))
+		if (bSkipHogs && (pTask == m_pIdleTask || m_nPreemptStreak[nTask] >= SCHED_HOG_STREAK))
 		{
 			continue;			// a CPU hog (or idle): not during a burst
 		}
