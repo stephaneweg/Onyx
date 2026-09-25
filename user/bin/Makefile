@@ -31,6 +31,10 @@ CXXFLAGS_LIBC = $(CFLAGS_LIBC) -fno-exceptions -fno-rtti -fno-threadsafe-statics
 LIBC_SRC  = ../libc/crt0libc.S ../libc/onyx_syscalls.c
 LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../kapi.h ../user.ld
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
+# Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (kapi.h,
+# ABI v36). NOT used by the newlib programs, which keep newlib's own.
+KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
+	       -Wl,--defsym,memmove=kapi_memmove
 
 # HTTPS apps need a cross-built mbedTLS. It is now vendored in the repo at
 # third_party/mbedtls-3.6.3, so they build by default. Pass MBEDTLS_DIR= (empty) to skip
@@ -75,7 +79,7 @@ all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS)
 fptest.elf: CFLAGS := $(CFLAGS_FP)
 
 %.elf: %.c ../crt0.S ../user.ld ../kapi.h ../applib.h ../httpc.h ../umm.h
-	$(CC) $(CFLAGS) $(LDFLAGS) ../crt0.S $< -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
 # pulled automatically since this is not -nostdlib).
@@ -84,7 +88,7 @@ $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
 
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
 $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) ../crt0.S $< -o $@
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.

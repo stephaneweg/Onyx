@@ -398,7 +398,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 27`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 36`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -408,7 +408,10 @@ v19 = `klog_read`, v20 = `set_verbose`/`get_verbose`, v21 = the TCP socket calls
 v22 = `set_pointer_handler`, v23 = `meminfo`, v24 = `sbrk`, v25 = `reboot`,
 v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 (user-side window chrome), v29 = compat break (kernel-drawn widget API removed, table
-consolidated), v30 = `random` (hardware RNG)).
+consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
+`set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
+(`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
+`memset`/`memcpy`/`memmove`).
 
 ### Categories of exposed functions
 
@@ -428,6 +431,7 @@ consolidated), v30 = `random` (hardware RNG)).
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close` |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
+| Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
 | Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
 
 All the functions **run in the context of the calling app** (its page
@@ -650,7 +654,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 27 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 36 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

@@ -30,3 +30,16 @@ _start:
 	ldp	x19, x20, [sp, #16]
 	ldp	x29, x30, [sp], #32
 	ret
+
+/*
+ * Empty _init/_fini. We link without gcc's crti.o/crtn.o (our own entry above), but
+ * some newlib builds (e.g. Arm GNU Toolchain 13.3) still call them from
+ * __libc_init_array/__libc_fini_array (exit). Constructors/destructors go through
+ * .init_array/.fini_array, so there is nothing to do here. Weak: a real crti wins.
+ */
+	.section .text._init_fini
+	.weak	_init
+	.weak	_fini
+_init:
+_fini:
+	ret

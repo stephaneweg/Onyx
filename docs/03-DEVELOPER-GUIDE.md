@@ -296,6 +296,17 @@ int main (void)
 The existing tools to study: `ls`, `cat`, `grep`, `wc`, `echo`, `page`, `rm`, `mkdir`,
 `touch`, `cp`, `mv`, `ps`, `kill`, `run`, `keyb` (in `user/bin/`).
 
+### `memset` / `memcpy` in freestanding apps
+
+Apps built with `-ffreestanding -nostdlib` (every wtk app and the plain `/bin` tools)
+have no libc, yet GCC may still emit calls to `memset`/`memcpy`/`memmove` on its own
+(e.g. `char buf[64] = "";`, struct copies). Since ABI v36 the kernel exposes Circle's
+implementations in the kapi table; `user/kapi.h` defines them as weak
+`kapi_memset`/`kapi_memcpy`/`kapi_memmove`, and `user/Makefile` / `user/bin/Makefile`
+alias the C names onto them at link time (`KAPI_ALIASES`:
+`-Wl,--defsym,memset=kapi_memset …`). A new freestanding link rule must add
+`$(KAPI_ALIASES)`; newlib programs must not (they keep newlib's versions).
+
 ## 8. The `applib.h` library
 
 [`user/applib.h`](../user/applib.h) is **header-only** (no libc). It provides:

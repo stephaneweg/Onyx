@@ -24,7 +24,9 @@
 // v33: + ram_detail() -- firmware-detected board RAM + app page-pool total/free (memmon).
 // v35: + surface_create/map/size/present/destroy -- shared surfaces (activity shell);
 //      + register_shell/shell_request/mailbox_send/mailbox_recv -- activity-shell IPC.
-#define KAPI_ABI_VERSION	35
+// v36: + memset/memcpy/memmove -- Circle's kernel implementations, so the calls the
+//      compiler emits on its own (array/struct init and copies) link in every app.
+#define KAPI_ABI_VERSION	36
 
 #ifdef __cplusplus
 extern "C" {
@@ -331,6 +333,14 @@ struct TKApiTable
 	int  (*shell_request) (int type, const void *in, unsigned len);
 	int  (*mailbox_send) (int target_pid, int type, const void *in, unsigned len);
 	int  (*mailbox_recv) (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
+
+	// --- v36 additions (memory primitives) ---
+	// Circle's memset/memcpy/memmove (general registers only -> safe from any app).
+	// GCC may emit calls to these even in -ffreestanding code; user/kapi.h defines
+	// weak memset/memcpy/memmove symbols that forward here.
+	void *(*memset) (void *dst, int c, unsigned long n);
+	void *(*memcpy) (void *dst, const void *src, unsigned long n);
+	void *(*memmove) (void *dst, const void *src, unsigned long n);
 };
 
 #ifdef __cplusplus

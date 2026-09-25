@@ -224,6 +224,20 @@ static inline int kapi_shell_request (int type, const void *in, unsigned len)   
 static inline int kapi_mailbox_send (int target_pid, int type, const void *in, unsigned len) { return KT->mailbox_send (target_pid, type, in, len); }
 static inline int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsigned cap, int blocking) { return KT->mailbox_recv (from_pid, type, buf, cap, blocking); }
 
+// Memory primitives (ABI v36): the kernel's (Circle's) memset/memcpy/memmove. Real,
+// weak symbols (not static inline) so the linker can see them: the freestanding app
+// Makefiles alias the C names onto them (-Wl,--defsym,memset=kapi_memset ...), which
+// resolves the calls GCC emits on its own (array/struct init and copies).
+#ifdef __cplusplus
+extern "C" {
+#endif
+__attribute__ ((weak)) void *kapi_memset (void *dst, int c, unsigned long n)                 { return KT->memset (dst, c, n); }
+__attribute__ ((weak)) void *kapi_memcpy (void *dst, const void *src, unsigned long n)       { return KT->memcpy (dst, src, n); }
+__attribute__ ((weak)) void *kapi_memmove (void *dst, const void *src, unsigned long n)      { return KT->memmove (dst, src, n); }
+#ifdef __cplusplus
+}
+#endif
+
 // Friendly aliases used by the demos.
 static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
 static inline void      present (void)             { kapi_present (); }

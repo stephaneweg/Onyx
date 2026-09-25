@@ -20,6 +20,10 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 # local statics are single-threaded; static dtors are not run -- see onyxpp.hpp).
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
+# Freestanding apps have no libc: alias the C memory primitives GCC may emit on its own
+# onto the kapi ones (kapi.h, ABI v36 -> the kernel's Circle implementations).
+KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
+	       -Wl,--defsym,memmove=kapi_memmove
 
 # All graphical apps live in Apps/<name>/main.cpp (one folder per app) and build to
 # <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf; it stages
@@ -59,7 +63,7 @@ wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
 $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) crt0.S $< wtk/libwtk.a -o $@
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a -o $@
 
 clean:
 	rm -f *.elf *.o

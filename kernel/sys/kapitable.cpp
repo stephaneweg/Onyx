@@ -8,6 +8,7 @@
 #include <kern/kapitable.h>
 #include <kern/kapi_abi.h>
 #include <circle/types.h>
+#include <circle/util.h>		// memset / memcpy / memmove (ABI v36)
 
 // The kapi_* functions (defined in sys/kapi.cpp). Declared here with the ABI's
 // signatures (handler params as gui_handler) so they assign straight into the
@@ -236,4 +237,8 @@ void KApiTableInit (void)
 	t->shell_request     = kapi_shell_request;
 	t->mailbox_send      = kapi_mailbox_send;
 	t->mailbox_recv      = kapi_mailbox_recv;
+
+	t->memset            = memset;
+	t->memcpy            = memcpy;
+	t->memmove           = memmove;
 }
