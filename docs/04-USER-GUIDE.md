@@ -165,6 +165,29 @@ shipped configuration).
 The "Onyx" desktop is made of **two cooperating apps**: the **panel** (`panel`)
 and the **app list** (`applist`).
 
+### The menu bar (`menubar`)
+
+A system **menu bar** runs across the top of the screen (started by `autostart`), in the
+style of macOS: it shows the **active application's name** (in bold) and **its menus**,
+and the clock on the right. The active application is the frontmost decorated window;
+clicking the panel or the desktop does not change it.
+
+- **Click a menu title** to open its drop-down; slide to another title to switch; click an
+  item to run it (or press on a title and release on an item). Click the title again or
+  anywhere else to close the menu.
+- The first menu (the app's name) always has **Quit** (**Ctrl-Q**), like the close box.
+- Items show their **keyboard shortcut** on the right (e.g. `^O` = Ctrl-O); the shortcuts
+  work whether the menu is open or not.
+- With no application window open, the bar shows an **Onyx** menu to launch the Terminal,
+  the File Viewer, Files, the Task Manager or the app list.
+- Windows open and are dragged **below** the bar, never under it.
+
+![Menu bar](../screenshots/menubar.png)
+*The menu bar with Writer active and its Format menu open.*
+
+Applications with menus: **tinypad** (File), **Writer** (File, Format, Color, Style),
+**paint** (File, Brush, Color) and the **File Viewer** (File, Edit) — see §12.
+
 ### The panel (`panel`)
 
 A **borderless** bar, pinned to an edge of the screen (**right** with the shipped
@@ -416,7 +439,7 @@ going back is one click on an earlier column. Launch it from the app list (categ
 - **Keyboard**: **↑/↓**, Page Up/Down, Home/End move in the active column; **→** enters the
   selected folder, **←** or **Backspace** goes back; **Enter** opens; typing a **letter**
   jumps to the next name starting with it.
-- **Operations** (toolbar, on the active column's selection): **New Folder** (Ctrl-N),
+- **Operations** (menu bar: **File** and **Edit** menus, on the active column's selection): **New Folder** (Ctrl-N),
   **Rename** (Ctrl-R), **Delete** (Del — folders are deleted with their content, after
   confirmation), **Copy** (Ctrl-C), **Cut** (Ctrl-X), **Paste** (Ctrl-V — into the active
   column's folder; copies of folders are recursive, a clash gets a "copy" name), **Refresh**
@@ -489,7 +512,7 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
   (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
   ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
   to stagger the startup. Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run panel`, `keyb FR` (sets the
+  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run panel`, `keyb FR` (sets the
   keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 - **`SD:/etc/quicklaunch.txt`**: the apps pinned to the panel (top→bottom).
@@ -524,10 +547,11 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 
 | App | Description and controls |
 |---|---|
-| **tinypad** | Text editor. Click the area to edit; arrows/Home/End/Page to navigate; **Open**/**Save** open file dialogs (loads/saves the whole file). |
+| **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). |
+| **Writer** | Rich-text editor (bold/italic/underline/strike/highlight, colours, sizes, heading levels) on a word-wrapping document. Select text with the mouse, then use the menus: **File** (New ^N, Open... ^O, Save ^S, Save As...), **Format** (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller, Bigger), **Color** (Black/Red/Green/Blue), **Style** (Normal, Title 1-3). Plain-text load/save. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
-| **paint** | Drawing. Palette of 8 colors at the top; **drag** to paint, **right-click-drag** to erase; `[`/`]` brush size; `c` clears; `s` saves `SD:/paint.bmp`. |
+| **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save As... ^S saves a BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). |
 | **filer** | File manager (see §9). |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |

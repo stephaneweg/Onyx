@@ -1,10 +1,15 @@
 //
 // writer -- Onyx's rich-text editor (word processor body), built on the wtk toolkit's
-// RichTextBox. A two-row toolbar (filename + Open/Save, then style controls) over a
-// styled, word-wrapping document. Styles are synthesised from the monospace bitmap
-// font (bold/italic/underline/strike/highlight, 16-colour text, sizes x1..x8 smoothed)
-// and paragraph heading levels (Normal / Titre 1-3). Plain-text load/save for now
-// (a style-preserving format is a follow-up); .txt opens fine in tinypad too.
+// RichTextBox. The document's path on a thin bar over a styled, word-wrapping document.
+// Styles are synthesised from the monospace bitmap font (bold/italic/underline/strike/
+// highlight, 16-colour text, sizes x1..x8 smoothed) and paragraph heading levels
+// (Normal / Titre 1-3). Plain-text load/save for now (a style-preserving format is a
+// follow-up); .txt opens fine in tinypad too.
+//
+// Commands are in the system menu bar (wtk::Menu): File (New ^N, Open... ^O, Save ^S,
+// Save As...), Format (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller,
+// Bigger), Color (Black/Red/Green/Blue), Style (Normal, Title 1-3). Styles apply to the
+// selection, else to the typing style. The app name menu has Quit (^Q).
 //
 #include "wtk/wtk.h"
 
@@ -13,17 +18,24 @@ using namespace wtk;
 #define W	640
 #define H	480
 #define CAP	32768
+#define PATH_H	22
 
 static RichTextBox *g_rtb;
-static Textbox     *g_fn;
+static Label       *g_fn;
+static char         g_path[100] = "SD:doc.txt";
 
-// ---- file I/O (direct kapi; no file dialog -- type the path in the box) -------
+// ---- file I/O -----------------------------------------------------------------------
 
+static void set_path (const char *p)
+{
+	int i = 0; for (; p[i] && i < (int) sizeof g_path - 1; i++) g_path[i] = p[i];
+	g_path[i] = '\0';
+	g_fn->setText (g_path);
+}
 static void do_open ()
 {
-	const char *path = g_fn->text;
-	if (path[0] == '\0') return;
-	void *f = kapi_open (path);
+	if (g_path[0] == '\0') return;
+	void *f = kapi_open (g_path);
 	if (f == 0) { g_rtb->setContent (""); g_rtb->setFocus (); return; }
 	static char b[CAP];
 	int n = kapi_read (f, b, sizeof b - 1);
@@ -37,74 +49,95 @@ static void do_open ()
 }
 static void do_save ()
 {
-	const char *path = g_fn->text;
-	if (path[0] != '\0') kapi_save_file (path, g_rtb->content (), (unsigned) g_rtb->length ());
+	if (g_path[0] != '\0') kapi_save_file (g_path, g_rtb->content (), (unsigned) g_rtb->length ());
 }
-static void onOpen (Widget &) { do_open (); }
-static void onSave (Widget &) { do_save (); }
+static void onNew ()    { g_rtb->setContent (""); set_path ("SD:untitled.txt"); g_rtb->setFocus (); }
+static void onOpen ()
+{
+	char path[100];
+	if (wk_file_open (path, sizeof path, "SD:/")) { set_path (path); do_open (); }
+	g_rtb->setFocus ();
+}
+static void onSaveAs ()
+{
+	char path[100];
+	if (wk_file_save (path, sizeof path, "SD:/", g_path)) { set_path (path); do_save (); }
+	g_rtb->setFocus ();
+}
+static void onSave () { if (g_path[0]) do_save (); else onSaveAs (); }
 
-// ---- style controls (apply to the selection, else to the typing style) -------
+// ---- style commands (apply to the selection, else to the typing style) -------------
 
-static void onBold   (Widget &) { g_rtb->toggleFlag (RT_BOLD);   g_rtb->setFocus (); }
-static void onItalic (Widget &) { g_rtb->toggleFlag (RT_ITALIC); g_rtb->setFocus (); }
-static void onUnder  (Widget &) { g_rtb->toggleFlag (RT_UNDER);  g_rtb->setFocus (); }
-static void onStrike (Widget &) { g_rtb->toggleFlag (RT_STRIKE); g_rtb->setFocus (); }
-static void onHilite (Widget &) { g_rtb->toggleFlag (RT_HILITE); g_rtb->setFocus (); }
+static void onBold   () { g_rtb->toggleFlag (RT_BOLD);   g_rtb->setFocus (); }
+static void onItalic () { g_rtb->toggleFlag (RT_ITALIC); g_rtb->setFocus (); }
+static void onUnder  () { g_rtb->toggleFlag (RT_UNDER);  g_rtb->setFocus (); }
+static void onStrike () { g_rtb->toggleFlag (RT_STRIKE); g_rtb->setFocus (); }
+static void onHilite () { g_rtb->toggleFlag (RT_HILITE); g_rtb->setFocus (); }
 
-static void onSmaller (Widget &) { g_rtb->setSize (g_rtb->caretStyle ().size - 1); g_rtb->setFocus (); }
-static void onBigger  (Widget &) { g_rtb->setSize (g_rtb->caretStyle ().size + 1); g_rtb->setFocus (); }
+static void onSmaller () { g_rtb->setSize (g_rtb->caretStyle ().size - 1); g_rtb->setFocus (); }
+static void onBigger  () { g_rtb->setSize (g_rtb->caretStyle ().size + 1); g_rtb->setFocus (); }
 
-static void onBlack (Widget &) { g_rtb->setFg (RT_BLACK); g_rtb->setFocus (); }
-static void onRed   (Widget &) { g_rtb->setFg (RT_RED);   g_rtb->setFocus (); }
-static void onGreen (Widget &) { g_rtb->setFg (RT_GREEN); g_rtb->setFocus (); }
-static void onBlue  (Widget &) { g_rtb->setFg (RT_BLUE);  g_rtb->setFocus (); }
+static void onBlack () { g_rtb->setFg (RT_BLACK); g_rtb->setFocus (); }
+static void onRed   () { g_rtb->setFg (RT_RED);   g_rtb->setFocus (); }
+static void onGreen () { g_rtb->setFg (RT_GREEN); g_rtb->setFocus (); }
+static void onBlue  () { g_rtb->setFg (RT_BLUE);  g_rtb->setFocus (); }
 
-static void onNormal (Widget &) { g_rtb->setLevel (RT_NORMAL); g_rtb->setFocus (); }
-static void onT1     (Widget &) { g_rtb->setLevel (RT_TITLE1); g_rtb->setFocus (); }
-static void onT2     (Widget &) { g_rtb->setLevel (RT_TITLE2); g_rtb->setFocus (); }
-static void onT3     (Widget &) { g_rtb->setLevel (RT_TITLE3); g_rtb->setFocus (); }
+static void onNormal () { g_rtb->setLevel (RT_NORMAL); g_rtb->setFocus (); }
+static void onT1     () { g_rtb->setLevel (RT_TITLE1); g_rtb->setFocus (); }
+static void onT2     () { g_rtb->setLevel (RT_TITLE2); g_rtb->setFocus (); }
+static void onT3     () { g_rtb->setLevel (RT_TITLE3); g_rtb->setFocus (); }
 
 int main (void)
 {
 	Root root (W, H, "Writer");
+	root.setBg (0x00303840);
 
-	// Row 1: filename + Open / Save
-	g_fn = new Textbox (6, 6, 392, 22, "SD:doc.txt");
+	g_fn = new Label (8, 3, W - 16, PATH_H - 6, g_path, 0x00C8D0DA, 0x00303840);
 	root.addChild (g_fn);
-	root.addChild (new Button (402, 5, 58, 24, "Open", onOpen));
-	root.addChild (new Button (464, 5, 58, 24, "Save", onSave));
-
-	// Row 2: character styles | size | colours | heading levels
-	const int y = 34, h = 24;
-	root.addChild (new Button (  6, y, 26, h, "B",    onBold));
-	root.addChild (new Button ( 34, y, 26, h, "I",    onItalic));
-	root.addChild (new Button ( 62, y, 26, h, "U",    onUnder));
-	root.addChild (new Button ( 90, y, 26, h, "S",    onStrike));
-	root.addChild (new Button (118, y, 30, h, "Hi",   onHilite));
-	root.addChild (new Button (156, y, 30, h, "A-",   onSmaller));
-	root.addChild (new Button (188, y, 30, h, "A+",   onBigger));
-	root.addChild (new Button (228, y, 34, h, "Blk",  onBlack));
-	root.addChild (new Button (264, y, 34, h, "Red",  onRed));
-	root.addChild (new Button (300, y, 34, h, "Grn",  onGreen));
-	root.addChild (new Button (336, y, 34, h, "Blu",  onBlue));
-	root.addChild (new Button (378, y, 46, h, "Norm", onNormal));
-	root.addChild (new Button (426, y, 30, h, "T1",   onT1));
-	root.addChild (new Button (458, y, 30, h, "T2",   onT2));
-	root.addChild (new Button (490, y, 30, h, "T3",   onT3));
 
 	// Body: the rich-text document
-	g_rtb = new RichTextBox (6, 62, W - 12, H - 68, CAP);
+	g_rtb = new RichTextBox (6, PATH_H, W - 12, H - PATH_H - 6, CAP);
 	g_rtb->setContent (
 		"Welcome to Onyx Writer.\n\n"
-		"Select text with the mouse, then click B / I / U / S / Hi, pick a colour, "
-		"or set a heading level (Norm / T1 / T2 / T3). Use A- / A+ to resize.\n\n"
-		"The wheel and the arrow keys scroll. Type the path above and Open / Save.");
+		"Select text with the mouse, then use the Format menu (Bold ^B, Underline ^U, "
+		"Italic, Strikethrough, Highlight, Smaller / Bigger), the Color menu, or the Style "
+		"menu for heading levels (Normal / Title 1-3).\n\n"
+		"The wheel and the arrow keys scroll. File > Open... / Save / Save As... load and "
+		"store plain text.");
 	root.addChild (g_rtb);
+
+	static Menu menu;
+	menu.menu ("File");
+	menu.item ("New",           "^N", WK_CTRL ('N'), onNew);
+	menu.item ("Open...",       "^O", WK_CTRL ('O'), onOpen);
+	menu.separator ();
+	menu.item ("Save",          "^S", WK_CTRL ('S'), onSave);
+	menu.item ("Save As...",    "",   0,             onSaveAs);
+	menu.menu ("Format");
+	menu.item ("Bold",          "^B", WK_CTRL ('B'), onBold);
+	menu.item ("Italic",        "",   0,             onItalic);	// (^I is Tab)
+	menu.item ("Underline",     "^U", WK_CTRL ('U'), onUnder);
+	menu.item ("Strikethrough", "",   0,             onStrike);
+	menu.item ("Highlight",     "",   0,             onHilite);
+	menu.separator ();
+	menu.item ("Smaller",       "",   0,             onSmaller);
+	menu.item ("Bigger",        "",   0,             onBigger);
+	menu.menu ("Color");
+	menu.item ("Black",         "",   0,             onBlack);
+	menu.item ("Red",           "",   0,             onRed);
+	menu.item ("Green",         "",   0,             onGreen);
+	menu.item ("Blue",          "",   0,             onBlue);
+	menu.menu ("Style");
+	menu.item ("Normal",        "",   0,             onNormal);
+	menu.item ("Title 1",       "",   0,             onT1);
+	menu.item ("Title 2",       "",   0,             onT2);
+	menu.item ("Title 3",       "",   0,             onT3);
+	menu.publish ();
 
 	// Open a file named on the command line (autostart "writer SD:notes.txt").
 	char args[100];
 	int an = kapi_get_args (args, sizeof args);
-	if (an > 0 && args[0] != '\0') { g_fn->setText (args); do_open (); }
+	if (an > 0 && args[0] != '\0') { set_path (args); do_open (); }
 
 	g_rtb->setFocus ();
 	root.run ();

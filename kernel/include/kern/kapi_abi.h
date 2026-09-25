@@ -28,7 +28,8 @@
 //      compiler emits on its own (array/struct init and copies) link in every app.
 // v37: + tcp_listen/tcp_accept -- TCP server side (telnetd remote shell).
 // v38: + screen_grab/inject_pointer/inject_key -- remote screen (vncd).
-#define KAPI_ABI_VERSION	38
+// v39: + set_menu/get_menu/menu_command -- system menu bar (menubar app).
+#define KAPI_ABI_VERSION	39
 
 #ifdef __cplusplus
 extern "C" {
@@ -362,6 +363,20 @@ struct TKApiTable
 	int  (*screen_grab) (unsigned *dst, int w, int h);
 	void (*inject_pointer) (int x, int y, unsigned buttons, int wheel);
 	void (*inject_key) (const char *keys);
+
+	// --- v39 additions (system menu bar) ---
+	// set_menu: declare the calling app's menus on its window + the callback that
+	// receives (sender 0, GUI_EVENT_MENU = 14, item id). Spec = '\n'-separated lines:
+	//   "M<title>"                    start a menu
+	//   "I<id>\t<label>\t<shortcut>"  an item (id >= 0; shortcut text e.g. "^O", may be empty)
+	//   "-"                           a separator
+	// get_menu: the ACTIVE app window's spec + title (the topmost window that is not
+	// the menu bar, the desktop or borderless); returns a serial that changes when the
+	// active window or its menu changes (0 = none). menu_command: send GUI_EVENT_MENU(id)
+	// to the active window (id -1 = ask it to close, like its close box); 1 if delivered.
+	int      (*set_menu) (const char *spec, gui_handler handler);
+	unsigned (*get_menu) (char *buf, unsigned cap, char *title, unsigned title_cap);
+	int      (*menu_command) (int id);
 };
 
 #ifdef __cplusplus

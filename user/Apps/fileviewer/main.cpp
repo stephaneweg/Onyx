@@ -12,7 +12,8 @@
 // Keys: Up/Down/PgUp/PgDn/Home/End move, Right enters a folder, Left/Backspace goes back,
 // Enter opens, a letter jumps to the next name starting with it, Del deletes,
 // Ctrl-C/X/V copy/cut/paste, Ctrl-N new folder, Ctrl-R rename, Ctrl-L refresh.
-// Toolbar: New Folder, Rename, Delete, Copy, Cut, Paste, Refresh. Operations act on the
+// These commands are in the system menu bar (wtk::Menu): File (Open, New Folder,
+// Rename..., Delete, Refresh) and Edit (Copy, Cut, Paste). Operations act on the
 // selection of the active column; Paste and New Folder target the active column's folder.
 //
 #include "kapi.h"
@@ -25,7 +26,7 @@ using namespace wtk;
 #define H	520
 #define VIS	4			// columns visible at once
 #define COLW	(W / VIS)
-#define TB_H	36			// toolbar
+#define TB_H	0			// (no toolbar: commands are in the menu bar)
 #define BC_H	24			// path bar
 #define SB_H	12			// horizontal scrollbar
 #define ST_H	20			// status bar
@@ -515,7 +516,7 @@ static bool ask_name (const char *title, const char *init, char *out, int cap)
 	return true;
 }
 
-static void op_new_folder (Widget &)
+static void op_new_folder ()
 {
 	char name[NAMEL];
 	if (!ask_name ("New folder in this column", "New Folder", name, sizeof name)) return;
@@ -526,7 +527,7 @@ static void op_new_folder (Widget &)
 		if (ci_cmp (g_col[g_active].e[i].name, name) == 0) { select (g_active, i); break; }
 	status ("Created folder ", name);
 }
-static void op_rename (Widget &)
+static void op_rename ()
 {
 	const Entry *e = sel_entry (g_active);
 	if (!e) { status ("Select something to rename"); return; }
@@ -543,7 +544,7 @@ static void op_rename (Widget &)
 		if (ci_cmp (g_col[g_active].e[i].name, name) == 0) { select (g_active, i); break; }
 	status ("Renamed to ", name);
 }
-static void op_delete (Widget &)
+static void op_delete ()
 {
 	const Entry *e = sel_entry (g_active);
 	if (!e) { status ("Select something to delete"); return; }
@@ -570,9 +571,9 @@ static void clip_set (bool cut)
 	g_clipCut = cut; g_clipDir = e->isdir;
 	status (cut ? "Cut: " : "Copied: ", e->name);
 }
-static void op_copy (Widget &) { clip_set (false); }
-static void op_cut (Widget &)  { clip_set (true); }
-static void op_paste (Widget &)
+static void op_copy () { clip_set (false); }
+static void op_cut ()  { clip_set (true); }
+static void op_paste ()
 {
 	if (g_clip[0] == '\0') { status ("Nothing to paste"); return; }
 	const char *name = g_clip; for (const char *p = g_clip; *p; p++) if (*p == '/') name = p + 1;
@@ -590,7 +591,8 @@ static void op_paste (Widget &)
 	refresh ();
 	status (ok ? "Pasted into " : "Paste failed into ", dir);
 }
-static void op_refresh (Widget &) { refresh (); status ("Refreshed"); }
+static void op_refresh () { refresh (); status ("Refreshed"); }
+static void op_open () { open_entry (g_active); }
 
 static void on_hscroll (Widget &w)
 {
@@ -734,8 +736,7 @@ public:
 	{
 		sync_hsb ();
 		canvas.clear (C_BG);
-		canvas.fillRect (0, 0, W, TB_H, C_FACE_DN);
-		drawPathBar ();
+			drawPathBar ();
 		int t = total_slots ();
 		for (int s = 0; s < VIS; s++)
 		{
@@ -804,7 +805,6 @@ public:
 	bool onKey (long key) override
 	{
 		Column &k = g_col[g_active];
-		static Widget dummy (0, 0, 1, 1);
 		switch (key)
 		{
 		case KEY_UP:   if (k.count) select (g_active, k.sel <= 0 ? 0 : k.sel - 1); break;
@@ -818,13 +818,6 @@ public:
 			break;
 		case KEY_LEFT: case KEY_BACKSPACE: go_back (); break;
 		case KEY_ENTER: open_entry (g_active); break;
-		case KEY_DEL:  op_delete (dummy); break;
-		case 3:  op_copy (dummy); break;		// Ctrl-C
-		case 24: op_cut (dummy); break;			// Ctrl-X
-		case 22: op_paste (dummy); break;		// Ctrl-V
-		case 14: op_new_folder (dummy); break;		// Ctrl-N
-		case 18: op_rename (dummy); break;		// Ctrl-R
-		case 12: op_refresh (dummy); break;		// Ctrl-L
 		default:
 			if (key > ' ' && key < 127 && k.count)	// type-ahead: next name starting with it
 			{
@@ -856,16 +849,21 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 
-	static const struct { const char *label; Action cb; } tools[] = {
-		{ "New Folder", op_new_folder }, { "Rename", op_rename }, { "Delete", op_delete },
-		{ "Copy", op_copy }, { "Cut", op_cut }, { "Paste", op_paste }, { "Refresh", op_refresh } };
-	int x = 6;
-	for (unsigned i = 0; i < sizeof tools / sizeof tools[0]; i++)
-	{
-		int w = slen (tools[i].label) * g_fw + 20;
-		root.addChild (new Button (x, 4, w, TB_H - 8, tools[i].label, tools[i].cb));
-		x += w + 6;
-	}
+	// Commands live in the system menu bar (shortcuts handled by wtk::Menu).
+	static Menu menu;
+	menu.menu ("File");
+	menu.item ("Open",       "Enter", 0,             op_open);
+	menu.item ("New Folder", "^N",    WK_CTRL ('N'), op_new_folder);
+	menu.item ("Rename...",  "^R",    WK_CTRL ('R'), op_rename);
+	menu.separator ();
+	menu.item ("Delete",     "Del",   KEY_DEL,       op_delete);
+	menu.separator ();
+	menu.item ("Refresh",    "^L",    WK_CTRL ('L'), op_refresh);
+	menu.menu ("Edit");
+	menu.item ("Copy",       "^C",    WK_CTRL ('C'), op_copy);
+	menu.item ("Cut",        "^X",    WK_CTRL ('X'), op_cut);
+	menu.item ("Paste",      "^V",    WK_CTRL ('V'), op_paste);
+	menu.publish ();
 	g_hsb = new Scrollbar (0, COL_Y + COL_H, W, SB_H, false, 1, 0, on_hscroll);
 	root.addChild (g_hsb);
 

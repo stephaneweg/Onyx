@@ -16,9 +16,12 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_nOuterW (0), m_nOuterH (0),
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
+	m_nMinLogicalH (nClientH), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
 	m_bExitRequested (FALSE)
 {
+	m_Menu[0] = '\0';
+
 	// Copy the title (the caller's string may live in a transient address space).
 	m_Title[0] = '\0';
 	if (pTitle != 0)
@@ -111,6 +114,22 @@ void CWindow::SetLogicalSize (int w, int h)
 	if (h < 1) h = 1; else if (h > maxH) h = maxH;
 	m_nLogicalW = w;
 	m_nLogicalH = h;
+	if (h < m_nMinLogicalH)
+	{
+		m_nMinLogicalH = h;
+	}
+}
+
+void CWindow::SetMenu (const char *pSpec, u64 ulHandler)
+{
+	unsigned i = 0;
+	if (pSpec != 0)		// the spec lives in the caller's address space (active here)
+	{
+		for (; pSpec[i] != '\0' && i < sizeof (m_Menu) - 1; i++) m_Menu[i] = pSpec[i];
+	}
+	m_Menu[i] = '\0';
+	m_ulMenuHandler = ulHandler;
+	m_nMenuGen++;
 }
 
 
@@ -140,7 +159,7 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	// logical sub-rect is shown (the canvas may be over-allocated for resizing).
 	int clientX = x0 + ChromeL ();
 	int clientY = y0 + ChromeT ();
-	pScreen->PutOtherPart (&m_Canvas, clientX, clientY, 0, 0, cw, ch, FALSE);
+	pScreen->PutOtherPart (&m_Canvas, clientX, clientY, 0, 0, cw, ch, Transparent ());
 
 }
 
@@ -214,7 +233,8 @@ CWindowManager::CWindowManager (void)
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
 	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2),
-	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0)
+	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0),
+	m_pMenuLast (0), m_nMenuLastGen (0), m_nMenuSerial (1)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -238,9 +258,19 @@ void CWindowManager::Add (CWindow *pWindow)
 			m_pWindows[0] = pWindow;
 			m_nWindows++;
 		}
+		else if (pWindow->Topmost ())
+		{
+			m_pWindows[m_nWindows++] = pWindow;	// the menu bar: above everything
+		}
 		else
 		{
-			m_pWindows[m_nWindows++] = pWindow;	// normal windows open on top
+			// Normal windows open on top of the normal band, i.e. below any
+			// topmost window (the menu bar stays above them).
+			unsigned k = m_nWindows;
+			while (k > 0 && m_pWindows[k - 1]->Topmost ()) k--;
+			for (unsigned j = m_nWindows; j > k; j--) m_pWindows[j] = m_pWindows[j - 1];
+			m_pWindows[k] = pWindow;
+			m_nWindows++;
 		}
 	}
 	m_SpinLock.Release ();
@@ -284,10 +314,129 @@ void CWindowManager::RaiseLocked (CWindow *pWindow)
 			{
 				m_pWindows[j] = m_pWindows[j + 1];
 			}
-			m_pWindows[m_nWindows - 1] = pWindow;	// move to top (drawn last)
+			// Top of its band: the very top for a topmost window, else just below
+			// the topmost ones (the menu bar).
+			unsigned k = m_nWindows - 1;
+			if (!pWindow->Topmost ())
+			{
+				while (k > 0 && m_pWindows[k - 1]->Topmost ()) k--;
+				for (unsigned j = m_nWindows - 1; j > k; j--) m_pWindows[j] = m_pWindows[j - 1];
+			}
+			m_pWindows[k] = pWindow;		// drawn after everything below it
 			break;
 		}
 	}
+}
+
+CWindow *CWindowManager::ActiveLocked (void)
+{
+	for (int i = (int) m_nWindows - 1; i >= 0; i--)
+	{
+		CWindow *p = m_pWindows[i];
+		if (p != 0 && !p->Topmost () && !p->Backmost () && !p->Borderless ())
+		{
+			return p;
+		}
+	}
+	return 0;
+}
+
+CWindow *CWindowManager::KeyTargetLocked (void)
+{
+	for (int i = (int) m_nWindows - 1; i >= 0; i--)
+	{
+		if (m_pWindows[i] != 0 && !m_pWindows[i]->Topmost ())
+		{
+			return m_pWindows[i];
+		}
+	}
+	return 0;
+}
+
+int CWindowManager::TopInsetLocked (void)
+{
+	int nInset = 0;
+	for (unsigned i = 0; i < m_nWindows; i++)
+	{
+		CWindow *p = m_pWindows[i];
+		if (p != 0 && p->Topmost () && p->Y () == 0 && p->MinLogicalHeight () > nInset)
+		{
+			nInset = p->MinLogicalHeight ();
+		}
+	}
+	return nInset;
+}
+
+int CWindowManager::TopInset (void)
+{
+	m_SpinLock.Acquire ();
+	int n = TopInsetLocked ();
+	m_SpinLock.Release ();
+	return n;
+}
+
+unsigned CWindowManager::GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
+{
+	m_SpinLock.Acquire ();
+	CWindow *p = ActiveLocked ();
+	unsigned nSerial = 0;
+	if (p != 0)
+	{
+		if (p != m_pMenuLast || p->MenuGen () != m_nMenuLastGen)
+		{
+			m_pMenuLast = p;
+			m_nMenuLastGen = p->MenuGen ();
+			m_nMenuSerial++;
+		}
+		nSerial = m_nMenuSerial;
+		unsigned i = 0;
+		if (pBuf != 0 && nCap > 0)
+		{
+			for (const char *s = p->Menu (); s[i] != '\0' && i < nCap - 1; i++) pBuf[i] = s[i];
+			pBuf[i] = '\0';
+		}
+		i = 0;
+		if (pTitle != 0 && nTitleCap > 0)
+		{
+			for (const char *s = p->Title (); s[i] != '\0' && i < nTitleCap - 1; i++) pTitle[i] = s[i];
+			pTitle[i] = '\0';
+		}
+	}
+	else
+	{
+		m_pMenuLast = 0;
+		if (pBuf != 0 && nCap > 0) pBuf[0] = '\0';
+		if (pTitle != 0 && nTitleCap > 0) pTitle[0] = '\0';
+	}
+	m_SpinLock.Release ();
+	return nSerial;
+}
+
+boolean CWindowManager::SendMenuCommand (int nID)
+{
+	boolean bOK = FALSE;
+	m_SpinLock.Acquire ();
+	CWindow *p = ActiveLocked ();
+	if (p != 0)
+	{
+		if (nID == -1)
+		{
+			p->RequestExit ();			// "Quit": like its close box
+			bOK = TRUE;
+		}
+		else if (p->MenuHandler () != 0)
+		{
+			GUIEvent Ev;
+			Ev.ulHandler = p->MenuHandler ();
+			Ev.ulSender  = 0;
+			Ev.nEvent    = GUI_EVENT_MENU;
+			Ev.lValue    = nID;
+			p->PushEvent (Ev);
+			bOK = TRUE;
+		}
+	}
+	m_SpinLock.Release ();
+	return bOK;
 }
 
 void CWindowManager::Raise (CWindow *pWindow)
@@ -307,8 +456,10 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	CWindow *pSnapshot[WM_MAX_WINDOWS];
 	unsigned nCount;
 	GImage  *pWall;
+	CWindow *pActive;
 
 	m_SpinLock.Acquire ();
+	pActive = KeyTargetLocked ();			// the focused window (active chrome)
 	nCount = m_nWindows;
 	for (unsigned i = 0; i < nCount; i++)
 	{
@@ -332,7 +483,7 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	{
 		if (pSnapshot[i] != 0)
 		{
-			pSnapshot[i]->DrawTo (pScreen, i == nCount - 1);
+			pSnapshot[i]->DrawTo (pScreen, pSnapshot[i] == pActive);
 		}
 	}
 
@@ -693,7 +844,11 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	else if (bLeftNow && bLeftWas)
 	{
 		if (m_pDragWindow != 0)
-			m_pDragWindow->Move (x - m_nDragDX, y - m_nDragDY);
+		{
+			int ny = y - m_nDragDY, nInset = TopInsetLocked ();
+			if (!m_pDragWindow->Topmost () && ny < nInset) ny = nInset;	// not under the bar
+			m_pDragWindow->Move (x - m_nDragDX, ny);
+		}
 	}
 	else if (!bLeftNow && bLeftWas)
 	{
@@ -793,7 +948,7 @@ void CWindowManager::OnKey (const char *pString)
 	m_nKeyEvents++;
 	// Deliver keys to the topmost window's app-level key handler. Apps own their text
 	// input via the user-side uikit toolkit -- no kernel widgets or dialogs any more.
-	CWindow *pTop = m_nWindows > 0 ? m_pWindows[m_nWindows - 1] : 0;
+	CWindow *pTop = KeyTargetLocked ();		// topmost window except the menu bar
 	u64 ulKeyHandler = pTop != 0 ? pTop->KeyHandler () : 0;
 	if (pTop != 0 && ulKeyHandler != 0)
 	{

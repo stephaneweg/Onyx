@@ -1,4 +1,5 @@
 #include "wtk/root.h"
+#include "wtk/menu.h"		// Menu::shortcut (keys go through the menu first)
 #include "wtk/skin.h"		// wk_decorate_window
 #include "wtk/font.h"		// wtk::init (load the global font family at startup)
 #include "applib.h"		// should_exit, msleep, pump_events
@@ -69,6 +70,11 @@ void Root::ptrEvent (unsigned long, int ev, long v)
 }
 
 void Root::keyEvent (unsigned long, int ev, long v)
-{ Root *r = active (); if (r && ev == GUI_EVENT_KEY) r->handleKey (v); }
+{
+	Root *r = active ();
+	if (r == 0 || ev != GUI_EVENT_KEY) return;
+	if (Menu::current () && Menu::current ()->shortcut (v)) return;	// menu shortcuts first
+	r->handleKey (v);
+}
 
 } // namespace wtk

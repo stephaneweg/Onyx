@@ -13,6 +13,8 @@
 # blue desktop). It no longer masks the old single-GUI-app boot hang, fixed in the
 # kernel (the compositor now runs as soon as it is created: CScheduler::YieldTo).
 run voronoy
+# System menu bar across the top of the screen: the active app's menus + the clock.
+run menubar
 run panel
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,

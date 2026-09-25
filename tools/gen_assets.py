@@ -314,6 +314,18 @@ def icon_fileviewer():		# a column browser: three panes, selected rows + arrows
                 pset(px, x0 + 8, y, arrow)
     return px
 
+def icon_menubar():		# a screen with a menu bar and an open drop-down
+    px = blank()
+    prect(px, 3, 6, 36, 33, (32, 64, 96)); pframe(px, 3, 6, 36, 33, (90, 100, 114))
+    prect(px, 4, 7, 35, 11, (48, 61, 77))
+    for x0 in (6, 13, 20):
+        prect(px, x0, 9, x0 + 4, 9, (232, 236, 240))
+    prect(px, 12, 12, 26, 26, (38, 47, 59)); pframe(px, 12, 12, 26, 26, (22, 28, 36))
+    for i, y in enumerate(range(15, 25, 3)):
+        if i == 1: prect(px, 13, y - 1, 25, y + 1, (53, 80, 112))
+        prect(px, 14, y, 22, y, (200, 210, 225))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -323,7 +335,7 @@ ICONS = {
     "minesweeper": icon_mines, "paint": icon_paint,
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
-    "fileviewer": icon_fileviewer,
+    "fileviewer": icon_fileviewer, "menubar": icon_menubar,
 }
 
 

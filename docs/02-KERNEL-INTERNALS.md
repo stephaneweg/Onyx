@@ -413,7 +413,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 38`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 39`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -426,13 +426,14 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`).
 
 ### Categories of exposed functions
 
 | Category | Examples |
 |---|---|
-| Windowing | `create_window(_ex)`, `resize_window`, `move_window`, `present`, `exit` |
+| Windowing | `create_window(_ex)`, `resize_window`, `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
+| Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `wtk::Menu`. |
 | Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
 | Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
@@ -670,7 +671,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 38 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 39 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

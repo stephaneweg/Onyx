@@ -149,12 +149,13 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 			s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
 		}
 		int nXMin   = g_nScreenWidth / 5;			// skip the leftmost fifth
+		int nYMin   = CWindowManager::Get () != 0 ? CWindowManager::Get ()->TopInset () : 0;
 		int nXRange = g_nScreenWidth  - nOuterW - nXMin;
-		int nYRange = g_nScreenHeight - nOuterH;
+		int nYRange = g_nScreenHeight - nOuterH - nYMin;	// below the menu bar
 		s_nRng = s_nRng * 1103515245u + 12345u;
 		x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
 		s_nRng = s_nRng * 1103515245u + 12345u;
-		y = nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0;
+		y = nYMin + (nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0);
 	}
 
 	// pTitle is a pointer in the calling app's address space, which is active here
@@ -352,6 +353,34 @@ void kapi_screen_size (int *pW, int *pH)
 {
 	if (pW != 0) *pW = g_nScreenWidth;
 	if (pH != 0) *pH = g_nScreenHeight;
+}
+
+// --- v39: system menu bar ----------------------------------------------------
+// An app declares its menus on its window (spec: see kapi_abi.h) + the callback that
+// receives GUI_EVENT_MENU; the menu-bar app reads the ACTIVE window's menu and sends
+// the chosen command back to it.
+int kapi_set_menu (const char *pSpec, void *pHandler)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0)
+	{
+		return 0;
+	}
+	pWin->SetMenu (pSpec, (u64) pHandler);
+	return 1;
+}
+
+unsigned kapi_get_menu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	return pWM != 0 ? pWM->GetActiveMenu (pBuf, nCap, pTitle, nTitleCap) : 0;
+}
+
+int kapi_menu_command (int nID)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	return pWM != 0 && pWM->SendMenuCommand (nID) ? 1 : 0;
 }
 
 // --- v38: remote screen (vncd) ----------------------------------------------

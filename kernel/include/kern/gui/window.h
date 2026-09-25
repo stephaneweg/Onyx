@@ -53,6 +53,14 @@ extern u32 g_WinTitleTextColor;
 #define WIN_FLAG_BACKMOST	(1u << 1)	// pinned to the BOTTOM of the z-order (the shell
 						// desktop): never raised above other windows, so
 						// floating windows always stay on top of it
+#define WIN_FLAG_TOPMOST	(1u << 2)	// pinned to the TOP of the z-order (the system menu
+						// bar): never the active app, never gets the keys; a
+						// topmost window at y=0 reserves its height at the
+						// top of the screen (placement / drag keep clear)
+#define WIN_FLAG_TRANSPARENT	(1u << 3)	// client canvas blitted with the magenta key (the
+						// menu bar's drop-down floats over the desktop)
+
+#define WIN_MENU_MAX		2048	// max menu spec length (kapi_set_menu)
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree. (The kernel-drawn widget
@@ -70,6 +78,7 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_PTR_ENTER	11	// cursor entered the client area
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
 #define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (lValue wheel field = signed delta)
+#define GUI_EVENT_MENU		14	// menu command chosen in the menu bar (lValue = item id)
 					// all: lValue = (wheel<<48)|(buttons<<32)|(clientX<<16)|clientY
 					// buttons bit0 = left, bit1 = right; wheel +forward / -back
 
@@ -116,6 +125,9 @@ public:
 	// the renderer use these instead of the raw WIN_* constants so both kinds work.
 	boolean Borderless (void) const	{ return (m_nFlags & WIN_FLAG_BORDERLESS) != 0; }
 	boolean Backmost (void) const	{ return (m_nFlags & WIN_FLAG_BACKMOST) != 0; }
+	boolean Topmost (void) const	{ return (m_nFlags & WIN_FLAG_TOPMOST) != 0; }
+	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
+	int MinLogicalHeight (void) const { return m_nMinLogicalH; }	// smallest logical height so far
 	int ChromeL (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeR (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeT (void) const	{ return Borderless () ? 0 : WIN_TITLEBAR_H; }
@@ -183,6 +195,14 @@ public:
 	void SetPointerHandler (u64 ulHandler)	{ m_ulPointerHandler = ulHandler; }
 	u64  PointerHandler (void) const	{ return m_ulPointerHandler; }
 
+	// --- menu (system menu bar) ------------------------------------------
+	// The app's menu spec (see kapi_set_menu) + the callback that receives
+	// GUI_EVENT_MENU. MenuGen() changes whenever the menu is replaced.
+	void SetMenu (const char *pSpec, u64 ulHandler);
+	const char *Menu (void) const		{ return m_Menu; }
+	u64  MenuHandler (void) const		{ return m_ulMenuHandler; }
+	unsigned MenuGen (void) const		{ return m_nMenuGen; }
+
 	// --- diagnostics (GUI watchdog) --------------------------------------
 	// Events waiting in the ring, events dropped because it was full, and the tick
 	// (CTimer::GetTicks) of the owner's last pump (PopEvent call), 0 = never pumped.
@@ -220,6 +240,11 @@ private:
 	u64		m_ulKeyHandler;	// app key callback (GUI_EVENT_KEY), or 0
 	u64		m_ulClickHandler; // app canvas-click callback, or 0
 	u64		m_ulPointerHandler; // app pointer-stream callback (GUI_EVENT_PTR_*), or 0
+	int		m_nMinLogicalH;	// smallest logical height (topmost bar: its reserved strip)
+
+	char		m_Menu[WIN_MENU_MAX];	// menu spec ('' = none)
+	u64		m_ulMenuHandler;	// GUI_EVENT_MENU callback, or 0
+	unsigned	m_nMenuGen;		// bumped on SetMenu
 
 	// Event ring: the WM (input thread) pushes, the owning app's pump pops.
 	GUIEvent	m_Events[WIN_EVENT_QUEUE];
@@ -304,13 +329,32 @@ public:
 	unsigned KeyCount (void) const		{ return m_nKeyEvents; }
 	unsigned Snapshot (CWindow **ppOut, unsigned nMax);
 
+	// ---- system menu bar --------------------------------------------------
+	// The ACTIVE app window = the topmost window that is not topmost-flagged (the
+	// bar), not backmost (the desktop) and not borderless (panel / popups).
+	// GetActiveMenu copies its menu spec + title; returns a serial that changes when
+	// the active window or its menu changes (0 = no active window).
+	// SendMenuCommand queues GUI_EVENT_MENU(id) to it (id -1 = ask it to close).
+	unsigned GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap);
+	boolean SendMenuCommand (int nID);
+
+	// Height reserved at the top of the screen by a topmost window at y=0 (the menu
+	// bar); window auto-placement and title-bar drags keep clear of it.
+	int TopInset (void);
+
 private:
 	// Hit-test top-down; returns the topmost window containing (x,y) and whether the
 	// hit landed on its title bar. Caller must hold m_SpinLock. Returns ~0u if none.
 	unsigned HitTest (int x, int y, boolean *pbOnTitleBar);
 
-	// Move a window to the top of the z-order. Caller holds m_SpinLock.
+	// Move a window to the top of its z-order band. Caller holds m_SpinLock.
 	void RaiseLocked (CWindow *pWindow);
+
+	// Caller holds m_SpinLock: the active app window (see GetActiveMenu) / the window
+	// that receives the keys (topmost non-topmost-flagged window), or 0.
+	CWindow *ActiveLocked (void);
+	CWindow *KeyTargetLocked (void);
+	int TopInsetLocked (void);
 
 	// Push one GUI_EVENT_PTR_* event (client coords) to a window's pointer handler.
 	// nWheel is the signed wheel delta (only meaningful for GUI_EVENT_PTR_WHEEL).
@@ -349,6 +393,10 @@ private:
 	volatile unsigned m_nFrames;		// composited frames (watchdog)
 	volatile unsigned m_nMouseEvents;	// OnMouse calls (watchdog)
 	volatile unsigned m_nKeyEvents;		// OnKey calls (watchdog)
+
+	CWindow	  *m_pMenuLast;		// active window at the last GetActiveMenu
+	unsigned   m_nMenuLastGen;	// ... and its MenuGen
+	unsigned   m_nMenuSerial;	// GetActiveMenu change counter
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).

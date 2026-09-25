@@ -208,6 +208,25 @@ Notes / caveats:
 
 ## 6. Writing a graphical application
 
+> **Menus.** Put commands in the **system menu bar**, not in button rows. After creating
+> the `Root`, build a `wtk::Menu` once and publish it:
+>
+> ```cpp
+> static Menu menu;
+> menu.menu ("File");
+> menu.item ("Open...", "^O", WK_CTRL ('O'), onOpen);   // label, shortcut text, key, void() callback
+> menu.separator ();
+> menu.item ("Save",    "^S", WK_CTRL ('S'), onSave);
+> menu.publish ();                                       // kapi_set_menu (ABI v39)
+> ```
+>
+> The `menubar` app shows the menus while your window is the active app and sends the
+> chosen item back (`GUI_EVENT_MENU`); `wtk::Menu` runs the callback, then invalidates the
+> root. Every key goes through `Menu::shortcut` first (so item shortcuts work anywhere in
+> the app); **Ctrl-Q** quits. Commands and shortcuts are ignored while a modal dialog is
+> open. Avoid `^I` (= Tab), `^H` (= Backspace), `^M` (= Enter) as shortcuts.
+
+
 Minimal skeleton (window with kernel-managed widgets):
 
 ```c

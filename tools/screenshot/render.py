@@ -224,13 +224,9 @@ def app_filer():
 
 def app_fileviewer():	# NeXTSTEP-style column browser (Apps/fileviewer/main.cpp onDraw)
     W, H, VIS = 800, 520, 4; COLW = W // VIS
-    TB_H, BC_H, SB_H, ST_H = 36, 24, 12, 20; COL_Y = TB_H + BC_H; COL_H = H - COL_Y - SB_H - ST_H
+    TB_H, BC_H, SB_H, ST_H = 0, 24, 12, 20; COL_Y = TB_H + BC_H; COL_H = H - COL_Y - SB_H - ST_H
     RH = FH + 4; rows = COL_H // RH
-    cv = Canvas(W, H, C(0x202830))
-    cv.fill(0, 0, W, TB_H, C(0x404A5A))
-    x = 6
-    for lbl in ["New Folder", "Rename", "Delete", "Copy", "Cut", "Paste", "Refresh"]:
-        w = len(lbl) * FW + 20; button(cv, x, 4, w, TB_H - 8, lbl); x += w + 6
+    cv = Canvas(W, H, C(0x202830))      # commands in the menu bar (File / Edit)
     def arrow(x, y, c):
         for i in range(4): cv.fill(x + i, y + i, 1, 9 - 2 * i, c)
     root = os.path.join(ROOT, "sdcard")
@@ -325,10 +321,9 @@ def app_tinycalc():
     return cv
 
 def app_tinypad():
-    W, H = 560, 430; TB = 28; cv = Canvas(W, H, C(0x303840))
-    cv.fill(0, TB, W, H - TB, C(0xFFFFFF))
-    textbox(cv, 4, 4, W - 160, 20, "SD:notes.txt")
-    button(cv, W - 152, 4, 70, 20, "Open"); button(cv, W - 78, 4, 70, 20, "Save")
+    W, H = 560, 430; TB = 22; cv = Canvas(W, H, C(0x303840))   # path bar; commands in the menu bar
+    cv.fill(4, TB, W - 8, H - TB - 4, C(0xFFFFFF))
+    cv.text(6, 3, "SD:notes.txt", C(0xC8D0DA))
     text = ["Zircon notes", "", "- panel pins to the right edge (config position=3)",
             "- apps talk to the kernel through the kapi ABI table",
             "- fixed-point only: no FP regs saved across switches",
@@ -383,7 +378,7 @@ def app_calendar():
     return cv
 
 def app_paint():
-    W, H, PAL_H = 420, 300, 26; cv = Canvas(W, H, C(0xF0F0F0))
+    W, H, ST_H = 420, 300, 18; cv = Canvas(W, H, C(0xF0F0F0))   # commands in the menu bar
     SW = [0x000000,0xFFFFFF,0xE05050,0x50C060,0x4080E0,0xE0C040,0xC060D0,0x40C0C0]
     cur = 0xE05050
     # a small painted scene on the white canvas
@@ -393,13 +388,9 @@ def app_paint():
     cv.d.line([210, 90, 360, 200], fill=C(0x50C060) + (255,), width=8)
     for i, t in enumerate(range(40)):
         cv.px[260 + i*3 % 90, 230 + (i*7) % 40] = C(0xC060D0) + (255,)
-    cv.fill(0, 0, W, PAL_H, C(0x303840))
-    for i, col in enumerate(SW):
-        x = 4 + i*26; cv.fill(x, 3, 22, PAL_H - 6, C(col))
-        if col == cur:
-            cv.fill(x, 3, 22, 2, C(0xFFFFFF)); cv.fill(x, PAL_H - 5, 22, 2, C(0xFFFFFF))
-    cv.text(8*26 + 12, 8, "brush 3", C(0xD0D0D0))
-    cv.text(W - 150, 8, "[ ] size  c clear  s save", C(0x90A0A0))
+    cv.fill(0, H - ST_H, W, ST_H, C(0x303840))
+    cv.fill(6, H - ST_H + 3, 28, ST_H - 6, C(cur)); cv.frame(6, H - ST_H + 3, 28, ST_H - 6, C(0xA0A8B0))
+    cv.text(42, H - ST_H + (ST_H - FH) // 2, "Red   brush 3", C(0xD0D0D0))
     return cv
 
 def app_taskman():
@@ -569,15 +560,50 @@ def voronoi_wallpaper(W, H):
     a = np.full((H, W, 1), 255, "uint8")
     return Image.fromarray(np.concatenate([full, a], 2), "RGBA")
 
+MB_H = 22
+def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12:34"):
+    """The system menu bar (Apps/menubar/main.cpp draw()): app name (bold) + menus + clock,
+    optionally with one drop-down open. items = [(label, shortcut) | None for a separator]."""
+    ty = (MB_H - 1 - FH) // 2
+    cv.fill(0, 0, W, MB_H - 1, C(0x303D4D)); cv.fill(0, MB_H - 1, W, 1, C(0x161C24))
+    x = 10; xs = []
+    for i, t in enumerate([app] + menus):
+        w = len(t) * FW + 16; xs.append(x)
+        if i == open_idx: cv.fill(x, 0, w, MB_H - 1, C(0x355070))
+        cv.text(x + 8, ty, t, C(0xE8ECF0))
+        if i == 0: cv.text(x + 9, ty, t, C(0xE8ECF0))
+        x += w
+    cv.text(W - 5 * FW - 12, ty, clock, C(0xE8ECF0))
+    if open_idx >= 0 and items:
+        dw = max(120, max((len(l) + len(k) + 5) * FW + 20 for l, k in [i for i in items if i]))
+        dh = 6 + sum(7 if i is None else FH + 6 for i in items)
+        dx = xs[open_idx]
+        cv.fill(dx + 3, MB_H + 3, dw, dh, C(0x101418)); cv.fill(dx, MB_H, dw, dh, C(0x262F3B))
+        cv.frame(dx, MB_H, dw, dh, C(0x161C24)); yy = MB_H + 3
+        for n, it in enumerate(items):
+            if it is None: cv.fill(dx + 6, yy + 3, dw - 12, 1, C(0x404A5A)); yy += 7; continue
+            if n == hover: cv.fill(dx + 2, yy, dw - 4, FH + 6, C(0x355070))
+            cv.text(dx + 12, yy + 3, it[0], C(0xE8ECF0))
+            if it[1]: cv.text(dx + dw - 12 - len(it[1]) * FW, yy + 3, it[1], C(0x8A96A8))
+            yy += FH + 6
+
+def app_menubar():	# the bar over a strip of desktop, Writer active, Format open
+    W, H = 1024, 260; cv = Canvas(W, H, C(0x204060))
+    draw_menubar(cv, W, "Writer", ["File", "Format", "Color", "Style"], open_idx=2,
+                 items=[("Bold", "^B"), ("Italic", ""), ("Underline", "^U"), ("Strikethrough", ""),
+                        ("Highlight", ""), None, ("Smaller", ""), ("Bigger", "")], hover=2)
+    return cv
+
 def render_desktop():
     W, H = 1024, 768
     cv = Canvas(W, H)
     cv.img.paste(voronoi_wallpaper(W, H), (0, 0)); cv.px = cv.img.load(); cv.d = ImageDraw.Draw(cv.img)
     # cascade: fractal + tinycalc inactive (slate chrome), terminal active (gold) on top
-    fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 28))
+    fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 30))
     cw = window(app_tinycalc(), "tinycalc", False); cv.img.alpha_composite(cw.img, (63, 328))
     tw = window(app_terminal(), "terminal", True);  cv.img.alpha_composite(tw.img, (293, 108))
     draw_panel(cv, W, H)
+    draw_menubar(cv, W, "Terminal", [])
     draw_cursor(cv, 470, 360)
     return cv
 
@@ -1015,7 +1041,7 @@ if __name__ == "__main__":
         window(fn(), title, True).img.save(os.path.join(OUT, fname + ".png"))
         print("wrote", fname + ".png")
     # borderless apps (no chrome): app drawer, demo sidebar, the panel itself
-    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel)]:
+    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar)]:
         fn().img.save(os.path.join(OUT, fname + ".png")); print("wrote", fname + ".png")
     # voronoy is windowless: its "screenshot" is the wallpaper it paints
     voronoi_wallpaper(1024, 768).save(os.path.join(OUT, "voronoy.png")); print("wrote voronoy.png")

@@ -50,6 +50,9 @@ int kapi_tcp_accept (int, char *, unsigned);
 int kapi_screen_grab (unsigned *, int, int);
 void kapi_inject_pointer (int, int, unsigned, int);
 void kapi_inject_key (const char *);
+int kapi_set_menu (const char *, void *);
+unsigned kapi_get_menu (char *, unsigned, char *, unsigned);
+int kapi_menu_command (int);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -253,4 +256,8 @@ void KApiTableInit (void)
 	t->screen_grab       = kapi_screen_grab;
 	t->inject_pointer    = kapi_inject_pointer;
 	t->inject_key        = kapi_inject_key;
+
+	t->set_menu          = (int (*) (const char *, gui_handler)) kapi_set_menu;
+	t->get_menu          = kapi_get_menu;
+	t->menu_command      = kapi_menu_command;
 }

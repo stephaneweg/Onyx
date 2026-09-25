@@ -36,5 +36,6 @@
 #include "wtk/tabhost.h"
 #include "wtk/root.h"
 #include "wtk/dialog.h"
+#include "wtk/menu.h"
 
 #endif

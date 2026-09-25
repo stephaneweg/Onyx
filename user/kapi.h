@@ -18,6 +18,8 @@
 // Window creation flags (must match kern/gui/window.h).
 #define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
 #define WIN_FLAG_BACKMOST	(1u << 1)	// pinned to the bottom of the z-order (shell desktop)
+#define WIN_FLAG_TOPMOST	(1u << 2)	// pinned to the top, never active (the menu bar)
+#define WIN_FLAG_TRANSPARENT	(1u << 3)	// magenta (0xFF00FF) client pixels are see-through
 
 // Event kinds (must match kern/gui/window.h).
 #define GUI_EVENT_CLICK		1
@@ -37,6 +39,9 @@
 #define GUI_EVENT_PTR_ENTER	11	// cursor entered the client area
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
 #define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (GUI_PTR_WHEEL = signed notch delta)
+#define GUI_EVENT_MENU		14	// menu-bar command chosen (value = item id, ABI v39)
+#define MENU_QUIT		(-1)	// kapi_menu_command id: close the active app
+#define WIN_MENU_MAX_USER	2048	// max menu spec length (= the kernel's WIN_MENU_MAX)
 #define GUI_PTR_Y(v)		((int) ((unsigned long) (v) & 0xFFFF))
 #define GUI_PTR_X(v)		((int) (((unsigned long) (v) >> 16) & 0xFFFF))
 #define GUI_PTR_BUTTONS(v)	((int) (((unsigned long) (v) >> 32) & 0xFF))	// held mask
@@ -199,6 +204,14 @@ static inline int  kapi_tcp_accept (int listen_sock, char *ip, unsigned cap) { r
 static inline int  kapi_screen_grab (unsigned *dst, int w, int h) { return KT->screen_grab (dst, w, h); }
 static inline void kapi_inject_pointer (int x, int y, unsigned buttons, int wheel) { KT->inject_pointer (x, y, buttons, wheel); }
 static inline void kapi_inject_key (const char *keys) { KT->inject_key (keys); }
+
+// System menu bar (ABI v39). set_menu: declare this app's menus (spec lines "M<title>",
+// "I<id>\t<label>\t<shortcut>", "-") + the GUI_EVENT_MENU handler -- apps normally use
+// wtk::Menu. get_menu / menu_command: for the menu-bar app (active window's spec+title ->
+// change serial, 0 = none; send item id, MENU_QUIT closes the active app).
+static inline int      kapi_set_menu (const char *spec, gui_handler h) { return KT->set_menu (spec, h); }
+static inline unsigned kapi_get_menu (char *buf, unsigned cap, char *title, unsigned tcap) { return KT->get_menu (buf, cap, title, tcap); }
+static inline int      kapi_menu_command (int id) { return KT->menu_command (id); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

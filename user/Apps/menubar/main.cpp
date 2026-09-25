@@ -1,0 +1,300 @@
+//
+// menubar -- the system menu bar across the top of the screen (macOS-style).
+//
+// It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
+// wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
+// back to the app (kapi_menu_command). The first menu is the app's name with "Quit"
+// (MENU_QUIT). With no active app it shows an "Onyx" menu to launch a few apps. The
+// clock sits on the right.
+//
+// The window is TOPMOST (always above the others, never active, never gets the keys)
+// and TRANSPARENT: it is allocated full-screen but kept BAR_H tall; while a menu is
+// open it grows to the whole screen, all magenta (see-through) except the bar and the
+// drop-down, so a click anywhere else closes the menu.
+//
+// Mouse: click a title to open (click it again or anywhere outside to close), slide to
+// another title to switch, click an item to run it; press on a title + release on an
+// item works too.
+//
+#include "kapi.h"
+#include "wtk/wtk.h"
+
+using namespace wtk;
+
+#define BAR_H		22
+#define MAXMENUS	12
+#define MAXITEMS	24
+#define KEYCOL		0x00FF00FFu		// transparent (magenta key)
+
+static const unsigned C_BARBG = 0x00303D4D, C_BARLINE = 0x00161C24, C_BARTXT = 0x00E8ECF0,
+		      C_DROP = 0x00262F3B, C_DROPHI = 0x00355070, C_DIM = 0x008A96A8, C_SEP = 0x00404A5A;
+
+struct Item { int id; char label[40]; char key[12]; bool sep; };
+struct MenuDef { char title[24]; Item items[MAXITEMS]; int count; int x, w; };
+
+static MenuDef g_menus[MAXMENUS];
+static int g_nmenus = 0;
+static char g_app[48] = "Onyx";
+static bool g_onyx = true;		// no active app: our own Onyx menu
+
+static int g_sw = 1024, g_sh = 768, g_fw = 8, g_fh = 16;
+static unsigned *g_fb = 0;
+static Canvas g_cv;
+static int g_open = -1, g_hover = -1;	// open menu / hovered item index
+static bool g_dirty = true, g_pressedTitle = false;
+static int g_lastMin = -1;
+
+static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
+static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
+
+// ---- menus ------------------------------------------------------------------------------
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_FILER, ONYX_TASKS, ONYX_APPS };
+
+static void add_quit_menu (const char *app)
+{
+	MenuDef &m = g_menus[g_nmenus++];
+	scopy (m.title, app, sizeof m.title); m.count = 0;
+	Item &q = m.items[m.count++];
+	q.id = MENU_QUIT; scopy (q.label, "Quit", sizeof q.label); scopy (q.key, "^Q", sizeof q.key); q.sep = false;
+}
+
+static void onyx_menu (void)
+{
+	g_nmenus = 0; g_onyx = true;
+	scopy (g_app, "Onyx", sizeof g_app);
+	MenuDef &m = g_menus[g_nmenus++];
+	scopy (m.title, "Onyx", sizeof m.title); m.count = 0;
+	static const struct { int id; const char *l; } it[] = {
+		{ ONYX_TERMINAL, "Terminal" }, { ONYX_FILES, "File Viewer" }, { ONYX_FILER, "Files" },
+		{ ONYX_TASKS, "Task Manager" }, { ONYX_APPS, "All Apps..." } };
+	for (unsigned i = 0; i < sizeof it / sizeof it[0]; i++)
+	{
+		Item &x = m.items[m.count++];
+		x.id = it[i].id; scopy (x.label, it[i].l, sizeof x.label); x.key[0] = '\0'; x.sep = false;
+		if (i == 3) { Item &s = m.items[m.count++]; s.sep = true; s.id = -2; s.label[0] = s.key[0] = '\0'; }
+	}
+}
+
+static void parse (const char *spec, const char *title)
+{
+	g_nmenus = 0; g_onyx = false;
+	scopy (g_app, title[0] ? title : "App", sizeof g_app);
+	if (g_app[0] >= 'a' && g_app[0] <= 'z') g_app[0] = (char) (g_app[0] - 32);	// "tinypad" -> "Tinypad"
+	add_quit_menu (g_app);
+	const char *p = spec;
+	MenuDef *cur = 0;
+	while (*p)
+	{
+		const char *e = p; while (*e && *e != '\n') e++;
+		if (*p == 'M' && g_nmenus < MAXMENUS)
+		{
+			cur = &g_menus[g_nmenus++]; cur->count = 0;
+			int n = 0; for (const char *q = p + 1; q < e && n < (int) sizeof cur->title - 1; q++) cur->title[n++] = *q;
+			cur->title[n] = '\0';
+		}
+		else if (*p == '-' && cur && cur->count < MAXITEMS)
+		{
+			Item &s = cur->items[cur->count++]; s.sep = true; s.id = -2; s.label[0] = s.key[0] = '\0';
+		}
+		else if (*p == 'I' && cur && cur->count < MAXITEMS)
+		{
+			Item &it = cur->items[cur->count++];
+			it.sep = false; it.id = 0;
+			const char *q = p + 1;
+			while (q < e && *q >= '0' && *q <= '9') it.id = it.id * 10 + (*q++ - '0');
+			if (q < e && *q == '\t') q++;
+			int n = 0; while (q < e && *q != '\t' && n < (int) sizeof it.label - 1) it.label[n++] = *q++;
+			it.label[n] = '\0';
+			if (q < e && *q == '\t') q++;
+			n = 0; while (q < e && n < (int) sizeof it.key - 1) it.key[n++] = *q++;
+			it.key[n] = '\0';
+		}
+		p = *e ? e + 1 : e;
+	}
+}
+
+// ---- geometry ------------------------------------------------------------------------------
+static void layout_titles (void)
+{
+	int x = 10;
+	for (int i = 0; i < g_nmenus; i++)
+	{
+		g_menus[i].x = x;
+		g_menus[i].w = slen (g_menus[i].title) * g_fw + 16;
+		x += g_menus[i].w;
+	}
+}
+static int drop_w (const MenuDef &m)
+{
+	int w = 120;
+	for (int i = 0; i < m.count; i++)
+	{
+		int ww = (slen (m.items[i].label) + slen (m.items[i].key) + 5) * g_fw + 20;
+		if (ww > w) w = ww;
+	}
+	return w;
+}
+static int item_h (const Item &it) { return it.sep ? 7 : g_fh + 6; }
+static int drop_h (const MenuDef &m) { int h = 6; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
+static int drop_x (const MenuDef &m) { int x = m.x; int w = drop_w (m); if (x + w > g_sw - 2) x = g_sw - 2 - w; return x; }
+
+static int title_at (int x, int y)
+{
+	if (y < 0 || y >= BAR_H) return -1;
+	for (int i = 0; i < g_nmenus; i++) if (x >= g_menus[i].x && x < g_menus[i].x + g_menus[i].w) return i;
+	return -1;
+}
+static int item_at (int x, int y)		// index in the open menu, -1 = none
+{
+	if (g_open < 0) return -1;
+	const MenuDef &m = g_menus[g_open];
+	int dx = drop_x (m), dw = drop_w (m), yy = BAR_H + 3;
+	if (x < dx || x >= dx + dw) return -1;
+	for (int i = 0; i < m.count; i++)
+	{
+		int h = item_h (m.items[i]);
+		if (y >= yy && y < yy + h) return m.items[i].sep ? -1 : i;
+		yy += h;
+	}
+	return -1;
+}
+
+// ---- drawing ----------------------------------------------------------------------------------
+static void draw (void)
+{
+	int h = g_open >= 0 ? g_sh : BAR_H;
+	if (g_open >= 0) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, KEYCOL);
+	g_cv.fillRect (0, 0, g_sw, BAR_H - 1, C_BARBG);
+	g_cv.fillRect (0, BAR_H - 1, g_sw, 1, C_BARLINE);
+	int ty = (BAR_H - 1 - g_fh) / 2;
+	for (int i = 0; i < g_nmenus; i++)
+	{
+		const MenuDef &m = g_menus[i];
+		if (i == g_open) g_cv.fillRect (m.x, 0, m.w, BAR_H - 1, C_DROPHI);
+		g_cv.text (m.x + 8, ty, m.title, C_BARTXT);
+		if (i == 0) g_cv.text (m.x + 9, ty, m.title, C_BARTXT);		// app name in bold
+	}
+	int hh = 0, mm = 0;
+	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
+	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
+	g_cv.text (g_sw - 5 * g_fw - 12, ty, clk, C_BARTXT);
+	g_lastMin = mm;
+
+	if (g_open >= 0)
+	{
+		const MenuDef &m = g_menus[g_open];
+		int dx = drop_x (m), dw = drop_w (m), dh = drop_h (m);
+		g_cv.fillRect (dx + 3, BAR_H + 3, dw, dh, 0x00101418);		// shadow
+		g_cv.fillRect (dx, BAR_H, dw, dh, C_DROP);
+		g_cv.frameRect (dx, BAR_H, dw, dh, C_BARLINE);
+		int yy = BAR_H + 3;
+		for (int i = 0; i < m.count; i++)
+		{
+			const Item &it = m.items[i];
+			int ih = item_h (it);
+			if (it.sep) g_cv.fillRect (dx + 6, yy + 3, dw - 12, 1, C_SEP);
+			else
+			{
+				if (i == g_hover) g_cv.fillRect (dx + 2, yy, dw - 4, ih, C_DROPHI);
+				g_cv.text (dx + 12, yy + 3, it.label, C_BARTXT);
+				if (it.key[0]) g_cv.text (dx + dw - 12 - slen (it.key) * g_fw, yy + 3, it.key, C_DIM);
+			}
+			yy += ih;
+		}
+	}
+	kapi_resize_window (g_sw, h);
+	kapi_present ();
+	g_dirty = false;
+}
+
+// ---- actions -------------------------------------------------------------------------------------
+static void run_item (const Item &it)
+{
+	if (it.sep) return;
+	if (g_onyx)
+	{
+		switch (it.id)
+		{
+		case ONYX_TERMINAL: kapi_launch ("terminal"); break;
+		case ONYX_FILES:    kapi_launch ("fileviewer"); break;
+		case ONYX_FILER:    kapi_launch ("filer"); break;
+		case ONYX_TASKS:    kapi_launch ("taskman"); break;
+		case ONYX_APPS:     kapi_toggle_app ("applist"); break;
+		}
+		return;
+	}
+	kapi_menu_command (it.id);
+}
+
+static void open_menu (int i) { g_open = i; g_hover = -1; g_dirty = true; }
+static void close_menu (void) { g_open = -1; g_hover = -1; g_dirty = true; }
+
+static void ptr (unsigned long, int ev, long v)
+{
+	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v), c = GUI_PTR_CHANGED (v);
+	int t = title_at (x, y);
+	switch (ev)
+	{
+	case GUI_EVENT_PTR_DOWN:
+		if (!(c & 1)) break;
+		if (t >= 0) { if (t == g_open) close_menu (); else open_menu (t); g_pressedTitle = true; }
+		else if (g_open >= 0 && item_at (x, y) < 0) close_menu ();	// click outside
+		break;
+	case GUI_EVENT_PTR_UP:
+		if (!(c & 1)) break;
+		if (g_open >= 0)
+		{
+			int i = item_at (x, y);
+			if (i >= 0) { Item it = g_menus[g_open].items[i]; close_menu (); draw (); run_item (it); }
+		}
+		g_pressedTitle = false;
+		break;
+	case GUI_EVENT_PTR_MOVE:
+		if (g_open >= 0)
+		{
+			if (t >= 0 && t != g_open) open_menu (t);		// slide across titles
+			int i = item_at (x, y);
+			if (i != g_hover) { g_hover = i; g_dirty = true; }
+		}
+		break;
+	case GUI_EVENT_PTR_LEAVE:
+		if (g_hover != -1) { g_hover = -1; g_dirty = true; }
+		break;
+	}
+}
+
+int main (void)
+{
+	kapi_screen_size (&g_sw, &g_sh);
+	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
+	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
+
+	g_fb = kapi_create_window_ex (0, 0, g_sw, g_sh, "menubar",
+				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_TRANSPARENT);
+	if (g_fb == 0) return 1;
+	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
+	g_cv.adopt (g_fb, g_sw, g_sh);
+	kapi_set_pointer_handler (ptr);
+
+	static char spec[WIN_MENU_MAX_USER], title[48];
+	unsigned serial = ~0u;
+	onyx_menu (); layout_titles ();
+	for (;;)
+	{
+		pump_events ();
+		unsigned s = kapi_get_menu (spec, sizeof spec, title, sizeof title);
+		if (s != serial)
+		{
+			serial = s;
+			if (s == 0) onyx_menu (); else parse (spec, title);
+			layout_titles ();
+			if (g_open >= 0) close_menu ();		// the active app changed under the menu
+			g_dirty = true;
+		}
+		int hh = 0, mm = 0;
+		kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
+		if (mm != g_lastMin) g_dirty = true;
+		if (g_dirty) draw ();
+		msleep (g_open >= 0 ? 16 : 50);
+	}
+}

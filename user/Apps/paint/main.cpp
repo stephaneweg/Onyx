@@ -1,19 +1,25 @@
 //
-// paint -- a tiny drawing app (wtk port). A colour palette runs along the top (its own
-// widget); below it a paint-canvas widget holds the persistent drawing: drag the mouse
-// to paint with the selected colour (right-drag erases). Keys: [ ] change brush size,
-// c clears, s saves the canvas to a BMP via the wtk save dialog.
+// paint -- a tiny drawing app (wtk). The paint-canvas widget holds the persistent
+// drawing: drag the mouse to paint with the selected colour (right-drag erases). A thin
+// status strip at the bottom shows the current colour and brush size.
+//
+// Commands are in the system menu bar (wtk::Menu): File (New ^N clears, Open... ^O loads
+// a 24-bpp BMP, Save As... ^S), Brush (Smaller [, Larger ], sizes 1/3/6/12), Color (the
+// 8 colours). The app name menu has Quit (^Q).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit + wk_file_save
+#include "bmp.hpp"
+#include "wtk/wtk.h"		// recursive widget toolkit + wk_file_open / wk_file_save + Menu
 #include "applib.h"
 
 using namespace wtk;
 
 #define W	420
 #define H	300
-#define PAL_H	26
+#define ST_H	18			// status strip
+#define AREA_H	(H - ST_H)
 #define NSW	8
+#define PAPER	0x00f0f0f0
 
 static unsigned g_col = 0x00e05050;
 static int g_brush = 3;
@@ -22,69 +28,56 @@ static const unsigned SW[NSW] = {
 	0x00000000, 0x00ffffff, 0x00e05050, 0x0050c060,
 	0x004080e0, 0x00e0c040, 0x00c060d0, 0x0040c0c0
 };
+static const char *SWNAME[NSW] = { "Black", "White", "Red", "Green", "Blue", "Yellow", "Purple", "Cyan" };
 
-// The drawing surface (below the palette). Its canvas IS the painting -- onDraw clears it
-// once (to white); strokes write straight into the canvas and push up via invalidate(false)
-// so the picture persists across frames and across an overlaid modal dialog.
+// The drawing surface. Its canvas IS the painting -- onDraw clears it once (to paper);
+// strokes write straight into the canvas and push up via invalidate(false) so the picture
+// persists across frames and across an overlaid modal dialog.
 class PaintArea : public Widget
 {
 public:
 	PaintArea (int l, int t, int w, int h) : Widget (l, t, w, h) {}
-	void onDraw () override { canvas.clear (0x00f0f0f0); }	// runs once (never re-dirtied)
-	void clearCanvas () { canvas.clear (0x00f0f0f0); invalidate (false); }
+	void onDraw () override { canvas.clear (PAPER); }	// runs once (never re-dirtied)
+	void clearCanvas () { canvas.clear (PAPER); invalidate (false); }
 	void stroke (int lx, int ly, unsigned col)
 	{ canvas.fillRect (lx - g_brush, ly - g_brush, g_brush * 2, g_brush * 2, col); invalidate (false); }
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
 	{
 		if (mx < 0) return false;
-		if (bl || br) stroke (mx, my, br ? 0x00f0f0f0 : g_col);	// right = erase
+		if (bl || br) stroke (mx, my, br ? PAPER : g_col);	// right = erase
 		return true;
 	}
 };
 
-// The colour palette + brush/help text. A press picks a swatch.
-class PaletteBar : public Widget
+// Status strip: current colour swatch + name + brush size (information only).
+class StatusBar : public Widget
 {
 public:
-	PaletteBar (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	StatusBar (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void onDraw () override
 	{
 		canvas.clear (0x00303840);
-		for (int i = 0; i < NSW; i++)
-		{
-			int x = 4 + i * 26;
-			canvas.fillRect (x, 3, 22, PAL_H - 6, SW[i]);
-			if (SW[i] == g_col) { canvas.fillRect (x, 3, 22, 2, 0x00ffffff); canvas.fillRect (x, PAL_H - 5, 22, 2, 0x00ffffff); }
-		}
-		char b[24]; int p = 0;
-		const char *t = "brush "; for (int i = 0; t[i]; i++) b[p++] = t[i];
+		canvas.fillRect (6, 3, 28, ST_H - 6, g_col);
+		canvas.frameRect (6, 3, 28, ST_H - 6, 0x00a0a8b0);
+		const char *name = "custom";
+		for (int i = 0; i < NSW; i++) if (SW[i] == g_col) name = SWNAME[i];
+		char b[48]; int p = 0;
+		for (int i = 0; name[i]; i++) b[p++] = name[i];
+		const char *t = "   brush "; for (int i = 0; t[i]; i++) b[p++] = t[i];
 		p += ax_itoa (g_brush, b + p); b[p] = '\0';
-		canvas.text (NSW * 26 + 12, 8, b, 0x00d0d0d0);
-		canvas.text (W - 150, 8, "[ ] size  c clear  s save", 0x0090a0a0);
-	}
-	bool onMouse (int mx, int /*my*/, int bl, int, int, int) override
-	{
-		if (mx < 0) { pressed = false; return false; }
-		if (bl && !pressed)				// pick a colour on the press edge
-		{
-			pressed = true;
-			int i = (mx - 4) / 26;
-			if (i >= 0 && i < NSW) { g_col = SW[i]; invalidate (true); }
-		}
-		else if (!bl) pressed = false;
-		return true;
+		canvas.text (42, (ST_H - wk_fh ()) / 2, b, 0x00d0d0d0);
 	}
 };
 
-static PaintArea  *g_area = 0;
-static PaletteBar *g_palette = 0;
+static PaintArea *g_area = 0;
+static StatusBar *g_status = 0;
 
 static void save_bmp (const char *path)
 {
 	// 24-bpp BMP of the canvas area (bottom-up, BGR, 4-byte row padding).
-	static unsigned char bmp[W * (H - PAL_H) * 3 + 64];
+	static unsigned char bmp[W * AREA_H * 3 + 64];
 	const unsigned *src = g_area->canvas.px;
-	int dw = W, dh = H - PAL_H;
+	int dw = W, dh = AREA_H;
 	int rowb = dw * 3, pad = (4 - rowb % 4) % 4, stride = rowb + pad;
 	int imgsz = stride * dh, total = 54 + imgsz;
 
@@ -100,7 +93,7 @@ static void save_bmp (const char *path)
 	{
 		for (int x = 0; x < dw; x++)
 		{
-			unsigned c = src[y * W + x];
+			unsigned c = src[y * g_area->canvas.stride + x];
 			bmp[o++] = c & 0xFF; bmp[o++] = (c >> 8) & 0xFF; bmp[o++] = (c >> 16) & 0xFF;
 		}
 		for (int x = 0; x < pad; x++) bmp[o++] = 0;
@@ -108,34 +101,62 @@ static void save_bmp (const char *path)
 	kapi_save_file (path, bmp, (unsigned) total);
 }
 
-// Window: global keys ([ ] brush size, c clear, s save). No widget steals focus, so keys
-// fall through to the Root's onKey.
-class PaintRoot : public Root
+// Load a 24-bpp BMP into the canvas (top-left aligned, clipped; the rest is paper).
+static void load_bmp (const char *path)
 {
-public:
-	PaintRoot (int w, int h, const char *t) : Root (w, h, t) {}
-	bool onKey (long key) override
-	{
-		if (key == '[') { if (g_brush > 1) { g_brush--; g_palette->invalidate (true); } }
-		else if (key == ']') { if (g_brush < 20) { g_brush++; g_palette->invalidate (true); } }
-		else if (key == 'c' || key == 'C') g_area->clearCanvas ();
-		else if (key == 's' || key == 'S')
-		{
-			char path[100];
-			if (wk_file_save (path, sizeof path, "SD:/", "paint.bmp")) save_bmp (path);
-		}
-		else return false;
-		return true;
-	}
-};
+	int bw = 0, bh = 0;
+	unsigned *img = ui::bmp_decode (path, &bw, &bh);
+	if (img == 0) { wk_messagebox ("Open", "Not a 24-bit uncompressed BMP.", MB_OK); return; }
+	g_area->canvas.clear (PAPER);
+	for (int y = 0; y < bh && y < AREA_H; y++)
+		for (int x = 0; x < bw && x < W; x++)
+			g_area->canvas.px[y * g_area->canvas.stride + x] = img[y * bw + x];
+	delete [] img;
+	g_area->invalidate (false);
+}
+
+// ---- menu commands ------------------------------------------------------------------------
+static void set_brush (int b) { if (b < 1) b = 1; if (b > 20) b = 20; g_brush = b; g_status->invalidate (true); }
+static void set_col (int i)   { g_col = SW[i]; g_status->invalidate (true); }
+
+static void onNew ()     { g_area->clearCanvas (); }
+static void onOpen ()    { char path[100]; if (wk_file_open (path, sizeof path, "SD:/")) load_bmp (path); }
+static void onSaveAs ()  { char path[100]; if (wk_file_save (path, sizeof path, "SD:/", "paint.bmp")) save_bmp (path); }
+static void onSmaller () { set_brush (g_brush - 1); }
+static void onLarger ()  { set_brush (g_brush + 1); }
+static void onB1 ()  { set_brush (1); }
+static void onB3 ()  { set_brush (3); }
+static void onB6 ()  { set_brush (6); }
+static void onB12 () { set_brush (12); }
+static void c0 () { set_col (0); } static void c1 () { set_col (1); } static void c2 () { set_col (2); }
+static void c3 () { set_col (3); } static void c4 () { set_col (4); } static void c5 () { set_col (5); }
+static void c6 () { set_col (6); } static void c7 () { set_col (7); }
 
 int main (void)
 {
-	PaintRoot root (W, H, "paint");
+	Root root (W, H, "paint");
 	if (root.canvas.px == 0) return 1;
 
-	g_palette = new PaletteBar (0, 0, W, PAL_H);          root.addChild (g_palette);
-	g_area    = new PaintArea (0, PAL_H, W, H - PAL_H);   root.addChild (g_area);
+	g_area   = new PaintArea (0, 0, W, AREA_H);   root.addChild (g_area);
+	g_status = new StatusBar (0, AREA_H, W, ST_H); root.addChild (g_status);
+
+	static Menu menu;
+	menu.menu ("File");
+	menu.item ("New",         "^N", WK_CTRL ('N'), onNew);
+	menu.item ("Open...",     "^O", WK_CTRL ('O'), onOpen);
+	menu.item ("Save As...",  "^S", WK_CTRL ('S'), onSaveAs);
+	menu.menu ("Brush");
+	menu.item ("Smaller",     "[",  '[',           onSmaller);
+	menu.item ("Larger",      "]",  ']',           onLarger);
+	menu.separator ();
+	menu.item ("Fine (1)",    "",   0,             onB1);
+	menu.item ("Normal (3)",  "",   0,             onB3);
+	menu.item ("Thick (6)",   "",   0,             onB6);
+	menu.item ("Huge (12)",   "",   0,             onB12);
+	menu.menu ("Color");
+	static MenuAction cols[NSW] = { c0, c1, c2, c3, c4, c5, c6, c7 };
+	for (int i = 0; i < NSW; i++) menu.item (SWNAME[i], "", 0, cols[i]);
+	menu.publish ();
 
 	root.run ();
 	return 0;
