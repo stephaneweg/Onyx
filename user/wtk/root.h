@@ -19,6 +19,7 @@ public:
 	void setBg (unsigned c) { bg = c; invalidate (true); }
 	void onDraw () override;
 	void run ();
+	virtual void onTick () {}		// called once per run() loop (~60 Hz): polling, timers
 
 	// Drag & drop (ABI v42). onDrop: something was dropped at (x,y) (client coords) --
 	// type DND_TEXT / DND_FILES ('\n'-separated paths), data NUL-terminated, flags

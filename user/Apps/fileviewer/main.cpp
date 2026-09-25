@@ -26,6 +26,7 @@
 #include "trash.h"
 #include "notify.h"
 #include "fileassoc.h"
+#include "shelfmsg.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -462,6 +463,7 @@ static void op_rename ()
 	join (s, sizeof s, g_col[g_active].path, old);
 	join (d, sizeof d, g_col[g_active].path, name);
 	if (exists (d) || !kapi_rename (s, d)) { status ("Could not rename to ", name); return; }
+	shelf_moved (s, d);
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
 	for (int i = 0; i < g_col[g_active].count; i++)
@@ -560,7 +562,12 @@ static bool transfer (const char *src, const char *dir, bool move)
 	if (isDir && inside && dir[n] == '/') { status ("Cannot put a folder inside itself"); return false; }
 	char dst[300];
 	unique_name (dst, sizeof dst, dir, fs_basename (src));
-	if (move) return kapi_rename (src, dst) != 0;
+	if (move)
+	{
+		if (!kapi_rename (src, dst)) return false;
+		shelf_moved (src, dst);			// the Shelf's references follow
+		return true;
+	}
 	return isDir ? copy_tree (src, dst, 0) : copy_file (src, dst);
 }
 

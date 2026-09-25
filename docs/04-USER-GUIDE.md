@@ -218,7 +218,7 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
 
 Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
 the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
-says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `shelf`). It opens **right next to the panel**, beside
+says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `shelf`, `ask`). It opens **right next to the panel**, beside
 the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
 below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
 scrollbar (or the wheel) if the grid overflows.
@@ -228,24 +228,28 @@ scrollbar (or the wheel) if the grid overflows.
 
 ### The Shelf (`shelf`)
 
-A strip along the **bottom of the screen** (started by `autostart`, clear of the panel)
-that keeps **references** to files, folders and apps, organised in **tabs** — the files
-themselves stay where they are. Other windows can cover it; click it to bring it forward.
+A strip along the **whole bottom of the screen** (started by `autostart`; above the panel
+if the panel is at the bottom) that keeps **references** to files, folders and apps,
+organised in **tabs** — the files themselves stay where they are. Other windows can cover
+it; click it to bring it forward.
 
 - **Add**: drag files, folders or apps (e.g. from the File Viewer) and drop them on the
   shelf — on the items area (current tab) or on a tab.
 - **Open**: click an item — it opens in a **new instance** of its app (see *File
   associations* below; folders open in the File Viewer, apps run).
 - **Drag an item** onto a File Viewer folder to **move** the file there (hold **Ctrl** to
-  **copy**), onto an app window to **open it in that app** (tinypad, Writer, paint ask to
+  **copy**) — the item **stays on the shelf and follows the file** (the File Viewer reports
+  every move and rename to the Shelf, so references stay up to date; an item whose file is
+  deleted or trashed drops off within ~2 s), onto an app window to **open it in that app** (tinypad, Writer, paint ask to
   save their current document first), or onto the **desktop** to **remove** it from the
   shelf. **Esc** cancels a drag.
 - **The Trash** (right end): drop items on it to move them to the Trash (`SD:/.Trash`);
   click it to open the Trash in the File Viewer. A sheet of paper sticks out when it holds
   something.
 - **Tabs**: click to switch; **+** adds a tab; **double-click** a tab to rename it (type,
-  **Enter** / **Esc**); **right-click** an **empty** tab to remove it. The **wheel**
-  scrolls a long tab.
+  **Enter** / **Esc**); the **−** button (right end of the tab strip, before the Trash)
+  removes the current tab — with a confirmation window if it holds items (the files
+  themselves are kept); the last tab cannot be removed. The **wheel** scrolls a long tab.
 - Saved in `SD:/etc/shelf.ini` (`tab = Name`, then `item = path` lines).
 
 ![Shelf](../screenshots/shelf.png)
@@ -623,6 +627,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). |
 | **filer** | File manager (see §9). |
 | **shelf** (Shelf) | The bottom strip of file / folder / app references in tabs, with the Trash (see §5, *The Shelf*). Reads/writes `SD:/etc/shelf.ini`. |
+| **ask** (Confirm) | A small system Yes / No window used by apps too small to host a dialog (the Shelf's "remove tab?"): `run ask "Title|Message|Yes|No"`, exits with 1 (Yes / Enter) or 0 (No / Esc / close box). |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
 | **terminal** | Terminal/shell (see §7). |
 | **taskman** | Task manager. Arrows to select; Enter brings the window to the foreground; `k`/Delete kills the app (except kernel tasks); `r` refreshes. |

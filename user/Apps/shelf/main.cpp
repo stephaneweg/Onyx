@@ -6,15 +6,20 @@
 //     (or to the tab you drop them on). The files themselves stay where they are.
 //   * Click an item: open it in a NEW instance of its app (SD:/etc/fileassoc.ini;
 //     folders open in the File Viewer, .app bundles and programs run).
-//   * Drag an item: onto a File Viewer folder = move it there (Ctrl = copy); onto an
-//     app window = the app opens it; onto the desktop = remove it from the shelf.
+//   * Drag an item: onto a File Viewer folder = move it there (Ctrl = copy) -- the item
+//     stays and follows the file; onto an app window = the app opens it; onto the
+//     desktop = remove it from the shelf. The File Viewer reports every move / rename
+//     over IPC (service "shelf", shelfmsg.h), so references stay up to date; items whose
+//     file is gone (deleted, trashed) drop off within ~2 s.
 //   * The Trash, at the right end: drop items on it to move them to the Trash; click it
 //     to open the Trash in the File Viewer.
 //   * Tabs: click to switch, "+" adds one, double-click renames (type, Enter / Esc),
-//     right-click removes an EMPTY tab. The wheel scrolls a long tab.
+//     "-" (right end of the tab strip) removes the current tab -- after a confirmation
+//     (apps/ask, ask.h) if it holds items. The wheel scrolls a long tab.
 //
-// Saved in SD:/etc/shelf.ini ("tab = Name" then "item = path" lines). The window is a
-// normal borderless one (WIN_FLAG_SYSTEM): other windows cover it, a click brings it
+// Saved in SD:/etc/shelf.ini ("tab = Name" then "item = path" lines). The window spans
+// the whole bottom of the screen (above the panel if the panel is at the bottom); it is
+// a normal borderless one (WIN_FLAG_SYSTEM): other windows cover it, a click brings it
 // forward. Uses drag & drop (ABI v42).
 //
 #include "kapi.h"
@@ -24,6 +29,8 @@
 #include "fileassoc.h"
 #include "trash.h"
 #include "notify.h"
+#include "ask.h"
+#include "shelfmsg.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -189,6 +196,34 @@ static bool prune (void)
 	return changed;
 }
 
+// A file / folder moved from -> to (SHELF_MSG_MOVED): items on it, or inside it, follow.
+static bool moved (const char *from, const char *to)
+{
+	bool changed = false;
+	int fl = fs_len (from);
+	for (int t = 0; t < g_ntabs; t++)
+		for (int i = 0; i < g_tabs[t].n; i++)
+		{
+			Item &it = g_tabs[t].items[i];
+			bool same = fs_ci_cmp (it.path, from) == 0, inside = true;
+			for (int k = 0; k < fl; k++) if (fs_lower (it.path[k]) != fs_lower (from[k])) { inside = false; break; }
+			inside = inside && it.path[fl] == '/';
+			if (!same && !inside) continue;
+			char np[200];
+			fs_copy (np, to, sizeof np);
+			if (inside)
+			{
+				int p = fs_len (np);
+				for (int k = fl; it.path[k] && p < (int) sizeof np - 1; k++) np[p++] = it.path[k];
+				np[p] = '\0';
+			}
+			item_free (it);
+			item_init (it, np);			// new path, label, icon
+			changed = true;
+		}
+	return changed;
+}
+
 // ---- geometry -----------------------------------------------------------------------------
 static int items_w (void) { return g_W - TRASH_W; }
 static int item_at (int mx, int my)		// index in the current tab, -1 = none
@@ -198,9 +233,12 @@ static int item_at (int mx, int my)		// index in the current tab, -1 = none
 	return (mx >= 4 && i < g_tabs[g_cur].n) ? i : -1;
 }
 static bool on_trash (int mx, int my) { return my >= TAB_H && mx >= items_w (); }
-static int tab_at (int mx, int my)		// tab index, MAXTABS = "+", -1 = none
+#define MINUS_W		22			// the "-" (remove tab) button, right end of the tab strip
+#define TAB_MINUS	(MAXTABS + 1)
+static int tab_at (int mx, int my)		// tab index, MAXTABS = "+", TAB_MINUS = "-", -1 = none
 {
 	if (my >= TAB_H) return -1;
+	if (mx >= items_w () - MINUS_W - 4 && mx < items_w () - 4) return TAB_MINUS;
 	for (int t = 0; t < g_ntabs; t++) if (mx < g_tabX[t]) return t;
 	if (mx < g_tabRight) return MAXTABS;
 	return -1;
@@ -266,6 +304,8 @@ public:
 	int editTab = -1; char editBuf[24]; int editLen = 0;	// tab rename
 	unsigned lastTabClick = 0; int lastTab = -1;
 	bool trashFull = false;
+	void *ask = 0; int askTab = -1;		// pending "remove this tab?" (apps/ask)
+	unsigned lastPoll = 0;
 
 	ShelfRoot (int x, int y, int w, int h)
 	  : Root (x, y, w, h, "shelf", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM) {}
@@ -291,6 +331,9 @@ public:
 		canvas.fillRect (x, 3, 22, TAB_H - 3, S_TAB);
 		canvas.text (x + 7, 4 + (TAB_H - 3 - g_fh) / 2, "+", S_DIMT);
 		g_tabRight = x + 22;
+		int mxb = items_w () - MINUS_W - 4;			// "-": remove the current tab
+		canvas.fillRect (mxb, 3, MINUS_W, TAB_H - 3, S_TAB);
+		canvas.text (mxb + (MINUS_W - g_fw) / 2, 4 + (TAB_H - 3 - g_fh) / 2, "-", g_ntabs > 1 ? S_TXT : S_TABON);
 		canvas.fillRect (0, TAB_H, width, 1, S_TABON);
 
 		// Items of the current tab.
@@ -320,6 +363,63 @@ public:
 		canvas.text (tx + (TRASH_W - 5 * g_fw) / 2, TAB_H + 50, "Trash", S_TXT);
 	}
 
+	void removeTab (int t)
+	{
+		if (t < 0 || t >= g_ntabs || g_ntabs <= 1) return;
+		while (g_tabs[t].n > 0) tab_remove (g_tabs[t], g_tabs[t].n - 1);
+		for (int j = t; j + 1 < g_ntabs; j++) g_tabs[j] = g_tabs[j + 1];
+		g_ntabs--;
+		g_tabs[g_ntabs].n = 0;
+		if (g_cur >= g_ntabs) g_cur = g_ntabs - 1;
+		save ();
+		invalidate (true);
+	}
+	void askRemoveTab ()
+	{
+		if (g_ntabs <= 1 || ask != 0) return;		// keep one tab; one question at a time
+		Tab &tb = g_tabs[g_cur];
+		if (tb.n == 0) { removeTab (g_cur); return; }
+		static char msg[120]; int p = 0;
+		const char *a = "Remove tab \""; for (int i = 0; a[i]; i++) msg[p++] = a[i];
+		for (int i = 0; tb.name[i]; i++) msg[p++] = tb.name[i];
+		const char *b = "\" and its items? Files are kept."; for (int i = 0; b[i]; i++) msg[p++] = b[i];
+		msg[p] = '\0';
+		ask = ask_begin ("Remove tab", msg, "Remove", "Cancel");
+		askTab = g_cur;
+		if (ask == 0) notify ("Shelf", "Cannot show the confirmation (apps/ask missing?).");
+	}
+
+	// Each frame: the pending question, move reports from the File Viewer, and every
+	// ~2 s items whose file is gone + the Trash state.
+	void onTick () override
+	{
+		if (ask != 0)
+		{
+			int r = ask_poll (ask);
+			if (r >= 0) { void *h = ask; ask = 0; (void) h; if (r == 1) removeTab (askTab); askTab = -1; }
+		}
+		bool changed = false;
+		static char buf[520];
+		int from = 0, type = 0, n;
+		while ((n = kapi_mailbox_recv (&from, &type, buf, sizeof buf - 1, 0)) >= 0)
+		{
+			if (type != SHELF_MSG_MOVED) continue;
+			buf[n] = '\0';
+			const char *to = buf; while (*to) to++;
+			to++;
+			if (to < buf + n && moved (buf, to)) changed = true;
+		}
+		unsigned now = kapi_get_ticks ();
+		if (now - lastPoll >= 200)
+		{
+			lastPoll = now;
+			if (!dragging && prune ()) changed = true;
+			bool full = trash_count () > 0;
+			if (full != trashFull) { trashFull = full; invalidate (true); }
+		}
+		if (changed) { save (); invalidate (true); }
+	}
+
 	void startEdit (int t)
 	{
 		editTab = t; fs_copy (editBuf, g_tabs[t].name, sizeof editBuf); editLen = fs_len (editBuf);
@@ -339,21 +439,6 @@ public:
 			int vis = (items_w () - 4) / CELL, mx2 = tb.n - vis; if (mx2 < 0) mx2 = 0;
 			tb.scroll -= wheel; if (tb.scroll < 0) tb.scroll = 0; if (tb.scroll > mx2) tb.scroll = mx2;
 			invalidate (true);
-			return true;
-		}
-		if (br && !pressed)				// right-click an empty tab: remove it
-		{
-			pressed = true;
-			int t = tab_at (mx, my);
-			if (t >= 0 && t < g_ntabs && g_tabs[t].n == 0 && g_ntabs > 1)
-			{
-				for (int j = t; j + 1 < g_ntabs; j++) g_tabs[j] = g_tabs[j + 1];
-				g_ntabs--;
-				g_tabs[g_ntabs].n = 0;
-				if (g_cur >= g_ntabs) g_cur = g_ntabs - 1;
-				save ();
-				invalidate (true);
-			}
 			return true;
 		}
 		if (!bl && !br)
@@ -396,6 +481,7 @@ public:
 				g_cur = g_ntabs - 1;
 				save ();
 			}
+			else if (t == TAB_MINUS) askRemoveTab ();
 			else if (t >= 0)
 			{
 				unsigned now = kapi_get_ticks ();
@@ -463,11 +549,11 @@ public:
 	void onDragDone (int, unsigned flags) override
 	{
 		dragging = false;
-		// Dragged onto the desktop: take it off the shelf. Moved away by the target (a
-		// File Viewer folder, the Trash): the file is gone, prune drops it.
+		// Dragged onto the desktop: take it off the shelf. Moved by the target (a File
+		// Viewer folder): its SHELF_MSG_MOVED updates the item (onTick); gone (the Trash):
+		// the periodic prune drops it.
 		if ((flags & DND_F_DESKTOP) && !(flags & DND_F_CANCEL) && dragTab >= 0 && dragTab < g_ntabs)
 			tab_remove (g_tabs[dragTab], dragItem);
-		prune ();
 		save ();
 		trashFull = trash_count () > 0;
 		dragItem = dragTab = -1;
@@ -482,16 +568,15 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	// Along the bottom edge, clear of the panel (its config.ini position: 1 left /
-	// 2 top / 3 right / 4 bottom).
+	// The whole bottom edge -- above the panel if the panel is at the bottom (its
+	// config.ini position 4); a side panel just overlaps its end (z-order decides).
 	int pos = 3;
 	if (app_ini_load_path ("SD:apps/panel.app/config.ini") >= 0) pos = app_ini_get_int (0, "position", 3);
 	int x0 = 0, y0 = sh - SH, w = sw;
-	if (pos == 1) { x0 = PANEL_BAR + 6; w = sw - x0; }
-	else if (pos == 3) { w = sw - PANEL_BAR - 6; }
-	else if (pos == 4) { y0 = sh - SH - PANEL_BAR - 6; }
+	if (pos == 4) y0 = sh - SH - PANEL_BAR - 6;
 	g_W = w;
 
+	kapi_ipc_register (SHELF_SERVICE);		// the File Viewer's move reports
 	load ();
 	ShelfRoot root (x0, y0, w, SH);
 	if (root.canvas.px == 0) return 1;

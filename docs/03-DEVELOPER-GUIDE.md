@@ -242,6 +242,12 @@ Notes / caveats:
 > `doc_confirm (name, changed, save_fn)` (a Yes / No / Cancel `MB_YESNOCANCEL` box; false =
 > cancelled). A document app should accept a path argument (`kapi_get_args`) and a dropped
 > file (`onDrop`), so it works with the File Viewer, the Shelf and `fileassoc.ini`.
+> An app that **moves or renames** files should call `shelf_moved (from, to)`
+> (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
+> **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
+> a spawned process or a timer there. **`ask.h`**: `ask_begin (title, msg, yes, no)` opens
+> the system Yes / No window (`apps/ask`) without blocking; `ask_poll (h)` returns -1 while
+> open, then 1 / 0.
 
 > **Menus.** Put commands in the **system menu bar**, not in button rows. After creating
 > the `Root`, build a `wtk::Menu` once and publish it:

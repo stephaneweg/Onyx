@@ -31,6 +31,7 @@ void Root::run ()
 	while (!should_exit ())
 	{
 		pump_events ();
+		onTick ();
 		if (!valid) { draw (); kapi_present (); }
 		msleep (16);
 	}

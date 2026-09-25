@@ -617,6 +617,8 @@ def draw_shelf(cv, x0, y0, w, tabs=("Shelf", "Documents", "Apps"), cur=0, trash_
         cv.text(x + 8, y0 + 4 + (SHELF_TAB - 3 - FH) // 2, t, C(0xE0E6EE if i == cur else 0x8A96A8))
         x += tw + 2
     cv.fill(x, y0 + 3, 22, SHELF_TAB - 3, C(0x283240)); cv.text(x + 7, y0 + 4 + (SHELF_TAB - 3 - FH) // 2, "+", C(0x8A96A8))
+    mb = x0 + w - TW - 22 - 4                           # "-": remove the current tab
+    cv.fill(mb, y0 + 3, 22, SHELF_TAB - 3, C(0x283240)); cv.text(mb + (22 - FW) // 2, y0 + 4 + (SHELF_TAB - 3 - FH) // 2, "-", C(0xE0E6EE))
     cv.fill(x0, y0 + SHELF_TAB, w, 1, C(0x303D4D))
     def g_folder(gx, gy):
         cv.fill(gx + 2, gy + 8, 16, 6, C(0xC89A48)); cv.fill(gx + 2, gy + 12, 36, 24, C(0xE0B45C)); cv.frame(gx + 2, gy + 12, 36, 24, C(0x906A28))
@@ -647,8 +649,8 @@ def draw_shelf(cv, x0, y0, w, tabs=("Shelf", "Documents", "Apps"), cur=0, trash_
     if trash_full: cv.fill(gx + 12, gy + 7, 16, 3, C(0xF0F0F0))
     cv.text(tx + (TW - 5 * FW) // 2, y0 + SHELF_TAB + 50, "Trash", C(0xE0E6EE))
 
-def app_shelf():	# the Shelf alone (as wide as on a 1024-px screen with the panel on the right)
-    W = 1024 - 60 - 6; cv = Canvas(W, SHELF_H, C(0x1C232C))
+def app_shelf():	# the Shelf alone (the full width of a 1024-px screen)
+    W = 1024; cv = Canvas(W, SHELF_H, C(0x1C232C))
     draw_shelf(cv, 0, 0, W)
     return cv
 
@@ -656,7 +658,7 @@ def render_desktop():
     W, H = 1024, 768
     cv = Canvas(W, H)
     cv.img.paste(voronoi_wallpaper(W, H), (0, 0)); cv.px = cv.img.load(); cv.d = ImageDraw.Draw(cv.img)
-    draw_shelf(cv, 0, H - SHELF_H, W - 60 - 6)         # the Shelf, under the windows
+    draw_shelf(cv, 0, H - SHELF_H, W)                   # the Shelf, under the windows
     # cascade: fractal + tinycalc inactive (slate chrome), terminal active (gold) on top
     fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 38))
     cw = window(app_tinycalc(), "tinycalc", False); cv.img.alpha_composite(cw.img, (63, 328))
