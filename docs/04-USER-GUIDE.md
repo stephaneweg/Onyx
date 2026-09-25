@@ -439,17 +439,19 @@ going back is one click on an earlier column. Launch it from the app list (categ
 *System*), or `run fileviewer SD:/some/folder` to open a given folder.
 
 - **Columns**: plain folders first (blue, with a ▸ arrow), then app bundles (`.app`, green,
-  shown without the extension) and files. When there are more columns than fit (4), the
+  shown by their **friendly name** — the `name =` line of their `app.txt`, e.g. `demoB.app`
+  shows as *Colour Field*; the folder name without `.app` if there is none) and files,
+  sorted alphabetically by what is shown. When there are more columns than fit (4), the
   view follows the deepest one; the scrollbar below the columns scrolls back.
 - **Path bar** (above the columns): click a segment (`SD:` ▸ `etc` ▸ …) to jump straight
   back to that folder.
 - **Preview column**: selecting a file shows its size and type, the first lines of a text
-  file, a scaled-down **BMP** image, or — for an app bundle — its icon and display name.
+  file, a scaled-down **BMP** image, or — for an app bundle — its icon, its friendly name and its folder name (`demoB.app`).
 - **Mouse**: click = select; **double-click** = open (text files in `tinypad`, programs
   run, `.app` bundles launch); **wheel** scrolls the column under the cursor.
 - **Keyboard**: **↑/↓**, Page Up/Down, Home/End move in the active column; **→** enters the
   selected folder, **←** or **Backspace** goes back; **Enter** opens; typing a **letter**
-  jumps to the next name starting with it.
+  jumps to the next name (as shown) starting with it.
 - **Trash**: **Del** (File ▸ Move to Trash) moves the selection to the Trash
   (`SD:/.Trash`, hidden) — nothing is lost. **Go ▸ Trash** shows it (the path bar reads
   "Trash"): select an item, **Go ▸ Restore from Trash** puts it back where it was (its

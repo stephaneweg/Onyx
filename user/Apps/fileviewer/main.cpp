@@ -50,7 +50,9 @@ static const unsigned
 	C_APPTXT  = 0x0090F0A0, C_DIMTXT  = 0x008A96A8, C_BAR     = 0x00303D4D,
 	C_PATH    = 0x00E0E0E0, C_PATHSEP = 0x00607080;
 
-struct Entry { char name[NAMEL]; unsigned size; unsigned char isdir, isapp; };
+// name = the file name (all file operations); label = what the column shows -- the same,
+// except for an app bundle: its friendly name from app.txt ("demoB.app" -> "Colour Field").
+struct Entry { char name[NAMEL]; char label[NAMEL]; unsigned size; unsigned char isdir, isapp; };
 struct Column { char path[256]; Entry *e; int count, sel, top; };
 
 static Column g_col[MAXCOL];
@@ -128,6 +130,29 @@ static int is_text_name (const char *n)
 	return 0;
 }
 
+// The friendly name of an app bundle: "name = ..." in <appdir>/app.txt. 0 if none.
+static int app_name (const char *appdir, char *out, int cap)
+{
+	char p[320]; join (p, sizeof p, appdir, "app.txt");
+	void *f = kapi_open (p);
+	if (!f) return 0;
+	char b[512]; int n = kapi_read (f, b, sizeof b - 1); kapi_close (f);
+	if (n < 0) n = 0;
+	b[n] = '\0';
+	for (int i = 0; i + 4 <= n; i++)
+	{
+		if ((i == 0 || b[i - 1] == '\n') && b[i] == 'n' && b[i + 1] == 'a' && b[i + 2] == 'm' && b[i + 3] == 'e')
+		{
+			int j = i + 4; while (b[j] == ' ' || b[j] == '=' || b[j] == '\t') j++;
+			int k = 0; while (b[j] && b[j] != '\n' && b[j] != '\r' && k < cap - 1) out[k++] = b[j++];
+			while (k > 0 && (out[k - 1] == ' ' || out[k - 1] == '\t')) k--;
+			out[k] = '\0';
+			return k > 0;
+		}
+	}
+	return 0;
+}
+
 // ---- columns ------------------------------------------------------------------------
 static void load_col (int c, const char *path)
 {
@@ -144,9 +169,16 @@ static void load_col (int c, const char *path)
 		scopy (e.name, ent.name, NAMEL);
 		e.size = ent.size; e.isdir = ent.is_dir ? 1 : 0;
 		e.isapp = e.isdir && ends_with (e.name, "app");
+		scopy (e.label, e.name, NAMEL);
+		if (e.isapp)
+		{
+			e.label[slen (e.label) - 4] = '\0';		// drop ".app"
+			char p[300]; join (p, sizeof p, path, e.name);
+			app_name (p, e.label, NAMEL);			// friendly name, if any
+		}
 	}
 	kapi_closedir (d);
-	// Sort: plain folders first, then app bundles + files; alphabetical, case-insensitive.
+	// Sort: plain folders first, then app bundles + files; alphabetical by the shown label.
 	for (int i = 1; i < k.count; i++)
 	{
 		Entry t = k.e[i]; int j = i - 1;
@@ -154,7 +186,7 @@ static void load_col (int c, const char *path)
 		while (j >= 0)
 		{
 			int g = (k.e[j].isdir && !k.e[j].isapp) ? 0 : 1;
-			if (g < tg || (g == tg && ci_cmp (k.e[j].name, t.name) <= 0)) break;
+			if (g < tg || (g == tg && ci_cmp (k.e[j].label, t.label) <= 0)) break;
 			k.e[j + 1] = k.e[j]; j--;
 		}
 		k.e[j + 1] = t;
@@ -220,27 +252,8 @@ static void preview_build (void)
 	if (e->isapp)
 	{
 		g_pvKind = PV_APP;
-		scopy (g_pvTitle, e->name, sizeof g_pvTitle);
-		g_pvTitle[slen (g_pvTitle) - 4] = '\0';		// drop ".app"
+		scopy (g_pvTitle, e->label, sizeof g_pvTitle);	// friendly name (app.txt)
 		char p2[320];
-		join (p2, sizeof p2, path, "app.txt");		// "name = Friendly name"
-		void *f = kapi_open (p2);
-		if (f)
-		{
-			char b[512]; int n = kapi_read (f, b, sizeof b - 1); kapi_close (f);
-			if (n < 0) n = 0;
-			b[n] = '\0';
-			for (int i = 0; i < n; i++)
-			{
-				if ((i == 0 || b[i - 1] == '\n') && b[i] == 'n' && b[i + 1] == 'a' && b[i + 2] == 'm' && b[i + 3] == 'e')
-				{
-					int j = i + 4; while (b[j] == ' ' || b[j] == '=' || b[j] == '\t') j++;
-					int k = 0; while (b[j] && b[j] != '\n' && b[j] != '\r' && k < (int) sizeof g_pvTitle - 1) g_pvTitle[k++] = b[j++];
-					g_pvTitle[k] = '\0';
-					break;
-				}
-			}
-		}
 		join (p2, sizeof p2, path, "icon.bmp");
 		g_pvImg = ui::bmp_decode (p2, &g_pvW, &g_pvH);
 		return;
@@ -615,8 +628,7 @@ public:
 			const Entry &e = k.e[idx];
 			int y = COL_Y + r * g_rowH;
 			if (idx == k.sel) canvas.fillRect (x, y, COLW - 1, g_rowH, slot == g_active ? C_SEL_ACT : C_SEL_OLD);
-			char name[NAMEL]; scopy (name, e.name, sizeof name);
-			if (e.isapp) name[slen (name) - 4] = '\0';
+			char name[NAMEL]; scopy (name, e.label, sizeof name);
 			if (slen (name) > maxChars) { name[maxChars - 2] = '.'; name[maxChars - 1] = '.'; name[maxChars] = '\0'; }
 			unsigned col = e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
 			canvas.text (x + 8, y + 2, name, col);
@@ -659,6 +671,12 @@ public:
 		scopy (line, g_pvKind == PV_APP ? g_pvTitle : e->name, sizeof line);
 		if (slen (line) > maxChars) { line[maxChars - 2] = '.'; line[maxChars - 1] = '.'; line[maxChars] = '\0'; }
 		canvas.text (tx, y, line, C_TEXT); y += g_fh + 6;
+		if (g_pvKind == PV_APP)					// the bundle's folder name
+		{
+			scopy (line, e->name, sizeof line);
+			if (slen (line) > maxChars) { line[maxChars - 2] = '.'; line[maxChars - 1] = '.'; line[maxChars] = '\0'; }
+			canvas.text (tx, y, line, C_DIMTXT); y += g_fh + 2;
+		}
 
 		const char *kind =
 			g_pvKind == PV_APP     ? "Application" :
@@ -795,7 +813,7 @@ public:
 				for (int n = 1; n <= k.count; n++)
 				{
 					int i = ((k.sel < 0 ? -1 : k.sel) + n) % k.count;
-					if (lower (k.e[i].name[0]) == c) { select (g_active, i); break; }
+					if (lower (k.e[i].label[0]) == c) { select (g_active, i); break; }
 				}
 				break;
 			}
