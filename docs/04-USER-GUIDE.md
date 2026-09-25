@@ -49,7 +49,7 @@ Card contents:
 | `etc/quicklaunch.txt` | apps pinned to the panel |
 | `bin/<tool>` | the terminal **command-line tools** |
 | `skins/theme.txt` | window theme colors |
-| `skins/` (wings.bmp, cursor…) | graphic skin |
+| `skins/` (wings.bmp, button.bmp, menubar.bmp, cursor…) | graphic skin (`menubar.bmp`: the system menu bar, 2 states of 16×28 — bar / open title, 9-slice; a 3-colour bevel is drawn if absent) |
 
 To regenerate the contents from sources: `cd kernel && make stage` (see the
 [developer guide](03-DEVELOPER-GUIDE.md)).

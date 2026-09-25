@@ -20,7 +20,7 @@ using namespace wtk;
 #define CELLW		((W - SB_W - 4 - LX) / COLS)
 #define CELLH		70
 #define BAR		60			// must match the panel's bar thickness
-#define MENUBAR_H	24			// keep clear of the system menu bar at the top
+#define MENUBAR_H	30			// keep clear of the system menu bar at the top
 #define GAP		6			// space between the panel and the popup
 #define OFFSCREEN	(W + 64)		// park hidden icons here (clipped away)
 

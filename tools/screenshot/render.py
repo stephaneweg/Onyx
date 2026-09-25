@@ -129,6 +129,7 @@ WIN_ACT = Skin(os.path.join(SD, "skins", "wings.bmp"),    1, 7, 7, 32, 7); WIN_A
 WIN_INA = Skin(os.path.join(SD, "skins", "wings.bmp"),    1, 7, 7, 32, 7); WIN_INA.colorize(TINT_INACTIVE)
 BTN     = Skin(os.path.join(SD, "skins", "button.bmp"),   3, 6, 6, 6, 6)
 CLOSE   = Skin(os.path.join(SD, "skins", "closebgs.bmp"), 3, 5, 5, 5, 5)
+MENUBAR = Skin(os.path.join(SD, "skins", "menubar.bmp"),  2, 4, 4, 2, 3)
 
 def button(cv, x, y, w, h, label):                       # kernel GW_BUTTON w/ skin -> black label
     BTN.draw_on(cv, 0, x, y, w, h)
@@ -560,32 +561,34 @@ def voronoi_wallpaper(W, H):
     a = np.full((H, W, 1), 255, "uint8")
     return Image.fromarray(np.concatenate([full, a], 2), "RGBA")
 
-MB_H = 22
+MB_H = 28   # bar height incl. the 3-px dark bottom edge (menubar BAR_H / BEVEL)
 def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12:34"):
     """The system menu bar (Apps/menubar/main.cpp draw()): app name (bold) + menus + clock,
     optionally with one drop-down open. items = [(label, shortcut) | None for a separator]."""
-    ty = (MB_H - 1 - FH) // 2
-    cv.fill(0, 0, W, MB_H - 1, C(0x303D4D)); cv.fill(0, MB_H - 1, W, 1, C(0x161C24))
+    face = MB_H - 3
+    ty = (face - 10 + 1) // 2 - 2               # centre on the cap ink (rows 2..11 of the cell)
+    MENUBAR.draw_on(cv, 0, 0, 0, W, MB_H)                  # skins/menubar.bmp, state 0
     x = 10; xs = []
     for i, t in enumerate([app] + menus):
         w = len(t) * FW + 16; xs.append(x)
-        if i == open_idx: cv.fill(x, 0, w, MB_H - 1, C(0x355070))
+        if i == open_idx: MENUBAR.draw_on(cv, 1, x, 0, w, MB_H)  # state 1 = open title
         cv.text(x + 8, ty, t, C(0xE8ECF0))
         if i == 0: cv.text(x + 9, ty, t, C(0xE8ECF0))
         x += w
     cv.text(W - 5 * FW - 12, ty, clock, C(0xE8ECF0))
     if open_idx >= 0 and items:
         dw = max(120, max((len(l) + len(k) + 5) * FW + 20 for l, k in [i for i in items if i]))
-        dh = 6 + sum(7 if i is None else FH + 6 for i in items)
+        dh = 6 + sum(9 if i is None else FH + 8 for i in items)
         dx = xs[open_idx]
         cv.fill(dx + 3, MB_H + 3, dw, dh, C(0x101418)); cv.fill(dx, MB_H, dw, dh, C(0x262F3B))
         cv.frame(dx, MB_H, dw, dh, C(0x161C24)); yy = MB_H + 3
         for n, it in enumerate(items):
-            if it is None: cv.fill(dx + 6, yy + 3, dw - 12, 1, C(0x404A5A)); yy += 7; continue
-            if n == hover: cv.fill(dx + 2, yy, dw - 4, FH + 6, C(0x355070))
-            cv.text(dx + 12, yy + 3, it[0], C(0xE8ECF0))
-            if it[1]: cv.text(dx + dw - 12 - len(it[1]) * FW, yy + 3, it[1], C(0x8A96A8))
-            yy += FH + 6
+            if it is None: cv.fill(dx + 6, yy + 4, dw - 12, 1, C(0x404A5A)); yy += 9; continue
+            ih = FH + 8; iy = yy + (ih - 10 + 1) // 2 - 2
+            if n == hover: cv.fill(dx + 2, yy, dw - 4, ih, C(0x355070))
+            cv.text(dx + 12, iy, it[0], C(0xE8ECF0))
+            if it[1]: cv.text(dx + dw - 12 - len(it[1]) * FW, iy, it[1], C(0x8A96A8))
+            yy += ih
 
 def app_menubar():	# the bar over a strip of desktop, Writer active, Format open
     W, H = 1024, 260; cv = Canvas(W, H, C(0x204060))
@@ -599,7 +602,7 @@ def render_desktop():
     cv = Canvas(W, H)
     cv.img.paste(voronoi_wallpaper(W, H), (0, 0)); cv.px = cv.img.load(); cv.d = ImageDraw.Draw(cv.img)
     # cascade: fractal + tinycalc inactive (slate chrome), terminal active (gold) on top
-    fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 30))
+    fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 34))
     cw = window(app_tinycalc(), "tinycalc", False); cv.img.alpha_composite(cw.img, (63, 328))
     tw = window(app_terminal(), "terminal", True);  cv.img.alpha_composite(tw.img, (293, 108))
     draw_panel(cv, W, H)

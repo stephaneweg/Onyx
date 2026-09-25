@@ -21,12 +21,15 @@
 
 using namespace wtk;
 
-#define BAR_H		22
+#define BAR_H		28			// bar height, 3D bevel included
+#define BEVEL		3			// dark bottom edge rows (volume)
+#define INK_TOP		2			// the 8x16 font's cap ink spans cell rows 2..11:
+#define INK_H		10			// centre on the ink, not on the 16-px cell
 #define MAXMENUS	12
 #define MAXITEMS	24
 #define KEYCOL		0x00FF00FFu		// transparent (magenta key)
 
-static const unsigned C_BARBG = 0x00303D4D, C_BARLINE = 0x00161C24, C_BARTXT = 0x00E8ECF0,
+static const unsigned C_BARBG = 0x00303D4D, C_BARLIGHT = 0x005A6E88, C_BARLINE = 0x00161C24, C_BARTXT = 0x00E8ECF0,
 		      C_DROP = 0x00262F3B, C_DROPHI = 0x00355070, C_DIM = 0x008A96A8, C_SEP = 0x00404A5A;
 
 struct Item { int id; char label[40]; char key[12]; bool sep; };
@@ -143,7 +146,9 @@ static int drop_w (const MenuDef &m)
 	}
 	return w;
 }
-static int item_h (const Item &it) { return it.sep ? 7 : g_fh + 6; }
+static int item_h (const Item &it) { return it.sep ? 9 : g_fh + 8; }
+// y of a text cell whose cap ink is vertically centred in a band [top, top+h)
+static int text_y (int top, int h) { return top + (h - INK_H + 1) / 2 - INK_TOP; }
 static int drop_h (const MenuDef &m) { int h = 6; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
 static int drop_x (const MenuDef &m) { int x = m.x; int w = drop_w (m); if (x + w > g_sw - 2) x = g_sw - 2 - w; return x; }
 
@@ -169,17 +174,38 @@ static int item_at (int x, int y)		// index in the open menu, -1 = none
 }
 
 // ---- drawing ----------------------------------------------------------------------------------
+// The bar skin: 2 states of 16 x BAR_H, 9-slice (corners 4 px wide, 2 top / BEVEL bottom rows).
+static Skin &bar_skin (void)
+{
+	static Skin s; static bool tried = false;
+	if (!tried) { tried = true; s.load ("SD:/skins/menubar.bmp", 2, 4, 4, 2, BEVEL); }
+	return s;
+}
+
 static void draw (void)
 {
 	int h = g_open >= 0 ? g_sh : BAR_H;
 	if (g_open >= 0) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, KEYCOL);
-	g_cv.fillRect (0, 0, g_sw, BAR_H - 1, C_BARBG);
-	g_cv.fillRect (0, BAR_H - 1, g_sw, 1, C_BARLINE);
-	int ty = (BAR_H - 1 - g_fh) / 2;
+	// Bar + open title: the skin (SD:/skins/menubar.bmp, state 0 = bar, 1 = open title),
+	// or a 3-colour bevel (light top edge, normal face, dark bottom edge) without it.
+	Skin &sk = bar_skin ();
+	if (sk.valid ()) sk.drawOn (g_cv.px, g_sw, h, 0, 0, 0, g_sw, BAR_H);
+	else
+	{
+		g_cv.fillRect (0, 0, g_sw, BAR_H, C_BARBG);
+		g_cv.fillRect (0, 0, g_sw, 2, C_BARLIGHT);
+		g_cv.fillRect (0, BAR_H - BEVEL, g_sw, BEVEL, C_BARLINE);
+	}
+	const int face = BAR_H - BEVEL;
+	int ty = text_y (0, face);
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
-		if (i == g_open) g_cv.fillRect (m.x, 0, m.w, BAR_H - 1, C_DROPHI);
+		if (i == g_open)
+		{
+			if (sk.valid ()) sk.drawOn (g_cv.px, g_sw, h, 1, m.x, 0, m.w, BAR_H);
+			else g_cv.fillRect (m.x, 2, m.w, face - 2, C_DROPHI);
+		}
 		g_cv.text (m.x + 8, ty, m.title, C_BARTXT);
 		if (i == (g_onyx ? 0 : 1)) g_cv.text (m.x + 9, ty, m.title, C_BARTXT);	// app name in bold
 	}
@@ -201,12 +227,13 @@ static void draw (void)
 		{
 			const Item &it = m.items[i];
 			int ih = item_h (it);
-			if (it.sep) g_cv.fillRect (dx + 6, yy + 3, dw - 12, 1, C_SEP);
+			if (it.sep) g_cv.fillRect (dx + 6, yy + ih / 2, dw - 12, 1, C_SEP);
 			else
 			{
 				if (i == g_hover) g_cv.fillRect (dx + 2, yy, dw - 4, ih, C_DROPHI);
-				g_cv.text (dx + 12, yy + 3, it.label, C_BARTXT);
-				if (it.key[0]) g_cv.text (dx + dw - 12 - slen (it.key) * g_fw, yy + 3, it.key, C_DIM);
+				int iy = text_y (yy, ih);
+				g_cv.text (dx + 12, iy, it.label, C_BARTXT);
+				if (it.key[0]) g_cv.text (dx + dw - 12 - slen (it.key) * g_fw, iy, it.key, C_DIM);
 			}
 			yy += ih;
 		}

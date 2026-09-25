@@ -19,7 +19,7 @@ using namespace wtk;
 #define NW		330
 #define NH		78
 #define MARGIN		8
-#define TOP		28			// below the menu bar
+#define TOP		34			// below the menu bar (28 px)
 #define QMAX		16
 #define FADE_IN_MS	180
 #define HOLD_MS		4000
