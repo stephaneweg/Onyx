@@ -585,6 +585,20 @@ static void on_hscroll (Widget &w)
 
 // ---- the window --------------------------------------------------------------------------
 static int g_crumbX[MAXCOL + 1];		// path-bar segment right edges (hit-test)
+static int g_vdrag = -1;			// column whose scrollbar is being dragged
+
+// Each column has its own vertical scrollbar (WK_SBW px, at its right edge) when its
+// folder has more entries than fit: drag the thumb, or click the track to jump there.
+static bool col_overflows (int slot) { return slot >= 0 && slot < g_ncol && g_col[slot].count > g_rows; }
+static void vscroll_to (int slot, int my)
+{
+	Column &k = g_col[slot];
+	WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
+	k.top = (int) wk_thumb_pos (my - COL_Y, COL_H, k.count, g_rows, t.h);
+	int maxTop = k.count - g_rows; if (maxTop < 0) maxTop = 0;
+	if (k.top > maxTop) k.top = maxTop;
+	if (k.top < 0) k.top = 0;
+}
 static unsigned g_lastTick = 0; static int g_lastSlot = -1, g_lastRow = -1;
 
 static void draw_arrow (Canvas &cv, int x, int y, unsigned c)	// small right-pointing triangle
@@ -635,7 +649,8 @@ public:
 			if (e.isdir && !e.isapp) draw_arrow (canvas, x + COLW - 16, y + (g_rowH - 9) / 2, C_DIMTXT);
 		}
 		WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
-		if (t.show) wk_draw_vscroll (canvas, x + COLW - 6, COL_Y, 5, COL_H, t, C_COL, C_FACE);
+		if (t.show) wk_draw_vscroll (canvas, x + COLW - 1 - WK_SBW, COL_Y, WK_SBW, COL_H, t, C_COLSEP,
+					     g_vdrag == slot ? C_FACE_HI : C_FACE);
 		if (k.count == 0) canvas.text (x + 8, COL_Y + 4, "(empty)", C_DIMTXT);
 	}
 
@@ -740,7 +755,14 @@ public:
 
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
-		if (mx < 0) { pressed = false; return false; }
+		if (mx < 0) { pressed = false; g_vdrag = -1; return false; }	// left the window
+		if (g_vdrag >= 0)					// dragging a column's scrollbar
+		{
+			if (!bl) { g_vdrag = -1; pressed = false; }
+			else vscroll_to (g_vdrag, my);
+			invalidate (true);
+			return true;
+		}
 		if (wheel && my >= COL_Y && my < COL_Y + COL_H)
 		{
 			int slot = g_first + mx / COLW;
@@ -777,6 +799,12 @@ public:
 			return true;
 		}
 		if (slot >= g_ncol) return true;
+		if (col_overflows (slot) && mx % COLW >= COLW - 1 - WK_SBW)	// the column's scrollbar
+		{
+			g_vdrag = slot; vscroll_to (slot, my);
+			invalidate (true);
+			return true;
+		}
 		int row = g_col[slot].top + (my - COL_Y) / g_rowH;
 		if (row >= g_col[slot].count) { jump_to (slot); invalidate (true); return true; }
 

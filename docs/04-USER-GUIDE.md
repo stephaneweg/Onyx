@@ -448,7 +448,8 @@ going back is one click on an earlier column. Launch it from the app list (categ
 - **Preview column**: selecting a file shows its size and type, the first lines of a text
   file, a scaled-down **BMP** image, or — for an app bundle — its icon, its friendly name and its folder name (`demoB.app`).
 - **Mouse**: click = select; **double-click** = open (text files in `tinypad`, programs
-  run, `.app` bundles launch); **wheel** scrolls the column under the cursor.
+  run, `.app` bundles launch); **wheel** scrolls the column under the cursor. A column longer than the window gets
+  its own **vertical scrollbar** at its right edge: drag the thumb, or click the track to jump.
 - **Keyboard**: **↑/↓**, Page Up/Down, Home/End move in the active column; **→** enters the
   selected folder, **←** or **Backspace** goes back; **Enter** opens; typing a **letter**
   jumps to the next name (as shown) starting with it.

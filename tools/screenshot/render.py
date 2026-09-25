@@ -256,6 +256,10 @@ def app_fileviewer():	# NeXTSTEP-style column browser (Apps/fileviewer/main.cpp 
             if n == sel: cv.fill(x0, yy, COLW - 1, RH, C(0x355070) if c == 1 else C(0x3A4452))
             cv.text(x0 + 8, yy + 2, n, C(0x90F0A0) if a else C(0x80C8FF) if d else C(0xD8D8D8))
             if d and not a: arrow(x0 + COLW - 16, yy + (RH - 9) // 2, C(0x8A96A8))
+        n_ent = len(listing(path))
+        if n_ent > rows:                                   # the column's vertical scrollbar (10 px)
+            th = max(14, rows * COL_H // n_ent)
+            cv.fill(x0 + COLW - 11, COL_Y, 10, COL_H, C(0x303A48)); cv.fill(x0 + COLW - 10, COL_Y, 8, th, C(0x566074))
     # preview of etc/autostart
     x0 = 2 * COLW; cv.fill(x0, COL_Y, COLW, COL_H, C(0x181E26))
     f = os.path.join(root, "etc", "autostart"); txt = open(f, encoding="utf-8").read()
