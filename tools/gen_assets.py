@@ -384,23 +384,22 @@ def gen_apps_glyph(path, w=40, h=40):
     write_bmp(path, w, h, px)
 
 
-# The system menu bar skin (Apps/menubar): 2 states of 16x28 stacked vertically --
-# 0 = the bar, 1 = an open menu title. Three colours: light top edge, normal face, dark
-# bottom edge (the "volume"). 9-slice margins l/r 4, t 2, b 3 (see menubar/main.cpp).
-MB_W, MB_H = 16, 28
-MB_LIGHT, MB_FACE, MB_DARK = (0x5A, 0x6E, 0x88), (0x30, 0x3D, 0x4D), (0x16, 0x1C, 0x24)
-MB_HI_LIGHT, MB_HI_FACE, MB_HI_DARK = (0x5A, 0x80, 0xA8), (0x35, 0x50, 0x70), (0x1C, 0x2C, 0x40)
+# The system menu bar skin (Apps/menubar): 2 states of 16x32 stacked vertically --
+# 0 = the bar, 1 = an open menu title. Three colours (light / normal / dark) + black:
+# rows 0..26 are the face (light top row), rows 27..31 the 3D edge underneath (NeXT
+# style): black line, light, normal, dark, black line. 9-slice margins l/r 4, t 1, b 5
+# (see menubar/main.cpp BAR_H / BEVEL).
+MB_W, MB_H, MB_EDGE = 16, 32, 5
+MB_LIGHT, MB_FACE, MB_DARK, MB_BLACK = (0x5A, 0x6E, 0x88), (0x30, 0x3D, 0x4D), (0x16, 0x1C, 0x24), (0x05, 0x07, 0x0A)
+MB_HI_FACE = (0x35, 0x50, 0x70)
 
 def gen_menubar_skin(path):
+    edge = [MB_BLACK, MB_LIGHT, MB_FACE, MB_DARK, MB_BLACK]
+    bar  = [MB_LIGHT] + [MB_FACE] * (MB_H - MB_EDGE - 1) + edge
+    hi   = [MB_DARK] + [MB_HI_FACE] * (MB_H - MB_EDGE - 1) + edge   # sunken title
     px = []
-    for light, face, dark, sunken in ((MB_LIGHT, MB_FACE, MB_DARK, False),
-                                      (MB_HI_LIGHT, MB_HI_FACE, MB_HI_DARK, True)):
-        for y in range(MB_H):
-            if sunken:   # pressed title: dark on top, light at the bottom
-                c = dark if y < 2 else (light if y >= MB_H - 3 else face)
-            else:
-                c = light if y < 2 else (dark if y >= MB_H - 3 else face)
-            px += [c] * MB_W
+    for col in bar + hi:
+        px += [col] * MB_W
     write_bmp(path, MB_W, MB_H * 2, px)
 
 

@@ -129,7 +129,7 @@ WIN_ACT = Skin(os.path.join(SD, "skins", "wings.bmp"),    1, 7, 7, 32, 7); WIN_A
 WIN_INA = Skin(os.path.join(SD, "skins", "wings.bmp"),    1, 7, 7, 32, 7); WIN_INA.colorize(TINT_INACTIVE)
 BTN     = Skin(os.path.join(SD, "skins", "button.bmp"),   3, 6, 6, 6, 6)
 CLOSE   = Skin(os.path.join(SD, "skins", "closebgs.bmp"), 3, 5, 5, 5, 5)
-MENUBAR = Skin(os.path.join(SD, "skins", "menubar.bmp"),  2, 4, 4, 2, 3)
+MENUBAR = Skin(os.path.join(SD, "skins", "menubar.bmp"),  2, 4, 4, 1, 5)
 
 def button(cv, x, y, w, h, label):                       # kernel GW_BUTTON w/ skin -> black label
     BTN.draw_on(cv, 0, x, y, w, h)
@@ -561,11 +561,11 @@ def voronoi_wallpaper(W, H):
     a = np.full((H, W, 1), 255, "uint8")
     return Image.fromarray(np.concatenate([full, a], 2), "RGBA")
 
-MB_H = 28   # bar height incl. the 3-px dark bottom edge (menubar BAR_H / BEVEL)
+MB_H = 32   # bar height incl. the 5-px 3D edge underneath (menubar BAR_H / BEVEL)
 def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12:34"):
     """The system menu bar (Apps/menubar/main.cpp draw()): app name (bold) + menus + clock,
     optionally with one drop-down open. items = [(label, shortcut) | None for a separator]."""
-    face = MB_H - 3
+    face = MB_H - 5
     ty = (face - 10 + 1) // 2 - 2               # centre on the cap ink (rows 2..11 of the cell)
     MENUBAR.draw_on(cv, 0, 0, 0, W, MB_H)                  # skins/menubar.bmp, state 0
     x = 10; xs = []
@@ -602,7 +602,7 @@ def render_desktop():
     cv = Canvas(W, H)
     cv.img.paste(voronoi_wallpaper(W, H), (0, 0)); cv.px = cv.img.load(); cv.d = ImageDraw.Draw(cv.img)
     # cascade: fractal + tinycalc inactive (slate chrome), terminal active (gold) on top
-    fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 34))
+    fw = window(app_fractal(),  "fractal",  False); cv.img.alpha_composite(fw.img, (63, 38))
     cw = window(app_tinycalc(), "tinycalc", False); cv.img.alpha_composite(cw.img, (63, 328))
     tw = window(app_terminal(), "terminal", True);  cv.img.alpha_composite(tw.img, (293, 108))
     draw_panel(cv, W, H)
