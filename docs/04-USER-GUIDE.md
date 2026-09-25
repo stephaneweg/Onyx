@@ -94,8 +94,9 @@ width=1024 height=768 init=SD:/bin/init heartbeat=5
 - **`watchdog`**: `watchdog=0` does not start the GUI watchdog at all (A/B testing).
 
 **Without a screen**, the green **ACT LED** shows the state: slow blink (1 s) = kernel
-running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachable); LED
-frozen on or off = the kernel hangs. `config.txt` sets `hdmi_force_hotplug=1` so a
+running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachable);
+**SOS** (· · · — — — · · ·) = kernel panic (an exception; with a screen, the red panic page
+shows EC/ELR/FAR); LED frozen on or off = the kernel hangs. `config.txt` sets `hdmi_force_hotplug=1` so a
 headless Pi still gets a framebuffer (without it, Onyx would start neither the GUI nor
 the userland, `telnetd` included).
 

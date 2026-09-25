@@ -15,6 +15,8 @@
 #include <circle/exceptionstub.h>	// TAbortFrame, ExceptionHandler()
 #include <circle/logger.h>
 #include <circle/startup.h>		// halt()
+#include <circle/actled.h>		// panic SOS on the ACT LED (headless)
+#include <circle/timer.h>		// SimpleMsDelay
 #include <circle/types.h>
 
 // Panic surface: the framebuffer actually shown on HDMI (the compositor's
@@ -48,7 +50,36 @@ static void PanicToScreen (unsigned nEC, u64 ulELR, u64 ulFAR, u64 ulSPSR)
 	Line.Format ("FAR=%lp  SPSR=%lp", (void *) ulFAR, (void *) ulSPSR);
 	Img.DrawText (16, 56, (const char *) Line, 0x00FFFF00);
 
+	// UpdateDisplay() DMAs the frame out, and Circle's DMA path enters a critical
+	// section that asserts FIQ is NOT masked (synchronize64.cpp). The exception entry
+	// masked everything, so without this the panic screen tripped that assert and
+	// stayed black -- faults looked like silent hangs. Unmask FIQ just for the present.
+	asm volatile ("msr daifclr, #1" ::: "memory");
 	s_pPanicGraphics->UpdateDisplay ();				// push to the display
+	asm volatile ("msr daifset, #1" ::: "memory");
+}
+
+// Headless sign of a kernel panic: blink SOS (... --- ...) on the green ACT LED forever,
+// so a panic is told apart from a hang (LED frozen) without a screen or serial cable.
+static void PanicBlink (boolean bForever)
+{
+	CActLED *pLED = CActLED::Get ();
+	if (pLED == 0)
+	{
+		if (bForever) halt ();
+		return;
+	}
+	static const unsigned Pattern[] = { 150, 150, 150, 450, 450, 450, 150, 150, 150 };
+	do
+	{
+		for (unsigned i = 0; i < sizeof Pattern / sizeof Pattern[0]; i++)
+		{
+			pLED->On ();  CTimer::SimpleMsDelay (Pattern[i]);
+			pLED->Off (); CTimer::SimpleMsDelay (150);
+		}
+		CTimer::SimpleMsDelay (1200);
+	}
+	while (bForever);
 }
 
 // ESR_EL1 exception classes we care about
@@ -92,9 +123,16 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 	// boot console is no longer scanned out once the compositor runs.
 	PanicToScreen (nEC, pFrame->elr_el1, Frame.far_el1, pFrame->spsr_el1);
 
-	ExceptionHandler (nException, &Frame);		// logs all registers; never returns
-
-	halt ();
+	// Log the essentials (the boot console shows it if the compositor has not taken the
+	// display yet; kmsg is gone with the system), then blink SOS instead of Circle's
+	// ExceptionHandler, whose register dump would go to the same invisible console and
+	// then halt with a frozen LED -- indistinguishable from a hang when headless.
+	(void) nException;
+	PanicBlink (FALSE);			// one SOS first, in case logging itself hangs
+	CLogger::Get ()->Write ("exc", LogError, "KERNEL PANIC: EC=%#x ELR=%lp FAR=%lp SPSR=%lp LR=%lp",
+				nEC, (void *) pFrame->elr_el1, (void *) Frame.far_el1,
+				(void *) pFrame->spsr_el1, (void *) pFrame->x[30]);
+	PanicBlink (TRUE);
 }
 
 void SyncHandlerEL1 (TTrapFrame *pFrame)
