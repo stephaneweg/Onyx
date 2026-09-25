@@ -17,6 +17,10 @@ initial_turbo=0
 enable_uart=1
 disable_splash=1
 
+# Headless boot (no monitor): pretend HDMI is connected so the firmware still allocates
+# a framebuffer -- otherwise Onyx skips the GUI *and* the userland (init, telnetd).
+hdmi_force_hotplug=1
+
 # Enable this for JTAG / SWD debugging!
 #enable_jtag_gpio=1
 

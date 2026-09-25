@@ -91,10 +91,12 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    - **`CCompositorTask`** — presents the screen at ~60 Hz (composes the windows then
      `UpdateDisplay()`).
    - **`CReaperTask`** — reaps terminated tasks every ~50 ms (frees
-     `CTask` + stack + address space outside the scheduler core).
+     `CTask` + stack + address space outside the scheduler core). It also blinks the
+     green ACT LED as a headless sign of life: 1 s period while the network is down,
+     0.2 s once `NetIsUp()`; a frozen LED means the scheduler stopped.
    - **`CInputTask`** (if USB is present) — pumps keyboard/mouse events to the
      window manager.
-   - **`CGuiWatchdogTask`** — once a second, checks the GUI and writes to the kernel
+   - **`CGuiWatchdogTask`** (skipped with `watchdog=0` in `cmdline.txt`) — once a second, checks the GUI and writes to the kernel
      log (`kmsg`): `compositor STALLED` when `CWindowManager::FrameCount()` has not moved
      for 2 s (with every task's `name:state`), `app '<title>' NOT PUMPING events` when a
      window has queued events and its owner has not called `PopEvent` for 2 s (plus the

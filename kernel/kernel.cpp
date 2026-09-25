@@ -292,12 +292,25 @@ public:
 		SetName ("reaper");
 	}
 
+	// Also drives the green ACT LED as a headless sign of life (no screen needed):
+	// slow blink (1 s) = kernel alive, network not up yet; fast blink (0.2 s) = network
+	// up; LED frozen = the kernel no longer schedules (hang). SD accesses flash it too.
 	void Run (void) override
 	{
+		unsigned nTick = 0;
+		boolean bOn = FALSE;
 		for (;;)
 		{
 			TerminateOrphans ();			// kill children of dead parents
 			CScheduler::Get ()->ReapTerminatedTasks ();
+
+			unsigned nPeriod = NetIsUp () ? 4 : 20;	// x 50 ms
+			if (++nTick >= nPeriod)
+			{
+				nTick = 0;
+				bOn = !bOn;
+				if (bOn) CActLED::Get ()->On (); else CActLED::Get ()->Off ();
+			}
 			CScheduler::Get ()->MsSleep (50);
 		}
 	}
@@ -1319,11 +1332,19 @@ TShutdownMode CKernel::Run (void)
 
 		// GUI watchdog + heartbeat (kmsg): compositor stalls, frozen apps, and a
 		// periodic summary every cmdline.txt heartbeat= seconds (default 5, 0 = off).
+		// cmdline watchdog=0 skips the task entirely (A/B testing).
 		unsigned nBeat = m_Options.GetAppOptionDecimal ("heartbeat", 5);
 		g_nHeartbeatSec = nBeat == (unsigned) -1 ? 5 : nBeat;
-		new CGuiWatchdogTask (&m_WindowManager);
-		m_Logger.Write (FromKernel, LogNotice, "gui watchdog started (heartbeat %u s)",
-				g_nHeartbeatSec);
+		if (m_Options.GetAppOptionDecimal ("watchdog", 1) != 0)
+		{
+			new CGuiWatchdogTask (&m_WindowManager);
+			m_Logger.Write (FromKernel, LogNotice, "gui watchdog started (heartbeat %u s)",
+					g_nHeartbeatSec);
+		}
+		else
+		{
+			m_Logger.Write (FromKernel, LogNotice, "gui watchdog disabled (cmdline watchdog=0)");
+		}
 	}
 	else
 	{

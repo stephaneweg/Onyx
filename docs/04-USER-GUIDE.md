@@ -91,6 +91,13 @@ width=1024 height=768 init=SD:/bin/init heartbeat=5
   with its queued (`q`) / dropped (`d`) events. The same GUI watchdog always warns when the
   compositor stops producing frames (and lists every task's state) and when an app stops
   pumping its window's events (a frozen app).
+- **`watchdog`**: `watchdog=0` does not start the GUI watchdog at all (A/B testing).
+
+**Without a screen**, the green **ACT LED** shows the state: slow blink (1 s) = kernel
+running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachable); LED
+frozen on or off = the kernel hangs. `config.txt` sets `hdmi_force_hotplug=1` so a
+headless Pi still gets a framebuffer (without it, Onyx would start neither the GUI nor
+the userland, `telnetd` included).
 
 ### `system.ini`
 
