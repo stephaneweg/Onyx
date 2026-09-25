@@ -161,7 +161,7 @@ def window(client, title, active=True):
 def app_terminal():
     W, H = 620, 400; cv = Canvas(W, H, C(0x101418))
     lines = ["Zircon terminal -- try: ls /bin | grep e",
-             "$ ls /bin | grep e", "echo.elf", "sleep.elf", "yes.elf",
+             "$ ls /bin | grep e", "echo", "sleep", "yes",
              "$ ps", "  1 k R  idle", "  2 k R  gui", " 14 a R  panel",
              " 17 a R  voronoy", " 21 a R  terminal", " 25 a R  fractal",
              "$ echo zircon | wc -c", "7"]

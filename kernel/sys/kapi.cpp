@@ -333,7 +333,7 @@ void kapi_set_pointer_handler (void *pHandler)
 	}
 }
 
-// Launch another app by folder name (apps/<name>.app/main.elf) as a new process.
+// Launch another app by folder name (apps/<name>.app/main) as a new process.
 // Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
 int kapi_launch (const char *pName)
 {

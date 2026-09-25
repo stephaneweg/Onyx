@@ -134,7 +134,7 @@ static void open_sel (void)
 		if (g_name[g_sel][0] == '.' && g_name[g_sel][1] == '.') go_up ();
 		else enter_dir (g_name[g_sel]);
 	}
-	else open_file (g_sel);				// .txt/.ini -> tinypad, .elf -> run
+	else open_file (g_sel);				// .txt/.ini -> tinypad, program -> run
 }
 
 static void fix_scroll (void)
@@ -180,8 +180,20 @@ static void full_path (const char *name, char *out, int cap)
 	out[p] = '\0';
 }
 
+// True if the file starts with the ELF magic (0x7F 'E' 'L' 'F'). Executables carry no
+// extension, so programs are recognized by their content.
+static int is_program (const char *path)
+{
+	void *f = kapi_open (path);
+	if (!f) return 0;
+	unsigned char m[4] = { 0 };
+	int n = kapi_read (f, m, sizeof m);
+	kapi_close (f);
+	return n == 4 && m[0] == 0x7F && m[1] == 'E' && m[2] == 'L' && m[3] == 'F';
+}
+
 // Open a file by double-click / Enter: text-ish types open in tinypad (file passed
-// as argv); .elf programs are run directly. Other types are left alone.
+// as argv); programs (ELF files) are run directly. Other types are left alone.
 static void open_file (int idx)
 {
 	if (idx < 0 || idx >= g_count) return;
@@ -194,9 +206,9 @@ static void open_file (int idx)
 	    ext_is (g_name[idx], "csv") || ext_is (g_name[idx], "c") ||
 	    ext_is (g_name[idx], "h")   || ext_is (g_name[idx], "sh"))
 	{
-		kapi_exec ("SD:apps/tinypad.app/main.elf", path);	// open in the editor
+		kapi_exec ("SD:apps/tinypad.app/main", path);	// open in the editor
 	}
-	else if (ext_is (g_name[idx], "elf"))
+	else if (is_program (path))
 	{
 		kapi_exec (path, "");					// run the program
 	}
@@ -335,7 +347,7 @@ public:
 		case KEY_DOWN: g_sel++; break;
 		case KEY_PGUP: g_sel -= g_rows; break;
 		case KEY_PGDN: g_sel += g_rows; break;
-		case KEY_ENTER: open_sel (); break;		// open file / run .elf (also enters dirs)
+		case KEY_ENTER: open_sel (); break;		// open file / run program (also enters dirs)
 		case ' ':					// space: enter the selected folder
 			if (g_sel >= 0 && g_sel < g_count && g_isdir[g_sel]) open_sel ();
 			break;

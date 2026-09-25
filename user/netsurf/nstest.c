@@ -8,7 +8,7 @@
  * AND after every step, so on the Pi the LAST line printed pinpoints the brick that hangs
  * or crashes. It is a /bin console tool -- run `nstest` in the terminal and read the output.
  *
- * Build + stage:  make -f user/netsurf/netsurf-app.mk nstest   (-> sdcard/bin/nstest.elf)
+ * Build + stage:  make -f user/netsurf/netsurf-app.mk nstest   (-> sdcard/bin/nstest)
  */
 #include <stdio.h>
 #include <stdlib.h>

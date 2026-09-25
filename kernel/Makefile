@@ -68,11 +68,13 @@ all: $(TARGET).img apps
 .DEFAULT_GOAL := all
 
 # Copy kernel + apps to the SD staging dir. The app ELFs are ABI-stable now, so a
-# kernel-only change just needs the new .img; the .elf's can stay. `make stage`
+# kernel-only change just needs the new .img; the programs can stay. `make stage`
 # still refreshes both for convenience.
 #
-# Each app lives in its own folder:  apps/<name>.app/main.elf  (the Maynard-style
+# Each app lives in its own folder:  apps/<name>.app/main  (the Maynard-style
 # layout). The app name is the ELF basename; autostart.txt names them per line.
+# Executables on the card carry NO extension: the build's <name>.elf outputs are
+# staged as apps/<name>.app/main and bin/<name>.
 SDCARD = ../sdcard
 .PHONY: stage
 stage: apps
@@ -80,13 +82,13 @@ stage: apps
 	@for elf in ../user/*.elf; do \
 		name=$$(basename $$elf .elf); \
 		mkdir -p $(SDCARD)/apps/$$name.app; \
-		cp $$elf $(SDCARD)/apps/$$name.app/main.elf; \
+		cp $$elf $(SDCARD)/apps/$$name.app/main; \
 	done
 	@mkdir -p $(SDCARD)/bin
 	@for elf in ../user/bin/*.elf; do \
 		[ -e "$$elf" ] || continue; \
-		cp $$elf $(SDCARD)/bin/$$(basename $$elf); \
+		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
 	done
-	@echo "  STAGE $(TARGET).img + apps/*.app/main.elf + bin/*.elf -> $(SDCARD)/"
+	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* -> $(SDCARD)/"
 
 -include $(DEPS)

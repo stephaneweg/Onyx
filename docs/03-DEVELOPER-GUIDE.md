@@ -105,8 +105,12 @@ make stage     # copie l'image + chaque app + chaque outil vers ../sdcard/
 `make stage`:
 - copies `kernel8-rpi4.img` → `sdcard/`;
 - for each `../user/<name>.elf`: creates `sdcard/apps/<name>.app/` and copies the ELF into it as
-  **`main.elf`** (the "Onyx" layout);
-- copies each `../user/bin/<tool>.elf` → `sdcard/bin/<tool>.elf`.
+  **`main`** (the "Onyx" layout);
+- copies each `../user/bin/<tool>.elf` → `sdcard/bin/<tool>`.
+
+**Executables on the card have no extension**: `.elf` only exists in the build tree
+(`user/*.elf`, `user/bin/*.elf`); staging drops it. Programs are recognized by their
+content (ELF magic `7F 45 4C 46`), e.g. by the file manager.
 
 Then copy **all** of the contents of `sdcard/` onto a **FAT32** card and boot the
 Pi 4. See the [user guide](04-USER-GUIDE.md) for details about the card and
@@ -436,7 +440,7 @@ Layout of an application on the card (produced by `make stage`):
 
 ```
 SD:apps/<nom>.app/
-  main.elf       l'ELF de l'app (obligatoire)
+  main           l'ELF de l'app, sans extension (obligatoire)
   icon.bmp       icône 40×40, BMP 24 bpp ; le magenta 0xFF00FF est transparent (optionnel)
   app.txt        métadonnées (display name + catégorie) lues par le launcher (optionnel)
   config.ini     configuration de l'app, lue via app_ini_load() (optionnel)

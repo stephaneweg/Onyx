@@ -1,9 +1,9 @@
 //
 // run -- launch a GUI app from the shell. `run <name>` starts apps/<name>.app/
-// main.elf (the same thing the app drawer does); a name containing '/' is taken as
+// main (the same thing the app drawer does); a name containing '/' is taken as
 // a full ELF path instead. Any extra arguments are passed to the app as argv.
 //   usage: run <app|path> [args...]
-// Examples:  run mandelbrot      run tinypad SD:/notes.txt      run SD:/bin/ls.elf
+// Examples:  run mandelbrot      run tinypad SD:/notes.txt      run SD:/bin/ls
 //
 #include "kapi.h"
 #include "applib.h"
@@ -38,11 +38,11 @@ int main (void)
 	}
 	else if (rest[0] != '\0')
 	{
-		// App name + arguments: build apps/<name>.app/main.elf and pass argv.
+		// App name + arguments: build apps/<name>.app/main and pass argv.
 		char path[160]; int p = 0;
 		ax_strcat (path, sizeof (path), &p, "SD:apps/");
 		ax_strcat (path, sizeof (path), &p, name);
-		ax_strcat (path, sizeof (path), &p, ".app/main.elf");
+		ax_strcat (path, sizeof (path), &p, ".app/main");
 		ok = kapi_exec (path, rest);
 	}
 	else

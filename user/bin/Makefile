@@ -1,7 +1,7 @@
 #
 # Makefile -- /bin console tools. Same EL1 app model as the GUI apps but they read
 # stdin / write stdout / exit (no window). Built with the shared crt0.S + user.ld +
-# kapi.h from the parent dir; staged to SD:/bin/<name>.elf.
+# kapi.h from the parent dir; staged to SD:/bin/<name> (no extension on the card).
 #
 PREFIX ?= aarch64-none-elf-
 CC      = $(PREFIX)gcc

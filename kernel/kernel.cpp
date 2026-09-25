@@ -776,12 +776,12 @@ static boolean SdFileExists (const char *pPath)
 	return f_stat (pPath, &Info) == FR_OK && !(Info.fattrib & AM_DIR);
 }
 
-// Launch an app by folder name: SD:apps/<name>.app/main.elf -> a new EL1 process.
+// Launch an app by folder name: SD:apps/<name>.app/main -> a new EL1 process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
 {
 	CString Path;
-	Path.Format ("SD:apps/%s.app/main.elf", pName);
+	Path.Format ("SD:apps/%s.app/main", pName);
 
 	// Verify the file exists NOW (cheap) so a bad name fails here, not asynchronously.
 	if (!SdFileExists ((const char *) Path))
@@ -856,9 +856,9 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	return pProc;
 }
 
-// Derive a short task name from an ELF path. "SD:apps/tinypad.app/main.elf" -> the
-// parent folder minus ".app" ("tinypad"); "SD:/bin/ls.elf" -> the basename minus
-// ".elf" ("ls"). Falls back to "app". Writes up to nCap-1 chars into pOut.
+// Derive a short task name from an ELF path. "SD:apps/tinypad.app/main" -> the
+// parent folder minus ".app" ("tinypad"); "SD:/bin/ls" -> the basename ("ls"; any
+// ".ext" suffix is dropped). Falls back to "app". Writes up to nCap-1 chars into pOut.
 static void NameFromPath (const char *pPath, char *pOut, unsigned nCap)
 {
 	if (nCap == 0) return;
@@ -868,11 +868,11 @@ static void NameFromPath (const char *pPath, char *pOut, unsigned nCap)
 	// Find the last '/' and the segment after it.
 	int nSlash = -1;
 	for (unsigned i = 0; i < nLen; i++) if (pPath[i] == '/') nSlash = (int) i;
-	const char *pSeg = pPath + nSlash + 1;	// basename ("main.elf" or "ls.elf")
+	const char *pSeg = pPath + nSlash + 1;	// basename ("main" or "ls")
 
-	// If the basename is "main.elf", use the parent dir name instead.
+	// If the basename is "main" (or "main.<ext>"), use the parent dir name instead.
 	boolean bMain = pSeg[0] == 'm' && pSeg[1] == 'a' && pSeg[2] == 'i' && pSeg[3] == 'n'
-			&& pSeg[4] == '.';
+			&& (pSeg[4] == '\0' || pSeg[4] == '.');
 	const char *pStart; int nSegLen;
 	if (bMain && nSlash > 0)
 	{
@@ -889,7 +889,7 @@ static void NameFromPath (const char *pPath, char *pOut, unsigned nCap)
 	{
 		pStart = pSeg;
 		nSegLen = 0;
-		while (pStart[nSegLen] != '\0' && pStart[nSegLen] != '.') nSegLen++;	// drop ".elf"
+		while (pStart[nSegLen] != '\0' && pStart[nSegLen] != '.') nSegLen++;	// drop any ".ext"
 	}
 
 	if (nSegLen <= 0) { pStart = "app"; nSegLen = 3; }
@@ -949,13 +949,13 @@ static void EnumerateApps (CLogger *pLogger)
 // arguments). init reads /etc/autostart and starts everything from there (see
 // user/bin/init.c), so all the launch policy lives in userland, not the kernel.
 //
-// Which ELF to run is the cmdline.txt option "init=" (e.g. init=SD:/bin/init.elf);
-// it defaults to SD:bin/init.elf when absent, so existing cards keep booting. This
+// Which ELF to run is the cmdline.txt option "init=" (e.g. init=SD:/bin/init);
+// it defaults to SD:bin/init when absent, so existing cards keep booting. This
 // lets you swap the init program (a recovery shell, a different launcher) without
 // rebuilding the kernel.
 void CKernel::StartAutostart (void)
 {
-	const char *pInit = m_Options.GetAppOptionString ("init", "SD:bin/init.elf");
+	const char *pInit = m_Options.GetAppOptionString ("init", "SD:bin/init");
 	if (!ExecPath (pInit, ""))
 	{
 		m_Logger.Write (FromKernel, LogWarning, "cannot start init '%s'", pInit);

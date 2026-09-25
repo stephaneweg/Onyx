@@ -1,7 +1,7 @@
 //
 // init -- the first program the kernel starts at boot (no arguments). It reads
 // /etc/autostart and runs each line as a shell command, exactly like the terminal:
-// the first word is a /bin tool (/bin/<word>.elf) and the rest is its argv. Desktop
+// the first word is a /bin tool (/bin/<word>) and the rest is its argv. Desktop
 // apps are launched with the `run` tool (e.g. "run panel"). Blank lines and lines
 // starting with '#' are ignored. Fire-and-forget (kapi_exec): init launches
 // everything and exits; the started programs keep running.
@@ -20,10 +20,9 @@ static void run_line (char *line)
 	while (*args != '\0' && *args != ' ' && *args != '\t') args++;
 	if (*args != '\0') { *args++ = '\0'; while (*args == ' ' || *args == '\t') args++; }
 
-	char path[128]; int p = 0;				// /bin/<token>.elf
+	char path[128]; int p = 0;				// /bin/<token>
 	ax_strcat (path, sizeof path, &p, "SD:bin/");
 	ax_strcat (path, sizeof path, &p, line);
-	ax_strcat (path, sizeof path, &p, ".elf");
 
 	if (!kapi_exec (path, args))
 	{

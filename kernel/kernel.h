@@ -50,7 +50,7 @@ public:
 	TShutdownMode Run (void);
 
 private:
-	// Launch the init program (cmdline "init=", default SD:bin/init.elf); it reads
+	// Launch the init program (cmdline "init=", default SD:bin/init); it reads
 	// SD:/etc/autostart and starts the rest of the userland.
 	void StartAutostart (void);
 

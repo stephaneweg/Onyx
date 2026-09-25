@@ -1,6 +1,6 @@
 //
 // terminal/main.cpp -- a "dumb" terminal (tty). It owns the keyboard and scrollback
-// only; the actual shell is a separate program, /bin/cmd.elf. At startup the terminal
+// only; the actual shell is a separate program, /bin/cmd. At startup the terminal
 // spawns cmd wired to two pipes: keystrokes go to cmd's stdin, and cmd's stdout is
 // drained into the scrollback. So all command parsing / pipelines / builtins live in
 // cmd, not here. The terminal does local line editing + echo (Backspace edits, Enter
@@ -78,8 +78,8 @@ static void start_cmd (void)
 {
 	g_to_cmd   = kapi_pipe ();
 	g_from_cmd = kapi_pipe ();
-	g_cmd = kapi_spawn ("SD:/bin/cmd.elf", "", g_to_cmd, g_from_cmd);
-	if (g_cmd == 0) term_puts ("terminal: cannot start /bin/cmd.elf\n");
+	g_cmd = kapi_spawn ("SD:/bin/cmd", "", g_to_cmd, g_from_cmd);
+	if (g_cmd == 0) term_puts ("terminal: cannot start /bin/cmd\n");
 }
 
 // Pump cmd's stdout into the scrollback. Returns the number of bytes consumed (so the

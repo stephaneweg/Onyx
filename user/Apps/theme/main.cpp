@@ -181,7 +181,7 @@ static void apply (void)
 	// .kmap file (compiled-in fallback) so file-only layouts like BE work from here too.
 	if (kmdd.sel >= 0 && kmdd.sel < kmdd.nopts)
 		ax_load_keymap (g_kmopt[kmdd.sel]);
-	kapi_exec ("SD:apps/voronoy.app/main.elf", "");
+	kapi_exec ("SD:apps/voronoy.app/main", "");
 }
 
 static void draw_button (int x, const char *label, unsigned bg)

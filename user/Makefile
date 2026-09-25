@@ -22,7 +22,8 @@ CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # All graphical apps live in Apps/<name>/main.cpp (one folder per app) and build to
-# <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf). Every graphical
+# <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf; it stages
+# each one as apps/<name>.app/main, without extension). Every graphical
 # app is C++ on the wtk toolkit now; the /bin console tools stay C in bin/.
 APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \

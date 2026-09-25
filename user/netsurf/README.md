@@ -149,7 +149,7 @@ make -f user/netsurf/netsurf-app.mk            # build netsurf.elf
 make -f user/netsurf/netsurf-app.mk stage      # -> sdcard/apps/netsurf.app + sdcard/res/
 ```
 
-`stage` installs the browser as a desktop app (`apps/netsurf.app/{main.elf,app.txt}`,
+`stage` installs the browser as a desktop app (`apps/netsurf.app/{main,app.txt}`,
 category *Internet*) and its runtime resources under `res/` (`NETSURF_FB_RESPATH=/res` →
 `SD:/res`): the `Messages` catalogue (filtered out of `FatMessages`), the default/quirks/
 adblock/internal CSS, the about: pages, the favicon, and the TLS `ca-bundle`. These GPL
@@ -166,7 +166,7 @@ full HTML/CSS engine, on the `"onyx"` libnsfb surface. It is currently **slow** 
 
 NetSurf first came up hanging with no window. Two-phase plan:
 
-1. **`nstest`** (console) -- `make -f netsurf-app.mk nstest` builds `sdcard/bin/nstest.elf`,
+1. **`nstest`** (console) -- `make -f netsurf-app.mk nstest` builds `sdcard/bin/nstest`,
    a smoke test that exercises each library brick at run time (libwapcaplet, zlib, libcss
    parse, libdom+hubbub parse, the iconv/dirent/stat shims), printing a flushed line before
    and after every step. Run `nstest` in the terminal: the **last line printed** pinpoints the

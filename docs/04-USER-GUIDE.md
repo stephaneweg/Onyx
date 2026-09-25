@@ -43,10 +43,10 @@ Card contents:
 | `start4.elf`, `fixup4.dat`, `bcm2711-rpi-4-b.dtb`, `armstub8-rpi4.bin` | GPU firmware + device tree + Pi 4 ARM stub |
 | `config.txt`, `cmdline.txt` | boot configuration (see §3) |
 | `kernel8-rpi4.img` | **the Onyx kernel** |
-| `apps/<name>.app/main.elf` | the **applications** (one per `.app` folder) |
+| `apps/<name>.app/main` | the **applications** (one per `.app` folder) |
 | `etc/autostart` | commands run automatically at boot (read by `init`) |
 | `etc/quicklaunch.txt` | apps pinned to the panel |
-| `bin/<tool>.elf` | the terminal **command-line tools** |
+| `bin/<tool>` | the terminal **command-line tools** |
 | `skins/theme.txt` | window theme colors |
 | `skins/` (wings.bmp, cursor…) | graphic skin |
 
@@ -76,12 +76,12 @@ max_framebuffers=2
 Parameters read at boot:
 
 ```
-width=1024 height=768 init=SD:/bin/init.elf
+width=1024 height=768 init=SD:/bin/init
 ```
 
 - **`width` / `height`**: framebuffer resolution (default 1024×768).
 - **`init`**: absolute path of the init program the kernel launches at boot
-  (default `SD:bin/init.elf`). init reads `SD:/etc/autostart` and starts the rest
+  (default `SD:bin/init`). init reads `SD:/etc/autostart` and starts the rest
   of the userland, so pointing `init=` at another ELF (e.g. a recovery shell)
   swaps the whole launcher without rebuilding the kernel.
 
@@ -131,7 +131,7 @@ On power-on:
 1. The firmware loads `kernel8-rpi4.img`.
 2. The kernel initializes the display, the SD card and USB, then briefly shows a boot
    log.
-3. The kernel launches the **init program** (`SD:bin/init.elf` by default, or whatever
+3. The kernel launches the **init program** (`SD:bin/init` by default, or whatever
    `init=` in `cmdline.txt` points at), which runs each line of `SD:/etc/autostart` as
    a shell command. By default:
    - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
@@ -222,7 +222,7 @@ not by a program in `/bin`:
 
 ### Launching a program
 
-Any other command `xxx` is resolved to **`SD:/bin/xxx.elf`** and executed as a
+Any other command `xxx` is resolved to **`SD:/bin/xxx`** and executed as a
 process; its **arguments**, if any, follow the name (`grep pattern`, `cp a b`). A command
 that cannot be found prints `xxx: command not found`. To launch a **graphical application**
 from the terminal, use `run <name>` (see §8).
@@ -264,7 +264,7 @@ run mandelbrot          # launch a graphical application
 
 **Under the hood.** The terminal splits the line on `|`, creates a memory pipe (`pipe`)
 between each stage — and a file stream for `<`/`>` —, then launches (`spawn`) each
-`SD:/bin/<cmd>.elf` with its (`stdin`, `stdout`) pair. The stages run **concurrently**
+`SD:/bin/<cmd>` with its (`stdin`, `stdout`) pair. The stages run **concurrently**
 (cooperatively); the terminal continuously drains the final output pipe (non-blocking
 read) and displays it, then waits for each process to finish. The details of streams and
 the process model are in
@@ -303,7 +303,7 @@ the terminal's **current working directory**.
 |---|---|---|
 | `ps` | `ps` | Lists the processes in columns `PID  K  S  PAGES  MEM  NAME` — `K`: `a` (app) / `k` (kernel); `S`: `R` (ready), `S` (sleeping), `B` (blocked), `N` (new); `PAGES` = 64 KB frames owned by the app, `MEM` = that in KB. |
 | `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
-| `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main.elf`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
+| `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
 
 **Networking and logs**
@@ -331,7 +331,7 @@ Launch **`filer`** (pinned by default). It browses the SD card.
 - **Open**: **double-click** (or **Enter**) on an entry.
   - Text files (`.txt`, `.ini`, `.md`, `.log`, `.cfg`, `.conf`, `.csv`, `.c`, `.h`,
     `.sh`) → opened in **`tinypad`**.
-  - `.elf` files → **executed**.
+  - Programs (ELF files, recognized by their content — executables have no extension) → **executed**.
 - **Operations** (shortcuts shown at the top):
   - **`d`**: delete the selection (with confirmation).
   - **`r`**: rename (pre-filled with the current name).
@@ -403,9 +403,9 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
 
 - **`SD:/etc/autostart`**: one **shell command** per line, run at boot by `init`
   exactly as if typed in the terminal — the first word is a `/bin` tool
-  (`/bin/<word>.elf`) and the rest are its arguments; blank lines and `#` comments are
+  (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
   ignored. Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>/main.elf`). Defaults: `run voronoy`, `run panel`, `keyb FR` (the last
+  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run panel`, `keyb FR` (the last
   sets the keyboard layout at boot). Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 - **`SD:/etc/quicklaunch.txt`**: the apps pinned to the panel (top→bottom).

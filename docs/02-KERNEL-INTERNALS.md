@@ -81,7 +81,7 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
 
 1. Logs machine info.
 2. Launches the **init program** (`StartAutostart`): the ELF named by the `cmdline.txt`
-   option **`init=`** (e.g. `init=SD:/bin/init.elf`), defaulting to `SD:bin/init.elf`
+   option **`init=`** (e.g. `init=SD:/bin/init`), defaulting to `SD:bin/init`
    when the option is absent. The kernel does not parse any launch list itself —
    init (PID-1 style) reads `SD:/etc/autostart` and starts everything from there
    (by default `voronoy`, which paints the wallpaper then exits, and `panel`, the
@@ -357,14 +357,14 @@ task model in `kernel.cpp`.
 
 ### Launch entry points
 
-- **`LaunchApp(name)`**: builds `SD:apps/<name>.app/main.elf`, reads it into RAM, creates a
+- **`LaunchApp(name)`**: builds `SD:apps/<name>.app/main`, reads it into RAM, creates a
   `CUserProcessTask` (without stdio). Exposed via `kapi_launch`.
 - **`SpawnProcess(path, args, stdin, stdout, cwd)`**: creates a `CProcess` handle,
   increments the streams' refs, creates the task. Exposed via `kapi_spawn` (the terminal for
   pipes/redirections). `kapi_wait`/`kapi_proc_done` query the handle.
 - **`ExecPath(path, args)`**: "fire-and-forget" (without stdio or handle; the task name
   is derived from the path). Exposed via `kapi_exec` (the file manager to
-  open a document in an app, or launch an `.elf`).
+  open a document in an app, or launch a program).
 
 ---
 

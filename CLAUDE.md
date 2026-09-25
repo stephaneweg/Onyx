@@ -43,5 +43,5 @@ documentation in the same session**, without being asked again:
 ## Build (reminder)
 
 From `kernel/`: `make` (→ `kernel8-rpi4.img` then the apps), `make stage` (copies image +
-`apps/<name>.app/main.elf` + `bin/*.elf` to `sdcard/`). Prerequisites and details in
+`apps/<name>.app/main` + `bin/*` to `sdcard/` — executables carry **no extension** on the card). Prerequisites and details in
 `docs/03-DEVELOPER-GUIDE.md`. Commit in the Onyx repo explicitly (the cwd drifts).

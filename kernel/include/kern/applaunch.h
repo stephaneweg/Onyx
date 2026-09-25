@@ -1,7 +1,7 @@
 //
 // applaunch.h
 //
-// Spawn an app by folder name (apps/<name>.app/main.elf) as a new EL1 process.
+// Spawn an app by folder name (apps/<name>.app/main) as a new EL1 process.
 // Defined in kernel.cpp; declared here so kapi.cpp's kapi_launch (called by the
 // shell) can start another app. Safe to call from any cooperative task context:
 // it only loads the ELF file and registers a new task -- the new address space is

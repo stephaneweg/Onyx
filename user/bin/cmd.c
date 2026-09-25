@@ -2,7 +2,7 @@
 // cmd -- the shell, as an ordinary /bin console program. It reads command lines from
 // stdin (the terminal feeds the keyboard there) and writes the prompt + output to
 // stdout (the terminal displays it). For each line it builds a pipeline of stages
-// (split on '|') with redirections (< > >>), spawns /bin/<cmd>.elf for each, wires
+// (split on '|') with redirections (< > >>), spawns /bin/<cmd> for each, wires
 // the stages together, forwards its own stdin to the first stage (so interactive
 // programs read the keyboard; Ctrl-D ends that input), and drains the last stage's
 // output to stdout. Builtins: cd, pwd, clear, exit. Loops until stdin EOF.
@@ -127,8 +127,8 @@ static void run_line (char *input)
 		char bin[160]; int p = 0;
 		const char *pre = "SD:/bin/";
 		for (int k = 0; pre[k]; k++) bin[p++] = pre[k];
-		for (int k = 0; g_stage[s].cmd[k] && p < (int) sizeof bin - 6; k++) bin[p++] = g_stage[s].cmd[k];
-		const char *suf = ".elf"; for (int k = 0; suf[k]; k++) bin[p++] = suf[k]; bin[p] = '\0';
+		for (int k = 0; g_stage[s].cmd[k] && p < (int) sizeof bin - 1; k++) bin[p++] = g_stage[s].cmd[k];
+		bin[p] = '\0';
 
 		void *pr = kapi_spawn (bin, g_stage[s].args, sin, sout);
 		if (!pr) { out (g_stage[s].cmd); out (": command not found\n"); failed = 1; break; }

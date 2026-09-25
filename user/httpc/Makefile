@@ -35,7 +35,7 @@ main.elf: $(DEPS)
 SDCARD ?= ../../sdcard
 stage: main.elf
 	@mkdir -p $(SDCARD)/apps/httpc.app
-	cp main.elf $(SDCARD)/apps/httpc.app/main.elf
+	cp main.elf $(SDCARD)/apps/httpc.app/main
 	printf '# Onyx application metadata\nname = httpc\ncategory = Internet\n' > $(SDCARD)/apps/httpc.app/app.txt
 	-$(PYTHON) gen-icon.py $(SDCARD)/apps/httpc.app/icon.bmp
 	@echo "staged httpc -> $(SDCARD)/apps/httpc.app"

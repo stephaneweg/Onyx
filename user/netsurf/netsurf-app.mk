@@ -183,7 +183,7 @@ PYTHON ?= python3
 .PHONY: stage
 stage: link
 	@mkdir -p $(SDCARD)/apps/netsurf.app $(SDCARD)/res/en
-	cp $(OUT)/netsurf.elf $(SDCARD)/apps/netsurf.app/main.elf
+	cp $(OUT)/netsurf.elf $(SDCARD)/apps/netsurf.app/main
 	printf '# Onyx application metadata\nname = NetSurf\ncategory = Internet\n' > $(SDCARD)/apps/netsurf.app/app.txt
 	$(PYTHON) $(HERE)gen-icon.py $(SDCARD)/apps/netsurf.app/icon.bmp
 	grep -E '^en\.(all|framebuffer)\.' $(NS)/resources/FatMessages | sed -E 's/^en\.(all|framebuffer)\.//' > $(SDCARD)/res/Messages
@@ -202,7 +202,7 @@ stage: link
 	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:4\nmax_fetchers_per_host:4\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
 	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
 
-# ---- nstest: console smoke test of the library bricks (-> sdcard/bin/nstest.elf) -------
+# ---- nstest: console smoke test of the library bricks (-> sdcard/bin/nstest) -------
 # Trimmed include set: NO -I$(DOM)/bindings here -- nstest.c includes the binding header
 # <dom/bindings/hubbub/parser.h> (resolved via $(DOM)/include + the bindings symlink), and
 # -I.../bindings would shadow libhubbub's <hubbub/*.h>.
@@ -220,7 +220,7 @@ nstest:
 	  $(ZUSER)/libc/crt0libc.S $(OUT)/o/nstest.o $(OUT)/o/oc.o $(OUT)/o/sys.o \
 	  $(LDLIBS) $(LDFLAGS) -o $(OUT)/nstest.elf
 	@mkdir -p $(SDCARD)/bin
-	cp $(OUT)/nstest.elf $(SDCARD)/bin/nstest.elf
+	cp $(OUT)/nstest.elf $(SDCARD)/bin/nstest
 	@echo "nstest -> $(SDCARD)/bin/nstest.elf ($$(stat -c %s $(OUT)/nstest.elf) bytes)"
 
 clean:

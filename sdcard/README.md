@@ -12,10 +12,13 @@ the first partition), insert it into a Raspberry Pi 4, and power on.
 | `armstub8-rpi4.bin` | Circle's ARM stub (EL setup / FIQ) |
 | `config.txt` | boots `kernel8-rpi4.img` in 64-bit mode on `[pi4]` |
 | `kernel8-rpi4.img` | **our kernel** |
-| `demoA.elf`, `demoB.elf` | the two windowed EL0 demo programs, loaded from the card |
+| `cmdline.txt` | kernel options (`width=`/`height=`, `init=SD:/bin/init`) |
+| `apps/<name>.app/main` | the **applications** (one per `.app` folder) |
+| `bin/<tool>` | the terminal **command-line tools** (incl. `init`) |
+| `etc/` | system configuration (`autostart`, `system.ini`, `theme.txt`, keymaps, …) |
 
-If `demoA.elf` / `demoB.elf` are missing, the kernel falls back to copies embedded
-in `kernel8-rpi4.img`, so it still runs.
+Onyx executables carry **no extension** (`main`, `bin/ls`, …); only the Pi firmware
+keeps its own name (`start4.elf`).
 
 ## What you should see
 
@@ -29,8 +32,8 @@ in `kernel8-rpi4.img`, so it still runs.
 
 ## Rebuilding
 
-Rebuild the kernel and demos (see `../ARCHITECTURE.md` §9), then re-copy
-`kernel8-rpi4.img`, `demoA.elf`, `demoB.elf` here. The firmware files rarely change.
+Rebuild the kernel and apps, then run `make stage` from `kernel/`: it copies
+`kernel8-rpi4.img`, `apps/<name>.app/main` and `bin/<tool>` here. The firmware files rarely change.
 
 ## Notes
 
