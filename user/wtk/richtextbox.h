@@ -78,6 +78,12 @@ public:
 	void setSize     (int mult);		// 1..8
 	void setLevel    (int level);		// RT_NORMAL / RT_TITLE1.. on caret paragraph(s)
 	void selectAll   ();
+
+	// ---- clipboard support (plain text) ----
+	bool hasSelection () const { return hasSel (); }
+	int  selectedText (char *out, int cap) const;	// copy the selection, NUL-terminated
+	void cutSelection ();				// delete the selection
+	void insertText  (const char *s);		// replace the selection / insert at the caret
 	RtStyle caretStyle () const;		// style at the caret (for toolbar state)
 
 	// ---- scrolling (a host Scrollbar wires value<->topRow, vmax<->rowCount-1) ----

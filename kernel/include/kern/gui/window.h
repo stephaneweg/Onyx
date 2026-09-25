@@ -128,6 +128,8 @@ public:
 	boolean Topmost (void) const	{ return (m_nFlags & WIN_FLAG_TOPMOST) != 0; }
 	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
 	int MinLogicalHeight (void) const { return m_nMinLogicalH; }	// smallest logical height so far
+	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; }	// 255 = opaque
+	int  Alpha (void) const		{ return m_nAlpha; }
 	int ChromeL (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeR (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeT (void) const	{ return Borderless () ? 0 : WIN_TITLEBAR_H; }
@@ -241,6 +243,7 @@ private:
 	u64		m_ulClickHandler; // app canvas-click callback, or 0
 	u64		m_ulPointerHandler; // app pointer-stream callback (GUI_EVENT_PTR_*), or 0
 	int		m_nMinLogicalH;	// smallest logical height (topmost bar: its reserved strip)
+	volatile int	m_nAlpha;	// whole-window opacity 0..255 (fades; 255 = opaque)
 
 	char		m_Menu[WIN_MENU_MAX];	// menu spec ('' = none)
 	u64		m_ulMenuHandler;	// GUI_EVENT_MENU callback, or 0

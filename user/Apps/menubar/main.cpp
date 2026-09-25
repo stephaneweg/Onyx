@@ -3,9 +3,9 @@
 //
 // It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
 // wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
-// back to the app (kapi_menu_command). The first menu is the app's name with "Quit"
-// (MENU_QUIT). With no active app it shows an "Onyx" menu to launch a few apps. The
-// clock sits on the right.
+// back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu
+// (launchers + Shut Down...), then the app's name with "Quit" (MENU_QUIT), then its
+// menus. The clock sits on the right.
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
 // and TRANSPARENT: it is allocated full-screen but kept BAR_H tall; while a menu is
@@ -48,7 +48,8 @@ static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
 
 // ---- menus ------------------------------------------------------------------------------
-enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_FILER, ONYX_TASKS, ONYX_APPS };
+// Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_FILER, ONYX_TASKS, ONYX_APPS, ONYX_SHUTDOWN };
 
 static void add_quit_menu (const char *app)
 {
@@ -58,21 +59,28 @@ static void add_quit_menu (const char *app)
 	q.id = MENU_QUIT; scopy (q.label, "Quit", sizeof q.label); scopy (q.key, "^Q", sizeof q.key); q.sep = false;
 }
 
-static void onyx_menu (void)
+// The system menu, always first: launchers + end of session.
+static void add_onyx_menu (void)
 {
-	g_nmenus = 0; g_onyx = true;
-	scopy (g_app, "Onyx", sizeof g_app);
 	MenuDef &m = g_menus[g_nmenus++];
 	scopy (m.title, "Onyx", sizeof m.title); m.count = 0;
 	static const struct { int id; const char *l; } it[] = {
 		{ ONYX_TERMINAL, "Terminal" }, { ONYX_FILES, "File Viewer" }, { ONYX_FILER, "Files" },
-		{ ONYX_TASKS, "Task Manager" }, { ONYX_APPS, "All Apps..." } };
+		{ ONYX_TASKS, "Task Manager" }, { -2, 0 }, { ONYX_APPS, "All Apps..." },
+		{ -2, 0 }, { ONYX_SHUTDOWN, "Shut Down..." } };
 	for (unsigned i = 0; i < sizeof it / sizeof it[0]; i++)
 	{
 		Item &x = m.items[m.count++];
-		x.id = it[i].id; scopy (x.label, it[i].l, sizeof x.label); x.key[0] = '\0'; x.sep = false;
-		if (i == 3) { Item &s = m.items[m.count++]; s.sep = true; s.id = -2; s.label[0] = s.key[0] = '\0'; }
+		x.id = it[i].id; x.sep = it[i].id == -2; x.key[0] = '\0';
+		scopy (x.label, it[i].l ? it[i].l : "", sizeof x.label);
 	}
+}
+
+static void onyx_menu (void)			// no active app: just the system menu
+{
+	g_nmenus = 0; g_onyx = true;
+	scopy (g_app, "Onyx", sizeof g_app);
+	add_onyx_menu ();
 }
 
 static void parse (const char *spec, const char *title)
@@ -80,6 +88,7 @@ static void parse (const char *spec, const char *title)
 	g_nmenus = 0; g_onyx = false;
 	scopy (g_app, title[0] ? title : "App", sizeof g_app);
 	if (g_app[0] >= 'a' && g_app[0] <= 'z') g_app[0] = (char) (g_app[0] - 32);	// "tinypad" -> "Tinypad"
+	add_onyx_menu ();
 	add_quit_menu (g_app);
 	const char *p = spec;
 	MenuDef *cur = 0;
@@ -172,7 +181,7 @@ static void draw (void)
 		const MenuDef &m = g_menus[i];
 		if (i == g_open) g_cv.fillRect (m.x, 0, m.w, BAR_H - 1, C_DROPHI);
 		g_cv.text (m.x + 8, ty, m.title, C_BARTXT);
-		if (i == 0) g_cv.text (m.x + 9, ty, m.title, C_BARTXT);		// app name in bold
+		if (i == (g_onyx ? 0 : 1)) g_cv.text (m.x + 9, ty, m.title, C_BARTXT);	// app name in bold
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
@@ -211,19 +220,16 @@ static void draw (void)
 static void run_item (const Item &it)
 {
 	if (it.sep) return;
-	if (g_onyx)
+	switch (it.id)
 	{
-		switch (it.id)
-		{
-		case ONYX_TERMINAL: kapi_launch ("terminal"); break;
-		case ONYX_FILES:    kapi_launch ("fileviewer"); break;
-		case ONYX_FILER:    kapi_launch ("filer"); break;
-		case ONYX_TASKS:    kapi_launch ("taskman"); break;
-		case ONYX_APPS:     kapi_toggle_app ("applist"); break;
-		}
-		return;
+	case ONYX_TERMINAL: kapi_launch ("terminal"); return;
+	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
+	case ONYX_FILER:    kapi_launch ("filer"); return;
+	case ONYX_TASKS:    kapi_launch ("taskman"); return;
+	case ONYX_APPS:     kapi_toggle_app ("applist"); return;
+	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
 	}
-	kapi_menu_command (it.id);
+	kapi_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
 }
 
 static void open_menu (int i) { g_open = i; g_hover = -1; g_dirty = true; }

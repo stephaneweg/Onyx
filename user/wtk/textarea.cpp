@@ -16,6 +16,13 @@ void Textarea::setContent (const char *s)
 void Textarea::insertAt (int ch)
 { if (len >= cap - 1) return; for (int i = len; i > caret; i--) buf[i] = buf[i - 1]; buf[caret] = (char) ch; len++; caret++; buf[len] = '\0'; }
 
+void Textarea::insertText (const char *s)
+{
+	if (s == 0) return;
+	for (int i = 0; s[i]; i++) if (s[i] != '\r') insertAt ((unsigned char) s[i]);
+	invalidate (true);
+}
+
 void Textarea::deleteAt (int i)
 { if (i < 0 || i >= len) return; for (int j = i; j < len; j++) buf[j] = buf[j + 1]; len--; }
 

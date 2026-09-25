@@ -7,11 +7,13 @@
 // follow-up); .txt opens fine in tinypad too.
 //
 // Commands are in the system menu bar (wtk::Menu): File (New ^N, Open... ^O, Save ^S,
-// Save As...), Format (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller,
+// Save As...), Edit (Cut ^X / Copy ^C / Paste ^V on the selection via the system
+// clipboard, Select All ^A), Format (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller,
 // Bigger), Color (Black/Red/Green/Blue), Style (Normal, Title 1-3). Styles apply to the
 // selection, else to the typing style. The app name menu has Quit (^Q).
 //
 #include "wtk/wtk.h"
+#include "clipboard.h"
 
 using namespace wtk;
 
@@ -66,6 +68,14 @@ static void onSaveAs ()
 }
 static void onSave () { if (g_path[0]) do_save (); else onSaveAs (); }
 
+// ---- edit (system clipboard, plain text) --------------------------------------------
+
+static char g_clipbuf[CAP];
+static void onCopy ()  { int n = g_rtb->selectedText (g_clipbuf, sizeof g_clipbuf); if (n) clip_set_text_n (g_clipbuf, n); g_rtb->setFocus (); }
+static void onCut ()   { onCopy (); g_rtb->cutSelection (); g_rtb->setFocus (); }
+static void onPaste () { if (clip_get_text (g_clipbuf, sizeof g_clipbuf)) g_rtb->insertText (g_clipbuf); g_rtb->setFocus (); }
+static void onSelectAll () { g_rtb->selectAll (); g_rtb->setFocus (); }
+
 // ---- style commands (apply to the selection, else to the typing style) -------------
 
 static void onBold   () { g_rtb->toggleFlag (RT_BOLD);   g_rtb->setFocus (); }
@@ -113,6 +123,12 @@ int main (void)
 	menu.separator ();
 	menu.item ("Save",          "^S", WK_CTRL ('S'), onSave);
 	menu.item ("Save As...",    "",   0,             onSaveAs);
+	menu.menu ("Edit");
+	menu.item ("Cut",           "^X", WK_CTRL ('X'), onCut);
+	menu.item ("Copy",          "^C", WK_CTRL ('C'), onCopy);
+	menu.item ("Paste",         "^V", WK_CTRL ('V'), onPaste);
+	menu.separator ();
+	menu.item ("Select All",    "^A", WK_CTRL ('A'), onSelectAll);
 	menu.menu ("Format");
 	menu.item ("Bold",          "^B", WK_CTRL ('B'), onBold);
 	menu.item ("Italic",        "",   0,             onItalic);	// (^I is Tab)

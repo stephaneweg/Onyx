@@ -18,6 +18,8 @@
 //
 #include "kapi.h"
 #include "bmp.hpp"
+#include "clipboard.h"
+#include "notify.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -55,9 +57,6 @@ static Root *g_root = 0;
 static Scrollbar *g_hsb = 0;
 static char g_status[160] = "";
 
-// Clipboard (a single file or folder).
-static char g_clip[256] = "";
-static bool g_clipCut = false, g_clipDir = false;
 
 // ---- small string helpers ------------------------------------------------------
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
@@ -563,19 +562,27 @@ static void op_delete ()
 	refresh ();
 	status (ok ? "Deleted " : "Could not delete ", name);
 }
+// Copy / Cut put the selected path on the SYSTEM clipboard (shared with every app and
+// every File Viewer window); Paste reads it back.
 static void clip_set (bool cut)
 {
 	const Entry *e = sel_entry (g_active);
 	if (!e) { status ("Select something to ", cut ? "cut" : "copy"); return; }
-	join (g_clip, sizeof g_clip, g_col[g_active].path, e->name);
-	g_clipCut = cut; g_clipDir = e->isdir;
+	char p[300];
+	join (p, sizeof p, g_col[g_active].path, e->name);
+	clip_set_files (p, cut ? 1 : 0);
 	status (cut ? "Cut: " : "Copied: ", e->name);
 }
 static void op_copy () { clip_set (false); }
 static void op_cut ()  { clip_set (true); }
 static void op_paste ()
 {
-	if (g_clip[0] == '\0') { status ("Nothing to paste"); return; }
+	char g_clip[256]; int cutFlag = 0;
+	if (!clip_get_file (g_clip, sizeof g_clip, &cutFlag)) { status ("Nothing to paste"); return; }
+	bool g_clipCut = cutFlag != 0;
+	bool g_clipDir = false;
+	{ void *d = kapi_opendir (g_clip); if (d) { g_clipDir = true; kapi_closedir (d); } }
+	if (!exists (g_clip)) { status ("The copied item no longer exists"); return; }
 	const char *name = g_clip; for (const char *p = g_clip; *p; p++) if (*p == '/') name = p + 1;
 	const char *dir = g_col[g_active].path;
 	char dst[300];
@@ -586,10 +593,11 @@ static void op_paste ()
 	bool inside = true; for (int i = 0; i < n; i++) if (lower (dir[i]) != lower (g_clip[i])) { inside = false; break; }
 	if (g_clipDir && inside && dir[n] == '/') { status ("Cannot paste a folder inside itself"); return; }
 	bool ok;
-	if (g_clipCut) { ok = kapi_rename (g_clip, dst) != 0; if (ok) g_clip[0] = '\0'; }
+	if (g_clipCut) { ok = kapi_rename (g_clip, dst) != 0; if (ok) clip_clear (); }
 	else ok = g_clipDir ? copy_tree (g_clip, dst, 0) : copy_file (g_clip, dst);
 	refresh ();
 	status (ok ? "Pasted into " : "Paste failed into ", dir);
+	notify ("File Viewer", ok ? (g_clipCut ? "Item moved." : "Item copied.") : "Paste failed.");
 }
 static void op_refresh () { refresh (); status ("Refreshed"); }
 static void op_open () { open_entry (g_active); }

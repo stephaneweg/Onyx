@@ -16,7 +16,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_nOuterW (0), m_nOuterH (0),
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
-	m_nMinLogicalH (nClientH), m_ulMenuHandler (0), m_nMenuGen (0),
+	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
 	m_bExitRequested (FALSE)
 {
@@ -133,8 +133,56 @@ void CWindow::SetMenu (const char *pSpec, u64 ulHandler)
 }
 
 
+// Blend (sw x sh) src pixels onto the screen at (dx,dy) with opacity nAlpha (1..254);
+// bKey skips magenta pixels. Clipped to the screen.
+static void BlendRect (GImage *pScreen, const u32 *pSrc, int nStride, int dx, int dy,
+		       int sw, int sh, int nAlpha, boolean bKey)
+{
+	int W = pScreen->Width (), H = pScreen->Height ();
+	u32 *pDst = pScreen->Buffer ();
+	if (pDst == 0 || pSrc == 0) return;
+	unsigned a = (unsigned) nAlpha, ia = 255 - a;
+	for (int y = 0; y < sh; y++)
+	{
+		int ty = dy + y;
+		if (ty < 0 || ty >= H) continue;
+		const u32 *s = pSrc + y * nStride;
+		u32 *d = pDst + ty * W;
+		for (int x = 0; x < sw; x++)
+		{
+			int tx = dx + x;
+			if (tx < 0 || tx >= W) continue;
+			u32 c = s[x];
+			if (bKey && (c & 0xFFFFFF) == 0xFF00FF) continue;
+			u32 b = d[tx];
+			u32 r  = (((c >> 16) & 0xFF) * a + ((b >> 16) & 0xFF) * ia) / 255;
+			u32 g  = (((c >> 8)  & 0xFF) * a + ((b >> 8)  & 0xFF) * ia) / 255;
+			u32 bl = (( c        & 0xFF) * a + ( b        & 0xFF) * ia) / 255;
+			d[tx] = (r << 16) | (g << 8) | bl;
+		}
+	}
+}
+
 void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 {
+	int nAlpha = m_nAlpha;
+	if (nAlpha <= 0)
+	{
+		return;					// fully faded out: invisible
+	}
+	if (nAlpha < 255)
+	{
+		// Translucent (a fade in / out): blend chrome + client over what is below.
+		if (!Borderless () && m_ulChromePhys[0] != 0)
+		{
+			BlendRect (pScreen, (const u32 *) m_ulChromePhys[bActive ? 0 : 1], m_nOuterW,
+				   m_nX, m_nY, m_nOuterW, m_nOuterH, nAlpha, FALSE);
+		}
+		BlendRect (pScreen, m_Canvas.Buffer (), m_Canvas.Width (), m_nX + ChromeL (),
+			   m_nY + ChromeT (), ClientWidth (), ClientHeight (), nAlpha, Transparent ());
+		return;
+	}
+
 	int cw = ClientWidth ();		// logical size (may be < allocated canvas)
 	int ch = ClientHeight ();
 

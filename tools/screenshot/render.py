@@ -504,7 +504,7 @@ def app_applist():
     COLS, LX, VIEW_Y, SB_W, CELLH = 6, 6, 28, 14, 70
     CELLW = (W - SB_W - 4 - LX) // COLS
     cv.text(LX + 2, 6, "Applications", C(0xFFFFFF))
-    hidden = {"panel", "applist", "shell", "menubar"}
+    hidden = {"panel", "applist", "shell", "menubar", "notifyd"}
     names = sorted((d[:-4] for d in os.listdir(os.path.join(SD, "apps"))
                     if d.endswith(".app") and d[:-4] not in hidden), key=str.lower)
     vis_rows = (H - VIEW_Y - 6) // CELLH

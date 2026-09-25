@@ -30,6 +30,7 @@
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
 #include <circle/machineinfo.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
+#include <circle/actled.h>		// kapi_shutdown: LED off
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -1628,6 +1629,61 @@ void *kapi_sbrk (long nIncrement)
 void kapi_reboot (void)
 {
 	reboot ();
+}
+
+// --- v40: clipboard / window opacity / shutdown ------------------------------
+// System clipboard: one typed blob (1 = text, 2 = file path(s), '\n'-separated) kept
+// by the kernel, so it survives the app that copied. clipboard_get copies up to nCap
+// bytes, returns the full length (0 = empty), fills *pType; the serial changes on
+// every set (to refresh a Paste menu cheaply).
+#define CLIPBOARD_MAX	(64 * 1024)
+static u8	s_Clip[CLIPBOARD_MAX];
+static unsigned	s_nClipLen = 0, s_nClipSerial = 0;
+static int	s_nClipType = 0;
+
+int kapi_clipboard_set (int nType, const void *pData, unsigned nLen)
+{
+	if (nLen > CLIPBOARD_MAX) nLen = CLIPBOARD_MAX;
+	if (pData == 0) nLen = 0;
+	if (nLen) memcpy (s_Clip, pData, nLen);
+	s_nClipLen = nLen;
+	s_nClipType = nLen ? nType : 0;
+	s_nClipSerial++;
+	return (int) nLen;
+}
+
+int kapi_clipboard_get (int *pType, void *pBuf, unsigned nCap, unsigned *pSerial)
+{
+	if (pType != 0) *pType = s_nClipType;
+	if (pSerial != 0) *pSerial = s_nClipSerial;
+	unsigned n = s_nClipLen < nCap ? s_nClipLen : nCap;
+	if (pBuf != 0 && n) memcpy (pBuf, s_Clip, n);
+	return (int) s_nClipLen;
+}
+
+// Whole-window opacity of the caller's window (0 = invisible .. 255 = opaque), for
+// fades (the notification bubbles).
+void kapi_set_window_alpha (int nAlpha)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0) pWin->SetAlpha (nAlpha);
+}
+
+// End the session: unmount the SD card (flushes FatFs), then restart (mode 1) or
+// halt (mode 0: the CPU stops, the screen keeps the last frame -- "safe to power
+// off"; the ACT LED goes dark).
+void kapi_shutdown (int nMode)
+{
+	CLogger::Get ()->Write ("kernel", LogNotice, "session end: %s", nMode ? "restart" : "halt");
+	CScheduler::Get ()->MsSleep (300);		// let the last frame / log line out
+	f_mount (0, "SD:", 0);				// unmount: flush + release the volume
+	if (nMode == 1)
+	{
+		reboot ();
+	}
+	CActLED::Get ()->Off ();
+	halt ();
 }
 
 }  // extern "C"

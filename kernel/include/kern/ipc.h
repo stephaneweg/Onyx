@@ -18,7 +18,7 @@
 #include <circle/types.h>
 
 #define MAILBOX_SLOTS		32	// ring depth (messages buffered before drops)
-#define MAILBOX_MSG_MAX		128	// max payload bytes per message
+#define MAILBOX_MSG_MAX		512	// max payload bytes per message (v40: was 128)
 
 struct TMailMsg
 {
@@ -52,5 +52,9 @@ private:
 // Teardown hook: called when a process exits, so the IPC layer can forget it (clears
 // the registered shell if it was the shell). Defined in sys/ipc.cpp.
 void IpcOnProcessGone (unsigned nPid);
+
+// Kernel-side notification: post {title '\0' text '\0'} (type 1) to the "notify"
+// service (the notifyd app) if it is running, from pid 0. Safe from any task context.
+void IpcNotify (const char *pTitle, const char *pText);
 
 #endif // _kern_ipc_h

@@ -20,6 +20,7 @@
 #include <kern/elf.h>
 #include <kern/gui/gimage.h>
 #include <kern/net.h>
+#include <kern/ipc.h>		// IpcNotify ("Network up")
 #include <circle/net/ipaddress.h>
 #include <circle/net/ntpdaemon.h>
 
@@ -749,6 +750,9 @@ public:
 		m_pLogger->Write (FromKernel, LogNotice, "net: up, IP %s",
 				  (const char *) IPString);
 		g_bNetUp = TRUE;
+		CString Msg;
+		Msg.Format ("Connected. IP address %s", (const char *) IPString);
+		IpcNotify ("Network", (const char *) Msg);
 
 		// Sync the wall clock over NTP (its own background task; updates CTimer so
 		// kapi_get_datetime / the agenda / log timestamps show real local time).

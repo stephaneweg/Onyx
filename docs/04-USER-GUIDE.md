@@ -175,11 +175,18 @@ clicking the panel or the desktop does not change it.
 - **Click a menu title** to open its drop-down; slide to another title to switch; click an
   item to run it (or press on a title and release on an item). Click the title again or
   anywhere else to close the menu.
-- The first menu (the app's name) always has **Quit** (**Ctrl-Q**), like the close box.
+- The first menu, **Onyx**, is always there: Terminal, File Viewer, Files, Task Manager,
+  All Apps…, and **Shut Down…** (a dialog: **Restart**, **Shut Down** — the SD card is
+  unmounted, then "It is now safe to turn off the Raspberry Pi" — or **Cancel**).
+- The next menu (the app's name) always has **Quit** (**Ctrl-Q**), like the close box.
 - Items show their **keyboard shortcut** on the right (e.g. `^O` = Ctrl-O); the shortcuts
   work whether the menu is open or not.
-- With no application window open, the bar shows an **Onyx** menu to launch the Terminal,
-  the File Viewer, Files, the Task Manager or the app list.
+- **Clipboard**: one system clipboard shared by all apps — Edit ▸ Cut/Copy/Paste in Writer
+  (on the selection), tinypad (Copy All / Paste) and the File Viewer (files and folders).
+- **Notifications**: apps (and the system, e.g. "Network — Connected. IP address …") show
+  a bubble in the top-right corner, below the bar; it fades in, stays about 4 s and fades
+  out; a click dismisses it; several notifications are shown one after the other
+  (`notifyd`, started by `autostart`).
 - Windows open and are dragged **below** the bar, never under it.
 
 ![Menu bar](../screenshots/menubar.png)
@@ -515,7 +522,7 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
   (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
   ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
   to stagger the startup. Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run panel`, `keyb FR` (sets the
+  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run panel`, `keyb FR` (sets the
   keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 - **`SD:/etc/quicklaunch.txt`**: the apps pinned to the panel (top→bottom).

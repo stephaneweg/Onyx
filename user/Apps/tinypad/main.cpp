@@ -2,10 +2,12 @@
 // tinypad/main.cpp -- small text editor (wtk). The file's path on a thin bar over a
 // multi-line Textarea body (with its own auto vertical scrollbar). Commands live in the
 // system menu bar (wtk::Menu): File > New (^N), Open... (^O), Save (^S), Save As...
-// (Open / Save As use the wtk file dialogs). The app name menu has Quit (^Q).
+// (Open / Save As use the wtk file dialogs); Edit > Copy All, Paste (^V) -- the system
+// clipboard. The app name menu has Quit (^Q).
 //
 #include "kapi.h"
 #include "wtk/wtk.h"		// recursive widget toolkit + wk_file_open / wk_file_save + Menu
+#include "clipboard.h"
 
 using namespace wtk;
 
@@ -60,6 +62,16 @@ static void on_save_as (void)
 }
 static void on_save (void) { if (g_path[0]) save_file (); else on_save_as (); }
 
+// Edit: the Textarea has no selection, so Copy takes the whole document; Paste inserts
+// the clipboard text at the caret.
+static void on_copy_all (void) { clip_set_text_n (g_body->content (), g_body->len); }
+static void on_paste (void)
+{
+	static char b[CAP];
+	if (clip_get_text (b, sizeof b)) g_body->insertText (b);
+	g_body->setFocus ();
+}
+
 int main (void)
 {
 	Root root (W, H, "tinypad");
@@ -76,6 +88,9 @@ int main (void)
 	menu.separator ();
 	menu.item ("Save",       "^S", WK_CTRL ('S'), on_save);
 	menu.item ("Save As...", "",   0,             on_save_as);
+	menu.menu ("Edit");
+	menu.item ("Copy All",   "",   0,             on_copy_all);
+	menu.item ("Paste",      "^V", WK_CTRL ('V'), on_paste);
 	menu.publish ();
 
 	char args[100];

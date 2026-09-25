@@ -29,7 +29,9 @@
 // v37: + tcp_listen/tcp_accept -- TCP server side (telnetd remote shell).
 // v38: + screen_grab/inject_pointer/inject_key -- remote screen (vncd).
 // v39: + set_menu/get_menu/menu_command -- system menu bar (menubar app).
-#define KAPI_ABI_VERSION	39
+// v40: + ipc_register/ipc_lookup (named services, 512-byte messages), clipboard_set/get,
+//      set_window_alpha (fades), shutdown (restart / halt).
+#define KAPI_ABI_VERSION	40
 
 #ifdef __cplusplus
 extern "C" {
@@ -377,6 +379,21 @@ struct TKApiTable
 	int      (*set_menu) (const char *spec, gui_handler handler);
 	unsigned (*get_menu) (char *buf, unsigned cap, char *title, unsigned title_cap);
 	int      (*menu_command) (int id);
+
+	// --- v40 additions (named IPC services, clipboard, opacity, session end) ---
+	// ipc_register: become service `name` (1 ok / 0 held by another live process);
+	// ipc_lookup: pid of a service or 0. Talk with mailbox_send / mailbox_recv
+	// (payload <= 512 bytes). clipboard_set: store a typed blob (1 text, 2 file
+	// paths '\n'-separated; <= 64 KB); clipboard_get: copy <= cap bytes, return the
+	// full length (0 = empty) + type + a serial bumped on every set.
+	// set_window_alpha: the caller's window opacity 0..255 (255 = opaque).
+	// shutdown: unmount the SD card, then mode 1 = restart, 0 = halt.
+	int  (*ipc_register) (const char *name);
+	int  (*ipc_lookup) (const char *name);
+	int  (*clipboard_set) (int type, const void *data, unsigned len);
+	int  (*clipboard_get) (int *type, void *buf, unsigned cap, unsigned *serial);
+	void (*set_window_alpha) (int alpha);
+	void (*shutdown) (int mode);
 };
 
 #ifdef __cplusplus

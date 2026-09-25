@@ -213,6 +213,22 @@ static inline int      kapi_set_menu (const char *spec, gui_handler h) { return 
 static inline unsigned kapi_get_menu (char *buf, unsigned cap, char *title, unsigned tcap) { return KT->get_menu (buf, cap, title, tcap); }
 static inline int      kapi_menu_command (int id) { return KT->menu_command (id); }
 
+// Named IPC services (ABI v40): ipc_register -> become service `name` (1 / 0 taken);
+// ipc_lookup -> its pid or 0. Messages go through kapi_mailbox_send / _recv (<= 512 B).
+static inline int  kapi_ipc_register (const char *name) { return KT->ipc_register (name); }
+static inline int  kapi_ipc_lookup (const char *name)   { return KT->ipc_lookup (name); }
+// System clipboard (ABI v40): see clipboard.h for the helpers. Types:
+#define CLIP_TEXT	1		// plain text
+#define CLIP_FILES	2		// file/folder paths, '\n'-separated (copied)
+#define CLIP_FILES_CUT	3		// same, cut (the paste moves them)
+static inline int  kapi_clipboard_set (int type, const void *d, unsigned n) { return KT->clipboard_set (type, d, n); }
+static inline int  kapi_clipboard_get (int *type, void *b, unsigned cap, unsigned *serial) { return KT->clipboard_get (type, b, cap, serial); }
+// Window opacity 0..255 (ABI v40; fades) and end of session (0 = halt, 1 = restart).
+static inline void kapi_set_window_alpha (int a) { KT->set_window_alpha (a); }
+#define SHUTDOWN_HALT		0
+#define SHUTDOWN_RESTART	1
+static inline void kapi_shutdown (int mode) { KT->shutdown (mode); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }

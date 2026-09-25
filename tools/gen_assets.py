@@ -326,6 +326,25 @@ def icon_menubar():		# a screen with a menu bar and an open drop-down
         prect(px, 14, y, 22, y, (200, 210, 225))
     return px
 
+def icon_notifyd():		# a speech bubble with lines
+    px = blank()
+    prect(px, 5, 8, 34, 26, (38, 47, 59)); pframe(px, 5, 8, 34, 26, (96, 255, 144))
+    for x in range(10, 16):
+        pset(px, x, 27 + (x - 10) // 2, (96, 255, 144))
+    prect(px, 10, 13, 29, 14, (220, 226, 232)); prect(px, 10, 19, 24, 20, (160, 170, 185))
+    return px
+
+def icon_shutdown():		# a power symbol
+    px = blank()
+    red = (220, 80, 80)
+    for a in range(0, 360, 3):
+        import math
+        if 60 < a < 120: continue
+        x = 20 + round(12 * math.cos(math.radians(a))); y = 21 - round(12 * math.sin(math.radians(a)))
+        prect(px, x - 1, y - 1, x + 1, y + 1, red)
+    prect(px, 19, 5, 21, 20, red)
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -336,6 +355,7 @@ ICONS = {
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
+    "notifyd": icon_notifyd, "shutdown": icon_shutdown,
 }
 
 

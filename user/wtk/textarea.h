@@ -17,6 +17,7 @@ public:
 	~Textarea () override;
 	const char *content () const { return buf; }
 	void setContent (const char *s);
+	void insertText (const char *s);		// insert at the caret (clipboard paste)
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;

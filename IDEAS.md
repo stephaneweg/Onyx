@@ -49,3 +49,21 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 ## Idées brutes (à trier)
 
 _Notes en vrac, à classer plus tard._
+
+---
+
+## Plan d'action (session 2026-09-25)
+
+Ordre = dépendances. Chaque phase est livrée (commit + staging SD) avant la suivante.
+
+| # | Phase | Contenu | Statut |
+|---|-------|---------|--------|
+| P1 | **Fondations système** ✅ (à valider sur le Pi) | IPC par **services nommés** (`ipc_register`/`ipc_lookup`, messages 512 o) ; **presse-papiers** (kapi, texte + chemins de fichiers, Edit ▸ Copy/Cut/Paste dans tinypad / Writer / File Viewer) ; **notifications** : `notify()` (lib user) → IPC → app `notifyd` (bulle sous la barre de menu, **fondu** via une opacité de fenêtre gérée par le compositeur) ; **fin de session** (menu Onyx ▸ Shut Down… : redémarrer / arrêter). | 🔨 |
+| P2 | **Corbeille** | Lib user `trash.h` (déplacement vers `SD:/.Trash/` + fichier d'info = chemin d'origine) ; File Viewer : Supprimer → corbeille, vue Corbeille avec **Restaurer** / **Vider**. (`/bin/rm` reste une vraie suppression.) | 💡 |
+| P3 | **Glisser-déposer + Shelf** | Session de drag gérée par le noyau (source → cible sous le curseur, Ctrl = copier) ; **Shelf** en bas de l'écran (onglets, recouvrable par les fenêtres) ; File Viewer source/cible ; **associations de fichiers** (`/etc/fileassoc.ini`) ; message « ouvrir ce fichier » aux apps (qui proposent d'enregistrer le document en cours) ; icône Corbeille sur le shelf. | 💡 |
+| P4 | **Visionneuse d'images** | App `imageview` (BMP, GIF, PCX, JPEG, PNG, WebP via les codecs déjà vendus) ouverte depuis le File Viewer. | 💡 |
+| P5 | **Widgets wtk (façon WPF)** | RadioButton, GroupBox, ListBox, NumericUpDown, ToggleSwitch, Calendar / DatePicker, ColorPicker (dialogue), TreeView, ToolTip, ImageBox. | 💡 |
+| P6 | **Réseau** | `ftpd` (déploiement à chaud), `/bin/ping` (Circle répond déjà aux pings), `nslookup`, `netstat`, `whois`. | 💡 |
+| P7 | **Apps utiles** | Calculatrice graphique, éditeur d'icônes, lecteur RTF. | 💡 |
+| P8 | **Jeux** | Solitaire / FreeCell, Pipes, Arkanoid, Invaders (Minesweeper existe déjà). | 💡 |
+| P9 | **Programmation + VM** | Port de **Lua** (newlib) ; cadre commun de « machines virtuelles » (bytecode ou ROM : affichage, entrées, son, horloge) → CHIP-8, uxn/Varvara ; outil didactique (Lua + tortue). | 💡 |

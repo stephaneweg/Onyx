@@ -58,6 +58,22 @@ boolean CMailbox::Pop (TMailMsg *pOut)
 // ---- routing helpers -------------------------------------------------------
 static unsigned g_nShellPid = 0;		// the registered shell, or 0
 
+// Named services (ABI v40): a process registers under a short name ("notify", ...);
+// clients look the pid up and talk to it with mailbox_send / mailbox_recv.
+#define IPC_MAX_SERVICES	16
+#define IPC_NAME_MAX		24
+static struct { char name[IPC_NAME_MAX]; unsigned pid; } s_Services[IPC_MAX_SERVICES];
+
+static boolean NameEq (const char *a, const char *b)
+{
+	for (unsigned i = 0; i < IPC_NAME_MAX; i++)
+	{
+		if (a[i] != b[i]) return FALSE;
+		if (a[i] == '\0') return TRUE;
+	}
+	return TRUE;
+}
+
 static CAddressSpace *CurAS (void)
 {
 	if (!CScheduler::IsActive ())
@@ -97,6 +113,33 @@ void IpcOnProcessGone (unsigned nPid)
 	{
 		g_nShellPid = 0;		// the shell died -- no router until one re-registers
 	}
+	for (unsigned i = 0; nPid != 0 && i < IPC_MAX_SERVICES; i++)
+	{
+		if (s_Services[i].pid == nPid)
+		{
+			s_Services[i].pid = 0;	// its services go with it
+			s_Services[i].name[0] = '\0';
+		}
+	}
+}
+
+void IpcNotify (const char *pTitle, const char *pText)
+{
+	for (unsigned i = 0; i < IPC_MAX_SERVICES; i++)
+	{
+		if (s_Services[i].pid == 0 || !NameEq (s_Services[i].name, "notify")) continue;
+		CAddressSpace *pAS = FindASByPid (s_Services[i].pid);
+		CMailbox *pMb = pAS != 0 ? pAS->GetOrCreateMailbox () : 0;
+		if (pMb == 0) return;
+		u8 Msg[MAILBOX_MSG_MAX];
+		unsigned n = 0;
+		for (unsigned k = 0; pTitle && pTitle[k] && n < 80; k++) Msg[n++] = (u8) pTitle[k];
+		Msg[n++] = 0;
+		for (unsigned k = 0; pText && pText[k] && n < MAILBOX_MSG_MAX - 1; k++) Msg[n++] = (u8) pText[k];
+		Msg[n++] = 0;
+		pMb->Push (0, 1, Msg, n);		// NOTIFY_MSG_SHOW
+		return;
+	}
 }
 
 // ---- kapis -----------------------------------------------------------------
@@ -110,6 +153,60 @@ extern "C" int kapi_register_shell (void)
 	g_nShellPid = pAS->GetPid ();
 	pAS->GetOrCreateMailbox ();		// make sure the main mailbox exists
 	return 1;
+}
+
+// Register the caller as service `pName`. 1 = registered (or already ours), 0 = the
+// name is held by another live process / bad name / table full.
+extern "C" int kapi_ipc_register (const char *pName)
+{
+	CAddressSpace *pAS = CurAS ();
+	if (pAS == 0 || pName == 0 || pName[0] == '\0')
+	{
+		return 0;
+	}
+	char Name[IPC_NAME_MAX];
+	unsigned n = 0;
+	for (; pName[n] != '\0' && n < IPC_NAME_MAX - 1; n++) Name[n] = pName[n];
+	Name[n] = '\0';
+	unsigned nMe = pAS->GetPid ();
+	int nFree = -1;
+	for (unsigned i = 0; i < IPC_MAX_SERVICES; i++)
+	{
+		if (s_Services[i].pid != 0 && NameEq (s_Services[i].name, Name))
+		{
+			if (s_Services[i].pid == nMe) return 1;
+			if (FindASByPid (s_Services[i].pid) != 0) return 0;	// taken by a live process
+			s_Services[i].pid = 0;					// stale entry
+		}
+		if (s_Services[i].pid == 0 && nFree < 0) nFree = (int) i;
+	}
+	if (nFree < 0)
+	{
+		return 0;
+	}
+	for (unsigned i = 0; i <= n; i++) s_Services[nFree].name[i] = Name[i];
+	s_Services[nFree].pid = nMe;
+	pAS->GetOrCreateMailbox ();
+	return 1;
+}
+
+// pid of the process registered as `pName`, or 0.
+extern "C" int kapi_ipc_lookup (const char *pName)
+{
+	if (pName == 0)
+	{
+		return 0;
+	}
+	for (unsigned i = 0; i < IPC_MAX_SERVICES; i++)
+	{
+		if (s_Services[i].pid != 0 && NameEq (s_Services[i].name, pName))
+		{
+			if (FindASByPid (s_Services[i].pid) != 0) return (int) s_Services[i].pid;
+			s_Services[i].pid = 0;
+			s_Services[i].name[0] = '\0';
+		}
+	}
+	return 0;
 }
 
 extern "C" int kapi_shell_request (int nType, const void *pIn, unsigned nLen)

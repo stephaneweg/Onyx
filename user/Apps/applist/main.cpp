@@ -72,7 +72,7 @@ static void add_apps (Root &root)
 		name[li] = '\0';
 		if (li == 0) continue;
 		if (ax_streq (name, "panel") || ax_streq (name, "applist")
-		    || ax_streq (name, "shell") || ax_streq (name, "menubar")) continue;	// hide the shell components
+		    || ax_streq (name, "shell") || ax_streq (name, "menubar") || ax_streq (name, "notifyd")) continue;	// hide the shell components
 		// Insert in alphabetical (case-insensitive) order -- the directory order is just
 		// the order the folders were copied onto the card.
 		int pos = g_count;

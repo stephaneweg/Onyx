@@ -208,6 +208,14 @@ Notes / caveats:
 
 ## 6. Writing a graphical application
 
+> **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
+> `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
+> launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
+> `clip_set_files (path, cut)`, `clip_get_file` — the kernel keeps one shared clipboard.
+> Your own IPC service: `kapi_ipc_register ("name")`, clients `kapi_ipc_lookup ("name")` +
+> `kapi_mailbox_send (pid, type, data, len)` (≤ 512 bytes); the service drains with
+> `kapi_mailbox_recv`.
+
 > **Menus.** Put commands in the **system menu bar**, not in button rows. After creating
 > the `Root`, build a `wtk::Menu` once and publish it:
 >

@@ -444,6 +444,36 @@ void RichTextBox::setLevel (int level)
 
 void RichTextBox::selectAll () { sel = 0; caret = len; invalidate (true); }
 
+int RichTextBox::selectedText (char *out, int cap) const
+{
+	if (cap <= 0) return 0;
+	int n = 0;
+	if (hasSel ())
+	{
+		int a, b; selRange (a, b);
+		for (int i = a; i < b && n < cap - 1; i++) out[n++] = buf[i];
+	}
+	out[n] = '\0';
+	return n;
+}
+
+void RichTextBox::cutSelection ()
+{
+	if (!hasSel ()) return;
+	deleteSelection ();
+	layoutDirty = true;
+	invalidate (true);
+}
+
+void RichTextBox::insertText (const char *s)
+{
+	if (s == 0) return;
+	if (hasSel ()) deleteSelection ();
+	for (int i = 0; s[i]; i++) if (s[i] != '\r') insertChar (s[i]);
+	layoutDirty = true;
+	invalidate (true);
+}
+
 RtStyle RichTextBox::caretStyle () const
 { return (caret < len) ? rt_unpack (attr[caret]) : cur; }
 

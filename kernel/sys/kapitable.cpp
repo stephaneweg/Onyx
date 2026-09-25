@@ -53,6 +53,12 @@ void kapi_inject_key (const char *);
 int kapi_set_menu (const char *, void *);
 unsigned kapi_get_menu (char *, unsigned, char *, unsigned);
 int kapi_menu_command (int);
+int kapi_ipc_register (const char *);
+int kapi_ipc_lookup (const char *);
+int kapi_clipboard_set (int, const void *, unsigned);
+int kapi_clipboard_get (int *, void *, unsigned, unsigned *);
+void kapi_set_window_alpha (int);
+void kapi_shutdown (int);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -260,4 +266,11 @@ void KApiTableInit (void)
 	t->set_menu          = (int (*) (const char *, gui_handler)) kapi_set_menu;
 	t->get_menu          = kapi_get_menu;
 	t->menu_command      = kapi_menu_command;
+
+	t->ipc_register      = kapi_ipc_register;
+	t->ipc_lookup        = kapi_ipc_lookup;
+	t->clipboard_set     = kapi_clipboard_set;
+	t->clipboard_get     = kapi_clipboard_get;
+	t->set_window_alpha  = kapi_set_window_alpha;
+	t->shutdown          = kapi_shutdown;
 }
