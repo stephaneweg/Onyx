@@ -200,7 +200,8 @@ static inline int  kapi_tcp_listen (unsigned port) { return KT->tcp_listen (port
 static inline int  kapi_tcp_accept (int listen_sock, char *ip, unsigned cap) { return KT->tcp_accept (listen_sock, ip, cap); }
 
 // Remote screen (ABI v38). screen_grab: composite the screen into dst (w*h 0x00RRGGBB,
-// w/h = kapi_screen_size) -> 1 / 0. inject_pointer/inject_key: input as if from the USB
+// w/h = kapi_screen_size) -> 1 / 0, or 2 = unchanged since the previous grab into the same
+// dst (left as is: skip the diff). inject_pointer/inject_key: input as if from the USB
 // mouse (buttons bit0 L, bit1 R, bit2 M; wheel = notches) / keyboard (cooked string).
 static inline int  kapi_screen_grab (unsigned *dst, int w, int h) { return KT->screen_grab (dst, w, h); }
 static inline void kapi_inject_pointer (int x, int y, unsigned buttons, int wheel) { KT->inject_pointer (x, y, buttons, wheel); }

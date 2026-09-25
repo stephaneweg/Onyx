@@ -245,6 +245,7 @@ void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
 // chrome BEHAVIOUR (title-bar drag, close-box hit-test) -- only the drawing moves here.
 int kapi_get_chrome (struct kapi_chrome *out)
 {
+	ScreenDirty ();					// the caller is about to (re)draw its chrome
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
 	if (pWin == 0 || out == 0)
@@ -396,6 +397,15 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 	{
 		return 0;
 	}
+	// Nothing changed since the previous grab into this same buffer: say so (2) and
+	// leave it as is -- vncd then skips the diff / encode entirely.
+	static unsigned s_nGen = 0; static unsigned *s_pLast = 0;
+	unsigned nGen = g_nScreenGen;
+	if (nGen == s_nGen && pDst == s_pLast)
+	{
+		return 2;
+	}
+	s_nGen = nGen; s_pLast = pDst;
 	if (pWM->FullscreenWindow () != 0 && pWM->FullscreenBuffer () != 0)
 	{
 		memcpy (pDst, pWM->FullscreenBuffer (), (size_t) nW * nH * 4);	// what is shown
@@ -486,6 +496,7 @@ int kapi_raise_app (const char *pName)
 
 void kapi_present (void)
 {
+	ScreenDirty ();					// the app's canvas changed
 	// The compositor reads the shared canvas continuously; yield so it and the
 	// other app get the CPU promptly.
 	if (CScheduler::IsActive ())

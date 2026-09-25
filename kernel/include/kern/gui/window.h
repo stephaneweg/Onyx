@@ -26,6 +26,14 @@
 extern int g_nScreenWidth;
 extern int g_nScreenHeight;
 
+// Screen damage generation: bumped by everything that changes what the compositor would
+// draw (an app's present, a window added / removed / raised / moved / resized / faded,
+// the cursor, the wallpaper). The compositor recomposites only when it changed (plus a
+// slow safety refresh), and kapi_screen_grab reports "unchanged" -- so an idle desktop
+// costs almost no CPU.
+extern volatile unsigned g_nScreenGen;
+static inline void ScreenDirty (void) { g_nScreenGen++; }
+
 // Window-chrome theme, applied at boot (SD:skins/theme.txt). The two tints are baked
 // into the window skin (active/inactive); the text colour is the title text.
 extern u32 g_WinTitleTextColor;
@@ -132,7 +140,7 @@ public:
 	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
 	boolean System (void) const	{ return (m_nFlags & WIN_FLAG_SYSTEM) != 0; }
 	int MinLogicalHeight (void) const { return m_nMinLogicalH; }	// smallest logical height so far
-	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; }	// 255 = opaque
+	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; ScreenDirty (); }	// 255 = opaque
 	int  Alpha (void) const		{ return m_nAlpha; }
 	int ChromeL (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeR (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
@@ -174,7 +182,7 @@ public:
 
 	int X (void) const		{ return m_nX; }
 	int Y (void) const		{ return m_nY; }
-	void Move (int x, int y)	{ m_nX = x; m_nY = y; }
+	void Move (int x, int y)	{ m_nX = x; m_nY = y; ScreenDirty (); }
 	const char *Title (void) const	{ return m_Title; }
 
 	// Blit the (app-drawn) chrome + client canvas onto the screen image.
@@ -298,7 +306,7 @@ public:
 	// into the app. The app draws into it; CommitWallpaper makes it the live desktop
 	// background. The frames are kernel-owned, so the wallpaper outlives the app.
 	u32 *EnsureWallpaperBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages);
-	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; }
+	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; ScreenDirty (); }
 
 	// Set the desktop wallpaper (takes ownership of pImage; deletes any previous).
 	// Pass 0 to clear it (back to the solid desktop colour).

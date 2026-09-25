@@ -367,8 +367,10 @@ static void session (void)
 		if (req && now - last_grab >= MIN_FRAME_TICKS)
 		{
 			last_grab = now;
-			kapi_screen_grab (g_cur, g_W, g_H);
-			if (send_update (req_full, rx, ry, rw, rh)) { req = 0; req_full = 0; }
+			// 2 = the screen has not changed since the previous grab: an incremental
+			// request just stays pending (no diff / encode); a full one is answered.
+			int g = kapi_screen_grab (g_cur, g_W, g_H);
+			if ((g != 2 || req_full) && send_update (req_full, rx, ry, rw, rh)) { req = 0; req_full = 0; }
 		}
 		kapi_msleep (10);
 	}

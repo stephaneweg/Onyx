@@ -359,7 +359,8 @@ struct TKApiTable
 
 	// --- v38 additions (remote screen: vncd) ---
 	// screen_grab: composite the current screen (what the display shows, cursor
-	// included) into dst = w*h 0x00RRGGBB pixels; w/h must be the screen size; 1 / 0.
+	// included) into dst = w*h 0x00RRGGBB pixels; w/h must be the screen size; 1 / 0,
+	// or 2 = nothing changed since the previous grab into the same dst (left as is).
 	// inject_pointer / inject_key: feed input through the same path as the USB mouse /
 	// keyboard (buttons bit0 left, bit1 right, bit2 middle; wheel = signed notches;
 	// keys = cooked string: chars, "\n" Enter, "\b" Backspace, VT100 escapes).

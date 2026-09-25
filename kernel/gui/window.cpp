@@ -108,6 +108,7 @@ CWindow::~CWindow (void)
 
 void CWindow::SetLogicalSize (int w, int h)
 {
+	ScreenDirty ();
 	int maxW = m_Canvas.Width ();
 	int maxH = m_Canvas.Height ();
 	if (w < 1) w = 1; else if (w > maxW) w = maxW;
@@ -269,6 +270,7 @@ CWindowManager *CWindowManager::s_pThis = 0;
 // overwritten at boot (CKernel) once the chosen resolution is known.
 int g_nScreenWidth  = SCREEN_WIDTH;
 int g_nScreenHeight = SCREEN_HEIGHT;
+volatile unsigned g_nScreenGen = 1;
 
 // Title-bar text colour (overridable at boot from SD:skins/theme.txt).
 u32 g_WinTitleTextColor = 0x00FFFFFF;
@@ -296,6 +298,7 @@ CWindowManager::CWindowManager (void)
 
 void CWindowManager::Add (CWindow *pWindow)
 {
+	ScreenDirty ();
 	assert (pWindow != 0);
 	m_SpinLock.Acquire ();
 	if (m_nWindows < WM_MAX_WINDOWS)
@@ -327,6 +330,7 @@ void CWindowManager::Add (CWindow *pWindow)
 
 void CWindowManager::Remove (CWindow *pWindow)
 {
+	ScreenDirty ();
 	m_SpinLock.Acquire ();
 	// Drop any references into this window (it may be freed right after).
 	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
@@ -352,6 +356,7 @@ void CWindowManager::Remove (CWindow *pWindow)
 // Caller holds m_SpinLock.
 void CWindowManager::RaiseLocked (CWindow *pWindow)
 {
+	ScreenDirty ();
 	if (pWindow != 0 && pWindow->Backmost ())
 	{
 		return;				// the shell desktop never rises above other windows
@@ -393,6 +398,7 @@ CWindow *CWindowManager::ActiveLocked (void)
 
 void CWindowManager::SetFullscreen (CWindow *pWindow)
 {
+	ScreenDirty ();
 	m_SpinLock.Acquire ();
 	m_pFullscreen = pWindow;
 	m_pPtrCaptureWindow = 0;
@@ -615,6 +621,7 @@ unsigned CWindowManager::Snapshot (CWindow **ppOut, unsigned nMax)
 
 void CWindowManager::SetWallpaper (GImage *pImage)
 {
+	ScreenDirty ();
 	m_SpinLock.Acquire ();
 	GImage *pOld = m_pWallpaper;
 	m_pWallpaper = pImage;
@@ -682,6 +689,7 @@ static u32 VoronoiTint (u32 nBase, unsigned nDist)
 
 void CWindowManager::GenerateWallpaper (u32 nBaseColor, int nPoints, unsigned nSeed)
 {
+	ScreenDirty ();
 	const int adiv = 2;				// render at half-res, then upscale
 	const int nW = g_nScreenWidth;
 	const int nH = g_nScreenHeight;
@@ -890,6 +898,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 
 	m_SpinLock.Acquire ();
 	m_nMouseEvents++;
+	if (x != m_nCursorX || y != m_nCursorY || !m_bCursorShown) ScreenDirty ();
 	m_nCursorX = x; m_nCursorY = y; m_bCursorShown = TRUE;
 
 	if (m_pFullscreen != 0)

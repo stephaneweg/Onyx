@@ -218,6 +218,7 @@ public:
 	{
 		int nW = (int) m_p2D->GetWidth ();
 		int nH = (int) m_p2D->GetHeight ();
+		unsigned nLastGen = g_nScreenGen - 1, nLastTicks = 0;	// (first frame: always)
 		for (;;)
 		{
 			if (DebugConsoleActive ())
@@ -233,9 +234,16 @@ public:
 				CScheduler::Get ()->MsSleep (16);
 				continue;
 			}
-			GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
-			m_pWM->Composite (&Screen);
-			m_p2D->UpdateDisplay ();
+			// Recomposite only when something changed (g_nScreenGen), plus a safety
+			// refresh every 500 ms (a missed damage source, the watchdog's frame count).
+			unsigned nGen = g_nScreenGen, nTicks = CTimer::Get ()->GetTicks ();
+			if (nGen != nLastGen || nTicks - nLastTicks >= HZ / 2)
+			{
+				nLastGen = nGen; nLastTicks = nTicks;
+				GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
+				m_pWM->Composite (&Screen);
+				m_p2D->UpdateDisplay ();
+			}
 			CScheduler::Get ()->MsSleep (16);
 		}
 	}
