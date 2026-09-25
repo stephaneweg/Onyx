@@ -89,7 +89,9 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    (e.g. a recovery shell) without rebuilding the kernel.
 3. Launches the **kernel service tasks**:
    - **`CCompositorTask`** — presents the screen at ~60 Hz (composes the windows then
-     `UpdateDisplay()`).
+     `UpdateDisplay()`)). Right after creating it, the main task hands it the CPU with
+     `CScheduler::YieldTo()` (scan starts at that task instead of the round-robin next), so
+     its first frame is composed immediately.
    - **`CReaperTask`** — reaps terminated tasks every ~50 ms (frees
      `CTask` + stack + address space outside the scheduler core). It also blinks the
      green ACT LED as a headless sign of life: 1 s period while the network is down,

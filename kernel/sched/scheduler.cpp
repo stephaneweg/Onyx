@@ -151,6 +151,26 @@ void CScheduler::Yield (void)
 	IrqRestore (nFlags);
 }
 
+void CScheduler::YieldTo (CTask *pTask)
+{
+	// GetNextTask() scans round-robin starting AFTER m_nCurrent, so pointing
+	// m_nCurrent just before pTask makes it the first candidate. m_nCurrent is only
+	// the scan start (the switch itself uses m_pCurrent), so this is safe; IRQ is
+	// masked so the timer path cannot interleave. If pTask is not ready, Yield()
+	// simply picks the next ready task from there.
+	u64 nFlags = IrqSave ();
+	for (unsigned i = 0; i < m_nTasks; i++)
+	{
+		if (m_pTask[i] == pTask)
+		{
+			m_nCurrent = (i == 0) ? m_nTasks - 1 : i - 1;
+			break;
+		}
+	}
+	Yield ();
+	IrqRestore (nFlags);
+}
+
 void CScheduler::OnTimerTick (void)
 {
 	// Called from the timer IRQ at 100 Hz (wired in milestone #4). Decrement the

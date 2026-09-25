@@ -1328,8 +1328,11 @@ TShutdownMode CKernel::Run (void)
 		m_Logger.Write (FromKernel, LogNotice, "boot OK -- starting graphics in 6 s ...");
 		m_Scheduler.MsSleep (6000);
 
-		new CCompositorTask (&m_2DGraphics, &m_WindowManager);
+		// Run the compositor right away (its first frame now), not whenever the
+		// round-robin reaches it -- the apps launched by autostart are already up.
+		CCompositorTask *pCompositor = new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
+		m_Scheduler.YieldTo (pCompositor);
 
 		// GUI watchdog + heartbeat (kmsg): compositor stalls, frozen apps, and a
 		// periodic summary every cmdline.txt heartbeat= seconds (default 5, 0 = off).

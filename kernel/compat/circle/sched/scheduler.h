@@ -103,6 +103,11 @@ public:
 	/// \brief Clear the resched flag (the IRQ exit path calls this around Yield).
 	void ClearResched (void)		{ m_bResched = FALSE; }
 
+	/// \brief Yield, handing the CPU to pTask next if it is ready (instead of the
+	///	   next task in round-robin order). Used to run a freshly created service
+	///	   task (the compositor) right away.
+	void YieldTo (CTask *pTask);
+
 	static CScheduler *Get (void);
 
 	static boolean IsActive (void)
