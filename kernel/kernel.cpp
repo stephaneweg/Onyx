@@ -1299,22 +1299,16 @@ TShutdownMode CKernel::Run (void)
 				}
 				delete [] pTheme;
 			}
-
-			// Reaper first: it also blinks the ACT LED, so a headless Pi shows
-			// signs of life from the very start of the userland (a hang during
-			// app startup freezes the LED early; one at compositor start, ~6 s).
-			new CReaperTask;
-			m_Logger.Write (FromKernel, LogNotice, "reaper started");
-
-			StartAutostart ();		// spawn the init program (cmdline init=)
 		}
 
-		// Start input BEFORE the boot-log pause. The input task pumps USB plug-and-play,
-		// so the keyboard/mouse enumerate during these 6 s and the layout that autostart's
-		// `keyb` records is installed on the keyboard by the time the desktop appears --
-		// instead of racing the old 6 s delay. The mouse/key handlers guard on
-		// CWindowManager::Get(), so events arriving before the compositor presents are
-		// harmless (nothing is drawn until the compositor takes over the display).
+		// Reaper: reclaims ended apps; it also blinks the ACT LED (headless sign of
+		// life from the very start of the userland).
+		new CReaperTask;
+		m_Logger.Write (FromKernel, LogNotice, "reaper started");
+
+		// Input: pumps USB plug-and-play, so the keyboard/mouse enumerate while the
+		// userland starts; the layout `keyb` records is installed when the keyboard
+		// attaches.
 		if (m_bUSB)
 		{
 			new CInputTask (&m_USB, &m_DeviceNameService,
@@ -1322,14 +1316,10 @@ TShutdownMode CKernel::Run (void)
 			m_Logger.Write (FromKernel, LogNotice, "input started");
 		}
 
-		// Keep the boot log readable for a few seconds, THEN start the compositor
-		// (which takes over the display). If the screen goes black only after this,
-		// the problem is the framebuffer present, not the boot/loading path.
-		m_Logger.Write (FromKernel, LogNotice, "boot OK -- starting graphics in 6 s ...");
-		m_Scheduler.MsSleep (6000);
-
-		// Run the compositor right away (its first frame now), not whenever the
-		// round-robin reaches it -- the apps launched by autostart are already up.
+		// Compositor BEFORE the userland, run at once (YieldTo) so it exists and
+		// presents before the first app's window. (There used to be a 6 s pause here
+		// to keep the HDMI boot log readable; starting the compositor late, with a
+		// single GUI app already running, hung the boot -- the old voronoy-masked race.)
 		CCompositorTask *pCompositor = new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
 		m_Scheduler.YieldTo (pCompositor);
@@ -1348,6 +1338,11 @@ TShutdownMode CKernel::Run (void)
 		else
 		{
 			m_Logger.Write (FromKernel, LogNotice, "gui watchdog disabled (cmdline watchdog=0)");
+		}
+
+		if (m_bSDMounted)
+		{
+			StartAutostart ();		// spawn the init program (cmdline init=)
 		}
 	}
 	else
