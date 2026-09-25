@@ -120,6 +120,11 @@ public:
 	///	   by the task's next voluntary Yield.
 	void OnPreempt (void);
 
+	/// \brief Boot-time tuning (cmdline.txt): the app time slice in 10 ms ticks
+	///	   (slice=, default SCHED_SLICE_TICKS) and the hog logic on/off (hogsched=0
+	///	   = plain round-robin, as before OnPreempt existed) -- for A/B testing.
+	void Configure (unsigned nSliceTicks, boolean bHogSched);
+
 	static CScheduler *Get (void);
 
 	static boolean IsActive (void)
@@ -160,6 +165,8 @@ private:
 	u8 m_nPreemptStreak[MAX_TASKS];	// per slot: preemptions since its last voluntary
 					// yield (>= SCHED_HOG_STREAK: a CPU hog)
 	boolean m_bPreempting;		// the current Yield comes from OnPreempt
+	unsigned m_nSliceCfg;		// slice length, ticks (Configure)
+	boolean m_bHogSched;		// hog detection + bursts enabled (Configure)
 	volatile boolean m_bBurst;	// burst in progress: hogs are skipped (OnPreempt)
 	unsigned m_nBurstEnd;		// its end, in clock ticks (us)
 

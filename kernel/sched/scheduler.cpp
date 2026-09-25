@@ -97,6 +97,8 @@ CScheduler::CScheduler (void)
 		m_nPreemptStreak[i] = 0;
 	}
 	m_bPreempting = FALSE;
+	m_nSliceCfg = SCHED_SLICE_TICKS;
+	m_bHogSched = TRUE;
 
 	m_pCurrent = new CTask (0);		// represents the main task currently running
 	assert (m_pCurrent != 0);
@@ -145,7 +147,7 @@ void CScheduler::Yield (void)
 
 	// Whichever task runs now starts a fresh time slice -- a single tick for a CPU hog,
 	// so the kernel's Yield() loops never wait more than ~10 ms behind it.
-	m_nSliceTicks = m_nPreemptStreak[nNext] >= SCHED_HOG_STREAK ? 1 : SCHED_SLICE_TICKS;
+	m_nSliceTicks = (m_bHogSched && m_nPreemptStreak[nNext] >= SCHED_HOG_STREAK) ? 1 : m_nSliceCfg;
 	m_bResched = FALSE;
 
 	if (m_pCurrent != pNext)
@@ -187,8 +189,20 @@ void CScheduler::YieldTo (CTask *pTask)
 	IrqRestore (nFlags);
 }
 
+void CScheduler::Configure (unsigned nSliceTicks, boolean bHogSched)
+{
+	u64 nFlags = IrqSave ();
+	m_nSliceCfg = nSliceTicks < 1 ? 1 : (nSliceTicks > 100 ? 100 : nSliceTicks);
+	m_bHogSched = bHogSched;
+	IrqRestore (nFlags);
+}
+
 void CScheduler::OnPreempt (void)
 {
+	if (!m_bHogSched)
+	{
+		return;
+	}
 	u64 nFlags = IrqSave ();
 	m_bPreempting = TRUE;			// the Yield that follows is not voluntary
 	unsigned nSlot = CurrentSlot ();

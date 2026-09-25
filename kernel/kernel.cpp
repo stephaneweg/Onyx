@@ -1339,6 +1339,15 @@ TShutdownMode CKernel::Run (void)
 		// GUI watchdog + heartbeat (kmsg): compositor stalls, frozen apps, and a
 		// periodic summary every cmdline.txt heartbeat= seconds (default 5, 0 = off).
 		// cmdline watchdog=0 skips the task entirely (A/B testing).
+		// Scheduler tuning (A/B testing): slice= app time slice in 10 ms ticks,
+		// hogsched=0 disables the CPU-hog detection / bursts (plain round-robin).
+		{
+			unsigned nSlice = m_Options.GetAppOptionDecimal ("slice", SCHED_SLICE_TICKS);
+			boolean bHog = m_Options.GetAppOptionDecimal ("hogsched", 1) != 0;
+			m_Scheduler.Configure (nSlice, bHog);
+			m_Logger.Write (FromKernel, LogNotice, "scheduler: slice %u ticks, hog detection %s",
+					nSlice, bHog ? "on" : "off");
+		}
 		unsigned nBeat = m_Options.GetAppOptionDecimal ("heartbeat", 5);
 		g_nHeartbeatSec = nBeat == (unsigned) -1 ? 5 : nBeat;
 		if (m_Options.GetAppOptionDecimal ("watchdog", 1) != 0)

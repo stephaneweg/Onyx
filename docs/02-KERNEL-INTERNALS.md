@@ -281,7 +281,8 @@ of the tasks the timer has to preempt:
   kernel's yield loops never wait more than ~10 ms behind it.
 
 A hog thus keeps roughly 15 % of the CPU while others need it, and all of it
-otherwise.
+otherwise. Both are tunable at boot for A/B testing: `cmdline.txt` `slice=` (ticks)
+and `hogsched=0` (plain round-robin) → `CScheduler::Configure`.
 
 ### `CScheduler` (shadow) and `CTask`
 
