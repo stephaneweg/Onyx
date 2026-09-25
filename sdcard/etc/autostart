@@ -9,6 +9,9 @@
 #   keyb FR       -> /bin/keyb FR      -> set the French keyboard layout
 #   sleep 5       -> init builtin: wait 5 s before the next line (staggered startup)
 #
+# voronoy draws the generated wallpaper then exits -- optional (drop it for the plain
+# blue desktop). It no longer masks the old single-GUI-app boot hang, fixed in the
+# kernel (the compositor now runs as soon as it is created: CScheduler::YieldTo).
 run voronoy
 run panel
 keyb FR
