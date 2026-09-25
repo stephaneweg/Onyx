@@ -20,6 +20,7 @@
 #define WIN_FLAG_BACKMOST	(1u << 1)	// pinned to the bottom of the z-order (shell desktop)
 #define WIN_FLAG_TOPMOST	(1u << 2)	// pinned to the top, never active (the menu bar)
 #define WIN_FLAG_TRANSPARENT	(1u << 3)	// magenta (0xFF00FF) client pixels are see-through
+#define WIN_FLAG_SYSTEM		(1u << 4)	// system component: not listed as an open app (panel taskbar)
 
 // Event kinds (must match kern/gui/window.h).
 #define GUI_EVENT_CLICK		1

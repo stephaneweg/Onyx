@@ -121,7 +121,7 @@ static void poll_and_layout (void)	// the heavy pass (open apps, taskbar, clock,
 	for (int i = 0; i < g_open_count && tb_count < TMAX; i++)
 	{
 		const char *n = g_open[i];
-		if (is_pinned (n) || ax_streq (n, "panel") || ax_streq (n, "applist")) continue;
+		if (is_pinned (n)) continue;		// (system windows are not listed: WIN_FLAG_SYSTEM)
 		int dup = 0; for (int j = 0; j < tb_count; j++) if (ax_streq (want[j], n)) { dup = 1; break; }
 		if (!dup) copy_name (want[tb_count++], n);
 	}
@@ -188,7 +188,7 @@ int main (void)
 	if (g_vert) { g_win_w = BAR; g_win_h = MAXLEN; cross0 = (g_pos == 1) ? 2 : g_sw - BAR - 2; x0 = cross0; y0 = 2; }
 	else        { g_win_w = MAXLEN; g_win_h = BAR; cross0 = (g_pos == 2) ? 2 : g_sh - BAR - 2; x0 = 2; y0 = cross0; }
 
-	PanelRoot root (x0, y0, g_win_w, g_win_h, "panel", WIN_FLAG_BORDERLESS);
+	PanelRoot root (x0, y0, g_win_w, g_win_h, "panel", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 

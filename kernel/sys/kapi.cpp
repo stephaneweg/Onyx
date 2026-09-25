@@ -803,6 +803,7 @@ int kapi_list_apps (char *pBuf, unsigned nBufSize)
 
 // List currently-open apps: the folder name of every non-terminated task that owns
 // a window, one per '\n'-separated line in pBuf. Backs the panel's taskbar section.
+// Windows created with WIN_FLAG_SYSTEM (menu bar, notifications, panel...) are skipped.
 struct WinListCtx { char *pBuf; unsigned nSize; unsigned nPos; int nCount; };
 
 static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState State,
@@ -814,9 +815,9 @@ static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState Stat
 		return TRUE;					// keep going
 	}
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
-	if (pAS == 0 || pAS->GetWindow () == 0)
+	if (pAS == 0 || pAS->GetWindow () == 0 || pAS->GetWindow ()->System ())
 	{
-		return TRUE;					// not a windowed app
+		return TRUE;					// not a windowed app / a system component
 	}
 
 	WinListCtx *pCtx = (WinListCtx *) pParam;

@@ -206,14 +206,15 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
   (by default: `terminal`, `filer`, `tinypad`, `tinycalc`). A click **launches** the app (or
   **brings it to the foreground** if it is already open).
 - **The taskbar**: the icons of the open apps (not pinned). A click **brings** the
-  window to the foreground. An open app carries a small **badge** (triangle).
+  window to the foreground. System components (the panel itself, the app list, the menu
+  bar, the notifications) are never listed: their window is created with `WIN_FLAG_SYSTEM`. An open app carries a small **badge** (triangle).
 - **The clock**: updated every minute.
 
 ### The app list (`applist`)
 
 Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
-the installed applications (any `SD:apps/<name>.app/` folder, except the shell components
-`panel`, `applist`, `shell` and `menubar`). It opens **right next to the panel**, beside
+the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
+says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`). It opens **right next to the panel**, beside
 the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
 below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
 scrollbar (or the wheel) if the grid overflows.

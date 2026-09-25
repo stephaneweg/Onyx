@@ -506,8 +506,10 @@ category = Productivity          ; Games, Graphics, Productivity, Internet, Syst
 
 The current app-drawer (`applist`) still labels icons by folder name; `app.txt` is the
 groundwork for a **category-grouping launcher** (groups icons by `category`, shows
-`name`). The two shell components `panel`/`applist` carry `category = Shell` so a
-launcher can exclude them.
+`name`). The shell components (`panel`, `applist`, `shell`, `menubar`, `notifyd`) carry
+`category = Shell`: `applist` does not offer them. A shell component also creates its
+window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the positioned `wtk::Root`
+constructor), so it is left out of `kapi_list_windows` — the panel's taskbar.
 
 **Icons** — [`tools/gen_assets.py`](../tools/gen_assets.py) procedurally generates the
 40×40 BMPs (BGR bottom-up, 4-byte padding) for all the apps (a document for `tinypad`,

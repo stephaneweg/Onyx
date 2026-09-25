@@ -59,6 +59,16 @@ static bool ci_less (const char *a, const char *b)
 	}
 }
 
+// A shell component (panel, menu bar, notifications...) declares "category = Shell" in
+// its app.txt: it is started by autostart and not offered in the list.
+static bool is_system_app (const char *name)
+{
+	char path[64];
+	ax_app_path (path, sizeof (path), name, ".app/app.txt");
+	if (app_ini_load_path (path) < 0) return false;
+	return ax_streq (app_ini_get (0, "category", ""), "Shell");
+}
+
 static void add_apps (Root &root)
 {
 	static char list[2048];
@@ -71,8 +81,7 @@ static void add_apps (Root &root)
 		if (list[i] == '\n') i++;
 		name[li] = '\0';
 		if (li == 0) continue;
-		if (ax_streq (name, "panel") || ax_streq (name, "applist")
-		    || ax_streq (name, "shell") || ax_streq (name, "menubar") || ax_streq (name, "notifyd")) continue;	// hide the shell components
+		if (is_system_app (name)) continue;		// shell components (category = Shell)
 		// Insert in alphabetical (case-insensitive) order -- the directory order is just
 		// the order the folders were copied onto the card.
 		int pos = g_count;
@@ -119,7 +128,7 @@ int main (void)
 	if (y0 > sh - H - 4) y0 = sh - H - 4;
 	if (y0 < MENUBAR_H) y0 = MENUBAR_H;
 
-	Root root (x0, y0, W, H, "applist", WIN_FLAG_BORDERLESS);
+	Root root (x0, y0, W, H, "applist", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	root.setBg (0x00141c26);

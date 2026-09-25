@@ -94,7 +94,7 @@ int main (void)
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
 	unsigned *fb = kapi_create_window_ex (-NW - 50, TOP, NW, NH, "notifyd",
-					      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST);
+					      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM);
 	if (fb == 0) return 1;
 	g_cv.adopt (fb, NW, NH);
 	kapi_set_window_alpha (0);

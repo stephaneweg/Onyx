@@ -307,7 +307,7 @@ int main (void)
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
 	g_fb = kapi_create_window_ex (0, 0, g_sw, g_sh, "menubar",
-				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_TRANSPARENT);
+				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_TRANSPARENT | WIN_FLAG_SYSTEM);
 	if (g_fb == 0) return 1;
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);

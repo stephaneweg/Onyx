@@ -59,6 +59,9 @@ extern u32 g_WinTitleTextColor;
 						// top of the screen (placement / drag keep clear)
 #define WIN_FLAG_TRANSPARENT	(1u << 3)	// client canvas blitted with the magenta key (the
 						// menu bar's drop-down floats over the desktop)
+#define WIN_FLAG_SYSTEM		(1u << 4)	// a system component (menu bar, notifications,
+						// panel, app list, shelf): left out of the open-app
+						// list (kapi_list_windows -> the panel's taskbar)
 
 #define WIN_MENU_MAX		2048	// max menu spec length (kapi_set_menu)
 
@@ -127,6 +130,7 @@ public:
 	boolean Backmost (void) const	{ return (m_nFlags & WIN_FLAG_BACKMOST) != 0; }
 	boolean Topmost (void) const	{ return (m_nFlags & WIN_FLAG_TOPMOST) != 0; }
 	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
+	boolean System (void) const	{ return (m_nFlags & WIN_FLAG_SYSTEM) != 0; }
 	int MinLogicalHeight (void) const { return m_nMinLogicalH; }	// smallest logical height so far
 	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; }	// 255 = opaque
 	int  Alpha (void) const		{ return m_nAlpha; }
