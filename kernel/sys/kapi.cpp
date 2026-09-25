@@ -354,6 +354,49 @@ void kapi_screen_size (int *pW, int *pH)
 	if (pH != 0) *pH = g_nScreenHeight;
 }
 
+// --- v38: remote screen (vncd) ----------------------------------------------
+// Composite the current screen (windows + wallpaper + cursor, exactly what the
+// compositor shows) straight into the caller's buffer of w*h 0x00RRGGBB pixels. w/h
+// must equal the screen size (kapi_screen_size). Returns 1, or 0 on a size mismatch.
+int kapi_screen_grab (unsigned *pDst, int nW, int nH)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0 || pDst == 0 || nW != g_nScreenWidth || nH != g_nScreenHeight)
+	{
+		return 0;
+	}
+	GImage Screen ((u32 *) pDst, nW, nH);
+	pWM->Composite (&Screen, FALSE);
+	return 1;
+}
+
+// Inject pointer input as if it came from a USB mouse: absolute screen position,
+// buttons bit0 left / bit1 right / bit2 middle, wheel = signed notches (0 = none).
+void kapi_inject_pointer (int x, int y, unsigned nButtons, int nWheel)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0)
+	{
+		return;
+	}
+	pWM->OnMouse (x, y, nButtons);
+	if (nWheel != 0)
+	{
+		pWM->OnMouseWheel (x, y, nWheel);
+	}
+}
+
+// Inject keyboard input as if typed: a key string in the keyboard's cooked format
+// (characters, '\n' = Enter, '\b' = Backspace, VT100 escapes for arrows/Home/...).
+void kapi_inject_key (const char *pKeys)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM != 0 && pKeys != 0)
+	{
+		pWM->OnKey (pKeys);
+	}
+}
+
 // Toggle a named app: if an app with this folder name is already running, ask it to
 // close (set its window's exit flag) and return 0; otherwise launch it and return 1
 // (-1 on error). The shell's "apps" button uses this so a second click closes the

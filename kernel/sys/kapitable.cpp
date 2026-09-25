@@ -47,6 +47,9 @@ int kapi_tcp_recv (int, void *, unsigned);
 void kapi_tcp_close (int);
 int kapi_tcp_listen (unsigned);
 int kapi_tcp_accept (int, char *, unsigned);
+int kapi_screen_grab (unsigned *, int, int);
+void kapi_inject_pointer (int, int, unsigned, int);
+void kapi_inject_key (const char *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -246,4 +249,8 @@ void KApiTableInit (void)
 
 	t->tcp_listen        = kapi_tcp_listen;
 	t->tcp_accept        = kapi_tcp_accept;
+
+	t->screen_grab       = kapi_screen_grab;
+	t->inject_pointer    = kapi_inject_pointer;
+	t->inject_key        = kapi_inject_key;
 }

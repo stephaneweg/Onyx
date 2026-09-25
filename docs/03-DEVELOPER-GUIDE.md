@@ -576,6 +576,10 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   the network; from the dev machine, `python tools/onyx-telnet.py <pi-ip>` (or any telnet
   client) — handy to run `kmsg`, `ps`, `kill`, tests, without the Pi's keyboard. Its
   server side uses the ABI v37 `kapi_tcp_listen`/`kapi_tcp_accept`.
+- **Remote desktop**: `/bin/vncd` (autostarted, VNC port 5900) — watch and drive the GUI
+  from any VNC viewer, no monitor needed. It grabs the screen with `kapi_screen_grab`
+  and injects input with `kapi_inject_pointer`/`kapi_inject_key` (ABI v38); it is a
+  newlib program linked with the vendored zlib (`ZLIB_PROGS` in `user/bin/Makefile`).
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial
   cable.

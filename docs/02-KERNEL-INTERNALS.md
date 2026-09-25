@@ -409,7 +409,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 37`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 38`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -422,7 +422,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`).
 
 ### Categories of exposed functions
 
@@ -442,6 +442,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21, v37) | `net_status`, `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close`; server side (v37): `tcp_listen(port)` → listening handle (Circle `CSocket::Bind`+`Listen`; `-6` = port in use), `tcp_accept(h, ip, cap)` → **blocks** until a peer connects, returns a connected handle + the peer IP (Circle `Accept`). All handles share the 16-slot table in `sys/net.cpp` and are reclaimed when the owner dies. Used by `/bin/telnetd`. |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
+| Remote screen (v38) | `screen_grab(dst, w, h)` — runs `CWindowManager::Composite` (windows, wallpaper, cursor; `bCountFrame = FALSE` so the watchdog's fps stays the real compositor's) straight into the caller's `w*h` 0x00RRGGBB buffer (`w`/`h` must be the screen size); `inject_pointer(x, y, buttons, wheel)` → `OnMouse` (+ `OnMouseWheel`), `inject_key(keys)` → `OnKey` — the same paths as the USB mouse/keyboard. Used by `/bin/vncd`. |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
 | Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
 
@@ -665,7 +666,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 37 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 38 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

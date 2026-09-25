@@ -252,7 +252,9 @@ public:
 	int CursorY (void) const	{ return m_nCursorY; }
 
 	// Clear the desktop and draw every window onto the screen image.
-	void Composite (GImage *pScreen);
+	// bCountFrame = FALSE for an off-screen composite (remote screen grab), so the
+	// watchdog's frame counter keeps measuring the real compositor only.
+	void Composite (GImage *pScreen, boolean bCountFrame = TRUE);
 
 	// Install the mouse-cursor image (a transparent GImage; takes ownership). If
 	// unset, the compositor falls back to a drawn arrow.

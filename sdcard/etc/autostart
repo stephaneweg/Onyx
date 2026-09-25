@@ -14,3 +14,5 @@ keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,
 # NO encryption: remove this line on an untrusted network.
 telnetd
+# Remote desktop (VNC, port 5900): any VNC viewer. NO password either.
+vncd

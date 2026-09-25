@@ -27,7 +27,8 @@
 // v36: + memset/memcpy/memmove -- Circle's kernel implementations, so the calls the
 //      compiler emits on its own (array/struct init and copies) link in every app.
 // v37: + tcp_listen/tcp_accept -- TCP server side (telnetd remote shell).
-#define KAPI_ABI_VERSION	37
+// v38: + screen_grab/inject_pointer/inject_key -- remote screen (vncd).
+#define KAPI_ABI_VERSION	38
 
 #ifdef __cplusplus
 extern "C" {
@@ -351,6 +352,16 @@ struct TKApiTable
 	// Both handles are auto-closed if the owning process dies.
 	int  (*tcp_listen) (unsigned port);
 	int  (*tcp_accept) (int listen_sock, char *ip, unsigned cap);
+
+	// --- v38 additions (remote screen: vncd) ---
+	// screen_grab: composite the current screen (what the display shows, cursor
+	// included) into dst = w*h 0x00RRGGBB pixels; w/h must be the screen size; 1 / 0.
+	// inject_pointer / inject_key: feed input through the same path as the USB mouse /
+	// keyboard (buttons bit0 left, bit1 right, bit2 middle; wheel = signed notches;
+	// keys = cooked string: chars, "\n" Enter, "\b" Backspace, VT100 escapes).
+	int  (*screen_grab) (unsigned *dst, int w, int h);
+	void (*inject_pointer) (int x, int y, unsigned buttons, int wheel);
+	void (*inject_key) (const char *keys);
 };
 
 #ifdef __cplusplus

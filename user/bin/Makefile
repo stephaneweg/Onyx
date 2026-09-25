@@ -53,6 +53,14 @@ ifneq ($(strip $(IMG_DIR)),)
 IMG_PROGS = imgtest.elf
 endif
 
+# vncd (remote desktop) links the vendored zlib (third_party/zlib-1.3.1, prebuilt
+# libz.a). Pass ZLIB_DIR= (empty) to skip it, or ZLIB_DIR=/path for another copy.
+ZLIB_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/zlib-1.3.1)
+ZLIB_PROGS =
+ifneq ($(strip $(ZLIB_DIR)),)
+ZLIB_PROGS = vncd.elf
+endif
+
 # libnsfb demo needs the cross-built libnsfb (see ../nsfb/README.md). OPT-IN via NSFB_DIR:
 #   make NSFB_DIR=../nsfb  (after: make -C ../nsfb)
 NSFB_DIR ?=
@@ -73,7 +81,7 @@ LIBC_PROGS = libctest.elf
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -111,6 +119,12 @@ $(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../img/image.hpp
 	  $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
 	  -L$(IMG_DIR)/libpng -L$(IMG_DIR)/zlib -L$(IMG_DIR)/libjpeg -lpng -ljpeg -lz -lm -o $@
 	@rm -f crt0libc.o onyx_syscalls.o
+endif
+
+# zlib apps (newlib C + libz). Built by default against the vendored zlib.
+ifneq ($(strip $(ZLIB_DIR)),)
+$(ZLIB_PROGS): %.elf: %.c $(LIBC_DEP)
+	$(CC) $(CFLAGS_LIBC) -I$(ZLIB_DIR) $(LDFLAGS) $(LIBC_SRC) $< -L$(ZLIB_DIR) -lz -lm -o $@
 endif
 
 # libnsfb demo (newlib C + libnsfb). Built only when NSFB_DIR is set. The Onyx surface

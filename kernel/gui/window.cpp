@@ -297,7 +297,7 @@ void CWindowManager::Raise (CWindow *pWindow)
 	m_SpinLock.Release ();
 }
 
-void CWindowManager::Composite (GImage *pScreen)
+void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 {
 	// Snapshot the window list under the lock, then blit without holding it (so we
 	// don't keep IRQ masked for the whole frame). Note: a window pointer in the
@@ -363,7 +363,10 @@ void CWindowManager::Composite (GImage *pScreen)
 		}
 	}
 
-	m_nFrames++;
+	if (bCountFrame)
+	{
+		m_nFrames++;
+	}
 }
 
 unsigned CWindowManager::Snapshot (CWindow **ppOut, unsigned nMax)

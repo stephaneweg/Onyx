@@ -329,6 +329,7 @@ the terminal's **current working directory**.
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
 | `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves one client at a time with its own `cmd` (see §7). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
+| `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
@@ -356,6 +357,23 @@ connection waits until the first ends.
 > ⚠️ Not secure: no authentication and no encryption — anyone who can reach port 23
 > gets a shell. Remove the `telnetd` line from `SD:/etc/autostart` on an untrusted
 > network, or run it by hand (`telnetd 2323`) when needed.
+
+### Remote desktop (`vncd`)
+
+`vncd` (started by `SD:/etc/autostart`) serves the Onyx screen over **VNC**, so you can
+see and use the desktop from another computer — handy without a monitor. Use any VNC
+viewer (TigerVNC, RealVNC, UltraVNC, TightVNC, Remmina…) and connect to `<pi-ip>`
+(port 5900 / display `:0`); choose "no authentication" if the viewer asks.
+
+- The mouse and keyboard act exactly like USB ones (clicks, drag, wheel). Keys are typed
+  with **your computer's layout** (the viewer sends characters); Ctrl+letter, arrows,
+  Home/End, Page Up/Down, Delete, Esc and Enter work.
+- Only the parts of the screen that change are sent (64×64 tiles, zlib-compressed when the
+  viewer supports it), up to ~20 updates per second.
+- One viewer at a time. The picture is what the compositor shows, cursor included.
+
+> ⚠️ Not secure: no password and no encryption. Remove the `vncd` line from
+> `SD:/etc/autostart` on an untrusted network.
 
 ## 9. The file manager
 
@@ -441,7 +459,7 @@ The window skin (`wings.bmp`) is grayscale; these tints are **multiplied** into 
   (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
   ignored. Launch a **desktop app** with the `run` tool (`run <name>` →
   `/apps/<name>.app/main`). Defaults: `run voronoy`, `run panel`, `keyb FR` (sets the
-  keyboard layout at boot) and `telnetd` (remote shell, see §8). Which program plays the `init` role is itself set
+  keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 - **`SD:/etc/quicklaunch.txt`**: the apps pinned to the panel (top→bottom).
 
