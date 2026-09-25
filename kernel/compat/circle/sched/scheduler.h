@@ -108,13 +108,15 @@ public:
 	///	   task (the compositor) right away.
 	void YieldTo (CTask *pTask);
 
-	/// \brief Give the kernel tasks a short exclusive burst (SCHED_KERNEL_BURST_US):
-	///	   until it ends, or until no kernel task is ready, GetNextTask picks only
-	///	   kernel tasks. Called when an app is preempted: Circle's net / WLAN code
-	///	   waits in Yield() loops (qlock, sleep, CNetTask), and without the burst
-	///	   every one of those yields would cost a whole app slice -- a CPU-bound app
-	///	   then starves the network (Wi-Fi timeouts, link down).
-	void StartKernelBurst (void);
+	/// \brief Called (IRQ masked) when the current task -- an app in its own code --
+	///	   is preempted: flag it as a CPU hog and open a burst (SCHED_BURST_US) during
+	///	   which GetNextTask skips the preempted tasks, until the burst ends or no
+	///	   other task is ready. Circle's net / WLAN code waits in Yield() loops
+	///	   (qlock, sleep, CNetTask, socket send/recv -- also inside an app's kapi call,
+	///	   e.g. vncd); without the burst every one of those yields would cost a whole
+	///	   hog slice, and a CPU-bound app starves the network. The flag is cleared
+	///	   when the task runs again.
+	void OnPreempt (void);
 
 	static CScheduler *Get (void);
 
@@ -133,7 +135,7 @@ private:
 
 	void RemoveTask (CTask *pTask);
 	unsigned GetNextTask (void); // returns index into m_pTask or MAX_TASKS if none
-	unsigned ScanTasks (unsigned nTicks, boolean bKernelOnly);	// one round-robin pass
+	unsigned ScanTasks (unsigned nTicks, boolean bSkipHogs);	// one round-robin pass
 
 private:
 	CTask *m_pTask[MAX_TASKS];
@@ -152,7 +154,8 @@ private:
 	// Preemption state (additions)
 	volatile boolean m_bResched;	// set by OnTimerTick when the slice expires
 	unsigned m_nSliceTicks;		// scheduler ticks left in the current slice
-	volatile boolean m_bBurst;	// kernel-task burst in progress (StartKernelBurst)
+	boolean m_bPreempted[MAX_TASKS]; // per slot: parked by a preemption (a CPU hog)
+	volatile boolean m_bBurst;	// burst in progress: hogs are skipped (OnPreempt)
 	unsigned m_nBurstEnd;		// its end, in clock ticks (us)
 
 	CSpinLock m_SpinLock;
@@ -165,9 +168,11 @@ private:
 #define SCHED_SLICE_TICKS	2		// 20 ms quantum
 #endif
 
-// Length of the kernel-task burst that follows an app preemption, in microseconds.
-#ifndef SCHED_KERNEL_BURST_US
-#define SCHED_KERNEL_BURST_US	4000		// 4 ms
+// Length of the burst that follows an app preemption, in microseconds: the tasks that
+// yield voluntarily get up to this much CPU before the hog runs again (= one slice, so
+// a hog keeps at most ~half of the CPU while others need it, and all of it otherwise).
+#ifndef SCHED_BURST_US
+#define SCHED_BURST_US		20000		// 20 ms
 #endif
 
 #endif

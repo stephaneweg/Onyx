@@ -197,7 +197,7 @@ extern "C" {
 // the preempted app's own SP_EL0 stack -- where Yield's SP_EL0/TTBR0 swap is correct.
 extern "C" void PreemptDoYield (void)
 {
-	CScheduler::Get ()->StartKernelBurst ();	// let the kernel tasks catch up first
+	CScheduler::Get ()->OnPreempt ();	// the tasks that yield voluntarily go first
 	CScheduler::Get ()->Yield ();
 }
 

@@ -92,6 +92,11 @@ CScheduler::CScheduler (void)
 	assert (s_pThis == 0);
 	s_pThis = this;
 
+	for (unsigned i = 0; i < MAX_TASKS; i++)
+	{
+		m_bPreempted[i] = FALSE;
+	}
+
 	m_pCurrent = new CTask (0);		// represents the main task currently running
 	assert (m_pCurrent != 0);
 	m_pCurrent->SetName ("main");
@@ -129,6 +134,7 @@ void CScheduler::Yield (void)
 	m_nCurrent = nNext;
 	CTask *pNext = m_pTask[m_nCurrent];
 	assert (pNext != 0);
+	m_bPreempted[m_nCurrent] = FALSE;	// runs again: no longer parked as a hog
 
 	// Whichever task runs now starts a fresh time slice.
 	m_nSliceTicks = SCHED_SLICE_TICKS;
@@ -173,10 +179,14 @@ void CScheduler::YieldTo (CTask *pTask)
 	IrqRestore (nFlags);
 }
 
-void CScheduler::StartKernelBurst (void)
+void CScheduler::OnPreempt (void)
 {
 	u64 nFlags = IrqSave ();
-	m_nBurstEnd = CTimer::Get ()->GetClockTicks () + SCHED_KERNEL_BURST_US;
+	if (m_nCurrent < MAX_TASKS && m_pTask[m_nCurrent] == m_pCurrent)
+	{
+		m_bPreempted[m_nCurrent] = TRUE;
+	}
+	m_nBurstEnd = CTimer::Get ()->GetClockTicks () + SCHED_BURST_US;
 	m_bBurst = TRUE;
 	IrqRestore (nFlags);
 }
@@ -454,6 +464,7 @@ void CScheduler::AddTask (CTask *pTask)
 		if (m_pTask[i] == 0)
 		{
 			m_pTask[i] = pTask;
+			m_bPreempted[i] = FALSE;
 
 			return;
 		}
@@ -464,6 +475,7 @@ void CScheduler::AddTask (CTask *pTask)
 		CLogger::Get ()->Write (FromScheduler, LogPanic, "System limit of tasks exceeded");
 	}
 
+	m_bPreempted[m_nTasks] = FALSE;
 	m_pTask[m_nTasks++] = pTask;
 }
 
@@ -585,8 +597,8 @@ unsigned CScheduler::GetNextTask (void)
 {
 	unsigned nTicks = CTimer::Get ()->GetClockTicks ();
 
-	// Kernel burst (after an app was preempted): only kernel tasks, until it ends or
-	// none of them is ready -- then back to plain round-robin over everyone.
+	// Burst (after an app was preempted): skip the preempted CPU hogs, until it ends or
+	// no other task is ready -- then back to plain round-robin over everyone.
 	if (m_bBurst)
 	{
 		if ((int) (m_nBurstEnd - nTicks) > 0)
@@ -603,9 +615,9 @@ unsigned CScheduler::GetNextTask (void)
 	return ScanTasks (nTicks, FALSE);
 }
 
-// One round-robin pass starting after m_nCurrent. bKernelOnly: skip app tasks (those
-// with an address space) and the idle task -- MAX_TASKS if no kernel task is ready.
-unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bKernelOnly)
+// One round-robin pass starting after m_nCurrent. bSkipHogs: skip the preempted tasks
+// and the idle task -- MAX_TASKS if no other task is ready.
+unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 {
 	unsigned nTask = m_nCurrent < MAX_TASKS ? m_nCurrent : 0;
 
@@ -629,9 +641,9 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bKernelOnly)
 			continue;
 		}
 
-		if (bKernelOnly && (pTask == m_pIdleTask || pTask->GetUserData (TASK_USER_DATA_USER) != 0))
+		if (bSkipHogs && (pTask == m_pIdleTask || m_bPreempted[nTask]))
 		{
-			continue;			// an app (or idle): not during a kernel burst
+			continue;			// a CPU hog (or idle): not during a burst
 		}
 
 		switch (pTask->GetState ())

@@ -260,17 +260,19 @@ still block other tasks — drop a `if (IsReschedPending()) Yield();`
 cooperative-preemption point into any such loop if one appears. Tasks also still
 switch **voluntarily** (`Yield`, `MsSleep`, `present`, `wait`, …), unchanged.
 
-**Kernel burst after a preemption.** Circle's network and Wi-Fi code waits in
-`Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the `CNetTask`
-`Process` loop, sockets). In plain round-robin, each of those yields hands the CPU to a
-CPU-bound app for a full slice, so the loops advance only ~20–50 times per second.
-Driver timeouts then expire and the Wi-Fi link drops (the `spin` test app took the
-network down, and with it VNC/telnet). So `PreemptDoYield` first calls
-`CScheduler::StartKernelBurst()`: for `SCHED_KERNEL_BURST_US` (4 ms) — or until no kernel
-task is ready — `GetNextTask` picks **only kernel tasks** (tasks without an address
-space in `TASK_USER_DATA_USER`; not the idle task). Their yield loops go round thousands of times
-before the app gets the CPU back. A CPU hog therefore keeps ≥ ~15 % of the CPU for the
-kernel, and the compositor (a kernel task) is served within one app slice.
+**Burst after a preemption (CPU hogs vs yielders).** Circle's network and Wi-Fi code
+waits in `Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the
+`CNetTask` `Process` loop, socket send/recv — also inside an app's `kapi_*` call, e.g.
+`vncd`). In plain round-robin, each of those yields hands the CPU to a CPU-bound app for a full
+slice, so the loops advance only ~20–50 times per second. Driver timeouts then expire and
+the Wi-Fi link drops (the `spin` test app took the network down, and VNC/telnet with it).
+So `PreemptDoYield` first calls `CScheduler::OnPreempt()`: it flags the preempted task
+as a **hog** (`m_bPreempted[slot]`, cleared when it runs again) and opens a burst of
+`SCHED_BURST_US` (20 ms). During the burst `GetNextTask` **skips the hogs** (and idle), so
+every task that yields voluntarily — kernel tasks, apps waiting in a kapi, apps coming
+out of `msleep` — is served first. The burst ends early as soon as none of them is ready.
+A hog thus keeps at most about half of the CPU while others need it, and all of it
+otherwise.
 
 ### `CScheduler` (shadow) and `CTask`
 
