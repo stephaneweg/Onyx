@@ -229,7 +229,7 @@ Source: [`kernel/sched/scheduler.cpp`](../kernel/sched/scheduler.cpp),
 ### Preemptive scheduling (track A)
 
 The kernel **preempts application code**. A 100 Hz timer tick drives `OnTimerTick`,
-which counts down the running task's time slice (`SCHED_SLICE_TICKS` = 50 ms) and
+which counts down the running task's time slice (`SCHED_SLICE_TICKS` = 20 ms) and
 sets a reschedule flag when it expires. `KernelIRQExit()` — run at the end of every
 IRQ — then forces a switch, **but only when it is safe**: the interrupted context
 must be an **application running its own code**, i.e. `SPSR_EL1.M == EL1t` **and**
@@ -259,6 +259,18 @@ non-preemptive** (the classic Unix model): a long, non-yielding *kernel* loop wo
 still block other tasks — drop a `if (IsReschedPending()) Yield();`
 cooperative-preemption point into any such loop if one appears. Tasks also still
 switch **voluntarily** (`Yield`, `MsSleep`, `present`, `wait`, …), unchanged.
+
+**Kernel burst after a preemption.** Circle's network and Wi-Fi code waits in
+`Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the `CNetTask`
+`Process` loop, sockets). In plain round-robin, each of those yields hands the CPU to a
+CPU-bound app for a full slice, so the loops advance only ~20–50 times per second.
+Driver timeouts then expire and the Wi-Fi link drops (the `spin` test app took the
+network down, and with it VNC/telnet). So `PreemptDoYield` first calls
+`CScheduler::StartKernelBurst()`: for `SCHED_KERNEL_BURST_US` (4 ms) — or until no kernel
+task is ready — `GetNextTask` picks **only kernel tasks** (tasks without an address
+space in `TASK_USER_DATA_USER`; not the idle task). Their yield loops go round thousands of times
+before the app gets the CPU back. A CPU hog therefore keeps ≥ ~15 % of the CPU for the
+kernel, and the compositor (a kernel task) is served within one app slice.
 
 ### `CScheduler` (shadow) and `CTask`
 

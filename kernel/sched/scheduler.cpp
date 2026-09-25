@@ -85,7 +85,9 @@ CScheduler::CScheduler (void)
 	m_pTaskTerminationHandler (0),
 	m_iSuspendNewTasks (0),
 	m_bResched (FALSE),
-	m_nSliceTicks (SCHED_SLICE_TICKS)
+	m_nSliceTicks (SCHED_SLICE_TICKS),
+	m_bBurst (FALSE),
+	m_nBurstEnd (0)
 {
 	assert (s_pThis == 0);
 	s_pThis = this;
@@ -168,6 +170,14 @@ void CScheduler::YieldTo (CTask *pTask)
 		}
 	}
 	Yield ();
+	IrqRestore (nFlags);
+}
+
+void CScheduler::StartKernelBurst (void)
+{
+	u64 nFlags = IrqSave ();
+	m_nBurstEnd = CTimer::Get ()->GetClockTicks () + SCHED_KERNEL_BURST_US;
+	m_bBurst = TRUE;
 	IrqRestore (nFlags);
 }
 
@@ -573,9 +583,31 @@ void CScheduler::WakeTasks (CTask **ppWaitListHead)
 
 unsigned CScheduler::GetNextTask (void)
 {
-	unsigned nTask = m_nCurrent < MAX_TASKS ? m_nCurrent : 0;
-
 	unsigned nTicks = CTimer::Get ()->GetClockTicks ();
+
+	// Kernel burst (after an app was preempted): only kernel tasks, until it ends or
+	// none of them is ready -- then back to plain round-robin over everyone.
+	if (m_bBurst)
+	{
+		if ((int) (m_nBurstEnd - nTicks) > 0)
+		{
+			unsigned nTask = ScanTasks (nTicks, TRUE);
+			if (nTask != MAX_TASKS)
+			{
+				return nTask;
+			}
+		}
+		m_bBurst = FALSE;
+	}
+
+	return ScanTasks (nTicks, FALSE);
+}
+
+// One round-robin pass starting after m_nCurrent. bKernelOnly: skip app tasks (those
+// with an address space) and the idle task -- MAX_TASKS if no kernel task is ready.
+unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bKernelOnly)
+{
+	unsigned nTask = m_nCurrent < MAX_TASKS ? m_nCurrent : 0;
 
 	unsigned nIdleIndex = MAX_TASKS;	// remember idle; use only if nothing else
 
@@ -595,6 +627,11 @@ unsigned CScheduler::GetNextTask (void)
 		if (pTask->IsSuspended ())
 		{
 			continue;
+		}
+
+		if (bKernelOnly && (pTask == m_pIdleTask || pTask->GetUserData (TASK_USER_DATA_USER) != 0))
+		{
+			continue;			// an app (or idle): not during a kernel burst
 		}
 
 		switch (pTask->GetState ())

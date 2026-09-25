@@ -108,6 +108,14 @@ public:
 	///	   task (the compositor) right away.
 	void YieldTo (CTask *pTask);
 
+	/// \brief Give the kernel tasks a short exclusive burst (SCHED_KERNEL_BURST_US):
+	///	   until it ends, or until no kernel task is ready, GetNextTask picks only
+	///	   kernel tasks. Called when an app is preempted: Circle's net / WLAN code
+	///	   waits in Yield() loops (qlock, sleep, CNetTask), and without the burst
+	///	   every one of those yields would cost a whole app slice -- a CPU-bound app
+	///	   then starves the network (Wi-Fi timeouts, link down).
+	void StartKernelBurst (void);
+
 	static CScheduler *Get (void);
 
 	static boolean IsActive (void)
@@ -125,6 +133,7 @@ private:
 
 	void RemoveTask (CTask *pTask);
 	unsigned GetNextTask (void); // returns index into m_pTask or MAX_TASKS if none
+	unsigned ScanTasks (unsigned nTicks, boolean bKernelOnly);	// one round-robin pass
 
 private:
 	CTask *m_pTask[MAX_TASKS];
@@ -143,6 +152,8 @@ private:
 	// Preemption state (additions)
 	volatile boolean m_bResched;	// set by OnTimerTick when the slice expires
 	unsigned m_nSliceTicks;		// scheduler ticks left in the current slice
+	volatile boolean m_bBurst;	// kernel-task burst in progress (StartKernelBurst)
+	unsigned m_nBurstEnd;		// its end, in clock ticks (us)
 
 	CSpinLock m_SpinLock;
 
@@ -151,7 +162,12 @@ private:
 
 // Length of a task's time slice, in 100 Hz scheduler ticks (10 ms each).
 #ifndef SCHED_SLICE_TICKS
-#define SCHED_SLICE_TICKS	5		// 50 ms quantum
+#define SCHED_SLICE_TICKS	2		// 20 ms quantum
+#endif
+
+// Length of the kernel-task burst that follows an app preemption, in microseconds.
+#ifndef SCHED_KERNEL_BURST_US
+#define SCHED_KERNEL_BURST_US	4000		// 4 ms
 #endif
 
 #endif
