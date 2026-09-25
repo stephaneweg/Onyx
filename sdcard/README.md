@@ -8,7 +8,8 @@ the first partition), insert it into a Raspberry Pi 4, and power on.
 | File | Role |
 |---|---|
 | `start4.elf`, `fixup4.dat` | Raspberry Pi 4 GPU firmware |
-| `bcm2711-rpi-4-b.dtb` | device tree for the Pi 4 |
+| `bcm2711-rpi-4-b.dtb`, `bcm2711-rpi-400.dtb` | device trees for the Pi 4 B and the Pi 400 |
+| `firmware/` | Wi-Fi firmware: `brcmfmac43455-sdio.*` (Pi 4 B), `brcmfmac43456-sdio.*` (Pi 400) |
 | `armstub8-rpi4.bin` | Circle's ARM stub (EL setup / FIQ) |
 | `config.txt` | boots `kernel8-rpi4.img` in 64-bit mode on `[pi4]` |
 | `kernel8-rpi4.img` | **our kernel** |

@@ -40,7 +40,8 @@ Card contents:
 
 | Item | Role |
 |---|---|
-| `start4.elf`, `fixup4.dat`, `bcm2711-rpi-4-b.dtb`, `armstub8-rpi4.bin` | GPU firmware + device tree + Pi 4 ARM stub |
+| `start4.elf`, `fixup4.dat`, `bcm2711-rpi-4-b.dtb`, `bcm2711-rpi-400.dtb`, `armstub8-rpi4.bin` | GPU firmware + device trees (Pi 4 B, Pi 400) + Pi 4 ARM stub |
+| `firmware/brcmfmac4345{5,6}-sdio.*` | Wi-Fi chip firmware: `43455` = Pi 4 B, `43456` = **Pi 400** (the Pi 400 has a different Wi-Fi chip, CYW43456) |
 | `config.txt`, `cmdline.txt` | boot configuration (see §3) |
 | `kernel8-rpi4.img` | **the Onyx kernel** |
 | `apps/<name>.app/main` | the **applications** (one per `.app` folder) |
