@@ -212,6 +212,12 @@ Notes / caveats:
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
 > launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
 > `clip_set_files (path, cut)`, `clip_get_file` — the kernel keeps one shared clipboard.
+> **Full-screen apps (ABI v41)**: `unsigned *fb = kapi_fullscreen_begin (&w, &h);` gives a
+> screen-sized buffer; draw into it and call `kapi_present_fb ()` once per frame (it also
+> yields). The desktop is not drawn meanwhile and all input comes to your key/pointer
+> handlers in screen coordinates. `kapi_fullscreen_end ()` (or exiting) restores the
+> desktop. See `user/Apps/plasma`.
+>
 > Files: `fsutil.h` (`fs_join`, `fs_exists`, `fs_is_dir`, `fs_copy_tree`,
 > `fs_remove_tree`, `fs_unique_name`) and `trash.h` (`trash_move`, `trash_restore`,
 > `trash_purge`, `trash_empty`, `trash_count` — layout `SD:/.Trash/files` + `info/*.trashinfo`

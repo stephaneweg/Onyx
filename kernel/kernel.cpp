@@ -46,6 +46,7 @@ static char g_szNtpServer[64] = "pool.ntp.org";
 // Defined in arch/aarch64/exception.cpp: route kernel panics to this displayed
 // framebuffer so an exception is visible after the compositor takes the screen.
 void SetPanicGraphics (C2DGraphics *p2D);
+C2DGraphics *g_pGraphics = 0;		// the displayed framebuffer (kapi_present_fb)
 
 // Verbose logging flag: when on, the kernel logs app lifecycle events (spawn / exit
 // / orphan kill). Set at boot from SD:system.ini (verbose=1) and toggled at runtime
@@ -224,6 +225,12 @@ public:
 				// An app exited: the debug console owns the display now. Stop
 				// presenting so we don't fight it for the framebuffer.
 				CScheduler::Get ()->MsSleep (100);
+				continue;
+			}
+			if (m_pWM->FullscreenWindow () != 0)
+			{
+				// A full-screen app owns the display (kapi_present_fb): pause.
+				CScheduler::Get ()->MsSleep (16);
 				continue;
 			}
 			GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
@@ -1222,6 +1229,7 @@ boolean CKernel::Initialize (void)
 			// Route kernel panics to the displayed framebuffer (the boot console
 			// stops being scanned out once the compositor takes over).
 			SetPanicGraphics (&m_2DGraphics);
+			g_pGraphics = &m_2DGraphics;
 		}
 	}
 

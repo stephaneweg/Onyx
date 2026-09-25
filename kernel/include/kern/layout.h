@@ -84,6 +84,10 @@
 // the writer app exits.
 #define USER_WALLPAPER_CANVAS	(13ULL * GIGABYTE)	// 0x3_4000_0000
 
+// Full-screen apps (ABI v41 kapi_fullscreen_begin): the kernel-owned, screen-sized
+// back buffer is mapped here; kapi_present_fb puts it on the display.
+#define USER_FULLSCREEN_CANVAS	(15ULL * GIGABYTE)	// 0x3_C000_0000
+
 // Per-process arena for shell-allocated SURFACES (kapi_surface_map). Each surface is
 // bump-allocated a 64 KB-aligned VA window here, in the gap between the wallpaper
 // (13 GB) and the kapi table (14 GB). A surface is shared memory: the same physical

@@ -345,6 +345,17 @@ def icon_shutdown():		# a power symbol
     prect(px, 19, 5, 21, 20, red)
     return px
 
+def icon_plasma():		# colourful plasma waves
+    import math
+    px = blank()
+    for y in range(4, 36):
+        for x in range(4, 36):
+            v = math.sin(x / 4.0) + math.sin(y / 5.0) + math.sin((x + y) / 6.0)
+            r = int(128 + 127 * math.sin(v * 1.6)); g = int(128 + 127 * math.sin(v * 1.6 + 2.1)); b = int(128 + 127 * math.sin(v * 1.6 + 4.2))
+            pset(px, x, y, (r, g, b))
+    pframe(px, 4, 4, 35, 35, (60, 60, 70))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -355,7 +366,7 @@ ICONS = {
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
-    "notifyd": icon_notifyd, "shutdown": icon_shutdown,
+    "notifyd": icon_notifyd, "shutdown": icon_shutdown, "plasma": icon_plasma,
 }
 
 

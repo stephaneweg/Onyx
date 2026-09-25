@@ -59,6 +59,9 @@ int kapi_clipboard_set (int, const void *, unsigned);
 int kapi_clipboard_get (int *, void *, unsigned, unsigned *);
 void kapi_set_window_alpha (int);
 void kapi_shutdown (int);
+unsigned *kapi_fullscreen_begin (int *, int *);
+void kapi_present_fb (void);
+void kapi_fullscreen_end (void);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -273,4 +276,8 @@ void KApiTableInit (void)
 	t->clipboard_get     = kapi_clipboard_get;
 	t->set_window_alpha  = kapi_set_window_alpha;
 	t->shutdown          = kapi_shutdown;
+
+	t->fullscreen_begin  = kapi_fullscreen_begin;
+	t->present_fb        = kapi_present_fb;
+	t->fullscreen_end    = kapi_fullscreen_end;
 }

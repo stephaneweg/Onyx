@@ -31,6 +31,7 @@
 #include <circle/memory.h>		// CMemorySystem (meminfo)
 #include <circle/machineinfo.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
 #include <circle/actled.h>		// kapi_shutdown: LED off
+#include <circle/2dgraphics.h>		// kapi_present_fb
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -394,6 +395,11 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 	if (pWM == 0 || pDst == 0 || nW != g_nScreenWidth || nH != g_nScreenHeight)
 	{
 		return 0;
+	}
+	if (pWM->FullscreenWindow () != 0 && pWM->FullscreenBuffer () != 0)
+	{
+		memcpy (pDst, pWM->FullscreenBuffer (), (size_t) nW * nH * 4);	// what is shown
+		return 1;
 	}
 	GImage Screen ((u32 *) pDst, nW, nH);
 	pWM->Composite (&Screen, FALSE);
@@ -1668,6 +1674,72 @@ void kapi_set_window_alpha (int nAlpha)
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
 	if (pWin != 0) pWin->SetAlpha (nAlpha);
+}
+
+// --- v41: full-screen apps --------------------------------------------------------
+extern C2DGraphics *g_pGraphics;
+
+// Take the whole screen: returns the VA of a screen-sized 0x00RRGGBB back buffer (+ its
+// size); the compositor stops drawing and all input goes to the caller's window (made
+// if it has none; moved to 0,0, so pointer coordinates are screen coordinates). Draw,
+// then kapi_present_fb. 0 on failure.
+unsigned *kapi_fullscreen_begin (int *pW, int *pH)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pAS == 0 || pWM == 0 || g_pGraphics == 0)
+	{
+		return 0;
+	}
+	if (pAS->GetWindow () == 0 && CreateWindow (0, 0, 64, 64, "fullscreen", WIN_FLAG_BORDERLESS) == 0)
+	{
+		return 0;
+	}
+	u64 ulPhys = 0; unsigned nPages = 0;
+	if (pWM->EnsureFullscreenBuffer (g_nScreenWidth, g_nScreenHeight, &ulPhys, &nPages) == 0)
+	{
+		return 0;
+	}
+	pAS->MapContig (USER_FULLSCREEN_CANVAS, ulPhys, nPages, KPAGE_ATTR_APP_DATA);
+	CWindow *pWin = pAS->GetWindow ();
+	pWin->Move (0, 0);
+	memset ((void *) ulPhys, 0, (size_t) g_nScreenWidth * g_nScreenHeight * 4);
+	pWM->SetFullscreen (pWin);
+	if (pW != 0) *pW = g_nScreenWidth;
+	if (pH != 0) *pH = g_nScreenHeight;
+	return (unsigned *) USER_FULLSCREEN_CANVAS;
+}
+
+// Show the full-screen back buffer (copy to the framebuffer + present), then yield.
+void kapi_present_fb (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pAS != 0 && pWM != 0 && g_pGraphics != 0 && pWM->FullscreenWindow () != 0
+	    && pWM->FullscreenWindow () == pAS->GetWindow () && pWM->FullscreenBuffer () != 0)
+	{
+		unsigned nW = g_pGraphics->GetWidth (), nH = g_pGraphics->GetHeight ();
+		if ((int) nW == g_nScreenWidth && (int) nH == g_nScreenHeight)
+		{
+			memcpy (g_pGraphics->GetBuffer (), pWM->FullscreenBuffer (), (size_t) nW * nH * 4);
+		}
+		g_pGraphics->UpdateDisplay ();
+	}
+	if (CScheduler::IsActive ())
+	{
+		CScheduler::Get ()->Yield ();
+	}
+}
+
+// Give the screen back to the desktop (also automatic when the app exits).
+void kapi_fullscreen_end (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pAS != 0 && pWM != 0 && pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ())
+	{
+		pWM->SetFullscreen (0);
+	}
 }
 
 // End the session: unmount the SD card (flushes FatFs), then restart (mode 1) or

@@ -282,6 +282,7 @@ CWindowManager::CWindowManager (void)
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
 	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2),
 	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0),
+	m_pFullscreen (0), m_pFsRaw (0), m_ulFsPhys (0), m_nFsPages (0),
 	m_pMenuLast (0), m_nMenuLastGen (0), m_nMenuSerial (1)
 {
 	assert (s_pThis == 0);
@@ -331,6 +332,7 @@ void CWindowManager::Remove (CWindow *pWindow)
 	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
 	if (m_pPtrOverWindow == pWindow)	{ m_pPtrOverWindow = 0; }
 	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
+	if (m_pFullscreen == pWindow)		{ m_pFullscreen = 0; }	// its app quit: desktop back
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		if (m_pWindows[i] == pWindow)
@@ -389,8 +391,39 @@ CWindow *CWindowManager::ActiveLocked (void)
 	return 0;
 }
 
+void CWindowManager::SetFullscreen (CWindow *pWindow)
+{
+	m_SpinLock.Acquire ();
+	m_pFullscreen = pWindow;
+	m_pPtrCaptureWindow = 0;
+	m_pPtrOverWindow = 0;
+	m_pDragWindow = 0;
+	m_SpinLock.Release ();
+}
+
+u32 *CWindowManager::EnsureFullscreenBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages)
+{
+	if (m_pFsRaw == 0)
+	{
+		unsigned nBytes = (unsigned) (nW * nH) * sizeof (u32);
+		m_nFsPages = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
+		if (m_nFsPages == 0) m_nFsPages = 1;
+		m_pFsRaw = new u8[m_nFsPages * KPAGE_SIZE + KPAGE_SIZE];
+		if (m_pFsRaw == 0) { m_nFsPages = 0; return 0; }
+		m_ulFsPhys = ((uintptr) m_pFsRaw + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
+		memset ((void *) m_ulFsPhys, 0, m_nFsPages * KPAGE_SIZE);
+	}
+	if (pPhys)   *pPhys   = m_ulFsPhys;
+	if (pnPages) *pnPages = m_nFsPages;
+	return (u32 *) m_ulFsPhys;
+}
+
 CWindow *CWindowManager::KeyTargetLocked (void)
 {
+	if (m_pFullscreen != 0)
+	{
+		return m_pFullscreen;			// a full-screen app gets every key
+	}
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
 		if (m_pWindows[i] != 0 && !m_pWindows[i]->Topmost ())
@@ -771,7 +804,13 @@ void CWindowManager::OnMouseWheel (int x, int y, int nWheel)
 	if (y < 0) y = 0; else if (y >= g_nScreenHeight) y = g_nScreenHeight - 1;
 
 	m_SpinLock.Acquire ();
-	CWindow *pTarget = m_pPtrCaptureWindow;
+	CWindow *pTarget = m_pFullscreen != 0 ? m_pFullscreen : m_pPtrCaptureWindow;
+	if (pTarget == m_pFullscreen && pTarget != 0)
+	{
+		EmitPointer (pTarget, GUI_EVENT_PTR_WHEEL, x, y, m_nLastButtons, 0, nWheel * m_nWheelSpeed);
+		m_SpinLock.Release ();
+		return;
+	}
 	if (pTarget == 0)
 	{
 		boolean bOnTitle = FALSE;
@@ -852,6 +891,22 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	m_SpinLock.Acquire ();
 	m_nMouseEvents++;
 	m_nCursorX = x; m_nCursorY = y; m_bCursorShown = TRUE;
+
+	if (m_pFullscreen != 0)
+	{
+		// Full-screen app: the whole pointer stream goes to it, in screen coordinates.
+		CWindow *pFs = m_pFullscreen;
+		for (unsigned b = 1; b <= 4; b <<= 1)
+		{
+			boolean now = (nButtons & b) != 0, was = (m_nLastButtons & b) != 0;
+			if (now && !was)      EmitPointer (pFs, GUI_EVENT_PTR_DOWN, x, y, nButtons, b);
+			else if (!now && was) EmitPointer (pFs, GUI_EVENT_PTR_UP, x, y, nButtons, b);
+		}
+		if (x != m_nPrevX || y != m_nPrevY) EmitPointer (pFs, GUI_EVENT_PTR_MOVE, x, y, nButtons, 0);
+		m_nPrevX = x; m_nPrevY = y; m_nLastButtons = nButtons;
+		m_SpinLock.Release ();
+		return;
+	}
 
 	boolean bLeftNow = (nButtons & 1) != 0;
 	boolean bLeftWas = (m_nLastButtons & 1) != 0;

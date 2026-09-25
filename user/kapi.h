@@ -229,6 +229,13 @@ static inline void kapi_set_window_alpha (int a) { KT->set_window_alpha (a); }
 #define SHUTDOWN_RESTART	1
 static inline void kapi_shutdown (int mode) { KT->shutdown (mode); }
 
+// Full-screen apps (ABI v41): fullscreen_begin -> a screen-sized 0x00RRGGBB back buffer
+// (w/h filled); the desktop stops drawing and all input (screen coords) comes to you.
+// Draw, present_fb to show it; fullscreen_end (or exiting) gives the desktop back.
+static inline unsigned *kapi_fullscreen_begin (int *w, int *h) { return KT->fullscreen_begin (w, h); }
+static inline void kapi_present_fb (void) { KT->present_fb (); }
+static inline void kapi_fullscreen_end (void) { KT->fullscreen_end (); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }

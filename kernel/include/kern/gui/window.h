@@ -345,6 +345,15 @@ public:
 	// bar); window auto-placement and title-bar drags keep clear of it.
 	int TopInset (void);
 
+	// ---- full-screen apps (ABI v41) ---------------------------------------
+	// While a window is full-screen, the compositor stops drawing (the app presents
+	// its own buffer) and ALL pointer / key input goes to that window (screen
+	// coordinates; the window sits at 0,0). Cleared by SetFullscreen(0) or Remove().
+	void SetFullscreen (CWindow *pWindow);
+	CWindow *FullscreenWindow (void) const	{ return m_pFullscreen; }
+	u32 *EnsureFullscreenBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages);
+	u32 *FullscreenBuffer (void) const	{ return (u32 *) m_ulFsPhys; }
+
 private:
 	// Hit-test top-down; returns the topmost window containing (x,y) and whether the
 	// hit landed on its title bar. Caller must hold m_SpinLock. Returns ~0u if none.
@@ -396,6 +405,11 @@ private:
 	volatile unsigned m_nFrames;		// composited frames (watchdog)
 	volatile unsigned m_nMouseEvents;	// OnMouse calls (watchdog)
 	volatile unsigned m_nKeyEvents;		// OnKey calls (watchdog)
+
+	CWindow	  * volatile m_pFullscreen;	// full-screen window, or 0
+	u8	  *m_pFsRaw;		// full-screen back buffer (kernel-owned, 64 KB aligned)
+	u64	   m_ulFsPhys;
+	unsigned   m_nFsPages;
 
 	CWindow	  *m_pMenuLast;		// active window at the last GetActiveMenu
 	unsigned   m_nMenuLastGen;	// ... and its MenuGen

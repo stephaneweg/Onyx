@@ -599,6 +599,10 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 
 ### Demos (technical examples)
 
+**plasma** — a full-screen plasma animation (the demo of full-screen apps): the desktop
+disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings it back.
+
+
 | Demo | Shows |
 |---|---|
 | **demoA** | Bouncing box (direct framebuffer access + file reading). |

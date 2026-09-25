@@ -31,7 +31,8 @@
 // v39: + set_menu/get_menu/menu_command -- system menu bar (menubar app).
 // v40: + ipc_register/ipc_lookup (named services, 512-byte messages), clipboard_set/get,
 //      set_window_alpha (fades), shutdown (restart / halt).
-#define KAPI_ABI_VERSION	40
+// v41: + fullscreen_begin/present_fb/fullscreen_end -- full-screen apps.
+#define KAPI_ABI_VERSION	41
 
 #ifdef __cplusplus
 extern "C" {
@@ -394,6 +395,16 @@ struct TKApiTable
 	int  (*clipboard_get) (int *type, void *buf, unsigned cap, unsigned *serial);
 	void (*set_window_alpha) (int alpha);
 	void (*shutdown) (int mode);
+
+	// --- v41 additions (full-screen apps) ---
+	// fullscreen_begin: the caller takes the whole screen; returns a screen-sized
+	// 0x00RRGGBB back buffer (+ w/h) mapped in the app; the compositor stops drawing
+	// windows and all pointer (screen coords) / key input goes to the caller.
+	// present_fb: show the back buffer (copy to the framebuffer) and yield.
+	// fullscreen_end: give the screen back (automatic when the app exits).
+	unsigned *(*fullscreen_begin) (int *w, int *h);
+	void      (*present_fb) (void);
+	void      (*fullscreen_end) (void);
 };
 
 #ifdef __cplusplus
