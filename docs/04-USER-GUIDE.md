@@ -204,12 +204,15 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
 
 ### The app list (`applist`)
 
-Clicking the "apps" button opens a **scrolling grid** of **all** the installed
-applications (any `SD:apps/<name>.app/` folder). Click an icon to **launch** the app;
-the list then closes. Use the scrollbar if the grid overflows.
+Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
+the installed applications (any `SD:apps/<name>.app/` folder, except the shell components
+`panel`, `applist`, `shell` and `menubar`). It opens **right next to the panel**, beside
+the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
+below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
+scrollbar (or the wheel) if the grid overflows.
 
 ![App list](../screenshots/applist.png)
-*The app list (scrolling grid, opened from the panel's "apps" button).*
+*The app list (square, 6-column grid, opened beside the panel's "apps" button).*
 
 ### Launching, closing, switching
 

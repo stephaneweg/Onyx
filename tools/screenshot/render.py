@@ -500,13 +500,13 @@ def app_eyes():
     return cv
 
 def app_applist():
-    W, H = 240, 460; cv = Canvas(W, H, C(0x141C26))
-    COLS, LX, VIEW_Y, SB_W, CELLH = 3, 6, 28, 14, 70
+    W, H = 444, 444; cv = Canvas(W, H, C(0x141C26))      # square, 6 columns, sorted
+    COLS, LX, VIEW_Y, SB_W, CELLH = 6, 6, 28, 14, 70
     CELLW = (W - SB_W - 4 - LX) // COLS
     cv.text(LX + 2, 6, "Applications", C(0xFFFFFF))
-    names = ["2048","calendar","demoA","eyes","filer","inidemo","life","mandelbrot",
-             "minesweeper","paint","pong","same","sheet","snake","sokoban","taskman",
-             "terminal","tetris","tinycalc","tinypad","voronoy"]
+    hidden = {"panel", "applist", "shell", "menubar"}
+    names = sorted((d[:-4] for d in os.listdir(os.path.join(SD, "apps"))
+                    if d.endswith(".app") and d[:-4] not in hidden), key=str.lower)
     vis_rows = (H - VIEW_Y - 6) // CELLH
     for i, name in enumerate(names):
         row, col = i // COLS, i % COLS

@@ -10,16 +10,18 @@
 
 using namespace wtk;
 
-#define W		240
-#define H		460
+#define W		444			// square: 6 columns of 70 px + margins + scrollbar
+#define H		444
 #define MAXAPPS		96		// (was 32: newer apps past it were silently dropped)
-#define COLS		3
+#define COLS		6
 #define LX		6			// grid left margin
 #define VIEW_Y		28			// grid viewport top
 #define SB_W		14			// scrollbar width
 #define CELLW		((W - SB_W - 4 - LX) / COLS)
 #define CELLH		70
 #define BAR		60			// must match the panel's bar thickness
+#define MENUBAR_H	24			// keep clear of the system menu bar at the top
+#define GAP		6			// space between the panel and the popup
 #define OFFSCREEN	(W + 64)		// park hidden icons here (clipped away)
 
 static char       g_names[MAXAPPS][24];
@@ -93,14 +95,29 @@ static void add_apps (Root &root)
 
 int main (void)
 {
-	// Centred on screen. (Was anchored next to the panel bar; the shell launches it now,
-	// independent of panel -- it just opens in the middle of the display.)
+	// Open right next to the panel, beside its "apps" button: the panel's edge comes from
+	// its config.ini (position 1 left / 2 top / 3 right / 4 bottom), and along that edge
+	// we align on the pointer -- it is on the button that just launched us.
 	int sw = 800, sh = 600;
 	kapi_screen_size (&sw, &sh);
 	if (sw < 320) sw = 800;
 	if (sh < 240) sh = 600;
-	int x0 = (sw - W) / 2; if (x0 < 4) x0 = 4;
-	int y0 = (sh - H) / 2; if (y0 < 4) y0 = 4;
+	int pos = 3;
+	if (app_ini_load_path ("SD:apps/panel.app/config.ini")) pos = app_ini_get_int (0, "position", 3);
+	int cx = sw / 2, cy = sh / 2;
+	kapi_cursor_pos (&cx, &cy);
+	int x0, y0;
+	switch (pos)
+	{
+	case 1:  x0 = 2 + BAR + GAP;            y0 = cy - 24; break;	// panel on the left
+	case 2:  x0 = cx - 24;                  y0 = 2 + BAR + GAP; break;	// top
+	case 4:  x0 = cx - 24;                  y0 = sh - 2 - BAR - GAP - H; break;	// bottom
+	default: x0 = sw - 2 - BAR - GAP - W;   y0 = cy - 24; break;	// right (default)
+	}
+	if (x0 > sw - W - 4) x0 = sw - W - 4;
+	if (x0 < 4) x0 = 4;
+	if (y0 > sh - H - 4) y0 = sh - H - 4;
+	if (y0 < MENUBAR_H) y0 = MENUBAR_H;
 
 	Root root (x0, y0, W, H, "applist", WIN_FLAG_BORDERLESS);
 	if (root.canvas.px == 0) return 1;
