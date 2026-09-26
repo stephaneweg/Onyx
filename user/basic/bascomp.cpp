@@ -859,7 +859,7 @@ public:
 		const PDecl &d = pdecls[pi];
 		int argc = 0;
 		bool open = parens ? acceptOp ('(') : false;
-		bool hasArgs = open ? !isOp (')') : !endOfStmt ();
+		bool hasArgs = open ? !isOp (')') : !parens && !endOfStmt ();	// (in an expression: no '(' = no arguments)
 		if (hasArgs)
 			for (;;)
 			{

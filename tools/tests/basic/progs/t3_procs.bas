@@ -14,6 +14,7 @@ DIM arr(5)
 FOR i = 0 TO 5: arr(i) = i * i: NEXT
 PRINT "sum"; SumArr(arr())
 Counter: Counter
+IF Seven = 7 THEN PRINT "seven"; Seven + 1
 END
 
 SUB Swapper (a, b)
@@ -43,3 +44,7 @@ SUB Counter
   calls = calls + 1
   PRINT "counter"; calls
 END SUB
+' a FUNCTION without parameters, called in an expression
+FUNCTION Seven
+  Seven = 7
+END FUNCTION

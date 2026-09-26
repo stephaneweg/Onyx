@@ -24,7 +24,8 @@ static int h_read (void *f, void *b, unsigned n) { return (int) fread (b, 1, n, 
 static unsigned h_fsize (void *f) { long c = ftell ((FILE *) f); fseek ((FILE *) f, 0, SEEK_END); long n = ftell ((FILE *) f); fseek ((FILE *) f, c, SEEK_SET); return (unsigned) n; }
 static void h_close (void *f) { fclose ((FILE *) f); }
 static unsigned h_ticks (void) { return host_ticks; }
-static void h_msleep (unsigned ms) { host_ticks += ms / 10 + 1; }
+static void (*host_tick_hook) (unsigned ticks) = 0;	// a test's script: keys, screenshots
+static void h_msleep (unsigned ms) { host_ticks += ms / 10 + 1; if (host_tick_hook) host_tick_hook (host_ticks); }
 static int h_fw (void) { return 8; }
 static int h_fh (void) { return 16; }
 static void *h_sbrk (long inc)

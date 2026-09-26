@@ -787,7 +787,11 @@ Onyx has a **BASIC in the style of QBasic**: the **QBasic** editor (`qbasic`, ca
 *Productivity*), the runtime **`/bin/basic`**, and apps written in BASIC. Programs are
 compiled to bytecode and run by a small virtual machine. The full list of keywords is in
 **Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`); examples are in `SD:/basic/examples`
-(**File ▸ Examples...**).
+(**File ▸ Examples...**): `hello`, `guess`, `subs`, `files`, `graphics`, `gui` and
+**`arkanoid.bas`**, a full brick breaker in `SCREEN 13` shown with `FULLSCREEN` (arrows or
+the mouse move the paddle, Space / click launches and fires, P pause, F full screen on /
+off, Esc title / quit; capsules E expand, S slow, C catch, L laser, D three balls, P a life;
+it reads and writes no file).
 
 ### The editor (`qbasic`)
 

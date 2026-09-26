@@ -42,6 +42,20 @@ static void wtkText (unsigned *d, int w, int h, int x, int y, const char *s, uns
 			if ((g[r] << i) & 0x80) { int px = x + i, py = y + r; if (px >= 0 && py >= 0 && px < w && py < h) d[py * w + px] = c; }
 	}
 }
+// A scripted game session (arkanoid.bas): at given times press keys, hold keys, take shots.
+struct Step { unsigned t; int key; int held; int down; const char *shot; };
+static const Step *g_script = 0; static unsigned g_t0 = 0; static int g_step = 0;
+static void savePage (OnyxHost &h, const char *name);
+static void scriptTick (unsigned ticks)
+{
+	while (g_script && g_script[g_step].t && ticks - g_t0 >= g_script[g_step].t)
+	{
+		const Step &s = g_script[g_step++];
+		if (s.key && g_host->root) g_host->root->onKey (s.key);
+		if (s.held) host_held[s.held] = s.down;
+		if (s.shot) savePage (*g_host, s.shot);
+	}
+}
 static void savePage (OnyxHost &h, const char *name)
 {
 	char p[256]; snprintf (p, sizeof p, "%s/%s.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", name);
@@ -272,7 +286,14 @@ int main (int argc, char **argv)
 	printf ("rtf: save %d bytes, reload %s\n", m, same ? "identical" : "DIFFERENT");
 #elif defined GAME_BASICRT
 	host_text_hook = wtkText; setvbuf (stdout, 0, _IONBF, 0); printf ("start\n");
-	static const char *const progs[] = { "gfx", "gfx12", "fs", 0 };
+	static const char *const progs[] = { "gfx", "gfx12", "fs", "../../../../sdcard/basic/examples/arkanoid", 0 };
+	static const Step ark[] = {		// (ticks = 1/100 s from the start)
+		{ 150, 0, 0, 0, "ark_title" }, { 200, ' ', 0, 0, 0 }, { 300, 0, 0, 0, "ark_ready" },
+		{ 420, ' ', 0, 0, 0 }, { 430, 0, KEY_RIGHT, 1, 0 }, { 470, 0, KEY_RIGHT, 0, 0 },
+		{ 600, 0, 0, 0, "ark_play1" }, { 900, 0, KEY_LEFT, 1, 0 }, { 960, 0, KEY_LEFT, 0, 0 },
+		{ 1200, 0, 0, 0, "ark_play2" }, { 1400, 'p', 0, 0, 0 }, { 1450, 0, 0, 0, "ark_pause" },
+		{ 1500, 'p', 0, 0, 0 }, { 2500, 0, 0, 0, "ark_play3" },
+		{ 3000, 27, 0, 0, 0 }, { 3100, 27, 0, 0, 0 }, { 0, 0, 0, 0, 0 } };
 	for (int k = 0; progs[k]; k++)
 	{
 		char fp[512]; snprintf (fp, sizeof fp, "%s/../tools/tests/basic/rt/%s.bas", argc > 1 ? argv[1] : "sdcard", progs[k]);
@@ -283,15 +304,18 @@ int main (int argc, char **argv)
 		bas::Program *pr = bas::compile (src, &e);
 		if (!pr) { printf ("%s: compile error line %d: %s\n", progs[k], e.line, e.msg); continue; }
 		h->windowCmd = true;				// (no "press any key" at the end)
+		const char *base = strrchr (progs[k], '/') ? strrchr (progs[k], '/') + 1 : progs[k];
+		if (!strcmp (base, "arkanoid")) { g_script = ark; g_step = 0; g_t0 = host_ticks; host_tick_hook = scriptTick; }
+		else host_tick_hook = 0;
 		host_fs = 0;
 		struct Keep : public bas::Host {};
 		int r = bas::run (pr, *h, &e);
 		if (r) printf ("%s: runtime error line %d: %s\n", progs[k], e.line, e.msg);
-		printf ("%s: mode %d %dx%d scale %dx%d\n", progs[k], h->mode, h->W, h->H, h->sx, h->sy);
-		savePage (*h, progs[k]);
+		printf ("%s: mode %d %dx%d scale %dx%d\n", base, h->mode, h->W, h->H, h->sx, h->sy);
+		savePage (*h, base);
 		if (host_fs)
 		{
-			char p[256]; snprintf (p, sizeof p, "%s/%s_fullscreen.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", progs[k]);
+			char p[256]; snprintf (p, sizeof p, "%s/%s_fullscreen.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", base);
 			host_save_ppm (p, host_fs, host_fsw, host_fsh, host_fsw);
 		}
 	}
