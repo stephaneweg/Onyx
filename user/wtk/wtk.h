@@ -30,6 +30,7 @@
 #include "wtk/richtextbox.h"
 #include "wtk/icon.h"
 #include "wtk/dropdown.h"
+#include "wtk/combobox.h"
 #include "wtk/colorpick.h"
 #include "wtk/splitter.h"
 #include "wtk/layout.h"

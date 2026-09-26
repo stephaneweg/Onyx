@@ -255,6 +255,8 @@ Notes / caveats:
 > / `RENAME`, see `user/kapi.h`) with `kapi_vfs_reply (req.id, status, data, len)`; a SAVE's
 > payload is read with `kapi_vfs_req_data`. Example: `user/bin/ftpfs.cpp` (FTP / FTPS). The
 > ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
+> `ftpfs.h`: `ftpfs_login` / `ftpfs_login_site` (hand a login to ftpfs, optionally
+> remembered), `ftpfs_forget`, `ftpfs_load_sites` (the remembered servers of `SD:/etc/ftpfs.ini`).
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
 > **WPF-style controls (P5)** — all in `wtk/wtk.h`, see `user/Apps/widgets` for each in use:
@@ -268,6 +270,9 @@ Notes / caveats:
 > `DatePicker (…, y, m, d, cb)` (`format (buf)` → `YYYY-MM-DD`); `ImageBox (…, IMG_FIT /
 > IMG_FILL / IMG_NONE)` — `load (path)` (any `imgload` format) or `setPixels`;
 > `wk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
+> `Combobox (l, t, w, h, text, onEnter, onPick)` — an editable `Textbox` with a drop-down
+> list of suggestions (`addOption`, `clearOptions`, `pick (i)`; arrow click or Down / Up;
+> `onPick` fires with `picked` = the index). Used by the File Viewer's Connect dialog.
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,

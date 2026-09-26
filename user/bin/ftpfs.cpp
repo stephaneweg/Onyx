@@ -26,17 +26,18 @@
 //
 #include "tls/onyx_tls.hpp"
 #include "kapi.h"
+#include "ftpfs.h"			// the remembered-servers file format
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 #define SERVICE		"ftpfs"
-#define MSG_LOGIN	1		// "host\0user\0pass\0"
+#define MSG_LOGIN	1		// "host\0user\0pass\0[port\0tls\0folder\0]"
 #define MSG_LOGIN_SAVE	2		// same, and remember it in CRED_FILE
 #define MSG_FORGET	3		// "host\0": drop it (memory + CRED_FILE)
-#define CRED_FILE	"SD:/etc/ftpfs.ini"
+#define CRED_FILE	FTPFS_SITES_FILE
 #define MAXSRV		4
-#define MAXCRED		8
+#define MAXCRED		FTPFS_MAXSITES
 #define MAXFILES	16
 #define FILE_MAX	(64u * 1024 * 1024)
 
@@ -93,7 +94,7 @@ static int link_read (Link &l, char *buf, int n, unsigned timeout_ticks)
 }
 
 // ---- servers + credentials ------------------------------------------------------------------
-struct Cred { char host[128], user[64], pass[64]; bool saved; };
+struct Cred : ftpfs_site { bool saved; };	// (port / tls / folder: for the Connect dialog)
 static Cred g_cred[MAXCRED]; static int g_ncred = 0;
 
 struct Server
@@ -450,50 +451,35 @@ static int op_simple (int op, const char *path, const char *path2)
 }
 
 // ---- remembered logins (CRED_FILE) -----------------------------------------------------------
-// One "host user hexpass" line per login; hexpass = the password XOR a fixed key, in hex.
-// Obfuscation only (so it is not readable at a glance) -- NOT encryption.
-static const char OBF_KEY[] = "Onyx-ftpfs-v1";
-static void obf_hex (const char *in, char *out)
-{
-	static const char *H = "0123456789abcdef";
-	int k = 0;
-	for (int i = 0; in[i]; i++) { unsigned char c = (unsigned char) in[i] ^ (unsigned char) OBF_KEY[i % (sizeof OBF_KEY - 1)]; out[k++] = H[c >> 4]; out[k++] = H[c & 15]; }
-	out[k] = '\0';
-}
-static void unobf_hex (const char *in, char *out, int cap)
-{
-	int k = 0;
-	for (int i = 0; in[i] && in[i + 1] && k < cap - 1; i += 2)
-	{
-		auto hv = [] (char c) { return c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0'; };
-		out[k] = (char) ((hv (in[i]) << 4 | hv (in[i + 1])) ^ OBF_KEY[k % (sizeof OBF_KEY - 1)]);
-		k++;
-	}
-	out[k] = '\0';
-}
-
+// One line per server, see ftpfs.h: "host user hexpass port tls folder"; hexpass = the
+// password XOR a fixed key, in hex. Obfuscation only (not readable at a glance) -- NOT encryption.
 static void save_creds (void)
 {
-	static char buf[MAXCRED * 400 + 256];
+	static char buf[MAXCRED * 520 + 256];
 	int n = snprintf (buf, sizeof buf, "# ftpfs remembered logins (File Viewer > Connect to Server > Remember password).\n"
-		"# host user password -- the password is OBFUSCATED, NOT ENCRYPTED: keep this card private.\n");
+		"# host user password port tls folder -- the password is OBFUSCATED, NOT ENCRYPTED: keep this card private.\n");
 	for (int i = 0; i < g_ncred; i++)
-	{
-		if (!g_cred[i].saved) continue;
-		char hx[140]; obf_hex (g_cred[i].pass, hx);
-		n += snprintf (buf + n, sizeof buf - n, "%s %s %s\n", g_cred[i].host, g_cred[i].user, hx);
-	}
+		if (g_cred[i].saved) n += ftpfs_format_site (&g_cred[i], buf + n, (int) sizeof buf - n);
 	kapi_save_file (CRED_FILE, buf, (unsigned) n);
 }
 
-static void add_cred (const char *host, const char *user, const char *pass, bool save)
+// A login for host; port / tls / folder only when given (ftpfs_login_site), else kept.
+static void add_cred (const char *host, const char *user, const char *pass, bool save,
+		      const char *port = 0, const char *tls = 0, const char *folder = 0)
 {
 	int i = 0;
 	while (i < g_ncred && strcasecmp (g_cred[i].host, host)) i++;
-	if (i == g_ncred) { if (g_ncred >= MAXCRED) return; g_ncred++; g_cred[i].saved = false; }
+	if (i == g_ncred)
+	{
+		if (g_ncred >= MAXCRED) return;
+		g_ncred++; memset (&g_cred[i], 0, sizeof g_cred[i]);
+	}
 	snprintf (g_cred[i].host, sizeof g_cred[i].host, "%s", host);
 	snprintf (g_cred[i].user, sizeof g_cred[i].user, "%s", user);
 	snprintf (g_cred[i].pass, sizeof g_cred[i].pass, "%s", pass);
+	if (port)   snprintf (g_cred[i].port, sizeof g_cred[i].port, "%s", port);
+	if (tls)    g_cred[i].tls = tls[0] == '1';
+	if (folder) snprintf (g_cred[i].folder, sizeof g_cred[i].folder, "%s", folder);
 	for (int k = 0; k < MAXSRV; k++)				// new credentials: log in again
 		if (g_srv[k].used && !strcasecmp (g_srv[k].host, host)) { link_close (g_srv[k].ctl); g_srv[k].used = false; }
 	if (save || g_cred[i].saved) { g_cred[i].saved = true; save_creds (); }	// (a saved login stays saved)
@@ -513,21 +499,12 @@ static void forget_cred (const char *host)
 
 static void load_creds (void)
 {
-	void *f = kapi_open (CRED_FILE);
-	if (!f) return;
-	static char buf[8192];
-	int n = kapi_read (f, buf, sizeof buf - 1);
-	kapi_close (f);
-	if (n <= 0) return;
-	buf[n] = '\0';
-	for (char *line = strtok (buf, "\r\n"); line; line = strtok (0, "\r\n"))
+	static ftpfs_site sites[MAXCRED];
+	int n = ftpfs_load_sites (sites, MAXCRED);
+	for (int i = 0; i < n && g_ncred < MAXCRED; i++)
 	{
-		if (line[0] == '#' || g_ncred >= MAXCRED) continue;
-		char h[128], u[64], hx[140];
-		if (sscanf (line, "%127s %63s %139s", h, u, hx) != 3) continue;
 		Cred &c = g_cred[g_ncred++];
-		snprintf (c.host, sizeof c.host, "%s", h); snprintf (c.user, sizeof c.user, "%s", u);
-		unobf_hex (hx, c.pass, sizeof c.pass);
+		(ftpfs_site &) c = sites[i];
 		c.saved = true;
 	}
 }
@@ -542,8 +519,11 @@ static void drain_logins (void)
 		mb[n] = '\0';
 		if (type == MSG_FORGET) { forget_cred (mb); continue; }
 		if (type != MSG_LOGIN && type != MSG_LOGIN_SAVE) continue;
-		const char *h = mb, *u = h + strlen (h) + 1, *p = u + strlen (u) + 1;
-		if (p < mb + n) add_cred (h, u, p, type == MSG_LOGIN_SAVE);
+		const char *f[6]; int nf = 0;					// the \0-separated fields
+		for (const char *q = mb; q < mb + n && nf < 6; q += strlen (q) + 1) f[nf++] = q;
+		if (nf < 3) continue;
+		add_cred (f[0], f[1], f[2], type == MSG_LOGIN_SAVE,
+			  nf > 3 ? f[3] : 0, nf > 4 ? f[4] : 0, nf > 5 ? f[5] : 0);
 	}
 }
 

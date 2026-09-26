@@ -506,15 +506,20 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
 - In the **File Viewer**: **Go ▸ Connect to Server…** opens a form — **FTP** or **FTPS
   (TLS)**, **server** (name or IP) and **port**, **user** (empty = anonymous), **password**
   (masked), start **folder**, **Remember password** (checked by default); **Tab** moves
-  between fields, **Enter** (in the password or folder field) connects. The login is handed to `ftpfs` (never put into the path, so the
+  between fields, **Enter** (in the password or folder field) connects. The **server** field
+  is a combo box: type a new server, or click its arrow (or press **Down** / **Up**) to pick a
+  remembered one — protocol, port, user, password and folder are then filled in. **Forget**
+  removes the selected server's remembered login (so does connecting to it with *Remember
+  password* unchecked). The login is handed to `ftpfs` (never put into the path, so the
   Shelf and the path bar never show it). Or `run fileviewer FTP:host/dir`. Then browse, preview (files ≤ 1 MB), open (double-click —
   tinypad, Image Viewer…), drag files between the card and the server (a move across them
   = copy + delete), new folder, rename, delete.
 - **tinypad / Writer / paint** open and **save** `FTP:` files directly; the **Shelf** keeps them.
 - **Logins**: in the path (`FTP:me:secret@host/…`), or once per host with
   `ftpfs login <host> <user> <password> [save]`; otherwise `anonymous`. A login is kept in
-  memory by the running ftpfs; with **Remember password** (or `save`) it is also written to
-  **`SD:/etc/ftpfs.ini`** and reloaded at every start, so FTP and FTPS folders (and the
+  memory by the running ftpfs (one per server); with **Remember password** (or `save`) it is
+  also written to **`SD:/etc/ftpfs.ini`** (one line per server: host, user, password, port,
+  FTPS, folder) and reloaded at every start, so FTP and FTPS folders (and the
   Shelf's remote items) work again after a reboot. `ftpfs forget <host>` removes it.
   The password in that file is only **obfuscated, not encrypted**: anyone with the card can
   recover it (the file is excluded from git).

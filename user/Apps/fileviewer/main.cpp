@@ -535,12 +535,16 @@ static void op_show_sd ()    { show_root ("SD:/"); }
 // folder. The login goes to /bin/ftpfs over IPC ("ftpfs" service, like `ftpfs login`) --
 // never into the path, which the Shelf and the path bar may show or store -- then the
 // folder opens as FTP[S]:host[:port]/folder (ABI v44 file-system provider).
+static void connect_picked (Widget &w);
 class ConnectDialog : public Modal
 {
 public:
 	RadioButton *ftp, *ftps;
-	Textbox *host, *port, *user, *pass, *folder;
+	Combobox *host;
+	Textbox *port, *user, *pass, *folder;
 	Checkbox *remember;
+	Button *forget;
+	ftpfs_site sites[FTPFS_MAXSITES]; int nsites;
 	ConnectDialog () : Modal (400, 292)
 	{
 		Root *r = Root::current ();
@@ -550,26 +554,67 @@ public:
 		for (int i = 0; i < 5; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE_DN));
 		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE_DN); addChild (ftp);
 		ftps = new RadioButton (fx + 90, y, 180, 24, "FTPS (TLS)", 1, false, 0, C_FACE_DN); addChild (ftps);
-		host   = new Textbox (fx, y + rh,     190, 26, "");
+		host   = new Combobox (fx, y + rh, 190, 26, "", 0, connect_picked);
 		addChild (new Label (fx + 198, y + rh + 4, 36, 20, "Port", C_TEXT, C_FACE_DN));
 		port   = new Textbox (fx + 238, y + rh, width - fx - 250, 26, "21");
 		user   = new Textbox (fx, y + 2 * rh, width - fx - 12, 26, "");
 		pass   = new Textbox (fx, y + 3 * rh, width - fx - 12, 26, "", dlg_enter);
 		pass->password = true;
 		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
-		addChild (host); addChild (port); addChild (user); addChild (pass); addChild (folder);
+		addChild (port); addChild (user); addChild (pass); addChild (folder);
 		remember = new Checkbox (fx, y + 5 * rh, width - fx - 12, 24, "Remember password", true, 0, C_FACE_DN);
 		remember->tip = "Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots";
 		addChild (remember);
-		host->tip = "A name (ftp.example.com) or an IP address";
+		host->tip = "A name (ftp.example.com) or an IP address; the arrow lists the remembered servers";
 		user->tip = "Empty = anonymous";
 		ftps->tip = "Explicit TLS on port 21 (AUTH TLS); implicit TLS on port 990";
 		Button *b;
+		forget = new Button (12, height - 38, 98, 28, "Forget", dlg_btn); forget->tag = 2;
+		forget->tip = "Forget the remembered login of this server";
+		addChild (forget);
 		b = new Button (width - 196, height - 38, 98, 28, "Connect", dlg_btn); b->tag = 1; addChild (b);
 		b = new Button (width - 92,  height - 38, 82, 28, "Cancel",  dlg_btn); b->tag = 0; addChild (b);
+		addChild (host);					// last: its list opens over the fields below
+		reload ();
 		host->setFocus ();
 	}
-	void onButton (int tag) override { close (tag); }
+	void reload ()
+	{
+		nsites = ftpfs_load_sites (sites, FTPFS_MAXSITES);
+		host->clearOptions ();
+		for (int i = 0; i < nsites; i++) host->addOption (sites[i].host);
+		forget->disabled = nsites == 0; forget->invalidate (true);
+	}
+	int saved (const char *h)
+	{
+		for (int i = 0; i < nsites; i++) if (ci_cmp (sites[i].host, h) == 0) return i;
+		return -1;
+	}
+	void fill (int i)					// a remembered server: pre-fill the form
+	{
+		if (i < 0 || i >= nsites) return;
+		const ftpfs_site &st = sites[i];
+		if (st.tls) ftps->select (); else ftp->select ();
+		port->setText (st.port[0] ? st.port : "21");
+		user->setText (st.user); pass->setText (st.pass);
+		folder->setText (st.folder[0] ? st.folder : "/");
+		remember->checked = true; remember->invalidate (true);
+		invalidate (true);
+	}
+	void onButton (int tag) override
+	{
+		if (tag != 2) { close (tag); return; }
+		int i = saved (host->text);
+		if (i < 0) { wk_messagebox ("Forget", "This server is not remembered.", MB_OK); return; }
+		if (!wk_messagebox ("Forget", "Forget the remembered login of this server?", MB_YESNO)) return;
+		ftpfs_forget (sites[i].host);
+		sites[i] = sites[--nsites];				// (ftpfs rewrites the file: update the list here)
+		host->clearOptions ();
+		for (int k = 0; k < nsites; k++) host->addOption (sites[k].host);
+		forget->disabled = nsites == 0; forget->invalidate (true);
+		pass->setText ("");
+		invalidate (true);
+	}
 	bool onKey (long k) override
 	{
 		if (k == 27) { close (0); return true; }
@@ -592,6 +637,11 @@ public:
 		canvas.text (8, 4, "Connect to Server", C_TEXT);
 	}
 };
+static void connect_picked (Widget &w)
+{
+	Combobox &cb = (Combobox &) w;
+	((ConnectDialog *) w.parent)->fill (cb.picked);
+}
 
 static void op_connect ()
 {
@@ -601,13 +651,23 @@ static void op_connect ()
 	dlg.host->setText (lastHost); dlg.user->setText (lastUser); dlg.port->setText (lastPort);
 	dlg.folder->setText (lastFolder);
 	if (lastTls) dlg.ftps->select (); else dlg.ftp->select ();
+	if (lastHost[0] == '\0' && dlg.nsites > 0) dlg.host->pick (0);	// first time: the first remembered server
+	else { int i = dlg.saved (lastHost); if (i >= 0) dlg.pass->setText (dlg.sites[i].pass); }
 	dlg.host->setFocus ();
 	if (!dlg.run () || dlg.host->text[0] == '\0') return;
 	scopy (lastHost, dlg.host->text, sizeof lastHost); scopy (lastUser, dlg.user->text, sizeof lastUser);
 	scopy (lastPort, dlg.port->text, sizeof lastPort); scopy (lastFolder, dlg.folder->text, sizeof lastFolder);
 	lastTls = dlg.ftps->checked;
 
-	if (dlg.user->text[0] && !ftpfs_login (dlg.host->text, dlg.user->text, dlg.pass->text, dlg.remember->checked))
+	// Hand the login to ftpfs. Remember = saved with the port / FTPS / folder (the list
+	// pre-fills the form next time); unchecked on a remembered server = forget it.
+	ftpfs_site st;
+	scopy (st.host, dlg.host->text, sizeof st.host); scopy (st.user, dlg.user->text, sizeof st.user);
+	scopy (st.pass, dlg.pass->text, sizeof st.pass); scopy (st.port, lastPort, sizeof st.port);
+	scopy (st.folder, lastFolder, sizeof st.folder); st.tls = lastTls ? 1 : 0;
+	bool remember = dlg.remember->checked, wasSaved = dlg.saved (st.host) >= 0;
+	if (!remember && wasSaved) ftpfs_forget (st.host);
+	if ((remember || st.user[0]) && !ftpfs_login_site (&st, remember ? 1 : 0))
 	{ status ("Cannot start /bin/ftpfs"); return; }
 	char addr[200];
 	scopy (addr, lastTls ? "FTPS:" : "FTP:", sizeof addr);
