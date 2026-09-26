@@ -267,6 +267,25 @@ Notes / caveats:
 > `kapi_sound_start (voice, milliHz, SOUND_FM, volume)` / `kapi_sound_stop (voice)`. The FM Song
 > formats (.FMS / .FMI) and their conversion are in `user/Apps/fmtracker/fms.h` (portable;
 > host tests: `sh tools/tests/run_fms_test.sh`).
+> **Held keys (ABI v48)**: key events only report presses; an action game polls
+> `kapi_key_held (KEY_LEFT)` (also `KEY_RIGHT/UP/DOWN`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` = the
+> US position of the key, `'0'..'9'`) every frame — 1 while held and your window has the
+> keyboard (USB keyboard and VNC). Returns 0 on an older kernel.
+> **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
+> `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
+> sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
+> `sfx_win` / `sfx_lose`, `sfx_set_mute`; the output is acquired on first use), `rng` / `rng_n`,
+> text helpers (`gtext`, `gtext_c` centred with a shadow, `gitoa`, `gcat`). Cards
+> (`user/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
+> victory animation (`win_start` / `win_step`). Used by arkanoid, invaders, pipes, solitaire,
+> freecell. **Host test**: `sh tools/tests/run_games_test.sh [ARKANOID …]` builds each game on
+> the PC against a fake kapi table (`tools/tests/wtkhost/host_kapi.h`: every slot a stub,
+> files from `sdcard/`), plays a scripted scenario (UBSan) and saves real screenshots to
+> `/tmp/onyx_games`.
+> **HTTPS from a wtk app**: wtk apps are freestanding; do the TLS work in a newlib console
+> tool and spawn it with pipes (`kapi_pipe`, `kapi_spawn`, write the request, `kapi_stream_eof`,
+> poll `kapi_stream_read_nb` / `kapi_proc_done` from `Root::onTick`). Example: Lisa +
+> `/bin/groq` (`user/Apps/lisa`, `user/bin/groq.cpp`).
 > **Wi-Fi scan (ABI v45)**: `kapi_wlan_scan (ap, max)` fills `struct kapi_wlan_ap` entries
 > (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
 > it blocks ~3 s. Examples: `user/bin/wifiscan.c`, `wpaconf` (Scan button + Combobox).
@@ -295,7 +314,9 @@ Notes / caveats:
 > Tracker's Ctrl+Up / Down transpose, the text widgets' Shift selection). Inside a key
 > handler, `kapi_get_modifiers` returns the modifiers held **when that key was typed** (the
 > kernel stores them in the key event, taken from the xterm `ESC[1;<m>X` form, which `vncd`
-> also sends), not the live state. F1–F9 are not delivered.
+> also sends), not the live state. F1–F9 are not delivered. Text widgets (`Textbox`,
+> `Textarea`, `RichTextBox`) accept the printable Latin-1 range too (`é è à ç ù €`… = 0xA0–0xFF,
+> as the keymaps produce them).
 > **Text selection**: `Textarea` and `RichTextBox` select with Shift + navigation keys, a
 > mouse drag, Shift+click and ^A; typing replaces the selection. `Textarea` has
 > `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,

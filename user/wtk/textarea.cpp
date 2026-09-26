@@ -240,7 +240,7 @@ bool Textarea::onKey (long k)
 	else if (k == WK_CTRL ('C')) copy ();
 	else if (k == WK_CTRL ('X')) cut ();
 	else if (k == WK_CTRL ('V')) paste ();
-	else if (k >= 32 && k <= 126) { if (!readonly) { deleteSelection (); insertAt ((int) k); } }
+	else if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF)) { if (!readonly) { deleteSelection (); insertAt ((int) k); } }
 	else if (k == KEY_ENTER)     { if (!readonly) { deleteSelection (); insertAt ('\n'); } }
 	else if (k == KEY_TAB)       { if (!readonly) { deleteSelection (); insertAt (' '); insertAt (' '); } }
 	else if (k == KEY_BACKSPACE) { if (!readonly) { if (hasSelection ()) deleteSelection (); else if (caret > 0) { deleteAt (caret - 1); caret--; } } }

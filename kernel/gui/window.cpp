@@ -290,6 +290,7 @@ CWindowManager::CWindowManager (void)
 	m_bDnd (FALSE), m_pDndSrc (0), m_pDndOver (0), m_nModifiers (0)
 {
 	m_DndLabel[0] = '\0';
+	for (unsigned i = 0; i < HELD_WORDS; i++) m_UsbHeld[i] = m_VncHeld[i] = 0;
 	assert (s_pThis == 0);
 	s_pThis = this;
 
@@ -1171,6 +1172,58 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 
 	m_nPrevX = x; m_nPrevY = y; m_nLastButtons = nButtons;
 	m_SpinLock.Release ();
+}
+
+// ---- held keys (ABI v48) ------------------------------------------------------
+// USB HID usage -> logical key (letters by their US-layout position).
+static int UsageToKey (unsigned char u)
+{
+	if (u >= 0x04 && u <= 0x1D) return 'a' + (u - 0x04);
+	if (u >= 0x1E && u <= 0x26) return '1' + (u - 0x1E);
+	switch (u)
+	{
+	case 0x27: return '0';
+	case 0x28: case 0x58: return KEY_ENTER;
+	case 0x29: return 27;
+	case 0x2C: return ' ';
+	case 0x4F: return KEY_RIGHT;
+	case 0x50: return KEY_LEFT;
+	case 0x51: return KEY_DOWN;
+	case 0x52: return KEY_UP;
+	}
+	return 0;
+}
+
+void CWindowManager::SetUsbHeld (const unsigned char RawKeys[6])
+{
+	u32 Held[HELD_WORDS];
+	for (unsigned i = 0; i < HELD_WORDS; i++) Held[i] = 0;
+	for (unsigned i = 0; i < 6; i++)
+	{
+		int k = UsageToKey (RawKeys[i]);
+		if (k > 0 && k < HELD_KEYS) Held[k >> 5] |= 1u << (k & 31);
+	}
+	for (unsigned i = 0; i < HELD_WORDS; i++) m_UsbHeld[i] = Held[i];
+}
+
+void CWindowManager::SetInjectedHeld (int nKey, boolean bDown)
+{
+	if (nKey >= 'A' && nKey <= 'Z') nKey += 'a' - 'A';
+	if (nKey <= 0 || nKey >= HELD_KEYS) return;
+	if (bDown) m_VncHeld[nKey >> 5] |= 1u << (nKey & 31);
+	else       m_VncHeld[nKey >> 5] &= ~(1u << (nKey & 31));
+}
+
+boolean CWindowManager::KeyHeld (int nKey, CWindow *pWin)
+{
+	if (nKey >= 'A' && nKey <= 'Z') nKey += 'a' - 'A';
+	if (nKey == '\n' || nKey == '\r') nKey = KEY_ENTER;
+	if (nKey <= 0 || nKey >= HELD_KEYS || pWin == 0) return FALSE;
+	m_SpinLock.Acquire ();
+	boolean bFocus = KeyTargetLocked () == pWin;
+	m_SpinLock.Release ();
+	if (!bFocus) return FALSE;
+	return ((m_UsbHeld[nKey >> 5] | m_VncHeld[nKey >> 5]) >> (nKey & 31)) & 1 ? TRUE : FALSE;
 }
 
 void CWindowManager::OnKey (const char *pString)

@@ -370,6 +370,80 @@ def icon_basprog():		# a BASIC program (Make App icon): a page with numbered lin
         prect(px, x, 31, x + 1, 33, (255, 255, 85))
     return px
 
+def icon_lisa():		# two chat bubbles: the user's (blue) and Lisa's (green, with a spark)
+    px = blank()
+    prect(px, 3, 5, 26, 20, (70, 110, 200)); pframe(px, 3, 5, 26, 20, (30, 50, 110))
+    for y, x1 in ((10, 20), (14, 16)):
+        prect(px, 7, y, x1, y + 1, (230, 236, 250))
+    prect(px, 8, 21, 11, 24, (70, 110, 200))
+    prect(px, 13, 18, 36, 33, (60, 170, 110)); pframe(px, 13, 18, 36, 33, (20, 90, 50))
+    prect(px, 30, 34, 33, 37, (60, 170, 110))
+    for y, x1 in ((23, 31), (27, 26)):
+        prect(px, 17, y, x1, y + 1, (235, 250, 240))
+    for d in range(-3, 4):					# a little star
+        pset(px, 32 + d, 8, (255, 220, 80)); pset(px, 32, 8 + d, (255, 220, 80))
+    return px
+
+def icon_arkanoid():		# rows of bricks, a ball and the paddle
+    px = blank()
+    prect(px, 2, 2, 37, 37, (16, 24, 56))
+    cols = [(232, 48, 48), (240, 224, 48), (48, 96, 240), (64, 208, 64)]
+    for r, c in enumerate(cols):
+        for i in range(4):
+            prect(px, 4 + i * 8, 5 + r * 5, 4 + i * 8 + 6, 5 + r * 5 + 3, c)
+    pdisc(px, 22, 27, 2, (240, 240, 240))
+    prect(px, 13, 33, 27, 35, (184, 184, 200)); prect(px, 13, 33, 14, 35, (224, 48, 48)); prect(px, 26, 33, 27, 35, (224, 48, 48))
+    return px
+
+def icon_invaders():		# a crab invader over a cannon
+    px = blank()
+    prect(px, 2, 2, 37, 37, (0, 0, 16))
+    crab = ["..#.....#..", "...#...#...", "..#######..", ".##.###.##.", "###########", "#.#######.#", "#.#.....#.#", "...##.##..."]
+    for y, row in enumerate(crab):
+        for x, ch in enumerate(row):
+            if ch == '#':
+                prect(px, 3 + x * 3, 5 + y * 3, 5 + x * 3, 7 + y * 3, (96, 224, 240))
+    prect(px, 18, 32, 21, 33, (64, 255, 64)); prect(px, 14, 34, 25, 36, (64, 255, 64))
+    return px
+
+def icon_pipes():		# pipe pieces with blue water
+    px = blank()
+    prect(px, 2, 2, 37, 37, (96, 108, 120)); pframe(px, 2, 2, 37, 37, (60, 68, 76))
+    grey, dark, water = (168, 176, 184), (40, 44, 48), (64, 160, 255)
+    prect(px, 2, 9, 26, 16, grey); prect(px, 20, 9, 27, 37, grey)
+    prect(px, 2, 11, 24, 14, water); prect(px, 22, 11, 25, 30, water); prect(px, 22, 31, 25, 37, dark)
+    prect(px, 6, 24, 14, 32, (208, 64, 48))
+    return px
+
+def _card(px, x0, y0, red, suit_shape):
+    prect(px, x0, y0, x0 + 17, y0 + 24, (255, 255, 255)); pframe(px, x0, y0, x0 + 17, y0 + 24, (60, 60, 60))
+    col = (208, 24, 24) if red else (16, 16, 16)
+    for y, row in enumerate(suit_shape):
+        for x, ch in enumerate(row):
+            if ch == '#':
+                pset(px, x0 + 4 + x, y0 + 8 + y, col)
+
+HEART = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."]
+SPADE = ["...#...", "..###..", ".#####.", "#######", "##.#.##", "...#..."]
+
+def icon_solitaire():		# a fan of cards on green felt
+    px = blank()
+    prect(px, 2, 4, 37, 35, (32, 120, 48))
+    prect(px, 5, 8, 22, 32, (32, 80, 176)); pframe(px, 5, 8, 22, 32, (255, 255, 255))
+    _card(px, 11, 7, False, SPADE)
+    _card(px, 18, 10, True, HEART)
+    return px
+
+def icon_freecell():		# four free cells over two cards
+    px = blank()
+    prect(px, 2, 4, 37, 35, (32, 120, 48))
+    for i in range(4):
+        pframe(px, 4 + i * 8, 6, 10 + i * 8, 14, (96, 160, 104))
+    _card(px, 6, 13, True, HEART)
+    _card(px, 18, 16, False, SPADE)
+    return px
+
+
 def icon_menubar():		# a screen with a menu bar and an open drop-down
     px = blank()
     prect(px, 3, 6, 36, 33, (32, 64, 96)); pframe(px, 3, 6, 36, 33, (90, 100, 114))
@@ -441,6 +515,8 @@ ICONS = {
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
     "notifyd": icon_notifyd, "shelf": icon_shelf, "widgets": icon_widgets, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
     "qbasic": icon_qbasic, "basicdemo": icon_basprog, "fmtracker": icon_fmtracker,
+    "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
+    "solitaire": icon_solitaire, "freecell": icon_freecell,
 }
 
 

@@ -81,6 +81,8 @@ int  kapi_sound_stop (int);
 int  kapi_sound_write (const short *, unsigned);
 int  kapi_sound_status (unsigned *, unsigned *, unsigned *);
 int  kapi_sound_instrument (int, const struct kapi_fm_instrument *);
+int  kapi_key_held (int);
+void kapi_inject_key_held (int, int);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -323,4 +325,6 @@ void KApiTableInit (void)
 	t->sound_write       = kapi_sound_write;
 	t->sound_status      = kapi_sound_status;
 	t->sound_instrument  = kapi_sound_instrument;
+	t->key_held          = kapi_key_held;
+	t->inject_key_held   = kapi_inject_key_held;
 }

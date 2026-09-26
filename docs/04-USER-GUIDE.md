@@ -437,6 +437,7 @@ the terminal's **current working directory**.
 | `wget` | `wget <url>` | Fetches an HTTP URL (`http://host[:port]/path`) and writes the response body to `stdout` — pipe or redirect it (e.g. `wget http://example.com/ > page.html`). Plain HTTP only (no HTTPS). |
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
+| `groq` | `groq <question…>`, `groq -j < messages.json`, `-c <config>` | Asks a large language model through the **Groq** chat API (HTTPS) and prints the answer — the engine behind **Lisa**. Reads `SD:/apps/lisa.app/config.ini` (`key` = your Groq API key, `model`, `role` = the system prompt, `temperature`, `max_tokens`). `-j`: stdin is a JSON array of `{"role","content"}` messages (a whole conversation). Non-ASCII text is converted between Latin-1 and UTF-8. |
 | `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves one client at a time with its own `cmd` (see §7). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
 | `notifytest` | `notifytest [-t <title>] <message>` | Sends a **notification** (bubble under the menu bar) — handy to test `notifyd` from the terminal or telnet, e.g. `notifytest -t Build "Kernel staged"`. The title defaults to "Test". |
@@ -614,6 +615,9 @@ folder would leave it unmapped. **Adding a layout never needs a kernel rebuild**
 `<NAME>.kmap` in that folder (regenerate them, or seed a custom one, with
 `tools/keymaps/genkeymaps.py`) and use `keyb <NAME>` — it also shows up in the theme dropdown.
 
+Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
+text field and editor.
+
 ## 11. Customizing the appearance
 
 ### The theme editor (`theme`)
@@ -708,6 +712,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **httpc** | A mouse-driven **text web browser** (`http://` and `https://`). Renders the page text with **hyperlinks in blue** (click to follow), and handles simple **forms** (text fields, checkboxes, dropdowns, buttons → GET/POST). Navbar: **<** back, **>** forward, an **address bar** (click to type, Enter or **Go** to load); the right-hand scrollbar (or PgUp/PgDn/arrows) scrolls. Needs the network up (see §3). |
 | **NetSurf** | The **NetSurf** web browser — a full graphical HTML/CSS rendering engine ported to Onyx (no JavaScript). Opens a window and lays out real pages with images. Plain `http://` for now (currently slow). A heavyweight alternative to `httpc`; opt-in build, see `user/netsurf/README.md`. Needs the network up (see §3). |
 | **wpaconf** (Wi-Fi Settings) | Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
+| **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
 | **voronoy** | Wallpaper generator (launched at boot; no window). |
 
 **On a PC**: `tools/fmsplayer/fmsplayer.exe` is an **FM Song player for Windows** built
@@ -728,6 +733,20 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 | **pong** | Two players. Left: `W`/`S`; right: up/down arrows; first to 9; `r`: reset. |
 | **life** | Game of Life. **Click/drag**: (de)populate cells; **Space**: run/pause; `s`: one step; `c`: clear; `r`: random. |
 | **same** | SameGame. **Click** a group of ≥2 same colors to destroy it (collapse); `r`: new board. |
+| **Solitaire** | Klondike. **Drag** cards: the seven columns build down in alternating colours (a king on an empty column), the four foundations up by suit from the ace. **Click the stock** to turn one card (or three: Game ▸ Draw Three); an empty stock turns the waste over again. **Double-click** sends a card to its foundation, **right-click** sends every card that can go. Hidden cards turn over by themselves. **^Z** undo, **^N** deal. Windows scoring + timer; the cards bounce when you win. |
+| **FreeCell** | All the cards face up in eight columns, four **free cells** (top left, one card each), four foundations (top right). **Drag** cards: a column takes a card one lower in the other colour (anything on an empty column); a **run** moves at once when free cells and empty columns allow it. **Double-click**: to the foundation, else to a free cell. Cards no longer needed go home by themselves. **^Z** undo; Game ▸ **Select Game...** plays deal 1–32000 — the same deals as Microsoft FreeCell; Restart Game. |
+| **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
+| **Arkanoid** | Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball. Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **D** three balls, **C** catch the ball (Space releases), **L** extra life. 8 rounds, 3 lives. **P** pause, Game ▸ Sound On / Off. |
+| **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
+
+The new games, rendered by their real drawing code on a PC (`tools/tests/run_games_test.sh`):
+
+| | | |
+|:---:|:---:|:---:|
+| ![Solitaire](../screenshots/solitaire.png) | ![FreeCell](../screenshots/freecell.png) | ![Pipes](../screenshots/pipes.png) |
+| *Solitaire (Klondike)* | *FreeCell — deal #1* | *Pipes* |
+| ![Arkanoid](../screenshots/arkanoid.png) | ![Invaders](../screenshots/invaders.png) | |
+| *Arkanoid* | *Invaders* | |
 
 ### Demos (technical examples)
 

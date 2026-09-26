@@ -1874,4 +1874,18 @@ int  kapi_sound_write (const short *pFrames, unsigned nFrames) { return SoundWri
 int  kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner) { return SoundStatus (pRate, pFree, pOwner); }
 int  kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns) { return SoundInstrument (CallerPid (), nVoice, pIns); }
 
+// --- v48: held keys ---
+int kapi_key_held (int nKey)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	return pWM != 0 && pWM->KeyHeld (nKey, pWin) ? 1 : 0;
+}
+void kapi_inject_key_held (int nKey, int bDown)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM != 0) pWM->SetInjectedHeld (nKey, bDown ? TRUE : FALSE);
+}
+
 }  // extern "C"

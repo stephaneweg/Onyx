@@ -229,8 +229,30 @@ static const char *nav (const char *n, char fin, char modfin)
 	return buf;
 }
 
+// RFB keysym -> the held-key code of kapi_inject_key_held (games), 0 = not tracked.
+static int held_code (unsigned sym)
+{
+	switch (sym)
+	{
+	case 0xFF51: case 0xFF96: return KEY_LEFT;
+	case 0xFF52: case 0xFF97: return KEY_UP;
+	case 0xFF53: case 0xFF98: return KEY_RIGHT;
+	case 0xFF54: case 0xFF99: return KEY_DOWN;
+	case 0xFF0D: case 0xFF8D: return KEY_ENTER;
+	case 0xFF1B: return 27;
+	case 0x20: return ' ';
+	}
+	if (sym >= 'a' && sym <= 'z') return (int) sym;
+	if (sym >= 'A' && sym <= 'Z') return (int) (sym - 'A' + 'a');
+	if (sym >= '0' && sym <= '9') return (int) sym;
+	return 0;
+}
+
 static void key_event (int down, unsigned sym)
 {
+	int hc = held_code (sym);
+	if (hc) kapi_inject_key_held (hc, down);
+
 	// Modifiers: keep our Ctrl (control chars) and tell the kernel (drag & drop copy).
 	unsigned m = 0;
 	if (sym == 0xFFE3 || sym == 0xFFE4) m = MOD_CTRL;			// Control L/R

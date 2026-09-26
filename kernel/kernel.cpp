@@ -632,12 +632,12 @@ private:
 	// USB HID modifier byte: bit0/4 Ctrl, bit1/5 Shift, bit2/6 Alt (left/right).
 	static void KeyRawStub (unsigned char ucModifiers, const unsigned char RawKeys[6])
 	{
-		(void) RawKeys;
 		unsigned nMods = ((ucModifiers & 0x11) ? MOD_CTRL : 0)
 			       | ((ucModifiers & 0x22) ? MOD_SHIFT : 0)
 			       | ((ucModifiers & 0x44) ? MOD_ALT : 0);
 		CWindowManager *pWM = CWindowManager::Get ();
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
+		if (pWM != 0) pWM->SetUsbHeld (RawKeys);	// held keys (games, ABI v48)
 	}
 
 	static void KeyPressedStub (const char *pString)

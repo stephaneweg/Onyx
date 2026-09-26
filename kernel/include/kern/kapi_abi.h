@@ -38,7 +38,8 @@
 // v45: + wlan_scan -- the Wi-Fi access points around.
 // v46: + sound_acquire/release/start/stop/write/status -- audio (synth voices + PCM).
 // v47: + sound_instrument -- 2-operator FM instruments (OPL2 style) on the voices.
-#define KAPI_ABI_VERSION	47
+// v48: + key_held / inject_key_held -- is a key held down (games: move while held).
+#define KAPI_ABI_VERSION	48
 
 #ifdef __cplusplus
 extern "C" {
@@ -526,6 +527,14 @@ struct TKApiTable
 	// SOUND_FM, volume) then keys it on (its envelopes restart), sound_stop keys it off
 	// (the release rate fades it). Owner only (-1 otherwise).
 	int  (*sound_instrument) (int voice, const struct kapi_fm_instrument *ins);
+
+	// --- v48 additions (held keys, for games: key events only say "pressed") ---
+	// key_held: 1 while the key is held down AND the caller's window has the keyboard,
+	// else 0. key = KEY_UP/DOWN/LEFT/RIGHT, KEY_ENTER, 27 (Esc), ' ', 'a'..'z' (the US
+	// position of the key on a USB keyboard), '0'..'9'. inject_key_held: vncd's key down /
+	// up (same codes).
+	int  (*key_held) (int key);
+	void (*inject_key_held) (int key, int down);
 };
 
 #ifdef __cplusplus

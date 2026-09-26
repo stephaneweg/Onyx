@@ -309,6 +309,12 @@ static inline int  kapi_sound_status (unsigned *rate, unsigned *free_frames, uns
 // kapi_sound_stop (voice) keys it off (its release rate fades it out).
 static inline int  kapi_sound_instrument (int voice, const struct kapi_fm_instrument *ins) { return KT->sound_instrument (voice, ins); }
 
+// Held keys (ABI v48), for games (key events only report presses): 1 while `key` is held
+// and this window has the keyboard. key = KEY_UP/DOWN/LEFT/RIGHT, KEY_ENTER, 27 (Esc), ' ',
+// 'a'..'z' (US position of the key on a USB keyboard), '0'..'9'. Returns 0 on an older kernel.
+static inline int  kapi_key_held (int key) { return KT->version >= 48 ? KT->key_held (key) : 0; }
+static inline void kapi_inject_key_held (int key, int down) { if (KT->version >= 48) KT->inject_key_held (key, down); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }

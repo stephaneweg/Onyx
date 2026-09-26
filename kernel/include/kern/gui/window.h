@@ -297,6 +297,9 @@ private:
 	volatile boolean m_bExitRequested;
 };
 
+#define HELD_KEYS	0x110		// logical key codes tracked as "held" (< KEY_DEL + 8)
+#define HELD_WORDS	((HELD_KEYS + 31) / 32)
+
 class CWindowManager
 {
 public:
@@ -368,6 +371,14 @@ public:
 	// Esc cancels. The payload itself is kept by the kapi layer (kapi_drag_data).
 	boolean DragBegin (CWindow *pSrc, const char *pLabel);
 	boolean DragActive (void) const		{ return m_bDnd; }
+
+	// Held keys (ABI v48, for games): logical codes (KEY_* arrows, ' ', Enter, Esc,
+	// 'a'..'z', '0'..'9'). SetUsbHeld: the USB keyboard's raw report (usage codes, which
+	// replace the previous USB set); SetInjectedHeld: vncd's key down / up. KeyHeld: 1 if
+	// held and pWin is the window that has the keyboard.
+	void SetUsbHeld (const unsigned char RawKeys[6]);
+	void SetInjectedHeld (int nKey, boolean bDown);
+	boolean KeyHeld (int nKey, CWindow *pWin);
 
 	// Keyboard modifiers (MOD_*), from the USB keyboard's raw report or vncd.
 	void SetModifiers (unsigned nMods)	{ m_nModifiers = nMods; ScreenDirty (); }
@@ -463,6 +474,9 @@ private:
 	CWindow	  *m_pMenuLast;		// active window at the last GetActiveMenu
 	unsigned   m_nMenuLastGen;	// ... and its MenuGen
 	unsigned   m_nMenuSerial;	// GetActiveMenu change counter
+
+	u32	   m_UsbHeld[HELD_WORDS];	// held keys (bitsets over the logical codes)
+	u32	   m_VncHeld[HELD_WORDS];
 
 	volatile boolean m_bDnd;	// a drag session is in progress
 	CWindow	  *m_pDndSrc;		// its source window

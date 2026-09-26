@@ -49,7 +49,7 @@ bool Textbox::onMouse (int mx, int /*my*/, int bl, int, int, int)
 bool Textbox::onKey (long k)
 {
 	int len = wk_len (text);
-	if (k >= 32 && k <= 126)
+	if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF))	// ASCII + Latin-1 (é è à ç ...)
 	{
 		if (len < 63)
 		{

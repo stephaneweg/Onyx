@@ -585,7 +585,7 @@ bool RichTextBox::onKey (long k)
 {
 	if (disabled) return false;
 	ensureLayout ();
-	if (k >= 32 && k <= 126)     { if (readonly) return true; if (hasSel ()) deleteSelection (); insertChar ((char) k); }
+	if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF)) { if (readonly) return true; if (hasSel ()) deleteSelection (); insertChar ((char) k); }
 	else if (k == KEY_ENTER)     { if (readonly) return true; if (hasSel ()) deleteSelection (); insertChar ('\n'); }
 	else if (k == KEY_TAB)       { if (readonly) return true; if (hasSel ()) deleteSelection (); insertChar (' '); insertChar (' '); }
 	else if (k == KEY_BACKSPACE) { if (readonly) return true; if (hasSel ()) deleteSelection (); else if (caret > 0) { deleteRange (caret - 1, caret); caret--; } }
