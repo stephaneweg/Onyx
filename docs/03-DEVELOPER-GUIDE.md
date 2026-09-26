@@ -706,6 +706,15 @@ barwidth = 40
   scales the visible page (aspect kept; whole-number zoom when it covers >= 85 %).
   `PLAY "MB"` notes go to a 32-note queue that `bgTick ()` plays from `pump ()`;
   `KEYDOWN` maps its key to a `KEY_*` code for `kapi_key_held`.
+- **Compiled programs** (`basbax.cpp`): `saveBax ()` writes a `Program` table by table
+  (little-endian; header "OBAX", the format and the VM's opcode / builtin / statement counts,
+  so a `.bax` from another VM is refused), `loadBax ()` reads it back, `load ()` takes a
+  file's bytes (a `.bax`, else source to compile) -- used by `/bin/basic` (`-c` compiles),
+  `CHAIN`, the PC `obcore.dll` (`ob_compile`, `ob_run` with a length). The kernel's
+  `BasicRedirect` runs `.bax` files and `main.bax` app bundles (before `main.bas`); the File
+  Viewer treats an "OBAX" file as a program. The tests run every program a second time
+  through a `.bax` (`BAX=1`). **Add opcodes / builtins / statements at the end** of their
+  enums: the counts in the header change, old `.bax` files are then refused cleanly.
 - **Methods**: `SUB Type.Name` (the part before the last dot is a TYPE) is a procedure
   `TYPE.NAME` whose first parameter is `THIS`, the record by reference; `fieldPath ()` turns
   an unknown last part of a record path into `Ref.method`, and the call pushes the record's

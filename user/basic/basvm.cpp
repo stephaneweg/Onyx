@@ -2192,8 +2192,11 @@ static char *loadProgram (Host &h, const char *path, int *len)
 	int n = bslen (path), dot = 0;
 	for (int i = 0; i < n; i++) { if (path[i] == '.') dot = 1; if (path[i] == '/' || path[i] == ':') dot = 0; }
 	if (dot) return 0;
-	char p2[260]; bscpy (p2, path, 250); int k = bslen (p2);
+	char p2[260]; bscpy (p2, path, 250); int k = bslen (p2);	// "part2": part2.bas, else part2.bax
 	p2[k++] = '.'; p2[k++] = 'b'; p2[k++] = 'a'; p2[k++] = 's'; p2[k] = 0;
+	char *s = h.load (p2, len);
+	if (s) return s;
+	p2[k - 1] = 'x';
 	return h.load (p2, len);
 }
 
@@ -2223,10 +2226,9 @@ int run (Program *p, Host &host, Error *err)
 				err->line = 0; bscpy (err->msg, "File not found (CHAIN)", sizeof err->msg);
 				r = -1; delete vm; break;
 			}
-			char *z = new char[len + 1]; bmcpy (z, src, len); z[len] = 0; delete [] src;
 			Error e2;
-			Program *np = compile (z, &e2);
-			delete [] z;
+			Program *np = load (src, len, &e2);			// source or .bax
+			delete [] src;
 			if (!np)
 			{
 				*err = e2;

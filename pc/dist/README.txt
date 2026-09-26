@@ -20,7 +20,8 @@ Editor  The program is edited one module at a time -- the main module and each S
         FUNCTION -- as in QBasic: View > SUBs... (F2) lists them, Edit > New SUB... makes
         one (or type "SUB Name" on a line and press Enter). Run > Start (F5) checks the
         syntax then runs the program; an error jumps to its line. Files are saved in
-        Latin-1 with Onyx line ends, so they go to the SD card as they are.
+        Latin-1 with Onyx line ends, so they go to the SD card as they are. Run > Make .bax
+        compiles the program (a .bax runs without being parsed, on Onyx too).
 
 Runtime The program's window has a Program menu (Stop, Restart) and a View menu (Full
         screen, Zoom). FULLSCREEN does nothing on the PC. Ctrl+C or Ctrl+Break stops a

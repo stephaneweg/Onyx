@@ -384,16 +384,32 @@ OBAPI int ob_check (const char *src, int *line, char *msg, int cap)
 // The language's words, space-separated (keywords, then the built-in functions).
 OBAPI int ob_words (char *buf, int cap) { return bas::wordList (buf, cap); }
 
-// Run a program (its source, Latin-1). sd: the folder SD:/ stands for; cwd: the current
-// directory (the program's folder); title: the window's. 0 = ended, 2 = syntax error,
-// 3 = runtime error (line + message).
-OBAPI int ob_run (const char *src, const wchar_t *sd, const wchar_t *cwd, const char *args, const char *title,
+// Compile a source into a .bax file (UTF-16 path): 0 = written, 1 = syntax error (line +
+// message), 2 = cannot write.
+OBAPI int ob_compile (const char *src, const wchar_t *out, int *line, char *msg, int cap)
+{
+	bas::Error e; e.line = 0; e.msg[0] = 0;
+	bas::Program *p = bas::compile (src, &e);
+	if (!p) { setErr (e, line, msg, cap); return 1; }
+	char *bytes; int n = bas::saveBax (p, &bytes);
+	bas::destroy (p);
+	FILE *f = _wfopen (out, L"wb");
+	bool ok = f && fwrite (bytes, 1, (size_t) n, f) == (size_t) n;
+	if (f && fclose (f) != 0) ok = false;
+	delete [] bytes;
+	return ok ? 0 : 2;
+}
+
+// Run a program: its file's bytes (BASIC source in Latin-1, or a .bax). sd: the folder SD:/
+// stands for; cwd: the current directory (the program's folder); title: the window's.
+// 0 = ended, 2 = syntax error (or a bad .bax), 3 = runtime error (line + message).
+OBAPI int ob_run (const char *src, int len, const wchar_t *sd, const wchar_t *cwd, const char *args, const char *title,
 		  const ObCallbacks *cb, int *line, char *msg, int cap)
 {
 	if (line) *line = 0;
 	if (msg && cap > 0) msg[0] = 0;
 	bas::Error e; e.line = 0; e.msg[0] = 0;
-	bas::Program *p = bas::compile (src, &e);
+	bas::Program *p = bas::load (src, len, &e);
 	if (!p) { setErr (e, line, msg, cap); return 2; }
 	PcHost *h = new PcHost;
 	h->cb = *cb;

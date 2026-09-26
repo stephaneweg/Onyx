@@ -8,7 +8,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 BIN=${TMPDIR:-/tmp}/onyx_basic_host
 g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" \
-    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" \
+    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
     "$HERE/basic/host_main.cpp" -o "$BIN"
 cd "$HERE/basic/progs"
 fail=0
@@ -20,4 +20,14 @@ for bas in *.bas; do
 	if [ "$(printf '%s\n' "$out")" = "$(cat "$name.out")" ]; then echo "ok   $name"
 	else echo "FAIL $name"; printf '%s\n' "$out" | diff "$name.out" - | head -20; fail=1; fi
 done
+# the same programs through a .bax (compiled, saved, loaded back): the same output
+if [ "$1" != "--update" ]; then
+	for bas in *.bas; do
+		name=${bas%.bas}
+		if [ -f "$name.in" ]; then out=$(BAX=1 "$BIN" "$bas" cmdarg < "$name.in" 2>&1 || true)
+		else out=$(BAX=1 "$BIN" "$bas" cmdarg < /dev/null 2>&1 || true); fi
+		if [ "$(printf '%s\n' "$out")" = "$(cat "$name.out")" ]; then echo "ok   $name (.bax)"
+		else echo "FAIL $name (.bax)"; printf '%s\n' "$out" | diff "$name.out" - | head -20; fail=1; fi
+	done
+fi
 exit $fail

@@ -121,7 +121,8 @@ namespace OnyxBasic
 			byte[] src;
 			try { src = File.ReadAllBytes (path); }
 			catch (Exception e) { MessageBox.Show ("Cannot read " + path + "\n" + e.Message, "Onyx BASIC"); result = 1; ctx.ExitThread (); return; }
-			Array.Resize (ref src, src.Length + 1);
+			int len = src.Length;
+			Array.Resize (ref src, src.Length + 1);			// (a source is also 0-terminated)
 			string sd = Settings.SdFolder;
 			string dir = cwd ?? Path.GetDirectoryName (path);
 			var cb = MakeCallbacks ();
@@ -129,7 +130,7 @@ namespace OnyxBasic
 			vm = new Thread (() =>
 			{
 				var msg = new byte[256];
-				int r = Native.ob_run (src, sd, dir, Latin1.Z (args), Latin1.Z (Path.GetFileName (path)), ref cb, out int line, msg, msg.Length);
+				int r = Native.ob_run (src, len, sd, dir, Latin1.Z (args), Latin1.Z (Path.GetFileName (path)), ref cb, out int line, msg, msg.Length);
 				running = false;
 				errLine = line; errMsg = Latin1.FromZ (msg);
 				try { BeginInvoke ((Action) (() => Finished (r))); } catch { }

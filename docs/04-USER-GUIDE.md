@@ -786,7 +786,11 @@ view (with a tooltip), image box, calendar, date picker and the colour button.*
 Onyx has a **BASIC in the style of QBasic**: the **QBasic** editor (`qbasic`, category
 *Productivity*), the runtime **`/bin/basic`**, and apps written in BASIC. Programs are
 compiled to bytecode and run by a small virtual machine. The full list of keywords is in
-**Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`); examples are in `SD:/basic/examples`
+**Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`). **Compiled programs**: **Run ▸ Make .bax**
+writes `<program>.bax`, the bytecode, which starts without parsing and runs like a `.bas`
+(File Viewer, `CHAIN`); **File ▸ Make App** can make a compiled app (`main.bax`); in a terminal
+`basic -c prog.bas` writes `prog.bax`. The editor shows the code in light grey on blue, as
+QBasic did. Examples are in `SD:/basic/examples`
 (**File ▸ Examples...**): `hello`, `guess`, `subs`, `files`, `graphics`, `gui` and
 **`arkanoid.bas`**, a full brick breaker in `SCREEN 13` shown with `FULLSCREEN` (arrows or
 the mouse move the paddle, Space / click launches and fires, P pause, F full screen on /
@@ -805,7 +809,8 @@ compiler and virtual machine, to write and try programs on a PC. Copy the folder
   line; the language's words are capitalised when you leave a line. Every command is in the
   menus (**File**, **Edit**, **View**, **Run**, **Options**, **Help**); files are saved in
   Latin-1 with Onyx line ends, ready for the SD card. **File ▸ Make App...** writes
-  `apps/<name>.app` into the SD folder.
+  `apps/<name>.app` into the SD folder (as source or compiled); **Run ▸ Make .bax** compiles
+  the program, and the runtime runs `.bax` files as well.
 - **SD:/** is a folder of the PC: **Options ▸ SD Folder...** (by default the repository's
   `sdcard/` when `pc/dist` is used in place), so programs that read files run unchanged.
 - **The program's window** shows the screen scaled (320-wide modes doubled, proportions kept),

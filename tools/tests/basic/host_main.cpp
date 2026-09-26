@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <cstdlib>
 
 struct ConsoleHost : bas::Host
 {
@@ -106,6 +107,13 @@ int main (int argc, char **argv)
 	src[len] = 0;
 	bas::Error e;
 	bas::Program *p = bas::compile (src, &e);
+	if (p && getenv ("BAX"))				// through a .bax: saved, loaded back, run
+	{
+		char *bytes; int n = bas::saveBax (p, &bytes);
+		bas::destroy (p);
+		p = bas::load (bytes, n, &e);
+		delete [] bytes;
+	}
 	if (!p) { printf ("COMPILE ERROR line %d: %s\n", e.line, e.msg); delete [] src; return 1; }
 	int r = bas::run (p, h, &e);
 	if (r) printf ("RUNTIME ERROR line %d: %s\n", e.line, e.msg);

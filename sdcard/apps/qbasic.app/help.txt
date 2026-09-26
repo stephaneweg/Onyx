@@ -86,6 +86,11 @@ SCREEN AND GRAPHICS
   Text is QBasic's character set (code page 437): CHR$(176..223) frames and blocks,
   CHR$(1..31) symbols; accents typed in the editor are translated (e = CHR$(130)).
 
+COMPILED PROGRAMS (.bax)
+  Run > Make .bax writes <program>.bax: the bytecode, it starts at once (no parsing) and
+  runs like a .bas (File Viewer, CHAIN "part" finds part.bas or part.bax). File > Make App
+  can make a compiled app (main.bax). From a terminal: basic -c prog.bas -> prog.bax.
+
 SOUND (the 3.5 mm jack)
   PLAY "T120 O3 L4 CDE F8G8 >C2"  QBasic's music language: A-G (# + - after), a length
     1..64 and dots, O octave 0-6 (O3 A = 440 Hz), < >, L length, T tempo, P / R pause,

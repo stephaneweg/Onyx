@@ -7,7 +7,8 @@ namespace wtk {
 
 Textarea::Textarea (int l, int t, int w, int h, int capacity)
   : Widget (l, t, w, h), cap (capacity < 16 ? 16 : capacity),
-    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false), barDrag (false), anchor (-1)
+    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false), barDrag (false), anchor (-1),
+    ownColors (false), colBg (0), colText (0), colCaret (0), colSel (0)
 { canFocus = true; buf = new char[cap]; buf[0] = '\0'; }
 
 Textarea::~Textarea () { delete [] buf; }
@@ -90,7 +91,8 @@ void Textarea::onDraw ()
 	const int pad = 4; int fw = wk_fw (), fh = wk_fh ();
 	rows = (height - 4) / fh; if (rows < 1) rows = 1;
 	cols = (width - 2 * pad - WK_SBW) / fw; if (cols < 1) cols = 1; if (cols > 159) cols = 159;
-	canvas.clear (disabled ? C_FACE_DN : C_FIELD);
+	unsigned bgc = ownColors ? colBg : C_FIELD, txc = ownColors ? colText : C_TEXT, crc = ownColors ? colCaret : C_ACCENT;
+	canvas.clear (disabled ? C_FACE_DN : bgc);
 	canvas.frameRect (0, 0, width, height, C_BORDER);
 	if (hasFocus && !disabled) canvas.frameRect (1, 1, width - 2, height - 2, C_ACCENT);
 	int i = 0, line = 0; while (line < top && buf[i]) { if (buf[i] == '\n') line++; i++; }
@@ -104,11 +106,11 @@ void Textarea::onDraw ()
 			a -= left; b -= left;
 			if (a < 0) a = 0;
 			if (b > cols) b = cols;
-			if (b > a) canvas.fillRect (pad + a * fw, 2 + r * fh, (b - a) * fw, fh, hasFocus ? 0x00355070 : 0x00303A48);
+			if (b > a) canvas.fillRect (pad + a * fw, 2 + r * fh, (b - a) * fw, fh, ownColors ? colSel : hasFocus ? 0x00355070 : 0x00303A48);
 		}
 		for (int c = i + left; c < le && j < cols; c++) vis[j++] = buf[c];
 		vis[j] = '\0';
-		if (j > 0) canvas.text (pad, 2 + r * fh, vis, disabled ? C_DIS : C_TEXT);
+		if (j > 0) canvas.text (pad, 2 + r * fh, vis, disabled ? C_DIS : txc);
 		if (buf[le] != '\n') break;
 		i = le + 1;
 	}
@@ -117,7 +119,7 @@ void Textarea::onDraw ()
 		int cl = 0; for (int c = 0; c < caret; c++) if (buf[c] == '\n') cl++;
 		int cc = caret - lineStart (caret);
 		int cx = pad + (cc - left) * fw, cy = 2 + (cl - top) * fh;
-		if (cy >= 0 && cy < height - 2 && cx >= pad && cx < width - 1) canvas.fillRect (cx, cy, 1, fh, C_ACCENT);
+		if (cy >= 0 && cy < height - 2 && cx >= pad && cx < width - 1) canvas.fillRect (cx, cy, ownColors ? 2 : 1, fh, crc);
 	}
 
 	// Auto vertical scrollbar: shown only when the text is taller than the view.

@@ -18,6 +18,9 @@ class Textarea : public Widget
 public:
 	char *buf; int cap, len, caret, top, left, rows, cols; bool readonly, barDrag;
 	int anchor;					// selection = [anchor, caret) either way; -1 = none
+	// Own colours (0x00RRGGBB) instead of the theme's: e.g. QBasic's grey on blue.
+	bool ownColors; unsigned colBg, colText, colCaret, colSel;
+	void setColors (unsigned bg, unsigned text, unsigned caretC, unsigned sel) { ownColors = true; colBg = bg; colText = text; colCaret = caretC; colSel = sel; invalidate (true); }
 	Textarea (int l, int t, int w, int h, int capacity);
 	~Textarea () override;
 	const char *content () const { return buf; }

@@ -969,22 +969,28 @@ static boolean SdFileExists (const char *pPath)
 }
 
 // Onyx BASIC: a program is run by the runtime SD:/bin/basic ("basic <file.bas> [args]").
-// pPath is a BASIC program if it ends in ".bas", or if it is an app's ".../main" that does
-// not exist while ".../main.bas" does (an app bundle written in BASIC). Then Elf / Args
-// receive the runtime and its command line, and TRUE is returned.
+// pPath is a BASIC program if it ends in ".bas" or ".bax" (compiled), or if it is an app's
+// ".../main" that does not exist while ".../main.bax" or ".../main.bas" does (an app bundle
+// written in BASIC; the compiled one first). Then Elf / Args receive the runtime and its
+// command line, and TRUE is returned.
 #define BASIC_RUNTIME	"SD:/bin/basic"
 static boolean BasicRedirect (const char *pPath, const char *pArgs, CString *pElf, CString *pArgsOut)
 {
 	unsigned n = 0; while (pPath[n] != '\0') n++;
 	auto Low = [] (char c) { return (c >= 'A' && c <= 'Z') ? (char) (c + 32) : c; };
-	boolean bBas = n > 4 && pPath[n - 4] == '.' && Low (pPath[n - 3]) == 'b' && Low (pPath[n - 2]) == 'a' && Low (pPath[n - 1]) == 's';
+	boolean bBas = n > 4 && pPath[n - 4] == '.' && Low (pPath[n - 3]) == 'b' && Low (pPath[n - 2]) == 'a'
+		       && (Low (pPath[n - 1]) == 's' || Low (pPath[n - 1]) == 'x');
 	CString Bas;
 	if (bBas) Bas = pPath;
 	else if (n >= 5 && pPath[n - 5] == '/' && Low (pPath[n - 4]) == 'm' && Low (pPath[n - 3]) == 'a'
 		 && Low (pPath[n - 2]) == 'i' && Low (pPath[n - 1]) == 'n' && !SdFileExists (pPath))
 	{
-		Bas.Format ("%s.bas", pPath);
-		if (!SdFileExists ((const char *) Bas)) return FALSE;
+		Bas.Format ("%s.bax", pPath);
+		if (!SdFileExists ((const char *) Bas))
+		{
+			Bas.Format ("%s.bas", pPath);
+			if (!SdFileExists ((const char *) Bas)) return FALSE;
+		}
 	}
 	else return FALSE;
 	boolean bSpace = FALSE;

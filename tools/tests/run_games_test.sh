@@ -11,7 +11,7 @@ WTK=$(ls "$ROOT"/user/wtk/*.cpp | grep -v imgload)
 for g in ${@:-ARKANOID INVADERS PIPES SOLITAIRE FREECELL GRAPHCALC ICONEDIT RTF BASICRT}; do
 	BIN=$OUT/game_$g
 	g++ -std=c++17 -O1 -g -w -fsanitize=undefined -fno-sanitize=alignment -DGAME_$g \
-	    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" \
+	    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
 	    -I"$HERE/wtkhost/inc" -I"$ROOT/user" -I"$ROOT/kernel/include" \
 	    "$HERE/wtkhost/game_host.cpp" $WTK -o "$BIN"
 	(cd "$OUT" && "$BIN" "$ROOT/sdcard")

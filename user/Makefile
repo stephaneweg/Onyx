@@ -71,7 +71,7 @@ $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.h
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
 # (linked into the qbasic editor too), and the runtime /bin/basic (basic/runtime.cpp).
 BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h
-BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o
+BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o basic/basbax.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.
 graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)

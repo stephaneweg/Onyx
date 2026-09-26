@@ -64,6 +64,7 @@ static inline bool fa_is_program (const char *path)
 	unsigned char m[4] = { 0, 0, 0, 0 };
 	int n = kapi_read (f, m, sizeof m);
 	kapi_close (f);
+	if (n == 4 && m[0] == 'O' && m[1] == 'B' && m[2] == 'A' && m[3] == 'X') return true;	// a compiled BASIC program (.bax)
 	return n == 4 && m[0] == 0x7F && m[1] == 'E' && m[2] == 'L' && m[3] == 'F';
 }
 

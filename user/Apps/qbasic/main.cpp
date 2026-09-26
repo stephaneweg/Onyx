@@ -52,7 +52,8 @@ static void (*g_fkey[12]) (void);			// QBasic's keys: F1 help, F2 SUBs, F5 run
 class CodeArea : public Textarea
 {
 public:
-	CodeArea (int l, int t, int w, int h) : Textarea (l, t, w, h, EDCAP) {}
+	CodeArea (int l, int t, int w, int h) : Textarea (l, t, w, h, EDCAP)
+	{ setColors (0x000000A8, 0x00C8C8C8, 0x00FFFFFF, 0x005858C8); }	// QBasic's light grey on blue
 	bool onKey (long k) override
 	{
 		if (k >= KEY_F1 && k <= KEY_F12) { if (g_fkey[k - KEY_F1]) g_fkey[k - KEY_F1] (); return true; }
@@ -476,7 +477,34 @@ static void op_goto ()
 	if (n > 0) goto_program_line (n);
 }
 
-// File > Make App...: SD:/apps/<name>.app/{main.bas, app.txt, icon.bmp}.
+// The program compiled (bytecode: runs without parsing) into a .bax file. true = written.
+static bool write_bax (const char *path)
+{
+	int starts[MAXMOD];
+	char *s = compose (starts);
+	bas::Error e;
+	bas::Program *p = bas::compile (s, &e);
+	delete [] s;
+	if (!p) { check (false); return false; }
+	char *bytes; int n = bas::saveBax (p, &bytes);
+	bas::destroy (p);
+	bool ok = kapi_save_file (path, bytes, (unsigned) n) >= 0;
+	delete [] bytes;
+	return ok;
+}
+// Run > Make .bax: <program>.bax beside the .bas (it runs from the File Viewer, CHAIN...).
+static void op_make_bax ()
+{
+	if (!g_path[0]) { extern void op_save (); op_save (); if (!g_path[0]) return; }
+	char out[260]; scpy (out, g_path, sizeof out);
+	int e = slen (out), d = e; while (d > 0 && out[d - 1] != '.' && out[d - 1] != '/') d--;
+	if (d > 0 && out[d - 1] == '.') e = d - 1;
+	scpy (out + e, ".bax", sizeof out - e);
+	if (write_bax (out)) set_status ("Compiled: ", out);
+	else if (g_status) set_status ("Cannot write ", out);
+}
+
+// File > Make App...: SD:/apps/<name>.app/{main.bas or main.bax, app.txt, icon.bmp}.
 static void op_make_app ()
 {
 	char name[40] = "";
@@ -490,8 +518,14 @@ static void op_make_app ()
 	scpy (dir + n, ".app", sizeof dir - n);
 	kapi_mkdir (dir);
 	char p[160];
-	fs_join (p, sizeof p, dir, "main.bas");
-	if (!write_to (p)) { set_status ("Cannot write ", p); return; }
+	// compiled (main.bax: starts at once, the source stays private) or as source (main.bas);
+	// only one of them, or an old one would be run instead
+	bool compiled = wk_messagebox ("Make App", "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", MB_YESNO) == 1;
+	char other[160];
+	fs_join (p, sizeof p, dir, compiled ? "main.bax" : "main.bas");
+	fs_join (other, sizeof other, dir, compiled ? "main.bas" : "main.bax");
+	if (compiled ? !write_bax (p) : !write_to (p)) { set_status ("Cannot write ", p); return; }
+	kapi_remove (other);
 	char txt[200]; int k = 0;
 	const char *a = "# Onyx application metadata (written by QBasic > Make App)\nname = ";
 	for (int i = 0; a[i]; i++) txt[k++] = a[i];
@@ -602,6 +636,7 @@ int main (void)
 	menu.menu ("Run");
 	menu.item ("Start (F5)",   "^R", WK_CTRL ('R'), op_run);
 	menu.item ("Check Syntax", "^K", WK_CTRL ('K'), op_check);
+	menu.item ("Make .bax",    "",   0,             op_make_bax);
 	menu.menu ("Help");
 	menu.item ("Keywords",     "",   0,             op_help);
 	menu.publish ();

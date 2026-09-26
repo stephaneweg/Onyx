@@ -131,7 +131,8 @@ namespace OnyxBasic
 			miStart = Item ("&Start", (s, e) => OpRun (), Keys.F5);
 			miStop = Item ("S&top", (s, e) => { try { running?.Kill (); } catch { } });
 			miStop.Enabled = false;
-			run.DropDownItems.AddRange (new ToolStripItem[] { miStart, miStop, Item ("&Check Syntax", (s, e) => OpCheck (true)) });
+			run.DropDownItems.AddRange (new ToolStripItem[] { miStart, miStop, Item ("&Check Syntax", (s, e) => OpCheck (true)),
+				new ToolStripSeparator (), Item ("Make .&bax", (s, e) => OpMakeBax ()) });
 			var opt = new ToolStripMenuItem ("&Options");
 			opt.DropDownItems.Add (Item ("&SD Folder...", (s, e) => { Settings.ChooseSd (this); UpdateTitle (); }));
 			var help = new ToolStripMenuItem ("&Help");
@@ -361,7 +362,22 @@ namespace OnyxBasic
 			}
 			return OpSave ();
 		}
-		// File > Make App...: SD:/apps/<name>.app/{main.bas, app.txt, icon.bmp}, as on Onyx.
+		// Run > Make .bax: the program compiled (it runs without parsing) beside the .bas.
+		bool WriteBax (string p)
+		{
+			int line = Native.Compile (Compose (out _), p, out string msg);
+			if (line == 0) return true;
+			if (line > 0) { GotoProgramLine (line); MessageBox.Show (this, "Syntax error in line " + line + ": " + msg, "Onyx BASIC", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+			else MessageBox.Show (this, "Cannot write " + p, "Onyx BASIC");
+			return false;
+		}
+		void OpMakeBax ()
+		{
+			if (path == null && !OpSaveAs ()) return;
+			string p = Path.ChangeExtension (path, ".bax");
+			if (WriteBax (p)) MessageBox.Show (this, "Compiled: " + p, "Onyx BASIC");
+		}
+		// File > Make App...: SD:/apps/<name>.app/{main.bas or main.bax, app.txt, icon.bmp}, as on Onyx.
 		void OpMakeApp ()
 		{
 			string name = path != null ? Path.GetFileNameWithoutExtension (path) : "";
@@ -374,7 +390,11 @@ namespace OnyxBasic
 			try
 			{
 				Directory.CreateDirectory (dir);
-				if (!WriteTo (Path.Combine (dir, "main.bas"))) return;
+				// compiled (main.bax) or as source (main.bas): only one of them
+				bool compiled = MessageBox.Show (this, "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", "Make App", MessageBoxButtons.YesNo) == DialogResult.Yes;
+				string main = Path.Combine (dir, compiled ? "main.bax" : "main.bas"), other = Path.Combine (dir, compiled ? "main.bas" : "main.bax");
+				if (compiled ? !WriteBax (main) : !WriteTo (main)) return;
+				if (File.Exists (other)) File.Delete (other);
 				File.WriteAllBytes (Path.Combine (dir, "app.txt"), Latin1.Enc.GetBytes ("# Onyx application metadata (written by QBasic > Make App)\nname = " + title + "\ncategory = BASIC\n"));
 				string icon = Path.Combine (Settings.SdFolder, "apps", "qbasic.app", "program.bmp");
 				if (File.Exists (icon)) File.Copy (icon, Path.Combine (dir, "icon.bmp"), true);

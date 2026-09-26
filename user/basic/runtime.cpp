@@ -444,13 +444,15 @@ int main (void)
 	static char argbuf[512];
 	kapi_get_args (argbuf, sizeof argbuf);
 	char path[256], cwd[256] = ""; int i = 0, n = 0;
-	bool ide = false;
+	bool ide = false, compileOnly = false;
 	// Options: -d <dir> (current directory, default: the program's folder), -i (report a
-	// syntax / runtime error to the qbasic editor over IPC: service "qbasic").
+	// syntax / runtime error to the qbasic editor over IPC: service "qbasic"), -c (compile
+	// only: write the program's .bax -- basic -c prog.bas -> prog.bax -- and stop).
 	for (;;)
 	{
 		while (argbuf[i] == ' ') i++;
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'i' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { ide = true; i += 2; continue; }
+		if (argbuf[i] == '-' && argbuf[i + 1] == 'c' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { compileOnly = true; i += 2; continue; }
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'd' && argbuf[i + 2] == ' ')
 		{
 			i += 3; while (argbuf[i] == ' ') i++;
@@ -473,7 +475,7 @@ int main (void)
 	scpy (host.args, argbuf + i, sizeof host.args);
 	if (!path[0])
 	{
-		ax_putln ("usage: basic <program.bas> [arguments]");
+		ax_putln ("usage: basic <program.bas | program.bax> [arguments]   basic -c <program.bas>");
 		return 1;
 	}
 
@@ -499,7 +501,8 @@ int main (void)
 		return 1;
 	}
 	// The program's folder becomes the current directory (relative file names).
-	if (cwd[0]) kapi_chdir (cwd);
+	if (compileOnly) {}					// (paths stay the shell's)
+	else if (cwd[0]) kapi_chdir (cwd);
 	else
 	{
 		char dir[256]; scpy (dir, path, sizeof dir);
@@ -508,8 +511,21 @@ int main (void)
 	}
 
 	bas::Error err;
-	bas::Program *prog = bas::compile (src, &err);
+	bas::Program *prog = bas::load (src, len, &err);	// a .bax runs as it is
 	delete [] src;
+	if (compileOnly)					// basic -c prog.bas: prog.bax
+	{
+		if (!prog) { ax_puts ("Syntax error in line "); char n[12]; n[bas::formatNum (err.line, n)] = 0; ax_puts (n); ax_puts (": "); ax_putln (err.msg); return 2; }
+		char out[260]; scpy (out, path, sizeof out);
+		int e = slen (out), d = e; while (d > 0 && out[d - 1] != '.' && out[d - 1] != '/') d--;
+		if (d > 0 && out[d - 1] == '.') e = d - 1;
+		scpy (out + e, ".bax", sizeof out - e);
+		char *bytes; int n = bas::saveBax (prog, &bytes);
+		bool ok = kapi_save_file (out, bytes, (unsigned) n) >= 0;
+		delete [] bytes; bas::destroy (prog);
+		ax_puts (ok ? "compiled: " : "cannot write "); ax_putln (out);
+		return ok ? 0 : 1;
+	}
 	char msg[200];
 	auto report = [&] (const char *kind)
 	{

@@ -108,6 +108,11 @@ struct Program;
 Program *compile (const char *src, Error *err);
 int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
+// Compiled programs (.bax, basbax.cpp): the bytecode as a file -- it runs without parsing.
+int      saveBax (const Program *p, char **out);	// its bytes (new[]), their count
+bool     isBax (const char *buf, int len);
+Program *loadBax (const char *buf, int len, Error *err);
+Program *load (const char *buf, int len, Error *err);	// a .bax as it is, else source (compiled)
 // The language's words (keywords, then the built-in functions), separated by spaces: for an
 // editor that capitalises them. Returns the length (the list is cut at cap - 1).
 int      wordList (char *buf, int cap);
