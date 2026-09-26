@@ -78,7 +78,7 @@ max_framebuffers=2
 Parameters read at boot:
 
 ```
-width=1024 height=768 init=SD:/bin/init heartbeat=5
+width=1024 height=768 init=SD:/bin/init heartbeat=0
 ```
 
 - **`width` / `height`**: framebuffer resolution (default 1024×768).
