@@ -27,6 +27,7 @@
 #include "notify.h"
 #include "fileassoc.h"
 #include "shelfmsg.h"
+#include "ftpfs.h"			// ftpfs_login (Connect to Server)
 #include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libwtk)
 #include "wtk/wtk.h"
 
@@ -587,22 +588,6 @@ public:
 		canvas.text (8, 4, "Connect to Server", C_TEXT);
 	}
 };
-
-// Hand a login to ftpfs (starting it if needed). false if it cannot be reached.
-static bool ftpfs_login (const char *host, const char *user, const char *pass)
-{
-	int pid = kapi_ipc_lookup ("ftpfs");
-	if (pid == 0)
-	{
-		kapi_exec ("SD:/bin/ftpfs", "");
-		for (int i = 0; i < 300 && pid == 0; i++) { kapi_msleep (10); pid = kapi_ipc_lookup ("ftpfs"); }
-	}
-	if (pid == 0) return false;
-	char msg[200]; int n = 0;
-	const char *part[3] = { host, user, pass };
-	for (int k = 0; k < 3; k++) { for (int i = 0; part[k][i] && n < 196; i++) msg[n++] = part[k][i]; msg[n++] = '\0'; }
-	return kapi_mailbox_send (pid, 1, msg, (unsigned) n) != 0;	// 1 = MSG_LOGIN (ftpfs.cpp)
-}
 
 static void op_connect ()
 {
