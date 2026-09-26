@@ -291,7 +291,7 @@ it off): opening files and walking folders stopped asking the card for every sec
 use (`SD card mounted (SD:): ...`); `/bin/fsbench` measures.
 
 **Yielding SD waits.** The SD driver also yields while the card keeps it waiting: after a
-100 µs spin, `CEMMCDevice::TimeoutWait` calls `OnyxDriverWait ()` (a weak hook of our Circle
+2 ms spin (a normal command ends within that: yielding for it cost a whole time slice per command, 2 MB/s), `CEMMCDevice::TimeoutWait` calls `OnyxDriverWait ()` (a weak hook of our Circle
 fork, `docs/05` §7), which `Yield`s if IRQs are on. The FatFs volume lock is held during
 that wait, so it is a **sleeping** lock (`OnyxFsLockTake` / `OnyxFsLockGive`,
 `sys/fslock.cpp`, re-entrant, its waiters `Yield`): with Circle's spin lock a second task

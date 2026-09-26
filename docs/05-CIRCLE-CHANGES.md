@@ -409,7 +409,7 @@ and a directory walk or a big read froze the GUI and the network 100–200 ms at
 
 - `ffsystem.cpp`: `ff_mutex_take` / `ff_mutex_give` call `OnyxFsLockTake (vol)` /
   `OnyxFsLockGive (vol)` when they are defined, instead of the `CGenericLock` (a spin lock).
-- `emmc.cpp`: once a `TimeoutWait` has spun 100 µs, each turn of its loop calls
+- `emmc.cpp`: once a `TimeoutWait` has spun 2 ms (the normal latency of a command; yielding earlier cost another task's whole time slice per command: reads fell to 2 MB/s), each turn of its loop calls
   `OnyxDriverWait ()` when it is defined.
 
 The kernel defines them in `kernel/sys/fslock.cpp`: a sleeping, re-entrant volume lock
