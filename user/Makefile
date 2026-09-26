@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa arkanoid invaders pipes solitaire freecell
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa arkanoid invaders pipes solitaire freecell graphcalc iconedit rtfview
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -65,7 +65,7 @@ wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a basic/libbasic.a
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h wtk/libwtk.a basic/libbasic.a
 	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a -o $@
 
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
@@ -73,6 +73,9 @@ $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.h
 BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h
 BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
+# The graphing calculator computes in double: FP/SIMD for the whole app.
+graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)
+graphcalc.elf: Apps/graphcalc/expr.h
 basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
 basic/libbasic.a: $(BAS_OBJ)

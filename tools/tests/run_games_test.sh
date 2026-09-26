@@ -8,9 +8,10 @@ ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${OUT:-${TMPDIR:-/tmp}/onyx_games}; export OUT
 mkdir -p "$OUT"
 WTK=$(ls "$ROOT"/user/wtk/*.cpp | grep -v imgload)
-for g in ${@:-ARKANOID INVADERS PIPES SOLITAIRE FREECELL}; do
+for g in ${@:-ARKANOID INVADERS PIPES SOLITAIRE FREECELL GRAPHCALC ICONEDIT RTF}; do
 	BIN=$OUT/game_$g
 	g++ -std=c++17 -O1 -g -w -fsanitize=undefined -fno-sanitize=alignment -DGAME_$g \
+	    "$ROOT/user/basic/basnum.cpp" \
 	    -I"$HERE/wtkhost/inc" -I"$ROOT/user" -I"$ROOT/kernel/include" \
 	    "$HERE/wtkhost/game_host.cpp" $WTK -o "$BIN"
 	(cd "$OUT" && "$BIN" "$ROOT/sdcard")

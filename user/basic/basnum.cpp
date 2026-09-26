@@ -42,7 +42,7 @@ double nlog (double x)
 	double m = v.d;
 	if (m > 1.41421356237309504880) { m *= 0.5; e++; }
 	double s = (m - 1) / (m + 1), s2 = s * s, term = s, sum = 0;
-	for (int i = 1; i < 60; i += 2) { sum += term / i; term *= s2; if (term < 1e-18) break; }
+	for (int i = 1; i < 60; i += 2) { sum += term / i; term *= s2; if (term < 1e-18 && term > -1e-18) break; }
 	return 2 * sum + e * LN2;
 }
 

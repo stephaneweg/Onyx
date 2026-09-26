@@ -282,6 +282,14 @@ Notes / caveats:
 > the PC against a fake kapi table (`tools/tests/wtkhost/host_kapi.h`: every slot a stub,
 > files from `sdcard/`), plays a scripted scenario (UBSan) and saves real screenshots to
 > `/tmp/onyx_games`.
+> **Rich Text Format** (`user/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
+> a `RichTextBox` (styles, colour table → the 16-colour palette, `\'hh` / `\uN` → Latin-1,
+> skipped destinations), `rtf::save (box, out, cap)` writes it back; `rtf::is_rtf`. Used by
+> `rtfview` and Writer. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
+> **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
+> program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
+> (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
+> `graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)`. Host test: `sh tools/tests/run_graphcalc_test.sh`.
 > **HTTPS from a wtk app**: wtk apps are freestanding; do the TLS work in a newlib console
 > tool and spawn it with pipes (`kapi_pipe`, `kapi_spawn`, write the request, `kapi_stream_eof`,
 > poll `kapi_stream_read_nb` / `kapi_proc_done` from `Root::onTick`). Example: Lisa +

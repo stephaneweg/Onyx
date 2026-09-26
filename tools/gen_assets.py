@@ -444,6 +444,45 @@ def icon_freecell():		# four free cells over two cards
     return px
 
 
+def icon_graphcalc():		# a plot: axes, a grid, a red sine and a blue parabola
+    px = blank()
+    prect(px, 3, 3, 36, 36, (255, 255, 255)); pframe(px, 3, 3, 36, 36, (90, 100, 114))
+    for k in range(7, 36, 6):
+        prect(px, k, 4, k, 35, (228, 232, 238)); prect(px, 4, k, 35, k, (228, 232, 238))
+    prect(px, 19, 4, 19, 35, (64, 72, 80)); prect(px, 4, 19, 35, 19, (64, 72, 80))
+    import math
+    for x in range(4, 36):
+        y = int(round(19 - 8 * math.sin((x - 19) / 4.0)))
+        prect(px, x, y, x, y + 1, (224, 48, 48))
+        y2 = int(round(32 - ((x - 19) ** 2) / 10.0))
+        if 4 <= y2 <= 35:
+            prect(px, x, y2, x, y2 + 1, (32, 112, 224))
+    return px
+
+def icon_iconedit():		# a pixel grid with a few coloured pixels and a pencil
+    px = blank()
+    prect(px, 3, 3, 30, 30, (232, 235, 239)); pframe(px, 3, 3, 30, 30, (90, 100, 114))
+    for k in range(3, 31, 3):
+        prect(px, k, 3, k, 30, (190, 196, 204)); prect(px, 3, k, 30, k, (190, 196, 204))
+    for (cx, cy, c) in ((1, 1, (224, 48, 48)), (2, 1, (224, 48, 48)), (1, 2, (224, 48, 48)), (4, 3, (48, 96, 240)),
+                        (5, 3, (48, 96, 240)), (4, 4, (48, 96, 240)), (7, 6, (64, 200, 64)), (6, 7, (64, 200, 64)), (7, 7, (64, 200, 64))):
+        prect(px, 4 + cx * 3, 4 + cy * 3, 5 + cx * 3, 5 + cy * 3, c)
+    for i in range(12):					# the pencil, diagonal
+        prect(px, 22 + i, 22 + i, 24 + i, 24 + i, (240, 200, 60))
+    prect(px, 20, 20, 22, 22, (60, 60, 60))
+    return px
+
+def icon_rtfview():		# a page with styled lines: a big title, coloured and bold text
+    px = blank()
+    prect(px, 7, 3, 32, 36, (250, 250, 250)); pframe(px, 7, 3, 32, 36, (90, 100, 114))
+    prect(px, 10, 7, 26, 10, (20, 20, 20))
+    prect(px, 10, 14, 22, 15, (30, 60, 200))
+    for i, (x1, c) in enumerate(((29, (60, 60, 60)), (25, (200, 30, 30)), (29, (60, 60, 60)), (20, (20, 110, 30)))):
+        prect(px, 10, 19 + i * 4, x1, 20 + i * 4, c)
+    prect(px, 10, 19, 16, 20, (0, 0, 0))
+    prect(px, 18, 27, 27, 28, (255, 230, 0))
+    return px
+
 def icon_menubar():		# a screen with a menu bar and an open drop-down
     px = blank()
     prect(px, 3, 6, 36, 33, (32, 64, 96)); pframe(px, 3, 6, 36, 33, (90, 100, 114))
@@ -517,6 +556,7 @@ ICONS = {
     "qbasic": icon_qbasic, "basicdemo": icon_basprog, "fmtracker": icon_fmtracker,
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
+    "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
 }
 
 

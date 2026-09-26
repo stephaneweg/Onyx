@@ -37,6 +37,10 @@ static int h_key_held (int k) { return k >= 0 && k < 0x200 ? host_held[k] : 0; }
 static int h_sound_acquire (void) { return 1; }
 static int h_sound_start (int, unsigned, int, int) { host_sound_calls++; return 0; }
 
+static void *h_memcpy (void *d, const void *s, unsigned long n) { return memcpy (d, s, n); }
+static void *h_memmove (void *d, const void *s, unsigned long n) { return memmove (d, s, n); }
+static void *h_memset (void *d, int c, unsigned long n) { return memset (d, c, n); }
+
 static void host_kapi_init (const char *sdroot)
 {
 	if (sdroot) host_sd = sdroot;
@@ -49,6 +53,7 @@ static void host_kapi_init (const char *sdroot)
 	t->open = h_open; t->read = h_read; t->fsize = h_fsize; t->close = h_close;
 	t->get_ticks = h_ticks; t->font_width = h_fw; t->font_height = h_fh;
 	t->sbrk = h_sbrk; t->key_held = h_key_held;
+	t->memcpy = (decltype (t->memcpy)) h_memcpy; t->memmove = (decltype (t->memmove)) h_memmove; t->memset = (decltype (t->memset)) h_memset;
 	t->sound_acquire = h_sound_acquire; t->sound_start = h_sound_start;
 }
 

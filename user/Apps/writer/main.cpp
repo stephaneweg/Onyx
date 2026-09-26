@@ -13,10 +13,13 @@
 // selection, else to the typing style. The app name menu has Quit (^Q).
 // Drag & drop: a file dropped on the window is opened (after asking to save unsaved
 // changes -- docguard.h); dropped text is inserted at the caret.
+// .rtf files keep their styles: they are read and written as Rich Text Format (rtf.h);
+// other files load and save as plain text.
 //
 #include "wtk/wtk.h"
 #include "clipboard.h"
 #include "docguard.h"
+#include "rtf.h"
 
 using namespace wtk;
 
@@ -41,25 +44,48 @@ static void set_path (const char *p)
 	g_path[i] = '\0';
 	g_fn->setText (g_path);
 }
+static bool is_rtf_path ()
+{
+	int n = 0; while (g_path[n]) n++;
+	return n > 4 && g_path[n - 4] == '.' && (g_path[n - 3] | 32) == 'r' && (g_path[n - 2] | 32) == 't' && (g_path[n - 1] | 32) == 'f';
+}
 static void do_open ()
 {
 	if (g_path[0] == '\0') return;
 	void *f = kapi_open (g_path);
 	if (f == 0) { g_rtb->setContent (""); mark_saved (); g_rtb->setFocus (); return; }
-	static char b[CAP];
-	int n = kapi_read (f, b, sizeof b - 1);
+	unsigned sz = kapi_fsize (f);
+	if (sz > 4u * 1024 * 1024) sz = 4u * 1024 * 1024;
+	char *b = new char[sz + 1];
+	int n = kapi_read (f, b, sz);
 	kapi_close (f);
 	if (n < 0) n = 0;
-	int j = 0;					// drop '\r' (CRLF -> LF)
-	for (int i = 0; i < n; i++) if (b[i] != '\r') b[j++] = b[i];
-	b[j] = '\0';
-	g_rtb->setContent (b);
+	b[n] = '\0';
+	if (rtf::is_rtf (b, n)) rtf::load (*g_rtb, b, n);		// styles kept
+	else
+	{
+		int j = 0;					// drop '\r' (CRLF -> LF)
+		for (int i = 0; i < n; i++) if (b[i] != '\r') b[j++] = b[i];
+		b[j] = '\0';
+		g_rtb->setContent (b);
+	}
+	delete[] b;
 	mark_saved ();
 	g_rtb->setFocus ();
 }
 static void do_save ()
 {
-	if (g_path[0] != '\0' && kapi_save_file (g_path, g_rtb->content (), (unsigned) g_rtb->length ()) >= 0) mark_saved ();
+	if (g_path[0] == '\0') return;
+	if (is_rtf_path ())
+	{
+		int cap = g_rtb->length () * 12 + 4096;
+		char *b = new char[cap];
+		int n = rtf::save (*g_rtb, b, cap);
+		if (n > 0 && kapi_save_file (g_path, b, (unsigned) n) >= 0) mark_saved ();
+		delete[] b;
+		return;
+	}
+	if (kapi_save_file (g_path, g_rtb->content (), (unsigned) g_rtb->length ()) >= 0) mark_saved ();
 }
 static void onSave ();
 static void onNew ()
@@ -144,7 +170,7 @@ int main (void)
 		"Italic, Strikethrough, Highlight, Smaller / Bigger), the Color menu, or the Style "
 		"menu for heading levels (Normal / Title 1-3).\n\n"
 		"The wheel and the arrow keys scroll. File > Open... / Save / Save As... load and "
-		"store plain text.");
+		"store plain text, or Rich Text Format with its styles when the name ends in .rtf.");
 	root.addChild (g_rtb);
 
 	static Menu menu;

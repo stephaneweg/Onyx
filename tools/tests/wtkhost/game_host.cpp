@@ -15,11 +15,26 @@
 #include "Apps/solitaire/main.cpp"
 #elif defined GAME_FREECELL
 #include "Apps/freecell/main.cpp"
+#elif defined GAME_GRAPHCALC
+#include "Apps/graphcalc/main.cpp"
+#elif defined GAME_ICONEDIT
+#include "Apps/iconedit/main.cpp"
+#elif defined GAME_RTF
+#include "Apps/rtfview/main.cpp"
 #endif
 #undef main
 #include "img/imgload.hpp"
 bool img_load (const char *, ImgFrames *) { return false; }	// (no codecs on the host)
 
+#if defined GAME_GRAPHCALC || defined GAME_ICONEDIT || defined GAME_RTF
+static void wshot (wtk::Widget *w, const char *name)
+{
+	w->canvas.alloc (w->width, w->height); w->onDraw ();
+	char p[256]; snprintf (p, sizeof p, "%s/%s.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", name);
+	host_save_ppm (p, w->canvas.px, w->canvas.w, w->canvas.h, w->canvas.stride);
+	printf ("saved %s\n", p);
+}
+#else
 static void run (GameView *g, int frames)
 {
 	for (int i = 0; i < frames; i++) { host_ticks += 16; g->step (); }
@@ -43,6 +58,7 @@ static void drag (GameView *g, int x0, int y0, int x1, int y1)
 	g->onMouse (x1, y1, 0, 0, 0, 0);
 	run (g, 1);
 }
+#endif
 
 int main (int argc, char **argv)
 {
@@ -167,6 +183,70 @@ int main (int argc, char **argv)
 	g->checkWin (); g->paint ();
 	for (int i = 0; i < 400 && g->animOn; i++) { run (g, 1); g->paint (); if (i == 150) shot (g, "freecell_win"); }
 	printf ("freecell: win animation %s\n", g->animOn ? "still running" : "done");
+#elif defined GAME_GRAPHCALC
+	static const char *src[NF] = { "sin(x)", "x^2/4-3", "1/x", "2x+" };
+	for (int i = 0; i < NF; i++)
+	{
+		g_f[i].on = new Checkbox (0, 0, 10, 10, "", true, 0);
+		g_f[i].tb = new Textbox (0, 0, 10, 10, src[i]);
+		compile (i);
+		printf ("graphcalc y%d = %-10s ok %d err %d\n", i + 1, src[i], g_f[i].prog.ok, g_f[i].err);
+	}
+	g_plot = new Plot (0, 0, W - PANEL - 4, H - 8);
+	g_mx = 300; g_my = 200;
+	wshot (g_plot, "graphcalc");
+	view_trig (); g_mx = -1;
+	wshot (g_plot, "graphcalc_trig");
+#elif defined GAME_ICONEDIT
+	int fh = 16;
+	for (int i = 0; i < NTOOL; i++) { g_toolBtn[i] = new Button (6, 8 + i * 34, TOOL_W - 12, 28, TOOL_NAME[i], btn_tool); g_toolBtn[i]->tag = i; }
+	g_grid = new Grid (TOOL_W, 4, W - TOOL_W - SIDE_W, H - fh - 16);
+	g_pal = new Palette (W - SIDE_W + 6, 8);
+	g_prev = new Preview (W - SIDE_W + 2, 8 + g_pal->height + fh + 10, SIDE_W - 4, 2 * MAXS + 20);
+	g_status = new Label (6, H - fh - 8, W - 12, fh + 2, "", C_TEXT, C_BG);
+	bool ok = load_bmp ("SD:/apps/invaders.app/icon.bmp");
+	printf ("iconedit: loaded %d (%d x %d)\n", ok, g_w, g_h);
+	// draw a yellow ellipse with the Ellipse tool, then fill inside it
+	g_col[0] = 0x00FFE000; g_tool = T_ELLIPSE; g_grid->layoutCells ();
+	int c = g_grid->cell, ox = g_grid->ox, oy = g_grid->oy;
+	g_grid->onMouse (ox + 4 * c + 2, oy + 24 * c + 2, 1, 0, 0, 0);
+	g_grid->onMouse (ox + 20 * c + 2, oy + 36 * c + 2, 1, 0, 0, 0);
+	g_grid->onMouse (ox + 20 * c + 2, oy + 36 * c + 2, 0, 0, 0, 0);
+	g_col[0] = 0x00FF4040; g_tool = T_FILL;
+	g_grid->onMouse (ox + 12 * c + 2, oy + 30 * c + 2, 1, 0, 0, 0);
+	g_grid->onMouse (ox + 12 * c + 2, oy + 30 * c + 2, 0, 0, 0, 0);
+	printf ("iconedit: undo levels %d, pixel (12,30) = %06x\n", g_nundo, g_img[30 * MAXS + 12]);
+	g_hx = 12; g_hy = 30; refresh ();
+	// compose the window
+	wtk::Canvas win; win.alloc (W, H); win.clear (C_BG);
+	wtk::Widget *parts[] = { g_grid, g_pal, g_prev, g_status };
+	for (wtk::Widget *w : parts) { w->canvas.alloc (w->width, w->height); w->onDraw (); win.putOther (w->canvas, w->left, w->top, false); }
+	for (int i = 0; i < NTOOL; i++) { wtk::Widget *w = g_toolBtn[i]; w->canvas.alloc (w->width, w->height); w->onDraw (); win.putOther (w->canvas, w->left, w->top, false); }
+	char p[256]; snprintf (p, sizeof p, "%s/iconedit.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp");
+	host_save_ppm (p, win.px, W, H, W);
+	// save and reload round trip
+	host_sd = "/tmp"; save_bmp ("SD:/onyx_icon_test.bmp");
+	unsigned before = hash_img (); load_bmp ("SD:/onyx_icon_test.bmp");
+	printf ("iconedit: save / load round trip %s\n", hash_img () == before ? "ok" : "DIFFERS");
+#elif defined GAME_RTF
+	char fp[512]; snprintf (fp, sizeof fp, "%s/docs/onyx-rtf-sample.rtf", argc > 1 ? argv[1] : "sdcard");
+	FILE *f = fopen (fp, "rb");
+	static char src[65536]; int n = f ? (int) fread (src, 1, sizeof src - 1, f) : 0; if (f) fclose (f);
+	RichTextBox *b = new RichTextBox (0, 0, W - 12, H - PATH_H - 6, 65536);
+	b->readonly = true;
+	rtf::load (*b, src, n);
+	printf ("rtf: %d chars, first line: ", b->len); for (int i = 0; i < b->len && b->buf[i] != '\n'; i++) putchar (b->buf[i]); printf ("\n");
+	int nb = 0; for (int i = 0; i < b->len; i++) if (wtk::rt_unpack (b->attr[i]).flags & wtk::RT_BOLD) nb++;
+	printf ("rtf: %d bold chars\n", nb);
+	for (int i = 0; i < b->len; i++) if (b->buf[i] == 'q' && b->buf[i+1] == 'u' && b->buf[i+2]=='o') { for (int k = i - 4; k < i + 12; k++) printf ("%02x ", (unsigned char) b->buf[k]); printf ("\n"); break; }
+	wshot (b, "rtfview");
+	// round trip: save, reload, compare text + styles
+	static char out[262144]; int m = rtf::save (*b, out, sizeof out);
+	RichTextBox *c = new RichTextBox (0, 0, W - 12, H - PATH_H - 6, 65536);
+	rtf::load (*c, out, m);
+	bool same = c->len == b->len;
+	for (int i = 0; same && i < b->len; i++) if (c->buf[i] != b->buf[i] || c->attr[i] != b->attr[i]) { printf ("rtf: differs at %d\n", i); same = false; }
+	printf ("rtf: save %d bytes, reload %s\n", m, same ? "identical" : "DIFFERENT");
 #endif
 	return 0;
 }

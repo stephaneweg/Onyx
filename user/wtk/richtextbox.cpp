@@ -147,12 +147,12 @@ void RichTextBox::drawGlyph (int px, int py, char ch, const RtStyle &st)
 	{
 		int dy = py + oy; if (dy < 0 || dy >= chh) continue;
 		int fyv = ((oy * 256 + 128) / s) - 128;
-		int y0 = fyv >> 8, fracy = fyv - (y0 << 8);
+		int y0 = fyv >> 8, fracy = fyv - y0 * 256;
 		for (int ox = 0; ox < ow; ox++)
 		{
 			int dx = px + ox; if (dx < 0 || dx >= cw) continue;
 			int fxv = ((ox * 256 + 128) / s) - 128;
-			int x0 = fxv >> 8, fracx = fxv - (x0 << 8);
+			int x0 = fxv >> 8, fracx = fxv - x0 * 256;
 			int s00 = samp (wm, Wm, fh, x0,     y0),     s01 = samp (wm, Wm, fh, x0 + 1, y0);
 			int s10 = samp (wm, Wm, fh, x0,     y0 + 1), s11 = samp (wm, Wm, fh, x0 + 1, y0 + 1);
 			int tv = s00 * (256 - fracx) + s01 * fracx;
