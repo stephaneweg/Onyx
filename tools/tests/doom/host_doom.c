@@ -12,6 +12,7 @@
 static unsigned long long s_us = 0;			// the virtual clock
 unsigned long long mus_now_us (void) { return s_us; }
 uint32_t DG_GetTicksMs (void) { return (uint32_t) (s_us / 1000); }
+int g_doomOnCore = 0;						// (doom_onyx.c: the engine on an app core -- here, never)
 void onyx_music_poll (void);
 void DG_SleepMs (uint32_t ms) { s_us += (ms ? ms : 1) * 1000ull; onyx_music_poll (); }
 void DG_SetWindowTitle (const char *t) { (void) t; }

@@ -344,7 +344,15 @@ Notes / caveats:
 > `DG_*` platform functions — the window canvas *is* `DG_ScreenBuffer` (640 × 400, no copy),
 > full screen at 4:3, keys from `kapi_key_held` + modifiers + key events (Tab, F-keys…),
 > `gamepad.h`, `rename`/`mkdir` on the kapi; `doom_wtk.cpp`: window chrome + menu (wtk from C);
-> `doom_sound.c`: `DG_sound_module` (16-channel mixer of the DS* lumps into `kapi_sound_write`)
+> **The engine runs on an app core** when one is free: `main` starts `doomgeneric_Tick` there
+> after `doomgeneric_Create`; the main thread keeps the window, the input (a key queue), the
+> pictures (a triple buffer: the engine swaps `DG_ScreenBuffer` between three slots), the
+> sound output and the music. The engine's syscalls (malloc's `sbrk`, stdio, files, saves,
+> `exit`) run on the main thread through the **libc RPC** (`libc/onyx_syscalls.c`:
+> `onyx_rpc_enable`, `onyx_rpc3`, `onyx_rpc_serve` — any newlib program can use it for code on
+> an app core; the main thread must then not use malloc meanwhile);
+> `doom_sound.c`: `DG_sound_module` (16-channel mixer of the DS* lumps, run by the engine into
+> a PCM ring that the main thread moves into `kapi_sound_write`)
 > and `DG_music_module` (MUS and MIDI turned into one timed event list, played on the 16 kernel
 > FM voices with the GENMIDI OPL patches converted to `kapi_fm_instrument`). **Host test**:
 > `sh tools/tests/run_doom_test.sh` (headless on a virtual clock: frames, sound effects, FM notes).

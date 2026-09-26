@@ -874,6 +874,10 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
 - **Test**: `/bin/coretest` (the same computation on an app core and on core 0, a job
   stopped by its flag, an endless job stopped by `core_release`, a faulting job, both app
   cores at once); `coretest exit` leaves a job spinning and exits (the teardown must stop it).
+- **Bigger programs on an app core**: newlib's syscalls can run on the main thread when
+  called from an app core (`libc/onyx_syscalls.c`, `onyx_rpc_*`: the caller posts the call and
+  waits in `WFE`, the main thread runs it in `onyx_rpc_serve` and `SEV`s). Doom's engine runs
+  that way (`user/doom`), with its malloc, files and saves.
 
 ## Annex — useful constants
 

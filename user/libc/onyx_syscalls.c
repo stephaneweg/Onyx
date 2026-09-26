@@ -92,20 +92,83 @@ static int file_reserve (TFile *f, long need)
 	return 0;
 }
 
+// ---- app cores (kapi v51): syscalls made there run on the main thread ------------
+//
+// Code running on an app core (kapi_core_run) must make no kapi call. A newlib program
+// whose code there still uses malloc, stdio or files (Doom's engine) turns on the RPC
+// (onyx_rpc_enable): a syscall made on an app core then posts itself, and the main thread
+// runs it in onyx_rpc_serve (which it calls often) while the app core waits. Off, or on the
+// main core, the syscalls run directly as always. One app-core caller at a time.
+static volatile int s_rpcOn = 0;
+static long (*volatile s_rpcFn) (long, long, long);
+static volatile long s_rpcA, s_rpcB, s_rpcC, s_rpcRet;
+static volatile int s_rpcState = 0;		// 0 free, 1 asked, 2 done
+
+static inline int on_app_core (void)
+{
+	unsigned long m;
+	__asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m));
+	return (m & 0xFF) != 0;
+}
+
+void onyx_rpc_enable (int on) { s_rpcOn = on; }
+int onyx_rpc_on_app_core (void) { return s_rpcOn && on_app_core (); }
+
+void onyx_rpc_serve (void)
+{
+	if (s_rpcState != 1)
+		return;
+	__asm__ volatile ("dmb ish" ::: "memory");
+	s_rpcRet = s_rpcFn (s_rpcA, s_rpcB, s_rpcC);
+	__asm__ volatile ("dmb ish" ::: "memory");
+	s_rpcState = 2;
+	__asm__ volatile ("dsb ish; sev" ::: "memory");
+}
+
+long onyx_rpc3 (long (*fn) (long, long, long), long a, long b, long c)
+{
+	if (!s_rpcOn || !on_app_core ())
+		return fn (a, b, c);
+	s_rpcFn = fn; s_rpcA = a; s_rpcB = b; s_rpcC = c;
+	__asm__ volatile ("dmb ish" ::: "memory");
+	s_rpcState = 1;
+	__asm__ volatile ("dsb ish; sev" ::: "memory");
+	while (s_rpcState != 2)
+		__asm__ volatile ("wfe" ::: "memory");
+	__asm__ volatile ("dmb ish" ::: "memory");
+	long r = s_rpcRet;
+	s_rpcState = 0;
+	__asm__ volatile ("dmb ish" ::: "memory");
+	return r;
+}
+
 // ---- memory -----------------------------------------------------------------
 
+static long rpc_sbrk (long incr, long b, long c);
 void *_sbrk (ptrdiff_t incr)
 {
+	return (void *) onyx_rpc3 (rpc_sbrk, (long) incr, 0, 0);
+}
+static long rpc_sbrk (long incr_, long b, long c)
+{
+	(void) b; (void) c;
+	ptrdiff_t incr = (ptrdiff_t) incr_;
 	void *prev = kapi_sbrk ((long) incr);
 	if (prev == (void *) -1)
 	{
 		errno = ENOMEM;
-		return (void *) -1;
+		return -1;
 	}
-	return prev;
+	return (long) prev;
 }
 
 // ---- console + files --------------------------------------------------------
+
+static long rpc_stdout (long buf, long len, long c)
+{
+	(void) c;
+	return kapi_stdout_write ((const void *) buf, (unsigned) len);
+}
 
 int _write (int fd, const void *vbuf, size_t len)
 {
@@ -114,7 +177,7 @@ int _write (int fd, const void *vbuf, size_t len)
 	// stdout/stderr go to THIS TASK'S stdout stream (what the terminal reads), not
 	// kapi_write() -- that one ignores the fd and dumps to the kernel log (kmsg).
 	if (fd == 1 || fd == 2)
-		return kapi_stdout_write (buf, (unsigned) len);
+		return (int) onyx_rpc3 (rpc_stdout, (long) buf, (long) len, 0);
 
 	TFile *f = fd_get (fd);
 	if (!f || !f->writable)
@@ -134,10 +197,16 @@ int _write (int fd, const void *vbuf, size_t len)
 	return (int) len;
 }
 
+static long rpc_stdin (long buf, long len, long c)
+{
+	(void) c;
+	return kapi_stdin_read ((void *) buf, (unsigned) len);
+}
+
 int _read (int fd, void *vbuf, size_t len)
 {
 	if (fd == 0)				// stdin
-		return kapi_stdin_read (vbuf, (unsigned) len);
+		return (int) onyx_rpc3 (rpc_stdin, (long) vbuf, (long) len, 0);
 
 	TFile *f = fd_get (fd);
 	if (!f)
@@ -154,7 +223,13 @@ int _read (int fd, void *vbuf, size_t len)
 	return (int) n;
 }
 
+static int x_open (const char *name, int flags, int mode);
+static long rpc_open (long name, long flags, long mode) { return x_open ((const char *) name, (int) flags, (int) mode); }
 int _open (const char *name, int flags, int mode)
+{
+	return (int) onyx_rpc3 (rpc_open, (long) name, flags, mode);
+}
+static int x_open (const char *name, int flags, int mode)
 {
 	(void) mode;
 
@@ -229,7 +304,13 @@ off_t _lseek (int fd, off_t off, int whence)
 	return (off_t) np;
 }
 
+static int x_close (int fd);
+static long rpc_close (long fd, long b, long c) { (void) b; (void) c; return x_close ((int) fd); }
 int _close (int fd)
+{
+	return (int) onyx_rpc3 (rpc_close, fd, 0, 0);
+}
+static int x_close (int fd)
 {
 	TFile *f = fd_get (fd);
 	if (!f)
@@ -273,7 +354,13 @@ int _isatty (int fd)
 	return (fd >= 0 && fd <= 2) ? 1 : 0;
 }
 
+static int x_unlink (const char *name);
+static long rpc_unlink (long name, long b, long c) { (void) b; (void) c; return x_unlink ((const char *) name); }
 int _unlink (const char *name)
+{
+	return (int) onyx_rpc3 (rpc_unlink, (long) name, 0, 0);
+}
+static int x_unlink (const char *name)
 {
 	if (kapi_remove (name) == 0)
 		return 0;
@@ -317,7 +404,13 @@ static long days_from_civil (int y, int m, int d)
 	return era * 146097 + doe - 719468;
 }
 
+static int x_gettimeofday (struct timeval *tv, void *tz);
+static long rpc_gettimeofday (long tv, long tz, long c) { (void) c; return x_gettimeofday ((struct timeval *) tv, (void *) tz); }
 int _gettimeofday (struct timeval *tv, void *tz)
+{
+	return (int) onyx_rpc3 (rpc_gettimeofday, (long) tv, (long) tz, 0);
+}
+static int x_gettimeofday (struct timeval *tv, void *tz)
 {
 	(void) tz;
 	if (!tv)
@@ -352,9 +445,10 @@ int _gettimeofday (struct timeval *tv, void *tz)
 
 // ---- process ----------------------------------------------------------------
 
+static long rpc_exit (long code, long b, long c) { (void) b; (void) c; kapi_exit ((int) code); return 0; }
 void _exit (int code)
 {
-	kapi_exit (code);
+	onyx_rpc3 (rpc_exit, code, 0, 0);
 	for (;;)
 		;				// kapi_exit does not return
 }

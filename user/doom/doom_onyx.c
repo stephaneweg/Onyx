@@ -14,6 +14,11 @@
 //     A USB gamepad: the d-pad, A fire, B use, X run, L / R strafe, Start the menu, Select
 //     the map (user/gamepad.h).
 //   * Sound effects and music: doom_sound.c.
+//   * Two threads when an app core is free (kapi v51): the engine (doomgeneric_Tick) runs on
+//     the app core, undisturbed; this main thread keeps the window, the input, the sound
+//     output and the music, and runs the engine's syscalls (malloc, files, printf: the RPC of
+//     libc/onyx_syscalls.c). Pictures go through a triple buffer, keys through a queue.
+//     Without a free core, all runs here as before.
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +50,30 @@ void onyx_menu (void (*full) (void), void (*quit) (void));
 static unsigned *s_canvas = 0;				// the window's 640 x 400 client area
 static unsigned *s_fs = 0; static int s_fsw, s_fsh;	// full screen back buffer
 static int s_wantFull = 0;
+int g_doomOnCore = 0;						// the engine runs on an app core
+static int s_core = -1;
+
+// libc/onyx_syscalls.c: the syscalls made on an app core, run by the main thread
+void onyx_rpc_enable (int on);
+void onyx_rpc_serve (void);
+long onyx_rpc3 (long (*fn) (long, long, long), long a, long b, long c);
+void onyx_sound_service (void);					// doom_sound.c
+
+static inline void fence (void) { __asm__ volatile ("dmb ish" ::: "memory"); }
+static unsigned xchg (volatile unsigned *p, unsigned v)
+{
+	unsigned old, fail;
+	__asm__ volatile ("1: ldaxr %w0, [%2]\n"
+			  "   stlxr %w1, %w3, [%2]\n"
+			  "   cbnz  %w1, 1b\n"
+			  : "=&r" (old), "=&r" (fail) : "r" (p), "r" (v) : "memory");
+	return old;
+}
+
+// the pictures: a triple buffer (the engine draws in back, the main thread shows front)
+static pixel_t *s_slot[3];
+static unsigned s_back = 0, s_front = 1;
+static volatile unsigned s_mid = 2;				// slot | 4 when it holds a new picture
 
 // ---- time: the ARM generic timer (apps run at EL1) ----------------------------------------
 static unsigned long long now_us (void)
@@ -56,20 +85,43 @@ static unsigned long long now_us (void)
 }
 uint32_t DG_GetTicksMs (void) { return (uint32_t) (now_us () / 1000); }
 void onyx_music_poll (void);					// doom_sound.c
-void DG_SleepMs (uint32_t ms) { onyx_music_poll (); kapi_msleep (ms ? ms : 1); }
+void DG_SleepMs (uint32_t ms)
+{
+	if (g_doomOnCore)						// (the app core: wait on the clock)
+	{
+		unsigned long long end = now_us () + (ms ? ms : 1) * 1000ull;
+		while (now_us () < end) __asm__ volatile ("yield");
+		return;
+	}
+	onyx_music_poll ();
+	kapi_msleep (ms ? ms : 1);
+}
 void DG_SetWindowTitle (const char *title) { (void) title; }
 
 // ---- files (helpers for the patched doomgeneric sources) ------------------------------------
-int onyx_file_exists (const char *path)			// (without reading it: a WAD is big)
+// (run by the main thread when the engine calls them on its app core: onyx_rpc3)
+static long x_exists (long path, long b, long c)
 {
-	void *h = kapi_open (path);
+	(void) b; (void) c;
+	void *h = kapi_open ((const char *) path);
 	if (!h) return 0;
 	kapi_close (h);
 	return 1;
 }
-int mkdir (const char *path, mode_t mode) { (void) mode; return kapi_mkdir (path) == 0 ? 0 : -1; }
+int onyx_file_exists (const char *path)			// (without reading it: a WAD is big)
+{
+	return (int) onyx_rpc3 (x_exists, (long) path, 0, 0);
+}
+static long x_mkdir (long path, long b, long c) { (void) b; (void) c; return kapi_mkdir ((const char *) path) == 0 ? 0 : -1; }
+int mkdir (const char *path, mode_t mode) { (void) mode; return (int) onyx_rpc3 (x_mkdir, (long) path, 0, 0); }
 // (newlib's rename goes through link + unlink, which Onyx has not: the kernel renames)
-int rename (const char *from, const char *to) { kapi_remove (to); return kapi_rename (from, to) == 0 ? 0 : -1; }
+static long x_rename (long from, long to, long c)
+{
+	(void) c;
+	kapi_remove ((const char *) to);
+	return kapi_rename ((const char *) from, (const char *) to) == 0 ? 0 : -1;
+}
+int rename (const char *from, const char *to) { return (int) onyx_rpc3 (x_rename, (long) from, (long) to, 0); }
 int _link (const char *from, const char *to) { (void) from; (void) to; return -1; }
 
 // ---- the picture -------------------------------------------------------------------------------
@@ -83,6 +135,7 @@ static void full_screen (int on)
 	else if (!on && s_fs) { kapi_fullscreen_end (); s_fs = 0; }
 }
 
+static const pixel_t *s_shown;					// the picture to show (see present)
 static void blit_full (void)
 {
 	// 320 x 200 at 4:3: height * 4 / 3 wide, the display's height (or narrower screens: width)
@@ -97,22 +150,35 @@ static void blit_full (void)
 		int sy = y * DOOMGENERIC_RESY / oh;
 		unsigned *d = s_fs + (long) (oy + y) * s_fsw + ox;
 		if (y > 0 && sy == (y - 1) * DOOMGENERIC_RESY / oh) { memcpy (d, d - s_fsw, (size_t) n * 4); continue; }
-		const unsigned *s = (const unsigned *) DG_ScreenBuffer + sy * DOOMGENERIC_RESX;
+		const unsigned *s = (const unsigned *) s_shown + sy * DOOMGENERIC_RESX;
 		for (int x = 0; x < n; x++) d[x] = s[xmap[x]];
 	}
 }
 
+// Show a picture: stretched full screen, or into the window (which is the picture itself
+// when the engine runs here).
+static void show_picture (const pixel_t *pic)
+{
+	s_shown = pic;
+	if (s_wantFull != (s_fs != 0)) full_screen (s_wantFull);
+	if (s_fs) { blit_full (); kapi_present_fb (); return; }
+	if ((const void *) pic != (const void *) s_canvas) memcpy (s_canvas, pic, DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
+	kapi_present ();
+}
+
 void DG_DrawFrame (void)
 {
-	if (s_wantFull != (s_fs != 0)) full_screen (s_wantFull);
-	if (s_fs) { blit_full (); kapi_present_fb (); }
-	else kapi_present ();
+	if (!g_doomOnCore) { show_picture (DG_ScreenBuffer); return; }
+	// the app core: hand the picture over, draw the next one in a free slot
+	fence ();
+	s_back = xchg (&s_mid, s_back | 4) & 3;
+	DG_ScreenBuffer = s_slot[s_back];
 }
 
 // ---- input ----------------------------------------------------------------------------------------
 #define QN 128
 static unsigned char s_qkey[QN], s_qdown[QN];
-static int s_qh = 0, s_qt = 0;
+static volatile int s_qh = 0, s_qt = 0;				// written by the main thread / the engine
 static unsigned char s_down[256];				// Doom keys held (as last reported)
 static unsigned char s_tap[256];				// tapped keys: released at the next poll
 
@@ -120,11 +186,18 @@ static void push (int down, unsigned char key)
 {
 	int n = (s_qh + 1) % QN;
 	if (n == s_qt) return;
-	s_qkey[s_qh] = key; s_qdown[s_qh] = (unsigned char) down; s_qh = n;
+	s_qkey[s_qh] = key; s_qdown[s_qh] = (unsigned char) down;
+	fence ();
+	s_qh = n;
 }
 
 static void on_full (void) { s_wantFull = !s_wantFull; }
-static void on_quit (void) { exit (0); }
+static void quit (void)
+{
+	if (g_doomOnCore) { kapi_core_release (s_core); g_doomOnCore = 0; }	// (the engine stops first)
+	exit (0);
+}
+static void on_quit (void) { quit (); }
 
 // Keys that are not followed while held (kapi_key_held knows arrows, Enter, Esc, Space,
 // letters, digits): each press is a tap, released at the next poll.
@@ -157,7 +230,7 @@ static void poll_input (void)
 {
 	for (int k = 0; k < 256; k++) if (s_tap[k]) { push (0, (unsigned char) k); s_tap[k] = 0; }
 	kapi_pump_events ();
-	if (kapi_should_exit ()) exit (0);
+	if (kapi_should_exit ()) quit ();
 	unsigned char want[256];
 	memset (want, 0, sizeof want);
 	static const struct { int onyx; unsigned char doom; } H[] = {
@@ -191,9 +264,11 @@ int DG_GetKey (int *pressed, unsigned char *key)
 {
 	static uint32_t lastPoll = 0;
 	uint32_t t = DG_GetTicksMs ();
-	if (s_qt == s_qh && t != lastPoll) { lastPoll = t; poll_input (); }
+	if (!g_doomOnCore && s_qt == s_qh && t != lastPoll) { lastPoll = t; poll_input (); }	// (else: the main thread polls)
 	if (s_qt == s_qh) return 0;
+	fence ();
 	*pressed = s_qdown[s_qt]; *key = s_qkey[s_qt];
+	fence ();
 	s_qt = (s_qt + 1) % QN;
 	return 1;
 }
@@ -223,6 +298,12 @@ static int wad_kind (const char *path)
 	char m[4] = { 0, 0, 0, 0 };
 	kapi_read (h, m, 4); kapi_close (h);
 	return !memcmp (m, "IWAD", 4) ? 1 : !memcmp (m, "PWAD", 4) ? 2 : 0;
+}
+
+static void engine (void *arg)				// on the app core
+{
+	(void) arg;
+	for (;;) doomgeneric_Tick ();
 }
 
 int main (void)
@@ -273,6 +354,47 @@ int main (void)
 	}
 	av[ac] = 0;
 	doomgeneric_Create (ac, av);
-	for (;;) doomgeneric_Tick ();
+
+	// The engine on an app core if one is free (its pictures in three slots of its own).
+	static unsigned char stack[1 << 20] __attribute__ ((aligned (16)));
+	for (int i = 0; i < 3; i++) s_slot[i] = malloc (DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
+	if (s_slot[0] && s_slot[1] && s_slot[2] && (s_core = kapi_core_acquire ()) >= 0)
+	{
+		for (int i = 0; i < 3; i++) memcpy (s_slot[i], s_canvas, DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
+		DG_ScreenBuffer = s_slot[s_back];
+		g_doomOnCore = 1;
+		onyx_rpc_enable (1);
+		fence ();
+		if (kapi_core_run (s_core, engine, 0, stack + sizeof stack) != 0)
+		{
+			g_doomOnCore = 0; onyx_rpc_enable (0);
+			DG_ScreenBuffer = (pixel_t *) s_canvas;
+			kapi_core_release (s_core); s_core = -1;
+		}
+	}
+	if (!g_doomOnCore) for (;;) doomgeneric_Tick ();		// (no app core: everything here)
+
+	// The main thread: input, the engine's syscalls, sound + music, the pictures.
+	for (;;)
+	{
+		poll_input ();
+		onyx_rpc_serve ();
+		onyx_sound_service ();
+		if (s_mid & 4)
+		{
+			s_front = xchg (&s_mid, s_front) & 3;
+			fence ();
+			show_picture (s_slot[s_front]);
+		}
+		if (kapi_core_state (s_core) == KAPI_CORE_FAULT)
+		{
+			notify ("Doom", "The game stopped (a fault, see kmsg)");
+			g_doomOnCore = 0;
+			kapi_core_release (s_core);
+			exit (1);
+		}
+		onyx_rpc_serve ();
+		kapi_msleep (1);
+	}
 	return 0;
 }

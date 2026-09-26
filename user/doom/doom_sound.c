@@ -7,6 +7,11 @@
 //   * Music: the MUS (Doom) or MIDI (Freedoom) songs played on the kernel's FM voices (kapi_sound_instrument, OPL2-
 //     style 2-operator), with the instruments of the WAD's GENMIDI lump -- the same OPL
 //     patches the original Adlib / Sound Blaster driver used, so it sounds like DOS Doom.
+//   * Two threads: the engine may run on an app core (doom_onyx.c), where it makes no kapi
+//     call. It mixes the effects into a PCM ring and posts the music commands;
+//     onyx_sound_service () -- the main thread, often -- moves the ring into the kernel's
+//     stream and plays the music on the FM voices. Without an app core the engine calls
+//     onyx_sound_service () itself.
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +27,42 @@ int use_libsamplerate = 0;				// (i_sound.c's settings for the SDL module)
 float libsamplerate_scale = 0.65f;
 
 static int s_audio = 0;					// 1: the output is ours
+
+// ---- commands: engine -> main thread (single producer, single consumer) ------------------------
+extern int g_doomOnCore;					// doom_onyx.c: the engine is on an app core
+enum { C_MUS_PLAY, C_MUS_STOP, C_MUS_PAUSE, C_MUS_RESUME,
+       C_MUS_VOLUME, C_MUS_UNREG };
+struct cmd { int op, c, a, b; unsigned gen, len, step; const void *p; };
+#define NCMD 512
+static struct cmd s_cmd[NCMD];
+static volatile unsigned s_cmdHead = 0, s_cmdTail = 0;	// written by the engine / the main thread
+#ifdef __aarch64__
+static inline void fence (void) { __asm__ volatile ("dmb ish" ::: "memory"); }
+static inline void relax (void) { __asm__ volatile ("yield"); }
+#else								// (the PC test: tools/tests/doom)
+static inline void fence (void) { __atomic_thread_fence (__ATOMIC_SEQ_CST); }
+static inline void relax (void) {}
+#endif
+void onyx_sound_service (void);
+
+static void wait_main (void)					// the engine waits for the main thread
+{
+	if (!g_doomOnCore) onyx_sound_service ();
+	else relax ();
+}
+static unsigned post (int op, int c, int a, int b, unsigned gen, const void *p, unsigned len, unsigned step)
+{
+	while (s_cmdHead - s_cmdTail >= NCMD) wait_main ();	// (full: the main thread is behind)
+	struct cmd *k = &s_cmd[s_cmdHead % NCMD];
+	k->op = op; k->c = c; k->a = a; k->b = b; k->gen = gen; k->p = p; k->len = len; k->step = step;
+	fence ();
+	return ++s_cmdHead;
+}
+static void wait_applied (unsigned upto)			// until the commands before upto are done
+{
+	while ((int) (s_cmdTail - upto) < 0) wait_main ();
+	fence ();
+}
 
 static int audio_ok (void)
 {
@@ -52,12 +93,18 @@ static int sfx_lump (sfxinfo_t *sfx)
 	return W_CheckNumForName (name);
 }
 
-static void set_params (int c, int vol, int sep)
+static void calc_params (int vol, int sep, int *vl, int *vr)
 {
 	if (vol < 0) vol = 0; if (vol > 127) vol = 127;
 	if (sep < 0) sep = 0; if (sep > 254) sep = 254;
-	s_ch[c].vl = vol * (254 - sep) / 127;		// 0..254
-	s_ch[c].vr = vol * sep / 127;
+	*vl = vol * (254 - sep) / 127;			// 0..254
+	*vr = vol * sep / 127;
+}
+
+static void set_params (int c, int vol, int sep)
+{
+	int vl, vr; calc_params (vol, sep, &vl, &vr);
+	s_ch[c].vl = vl; s_ch[c].vr = vr;
 }
 
 static int sfx_start (sfxinfo_t *sfx, int c, int vol, int sep)
@@ -82,20 +129,24 @@ static boolean sfx_playing (int c) { return c >= 0 && c < NCH && s_ch[c].on ? tr
 static void sfx_params (int c, int vol, int sep) { if (c >= 0 && c < NCH) set_params (c, vol, sep); }
 static void sfx_cache (sfxinfo_t *s, int n) { (void) s; (void) n; }
 
-// Mix enough to keep ~70 ms queued (the output drains it while Doom renders).
+// The effects are mixed by the engine (on its app core, if it has one) into a PCM ring;
+// the main thread moves the ring into the kernel's stream (onyx_sound_service) and tells
+// how much the kernel still has queued.
+#define RING	16384					// frames (a power of two)
+static short s_ring[RING * 2];
+static volatile unsigned s_rHead = 0, s_rTail = 0;	// written by the engine / the main thread
+static volatile unsigned s_kQueued = 0;			// (main thread) frames queued in the kernel
+
+// Keep ~90 ms mixed ahead (this runs once a tic, 28.6 ms).
 static void sfx_update (void)
 {
-	if (!audio_ok ()) return;
-	unsigned rate, freeFrames, owner;
-	kapi_sound_status (&rate, &freeFrames, &owner);
-	static unsigned cap = 0;
-	if (freeFrames > cap) cap = freeFrames;
-	unsigned queued = cap - freeFrames, target = RATE * 70 / 1000;
-	if (queued >= target) return;
-	unsigned n = target - queued;
-	static short buf[4096 * 2];
-	if (n > 4096) n = 4096;
-	for (unsigned i = 0; i < n; i++)
+	if (!g_doomOnCore) onyx_sound_service ();		// (no app core: the main thread's work here)
+	unsigned have = s_kQueued + (s_rHead - s_rTail), target = RATE * 90 / 1000;
+	if (have >= target) return;
+	unsigned n = target - have, room = RING - (s_rHead - s_rTail);
+	if (n > room) n = room;
+	unsigned w = s_rHead;
+	for (unsigned i = 0; i < n; i++, w++)
 	{
 		int l = 0, r = 0;
 		for (int c = 0; c < NCH; c++)
@@ -110,9 +161,36 @@ static void sfx_update (void)
 		}
 		l = l > 32767 ? 32767 : l < -32768 ? -32768 : l;
 		r = r > 32767 ? 32767 : r < -32768 ? -32768 : r;
-		buf[i * 2] = (short) l; buf[i * 2 + 1] = (short) r;
+		unsigned k = (w & (RING - 1)) * 2;
+		s_ring[k] = (short) l; s_ring[k + 1] = (short) r;
 	}
-	kapi_sound_write (buf, n);
+	fence ();
+	s_rHead = w;
+	if (!g_doomOnCore) onyx_sound_service ();		// (and out at once)
+}
+
+// The main thread: the ring into the kernel's stream.
+static void sfx_out (void)
+{
+	if (!audio_ok ()) { s_rTail = s_rHead; return; }
+	unsigned rate, freeFrames, owner;
+	kapi_sound_status (&rate, &freeFrames, &owner);
+	static unsigned cap = 0;
+	if (freeFrames > cap) cap = freeFrames;
+	static short buf[4096 * 2];
+	unsigned t = s_rTail, n = s_rHead - t;
+	fence ();
+	if (n > freeFrames) n = freeFrames;
+	if (n > 4096) n = 4096;
+	for (unsigned i = 0; i < n; i++)
+	{
+		unsigned k = ((t + i) & (RING - 1)) * 2;
+		buf[i * 2] = s_ring[k]; buf[i * 2 + 1] = s_ring[k + 1];
+	}
+	fence ();
+	s_rTail = t + n;
+	if (n) kapi_sound_write (buf, n);
+	s_kQueued = cap - freeFrames + n;
 }
 
 static snddevice_t s_devices[] = { SNDDEVICE_SB, SNDDEVICE_PAS, SNDDEVICE_GUS, SNDDEVICE_WAVEBLASTER,
@@ -142,6 +220,8 @@ static int s_pos = 0, s_playing = 0, s_looping = 0, s_paused = 0;
 static int s_musVol = 100;					// 0..127
 static unsigned long long s_songUs = 0, s_last = 0;		// the song's time, the clock at the last poll
 static int s_age = 0;
+static volatile unsigned s_musDoneGen = 0;			// (main thread) the play that ended
+static unsigned s_songGen = 0;					// (main thread) the play playing
 
 #ifdef __aarch64__
 static unsigned long long mus_now_us (void)
@@ -404,21 +484,27 @@ static void mus_poll (void)
 		case EV_ALLOFF: for (int v = 0; v < NVOICES; v++) if (s_v[v].on && s_v[v].chan == e->ch) voice_off (v); break;
 		case EV_END:
 			all_off ();
-			if (!s_looping) { s_playing = 0; return; }
+			if (!s_looping) { s_playing = 0; s_musDoneGen = s_songGen; return; }
 			s_pos = 0; s_songUs = 0; reset_channels ();
 			return;
 		}
 	}
 }
 
-// Also called while Doom waits for its next tic: the notes then keep a finer time than 1/35 s.
-void onyx_music_poll (void) { mus_poll (); }
+// Also called while Doom waits for its next tic (without an app core): the notes then keep
+// a finer time than 1/35 s.
+void onyx_music_poll (void) { if (!g_doomOnCore) onyx_sound_service (); }
 
-static boolean mus_init (void) { reset_channels (); return true; }
-static void mus_shutdown (void) { all_off (); }
-static void mus_volume (int v) { s_musVol = v < 0 ? 0 : v > 127 ? 127 : v; }
-static void mus_pause (void) { s_paused = 1; all_off (); }
-static void mus_resume (void) { s_paused = 0; s_last = mus_now_us (); }
+static boolean mus_init (void) { reset_channels (); return true; }	// (at start-up: the main thread)
+
+// the engine's side
+static int s_musOn = 0;
+static unsigned s_musGen = 0;
+
+static void mus_shutdown (void) { post (C_MUS_STOP, 0, 0, 0, 0, 0, 0, 0); }
+static void mus_volume (int v) { post (C_MUS_VOLUME, 0, v, 0, 0, 0, 0, 0); }
+static void mus_pause (void) { post (C_MUS_PAUSE, 0, 0, 0, 0, 0, 0, 0); }
+static void mus_resume (void) { post (C_MUS_RESUME, 0, 0, 0, 0, 0, 0, 0); }
 
 static void *mus_register (void *data, int len)
 {
@@ -437,23 +523,50 @@ static void mus_unregister (void *h)
 {
 	struct song *g = h;
 	if (!g) return;
-	if (g == s_song) { all_off (); s_song = 0; s_playing = 0; }
+	wait_applied (post (C_MUS_UNREG, 0, 0, 0, 0, g, 0, 0));	// (the main thread lets go of it first)
 	free (g->ev); free (g);
 }
-
 static void mus_play (void *h, boolean looping)
 {
-	all_off ();
-	s_song = h;
-	if (!s_song) return;
-	s_pos = 0; s_songUs = 0; s_looping = looping; s_playing = 1; s_paused = 0;
-	s_last = mus_now_us ();
-	reset_channels ();
+	s_musOn = h != 0;
+	post (C_MUS_PLAY, 0, looping ? 1 : 0, 0, ++s_musGen, h, 0, 0);
 }
-static void mus_stop (void) { all_off (); s_playing = 0; }
-static boolean mus_isplaying (void) { return s_playing ? true : false; }
+static void mus_stop (void) { s_musOn = 0; post (C_MUS_STOP, 0, 0, 0, 0, 0, 0, 0); }
+static boolean mus_isplaying (void) { return s_musOn && s_musDoneGen != s_musGen ? true : false; }
+static void mus_tic (void) { if (!g_doomOnCore) onyx_sound_service (); }	// (the engine's poll)
+
+// ---- the main thread: the music commands, the music, the effects' ring ----------------------------------
+void onyx_sound_service (void)
+{
+	while (s_cmdTail != s_cmdHead)
+	{
+		fence ();
+		const struct cmd *k = &s_cmd[s_cmdTail % NCMD];
+		switch (k->op)
+		{
+		case C_MUS_PLAY:
+			all_off ();
+			s_song = (struct song *) k->p;
+			s_songGen = k->gen;
+			if (!s_song) { s_playing = 0; s_musDoneGen = k->gen; break; }
+			s_pos = 0; s_songUs = 0; s_looping = k->a; s_playing = 1; s_paused = 0;
+			s_last = mus_now_us ();
+			reset_channels ();
+			break;
+		case C_MUS_STOP: all_off (); s_playing = 0; s_musDoneGen = s_songGen; break;
+		case C_MUS_PAUSE: s_paused = 1; all_off (); break;
+		case C_MUS_RESUME: s_paused = 0; s_last = mus_now_us (); break;
+		case C_MUS_VOLUME: s_musVol = k->a < 0 ? 0 : k->a > 127 ? 127 : k->a; break;
+		case C_MUS_UNREG: if (k->p == s_song) { all_off (); s_song = 0; s_playing = 0; s_musDoneGen = s_songGen; } break;
+		}
+		fence ();
+		s_cmdTail++;
+	}
+	mus_poll ();
+	sfx_out ();
+}
 
 music_module_t DG_music_module = {
 	s_devices, sizeof s_devices / sizeof s_devices[0],
 	mus_init, mus_shutdown, mus_volume, mus_pause, mus_resume, mus_register, mus_unregister,
-	mus_play, mus_stop, mus_isplaying, mus_poll };
+	mus_play, mus_stop, mus_isplaying, mus_tic };
