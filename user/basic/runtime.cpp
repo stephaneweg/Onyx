@@ -102,8 +102,12 @@ public:
 	{
 		if (x >= 0)
 		{
+			// physical -> the program's pixels: / the zoom (320-wide modes are shown 2x) or, full
+			// screen, x the virtual / physical size ratio; kept on the picture (not the black bars)
 			if (fs) { mx = (x - fsOx) * vw / fsW; my = (y - fsOy) * vh / fsH; }
 			else { mx = x / sx; my = y / sy; }
+			mx = mx < 0 ? 0 : mx > vw - 1 ? vw - 1 : mx;
+			my = my < 0 ? 0 : my > vh - 1 ? vh - 1 : my;
 		}
 		mb = (bl ? 1 : 0) | (br ? 2 : 0) | (bm ? 4 : 0);
 		return true;
@@ -218,6 +222,10 @@ public:
 		int ow, oh;
 		if ((long) fsW * dh <= (long) fsH * dw) { ow = fsW; oh = (int) ((long) fsW * dh / dw); }
 		else { oh = fsH; ow = (int) ((long) fsH * dw / dh); }
+		// A whole-number zoom when it fills nearly as much (1024 x 768: 320 x 200 at 3x, not
+		// 3.2x): every pixel the same size, no uneven columns.
+		int k = sx == sy ? ow / W : 0;
+		if (k >= 1 && k * W * 100 >= ow * 85) { ow = k * W; oh = k * H; }
 		int ox = (fsW - ow) / 2, oy = (fsH - oh) / 2;
 		root->fsOx = ox; root->fsOy = oy; root->fsW = ow; root->fsH = oh; root->vw = W; root->vh = H;
 		static int xmap[4096];
@@ -231,6 +239,7 @@ public:
 	}
 	void pump ()
 	{
+		bgTick ();
 		pump_events ();
 		if (root) { if (!fsBuf) root->tooltipTick (); present (); }
 	}
@@ -378,6 +387,41 @@ public:
 		long k;
 		while (root->peekKey (&k)) { int n = keyString (k, o); if (n) return n; root->popKey (&k); }
 		return 0;
+	}
+	// KEYDOWN(k$): k$ as INKEY$ gives it (CHR$(0) + "K" = Left, CHR$(27) = Esc, "a", " ") or a
+	// name (LEFT RIGHT UP DOWN SPACE ENTER ESC). Asks the kernel (ABI v48); 0 without a window.
+	bool keyDown (const char *k, int n) override
+	{
+		if (!root || n <= 0) return false;
+		pump ();
+		int key = 0;
+		if (n == 2 && k[0] == 0)
+		{
+			switch (k[1])
+			{
+			case 72: key = KEY_UP; break; case 80: key = KEY_DOWN; break;
+			case 75: key = KEY_LEFT; break; case 77: key = KEY_RIGHT; break;
+			case 71: key = KEY_HOME; break; case 79: key = KEY_END; break;
+			case 73: key = KEY_PGUP; break; case 81: key = KEY_PGDN; break;
+			case 83: key = KEY_DEL; break;
+			}
+		}
+		else if (n == 1) key = (unsigned char) k[0] == 13 ? KEY_ENTER : (unsigned char) k[0];
+		else
+		{
+			static const struct { const char *name; int key; } names[] = {
+				{ "LEFT", KEY_LEFT }, { "RIGHT", KEY_RIGHT }, { "UP", KEY_UP }, { "DOWN", KEY_DOWN },
+				{ "SPACE", ' ' }, { "ENTER", KEY_ENTER }, { "ESC", 27 }, { "TAB", KEY_TAB },
+				{ "BACKSPACE", KEY_BACKSPACE }, { "HOME", KEY_HOME }, { "END", KEY_END },
+				{ "PGUP", KEY_PGUP }, { "PGDN", KEY_PGDN }, { "DEL", KEY_DEL }, { 0, 0 } };
+			for (int i = 0; names[i].name && !key; i++)
+			{
+				const char *p = names[i].name; int j = 0;
+				while (j < n && p[j] && (k[j] == p[j] || k[j] == p[j] + ('a' - 'A'))) j++;
+				if (j == n && p[j] == 0) key = names[i].key;
+			}
+		}
+		return key != 0 && kapi_key_held (key) != 0;
 	}
 	void cls (int m) override
 	{
@@ -652,7 +696,7 @@ public:
 		unsigned t0 = kapi_get_ticks ();
 		while ((int) ((kapi_get_ticks () - t0) * 10) < ms)
 		{
-			if (root) { pump (); if (stopped ()) return; }
+			if (root) { pump (); if (stopped ()) return; } else bgTick ();
 			int left = ms - (int) ((kapi_get_ticks () - t0) * 10);
 			kapi_msleep (left > 10 ? 10 : (left > 0 ? left : 1));
 		}
@@ -660,7 +704,7 @@ public:
 	}
 	bool poll () override
 	{
-		if (!root) return !(console ? false : should_exit ());
+		if (!root) { bgTick (); return !(console ? false : should_exit ()); }
 		pump ();
 		return !stopped ();
 	}
@@ -691,6 +735,44 @@ public:
 		if (audio == 0) audio = kapi_sound_acquire () == 1 ? 1 : -1;
 		if (audio != 1) return -1;
 		return kapi_sound_start (voice, (unsigned) (freq * 1000), wave, vol) == 0 ? 0 : -1;
+	}
+	// PLAY "MB": a 32-note queue on voice 0, advanced by bgTick () from pump () / sleepMs ().
+	struct BgNote { float freq; unsigned short on, off; unsigned char wave; };
+	enum { BGQ = 32 };
+	BgNote bgq[BGQ]; int bgHead = 0, bgCount = 0, bgPhase = 0; unsigned bgUntil = 0, bgGap = 0;	// phase 0 idle 1 on 2 off
+	bool bgNote (double freq, int on, int off, int wave) override
+	{
+		if (freq > 0) { if (audio == 0) audio = kapi_sound_acquire () == 1 ? 1 : -1; if (audio != 1) return false; }
+		while (bgCount >= BGQ)				// full: wait (QBasic does the same)
+		{
+			kapi_msleep (5); bgTick (); if (root) pump ();
+			if (stopped ()) return true;
+		}
+		BgNote &b = bgq[(bgHead + bgCount) % BGQ];
+		b.freq = (float) freq; b.on = (unsigned short) (on < 0 ? 0 : on > 65535 ? 65535 : on);
+		b.off = (unsigned short) (off < 0 ? 0 : off > 65535 ? 65535 : off); b.wave = (unsigned char) wave;
+		bgCount++;
+		bgTick ();
+		return true;
+	}
+	int bgNotes () override { bgTick (); return bgCount + (bgPhase == 1 ? 1 : 0); }
+	void bgTick ()
+	{
+		if (!bgPhase && !bgCount) return;
+		unsigned now = kapi_get_ticks () * 10;
+		for (int guard = 0; guard < BGQ + 2; guard++)
+		{
+			if (bgPhase && (int) (now - bgUntil) < 0) return;
+			if (bgPhase == 1) { note (0, 0, 0, 0); bgPhase = 2; bgUntil += bgGap; continue; }
+			unsigned start = bgPhase ? bgUntil : now;	// back to back, unless the queue ran dry
+			if ((int) (now - start) > 100) start = now;	// (or we fell far behind)
+			bgPhase = 0;
+			if (!bgCount) return;
+			BgNote b = bgq[bgHead]; bgHead = (bgHead + 1) % BGQ; bgCount--;
+			bgGap = b.off;
+			if (b.freq > 0 && b.on > 0) { note (0, b.freq, b.wave, 200); bgPhase = 1; bgUntil = start + b.on; }
+			else { bgPhase = 2; bgUntil = start + b.on + b.off; }
+		}
 	}
 
 	// ---- GUI -----------------------------------------------------------------------------------------
@@ -920,6 +1002,7 @@ public:
 	// End of the program: a text-only window program keeps its window until a key.
 	void finished (bool error) override
 	{
+		while (!error && (bgCount || bgPhase) && !stopped ()) { kapi_msleep (10); bgTick (); if (root) pump (); }
 		if (audio == 1) { kapi_sound_stop (-1); kapi_msleep (20); kapi_sound_release (); audio = 0; }
 		if (fsBuf) fullscreen (false);
 		if (!root || error || windowCmd || !textUsed || root->stop) return;

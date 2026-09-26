@@ -50,6 +50,10 @@ struct ConsoleHost : bas::Host
 	{ static const char *n[] = { "A.BAS", "B.TXT", "C.BAS", 0 }; (void) d; for (int k = 0; k <= i; k++) if (!n[k]) return 0; strncpy (o, n[i], cap); return (int) strlen (o); }
 	void circle (int x, int y, int r, int c, int f) override { printf ("[circle %d %d %d %d %d]\n", x, y, r, c, f); }
 	int note (int v, double f, int w, int vol) override { printf ("[note %d %.1f %d %d]", v, f, w, vol); return 0; }
+	int nbg = 0;
+	bool bgNote (double f, int on, int off, int w) override { printf ("[bg %.1f %d %d %d]", f, on, off, w); nbg++; return true; }
+	int bgNotes () override { return nbg; }
+	bool keyDown (const char *k, int n) override { return n == 4 && k[0] == 'L'; }	// "LEFT" held
 	void sleepMs (int ms) override { if (!quietSleep) printf ("(%d)", ms); vms += ms; }
 	// A virtual clock (advanced by the sleeps) and scripted keys (<prog>.keys: one key per
 	// 100 ms of that clock; "\1" + letter = an extended key: \1H up, \1; F1 ...).

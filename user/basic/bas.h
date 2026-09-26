@@ -48,6 +48,7 @@ struct Host
 	virtual void palette (int attr, int rgb) { (void) attr; (void) rgb; }	// rgb 0xRRGGBB; attr < 0: reset all
 	virtual void pcopy (int src, int dst) { (void) src; (void) dst; }
 	virtual int  keyPending (char *out2) { (void) out2; return 0; }	// the next key (as INKEY$), not taken
+	virtual bool keyDown (const char *k, int n) { (void) k; (void) n; return false; }	// KEYDOWN(k$): held now?
 	virtual void pset (int x, int y, int c) { (void) x; (void) y; (void) c; }
 	virtual int  point (int x, int y) { (void) x; (void) y; return 0; }
 	virtual void line (int x1, int y1, int x2, int y2, int c, int box, int style) { (void) x1; (void) y1; (void) x2; (void) y2; (void) c; (void) box; (void) style; }
@@ -64,6 +65,10 @@ struct Host
 	// Sound: voice 0..15 plays freq Hz (0 = stop) with wave 0 square 1 sine 2 triangle
 	// 3 saw 4 noise, volume 0..255. 0 ok, -1 no audio / the output is used elsewhere.
 	virtual int  note (int voice, double freq, int wave, int volume) { (void) voice; (void) freq; (void) wave; (void) volume; return 0; }
+	// PLAY "MB": queue a note (freq 0 = a rest) sounding onMs then silent offMs, played while the
+	// program goes on; false = no background player (the VM plays it in the foreground).
+	virtual bool bgNote (double freq, int onMs, int offMs, int wave) { (void) freq; (void) onMs; (void) offMs; (void) wave; return false; }
+	virtual int  bgNotes () { return 0; }			// PLAY(n): notes still queued
 	// GUI (Onyx): WINDOW, controls and their events.
 	virtual void window (const char *title, int w, int h) { (void) title; (void) w; (void) h; }
 	virtual int  control (int kind, int x, int y, int w, int h, const char *text, int val)

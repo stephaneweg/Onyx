@@ -65,7 +65,8 @@ static const BFn BFNS[] = {
 	{ "CVI", B_CVI, TY_NUM, "S" }, { "CVL", B_CVL, TY_NUM, "S" }, { "CVS", B_CVS, TY_NUM, "S" }, { "CVD", B_CVD, TY_NUM, "S" },
 	{ "INPUT$", B_INPUTS, TY_STR, "N[N" }, { "SEEK", B_SEEK, TY_NUM, "N" }, { "LOC", B_LOC, TY_NUM, "N" },
 	{ "ENVIRON$", B_ENVIRON, TY_STR, "*" }, { "FRE", B_FRE, TY_NUM, "*" }, { "PMAP", B_PMAP, TY_NUM, "NN" },
-	{ "SCREEN", B_SCREEN, TY_NUM, "NN[N" },
+	{ "SCREEN", B_SCREEN, TY_NUM, "NN[N" }, { "KEYDOWN", B_KEYDOWN, TY_NUM, "S" },
+	{ "PLAY", B_PLAYN, TY_NUM, "N" },
 	{ 0, 0, 0, 0 } };
 
 // Block terminators (what ends a statement block).

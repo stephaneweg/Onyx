@@ -1759,6 +1759,7 @@ void kapi_present_fb (void)
 			memcpy (g_pGraphics->GetBuffer (), pWM->FullscreenBuffer (), (size_t) nW * nH * 4);
 		}
 		g_pGraphics->UpdateDisplay ();
+		ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
 	}
 	if (CScheduler::IsActive ())
 	{

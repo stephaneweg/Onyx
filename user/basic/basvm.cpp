@@ -1250,6 +1250,8 @@ public:
 		case B_MOUSEX: pushN (H.mouse (0)); break;
 		case B_MOUSEY: pushN (H.mouse (1)); break;
 		case B_MOUSEB: pushN (H.mouse (2)); break;
+		case B_PLAYN: pushN (H.bgNotes ()); break;
+		case B_KEYDOWN: pushN (H.keyDown (s0, l0) ? -1 : 0); if (!H.poll ()) ended = true; break;
 		case B_ERR: pushN (inErr ? errCode : 0); break;
 		case B_ERL: pushN (inErr ? errLine : 0); break;
 		case B_MKI: if (a[0].n < -32768 || a[0].n > 32767) fail ("Overflow"); else mk (a[0].n, LK_INT); break;
@@ -1487,6 +1489,7 @@ public:
 			double d = a[1].n;
 			if (d <= 0) { H.note (0, 0, 0, 0); break; }
 			if (a[0].n < 37 || a[0].n > 32767) { fail ("Illegal function call (SOUND frequency 37..32767)"); break; }
+			if (playBg && H.bgNote (a[0].n, (int) (d * 1000 / 18.2), 0, 1)) break;
 			tone (0, a[0].n, (int) (d * 1000 / 18.2), 1);
 			break;
 		}
@@ -1536,8 +1539,9 @@ public:
 	// PLAY: QBasic's music macro language -- A..G (+ # or - after), a length (1 = whole .. 64)
 	// and dots, O octave (0..6, default 4; O3 A = 440 Hz), < >, L length, T tempo (quarter
 	// notes per minute, default 120), P / R pause, N note (1..84, 0 = pause), MN / ML / MS
-	// (normal 7/8, legato, staccato 3/4), MF / MB (ignored: always in the foreground).
-	int playOct = 4, playLen = 4, playTempo = 120, playStyle = 0;
+	// (normal 7/8, legato, staccato 3/4), MF / MB (foreground / background: MB queues the notes
+	// in the host, which plays them while the program goes on; PLAY(n) = notes still queued).
+	int playOct = 4, playLen = 4, playTempo = 120, playStyle = 0; bool playBg = false;
 	static double midiFreq (int midi)
 	{
 		double f = 440; int d = midi - 69;
@@ -1578,6 +1582,7 @@ public:
 			{
 				char m = i < n ? up (s[i++]) : 0;
 				if (m == 'N') playStyle = 0; else if (m == 'L') playStyle = 1; else if (m == 'S') playStyle = 2;
+				else if (m == 'F') playBg = false; else if (m == 'B') playBg = true;
 				continue;
 			}
 			else { fail ("Illegal function call (PLAY string)"); return; }
@@ -1585,8 +1590,9 @@ public:
 			double ms = 240000.0 / playTempo / len;			// whole note = 4 beats
 			double dot = ms;
 			while (i < n && s[i] == '.') { dot /= 2; ms += dot; i++; }
-			if (midi < 0) { H.sleepMs ((int) ms); continue; }
+			if (midi < 0) { if (!playBg || !H.bgNote (0, 0, (int) ms, 0)) H.sleepMs ((int) ms); continue; }
 			double on = playStyle == 1 ? ms : playStyle == 2 ? ms * 3 / 4 : ms * 7 / 8;
+			if (playBg && H.bgNote (midiFreq (midi), (int) on, (int) (ms - on), 2)) { if (!H.poll ()) ended = true; continue; }
 			if (H.note (0, midiFreq (midi), 2, 200) < 0) { fail ("The audio output is not available (another program uses it?)"); return; }
 			H.sleepMs ((int) on);
 			H.note (0, 0, 0, 0);
