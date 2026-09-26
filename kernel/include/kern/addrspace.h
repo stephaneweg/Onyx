@@ -59,6 +59,9 @@ public:
 
 	u8 GetASID (void) const			{ return m_nASID; }
 
+	// The TTBR0_EL1 value that selects this space (an app core loads it: kern/appcore.h).
+	u64 GetTTBR0 (void) const		{ return MAKE_TTBR0 ((u64) m_pL2, m_nASID); }
+
 	// Physical 64 KB pages this address space owns (palloc'd: its L2 + L3 tables +
 	// every MapNewPage frame). For ps / the memory monitor. Excludes shared mappings
 	// like a window canvas (owned by its CWindow).

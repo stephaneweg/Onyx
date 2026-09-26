@@ -64,6 +64,7 @@ void Machine::reset ()
 	zero (vram, sizeof vram); zero (wram, sizeof wram); zero (oam, sizeof oam); zero (hram, sizeof hram); zero (io, sizeof io);
 	ie = 0; vbank = 0; wbank = 1;
 	romBank = 1; ramBank = 0; mbc1Mode = 0; ramOn = false;
+	mapRom ();
 	for (int i = 0; i < 5; i++) rtcReg[i] = rtcLatched[i] = 0;
 	rtcSel = 0; rtcLatchPrimed = false; rtcCycles = 0;
 	// the registers as the boot ROM leaves them
@@ -111,6 +112,16 @@ void Machine::writeSram (unsigned short addr, unsigned char v)
 	long off = (long) bank * 0x2000 + (addr - 0xA000);
 	sram[off % sramSize] = v; sramDirty = true;
 }
+// The two ROM windows as pointers, so a read (every opcode fetch) is one load: they only
+// change when the game switches banks.
+void Machine::mapRom ()
+{
+	int banks = romBanks ? romBanks : 1;
+	long lo = (mbc == 1 && mbc1Mode) ? (long) ((romBank & 0x60) % banks) * 0x4000 : 0;
+	romLo = rom + lo;
+	romHi = rom + (long) (romBank % banks) * 0x4000;
+}
+
 void Machine::writeMBC (unsigned short addr, unsigned char v)
 {
 	switch (mbc)
@@ -145,20 +156,13 @@ void Machine::writeMBC (unsigned short addr, unsigned char v)
 		else if (addr < 0x6000) ramBank = v & 0x0F;
 		break;
 	}
+	mapRom ();
 }
 
 unsigned char Machine::read8 (unsigned short addr)
 {
-	if (addr < 0x4000)
-	{
-		if (mbc == 1 && mbc1Mode) { long off = (long) ((romBank & 0x60) % (romBanks ? romBanks : 1)) * 0x4000 + addr; return rom[off % romSize]; }
-		return rom[addr];
-	}
-	if (addr < 0x8000)
-	{
-		int bank = romBank; if (romBanks) bank %= romBanks;
-		return rom[((long) bank * 0x4000 + (addr - 0x4000)) % romSize];
-	}
+	if (addr < 0x4000) return romLo[addr];
+	if (addr < 0x8000) return romHi[addr - 0x4000];
 	if (addr < 0xA000) return vram[vbank][addr - 0x8000];
 	if (addr < 0xC000) return readSram (addr);
 	if (addr < 0xD000) return wram[0][addr - 0xC000];
@@ -586,6 +590,48 @@ unsigned Machine::cgbColor (const unsigned char *pal, int i)
 	return (rr << 16) | (gg << 8) | bb;
 }
 
+static inline unsigned rev8 (unsigned b)			// the bits of a byte, reversed
+{
+	b = ((b & 0xF0) >> 4) | ((b & 0x0F) << 4);
+	b = ((b & 0xCC) >> 2) | ((b & 0x33) << 2);
+	return ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
+}
+
+// Background or window pixels [x0, x1) of the line: px, py = the map position of pixel x0
+// (px wraps at 256). Tile by tile: one fetch and one decode per 8 pixels.
+void Machine::drawBgSpan (unsigned *out, unsigned char *idx, unsigned char *attrs, int x0, int x1,
+			  int mapBase, int px, int py, unsigned char lcdc, const unsigned *dmgPal)
+{
+	int x = x0;
+	int rowBase = mapBase + (py >> 3) * 32;
+	while (x < x1)
+	{
+		px &= 255;
+		int mi = rowBase + (px >> 3);
+		int tile = vram[0][mi];
+		unsigned char attr = cgb ? vram[1][mi] : 0;
+		int row = py & 7; if (attr & 0x40) row = 7 - row;
+		int addr = ((lcdc & 0x10) ? tile * 16 : 0x1000 + (signed char) tile * 16) + row * 2;
+		const unsigned char *bank = vram[(attr & 8) ? 1 : 0];
+		unsigned lo = bank[addr], hi = bank[addr + 1];
+		if (attr & 0x20)				// X flip: bit 0 first
+		{
+			lo = rev8 (lo); hi = rev8 (hi);
+		}
+		const unsigned *pal = cgb ? bgRGB + (attr & 7) * 4 : dmgPal;
+		int col = px & 7, n = 8 - col;
+		if (n > x1 - x) n = x1 - x;
+		for (int k = 0; k < n; k++)
+		{
+			int bit = 7 - (col + k);
+			int ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+			idx[x + k] = (unsigned char) ci; attrs[x + k] = attr;
+			out[x + k] = pal[ci];
+		}
+		x += n; px += n;
+	}
+}
+
 void Machine::renderLine ()
 {
 	unsigned char lcdc = io[0x40];
@@ -596,31 +642,22 @@ void Machine::renderLine ()
 	bool winOn = (lcdc & 0x20) && io[0x4A] <= ly && io[0x4B] <= 166 && (cgb || (lcdc & 1));
 	int wx = io[0x4B] - 7;
 	bool winUsed = false;
-	int curMi = -1, curPy = -1; unsigned char curAttr = 0, lo = 0, hi = 0;
-	for (int x = 0; x < W; x++)
+	if (!bgOn)
+		for (int x = 0; x < W; x++) { bgIdx[x] = 0; bgAttr[x] = 0; out[x] = dmgColors[0]; }
+	else
 	{
-		if (!bgOn) { bgIdx[x] = 0; bgAttr[x] = 0; out[x] = dmgColors[0]; continue; }
-		int mapBase, px, py;
-		if (winOn && x >= wx) { mapBase = (lcdc & 0x40) ? 0x1C00 : 0x1800; px = x - wx; py = winLine; winUsed = true; }
-		else { mapBase = (lcdc & 0x08) ? 0x1C00 : 0x1800; px = (x + io[0x43]) & 255; py = (ly + io[0x42]) & 255; }
-		int mi = mapBase + (py >> 3) * 32 + (px >> 3);
-		if (mi != curMi || py != curPy)				// a new tile: its row's two bytes
+		unsigned dmgPal[4];
+		for (int k = 0; k < 4; k++) dmgPal[k] = dmgColors[(io[0x47] >> (k * 2)) & 3];
+		int split = (winOn && wx < W) ? (wx > 0 ? wx : 0) : W;		// the window from there on
+		if (split > 0)
+			drawBgSpan (out, bgIdx, bgAttr, 0, split, (lcdc & 0x08) ? 0x1C00 : 0x1800,
+				    io[0x43], (ly + io[0x42]) & 255, lcdc, dmgPal);
+		if (split < W)
 		{
-			curMi = mi; curPy = py;
-			int tile = vram[0][mi];
-			curAttr = cgb ? vram[1][mi] : 0;
-			int row = py & 7; if (curAttr & 0x40) row = 7 - row;
-			int addr = ((lcdc & 0x10) ? tile * 16 : 0x1000 + (signed char) tile * 16) + row * 2;
-			const unsigned char *bank = vram[(curAttr & 8) ? 1 : 0];
-			lo = bank[addr]; hi = bank[addr + 1];
+			drawBgSpan (out, bgIdx, bgAttr, split, W, (lcdc & 0x40) ? 0x1C00 : 0x1800,
+				    split - wx, winLine, lcdc, dmgPal);
+			winUsed = true;
 		}
-		unsigned char attr = curAttr;
-		int col = px & 7; if (attr & 0x20) col = 7 - col;
-		int bit = 7 - col;
-		int ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
-		bgIdx[x] = (unsigned char) ci; bgAttr[x] = attr;
-		if (cgb) out[x] = bgRGB[(attr & 7) * 4 + ci];
-		else out[x] = dmgColors[(io[0x47] >> (ci * 2)) & 3];
 	}
 	if (winUsed) winLine++;
 	// ---- sprites: up to 10 on the line

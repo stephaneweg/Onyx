@@ -23,6 +23,7 @@ static void rgbInit ()
 }
 
 static inline u16 ld16 (const u8 *p) { return (u16) (p[0] | (p[1] << 8)); }
+static inline u32 ld32 (const u8 *p) { return (u32) p[0] | (u32) p[1] << 8 | (u32) p[2] << 16 | (u32) p[3] << 24; }
 
 void Machine::latchAffine ()
 {
@@ -55,25 +56,35 @@ void Machine::renderText (int bg, u32 *line)
 		u16 e = ld16 (vram + ((rowBase + (u32) block * 0x800 + (u32) ((px >> 3) & 31) * 2) & 0xFFFF));
 		u32 tile = e & 0x3FF;
 		int ty = (e & 0x800) ? 7 - ty0 : ty0;
-		bool hf = e & 0x400;
-		// the rest of this tile's row
-		for (int tx = px & 7; tx < 8 && x < W; tx++, x++)
+		int flip = (e & 0x400) ? 7 : 0;			// (cx = tx ^ 7 when flipped)
+		// the rest of this tile's row, decoded at once
+		int tx = px & 7, n = 8 - tx;
+		if (n > W - x) n = W - x;
+		if (bpp8)
 		{
-			int cx = hf ? 7 - tx : tx;
-			u32 idx;
-			if (bpp8)
+			u32 a = charBase + tile * 64 + (u32) ty * 8;
+			u8 row[8];
+			for (int k = 0; k < 8; k++) row[k] = a + (u32) k < 0x10000 ? vram[a + k] : 0;
+			for (int k = 0; k < n; k++)
 			{
-				u32 a = charBase + tile * 64 + (u32) ty * 8 + (u32) cx;
-				idx = a < 0x10000 ? vram[a] : 0;
-				line[x] = idx ? ld16 (pal + idx * 2) : TRANSP;
-			}
-			else
-			{
-				u32 a = charBase + tile * 32 + (u32) ty * 4 + (u32) (cx >> 1);
-				idx = a < 0x10000 ? (vram[a] >> ((cx & 1) * 4)) & 15 : 0;
-				line[x] = idx ? ld16 (pal + ((e >> 12) * 16 + idx) * 2) : TRANSP;
+				u32 idx = row[(tx + k) ^ flip];
+				line[x + k] = idx ? ld16 (pal + idx * 2) : TRANSP;
 			}
 		}
+		else
+		{
+			u32 a = charBase + tile * 32 + (u32) ty * 4;
+			u32 row = a + 4 <= 0x10000 ? ld32 (vram + a)
+				: (u32) (a < 0x10000 ? vram[a] : 0) | (u32) (a + 1 < 0x10000 ? vram[a + 1] : 0) << 8
+				  | (u32) (a + 2 < 0x10000 ? vram[a + 2] : 0) << 16 | (u32) (a + 3 < 0x10000 ? vram[a + 3] : 0) << 24;
+			const u8 *pb = pal + (e >> 12) * 32;
+			for (int k = 0; k < n; k++)
+			{
+				u32 idx = (row >> (((tx + k) ^ flip) * 4)) & 15;
+				line[x + k] = idx ? ld16 (pb + idx * 2) : TRANSP;
+			}
+		}
+		x += n;
 	}
 	if (mosH > 1) for (int x = 0; x < W; x++) line[x] = line[x - x % mosH];
 }
@@ -271,6 +282,36 @@ void Machine::renderLine ()
 	if (evy > 16) evy = 16;
 	u32 backdrop = ld16 (pal) & 0x7FFF;
 	bool effects = ((bld >> 6) & 3) != 0;
+	if (!effects)
+	{
+		// No colour effect: only the top layer matters -- but a semi-transparent sprite is
+		// still blended with the layer under it (if that one is a 2nd target).
+		for (int x = 0; x < W; x++)
+		{
+			u8 m = win[x];
+			int b1 = -1;
+			for (int k = 0; k < no; k++)
+			{
+				int b = order[k];
+				if (bgl[b][x] != TRANSP && (m & (1 << b))) { b1 = b; break; }
+			}
+			u32 ol = objl[x];
+			if (ol != TRANSP && (m & 0x10) && (b1 < 0 || objp[x] <= bgPrio[b1]))
+			{
+				u32 c1 = ol & 0x7FFF;
+				if ((ol & 0x40000000) && ((bld >> (8 + (b1 >= 0 ? b1 : 5))) & 1))
+				{
+					u32 c2 = b1 >= 0 ? bgl[b1][x] : backdrop;
+					u32 r = ((c1 & 31) * eva + (c2 & 31) * evb) >> 4, g = (((c1 >> 5) & 31) * eva + ((c2 >> 5) & 31) * evb) >> 4,
+					    b = (((c1 >> 10) & 31) * eva + ((c2 >> 10) & 31) * evb) >> 4;
+					c1 = (r > 31 ? 31 : r) | ((g > 31 ? 31 : g) << 5) | ((b > 31 ? 31 : b) << 10);
+				}
+				out[x] = s_rgb[c1];
+			}
+			else out[x] = s_rgb[(b1 >= 0 ? bgl[b1][x] : backdrop) & 0x7FFF];
+		}
+		return;
+	}
 	for (int x = 0; x < W; x++)
 	{
 		u8 m = win[x];

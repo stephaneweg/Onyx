@@ -7,6 +7,7 @@
 //
 #include <kern/kapitable.h>
 #include <kern/kapi_abi.h>
+#include <kern/appcore.h>
 #include <circle/types.h>
 #include <circle/util.h>		// memset / memcpy / memmove (ABI v36)
 
@@ -331,4 +332,8 @@ void KApiTableInit (void)
 	t->inject_key_held   = kapi_inject_key_held;
 	t->exec_as           = kapi_exec_as;
 	t->pad_state         = kapi_pad_state;
+	t->core_acquire      = kapi_core_acquire;
+	t->core_run          = kapi_core_run;
+	t->core_state        = kapi_core_state;
+	t->core_release      = kapi_core_release;
 }

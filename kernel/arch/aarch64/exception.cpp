@@ -6,6 +6,8 @@
 // InterruptHandler() for GIC dispatch (called directly from the IRQ stub).
 //
 #include <kern/trapframe.h>
+#include <kern/appcore.h>
+#include <circle/multicore.h>
 #include <kern/layout.h>		// IS_USER_VA (preempt-gate classification)
 #include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
@@ -137,6 +139,14 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 
 void SyncHandlerEL1 (TTrapFrame *pFrame)
 {
+#ifdef ARM_ALLOW_MULTI_CORE
+	// A fault in an app's job on core 2-3: stop that job, not the machine.
+	if (CMultiCoreSupport::ThisCore () != 0 && AppCoreOnFault (pFrame))
+	{
+		return;
+	}
+#endif
+
 	unsigned nEC = (unsigned) (ReadESR () >> 26) & 0x3F;
 
 	if (nEC == EC_SVC64)
@@ -203,6 +213,16 @@ extern "C" void PreemptDoYield (void)
 
 void KernelIRQExit (TTrapFrame *pFrame)
 {
+#ifdef ARM_ALLOW_MULTI_CORE
+	// Cores 2-3 (app cores) take their IRQs (the stop IPI) through our vectors too; no
+	// scheduling there.
+	if (CMultiCoreSupport::ThisCore () != 0)
+	{
+		AppCoreOnIRQExit (pFrame);
+		return;
+	}
+#endif
+
 	// Track-A preemptive reschedule, run at the end of every IRQ. Switch ONLY when a
 	// time slice has expired AND the interrupted context was an app running its OWN
 	// code -- EL1t (SPSR.M == 0b0100) with a user-VA return PC. The user-VA test IS

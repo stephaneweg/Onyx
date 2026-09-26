@@ -2,6 +2,7 @@
 // addrspace.cpp
 //
 #include <kern/addrspace.h>
+#include <kern/appcore.h>
 #include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
 #include <kern/gui/surface.h>		// CSurfaceManager (free a dead owner's surfaces)
 #include <kern/ipc.h>			// CMailbox + IpcOnProcessGone (activity-shell IPC)
@@ -160,6 +161,16 @@ CAddressSpace::~CAddressSpace (void)
 	{
 		delete m_pMailbox;
 		m_pMailbox = 0;
+	}
+
+	// Its app cores (kern/appcore.h) first: a job still running there uses this space.
+	// A core that did not stop (its code masked the interrupts) may still touch the
+	// window and the frames: then leak them all rather than free memory in use.
+	if (!AppCoreReleaseAS (this))
+	{
+		CLogger::Get ()->Write ("proc", LogError, "pid %u: an app core did not stop, memory kept", m_nPid);
+		m_pWindow = 0;
+		return;
 	}
 
 	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the

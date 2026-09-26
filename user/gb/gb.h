@@ -43,6 +43,7 @@ public:
 	// ---- the machine ---------------------------------------------------------------------------
 private:
 	const unsigned char *rom; int romSize, romBanks;
+	const unsigned char *romLo, *romHi;			// what 0000-3FFF / 4000-7FFF show (mapRom)
 	int mbc, romBank, ramBank, mbc1Mode; bool ramOn;
 	int rtcReg[5], rtcLatched[5], rtcSel; bool rtcLatchPrimed; long long rtcCycles;
 	unsigned char vram[2][0x2000], wram[8][0x1000], oam[0xA0], hram[0x80], io[0x80];
@@ -79,6 +80,9 @@ private:
 	unsigned char readIO (int r);
 	void writeIO (int r, unsigned char v);
 	void writeMBC (unsigned short addr, unsigned char v);
+	void mapRom ();						// romLo / romHi from the MBC state
+	void drawBgSpan (unsigned *out, unsigned char *idx, unsigned char *attrs, int x0, int x1,
+			 int mapBase, int px, int py, unsigned char lcdc, const unsigned *dmgPal);
 	unsigned char readSram (unsigned short addr);
 	void writeSram (unsigned short addr, unsigned char v);
 	int step ();

@@ -45,7 +45,9 @@
 // v50: + pad_state -- USB gamepads (Circle's drivers: Xbox 360 / One, PS3 / PS4, Switch Pro
 //      and standard HID pads): the raw buttons / axes / hats of pad 0..3; the button
 //      mapping is done in user space (user/gamepad.h, SD:/etc/gamepad.ini).
-#define KAPI_ABI_VERSION	50
+// v51: + core_acquire/core_run/core_state/core_release -- app cores: an app acquires core 2
+//      or 3 and runs one function of its own there (no kapi calls, no malloc on it).
+#define KAPI_ABI_VERSION	51
 
 #ifdef __cplusplus
 extern "C" {
@@ -134,6 +136,11 @@ struct kapi_chrome
 // (circle/usb/usbgamepad.h) and axes 0..3 are the left / right sticks; for any other HID
 // pad they are the report's own buttons (bit 0 = button 1), axes and hats (0..7 = N, NE,
 // E ... NW, else centred). user/gamepad.h turns this into PAD_UP / PAD_A ... masks.
+#define KAPI_CORE_IDLE		0	// core_state() values
+#define KAPI_CORE_RUNNING	1
+#define KAPI_CORE_NOTYOURS	(-1)
+#define KAPI_CORE_FAULT		(-2)
+
 #define KAPI_PAD_MAX	4
 #define KAPI_PAD_AXES	16
 #define KAPI_PAD_HATS	6
@@ -573,6 +580,19 @@ struct TKApiTable
 	// pad_state: pad 0..KAPI_PAD_MAX-1 (in the order they were plugged): 1 and *out
 	// filled if a pad is there, else 0.
 	int  (*pad_state) (int index, struct kapi_pad *out);
+
+	// --- v51 additions (app cores) ---
+	// core_acquire: reserve a free app core (2 or 3) for the caller; its number, or -1.
+	// core_run: call fn (arg) there, on the stack whose top is given (16-byte aligned,
+	// the caller's memory); 0, or -1 (not yours / still running / bad address). fn runs
+	// in the caller's address space and must make NO kapi call and no allocation.
+	// core_state: KAPI_CORE_IDLE (fn returned), _RUNNING, _FAULT (it faulted: stopped,
+	// see kmsg) or _NOTYOURS. core_release: stops fn if it runs, frees the core (done
+	// for the app on exit anyway). Stop fn cleanly with a flag it polls, then release.
+	int  (*core_acquire) (void);
+	int  (*core_run) (int core, void (*fn) (void *), void *arg, void *stack_top);
+	int  (*core_state) (int core);
+	void (*core_release) (int core);
 };
 
 #ifdef __cplusplus

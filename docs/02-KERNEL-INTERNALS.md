@@ -23,6 +23,7 @@ constants) come from the code; the layout constants live in
 11. [Network subsystem (WLAN, TCP/IP, NTP)](#11-network-subsystem-wlan-tcpip-ntp)
 12. [Sound and the second core](#12-sound-and-the-second-core)
 13. [Post-mortem debug console](#13-post-mortem-debug-console)
+14. [App cores (cores 2 and 3)](#14-app-cores-cores-2-and-3)
 
 ---
 
@@ -385,6 +386,10 @@ Circle's `EnterCritical`) → calls Circle's `InterruptHandler` (GIC dispatch + 
 tick + EOI) → `KernelIRQExit` (**preemptive reschedule** via `PreemptTrampoline` — see
 [§5](#5-scheduling)) → re-masks the FIQ → `RESTORE_TRAP` + `ERET`.
 
+On cores 2 and 3 (app cores, §14) the same `KVectorTable` is installed: their only IRQ is
+the stop IPI, and `KernelIRQExit` hands it to `AppCoreOnIRQExit`; a synchronous fault there
+goes to `AppCoreOnFault` instead of the kernel panic.
+
 > Bring-up note: leaving the FIQ masked during `EnterCritical` caused a Circle
 > assertion to fail (`synchronize64.cpp`). Hence the `DAIFClr,#1`/`DAIFSet,#1` around the
 > call, as Circle's `IRQStub` does.
@@ -492,7 +497,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 47`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 51`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -505,7 +510,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`).
 
 ### Categories of exposed functions
 
@@ -538,6 +543,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Sound (v46) | `sound_acquire` (1 ok / 0 busy / −1 no audio: the caller becomes the owner; the output starts on first use), `sound_release`, `sound_start(voice 0..15, milliHz, wave SOUND_SQUARE/SINE/TRIANGLE/SAW/NOISE, volume 0..255)` (plays until stopped), `sound_stop(voice or -1)`, `sound_write(s16 stereo frames, n)` → frames taken (PCM ring, non-blocking), `sound_status(&rate, &free, &owner)`. Non-owners get −1; the owner's exit silences it. See §12. |
 | Run as (v49) | `exec_as(path, args, name)` → `ExecPath` with the process named `name` instead of after the path (1 = started). User space runs a format's program this way (`launch.h`: `SD:/bin/basic` for an app's `main.bax` is named after the app). |
 | Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/gamepad.h`, `SD:/etc/gamepad.ini`). |
+| App cores (v51) | `core_acquire()` → 2 or 3 (a free app core, now the caller's) or −1; `core_run(core, fn, arg, stack_top)` → 0, or −1 (not yours / still running / `fn` or the stack not a user address): the core calls `fn (arg)` in the caller's address space on the given stack (16-byte aligned, the caller's memory); `core_state(core)` → `KAPI_CORE_IDLE` (0: `fn` returned), `KAPI_CORE_RUNNING` (1), `KAPI_CORE_FAULT` (−2: `fn` faulted and was stopped, logged to kmsg) or `KAPI_CORE_NOTYOURS` (−1); `core_release(core)` stops `fn` if it runs and frees the core (done at the app's exit anyway). `fn` makes **no kapi call and no allocation**. See §14. |
 | Held keys (v48) | `key_held(key)` → 1 while the key is held **and** the caller's window has the keyboard (`KeyTargetLocked`), else 0 — for games, since key events only report presses. Keys: `KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` (the **US position** of the key), `'0'..'9'`. The WM keeps two bitsets over the logical codes: the USB one, rebuilt from every raw report (`KeyRawStub` → `SetUsbHeld`, HID usage → key), and the injected one (`inject_key_held(key, down)`, from vncd's RFB key down / up); `KeyHeld` ORs them. |
 | FM (v47) | `sound_instrument(voice, const struct kapi_fm_instrument *)` — a 2-operator FM instrument (OPL2 style, `struct kapi_fm_op op[2]` = modulator / carrier: `mult`, `level`, `ksl`, `attack`, `decay`, `sustain`, `release`, `wave`, `flags` FM_SUSTAINED / FM_TREMOLO / FM_VIBRATO / FM_KSR; `feedback`, `connection`) for that voice; then `sound_start(voice, milliHz, SOUND_FM, volume)`. Owner only. See §12. |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
@@ -741,9 +747,9 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   [Circle Changes](05-CIRCLE-CHANGES.md)). `CKernel::Initialize` starts cores 1–3 through a
   `CMultiCoreSupport` subclass (`COnyxCores`, kernel.cpp) right after the kapi table is
   published. **Everything else stays on core 0**: the scheduler, every process, the
-  interrupts (the GIC routes peripherals to core 0; the secondary cores run Circle's own
-  `VectorTable`, not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 park in
-  `WFE`. A failed start is only a warning (no sound producer).
+  interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
+  not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 are **app cores**
+  (§14). A failed start is only a warning (no sound producer, no app cores).
 - **The device.** `COnyxSoundDevice` derives from Circle's `CPWMSoundBaseDevice` (PWM + DMA,
   the 3.5 mm jack; 44.1 kHz, 1024-frame chunks) and overrides `GetChunk` — the "producer" —
   which is called from the DMA completion interrupt. It is created and started on the first
@@ -804,6 +810,61 @@ visible **directly on the framebuffer**.
 
 ---
 
+## 14. App cores (cores 2 and 3)
+
+Source: [`kernel/sys/appcore.cpp`](../kernel/sys/appcore.cpp),
+[`kern/appcore.h`](../kernel/include/kern/appcore.h); user side
+[`user/emucore.h`](../user/emucore.h), test [`user/bin/coretest.c`](../user/bin/coretest.c).
+
+Cores 2 and 3 are a **resource an app acquires**, like the sound output: it gets a whole
+core and runs one function of its own code there, undisturbed (no scheduler, no timer, no
+other task on that core). The rest of the system stays on core 0 as before, so none of
+the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
+
+- **The core's loop** (`AppCoreMain` → `AppCoreLoop`, from `COnyxCores::Run`): it installs
+  **our** `KVectorTable` on that core (`VBAR_EL1` is per core), notes its kernel stack,
+  enables IRQs (for the stop IPI only: the GIC routes no peripheral there) and waits in
+  `WFE`. A job: load the owner's `TTBR0` (its L2 table + ASID, `CAddressSpace::GetTTBR0`),
+  `tlbi vmalle1` on that core only (an ASID may have been reused since its last job), then
+  `AppCoreCall (fn, arg, stack)` — at EL1t, `SP` = the app's stack, like the app itself on
+  core 0. When `fn` returns: back to the kernel address space, state `IDLE`, `SEV`.
+- **The kapi side (core 0).** `core_acquire` hands a free, started core to the caller's
+  address space; `core_run` checks the owner, that nothing runs, that `fn` and the stack
+  are user addresses, fills the job, then `bGo` + `DSB` + `SEV`. Every word shared between
+  the cores is plain cacheable memory (inner-shareable, coherent) with `DSB ISH` barriers;
+  only core 0 writes the ownership.
+- **Stopping a job** (`core_release`, the app's exit or kill): core 0 raises `bAbort` and
+  sends the core an IPI (`SendIPI`, `IPI_USER`). The IRQ enters our `IrqEntry` on that core;
+  `KernelIRQExit` sees it is not core 0 (no scheduling there) and calls `AppCoreOnIRQExit`,
+  which **rewrites the trap frame** to return into `AppCoreRestart` on the core's own kernel
+  stack (EL1t, IRQs masked): the job is simply dropped. `AppCoreRestart` goes back to the
+  kernel address space and clears `bAbort` — core 0's signal that the core is out of the
+  app's memory. Core 0 waits for it at most 200 ms.
+- **Faults.** A synchronous exception on core 2–3 (a bad access in the job) reaches
+  `SyncHandlerEL1`, which hands it to `AppCoreOnFault` instead of the kernel panic: the ESR
+  class, PC and fault address are kept, the state becomes `FAULT` and the frame is rewritten
+  to `AppCoreRestart` as above. Core 0 logs it once (`appcore: core N: fault EC=... at pc
+  ... (address ...)`) when the owner asks the state or releases the core.
+- **Teardown.** `~CAddressSpace` calls `AppCoreReleaseAS (this)` **before** freeing the
+  window and the frames: a job still running uses them. A core that does not answer the
+  stop (its code masked the interrupts — never do that) is **retired** (`bLost`, never used
+  again) and the dying space's memory is kept (leaked) rather than freed under it.
+- **The rules for `fn`**: no kapi call (the kernel is not called from two cores at once),
+  no allocation (newlib's and umm's `malloc` are not multi-core safe), no masking of the
+  interrupts. It computes, reads the clock directly (`cntpct_el0`) and exchanges data with
+  the app's main thread through memory, with barriers. It may use `WFE`, woken by the main
+  thread's `SEV`.
+- **`user/emucore.h`** packages that for the emulators: the machine runs on the app core
+  (`ec_thread`), the main thread asks for frames (`ec_request`), gets the pictures from a
+  **triple buffer** (`ec_publish` / `ec_take`: the machine never waits for the display and
+  the display always gets the latest complete picture) and the sound from a single-producer
+  ring (`ec_audio_push` / `ec_audio_pop`), and stops the machine between two frames to touch
+  it (`ec_hold` / `ec_resume`: reset, palettes, battery saves). Without a free core,
+  `ec_pump` runs the same frames on the main thread. `gbemu` and `gbaemu` use it.
+- **Test**: `/bin/coretest` (the same computation on an app core and on core 0, a job
+  stopped by its flag, an endless job stopped by `core_release`, a faulting job, both app
+  cores at once); `coretest exit` leaves a job spinning and exits (the teardown must stop it).
+
 ## Annex — useful constants
 
 | Constant | Value | File |
@@ -816,7 +877,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 47 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 51 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

@@ -13,12 +13,16 @@
 //     ROM: read at start, written every few seconds after a change and when the emulator closes.
 //   * The pace: the sound output (the frames are made as the audio queue drains), or the
 //     clock when there is no sound; 59.73 frames a second.
+//   * The machine runs on an app core (core 2 or 3, user/emucore.h) when one is free: the
+//     window, the input and the sound stay on this thread, and a slow picture no longer
+//     slows the game down. Without a free core it runs here, as before.
 //
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "wtk/wtk.h"
 #include "gba/gba.h"
+#include "emucore.h"
 
 using namespace wtk;
 
@@ -32,6 +36,8 @@ static Root *g_root = 0;
 static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
 static bool g_stats = false;					// View > Show Speed
 static char g_statText[96] = "";
+static EmuCore g_ec;						// the machine's thread (emucore.h)
+static volatile bool g_audioOn = false;				// the machine keeps its sound
 
 // A microsecond clock: the ARM generic timer (apps run at EL1).
 static inline unsigned long long now_us (void)
@@ -89,13 +95,19 @@ public:
 		ox = ox < 0 ? 0 : ox; oy = oy < 0 ? 0 : oy;
 		for (int y = 0; y < gba::H; y++)
 		{
-			const unsigned *s = g_m->fb + y * gba::W;
-			for (int k = 0; k < z; k++)
+			const unsigned *s = ec_front (&g_ec) + y * gba::W;
+			int yy = oy + y * z; if (yy >= height) break;
+			unsigned *d = canvas.px + (long) yy * canvas.stride + ox;
+			int n = 0;					// one zoomed row...
+			for (int x = 0; x < gba::W && ox + x * z < width; x++)
 			{
-				int yy = oy + y * z + k; if (yy >= height) break;
-				unsigned *d = canvas.px + (long) yy * canvas.stride + ox;
-				for (int x = 0; x < gba::W && ox + x * z < width; x++)
-					for (int j = 0; j < z; j++) d[x * z + j] = s[x];
+				unsigned c = s[x];
+				for (int j = 0; j < z; j++) d[n++] = c;
+			}
+			for (int k = 1; k < z && yy + k < height; k++)	// ... copied to the next ones
+			{
+				unsigned *r = d + (long) k * canvas.stride;
+				for (int i = 0; i < n; i++) r[i] = d[i];
 			}
 		}
 		if (g_paused) canvas.text (8, 8, "Paused", 0xFFFFFF);
@@ -130,7 +142,7 @@ static void blit_full (void)				// stretched to the display, proportions kept, c
 			for (int x = 0; x < ow && x < 4096; x++) d[x] = u[x];
 			continue;
 		}
-		const unsigned *s = g_m->fb + sy * gba::W;
+		const unsigned *s = ec_front (&g_ec) + sy * gba::W;
 		for (int x = 0; x < ow && x < 4096; x++) d[x] = s[xmap[x]];
 	}
 	if (g_stats)
@@ -154,11 +166,11 @@ static void on_full () { full_screen (!g_fs); }
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
-static void on_reset () { save_ram (); g_m->reset (); load_ram (); }
+static void on_reset () { ec_hold (&g_ec); save_ram (); g_m->reset (); load_ram (); ec_resume (&g_ec); }
 static void on_quit () { kapi_exit (0); }
 
 bool EmuRoot::onKey (long k)
@@ -199,6 +211,20 @@ static int buttons (void)
 	if ((b & gba::BTN_LEFT) && (b & gba::BTN_RIGHT)) b &= ~(gba::BTN_LEFT | gba::BTN_RIGHT);	// (not both)
 	if ((b & gba::BTN_UP) && (b & gba::BTN_DOWN)) b &= ~(gba::BTN_UP | gba::BTN_DOWN);
 	return b;
+}
+
+// One frame of the machine: on the app core (no kapi call, no allocation here).
+static void gba_frame (EmuCore *ec)
+{
+	static short pcm[4096 * 2];
+	g_m->setButtons (ec->btn);
+	g_m->runFrame ();
+	unsigned *d = ec_back (ec);
+	const unsigned *s = g_m->fb;
+	for (int i = 0; i < gba::W * gba::H; i++) d[i] = s[i];
+	ec_publish (ec);
+	int k = g_m->audioRead (pcm, 4096);
+	if (k > 0 && g_audioOn) ec_audio_push (ec, pcm, k);
 }
 
 static void show_frame (void)
@@ -267,68 +293,61 @@ int main (void)
 	static short pcm[4096 * 2];
 	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0;
 	g_m->setAudioRate (SOUND_RATE);
-	unsigned t0 = kapi_get_ticks (); long long done = 0;		// frames made (clock pacing)
+	if (!ec_init (&g_ec, gba::W, gba::H, gba_frame)) return 1;
+	const unsigned perFrame = SOUND_RATE * 100 / 5973;		// sound frames per video frame
+	unsigned t0 = kapi_get_ticks (); unsigned asked = 0;		// frames asked for (clock pacing)
 	unsigned lastSave = kapi_get_ticks ();
 	// View > Show Speed: frames emulated / shown a second, the time of one emulated frame
-	// and of one shown frame (drawing + the compositor), the sound queued
-	unsigned long long stT = now_us (), emuUs = 0, drawUs = 0; unsigned stEmu = 0, stShown = 0, stQueued = 0;
+	// and of one shown frame (drawing + the compositor), the sound queued, where it runs
+	unsigned long long stT = now_us (), drawUs = 0, stEmuUs = 0; unsigned stDone = 0, stShown = 0, stQueued = 0;
 	while (!should_exit ())
 	{
 		pump_events ();
-		if (g_paused) { root.invalidate (true); show_frame (); kapi_msleep (20); continue; }
-		if (g_sound && g_audio == 0) g_audio = kapi_sound_acquire () == 1 ? 1 : -1;
+		g_ec.btn = buttons ();
+		if (g_paused) { root.invalidate (true); show_frame (); kapi_msleep (20); continue; }	// (no frame asked: it waits)
+		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		bool audio = g_sound && g_audio == 1;
-		int made = 0;
 		if (audio)
 		{
 			// keep ~3 frames of sound queued: the audio clock paces the game
 			kapi_sound_status (&rate, &freeFrames, &owner);
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			unsigned queued = cap - freeFrames;
-			while (queued < 2400 && made < 3)
-			{
-				g_m->setButtons (buttons ());
-				unsigned long long e0 = now_us ();
-				g_m->runFrame ();
-				emuUs += now_us () - e0; stEmu++;
-				int k = g_m->audioRead (pcm, 4096);
-				if (k > 0) kapi_sound_write (pcm, (unsigned) k);
-				queued += (unsigned) k; made++;
-			}
+			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
+			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			unsigned have = queued + ec_audio_count (&g_ec) + ec_pending (&g_ec) * perFrame;
+			while (have < 2400 && ec_pending (&g_ec) < 3) { ec_request (&g_ec, 1); have += perFrame; }
 			stQueued = queued;
-			t0 = kapi_get_ticks (); done = 0;
+			t0 = kapi_get_ticks (); asked = 0;
 		}
 		else
 		{
 			// the clock: 59.73 frames a second (ticks are 1/100 s)
-			long long due = (long long) (kapi_get_ticks () - t0) * 5973 / 10000;
-			if (due - done > 6) done = due - 1;			// far behind: skip, do not race
-			while (done < due && made < 3)
-			{
-				g_m->setButtons (buttons ());
-				unsigned long long e0 = now_us ();
-				g_m->runFrame ();
-				emuUs += now_us () - e0; stEmu++;
-				g_m->audioRead (pcm, 4096);			// (dropped)
-				done++; made++;
-			}
+			unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * 5973 / 10000);
+			if (due - asked > 6 && due > asked) asked = due - 1;	// far behind: skip, do not race
+			while (asked < due && ec_pending (&g_ec) < 3) { ec_request (&g_ec, 1); asked++; }
 		}
-		if (made) { unsigned long long d0 = now_us (); show_frame (); drawUs += now_us () - d0; stShown++; }
+		ec_pump (&g_ec);						// (no app core: the frames are made here)
+		if (ec_take (&g_ec)) { unsigned long long d0 = now_us (); show_frame (); drawUs += now_us () - d0; stShown++; }
 		else kapi_msleep (2);
 		unsigned long long tn = now_us ();
 		if (tn - stT >= 1000000)
 		{
 			unsigned long long el = tn - stT;
+			unsigned doneNow = g_ec.done, stEmu = doneNow - stDone;
+			unsigned long long emuNow = g_ec.emuUs, emuUs = emuNow - stEmuUs;
 			int n = 0;
 			fmt_num (g_statText, &n, (unsigned) ((unsigned long long) stEmu * 10000000ull / el), 1); cat (g_statText, &n, " fps  shown ");
 			fmt_num (g_statText, &n, (unsigned) ((unsigned long long) stShown * 10000000ull / el), 1); cat (g_statText, &n, "  emu ");
 			fmt_num (g_statText, &n, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &n, " ms  draw ");
 			fmt_num (g_statText, &n, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &n, " ms");
 			if (audio) { cat (g_statText, &n, "  sound "); fmt_num (g_statText, &n, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &n, " ms"); }
-			stT = tn; emuUs = drawUs = 0; stEmu = stShown = 0;
+			if (ec_on_core (&g_ec)) { cat (g_statText, &n, "  core "); fmt_num (g_statText, &n, (unsigned) g_ec.core, 0); }
+			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
 		}
-		if (kapi_get_ticks () - lastSave > 500) { save_ram (); lastSave = kapi_get_ticks (); }	// every 5 s
+		if (kapi_get_ticks () - lastSave > 500) { ec_hold (&g_ec); save_ram (); ec_resume (&g_ec); lastSave = kapi_get_ticks (); }	// every 5 s
 	}
+	ec_shutdown (&g_ec);
 	save_ram ();
 	if (g_fs) kapi_fullscreen_end ();
 	return 0;

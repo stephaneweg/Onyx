@@ -15,6 +15,7 @@
 #include <kern/kapi_abi.h>		// struct kapi_pad (KernelPadState)
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
+#include <kern/appcore.h>
 #include <kern/applaunch.h>
 #include <kern/stream.h>
 #include <kern/kapitable.h>
@@ -1107,7 +1108,8 @@ static boolean SdFileExists (const char *pPath)
 #ifdef ARM_ALLOW_MULTI_CORE
 // The secondary cores (Circle's CMultiCoreSupport, started at boot). The scheduler, the
 // interrupts and every process stay on core 0; core 1 is the sound producer (it sleeps
-// in WFE until the audio is first used, see sys/sound.cpp); cores 2 and 3 are parked.
+// in WFE until the audio is first used, see sys/sound.cpp); cores 2 and 3 are app cores
+// that an app can acquire to run a function of its own (sys/appcore.cpp).
 class COnyxCores : public CMultiCoreSupport
 {
 public:
@@ -1115,6 +1117,7 @@ public:
 	void Run (unsigned nCore) override
 	{
 		if (nCore == 1) SoundCoreMain ();
+		else AppCoreMain (nCore);		// cores 2-3: app cores (kern/appcore.h)
 		for (;;) asm volatile ("wfe");
 	}
 };

@@ -34,6 +34,7 @@ OBJS = \
 	sys/stream.o \
 	sys/debugcon.o \
 	sys/fslock.o \
+	sys/appcore.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 

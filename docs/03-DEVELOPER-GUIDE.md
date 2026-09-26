@@ -281,6 +281,22 @@ Notes / caveats:
 > Gamepad app, `padconf`) or the
 > built-in mapping (pads Circle knows). Used by gbemu, gamelib, BASIC (`PAD`, `STICK`, `STRIG`).
 > Host test: `sh tools/tests/run_gamepad_test.sh`.
+> **App cores (ABI v51)**: an app may take a whole core (2 or 3) for a function of its own —
+> `int c = kapi_core_acquire ();` (−1: none free), `kapi_core_run (c, fn, arg, stack_top)` (the
+> stack is the app's memory, 16-byte aligned), poll `kapi_core_state (c)` (`KAPI_CORE_IDLE` once
+> `fn` returned, `_RUNNING`, `_FAULT`), `kapi_core_release (c)` (stops `fn` if needed; done at exit
+> anyway). **`fn` makes no kapi call and no allocation** (neither the kernel nor `malloc` is
+> multi-core safe) and never masks the interrupts: it computes and talks to the main thread
+> through memory — `volatile` flags with barriers (`dmb ish`), `wfe` to wait, the main
+> thread's `sev` to wake it, the clock read directly (`cntpct_el0`). Stop it cleanly with a flag
+> it polls. Keep working without a free core (run the same function on the main thread).
+> **Emulators**: `#include "emucore.h"` does all that — `ec_init (&ec, w, h, frame_fn)` (acquires a
+> core if one is free), `frame_fn (EmuCore *)` runs one frame, writes the picture into
+> `ec_back ()` then `ec_publish ()`, pushes its sound with `ec_audio_push`; the main thread
+> `ec_request (&ec, n)`, `ec_pump` (frames made here when there is no core), `ec_take` /
+> `ec_front` (the latest picture: a triple buffer, nobody waits), `ec_audio_pop`, `ec_hold` /
+> `ec_resume` around anything that touches the machine (reset, battery save), `ec_shutdown`.
+> See `gbemu` / `gbaemu`; `/bin/coretest` exercises the raw kapi.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
 > sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
@@ -302,7 +318,9 @@ Notes / caveats:
 > `setSaveRam` / `sram` / `sramDirty` (battery saves), `setDmgPalette`. The SM83 CPU with
 > instruction timing, a scanline PPU (DMG + CGB), timer, OAM DMA / HDMA, MBC1/2/3(+RTC)/5, the
 > 4-channel APU; integer only, no libc. Used by `gbemu` (the emulator: paced by the audio
-> queue, else the clock) and `gamelib` (the library: title-screen thumbnails made headless).
+> queue, else the clock; the machine on an app core through `emucore.h`) and `gamelib` (the
+> library: title-screen thumbnails made headless). The ROM windows are pointers set when the
+> game switches banks (`mapRom`), the background and window are drawn a tile at a time.
 > **Host test**: `GB_TEST_ROMS=<unzipped c-sp game-boy-test-roms> sh tools/tests/run_gb_test.sh`
 > (Blargg cpu_instrs / instr_timing / halt_bug, dmg-acid2, cgb-acid2 pixel-exact);
 > `tools/tests/gb/gbtest.cpp <rom> <seconds> [out.ppm] ["t:mask,..."]` runs any ROM headless.
