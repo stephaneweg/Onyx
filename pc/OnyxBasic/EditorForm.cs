@@ -34,6 +34,15 @@ namespace OnyxBasic
 		ToolStripMenuItem miStart, miStop;
 		Process running;
 
+		// A fixed-width font: Consolas (every Windows), else the system's monospace one.
+		static Font Mono (float size, FontStyle st = FontStyle.Regular)
+		{
+			var f = new Font ("Consolas", size, st);
+			if (f.Name == "Consolas") return f;
+			f.Dispose ();
+			return new Font (FontFamily.GenericMonospace, size, st);
+		}
+
 		public EditorForm (string file)
 		{
 			Text = "Onyx BASIC";
@@ -48,7 +57,7 @@ namespace OnyxBasic
 
 			ed = new RichTextBox
 			{
-				Dock = DockStyle.Fill, Font = new Font ("Consolas", 11f), WordWrap = false, AcceptsTab = true,
+				Dock = DockStyle.Fill, Font = Mono (11f), WordWrap = false, AcceptsTab = true,
 				DetectUrls = false, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb (0, 0, 168),
 				ForeColor = Color.FromArgb (220, 220, 220), ScrollBars = RichTextBoxScrollBars.Both, HideSelection = false,
 				ShortcutsEnabled = true, MaxLength = int.MaxValue
@@ -58,7 +67,7 @@ namespace OnyxBasic
 			ed.KeyDown += OnEditorKey;
 			head = new Label
 			{
-				Dock = DockStyle.Top, Height = 24, TextAlign = ContentAlignment.MiddleCenter, Font = new Font ("Consolas", 10f, FontStyle.Bold),
+				Dock = DockStyle.Top, Height = 24, TextAlign = ContentAlignment.MiddleCenter, Font = Mono (10f, FontStyle.Bold),
 				BackColor = Color.FromArgb (170, 170, 170), ForeColor = Color.Black
 			};
 			var status = new StatusStrip ();
@@ -397,7 +406,7 @@ namespace OnyxBasic
 			Sync ();
 			using (var f = new Form { Text = "SUBs", FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false, StartPosition = FormStartPosition.CenterParent, ClientSize = new Size (380, 340), AutoScaleMode = AutoScaleMode.Dpi })
 			{
-				var l = new ListBox { Left = 10, Top = 10, Width = 360, Height = 280, IntegralHeight = false, Font = new Font ("Consolas", 10f) };
+				var l = new ListBox { Left = 10, Top = 10, Width = 360, Height = 280, IntegralHeight = false, Font = Mono (10f) };
 				foreach (var m in mods) l.Items.Add (m.Kind == 0 ? "(main module)" : (m.Kind == 1 ? "SUB " : "FUNCTION ") + m.Name);
 				l.SelectedIndex = cur;
 				var bEdit = new Button { Text = "Edit", Left = 10, Top = 300, Width = 90, DialogResult = DialogResult.OK };
@@ -492,7 +501,7 @@ namespace OnyxBasic
 			if (!File.Exists (p)) p = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "help.txt");
 			string text = File.Exists (p) ? Latin1.Enc.GetString (File.ReadAllBytes (p)).Replace ("\r\n", "\n").Replace ("\n", "\r\n") : "help.txt was not found.";
 			var f = new Form { Text = "Onyx BASIC - Keywords", ClientSize = new Size (820, 620), StartPosition = FormStartPosition.CenterParent, AutoScaleMode = AutoScaleMode.Dpi };
-			var tb = new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font ("Consolas", 10f), Text = text, BackColor = Color.White };
+			var tb = new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both, WordWrap = false, Font = Mono (10f), Text = text, BackColor = Color.White };
 			f.Controls.Add (tb);
 			f.Show (this);
 			tb.Select (0, 0);
