@@ -69,13 +69,37 @@ static bool ends_ci (const char *s, const char *ext)
 	return true;
 }
 
+// A path served by a file-system provider (FTP:..., FTPS:...), not the card. Opening a
+// remote FILE downloads it whole, so remote items are never opened just to look at them:
+// remote_stat asks the parent folder's listing instead (one small request).
+static bool is_remote (const char *p) { return !(fs_lower (p[0]) == 's' && fs_lower (p[1]) == 'd' && p[2] == ':'); }
+static bool remote_stat (const char *path, bool *isdir)
+{
+	char dir[256]; fs_copy (dir, path, sizeof dir);
+	int n = fs_len (dir); while (n > 0 && dir[n - 1] == '/') dir[--n] = '\0';
+	int k = n; while (k > 0 && dir[k - 1] != '/') k--;
+	if (k == 0) { *isdir = true; return true; }		// "FTP:host" itself
+	const char *name = path + k;
+	char nm[128]; int j = 0; while (name[j] && name[j] != '/' && j < 127) { nm[j] = name[j]; j++; } nm[j] = '\0';
+	dir[k] = '\0';
+	void *d = kapi_opendir (dir);
+	if (!d) return false;
+	struct kapi_dirent e; bool found = false;
+	while (kapi_readdir (d, &e)) if (fs_ci_cmp (e.name, nm) == 0) { found = true; *isdir = e.is_dir != 0; break; }
+	kapi_closedir (d);
+	return found;
+}
+
 static void item_init (Item &it, const char *path)
 {
 	fs_copy (it.path, path, sizeof it.path);
 	it.icon = 0; it.iw = it.ih = 0;
 	const char *base = fs_basename (path);
 	fs_copy (it.label, base, sizeof it.label);
-	if (fs_is_dir (path))
+	bool remote = is_remote (path), dir = false;
+	if (remote) remote_stat (path, &dir);
+	else dir = fs_is_dir (path);
+	if (dir)
 	{
 		it.kind = K_DIR;
 		if (ends_ci (path, ".app"))
@@ -94,13 +118,13 @@ static void item_init (Item &it, const char *path)
 		}
 		return;
 	}
-	if (ends_ci (path, ".bmp")) it.kind = K_IMAGE;
-	else if (fa_is_program (path)) it.kind = K_PROG;
-	else
-	{
-		char app[48];
-		it.kind = (fa_app_for (path, app, sizeof app) && fs_ci_cmp (app, "tinypad") == 0) ? K_TEXT : K_FILE;
-	}
+	// The kind comes from fileassoc.ini (ext = app): imageview = an image, tinypad = text.
+	char app[48];
+	bool assoc = fa_app_for (path, app, sizeof app);
+	if (assoc && fs_ci_cmp (app, "imageview") == 0) it.kind = K_IMAGE;
+	else if (assoc && fs_ci_cmp (app, "tinypad") == 0) it.kind = K_TEXT;
+	else if (!assoc && !remote && fa_is_program (path)) it.kind = K_PROG;	// (reads 4 bytes)
+	else it.kind = K_FILE;
 }
 
 static void item_free (Item &it) { delete [] it.icon; it.icon = 0; }
@@ -113,7 +137,9 @@ static bool tab_has (const Tab &t, const char *path)
 
 static void tab_add (Tab &t, const char *path)
 {
-	if (t.n >= MAXI || tab_has (t, path) || !fs_exists (path)) return;
+	if (t.n >= MAXI || tab_has (t, path)) return;
+	bool d;
+	if (is_remote (path) ? !remote_stat (path, &d) : !fs_exists (path)) return;
 	item_init (t.items[t.n++], path);
 }
 
@@ -192,7 +218,8 @@ static bool prune (void)
 	bool changed = false;
 	for (int t = 0; t < g_ntabs; t++)
 		for (int i = g_tabs[t].n - 1; i >= 0; i--)
-			if (!fs_exists (g_tabs[t].items[i].path)) { tab_remove (g_tabs[t], i); changed = true; }
+			if (!is_remote (g_tabs[t].items[i].path) && !fs_exists (g_tabs[t].items[i].path))
+			{ tab_remove (g_tabs[t], i); changed = true; }	// (remote items: not polled)
 	return changed;
 }
 
@@ -222,6 +249,25 @@ static bool moved (const char *from, const char *to)
 			changed = true;
 		}
 	return changed;
+}
+
+// Shorten a label to maxc characters keeping its extension visible: "sunset-big.png" ->
+// "sunse..png" (not "sunset-b.."), so an image still reads as an image.
+static void fit_label (char *s, int maxc)
+{
+	int n = fs_len (s);
+	if (n <= maxc) return;
+	int dot = -1; for (int i = n - 1; i > 0; i--) if (s[i] == '.') { dot = i; break; }
+	int ext = dot > 0 ? n - dot : 0;				// ".png" = 4
+	if (ext > 0 && ext <= 5 && maxc - ext - 2 >= 2)
+	{
+		int keep = maxc - ext - 2;
+		char tail[8]; for (int i = 0; i < ext; i++) tail[i] = s[dot + i];
+		s[keep] = '.'; s[keep + 1] = '.';
+		for (int i = 0; i < ext; i++) s[keep + 2 + i] = tail[i];
+		s[keep + 2 + ext] = '\0';
+	}
+	else { s[maxc - 2] = '.'; s[maxc - 1] = '.'; s[maxc] = '\0'; }
 }
 
 // ---- geometry -----------------------------------------------------------------------------
@@ -346,7 +392,7 @@ public:
 			if (i == armItem && !dragging) canvas.fillRect (cx + 2, TAB_H + 3, CELL - 4, SH - TAB_H - 6, S_SEL);
 			glyph (canvas, cx + (CELL - ICON) / 2, TAB_H + 6, tb.items[i]);
 			char lab[40]; fs_copy (lab, tb.items[i].label, sizeof lab);
-			if (fs_len (lab) > maxc) { lab[maxc - 2] = '.'; lab[maxc - 1] = '.'; lab[maxc] = '\0'; }
+			fit_label (lab, maxc);
 			int lw = fs_len (lab) * g_fw;
 			canvas.text (cx + (CELL - lw) / 2, TAB_H + 50, lab, S_TXT);
 		}

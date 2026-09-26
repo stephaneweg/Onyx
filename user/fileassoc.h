@@ -69,7 +69,22 @@ static inline bool fa_is_program (const char *path)
 
 static inline bool fa_open (const char *path)
 {
-	char exe[300];
+	char exe[300], app[48];
+	// A remote path (FTP:... via ftpfs): a file with an association opens right away
+	// (no folder test first -- some servers LIST a file too), and it is never opened
+	// just to test for an ELF (that would download it whole).
+	bool remote = !(fs_lower (path[0]) == 's' && fs_lower (path[1]) == 'd' && path[2] == ':');
+	bool hasApp = fa_app_for (path, app, sizeof app);
+	if (remote && hasApp)
+	{
+		int p = 0;
+		const char *pre = "SD:apps/", *suf = ".app/main";
+		for (int i = 0; pre[i] && p < (int) sizeof exe - 1; i++) exe[p++] = pre[i];
+		for (int i = 0; app[i] && p < (int) sizeof exe - 1; i++) exe[p++] = app[i];
+		for (int i = 0; suf[i] && p < (int) sizeof exe - 1; i++) exe[p++] = suf[i];
+		exe[p] = '\0';
+		return kapi_exec (exe, path) != 0;
+	}
 	if (fs_is_dir (path))
 	{
 		const char *e = fa_ext (path);
@@ -80,8 +95,7 @@ static inline bool fa_open (const char *path)
 		}
 		return kapi_exec ("SD:apps/fileviewer.app/main", path) != 0;	// a folder
 	}
-	char app[48];
-	if (fa_app_for (path, app, sizeof app))
+	if (hasApp)
 	{
 		int p = 0;
 		const char *pre = "SD:apps/";
@@ -92,7 +106,7 @@ static inline bool fa_open (const char *path)
 		exe[p] = '\0';
 		return kapi_exec (exe, path) != 0;
 	}
-	if (fa_is_program (path)) return kapi_exec (path, "") != 0;
+	if (!remote && fa_is_program (path)) return kapi_exec (path, "") != 0;
 	return false;
 }
 
