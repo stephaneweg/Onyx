@@ -91,14 +91,17 @@ static bool remote_stat (const char *path, bool *isdir)
 	return found;
 }
 
-static void item_init (Item &it, const char *path)
+// isdir: 1 / 0 when known, -1 = find out (a remote path is then NOT asked to the server:
+// guessed from the name, a dot = a file -- so loading the Shelf never touches the network).
+static void item_init (Item &it, const char *path, int isdir = -1)
 {
 	fs_copy (it.path, path, sizeof it.path);
 	it.icon = 0; it.iw = it.ih = 0;
 	const char *base = fs_basename (path);
 	fs_copy (it.label, base, sizeof it.label);
 	bool remote = is_remote (path), dir = false;
-	if (remote) remote_stat (path, &dir);
+	if (isdir >= 0) dir = isdir != 0;
+	else if (remote) { dir = true; for (int i = 0; base[i]; i++) if (base[i] == '.') dir = false; }
 	else dir = fs_is_dir (path);
 	if (dir)
 	{
@@ -136,12 +139,18 @@ static bool tab_has (const Tab &t, const char *path)
 	return false;
 }
 
+// Items are NEVER checked when added (drop, shelf.ini) nor while the Shelf runs: only when
+// used (click / drag start, still_there) -- so a server that is not reachable yet at boot
+// (network still starting) keeps its items, and nothing is polled. A remote folder is saved
+// with a trailing '/' (its kind without asking the server).
 static void tab_add (Tab &t, const char *path)
 {
-	if (t.n >= MAXI || tab_has (t, path)) return;
-	bool d;
-	if (is_remote (path) ? !remote_stat (path, &d) : !fs_exists (path)) return;
-	item_init (t.items[t.n++], path);
+	int isdir = -1;
+	char p[200]; fs_copy (p, path, sizeof p);
+	int n = fs_len (p);
+	if (n > 1 && p[n - 1] == '/' && is_remote (p)) { p[--n] = '\0'; isdir = 1; }
+	if (t.n >= MAXI || tab_has (t, p)) return;
+	item_init (t.items[t.n++], p, isdir);
 }
 
 static void tab_remove (Tab &t, int i)
@@ -177,6 +186,7 @@ static void save (void)
 		{
 			const char *q = "item = "; for (int i = 0; q[i]; i++) buf[p++] = q[i];
 			for (int i = 0; g_tabs[t].items[j].path[i]; i++) buf[p++] = g_tabs[t].items[j].path[i];
+			if (g_tabs[t].items[j].kind == K_DIR && is_remote (g_tabs[t].items[j].path)) buf[p++] = '/';	// (no stat at load)
 			buf[p++] = '\n';
 		}
 	}
@@ -214,15 +224,18 @@ static void load (void)
 	if (g_ntabs == 0) { new_tab ("Shelf"); new_tab ("Documents"); new_tab ("Apps"); }
 }
 
-// Drop the items whose file is gone (moved away / deleted).
-static bool prune (void)
+// path (and what was inside it) went to the Trash through the Shelf: drop its items.
+static void forget_path (const char *path)
 {
-	bool changed = false;
+	int fl = fs_len (path);
 	for (int t = 0; t < g_ntabs; t++)
 		for (int i = g_tabs[t].n - 1; i >= 0; i--)
-			if (!is_remote (g_tabs[t].items[i].path) && !fs_exists (g_tabs[t].items[i].path))
-			{ tab_remove (g_tabs[t], i); changed = true; }	// (remote items: not polled)
-	return changed;
+		{
+			const char *ip = g_tabs[t].items[i].path;
+			bool inside = true;
+			for (int k = 0; k < fl; k++) if (fs_lower (ip[k]) != fs_lower (path[k])) { inside = false; break; }
+			if (inside && (ip[fl] == '\0' || ip[fl] == '/')) tab_remove (g_tabs[t], i);
+		}
 }
 
 // A file / folder moved from -> to (SHELF_MSG_MOVED): items on it, or inside it, follow.
@@ -246,8 +259,9 @@ static bool moved (const char *from, const char *to)
 				for (int k = fl; it.path[k] && p < (int) sizeof np - 1; k++) np[p++] = it.path[k];
 				np[p] = '\0';
 			}
+			int wasDir = (it.kind == K_DIR || it.kind == K_APP) ? 1 : 0;
 			item_free (it);
-			item_init (it, np);			// new path, label, icon
+			item_init (it, np, is_remote (np) ? wasDir : -1);	// new path, label, icon
 			changed = true;
 		}
 	return changed;
@@ -601,12 +615,11 @@ public:
 			if (*p == '\n') p++;
 			path[n] = '\0';
 			if (n == 0) continue;
-			if (toTrash) { if (trash_move (path)) trashed++; }
+			if (toTrash) { if (trash_move (path)) { trashed++; forget_path (path); } }
 			else tab_add (dst, path);
 		}
 		if (toTrash)
 		{
-			prune ();
 			if (trashed) notify ("Trash", trashed == 1 ? "1 item moved to the Trash." : "Items moved to the Trash.");
 		}
 		save ();
@@ -619,7 +632,7 @@ public:
 		dragging = false;
 		// Dragged onto the desktop: take it off the shelf. Moved by the target (a File
 		// Viewer folder): its SHELF_MSG_MOVED updates the item (onTick); gone (the Trash):
-		// the periodic prune drops it.
+		// the next use finds it missing (still_there) and drops it.
 		if ((flags & DND_F_DESKTOP) && !(flags & DND_F_CANCEL) && dragTab >= 0 && dragTab < g_ntabs)
 			tab_remove (g_tabs[dragTab], dragItem);
 		save ();

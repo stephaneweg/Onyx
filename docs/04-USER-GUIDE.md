@@ -245,14 +245,16 @@ it; click it to bring it forward.
 - **The Trash** (right end): drop items on it to move them to the Trash (`SD:/.Trash`);
   click it to open the Trash in the File Viewer. A sheet of paper sticks out when it holds
   something.
-- The shelf does **not** keep checking its items: an item is checked only when you use it
-  (click or drag). If its file is gone (deleted, renamed elsewhere, server folder changed),
+- The shelf does **not** check its items — not at start-up (so FTP items survive a boot
+  where the network or the server is not ready yet), not when they are added, not while it
+  runs: an item is checked only when you use it (click or drag). If its file is gone (deleted, renamed elsewhere, server folder changed),
   a notification says so and the item leaves the shelf.
 - **Tabs**: click to switch; **+** adds a tab; **double-click** a tab to rename it (type,
   **Enter** / **Esc**); the **−** button (right end of the tab strip, before the Trash)
   removes the current tab — with a confirmation window if it holds items (the files
   themselves are kept); the last tab cannot be removed. The **wheel** scrolls a long tab.
-- Saved in `SD:/etc/shelf.ini` (`tab = Name`, then `item = path` lines).
+- Saved in `SD:/etc/shelf.ini` (`tab = Name`, then `item = path` lines; a remote folder ends
+  with `/`).
 
 ![Shelf](../screenshots/shelf.png)
 *The Shelf: tabs, a folder, a document, an image and an app, and the Trash at the right.*
