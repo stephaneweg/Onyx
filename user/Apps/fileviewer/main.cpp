@@ -237,6 +237,11 @@ static void preview_clear (void)
 	if (g_pvImg) { delete [] g_pvImg; g_pvImg = 0; }
 	g_pvKind = PV_NONE; g_pvText[0] = '\0'; g_pvTitle[0] = '\0';
 }
+// A path served by a file-system provider (FTP:..., FTPS:...), not the SD card: opening a
+// file there downloads it whole, so previews are limited to small files.
+static bool is_remote (const char *path) { return !(lower (path[0]) == 's' && lower (path[1]) == 'd' && path[2] == ':'); }
+#define REMOTE_PREVIEW_MAX	(1024u * 1024)
+
 static void preview_build (void)
 {
 	preview_clear ();
@@ -244,6 +249,7 @@ static void preview_build (void)
 	const Entry *e = sel_entry (g_ncol - 1);
 	char path[300];
 	join (path, sizeof path, g_col[g_ncol - 1].path, e->name);
+	if (is_remote (path) && !e->isdir && e->size > REMOTE_PREVIEW_MAX) { g_pvKind = PV_BINARY; return; }
 
 	if (e->isapp)
 	{
@@ -523,6 +529,28 @@ static void show_root (const char *path)
 }
 static void op_open_trash () { trash_ensure (); show_root (TRASH_FILES); status ("Trash: Restore puts an item back, Del deletes it for good"); }
 static void op_show_sd ()    { show_root ("SD:/"); }
+
+// Go > Connect to Server...: an FTP / FTPS address (served by /bin/ftpfs, ABI v44).
+static void op_connect ()
+{
+	static char last[200] = "FTP:";
+	InputBox box ("Server: FTP:host/path or FTPS:...", last);
+	if (!box.run () || box.tb->text[0] == '\0') return;
+	char addr[200];
+	const char *t = box.tb->text;
+	bool hasPrefix = false;
+	for (int i = 0; t[i] && t[i] != '/'; i++) if (t[i] == ':' && i >= 3) { hasPrefix = true; break; }
+	if (!hasPrefix) { scopy (addr, "FTP:", sizeof addr); int n = slen (addr); scopy (addr + n, t, sizeof addr - n); }
+	else scopy (addr, t, sizeof addr);
+	scopy (last, addr, sizeof last);
+	status ("Connecting to ", addr);
+	if (g_root) { g_root->draw (); kapi_present (); }
+	void *d = kapi_opendir (addr);
+	if (d == 0) { status ("Cannot connect to ", addr); notify ("File Viewer", "Connection failed (address, login or network?)."); return; }
+	kapi_closedir (d);
+	show_root (addr);
+	status ("Connected: ", addr);
+}
 static void op_restore ()
 {
 	const Entry *e = sel_entry (0);
@@ -572,8 +600,16 @@ static bool transfer (const char *src, const char *dir, bool move)
 	unique_name (dst, sizeof dst, dir, fs_basename (src));
 	if (move)
 	{
-		if (kapi_rename (src, dst) != 0) return false;		// (kapi: 0 = ok)
-		shelf_moved (src, dst);			// the Shelf's references follow
+		if (kapi_rename (src, dst) == 0)		// (kapi: 0 = ok)
+		{
+			shelf_moved (src, dst);			// the Shelf's references follow
+			return true;
+		}
+		if (is_remote (src) == is_remote (dir)) return false;	// same volume: a real failure
+		// Across volumes (SD <-> FTP), rename cannot work: copy, then delete the source.
+		if (!(isDir ? copy_tree (src, dst, 0) : copy_file (src, dst))) return false;
+		if (isDir) remove_tree (src, 0); else kapi_remove (src);
+		shelf_moved (src, dst);
 		return true;
 	}
 	return isDir ? copy_tree (src, dst, 0) : copy_file (src, dst);
@@ -670,7 +706,23 @@ public:
 		{
 			const char *seg;
 			char buf[NAMEL];
-			if (c == 0) seg = in_trash () ? "Trash" : "SD:";
+			if (c == 0)
+			{
+				if (in_trash ()) seg = "Trash";
+				else if (!is_remote (g_col[0].path)) seg = "SD:";
+				else					// "FTP:host/dir", without user:password@
+				{
+					const char *r = g_col[0].path, *colon = r;
+					while (*colon && *colon != ':') colon++;
+					const char *at = 0; for (const char *q = colon; *q && *q != '/'; q++) if (*q == '@') at = q;
+					int n = 0;
+					for (const char *q = r; q <= colon && *q && n < NAMEL - 1; q++) buf[n++] = *q;
+					for (const char *q = at ? at + 1 : colon + 1; *q && n < NAMEL - 1; q++) buf[n++] = *q;
+					while (n > 1 && buf[n - 1] == '/') n--;
+					buf[n] = '\0';
+					seg = buf;
+				}
+			}
 			else { const Entry &e = g_col[c - 1].e[g_col[c - 1].sel]; scopy (buf, e.name, sizeof buf); seg = buf; }
 			if (c > 0) { draw_arrow (canvas, x, y + (g_fh - 9) / 2, C_PATHSEP); x += 10; }
 			canvas.text (x, y, seg, c == g_active ? C_ACCENT : C_PATH);
@@ -1006,6 +1058,7 @@ int main (void)
 	menu.menu ("Go");
 	menu.item ("SD Card",    "",      0,             op_show_sd);
 	menu.item ("Trash",      "",      0,             op_open_trash);
+	menu.item ("Connect to Server...", "", 0,       op_connect);
 	menu.separator ();
 	menu.item ("Restore from Trash", "", 0,          op_restore);
 	menu.item ("Empty Trash...",     "", 0,          op_empty_trash);
@@ -1024,6 +1077,8 @@ int main (void)
 	g_ncol = 1; g_active = 0;
 	if (ci_cmp (args, TRASH_FILES) == 0 || ci_cmp (args, "trash") == 0)	// (hidden: not walkable)
 		op_open_trash ();
+	else if (args[0] && is_remote (args))			// FTP:host/path (ftpfs)
+		show_root (args);
 	else if (args[0] == 'S' && args[1] == 'D' && args[2] == ':')
 	{
 		const char *p = args + 3; if (*p == '/') p++;

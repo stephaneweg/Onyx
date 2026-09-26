@@ -421,6 +421,7 @@ the terminal's **current working directory**.
 | `nslookup` | `nslookup <name>` | Resolves a host name through the DNS server (shown on the first line) and prints its IPv4 address. |
 | `netstat` | `netstat` | The network configuration (hostname, IP, mask, gateway, DNS, DHCP) and the open TCP sockets: state (LISTEN / ESTAB), local port, remote address, owning PID. |
 | `ftpc` | `ftpc [homedir] [user] [password]` | The FTP server (see *File server* below); again while it runs = add a user. |
+| `ftpfs` | `ftpfs login <host> <user> <password>` | The FTP / FTPS client behind `FTP:` / `FTPS:` paths (see *FTP / FTPS servers as folders*); starts by itself; `login` registers credentials for a host. |
 | `whois` | `whois <domain> [server]` | Queries the WHOIS database (TCP port 43): asks `whois.iana.org`, then follows its `refer:` to the registry holding the domain — or asks the given server directly. |
 | `wget` | `wget <url>` | Fetches an HTTP URL (`http://host[:port]/path`) and writes the response body to `stdout` — pipe or redirect it (e.g. `wget http://example.com/ > page.html`). Plain HTTP only (no HTTPS). |
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
@@ -489,6 +490,28 @@ Defaults: `SD:/`, user `onyx`, password `onyx`. There is **no configuration file
 - Add `ftpc SD:/ me mypassword` to `SD:/etc/autostart` to have it at every boot.
 
 > ⚠️ Plain FTP: the password and the files travel unencrypted — keep it on a trusted network.
+
+### FTP / FTPS servers as folders (`ftpfs`)
+
+Remote FTP servers can be used **like folders of the card**, from every app: paths
+
+```
+FTP:[user[:password]@]host[:port]/path      plain FTP
+FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 21, implicit on 990)
+```
+
+- In the **File Viewer**: **Go ▸ Connect to Server…**, type e.g. `FTP:ftp.gnu.org/gnu` (or
+  `run fileviewer FTP:host/dir`): browse, preview (files ≤ 1 MB), open (double-click —
+  tinypad, Image Viewer…), drag files between the card and the server (a move across them
+  = copy + delete), new folder, rename, delete.
+- **tinypad / Writer / paint** open and **save** `FTP:` files directly; the **Shelf** keeps them.
+- **Logins**: in the path (`FTP:me:secret@host/…`), or once per host with
+  `ftpfs login <host> <user> <password>` (kept in memory by the running ftpfs); otherwise
+  `anonymous`.
+- `ftpfs` starts by itself the first time an `FTP:` path is used. A file is downloaded
+  whole when it is opened (≤ 64 MB) and uploaded whole when saved.
+- FTPS encrypts the connection, but the server certificate is **not verified** yet (no CA
+  bundle on the card — like `httpsget`).
 
 ## 9. The file manager
 

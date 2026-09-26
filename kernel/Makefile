@@ -28,6 +28,7 @@ OBJS = \
 	sys/kapi.o \
 	sys/kapitable.o \
 	sys/ipc.o \
+	sys/vfs.o \
 	sys/net.o \
 	sys/stream.o \
 	sys/debugcon.o \

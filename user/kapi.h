@@ -271,6 +271,21 @@ static inline int kapi_net_ping (const char *host, unsigned seq, unsigned timeou
 static inline int kapi_net_resolve (const char *host, char *ip, unsigned cap) { return KT->net_resolve (host, ip, cap); }
 static inline int kapi_net_info (char *buf, unsigned cap) { return KT->net_info (buf, cap); }
 
+// User-space file-system providers (ABI v44, kern/vfs.h): a provider app serves every path
+// starting with its prefix ("FTP:"); the file kapis on those paths reach it as requests.
+#define VFS_OP_OPEN	1	// path -> status = fid (>= 0); data = u32 file size
+#define VFS_OP_READ	2	// a0 fid, a1 offset, a2 length -> data, status = n
+#define VFS_OP_CLOSE	3	// a0 fid
+#define VFS_OP_LIST	4	// path -> data = (u32 size LE, u8 is_dir, name '\0')*, status = count
+#define VFS_OP_SAVE	5	// path, payload (vfs_req_data) -> status = bytes written
+#define VFS_OP_MKDIR	6	// path -> 0 / -1
+#define VFS_OP_REMOVE	7	// path -> 0 / -1
+#define VFS_OP_RENAME	8	// path -> path2: 0 / -1
+static inline int kapi_vfs_register (const char *prefix) { return KT->vfs_register (prefix); }
+static inline int kapi_vfs_next (struct kapi_vfs_req *req, int blocking) { return KT->vfs_next (req, blocking); }
+static inline int kapi_vfs_req_data (unsigned id, void *buf, unsigned cap, unsigned offset) { return KT->vfs_req_data (id, buf, cap, offset); }
+static inline int kapi_vfs_reply (unsigned id, int status, const void *data, unsigned len) { return KT->vfs_reply (id, status, data, len); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }

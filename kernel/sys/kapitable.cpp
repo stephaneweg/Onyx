@@ -69,6 +69,10 @@ void kapi_inject_modifiers (unsigned);
 int  kapi_net_ping (const char *, unsigned, unsigned, char *, unsigned);
 int  kapi_net_resolve (const char *, char *, unsigned);
 int  kapi_net_info (char *, unsigned);
+int  kapi_vfs_register (const char *);
+int  kapi_vfs_next (struct kapi_vfs_req *, int);
+int  kapi_vfs_req_data (unsigned, void *, unsigned, unsigned);
+int  kapi_vfs_reply (unsigned, int, const void *, unsigned);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -296,4 +300,9 @@ void KApiTableInit (void)
 	t->net_ping          = kapi_net_ping;
 	t->net_resolve       = kapi_net_resolve;
 	t->net_info          = kapi_net_info;
+
+	t->vfs_register      = kapi_vfs_register;
+	t->vfs_next          = kapi_vfs_next;
+	t->vfs_req_data      = kapi_vfs_req_data;
+	t->vfs_reply         = kapi_vfs_reply;
 }

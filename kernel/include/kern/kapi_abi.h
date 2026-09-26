@@ -34,7 +34,8 @@
 // v41: + fullscreen_begin/present_fb/fullscreen_end -- full-screen apps.
 // v42: + drag_begin/drag_data (drag & drop), get_modifiers/inject_modifiers.
 // v43: + net_ping/net_resolve/net_info -- network tools (ping, nslookup, netstat).
-#define KAPI_ABI_VERSION	43
+// v44: + vfs_register/vfs_next/vfs_req_data/vfs_reply -- user-space file systems (FTP:).
+#define KAPI_ABI_VERSION	44
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,6 +43,17 @@ extern "C" {
 
 // Widget / key event callback: void (sender, GUI_EVENT_*, value).
 typedef void (*gui_handler) (unsigned long sender, int event, long value);
+
+// A request to a user-space file-system provider (kapi_vfs_next, ABI v44).
+struct kapi_vfs_req
+{
+	unsigned id;		// answer it with vfs_reply (id)
+	int      op;		// VFS_OP_* (kern/vfs.h, user/vfs.h)
+	char     path[300];	// the full path, prefix included ("FTP:host/dir/file")
+	char     path2[300];	// RENAME: the new path
+	long     a0, a1, a2;	// READ: fid, offset, length; CLOSE: fid
+	unsigned in_len;	// SAVE: payload size (fetch it with vfs_req_data)
+};
 
 // A directory entry from kapi_readdir.
 struct kapi_dirent
@@ -434,6 +446,16 @@ struct TKApiTable
 	int (*net_ping) (const char *host, unsigned seq, unsigned timeout_ms, char *ip, unsigned cap);
 	int (*net_resolve) (const char *host, char *ip, unsigned cap);
 	int (*net_info) (char *buf, unsigned cap);
+
+	// --- v44 additions (user-space file-system providers, kern/vfs.h) ---
+	// vfs_register: serve every path starting with `prefix` ("FTP:") -- 1 / 0 (taken).
+	// The file kapis on such paths become requests: vfs_next (req, blocking) takes the
+	// next one (1 / 0 none; blocking = wait up to ~0.5 s first), vfs_req_data copies its payload (SAVE data) from offset,
+	// vfs_reply (id, status, data, len) answers it and wakes the caller.
+	int (*vfs_register) (const char *prefix);
+	int (*vfs_next) (struct kapi_vfs_req *req, int blocking);
+	int (*vfs_req_data) (unsigned id, void *buf, unsigned cap, unsigned offset);
+	int (*vfs_reply) (unsigned id, int status, const void *data, unsigned len);
 };
 
 #ifdef __cplusplus

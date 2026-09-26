@@ -53,6 +53,9 @@ private:
 // the registered shell if it was the shell). Defined in sys/ipc.cpp.
 void IpcOnProcessGone (unsigned nPid);
 
+// Is process nPid still alive? (a live task owning an address space with that pid)
+boolean IpcPidAlive (unsigned nPid);
+
 // Kernel-side notification: post {title '\0' text '\0'} (type 1) to the "notify"
 // service (the notifyd app) if it is running, from pid 0. Safe from any task context.
 void IpcNotify (const char *pTitle, const char *pText);

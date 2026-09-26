@@ -10,6 +10,7 @@
 //
 // extern "C": stable, unmangled names for the symbol-export/link step.
 //
+#include <kern/vfs.h>
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
 #include <kern/stream.h>		// CStream / CPipeStream / CFileStream / CProcess
@@ -1173,6 +1174,7 @@ int kapi_write (int /*fd*/, const void *pBuf, unsigned nLen)
 
 void *kapi_open (const char *pPath)
 {
+	if (VfsHandles (pPath)) return VfsOpen (pPath);		// a provider path (FTP:...)
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	FIL *pFile = new FIL;
 	if (pFile == 0)
@@ -1193,6 +1195,7 @@ int kapi_read (void *pHandle, void *pBuf, unsigned nLen)
 	{
 		return -1;
 	}
+	if (VfsIsFile (pHandle)) return VfsRead (pHandle, pBuf, nLen);
 	UINT nRead = 0;
 	if (f_read ((FIL *) pHandle, pBuf, nLen, &nRead) != FR_OK)
 	{
@@ -1207,11 +1210,13 @@ unsigned kapi_fsize (void *pHandle)
 	{
 		return 0;
 	}
+	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
 	return (unsigned) f_size ((FIL *) pHandle);
 }
 
 void kapi_close (void *pHandle)
 {
+	if (VfsIsFile (pHandle)) { VfsClose (pHandle); return; }
 	if (pHandle != 0)
 	{
 		f_close ((FIL *) pHandle);
@@ -1420,6 +1425,7 @@ void *kapi_opendir (const char *pPath)
 	{
 		return 0;
 	}
+	if (VfsHandles (pPath)) return VfsOpenDir (pPath);
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	DIR *pDir = new DIR;
 	if (pDir == 0)
@@ -1440,6 +1446,7 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 	{
 		return 0;
 	}
+	if (VfsIsDir (pHandle)) return VfsReadDir (pHandle, pEnt);
 	FILINFO Info;
 	if (f_readdir ((DIR *) pHandle, &Info) != FR_OK || Info.fname[0] == '\0')
 	{
@@ -1458,6 +1465,7 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 
 void kapi_closedir (void *pHandle)
 {
+	if (VfsIsDir (pHandle)) { VfsCloseDir (pHandle); return; }
 	if (pHandle != 0)
 	{
 		f_closedir ((DIR *) pHandle);
@@ -1470,6 +1478,7 @@ void kapi_closedir (void *pHandle)
 int kapi_mkdir (const char *pPath)
 {
 	if (pPath == 0) return -1;
+	if (VfsHandles (pPath)) return VfsCall (VFS_OP_MKDIR, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	return (f_mkdir (abs) == FR_OK) ? 0 : -1;
 }
@@ -1477,6 +1486,7 @@ int kapi_mkdir (const char *pPath)
 int kapi_remove (const char *pPath)		// file or empty directory
 {
 	if (pPath == 0) return -1;
+	if (VfsHandles (pPath)) return VfsCall (VFS_OP_REMOVE, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	return (f_unlink (abs) == FR_OK) ? 0 : -1;
 }
@@ -1484,6 +1494,9 @@ int kapi_remove (const char *pPath)		// file or empty directory
 int kapi_rename (const char *pFrom, const char *pTo)
 {
 	if (pFrom == 0 || pTo == 0) return -1;
+	if (VfsHandles (pFrom) || VfsHandles (pTo))		// both on the same provider only
+		return (VfsHandles (pFrom) && VfsHandles (pTo)
+			&& VfsCall (VFS_OP_RENAME, pFrom, pTo, 0, 0, 0, 0, 0, 0, 0, 0) == 0) ? 0 : -1;
 	char absF[300], absT[300];
 	ResolvePath (pFrom, absF, sizeof absF);
 	ResolvePath (pTo, absT, sizeof absT);
@@ -1519,6 +1532,11 @@ int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 	if (pPath == 0)
 	{
 		return -1;
+	}
+	if (VfsHandles (pPath))
+	{
+		int n = VfsCall (VFS_OP_SAVE, pPath, 0, 0, 0, 0, pBuf, nLen, 0, 0, 0);
+		return n >= 0 ? n : -1;
 	}
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	FIL File;

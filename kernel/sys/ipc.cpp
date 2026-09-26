@@ -3,6 +3,7 @@
 // mailbox_recv). See kern/ipc.h. The kernel just routes opaque {from_pid,type,bytes}
 // messages between per-process mailboxes; the registered shell is a single pid.
 //
+#include <kern/vfs.h>
 #include <kern/ipc.h>
 #include <kern/addrspace.h>
 #include <circle/sched/scheduler.h>
@@ -107,8 +108,11 @@ static CAddressSpace *FindASByPid (unsigned nPid)
 	return Ctx.pFound;
 }
 
+boolean IpcPidAlive (unsigned nPid) { return FindASByPid (nPid) != 0; }
+
 void IpcOnProcessGone (unsigned nPid)
 {
+	VfsOnProcessGone (nPid);		// a file-system provider that died (kern/vfs.h)
 	if (nPid != 0 && nPid == g_nShellPid)
 	{
 		g_nShellPid = 0;		// the shell died -- no router until one re-registers

@@ -249,6 +249,12 @@ Notes / caveats:
 > codecs are compiled once into `libwtk.a` (`wtk/imgload.cpp`, with FP/SIMD like
 > `wtk/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
 > `fileviewer` (preview), `wtk::ImageBox`.
+> **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
+> app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
+> request (`req.op` = `VFS_OP_OPEN` / `READ` / `CLOSE` / `LIST` / `SAVE` / `MKDIR` / `REMOVE`
+> / `RENAME`, see `user/kapi.h`) with `kapi_vfs_reply (req.id, status, data, len)`; a SAVE's
+> payload is read with `kapi_vfs_req_data`. Example: `user/bin/ftpfs.cpp` (FTP / FTPS). The
+> ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
 > **WPF-style controls (P5)** — all in `wtk/wtk.h`, see `user/Apps/widgets` for each in use:
@@ -677,8 +683,11 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Host tests** (`tools/tests/`): `run_trash_test.sh` (trash.h + fsutil.h against a mock
   kapi with the kernel's return conventions) and `run_ftpc_test.sh` (ftpc over real
   sockets, driven by Python's `ftplib`: login, LIST/NLST, RETR/STOR round trip, MKD/RMD,
-  RNFR/RNTO, DELE, root jail, PORT, two concurrent sessions). Run them after touching
-  those files.
+  RNFR/RNTO, DELE, root jail, PORT, two concurrent sessions) and `run_ftpfs_test.sh`
+  (the ftpfs FTP client against pyftpdlib — `pip install pyftpdlib` — and against ftpc:
+  LIST/MLSD, RETR, a 300 KB STOR round trip, MKD, RNFR/RNTO, DELE/RMD, a missing file,
+  reconnecting after a dropped control link). The socket mock reproduces Circle's
+  "one segment per receive, the rest is dropped". Run them after touching those files.
 
 - **Hardware float is opt-in.** Apps are integer-only by default
   (`-mgeneral-regs-only`); the kernel now saves the full FP/SIMD state on every trap,

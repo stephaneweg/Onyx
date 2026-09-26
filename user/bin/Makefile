@@ -42,7 +42,7 @@ KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 MBEDTLS_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/mbedtls-3.6.3)
 TLS_PROGS =
 ifneq ($(strip $(MBEDTLS_DIR)),)
-TLS_PROGS = httpsget.elf
+TLS_PROGS = httpsget.elf ftpfs.elf
 endif
 
 # Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../img/README.md).
