@@ -36,7 +36,8 @@
 // v43: + net_ping/net_resolve/net_info -- network tools (ping, nslookup, netstat).
 // v44: + vfs_register/vfs_next/vfs_req_data/vfs_reply -- user-space file systems (FTP:).
 // v45: + wlan_scan -- the Wi-Fi access points around.
-#define KAPI_ABI_VERSION	45
+// v46: + sound_acquire/release/start/stop/write/status -- audio (synth voices + PCM).
+#define KAPI_ABI_VERSION	46
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,15 @@ extern "C" {
 
 // Widget / key event callback: void (sender, GUI_EVENT_*, value).
 typedef void (*gui_handler) (unsigned long sender, int event, long value);
+
+// Sound (ABI v46): waveforms of kapi_sound_start, and the output format.
+#define SOUND_SQUARE	0
+#define SOUND_SINE	1
+#define SOUND_TRIANGLE	2
+#define SOUND_SAW	3
+#define SOUND_NOISE	4
+#define SOUND_VOICES	16		// voices 0..15
+#define SOUND_RATE	44100		// PCM frames per second (s16 left, s16 right)
 
 // One Wi-Fi access point seen by kapi_wlan_scan (ABI v45).
 #define WLAN_SEC_OPEN	0
@@ -479,6 +489,22 @@ struct TKApiTable
 	// strongest first, one per BSSID; returns how many (0 none / no Wi-Fi). While not
 	// associated wpa_supplicant scans too: a scan then may delay its next attempt.
 	int (*wlan_scan) (struct kapi_wlan_ap *out, int max);
+
+	// --- v46 additions (sound: kern/sound.h, the 3.5 mm jack by PWM) ---
+	// sound_acquire: become the owner of the audio output (started on first use): 1 ok,
+	// 0 another process has it, -1 no audio. Only the owner can play; its release (or
+	// exit) silences and frees the output. sound_start: voice 0..15 plays a note until
+	// sound_stop -- frequency in milli-Hz (440 Hz = 440000), wave SOUND_*, volume 0..255.
+	// sound_stop (voice) / (-1) all. sound_write: PCM, s16 stereo frames at SOUND_RATE,
+	// mixed with the voices; non-blocking, returns the frames taken (0 = the ~0.5 s ring
+	// is full: try again later). sound_status: 1 if the output runs; rate, free frames of
+	// the ring, owner pid (0 = free). Calls from a non-owner return -1.
+	int  (*sound_acquire) (void);
+	void (*sound_release) (void);
+	int  (*sound_start) (int voice, unsigned millihz, int wave, int volume);
+	int  (*sound_stop) (int voice);
+	int  (*sound_write) (const short *frames, unsigned nframes);
+	int  (*sound_status) (unsigned *rate, unsigned *free_frames, unsigned *owner_pid);
 };
 
 #ifdef __cplusplus

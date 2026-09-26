@@ -816,7 +816,8 @@ public:
 			{ "WINDOW", S_WINDOW, "S[NN" }, { "SETTEXT", S_SETTEXT, "NS" }, { "SETVALUE", S_SETVALUE, "NN" },
 			{ "NOTIFY", S_NOTIFY, "SS" }, { "SETCLIPBOARD", S_SETCLIPBOARD, "S" }, { "EXEC", S_EXEC, "S[S" },
 			{ "LAUNCH", S_LAUNCH, "S" }, { "KILL", S_KILL, "S" }, { "MKDIR", S_MKDIR, "S" }, { "RMDIR", S_RMDIR, "S" },
-			{ "WIDTH", S_WIDTH, "[NN" }, { 0, 0, 0 } };
+			{ "WIDTH", S_WIDTH, "[NN" }, { "PLAY", S_PLAY, "S" }, { "NOTEON", S_NOTEON, "NN[NN" },
+			{ "NOTEOFF", S_NOTEOFF, "[N" }, { 0, 0, 0 } };
 		for (int i = 0; S[i].name; i++)
 		{
 			if (!bseq (S[i].name, w)) continue;

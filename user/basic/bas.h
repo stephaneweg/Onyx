@@ -48,6 +48,9 @@ struct Host
 	virtual void date (char *out11) { out11[0] = 0; }	// "mm-dd-yyyy"
 	virtual void time (char *out9) { out9[0] = 0; }	// "hh:mm:ss"
 	virtual unsigned seed () { return 1; }
+	// Sound: voice 0..15 plays freq Hz (0 = stop) with wave 0 square 1 sine 2 triangle
+	// 3 saw 4 noise, volume 0..255. 0 ok, -1 no audio / the output is used elsewhere.
+	virtual int  note (int voice, double freq, int wave, int volume) { (void) voice; (void) freq; (void) wave; (void) volume; return 0; }
 	// GUI (Onyx): WINDOW, controls and their events.
 	virtual void window (const char *title, int w, int h) { (void) title; (void) w; (void) h; }
 	virtual int  control (int kind, int x, int y, int w, int h, const char *text, int val)

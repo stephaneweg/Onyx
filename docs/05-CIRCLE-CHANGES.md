@@ -34,6 +34,7 @@ git -C circle diff Step51..onyx
 | 1 | Keyboard map **decoupled** from the kernel (no compiled-in country maps; loaded at runtime) · `MAX_TASKS` 20 → 40 | `input/keymap.{h,cpp}` (+ 7 `keymap_*.h` deleted), `usb/usbkeyboard.h`, `input/keyboardbehaviour.h`, `sysconfig.h` | `libinput` (+ kernel for `MAX_TASKS`) |
 | 2 | Heap **large-block reuse** (fix per-launch canvas leak) + free-list byte accounting | `heapallocator.{h,cpp}`, `sysconfig.h` | `libcircle` |
 | 3 | **Free-space accounting** in the page allocator + memory accessors (for the `meminfo` kapi) | `memory.h`, `pageallocator.{h,cpp}` | `libcircle` (`memory.h` header-only) |
+| 4 | **Multi-core enabled** (`ARM_ALLOW_MULTI_CORE`): core 1 runs the sound producer | `sysconfig.h` | **every library** (clean rebuild) + kernel |
 
 ---
 
@@ -340,6 +341,24 @@ add free-list accessors. `memory.h` is header-only; the `pageallocator` counter 
 ```
 
 ---
+
+## 4. Multi-core enabled (`ARM_ALLOW_MULTI_CORE`)
+
+`include/circle/sysconfig.h`: the define is un-commented, so Circle builds its multi-core
+support (`CMultiCoreSupport`, real spin locks, per-core stacks and MMU setup, IPIs). The
+Onyx kernel starts cores 1–3 at boot; core 1 is the **sound producer** (it renders the
+audio chunks ahead, see [Kernel Internals §12](02-KERNEL-INTERNALS.md)); the scheduler,
+the processes and the interrupts stay on core 0. The memory map is unchanged (Circle
+always reserves the stacks of the 4 cores).
+
+```diff
+-//#define ARM_ALLOW_MULTI_CORE
++#define ARM_ALLOW_MULTI_CORE			// Onyx: core 1 runs the sound producer (kernel sys/sound.cpp)
+```
+
+> Changing this define changes code in **every** Circle library: after updating the
+> submodule, run `make clean` in each library before rebuilding them (the `.o` files do
+> not depend on `sysconfig.h`) — see the [Developer Guide §2](03-DEVELOPER-GUIDE.md).
 
 ## Not a patch: build configuration
 

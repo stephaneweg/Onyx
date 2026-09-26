@@ -74,6 +74,12 @@ int  kapi_vfs_next (struct kapi_vfs_req *, int);
 int  kapi_vfs_req_data (unsigned, void *, unsigned, unsigned);
 int  kapi_vfs_reply (unsigned, int, const void *, unsigned);
 int  kapi_wlan_scan (struct kapi_wlan_ap *, int);
+int  kapi_sound_acquire (void);
+void kapi_sound_release (void);
+int  kapi_sound_start (int, unsigned, int, int);
+int  kapi_sound_stop (int);
+int  kapi_sound_write (const short *, unsigned);
+int  kapi_sound_status (unsigned *, unsigned *, unsigned *);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -308,4 +314,11 @@ void KApiTableInit (void)
 	t->vfs_reply         = kapi_vfs_reply;
 
 	t->wlan_scan         = kapi_wlan_scan;
+
+	t->sound_acquire     = kapi_sound_acquire;
+	t->sound_release     = kapi_sound_release;
+	t->sound_start       = kapi_sound_start;
+	t->sound_stop        = kapi_sound_stop;
+	t->sound_write       = kapi_sound_write;
+	t->sound_status      = kapi_sound_status;
 }

@@ -451,7 +451,24 @@ public:
 			break;
 		}
 		case S_PAUSE: H.sleepMs (N (0, 0)); if (!H.poll ()) ended = true; break;
-		case S_BEEP: case S_SOUND: case S_WIDTH: break;
+		case S_WIDTH: break;
+		case S_BEEP: tone (0, 880, 250, 1); break;
+		case S_SOUND:					// SOUND freq, duration (1/18.2 s ticks)
+		{
+			double d = a[1].n;
+			if (d <= 0) { H.note (0, 0, 0, 0); break; }
+			if (a[0].n < 37 || a[0].n > 32767) { fail ("Illegal function call (SOUND frequency 37..32767)"); break; }
+			tone (0, a[0].n, (int) (d * 1000 / 18.2), 1);
+			break;
+		}
+		case S_NOTEON:
+			if (H.note (N (0, 0), a[1].n, N (2, 0), N (3, 200)) < 0) fail ("The audio output is not available (another program uses it?)");
+			break;
+		case S_NOTEOFF:
+			if (argc == 0) for (int v = 0; v < 16; v++) H.note (v, 0, 0, 0);
+			else H.note (N (0, 0), 0, 0, 0);
+			break;
+		case S_PLAY: { int n; const char *s = sdata (a[0], &n); play (s, n); break; }
 		case S_RANDOMIZE: rnd = argc ? (unsigned) (long long) a[0].n : H.seed (); break;
 		case S_WINDOW: cstr (a[0], t1, sizeof t1); H.window (t1, N (1, 0), N (2, 0)); break;
 		case S_SETTEXT: cstr (a[1], t1, sizeof t1); H.setText (N (0, 0), t1); break;
@@ -467,6 +484,77 @@ public:
 		default: fail ("Unknown statement");
 		}
 		for (int i = 0; i < argc; i++) vclear (a[i]);
+	}
+
+	// ---- sound ------------------------------------------------------------------------------------------------
+	// A note of ms milliseconds (then silence), blocking.
+	void tone (int voice, double freq, int ms, int wave)
+	{
+		if (H.note (voice, freq, wave, 200) < 0) { fail ("The audio output is not available (another program uses it?)"); return; }
+		H.sleepMs (ms);
+		H.note (voice, 0, 0, 0);
+		if (!H.poll ()) ended = true;
+	}
+	// PLAY: QBasic's music macro language -- A..G (+ # or - after), a length (1 = whole .. 64)
+	// and dots, O octave (0..6, default 4; O3 A = 440 Hz), < >, L length, T tempo (quarter
+	// notes per minute, default 120), P / R pause, N note (1..84, 0 = pause), MN / ML / MS
+	// (normal 7/8, legato, staccato 3/4), MF / MB (ignored: always in the foreground).
+	int playOct = 4, playLen = 4, playTempo = 120, playStyle = 0;
+	static double midiFreq (int midi)
+	{
+		double f = 440; int d = midi - 69;
+		static const double semi[12] = { 1, 1.0594630943592953, 1.122462048309373, 1.189207115002721, 1.2599210498948732,
+			1.3348398541700344, 1.4142135623730951, 1.4983070768766815, 1.5874010519681994, 1.681792830507429,
+			1.7817974362806785, 1.8877486253633868 };
+		while (d >= 12) { f *= 2; d -= 12; }
+		while (d < 0) { f /= 2; d += 12; }
+		return f * semi[d];
+	}
+	void play (const char *s, int n)
+	{
+		int i = 0;
+		auto num = [&] (int def) { if (i >= n || s[i] < '0' || s[i] > '9') return def; int v = 0; while (i < n && s[i] >= '0' && s[i] <= '9') v = v * 10 + (s[i++] - '0'); return v; };
+		auto up = [] (char c) { return (c >= 'a' && c <= 'z') ? (char) (c - 32) : c; };
+		static const int semis[7] = { 9, 11, 0, 2, 4, 5, 7 };		// A B C D E F G
+		while (i < n && !failed && !ended)
+		{
+			char c = up (s[i++]);
+			if (c == ' ' || c == ';' || c == ',') continue;
+			int midi = -1, len = playLen;
+			if (c >= 'A' && c <= 'G')
+			{
+				int k = semis[c - 'A'];
+				if (i < n && (s[i] == '#' || s[i] == '+')) { k++; i++; }
+				else if (i < n && s[i] == '-') { k--; i++; }
+				midi = 12 * (playOct + 2) + k;
+				len = num (playLen);
+			}
+			else if (c == 'N') { int v = num (0); if (v > 0) midi = v + 23; len = playLen; }
+			else if (c == 'P' || c == 'R') { len = num (playLen); }
+			else if (c == 'O') { playOct = num (4); if (playOct > 6) playOct = 6; continue; }
+			else if (c == '<') { if (playOct > 0) playOct--; continue; }
+			else if (c == '>') { if (playOct < 6) playOct++; continue; }
+			else if (c == 'L') { playLen = num (4); if (playLen < 1) playLen = 1; continue; }
+			else if (c == 'T') { playTempo = num (120); if (playTempo < 32) playTempo = 32; if (playTempo > 255) playTempo = 255; continue; }
+			else if (c == 'M')
+			{
+				char m = i < n ? up (s[i++]) : 0;
+				if (m == 'N') playStyle = 0; else if (m == 'L') playStyle = 1; else if (m == 'S') playStyle = 2;
+				continue;
+			}
+			else { fail ("Illegal function call (PLAY string)"); return; }
+			if (len < 1) len = 1;
+			double ms = 240000.0 / playTempo / len;			// whole note = 4 beats
+			double dot = ms;
+			while (i < n && s[i] == '.') { dot /= 2; ms += dot; i++; }
+			if (midi < 0) { H.sleepMs ((int) ms); continue; }
+			double on = playStyle == 1 ? ms : playStyle == 2 ? ms * 3 / 4 : ms * 7 / 8;
+			if (H.note (0, midiFreq (midi), 2, 200) < 0) { fail ("The audio output is not available (another program uses it?)"); return; }
+			H.sleepMs ((int) on);
+			H.note (0, 0, 0, 0);
+			if (ms > on) H.sleepMs ((int) (ms - on));
+			if (!H.poll ()) ended = true;
+		}
 	}
 
 	// ---- files ----------------------------------------------------------------------------------------------

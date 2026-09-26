@@ -426,6 +426,7 @@ the terminal's **current working directory**.
 | `net` | `net` | Shows the WLAN link status and the IPv4 address (or "link down" if Wi-Fi has not associated — check the firmware and `wpa_supplicant.conf`). |
 | `ping` | `ping <host> [count]` | Sends ICMP echo requests (default 4, one per second, 2 s timeout) to a name or an IP and prints each round-trip time, then the loss and min / avg / max statistics. (Onyx itself also answers pings.) |
 | `basic` | `basic [-d dir] <prog.bas> [args]` | The Onyx BASIC runtime (see §13): runs a program in the console or in its window; `-d` sets the current folder (default: the program's). A `.bas` path given to `run` or the shell runs through it. |
+| `tone` | `tone [Hz [ms [wave]]]`, `tone scale` | Plays a note on the audio output (the 3.5 mm jack) — default 440 Hz, 500 ms, sine; wave `square`, `sine`, `triangle`, `saw`, `noise`; `scale` plays a C major scale. Tests the sound system. |
 | `wifiscan` | `wifiscan` | Lists the Wi-Fi access points around (about 3 s), strongest first: signal (dBm + bars), channel, security (open / WEP / WPA / WPA2), SSID; `*` marks the network the Pi is on. |
 | `nslookup` | `nslookup <name>` | Resolves a host name through the DNS server (shown on the first line) and prints its IPv4 address. |
 | `netstat` | `netstat` | The network configuration (hostname, IP, mask, gateway, DNS, DHCP) and the open TCP sockets: state (LISTEN / ESTAB), local port, remote address, owning PID. |
@@ -787,8 +788,10 @@ QBasic's: numbers and strings (`$`), arrays (`DIM`, up to 4 dimensions), `IF` / 
 parenthesised variable goes by value), `DIM SHARED`, `STATIC`, `CONST`, `DATA` / `READ`,
 files (`OPEN ... FOR INPUT / OUTPUT / APPEND`), the string and math functions, `CLS`,
 `LOCATE`, `COLOR` (16 colours, or `RGB(r, g, b)`), `PSET`, `LINE` (`B` / `BF`), `CIRCLE`
-(`F` fills), `INKEY$`, `TIMER`, `RND`. Not there (yet): `PRINT USING`, `ON ERROR`, user
-`TYPE`s, `MID$` as a statement, `PLAY` / `SOUND` (coming with the sound support).
+(`F` fills), `INKEY$`, `TIMER`, `RND`, **sound**: `PLAY "T140 O3 L8 CDEFG>C"` (QBasic's music
+language), `SOUND freq, ticks`, `BEEP`, and Onyx's `NOTEON voice, freq[, wave, volume]` /
+`NOTEOFF [voice]` (a note that plays until stopped, 16 voices). Not there (yet): `PRINT
+USING`, `ON ERROR`, user `TYPE`s, `MID$` as a statement.
 
 Onyx additions — a program can be a real **windowed app**:
 

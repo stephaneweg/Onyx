@@ -21,7 +21,8 @@ constants) come from the code; the layout constants live in
 9. [Stream / stdio subsystem](#9-stream--stdio-subsystem)
 10. [Graphics subsystem (GUI)](#10-graphics-subsystem-gui)
 11. [Network subsystem (WLAN, TCP/IP, NTP)](#11-network-subsystem-wlan-tcpip-ntp)
-12. [Post-mortem debug console](#12-post-mortem-debug-console)
+12. [Sound and the second core](#12-sound-and-the-second-core)
+13. [Post-mortem debug console](#13-post-mortem-debug-console)
 
 ---
 
@@ -445,7 +446,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 45`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 46`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -458,7 +459,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`).
 
 ### Categories of exposed functions
 
@@ -488,6 +489,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
 | User-space file systems (v44) | `sys/vfs.cpp`, `kern/vfs.h` — FUSE-like. A **provider** app calls `vfs_register(prefix)` (`/bin/ftpfs`: `FTP:`, `FTPS:`). `kapi_open`/`read`/`fsize`/`close`, `save_file`, `opendir`/`readdir`/`closedir`, `mkdir`/`remove`/`rename` on a path with a registered prefix (`VfsHandles`) become **requests** (`VfsCall`): the calling task fills a slot (op, path, path2, a0–a2, a **kernel copy** of the payload), sets the provider's `CSynchronizationEvent` and waits on the slot's own event (200 ms re-checks: provider alive via `IpcPidAlive`, 120 s timeout). The provider takes it with `vfs_next` (blocking = up to 0.5 s, so it can also poll its mailbox), reads the payload with `vfs_req_data`, answers with `vfs_reply(id, status, data, len)` (copied into a kernel buffer, then into the caller's). Ops: `OPEN` (→ fid + size), `READ` (fid, offset, ≤ 64 KB), `CLOSE`, `LIST` (packed `u32 size, u8 is_dir, name\0` entries), `SAVE`, `MKDIR`, `REMOVE`, `RENAME`. Provider-backed handles live in static tables (`s_File`, `s_Dir`), so the file kapis tell them from FatFs `FIL`/`DIR` by address. `FTP:`/`FTPS:` are **auto-started**: the first use execs `SD:/bin/ftpfs` and waits up to 5 s for it to register. A dying provider is dropped and its pending requests fail (`VfsOnProcessGone`, from `IpcOnProcessGone`). Streams (`kapi_file_in`: `cat`, redirections) still go to FatFs only. |
 | Wi-Fi scan (v45) | `wlan_scan(out, max)` → `struct kapi_wlan_ap` (ssid, bssid, security `WLAN_SEC_OPEN`/`WEP`/`WPA`/`WPA2`, channel, freq, level dBm, connected), strongest first, one per BSSID. `NetWlanScan` in `sys/net.cpp` — **no Circle patch**: it drives the BCM4343 firmware's *escan* through `CBcm4343Device::Control ("escan 5")`, collects `ReceiveScanResult` messages for ~3.5 s (the firmware's `brcmf_escan_result_le` layout, as in hostap's `driver_circle.cpp`), then `escan 0`. Security from the capability privacy bit + the RSN (48) / WPA vendor (221) IEs; `connected` = the BSSID `GetBSSID()` reports while `CWPASupplicant::IsConnected()`. wpa_supplicant reads the same result queue for its own scans: while it is still looking for its network, a scan here may take its results (it scans again). Used by `/bin/wifiscan` and `wpaconf`. |
+| Sound (v46) | `sound_acquire` (1 ok / 0 busy / −1 no audio: the caller becomes the owner; the output starts on first use), `sound_release`, `sound_start(voice 0..15, milliHz, wave SOUND_SQUARE/SINE/TRIANGLE/SAW/NOISE, volume 0..255)` (plays until stopped), `sound_stop(voice or -1)`, `sound_write(s16 stereo frames, n)` → frames taken (PCM ring, non-blocking), `sound_status(&rate, &free, &owner)`. Non-owners get −1; the owner's exit silences it. See §12. |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
 | Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
 
@@ -679,7 +681,39 @@ tool (link status / IP).
 
 ---
 
-## 12. Post-mortem debug console
+## 12. Sound and the second core
+
+Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../kernel/include/kern/sound.h).
+
+- **Multi-core.** Circle is built with `ARM_ALLOW_MULTI_CORE` (fork patch #4,
+  [Circle Changes](05-CIRCLE-CHANGES.md)). `CKernel::Initialize` starts cores 1–3 through a
+  `CMultiCoreSupport` subclass (`COnyxCores`, kernel.cpp) right after the kapi table is
+  published. **Everything else stays on core 0**: the scheduler, every process, the
+  interrupts (the GIC routes peripherals to core 0; the secondary cores run Circle's own
+  `VectorTable`, not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 park in
+  `WFE`. A failed start is only a warning (no sound producer).
+- **The device.** `COnyxSoundDevice` derives from Circle's `CPWMSoundBaseDevice` (PWM + DMA,
+  the 3.5 mm jack; 44.1 kHz, 1024-frame chunks) and overrides `GetChunk` — the "producer" —
+  which is called from the DMA completion interrupt. It is created and started on the first
+  `sound_acquire` (not at boot).
+- **Core 1 = the producer.** It sleeps in `WFE` until the device starts, then keeps
+  `SND_AHEAD` (4) chunks rendered ahead in a ring; `GetChunk` only copies the next chunk
+  (zeros if core 1 fell behind) and `SEV`s core 1. Without `ARM_ALLOW_MULTI_CORE` the same
+  code renders in `GetChunk` itself (interrupt, core 0).
+- **Rendering** (integer only, no FP in the kernel): 16 voices, each a 32-bit phase
+  accumulator (`inc = milliHz · 2³² / (1000 · 44100)`), waveforms square / sine (256-entry
+  table, linear interpolation) / triangle / saw / noise (LFSR per period), a linear
+  ~5 ms attack/release envelope (no clicks), mixed ÷4 and clipped; plus the **PCM ring**
+  (0.5 s of s16 stereo frames, `sound_write`). Converted to the PWM range per sample.
+- **Ownership.** One pid owns the output (`sound_acquire`); every other call from another
+  pid returns −1. `sound_release`, or the owner's exit (`SoundOnProcessGone`, called from
+  `IpcOnProcessGone`), silences the voices, empties the ring and frees the output. The
+  state is shared between core 0 (kapi calls) and core 1 (rendering) under a `CSpinLock`.
+- **kapi v46**: `sound_acquire`, `sound_release`, `sound_start (voice, milliHz, wave,
+  volume)`, `sound_stop (voice | -1)`, `sound_write (frames, n)`, `sound_status`.
+  Users: `/bin/tone`, BASIC `PLAY` / `SOUND` / `BEEP` / `NOTEON` / `NOTEOFF`.
+
+## 13. Post-mortem debug console
 
 Source: [`kernel/sys/debugcon.cpp`](../kernel/sys/debugcon.cpp),
 [`kernel/include/kern/debugcon.h`](../kernel/include/kern/debugcon.h).
@@ -711,7 +745,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 45 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 46 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

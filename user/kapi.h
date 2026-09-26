@@ -291,6 +291,20 @@ static inline int kapi_vfs_reply (unsigned id, int status, const void *data, uns
 // connected). Takes ~3 s (blocks the caller); returns how many (0 = none / no Wi-Fi).
 static inline int kapi_wlan_scan (struct kapi_wlan_ap *out, int max) { return KT->wlan_scan (out, max); }
 
+// Sound (ABI v46), on the 3.5 mm jack. First acquire the output (1 ok, 0 another app has
+// it, -1 no audio); only the owner plays, and its release -- or its exit -- silences it.
+//   kapi_sound_start (voice 0..15, milli-Hz (440 Hz = 440000), SOUND_SQUARE/SINE/TRIANGLE/
+//                     SAW/NOISE, volume 0..255): the note plays until kapi_sound_stop (voice)
+//                     (-1 = all). Short attack / release ramps: no clicks.
+//   kapi_sound_write (s16 L/R frames at SOUND_RATE, n): a PCM stream mixed with the voices;
+//                     returns the frames taken (0 = full, retry later) -- audio players.
+static inline int  kapi_sound_acquire (void) { return KT->sound_acquire (); }
+static inline void kapi_sound_release (void) { KT->sound_release (); }
+static inline int  kapi_sound_start (int voice, unsigned millihz, int wave, int volume) { return KT->sound_start (voice, millihz, wave, volume); }
+static inline int  kapi_sound_stop (int voice) { return KT->sound_stop (voice); }
+static inline int  kapi_sound_write (const short *frames, unsigned n) { return KT->sound_write (frames, n); }
+static inline int  kapi_sound_status (unsigned *rate, unsigned *free_frames, unsigned *owner) { return KT->sound_status (rate, free_frames, owner); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }

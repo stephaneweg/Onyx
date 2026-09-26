@@ -51,14 +51,11 @@ git submodule update --init --recursive
 # pixels (Circle defaults to 16).
 cd circle && ./configure -r 4 -p aarch64-none-elf- -d DEPTH=32 -f
 
-# Build the libraries used by the kernel:
-(cd lib && make -j4) \
-  && (cd lib/sched && make -j4) \
-  && (cd lib/fs && make -j4 && cd fat && make -j4) \
-  && (cd lib/usb && make -j4) \
-  && (cd lib/input && make -j4) \
-  && (cd addon/SDCard && make -j4) \
-  && (cd addon/fatfs && make -j4)
+# Build the libraries used by the kernel (make clean first when the fork's sysconfig.h
+# changed -- e.g. the multi-core patch: the .o files do not depend on it):
+for d in lib lib/sched lib/fs lib/fs/fat lib/usb lib/input lib/net lib/sound \
+         addon/SDCard addon/fatfs addon/wlan; do (cd $d && make clean && make -j4) || break; done
+(cd addon/wlan/hostap/wpa_supplicant && make -f Makefile.circle clean && make -f Makefile.circle -j4)
 cd ..
 ```
 
@@ -66,8 +63,9 @@ cd ..
 > rebuilding (the `.o` files do not depend on `Config.mk`).
 
 The libraries linked by the kernel (cf. [`kernel/Makefile`](../kernel/Makefile)):
-`libsched.a`, `libfatfs.a`, `libsdcard.a`, `libfs.a`, `libusb.a`, `libinput.a`,
-`libcircle.a`.
+`libwpa_supplicant.a`, `libwlan.a`, `libfatfs.a`, `libsdcard.a`, `libnet.a`, `libsound.a`,
+`libsched.a`, `libusb.a`, `libinput.a`, `libfs.a`, `libcircle.a`. Circle is built
+**multi-core** (`ARM_ALLOW_MULTI_CORE`, fork patch #4): core 1 runs the sound producer.
 
 > The Onyx-specific patches carried by this fork (branch `onyx`, on upstream tag `Step51`)
 > are documented in [Circle Changes](05-CIRCLE-CHANGES.md).
@@ -257,6 +255,13 @@ Notes / caveats:
 > ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
 > `ftpfs.h`: `ftpfs_login` / `ftpfs_login_site` (hand a login to ftpfs, optionally
 > remembered), `ftpfs_forget`, `ftpfs_load_sites` (the remembered servers of `SD:/etc/ftpfs.ini`).
+> **Sound (ABI v46)**: `kapi_sound_acquire ()` first (1 = the output is yours; 0 = another
+> app has it) — the output is released and silenced by `kapi_sound_release ()` or when your
+> process ends. Then `kapi_sound_start (voice 0..15, milliHz, SOUND_SQUARE / SINE / TRIANGLE /
+> SAW / NOISE, volume 0..255)` plays a note until `kapi_sound_stop (voice)` (-1 = all), and
+> `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
+> returns the frames taken — loop with a short sleep while it returns 0) for audio / MIDI
+> players. Example: `user/bin/tone.c`.
 > **Wi-Fi scan (ABI v45)**: `kapi_wlan_scan (ap, max)` fills `struct kapi_wlan_ap` entries
 > (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
 > it blocks ~3 s. Examples: `user/bin/wifiscan.c`, `wpaconf` (Scan button + Combobox).

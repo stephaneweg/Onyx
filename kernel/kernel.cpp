@@ -21,6 +21,10 @@
 #include <kern/gui/gimage.h>
 #include <kern/net.h>
 #include <kern/ipc.h>		// IpcNotify ("Network up")
+#include <kern/sound.h>		// SoundCoreMain (core 1)
+#ifdef ARM_ALLOW_MULTI_CORE
+#include <circle/multicore.h>
+#endif
 #include <circle/net/ipaddress.h>
 #include <circle/net/ntpdaemon.h>
 
@@ -992,6 +996,23 @@ static boolean BasicRedirect (const char *pPath, const char *pArgs, CString *pEl
 	return TRUE;
 }
 
+#ifdef ARM_ALLOW_MULTI_CORE
+// The secondary cores (Circle's CMultiCoreSupport, started at boot). The scheduler, the
+// interrupts and every process stay on core 0; core 1 is the sound producer (it sleeps
+// in WFE until the audio is first used, see sys/sound.cpp); cores 2 and 3 are parked.
+class COnyxCores : public CMultiCoreSupport
+{
+public:
+	COnyxCores (void) : CMultiCoreSupport (CMemorySystem::Get ()) {}
+	void Run (unsigned nCore) override
+	{
+		if (nCore == 1) SoundCoreMain ();
+		for (;;) asm volatile ("wfe");
+	}
+};
+static COnyxCores *s_pCores = 0;
+#endif
+
 // Launch an app by folder name: SD:apps/<name>.app/main -> a new EL1 process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
@@ -1282,6 +1303,16 @@ boolean CKernel::Initialize (void)
 		// Publish the kapi ABI table (apps call the kernel through it). Must run
 		// before any address space is built (each one maps the table).
 		KApiTableInit ();
+
+#ifdef ARM_ALLOW_MULTI_CORE
+		// Start cores 1..3 (core 1 = the sound producer). Not fatal if it fails:
+		// the rest of the system only uses core 0.
+		s_pCores = new COnyxCores;
+		if (s_pCores == 0 || !s_pCores->Initialize ())
+			m_Logger.Write (FromKernel, LogWarning, "secondary cores did not start (no sound producer)");
+		else
+			m_Logger.Write (FromKernel, LogNotice, "cores 1-3 started (core 1: sound)");
+#endif
 	}
 
 	// Framebuffer is optional (needs an attached display). Do not fail boot if it

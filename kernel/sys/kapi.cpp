@@ -11,6 +11,7 @@
 // extern "C": stable, unmangled names for the symbol-export/link step.
 //
 #include <kern/vfs.h>
+#include <kern/sound.h>
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
 #include <kern/stream.h>		// CStream / CPipeStream / CFileStream / CProcess
@@ -1855,5 +1856,14 @@ int kapi_net_ping (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *
 int kapi_net_resolve (const char *pHost, char *pIP, unsigned nCap) { return NetResolve (pHost, pIP, nCap); }
 int kapi_net_info (char *pBuf, unsigned nCap) { return NetInfo (pBuf, nCap); }
 int kapi_wlan_scan (struct kapi_wlan_ap *pOut, int nMax) { return NetWlanScan (pOut, nMax); }
+
+// --- v46: sound (kern/sound.h) ---
+static unsigned CallerPid (void) { CAddressSpace *pAS = CurrentAS (); return pAS != 0 ? pAS->GetPid () : 0; }
+int  kapi_sound_acquire (void) { return SoundAcquire (CallerPid ()); }
+void kapi_sound_release (void) { SoundRelease (CallerPid ()); }
+int  kapi_sound_start (int nVoice, unsigned nMilliHz, int nWave, int nVolume) { return SoundStart (CallerPid (), nVoice, nMilliHz, nWave, nVolume); }
+int  kapi_sound_stop (int nVoice) { return SoundStop (CallerPid (), nVoice); }
+int  kapi_sound_write (const short *pFrames, unsigned nFrames) { return SoundWrite (CallerPid (), (const s16 *) pFrames, nFrames); }
+int  kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner) { return SoundStatus (pRate, pFree, pOwner); }
 
 }  // extern "C"

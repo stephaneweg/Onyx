@@ -43,6 +43,14 @@ SCREEN AND GRAPHICS
   POINT(x, y)  POS(0)  CSRLIN  MOUSEX  MOUSEY  MOUSEB (1 left 2 right 4 middle)
   INKEY$ (arrows = CHR$(0) + "H" / "P" / "K" / "M")
 
+SOUND (the 3.5 mm jack)
+  PLAY "T120 O3 L4 CDE F8G8 >C2"  QBasic's music language: A-G (# + - after), a length
+    1..64 and dots, O octave 0-6 (O3 A = 440 Hz), < >, L length, T tempo, P / R pause,
+    N note 1-84, MN / ML / MS (normal, legato, staccato).
+  SOUND freq, ticks (18.2 per second)    BEEP
+  NOTEON voice, freq[, wave, volume]  (voice 0-15; wave 0 square 1 sine 2 triangle 3 saw
+    4 noise; volume 0-255): plays until NOTEOFF voice (NOTEOFF alone: all voices).
+
 WINDOW AND CONTROLS (Onyx)
   WINDOW title$[, width, height]    (a GUI program; closing it ends the program)
   id = BUTTON(x, y, w, h, text$)    id = LABEL(x, y, w, h, text$)

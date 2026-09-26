@@ -33,6 +33,8 @@ struct ConsoleHost : bas::Host
 	void pset (int x, int y, int c) override { printf ("[pset %d %d %d]\n", x, y, c); }
 	void line (int a, int b, int c, int d, int e, int f) override { printf ("[line %d %d %d %d %d %d]\n", a, b, c, d, e, f); }
 	void circle (int x, int y, int r, int c, int f) override { printf ("[circle %d %d %d %d %d]\n", x, y, r, c, f); }
+	int note (int v, double f, int w, int vol) override { printf ("[note %d %.1f %d %d]", v, f, w, vol); return 0; }
+	void sleepMs (int ms) override { printf ("(%d)", ms); }
 	void window (const char *t, int w, int h) override { printf ("[window %s %d %d]\n", t, w, h); }
 	int nextId = 1;
 	int control (int k, int x, int y, int w, int h, const char *t, int v) override

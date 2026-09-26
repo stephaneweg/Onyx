@@ -30,6 +30,7 @@ OBJS = \
 	sys/ipc.o \
 	sys/vfs.o \
 	sys/net.o \
+	sys/sound.o \
 	sys/stream.o \
 	sys/debugcon.o \
 	arch/aarch64/vectors.o \
@@ -49,6 +50,7 @@ LIBS = \
 	$(CIRCLEHOME)/addon/fatfs/libfatfs.a \
 	$(CIRCLEHOME)/addon/SDCard/libsdcard.a \
 	$(CIRCLEHOME)/lib/net/libnet.a \
+	$(CIRCLEHOME)/lib/sound/libsound.a \
 	$(CIRCLEHOME)/lib/sched/libsched.a \
 	$(CIRCLEHOME)/lib/usb/libusb.a \
 	$(CIRCLEHOME)/lib/input/libinput.a \
