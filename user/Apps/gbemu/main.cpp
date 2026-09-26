@@ -8,7 +8,7 @@
 //     kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A, bottom /
 //     left = B, Start, Select); F11 or View > Full Screen: the whole display, stretched with the
 //     proportions kept and centred (Esc / F11 back).
-//   * View > Zoom 2x / 3x / 4x, Palette (the DMG games' 4 shades), Sound on / off.
+//   * View > Zoom 1x / 2x / 3x / 4x, Palette (the DMG games' 4 shades), Sound on / off.
 //   * The cartridge's battery save is <rom>.sav beside the ROM: read at start, written
 //     every few seconds after a change and when the emulator closes.
 //   * The pace: the sound output (the frames are made as the audio queue drains), or the
@@ -163,6 +163,7 @@ static void set_zoom (int z)
 	g_root->width = gb::W * z; g_root->height = gb::H * z;
 	g_root->invalidate (true);
 }
+static void on_zoom1 () { set_zoom (1); }
 static void on_zoom2 () { set_zoom (2); }
 static void on_zoom3 () { set_zoom (3); }
 static void on_zoom4 () { set_zoom (4); }
@@ -280,6 +281,7 @@ int main (void)
 	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
+	menu.item ("Zoom 1x",      "",    0, on_zoom1);
 	menu.item ("Zoom 2x",      "",    0, on_zoom2);
 	menu.item ("Zoom 3x",      "",    0, on_zoom3);
 	menu.item ("Zoom 4x",      "",    0, on_zoom4);
