@@ -93,6 +93,12 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0
   compositor stops producing frames (and lists every task's state) and when an app stops
   pumping its window's events (a frozen app).
 - **`watchdog`**: `watchdog=0` does not start the GUI watchdog at all (A/B testing).
+- **`sdhs`**: `sdhs=1` switches the SD card to **High Speed** (50 MHz instead of 25: up to
+  twice the transfer rate). Off by default: if a card misbehaves with it (boot errors, files
+  that do not read back), remove it again. `kmsg` says what is in use (`SD card mounted`).
+- **`sdcache`**: `sdcache=0` turns off the **sector cache** (on by default: the FAT and the
+  folders stay in memory, so opening files and listing folders no longer asks the card for
+  every sector; writes still go to the card at once). For comparisons with `fsbench`.
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin
@@ -436,6 +442,7 @@ the terminal's **current working directory**.
 | `net` | `net` | Shows the WLAN link status and the IPv4 address (or "link down" if Wi-Fi has not associated — check the firmware and `wpa_supplicant.conf`). |
 | `ping` | `ping <host> [count]` | Sends ICMP echo requests (default 4, one per second, 2 s timeout) to a name or an IP and prints each round-trip time, then the loss and min / avg / max statistics. (Onyx itself also answers pings.) |
 | `basic` | `basic [-d dir] <prog.bas> [args]` | The Onyx BASIC runtime (see §13): runs a program in the console or in its window; `-d` sets the current folder (default: the program's). A `.bas` path given to `run` or the shell runs through it. |
+| `fsbench` | `fsbench [big-file]` | Measures the SD card: reading a big file (default `SD:/doom/freedoom1.wad`, MB/s), opening every app's `app.txt` twice (the second time from the sector cache), listing `SD:/apps` twice, writing + reading back a 4 MB file (`SD:/fsbench.tmp`, removed after; its content is checked). Compare with `sdhs=1` / `sdcache=0` in `cmdline.txt`. |
 | `coretest` | `coretest`, `coretest exit` | Tests the **app cores** (cores 2 and 3, which an app can take for itself): the same computation on an app core and on the main core (their times), a job stopped cleanly, an endless job stopped by releasing the core, a job that crashes (reported in `kmsg`, the system stays up), both app cores at once. `coretest exit` leaves a job running and quits: Onyx must stop it by itself. |
 | `tone` | `tone [Hz [ms [wave]]]`, `tone scale` | Plays a note on the audio output (the 3.5 mm jack) — default 440 Hz, 500 ms, sine; wave `square`, `sine`, `triangle`, `saw`, `noise`; `scale` plays a C major scale. Tests the sound system. |
 | `wifiscan` | `wifiscan` | Lists the Wi-Fi access points around (about 3 s), strongest first: signal (dBm + bars), channel, security (open / WEP / WPA / WPA2), SSID; `*` marks the network the Pi is on. |

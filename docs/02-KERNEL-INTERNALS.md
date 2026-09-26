@@ -284,6 +284,12 @@ the sound feeders — for seconds. Between two pieces the FatFs volume lock is f
 tasks' file calls get through; the caller's buffer stays valid (its address space is active
 again when it resumes).
 
+**File-system speed.** The FatFs disk layer keeps a 1 MB **sector cache** of the
+single-sector reads (the FAT, the folders), write-through (`docs/05` §8; `sdcache=0` turns
+it off): opening files and walking folders stopped asking the card for every sector.
+`sdhs=1` puts the card in High Speed (50 MHz, `docs/05` §9). The boot log says what is in
+use (`SD card mounted (SD:): ...`); `/bin/fsbench` measures.
+
 **Yielding SD waits.** The SD driver also yields while the card keeps it waiting: after a
 100 µs spin, `CEMMCDevice::TimeoutWait` calls `OnyxDriverWait ()` (a weak hook of our Circle
 fork, `docs/05` §7), which `Yield`s if IRQs are on. The FatFs volume lock is held during

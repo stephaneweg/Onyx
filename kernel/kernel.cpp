@@ -16,6 +16,7 @@
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
 #include <kern/appcore.h>
+#include <fatfs/diskio.h>		// disk_cache_enable (the sector cache: sdcache=)
 #include <kern/applaunch.h>
 #include <kern/stream.h>
 #include <kern/kapitable.h>
@@ -1432,10 +1433,16 @@ boolean CKernel::Initialize (void)
 	// is absent, we fall back to the ELF images embedded in the kernel.
 	if (bOK)
 	{
+		// cmdline.txt: sdhs=1 -> the card in High Speed (50 MHz instead of 25; a card that
+		// misbehaves: remove it again), sdcache=0 -> no sector cache (A/B comparisons).
+		CEMMCDevice::SetHighSpeed (m_Options.GetAppOptionDecimal ("sdhs", 0) != 0);
+		disk_cache_enable (m_Options.GetAppOptionDecimal ("sdcache", 1) != 0);
 		if (m_EMMC.Initialize () && f_mount (&m_FileSystem, "SD:", 1) == FR_OK)
 		{
 			m_bSDMounted = TRUE;
-			m_Logger.Write (FromKernel, LogNotice, "SD card mounted (SD:)");
+			m_Logger.Write (FromKernel, LogNotice, "SD card mounted (SD:): %s, sector cache %s",
+					CEMMCDevice::IsHighSpeed () ? "High Speed 50 MHz" : "25 MHz",
+					m_Options.GetAppOptionDecimal ("sdcache", 1) ? "on" : "off");
 
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda

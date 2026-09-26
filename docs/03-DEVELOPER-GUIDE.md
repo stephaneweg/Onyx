@@ -899,7 +899,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
   check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,
   the File Viewer and `ftpd`).
-- **Host tests** (`tools/tests/`): `run_trash_test.sh` (trash.h + fsutil.h against a mock
+- **Host tests** (`tools/tests/`): `run_fs_test.sh` (the Circle fork's FatFs + `diskio.cpp`
+  sector cache on a RAM disk: 4000 random file operations checked against a model, cache on
+  and off, same disk image — run it after touching `circle/addon/fatfs`), `run_trash_test.sh` (trash.h + fsutil.h against a mock
   kapi with the kernel's return conventions) and `run_ftpd_test.sh` (ftpd over real
   sockets, driven by Python's `ftplib`: login, LIST/NLST, RETR/STOR round trip, MKD/RMD,
   RNFR/RNTO, DELE, root jail, PORT, two concurrent sessions) and `run_ftpfs_test.sh`

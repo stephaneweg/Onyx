@@ -38,6 +38,8 @@ git -C circle diff Step51..onyx
 | 5 | **Shift + navigation keys** (`KeyShiftUp`… appended to `TSpecialKey`, xterm `;2` sequences) | `input/keymap.{h,cpp}` | `libinput`, `libusb` + the `.kmap` files |
 | 6 | **Partial display update** `C2DGraphics::UpdateDisplay (x, y, w, h)` (the compositor's dirty rectangles) | `2dgraphics.{h,cpp}` | `libcircle` |
 | 7 | **Yielding SD waits**: weak hooks for the FatFs volume lock and the EMMC wait loop | `addon/fatfs/ffsystem.cpp`, `addon/SDCard/emmc.cpp` | `libfatfs`, `libsdcard` |
+| 8 | **Sector cache** in the FatFs disk layer (write-through), one bounce buffer per volume | `addon/fatfs/diskio.{h,cpp}` | `libfatfs` |
+| 9 | **High Speed SD at run time** (`CEMMCDevice::SetHighSpeed`) + the host's High Speed Enable bit | `addon/SDCard/emmc.{h,cpp}` | `libsdcard` |
 
 ---
 
@@ -412,6 +414,45 @@ and a directory walk or a big read froze the GUI and the network 100–200 ms at
 
 The kernel defines them in `kernel/sys/fslock.cpp`: a sleeping, re-entrant volume lock
 (waiters `Yield`), and a wait hook that yields when IRQs are on. See `docs/02` (preemption).
+
+## 8. Sector cache in the FatFs disk layer
+
+FatFs reads the FAT and the directories one sector at a time (through its window), and each
+`disk_read` is a whole SD command round trip (plus a CMD13 status check in the EMMC
+driver): opening a file deep in a big folder, or listing it, asked the card again for
+every sector, every time. `diskio.cpp` now keeps the **single-sector reads** in a
+direct-mapped cache (2048 slots x 512 bytes = 1 MB, allocated on first use; key = sector
+and drive). **Write-through**: `disk_write` writes the card first, then updates the cached
+copies of the sectors written (or drops them if the write failed), so the cache never holds
+anything the card does not. The big multi-sector reads of file data go straight to the
+device. `disk_initialize` (a mount) and the device's removal forget the drive's sectors.
+`disk_cache_enable (0/1)` / `disk_cache_stats (&hits, &misses)` (declared in `diskio.h`); Onyx
+turns it off with `sdcache=0` in `cmdline.txt`.
+
+Also: the bounce buffer for unaligned transfers is now **one per volume** (the SD driver
+can yield in the middle of a transfer since patch 7, so two volumes' transfers can
+overlap; FatFs locks per volume).
+
+Test on the PC: `tools/tests/run_fs_test.sh` builds the fork's `ff.c` + `diskio.cpp` against
+stub Circle headers, formats a 96 MB RAM disk (FAT32) and runs 4000 random operations
+(create, overwrite, append, read back, delete, rename, list, remount) checked against a
+model, with the cache on and off: both pass and leave the same image byte for byte; the
+cache cuts the device reads about 3.4 times.
+
+## 9. High Speed SD at run time
+
+Upstream enables the SD High Speed mode (50 MHz, SD 1.1+ cards: CMD6 switch) only with the
+compile option `SD_HIGH_SPEED`, off by default, and then only raises the clock. The patch:
+
+- `static void CEMMCDevice::SetHighSpeed (boolean)` (before `Initialize`) chooses it at run
+  time (`SD_HIGH_SPEED` still forces the upstream behaviour); `IsHighSpeed ()` tells whether
+  the card switched;
+- before raising the clock, it sets the host's **High Speed Enable** bit (`CONTROL0` bit 2,
+  `HCTL_HS_EN` of the SD Host Controller spec), so the controller samples with the High
+  Speed timing;
+- the 64-byte CMD6 status buffer is word aligned (the PIO transfer asserts it).
+
+Onyx turns it on with `sdhs=1` in `cmdline.txt` (off by default: not all cards behave).
 
 ## Not a patch: build configuration
 
