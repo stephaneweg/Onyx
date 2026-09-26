@@ -202,27 +202,6 @@ def app_irc():
     cv.fill(px + len(inp) * FW, iy, 2, FH, C(0x60FF90))
     return cv
 
-def app_filer():
-    W, H = 460, 380; LISTY = 34; cv = Canvas(W, H, C(0x202830))
-    cv.fill(0, 0, W, LISTY - 2, C(0x303D4D))
-    cv.text(8, 9, "SD:/", C(0xE0E0E0))
-    cv.text(W - 150, 9, "d:del r:ren n:new", C(0x90A0B0))
-    rows = [("apps", -1, 1), ("bin", -1, 1), ("skins", -1, 1),
-            ("armstub8-rpi4.bin", 3104, 0), ("bcm2711-rpi-4-b.dtb", 52472, 0),
-            ("cmdline.txt", 31, 0), ("config.txt", 184, 0),
-            ("kernel8-rpi4.img", 540672, 0), ("README.md", 1182, 0),
-            ("start4.elf", 2253544, 0)]
-    sel = 0
-    for r, (name, size, isdir) in enumerate(rows):
-        y = LISTY + r * FH
-        if r == sel: cv.fill(0, y, W, FH, C(0x355070))
-        if isdir:
-            cv.text(10, y + 1, "[" + name + "]", C(0x80C8FF))
-        else:
-            cv.text(10, y + 1, name, C(0xD8D8D8))
-            s = str(size); cv.text(W - 12 - len(s) * FW, y + 1, s, C(0x90A0A8))
-    return cv
-
 def app_fileviewer():	# NeXTSTEP-style column browser (Apps/fileviewer/main.cpp onDraw)
     W, H, VIS = 800, 520, 4; COLW = W // VIS
     TB_H, BC_H, SB_H, ST_H = 0, 24, 12, 20; COL_Y = TB_H + BC_H; COL_H = H - COL_Y - SB_H - ST_H
@@ -804,7 +783,7 @@ def draw_panel(cv, sw, sh):
     icon("panel.app/apps.bmp", 4)
     sep(48)
     icon("terminal.app/icon.bmp", 54);  badge(54)
-    icon("filer.app/icon.bmp", 98)
+    icon("fileviewer.app/icon.bmp", 98)
     icon("tinypad.app/icon.bmp", 142)
     icon("tinycalc.app/icon.bmp", 186); badge(186)
     sep(232)
@@ -1094,7 +1073,7 @@ def app_panel():
             blit_bmp(cv, ip, ix + (ICON-iw)//2, a + (ICON-ih)//2)
     ic("panel.app/apps.bmp", 4); sep(48)
     ic("terminal.app/icon.bmp", 54);  badge(54)
-    ic("filer.app/icon.bmp", 98)
+    ic("fileviewer.app/icon.bmp", 98)
     ic("tinypad.app/icon.bmp", 142)
     ic("tinycalc.app/icon.bmp", 186); badge(186)
     sep(232); ic("mandelbrot.app/icon.bmp", 236); badge(236); sep(281)
@@ -1195,7 +1174,7 @@ def app_wpaconf():
 if __name__ == "__main__":
     # windowed apps: (folder, title, client builder) -> wrapped in skinned chrome.
     WINAPPS = [
-        ("terminal","terminal",app_terminal), ("filer","filer",app_filer),
+        ("terminal","terminal",app_terminal),
         ("fileviewer","File Viewer",app_fileviewer),
         ("mandelbrot","fractal",app_fractal), ("tinycalc","tinycalc",app_tinycalc),
         ("tinypad","tinypad",app_tinypad), ("calendar","calendar",app_calendar),

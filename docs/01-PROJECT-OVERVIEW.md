@@ -72,7 +72,7 @@ sources.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  Applications (ELF EL1, isolated by ASID)                        │
-│  panel · applist · terminal · filer · tinypad · games · /bin/*   │
+│  panel · applist · terminal · fileviewer · tinypad · games · bin │
 │       │  call the kernel through kapi.h (inline wrappers)        │
 ├───────┼──────────────────────────────────────────────────────────┤
 │       ▼   kapi ABI table  (at 14 GB, read-only in every app)     │   ← stable contract

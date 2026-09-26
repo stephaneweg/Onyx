@@ -52,7 +52,7 @@ static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && 
 
 // ---- menus ------------------------------------------------------------------------------
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
-enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_FILER, ONYX_TASKS, ONYX_APPS, ONYX_SHUTDOWN };
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_APPS, ONYX_SHUTDOWN };
 
 static void add_quit_menu (const char *app)
 {
@@ -68,7 +68,7 @@ static void add_onyx_menu (void)
 	MenuDef &m = g_menus[g_nmenus++];
 	scopy (m.title, "Onyx", sizeof m.title); m.count = 0;
 	static const struct { int id; const char *l; } it[] = {
-		{ ONYX_TERMINAL, "Terminal" }, { ONYX_FILES, "File Viewer" }, { ONYX_FILER, "Files" },
+		{ ONYX_TERMINAL, "Terminal" }, { ONYX_FILES, "File Viewer" },
 		{ ONYX_TASKS, "Task Manager" }, { -2, 0 }, { ONYX_APPS, "All Apps..." },
 		{ -2, 0 }, { ONYX_SHUTDOWN, "Shut Down..." } };
 	for (unsigned i = 0; i < sizeof it / sizeof it[0]; i++)
@@ -255,7 +255,6 @@ static void run_item (const Item &it)
 	{
 	case ONYX_TERMINAL: kapi_launch ("terminal"); return;
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
-	case ONYX_FILER:    kapi_launch ("filer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
 	case ONYX_APPS:     kapi_toggle_app ("applist"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;

@@ -155,14 +155,6 @@ def icon_same():		# a grid of 4 coloured blocks (SameGame)
             prect(px, x, y, x + b - 2, y + b - 2, cols[pat[r][c]])
     return px
 
-def icon_filer():		# a manila folder
-    px = blank()
-    body, tab, edge = (225, 190, 90), (236, 208, 120), (150, 120, 40)
-    prect(px, 7, 9, 18, 14, tab)
-    prect(px, 7, 13, 33, 31, body)
-    pframe(px, 7, 13, 33, 31, edge)
-    return px
-
 def icon_terminal():		# a black console with a green prompt
     px = blank()
     body, scr, prompt = (40, 44, 52), (16, 22, 18), (80, 230, 120)
@@ -397,7 +389,7 @@ def icon_plasma():		# colourful plasma waves
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
-    "filer": icon_filer, "terminal": icon_terminal,
+    "terminal": icon_terminal,
     "2048": icon_2048, "life": icon_life, "pong": icon_pong, "sokoban": icon_sokoban,
     "calendar": icon_calendar, "mandelbrot": icon_mandel,
     "minesweeper": icon_mines, "paint": icon_paint,

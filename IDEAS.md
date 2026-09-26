@@ -41,8 +41,8 @@ Statuts : 💡 idée · 🔨 en cours · ✅ fait · ❄️ reporté
 | Stack OpenGL / GLES (VideoCore) | 💡 | Exposer une **accélération 3D** via le GPU **VideoCore VI** (V3D) du RPi4. Prérequis de plusieurs apps : *Quake III*, émulateurs 3D, futur rendu accéléré. Piste : addon `circle/addon/vc4` (+ Mesa/V3D). Gros morceau ; sans lui, ces apps restent en soft-render (ou hors de portée). |
 | Compositor : blits par DMA 2D | 💡 | Évaluer l'usage du **DMA en mode 2D** (transferts avec stride source/dest, BCM2711) pour blitter les **fenêtres → bureau** et les **conteneurs → leur fenêtre**, au lieu de copies CPU. Décharge le CPU sur les grandes surfaces. Voir le contrôleur DMA de Circle (`CDMAChannel`, mode 2D). Complémentaire du dirty-rect. |
 | Port audio : synth FM + tracker | ❄️ | Amener le synth FM + tracker dans Onyx. Fixed-point + PWM. |
-| Filer : associations de fichiers via ini | ❄️ | `[fileassoc] .ext=programme` (aujourd'hui hardcodé dans `open_file`). |
-| Filer : copier/couper → coller (presse-papiers fichier) | 💡 | Copier/couper mémorise le path ; coller ailleurs fait copy (copier) ou move (couper). |
+| File Viewer : associations de fichiers via ini | ✅ | `SD:/etc/fileassoc.ini` (`ext = app`), utilisé par le File Viewer et le Shelf. (L'ancien `filer` a été supprimé.) |
+| File Viewer : copier/couper → coller (presse-papiers fichier) | ✅ | Copier/couper mémorise le path ; coller ailleurs fait copy (copier) ou move (couper). |
 
 ---
 

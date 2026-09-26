@@ -207,7 +207,7 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
 
 - **The "apps" button** (9-square glyph): opens/closes the app list.
 - **The quicklaunch**: the pinned icons listed in `SD:/etc/quicklaunch.txt`
-  (by default: `terminal`, `filer`, `tinypad`, `tinycalc`). A click **launches** the app (or
+  (by default: `terminal`, `fileviewer`, `tinypad`, `tinycalc`). A click **launches** the app (or
   **brings it to the foreground** if it is already open).
 - **The taskbar**: the icons of the open apps (not pinned). A click **brings** the
   window to the foreground. System components (the panel itself, the app list, the menu
@@ -535,28 +535,10 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
 
 ## 9. The file manager
 
-Launch **`filer`** (pinned by default). It browses the SD card.
-
-- **Navigate**: **up/down** arrow keys to select, **Enter** or **Space** to enter a
-  folder, **`..`** or **Backspace** to go up. **Page Up/Down** scroll.
-- **Open**: **double-click** (or **Enter**) on an entry.
-  - Text files (`.txt`, `.ini`, `.md`, `.log`, `.cfg`, `.conf`, `.csv`, `.c`, `.h`,
-    `.sh`) → opened in **`tinypad`**.
-  - Programs (ELF files, recognized by their content — executables have no extension) → **executed**.
-- **Operations** (shortcuts shown at the top):
-  - **`d`**: delete the selection (with confirmation).
-  - **`r`**: rename (pre-filled with the current name).
-  - **`n`**: new folder (type the name then Enter).
-
-Folders are shown in brackets and in blue; files show their size on the right.
-
-![File manager](../screenshots/filer.png)
-*The file manager: folders in blue, files with their size, `d`/`r`/`n` shortcuts at the
-top.*
-
 ### File Viewer (column browser)
 
-**`fileviewer`** is a NeXTSTEP-style **column browser**: each column lists one folder, and
+**`fileviewer`** (the File Viewer, pinned on the panel by default and in the **Onyx** menu)
+is a NeXTSTEP-style **column browser**: each column lists one folder, and
 selecting a folder opens its content in the next column — the whole path stays visible, so
 going back is one click on an earlier column. Launch it from the app list (category
 *System*), or `run fileviewer SD:/some/folder` to open a given folder.
@@ -704,7 +686,6 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
-| **filer** | File manager (see §9). |
 | **shelf** (Shelf) | The bottom strip of file / folder / app references in tabs, with the Trash (see §5, *The Shelf*). Reads/writes `SD:/etc/shelf.ini`. |
 | **ask** (Confirm) | A small system Yes / No window used by apps too small to host a dialog (the Shelf's "remove tab?"): `run ask "Title|Message|Yes|No"`, exits with 1 (Yes / Enter) or 0 (No / Esc / close box). |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |

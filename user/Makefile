@@ -31,7 +31,7 @@ KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 # app is C++ on the wtk toolkit now; the /bin console tools stay C in bin/.
 APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
-       tetris snake same filer terminal \
+       tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
        eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets

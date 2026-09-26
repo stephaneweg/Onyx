@@ -273,6 +273,10 @@ Notes / caveats:
 > `Combobox (l, t, w, h, text, onEnter, onPick)` — an editable `Textbox` with a drop-down
 > list of suggestions (`addOption`, `clearOptions`, `pick (i)`; arrow click or Down / Up;
 > `onPick` fires with `picked` = the index). Used by the File Viewer's Connect dialog.
+> `Dropdown (l, t, w, h, options, n, initial, cb)` — the non-editable sibling, same look
+> (field + drop button): `sel`, `setOptions`; Up / Down change the selection, Enter / Space
+> open the list, Esc closes it; `cb` fires when the selection changes. The option strings
+> are not copied (they must outlive the widget).
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
