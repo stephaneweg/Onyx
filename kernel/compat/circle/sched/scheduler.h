@@ -78,6 +78,12 @@ public:
 	// current task (a task ends itself by returning / kapi_exit).
 	void TerminateTask (CTask *pTask);
 
+	// No-kill section of the CURRENT task (nestable): while it holds a kernel resource
+	// across a Yield (the FatFs volume lock, while the SD driver waits), TerminateTask
+	// only marks it; LeaveNoKill ends the task then, once the resource is free.
+	void EnterNoKill (void);
+	void LeaveNoKill (void);
+
 	void RegisterTaskSwitchHandler (TSchedulerTaskHandler *pHandler);
 	void RegisterTaskTerminationHandler (TSchedulerTaskHandler *pHandler);
 
@@ -184,6 +190,8 @@ private:
 	// Preemption state (additions)
 	volatile boolean m_bResched;	// set by OnTimerTick when the slice expires
 	unsigned m_nSliceTicks;		// scheduler ticks left in the current slice
+	u8 m_nNoKill[MAX_TASKS];	// per slot: EnterNoKill depth
+	boolean m_bKillPending[MAX_TASKS];	// ... and a TerminateTask that waits for it
 	u8 m_nPreemptStreak[MAX_TASKS];	// per slot: preemptions since its last voluntary
 					// yield (>= SCHED_HOG_STREAK: a CPU hog)
 	boolean m_bPreempting;		// the current Yield comes from OnPreempt

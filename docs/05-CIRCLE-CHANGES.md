@@ -37,6 +37,7 @@ git -C circle diff Step51..onyx
 | 4 | **Multi-core enabled** (`ARM_ALLOW_MULTI_CORE`): core 1 runs the sound producer | `sysconfig.h` | **every library** (clean rebuild) + kernel |
 | 5 | **Shift + navigation keys** (`KeyShiftUp`… appended to `TSpecialKey`, xterm `;2` sequences) | `input/keymap.{h,cpp}` | `libinput`, `libusb` + the `.kmap` files |
 | 6 | **Partial display update** `C2DGraphics::UpdateDisplay (x, y, w, h)` (the compositor's dirty rectangles) | `2dgraphics.{h,cpp}` | `libcircle` |
+| 7 | **Yielding SD waits**: weak hooks for the FatFs volume lock and the EMMC wait loop | `addon/fatfs/ffsystem.cpp`, `addon/SDCard/emmc.cpp` | `libfatfs`, `libsdcard` |
 
 ---
 
@@ -395,6 +396,22 @@ screen-sized buffer allocated on first use: cached memory, fast) and hands it to
 `CBcmFrameBuffer::SetArea` — the frame buffer's own 2D DMA copy with the destination pitch,
 as the full update uses. With VSync (page flipping) or a display that is not the frame
 buffer it falls back to the full `UpdateDisplay ()`.
+
+## 7. Yielding SD waits (FatFs lock + EMMC wait hooks)
+
+The EMMC driver waits for the card in a busy loop (`CEMMCDevice::TimeoutWait`) unless
+`NO_BUSY_WAIT` is set, and Onyx's kernel is not preempted: every SD command kept the CPU,
+and a directory walk or a big read froze the GUI and the network 100–200 ms at a time.
+`NO_BUSY_WAIT` is global (USB, sound, every `CGenericLock`), so the patch adds two
+**weak** hooks instead; without a definition, Circle behaves exactly as upstream:
+
+- `ffsystem.cpp`: `ff_mutex_take` / `ff_mutex_give` call `OnyxFsLockTake (vol)` /
+  `OnyxFsLockGive (vol)` when they are defined, instead of the `CGenericLock` (a spin lock).
+- `emmc.cpp`: once a `TimeoutWait` has spun 100 µs, each turn of its loop calls
+  `OnyxDriverWait ()` when it is defined.
+
+The kernel defines them in `kernel/sys/fslock.cpp`: a sleeping, re-entrant volume lock
+(waiters `Yield`), and a wait hook that yields when IRQs are on. See `docs/02` (preemption).
 
 ## Not a patch: build configuration
 

@@ -101,6 +101,8 @@ CScheduler::CScheduler (void)
 	for (unsigned i = 0; i < MAX_TASKS; i++)
 	{
 		m_nPreemptStreak[i] = 0;
+		m_nNoKill[i] = 0;
+		m_bKillPending[i] = FALSE;
 	}
 	m_bPreempting = FALSE;
 	m_nSliceCfg = SCHED_SLICE_TICKS;
@@ -397,9 +399,50 @@ void CScheduler::TerminateTask (CTask *pTask)
 	{
 		return;				// can't externally kill the running task
 	}
-	if (IsValidTask (pTask) && pTask->GetState () != TaskStateTerminated)
+	u64 nFlags = IrqSave ();
+	for (unsigned i = 0; i < m_nTasks; i++)
 	{
-		pTask->SetState (TaskStateTerminated);	// GetNextTask skips it; reaper frees it
+		if (m_pTask[i] != pTask || pTask->GetState () == TaskStateTerminated)
+		{
+			continue;
+		}
+		if (m_nNoKill[i] > 0)
+		{
+			m_bKillPending[i] = TRUE;	// LeaveNoKill ends it, once it holds nothing
+		}
+		else
+		{
+			pTask->SetState (TaskStateTerminated);	// GetNextTask skips it; reaper frees it
+		}
+		break;
+	}
+	IrqRestore (nFlags);
+}
+
+void CScheduler::EnterNoKill (void)
+{
+	u64 nFlags = IrqSave ();
+	unsigned nSlot = CurrentSlot ();
+	if (nSlot < MAX_TASKS && m_nNoKill[nSlot] < 255) m_nNoKill[nSlot]++;
+	IrqRestore (nFlags);
+}
+
+void CScheduler::LeaveNoKill (void)
+{
+	u64 nFlags = IrqSave ();
+	unsigned nSlot = CurrentSlot ();
+	boolean bEnd = FALSE;
+	if (nSlot < MAX_TASKS && m_nNoKill[nSlot] > 0 && --m_nNoKill[nSlot] == 0 && m_bKillPending[nSlot])
+	{
+		m_bKillPending[nSlot] = FALSE;
+		bEnd = TRUE;
+	}
+	IrqRestore (nFlags);
+	if (bEnd)
+	{
+		m_pCurrent->SetState (TaskStateTerminated);	// killed meanwhile: end here
+		Yield ();					// never scheduled again
+		for (;;) { }
 	}
 }
 
@@ -567,6 +610,8 @@ void CScheduler::AddTask (CTask *pTask)
 		{
 			m_pTask[i] = pTask;
 			m_nPreemptStreak[i] = 0;
+			m_nNoKill[i] = 0;
+			m_bKillPending[i] = FALSE;
 
 			return;
 		}
@@ -578,6 +623,8 @@ void CScheduler::AddTask (CTask *pTask)
 	}
 
 	m_nPreemptStreak[m_nTasks] = 0;
+	m_nNoKill[m_nTasks] = 0;
+	m_bKillPending[m_nTasks] = FALSE;
 	m_pTask[m_nTasks++] = pTask;
 }
 

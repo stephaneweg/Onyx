@@ -33,6 +33,7 @@ OBJS = \
 	sys/sound.o \
 	sys/stream.o \
 	sys/debugcon.o \
+	sys/fslock.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 

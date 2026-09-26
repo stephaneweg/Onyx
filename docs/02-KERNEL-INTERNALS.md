@@ -281,9 +281,18 @@ per `f_read` / `f_write` (`ChunkedRead` / `ChunkedWrite` in `sys/kapi.cpp`), the
 `fopen`, which reads the whole file) stopped every other task — the compositor, the cursor,
 the sound feeders — for seconds. Between two pieces the FatFs volume lock is free, so other
 tasks' file calls get through; the caller's buffer stays valid (its address space is active
-again when it resumes). The SD driver itself still busy-waits for each piece (Circle's
-`NO_BUSY_WAIT` would make it yield during the transfer too: a possible next step, which
-turns FatFs's lock into a `CMutex` and needs every Circle library rebuilt).
+again when it resumes).
+
+**Yielding SD waits.** The SD driver also yields while the card keeps it waiting: after a
+100 µs spin, `CEMMCDevice::TimeoutWait` calls `OnyxDriverWait ()` (a weak hook of our Circle
+fork, `docs/05` §7), which `Yield`s if IRQs are on. The FatFs volume lock is held during
+that wait, so it is a **sleeping** lock (`OnyxFsLockTake` / `OnyxFsLockGive`,
+`sys/fslock.cpp`, re-entrant, its waiters `Yield`): with Circle's spin lock a second task
+entering FatFs would spin forever against a holder it never lets run. The holder is in a
+**no-kill section** (`CScheduler::EnterNoKill` / `LeaveNoKill`): `TerminateTask` on it
+only marks it, and it ends in `LeaveNoKill`, once the lock is free — a dead owner would
+lock the card forever. (Before: 100–200 ms freezes each time the menu bar read the
+`app.txt` files, or an app opened a file in a big directory.)
 
 **Stall watchdog.** To find the kernel code that still keeps the CPU too long, the
 scheduler notes the time of every `Yield()`. When the running task (not idle) has not
