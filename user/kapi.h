@@ -316,6 +316,9 @@ static inline int  kapi_sound_instrument (int voice, const struct kapi_fm_instru
 // 'a'..'z' (US position of the key on a USB keyboard), '0'..'9'. Returns 0 on an older kernel.
 static inline int  kapi_key_held (int key) { return KT->version >= 48 ? KT->key_held (key) : 0; }
 static inline void kapi_inject_key_held (int key, int down) { if (KT->version >= 48) KT->inject_key_held (key, down); }
+// Run a program under another process name (ABI v49): a runner running an app is named
+// after the app (its window, list_windows, raise_app). See launch.h.
+static inline int  kapi_exec_as (const char *path, const char *args, const char *name) { return KT->version >= 49 ? KT->exec_as (path, args, name) : KT->exec (path, args); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

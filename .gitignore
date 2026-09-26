@@ -66,3 +66,4 @@ sdcard/apps/lisa.app/config.ini
 # The PC tools' build folders (pc/build.sh; the result, pc/dist/, is kept)
 pc/OnyxBasic/bin/
 pc/OnyxBasic/obj/
+tools/basc/basc

@@ -39,7 +39,10 @@
 // v46: + sound_acquire/release/start/stop/write/status -- audio (synth voices + PCM).
 // v47: + sound_instrument -- 2-operator FM instruments (OPL2 style) on the voices.
 // v48: + key_held / inject_key_held -- is a key held down (games: move while held).
-#define KAPI_ABI_VERSION	48
+// v49: + exec_as -- run a program under another name (a runner: SD:/bin/basic for an app's
+//      main.bax is named after the app). The kernel runs ELFs only: the formats a runner
+//      executes (.bas, .bax...) are chosen in user space (SD:/etc/runners.ini, launch.h).
+#define KAPI_ABI_VERSION	49
 
 #ifdef __cplusplus
 extern "C" {
@@ -535,6 +538,11 @@ struct TKApiTable
 	// up (same codes).
 	int  (*key_held) (int key);
 	void (*inject_key_held) (int key, int down);
+
+	// --- v49 additions ---
+	// exec_as: like exec, the process (its window, list_windows, raise_app, kill) named
+	// `name` instead of after the path. 1 = started.
+	int  (*exec_as) (const char *path, const char *args, const char *name);
 };
 
 #ifdef __cplusplus

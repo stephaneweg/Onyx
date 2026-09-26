@@ -8,6 +8,7 @@
 //
 #include "kapi.h"
 #include "applib.h"
+#include "launch.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -46,7 +47,7 @@ static const char *name_for (Widget *w)
 	for (int s = 0; s < TMAX; s++) if (g_tb_icon[s] == w && g_tb_name[s][0] != '\0') return g_tb_name[s];
 	return 0;
 }
-static void on_icon (Widget &w) { const char *n = name_for (&w); if (n != 0) { if (kapi_raise_app (n) == 0) kapi_launch (n); } }
+static void on_icon (Widget &w) { const char *n = name_for (&w); if (n != 0) { if (kapi_raise_app (n) == 0) lx_launch (n, 0); } }
 static void on_apps (Widget &) { kapi_toggle_app ("applist"); }
 
 static char g_open[OMAX][24]; static int g_open_count = 0;

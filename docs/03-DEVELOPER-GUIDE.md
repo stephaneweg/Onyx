@@ -277,8 +277,8 @@ Notes / caveats:
 > `sfx_win` / `sfx_lose`, `sfx_set_mute`; the output is acquired on first use), `rng` / `rng_n`,
 > text helpers (`gtext`, `gtext_c` centred with a shadow, `gitoa`, `gcat`). Cards
 > (`user/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
-> victory animation (`win_start` / `win_step`). Used by arkanoid, invaders, pipes, solitaire,
-> freecell. **Host test**: `sh tools/tests/run_games_test.sh [ARKANOID …]` builds each game on
+> victory animation (`win_start` / `win_step`). Used by invaders, pipes, solitaire, freecell
+> (Arkanoid is now the BASIC game). **Host test**: `sh tools/tests/run_games_test.sh [INVADERS …]` builds each game on
 > the PC against a fake kapi table (`tools/tests/wtkhost/host_kapi.h`: every slot a stub,
 > files from `sdcard/`), plays a scripted scenario (UBSan) and saves real screenshots to
 > `/tmp/onyx_games`.
@@ -605,10 +605,16 @@ SD:apps/<nom>.app/
   config.ini     configuration de l'app, lue via app_ini_load() (optionnel)
 ```
 
-An app may also be written in **BASIC**: `main.bas` instead of `main` (no build step). The
-kernel's launch paths (`kapi_launch`, `kapi_exec`, `kapi_spawn`) see that `.../main` is
-missing and `.../main.bas` exists, and start `SD:/bin/basic <path>/main.bas` instead (a
-`.bas` path given to `kapi_exec` / `kapi_spawn` does the same). See *Onyx BASIC* below.
+An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
+`main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
+**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`):
+`lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
+runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
+`kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,
+`run`, `fileassoc.h` (File Viewer, Shelf), the panel / app list. A new format = one line in
+`runners.ini`. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
+`kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
+compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
 you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` returns.
@@ -710,9 +716,8 @@ barwidth = 40
   (little-endian; header "OBAX", the format and the VM's opcode / builtin / statement counts,
   so a `.bax` from another VM is refused), `loadBax ()` reads it back, `load ()` takes a
   file's bytes (a `.bax`, else source to compile) -- used by `/bin/basic` (`-c` compiles),
-  `CHAIN`, the PC `obcore.dll` (`ob_compile`, `ob_run` with a length). The kernel's
-  `BasicRedirect` runs `.bax` files and `main.bax` app bundles (before `main.bas`); the File
-  Viewer treats an "OBAX" file as a program. The tests run every program a second time
+  `CHAIN`, the PC `obcore.dll` (`ob_compile`, `ob_run` with a length). `runners.ini` sends
+  `.bax` and `.bas` to `/bin/basic` (an app's `main.bax` before its `main.bas`). The tests run every program a second time
   through a `.bax` (`BAX=1`). **Add opcodes / builtins / statements at the end** of their
   enums: the counts in the header change, old `.bax` files are then refused cleanly.
 - **Methods**: `SUB Type.Name` (the part before the last dot is a TYPE) is a procedure

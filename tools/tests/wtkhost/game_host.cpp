@@ -5,9 +5,7 @@
 //
 #include "host_kapi.h"
 #define main onyx_app_main
-#if defined GAME_ARKANOID
-#include "Apps/arkanoid/main.cpp"
-#elif defined GAME_INVADERS
+#if defined GAME_INVADERS
 #include "Apps/invaders/main.cpp"
 #elif defined GAME_PIPES
 #include "Apps/pipes/main.cpp"
@@ -23,6 +21,8 @@
 #include "Apps/rtfview/main.cpp"
 #elif defined GAME_BASICRT
 #include "basic/runtime.cpp"
+#elif defined GAME_MENUBAR
+#include "Apps/menubar/main.cpp"
 #endif
 #undef main
 #include "img/imgload.hpp"
@@ -63,7 +63,7 @@ static void savePage (OnyxHost &h, const char *name)
 	printf ("saved %s\n", p);
 }
 #endif
-#if defined GAME_GRAPHCALC || defined GAME_ICONEDIT || defined GAME_RTF || defined GAME_BASICRT
+#if defined GAME_GRAPHCALC || defined GAME_ICONEDIT || defined GAME_RTF || defined GAME_BASICRT || defined GAME_MENUBAR
 static void wshot (wtk::Widget *w, const char *name)
 {
 	w->canvas.alloc (w->width, w->height); w->onDraw ();
@@ -101,16 +101,7 @@ int main (int argc, char **argv)
 {
 	host_kapi_init (argc > 1 ? argv[1] : "sdcard");
 	wtk::init ();
-#if defined GAME_ARKANOID
-	Arkanoid *g = new Arkanoid (0, 0, W, H); g->canvas.alloc (W, H);
-	shot (g, "arkanoid_0");
-	g->key (' '); g->onMouse (W / 2 + 40, 300, 0, 0, 0, 0);
-	run (g, 90); shot (g, "arkanoid_1");
-	for (int i = 0; i < 600 && g->state == 0; i++) { g->padX = g->ball[0].x / FP - g->padW / 2 + 3; if (g->padX < WALL) g->padX = WALL; g->mx = -1; run (g, 1); }
-	printf ("arkanoid: score %d lives %d state %d bricks left %d\n", g->score, g->lives, g->state, g->breakable ());
-	shot (g, "arkanoid_2");
-	g->collect ('D'); run (g, 20); shot (g, "arkanoid_3");
-#elif defined GAME_INVADERS
+#if defined GAME_INVADERS
 	Invaders *g = new Invaders (0, 0, W, H); g->canvas.alloc (W, H);
 	shot (g, "invaders_0");
 	int kills = 0;
@@ -284,6 +275,23 @@ int main (int argc, char **argv)
 	bool same = c->len == b->len;
 	for (int i = 0; same && i < b->len; i++) if (c->buf[i] != b->buf[i] || c->attr[i] != b->attr[i]) { printf ("rtf: differs at %d\n", i); same = false; }
 	printf ("rtf: save %d bytes, reload %s\n", m, same ? "identical" : "DIFFERENT");
+#elif defined GAME_MENUBAR
+	{
+		g_sw = 1024; g_sh = 600; g_fw = 8; g_fh = 16;
+		static unsigned fb[1024 * 600]; g_fb = fb; g_cv.adopt (fb, g_sw, g_sh);
+		auto save = [] (const char *n) { char p[256]; snprintf (p, sizeof p, "%s/%s.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", n); host_save_ppm (p, g_fb, 1024, 600, 1024); printf ("saved %s\n", p); };
+		onyx_menu (); layout_titles (); draw (); save ("menubar_bar");
+		open_menu (0);
+		int games = -1, wins = -1;
+		for (int i = 0; i < g_menus[0].count; i++)
+		{
+			if (eq (g_menus[0].items[i].label, "Games")) games = i;
+			if (eq (g_menus[0].items[i].label, "Open Windows")) wins = i;
+		}
+		printf ("menubar: %d apps, %d items in the Onyx menu, games %d\n", g_napps, g_menus[0].count, games);
+		g_hover = games; open_sub (games); g_subHover = 1; draw (); save ("menubar_games");
+		open_sub (wins); draw (); save ("menubar_windows");
+	}
 #elif defined GAME_BASICRT
 	host_text_hook = wtkText; setvbuf (stdout, 0, _IONBF, 0); printf ("start\n");
 	static const char *const progs[] = { "gfx", "gfx12", "fs", "../../../../sdcard/basic/examples/arkanoid", 0 };

@@ -79,8 +79,15 @@ all: $(TARGET).img apps
 # Executables on the card carry NO extension: the build's <name>.elf outputs are
 # staged as apps/<name>.app/main and bin/<name>.
 SDCARD = ../sdcard
+# Apps written in BASIC: compiled on this machine (tools/basc, the same compiler core) to
+# apps/<name>.app/main.bax -- "name=source.bas" pairs.
+BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas
+BASC = ../tools/basc/basc
+BASC_SRC = ../tools/basc/basc.cpp ../user/basic/bascomp.cpp ../user/basic/basnum.cpp ../user/basic/basbax.cpp ../user/basic/basvm.cpp
+$(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h
+	@g++ -std=c++17 -O1 -I../user -o $@ $(BASC_SRC)
 .PHONY: stage
-stage: apps
+stage: apps $(BASC)
 	@cp $(TARGET).img $(SDCARD)/
 	@for elf in ../user/*.elf; do \
 		name=$$(basename $$elf .elf); \
@@ -91,6 +98,11 @@ stage: apps
 	@for elf in ../user/bin/*.elf; do \
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
+	done
+	@for pair in $(BASIC_APPS); do \
+		name=$${pair%%=*}; src=$${pair#*=}; \
+		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main; \
+		$(BASC) $$src $(SDCARD)/apps/$$name.app/main.bax || exit 1; \
 	done
 	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* -> $(SDCARD)/"
 

@@ -3,9 +3,12 @@
 //
 // It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
 // wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
-// back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu
-// (launchers + Shut Down...), then the app's name with "Quit" (MENU_QUIT), then its
-// menus. The clock sits on the right, with the Wi-Fi state left of it (arcs = connected,
+// back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu:
+// Terminal / File Viewer / Task Manager, then one entry per app CATEGORY (the "category"
+// of each SD:/apps/<name>.app/app.txt; "Shell" components are left out) opening a sub-menu
+// of its apps, then "Open Windows" (a sub-menu: raise one), then Shut Down... -- it replaces
+// the old left panel and app list. Then the app's name with "Quit" (MENU_QUIT), then its
+// menus. Apps start through launch.h (their main, or main.bas / main.bax by a runner). The clock sits on the right, with the Wi-Fi state left of it (arcs = connected,
 // a barred circle = not connected; polled about once a second through kapi_net_status).
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
@@ -18,6 +21,8 @@
 // item works too.
 //
 #include "kapi.h"
+#include "applib.h"
+#include "launch.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -33,7 +38,7 @@ using namespace wtk;
 static const unsigned C_BARBG = 0x00303D4D, C_BARLIGHT = 0x005A6E88, C_BARLINE = 0x00161C24, C_BARBLACK = 0x0005070A, C_BARTXT = 0x00E8ECF0,
 		      C_DROP = 0x00262F3B, C_DROPHI = 0x00355070, C_DIM = 0x008A96A8, C_SEP = 0x00404A5A;
 
-struct Item { int id; char label[40]; char key[12]; bool sep; };
+struct Item { int id; char label[40]; char key[12]; bool sep; int sub; };	// sub: a sub-menu (g_subs) or -1
 struct MenuDef { char title[24]; Item items[MAXITEMS]; int count; int x, w; };
 
 static MenuDef g_menus[MAXMENUS];
@@ -52,34 +57,145 @@ static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
 
+// ---- the apps, by category (app.txt), and the open windows: the Onyx menu's sub-menus -------
+#define MAXAPPS		128
+#define MAXSUBS		12
+#define SUBITEMS	40
+struct AppInfo { char name[24]; char label[40]; char cat[20]; };
+static AppInfo g_apps[MAXAPPS]; static int g_napps = 0;
+static unsigned g_scanTick = 0; static bool g_scanned = false;
+struct SubItem { char label[40]; char app[24]; };
+struct SubDef { SubItem items[SUBITEMS]; int count; bool windows; };
+static SubDef g_subs[MAXSUBS]; static int g_nsubs = 0;
+static int g_sub = -1, g_subOwner = -1, g_subHover = -1;	// open sub-menu, the item it hangs on, hovered
+
+static bool ci_less (const char *a, const char *b)
+{
+	for (;; a++, b++)
+	{
+		char x = (*a >= 'A' && *a <= 'Z') ? (char) (*a + 32) : *a, y = (*b >= 'A' && *b <= 'Z') ? (char) (*b + 32) : *b;
+		if (x != y || !x) return x < y;
+	}
+}
+static bool eq (const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
+
+// Read every app's app.txt: its friendly name and category (at most every 5 s, so an app
+// made meanwhile -- QBasic > Make App -- shows up).
+static void scan_apps (void)
+{
+	unsigned now = kapi_get_ticks ();
+	if (g_scanned && now - g_scanTick < 500) return;
+	g_scanned = true; g_scanTick = now;
+	static char list[4096];
+	kapi_list_apps (list, sizeof list);
+	g_napps = 0;
+	for (int i = 0; list[i] && g_napps < MAXAPPS; )
+	{
+		char name[24]; int n = 0;
+		while (list[i] && list[i] != '\n') { if (n < 23) name[n++] = list[i]; i++; }
+		if (list[i] == '\n') i++;
+		name[n] = '\0';
+		if (!n) continue;
+		char path[80]; ax_app_path (path, sizeof path, name, ".app/app.txt");
+		AppInfo &a = g_apps[g_napps];
+		scopy (a.name, name, sizeof a.name);
+		scopy (a.label, name, sizeof a.label); scopy (a.cat, "Other", sizeof a.cat);
+		if (app_ini_load_path (path) >= 0)
+		{
+			scopy (a.label, app_ini_get (0, "name", name), sizeof a.label);
+			scopy (a.cat, app_ini_get (0, "category", "Other"), sizeof a.cat);
+		}
+		if (eq (a.cat, "Shell")) continue;			// the desktop's own parts
+		g_napps++;
+	}
+}
+static bool is_shell (const char *name)				// a desktop part (not an "open window")
+{
+	static const char *const own[] = { "menubar", "panel", "shelf", "notifyd", "desktop", "shell", "applist", 0 };
+	for (int i = 0; own[i]; i++) if (eq (own[i], name)) return true;
+	char path[80]; ax_app_path (path, sizeof path, name, ".app/app.txt");
+	return app_ini_load_path (path) >= 0 && eq (app_ini_get (0, "category", ""), "Shell");
+}
+static const char *label_of (const char *name)
+{
+	for (int i = 0; i < g_napps; i++) if (eq (g_apps[i].name, name)) return g_apps[i].label;
+	return name;
+}
+static void sub_add (SubDef &sd, const char *label, const char *app)	// sorted by label
+{
+	if (sd.count >= SUBITEMS) return;
+	int pos = sd.count;
+	while (pos > 0 && ci_less (label, sd.items[pos - 1].label)) { sd.items[pos] = sd.items[pos - 1]; pos--; }
+	scopy (sd.items[pos].label, label, sizeof sd.items[pos].label);
+	scopy (sd.items[pos].app, app, sizeof sd.items[pos].app);
+	sd.count++;
+}
+static void fill_windows (SubDef &sd)
+{
+	static char buf[1024];
+	kapi_list_windows (buf, sizeof buf);
+	sd.count = 0;
+	for (int i = 0; buf[i]; )
+	{
+		char name[24]; int n = 0;
+		while (buf[i] && buf[i] != '\n') { if (n < 23) name[n++] = buf[i]; i++; }
+		if (buf[i] == '\n') i++;
+		name[n] = '\0';
+		if (n && !is_shell (name)) sub_add (sd, label_of (name), name);
+	}
+}
+
 // ---- menus ------------------------------------------------------------------------------
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
-enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_APPS, ONYX_SHUTDOWN };
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB };
 
 static void add_quit_menu (const char *app)
 {
 	MenuDef &m = g_menus[g_nmenus++];
 	scopy (m.title, app, sizeof m.title); m.count = 0;
 	Item &q = m.items[m.count++];
-	q.id = MENU_QUIT; scopy (q.label, "Quit", sizeof q.label); scopy (q.key, "^Q", sizeof q.key); q.sep = false;
+	q.id = MENU_QUIT; scopy (q.label, "Quit", sizeof q.label); scopy (q.key, "^Q", sizeof q.key); q.sep = false; q.sub = -1;
 }
 
-// The system menu, always first: launchers + end of session.
-static void add_onyx_menu (void)
+// The system menu, always first: tools, the apps by category, the open windows, the end.
+static void build_onyx_menu (MenuDef &m)
 {
-	MenuDef &m = g_menus[g_nmenus++];
+	scan_apps ();
 	scopy (m.title, "Onyx", sizeof m.title); m.count = 0;
-	static const struct { int id; const char *l; } it[] = {
-		{ ONYX_TERMINAL, "Terminal" }, { ONYX_FILES, "File Viewer" },
-		{ ONYX_TASKS, "Task Manager" }, { -2, 0 }, { ONYX_APPS, "All Apps..." },
-		{ -2, 0 }, { ONYX_SHUTDOWN, "Shut Down..." } };
-	for (unsigned i = 0; i < sizeof it / sizeof it[0]; i++)
+	auto add = [&] (int id, const char *l, int sub)
 	{
+		if (m.count >= MAXITEMS) return;
 		Item &x = m.items[m.count++];
-		x.id = it[i].id; x.sep = it[i].id == -2; x.key[0] = '\0';
-		scopy (x.label, it[i].l ? it[i].l : "", sizeof x.label);
+		x.id = id; x.sep = id == -2; x.key[0] = '\0'; x.sub = sub;
+		scopy (x.label, l ? l : "", sizeof x.label);
+	};
+	add (ONYX_TERMINAL, "Terminal", -1); add (ONYX_FILES, "File Viewer", -1); add (ONYX_TASKS, "Task Manager", -1);
+	add (-2, 0, -1);
+	// the categories: the usual ones first, then any other, "Other" last
+	g_nsubs = 0;
+	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Games", "BASIC", "Demos", "System", 0 };
+	char cats[MAXSUBS][20]; int nc = 0;
+	for (int i = 0; order[i]; i++) scopy (cats[nc++], order[i], 20);
+	for (int a = 0; a < g_napps && nc < MAXSUBS - 2; a++)
+	{
+		bool have = eq (g_apps[a].cat, "Other");
+		for (int c = 0; c < nc && !have; c++) have = eq (cats[c], g_apps[a].cat);
+		if (!have) scopy (cats[nc++], g_apps[a].cat, 20);
 	}
+	scopy (cats[nc++], "Other", 20);
+	for (int c = 0; c < nc && g_nsubs < MAXSUBS - 1; c++)
+	{
+		SubDef &sd = g_subs[g_nsubs]; sd.count = 0; sd.windows = false;
+		for (int a = 0; a < g_napps; a++) if (eq (g_apps[a].cat, cats[c])) sub_add (sd, g_apps[a].label, g_apps[a].name);
+		if (sd.count) add (ONYX_SUB, cats[c], g_nsubs++);
+	}
+	add (-2, 0, -1);
+	SubDef &w = g_subs[g_nsubs]; w.count = 0; w.windows = true;
+	add (ONYX_SUB, "Open Windows", g_nsubs++);
+	add (-2, 0, -1);
+	add (ONYX_SHUTDOWN, "Shut Down...", -1);
 }
+static void add_onyx_menu (void) { build_onyx_menu (g_menus[g_nmenus++]); }
 
 static void onyx_menu (void)			// no active app: just the system menu
 {
@@ -108,12 +224,12 @@ static void parse (const char *spec, const char *title)
 		}
 		else if (*p == '-' && cur && cur->count < MAXITEMS)
 		{
-			Item &s = cur->items[cur->count++]; s.sep = true; s.id = -2; s.label[0] = s.key[0] = '\0';
+			Item &s = cur->items[cur->count++]; s.sep = true; s.id = -2; s.label[0] = s.key[0] = '\0'; s.sub = -1;
 		}
 		else if (*p == 'I' && cur && cur->count < MAXITEMS)
 		{
 			Item &it = cur->items[cur->count++];
-			it.sep = false; it.id = 0;
+			it.sep = false; it.id = 0; it.sub = -1;
 			const char *q = p + 1;
 			while (q < e && *q >= '0' && *q <= '9') it.id = it.id * 10 + (*q++ - '0');
 			if (q < e && *q == '\t') q++;
@@ -143,7 +259,7 @@ static int drop_w (const MenuDef &m)
 	int w = 120;
 	for (int i = 0; i < m.count; i++)
 	{
-		int ww = (slen (m.items[i].label) + slen (m.items[i].key) + 5) * g_fw + 20;
+		int ww = (slen (m.items[i].label) + slen (m.items[i].key) + 5) * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
 		if (ww > w) w = ww;
 	}
 	return w;
@@ -153,6 +269,39 @@ static int item_h (const Item &it) { return it.sep ? 9 : g_fh + 8; }
 static int text_y (int top, int h) { return top + (h - INK_H + 1) / 2 - INK_TOP; }
 static int drop_h (const MenuDef &m) { int h = 6; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
 static int drop_x (const MenuDef &m) { int x = m.x; int w = drop_w (m); if (x + w > g_sw - 2) x = g_sw - 2 - w; return x; }
+
+static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 3; for (int i = 0; i < idx; i++) yy += item_h (m.items[i]); return yy; }
+static int sub_w (const SubDef &sd)
+{
+	int w = 140;
+	for (int i = 0; i < sd.count; i++) { int ww = slen (sd.items[i].label) * g_fw + 28; if (ww > w) w = ww; }
+	if (sd.count == 0) w = 22 * g_fw;
+	return w;
+}
+static int sub_h (const SubDef &sd) { return 6 + (sd.count ? sd.count : 1) * (g_fh + 8); }
+static void sub_rect (int *x, int *y, int *w, int *h)		// where the open sub-menu is
+{
+	const MenuDef &m = g_menus[g_open]; const SubDef &sd = g_subs[g_sub];
+	int dx = drop_x (m), dw = drop_w (m);
+	*w = sub_w (sd); *h = sub_h (sd);
+	*x = dx + dw - 2; if (*x + *w > g_sw - 2) *x = dx - *w + 2;
+	*y = item_y (m, g_subOwner) - 3;
+	if (*y + *h > g_sh - 2) *y = g_sh - 2 - *h;
+	if (*y < BAR_H) *y = BAR_H;
+}
+static bool in_sub (int x, int y)
+{
+	if (g_open < 0 || g_sub < 0) return false;
+	int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
+	return x >= sx && x < sx + sw && y >= sy && y < sy + sh;
+}
+static int sub_item_at (int x, int y)
+{
+	if (!in_sub (x, y)) return -1;
+	int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
+	int i = (y - sy - 3) / (g_fh + 8);
+	return i >= 0 && i < g_subs[g_sub].count ? i : -1;
+}
 
 static int title_at (int x, int y)
 {
@@ -267,12 +416,30 @@ static void draw (void)
 			if (it.sep) g_cv.fillRect (dx + 6, yy + ih / 2, dw - 12, 1, C_SEP);
 			else
 			{
-				if (i == g_hover) g_cv.fillRect (dx + 2, yy, dw - 4, ih, C_DROPHI);
+				if (i == g_hover || (g_sub >= 0 && i == g_subOwner)) g_cv.fillRect (dx + 2, yy, dw - 4, ih, C_DROPHI);
 				int iy = text_y (yy, ih);
 				g_cv.text (dx + 12, iy, it.label, C_BARTXT);
 				if (it.key[0]) g_cv.text (dx + dw - 12 - slen (it.key) * g_fw, iy, it.key, C_DIM);
+				if (it.sub >= 0)					// a sub-menu: a small arrow
+					for (int k = 0; k < 4; k++) g_cv.fillRect (dx + dw - 16 + k, yy + ih / 2 - 3 + k, 1, 7 - 2 * k, C_BARTXT);
 			}
 			yy += ih;
+		}
+		if (g_sub >= 0)
+		{
+			const SubDef &sd = g_subs[g_sub];
+			int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
+			g_cv.fillRect (sx + 3, sy + 3, sw, sh, 0x00101418);
+			g_cv.fillRect (sx, sy, sw, sh, C_DROP);
+			g_cv.frameRect (sx, sy, sw, sh, C_BARLINE);
+			int ih = g_fh + 8;
+			if (sd.count == 0) g_cv.text (sx + 12, text_y (sy + 3, ih), sd.windows ? "(no open window)" : "(empty)", C_DIM);
+			for (int i = 0; i < sd.count; i++)
+			{
+				int iy = sy + 3 + i * ih;
+				if (i == g_subHover) g_cv.fillRect (sx + 2, iy, sw - 4, ih, C_DROPHI);
+				g_cv.text (sx + 12, text_y (iy, ih), sd.items[i].label, C_BARTXT);
+			}
 		}
 	}
 	kapi_resize_window (g_sw, h);
@@ -289,14 +456,34 @@ static void run_item (const Item &it)
 	case ONYX_TERMINAL: kapi_launch ("terminal"); return;
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
-	case ONYX_APPS:     kapi_toggle_app ("applist"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
+	case ONYX_SUB:      return;			// (it opens its sub-menu)
 	}
 	kapi_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
 }
 
-static void open_menu (int i) { g_open = i; g_hover = -1; g_dirty = true; }
-static void close_menu (void) { g_open = -1; g_hover = -1; g_dirty = true; }
+static void open_menu (int i)
+{
+	if (i == 0) build_onyx_menu (g_menus[0]);		// the apps as they are now
+	g_open = i; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true;
+}
+static void close_menu (void) { g_open = -1; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true; }
+static void open_sub (int owner)
+{
+	const Item &it = g_menus[g_open].items[owner];
+	if (g_sub == it.sub && g_subOwner == owner) return;
+	g_sub = it.sub; g_subOwner = owner; g_subHover = -1;
+	if (g_subs[g_sub].windows) fill_windows (g_subs[g_sub]);
+	g_dirty = true;
+}
+static void run_sub_item (int i)
+{
+	SubItem it = g_subs[g_sub].items[i];
+	bool windows = g_subs[g_sub].windows;
+	close_menu (); draw ();
+	if (windows) kapi_raise_app (it.app);
+	else if (kapi_raise_app (it.app) == 0) lx_launch (it.app, 0);	// running: to the front
+}
 
 static void ptr (unsigned long, int ev, long v)
 {
@@ -307,13 +494,16 @@ static void ptr (unsigned long, int ev, long v)
 	case GUI_EVENT_PTR_DOWN:
 		if (!(c & 1)) break;
 		if (t >= 0) { if (t == g_open) close_menu (); else open_menu (t); g_pressedTitle = true; }
-		else if (g_open >= 0 && item_at (x, y) < 0) close_menu ();	// click outside
+		else if (g_open >= 0 && item_at (x, y) < 0 && !in_sub (x, y)) close_menu ();	// click outside
 		break;
 	case GUI_EVENT_PTR_UP:
 		if (!(c & 1)) break;
 		if (g_open >= 0)
 		{
+			int si = sub_item_at (x, y);
+			if (si >= 0) { run_sub_item (si); break; }
 			int i = item_at (x, y);
+			if (i >= 0 && g_menus[g_open].items[i].sub >= 0) { open_sub (i); break; }	// (stays open)
 			if (i >= 0) { Item it = g_menus[g_open].items[i]; close_menu (); draw (); run_item (it); }
 		}
 		g_pressedTitle = false;
@@ -322,8 +512,16 @@ static void ptr (unsigned long, int ev, long v)
 		if (g_open >= 0)
 		{
 			if (t >= 0 && t != g_open) open_menu (t);		// slide across titles
+			if (in_sub (x, y))
+			{
+				int si = sub_item_at (x, y);
+				if (si != g_subHover) { g_subHover = si; g_dirty = true; }
+				break;
+			}
 			int i = item_at (x, y);
 			if (i != g_hover) { g_hover = i; g_dirty = true; }
+			if (i >= 0 && g_menus[g_open].items[i].sub >= 0) open_sub (i);
+			else if (i >= 0 && g_sub >= 0) { g_sub = -1; g_subOwner = -1; g_dirty = true; }
 		}
 		break;
 	case GUI_EVENT_PTR_LEAVE:

@@ -54,6 +54,26 @@ static int h_get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s) { i
 static void (*host_text_hook) (unsigned *, int, int, int, int, const char *, unsigned) = 0;
 static void h_draw_text_buf (unsigned *d, int w, int h, int x, int y, const char *s, unsigned c) { if (host_text_hook) host_text_hook (d, w, h, x, y, s, c); }
 
+// The app list (the .app folders of the sdcard) and a fixed set of open windows.
+#include <dirent.h>
+static int h_list_apps (char *b, unsigned cap)
+{
+	char d[512]; snprintf (d, sizeof d, "%s/apps", host_sd);
+	DIR *dir = opendir (d); unsigned n = 0; b[0] = 0;
+	if (!dir) return 0;
+	struct dirent *e;
+	while ((e = readdir (dir)))
+	{
+		int l = (int) strlen (e->d_name);
+		if (l < 5 || strcmp (e->d_name + l - 4, ".app")) continue;
+		if (n + l < cap - 2) { memcpy (b + n, e->d_name, l - 4); n += l - 4; b[n++] = '\n'; b[n] = 0; }
+	}
+	closedir (dir);
+	return (int) n;
+}
+static const char *host_windows = "menubar\ntinypad\narkanoid\nqbasic\n";
+static int h_list_windows (char *b, unsigned cap) { snprintf (b, cap, "%s", host_windows); return (int) strlen (b); }
+
 static void host_kapi_init (const char *sdroot)
 {
 	if (sdroot) host_sd = sdroot;
@@ -70,6 +90,7 @@ static void host_kapi_init (const char *sdroot)
 	t->create_window = h_create_window; t->resize_window = h_resize_window; t->fullscreen_begin = h_fullscreen_begin;
 	t->get_datetime = h_get_datetime; t->draw_text_buf = h_draw_text_buf;
 	t->sound_acquire = h_sound_acquire; t->sound_start = h_sound_start;
+	t->list_apps = h_list_apps; t->list_windows = h_list_windows;
 }
 
 // Save a 0x00RRGGBB canvas as a binary PPM.

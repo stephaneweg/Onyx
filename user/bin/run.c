@@ -1,12 +1,14 @@
 //
-// run -- launch a GUI app from the shell. `run <name>` starts apps/<name>.app/
-// main (the same thing the app drawer does); a name containing '/' is taken as
-// a full ELF path instead. Any extra arguments are passed to the app as argv.
+// run -- launch a GUI app from the shell. `run <name>` starts apps/<name>.app (its
+// main, or main.bas / main.bax by its runner: launch.h, SD:/etc/runners.ini); a name
+// containing '/' or ':' is a program file (an ELF, or a format with a runner, e.g. a
+// .bas / .bax BASIC program). Any extra arguments are passed to the program.
 //   usage: run <app|path> [args...]
-// Examples:  run mandelbrot      run tinypad SD:/notes.txt      run SD:/bin/ls
+// Examples:  run mandelbrot   run tinypad SD:/notes.txt   run SD:/basic/examples/arkanoid.bas
 //
 #include "kapi.h"
 #include "applib.h"
+#include "launch.h"
 
 int main (void)
 {
@@ -29,26 +31,10 @@ int main (void)
 	}
 
 	int has_slash = 0;
-	for (int j = 0; name[j] != '\0'; j++) if (name[j] == '/') has_slash = 1;
+	for (int j = 0; name[j] != '\0'; j++) if (name[j] == '/' || name[j] == ':') has_slash = 1;
 
-	int ok;
-	if (has_slash)
-	{
-		ok = kapi_exec (name, rest);			// explicit ELF path
-	}
-	else if (rest[0] != '\0')
-	{
-		// App name + arguments: build apps/<name>.app/main and pass argv.
-		char path[160]; int p = 0;
-		ax_strcat (path, sizeof (path), &p, "SD:apps/");
-		ax_strcat (path, sizeof (path), &p, name);
-		ax_strcat (path, sizeof (path), &p, ".app/main");
-		ok = kapi_exec (path, rest);
-	}
-	else
-	{
-		ok = kapi_launch (name);			// app by name, no args
-	}
+	int ok = has_slash ? lx_open (name, rest)		// a program file (ELF or with a runner)
+			   : lx_launch (name, rest);		// an app by name
 
 	if (!ok)
 	{

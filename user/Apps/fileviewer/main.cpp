@@ -390,7 +390,7 @@ static void open_entry (int c)
 	{
 		char name[NAMEL]; scopy (name, e->name, sizeof name);
 		name[slen (name) - 4] = '\0';
-		kapi_launch (name);
+		lx_launch (name, 0);
 		status ("Launched ", name);
 	}
 	else if (e->isdir) { if (c + 1 < g_ncol && g_col[c + 1].count > 0) select (c + 1, 0); }

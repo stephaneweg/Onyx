@@ -17,7 +17,8 @@ run voronoy
 run menubar
 # Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
 run notifyd
-run panel
+# (The left panel -- app launcher and taskbar -- is replaced by the menu bar's Onyx menu:
+# the apps by category, Open Windows. "run panel" brings it back.)
 run shelf
 run agenda
 keyb FR

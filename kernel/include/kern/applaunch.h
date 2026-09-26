@@ -24,7 +24,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 
 // Run an ELF by absolute path with an argv string, fire-and-forget (no stdio, no
 // wait handle). Task name is derived from the path. Defined in kernel.cpp.
-boolean ExecPath (const char *pElfPath, const char *pArgs);
+boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName = 0);	// pName: the process' name (0: from the path)
 
 // Keyboard layout control (defined in kernel.cpp): switch the live keyboard to a
 // compiled-in country map and read the current layout name. Declared here (a plain

@@ -155,11 +155,12 @@ On power-on:
    `init=` in `cmdline.txt` points at), which runs each line of `SD:/etc/autostart` as
    a shell command. By default:
    - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
-   - **`run panel`** starts the **desktop** (the bar/launcher);
+   - **`run menubar`** starts the **menu bar** (the apps are launched from its Onyx menu);
    - **`keyb FR`** sets the keyboard layout.
 
-You then get a desktop with a wallpaper and a **panel** (on the right edge with the
-shipped configuration).
+You then get a desktop with a wallpaper, the menu bar at the top and the Shelf at the
+bottom. (The former left **panel** and its app list are no longer started: the menu bar's
+**Onyx** menu replaces them; `run panel` still brings the panel back.)
 
 ![Onyx desktop](../screenshots/desktop.png)
 *The desktop at startup: Voronoi wallpaper, panel on the right edge, and a few windows
@@ -167,8 +168,8 @@ shipped configuration).
 
 ## 5. The Onyx desktop
 
-The "Onyx" desktop is made of **two cooperating apps**: the **panel** (`panel`)
-and the **app list** (`applist`).
+The "Onyx" desktop is made of the **menu bar** (`menubar`: launching apps, switching
+between windows, the active app's menus) and the **Shelf** (`shelf`).
 
 ### The menu bar (`menubar`)
 
@@ -182,9 +183,16 @@ clicking the panel or the desktop does not change it.
 - **Click a menu title** to open its drop-down; slide to another title to switch; click an
   item to run it (or press on a title and release on an item). Click the title again or
   anywhere else to close the menu.
-- The first menu, **Onyx**, is always there: Terminal, File Viewer, Files, Task Manager,
-  All Apps…, and **Shut Down…** (a dialog: **Restart**, **Shut Down** — the SD card is
-  unmounted, then "It is now safe to turn off the Raspberry Pi" — or **Cancel**).
+- The first menu, **Onyx**, is always there: Terminal, File Viewer, Task Manager; then
+  **the apps by category** — Productivity, Internet, Graphics, Games, BASIC, Demos, System
+  (and any other category an app declares; the `category` of its `app.txt`, "Other"
+  without one) — each opening a sub-menu of its apps, by their friendly name (the `name`
+  of `app.txt`), where a click launches the app, or brings it to the front if it is already
+  running; then **Open Windows** (a sub-menu of the open apps: a click brings one to the
+  front); then **Shut Down…** (a dialog: **Restart**, **Shut Down** — the SD card is
+  unmounted, then "It is now safe to turn off the Raspberry Pi" — or **Cancel**). The list
+  follows the card: an app added meanwhile (QBasic's **Make App**) is there the next time
+  the menu opens. The desktop's own parts (`category = Shell`) are not listed.
 - The next menu (the app's name) always has **Quit** (**Ctrl-Q**), like the close box.
 - Items show their **keyboard shortcut** on the right (e.g. `^O` = Ctrl-O); the shortcuts
   work whether the menu is open or not.
@@ -202,7 +210,7 @@ clicking the panel or the desktop does not change it.
 Applications with menus: **tinypad** (File), **Writer** (File, Format, Color, Style),
 **paint** (File, Brush, Color) and the **File Viewer** (File, Edit) — see §12.
 
-### The panel (`panel`)
+### The panel (`panel`, no longer started)
 
 A **borderless** bar, pinned to an edge of the screen (**right** with the shipped
 configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 1=left,
@@ -217,7 +225,7 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
   bar, the notifications) are never listed: their window is created with `WIN_FLAG_SYSTEM`. An open app carries a small **badge** (triangle).
 - **The clock**: updated every minute.
 
-### The app list (`applist`)
+### The app list (`applist`, no longer used)
 
 Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
 the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
@@ -739,7 +747,7 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 | **Solitaire** | Klondike. **Drag** cards: the seven columns build down in alternating colours (a king on an empty column), the four foundations up by suit from the ace. **Click the stock** to turn one card (or three: Game ▸ Draw Three); an empty stock turns the waste over again. **Double-click** sends a card to its foundation, **right-click** sends every card that can go. Hidden cards turn over by themselves. **^Z** undo, **^N** deal. Windows scoring + timer; the cards bounce when you win. |
 | **FreeCell** | All the cards face up in eight columns, four **free cells** (top left, one card each), four foundations (top right). **Drag** cards: a column takes a card one lower in the other colour (anything on an empty column); a **run** moves at once when free cells and empty columns allow it. **Double-click**: to the foundation, else to a free cell. Cards no longer needed go home by themselves. **^Z** undo; Game ▸ **Select Game...** plays deal 1–32000 — the same deals as Microsoft FreeCell; Restart Game. |
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
-| **Arkanoid** | Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball. Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **D** three balls, **C** catch the ball (Space releases), **L** extra life. 8 rounds, 3 lives. **P** pause, Game ▸ Sound On / Off. |
+| **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
 
 The new games, rendered by their real drawing code on a PC (`tools/tests/run_games_test.sh`):
@@ -923,10 +931,14 @@ dialogs), `EXEC`, `LAUNCH`, `DRAWTEXT`, `MOUSEX` / `MOUSEY` / `MOUSEB`, `PAUSE m
 
 ### Apps written in BASIC
 
-An app bundle may contain **`main.bas` instead of `main`**: `SD:/apps/<name>.app/main.bas`
-(+ `app.txt`, `icon.bmp`). It is listed and launched like any app — the kernel runs it with
-`SD:/bin/basic`. **File ▸ Make App...** in the editor creates one from the current program
-(it asks for the folder name and the title). Example: **BASIC Demo** (`basicdemo`).
+An app bundle may contain **`main.bas` or `main.bax` instead of `main`**:
+`SD:/apps/<name>.app/main.bas` (+ `app.txt`, `icon.bmp`). It is listed and launched like any
+app — the launchers see the file and run it with `SD:/bin/basic` (the programs for such
+formats are listed in `SD:/etc/runners.ini`). **File ▸ Make App...** in the editor creates
+one from the current program (it asks for the folder name and the title, and whether to
+compile it). Examples: **BASIC Demo** (`basicdemo`, `main.bas`) and **Arkanoid**
+(`arkanoid`: `main.bax`, compiled at build time from `SD:/basic/examples/arkanoid.bas` — the
+game is written in BASIC).
 
 ## 14. Troubleshooting
 

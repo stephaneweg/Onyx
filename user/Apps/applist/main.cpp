@@ -6,6 +6,7 @@
 //
 #include "kapi.h"
 #include "applib.h"
+#include "launch.h"
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -47,7 +48,7 @@ static void reposition (int top)
 }
 
 static void on_scroll (Widget &w) { reposition (((Scrollbar &) w).value); }
-static void on_icon (Widget &w) { kapi_launch (g_names[w.tag]); kapi_exit (0); }	// no return
+static void on_icon (Widget &w) { lx_launch (g_names[w.tag], 0); kapi_exit (0); }	// no return
 
 static bool ci_less (const char *a, const char *b)
 {

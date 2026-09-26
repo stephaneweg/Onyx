@@ -12,6 +12,7 @@
 
 #include "kapi.h"
 #include "fsutil.h"
+#include "launch.h"
 
 #define FA_INI		"SD:/etc/fileassoc.ini"
 
@@ -64,7 +65,7 @@ static inline bool fa_is_program (const char *path)
 	unsigned char m[4] = { 0, 0, 0, 0 };
 	int n = kapi_read (f, m, sizeof m);
 	kapi_close (f);
-	if (n == 4 && m[0] == 'O' && m[1] == 'B' && m[2] == 'A' && m[3] == 'X') return true;	// a compiled BASIC program (.bax)
+	char run[160]; if (lx_runner (path, run, sizeof run)) return true;	// a format with a runner (runners.ini)
 	return n == 4 && m[0] == 0x7F && m[1] == 'E' && m[2] == 'L' && m[3] == 'F';
 }
 
@@ -91,8 +92,11 @@ static inline bool fa_open (const char *path)
 		const char *e = fa_ext (path);
 		if (fs_lower (e[0]) == 'a' && fs_lower (e[1]) == 'p' && fs_lower (e[2]) == 'p' && e[3] == '\0')
 		{
-			fs_join (exe, sizeof exe, path, "main");		// an app bundle: run it
-			return kapi_exec (exe, "") != 0;
+			// an app bundle: run it (its main, or main.<ext> by a runner), named after it
+			char nm[48]; int n = 0; const char *b = path; for (const char *q = path; *q; q++) if (*q == '/' || *q == ':') b = q + 1;
+			while (b[n] && b[n] != '.' && n < 47) { nm[n] = b[n]; n++; }
+			nm[n] = '\0';
+			return lx_launch_dir (path, nm, "") != 0;
 		}
 		return kapi_exec ("SD:apps/fileviewer.app/main", path) != 0;	// a folder
 	}
@@ -102,12 +106,10 @@ static inline bool fa_open (const char *path)
 		const char *pre = "SD:apps/";
 		for (int i = 0; pre[i] && p < (int) sizeof exe - 1; i++) exe[p++] = pre[i];
 		for (int i = 0; app[i] && p < (int) sizeof exe - 1; i++) exe[p++] = app[i];
-		const char *suf = ".app/main";
-		for (int i = 0; suf[i] && p < (int) sizeof exe - 1; i++) exe[p++] = suf[i];
-		exe[p] = '\0';
-		return kapi_exec (exe, path) != 0;
+		(void) p;
+		return lx_launch (app, path) != 0;			// (a BASIC app too)
 	}
-	if (!remote && fa_is_program (path)) return kapi_exec (path, "") != 0;
+	if (!remote && fa_is_program (path)) return lx_open (path, "") != 0;
 	return false;
 }
 

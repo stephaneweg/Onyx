@@ -353,6 +353,11 @@ int kapi_exec (const char *pPath, const char *pArgs)
 {
 	return ExecPath (pPath, pArgs ? pArgs : "") ? 1 : 0;
 }
+// v49: the same, the process named pName (a runner running an app: named after the app).
+int kapi_exec_as (const char *pPath, const char *pArgs, const char *pName)
+{
+	return ExecPath (pPath, pArgs ? pArgs : "", pName != 0 && pName[0] ? pName : 0) ? 1 : 0;
+}
 
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
 void kapi_screen_size (int *pW, int *pH)
