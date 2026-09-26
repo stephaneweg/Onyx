@@ -16,7 +16,9 @@ X
 g++ -w -I"$b" -x c++ "$b/main.c" -o "$b/ftpc"
 rm -rf /tmp/onyx_mock && mkdir -p /tmp/onyx_mock/pub && echo "hello onyx" > /tmp/onyx_mock/pub/readme.txt
 "$b/ftpc" "SD:/pub tester secret" & pid=$!
+trap 'kill $pid 2>/dev/null; pkill -P $pid 2>/dev/null; rm -rf "$b"' EXIT
 sleep 0.5
-python3 "$here/ftpc_test.py"; rc=$?
-kill $pid 2>/dev/null; rm -rf "$b"
+set +e
+timeout 60 python3 "$here/ftpc_test.py"; rc=$?
+[ $rc -eq 124 ] && echo "FAIL: timed out (a lost read? see mock_net_kapi.h)"
 exit $rc

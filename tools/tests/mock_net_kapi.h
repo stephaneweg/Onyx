@@ -40,8 +40,11 @@ static inline int kapi_tcp_connect (const char *host, unsigned port)
 static inline int kapi_tcp_send (int s, const void *b, unsigned n) { return (int) send (s, b, n, MSG_NOSIGNAL); }
 static inline int kapi_tcp_recv (int s, void *b, unsigned n)	// non-blocking: >0 data / 0 none / <0 closed
 {
-	int r = (int) recv (s, b, n, MSG_DONTWAIT);
-	if (r > 0) return r;
+	// Like Circle: one "segment" (<= 1460 bytes) per call, and what does not fit in n
+	// is DROPPED -- so a caller reading in small pieces loses data here too.
+	static char seg[1460];
+	int r = (int) recv (s, seg, sizeof seg, MSG_DONTWAIT);
+	if (r > 0) { int k = r < (int) n ? r : (int) n; memcpy (b, seg, k); return k; }
 	if (r == 0) return -1;
 	return (errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : -1;
 }

@@ -212,7 +212,7 @@ static void cmd_stor (const char *arg, int append)
 	int ok = buf != 0; unsigned idle = kapi_get_ticks ();
 	while (ok)
 	{
-		if (len == cap)
+		if (cap - len < 2048)					// room for a whole segment (see session)
 		{
 			if (cap >= UPLOAD_MAX) { ok = 0; break; }
 			cap *= 2; buf = (char *) umm_realloc (buf, cap);
@@ -385,11 +385,13 @@ static int session (char *a)				// a = "<handle> <users record>"
 	g_ctl = h;
 	kapi_net_status (g_myIP, sizeof g_myIP);
 	reply ("220 Onyx FTP server ready.");
+	// NB: Circle's socket Receive returns ONE TCP segment per call and DROPS what does not
+	// fit -- always read with room for a whole segment (never byte by byte).
+	static char rx[2048];
 	char line[512]; int len = 0; unsigned idle = kapi_get_ticks ();
 	for (;;)
 	{
-		char c;
-		int r = kapi_tcp_recv (g_ctl, &c, 1);
+		int r = kapi_tcp_recv (g_ctl, rx, sizeof rx);
 		if (r < 0) break;					// the client hung up
 		if (r == 0)
 		{
@@ -398,14 +400,18 @@ static int session (char *a)				// a = "<handle> <users record>"
 			continue;
 		}
 		idle = kapi_get_ticks ();
-		if (c == '\n')
+		for (int i = 0; i < r; i++)
 		{
-			if (len && line[len - 1] == '\r') len--;
-			line[len] = '\0';
-			if (len) session_cmd (line);
-			len = 0;
+			char c = rx[i];
+			if (c == '\n')
+			{
+				if (len && line[len - 1] == '\r') len--;
+				line[len] = '\0';
+				if (len) session_cmd (line);
+				len = 0;
+			}
+			else if (len < (int) sizeof line - 1) line[len++] = c;
 		}
-		else if (len < (int) sizeof line - 1) line[len++] = c;
 	}
 	if (g_pasv >= 0) kapi_tcp_close (g_pasv);
 	kapi_tcp_close (g_ctl);
