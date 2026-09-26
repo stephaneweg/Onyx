@@ -78,7 +78,7 @@ max_framebuffers=2
 Parameters read at boot:
 
 ```
-width=1024 height=768 init=SD:/bin/init heartbeat=0
+width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1
 ```
 
 - **`width` / `height`**: framebuffer resolution (default 1024×768).
@@ -93,9 +93,10 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0
   compositor stops producing frames (and lists every task's state) and when an app stops
   pumping its window's events (a frozen app).
 - **`watchdog`**: `watchdog=0` does not start the GUI watchdog at all (A/B testing).
-- **`sdhs`**: `sdhs=1` switches the SD card to **High Speed** (50 MHz instead of 25: up to
-  twice the transfer rate). Off by default: if a card misbehaves with it (boot errors, files
-  that do not read back), remove it again. `kmsg` says what is in use (`SD card mounted`).
+- **`sdhs`**: the SD card runs in **High Speed** (50 MHz instead of 25: about 16 MB/s read
+  with `fsbench` instead of ~10) — the default (`sdhs=1`). If a card misbehaves with it (boot
+  errors, files that do not read back), set `sdhs=0`. `kmsg` says what is in use (`SD card
+  mounted`).
 - **`sdcache`**: `sdcache=0` turns off the **sector cache** (on by default: the FAT and the
   folders stay in memory, so opening files and listing folders no longer asks the card for
   every sector; writes still go to the card at once). For comparisons with `fsbench`.

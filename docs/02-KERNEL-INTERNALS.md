@@ -291,7 +291,7 @@ it off): opening files and walking folders stopped asking the card for every sec
 §10), instead of one per cluster (with 512-byte clusters, one per 512 bytes: 2 MB/s). A
 read of 1 MB or more logs its time split (`fs: read ... SD: N commands, waiting, data
 port, other tasks`).
-`sdhs=1` puts the card in High Speed (50 MHz, `docs/05` §9). The boot log says what is in
+The card runs in High Speed (50 MHz, `docs/05` §9; `sdhs=0` = 25 MHz). The boot log says what is in
 use (`SD card mounted (SD:): ...`); `/bin/fsbench` measures.
 
 **Yielding SD waits.** The SD driver also yields while the card keeps it waiting: after a

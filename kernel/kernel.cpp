@@ -1433,9 +1433,9 @@ boolean CKernel::Initialize (void)
 	// is absent, we fall back to the ELF images embedded in the kernel.
 	if (bOK)
 	{
-		// cmdline.txt: sdhs=1 -> the card in High Speed (50 MHz instead of 25; a card that
-		// misbehaves: remove it again), sdcache=0 -> no sector cache (A/B comparisons).
-		CEMMCDevice::SetHighSpeed (m_Options.GetAppOptionDecimal ("sdhs", 0) != 0);
+		// cmdline.txt: sdhs=0 -> the card at 25 MHz instead of High Speed (50 MHz, the
+		// default: for a card that misbehaves), sdcache=0 -> no sector cache (A/B tests).
+		CEMMCDevice::SetHighSpeed (m_Options.GetAppOptionDecimal ("sdhs", 1) != 0);
 		disk_cache_enable (m_Options.GetAppOptionDecimal ("sdcache", 1) != 0);
 		if (m_EMMC.Initialize () && f_mount (&m_FileSystem, "SD:", 1) == FR_OK)
 		{

@@ -453,7 +453,8 @@ compile option `SD_HIGH_SPEED`, off by default, and then only raises the clock. 
   Speed timing;
 - the 64-byte CMD6 status buffer is word aligned (the PIO transfer asserts it).
 
-Onyx turns it on with `sdhs=1` in `cmdline.txt` (off by default: not all cards behave).
+Onyx turns it on by default (`sdhs=0` in `cmdline.txt` turns it off, for a card that
+misbehaves).
 
 ## 10. Multi-cluster transfers in FatFs
 
