@@ -335,6 +335,14 @@ def icon_shelf():		# a shelf plank holding a folder, a document and an app
     prect(px, 28, 18, 35, 29, (16, 20, 24)); pframe(px, 28, 18, 35, 29, (128, 200, 255))
     return px
 
+def icon_agenda():		# a card listing appointments, the first one green (today)
+    px = blank()
+    prect(px, 4, 6, 35, 33, (28, 35, 44)); pframe(px, 4, 6, 35, 33, (72, 88, 112))
+    prect(px, 5, 7, 34, 11, (48, 61, 77))
+    prect(px, 8, 15, 30, 16, (96, 255, 144))
+    for y in (20, 25, 30): prect(px, 8, y, 26, y + 1, (224, 230, 238))
+    return px
+
 def icon_notifyd():		# a speech bubble with lines
     px = blank()
     prect(px, 5, 8, 34, 26, (38, 47, 59)); pframe(px, 5, 8, 34, 26, (96, 255, 144))
@@ -375,7 +383,7 @@ ICONS = {
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
-    "notifyd": icon_notifyd, "shelf": icon_shelf, "shutdown": icon_shutdown, "plasma": icon_plasma,
+    "notifyd": icon_notifyd, "shelf": icon_shelf, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
 }
 
 

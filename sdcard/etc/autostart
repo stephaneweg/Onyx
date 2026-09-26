@@ -19,6 +19,7 @@ run menubar
 run notifyd
 run panel
 run shelf
+run agenda
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,
 # NO encryption: remove this line on an untrusted network.

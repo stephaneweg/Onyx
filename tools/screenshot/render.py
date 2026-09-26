@@ -654,6 +654,20 @@ def app_shelf():	# the Shelf alone (the full width of a 1024-px screen)
     draw_shelf(cv, 0, 0, W)
     return cv
 
+def app_agenda():	# the desktop widget (Apps/agenda/main.cpp onDraw), a few upcoming notes
+    W, HDR, ROW, NR = 340, 24, 20, 6; H = HDR + NR * ROW + 8
+    cv = Canvas(W, H, C(0x1C232C)); cv.frame(0, 0, W, H, C(0x485870)); cv.fill(1, 1, W - 2, HDR - 1, C(0x303D4D))
+    t = "Next appointments (4)"; cv.text(8, (HDR - FH) // 2, t, C(0xE0E6EE)); cv.text(9, (HDR - FH) // 2, t, C(0xE0E6EE))
+    rows = [("Today - Dentist 17:30", 0x60FF90), ("Mon 28 Sep - Onyx: test the Shelf on the Pi", 0xE0E6EE),
+            ("Thu 1 Oct - Pay the rent", 0xE0E6EE), ("Sat 10 Oct - Birthday party", 0xE0E6EE)]
+    maxc = (W - 16) // FW
+    for r, (s, c) in enumerate(rows):
+        y = HDR + 4 + r * ROW
+        if r == 1: cv.fill(2, y - 1, W - 4, ROW, C(0x355070))
+        if len(s) > maxc: s = s[:maxc - 2] + ".."
+        cv.text(8, y + (ROW - FH) // 2, s, C(c))
+    return cv
+
 def render_desktop():
     W, H = 1024, 768
     cv = Canvas(W, H)
@@ -1102,7 +1116,7 @@ if __name__ == "__main__":
         window(fn(), title, True).img.save(os.path.join(OUT, fname + ".png"))
         print("wrote", fname + ".png")
     # borderless apps (no chrome): app drawer, demo sidebar, the panel itself
-    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar), ("shelf", app_shelf)]:
+    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar), ("shelf", app_shelf), ("agenda", app_agenda)]:
         fn().img.save(os.path.join(OUT, fname + ".png")); print("wrote", fname + ".png")
     # voronoy is windowless: its "screenshot" is the wallpaper it paints
     voronoi_wallpaper(1024, 768).save(os.path.join(OUT, "voronoy.png")); print("wrote voronoy.png")

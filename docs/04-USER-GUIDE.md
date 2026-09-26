@@ -218,7 +218,7 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
 
 Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
 the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
-says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `shelf`, `ask`). It opens **right next to the panel**, beside
+says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `shelf`, `ask`, `agenda`). It opens **right next to the panel**, beside
 the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
 below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
 scrollbar (or the wheel) if the grid overflows.
@@ -254,6 +254,17 @@ it; click it to bring it forward.
 
 ![Shelf](../screenshots/shelf.png)
 *The Shelf: tabs, a folder, a document, an image and an app, and the Trash at the right.*
+
+### The agenda widget (`agenda`)
+
+A small card on the desktop (started by `autostart`, under every window) listing the
+**next appointments** — the notes typed in the **calendar** app (`agenda.txt`), today first
+(in green), then by date. It re-reads them every few seconds, so a new note appears by
+itself. **Click** an appointment to open the calendar on that day; **drag the title** to
+move the card (its place is kept in `SD:/apps/agenda.app/config.ini`).
+
+![Agenda widget](../screenshots/agenda.png)
+*The agenda widget: today's appointment in green, the next ones below.*
 
 ### Drag & drop and file associations
 
@@ -624,7 +635,8 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
 | **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
-| **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). |
+| **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
+| **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **filer** | File manager (see §9). |
 | **shelf** (Shelf) | The bottom strip of file / folder / app references in tabs, with the Trash (see §5, *The Shelf*). Reads/writes `SD:/etc/shelf.ini`. |
 | **ask** (Confirm) | A small system Yes / No window used by apps too small to host a dialog (the Shelf's "remove tab?"): `run ask "Title|Message|Yes|No"`, exits with 1 (Yes / Enter) or 0 (No / Esc / close box). |

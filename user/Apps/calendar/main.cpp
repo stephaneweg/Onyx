@@ -2,6 +2,7 @@
 // calendar -- month view + a simple agenda. Left/Right change month, Up/Down change
 // year, today is highlighted. Click a day to select it; type a note and press Enter
 // to save it (per-day, in SD:/apps/calendar.app/agenda.txt). Backspace edits.
+// An argument "YYYYMMDD" opens that month with the day selected (the agenda widget).
 //
 #include "kapi.h"
 #include "wtk/wtk.h"
@@ -225,6 +226,18 @@ int main (void)
 	if (g_ty < 1970) { g_ty = 2026; g_tm = 1; g_td = 1; }	// uptime clock fallback
 	g_year = g_ty; g_month = g_tm;
 	load_agenda ();
+	char args[32];
+	if (kapi_get_args (args, sizeof args) >= 8)		// "YYYYMMDD": show that day
+	{
+		bool ok = true; int v[8];
+		for (int i = 0; i < 8; i++) { if (args[i] < '0' || args[i] > '9') ok = false; v[i] = args[i] - '0'; }
+		int y = v[0] * 1000 + v[1] * 100 + v[2] * 10 + v[3], m = v[4] * 10 + v[5], d = v[6] * 10 + v[7];
+		if (ok && m >= 1 && m <= 12 && d >= 1 && d <= dim (y, m))
+		{
+			g_year = y; g_month = m; g_sel = d;
+			load_note (d);
+		}
+	}
 	kapi_set_key_handler (on_key);
 	kapi_set_click_handler (on_click);
 	while (!should_exit ()) { pump_events (); redraw (); msleep (16); }
