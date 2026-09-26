@@ -555,6 +555,11 @@ SD:apps/<nom>.app/
   config.ini     configuration de l'app, lue via app_ini_load() (optionnel)
 ```
 
+An app may also be written in **BASIC**: `main.bas` instead of `main` (no build step). The
+kernel's launch paths (`kapi_launch`, `kapi_exec`, `kapi_spawn`) see that `.../main` is
+missing and `.../main.bas` exists, and start `SD:/bin/basic <path>/main.bas` instead (a
+`.bas` path given to `kapi_exec` / `kapi_spawn` does the same). See *Onyx BASIC* below.
+
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
 you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` returns.
 
@@ -610,6 +615,28 @@ barwidth = 40
 - **Reminder of the project rule** (see `CLAUDE.md`): any modification of a `kapi`
   function or of an app **updates the docs in the same go**, regenerates the affected
   screenshot if the visual changes, then regenerates the exports.
+
+### Onyx BASIC (the interpreter)
+
+- **Core** (`user/basic/`): `bas.h` (API: `bas::compile`, `bas::run`, the `bas::Host`
+  interface), `bascomp.cpp` (lexer + one-pass compiler to bytecode, with a pre-scan of the
+  SUB / FUNCTION headers), `basvm.cpp` (the stack VM: tagged values, ref-counted strings and
+  arrays, by-reference arguments, a frame per call), `basnum.cpp` (number formatting / parsing
+  and the math functions, no libc). Portable C++ (only `new` / `delete`): built into
+  `basic/libbasic.a` with FP/SIMD (`-fno-math-errno`), and on a PC for the tests.
+- **Runtime** `/bin/basic` (`basic/runtime.cpp`): the Onyx `bas::Host` — console (stdio)
+  or a `wtk::Root` window (a text/graphics framebuffer + wtk controls, pumped by the VM through
+  `Host::poll`, `Root::attach ()`). Options `-d <dir>`, `-i` (report errors to the editor:
+  mailbox to the IPC service `qbasic`, payload `line\0message\0`).
+- **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
+- **Adding a function**: an entry in `BFNS[]` (bascomp.cpp: name, id, result type, argument
+  spec `N`/`S`/`?`, `[` = optional from here), a `B_*` id (basint.h), its case in
+  `VM::builtin` (basvm.cpp); something the VM cannot do itself goes through a new
+  `bas::Host` virtual (default no-op) implemented in runtime.cpp. Statements: `simpleStatement`
+  (fixed arguments) or a dedicated `st*` parser, `S_*` id, `VM::statement`.
+- **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
+  (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
+  and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them).
 
 ## 10. Extending the `kapi` ABI
 

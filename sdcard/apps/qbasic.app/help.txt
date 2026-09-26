@@ -1,0 +1,75 @@
+ONYX BASIC -- quick reference                        (QBasic > Help > Keywords)
+==============================================================================
+
+RUNNING
+  QBasic: Run > Start (^R) checks the syntax, then runs the program in its own
+  window. Errors jump to their line. Terminal: basic prog.bas [args] -- PRINT and
+  INPUT then use the console (stdin / stdout, redirections and pipes work) until
+  the program opens a window. An app: SD:/apps/<name>.app/main.bas (File > Make
+  App...) is launched like any app.
+
+EDITOR
+  The main module and each SUB / FUNCTION are edited one at a time.
+  View > SUBs... (^L) lists them; Edit > New SUB... / New FUNCTION... adds one.
+  ^N new  ^O open  ^S save  ^R run  ^K check  ^G go to line.
+
+VALUES
+  Numbers (double precision). Strings: names ending in $ (a$), or DIM x AS STRING.
+  Arrays: DIM a(10), DIM b$(1 TO 5, 3), REDIM, ERASE, LBOUND(a), UBOUND(a[, dim]).
+  OPTION BASE 1. CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
+  AND OR XOR NOT EQV IMP (true = -1). Strings join with +.
+
+STATEMENTS
+  PRINT [#n,] a; b, c   (; = no space, , = next 14-column zone, TAB(n) SPC(n))
+  WRITE [#n,] ...       INPUT ["prompt";] a, b$    LINE INPUT ["prompt";] a$
+  LET  IF..THEN..ELSE (one line)  IF / ELSEIF / ELSE / END IF
+  FOR i = a TO b [STEP s] ... NEXT [i]   WHILE ... WEND
+  DO [WHILE|UNTIL c] ... LOOP [WHILE|UNTIL c]   EXIT FOR / DO / SUB / FUNCTION
+  SELECT CASE x / CASE 1, 2 / CASE 3 TO 5 / CASE IS > 9 / CASE ELSE / END SELECT
+  GOTO label  GOSUB label / RETURN  ON n GOTO a, b  labels: "name:" or line numbers
+  SUB name (a, b$) ... END SUB        CALL name (x)  or  name x
+  FUNCTION name$ (n) ... name$ = ... END FUNCTION
+    Plain variable arguments are passed by reference; (x) or an expression by
+    value; arrays with name(). DIM SHARED (module) / SHARED (in a SUB); STATIC.
+  DATA 1, "two" / READ a, b$ / RESTORE [label]    SWAP a, b    END  STOP  SYSTEM
+  RANDOMIZE [n]  SLEEP [seconds] (no number: until a key)  PAUSE milliseconds
+  REM or ' comments
+
+SCREEN AND GRAPHICS
+  CLS  LOCATE row, col  COLOR fg, bg (0-15, or RGB(r, g, b))
+  SCREEN 0 (640x400, 80x25), SCREEN 12 (640x480), SCREEN 13 (320x200)
+  PSET (x, y)[, c]   LINE (x1, y1)-(x2, y2)[, c][, B | BF]   LINE -(x, y)
+  CIRCLE (x, y), r[, c][, F]  (F = filled)   DRAWTEXT x, y, text$[, c]
+  POINT(x, y)  POS(0)  CSRLIN  MOUSEX  MOUSEY  MOUSEB (1 left 2 right 4 middle)
+  INKEY$ (arrows = CHR$(0) + "H" / "P" / "K" / "M")
+
+WINDOW AND CONTROLS (Onyx)
+  WINDOW title$[, width, height]    (a GUI program; closing it ends the program)
+  id = BUTTON(x, y, w, h, text$)    id = LABEL(x, y, w, h, text$)
+  id = TEXTBOX(x, y, w, h[, text$]) id = CHECKBOX(x, y, w, h, text$[, checked])
+  id = LISTBOX(x, y, w, h[, "a|b|c"])   id = DROPDOWN(x, y, w, h, "a|b|c")
+  id = PROGRESS(x, y, w, h)          id = SLIDER(x, y, w, h[, max])
+  SETTEXT id, text$ (a list: adds an item)   GETTEXT$(id)   SETVALUE id, v
+  VALUE(id)  (checked -1/0, selected index, slider / progress value)
+  e = WAITEVENT  (the control clicked / changed / Enter; -1 = window closed)
+  e = EVENT      (the same without waiting; 0 = nothing)
+
+SYSTEM (Onyx)
+  NOTIFY title$, text$    r = MSGBOX(title$, text$[, 0 OK | 1 OK/Cancel | 2 Yes/No])
+  CLIPBOARD$ / SETCLIPBOARD text$     f$ = OPENFILE$([dir$])  SAVEFILE$([dir$, name$])
+  EXEC path$[, args$]   LAUNCH app$   COMMAND$ (the program's arguments)
+
+FILES
+  OPEN f$ FOR INPUT | OUTPUT | APPEND AS #n    CLOSE [#n]    EOF(n)  LOF(n)
+  FREEFILE  PRINT #n  WRITE #n  INPUT #n, a  LINE INPUT #n, a$
+  KILL f$  NAME a$ AS b$  MKDIR d$  RMDIR d$  FILEEXISTS(f$)  DIR$(folder$, i)
+  Relative names are in the program's folder.
+
+FUNCTIONS
+  LEN ASC CHR$ LEFT$ RIGHT$ MID$ INSTR([start,] a$, b$) UCASE$ LCASE$ LTRIM$
+  RTRIM$ TRIM$ STR$ VAL SPACE$ STRING$(n, c) HEX$ OCT$
+  ABS SGN INT FIX CINT CLNG CDBL SQR SIN COS TAN ATN EXP LOG RND MIN MAX
+  TIMER DATE$ TIME$ TICKS
+
+EXAMPLES
+  SD:/basic/examples (QBasic > File > Examples...), SD:/apps/basicdemo.app.

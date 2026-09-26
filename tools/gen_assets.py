@@ -327,6 +327,32 @@ def icon_fileviewer():		# a column browser: three panes, selected rows + arrows
                 pset(px, x0 + 8, y, arrow)
     return px
 
+def icon_qbasic():		# the QBasic editor: a blue screen, a grey title bar, code lines
+    px = blank()
+    prect(px, 3, 6, 36, 33, (0, 0, 170)); pframe(px, 3, 6, 36, 33, (170, 170, 170))
+    prect(px, 4, 7, 35, 10, (170, 170, 170))
+    prect(px, 15, 8, 24, 9, (0, 0, 0))			# the module name
+    lines = [(6, 16, (255, 255, 85)), (6, 22, (255, 255, 255)), (9, 26, (255, 255, 255)),
+             (9, 20, (85, 255, 255)), (6, 14, (255, 255, 85)), (6, 24, (255, 255, 255))]
+    for i, (x0, x1, c) in enumerate(lines):
+        y = 13 + i * 3
+        prect(px, x0, y, x1, y, c)
+    prect(px, 27, 28, 28, 30, (255, 255, 255))		# the cursor
+    return px
+
+def icon_basprog():		# a BASIC program (Make App icon): a page with numbered lines
+    px = blank()
+    prect(px, 8, 3, 31, 36, (240, 240, 232)); pframe(px, 8, 3, 31, 36, (90, 100, 114))
+    prect(px, 25, 3, 31, 9, (200, 200, 190))		# folded corner
+    for i in range(6):
+        y = 12 + i * 4
+        prect(px, 11, y, 13, y, (170, 60, 60))		# line numbers
+        prect(px, 16, y, 16 + (8 + (i * 5) % 11), y, (40, 50, 70))
+    prect(px, 20, 28, 34, 36, (0, 0, 170)); pframe(px, 20, 28, 34, 36, (0, 0, 90))
+    for x in (23, 27, 31):					# "BAS" as three bars on the badge
+        prect(px, x, 31, x + 1, 33, (255, 255, 85))
+    return px
+
 def icon_menubar():		# a screen with a menu bar and an open drop-down
     px = blank()
     prect(px, 3, 6, 36, 33, (32, 64, 96)); pframe(px, 3, 6, 36, 33, (90, 100, 114))
@@ -397,6 +423,7 @@ ICONS = {
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
     "notifyd": icon_notifyd, "shelf": icon_shelf, "widgets": icon_widgets, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
+    "qbasic": icon_qbasic, "basicdemo": icon_basprog,
 }
 
 
@@ -452,6 +479,8 @@ def main():
     # Real apps get evocative icons.
     for name, fn in ICONS.items():
         write_bmp(os.path.join(APPS, name + ".app", "icon.bmp"), SZ, SZ, fn())
+    # The icon QBasic > Make App gives a new BASIC app.
+    write_bmp(os.path.join(APPS, "qbasic.app", "program.bmp"), SZ, SZ, icon_basprog())
     print("done.")
 
 

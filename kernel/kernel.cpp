@@ -964,12 +964,49 @@ static boolean SdFileExists (const char *pPath)
 	return f_stat (pPath, &Info) == FR_OK && !(Info.fattrib & AM_DIR);
 }
 
+// Onyx BASIC: a program is run by the runtime SD:/bin/basic ("basic <file.bas> [args]").
+// pPath is a BASIC program if it ends in ".bas", or if it is an app's ".../main" that does
+// not exist while ".../main.bas" does (an app bundle written in BASIC). Then Elf / Args
+// receive the runtime and its command line, and TRUE is returned.
+#define BASIC_RUNTIME	"SD:/bin/basic"
+static boolean BasicRedirect (const char *pPath, const char *pArgs, CString *pElf, CString *pArgsOut)
+{
+	unsigned n = 0; while (pPath[n] != '\0') n++;
+	auto Low = [] (char c) { return (c >= 'A' && c <= 'Z') ? (char) (c + 32) : c; };
+	boolean bBas = n > 4 && pPath[n - 4] == '.' && Low (pPath[n - 3]) == 'b' && Low (pPath[n - 2]) == 'a' && Low (pPath[n - 1]) == 's';
+	CString Bas;
+	if (bBas) Bas = pPath;
+	else if (n >= 5 && pPath[n - 5] == '/' && Low (pPath[n - 4]) == 'm' && Low (pPath[n - 3]) == 'a'
+		 && Low (pPath[n - 2]) == 'i' && Low (pPath[n - 1]) == 'n' && !SdFileExists (pPath))
+	{
+		Bas.Format ("%s.bas", pPath);
+		if (!SdFileExists ((const char *) Bas)) return FALSE;
+	}
+	else return FALSE;
+	boolean bSpace = FALSE;
+	for (const char *q = (const char *) Bas; *q; q++) if (*q == ' ') bSpace = TRUE;
+	const char *pQ = bSpace ? "\"" : "";
+	pArgsOut->Format ("%s%s%s%s%s", pQ, (const char *) Bas, pQ,
+			  pArgs != 0 && pArgs[0] != '\0' ? " " : "", pArgs != 0 ? pArgs : "");
+	*pElf = BASIC_RUNTIME;
+	return TRUE;
+}
+
 // Launch an app by folder name: SD:apps/<name>.app/main -> a new EL1 process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
 {
 	CString Path;
 	Path.Format ("SD:apps/%s.app/main", pName);
+
+	// An app written in BASIC: main.bas instead of main -> the runtime runs it.
+	CString Elf, Args;
+	if (BasicRedirect ((const char *) Path, "", &Elf, &Args))
+	{
+		if (new CUserProcessTask ((const char *) Elf, pName, pLogger, 0, 0, 0, (const char *) Args) == 0) return FALSE;
+		pLogger->Write (FromKernel, LogNotice, "launch: %s (BASIC)", pName);
+		return TRUE;
+	}
 
 	// Verify the file exists NOW (cheap) so a bad name fails here, not asynchronously.
 	if (!SdFileExists ((const char *) Path))
@@ -1012,6 +1049,11 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	if (pElfPath == 0)
 	{
 		return 0;
+	}
+	CString BasElf, BasArgs;			// a BASIC program: the runtime runs it
+	if (BasicRedirect (pElfPath, pArgs, &BasElf, &BasArgs))
+	{
+		pElfPath = (const char *) BasElf; pArgs = (const char *) BasArgs;
 	}
 	if (!SdFileExists (pElfPath))		// missing -> immediate failure (shell prints "not found")
 	{
@@ -1095,12 +1137,17 @@ boolean ExecPath (const char *pElfPath, const char *pArgs)
 	{
 		return FALSE;
 	}
+	char Name[40];
+	NameFromPath (pElfPath, Name, sizeof (Name));		// ("x.app/main(.bas)" -> "x")
+	CString BasElf, BasArgs;				// a BASIC program: the runtime runs it
+	if (BasicRedirect (pElfPath, pArgs, &BasElf, &BasArgs))
+	{
+		pElfPath = (const char *) BasElf; pArgs = (const char *) BasArgs;
+	}
 	if (!SdFileExists (pElfPath))		// fail now if missing; body read is still deferred
 	{
 		return FALSE;
 	}
-	char Name[40];
-	NameFromPath (pElfPath, Name, sizeof (Name));
 	// Deferred load (see CUserProcessTask): the task reads pElfPath on its own thread.
 	return new CUserProcessTask (pElfPath, Name, CLogger::Get (), 0, 0, 0, pArgs) != 0;
 }

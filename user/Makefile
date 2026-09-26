@@ -34,11 +34,11 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) bin
+all: $(APP_ELFS) bin bin/basic.elf
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
@@ -65,9 +65,21 @@ wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a basic/libbasic.a
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a -o $@
+
+# Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
+# (linked into the qbasic editor too), and the runtime /bin/basic (basic/runtime.cpp).
+BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h
+BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o
+CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
+basic/%.o: basic/%.cpp $(BAS_HDR)
+	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
+basic/libbasic.a: $(BAS_OBJ)
+	$(AR) rcs $@ $^
+bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld kapi.h $(BAS_HDR)
+	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
 
 clean:
-	rm -f *.elf *.o
+	rm -f *.elf *.o basic/*.o basic/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean

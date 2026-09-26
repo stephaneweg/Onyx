@@ -1,0 +1,3 @@
+# Onyx application metadata -- an app written in BASIC: main.bas (run by SD:/bin/basic).
+name = BASIC Demo
+category = Demos

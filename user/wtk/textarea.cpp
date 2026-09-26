@@ -23,6 +23,18 @@ void Textarea::insertText (const char *s)
 	invalidate (true);
 }
 
+void Textarea::gotoLine (int line)
+{
+	int i = 0, l = 0;
+	while (l < line && buf[i]) { if (buf[i] == '\n') l++; i++; }
+	caret = i;
+	ensureVisible ((height - 4) / wk_fh (), (width - 8 - WK_SBW) / wk_fw ());
+	invalidate (true);
+}
+
+int Textarea::caretLine () const
+{ int l = 0; for (int i = 0; i < caret; i++) if (buf[i] == '\n') l++; return l; }
+
 void Textarea::deleteAt (int i)
 { if (i < 0 || i >= len) return; for (int j = i; j < len; j++) buf[j] = buf[j + 1]; len--; }
 

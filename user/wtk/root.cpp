@@ -26,10 +26,15 @@ void Root::init (unsigned *fb)
 
 void Root::onDraw () { canvas.clear (bg); }		// client-area background
 
-void Root::run ()
+void Root::attach ()
 {
 	kapi_set_pointer_handler (ptrEvent);
 	kapi_set_key_handler (keyEvent);
+}
+
+void Root::run ()
+{
+	attach ();
 	while (!should_exit ())
 	{
 		pump_events ();

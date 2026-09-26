@@ -1,0 +1,15 @@
+Your name? Onyx
+Two numbers3, 4
+Say something: hello there
+Hi Onyx 7 hello there
+[window Demo 300 200]
+[control 1 10 10 80 24 "OK" 0 -> 1]
+[control 3 10 40 100 24 "" 0 -> 2]
+[settext 2 "x"]
+event 1 
+[pset 1 2 3]
+[line 0 0 10 10 4 2]
+[line 10 10 20 5 -1 0]
+[circle 50 50 10 2 0]
+[notify Title: Message]
+cmdarg

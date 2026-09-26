@@ -19,6 +19,8 @@ public:
 	void setBg (unsigned c) { bg = c; invalidate (true); }
 	void onDraw () override;
 	void run ();
+	void attach ();				// hook the kapi pointer / key streams (run () does it); for
+						// an app that pumps its own loop (pump_events + draw + present)
 	virtual void onTick () {}		// called once per run() loop (~60 Hz): polling, timers
 
 	// Drag & drop (ABI v42). onDrop: something was dropped at (x,y) (client coords) --

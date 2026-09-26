@@ -18,6 +18,9 @@ public:
 	const char *content () const { return buf; }
 	void setContent (const char *s);
 	void insertText (const char *s);		// insert at the caret (clipboard paste)
+	void gotoLine (int line);			// caret to the start of line (0-based), scrolled into view
+	int  caretLine () const;			// 0-based line / column of the caret
+	int  caretCol () const { return caret - lineStart (caret); }
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;

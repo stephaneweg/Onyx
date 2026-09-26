@@ -408,6 +408,10 @@ task model in `kernel.cpp`.
 - **`ExecPath(path, args)`**: "fire-and-forget" (without stdio or handle; the task name
   is derived from the path). Exposed via `kapi_exec` (the file manager to
   open a document in an app, or launch a program).
+- **BASIC programs** (`BasicRedirect`, kernel.cpp): all three entry points hand a path
+  ending in `.bas`, or an app's `.../main` that is missing while `.../main.bas` exists, to
+  the runtime `SD:/bin/basic` (arguments: the `.bas` path, quoted if it has blanks, then the
+  caller's). The task keeps the app's name (`NameFromPath` of `x.app/main.bas` → `x`).
 
 ---
 

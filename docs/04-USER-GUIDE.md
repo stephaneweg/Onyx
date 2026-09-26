@@ -18,7 +18,8 @@ application catalog.
 10. [Keyboard and layouts](#10-keyboard-and-layouts)
 11. [Customizing the appearance](#11-customizing-the-appearance)
 12. [Application catalog](#12-application-catalog)
-13. [Troubleshooting](#13-troubleshooting)
+13. [Programming in BASIC](#13-programming-in-basic)
+14. [Troubleshooting](#14-troubleshooting)
 
 ---
 
@@ -424,6 +425,7 @@ the terminal's **current working directory**.
 |---|---|---|
 | `net` | `net` | Shows the WLAN link status and the IPv4 address (or "link down" if Wi-Fi has not associated — check the firmware and `wpa_supplicant.conf`). |
 | `ping` | `ping <host> [count]` | Sends ICMP echo requests (default 4, one per second, 2 s timeout) to a name or an IP and prints each round-trip time, then the loss and min / avg / max statistics. (Onyx itself also answers pings.) |
+| `basic` | `basic [-d dir] <prog.bas> [args]` | The Onyx BASIC runtime (see §13): runs a program in the console or in its window; `-d` sets the current folder (default: the program's). A `.bas` path given to `run` or the shell runs through it. |
 | `wifiscan` | `wifiscan` | Lists the Wi-Fi access points around (about 3 s), strongest first: signal (dBm + bars), channel, security (open / WEP / WPA / WPA2), SSID; `*` marks the network the Pi is on. |
 | `nslookup` | `nslookup <name>` | Resolves a host name through the DNS server (shown on the first line) and prints its IPv4 address. |
 | `netstat` | `netstat` | The network configuration (hostname, IP, mask, gateway, DNS, DHCP) and the open TCP sockets: state (LISTEN / ESTAB), local port, remote address, owning PID. |
@@ -685,6 +687,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **Writer** | Rich-text editor (bold/italic/underline/strike/highlight, colours, sizes, heading levels) on a word-wrapping document. Select text with the mouse, then use the menus: **File** (New ^N, Open... ^O, Save ^S, Save As...), **Format** (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller, Bigger), **Color** (Black/Red/Green/Blue), **Style** (Normal, Title 1-3). Plain-text load/save (`.doc` files open in Writer). **Drop** a file to open it (asks to save unsaved changes first), or text to insert it. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
+| **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), click it on the Shelf, drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. |
 | **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
@@ -733,6 +736,7 @@ disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings 
 | **demoE** | Multi-line textarea + scrolling view with scrollbars. |
 | **demoF** | Small borderless launcher (buttons A–E that launch the other demos). |
 | **widgets** (Widget Showcase) | The WPF-style wtk controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The bottom line reports each event. |
+| **basicdemo** (BASIC Demo) | An app written in BASIC (`main.bas`, run by `/bin/basic`): a text box and **Say hello** (a notification), a click counter and a progress bar, and concentric circles whose colour (drop-down), size (slider) and fill (check box) follow the controls. Open it in QBasic to read it. |
 | **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
 | **spin** | Preemption test: a CPU hog that **never yields**. On a purely cooperative kernel it freezes the whole machine; with preemptive scheduling the rest of the UI (cursor, panel, other apps) stays responsive while it spins. It cannot be closed by its window (it never checks for the close) — **stop it from `taskman`**. |
 
@@ -740,7 +744,79 @@ disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings 
 *The Widget Showcase: group box + radio buttons, toggles, numeric up/down, list box, tree
 view (with a tooltip), image box, calendar, date picker and the colour button.*
 
-## 13. Troubleshooting
+## 13. Programming in BASIC
+
+Onyx has a **BASIC in the style of QBasic**: the **QBasic** editor (`qbasic`, category
+*Productivity*), the runtime **`/bin/basic`**, and apps written in BASIC. Programs are
+compiled to bytecode and run by a small virtual machine. The full list of keywords is in
+**Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`); examples are in `SD:/basic/examples`
+(**File ▸ Examples...**).
+
+### The editor (`qbasic`)
+
+- As in QBasic, the program is split into **modules** edited one at a time: the **main
+  module** and each **SUB** / **FUNCTION**. The line above the text says which one is shown.
+  **View ▸ SUBs...** (**Ctrl-L**) lists them (**Edit** opens one, **Delete** removes it);
+  **Edit ▸ New SUB...** / **New FUNCTION...** asks for a name and creates it. On disk the
+  program is one ordinary `.bas` text file (the main module, then every SUB / FUNCTION).
+- **Run ▸ Start** (**Ctrl-R**) checks the syntax — an error opens the right module on the
+  right line, with the message in the status bar — then runs the program in its own window.
+  A runtime error comes back the same way. **Run ▸ Check Syntax** (**Ctrl-K**) only checks.
+- **File**: New (Ctrl-N), Open... (Ctrl-O), Examples..., Save (Ctrl-S), Save As...,
+  **Make App...** (below). **Edit ▸ Go to Line...** (Ctrl-G) takes a line number of the
+  whole program. **Enter** keeps the indentation of the line above; Page Up / Down scroll.
+- Double-clicking a `.bas` file in the File Viewer opens it in the editor (`fileassoc.ini`);
+  dropping one on the editor opens it too.
+
+### Running programs
+
+- From the **terminal**: `basic prog.bas [arguments]` (or just `prog.bas`). The program
+  then works like any console tool: `PRINT` writes to the console, `INPUT` / `LINE INPUT`
+  read the keyboard, **pipes and redirections** work (`basic sort.bas < list.txt`). It opens
+  a window only if it uses one (graphics, `SCREEN`, `WINDOW`, controls).
+- As an **app**: a program opens a window of 80 × 25 text cells (640 × 400) at its first
+  `PRINT`; text and graphics share it (`SCREEN 12` = 640 × 480, `SCREEN 13` = 320 × 200).
+  When a text-only program ends, "Press any key to continue" keeps the window open.
+- `COMMAND$` holds the arguments. Relative file names are in the program's folder.
+
+### The language
+
+QBasic's: numbers and strings (`$`), arrays (`DIM`, up to 4 dimensions), `IF` / `ELSEIF`,
+`FOR`, `WHILE`, `DO ... LOOP`, `SELECT CASE`, `GOTO` / `GOSUB`, line numbers and labels,
+`SUB` / `FUNCTION` with arguments **by reference** (plain variables; an expression or a
+parenthesised variable goes by value), `DIM SHARED`, `STATIC`, `CONST`, `DATA` / `READ`,
+files (`OPEN ... FOR INPUT / OUTPUT / APPEND`), the string and math functions, `CLS`,
+`LOCATE`, `COLOR` (16 colours, or `RGB(r, g, b)`), `PSET`, `LINE` (`B` / `BF`), `CIRCLE`
+(`F` fills), `INKEY$`, `TIMER`, `RND`. Not there (yet): `PRINT USING`, `ON ERROR`, user
+`TYPE`s, `MID$` as a statement, `PLAY` / `SOUND` (coming with the sound support).
+
+Onyx additions — a program can be a real **windowed app**:
+
+```basic
+WINDOW "Converter", 320, 150
+c = TEXTBOX(100, 14, 120, 24, "20")
+go = BUTTON(230, 12, 78, 28, "Convert")
+res = LABEL(12, 60, 296, 22, "")
+DO
+  e = WAITEVENT                 ' the control used; -1 = the window was closed
+  IF e = -1 THEN END
+  IF e = go THEN SETTEXT res, STR$(VAL(GETTEXT$(c)) * 9 / 5 + 32) + " F"
+LOOP
+```
+
+Controls: `BUTTON`, `LABEL`, `TEXTBOX`, `CHECKBOX`, `LISTBOX`, `DROPDOWN` (items `"a|b|c"`),
+`PROGRESS`, `SLIDER`; `SETTEXT` / `GETTEXT$`, `SETVALUE` / `VALUE`, `WAITEVENT` / `EVENT`.
+System: `NOTIFY`, `MSGBOX`, `CLIPBOARD$` / `SETCLIPBOARD`, `OPENFILE$` / `SAVEFILE$` (the file
+dialogs), `EXEC`, `LAUNCH`, `DRAWTEXT`, `MOUSEX` / `MOUSEY` / `MOUSEB`, `PAUSE ms`.
+
+### Apps written in BASIC
+
+An app bundle may contain **`main.bas` instead of `main`**: `SD:/apps/<name>.app/main.bas`
+(+ `app.txt`, `icon.bmp`). It is listed and launched like any app — the kernel runs it with
+`SD:/bin/basic`. **File ▸ Make App...** in the editor creates one from the current program
+(it asks for the folder name and the title). Example: **BASIC Demo** (`basicdemo`).
+
+## 14. Troubleshooting
 
 - **Nothing on screen / it freezes at boot.** Check that **all** the files from `sdcard/`
   are at the root of a **FAT32** card, that `config.txt` correctly targets `[pi4]` and that
