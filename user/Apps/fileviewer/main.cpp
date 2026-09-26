@@ -27,7 +27,7 @@
 #include "notify.h"
 #include "fileassoc.h"
 #include "shelfmsg.h"
-#include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (built with FP)
+#include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libwtk)
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -257,12 +257,12 @@ static void preview_build (void)
 	if (e->size == 0) { g_pvKind = PV_EMPTY; return; }
 	if (img_is_image_name (e->name))
 	{
-		// First frame only; the pixels are umm memory like new[] (freed by delete []).
+		// First frame only (new unsigned[], freed by delete [] like the BMP icons).
 		ImgFrames im;
 		if (img_load (path, &im))
 		{
 			g_pvImg = im.px[0]; g_pvW = im.w; g_pvH = im.h; g_pvFormat = im.format;
-			for (int i = 1; i < im.n; i++) umm_free (im.px[i]);
+			for (int i = 1; i < im.n; i++) delete [] im.px[i];
 		}
 		g_pvKind = g_pvImg ? PV_IMAGE : PV_BINARY;
 		return;

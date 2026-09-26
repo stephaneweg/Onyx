@@ -7,9 +7,10 @@ apps (freestanding, umm heap): **BMP, GIF (all frames + delays), PNG, JPEG** via
 `stb_image.h` (v2.30, public domain, vendored here), **WebP** (lossy + lossless) via
 `simplewebp.h` (BSD-3, derived from libwebp, vendored here — licence at the end of the
 file) and **PCX** (1/2/4/8-bit paletted and 24-bit) via our own decoder. It supplies the
-few C symbols the codecs need (`malloc`/`free`/… on umm, `memcmp`, `abs`). Include it in
-one translation unit and list the app in `IMG_APPS` in `../Makefile` (the codecs use
-floating point: those apps are built with FP/SIMD). Used by `imageview` and the File
+few C symbols the codecs need (`malloc`/`free`/…, `memcmp`, `abs`). Include it in
+an app and call it; the implementation is compiled once into `libwtk.a`
+(`../wtk/imgload.cpp`, with FP/SIMD — the codecs use floating point) and only linked into
+the apps that use it. All its memory comes from the app's `operator new[]`. Used by `imageview` and the File
 Viewer's preview. Host-tested (PNG/RGBA PNG/JPEG/BMP/PCX ×3/animated GIF/WebP lossy +
 lossless) with `-DIMG_HOST_TEST`.
 

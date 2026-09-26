@@ -66,6 +66,7 @@ static inline void wk_draw_vscroll (Canvas &cv, int x, int y, int w, int trackH,
 }
 
 class Widget;
+class RadioButton;
 typedef void (*Action) (Widget &);		// fired on click/toggle/change; gets the widget
 
 // Anchors (WinForms-style): which parent edges a child keeps a constant distance to as
@@ -97,6 +98,7 @@ public:
 	bool	 hasFocus, canFocus, catchOutside;
 	bool	 modal;				// a modal child captures ALL of the parent's input
 	bool	 disabled, hover, pressed;	// interaction state (widgets use these)
+	const char *tip;			// tooltip text (0 = none): Root shows it after a hover pause
 
 	Widget	*parent, *firstChild, *lastChild, *prevSib, *nextSib;
 	Widget	*prevHandled;			// last child that took the mouse (for mouse-leave)
@@ -129,6 +131,7 @@ public:
 	virtual void onDraw () {}					// paint own content into `canvas`
 	virtual bool onMouse (int, int, int, int, int, int) { return false; }
 	virtual bool onKey (long) { return false; }
+	virtual RadioButton *asRadio () { return 0; }	// (no RTTI) a RadioButton says so
 	// Reposition/resize children on resize / child add/remove. The DEFAULT applies the
 	// children's ANCHOR_* (passive resize); layout containers (Splitter, StackPanel,
 	// UniformGridLayout, TabHost) override with explicit placement. Never call directly.

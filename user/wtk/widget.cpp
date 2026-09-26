@@ -11,7 +11,7 @@ Widget::Widget (int l, int t, int w, int h)
     colSpan (1), rowSpan (1), anchor (ANCHOR_LEFT | ANCHOR_TOP), lytW (w), lytH (h),
     transparent (false), valid (false), shouldRedraw (true), hidden (false),
     hasFocus (false), canFocus (false), catchOutside (false), modal (false),
-    disabled (false), hover (false), pressed (false),
+    disabled (false), hover (false), pressed (false), tip (0),
     parent (0), firstChild (0), lastChild (0), prevSib (0), nextSib (0), prevHandled (0)
 { canvas.alloc (w, h); }
 

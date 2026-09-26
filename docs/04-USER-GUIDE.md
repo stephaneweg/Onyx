@@ -683,8 +683,13 @@ disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings 
 | **demoD** | Widget gallery (label, textbox, checkbox, button, slider, progress bar). |
 | **demoE** | Multi-line textarea + scrolling view with scrollbars. |
 | **demoF** | Small borderless launcher (buttons A–E that launch the other demos). |
+| **widgets** (Widget Showcase) | The WPF-style wtk controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The bottom line reports each event. |
 | **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
 | **spin** | Preemption test: a CPU hog that **never yields**. On a purely cooperative kernel it freezes the whole machine; with preemptive scheduling the rest of the UI (cursor, panel, other apps) stays responsive while it spins. It cannot be closed by its window (it never checks for the close) — **stop it from `taskman`**. |
+
+![Widget Showcase](../screenshots/widgets.png)
+*The Widget Showcase: group box + radio buttons, toggles, numeric up/down, list box, tree
+view (with a tooltip), image box, calendar, date picker and the colour button.*
 
 ## 13. Troubleshooting
 

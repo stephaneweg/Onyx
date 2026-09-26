@@ -251,6 +251,16 @@ def icon_imageview():		# a framed landscape photo: sky, sun, hills
     pframe(px, 4, 7, 35, 32, (120, 128, 140))
     return px
 
+def icon_widgets():		# a mini form: radio dots, a toggle, a list
+    px = blank()
+    prect(px, 3, 5, 36, 34, (28, 35, 44)); pframe(px, 3, 5, 36, 34, (72, 88, 112))
+    pdisc(px, 9, 11, 3, (86, 96, 116)); pdisc(px, 9, 11, 1, (96, 255, 144))
+    pdisc(px, 9, 19, 3, (86, 96, 116))
+    prect(px, 15, 10, 30, 11, (224, 230, 238)); prect(px, 15, 18, 27, 19, (224, 230, 238))
+    prect(px, 6, 25, 17, 30, (64, 160, 96)); pdisc(px, 15, 27, 2, (240, 240, 240))
+    prect(px, 21, 24, 33, 31, (20, 26, 34)); prect(px, 22, 26, 32, 27, (53, 80, 112))
+    return px
+
 def icon_eyes():		# two googly eyes
     px = blank()
     pdisc(px, 14, 20, 9, (255, 255, 255)); pdisc(px, 16, 22, 3, (24, 24, 32))
@@ -394,7 +404,7 @@ ICONS = {
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
-    "notifyd": icon_notifyd, "shelf": icon_shelf, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
+    "notifyd": icon_notifyd, "shelf": icon_shelf, "widgets": icon_widgets, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
 }
 
 

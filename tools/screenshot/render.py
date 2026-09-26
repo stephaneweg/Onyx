@@ -417,6 +417,90 @@ def app_imageview():	# Apps/imageview onDraw: a 1024x768 picture fitted, status 
     cv.text(8, VH + (ST_H - FH) // 2, "sunset.png   1024 x 768   PNG   %d%% (fit)   3/12" % s, C(0xE0E6EE))
     return cv
 
+def app_widgets():	# Apps/widgets: the P5 controls (radio/groupbox, toggles, numeric, list, tree, calendar...)
+    W, H = 660, 440
+    BG, FACE, FACE_HI, BORDER, FIELD, ACC, TXT = 0x202830, 0x566074, 0x697690, 0x161C24, 0x141A22, 0x60FF90, 0xFFFFFF
+    cv = Canvas(W, H, C(BG))
+    def disc(cx, cy, r, c): cv.d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=C(c) + (255,))
+    # GroupBox + radios
+    cv.frame(10, 8 + FH // 2, 200, 104 - FH // 2, C(0x485870)); cv.fill(18, 8, 4 * FW + 8, FH, C(BG)); cv.text(22, 8, "Size", C(TXT))
+    for i, (t, on) in enumerate([("Small", False), ("Medium", True), ("Large", False)]):
+        y = 8 + 22 + i * 24 + 11; r = FH // 2 - 1
+        disc(22 + r + 1, y, r + 1, BORDER); disc(22 + r + 1, y, r, FACE)
+        if on: disc(22 + r + 1, y, r // 2, ACC)
+        cv.text(22 + 2 * r + 7, y - FH // 2, t, C(TXT))
+    # toggles
+    for i, (t, on) in enumerate([("Wi-Fi", True), ("Dark mode", False)]):
+        y = 122 + i * 28; ph = FH; pw = 2 * FH; py = y + (24 - ph) // 2; r = ph // 2
+        track = 0x40A060 if on else 0x404A5A
+        disc(10 + r, py + r, r, track); disc(10 + pw - r - 1, py + r, r, track); cv.fill(10 + r, py, pw - 2 * r, ph + 1, C(track))
+        disc(10 + (pw - r - 1 if on else r), py + r, r - 2, 0xE0E6EE)
+        cv.text(10 + pw + 6, y + (24 - FH) // 2, t, C(TXT))
+    # numeric
+    cv.text(10, 186 + (20 - FH) // 2, "Quantity", C(TXT))
+    cv.fill(100, 182, 110, 26, C(FIELD)); cv.frame(100, 182, 110, 26, C(BORDER))
+    cv.text(100 + 110 - 16 - 6 - FW, 182 + (26 - FH) // 2, "3", C(TXT))
+    cv.fill(194, 183, 15, 12, C(FACE)); cv.fill(194, 195, 15, 12, C(FACE)); cv.fill(194, 195, 15, 1, C(BORDER))
+    for i in range(4):
+        cv.fill(194 + 8 - i - 1, 183 + 4 + i, 2 * i + 1, 1, C(TXT)); cv.fill(194 + 8 - i - 1, 195 + 8 - i, 2 * i + 1, 1, C(TXT))
+    # listbox
+    RH = FH + 4
+    cv.fill(10, 218, 200, 176, C(FIELD))
+    fr = ["Apple", "Apricot", "Banana", "Blueberry", "Cherry", "Grape", "Kiwi", "Lemon"]
+    for i, t in enumerate(fr[:(176 - 4) // RH]):
+        y = 220 + i * RH
+        if i == 2: cv.fill(12, y, 200 - 4 - 10, RH, C(0x3A4452))
+        cv.text(16, y + 2, t, C(0xE0E6EE))
+    cv.fill(199, 219, 10, 174, C(FIELD)); cv.fill(200, 219, 8, 174 * 8 // 16, C(FACE)); cv.frame(10, 218, 200, 176, C(BORDER))
+    # treeview
+    cv.fill(220, 8, 220, 240, C(FIELD))
+    nodes = [(0, "SD:", True, True), (1, "apps", True, False), (1, "etc", True, True), (2, "autostart", False, False),
+             (2, "fileassoc.ini", False, False), (2, "shelf.ini", False, False), (1, "bin", True, False)]
+    for i, (dep, t, kids, op) in enumerate(nodes):
+        y = 10 + i * RH; x = 224 + dep * 16
+        if i == 4: cv.fill(222, y, 216, RH, C(0x355070))
+        if kids:
+            by = y + (RH - 9) // 2; cv.frame(x, by, 9, 9, C(0x8A96A8)); cv.fill(x + 2, by + 4, 5, 1, C(0xE0E6EE))
+            if not op: cv.fill(x + 4, by + 2, 1, 5, C(0xE0E6EE))
+        cv.text(x + 14, y + 2, t, C(0xE0E6EE))
+    cv.frame(220, 8, 220, 240, C(ACC))
+    # imagebox (the imageview icon, scaled)
+    cv.fill(220, 258, 220, 136, C(0x141A22))
+    ip = os.path.join(SD, "apps", "imageview.app", "icon.bmp")
+    if os.path.exists(ip):
+        im = Image.open(ip).convert("RGB").resize((136, 136), Image.NEAREST).convert("RGBA")
+        px = im.load()
+        for yy in range(136):
+            for xx in range(136):
+                if px[xx, yy][:3] == MAGENTA: px[xx, yy] = C(0x141A22) + (255,)
+        cv.img.alpha_composite(im, (220 + (220 - 136) // 2, 258))
+    # calendar (September 2026, 26 selected / today)
+    CW, CH, HD = 28, 20, 24; cx0, cy0 = 452, 8; CWd = 7 * CW + 2; CHt = HD + 18 + 6 * CH + 4
+    cv.fill(cx0, cy0, CWd, CHt, C(0x1C232C)); cv.frame(cx0, cy0, CWd, CHt, C(0x485870))
+    cv.fill(cx0 + 1, cy0 + 1, CWd - 2, HD - 1, C(0x303D4D))
+    cv.text(cx0 + 8, cy0 + (HD - FH) // 2, "<", C(TXT)); cv.text(cx0 + CWd - 8 - FW, cy0 + (HD - FH) // 2, ">", C(TXT))
+    t = "September 2026"; cv.text(cx0 + (CWd - len(t) * FW) // 2, cy0 + (HD - FH) // 2, t, C(TXT))
+    for i, d in enumerate(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]):
+        cv.text(cx0 + 1 + i * CW + (CW - 2 * FW) // 2, cy0 + HD + 1, d, C(0xE0A070 if i >= 5 else 0x8A96A8))
+    first = 1   # 1 Sep 2026 = Tuesday
+    for d in range(1, 31):
+        cell = first + d - 1; x = cx0 + 1 + (cell % 7) * CW; y = cy0 + HD + 18 + (cell // 7) * CH
+        if d == 26: cv.fill(x + 1, y, CW - 2, CH - 1, C(0x355070)); cv.frame(x + 1, y, CW - 2, CH - 1, C(ACC))
+        cv.text(x + (CW - 2 * FW) // 2, y + (CH - FH) // 2, ("%2d" % d), C(0xE0A070 if cell % 7 >= 5 else TXT))
+    # date picker, colour button + swatch
+    cv.text(452, 182 + (20 - FH) // 2, "Date", C(TXT))
+    cv.fill(452, 204, CWd, 26, C(FIELD)); cv.frame(452, 204, CWd, 26, C(BORDER)); cv.text(458, 204 + (26 - FH) // 2, "2026-09-26", C(TXT))
+    bx = 452 + CWd - 22; cv.fill(bx, 208, 16, 18, C(FACE)); cv.fill(bx, 208, 16, 3, C(0xE05050))
+    for i in range(3): cv.fill(bx + 3 + i * 4, 214, 2, 2, C(TXT))
+    button(cv, 452, 246, 120, 28, "Colour...")
+    cv.fill(582, 246, 68, 28, C(0x4080E0))
+    # tooltip over the tree + status line
+    tip = "TreeView: [+]/[-], double-click, Left/Right"
+    tx, ty = 300, 120; tw = len(tip) * FW + 10
+    cv.fill(tx, ty, tw, FH + 6, C(0xFFF6C8)); cv.frame(tx, ty, tw, FH + 6, C(0x605030)); cv.text(tx + 5, ty + 3, tip, C(0x202020))
+    cv.text(10, H - 32 + (22 - FH) // 2, "Node: fileassoc.ini", C(ACC))
+    return cv
+
 def app_taskman():
     W, H, LISTY = 340, 300, 30; cv = Canvas(W, H, C(0x202830))
     cv.fill(0, 0, W, LISTY - 2, C(0x303D4D))
@@ -1116,7 +1200,8 @@ if __name__ == "__main__":
         ("mandelbrot","fractal",app_fractal), ("tinycalc","tinycalc",app_tinycalc),
         ("tinypad","tinypad",app_tinypad), ("calendar","calendar",app_calendar),
         ("config","config",app_config), ("theme","theme",app_theme),
-        ("paint","paint",app_paint), ("imageview","Image Viewer",app_imageview), ("taskman","taskman",app_taskman),
+        ("paint","paint",app_paint), ("imageview","Image Viewer",app_imageview),
+        ("widgets","Widget Showcase",app_widgets), ("taskman","taskman",app_taskman),
         ("2048","2048",app_2048), ("minesweeper","minesweeper",app_minesweeper),
         ("eyes","eyes",app_eyes), ("inidemo","inidemo",app_inidemo),
         ("irc","irc",app_irc), ("memmon","memmon",app_memmon),

@@ -33,7 +33,16 @@ public:
 
 	static Root *current ();		// the active window (for modal dialogs)
 
+	// Tooltips (Widget::tip): after the pointer rests ~0.6 s over a widget with a tip,
+	// a small box shows the text next to it; any pointer event hides it.
+	void tooltipTick ();
+	void tooltipHide ();
+
 private:
+	Widget  *m_tipBox;			// the shown tooltip (a child), or 0
+	int      m_mx, m_my;			// last pointer position (client coords)
+	unsigned m_moveT;			// ticks of the last pointer event
+	bool     m_tipDone;			// already shown for this rest
 	void init (unsigned *fb);		// shared ctor tail (adopt canvas + decorate + register)
 	static Root *&active ();		// single active window per app (reachable from C callbacks)
 	static void ptrEvent (unsigned long, int ev, long v);

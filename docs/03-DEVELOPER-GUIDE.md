@@ -245,11 +245,25 @@ Notes / caveats:
 > **Images**: `#include "img/imgload.hpp"` (in one TU) — `img_load (path, &frames)` decodes
 > BMP / GIF (all frames + delays) / PNG / JPEG (stb_image, public domain), WebP
 > (simplewebp, BSD-3) and PCX (our decoder) into `0xAARRGGBB` frames from the app's umm
-> heap; `img_free (&frames)`; `img_is_image_name (name)`. The codecs use floating point,
-> so add the app to **`IMG_APPS`** in `user/Makefile` (built with FP/SIMD like
-> `wtk/canvas.o`). Users: `imageview`, `fileviewer` (preview).
+> heap (`new unsigned[]` frames); `img_free (&frames)`; `img_is_image_name (name)`. The
+> codecs are compiled once into `libwtk.a` (`wtk/imgload.cpp`, with FP/SIMD like
+> `wtk/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
+> `fileviewer` (preview), `wtk::ImageBox`.
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
+> **WPF-style controls (P5)** — all in `wtk/wtk.h`, see `user/Apps/widgets` for each in use:
+> `RadioButton (l, t, w, h, text, group, checked, cb)` — exclusive per `group` among its
+> siblings (`wk_radio_checked (parent, group)`); `GroupBox (l, t, w, h, title)` — a titled
+> frame, add controls as its children; `ToggleSwitch (…, text, on, cb)`;
+> `NumericUpDown (…, min, max, value, step, cb)` — arrows, wheel, Up/Down, typed digits;
+> `ListBox (…, onSelect, onActivate)` — `add`, `clear`, `item (i)`, `sel`, `setSel`;
+> `TreeView (…, onSelect, onActivate)` — `add (parent, label)` → id, `expand`, `sel`,
+> `label (id)`, `setUserData`; `Calendar (l, t, y, m, d, cb)` (size `CAL_W`×`CAL_H`) and
+> `DatePicker (…, y, m, d, cb)` (`format (buf)` → `YYYY-MM-DD`); `ImageBox (…, IMG_FIT /
+> IMG_FILL / IMG_NONE)` — `load (path)` (any `imgload` format) or `setPixels`;
+> `wk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
+> **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
+> ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
 > a spawned process or a timer there. **`ask.h`**: `ask_begin (title, msg, yes, no)` opens
 > the system Yes / No window (`apps/ask`) without blocking; `ask_poll (h)` returns -1 while

@@ -57,10 +57,28 @@ public:
 	void getResult (char *out, unsigned cap);		// dir + "/" + filename
 };
 
+// Colour dialog (WPF-style ColorPicker dialog): R / G / B sliders, a 16-colour palette,
+// a preview (old | new) and the hex value; OK / Enter keeps it, Cancel / Esc does not.
+class ColorDialog : public Modal
+{
+public:
+	unsigned color, orig;
+	ColorDialog (unsigned initial, const char *title);
+	void onButton (int tag) override { close (tag); }
+	bool onKey (long k) override;
+	void onDraw () override;
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	void syncSliders ();
+	class Slider *r, *g, *b;
+private:
+	const char *m_title;
+};
+
 // Convenience: spin a one-shot dialog and return its outcome.
 int  wk_messagebox (const char *title, const char *text, int buttons);
 bool wk_file_open (char *out, unsigned cap, const char *startDir);
 bool wk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);
+bool wk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 
 } // namespace wtk
 

@@ -9,24 +9,69 @@
 //   if (img_load ("SD:/pics/cat.png", &im)) { ... im.px[f] = w*h pixels, im.delay[f] ms ... }
 //   img_free (&im);
 //
-// Pixels are 0xAARRGGBB (A = 255 opaque). Memory comes from the app's umm heap. Include it
-// in ONE translation unit (it carries the codec implementations), and build that app with
-// FP/SIMD enabled (the codecs use floating point here and there) -- see user/Makefile
-// (IMG_APPS: imageview, fileviewer).
+// Pixels are 0xAARRGGBB (A = 255 opaque). The frames are allocated with new unsigned[]
+// (the app's heap), so an app may also keep one and release it with delete []. The codecs
+// are compiled ONCE into libwtk.a (wtk/imgload.cpp defines IMGLOAD_IMPLEMENTATION and is
+// built with FP/SIMD -- they use floating point): an app just includes this header, and
+// only the apps that call img_load link the codecs in. Their scratch memory also comes
+// from operator new[] (resolved in the app, like the rest of wtk) -- never from a private
+// umm heap, which would be a second heap inside the library.
 //
 #ifndef ONYX_IMGLOAD_HPP
 #define ONYX_IMGLOAD_HPP
 
-#include "kapi.h"
-#include "umm.h"
+#define IMG_MAX_FRAMES	64			// animated GIF: frames kept
+#define IMG_MAX_BYTES	(24u * 1024 * 1024)	// refuse bigger files
 
-// ---- the C allocation / string symbols the codecs reference (no libc linked) ----------
+struct ImgFrames
+{
+	int w, h, n;				// size, frame count (1 for a still image)
+	unsigned *px[IMG_MAX_FRAMES];		// n frames of w*h 0xAARRGGBB (new unsigned[])
+	int delay[IMG_MAX_FRAMES];		// per-frame delay, ms (GIF; 0 = still)
+	const char *format;			// "PNG", "JPEG", ...
+};
+
+void img_free (ImgFrames *im);			// delete [] the frames
+bool img_load (const char *path, ImgFrames *im);	// false: unreadable / unknown format
+bool img_is_image_name (const char *name);	// by extension (bmp gif png jpg jpeg jpe pcx webp)
+
+#ifdef IMGLOAD_IMPLEMENTATION
+
+#include "kapi.h"
+
+// ---- scratch memory for the codecs: operator new[] with a size prefix (for realloc) ----
+static void *img_alloc (unsigned long n)
+{
+	unsigned char *p = new unsigned char[n + 16];
+	if (p == 0) return 0;
+	*(unsigned long *) p = n;
+	return p + 16;
+}
+static void img_dealloc (void *p) { if (p) delete [] ((unsigned char *) p - 16); }
+static void *img_realloc (void *p, unsigned long n)
+{
+	if (p == 0) return img_alloc (n);
+	unsigned long old = *(unsigned long *) ((unsigned char *) p - 16);
+	void *q = img_alloc (n);
+	if (q == 0) return 0;
+	unsigned long c = old < n ? old : n;
+	for (unsigned long i = 0; i < c; i++) ((unsigned char *) q)[i] = ((unsigned char *) p)[i];
+	img_dealloc (p);
+	return q;
+}
+
+// The C symbols the codecs reference (no libc linked).
 #ifndef IMG_HOST_TEST			// (a host unit test links the real libc instead)
 extern "C" {
-__attribute__ ((weak)) void *malloc (unsigned long n) { return umm_malloc (n); }
-__attribute__ ((weak)) void  free (void *p) { umm_free (p); }
-__attribute__ ((weak)) void *calloc (unsigned long n, unsigned long s) { return umm_calloc (n, s); }
-__attribute__ ((weak)) void *realloc (void *p, unsigned long n) { return umm_realloc (p, n); }
+__attribute__ ((weak)) void *malloc (unsigned long n) { return img_alloc (n); }
+__attribute__ ((weak)) void  free (void *p) { img_dealloc (p); }
+__attribute__ ((weak)) void *calloc (unsigned long n, unsigned long s)
+{
+	unsigned char *p = (unsigned char *) img_alloc (n * s);
+	if (p) for (unsigned long i = 0; i < n * s; i++) p[i] = 0;
+	return p;
+}
+__attribute__ ((weak)) void *realloc (void *p, unsigned long n) { return img_realloc (p, n); }
 __attribute__ ((weak)) int memcmp (const void *a, const void *b, unsigned long n)
 {
 	const unsigned char *x = (const unsigned char *) a, *y = (const unsigned char *) b;
@@ -47,9 +92,9 @@ __attribute__ ((weak)) int abs (int v) { return v < 0 ? -v : v; }
 #define STBI_NO_THREAD_LOCALS
 #define STBI_NO_SIMD
 #define STBI_ASSERT(x)		((void) 0)
-#define STBI_MALLOC(n)		umm_malloc (n)
-#define STBI_REALLOC(p, n)	umm_realloc (p, n)
-#define STBI_FREE(p)		umm_free (p)
+#define STBI_MALLOC(n)		img_alloc (n)
+#define STBI_REALLOC(p, n)	img_realloc (p, n)
+#define STBI_FREE(p)		img_dealloc (p)
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
@@ -66,38 +111,27 @@ __attribute__ ((weak)) int abs (int v) { return v < 0 ? -v : v; }
 #include "simplewebp.h"
 #pragma GCC diagnostic pop
 
-#define IMG_MAX_FRAMES	64			// animated GIF: frames kept
-#define IMG_MAX_BYTES	(24u * 1024 * 1024)	// refuse bigger files
-
-struct ImgFrames
+void img_free (ImgFrames *im)
 {
-	int w, h, n;				// size, frame count (1 for a still image)
-	unsigned *px[IMG_MAX_FRAMES];		// n frames of w*h 0xAARRGGBB
-	int delay[IMG_MAX_FRAMES];		// per-frame delay, ms (GIF; 0 = still)
-	const char *format;			// "PNG", "JPEG", ...
-};
-
-static inline void img_free (ImgFrames *im)
-{
-	for (int i = 0; i < im->n; i++) umm_free (im->px[i]);
+	for (int i = 0; i < im->n; i++) delete [] im->px[i];
 	im->n = 0; im->w = im->h = 0;
 }
 
-// Whole file into a umm buffer (*len bytes), or 0.
-static inline unsigned char *img_read_file (const char *path, unsigned *len)
+// Whole file into an img_alloc buffer (*len bytes), or 0.
+static unsigned char *img_read_file (const char *path, unsigned *len)
 {
 	void *f = kapi_open (path);
 	if (f == 0) return 0;
 	unsigned cap = 64 * 1024, n = 0;
-	unsigned char *buf = (unsigned char *) umm_malloc (cap);
+	unsigned char *buf = (unsigned char *) img_alloc (cap);
 	for (;;)
 	{
 		if (buf == 0) { kapi_close (f); return 0; }
 		if (n == cap)
 		{
-			if (cap >= IMG_MAX_BYTES) { umm_free (buf); kapi_close (f); return 0; }
+			if (cap >= IMG_MAX_BYTES) { img_dealloc (buf); kapi_close (f); return 0; }
 			cap *= 2;
-			buf = (unsigned char *) umm_realloc (buf, cap);
+			buf = (unsigned char *) img_realloc (buf, cap);
 			continue;
 		}
 		int r = kapi_read (f, buf + n, cap - n);
@@ -109,19 +143,18 @@ static inline unsigned char *img_read_file (const char *path, unsigned *len)
 	return buf;
 }
 
-// stb_image's RGBA bytes -> 0xAARRGGBB (in place: same size).
-static inline void img_rgba_to_argb (unsigned char *p, int count)
+// RGBA bytes -> a new unsigned[] frame of 0xAARRGGBB.
+static unsigned *img_frame_from_rgba (const unsigned char *p, int count)
 {
-	unsigned *o = (unsigned *) p;
+	unsigned *o = new unsigned[count];
+	if (o == 0) return 0;
 	for (int i = 0; i < count; i++)
-	{
-		unsigned r = p[i * 4], g = p[i * 4 + 1], b = p[i * 4 + 2], a = p[i * 4 + 3];
-		o[i] = (a << 24) | (r << 16) | (g << 8) | b;
-	}
+		o[i] = ((unsigned) p[i * 4 + 3] << 24) | ((unsigned) p[i * 4] << 16) | ((unsigned) p[i * 4 + 1] << 8) | p[i * 4 + 2];
+	return o;
 }
 
 // ---- PCX (ZSoft): RLE scanlines of `planes` planes x `bpl` bytes ------------------------
-static inline unsigned *img_pcx (const unsigned char *d, unsigned len, int *pw, int *ph)
+static unsigned *img_pcx (const unsigned char *d, unsigned len, int *pw, int *ph)
 {
 	if (len < 128 || d[0] != 0x0A || d[2] != 1) return 0;
 	int bpp = d[3], planes = d[65], bpl = d[66] | (d[67] << 8);
@@ -129,14 +162,15 @@ static inline unsigned *img_pcx (const unsigned char *d, unsigned len, int *pw, 
 	int h = (d[10] | (d[11] << 8)) - (d[6] | (d[7] << 8)) + 1;
 	if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || bpl <= 0 || planes < 1 || planes > 4) return 0;
 	unsigned pal[256];
+	for (int i = 0; i < 256; i++) pal[i] = 0xFF000000u;
 	for (int i = 0; i < 16; i++) pal[i] = 0xFF000000u | (d[16 + i * 3] << 16) | (d[17 + i * 3] << 8) | d[18 + i * 3];
 	if (bpp == 8 && planes == 1 && len >= 769 && d[len - 769] == 0x0C)	// VGA palette at the end
 		for (int i = 0; i < 256; i++)
 			pal[i] = 0xFF000000u | (d[len - 768 + i * 3] << 16) | (d[len - 767 + i * 3] << 8) | d[len - 766 + i * 3];
 	if (bpp == 1 && planes == 1) { pal[0] = 0xFF000000u; pal[1] = 0xFFFFFFFFu; }
-	unsigned *out = (unsigned *) umm_malloc ((unsigned long) w * h * 4);
-	unsigned char *line = (unsigned char *) umm_malloc ((unsigned long) bpl * planes);
-	if (!out || !line) { umm_free (out); umm_free (line); return 0; }
+	unsigned *out = new unsigned[(unsigned long) w * h];
+	unsigned char *line = (unsigned char *) img_alloc ((unsigned long) bpl * planes);
+	if (!out || !line) { delete [] out; img_dealloc (line); return 0; }
 	unsigned pos = 128;
 	for (int y = 0; y < h; y++)
 	{
@@ -167,31 +201,32 @@ static inline unsigned *img_pcx (const unsigned char *d, unsigned len, int *pw, 
 			}
 		}
 	}
-	umm_free (line);
+	img_dealloc (line);
 	*pw = w; *ph = h;
 	return out;
 }
 
 // ---- WebP (simplewebp) -------------------------------------------------------------------
-static inline void *img__wa (void *, size_t n) { return umm_malloc (n); }
-static inline void  img__wf (void *, void *p) { umm_free (p); }
-static inline unsigned *img_webp (unsigned char *d, unsigned len, int *pw, int *ph)
+static void *img__wa (void *, size_t n) { return img_alloc (n); }
+static void  img__wf (void *, void *p) { img_dealloc (p); }
+static unsigned *img_webp (unsigned char *d, unsigned len, int *pw, int *ph)
 {
 	simplewebp_allocator al = { img__wa, img__wf, 0 };
 	simplewebp *wp = 0;
 	if (simplewebp_load_from_memory (d, len, &al, &wp) != SIMPLEWEBP_NO_ERROR) return 0;
 	size_t w = 0, h = 0;
 	simplewebp_get_dimensions (wp, &w, &h);
-	unsigned char *rgba = (unsigned char *) umm_malloc (w * h * 4);
+	unsigned char *rgba = (unsigned char *) img_alloc (w * h * 4);
 	if (rgba == 0 || simplewebp_decode (wp, rgba, 0) != SIMPLEWEBP_NO_ERROR)
-	{ umm_free (rgba); simplewebp_unload (wp); return 0; }
+	{ img_dealloc (rgba); simplewebp_unload (wp); return 0; }
 	simplewebp_unload (wp);
-	img_rgba_to_argb (rgba, (int) (w * h));
+	unsigned *px = img_frame_from_rgba (rgba, (int) (w * h));
+	img_dealloc (rgba);
 	*pw = (int) w; *ph = (int) h;
-	return (unsigned *) rgba;
+	return px;
 }
 
-static inline bool img_load (const char *path, ImgFrames *im)
+bool img_load (const char *path, ImgFrames *im)
 {
 	im->n = 0; im->w = im->h = 0; im->format = "?";
 	unsigned len = 0;
@@ -204,7 +239,7 @@ static inline bool img_load (const char *path, ImgFrames *im)
 	else if (len >= 6 && d[0] == 'G' && d[1] == 'I' && d[2] == 'F')
 	{
 		im->format = "GIF";
-		int *delays = 0, z = 0, comp = 0, frames = 0;
+		int *delays = 0, comp = 0, frames = 0;
 		stbi_uc *all = stbi_load_gif_from_memory (d, (int) len, &delays, &w, &h, &frames, &comp, 4);
 		if (all)
 		{
@@ -212,10 +247,8 @@ static inline bool img_load (const char *path, ImgFrames *im)
 			unsigned long fs = (unsigned long) w * h * 4;
 			for (int i = 0; i < n; i++)
 			{
-				unsigned *f = (unsigned *) umm_malloc (fs);
+				unsigned *f = img_frame_from_rgba (all + i * fs, w * h);
 				if (!f) break;
-				for (unsigned long k = 0; k < fs; k++) ((unsigned char *) f)[k] = all[i * fs + k];
-				img_rgba_to_argb ((unsigned char *) f, w * h);
 				im->px[im->n] = f;
 				im->delay[im->n] = delays ? delays[i] : 0;
 				if (frames > 1 && im->delay[im->n] < 20) im->delay[im->n] = 100;	// 0 = "as fast as possible"
@@ -223,9 +256,8 @@ static inline bool img_load (const char *path, ImgFrames *im)
 			}
 			stbi_image_free (all);
 			if (delays) STBI_FREE (delays);
-			(void) z;
 		}
-		umm_free (d);
+		img_dealloc (d);
 		im->w = w; im->h = h;
 		return im->n > 0;
 	}
@@ -237,16 +269,15 @@ static inline bool img_load (const char *path, ImgFrames *im)
 		im->format = (d[0] == 0x89 && d[1] == 'P') ? "PNG" : (d[0] == 0xFF && d[1] == 0xD8) ? "JPEG"
 			   : (d[0] == 'B' && d[1] == 'M') ? "BMP" : "?";
 		stbi_uc *rgba = stbi_load_from_memory (d, (int) len, &w, &h, &comp, 4);
-		if (rgba) { img_rgba_to_argb (rgba, w * h); px = (unsigned *) rgba; }
+		if (rgba) { px = img_frame_from_rgba (rgba, w * h); stbi_image_free (rgba); }
 	}
-	umm_free (d);
+	img_dealloc (d);
 	if (px == 0) return false;
 	im->px[0] = px; im->delay[0] = 0; im->n = 1; im->w = w; im->h = h;
 	return true;
 }
 
-// Is this file name an image we can load (by extension)?
-static inline bool img_is_image_name (const char *n)
+bool img_is_image_name (const char *n)
 {
 	static const char *ext[] = { "bmp", "gif", "png", "jpg", "jpeg", "jpe", "pcx", "webp", 0 };
 	int len = 0; while (n[len]) len++;
@@ -264,5 +295,7 @@ static inline bool img_is_image_name (const char *n)
 	}
 	return false;
 }
+
+#endif // IMGLOAD_IMPLEMENTATION
 
 #endif

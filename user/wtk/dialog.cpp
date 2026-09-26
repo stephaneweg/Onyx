@@ -8,6 +8,7 @@
 #include "wtk/dialog.h"
 #include "wtk/root.h"
 #include "wtk/button.h"
+#include "wtk/slider.h"
 #include "kapi.h"		// MB_*, KEY_*, kapi_present, kapi_opendir/readdir
 #include "applib.h"		// should_exit, pump_events, msleep
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
@@ -240,5 +241,98 @@ bool wk_file_open (char *out, unsigned cap, const char *startDir)
 
 bool wk_file_save (char *out, unsigned cap, const char *startDir, const char *defName)
 { FileDialog d (startDir, defName, true); if (d.run () == 1) { d.getResult (out, cap); return true; } return false; }
+
+// ---- ColorDialog ---------------------------------------------------------------------------
+static const unsigned CD_PAL[16] = {
+	0x00000000, 0x00808080, 0x00C0C0C0, 0x00FFFFFF, 0x00800000, 0x00FF0000, 0x00FF8000, 0x00FFFF00,
+	0x00008000, 0x0000FF00, 0x00008080, 0x0000FFFF, 0x00000080, 0x000000FF, 0x00800080, 0x00FF00FF };
+enum { CD_W = 360, CD_H = 236, CD_SX = 44, CD_SW = 170, CD_PY = 132, CD_PC = 20 };
+
+static void cd_slide (Widget &w)
+{
+	ColorDialog *d = (ColorDialog *) w.parent;
+	d->color = ((unsigned) d->r->value << 16) | ((unsigned) d->g->value << 8) | (unsigned) d->b->value;
+	d->invalidate (true);
+}
+
+ColorDialog::ColorDialog (unsigned initial, const char *title)
+  : Modal (CD_W, CD_H), color (initial & 0xFFFFFF), orig (initial & 0xFFFFFF), m_title (title)
+{
+	Root *rt = Root::current ();
+	int W = rt ? rt->width : width, H = rt ? rt->height : height;
+	left = (W - width) / 2; top = (H - height) / 2;
+	int fh = wk_fh ();
+	r = new Slider (CD_SX, 30,           CD_SW, fh + 6, 0, 255, (color >> 16) & 255, cd_slide, C_FACE_DN); addChild (r);
+	g = new Slider (CD_SX, 30 + fh + 12, CD_SW, fh + 6, 0, 255, (color >> 8) & 255,  cd_slide, C_FACE_DN); addChild (g);
+	b = new Slider (CD_SX, 30 + 2 * (fh + 12), CD_SW, fh + 6, 0, 255, color & 255,  cd_slide, C_FACE_DN); addChild (b);
+	Button *bt;
+	bt = new Button (width - 180, height - 38, 82, 28, "OK",     dlg_btn); bt->tag = 1; addChild (bt);
+	bt = new Button (width - 92,  height - 38, 82, 28, "Cancel", dlg_btn); bt->tag = 0; addChild (bt);
+}
+
+void ColorDialog::syncSliders ()
+{
+	r->value = (color >> 16) & 255; g->value = (color >> 8) & 255; b->value = color & 255;
+	r->invalidate (true); g->invalidate (true); b->invalidate (true);
+}
+
+void ColorDialog::onDraw ()
+{
+	int fh = wk_fh ();
+	canvas.clear (C_FACE_DN);
+	canvas.frameRect (0, 0, width, height, C_ACCENT);
+	canvas.text (10, 6, m_title, C_TEXT);
+	const char *lab[3] = { "R", "G", "B" };
+	for (int i = 0; i < 3; i++)
+	{
+		int y = 30 + i * (fh + 12) + 3;
+		canvas.text (20, y, lab[i], C_TEXT);
+		int v = i == 0 ? (color >> 16) & 255 : i == 1 ? (color >> 8) & 255 : color & 255;
+		char n[4] = { (char) ('0' + v / 100), (char) ('0' + v / 10 % 10), (char) ('0' + v % 10), 0 };
+		canvas.text (CD_SX + CD_SW + 8, y, n, C_TEXT);
+	}
+	int px = CD_SX + CD_SW + 44, pw = width - px - 12, ph = 3 * (fh + 12) - 6;	// preview: old | new
+	canvas.fillRect (px, 30, pw / 2, ph, orig);
+	canvas.fillRect (px + pw / 2, 30, pw - pw / 2, ph, color);
+	canvas.frameRect (px, 30, pw, ph, C_BORDER);
+	static const char *HX = "0123456789ABCDEF";
+	char hex[8] = { '#', HX[(color >> 20) & 15], HX[(color >> 16) & 15], HX[(color >> 12) & 15],
+			HX[(color >> 8) & 15], HX[(color >> 4) & 15], HX[color & 15], 0 };
+	canvas.text (px, 30 + ph + 4, hex, C_TEXT);
+	for (int i = 0; i < 16; i++)				// the palette
+	{
+		int x = 20 + (i % 8) * (CD_PC + 4), y = CD_PY + 8 + (i / 8) * (CD_PC + 4);
+		canvas.fillRect (x, y, CD_PC, CD_PC, CD_PAL[i]);
+		canvas.frameRect (x - 1, y - 1, CD_PC + 2, CD_PC + 2, CD_PAL[i] == color ? C_ACCENT : C_BORDER);
+	}
+}
+
+bool ColorDialog::onMouse (int mx, int my, int bl, int, int, int)
+{
+	if (mx < 0 || !bl || pressed) { if (!bl) pressed = false; return true; }
+	pressed = true;
+	for (int i = 0; i < 16; i++)
+	{
+		int x = 20 + (i % 8) * (CD_PC + 4), y = CD_PY + 8 + (i / 8) * (CD_PC + 4);
+		if (mx >= x && mx < x + CD_PC && my >= y && my < y + CD_PC)
+		{ color = CD_PAL[i]; syncSliders (); invalidate (true); break; }
+	}
+	return true;
+}
+
+bool ColorDialog::onKey (long k)
+{
+	if (k == KEY_ENTER) { close (1); return true; }
+	if (k == 27)        { close (0); return true; }
+	return false;
+}
+
+bool wk_color_dialog (unsigned *color, const char *title)
+{
+	ColorDialog d (color ? *color : 0, title);
+	if (!d.run ()) return false;
+	if (color) *color = d.color;
+	return true;
+}
 
 } // namespace wtk

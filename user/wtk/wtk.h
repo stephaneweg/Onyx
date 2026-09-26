@@ -37,5 +37,13 @@
 #include "wtk/root.h"
 #include "wtk/dialog.h"
 #include "wtk/menu.h"
+#include "wtk/radio.h"
+#include "wtk/groupbox.h"
+#include "wtk/toggle.h"
+#include "wtk/numeric.h"
+#include "wtk/listbox.h"
+#include "wtk/treeview.h"
+#include "wtk/calendar.h"
+#include "wtk/imagebox.h"
 
 #endif
