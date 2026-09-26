@@ -1208,21 +1208,45 @@ void *kapi_open (const char *pPath)
 // too. The caller's buffer stays valid: its address space is active again when it resumes.
 #define IO_CHUNK	(64 * 1024)
 
+// (Circle fork, addon/SDCard/emmc.cpp: where the SD data commands spend their time)
+extern unsigned long long g_ullEMMCWaitUs, g_ullEMMCCopyUs;
+extern unsigned g_nEMMCDataCmds;
+
 static FRESULT ChunkedRead (FIL *pFile, void *pBuf, unsigned nLen, UINT *pDone)
 {
 	u8 *p = (u8 *) pBuf;
 	*pDone = 0;
+	// A big read (>= 1 MB) logs where its time went: FatFs + the SD driver (waiting for
+	// the card / moving the data through the port) or the other tasks between the pieces.
+	CTimer *pTimer = CTimer::Get ();
+	unsigned nT0 = pTimer->GetClockTicks (), nReadUs = 0, nYieldUs = 0;
+	unsigned long long ullWait0 = g_ullEMMCWaitUs, ullCopy0 = g_ullEMMCCopyUs;
+	unsigned nCmds0 = g_nEMMCDataCmds, nTotal = nLen;
+	FRESULT Res = FR_OK;
 	while (nLen > 0)
 	{
 		unsigned k = nLen > IO_CHUNK ? IO_CHUNK : nLen;
 		UINT n = 0;
-		FRESULT Res = f_read (pFile, p, k, &n);
-		if (Res != FR_OK) return Res;
+		unsigned t = pTimer->GetClockTicks ();
+		Res = f_read (pFile, p, k, &n);
+		nReadUs += pTimer->GetClockTicks () - t;
+		if (Res != FR_OK) break;
 		*pDone += n; p += n; nLen -= n;
 		if (n < k) break;					// the end of the file
+		t = pTimer->GetClockTicks ();
 		if (nLen > 0 && CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
+		nYieldUs += pTimer->GetClockTicks () - t;
 	}
-	return FR_OK;
+	if (nTotal >= 1024 * 1024)
+	{
+		unsigned nAllUs = pTimer->GetClockTicks () - nT0;
+		CLogger::Get ()->Write ("fs", LogNotice,
+			"read %u KB in %u ms: f_read %u ms (SD: %u commands, waiting %u ms, data port %u ms), other tasks %u ms",
+			*pDone / 1024, nAllUs / 1000, nReadUs / 1000, g_nEMMCDataCmds - nCmds0,
+			(unsigned) ((g_ullEMMCWaitUs - ullWait0) / 1000), (unsigned) ((g_ullEMMCCopyUs - ullCopy0) / 1000),
+			nYieldUs / 1000);
+	}
+	return Res;
 }
 
 static FRESULT ChunkedWrite (FIL *pFile, const void *pBuf, unsigned nLen, UINT *pDone)
