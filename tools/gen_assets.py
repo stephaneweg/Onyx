@@ -559,6 +559,14 @@ def icon_gamelib():		# a shelf of game tiles
         prect(px, x0, y0, x0 + 13, y0 + 13, (50, 50, 56)); prect(px, x0 + 2, y0 + 2, x0 + 11, y0 + 9, c)
     return px
 
+def icon_gbaemu():		# a Game Boy Advance: wide purple body, screen in the middle
+    px = blank()
+    prect(px, 2, 11, 37, 29, (92, 72, 170)); pdisc(px, 6, 20, 8, (92, 72, 170)); pdisc(px, 33, 20, 8, (92, 72, 170))
+    prect(px, 11, 13, 28, 27, (40, 40, 56)); prect(px, 13, 15, 26, 25, (120, 190, 230))
+    prect(px, 4, 19, 8, 21, (30, 30, 40)); prect(px, 5, 18, 7, 22, (30, 30, 40))
+    pdisc(px, 34, 18, 1, (230, 230, 240)); pdisc(px, 31, 21, 1, (230, 230, 240))
+    return px
+
 def icon_padconf():		# a gamepad: d-pad and four face buttons
     px = blank()
     prect(px, 3, 12, 36, 29, (60, 64, 76)); pdisc(px, 8, 26, 6, (60, 64, 76)); pdisc(px, 31, 26, 6, (60, 64, 76))
@@ -582,7 +590,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "gbaemu": icon_gbaemu,
 }
 
 

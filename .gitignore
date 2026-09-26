@@ -71,6 +71,7 @@ tools/basc/basc
 # Game Boy ROMs, saves and the Game Library's thumbnails: the user's own, never committed
 sdcard/roms/**/*.gb
 sdcard/roms/**/*.gbc
+sdcard/roms/**/*.gba
 sdcard/roms/**/*.sav
 sdcard/apps/gamelib.app/thumbs/
 sdcard/apps/gamelib.app/config.ini

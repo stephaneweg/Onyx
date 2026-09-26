@@ -305,6 +305,19 @@ Notes / caveats:
 > **Host test**: `GB_TEST_ROMS=<unzipped c-sp game-boy-test-roms> sh tools/tests/run_gb_test.sh`
 > (Blargg cpu_instrs / instr_timing / halt_bug, dmg-acid2, cgb-acid2 pixel-exact);
 > `tools/tests/gb/gbtest.cpp <rom> <seconds> [out.ppm] ["t:mask,..."]` runs any ROM headless.
+> **Game Boy Advance core** (`user/gba/gba.h`, `gba/libgba.a`): `gba::Machine` — the same shape as
+> `gb::Machine` (`load`, `runFrame` → `fb` 240×160, `setButtons (gba::BTN_*)`, `setAudioRate`,
+> `audioRead`, `setSaveRam` / `save` / `saveSize` / `saveDirty` / `saveType`). The ARM7TDMI (ARM +
+> Thumb, the two prefetched opcodes kept: self-modifying code sees them), the memory map with
+> WAITCNT wait states and open bus, the frame loop driven by events (line phases, timer
+> overflows), DMA (immediate, V/H-blank, sound FIFO), 4 timers (cascade), the PPU a line at a
+> time (modes 0-5, affine, sprites, windows, blending, mosaic), the PSG + Direct Sound A / B, the
+> BIOS calls done in C++ (`gba_bios.cpp`: no BIOS image), SRAM / Flash 64-128 KB / EEPROM
+> (found from the ROM's library string). Used by `gbaemu` and `gamelib`. **Host test**:
+> `GBA_TEST_ROMS=<jsmolka gba-tests> sh tools/tests/run_gba_test.sh` (arm, thumb, memory, bios,
+> nes, unsafe, saves); `tools/tests/gba/gbatest.cpp <rom> <seconds> [out.ppm] [keys]` runs a
+> game headless (`GBA_SHOTS`, `GBA_AUDIO`, `GBA_SAVE`, `GBA_LOAD`, `GBA_REGS`; built with
+> `-DGBA_DEBUG`, `GBA_WATCH=<addr>` prints every write there).
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
@@ -627,7 +640,7 @@ SD:apps/<nom>.app/
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
 **`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
-`gb` / `gbc = SD:/apps/gbemu.app/main`):
+`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,

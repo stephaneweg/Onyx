@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -65,13 +65,20 @@ wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h wtk/libwtk.a basic/libbasic.a gb/libgb.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a -o $@
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
 	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
 gb/libgb.a: gb/gb.o
+	$(AR) rcs $@ $^
+
+# The Game Boy Advance emulator core (gba/: integer only, no libc), for gbaemu and the library.
+GBA_OBJS = gba/gba.o gba/gba_cpu.o gba/gba_bios.o gba/gba_ppu.o gba/gba_apu.o
+gba/%.o: gba/%.cpp gba/gba.h
+	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
+gba/libgba.a: $(GBA_OBJS)
 	$(AR) rcs $@ $^
 
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
@@ -90,5 +97,5 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
 
 clean:
-	rm -f *.elf *.o basic/*.o basic/*.a gb/*.o gb/*.a bin/basic.elf
+	rm -f *.elf *.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean

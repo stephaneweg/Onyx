@@ -1,13 +1,13 @@
 //
-// gamelib -- the Game Library: every Game Boy / Game Boy Color ROM of a folder (and its
+// gamelib -- the Game Library: every Game Boy / Color / Advance ROM of a folder (and its
 // sub-folders), a tile each -- a picture of its title screen and its name -- in a dark
 // grid, one section per system. Click a tile (or arrows + Enter) to play: the ROM opens
-// with its runner (SD:/etc/runners.ini: gbemu), in a window or, with View > Play Full
+// with its runner (SD:/etc/runners.ini: gbemu, gbaemu), in a window or, with View > Play Full
 // Screen, on the whole display. A USB gamepad works too: the d-pad, A / B / Start to play.
 //
 //   * The folder: SD:/roms by default; Library > Choose Folder... (kept in config.ini).
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
-//     user/gb) and its screen kept -- made in the background, a little every frame, and
+//     user/gb, user/gba) and its screen kept -- made in the background, a little every frame, and
 //     cached in SD:/apps/gamelib.app/thumbs/ (Library > Refresh finds new ROMs).
 //
 #include "kapi.h"
@@ -16,6 +16,7 @@
 #include "gamepad.h"
 #include "wtk/wtk.h"
 #include "gb/gb.h"
+#include "gba/gba.h"
 
 using namespace wtk;
 
@@ -29,7 +30,9 @@ using namespace wtk;
 #define MAXG	256
 #define THUMB_FRAMES	420		// ~7 s of game time: past the logos, on the title screen
 
-struct Game { char path[200]; char name[64]; char key[64]; bool color; unsigned *thumb; bool tried; };
+enum { SYS_GBA, SYS_GBC, SYS_GB, NSYS };			// the sections, in this order
+static const char *const SYS_NAME[NSYS] = { "Game Boy Advance", "Game Boy Color", "Game Boy" };
+struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
 static Game g_games[MAXG]; static int g_ng = 0;
 static char g_folder[200] = "SD:/roms";
 static bool g_full = false;
@@ -72,13 +75,13 @@ static void scan (const char *dir, int depth)
 		if (e.name[0] == '.') continue;
 		char p[200]; int n = 0; lx_cat (p, sizeof p, &n, dir); if (n && p[n - 1] != '/') lx_cat (p, sizeof p, &n, "/"); lx_cat (p, sizeof p, &n, e.name);
 		if (e.is_dir) { scan (p, depth + 1); continue; }
-		bool gbc = ends (e.name, ".gbc"), gbf = ends (e.name, ".gb");
-		if (!gbc && !gbf) continue;
+		bool gbc = ends (e.name, ".gbc"), gbf = ends (e.name, ".gb"), agb = ends (e.name, ".gba");
+		if (!gbc && !gbf && !agb) continue;
 		Game &g = g_games[g_ng++];
 		scpy (g.path, p, sizeof g.path);
 		nice_name (e.name, g.name, sizeof g.name);
 		scpy (g.key, e.name, sizeof g.key);
-		g.color = gbc; g.thumb = 0; g.tried = false;
+		g.sys = agb ? SYS_GBA : gbc ? SYS_GBC : SYS_GB; g.thumb = 0; g.tried = false;
 	}
 	kapi_closedir (d);
 }
@@ -87,11 +90,11 @@ static void rescan (void)
 	for (int i = 0; i < g_ng; i++) delete [] g_games[i].thumb;
 	g_ng = 0;
 	scan (g_folder, 0);
-	// Game Boy Color first, then by name
+	// by system (Advance, Color, Game Boy), then by name
 	for (int i = 1; i < g_ng; i++)
 	{
 		Game t = g_games[i]; int j = i;
-		while (j > 0 && (g_games[j - 1].color < t.color || (g_games[j - 1].color == t.color && ci_less (t.name, g_games[j - 1].name)))) { g_games[j] = g_games[j - 1]; j--; }
+		while (j > 0 && (g_games[j - 1].sys > t.sys || (g_games[j - 1].sys == t.sys && ci_less (t.name, g_games[j - 1].name)))) { g_games[j] = g_games[j - 1]; j--; }
 		g_games[j] = t;
 	}
 	g_sel = 0; g_scroll = 0;
@@ -122,8 +125,11 @@ static void thumb_save (const Game &g)
 	kapi_save_file (p, (const char *) b, sizeof b);
 }
 
-// The picture being made: one game at a time, some frames per call.
-static gb::Machine *g_tm = 0; static unsigned char *g_trom = 0; static int g_tgame = -1, g_tframe = 0;
+// The picture being made: one game at a time -- its ROM read a piece per call (a GBA ROM is up
+// to 32 MB), then some frames run per call. A GBA screen (240 x 160) is shrunk to 160 x 107.
+static gb::Machine *g_tm = 0; static gba::Machine *g_tma = 0;
+static unsigned char *g_trom = 0; static unsigned g_tsize = 0, g_tread = 0; static void *g_tfile = 0;
+static int g_tgame = -1, g_tframe = 0; static bool g_tloaded = false;
 static void thumb_work (void)
 {
 	if (g_tgame < 0)
@@ -133,25 +139,53 @@ static void thumb_work (void)
 			{
 				g_games[i].tried = true;
 				if (thumb_load (g_games[i])) { g_root->invalidate (true); return; }
-				void *f = kapi_open (g_games[i].path); if (!f) return;
-				unsigned n = kapi_fsize (f);
-				delete [] g_trom; g_trom = new unsigned char[n + 1];
-				int r = kapi_read (f, g_trom, n); kapi_close (f);
-				if (!g_tm) { g_tm = new gb::Machine; g_tm->setAudioRate (8000); }
-				if (r <= 0 || !g_tm->load (g_trom, r)) return;
+				g_tfile = kapi_open (g_games[i].path); if (!g_tfile) return;
+				g_tsize = kapi_fsize (g_tfile);
+				if (g_tsize > 0x2000000) g_tsize = 0x2000000;
+				delete [] g_trom; g_trom = new unsigned char[g_tsize + 1];
+				g_tread = 0; g_tloaded = false;
 				g_tgame = i; g_tframe = 0;
+				g_root->invalidate (true);
 				return;
 			}
 		return;
 	}
+	Game &g = g_games[g_tgame];
+	if (!g_tloaded)						// a piece of the ROM
+	{
+		unsigned k = g_tsize - g_tread > 0x80000 ? 0x80000 : g_tsize - g_tread;
+		int got = k ? kapi_read (g_tfile, g_trom + g_tread, k) : 0;
+		if (got > 0) g_tread += (unsigned) got;
+		if (got > 0 && g_tread < g_tsize) return;
+		kapi_close (g_tfile); g_tfile = 0;
+		bool ok;
+		if (g.sys == SYS_GBA) { if (!g_tma) { g_tma = new gba::Machine; g_tma->setAudioRate (8000); } ok = g_tma->load (g_trom, (int) g_tread); }
+		else { if (!g_tm) { g_tm = new gb::Machine; g_tm->setAudioRate (8000); } ok = g_tm->load (g_trom, (int) g_tread); }
+		if (!ok) { g_tgame = -1; return; }
+		g_tloaded = true;
+		return;
+	}
 	static short pcm[4096];
-	for (int k = 0; k < 12 && g_tframe < THUMB_FRAMES; k++, g_tframe++) { g_tm->runFrame (); g_tm->audioRead (pcm, 2048); }
+	int per = g.sys == SYS_GBA ? 4 : 12;
+	for (int k = 0; k < per && g_tframe < THUMB_FRAMES; k++, g_tframe++)
+	{
+		if (g.sys == SYS_GBA) { g_tma->runFrame (); g_tma->audioRead (pcm, 2048); }
+		else { g_tm->runFrame (); g_tm->audioRead (pcm, 2048); }
+	}
 	if (g_tframe >= THUMB_FRAMES)
 	{
-		Game &g = g_games[g_tgame];
 		g.thumb = new unsigned[TW * TH];
-		for (int i = 0; i < TW * TH; i++) g.thumb[i] = g_tm->fb[i];
+		if (g.sys == SYS_GBA)
+		{
+			// 240 x 160 -> 160 x 107, centred in the 160 x 144 picture on black
+			int oy = (TH - 107) / 2;
+			for (int i = 0; i < TW * TH; i++) g.thumb[i] = 0;
+			for (int y = 0; y < 107; y++)
+				for (int x = 0; x < TW; x++) g.thumb[(oy + y) * TW + x] = g_tma->fb[(y * 160 / 107) * gba::W + x * 3 / 2];
+		}
+		else for (int i = 0; i < TW * TH; i++) g.thumb[i] = g_tm->fb[i];
 		thumb_save (g);
+		delete [] g_trom; g_trom = 0;				// (a 16 MB ROM: give it back)
 		g_tgame = -1;
 		g_root->invalidate (true);
 	}
@@ -163,10 +197,9 @@ static int cols (void) { int c = (g_root->width - 20) / CELLW; return c < 1 ? 1 
 static void tile_pos (int i, int *x, int *y)
 {
 	int c = cols (), yy = 8, k = 0;
-	for (int sec = 0; sec < 2; sec++)
+	for (int sec = 0; sec < NSYS; sec++)
 	{
-		bool color = sec == 0;
-		int first = k, n = 0; while (k + n < g_ng && g_games[k + n].color == color) n++;
+		int first = k, n = 0; while (k + n < g_ng && g_games[k + n].sys == sec) n++;
 		if (!n) continue;
 		yy += HEAD_H;
 		if (i >= first && i < first + n)
@@ -212,20 +245,19 @@ public:
 		canvas.clear (0x00141414);
 		if (g_ng == 0)
 		{
-			canvas.text (24, 30, "No Game Boy ROM found in", 0x00C8C8C8);
+			canvas.text (24, 30, "No Game Boy / Advance ROM found in", 0x00C8C8C8);
 			canvas.text (24, 52, g_folder, 0x00FFFFFF);
-			canvas.text (24, 84, "Put .gb / .gbc files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
+			canvas.text (24, 84, "Put .gb / .gbc / .gba files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
 			return;
 		}
 		// section titles
 		int c = cols (), yy = 8 - g_scroll, k = 0;
-		for (int sec = 0; sec < 2; sec++)
+		for (int sec = 0; sec < NSYS; sec++)
 		{
-			bool color = sec == 0;
-			int n = 0; while (k + n < g_ng && g_games[k + n].color == color) n++;
+			int n = 0; while (k + n < g_ng && g_games[k + n].sys == sec) n++;
 			if (!n) continue;
-			canvas.text (12, yy + 8, color ? "Game Boy Color" : "Game Boy", 0x00FFFFFF);
-			canvas.text (13, yy + 8, color ? "Game Boy Color" : "Game Boy", 0x00FFFFFF);
+			canvas.text (12, yy + 8, SYS_NAME[sec], 0x00FFFFFF);
+			canvas.text (13, yy + 8, SYS_NAME[sec], 0x00FFFFFF);
 			yy += HEAD_H + ((n + c - 1) / c) * CELLH + 10;
 			k += n;
 		}
