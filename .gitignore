@@ -75,3 +75,11 @@ sdcard/roms/**/*.gba
 sdcard/roms/**/*.sav
 sdcard/apps/gamelib.app/thumbs/
 sdcard/apps/gamelib.app/config.ini
+
+# Doom: the player's own IWADs / PWADs, settings and saved games (Freedoom ships)
+sdcard/doom/*.wad
+!sdcard/doom/freedoom1.wad
+sdcard/doom/*.WAD
+sdcard/doom/savegame/
+sdcard/doom/*.cfg
+user/doom/build/

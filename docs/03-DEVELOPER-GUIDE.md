@@ -319,6 +319,17 @@ Notes / caveats:
 > nes, unsafe, saves); `tools/tests/gba/gbatest.cpp <rom> <seconds> [out.ppm] [keys]` runs a
 > game headless (`GBA_SHOTS`, `GBA_AUDIO`, `GBA_SAVE`, `GBA_LOAD`, `GBA_REGS`; built with
 > `-DGBA_DEBUG`, `GBA_WATCH=<addr>` prints every write there).
+> **Doom** (`user/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
+> sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
+> `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),
+> by `user/doom/Makefile` (called from `user/Makefile`) into `user/doom.elf`. `doom_onyx.c`: the
+> `DG_*` platform functions — the window canvas *is* `DG_ScreenBuffer` (640 × 400, no copy),
+> full screen at 4:3, keys from `kapi_key_held` + modifiers + key events (Tab, F-keys…),
+> `gamepad.h`, `rename`/`mkdir` on the kapi; `doom_wtk.cpp`: window chrome + menu (wtk from C);
+> `doom_sound.c`: `DG_sound_module` (16-channel mixer of the DS* lumps into `kapi_sound_write`)
+> and `DG_music_module` (MUS and MIDI turned into one timed event list, played on the 16 kernel
+> FM voices with the GENMIDI OPL patches converted to `kapi_fm_instrument`). **Host test**:
+> `sh tools/tests/run_doom_test.sh` (headless on a virtual clock: frames, sound effects, FM notes).
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
@@ -641,7 +652,7 @@ SD:apps/<nom>.app/
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
 **`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
-`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`):
+`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `wad = SD:/apps/doom.app/main`):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,

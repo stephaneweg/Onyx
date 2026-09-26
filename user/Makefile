@@ -38,7 +38,12 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) bin bin/basic.elf
+all: $(APP_ELFS) bin bin/basic.elf doom
+
+# Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
+.PHONY: doom
+doom: wtk/libwtk.a
+	@$(MAKE) --no-print-directory -C doom
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
@@ -99,3 +104,4 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 clean:
 	rm -f *.elf *.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean
+	@$(MAKE) --no-print-directory -C doom clean
