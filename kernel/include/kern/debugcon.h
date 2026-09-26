@@ -42,6 +42,11 @@ public:
 
 	void SetNormal (CDevice *pNormal)	{ m_pNormal = pNormal; }
 	void SwitchToDebug (CDevice *pDebug)	{ m_pDebug = pDebug; m_bDebug = TRUE; }
+	// Stop writing to the normal target: once the compositor owns the display, the boot
+	// console is no longer shown, and each line drawn there (a text-mode scroll of the
+	// whole screen, with IRQs masked) froze the machine ~170 ms. kmsg still gets every
+	// line: CLogger keeps its event ring whatever the target does.
+	void MuteNormal (void)			{ m_bMuted = TRUE; }
 
 	int Write (const void *pBuffer, size_t nCount) override;
 
@@ -49,6 +54,7 @@ private:
 	CDevice		*m_pNormal;
 	CDevice		*m_pDebug;
 	volatile boolean m_bDebug;
+	volatile boolean m_bMuted;
 };
 
 // Wiring (called once from CKernel) + the app-exit takeover + the compositor query.

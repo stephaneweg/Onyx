@@ -1527,6 +1527,7 @@ TShutdownMode CKernel::Run (void)
 		CCompositorTask *pCompositor = new CCompositorTask (&m_2DGraphics, &m_WindowManager);
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
 		m_Scheduler.YieldTo (pCompositor);
+		m_LogSwitch.MuteNormal ();		// the boot console is hidden now (see MuteNormal)
 
 		// GUI watchdog + heartbeat (kmsg): compositor stalls, frozen apps, and a
 		// periodic summary every cmdline.txt heartbeat= seconds (default 5, 0 = off).

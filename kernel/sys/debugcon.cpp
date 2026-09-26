@@ -82,13 +82,13 @@ int CFbConsole::Write (const void *pBuffer, size_t nCount)
 // ---- CLogSwitch -------------------------------------------------------------
 
 CLogSwitch::CLogSwitch (void)
-:	m_pNormal (0), m_pDebug (0), m_bDebug (FALSE)
+:	m_pNormal (0), m_pDebug (0), m_bDebug (FALSE), m_bMuted (FALSE)
 {
 }
 
 int CLogSwitch::Write (const void *pBuffer, size_t nCount)
 {
-	CDevice *pTarget = (m_bDebug && m_pDebug != 0) ? m_pDebug : m_pNormal;
+	CDevice *pTarget = (m_bDebug && m_pDebug != 0) ? m_pDebug : m_bMuted ? 0 : m_pNormal;
 	if (pTarget != 0)
 	{
 		return pTarget->Write (pBuffer, nCount);

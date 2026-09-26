@@ -298,7 +298,8 @@ stall: doom ran 850 ms without yielding; pc/lr: 1a2b40/1a2a10 1a2b48/1a2a10 ...
 
 Kernel addresses resolve with `kernel/kernel8-rpi4.map` (or `aarch64-none-elf-addr2line -f
 -e kernel/kernel8-rpi4.elf <pc>`). No sample at all ("IRQs masked") means the task ran
-with interrupts off the whole time.
+with interrupts off the whole time. (Its first catch: `12dbe4/138044` = `LeaveCritical` from
+`CTerminalDevice::Write` — the boot-console log writes, see §11 `MuteNormal`.)
 
 **CPU hogs vs yielders (dynamic priority).** Circle's network and Wi-Fi code waits in
 `Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the `CNetTask`
@@ -782,6 +783,12 @@ visible **directly on the framebuffer**.
 - **`CLogSwitch`**: routes the logger's output either to the boot console
   (`m_Screen`), or to the framebuffer console. At boot: `SetNormal(&m_Screen)` +
   `DebugConsoleRegister`.
+- Once the compositor is started, `MuteNormal()` stops the writes to the boot console:
+  it is no longer shown, and each line drawn there (a text-mode scroll of the whole
+  screen inside `CTerminalDevice::Write`, IRQs masked) froze everything for ~170 ms — an
+  app that `printf`s without a terminal (Doom at start-up) froze the GUI and the network
+  for seconds. `kmsg` still sees every line (CLogger's event ring does not depend on the
+  target).
 - When the debug console takes over (`DebugConsoleTakeover`, called on `exit`), the
   compositor **detects** `DebugConsoleActive()` and **stops presenting** so as not to
   contend for the framebuffer.
