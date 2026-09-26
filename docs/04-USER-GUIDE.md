@@ -239,13 +239,15 @@ it; click it to bring it forward.
   associations* below; folders open in the File Viewer, apps run).
 - **Drag an item** onto a File Viewer folder to **move** the file there (hold **Ctrl** to
   **copy**) — the item **stays on the shelf and follows the file** (the File Viewer reports
-  every move and rename to the Shelf, so references stay up to date; an item whose file is
-  deleted or trashed drops off within ~2 s), onto an app window to **open it in that app** (tinypad, Writer, paint ask to
+  every move and rename to the Shelf, so references stay up to date), onto an app window to **open it in that app** (tinypad, Writer, paint ask to
   save their current document first), or onto the **desktop** to **remove** it from the
   shelf. **Esc** cancels a drag.
 - **The Trash** (right end): drop items on it to move them to the Trash (`SD:/.Trash`);
   click it to open the Trash in the File Viewer. A sheet of paper sticks out when it holds
   something.
+- The shelf does **not** keep checking its items: an item is checked only when you use it
+  (click or drag). If its file is gone (deleted, renamed elsewhere, server folder changed),
+  a notification says so and the item leaves the shelf.
 - **Tabs**: click to switch; **+** adds a tab; **double-click** a tab to rename it (type,
   **Enter** / **Esc**); the **−** button (right end of the tab strip, before the Trash)
   removes the current tab — with a confirmation window if it holds items (the files

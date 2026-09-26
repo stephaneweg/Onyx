@@ -9,8 +9,9 @@
 //   * Drag an item: onto a File Viewer folder = move it there (Ctrl = copy) -- the item
 //     stays and follows the file; onto an app window = the app opens it; onto the
 //     desktop = remove it from the shelf. The File Viewer reports every move / rename
-//     over IPC (service "shelf", shelfmsg.h), so references stay up to date; items whose
-//     file is gone (deleted, trashed) drop off within ~2 s.
+//     over IPC (service "shelf", shelfmsg.h), so references stay up to date. Nothing is
+//     polled: an item is checked only when used (click / drag) -- if its file is gone, a
+//     notification says so and the item leaves the shelf.
 //   * The Trash, at the right end: drop items on it to move them to the Trash; click it
 //     to open the Trash in the File Viewer.
 //   * Tabs: click to switch, "+" adds one, double-click renames (type, Enter / Esc),
@@ -339,6 +340,25 @@ static void trash_glyph (Canvas &cv, int x, int y, bool full)
 	if (full) cv.fillRect (x + 12, y + 7, 16, 3, 0x00F0F0F0);	// paper sticking out
 }
 
+// Checked only when an item is USED (clicked or dragged) -- never polled: a missing file
+// is announced, then taken off the shelf. (Remote items: one listing of the parent.)
+static bool still_there (int tab, int i)
+{
+	Item &it = g_tabs[tab].items[i];
+	bool d;
+	if (is_remote (it.path) ? remote_stat (it.path, &d) : fs_exists (it.path)) return true;
+	static char msg[160];
+	int p = 0;
+	for (int k = 0; it.label[k] && p < 100; k++) msg[p++] = it.label[k];
+	const char *t = " no longer exists: removed from the shelf.";
+	for (int k = 0; t[k] && p < (int) sizeof msg - 1; k++) msg[p++] = t[k];
+	msg[p] = '\0';
+	notify ("Shelf", msg);
+	tab_remove (g_tabs[tab], i);
+	save ();
+	return false;
+}
+
 // ---- the window ---------------------------------------------------------------------------
 class ShelfRoot : public Root
 {
@@ -435,8 +455,8 @@ public:
 		if (ask == 0) notify ("Shelf", "Cannot show the confirmation (apps/ask missing?).");
 	}
 
-	// Each frame: the pending question, move reports from the File Viewer, and every
-	// ~2 s items whose file is gone + the Trash state.
+	// Each frame: the pending question and the File Viewer's move reports; every ~2 s the
+	// Trash state (a local count). Items are NOT checked here (see still_there).
 	void onTick () override
 	{
 		if (ask != 0)
@@ -459,7 +479,6 @@ public:
 		if (now - lastPoll >= 200)
 		{
 			lastPoll = now;
-			if (!dragging && prune ()) changed = true;
 			bool full = trash_count () > 0;
 			if (full != trashFull) { trashFull = full; invalidate (true); }
 		}
@@ -491,6 +510,7 @@ public:
 		{
 			if (pressed && armItem >= 0 && !dragging)	// a click (no drag): open it
 			{
+				if (!still_there (g_cur, armItem)) { armItem = -1; pressed = false; invalidate (true); return true; }
 				if (!fa_open (tb.items[armItem].path))
 					notify ("Shelf", "No application to open this item.");
 			}
@@ -503,6 +523,7 @@ public:
 			int dx = mx - armX, dy = my - armY;
 			if (armItem >= 0 && !dragging && dx * dx + dy * dy > DRAG_START * DRAG_START)
 			{
+				if (!still_there (g_cur, armItem)) { armItem = -1; invalidate (true); return true; }
 				const Item &it = tb.items[armItem];
 				if (kapi_drag_begin (DND_FILES, it.path, (unsigned) fs_len (it.path) + 1, it.label))
 				{
