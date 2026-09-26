@@ -1718,6 +1718,10 @@ extern C2DGraphics *g_pGraphics;
 // size); the compositor stops drawing and all input goes to the caller's window (made
 // if it has none; moved to 0,0, so pointer coordinates are screen coordinates). Draw,
 // then kapi_present_fb. 0 on failure.
+// The window's place before the full screen, given back by kapi_fullscreen_end (one full-
+// screen window at a time).
+static CWindow *s_pFsWin = 0; static int s_nFsX, s_nFsY;
+
 unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 {
 	CAddressSpace *pAS = CurrentAS ();
@@ -1737,6 +1741,7 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 	}
 	pAS->MapContig (USER_FULLSCREEN_CANVAS, ulPhys, nPages, KPAGE_ATTR_APP_DATA);
 	CWindow *pWin = pAS->GetWindow ();
+	if (pWM->FullscreenWindow () != pWin) { s_pFsWin = pWin; s_nFsX = pWin->X (); s_nFsY = pWin->Y (); }
 	pWin->Move (0, 0);
 	memset ((void *) ulPhys, 0, (size_t) g_nScreenWidth * g_nScreenHeight * 4);
 	pWM->SetFullscreen (pWin);
@@ -1774,7 +1779,18 @@ void kapi_fullscreen_end (void)
 	CWindowManager *pWM = CWindowManager::Get ();
 	if (pAS != 0 && pWM != 0 && pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ())
 	{
+		CWindow *pWin = pAS->GetWindow ();
 		pWM->SetFullscreen (0);
+		// back where it was; else (made full screen at once) centred, below the menu bar
+		int x = s_nFsX, y = s_nFsY;
+		if (s_pFsWin != pWin || y < 32)			// (32: the menu bar, user/Apps/menubar)
+		{
+			x = (g_nScreenWidth - pWin->OuterW ()) / 2; y = (g_nScreenHeight - pWin->OuterH ()) / 2;
+			if (y < 32) y = 32;
+			if (x < 0) x = 0;
+		}
+		pWin->Move (x, y);
+		s_pFsWin = 0;
 	}
 }
 
