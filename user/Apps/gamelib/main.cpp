@@ -3,7 +3,8 @@
 // sub-folders), a tile each -- a picture of its title screen and its name -- in a dark
 // grid, one section per system. Click a tile (or arrows + Enter) to play: the ROM opens
 // with its runner (SD:/etc/runners.ini: gbemu, gbaemu), in a window or, with View > Play Full
-// Screen, on the whole display. A USB gamepad works too: the d-pad, A / B / Start to play, L / R a page.
+// Screen, on the whole display. A click selects a tile, a double-click (or Enter) plays. A USB gamepad works too: the d-pad
+// moves, Start (or A) plays, L / R turn a page.
 //
 //   * The folder: SD:/roms by default; Library > Choose Folder... (kept in config.ini).
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
@@ -293,9 +294,17 @@ public:
 		if (wheel) { g_scroll -= wheel * 40; clamp (); invalidate (true); return true; }
 		int t = mx >= 0 ? tile_at (mx, my) : -1;
 		if (t != g_hover) { g_hover = t; invalidate (true); }
+		// a click selects the tile, a double-click (two clicks on it within 0.4 s) plays
 		static bool down = false;
-		if (bl && !down && t >= 0) { g_sel = t; invalidate (true); }
-		if (!bl && down && t >= 0 && t == g_sel) play (t);
+		static unsigned lastClick = 0; static int lastTile = -1;
+		if (bl && !down && t >= 0)
+		{
+			unsigned now = kapi_get_ticks ();
+			bool dbl = t == lastTile && now - lastClick < 40;
+			g_sel = t; invalidate (true);
+			lastClick = now; lastTile = dbl ? -1 : t;
+			if (dbl) play (t);
+		}
 		down = bl != 0;
 		return true;
 	}
@@ -329,7 +338,7 @@ static void pad_poll (void)
 	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 18;	// (every 0.18 s)
 	last = b;
 	if (!press && !rep) return;
-	if (press & (PAD_A | PAD_B | PAD_START)) { play (g_sel); return; }
+	if (press & (PAD_START | PAD_A)) { play (g_sel); return; }
 	if (press & (PAD_L | PAD_L2)) { g_root->onKey (KEY_PGUP); return; }		// the shoulders: a page
 	if (press & (PAD_R | PAD_R2)) { g_root->onKey (KEY_PGDN); return; }
 	unsigned d = press ? press : b;
