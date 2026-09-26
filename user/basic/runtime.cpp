@@ -85,16 +85,22 @@ public:
 	}
 
 	// ---- the platform (bas::ScreenHost) --------------------------------------------------------------
+	int winW = 0, winH = 0;
 	bool openWindow (int w, int h) override
 	{
 		root = new ScreenRoot (w, h, title[0] ? title : "BASIC");
 		if (root->canvas.px == 0) { delete root; root = 0; return false; }
+		winW = w; winH = h;				// the window buffer's size (and row pitch)
 		root->attach ();				// (Root::run is not used: we pump ourselves)
 		return true;
 	}
 	void resizeWindow (int w, int h) override
 	{
-		root->canvas.adopt (kapi_resize_window (w, h), w, h);
+		// The window's buffer keeps the size it was made with (the kernel clamps to it) and
+		// its row pitch: draw with that pitch, whatever the new size.
+		if (w > winW) w = winW;
+		if (h > winH) h = winH;
+		root->canvas.adopt (kapi_resize_window (w, h), w, h, winW);
 		root->width = w; root->height = h;
 	}
 	void pageChanged () override { root->vis = visible (); root->vw = W; root->vh = H; root->sx = sx; root->sy = sy; }

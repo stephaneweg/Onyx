@@ -888,6 +888,13 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 
 ## 13. Known pitfalls
 
+- **`kapi_resize_window` keeps the buffer's size and row pitch.** The window buffer is made
+  once, at the size given to `kapi_create_window`; resizing changes the size shown (clamped
+  to that buffer), not the buffer, and the compositor reads its rows with the **creation
+  width** as pitch. Draw with that pitch: `canvas.adopt (kapi_resize_window (w, h), w, h,
+  creationWidth)`. To offer several sizes, create the window at the largest one (the
+  emulators: their 4x zoom). Adopting with pitch = the new width gave a doubled, interlaced
+  picture in `gbemu` at zoom 2x.
 - **`kapi_mkdir` / `kapi_remove` / `kapi_rename` return 0 on success** (-1 on failure),
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
   check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,

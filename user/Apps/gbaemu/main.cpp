@@ -36,7 +36,11 @@ static Root *g_root = 0;
 static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
 static bool g_stats = false;					// View > Show Speed
 static char g_statText[96] = "";
-static EmuCore g_ec;						// the machine's thread (emucore.h)
+static EmuCore g_ec;
+static int g_stride;						// the window canvas's row pitch (its 4x width)
+static bool g_loading = true;					// the loading screen, until the ROM is in
+static unsigned g_loadDone = 0, g_loadSize = 1;
+static char g_loadName[64];						// the machine's thread (emucore.h)
 static volatile bool g_audioOn = false;				// the machine keeps its sound
 
 // A microsecond clock: the ARM generic timer (apps run at EL1).
@@ -88,6 +92,16 @@ public:
 	EmuRoot (int w, int h, const char *t) : Root (w, h, t) {}
 	void onDraw () override
 	{
+		if (g_loading)						// the ROM being read: its name and a bar
+		{
+			canvas.clear (0);
+			canvas.text (8, height / 2 - 24, "Loading...", 0xFFFFFF);
+			canvas.text (8, height / 2 - 6, g_loadName, 0xA0A0A0);
+			int bw = width - 16;
+			canvas.fillRect (8, height / 2 + 14, bw, 6, 0x404040);
+			canvas.fillRect (8, height / 2 + 14, (int) ((long long) bw * g_loadDone / g_loadSize), 6, 0x40C040);
+			return;
+		}
 		// the frame, zoomed (whole-number zoom, centred in the client area)
 		int z = g_zoom;
 		if (gba::W * z != width || gba::H * z != height) canvas.clear (0);
@@ -155,7 +169,8 @@ static void blit_full (void)				// stretched to the display, proportions kept, c
 static void set_zoom (int z)
 {
 	g_zoom = z;
-	g_root->canvas.adopt (kapi_resize_window (gba::W * z, gba::H * z), gba::W * z, gba::H * z);
+	// (the window's buffer keeps the pitch it was made with: 4x -- draw with that one)
+	g_root->canvas.adopt (kapi_resize_window (gba::W * z, gba::H * z), gba::W * z, gba::H * z, g_stride);
 	g_root->width = gba::W * z; g_root->height = gba::H * z;
 	g_root->invalidate (true);
 }
@@ -176,6 +191,7 @@ static void on_quit () { kapi_exit (0); }
 
 bool EmuRoot::onKey (long k)
 {
+	if (g_loading) return Root::onKey (k);
 	if (k == KEY_F1 + 10) { on_full (); return true; }			// F11
 	if (k == 27 && g_fs) { full_screen (false); return true; }
 	if (k == 'p' || k == 'P') { on_pause (); return true; }
@@ -250,27 +266,51 @@ int main (void)
 	for (; args[i]; i++)
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'f' && args[i + 3] == 'u' && args[i + 4] == 'l' && args[i + 5] == 'l') wantFull = true;
 
+	// The window first, with a loading screen, then the ROM in pieces (a big one takes a
+	// while): the header gives the title at once.
 	void *f = kapi_open (g_rom_path);
 	if (!f) return 1;
 	unsigned sz = kapi_fsize (f);
 	if (sz > 0x2000000) sz = 0x2000000;				// (32 MB: the largest cartridge)
 	g_rom = new unsigned char[sz + 1];
-	int r = 0;							// (in 1 MB pieces: a big ROM takes a while)
-	while ((unsigned) r < sz) { unsigned k = sz - (unsigned) r > 0x100000 ? 0x100000 : sz - (unsigned) r; int got = kapi_read (f, g_rom + r, k); if (got <= 0) break; r += got; }
+	int r = kapi_read (f, g_rom, sz < 0xC0 ? sz : 0xC0);
+	if (r <= 0) { kapi_close (f); return 1; }
+	// the title from the header (as gba::Machine::load reads it)
+	char title[48] = "Game Boy Advance"; int tn = 0;
+	if (r >= 0xAC)
+	{
+		for (; tn < 12; tn++) { char c = (char) g_rom[0xA0 + tn]; if (c < 32 || c >= 127) break; title[tn] = c; }
+		if (tn) title[tn] = 0; else scpy (title, "Game Boy Advance", sizeof title);
+	}
+	{ int b = slen (g_rom_path); while (b > 0 && g_rom_path[b - 1] != '/' && g_rom_path[b - 1] != ':') b--; scpy (g_loadName, g_rom_path + b, sizeof g_loadName); }
+	// made at the 4x size (its buffer keeps that pitch), then shown at the zoom chosen
+	g_stride = gba::W * 4;
+	EmuRoot root (gba::W * 4, gba::H * 4, title);
+	if (root.canvas.px == 0) return 1;
+	g_root = &root;
+	set_zoom (g_zoom);
+	root.attach ();
+	g_loadSize = sz ? sz : 1; g_loadDone = (unsigned) r;
+	root.invalidate (true); root.draw (); kapi_present ();
+	while ((unsigned) r < sz)
+	{
+		unsigned k = sz - (unsigned) r > 0x40000 ? 0x40000 : sz - (unsigned) r;
+		int got = kapi_read (f, g_rom + r, k);
+		if (got <= 0) break;
+		r += got; g_loadDone = (unsigned) r;
+		pump_events ();
+		if (should_exit ()) { kapi_close (f); return 0; }
+		root.invalidate (true); root.draw (); kapi_present ();
+	}
 	kapi_close (f);
 	g_m = new gba::Machine;
-	if (r <= 0 || !g_m->load (g_rom, r)) return 1;
+	if (!g_m->load (g_rom, r)) return 1;
 	// <rom>.sav
 	scpy (g_sav_path, g_rom_path, sizeof g_sav_path);
 	int e = slen (g_sav_path), d = e; while (d > 0 && g_sav_path[d - 1] != '.' && g_sav_path[d - 1] != '/') d--;
 	if (d > 0 && g_sav_path[d - 1] == '.') e = d - 1;
 	scpy (g_sav_path + e, ".sav", sizeof g_sav_path - e);
 	load_ram ();
-
-	char title[48]; scpy (title, g_m->title[0] ? g_m->title : "Game Boy Advance", sizeof title);
-	EmuRoot root (gba::W * g_zoom, gba::H * g_zoom, title);
-	if (root.canvas.px == 0) return 1;
-	g_root = &root;
 
 	static Menu menu;
 	menu.menu ("Game");
@@ -289,13 +329,13 @@ int main (void)
 	menu.menu ("Sound");
 	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.publish ();
-	root.attach ();
 	if (wantFull) full_screen (true);
 
 	static short pcm[4096 * 2];
 	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0;
 	g_m->setAudioRate (SOUND_RATE);
 	if (!ec_init (&g_ec, gba::W, gba::H, gba_frame)) return 1;
+	g_loading = false;
 	const unsigned perFrame = SOUND_RATE * 100 / 5973;		// sound frames per video frame
 	unsigned t0 = kapi_get_ticks (); unsigned asked = 0;		// frames asked for (clock pacing)
 	unsigned lastSave = kapi_get_ticks ();
