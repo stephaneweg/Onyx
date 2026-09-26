@@ -33,7 +33,16 @@ public:
 	int Height (void) const		{ return m_nHeight; }
 	u32 *Buffer (void) const	{ return m_pBuffer; }
 
-	void Clear (u32 nColor);
+	// Clip rectangle [x0, x1) x [y0, y1): every drawing call stays inside it (the
+	// compositor redraws only the damaged parts of the screen). Default: the whole image.
+	void SetClip (int x0, int y0, int x1, int y1);
+	void ResetClip (void)		{ m_nCX0 = 0; m_nCY0 = 0; m_nCX1 = m_nWidth; m_nCY1 = m_nHeight; }
+	int ClipX0 (void) const		{ return m_nCX0; }
+	int ClipY0 (void) const		{ return m_nCY0; }
+	int ClipX1 (void) const		{ return m_nCX1; }
+	int ClipY1 (void) const		{ return m_nCY1; }
+
+	void Clear (u32 nColor);		// (the clip rectangle)
 	void SetPixel (int x, int y, u32 nColor);
 	u32  GetPixel (int x, int y) const;
 
@@ -69,6 +78,7 @@ private:
 	u32    *m_pBuffer;
 	unsigned m_nBufferSize;		// bytes, for the grow-only owned buffer
 	boolean	m_bOwnsBuffer;
+	int	m_nCX0, m_nCY0, m_nCX1, m_nCY1;	// clip
 };
 
 #endif

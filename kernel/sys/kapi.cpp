@@ -248,9 +248,9 @@ void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
 // chrome BEHAVIOUR (title-bar drag, close-box hit-test) -- only the drawing moves here.
 int kapi_get_chrome (struct kapi_chrome *out)
 {
-	ScreenDirty ();					// the caller is about to (re)draw its chrome
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0) pWin->Damage ();			// the caller is about to (re)draw its chrome
 	if (pWin == 0 || out == 0)
 	{
 		return 0;
@@ -504,7 +504,10 @@ int kapi_raise_app (const char *pName)
 
 void kapi_present (void)
 {
-	ScreenDirty ();					// the app's canvas changed
+	// the app's canvas changed: its window's area is to be redrawn
+	CAddressSpace *pPresAS = CurrentAS ();
+	CWindow *pPresWin = pPresAS != 0 ? pPresAS->GetWindow () : 0;
+	if (pPresWin != 0) pPresWin->Damage (); else ScreenDirty ();
 	// The compositor reads the shared canvas continuously; yield so it and the
 	// other app get the CPU promptly.
 	if (CScheduler::IsActive ())

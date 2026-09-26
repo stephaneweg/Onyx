@@ -26,13 +26,23 @@
 extern int g_nScreenWidth;
 extern int g_nScreenHeight;
 
-// Screen damage generation: bumped by everything that changes what the compositor would
-// draw (an app's present, a window added / removed / raised / moved / resized / faded,
-// the cursor, the wallpaper). The compositor recomposites only when it changed (plus a
-// slow safety refresh), and kapi_screen_grab reports "unchanged" -- so an idle desktop
-// costs almost no CPU.
+// Screen damage: everything that changes what the compositor would draw (an app's present,
+// a window added / removed / raised / moved / resized / faded, the cursor, the wallpaper)
+// says WHERE: ScreenDirtyRect (a part) or ScreenDirty (all of it). The compositor redraws
+// and sends to the display only those parts (dirty rectangles); g_nScreenGen is bumped each
+// time, so it (and kapi_screen_grab) can tell "unchanged" -- an idle desktop costs almost
+// no CPU, a small window animating costs its own area, not the whole screen.
 extern volatile unsigned g_nScreenGen;
-static inline void ScreenDirty (void) { g_nScreenGen++; }
+void ScreenDirty (void);
+void ScreenDirtyRect (int x, int y, int w, int h);
+#define SCREEN_DAMAGE_MAX	16
+struct TScreenDamage
+{
+	boolean	bFull;
+	int	n;
+	int	x0[SCREEN_DAMAGE_MAX], y0[SCREEN_DAMAGE_MAX], x1[SCREEN_DAMAGE_MAX], y1[SCREEN_DAMAGE_MAX];	// [x0, x1) x [y0, y1)
+};
+void ScreenTakeDamage (TScreenDamage *pOut);	// (the compositor) the damage so far, and forget it
 
 // Window-chrome theme, applied at boot (SD:skins/theme.txt). The two tints are baked
 // into the window skin (active/inactive); the text colour is the title text.
@@ -162,7 +172,7 @@ public:
 	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
 	unsigned OwnerPid (void) const		{ return m_nOwnerPid; }
 	int MinLogicalHeight (void) const { return m_nMinLogicalH; }	// smallest logical height so far
-	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; ScreenDirty (); }	// 255 = opaque
+	void SetAlpha (int a)		{ m_nAlpha = a < 0 ? 0 : a > 255 ? 255 : a; Damage (); }	// 255 = opaque
 	int  Alpha (void) const		{ return m_nAlpha; }
 	int ChromeL (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
 	int ChromeR (void) const	{ return Borderless () ? 0 : WIN_BORDER; }
@@ -204,7 +214,20 @@ public:
 
 	int X (void) const		{ return m_nX; }
 	int Y (void) const		{ return m_nY; }
-	void Move (int x, int y)	{ m_nX = x; m_nY = y; ScreenDirty (); }
+	void Move (int x, int y)	{ Damage (); m_nX = x; m_nY = y; Damage (); }
+	// The whole window (chrome + client) on screen, and marking it damaged.
+	// (the chrome copy is blitted whole: its allocated size when larger)
+	int OuterWidth (void) const	{ int w = ChromeL () + m_nLogicalW + ChromeR (); return HasChrome () && m_nOuterW > w ? m_nOuterW : w; }
+	int OuterHeight (void) const	{ int h = ChromeT () + m_nLogicalH + ChromeB (); return HasChrome () && m_nOuterH > h ? m_nOuterH : h; }
+	void Damage (void) const	{ ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
+	// Does the window paint every pixel of [x0, x1) x [y0, y1) opaquely? (Then what lies
+	// below it there need not be drawn.)
+	boolean CoversOpaque (int x0, int y0, int x1, int y1) const
+	{
+		if (m_nAlpha < 255 || Transparent ()) return FALSE;
+		if (!Borderless () && !HasChrome ()) return FALSE;
+		return x0 >= m_nX && y0 >= m_nY && x1 <= m_nX + OuterWidth () && y1 <= m_nY + OuterHeight ();
+	}
 	const char *Title (void) const	{ return m_Title; }
 
 	// Blit the (app-drawn) chrome + client canvas onto the screen image.
@@ -384,7 +407,7 @@ public:
 	boolean HasKeyFocus (CWindow *pWin);	// pWin has the keyboard (gamepads, ABI v50)
 
 	// Keyboard modifiers (MOD_*), from the USB keyboard's raw report or vncd.
-	void SetModifiers (unsigned nMods)	{ m_nModifiers = nMods; ScreenDirty (); }
+	void SetModifiers (unsigned nMods)	{ if (m_bDnd && ((m_nModifiers ^ nMods) & MOD_CTRL)) ScreenDirty (); m_nModifiers = nMods; }	// (the drag badge's '+')
 	unsigned Modifiers (void) const		{ return m_nModifiers; }
 
 	// Diagnostics for the GUI watchdog: counters bumped by Composite / OnMouse /

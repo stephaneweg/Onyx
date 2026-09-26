@@ -215,7 +215,7 @@ class CCompositorTask : public CTask
 {
 public:
 	CCompositorTask (C2DGraphics *p2D, CWindowManager *pWM)
-	:	m_p2D (p2D), m_pWM (pWM)
+	:	m_p2D (p2D), m_pWM (pWM), m_bFirst (TRUE)
 	{
 		SetName ("compositor");
 	}
@@ -240,15 +240,35 @@ public:
 				CScheduler::Get ()->MsSleep (16);
 				continue;
 			}
-			// Recomposite only when something changed (g_nScreenGen), plus a safety
-			// refresh every 500 ms (a missed damage source, the watchdog's frame count).
+			// Recomposite only when something changed (g_nScreenGen), and only the damaged
+			// rectangles (ScreenDirtyRect): each is redrawn with the screen clipped to it and
+			// sent to the display alone. The whole screen when ScreenDirty said so, plus a
+			// safety refresh every 2 s (a missed damage source, the watchdog's frame count).
 			unsigned nGen = g_nScreenGen, nTicks = CTimer::Get ()->GetTicks ();
-			if (nGen != nLastGen || nTicks - nLastTicks >= HZ / 2)
+			boolean bSafety = nTicks - nLastTicks >= 2 * HZ;
+			if (nGen != nLastGen || bSafety)
 			{
-				nLastGen = nGen; nLastTicks = nTicks;
+				nLastGen = nGen;
+				TScreenDamage Damage;
+				ScreenTakeDamage (&Damage);
 				GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
-				m_pWM->Composite (&Screen);
-				m_p2D->UpdateDisplay ();
+				if (Damage.bFull || bSafety || m_bFirst)
+				{
+					nLastTicks = nTicks; m_bFirst = FALSE;
+					m_pWM->Composite (&Screen);
+					m_p2D->UpdateDisplay ();
+				}
+				else
+				{
+					for (int i = 0; i < Damage.n; i++)
+					{
+						Screen.SetClip (Damage.x0[i], Damage.y0[i], Damage.x1[i], Damage.y1[i]);
+						m_pWM->Composite (&Screen, i == 0);
+						m_p2D->UpdateDisplay ((unsigned) Damage.x0[i], (unsigned) Damage.y0[i],
+								      (unsigned) (Damage.x1[i] - Damage.x0[i]),
+								      (unsigned) (Damage.y1[i] - Damage.y0[i]));
+					}
+				}
 			}
 			CScheduler::Get ()->MsSleep (16);
 		}
@@ -257,6 +277,7 @@ public:
 private:
 	C2DGraphics    *m_p2D;
 	CWindowManager *m_pWM;
+	boolean		m_bFirst;
 };
 
 // Cascade kill: when a process dies, its still-running children must die too (e.g.

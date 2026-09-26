@@ -109,7 +109,7 @@ CWindow::~CWindow (void)
 
 void CWindow::SetLogicalSize (int w, int h)
 {
-	ScreenDirty ();
+	Damage ();					// the old size (and the new one below)
 	int maxW = m_Canvas.Width ();
 	int maxH = m_Canvas.Height ();
 	if (w < 1) w = 1; else if (w > maxW) w = maxW;
@@ -120,6 +120,7 @@ void CWindow::SetLogicalSize (int w, int h)
 	{
 		m_nMinLogicalH = h;
 	}
+	Damage ();
 }
 
 void CWindow::SetMenu (const char *pSpec, u64 ulHandler)
@@ -140,20 +141,21 @@ void CWindow::SetMenu (const char *pSpec, u64 ulHandler)
 static void BlendRect (GImage *pScreen, const u32 *pSrc, int nStride, int dx, int dy,
 		       int sw, int sh, int nAlpha, boolean bKey)
 {
-	int W = pScreen->Width (), H = pScreen->Height ();
+	int W = pScreen->Width ();
+	int cx0 = pScreen->ClipX0 (), cy0 = pScreen->ClipY0 (), cx1 = pScreen->ClipX1 (), cy1 = pScreen->ClipY1 ();
 	u32 *pDst = pScreen->Buffer ();
 	if (pDst == 0 || pSrc == 0) return;
 	unsigned a = (unsigned) nAlpha, ia = 255 - a;
 	for (int y = 0; y < sh; y++)
 	{
 		int ty = dy + y;
-		if (ty < 0 || ty >= H) continue;
+		if (ty < cy0 || ty >= cy1) continue;
 		const u32 *s = pSrc + y * nStride;
 		u32 *d = pDst + ty * W;
 		for (int x = 0; x < sw; x++)
 		{
 			int tx = dx + x;
-			if (tx < 0 || tx >= W) continue;
+			if (tx < cx0 || tx >= cx1) continue;
 			u32 c = s[x];
 			if (bKey && (c & 0xFFFFFF) == 0xFF00FF) continue;
 			u32 b = d[tx];
@@ -273,6 +275,66 @@ int g_nScreenWidth  = SCREEN_WIDTH;
 int g_nScreenHeight = SCREEN_HEIGHT;
 volatile unsigned g_nScreenGen = 1;
 
+// The damage list: up to SCREEN_DAMAGE_MAX rectangles, merged when they overlap or touch;
+// when it is full, or covers most of the screen, it becomes "the whole screen".
+static CSpinLock s_DamageLock;
+static TScreenDamage s_Damage = { TRUE, 0, {}, {}, {}, {} };
+
+void ScreenDirty (void)
+{
+	s_DamageLock.Acquire ();
+	s_Damage.bFull = TRUE; s_Damage.n = 0;
+	s_DamageLock.Release ();
+	g_nScreenGen++;
+}
+
+void ScreenDirtyRect (int x, int y, int w, int h)
+{
+	int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+	int x1 = x + w > g_nScreenWidth ? g_nScreenWidth : x + w, y1 = y + h > g_nScreenHeight ? g_nScreenHeight : y + h;
+	if (x1 <= x0 || y1 <= y0) return;
+	s_DamageLock.Acquire ();
+	TScreenDamage &D = s_Damage;
+	if (!D.bFull)
+	{
+		// merge with every rectangle it overlaps or touches (repeat: the union may reach more)
+		for (boolean bMerged = TRUE; bMerged; )
+		{
+			bMerged = FALSE;
+			for (int i = 0; i < D.n; i++)
+				if (x0 <= D.x1[i] && D.x0[i] <= x1 && y0 <= D.y1[i] && D.y0[i] <= y1)
+				{
+					if (D.x0[i] < x0) x0 = D.x0[i];
+					if (D.y0[i] < y0) y0 = D.y0[i];
+					if (D.x1[i] > x1) x1 = D.x1[i];
+					if (D.y1[i] > y1) y1 = D.y1[i];
+					D.n--;
+					D.x0[i] = D.x0[D.n]; D.y0[i] = D.y0[D.n]; D.x1[i] = D.x1[D.n]; D.y1[i] = D.y1[D.n];
+					bMerged = TRUE;
+					break;
+				}
+		}
+		if (D.n == SCREEN_DAMAGE_MAX) { D.bFull = TRUE; D.n = 0; }
+		else
+		{
+			D.x0[D.n] = x0; D.y0[D.n] = y0; D.x1[D.n] = x1; D.y1[D.n] = y1; D.n++;
+			long nArea = 0;
+			for (int i = 0; i < D.n; i++) nArea += (long) (D.x1[i] - D.x0[i]) * (D.y1[i] - D.y0[i]);
+			if (nArea * 3 > (long) g_nScreenWidth * g_nScreenHeight * 2) { D.bFull = TRUE; D.n = 0; }	// (> 2/3: all)
+		}
+	}
+	s_DamageLock.Release ();
+	g_nScreenGen++;
+}
+
+void ScreenTakeDamage (TScreenDamage *pOut)
+{
+	s_DamageLock.Acquire ();
+	*pOut = s_Damage;
+	s_Damage.bFull = FALSE; s_Damage.n = 0;
+	s_DamageLock.Release ();
+}
+
 // Title-bar text colour (overridable at boot from SD:skins/theme.txt).
 u32 g_WinTitleTextColor = 0x00FFFFFF;
 
@@ -302,8 +364,8 @@ CWindowManager::CWindowManager (void)
 
 void CWindowManager::Add (CWindow *pWindow)
 {
-	ScreenDirty ();
 	assert (pWindow != 0);
+	pWindow->Damage ();
 	m_SpinLock.Acquire ();
 	if (m_nWindows < WM_MAX_WINDOWS)
 	{
@@ -334,7 +396,7 @@ void CWindowManager::Add (CWindow *pWindow)
 
 void CWindowManager::Remove (CWindow *pWindow)
 {
-	ScreenDirty ();
+	if (pWindow != 0) pWindow->Damage ();
 	m_SpinLock.Acquire ();
 	// Drop any references into this window (it may be freed right after).
 	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
@@ -362,7 +424,7 @@ void CWindowManager::Remove (CWindow *pWindow)
 // Caller holds m_SpinLock.
 void CWindowManager::RaiseLocked (CWindow *pWindow)
 {
-	ScreenDirty ();
+	if (pWindow != 0) pWindow->Damage ();
 	if (pWindow != 0 && pWindow->Backmost ())
 	{
 		return;				// the shell desktop never rises above other windows
@@ -572,16 +634,32 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	}
 	m_SpinLock.Release ();
 
+	// The topmost window that paints the whole clip rectangle opaquely: nothing below it
+	// (desktop, wallpaper, lower windows) needs drawing -- a window refreshing alone (a
+	// game, an emulator) costs its own pixels once.
+	unsigned nFirst = 0;
+	for (unsigned i = nCount; i-- > 0; )
+		if (pSnapshot[i] != 0 && pSnapshot[i]->CoversOpaque (pScreen->ClipX0 (), pScreen->ClipY0 (),
+								   pScreen->ClipX1 (), pScreen->ClipY1 ()))
+		{
+			nFirst = i;
+			break;
+		}
+
 	// Desktop background: the wallpaper if set (filled behind it for any margin),
 	// otherwise the solid desktop colour.
-	pScreen->Clear (WIN_COLOR_DESKTOP);
-	if (pWall != 0 && pWall->IsValid ())
+	if (nFirst == 0 && !(nCount > 0 && pSnapshot[0] != 0
+			     && pSnapshot[0]->CoversOpaque (pScreen->ClipX0 (), pScreen->ClipY0 (), pScreen->ClipX1 (), pScreen->ClipY1 ())))
 	{
-		pScreen->PutOther (pWall, 0, 0, FALSE);
+		pScreen->Clear (WIN_COLOR_DESKTOP);
+		if (pWall != 0 && pWall->IsValid ())
+		{
+			pScreen->PutOther (pWall, 0, 0, FALSE);
+		}
 	}
 
 	// Draw back-to-front; the last (topmost) window is the active one.
-	for (unsigned i = 0; i < nCount; i++)
+	for (unsigned i = nFirst; i < nCount; i++)
 	{
 		if (pSnapshot[i] != 0)
 		{
@@ -1009,7 +1087,20 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 
 	m_SpinLock.Acquire ();
 	m_nMouseEvents++;
-	if (x != m_nCursorX || y != m_nCursorY || !m_bCursorShown) ScreenDirty ();
+	if (x != m_nCursorX || y != m_nCursorY || !m_bCursorShown)
+	{
+		// the cursor's old and new places (the drag badge, next to it, too)
+		int cw = 17, ch = 17;
+		if (m_pCursor != 0 && m_pCursor->IsValid ()) { cw = m_pCursor->Width (); ch = m_pCursor->Height (); }
+		if (m_bDnd)
+		{
+			int bw = 16 + GImage::TextWidth (m_DndLabel) + GImage::FontWidth () + 16, bh = 18 + GImage::FontHeight () + 10;
+			if (bw > cw) cw = bw;
+			if (bh > ch) ch = bh;
+		}
+		if (m_bCursorShown) ScreenDirtyRect (m_nCursorX, m_nCursorY, cw, ch);
+		ScreenDirtyRect (x, y, cw, ch);
+	}
 	m_nCursorX = x; m_nCursorY = y; m_bCursorShown = TRUE;
 
 	if (m_pFullscreen != 0)

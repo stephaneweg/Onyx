@@ -166,9 +166,13 @@ void SyscallEntry (TTrapFrame *pFrame)
 		break;
 
 	case SYS_present:
-		// The compositor reads the shared canvas; mark the screen dirty and yield so
-		// it and the other process get the CPU promptly.
-		ScreenDirty ();
+		// The compositor reads the shared canvas; mark the window's area dirty and yield
+		// so it and the other process get the CPU promptly.
+		{
+			CAddressSpace *pPresAS = (CAddressSpace *) CScheduler::Get ()->GetCurrentTask ()->GetUserData (TASK_USER_DATA_USER);
+			CWindow *pPresWin = pPresAS != 0 ? pPresAS->GetWindow () : 0;
+			if (pPresWin != 0) pPresWin->Damage (); else ScreenDirty ();
+		}
 		if (CScheduler::IsActive ())
 		{
 			CScheduler::Get ()->Yield ();

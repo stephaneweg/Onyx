@@ -18,14 +18,24 @@ static inline void Fill32 (u32 *pDst, u32 nColor, int nCount)
 }
 
 GImage::GImage (void)
-:	m_nWidth (0), m_nHeight (0), m_pBuffer (0), m_nBufferSize (0), m_bOwnsBuffer (FALSE)
+:	m_nWidth (0), m_nHeight (0), m_pBuffer (0), m_nBufferSize (0), m_bOwnsBuffer (FALSE),
+	m_nCX0 (0), m_nCY0 (0), m_nCX1 (0), m_nCY1 (0)
 {
 }
 
 GImage::GImage (u32 *pBuffer, int nWidth, int nHeight)
 :	m_nWidth (nWidth), m_nHeight (nHeight), m_pBuffer (pBuffer),
-	m_nBufferSize (0), m_bOwnsBuffer (FALSE)
+	m_nBufferSize (0), m_bOwnsBuffer (FALSE),
+	m_nCX0 (0), m_nCY0 (0), m_nCX1 (nWidth), m_nCY1 (nHeight)
 {
+}
+
+void GImage::SetClip (int x0, int y0, int x1, int y1)
+{
+	m_nCX0 = x0 < 0 ? 0 : x0; m_nCY0 = y0 < 0 ? 0 : y0;
+	m_nCX1 = x1 > m_nWidth ? m_nWidth : x1; m_nCY1 = y1 > m_nHeight ? m_nHeight : y1;
+	if (m_nCX1 < m_nCX0) m_nCX1 = m_nCX0;
+	if (m_nCY1 < m_nCY0) m_nCY1 = m_nCY0;
 }
 
 GImage::~GImage (void)
@@ -48,6 +58,7 @@ void GImage::Wrap (u32 *pBuffer, int nWidth, int nHeight)
 	m_nHeight = nHeight;
 	m_nBufferSize = 0;
 	m_bOwnsBuffer = FALSE;
+	ResetClip ();
 }
 
 void GImage::SetSize (int nWidth, int nHeight)
@@ -58,6 +69,7 @@ void GImage::SetSize (int nWidth, int nHeight)
 		m_nHeight = nHeight;
 		CreateBuffer ();
 	}
+	ResetClip ();
 }
 
 void GImage::CreateBuffer (void)
@@ -81,7 +93,12 @@ void GImage::Clear (u32 nColor)
 	{
 		return;
 	}
-	Fill32 (m_pBuffer, nColor, m_nWidth * m_nHeight);
+	if (m_nCX0 == 0 && m_nCY0 == 0 && m_nCX1 == m_nWidth && m_nCY1 == m_nHeight)
+	{
+		Fill32 (m_pBuffer, nColor, m_nWidth * m_nHeight);
+		return;
+	}
+	for (int y = m_nCY0; y < m_nCY1; y++) Fill32 (m_pBuffer + y * m_nWidth + m_nCX0, nColor, m_nCX1 - m_nCX0);
 }
 
 void GImage::SetPixel (int x, int y, u32 nColor)
@@ -90,7 +107,7 @@ void GImage::SetPixel (int x, int y, u32 nColor)
 	{
 		return;
 	}
-	if (x >= 0 && y >= 0 && x < m_nWidth && y < m_nHeight)
+	if (x >= m_nCX0 && y >= m_nCY0 && x < m_nCX1 && y < m_nCY1)
 	{
 		m_pBuffer[y * m_nWidth + x] = nColor;
 	}
@@ -161,10 +178,10 @@ void GImage::FillRectangle (int x1, int y1, int x2, int y2, u32 nColor)
 	if (y1 > y2) { int t = y1; y1 = y2; y2 = t; }
 
 	// Clip to bounds.
-	if (x1 < 0) x1 = 0;
-	if (y1 < 0) y1 = 0;
-	if (x2 >= m_nWidth)  x2 = m_nWidth - 1;
-	if (y2 >= m_nHeight) y2 = m_nHeight - 1;
+	if (x1 < m_nCX0) x1 = m_nCX0;
+	if (y1 < m_nCY0) y1 = m_nCY0;
+	if (x2 >= m_nCX1) x2 = m_nCX1 - 1;
+	if (y2 >= m_nCY1) y2 = m_nCY1 - 1;
 	if (x1 > x2 || y1 > y2)
 	{
 		return;
@@ -190,14 +207,14 @@ void GImage::PutOtherRaw (const u32 *pSrc, int nSrcW, int nSrcH, int x, int y)
 	int dx = x, dy = y;		// destination origin
 	int w = nSrcW, h = nSrcH;
 
-	if (x >= m_nWidth || y >= m_nHeight || x + w <= 0 || y + h <= 0)
+	if (x >= m_nCX1 || y >= m_nCY1 || x + w <= m_nCX0 || y + h <= m_nCY0)
 	{
 		return;
 	}
-	if (x < 0) { sx = -x; dx = 0; w += x; }
-	if (y < 0) { sy = -y; dy = 0; h += y; }
-	if (dx + w > m_nWidth)  w = m_nWidth - dx;
-	if (dy + h > m_nHeight) h = m_nHeight - dy;
+	if (x < m_nCX0) { sx = m_nCX0 - x; dx = m_nCX0; w -= sx; }
+	if (y < m_nCY0) { sy = m_nCY0 - y; dy = m_nCY0; h -= sy; }
+	if (dx + w > m_nCX1) w = m_nCX1 - dx;
+	if (dy + h > m_nCY1) h = m_nCY1 - dy;
 
 	const u32 *pSrcRow = pSrc + sy * nSrcW + sx;
 	u32 *pDstRow = m_pBuffer + dy * m_nWidth + dx;
@@ -232,14 +249,14 @@ void GImage::PutOther (const GImage *pSrc, int x, int y, boolean bTransparent)
 	int nSrcH = pSrc->Height ();
 	int sx = 0, sy = 0, dx = x, dy = y, w = nSrcW, h = nSrcH;
 
-	if (x >= m_nWidth || y >= m_nHeight || x + w <= 0 || y + h <= 0)
+	if (x >= m_nCX1 || y >= m_nCY1 || x + w <= m_nCX0 || y + h <= m_nCY0)
 	{
 		return;
 	}
-	if (x < 0) { sx = -x; dx = 0; w += x; }
-	if (y < 0) { sy = -y; dy = 0; h += y; }
-	if (dx + w > m_nWidth)  w = m_nWidth - dx;
-	if (dy + h > m_nHeight) h = m_nHeight - dy;
+	if (x < m_nCX0) { sx = m_nCX0 - x; dx = m_nCX0; w -= sx; }
+	if (y < m_nCY0) { sy = m_nCY0 - y; dy = m_nCY0; h -= sy; }
+	if (dx + w > m_nCX1) w = m_nCX1 - dx;
+	if (dy + h > m_nCY1) h = m_nCY1 - dy;
 
 	const u32 *pSrcBuf = pSrc->Buffer ();
 	for (int row = 0; row < h; row++)
@@ -276,10 +293,10 @@ void GImage::PutOtherPart (const GImage *pSrc, int dstX, int dstY,
 	if (w <= 0 || h <= 0) return;
 
 	// Clip the destination rectangle to this image.
-	if (dstX < 0) { w += dstX; srcX -= dstX; dstX = 0; }
-	if (dstY < 0) { h += dstY; srcY -= dstY; dstY = 0; }
-	if (dstX + w > m_nWidth)  w = m_nWidth - dstX;
-	if (dstY + h > m_nHeight) h = m_nHeight - dstY;
+	if (dstX < m_nCX0) { int d = m_nCX0 - dstX; w -= d; srcX += d; dstX = m_nCX0; }
+	if (dstY < m_nCY0) { int d = m_nCY0 - dstY; h -= d; srcY += d; dstY = m_nCY0; }
+	if (dstX + w > m_nCX1) w = m_nCX1 - dstX;
+	if (dstY + h > m_nCY1) h = m_nCY1 - dstY;
 	if (w <= 0 || h <= 0) return;
 
 	const u32 *pSrcBuf = pSrc->Buffer ();

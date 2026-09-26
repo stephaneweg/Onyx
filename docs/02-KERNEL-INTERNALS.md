@@ -89,11 +89,20 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    shell). Pointing `init=` at a different ELF swaps the whole userland launcher
    (e.g. a recovery shell) without rebuilding the kernel.
 3. Launches the **kernel service tasks**:
-   - **`CCompositorTask`** — presents the screen at up to ~60 Hz (composes the windows
-     then `UpdateDisplay()`), **only when something changed**: `g_nScreenGen` (window.h) is
-     bumped by every visual change (`kapi_present`/`SYS_present`, window add / remove /
-     raise / move / resize / alpha, cursor motion, wallpaper, full screen, chrome); the
-     task recomposites when it moved, plus a safety refresh every 500 ms. An idle desktop
+   - **`CCompositorTask`** — presents the screen at up to ~60 Hz, **only what changed**
+     (dirty rectangles): every visual change says where — `ScreenDirtyRect` for a part
+     (`kapi_present`/`SYS_present` and chrome: the caller's window; window add / remove /
+     raise / move / resize / alpha: its old and new places; the cursor: its old and new
+     16×16 spots, with the drag badge) or `ScreenDirty` for all of it (wallpaper, full
+     screen end, drag & drop start / end). Rectangles that touch are merged (at most 16;
+     more, or over 2/3 of the screen, = the whole screen) and `g_nScreenGen` is bumped.
+     The task takes the damage (`ScreenTakeDamage`) and for each rectangle composites with
+     the screen image **clipped** to it (`GImage::SetClip`: every blit and fill stays
+     inside) and sends just that rectangle to the display (`C2DGraphics::UpdateDisplay
+     (x, y, w, h)`, our Circle patch: rows gathered, then the frame buffer's 2D DMA); the
+     whole screen only when told, plus a safety refresh every 2 s. A window animating
+     (a game, an emulator) costs its own area instead of the whole screen, a mouse move
+     two cursor-sized spots. An idle desktop
      thus costs almost no CPU (the heartbeat's fps shows the real composites). It is created **before** `init` (no boot-log pause any more)
      and the main task hands it the CPU at once with `CScheduler::YieldTo()` (scan starts at
      that task instead of the round-robin next), so it presents before the first app's
@@ -588,8 +597,10 @@ the author's FreeBASIC `SimpleOS`.
   3. draws the windows from back to front (`DrawTo`, `bActive` for the last one);
   4. draws the cursor last (`mousecur.bin` bitmap or fallback arrow).
 
-> **Known TODO:** the compositor **redraws the entire screen on every frame** (no
-> dirty-rectangle optimization). See the "compositor dirty-rect" note.
+- **Dirty rectangles**: `Composite` honours the screen image's clip rectangle, so the
+  compositor task redraws only the damaged rectangles (see the service tasks above); host
+  test `sh tools/tests/run_gui_test.sh` (clipped drawing = full drawing inside the clip,
+  nothing touched outside).
 
 ### 10.3 Widgets (kernel side)
 

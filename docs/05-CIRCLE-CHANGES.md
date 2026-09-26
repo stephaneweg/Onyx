@@ -36,6 +36,7 @@ git -C circle diff Step51..onyx
 | 3 | **Free-space accounting** in the page allocator + memory accessors (for the `meminfo` kapi) | `memory.h`, `pageallocator.{h,cpp}` | `libcircle` (`memory.h` header-only) |
 | 4 | **Multi-core enabled** (`ARM_ALLOW_MULTI_CORE`): core 1 runs the sound producer | `sysconfig.h` | **every library** (clean rebuild) + kernel |
 | 5 | **Shift + navigation keys** (`KeyShiftUp`… appended to `TSpecialKey`, xterm `;2` sequences) | `input/keymap.{h,cpp}` | `libinput`, `libusb` + the `.kmap` files |
+| 6 | **Partial display update** `C2DGraphics::UpdateDisplay (x, y, w, h)` (the compositor's dirty rectangles) | `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
 
@@ -378,6 +379,22 @@ The Onyx layouts (`tools/keymaps/maps/*.h` → `genkeymaps.py` → `SD:/etc/keym
 put them in the **Shift** column of the physical keys 0x4A–0x52. The kernel's key parser
 (`gui/window.cpp`, `NextKey`) turns any `ESC[n;mX` into the plain `KEY_*` code; apps read the
 modifier with `kapi_get_modifiers` (text selection in `wtk::Textarea` / `RichTextBox`).
+
+## 6. Partial display update
+
+`C2DGraphics::UpdateDisplay ()` sends the whole off-screen buffer to the frame buffer. The
+Onyx compositor redraws only the damaged rectangles of the screen, so the patch adds an
+overload that sends one rectangle:
+
+```cpp
+void UpdateDisplay (unsigned nPosX, unsigned nPosY, unsigned nWidth, unsigned nHeight);
+```
+
+It clips the rectangle to the screen, copies its rows into one contiguous block (a
+screen-sized buffer allocated on first use: cached memory, fast) and hands it to
+`CBcmFrameBuffer::SetArea` — the frame buffer's own 2D DMA copy with the destination pitch,
+as the full update uses. With VSync (page flipping) or a display that is not the frame
+buffer it falls back to the full `UpdateDisplay ()`.
 
 ## Not a patch: build configuration
 
