@@ -108,6 +108,9 @@ struct Program;
 Program *compile (const char *src, Error *err);
 int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
+// The language's words (keywords, then the built-in functions), separated by spaces: for an
+// editor that capitalises them. Returns the length (the list is cut at cap - 1).
+int      wordList (char *buf, int cap);
 
 // Number <-> text, QBasic style (also used by the editor / hosts).
 int    formatNum (double v, char *out, bool dbl = false);	// "3.5", "-2", "1.234568E+08" (no leading space);

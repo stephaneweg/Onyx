@@ -2270,3 +2270,13 @@ Program *compile (const char *src, Error *err)
 void destroy (Program *p) { delete p; }
 
 } // namespace bas
+
+int bas::wordList (char *buf, int cap)
+{
+	int n = 0;
+	auto add = [&] (const char *w) { if (n && n < cap - 1) buf[n++] = ' '; for (; *w && n < cap - 1; w++) buf[n++] = *w; };
+	for (int i = 0; KEYWORDS[i]; i++) add (KEYWORDS[i]);
+	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
+	if (cap > 0) buf[n] = 0;
+	return n;
+}
