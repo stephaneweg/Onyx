@@ -10,6 +10,9 @@
 // SECURITY: the psk is clear text on the SD card (the radio needs it). The git copy is
 // auto-redacted by tools/git-hooks/pre-commit; this app only writes the working/SD copy.
 //
+// Scan (ABI v45 kapi_wlan_scan): the SSID field is a Combobox listing the networks around;
+// picking one fills the SSID and sets Proto / Key mgmt from its security (open = NONE).
+//
 // Live re-association isn't exposed by Circle's CWPASupplicant, so changes apply on the
 // next boot -- "Save & Reboot" confirms via a modal, then kapi_reboot (ABI v25).
 //
@@ -22,6 +25,7 @@ using namespace wtk;
 #define BGCOL		0x00283038
 #define W		380
 #define H		308
+#define SCANW		70
 #define LBLW		78
 #define FX		96
 #define FW		(W - FX - 12)
@@ -64,11 +68,68 @@ static int conf_get (const char *buf, const char *key, char *out, int cap)
 }
 
 // ---- widgets / state ---------------------------------------------------------
-static Textbox  *g_ssid, *g_psk, *g_country, *g_proto, *g_keymgmt;
+static Combobox *g_ssid;
+static Textbox  *g_psk, *g_country, *g_proto, *g_keymgmt;
 static Checkbox *g_show;
 static Label    *g_status;
 
 static void set_status (const char *s) { g_status->setText (s); }
+
+// ---- scan --------------------------------------------------------------------
+static struct kapi_wlan_ap g_ap[32]; static int g_nap = 0;
+static int g_opt2ap[Combobox::MAXOPT];			// combobox option -> g_ap index
+static Root *g_root = 0;
+
+static void on_scan (Widget &)
+{
+	set_status ("Scanning (3 s)...");
+	if (g_root) { g_root->draw (); kapi_present (); }
+	g_nap = kapi_wlan_scan (g_ap, 32);
+	g_ssid->clearOptions ();
+	int n = 0;
+	for (int i = 0; i < g_nap && n < Combobox::MAXOPT; i++)
+	{
+		if (g_ap[i].ssid[0] == '\0') continue;			// hidden
+		bool dup = false;					// one entry per name (strongest first)
+		for (int k = 0; k < n; k++)
+		{
+			const char *a = g_ap[g_opt2ap[k]].ssid, *b = g_ap[i].ssid; int j = 0;
+			while (a[j] && a[j] == b[j]) j++;
+			if (a[j] == b[j]) { dup = true; break; }
+		}
+		if (dup) continue;
+		g_opt2ap[n++] = i;
+		g_ssid->addOption (g_ap[i].ssid);
+	}
+	static char msg[80]; int m = 0;
+	char nb[12]; int v = n, t = 0; char tmp[12];
+	if (v == 0) tmp[t++] = '0';
+	while (v) { tmp[t++] = (char) ('0' + v % 10); v /= 10; }
+	while (t) nb[m++] = tmp[--t];
+	nb[m] = 0;
+	m = scat (msg, 0, nb);
+	scat (msg, m, n == 1 ? " network found: click the SSID arrow" : " networks found: click the SSID arrow");
+	set_status (n ? msg : "No network found");
+}
+
+static void on_pick (Widget &)
+{
+	int k = g_ssid->picked;
+	if (k < 0) return;
+	const kapi_wlan_ap &a = g_ap[g_opt2ap[k]];
+	static const char *sec[] = { "open", "WEP", "WPA", "WPA2" };
+	if (a.security == WLAN_SEC_WPA2) { g_proto->setText ("WPA2"); g_keymgmt->setText ("WPA-PSK"); }
+	else if (a.security == WLAN_SEC_WPA) { g_proto->setText ("WPA"); g_keymgmt->setText ("WPA-PSK"); }
+	else if (a.security == WLAN_SEC_OPEN) { g_proto->setText (""); g_keymgmt->setText ("NONE"); g_psk->setText (""); }
+	static char msg[96]; int m = 0;
+	char nb[12]; int v = a.level < 0 ? -a.level : a.level, t = 0; char tmp[12];
+	while (v) { tmp[t++] = (char) ('0' + v % 10); v /= 10; } nb[0] = '-'; int q = 1; while (t) nb[q++] = tmp[--t]; nb[q] = 0;
+	m = scat (msg, 0, sec[a.security & 3]); m = scat (msg, m, ", "); m = scat (msg, m, nb); m = scat (msg, m, " dBm");
+	if (a.security == WLAN_SEC_WEP) m = scat (msg, m, " (WEP is not supported)");
+	else if (a.security != WLAN_SEC_OPEN) m = scat (msg, m, " -- type the password");
+	set_status (msg);
+	if (a.security != WLAN_SEC_OPEN) g_psk->setFocus ();
+}
 
 static void load_conf (void)
 {
@@ -115,8 +176,11 @@ static int save_conf (void)
 	n = scat (out, n, "country=");  n = scat (out, n, country);  n = scat (out, n, "\n\n");
 	n = scat (out, n, "network={\n");
 	n = scat (out, n, "\tssid=\"");     n = scat (out, n, ssid);    n = scat (out, n, "\"\n");
-	n = scat (out, n, "\tpsk=\"");      n = scat (out, n, psk);     n = scat (out, n, "\"\n");
-	n = scat (out, n, "\tproto=");      n = scat (out, n, proto);   n = scat (out, n, "\n");
+	if (psk_mode)			// (an open network: key_mgmt=NONE, no psk / proto)
+	{
+		n = scat (out, n, "\tpsk=\"");      n = scat (out, n, psk);     n = scat (out, n, "\"\n");
+		if (proto[0]) { n = scat (out, n, "\tproto="); n = scat (out, n, proto); n = scat (out, n, "\n"); }
+	}
 	n = scat (out, n, "\tkey_mgmt=");   n = scat (out, n, keymgmt); n = scat (out, n, "\n");
 	n = scat (out, n, "}\n");
 	if (kapi_save_file (WPA_PATH, out, (unsigned) n) < 0) { set_status ("Save FAILED (write error)"); return 0; }
@@ -149,7 +213,8 @@ int main (void)
 	form_label (root, 12, 10, 240, 20, "Wi-Fi Settings");
 
 	int y = 42;
-	form_label (root, 12, y, LBLW, FH, "SSID");     g_ssid    = new Textbox (FX, y, FW, FH, ""); root.addChild (g_ssid);    y += 34;
+	form_label (root, 12, y, LBLW, FH, "SSID");     g_ssid    = new Combobox (FX, y, FW - SCANW - 6, FH, "", 0, on_pick);
+	root.addChild (new Button (FX + FW - SCANW, y - 1, SCANW, FH + 2, "Scan", on_scan));                                  y += 34;
 	form_label (root, 12, y, LBLW, FH, "Password"); g_psk     = new Textbox (FX, y, FW, FH, ""); root.addChild (g_psk);     y += 30;
 	g_show = new Checkbox (FX, y, 160, 20, "Show password", false, on_show, BGCOL); root.addChild (g_show);                 y += 30;
 	form_label (root, 12, y, LBLW, FH, "Country");  g_country = new Textbox (FX, y, FW, FH, ""); root.addChild (g_country); y += 34;
@@ -161,6 +226,8 @@ int main (void)
 	root.addChild (new Button (262, y, 106, 30, "Reload",        on_reload));            y += 38;
 
 	g_status = new Label (12, y, W - 24, 18, "", C_TEXT, BGCOL); root.addChild (g_status);
+	root.addChild (g_ssid);				// last: its list opens over the fields below
+	g_root = &root;
 
 	g_psk->password = true;				// mask by default
 	load_conf ();

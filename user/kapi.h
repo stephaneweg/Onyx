@@ -286,6 +286,11 @@ static inline int kapi_vfs_next (struct kapi_vfs_req *req, int blocking) { retur
 static inline int kapi_vfs_req_data (unsigned id, void *buf, unsigned cap, unsigned offset) { return KT->vfs_req_data (id, buf, cap, offset); }
 static inline int kapi_vfs_reply (unsigned id, int status, const void *data, unsigned len) { return KT->vfs_reply (id, status, data, len); }
 
+// Wi-Fi scan (ABI v45): the access points around, strongest first (struct kapi_wlan_ap:
+// ssid, bssid, security WLAN_SEC_OPEN/WEP/WPA/WPA2, channel, freq MHz, level dBm,
+// connected). Takes ~3 s (blocks the caller); returns how many (0 = none / no Wi-Fi).
+static inline int kapi_wlan_scan (struct kapi_wlan_ap *out, int max) { return KT->wlan_scan (out, max); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }

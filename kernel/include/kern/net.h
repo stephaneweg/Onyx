@@ -41,4 +41,8 @@ int   NetPing       (const char *pHost, unsigned nSeq, unsigned nTimeoutMs,
 		     char *pIPOut, unsigned nIPLen);		// RTT us, or <0
 int   NetInfo       (char *pBuf, unsigned nCap);		// netstat text
 
+// Wi-Fi scan (kapi_wlan_scan, ABI v45): ~3 s, fills pOut strongest first; returns the count.
+struct kapi_wlan_ap;
+int   NetWlanScan (struct kapi_wlan_ap *pOut, int nMax);
+
 #endif

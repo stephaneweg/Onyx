@@ -35,7 +35,8 @@
 // v42: + drag_begin/drag_data (drag & drop), get_modifiers/inject_modifiers.
 // v43: + net_ping/net_resolve/net_info -- network tools (ping, nslookup, netstat).
 // v44: + vfs_register/vfs_next/vfs_req_data/vfs_reply -- user-space file systems (FTP:).
-#define KAPI_ABI_VERSION	44
+// v45: + wlan_scan -- the Wi-Fi access points around.
+#define KAPI_ABI_VERSION	45
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +44,22 @@ extern "C" {
 
 // Widget / key event callback: void (sender, GUI_EVENT_*, value).
 typedef void (*gui_handler) (unsigned long sender, int event, long value);
+
+// One Wi-Fi access point seen by kapi_wlan_scan (ABI v45).
+#define WLAN_SEC_OPEN	0
+#define WLAN_SEC_WEP	1
+#define WLAN_SEC_WPA	2
+#define WLAN_SEC_WPA2	3		// RSN (WPA2 / WPA3)
+struct kapi_wlan_ap
+{
+	char	      ssid[33];		// 0-terminated, "" = hidden network
+	unsigned char bssid[6];
+	unsigned char security;		// WLAN_SEC_*
+	unsigned char channel;		// 1..14 (2.4 GHz), 36.. (5 GHz)
+	unsigned char connected;	// 1 = the network we are associated with
+	int	      freq;		// MHz
+	int	      level;		// signal, dBm (-40 strong .. -90 weak)
+};
 
 // A request to a user-space file-system provider (kapi_vfs_next, ABI v44).
 struct kapi_vfs_req
@@ -456,6 +473,12 @@ struct TKApiTable
 	int (*vfs_next) (struct kapi_vfs_req *req, int blocking);
 	int (*vfs_req_data) (unsigned id, void *buf, unsigned cap, unsigned offset);
 	int (*vfs_reply) (unsigned id, int status, const void *data, unsigned len);
+
+	// --- v45 additions (Wi-Fi) ---
+	// wlan_scan: scan the air (~3 s, blocks the caller) and fill up to max access points,
+	// strongest first, one per BSSID; returns how many (0 none / no Wi-Fi). While not
+	// associated wpa_supplicant scans too: a scan then may delay its next attempt.
+	int (*wlan_scan) (struct kapi_wlan_ap *out, int max);
 };
 
 #ifdef __cplusplus

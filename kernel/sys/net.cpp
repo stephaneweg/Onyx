@@ -22,6 +22,10 @@
 #include <circle/string.h>
 #include <circle/new.h>
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>	// live association state
+#include <wlan/bcm4343.h>					// escan (kapi_wlan_scan)
+#include <circle/netdevice.h>
+#include <kern/kapi_abi.h>
+#include <circle/util.h>
 #include <circle/types.h>
 
 #define MAX_SOCKETS	16
@@ -334,4 +338,126 @@ int NetInfo (char *pBuf, unsigned nCap)
 	}
 	pBuf[n] = '\0';
 	return (int) n;
+}
+
+// ---- v45: Wi-Fi scan ------------------------------------------------------------------------
+// The BCM4343 firmware's "escan": the driver queues one result message per access point seen
+// (CBcm4343Device::ReceiveScanResult). wpa_supplicant's Circle driver reads the same queue for
+// its own scans, so while it is still looking for its network a scan here can take its
+// results (it simply scans again). The layout below is the firmware's, as in hostap's
+// src/drivers/driver_circle.cpp (not packed: natural alignment, same compiler).
+namespace {
+struct TBssInfo
+{
+	u32 version; u32 length; u8 BSSID[6]; u16 beacon_period; u16 capability;
+	u8 SSID_len; u8 SSID[32];
+	struct { u32 count; u8 rates[16]; } rateset;
+	u16 chanspec; u16 atim_window; u8 dtim_period; u16 RSSI; s8 phy_noise;
+	u8 n_cap; u32 nbss_cap; u8 ctl_ch; u32 reserved32[1]; u8 flags; u8 reserved[3];
+	u8 basic_mcs[16];
+	u16 ie_offset; u32 ie_length; u16 SNR;
+};
+struct TEscanResult { u32 buflen; u32 version; u16 sync_id; u16 bss_count; TBssInfo bss; };
+}
+
+static int ChanFreq (unsigned chan)
+{
+	if (chan >= 1 && chan <= 13) return 2412 + (int) (chan - 1) * 5;
+	if (chan == 14) return 2484;
+	if (chan >= 32 && chan <= 173) return 5160 + (int) (chan - 32) * 5;
+	return 0;
+}
+
+// Security from the capability word + the information elements.
+static unsigned char BssSecurity (const TBssInfo *b, unsigned nMsgLen, unsigned nBssOff)
+{
+	const u8 *ie = (const u8 *) b + b->ie_offset;
+	unsigned n = b->ie_length;
+	if (nBssOff + b->ie_offset + n > nMsgLen) n = 0;		// (truncated: no IEs)
+	unsigned char sec = (b->capability & 0x10) ? WLAN_SEC_WEP : WLAN_SEC_OPEN;	// privacy bit
+	for (unsigned i = 0; i + 2 <= n; )
+	{
+		unsigned id = ie[i], len = ie[i + 1];
+		if (i + 2 + len > n) break;
+		if (id == 48) return WLAN_SEC_WPA2;				// RSN
+		if (id == 221 && len >= 4 && ie[i + 2] == 0x00 && ie[i + 3] == 0x50
+		    && ie[i + 4] == 0xF2 && ie[i + 5] == 0x01) sec = WLAN_SEC_WPA;	// WPA vendor IE
+		i += 2 + len;
+	}
+	return sec;
+}
+
+int NetWlanScan (struct kapi_wlan_ap *pOut, int nMax)
+{
+	if (pOut == 0 || nMax <= 0) return 0;
+	CNetDevice *pDev = CNetDevice::GetNetDevice (NetDeviceTypeWLAN);
+	if (pDev == 0) return 0;
+	CBcm4343Device *pWLAN = (CBcm4343Device *) pDev;
+
+	static u8 Buf[FRAME_BUFFER_SIZE];
+	unsigned nLen;
+	while (pWLAN->ReceiveScanResult (Buf, &nLen)) {}		// stale messages
+	if (!pWLAN->Control ("escan %u", 5)) return 0;
+
+	const u8 *pOwn = 0;						// the BSSID we are on
+	u8 Own[6];
+	if (g_pNet != 0 && CWPASupplicant::IsConnected ())
+	{
+		const CMACAddress *pB = pWLAN->GetBSSID ();
+		if (pB != 0) { pB->CopyTo (Own); pOwn = Own; }
+	}
+
+	int nCount = 0;
+	unsigned nStart = CTimer::Get ()->GetTicks ();
+	while (CTimer::Get ()->GetTicks () - nStart < 3 * HZ + HZ / 2)
+	{
+		CScheduler::Get ()->MsSleep (50);
+		while (pWLAN->ReceiveScanResult (Buf, &nLen))
+		{
+			if (nLen < sizeof (TEscanResult)) continue;
+			const TEscanResult *r = (const TEscanResult *) Buf;
+			unsigned off = (unsigned) ((const u8 *) &r->bss - Buf);
+			for (unsigned k = 0; k < r->bss_count && off + sizeof (TBssInfo) <= nLen; k++)
+			{
+				const TBssInfo *b = (const TBssInfo *) (Buf + off);
+				if (b->length == 0) break;
+				unsigned chan = b->chanspec & 0xFF;
+				int level = (s16) b->RSSI;
+				// One entry per BSSID (keep the strongest reading).
+				int j = 0;
+				while (j < nCount && memcmp (pOut[j].bssid, b->BSSID, 6) != 0) j++;
+				if (j == nCount)
+				{
+					if (nCount >= nMax) { off += b->length; continue; }
+					nCount++;
+					kapi_wlan_ap &a = pOut[j];
+					memset (&a, 0, sizeof a);
+					unsigned sl = b->SSID_len < 32 ? b->SSID_len : 32;
+					for (unsigned i = 0; i < sl; i++) a.ssid[i] = b->SSID[i] ? (char) b->SSID[i] : ' ';
+					a.ssid[sl] = '\0';
+					memcpy (a.bssid, b->BSSID, 6);
+					a.level = -1000;
+				}
+				kapi_wlan_ap &a = pOut[j];
+				if (level > a.level)
+				{
+					a.level = level;
+					a.channel = (unsigned char) chan;
+					a.freq = ChanFreq (chan);
+					a.security = BssSecurity (b, nLen, off);
+				}
+				a.connected = pOwn != 0 && memcmp (pOwn, b->BSSID, 6) == 0;
+				off += b->length;
+			}
+		}
+	}
+	pWLAN->Control ("escan 0");					// stop
+
+	for (int i = 1; i < nCount; i++)				// strongest first
+	{
+		kapi_wlan_ap t = pOut[i]; int j = i - 1;
+		while (j >= 0 && pOut[j].level < t.level) { pOut[j + 1] = pOut[j]; j--; }
+		pOut[j + 1] = t;
+	}
+	return nCount;
 }

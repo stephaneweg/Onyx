@@ -1854,5 +1854,6 @@ int kapi_net_ping (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *
 { return NetPing (pHost, nSeq, nTimeoutMs, pIP, nCap); }
 int kapi_net_resolve (const char *pHost, char *pIP, unsigned nCap) { return NetResolve (pHost, pIP, nCap); }
 int kapi_net_info (char *pBuf, unsigned nCap) { return NetInfo (pBuf, nCap); }
+int kapi_wlan_scan (struct kapi_wlan_ap *pOut, int nMax) { return NetWlanScan (pOut, nMax); }
 
 }  // extern "C"

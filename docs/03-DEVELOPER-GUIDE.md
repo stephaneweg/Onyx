@@ -257,6 +257,9 @@ Notes / caveats:
 > ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
 > `ftpfs.h`: `ftpfs_login` / `ftpfs_login_site` (hand a login to ftpfs, optionally
 > remembered), `ftpfs_forget`, `ftpfs_load_sites` (the remembered servers of `SD:/etc/ftpfs.ini`).
+> **Wi-Fi scan (ABI v45)**: `kapi_wlan_scan (ap, max)` fills `struct kapi_wlan_ap` entries
+> (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
+> it blocks ~3 s. Examples: `user/bin/wifiscan.c`, `wpaconf` (Scan button + Combobox).
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
 > **WPF-style controls (P5)** — all in `wtk/wtk.h`, see `user/Apps/widgets` for each in use:
