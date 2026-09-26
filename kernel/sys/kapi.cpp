@@ -1201,6 +1201,47 @@ void *kapi_open (const char *pPath)
 	return pFile;
 }
 
+// Big file transfers go in pieces with a Yield between them (a voluntary preemption point):
+// kernel code is not preempted, so one f_read of a 28 MB file (a Doom WAD, a GBA ROM) would
+// stop every other task -- the compositor, the cursor, the sound feeders -- until it ended.
+// Between two pieces the FatFs volume lock is free, so other tasks' file calls get through
+// too. The caller's buffer stays valid: its address space is active again when it resumes.
+#define IO_CHUNK	(64 * 1024)
+
+static FRESULT ChunkedRead (FIL *pFile, void *pBuf, unsigned nLen, UINT *pDone)
+{
+	u8 *p = (u8 *) pBuf;
+	*pDone = 0;
+	while (nLen > 0)
+	{
+		unsigned k = nLen > IO_CHUNK ? IO_CHUNK : nLen;
+		UINT n = 0;
+		FRESULT Res = f_read (pFile, p, k, &n);
+		if (Res != FR_OK) return Res;
+		*pDone += n; p += n; nLen -= n;
+		if (n < k) break;					// the end of the file
+		if (nLen > 0 && CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
+	}
+	return FR_OK;
+}
+
+static FRESULT ChunkedWrite (FIL *pFile, const void *pBuf, unsigned nLen, UINT *pDone)
+{
+	const u8 *p = (const u8 *) pBuf;
+	*pDone = 0;
+	while (nLen > 0)
+	{
+		unsigned k = nLen > IO_CHUNK ? IO_CHUNK : nLen;
+		UINT n = 0;
+		FRESULT Res = f_write (pFile, p, k, &n);
+		if (Res != FR_OK) return Res;
+		*pDone += n; p += n; nLen -= n;
+		if (n < k) break;					// (the card is full)
+		if (nLen > 0 && CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
+	}
+	return FR_OK;
+}
+
 int kapi_read (void *pHandle, void *pBuf, unsigned nLen)
 {
 	if (pHandle == 0)
@@ -1209,7 +1250,7 @@ int kapi_read (void *pHandle, void *pBuf, unsigned nLen)
 	}
 	if (VfsIsFile (pHandle)) return VfsRead (pHandle, pBuf, nLen);
 	UINT nRead = 0;
-	if (f_read ((FIL *) pHandle, pBuf, nLen, &nRead) != FR_OK)
+	if (ChunkedRead ((FIL *) pHandle, pBuf, nLen, &nRead) != FR_OK)
 	{
 		return -1;
 	}
@@ -1557,7 +1598,7 @@ int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 		return -1;
 	}
 	UINT nWritten = 0;
-	FRESULT Res = f_write (&File, pBuf, nLen, &nWritten);
+	FRESULT Res = ChunkedWrite (&File, pBuf, nLen, &nWritten);
 	f_close (&File);
 	return (Res == FR_OK) ? (int) nWritten : -1;
 }

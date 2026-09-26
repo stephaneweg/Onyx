@@ -274,6 +274,17 @@ still block other tasks — drop a `if (IsReschedPending()) Yield();`
 cooperative-preemption point into any such loop if one appears. Tasks also still
 switch **voluntarily** (`Yield`, `MsSleep`, `present`, `wait`, …), unchanged.
 
+**Preemption points in file I/O.** The long kernel operations an app can ask for are cut
+into pieces with a `Yield` between them: `kapi_read` / `kapi_save_file` move at most 64 KB
+per `f_read` / `f_write` (`ChunkedRead` / `ChunkedWrite` in `sys/kapi.cpp`), the ELF loader
+128 KB. Without them one read of a 28 MB file (a Doom WAD, a GBA ROM, a newlib app's
+`fopen`, which reads the whole file) stopped every other task — the compositor, the cursor,
+the sound feeders — for seconds. Between two pieces the FatFs volume lock is free, so other
+tasks' file calls get through; the caller's buffer stays valid (its address space is active
+again when it resumes). The SD driver itself still busy-waits for each piece (Circle's
+`NO_BUSY_WAIT` would make it yield during the transfer too: a possible next step, which
+turns FatFs's lock into a `CMutex` and needs every Circle library rebuilt).
+
 **CPU hogs vs yielders (dynamic priority).** Circle's network and Wi-Fi code waits in
 `Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the `CNetTask`
 `Process` loop, socket send/recv — also inside an app's `kapi_*` call, e.g. `vncd`). In
