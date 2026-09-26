@@ -542,6 +542,23 @@ def icon_plasma():		# colourful plasma waves
     pframe(px, 4, 4, 35, 35, (60, 60, 70))
     return px
 
+def icon_gbemu():		# a Game Boy: grey body, green screen, D-pad and A / B
+    px = blank()
+    prect(px, 8, 2, 31, 37, (196, 196, 204)); pframe(px, 8, 2, 31, 37, (90, 90, 100))
+    prect(px, 11, 5, 28, 19, (70, 70, 90)); prect(px, 13, 7, 26, 17, (140, 180, 60))
+    prect(px, 12, 26, 18, 28, (40, 40, 48)); prect(px, 14, 24, 16, 30, (40, 40, 48))
+    pdisc(px, 27, 25, 2, (160, 30, 80)); pdisc(px, 23, 28, 2, (160, 30, 80))
+    return px
+
+def icon_gamelib():		# a shelf of game tiles
+    px = blank()
+    prect(px, 2, 2, 37, 37, (20, 20, 20))
+    cols = [(140, 180, 60), (80, 140, 220), (220, 90, 60), (230, 200, 60)]
+    for i, c in enumerate(cols):
+        x0, y0 = 5 + (i % 2) * 16, 5 + (i // 2) * 16
+        prect(px, x0, y0, x0 + 13, y0 + 13, (50, 50, 56)); prect(px, x0 + 2, y0 + 2, x0 + 11, y0 + 9, c)
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -557,6 +574,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib,
 }
 
 

@@ -292,7 +292,9 @@ goes in at the caret).
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
 per line (`txt = tinypad`, `png = imageview`, `doc = writer`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the Shelf
-(click). Folders open in the File Viewer, `.app` bundles and programs run.
+(click). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
+a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
+run in the BASIC runtime, `.gb` / `.gbc` in the Game Boy emulator.
 
 ### Launching, closing, switching
 
@@ -749,6 +751,8 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
+| **Game Library** (`gamelib`) | A "Netflix for ROMs": every Game Boy (`.gb`) and Game Boy Color (`.gbc`) ROM of **`SD:/roms`** and its sub-folders, one tile each — a picture of its title screen and its name — on a dark grid, Game Boy Color first. **Click** a tile (or arrows + **Enter**) to play. The pictures are made in the background the first time (each game runs a few seconds unseen) and cached in `SD:/apps/gamelib.app/thumbs/`. Library ▸ **Refresh** (^R) finds new ROMs; ▸ **Choose Folder...** (pick any file of the folder) — kept in `SD:/apps/gamelib.app/config.ini` (`folder = ...`); View ▸ **Play Full Screen On / Off**. |
+| **Game Boy** (`gbemu`) | The Game Boy / Game Boy Color emulator. Opening a `.gb` / `.gbc` file (File Viewer, Shelf, `run SD:/roms/x.gbc`) starts it (`SD:/etc/runners.ini`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **Enter** = Start, **Backspace** = Select (held), **P** pause. View ▸ **Full Screen** (**F11**; **Esc** back): stretched to the whole display with the proportions kept, centred; **Zoom 2x/3x/4x** in a window; **Palette** Green / Grey / Pocket (Game Boy games); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery save is **`<rom>.sav`** beside the ROM (read at start, written every 5 s after a change and on exit). `gbemu <rom> --fullscreen` starts full screen. No ROM ships with Onyx: copy your own dumps to `SD:/roms`. |
 
 The new games, rendered by their real drawing code on a PC (`tools/tests/run_games_test.sh`):
 

@@ -286,6 +286,16 @@ Notes / caveats:
 > a `RichTextBox` (styles, colour table → the 16-colour palette, `\'hh` / `\uN` → Latin-1,
 > skipped destinations), `rtf::save (box, out, cap)` writes it back; `rtf::is_rtf`. Used by
 > `rtfview` and Writer. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
+> **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
+> — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
+> `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),
+> `setSaveRam` / `sram` / `sramDirty` (battery saves), `setDmgPalette`. The SM83 CPU with
+> instruction timing, a scanline PPU (DMG + CGB), timer, OAM DMA / HDMA, MBC1/2/3(+RTC)/5, the
+> 4-channel APU; integer only, no libc. Used by `gbemu` (the emulator: paced by the audio
+> queue, else the clock) and `gamelib` (the library: title-screen thumbnails made headless).
+> **Host test**: `GB_TEST_ROMS=<unzipped c-sp game-boy-test-roms> sh tools/tests/run_gb_test.sh`
+> (Blargg cpu_instrs / instr_timing / halt_bug, dmg-acid2, cgb-acid2 pixel-exact);
+> `tools/tests/gb/gbtest.cpp <rom> <seconds> [out.ppm] ["t:mask,..."]` runs any ROM headless.
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
@@ -607,7 +617,8 @@ SD:apps/<nom>.app/
 
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
-**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`):
+**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
+`gb` / `gbc = SD:/apps/gbemu.app/main`):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,
