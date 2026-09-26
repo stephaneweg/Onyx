@@ -21,6 +21,7 @@
 #include <circle/timer.h>
 #include <circle/string.h>
 #include <circle/new.h>
+#include <wlan/hostap/wpa_supplicant/wpasupplicant.h>	// live association state
 #include <circle/types.h>
 
 #define MAX_SOCKETS	16
@@ -198,9 +199,11 @@ void NetCloseByPid (unsigned nPid)
 			NetTcpClose (i);
 }
 
+// Live: g_bNetUp only says the first DHCP bind happened; the Wi-Fi association can drop
+// (and come back) later, so also ask wpa_supplicant (the menu bar's Wi-Fi icon polls this).
 int NetStatus (char *pIPOut, unsigned nIPLen)
 {
-	if (!NetIsUp ())
+	if (!NetIsUp () || !CWPASupplicant::IsConnected ())
 	{
 		if (pIPOut != 0 && nIPLen > 0) pIPOut[0] = '\0';
 		return 0;

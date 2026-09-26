@@ -5,7 +5,8 @@
 // wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
 // back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu
 // (launchers + Shut Down...), then the app's name with "Quit" (MENU_QUIT), then its
-// menus. The clock sits on the right.
+// menus. The clock sits on the right, with the Wi-Fi state left of it (arcs = connected,
+// a barred circle = not connected; polled about once a second through kapi_net_status).
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
 // and TRANSPARENT: it is allocated full-screen but kept BAR_H tall; while a menu is
@@ -46,6 +47,7 @@ static Canvas g_cv;
 static int g_open = -1, g_hover = -1;	// open menu / hovered item index
 static bool g_dirty = true, g_pressedTitle = false;
 static int g_lastMin = -1;
+static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
 
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
@@ -182,6 +184,34 @@ static Skin &bar_skin (void)
 	return s;
 }
 
+// The Wi-Fi state icon, 17 x 12 px, its box's top-left at (x, y). Integer geometry only.
+static void draw_wifi (int x, int y, bool up)
+{
+	if (up)			// a dot + three 90-degree arcs opening upward (centre = bottom middle)
+	{
+		int cx = x + 8, by = y + 11;
+		for (int dy = -11; dy <= 0; dy++)
+			for (int dx = -8; dx <= 8; dx++)
+			{
+				int ax = dx < 0 ? -dx : dx, d2 = dx * dx + dy * dy;
+				if (ax > -dy + 1) continue;			// outside the 90-degree wedge
+				bool on = d2 <= 2 || (d2 >= 12 && d2 <= 24) || (d2 >= 42 && d2 <= 62) || (d2 >= 90 && d2 <= 120);
+				if (on) g_cv.fillRect (cx + dx, by + dy, 1, 1, C_BARTXT);
+			}
+	}
+	else			// an empty circle crossed by a bar (bottom-left to top-right)
+	{
+		int cx = x + 8, cy = y + 6;
+		for (int dy = -6; dy <= 6; dy++)
+			for (int dx = -6; dx <= 6; dx++)
+			{
+				int d2 = dx * dx + dy * dy, s = dx + dy;
+				bool ring = d2 >= 17 && d2 <= 30, bar = (s == 0 || s == 1) && d2 <= 30;
+				if (ring || bar) g_cv.fillRect (cx + dx, cy + dy, 1, 1, C_DIM);
+			}
+	}
+}
+
 static void draw (void)
 {
 	int h = g_open >= 0 ? g_sh : BAR_H;
@@ -216,8 +246,11 @@ static void draw (void)
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
-	g_cv.text (g_sw - 5 * g_fw - 12, ty, clk, C_BARTXT);
+	int clkX = g_sw - 5 * g_fw - 12;
+	g_cv.text (clkX, ty, clk, C_BARTXT);
 	g_lastMin = mm;
+	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
+	draw_wifi (clkX - 27, (face - 12) / 2 + 1, g_wifi == 1);
 
 	if (g_open >= 0)
 	{
@@ -330,6 +363,14 @@ int main (void)
 		int hh = 0, mm = 0;
 		kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 		if (mm != g_lastMin) g_dirty = true;
+		static unsigned lastNet = 0;				// Wi-Fi state: about once a second
+		unsigned now = kapi_get_ticks ();
+		if (now - lastNet >= 100)
+		{
+			lastNet = now;
+			int w = kapi_net_status (0, 0) ? 1 : 0;
+			if (w != g_wifi) { g_wifi = w; g_dirty = true; }
+		}
 		if (g_dirty) draw ();
 		msleep (g_open >= 0 ? 16 : 50);
 	}

@@ -648,7 +648,25 @@ def voronoi_wallpaper(W, H):
     return Image.fromarray(np.concatenate([full, a], 2), "RGBA")
 
 MB_H = 32   # bar height incl. the 5-px 3D edge underneath (menubar BAR_H / BEVEL)
-def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12:34"):
+def draw_wifi(cv, x, y, up):
+    """menubar draw_wifi(): arcs when connected, a barred circle when not (17 x 12 px)."""
+    if up:
+        cx, by = x + 8, y + 11
+        for dy in range(-11, 1):
+            for dx in range(-8, 9):
+                d2 = dx * dx + dy * dy
+                if abs(dx) > -dy + 1: continue
+                if d2 <= 2 or 12 <= d2 <= 24 or 42 <= d2 <= 62 or 90 <= d2 <= 120:
+                    cv.fill(cx + dx, by + dy, 1, 1, C(0xE8ECF0))
+    else:
+        cx, cy = x + 8, y + 6
+        for dy in range(-6, 7):
+            for dx in range(-6, 7):
+                d2 = dx * dx + dy * dy; t = dx + dy
+                if 17 <= d2 <= 30 or (t in (0, 1) and d2 <= 30):
+                    cv.fill(cx + dx, cy + dy, 1, 1, C(0x8A96A8))
+
+def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12:34", wifi=True):
     """The system menu bar (Apps/menubar/main.cpp draw()): app name (bold) + menus + clock,
     optionally with one drop-down open. items = [(label, shortcut) | None for a separator]."""
     face = MB_H - 5
@@ -662,6 +680,7 @@ def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12
         if i == 0: cv.text(x + 9, ty, t, C(0xE8ECF0))
         x += w
     cv.text(W - 5 * FW - 12, ty, clock, C(0xE8ECF0))
+    draw_wifi(cv, W - 5 * FW - 12 - 27, (face - 12) // 2 + 1, wifi)
     if open_idx >= 0 and items:
         dw = max(120, max((len(l) + len(k) + 5) * FW + 20 for l, k in [i for i in items if i]))
         dh = 6 + sum(9 if i is None else FH + 8 for i in items)

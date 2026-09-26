@@ -173,7 +173,9 @@ and the **app list** (`applist`).
 
 A system **menu bar** runs across the top of the screen (started by `autostart`), in the
 style of macOS: it shows the **active application's name** (in bold) and **its menus**,
-and the clock on the right. The active application is the frontmost decorated window;
+and the clock on the right, with the **Wi-Fi state** just left of it: the usual arcs when
+the Pi is connected, a grey barred circle when it is not (checked about once a second, so
+a lost or restored connection shows up by itself). The active application is the frontmost decorated window;
 clicking the panel or the desktop does not change it.
 
 - **Click a menu title** to open its drop-down; slide to another title to switch; click an
