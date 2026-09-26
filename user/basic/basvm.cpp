@@ -165,9 +165,9 @@ public:
 	enum { STACK = 2048, MAXFRAMES = 400, MAXGOSUB = 256, MAXFILES = 16, MAXENV = 32, MAXBIND = 32 };
 	V stack[STACK]; int sp;
 	V *G;
-	struct Frame { int ret; V *loc; int nloc; int proc; };
+	struct Frame { int ret; V *loc; int nloc; int proc; int sp0; };	// sp0: the value stack at its start
 	Frame frames[MAXFRAMES]; int nf;
-	struct GoSub { int ret; int frame; int chan; int ev; };
+	struct GoSub { int ret; int frame; int chan; int ev; int sp; };
 	GoSub gosubs[MAXGOSUB]; int ngs;
 	int pc, opPc; bool failed, ended;
 	unsigned rnd; double lastRnd;
@@ -264,16 +264,19 @@ public:
 		for (int i = 0; i < P->numLabels.n; i++) if (P->numLabels[i].pc <= at) v = P->numLabels[i].value;
 		return v;
 	}
-	// The resume point: an error goes to the ON ERROR handler (at the module level),
-	// unwinding the SUB / FUNCTION frames and the value stack. False = fatal.
+	// The resume point: an error goes to the ON ERROR handler (at the module level), as in
+	// QBasic the SUB / FUNCTION frames stay: RESUME [NEXT] goes back into the one that failed
+	// (the value stack is cut back to where its statement began -- statements leave it clean),
+	// RESUME label leaves them. False = fatal.
 	bool trap ()
 	{
 		if (onErr < 0 || inErr || errCode == 51) return false;
 		errLine = erlOf (opPc);
-		errPc = nf > 0 ? frames[0].ret - 1 : opPc;		// the module statement that failed
+		errPc = opPc;
 		bscpy (errMsgSaved, err->msg, sizeof errMsgSaved); errLineSaved = err->line;
-		while (nf > 0) popFrame ();
-		while (sp > 0) vclear (stack[--sp]);
+		int base = nf > 0 ? frames[nf - 1].sp0 : 0;
+		if (ngs > 0 && gosubs[ngs - 1].frame == nf && gosubs[ngs - 1].sp > base) base = gosubs[ngs - 1].sp;	// (an event mid-expression)
+		while (sp > base) vclear (stack[--sp]);
 		chan = 0;
 		inErr = true; failed = false; err->line = 0; err->msg[0] = 0;
 		pc = onErr;
@@ -1030,7 +1033,7 @@ public:
 	void fire (int i)
 	{
 		if (ngs >= MAXGOSUB) return;
-		gosubs[ngs].ret = pc; gosubs[ngs].frame = nf; gosubs[ngs].chan = chan; gosubs[ngs].ev = i; ngs++;
+		gosubs[ngs].ret = pc; gosubs[ngs].frame = nf; gosubs[ngs].chan = chan; gosubs[ngs].ev = i; gosubs[ngs].sp = sp; ngs++;
 		chan = 0;
 		ev[i].busy = true; ev[i].pending = false;
 		pc = ev[i].target;
@@ -1926,6 +1929,7 @@ public:
 				}
 				int first = pr.isFunc ? 1 : 0;
 				for (int i = argc - 1; i >= 0; i--) { V v = pop (); own (v); vclear (f.loc[first + i]); f.loc[first + i] = v; }
+				f.sp0 = sp;
 				nf++;
 				pc = pr.entry;
 				break;
@@ -1940,7 +1944,7 @@ public:
 			}
 			case OP_GOSUB:
 				if (ngs >= MAXGOSUB) { fail ("Out of stack space (GOSUB)"); break; }
-				gosubs[ngs].ret = pc + 1; gosubs[ngs].frame = nf; gosubs[ngs].chan = chan; gosubs[ngs].ev = -1; ngs++;
+				gosubs[ngs].ret = pc + 1; gosubs[ngs].frame = nf; gosubs[ngs].chan = chan; gosubs[ngs].ev = -1; gosubs[ngs].sp = sp; ngs++;
 				pc = code[pc];
 				break;
 			case OP_RETSUB:
@@ -2111,7 +2115,8 @@ public:
 				int m = code[pc++], t = code[pc++];
 				if (!inErr) { fail ("RESUME without error"); break; }
 				inErr = false; errCode = 0;
-				pc = m == 2 ? t : stmtOf (errPc, m == 1);
+				if (m == 2) { while (nf > 0) popFrame (); while (sp > 0) vclear (stack[--sp]); pc = t; }	// a module label
+				else pc = stmtOf (errPc, m == 1);
 				break;
 			}
 			case OP_ONEVENT:

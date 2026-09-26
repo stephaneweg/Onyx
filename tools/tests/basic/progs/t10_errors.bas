@@ -9,6 +9,7 @@ y = SQR(-1)
 PRINT "after SQR"
 CALL Deep
 PRINT "after Deep"
+PRINT "half:"; 1 + Half(0)
 tries = 0
 Again:
 tries = tries + 1
@@ -24,5 +25,9 @@ RESUME NEXT
 SUB Deep
   DIM a(3)
   a(10) = 1
-  PRINT "not reached"
+  PRINT "resumed in Deep"
 END SUB
+FUNCTION Half (v)
+  Half = 100 / v
+  PRINT "resumed in Half"
+END FUNCTION

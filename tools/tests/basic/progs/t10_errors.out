@@ -5,9 +5,13 @@ error 53 at 6
 after ERROR 53
 error 5 at 8 
 after SQR
-error 9 at 26 
+error 9 at 27 
+resumed in Deep
 after Deep
-error 200 at 15 
-error 200 at 15 
+half:error 11 at 31 
+resumed in Half
+ 1 
+error 200 at 16 
+error 200 at 16 
 tries 3 
 done
