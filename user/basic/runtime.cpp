@@ -17,6 +17,7 @@
 #include "notify.h"
 #include "wtk/wtk.h"
 #include "basic/bas.h"
+#include "basic/basfont.h"
 
 using namespace wtk;
 
@@ -77,8 +78,7 @@ public:
 	ScreenRoot (int w, int h, const char *title) : Root (w, h, title), vis (0), vw (w), vh (h), sx (1), sy (1), kh (0), kt (0),
 		mx (0), my (0), mb (0), stop (false), fs (false), fsOx (0), fsOy (0), fsW (1), fsH (1)
 	{
-		fw = kapi_font_width (); if (fw < 1) fw = 8;
-		fh = kapi_font_height (); if (fh < 1) fh = 16;
+		fw = 8; fh = 16;			// the BASIC fonts (basfont.h): 8 pixels wide
 	}
 	void onDraw () override
 	{
@@ -257,21 +257,21 @@ public:
 		for (int c = 0; c < cols; c++) { tchar[vpBot * cols + c] = ' '; tattr[vpBot * cols + c] = (unsigned char) (bg << 4); }
 	}
 	void newline () { ccol = 0; if (++crow > vpBot) { scroll (); crow = vpBot; } }
-	void glyph (int x, int y, unsigned char c, unsigned col)
+	// A code page 437 character from the built-in fonts (basfont.h), plotted pixel by pixel:
+	// 8 x 8, 8 x 14 or 8 x 16 after the mode's cell height (QBasic's). Transparent background.
+	void glyph (int x, int y, unsigned char c, unsigned col, int h = 0)
 	{
-		// the kernel font (fw x fh), squeezed to the mode's cell height
-		static unsigned g[8 * 32];
-		int fw = root->fw, fh = root->fh;
-		if (fw > 8 || fh > 32) { char s[2] = { (char) c, 0 }; kapi_draw_text_buf (db (), W, H, x, y, s, col); return; }
-		for (int i = 0; i < fw * fh; i++) g[i] = 0;
-		char s[2] = { (char) c, 0 };
-		kapi_draw_text_buf (g, fw, fh, 0, 0, s, 0xFFFFFF);
+		if (!h) h = cellH <= 8 ? 8 : cellH <= 14 ? 14 : 16;
+		const unsigned char *g = (h == 8 ? basFont8 : h == 14 ? basFont14 : basFont16) + c * h;
 		unsigned *d = db ();
-		for (int r = 0; r < cellH; r++)
+		for (int r = 0; r < h; r++)
 		{
-			int sr = r * fh / cellH;
-			if (y + r >= H) break;
-			for (int i = 0; i < fw && x + i < W; i++) if (g[sr * fw + i]) d[(long) (y + r) * W + x + i] = col;
+			int py = y + r;
+			if (py < 0) continue;
+			if (py >= H) break;
+			unsigned bits = g[r];
+			for (int i = 0; i < 8 && bits; i++, bits = (bits << 1) & 0xFF)
+				if ((bits & 0x80) && x + i >= 0 && x + i < W) d[(long) py * W + x + i] = col;
 		}
 	}
 	void putch (char c)
@@ -288,7 +288,18 @@ public:
 	}
 	void out (const char *s, int n) override
 	{
-		if (!windowText ()) { kapi_stdout_write (s, (unsigned) n); for (int i = 0; i < n; i++) ccol = s[i] == '\n' ? 0 : ccol + 1; return; }
+		if (!windowText ())				// a terminal: its font is Latin-1
+		{
+			char t[256];
+			for (int i = 0; i < n; )
+			{
+				int m = 0;
+				while (i < n && m < (int) sizeof t) t[m++] = (char) bas437ToLatin1[(unsigned char) s[i++]];
+				kapi_stdout_write (t, (unsigned) m);
+			}
+			for (int i = 0; i < n; i++) ccol = s[i] == '\n' ? 0 : ccol + 1;
+			return;
+		}
 		if (!ensureWindow ()) return;
 		textUsed = true;
 		for (int i = 0; i < n; i++) putch (s[i]);
@@ -306,7 +317,7 @@ public:
 				if (c == 4) return n ? n : -1;
 				if (c == '\r') continue;
 				if (c == '\n') break;
-				if (n < cap - 1) buf[n++] = c;
+				if (n < cap - 1) buf[n++] = (char) basLatin1To437[(unsigned char) c];
 			}
 			buf[n] = 0; ccol = 0;
 			return n;
@@ -339,7 +350,8 @@ public:
 						fillRect (ccol * root->fw, crow * cellH, root->fw, cellH, rgb (bg, 0));
 					}
 				}
-				else if (((k >= 32 && k < 127) || (k >= 0xA0 && k <= 0xFF)) && n < cap - 1) { buf[n++] = (char) k; putch ((char) k); }
+				else if (((k >= 32 && k < 127) || (k >= 0xA0 && k <= 0xFF)) && n < cap - 1)
+				{ char c = (char) basLatin1To437[k]; buf[n++] = c; putch (c); }	// the keyboard is Latin-1
 				blink = kapi_get_ticks ();
 				cx = ccol * root->fw; cy = crow * cellH;
 			}
@@ -364,7 +376,7 @@ public:
 		if (code) { o[0] = 0; o[1] = (char) code; return 2; }
 		if (k == KEY_BACKSPACE) { o[0] = 8; return 1; }
 		if (k == KEY_ENTER) { o[0] = 13; return 1; }
-		if (k > 0 && k < 256) { o[0] = (char) k; return 1; }
+		if (k > 0 && k < 256) { o[0] = (char) basLatin1To437[k]; return 1; }	// Latin-1 -> CP437
 		return 0;
 	}
 	int inkey (char *o) override
@@ -663,7 +675,8 @@ public:
 	void drawText (int x, int y, const char *s, int c) override
 	{
 		if (!ensureWindow ()) return;
-		kapi_draw_text_buf (db (), W, H, x, y, s, rgb (c, rgb (gfg, 0xFFFFFF)));
+		unsigned col = rgb (c, rgb (gfg, 0xFFFFFF));
+		for (; *s; s++, x += 8) glyph (x, y, (unsigned char) *s, col, 16);	// always 8 x 16
 		dirty ();
 	}
 	int mouse (int what) override

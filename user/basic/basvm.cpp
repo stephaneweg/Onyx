@@ -16,6 +16,8 @@
 //
 #include "basic/basint.h"
 #include "basic/basnum.h"
+#define BASFONT_TABLES_ONLY
+#include "basic/basfont.h"
 
 namespace bas {
 
@@ -1061,7 +1063,16 @@ public:
 
 	// ---- builtins -----------------------------------------------------------------------------------------
 	double rndNext () { rnd = rnd * 214013u + 2531011u; lastRnd = ((rnd >> 8) & 0xFFFFFF) / 16777216.0; return lastRnd; }
-	static void cstr (const V &v, char *out, int cap) { int n; const char *s = sdata (v, &n); if (n > cap - 1) n = cap - 1; bmcpy (out, s, n); out[n] = 0; }
+	// Text is code page 437 inside BASIC (QBasic's set); Onyx is Latin-1. cstr: a string for
+	// the system (a file name, a control, the clipboard...) -> Latin-1; craw: as it is.
+	static void craw (const V &v, char *out, int cap) { int n; const char *s = sdata (v, &n); if (n > cap - 1) n = cap - 1; bmcpy (out, s, n); out[n] = 0; }
+	static void cstr (const V &v, char *out, int cap) { craw (v, out, cap); for (; *out; out++) *out = (char) bas437ToLatin1[(unsigned char) *out]; }
+	void pushL1 (const char *s, int n)		// a string from the system (Latin-1) -> CP437
+	{
+		Str *t = snew (s, n);
+		if (t) for (int i = 0; i < n; i++) t->d[i] = (char) basLatin1To437[(unsigned char) t->d[i]];
+		pushStr (t);
+	}
 	void mk (double v, int kind) { serLen = 0; serNum (v, kind); pushS (ser, serLen); }
 	void cv (const V &s, int kind)
 	{
@@ -1174,7 +1185,7 @@ public:
 		case B_DATE: { char d[16]; H.date (d); pushS (d, bslen (d)); break; }
 		case B_TIME: { char t[16]; H.time (t); pushS (t, bslen (t)); break; }
 		case B_INKEY: { char k[4]; int n = H.inkey (k); pushS (k, n); if (!H.poll ()) ended = true; evKick = true; break; }
-		case B_COMMAND: { const char *c = H.command (); pushS (c, bslen (c)); break; }
+		case B_COMMAND: { const char *c = H.command (); pushL1 (c, bslen (c)); break; }
 		case B_POS: pushN (H.column ()); break;
 		case B_CSRLIN: pushN (H.row ()); break;
 		case B_POINT: { int px, py; toPhys (a[0].n, a[1].n, px, py); pushN (H.point (px, py)); break; }
@@ -1207,7 +1218,7 @@ public:
 		{
 			cstr (a[0], tmp, sizeof tmp); char o[200];
 			int n = H.listDir (tmp, argc > 1 ? (int) a[1].n : 0, o, sizeof o);
-			pushS (o, n); break;
+			pushL1 (o, n); break;
 		}
 		case B_BUTTON: case B_LABEL: case B_TEXTBOX: case B_CHECKBOX: case B_LISTBOX: case B_DROPDOWN: case B_PROGRESS: case B_SLIDER:
 		{
@@ -1220,7 +1231,7 @@ public:
 			pushN (H.control (kind, (int) a[0].n, (int) a[1].n, (int) a[2].n, (int) a[3].n, t, val));
 			break;
 		}
-		case B_GETTEXT: { char t[1024]; int n = H.getText ((int) a[0].n, t, sizeof t); pushS (t, n); break; }
+		case B_GETTEXT: { char t[1024]; int n = H.getText ((int) a[0].n, t, sizeof t); pushL1 (t, n); break; }
 		case B_VALUE: pushN (H.getValue ((int) a[0].n)); break;
 		case B_EVENT: { int e = H.event (false); if (e < 0) ended = true; pushN (e); break; }
 		case B_WAITEVENT: { int e = H.event (true); if (e < 0) ended = true; pushN (e); break; }
@@ -1229,14 +1240,14 @@ public:
 			char t[128], m[512]; cstr (a[0], t, sizeof t); cstr (a[1], m, sizeof m);
 			pushN (H.msgbox (t, m, argc > 2 ? (int) a[2].n : 0) ? -1 : 0); break;
 		}
-		case B_CLIPBOARD: { char t[2048]; int n = H.clipboard (t, sizeof t); pushS (t, n); break; }
+		case B_CLIPBOARD: { char t[2048]; int n = H.clipboard (t, sizeof t); pushL1 (t, n); break; }
 		case B_OPENFILE: case B_SAVEFILE:
 		{
 			char d[200] = "", o[256] = "";
 			if (argc > 0) cstr (a[0], d, sizeof d);
 			if (argc > 1) cstr (a[1], o, sizeof o);
 			if (!H.fileDialog (id == B_SAVEFILE, d, o, sizeof o)) o[0] = 0;
-			pushS (o, bslen (o)); break;
+			pushL1 (o, bslen (o)); break;
 		}
 		case B_LBOUND: case B_UBOUND:
 		{
@@ -1286,7 +1297,7 @@ public:
 		}
 		case B_ENVIRON:
 		{
-			if (a[0].t == VS) { cstr (a[0], tmp, sizeof tmp); const char *v = envGet (tmp); pushS (v, bslen (v)); }
+			if (a[0].t == VS) { craw (a[0], tmp, sizeof tmp); const char *v = envGet (tmp); pushS (v, bslen (v)); }
 			else { int k = (int) a[0].n; if (k < 1) { fail ("Illegal function call (ENVIRON$)"); break; } if (k <= nenv) pushS (env[k - 1], bslen (env[k - 1])); else pushS ("", 0); }
 			break;
 		}
@@ -1440,6 +1451,7 @@ public:
 				int bl = bslen (base); if (bl && base[bl - 1] == '/') base[bl - 1] = 0;
 				if (!wild (mask, base)) continue;
 				if (col + 16 > w) { outs ("\n"); col = 0; }
+				for (char *q = name; *q; q++) *q = (char) basLatin1To437[(unsigned char) *q];
 				outs (name); spaces (16 - n > 0 ? 16 - n : 1); col += 16;
 			}
 			outs ("\n");
@@ -1448,7 +1460,7 @@ public:
 		case S_CHDIR: cstr (a[0], t1, sizeof t1); if (!H.chdir (t1)) fail ("Path not found"); break;
 		case S_ENVIRON:
 		{
-			cstr (a[0], t1, sizeof t1);
+			craw (a[0], t1, sizeof t1);
 			int eq = 0; while (t1[eq] && t1[eq] != '=') eq++;
 			if (!t1[eq] || eq == 0) { fail ("Illegal function call (ENVIRON: NAME=value)"); break; }
 			for (int i = 0; i < eq; i++) t1[i] = bup (t1[i]);
@@ -1460,7 +1472,7 @@ public:
 			break;
 		}
 		case S_SHELL: cstr (a[0], t1, sizeof t1); if (argc == 0) t1[0] = 0; H.shell (t1); break;
-		case S_DRAWTEXT: { cstr (a[2], t1, sizeof t1); int px, py; toPhys (a[0].n, a[1].n, px, py); H.drawText (px, py, t1, N (3, -1)); break; }
+		case S_DRAWTEXT: { craw (a[2], t1, sizeof t1); int px, py; toPhys (a[0].n, a[1].n, px, py); H.drawText (px, py, t1, N (3, -1)); break; }
 		case S_SLEEP:
 		{
 			int secs = N (0, 0);

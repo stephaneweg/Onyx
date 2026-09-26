@@ -11,6 +11,12 @@
 //
 #include "basic/basint.h"
 #include "basic/basnum.h"
+#define BASFONT_TABLES_ONLY
+#include "basic/basfont.h"
+
+// Text inside BASIC is code page 437 (QBasic's: CHR$(201) = a frame corner); the source is
+// Latin-1 like the rest of Onyx, so string literals and DATA are translated (\xE9 -> 130).
+static inline char to437 (char c) { return (char) basLatin1To437[(unsigned char) c]; }
 
 namespace bas {
 
@@ -164,7 +170,7 @@ public:
 				addTok (T_STR, line);
 				Tok &k = toks[toks.n - 1];
 				k.sl = i - st; k.s = new char[k.sl + 1];
-				for (int j = 0; j < k.sl; j++) k.s[j] = s[st + j];
+				for (int j = 0; j < k.sl; j++) k.s[j] = to437 (s[st + j]);	// the editor writes Latin-1
 				k.s[k.sl] = 0;
 				if (s[i] == '"') i++;
 				continue;
@@ -185,7 +191,7 @@ public:
 					addTok (T_DATA, line);
 					Tok &k = toks[toks.n - 1];
 					k.sl = e - st; k.s = new char[k.sl + 1];
-					for (int j = 0; j < k.sl; j++) k.s[j] = s[st + j];
+					for (int j = 0; j < k.sl; j++) k.s[j] = to437 (s[st + j]);
 					k.s[k.sl] = 0;
 				}
 				continue;

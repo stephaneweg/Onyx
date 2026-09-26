@@ -848,7 +848,19 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
   `PRESET`, `AND`, `OR`, `XOR`), `VIEW`, `WINDOW` logical coordinates and `PMAP`, `PALETTE`
   (existing pixels change colour, as on a VGA), `CIRCLE` arcs / ellipses, `STEP`, line
   styles, `VIEW PRINT`, `SCREEN (row, col)`. Onyx adds **`FULLSCREEN`**: the screen scaled to
-  the whole display, proportions kept.
+  the whole display, proportions kept (a whole-number zoom when it fills nearly as much: at
+  1024 × 768, `SCREEN 13` is shown 3×); `MOUSEX` / `MOUSEY` stay in the program's pixels.
+- **Text** uses QBasic's character set (code page 437: frames `CHR$(201)` ╔, blocks
+  `CHR$(219)` █, card suits…) in the VGA fonts, drawn by the runtime: 8 × 8 in `SCREEN 13`
+  and the other 320/640 × 200 modes, 8 × 14 in `SCREEN 9` / `10`, 8 × 16 otherwise;
+  `DRAWTEXT` is always 8 × 16. Accents typed in the editor or on the keyboard are translated
+  (é is `CHR$(130)`, as in QBasic); text sent to Onyx (controls, file names, clipboard) is
+  translated back. File contents are kept byte for byte, so an Onyx text file with accents
+  shows other characters.
+- **Keys and sound for games** (Onyx): `KEYDOWN(k$)` is -1 while a key is held (`k$` as
+  `INKEY$` gives it, e.g. `CHR$(0) + "K"`, or a name: `"LEFT"`, `"RIGHT"`, `"UP"`, `"DOWN"`,
+  `"SPACE"`, `"ENTER"`, `"ESC"`, a letter). `PLAY "MB…"` plays in the background while the
+  program goes on (`MF` back to the foreground); `PLAY(0)` = notes still queued.
 - **Events**: `ON TIMER (n) GOSUB`, `ON KEY (n) GOSUB` (F1–F12, arrows, user keys) with
   `TIMER` / `KEY (n)` `ON` / `OFF` / `STOP`. `INKEY$` returns F1–F10 as `CHR$(0) + CHR$(59…68)`.
 - **Programs**: `CHAIN` (with `COMMON` variables and the open files), `RUN`, `CLEAR`,
