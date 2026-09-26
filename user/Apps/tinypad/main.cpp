@@ -76,8 +76,11 @@ static void on_save_as (void)
 }
 static void on_save (void) { if (g_path[0]) save_file (); else on_save_as (); }
 
-// Edit: the Textarea has no selection, so Copy takes the whole document; Paste inserts
-// the clipboard text at the caret.
+// Edit: the Textarea's selection (Shift + arrows / Home / End / Page Up / Down, a mouse
+// drag, ^A) is cut / copied to the system clipboard; Paste replaces it.
+static void on_copy (void) { g_body->copy (); g_body->setFocus (); }
+static void on_cut (void) { g_body->cut (); g_body->setFocus (); }
+static void on_select_all (void) { g_body->selectAll (); g_body->setFocus (); }
 static void on_copy_all (void) { clip_set_text_n (g_body->content (), g_body->len); }
 static void on_paste (void)
 {
@@ -121,8 +124,12 @@ int main (void)
 	menu.item ("Save",       "^S", WK_CTRL ('S'), on_save);
 	menu.item ("Save As...", "",   0,             on_save_as);
 	menu.menu ("Edit");
-	menu.item ("Copy All",   "",   0,             on_copy_all);
+	menu.item ("Cut",        "^X", WK_CTRL ('X'), on_cut);
+	menu.item ("Copy",       "^C", WK_CTRL ('C'), on_copy);
 	menu.item ("Paste",      "^V", WK_CTRL ('V'), on_paste);
+	menu.separator ();
+	menu.item ("Select All", "^A", WK_CTRL ('A'), on_select_all);
+	menu.item ("Copy All",   "",   0,             on_copy_all);
 	menu.publish ();
 
 	char args[100];

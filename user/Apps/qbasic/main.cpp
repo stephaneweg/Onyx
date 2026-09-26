@@ -72,7 +72,7 @@ public:
 			return true;
 		}
 		bool r = Textarea::onKey (k);
-		if (r && ((k >= 32 && k < 127) || k == KEY_BACKSPACE || k == KEY_DEL || k == KEY_TAB)) g_dirty = true;
+		if (r && ((k >= 32 && k < 127) || k == KEY_BACKSPACE || k == KEY_DEL || k == KEY_TAB || k == WK_CTRL ('X') || k == WK_CTRL ('V'))) g_dirty = true;
 		return r;
 	}
 };

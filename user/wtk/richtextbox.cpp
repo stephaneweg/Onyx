@@ -339,7 +339,7 @@ void RichTextBox::moveVert (int dir)
 	int ve = s; while (ve < e && buf[ve] != '\n') ve++;
 	int x = 0, c = ve;
 	for (int i = s; i < ve; i++) { int adv = glyphAdvance (i); if (goalX < x + adv / 2) { c = i; break; } x += adv; c = i + 1; }
-	caret = c; sel = -1;
+	caret = c;					// (the selection is handled by onKey)
 }
 
 int RichTextBox::hitTest (int mx, int my)
@@ -590,16 +590,42 @@ bool RichTextBox::onKey (long k)
 	else if (k == KEY_TAB)       { if (readonly) return true; if (hasSel ()) deleteSelection (); insertChar (' '); insertChar (' '); }
 	else if (k == KEY_BACKSPACE) { if (readonly) return true; if (hasSel ()) deleteSelection (); else if (caret > 0) { deleteRange (caret - 1, caret); caret--; } }
 	else if (k == KEY_DEL)       { if (readonly) return true; if (hasSel ()) deleteSelection (); else deleteRange (caret, caret + 1); }
-	else if (k == KEY_LEFT)      { sel = -1; if (caret > 0) caret--; goalX = xInRow (caret); }
-	else if (k == KEY_RIGHT)     { sel = -1; if (caret < len) caret++; goalX = xInRow (caret); }
-	else if (k == KEY_HOME)      { sel = -1; caret = rowStart[rowOfChar (caret)]; goalX = 0; }
-	else if (k == KEY_END)
+	else if (k == KEY_LEFT || k == KEY_RIGHT || k == KEY_HOME || k == KEY_END || k == KEY_UP || k == KEY_DOWN
+		 || k == KEY_PGUP || k == KEY_PGDN)
 	{
-		sel = -1; int r = rowOfChar (caret), s = rowStart[r], e = (r + 1 < rowN) ? rowStart[r + 1] : len;
-		int ve = s; while (ve < e && buf[ve] != '\n') ve++; caret = ve; goalX = xInRow (caret);
+		// Shift + a navigation key extends the selection from where it started; without
+		// Shift the selection goes (Left / Right first collapse it to that side).
+		bool shift = (kapi_get_modifiers () & MOD_SHIFT) != 0;
+		if (shift) { if (sel < 0) sel = caret; }
+		else if (hasSel () && (k == KEY_LEFT || k == KEY_RIGHT))
+		{
+			int a, b; selRange (a, b); caret = k == KEY_LEFT ? a : b; sel = -1;
+			goalX = xInRow (caret); ensureLayout (); ensureVisible (); invalidate (true);
+			return true;
+		}
+		else sel = -1;
+		if (k == KEY_LEFT)       { if (caret > 0) caret--; }
+		else if (k == KEY_RIGHT) { if (caret < len) caret++; }
+		else if (k == KEY_HOME)  { caret = rowStart[rowOfChar (caret)]; }
+		else if (k == KEY_END)
+		{
+			int r = rowOfChar (caret), s = rowStart[r], e = (r + 1 < rowN) ? rowStart[r + 1] : len;
+			int ve = s; while (ve < e && buf[ve] != '\n') ve++; caret = ve;
+		}
+		else if (k == KEY_UP)    moveVert (-1);
+		else if (k == KEY_DOWN)  moveVert (1);
+		else								// a page: the rows that fit
+		{
+			int page = height / (wk_fh () + 2); if (page < 1) page = 1;
+			for (int i = 0; i < page; i++) moveVert (k == KEY_PGUP ? -1 : 1);
+			if (k == KEY_PGUP && rowOfChar (caret) == 0) caret = 0;
+			if (k == KEY_PGDN && rowOfChar (caret) == rowN - 1) caret = len;
+		}
+		if (sel == caret) sel = shift ? sel : -1;
+		if (k != KEY_UP && k != KEY_DOWN && k != KEY_PGUP && k != KEY_PGDN) goalX = xInRow (caret);
+		ensureLayout (); ensureVisible (); invalidate (true);
+		return true;
 	}
-	else if (k == KEY_UP)        { moveVert (-1); }
-	else if (k == KEY_DOWN)      { moveVert (1); }
 	else return false;
 	if (k != KEY_UP && k != KEY_DOWN) goalX = xInRow (caret);	// keep the up/down goal column fresh
 	ensureLayout (); ensureVisible (); invalidate (true);

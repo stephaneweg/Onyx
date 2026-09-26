@@ -291,8 +291,13 @@ Notes / caveats:
 > open the list, Esc closes it; `cb` fires when the selection changes. The option strings
 > are not copied (they must outlive the widget).
 > **Keys with modifiers**: Ctrl / Shift + arrows, Home, End, Page Up / Down arrive as the
-> plain `KEY_*` code; test `kapi_get_modifiers () & MOD_CTRL` (e.g. the FM Tracker's
-> Ctrl+Up / Down transpose). F1–F5 are not delivered.
+> plain `KEY_*` code; test `kapi_get_modifiers () & MOD_CTRL` / `MOD_SHIFT` (e.g. the FM
+> Tracker's Ctrl+Up / Down transpose, the text widgets' Shift selection). F1–F9 are not delivered.
+> **Text selection**: `Textarea` and `RichTextBox` select with Shift + navigation keys, a
+> mouse drag, Shift+click and ^A; typing replaces the selection. `Textarea` has
+> `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,
+> `copy` / `cut` / `paste` (system clipboard; ^C / ^X / ^V work by themselves when the app's
+> menu does not take them).
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,

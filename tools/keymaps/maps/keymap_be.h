@@ -77,15 +77,15 @@
 {KeyScrollLock,	KeyNone,	KeyNone,	KeyNone,	KeyNone},	// 0x47
 {KeyPause,	KeyNone,	KeyNone,	KeyNone,	KeyNone},	// 0x48
 {KeyInsert,	KeyNone,	KeyNone,	KeyNone,	KeyNone},	// 0x49
-{KeyHome,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlHome},	// 0x4A
-{KeyPageUp,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlPageUp},	// 0x4B
+{KeyHome,	KeyShiftHome,	KeyNone,	KeyNone,	KeyCtrlHome},	// 0x4A
+{KeyPageUp,	KeyShiftPageUp,	KeyNone,	KeyNone,	KeyCtrlPageUp},	// 0x4B
 {KeyDelete,	KeyNone,	KeyNone,	KeyNone,	KeyNone},	// 0x4C
-{KeyEnd,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlEnd},	// 0x4D
-{KeyPageDown,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlPageDown},	// 0x4E
-{KeyRight,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlRight},	// 0x4F
-{KeyLeft,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlLeft},	// 0x50
-{KeyDown,	KeyNone,	KeyNone,	KeyNone,	KeyCtrlDown},	// 0x51
-{KeyUp,		KeyNone,	KeyNone,	KeyNone,	KeyCtrlUp},	// 0x52
+{KeyEnd,	KeyShiftEnd,	KeyNone,	KeyNone,	KeyCtrlEnd},	// 0x4D
+{KeyPageDown,	KeyShiftPageDown,	KeyNone,	KeyNone,	KeyCtrlPageDown},	// 0x4E
+{KeyRight,	KeyShiftRight,	KeyNone,	KeyNone,	KeyCtrlRight},	// 0x4F
+{KeyLeft,	KeyShiftLeft,	KeyNone,	KeyNone,	KeyCtrlLeft},	// 0x50
+{KeyDown,	KeyShiftDown,	KeyNone,	KeyNone,	KeyCtrlDown},	// 0x51
+{KeyUp,		KeyShiftUp,	KeyNone,	KeyNone,	KeyCtrlUp},	// 0x52
 {KeyNumLock,	KeyNumLock,	KeyNone,	KeyNone,	KeyNone},	// 0x53
 {KeyKP_Divide,	KeyKP_Divide,	KeyNone,	KeyNone,	KeyNone},	// 0x54
 {KeyKP_Multiply,KeyKP_Multiply,	KeyNone,	KeyNone,	KeyNone},	// 0x55

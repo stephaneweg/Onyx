@@ -35,6 +35,7 @@ git -C circle diff Step51..onyx
 | 2 | Heap **large-block reuse** (fix per-launch canvas leak) + free-list byte accounting | `heapallocator.{h,cpp}`, `sysconfig.h` | `libcircle` |
 | 3 | **Free-space accounting** in the page allocator + memory accessors (for the `meminfo` kapi) | `memory.h`, `pageallocator.{h,cpp}` | `libcircle` (`memory.h` header-only) |
 | 4 | **Multi-core enabled** (`ARM_ALLOW_MULTI_CORE`): core 1 runs the sound producer | `sysconfig.h` | **every library** (clean rebuild) + kernel |
+| 5 | **Shift + navigation keys** (`KeyShiftUp`… appended to `TSpecialKey`, xterm `;2` sequences) | `input/keymap.{h,cpp}` | `libinput`, `libusb` + the `.kmap` files |
 
 ---
 
@@ -359,6 +360,24 @@ always reserves the stacks of the 4 cores).
 > Changing this define changes code in **every** Circle library: after updating the
 > submodule, run `make clean` in each library before rebuilding them (the `.o` files do
 > not depend on `sysconfig.h`) — see the [Developer Guide §2](03-DEVELOPER-GUIDE.md).
+
+## 5. Shift + navigation keys
+
+Circle's keymap only has **Ctrl** variants of the navigation keys (`KeyCtrlUp` … →
+`ESC[1;5A` …); Shift + an arrow produced nothing. The patch adds eight special keys **at
+the end** of `TSpecialKey` (just before `KeyMaxCode`), so every existing code — the values
+stored in the `.kmap` layout files — keeps its number:
+
+| Key | String |
+|---|---|
+| `KeyShiftHome` / `KeyShiftEnd` | `ESC[1;2H` / `ESC[1;2F` |
+| `KeyShiftPageUp` / `KeyShiftPageDown` | `ESC[5;2~` / `ESC[6;2~` |
+| `KeyShiftUp` / `Down` / `Left` / `Right` | `ESC[1;2A` / `B` / `D` / `C` |
+
+The Onyx layouts (`tools/keymaps/maps/*.h` → `genkeymaps.py` → `SD:/etc/keymaps/*.kmap`)
+put them in the **Shift** column of the physical keys 0x4A–0x52. The kernel's key parser
+(`gui/window.cpp`, `NextKey`) turns any `ESC[n;mX` into the plain `KEY_*` code; apps read the
+modifier with `kapi_get_modifiers` (text selection in `wtk::Textarea` / `RichTextBox`).
 
 ## Not a patch: build configuration
 
