@@ -381,6 +381,7 @@ public:
 	void SetUsbHeld (const unsigned char RawKeys[6]);
 	void SetInjectedHeld (int nKey, boolean bDown);
 	boolean KeyHeld (int nKey, CWindow *pWin);
+	boolean HasKeyFocus (CWindow *pWin);	// pWin has the keyboard (gamepads, ABI v50)
 
 	// Keyboard modifiers (MOD_*), from the USB keyboard's raw report or vncd.
 	void SetModifiers (unsigned nMods)	{ m_nModifiers = nMods; ScreenDirty (); }

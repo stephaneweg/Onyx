@@ -78,6 +78,8 @@ void Machine::reset ()
 	io[0x00] = 0xCF; io[0x40] = 0x91; io[0x41] = 0x85; io[0x47] = 0xFC; io[0x48] = 0xFF; io[0x49] = 0xFF;
 	io[0x0F] = 0xE1;
 	for (int i = 0; i < 64; i++) { bgPalCgb[i] = 0xFF; obPalCgb[i] = 0xFF; }
+	for (int i = 0; i < 32; i++) bgRGB[i] = obRGB[i] = cgbColor (bgPalCgb, i);
+	apuPending = 0;
 	// APU: on, as after the boot sound
 	zero (sq, sizeof sq); zero (&wv, sizeof wv); zero (&ns, sizeof ns);
 	ns.lfsr = 0x7FFF; frameSeq = 0; fsTimer = 0; sampleAcc = 0;
@@ -208,13 +210,13 @@ unsigned char Machine::readIO (int r)
 	case 0x6B: return cgb ? obPalCgb[io[0x6A] & 0x3F] : 0xFF;
 	case 0x70: return cgb ? (unsigned char) (0xF8 | wbank) : 0xFF;
 	}
-	if (r >= 0x10 && r < 0x40) return apuRead (r);
+	if (r >= 0x10 && r < 0x40) { apuFlush (); return apuRead (r); }
 	return io[r];
 }
 
 void Machine::writeIO (int r, unsigned char v)
 {
-	if (r >= 0x10 && r < 0x40) { apuWrite (r, v); return; }
+	if (r >= 0x10 && r < 0x40) { apuFlush (); apuWrite (r, v); return; }
 	switch (r)
 	{
 	case 0x00: io[0x00] = (unsigned char) (v & 0x30); return;
@@ -253,8 +255,8 @@ void Machine::writeIO (int r, unsigned char v)
 		if (v & 0x80) hdmaActive = true;
 		else { while (hdmaLen > 0) hdmaBlock (); }
 		return;
-	case 0x69: if (cgb) { int i = io[0x68] & 0x3F; bgPalCgb[i] = v; if (io[0x68] & 0x80) io[0x68] = (unsigned char) (0x80 | ((i + 1) & 0x3F)); } return;
-	case 0x6B: if (cgb) { int i = io[0x6A] & 0x3F; obPalCgb[i] = v; if (io[0x6A] & 0x80) io[0x6A] = (unsigned char) (0x80 | ((i + 1) & 0x3F)); } return;
+	case 0x69: if (cgb) { int i = io[0x68] & 0x3F; bgPalCgb[i] = v; bgRGB[i >> 1] = cgbColor (bgPalCgb, i >> 1); if (io[0x68] & 0x80) io[0x68] = (unsigned char) (0x80 | ((i + 1) & 0x3F)); } return;
+	case 0x6B: if (cgb) { int i = io[0x6A] & 0x3F; obPalCgb[i] = v; obRGB[i >> 1] = cgbColor (obPalCgb, i >> 1); if (io[0x6A] & 0x80) io[0x6A] = (unsigned char) (0x80 | ((i + 1) & 0x3F)); } return;
 	case 0x70: if (cgb) { wbank = v & 7; if (!wbank) wbank = 1; } return;
 	}
 	io[r] = v;
@@ -355,6 +357,30 @@ int Machine::cbOp ()
 	return cyc;
 }
 
+// HALT: nothing happens until an interrupt, so jump to the next moment one can come -- the
+// PPU's next mode change or the timer's overflow (the rest ticks as usual).
+int Machine::haltSkip ()
+{
+	int ds = doubleSpeed ? 2 : 1, cyc;
+	if (io[0x40] & 0x80)
+	{
+		int mode = io[0x41] & 3;
+		int next = ly >= 144 ? 456 : mode == 2 ? 80 : mode == 3 ? 252 : 456;
+		cyc = (next - lineDots) * ds;
+	}
+	else cyc = (70224 - lineDots) * ds;
+	if (io[0x07] & 4)
+	{
+		static const int bits[4] = { 9, 3, 5, 7 };
+		int period = 1 << (bits[io[0x07] & 3] + 1);
+		int t = period - (int) (divCounter & (unsigned) (period - 1)) + (255 - io[0x05]) * period;
+		if (t < cyc) cyc = t;
+	}
+	if (cyc > 456 * 2) cyc = 456 * 2;
+	cyc &= ~3;
+	return cyc < 4 ? 4 : cyc;
+}
+
 int Machine::step ()
 {
 	// interrupts
@@ -372,7 +398,7 @@ int Machine::step ()
 			return 20;
 		}
 	}
-	if (halted) return 4;
+	if (halted) return haltSkip ();
 	if (eiDelay) { eiDelay--; if (!eiDelay) ime = true; }
 
 	int op = fetch ();
@@ -486,18 +512,15 @@ int Machine::step ()
 // ---- timer / PPU / APU -----------------------------------------------------------------------------------
 void Machine::timerTick (int cycles)
 {
+	// TIMA counts the falling edges of one DIV counter bit: as many as multiples of
+	// 2^(bit+1) crossed
 	static const int bits[4] = { 9, 3, 5, 7 };
-	int bit = bits[io[0x07] & 3];
-	bool on = (io[0x07] & 4) != 0;
-	for (int i = 0; i < cycles; i += 4)
-	{
-		unsigned old = divCounter;
-		divCounter = (divCounter + 4) & 0xFFFF;
-		if (on && ((old >> bit) & 1) && !((divCounter >> bit) & 1))
-		{
-			if (++io[0x05] == 0) { io[0x05] = io[0x06]; irq (2); }
-		}
-	}
+	unsigned old = divCounter, now = old + (unsigned) cycles;
+	divCounter = now & 0xFFFF;
+	if (!(io[0x07] & 4)) return;
+	int sh = bits[io[0x07] & 3] + 1;
+	for (unsigned n = (now >> sh) - (old >> sh); n > 0; n--)
+		if (++io[0x05] == 0) { io[0x05] = io[0x06]; irq (2); }
 }
 
 void Machine::setMode (int m)
@@ -573,6 +596,7 @@ void Machine::renderLine ()
 	bool winOn = (lcdc & 0x20) && io[0x4A] <= ly && io[0x4B] <= 166 && (cgb || (lcdc & 1));
 	int wx = io[0x4B] - 7;
 	bool winUsed = false;
+	int curMi = -1, curPy = -1; unsigned char curAttr = 0, lo = 0, hi = 0;
 	for (int x = 0; x < W; x++)
 	{
 		if (!bgOn) { bgIdx[x] = 0; bgAttr[x] = 0; out[x] = dmgColors[0]; continue; }
@@ -580,17 +604,22 @@ void Machine::renderLine ()
 		if (winOn && x >= wx) { mapBase = (lcdc & 0x40) ? 0x1C00 : 0x1800; px = x - wx; py = winLine; winUsed = true; }
 		else { mapBase = (lcdc & 0x08) ? 0x1C00 : 0x1800; px = (x + io[0x43]) & 255; py = (ly + io[0x42]) & 255; }
 		int mi = mapBase + (py >> 3) * 32 + (px >> 3);
-		int tile = vram[0][mi];
-		unsigned char attr = cgb ? vram[1][mi] : 0;
-		int row = py & 7, col = px & 7;
-		if (attr & 0x40) row = 7 - row;
-		if (attr & 0x20) col = 7 - col;
-		int addr = (lcdc & 0x10) ? tile * 16 : 0x1000 + (signed char) tile * 16;
-		const unsigned char *bank = vram[(attr & 8) ? 1 : 0];
+		if (mi != curMi || py != curPy)				// a new tile: its row's two bytes
+		{
+			curMi = mi; curPy = py;
+			int tile = vram[0][mi];
+			curAttr = cgb ? vram[1][mi] : 0;
+			int row = py & 7; if (curAttr & 0x40) row = 7 - row;
+			int addr = ((lcdc & 0x10) ? tile * 16 : 0x1000 + (signed char) tile * 16) + row * 2;
+			const unsigned char *bank = vram[(curAttr & 8) ? 1 : 0];
+			lo = bank[addr]; hi = bank[addr + 1];
+		}
+		unsigned char attr = curAttr;
+		int col = px & 7; if (attr & 0x20) col = 7 - col;
 		int bit = 7 - col;
-		int ci = ((bank[addr + row * 2] >> bit) & 1) | (((bank[addr + row * 2 + 1] >> bit) & 1) << 1);
+		int ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
 		bgIdx[x] = (unsigned char) ci; bgAttr[x] = attr;
-		if (cgb) out[x] = cgbColor (bgPalCgb, (attr & 7) * 4 + ci);
+		if (cgb) out[x] = bgRGB[(attr & 7) * 4 + ci];
 		else out[x] = dmgColors[(io[0x47] >> (ci * 2)) & 3];
 	}
 	if (winUsed) winLine++;
@@ -630,7 +659,7 @@ void Machine::renderLine ()
 			{
 				bool master = (lcdc & 1) != 0;		// LCDC.0 on CGB: BG / window priority on
 				if (master && bgIdx[x] && ((bgAttr[x] & 0x80) || (at & 0x80))) continue;
-				out[x] = cgbColor (obPalCgb, (at & 7) * 4 + ci);
+				out[x] = obRGB[(at & 7) * 4 + ci];
 			}
 			else
 			{
@@ -778,6 +807,18 @@ void Machine::mixSample ()
 	atail = n;
 }
 
+void Machine::apuFlush ()
+{
+	// in slices that end where an output sample falls, so each sample sees its own moment
+	while (apuPending > 0)
+	{
+		long long need = (CPU_HZ - sampleAcc + rate - 1) / rate;
+		int n = need < 1 ? 1 : need < apuPending ? (int) need : apuPending;
+		apuPending -= n;
+		apuTick (n);
+	}
+}
+
 void Machine::apuTick (int cycles)				// cycles at the normal-speed rate
 {
 	if (!(io[0x26] & 0x80)) { sampleAcc += (long long) cycles * rate; while (sampleAcc >= CPU_HZ) { sampleAcc -= CPU_HZ; mixSample (); } return; }
@@ -839,7 +880,8 @@ void Machine::tick (int cycles)
 	timerTick (cycles);
 	int dots = doubleSpeed ? cycles / 2 : cycles;
 	ppuTick (dots);
-	apuTick (dots);
+	apuPending += dots;						// the APU in batches: at most one
+	if (apuPending >= 64) apuFlush ();				// output sample in 64 cycles
 	if (mbc == 3) rtcTick (dots);
 }
 

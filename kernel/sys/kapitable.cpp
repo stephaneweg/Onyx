@@ -26,6 +26,7 @@ int kapi_list_tasks (char *, unsigned);
 int kapi_kill (const char *);
 int kapi_exec (const char *, const char *);
 int kapi_exec_as (const char *, const char *, const char *);
+int kapi_pad_state (int, struct kapi_pad *);
 void kapi_screen_size (int *, int *);
 void kapi_move_window (int, int);
 unsigned *kapi_wallpaper_buffer (int *, int *);
@@ -329,4 +330,5 @@ void KApiTableInit (void)
 	t->key_held          = kapi_key_held;
 	t->inject_key_held   = kapi_inject_key_held;
 	t->exec_as           = kapi_exec_as;
+	t->pad_state         = kapi_pad_state;
 }

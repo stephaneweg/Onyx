@@ -1910,4 +1910,14 @@ void kapi_inject_key_held (int nKey, int bDown)
 	if (pWM != 0) pWM->SetInjectedHeld (nKey, bDown ? TRUE : FALSE);
 }
 
+// --- v50: USB gamepads ---
+int kapi_pad_state (int nIndex, struct kapi_pad *pOut)
+{
+	if (pOut == 0 || !KernelPadState (nIndex, pOut)) return 0;
+	CWindowManager *pWM = CWindowManager::Get ();
+	CAddressSpace *pAS = CurrentAS ();
+	pOut->focus = pWM != 0 && pAS != 0 && pWM->HasKeyFocus (pAS->GetWindow ()) ? 1 : 0;
+	return 1;
+}
+
 }  // extern "C"

@@ -11,6 +11,8 @@
 #include <circle/usb/usbkeyboard.h>
 #include <circle/input/keymap.h>		// CKeyMap, PHY_MAX_CODE, K_CTRLTAB (SetKeyMapData)
 #include <circle/input/mouse.h>
+#include <circle/usb/usbgamepad.h>
+#include <kern/kapi_abi.h>		// struct kapi_pad (KernelPadState)
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
@@ -501,6 +503,49 @@ static void LoadKeyMapTable (CKeyMap *pKeyMap, const u16 *pMap)
 			pKeyMap->SetEntry (nTable, nPhy, pMap[nPhy * (K_CTRLTAB + 1) + nTable]);
 }
 
+// USB gamepads (ABI v50): Circle's drivers name them upad1..upad4; each slot keeps the last
+// report, written by the driver's status handler (USB completion, interrupt time) under a
+// sequence count (odd while writing) so kapi_pad_state reads a whole state.
+struct TPadSlot
+{
+	CUSBGamePadDevice * volatile pDev;
+	volatile unsigned nSeq;
+	struct kapi_pad State;
+};
+static TPadSlot s_Pads[KAPI_PAD_MAX];
+
+static void PadCopyState (struct kapi_pad *pOut, const TGamePadState *pIn)
+{
+	pOut->nbuttons = pIn->nbuttons;
+	pOut->buttons = pIn->buttons;
+	pOut->naxes = pIn->naxes < KAPI_PAD_AXES ? pIn->naxes : KAPI_PAD_AXES;
+	for (int i = 0; i < pOut->naxes; i++)
+	{
+		pOut->axes[i].value = pIn->axes[i].value;
+		pOut->axes[i].minimum = pIn->axes[i].minimum;
+		pOut->axes[i].maximum = pIn->axes[i].maximum;
+	}
+	pOut->nhats = pIn->nhats < KAPI_PAD_HATS ? pIn->nhats : KAPI_PAD_HATS;
+	for (int i = 0; i < pOut->nhats; i++) pOut->hats[i] = pIn->hats[i];
+}
+
+boolean KernelPadState (int nIndex, struct kapi_pad *pOut)
+{
+	if (nIndex < 0 || nIndex >= KAPI_PAD_MAX || pOut == 0) return FALSE;
+	TPadSlot &Slot = s_Pads[nIndex];
+	for (int nTry = 0; nTry < 1000; nTry++)
+	{
+		if (Slot.pDev == 0) return FALSE;
+		unsigned nSeq = Slot.nSeq;
+		if (nSeq & 1) continue;				// being written
+		DataMemBarrier ();
+		memcpy (pOut, &Slot.State, sizeof *pOut);
+		DataMemBarrier ();
+		if (Slot.nSeq == nSeq) { pOut->seq = nSeq >> 1; return TRUE; }
+	}
+	return FALSE;
+}
+
 class CInputTask : public CTask
 {
 public:
@@ -561,6 +606,7 @@ public:
 			{
 				Detect ();
 			}
+			DetectPads ();
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}
@@ -601,6 +647,49 @@ private:
 				}
 			}
 		}
+	}
+
+	// Gamepads upad1..upad4 -> slots 0..3 (Circle frees and reuses the numbers on unplug).
+	void DetectPads (void)
+	{
+		for (unsigned i = 0; i < KAPI_PAD_MAX; i++)
+		{
+			TPadSlot &Slot = s_Pads[i];
+			if (Slot.pDev != 0) continue;
+			CUSBGamePadDevice *pPad = (CUSBGamePadDevice *) m_pDNS->GetDevice ("upad", i + 1, FALSE);
+			if (pPad == 0) continue;
+			Slot.nSeq++;					// (odd: being written)
+			DataMemBarrier ();
+			memset (&Slot.State, 0, sizeof Slot.State);
+			const TUSBDeviceDescriptor *pDesc = pPad->GetDevice ()->GetDeviceDescriptor ();
+			if (pDesc != 0) { Slot.State.vid = pDesc->idVendor; Slot.State.pid = pDesc->idProduct; }
+			Slot.State.props = pPad->GetProperties ();
+			PadCopyState (&Slot.State, pPad->GetInitialState ());
+			DataMemBarrier ();
+			Slot.nSeq++;
+			Slot.pDev = pPad;
+			pPad->RegisterRemovedHandler (PadRemoved, &Slot);
+			pPad->RegisterStatusHandler (PadStatus);
+			m_pLogger->Write ("input", LogNotice, "gamepad %u attached (%04x:%04x, %d buttons, %d axes, %d hats%s)",
+					  i + 1, Slot.State.vid, Slot.State.pid, Slot.State.nbuttons, Slot.State.naxes,
+					  Slot.State.nhats, (Slot.State.props & GamePadPropertyIsKnown) ? ", known" : "");
+		}
+	}
+
+	static void PadStatus (unsigned nDeviceIndex, const TGamePadState *pState)
+	{
+		if (nDeviceIndex >= KAPI_PAD_MAX || pState == 0) return;
+		TPadSlot &Slot = s_Pads[nDeviceIndex];
+		Slot.nSeq++;
+		DataMemBarrier ();
+		PadCopyState (&Slot.State, pState);
+		DataMemBarrier ();
+		Slot.nSeq++;
+	}
+
+	static void PadRemoved (CDevice *, void *pContext)
+	{
+		if (pContext != 0) ((TPadSlot *) pContext)->pDev = 0;
 	}
 
 	// Circle's cooked mouse reports the *changed button mask* on MouseDown/MouseUp

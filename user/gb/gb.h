@@ -57,6 +57,7 @@ private:
 	// PPU
 	int lineDots, ly, winLine; bool frameDone, statLine;
 	unsigned char bgPalCgb[64], obPalCgb[64];
+	unsigned bgRGB[32], obRGB[32];				// the CGB palettes as 0x00RRGGBB
 	unsigned dmgColors[4];
 	// HDMA
 	bool hdmaActive; int hdmaLen; unsigned short hdmaSrc, hdmaDst;
@@ -68,6 +69,7 @@ private:
 	struct Noise { bool on, dac; int len, vol, envPeriod, envTimer, envDir, shift, width, div, timer; unsigned lfsr; bool lenOn; };
 	Square sq[2]; Wave wv; Noise ns;
 	int frameSeq, fsTimer;
+	int apuPending;						// cycles not yet run by the APU (it runs in batches)
 	int rate; long long sampleAcc;				// output sample clock (x rate, in cycles)
 	enum { ABUF = 8192 };
 	short abuf[ABUF * 2]; int ahead, atail;
@@ -79,7 +81,8 @@ private:
 	void writeMBC (unsigned short addr, unsigned char v);
 	unsigned char readSram (unsigned short addr);
 	void writeSram (unsigned short addr, unsigned char v);
-	int step ();						// one instruction (or an interrupt / halt): its T-cycles
+	int step ();
+	int haltSkip ();						// one instruction (or an interrupt / halt): its T-cycles
 	int cbOp ();
 	void tick (int cycles);					// timer, PPU, APU, DMA for T-cycles
 	void timerTick (int cycles);
@@ -89,6 +92,7 @@ private:
 	void checkStat ();
 	void hdmaBlock ();
 	void apuTick (int cycles);
+	void apuFlush ();
 	void apuWrite (int r, unsigned char v);
 	unsigned char apuRead (int r);
 	void frameSequencer ();

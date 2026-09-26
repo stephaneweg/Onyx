@@ -28,6 +28,10 @@ struct ConsoleHost : bas::Host
 		return n;
 	}
 	int column () override { return col; }
+	// a gamepad 0 whose A (16) and right (8) are held on every other read, its stick x at +500
+	int padReads = 0;
+	unsigned padButtons (int pad) override { padReads++; return (pad == 0 || pad == -1) && (padReads & 1) ? 16 + 8 : 0; }
+	int padAxis (int pad, int axis) override { return pad == 0 && axis == 0 ? 500 : 0; }
 	void cls (int m) override { if (m >= 0) printf ("[cls %d]\n", m); else printf ("[cls]\n"); col = 1; }
 	void locate (int r, int c) override { printf ("[locate %d %d]", r, c); }
 	void color (int f, int b) override { printf ("[color %d %d]", f, b); }

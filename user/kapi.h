@@ -319,6 +319,8 @@ static inline void kapi_inject_key_held (int key, int down) { if (KT->version >=
 // Run a program under another process name (ABI v49): a runner running an app is named
 // after the app (its window, list_windows, raise_app). See launch.h.
 static inline int  kapi_exec_as (const char *path, const char *args, const char *name) { return KT->version >= 49 ? KT->exec_as (path, args, name) : KT->exec (path, args); }
+// USB gamepads (v50): the raw state of pad 0..3 (1 = there); user/gamepad.h maps its buttons.
+static inline int  kapi_pad_state (int index, struct kapi_pad *out) { return KT->version >= 50 ? KT->pad_state (index, out) : 0; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

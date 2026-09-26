@@ -3,7 +3,7 @@
 // sub-folders), a tile each -- a picture of its title screen and its name -- in a dark
 // grid, one section per system. Click a tile (or arrows + Enter) to play: the ROM opens
 // with its runner (SD:/etc/runners.ini: gbemu), in a window or, with View > Play Full
-// Screen, on the whole display.
+// Screen, on the whole display. A USB gamepad works too: the d-pad, A / B / Start to play.
 //
 //   * The folder: SD:/roms by default; Library > Choose Folder... (kept in config.ini).
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
@@ -13,6 +13,7 @@
 #include "kapi.h"
 #include "applib.h"
 #include "launch.h"
+#include "gamepad.h"
 #include "wtk/wtk.h"
 #include "gb/gb.h"
 
@@ -286,6 +287,24 @@ public:
 	void clamp () { int mx = content_h () - height; if (g_scroll > mx) g_scroll = mx; if (g_scroll < 0) g_scroll = 0; }
 };
 
+// A USB gamepad moves through the tiles too: the d-pad (repeating while held), A / B /
+// Start to play.
+static void pad_poll (void)
+{
+	static unsigned last = 0; static unsigned t0 = 0;
+	unsigned b = pad_buttons (-1), now = kapi_get_ticks ();
+	unsigned press = b & ~last;
+	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 18;	// (every 0.18 s)
+	last = b;
+	if (!press && !rep) return;
+	if (press & (PAD_A | PAD_B | PAD_START)) { play (g_sel); return; }
+	unsigned d = press ? press : b;
+	long k = (d & PAD_RIGHT) ? KEY_RIGHT : (d & PAD_LEFT) ? KEY_LEFT : (d & PAD_DOWN) ? KEY_DOWN : (d & PAD_UP) ? KEY_UP : 0;
+	if (!k) return;
+	t0 = now + (press ? 25 : 0);				// (a longer wait before the first repeat)
+	g_root->onKey (k);
+}
+
 static void on_refresh () { rescan (); g_root->invalidate (true); }
 static void on_full () { g_full = !g_full; g_root->invalidate (true); }
 static void on_folder ()
@@ -328,6 +347,7 @@ int main (void)
 	{
 		pump_events ();
 		thumb_work ();
+		pad_poll ();
 		if (!root.valid) { root.draw (); kapi_present (); }
 		kapi_msleep (g_tgame >= 0 ? 1 : 16);
 	}

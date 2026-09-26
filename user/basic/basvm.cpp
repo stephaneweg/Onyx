@@ -198,6 +198,7 @@ public:
 	char chainPath[240]; bool chainCommon; bool tron; int traceLine;
 	// GET / PUT # serialisation buffer
 	char *ser; int serLen, serCap;
+	bool strigLast[4];				// STRIG (even n): the button at the last call
 
 	VM (Program *p, Host &h, Error *e) : P (p), H (h), err (e), sp (0), G (0), nf (0), ngs (0), pc (0), opPc (0),
 		failed (false), ended (false), rnd (327680), lastRnd (0), dataPtr (0), chan (0), inPos (0),
@@ -208,6 +209,7 @@ public:
 		chainCommon (false), tron (false), traceLine (-1), ser (0), serLen (0), serCap (0)
 	{
 		inBuf[0] = 0; errMsgSaved[0] = 0; chainPath[0] = 0;
+		for (int i = 0; i < 4; i++) strigLast[i] = false;
 		for (int i = 0; i < MAXFILES; i++) { files[i].open = false; files[i].buf = 0; files[i].rec = 0; }
 		for (int i = 0; i < 32; i++) { ev[i].target = -1; ev[i].state = 0; ev[i].pending = ev[i].busy = false; keyScan[i] = 0; }
 		G = new V[P->nglobals > 0 ? P->nglobals : 1];
@@ -1265,6 +1267,30 @@ public:
 		case B_MOUSEY: pushN (H.mouse (1)); break;
 		case B_MOUSEB: pushN (H.mouse (2)); break;
 		case B_PLAYN: pushN (H.bgNotes ()); break;
+		case B_PAD: pushN ((double) H.padButtons (argc > 0 ? (int) a[0].n : -1)); if (!H.poll ()) ended = true; break;
+		case B_STICK:					// QBasic: 0 / 1 = x / y of joystick A (pad 0), 2 / 3 of B; 1..199
+		{
+			int n = (int) a[0].n, pad = (n >> 1) & 1, ax = n & 1;
+			if (n < 0 || n > 3) { fail ("Illegal function call (STICK)"); break; }
+			int v = H.padAxis (pad, ax);
+			unsigned b = H.padButtons (pad);
+			if (ax == 0 && (b & 4)) v = -1000; else if (ax == 0 && (b & 8)) v = 1000;
+			if (ax == 1 && (b & 1)) v = -1000; else if (ax == 1 && (b & 2)) v = 1000;
+			pushN (100 + v * 99 / 1000);
+			if (!H.poll ()) ended = true;
+			break;
+		}
+		case B_STRIG:					// QBasic: even = pressed since the last call, odd = down now;
+		{						// 0-3 the lower button (A) of joystick A / B, 4-7 the upper one (B)
+			int n = (int) a[0].n;
+			if (n < 0 || n > 7) { fail ("Illegal function call (STRIG)"); break; }
+			int pad = (n >> 1) & 1;
+			bool down = (H.padButtons (pad) & (n < 4 ? 16u : 32u)) != 0;
+			if (n & 1) pushN (down ? -1 : 0);
+			else { bool was = strigLast[n >> 1]; strigLast[n >> 1] = down; pushN (down && !was ? -1 : 0); }
+			if (!H.poll ()) ended = true;
+			break;
+		}
 		case B_KEYDOWN: pushN (H.keyDown (s0, l0) ? -1 : 0); if (!H.poll ()) ended = true; break;
 		case B_ERR: pushN (inErr ? errCode : 0); break;
 		case B_ERL: pushN (inErr ? errLine : 0); break;

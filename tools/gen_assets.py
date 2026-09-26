@@ -559,6 +559,14 @@ def icon_gamelib():		# a shelf of game tiles
         prect(px, x0, y0, x0 + 13, y0 + 13, (50, 50, 56)); prect(px, x0 + 2, y0 + 2, x0 + 11, y0 + 9, c)
     return px
 
+def icon_padconf():		# a gamepad: d-pad and four face buttons
+    px = blank()
+    prect(px, 3, 12, 36, 29, (60, 64, 76)); pdisc(px, 8, 26, 6, (60, 64, 76)); pdisc(px, 31, 26, 6, (60, 64, 76))
+    pframe(px, 3, 12, 36, 29, (30, 32, 40))
+    prect(px, 9, 16, 11, 24, (230, 230, 235)); prect(px, 6, 19, 14, 21, (230, 230, 235))
+    pdisc(px, 29, 16, 1, (240, 200, 60)); pdisc(px, 29, 24, 1, (80, 200, 90)); pdisc(px, 25, 20, 1, (80, 140, 240)); pdisc(px, 33, 20, 1, (230, 70, 70))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -574,7 +582,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf,
 }
 
 

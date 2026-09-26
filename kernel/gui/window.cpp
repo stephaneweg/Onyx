@@ -1235,6 +1235,15 @@ boolean CWindowManager::KeyHeld (int nKey, CWindow *pWin)
 	return ((m_UsbHeld[nKey >> 5] | m_VncHeld[nKey >> 5]) >> (nKey & 31)) & 1 ? TRUE : FALSE;
 }
 
+boolean CWindowManager::HasKeyFocus (CWindow *pWin)
+{
+	if (pWin == 0) return FALSE;
+	m_SpinLock.Acquire ();
+	boolean bFocus = KeyTargetLocked () == pWin;
+	m_SpinLock.Release ();
+	return bFocus;
+}
+
 void CWindowManager::OnKey (const char *pString)
 {
 	if (pString == 0) return;

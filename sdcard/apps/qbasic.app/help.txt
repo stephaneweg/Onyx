@@ -83,6 +83,11 @@ SCREEN AND GRAPHICS
   INKEY$ (arrows = CHR$(0) + "H" / "P" / "K" / "M", F1..F10 = CHR$(0) + CHR$(59..68))
   KEYDOWN(k$) -1 while the key is held: k$ as INKEY$ gives it, or "LEFT" "RIGHT" "UP"
     "DOWN" "SPACE" "ENTER" "ESC", a letter (Onyx; for games)
+  PAD([n]) the buttons held on USB gamepad n (0-3; none = all pads): 1 up 2 down 4 left
+    8 right 16 A (bottom) 32 B (right) 64 X (left) 128 Y (top) 256 L 512 R 1024 L2 2048 R2
+    4096 SELECT 8192 START -- IF PAD AND 16 THEN ... (SD:/etc/gamepad.ini maps the pads)
+  STICK(n) 0/1 = x/y of pad 0, 2/3 of pad 1 (1..199, 100 centred)  STRIG(n) 0-3 button A
+    of pad 0 / 1, 4-7 button B (even n: pressed since the last call, odd n: held now)
   Text is QBasic's character set (code page 437): CHR$(176..223) frames and blocks,
   CHR$(1..31) symbols; accents typed in the editor are translated (e = CHR$(130)).
 

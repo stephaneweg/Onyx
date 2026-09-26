@@ -5,7 +5,8 @@
 //                               (runners.ini: opening a .gb / .gbc file starts it; the Game
 //                               Library app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, Enter = Start, Backspace = Select (held keys,
-//     kapi_key_held); F11 or View > Full Screen: the whole display, stretched with the
+//     kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A, bottom /
+//     left = B, Start, Select); F11 or View > Full Screen: the whole display, stretched with the
 //     proportions kept and centred (Esc / F11 back).
 //   * View > Zoom 2x / 3x / 4x, Palette (the DMG games' 4 shades), Sound on / off.
 //   * The cartridge's battery save is <rom>.sav beside the ROM: read at start, written
@@ -15,6 +16,7 @@
 //
 #include "kapi.h"
 #include "launch.h"
+#include "gamepad.h"
 #include "wtk/wtk.h"
 #include "gb/gb.h"
 
@@ -28,6 +30,29 @@ static bool g_sound = true, g_paused = false;
 static unsigned *g_fs = 0; static int g_fsw, g_fsh;		// full screen back buffer
 static Root *g_root = 0;
 static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
+static bool g_stats = false;					// View > Show Speed
+static char g_statText[96] = "";
+
+// A microsecond clock: the ARM generic timer (apps run at EL1).
+static inline unsigned long long now_us (void)
+{
+	unsigned long long c, f;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (c));
+	asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+	return f ? c * 1000000ull / f : 0;
+}
+static void fmt_num (char *d, int *n, unsigned v, int decimals)	// v in 1/10^decimals
+{
+	char t[16]; int k = 0;
+	unsigned ip = v, fp = 0, div = 1;
+	for (int i = 0; i < decimals; i++) div *= 10;
+	ip = v / div; fp = v % div;
+	do { t[k++] = (char) ('0' + ip % 10); ip /= 10; } while (ip);
+	while (k) d[(*n)++] = t[--k];
+	if (decimals) { d[(*n)++] = '.'; for (unsigned m = div / 10; m; m /= 10) { d[(*n)++] = (char) ('0' + (fp / m) % 10); } }
+	d[*n] = 0;
+}
+static void cat (char *d, int *n, const char *s) { while (*s) d[(*n)++] = *s++; d[*n] = 0; }
 
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scpy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
@@ -62,8 +87,9 @@ public:
 	void onDraw () override
 	{
 		// the frame, zoomed (whole-number zoom, centred in the client area)
-		canvas.clear (0);
-		int z = g_zoom, ox = (width - gb::W * z) / 2, oy = (height - gb::H * z) / 2;
+		int z = g_zoom;
+		if (gb::W * z != width || gb::H * z != height) canvas.clear (0);
+		int ox = (width - gb::W * z) / 2, oy = (height - gb::H * z) / 2;
 		ox = ox < 0 ? 0 : ox; oy = oy < 0 ? 0 : oy;
 		for (int y = 0; y < gb::H; y++)
 		{
@@ -77,6 +103,7 @@ public:
 			}
 		}
 		if (g_paused) canvas.text (8, 8, "Paused", 0xFFFFFF);
+		if (g_stats) { canvas.fillRect (0, height - 20, width, 20, 0); canvas.text (4, height - 18, g_statText, 0x00FFFF60); }
 	}
 	bool onKey (long k) override;
 };
@@ -99,9 +126,21 @@ static void blit_full (void)				// stretched to the display, proportions kept, c
 	for (int x = 0; x < ow && x < 4096; x++) xmap[x] = x * gb::W / ow;
 	for (int y = 0; y < oh; y++)
 	{
-		const unsigned *s = g_m->fb + (y * gb::H / oh) * gb::W;
+		int sy = y * gb::H / oh;
 		unsigned *d = g_fs + (long) (oy + y) * g_fsw + ox;
+		if (y > 0 && sy == (y - 1) * gb::H / oh)		// the same source row: copy the line above
+		{
+			const unsigned *u = d - g_fsw;
+			for (int x = 0; x < ow && x < 4096; x++) d[x] = u[x];
+			continue;
+		}
+		const unsigned *s = g_m->fb + sy * gb::W;
 		for (int x = 0; x < ow && x < 4096; x++) d[x] = s[xmap[x]];
+	}
+	if (g_stats)
+	{
+		Canvas c; c.adopt (g_fs, g_fsw, g_fsh);
+		c.fillRect (0, g_fsh - 20, g_fsw, 20, 0); c.text (4, g_fsh - 18, g_statText, 0x00FFFF60);
 	}
 }
 
@@ -125,6 +164,7 @@ static void on_sound ()
 	if (!g_sound && g_audio == 1) { kapi_sound_release (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
+static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
 static void on_reset () { save_ram (); g_m->reset (); load_ram (); }
 static void on_quit () { kapi_exit (0); }
 
@@ -133,6 +173,7 @@ bool EmuRoot::onKey (long k)
 	if (k == KEY_F1 + 10) { on_full (); return true; }			// F11
 	if (k == 27 && g_fs) { full_screen (false); return true; }
 	if (k == 'p' || k == 'P') { on_pause (); return true; }
+	if (k == KEY_F1 + 11) { on_stats (); return true; }		// F12
 	return Root::onKey (k);
 }
 
@@ -147,6 +188,17 @@ static int buttons (void)
 	if (kapi_key_held ('z')) b |= gb::BTN_B;
 	if (kapi_key_held (KEY_ENTER)) b |= gb::BTN_START;
 	if (kapi_key_held (KEY_BACKSPACE)) b |= gb::BTN_SELECT;
+	// USB gamepads (user/gamepad.h): by place, as on Nintendo's pads -- the right face
+	// button is A, the bottom one B (and the top / left ones the same)
+	unsigned p = pad_buttons (-1);
+	if (p & PAD_RIGHT) b |= gb::BTN_RIGHT;
+	if (p & PAD_LEFT) b |= gb::BTN_LEFT;
+	if (p & PAD_UP) b |= gb::BTN_UP;
+	if (p & PAD_DOWN) b |= gb::BTN_DOWN;
+	if (p & (PAD_B | PAD_Y)) b |= gb::BTN_A;
+	if (p & (PAD_A | PAD_X)) b |= gb::BTN_B;
+	if (p & PAD_START) b |= gb::BTN_START;
+	if (p & PAD_SELECT) b |= gb::BTN_SELECT;
 	if ((b & gb::BTN_LEFT) && (b & gb::BTN_RIGHT)) b &= ~(gb::BTN_LEFT | gb::BTN_RIGHT);	// (not both)
 	if ((b & gb::BTN_UP) && (b & gb::BTN_DOWN)) b &= ~(gb::BTN_UP | gb::BTN_DOWN);
 	return b;
@@ -208,6 +260,8 @@ int main (void)
 	menu.item ("Palette: Green",  "", 0, on_green);
 	menu.item ("Palette: Grey",   "", 0, on_grey);
 	menu.item ("Palette: Pocket", "", 0, on_pocket);
+	menu.separator ();
+	menu.item ("Show Speed",   "F12", 0, on_stats);
 	menu.menu ("Sound");
 	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.publish ();
@@ -219,6 +273,9 @@ int main (void)
 	g_m->setAudioRate (SOUND_RATE);
 	unsigned t0 = kapi_get_ticks (); long long done = 0;		// frames made (clock pacing)
 	unsigned lastSave = kapi_get_ticks ();
+	// View > Show Speed: frames emulated / shown a second, the time of one emulated frame
+	// and of one shown frame (drawing + the compositor), the sound queued
+	unsigned long long stT = now_us (), emuUs = 0, drawUs = 0; unsigned stEmu = 0, stShown = 0, stQueued = 0;
 	while (!should_exit ())
 	{
 		pump_events ();
@@ -235,11 +292,14 @@ int main (void)
 			while (queued < 2400 && made < 3)
 			{
 				g_m->setButtons (buttons ());
+				unsigned long long e0 = now_us ();
 				g_m->runFrame ();
+				emuUs += now_us () - e0; stEmu++;
 				int k = g_m->audioRead (pcm, 4096);
 				if (k > 0) kapi_sound_write (pcm, (unsigned) k);
 				queued += (unsigned) k; made++;
 			}
+			stQueued = queued;
 			t0 = kapi_get_ticks (); done = 0;
 		}
 		else
@@ -250,13 +310,27 @@ int main (void)
 			while (done < due && made < 3)
 			{
 				g_m->setButtons (buttons ());
+				unsigned long long e0 = now_us ();
 				g_m->runFrame ();
+				emuUs += now_us () - e0; stEmu++;
 				g_m->audioRead (pcm, 4096);			// (dropped)
 				done++; made++;
 			}
 		}
-		if (made) show_frame ();
+		if (made) { unsigned long long d0 = now_us (); show_frame (); drawUs += now_us () - d0; stShown++; }
 		else kapi_msleep (2);
+		unsigned long long tn = now_us ();
+		if (tn - stT >= 1000000)
+		{
+			unsigned long long el = tn - stT;
+			int n = 0;
+			fmt_num (g_statText, &n, (unsigned) ((unsigned long long) stEmu * 10000000ull / el), 1); cat (g_statText, &n, " fps  shown ");
+			fmt_num (g_statText, &n, (unsigned) ((unsigned long long) stShown * 10000000ull / el), 1); cat (g_statText, &n, "  emu ");
+			fmt_num (g_statText, &n, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &n, " ms  draw ");
+			fmt_num (g_statText, &n, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &n, " ms");
+			if (audio) { cat (g_statText, &n, "  sound "); fmt_num (g_statText, &n, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &n, " ms"); }
+			stT = tn; emuUs = drawUs = 0; stEmu = stShown = 0;
+		}
 		if (kapi_get_ticks () - lastSave > 500) { save_ram (); lastSave = kapi_get_ticks (); }	// every 5 s
 	}
 	save_ram ();

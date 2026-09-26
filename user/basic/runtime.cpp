@@ -15,6 +15,7 @@
 #include "kapi.h"
 #include "applib.h"
 #include "notify.h"
+#include "gamepad.h"
 #include "wtk/wtk.h"
 #include "basic/basscreen.h"
 
@@ -112,6 +113,13 @@ public:
 	unsigned nowMs () override { return kapi_get_ticks () * 10; }
 	void sleepRaw (int ms) override { kapi_msleep ((unsigned) (ms > 0 ? ms : 1)); }
 	bool keyHeld (int key) override { return kapi_key_held (key) != 0; }
+	unsigned padButtons (int pad) override { return pad_buttons (pad); }
+	int padAxis (int pad, int axis) override
+	{
+		struct pad_input in;
+		if (!pad_read (pad, &in)) return 0;
+		return axis == 0 ? in.lx : axis == 1 ? in.ly : axis == 2 ? in.rx : axis == 3 ? in.ry : 0;
+	}
 
 	// Full screen: the visible page scaled into the display, proportions kept.
 	void blitFull ()

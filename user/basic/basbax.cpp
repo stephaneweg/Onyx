@@ -51,7 +51,7 @@ int saveBax (const Program *p, char **out)
 {
 	Out o;
 	o.bytes ("OBAX", 4);
-	o.i32 (BAX_FORMAT); o.i32 (OP_NEWREC + 1); o.i32 (B_PLAYN + 1); o.i32 (S_FULLSCREEN + 1);
+	o.i32 (BAX_FORMAT); o.i32 (OP_NEWREC + 1); o.i32 (B_PAD + 1); o.i32 (S_FULLSCREEN + 1);
 	o.i32 (p->nglobals);
 	o.i32 (p->code.n); for (int i = 0; i < p->code.n; i++) o.i32 (p->code[i]);
 	o.i32 (p->nums.n); for (int i = 0; i < p->nums.n; i++) o.f64 (p->nums[i]);
@@ -85,7 +85,8 @@ Program *loadBax (const char *buf, int len, Error *err)
 {
 	if (!isBax (buf, len)) { setErr (err, "Not a compiled program (.bax)"); return 0; }
 	In in; in.b = (const unsigned char *) buf; in.n = len; in.at = 4; in.bad = false;
-	if (in.i32 () != BAX_FORMAT || in.i32 () != OP_NEWREC + 1 || in.i32 () != B_PLAYN + 1 || in.i32 () != S_FULLSCREEN + 1)
+	// (the enums only grow: a .bax from an older compiler loads)
+	if (in.i32 () != BAX_FORMAT || in.i32 () > OP_NEWREC + 1 || in.i32 () > B_PAD + 1 || in.i32 () > S_FULLSCREEN + 1)
 	{ setErr (err, "This .bax was made by another BASIC version: compile the .bas again"); return 0; }
 	Program *p = new Program;
 	p->nglobals = in.i32 ();

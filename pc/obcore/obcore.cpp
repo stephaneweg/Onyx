@@ -197,6 +197,51 @@ public:
 	unsigned nowMs () override { return timeGetTime (); }
 	void sleepRaw (int ms) override { Sleep (ms > 0 ? (DWORD) ms : 1); }
 	bool keyHeld (int key) override { return key > 0 && key < 0x200 && held[key]; }
+
+	// Gamepads (PAD / STICK / STRIG) through winmm's joystick API: the same PAD_* bits as on
+	// Onyx (user/gamepad.h). XInput pads (Xbox) have A B X Y first; other pads the usual
+	// generic order (1 top, 2 right, 3 bottom, 4 left, 5 L1, 6 R1, 7 L2, 8 R2, 9 select,
+	// 10 start); the d-pad is the POV hat, else the X / Y axes (and the left stick).
+	bool padRead (int pad, unsigned *btn, int ax[4])
+	{
+		*btn = 0; ax[0] = ax[1] = ax[2] = ax[3] = 0;
+		if (pad < 0 || pad > 3) return false;
+		JOYINFOEX ji; ji.dwSize = sizeof ji; ji.dwFlags = JOY_RETURNALL;
+		if (joyGetPosEx (JOYSTICKID1 + pad, &ji) != JOYERR_NOERROR) return false;
+		JOYCAPSW jc;
+		if (joyGetDevCapsW (JOYSTICKID1 + pad, &jc, sizeof jc) != JOYERR_NOERROR) return false;
+		bool xinput = false;
+		for (int i = 0; jc.szPname[i]; i++)
+			if ((jc.szPname[i] == 'X' || jc.szPname[i] == 'x') && _wcsnicmp (jc.szPname + i, L"XBOX", 4) == 0) xinput = true;
+			else if (_wcsnicmp (jc.szPname + i, L"XINPUT", 6) == 0) xinput = true;
+		auto norm = [] (DWORD v, UINT lo, UINT hi) { return hi > lo ? (int) (((long long) v - lo) * 2000 / (hi - lo) - 1000) : 0; };
+		ax[0] = norm (ji.dwXpos, jc.wXmin, jc.wXmax); ax[1] = norm (ji.dwYpos, jc.wYmin, jc.wYmax);
+		if (jc.wNumAxes >= 4) { ax[2] = xinput ? norm (ji.dwUpos, jc.wUmin, jc.wUmax) : norm (ji.dwZpos, jc.wZmin, jc.wZmax); ax[3] = norm (ji.dwRpos, jc.wRmin, jc.wRmax); }
+		static const int XI[16] = { 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0 };	// PAD_* bit of each button
+		static const int GEN[16] = { 7, 5, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 0, 0 };
+		unsigned b = 0;
+		for (int i = 0; i < 16; i++)
+			if ((ji.dwButtons >> i) & 1) { int bit = xinput ? XI[i] : GEN[i]; if (bit) b |= 1u << bit; }
+		if ((jc.wCaps & JOYCAPS_HASPOV) && ji.dwPOV != JOY_POVCENTERED)
+		{
+			static const unsigned H[8] = { 1, 1 | 8, 8, 2 | 8, 2, 2 | 4, 4, 1 | 4 };
+			b |= H[((ji.dwPOV + 2250) / 4500) & 7];
+		}
+		if (ax[0] < -400) b |= 4; else if (ax[0] > 400) b |= 8;
+		if (ax[1] < -400) b |= 1; else if (ax[1] > 400) b |= 2;
+		if ((b & 12) == 12) b &= ~12u;
+		if ((b & 3) == 3) b &= ~3u;
+		*btn = b;
+		return true;
+	}
+	unsigned padButtons (int pad) override
+	{
+		unsigned b = 0, all = 0; int ax[4];
+		if (pad >= 0) { padRead (pad, &b, ax); return b; }
+		for (int i = 0; i < 4; i++) if (padRead (i, &b, ax)) all |= b;
+		return all;
+	}
+	int padAxis (int pad, int axis) override { unsigned b; int ax[4]; padRead (pad, &b, ax); return axis >= 0 && axis < 4 ? ax[axis] : 0; }
 	bool soundReady () override { if (audio == 0) audio = snd::open () ? 1 : -1; return audio == 1; }
 	int note (int voice, double freq, int wave, int vol) override
 	{

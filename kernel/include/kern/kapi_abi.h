@@ -42,7 +42,10 @@
 // v49: + exec_as -- run a program under another name (a runner: SD:/bin/basic for an app's
 //      main.bax is named after the app). The kernel runs ELFs only: the formats a runner
 //      executes (.bas, .bax...) are chosen in user space (SD:/etc/runners.ini, launch.h).
-#define KAPI_ABI_VERSION	49
+// v50: + pad_state -- USB gamepads (Circle's drivers: Xbox 360 / One, PS3 / PS4, Switch Pro
+//      and standard HID pads): the raw buttons / axes / hats of pad 0..3; the button
+//      mapping is done in user space (user/gamepad.h, SD:/etc/gamepad.ini).
+#define KAPI_ABI_VERSION	50
 
 #ifdef __cplusplus
 extern "C" {
@@ -124,6 +127,28 @@ struct kapi_chrome
 	int       chrome_w, chrome_h;	// outer size of each chrome copy
 	int       inset_l, inset_r, inset_t, inset_b;	// chrome insets (client offset)
 	char      title[48];		// window title (kernel-owned copy)
+};
+
+// A USB gamepad's raw state (ABI v50, kapi_pad_state). For a pad Circle knows (props bit 0:
+// Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` uses Circle's TGamePadButton bits
+// (circle/usb/usbgamepad.h) and axes 0..3 are the left / right sticks; for any other HID
+// pad they are the report's own buttons (bit 0 = button 1), axes and hats (0..7 = N, NE,
+// E ... NW, else centred). user/gamepad.h turns this into PAD_UP / PAD_A ... masks.
+#define KAPI_PAD_MAX	4
+#define KAPI_PAD_AXES	16
+#define KAPI_PAD_HATS	6
+struct kapi_pad
+{
+	unsigned short vid, pid;	// USB vendor / product ids
+	unsigned props;			// TGamePadProperty bits (bit 0: known mapping)
+	int      focus;			// 1: the caller's window has the keyboard (react only then)
+	unsigned seq;			// reports received (changes with every report)
+	int      nbuttons;
+	unsigned buttons;
+	int      naxes;
+	struct { int value, minimum, maximum; } axes[KAPI_PAD_AXES];
+	int      nhats;
+	int      hats[KAPI_PAD_HATS];
 };
 
 struct TKApiTable
@@ -543,6 +568,11 @@ struct TKApiTable
 	// exec_as: like exec, the process (its window, list_windows, raise_app, kill) named
 	// `name` instead of after the path. 1 = started.
 	int  (*exec_as) (const char *path, const char *args, const char *name);
+
+	// --- v50 additions (USB gamepads) ---
+	// pad_state: pad 0..KAPI_PAD_MAX-1 (in the order they were plugged): 1 and *out
+	// filled if a pad is there, else 0.
+	int  (*pad_state) (int index, struct kapi_pad *out);
 };
 
 #ifdef __cplusplus

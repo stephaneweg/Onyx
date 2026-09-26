@@ -49,6 +49,11 @@ struct Host
 	virtual void pcopy (int src, int dst) { (void) src; (void) dst; }
 	virtual int  keyPending (char *out2) { (void) out2; return 0; }	// the next key (as INKEY$), not taken
 	virtual bool keyDown (const char *k, int n) { (void) k; (void) n; return false; }	// KEYDOWN(k$): held now?
+	// USB gamepads (PAD, STICK, STRIG): the PAD_* buttons of pad 0..3 (-1: all; user/gamepad.h
+	// bits: 1 up, 2 down, 4 left, 8 right, 16 A, 32 B, 64 X, 128 Y, 256 L, 512 R, 1024 L2,
+	// 2048 R2, 4096 select, 8192 start ...), a stick axis (0 lx, 1 ly, 2 rx, 3 ry: -1000..1000).
+	virtual unsigned padButtons (int pad) { (void) pad; return 0; }
+	virtual int  padAxis (int pad, int axis) { (void) pad; (void) axis; return 0; }
 	virtual void pset (int x, int y, int c) { (void) x; (void) y; (void) c; }
 	virtual int  point (int x, int y) { (void) x; (void) y; return 0; }
 	virtual void line (int x1, int y1, int x2, int y2, int c, int box, int style) { (void) x1; (void) y1; (void) x2; (void) y2; (void) c; (void) box; (void) style; }

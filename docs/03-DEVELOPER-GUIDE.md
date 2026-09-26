@@ -271,6 +271,15 @@ Notes / caveats:
 > `kapi_key_held (KEY_LEFT)` (also `KEY_RIGHT/UP/DOWN`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` = the
 > US position of the key, `'0'..'9'`) every frame — 1 while held and your window has the
 > keyboard (USB keyboard and VNC). Returns 0 on an older kernel.
+> **USB gamepads (ABI v50)**: `#include "gamepad.h"` — `pad_buttons (-1)` = the `PAD_*` buttons held
+> on every pad (or `0..3` for one): `PAD_UP/DOWN/LEFT/RIGHT`, `PAD_A` (bottom face button), `PAD_B`
+> (right), `PAD_X` (left), `PAD_Y` (top), `PAD_L/R/L2/R2`, `PAD_SELECT/START`, `PAD_L3/R3`,
+> `PAD_HOME`; `pad_read (i, &in)` adds the sticks (`in.lx/ly/rx/ry`, -1000..1000), the USB ids and
+> the raw bits. Nothing is pressed while your window has not the keyboard. The pad's raw state
+> (`kapi_pad_state`) goes through **`SD:/etc/gamepad.ini`** (a `[vvvv:pppp]` section per pad
+> model, `[default]` for the other generic pads; written by the Gamepad app, `padconf`) or the
+> built-in mapping (pads Circle knows). Used by gbemu, gamelib, BASIC (`PAD`, `STICK`, `STRIG`).
+> Host test: `sh tools/tests/run_gamepad_test.sh`.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
 > sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
@@ -722,7 +731,8 @@ barwidth = 40
   `readRect` / `writeRect` for `GET` / `PUT`; `FULLSCREEN` uses `kapi_fullscreen_begin` and
   scales the visible page (aspect kept; whole-number zoom when it covers >= 85 %).
   `PLAY "MB"` notes go to a 32-note queue that `bgTick ()` plays from `pump ()`;
-  `KEYDOWN` maps its key to a `KEY_*` code for `kapi_key_held`.
+  `KEYDOWN` maps its key to a `KEY_*` code for `kapi_key_held`. `PAD` / `STICK` / `STRIG` call
+  `Host::padButtons` / `padAxis` (Onyx: `user/gamepad.h`; the PC: winmm `joyGetPosEx`).
 - **Compiled programs** (`basbax.cpp`): `saveBax ()` writes a `Program` table by table
   (little-endian; header "OBAX", the format and the VM's opcode / builtin / statement counts,
   so a `.bax` from another VM is refused), `loadBax ()` reads it back, `load ()` takes a

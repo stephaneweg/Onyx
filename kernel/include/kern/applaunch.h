@@ -33,6 +33,8 @@ boolean KernelSetKeyMap (const char *pName);
 boolean KernelSetKeyMapData (const char *pName, const void *pData, unsigned nLen);	// .kmap file
 const char *KernelGetKeyMap (void);
 boolean KernelKeyboardReady (void);		// is a USB keyboard attached? (kapi_kbd_ready)
+struct kapi_pad;
+boolean KernelPadState (int nIndex, struct kapi_pad *pOut);	// a USB gamepad's raw state (kapi_pad_state)
 
 // Verbose-logging flag (defined in kernel.cpp): gates kernel lifecycle logs. The
 // extern lets other TUs gate their own logs with `if (g_bVerbose)`.
