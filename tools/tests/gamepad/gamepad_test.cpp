@@ -28,5 +28,14 @@ int main ()
 	printf ("known: %x\n", pad_buttons (0)); assert (pad_buttons (0) == (PAD_A | PAD_UP | PAD_START));
 	fake_pad.focus = 0; assert (pad_buttons (0) == 0);
 	struct pad_input in; fake_pad.focus = 1; fake_pad.axes[0].value = 255; pad_read (0, &in); printf ("lx %d\n", in.lx); assert (in.lx == 1000);
+	// a generic pad whose triggers are axes: L2 on axis 3 (rest 0, pressed 255), R2 on the lower half of axis 4
+	fake_ini = "[1234:5678]\nl2_axis = 3\nr2_axis = -4\n";
+	pad_config_reload ();
+	memset (&fake_pad, 0, sizeof fake_pad); fake_pad.vid = 0x1234; fake_pad.pid = 0x5678; fake_pad.focus = 1; fake_pad.naxes = 4;
+	for (int i = 0; i < 4; i++) { fake_pad.axes[i].minimum = 0; fake_pad.axes[i].maximum = 255; fake_pad.axes[i].value = 128; }
+	fake_pad.axes[2].value = 0;
+	assert (pad_buttons (0) == 0);
+	fake_pad.axes[2].value = 200; fake_pad.axes[3].value = 10;
+	printf ("triggers: %x\n", pad_buttons (0)); assert (pad_buttons (0) == (PAD_L2 | PAD_R2));
 	puts ("ok"); return 0;
 }

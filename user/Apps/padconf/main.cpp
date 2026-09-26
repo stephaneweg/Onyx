@@ -47,7 +47,7 @@ static const char *const STEP_TEXT[PAD_NBUTTONS] = {
 	"the LEFT face button (Xbox X, PlayStation Square, Nintendo Y)",
 	"the TOP face button (Xbox Y, PlayStation Triangle, Nintendo X)",
 	"the LEFT shoulder button (L / L1 / LB)", "the RIGHT shoulder button (R / R1 / RB)",
-	"the LEFT trigger (L2 / LT / ZL)", "the RIGHT trigger (R2 / RT / ZR)",
+	"the LEFT trigger (L2 / LT / ZL: a button or an analog trigger)", "the RIGHT trigger (R2 / RT / ZR)",
 	"SELECT (Back / Share / -)", "START (Options / +)",
 	"the LEFT stick's click (L3)", "the RIGHT stick's click (R3)", "HOME (Guide / PS)" };
 
@@ -80,7 +80,7 @@ static void map_start (void)
 	for (int i = 0; i < g_base.nhats; i++) g_base.hats[i] = 8;	// (a rest hat: centred)
 	pad_map_default (&g_new, 0, 0);
 	for (int i = 0; i < PAD_NBUTTONS; i++) g_new.btn[i] = 0;
-	g_new.dpad = PAD_DPAD_NONE; g_new.x_axis = g_new.y_axis = 0;
+	g_new.dpad = PAD_DPAD_NONE; g_new.x_axis = g_new.y_axis = 0; g_new.l2_axis = g_new.r2_axis = 0;
 	g_msg[0] = 0;
 }
 
@@ -113,6 +113,17 @@ static void map_poll (void)
 			{
 				g_new.dpad = PAD_DPAD_AXES;
 				if (g_step == 0 || g_step == 1) g_new.y_axis = i + 1; else g_new.x_axis = i + 1;
+				next_step (); return;
+			}
+		}
+	if (g_step == 10 || g_step == 11)				// L2 / R2: an analog trigger (an axis) too
+		for (int i = 0; i < p.naxes; i++)
+		{
+			int d = axis_dev (p, g_base, i);
+			if (d > 400 || d < -400)
+			{
+				int ax = d > 0 ? i + 1 : -(i + 1);
+				if (g_step == 10) g_new.l2_axis = ax; else g_new.r2_axis = ax;
 				next_step (); return;
 			}
 		}
@@ -169,6 +180,8 @@ static void save_mapping (void)
 	cat (body, &n, sizeof body, "x_axis = "); cati (body, &n, sizeof body, xa);
 	cat (body, &n, sizeof body, "\ny_axis = "); cati (body, &n, sizeof body, ya); cat (body, &n, sizeof body, "\n");
 	cat (body, &n, sizeof body, "stick = "); cati (body, &n, sizeof body, g_new.dpad == PAD_DPAD_AXES ? 0 : 1); cat (body, &n, sizeof body, "\n");
+	if (g_new.l2_axis) { cat (body, &n, sizeof body, "l2_axis = "); cati (body, &n, sizeof body, g_new.l2_axis); cat (body, &n, sizeof body, "\n"); }
+	if (g_new.r2_axis) { cat (body, &n, sizeof body, "r2_axis = "); cati (body, &n, sizeof body, g_new.r2_axis); cat (body, &n, sizeof body, "\n"); }
 	for (int i = 0; i < PAD_NBUTTONS; i++)
 	{
 		if (i < 4 && g_new.dpad != PAD_DPAD_BUTTONS) continue;

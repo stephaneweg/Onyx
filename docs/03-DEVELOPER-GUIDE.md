@@ -277,7 +277,8 @@ Notes / caveats:
 > `PAD_HOME`; `pad_read (i, &in)` adds the sticks (`in.lx/ly/rx/ry`, -1000..1000), the USB ids and
 > the raw bits. Nothing is pressed while your window has not the keyboard. The pad's raw state
 > (`kapi_pad_state`) goes through **`SD:/etc/gamepad.ini`** (a `[vvvv:pppp]` section per pad
-> model, `[default]` for the other generic pads; written by the Gamepad app, `padconf`) or the
+> model, `[default]` for the other generic pads; analog triggers as `l2_axis` / `r2_axis`; written by the
+> Gamepad app, `padconf`) or the
 > built-in mapping (pads Circle knows). Used by gbemu, gamelib, BASIC (`PAD`, `STICK`, `STRIG`).
 > Host test: `sh tools/tests/run_gamepad_test.sh`.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /

@@ -3,7 +3,7 @@
 // sub-folders), a tile each -- a picture of its title screen and its name -- in a dark
 // grid, one section per system. Click a tile (or arrows + Enter) to play: the ROM opens
 // with its runner (SD:/etc/runners.ini: gbemu, gbaemu), in a window or, with View > Play Full
-// Screen, on the whole display. A USB gamepad works too: the d-pad, A / B / Start to play.
+// Screen, on the whole display. A USB gamepad works too: the d-pad, A / B / Start to play, L / R a page.
 //
 //   * The folder: SD:/roms by default; Library > Choose Folder... (kept in config.ini).
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
@@ -330,6 +330,8 @@ static void pad_poll (void)
 	last = b;
 	if (!press && !rep) return;
 	if (press & (PAD_A | PAD_B | PAD_START)) { play (g_sel); return; }
+	if (press & (PAD_L | PAD_L2)) { g_root->onKey (KEY_PGUP); return; }		// the shoulders: a page
+	if (press & (PAD_R | PAD_R2)) { g_root->onKey (KEY_PGDN); return; }
 	unsigned d = press ? press : b;
 	long k = (d & PAD_RIGHT) ? KEY_RIGHT : (d & PAD_LEFT) ? KEY_LEFT : (d & PAD_DOWN) ? KEY_DOWN : (d & PAD_UP) ? KEY_UP : 0;
 	if (!k) return;

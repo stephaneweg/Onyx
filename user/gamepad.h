@@ -18,7 +18,8 @@
 // know. Keys: a b x y l r l2 r2 select start l3 r3 home up down left right = a button
 // number (1 = the pad's first button; 0 = none); dpad = hat | axes | buttons | none;
 // hat = n; x_axis / y_axis = the d-pad / left stick axes; rx_axis / ry_axis = the right
-// stick; stick = 1 / 0 (the left stick moves the d-pad too); deadzone = 0..1000.
+// stick; l2_axis / r2_axis = analog triggers (an axis; negative: its lower half); stick = 1 / 0
+// (the left stick moves the d-pad too); deadzone = 0..1000.
 // Pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) need no mapping: their button
 // numbers are Circle's TGamePadButton bits + 1 (circle/usb/usbgamepad.h).
 //
@@ -51,6 +52,7 @@ struct pad_map
 	int hat;			// 0-based
 	int x_axis, y_axis;		// 1-based, 0 = none (the d-pad for dpad = axes; the left stick)
 	int rx_axis, ry_axis;		// the right stick
+	int l2_axis, r2_axis;		// analog triggers: an axis (1-based; negative = its lower half), 0 = none
 	int stick;			// the left stick moves the d-pad too
 	int dead;			// per mille
 };
@@ -80,6 +82,7 @@ static inline void pad_map_default (struct pad_map *m, int known, unsigned props
 	m->dpad = known ? PAD_DPAD_BUTTONS : PAD_DPAD_AUTO;
 	m->hat = 0;
 	m->x_axis = 1; m->y_axis = 2; m->rx_axis = 3; m->ry_axis = 4;
+	m->l2_axis = m->r2_axis = 0;
 	m->stick = 1; m->dead = 400;
 }
 
@@ -131,6 +134,8 @@ static inline void pad_cfg_set (struct pad_cfg_entry *en, const char *k, int kn,
 	else if (pad_word_eq (k, kn, "y_axis")) m->y_axis = pad_atoi (v, vn);
 	else if (pad_word_eq (k, kn, "rx_axis")) m->rx_axis = pad_atoi (v, vn);
 	else if (pad_word_eq (k, kn, "ry_axis")) m->ry_axis = pad_atoi (v, vn);
+	else if (pad_word_eq (k, kn, "l2_axis")) m->l2_axis = pad_atoi (v, vn);
+	else if (pad_word_eq (k, kn, "r2_axis")) m->r2_axis = pad_atoi (v, vn);
 	else if (pad_word_eq (k, kn, "stick")) m->stick = pad_atoi (v, vn) != 0;
 	else if (pad_word_eq (k, kn, "deadzone")) m->dead = pad_atoi (v, vn);
 }
@@ -235,6 +240,9 @@ static inline unsigned pad_apply (const struct kapi_pad *p, const struct pad_map
 		if (x < -m->dead) b |= PAD_LEFT; else if (x > m->dead) b |= PAD_RIGHT;
 		if (y < -m->dead) b |= PAD_UP; else if (y > m->dead) b |= PAD_DOWN;
 	}
+	// analog triggers: pressed past a quarter of the way (from the axis's rest: its end or its middle)
+	if (m->l2_axis) { int v = pad_axis_norm (p, m->l2_axis < 0 ? -m->l2_axis : m->l2_axis); if (m->l2_axis > 0 ? v > 250 : v < -250) b |= PAD_L2; }
+	if (m->r2_axis) { int v = pad_axis_norm (p, m->r2_axis < 0 ? -m->r2_axis : m->r2_axis); if (m->r2_axis > 0 ? v > 250 : v < -250) b |= PAD_R2; }
 	if ((b & PAD_LEFT) && (b & PAD_RIGHT)) b &= ~(unsigned) (PAD_LEFT | PAD_RIGHT);
 	if ((b & PAD_UP) && (b & PAD_DOWN)) b &= ~(unsigned) (PAD_UP | PAD_DOWN);
 	if (lx) *lx = x;
