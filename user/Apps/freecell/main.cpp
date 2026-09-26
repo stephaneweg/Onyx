@@ -58,7 +58,7 @@ public:
 	char msg[64]; unsigned msgT;
 
 	FreeCell (int l, int t, int w, int h) : GameView (l, t, w, h), col (s.col)
-	{ rng_seed (kapi_get_ticks () * 2654435761u + 11); newGame (1 + rng_n (32000)); }
+	{ rng_seed (gms () * 2654435761u + 11); newGame (1 + rng_n (32000)); }
 
 	void newGame (unsigned n)
 	{
@@ -151,7 +151,7 @@ public:
 		autoPlay ();
 		redraw ();
 	}
-	void say (const char *m) { int i = 0; for (; m[i] && i < 63; i++) msg[i] = m[i]; msg[i] = 0; msgT = kapi_get_ticks (); sfx (160, 80, SOUND_SQUARE, 60); }
+	void say (const char *m) { int i = 0; for (; m[i] && i < 63; i++) msg[i] = m[i]; msg[i] = 0; msgT = gms (); sfx (160, 80, SOUND_SQUARE, 60); }
 
 	// The card(s) being moved: source 0..7 column (from index idx), 8..11 a free cell.
 	int srcCard (int src, int idx) const { return src < 8 ? s.col[src].c[idx] : s.cell[src - 8]; }
@@ -208,7 +208,7 @@ public:
 		if (right) return;
 		int src, idx;
 		if (!hitSrc (x, y, src, idx)) return;
-		unsigned now = kapi_get_ticks ();
+		unsigned now = gms ();
 		bool top = src >= 8 || idx == s.col[src].n - 1;
 		if (top && now - lastClickT < 450 && lastClickSrc == src)
 		{
@@ -250,7 +250,7 @@ public:
 	void tick (unsigned) override
 	{
 		if (animOn) redraw ();
-		if (msg[0] && kapi_get_ticks () - msgT > 2500) { msg[0] = 0; redraw (); }
+		if (msg[0] && gms () - msgT > 2500) { msg[0] = 0; redraw (); }
 	}
 
 	void paint () override

@@ -17,6 +17,9 @@
 #include "kapi.h"
 #include "wtk/wtk.h"
 
+// Milliseconds (kapi_get_ticks counts HZ = 100 ticks per second).
+static inline unsigned gms (void) { return kapi_get_ticks () * 10u; }
+
 // ---- PRNG (xorshift32) ---------------------------------------------------------------
 static unsigned g_rng_state = 0x9E3779B9u;
 static inline void rng_seed (unsigned s) { g_rng_state = s ? s : 0x9E3779B9u; }
@@ -51,19 +54,19 @@ static inline void sfx (unsigned hz, unsigned ms, int wave = SOUND_SQUARE, int v
 	if (!sfx_ready () || hz == 0) return;
 	int v = g_sfx_next; g_sfx_next = (g_sfx_next + 1) % SFX_NV;
 	kapi_sound_start (SFX_V0 + v, hz * 1000u, wave, vol);
-	g_sfx_end[v] = kapi_get_ticks () + ms;
+	g_sfx_end[v] = gms () + ms;
 }
 // Queue a note to start delay ms from now (a jingle = several of these).
 static inline void sfx_later (unsigned delay, unsigned hz, unsigned ms, int wave = SOUND_SQUARE, int vol = 90)
 {
 	if (!sfx_ready () || g_sfx_qn >= SFX_Q) return;
 	SfxNote &n = g_sfx_q[g_sfx_qn++];
-	n.at = kapi_get_ticks () + delay; n.hz = hz; n.ms = ms; n.wave = wave; n.vol = vol;
+	n.at = gms () + delay; n.hz = hz; n.ms = ms; n.wave = wave; n.vol = vol;
 }
 static inline void sfx_tick (void)
 {
 	if (g_sfx_state != 1) return;
-	unsigned now = kapi_get_ticks ();
+	unsigned now = gms ();
 	for (int i = 0; i < g_sfx_qn; )
 		if ((int) (now - g_sfx_q[i].at) >= 0)
 		{
@@ -159,7 +162,7 @@ public:
 	bool onKey (long k) override { return key (k); }
 	void step ()
 	{
-		unsigned now = kapi_get_ticks ();
+		unsigned now = gms ();
 		unsigned dt = m_last ? now - m_last : 16;
 		if (dt > 100) dt = 100;
 		m_last = now;

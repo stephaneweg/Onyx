@@ -1,0 +1,11 @@
+LOF 48 LOC 3 
+ 20 [item2 ] 2.5 
+ 30  4 
+ 10 [item1 ] 1.25 
+ 77 [NEW   ]
+pos 10 len 10 
+ 513 -2 Onyx
+ 1  2 
+ 2  4  4  8  1.5 -70000 
+Hello|GREETING=Hello
+A.BAS           C.BAS           

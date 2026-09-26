@@ -452,7 +452,7 @@ public:
 			if (n > 0) { total += n; start = kapi_get_ticks (); }
 			else if (n == 0)
 			{
-				if (kapi_get_ticks () - start > m_timeout)
+				if ((kapi_get_ticks () - start) * 10 > m_timeout)		// (ticks: HZ = 100)
 				{
 					if (total == 0)
 					{ tp_close (tp); r.status = HTTP_ERR_TIMEOUT; return r; }

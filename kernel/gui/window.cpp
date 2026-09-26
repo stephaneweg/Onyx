@@ -956,7 +956,13 @@ static int NextKey (const char **pp, unsigned *pMods = 0)
 		// *pMods and travels with the key event (kapi_get_modifiers reports it while the
 		// app handles that key), so Shift+arrow works even when the global modifier state
 		// is late or clobbered (VNC, a second keyboard).
-		if (p[2] == '[') { *pp = p + (p[3] != '\0' ? 4 : 3); return NextKey (pp, pMods); }	// F1-F5 (ESC[[A..E): ignored
+		if (p[2] == '[')						// F1-F5: ESC[[A..E
+		{
+			char c = p[3];
+			*pp = p + (c != '\0' ? 4 : 3);
+			if (c >= 'A' && c <= 'E') return KEY_F1 + (c - 'A');
+			return NextKey (pp, pMods);
+		}
 		int n = 0, i = 2, code = 0, m = 0;
 		while (p[i] >= '0' && p[i] <= '9') n = n * 10 + (p[i++] - '0');
 		if (p[i] == ';') { i++; while (p[i] >= '0' && p[i] <= '9') m = m * 10 + (p[i++] - '0'); }
@@ -975,7 +981,10 @@ static int NextKey (const char **pp, unsigned *pMods = 0)
 		case 'F': code = KEY_END;   break;
 		case '~':
 			switch (n) { case 1: code = KEY_HOME; break; case 3: code = KEY_DEL; break; case 4: code = KEY_END; break;
-				     case 5: code = KEY_PGUP; break; case 6: code = KEY_PGDN; break; }
+				     case 5: code = KEY_PGUP; break; case 6: code = KEY_PGDN; break;
+				     case 11: case 12: case 13: case 14: case 15: code = KEY_F1 + (n - 11); break;	// xterm F1-F5
+				     case 17: case 18: case 19: case 20: case 21: code = KEY_F1 + 5 + (n - 17); break;	// F6-F10
+				     case 23: case 24: code = KEY_F1 + 10 + (n - 23); break; }			// F11, F12
 			break;
 		}
 		if (p[i] != '\0') i++;				// the final byte

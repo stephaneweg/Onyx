@@ -239,7 +239,7 @@ static void send_now (void)
 	}
 	kapi_stream_eof (g_in);
 	g_alen = 0; g_ans[0] = '\0';
-	g_t0 = kapi_get_ticks ();
+	g_t0 = kapi_get_ticks () * 10;
 	set_busy (true);
 }
 
@@ -280,7 +280,7 @@ static void poll_child (void)
 	}
 	static const char *dots[] = { "Lisa is thinking", "Lisa is thinking.", "Lisa is thinking..", "Lisa is thinking..." };
 	static int last = -1;
-	int d = (int) ((kapi_get_ticks () - g_t0) / 400) % 4;
+	int d = (int) ((kapi_get_ticks () * 10 - g_t0) / 400) % 4;
 	if (d != last) { last = d; g_status->setText (dots[d]); }
 }
 

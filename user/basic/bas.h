@@ -40,9 +40,11 @@ struct Host
 	virtual void screenSize (int *w, int *h) { *w = 640; *h = 400; }
 	virtual void setClip (int x1, int y1, int x2, int y2) { (void) x1; (void) y1; (void) x2; (void) y2; }	// x1 < 0: none
 	virtual void paint (int x, int y, int c, int border) { (void) x; (void) y; (void) c; (void) border; }
-	// Rectangles of pixels (GET / PUT): colours as POINT returns them.
-	virtual void readRect (int x, int y, int w, int h, int *out) { for (int i = 0; i < w * h; i++) out[i] = 0; (void) x; (void) y; }
-	virtual void writeRect (int x, int y, int w, int h, const int *in) { (void) x; (void) y; (void) w; (void) h; (void) in; }
+	// Rectangles of pixels (GET / PUT): raw = 0xRRGGBB values, else palette indices (the
+	// nearest entry). Outside the screen: 0 / not written.
+	virtual void readRect (int x, int y, int w, int h, int *out, bool raw) { for (int i = 0; i < w * h; i++) out[i] = 0; (void) x; (void) y; (void) raw; }
+	virtual void writeRect (int x, int y, int w, int h, const int *in, bool raw) { (void) x; (void) y; (void) w; (void) h; (void) in; (void) raw; }
+	virtual void fullscreen (bool on) { (void) on; }	// FULLSCREEN: the screen scaled to the display
 	virtual void palette (int attr, int rgb) { (void) attr; (void) rgb; }	// rgb 0xRRGGBB; attr < 0: reset all
 	virtual void pcopy (int src, int dst) { (void) src; (void) dst; }
 	virtual int  keyPending (char *out2) { (void) out2; return 0; }	// the next key (as INKEY$), not taken

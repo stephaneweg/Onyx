@@ -91,7 +91,7 @@ namespace onyx_tls
 				int n = kapi_tcp_recv (s->sock, s->rxbuf, (unsigned) sizeof s->rxbuf);
 				if (n > 0) { s->rxlen = n; s->rxpos = 0; break; }
 				if (n < 0) return MBEDTLS_ERR_NET_CONN_RESET;		// closed / error
-				if (kapi_get_ticks () - start_t > 20000) return MBEDTLS_ERR_NET_CONN_RESET;
+				if ((kapi_get_ticks () - start_t) * 10 > 20000) return MBEDTLS_ERR_NET_CONN_RESET;
 				kapi_msleep (2);					// nothing yet -> yield
 			}
 		}
@@ -211,7 +211,7 @@ namespace onyx_tls
 		{
 			if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
 			{
-				if (kapi_get_ticks () - start_t > 20000) return -1;
+				if ((kapi_get_ticks () - start_t) * 10 > 20000) return -1;
 				kapi_msleep (5);
 				continue;
 			}
@@ -233,7 +233,7 @@ namespace onyx_tls
 			if (ret > 0) { sent += ret; start_t = kapi_get_ticks (); continue; }
 			if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
 			{
-				if (kapi_get_ticks () - start_t > 15000) return -1;
+				if ((kapi_get_ticks () - start_t) * 10 > 15000) return -1;
 				kapi_msleep (5);
 				continue;
 			}

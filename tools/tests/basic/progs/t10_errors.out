@@ -1,0 +1,13 @@
+a
+error 11 at 4 
+after 1/0
+error 53 at 6 
+after ERROR 53
+error 5 at 8 
+after SQR
+error 9 at 26 
+after Deep
+error 200 at 15 
+error 200 at 15 
+tries 3 
+done

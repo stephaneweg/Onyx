@@ -30,7 +30,7 @@ static const char *const KEYWORDS[] = {
 	"BINARY", "RANDOM", "USING", "TAB", "SPC",
 	"TYPE", "RESUME", "FIELD", "LSET", "RSET", "COMMON", "CHAIN", "RUN", "CLEAR", "TRON", "TROFF", "KEY",
 	"PAINT", "DRAW", "VIEW", "PALETTE", "PCOPY", "GET", "PUT", "RESET", "FILES", "CHDIR", "SHELL", "ENVIRON",
-	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", 0 };
+	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", "FULLSCREEN", 0 };
 
 struct BFn { const char *name; int id; int ret; const char *args; };
 static const BFn BFNS[] = {
@@ -290,15 +290,40 @@ public:
 	// A variable: global or local slot + type. decl: its declared type (DIM AS), or 0.
 	struct Var { bool global; int slot; int ty; int nt; int flen; };
 	static Var symVar (const Sym &s, bool global) { Var r; r.global = global; r.slot = s.slot; r.ty = s.ty; r.nt = s.nt; r.flen = s.flen; return r; }
-	Var var (const char *name, bool arr, const TSpec *decl = 0)
+	// Names without a suffix: a variable DIMmed AS a type keeps its bare name; the others
+	// get the suffix of their DEFtype ("i" after DEFINT I = "i%", QBasic's rule).
+	static bool hasSuffix (const char *name) { int n = bslen (name); char c = n ? name[n - 1] : 0; return c == '$' || c == '%' || c == '&' || c == '!' || c == '#'; }
+	void implicitKey (char *key, const char *name, bool arr)
+	{
+		char nm[52]; bscpy (nm, name, 48);
+		if (!hasSuffix (name) && name[0] != '~')
+		{
+			TSpec t = nameSpec (name);
+			int n = bslen (nm);
+			nm[n] = t.ty == TY_STR ? '$' : t.nt == NT_INT ? '%' : t.nt == NT_LNG ? '&' : t.nt == NT_DBL ? '#' : '!';
+			nm[n + 1] = 0;
+		}
+		makeKey (key, nm, arr);
+	}
+	// A symbol of v by its exact (declared) key, else by its implicit one.
+	int findSym (Vec<Sym> &v, const char *name, bool arr)
 	{
 		char key[52]; makeKey (key, name, arr);
+		int i = findIn (v, key);
+		if (i >= 0 || hasSuffix (name)) return i;
+		implicitKey (key, name, arr);
+		return findIn (v, key);
+	}
+	Var var (const char *name, bool arr, const TSpec *decl = 0)
+	{
+		char key[52];
+		if (decl) makeKey (key, name, arr); else implicitKey (key, name, arr);
 		TSpec ts = decl ? *decl : nameSpec (name);
 		if (curProc >= 0)
 		{
-			int i = findIn (lsyms, key);
+			int i = findSym (lsyms, name, arr);
 			if (i >= 0) return symVar (lsyms[i], lsyms[i].global);
-			int g = findIn (gsyms, key);
+			int g = findSym (gsyms, name, arr);
 			if (g >= 0 && (gsyms[g].shared || pdecls[curProc].defFn)) return symVar (gsyms[g], true);
 			if (!pdecls[curProc].defFn)
 			{
@@ -307,7 +332,7 @@ public:
 				return symVar (s, false);
 			}
 		}
-		int g = findIn (gsyms, key);
+		int g = findSym (gsyms, name, arr);
 		if (g >= 0) return symVar (gsyms[g], true);
 		Sym s; bscpy (s.key, key, 52); s.slot = P->nglobals++; s.ty = ts.ty; s.nt = ts.nt; s.flen = ts.flen;
 		s.shared = false; s.global = true; gsyms.push (s);
@@ -316,16 +341,15 @@ public:
 	// An existing variable (no creation).
 	bool findVar (const char *name, bool arr, Var &out)
 	{
-		char key[52]; makeKey (key, name, arr);
 		if (curProc >= 0)
 		{
-			int i = findIn (lsyms, key);
+			int i = findSym (lsyms, name, arr);
 			if (i >= 0) { out = symVar (lsyms[i], lsyms[i].global); return true; }
-			int g = findIn (gsyms, key);
+			int g = findSym (gsyms, name, arr);
 			if (g >= 0 && (gsyms[g].shared || pdecls[curProc].defFn)) { out = symVar (gsyms[g], true); return true; }
 			return false;
 		}
-		int g = findIn (gsyms, key);
+		int g = findSym (gsyms, name, arr);
 		if (g >= 0) { out = symVar (gsyms[g], true); return true; }
 		return false;
 	}
@@ -701,13 +725,13 @@ public:
 			return true;
 		}
 		// "p.x": a record variable p and its fields (else a plain dotted name, QBasic-style)
-		const char *dot = 0;
+		const char *dot = 0; char dotted[48];
 		for (int i = 1; name[i]; i++)
 			if (name[i] == '.')
 			{
 				char base[48]; bscpy (base, name, i + 1);
 				Var bv;
-				if (!isOp ('(') && findVar (base, false, bv) && bv.ty >= TY_REC) { dot = name + i; name[i] = 0; }
+				if (!isOp ('(') && findVar (base, false, bv) && bv.ty >= TY_REC) { bscpy (dotted, name + i, 48); dot = dotted; name[i] = 0; }
 				break;
 			}
 		if (isOp ('(') && !dot)
@@ -1141,6 +1165,14 @@ public:
 		if (bseq (w, "WINDOW") && (peekIsOp ('(') || peekKw (1, "SCREEN") || peek ().t == T_NL || peek ().t == T_EOF || (peek ().t == T_OP && peek ().op == ':')))
 		{ next (); stGWindow (); return; }
 		if (bseq (w, "PALETTE")) { next (); stPalette (); return; }
+		if (bseq (w, "FULLSCREEN"))				// FULLSCREEN [ON | OFF]
+		{
+			next ();
+			int on = 1;
+			if (acceptKw ("OFF")) on = 0; else acceptKw ("ON");
+			pushNum (on); emit3 (OP_ST, S_FULLSCREEN, 1);
+			return;
+		}
 		if (bseq (w, "NAME")) { next (); needStr (expr ()); expectKw ("AS"); needStr (expr ()); emit3 (OP_ST, S_NAME, 2); return; }
 		if (simpleStatement (w)) return;
 		// A SUB call without CALL.
@@ -1291,7 +1323,7 @@ public:
 		if (acceptKw ("USING"))
 		{
 			needStr (expr ());
-			if (!acceptOp (';')) expectOp (',');
+			if (!endOfStmt () && !acceptOp (';')) expectOp (',');
 			int n = 0; bool nl2 = true;
 			while (!endOfStmt () && !failed)
 			{
@@ -1702,6 +1734,7 @@ public:
 			if (failed || !acceptOp (',')) break;
 		}
 	}
+	char skey[52];
 	Var declVar (const char *name, bool arr, const TSpec *ts, bool shared)
 	{
 		Var v = var (name, arr, ts);
@@ -1709,8 +1742,8 @@ public:
 		if (shared)
 		{
 			if (curProc >= 0) { fail ("DIM SHARED is for the main module"); return v; }
-			char key[52]; makeKey (key, name, arr);
-			int g = findIn (gsyms, key); if (g >= 0) gsyms[g].shared = true;
+			int g = ts ? findIn (gsyms, (makeKey (skey, name, arr), skey)) : findSym (gsyms, name, arr);
+			if (g >= 0) gsyms[g].shared = true;
 		}
 		return v;
 	}
@@ -1725,8 +1758,8 @@ public:
 			char name[48]; bscpy (name, cur ().id, 48); next ();
 			bool arr = false;
 			if (isOp ('(') && peekIsOp (')')) { next (); next (); arr = true; }
-			TSpec ts; if (!parseAsType (ts)) ts = nameSpec (name);
-			char key[52]; makeKey (key, name, arr);
+			TSpec ts; bool has = parseAsType (ts); if (!has) ts = nameSpec (name);
+			char key[52]; if (has) makeKey (key, name, arr); else implicitKey (key, name, arr);
 			char gname[52]; int n = 0; gname[n++] = '~';
 			for (int i = 0; pdecls[curProc].name[i] && n < 22; i++) gname[n++] = pdecls[curProc].name[i];
 			gname[n++] = '.';
@@ -1751,9 +1784,9 @@ public:
 			char name[48]; bscpy (name, cur ().id, 48); next ();
 			bool arr = false;
 			if (isOp ('(') && peekIsOp (')')) { next (); next (); arr = true; }
-			TSpec ts; if (!parseAsType (ts)) ts = nameSpec (name);
-			char key[52]; makeKey (key, name, arr);
-			int g = findIn (gsyms, key);
+			TSpec ts; bool has = parseAsType (ts); if (!has) ts = nameSpec (name);
+			char key[52]; if (has) makeKey (key, name, arr); else implicitKey (key, name, arr);
+			int g = has ? findIn (gsyms, key) : findSym (gsyms, name, arr);
 			Sym l;
 			if (g >= 0) l = gsyms[g];
 			else

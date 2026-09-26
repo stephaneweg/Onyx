@@ -77,6 +77,8 @@
 #define KEY_PGUP		0x106
 #define KEY_PGDN		0x107
 #define KEY_DEL			0x108
+#define KEY_F1			0x110	// .. KEY_F12 = 0x11B (KEY_F1 + n - 1)
+#define KEY_F12			0x11B
 
 // --- windowing ---------------------------------------------------------------
 static inline unsigned *kapi_create_window (int w, int h, const char *t) { return KT->create_window (w, h, t); }

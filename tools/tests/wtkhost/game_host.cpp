@@ -21,12 +21,35 @@
 #include "Apps/iconedit/main.cpp"
 #elif defined GAME_RTF
 #include "Apps/rtfview/main.cpp"
+#elif defined GAME_BASICRT
+#include "basic/runtime.cpp"
 #endif
 #undef main
 #include "img/imgload.hpp"
 bool img_load (const char *, ImgFrames *) { return false; }	// (no codecs on the host)
 
-#if defined GAME_GRAPHCALC || defined GAME_ICONEDIT || defined GAME_RTF
+#if defined GAME_BASICRT
+// the kernel font stand-in: the wtk font's glyphs
+static void wtkText (unsigned *d, int w, int h, int x, int y, const char *s, unsigned c)
+{
+	wtk::Font &f = wtk::font ();
+	if (!f.valid ()) return;
+	for (; *s; s++, x += f.width ())
+	{
+		const unsigned char *g = f.glyph ((unsigned char) *s, 0);
+		if (!g) continue;
+		for (int r = 0; r < f.height (); r++) for (int i = 0; i < f.width (); i++)
+			if ((g[r] << i) & 0x80) { int px = x + i, py = y + r; if (px >= 0 && py >= 0 && px < w && py < h) d[py * w + px] = c; }
+	}
+}
+static void savePage (OnyxHost &h, const char *name)
+{
+	char p[256]; snprintf (p, sizeof p, "%s/%s.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", name);
+	host_save_ppm (p, h.pg[h.vpage], h.W, h.H, h.W);
+	printf ("saved %s\n", p);
+}
+#endif
+#if defined GAME_GRAPHCALC || defined GAME_ICONEDIT || defined GAME_RTF || defined GAME_BASICRT
 static void wshot (wtk::Widget *w, const char *name)
 {
 	w->canvas.alloc (w->width, w->height); w->onDraw ();
@@ -37,7 +60,7 @@ static void wshot (wtk::Widget *w, const char *name)
 #else
 static void run (GameView *g, int frames)
 {
-	for (int i = 0; i < frames; i++) { host_ticks += 16; g->step (); }
+	for (int i = 0; i < frames; i++) { host_ticks += 2; g->step (); }
 }
 static void shot (GameView *g, const char *name)
 {
@@ -247,6 +270,31 @@ int main (int argc, char **argv)
 	bool same = c->len == b->len;
 	for (int i = 0; same && i < b->len; i++) if (c->buf[i] != b->buf[i] || c->attr[i] != b->attr[i]) { printf ("rtf: differs at %d\n", i); same = false; }
 	printf ("rtf: save %d bytes, reload %s\n", m, same ? "identical" : "DIFFERENT");
+#elif defined GAME_BASICRT
+	host_text_hook = wtkText; setvbuf (stdout, 0, _IONBF, 0); printf ("start\n");
+	static const char *const progs[] = { "gfx", "gfx12", "fs", 0 };
+	for (int k = 0; progs[k]; k++)
+	{
+		char fp[512]; snprintf (fp, sizeof fp, "%s/../tools/tests/basic/rt/%s.bas", argc > 1 ? argv[1] : "sdcard", progs[k]);
+		FILE *f = fopen (fp, "rb"); if (!f) { printf ("no %s\n", fp); continue; }
+		static char src[65536]; int n = (int) fread (src, 1, sizeof src - 1, f); fclose (f); src[n] = 0;
+		OnyxHost *h = new OnyxHost; g_host = h; h->console = false; scpy (h->title, progs[k], sizeof h->title);
+		bas::Error e;
+		bas::Program *pr = bas::compile (src, &e);
+		if (!pr) { printf ("%s: compile error line %d: %s\n", progs[k], e.line, e.msg); continue; }
+		h->windowCmd = true;				// (no "press any key" at the end)
+		host_fs = 0;
+		struct Keep : public bas::Host {};
+		int r = bas::run (pr, *h, &e);
+		if (r) printf ("%s: runtime error line %d: %s\n", progs[k], e.line, e.msg);
+		printf ("%s: mode %d %dx%d scale %dx%d\n", progs[k], h->mode, h->W, h->H, h->sx, h->sy);
+		savePage (*h, progs[k]);
+		if (host_fs)
+		{
+			char p[256]; snprintf (p, sizeof p, "%s/%s_fullscreen.ppm", getenv ("OUT") ? getenv ("OUT") : "/tmp", progs[k]);
+			host_save_ppm (p, host_fs, host_fsw, host_fsh, host_fsw);
+		}
+	}
 #endif
 	return 0;
 }

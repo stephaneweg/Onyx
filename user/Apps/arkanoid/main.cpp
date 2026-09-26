@@ -170,7 +170,7 @@ public:
 	int  lastMouseX;
 
 	Arkanoid (int l, int t, int w, int h) : GameView (l, t, w, h), hiscore (0), lastMouseX (-1)
-	{ rng_seed (kapi_get_ticks () * 2654435761u); newGame (); }
+	{ rng_seed (gms () * 2654435761u); newGame (); }
 
 	void newGame () { level = 0; lives = 3; score = 0; loadLevel (); }
 	void loadLevel ()
@@ -285,7 +285,7 @@ public:
 	{
 		lives--;
 		sfx_lose ();
-		if (lives <= 0) { state = 3; stateT = kapi_get_ticks (); if (score > hiscore) hiscore = score; }
+		if (lives <= 0) { state = 3; stateT = gms (); if (score > hiscore) hiscore = score; }
 		else resetPaddle ();
 	}
 
@@ -357,7 +357,7 @@ public:
 		if (breakable () == 0)
 		{
 			sfx_win ();
-			state = level + 1 >= NLEVELS ? 4 : 2; stateT = kapi_get_ticks ();
+			state = level + 1 >= NLEVELS ? 4 : 2; stateT = gms ();
 			if (score > hiscore) hiscore = score;
 		}
 		redraw ();
@@ -365,8 +365,8 @@ public:
 
 	void advance ()
 	{
-		if (state == 2 && kapi_get_ticks () - stateT > 600) { level++; loadLevel (); }
-		else if ((state == 3 || state == 4) && kapi_get_ticks () - stateT > 600) newGame ();
+		if (state == 2 && gms () - stateT > 600) { level++; loadLevel (); }
+		else if ((state == 3 || state == 4) && gms () - stateT > 600) newGame ();
 	}
 	void press (int, int, bool right) override
 	{

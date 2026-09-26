@@ -24,6 +24,7 @@ static int h_read (void *f, void *b, unsigned n) { return (int) fread (b, 1, n, 
 static unsigned h_fsize (void *f) { long c = ftell ((FILE *) f); fseek ((FILE *) f, 0, SEEK_END); long n = ftell ((FILE *) f); fseek ((FILE *) f, c, SEEK_SET); return (unsigned) n; }
 static void h_close (void *f) { fclose ((FILE *) f); }
 static unsigned h_ticks (void) { return host_ticks; }
+static void h_msleep (unsigned ms) { host_ticks += ms / 10 + 1; }
 static int h_fw (void) { return 8; }
 static int h_fh (void) { return 16; }
 static void *h_sbrk (long inc)
@@ -41,6 +42,17 @@ static void *h_memcpy (void *d, const void *s, unsigned long n) { return memcpy 
 static void *h_memmove (void *d, const void *s, unsigned long n) { return memmove (d, s, n); }
 static void *h_memset (void *d, int c, unsigned long n) { return memset (d, c, n); }
 
+// Windows / full screen: plain heap buffers the test can dump.
+static unsigned *host_win = 0; static int host_ww, host_wh;
+static unsigned *h_create_window (int w, int h, const char *) { host_ww = w; host_wh = h; host_win = (unsigned *) calloc ((size_t) w * h, 4); return host_win; }
+static unsigned *h_resize_window (int w, int h) { free (host_win); return h_create_window (w, h, 0); }
+static unsigned *host_fs = 0; static int host_fsw = 800, host_fsh = 480;
+static unsigned *h_fullscreen_begin (int *w, int *h) { *w = host_fsw; *h = host_fsh; host_fs = (unsigned *) calloc ((size_t) host_fsw * host_fsh, 4); return host_fs; }
+static int h_get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s) { if (y) *y = 2026; if (mo) *mo = 9; if (d) *d = 26; if (h) *h = 12; if (mi) *mi = 0; if (s) *s = 0; return 1; }
+// Text: the kernel font is not here -- a hook the test sets (the wtk font).
+static void (*host_text_hook) (unsigned *, int, int, int, int, const char *, unsigned) = 0;
+static void h_draw_text_buf (unsigned *d, int w, int h, int x, int y, const char *s, unsigned c) { if (host_text_hook) host_text_hook (d, w, h, x, y, s, c); }
+
 static void host_kapi_init (const char *sdroot)
 {
 	if (sdroot) host_sd = sdroot;
@@ -51,9 +63,11 @@ static void host_kapi_init (const char *sdroot)
 	for (unsigned i = 0; i < (sizeof (TKApiTable) - 8) / sizeof (void *); i++) slot[i] = (void *) host_stub;
 	t->version = KAPI_ABI_VERSION;
 	t->open = h_open; t->read = h_read; t->fsize = h_fsize; t->close = h_close;
-	t->get_ticks = h_ticks; t->font_width = h_fw; t->font_height = h_fh;
+	t->get_ticks = h_ticks; t->msleep = h_msleep; t->font_width = h_fw; t->font_height = h_fh;
 	t->sbrk = h_sbrk; t->key_held = h_key_held;
 	t->memcpy = (decltype (t->memcpy)) h_memcpy; t->memmove = (decltype (t->memmove)) h_memmove; t->memset = (decltype (t->memset)) h_memset;
+	t->create_window = h_create_window; t->resize_window = h_resize_window; t->fullscreen_begin = h_fullscreen_begin;
+	t->get_datetime = h_get_datetime; t->draw_text_buf = h_draw_text_buf;
 	t->sound_acquire = h_sound_acquire; t->sound_start = h_sound_start;
 }
 

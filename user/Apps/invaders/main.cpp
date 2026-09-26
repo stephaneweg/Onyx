@@ -69,17 +69,17 @@ public:
 	int  lastMouseX;
 
 	Invaders (int l, int t, int w, int h) : GameView (l, t, w, h), hiscore (0), lastMouseX (-1)
-	{ rng_seed (kapi_get_ticks () * 2246822519u); newGame (); }
+	{ rng_seed (gms () * 2246822519u); newGame (); }
 
 	void newGame () { score = 0; lives = 3; wave = 0; newWave (); buildShields (); }
 	void newWave ()
 	{
 		for (int r = 0; r < AROWS; r++) for (int c = 0; c < ACOLS; c++) alive[r][c] = true;
 		fx = 40; fy = HUD + 60 + (wave % 6) * 12; fdir = 1; frame = 0;
-		stepT = kapi_get_ticks (); marchNote = 0;
+		stepT = gms (); marchNote = 0;
 		shipX = W / 2 - 13; shot.live = false;
 		for (int i = 0; i < 3; i++) bomb[i].live = false;
-		ufoLive = false; ufoNext = kapi_get_ticks () + 15000 + rng_n (10000); ufoShowT = 0;
+		ufoLive = false; ufoNext = gms () + 15000 + rng_n (10000); ufoShowT = 0;
 		boomAT = 0;
 		state = 0;
 	}
@@ -133,7 +133,7 @@ public:
 		int n = remaining ();
 		stepEvery = 30 + n * 14 - wave * 20;
 		if (stepEvery < 30) stepEvery = 30;
-		unsigned now = kapi_get_ticks ();
+		unsigned now = gms ();
 		if (now - stepT < stepEvery) return;
 		stepT = now;
 		// edges of the living fleet
@@ -184,7 +184,7 @@ public:
 
 	void shipHit ()
 	{
-		state = 2; stateT = kapi_get_ticks ();
+		state = 2; stateT = gms ();
 		sfx (120, 400, SOUND_NOISE, 160);
 		if (--lives <= 0) { lives = 0; state = 3; if (score > hiscore) hiscore = score; sfx_lose (); }
 		shot.live = false;
@@ -194,7 +194,7 @@ public:
 	void tick (unsigned dt) override
 	{
 		(void) dt;
-		unsigned now = kapi_get_ticks ();
+		unsigned now = gms ();
 		if (state == 1) return;
 		if (state == 2) { if (now - stateT > 1200) state = 0; redraw (); return; }
 		if (state == 3) { redraw (); return; }
@@ -287,7 +287,7 @@ public:
 	void paint () override
 	{
 		Canvas &c = canvas;
-		unsigned now = kapi_get_ticks ();
+		unsigned now = gms ();
 		c.fillRect (0, 0, W, H, 0x00000008);
 		// a few stars
 		for (int i = 0; i < 40; i++) c.pixel ((i * 97 + 13) % W, HUD + (i * 57 + 29) % (GROUND - HUD), 0x00404060);

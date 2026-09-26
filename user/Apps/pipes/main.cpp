@@ -59,7 +59,7 @@ public:
 	int  bombX, bombY; unsigned bombT;	// replaced piece flash
 
 	Pipes (int l, int t_, int w, int h) : GameView (l, t_, w, h), hiscore (0)
-	{ rng_seed (kapi_get_ticks () * 2654435761u + 7); newGame (); }
+	{ rng_seed (gms () * 2654435761u + 7); newGame (); }
 
 	int randPiece () { int r = rng_n (100); return r < 8 ? 7 : 1 + rng_n (6); }
 	void newGame () { level = 0; score = 0; newRound (); }
@@ -96,7 +96,7 @@ public:
 		if (state != 0 && state != 1) return;
 		Tile &k = t[y][x];
 		if (k.type == 8 || k.type == 9 || k.fillH || k.fillV) { sfx (140, 60, SOUND_SQUARE, 70); return; }
-		if (k.type) { score -= 50; bombX = x; bombY = y; bombT = kapi_get_ticks (); sfx (90, 160, SOUND_NOISE, 120); }
+		if (k.type) { score -= 50; bombX = x; bombY = y; bombT = gms (); sfx (90, 160, SOUND_NOISE, 120); }
 		else sfx (700, 25, SOUND_TRIANGLE, 100);
 		k.type = queue[NQ - 1];
 		for (int i = NQ - 1; i > 0; i--) queue[i] = queue[i - 1];
@@ -135,7 +135,7 @@ public:
 			state = 2; score += 1000 + level * 250; sfx_win ();
 		}
 		else { state = 3; sfx_lose (); }
-		stateT = kapi_get_ticks ();
+		stateT = gms ();
 		if (score > hiscore) hiscore = score;
 	}
 
@@ -180,8 +180,8 @@ public:
 	void press (int px, int py, bool right) override
 	{
 		if (right) return;
-		if (state == 2) { if (kapi_get_ticks () - stateT > 500) { level++; newRound (); } return; }
-		if (state == 3) { if (kapi_get_ticks () - stateT > 500) newGame (); return; }
+		if (state == 2) { if (gms () - stateT > 500) { level++; newRound (); } return; }
+		if (state == 3) { if (gms () - stateT > 500) newGame (); return; }
 		int x, y;
 		if (cellAt (px, py, x, y)) { curX = x; curY = y; place (x, y); }
 	}
@@ -313,7 +313,7 @@ public:
 				else if (k.fillH) water (px + CELL / 2, py + CELL / 2, k.inSide, CONN[k.type] & ~k.inSide, k.fillH);
 			}
 		}
-		if (bombT && kapi_get_ticks () - bombT < 250)
+		if (bombT && gms () - bombT < 250)
 			c.frameRect (BX + bombX * CELL + 2, BY + bombY * CELL + 2, CELL - 4, CELL - 4, 0x00FFB040);
 		// cursor
 		c.frameRect (BX + curX * CELL, BY + curY * CELL, CELL, CELL, 0x00FFFF60);

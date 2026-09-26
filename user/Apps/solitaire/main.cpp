@@ -39,7 +39,7 @@ public:
 	bool won; WinAnim anim; bool animOn;
 
 	Klondike (int l, int t, int w, int h) : GameView (l, t, w, h), draw3 (false)
-	{ rng_seed (kapi_get_ticks () * 2654435761u + 3); deal (); }
+	{ rng_seed (gms () * 2654435761u + 3); deal (); }
 
 	int pileX (int p) const
 	{
@@ -85,14 +85,14 @@ public:
 			for (int r = 0; r <= col; r++) { Pile &q = s.p[TAB + col]; q.c[q.n] = deck[k++]; q.up[q.n] = r == col; q.n++; }
 		while (k < 52) { Pile &q = s.p[STOCK]; q.c[q.n] = deck[k++]; q.up[q.n] = false; q.n++; }
 		s.score = 0; nundo = 0;
-		t0 = kapi_get_ticks (); elapsed = 0; running = false;
+		t0 = gms (); elapsed = 0; running = false;
 		dragging = false; won = false; animOn = false; lastClickT = 0;
 		redraw ();
 	}
 
 	void push_undo () { if (nundo == 64) { for (int i = 1; i < 64; i++) undo[i - 1] = undo[i]; nundo--; } undo[nundo++] = s; }
 	void do_undo () { if (nundo && !won) { s = undo[--nundo]; s.score -= 2; sfx (300, 40, SOUND_TRIANGLE); redraw (); } }
-	void start_clock () { if (!running && !won) { running = true; t0 = kapi_get_ticks (); } }
+	void start_clock () { if (!running && !won) { running = true; t0 = gms (); } }
 
 	int top (int p) const { return s.p[p].n ? s.p[p].c[s.p[p].n - 1] : -1; }
 
@@ -134,7 +134,7 @@ public:
 		int n = 0; for (int f = FOUND; f < TAB; f++) n += s.p[f].n;
 		if (n < 52) return;
 		won = true; running = false;
-		elapsed = (kapi_get_ticks () - t0) / 1000;
+		elapsed = (gms () - t0) / 1000;
 		if (elapsed > 30) s.score += (int) (700000 / elapsed) / 10;	// time bonus
 		int fx[4], fy[4];
 		for (int f = 0; f < 4; f++) { fx[f] = pileX (FOUND + f); fy[f] = TOPY; }
@@ -210,7 +210,7 @@ public:
 		if (i < 0) return;
 		Pile &q = s.p[p];
 		// double click -> foundation
-		unsigned now = kapi_get_ticks ();
+		unsigned now = gms ();
 		if (now - lastClickT < 450 && lastClickPile == p && lastClickIdx == i && i == q.n - 1)
 		{
 			lastClickT = 0;
@@ -257,7 +257,7 @@ public:
 	void tick (unsigned) override
 	{
 		if (animOn) { redraw (); return; }
-		if (running) { unsigned e = (kapi_get_ticks () - t0) / 1000; if (e != elapsed) { elapsed = e; redraw (); } }
+		if (running) { unsigned e = (gms () - t0) / 1000; if (e != elapsed) { elapsed = e; redraw (); } }
 	}
 
 	void paint () override

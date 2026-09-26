@@ -1,0 +1,8 @@
+' FULLSCREEN: SCREEN 13 scaled to the display (the test display is 800 x 480)
+SCREEN 13
+FULLSCREEN
+FOR y = 0 TO 199: LINE (0, y)-(319, y), 32 + (y \ 8): NEXT
+CIRCLE (160, 100), 60, 15
+PAINT (160, 100), 40, 15
+LOCATE 12, 15: PRINT "FULL SCREEN";
+PAUSE 50

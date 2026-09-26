@@ -287,6 +287,18 @@ static void key_event (int down, unsigned sym)
 	case 0xFF52: case 0xFF97: s = nav ("", 'A', 0); break;	// Up
 	case 0xFF53: case 0xFF98: s = nav ("", 'C', 0); break;	// Right
 	case 0xFF54: case 0xFF99: s = nav ("", 'B', 0); break;	// Down
+	case 0xFFBE: s = "\x1b[[A"; break;		// F1..F5 as Circle's keymap sends them
+	case 0xFFBF: s = "\x1b[[B"; break;
+	case 0xFFC0: s = "\x1b[[C"; break;
+	case 0xFFC1: s = "\x1b[[D"; break;
+	case 0xFFC2: s = "\x1b[[E"; break;
+	case 0xFFC3: s = "\x1b[17~"; break;		// F6..F12
+	case 0xFFC4: s = "\x1b[18~"; break;
+	case 0xFFC5: s = "\x1b[19~"; break;
+	case 0xFFC6: s = "\x1b[20~"; break;
+	case 0xFFC7: s = "\x1b[21~"; break;
+	case 0xFFC8: s = "\x1b[23~"; break;
+	case 0xFFC9: s = "\x1b[24~"; break;
 	default:
 		if (sym >= 0xFFB0 && sym <= 0xFFB9) sym = '0' + (sym - 0xFFB0);	// keypad digits
 		else if (sym == 0xFFAA) sym = '*'; else if (sym == 0xFFAB) sym = '+';

@@ -48,12 +48,14 @@ static CodeArea *g_ed = 0;
 static Label *g_head = 0, *g_status = 0;
 static Root *g_root = 0;
 
+static void (*g_fkey[12]) (void);			// QBasic's keys: F1 help, F2 SUBs, F5 run
 class CodeArea : public Textarea
 {
 public:
 	CodeArea (int l, int t, int w, int h) : Textarea (l, t, w, h, EDCAP) {}
 	bool onKey (long k) override
 	{
+		if (k >= KEY_F1 && k <= KEY_F12) { if (g_fkey[k - KEY_F1]) g_fkey[k - KEY_F1] (); return true; }
 		if (k == KEY_ENTER && !readonly)			// keep the indentation
 		{
 			int ls = caret; while (ls > 0 && buf[ls - 1] != '\n') ls--;
@@ -596,13 +598,14 @@ int main (void)
 	menu.separator ();
 	menu.item ("Go to Line...",   "^G", WK_CTRL ('G'), op_goto);
 	menu.menu ("View");
-	menu.item ("SUBs...",      "^L", WK_CTRL ('L'), op_subs);
+	menu.item ("SUBs... (F2)", "^L", WK_CTRL ('L'), op_subs);
 	menu.menu ("Run");
-	menu.item ("Start",        "^R", WK_CTRL ('R'), op_run);
+	menu.item ("Start (F5)",   "^R", WK_CTRL ('R'), op_run);
 	menu.item ("Check Syntax", "^K", WK_CTRL ('K'), op_check);
 	menu.menu ("Help");
 	menu.item ("Keywords",     "",   0,             op_help);
 	menu.publish ();
+	g_fkey[0] = op_help; g_fkey[1] = op_subs; g_fkey[4] = op_run;
 
 	char args[256];
 	if (kapi_get_args (args, sizeof args) > 0 && args[0]) load_file (args);

@@ -322,7 +322,7 @@ Notes / caveats:
 > Tracker's Ctrl+Up / Down transpose, the text widgets' Shift selection). Inside a key
 > handler, `kapi_get_modifiers` returns the modifiers held **when that key was typed** (the
 > kernel stores them in the key event, taken from the xterm `ESC[1;<m>X` form, which `vncd`
-> also sends), not the live state. F1–F9 are not delivered. Text widgets (`Textbox`,
+> also sends), not the live state. F1–F12 arrive as `KEY_F1` .. `KEY_F12` (0x110..0x11B). Text widgets (`Textbox`,
 > `Textarea`, `RichTextBox`) accept the printable Latin-1 range too (`é è à ç ù €`… = 0xA0–0xFF,
 > as the keymaps produce them).
 > **Text selection**: `Textarea` and `RichTextBox` select with Shift + navigation keys, a
@@ -670,9 +670,21 @@ barwidth = 40
 
 - **Core** (`user/basic/`): `bas.h` (API: `bas::compile`, `bas::run`, the `bas::Host`
   interface), `bascomp.cpp` (lexer + one-pass compiler to bytecode, with a pre-scan of the
-  SUB / FUNCTION headers), `basvm.cpp` (the stack VM: tagged values, ref-counted strings and
-  arrays, by-reference arguments, a frame per call), `basnum.cpp` (number formatting / parsing
-  and the math functions, no libc). Portable C++ (only `new` / `delete`): built into
+  SUB / FUNCTION / DEF FN headers and of the TYPEs), `basvm.cpp` (the stack VM: tagged values,
+  ref-counted strings, arrays and records -- a record shared at a store is copied first, so
+  TYPEs have value semantics -- references (by-ref arguments, the address of an element or a
+  field: `OP_REFG` / `OP_AADDRG` / `OP_FADDR`, stored through with `OP_STREF`), a frame per
+  call), `basnum.cpp` (number formatting / parsing and the math functions, no libc).
+  Numeric sub-types are a compile-time matter: values are doubles; a store into an INTEGER /
+  LONG gets an `OP_CONV` (round half even, Overflow), a fixed string an `OP_FIXSTR`; a
+  DOUBLE is only a printing precision (the compiler tracks `dblSeen` per expression).
+  **Errors**: `VM::fail` fails the op; before the next one `trap ()` looks for the resume
+  point (setjmp-like): with `ON ERROR GOTO` it unwinds the frames and the value stack and
+  jumps to the handler; `RESUME` uses the statement table (`Program::stmts`) to restart or
+  skip the statement that failed. **Events** (`ON TIMER` / `ON KEY`) are checked every 32
+  ops and after each blocking statement, and fire as a GOSUB (the interrupted expression
+  stays on the stack). **CHAIN**: `bas::run` loops, compiling the next program and moving the
+  COMMON values and the open files into the new VM. Portable C++ (only `new` / `delete`): built into
   `basic/libbasic.a` with FP/SIMD (`-fno-math-errno`), and on a PC for the tests.
 - **Runtime** `/bin/basic` (`basic/runtime.cpp`): the Onyx `bas::Host` — console (stdio)
   or a `wtk::Root` window (a text/graphics framebuffer + wtk controls, pumped by the VM through
@@ -684,6 +696,15 @@ barwidth = 40
   `VM::builtin` (basvm.cpp); something the VM cannot do itself goes through a new
   `bas::Host` virtual (default no-op) implemented in runtime.cpp. Statements: `simpleStatement`
   (fixed arguments) or a dedicated `st*` parser, `S_*` id, `VM::statement`.
+- **Keys**: the kernel delivers F1-F12 as `KEY_F1` .. `KEY_F12` (0x110..0x11B); the runtime
+  turns them into QBasic's `INKEY$` codes (`CHR$(0) + CHR$(59..68)`, 133, 134).
+- **Runtime graphics** (`runtime.cpp`): a mode table (size, text cell height, pages,
+  colours, display scale), up to 8 page buffers (draw `apage`, show `vpage`), a 256-entry
+  palette (the VGA default; `PALETTE` recolours the pixels already drawn), a text-cell
+  buffer (`SCREEN ()`), `VIEW PRINT` rows, a clip rectangle (`VIEW`), scanline `PAINT`,
+  `readRect` / `writeRect` for `GET` / `PUT`; `FULLSCREEN` uses `kapi_fullscreen_begin` and
+  scales the visible page (aspect kept). A PC render of it: `run_games_test.sh BASICRT`
+  (programs in `tools/tests/basic/rt/`).
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
   and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them).

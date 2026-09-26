@@ -802,6 +802,7 @@ compiled to bytecode and run by a small virtual machine. The full list of keywor
 - **File**: New (Ctrl-N), Open... (Ctrl-O), Examples..., Save (Ctrl-S), Save As...,
   **Make App...** (below). **Edit ▸ Go to Line...** (Ctrl-G) takes a line number of the
   whole program. **Enter** keeps the indentation of the line above; Page Up / Down scroll.
+- **F5** runs, **F2** lists the SUBs, **F1** opens the help (as in QBasic).
 - Double-clicking a `.bas` file in the File Viewer opens it in the editor (`fileassoc.ini`);
   dropping one on the editor opens it too.
 
@@ -826,8 +827,34 @@ files (`OPEN ... FOR INPUT / OUTPUT / APPEND`), the string and math functions, `
 `LOCATE`, `COLOR` (16 colours, or `RGB(r, g, b)`), `PSET`, `LINE` (`B` / `BF`), `CIRCLE`
 (`F` fills), `INKEY$`, `TIMER`, `RND`, **sound**: `PLAY "T140 O3 L8 CDEFG>C"` (QBasic's music
 language), `SOUND freq, ticks`, `BEEP`, and Onyx's `NOTEON voice, freq[, wave, volume]` /
-`NOTEOFF [voice]` (a note that plays until stopped, 16 voices). Not there (yet): `PRINT
-USING`, `ON ERROR`, user `TYPE`s, `MID$` as a statement.
+`NOTEOFF [voice]` (a note that plays until stopped, 16 voices).
+
+And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
+
+- **Types**: `%` INTEGER, `&` LONG, `!` SINGLE, `#` DOUBLE (or `AS INTEGER` …, `DEFINT A-Z` …,
+  `DEFSTR`); INTEGER / LONG round when stored and raise *Overflow*; DOUBLEs print 15 digits;
+  fixed strings `STRING * n`. **User types**: `TYPE … END TYPE` records (nested, in arrays,
+  passed to SUBs, copied by `=`), `LEN (var)` their size. `DEF FN`, `RETURN value` in a
+  FUNCTION, `MID$ (…) = …`, `LSET` / `RSET`, `PRINT USING` (all the `#` `,` `.` `+` `-` `**`
+  `$$` `^^^^` `!` `\ \` `&` `_` fields).
+- **Errors**: `ON ERROR GOTO` handlers with `RESUME` / `RESUME NEXT` / `RESUME label`, `ERR`,
+  `ERL`, `ERROR n` — an error inside a SUB comes back to the module-level handler.
+- **Files**: `RANDOM` (records of `LEN = n`, `GET` / `PUT #` of numbers, strings and records,
+  or `FIELD` + `LSET` / `RSET`) and `BINARY` files, `SEEK`, `LOC`, `MKx$` / `CVx`,
+  `INPUT$`, `RESET`, `FILES`, `CHDIR`, `ENVIRON`, `SHELL` (a `/bin` tool, its output on the
+  screen).
+- **Graphics**: the screen modes 1, 2, 7–13 (320-wide modes shown doubled) with pages
+  (`SCREEN m, , apage, vpage`, `PCOPY`), `PAINT`, `DRAW`, `GET` / `PUT` sprites (`PSET`,
+  `PRESET`, `AND`, `OR`, `XOR`), `VIEW`, `WINDOW` logical coordinates and `PMAP`, `PALETTE`
+  (existing pixels change colour, as on a VGA), `CIRCLE` arcs / ellipses, `STEP`, line
+  styles, `VIEW PRINT`, `SCREEN (row, col)`. Onyx adds **`FULLSCREEN`**: the screen scaled to
+  the whole display, proportions kept.
+- **Events**: `ON TIMER (n) GOSUB`, `ON KEY (n) GOSUB` (F1–F12, arrows, user keys) with
+  `TIMER` / `KEY (n)` `ON` / `OFF` / `STOP`. `INKEY$` returns F1–F10 as `CHR$(0) + CHR$(59…68)`.
+- **Programs**: `CHAIN` (with `COMMON` variables and the open files), `RUN`, `CLEAR`,
+  `TRON` / `TROFF`, `FRE`. **Ctrl+C** stops a running program (QBasic's Ctrl+Break).
+- Not supported (DOS hardware): `PEEK` / `POKE`, `DEF SEG`, `VARPTR`, `CALL ABSOLUTE`,
+  `INP` / `OUT`, `ON COM` / `PEN` / `STRIG` / `PLAY`.
 
 Onyx additions — a program can be a real **windowed app**:
 

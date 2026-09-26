@@ -122,6 +122,8 @@ extern u32 g_WinTitleTextColor;
 #define KEY_PGUP		0x106
 #define KEY_PGDN		0x107
 #define KEY_DEL			0x108
+#define KEY_F1			0x110	// .. KEY_F12 = 0x11B (KEY_F1 + n - 1)
+#define KEY_F12			0x11B
 
 // An event queued for the owning app's pump (key, canvas-click/motion, pointer stream).
 struct GUIEvent
