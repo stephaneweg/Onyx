@@ -56,3 +56,6 @@ third_party/**/*.o
 # nsgenbind's host build output (the x86 binary + objects) -- artifact, not committed; its
 # source IS vendored so it can be rebuilt (flex/bison) to regenerate the duktape bindings.
 third_party/nsgenbind/build-*/
+
+# Remembered FTP logins (ftpfs "Remember password"): never commit them
+sdcard/etc/ftpfs.ini

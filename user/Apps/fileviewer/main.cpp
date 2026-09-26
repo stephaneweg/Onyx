@@ -540,7 +540,8 @@ class ConnectDialog : public Modal
 public:
 	RadioButton *ftp, *ftps;
 	Textbox *host, *port, *user, *pass, *folder;
-	ConnectDialog () : Modal (400, 262)
+	Checkbox *remember;
+	ConnectDialog () : Modal (400, 292)
 	{
 		Root *r = Root::current ();
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
@@ -557,6 +558,9 @@ public:
 		pass->password = true;
 		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
 		addChild (host); addChild (port); addChild (user); addChild (pass); addChild (folder);
+		remember = new Checkbox (fx, y + 5 * rh, width - fx - 12, 24, "Remember password", true, 0, C_FACE_DN);
+		remember->tip = "Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots";
+		addChild (remember);
 		host->tip = "A name (ftp.example.com) or an IP address";
 		user->tip = "Empty = anonymous";
 		ftps->tip = "Explicit TLS on port 21 (AUTH TLS); implicit TLS on port 990";
@@ -603,7 +607,7 @@ static void op_connect ()
 	scopy (lastPort, dlg.port->text, sizeof lastPort); scopy (lastFolder, dlg.folder->text, sizeof lastFolder);
 	lastTls = dlg.ftps->checked;
 
-	if (dlg.user->text[0] && !ftpfs_login (dlg.host->text, dlg.user->text, dlg.pass->text))
+	if (dlg.user->text[0] && !ftpfs_login (dlg.host->text, dlg.user->text, dlg.pass->text, dlg.remember->checked))
 	{ status ("Cannot start /bin/ftpfs"); return; }
 	char addr[200];
 	scopy (addr, lastTls ? "FTPS:" : "FTP:", sizeof addr);

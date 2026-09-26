@@ -92,7 +92,7 @@ static void cmd_open (char **a, int n)
 	if (read_line (user, sizeof user) < 0) return;
 	pass[0] = '\0';
 	if (user[0]) { ax_puts ("Password: "); if (read_line (pass, sizeof pass) < 0) return; }
-	if (user[0] && !ftpfs_login (host, user, pass)) { ax_putln ("ftp: cannot start /bin/ftpfs"); return; }
+	if (user[0] && !ftpfs_login (host, user, pass, 0)) { ax_putln ("ftp: cannot start /bin/ftpfs"); return; }
 	char base[160];
 	scpy (base, tls ? "FTPS:" : "FTP:", sizeof base); cat (base, sizeof base, host);
 	if (port && !eq (port, "21")) { cat (base, sizeof base, ":"); cat (base, sizeof base, port); }
@@ -112,7 +112,7 @@ static void cmd_user (char **a, int n)
 	char pass[64];
 	if (n >= 3) scpy (pass, a[2], sizeof pass);
 	else { ax_puts ("Password: "); if (read_line (pass, sizeof pass) < 0) return; }
-	ftpfs_login (g_host, a[1], pass);
+	ftpfs_login (g_host, a[1], pass, 0);
 	char root[170]; remote ("/", root, sizeof root);
 	void *d = kapi_opendir (root);
 	if (!d) { ax_putln ("Login failed."); return; }

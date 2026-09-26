@@ -424,7 +424,7 @@ the terminal's **current working directory**.
 | `netstat` | `netstat` | The network configuration (hostname, IP, mask, gateway, DNS, DHCP) and the open TCP sockets: state (LISTEN / ESTAB), local port, remote address, owning PID. |
 | `ftpd` | `ftpd [homedir] [user] [password]` | The FTP server (see *File server* below); again while it runs = add a user. |
 | `ftp` | `ftp [host [port]]` | Interactive FTP / FTPS client (`ftp>` prompt): `open [-s] host [port]` (asks user + password; `-s` = FTPS), `user`, `ls` / `dir`, `cd`, `cdup`, `pwd`, `get remote [local]`, `put local [remote]`, `mget` / `mput`, `delete`, `mkdir`, `rmdir`, `rename`, `size`, `lcd` / `lpwd` (the local folder), `close`, `bye`. Works through `ftpfs` (shares its connections and logins with the File Viewer). The password is echoed by the terminal. |
-| `ftpfs` | `ftpfs login <host> <user> <password>` | The FTP / FTPS client behind `FTP:` / `FTPS:` paths (see *FTP / FTPS servers as folders*); starts by itself; `login` registers credentials for a host. |
+| `ftpfs` | `ftpfs login <host> <user> <password> [save]`, `ftpfs forget <host>` | The FTP / FTPS client behind `FTP:` / `FTPS:` paths (see *FTP / FTPS servers as folders*); starts by itself; `login` registers credentials for a host (`save` = remember them in `SD:/etc/ftpfs.ini`); `forget` removes a remembered login. |
 | `whois` | `whois <domain> [server]` | Queries the WHOIS database (TCP port 43): asks `whois.iana.org`, then follows its `refer:` to the registry holding the domain — or asks the given server directly. |
 | `wget` | `wget <url>` | Fetches an HTTP URL (`http://host[:port]/path`) and writes the response body to `stdout` — pipe or redirect it (e.g. `wget http://example.com/ > page.html`). Plain HTTP only (no HTTPS). |
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
@@ -505,15 +505,19 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
 
 - In the **File Viewer**: **Go ▸ Connect to Server…** opens a form — **FTP** or **FTPS
   (TLS)**, **server** (name or IP) and **port**, **user** (empty = anonymous), **password**
-  (masked), start **folder**; **Tab** moves between fields, **Enter** (in the password or
-  folder field) connects. The login is handed to `ftpfs` (never put into the path, so the
+  (masked), start **folder**, **Remember password** (checked by default); **Tab** moves
+  between fields, **Enter** (in the password or folder field) connects. The login is handed to `ftpfs` (never put into the path, so the
   Shelf and the path bar never show it). Or `run fileviewer FTP:host/dir`. Then browse, preview (files ≤ 1 MB), open (double-click —
   tinypad, Image Viewer…), drag files between the card and the server (a move across them
   = copy + delete), new folder, rename, delete.
 - **tinypad / Writer / paint** open and **save** `FTP:` files directly; the **Shelf** keeps them.
 - **Logins**: in the path (`FTP:me:secret@host/…`), or once per host with
-  `ftpfs login <host> <user> <password>` (kept in memory by the running ftpfs); otherwise
-  `anonymous`.
+  `ftpfs login <host> <user> <password> [save]`; otherwise `anonymous`. A login is kept in
+  memory by the running ftpfs; with **Remember password** (or `save`) it is also written to
+  **`SD:/etc/ftpfs.ini`** and reloaded at every start, so FTP and FTPS folders (and the
+  Shelf's remote items) work again after a reboot. `ftpfs forget <host>` removes it.
+  The password in that file is only **obfuscated, not encrypted**: anyone with the card can
+  recover it (the file is excluded from git).
 - `ftpfs` starts by itself the first time an `FTP:` path is used. A file is downloaded
   whole when it is opened (≤ 64 MB) and uploaded whole when saved.
 - FTPS encrypts the connection, but the server certificate is **not verified** yet (no CA

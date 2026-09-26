@@ -10,10 +10,13 @@
 // FTP:... files, the Shelf keeps them. The kernel starts ftpfs by itself the first time
 // such a path is used.
 //
-// Credentials: in the path, or registered once with
-//     ftpfs login <host> <user> <password>
+// Credentials: in the path, or registered with
+//     ftpfs login <host> <user> <password> [save]      ftpfs forget <host>
 // (sent to the running ftpfs over IPC, or kept by this one if it becomes the daemon);
-// otherwise "anonymous". TLS = mbedTLS (tls/onyx_tls.hpp): the data connections resume
+// otherwise "anonymous". "save" (the File Viewer's "Remember password") also writes the
+// login to SD:/etc/ftpfs.ini, read back at start -- so FTP: items on the Shelf still open
+// after a reboot. The password there is OBFUSCATED, NOT ENCRYPTED (there is no secure
+// storage on the Pi): anyone holding the card can recover it. TLS = mbedTLS (tls/onyx_tls.hpp): the data connections resume
 // the control connection's session (servers such as vsftpd require it). Certificates
 // are NOT verified yet (no CA bundle on the card), like httpsget.
 //
@@ -29,6 +32,9 @@
 
 #define SERVICE		"ftpfs"
 #define MSG_LOGIN	1		// "host\0user\0pass\0"
+#define MSG_LOGIN_SAVE	2		// same, and remember it in CRED_FILE
+#define MSG_FORGET	3		// "host\0": drop it (memory + CRED_FILE)
+#define CRED_FILE	"SD:/etc/ftpfs.ini"
 #define MAXSRV		4
 #define MAXCRED		8
 #define MAXFILES	16
@@ -87,7 +93,7 @@ static int link_read (Link &l, char *buf, int n, unsigned timeout_ticks)
 }
 
 // ---- servers + credentials ------------------------------------------------------------------
-struct Cred { char host[128], user[64], pass[64]; };
+struct Cred { char host[128], user[64], pass[64]; bool saved; };
 static Cred g_cred[MAXCRED]; static int g_ncred = 0;
 
 struct Server
@@ -443,16 +449,87 @@ static int op_simple (int op, const char *path, const char *path2)
 	return -1;
 }
 
-static void add_cred (const char *host, const char *user, const char *pass)
+// ---- remembered logins (CRED_FILE) -----------------------------------------------------------
+// One "host user hexpass" line per login; hexpass = the password XOR a fixed key, in hex.
+// Obfuscation only (so it is not readable at a glance) -- NOT encryption.
+static const char OBF_KEY[] = "Onyx-ftpfs-v1";
+static void obf_hex (const char *in, char *out)
+{
+	static const char *H = "0123456789abcdef";
+	int k = 0;
+	for (int i = 0; in[i]; i++) { unsigned char c = (unsigned char) in[i] ^ (unsigned char) OBF_KEY[i % (sizeof OBF_KEY - 1)]; out[k++] = H[c >> 4]; out[k++] = H[c & 15]; }
+	out[k] = '\0';
+}
+static void unobf_hex (const char *in, char *out, int cap)
+{
+	int k = 0;
+	for (int i = 0; in[i] && in[i + 1] && k < cap - 1; i += 2)
+	{
+		auto hv = [] (char c) { return c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0'; };
+		out[k] = (char) ((hv (in[i]) << 4 | hv (in[i + 1])) ^ OBF_KEY[k % (sizeof OBF_KEY - 1)]);
+		k++;
+	}
+	out[k] = '\0';
+}
+
+static void save_creds (void)
+{
+	static char buf[MAXCRED * 400 + 256];
+	int n = snprintf (buf, sizeof buf, "# ftpfs remembered logins (File Viewer > Connect to Server > Remember password).\n"
+		"# host user password -- the password is OBFUSCATED, NOT ENCRYPTED: keep this card private.\n");
+	for (int i = 0; i < g_ncred; i++)
+	{
+		if (!g_cred[i].saved) continue;
+		char hx[140]; obf_hex (g_cred[i].pass, hx);
+		n += snprintf (buf + n, sizeof buf - n, "%s %s %s\n", g_cred[i].host, g_cred[i].user, hx);
+	}
+	kapi_save_file (CRED_FILE, buf, (unsigned) n);
+}
+
+static void add_cred (const char *host, const char *user, const char *pass, bool save)
 {
 	int i = 0;
 	while (i < g_ncred && strcasecmp (g_cred[i].host, host)) i++;
-	if (i == g_ncred) { if (g_ncred >= MAXCRED) return; g_ncred++; }
+	if (i == g_ncred) { if (g_ncred >= MAXCRED) return; g_ncred++; g_cred[i].saved = false; }
 	snprintf (g_cred[i].host, sizeof g_cred[i].host, "%s", host);
 	snprintf (g_cred[i].user, sizeof g_cred[i].user, "%s", user);
 	snprintf (g_cred[i].pass, sizeof g_cred[i].pass, "%s", pass);
 	for (int k = 0; k < MAXSRV; k++)				// new credentials: log in again
 		if (g_srv[k].used && !strcasecmp (g_srv[k].host, host)) { link_close (g_srv[k].ctl); g_srv[k].used = false; }
+	if (save || g_cred[i].saved) { g_cred[i].saved = true; save_creds (); }	// (a saved login stays saved)
+}
+
+static void forget_cred (const char *host)
+{
+	for (int i = 0; i < g_ncred; i++)
+		if (!strcasecmp (g_cred[i].host, host))
+		{
+			bool was = g_cred[i].saved;
+			g_cred[i] = g_cred[--g_ncred];
+			if (was) save_creds ();
+			return;
+		}
+}
+
+static void load_creds (void)
+{
+	void *f = kapi_open (CRED_FILE);
+	if (!f) return;
+	static char buf[8192];
+	int n = kapi_read (f, buf, sizeof buf - 1);
+	kapi_close (f);
+	if (n <= 0) return;
+	buf[n] = '\0';
+	for (char *line = strtok (buf, "\r\n"); line; line = strtok (0, "\r\n"))
+	{
+		if (line[0] == '#' || g_ncred >= MAXCRED) continue;
+		char h[128], u[64], hx[140];
+		if (sscanf (line, "%127s %63s %139s", h, u, hx) != 3) continue;
+		Cred &c = g_cred[g_ncred++];
+		snprintf (c.host, sizeof c.host, "%s", h); snprintf (c.user, sizeof c.user, "%s", u);
+		unobf_hex (hx, c.pass, sizeof c.pass);
+		c.saved = true;
+	}
 }
 
 // Logins sent over IPC (`ftpfs login ...`, the File Viewer's Connect dialog).
@@ -462,10 +539,11 @@ static void drain_logins (void)
 	static char mb[520];
 	while ((n = kapi_mailbox_recv (&from, &type, mb, sizeof mb - 1, 0)) >= 0)
 	{
-		if (type != MSG_LOGIN) continue;
 		mb[n] = '\0';
+		if (type == MSG_FORGET) { forget_cred (mb); continue; }
+		if (type != MSG_LOGIN && type != MSG_LOGIN_SAVE) continue;
 		const char *h = mb, *u = h + strlen (h) + 1, *p = u + strlen (u) + 1;
-		if (p < mb + n) add_cred (h, u, p);
+		if (p < mb + n) add_cred (h, u, p, type == MSG_LOGIN_SAVE);
 	}
 }
 
@@ -475,19 +553,27 @@ int main (void)
 	kapi_get_args (args, sizeof args);
 	char *w[4] = { 0 }; int nw = 0;
 	for (char *p = strtok (args, " "); p && nw < 4; p = strtok (0, " ")) w[nw++] = p;
-	bool isLogin = nw >= 1 && !strcmp (w[0], "login");
-	if (isLogin && nw < 4) { printf ("usage: ftpfs login <host> <user> <password>\n"); return 1; }
+	char *w5 = strtok (0, " ");				// (5th word: "save")
+	bool isLogin = nw >= 1 && !strcmp (w[0], "login"), isForget = nw >= 1 && !strcmp (w[0], "forget");
+	bool save = w5 && !strcmp (w5, "save");
+	if (isLogin && nw < 4) { printf ("usage: ftpfs login <host> <user> <password> [save]\n"); return 1; }
+	if (isForget && nw < 2) { printf ("usage: ftpfs forget <host>\n"); return 1; }
 
 	if (!kapi_ipc_register (SERVICE))			// a daemon already runs
 	{
-		if (!isLogin) { printf ("ftpfs: already running\n"); return 0; }
-		char msg[300]; int n = snprintf (msg, sizeof msg, "%s%c%s%c%s", w[1], 0, w[2], 0, w[3]) + 1;
+		if (!isLogin && !isForget) { printf ("ftpfs: already running\n"); return 0; }
+		char msg[300]; int n;
+		if (isForget) n = snprintf (msg, sizeof msg, "%s", w[1]) + 1;
+		else n = snprintf (msg, sizeof msg, "%s%c%s%c%s", w[1], 0, w[2], 0, w[3]) + 1;
 		int pid = kapi_ipc_lookup (SERVICE);
-		if (pid && kapi_mailbox_send (pid, MSG_LOGIN, msg, (unsigned) n)) { printf ("ftpfs: login for %s registered\n", w[1]); return 0; }
+		if (pid && kapi_mailbox_send (pid, isForget ? MSG_FORGET : save ? MSG_LOGIN_SAVE : MSG_LOGIN, msg, (unsigned) n))
+		{ printf (isForget ? "ftpfs: login for %s forgotten\n" : "ftpfs: login for %s registered\n", w[1]); return 0; }
 		printf ("ftpfs: cannot reach the running ftpfs\n");
 		return 1;
 	}
-	if (isLogin) { add_cred (w[1], w[2], w[3]); printf ("ftpfs: login for %s registered\n", w[1]); }
+	load_creds ();						// remembered logins (CRED_FILE)
+	if (isLogin) { add_cred (w[1], w[2], w[3], save); printf ("ftpfs: login for %s registered\n", w[1]); }
+	if (isForget) { forget_cred (w[1]); printf ("ftpfs: login for %s forgotten\n", w[1]); }
 	if (!kapi_vfs_register ("FTP:") || !kapi_vfs_register ("FTPS:")) { printf ("ftpfs: FTP: is served by another process\n"); return 1; }
 
 	g_outCap = 64 * 1024; g_out = (unsigned char *) malloc (g_outCap);
