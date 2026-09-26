@@ -500,8 +500,11 @@ FTP:[user[:password]@]host[:port]/path      plain FTP
 FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 21, implicit on 990)
 ```
 
-- In the **File Viewer**: **Go ▸ Connect to Server…**, type e.g. `FTP:ftp.gnu.org/gnu` (or
-  `run fileviewer FTP:host/dir`): browse, preview (files ≤ 1 MB), open (double-click —
+- In the **File Viewer**: **Go ▸ Connect to Server…** opens a form — **FTP** or **FTPS
+  (TLS)**, **server** (name or IP) and **port**, **user** (empty = anonymous), **password**
+  (masked), start **folder**; **Tab** moves between fields, **Enter** (in the password or
+  folder field) connects. The login is handed to `ftpfs` (never put into the path, so the
+  Shelf and the path bar never show it). Or `run fileviewer FTP:host/dir`. Then browse, preview (files ≤ 1 MB), open (double-click —
   tinypad, Image Viewer…), drag files between the card and the server (a move across them
   = copy + delete), new folder, rename, delete.
 - **tinypad / Writer / paint** open and **save** `FTP:` files directly; the **Shelf** keeps them.

@@ -455,6 +455,20 @@ static void add_cred (const char *host, const char *user, const char *pass)
 		if (g_srv[k].used && !strcasecmp (g_srv[k].host, host)) { link_close (g_srv[k].ctl); g_srv[k].used = false; }
 }
 
+// Logins sent over IPC (`ftpfs login ...`, the File Viewer's Connect dialog).
+static void drain_logins (void)
+{
+	int from, type, n;
+	static char mb[520];
+	while ((n = kapi_mailbox_recv (&from, &type, mb, sizeof mb - 1, 0)) >= 0)
+	{
+		if (type != MSG_LOGIN) continue;
+		mb[n] = '\0';
+		const char *h = mb, *u = h + strlen (h) + 1, *p = u + strlen (u) + 1;
+		if (p < mb + n) add_cred (h, u, p);
+	}
+}
+
 int main (void)
 {
 	static char args[512];
@@ -479,17 +493,10 @@ int main (void)
 	g_outCap = 64 * 1024; g_out = (unsigned char *) malloc (g_outCap);
 	for (;;)
 	{
-		int from, type, n;
-		static char mb[520];
-		while ((n = kapi_mailbox_recv (&from, &type, mb, sizeof mb - 1, 0)) >= 0)
-		{
-			if (type != MSG_LOGIN) continue;
-			mb[n] = '\0';
-			const char *h = mb, *u = h + strlen (h) + 1, *p = u + strlen (u) + 1;
-			if (p < mb + n) add_cred (h, u, p);
-		}
+		drain_logins ();
 		struct kapi_vfs_req q;
 		if (!kapi_vfs_next (&q, 1)) continue;			// (waits up to ~0.5 s)
+		drain_logins ();		// a login sent just before this request must win
 		switch (q.op)
 		{
 		case VFS_OP_OPEN:

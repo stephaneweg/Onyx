@@ -530,19 +530,105 @@ static void show_root (const char *path)
 static void op_open_trash () { trash_ensure (); show_root (TRASH_FILES); status ("Trash: Restore puts an item back, Del deletes it for good"); }
 static void op_show_sd ()    { show_root ("SD:/"); }
 
-// Go > Connect to Server...: an FTP / FTPS address (served by /bin/ftpfs, ABI v44).
+// Go > Connect to Server...: protocol (FTP / FTPS), server, port, user, password and
+// folder. The login goes to /bin/ftpfs over IPC ("ftpfs" service, like `ftpfs login`) --
+// never into the path, which the Shelf and the path bar may show or store -- then the
+// folder opens as FTP[S]:host[:port]/folder (ABI v44 file-system provider).
+class ConnectDialog : public Modal
+{
+public:
+	RadioButton *ftp, *ftps;
+	Textbox *host, *port, *user, *pass, *folder;
+	ConnectDialog () : Modal (400, 262)
+	{
+		Root *r = Root::current ();
+		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
+		int y = wk_fh () + 18, lx = 12, fx = 100, rh = 32;
+		const char *labels[5] = { "Protocol", "Server", "User", "Password", "Folder" };
+		for (int i = 0; i < 5; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE_DN));
+		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE_DN); addChild (ftp);
+		ftps = new RadioButton (fx + 90, y, 180, 24, "FTPS (TLS)", 1, false, 0, C_FACE_DN); addChild (ftps);
+		host   = new Textbox (fx, y + rh,     190, 26, "");
+		addChild (new Label (fx + 198, y + rh + 4, 36, 20, "Port", C_TEXT, C_FACE_DN));
+		port   = new Textbox (fx + 238, y + rh, width - fx - 250, 26, "21");
+		user   = new Textbox (fx, y + 2 * rh, width - fx - 12, 26, "");
+		pass   = new Textbox (fx, y + 3 * rh, width - fx - 12, 26, "", dlg_enter);
+		pass->password = true;
+		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
+		addChild (host); addChild (port); addChild (user); addChild (pass); addChild (folder);
+		host->tip = "A name (ftp.example.com) or an IP address";
+		user->tip = "Empty = anonymous";
+		ftps->tip = "Explicit TLS on port 21 (AUTH TLS); implicit TLS on port 990";
+		Button *b;
+		b = new Button (width - 196, height - 38, 98, 28, "Connect", dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 92,  height - 38, 82, 28, "Cancel",  dlg_btn); b->tag = 0; addChild (b);
+		host->setFocus ();
+	}
+	void onButton (int tag) override { close (tag); }
+	bool onKey (long k) override
+	{
+		if (k == 27) { close (0); return true; }
+		if (k == '\t')						// Tab: next field
+		{
+			Textbox *order[5] = { host, port, user, pass, folder };
+			int cur = -1;
+			for (int i = 0; i < 5; i++) if (order[i]->hasFocus) cur = i;
+			order[(cur + 1) % 5]->setFocus ();
+			invalidate (true);
+			return true;
+		}
+		return false;
+	}
+	void onDraw () override
+	{
+		canvas.clear (C_FACE_DN);
+		canvas.frameRect (0, 0, width, height, C_ACCENT);
+		canvas.fillRect (0, 0, width, wk_fh () + 8, C_FACE);
+		canvas.text (8, 4, "Connect to Server", C_TEXT);
+	}
+};
+
+// Hand a login to ftpfs (starting it if needed). false if it cannot be reached.
+static bool ftpfs_login (const char *host, const char *user, const char *pass)
+{
+	int pid = kapi_ipc_lookup ("ftpfs");
+	if (pid == 0)
+	{
+		kapi_exec ("SD:/bin/ftpfs", "");
+		for (int i = 0; i < 300 && pid == 0; i++) { kapi_msleep (10); pid = kapi_ipc_lookup ("ftpfs"); }
+	}
+	if (pid == 0) return false;
+	char msg[200]; int n = 0;
+	const char *part[3] = { host, user, pass };
+	for (int k = 0; k < 3; k++) { for (int i = 0; part[k][i] && n < 196; i++) msg[n++] = part[k][i]; msg[n++] = '\0'; }
+	return kapi_mailbox_send (pid, 1, msg, (unsigned) n) != 0;	// 1 = MSG_LOGIN (ftpfs.cpp)
+}
+
 static void op_connect ()
 {
-	static char last[200] = "FTP:";
-	InputBox box ("Server: FTP:host/path or FTPS:...", last);
-	if (!box.run () || box.tb->text[0] == '\0') return;
+	static char lastHost[64] = "", lastUser[64] = "", lastPort[8] = "21", lastFolder[64] = "/";
+	static bool lastTls = false;
+	ConnectDialog dlg;
+	dlg.host->setText (lastHost); dlg.user->setText (lastUser); dlg.port->setText (lastPort);
+	dlg.folder->setText (lastFolder);
+	if (lastTls) dlg.ftps->select (); else dlg.ftp->select ();
+	dlg.host->setFocus ();
+	if (!dlg.run () || dlg.host->text[0] == '\0') return;
+	scopy (lastHost, dlg.host->text, sizeof lastHost); scopy (lastUser, dlg.user->text, sizeof lastUser);
+	scopy (lastPort, dlg.port->text, sizeof lastPort); scopy (lastFolder, dlg.folder->text, sizeof lastFolder);
+	lastTls = dlg.ftps->checked;
+
+	if (dlg.user->text[0] && !ftpfs_login (dlg.host->text, dlg.user->text, dlg.pass->text))
+	{ status ("Cannot start /bin/ftpfs"); return; }
 	char addr[200];
-	const char *t = box.tb->text;
-	bool hasPrefix = false;
-	for (int i = 0; t[i] && t[i] != '/'; i++) if (t[i] == ':' && i >= 3) { hasPrefix = true; break; }
-	if (!hasPrefix) { scopy (addr, "FTP:", sizeof addr); int n = slen (addr); scopy (addr + n, t, sizeof addr - n); }
-	else scopy (addr, t, sizeof addr);
-	scopy (last, addr, sizeof last);
+	scopy (addr, lastTls ? "FTPS:" : "FTP:", sizeof addr);
+	int n = slen (addr);
+	for (int i = 0; dlg.host->text[i] && n < 190; i++) addr[n++] = dlg.host->text[i];
+	if (lastPort[0] && !(lastPort[0] == '2' && lastPort[1] == '1' && !lastPort[2]))
+	{ addr[n++] = ':'; for (int i = 0; lastPort[i] && n < 196; i++) addr[n++] = lastPort[i]; }
+	if (lastFolder[0] != '/') addr[n++] = '/';
+	for (int i = 0; lastFolder[i] && n < 198; i++) addr[n++] = lastFolder[i];
+	addr[n] = '\0';
 	status ("Connecting to ", addr);
 	if (g_root) { g_root->draw (); kapi_present (); }
 	void *d = kapi_opendir (addr);
