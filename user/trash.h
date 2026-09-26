@@ -37,7 +37,7 @@ static inline bool trash_move (const char *path)
 	trash_ensure ();
 	char dst[FS_PATHL];
 	fs_unique_name (dst, sizeof dst, TRASH_FILES, fs_basename (path), " (trashed)");
-	if (!kapi_rename (path, dst)) return false;
+	if (kapi_rename (path, dst) != 0) return false;		// (kapi: 0 = ok)
 	char info[FS_PATHL], txt[FS_PATHL + 16]; int p = 0;
 	trash_info_path_ (info, sizeof info, fs_basename (dst));
 	const char *k = "Path="; for (int i = 0; k[i]; i++) txt[p++] = k[i];
@@ -76,7 +76,7 @@ static inline bool trash_restore (const char *name, char *where = 0, int wcap = 
 	fs_dirname (dir, sizeof dir, orig);
 	kapi_mkdir (dir);				// (fails harmlessly if it exists)
 	fs_unique_name (dst, sizeof dst, dir, fs_basename (orig), " (restored)");
-	if (!kapi_rename (src, dst)) return false;
+	if (kapi_rename (src, dst) != 0) return false;
 	char info[FS_PATHL]; trash_info_path_ (info, sizeof info, name);
 	kapi_remove (info);
 	if (where) fs_copy (where, dst, wcap);

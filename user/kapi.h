@@ -172,6 +172,7 @@ static inline int  kapi_getcwd (char *b, unsigned n) { return KT->getcwd (b, n);
 static inline void *kapi_opendir (const char *p) { return KT->opendir (p); }
 static inline int  kapi_readdir (void *d, struct kapi_dirent *e) { return KT->readdir (d, e); }
 static inline void kapi_closedir (void *d) { KT->closedir (d); }
+// mkdir / remove / rename: 0 = success, -1 = failure (FatFs result).
 static inline int  kapi_mkdir (const char *p) { return KT->mkdir (p); }
 static inline int  kapi_remove (const char *p) { return KT->remove (p); }
 static inline int  kapi_rename (const char *from, const char *to) { return KT->rename (from, to); }

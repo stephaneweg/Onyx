@@ -195,7 +195,7 @@ private:
 	CStream	   *m_pStdin;
 	CStream	   *m_pStdout;
 	CProcess   *m_pProcess;
-	char	    m_Args[256];
+	char	    m_Args[1024];
 	char	    m_Cwd[256];
 	unsigned    m_nParentPid;
 };

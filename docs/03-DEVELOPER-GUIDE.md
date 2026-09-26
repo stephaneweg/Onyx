@@ -670,6 +670,16 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 
 ## 13. Known pitfalls
 
+- **`kapi_mkdir` / `kapi_remove` / `kapi_rename` return 0 on success** (-1 on failure),
+  like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
+  check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,
+  the File Viewer and `ftpc`).
+- **Host tests** (`tools/tests/`): `run_trash_test.sh` (trash.h + fsutil.h against a mock
+  kapi with the kernel's return conventions) and `run_ftpc_test.sh` (ftpc over real
+  sockets, driven by Python's `ftplib`: login, LIST/NLST, RETR/STOR round trip, MKD/RMD,
+  RNFR/RNTO, DELE, root jail, PORT, two concurrent sessions). Run them after touching
+  those files.
+
 - **Hardware float is opt-in.** Apps are integer-only by default
   (`-mgeneral-regs-only`); the kernel now saves the full FP/SIMD state on every trap,
   so an app may opt into `float`/`double` by building without `-mgeneral-regs-only`

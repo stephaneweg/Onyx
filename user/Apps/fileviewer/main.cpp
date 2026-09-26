@@ -454,7 +454,7 @@ static void op_new_folder ()
 	char name[NAMEL];
 	if (!ask_name ("New folder in this column", "New Folder", name, sizeof name)) return;
 	char p[300]; join (p, sizeof p, g_col[g_active].path, name);
-	if (exists (p) || !kapi_mkdir (p)) { status ("Could not create folder ", name); return; }
+	if (exists (p) || kapi_mkdir (p) != 0) { status ("Could not create folder ", name); return; }
 	refresh ();
 	for (int i = 0; i < g_col[g_active].count; i++)
 		if (ci_cmp (g_col[g_active].e[i].name, name) == 0) { select (g_active, i); break; }
@@ -470,7 +470,7 @@ static void op_rename ()
 	char s[300], d[300];
 	join (s, sizeof s, g_col[g_active].path, old);
 	join (d, sizeof d, g_col[g_active].path, name);
-	if (exists (d) || !kapi_rename (s, d)) { status ("Could not rename to ", name); return; }
+	if (exists (d) || kapi_rename (s, d) != 0) { status ("Could not rename to ", name); return; }
 	shelf_moved (s, d);
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
@@ -508,7 +508,7 @@ static void op_delete_permanently ()
 	char name[NAMEL]; scopy (name, e->name, sizeof name);
 	bool ok;
 	if (in_trash () && g_active == 0) ok = trash_purge (name);	// drop its info file too
-	else ok = e->isdir ? remove_tree (path, 0) : kapi_remove (path) != 0;
+	else ok = e->isdir ? remove_tree (path, 0) : kapi_remove (path) == 0;
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
 	status (ok ? "Deleted " : "Could not delete ", name);
@@ -572,7 +572,7 @@ static bool transfer (const char *src, const char *dir, bool move)
 	unique_name (dst, sizeof dst, dir, fs_basename (src));
 	if (move)
 	{
-		if (!kapi_rename (src, dst)) return false;
+		if (kapi_rename (src, dst) != 0) return false;		// (kapi: 0 = ok)
 		shelf_moved (src, dst);			// the Shelf's references follow
 		return true;
 	}

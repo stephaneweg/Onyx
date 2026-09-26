@@ -133,7 +133,7 @@ static inline bool fs_remove_tree (const char *path, int depth = 0)
 			if (!d) break;
 		}
 	}
-	return kapi_remove (path) != 0;
+	return kapi_remove (path) == 0;			// (kapi: 0 = ok)
 }
 
 // A free path in dir for `name`: "name", then "name copy", "name copy 2", ... (the

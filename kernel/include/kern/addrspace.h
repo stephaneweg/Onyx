@@ -112,7 +112,7 @@ private:
 	CMailbox		    *m_pMailbox; // IPC mailbox (lazy; freed on teardown)
 	CProcess		    *m_pProcess; // spawn handle (done/status set on teardown)
 	int			     m_nExitStatus;
-	char			     m_Args[256]; // argv string for the child (kapi_get_args)
+	char			     m_Args[1024]; // argv string for the child (kapi_get_args)
 	char			     m_Cwd[256]; // current working directory (FatFs abs path)
 	unsigned		     m_nOwnedPages; // palloc'd 64 KB frames owned (for ps/meminfo)
 	u64			     m_ulHeapBrk; // logical heap break (kapi_sbrk), >= USER_HEAP_BASE
