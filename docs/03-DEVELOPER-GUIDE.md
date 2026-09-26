@@ -679,12 +679,12 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **`kapi_mkdir` / `kapi_remove` / `kapi_rename` return 0 on success** (-1 on failure),
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
   check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,
-  the File Viewer and `ftpc`).
+  the File Viewer and `ftpd`).
 - **Host tests** (`tools/tests/`): `run_trash_test.sh` (trash.h + fsutil.h against a mock
-  kapi with the kernel's return conventions) and `run_ftpc_test.sh` (ftpc over real
+  kapi with the kernel's return conventions) and `run_ftpd_test.sh` (ftpd over real
   sockets, driven by Python's `ftplib`: login, LIST/NLST, RETR/STOR round trip, MKD/RMD,
   RNFR/RNTO, DELE, root jail, PORT, two concurrent sessions) and `run_ftpfs_test.sh`
-  (the ftpfs FTP client against pyftpdlib — `pip install pyftpdlib` — and against ftpc:
+  (the ftpfs FTP client against pyftpdlib — `pip install pyftpdlib` — and against ftpd:
   LIST/MLSD, RETR, a 300 KB STOR round trip, MKD, RNFR/RNTO, DELE/RMD, a missing file,
   reconnecting after a dropped control link). The socket mock reproduces Circle's
   "one segment per receive, the rest is dropped". Run them after touching those files.

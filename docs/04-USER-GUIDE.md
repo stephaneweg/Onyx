@@ -420,7 +420,7 @@ the terminal's **current working directory**.
 | `ping` | `ping <host> [count]` | Sends ICMP echo requests (default 4, one per second, 2 s timeout) to a name or an IP and prints each round-trip time, then the loss and min / avg / max statistics. (Onyx itself also answers pings.) |
 | `nslookup` | `nslookup <name>` | Resolves a host name through the DNS server (shown on the first line) and prints its IPv4 address. |
 | `netstat` | `netstat` | The network configuration (hostname, IP, mask, gateway, DNS, DHCP) and the open TCP sockets: state (LISTEN / ESTAB), local port, remote address, owning PID. |
-| `ftpc` | `ftpc [homedir] [user] [password]` | The FTP server (see *File server* below); again while it runs = add a user. |
+| `ftpd` | `ftpd [homedir] [user] [password]` | The FTP server (see *File server* below); again while it runs = add a user. |
 | `ftpfs` | `ftpfs login <host> <user> <password>` | The FTP / FTPS client behind `FTP:` / `FTPS:` paths (see *FTP / FTPS servers as folders*); starts by itself; `login` registers credentials for a host. |
 | `whois` | `whois <domain> [server]` | Queries the WHOIS database (TCP port 43): asks `whois.iana.org`, then follows its `refer:` to the registry holding the domain — or asks the given server directly. |
 | `wget` | `wget <url>` | Fetches an HTTP URL (`http://host[:port]/path`) and writes the response body to `stdout` — pipe or redirect it (e.g. `wget http://example.com/ > page.html`). Plain HTTP only (no HTTPS). |
@@ -474,20 +474,20 @@ viewer (TigerVNC, RealVNC, UltraVNC, TightVNC, Remmina…) and connect to `<pi-i
 > ⚠️ Not secure: no password and no encryption. Remove the `vncd` line from
 > `SD:/etc/autostart` on an untrusted network.
 
-### File server (`ftpc`)
+### File server (`ftpd`)
 
-`ftpc [homedir] [user] [password]` starts the **FTP server** (port 21) — handy to copy
+`ftpd [homedir] [user] [password]` starts the **FTP server** (port 21) — handy to copy
 files to the card from a PC (FileZilla, WinSCP, `ftp`, a file manager's `ftp://<pi-ip>`).
 Defaults: `SD:/`, user `onyx`, password `onyx`. There is **no configuration file**:
 
-- The first `ftpc` becomes the server. Running `ftpc` **again** while it is up does not
+- The first `ftpd` becomes the server. Running `ftpd` **again** while it is up does not
   start a second one — it tells the running server "this user, this password, this root
-  folder" and exits, so you add users on the fly (e.g. `ftpc SD:/apps dev secret`).
+  folder" and exits, so you add users on the fly (e.g. `ftpd SD:/apps dev secret`).
 - A user sees only its root folder (`/` = `homedir`; `..` cannot climb above it).
 - Several clients can be connected at once (each connection is served by its own process).
 - Passive (PASV / EPSV) and active (PORT) modes; listing, download, upload (≤ 32 MB per
   file), resume-less append (APPE), delete, rename, create / remove folders.
-- Add `ftpc SD:/ me mypassword` to `SD:/etc/autostart` to have it at every boot.
+- Add `ftpd SD:/ me mypassword` to `SD:/etc/autostart` to have it at every boot.
 
 > ⚠️ Plain FTP: the password and the files travel unencrypted — keep it on a trusted network.
 

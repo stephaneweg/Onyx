@@ -1,6 +1,6 @@
 #ifndef ONYX_MOCK_NET_KAPI_H
 #define ONYX_MOCK_NET_KAPI_H
-// mock_net_kapi.h -- host mock of the kapi used by user/bin/ftpc.c: files under $ROOT
+// mock_net_kapi.h -- host mock of the kapi used by user/bin/ftpd.c: files under $ROOT
 // (mock_kapi.h), TCP over real BSD sockets, spawn = fork, IPC = one local "service".
 #include "mock_kapi.h"
 #include <sys/socket.h>

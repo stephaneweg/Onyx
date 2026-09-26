@@ -1,13 +1,13 @@
 //
-// ftpc -- the Onyx FTP server (hot deployment: drop files onto the card from a PC).
+// ftpd -- the Onyx FTP server (hot deployment: drop files onto the card from a PC).
 //
-//   ftpc [homedir] [user] [password]     (defaults: SD:/  onyx  onyx)
+//   ftpd [homedir] [user] [password]     (defaults: SD:/  onyx  onyx)
 //
-// The FIRST instance becomes the server (IPC service "ftpd", TCP port 21). Running ftpc
+// The FIRST instance becomes the server (IPC service "ftpd", TCP port 21). Running ftpd
 // again while it is up does not start a second server: it just tells the running one
 // "this user, this password, this root folder" (IPC) and exits -- so users are added
 // on the fly, no configuration file. Each FTP client connection is served by its own
-// child process (`ftpc --session ...`, spawned with the socket handle and the user
+// child process (`ftpd --session ...`, spawned with the socket handle and the user
 // table), so several clients (FileZilla opens more than one connection) work at once.
 //
 // Supported: USER PASS SYST FEAT OPTS PWD CWD CDUP TYPE MODE STRU PASV EPSV PORT LIST
@@ -462,8 +462,8 @@ int main (void)
 		const char *part[3] = { f[1], f[2], f[0] };		// "user\0pass\0home\0"
 		for (int j = 0; j < 3; j++) { for (int i = 0; part[j][i] && n < 396; i++) msg[n++] = part[j][i]; msg[n++] = '\0'; }
 		if (pid && kapi_mailbox_send (pid, MSG_ADDUSER, msg, (unsigned) n))
-		{ ax_puts ("ftpc: the running server now accepts user "); ax_puts (f[1]); ax_puts (" (root "); ax_puts (f[0]); ax_putln (")"); return 0; }
-		ax_putln ("ftpc: cannot reach the running server");
+		{ ax_puts ("ftpd: the running server now accepts user "); ax_puts (f[1]); ax_puts (" (root "); ax_puts (f[0]); ax_putln (")"); return 0; }
+		ax_putln ("ftpd: cannot reach the running server");
 		return 1;
 	}
 	add_user (f[1], f[2], f[0]);
@@ -473,9 +473,9 @@ int main (void)
 		if (kapi_net_status (0, 0)) ls = kapi_tcp_listen (21);
 		if (ls < 0) kapi_msleep (2000);
 	}
-	if (ls < 0) { ax_putln ("ftpc: cannot listen on port 21 (network down?)"); return 1; }
+	if (ls < 0) { ax_putln ("ftpd: cannot listen on port 21 (network down?)"); return 1; }
 	char ip[40] = ""; kapi_net_status (ip, sizeof ip);
-	ax_puts ("ftpc: FTP server on "); ax_puts (ip); ax_puts (":21 -- user "); ax_puts (f[1]);
+	ax_puts ("ftpd: FTP server on "); ax_puts (ip); ax_puts (":21 -- user "); ax_puts (f[1]);
 	ax_puts (", root "); ax_putln (f[0]);
 
 	static void *kids[32]; int nkids = 0;
@@ -497,7 +497,7 @@ int main (void)
 			cat (sargs, sizeof sargs, g_users[i].pass); cat (sargs, sizeof sargs, sep);
 			cat (sargs, sizeof sargs, g_users[i].home); cat (sargs, sizeof sargs, rs);
 		}
-		void *kid = kapi_spawn ("SD:/bin/ftpc", sargs, 0, 0);
+		void *kid = kapi_spawn ("SD:/bin/ftpd", sargs, 0, 0);
 		if (kid && nkids < 32) kids[nkids++] = kid;
 		else if (!kid) { kapi_tcp_send (h, "421 Server busy.\r\n", 18); kapi_tcp_close (h); }
 	}
