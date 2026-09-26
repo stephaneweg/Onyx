@@ -33,7 +33,8 @@
 //      set_window_alpha (fades), shutdown (restart / halt).
 // v41: + fullscreen_begin/present_fb/fullscreen_end -- full-screen apps.
 // v42: + drag_begin/drag_data (drag & drop), get_modifiers/inject_modifiers.
-#define KAPI_ABI_VERSION	42
+// v43: + net_ping/net_resolve/net_info -- network tools (ping, nslookup, netstat).
+#define KAPI_ABI_VERSION	43
 
 #ifdef __cplusplus
 extern "C" {
@@ -423,6 +424,16 @@ struct TKApiTable
 	int      (*drag_data) (int *type, void *buf, unsigned cap);
 	unsigned (*get_modifiers) (void);
 	void     (*inject_modifiers) (unsigned mods);
+
+	// --- v43 additions (network tools) ---
+	// net_ping: one ICMP echo to host (name or dotted IP), waiting <= timeout_ms; returns
+	// the round-trip time in microseconds, or -1 net down / -3 unresolved / -4 timeout /
+	// -5 send failed; ip (if given) receives the resolved address. net_resolve: DNS name
+	// -> dotted IP (1 / 0). net_info: netstat text -- "key value" lines (up, hostname, ip,
+	// mask, gateway, dns, dhcp) then "tcp <h> listen|conn <port> <remote ip> <pid>".
+	int (*net_ping) (const char *host, unsigned seq, unsigned timeout_ms, char *ip, unsigned cap);
+	int (*net_resolve) (const char *host, char *ip, unsigned cap);
+	int (*net_info) (char *buf, unsigned cap);
 };
 
 #ifdef __cplusplus

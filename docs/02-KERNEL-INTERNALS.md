@@ -441,7 +441,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 42`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 43`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -454,7 +454,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`).
 
 ### Categories of exposed functions
 
@@ -481,6 +481,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Window opacity / session (v40) | `set_window_alpha(0..255)` on the caller's window: `CWindow::DrawTo` blends chrome + client over what is below (`BlendRect`, magenta-keyed if `TRANSPARENT`; 0 = not drawn) — used for fades. `shutdown(mode)`: `f_mount(0)` unmounts/flushes the SD card, then `reboot()` (mode 1) or ACT LED off + `halt()` (mode 0). |
 | Full-screen apps (v41) | `fullscreen_begin(&w, &h)` maps a kernel-owned, screen-sized back buffer (`CWindowManager::EnsureFullscreenBuffer`, 64 KB-aligned) at `USER_FULLSCREEN_CANVAS` (15 GB) and makes the caller's window (created if missing, moved to 0,0) the **full-screen window**: the compositor task skips its frames, `OnMouse`/`OnMouseWheel` send the whole pointer stream to it in screen coordinates and it is the key target. `present_fb()` copies the buffer into the displayed `C2DGraphics` buffer + `UpdateDisplay()`, then yields. `fullscreen_end()` — or the window's removal when the app exits — gives the desktop back. `screen_grab` (VNC) returns the full-screen buffer meanwhile. |
 | Drag & drop (v42) | `drag_begin(type, data, len, label)` — only while the left button is held — copies the payload (≤ 4 KB: 1 text, 2 `\n`-separated paths) into a kapi-side buffer and calls `CWindowManager::DragBegin(src, label)`. While the session lasts, `OnMouse` sends `GUI_EVENT_DRAG_OVER` (16) to the window under the cursor (`DND_F_LEAVE` when it leaves), and `Composite` draws a label badge next to the cursor (a **+** when Ctrl is held). At the left-button release, `DndFinishLocked` sends `GUI_EVENT_DROP` (15) to the window under the cursor — `(flags << 32) \| (x << 16) \| y`, client coords, `DND_F_COPY` if Ctrl — and `GUI_EVENT_DRAG_DONE` (17) to the source: `(flags << 32) \| target pid` (`CWindow::OwnerPid`, set by `CreateWindow`), flags `DND_F_COPY` / `DND_F_CANCEL` (Esc, via `OnKey`) / `DND_F_DESKTOP` (no window or a backmost one). All three go to the pointer handler; the normal pointer stream still reaches the source (its capture), so its widgets see the button go up. The target reads the payload with `drag_data(&type, buf, cap)`. A window removed mid-drag ends it. **Modifiers**: `get_modifiers()` = `MOD_CTRL` 1 / `MOD_SHIFT` 2 / `MOD_ALT` 4 — from the USB keyboard's raw report (`RegisterKeyStatusHandlerRaw` in **mixed mode**, so the cooked key path is unchanged) or `inject_modifiers()` (vncd, from the RFB Control/Shift/Alt keysyms). |
+| Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
 | Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
 
@@ -704,7 +705,7 @@ visible **directly on the framebuffer**.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 42 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 43 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

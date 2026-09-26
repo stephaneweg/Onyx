@@ -1831,4 +1831,10 @@ void kapi_inject_modifiers (unsigned nMods)
 	if (pWM != 0) pWM->SetModifiers (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));
 }
 
+// --- v43: network tools --------------------------------------------------------------
+int kapi_net_ping (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *pIP, unsigned nCap)
+{ return NetPing (pHost, nSeq, nTimeoutMs, pIP, nCap); }
+int kapi_net_resolve (const char *pHost, char *pIP, unsigned nCap) { return NetResolve (pHost, pIP, nCap); }
+int kapi_net_info (char *pBuf, unsigned nCap) { return NetInfo (pBuf, nCap); }
+
 }  // extern "C"

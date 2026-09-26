@@ -66,6 +66,9 @@ int  kapi_drag_begin (int, const void *, unsigned, const char *);
 int  kapi_drag_data (int *, void *, unsigned);
 unsigned kapi_get_modifiers (void);
 void kapi_inject_modifiers (unsigned);
+int  kapi_net_ping (const char *, unsigned, unsigned, char *, unsigned);
+int  kapi_net_resolve (const char *, char *, unsigned);
+int  kapi_net_info (char *, unsigned);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
 void kapi_present (void);
 unsigned kapi_get_ticks (void);
@@ -289,4 +292,8 @@ void KApiTableInit (void)
 	t->drag_data         = kapi_drag_data;
 	t->get_modifiers     = kapi_get_modifiers;
 	t->inject_modifiers  = kapi_inject_modifiers;
+
+	t->net_ping          = kapi_net_ping;
+	t->net_resolve       = kapi_net_resolve;
+	t->net_info          = kapi_net_info;
 }

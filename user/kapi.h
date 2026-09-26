@@ -264,6 +264,12 @@ static inline int  kapi_drag_data (int *type, void *buf, unsigned cap) { return 
 static inline unsigned kapi_get_modifiers (void) { return KT->get_modifiers (); }
 static inline void kapi_inject_modifiers (unsigned mods) { KT->inject_modifiers (mods); }
 
+// Network tools (ABI v43). net_ping: one ICMP echo (RTT in us, or -1 down / -3 unresolved /
+// -4 timeout / -5 send failed). net_resolve: DNS -> dotted IP (1/0). net_info: netstat text.
+static inline int kapi_net_ping (const char *host, unsigned seq, unsigned timeout_ms, char *ip, unsigned cap) { return KT->net_ping (host, seq, timeout_ms, ip, cap); }
+static inline int kapi_net_resolve (const char *host, char *ip, unsigned cap) { return KT->net_resolve (host, ip, cap); }
+static inline int kapi_net_info (char *buf, unsigned cap) { return KT->net_info (buf, cap); }
+
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
 static inline void kapi_reboot (void) { KT->reboot (); }
