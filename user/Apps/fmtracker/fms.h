@@ -224,17 +224,20 @@ static inline void fms_to_kapi (const FmsIns *in, struct kapi_fm_instrument *k)
 }
 
 // ---- notes -------------------------------------------------------------------------------------------
-// The pitch of a note byte, in milli-Hz, as FM Song played it on the AdLib: its F-number
-// table (0x16B for C ...) at block = octave, f = fnum * 49716 / 2^(20 - block).
+// The pitch of a note byte, in milli-Hz: standard tuning (A4 = 440 Hz, C4 = middle C
+// = 261.63 Hz, equal temperament). (FM Song's own AdLib F-number table played everything a
+// semitone higher; its octave numbers are kept.)
 static inline unsigned fms_note_mhz (unsigned char v)
 {
-	static const unsigned fnum[12] = { 0x16B, 0x181, 0x198, 0x1B0, 0x1CA, 0x1E5, 0x202, 0x220, 0x241, 0x263, 0x287, 0x2AE };
+	static const unsigned oct4[12] = { 261626, 277183, 293665, 311127, 329628, 349228,
+					   369994, 391995, 415305, 440000, 466164, 493883 };
 	static const int semi[8] = { 0, 0, 2, 4, 5, 7, 9, 11 };	// (index 1..7 = C..B)
 	int note = v & 7, oct = (v >> 3) & 7, sharp = (v >> 6) & 1;
 	if (note == 0 || (v & 128)) return 0;
 	int s = semi[note] + sharp;
-	if (s >= 12) { s -= 12; if (oct < 7) oct++; }
-	return (unsigned) (((unsigned long long) fnum[s] * 49716ull * 1000ull) >> (20 - oct));
+	if (s >= 12) { s -= 12; oct++; }
+	unsigned f = oct4[s];
+	return oct >= 4 ? f << (oct - 4) : f >> (4 - oct);
 }
 static inline unsigned char fms_make_note (int note /*1..7*/, int sharp, int oct)
 {
