@@ -939,7 +939,7 @@ void CWindowManager::SetWheelSpeed (int nLinesPerNotch)
 // Parse the next logical key from a Circle cooked-mode string, advancing *pp.
 // Returns 0 at end of string. Printable/control bytes return their value; VT100
 // escape sequences (cursor/home/end/page/del) map to KEY_* codes.
-static int NextKey (const char **pp)
+static int NextKey (const char **pp, unsigned *pMods = 0)
 {
 	const char *p = *pp;
 	if (*p == '\0')
@@ -951,10 +951,19 @@ static int NextKey (const char **pp)
 		// ESC '[' [n [';' m]] final -- the modifier form (Ctrl+Up = ESC[1;5A, Ctrl+PgUp =
 		// ESC[5;5~) gives the same KEY_* as the plain key: apps read Ctrl / Shift / Alt with
 		// kapi_get_modifiers. (It used to fall through as the characters '1' ';' '5' 'A'.)
-		if (p[2] == '[') { *pp = p + (p[3] != '\0' ? 4 : 3); return NextKey (pp); }	// F1-F5 (ESC[[A..E): ignored
-		int n = 0, i = 2, code = 0;
+		// The xterm modifier parameter m = 1 + Shift(1) + Alt(2) + Ctrl(4) is returned in
+		// *pMods and travels with the key event (kapi_get_modifiers reports it while the
+		// app handles that key), so Shift+arrow works even when the global modifier state
+		// is late or clobbered (VNC, a second keyboard).
+		if (p[2] == '[') { *pp = p + (p[3] != '\0' ? 4 : 3); return NextKey (pp, pMods); }	// F1-F5 (ESC[[A..E): ignored
+		int n = 0, i = 2, code = 0, m = 0;
 		while (p[i] >= '0' && p[i] <= '9') n = n * 10 + (p[i++] - '0');
-		if (p[i] == ';') { i++; while (p[i] >= '0' && p[i] <= '9') i++; }
+		if (p[i] == ';') { i++; while (p[i] >= '0' && p[i] <= '9') m = m * 10 + (p[i++] - '0'); }
+		if (pMods != 0 && m > 1)
+		{
+			m--;
+			*pMods = ((m & 1) ? MOD_SHIFT : 0) | ((m & 2) ? MOD_ALT : 0) | ((m & 4) ? MOD_CTRL : 0);
+		}
 		switch (p[i])
 		{
 		case 'A': code = KEY_UP;    break;
@@ -971,7 +980,7 @@ static int NextKey (const char **pp)
 		if (p[i] != '\0') i++;				// the final byte
 		*pp = p + i;
 		if (code != 0) return code;
-		return NextKey (pp);				// unknown sequence: skipped whole
+		return NextKey (pp, pMods);			// unknown sequence: skipped whole
 	}
 	*pp = p + 1;
 	// Normalise the keys Circle's keymap delivers as raw control bytes: Enter comes
@@ -1182,9 +1191,11 @@ void CWindowManager::OnKey (const char *pString)
 	if (pTop != 0 && ulKeyHandler != 0)
 	{
 		const char *p = pString; int code;
-		while ((code = NextKey (&p)) != 0)
+		unsigned nMods;
+		while (nMods = 0, (code = NextKey (&p, &nMods)) != 0)
 		{
 			GUIEvent Ev;
+			Ev.nMods     = m_nModifiers | nMods;
 			Ev.ulHandler = ulKeyHandler;
 			Ev.ulSender  = 0;
 			Ev.nEvent    = GUI_EVENT_KEY;

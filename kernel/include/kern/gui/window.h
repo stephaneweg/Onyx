@@ -130,6 +130,7 @@ struct GUIEvent
 	u64	ulSender;		// 0 (kernel widgets are gone)
 	int	nEvent;			// GUI_EVENT_*
 	long	lValue;			// event payload
+	unsigned nMods = 0;		// GUI_EVENT_KEY: MOD_* held when the key was typed
 };
 
 class CWindow
@@ -210,6 +211,10 @@ public:
 	// --- event queue (WM pushes, app pump pops) --------------------------
 	void PushEvent (const GUIEvent &Event);
 	boolean PopEvent (GUIEvent *pEvent);
+
+	// Modifiers of the key event being dispatched right now (kapi_pump_events sets it
+	// around the app's key handler; kapi_get_modifiers reports it), 0xFFFFFFFF = none.
+	volatile unsigned m_nKeyEventMods = 0xFFFFFFFF;
 
 	// --- keyboard --------------------------------------------------------
 	// An app-level key handler (callback address). When this window is topmost and

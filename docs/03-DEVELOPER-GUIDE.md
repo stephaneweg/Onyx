@@ -292,7 +292,10 @@ Notes / caveats:
 > are not copied (they must outlive the widget).
 > **Keys with modifiers**: Ctrl / Shift + arrows, Home, End, Page Up / Down arrive as the
 > plain `KEY_*` code; test `kapi_get_modifiers () & MOD_CTRL` / `MOD_SHIFT` (e.g. the FM
-> Tracker's Ctrl+Up / Down transpose, the text widgets' Shift selection). F1–F9 are not delivered.
+> Tracker's Ctrl+Up / Down transpose, the text widgets' Shift selection). Inside a key
+> handler, `kapi_get_modifiers` returns the modifiers held **when that key was typed** (the
+> kernel stores them in the key event, taken from the xterm `ESC[1;<m>X` form, which `vncd`
+> also sends), not the live state. F1–F9 are not delivered.
 > **Text selection**: `Textarea` and `RichTextBox` select with Shift + navigation keys, a
 > mouse drag, Shift+click and ^A; typing replaces the selection. `Textarea` has
 > `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,

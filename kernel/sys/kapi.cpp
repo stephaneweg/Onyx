@@ -655,8 +655,11 @@ void kapi_pump_events (void)
 	{
 		if (Ev.ulHandler != 0)
 		{
+			unsigned nPrev = pWin->m_nKeyEventMods;
+			if (Ev.nEvent == GUI_EVENT_KEY) pWin->m_nKeyEventMods = Ev.nMods;
 			((void (*) (unsigned long, int, long)) Ev.ulHandler)
 				(Ev.ulSender, Ev.nEvent, Ev.lValue);
+			pWin->m_nKeyEventMods = nPrev;
 		}
 	}
 }
@@ -1837,8 +1840,12 @@ int kapi_drag_data (int *pType, void *pBuf, unsigned nCap)
 }
 
 // Current keyboard modifiers (MOD_CTRL / MOD_SHIFT / MOD_ALT).
+// While a key handler runs, these are the modifiers held when that key was typed.
 unsigned kapi_get_modifiers (void)
 {
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0 && pWin->m_nKeyEventMods != 0xFFFFFFFF) return pWin->m_nKeyEventMods;
 	CWindowManager *pWM = CWindowManager::Get ();
 	return pWM != 0 ? pWM->Modifiers () : 0;
 }

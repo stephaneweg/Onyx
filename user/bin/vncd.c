@@ -206,6 +206,29 @@ static int g_ctrl;
 static unsigned g_btn;			// Onyx button mask of the last pointer event
 static int g_px, g_py;
 
+static unsigned g_mods;		// MOD_* currently held on the VNC client
+
+// "ESC[<n>X" plain, or with modifiers held "ESC[<n|1>;<m>X" (Home/End use 'H'/'F'
+// in the modifier form, as Circle's keymap does).
+static const char *nav (const char *n, char fin, char modfin)
+{
+	static char buf[16];
+	int i = 0;
+	buf[i++] = 0x1b; buf[i++] = '[';
+	if (g_mods & (MOD_SHIFT | MOD_ALT | MOD_CTRL))
+	{
+		unsigned m = 1 + ((g_mods & MOD_SHIFT) ? 1 : 0) + ((g_mods & MOD_ALT) ? 2 : 0)
+			       + ((g_mods & MOD_CTRL) ? 4 : 0);
+		if (modfin) { buf[i++] = '1'; fin = modfin; }
+		else if (*n) while (*n) buf[i++] = *n++;
+		else buf[i++] = '1';
+		buf[i++] = ';'; buf[i++] = (char) ('0' + m);
+	}
+	else while (*n) buf[i++] = *n++;
+	buf[i++] = fin; buf[i] = 0;
+	return buf;
+}
+
 static void key_event (int down, unsigned sym)
 {
 	// Modifiers: keep our Ctrl (control chars) and tell the kernel (drag & drop copy).
@@ -215,10 +238,9 @@ static void key_event (int down, unsigned sym)
 	else if (sym == 0xFFE9 || sym == 0xFFEA || sym == 0xFFE7 || sym == 0xFFE8) m = MOD_ALT; // Alt/Meta
 	if (m)
 	{
-		static unsigned mods;
-		mods = down ? (mods | m) : (mods & ~m);
+		g_mods = down ? (g_mods | m) : (g_mods & ~m);
 		if (m == MOD_CTRL) g_ctrl = down;
-		kapi_inject_modifiers (mods);
+		kapi_inject_modifiers (g_mods);
 		return;
 	}
 	if (!down) return;
@@ -232,14 +254,17 @@ static void key_event (int down, unsigned sym)
 	case 0xFF0D: case 0xFF8D: s = "\n"; break;	// Return / KP_Enter
 	case 0xFF1B: s = "\x1b"; break;			// Escape
 	case 0xFFFF: case 0xFF9F: s = "\x1b[3~"; break;	// Delete
-	case 0xFF50: case 0xFF95: s = "\x1b[1~"; break;	// Home
-	case 0xFF57: case 0xFF9C: s = "\x1b[4~"; break;	// End
-	case 0xFF55: case 0xFF9A: s = "\x1b[5~"; break;	// Page Up
-	case 0xFF56: case 0xFF9B: s = "\x1b[6~"; break;	// Page Down
-	case 0xFF51: case 0xFF96: s = "\x1b[D"; break;	// Left
-	case 0xFF52: case 0xFF97: s = "\x1b[A"; break;	// Up
-	case 0xFF53: case 0xFF98: s = "\x1b[C"; break;	// Right
-	case 0xFF54: case 0xFF99: s = "\x1b[B"; break;	// Down
+	// Navigation keys: with Shift / Alt / Ctrl held, send the xterm modifier form
+	// (ESC[1;<m>C, ESC[5;<m>~, m = 1 + Shift 1 + Alt 2 + Ctrl 4) like a USB keyboard
+	// through Circle's keymap, so the modifier travels with the key itself.
+	case 0xFF50: case 0xFF95: s = nav ("1", '~', 'H'); break;	// Home
+	case 0xFF57: case 0xFF9C: s = nav ("4", '~', 'F'); break;	// End
+	case 0xFF55: case 0xFF9A: s = nav ("5", '~', 0); break;	// Page Up
+	case 0xFF56: case 0xFF9B: s = nav ("6", '~', 0); break;	// Page Down
+	case 0xFF51: case 0xFF96: s = nav ("", 'D', 0); break;	// Left
+	case 0xFF52: case 0xFF97: s = nav ("", 'A', 0); break;	// Up
+	case 0xFF53: case 0xFF98: s = nav ("", 'C', 0); break;	// Right
+	case 0xFF54: case 0xFF99: s = nav ("", 'B', 0); break;	// Down
 	default:
 		if (sym >= 0xFFB0 && sym <= 0xFFB9) sym = '0' + (sym - 0xFFB0);	// keypad digits
 		else if (sym == 0xFFAA) sym = '*'; else if (sym == 0xFFAB) sym = '+';
