@@ -39,6 +39,7 @@ git -C circle diff Step51..onyx
 | 6 | **Partial display update** `C2DGraphics::UpdateDisplay (x, y, w, h)` (the compositor's dirty rectangles) | `2dgraphics.{h,cpp}` | `libcircle` |
 | 7 | **Yielding SD waits**: weak hooks for the FatFs volume lock and the EMMC wait loop | `addon/fatfs/ffsystem.cpp`, `addon/SDCard/emmc.cpp` | `libfatfs`, `libsdcard` |
 | 8 | **Sector cache** in the FatFs disk layer (write-through), one bounce buffer per volume | `addon/fatfs/diskio.{h,cpp}` | `libfatfs` |
+| 10 | **Multi-cluster transfers** in `f_read` / `f_write` (one SD command across contiguous clusters) | `addon/fatfs/ff.c` | `libfatfs` |
 | 9 | **High Speed SD at run time** (`CEMMCDevice::SetHighSpeed`) + the host's High Speed Enable bit | `addon/SDCard/emmc.{h,cpp}` | `libsdcard` |
 
 ---
@@ -453,6 +454,21 @@ compile option `SD_HIGH_SPEED`, off by default, and then only raises the clock. 
 - the 64-byte CMD6 status buffer is word aligned (the PIO transfer asserts it).
 
 Onyx turns it on with `sdhs=1` in `cmdline.txt` (off by default: not all cards behave).
+
+## 10. Multi-cluster transfers in FatFs
+
+`f_read` / `f_write` move whole sectors straight between the caller's buffer and the disk,
+but upstream **clips each transfer at the cluster boundary**: with small clusters (a card
+formatted with 512-byte clusters) every SD command carried 512 bytes, and the commands'
+latency (~240 µs each on the Pi 4) capped reads at 2 MB/s (`fsbench`: 1 MB = 2064 commands;
+the data port itself moved 1 MB in 23 ms). The patch goes on across the **next clusters
+while they follow on the disk** (`get_fat (cl) == cl + 1` for a read; `create_chain` — follow
+or allocate — for a write), up to the size asked, then sets `fp->clust` to the cluster of
+the last sector moved, so the loop resumes exactly as before. A cluster allocated ahead
+that does not follow simply stays in the chain (the next turn finds it, as it would have
+allocated it). Not with FastSeek (`cltbl`). The allocation order is unchanged:
+`run_fs_test.sh` gets the **same disk image as upstream's `ff.c`**, byte for byte, with 14 x
+fewer reads and 6 x fewer writes on 512-byte clusters.
 
 ## Not a patch: build configuration
 

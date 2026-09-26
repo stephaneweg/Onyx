@@ -286,7 +286,11 @@ again when it resumes).
 
 **File-system speed.** The FatFs disk layer keeps a 1 MB **sector cache** of the
 single-sector reads (the FAT, the folders), write-through (`docs/05` §8; `sdcache=0` turns
-it off): opening files and walking folders stopped asking the card for every sector.
+it off): opening files and walking folders stopped asking the card for every sector. And
+`f_read` / `f_write` move a file's contiguous clusters in **one** SD command (`docs/05`
+§10), instead of one per cluster (with 512-byte clusters, one per 512 bytes: 2 MB/s). A
+read of 1 MB or more logs its time split (`fs: read ... SD: N commands, waiting, data
+port, other tasks`).
 `sdhs=1` puts the card in High Speed (50 MHz, `docs/05` §9). The boot log says what is in
 use (`SD card mounted (SD:): ...`); `/bin/fsbench` measures.
 
