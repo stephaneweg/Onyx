@@ -10,6 +10,11 @@
 //   * Left / Right (or Page Up / Page Down, Backspace / Space): previous / next image of
 //     the same folder; Home / End: first / last.
 //   * Transparent pixels are shown over a checkerboard; animated GIFs play.
+//   * imageview --background [-tile] <image>: no window -- the image becomes the desktop
+//     wallpaper (the kernel's shared buffer, kapi_wallpaper_buffer / commit), scaled to
+//     cover the screen (proportions kept, the overflow cut), or with -tile repeated from
+//     the top-left corner; then it exits (the wallpaper stays). E.g. in SD:/etc/autostart:
+//     run imageview --background SD:/pictures/sky.jpg
 //
 #include "kapi.h"
 #include "fsutil.h"
@@ -237,8 +242,91 @@ public:
 	}
 };
 
+// --background: the image into the wallpaper buffer. 0 = done.
+static unsigned over_black (unsigned c) { unsigned a = c >> 24; if (a == 255) return c & 0xFFFFFF;
+	return ((((c >> 16) & 255) * a / 255) << 16) | ((((c >> 8) & 255) * a / 255) << 8) | ((c & 255) * a / 255); }
+static int set_background (const char *path, bool tile)
+{
+	ImgFrames im;
+	if (!img_load (path, &im) || im.w <= 0 || im.h <= 0) return 2;
+	int sw = 0, sh = 0;
+	unsigned *bg = kapi_wallpaper_buffer (&sw, &sh);
+	if (!bg || sw <= 0 || sh <= 0) { img_free (&im); return 3; }
+	const unsigned *src = im.px[0];
+	if (tile)
+		for (int y = 0; y < sh; y++)
+		{
+			const unsigned *s = src + (long) (y % im.h) * im.w;
+			for (int x = 0; x < sw; x++) bg[(long) y * sw + x] = over_black (s[x % im.w]);
+		}
+	else
+	{
+		// cover: the larger of the two scales, centred; bilinear (16.16 fixed point)
+		long long kx = ((long long) im.w << 16) / sw, ky = ((long long) im.h << 16) / sh;
+		long long k = kx < ky ? kx : ky;			// source pixels per screen pixel
+		long long ox = (((long long) im.w << 16) - k * sw) / 2, oy = (((long long) im.h << 16) - k * sh) / 2;
+		for (int y = 0; y < sh; y++)
+		{
+			long long fy = oy + k * y + k / 2 - 32768; if (fy < 0) fy = 0;
+			int y0 = (int) (fy >> 16), y1 = y0 + 1 < im.h ? y0 + 1 : y0; unsigned wy = (unsigned) ((fy >> 8) & 255);
+			for (int x = 0; x < sw; x++)
+			{
+				long long fx = ox + k * x + k / 2 - 32768; if (fx < 0) fx = 0;
+				int x0 = (int) (fx >> 16), x1 = x0 + 1 < im.w ? x0 + 1 : x0; unsigned wx = (unsigned) ((fx >> 8) & 255);
+				if (x0 >= im.w) x0 = x1 = im.w - 1;
+				if (y0 >= im.h) y0 = y1 = im.h - 1;
+				unsigned a = over_black (src[(long) y0 * im.w + x0]), b = over_black (src[(long) y0 * im.w + x1]);
+				unsigned c = over_black (src[(long) y1 * im.w + x0]), d = over_black (src[(long) y1 * im.w + x1]);
+				unsigned o = 0;
+				for (int sft = 0; sft < 24; sft += 8)
+				{
+					unsigned top = (((a >> sft) & 255) * (256 - wx) + ((b >> sft) & 255) * wx) >> 8;
+					unsigned bot = (((c >> sft) & 255) * (256 - wx) + ((d >> sft) & 255) * wx) >> 8;
+					o |= ((top * (256 - wy) + bot * wy) >> 8) << sft;
+				}
+				bg[(long) y * sw + x] = o;
+			}
+		}
+	}
+	img_free (&im);
+	kapi_wallpaper_commit ();
+	return 0;
+}
+
 int main (void)
 {
+	char args[256] = "";
+	kapi_get_args (args, sizeof args);
+	{
+		// --background [-tile] <image>: set the wallpaper, no window
+		bool bgMode = false, tile = false; int i = 0;
+		for (;;)
+		{
+			while (args[i] == ' ') i++;
+			if (args[i] != '-') break;
+			char opt[20]; int n = 0;
+			while (args[i] && args[i] != ' ' && n < 19) opt[n++] = args[i++];
+			opt[n] = 0;
+			bool bgo = true, tlo = true;
+			const char *b1 = "--background", *t1 = "-tile", *t2 = "--tile";
+			for (int k = 0; b1[k] || opt[k]; k++) if (b1[k] != opt[k]) { bgo = false; break; }
+			bool m1 = true, m2 = true;
+			for (int k = 0; t1[k] || opt[k]; k++) if (t1[k] != opt[k]) { m1 = false; break; }
+			for (int k = 0; t2[k] || opt[k]; k++) if (t2[k] != opt[k]) { m2 = false; break; }
+			tlo = m1 || m2;
+			if (bgo) bgMode = true; else if (tlo) tile = true; else break;
+		}
+		if (bgMode)
+		{
+			char path[256]; int n = 0;
+			if (args[i] == '"') { i++; while (args[i] && args[i] != '"' && n < 255) path[n++] = args[i++]; }
+			else while (args[i] && n < 255) path[n++] = args[i++];
+			while (n > 0 && path[n - 1] == ' ') n--;
+			path[n] = 0;
+			return path[0] ? set_background (path, tile) : 1;
+		}
+	}
+
 	ViewRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
@@ -257,8 +345,7 @@ int main (void)
 	menu.item ("Zoom out",       "-",  0,             on_zoom_out);
 	menu.publish ();
 
-	char args[256];
-	if (kapi_get_args (args, sizeof args) > 0 && args[0]) open_image (args);
+	if (args[0]) open_image (args);
 	root.run ();
 	return 0;
 }
