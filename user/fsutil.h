@@ -158,4 +158,21 @@ static inline void fs_unique_name (char *out, int cap, const char *dir, const ch
 	}
 }
 
+// A text file saved by a Windows editor: drop a UTF-8 BOM, turn UTF-16 (Notepad) into
+// 8-bit. In place (b[n] must be writable); returns the new length.
+static inline int fs_text_fix (char *b, int n)
+{
+	unsigned char *u = (unsigned char *) b;
+	if (n >= 3 && u[0] == 0xEF && u[1] == 0xBB && u[2] == 0xBF)
+	{ for (int i = 3; i <= n; i++) b[i - 3] = b[i]; return n - 3; }
+	if (n >= 2 && ((u[0] == 0xFF && u[1] == 0xFE) || (u[0] == 0xFE && u[1] == 0xFF)))
+	{
+		int k = 0;
+		for (int i = u[0] == 0xFF ? 2 : 3; i < n; i += 2) b[k++] = b[i];	// LE: low byte first
+		b[k] = '\0';
+		return k;
+	}
+	return n;
+}
+
 #endif

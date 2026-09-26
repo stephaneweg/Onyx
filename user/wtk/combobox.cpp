@@ -42,9 +42,14 @@ void Combobox::onDraw ()
 	Textbox::onDraw ();
 	height = h; width = w;
 	int fh = wk_fh (), ax = w - ARROW_W;
-	canvas.fillRect (ax, 0, ARROW_W, rowH, nopts ? (open ? C_FACE_DN : C_FACE) : C_FACE_DN);
+	// The drop button: a raised face with a triangle (dimmed when there is nothing to list).
+	canvas.fillRect (ax, 0, ARROW_W, rowH, open ? C_FACE_DN : (hover && nopts ? C_FACE_HI : C_FACE));
 	canvas.frameRect (ax, 0, ARROW_W, rowH, C_BORDER);
-	canvas.text (ax + (ARROW_W - wk_fw ()) / 2, (rowH - fh) / 2, open ? "^" : "v", nopts ? C_TEXT : C_DIS);
+	unsigned tc = nopts ? C_TEXT : C_DIS;
+	int cx = ax + ARROW_W / 2, cy = rowH / 2;
+	for (int r = 0; r < 4; r++)				// 7-px wide triangle, down (up when open)
+		canvas.fillRect (cx - 3 + r, open ? cy + 1 - r : cy - 1 + r, 7 - 2 * r, 1, tc);
+	(void) fh;
 	if (open)
 		for (int i = 0; i < nopts; i++)
 		{

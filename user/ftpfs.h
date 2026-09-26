@@ -10,7 +10,7 @@
 //   ftpfs_forget ("ftp.example.com")     drop a login (memory + the file).
 //   ftpfs_load_sites (sites, max)        the remembered servers (the Connect dialog's list).
 //
-// SD:/etc/ftpfs.ini holds one line per server:
+// SD:/etc/ftpfs.ini holds one line per server (or .ini sections, see ftpfs_load_sites):
 //     host user hexpass [port tls folder]        ("-" = empty user / password)
 // hexpass = the password XOR a fixed key, in hex: OBFUSCATED, NOT ENCRYPTED.
 // IPC: service "ftpfs"; message type 1 = "host\0user\0pass\0[port\0tls\0folder\0]",
@@ -96,7 +96,39 @@ static inline int ftpfs_format_site (const struct ftpfs_site *s, char *out, int 
 	return n;
 }
 
-// The remembered servers, in file order. Returns how many.
+// A text file saved by a Windows editor: drop a UTF-8 BOM, turn UTF-16 (Notepad) into
+// 8-bit. In place; returns the new length.
+static inline int ftpfs_text_fix (char *b, int n)
+{
+	unsigned char *u = (unsigned char *) b;
+	if (n >= 3 && u[0] == 0xEF && u[1] == 0xBB && u[2] == 0xBF)
+	{ for (int i = 3; i <= n; i++) b[i - 3] = b[i]; return n - 3; }
+	if (n >= 2 && ((u[0] == 0xFF && u[1] == 0xFE) || (u[0] == 0xFE && u[1] == 0xFF)))
+	{
+		int lo = u[0] == 0xFF ? 2 : 3, k = 0;		// LE: low byte first
+		for (int i = lo; i < n; i += 2) b[k++] = b[i];
+		b[k] = '\0';
+		return k;
+	}
+	return n;
+}
+
+static inline int ftpfs__ieq (const char *a, const char *b)
+{
+	for (;; a++, b++)
+	{
+		char x = *a >= 'A' && *a <= 'Z' ? *a + 32 : *a, y = *b >= 'A' && *b <= 'Z' ? *b + 32 : *b;
+		if (x != y) return 0;
+		if (!x) return 1;
+	}
+}
+
+// The remembered servers, in file order. Returns how many. Also reads the same data
+// written by hand in .ini style:
+//     [ftp.example.com]
+//     user = me
+//     password = secret        (plain; or hexpass = <obfuscated>)
+//     port = 21   tls = 1   folder = /www      (one per line, all optional)
 static inline int ftpfs_load_sites (struct ftpfs_site *sites, int max)
 {
 	void *f = kapi_open (FTPFS_SITES_FILE);
@@ -106,13 +138,48 @@ static inline int ftpfs_load_sites (struct ftpfs_site *sites, int max)
 	kapi_close (f);
 	if (n <= 0) return 0;
 	buf[n] = '\0';
-	int cnt = 0;
+	n = ftpfs_text_fix (buf, n);
+	int cnt = 0, sect = -1;				// sect: the [section] being filled
 	char *line = buf;
-	while (*line && cnt < max)
+	while (*line && cnt <= max)
 	{
 		char *e = line; while (*e && *e != '\n' && *e != '\r') e++;
 		char c = *e; *e = '\0';
-		if (ftpfs_parse_site (line, &sites[cnt])) cnt++;
+		char *p = line; while (*p == ' ' || *p == '\t') p++;
+		char *eq = p; while (*eq && *eq != '=') eq++;
+		if (*p == '[')
+		{
+			sect = -1;
+			if (cnt < max)
+			{
+				struct ftpfs_site *s = &sites[cnt];
+				int k = 0; p++;
+				while (*p && *p != ']' && k < (int) sizeof s->host - 1) s->host[k++] = *p++;
+				s->host[k] = '\0';
+				s->user[0] = s->pass[0] = s->port[0] = s->folder[0] = '\0'; s->tls = 0;
+				if (k) sect = cnt++;
+			}
+		}
+		else if (*eq == '=' && *p != '#' && *p != ';')
+		{
+			if (sect >= 0)
+			{
+				struct ftpfs_site *s = &sites[sect];
+				char *ke = eq; while (ke > p && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
+				*ke = '\0';
+				char *v = eq + 1; while (*v == ' ' || *v == '\t') v++;
+				char *ve = v + 0; while (*ve) ve++;
+				while (ve > v && (ve[-1] == ' ' || ve[-1] == '\t')) *--ve = '\0';
+				if      (ftpfs__ieq (p, "user"))     ftpfs__cpy (s->user, v, sizeof s->user);
+				else if (ftpfs__ieq (p, "password") || ftpfs__ieq (p, "pass")) ftpfs__cpy (s->pass, v, sizeof s->pass);
+				else if (ftpfs__ieq (p, "hexpass"))  ftpfs_unobf_hex (v, s->pass, sizeof s->pass);
+				else if (ftpfs__ieq (p, "port"))     ftpfs__cpy (s->port, v, sizeof s->port);
+				else if (ftpfs__ieq (p, "tls") || ftpfs__ieq (p, "ftps")) s->tls = v[0] == '1' || v[0] == 'y' || v[0] == 'Y' || v[0] == 't' || v[0] == 'T';
+				else if (ftpfs__ieq (p, "folder"))   ftpfs__cpy (s->folder, v, sizeof s->folder);
+				else if (ftpfs__ieq (p, "host"))     ftpfs__cpy (s->host, v, sizeof s->host);
+			}
+		}
+		else if (cnt < max && ftpfs_parse_site (line, &sites[cnt])) { cnt++; sect = -1; }
 		if (!c) break;
 		line = e + 1;
 	}

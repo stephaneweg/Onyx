@@ -545,7 +545,8 @@ public:
 	Checkbox *remember;
 	Button *forget;
 	ftpfs_site sites[FTPFS_MAXSITES]; int nsites;
-	ConnectDialog () : Modal (400, 292)
+	char hint[96];
+	ConnectDialog () : Modal (400, 314)
 	{
 		Root *r = Root::current ();
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
@@ -562,7 +563,7 @@ public:
 		pass->password = true;
 		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
 		addChild (port); addChild (user); addChild (pass); addChild (folder);
-		remember = new Checkbox (fx, y + 5 * rh, width - fx - 12, 24, "Remember password", true, 0, C_FACE_DN);
+		remember = new Checkbox (fx, y + 5 * rh + 18, width - fx - 12, 24, "Remember password", true, 0, C_FACE_DN);
 		remember->tip = "Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots";
 		addChild (remember);
 		host->tip = "A name (ftp.example.com) or an IP address; the arrow lists the remembered servers";
@@ -584,6 +585,17 @@ public:
 		host->clearOptions ();
 		for (int i = 0; i < nsites; i++) host->addOption (sites[i].host);
 		forget->disabled = nsites == 0; forget->invalidate (true);
+		set_hint ();
+	}
+	void set_hint ()					// under the fields: what the server list holds
+	{
+		if (nsites == 0) { scopy (hint, "No remembered server yet (SD:/etc/ftpfs.ini)", sizeof hint); return; }
+		char nb[8]; int k = 0, v = nsites; char t[8]; int m = 0;
+		while (v) { t[m++] = (char) ('0' + v % 10); v /= 10; } while (m) nb[k++] = t[--m]; nb[k] = '\0';
+		scopy (hint, nb, sizeof hint);
+		int n = slen (hint);
+		scopy (hint + n, nsites == 1 ? " remembered server: click the arrow or press Down"
+					    : " remembered servers: click the arrow or press Down", sizeof hint - n);
 	}
 	int saved (const char *h)
 	{
@@ -612,6 +624,7 @@ public:
 		host->clearOptions ();
 		for (int k = 0; k < nsites; k++) host->addOption (sites[k].host);
 		forget->disabled = nsites == 0; forget->invalidate (true);
+		set_hint ();
 		pass->setText ("");
 		invalidate (true);
 	}
@@ -635,6 +648,7 @@ public:
 		canvas.frameRect (0, 0, width, height, C_ACCENT);
 		canvas.fillRect (0, 0, width, wk_fh () + 8, C_FACE);
 		canvas.text (8, 4, "Connect to Server", C_TEXT);
+		canvas.text (100, wk_fh () + 18 + 5 * 32 - 2, hint, C_DIS);
 	}
 };
 static void connect_picked (Widget &w)

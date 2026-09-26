@@ -193,6 +193,7 @@ static void load (void)
 		kapi_close (f);
 		if (n < 0) n = 0;
 		buf[n] = '\0';
+		n = fs_text_fix (buf, n);			// (edited on Windows: BOM / UTF-16)
 		for (int i = 0; i < n; )
 		{
 			char line[256]; int k = 0;

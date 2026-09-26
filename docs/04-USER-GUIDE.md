@@ -521,6 +521,9 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
   also written to **`SD:/etc/ftpfs.ini`** (one line per server: host, user, password, port,
   FTPS, folder) and reloaded at every start, so FTP and FTPS folders (and the
   Shelf's remote items) work again after a reboot. `ftpfs forget <host>` removes it.
+  The file can also be written by hand, one section per server:
+  `[ftp.example.com]` then `user = me`, `password = secret` (plain), `port = 21`,
+  `tls = 1`, `folder = /www` (ftpfs rewrites it in its own format when a login changes).
   The password in that file is only **obfuscated, not encrypted**: anyone with the card can
   recover it (the file is excluded from git).
 - `ftpfs` starts by itself the first time an `FTP:` path is used. A file is downloaded
