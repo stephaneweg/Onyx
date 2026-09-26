@@ -56,6 +56,7 @@ static NumericUpDown *g_rowsBox = 0, *g_speedBox = 0;
 static Root *g_root = 0;
 
 static FmsPattern &pat () { return g_song.pat[g_pat]; }
+static void redraw ();			// repaint the grid + the headers (below)
 static int visible_rows () { return (H - ST_H - GRID_Y) / ROW_H; }
 
 static void set_status (const char *a, const char *b = "")
@@ -116,7 +117,7 @@ static void refresh_pattern_ui ()
 	if (g_row >= pat ().rows) g_row = pat ().rows - 1;
 	sync_scroll ();
 	for (int c = 0; c < FMS_CH; c++) ((Widget *) g_head[c])->invalidate (true);
-	g_root->invalidate (true);
+	redraw ();
 }
 static void refresh_octave ()
 {
@@ -325,7 +326,7 @@ static void edit_instrument (int ch)
 		((Widget *) g_head[ch])->invalidate (true);
 	}
 	if (g_audio == 1) kapi_sound_stop (TEST_VOICE);
-	g_root->invalidate (true);
+	redraw ();
 }
 
 // ---- the column headers ----------------------------------------------------------------------------------
@@ -420,7 +421,7 @@ public:
 			pressed = true; setFocus ();
 			int r = g_top + my / ROW_H, c = (mx - NUM_W) / COL_W;
 			if (mx >= NUM_W && c >= 0 && c < FMS_CH && r < pat ().rows) move_to (r, c);
-			g_root->invalidate (true);
+			redraw ();
 		}
 		else if (!bl) pressed = false;
 		return true;
@@ -431,7 +432,7 @@ public:
 		p.n[g_ch * p.rows + g_row] = v;
 		g_dirty = true;
 		move_to (g_row + advance, g_ch);
-		g_root->invalidate (true);
+		redraw ();
 	}
 	bool onKey (long k) override
 	{
@@ -472,10 +473,19 @@ public:
 		case KEY_END:   move_to (p.rows - 1, g_ch); break;
 		default: return false;
 		}
-		g_root->invalidate (true);
+		redraw ();
 		return true;
 	}
 };
+
+// Invalidating the root only recomposes its children's canvases: the grid and the headers
+// must repaint themselves when the song, the pattern or the position changed.
+static void redraw ()
+{
+	if (g_grid) ((Widget *) g_grid)->invalidate (true);
+	for (int c = 0; c < FMS_CH; c++) if (g_head[c]) ((Widget *) g_head[c])->invalidate (true);
+	if (g_root) g_root->invalidate (false);
+}
 
 // ---- playback --------------------------------------------------------------------------------------------------
 static void play_row ()
@@ -495,7 +505,7 @@ static void op_stop ()
 	if (!g_playing) return;
 	g_playing = false;
 	note_off (-1);
-	g_root->invalidate (true);
+	redraw ();
 	set_status ("Stopped.");
 }
 static void op_play ()
@@ -522,7 +532,7 @@ static void tick ()
 		ensure_visible (g_playRow, true);
 		g_nextTick += (unsigned) g_song.pat[g_playPat].speed * 5;	// speed / 20 s, 100 ticks/s
 		g_shownRow = g_playRow++;
-		g_root->invalidate (true);
+		redraw ();
 	}
 	if ((int) (now - g_nextTick) > 50) g_nextTick = now;			// fell behind: resync
 }
@@ -651,20 +661,20 @@ static void op_insert_row ()
 	FmsPattern &p = pat ();
 	unsigned char *n = p.n + g_ch * p.rows;
 	for (int r = p.rows - 1; r > g_row; r--) n[r] = n[r - 1];
-	n[g_row] = FMS_CONT; g_dirty = true; g_root->invalidate (true);
+	n[g_row] = FMS_CONT; g_dirty = true; redraw ();
 }
 static void op_delete_row ()
 {
 	FmsPattern &p = pat ();
 	unsigned char *n = p.n + g_ch * p.rows;
 	for (int r = g_row; r < p.rows - 1; r++) n[r] = n[r + 1];
-	n[p.rows - 1] = FMS_CONT; g_dirty = true; g_root->invalidate (true);
+	n[p.rows - 1] = FMS_CONT; g_dirty = true; redraw ();
 }
 static void op_clear_channel ()
 {
 	FmsPattern &p = pat ();
 	for (int r = 0; r < p.rows; r++) p.n[g_ch * p.rows + r] = FMS_CONT;
-	g_dirty = true; g_root->invalidate (true);
+	g_dirty = true; redraw ();
 }
 static void add_pattern (bool duplicate)
 {
