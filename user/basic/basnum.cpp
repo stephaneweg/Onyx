@@ -89,9 +89,10 @@ double npow (double x, double y, bool *ok)
 
 // ---- formatting -------------------------------------------------------------------------------
 // Integers (|v| < 1e15) in full; otherwise 7 significant digits (QBasic's single precision
-// look): ".5", "-3.25", "1.234568E+08", "1E-10".
-int formatNum (double v, char *out)
+// look): ".5", "-3.25", "1.234568E+08", "1E-10" -- or 15 with dbl ("1.23456789012345D+20").
+int formatNum (double v, char *out, bool dbl)
 {
+	const int ND = dbl ? 15 : 7;
 	int p = 0;
 	if (v != v) { const char *s = "NaN"; while (*s) out[p++] = *s++; out[p] = 0; return p; }
 	if (v < 0) { out[p++] = '-'; v = -v; }
@@ -105,20 +106,22 @@ int formatNum (double v, char *out)
 		out[p] = 0;
 		return p;
 	}
-	// Scale to 7 significant digits: m in [1e6, 1e7), v = m * 10^(e-6).
+	// Scale to ND significant digits: m in [1, 10), v = m * 10^e.
 	int e = 0; double m = v;
 	if (m >= 10) { while (m >= 1e16) { m /= 1e16; e += 16; } while (m >= 10) { m /= 10; e++; } }
 	else if (m < 1) { while (m < 1e-16) { m *= 1e16; e -= 16; } while (m < 1) { m *= 10; e--; } }
-	long long digits = (long long) (m * 1e6 + 0.5);
-	if (digits >= 10000000) { digits /= 10; e++; }
-	char d[8];
-	for (int i = 6; i >= 0; i--) { d[i] = (char) ('0' + digits % 10); digits /= 10; }
-	int nd = 7; while (nd > 1 && d[nd - 1] == '0') nd--;		// drop trailing zeros
-	if (e >= 7 || e < -8)						// scientific
+	double scale = 1; for (int i = 1; i < ND; i++) scale *= 10;
+	long long digits = (long long) (m * scale + 0.5);
+	long long top = (long long) (scale * 10);
+	if (digits >= top) { digits /= 10; e++; }
+	char d[16];
+	for (int i = ND - 1; i >= 0; i--) { d[i] = (char) ('0' + digits % 10); digits /= 10; }
+	int nd = ND; while (nd > 1 && d[nd - 1] == '0') nd--;		// drop trailing zeros
+	if (e >= ND || e < -8 - (dbl ? 8 : 0))				// scientific
 	{
 		out[p++] = d[0];
 		if (nd > 1) { out[p++] = '.'; for (int i = 1; i < nd; i++) out[p++] = d[i]; }
-		out[p++] = 'E'; out[p++] = e < 0 ? '-' : '+';
+		out[p++] = dbl ? 'D' : 'E'; out[p++] = e < 0 ? '-' : '+';
 		int ae = e < 0 ? -e : e;
 		if (ae >= 100) out[p++] = (char) ('0' + ae / 100);
 		out[p++] = (char) ('0' + ae / 10 % 10); out[p++] = (char) ('0' + ae % 10);

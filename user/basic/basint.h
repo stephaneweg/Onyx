@@ -40,7 +40,10 @@ private:
 	Vec &operator= (const Vec &);
 };
 
-enum { TY_NUM = 0, TY_STR = 1 };
+// Value types at compile time: TY_NUM, TY_STR, or a user TYPE (TY_REC + its index).
+enum { TY_NUM = 0, TY_STR = 1, TY_REC = 16 };
+// Numeric sub-types (the storage of a variable): single (the default), INTEGER, LONG, DOUBLE.
+enum { NT_SNG = 0, NT_INT, NT_LNG, NT_DBL };
 
 // ---- bytecode ------------------------------------------------------------------------------
 enum Op
@@ -62,8 +65,28 @@ enum Op
 	OP_INPUT, OP_INFIELD, OP_LINPUT,			// prompt flags / type / prompt
 	OP_READ, OP_RESTORE,					// type / data index
 	OP_OPEN, OP_CLOSE, OP_END, OP_STOP,
-	OP_NOP
+	OP_NOP,
+	// --- QBasic completion ---
+	OP_CONV,						// nt: INTEGER / LONG store (round, overflow)
+	OP_FIXSTR,						// len: pad / cut to a fixed-length string
+	OP_ADDRG, OP_ADDRL,					// slot: push a reference to a variable
+	OP_AADDRG, OP_AADDRL,					// slot nd: reference to an array element
+	OP_FADDR, OP_FLD,					// field: reference -> field ref / record -> field value
+	OP_STREF, OP_LDREF,					// store through / load from a reference
+	OP_MIDSET, OP_LSET, OP_RSET,				// MID$ / LSET / RSET statements (ref ...)
+	OP_ONERR, OP_RESUME,					// target (-1 off) / mode target
+	OP_USING,						// n items: PRINT USING
+	OP_FGET, OP_FPUT,					// hasVar kind ext: GET / PUT # (file rec [ref])
+	OP_FIELD,						// n: FIELD #f, (width ref) x n
+	OP_SEEK,						// SEEK #f, pos
+	OP_ONEVENT,						// kind(0 timer, 1..31 key) target: ON TIMER / KEY GOSUB
+	OP_EVSTATE,						// kind state(0 off 1 on 2 stop)
+	OP_CHAIN, OP_RUN, OP_CLEAR, OP_TRON,			// CHAIN file / RUN mode target / CLEAR / TRON on
+	OP_FREADY						// (reserved)
 };
+
+// GET / PUT # layout of a variable: a scalar kind, or a record (ext = its type).
+enum { LK_SNG = 1, LK_INT, LK_LNG, LK_DBL, LK_VSTR, LK_FSTR, LK_REC };
 
 // Builtin functions (OP_BI) and statements (OP_ST).
 enum Builtin
@@ -78,17 +101,30 @@ enum Builtin
 	B_GETTEXT, B_VALUE, B_EVENT, B_WAITEVENT, B_MSGBOX, B_CLIPBOARD, B_OPENFILE, B_SAVEFILE,
 	B_MOUSEX, B_MOUSEY, B_MOUSEB,
 	B_TICKS, B_LBOUND, B_UBOUND,
+	B_ERR, B_ERL, B_MKI, B_MKL, B_MKS, B_MKD, B_CVI, B_CVL, B_CVS, B_CVD, B_INPUTS, B_SEEK, B_LOC,
+	B_ENVIRON, B_FRE, B_PMAP, B_SCREEN, B_STRD, B_POINT1, B_CINTR, B_CLNGR,
 
 	S_CLS = 100, S_LOCATE, S_COLOR, S_SCREEN, S_PSET, S_PRESET, S_LINE, S_CIRCLE, S_DRAWTEXT,
 	S_SLEEP, S_PAUSE, S_BEEP, S_SOUND, S_RANDOMIZE, S_WINDOW, S_SETTEXT, S_SETVALUE, S_NOTIFY,
 	S_SETCLIPBOARD, S_EXEC, S_LAUNCH, S_KILL, S_NAME, S_MKDIR, S_RMDIR, S_WIDTH, S_SWAPNUM,
-	S_PLAY, S_NOTEON, S_NOTEOFF
+	S_PLAY, S_NOTEON, S_NOTEOFF,
+	S_ERROR, S_RESET, S_FILES, S_CHDIR, S_ENVIRON, S_SHELL, S_PAINT, S_DRAW, S_GGET, S_GPUT,
+	S_VIEW, S_VIEWPRINT, S_GWINDOW, S_PALETTE, S_PALUSING, S_PCOPY, S_KEYDEF, S_CLSN, S_BEEPF
 };
 
 struct LineMark { int pc, line; };
 struct DataItem { char *text; bool isStr; };
 // Slot kinds (Program::gkind / lkind): what a variable holds before its first store.
-enum { K_NUM = 0, K_STR = 1, K_NUMARR = 2, K_STRARR = 3 };
+// gext / lext: the fixed length of a K_STR / K_STRARR (0 = variable), the TYPE of a K_REC /
+// K_RECARR.
+enum { K_NUM = 0, K_STR = 1, K_NUMARR = 2, K_STRARR = 3, K_REC = 4, K_RECARR = 5 };
+
+// User TYPEs at run time: the field layout (GET / PUT, LEN, new records).
+enum { FK_SNG = LK_SNG, FK_INT = LK_INT, FK_LNG = LK_LNG, FK_DBL = LK_DBL, FK_VSTR = LK_VSTR, FK_FSTR = LK_FSTR, FK_REC = LK_REC };
+struct FieldInfo { int kind; int len; int sub; };	// len: FSTR length / REC type (sub)
+struct TypeInfo { char name[48]; int first, nf, size; };
+struct StmtRange { int start, end; };
+struct NumLabel { int pc; int value; };
 struct ProcInfo { char name[48]; bool isFunc; int retTy; int nparams; int entry; int nlocals; int kindOff; };
 
 struct Program
@@ -101,6 +137,12 @@ struct Program
 	Vec<ProcInfo> procs;
 	Vec<unsigned char> gkind;		// per global slot (K_*)
 	Vec<unsigned char> lkind;		// per local slot, procs[i].kindOff.. (K_*)
+	Vec<int> gext, lext;			// fixed string length / TYPE per slot
+	Vec<TypeInfo> types;
+	Vec<FieldInfo> fields;
+	Vec<StmtRange> stmts;			// every statement's code range (RESUME)
+	Vec<NumLabel> numLabels;		// line-number labels (ERL)
+	Vec<int> common;			// COMMON global slots, in order (CHAIN)
 	int nglobals;
 	Program () : nglobals (0) {}
 	~Program ()

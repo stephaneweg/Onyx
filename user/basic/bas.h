@@ -27,17 +27,28 @@ struct Host
 	virtual void out (const char *s, int n) = 0;
 	virtual int  inputLine (char *buf, int cap) = 0;	// a typed line (no '\n'); -1 = quit
 	virtual int  inkey (char *out2) { (void) out2; return 0; }	// 0 none, else 1-2 chars
-	virtual void cls () {}
+	virtual void cls (int mode) { (void) mode; }		// -1 / 0 all, 1 graphics viewport, 2 text viewport
 	virtual void locate (int row, int col) { (void) row; (void) col; }
 	virtual int  column () { return 1; }			// POS(0), 1-based
 	virtual int  row () { return 1; }			// CSRLIN
 	virtual void color (int fg, int bg) { (void) fg; (void) bg; }
 	virtual int  width () { return 80; }			// text columns
-	// Graphics (the same window as the text).
-	virtual void screen (int mode) { (void) mode; }
+	virtual int  screenChar (int row, int col, bool color) { (void) row; (void) col; (void) color; return 32; }	// SCREEN (r, c[, 1])
+	virtual void viewPrint (int top, int bottom) { (void) top; (void) bottom; }	// 0, 0 = the whole screen
+	// Graphics (the same window as the text). SCREEN mode[, , apage, vpage] (pages: -1 = keep).
+	virtual void screen (int mode, int apage, int vpage) { (void) mode; (void) apage; (void) vpage; }
+	virtual void screenSize (int *w, int *h) { *w = 640; *h = 400; }
+	virtual void setClip (int x1, int y1, int x2, int y2) { (void) x1; (void) y1; (void) x2; (void) y2; }	// x1 < 0: none
+	virtual void paint (int x, int y, int c, int border) { (void) x; (void) y; (void) c; (void) border; }
+	// Rectangles of pixels (GET / PUT): colours as POINT returns them.
+	virtual void readRect (int x, int y, int w, int h, int *out) { for (int i = 0; i < w * h; i++) out[i] = 0; (void) x; (void) y; }
+	virtual void writeRect (int x, int y, int w, int h, const int *in) { (void) x; (void) y; (void) w; (void) h; (void) in; }
+	virtual void palette (int attr, int rgb) { (void) attr; (void) rgb; }	// rgb 0xRRGGBB; attr < 0: reset all
+	virtual void pcopy (int src, int dst) { (void) src; (void) dst; }
+	virtual int  keyPending (char *out2) { (void) out2; return 0; }	// the next key (as INKEY$), not taken
 	virtual void pset (int x, int y, int c) { (void) x; (void) y; (void) c; }
 	virtual int  point (int x, int y) { (void) x; (void) y; return 0; }
-	virtual void line (int x1, int y1, int x2, int y2, int c, int box) { (void) x1; (void) y1; (void) x2; (void) y2; (void) c; (void) box; }
+	virtual void line (int x1, int y1, int x2, int y2, int c, int box, int style) { (void) x1; (void) y1; (void) x2; (void) y2; (void) c; (void) box; (void) style; }
 	virtual void circle (int x, int y, int r, int c, int fill) { (void) x; (void) y; (void) r; (void) c; (void) fill; }
 	virtual void drawText (int x, int y, const char *s, int c) { (void) x; (void) y; (void) s; (void) c; }
 	virtual int  mouse (int what) { (void) what; return 0; }	// 0 x, 1 y, 2 buttons
@@ -68,6 +79,8 @@ struct Host
 	virtual bool fileDialog (bool save, const char *dir, char *out, int cap) { (void) save; (void) dir; (void) cap; out[0] = 0; return false; }
 	virtual bool exec (const char *path, const char *args) { (void) path; (void) args; return false; }
 	virtual bool launch (const char *app) { (void) app; return false; }
+	virtual bool chdir (const char *path) { (void) path; return false; }
+	virtual int  shell (const char *cmd) { (void) cmd; return -1; }	// SHELL: run a command (its output on the screen)
 	// Files (whole-file: OPEN ... FOR INPUT reads it all, OUTPUT / APPEND write at CLOSE).
 	virtual char *load (const char *path, int *len) { (void) path; *len = 0; return 0; }	// new[] buffer
 	virtual bool save (const char *path, const char *data, int len) { (void) path; (void) data; (void) len; return false; }
@@ -90,7 +103,8 @@ int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
 
 // Number <-> text, QBasic style (also used by the editor / hosts).
-int    formatNum (double v, char *out);		// "3.5", "-2", "1.234568E+08" (no leading space)
+int    formatNum (double v, char *out, bool dbl = false);	// "3.5", "-2", "1.234568E+08" (no leading space);
+						// dbl: double precision (15 digits, "D" exponent)
 double parseNum (const char *s, int *used);	// VAL(): leading number, 0 if none
 
 } // namespace bas
