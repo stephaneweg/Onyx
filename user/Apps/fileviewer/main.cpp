@@ -27,6 +27,7 @@
 #include "notify.h"
 #include "fileassoc.h"
 #include "shelfmsg.h"
+#include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (built with FP)
 #include "wtk/wtk.h"
 
 using namespace wtk;
@@ -228,6 +229,7 @@ enum { PV_NONE, PV_TEXT, PV_IMAGE, PV_APP, PV_PROGRAM, PV_BINARY, PV_EMPTY };
 static int g_pvKind = PV_NONE;
 static char g_pvText[1600];
 static unsigned *g_pvImg = 0; static int g_pvW = 0, g_pvH = 0;
+static const char *g_pvFormat = "BMP";		// image preview: "PNG", "JPEG", ...
 static char g_pvTitle[64];
 
 static void preview_clear (void)
@@ -253,9 +255,15 @@ static void preview_build (void)
 		return;
 	}
 	if (e->size == 0) { g_pvKind = PV_EMPTY; return; }
-	if (ends_with (e->name, "bmp"))
+	if (img_is_image_name (e->name))
 	{
-		g_pvImg = ui::bmp_decode (path, &g_pvW, &g_pvH);
+		// First frame only; the pixels are umm memory like new[] (freed by delete []).
+		ImgFrames im;
+		if (img_load (path, &im))
+		{
+			g_pvImg = im.px[0]; g_pvW = im.w; g_pvH = im.h; g_pvFormat = im.format;
+			for (int i = 1; i < im.n; i++) umm_free (im.px[i]);
+		}
 		g_pvKind = g_pvImg ? PV_IMAGE : PV_BINARY;
 		return;
 	}
@@ -727,7 +735,15 @@ public:
 				{
 					unsigned c = g_pvImg[(j * g_pvH / dh) * g_pvW + (i * g_pvW / dw)];
 					if (g_pvKind == PV_APP && (c & 0xFFFFFF) == WK_TRANSPARENT_KEY) continue;
-					canvas.pixel (ox + i, y + j, c);
+					unsigned a = c >> 24;
+					if (g_pvKind == PV_IMAGE && a != 255)		// alpha over the column
+					{
+						unsigned r = (((c >> 16) & 255) * a + ((C_COL >> 16) & 255) * (255 - a)) / 255;
+						unsigned g = (((c >> 8) & 255) * a + ((C_COL >> 8) & 255) * (255 - a)) / 255;
+						unsigned b = ((c & 255) * a + (C_COL & 255) * (255 - a)) / 255;
+						c = (r << 16) | (g << 8) | b;
+					}
+					canvas.pixel (ox + i, y + j, c & 0xFFFFFF);
 				}
 			y += dh + 10;
 		}
@@ -745,11 +761,20 @@ public:
 
 		const char *kind =
 			g_pvKind == PV_APP     ? "Application" :
-			g_pvKind == PV_IMAGE   ? "BMP image" :
+			g_pvKind == PV_IMAGE   ? "Image" :
 			g_pvKind == PV_PROGRAM ? "Program" :
 			g_pvKind == PV_TEXT    ? "Text" :
 			g_pvKind == PV_EMPTY   ? "Empty file" : "File";
-		canvas.text (tx, y, kind, C_DIMTXT); y += g_fh + 2;
+		if (g_pvKind == PV_IMAGE)				// "PNG image"
+		{
+			char k[24]; int p = 0;
+			for (int i = 0; g_pvFormat[i] && p < 12; i++) k[p++] = g_pvFormat[i];
+			const char *t = " image"; for (int i = 0; t[i]; i++) k[p++] = t[i];
+			k[p] = '\0';
+			canvas.text (tx, y, k, C_DIMTXT);
+		}
+		else canvas.text (tx, y, kind, C_DIMTXT);
+		y += g_fh + 2;
 		if (g_pvKind != PV_APP) { char sz[24]; fmt_size (sz, e->size); canvas.text (tx, y, sz, C_DIMTXT); y += g_fh + 2; }
 		if (g_pvKind == PV_APP || g_pvKind == PV_PROGRAM)
 			{ canvas.text (tx, y, "Double-click to run", C_DIMTXT); y += g_fh + 2; }

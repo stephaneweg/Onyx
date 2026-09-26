@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same filer terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -62,8 +62,12 @@ wtk/canvas.o: wtk/canvas.cpp $(WTK_HDR)
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a -o $@
+# Apps that decode images (img/imgload.hpp: stb_image, simplewebp) use floating point in
+# the codecs: build them with FP/SIMD like canvas.o (the kernel saves FP on every trap).
+IMG_APPS = imageview fileviewer
+IMG_HDR  = img/imgload.hpp img/stb_image.h img/simplewebp.h
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h httpc.h bmp.hpp umm.h onyxpp.hpp wtk/libwtk.a $(IMG_HDR)
+	$(CXX) $(if $(filter $*,$(IMG_APPS)),$(CXXFLAGS_NEON),$(CXXFLAGS)) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a -o $@
 
 clean:
 	rm -f *.elf *.o

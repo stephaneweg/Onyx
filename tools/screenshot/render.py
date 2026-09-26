@@ -401,6 +401,22 @@ def app_paint():
     cv.text(42, H - ST_H + (ST_H - FH) // 2, "Red   brush 3", C(0xD0D0D0))
     return cv
 
+def app_imageview():	# Apps/imageview onDraw: a 1024x768 picture fitted, status strip
+    W, H, ST_H = 720, 540, 20; VH = H - ST_H
+    cv = Canvas(W, H, C(0x181C22))
+    s = min(W * 100 // 1024, VH * 100 // 768)
+    pic = Image.new("RGBA", (1024, 768)); pd = ImageDraw.Draw(pic)       # a sunset landscape
+    for y in range(768):
+        t = y / 767; pd.line([0, y, 1023, y], fill=(int(250 - 120 * t), int(150 - 90 * t), int(90 + 60 * t), 255))
+    pd.ellipse([600, 250, 780, 430], fill=(255, 220, 120, 255))
+    pd.polygon([(0, 560), (180, 430), (380, 520), (560, 400), (760, 510), (1023, 420), (1023, 767), (0, 767)], fill=(70, 60, 110, 255))
+    pd.polygon([(0, 650), (240, 560), (520, 640), (800, 570), (1023, 630), (1023, 767), (0, 767)], fill=(40, 40, 70, 255))
+    pic = pic.resize((1024 * s // 100, 768 * s // 100))
+    cv.img.alpha_composite(pic, ((W - pic.width) // 2, (VH - pic.height) // 2))
+    cv.fill(0, VH, W, ST_H, C(0x303D4D))
+    cv.text(8, VH + (ST_H - FH) // 2, "sunset.png   1024 x 768   PNG   %d%% (fit)   3/12" % s, C(0xE0E6EE))
+    return cv
+
 def app_taskman():
     W, H, LISTY = 340, 300, 30; cv = Canvas(W, H, C(0x202830))
     cv.fill(0, 0, W, LISTY - 2, C(0x303D4D))
@@ -1100,7 +1116,7 @@ if __name__ == "__main__":
         ("mandelbrot","fractal",app_fractal), ("tinycalc","tinycalc",app_tinycalc),
         ("tinypad","tinypad",app_tinypad), ("calendar","calendar",app_calendar),
         ("config","config",app_config), ("theme","theme",app_theme),
-        ("paint","paint",app_paint), ("taskman","taskman",app_taskman),
+        ("paint","paint",app_paint), ("imageview","Image Viewer",app_imageview), ("taskman","taskman",app_taskman),
         ("2048","2048",app_2048), ("minesweeper","minesweeper",app_minesweeper),
         ("eyes","eyes",app_eyes), ("inidemo","inidemo",app_inidemo),
         ("irc","irc",app_irc), ("memmon","memmon",app_memmon),

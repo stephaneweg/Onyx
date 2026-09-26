@@ -242,6 +242,12 @@ Notes / caveats:
 > `doc_confirm (name, changed, save_fn)` (a Yes / No / Cancel `MB_YESNOCANCEL` box; false =
 > cancelled). A document app should accept a path argument (`kapi_get_args`) and a dropped
 > file (`onDrop`), so it works with the File Viewer, the Shelf and `fileassoc.ini`.
+> **Images**: `#include "img/imgload.hpp"` (in one TU) — `img_load (path, &frames)` decodes
+> BMP / GIF (all frames + delays) / PNG / JPEG (stb_image, public domain), WebP
+> (simplewebp, BSD-3) and PCX (our decoder) into `0xAARRGGBB` frames from the app's umm
+> heap; `img_free (&frames)`; `img_is_image_name (name)`. The codecs use floating point,
+> so add the app to **`IMG_APPS`** in `user/Makefile` (built with FP/SIMD like
+> `wtk/canvas.o`). Users: `imageview`, `fileviewer` (preview).
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,

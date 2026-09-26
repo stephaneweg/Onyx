@@ -240,6 +240,17 @@ def icon_paint():		# a palette with colour dabs
     pdisc(px, 18, 27, 3, (224, 192, 64))
     return px
 
+def icon_imageview():		# a framed landscape photo: sky, sun, hills
+    px = blank()
+    prect(px, 4, 7, 35, 32, (230, 234, 240))
+    prect(px, 7, 10, 32, 29, (112, 184, 240))
+    pdisc(px, 26, 15, 3, (255, 224, 112))
+    for x in range(7, 33):
+        top = 22 + abs(x - 14) // 3 if x < 22 else 20 + abs(x - 28) // 2
+        prect(px, x, min(top, 29), x, 29, (80, 160, 80))
+    pframe(px, 4, 7, 35, 32, (120, 128, 140))
+    return px
+
 def icon_eyes():		# two googly eyes
     px = blank()
     pdisc(px, 14, 20, 9, (255, 255, 255)); pdisc(px, 16, 22, 3, (24, 24, 32))
@@ -383,7 +394,7 @@ ICONS = {
     "eyes": icon_eyes, "sheet": icon_sheet, "taskman": icon_taskman,
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
-    "notifyd": icon_notifyd, "shelf": icon_shelf, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
+    "notifyd": icon_notifyd, "shelf": icon_shelf, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
 }
 
 

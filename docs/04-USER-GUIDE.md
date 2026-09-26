@@ -275,7 +275,7 @@ the Trash, and document apps (tinypad, Writer, paint open the dropped file; drop
 goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
-per line (`txt = tinypad`, `bmp = paint`, `doc = writer`, …): opening the file runs
+per line (`txt = tinypad`, `png = imageview`, `doc = writer`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the Shelf
 (click). Folders open in the File Viewer, `.app` bundles and programs run.
 
@@ -504,7 +504,8 @@ going back is one click on an earlier column. Launch it from the app list (categ
 - **Path bar** (above the columns): click a segment (`SD:` ▸ `etc` ▸ …) to jump straight
   back to that folder.
 - **Preview column**: selecting a file shows its size and type, the first lines of a text
-  file, a scaled-down **BMP** image, or — for an app bundle — its icon, its friendly name and its folder name (`demoB.app`).
+  file, a scaled-down **image** (BMP, GIF, PNG, JPEG, PCX, WebP — with its format and
+  dimensions), or — for an app bundle — its icon, its friendly name and its folder name (`demoB.app`).
 - **Mouse**: click = select; **double-click** = open (a file in the app `SD:/etc/fileassoc.ini`
   associates with its extension, programs run, `.app` bundles launch); **wheel** scrolls the column under the cursor. A column longer than the window gets
   its own **vertical scrollbar** at its right edge: drag the thumb, or click the track to jump.
@@ -634,6 +635,7 @@ A few applications (simulated screenshots, rendered from the real skins/font/ico
 | **Writer** | Rich-text editor (bold/italic/underline/strike/highlight, colours, sizes, heading levels) on a word-wrapping document. Select text with the mouse, then use the menus: **File** (New ^N, Open... ^O, Save ^S, Save As...), **Format** (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller, Bigger), **Color** (Black/Red/Green/Blue), **Style** (Normal, Title 1-3). Plain-text load/save (`.doc` files open in Writer). **Drop** a file to open it (asks to save unsaved changes first), or text to insert it. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
+| **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), click it on the Shelf, drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. |
 | **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |

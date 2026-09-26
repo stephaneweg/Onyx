@@ -1,4 +1,19 @@
-# Onyx image codecs (PNG / JPEG)
+# Onyx image codecs
+
+## `imgload.hpp` — the wtk apps' image loader (no newlib)
+
+`imgload.hpp` decodes an image **file** into `0xAARRGGBB` frames for the ordinary wtk
+apps (freestanding, umm heap): **BMP, GIF (all frames + delays), PNG, JPEG** via
+`stb_image.h` (v2.30, public domain, vendored here), **WebP** (lossy + lossless) via
+`simplewebp.h` (BSD-3, derived from libwebp, vendored here — licence at the end of the
+file) and **PCX** (1/2/4/8-bit paletted and 24-bit) via our own decoder. It supplies the
+few C symbols the codecs need (`malloc`/`free`/… on umm, `memcmp`, `abs`). Include it in
+one translation unit and list the app in `IMG_APPS` in `../Makefile` (the codecs use
+floating point: those apps are built with FP/SIMD). Used by `imageview` and the File
+Viewer's preview. Host-tested (PNG/RGBA PNG/JPEG/BMP/PCX ×3/animated GIF/WebP lossy +
+lossless) with `-DIMG_HOST_TEST`.
+
+## `image.hpp` — PNG / JPEG for newlib apps
 
 `image.hpp` is a reusable image decoder for Onyx apps, built on **zlib**, **libpng**
 and **libjpeg**. It decodes a PNG or JPEG byte buffer (no files) into a freshly
