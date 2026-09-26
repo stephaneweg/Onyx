@@ -25,6 +25,12 @@ VALUES
   Records: TYPE Point / x AS INTEGER / y AS INTEGER / END TYPE, then DIM p AS Point,
   p.x = 3, DIM t(10) AS Point, t(i).y, fields of another TYPE (p.pos.x), a = b copies,
   SUB s (pt AS Point). LEN (var) = its size in bytes.
+  Methods (Onyx, like FreeBASIC): in the TYPE, test AS SUB (a AS INTEGER) and
+    f AS FUNCTION (a AS INTEGER) AS INTEGER (declarations); then SUB Point.Test (a) /
+    FUNCTION Point.F (a) AS INTEGER ... END: "this" is the object (this.x = a,
+    RETURN this.x + a). Call: p.Test 3, y = p.F (2), t(i).Test 1, CALL p.Test (3).
+  Constructor: SUB Point.new (params): DIM p AS Point (1, 2) calls it; DIM p AS Point
+    (no parentheses) does not; p = NEW Point (1, 2) makes a new one.
 
 STATEMENTS
   PRINT [#n,] a; b, c   (; = no space, , = next 14-column zone, TAB(n) SPC(n))

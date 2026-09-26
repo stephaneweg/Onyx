@@ -858,7 +858,12 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
 - **Types**: `%` INTEGER, `&` LONG, `!` SINGLE, `#` DOUBLE (or `AS INTEGER` …, `DEFINT A-Z` …,
   `DEFSTR`); INTEGER / LONG round when stored and raise *Overflow*; DOUBLEs print 15 digits;
   fixed strings `STRING * n`. **User types**: `TYPE … END TYPE` records (nested, in arrays,
-  passed to SUBs, copied by `=`), `LEN (var)` their size. `DEF FN`, `RETURN value` in a
+  passed to SUBs, copied by `=`), `LEN (var)` their size, with **methods** (Onyx, in the way
+  of FreeBASIC): `test AS SUB (a AS INTEGER)` declared in the `TYPE`, defined by
+  `SUB Point.Test (a)` where `this` is the object (`this.x = a`, `RETURN this.x + a` in a
+  FUNCTION), called as `p.Test 3`, `y = p.F (2)`, `t(i).Test 1`; a **constructor**
+  `SUB Point.new (…)`: `DIM p AS Point (1, 2)` calls it (`DIM p AS Point` does not), and
+  `p = NEW Point (1, 2)` makes a new object. `DEF FN`, `RETURN value` in a
   FUNCTION, `MID$ (…) = …`, `LSET` / `RSET`, `PRINT USING` (all the `#` `,` `.` `+` `-` `**`
   `$$` `^^^^` `!` `\ \` `&` `_` fields).
 - **Errors**: `ON ERROR GOTO` handlers with `RESUME` / `RESUME NEXT` / `RESUME label`, `ERR`,

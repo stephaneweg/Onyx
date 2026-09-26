@@ -1953,6 +1953,7 @@ public:
 				popGosub ();
 				break;
 			case OP_POP: { V v = pop (); vclear (v); break; }
+			case OP_NEWREC: { V v; v.t = VT; v.n = 0; v.p = newRec (code[pc++]); push (v); break; }
 			case OP_BI: { int id = code[pc++], argc = code[pc++]; builtin (id, argc); break; }
 			case OP_ST: { int id = code[pc++], argc = code[pc++]; statement (id, argc); evKick = true; break; }
 			case OP_PRINT: { int w = code[pc++]; V v = pop (); printValue (v, (w & 1) != 0, (w & 2) != 0); vclear (v); break; }

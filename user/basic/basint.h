@@ -82,7 +82,8 @@ enum Op
 	OP_ONEVENT,						// kind(0 timer, 1..31 key) target: ON TIMER / KEY GOSUB
 	OP_EVSTATE,						// kind state(0 off 1 on 2 stop)
 	OP_CHAIN, OP_RUN, OP_CLEAR, OP_TRON,			// CHAIN file / RUN mode target / CLEAR / TRON on
-	OP_FREADY						// (reserved)
+	OP_FREADY,						// (reserved)
+	OP_NEWREC						// type: push a fresh record (NEW Type)
 };
 
 // GET / PUT # layout of a variable: a scalar kind, or a record (ext = its type).

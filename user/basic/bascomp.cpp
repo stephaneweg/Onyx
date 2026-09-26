@@ -427,6 +427,11 @@ public:
 				if (toks[p].t == T_ID && bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, "TYPE")) { p += 2; break; }
 				if (toks[p].t != T_ID || toks[p + 1].t != T_ID || !bseq (toks[p + 1].id, "AS") || toks[p + 2].t != T_ID)
 				{ pos = p; fail ("TYPE field: name AS type expected"); return; }
+				if (bseq (toks[p + 2].id, "SUB") || bseq (toks[p + 2].id, "FUNCTION"))
+				{	// a method's declaration: the SUB Type.name / FUNCTION Type.name defines it
+					while (toks[p].t != T_NL && toks[p].t != T_EOF && !(toks[p].t == T_OP && toks[p].op == ':')) p++;
+					continue;
+				}
 				FName fnm; bscpy (fnm.name, toks[p].id, 48);
 				TSpec ts;
 				if (!typeName (toks[p + 2].id, ts)) { pos = p + 2; fail2 ("Unknown type: ", toks[p + 2].id); return; }
@@ -444,6 +449,26 @@ public:
 		}
 	}
 
+	// "TYPE.NAME": the TYPE of a method's name (the part before its last dot), else -1.
+	int methodType (const char *name)
+	{
+		int dot = -1; for (int i = 0; name[i]; i++) if (name[i] == '.') dot = i;
+		if (dot <= 0) return -1;
+		char t[48]; bscpy (t, name, dot + 1);
+		return findType (t);
+	}
+	// The method (a SUB / FUNCTION Type.name) m of record type ty, or -1.
+	int findMethod (int ty, const char *m)
+	{
+		if (ty < TY_REC) return -1;
+		char n[100]; int k = 0;
+		for (const char *p = P->types[ty - TY_REC].name; *p && k < 47; p++) n[k++] = *p;
+		n[k++] = '.';
+		for (const char *p = m; *p && k < 98; p++) n[k++] = *p;
+		n[k] = 0;
+		if (k > 47) return -1;
+		return findProc (n);
+	}
 	int findConst (const char *n) { for (int i = 0; i < consts.n; i++) if (bseq (consts[i].name, n)) return i; return -1; }
 	int findProc (const char *n) { for (int i = 0; i < pdecls.n; i++) if (bseq (pdecls[i].name, n)) return i; return -1; }
 	const BFn *findBuiltin (const char *n) { for (int i = 0; BFNS[i].name; i++) if (bseq (BFNS[i].name, n)) return &BFNS[i]; return 0; }
@@ -495,6 +520,11 @@ public:
 			if (findProc (name) >= 0) { pos = p; fail2 ("Duplicate definition: ", name); return; }
 			PDecl d; bscpy (d.name, name, 48); d.isFunc = isFn || isDef; d.defFn = isDef;
 			TSpec rs = nameSpec (d.name); d.retTy = rs.ty; d.retNt = rs.nt; d.np = 0;
+			int mt = isDef ? -1 : methodType (name);
+			if (mt >= 0)				// SUB Type.name: a method; THIS = the object
+			{
+				bscpy (d.pname[0], "THIS", 48); d.pty[0] = TY_REC + mt; d.pnt[0] = NT_SNG; d.parr[0] = false; d.np = 1;
+			}
 			p++;
 			if (toks[p].t == T_OP && toks[p].op == '(')
 			{
@@ -676,15 +706,23 @@ public:
 			if (consts[ci].ty == TY_STR) emit2 (OP_STR, consts[ci].sidx); else { pushNum (consts[ci].n); if (consts[ci].dbl) dblSeen = true; }
 			return consts[ci].ty;
 		}
+		if (bseq (name, "NEW") && peek ().t == T_ID && findType (peek ().id) >= 0) return newObject ();
 		if (isKeyword (name)) { fail2 ("Syntax error near ", name); return TY_NUM; }
 		Ref r;
 		if (!parseRef (r)) return TY_NUM;
+		if (r.method >= 0)					// obj.Method (args)
+		{
+			if (!pdecls[r.method].isFunc) { fail2 ("A SUB has no value: ", pdecls[r.method].name); return TY_NUM; }
+			if (pdecls[r.method].retTy == TY_NUM && pdecls[r.method].retNt == NT_DBL) dblSeen = true;
+			emitAddr (r);
+			return callMethod (r.method, true);
+		}
 		emitLoad (r);
 		return r.ty;
 	}
 
 	// ---- variable references: name [(indices)] [.field ...] --------------------------------------
-	struct Ref { bool global; int slot; bool arr; int nd; int nfld; int fld[8]; int ty, nt, flen; bool fnResult; };
+	struct Ref { bool global; int slot; bool arr; int nd; int nfld; int fld[8]; int ty, nt, flen; bool fnResult; int method; };	// method: r.Name is a call
 	// Follow ".a.b" (dotted in the name, from `dot`, or '.' tokens) through the record type r.ty.
 	bool fieldPath (Ref &r, const char *dot)
 	{
@@ -711,11 +749,33 @@ public:
 			else return true;
 			if (r.ty < TY_REC) { fail2 ("Not a record: .", part); return false; }
 			int f = findField (r.ty - TY_REC, part);
-			if (f < 0) { fail2 ("No such field: ", part); return false; }
+			if (f < 0)
+			{
+				int m = findMethod (r.ty, part);
+				if (m < 0) { fail2 ("No such field or method: ", part); return false; }
+				if (dot || (isOp ('.') && peek ().t == T_ID)) { fail2 ("A method call ends the name: ", part); return false; }
+				r.method = m;				// the record stays r: the object (THIS)
+				return true;
+			}
 			if (r.nfld >= 8) { fail ("Fields nested too deep"); return false; }
 			r.fld[r.nfld++] = f - P->types[r.ty - TY_REC].first;
 			r.ty = fnames[f].ty; r.nt = fnames[f].nt; r.flen = fnames[f].flen;
 		}
+	}
+	// ".a.b.m" from a record type: fields, then a method (p.inner.Move (1) -- not an array).
+	bool endsInMethod (int ty, const char *dot)
+	{
+		while (dot && *dot == '.')
+		{
+			char part[48]; int n = 0; dot++;
+			while (*dot && *dot != '.' && n < 47) part[n++] = *dot++;
+			part[n] = 0;
+			if (ty < TY_REC) return false;
+			int f = findField (ty - TY_REC, part);
+			if (f >= 0) { ty = fnames[f].ty; continue; }
+			return !*dot && findMethod (ty, part) >= 0;
+		}
+		return false;
 	}
 	// Parses a reference at the current ID; emits the array indices (if any).
 	bool parseRef (Ref &r)
@@ -723,7 +783,7 @@ public:
 		Tok &k = cur ();
 		if (k.t != T_ID || isKeyword (k.id) || findBuiltin (k.id) || findConst (k.id) >= 0) { fail ("A variable is expected"); return false; }
 		char name[48]; bscpy (name, k.id, 48); next ();
-		r.arr = false; r.nd = 0; r.nfld = 0; r.fnResult = false;
+		r.arr = false; r.nd = 0; r.nfld = 0; r.fnResult = false; r.method = -1;
 		int pi = findProc (name);
 		if (pi >= 0)
 		{
@@ -738,7 +798,8 @@ public:
 			{
 				char base[48]; bscpy (base, name, i + 1);
 				Var bv;
-				if (!isOp ('(') && findVar (base, false, bv) && bv.ty >= TY_REC) { bscpy (dotted, name + i, 48); dot = dotted; name[i] = 0; }
+				if (findVar (base, false, bv) && bv.ty >= TY_REC && (!isOp ('(') || endsInMethod (bv.ty, name + i)))
+				{ bscpy (dotted, name + i, 48); dot = dotted; name[i] = 0; }
 				break;
 			}
 		if (isOp ('(') && !dot)
@@ -772,7 +833,7 @@ public:
 		for (int i = 0; i < r.nfld; i++) emit2 (OP_FADDR, r.fld[i]);
 	}
 	// A reference (address) of an lvalue, for MID$ / LSET / RSET / GET / PUT / FIELD.
-	bool refAddr (Ref &r) { if (!parseRef (r)) return false; emitAddr (r); return true; }
+	bool refAddr (Ref &r) { if (!parseRef (r)) return false; if (r.method >= 0) { fail ("A variable is expected"); return false; } emitAddr (r); return true; }
 
 	// LEN (x): a string's length, or the size in bytes of a numeric variable / record.
 	int lenOf ()
@@ -783,7 +844,7 @@ public:
 		if (cur ().t == T_ID && !findBuiltin (cur ().id) && findProc (cur ().id) < 0 && findConst (cur ().id) < 0 && !isKeyword (cur ().id))
 		{
 			Ref r;
-			if (parseRef (r) && isOp (')') && r.ty != TY_STR)
+			if (parseRef (r) && r.method < 0 && isOp (')') && r.ty != TY_STR)
 			{
 				P->code.n = at;					// a sized variable: a constant
 				TSpec ts; ts.ty = r.ty; ts.nt = r.nt; ts.flen = r.flen;
@@ -853,6 +914,93 @@ public:
 		return b->ret;
 	}
 
+	// NEW Type [(args)]: a fresh record, its constructor (SUB Type.new) called on it.
+	int newObject ()
+	{
+		next ();
+		int t = findType (cur ().id); next ();
+		TSpec ts; ts.ty = TY_REC + t; ts.nt = NT_SNG; ts.flen = 0;
+		char nm[24] = "~N"; int n = 2, v = ++tmpN; char dg[12]; int k = 0;
+		while (v) { dg[k++] = (char) ('0' + v % 10); v /= 10; }
+		while (k) nm[n++] = dg[--k];
+		nm[n] = 0;
+		Var tmp = var (nm, false, &ts);
+		emit2 (OP_NEWREC, t);
+		storeVar (tmp);
+		int ci = findMethod (TY_REC + t, "NEW");
+		if (ci >= 0 && (isOp ('(') || pdecls[ci].np == 1))
+		{
+			emit2 (tmp.global ? OP_REFG : OP_REFL, tmp.slot);
+			callMethod (ci, true);
+		}
+		else if (isOp ('(')) { fail2 ("No constructor (SUB Type.new) for ", P->types[t].name); return TY_NUM; }
+		loadVar (tmp);
+		return TY_REC + t;
+	}
+	// Call a method: THIS (the object's reference) is already pushed; then the arguments.
+	int callMethod (int pi, bool parens)
+	{
+		const PDecl &d = pdecls[pi];
+		int argc = 1;
+		bool open = parens ? acceptOp ('(') : false;
+		bool hasArgs = open ? !isOp (')') : !parens && !endOfStmt ();
+		if (hasArgs)
+			for (;;)
+			{
+				if (argc >= d.np) { fail2 ("Too many arguments to ", d.name); return d.retTy; }
+				compileArg (d, argc);
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (open) expectOp (')');
+		if (argc != d.np) { fail2 ("Wrong number of arguments to ", d.name); return d.retTy; }
+		emit3 (OP_CALL, pi, argc);
+		return d.retTy;
+	}
+	// A method call as a statement: obj.Name args / obj.Name (args) / a(i).Name ... True if it was one.
+	bool methodStatement ()
+	{
+		if (cur ().t != T_ID) return false;
+		bool cand = false;
+		for (const char *c = cur ().id; *c; c++) if (*c == '.') cand = true;
+		if (!cand && peekIsOp ('('))				// a(i).Name
+		{
+			int depth = 0, p = pos + 1;
+			for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+			{
+				if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+				else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+			}
+			cand = p + 1 < toks.n && toks[p + 1].t == T_OP && toks[p + 1].op == '.';
+		}
+		if (!cand) return false;
+		int at = pc (), savePos = pos, tmp = tmpN; bool dSave = dblSeen;
+		Ref r;
+		if (parseRef (r) && r.method >= 0)
+		{
+			emitAddr (r);
+			bool parens = false;
+			if (isOp ('('))					// "obj.Name (a, b)": the whole rest in parentheses
+			{
+				int depth = 0, p = pos;
+				for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+				{
+					if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+					else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+				}
+				Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+				parens = depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+			}
+			callMethod (r.method, parens);
+			if (pdecls[r.method].isFunc) emit (OP_POP);
+			return true;
+		}
+		// not a method call: back to an assignment
+		failed = false; err->line = 0; err->msg[0] = 0;
+		P->code.n = at; pos = savePos; tmpN = tmp; dblSeen = dSave;
+		return false;
+	}
+
 	// Call a SUB / FUNCTION (the name was consumed). parens: arguments are in (...).
 	int callProc (int pi, bool parens)
 	{
@@ -892,7 +1040,7 @@ public:
 		{
 			int at = pc (), savePos = pos; bool dSave = dblSeen;
 			Ref r;
-			if (parseRef (r) && !r.fnResult && (isOp (',') || isOp (')') || endOfStmt ()) && r.ty == d.pty[i] && (r.ty != TY_NUM || r.nt == d.pnt[i]))
+			if (parseRef (r) && !r.fnResult && r.method < 0 && (isOp (',') || isOp (')') || endOfStmt ()) && r.ty == d.pty[i] && (r.ty != TY_NUM || r.nt == d.pnt[i]))
 			{
 				emitAddr (r);
 				return;
@@ -957,6 +1105,7 @@ public:
 	{
 		Ref r;
 		if (!parseRef (r)) return false;
+		if (r.method >= 0) { fail2 ("Not a variable: ", pdecls[r.method].name); return false; }
 		lv.global = r.global; lv.slot = r.slot; lv.ty = r.ty; lv.arr = r.arr; lv.nd = r.nd; lv.nt = r.nt; lv.flen = r.flen;
 		lv.ref = r.nfld > 0;
 		if (lv.ref) emitAddr (r);
@@ -1204,6 +1353,7 @@ public:
 			return;
 		}
 		if (pi >= 0 && pdecls[pi].isFunc && curProc != pi) { fail2 ("A FUNCTION's value must be used: ", w); return; }
+		if (methodStatement ()) return;
 		stAssign ();
 	}
 	int evState ()
@@ -1736,7 +1886,15 @@ public:
 			else
 			{
 				TSpec ts; bool has = parseAsType (ts);
-				declVar (name, false, has ? &ts : 0, shared);
+				Var v = declVar (name, false, has ? &ts : 0, shared);
+				if (!failed && has && ts.ty >= TY_REC && isOp ('('))	// DIM v AS Type (args): SUB Type.new
+				{
+					int ci = findMethod (ts.ty, "NEW");
+					if (ci < 0) { fail2 ("No constructor (SUB Type.new) for ", P->types[ts.ty - TY_REC].name); return; }
+					emit2 (OP_NEWREC, ts.ty - TY_REC); storeVar (v);	// (a fresh object each time)
+					emit2 (v.global ? OP_REFG : OP_REFL, v.slot);
+					callMethod (ci, true);
+				}
 			}
 			if (failed || !acceptOp (',')) break;
 		}
@@ -2138,7 +2296,14 @@ public:
 	{
 		if (cur ().t != T_ID) { fail ("A SUB name is expected after CALL"); return; }
 		int pi = findProc (cur ().id);
-		if (pi < 0) { fail2 ("SUB not defined: ", cur ().id); return; }
+		if (pi < 0)
+		{
+			int at = pc (), savePos = pos;
+			Ref r;
+			if (parseRef (r) && r.method >= 0) { emitAddr (r); callMethod (r.method, true); if (pdecls[r.method].isFunc) emit (OP_POP); return; }
+			failed = false; P->code.n = at; pos = savePos;
+			fail2 ("SUB not defined: ", cur ().id); return;
+		}
 		next ();
 		callProc (pi, true);
 		if (pdecls[pi].isFunc) emit (OP_POP);
