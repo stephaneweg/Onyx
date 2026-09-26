@@ -50,6 +50,11 @@ int main (int argc, char **argv)
 		}
 		delete [] d;
 	}
+	// transpose: B3 + 1 = C4, C4 - 1 = B3, E4 + 1 = F4, C#4 - 1 = C4
+	if (fms_transpose (fms_make_note (7, 0, 3), 1) != fms_make_note (1, 0, 4) || fms_transpose (fms_make_note (1, 0, 4), -1) != fms_make_note (7, 0, 3)
+	    || fms_transpose (fms_make_note (3, 0, 4), 1) != fms_make_note (4, 0, 4) || fms_transpose (fms_make_note (1, 1, 4), -1) != fms_make_note (1, 0, 4)
+	    || fms_transpose (FMS_OFF, 1) != FMS_OFF || fms_transpose (FMS_CONT, 1) != FMS_CONT)
+	{ printf ("TRANSPOSE FAIL\n"); bad++; }
 	char t[4]; fms_note_text (fms_make_note (1, 1, 4), t);
 	printf ("%d FMS, %d FMI ok, %d bad; C#4 = %s, A4 = %u mHz, E#3 -> ", fms, fmi, bad, t, fms_note_mhz (fms_make_note (6, 0, 4)));
 	fms_note_text (fms_make_note (3, 1, 3), t); printf ("%s\n", t);

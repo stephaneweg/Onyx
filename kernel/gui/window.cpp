@@ -948,26 +948,30 @@ static int NextKey (const char **pp)
 	}
 	if (p[0] == 0x1b && p[1] == '[')
 	{
-		int code = 0, adv = 0;
-		switch (p[2])
+		// ESC '[' [n [';' m]] final -- the modifier form (Ctrl+Up = ESC[1;5A, Ctrl+PgUp =
+		// ESC[5;5~) gives the same KEY_* as the plain key: apps read Ctrl / Shift / Alt with
+		// kapi_get_modifiers. (It used to fall through as the characters '1' ';' '5' 'A'.)
+		if (p[2] == '[') { *pp = p + (p[3] != '\0' ? 4 : 3); return NextKey (pp); }	// F1-F5 (ESC[[A..E): ignored
+		int n = 0, i = 2, code = 0;
+		while (p[i] >= '0' && p[i] <= '9') n = n * 10 + (p[i++] - '0');
+		if (p[i] == ';') { i++; while (p[i] >= '0' && p[i] <= '9') i++; }
+		switch (p[i])
 		{
-		case 'A': code = KEY_UP;    adv = 3; break;
-		case 'B': code = KEY_DOWN;  adv = 3; break;
-		case 'C': code = KEY_RIGHT; adv = 3; break;
-		case 'D': code = KEY_LEFT;  adv = 3; break;
-		case '1': if (p[3] == '~') { code = KEY_HOME; adv = 4; } break;
-		case '3': if (p[3] == '~') { code = KEY_DEL;  adv = 4; } break;
-		case '4': if (p[3] == '~') { code = KEY_END;  adv = 4; } break;
-		case '5': if (p[3] == '~') { code = KEY_PGUP; adv = 4; } break;
-		case '6': if (p[3] == '~') { code = KEY_PGDN; adv = 4; } break;
+		case 'A': code = KEY_UP;    break;
+		case 'B': code = KEY_DOWN;  break;
+		case 'C': code = KEY_RIGHT; break;
+		case 'D': code = KEY_LEFT;  break;
+		case 'H': code = KEY_HOME;  break;
+		case 'F': code = KEY_END;   break;
+		case '~':
+			switch (n) { case 1: code = KEY_HOME; break; case 3: code = KEY_DEL; break; case 4: code = KEY_END; break;
+				     case 5: code = KEY_PGUP; break; case 6: code = KEY_PGDN; break; }
+			break;
 		}
-		if (adv != 0)
-		{
-			*pp = p + adv;
-			return code;
-		}
-		*pp = p + 2;			// unknown escape: skip ESC '[' and continue
-		return NextKey (pp);
+		if (p[i] != '\0') i++;				// the final byte
+		*pp = p + i;
+		if (code != 0) return code;
+		return NextKey (pp);				// unknown sequence: skipped whole
 	}
 	*pp = p + 1;
 	// Normalise the keys Circle's keymap delivers as raw control bytes: Enter comes

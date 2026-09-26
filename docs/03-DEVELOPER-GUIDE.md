@@ -290,6 +290,9 @@ Notes / caveats:
 > (field + drop button): `sel`, `setOptions`; Up / Down change the selection, Enter / Space
 > open the list, Esc closes it; `cb` fires when the selection changes. The option strings
 > are not copied (they must outlive the widget).
+> **Keys with modifiers**: Ctrl / Shift + arrows, Home, End, Page Up / Down arrive as the
+> plain `KEY_*` code; test `kapi_get_modifiers () & MOD_CTRL` (e.g. the FM Tracker's
+> Ctrl+Up / Down transpose). F1–F5 are not delivered.
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,

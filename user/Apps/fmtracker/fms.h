@@ -248,6 +248,18 @@ static inline unsigned char fms_make_note (int note /*1..7*/, int sharp, int oct
 	}
 	return (unsigned char) ((sharp ? 64 : 0) + (oct & 7) * 8 + (note & 7));
 }
+// A note moved by delta semitones (octaves 0..7); anything else is returned unchanged.
+static inline unsigned char fms_transpose (unsigned char v, int delta)
+{
+	static const int semi[8] = { 0, 0, 2, 4, 5, 7, 9, 11 };
+	static const unsigned char note[12] = { 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6, 7 }, sharp[12] = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0 };
+	if ((v & 128) || (v & 7) == 0) return v;
+	int p = ((v >> 3) & 7) * 12 + semi[v & 7] + ((v >> 6) & 1) + delta;
+	if (p < 0) p = 0;
+	if (p > 8 * 12 - 1) p = 8 * 12 - 1;
+	return (unsigned char) (sharp[p % 12] * 64 + (p / 12) * 8 + note[p % 12]);
+}
+
 // "C#4" / "D-3" / "---" / "" (silence)
 static inline void fms_note_text (unsigned char v, char *o)
 {

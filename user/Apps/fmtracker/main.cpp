@@ -9,7 +9,8 @@
 //     note lasts until the next note or silence of its channel (C4 then C4 = two notes).
 //   * Keys: C D E F G A B enter a note (Shift = sharp; the cursor then goes down), 0-7 the
 //     octave, Space a silence, Delete "---", Backspace clears the slice above, # toggles
-//     the sharp, arrows / Page Up / Page Down / Home / End move, Tab the next channel.
+//     the sharp, Ctrl+Up / Ctrl+Down move the note a semitone up / down, arrows / Page Up /
+//     Page Down / Home / End move, Tab the next channel.
 //     A click selects a cell; the wheel and the scrollbar scroll.
 //   * Play (^P) plays from the cursor, follows the position and highlights it; Esc stops.
 //     A song is a list of patterns (each with its own length and speed), played in order.
@@ -458,6 +459,17 @@ public:
 		{
 			unsigned char v = p.n[g_ch * p.rows + g_row];
 			if ((v & 7) && !(v & 128)) setCell (fms_make_note (v & 7, !(v & 64), (v >> 3) & 7), 0);
+			return true;
+		}
+		if ((k == KEY_UP || k == KEY_DOWN) && (kapi_get_modifiers () & MOD_CTRL))	// Ctrl+Up / Down: a semitone
+		{
+			unsigned char v = p.n[g_ch * p.rows + g_row];
+			if ((v & 7) && !(v & 128))
+			{
+				v = fms_transpose (v, k == KEY_UP ? 1 : -1);
+				if (!p.mute[g_ch] && !g_playing) { note_on (g_ch, v); g_previewVoice = g_ch; g_previewEnd = kapi_get_ticks () + 35; }
+				setCell (v, 0);
+			}
 			return true;
 		}
 		int vis = visible_rows ();
