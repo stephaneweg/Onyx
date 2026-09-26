@@ -285,6 +285,21 @@ again when it resumes). The SD driver itself still busy-waits for each piece (Ci
 `NO_BUSY_WAIT` would make it yield during the transfer too: a possible next step, which
 turns FatFs's lock into a `CMutex` and needs every Circle library rebuilt).
 
+**Stall watchdog.** To find the kernel code that still keeps the CPU too long, the
+scheduler notes the time of every `Yield()`. When the running task (not idle) has not
+passed through `Yield()` for more than `SCHED_STALL_US` (100 ms), the IRQ exit path
+(`KernelIRQExit` → `CScheduler::StallSample`) samples the interrupted PC and LR every
+`SCHED_STALL_SAMPLE_US` (50 ms, up to 8 samples). The task's next `Yield()` closes the report
+(task name, duration) into a small ring, and the reaper task writes it to the kernel log:
+
+```
+stall: doom ran 850 ms without yielding; pc/lr: 1a2b40/1a2a10 1a2b48/1a2a10 ...
+```
+
+Kernel addresses resolve with `kernel/kernel8-rpi4.map` (or `aarch64-none-elf-addr2line -f
+-e kernel/kernel8-rpi4.elf <pc>`). No sample at all ("IRQs masked") means the task ran
+with interrupts off the whole time.
+
 **CPU hogs vs yielders (dynamic priority).** Circle's network and Wi-Fi code waits in
 `Yield()` loops (`qlock`/`sleep`/`tsleep` in `addon/wlan/p9proc.cpp`, the `CNetTask`
 `Process` loop, socket send/recv — also inside an app's `kapi_*` call, e.g. `vncd`). In

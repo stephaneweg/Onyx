@@ -327,6 +327,31 @@ static void TerminateOrphans (void)
 // proper scheduler task (like the compositor), separate from CKernel::Run (the
 // special "main" task), so the teardown always runs in a normal task context.
 //
+// Stall watchdog reports (see CScheduler::StallSample) -> the kernel log (kmsg). The PCs
+// are kernel addresses (kernel8-rpi4.map / the ELF) or, in an app, its user-VA code.
+static void LogStalls (void)
+{
+	TStallReport R; unsigned nLost = 0;
+	static unsigned s_nLostLogged = 0;
+	while (CScheduler::Get ()->TakeStallReport (&R, &nLost))
+	{
+		CString Where;
+		for (unsigned i = 0; i < R.nSamples; i++)
+		{
+			CString One;
+			One.Format (" %lx/%lx", (unsigned long) R.PC[i], (unsigned long) R.LR[i]);
+			Where.Append (One);
+		}
+		CLogger::Get ()->Write ("stall", LogWarning, "%s ran %u ms without yielding; pc/lr:%s",
+					R.Name, R.nMs, R.nSamples ? (const char *) Where : " (IRQs masked)");
+	}
+	if (nLost != s_nLostLogged)
+	{
+		CLogger::Get ()->Write ("stall", LogWarning, "%u stall reports lost", nLost - s_nLostLogged);
+		s_nLostLogged = nLost;
+	}
+}
+
 class CReaperTask : public CTask
 {
 public:
@@ -346,6 +371,7 @@ public:
 		{
 			TerminateOrphans ();			// kill children of dead parents
 			CScheduler::Get ()->ReapTerminatedTasks ();
+			LogStalls ();
 
 			unsigned nPeriod = NetIsUp () ? 4 : 20;	// x 50 ms
 			if (++nTick >= nPeriod)

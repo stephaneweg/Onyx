@@ -35,6 +35,20 @@ enum TTaskFlags		///< for EnumerateTasks()
 
 typedef void TSchedulerTaskHandler (CTask *pTask);
 
+// Stall watchdog (diagnostics): a task that kept the CPU for more than SCHED_STALL_US
+// without passing through Yield() -- kernel code, which is not preempted. While it lasts,
+// the IRQ exit path samples where it is (the interrupted PC and LR); the next Yield()
+// closes the report, and the reaper task writes it to the kernel log (kmsg).
+#define STALL_SAMPLES	8
+struct TStallReport
+{
+	char	 Name[24];			// the task that did not yield
+	unsigned nMs;				// how long it kept the CPU
+	unsigned nSamples;			// (0: IRQs were masked the whole time)
+	u64	 PC[STALL_SAMPLES];		// where it was, every ~SCHED_STALL_SAMPLE_US
+	u64	 LR[STALL_SAMPLES];
+};
+
 /// \note Round-robin policy, no priorities (yet). Preemption-ready: see
 ///       OnTimerTick(). The block/wake/sleep protocol is identical to Circle's.
 
@@ -125,6 +139,14 @@ public:
 	///	   = plain round-robin, as before OnPreempt existed) -- for A/B testing.
 	void Configure (unsigned nSliceTicks, boolean bHogSched);
 
+	/// \brief Stall watchdog: called on every IRQ exit with the interrupted PC/LR.
+	/// \note Callable from interrupt context only.
+	void StallSample (u64 ulPC, u64 ulLR);
+
+	/// \brief Pop the oldest finished stall report (normal task context).
+	/// \return FALSE if there is none. *pLost: reports dropped (ring full) so far.
+	boolean TakeStallReport (TStallReport *pReport, unsigned *pLost);
+
 	static CScheduler *Get (void);
 
 	static boolean IsActive (void)
@@ -170,6 +192,14 @@ private:
 	volatile boolean m_bBurst;	// burst in progress: hogs are skipped (OnPreempt)
 	unsigned m_nBurstEnd;		// its end, in clock ticks (us)
 
+	// Stall watchdog
+	unsigned m_nLastYield;		// clock ticks (us) of the last Yield() entry
+	unsigned m_nLastSample;		// ... of the last StallSample() taken
+	TStallReport m_Stall;		// the stall in progress (m_Stall.nSamples samples)
+#define STALL_RING	4
+	TStallReport m_StallRing[STALL_RING];
+	unsigned m_nStallIn, m_nStallOut, m_nStallLost;
+
 	CSpinLock m_SpinLock;
 
 	static CScheduler *s_pThis;
@@ -185,6 +215,15 @@ private:
 // the CPU when nobody else needs it).
 #ifndef SCHED_BURST_US
 #define SCHED_BURST_US		60000		// 60 ms: a hog keeps <= ~25 % while others need the CPU
+#endif
+
+// Stall watchdog: a task running this long without a Yield() is reported (kmsg), with a
+// sample of where it was every SCHED_STALL_SAMPLE_US.
+#ifndef SCHED_STALL_US
+#define SCHED_STALL_US		100000		// 100 ms: six frames at 60 Hz
+#endif
+#ifndef SCHED_STALL_SAMPLE_US
+#define SCHED_STALL_SAMPLE_US	50000
 #endif
 
 // Preemptions in a row (no voluntary yield in between) that make a task a CPU hog.

@@ -87,8 +87,14 @@ CScheduler::CScheduler (void)
 	m_bResched (FALSE),
 	m_nSliceTicks (SCHED_SLICE_TICKS),
 	m_bBurst (FALSE),
-	m_nBurstEnd (0)
+	m_nBurstEnd (0),
+	m_nLastYield (0),
+	m_nLastSample (0),
+	m_nStallIn (0),
+	m_nStallOut (0),
+	m_nStallLost (0)
 {
+	m_Stall.nSamples = 0;
 	assert (s_pThis == 0);
 	s_pThis = this;
 
@@ -123,6 +129,29 @@ void CScheduler::Yield (void)
 	// WakeTasks(), on this core. We restore the FULL prior DAIF after we are
 	// resumed, so each task keeps its own interrupt state across switches.
 	u64 nFlags = IrqSave ();
+
+	// Stall watchdog: the task that is leaving ran since the previous Yield() entry.
+	// Too long (kernel code is not preempted) -> file a report for the reaper to log.
+	unsigned nNow = CTimer::Get ()->GetClockTicks ();
+	if (   m_pCurrent != m_pIdleTask
+	    && (unsigned) (nNow - m_nLastYield) > SCHED_STALL_US
+	    && m_nLastYield != 0)
+	{
+		const char *pName = m_pCurrent != 0 ? m_pCurrent->GetName () : 0;
+		strncpy (m_Stall.Name, pName != 0 ? pName : "?", sizeof m_Stall.Name - 1);
+		m_Stall.Name[sizeof m_Stall.Name - 1] = '\0';
+		m_Stall.nMs = (nNow - m_nLastYield) / 1000;
+		if (m_nStallIn - m_nStallOut < STALL_RING)
+		{
+			m_StallRing[m_nStallIn++ % STALL_RING] = m_Stall;
+		}
+		else
+		{
+			m_nStallLost++;
+		}
+	}
+	m_Stall.nSamples = 0;
+	m_nLastYield = nNow;
 
 	if (!m_bPreempting)			// a voluntary yield: not (or no longer) a hog
 	{
@@ -167,6 +196,39 @@ void CScheduler::Yield (void)
 	}
 
 	IrqRestore (nFlags);
+}
+
+void CScheduler::StallSample (u64 ulPC, u64 ulLR)
+{
+	// IRQ context (IRQs masked): no lock needed against Yield(), which masks them too.
+	if (m_pCurrent == m_pIdleTask || m_nLastYield == 0)
+	{
+		return;
+	}
+	unsigned nNow = CTimer::Get ()->GetClockTicks ();
+	if (   (unsigned) (nNow - m_nLastYield) <= SCHED_STALL_US
+	    || m_Stall.nSamples >= STALL_SAMPLES
+	    || (m_Stall.nSamples > 0 && (unsigned) (nNow - m_nLastSample) < SCHED_STALL_SAMPLE_US))
+	{
+		return;
+	}
+	m_Stall.PC[m_Stall.nSamples] = ulPC;
+	m_Stall.LR[m_Stall.nSamples] = ulLR;
+	m_Stall.nSamples++;
+	m_nLastSample = nNow;
+}
+
+boolean CScheduler::TakeStallReport (TStallReport *pReport, unsigned *pLost)
+{
+	u64 nFlags = IrqSave ();
+	boolean bGot = m_nStallIn != m_nStallOut;
+	if (bGot)
+	{
+		*pReport = m_StallRing[m_nStallOut++ % STALL_RING];
+	}
+	if (pLost != 0) *pLost = m_nStallLost;
+	IrqRestore (nFlags);
+	return bGot;
 }
 
 void CScheduler::YieldTo (CTask *pTask)

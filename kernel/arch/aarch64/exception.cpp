@@ -209,8 +209,15 @@ void KernelIRQExit (TTrapFrame *pFrame)
 	// the kernel lock: an app inside a kapi_* call has a kernel-VA ELR and is left
 	// alone (it may hold a kernel resource; those kapis yield cooperatively anyway).
 	// Kernel threads (EL1h, or EL1t with a kernel-VA PC) are never preempted.
-	if (   !CScheduler::IsActive ()
-	    || !CScheduler::Get ()->IsReschedPending ())
+	if (!CScheduler::IsActive ())
+	{
+		return;
+	}
+
+	// Stall watchdog: where is the current task, if it has not yielded for too long?
+	CScheduler::Get ()->StallSample (pFrame->elr_el1, pFrame->x[30]);
+
+	if (!CScheduler::Get ()->IsReschedPending ())
 	{
 		return;
 	}
