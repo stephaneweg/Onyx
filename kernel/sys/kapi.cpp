@@ -1865,5 +1865,6 @@ int  kapi_sound_start (int nVoice, unsigned nMilliHz, int nWave, int nVolume) { 
 int  kapi_sound_stop (int nVoice) { return SoundStop (CallerPid (), nVoice); }
 int  kapi_sound_write (const short *pFrames, unsigned nFrames) { return SoundWrite (CallerPid (), (const s16 *) pFrames, nFrames); }
 int  kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner) { return SoundStatus (pRate, pFree, pOwner); }
+int  kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns) { return SoundInstrument (CallerPid (), nVoice, pIns); }
 
 }  // extern "C"

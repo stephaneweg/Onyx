@@ -340,6 +340,23 @@ def icon_qbasic():		# the QBasic editor: a blue screen, a grey title bar, code l
     prect(px, 27, 28, 28, 30, (255, 255, 255))		# the cursor
     return px
 
+def icon_fmtracker():		# a tracker: columns of notes, the play row highlighted, a note glyph
+    px = blank()
+    prect(px, 3, 5, 36, 34, (16, 24, 32)); pframe(px, 3, 5, 36, 34, (90, 100, 114))
+    prect(px, 4, 6, 35, 9, (86, 96, 116))			# header buttons
+    for x0 in (5, 13, 21, 29):
+        prect(px, x0, 11, x0 + 5, 33, (24, 36, 48))
+    prect(px, 4, 20, 35, 22, (48, 90, 48))			# the play position
+    import random
+    rnd = random.Random(7)
+    for x0 in (5, 13, 21, 29):
+        for y in range(12, 33, 3):
+            if rnd.random() < 0.5:
+                prect(px, x0 + 1, y, x0 + 4, y, (240, 240, 160))
+            else:
+                prect(px, x0 + 2, y, x0 + 3, y, (80, 96, 112))
+    return px
+
 def icon_basprog():		# a BASIC program (Make App icon): a page with numbered lines
     px = blank()
     prect(px, 8, 3, 31, 36, (240, 240, 232)); pframe(px, 8, 3, 31, 36, (90, 100, 114))
@@ -423,7 +440,7 @@ ICONS = {
     "voronoy": icon_voronoy, "theme": icon_theme, "config": icon_config,
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
     "notifyd": icon_notifyd, "shelf": icon_shelf, "widgets": icon_widgets, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
-    "qbasic": icon_qbasic, "basicdemo": icon_basprog,
+    "qbasic": icon_qbasic, "basicdemo": icon_basprog, "fmtracker": icon_fmtracker,
 }
 
 

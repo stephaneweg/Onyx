@@ -304,6 +304,10 @@ static inline int  kapi_sound_start (int voice, unsigned millihz, int wave, int 
 static inline int  kapi_sound_stop (int voice) { return KT->sound_stop (voice); }
 static inline int  kapi_sound_write (const short *frames, unsigned n) { return KT->sound_write (frames, n); }
 static inline int  kapi_sound_status (unsigned *rate, unsigned *free_frames, unsigned *owner) { return KT->sound_status (rate, free_frames, owner); }
+// FM (ABI v47): give a voice a 2-operator FM instrument (struct kapi_fm_instrument, see
+// kern/kapi_abi.h), then kapi_sound_start (voice, milliHz, SOUND_FM, volume) keys it on and
+// kapi_sound_stop (voice) keys it off (its release rate fades it out).
+static inline int  kapi_sound_instrument (int voice, const struct kapi_fm_instrument *ins) { return KT->sound_instrument (voice, ins); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

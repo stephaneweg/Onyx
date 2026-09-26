@@ -24,6 +24,8 @@ int  SoundAcquire (unsigned nPid);			// 1 ok (or already ours), 0 busy, -1 no au
 void SoundRelease (unsigned nPid);
 int  SoundStart (unsigned nPid, int nVoice, unsigned nMilliHz, int nWave, int nVolume);
 int  SoundStop (unsigned nPid, int nVoice);		// nVoice -1 = all
+struct kapi_fm_instrument;
+int  SoundInstrument (unsigned nPid, int nVoice, const struct kapi_fm_instrument *pIns);
 int  SoundWrite (unsigned nPid, const s16 *pFrames, unsigned nFrames);	// frames taken
 int  SoundStatus (unsigned *pRate, unsigned *pFreeFrames, unsigned *pOwnerPid);
 void SoundOnProcessGone (unsigned nPid);

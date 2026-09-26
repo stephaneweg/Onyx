@@ -37,7 +37,8 @@
 // v44: + vfs_register/vfs_next/vfs_req_data/vfs_reply -- user-space file systems (FTP:).
 // v45: + wlan_scan -- the Wi-Fi access points around.
 // v46: + sound_acquire/release/start/stop/write/status -- audio (synth voices + PCM).
-#define KAPI_ABI_VERSION	46
+// v47: + sound_instrument -- 2-operator FM instruments (OPL2 style) on the voices.
+#define KAPI_ABI_VERSION	47
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,6 +53,20 @@ typedef void (*gui_handler) (unsigned long sender, int event, long value);
 #define SOUND_TRIANGLE	2
 #define SOUND_SAW	3
 #define SOUND_NOISE	4
+#define SOUND_FM	5		// the voice's FM instrument (kapi_sound_instrument, v47)
+
+// A 2-operator FM instrument (ABI v47), OPL2 style: op[0] = modulator, op[1] = carrier.
+// mult 0..15 (x0.5, 1, 2 .. 15), level 0..63 (attenuation, 0.75 dB steps; 0 = loudest),
+// attack / decay / release 0..15 (0 = never, 15 = fastest), sustain 0..15 (the level
+// the decay stops at, 3 dB steps), wave 0 sine, 1 half sine, 2 absolute sine, 3 quarter
+// pulses. feedback 0..7 (the modulator modulates itself), connection 0 = FM (the
+// modulator bends the carrier), 1 = additive (both are heard).
+#define FM_SUSTAINED	1		// hold at the sustain level while the key is down
+#define FM_TREMOLO	2		// amplitude vibrato (1 dB, 3.7 Hz)
+#define FM_VIBRATO	4		// pitch vibrato (7 cents, 6.1 Hz)
+#define FM_KSR		8		// key scaling of the rates (accepted, not used yet)
+struct kapi_fm_op { unsigned char mult, level, ksl, attack, decay, sustain, release, wave, flags; };
+struct kapi_fm_instrument { struct kapi_fm_op op[2]; unsigned char feedback, connection; };
 #define SOUND_VOICES	16		// voices 0..15
 #define SOUND_RATE	44100		// PCM frames per second (s16 left, s16 right)
 
@@ -505,6 +520,12 @@ struct TKApiTable
 	int  (*sound_stop) (int voice);
 	int  (*sound_write) (const short *frames, unsigned nframes);
 	int  (*sound_status) (unsigned *rate, unsigned *free_frames, unsigned *owner_pid);
+
+	// --- v47 additions (FM) ---
+	// sound_instrument: give voice 0..15 an FM instrument; sound_start (voice, milliHz,
+	// SOUND_FM, volume) then keys it on (its envelopes restart), sound_stop keys it off
+	// (the release rate fades it). Owner only (-1 otherwise).
+	int  (*sound_instrument) (int voice, const struct kapi_fm_instrument *ins);
 };
 
 #ifdef __cplusplus

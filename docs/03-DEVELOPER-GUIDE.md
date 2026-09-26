@@ -262,6 +262,11 @@ Notes / caveats:
 > `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
 > returns the frames taken — loop with a short sleep while it returns 0) for audio / MIDI
 > players. Example: `user/bin/tone.c`.
+> **FM instruments (ABI v47)**: fill a `struct kapi_fm_instrument` (2 operators, OPL2-style
+> parameters, see `kern/kapi_abi.h`), `kapi_sound_instrument (voice, &ins)`, then
+> `kapi_sound_start (voice, milliHz, SOUND_FM, volume)` / `kapi_sound_stop (voice)`. The FM Song
+> formats (.FMS / .FMI) and their conversion are in `user/Apps/fmtracker/fms.h` (portable;
+> host tests: `sh tools/tests/run_fms_test.sh`).
 > **Wi-Fi scan (ABI v45)**: `kapi_wlan_scan (ap, max)` fills `struct kapi_wlan_ap` entries
 > (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
 > it blocks ~3 s. Examples: `user/bin/wifiscan.c`, `wpaconf` (Scan button + Combobox).
