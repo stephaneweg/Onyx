@@ -1,0 +1,128 @@
+ONYX BASIC -- quick reference                        (QBasic > Help > Keywords)
+==============================================================================
+
+RUNNING
+  QBasic: Run > Start (^R) checks the syntax, then runs the program in its own
+  window. Errors jump to their line. Terminal: basic prog.bas [args] -- PRINT and
+  INPUT then use the console (stdin / stdout, redirections and pipes work) until
+  the program opens a window. An app: SD:/apps/<name>.app/main.bas (File > Make
+  App...) is launched like any app.
+
+EDITOR
+  The main module and each SUB / FUNCTION are edited one at a time.
+  View > SUBs... (^L) lists them; Edit > New SUB... / New FUNCTION... adds one.
+  ^N new  ^O open  ^S save  ^R / F5 run  ^K check  ^G go to line  F1 help  F2 SUBs.
+  In a running program, Ctrl+C stops it (QBasic's Ctrl+Break).
+
+VALUES
+  Numbers: a (single), a% INTEGER, a& LONG, a! SINGLE, a# DOUBLE -- or DIM a AS
+  INTEGER / LONG / SINGLE / DOUBLE, DEFINT / DEFLNG / DEFSNG / DEFDBL / DEFSTR A-Z.
+  INTEGER / LONG round when stored (7 / 2 -> 4) and give "Overflow" out of range;
+  DOUBLEs print 15 digits. Strings: a$, DIM s AS STRING, fixed: DIM s AS STRING * 10.
+  Arrays: DIM a(10), DIM b$(1 TO 5, 3), REDIM, ERASE, LBOUND(a), UBOUND(a[, dim]).
+  OPTION BASE 1. CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
+  AND OR XOR NOT EQV IMP (true = -1). Strings join with +.
+  Records: TYPE Point / x AS INTEGER / y AS INTEGER / END TYPE, then DIM p AS Point,
+  p.x = 3, DIM t(10) AS Point, t(i).y, fields of another TYPE (p.pos.x), a = b copies,
+  SUB s (pt AS Point). LEN (var) = its size in bytes.
+
+STATEMENTS
+  PRINT [#n,] a; b, c   (; = no space, , = next 14-column zone, TAB(n) SPC(n))
+  WRITE [#n,] ...       INPUT ["prompt";] a, b$    LINE INPUT ["prompt";] a$
+  LET  IF..THEN..ELSE (one line)  IF / ELSEIF / ELSE / END IF
+  FOR i = a TO b [STEP s] ... NEXT [i]   WHILE ... WEND
+  DO [WHILE|UNTIL c] ... LOOP [WHILE|UNTIL c]   EXIT FOR / DO / SUB / FUNCTION
+  SELECT CASE x / CASE 1, 2 / CASE 3 TO 5 / CASE IS > 9 / CASE ELSE / END SELECT
+  GOTO label  GOSUB label / RETURN  ON n GOTO a, b  labels: "name:" or line numbers
+  SUB name (a, b$) ... END SUB        CALL name (x)  or  name x
+  FUNCTION name$ (n) ... name$ = ... (or RETURN value) END FUNCTION
+  DEF FNsq (x) = x * x   /   DEF FNmax (a, b) ... FNmax = ... END DEF
+    Plain variable arguments are passed by reference; (x) or an expression by
+    value; arrays with name(). DIM SHARED (module) / SHARED (in a SUB); STATIC.
+  DATA 1, "two" / READ a, b$ / RESTORE [label]    SWAP a, b    END  STOP  SYSTEM
+  RANDOMIZE [n]  SLEEP [seconds] (no number: until a key)  PAUSE milliseconds
+  REM or ' comments
+  MID$(s$, start[, n]) = t$    LSET a$ = b$ / RSET a$ = b$ (left / right in a$'s length)
+  PRINT USING "##.## $$#,### +#.##^^^^ !  \  \  &"; items   (_x = a literal x)
+
+ERRORS AND EVENTS
+  ON ERROR GOTO label (module level) ... RESUME / RESUME NEXT / RESUME label
+  ON ERROR GOTO 0; ERR (the code), ERL (the line); ERROR n raises one.
+  ON TIMER(seconds) GOSUB label + TIMER ON / OFF / STOP
+  ON KEY(n) GOSUB label + KEY(n) ON / OFF / STOP -- n: 1-10 F1-F10, 11 up, 12 left,
+    13 right, 14 down, 30 F11, 31 F12, 15-25 KEY n, CHR$(0) + CHR$(scan code).
+  (The handler ends with RETURN.)
+
+PROGRAMS
+  CHAIN file$ (runs another program; COMMON [SHARED] a, b$, c() hand values on;
+  open files stay open)   RUN [label | file$]   CLEAR   TRON / TROFF   FRE(x)
+
+SCREEN AND GRAPHICS
+  CLS [0|1|2]  LOCATE row, col  COLOR fg, bg (a palette index, or RGB(r, g, b))
+  SCREEN mode[, , apage, vpage]: 0 (640x400, 80x25), 1 (320x200, 4 colours),
+  2 (640x200), 7 (320x200, 16, 8 pages), 8 (640x200), 9 (640x350, 2 pages),
+  11 (640x480, 2), 12 (640x480, 16), 13 (320x200, 256). 320 / 200-line modes are
+  shown doubled. PCOPY src, dst copies pages.
+  FULLSCREEN [ON | OFF]: the screen scaled to the whole display (proportions kept).
+  PSET [STEP] (x, y)[, c]   PRESET   LINE [(x1, y1)]-[STEP](x2, y2)[, c][, B|BF][, style]
+  CIRCLE (x, y), r[, c[, start, end[, aspect]]]  (arcs, pies with negative angles,
+    ellipses; Onyx: CIRCLE (x, y), r, c, F fills)   PAINT (x, y)[, c[, border]]
+  DRAW "U D L R E F G H n  M x,y / M+dx,-dy  B (move) N (back)  A n  TA deg  C c  S n  P c,b"
+  GET (x1, y1)-(x2, y2), a()   PUT (x, y), a()[, PSET|PRESET|AND|OR|XOR (default)]
+  VIEW [SCREEN] (x1, y1)-(x2, y2)[, fill][, border]   WINDOW [SCREEN] (x1, y1)-(x2, y2)
+  PMAP(v, 0..3)  POINT(x, y)  POINT(0..3)  PALETTE [attr, colour]  PALETTE USING a()
+    (colour = VGA blue*65536 + green*256 + red, 0-63 each; RGB() too)
+  VIEW PRINT top TO bottom   SCREEN(row, col[, 1])  (the character / colour there)
+  DRAWTEXT x, y, text$[, c]   POS(0)  CSRLIN  MOUSEX  MOUSEY  MOUSEB (1 left 2 right 4 middle)
+  INKEY$ (arrows = CHR$(0) + "H" / "P" / "K" / "M", F1..F10 = CHR$(0) + CHR$(59..68))
+  KEYDOWN(k$) -1 while the key is held: k$ as INKEY$ gives it, or "LEFT" "RIGHT" "UP"
+    "DOWN" "SPACE" "ENTER" "ESC", a letter (Onyx; for games)
+  Text is QBasic's character set (code page 437): CHR$(176..223) frames and blocks,
+  CHR$(1..31) symbols; accents typed in the editor are translated (e = CHR$(130)).
+
+SOUND (the 3.5 mm jack)
+  PLAY "T120 O3 L4 CDE F8G8 >C2"  QBasic's music language: A-G (# + - after), a length
+    1..64 and dots, O octave 0-6 (O3 A = 440 Hz), < >, L length, T tempo, P / R pause,
+    N note 1-84, MN / ML / MS (normal, legato, staccato), MB plays in the background
+    while the program goes on (MF: in the foreground again); PLAY(0) = notes queued.
+  SOUND freq, ticks (18.2 per second)    BEEP
+  NOTEON voice, freq[, wave, volume]  (voice 0-15; wave 0 square 1 sine 2 triangle 3 saw
+    4 noise; volume 0-255): plays until NOTEOFF voice (NOTEOFF alone: all voices).
+
+WINDOW AND CONTROLS (Onyx)
+  WINDOW title$[, width, height]    (a GUI program; closing it ends the program)
+  id = BUTTON(x, y, w, h, text$)    id = LABEL(x, y, w, h, text$)
+  id = TEXTBOX(x, y, w, h[, text$]) id = CHECKBOX(x, y, w, h, text$[, checked])
+  id = LISTBOX(x, y, w, h[, "a|b|c"])   id = DROPDOWN(x, y, w, h, "a|b|c")
+  id = PROGRESS(x, y, w, h)          id = SLIDER(x, y, w, h[, max])
+  SETTEXT id, text$ (a list: adds an item)   GETTEXT$(id)   SETVALUE id, v
+  VALUE(id)  (checked -1/0, selected index, slider / progress value)
+  e = WAITEVENT  (the control clicked / changed / Enter; -1 = window closed)
+  e = EVENT      (the same without waiting; 0 = nothing)
+
+SYSTEM (Onyx)
+  NOTIFY title$, text$    r = MSGBOX(title$, text$[, 0 OK | 1 OK/Cancel | 2 Yes/No])
+  CLIPBOARD$ / SETCLIPBOARD text$     f$ = OPENFILE$([dir$])  SAVEFILE$([dir$, name$])
+  EXEC path$[, args$]   LAUNCH app$   COMMAND$ (the program's arguments)
+
+FILES
+  OPEN f$ FOR INPUT | OUTPUT | APPEND | RANDOM | BINARY AS #n [LEN = reclen]
+  (or OPEN "I" | "O" | "A" | "R" | "B", #n, f$[, reclen])   CLOSE [#n]  RESET
+  EOF(n)  LOF(n)  LOC(n)  SEEK(n)  SEEK #n, pos  FREEFILE  INPUT$(n[, #f])
+  PRINT #n  WRITE #n  INPUT #n, a  LINE INPUT #n, a$
+  GET #n[, [record][, var]]  PUT #n[, [record][, var]]  (a number, string or record)
+  FIELD #n, 10 AS a$, 20 AS b$ ...  then LSET / RSET and GET / PUT #n, record
+  MKI$ MKL$ MKS$ MKD$ / CVI CVL CVS CVD (numbers <-> binary strings)
+  KILL f$  NAME a$ AS b$  MKDIR d$  RMDIR d$  CHDIR d$  FILES [pattern$]
+  FILEEXISTS(f$)  DIR$(folder$, i)  ENVIRON "NAME=value"  ENVIRON$(name$ | n)
+  SHELL "tool args" (a /bin tool, its output on the screen; SHELL alone: a terminal)
+  Relative names are in the program's folder.
+
+FUNCTIONS
+  LEN ASC CHR$ LEFT$ RIGHT$ MID$ INSTR([start,] a$, b$) UCASE$ LCASE$ LTRIM$
+  RTRIM$ TRIM$ STR$ VAL SPACE$ STRING$(n, c) HEX$ OCT$
+  ABS SGN INT FIX CINT CLNG CSNG CDBL SQR SIN COS TAN ATN EXP LOG RND MIN MAX
+  TIMER DATE$ TIME$ TICKS
+
+EXAMPLES
+  SD:/basic/examples (QBasic > File > Examples...), SD:/apps/basicdemo.app.

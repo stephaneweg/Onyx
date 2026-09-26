@@ -713,6 +713,15 @@ barwidth = 40
   translate what goes to or comes from the system (controls, paths, clipboard, dialogs);
   `craw ()` keeps screen text (`DRAWTEXT`) and `ENVIRON` as they are. A PC render of it: `run_games_test.sh BASICRT`
   (programs in `tools/tests/basic/rt/`).
+- **The PC tools** (`pc/`, built on Linux by `sh pc/build.sh` into `pc/dist/`, which is
+  committed): `obcore.dll` (`pc/obcore/obcore.cpp`, mingw-w64) is the core + `basscreen.h` with a
+  Windows `ScreenHost` (SD:/ mapped to a folder, waveOut sound, callbacks for the window, the
+  picture, the controls and the dialogs) and a C API (`ob_check`, `ob_words`, `ob_run`,
+  `ob_key` / `ob_keyheld` / `ob_mouse` / `ob_event` / `ob_stop`); `OnyxBasic.exe`
+  (`pc/OnyxBasic`, .NET Framework 4.8 WinForms, `EnableWindowsTargeting`) is the editor
+  (`EditorForm.cs`: modules split / composed like `qbasic`) and the runtime (`Runner.cs`: the
+  VM on a worker thread, the page drawn scaled into a bitmap, WinForms controls). Wine + wine-mono
+  can run both on Linux for a check.
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
   and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them).

@@ -91,20 +91,20 @@ FUNCTION TitleScreen
   sc = 3: IF tw * sc > 300 THEN sc = 2
   x0 = (320 - tw * sc) \ 2
   FOR i = 0 TO ntl - 1
-    x = x0 + tx(i) * sc: y = 40 + ty(i) * sc
+    x = x0 + tx(i) * sc: y = 36 + ty(i) * sc
     LINE (x + 2, y + 2)-(x + sc + 1, y + sc + 1), 112, BF
   NEXT
   FOR i = 0 TO ntl - 1
-    x = x0 + tx(i) * sc: y = 40 + ty(i) * sc
+    x = x0 + tx(i) * sc: y = 36 + ty(i) * sc
     LINE (x, y)-(x + sc - 1, y + sc - 1), 40 + (ty(i) * 5) \ (th + 1), BF
   NEXT
-  COLOR 7: LOCATE 13, 12: PRINT "CATCH THE CAPSULES";
+  COLOR 7: LOCATE 12, 12: PRINT "CATCH THE CAPSULES";
   names$ = "EXPAND    SLOW      CATCH     LASER     3 BALLS   ONE MORE"
   FOR t = 1 TO 6
     col = (t - 1) \ 3: row = (t - 1) MOD 3
-    x = 40 + col * 136: y = 112 + row * 16
+    x = 40 + col * 136: y = 104 + row * 16
     PUT (x, y), capSpr((t - 1) * SPR), PSET
-    COLOR 15: LOCATE 15 + row * 2, 9 + col * 17: PRINT MID$(names$, (t - 1) * 10 + 1, 10);
+    COLOR 15: LOCATE 14 + row * 2, 9 + col * 17: PRINT MID$(names$, (t - 1) * 10 + 1, 10);
   NEXT
   COLOR 8: LOCATE 20, 4: PRINT "ARROWS / MOUSE  MOVE    P  PAUSE";
   LOCATE 21, 4: PRINT "SPACE / CLICK   FIRE    F  SCREEN";

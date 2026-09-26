@@ -2,7 +2,8 @@
 // obcore.dll (ob_run); it calls back here to open / resize the window, show its picture (a
 // 0x00RRGGBB page, drawn scaled into a bitmap) and manage the controls (real WinForms
 // controls); keys, the mouse and control events go back to it (ob_key, ob_mouse, ob_event).
-// FULLSCREEN does nothing on the PC; Alt+Enter maximises the window without its frame.
+// FULLSCREEN does nothing on the PC. A menu (opened with the mouse only: Alt and F10 stay the
+// program's keys) stops / restarts the program, fills the screen, sets the zoom.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -57,11 +58,62 @@ namespace OnyxBasic
 			try { Icon = Icon.ExtractAssociatedIcon (Application.ExecutablePath); } catch { }
 			screen = new Screen { Dock = DockStyle.Fill };
 			Controls.Add (screen);
+			Controls.Add (MakeMenu ());
 			screen.Paint += OnPaintScreen;
 			screen.KeyDown += OnKeyDown; screen.KeyUp += OnKeyUp; screen.KeyPress += OnKeyPress;
 			screen.MouseMove += OnMouse; screen.MouseDown += OnMouse; screen.MouseUp += OnMouse;
 			FormClosing += OnClosing;
 			var h = Handle;					// (the window exists for Invoke before it is shown)
+		}
+
+		// ---- the menu ---------------------------------------------------------------------------------------------
+		MenuStrip menu;
+		MenuStrip MakeMenu ()
+		{
+			menu = new MenuStrip { Dock = DockStyle.Top };
+			var prog = new ToolStripMenuItem ("&Program");
+			prog.DropDownItems.Add (new ToolStripMenuItem ("&Stop", null, (s, e) => Native.ob_stop ()) { ShortcutKeyDisplayString = "Ctrl+Break" });
+			prog.DropDownItems.Add (new ToolStripMenuItem ("&Restart", null, (s, e) => Restart ()));
+			prog.DropDownItems.Add (new ToolStripSeparator ());
+			prog.DropDownItems.Add (new ToolStripMenuItem ("&Close", null, (s, e) => Close ()));
+			var view = new ToolStripMenuItem ("&View");
+			view.DropDownItems.Add (new ToolStripMenuItem ("&Full screen", null, (s, e) => ToggleFullWindow ()) { ShortcutKeyDisplayString = "Alt+Enter" });
+			view.DropDownItems.Add (new ToolStripSeparator ());
+			for (int z = 1; z <= 4; z++)
+			{
+				int zz = z;
+				view.DropDownItems.Add (new ToolStripMenuItem ("Zoom &" + z + "x", null, (s, e) => SetZoom (zz)));
+			}
+			menu.Items.Add (prog); menu.Items.Add (view);
+			return menu;
+		}
+		// Alt and F10 would open the menu: they are the program's keys (F10 = INKEY$'s CHR$(0) + "D").
+		protected override bool ProcessCmdKey (ref Message m, Keys keyData)
+		{
+			if (keyData == (Keys.Enter | Keys.Alt)) { ToggleFullWindow (); return true; }
+			if ((keyData & Keys.KeyCode) == Keys.F10 && screen.Focused) { OnKeyDown (screen, new KeyEventArgs (keyData)); return true; }
+			if ((keyData & Keys.KeyCode) == Keys.Menu) return true;
+			return base.ProcessCmdKey (ref m, keyData);
+		}
+		protected override void WndProc (ref Message m)
+		{
+			const int WM_SYSKEYUP = 0x105, WM_SYSCOMMAND = 0x112, SC_KEYMENU = 0xF100;
+			if (m.Msg == WM_SYSCOMMAND && ((int) m.WParam & 0xFFF0) == SC_KEYMENU && m.LParam == IntPtr.Zero) return;	// (Alt / F10 alone)
+			if (m.Msg == WM_SYSKEYUP && (int) m.WParam == 0x79) { OnKeyUp (screen, new KeyEventArgs (Keys.F10)); return; }
+			base.WndProc (ref m);
+		}
+		void SetZoom (int z)
+		{
+			if (FormBorderStyle == FormBorderStyle.None) ToggleFullWindow ();
+			WindowState = FormWindowState.Normal;
+			zoom = z;
+			if (pw > 0) SizeFor (pw * psx, ph * psy);
+		}
+		bool restart;
+		void Restart ()
+		{
+			if (running) { restart = true; Native.ob_stop (); }
+			else Start ();
 		}
 
 		void Start ()
@@ -89,6 +141,17 @@ namespace OnyxBasic
 		void Finished (int r)
 		{
 			result = r;
+			if (restart)						// Program > Restart: a fresh screen, run again
+			{
+				restart = false;
+				foreach (var c in ctl.Values) { screen.Controls.Remove (c); c.Dispose (); }
+				ctl.Clear (); kindOf.Clear ();
+				fixedSize = false; FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
+				lock (picLock) { pw = ph = 0; }
+				screen.Invalidate ();
+				Start ();
+				return;
+			}
 			if (r != 0)
 			{
 				string kind = r == 2 ? "Syntax error" : "Error";
@@ -153,13 +216,14 @@ namespace OnyxBasic
 			var wa = System.Windows.Forms.Screen.FromControl (this).WorkingArea;
 			zoom = Math.Max (1, Math.Min ((wa.Width * 7 / 10) / w, (wa.Height * 7 / 10) / h));
 			SizeFor (w, h);
-			Show (); Activate (); screen.Focus ();
+			if (!Visible) { Show (); Activate (); }
+			screen.Focus ();
 			return 1;
 		}
 		void SizeFor (int w, int h)
 		{
 			if (WindowState != FormWindowState.Normal || FormBorderStyle == FormBorderStyle.None) return;
-			ClientSize = new Size (w * zoom, h * zoom);
+			ClientSize = new Size (w * zoom, h * zoom + menu.Height);
 		}
 		void Present (IntPtr px, int w, int h, int sx, int sy)
 		{
@@ -268,13 +332,13 @@ namespace OnyxBasic
 			if (FormBorderStyle != FormBorderStyle.None)
 			{
 				oldState = WindowState; oldBounds = Bounds;
-				FormBorderStyle = FormBorderStyle.None; WindowState = FormWindowState.Normal;
+				FormBorderStyle = FormBorderStyle.None; WindowState = FormWindowState.Normal; menu.Visible = false;
 				Bounds = System.Windows.Forms.Screen.FromControl (this).Bounds;
 			}
 			else
 			{
 				FormBorderStyle = fixedSize ? FormBorderStyle.FixedSingle : FormBorderStyle.Sizable;
-				Bounds = oldBounds; WindowState = oldState;
+				Bounds = oldBounds; WindowState = oldState; menu.Visible = true;
 			}
 		}
 
@@ -329,7 +393,7 @@ namespace OnyxBasic
 			{
 				fixedSize = true; zoom = 1;
 				FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
-				if (pw > 0) ClientSize = new Size (pw * psx, ph * psy);
+				if (pw > 0) ClientSize = new Size (pw * psx, ph * psy + menu.Height);
 			}
 			c.SetBounds (x, y, w, h);
 			ctl[id] = c; kindOf[id] = kind;

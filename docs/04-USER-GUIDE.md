@@ -793,6 +793,26 @@ the mouse move the paddle, Space / click launches and fires, P pause, F full scr
 off, Esc title / quit; capsules E expand, S slow, C catch, L laser, D three balls, P a life;
 it reads and writes no file).
 
+### Onyx BASIC on a Windows PC
+
+`pc/dist/` holds **Onyx BASIC for Windows** (Windows 10 / 11, nothing to install): the same
+compiler and virtual machine, to write and try programs on a PC. Copy the folder (keep
+`OnyxBasic.exe`, `OnyxBasic.exe.config` and `obcore.dll` together) and start `OnyxBasic.exe`:
+
+- **The editor** works like `qbasic`: one module at a time (the main module, each SUB /
+  FUNCTION); **View ▸ SUBs...** (F2), **Edit ▸ New SUB...** (or type `SUB Name` + Enter, as in
+  QBasic); **Run ▸ Start** (F5) checks the syntax and runs the program, an error jumps to its
+  line; the language's words are capitalised when you leave a line. Every command is in the
+  menus (**File**, **Edit**, **View**, **Run**, **Options**, **Help**); files are saved in
+  Latin-1 with Onyx line ends, ready for the SD card. **File ▸ Make App...** writes
+  `apps/<name>.app` into the SD folder.
+- **SD:/** is a folder of the PC: **Options ▸ SD Folder...** (by default the repository's
+  `sdcard/` when `pc/dist` is used in place), so programs that read files run unchanged.
+- **The program's window** shows the screen scaled (320-wide modes doubled, proportions kept),
+  with BASIC's controls as Windows controls; its menu: **Program ▸ Stop / Restart**,
+  **View ▸ Full screen / Zoom**. `FULLSCREEN` does nothing on the PC; `LAUNCH` / `EXEC` (Onyx
+  apps) are not available; `SHELL` runs a Windows command.
+
 ### The editor (`qbasic`)
 
 - As in QBasic, the program is split into **modules** edited one at a time: the **main
