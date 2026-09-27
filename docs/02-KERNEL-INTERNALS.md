@@ -356,7 +356,16 @@ and `hogsched=0` (plain round-robin) → `CScheduler::Configure`.
 - The **only** change in `task.cpp`: `TaskEntry()` re-enables the IRQ
   (`msr daifclr, #2`) so that a **fresh task** does not start with the IRQ masked
   inherited from the switcher.
-- The idle task uses `wfi`.
+- The idle task uses `wfi` (on core 0; on the network core it only pauses: no timer tick
+  there).
+- **One scheduler per core that runs tasks.** `CScheduler::Get ()` returns the scheduler of
+  the calling core (`s_pThis[core]`, the core read from `MPIDR_EL1`): core 0's, and with
+  `netcore=1` core 3's (§11). A `CTask` joins the scheduler of the core that creates it, so
+  Circle's code — tasks, `CSynchronizationEvent`, `MsSleep`, `Yield` — works unchanged on
+  either core. The wait lists of the events share one spin lock (an event may be set from
+  another core). Cores 1-2 have none (`IsActive ()` is FALSE there; `Get ()` falls back to
+  core 0's, as before). Circle's own libraries, built with Circle's `scheduler.h`, read
+  `s_pThis` as a single pointer in their inline `IsActive ()`: element 0, core 0's.
 
 ### Per-task data
 
@@ -713,9 +722,37 @@ Sources: [`kernel/kernel.cpp`](../kernel/kernel.cpp) (`CNetBringupTask`),
 `lib/net` (TCP/IP) + the `addon/wlan` BCM4343 driver + `wpa_supplicant`, all linked
 into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
 
-**Phase 1 = the whole stack on the primary core.** The user's goal of a *dedicated
-core* for the network is deferred (it needs `CMultiCoreSupport` + cross-core socket
-queues, a separate sub-project against the single-core cooperative model of §5).
+**Two placements**, chosen at boot by `cmdline.txt netcore=`:
+
+- `netcore=0` (the default): the whole stack on the primary core, as ordinary cooperative
+  tasks among the others; the socket calls run on the app's task.
+- `netcore=1`: **the network core.** Core 3 runs the stack with its own scheduler (§5): at
+  boot it waits in `WFE` (`NetCoreMain`, from `COnyxCores::Run`); once the SD card is
+  mounted, core 0 calls `NetCoreStart`, and core 3 creates its `CScheduler`, the bring-up task
+  (below) and 6 **worker** tasks. Everything the bring-up starts — Circle's `CNetTask`, DHCP,
+  NTP, the WLAN driver's kprocs, `wpa_supplicant` — is created on core 3 and runs there, so
+  the stack is still used from one core only, as it was written for. The WLAN firmware and
+  `wpa_supplicant.conf` are read from core 3 through FatFs: the volume lock
+  (`sys/fslock.cpp`) takes its owner with an atomic compare-and-swap. The SDIO interrupt
+  stays on core 0 (its handler only masks the controller's interrupt enable; the driver
+  polls), and so do the TCP / ARP kernel timers (they set flags under spin locks, which the
+  stack reads in `Process`).
+  - **Requests.** A socket kapi (`tcp_*`, `net_resolve`, `net_ping`, `net_info`,
+    `wlan_scan`) copies its arguments — the app's memory is not mapped on core 3 — into one
+    of 32 request slots (8 KB of data each: a bigger send goes in pieces), marks it
+    *posted*, and waits: it spins 300 µs (most answers take microseconds), then yields,
+    then sleeps 1 ms, then 10 ms steps (an `accept` may wait for hours). A worker claims the
+    slot (compare-and-swap), runs the same `Do*` function as `netcore=0`, and marks it
+    *done*; a `recv` gathers several segments (up to 8 KB) in one round trip. When every
+    worker waits (accepts, connects), the core adds one (up to 24). `net_status` reads the
+    state directly.
+  - **A process that dies** (in a request, or with sockets open): `NetCloseByPid` (its
+    teardown, IRQs masked: nothing waits) drops its posted requests, orphans the running
+    ones (the worker then closes what they opened), and queues its pid in a ring that the
+    net core's main loop reads to close its sockets.
+  - **Notices.** `IpcNotify` is core 0's: the bring-up leaves its "Connected" notice to
+    `NetCoreNotify`, and the kernel's main task delivers it (`NetCorePoll`, every 250 ms).
+  - Core 3 is then no longer an app core (§14).
 
 - **Bring-up is non-blocking and non-fatal.** `CNetBringupTask` (a kernel `CTask`,
   started from `Run()` once the SD card is mounted) runs `CBcm4343Device::Initialize`
@@ -725,8 +762,8 @@ queues, a separate sub-project against the single-core cooperative model of §5)
   GUI boots regardless.
 - **Self-driving.** `CNetSubSystem::Initialize` spawns Circle's own `CNetTask` /
   `CPHYTask`; they run as ordinary cooperative tasks on our scheduler (§5), so no
-  explicit pumping is needed. (This is also why the net task is CPU-busy — a
-  motivation for the future dedicated core.)
+  explicit pumping is needed. (This is also why the net task is CPU-busy — the
+  reason for `netcore=1`.)
 - **Globals.** `g_pNet` (the `CNetSubSystem`) and `g_bNetUp` are published in
   `net.h`; `NetIsUp()` gates the socket calls.
 - **Sockets.** `sys/net.cpp` keeps a small table of Circle `CSocket`s behind integer
@@ -742,7 +779,7 @@ queues, a separate sub-project against the single-core cooperative model of §5)
   `get_datetime`, the agenda and the log timestamps show local time.
 - **Caveats.** Plain-text only (no TLS); `MAX_TASKS` was raised to 40 to fit the net
   workers; the firmware load uses FatFs and is not locked against concurrent app
-  file I/O (low risk, one-shot at boot).
+  file I/O (low risk, one-shot at boot) — with `netcore=1` it is (the atomic volume lock).
 
 The apps that use it: the **irc** client (`user/irc.c`) and the **`net`** `/bin`
 tool (link status / IP).
@@ -826,7 +863,8 @@ Source: [`kernel/sys/appcore.cpp`](../kernel/sys/appcore.cpp),
 [`kern/appcore.h`](../kernel/include/kern/appcore.h); user side
 [`user/emucore.h`](../user/emucore.h), test [`user/bin/coretest.c`](../user/bin/coretest.c).
 
-Cores 2 and 3 are a **resource an app acquires**, like the sound output: it gets a whole
+Cores 2 and 3 (core 2 only with `netcore=1`: core 3 then runs the network, §11) are a
+**resource an app acquires**, like the sound output: it gets a whole
 core and runs one function of its own code there, undisturbed (no scheduler, no timer, no
 other task on that core). The rest of the system stays on core 0 as before, so none of
 the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.

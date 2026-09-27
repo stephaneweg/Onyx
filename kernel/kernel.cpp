@@ -923,7 +923,8 @@ public:
 		g_bNetUp = TRUE;
 		CString Msg;
 		Msg.Format ("Connected. IP address %s", (const char *) IPString);
-		IpcNotify ("Network", (const char *) Msg);
+		if (g_bNetCore) NetCoreNotify ("Network", (const char *) Msg);	// (IPC is core 0's)
+		else IpcNotify ("Network", (const char *) Msg);
 
 		// Sync the wall clock over NTP (its own background task; updates CTimer so
 		// kapi_get_datetime / the agenda / log timestamps show real local time).
@@ -937,6 +938,15 @@ private:
 	CWPASupplicant *m_pWPA;
 	CLogger	       *m_pLogger;
 };
+
+// netcore=1: the bring-up task is created on core 3 (by NetCoreMain), so it -- and every task
+// it starts: Circle's net tasks, the WLAN kprocs, wpa_supplicant, NTP -- runs there.
+static CBcm4343Device *s_pNetWLAN; static CNetSubSystem *s_pNetNet;
+static CWPASupplicant *s_pNetWPA; static CLogger *s_pNetLogger;
+static CTask *NewNetBringupTask (void)
+{
+	return new CNetBringupTask (s_pNetWLAN, s_pNetNet, s_pNetWPA, s_pNetLogger);
+}
 
 // Resolution: cmdline.txt "width="/"height=" override the defaults (1024x768).
 // m_Options is constructed before m_Screen/m_2DGraphics, so it is safe to query here.
@@ -1110,7 +1120,8 @@ static boolean SdFileExists (const char *pPath)
 // The secondary cores (Circle's CMultiCoreSupport, started at boot). The scheduler, the
 // interrupts and every process stay on core 0; core 1 is the sound producer (it sleeps
 // in WFE until the audio is first used, see sys/sound.cpp); cores 2 and 3 are app cores
-// that an app can acquire to run a function of its own (sys/appcore.cpp).
+// that an app can acquire to run a function of its own (sys/appcore.cpp) -- core 2 only
+// with netcore=1: core 3 then runs the network stack (its own scheduler, sys/net.cpp).
 class COnyxCores : public CMultiCoreSupport
 {
 public:
@@ -1118,6 +1129,7 @@ public:
 	void Run (unsigned nCore) override
 	{
 		if (nCore == 1) SoundCoreMain ();
+		else if (nCore == 3 && g_bNetCore) NetCoreMain ();	// the network core
 		else AppCoreMain (nCore);		// cores 2-3: app cores (kern/appcore.h)
 		for (;;) asm volatile ("wfe");
 	}
@@ -1403,11 +1415,14 @@ boolean CKernel::Initialize (void)
 #ifdef ARM_ALLOW_MULTI_CORE
 		// Start cores 1..3 (core 1 = the sound producer). Not fatal if it fails:
 		// the rest of the system only uses core 0.
+		// netcore=1 (cmdline.txt): the network stack on core 3 (then not an app core)
+		g_bNetCore = m_Options.GetAppOptionDecimal ("netcore", 0) != 0;
 		s_pCores = new COnyxCores;
 		if (s_pCores == 0 || !s_pCores->Initialize ())
 			m_Logger.Write (FromKernel, LogWarning, "secondary cores did not start (no sound producer)");
 		else
-			m_Logger.Write (FromKernel, LogNotice, "cores 1-3 started (core 1: sound)");
+			m_Logger.Write (FromKernel, LogNotice, g_bNetCore ? "cores 1-3 started (core 1: sound, core 3: network)"
+								   : "cores 1-3 started (core 1: sound)");
 #endif
 	}
 
@@ -1579,15 +1594,25 @@ TShutdownMode CKernel::Run (void)
 	// whether or not WiFi associates; apps test NetIsUp() before using sockets.
 	if (m_bSDMounted)
 	{
-		new CNetBringupTask (&m_WLAN, &m_Net, &m_WPASupplicant, &m_Logger);
-		m_Logger.Write (FromKernel, LogNotice, "net: bring-up task started");
+		if (g_bNetCore)
+		{
+			s_pNetWLAN = &m_WLAN; s_pNetNet = &m_Net; s_pNetWPA = &m_WPASupplicant; s_pNetLogger = &m_Logger;
+			NetCoreStart (NewNetBringupTask);
+			m_Logger.Write (FromKernel, LogNotice, "net: bring-up started on core 3");
+		}
+		else
+		{
+			new CNetBringupTask (&m_WLAN, &m_Net, &m_WPASupplicant, &m_Logger);
+			m_Logger.Write (FromKernel, LogNotice, "net: bring-up task started");
+		}
 	}
 
 	// The "main" task has nothing left to do; reaping is the dedicated reaper task's
 	// job now. Just idle.
 	for (;;)
 	{
-		m_Scheduler.MsSleep (1000);
+		m_Scheduler.MsSleep (250);
+		NetCorePoll ();				// the network core's notices (IpcNotify)
 	}
 
 	return ShutdownHalt;

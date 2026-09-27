@@ -54,12 +54,14 @@ static inline void IrqDisable (void)
 	asm volatile ("msr daifset, #2" ::: "memory");
 }
 
-// Idle task: runs only when nothing else is ready. Sleeps in wfi (IRQ enabled, so
-// the timer tick wakes it and the IRQ-exit path can preempt it to a woken task).
+// Idle task: runs only when nothing else is ready. On core 0 it sleeps in wfi (IRQ
+// enabled, so the timer tick wakes it and the IRQ-exit path can preempt it to a woken
+// task). The other cores get no timer tick: there it only pauses a little (a sleeping task
+// is woken by the clock, read in GetNextTask).
 class CIdleTask : public CTask
 {
 public:
-	CIdleTask (void)
+	CIdleTask (boolean bWfi) : m_bWfi (bWfi)
 	{
 		SetName ("idle");
 	}
@@ -68,13 +70,21 @@ public:
 	{
 		for (;;)
 		{
-			asm volatile ("wfi");
+			if (m_bWfi) asm volatile ("wfi");
+			else for (unsigned i = 0; i < 64; i++) asm volatile ("yield");
 			CScheduler::Get ()->Yield ();
 		}
 	}
+
+private:
+	boolean m_bWfi;
 };
 
-CScheduler *CScheduler::s_pThis = 0;
+CScheduler *CScheduler::s_pThis[SCHED_CORES] = { 0, 0, 0, 0 };
+
+// The wait lists of CSynchronizationEvent: one lock for every core's scheduler (an event
+// may be set on another core than the one its waiters run on).
+static CSpinLock s_WaitLock;
 
 CScheduler::CScheduler (void)
 :	m_nTasks (0),
@@ -95,8 +105,9 @@ CScheduler::CScheduler (void)
 	m_nStallLost (0)
 {
 	m_Stall.nSamples = 0;
-	assert (s_pThis == 0);
-	s_pThis = this;
+	m_nCore = ThisCore ();
+	assert (s_pThis[m_nCore] == 0);
+	s_pThis[m_nCore] = this;
 
 	for (unsigned i = 0; i < MAX_TASKS; i++)
 	{
@@ -112,7 +123,7 @@ CScheduler::CScheduler (void)
 	assert (m_pCurrent != 0);
 	m_pCurrent->SetName ("main");
 
-	m_pIdleTask = new CIdleTask;		// always-ready fallback (deprioritized)
+	m_pIdleTask = new CIdleTask (m_nCore == 0);	// always-ready fallback (deprioritized)
 	assert (m_pIdleTask != 0);
 }
 
@@ -121,7 +132,7 @@ CScheduler::~CScheduler (void)
 	m_pTaskSwitchHandler = 0;
 	m_pTaskTerminationHandler = 0;
 
-	s_pThis = 0;
+	s_pThis[m_nCore] = 0;
 }
 
 void CScheduler::Yield (void)
@@ -655,7 +666,7 @@ boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds)
 	assert (m_pCurrent != 0);
 	assert (m_pCurrent->GetState () == TaskStateReady);
 
-	m_SpinLock.Acquire ();
+	s_WaitLock.Acquire ();
 
 	// Add current task to the waiting task list
 	m_pCurrent->m_pWaitListNext = *ppWaitListHead;
@@ -674,11 +685,11 @@ boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds)
 		m_pCurrent->SetState (TaskStateBlockedWithTimeout);
 	}
 
-	m_SpinLock.Release ();
+	s_WaitLock.Release ();
 
 	Yield ();
 
-	m_SpinLock.Acquire ();
+	s_WaitLock.Acquire ();
 
 	// Remove this task from the wait list in case it was woken by timeout and not
 	// by the event signalling (in which case the list is already cleared and this
@@ -702,7 +713,7 @@ boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds)
 	}
 	m_pCurrent->m_pWaitListNext = 0;
 
-	m_SpinLock.Release ();
+	s_WaitLock.Release ();
 
 	// GetWakeTicks() is zero if the timeout expired, non-zero if event-signalled.
 	return m_pCurrent->GetWakeTicks () == 0;
@@ -712,7 +723,7 @@ void CScheduler::WakeTasks (CTask **ppWaitListHead)
 {
 	assert (ppWaitListHead != 0);
 
-	m_SpinLock.Acquire ();
+	s_WaitLock.Acquire ();
 
 	CTask *pTask = *ppWaitListHead;
 	*ppWaitListHead = 0;
@@ -739,7 +750,7 @@ void CScheduler::WakeTasks (CTask **ppWaitListHead)
 		pTask = pNext;
 	}
 
-	m_SpinLock.Release ();
+	s_WaitLock.Release ();
 }
 
 unsigned CScheduler::GetNextTask (void)
@@ -848,8 +859,12 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 
 CScheduler *CScheduler::Get (void)
 {
-	assert (s_pThis != 0);
-	return s_pThis;
+	// (s_pThis[0] first: Circle's libraries, built with Circle's own scheduler.h, read
+	// s_pThis as one pointer in their inline IsActive () -- core 0's scheduler, as before)
+	CScheduler *p = s_pThis[ThisCore ()];
+	if (p == 0) p = s_pThis[0];		// a core without one (sound, app cores): as before
+	assert (p != 0);
+	return p;
 }
 
 // Weak override (same as Circle): when the scheduler is active and we are on the

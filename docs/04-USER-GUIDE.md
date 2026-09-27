@@ -78,7 +78,7 @@ max_framebuffers=2
 Parameters read at boot:
 
 ```
-width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1
+width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 ```
 
 - **`width` / `height`**: framebuffer resolution (default 1024×768).
@@ -104,6 +104,12 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin
   (A/B testing).
+- **`netcore`**: `netcore=1` runs the whole **network** (Wi-Fi, wpa_supplicant, TCP/IP, DNS,
+  NTP) on **core 3**: the desktop and the network no longer slow each other down, and core 0
+  can rest when nothing happens. Core 3 is then no longer an app core: one emulator (or Doom)
+  at a time gets a core of its own (core 2), the next one runs on core 0 as before. `kmsg`
+  says `cores 1-3 started (core 1: sound, core 3: network)`. `netcore=0` (or no `netcore=`)
+  keeps the network on core 0, as before — the way back if the Wi-Fi misbehaves with it.
 
 **Without a screen**, the green **ACT LED** shows the state: slow blink (1 s) = kernel
 running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachable);

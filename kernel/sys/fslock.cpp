@@ -16,7 +16,7 @@
 #include <circle/types.h>
 #include <fatfs/ff.h>
 
-static CTask   *volatile s_pOwner[FF_VOLUMES + 1];
+static CTask   *s_pOwner[FF_VOLUMES + 1];
 static unsigned          s_nDepth[FF_VOLUMES + 1];
 
 static inline boolean IrqsOn (void)
@@ -36,11 +36,13 @@ void OnyxFsLockTake (int vol)
 	CTask *pMe = pSched->GetCurrentTask ();
 	for (;;)
 	{
-		// Kernel code is not preempted and no IRQ handler uses FatFs: test-and-set
-		// needs no atomics on this core.
-		if (s_pOwner[vol] == 0)
+		// Kernel code is not preempted and no IRQ handler uses FatFs, but the network
+		// core (netcore=1: core 3 reads the WLAN firmware, wpa_supplicant.conf) takes it
+		// too: an atomic test-and-set.
+		CTask *pFree = 0;
+		if (__atomic_compare_exchange_n (&s_pOwner[vol], &pFree, pMe, FALSE,
+						 __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
 		{
-			s_pOwner[vol] = pMe;
 			s_nDepth[vol] = 1;
 			pSched->EnterNoKill ();
 			return;
@@ -67,7 +69,7 @@ void OnyxFsLockGive (int vol)
 	}
 	if (--s_nDepth[vol] == 0)
 	{
-		s_pOwner[vol] = 0;
+		__atomic_store_n (&s_pOwner[vol], (CTask *) 0, __ATOMIC_RELEASE);
 		pSched->LeaveNoKill ();			// (ends the task here if it was killed)
 	}
 }

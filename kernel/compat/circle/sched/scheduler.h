@@ -35,6 +35,8 @@ enum TTaskFlags		///< for EnumerateTasks()
 
 typedef void TSchedulerTaskHandler (CTask *pTask);
 
+#define SCHED_CORES	4		// (a power of two: ThisCore masks the MPIDR)
+
 // Stall watchdog (diagnostics): a task that kept the CPU for more than SCHED_STALL_US
 // without passing through Yield() -- kernel code, which is not preempted. While it lasts,
 // the IRQ exit path samples where it is (the interrupted PC and LR); the next Yield()
@@ -153,11 +155,22 @@ public:
 	/// \return FALSE if there is none. *pLost: reports dropped (ring full) so far.
 	boolean TakeStallReport (TStallReport *pReport, unsigned *pLost);
 
+	// One scheduler per core that runs tasks: core 0 (the kernel, every process) and, with
+	// netcore=1, core 3 (the network stack: Circle's net / WLAN tasks, the socket workers).
+	// Get () is the scheduler of the core it is called on, so Circle's tasks, events and
+	// sleeps work unchanged on either core. The other cores have none (IsActive () = FALSE).
 	static CScheduler *Get (void);
 
 	static boolean IsActive (void)
 	{
-		return s_pThis != 0 ? TRUE : FALSE;
+		return s_pThis[ThisCore ()] != 0 ? TRUE : FALSE;
+	}
+
+	static unsigned ThisCore (void)
+	{
+		u64 nMPIDR;
+		asm volatile ("mrs %0, mpidr_el1" : "=r" (nMPIDR));
+		return (unsigned) (nMPIDR & (SCHED_CORES - 1));
 	}
 
 private:
@@ -208,9 +221,9 @@ private:
 	TStallReport m_StallRing[STALL_RING];
 	unsigned m_nStallIn, m_nStallOut, m_nStallLost;
 
-	CSpinLock m_SpinLock;
+	unsigned m_nCore;		// the core this scheduler runs
 
-	static CScheduler *s_pThis;
+	static CScheduler *s_pThis[SCHED_CORES];
 };
 
 // Length of a task's time slice, in 100 Hz scheduler ticks (10 ms each).

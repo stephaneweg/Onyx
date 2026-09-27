@@ -45,4 +45,14 @@ int   NetInfo       (char *pBuf, unsigned nCap);		// netstat text
 struct kapi_wlan_ap;
 int   NetWlanScan (struct kapi_wlan_ap *pOut, int nMax);
 
+// ---- The network core (cmdline netcore=1) ------------------------------------
+// The stack runs on core 3 with its own scheduler; the Net* calls above post it requests
+// (sys/net.cpp). Core 3 is then no longer an app core.
+class CTask;
+extern volatile boolean g_bNetCore;
+void  NetCoreMain (void);			// core 3 (COnyxCores::Run): waits for the start
+void  NetCoreStart (CTask *(*pfnBringup) (void));	// core 0: bring the stack up on core 3
+void  NetCoreNotify (const char *pTitle, const char *pText);	// net core: a notice for core 0
+void  NetCorePoll (void);			// core 0, now and then: deliver it (IpcNotify)
+
 #endif

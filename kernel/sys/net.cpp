@@ -9,6 +9,10 @@
 // A socket records its owner pid so NetCloseByPid() can reclaim it if the process
 // dies without closing (force-kill / crash), preventing slot + connection leaks.
 //
+// With netcore=1 the whole stack runs on core 3 (see "the network core" at the end):
+// the Do* functions below then run there, on worker tasks, and the Net* entry points
+// post them a request from core 0 and wait for its answer.
+//
 #include <kern/net.h>
 #include <circle/net/socket.h>
 #include <circle/net/dnsclient.h>
@@ -27,6 +31,8 @@
 #include <kern/kapi_abi.h>
 #include <circle/util.h>
 #include <circle/types.h>
+#include <kern/ipc.h>
+#include <kern/addrspace.h>
 
 #define MAX_SOCKETS	16
 
@@ -69,7 +75,7 @@ static CSocket *SockOf (int h)
 	return s_Sockets[h].pSocket;
 }
 
-int NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
+static int DoConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 {
 	if (!NetIsUp () || pHost == 0 || nPort == 0 || nPort > 0xFFFF) return -1;
 
@@ -106,21 +112,21 @@ int NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 	return h;
 }
 
-int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
+static int DoSend (int hSock, const void *pBuf, unsigned nLen)
 {
 	CSocket *pSock = SockOf (hSock);
 	if (pSock == 0) return -1;
 	return pSock->Send (pBuf, nLen, 0);			// blocking (5 s send timeout)
 }
 
-int NetTcpRecv (int hSock, void *pBuf, unsigned nLen)
+static int DoRecv (int hSock, void *pBuf, unsigned nLen)
 {
 	CSocket *pSock = SockOf (hSock);
 	if (pSock == 0) return -1;
 	return pSock->Receive (pBuf, nLen, MSG_DONTWAIT);	// >0 data / 0 none / <0 closed
 }
 
-void NetTcpClose (int hSock)
+static void DoClose (int hSock)
 {
 	if (hSock < 0 || hSock >= MAX_SOCKETS) return;
 	if (s_Sockets[hSock].pSocket != 0)
@@ -141,7 +147,7 @@ static int FreeSlot (void)
 
 // Server side: a socket bound to nPort and listening. The handle is only good for
 // NetTcpAccept (and NetTcpClose); it never carries data itself.
-int NetTcpListen (unsigned nPort, unsigned nOwnerPid)
+static int DoListen (unsigned nPort, unsigned nOwnerPid)
 {
 	if (!NetIsUp () || nPort == 0 || nPort > 0xFFFF) return -1;
 
@@ -165,7 +171,7 @@ int NetTcpListen (unsigned nPort, unsigned nOwnerPid)
 // Wait (blocking, cooperatively) for the next incoming connection on a listening
 // handle. Returns a new connected handle (use NetTcpSend/Recv/Close on it) and the
 // peer's dotted IP in pIPOut, or <0 on error.
-int NetTcpAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid)
+static int DoAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid)
 {
 	CSocket *pListen = SockOf (hListen);
 	if (pListen == 0) return -1;
@@ -195,12 +201,12 @@ int NetTcpAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid
 	return h;
 }
 
-void NetCloseByPid (unsigned nPid)
+static void DoCloseByPid (unsigned nPid)
 {
 	if (nPid == 0) return;
 	for (int i = 0; i < MAX_SOCKETS; i++)
 		if (s_Sockets[i].pSocket != 0 && s_Sockets[i].nOwnerPid == nPid)
-			NetTcpClose (i);
+			DoClose (i);
 }
 
 // Live: g_bNetUp only says the first DHCP bind happened; the Wi-Fi association can drop
@@ -244,7 +250,7 @@ static boolean ResolveHost (const char *pHost, CIPAddress &rIP)
 	return DNS.Resolve (pHost, &rIP);
 }
 
-int NetResolve (const char *pHost, char *pIPOut, unsigned nIPLen)
+static int DoResolve (const char *pHost, char *pIPOut, unsigned nIPLen)
 {
 	if (!NetIsUp () || pHost == 0) return 0;
 	CIPAddress IP;
@@ -257,7 +263,7 @@ int NetResolve (const char *pHost, char *pIPOut, unsigned nIPLen)
 // -1 network down / -3 unresolved / -4 timeout / -5 send failed. Blocks cooperatively
 // (yields while waiting). The replies come from Circle's secondary ICMP queue
 // (CNetworkLayer::EnableReceiveICMP), enabled only while a ping is in flight.
-int NetPing (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *pIPOut, unsigned nIPLen)
+static int DoPing (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *pIPOut, unsigned nIPLen)
 {
 	if (!NetIsUp () || pHost == 0) return -1;
 	CIPAddress IP;
@@ -307,7 +313,7 @@ int NetPing (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *pIPOut
 
 // Text summary for netstat: "key value" lines (hostname, ip, mask, gateway, dns, dhcp),
 // then one "tcp <handle> listen|conn <local port> <remote ip> <pid>" line per socket.
-int NetInfo (char *pBuf, unsigned nCap)
+static int DoInfo (char *pBuf, unsigned nCap)
 {
 	if (pBuf == 0 || nCap == 0) return 0;
 	unsigned n = 0;
@@ -387,7 +393,7 @@ static unsigned char BssSecurity (const TBssInfo *b, unsigned nMsgLen, unsigned 
 	return sec;
 }
 
-int NetWlanScan (struct kapi_wlan_ap *pOut, int nMax)
+static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 {
 	if (pOut == 0 || nMax <= 0) return 0;
 	CNetDevice *pDev = CNetDevice::GetNetDevice (NetDeviceTypeWLAN);
@@ -460,4 +466,381 @@ int NetWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 		pOut[j + 1] = t;
 	}
 	return nCount;
+}
+
+// ---- the network core (netcore=1) --------------------------------------------------------------
+//
+// Core 3 runs its own scheduler (CScheduler is per core) with every task of the stack on it:
+// the bring-up, Circle's CNetTask / PHY / DHCP / NTP tasks, the WLAN driver's kprocs,
+// wpa_supplicant -- all created there, so they stay there -- and a pool of worker tasks that
+// run the apps' requests. The stack is then used from one core only, as it was written for.
+// Core 0 keeps the apps: a kapi call copies its arguments (the app's memory is not mapped on
+// core 3) into a request slot, marks it posted, and waits -- spinning a little (most answers
+// take microseconds), then yielding to the other tasks of core 0. A worker claims the slot
+// (compare-and-swap), runs the Do* function, and marks it done.
+// A process that dies while it waits (or with a socket open) is cleaned up by NetCloseByPid,
+// called from its teardown: its requests are orphaned (the worker closes what they made) and
+// its pid goes to a ring the net core's main loop reads (DoCloseByPid there).
+
+volatile boolean g_bNetCore = FALSE;
+
+enum { NR_CONNECT = 1, NR_SEND, NR_RECV, NR_CLOSE, NR_LISTEN, NR_ACCEPT, NR_RESOLVE, NR_PING, NR_INFO, NR_SCAN };
+enum { RQ_FREE, RQ_POSTED, RQ_CLAIMED, RQ_DONE, RQ_ORPHAN };
+
+#define NET_REQS	32
+#define NET_REQBUF	8192
+#define NET_WORKERS	6		// at start; more when all are busy (an accept waits for long)
+#define NET_WORKERS_MAX	24
+#define NET_CLOSES	64
+#define NET_SPIN_US	300		// the caller spins this long before yielding
+
+struct TNetReq
+{
+	u32	 nState;			// RQ_* (atomic)
+	unsigned nOp, nPid;
+	int	 h;
+	unsigned n1, n2;
+	char	 szHost[128];
+	char	 szIP[20];
+	unsigned nData;
+	int	 nResult;
+	u8	 Buf[NET_REQBUF];
+};
+
+static TNetReq s_Req[NET_REQS];
+static u32 s_ClosePid[NET_CLOSES];
+static u32 s_nCloseIn, s_nCloseOut;		// core 0 / core 3 (atomic)
+static CTask *(*s_pfnBringup) (void) = 0;
+static volatile boolean s_bGo = FALSE, s_bReady = FALSE;
+static unsigned s_nWorkers = 0, s_nIdle = 0;	// (net core only)
+static char s_NoticeTitle[32], s_NoticeText[96];
+static u32 s_bNotice;
+
+static inline u32 Ld (u32 *p)		{ return __atomic_load_n (p, __ATOMIC_ACQUIRE); }
+static inline void St (u32 *p, u32 v)	{ __atomic_store_n (p, v, __ATOMIC_RELEASE); }
+static inline boolean Cas (u32 *p, u32 nFrom, u32 nTo)
+{
+	return __atomic_compare_exchange_n (p, &nFrom, nTo, FALSE, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+}
+static void CopyStr (char *d, const char *s, unsigned nCap)
+{
+	unsigned i = 0;
+	if (s != 0) for (; s[i] && i + 1 < nCap; i++) d[i] = s[i];
+	d[i] = '\0';
+}
+
+// ---- net core side ----
+static void Execute (TNetReq &r)
+{
+	switch (r.nOp)
+	{
+	case NR_CONNECT: r.nResult = DoConnect (r.szHost, r.n1, r.nPid); break;
+	case NR_SEND:	 r.nResult = DoSend (r.h, r.Buf, r.nData); break;
+	case NR_RECV:
+	{
+		// as many segments as fit (one round trip for several)
+		unsigned n = 0;
+		int k = DoRecv (r.h, r.Buf, r.nData);
+		if (k > 0)
+		{
+			n = (unsigned) k;
+			while (n + FRAME_BUFFER_SIZE <= r.nData && (k = DoRecv (r.h, r.Buf + n, r.nData - n)) > 0) n += (unsigned) k;
+			r.nResult = (int) n;
+		}
+		else r.nResult = k;
+		break;
+	}
+	case NR_CLOSE:	 DoClose (r.h); r.nResult = 0; break;
+	case NR_LISTEN:	 r.nResult = DoListen (r.n1, r.nPid); break;
+	case NR_ACCEPT:	 r.nResult = DoAccept (r.h, r.szIP, sizeof r.szIP, r.nPid); break;
+	case NR_RESOLVE: r.nResult = DoResolve (r.szHost, r.szIP, sizeof r.szIP); break;
+	case NR_PING:	 r.nResult = DoPing (r.szHost, r.n1, r.n2, r.szIP, sizeof r.szIP); break;
+	case NR_INFO:	 r.nResult = DoInfo ((char *) r.Buf, r.nData); break;
+	case NR_SCAN:	 r.nResult = DoWlanScan ((kapi_wlan_ap *) r.Buf, (int) r.n1); break;
+	default:	 r.nResult = -1; break;
+	}
+}
+
+static void Finish (TNetReq &r)
+{
+	u32 nOld = __atomic_exchange_n (&r.nState, (u32) RQ_DONE, __ATOMIC_ACQ_REL);
+	if (nOld == RQ_ORPHAN)				// its caller is gone: undo, free the slot
+	{
+		if ((r.nOp == NR_CONNECT || r.nOp == NR_ACCEPT || r.nOp == NR_LISTEN) && r.nResult >= 0) DoClose (r.nResult);
+		St (&r.nState, RQ_FREE);
+	}
+}
+
+class CNetWorker : public CTask
+{
+public:
+	CNetWorker (void) { SetName ("netwrk"); }
+	void Run (void) override
+	{
+		for (;;)
+		{
+			for (unsigned i = 0; i < NET_REQS; i++)
+			{
+				TNetReq &r = s_Req[i];
+				if (Ld (&r.nState) != RQ_POSTED || !Cas (&r.nState, RQ_POSTED, RQ_CLAIMED)) continue;
+				s_nIdle--;
+				Execute (r);
+				Finish (r);
+				s_nIdle++;
+			}
+			CScheduler::Get ()->Yield ();
+		}
+	}
+};
+
+static boolean AnyPosted (void)
+{
+	for (unsigned i = 0; i < NET_REQS; i++) if (Ld (&s_Req[i].nState) == RQ_POSTED) return TRUE;
+	return FALSE;
+}
+
+void NetCoreMain (void)
+{
+	while (!s_bGo) asm volatile ("wfe");
+	asm volatile ("dmb ish" ::: "memory");
+	new CScheduler;					// this core's; this context is its "main" task
+	if (s_pfnBringup != 0) (*s_pfnBringup) ();	// the bring-up task (created here: runs here)
+	for (unsigned i = 0; i < NET_WORKERS; i++) new CNetWorker;
+	s_nWorkers = s_nIdle = NET_WORKERS;
+	asm volatile ("dmb ish" ::: "memory");
+	s_bReady = TRUE;
+	for (;;)
+	{
+		while (s_nCloseOut != Ld (&s_nCloseIn))
+		{
+			u32 nPid = s_ClosePid[s_nCloseOut % NET_CLOSES];
+			St (&s_nCloseOut, s_nCloseOut + 1);
+			DoCloseByPid (nPid);
+		}
+		if (s_nIdle == 0 && s_nWorkers < NET_WORKERS_MAX && AnyPosted ())
+		{
+			new CNetWorker;
+			s_nWorkers++; s_nIdle++;
+		}
+		CScheduler::Get ()->ReapTerminatedTasks ();	// (the bring-up task, once done)
+		CScheduler::Get ()->Yield ();
+	}
+}
+
+// ---- core 0 side ----
+void NetCoreStart (CTask *(*pfnBringup) (void))
+{
+	s_pfnBringup = pfnBringup;
+	asm volatile ("dmb ish" ::: "memory");
+	s_bGo = TRUE;
+	asm volatile ("dsb ish; sev" ::: "memory");
+}
+
+void NetCoreNotify (const char *pTitle, const char *pText)
+{
+	CopyStr (s_NoticeTitle, pTitle, sizeof s_NoticeTitle);
+	CopyStr (s_NoticeText, pText, sizeof s_NoticeText);
+	St (&s_bNotice, 1);
+}
+
+void NetCorePoll (void)
+{
+	if (Ld (&s_bNotice) && CScheduler::ThisCore () == 0)
+	{
+		IpcNotify (s_NoticeTitle, s_NoticeText);
+		St (&s_bNotice, 0);
+	}
+}
+
+// A free slot, filled by the caller then posted (core 0 tasks are not preempted in the
+// kernel: nobody else takes it meanwhile). 0: the net core is not running.
+static TNetReq *NewReq (unsigned nOp, unsigned nPid)
+{
+	if (!s_bReady) return 0;
+	for (;;)
+	{
+		for (unsigned i = 0; i < NET_REQS; i++)
+		{
+			TNetReq &r = s_Req[i];
+			if (Ld (&r.nState) != RQ_FREE) continue;
+			r.nOp = nOp; r.nPid = nPid; r.h = -1; r.n1 = r.n2 = 0; r.nData = 0; r.nResult = -1;
+			r.szHost[0] = r.szIP[0] = '\0';
+			return &r;
+		}
+		CScheduler::Get ()->Yield ();			// all 32 in use
+	}
+}
+
+static void Post (TNetReq *r) { St (&r->nState, RQ_POSTED); asm volatile ("sev"); }
+
+// Wait for the answer; the caller reads its outputs, then Release (). Most answers take
+// microseconds (recv, send, close): spin. Then yield to the other tasks for a while (a
+// connect, a DNS lookup), then sleep in longer and longer steps -- an accept may wait for
+// hours (ftpd, telnetd, vncd) and must not keep core 0 busy meanwhile.
+static void Wait (TNetReq *r)
+{
+	unsigned nStart = CTimer::Get ()->GetClockTicks ();
+	while (Ld (&r->nState) != RQ_DONE)
+	{
+		unsigned nWaited = CTimer::Get ()->GetClockTicks () - nStart;
+		if (nWaited < NET_SPIN_US) continue;
+		if (nWaited < 5000) CScheduler::Get ()->Yield ();
+		else CScheduler::Get ()->MsSleep (nWaited < 200000 ? 1 : 10);
+	}
+}
+static void Release (TNetReq *r) { St (&r->nState, RQ_FREE); }
+
+static unsigned CurrentPid (void);
+
+int NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
+{
+	if (!g_bNetCore) return DoConnect (pHost, nPort, nOwnerPid);
+	if (!NetIsUp () || pHost == 0) return -1;
+	TNetReq *r = NewReq (NR_CONNECT, nOwnerPid); if (r == 0) return -1;
+	CopyStr (r->szHost, pHost, sizeof r->szHost); r->n1 = nPort;
+	Post (r); Wait (r);
+	int n = r->nResult; Release (r); return n;
+}
+
+int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
+{
+	if (!g_bNetCore) return DoSend (hSock, pBuf, nLen);
+	int nTotal = 0;
+	const u8 *p = (const u8 *) pBuf;
+	do
+	{
+		unsigned k = nLen > NET_REQBUF ? NET_REQBUF : nLen;
+		TNetReq *r = NewReq (NR_SEND, CurrentPid ()); if (r == 0) return -1;
+		r->h = hSock; r->nData = k;
+		memcpy (r->Buf, p, k);				// (the app's memory: mapped here, on core 0)
+		Post (r); Wait (r);
+		int n = r->nResult; Release (r);
+		if (n < 0) return nTotal > 0 ? nTotal : n;
+		nTotal += n; p += n; nLen -= (unsigned) n;
+		if ((unsigned) n < k) break;
+	}
+	while (nLen > 0);
+	return nTotal;
+}
+
+int NetTcpRecv (int hSock, void *pBuf, unsigned nLen)
+{
+	if (!g_bNetCore) return DoRecv (hSock, pBuf, nLen);
+	if (nLen == 0) return 0;
+	TNetReq *r = NewReq (NR_RECV, CurrentPid ()); if (r == 0) return -1;
+	r->h = hSock; r->nData = nLen > NET_REQBUF ? NET_REQBUF : nLen;
+	Post (r); Wait (r);
+	int n = r->nResult;
+	if (n > 0) memcpy (pBuf, r->Buf, (unsigned) n);
+	Release (r); return n;
+}
+
+void NetTcpClose (int hSock)
+{
+	if (!g_bNetCore) { DoClose (hSock); return; }
+	TNetReq *r = NewReq (NR_CLOSE, CurrentPid ()); if (r == 0) return;
+	r->h = hSock;
+	Post (r); Wait (r); Release (r);
+}
+
+int NetTcpListen (unsigned nPort, unsigned nOwnerPid)
+{
+	if (!g_bNetCore) return DoListen (nPort, nOwnerPid);
+	if (!NetIsUp ()) return -1;
+	TNetReq *r = NewReq (NR_LISTEN, nOwnerPid); if (r == 0) return -1;
+	r->n1 = nPort;
+	Post (r); Wait (r);
+	int n = r->nResult; Release (r); return n;
+}
+
+int NetTcpAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid)
+{
+	if (!g_bNetCore) return DoAccept (hListen, pIPOut, nIPLen, nOwnerPid);
+	TNetReq *r = NewReq (NR_ACCEPT, nOwnerPid); if (r == 0) return -1;
+	r->h = hListen;
+	Post (r); Wait (r);
+	int n = r->nResult;
+	if (n >= 0 && pIPOut != 0 && nIPLen > 0) CopyStr (pIPOut, r->szIP, nIPLen);
+	Release (r); return n;
+}
+
+void NetCloseByPid (unsigned nPid)
+{
+	if (!g_bNetCore) { DoCloseByPid (nPid); return; }
+	if (nPid == 0 || !s_bReady) return;
+	// (from the teardown, IRQs masked: nothing here waits)
+	for (unsigned i = 0; i < NET_REQS; i++)
+	{
+		TNetReq &r = s_Req[i];
+		if (r.nPid != nPid) continue;
+		if (Cas (&r.nState, RQ_POSTED, RQ_FREE)) continue;	// not started: dropped
+		if (Cas (&r.nState, RQ_CLAIMED, RQ_ORPHAN)) continue;	// running: the worker undoes it
+		if (Ld (&r.nState) == RQ_DONE) St (&r.nState, RQ_FREE);	// (its sockets: closed by pid)
+	}
+	u32 nIn = Ld (&s_nCloseIn);
+	if (nIn - Ld (&s_nCloseOut) < NET_CLOSES)
+	{
+		s_ClosePid[nIn % NET_CLOSES] = nPid;
+		St (&s_nCloseIn, nIn + 1);
+		asm volatile ("sev");
+	}
+}
+
+int NetResolve (const char *pHost, char *pIPOut, unsigned nIPLen)
+{
+	if (!g_bNetCore) return DoResolve (pHost, pIPOut, nIPLen);
+	if (!NetIsUp () || pHost == 0) return 0;
+	TNetReq *r = NewReq (NR_RESOLVE, CurrentPid ()); if (r == 0) return 0;
+	CopyStr (r->szHost, pHost, sizeof r->szHost);
+	Post (r); Wait (r);
+	int n = r->nResult;
+	if (n > 0 && pIPOut != 0 && nIPLen > 0) CopyStr (pIPOut, r->szIP, nIPLen);
+	Release (r); return n;
+}
+
+int NetPing (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *pIPOut, unsigned nIPLen)
+{
+	if (!g_bNetCore) return DoPing (pHost, nSeq, nTimeoutMs, pIPOut, nIPLen);
+	if (!NetIsUp () || pHost == 0) return -1;
+	TNetReq *r = NewReq (NR_PING, CurrentPid ()); if (r == 0) return -1;
+	CopyStr (r->szHost, pHost, sizeof r->szHost); r->n1 = nSeq; r->n2 = nTimeoutMs;
+	Post (r); Wait (r);
+	int n = r->nResult;
+	if (pIPOut != 0 && nIPLen > 0) CopyStr (pIPOut, r->szIP, nIPLen);
+	Release (r); return n;
+}
+
+int NetInfo (char *pBuf, unsigned nCap)
+{
+	if (!g_bNetCore) return DoInfo (pBuf, nCap);
+	if (pBuf == 0 || nCap == 0) return 0;
+	TNetReq *r = NewReq (NR_INFO, CurrentPid ());
+	if (r == 0) { CopyStr (pBuf, "up no\n", nCap); return (int) (nCap > 6 ? 6 : nCap - 1); }
+	r->nData = nCap > NET_REQBUF ? NET_REQBUF : nCap;
+	Post (r); Wait (r);
+	int n = r->nResult;
+	if (n >= 0) { memcpy (pBuf, r->Buf, (unsigned) n); pBuf[n < (int) nCap ? n : (int) nCap - 1] = '\0'; }
+	Release (r); return n;
+}
+
+int NetWlanScan (struct kapi_wlan_ap *pOut, int nMax)
+{
+	if (!g_bNetCore) return DoWlanScan (pOut, nMax);
+	if (pOut == 0 || nMax <= 0) return 0;
+	int nFit = (int) (NET_REQBUF / sizeof (kapi_wlan_ap));
+	if (nMax > nFit) nMax = nFit;
+	TNetReq *r = NewReq (NR_SCAN, CurrentPid ()); if (r == 0) return 0;
+	r->n1 = (unsigned) nMax;
+	Post (r); Wait (r);
+	int n = r->nResult;
+	if (n > 0) memcpy (pOut, r->Buf, (unsigned) n * sizeof (kapi_wlan_ap));
+	Release (r); return n;
+}
+
+// The calling process (its requests are orphaned if it dies while it waits).
+static unsigned CurrentPid (void)
+{
+	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
+	CAddressSpace *pAS = pTask != 0 ? (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER) : 0;
+	return pAS != 0 ? pAS->GetPid () : 0;
 }
