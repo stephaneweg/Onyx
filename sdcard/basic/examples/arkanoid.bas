@@ -10,7 +10,7 @@
 '
 ' Shows: FULLSCREEN, KEYDOWN, MOUSEX / MOUSEB, GET / PUT sprites, PLAY "MB" (the sound
 ' effects play in the background), ON ERROR, levels in DATA, SUBs and FUNCTIONs working on
-' SHARED arrays, CORE ON (the game runs on an app core when one is free).
+' SHARED arrays.
 
 CONST LEFTX = 8, RIGHTX = 215, TOPY = 8, BOTY = 199     ' the playfield, inside the walls
 CONST NC = 13, NR = 12, BW = 16, BH = 8, BY0 = 24        ' the brick grid
@@ -32,7 +32,6 @@ FOR i = 0 TO 7: READ shade(i): NEXT
 
 SCREEN 13
 fs = -1: FULLSCREEN
-CORE ON                  ' on an app core (core 2 or 3) when one is free; else here, as before
 RANDOMIZE TIMER
 
 ' The sound output may be busy (another program plays): then the game is silent.
@@ -110,7 +109,6 @@ FUNCTION TitleScreen
   COLOR 8: LOCATE 20, 4: PRINT "ARROWS / MOUSE  MOVE    P  PAUSE";
   LOCATE 21, 4: PRINT "SPACE / CLICK   FIRE    F  SCREEN";
   COLOR 7: LOCATE 25, 12: PRINT "HIGH SCORE"; hiscore;
-  COLOR 8: LOCATE 25, 33: IF CORE THEN PRINT "CORE"; CORE;
   Sfx "T140 L16 O4 G > C E G E C8"
   FlushSfx
   DO WHILE MOUSEB AND 1: PAUSE 10: LOOP
