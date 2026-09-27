@@ -190,6 +190,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 3x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (nes::W * z, nes::H * z), nes::W * z, nes::H * z, g_stride);
+	wtk::wk_decorate_window ();					// the frame follows
 	g_root->width = nes::W * z; g_root->height = nes::H * z;
 	g_root->invalidate (true);
 }

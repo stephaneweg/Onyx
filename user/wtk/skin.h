@@ -43,7 +43,8 @@ Skin &wk_button_skin ();
 
 // Draw the standard window chrome (title bar + borders + close box + title text) into
 // both chrome copies of this window. No-op for a borderless window / no window. Drawn
-// once (guarded); Root calls it after creating its window.
+// once per size (guarded); Root calls it after creating its window; call it again after
+// kapi_resize_window (the frame then follows the new size).
 void wk_decorate_window ();
 
 } // namespace wtk

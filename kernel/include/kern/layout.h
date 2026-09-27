@@ -87,6 +87,8 @@
 // Full-screen apps (ABI v41 kapi_fullscreen_begin): the kernel-owned, screen-sized
 // back buffer is mapped here; kapi_present_fb puts it on the display.
 #define USER_FULLSCREEN_CANVAS	(15ULL * GIGABYTE)	// 0x3_C000_0000
+// ... and (v55 kapi_fullscreen_direct) the displayed framebuffer itself, 512 MB up.
+#define USER_FULLSCREEN_SCREEN	(USER_FULLSCREEN_CANVAS + 0x20000000ULL)
 
 // Per-process arena for shell-allocated SURFACES (kapi_surface_map). Each surface is
 // bump-allocated a 64 KB-aligned VA window here, in the gap between the wallpaper
@@ -161,6 +163,11 @@ struct TKPageAttr
 // App data / stack / window canvas: EL1 read/write, never executable.
 #define KPAGE_ATTR_APP_DATA \
 	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
+
+// The displayed framebuffer (kapi_fullscreen_direct): EL1 read/write, normal uncached
+// (what the app writes reaches the scan-out at once), never executable.
+#define KPAGE_ATTR_APP_SCREEN \
+	{ ATTRINDX_COHERENT, ATTRIB_AP_RW_EL1,  ATTRIB_SH_OUTER_SHAREABLE, 1, 1, 1 }
 
 // App read-only data (the shared kapi ABI table): EL1 read-only, never executable.
 #define KPAGE_ATTR_APP_RODATA \

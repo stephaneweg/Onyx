@@ -66,6 +66,7 @@ void kapi_shutdown (int);
 unsigned *kapi_fullscreen_begin (int *, int *);
 void kapi_present_fb (void);
 void kapi_fullscreen_end (void);
+unsigned *kapi_fullscreen_direct (int *, int *, int *);
 int  kapi_drag_begin (int, const void *, unsigned, const char *);
 int  kapi_drag_data (int *, void *, unsigned);
 unsigned kapi_get_modifiers (void);
@@ -341,4 +342,5 @@ void KApiTableInit (void)
 	t->gpu_draw          = kapi_gpu_draw;
 	t->gpu_texture       = kapi_gpu_texture;
 	t->gpu_render        = kapi_gpu_render;
+	t->fullscreen_direct = kapi_fullscreen_direct;
 }

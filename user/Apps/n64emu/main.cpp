@@ -10,7 +10,8 @@
 //   * Keys: arrows = the stick, X = A, C = B, Z = Z, Enter = Start, Q / W = L / R, I J K L =
 //     the C buttons, T F G H = the D-pad; a USB gamepad (user/gamepad.h): the left stick, A
 //     (bottom) = A, X (left) = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons,
-//     the D-pad. F11: full screen (Esc back), F12: the speed, P: pause.
+//     the D-pad. F11: full screen (Esc back; the GPU then renders straight into the displayed
+//     framebuffer, kapi v55, at the screen's resolution), F12: the speed, P: pause.
 //   * The cartridge's save (SRAM / EEPROM) is <rom>.sav beside the ROM.
 //   * The sound: the audio tasks of Zelda Ocarina of Time / Majora's Mask (their microcode, at a
 //     high level: user/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
@@ -34,7 +35,7 @@ static bool g_paused = false;
 static bool g_sound = true;
 static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
 static volatile bool g_audioOn = false;				// the machine's sound is kept
-static unsigned *g_fs = 0; static int g_fsw, g_fsh;
+static unsigned *g_fs = 0; static int g_fsw, g_fsh, g_fsStride;	// (full screen: the back buffer, or the screen itself)
 static Root *g_root = 0;
 static bool g_stats = false;
 static char g_statText[128] = "";
@@ -173,7 +174,15 @@ static void full_screen (bool on)
 	if (on && !g_fs)
 	{
 		g_fs = kapi_fullscreen_begin (&g_fsw, &g_fsh);
-		if (g_fs) for (long i = 0; i < (long) g_fsw * g_fsh; i++) g_fs[i] = 0;
+		g_fsStride = g_fsw;
+		if (g_fs)
+		{
+			// the GPU renders straight into the displayed framebuffer (v55): no copy a frame
+			int w, h, st;
+			unsigned *scr = kapi_fullscreen_direct (&w, &h, &st);
+			if (scr) { g_fs = scr; g_fsw = w; g_fsh = h; g_fsStride = st; }
+			for (int y = 0; y < g_fsh; y++) for (int x = 0; x < g_fsw; x++) g_fs[(long) y * g_fsStride + x] = 0;
+		}
 	}
 	else if (!on && g_fs) { kapi_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
 }
@@ -183,9 +192,9 @@ static void show_frame (void)
 	{
 		int ow = g_fsw, oh = g_fsw * 3 / 4;				// 4:3, centred
 		if (oh > g_fsh) { oh = g_fsh; ow = g_fsh * 4 / 3; }
-		unsigned *p = g_fs + (long) ((g_fsh - oh) / 2) * g_fsw + (g_fsw - ow) / 2;
-		draw_into (p, ow, oh, g_fsw);
-		if (g_stats) { Canvas c; c.adopt (g_fs, g_fsw, g_fsh); c.fillRect (0, g_fsh - 20, g_fsw, 20, 0); c.text (4, g_fsh - 18, g_statText, 0x00FFFF60); }
+		unsigned *p = g_fs + (long) ((g_fsh - oh) / 2) * g_fsStride + (g_fsw - ow) / 2;
+		draw_into (p, ow, oh, g_fsStride);
+		if (g_stats) { Canvas c; c.adopt (g_fs, g_fsw, g_fsh, g_fsStride); c.fillRect (0, g_fsh - 20, g_fsw, 20, 0); c.text (4, g_fsh - 18, g_statText, 0x00FFFF60); }
 		kapi_present_fb ();
 	}
 	else { g_root->invalidate (true); g_root->draw (); kapi_present (); }
@@ -195,6 +204,7 @@ static void set_zoom (int z)
 {
 	g_zoom = z;
 	g_root->canvas.adopt (kapi_resize_window (320 * z, 240 * z), 320 * z, 240 * z, g_stride);
+	wtk::wk_decorate_window ();					// the frame follows
 	g_root->width = 320 * z; g_root->height = 240 * z;
 	g_root->invalidate (true);
 }

@@ -214,7 +214,11 @@ Notes / caveats:
 > screen-sized buffer; draw into it and call `kapi_present_fb ()` once per frame (it also
 > yields). The desktop is not drawn meanwhile and all input comes to your key/pointer
 > handlers in screen coordinates. `kapi_fullscreen_end ()` (or exiting) restores the
-> desktop. See `user/Apps/plasma`.
+> desktop. See `user/Apps/plasma`. **v55**: `unsigned *scr = kapi_fullscreen_direct (&w, &h, &stride);`
+> (after `fullscreen_begin`) gives the **displayed framebuffer itself** (uncached; `stride` in
+> pixels): draw there — or render there with `kapi_gpu_render` — and nothing is copied any
+> more (`kapi_present_fb` only yields); tearing is possible. 0: keep the back buffer. Used
+> by `n64emu` in full screen.
 >
 > Files: `fsutil.h` (`fs_join`, `fs_exists`, `fs_is_dir`, `fs_copy_tree`,
 > `fs_remove_tree`, `fs_unique_name`) and `trash.h` (`trash_move`, `trash_restore`,
@@ -988,7 +992,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   width** as pitch. Draw with that pitch: `canvas.adopt (kapi_resize_window (w, h), w, h,
   creationWidth)`. To offer several sizes, create the window at the largest one (the
   emulators: their 4x zoom). Adopting with pitch = the new width gave a doubled, interlaced
-  picture in `gbemu` at zoom 2x.
+  picture in `gbemu` at zoom 2x. The window's **frame follows the new size**: call
+  `wtk::wk_decorate_window ()` after the resize so the title bar and borders are redrawn
+  at it (else the frame keeps the old drawing).
 - **`kapi_mkdir` / `kapi_remove` / `kapi_rename` return 0 on success** (-1 on failure),
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
   check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,

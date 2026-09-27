@@ -171,6 +171,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 4x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (gba::W * z, gba::H * z), gba::W * z, gba::H * z, g_stride);
+	wtk::wk_decorate_window ();					// the frame follows
 	g_root->width = gba::W * z; g_root->height = gba::H * z;
 	g_root->invalidate (true);
 }

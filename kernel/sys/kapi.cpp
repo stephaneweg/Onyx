@@ -34,6 +34,7 @@
 #include <circle/machineinfo.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
 #include <circle/actled.h>		// kapi_shutdown: LED off
 #include <circle/2dgraphics.h>		// kapi_present_fb
+#include <circle/bcmframebuffer.h>		// kapi_fullscreen_direct
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -394,6 +395,14 @@ int kapi_menu_command (int nID)
 	return pWM != 0 && pWM->SendMenuCommand (nID) ? 1 : 0;
 }
 
+extern C2DGraphics *g_pGraphics;
+// v55: the full-screen window drawing straight into the displayed framebuffer (none: 0)
+static CWindow *s_pDirectWin = 0;
+static boolean FsDirect (CWindowManager *pWM)
+{
+	return s_pDirectWin != 0 && pWM->FullscreenWindow () == s_pDirectWin;
+}
+
 // --- v38: remote screen (vncd) ----------------------------------------------
 // Composite the current screen (windows + wallpaper + cursor, exactly what the
 // compositor shows) straight into the caller's buffer of w*h 0x00RRGGBB pixels. w/h
@@ -414,6 +423,13 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 		return 2;
 	}
 	s_nGen = nGen; s_pLast = pDst;
+	if (FsDirect (pWM))						// straight from the screen
+	{
+		CBcmFrameBuffer *pFB = (CBcmFrameBuffer *) g_pGraphics->GetDisplay ();
+		const u8 *pSrc = (const u8 *) (uintptr) pFB->GetBuffer ();
+		for (int y = 0; y < nH; y++) memcpy (pDst + (size_t) y * nW, pSrc + (size_t) y * pFB->GetPitch (), (size_t) nW * 4);
+		return 1;
+	}
 	if (pWM->FullscreenWindow () != 0 && pWM->FullscreenBuffer () != 0)
 	{
 		memcpy (pDst, pWM->FullscreenBuffer (), (size_t) nW * nH * 4);	// what is shown
@@ -1818,9 +1834,41 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 	pWin->Move (0, 0);
 	memset ((void *) ulPhys, 0, (size_t) g_nScreenWidth * g_nScreenHeight * 4);
 	pWM->SetFullscreen (pWin);
+	s_pDirectWin = 0;
 	if (pW != 0) *pW = g_nScreenWidth;
 	if (pH != 0) *pH = g_nScreenHeight;
 	return (unsigned *) USER_FULLSCREEN_CANVAS;
+}
+
+// The displayed framebuffer, mapped in the full-screen app: it draws (and the GPU renders)
+// there; present_fb then copies nothing. Circle's C2DGraphics here is on the firmware's
+// framebuffer (CBcmFrameBuffer: its display), 32 bits a pixel, 0x00RRGGBB as the back buffer.
+unsigned *kapi_fullscreen_direct (int *pW, int *pH, int *pStride)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || pWM->FullscreenWindow () == 0
+	    || pWM->FullscreenWindow () != pAS->GetWindow ())
+	{
+		return 0;
+	}
+	CBcmFrameBuffer *pFB = (CBcmFrameBuffer *) g_pGraphics->GetDisplay ();
+	if (pFB == 0 || pFB->GetDepth () != 32 || (int) pFB->GetWidth () != g_nScreenWidth
+	    || (int) pFB->GetHeight () != g_nScreenHeight || pFB->GetBuffer () == 0)
+	{
+		return 0;
+	}
+	u64 ulPhys = pFB->GetBuffer (), ulBase = ulPhys & ~(u64) (KPAGE_SIZE - 1);
+	u64 ulEnd = ulPhys + (u64) pFB->GetPitch () * pFB->GetHeight ();
+	unsigned nPages = (unsigned) ((ulEnd - ulBase + KPAGE_SIZE - 1) / KPAGE_SIZE);
+	TKPageAttr Attr = KPAGE_ATTR_APP_SCREEN;
+	pAS->MapContig (USER_FULLSCREEN_SCREEN, ulBase, nPages, Attr);
+	DataSyncBarrier ();
+	s_pDirectWin = pAS->GetWindow ();
+	if (pW != 0) *pW = g_nScreenWidth;
+	if (pH != 0) *pH = g_nScreenHeight;
+	if (pStride != 0) *pStride = (int) (pFB->GetPitch () / 4);
+	return (unsigned *) (USER_FULLSCREEN_SCREEN + (ulPhys - ulBase));
 }
 
 // Show the full-screen back buffer (copy to the framebuffer + present), then yield.
@@ -1829,6 +1877,11 @@ void kapi_present_fb (void)
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
 	if (pAS != 0 && pWM != 0 && g_pGraphics != 0 && pWM->FullscreenWindow () != 0
+	    && pWM->FullscreenWindow () == pAS->GetWindow () && FsDirect (pWM))
+	{
+		ScreenDirty ();				// (already on the screen)
+	}
+	else if (pAS != 0 && pWM != 0 && g_pGraphics != 0 && pWM->FullscreenWindow () != 0
 	    && pWM->FullscreenWindow () == pAS->GetWindow () && pWM->FullscreenBuffer () != 0)
 	{
 		unsigned nW = g_pGraphics->GetWidth (), nH = g_pGraphics->GetHeight ();
@@ -1853,6 +1906,7 @@ void kapi_fullscreen_end (void)
 	if (pAS != 0 && pWM != 0 && pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ())
 	{
 		CWindow *pWin = pAS->GetWindow ();
+		s_pDirectWin = 0;
 		pWM->SetFullscreen (0);
 		// back where it was; else (made full screen at once) centred, below the menu bar
 		int x = s_nFsX, y = s_nFsY;

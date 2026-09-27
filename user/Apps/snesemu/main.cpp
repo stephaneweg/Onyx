@@ -179,6 +179,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 3x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (snes::W * z, EH * z), snes::W * z, EH * z, g_stride);
+	wtk::wk_decorate_window ();					// the frame follows
 	g_root->width = snes::W * z; g_root->height = EH * z;
 	g_root->invalidate (true);
 }

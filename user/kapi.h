@@ -340,6 +340,10 @@ static inline int  kapi_gpu_texture (int handle, const unsigned *pixels, int w, 
 static inline int  kapi_gpu_render (const struct kapi_gpu_frame *f, const struct kapi_gpu_vertex3 *v, unsigned nv,
 				    const struct kapi_gpu_batch *b, unsigned nb)
 { return KT->version >= 53 ? KT->gpu_render (f, v, nv, b, nb) : -1; }
+// Full screen straight into the displayed framebuffer (v55; after kapi_fullscreen_begin):
+// its pixels (stride in pixels), or 0 (keep drawing into the back buffer + present_fb).
+static inline unsigned *kapi_fullscreen_direct (int *w, int *h, int *stride)
+{ return KT->version >= 55 ? KT->fullscreen_direct (w, h, stride) : 0; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

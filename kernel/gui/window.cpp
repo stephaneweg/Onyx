@@ -116,6 +116,11 @@ void CWindow::SetLogicalSize (int w, int h)
 	if (h < 1) h = 1; else if (h > maxH) h = maxH;
 	m_nLogicalW = w;
 	m_nLogicalH = h;
+	if (HasChrome ())				// the frame follows (its copies were made for the
+	{						// canvas's full size: always big enough); the app
+		m_nOuterW = ChromeL () + w + ChromeR ();	// redraws it (wtk: wk_decorate_window)
+		m_nOuterH = ChromeT () + h + ChromeB ();
+	}
 	if (h < m_nMinLogicalH)
 	{
 		m_nMinLogicalH = h;

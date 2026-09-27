@@ -101,6 +101,7 @@ public:
 		if (w > winW) w = winW;
 		if (h > winH) h = winH;
 		root->canvas.adopt (kapi_resize_window (w, h), w, h, winW);
+		wtk::wk_decorate_window ();					// the frame follows
 		root->width = w; root->height = h;
 	}
 	void pageChanged () override { root->vis = visible (); root->vw = W; root->vh = H; root->sx = sx; root->sy = sy; }

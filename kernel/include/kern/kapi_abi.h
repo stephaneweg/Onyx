@@ -55,7 +55,9 @@
 // v54: gpu_render: the vertex's last 4 bytes (reserved until then, 0 in the programs of v53) are
 //      a second colour r2 g2 b2 a2, added to the result (colour + colour2, or texel * colour +
 //      colour2, clamped to 1); KAPI_GPU_B_ALPHATEST(t): the pixels whose alpha < t / 255 are not drawn.
-#define KAPI_ABI_VERSION	54
+// v55: + fullscreen_direct -- a full-screen app draws straight into the displayed framebuffer
+//      (no copy by present_fb; the GPU renders there too).
+#define KAPI_ABI_VERSION	55
 
 #ifdef __cplusplus
 extern "C" {
@@ -688,6 +690,14 @@ struct TKApiTable
 	int  (*gpu_texture) (int handle, const unsigned *pixels, int w, int h, int stride);
 	int  (*gpu_render) (const struct kapi_gpu_frame *f, const struct kapi_gpu_vertex3 *v, unsigned nv,
 			    const struct kapi_gpu_batch *b, unsigned nb);
+
+	// --- v55 additions ---
+	// fullscreen_direct: after fullscreen_begin, the framebuffer the display scans out,
+	// mapped in the caller (0x00RRGGBB, uncached: write it, do not read it back much):
+	// what is written there is on the screen at once (no double buffering: tearing is
+	// possible), and present_fb stops copying the back buffer (it only yields). *stride:
+	// pixels a row. 0 if not possible (then keep the back buffer). fullscreen_end ends it.
+	unsigned *(*fullscreen_direct) (int *w, int *h, int *stride);
 };
 
 #ifdef __cplusplus

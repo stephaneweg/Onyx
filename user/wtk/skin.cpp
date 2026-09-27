@@ -123,14 +123,14 @@ static void wk_line (unsigned *fb, int W, int H, int x0, int y0, int x1, int y1,
 
 void wk_decorate_window ()
 {
-	static bool s_done = false;
-	if (s_done) return;
-	s_done = true;
+	static int s_w = -1, s_h = -1;			// the size drawn (redrawn when it changes)
 
 	init ();					// load the global font family (every app-drawn
 							// window calls this; Root apps init() too -- idempotent)
 	struct kapi_chrome c;
 	if (!kapi_get_chrome (&c) || c.active == 0) return;	// no window / borderless
+	if (c.chrome_w == s_w && c.chrome_h == s_h) return;
+	s_w = c.chrome_w; s_h = c.chrome_h;
 	Skin &ws = windowSkin ();
 	Skin &cs = closeSkin ();
 	int W = c.chrome_w, H = c.chrome_h, T = c.inset_t;
