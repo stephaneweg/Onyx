@@ -24,6 +24,7 @@ g++ -O2 -std=c++17 -c -I"$T" -I"$HERE/fs/stub" "$T/diskio.cpp" -o "$T/diskio.o"
 g++ -O2 -std=c++17 -I"$T" -I"$HERE/fs/stub" "$HERE/fs/fstest.cpp" "$T/ff.o" "$T/ffunicode.o" "$T/diskio.o" -o "$T/fstest"
 g++ -O2 -std=c++17 -I"$T" -I"$HERE/fs/stub" "$HERE/fs/fstest.cpp" "$T/ff_up.o" "$T/ffunicode.o" "$T/diskio.o" -o "$T/fstest_up"
 fail=0
+"$T/fstest" parts || fail=1
 for fmt in fat32 exfat; do
 for cl in 512 1024; do
 	for seed in 1 2 3; do

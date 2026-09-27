@@ -42,8 +42,49 @@ static unsigned rnd (void) { s_seed = s_seed * 1103515245u + 12345u; return (s_s
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; if (fails < 20) { printf ("FAIL: "); printf (__VA_ARGS__); printf ("\n"); } } } while (0)
 
+// The SD card's layout for Onyx (ffconf.h FF_MULTI_PARTITION, diskio.cpp VolToPart): an MBR,
+// partition 1 FAT32 (the boot one: SD:), partition 2 exFAT (SD1:); both mounted, a file on each.
+static int parts (void)
+{
+	CRamDisk *disk = new CRamDisk (160u << 20);
+	CDeviceNameService::s_pDisk = disk;
+	static BYTE work[FF_MAX_SS * 8];
+	LBA_t plist[] = { 40, 60, 0 };				// (percentages of the disk)
+	CHECK (f_fdisk (0, plist, work) == FR_OK, "fdisk");
+	VolToPart[0].pt = 1;					// (f_mkfs on "SD:" = partition 1, not a new table)
+	MKFS_PARM fat = { FM_FAT32, 0, 0, 0, 512 }, ex = { FM_EXFAT, 0, 0, 0, 4096 };
+	CHECK (f_mkfs ("SD:", &fat, work, sizeof work) == FR_OK, "mkfs SD: (FAT32)");
+	VolToPart[0].pt = 0;					// back to Onyx's: the card's first FAT volume
+	CHECK (f_mkfs ("SD1:", &ex, work, sizeof work) == FR_OK, "mkfs SD1: (exFAT)");
+	FATFS fs0, fs1, fs2;
+	CHECK (f_mount (&fs0, "SD:", 1) == FR_OK, "mount SD:");
+	CHECK (f_mount (&fs1, "SD1:", 1) == FR_OK, "mount SD1:");
+	CHECK (f_mount (&fs2, "SD2:", 1) != FR_OK, "SD2: (no partition 3) mounted");
+	CHECK (fs0.fs_type == FS_FAT32 && fs1.fs_type == FS_EXFAT, "types %d %d", fs0.fs_type, fs1.fs_type);
+	const char *files[2] = { "SD:/kernel8-rpi4.img", "SD1:/roms.txt" };
+	for (int i = 0; i < 2; i++)
+	{
+		FIL f; UINT n;
+		CHECK (f_open (&f, files[i], FA_WRITE | FA_CREATE_ALWAYS) == FR_OK, "create %s", files[i]);
+		f_write (&f, files[i], (UINT) strlen (files[i]), &n); f_close (&f);
+	}
+	for (int i = 0; i < 2; i++)
+	{
+		FIL f; UINT n; char b[64] = "";
+		CHECK (f_open (&f, files[i], FA_READ) == FR_OK, "open %s", files[i]);
+		f_read (&f, b, sizeof b - 1, &n); b[n] = 0; f_close (&f);
+		CHECK (strcmp (b, files[i]) == 0, "read back %s: %s", files[i], b);
+	}
+	FILINFO fi;
+	CHECK (f_stat ("SD1:/kernel8-rpi4.img", &fi) == FR_NO_FILE, "SD: file seen on SD1:");
+	CHECK (f_stat ("SD:/roms.txt", &fi) == FR_NO_FILE, "SD1: file seen on SD:");
+	printf ("%s partitions: SD: FAT32, SD1: exFAT, SD2: none\n", fails ? "FAIL" : "ok  ");
+	return fails ? 1 : 0;
+}
+
 int main (int argc, char **argv)
 {
+	if (argc > 1 && strcmp (argv[1], "parts") == 0) return parts ();
 	s_seed = argc > 1 ? (unsigned) atoi (argv[1]) : 1;
 	int ops = argc > 2 ? atoi (argv[2]) : 3000;
 	int cache = argc > 3 ? atoi (argv[3]) : 1;

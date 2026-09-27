@@ -521,18 +521,21 @@ big files (ROMs, disc images).
 
 - `ffconf.h`: `FF_VOLUMES 9`, `FF_VOLUME_STRS "SD","SD1","SD2","SD3","USB","USB2","USB3","FD","NVME"`;
   `FF_FS_EXFAT 1` (needs `FF_USE_LFN`; `FSIZE_t` becomes 64-bit → rebuild the kernel clean).
-- `diskio.cpp`: volumes 0–3 open Circle's **partition devices** `emmc1-1` … `emmc1-4` (the MBR
-  partitions the partition manager registers); volume 0 falls back to the whole `emmc1` for a
-  card without a partition table (a "superfloppy"). `volume_device()` is used by
-  `disk_initialize` and the `GET_SECTOR_COUNT` / `CTRL_SYNC` / `CTRL_EJECT` ioctls; the sector
-  cache (patch 8) stays per volume.
+- `ffconf.h`: `FF_MULTI_PARTITION 1`. `diskio.cpp`: the physical drives are `emmc1` (the whole
+  card, as upstream), `umsd1`…`umsd3`, `ufd1`, `nvme1`; **`VolToPart`** maps `SD:` to the card's
+  partition 0 (*auto*: FatFs takes the first FAT volume, exactly as before the change) and
+  `SD1:`…`SD3:` to MBR partitions 2–4 of the same drive (their type is not checked: FAT or exFAT
+  is recognised from the boot sector). `disk_initialize` keeps a drive already initialised (a
+  second partition of it) instead of forgetting its sector cache. (A first version opened
+  Circle's partition devices `emmc1-1`…: dropped, `SD:` must be found exactly as before.)
 - `ff.c`: the multi-cluster **write** extension (patch 10) is skipped on exFAT: a contiguous
   exFAT file (`NoFatChain`) that becomes fragmented must first have its FAT chain written,
   which upstream does cluster by cluster (reads keep the fast path).
 
 The kernel mounts `SD1:`…`SD3:` when `f_mount` succeeds and shares one lock slot between the
 four SD volumes (one card). `tools/tests/run_fs_test.sh` runs the FatFs test on FAT32 **and exFAT**
-images (the fork's image must equal upstream's).
+images (the fork's image must equal upstream's), and first `fstest parts`: an MBR card image with
+partition 1 FAT32 and partition 2 exFAT, `SD:` and `SD1:` mounted, a file on each, `SD2:` absent.
 
 ## Not a patch: build configuration
 
