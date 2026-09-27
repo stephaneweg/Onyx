@@ -33,8 +33,8 @@ using namespace wtk;
 #define MAXG	256
 #define THUMB_FRAMES	420		// ~7 s of game time: past the logos, on the title screen
 
-enum { SYS_N64, SYS_SNES, SYS_GBA, SYS_GBC, SYS_GB, SYS_NES, NSYS };		// the sections, in this order
-static const char *const SYS_NAME[NSYS] = { "Nintendo 64", "Super Nintendo", "Game Boy Advance", "Game Boy Color", "Game Boy", "NES" };
+enum { SYS_GC, SYS_N64, SYS_SNES, SYS_GBA, SYS_GBC, SYS_GB, SYS_NES, NSYS };		// the sections, in this order
+static const char *const SYS_NAME[NSYS] = { "GameCube", "Nintendo 64", "Super Nintendo", "Game Boy Advance", "Game Boy Color", "Game Boy", "NES" };
 struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
 static Game g_games[MAXG]; static int g_ng = 0;
 static char g_folder[200] = "SD:/roms";
@@ -81,12 +81,13 @@ static void scan (const char *dir, int depth)
 		bool gbc = ends (e.name, ".gbc"), gbf = ends (e.name, ".gb"), agb = ends (e.name, ".gba"), nes = ends (e.name, ".nes");
 		bool sfc = ends (e.name, ".sfc") || ends (e.name, ".smc");
 		bool n64 = ends (e.name, ".z64") || ends (e.name, ".n64") || ends (e.name, ".v64");
-		if (!gbc && !gbf && !agb && !nes && !sfc && !n64) continue;
+		bool gcn = ends (e.name, ".iso") || ends (e.name, ".gcm");
+		if (!gbc && !gbf && !agb && !nes && !sfc && !n64 && !gcn) continue;
 		Game &g = g_games[g_ng++];
 		scpy (g.path, p, sizeof g.path);
 		nice_name (e.name, g.name, sizeof g.name);
 		scpy (g.key, e.name, sizeof g.key);
-		g.sys = n64 ? SYS_N64 : sfc ? SYS_SNES : agb ? SYS_GBA : gbc ? SYS_GBC : nes ? SYS_NES : SYS_GB; g.thumb = 0; g.tried = false;
+		g.sys = gcn ? SYS_GC : n64 ? SYS_N64 : sfc ? SYS_SNES : agb ? SYS_GBA : gbc ? SYS_GBC : nes ? SYS_NES : SYS_GB; g.thumb = 0; g.tried = false;
 	}
 	kapi_closedir (d);
 }
@@ -171,6 +172,87 @@ static void n64_thumb (Game &g)
 	thumb_save (g);
 }
 
+// A GameCube disc (too big to run here): its banner (opening.bnr, found in the disc's file
+// table: 96 x 32 pixels RGB5A3) and its full name.
+static unsigned be32 (const unsigned char *p) { return (unsigned) p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
+static bool disc_read (void *f, unsigned off, void *dst, unsigned n) { return kapi_seek (f, off) == 0 && kapi_read (f, dst, n) == (int) n; }
+static void gc_thumb (Game &g)
+{
+	void *f = kapi_open (g.path); if (!f) return;
+	static unsigned char hdr[0x440];
+	unsigned char *fst = 0, *bnr = 0;
+	if (!disc_read (f, 0, hdr, sizeof hdr) || be32 (hdr + 0x1C) != 0xC2339F3D) { kapi_close (f); return; }
+	unsigned fstOff = be32 (hdr + 0x424), fstSize = be32 (hdr + 0x428);
+	if (fstSize > 0 && fstSize < 0x100000)
+	{
+		fst = new unsigned char[fstSize];
+		if (!disc_read (f, fstOff, fst, fstSize)) { delete [] fst; fst = 0; }
+	}
+	if (fst)
+	{
+		unsigned n = be32 (fst + 8);
+		const char *names = (const char *) fst + n * 12;
+		for (unsigned i = 1; i < n && (i + 1) * 12 <= fstSize; i++)
+		{
+			const unsigned char *e = fst + i * 12;
+			if (e[0] != 0) continue;					// (a folder)
+			unsigned no = be32 (e) & 0xFFFFFF;
+			if ((const unsigned char *) names + no + 12 > fst + fstSize) continue;
+			const char *nm = names + no; const char *want = "opening.bnr"; int k = 0;
+			while (want[k] && low (nm[k]) == want[k]) k++;
+			if (want[k] || nm[k]) continue;
+			bnr = new unsigned char[0x1960];
+			if (!disc_read (f, be32 (e + 4), bnr, 0x1960)) { delete [] bnr; bnr = 0; }
+			break;
+		}
+		delete [] fst;
+	}
+	kapi_close (f);
+	g.thumb = new unsigned[TW * TH];
+	Canvas c; c.adopt (g.thumb, TW, TH);
+	c.clear (0x00302848);
+	c.fillRect (8, 8, TW - 16, 20, 0x006A5ACD);
+	c.text (14, 10, "GAMECUBE", 0x00FFFFFF);
+	char name[65]; int nl = 0;
+	if (bnr)
+	{
+		// the banner: 4 x 4 tiles of RGB5A3, 1.5 times its size, over the dark background
+		for (int ty = 0; ty < 32; ty += 4)
+			for (int tx = 0; tx < 96; tx += 4)
+				for (int y = 0; y < 4; y++)
+					for (int x = 0; x < 4; x++)
+					{
+						const unsigned char *q = bnr + 0x20 + ((ty / 4) * 24 + tx / 4) * 32 + (y * 4 + x) * 2;
+						unsigned v = (unsigned) q[0] << 8 | q[1], col;
+						if (v & 0x8000) col = ((v >> 10) & 31) << 19 | ((v >> 5) & 31) << 11 | (v & 31) << 3;
+						else
+						{
+							unsigned a = (v >> 12) & 7;
+							if (a < 3) continue;
+							col = ((v >> 8) & 15) * 17 << 16 | ((v >> 4) & 15) * 17 << 8 | (v & 15) * 17;
+						}
+						int px = 8 + (tx + x) * 3 / 2, py = 34 + (ty + y) * 3 / 2;
+						for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++)
+							if (px + dx < TW && py + dy < TH) g.thumb[(py + dy) * TW + px + dx] = col;
+					}
+		for (; nl < 64 && bnr[0x1860 + nl] >= ' '; nl++) name[nl] = (char) bnr[0x1860 + nl];
+		if (!nl) for (; nl < 32 && bnr[0x1820 + nl] >= ' '; nl++) name[nl] = (char) bnr[0x1820 + nl];
+		delete [] bnr;
+	}
+	if (!nl) for (; nl < 64 && hdr[0x20 + nl] >= ' '; nl++) name[nl] = (char) hdr[0x20 + nl];
+	name[nl] = 0;
+	int y = 88;
+	for (int s0 = 0; s0 < nl && y < TH - 14; y += 16)			// the name, a word wrap at 17 characters
+	{
+		int e = s0 + 17 < nl ? s0 + 17 : nl;
+		if (e < nl) { int b = e; while (b > s0 && name[b] != ' ') b--; if (b > s0) e = b; }
+		char line[24]; int k = 0; for (int i = s0; i < e && k < 23; i++) line[k++] = name[i]; line[k] = 0;
+		c.text (10, y, line, 0x00F0E8C0);
+		s0 = e; while (s0 < nl && name[s0] == ' ') s0++;
+	}
+	thumb_save (g);
+}
+
 static void thumb_work (void)
 {
 	if (g_tgame < 0)
@@ -181,6 +263,7 @@ static void thumb_work (void)
 				g_games[i].tried = true;
 				if (thumb_load (g_games[i])) { g_root->invalidate (true); return; }
 				if (g_games[i].sys == SYS_N64) { n64_thumb (g_games[i]); g_root->invalidate (true); return; }
+				if (g_games[i].sys == SYS_GC) { gc_thumb (g_games[i]); g_root->invalidate (true); return; }
 				g_tfile = kapi_open (g_games[i].path); if (!g_tfile) return;
 				g_tsize = kapi_fsize (g_tfile);
 				if (g_tsize > 0x2000000) g_tsize = 0x2000000;
@@ -309,7 +392,7 @@ public:
 		{
 			canvas.text (24, 30, "No Game Boy / Advance ROM found in", 0x00C8C8C8);
 			canvas.text (24, 52, g_folder, 0x00FFFFFF);
-			canvas.text (24, 84, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
+			canvas.text (24, 84, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
 			return;
 		}
 		// section titles

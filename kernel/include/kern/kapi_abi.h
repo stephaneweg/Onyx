@@ -59,7 +59,8 @@
 //      (no copy by present_fb; the GPU renders there too).
 // v56: + win_list/win_read/win_raise/win_close -- the windows as objects, for the window-
 //      level remote desktop (rdpd): their place, size, state and pixels.
-#define KAPI_ABI_VERSION	56
+// v57: + seek -- set the read position of an opened file (random access: the GameCube discs).
+#define KAPI_ABI_VERSION	57
 
 #ifdef __cplusplus
 extern "C" {
@@ -733,6 +734,12 @@ struct TKApiTable
 	int (*win_read) (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
 	int (*win_raise) (unsigned id);
 	int (*win_close) (unsigned id);
+
+	// --- v57 additions ---
+	// seek: the read position of a file opened with open() -> 0, -1 (not seekable: FTP:...).
+	// A big file's cluster map is built at its first seek (FatFs fast seek): then any position
+	// is reached without walking the FAT.
+	int (*seek) (void *h, unsigned long long pos);
 };
 
 #ifdef __cplusplus

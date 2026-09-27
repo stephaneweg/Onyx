@@ -70,8 +70,19 @@ static bool callGuest (Machine &m, u32 addr)
 // a disc image (GCM): the header (the game's ID, its name), the apploader at 0x2440
 bool Machine::loadDisc (const u8 *iso, u32 size)
 {
-	if (size < 0x2460 || be32 (iso + 0x1C) != 0xC2339F3D) return false;
 	disc = iso; discSize = size;
+	return loadDiscImage (size);
+}
+
+bool Machine::loadDiscImage (u32 size)
+{
+	static u8 hdr[0x2460];
+	if (size < 0x2460) return false;
+	if (disc) for (u32 i = 0; i < 0x2460; i++) hdr[i] = disc[i];
+	else if (!discRead || !discRead (discCtx, 0, 0x2460, hdr)) return false;
+	const u8 *iso = hdr;
+	if (be32 (iso + 0x1C) != 0xC2339F3D) return false;
+	discSize = size;
 	for (int i = 0; i < 6; i++) gameId[i] = (char) iso[i];
 	gameId[6] = 0;
 	int n = 0;

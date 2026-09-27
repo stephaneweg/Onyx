@@ -284,6 +284,7 @@ bool Machine::readDisc (u32 off, u32 len, u32 dst)
 {
 	u8 *d = ptr (dst & 0x01FFFFFF);
 	if (!d || (dst & 0x01FFFFFF) + len > MEM1_SIZE) return false;
+	if (!disc && discRead) return discRead (discCtx, off, len, d);
 	for (u32 i = 0; i < len; i++) d[i] = disc && off + i < discSize ? disc[off + i] : 0;
 	return true;
 }

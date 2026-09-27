@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -70,8 +70,8 @@ wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a -o $@
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
@@ -125,6 +125,7 @@ teapot.elf: CXXFLAGS := $(CXXFLAGS_FP)
 teapot.elf: Apps/teapot/teapot.h Apps/teapot/teapot_data.inc
 gpudemo.elf: CXXFLAGS := $(CXXFLAGS_FP)
 n64emu.elf: CXXFLAGS := $(CXXFLAGS_FP)
+gcemu.elf: CXXFLAGS := $(CXXFLAGS_FP)
 graphcalc.elf: Apps/graphcalc/expr.h
 basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@

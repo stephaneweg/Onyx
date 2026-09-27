@@ -516,7 +516,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 56`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 57`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -529,7 +529,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`, v54 = `kapi_gpu_vertex3` second (added) colour `r2 g2 b2 a2` in place of `reserved`, `KAPI_GPU_B_ALPHATEST(t)`, v55 = `fullscreen_direct`, v56 = `win_list`/`win_read`/`win_raise`/`win_close`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`, v54 = `kapi_gpu_vertex3` second (added) colour `r2 g2 b2 a2` in place of `reserved`, `KAPI_GPU_B_ALPHATEST(t)`, v55 = `fullscreen_direct`, v56 = `win_list`/`win_read`/`win_raise`/`win_close`, v57 = `seek`).
 
 ### Categories of exposed functions
 
@@ -552,6 +552,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
 | Remote screen (v38) | `screen_grab(dst, w, h)` — runs `CWindowManager::Composite` (windows, wallpaper, cursor; `bCountFrame = FALSE` so the watchdog's fps stays the real compositor's) straight into the caller's `w*h` 0x00RRGGBB buffer (`w`/`h` must be the screen size), or returns **2** without touching it when `g_nScreenGen` has not changed since the previous grab into the same buffer (vncd then skips the diff / encode); `inject_pointer(x, y, buttons, wheel)` → `OnMouse` (+ `OnMouseWheel`), `inject_key(keys)` → `OnKey` — the same paths as the USB mouse/keyboard. Used by `/bin/vncd`. |
 | Windows as objects (v56) | For the window-level remote desktop (`/bin/rdpd`): `win_list(out, max)` fills `struct kapi_win_info` bottom to top (`CWindowManager::Snapshot`): `id` (`CWindow::Id`, a serial never reused), owner pid, the client area on the screen (x y w h; the full-screen window: the whole screen, `KAPI_WIN_FULLSCREEN`), `WIN_FLAG_*`, alpha, `gen` (`CWindow::Gen`, bumped by every `Damage` — drawn, moved, resized, raised — and by `present_fb`), `KAPI_WIN_KEYS` (the key target), the title, the frame (`ow oh` = `OuterW/H`, `il it` = the insets, 0 without a frame) and `chromeGen` (bumped by `get_chrome`, i.e. when the app redraws its frame, and by a resize). `win_read(id, part, x, y, w, h, dst, stride)`: a rectangle of the canvas (part 0; the full-screen window: its back buffer, or the screen itself when direct) or of a chrome copy (1 active, 2 inactive), clipped. `win_raise(id)` = `Raise`, `win_close(id)` = `RequestExit` (as the close box). The **desktop** is listed first as a pseudo-window, `KAPI_WIN_DESKTOP` (0xFFFFFFFF, backmost, screen-sized, `gen` = the wallpaper's counter + the backmost windows'): `win_read` of it (whole only) runs `CWindowManager::CompositeDesktop` (the wallpaper + the backmost windows) straight into the caller's buffer. A `CWindow` is never freed (see `Composite`), so an id found in the snapshot is safe to read. |
+| File seek (v57) | `seek(h, pos)` — the read position of a file opened with `open` (`f_lseek`); 0, or −1 (a VFS provider's file: not seekable). A file bigger than 4 MB gets its **cluster map** at its first seek (FatFs fast seek, `CREATE_LINKMAP`, docs/05 §11), freed by `close`: any position without walking the FAT. For `gcemu`'s disc images (1.4 GB, read on demand). |
 | IPC services (v40) | `ipc_register(name)` makes the caller the service `name` (≤ 16 services; a name held by a live process is refused; freed when the owner dies — `IpcOnProcessGone`); `ipc_lookup(name)` → pid or 0. Messages use the per-process mailboxes (`mailbox_send`/`mailbox_recv`), now up to **512 bytes** (`MAILBOX_MSG_MAX`). The kernel itself can post: `IpcNotify(title, text)` → the `notify` service (e.g. "Network … connected"). |
 | Clipboard (v40) | `clipboard_set(type, data, len)` / `clipboard_get(&type, buf, cap, &serial)`: one typed blob (≤ 64 KB) held by the kernel so it outlives the app that copied (`CLIP_TEXT` 1, `CLIP_FILES` 2, `CLIP_FILES_CUT` 3 — paths `\n`-separated); the serial bumps on every set. |
 | Window opacity / session (v40) | `set_window_alpha(0..255)` on the caller's window: `CWindow::DrawTo` blends chrome + client over what is below (`BlendRect`, magenta-keyed if `TRANSPARENT`; 0 = not drawn) — used for fades. `shutdown(mode)`: `f_mount(0)` unmounts/flushes the SD card, then `reboot()` (mode 1) or ACT LED off + `halt()` (mode 0). |
@@ -1032,7 +1033,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 56 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 57 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

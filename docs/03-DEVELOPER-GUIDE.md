@@ -416,6 +416,25 @@ Notes / caveats:
 > game headless (`N64_GFX=out.ppm`: the last graphics frame drawn by the BASIC 3D's software
 > renderer; `N64_STATE`, `N64_THREADS` (libultra's threads found in RDRAM), `N64_WHO`, `N64_MEM`,
 > `N64_WAV=out.wav`: the sound, 32 kHz stereo).
+> **GameCube** (`user/gc/`, in progress): `gc_cpu.cpp` the Gekko (PowerPC 750CL) interpreter:
+> integer, branch, the SPRs (BATs, HIDs, GQRs, the locked-cache DMA, timebase, decrementer), the
+> exceptions, the FPU (exact single <-> double conversions, 25-bit multiplicands), the paired
+> singles and the quantized loads / stores; `gc_mem.cpp` MEM1 (big-endian), the locked cache,
+> the BAT translation (a map of 128 KB blocks); `gc_hw.cpp` PI, VI (lines, display interrupts,
+> the YUV framebuffer), SI pads, EXI (RTC / SRAM), DI (disc reads), AI, the DSP interface
+> (audio / ARAM DMA); `gc_gx.cpp` the CP / PE and the GX FIFO (linked mode: read as the CPU
+> writes it; the commands, display lists, vertex sizes from VCD / VAT, tokens, "draw done");
+> `gc_gxdraw.cpp` the drawing at a high level: vertices decoded and transformed (XF matrices,
+> projection, viewport), lit, texgens, the TEV per vertex (texel x c1 + c2), the GX texture
+> formats (TLUTs in TMEM) -> a `GFrame` in the kapi v54 layout, ended by the EFB -> XFB copy;
+> `gc_dsp.cpp` the DSP's ROM / microcode handshake at a high level (silent); `gc_boot.cpp` the
+> IPL's state, `.dol` loading, discs booted by running their apploader on the CPU.
+> `gcemu` reads a disc image on demand (`kapi_seek`, the main thread serving the app core).
+> **Host test** (`sh tools/tests/run_gc_test.sh`, needs gcc-powerpc-linux-gnu + qemu-user):
+> `tools/tests/gc/cputest.c` compiled once runs under `qemu-ppc -cpu 750` and in the interpreter
+> (10485 result words identical), `pstest.S` the paired singles against the manual, `hwtest.c`
+> and `gxtest.c` bare-metal programs (built with `tools/gc/elf2dol.py`): the VI's picture and
+> interrupts, the FIFO / PE, a textured quad and a shaded triangle drawn by the GX path.
 > **Doom** (`user/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
 > sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
 > `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),

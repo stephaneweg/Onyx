@@ -71,6 +71,7 @@ int kapi_win_list (struct kapi_win_info *, int);
 int kapi_win_read (unsigned, int, int, int, int, int, unsigned *, int);
 int kapi_win_raise (unsigned);
 int kapi_win_close (unsigned);
+int kapi_seek (void *, unsigned long long);
 int  kapi_drag_begin (int, const void *, unsigned, const char *);
 int  kapi_drag_data (int *, void *, unsigned);
 unsigned kapi_get_modifiers (void);
@@ -351,4 +352,5 @@ void KApiTableInit (void)
 	t->win_read          = kapi_win_read;
 	t->win_raise         = kapi_win_raise;
 	t->win_close         = kapi_win_close;
+	t->seek              = kapi_seek;
 }

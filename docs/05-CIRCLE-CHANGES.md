@@ -41,6 +41,7 @@ git -C circle diff Step51..onyx
 | 8 | **Sector cache** in the FatFs disk layer (write-through), one bounce buffer per volume | `addon/fatfs/diskio.{h,cpp}` | `libfatfs` |
 | 10 | **Multi-cluster transfers** in `f_read` / `f_write` (one SD command across contiguous clusters) | `addon/fatfs/ff.c` | `libfatfs` |
 | 9 | **High Speed SD at run time** (`CEMMCDevice::SetHighSpeed`) + the host's High Speed Enable bit | `addon/SDCard/emmc.{h,cpp}` | `libsdcard` |
+| 11 | **FatFs fast seek** on (`FF_USE_FASTSEEK 1`: `kapi_seek` in a GameCube disc image) | `addon/fatfs/ffconf.h` | `libfatfs` + the kernel (the `FIL` layout: clean rebuild) |
 
 ---
 
@@ -470,6 +471,15 @@ that does not follow simply stays in the chain (the next turn finds it, as it wo
 allocated it). Not with FastSeek (`cltbl`). The allocation order is unchanged:
 `run_fs_test.sh` gets the **same disk image as upstream's `ff.c`**, byte for byte, with 14 x
 fewer reads and 6 x fewer writes on 512-byte clusters.
+
+## 11. FatFs fast seek
+
+`FF_USE_FASTSEEK` is **1**: `f_lseek` can use a file's **cluster map** (`FIL.cltbl`) instead of
+walking the FAT chain from the start at each backward seek. The kernel's `kapi_seek` (ABI v57)
+builds it at the first seek of a file bigger than 4 MB (`f_lseek (fp, CREATE_LINKMAP)`, the
+table grown once if the file is fragmented) and `kapi_close` frees it: a GameCube disc image
+(1.4 GB) is then read anywhere at once. The option adds `cltbl` to `FIL`: **the kernel must be
+rebuilt clean** with the new `libfatfs`.
 
 ## Not a patch: build configuration
 

@@ -351,6 +351,8 @@ static inline int kapi_win_read (unsigned id, int part, int x, int y, int w, int
 { return KT->version >= 56 ? KT->win_read (id, part, x, y, w, h, dst, stride) : -1; }
 static inline int kapi_win_raise (unsigned id) { return KT->version >= 56 ? KT->win_raise (id) : -1; }
 static inline int kapi_win_close (unsigned id) { return KT->version >= 56 ? KT->win_close (id) : -1; }
+// The read position of an opened file (v57): 0, or -1 (an older kernel, a file not seekable).
+static inline int kapi_seek (void *h, unsigned long long pos) { return KT->version >= 57 ? KT->seek (h, pos) : -1; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

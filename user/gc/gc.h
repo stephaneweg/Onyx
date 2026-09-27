@@ -43,7 +43,7 @@ enum
 	GF_BLEND_SHIFT = 8, GF_LINEAR = 1 << 12, GF_WRAP_S_SHIFT = 13, GF_WRAP_T_SHIFT = 15, GF_NOMATRIX = 1 << 17,
 	GF_ALPHATEST = 1 << 18				// (+ the threshold 0..255 << 19)
 };
-struct GTexture { u32 *px; int w, h; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB
+struct GTexture { u32 *px; int w, h, cap; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB (cap: its room)
 struct GFrame
 {
 	enum { MAXV = 3 * 60000, MAXB = 4096 };
@@ -115,8 +115,11 @@ public:
 	bool pal; char title[64]; char gameId[8];
 	int frames;
 	u32 irqCount[16];				// (the tests) PI interrupts raised, by bit
-	// the disc
+	// the disc: all of it in memory (disc), or read on demand through discRead (the app's
+	// file: a disc image is 1.4 GB)
 	const u8 *disc; u32 discSize;
+	bool (*discRead) (void *ctx, u32 offset, u32 len, u8 *dst); void *discCtx;
+	bool loadDiscImage (u32 size);			// boot the disc read through discRead
 	u8 *aram;					// the DSP's ARAM (16 MB)
 	enum { ARAM_SIZE = 16 * 1024 * 1024 };
 	// pad buttons (PAD_*: as the SI report's first half)

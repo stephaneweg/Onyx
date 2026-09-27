@@ -15,7 +15,7 @@ Machine::Machine ()
 {
 	mem1 = new u8[MEM1_SIZE];
 	aram = new u8[ARAM_SIZE];
-	disc = 0; discSize = 0; pal = false; title[0] = 0; gameId[0] = 0;
+	disc = 0; discSize = 0; discRead = 0; discCtx = 0; pal = false; title[0] = 0; gameId[0] = 0;
 	for (int i = 0; i < 2; i++) gfxFrame[i].v = 0, gfxFrame[i].b = 0;
 	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
 	tmem = 0;

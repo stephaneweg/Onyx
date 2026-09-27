@@ -28,7 +28,7 @@ void Machine::gxInit ()
 		gfxFrame[i].nv = 0; gfxFrame[i].nb = 0; gfxFrame[i].clear = 0; gfxFrame[i].width = 640; gfxFrame[i].height = 480;
 	}
 	gfxBuild = 0; gfxReady = -1; gfxSerial = 0; texClock = 0; gxClearNext = 0;
-	for (int i = 0; i < MAX_TEX; i++) { if (!tex[i].px) tex[i].px = new u32[1024 * 1024]; tex[i].w = tex[i].h = 0; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
+	for (int i = 0; i < MAX_TEX; i++) { if (!tex[i].px) tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
 	if (!tmem) tmem = new u8[0x100000];
 	zero (tmem, 0x100000);
 }
@@ -190,6 +190,7 @@ int Machine::gxTexture (int map)
 		if (tex[i].lastUse < tex[lru].lastUse) lru = i;
 	}
 	GTexture &T = tex[lru];
+	if (T.cap < w * h) { delete [] T.px; T.cap = w * h < 64 * 64 ? 64 * 64 : w * h; T.px = new u32[T.cap]; }	// (its size, not 4 MB each)
 	T.w = w; T.h = h; T.key = key; T.lastUse = texClock; T.dirty = true;
 	decodeTexture (T.px, mem1 + addr, mem1 + MEM1_SIZE, w, h, fmt, tmem + (tloff & 0xFFFFF), tlfmt);
 	return lru;

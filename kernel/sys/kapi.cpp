@@ -1325,11 +1325,38 @@ unsigned kapi_fsize (void *pHandle)
 	return (unsigned) f_size ((FIL *) pHandle);
 }
 
+// v57: the read position (FatFs fast seek: a big file's cluster map made at its first seek)
+int kapi_seek (void *pHandle, unsigned long long ullPos)
+{
+	if (pHandle == 0 || VfsIsFile (pHandle)) return -1;
+	FIL *pFile = (FIL *) pHandle;
+	if (pFile->cltbl == 0 && f_size (pFile) > 4 * 1024 * 1024)
+	{
+		DWORD *pTbl = new DWORD[64];
+		if (pTbl != 0)
+		{
+			pTbl[0] = 64; pFile->cltbl = pTbl;
+			FRESULT r = f_lseek (pFile, CREATE_LINKMAP);
+			if (r == FR_NOT_ENOUGH_CORE)			// (a fragmented file: the size it needs)
+			{
+				DWORD nNeed = pTbl[0];
+				delete [] pTbl;
+				pTbl = new DWORD[nNeed];
+				pFile->cltbl = pTbl;
+				if (pTbl != 0) { pTbl[0] = nNeed; r = f_lseek (pFile, CREATE_LINKMAP); }
+			}
+			if (r != FR_OK) { delete [] pFile->cltbl; pFile->cltbl = 0; }
+		}
+	}
+	return f_lseek (pFile, (FSIZE_t) ullPos) == FR_OK ? 0 : -1;
+}
+
 void kapi_close (void *pHandle)
 {
 	if (VfsIsFile (pHandle)) { VfsClose (pHandle); return; }
 	if (pHandle != 0)
 	{
+		delete [] ((FIL *) pHandle)->cltbl;
 		f_close ((FIL *) pHandle);
 		delete (FIL *) pHandle;
 	}
