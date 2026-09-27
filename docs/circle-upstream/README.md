@@ -180,6 +180,39 @@ set the base repository `rsta2/circle` and the base branch `develop`, and paste 
 
 ---
 
+## To discuss first: the RAM above 3 GB on a Raspberry Pi 4 (4 / 8 GB)
+
+Upstream Circle uses at most 3 GB on a Pi 4 (`MEM_HIGHMEM_END` = 3 GB − 1: "memory >= 3 GB is
+not safe to be DMA-able and is not used"): on an 8 GB board, 5 GB are never used. The fork
+(commit `24842f27` and follow-ups, `lib/memory64.cpp`, `lib/translationtable64.cpp`,
+`include/circle/memory.h`, `lib/alloc.cpp`) maps the rest as normal memory — the `[3 GB,
+~3.94 GB)` top of the low RAM and the chunk above 4 GB, bounded by the device tree's `/memory`
+node, with a fallback on the firmware's RAM size — and hands it out through **per-segment page
+allocators** (`palloc_high ()`, `CMemorySystem::PageAllocateHigh ()`; `pfree ()` routes a page
+back by its address). It is meant for memory **no device reads by DMA** (in Onyx: the
+applications' pages).
+
+It is not a pull request as it is: to keep the code small, the fork also turned the upstream
+**high heap** (`m_HeapHigh`, 1–3 GB, what `new`/`malloc` with `HEAP_HIGH` and `HEAP_ANY` use)
+into the first of these page pools — an incompatible change for upstream programs. A proposal
+would keep the high heap as it is, and add only the pool above 3 GB (an explicit, opt-in,
+non-DMA allocator). As it changes the memory model, better **open an issue first**:
+
+> **Use the RAM above 3 GB on the Raspberry Pi 4 (4 / 8 GB) for non-DMA allocations?**
+>
+> On a Pi 4 with 8 GB, Circle uses at most 3 GB (`MEM_HIGHMEM_END`), because memory above is
+> not DMA-safe for the drivers. For applications which need a lot of memory that no device
+> reads by DMA (emulators, image or audio buffers, a multi-process OS), the rest could be
+> offered through an explicit, opt-in allocator — e.g. `void *palloc_high (void)` /
+> `pfree ()`, or a `HEAP_NODMA` heap — leaving `HEAP_LOW` / `HEAP_HIGH` / `HEAP_ANY` unchanged.
+>
+> We have a working implementation in a fork (Onyx, a multi-process OS on Circle): it maps
+> `[3 GB, RAM top below the peripherals)` and the chunk above 4 GB as normal memory, bounded by
+> the device tree's `/memory` node (fallback: the firmware's RAM size), with one page
+> allocator per segment. It has been running on a Pi 4 8 GB for weeks (6 GB usable by the
+> applications). Would a pull request along these lines be welcome, and which interface would
+> you prefer?
+
 ## Not proposed (Onyx-specific, or would need rework for upstream)
 
 - **Keyboard maps decoupled from the kernel** (layouts loaded from files, no compiled-in
@@ -192,7 +225,7 @@ set the base repository `rsta2/circle` and the base branch `develop`, and paste 
 - **Sector cache, multi-cluster transfers, exFAT / partitions as volumes, fast seek (FatFs)** —
   changes to the vendored FatFs or its configuration; the multi-cluster transfer would rather
   go to FatFs itself (ChaN).
-- **High memory above 3 GB for applications, the crash area, `ARM_ALLOW_MULTI_CORE`,
-  `MAX_TASKS`, `PAGE_RESERVE`** — configuration or Onyx's memory model.
+- **The crash area, `ARM_ALLOW_MULTI_CORE`, `MAX_TASKS`, `PAGE_RESERVE`** — configuration or
+  Onyx-specific (the RAM above 3 GB: see the section above).
 - **Free-space accounting, `CSpinLock::TryAcquire`, the polled display DMA** — small helpers
   for Onyx; `TryAcquire` could be offered on its own if someone needs it.
