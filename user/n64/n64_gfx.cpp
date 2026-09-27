@@ -123,7 +123,7 @@ void Machine::fbWriteback (u32 addr, u32 len)
 void Machine::rectCpu (float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1,
 		       int texId, const float *col, const float *add, bool fill)
 {
-	if (cimgSiz < 2 || cimgW == 0 || cimgW > 2048) return;
+	if (cimgSiz < 1 || cimgW == 0 || cimgW > 2048) return;
 	int X0 = (int) x0, Y0 = (int) y0, X1 = (int) x1, Y1 = (int) y1;
 	if (X0 < scissor[0]) X0 = scissor[0];
 	if (Y0 < scissor[1]) Y0 = scissor[1];
@@ -134,6 +134,17 @@ void Machine::rectCpu (float x0, float y0, float x1, float y1, float s0, float t
 	const GTexture *T = texId >= 0 ? &tex[texId] : 0;
 	float fw = x1 - x0, fh = y1 - y0;
 	bool alphaCmp = (omL & 3) == 1;
+	if (cimgSiz == 1)						// an 8-bit image: the coverage copy
+	{
+		// Ocarina of Time copies the framebuffer's coverage into an 8-bit image before its
+		// pause background's anti-aliasing filter, which works on every pixel whose coverage is
+		// not full: the frames drawn by the renderer have no coverage, so it is full (0xFF),
+		// else the filter ran on nearly every pixel -- several seconds before the menu opened.
+		for (int y = Y0; y < Y1; y++)
+			for (int x = X0; x < X1; x++)
+				((u8 *) rdram)[((cimg + (u32) y * cimgW + (u32) x) & 0x7FFFFF) ^ 3] = fill ? (u8) (fillColor >> 24) : 0xFF;
+		return;
+	}
 	for (int y = Y0; y < Y1; y++)
 		for (int x = X0; x < X1; x++)
 		{
@@ -669,7 +680,9 @@ void Machine::gfxRect (float x0, float y0, float x1, float y1, float s0, float t
 	}
 	if (!drawMain)							// an off-screen buffer: by the CPU into RDRAM
 	{
-		if (cimg != zimg || fill) rectCpu (x0, y0, x1, y1, s0, t0, s1, t1, texId, col, add, fill);
+		// (the z-buffer too: Ocarina of Time copies the picture there for its pause background;
+		// only its clears -- fills -- are left out, nothing reads them)
+		if (cimg != zimg || !fill) rectCpu (x0, y0, x1, y1, s0, t0, s1, t1, texId, col, add, fill);
 		return;
 	}
 	float X0 = x0 / (W / 2) - 1, X1 = x1 / (W / 2) - 1, Y0 = 1 - y0 / (H / 2), Y1 = 1 - y1 / (H / 2);
@@ -834,10 +847,13 @@ void Machine::gfxRdp (u32 w0, u32 w1)
 	{
 	case 0xFF:								// SETCIMG
 		cimg = seg (w1); cimgW = (w0 & 0xFFF) + 1; cimgSiz = (w0 >> 19) & 3;
-		drawMain = cimg != zimg && cimgW == viW ();
+		drawMain = cimg != zimg && cimgW == viW () && cimgSiz >= 2;	// (8-bit: an effect's buffer)
+#ifdef N64_TRACE
+		if (getenv ("N64_CIMGON")) printf ("  SETCIMG %06X w %u siz %u -> %s (VI origin %06X)\n", cimg, cimgW, cimgSiz, drawMain ? "main" : "off-screen", vi[1] & 0xFFFFFF);
+#endif
 		if (drawMain) { gfxFrame[gfxBuild].cimg = cimg; fbNote (cimg, cimgW); }
 		break;
-	case 0xFE: zimg = seg (w1); drawMain = cimg != zimg && cimgW == viW (); break;	// SETZIMG
+	case 0xFE: zimg = seg (w1); drawMain = cimg != zimg && cimgW == viW () && cimgSiz >= 2; break;	// SETZIMG
 	case 0xFD: timg = seg (w1); timgW = (w0 & 0xFFF) + 1; timgSiz = (w0 >> 19) & 3; timgFmt = (w0 >> 21) & 7; break;
 	case 0xFC: combH = w0 & 0xFFFFFF; combL = w1; break;
 	case 0xFB: col (w1, envC); break;

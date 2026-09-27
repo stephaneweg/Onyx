@@ -3,6 +3,9 @@
 //   n64test <rom> <frames> [out.ppm]
 //       runs a ROM without a screen and saves the last picture (the VI's framebuffer).
 //   N64_TRACE=n: the last n instructions (pc) when it stops
+//   N64_SAV=file (the SRAM), N64_INPUT="f0-f1:hex;..." (the pad's buttons held from frame f0 to f1),
+//   N64_SNAP=1 (each frame drawn and handed back: fbSnapshot, as the hosts do), N64_FRAMELOG=f
+//   (from frame f: PI DMAs, the pc), N64_CIMG=f (built with -DN64_TRACE: the colour images set)
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,13 +71,55 @@ int main (int argc, char **argv)
 	int frames = atoi (argv[2]);
 	FILE *wav = 0; long wavN = 0;				// N64_WAV=out.wav: the sound, 32 kHz stereo
 	if (getenv ("N64_WAV")) { wav = fopen (getenv ("N64_WAV"), "wb"); m->setAudioRate (32000); if (wav) fseek (wav, 44, SEEK_SET); }
+	if (getenv ("N64_SAV"))					// N64_SAV=file: the SRAM (a 32 KB .sav)
+	{
+		long k; unsigned char *sv = slurp (getenv ("N64_SAV"), &k);
+		memcpy (m->sram, sv, (size_t) k < sizeof m->sram ? (size_t) k : sizeof m->sram); m->saveType = 1;
+	}
+	// N64_INPUT="f0-f1:hex;..." holds the buttons hex (n64::BTN_*) from frame f0 to f1 (the pad)
+	const char *input = getenv ("N64_INPUT");
+	// N64_SNAP=1: each frame drawn by the software renderer and handed back (fbSnapshot), as the hosts do
+	bool snap = getenv ("N64_SNAP") != 0;
 	clock_t t0 = clock ();
 	for (int i = 0; i < frames && !m->halted; i++)
 	{
 #ifdef N64_TRACE
 		m->traceOn = i == frames - 1;
 #endif
+		if (input)
+		{
+			unsigned b = 0;
+			for (const char *q = input; *q; )
+			{
+				int f0 = 0, f1 = 0; unsigned h = 0; int used = 0;
+				if (sscanf (q, "%d-%d:%x%n", &f0, &f1, &h, &used) < 3) break;
+				if (i >= f0 && i <= f1) b |= h;
+				q += used; if (*q == ';') q++;
+			}
+			m->setPad (0, b, 0, 0);
+		}
+		if (getenv ("N64_CIMG") && i >= atoi (getenv ("N64_CIMG"))) { printf ("frame %d\n", i); setenv ("N64_CIMGON", "1", 1); }
+		n64::u32 piBefore = m->irqCount[4], gfxBefore = m->rspTasks[1];
 		m->runFrame ();
+		if (getenv ("N64_FRAMELOG") && i >= atoi (getenv ("N64_FRAMELOG")))	// (per frame: PI DMAs, gfx tasks, the pc)
+			printf ("frame %d: PI %u gfx %u pc %08X\n", i, m->irqCount[4] - piBefore, m->rspTasks[1] - gfxBefore, m->pc);
+		if (snap && m->gfxReady >= 0)
+		{
+			const n64::GFrame &F = m->gfxFrame[m->gfxReady];
+			static unsigned px[640 * 576]; static float zb[640 * 576];
+			static bas::G3Batch bt[n64::GFrame::MAXB];
+			for (int k = 0; k < F.nb; k++) { __builtin_memcpy (&bt[k], &F.b[k], sizeof bt[k]); bt[k].texture = F.b[k].tex >= 0 ? F.b[k].tex + 1 : 0; }
+			if (F.width > 0 && F.width <= 640 && F.height <= 576)
+			{
+				bas::swRender (px, F.width, F.height, F.width, zb, (const bas::G3Vertex *) F.v, F.nv, bt, F.nb, F.clear, false, [m] (int t) -> const bas::G3Texture *
+				{
+					static bas::G3Texture T;
+					T.px = m->tex[t - 1].px; T.w = m->tex[t - 1].w; T.h = m->tex[t - 1].h;
+					return &T;
+				});
+				m->fbSnapshot (px, F.width, F.height, F.width);
+			}
+		}
 		if (wav) { short pcm[8192]; int k; while ((k = m->audioRead (pcm, 4096)) > 0) { fwrite (pcm, 4, (size_t) k, wav); wavN += k; } }
 		if (getenv ("N64_GFXEVERY") && i % atoi (getenv ("N64_GFXEVERY")) == 0 && getenv ("N64_GFX"))
 		{
