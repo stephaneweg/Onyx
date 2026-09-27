@@ -66,6 +66,103 @@ void Machine::gfxInit ()
 	zeroMem (tiles, sizeof tiles); zeroMem (tmem, sizeof tmem); tmemSerial = 0;
 	scissor[0] = scissor[1] = 0; scissor[2] = 320; scissor[3] = 240;
 	cimgSiz = 2; rectTile = 0; drawMain = false; dlEnd = false;
+	for (int i = 0; i < 4; i++) fbRec[i].addr = fbRec[i].w = fbRec[i].h = fbRec[i].written = 0;
+	fbRecNext = 0;
+}
+
+// ---- the framebuffers drawn by the renderer, written back into RDRAM on demand -----------------------------------
+void Machine::fbSnapshot (const u32 *px, int w, int h, int stride)
+{
+	if (gfxReady < 0 || !px || w <= 0 || h <= 0) return;
+	int W = gfxFrame[gfxReady].width, H = gfxFrame[gfxReady].height;
+	if (W <= 0 || H <= 0 || W > FB_MAX_W || H > FB_MAX_H) return;
+	for (int y = 0; y < H; y++)
+	{
+		const u32 *r = px + (long) (y * h / H) * stride;
+		u32 *d = fbSnap + y * W;
+		for (int x = 0; x < W; x++) d[x] = r[x * w / W];
+	}
+	fbSnapW = W; fbSnapH = H; fbSnapSerial++;
+}
+
+void Machine::fbNote (u32 addr, u32 w)
+{
+	for (int i = 0; i < 4; i++) if (fbRec[i].addr == addr && fbRec[i].w == w) return;
+	FbRec &R = fbRec[fbRecNext]; fbRecNext = (fbRecNext + 1) & 3;
+	R.addr = addr; R.w = w; R.h = w * 3 / 4; R.written = 0;
+}
+
+// A texture is loaded from [addr, addr + len): if that is one of the framebuffers the renderer
+// drew, the host's copy of the last frame goes there first (RGBA 5551), once per copy.
+void Machine::fbWriteback (u32 addr, u32 len)
+{
+	if (fbSnapSerial == 0) return;
+	for (int i = 0; i < 4; i++)
+	{
+		FbRec &R = fbRec[i];
+		if (R.w == 0 || R.written == fbSnapSerial) continue;
+		u32 size = R.w * R.h * 2;
+		if (addr + len <= R.addr || addr >= R.addr + size) continue;
+		R.written = fbSnapSerial;
+		for (u32 y = 0; y < R.h; y++)
+		{
+			const u32 *src = fbSnap + (y * (u32) fbSnapH / R.h) * (u32) fbSnapW;
+			for (u32 x = 0; x < R.w; x++)
+			{
+				u32 c = src[x * (u32) fbSnapW / R.w];
+				u16 v = (u16) (((c >> 19) & 31) << 11 | ((c >> 11) & 31) << 6 | ((c >> 3) & 31) << 1 | 1);
+				u32 a = R.addr + (y * R.w + x) * 2;
+				*(u16 *) ((u8 *) rdram + ((a & 0x7FFFFE) ^ 2)) = v;
+			}
+		}
+	}
+}
+
+// A rectangle into a colour image the renderer does not draw (an off-screen buffer): by the
+// CPU, straight into RDRAM -- the texel (nearest) x the colour + the added colour, or the fill.
+void Machine::rectCpu (float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1,
+		       int texId, const float *col, const float *add, bool fill)
+{
+	if (cimgSiz < 2 || cimgW == 0 || cimgW > 2048) return;
+	int X0 = (int) x0, Y0 = (int) y0, X1 = (int) x1, Y1 = (int) y1;
+	if (X0 < scissor[0]) X0 = scissor[0];
+	if (Y0 < scissor[1]) Y0 = scissor[1];
+	if (X1 > scissor[2]) X1 = scissor[2];
+	if (Y1 > scissor[3]) Y1 = scissor[3];
+	if (X1 > (int) cimgW) X1 = (int) cimgW;
+	if (X0 >= X1 || Y0 >= Y1 || Y1 > 1024) return;
+	const GTexture *T = texId >= 0 ? &tex[texId] : 0;
+	float fw = x1 - x0, fh = y1 - y0;
+	bool alphaCmp = (omL & 3) == 1;
+	for (int y = Y0; y < Y1; y++)
+		for (int x = X0; x < X1; x++)
+		{
+			u32 out;
+			if (fill)
+				out = cimgSiz == 3 ? fillColor : ((x & 1) ? fillColor & 0xFFFF : fillColor >> 16);
+			else
+			{
+				float c[4];
+				if (T)
+				{
+					float s = s0 + (s1 - s0) * ((float) x + 0.5f - x0) / (fw > 0 ? fw : 1);
+					float t = t0 + (t1 - t0) * ((float) y + 0.5f - y0) / (fh > 0 ? fh : 1);
+					int ix = (int) s % T->w, iy = (int) t % T->h;
+					if (ix < 0) ix += T->w;
+					if (iy < 0) iy += T->h;
+					u32 texel = T->px[iy * T->w + ix];
+					if (alphaCmp && (texel >> 24) == 0) continue;
+					c[0] = ((texel >> 16) & 255) / 255.0f; c[1] = ((texel >> 8) & 255) / 255.0f;
+					c[2] = (texel & 255) / 255.0f; c[3] = (texel >> 24) / 255.0f;
+					for (int j = 0; j < 4; j++) { c[j] = c[j] * col[j] + add[j]; if (c[j] > 1) c[j] = 1; }
+				}
+				else for (int j = 0; j < 4; j++) c[j] = col[j];
+				u32 r = (u32) (c[0] * 255.0f + 0.5f), g = (u32) (c[1] * 255.0f + 0.5f), b = (u32) (c[2] * 255.0f + 0.5f), a = (u32) (c[3] * 255.0f + 0.5f);
+				out = cimgSiz == 3 ? (r << 24 | g << 16 | b << 8 | a) : ((r >> 3) << 11 | (g >> 3) << 6 | (b >> 3) << 1 | (a >= 128 ? 1u : 0u));
+			}
+			if (cimgSiz == 3) rdram[((cimg + ((u32) y * cimgW + (u32) x) * 4) & 0x7FFFFC) >> 2] = out;
+			else { u32 a = cimg + ((u32) y * cimgW + (u32) x) * 2; *(u16 *) ((u8 *) rdram + ((a & 0x7FFFFE) ^ 2)) = (u16) out; }
+		}
 }
 
 // ---- the task ---------------------------------------------------------------------------------------------------
@@ -370,6 +467,12 @@ void Machine::gfxLoad (u32 w0, u32 w1, int kind)
 	int uls = (int) ((w0 >> 12) & 0xFFF), ult = (int) (w0 & 0xFFF), lrs = (int) ((w1 >> 12) & 0xFFF), lrt = (int) (w1 & 0xFFF);
 	u32 dst = (u32) T.tmem * 8;
 	tmemSerial++;
+	{
+		u32 bpp2 = timgSiz == 0 ? 1 : (1u << (timgSiz - 1)) * 2;	// (bytes x 2 a texel)
+		u32 lo = timg + ((u32) (ult >> 2) * timgW) * bpp2 / 2, hi = timg + ((u32) (lrt >> 2) + 1) * timgW * bpp2 / 2;
+		if (kind == 0) { lo = timg; hi = timg + (u32) (lrs + 1) * bpp2 / 2 + 8; }
+		fbWriteback (lo, hi > lo ? hi - lo : 8);
+	}
 	if (kind == 2)								// the palette: each entry 4 times
 	{
 		int n = ((lrs >> 2) - (uls >> 2)) + 1;
@@ -523,7 +626,6 @@ void Machine::gfxTri (int a, int b, int c)
 // A rectangle in the N64 screen's pixels (fill: a solid colour; tex: s, t in texels of the tile)
 void Machine::gfxRect (float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1, bool textured, bool fill)
 {
-	if (!drawMain) return;
 	GFrame &F = gfxFrame[gfxBuild];
 	float W = (float) F.width, H = (float) F.height;
 	int texId = -1; float tw = 1, th = 1;
@@ -564,6 +666,11 @@ void Machine::gfxRect (float x0, float y0, float x1, float y1, float s0, float t
 			if (!T.maskt) wt = 1;
 			flags |= (u32) ws << GF_WRAP_S_SHIFT | (u32) wt << GF_WRAP_T_SHIFT;
 		}
+	}
+	if (!drawMain)							// an off-screen buffer: by the CPU into RDRAM
+	{
+		if (cimg != zimg || fill) rectCpu (x0, y0, x1, y1, s0, t0, s1, t1, texId, col, add, fill);
+		return;
 	}
 	float X0 = x0 / (W / 2) - 1, X1 = x1 / (W / 2) - 1, Y0 = 1 - y0 / (H / 2), Y1 = 1 - y1 / (H / 2);
 	GVertex q[4];
@@ -728,7 +835,7 @@ void Machine::gfxRdp (u32 w0, u32 w1)
 	case 0xFF:								// SETCIMG
 		cimg = seg (w1); cimgW = (w0 & 0xFFF) + 1; cimgSiz = (w0 >> 19) & 3;
 		drawMain = cimg != zimg && cimgW == viW ();
-		if (drawMain) gfxFrame[gfxBuild].cimg = cimg;
+		if (drawMain) { gfxFrame[gfxBuild].cimg = cimg; fbNote (cimg, cimgW); }
 		break;
 	case 0xFE: zimg = seg (w1); drawMain = cimg != zimg && cimgW == viW (); break;	// SETZIMG
 	case 0xFD: timg = seg (w1); timgW = (w0 & 0xFFF) + 1; timgSiz = (w0 >> 19) & 3; timgFmt = (w0 >> 21) & 7; break;
@@ -743,7 +850,7 @@ void Machine::gfxRdp (u32 w0, u32 w1)
 		float x1 = ((w0 >> 12) & 0xFFF) / 4.0f, y1 = (w0 & 0xFFF) / 4.0f, x0 = ((w1 >> 12) & 0xFFF) / 4.0f, y0 = (w1 & 0xFFF) / 4.0f;
 		u32 cyc = (omH >> 20) & 3;
 		if (cyc == 3) { x1 += 1; y1 += 1; }				// fill mode: inclusive
-		if (!drawMain) break;
+		if (!drawMain) { if (cimg != zimg) gfxRect (x0, y0, x1, y1, 0, 0, 0, 0, false, cyc == 3); break; }
 		GFrame &F = gfxFrame[gfxBuild];
 		if (cyc == 3 && x0 <= 0 && y0 <= 0 && x1 >= (float) F.width - 1 && y1 >= (float) F.height - 1)
 		{

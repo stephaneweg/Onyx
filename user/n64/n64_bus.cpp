@@ -19,6 +19,7 @@ Machine::Machine () : rdram (0), rom (0), romSize (0)
 	rdram = new u32[RDRAM_SIZE / 4];
 	for (int i = 0; i < 2; i++) { gfxFrame[i].v = 0; gfxFrame[i].b = 0; }
 	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
+	fbSnap = new u32[FB_MAX_W * FB_MAX_H]; fbSnapW = fbSnapH = 0; fbSnapSerial = 0;
 	zero (sram, sizeof sram); zero (eeprom, sizeof eeprom);
 	sramDirty = eepromDirty = false; eepromSize = 0; saveType = 0;
 	pal = false; cic = 6102; title[0] = 0;
@@ -32,6 +33,7 @@ Machine::~Machine ()
 	delete [] rdram; delete [] rom;
 	for (int i = 0; i < 2; i++) { delete [] gfxFrame[i].v; delete [] gfxFrame[i].b; }
 	for (int i = 0; i < MAX_TEX; i++) delete [] tex[i].px;
+	delete [] fbSnap;
 }
 
 static u32 crc32 (const u8 *p, u32 n)

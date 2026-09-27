@@ -725,7 +725,12 @@ static void draw (Emu *e)
 	case NE_SNES: copy_fb (e, e->snes->fb, snes::W, e->snes->height > 0 ? e->snes->height : 224); break;
 	case NE_N64:
 		static_assert (sizeof (n64::GVertex) == sizeof (bas::G3Vertex) && sizeof (n64::GBatch) == sizeof (bas::G3Batch), "layout");
-		if (e->gfxAge < 30 && e->n64->gfxReady >= 0) render3d (e, e->n64->gfxFrame[e->n64->gfxReady], e->n64->tex, n64::Machine::MAX_TEX);
+		if (e->gfxAge < 30 && e->n64->gfxReady >= 0)
+		{
+			render3d (e, e->n64->gfxFrame[e->n64->gfxReady], e->n64->tex, n64::Machine::MAX_TEX);
+			int b = e->front;					// (the picture just published, back to the machine)
+			if (e->pic[b]) e->n64->fbSnapshot (e->pic[b], e->picW[b], e->picH[b], e->picW[b]);
+		}
 		else copy_fb (e, e->n64->fb, e->n64->fbW, e->n64->fbH);
 		break;
 	case NE_GC:
@@ -848,6 +853,7 @@ struct Gl
 	GLuint prog; GLint uM, uTex, uUseTex, uAlphaRef;
 	GLuint tex[1024]; bool have[1024];
 	GLuint fbTex;
+	unsigned *snap; int snapCap; unsigned snapTick;		// (N64: the picture read back)
 	char err[256];
 };
 
@@ -895,6 +901,7 @@ static void gl_free (Emu *e)
 	if (!g) return;
 	if (g->rc) { wglMakeCurrent (0, 0); wglDeleteContext (g->rc); }
 	if (g->dc) ReleaseDC (g->hwnd, g->dc);
+	free (g->snap);
 	delete g; e->gl = 0;
 }
 
@@ -1024,6 +1031,17 @@ static void gl_frame (Emu *e, const FR &fr, TX *tex, int ntex)
 		default: glDisable (GL_BLEND); break;
 		}
 		glDrawArrays (GL_TRIANGLES, (GLint) B.first, (GLsizei) (B.count / 3 * 3));
+	}
+	// (N64: the picture handed back to the machine every 4th frame -- a game may read its
+	// framebuffer, Ocarina of Time's pause background)
+	if (e->n64 && (++g->snapTick & 3) == 0)
+	{
+		if (g->snapCap < w * h) { free (g->snap); g->snap = (unsigned *) malloc ((size_t) w * h * 4); g->snapCap = g->snap ? w * h : 0; }
+		if (g->snap)
+		{
+			glReadPixels (x, H - y - h, w, h, GL_BGRA, GL_UNSIGNED_BYTE, g->snap);
+			e->n64->fbSnapshot (g->snap + (long) (h - 1) * w, w, h, -w);	// (bottom-up rows)
+		}
 	}
 	SwapBuffers (g->dc);
 }

@@ -183,10 +183,15 @@ static bool sw_frame (unsigned *px, int w, int h, int stride)
 	return true;
 }
 
+// (the frame drawn is also handed back to the machine: a game may read its framebuffer)
 static void draw_into (unsigned *px, int w, int h, int stride)
 {
-	if (g_gfxAge < 30 && g_gpuOn && gpu_frame (px, w, h, stride)) return;
-	if (g_gfxAge < 30 && (!g_gpuOn || !g_gpu) && sw_frame (px, w, h, stride)) return;
+	if (   (g_gfxAge < 30 && g_gpuOn && gpu_frame (px, w, h, stride))
+	    || (g_gfxAge < 30 && (!g_gpuOn || !g_gpu) && sw_frame (px, w, h, stride)))
+	{
+		g_m->fbSnapshot (px, w, h, stride);
+		return;
+	}
 	fb_frame (px, w, h, stride);
 }
 

@@ -75,6 +75,12 @@ public:
 	int  audioRead (short *lr, int maxFrames);	// stereo frames at that rate, → how many
 	void setPad (int n, u32 buttons, int x, int y) { if (n >= 0 && n < 4) { padBtn[n] = (u16) buttons; padX[n] = (s8) x; padY[n] = (s8) y; } }
 
+	// The host's copy of the frame it last showed (0x00RRGGBB, any size, drawn by its GPU or
+	// software renderer): written back into RDRAM as the N64's framebuffer when a game reads
+	// that framebuffer as a texture (Ocarina of Time's pause background copies it). Call it
+	// while the machine is not running (lockstep), after each frame shown.
+	void fbSnapshot (const u32 *px, int w, int h, int stride);
+
 	// the picture of the last frame (from the VI registers), 0x00RRGGBB
 	u32  fb[FB_MAX_W * FB_MAX_H];
 	int  fbW, fbH;
@@ -220,6 +226,13 @@ private:
 	u32  tmemSerial;				// changes when TMEM is loaded
 	int  scissor[4];
 	u32  cimgSiz; int rectTile; bool drawMain; bool dlEnd;
+	// the framebuffers drawn by the renderer (not in RDRAM): written back from the host's copy
+	u32 *fbSnap; int fbSnapW, fbSnapH; u32 fbSnapSerial;
+	struct FbRec { u32 addr, w, h, written; } fbRec[4]; int fbRecNext;
+	void fbNote (u32 addr, u32 w);
+	void fbWriteback (u32 addr, u32 len);
+	void rectCpu (float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1,
+		      int texId, const float *col, const float *add, bool fill);
 	u32  viW () const { return vi[2] & 0xFFF; }
 	void viLine ();
 	void viOutput ();

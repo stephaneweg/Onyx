@@ -406,7 +406,10 @@ Notes / caveats:
 > directly, CIC 6101-6106), `n64_gfx.cpp` the graphics tasks at a high level (F3DEX2: matrices,
 > lit vertices, triangles; the RDP: TMEM loads, tiles, the texture formats decoded into a cache,
 > the combiner evaluated per vertex, blending / depth — the decal z mode drawn 2·10⁻⁴ nearer in NDC
-> depth, against z-fighting —, fill and texture rectangles) into a
+> depth, against z-fighting —, fill and texture rectangles; the rectangles into an off-screen colour image
+> drawn by the CPU straight into RDRAM, and the renderer's framebuffers written back into RDRAM from
+> the host's copy of the last frame (`Machine::fbSnapshot`, called by n64emu / NintendoEMU after each
+> frame shown) when a game loads a texture from one — Ocarina of Time's pause background) into a
 > `GFrame` of clip-space vertices + batches in the kapi v54 layout; `n64_audio.cpp` the audio
 > tasks at a high level (the "nead" microcode of Zelda OoT / MM, recognised by its data: VADPCM,
 > resampling, envelope mixer, interleave on a 4 KB DMEM image; other audio microcodes: silent)
