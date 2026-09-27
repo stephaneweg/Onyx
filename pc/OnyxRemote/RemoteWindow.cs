@@ -88,9 +88,9 @@ namespace OnyxRemote
 		{
 			bool sizeChanged = m.W != w || m.H != h || m.OW != ow || m.OH != oh;
 			w = m.W; h = m.H; ow = m.OW; oh = m.OH; il = m.IL; it = m.IT; flags = m.Flags;
-			frame = m.HasFrame && onyxFrames; keys = (m.State & WinModel.KEYS) != 0;
+			frame = m.HasFrame && onyxFrames && (m.State & WinModel.FULLSCREEN) == 0; keys = (m.State & WinModel.KEYS) != 0;
 			bool wasNative = native;
-			native = !desk && m.HasFrame && !onyxFrames;
+			native = !desk && ((m.HasFrame && !onyxFrames) || (m.State & WinModel.FULLSCREEN) != 0);	// (an Onyx full-screen app: in a PC window)
 			if (native && !wasNative) { FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; }
 			else if (!native && wasNative) FormBorderStyle = FormBorderStyle.None;
 			if (Text != m.Title) Text = m.Title;

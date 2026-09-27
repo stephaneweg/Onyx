@@ -132,6 +132,12 @@ namespace OnyxRemote
 						continue;
 					}
 					if ((m.Flags & WinModel.BACKMOST) != 0 && !isDesk) continue;	// (drawn in the desktop's view)
+					// without the desktop: only the menu bar (docked at the top) and the windows with
+					// a frame (the apps), as normal PC windows -- no Onyx shelf, bubble or widget over
+					// the PC's own windows
+					bool menuBar = (m.Flags & WinModel.TOPMOST) != 0 && m.Y == 0;
+					if (!isDesk && !deskShown && (m.Flags & WinModel.BORDERLESS) != 0 && !menuBar
+					    && (m.State & WinModel.FULLSCREEN) == 0) continue;
 					if (isDesk && !desktop.Checked) continue;
 					if (m.Alpha == 0 || m.W <= 0 || m.H <= 0) continue;
 					keep.Add (id);

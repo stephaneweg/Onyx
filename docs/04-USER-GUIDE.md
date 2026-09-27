@@ -509,8 +509,10 @@ frames** ticked, with its Onyx frame (title bar, borders, close box) as on the P
   compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
   halves the data (a game in a big window).
 - Drag a window by its title bar to place it on the PC (the Pi's window stays where it is);
-  its close button (or Alt+F4) closes the Onyx app. The Onyx menu bar is docked at the top
-  of the PC's screen: no window goes under it. Clicking a window brings it to the
+  its close button (or Alt+F4) closes the Onyx app. Without the desktop, only the Onyx menu
+  bar (docked at the top of the PC's screen: no window goes under it) and the apps' windows
+  appear — the shelf, the bubbles and the other frameless Onyx windows stay on the Pi; an
+  Onyx app in full screen shows in a normal window. Clicking a window brings it to the
   front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
 - The menu bar and the notification bubbles appear as on the Pi (on top); **Show the Onyx
   desktop** opens a normal window, *Onyx Desktop*, holding the whole Onyx desktop — the
