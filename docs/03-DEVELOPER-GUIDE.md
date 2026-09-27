@@ -980,6 +980,19 @@ barwidth = 40
   (`EditorForm.cs`: modules split / composed like `qbasic`) and the runtime (`Runner.cs`: the
   VM on a worker thread, the page drawn scaled into a bitmap, WinForms controls). Wine + wine-mono
   can run both on Linux for a check.
+- **NintendoEMU** (`pc/NintendoEMU`): `nemucore.dll` (`core/nemucore.cpp`, mingw-w64) builds the
+  emulator cores **unchanged** (`user/gb`, `gba`, `nes`, `snes`, `n64`, `gc`) behind a C API —
+  `ne_open` (the system from the extension; a GameCube disc read on demand through `discRead`),
+  `ne_set_keys` (the Windows key states) + XInput pad 0, mapped per system exactly as the Onyx
+  apps do, `ne_run_frame (h, draw)`, `ne_audio`, `ne_video` (the last picture, double-buffered
+  under a lock: the game runs on its own thread), `ne_thumb` (the library's picture), `ne_save`
+  (`<rom>.sav`, as on Onyx), waveOut (`ne_audio_*`). The N64 / GameCube `GFrame`s go to
+  `bas::swRender` (`user/basic/bas3d.h`) at `ne_set_scale` × their size. `NintendoEMU.exe` (.NET
+  4.8 WinForms): `MainForm` (the library, `library.txt`, the pictures made by a worker thread),
+  `GameForm` (the game thread: paced by the sound queue — ~70 ms — when the game makes sound,
+  else by the clock, a picture skipped to catch up; the window draws with `StretchDIBits`).
+  Test: `sh tools/tests/run_nemu_test.sh` (the C API on Linux: each core a few frames, a picture,
+  the library pictures; `NEMU_ROMS=<folder>` of ROMs).
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
   and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them).

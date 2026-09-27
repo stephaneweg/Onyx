@@ -836,6 +836,37 @@ And the new tools (their graph / canvas / document areas, rendered the same way)
 | ![Graphing Calculator](../screenshots/graphcalc.png) | ![Icon Editor](../screenshots/iconedit.png) | ![RTF Reader](../screenshots/rtfview.png) |
 | *Graphing Calculator — trace* | *Icon Editor* | *RTF Reader* |
 
+### The emulators on a Windows PC (NintendoEMU)
+
+`pc/dist/` also holds **NintendoEMU** (Windows 10 / 11, .NET Framework 4.8 — already there):
+the Onyx emulators — Game Boy / Color, Game Boy Advance, NES, Super Nintendo, Nintendo 64 and
+GameCube, **the same cores** as on the Pi — in one program with a library of your games. Keep
+`NintendoEMU.exe`, `NintendoEMU.exe.config` and `nemucore.dll` together and start `NintendoEMU.exe`.
+
+- **The library**: Library ▸ **Add Games…** (Ctrl+O, several files at once), **Add Folder…**
+  (Ctrl+Shift+O: every game of a folder and its sub-folders), or drop files / folders on the
+  window. Only the **paths** are kept — in `library.txt` beside the program (or in
+  `%APPDATA%\NintendoEMU` if that folder cannot be written), one a line; the games stay where
+  they are. A tile per game, one section per system, with a picture: a 2D game is run ~7 s
+  unseen and its screen kept, a Nintendo 64 game gets a label with its name, a GameCube disc its
+  banner (cached in `thumbs\`; View ▸ **Refresh Pictures** makes them again). **Del** removes a
+  game from the library (not from the disk); View ▸ Tiles / Details.
+- **Playing**: double-click, **Enter**, or a gamepad's **Start** / **A** (the d-pad moves in the
+  library). Keys as on Onyx (Help ▸ Controls…): arrows, **X** / **Z** (A / B), **Enter** Start,
+  **Backspace** Select, **A S Q W** for Y, X, L, R… (N64 / GameCube: **C** = B, **Z** = Z, **I J K L**
+  the C buttons / stick, **T F G H** the D-pad). **Xbox-style pads** (XInput) work, the buttons by
+  their place as on Onyx. **P** pause, **F11** or **Alt+Enter** full screen (**Esc** back), **F12**
+  the speed, **Ctrl+R** reset, Ctrl+W close; View ▸ Size 1x–5x, Smooth Picture; Sound ▸ On / Off.
+- **Saves**: `<game>.sav` beside the game — the **same files as on Onyx**, so a save can go
+  from the Pi to the PC and back.
+- **3D** (Nintendo 64, GameCube): the triangles are drawn by the software renderer of the BASIC
+  3D, 1–4 × the console's resolution (Options or View ▸ **3D Resolution**; 2× by default).
+  The GameCube runs **slowly**: its CPU is interpreted (the JIT is Pi code), and it has no sound
+  yet — as on Onyx.
+
+![NintendoEMU](../screenshots/nintendoemu.png)
+*NintendoEMU's library (test ROMs): a picture per game, taken from the game itself.*
+
 ### Demos (technical examples)
 
 **plasma** — a full-screen plasma animation (the demo of full-screen apps): the desktop

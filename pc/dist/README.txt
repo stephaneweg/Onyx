@@ -40,3 +40,23 @@ menu bar across the top; the Onyx windows as child windows inside (normal window
 Onyx frame: "Onyx frames"), moved freely; their close button closes the Onyx app; clicking a
 window gives it the keyboard. "Desktop" shows the Onyx desktop behind them; "16-bit colours"
 sends half the data (games). No password, no encryption: trusted LAN only.
+
+NintendoEMU
+===========
+
+NintendoEMU.exe (+ NintendoEMU.exe.config, nemucore.dll): the emulators of Onyx on the PC --
+Game Boy / Color, Game Boy Advance, NES, Super Nintendo, Nintendo 64, GameCube (the same cores
+as on the Pi) -- with a library of your games.
+
+  NintendoEMU.exe            the library
+  NintendoEMU.exe <game>     that game added to the library and played
+
+Library  Library > Add Games... / Add Folder... (or drop files and folders on the window): the
+         paths are kept in library.txt beside the program (or %APPDATA%\NintendoEMU). Double-click,
+         Enter or a gamepad's Start plays; Del removes a game from the list (not from the disk).
+Keys     As on Onyx (Help > Controls...): arrows, X / Z = A / B, Enter = Start, Backspace =
+         Select, A S Q W... Xbox-style pads (XInput). P pause, F11 / Alt+Enter full screen,
+         F12 the speed, Ctrl+R reset.
+Saves    <game>.sav beside the game: the same files as on Onyx.
+3D       Nintendo 64 and GameCube pictures are drawn in software (Options > 3D Resolution).
+         The GameCube is slow (its CPU is interpreted) and silent, as on Onyx for now.

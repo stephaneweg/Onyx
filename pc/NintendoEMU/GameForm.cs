@@ -168,7 +168,7 @@ namespace NintendoEMU
 				for (int s3 = 1; s3 <= 4; s3++)
 				{
 					int k = s3;
-					var it = new ToolStripMenuItem (k + "x the console's", null, null) { Checked = k == scale3d };
+					var it = new ToolStripMenuItem (k + "x the console's") { Checked = k == scale3d };
 					it.Click += (s, e) => { scale3d = k; Settings.Set ("Scale3D", k); foreach (ToolStripMenuItem o in res.DropDownItems) o.Checked = o == it; };
 					res.DropDownItems.Add (it);
 				}
