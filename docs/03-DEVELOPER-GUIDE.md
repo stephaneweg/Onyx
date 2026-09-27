@@ -434,21 +434,32 @@ Notes / caveats:
 > `gc::codeAlloc` hook: `kapi_code_alloc` (ABI v58) on Onyx, `mmap` RWX in the host test), then
 > `run()` goes through `jitRun()`: the PowerPC code is translated a **block** at a time (to its
 > branch, ≤ 64 instructions, within a 4 KB page) by a small built-in AArch64 assembler. The
-> guest registers stay in the `Machine` (x19 = it, x20 = MEM1, x21 = the helpers + a 64K-entry
-> direct-mapped table of blocks, w22 = MEM1's size); the integer unit, CR logic, rotates,
+> guest registers live in the `Machine` (x19 = it, x20 = MEM1, x21 = the helpers + a 64K-entry
+> direct-mapped table of blocks, w22 = MEM1's size); **within a block** the GPRs, CR, XER, LR and
+> CTR it uses are cached in host registers (x9–x15, x27, x28: loaded at first use, the dirty
+> ones written back at the exits, before the interpreter, and around a slow-path call); the
+> integer unit, CR logic, rotates,
 > shifts, compares, the branches (CTR / CR conditions, LR) and the loads / stores are native (a
 > load / store whose address maps MEM1 through the OS's standard BATs, or in real mode, reads
 > the host memory directly and byte-swaps; the rest calls `read32`… with the cycle count exact),
 > every other instruction (the FPU, the paired singles for now) calls the interpreter's `exec`.
-> A block ends with the next pc + its cycles, then jumps to the next block through the table
-> while `cycles < jitUntil` (the next event / the decrementer; `piUpdate` and `decWrite` zero it
-> to come back); `jitRun` (C) takes the interrupts, translates what is missing. Blocks are keyed
+> The FPU and the paired singles are native too (fadd… fmadd, the single rounding, the 25-bit
+> multiplicand — skipped when the operand is known to hold a single exactly —, fsel, fcmp,
+> frsp, fctiwz, the moves / merges, ps_sum / muls / madds, lfs / lfd / stfs / stfd, psq_l /
+> psq_st with a float GQR type); a NaN result re-runs the instruction in the interpreter, FPRF
+> is set lazily (`fprfVal` / `fprfPending`). A block's exit to a known address is **linked**:
+> once that block is translated the exit's branch is patched to jump straight to it (back to
+> its stub when that block is dropped), while `cycles < jitUntil` (the next event / the
+> decrementer; `piUpdate` and `decWrite` zero it to come back); an exit to a register (blr,
+> bctr) goes through the table; `jitRun` (C) takes the interrupts, translates what is missing. Blocks are keyed
 > by address + MSR IR / DR; `icbi`, the DVD / ARAM / locked-cache DMAs drop the blocks of the
 > 4 KB pages written; a BAT change, HID0's ICFI or a reset drop everything. `b .` jumps to the
 > next event (idle). `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
 > Tested by `run_gc_test.sh` under `qemu-aarch64` (`GC_JIT=1`): cputest / pstest / hwtest /
 > gxtest identical to the interpreter's, `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
-> against qemu-ppc's result: ~20× the interpreter's speed.
+> against qemu-ppc's result: ~40× the interpreter's speed (integer), ~10× (float);
+> `GC_PROFILE=1` prints the host instructions per guest instruction, `GC_DUMP=prefix` the
+> hottest blocks' code (for `aarch64-linux-gnu-objdump -b binary -m aarch64`).
 > **Host test** (`sh tools/tests/run_gc_test.sh`, needs gcc-powerpc-linux-gnu + qemu-user):
 > `tools/tests/gc/cputest.c` compiled once runs under `qemu-ppc -cpu 750` and in the interpreter
 > (10485 result words identical), `pstest.S` the paired singles against the manual, `hwtest.c`

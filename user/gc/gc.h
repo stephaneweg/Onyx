@@ -130,6 +130,9 @@ public:
 	void jitRun (u64 untilCycle);
 	void jitInvalidate (u32 pa, u32 len);		// code written there (icbi, a DMA): its blocks are dropped
 	u32  jitBlocks, jitCompiles;			// (stats) blocks translated, now / in all
+	bool jitProfile;				// (the tests) count each block's runs
+	void jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns);
+	bool jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words);
 
 	// ---- memory (gc_mem.cpp) ----
 	u8 *mem1;					// MEM1, big-endian

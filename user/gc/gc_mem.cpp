@@ -14,7 +14,7 @@ static void zero (void *p, u32 n) { u8 *d = (u8 *) p; while (n--) *d++ = 0; }
 Machine::Machine ()
 {
 	mem1 = new u8[MEM1_SIZE + 16];			// (+16: the JIT's unaligned accesses at the end)
-	jit = 0; jitUntil = 0; jitFlush = false; jitBlocks = jitCompiles = 0;
+	jit = 0; jitUntil = 0; jitFlush = false; jitBlocks = jitCompiles = 0; jitProfile = false;
 	aram = new u8[ARAM_SIZE];
 	disc = 0; discSize = 0; discRead = 0; discCtx = 0; pal = false; title[0] = 0; gameId[0] = 0;
 	for (int i = 0; i < 2; i++) gfxFrame[i].v = 0, gfxFrame[i].b = 0;

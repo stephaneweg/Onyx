@@ -29,6 +29,7 @@ static void *hostCode (u32 size)
 static void startJit (Machine &m)
 {
 	if (!useJit) return;
+	m.jitProfile = getenv ("GC_PROFILE") != 0;
 	if (!m.jitEnable ()) { printf ("FAIL: no JIT on this host\n"); exit (1); }
 }
 // run a function called with lr = 0x80001000 ("b ." there) until it returns
@@ -131,6 +132,21 @@ static int benchTest (const char *elf, const char *entry)
 	printf ("result %08X, %llu instructions, %.3f s, %.1f M instructions / s%s%s\n", be32 (m.mem1 + 0x500000), m.cycles / 2, s, (double) m.cycles / 2 / s / 1e6,
 		m.halted ? " HALTED " : "", m.haltMsg);
 	if (useJit) printf ("JIT: %u blocks translated\n", m.jitCompiles);
+	if (useJit && m.jitProfile)
+	{
+		u64 runs, host, guest; m.jitStats (runs, host, guest);
+		printf ("profile: %llu block runs (%.1f instructions each), %.2f host instructions / guest instruction (+ ~11 a block: the dispatch)\n",
+			runs, (double) guest / (double) runs, (double) host / (double) guest);
+		// GC_DUMP=prefix: the 3 most run blocks' code (prefix.N.bin, for objdump -b binary -m aarch64)
+		for (int k = 0; k < 3 && getenv ("GC_DUMP"); k++)
+		{
+			u32 pc, words; u64 r; const u32 *code;
+			if (!m.jitHot (k, pc, r, code, words)) break;
+			char path[256]; snprintf (path, sizeof path, "%s.%d.bin", getenv ("GC_DUMP"), k);
+			FILE *f = fopen (path, "wb"); if (f) { fwrite (code, 4, words, f); fclose (f); }
+			printf ("  hot %d: %08X, %llu runs, %u words -> %s\n", k, pc, r, words, path);
+		}
+	}
 	return 0;
 }
 
