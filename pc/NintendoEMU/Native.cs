@@ -38,6 +38,11 @@ namespace NintendoEMU
 		[DllImport (DLL, CallingConvention = CC)] public static extern void ne_audio_write (short[] lr, int frames);
 		[DllImport (DLL, CallingConvention = CC)] public static extern void ne_audio_close ();
 		[DllImport (DLL, CallingConvention = CC)] public static extern uint ne_pad_buttons (int port);
+		[DllImport (DLL, CallingConvention = CC)] static extern int ne_gl_attach (IntPtr h, IntPtr hwnd, byte[] err, int cap);
+		[DllImport (DLL, CallingConvention = CC)] public static extern void ne_gl_detach (IntPtr h);
+		[DllImport (DLL, CallingConvention = CC)] public static extern void ne_redraw (IntPtr h);
+		// OpenGL for the 3D (the calling thread: the game's) -> null, or why not
+		public static string GlAttach (IntPtr h, IntPtr hwnd) { var b = new byte[256]; return ne_gl_attach (h, hwnd, b, b.Length) != 0 ? null : FromZ (b); }
 
 		public static Sys SystemOf (string path) { try { return (Sys) ne_system_of (Z (path)); } catch { return Sys.None; } }
 		public static IntPtr Open (string path, int rate, out string err)

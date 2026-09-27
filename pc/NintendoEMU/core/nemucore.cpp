@@ -24,6 +24,8 @@
 #include <xinput.h>
 #define NE_API extern "C" __declspec(dllexport)
 #else
+#include <pthread.h>
+#include <unistd.h>
 #define NE_API extern "C" __attribute__ ((visibility ("default")))
 #endif
 #include "gb/gb.h"
@@ -125,6 +127,82 @@ static int stick (int v, int dead)
 	return r > 1000 ? 1000 : r < -1000 ? -1000 : r;
 }
 #endif
+// Other USB pads (DirectInput / HID ones: the Windows joystick API), through a mapping the front end
+// sets (Options > Gamepad...): for each PAD_* bit, its source -- 0 none, 1..32 a button, 100 + axis
+// x 2 + (0: its low end, 1: its high end), 200 + the hat's direction (0 up, 1 right, 2 down, 3 left);
+// and the sticks' axes (0 X, 1 Y, 2 Z, 3 R, 4 U, 5 V; -1 none). The defaults: the usual generic HID
+// order (1 top, 2 right, 3 bottom, 4 left, 5 L1, 6 R1, 7 L2, 8 R2, 9 select, 10 start, 11 L3, 12 R3),
+// the d-pad on the hat, the left stick on X / Y, the right one on Z / R.
+enum { NMAP = 16 };
+static int s_map[NMAP] = { 200, 202, 203, 201, 3, 2, 4, 1, 5, 6, 7, 8, 9, 10, 11, 12 };
+static int s_axes[4] = { 0, 1, 2, 3 };
+NE_API void ne_pad_map (const int *map, int n, const int *axes)
+{
+	for (int i = 0; i < n && i < NMAP; i++) s_map[i] = map[i];
+	if (axes) for (int i = 0; i < 4; i++) s_axes[i] = axes[i];
+}
+
+#ifdef _WIN32
+struct Joy { bool on; char name[64]; unsigned buttons; int axis[6]; int pov; };	// axes -1000..1000, pov: -1 or 0..35999
+static int s_joy = -1; static DWORD s_joyNext = 0;
+static int axis_norm (DWORD v, UINT lo, UINT hi) { if (hi <= lo) return 0; long long r = ((long long) v - lo) * 2000 / (hi - lo) - 1000; return r > 1000 ? 1000 : r < -1000 ? -1000 : (int) r; }
+static bool joy_read (int id, Joy *j)
+{
+	JOYINFOEX ji; memset (&ji, 0, sizeof ji); ji.dwSize = sizeof ji; ji.dwFlags = JOY_RETURNALL;
+	if (joyGetPosEx ((UINT) id, &ji) != JOYERR_NOERROR) return false;
+	JOYCAPSA c; memset (&c, 0, sizeof c);
+	if (joyGetDevCapsA ((UINT) id, &c, sizeof c) != JOYERR_NOERROR) return false;
+	j->on = true;
+	strncpy (j->name, c.szPname, sizeof j->name - 1); j->name[sizeof j->name - 1] = 0;
+	j->buttons = ji.dwButtons;
+	j->axis[0] = axis_norm (ji.dwXpos, c.wXmin, c.wXmax); j->axis[1] = axis_norm (ji.dwYpos, c.wYmin, c.wYmax);
+	j->axis[2] = c.wNumAxes > 2 ? axis_norm (ji.dwZpos, c.wZmin, c.wZmax) : 0;
+	j->axis[3] = c.wNumAxes > 3 ? axis_norm (ji.dwRpos, c.wRmin, c.wRmax) : 0;
+	j->axis[4] = c.wNumAxes > 4 ? axis_norm (ji.dwUpos, c.wUmin, c.wUmax) : 0;
+	j->axis[5] = c.wNumAxes > 5 ? axis_norm (ji.dwVpos, c.wVmin, c.wVmax) : 0;
+	j->pov = (c.wCaps & JOYCAPS_HASPOV) && ji.dwPOV <= 35999 ? (int) ji.dwPOV : -1;
+	return true;
+}
+// the first USB pad Windows sees (looked for again every 2 s while there is none)
+static bool joy_first (Joy *j)
+{
+	memset (j, 0, sizeof *j);
+	if (s_joy >= 0 && joy_read (s_joy, j)) return true;
+	s_joy = -1;
+	DWORD now = GetTickCount ();
+	if ((int) (now - s_joyNext) < 0) return false;
+	s_joyNext = now + 2000;
+	UINT n = joyGetNumDevs ();
+	for (UINT i = 0; i < n && i < 16; i++) if (joy_read ((int) i, j)) { s_joy = (int) i; return true; }
+	return false;
+}
+static bool joy_source (const Joy &j, int src)
+{
+	if (src >= 1 && src <= 32) return (j.buttons >> (src - 1)) & 1;
+	if (src >= 100 && src < 112) { int v = j.axis[(src - 100) / 2]; return (src & 1) ? v > 500 : v < -500; }
+	if (src >= 200 && src < 204 && j.pov >= 0)
+	{
+		int d = j.pov / 100, c = (src - 200) * 90;			// (a diagonal counts for both)
+		int diff = d - c; if (diff < 0) diff = -diff; if (diff > 180) diff = 360 - diff;
+		return diff <= 45;
+	}
+	return false;
+}
+// the raw state for the mapping dialog: its name; the buttons; the axes; the hat (-1 or 0..35999)
+NE_API int ne_joy_raw (char *name, int cap, unsigned *buttons, int *axes, int *pov)
+{
+	Joy j;
+	s_joyNext = 0;						// (the dialog: look now)
+	if (!joy_first (&j)) { if (cap > 0) name[0] = 0; return 0; }
+	strncpy (name, j.name, (size_t) cap - 1); name[cap - 1] = 0;
+	*buttons = j.buttons; for (int i = 0; i < 6; i++) axes[i] = j.axis[i]; *pov = j.pov;
+	return 1;
+}
+#else
+NE_API int ne_joy_raw (char *name, int cap, unsigned *buttons, int *axes, int *pov)
+{ (void) axes; if (cap > 0) name[0] = 0; *buttons = 0; *pov = -1; return 0; }
+#endif
+
 static Pad read_pad (int port)
 {
 	Pad p; memset (&p, 0, sizeof p);
@@ -140,7 +218,17 @@ static Pad read_pad (int port)
 		}
 	}
 	XINPUT_STATE st;
-	if (!s_xget || s_xget ((DWORD) port, &st) != ERROR_SUCCESS) return p;
+	if (!s_xget || s_xget ((DWORD) port, &st) != ERROR_SUCCESS)
+	{
+		// not an Xbox-style pad: another USB pad, through the mapping
+		Joy j;
+		if (port != 0 || !joy_first (&j)) return p;
+		p.on = true;
+		for (int i = 0; i < NMAP; i++) if (joy_source (j, s_map[i])) p.buttons |= 1u << i;
+		auto ax = [&] (int k) { int a = s_axes[k]; int v = a >= 0 && a < 6 ? j.axis[a] : 0; return v > -150 && v < 150 ? 0 : v; };
+		p.lx = ax (0); p.ly = ax (1); p.rx = ax (2); p.ry = ax (3);
+		return p;
+	}
 	const XINPUT_GAMEPAD &g = st.Gamepad;
 	unsigned w = g.wButtons, b = 0;
 	if (w & XINPUT_GAMEPAD_DPAD_UP) b |= PAD_UP;
@@ -196,9 +284,14 @@ struct Emu
 	// the picture: drawn into back, then swapped with front (under lock) for the window
 	unsigned *pic[2]; int picCap[2], picW[2], picH[2]; int front; unsigned serial;
 	float *zb; int zbCap;
+	struct Tri *tris; int trisCap;
+	struct Gl *gl;						// the OpenGL renderer (Windows), 0: the software one
 	Lock lock;
 	int saveTick;
 };
+
+static bool gl_draw (Emu *e);
+static void gl_free (Emu *e);
 
 static void set_sav_path (Emu *e)
 {
@@ -265,9 +358,10 @@ NE_API void ne_close (void *h)
 	Emu *e = (Emu *) h;
 	if (!e) return;
 	ne_save (e);
+	gl_free (e);
 	delete e->gb; delete e->gba; delete e->nes; delete e->snes; delete e->n64; delete e->gc;
 	if (e->disc) fclose (e->disc);
-	free (e->rom); free (e->pic[0]); free (e->pic[1]); free (e->zb);
+	free (e->rom); free (e->pic[0]); free (e->pic[1]); free (e->zb); free (e->tris);
 	delete e;
 }
 
@@ -536,9 +630,43 @@ static void copy_fb (Emu *e, const unsigned *src, int w, int h)
 	publish (e);
 }
 
-// a 3D frame (the N64's, the GameCube's) by the software renderer, scale x its resolution
+// a 3D frame (the N64's, the GameCube's) by the software renderer, scale x its resolution: the
+// triangles transformed and clipped once, then drawn in bands of 16 rows by every core of the PC
+// (the bands are disjoint: each draws all the triangles in order, the same picture as one thread)
+struct Tri { bas::G3Clip c[3]; unsigned flags; const bas::G3Texture *T; };
+struct RenderJob
+{
+	unsigned *dst; float *zb; int W, H; unsigned clear;
+	const Tri *tris; int n;
+	int bands; volatile int next;
+};
+enum { BAND = 16, MAX_THREADS = 16 };
+static void render_bands (RenderJob *j)
+{
+	for (;;)
+	{
+		int b = __atomic_fetch_add (&j->next, 1, __ATOMIC_RELAXED);
+		if (b >= j->bands) return;
+		int y0 = b * BAND, y1 = y0 + BAND < j->H ? y0 + BAND : j->H;
+		for (int y = y0; y < y1; y++)
+		{
+			unsigned *d = j->dst + (long long) y * j->W; float *z = j->zb + (long long) y * j->W;
+			for (int x = 0; x < j->W; x++) { d[x] = j->clear; z[x] = 1.0f; }
+		}
+		for (int i = 0; i < j->n; i++)
+			bas::g3raster (j->dst, j->W, j->H, j->W, j->zb, j->tris[i].c, j->tris[i].flags, j->tris[i].T, y0, y1);
+	}
+}
+#ifdef _WIN32
+static DWORD WINAPI band_thread (LPVOID p) { render_bands ((RenderJob *) p); return 0; }
+static int cpu_count () { SYSTEM_INFO si; GetSystemInfo (&si); return (int) si.dwNumberOfProcessors; }
+#else
+static void *band_thread (void *p) { render_bands ((RenderJob *) p); return 0; }
+static int cpu_count () { return (int) sysconf (_SC_NPROCESSORS_ONLN); }
+#endif
+
 template <typename FR, typename TX>
-static void render3d (Emu *e, const FR &fr, TX *tex)
+static void render3d (Emu *e, const FR &fr, TX *tex, int ntex)
 {
 	int W = fr.width * e->scale, H = fr.height * e->scale;
 	if (W <= 0 || H <= 0) return;
@@ -551,19 +679,44 @@ static void render3d (Emu *e, const FR &fr, TX *tex)
 		if (!e->zb) return;
 	}
 	static bas::G3Batch bt[4096];
+	static bas::G3Texture tx[1024];
 	int nb = fr.nb < 4096 ? fr.nb : 4096;
 	for (int i = 0; i < nb; i++) { memcpy (&bt[i], &fr.b[i], sizeof bt[i]); bt[i].texture = fr.b[i].tex >= 0 ? fr.b[i].tex + 1 : 0; }
-	bas::swRender (d, W, H, W, e->zb, (const bas::G3Vertex *) fr.v, fr.nv, bt, nb, fr.clear, false, [tex] (int t) -> const bas::G3Texture *
+	for (int i = 0; i < ntex && i < 1024; i++) { tx[i].px = tex[i].px; tx[i].w = tex[i].w; tx[i].h = tex[i].h; }
+	int n = 0;
+	bas::swTriangles ((const bas::G3Vertex *) fr.v, fr.nv, bt, nb, [] (int t) -> const bas::G3Texture * { return &tx[t - 1]; },
+		[&] (const bas::G3Clip *c, unsigned flags, const bas::G3Texture *T)
 	{
-		static bas::G3Texture T;
-		T.px = tex[t - 1].px; T.w = tex[t - 1].w; T.h = tex[t - 1].h;
-		return &T;
+		if (n >= e->trisCap)
+		{
+			int cap = e->trisCap ? e->trisCap * 2 : 16384;
+			Tri *t = (Tri *) realloc (e->tris, (size_t) cap * sizeof (Tri));
+			if (!t) return;
+			e->tris = t; e->trisCap = cap;
+		}
+		Tri &o = e->tris[n++];
+		o.c[0] = c[0]; o.c[1] = c[1]; o.c[2] = c[2]; o.flags = flags; o.T = T;
 	});
+	RenderJob j = { d, e->zb, W, H, fr.clear, e->tris, n, (H + BAND - 1) / BAND, 0 };
+	int nt = cpu_count (); if (nt > MAX_THREADS) nt = MAX_THREADS; if (nt > j.bands) nt = j.bands;
+#ifdef _WIN32
+	HANDLE th[MAX_THREADS]; int k = 0;
+	for (int i = 1; i < nt; i++) { th[k] = CreateThread (0, 0, band_thread, &j, 0, 0); if (th[k]) k++; }
+	render_bands (&j);
+	if (k) WaitForMultipleObjects ((DWORD) k, th, TRUE, INFINITE);
+	for (int i = 0; i < k; i++) CloseHandle (th[i]);
+#else
+	pthread_t th[MAX_THREADS]; int k = 0;
+	for (int i = 1; i < nt; i++) if (pthread_create (&th[k], 0, band_thread, &j) == 0) k++;
+	render_bands (&j);
+	for (int i = 0; i < k; i++) pthread_join (th[i], 0);
+#endif
 	publish (e);
 }
 
 static void draw (Emu *e)
 {
+	if (e->gl && (e->sys == NE_N64 || e->sys == NE_GC) && gl_draw (e)) return;
 	switch (e->sys)
 	{
 	case NE_GB: case NE_GBC: copy_fb (e, e->gb->fb, gb::W, gb::H); break;
@@ -572,12 +725,12 @@ static void draw (Emu *e)
 	case NE_SNES: copy_fb (e, e->snes->fb, snes::W, e->snes->height > 0 ? e->snes->height : 224); break;
 	case NE_N64:
 		static_assert (sizeof (n64::GVertex) == sizeof (bas::G3Vertex) && sizeof (n64::GBatch) == sizeof (bas::G3Batch), "layout");
-		if (e->gfxAge < 30 && e->n64->gfxReady >= 0) render3d (e, e->n64->gfxFrame[e->n64->gfxReady], e->n64->tex);
+		if (e->gfxAge < 30 && e->n64->gfxReady >= 0) render3d (e, e->n64->gfxFrame[e->n64->gfxReady], e->n64->tex, n64::Machine::MAX_TEX);
 		else copy_fb (e, e->n64->fb, e->n64->fbW, e->n64->fbH);
 		break;
 	case NE_GC:
 		static_assert (sizeof (gc::GVertex) == sizeof (bas::G3Vertex) && sizeof (gc::GBatch) == sizeof (bas::G3Batch), "layout");
-		if (e->gfxAge < 30 && e->gc->gfxReady >= 0) render3d (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex);
+		if (e->gfxAge < 30 && e->gc->gfxReady >= 0) render3d (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex, gc::Machine::MAX_TEX);
 		else copy_fb (e, e->gc->fb, e->gc->fbW, e->gc->fbH);
 		break;
 	}
@@ -644,6 +797,286 @@ NE_API int ne_halted (void *h, char *msg, int cap)
 	if (hl && msg && cap > 0) { strncpy (msg, e->gc ? e->gc->haltMsg : "", (size_t) cap - 1); msg[cap - 1] = 0; }
 	return hl ? 1 : 0;
 }
+
+// ---- the OpenGL renderer (Windows): the N64 / GameCube frames drawn by the PC's GPU --------------------
+// What the Pi's GPU does on Onyx (kapi_gpu_render): the triangles in clip space, the batch's matrix
+// applied, colour = texel x colour + colour2, alpha test, blending, depth -- straight into the game
+// window at its size (sharp, and no CPU for the pixels). The context lives on the game's thread
+// (ne_gl_attach from there); the window only draws the bars. A picture drawn by the game's CPU (its
+// framebuffer) is shown as a texture.
+#ifdef _WIN32
+#include <GL/gl.h>
+typedef char GLchar;
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_VERTEX_SHADER 0x8B31
+#define GL_COMPILE_STATUS 0x8B81
+#define GL_LINK_STATUS 0x8B82
+#define GL_MIRRORED_REPEAT 0x8370
+#define GL_CLAMP_TO_EDGE 0x812F
+#define GL_BGRA 0x80E1
+#define GLF(ret, name, args) typedef ret (APIENTRY *PFN_##name) args; static PFN_##name name##_;
+GLF (GLuint, glCreateShader, (GLenum))
+GLF (void, glShaderSource, (GLuint, GLsizei, const GLchar *const *, const GLint *))
+GLF (void, glCompileShader, (GLuint))
+GLF (void, glGetShaderiv, (GLuint, GLenum, GLint *))
+GLF (void, glGetShaderInfoLog, (GLuint, GLsizei, GLsizei *, GLchar *))
+GLF (GLuint, glCreateProgram, (void))
+GLF (void, glAttachShader, (GLuint, GLuint))
+GLF (void, glBindAttribLocation, (GLuint, GLuint, const GLchar *))
+GLF (void, glLinkProgram, (GLuint))
+GLF (void, glGetProgramiv, (GLuint, GLenum, GLint *))
+GLF (void, glUseProgram, (GLuint))
+GLF (GLint, glGetUniformLocation, (GLuint, const GLchar *))
+GLF (void, glUniform1i, (GLint, GLint))
+GLF (void, glUniform1f, (GLint, GLfloat))
+GLF (void, glUniformMatrix4fv, (GLint, GLsizei, GLboolean, const GLfloat *))
+GLF (void, glEnableVertexAttribArray, (GLuint))
+GLF (void, glVertexAttribPointer, (GLuint, GLint, GLenum, GLboolean, GLsizei, const void *))
+typedef BOOL (APIENTRY *PFN_wglSwapIntervalEXT) (int);
+
+struct Gl
+{
+	HWND hwnd; HDC dc; HGLRC rc;
+	GLuint prog; GLint uM, uTex, uUseTex, uAlphaRef;
+	GLuint tex[1024]; bool have[1024];
+	GLuint fbTex;
+	char err[256];
+};
+
+static const char *VS =
+	"#version 120\n"
+	"attribute vec4 aPos; attribute vec2 aTex; attribute vec4 aCol; attribute vec4 aCol2;\n"
+	"uniform mat4 uM;\n"
+	"varying vec2 vTex; varying vec4 vCol; varying vec4 vCol2;\n"
+	"void main () { gl_Position = uM * aPos; vTex = aTex; vCol = aCol; vCol2 = aCol2; }\n";
+static const char *FS =
+	"#version 120\n"
+	"uniform sampler2D uTex; uniform float uUseTex; uniform float uAlphaRef;\n"
+	"varying vec2 vTex; varying vec4 vCol; varying vec4 vCol2;\n"
+	"void main () {\n"
+	"  vec4 c = vCol;\n"
+	"  if (uUseTex > 0.5) c *= texture2D (uTex, vTex);\n"
+	"  c = min (c + vCol2, vec4 (1.0));\n"
+	"  if (c.a < uAlphaRef) discard;\n"
+	"  gl_FragColor = c;\n"
+	"}\n";
+
+static void *glproc (const char *n)
+{
+	void *p = (void *) wglGetProcAddress (n);
+	if (p == 0 || p == (void *) 1 || p == (void *) 2 || p == (void *) 3 || p == (void *) -1)
+	{
+		HMODULE m = GetModuleHandleA ("opengl32.dll");
+		p = m ? (void *) GetProcAddress (m, n) : 0;
+	}
+	return p;
+}
+static GLuint gl_shader (Gl *g, GLenum type, const char *src)
+{
+	GLuint s = glCreateShader_ (type);
+	glShaderSource_ (s, 1, &src, 0);
+	glCompileShader_ (s);
+	GLint ok = 0; glGetShaderiv_ (s, GL_COMPILE_STATUS, &ok);
+	if (!ok) { glGetShaderInfoLog_ (s, sizeof g->err, 0, g->err); return 0; }
+	return s;
+}
+
+static void gl_free (Emu *e)
+{
+	Gl *g = e->gl;
+	if (!g) return;
+	if (g->rc) { wglMakeCurrent (0, 0); wglDeleteContext (g->rc); }
+	if (g->dc) ReleaseDC (g->hwnd, g->dc);
+	delete g; e->gl = 0;
+}
+
+// The game's window (its picture control) -> OpenGL on the calling thread (the game's). 1: done,
+// 0: not available (err says why; the software renderer is used).
+NE_API int ne_gl_attach (void *h, void *hwnd, char *err, int cap)
+{
+	Emu *e = (Emu *) h;
+	gl_free (e);
+	if (!hwnd) return 0;
+	Gl *g = new Gl (); g->hwnd = (HWND) hwnd;
+	auto fail = [&] (const char *why) { seterr (err, cap, g->err[0] ? g->err : why); gl_free (e); return 0; };
+	e->gl = g;
+	g->dc = GetDC (g->hwnd);
+	PIXELFORMATDESCRIPTOR pfd; memset (&pfd, 0, sizeof pfd);
+	pfd.nSize = sizeof pfd; pfd.nVersion = 1;
+	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	pfd.iPixelType = PFD_TYPE_RGBA; pfd.cColorBits = 32; pfd.cDepthBits = 24; pfd.iLayerType = PFD_MAIN_PLANE;
+	int pf = g->dc ? ChoosePixelFormat (g->dc, &pfd) : 0;
+	if (!pf || !SetPixelFormat (g->dc, pf, &pfd)) return fail ("no OpenGL pixel format");
+	g->rc = wglCreateContext (g->dc);
+	if (!g->rc || !wglMakeCurrent (g->dc, g->rc)) return fail ("no OpenGL context");
+#define GLL(name) name##_ = (PFN_##name) glproc (#name); if (!name##_) return fail ("OpenGL 2.0 is needed (" #name ")");
+	GLL (glCreateShader) GLL (glShaderSource) GLL (glCompileShader) GLL (glGetShaderiv) GLL (glGetShaderInfoLog)
+	GLL (glCreateProgram) GLL (glAttachShader) GLL (glBindAttribLocation) GLL (glLinkProgram) GLL (glGetProgramiv)
+	GLL (glUseProgram) GLL (glGetUniformLocation) GLL (glUniform1i) GLL (glUniform1f) GLL (glUniformMatrix4fv)
+	GLL (glEnableVertexAttribArray) GLL (glVertexAttribPointer)
+	PFN_wglSwapIntervalEXT swap = (PFN_wglSwapIntervalEXT) glproc ("wglSwapIntervalEXT");
+	if (swap) swap (0);						// (the game's thread keeps its own pace)
+	GLuint vs = gl_shader (g, GL_VERTEX_SHADER, VS), fs = vs ? gl_shader (g, GL_FRAGMENT_SHADER, FS) : 0;
+	if (!vs || !fs) return fail ("shader");
+	g->prog = glCreateProgram_ ();
+	glAttachShader_ (g->prog, vs); glAttachShader_ (g->prog, fs);
+	glBindAttribLocation_ (g->prog, 0, "aPos"); glBindAttribLocation_ (g->prog, 1, "aTex");
+	glBindAttribLocation_ (g->prog, 2, "aCol"); glBindAttribLocation_ (g->prog, 3, "aCol2");
+	glLinkProgram_ (g->prog);
+	GLint ok = 0; glGetProgramiv_ (g->prog, GL_LINK_STATUS, &ok);
+	if (!ok) return fail ("shader link");
+	glUseProgram_ (g->prog);
+	g->uM = glGetUniformLocation_ (g->prog, "uM"); g->uTex = glGetUniformLocation_ (g->prog, "uTex");
+	g->uUseTex = glGetUniformLocation_ (g->prog, "uUseTex"); g->uAlphaRef = glGetUniformLocation_ (g->prog, "uAlphaRef");
+	glUniform1i_ (g->uTex, 0);
+	glGenTextures (1024, g->tex); glGenTextures (1, &g->fbTex);
+	for (int i = 0; i < 4; i++) glEnableVertexAttribArray_ ((GLuint) i);
+	return 1;
+}
+NE_API void ne_gl_detach (void *h) { gl_free ((Emu *) h); }
+
+// the picture's place in the window: its shape kept, centred (GL's y from the bottom)
+static void gl_rect (Emu *e, int *x, int *y, int *w, int *h, int *W, int *H)
+{
+	RECT r; GetClientRect (e->gl->hwnd, &r);
+	*W = r.right; *H = r.bottom;
+	double a = ne_aspect1000 (e) / 1000.0;
+	int pw = *W, ph = (int) (*W / a);
+	if (ph > *H) { ph = *H; pw = (int) (*H * a); }
+	*x = (*W - pw) / 2; *y = (*H - ph) / 2; *w = pw; *h = ph;
+}
+
+template <typename TX>
+static void gl_textures (Gl *g, TX *tex, int n)
+{
+	for (int i = 0; i < n && i < 1024; i++)
+	{
+		TX &T = tex[i];
+		if (T.w <= 0 || !T.px || (!T.dirty && g->have[i])) continue;
+		glBindTexture (GL_TEXTURE_2D, g->tex[i]);
+		glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, T.w, T.h, 0, GL_BGRA, GL_UNSIGNED_BYTE, T.px);
+		T.dirty = false; g->have[i] = true;
+	}
+}
+
+static const GLenum ZF[8] = { GL_LESS, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS };
+static GLint gl_wrap (unsigned m) { return m == 1 ? GL_CLAMP_TO_EDGE : m == 2 ? GL_MIRRORED_REPEAT : GL_REPEAT; }
+
+template <typename FR, typename TX>
+static void gl_frame (Emu *e, const FR &fr, TX *tex, int ntex)
+{
+	Gl *g = e->gl;
+	int x, y, w, h, W, H; gl_rect (e, &x, &y, &w, &h, &W, &H);
+	gl_textures (g, tex, ntex);
+	glDisable (GL_SCISSOR_TEST);
+	glViewport (0, 0, W, H);
+	glClearColor (0, 0, 0, 1); glClear (GL_COLOR_BUFFER_BIT);		// (the bars)
+	glEnable (GL_SCISSOR_TEST); glScissor (x, H - y - h, w, h);
+	glViewport (x, H - y - h, w, h);
+	glClearColor (((fr.clear >> 16) & 255) / 255.0f, ((fr.clear >> 8) & 255) / 255.0f, (fr.clear & 255) / 255.0f, 1);
+	glDepthMask (GL_TRUE); glClearDepth (1.0);
+	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable (GL_DEPTH_TEST);
+	const char *v = (const char *) fr.v;
+	glVertexAttribPointer_ (0, 4, GL_FLOAT, GL_FALSE, 32, v);
+	glVertexAttribPointer_ (1, 2, GL_FLOAT, GL_FALSE, 32, v + 16);
+	glVertexAttribPointer_ (2, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, v + 24);
+	glVertexAttribPointer_ (3, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, v + 28);
+	static const float I[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	for (int i = 0; i < fr.nb; i++)
+	{
+		const auto &B = fr.b[i];
+		if (B.count < 3 || (int) (B.first + B.count) > fr.nv) continue;
+		unsigned f = B.flags;
+		glUniformMatrix4fv_ (g->uM, 1, GL_TRUE, (f & bas::G3_NOMATRIX) ? I : B.m);	// (row-major)
+		bool t = B.tex >= 0 && B.tex < ntex && B.tex < 1024 && g->have[B.tex];
+		glUniform1f_ (g->uUseTex, t ? 1.0f : 0.0f);
+		if (t)
+		{
+			glBindTexture (GL_TEXTURE_2D, g->tex[B.tex]);
+			GLint fl = (f & bas::G3_LINEAR) ? GL_LINEAR : GL_NEAREST;
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, fl);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, fl);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, gl_wrap ((f >> bas::G3_WRAP_S_SHIFT) & 3));
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, gl_wrap ((f >> bas::G3_WRAP_T_SHIFT) & 3));
+		}
+		glUniform1f_ (g->uAlphaRef, (f & bas::G3_ALPHATEST) ? (float) ((f >> 19) & 255) / 255.0f - 0.5f / 255 : -1.0f);
+		unsigned zf = f & bas::G3_ZFUNC;
+		glDepthFunc (ZF[zf]);
+		glDepthMask ((f & bas::G3_NOZWRITE) || zf == 7 ? GL_FALSE : GL_TRUE);
+		if (f & (bas::G3_CULL_BACK | bas::G3_CULL_FRONT)) { glEnable (GL_CULL_FACE); glCullFace ((f & bas::G3_CULL_BACK) ? GL_BACK : GL_FRONT); }
+		else glDisable (GL_CULL_FACE);
+		switch ((f >> bas::G3_BLEND_SHIFT) & 15)
+		{
+		case 1: glEnable (GL_BLEND); glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break;
+		case 2: glEnable (GL_BLEND); glBlendFunc (GL_SRC_ALPHA, GL_ONE); break;
+		case 3: glEnable (GL_BLEND); glBlendFunc (GL_DST_COLOR, GL_ZERO); break;
+		case 4: glEnable (GL_BLEND); glBlendFunc (GL_ONE, GL_ONE_MINUS_SRC_ALPHA); break;
+		default: glDisable (GL_BLEND); break;
+		}
+		glDrawArrays (GL_TRIANGLES, (GLint) B.first, (GLsizei) (B.count / 3 * 3));
+	}
+	SwapBuffers (g->dc);
+}
+
+// the game's CPU-drawn picture (its framebuffer), as a texture over the picture's place
+static void gl_fb (Emu *e, const unsigned *px, int fw, int fh)
+{
+	Gl *g = e->gl;
+	int x, y, w, h, W, H; gl_rect (e, &x, &y, &w, &h, &W, &H);
+	glDisable (GL_SCISSOR_TEST); glDisable (GL_DEPTH_TEST); glDisable (GL_BLEND); glDisable (GL_CULL_FACE);
+	glViewport (0, 0, W, H);
+	glClearColor (0, 0, 0, 1); glClear (GL_COLOR_BUFFER_BIT);
+	glViewport (x, H - y - h, w, h);
+	glBindTexture (GL_TEXTURE_2D, g->fbTex);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, fw, fh, 0, GL_BGRA, GL_UNSIGNED_BYTE, px);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	struct V { float x, y, z, w, s, t; unsigned char c[4], c2[4]; };
+	static const V q[6] = {
+		{ -1, 1, 0, 1, 0, 0, {255,255,255,255}, {0,0,0,255} }, { 1, 1, 0, 1, 1, 0, {255,255,255,255}, {0,0,0,255} },
+		{ 1, -1, 0, 1, 1, 1, {255,255,255,255}, {0,0,0,255} }, { -1, 1, 0, 1, 0, 0, {255,255,255,255}, {0,0,0,255} },
+		{ 1, -1, 0, 1, 1, 1, {255,255,255,255}, {0,0,0,255} }, { -1, -1, 0, 1, 0, 1, {255,255,255,255}, {0,0,0,255} } };
+	const char *v = (const char *) q;
+	glVertexAttribPointer_ (0, 4, GL_FLOAT, GL_FALSE, 32, v);
+	glVertexAttribPointer_ (1, 2, GL_FLOAT, GL_FALSE, 32, v + 16);
+	glVertexAttribPointer_ (2, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, v + 24);
+	glVertexAttribPointer_ (3, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, v + 28);
+	static const float I[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	glUniformMatrix4fv_ (g->uM, 1, GL_FALSE, I);
+	glUniform1f_ (g->uUseTex, 1.0f); glUniform1f_ (g->uAlphaRef, -1.0f);
+	glDrawArrays (GL_TRIANGLES, 0, 6);
+	SwapBuffers (g->dc);
+}
+
+static bool gl_draw (Emu *e)
+{
+	if (e->n64)
+	{
+		if (e->gfxAge < 30 && e->n64->gfxReady >= 0) gl_frame (e, e->n64->gfxFrame[e->n64->gfxReady], e->n64->tex, n64::Machine::MAX_TEX);
+		else gl_fb (e, e->n64->fb, e->n64->fbW, e->n64->fbH);
+	}
+	else
+	{
+		if (e->gfxAge < 30 && e->gc->gfxReady >= 0) gl_frame (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex, gc::Machine::MAX_TEX);
+		else gl_fb (e, e->gc->fb, e->gc->fbW, e->gc->fbH);
+	}
+	e->lock.take (); e->serial++; e->lock.give ();		// (a new picture: for the speed)
+	return true;
+}
+#else
+struct Gl {};
+static bool gl_draw (Emu *) { return false; }
+static void gl_free (Emu *) {}
+NE_API int ne_gl_attach (void *, void *, char *err, int cap) { seterr (err, cap, "no OpenGL here"); return 0; }
+NE_API void ne_gl_detach (void *) {}
+#endif
+
+// the last picture again (paused: the window was covered): OpenGL only
+NE_API void ne_redraw (void *h) { Emu *e = (Emu *) h; if (e && e->gl) gl_draw (e); }
 
 // ---- the library's pictures ------------------------------------------------------------------------------
 // A picture for the library (160 x 144): a 2D game run ~7 s unseen, its screen kept (-> 1); a

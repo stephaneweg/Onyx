@@ -855,12 +855,17 @@ GameCube, **the same cores** as on the Pi — in one program with a library of y
   library). Keys as on Onyx (Help ▸ Controls…): arrows, **X** / **Z** (A / B), **Enter** Start,
   **Backspace** Select, **A S Q W** for Y, X, L, R… (N64 / GameCube: **C** = B, **Z** = Z, **I J K L**
   the C buttons / stick, **T F G H** the D-pad). **Xbox-style pads** (XInput) work, the buttons by
-  their place as on Onyx. **P** pause, **F11** or **Alt+Enter** full screen (**Esc** back), **F12**
+  their place as on Onyx; **other USB pads** (DirectInput / HID ones) too, with Options ▸
+  **Gamepad…**: each button of the Onyx pad (Up… Start, named after its place) gets a button, an
+  axis end or a hat direction of the pad ("Set", then press it; a lamp shows what is held), and the
+  sticks an axis each (kept in `settings.ini`). **P** pause, **F11** or **Alt+Enter** full screen (**Esc** back), **F12**
   the speed, **Ctrl+R** reset, Ctrl+W close; View ▸ Size 1x–5x, Smooth Picture; Sound ▸ On / Off.
 - **Saves**: `<game>.sav` beside the game — the **same files as on Onyx**, so a save can go
   from the Pi to the PC and back.
-- **3D** (Nintendo 64, GameCube): the triangles are drawn by the software renderer of the BASIC
-  3D, 1–4 × the console's resolution (Options or View ▸ **3D Resolution**; 2× by default).
+- **3D** (Nintendo 64, GameCube): drawn by the PC's graphics card with **OpenGL** (2.0 or later),
+  at the window's size; View ▸ **3D Renderer** ▸ Software uses the BASIC 3D's renderer on every core
+  of the processor instead (1–4 × the console's resolution: View ▸ 3D Resolution) — also the
+  fallback when OpenGL is missing. With OpenGL, F12's speed shows in the title bar.
   The GameCube runs **slowly**: its CPU is interpreted (the JIT is Pi code), and it has no sound
   yet — as on Onyx.
 

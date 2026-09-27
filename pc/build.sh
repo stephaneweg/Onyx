@@ -24,7 +24,7 @@ cp "$HERE/OnyxRemote/bin/out/OnyxRemote.exe" "$HERE/OnyxRemote/bin/out/OnyxRemot
 x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libgcc -static-libstdc++ \
 	-I "$ROOT/user" -o "$DIST/nemucore.dll" "$HERE/NintendoEMU/core/nemucore.cpp" \
 	"$ROOT/user/gb/gb.cpp" "$ROOT"/user/gba/*.cpp "$ROOT"/user/nes/*.cpp "$ROOT"/user/snes/*.cpp \
-	"$ROOT"/user/n64/*.cpp "$ROOT"/user/gc/*.cpp -lwinmm
+	"$ROOT"/user/n64/*.cpp "$ROOT"/user/gc/*.cpp -lwinmm -lopengl32 -lgdi32
 x86_64-w64-mingw32-strip "$DIST/nemucore.dll"
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/NintendoEMU/NintendoEMU.csproj" -c Release -o "$HERE/NintendoEMU/bin/out" -v quiet -nologo
 cp "$HERE/NintendoEMU/bin/out/NintendoEMU.exe" "$HERE/NintendoEMU/bin/out/NintendoEMU.exe.config" "$DIST/"

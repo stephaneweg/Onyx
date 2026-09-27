@@ -108,6 +108,8 @@ namespace NintendoEMU
 				res.DropDownItems.Add (it);
 			}
 			opt.DropDownItems.AddRange (new ToolStripItem[] { miSound, miSmooth, miFull, res });
+			opt.DropDownItems.Add (new ToolStripSeparator ());
+			opt.DropDownItems.Add (new ToolStripMenuItem ("&Gamepad...", null, (s, e) => { using (var d = new PadDialog ()) d.ShowDialog (this); }));
 			var help = new ToolStripMenuItem ("&Help");
 			help.DropDownItems.Add (new ToolStripMenuItem ("&Controls...", null, (s, e) => ShowControls ()));
 			help.DropDownItems.Add (new ToolStripMenuItem ("&About NintendoEMU...", null, (s, e) => MessageBox.Show (this,

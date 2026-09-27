@@ -102,6 +102,14 @@ void Machine::viOutput ()
 	int height = nin ? acv : acv * 2;
 	if (height <= 0 || height > FB_MAX_H) height = pal ? 574 : 480;
 	fbW = width; fbH = height;
+	// black while the game has not given the VI its picture (the frame buffer's address still 0:
+	// the start of memory -- the OS globals, the game's code -- would show as noise) or has
+	// switched the display off: as the console, that shows nothing until then
+	if ((tfbl & 0x00FFFFFF) == 0 || !(vi[0x02 / 2] & 1))
+	{
+		for (int i = 0; i < width * height; i++) fb[i] = 0;
+		return;
+	}
 	for (int y = 0; y < height; y++)
 	{
 		u32 base = nin ? top + (u32) (y * stride) : ((y & 1) ? bot : top) + (u32) ((y >> 1) * stride);

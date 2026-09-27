@@ -21,6 +21,7 @@ namespace NintendoEMU
 				return;
 			}
 			Library.Load ();
+			Pads.Load ();
 			string rom = args.Length > 0 && File.Exists (args[0]) ? Path.GetFullPath (args[0]) : null;
 			Application.Run (new MainForm (rom));
 		}

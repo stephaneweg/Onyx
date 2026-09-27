@@ -75,8 +75,10 @@ static inline void g3sample (const G3Texture *T, float s, float t, unsigned flag
 	texel (x, y + 1, (1 - fx) * fy, out); texel (x + 1, y + 1, fx * fy, out);
 }
 
-// One triangle already in clip space, in front of the near plane.
-static void g3raster (unsigned *dst, int W, int H, int stride, float *zb, const G3Clip *c, unsigned flags, const G3Texture *T)
+// One triangle already in clip space, in front of the near plane (only the rows ry0 .. ry1 - 1:
+// a band of the picture, several drawn at once by threads on the PC).
+static void g3raster (unsigned *dst, int W, int H, int stride, float *zb, const G3Clip *c, unsigned flags, const G3Texture *T,
+		      int ry0 = 0, int ry1 = 1 << 30)
 {
 	float X[3], Y[3], Z[3], IW[3];
 	for (int k = 0; k < 3; k++)
@@ -104,6 +106,9 @@ static void g3raster (unsigned *dst, int W, int H, int stride, float *zb, const 
 	}
 	int x0 = minX < 0 ? 0 : (int) minX, y0 = minY < 0 ? 0 : (int) minY;
 	int x1 = maxX >= (float) W ? W - 1 : (int) maxX, y1 = maxY >= (float) H ? H - 1 : (int) maxY;
+	if (y0 < ry0) y0 = ry0;
+	if (y1 > ry1 - 1) y1 = ry1 - 1;
+	if (y0 > y1) return;
 	float inv = 1.0f / area;
 	unsigned zf = flags & G3_ZFUNC; if (zf == 0) zf = 1;
 	bool zw = !(flags & G3_NOZWRITE) && zf != 7;
@@ -172,14 +177,11 @@ static void g3raster (unsigned *dst, int W, int H, int stride, float *zb, const 
 		}
 }
 
-// The whole frame into dst (0x00RRGGBB, W x H, stride pixels a row); zb: W * H floats.
-// tex (number -> texture, or 0) resolves the batches' texture numbers.
-template <typename TexFn>
-static void swRender (unsigned *dst, int W, int H, int stride, float *zb, const G3Vertex *v, int nv,
-		      const G3Batch *bt, int nb, unsigned clear, bool keep, TexFn tex)
+// Every triangle of the batches, transformed and clipped against the near plane, in order:
+// each(tri[3], flags, texture) -- tex (number -> texture, or 0) resolves the batches' textures.
+template <typename TexFn, typename EachFn>
+static void swTriangles (const G3Vertex *v, int nv, const G3Batch *bt, int nb, TexFn tex, EachFn each)
 {
-	if (!keep) for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) dst[(long) y * stride + x] = clear;
-	for (int i = 0; i < W * H; i++) zb[i] = 1.0f;
 	static const float I[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	for (int bi = 0; bi < nb; bi++)
 	{
@@ -223,10 +225,23 @@ static void swRender (unsigned *dst, int W, int H, int stride, float *zb, const 
 			for (int k = 1; k + 1 < n; k++)
 			{
 				G3Clip tri[3] = { poly[0], poly[k], poly[k + 1] };
-				g3raster (dst, W, H, stride, zb, tri, B.flags, T);
+				each (tri, B.flags, T);
 			}
 		}
 	}
+}
+
+// The whole frame into dst (0x00RRGGBB, W x H, stride pixels a row); zb: W * H floats.
+template <typename TexFn>
+static void swRender (unsigned *dst, int W, int H, int stride, float *zb, const G3Vertex *v, int nv,
+		      const G3Batch *bt, int nb, unsigned clear, bool keep, TexFn tex)
+{
+	if (!keep) for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) dst[(long) y * stride + x] = clear;
+	for (int i = 0; i < W * H; i++) zb[i] = 1.0f;
+	swTriangles (v, nv, bt, nb, tex, [&] (const G3Clip *tri, unsigned flags, const G3Texture *T)
+	{
+		g3raster (dst, W, H, stride, zb, tri, flags, T);
+	});
 }
 
 } // namespace bas

@@ -987,7 +987,13 @@ barwidth = 40
   apps do, `ne_run_frame (h, draw)`, `ne_audio`, `ne_video` (the last picture, double-buffered
   under a lock: the game runs on its own thread), `ne_thumb` (the library's picture), `ne_save`
   (`<rom>.sav`, as on Onyx), waveOut (`ne_audio_*`). The N64 / GameCube `GFrame`s go to
-  `bas::swRender` (`user/basic/bas3d.h`) at `ne_set_scale` × their size. `NintendoEMU.exe` (.NET
+  **OpenGL** (`ne_gl_attach (h, hwnd)` from the game's thread: a WGL context on the picture
+  control, GLSL 1.20 — colour = texel × colour + colour2, alpha test, the batch's matrix, blending
+  / depth / cull / wrap from the flags, as `kapi_gpu_render`; the machine's dirty textures uploaded;
+  a CPU-drawn framebuffer as a textured quad), else `bas::swTriangles` + `g3raster` in bands of 16
+  rows on every core (`user/basic/bas3d.h`) at `ne_set_scale` × their size. Pads: XInput, else
+  the first Windows joystick (winmm `joyGetPosEx`) through `ne_pad_map` (PAD_* bit → button / axis
+  end / hat direction; `PadDialog.cs`). `NintendoEMU.exe` (.NET
   4.8 WinForms): `MainForm` (the library, `library.txt`, the pictures made by a worker thread),
   `GameForm` (the game thread: paced by the sound queue — ~70 ms — when the game makes sound,
   else by the clock, a picture skipped to catch up; the window draws with `StretchDIBits`).

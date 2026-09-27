@@ -25,6 +25,7 @@ namespace NintendoEMU
 		public double Aspect = 4.0 / 3.0;
 		public bool Smooth;
 		public string Overlay;				// the speed, "Paused"...
+		public volatile bool Gl;			// OpenGL draws the picture (the game's thread): nothing to paint here
 
 		public Screen ()
 		{
@@ -32,6 +33,7 @@ namespace NintendoEMU
 			BackColor = Color.Black;
 		}
 		protected override bool IsInputKey (Keys k) => true;		// the arrows, Enter... are the game's
+		protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ClassStyle |= 0x20; return p; } }	// CS_OWNDC (OpenGL)
 
 		public Rectangle PictureRect ()
 		{
@@ -43,6 +45,7 @@ namespace NintendoEMU
 
 		protected override void OnPaint (PaintEventArgs e)
 		{
+			if (Gl) return;
 			var g = e.Graphics;
 			var r = PictureRect ();
 			// the bars
@@ -84,6 +87,8 @@ namespace NintendoEMU
 		Thread thread;
 		volatile bool running, paused, soundOn, stats, uiPending;
 		volatile int scale3d;
+		volatile bool wantGl; volatile IntPtr glHwnd; string glError;	// OpenGL for the 3D (N64, GameCube)
+		ToolStripMenuItem miGl, miSoft;
 		readonly byte[] keys = new byte[256];
 		bool keysChanged;
 		readonly int[] pixels;
@@ -126,6 +131,8 @@ namespace NintendoEMU
 			screen.Aspect = Native.ne_aspect1000 (h) / 1000.0;
 			screen.Smooth = Settings.GetBool ("Smooth", false);
 			screen.Pixels = pin.AddrOfPinnedObject ();
+			wantGl = (g.System == Sys.N64 || g.System == Sys.GC) && Settings.Get ("Renderer", "opengl") != "software";
+			screen.HandleCreated += (s, e) => glHwnd = screen.Handle;	// (full screen may make it again)
 			Controls.Add (screen);
 			BuildMenu ();
 			Controls.Add (menu);
@@ -144,7 +151,7 @@ namespace NintendoEMU
 			screen.KeyDown += (s, e) => Key (e, true);
 			screen.KeyUp += (s, e) => Key (e, false);
 			Deactivate += (s, e) => { lock (keys) { Array.Clear (keys, 0, 256); keysChanged = true; } };
-			Shown += (s, e) => { screen.Focus (); Start (); };
+			Shown += (s, e) => { glHwnd = screen.Handle; screen.Focus (); Start (); };
 			try { Icon = Icon.ExtractAssociatedIcon (Application.ExecutablePath); } catch { }
 		}
 
@@ -173,6 +180,11 @@ namespace NintendoEMU
 					res.DropDownItems.Add (it);
 				}
 				view.DropDownItems.Add (res);
+				var ren = new ToolStripMenuItem ("3D &Renderer");
+				miGl = new ToolStripMenuItem ("&OpenGL (the graphics card)", null, (s, e) => SetRenderer (true)) { Checked = wantGl };
+				miSoft = new ToolStripMenuItem ("&Software (the processor)", null, (s, e) => SetRenderer (false)) { Checked = !wantGl };
+				ren.DropDownItems.Add (miGl); ren.DropDownItems.Add (miSoft);
+				view.DropDownItems.Add (ren);
 			}
 			miStats = new ToolStripMenuItem ("Show &Speed", null, (s, e) => { stats = !stats; miStats.Checked = stats; if (!stats) screen.Overlay = paused ? "Paused" : null; screen.Invalidate (); }) { ShortcutKeyDisplayString = "F12" };
 			view.DropDownItems.Add (miStats);
@@ -180,8 +192,17 @@ namespace NintendoEMU
 			miSound = new ToolStripMenuItem ("Sound On", null, (s, e) => { soundOn = !soundOn; miSound.Checked = soundOn; Settings.Set ("Sound", soundOn); }) { Checked = soundOn };
 			sound.DropDownItems.Add (miSound);
 			var help = new ToolStripMenuItem ("&Help");
+			help.DropDownItems.Add (new ToolStripMenuItem ("&Gamepad...", null, (s, e) => { using (var d = new PadDialog ()) d.ShowDialog (this); screen.Focus (); }));
 			help.DropDownItems.Add (new ToolStripMenuItem ("&Controls...", null, (s, e) => MessageBox.Show (this, Controls_ (this.game.System), "Controls - " + this.game.SystemName)));
 			menu.Items.AddRange (new ToolStripItem[] { game, view, sound, help });
+		}
+
+		void SetRenderer (bool gl)
+		{
+			wantGl = gl; glError = null;
+			miGl.Checked = gl; miSoft.Checked = !gl;
+			Settings.Set ("Renderer", gl ? "opengl" : "software");
+			screen.Invalidate ();
 		}
 
 		public static string Controls_ (Sys s)
@@ -240,6 +261,7 @@ namespace NintendoEMU
 			paused = !paused; miPause.Checked = paused;
 			screen.Overlay = paused ? "Paused" : stats ? speedText : null;
 			screen.Invalidate ();
+			if (screen.Gl) ShowTitle (paused ? "Paused" : null);
 		}
 		void DoReset ()
 		{
@@ -296,11 +318,30 @@ namespace NintendoEMU
 			var sw = Stopwatch.StartNew ();
 			double frameMs = 1000000.0 / Native.ne_fps1000 (h), next = 0, statT = 0;
 			int skipped = 0, frames = 0, shown = 0; bool hadAudio = false;
+			IntPtr glOn = IntPtr.Zero; double redrawT = 0;
 			try
 			{
 				while (running)
 				{
-					if (paused) { Thread.Sleep (10); next = sw.Elapsed.TotalMilliseconds; continue; }
+					// OpenGL: attached to the picture's window from this thread (again if the window was made again)
+					bool useGl = wantGl && glError == null;
+					if (useGl && glOn != glHwnd)
+					{
+						string err = Native.GlAttach (h, glHwnd);
+						if (err == null) { glOn = glHwnd; screen.Gl = true; }
+						else
+						{
+							glError = err; glOn = IntPtr.Zero; screen.Gl = false;
+							BeginInvoke ((Action) (() => { SetRenderer (false); MessageBox.Show (this, "OpenGL is not available (" + err + "): the software renderer draws the 3D.", "NintendoEMU"); }));
+						}
+					}
+					else if (!useGl && glOn != IntPtr.Zero) { Native.ne_gl_detach (h); glOn = IntPtr.Zero; screen.Gl = false; }
+					if (paused)
+					{
+						Thread.Sleep (10); next = sw.Elapsed.TotalMilliseconds;
+						if (glOn != IntPtr.Zero && next - redrawT > 100) { redrawT = next; Native.ne_redraw (h); }
+						continue;
+					}
 					lock (keys) { if (keysChanged) { Buffer.BlockCopy (keys, 0, kc, 0, 256); keysChanged = false; } }
 					Native.ne_set_keys (h, kc);
 					Native.ne_set_scale (h, scale3d);
@@ -341,7 +382,7 @@ namespace NintendoEMU
 					if (draw)
 					{
 						shown++;
-						if (!uiPending) { uiPending = true; try { BeginInvoke ((Action) ShowFrame); } catch { uiPending = false; } }
+						if (glOn == IntPtr.Zero && !uiPending) { uiPending = true; try { BeginInvoke ((Action) ShowFrame); } catch { uiPending = false; } }
 					}
 					if (now - statT >= 1000)
 					{
@@ -350,6 +391,7 @@ namespace NintendoEMU
 							frames / s * frameMs / 10.0, Native.ne_is_3d (h) != 0 ? ", 3D" : "",
 							audioOk && soundOn && hadAudio ? string.Format (", sound {0} ms", Native.ne_audio_queued () * 1000 / RATE) : "");
 						frames = 0; shown = 0; statT = now;
+						if (glOn != IntPtr.Zero) { string t = stats ? speedText + ", OpenGL" : null; try { BeginInvoke ((Action) (() => ShowTitle (t))); } catch { } }
 					}
 				}
 			}
@@ -357,10 +399,14 @@ namespace NintendoEMU
 			catch (InvalidOperationException) { }
 			finally
 			{
+				if (glOn != IntPtr.Zero) { Native.ne_gl_detach (h); screen.Gl = false; }
 				Native.ne_audio_close ();
 				timeEndPeriod (1);
 			}
 		}
+
+		// (OpenGL: the speed goes in the title, the picture is not painted by this window)
+		void ShowTitle (string speed) { Text = game.Name + " - " + game.SystemName + " - NintendoEMU" + (speed != null ? "  [" + speed + "]" : ""); }
 
 		// the window's thread: the last picture
 		void ShowFrame ()
