@@ -35,7 +35,8 @@ Onyx Remote
 ===========
 
 OnyxRemote.exe (+ OnyxRemote.exe.config): the Onyx session in one window of this PC -- the
-client of rdpd (port 3390, started at boot on the Pi). Type the Pi's address, Connect. The Onyx
+client of rdpd (port 3390, started at boot on the Pi). Type the Pi's address, Connect (the
+window then takes the size of the Pi's screen, not resizable). The Onyx
 menu bar across the top; the Onyx windows as child windows inside (normal windows, or with their
 Onyx frame: "Onyx frames"), moved freely; their close button closes the Onyx app; clicking a
 window gives it the keyboard. "Desktop" shows the Onyx desktop behind them; "16-bit colours"

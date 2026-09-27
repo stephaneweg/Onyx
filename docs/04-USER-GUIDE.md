@@ -540,7 +540,9 @@ connection waits until the first ends.
 `rdpd` (started by `SD:/etc/autostart`, port **3390**) serves the Onyx windows one by one to
 **Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
 11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
-**Connect**.
+**Connect**. Connected, the window takes **the size of the Pi's screen** (below the tool bar)
+and cannot be resized, so the Onyx windows (the shelf at the bottom) sit where they are on the
+Pi; when the Pi's screen does not fit on the PC's, it stays resizable.
 
 - At the top, the **Onyx menu bar** across the window's width (the menus on the left, the
   status and the clock on the right); its menus open over the windows.

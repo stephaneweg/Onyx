@@ -140,6 +140,8 @@ namespace OnyxRemote
 		readonly ToolStripButton console = new ToolStripButton ("Console") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
 		readonly ToolStripLabel status = new ToolStripLabel ("Not connected");
 		readonly BarPanel barPanel;
+		readonly ToolStrip ts;
+		Size freeSize;					// (the size before a connection fixed it)
 		readonly DropLayer drop;
 		readonly MdiClient mdi;
 		public Connection Conn;
@@ -157,7 +159,7 @@ namespace OnyxRemote
 			ClientSize = new Size (1040, 830);
 			foreach (Control c in Controls) if (c is MdiClient mc) mdi = mc;
 			mdi.BackColor = Color.FromArgb (32, 64, 96);
-			var ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
+			ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
 			host.Width = 130; port.Width = 45; port.Text = "3390";
 			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go, console,
 				new ToolStripSeparator (), bits16, desktop, frames, new ToolStripSeparator (), status });
@@ -233,7 +235,25 @@ namespace OnyxRemote
 			c.RoundDone += () => BeginInvoke ((Action) (() => { if (Conn != c) return; Sync (); rounds++; c.Ready (); }));
 			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
 			go.Text = "Disconnect";
+			FitToPi (c.ScreenW, c.ScreenH);
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = false;
+		}
+
+		// Connected: the window exactly the Pi's screen (the tool bar above it), not resizable -- the
+		// Onyx windows (the shelf at the bottom) where they are on the Pi. Not when it does not fit.
+		void FitToPi (int w, int h)
+		{
+			if (w <= 0 || h <= 0) return;
+			var area = Screen.FromControl (this).WorkingArea;
+			var want = new Size (w, ts.Height + h);
+			Size frame = Size - ClientSize;
+			if (want.Width + frame.Width > area.Width || want.Height + frame.Height > area.Height) return;
+			if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+			freeSize = ClientSize;
+			FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
+			ClientSize = want;
+			if (Right > area.Right) Left = Math.Max (area.Left, area.Right - Width);
+			if (Bottom > area.Bottom) Top = Math.Max (area.Top, area.Bottom - Height);
 		}
 
 		void SaveSettings ()
@@ -255,6 +275,11 @@ namespace OnyxRemote
 			Bar.Present = false; barPanel.Visible = false; drop.Hide ();
 			mdi.BackgroundImage = null;
 			go.Text = "Connect";
+			if (FormBorderStyle != FormBorderStyle.Sizable)		// (the free size again)
+			{
+				FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
+				if (!freeSize.IsEmpty) ClientSize = freeSize;
+			}
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = true;
 			status.Text = why;
 		}
