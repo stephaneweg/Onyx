@@ -33,6 +33,9 @@ namespace OnyxRemote
 		uint flags;
 		bool dragging; Point dragFrom;
 		bool docked;
+		// the docked menu bar stretched to the PC screen's width: columns [0, split) as they are,
+		// [split, w) moved right by gap, the gap filled with the bar's background
+		int split = -1, gap, barH;
 		readonly bool desk;
 
 		// ---- the application bar (the Onyx menu bar at the top of the PC's screen) ----
@@ -53,6 +56,9 @@ namespace OnyxRemote
 			d.rc.bottom = d.rc.top + height;
 			SHAppBarMessage (ABM_SETPOS, ref d);
 			docked = true;
+			barH = height;
+			gap = Math.Max (0, scr.Width - w);
+			if (gap > 0) { ClientSize = new Size (w + gap, ClientSize.Height); FindSplit (); Invalidate (); }
 		}
 		void Undock ()
 		{
@@ -103,7 +109,7 @@ namespace OnyxRemote
 			if (fresh)
 			{
 				Swap (ref content, w, h); Swap (ref chromeA, ow, oh); Swap (ref chromeI, ow, oh);
-				ClientSize = new Size (Math.Max (fw, 1), Math.Max (fh, 1));
+				ClientSize = new Size (Math.Max (fw, 1) + (docked ? gap : 0), Math.Max (fh, 1));
 			}
 			// the Pi's place at first; then a framed window stays where it is put on the PC,
 			// a borderless one (menu bar, bubbles) follows the Pi
@@ -127,6 +133,7 @@ namespace OnyxRemote
 			if (m.Dirty || fresh)					// (fresh: its pixels, even if already seen)
 			{
 				Fill (content, m.Content, w, h);
+				if (docked) FindSplit (m.Content);
 				if (frame) { Fill (chromeA, m.ChromeA, ow, oh); Fill (chromeI, m.ChromeI, ow, oh); }
 				m.Dirty = false;
 				Invalidate ();
@@ -147,11 +154,44 @@ namespace OnyxRemote
 			b.UnlockBits (d);
 		}
 
+		// The empty middle of the bar: the widest run of identical columns (its background),
+		// looked for from the right (the status area); split in its middle.
+		int[] lastPx;
+		void FindSplit (int[] px = null)
+		{
+			if (px != null) lastPx = px;
+			px = lastPx;
+			split = -1;
+			int H = Math.Min (barH > 0 ? barH : 32, h);
+			if (px == null || gap <= 0 || w < 64 || px.Length < w * H) return;
+			bool Same (int a, int b) { for (int y = 0; y < H; y++) if (px[y * w + a] != px[y * w + b]) return false; return true; }
+			int best = 0, bestAt = -1;
+			for (int x = w - 2; x > 0; )
+			{
+				int end = x + 1;
+				while (x > 0 && Same (x, x + 1)) x--;
+				int run = end - x;
+				if (run > best) { best = run; bestAt = x + 1; }
+				x--;
+			}
+			if (best >= 24) split = bestAt + best / 2;
+		}
+
 		protected override void OnPaint (PaintEventArgs e)
 		{
 			var g = e.Graphics;
 			g.CompositingMode = CompositingMode.SourceCopy;
 			g.InterpolationMode = InterpolationMode.NearestNeighbor;
+			if (docked && split > 0 && content != null)
+			{
+				// the bar in two parts, the middle stretched from its background column
+				g.DrawImage (content, new Rectangle (0, 0, split, h), new Rectangle (0, 0, split, h), GraphicsUnit.Pixel);
+				g.DrawImage (content, new Rectangle (split + gap, 0, w - split, h), new Rectangle (split, 0, w - split, h), GraphicsUnit.Pixel);
+				int bh = Math.Min (barH, h);
+				g.DrawImage (content, new Rectangle (split, 0, gap, bh), new Rectangle (split, 0, 1, bh), GraphicsUnit.Pixel);
+				if (h > bh) using (var key = new SolidBrush (Color.FromArgb (255, 0, 255))) g.FillRectangle (key, split, bh, gap, h - bh);
+				return;
+			}
 			if (frame) { var c = keys ? chromeA : chromeI; if (c != null) g.DrawImageUnscaled (c, 0, 0); }
 			if (content != null) g.DrawImageUnscaled (content, frame ? il : 0, frame ? it : 0);
 			foreach (var o in Overlays)				// (bottom to top)
@@ -187,6 +227,7 @@ namespace OnyxRemote
 		void SendPointer (Point p, int b, int wheel)
 		{
 			int x = p.X - (frame ? il : 0), y = p.Y - (frame ? it : 0);
+			if (docked && split > 0) x = x >= split + gap ? x - gap : Math.Min (x, split);	// (the stretched bar -> the Pi's)
 			conn.Pointer (Id, x, y, b, wheel);
 			buttons = b;
 		}

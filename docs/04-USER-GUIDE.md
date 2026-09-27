@@ -510,7 +510,8 @@ frames** ticked, with its Onyx frame (title bar, borders, close box) as on the P
   halves the data (a game in a big window).
 - Drag a window by its title bar to place it on the PC (the Pi's window stays where it is);
   its close button (or Alt+F4) closes the Onyx app. Without the desktop, only the Onyx menu
-  bar (docked at the top of the PC's screen: no window goes under it) and the apps' windows
+  bar (docked at the top of the PC's screen, stretched to its width — the menus on the left,
+  the status and the clock on the right; no window goes under it) and the apps' windows
   appear — the shelf, the bubbles and the other frameless Onyx windows stay on the Pi; an
   Onyx app in full screen shows in a normal window. Clicking a window brings it to the
   front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
