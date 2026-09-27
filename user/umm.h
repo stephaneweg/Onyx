@@ -38,10 +38,17 @@ static inline unsigned long umm__round (unsigned long n)
 static inline int umm__classidx (unsigned long n)
 { for (int i = 0; i < UMM_NCLASS; i++) if (n <= umm__class[i]) return i; return -1; }
 
+// An app whose code may run on an app core (where no kapi call is allowed) defines this to
+// grow the heap from its main thread instead (the BASIC runtime, CORE ON).
+#ifdef __cplusplus
+extern "C"
+#endif
+void *onyx_sbrk_hook (long n) __attribute__ ((weak));
+
 static inline int umm__grow (unsigned long need)
 {
 	unsigned long chunk = need < 0x10000UL ? 0x10000UL : umm__round (need);
-	void *p = kapi_sbrk ((long) chunk);
+	void *p = onyx_sbrk_hook ? onyx_sbrk_hook ((long) chunk) : kapi_sbrk ((long) chunk);
 	if (p == (void *) -1) return 0;
 	if (!umm__started || (char *) p != umm__end)	// first chunk or a gap: (re)base the bump
 	{ umm__brk = (char *) p; umm__end = (char *) p + chunk; umm__started = 1; }

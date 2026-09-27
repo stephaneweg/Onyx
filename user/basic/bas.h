@@ -45,6 +45,9 @@ struct Host
 	virtual void readRect (int x, int y, int w, int h, int *out, bool raw) { for (int i = 0; i < w * h; i++) out[i] = 0; (void) x; (void) y; (void) raw; }
 	virtual void writeRect (int x, int y, int w, int h, const int *in, bool raw) { (void) x; (void) y; (void) w; (void) h; (void) in; (void) raw; }
 	virtual void fullscreen (bool on) { (void) on; }	// FULLSCREEN: the screen scaled to the display
+	// CORE ON / OFF (on 1 / 0): run the program on an app core (Onyx: core 2 or 3) / back on the
+	// main one; on -1: which one it runs on now (the CORE function). Returns the core, 0 = main.
+	virtual int  core (int on) { (void) on; return 0; }
 	virtual void palette (int attr, int rgb) { (void) attr; (void) rgb; }	// rgb 0xRRGGBB; attr < 0: reset all
 	virtual void pcopy (int src, int dst) { (void) src; (void) dst; }
 	virtual int  keyPending (char *out2) { (void) out2; return 0; }	// the next key (as INKEY$), not taken

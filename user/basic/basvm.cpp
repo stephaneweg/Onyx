@@ -1267,6 +1267,7 @@ public:
 		case B_MOUSEY: pushN (H.mouse (1)); break;
 		case B_MOUSEB: pushN (H.mouse (2)); break;
 		case B_PLAYN: pushN (H.bgNotes ()); break;
+		case B_CORE: pushN (H.core (-1)); break;
 		case B_PAD: pushN ((double) H.padButtons (argc > 0 ? (int) a[0].n : -1)); if (!H.poll ()) ended = true; break;
 		case B_STICK:					// QBasic: 0 / 1 = x / y of joystick A (pad 0), 2 / 3 of B; 1..199
 		{
@@ -1448,6 +1449,7 @@ public:
 		}
 		case S_PCOPY: H.pcopy (N (0, 0), N (1, 0)); break;
 		case S_FULLSCREEN: H.fullscreen (N (0, 1) != 0); break;
+		case S_CORE: H.core (N (0, 1) != 0 ? 1 : 0); break;
 		case S_KEYDEF:
 		{
 			int k = N (0, 0); int n; const char *s = sdata (a[1], &n);

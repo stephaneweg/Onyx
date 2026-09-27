@@ -12,6 +12,16 @@
 // graphics share, with wtk controls (BUTTON, TEXTBOX, ...) on top. The program's folder becomes the current
 // directory, so it finds its files by relative names.
 //
+// CORE ON: the program goes on on an app core (core 2 or 3, kapi v51), CORE OFF brings it back.
+// The VM runs on its own stack (a coroutine), so it can move between the cores in the middle of
+// a statement: the main thread starts it on the app core (kapi_core_run) with that stack, and
+// whenever the program needs the kernel -- present the window, read the keys, a file, a sound
+// -- the host method (ONMAIN) ends the core's job, the main thread resumes the coroutine for
+// that call, then sends it back to the core. The computing and the drawing (the pages are
+// memory) stay on the core. One program, one thread of control: while it is on the core the
+// main thread only waits (it never allocates meanwhile); a heap that must grow grows from the
+// main thread (onyx_sbrk_hook).
+//
 #include "kapi.h"
 #include "applib.h"
 #include "notify.h"
@@ -23,6 +33,74 @@ using namespace wtk;
 
 static int slen (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 static void scpy (char *d, const char *s, int cap) { int i = 0; if (s) for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
+
+// ---- the VM's coroutine and the app core ----------------------------------------------------------------
+// The callee-saved registers, the stack pointer, the FP registers d8-d15: a context switch.
+struct Ctx { unsigned long x[12]; unsigned long sp; unsigned long d[8]; };
+extern "C" void bas_swap (Ctx *save, const Ctx *load);
+asm (
+	".text\n"
+	".global bas_swap\n"
+	".type bas_swap, %function\n"
+	"bas_swap:\n"
+	"	stp x19, x20, [x0, #0]\n"
+	"	stp x21, x22, [x0, #16]\n"
+	"	stp x23, x24, [x0, #32]\n"
+	"	stp x25, x26, [x0, #48]\n"
+	"	stp x27, x28, [x0, #64]\n"
+	"	stp x29, x30, [x0, #80]\n"
+	"	mov x9, sp\n"
+	"	str x9, [x0, #96]\n"
+	"	stp d8, d9, [x0, #104]\n"
+	"	stp d10, d11, [x0, #120]\n"
+	"	stp d12, d13, [x0, #136]\n"
+	"	stp d14, d15, [x0, #152]\n"
+	"	ldp x19, x20, [x1, #0]\n"
+	"	ldp x21, x22, [x1, #16]\n"
+	"	ldp x23, x24, [x1, #32]\n"
+	"	ldp x25, x26, [x1, #48]\n"
+	"	ldp x27, x28, [x1, #64]\n"
+	"	ldp x29, x30, [x1, #80]\n"
+	"	ldr x9, [x1, #96]\n"
+	"	mov sp, x9\n"
+	"	ldp d8, d9, [x1, #104]\n"
+	"	ldp d10, d11, [x1, #120]\n"
+	"	ldp d12, d13, [x1, #136]\n"
+	"	ldp d14, d15, [x1, #152]\n"
+	"	ret\n"
+);
+
+static Ctx g_mainCtx, g_vmCtx, g_coreCtx;	// the main thread's, the VM's, the app core job's
+static volatile int g_where = 0;		// the core the VM runs on now (0 = the main thread)
+static volatile bool g_wantCore = false;	// the VM asks the main thread: send me to the core
+static volatile bool g_vmDone = false;
+static int g_coreNum = 0;			// the app core acquired (0: none)
+static bool g_coreMode = false;			// CORE ON in effect
+
+static inline unsigned long long clock_us (void)
+{
+	unsigned long long c, f;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (c));
+	asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+	return f ? c * 1000000ull / f : 0;
+}
+
+// The VM (on the core) -> the main thread, for a call that needs the kernel; and back.
+static void to_main (void) { if (g_where) bas_swap (&g_vmCtx, &g_coreCtx); }
+static void to_core (void) { if (g_coreMode && !g_where) { g_wantCore = true; bas_swap (&g_vmCtx, &g_mainCtx); } }
+struct OnMain
+{
+	bool moved;
+	OnMain () : moved (g_where != 0) { if (moved) to_main (); }
+	~OnMain () { if (moved) to_core (); }
+};
+#define ONMAIN OnMain onMain_
+
+// The app core's job: continue the VM there, until it comes back (to_main) or ends.
+static void core_job (void *) { bas_swap (&g_coreCtx, &g_vmCtx); }
+
+// The heap grows from the main thread (umm.h).
+extern "C" void *onyx_sbrk_hook (long n) { ONMAIN; return kapi_sbrk (n); }
 
 class OnyxHost;
 static OnyxHost *g_host = 0;
@@ -69,7 +147,7 @@ public:
 	ScreenRoot *root; bool console;
 	unsigned lastPresent;
 	char args[256];
-	double tBase; unsigned tTicks0;
+	double tBase; unsigned long long tUs0;
 	unsigned *fsBuf; int fsW, fsH;			// full screen back buffer
 	enum { MAXCTL = 128 };
 	Widget *ctl[MAXCTL]; int ctlKind[MAXCTL]; int nctl;
@@ -80,7 +158,7 @@ public:
 		args[0] = 0;
 		int h = 0, m = 0, s = 0;
 		kapi_get_datetime (0, 0, 0, &h, &m, &s);
-		tBase = h * 3600.0 + m * 60 + s; tTicks0 = kapi_get_ticks ();
+		tBase = h * 3600.0 + m * 60 + s; tUs0 = clock_us ();
 		for (int i = 0; i < MAXCTL; i++) { ctl[i] = 0; ddItems[i] = 0; }
 	}
 
@@ -88,6 +166,7 @@ public:
 	int winW = 0, winH = 0;
 	bool openWindow (int w, int h) override
 	{
+		ONMAIN;
 		root = new ScreenRoot (w, h, title[0] ? title : "BASIC");
 		if (root->canvas.px == 0) { delete root; root = 0; return false; }
 		winW = w; winH = h;				// the window buffer's size (and row pitch)
@@ -98,6 +177,7 @@ public:
 	{
 		// The window's buffer keeps the size it was made with (the kernel clamps to it) and
 		// its row pitch: draw with that pitch, whatever the new size.
+		ONMAIN;
 		if (w > winW) w = winW;
 		if (h > winH) h = winH;
 		root->canvas.adopt (kapi_resize_window (w, h), w, h, winW);
@@ -108,20 +188,47 @@ public:
 	void present (bool force) override
 	{
 		if (!root) return;
-		unsigned now = kapi_get_ticks ();
-		if (!force && now - lastPresent < 2) return;	// ~50 Hz at most
+		unsigned now = nowMs ();
+		if (!force && now - lastPresent < 20) return;	// ~50 Hz at most
 		lastPresent = now;
+		ONMAIN;
 		if (fsBuf) { blitFull (); kapi_present_fb (); return; }
 		if (!root->valid) { root->draw (); kapi_present (); }
 	}
-	void pumpEvents () override { pump_events (); if (root && !fsBuf) root->tooltipTick (); }
-	bool stopRequested () override { return (console && !root) ? false : should_exit () != 0; }
-	unsigned nowMs () override { return kapi_get_ticks () * 10; }
-	void sleepRaw (int ms) override { kapi_msleep ((unsigned) (ms > 0 ? ms : 1)); }
-	bool keyHeld (int key) override { return kapi_key_held (key) != 0; }
-	unsigned padButtons (int pad) override { return pad_buttons (pad); }
+	// (on the app core: the events every 10 ms, the rest of the time a ~20 ns no-op)
+	unsigned lastPump = 0; bool exitSeen = false;
+	void pumpEvents () override
+	{
+		unsigned now = nowMs ();
+		if (g_where && now - lastPump < 10) return;
+		lastPump = now;
+		ONMAIN;
+		pump_events ();
+		if (root && !fsBuf) root->tooltipTick ();
+		exitSeen = should_exit () != 0;
+	}
+	bool stopRequested () override
+	{
+		if (console && !root) return false;
+		if (g_where) return exitSeen;			// (read by the last pump)
+		return exitSeen = should_exit () != 0;
+	}
+	unsigned nowMs () override { return (unsigned) (clock_us () / 1000); }
+	void sleepRaw (int ms) override
+	{
+		if (g_where)					// the core is ours: wait there
+		{
+			unsigned long long end = clock_us () + (unsigned long long) (ms > 0 ? ms : 1) * 1000;
+			while (clock_us () < end) asm volatile ("yield");
+			return;
+		}
+		kapi_msleep ((unsigned) (ms > 0 ? ms : 1));
+	}
+	bool keyHeld (int key) override { ONMAIN; return kapi_key_held (key) != 0; }
+	unsigned padButtons (int pad) override { ONMAIN; return pad_buttons (pad); }
 	int padAxis (int pad, int axis) override
 	{
+		ONMAIN;
 		struct pad_input in;
 		if (!pad_read (pad, &in)) return 0;
 		return axis == 0 ? in.lx : axis == 1 ? in.ly : axis == 2 ? in.rx : axis == 3 ? in.ry : 0;
@@ -152,6 +259,7 @@ public:
 	}
 	void fullscreen (bool on) override
 	{
+		ONMAIN;
 		if (!ensureWindow ()) return;
 		if (on && !fsBuf)
 		{
@@ -169,11 +277,31 @@ public:
 	}
 	void leaveFullscreen () override { if (fsBuf) fullscreen (false); }
 
+	// ---- CORE ON / OFF ---------------------------------------------------------------------------------
+	int core (int on) override
+	{
+		if (on < 0) return g_where;
+		if (on && !g_coreMode)
+		{
+			if (!g_coreNum) { int c = kapi_core_acquire (); if (c <= 0) return 0; g_coreNum = c; }	// none free: stay here
+			g_coreMode = true;
+			to_core ();
+		}
+		else if (!on && g_coreMode)
+		{
+			to_main ();
+			g_coreMode = false;
+			kapi_core_release (g_coreNum); g_coreNum = 0;
+		}
+		return g_where;
+	}
+
 	// ---- the console: started from a terminal, before the program opens its window ----------------------
 	bool windowText () { return root != 0 || !console; }
 	void out (const char *s, int n) override
 	{
 		if (windowText ()) { ScreenHost::out (s, n); return; }
+		ONMAIN;
 		char t[256];						// a terminal: its font is Latin-1
 		for (int i = 0; i < n; )
 		{
@@ -186,6 +314,7 @@ public:
 	int inputLine (char *buf, int cap) override
 	{
 		if (windowText ()) return ScreenHost::inputLine (buf, cap);
+		ONMAIN;
 		int n = 0;
 		for (;;)
 		{
@@ -202,50 +331,55 @@ public:
 	int inkey (char *o) override
 	{
 		if (root || !console) return ScreenHost::inkey (o);
+		ONMAIN;
 		char c;
 		if (kapi_kbd_ready () && kapi_stdin_read (&c, 1) > 0) { o[0] = (char) basLatin1To437[(unsigned char) c]; return 1; }
 		return 0;
 	}
 	void cls (int m) override
 	{
-		if (!windowText ()) { kapi_stdout_write ("\n", 1); return; }
+		if (!windowText ()) { ONMAIN; kapi_stdout_write ("\n", 1); return; }
 		ScreenHost::cls (m);
 	}
 
 	// ---- time --------------------------------------------------------------------------------------
 	double timer () override
 	{
-		double t = tBase + (kapi_get_ticks () - tTicks0) / 100.0;
+		double t = tBase + (double) (clock_us () - tUs0) / 1e6;
 		while (t >= 86400) t -= 86400;
 		return t;
 	}
 	static void two (char *p, int v) { p[0] = (char) ('0' + v / 10 % 10); p[1] = (char) ('0' + v % 10); }
 	void date (char *o) override
 	{
+		ONMAIN;
 		int y = 0, mo = 0, d = 0; kapi_get_datetime (&y, &mo, &d, 0, 0, 0);
 		two (o, mo); o[2] = '-'; two (o + 3, d); o[5] = '-'; two (o + 6, y / 100); two (o + 8, y % 100); o[10] = 0;
 	}
 	void time (char *o) override
 	{
+		ONMAIN;
 		int h = 0, m = 0, s = 0; kapi_get_datetime (0, 0, 0, &h, &m, &s);
 		two (o, h); o[2] = ':'; two (o + 3, m); o[5] = ':'; two (o + 6, s); o[8] = 0;
 	}
-	unsigned seed () override { return kapi_get_ticks () * 2654435761u; }
+	unsigned seed () override { return (unsigned) clock_us () * 2654435761u; }
 
 	// ---- sound (ABI v46): the output is acquired on first use, released at exit ----------------------
 	int audio = 0;					// 0 not asked, 1 ours, -1 unavailable
-	bool soundReady () override { if (audio == 0) audio = kapi_sound_acquire () == 1 ? 1 : -1; return audio == 1; }
+	bool soundReady () override { ONMAIN; if (audio == 0) audio = kapi_sound_acquire () == 1 ? 1 : -1; return audio == 1; }
 	int note (int voice, double freq, int wave, int vol) override
 	{
+		ONMAIN;
 		if (freq <= 0) { if (audio == 1) kapi_sound_stop (voice); return 0; }
 		if (!soundReady ()) return -1;
 		return kapi_sound_start (voice, (unsigned) (freq * 1000), wave, vol) == 0 ? 0 : -1;
 	}
-	void endSound () override { if (audio == 1) { kapi_sound_stop (-1); kapi_msleep (20); kapi_sound_release (); audio = 0; } }
+	void endSound () override { ONMAIN; if (audio == 1) { kapi_sound_stop (-1); kapi_msleep (20); kapi_sound_release (); audio = 0; } }
 
 	// ---- GUI controls (wtk) -------------------------------------------------------------------------------
 	int control (int kind, int x, int y, int w, int h, const char *text, int val) override
 	{
+		ONMAIN;
 		if (!ensureWindow () || nctl >= MAXCTL - 1) return 0;
 		int id = nctl + 1;
 		Widget *wd = 0;
@@ -290,6 +424,7 @@ public:
 	Widget *get (int id) { return id > 0 && id <= nctl ? ctl[id] : 0; }
 	void setText (int id, const char *s) override
 	{
+		ONMAIN;
 		Widget *w = get (id); if (!w) return;
 		switch (ctlKind[id])
 		{
@@ -303,6 +438,7 @@ public:
 	}
 	int getText (int id, char *buf, int cap) override
 	{
+		ONMAIN;
 		Widget *w = get (id); buf[0] = 0; if (!w) return 0;
 		switch (ctlKind[id])
 		{
@@ -317,6 +453,7 @@ public:
 	}
 	int getValue (int id) override
 	{
+		ONMAIN;
 		Widget *w = get (id); if (!w) return 0;
 		switch (ctlKind[id])
 		{
@@ -330,6 +467,7 @@ public:
 	}
 	void setValue (int id, int v) override
 	{
+		ONMAIN;
 		Widget *w = get (id); if (!w) return;
 		switch (ctlKind[id])
 		{
@@ -342,9 +480,10 @@ public:
 		dirty ();
 	}
 	// ---- system -----------------------------------------------------------------------------------------
-	void notify (const char *t, const char *m) override { ::notify (t, m); }
+	void notify (const char *t, const char *m) override { ONMAIN; ::notify (t, m); }
 	int msgbox (const char *t, const char *m, int b) override
 	{
+		ONMAIN;
 		if (!ensureWindow ()) return 0;
 		int r = wk_messagebox (t, m, b);
 		dirty (); present (true);
@@ -352,6 +491,7 @@ public:
 	}
 	int clipboard (char *buf, int cap) override
 	{
+		ONMAIN;
 		int type = 0; unsigned serial = 0;
 		int n = kapi_clipboard_get (&type, buf, (unsigned) cap - 1, &serial);
 		if (n < 0 || type != CLIP_TEXT) n = 0;
@@ -359,9 +499,10 @@ public:
 		buf[n] = 0;
 		return n;
 	}
-	void setClipboard (const char *s) override { kapi_clipboard_set (CLIP_TEXT, s, (unsigned) slen (s)); }
+	void setClipboard (const char *s) override { ONMAIN; kapi_clipboard_set (CLIP_TEXT, s, (unsigned) slen (s)); }
 	bool fileDialog (bool save, const char *dir, char *o, int cap) override
 	{
+		ONMAIN;
 		if (!ensureWindow ()) return false;
 		char name[128]; scpy (name, o, sizeof name);
 		bool ok = save ? wk_file_save (o, (unsigned) cap, dir[0] ? dir : "SD:/", name[0] ? name : "untitled.txt")
@@ -369,13 +510,14 @@ public:
 		dirty (); present (true);
 		return ok;
 	}
-	bool exec (const char *p, const char *a) override { return kapi_exec (p, a) != 0; }
-	bool launch (const char *app) override { return kapi_launch (app) != 0; }
-	bool chdir (const char *p) override { return kapi_chdir (p) != 0; }
+	bool exec (const char *p, const char *a) override { ONMAIN; return kapi_exec (p, a) != 0; }
+	bool launch (const char *app) override { ONMAIN; return kapi_launch (app) != 0; }
+	bool chdir (const char *p) override { ONMAIN; return kapi_chdir (p) != 0; }
 	// SHELL "prog args": runs a /bin tool (or a path), its output on the screen; SHELL alone
 	// opens a terminal.
 	int shell (const char *cmd) override
 	{
+		ONMAIN;
 		int i = 0; while (cmd[i] == ' ') i++;
 		if (!cmd[i]) return kapi_launch ("terminal") ? 0 : -1;
 		char prog[200], path[220]; int n = 0;
@@ -410,6 +552,7 @@ public:
 	// ---- files ---------------------------------------------------------------------------------------------
 	char *load (const char *path, int *len) override
 	{
+		ONMAIN;
 		*len = 0;
 		void *f = kapi_open (path);
 		if (!f) return 0;
@@ -420,18 +563,20 @@ public:
 		*len = r > 0 ? r : 0; b[*len] = 0;
 		return b;
 	}
-	bool save (const char *path, const char *d, int n) override { return kapi_save_file (path, d, (unsigned) n) >= 0; }
-	bool remove (const char *p) override { return kapi_remove (p) == 0; }
-	bool rename (const char *a, const char *b) override { return kapi_rename (a, b) == 0; }
-	bool makeDir (const char *p) override { return kapi_mkdir (p) == 0; }
+	bool save (const char *path, const char *d, int n) override { ONMAIN; return kapi_save_file (path, d, (unsigned) n) >= 0; }
+	bool remove (const char *p) override { ONMAIN; return kapi_remove (p) == 0; }
+	bool rename (const char *a, const char *b) override { ONMAIN; return kapi_rename (a, b) == 0; }
+	bool makeDir (const char *p) override { ONMAIN; return kapi_mkdir (p) == 0; }
 	bool exists (const char *p) override
 	{
+		ONMAIN;
 		void *f = kapi_open (p); if (f) { kapi_close (f); return true; }
 		void *d = kapi_opendir (p); if (d) { kapi_closedir (d); return true; }
 		return false;
 	}
 	int listDir (const char *dir, int index, char *o, int cap) override
 	{
+		ONMAIN;
 		o[0] = 0;
 		void *d = kapi_opendir (dir[0] ? dir : ".");
 		if (!d) return 0;
@@ -452,6 +597,59 @@ static void host_key (long k) { if (g_host) g_host->pushKey (k); }
 static void host_mouse (int x, int y, int b) { if (g_host) g_host->setMouse (x, y, b); }
 
 static void on_control (Widget &w) { if (g_host) g_host->pushEvent (w.tag); }
+
+// ---- the VM on its coroutine, the main thread's loop -----------------------------------------------------
+static bas::Program *g_prog; static bas::Error *g_err; static int g_result;
+static void vm_main (void)
+{
+	g_result = bas::run (g_prog, *g_host, g_err);
+	g_vmDone = true;
+	if (g_where) bas_swap (&g_vmCtx, &g_coreCtx);	// (ends the core's job)
+	else bas_swap (&g_vmCtx, &g_mainCtx);
+	for (;;) {}
+}
+
+static int run_vm (bas::Program *prog, OnyxHost &host, bas::Error *err)
+{
+	enum { VM_STACK = 1 << 20, JOB_STACK = 16 << 10 };
+	(void) host;						// (g_host)
+	g_prog = prog; g_err = err;
+	char *vmStack = new char[VM_STACK], *jobStack = new char[JOB_STACK];
+	for (int i = 0; i < 12; i++) g_vmCtx.x[i] = 0;
+	g_vmCtx.x[11] = (unsigned long) &vm_main;		// x30: where the first switch "returns"
+	g_vmCtx.sp = ((unsigned long) (vmStack + VM_STACK)) & ~15UL;
+	bas_swap (&g_mainCtx, &g_vmCtx);			// runs here until CORE ON (or the end)
+	while (!g_vmDone)
+	{
+		if (!g_wantCore) { bas_swap (&g_mainCtx, &g_vmCtx); continue; }
+		g_wantCore = false;
+		g_where = g_coreNum;
+		asm volatile ("dmb ish" ::: "memory");
+		if (kapi_core_run (g_coreNum, core_job, 0, jobStack + JOB_STACK) != 0)	// (then: here)
+		{
+			g_where = 0; g_coreMode = false; kapi_core_release (g_coreNum); g_coreNum = 0;
+			bas_swap (&g_mainCtx, &g_vmCtx);
+			continue;
+		}
+		// wait for the job's end: it needs the kernel (to_main), or CORE OFF, or the end
+		int st;
+		// (yield, not wfe: the other tasks of core 0 run at once whenever they need to)
+		while ((st = kapi_core_state (g_coreNum)) == 1) kapi_yield ();	// CORE_RUNNING
+		asm volatile ("dmb ish" ::: "memory");
+		g_where = 0;
+		if (st < 0)						// a fault on the core
+		{
+			kapi_core_release (g_coreNum); g_coreNum = 0; g_coreMode = false;
+			err->line = 0; scpy (err->msg, "the program crashed on the app core", sizeof err->msg);
+			delete [] jobStack;				// (the VM's stack is lost with it)
+			return -2;
+		}
+		if (!g_vmDone) bas_swap (&g_mainCtx, &g_vmCtx);	// the call it needs, here
+	}
+	if (g_coreNum) { kapi_core_release (g_coreNum); g_coreNum = 0; }
+	delete [] vmStack; delete [] jobStack;
+	return g_result;
+}
 
 int main (void)
 {
@@ -567,8 +765,8 @@ int main (void)
 		else notify (host.title, msg);
 	};
 	if (!prog) { report ("Syntax error in line "); return 2; }
-	int r = bas::run (prog, host, &err);
-	if (r) report ("Error in line ");
+	int r = run_vm (prog, host, &err);
+	if (r) report (r == -2 ? "Crashed on the app core, near line " : "Error in line ");
 	bas::destroy (prog);
 	return r ? 3 : 0;
 }

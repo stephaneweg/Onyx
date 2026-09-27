@@ -72,7 +72,7 @@ static const BFn BFNS[] = {
 	{ "INPUT$", B_INPUTS, TY_STR, "N[N" }, { "SEEK", B_SEEK, TY_NUM, "N" }, { "LOC", B_LOC, TY_NUM, "N" },
 	{ "ENVIRON$", B_ENVIRON, TY_STR, "*" }, { "FRE", B_FRE, TY_NUM, "*" }, { "PMAP", B_PMAP, TY_NUM, "NN" },
 	{ "SCREEN", B_SCREEN, TY_NUM, "NN[N" }, { "KEYDOWN", B_KEYDOWN, TY_NUM, "S" },
-	{ "PLAY", B_PLAYN, TY_NUM, "N" },
+	{ "PLAY", B_PLAYN, TY_NUM, "N" }, { "CORE", B_CORE, TY_NUM, "" },
 	{ "STICK", B_STICK, TY_NUM, "N" }, { "STRIG", B_STRIG, TY_NUM, "N" }, { "PAD", B_PAD, TY_NUM, "[N" },
 	{ 0, 0, 0, 0 } };
 
@@ -1328,6 +1328,13 @@ public:
 			int on = 1;
 			if (acceptKw ("OFF")) on = 0; else acceptKw ("ON");
 			pushNum (on); emit3 (OP_ST, S_FULLSCREEN, 1);
+			return;
+		}
+		if (bseq (w, "CORE") && (peekKw (1, "ON") || peekKw (1, "OFF")))	// CORE ON | OFF
+		{
+			next ();
+			int on = acceptKw ("OFF") ? 0 : (acceptKw ("ON"), 1);
+			pushNum (on); emit3 (OP_ST, S_CORE, 1);
 			return;
 		}
 		if (bseq (w, "NAME")) { next (); needStr (expr ()); expectKw ("AS"); needStr (expr ()); emit3 (OP_ST, S_NAME, 2); return; }

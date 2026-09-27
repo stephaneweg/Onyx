@@ -801,6 +801,18 @@ barwidth = 40
   or a `wtk::Root` window (a text/graphics framebuffer + wtk controls, pumped by the VM through
   `Host::poll`, `Root::attach ()`). Options `-d <dir>`, `-i` (report errors to the editor:
   mailbox to the IPC service `qbasic`, payload `line\0message\0`).
+- **`CORE ON` / `CORE OFF`** (`Host::core`, Onyx only): the VM runs on its own 1 MB stack, a
+  coroutine (`bas_swap`: x19-x30, sp, d8-d15). `CORE ON` acquires an app core
+  (`kapi_core_acquire`; none free: nothing happens) and the main thread starts the coroutine
+  there (`kapi_core_run (core_job)`). A host method that needs the kernel begins with
+  **`ONMAIN`**: on the core, it ends the job (`to_main`), the main thread resumes the coroutine
+  for the call, then sends it back (`to_core`). Pure-memory work — the VM, the pages, drawing,
+  `TIMER` / `TICKS` (read from `cntpct_el0`), short `SLEEP` / `PAUSE` waits (spun on the core)
+  — never leaves the core; events are pumped every 10 ms, the window presented at most every
+  20 ms. The main thread waits with `kapi_yield` (no allocation meanwhile: one thread of
+  control), and the heap grows from it (`onyx_sbrk_hook`, a weak hook in `umm.h`). A fault on
+  the core ends the program with an error. `CORE` (the function) is the core it runs on, 0 =
+  the main one. **A new host method that calls the kernel must start with `ONMAIN`.**
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
 - **Adding a function**: an entry in `BFNS[]` (bascomp.cpp: name, id, result type, argument
   spec `N`/`S`/`?`, `[` = optional from here), a `B_*` id (basint.h), its case in

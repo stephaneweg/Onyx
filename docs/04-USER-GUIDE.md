@@ -826,7 +826,8 @@ writes `<program>.bax`, the bytecode, which starts without parsing and runs like
 `basic -c prog.bas` writes `prog.bax`. The editor shows the code in light grey on blue, as
 QBasic did. Examples are in `SD:/basic/examples`
 (**File ▸ Examples...**): `hello`, `guess`, `subs`, `files`, `graphics`, `gui` and
-**`arkanoid.bas`**, a full brick breaker in `SCREEN 13` shown with `FULLSCREEN` (arrows or
+**`arkanoid.bas`**, a full brick breaker in `SCREEN 13` shown with `FULLSCREEN`, on an app core
+with `CORE ON` (the title screen says `CORE 2` then; arrows or
 the mouse move the paddle, Space / click launches and fires, P pause, F full screen on /
 off, Esc title / quit; capsules E expand, S slow, C catch, L laser, D three balls, P a life;
 it reads and writes no file).
@@ -918,6 +919,13 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
   styles, `VIEW PRINT`, `SCREEN (row, col)`. Onyx adds **`FULLSCREEN`**: the screen scaled to
   the whole display, proportions kept (a whole-number zoom when it fills nearly as much: at
   1024 × 768, `SCREEN 13` is shown 3×); `MOUSEX` / `MOUSEY` stay in the program's pixels.
+- **`CORE ON`** (Onyx): the program goes on on an **app core** (core 2 or 3), at full speed and
+  without slowing the desktop down; **`CORE OFF`** brings it back; **`CORE`** is the core it runs
+  on (0 = the main one). The computing and the drawing run there; what needs the system (showing
+  the window, the keys, files, sound, controls) takes a short trip to the main core — so a
+  program that mostly `PRINT`s gains nothing. No core free (an emulator has it): `CORE ON` does
+  nothing and the program runs as before. `CORE` is a reserved word (not a variable name).
+  Programs compiled (`.bax`) before `CORE` existed must be compiled again.
 - **Text** uses QBasic's character set (code page 437: frames `CHR$(201)` ╔, blocks
   `CHR$(219)` █, card suits…) in the VGA fonts, drawn by the runtime: 8 × 8 in `SCREEN 13`
   and the other 320/640 × 200 modes, 8 × 14 in `SCREEN 9` / `10`, 8 × 16 otherwise;
