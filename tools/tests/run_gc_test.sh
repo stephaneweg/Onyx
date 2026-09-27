@@ -20,3 +20,9 @@ powerpc-linux-gnu-ld -Ttext=0x80003100 -e run_ps -nostdlib "$T/pstest.o" -o "$T/
 g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest"
 "$T/gctest" cpu "$T/cputest.elf" "$T/expected.bin"
 "$T/gctest" ps "$T/pstest.elf"
+# the hardware: a bare-metal program (hwtest.c -> .dol): the VI's picture and display interrupts,
+# the GX FIFO through the write-gather pipe (a token and "draw done" reported by the PE)
+powerpc-linux-gnu-gcc $F -ffreestanding -nostdlib -Wl,-Ttext=0x80003100 -Wl,-e,_start "$here/gc/hwtest.c" -o "$T/hwtest.elf"
+python3 "$root/tools/gc/elf2dol.py" "$T/hwtest.elf" "$T/hwtest.dol"
+out=$("$T/gctest" dol "$T/hwtest.dol" 40 "$T/hw.ppm")
+echo "$out" | grep -q "results: 0000001E 0000000F 00001234 .* 600D600D" && echo "ok  : hwtest.dol: 30 VI interrupts, PE token 0x1234 + draw done" || { echo "FAIL hwtest.dol"; echo "$out"; exit 1; }

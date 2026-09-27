@@ -14,10 +14,13 @@ static void zero (void *p, u32 n) { u8 *d = (u8 *) p; while (n--) *d++ = 0; }
 Machine::Machine ()
 {
 	mem1 = new u8[MEM1_SIZE];
+	aram = new u8[ARAM_SIZE];
+	disc = 0; discSize = 0; pal = false; title[0] = 0; gameId[0] = 0;
+	for (int i = 0; i < 4; i++) { padBtn[i] = 0; padSX[i] = padSY[i] = padCX[i] = padCY[i] = 0; padL[i] = padR[i] = 0; }
 	reset ();
 }
 
-Machine::~Machine () { delete [] mem1; }
+Machine::~Machine () { delete [] mem1; delete [] aram; }
 
 void Machine::reset ()
 {
@@ -47,6 +50,7 @@ void Machine::reset ()
 	dbat[6] = 0xE00001FE; dbat[7] = 0xE0000002;
 	batRebuild ();
 	tbBase = 0; cycles = 0; decAt = ~0ull; decPending = false; resv = false; resvAddr = 0; idleSkips = 0; curPc = pc; halted = false; haltMsg[0] = 0; extIrq = 0; memFault = false;
+	hwReset ();
 }
 
 // BATxU: BEPI (bits 0-14: the effective 128 KB block), BL (bits 19-29: the size mask), Vs, Vp;
@@ -86,8 +90,6 @@ u8 *Machine::ptr (u32 pa)
 	return 0;
 }
 
-u32 Machine::hwRead (u32 pa, int) { (void) pa; return 0; }
-void Machine::hwWrite (u32, u32, int) {}
 
 // A failed translation raises a DSI (the games seldom do; one that does is stopped with a
 // message until the page tables are there).

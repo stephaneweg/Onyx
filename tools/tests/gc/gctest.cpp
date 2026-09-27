@@ -2,6 +2,7 @@
 //   gctest cpu <cputest.elf> <expected.bin>   runs cputest.c's run_tests (linked at 0x80003100)
 //       in the interpreter and compares its output with qemu-ppc's (run_gc_test.sh)
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results
+//   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
 #include "gc/gc.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,8 +83,31 @@ static int psTest (const char *elf)
 	return bad != 0;
 }
 
+static void ppm (const Machine &m, const char *path)
+{
+	FILE *f = fopen (path, "wb"); if (!f) return;
+	fprintf (f, "P6\n%d %d\n255\n", m.fbW, m.fbH);
+	for (int i = 0; i < m.fbW * m.fbH; i++) { u32 c = m.fb[i]; fputc ((int) (c >> 16) & 255, f); fputc ((int) (c >> 8) & 255, f); fputc ((int) c & 255, f); }
+	fclose (f);
+}
+
+// a .dol run for some fields: the picture, the results it leaves at 0x80700000, the interrupts
+static int dolTest (const char *dol, int frames, const char *out)
+{
+	long n; unsigned char *d = slurp (dol, &n);
+	static Machine m;
+	if (!m.loadDol (d, (u32) n)) { printf ("FAIL: not a .dol\n"); return 1; }
+	for (int i = 0; i < frames && !m.halted; i++) m.runFrame ();
+	if (out) ppm (m, out);
+	printf ("%d fields, pc %08X%s%s, %dx%d, gx %u cmds %u prims\n", m.frames, m.pc, m.halted ? " HALTED: " : "", m.haltMsg, m.fbW, m.fbH, m.gxCmds, m.gxPrims);
+	printf ("results: %08X %08X %08X %08X %08X\n", m.read32 (0x80700000), m.read32 (0x80700004), m.read32 (0x80700008), m.read32 (0x8070000C), m.read32 (0x80700010));
+	printf ("PI irqs:"); for (int i = 0; i < 14; i++) printf (" %u", m.irqCount[i]); printf ("\n");
+	return m.halted;
+}
+
 int main (int argc, char **argv)
 {
+	if (argc >= 4 && !strcmp (argv[1], "dol")) return dolTest (argv[2], atoi (argv[3]), argc > 4 ? argv[4] : 0);
 	if (argc >= 3 && !strcmp (argv[1], "ps")) return psTest (argv[2]);
 	if (argc >= 4 && !strcmp (argv[1], "cpu")) return cpuTest (argv[2], argv[3]);
 	fprintf (stderr, "gctest cpu <cputest.elf> <expected.bin>\n");
