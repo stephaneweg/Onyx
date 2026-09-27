@@ -30,6 +30,11 @@ struct Scene3D
 	bool dirty;						// the next triangle starts a batch
 	G3Vertex pend[3]; int npend;				// VERTEX3D
 	bool full;						// (too many vertices / batches: the rest is dropped)
+	// the unit sphere / cylinder of each detail (6..64), built at its first use (their sines and
+	// cosines are costly): triangles already turned outwards, then scaled at each use
+	struct CTri { float P[3][3], N[3][3], T[2 * 3]; };
+	Vec<CTri> sph[65], cyl[65];
+	Vec<CTri> *collect = 0;					// (tri () fills it instead of drawing)
 
 	Scene3D () { eye[0] = 0; eye[1] = 2; eye[2] = 6; target[0] = target[1] = target[2] = 0; fov = 60;
 		     light[0] = 0.4f; light[1] = 1; light[2] = 0.6f; ambient = 0.3f; lit = true; normL (); begin (0, false); }
@@ -144,10 +149,32 @@ struct Scene3D
 			float nx = N[0][0] + N[1][0] + N[2][0], ny = N[0][1] + N[1][1] + N[2][1], nz = N[0][2] + N[1][2] + N[2][2];
 			if (cx * nx + cy * ny + cz * nz < 0) { o[1] = 2; o[2] = 1; }
 		}
+		if (collect)
+		{
+			CTri c;
+			for (int k = 0; k < 3; k++)
+			{
+				for (int m = 0; m < 3; m++) { c.P[k][m] = P[o[k]][m]; c.N[k][m] = N[o[k]][m]; }
+				c.T[2 * k] = T[o[k]][0]; c.T[2 * k + 1] = T[o[k]][1];
+			}
+			collect->push (c);
+			return;
+		}
 		if (!open ()) return;
 		for (int k = 0; k < 3; k++)
 			put (P[o[k]][0], P[o[k]][1], P[o[k]][2], T[o[k]][0], T[o[k]][1], shade (N[o[k]][0], N[o[k]][1], N[o[k]][2]));
 		b[b.n - 1].count += 3;
+	}
+	void drawCached (const Vec<CTri> &L, float kx, float ky, float kz)
+	{
+		for (int i = 0; i < L.n; i++)
+		{
+			const CTri &c = L[i];
+			if (!open ()) return;
+			for (int k = 0; k < 3; k++)
+				put (c.P[k][0] * kx, c.P[k][1] * ky, c.P[k][2] * kz, c.T[2 * k], c.T[2 * k + 1], shade (c.N[k][0], c.N[k][1], c.N[k][2]));
+			b[b.n - 1].count += 3;
+		}
 	}
 	void quad (const float P[4][3], const float N[3], bool orient)	// corners in order, one normal
 	{
@@ -199,7 +226,13 @@ struct Scene3D
 	}
 	void sphere (float r, int detail)
 	{
-		int sl = detail < 6 ? 6 : detail > 64 ? 64 : detail, st = sl / 2;
+		int sl = detail < 6 ? 6 : detail > 64 ? 64 : detail;
+		if (sph[sl].n == 0) { collect = &sph[sl]; buildSphere (sl); collect = 0; }
+		drawCached (sph[sl], r, r, r);
+	}
+	void buildSphere (int sl)
+	{
+		int st = sl / 2; const float r = 1;
 		const float PI = 3.14159265f;
 		for (int i = 0; i < st; i++)
 			for (int j = 0; j < sl; j++)
@@ -226,6 +259,12 @@ struct Scene3D
 	void cylinder (float r, float h, int detail)		// around y, from y = 0 to h, closed
 	{
 		int sl = detail < 6 ? 6 : detail > 64 ? 64 : detail;
+		if (cyl[sl].n == 0) { collect = &cyl[sl]; buildCylinder (sl); collect = 0; }
+		drawCached (cyl[sl], r, h, r);
+	}
+	void buildCylinder (int sl)
+	{
+		const float r = 1, h = 1;
 		const float PI = 3.14159265f;
 		for (int j = 0; j < sl; j++)
 		{
