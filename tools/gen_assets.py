@@ -577,6 +577,14 @@ def icon_nesemu():		# a NES pad: light grey body, black face, d-pad, Select / St
     prect(px, 4, 13, 35, 14, (160, 30, 30))
     return px
 
+def icon_snesemu():		# a Super Nintendo pad: grey body, d-pad, the four coloured buttons
+    px = blank()
+    prect(px, 8, 13, 31, 28, (200, 200, 208)); pdisc(px, 9, 20, 8, (200, 200, 208)); pdisc(px, 30, 20, 8, (200, 200, 208))
+    prect(px, 6, 19, 12, 21, (50, 50, 56)); prect(px, 8, 17, 10, 23, (50, 50, 56))
+    prect(px, 16, 21, 18, 22, (120, 120, 130)); prect(px, 21, 21, 23, 22, (120, 120, 130))
+    pdisc(px, 33, 20, 2, (220, 50, 50)); pdisc(px, 30, 23, 2, (240, 200, 40)); pdisc(px, 30, 17, 2, (60, 90, 220)); pdisc(px, 27, 20, 2, (50, 170, 70))
+    return px
+
 def icon_doom():		# a red-brown Doom-ish emblem: a skull-like shape on dark stone
     px = blank()
     prect(px, 2, 2, 37, 37, (40, 30, 26)); pframe(px, 2, 2, 37, 37, (90, 60, 40))
@@ -609,7 +617,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu,
 }
 
 

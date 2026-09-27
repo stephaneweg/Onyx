@@ -296,7 +296,7 @@ Notes / caveats:
 > `ec_request (&ec, n)`, `ec_pump` (frames made here when there is no core), `ec_take` /
 > `ec_front` (the latest picture: a triple buffer, nobody waits), `ec_audio_pop`, `ec_hold` /
 > `ec_resume` around anything that touches the machine (reset, battery save), `ec_shutdown`.
-> See `gbemu` / `gbaemu` / `nesemu`; `/bin/coretest` exercises the raw kapi.
+> See `gbemu` / `gbaemu` / `nesemu` / `snesemu`; `/bin/coretest` exercises the raw kapi.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
 > sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
@@ -351,6 +351,26 @@ Notes / caveats:
 > its trace, blargg all_instrs / instr_timing, apu_test 1-8, mmc3_test 1-3 and 5);
 > `tools/tests/nes/nestest.cpp run <rom> <seconds> [out.ppm] [keys]` runs a game headless
 > (`NES_PAL=1`, `NES_AUDIO=<file>`).
+> **Super Nintendo core** (`user/snes/snes.h`, `snes/libsnes.a`): `snes::Machine` — the same
+> shape (`load` a `.sfc` / `.smc`, a copier header skipped; `runFrame` → `fb` 256 × `height` (224,
+> 239 with overscan); `setButtons (snes::BTN_*)`, the pad's 12 buttons as the joypad word;
+> `setAudioRate`, `audioRead`; `setSaveRam` / `sram` / `sramSize` / `sramDirty`; `setPal`; `title`,
+> `hirom`, `chip`). `snes.cpp`: LoROM / HiROM (the header that scores best), the bus as 4 KB
+> pages (direct reads, the access speed of each page, FastROM), the 5A22's registers, DMA and
+> HDMA (direct / indirect, the 8 transfer modes), a line = 1364 master clocks with its events (HDMA
+> start, DRAM refresh, the H/V IRQ, the line drawn + HDMA) run between the instructions.
+> `snes_cpu.cpp`: the 65C816 (every opcode and mode, the emulation-mode wraps, decimal mode, block
+> moves). `snes_ppu.cpp`: modes 0-7 a line at a time (tile rows decoded 8 pixels at a time,
+> offset-per-tile, mosaic, direct colour, Mode 7 + EXTBG, 32 sprites a line, the windows, colour
+> math, brightness; modes 5 / 6 at half their width). `snes_apu.cpp`: the SPC700 with its IPL ROM
+> and timers, the S-DSP (BRR, gaussian interpolation — `snes_gauss.inc`, a generated gaussian
+> kernel —, ADSR / GAIN, noise, pitch modulation, echo + FIR), resampled from 32 kHz; the sound
+> unit catches up with the CPU when the CPU touches its ports and every 16 lines. No enhancement
+> chip (`load` refuses them). Used by `snesemu` and `gamelib`. **Host test**:
+> `SNES_TEST_ROMS=<PeterLemon SNES> sh tools/tests/run_snes_test.sh` (the CPU, SPC700 and PPU test
+> ROMs against their reference pictures; `SNES_CPUTEST=` gilyon's cputest-full.sfc, 649 tests);
+> `tools/tests/snes/snestest.cpp <rom> <seconds> [out.ppm] [keys]` runs a game headless
+> (`SNES_SHOTS`, `SNES_AUDIO`).
 > **Doom** (`user/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
 > sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
 > `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),
@@ -692,7 +712,7 @@ SD:apps/<nom>.app/
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
 **`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
-`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `nes = SD:/apps/nesemu.app/main`, `wad = SD:/apps/doom.app/main`):
+`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `nes = SD:/apps/nesemu.app/main`, `sfc` / `smc = SD:/apps/snesemu.app/main`, `wad = SD:/apps/doom.app/main`):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,
