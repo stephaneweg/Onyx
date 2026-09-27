@@ -615,6 +615,14 @@ def icon_planets3d():	# a ringed planet and a small moon on a starry sky
     pdisc(px, 32, 11, 3, (170, 170, 185))
     return px
 
+def icon_n64emu():		# the four-colour N64 cube logo, simplified: a coloured "N" on a dark tile
+    px = blank()
+    prect(px, 2, 2, 37, 37, (24, 24, 36))
+    prect(px, 9, 9, 13, 30, (30, 90, 200)); prect(px, 26, 9, 30, 30, (40, 160, 60))
+    for i in range(18): prect(px, 13 + i * 13 // 18, 9 + i, 15 + i * 13 // 18, 10 + i, (220, 40, 40))
+    prect(px, 9, 30, 30, 32, (240, 190, 30))
+    return px
+
 def icon_doom():		# a red-brown Doom-ish emblem: a skull-like shape on dark stone
     px = blank()
     prect(px, 2, 2, 37, 37, (40, 30, 26)); pframe(px, 2, 2, 37, 37, (90, 60, 40))
@@ -647,7 +655,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
 }
 
 

@@ -17,6 +17,8 @@ enum { VI_CLOCK_NTSC = 48681812, VI_CLOCK_PAL = 49656530, CPU_HZ = 93750000 };
 Machine::Machine () : rdram (0), rom (0), romSize (0)
 {
 	rdram = new u32[RDRAM_SIZE / 4];
+	for (int i = 0; i < 2; i++) { gfxFrame[i].v = 0; gfxFrame[i].b = 0; }
+	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
 	zero (sram, sizeof sram); zero (eeprom, sizeof eeprom);
 	sramDirty = eepromDirty = false; eepromSize = 0; saveType = 0;
 	pal = false; cic = 6102; title[0] = 0;
@@ -24,7 +26,12 @@ Machine::Machine () : rdram (0), rom (0), romSize (0)
 	reset ();
 }
 
-Machine::~Machine () { delete [] rdram; delete [] rom; }
+Machine::~Machine ()
+{
+	delete [] rdram; delete [] rom;
+	for (int i = 0; i < 2; i++) { delete [] gfxFrame[i].v; delete [] gfxFrame[i].b; }
+	for (int i = 0; i < MAX_TEX; i++) delete [] tex[i].px;
+}
 
 static u32 crc32 (const u8 *p, u32 n)
 {
@@ -108,6 +115,7 @@ void Machine::reset ()
 	cp0[12] = 0x34000000; cp0[16] = 0x7006E463; cp0[15] = 0x00000B22;
 	schedule (EV_VI, viCyclesLine);
 	scheduleCompare ();
+	gfxInit ();
 	if (rom) bootHle ();
 }
 
@@ -510,7 +518,7 @@ void Machine::runRsp ()
 	rspTasks[type < 8 ? type : 0]++;
 	sp[4] |= 1 | 2 | 0x200;						// halted, broke, signal 2 (task done)
 	if (sp[4] & 0x40) schedule (EV_SP, 1000);
-	if (type == 1) schedule (EV_DP, 2000);				// (the display list's full sync)
+	if (type == 1) { gfxTask (); schedule (EV_DP, 2000); }		// (the display list's full sync)
 }
 
 // An 8 or 16-bit read: on the PI bus, the word at the address rounded to 2 (the CPU then takes

@@ -73,6 +73,7 @@ static inline int lx_runner (const char *path, char *out, int cap)
 		{ "gb", "SD:/apps/gbemu.app/main" }, { "gbc", "SD:/apps/gbemu.app/main" },
 		{ "gba", "SD:/apps/gbaemu.app/main" }, { "nes", "SD:/apps/nesemu.app/main" },
 		{ "sfc", "SD:/apps/snesemu.app/main" }, { "smc", "SD:/apps/snesemu.app/main" },
+		{ "z64", "SD:/apps/n64emu.app/main" }, { "n64", "SD:/apps/n64emu.app/main" }, { "v64", "SD:/apps/n64emu.app/main" },
 		{ "wad", "SD:/apps/doom.app/main" } };
 	for (unsigned i = 0; i < sizeof known / sizeof known[0]; i++)
 	{

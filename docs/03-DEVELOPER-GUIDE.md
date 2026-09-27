@@ -392,6 +392,18 @@ Notes / caveats:
 > ROMs against their reference pictures; `SNES_CPUTEST=` gilyon's cputest-full.sfc, 649 tests);
 > `tools/tests/snes/snestest.cpp <rom> <seconds> [out.ppm] [keys]` runs a game headless
 > (`SNES_SHOTS`, `SNES_AUDIO`).
+> **Nintendo 64** (`user/n64/`, in progress): `n64_cpu.cpp` the R4300i interpreter (MIPS III, COP0
+> with the TLB / exceptions / Count-Compare, COP1), `n64_bus.cpp` the RCP interfaces (MI, VI,
+> AI, PI DMA as ares does it, SI + PIF, SP / DP registers) and the boot (the IPL3's work done
+> directly, CIC 6101-6106), `n64_gfx.cpp` the graphics tasks at a high level (F3DEX2: matrices,
+> lit vertices, triangles; the RDP: TMEM loads, tiles, the texture formats decoded into a cache,
+> the combiner evaluated per vertex, blending / depth, fill and texture rectangles) into a
+> `GFrame` of clip-space vertices + batches in the kapi v53 layout; the audio tasks only end.
+> `n64emu` draws the frames with `kapi_gpu_render` (the machine on an app core, lockstep).
+> **Host test**: `N64_TEST_ROMS=<PeterLemon N64> sh tools/tests/run_n64_test.sh` (89 of the 94 CPU
+> test ROMs match their pictures); `tools/tests/n64/n64test.cpp <rom> <frames> [out.ppm]` runs a
+> game headless (`N64_GFX=out.ppm`: the last graphics frame drawn by the BASIC 3D's software
+> renderer; `N64_STATE`, `N64_THREADS` (libultra's threads found in RDRAM), `N64_WHO`, `N64_MEM`).
 > **Doom** (`user/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
 > sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
 > `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),

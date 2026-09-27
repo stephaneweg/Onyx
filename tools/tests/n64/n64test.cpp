@@ -11,6 +11,7 @@
 #define private public
 #include "n64/n64.h"
 #undef private
+#include "basic/bas3d.h"
 
 static unsigned char *slurp (const char *path, long *n)
 {
@@ -30,6 +31,31 @@ static void ppm (n64::Machine *m, const char *path)
 	fprintf (f, "P6\n%d %d\n255\n", m->fbW, m->fbH);
 	for (int i = 0; i < m->fbW * m->fbH; i++) { unsigned c = m->fb[i]; fputc (c >> 16, f); fputc ((c >> 8) & 255, f); fputc (c & 255, f); }
 	fclose (f);
+}
+
+// the last finished graphics frame, drawn by the software renderer of the BASIC 3D (the same
+// vertex / batch layout as the GPU's): what the Onyx app hands to the GPU
+static void gfxPpm (n64::Machine *m, const char *path, int scale)
+{
+	if (m->gfxReady < 0) { printf ("  (no graphics frame)\n"); return; }
+	const n64::GFrame &F = m->gfxFrame[m->gfxReady];
+	int W = F.width * scale, H = F.height * scale;
+	static unsigned px[1280 * 960]; static float zb[1280 * 960];
+	static_assert (sizeof (n64::GVertex) == sizeof (bas::G3Vertex) && sizeof (n64::GBatch) == sizeof (bas::G3Batch), "layout");
+	static bas::G3Batch bt[n64::GFrame::MAXB];
+	for (int i = 0; i < F.nb; i++) { __builtin_memcpy (&bt[i], &F.b[i], sizeof bt[i]); bt[i].texture = F.b[i].tex >= 0 ? F.b[i].tex + 1 : 0; }
+	bas::swRender (px, W, H, W, zb, (const bas::G3Vertex *) F.v, F.nv, bt, F.nb, F.clear, false, [m] (int t) -> const bas::G3Texture *
+	{
+		static bas::G3Texture T;
+		T.px = m->tex[t - 1].px; T.w = m->tex[t - 1].w; T.h = m->tex[t - 1].h;
+		return &T;
+	});
+	FILE *f = fopen (path, "wb");
+	if (!f) return;
+	fprintf (f, "P6\n%d %d\n255\n", W, H);
+	for (int i = 0; i < W * H; i++) { unsigned c = px[i]; fputc (c >> 16, f); fputc ((c >> 8) & 255, f); fputc (c & 255, f); }
+	fclose (f);
+	printf ("  graphics frame: %d vertices, %d batches -> %s\n", F.nv, F.nb, path);
 }
 
 int main (int argc, char **argv)
@@ -112,5 +138,6 @@ int main (int argc, char **argv)
 		for (int k = 0; k < 16; k++) printf ("  %08X: %08X %08X %08X %08X\n", a + 16 * k, m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k], m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k + 1], m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k + 2], m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k + 3]);
 	}
 	if (argc > 3) ppm (m, argv[3]);
+	if (getenv ("N64_GFX")) gfxPpm (m, getenv ("N64_GFX"), getenv ("N64_SCALE") ? atoi (getenv ("N64_SCALE")) : 2);
 	return 0;
 }

@@ -38,6 +38,27 @@ enum { BTN_A = 0x8000, BTN_B = 0x4000, BTN_Z = 0x2000, BTN_START = 0x1000, BTN_D
        BTN_DLEFT = 0x0200, BTN_DRIGHT = 0x0100, BTN_L = 0x0020, BTN_R = 0x0010, BTN_CUP = 0x0008, BTN_CDOWN = 0x0004,
        BTN_CLEFT = 0x0002, BTN_CRIGHT = 0x0001 };
 
+// ---- the graphics of a frame, for a renderer (the layout of kapi v53: kapi_gpu_vertex3 / _batch) ----
+// The display lists' triangles, in clip space (x y z w, the GPU divides and clips), texture
+// coordinates 0..1 across their texture, a colour; batches of them with a texture and a state.
+struct GVertex { float x, y, z, w, s, t; u8 r, g, b, a; u32 reserved; };
+struct GBatch { u32 first, count; s32 tex; u32 flags; float m[16]; };
+enum
+{
+	GF_ZALWAYS = 7, GF_ZLEQUAL = 3, GF_NOZWRITE = 1 << 3, GF_CULL_BACK = 1 << 4, GF_CULL_FRONT = 1 << 5,
+	GF_BLEND_ALPHA = 1 << 8, GF_LINEAR = 1 << 12, GF_WRAP_S_SHIFT = 13, GF_WRAP_T_SHIFT = 15, GF_NOMATRIX = 1 << 17
+};
+struct GTexture { u32 *px; int w, h; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB
+struct GFrame
+{
+	enum { MAXV = 3 * 40000, MAXB = 4096 };
+	GVertex *v; int nv;
+	GBatch *b; int nb;
+	u32 clear;					// 0xRRGGBB, the fill of the whole screen
+	int width, height;				// the N64 framebuffer the coordinates are in
+	u32 cimg;					// its address
+};
+
 // MI interrupt bits
 enum { MI_SP = 1, MI_SI = 2, MI_AI = 4, MI_VI = 8, MI_PI = 16, MI_DP = 32 };
 
@@ -93,6 +114,13 @@ public:
 	u8  eeprom[EEPROM_SIZE]; int eepromSize; bool eepromDirty;
 	int saveType;					// 0 none / unknown, 1 SRAM, 2 EEPROM 4 Kbit, 3 EEPROM 16 Kbit
 
+	// the graphics (n64_gfx.cpp): the frame being built, the last one finished, the textures
+	enum { MAX_TEX = 256, TEX_PIXELS = 8192 };
+	GFrame gfxFrame[2]; int gfxBuild;		// built into gfxFrame[gfxBuild], the other one is shown
+	int  gfxReady;					// the index of the last finished frame, -1 none
+	u32  gfxSerial;					// frames finished so far
+	GTexture tex[MAX_TEX]; u32 texClock;
+
 	// the debugger's view (tests)
 	bool halted;					// an error stopped the CPU
 	u32  rspTasks[8];				// the tasks run, by type
@@ -147,6 +175,48 @@ private:
 	void spStatusWrite (u32 v);
 	void spDma (bool toRdram);
 	void runRsp ();					// the halt bit was cleared: do the task
+	// ---- the graphics (n64_gfx.cpp) ----
+	void gfxInit ();
+	void gfxTask ();
+	void gfxDl (u32 addr);
+	void gfxCmd (u32 w0, u32 w1, u32 &pcDl, int &sp, u32 *stack);
+	void gfxVtx (u32 addr, int n, int v0);
+	void gfxTri (int a, int b, int c);
+	void gfxRect (float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1, bool tex, bool fill);
+	void gfxRdp (u32 w0, u32 w1);
+	void gfxLoad (u32 w0, u32 w1, int kind);
+	int  gfxTexture (int tile);
+	void gfxCombine (const float *shade, const float *texel, float *out);
+	u32  gfxFlags ();
+	void gfxEmit (const GVertex *v3, int tex, u32 flags);
+	u32  seg (u32 a) { return (segment[(a >> 24) & 15] + (a & 0xFFFFFF)) & 0x7FFFFF; }
+	u8   rdB (u32 a) { return ((const u8 *) rdram)[(a & 0x7FFFFF) ^ 3]; }
+	u16  rdH (u32 a) { return *(const u16 *) ((const u8 *) rdram + ((a & 0x7FFFFE) ^ 2)); }
+	u32  rdW (u32 a) { return rdram[(a & 0x7FFFFC) >> 2]; }
+	// the RSP's state (F3DEX2)
+	u32  segment[16];
+	float mtxStack[10][16]; int mtxSp; float proj[16]; float mvp[16]; bool mvpDirty;
+	struct Vtx { float x, y, z, w; float s, t; float r, g, b, a; u32 clip; };
+	Vtx  vtx[64];
+	u32  geom;
+	float texScaleS, texScaleT; int texTile, texOn;
+	struct Light { float r, g, b, x, y, z; };
+	Light lights[8]; int numLights;
+	s16  vpScale[4], vpTrans[4];
+	u32  rdpHalf1, rdpHalf2;
+	float fogMul, fogOff;
+	// the RDP's state
+	u32  omH, omL;					// the other modes
+	u32  combH, combL;
+	float primC[4], envC[4], blendC[4], fogC[4]; u32 fillColor; float primDepth;
+	u32  cimg, cimgW, zimg, timg, timgW, timgSiz, timgFmt;
+	struct Tile { int fmt, siz, line, tmem, pal, cmt, maskt, shiftt, cms, masks, shifts; int sl, tl, sh, th; };
+	Tile tiles[8];
+	u8   tmem[4096];
+	u32  tmemSerial;				// changes when TMEM is loaded
+	int  scissor[4];
+	u32  cimgSiz; int rectTile; bool drawMain; bool dlEnd;
+	u32  viW () const { return vi[2] & 0xFFF; }
 	void viLine ();
 	void viOutput ();
 	u32  cartRead (u32 pa);
