@@ -461,7 +461,9 @@ Notes / caveats:
 > bctr) goes through the table; `jitRun` (C) takes the interrupts, translates what is missing. Blocks are keyed
 > by address + MSR IR / DR; `icbi`, the DVD / ARAM / locked-cache DMAs drop the blocks of the
 > 4 KB pages written; a BAT change, HID0's ICFI or a reset drop everything. `b .` jumps to the
-> next event (idle). `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
+> next event (idle), and so does a **polling loop** (a block of loads, compares, masks branching
+> back to its start, each register it reads set earlier in the same pass or not by it at all:
+> nothing changes until an interrupt / the hardware — the VBlank waits, the DSP's mail). `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
 > Tested by `run_gc_test.sh` under `qemu-aarch64` (`GC_JIT=1`): cputest / pstest / hwtest /
 > gxtest identical to the interpreter's, `gctest fuzz` (random sequences of FPU / paired-single /
 > load-store / integer / branch instructions from random states with NaNs, infinities,

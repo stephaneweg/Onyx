@@ -228,6 +228,7 @@ struct Jit
 	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather;
 	// the block being translated
 	u32 bKey, synced; int dmode; bool fpOk;
+	bool idle;					// the block is a polling loop (idleLoop)
 	u32 sgl0, sgl1;					// the FPRs (ps0 / ps1) known to hold a single exactly: no force25
 	static void setS (u32 &mk, int r, bool v) { if (v) mk |= 1u << r; else mk &= ~(1u << r); }
 	static bool isS (u32 mk, int r) { return (mk >> r) & 1; }
@@ -715,7 +716,63 @@ struct Jit
 
 	bool insn (u32 op, u32 pc, u32 idx);
 	bool op31 (u32 op, u32 pc, u32 idx);
+	bool idleLoop (u32 pa, u32 pc);
+	void idleExit (u32 target, u32 total)		// the loop goes on: nothing changes until the next event
+	{
+		spill (true);
+		a.movw (0, target); stF (0, oPc);
+		a.ldst (LDR_X, 3, 1, XM, oCycles);
+		if (total > synced) a.imm (ADD_WI | X64, 1, 1, total - synced);
+		a.ldst (LDR_X, 3, 3, XM, oUntil);
+		a.alu (SUBS_W | X64, WZR, 1, 3);
+		a.csel (CSEL_W | X64, 1, 3, 1, LO);
+		a.ldst (STR_X, 3, 1, XM, oCycles);
+		a.b (exitStub);
+	}
 };
+
+// A polling loop: loads, compares, masks, then a conditional branch back to its start (no LK, no
+// CTR), every register it reads either set earlier in the same pass or not set by it at all: each
+// pass does the same until something outside changes memory -- an interrupt, the hardware, a DMA:
+// the next event. Its taken branch skips the time to it.
+bool Jit::idleLoop (u32 pa, u32 pc)
+{
+	u64 written = 0, before = 0;			// (bits: the GPRs; 32 = CR)
+	u64 reads[8]; u64 writes[8]; int n = 0; bool found = false;
+	for (; n < 8; n++)
+	{
+		if (pa + (u32) n * 4 + 4 > MEM1_SIZE) return false;
+		u32 op = bswap32 (*(const u32 *) (m->mem1 + pa + (u32) n * 4));
+		u32 p = op >> 26, d = (op >> 21) & 31, ra = (op >> 16) & 31, rb = (op >> 11) & 31, x = (op >> 1) & 0x3FF;
+		u64 r = 0, w = 0;
+		auto A0 = [&] () -> u64 { return ra ? 1ull << ra : 0; };
+		if (p == 16)
+		{
+			u32 target = ((op & 2) ? 0 : pc + (u32) n * 4) + (u32) (s32) (s16) (op & 0xFFFC);
+			if (target != pc || (op & 1) || !(d & 4) || n == 0) return false;
+			reads[n] = (d & 16) ? 0 : 1ull << 32; writes[n] = 0; n++;
+			found = true;
+			break;
+		}
+		if (p == 32 || p == 34 || p == 40 || p == 42) { r = A0 (); w = 1ull << d; }		// lwz lbz lhz lha
+		else if (p == 31 && (x == 23 || x == 87 || x == 279)) { r = A0 () | 1ull << rb; w = 1ull << d; }	// lwzx lbzx lhzx
+		else if (p == 10 || p == 11) { r = 1ull << ra; w = 1ull << 32; }			// cmpli, cmpi
+		else if (p == 31 && (x == 0 || x == 32)) { r = 1ull << ra | 1ull << rb; w = 1ull << 32; }	// cmp, cmpl
+		else if (p == 21) { r = 1ull << d; w = 1ull << ra | ((op & 1) ? 1ull << 32 : 0); }	// rlwinm(.)
+		else if (p == 28 || p == 29) { r = 1ull << d; w = 1ull << ra | 1ull << 32; }		// andi., andis.
+		else if (p == 24 || p == 25) { r = 1ull << d; w = 1ull << ra; }			// ori, oris
+		else return false;
+		reads[n] = r; writes[n] = w;
+		written |= w;
+	}
+	if (!found) return false;
+	for (int i = 0; i < n; i++)
+	{
+		if (reads[i] & written & ~before) return false;		// (a value from the previous pass)
+		before |= writes[i];
+	}
+	return true;
+}
 
 // one instruction -> true: the block ends with it
 bool Jit::insn (u32 op, u32 pc, u32 idx)
@@ -760,7 +817,8 @@ bool Jit::insn (u32 op, u32 pc, u32 idx)
 		u32 target = ((op & 2) ? 0 : pc) + (u32) (s32) (s16) (op & 0xFFFC);
 		if (op & 1) a.movw (W (G_LR), pc + 4);
 		u32 *nt[2]; int n = bcTests ((u32) d, (u32) ra, true, nt);
-		exitTo (target, (idx + 1) * 2, false);
+		if (idle && target == (bKey & ~3u)) idleExit (target, (idx + 1) * 2);	// (a polling loop goes on)
+		else exitTo (target, (idx + 1) * 2, false);
 		if (n) { for (int i = 0; i < n; i++) Asm::patch (nt[i], a.p); exitTo (pc + 4, (idx + 1) * 2, false); }
 		return true;
 	}
@@ -1502,6 +1560,7 @@ void *Jit::compile (u32 pc, u32 key)
 	if (pa >= MEM1_SIZE || (pc & 3)) return 0;
 	if (codeEnd - a.p < 16384 || nBlocks >= MAX_BLOCKS || nLinks + 2 * MAX_INSNS >= 2 * MAX_BLOCKS) flushAll ();
 	bKey = key; synced = 0; fpOk = false; sgl0 = sgl1 = 0;
+	idle = idleLoop (pa, pc);
 	cacheReset ();
 	dmode = !(key & 2) ? 0 : stdMap ? 1 : 2;
 	u32 *start = a.p;
