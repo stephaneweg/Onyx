@@ -21,39 +21,6 @@ static inline double u2d (u64 u) { double d; __builtin_memcpy (&d, &u, 8); retur
 static inline u32 f2u (float f) { u32 u; __builtin_memcpy (&u, &f, 4); return u; }
 static inline float u2f (u32 u) { float f; __builtin_memcpy (&f, &u, 4); return f; }
 
-// a single's bits -> the double the 750 loads (exactly, NaNs and denormals kept)
-static u64 cvtToDouble (u32 v)
-{
-	u64 x = v, e = (x >> 23) & 0xFF, frac = x & 0x007FFFFF;
-	if (e > 0 && e < 255)
-	{
-		u64 y = !(e >> 7), z = y << 61 | y << 60 | y << 59;
-		return ((x & 0xC0000000) << 32) | z | ((x & 0x3FFFFFFF) << 29);
-	}
-	if (e == 0 && frac != 0)
-	{
-		e = 1023 - 126;
-		do { frac <<= 1; e--; } while (!(frac & 0x00800000));
-		return ((x & 0x80000000) << 32) | (e << 52) | ((frac & 0x007FFFFF) << 29);
-	}
-	u64 y = e >> 7, z = y << 61 | y << 60 | y << 59;
-	return ((x & 0xC0000000) << 32) | z | ((x & 0x3FFFFFFF) << 29);
-}
-
-// a double -> the single's bits the 750 stores
-static u32 cvtToSingle (u64 x)
-{
-	u32 e = (u32) (x >> 52) & 0x7FF;
-	if (e > 896 || (x & ~0x8000000000000000ull) == 0) return (u32) ((x >> 32) & 0xC0000000) | (u32) ((x >> 29) & 0x3FFFFFFF);
-	if (e >= 874)
-	{
-		u32 t = (u32) (0x80000000 | ((x & 0x000FFFFFFFFFFFFFull) >> 21));
-		t >>= 905 - e;
-		return t | (u32) ((x >> 32) & 0x80000000);
-	}
-	return (u32) ((x >> 32) & 0xC0000000) | (u32) ((x >> 29) & 0x3FFFFFFF);
-}
-
 static inline double roundSingle (double d) { return (double) (float) d; }
 // the multiplicand of a single-precision multiply: rounded to 25 bits of mantissa first
 static inline double force25 (double d)
@@ -789,6 +756,7 @@ static inline double frsqrte (double x)
 void Machine::op59 (u32 op)
 {
 	FPCHECK
+	if (fprfPending) { fprfPending = false; setFprf (fprfVal); }	// (what the JIT left)
 	u32 d = RD, a = RA, b = RB, c = RC;
 	double fa = ps0[a], fb = ps0[b], fc = ps0[c], r;
 	switch ((op >> 1) & 0x1F)
@@ -816,6 +784,7 @@ void Machine::op59 (u32 op)
 void Machine::op63 (u32 op)
 {
 	FPCHECK
+	if (fprfPending) { fprfPending = false; setFprf (fprfVal); }	// (what the JIT left)
 	u32 d = RD, a = RA, b = RB, c = RC;
 	double fa = ps0[a], fb = ps0[b], fc = ps0[c], r;
 	switch ((op >> 1) & 0x1F)
@@ -907,6 +876,7 @@ arith:
 void Machine::op4 (u32 op)
 {
 	FPCHECK
+	if (fprfPending) { fprfPending = false; setFprf (fprfVal); }	// (what the JIT left)
 	u32 d = RD, a = RA, b = RB, c = RC;
 	double a0 = ps0[a], a1 = ps1[a], b0 = ps0[b], b1 = ps1[b], c0 = ps0[c], c1 = ps1[c], r0, r1;
 	switch ((op >> 1) & 0x1F)

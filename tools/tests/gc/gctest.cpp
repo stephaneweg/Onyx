@@ -2,6 +2,7 @@
 //   gctest cpu <cputest.elf> <expected.bin>   runs cputest.c's run_tests (linked at 0x80003100)
 //       in the interpreter and compares its output with qemu-ppc's (run_gc_test.sh)
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results
+//   gctest bench <file.elf> [entry]           a function's speed (bench.c: run_bench, run_fbench)
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
 // GC_JIT=1: the JIT runs the CPU (an AArch64 host: run_gc_test.sh builds it for qemu-aarch64)
 #include "gc/gc.h"
@@ -115,11 +116,13 @@ static int psTest (const char *elf)
 }
 
 // a function's speed: run_bench (r3 = where its result goes) -> the result, the cycles, the time
-static int benchTest (const char *elf)
+static int benchTest (const char *elf, const char *entry)
 {
 	long n; unsigned char *e = slurp (elf, &n);
 	static Machine m;
-	m.pc = loadElf (m, e); m.gpr[1] = 0x80400000; m.gpr[3] = 0x80500000; m.lr = 0x80001000;
+	m.pc = loadElf (m, e);
+	if (entry) m.pc = (u32) strtoul (entry, 0, 16);
+	m.gpr[1] = 0x80400000; m.gpr[3] = 0x80500000; m.lr = 0x80001000;
 	startJit (m);
 	struct timespec t0, t1; clock_gettime (CLOCK_MONOTONIC, &t0);
 	runToReturn (m, 100000000000ull);
@@ -186,7 +189,7 @@ int main (int argc, char **argv)
 	useJit = getenv ("GC_JIT") && atoi (getenv ("GC_JIT"));
 	if (argc >= 4 && !strcmp (argv[1], "dol")) return dolTest (argv[2], atoi (argv[3]), argc > 4 ? argv[4] : 0);
 	if (argc >= 3 && !strcmp (argv[1], "ps")) return psTest (argv[2]);
-	if (argc >= 3 && !strcmp (argv[1], "bench")) return benchTest (argv[2]);
+	if (argc >= 3 && !strcmp (argv[1], "bench")) return benchTest (argv[2], argc > 3 ? argv[3] : 0);
 	if (argc >= 4 && !strcmp (argv[1], "cpu")) return cpuTest (argv[2], argv[3]);
 	fprintf (stderr, "gctest cpu <cputest.elf> <expected.bin>\n");
 	return 2;

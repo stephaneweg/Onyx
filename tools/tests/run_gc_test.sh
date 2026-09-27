@@ -64,13 +64,16 @@ if command -v aarch64-linux-gnu-g++ > /dev/null && command -v qemu-aarch64 > /de
 	cmp -s "$T/gxi.ppm" "$T/gxj.ppm" && echo "ok  : gxtest.dol (JIT): the interpreter's GX frame" || { echo "FAIL gxtest.dol (JIT): another frame"; exit 1; }
 	F2="-mcpu=750 -O2 -fno-stack-protector -fno-pic -fno-pie"
 	powerpc-linux-gnu-gcc $F2 -c "$here/gc/bench.c" -o "$T/bench.o"
-	printf '#include <stdio.h>\nunsigned run_bench (unsigned *);\nint main (void) { unsigned o; run_bench (&o); printf ("%%08X\\n", o); return 0; }\n' > "$T/bench_main.c"
+	printf '#include <stdio.h>\nunsigned run_bench (unsigned *), run_fbench (unsigned *);\nint main (int c, char **v) { unsigned o; if (c > 1) run_fbench (&o); else run_bench (&o); printf ("%%08X\\n", o); return 0; }\n' > "$T/bench_main.c"
 	powerpc-linux-gnu-gcc $F2 -static "$T/bench_main.c" "$T/bench.o" -o "$T/bench_q"
-	want=$(qemu-ppc -cpu 750 "$T/bench_q")
 	powerpc-linux-gnu-ld -Ttext=0x80003100 -e run_bench -nostdlib "$T/bench.o" -o "$T/bench.elf"
-	for j in 0 1; do
-		out=$(GC_JIT=$j $Q bench "$T/bench.elf" | head -1)
-		echo "$out" | grep -q "result $want" && echo "ok  : bench.c ($([ $j = 1 ] && echo JIT || echo interpreter)): $out" || { echo "FAIL bench.c: $out, qemu-ppc $want"; exit 1; }
+	fb=$(powerpc-linux-gnu-nm "$T/bench.elf" | grep " run_fbench" | cut -d' ' -f1)
+	for b in int float; do
+		if [ $b = int ]; then want=$(qemu-ppc -cpu 750 "$T/bench_q"); entry=""; else want=$(qemu-ppc -cpu 750 "$T/bench_q" f); entry=$fb; fi
+		for j in 0 1; do
+			out=$(GC_JIT=$j $Q bench "$T/bench.elf" $entry | head -1)
+			echo "$out" | grep -q "result $want" && echo "ok  : bench.c $b ($([ $j = 1 ] && echo JIT || echo interpreter)): $out" || { echo "FAIL bench.c $b: $out, qemu-ppc $want"; exit 1; }
+		done
 	done
 else
 	echo "skip: the JIT (no aarch64-linux-gnu-g++ / qemu-aarch64)"

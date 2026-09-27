@@ -30,7 +30,7 @@ enum
 	MAX_INSNS = 64, NPAGES = MEM1_SIZE >> 12, STUB_WORDS = 256
 };
 static const u32 NONE = 0xFFFFFFFFu, NOKEY = 0xFFFFFFFFu;
-enum { H_INTERP, H_RD8, H_RD16, H_RD32, H_WR8, H_WR16, H_WR32 };
+enum { H_INTERP, H_RD8, H_RD16, H_RD32, H_WR8, H_WR16, H_WR32, H_RD64, H_WR64, H_CVTD, H_CVTS, H_FPRF };
 
 static inline u32 rotl (u32 v, int n) { n &= 31; return n ? (v << n) | (v >> (32 - n)) : v; }
 static inline u32 mask (int mb, int me)
@@ -51,7 +51,7 @@ static void flushCode (void *from, void *to)
 }
 
 // ---- the AArch64 assembler (what the translation uses) -------------------------------------------------------
-enum { WZR = 31, SP = 31, XM = 19, XMEM = 20, XCTX = 21, WMSZ = 22, WEA = 23 };
+enum { WZR = 31, SP = 31, XM = 19, XMEM = 20, XCTX = 21, WMSZ = 22, WEA = 23, WONE = 24, XK1 = 25, XK2 = 26 };
 enum { EQ = 0, NE, HS, LO, MI, PL, VS, VC, HI, LS, GE, LT, GT, LE };
 enum : u32
 {
@@ -69,8 +69,45 @@ enum : u32
 	LDR_W = 0xB9400000, STR_W = 0xB9000000, LDR_X = 0xF9400000, STR_X = 0xF9000000,
 	LDRB = 0x39400000, STRB = 0x39000000, LDRH = 0x79400000, STRH = 0x79000000,
 	LDR_WR = 0xB8604800, STR_WR = 0xB8204800, LDRB_R = 0x38604800, STRB_R = 0x38204800,
-	LDRH_R = 0x78604800, STRH_R = 0x78204800
+	LDRH_R = 0x78604800, STRH_R = 0x78204800, LDR_XR = 0xF8604800, STR_XR = 0xF8204800, REV_X = 0xDAC00C00,
+	AND_I = 0x12000000, ORR_I = 0x32000000, EOR_I = 0x52000000,
+	// the floating point (double; s <- d / d <- s conversions, moves to / from the integer registers)
+	FADD_D = 0x1E602800, FSUB_D = 0x1E603800, FMUL_D = 0x1E600800, FDIV_D = 0x1E601800,
+	FMADD_D = 0x1F400000, FMSUB_D = 0x1F408000, FNMADD_D = 0x1F600000, FNMSUB_D = 0x1F608000,
+	FNEG_D = 0x1E614000, FABS_D = 0x1E60C000, FMOV_D = 0x1E604000,
+	FCVT_SD = 0x1E624000, FCVT_DS = 0x1E22C000, FCVTZS_WD = 0x1E780000,
+	FMOV_DX = 0x9E670000, FMOV_XD = 0x9E660000, FMOV_SW = 0x1E270000, FMOV_WS = 0x1E260000,
+	FCMP_D = 0x1E602000, FCMP_D0 = 0x1E602008, FCSEL_D = 0x1E600C00, FMOV_D1 = 0x1E6E1000,
+	LDR_D = 0xFD400000, STR_D = 0xFD000000
 };
+
+// a logical immediate (AND / ORR / EOR #imm): N:immr:imms, false if the value has no encoding
+static bool logImm (u64 v, bool x, u32 &enc)
+{
+	if (!x) v = (v & 0xFFFFFFFFull) | (v << 32);
+	if (v == 0 || v == ~0ull) return false;
+	int size = 64;
+	while (size > 2)
+	{
+		int h = size / 2; u64 m = (1ull << h) - 1;
+		if ((v & m) != ((v >> h) & m)) break;
+		size = h;
+	}
+	u64 mk = size == 64 ? ~0ull : (1ull << size) - 1, e = v & mk;
+	int ones = __builtin_popcountll (e);
+	u64 run = ones == 64 ? ~0ull : (1ull << ones) - 1;
+	for (int r = 0; r < size; r++)
+	{
+		u64 rot = r ? ((e >> r) | (e << (size - r))) & mk : e;
+		if (rot == run)
+		{
+			u32 immr = (u32) ((size - r) % size), imms = (u32) ((0x3F & ~((size << 1) - 1)) | (ones - 1));
+			enc = (size == 64 ? 1u << 22 : 0) | immr << 16 | imms << 10;
+			return true;
+		}
+	}
+	return false;
+}
 
 struct Asm
 {
@@ -118,11 +155,24 @@ struct Asm
 		put (op | 17u << 5 | rt);
 	}
 	void ldstr (u32 op, int rt, int rn, int rm) { put (op | (u32) rm << 16 | (u32) rn << 5 | rt); }
+	// rd = rn op #v (AND / ORR / EOR; through w/x16 when v has no encoding)
+	void logi (u32 op, int rd, int rn, u64 v, bool x = false)
+	{
+		u32 enc;
+		if (logImm (v, x, enc)) { put (op | (x ? (u32) X64 : 0u) | enc | (u32) rn << 5 | rd); return; }
+		if (x) movx (16, v); else movw (16, (u32) v);
+		u32 reg = op == AND_I ? (u32) AND_W : op == ORR_I ? (u32) ORR_W : (u32) EOR_W;
+		alu (reg | (x ? (u32) X64 : 0u), rd, rn, 16);
+	}
+	void fp1 (u32 op, int rd, int rn) { put (op | (u32) rn << 5 | rd); }
+	void fp3 (u32 op, int rd, int rn, int rm) { put (op | (u32) rm << 16 | (u32) rn << 5 | rd); }
+	void fp4 (u32 op, int rd, int rn, int rm, int ra) { put (op | (u32) rm << 16 | (u32) ra << 10 | (u32) rn << 5 | rd); }
+	void fcsel (int rd, int rn, int rm, int cond) { put (FCSEL_D | (u32) rm << 16 | (u32) cond << 12 | (u32) rn << 5 | rd); }
 	// branches (to a known place; a forward one is put as 0 and patched)
 	static u32 rel (u32 *from, u32 *to, int bits) { return (u32) (to - from) & ((1u << bits) - 1); }
 	void b (u32 *t) { put (0x14000000u | rel (p, t, 26)); }
 	void bcond (int cond, u32 *t) { put (0x54000000u | rel (p, t, 19) << 5 | (u32) cond); }
-	void cbz (int rt, u32 *t, bool nz = false) { put ((nz ? 0x35000000u : 0x34000000u) | rel (p, t, 19) << 5 | rt); }
+	void cbz (int rt, u32 *t, bool nz = false, bool x = false) { put ((nz ? 0x35000000u : 0x34000000u) | (x ? (u32) X64 : 0u) | rel (p, t, 19) << 5 | rt); }
 	void tbz (int rt, int bit, u32 *t, bool nz = false) { put ((nz ? 0x37000000u : 0x36000000u) | (u32) (bit >> 5) << 31 | (u32) (bit & 31) << 19 | rel (p, t, 14) << 5 | rt); }
 	void br (int rn) { put (0xD61F0000u | (u32) rn << 5); }
 	void blr (int rn) { put (0xD63F0000u | (u32) rn << 5); }
@@ -154,9 +204,9 @@ struct Jit
 	u32 pageHead[NPAGES];
 	bool stdMap;					// the BATs map 0x80000000 / 0xC0000000 onto MEM1 as the OS does
 	// the Machine's fields
-	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1;
+	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs0, oPs1, oFpscr, oFprfVal, oFprfPend, oGqr;
 	// the block being translated
-	u32 bKey, synced; int dmode;
+	u32 bKey, synced; int dmode; bool fpOk;
 
 	Jit (Machine *mm, void *mem, u32 size);
 	void flushAll ();
@@ -180,6 +230,11 @@ struct Jit
 	static u64 hWr8 (Machine *m, u32 ea, u32 v, u32 pc) { m->curPc = pc; m->memFault = false; m->write8 (ea, (u8) v); return m->memFault ? 1ull << 32 : 0; }
 	static u64 hWr16 (Machine *m, u32 ea, u32 v, u32 pc) { m->curPc = pc; m->memFault = false; m->write16 (ea, (u16) v); return m->memFault ? 1ull << 32 : 0; }
 	static u64 hWr32 (Machine *m, u32 ea, u32 v, u32 pc) { m->curPc = pc; m->memFault = false; m->write32 (ea, v); return m->memFault ? 1ull << 32 : 0; }
+	static u64 hRd64 (Machine *m, u32 ea, u32 pc) { m->curPc = pc; m->memFault = false; m->jitScratch = m->read64 (ea); return m->memFault ? 1ull << 32 : 0; }
+	static u64 hWr64 (Machine *m, u32 ea, u64 v, u32 pc) { m->curPc = pc; m->memFault = false; m->write64 (ea, v); return m->memFault ? 1ull << 32 : 0; }
+	static u64 hCvtD (u32 v) { return cvtToDouble (v); }
+	static u32 hCvtS (u64 v) { return cvtToSingle (v); }
+	static void hFprf (Machine *m) { if (m->fprfPending) { m->fprfPending = false; m->setFprf (m->fprfVal); } }
 
 	// ---- emitting ----
 	void ldG (int w, int r) { a.ldst (LDR_W, 2, w, XM, r * 4); }
@@ -247,7 +302,7 @@ struct Jit
 		if (toC) exitTo (pc + 4, (idx + 1) * 2, true);
 	}
 
-	// a load (w1 = the address -> w0) or a store (w1 = the address, w2 = the value); size 1 / 2 / 4
+	// a load (w1 = the address -> w0 / x0) or a store (w1 = the address, w2 / x2 = the value); size 1 / 2 / 4 / 8
 	void memop (bool store, int size, u32 pc, u32 idx)
 	{
 		u32 *slow1 = 0, *slow2 = 0, *done = 0;
@@ -264,13 +319,15 @@ struct Jit
 		{
 			if (!store)
 			{
-				if (size == 4) { a.ldstr (LDR_WR, 0, XMEM, ra); a.un (REV_W, 0, 0); }
+				if (size == 8) { a.ldstr (LDR_XR, 0, XMEM, ra); a.un (REV_X, 0, 0); }
+				else if (size == 4) { a.ldstr (LDR_WR, 0, XMEM, ra); a.un (REV_W, 0, 0); }
 				else if (size == 2) { a.ldstr (LDRH_R, 0, XMEM, ra); a.un (REV16_W, 0, 0); }
 				else a.ldstr (LDRB_R, 0, XMEM, ra);
 			}
 			else
 			{
-				if (size == 4) { a.un (REV_W, 4, 2); a.ldstr (STR_WR, 4, XMEM, ra); }
+				if (size == 8) { a.un (REV_X, 4, 2); a.ldstr (STR_XR, 4, XMEM, ra); }
+				else if (size == 4) { a.un (REV_W, 4, 2); a.ldstr (STR_WR, 4, XMEM, ra); }
 				else if (size == 2) { a.un (REV16_W, 4, 2); a.ldstr (STRH_R, 4, XMEM, ra); }
 				else a.ldstr (STRB_R, 2, XMEM, ra);
 			}
@@ -282,7 +339,8 @@ struct Jit
 		addCycles (5, pend);
 		a.movX (0, XM);
 		a.movw (store ? 3 : 2, pc);
-		helper (store ? (size == 4 ? H_WR32 : size == 2 ? H_WR16 : H_WR8) : (size == 4 ? H_RD32 : size == 2 ? H_RD16 : H_RD8));
+		static const int hs[2][9] = { { 0, H_RD8, H_RD16, 0, H_RD32, 0, 0, 0, H_RD64 }, { 0, H_WR8, H_WR16, 0, H_WR32, 0, 0, 0, H_WR64 } };
+		helper (hs[store][size]);
 		u32 *ok = a.p; a.tbz (0, 32, a.p);
 		addCycles (5, 2);
 		a.b (exitStub);
@@ -293,8 +351,85 @@ struct Jit
 			a.imm (SUB_WI | X64, 5, 5, pend);
 			a.ldst (STR_X, 3, 5, XM, oCycles);
 		}
+		if (!store && size == 8) a.ldst (LDR_X, 3, 0, XM, oScratch);
 		if (done) Asm::patch (done, a.p);
 	}
+	// the interpreter for this instruction off the main path (a NaN, the FPU off, a GQR type):
+	// then back to the main path (-> the branch to patch to it) or out (0)
+	u32 *interpSide (u32 op, u32 pc, u32 idx, bool back)
+	{
+		u32 pend = idx * 2 - synced;
+		addCycles (5, pend);
+		a.movX (0, XM); a.movw (1, op); a.movw (2, pc);
+		helper (H_INTERP);
+		u32 *j = a.p; a.cbz (0, a.p);
+		addCycles (1, 2);
+		a.b (exitStub);
+		Asm::patch (j, a.p);
+		if (!back) { a.movw (0, pc + 4); stF (0, oPc); addCycles (1, 2); a.b (exitStub); return 0; }
+		if (pend) { a.ldst (LDR_X, 3, 5, XM, oCycles); a.imm (SUB_WI | X64, 5, 5, pend); a.ldst (STR_X, 3, 5, XM, oCycles); }
+		u32 *b = a.p; a.b (a.p);
+		return b;
+	}
+	// the FPU's use is checked once a block (MSR.FP: else the interpreter takes the exception)
+	void fpCheck (u32 op, u32 pc, u32 idx)
+	{
+		if (fpOk) return;
+		fpOk = true;
+		ldF (9, oMsr);
+		u32 *ok = a.p; a.tbz (9, 13, a.p, true);
+		interpSide (op, pc, idx, false);
+		Asm::patch (ok, a.p);
+	}
+	void ldPs (int dd, int r, int half) { a.ldst (LDR_D, 3, dd, XM, (half ? oPs1 : oPs0) + 8 * r); }
+	void stPs (int dd, int r, int half) { a.ldst (STR_D, 3, dd, XM, (half ? oPs1 : oPs0) + 8 * r); }
+	void fprf (int dd) { a.ldst (STR_D, 3, dd, XM, oFprfVal); a.ldst (STRB, 0, WONE, XM, oFprfPend); }
+	void roundS (int dd) { a.fp1 (FCVT_SD, dd, dd); a.fp1 (FCVT_DS, dd, dd); }
+	// the multiplicand of a single-precision multiply: its mantissa rounded to 25 bits (dd in place)
+	void force25 (int dd)
+	{
+		a.fp1 (FMOV_XD, 9, dd);
+		a.logi (AND_I, 10, 9, 0x8000000ull, true);
+		a.logi (AND_I, 9, 9, 0xFFFFFFFFF8000000ull, true);
+		a.alu (ADD_W | X64, 9, 9, 10);
+		a.fp1 (FMOV_DX, dd, 9);
+	}
+	// a single's bits (w ws) -> the double the 750 loads (d dd): FCVT; inf / a signalling NaN: cvtToDouble
+	void cvtD (int dd, int ws)
+	{
+		a.ubfx (10, ws, 22, 9); a.cmpi (10, 0x1FE);
+		u32 *slow = a.p; a.bcond (EQ, a.p);
+		a.fp1 (FMOV_SW, dd, ws); a.fp1 (FCVT_DS, dd, dd);
+		u32 *done = a.p; a.b (a.p);
+		Asm::patch (slow, a.p);
+		if (ws != 0) a.mov (0, ws);
+		helper (H_CVTD);
+		a.fp1 (FMOV_DX, dd, 0);
+		Asm::patch (done, a.p);
+	}
+	// a double's bits (x xs) -> the single the 750 stores (w wd): the bits taken as they are; the
+	// denormal range: cvtToSingle
+	void cvtS (int wd, int xs)
+	{
+		a.bfm (UBFM_X, 9, xs, 52, 62);
+		a.cmpi (9, 896);
+		u32 *fast1 = a.p; a.bcond (HI, a.p);
+		a.bfm (UBFM_X, 10, xs, 63, 62);				// (x << 1: zero)
+		u32 *fast2 = a.p; a.cbz (10, a.p, false, true);
+		a.movX (0, xs);
+		helper (H_CVTS);
+		a.mov (wd, 0);
+		u32 *done = a.p; a.b (a.p);
+		Asm::patch (fast1, a.p); Asm::patch (fast2, a.p);
+		a.bfm (UBFM_X, 10, xs, 32, 63);
+		a.logi (AND_I, 10, 10, 0xC0000000u);
+		a.bfm (UBFM_X, 11, xs, 29, 58);
+		a.alu (ORR_W, wd, 10, 11);
+		Asm::patch (done, a.p);
+	}
+	bool fpInsn (u32 op, u32 pc, u32 idx);
+	bool fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd);
+	bool psq (u32 op, u32 pc, u32 idx, bool load, bool upd);
 	// the effective address into w1: (rA|0) + d, or (rA|0) + rB
 	void eaD (u32 op, bool upd)
 	{
@@ -514,6 +649,19 @@ bool Jit::insn (u32 op, u32 pc, u32 idx)
 		return false;
 	}
 	case 31: return op31 (op, pc, idx);
+	case 4: case 59: case 63: return fpInsn (op, pc, idx);
+	case 48: return fpLoadStore (op, pc, idx, 0, false, false);	// lfs
+	case 49: return fpLoadStore (op, pc, idx, 0, false, true);	// lfsu
+	case 50: return fpLoadStore (op, pc, idx, 1, false, false);	// lfd
+	case 51: return fpLoadStore (op, pc, idx, 1, false, true);	// lfdu
+	case 52: return fpLoadStore (op, pc, idx, 2, false, false);	// stfs
+	case 53: return fpLoadStore (op, pc, idx, 2, false, true);	// stfsu
+	case 54: return fpLoadStore (op, pc, idx, 3, false, false);	// stfd
+	case 55: return fpLoadStore (op, pc, idx, 3, false, true);	// stfdu
+	case 56: return psq (op, pc, idx, true, false);			// psq_l
+	case 57: return psq (op, pc, idx, true, true);			// psq_lu
+	case 60: return psq (op, pc, idx, false, false);		// psq_st
+	case 61: return psq (op, pc, idx, false, true);			// psq_stu
 	case 32: load (op, false, 4, false, false, pc, idx); return false;	// lwz
 	case 33: load (op, false, 4, false, true, pc, idx); return false;	// lwzu
 	case 34: load (op, false, 1, false, false, pc, idx); return false;	// lbz
@@ -660,8 +808,264 @@ bool Jit::op31 (u32 op, u32 pc, u32 idx)
 	case 247: store (op, true, 1, true, pc, idx); return false;		// stbux
 	case 407: store (op, true, 2, false, pc, idx); return false;		// sthx
 	case 439: store (op, true, 2, true, pc, idx); return false;		// sthux
+	case 535: return fpLoadStore (op, pc, idx, 0, true, false);	// lfsx
+	case 567: return fpLoadStore (op, pc, idx, 0, true, true);	// lfsux
+	case 599: return fpLoadStore (op, pc, idx, 1, true, false);	// lfdx
+	case 631: return fpLoadStore (op, pc, idx, 1, true, true);	// lfdux
+	case 663: return fpLoadStore (op, pc, idx, 2, true, false);	// stfsx
+	case 695: return fpLoadStore (op, pc, idx, 2, true, true);	// stfsux
+	case 727: return fpLoadStore (op, pc, idx, 3, true, false);	// stfdx
+	case 759: return fpLoadStore (op, pc, idx, 3, true, true);	// stfdux
+	case 983: return fpLoadStore (op, pc, idx, 4, true, false);	// stfiwx
 	}
 	interp (op, pc, idx, false);
+	return false;
+}
+
+
+// ---- the floating point, the paired singles ----------------------------------------------------------------------
+// A result that is a NaN goes to the interpreter (the 750 keeps the first NaN operand); FPRF is left
+// to set (fprfVal / fprfPending: the interpreter sets it when it looks at the FPSCR).
+bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
+{
+	u32 prim = op >> 26;
+	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31), rb = (int) ((op >> 11) & 31), rc = (int) ((op >> 6) & 31);
+	u32 x5 = (op >> 1) & 0x1F, x10 = (op >> 1) & 0x3FF;
+	if (op & 1) { interp (op, pc, idx, false); return false; }	// (Rc: CR1 from the FPSCR)
+	u32 *nan[2] = { 0, 0 };
+	if (prim == 59 || prim == 63)
+	{
+		bool single = prim == 59;
+		if (x5 == 18 || x5 == 20 || x5 == 21 || x5 == 25 || x5 >= 28)
+		{
+			fpCheck (op, pc, idx);
+			ldPs (0, ra, 0);
+			if (x5 != 25) ldPs (1, rb, 0);
+			if (x5 == 25 || x5 >= 28) { ldPs (2, rc, 0); if (single) force25 (2); }
+			switch (x5)
+			{
+			case 18: a.fp3 (FDIV_D, 3, 0, 1); break;
+			case 20: a.fp3 (FSUB_D, 3, 0, 1); break;
+			case 21: a.fp3 (FADD_D, 3, 0, 1); break;
+			case 25: a.fp3 (FMUL_D, 3, 0, 2); break;
+			case 28: a.fp4 (FNMSUB_D, 3, 0, 2, 1); break;		// a * c - b
+			case 29: a.fp4 (FMADD_D, 3, 0, 2, 1); break;		// a * c + b
+			case 30: a.fp4 (FNMSUB_D, 3, 0, 2, 1); a.fp1 (FNEG_D, 3, 3); break;
+			default: a.fp4 (FMADD_D, 3, 0, 2, 1); a.fp1 (FNEG_D, 3, 3); break;
+			}
+			a.fp3 (FCMP_D, 0, 3, 3); nan[0] = a.p; a.bcond (VS, a.p);
+			if (single) roundS (3);
+			stPs (3, d, 0);
+			if (single) stPs (3, d, 1);
+			fprf (3);
+		}
+		else if (prim == 63 && x5 == 23)				// fsel
+		{
+			fpCheck (op, pc, idx);
+			ldPs (0, ra, 0); ldPs (1, rb, 0); ldPs (2, rc, 0);
+			a.fp1 (FCMP_D0, 0, 0);
+			a.fcsel (3, 2, 1, GE);
+			stPs (3, d, 0);
+			return false;
+		}
+		else if (prim == 63 && (x10 == 0 || x10 == 32))		// fcmpu, fcmpo
+		{
+			fpCheck (op, pc, idx);
+			a.ldst (LDRB, 0, 9, XM, oFprfPend);
+			u32 *j = a.p; a.cbz (9, a.p);
+			a.movX (0, XM); helper (H_FPRF);
+			Asm::patch (j, a.p);
+			ldPs (0, ra, 0); ldPs (1, rb, 0);
+			a.fp3 (FCMP_D, 0, 0, 1);
+			a.movz (3, 4, 0); a.movz (4, 8, 0); a.csel (CSEL_W, 3, 4, 3, MI);
+			a.movz (4, 2, 0); a.csel (CSEL_W, 3, 4, 3, EQ);
+			a.movz (4, 1, 0); a.csel (CSEL_W, 3, 4, 3, VS);
+			ldF (4, oCr); a.bfi (4, 3, 28 - (d >> 2) * 4, 4); stF (4, oCr);
+			ldF (4, oFpscr); a.bfi (4, 3, 12, 4); stF (4, oFpscr);
+			return false;
+		}
+		else if (prim == 63 && (x10 == 12 || x10 == 15))		// frsp, fctiwz
+		{
+			fpCheck (op, pc, idx);
+			ldPs (1, rb, 0);
+			a.fp3 (FCMP_D, 0, 1, 1); nan[0] = a.p; a.bcond (VS, a.p);
+			if (x10 == 12) { roundS (1); stPs (1, d, 0); fprf (1); }
+			else
+			{
+				a.fp1 (FCVTZS_WD, 9, 1);
+				a.movz (10, 0xFFF8, 3, true);
+				a.alu (ORR_W | X64, 9, 9, 10);
+				a.ldst (STR_X, 3, 9, XM, oPs0 + 8 * d);
+			}
+		}
+		else if (prim == 63 && (x10 == 40 || x10 == 72 || x10 == 136 || x10 == 264))	// fneg, fmr, fnabs, fabs
+		{
+			fpCheck (op, pc, idx);
+			ldPs (1, rb, 0);
+			if (x10 == 40) a.fp1 (FNEG_D, 1, 1);
+			else if (x10 == 136) { a.fp1 (FABS_D, 1, 1); a.fp1 (FNEG_D, 1, 1); }
+			else if (x10 == 264) a.fp1 (FABS_D, 1, 1);
+			stPs (1, d, 0);
+			return false;
+		}
+		else { interp (op, pc, idx, false); return false; }
+	}
+	else								// the paired singles
+	{
+		bool arith = x5 == 10 || x5 == 11 || (x5 >= 12 && x5 <= 15) || x5 == 18 || x5 == 20 || x5 == 21 || x5 == 23 || x5 == 25 || x5 >= 28;
+		bool move = x10 == 40 || x10 == 72 || x10 == 136 || x10 == 264 || x10 == 528 || x10 == 560 || x10 == 592 || x10 == 624;
+		if (!arith && !move) { interp (op, pc, idx, false); return false; }
+		fpCheck (op, pc, idx);
+		ldPs (0, ra, 0); ldPs (1, ra, 1); ldPs (2, rb, 0); ldPs (3, rb, 1); ldPs (4, rc, 0); ldPs (5, rc, 1);
+		if (move)
+		{
+			switch (x10)
+			{
+			case 40: a.fp1 (FNEG_D, 6, 2); a.fp1 (FNEG_D, 7, 3); break;
+			case 72: a.fp1 (FMOV_D, 6, 2); a.fp1 (FMOV_D, 7, 3); break;
+			case 136: a.fp1 (FABS_D, 6, 2); a.fp1 (FNEG_D, 6, 6); a.fp1 (FABS_D, 7, 3); a.fp1 (FNEG_D, 7, 7); break;
+			case 264: a.fp1 (FABS_D, 6, 2); a.fp1 (FABS_D, 7, 3); break;
+			case 528: a.fp1 (FMOV_D, 6, 0); a.fp1 (FMOV_D, 7, 2); break;
+			case 560: a.fp1 (FMOV_D, 6, 0); a.fp1 (FMOV_D, 7, 3); break;
+			case 592: a.fp1 (FMOV_D, 6, 1); a.fp1 (FMOV_D, 7, 2); break;
+			default: a.fp1 (FMOV_D, 6, 1); a.fp1 (FMOV_D, 7, 3); break;
+			}
+			stPs (6, d, 0); stPs (7, d, 1);
+			return false;
+		}
+		switch (x5)
+		{
+		case 10: case 11:					// ps_sum0, ps_sum1
+		{
+			int r = x5 == 10 ? 6 : 7;
+			a.fp3 (FADD_D, r, 0, 3);
+			a.fp3 (FCMP_D, 0, r, r); nan[0] = a.p; a.bcond (VS, a.p);
+			roundS (r);
+			if (x5 == 10) { stPs (6, d, 0); stPs (5, d, 1); }
+			else { stPs (4, d, 0); stPs (7, d, 1); }
+			fprf (r);
+			break;
+		}
+		case 23:						// ps_sel
+			a.fp1 (FCMP_D0, 0, 0); a.fcsel (6, 4, 2, GE);
+			a.fp1 (FCMP_D0, 0, 1); a.fcsel (7, 5, 3, GE);
+			stPs (6, d, 0); stPs (7, d, 1);
+			return false;
+		default:
+		{
+			int m0 = 4, m1 = 5;					// the multiplicands of each half
+			if (x5 == 12 || x5 == 14) m1 = 4;
+			if (x5 == 13 || x5 == 15) m0 = 5;
+			if (x5 == 12 || x5 == 14 || x5 == 25 || x5 >= 28) force25 (4);
+			if (x5 == 13 || x5 == 15 || x5 == 25 || x5 >= 28) force25 (5);
+			for (int h = 0; h < 2; h++)
+			{
+				int r = 6 + h, fa = h, fb = 2 + h, mc = h ? m1 : m0;
+				switch (x5)
+				{
+				case 12: case 13: case 25: a.fp3 (FMUL_D, r, fa, mc); break;
+				case 14: case 15: case 29: a.fp4 (FMADD_D, r, fa, mc, fb); break;
+				case 18: a.fp3 (FDIV_D, r, fa, fb); break;
+				case 20: a.fp3 (FSUB_D, r, fa, fb); break;
+				case 21: a.fp3 (FADD_D, r, fa, fb); break;
+				case 28: a.fp4 (FNMSUB_D, r, fa, mc, fb); break;
+				case 30: a.fp4 (FNMSUB_D, r, fa, mc, fb); a.fp1 (FNEG_D, r, r); break;
+				default: a.fp4 (FMADD_D, r, fa, mc, fb); a.fp1 (FNEG_D, r, r); break;
+				}
+			}
+			a.fp3 (FCMP_D, 0, 6, 6); nan[0] = a.p; a.bcond (VS, a.p);
+			a.fp3 (FCMP_D, 0, 7, 7); nan[1] = a.p; a.bcond (VS, a.p);
+			roundS (6); roundS (7);
+			stPs (6, d, 0); stPs (7, d, 1);
+			fprf (6);
+		}
+		}
+	}
+	if (nan[0])							// a NaN: the interpreter does it again
+	{
+		u32 *skip = a.p; a.b (a.p);
+		Asm::patch (nan[0], a.p);
+		if (nan[1]) Asm::patch (nan[1], a.p);
+		u32 *back = interpSide (op, pc, idx, true);
+		Asm::patch (skip, a.p); Asm::patch (back, a.p);
+	}
+	return false;
+}
+
+// lfs (kind 0), lfd (1), stfs (2), stfd (3), stfiwx (4): D-form / X-form, with update
+bool Jit::fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd)
+{
+	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31);
+	fpCheck (op, pc, idx);
+	if (kind >= 2)
+	{
+		if (kind == 2) { a.ldst (LDR_X, 3, 12, XM, oPs0 + 8 * d); cvtS (2, 12); }
+		else if (kind == 3) a.ldst (LDR_X, 3, 2, XM, oPs0 + 8 * d);
+		else a.ldst (LDR_W, 2, 2, XM, oPs0 + 8 * d);
+		if (x) eaX (op, upd); else eaD (op, upd);
+		if (upd) a.mov (WEA, 1);
+		memop (true, kind == 3 ? 8 : 4, pc, idx);
+	}
+	else
+	{
+		if (x) eaX (op, upd); else eaD (op, upd);
+		if (upd) a.mov (WEA, 1);
+		if (kind == 0) { memop (false, 4, pc, idx); cvtD (0, 0); stPs (0, d, 0); stPs (0, d, 1); }
+		else { memop (false, 8, pc, idx); a.fp1 (FMOV_DX, 0, 0); stPs (0, d, 0); }
+	}
+	if (upd) stG (WEA, ra);
+	return false;
+}
+
+// psq_l / psq_st (+ u): a float GQR type translated (two floats in one 8-byte access, or one with W);
+// the other types (the integers scaled) through the interpreter
+bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
+{
+	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31);
+	int q = (int) ((op >> 12) & 7); bool w = (op >> 15) & 1;
+	u32 off = (u32) ((s32) ((op & 0xFFF) << 20) >> 20);
+	fpCheck (op, pc, idx);
+	ldF (9, oGqr + 4 * q);
+	a.ubfx (10, 9, load ? 16 : 0, 3);
+	u32 *other = a.p; a.cbz (10, a.p, true);
+	if (load)
+	{
+		if (ra == 0 && !upd) a.movw (1, off); else { ldG (1, ra); addConst (1, 1, off); }
+		if (upd) a.mov (WEA, 1);
+		if (w)
+		{
+			memop (false, 4, pc, idx);
+			cvtD (0, 0); stPs (0, d, 0);
+			a.put (FMOV_D1 | 1); stPs (1, d, 1);
+		}
+		else
+		{
+			memop (false, 8, pc, idx);
+			a.movX (XK1, 0);
+			a.bfm (UBFM_X, 0, XK1, 32, 63);
+			cvtD (0, 0); stPs (0, d, 0);
+			a.mov (0, XK1);
+			cvtD (0, 0); stPs (0, d, 1);
+		}
+	}
+	else
+	{
+		if (w) { a.ldst (LDR_X, 3, 12, XM, oPs0 + 8 * d); cvtS (2, 12); }
+		else
+		{
+			a.ldst (LDR_X, 3, 12, XM, oPs0 + 8 * d); cvtS (XK1, 12);
+			a.ldst (LDR_X, 3, 12, XM, oPs1 + 8 * d); cvtS (XK2, 12);
+			a.alu (ORR_W | X64, 2, XK2, XK1, 0, 32);
+		}
+		if (ra == 0 && !upd) a.movw (1, off); else { ldG (1, ra); addConst (1, 1, off); }
+		if (upd) a.mov (WEA, 1);
+		memop (true, w ? 4 : 8, pc, idx);
+	}
+	if (upd) stG (WEA, ra);
+	u32 *skip = a.p; a.b (a.p);
+	Asm::patch (other, a.p);
+	u32 *back = interpSide (op, pc, idx, true);
+	Asm::patch (skip, a.p); Asm::patch (back, a.p);
 	return false;
 }
 
@@ -672,13 +1076,15 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	m = mm;
 	code = (u32 *) mem; codeEnd = code + size / 4;
 	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oCr = OFF (cr); oXer = OFF (xer);
-	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1);
+	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1); oScratch = OFF (jitScratch);
+	oPs0 = OFF (ps0); oPs1 = OFF (ps1); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr);
 	ctx = new u8[FAST_OFF + (sizeof (Fast) << FAST_BITS)];
 	fast = (Fast *) (ctx + FAST_OFF);
 	u64 *h = (u64 *) ctx;
 	h[H_INTERP] = (u64) &hInterp;
 	h[H_RD8] = (u64) &hRd8; h[H_RD16] = (u64) &hRd16; h[H_RD32] = (u64) &hRd32;
 	h[H_WR8] = (u64) &hWr8; h[H_WR16] = (u64) &hWr16; h[H_WR32] = (u64) &hWr32;
+	h[H_RD64] = (u64) &hRd64; h[H_WR64] = (u64) &hWr64; h[H_CVTD] = (u64) &hCvtD; h[H_CVTS] = (u64) &hCvtS; h[H_FPRF] = (u64) &hFprf;
 	blocks = new Block[MAX_BLOCKS];
 
 	// enter (x0 = the Machine, x1 = the block, x2 = the context): save the callee-saved registers
@@ -694,6 +1100,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	a.ldst (LDR_X, 3, XMEM, XM, oMem1);
 	a.movX (XCTX, 2);
 	a.movw (WMSZ, MEM1_SIZE);
+	a.movz (WONE, 1, 0);
 	a.br (1);
 	exitStub = a.p;
 	a.put (0xA94153F3);						// ldp x19, x20, [sp, #16]
@@ -778,7 +1185,7 @@ void *Jit::compile (u32 pc, u32 key)
 	}
 	if (pa >= MEM1_SIZE || (pc & 3)) return 0;
 	if (codeEnd - a.p < 16384 || nBlocks >= MAX_BLOCKS) flushAll ();
-	bKey = key; synced = 0;
+	bKey = key; synced = 0; fpOk = false;
 	dmode = !(key & 2) ? 0 : stdMap ? 1 : 2;
 	u32 *start = a.p;
 	for (u32 n = 0;;)

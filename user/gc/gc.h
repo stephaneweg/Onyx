@@ -38,6 +38,39 @@ struct Jit;
 static inline u32 bswap32 (u32 v) { return __builtin_bswap32 (v); }
 static inline u16 bswap16 (u16 v) { return (u16) __builtin_bswap16 (v); }
 
+// a single's bits -> the double the 750 loads (exactly, NaNs and denormals kept)
+static inline u64 cvtToDouble (u32 v)
+{
+	u64 x = v, e = (x >> 23) & 0xFF, frac = x & 0x007FFFFF;
+	if (e > 0 && e < 255)
+	{
+		u64 y = !(e >> 7), z = y << 61 | y << 60 | y << 59;
+		return ((x & 0xC0000000) << 32) | z | ((x & 0x3FFFFFFF) << 29);
+	}
+	if (e == 0 && frac != 0)
+	{
+		e = 1023 - 126;
+		do { frac <<= 1; e--; } while (!(frac & 0x00800000));
+		return ((x & 0x80000000) << 32) | (e << 52) | ((frac & 0x007FFFFF) << 29);
+	}
+	u64 y = e >> 7, z = y << 61 | y << 60 | y << 59;
+	return ((x & 0xC0000000) << 32) | z | ((x & 0x3FFFFFFF) << 29);
+}
+
+// a double -> the single's bits the 750 stores
+static inline u32 cvtToSingle (u64 x)
+{
+	u32 e = (u32) (x >> 52) & 0x7FF;
+	if (e > 896 || (x & ~0x8000000000000000ull) == 0) return (u32) ((x >> 32) & 0xC0000000) | (u32) ((x >> 29) & 0x3FFFFFFF);
+	if (e >= 874)
+	{
+		u32 t = (u32) (0x80000000 | ((x & 0x000FFFFFFFFFFFFFull) >> 21));
+		t >>= 905 - e;
+		return t | (u32) ((x >> 32) & 0x80000000);
+	}
+	return (u32) ((x >> 32) & 0xC0000000) | (u32) ((x >> 29) & 0x3FFFFFFF);
+}
+
 // ---- the graphics of a frame, for a renderer (the layout of kapi v53/v54: kapi_gpu_vertex3 / _batch) ----
 // The GX's triangles in clip space (the GPU divides and clips), texture coordinates 0..1 across
 // their texture, the TEV's result as texel x colour + colour2; batches with a texture and a state.
@@ -70,6 +103,7 @@ public:
 	u32 gpr[32];
 	double ps0[32], ps1[32];			// the FPRs: ps0 is the FPR of the plain FPU
 	u32 cr, lr, ctr, xer, msr, fpscr;
+	double fprfVal; bool fprfPending;		// (the JIT) FPSCR's FPRF is that result's class, to set
 	u32 pc, npc, curPc;				// the instruction to run, the next one, the one running
 	u32 srr0, srr1, dar, dsisr, sprg[4], ear, pvr, dec;
 	u32 hid0, hid1, hid2, hid4, gqr[8], l2cr, wpar, dmaU, dmaL, mmcr0, mmcr1, pmc[4], thrm[3], ictc;
@@ -77,6 +111,7 @@ public:
 	u32 sr[16], sdr1;
 	u64 cycles;					// CPU cycles run
 	u64 jitUntil;					// the JIT's blocks chain until then (0: back to jitRun now)
+	u64 jitScratch;					// (the JIT: a 64-bit value read by a helper)
 	Jit *jit;					// the JIT (0: the interpreter runs the CPU)
 	bool jitFlush;					// its code is to be thrown away (a BAT changed, a reset)
 	bool halted; char haltMsg[96];
