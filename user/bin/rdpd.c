@@ -3,6 +3,7 @@
 // .NET) shows each Onyx window as a window of its own on the PC -- its frame (title bar,
 // borders, close box) and its content, as on the Pi -- instead of a picture of the screen.
 //   usage: rdpd [port]          (default 3390; e.g. `rdpd` in SD:/etc/autostart)
+//          rdpd list            (the windows the kernel lists, as rdpd sees them: a check)
 //
 // Nothing is composited for it: the windows' own buffers are read (kapi v56 win_list /
 // win_read), and a window is looked at only when it changed (its counter); then its
@@ -41,6 +42,7 @@
 //     5 CLOSE   u32 id (its close box)
 //
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include "kapi.h"
 #include "remotekeys.h"
@@ -369,6 +371,22 @@ int main (void)
 	for (int i = 0; args[i] >= '0' && args[i] <= '9'; i++) port = port * 10 + (unsigned) (args[i] - '0');
 	if (port == 0 || port > 65535) port = 3390;
 	kapi_screen_size (&g_W, &g_H);
+	if (args[0] == 'l')					// rdpd list
+	{
+		struct kapi_win_info L[MAXWIN];
+		int n = kapi_win_list (L, MAXWIN);
+		printf ("kapi v%u, screen %d x %d, %d windows listed:\n", KT->version, g_W, g_H, n);
+		for (int i = 0; i < n; i++)
+			printf ("  %08X pid %u  %d,%d %dx%d  frame %dx%d  flags %X alpha %d gen %u state %u  %s\n", L[i].id, L[i].pid,
+				L[i].x, L[i].y, L[i].w, L[i].h, L[i].ow, L[i].oh, L[i].flags, L[i].alpha, L[i].gen, L[i].state, L[i].title);
+		if (n > 0)
+		{
+			unsigned px[16];
+			int r = kapi_win_read (L[n - 1].id, 0, 0, 0, 4, 4, px, 4);
+			printf ("read of the top one: %d, first pixel %06X\n", r, r == 0 ? px[0] : 0);
+		}
+		return 0;
+	}
 	g_packCap = (g_W > 2048 ? g_W : 2048) * TILE * 4;
 	g_pack = (unsigned char *) malloc ((size_t) g_packCap);
 	g_lz = (unsigned char *) malloc ((size_t) g_packCap + g_packCap / 255 + 64);

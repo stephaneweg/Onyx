@@ -25,7 +25,7 @@ namespace OnyxRemote
 		{
 			Text = "Onyx Remote";
 			FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
-			ClientSize = new Size (360, 150);
+			ClientSize = new Size (360, 170);
 			Font = new Font ("Segoe UI", 9f);
 			var l1 = new Label { Text = "Onyx (IP or name):", Location = new Point (12, 15), AutoSize = true };
 			host.SetBounds (130, 12, 140, 23);
@@ -33,7 +33,7 @@ namespace OnyxRemote
 			bits16.Text = "16-bit colours (faster)"; bits16.SetBounds (12, 45, 200, 22);
 			desktop.Text = "Show the Onyx desktop"; desktop.SetBounds (12, 68, 200, 22);
 			go.Text = "Connect"; go.SetBounds (268, 45, 80, 28);
-			status.SetBounds (12, 100, 336, 40);
+			status.SetBounds (12, 100, 336, 60);
 			Controls.AddRange (new Control[] { l1, host, port, bits16, desktop, go, status });
 			AcceptButton = go;
 			go.Click += (s, e) => { if (conn == null) Connect (); else Disconnect ("disconnected"); };
@@ -60,8 +60,11 @@ namespace OnyxRemote
 				if (conn.KernelAbi < 56)
 					status.Text = string.Format ("The Onyx kernel on the Pi is too old (kapi v{0}, rdpd needs v56): copy the new kernel8-rpi4.img to the SD card.", conn.KernelAbi);
 				else
-					status.Text = string.Format ("Connected to {0} ({1} x {2}): {3} windows, {4:0.0} updates / s",
-						host.Text, conn.ScreenW, conn.ScreenH, wins.Count, rounds / Math.Max (sec, 0.001));
+				{
+					int listed; lock (conn.Lock) listed = conn.Windows.Count;
+					status.Text = string.Format ("Connected to {0} ({1} x {2}, kapi v{5}): {6} windows from the Pi, {3} shown, {4:0.0} updates / s",
+						host.Text, conn.ScreenW, conn.ScreenH, wins.Count, rounds / Math.Max (sec, 0.001), conn.KernelAbi, listed);
+				}
 				rounds = 0; since = DateTime.Now;
 			};
 			tick.Start ();
