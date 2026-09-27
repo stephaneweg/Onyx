@@ -33,6 +33,7 @@ static unsigned *g_fs = 0; static int g_fsw, g_fsh, g_fsStride;
 static Root *g_root = 0;
 static bool g_stats = false;
 static char g_statText[128] = "";
+static char g_statState[200] = "";				// (F12, 2nd line) where the game is: gc::Machine::status
 static EmuCore g_ec;
 static int g_stride;
 static bool g_loading = true;
@@ -181,7 +182,7 @@ public:
 		}
 		draw_into (canvas.px, width, height, canvas.stride);
 		if (g_paused) canvas.text (8, 8, "Paused", 0xFFFFFF);
-		if (g_stats) { canvas.fillRect (0, height - 20, width, 20, 0); canvas.text (4, height - 18, g_statText, 0x00FFFF60); }
+		if (g_stats) { canvas.fillRect (0, height - 40, width, 40, 0); canvas.text (4, height - 38, g_statState, 0x00A0FFA0); canvas.text (4, height - 18, g_statText, 0x00FFFF60); }
 	}
 	bool onKey (long k) override;
 };
@@ -210,7 +211,7 @@ static void show_frame (void)
 		if (oh > g_fsh) { oh = g_fsh; ow = g_fsh * 4 / 3; }
 		unsigned *p = g_fs + (long) ((g_fsh - oh) / 2) * g_fsStride + (g_fsw - ow) / 2;
 		draw_into (p, ow, oh, g_fsStride);
-		if (g_stats) { Canvas c; c.adopt (g_fs, g_fsw, g_fsh, g_fsStride); c.fillRect (0, g_fsh - 20, g_fsw, 20, 0); c.text (4, g_fsh - 18, g_statText, 0x00FFFF60); }
+		if (g_stats) { Canvas c; c.adopt (g_fs, g_fsw, g_fsh, g_fsStride); c.fillRect (0, g_fsh - 40, g_fsw, 40, 0); c.text (4, g_fsh - 38, g_statState, 0x00A0FFA0); c.text (4, g_fsh - 18, g_statText, 0x00FFFF60); }
 		kapi_present_fb ();
 	}
 	else { g_root->invalidate (true); g_root->draw (); kapi_present (); }
@@ -425,6 +426,7 @@ int main (void)
 			cat (g_statText, &k, g_gfxAge < 30 ? "  GPU" : "  framebuffer");
 			cat (g_statText, &k, g_m->jit ? "  JIT" : "  interpreter");
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
+			g_m->status (g_statState, sizeof g_statState);	// (read while it may run: a diagnostic)
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
 		}
 	}
