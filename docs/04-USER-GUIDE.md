@@ -112,8 +112,9 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`dispdma`**: `dispdma=0` makes the compositor's copies to the screen synchronous again (the
   2D DMA started then polled, docs/05 §12, off) — to tell a display problem from another one.
 - **`hangreboot`**: the **hang watchdog**, in seconds (default `15`, `0` = off): if Onyx freezes
-  (the green LED stops blinking), the Pi restarts by itself after that time, and the next boot
-  writes what it was doing (the last kernel log lines, where the processor was stuck, what the
+  (the green LED stops blinking), core 1 notices it after 10 s, writes a report into the
+  sectors of `SD:/etc/crashdump.txt` (prepared at boot) and restarts the Pi (the hardware watchdog
+  does it after that time if even that fails); the next boot keeps what it was doing (the last kernel log lines, where the processor was stuck, what the
   GPU and the display were doing, a panic's registers) to **`SD:/etc/lastcrash.txt`**. Send that
   file along with a freeze report.
 - **`gpudirect`**: `gpudirect=0`: the GPU renders into its own buffer, then copied, instead of
@@ -488,6 +489,7 @@ the terminal's **current working directory**.
 | `fsbench` | `fsbench [big-file]` | Measures the SD card: reading a big file (default `SD:/doom/freedoom1.wad`, MB/s), opening every app's `app.txt` twice (the second time from the sector cache), listing `SD:/apps` twice, writing + reading back a 4 MB file (`SD:/fsbench.tmp`, removed after; its content is checked). Compare with `sdhs=1` / `sdcache=0` in `cmdline.txt`. |
 | `coretest` | `coretest`, `coretest exit` | Tests the **app cores** (cores 2 and 3, which an app can take for itself): the same computation on an app core and on the main core (their times), a job stopped cleanly, an endless job stopped by releasing the core, a job that crashes (reported in `kmsg`, the system stays up), both app cores at once. `coretest exit` leaves a job running and quits: Onyx must stop it by itself. |
 | `tone` | `tone [Hz [ms [wave]]]`, `tone scale` | Plays a note on the audio output (the 3.5 mm jack) — default 440 Hz, 500 ms, sine; wave `square`, `sine`, `triangle`, `saw`, `noise`; `scale` plays a C major scale. Tests the sound system. |
+| `hangtest` | `hangtest`, `hangtest irq` | **Freezes the Pi on purpose** (core 0 stopped, IRQs masked; `irq`: a loop with them on), to check the crash report: about 10 s later the Pi restarts by itself and `SD:/etc/lastcrash.txt` tells what it was doing. |
 | `volume` | `volume`, `volume 0..10`, `volume mute` / `unmute` / `toggle` | The master volume of all the sound (0 silent … 10 full) and mute; without an argument, shows it. Kept in `SD:/etc/sound.ini` (applied at boot); the menu bar's speaker follows. |
 | `wifiscan` | `wifiscan` | Lists the Wi-Fi access points around (about 3 s), strongest first: signal (dBm + bars), channel, security (open / WEP / WPA / WPA2), SSID; `*` marks the network the Pi is on. |
 | `nslookup` | `nslookup <name>` | Resolves a host name through the DNS server (shown on the first line) and prints its IPv4 address. |

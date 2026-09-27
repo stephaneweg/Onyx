@@ -893,6 +893,20 @@ clean. At the next boot, a session that did not end cleanly (its record still in
 loses it) is written to **`SD:/etc/lastcrash.txt`** and noted in `kmsg` (`crashlog`). Best
 effort: nothing if the RAM did not keep its contents through the reset.
 
+**Core 1 writes the report itself** (the RAM does not survive the Pi 4's watchdog reset:
+the first real freeze left no record). At boot (`CrashLogReport`, SD: mounted) the kernel keeps
+the previous dump if `SD:/etc/crashdump.txt` holds one (`ONYX CRASH REPORT` … `--- end of the
+report ---` → `SD:/etc/lastcrash.txt`), then fills that 64 KB file with "armed" and notes each
+of its 128 sectors' LBA (through FatFs: `f_lseek` + a one-byte `f_read` → `FIL.sect`). Core 1,
+the sound core (`SoundCoreMain`), is woken at least every ~1.2 ms by the generic timer's event
+stream (`CNTKCTL_EL1.EVNTEN`, `EVNTI` 15) and calls `CrashLogCoreCheck`: when the reaper's
+`CNTPCT` stamp has not moved for **10 s**, it formats the record (no heap, no logger), writes it
+**raw** through the `emmc1` device into those sectors (runs of consecutive sectors in one
+write; `g_bCrashDumping` keeps `OnyxDriverWait` from yielding) and restarts the Pi
+(`CBcmWatchdog::Restart`). No FatFs, heap, logger or scheduler call: core 0 may hold their
+locks. `hangreboot=0` turns it off with the watchdog. `kmsg` tells at boot where the record is
+and whether the dump is armed (`crashlog: ...`). Test: `hangtest` (IRQs masked) / `hangtest irq`.
+
 The panic screen is now copied into the displayed frame buffer **by the CPU** (not the DMA:
 the compositor's display DMA may be in flight, and waiting for it hung the panic before its
 screen and its SOS).

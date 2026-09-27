@@ -13,6 +13,9 @@
 #include <circle/string.h>
 #include <circle/util.h>
 #include <fatfs/ff.h>
+#include <circle/device.h>
+#include <circle/devicenameservice.h>
+#include <circle/multicore.h>
 
 #define CRASH_MAGIC	0x4F4E5843u		// "ONXC"
 #define CRASH_VERSION	1
@@ -44,12 +47,38 @@ struct TCrashHeader
 #define LOG_OFFSET	((sizeof (TCrashHeader) + 63) & ~63ul)
 #define LOG_SIZE	(ONYX_CRASH_AREA_SIZE - LOG_OFFSET)
 
-static TCrashHeader *s_pRec = 0;		// the live record (0: no crash area)
+static TCrashHeader *s_pRec = 0;		// the live record
+static boolean s_bKept = FALSE;			// in the RAM kept out of the heap (else s_Fallback)
+static u32 s_nPrevMagic = 0, s_nPrevState = 0;	// (what the kept RAM held at boot, for kmsg)
+static u8 s_Fallback[ONYX_CRASH_AREA_SIZE] __attribute__ ((aligned (64)));
 static char *s_pLog = 0;
 static u8 *s_pPrev = 0;				// the previous session's record, when it did not end cleanly
 static CBcmWatchdog s_Watchdog;
 static unsigned s_nWatchdog = 0;
 static unsigned s_nFeed = 0;
+
+// ---- the dump by core 1 -------------------------------------------------------------------------
+// When core 0 stops (the reaper's stamp not moving for DUMP_AFTER_S), core 1 (the sound core,
+// woken every ~1 ms by the timer's event stream) writes the report into the sectors of
+// SD:/etc/crashdump.txt -- found at boot through FatFs, written raw through the SD device: no
+// FatFs, no heap, no logger, no scheduler (core 0 may hold any of their locks) -- then restarts
+// the Pi. Kept at the next boot as SD:/etc/lastcrash.txt. Works whether or not the RAM survives.
+#define DUMP_SIZE	0x10000
+#define DUMP_SECTORS	(DUMP_SIZE / 512)
+#define DUMP_AFTER_S	10
+#define DUMP_PATH	"SD:/etc/crashdump.txt"
+#define DUMP_MARK	"ONYX CRASH REPORT"
+#define DUMP_END	"\r\n--- end of the report ---\r\n"
+static u64 s_DumpLBA[DUMP_SECTORS];
+static unsigned s_nDumpSectors = 0;
+static CDevice *s_pDumpDev = 0;
+static char s_DumpBuf[DUMP_SIZE] __attribute__ ((aligned (64)));
+static volatile boolean s_bArmed = FALSE;
+static volatile u64 s_ulAliveCnt = 0;			// CNTPCT at the reaper's last pass
+volatile boolean g_bCrashDumping = FALSE;		// (OnyxDriverWait: never yield then)
+
+static inline u64 Cntpct (void) { u64 v; asm volatile ("isb; mrs %0, cntpct_el0" : "=r" (v)); return v; }
+static inline u64 Cntfrq (void) { u64 v; asm volatile ("mrs %0, cntfrq_el0" : "=r" (v)); return v; }
 
 static inline void Clean (const volatile void *p, size_t n)
 {
@@ -58,10 +87,12 @@ static inline void Clean (const volatile void *p, size_t n)
 
 void CrashLogInit (void)
 {
-	if (g_ulOnyxCrashArea == 0 || s_pRec != 0) return;
-	TCrashHeader *pRec = (TCrashHeader *) (uintptr) g_ulOnyxCrashArea;
+	if (s_pRec != 0) return;
+	s_bKept = g_ulOnyxCrashArea != 0;
+	TCrashHeader *pRec = (TCrashHeader *) (s_bKept ? (uintptr) g_ulOnyxCrashArea : (uintptr) s_Fallback);
 	u32 nBoot = 0;
-	if (pRec->nMagic == CRASH_MAGIC && pRec->nVersion == CRASH_VERSION)
+	if (s_bKept) { s_nPrevMagic = pRec->nMagic; s_nPrevState = pRec->nState; }
+	if (s_bKept && pRec->nMagic == CRASH_MAGIC && pRec->nVersion == CRASH_VERSION)
 	{
 		nBoot = pRec->nBoot;
 		if (pRec->nState == STATE_RUNNING || pRec->nState == STATE_PANIC)
@@ -119,6 +150,7 @@ void CrashLogAlive (void)
 		pRec->nAliveTick = (u32) CTimer::Get ()->GetTicks ();
 		Clean (&pRec->nAliveTick, 4);
 	}
+	s_ulAliveCnt = Cntpct ();
 	if (s_nWatchdog != 0 && ++s_nFeed >= 20)		// (once a second)
 	{
 		s_nFeed = 0;
@@ -132,8 +164,10 @@ void CrashLogStartWatchdog (unsigned nSeconds)
 	s_nWatchdog = nSeconds;
 	if (s_pRec != 0) { s_pRec->nWatchdog = nSeconds; Clean (&s_pRec->nWatchdog, 4); }
 	if (nSeconds != 0) s_Watchdog.Start (nSeconds);
-	CLogger::Get ()->Write ("crashlog", LogNotice, "hang watchdog: %s (%u s), crash record: %s",
-				nSeconds ? "on" : "off", nSeconds, s_pRec ? "kept across a reboot" : "none (no RAM above 3 GB)");
+	CLogger::Get ()->Write ("crashlog", LogNotice, "hang watchdog: %s (%u s); crash record at %lX (%s; at boot: magic %08X state %u); "
+				"core 1 dump into SD:/etc/crashdump.txt: %s", nSeconds ? "on" : "off", nSeconds,
+				(unsigned long) (uintptr) s_pRec, s_bKept ? "RAM kept out of the heap" : "no RAM above 3 GB: not kept",
+				s_nPrevMagic, s_nPrevState, s_nDumpSectors ? "armed" : "not armed");
 }
 
 void CrashLogCrumb (unsigned nIndex, u32 nValue)
@@ -157,6 +191,7 @@ void CrashLogPanic (const char *pLine)
 
 void CrashLogCleanEnd (void)
 {
+	s_bArmed = FALSE;
 	if (s_nWatchdog != 0) { s_nWatchdog = 0; s_Watchdog.Stop (); }
 	TCrashHeader *pRec = s_pRec;
 	if (pRec == 0) return;
@@ -179,7 +214,18 @@ static void Put (FIL &File, const char *p)
 	UINT n; f_write (&File, p, strlen (p), &n);
 }
 
+static void ReportFromRAM (void);
+static void ArmDump (boolean *pbDumped);
+
 void CrashLogReport (void)
+{
+	boolean bDumped = FALSE;
+	ArmDump (&bDumped);			// (a report core 1 wrote: into lastcrash.txt first)
+	if (bDumped) { if (s_pPrev != 0) { delete [] s_pPrev; s_pPrev = 0; } return; }
+	ReportFromRAM ();
+}
+
+static void ReportFromRAM (void)
 {
 	if (s_pPrev == 0) return;
 	const TCrashHeader *pRec = (const TCrashHeader *) s_pPrev;
@@ -224,4 +270,136 @@ void CrashLogReport (void)
 	CLogger::Get ()->Write ("crashlog", LogWarning, "the previous session (#%u) did not end cleanly (%s): see SD:/etc/lastcrash.txt",
 				pRec->nBoot, pRec->nState == STATE_PANIC ? "a kernel panic" : "a hang or a power cut");
 	delete [] s_pPrev; s_pPrev = 0;
+}
+
+// ---- core 0, at boot: the previous dump kept, the file made ready for this session ---------------
+static void ArmDump (boolean *pbDumped)
+{
+	*pbDumped = FALSE;
+	static FIL File;
+	UINT n;
+	if (f_open (&File, DUMP_PATH, FA_READ | FA_WRITE) == FR_OK && f_size (&File) == DUMP_SIZE)
+	{
+		if (f_read (&File, s_DumpBuf, DUMP_SIZE, &n) == FR_OK && n == DUMP_SIZE
+		    && memcmp (s_DumpBuf, DUMP_MARK, sizeof DUMP_MARK - 1) == 0)
+		{
+			unsigned nLen = 0;			// up to the end mark
+			const char *pEnd = 0;
+			for (unsigned i = 0; i + sizeof DUMP_END - 1 <= DUMP_SIZE && pEnd == 0; i++)
+				if (s_DumpBuf[i] == DUMP_END[0] && memcmp (s_DumpBuf + i, DUMP_END, sizeof DUMP_END - 1) == 0)
+					pEnd = s_DumpBuf + i;
+			nLen = pEnd ? (unsigned) (pEnd - s_DumpBuf) + sizeof DUMP_END - 1 : DUMP_SIZE;
+			FIL Out;
+			if (f_open (&Out, "SD:/etc/lastcrash.txt", FA_WRITE | FA_CREATE_ALWAYS) == FR_OK)
+			{
+				f_write (&Out, s_DumpBuf, nLen, &n);
+				f_close (&Out);
+				*pbDumped = TRUE;
+				CLogger::Get ()->Write ("crashlog", LogWarning, "the previous session froze: see SD:/etc/lastcrash.txt");
+			}
+		}
+	}
+	else
+	{
+		f_close (&File);
+		if (f_open (&File, DUMP_PATH, FA_READ | FA_WRITE | FA_CREATE_ALWAYS) != FR_OK) return;
+	}
+	// this session's: "armed", the sectors of the file noted
+	memset (s_DumpBuf, ' ', DUMP_SIZE);
+	memcpy (s_DumpBuf, "(armed: no crash report)\r\n", 26);
+	f_lseek (&File, 0);
+	if (f_write (&File, s_DumpBuf, DUMP_SIZE, &n) != FR_OK || n != DUMP_SIZE || f_sync (&File) != FR_OK) { f_close (&File); return; }
+	unsigned k = 0;
+	for (; k < DUMP_SECTORS; k++)
+	{
+		u8 b;
+		if (f_lseek (&File, (FSIZE_t) k * 512) != FR_OK || f_read (&File, &b, 1, &n) != FR_OK || n != 1 || File.sect == 0) break;
+		s_DumpLBA[k] = File.sect;
+	}
+	f_close (&File);
+	s_pDumpDev = CDeviceNameService::Get ()->GetDevice ("emmc1", TRUE);
+	if (k != DUMP_SECTORS || s_pDumpDev == 0) return;
+	s_nDumpSectors = k;
+	s_ulAliveCnt = Cntpct ();
+	s_bArmed = TRUE;
+}
+
+// ---- core 1: the text, without the heap -------------------------------------------------------------
+static unsigned s_nOut;
+static void Out (const char *p) { while (*p && s_nOut < DUMP_SIZE - 64) s_DumpBuf[s_nOut++] = *p++; }
+static void OutN (const char *p, unsigned n) { for (unsigned i = 0; i < n && s_nOut < DUMP_SIZE - 64; i++) s_DumpBuf[s_nOut++] = p[i]; }
+static void OutHex (u64 v, unsigned nDigits)
+{
+	char b[17]; for (int i = (int) nDigits - 1; i >= 0; i--) { b[i] = "0123456789ABCDEF"[v & 15]; v >>= 4; }
+	b[nDigits] = 0; Out (b);
+}
+static void OutDec (u64 v)
+{
+	char b[24]; int i = 23; b[i] = 0;
+	do { b[--i] = (char) ('0' + v % 10); v /= 10; } while (v != 0);
+	Out (b + i);
+}
+static void OutTicks (u32 t) { OutDec (t / 100); Out ("."); OutDec ((t % 100) / 10); OutDec (t % 10); Out (" s"); }
+
+static void BuildDump (u64 ulStalled)
+{
+	const TCrashHeader *pRec = s_pRec;
+	s_nOut = 0;
+	Out (DUMP_MARK " -- session #"); OutDec (pRec->nBoot);
+	Out (": core 0 stopped for "); OutDec (ulStalled); Out (" s; written by core 1, then the Pi restarted\r\n");
+	if (pRec->nState == STATE_PANIC) { Out ("A kernel panic: "); Out (pRec->szPanic); Out ("\r\n"); }
+	Out ("Last pass of the reaper (the scheduler alive): "); OutTicks (pRec->nAliveTick); Out (" after boot\r\n");
+	Out ("GPU: "); Out (CrumbName (CRUMB_V3D, pRec->Crumb[CRUMB_V3D]));
+	Out (", display: "); Out (CrumbName (CRUMB_PRESENT, pRec->Crumb[CRUMB_PRESENT])); Out ("\r\n");
+	Out ("\r\nCore 0, last interrupted at (newest first; t = time after boot; IRQ timer ticks):\r\n");
+	u32 nS = pRec->nSampleHead;
+	for (unsigned k = 0; k < SAMPLES && k < nS; k++)
+	{
+		const TCrashSample &S = pRec->Sample[(nS - 1 - k) % SAMPLES];
+		Out ("  t "); OutTicks (S.nTick);
+		Out ("  pc "); OutHex (S.ulPC, 16); Out ("  lr "); OutHex (S.ulLR, 16); Out ("  sp "); OutHex (S.ulSP, 16);
+		Out (IS_USER_VA (S.ulPC) ? "  app code  " : "  kernel    ");
+		OutN (S.szTask, strnlen (S.szTask, SAMPLE_TASK));
+		if (S.nSPSR & 0x80) Out ("  (IRQs were masked)");
+		Out ("\r\n");
+	}
+	Out ("Now: "); OutTicks ((u32) CTimer::Get ()->GetTicks ()); Out (" (IRQ timer ticks; frozen too if core 0 no longer takes IRQs)\r\n");
+	Out ("\r\nThe last kernel log lines:\r\n");
+	u32 nHead = pRec->nLogHead, nLen = nHead < LOG_SIZE ? nHead : LOG_SIZE;
+	u32 nRoom = DUMP_SIZE - 64 - s_nOut - 64;
+	if (nLen > nRoom) nLen = nRoom;
+	u32 nStart = (nHead - nLen) % LOG_SIZE;
+	for (u32 i = 0; i < nLen; i++) s_DumpBuf[s_nOut++] = s_pLog[(nStart + i) % LOG_SIZE];
+	OutN (DUMP_END, sizeof DUMP_END - 1);
+	while (s_nOut < DUMP_SIZE) s_DumpBuf[s_nOut++] = ' ';
+}
+
+void CrashLogCoreCheck (void)
+{
+	if (!s_bArmed || s_nWatchdog == 0) return;	// (hangreboot=0: no dump, no restart)
+	u64 ulNow = Cntpct (), ulFrq = Cntfrq ();
+	u64 ulAlive = s_ulAliveCnt;
+	if (ulFrq == 0 || ulNow - ulAlive < DUMP_AFTER_S * ulFrq) return;
+	s_bArmed = FALSE;
+	g_bCrashDumping = TRUE;
+	DataMemBarrier ();
+	BuildDump ((ulNow - ulAlive) / ulFrq);
+	CleanDataCacheRange ((uintptr) s_DumpBuf, DUMP_SIZE);
+	for (unsigned k = 0; k < s_nDumpSectors; )
+	{
+		unsigned n = 1;				// (a run of consecutive sectors: one write)
+		while (k + n < s_nDumpSectors && s_DumpLBA[k + n] == s_DumpLBA[k] + n) n++;
+		if (s_pDumpDev->Seek (s_DumpLBA[k] * 512) == s_DumpLBA[k] * 512)
+			s_pDumpDev->Write (s_DumpBuf + k * 512, n * 512);
+		k += n;
+	}
+	s_Watchdog.Restart ();			// (does not return)
+}
+
+void CrashLogCoreInit (void)
+{
+	// the timer's event stream: a WFE ends at least every 2^16 counter ticks (~1.2 ms)
+	u64 v; asm volatile ("mrs %0, cntkctl_el1" : "=r" (v));
+	v = (v & ~0xF0ul) | (15ul << 4) | (1ul << 2);
+	asm volatile ("msr cntkctl_el1, %0; isb" :: "r" (v));
 }

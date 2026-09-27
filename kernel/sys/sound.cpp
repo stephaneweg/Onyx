@@ -11,6 +11,7 @@
 // (or zeros if core 1 fell behind).
 //
 #ifndef SOUND_HOST_TEST				// (tools/tests/sound: the synth on a PC)
+#include <kern/crashlog.h>
 #include <kern/sound.h>
 #include <circle/sound/pwmsoundbasedevice.h>
 #include <circle/interrupt.h>
@@ -289,8 +290,10 @@ static COnyxSoundDevice *s_pDevice = 0;
 // Core 1: wait until the audio is started, then keep the ring SND_AHEAD chunks ahead.
 void SoundCoreMain (void)
 {
+	CrashLogCoreInit ();					// (woken every ~1 ms: core 0 watched)
 	for (;;)
 	{
+		CrashLogCoreCheck ();
 		if (!s_bRunning || s_nAheadWr - s_nAheadRd >= SND_AHEAD) { asm volatile ("wfe"); continue; }
 		s_Lock.Acquire ();
 		Render (s_Ahead[s_nAheadWr % SND_AHEAD], SND_FRAMES);

@@ -12,6 +12,7 @@
 // The holder is also in a no-kill section (CScheduler::EnterNoKill): killed meanwhile,
 // it ends only once it has released the lock -- a dead owner would lock the card forever.
 //
+#include <kern/crashlog.h>
 #include <circle/sched/scheduler.h>
 #include <circle/types.h>
 #include <fatfs/ff.h>
@@ -85,7 +86,7 @@ void OnyxDriverWait (void)
 {
 	// Only from a task with IRQs on: a caller that masked them wants the wait atomic
 	// (the reaper's teardown), and nothing may switch from interrupt context.
-	if (CScheduler::IsActive () && IrqsOn ())
+	if (CScheduler::IsActive () && IrqsOn () && !g_bCrashDumping)	// (core 1's crash dump: never)
 	{
 		CScheduler::Get ()->Yield ();
 	}

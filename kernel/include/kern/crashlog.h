@@ -33,4 +33,12 @@ void CrashLogCleanEnd (void);				// shutdown / reboot: stops the watchdog
 
 void CrashLogStartWatchdog (unsigned nSeconds);		// (from the reaper's start; 0 = off)
 
+// core 1 (the sound core) watches core 0: CrashLogCoreInit once, CrashLogCoreCheck in its loop.
+// When the reaper has not run for 10 s, it writes the report into SD:/etc/crashdump.txt's
+// sectors (raw, through the SD device) and restarts the Pi; the next boot keeps it as
+// SD:/etc/lastcrash.txt.
+void CrashLogCoreInit (void);
+void CrashLogCoreCheck (void);
+extern volatile boolean g_bCrashDumping;		// (the SD driver never yields then)
+
 #endif
