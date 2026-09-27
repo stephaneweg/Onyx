@@ -980,6 +980,14 @@ barwidth = 40
   (`EditorForm.cs`: modules split / composed like `qbasic`) and the runtime (`Runner.cs`: the
   VM on a worker thread, the page drawn scaled into a bitmap, WinForms controls). Wine + wine-mono
   can run both on Linux for a check.
+- **Volume and Wi-Fi from the menu bar** (ABI v60): `user/volume.h` (`volume_save` /
+  `volume_restore`: `SD:/etc/sound.ini`) for the menu bar's volume box and `/bin/volume`
+  (`kapi_sound_volume (vol, mute)`, −1 keeps). The Wi-Fi menu is its own app,
+  `Apps/wifimenu` (a borderless window: it takes the keyboard for the password, unlike the
+  TOPMOST menu bar): `kapi_wlan_scan`, the known networks parsed from / written back to
+  `SD:/etc/wpa_supplicant.conf` (several `network={}` blocks, `priority`), then
+  `kapi_wlan_reconnect`; it closes when another window has the keys (`kapi_win_list`,
+  `KAPI_WIN_KEYS`).
 - **NintendoEMU** (`pc/NintendoEMU`): `nemucore.dll` (`core/nemucore.cpp`, mingw-w64) builds the
   emulator cores **unchanged** (`user/gb`, `gba`, `nes`, `snes`, `n64`, `gc`) behind a C API —
   `ne_open` (the system from the extension; a GameCube disc read on demand through `discRead`),

@@ -44,6 +44,7 @@ int   NetInfo       (char *pBuf, unsigned nCap);		// netstat text
 // Wi-Fi scan (kapi_wlan_scan, ABI v45): ~3 s, fills pOut strongest first; returns the count.
 struct kapi_wlan_ap;
 int   NetWlanScan (struct kapi_wlan_ap *pOut, int nMax);
+int   NetWlanReconnect (void);			// wpa_supplicant.conf read again, DHCP again (v60)
 
 // ---- The network core (cmdline netcore=1) ------------------------------------
 // The stack runs on core 3 with its own scheduler; the Net* calls above post it requests

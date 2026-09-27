@@ -27,6 +27,7 @@
 #include <circle/new.h>
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>	// live association state
 #include <wlan/bcm4343.h>					// escan (kapi_wlan_scan)
+#include <circle/net/dhcpclient.h>				// Restart (kapi_wlan_reconnect)
 #include <circle/netdevice.h>
 #include <kern/kapi_abi.h>
 #include <circle/util.h>
@@ -393,6 +394,34 @@ static unsigned char BssSecurity (const TBssInfo *b, unsigned nMsgLen, unsigned 
 	return sec;
 }
 
+// kapi v60 wlan_reconnect: wpa_supplicant reads SD:/etc/wpa_supplicant.conf again and associates
+// by it, and DHCP starts over (another network: another address; our Circle fork, docs/05 §14).
+// wpa_supplicant registers its SIGHUP handler (wpa_supplicant_reconfig: every interface reloads
+// its configuration) with eloop_register_signal_reconfig, which Circle's eloop ignores: the kernel
+// is linked with --wrap for it (Makefile), keeps the handler, and runs it from the supplicant's own
+// event loop (a 0 s timeout: eloop is not thread-safe; we are on its core, cooperatively).
+extern "C"
+{
+	typedef void (*eloop_signal_handler) (int sig, void *signal_ctx);
+	typedef void (*eloop_timeout_handler) (void *eloop_data, void *user_ctx);
+	int eloop_register_timeout (unsigned int secs, unsigned int usecs, eloop_timeout_handler handler, void *eloop_data, void *user_data);
+	static eloop_signal_handler s_pReconfig = 0; static void *s_pReconfigCtx = 0;
+	int __wrap_eloop_register_signal_reconfig (eloop_signal_handler handler, void *user_data)
+	{
+		s_pReconfig = handler; s_pReconfigCtx = user_data;
+		return 0;
+	}
+	static void ReconfigTimeout (void *, void *) { if (s_pReconfig) s_pReconfig (1, s_pReconfigCtx); }	// (1: SIGHUP)
+}
+
+static int DoWlanReconnect (void)
+{
+	if (g_pNet == 0 || CNetDevice::GetNetDevice (NetDeviceTypeWLAN) == 0 || s_pReconfig == 0) return -1;
+	if (eloop_register_timeout (0, 0, ReconfigTimeout, 0, 0) != 0) return -1;
+	CDHCPClient::Restart ();
+	return 0;
+}
+
 static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 {
 	if (pOut == 0 || nMax <= 0) return 0;
@@ -484,7 +513,7 @@ static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 
 volatile boolean g_bNetCore = FALSE;
 
-enum { NR_CONNECT = 1, NR_SEND, NR_RECV, NR_CLOSE, NR_LISTEN, NR_ACCEPT, NR_RESOLVE, NR_PING, NR_INFO, NR_SCAN };
+enum { NR_CONNECT = 1, NR_SEND, NR_RECV, NR_CLOSE, NR_LISTEN, NR_ACCEPT, NR_RESOLVE, NR_PING, NR_INFO, NR_SCAN, NR_RECONF };
 enum { RQ_FREE, RQ_POSTED, RQ_CLAIMED, RQ_DONE, RQ_ORPHAN };
 
 #define NET_REQS	32
@@ -557,6 +586,7 @@ static void Execute (TNetReq &r)
 	case NR_PING:	 r.nResult = DoPing (r.szHost, r.n1, r.n2, r.szIP, sizeof r.szIP); break;
 	case NR_INFO:	 r.nResult = DoInfo ((char *) r.Buf, r.nData); break;
 	case NR_SCAN:	 r.nResult = DoWlanScan ((kapi_wlan_ap *) r.Buf, (int) r.n1); break;
+	case NR_RECONF:	 r.nResult = DoWlanReconnect (); break;
 	default:	 r.nResult = -1; break;
 	}
 }
@@ -820,6 +850,15 @@ int NetInfo (char *pBuf, unsigned nCap)
 	Post (r); Wait (r);
 	int n = r->nResult;
 	if (n >= 0) { memcpy (pBuf, r->Buf, (unsigned) n); pBuf[n < (int) nCap ? n : (int) nCap - 1] = '\0'; }
+	Release (r); return n;
+}
+
+int NetWlanReconnect (void)
+{
+	if (!g_bNetCore) return DoWlanReconnect ();
+	TNetReq *r = NewReq (NR_RECONF, CurrentPid ()); if (r == 0) return -1;
+	Post (r); Wait (r);
+	int n = r->nResult;
 	Release (r); return n;
 }
 

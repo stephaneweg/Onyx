@@ -239,6 +239,18 @@ static s16 s_Ahead[SND_AHEAD][SND_FRAMES * 2];
 static volatile unsigned s_nAheadRd = 0, s_nAheadWr = 0;	// chunk counters
 #endif
 
+// The master volume (kapi v60): 0..10 on a squared curve (the ear hears it evenly), and mute.
+static volatile int s_nVolume = 10;
+static volatile boolean s_bMute = FALSE;
+static const u32 s_Gain[11] = { 0, 655, 2621, 5898, 10486, 16384, 23593, 32113, 41943, 53084, 65536 };
+
+int SoundVolume (int nVolume, int nMute)
+{
+	if (nVolume >= 0) s_nVolume = nVolume > 10 ? 10 : nVolume;
+	if (nMute >= 0) s_bMute = nMute != 0;
+	return s_nVolume | (s_bMute ? 0x100 : 0);
+}
+
 class COnyxSoundDevice : public CPWMSoundBaseDevice
 {
 public:
@@ -260,8 +272,12 @@ protected:
 		s_Lock.Release ();
 #endif
 		u32 nRange = (u32) GetRangeMax ();
+		s32 nGain = s_bMute ? 0 : (s32) s_Gain[s_nVolume];
 		for (unsigned i = 0; i < nFrames * 2; i++)
-			pBuffer[i] = (u32) (((u64) ((s32) pSrc[i] + 32768) * nRange) >> 16);
+		{
+			s32 v = (s32) (((s64) pSrc[i] * nGain) >> 16);		// (the master volume)
+			pBuffer[i] = (u32) (((u64) (v + 32768) * nRange) >> 16);
+		}
 		for (unsigned i = nFrames * 2; i < nChunkSize; i++) pBuffer[i] = nRange / 2;
 		return nChunkSize;
 	}

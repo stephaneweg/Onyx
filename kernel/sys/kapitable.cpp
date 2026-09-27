@@ -86,12 +86,14 @@ int  kapi_vfs_next (struct kapi_vfs_req *, int);
 int  kapi_vfs_req_data (unsigned, void *, unsigned, unsigned);
 int  kapi_vfs_reply (unsigned, int, const void *, unsigned);
 int  kapi_wlan_scan (struct kapi_wlan_ap *, int);
+int  kapi_wlan_reconnect (void);
 int  kapi_sound_acquire (void);
 void kapi_sound_release (void);
 int  kapi_sound_start (int, unsigned, int, int);
 int  kapi_sound_stop (int);
 int  kapi_sound_write (const short *, unsigned);
 int  kapi_sound_status (unsigned *, unsigned *, unsigned *);
+int  kapi_sound_volume (int, int);
 int  kapi_sound_instrument (int, const struct kapi_fm_instrument *);
 int  kapi_key_held (int);
 void kapi_inject_key_held (int, int);
@@ -357,4 +359,6 @@ void KApiTableInit (void)
 	t->seek              = kapi_seek;
 	t->code_alloc        = kapi_code_alloc;
 	t->fsize64           = kapi_fsize64;
+	t->sound_volume      = kapi_sound_volume;
+	t->wlan_reconnect    = kapi_wlan_reconnect;
 }

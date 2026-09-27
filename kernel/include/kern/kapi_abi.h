@@ -63,7 +63,9 @@
 // v58: + code_alloc -- executable memory for generated code (the GameCube emulator's JIT).
 // v59: + fsize64 -- a file's size over 4 GB (exFAT partitions); paths may name the SD card's
 //      partitions: SD: (= SD0:) the first, SD1: .. SD3: the others.
-#define KAPI_ABI_VERSION	59
+// v60: + sound_volume -- the master volume (0..10) and mute, applied to everything played;
+//      + wlan_reconnect -- join by wpa_supplicant.conf again without a reboot (the Wi-Fi menu).
+#define KAPI_ABI_VERSION	60
 
 #ifdef __cplusplus
 extern "C" {
@@ -755,6 +757,16 @@ struct TKApiTable
 	// fsize64: the size of a file opened with open(), whole (fsize and readdir's size stop at
 	// 0xFFFFFFFF: a file over 4 GB on an exFAT partition).
 	unsigned long long (*fsize64) (void *h);
+
+	// --- v60 additions ---
+	// sound_volume: the master volume, 0 (silent) .. 10 (full), and mute (1 / 0), for all the
+	// sound (voices + stream); -1 keeps a value. -> the volume now | 0x100 if muted. Not kept
+	// by the kernel across a reboot: the menu bar applies the saved one (SD:/etc/sound.ini).
+	int (*sound_volume) (int volume, int mute);
+	// wlan_reconnect: wpa_supplicant reads SD:/etc/wpa_supplicant.conf again and associates by
+	// it (a network added / its password changed), then DHCP starts over. 0 asked (the joining
+	// takes seconds: watch net_status), -1 no Wi-Fi running.
+	int (*wlan_reconnect) (void);
 };
 
 #ifdef __cplusplus

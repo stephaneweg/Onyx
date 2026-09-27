@@ -2095,6 +2095,7 @@ int kapi_net_ping (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *
 int kapi_net_resolve (const char *pHost, char *pIP, unsigned nCap) { return NetResolve (pHost, pIP, nCap); }
 int kapi_net_info (char *pBuf, unsigned nCap) { return NetInfo (pBuf, nCap); }
 int kapi_wlan_scan (struct kapi_wlan_ap *pOut, int nMax) { return NetWlanScan (pOut, nMax); }
+int kapi_wlan_reconnect (void) { return NetWlanReconnect (); }
 
 // --- v46: sound (kern/sound.h) ---
 static unsigned CallerPid (void) { CAddressSpace *pAS = CurrentAS (); return pAS != 0 ? pAS->GetPid () : 0; }
@@ -2104,6 +2105,7 @@ int  kapi_sound_start (int nVoice, unsigned nMilliHz, int nWave, int nVolume) { 
 int  kapi_sound_stop (int nVoice) { return SoundStop (CallerPid (), nVoice); }
 int  kapi_sound_write (const short *pFrames, unsigned nFrames) { return SoundWrite (CallerPid (), (const s16 *) pFrames, nFrames); }
 int  kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner) { return SoundStatus (pRate, pFree, pOwner); }
+int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
 int  kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns) { return SoundInstrument (CallerPid (), nVoice, pIns); }
 
 // --- v48: held keys ---

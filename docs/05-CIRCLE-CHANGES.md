@@ -42,6 +42,7 @@ git -C circle diff Step51..onyx
 | 10 | **Multi-cluster transfers** in `f_read` / `f_write` (one SD command across contiguous clusters) | `addon/fatfs/ff.c` | `libfatfs` |
 | 9 | **High Speed SD at run time** (`CEMMCDevice::SetHighSpeed`) + the host's High Speed Enable bit | `addon/SDCard/emmc.{h,cpp}` | `libsdcard` |
 | 11 | **FatFs fast seek** on (`FF_USE_FASTSEEK 1`: `kapi_seek` in a GameCube disc image) | `addon/fatfs/ffconf.h` | `libfatfs` + the kernel (the `FIL` layout: clean rebuild) |
+| 14 | **DHCP restart** (joining another Wi-Fi network while running; the reconfiguration itself: the kernel's link-time wrap, no hostap change) | `include/circle/net/dhcpclient.h`, `lib/net/dhcpclient.cpp` | `libnet` (+ the kernel) |
 | 13 | **The SD card's partitions as volumes** `SD:` `SD1:` … `SD3:` + **exFAT** on | `addon/fatfs/ffconf.h`, `addon/fatfs/diskio.cpp`, `addon/fatfs/ff.c` | `libfatfs` + the kernel (`FSIZE_t` is 64-bit: clean rebuild) |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
@@ -543,6 +544,24 @@ The kernel mounts `SD1:`…`SD3:` when `f_mount` succeeds and shares one lock sl
 four SD volumes (one card). `tools/tests/run_fs_test.sh` runs the FatFs test on FAT32 **and exFAT**
 images (the fork's image must equal upstream's), and first `fstest parts`: an MBR card image with
 partition 1 FAT32 and partition 2 exFAT, `SD:` and `SD1:` mounted, a file on each, `SD2:` absent.
+
+## 14. Wi-Fi: a DHCP restart (join another network while running)
+
+**Why.** `CWPASupplicant` reads `wpa_supplicant.conf` once, at boot, and once bound, Circle's DHCP
+client sleeps until its lease's renewal time: joined to another network, the Pi would keep the
+old address.
+
+**What.** `CDHCPClient::Restart ()` (static flag `s_bRestart`, `include/circle/net/dhcpclient.h`,
+`lib/net/dhcpclient.cpp`): the bound state checks it every 0.5 s (it slept 10 s at a time) and, if
+set, halts the network and starts over (discover / request).
+
+The configuration itself is read again **without touching hostap** (a submodule of upstream's):
+wpa_supplicant registers its SIGHUP handler (`wpa_supplicant_reconfig`: every interface reloads
+its configuration, deauthenticates and joins the highest `priority` network in range) with
+`eloop_register_signal_reconfig`, which Circle's eloop ignores. The Onyx kernel is linked with
+`--wrap=eloop_register_signal_reconfig` (`kernel/Makefile`): it keeps that handler, and
+`kapi_wlan_reconnect` (ABI v60) runs it from the supplicant's own event loop (a 0 s eloop
+timeout), then asks `CDHCPClient::Restart ()`.
 
 ## Not a patch: build configuration
 

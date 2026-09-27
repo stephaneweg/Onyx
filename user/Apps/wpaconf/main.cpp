@@ -13,8 +13,9 @@
 // Scan (ABI v45 kapi_wlan_scan): the SSID field is a Combobox listing the networks around;
 // picking one fills the SSID and sets Proto / Key mgmt from its security (open = NONE).
 //
-// Live re-association isn't exposed by Circle's CWPASupplicant, so changes apply on the
-// next boot -- "Save & Reboot" confirms via a modal, then kapi_reboot (ABI v25).
+// Save applies at once (ABI v60 wlan_reconnect: wpa_supplicant reads the file again, our Circle
+// fork); "Save & Reboot" is still there (a modal, then kapi_reboot). Save writes ONE network: the
+// other known ones (added by the Wi-Fi menu of the menu bar) are dropped.
 //
 #include "kapi.h"
 #include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
@@ -189,7 +190,7 @@ static int save_conf (void)
 
 // ---- callbacks ---------------------------------------------------------------
 static void on_show   (Widget &) { g_psk->password = !g_show->checked; g_psk->invalidate (true); }
-static void on_save   (Widget &) { if (save_conf ()) set_status ("Saved. Reboot to apply."); }
+static void on_save   (Widget &) { if (save_conf ()) set_status (kapi_wlan_reconnect () == 0 ? "Saved: joining it now (no reboot)" : "Saved. Reboot to apply."); }
 static void on_reload (Widget &) { load_conf (); }
 static void on_reboot (Widget &)
 {

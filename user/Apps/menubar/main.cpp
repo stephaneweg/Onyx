@@ -9,7 +9,11 @@
 // of its apps, then "Open Windows" (a sub-menu: raise one), then Shut Down... -- it replaces
 // the old left panel and app list. Then the app's name with "Quit" (MENU_QUIT), then its
 // menus. Apps start through launch.h (their main, or main.bas / main.bax by a runner). The clock sits on the right, with the Wi-Fi state left of it (arcs = connected,
-// a barred circle = not connected; polled about once a second through kapi_net_status).
+// a barred circle = not connected; polled about once a second through kapi_net_status) and the
+// sound's volume left of that. A click on the speaker opens the volume box (a notification-style
+// frame: a slider 0..10 and Mute; kapi v60 sound_volume, kept in SD:/etc/sound.ini by volume.h
+// and applied at start); a click on the Wi-Fi icon opens the Wi-Fi menu (the wifimenu app: the
+// networks around, join one).
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
 // and TRANSPARENT: it is allocated full-screen but kept BAR_H tall; while a menu is
@@ -24,6 +28,7 @@
 #include "applib.h"
 #include "launch.h"
 #include "wtk/wtk.h"
+#include "volume.h"
 
 using namespace wtk;
 
@@ -53,6 +58,10 @@ static int g_open = -1, g_hover = -1;	// open menu / hovered item index
 static bool g_dirty = true, g_pressedTitle = false;
 static int g_lastMin = -1;
 static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
+static int g_vol = 10, g_mute = 0;	// the master volume, as last read from the kernel
+static bool g_volOpen = false, g_volDrag = false;	// the volume box (and its slider held)
+#define VW		236		// the volume box
+#define VH		92
 
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
@@ -309,6 +318,18 @@ static int title_at (int x, int y)
 	for (int i = 0; i < g_nmenus; i++) if (x >= g_menus[i].x && x < g_menus[i].x + g_menus[i].w) return i;
 	return -1;
 }
+// the status icons on the right: the clock, the Wi-Fi state left of it, the speaker left of that
+static int clk_x (void) { return g_sw - 5 * g_fw - 12; }
+static int wifi_x (void) { return clk_x () - 27; }
+static int spk_x (void) { return wifi_x () - 26; }
+static bool on_wifi (int x, int y) { return y >= 0 && y < BAR_H && x >= wifi_x () - 3 && x < wifi_x () + 20; }
+static bool on_speaker (int x, int y) { return y >= 0 && y < BAR_H && x >= spk_x () - 3 && x < spk_x () + 19; }
+static void vol_box (int *x, int *y) { *x = spk_x () + 16 - VW; if (*x < 2) *x = 2; *y = BAR_H + 4; }
+static bool in_vol_box (int x, int y) { int bx, by; vol_box (&bx, &by); return x >= bx && x < bx + VW && y >= by && y < by + VH; }
+static void vol_track (int *x0, int *x1, int *y) { int bx, by; vol_box (&bx, &by); *x0 = bx + 20; *x1 = bx + VW - 20; *y = by + 44; }
+static bool on_vol_track (int x, int y) { int x0, x1, ty; vol_track (&x0, &x1, &ty); return x >= x0 - 10 && x <= x1 + 10 && y >= ty - 10 && y <= ty + 14; }
+static bool on_mute (int x, int y) { int bx, by; vol_box (&bx, &by); return x >= bx + 14 && x < bx + 100 && y >= by + 60 && y < by + 84; }
+
 static int item_at (int x, int y)		// index in the open menu, -1 = none
 {
 	if (g_open < 0) return -1;
@@ -361,10 +382,62 @@ static void draw_wifi (int x, int y, bool up)
 	}
 }
 
+// The speaker icon, 16 x 12 px at (x, y): a box and a cone, then 1..3 waves by the volume, or a
+// cross when muted (or at 0).
+static void draw_speaker (int x, int y)
+{
+	unsigned c = g_mute || g_vol == 0 ? C_DIM : C_BARTXT;
+	g_cv.fillRect (x, y + 4, 3, 4, c);
+	for (int k = 0; k < 4; k++) g_cv.fillRect (x + 3 + k, y + 3 - k, 1, 6 + 2 * k, c);
+	if (g_mute || g_vol == 0)
+	{
+		for (int k = 0; k < 5; k++) { g_cv.fillRect (x + 10 + k, y + 4 + k, 1, 1, c); g_cv.fillRect (x + 14 - k, y + 4 + k, 1, 1, c); }
+		return;
+	}
+	int waves = g_vol >= 7 ? 3 : g_vol >= 4 ? 2 : 1;
+	for (int w = 0; w < waves; w++)
+	{
+		int r = 3 + 3 * w;						// arcs around (x + 7, y + 6)
+		for (int dy = -r; dy <= r; dy++)
+			for (int dx = 1; dx <= r; dx++)
+			{
+				int d2 = dx * dx + dy * dy;
+				if (d2 >= r * r - r && d2 <= r * r + r && dx * 3 >= (dy < 0 ? -dy : dy) * 2) g_cv.fillRect (x + 7 + dx, y + 6 + dy, 1, 1, c);
+			}
+	}
+}
+
+// The volume box: a notification-style frame under the speaker, a slider 0..10 and Mute.
+static void draw_volume_box (void)
+{
+	int bx, by; vol_box (&bx, &by);
+	g_cv.fillRect (bx + 3, by + 3, VW, VH, 0x00101418);		// shadow
+	g_cv.fillRect (bx, by, VW, VH, 0x00262F3B);
+	g_cv.frameRect (bx, by, VW, VH, 0x00161C24);
+	g_cv.fillRect (bx, by, 4, VH, C_ACCENT);			// accent strip (as the notifications)
+	g_cv.text (bx + 14, by + 8, "Volume", C_BARTXT);
+	char v[8]; int n = 0;
+	if (g_mute) { const char *m = "Muted"; while (m[n]) { v[n] = m[n]; n++; } }
+	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); }
+	v[n] = 0;
+	g_cv.text (bx + VW - 14 - n * g_fw, by + 8, v, g_mute ? C_DIM : C_BARTXT);
+	int x0, x1, ty; vol_track (&x0, &x1, &ty);
+	int kx = x0 + (x1 - x0) * g_vol / 10;
+	g_cv.fillRect (x0, ty, x1 - x0, 4, C_SEP);
+	g_cv.fillRect (x0, ty, kx - x0, 4, g_mute ? C_DIM : C_ACCENT);
+	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 8, 1, 3, C_SEP);
+	g_cv.fillRect (kx - 5, ty - 6, 11, 16, g_mute ? C_DIM : C_BARTXT);
+	g_cv.frameRect (kx - 5, ty - 6, 11, 16, 0x00161C24);
+	g_cv.frameRect (bx + 18, by + 65, 14, 14, C_BARTXT);		// Mute: a check box
+	if (g_mute) g_cv.fillRect (bx + 21, by + 68, 8, 8, C_ACCENT);
+	g_cv.text (bx + 40, text_y (by + 65, 14), "Mute", C_BARTXT);
+}
+
 static void draw (void)
 {
-	int h = g_open >= 0 ? g_sh : BAR_H;
-	if (g_open >= 0) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, KEYCOL);
+	bool full = g_open >= 0 || g_volOpen;
+	int h = full ? g_sh : BAR_H;
+	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, KEYCOL);
 	// Bar + open title: the skin (SD:/skins/menubar.bmp, state 0 = bar, 1 = open title),
 	// or the same look drawn by hand without it (light top row; black/light/normal/dark/black edge).
 	Skin &sk = bar_skin ();
@@ -395,11 +468,13 @@ static void draw (void)
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
-	int clkX = g_sw - 5 * g_fw - 12;
+	int clkX = clk_x ();
 	g_cv.text (clkX, ty, clk, C_BARTXT);
 	g_lastMin = mm;
 	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
-	draw_wifi (clkX - 27, (face - 12) / 2 + 1, g_wifi == 1);
+	draw_wifi (wifi_x (), (face - 12) / 2 + 1, g_wifi == 1);
+	draw_speaker (spk_x (), (face - 12) / 2 + 1);
+	if (g_volOpen) draw_volume_box ();
 
 	if (g_open >= 0)
 	{
@@ -464,6 +539,7 @@ static void run_item (const Item &it)
 
 static void open_menu (int i)
 {
+	g_volOpen = false;
 	if (i == 0) build_onyx_menu (g_menus[0]);		// the apps as they are now
 	g_open = i; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true;
 }
@@ -485,6 +561,16 @@ static void run_sub_item (int i)
 	else if (kapi_raise_app (it.app) == 0) lx_launch (it.app, 0);	// running: to the front
 }
 
+// the slider at x -> the volume (moving it unmutes, as on Windows)
+static void vol_set_at (int x)
+{
+	int x0, x1, ty; vol_track (&x0, &x1, &ty);
+	int v = ((x - x0) * 10 + (x1 - x0) / 2) / (x1 - x0);
+	v = v < 0 ? 0 : v > 10 ? 10 : v;
+	int r = kapi_sound_volume (v, 0);
+	g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; g_dirty = true;
+}
+
 static void ptr (unsigned long, int ev, long v)
 {
 	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v), c = GUI_PTR_CHANGED (v);
@@ -493,11 +579,36 @@ static void ptr (unsigned long, int ev, long v)
 	{
 	case GUI_EVENT_PTR_DOWN:
 		if (!(c & 1)) break;
+		if (on_speaker (x, y))					// the volume box, open / closed
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = !g_volOpen; g_dirty = true;
+			break;
+		}
+		if (on_wifi (x, y))					// the Wi-Fi menu: an app of its own
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false; g_dirty = true;
+			if (kapi_raise_app ("wifimenu") == 0) lx_launch ("wifimenu", 0);
+			break;
+		}
+		if (g_volOpen)
+		{
+			if (in_vol_box (x, y))
+			{
+				if (on_vol_track (x, y)) { g_volDrag = true; vol_set_at (x); }
+				else if (on_mute (x, y)) { int r = kapi_sound_volume (-1, g_mute ? 0 : 1); g_mute = (r & 0x100) ? 1 : 0; volume_save (g_vol, g_mute); g_dirty = true; }
+				break;
+			}
+			g_volOpen = false; g_dirty = true;			// a click outside closes it
+			if (t < 0) break;
+		}
 		if (t >= 0) { if (t == g_open) close_menu (); else open_menu (t); g_pressedTitle = true; }
 		else if (g_open >= 0 && item_at (x, y) < 0 && !in_sub (x, y)) close_menu ();	// click outside
 		break;
 	case GUI_EVENT_PTR_UP:
 		if (!(c & 1)) break;
+		if (g_volDrag) { g_volDrag = false; volume_save (g_vol, g_mute); break; }
 		if (g_open >= 0)
 		{
 			int si = sub_item_at (x, y);
@@ -509,6 +620,7 @@ static void ptr (unsigned long, int ev, long v)
 		g_pressedTitle = false;
 		break;
 	case GUI_EVENT_PTR_MOVE:
+		if (g_volDrag) { vol_set_at (x); break; }
 		if (g_open >= 0)
 		{
 			if (t >= 0 && t != g_open) open_menu (t);		// slide across titles
@@ -542,6 +654,8 @@ int main (void)
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
 	kapi_set_pointer_handler (ptr);
+	volume_restore ();						// the saved volume (SD:/etc/sound.ini)
+	{ int r = kapi_sound_volume (-1, -1); g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; }
 
 	static char spec[WIN_MENU_MAX_USER], title[48];
 	unsigned serial = ~0u;
@@ -568,8 +682,10 @@ int main (void)
 			lastNet = now;
 			int w = kapi_net_status (0, 0) ? 1 : 0;
 			if (w != g_wifi) { g_wifi = w; g_dirty = true; }
+			int r = kapi_sound_volume (-1, -1);			// (the volume command may change it)
+			if ((r & 0xFF) != g_vol || ((r & 0x100) ? 1 : 0) != g_mute) { g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; g_dirty = true; }
 		}
 		if (g_dirty) draw ();
-		msleep (g_open >= 0 ? 16 : 50);
+		msleep (g_open >= 0 || g_volOpen ? 16 : 50);
 	}
 }

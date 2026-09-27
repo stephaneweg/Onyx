@@ -199,7 +199,23 @@ A system **menu bar** runs across the top of the screen (started by `autostart`)
 style of macOS: it shows the **active application's name** (in bold) and **its menus**,
 and the clock on the right, with the **Wi-Fi state** just left of it: the usual arcs when
 the Pi is connected, a grey barred circle when it is not (checked about once a second, so
-a lost or restored connection shows up by itself). The active application is the frontmost decorated window;
+a lost or restored connection shows up by itself), and the **volume** left of that (a
+speaker: 1–3 waves by the volume, a cross when muted).
+
+- **Click the speaker**: a box (styled like the notifications) with a **slider 0–10** (drag
+  it or click it; moving it unmutes) and **Mute**. Kept in `SD:/etc/sound.ini`, applied again at
+  boot. The terminal command `volume` does the same. Click elsewhere to close it.
+- **Click the Wi-Fi icon**: the **Wi-Fi menu** — the networks around, strongest first (the
+  scan takes ~3 s), signal bars, a padlock for the secured ones, *Connected* / *Known*. Click a
+  network to join it: a secured one not known yet asks its **password** (Show password; Enter
+  or **Connect**). It is joined **without a reboot**: the network is added to
+  `SD:/etc/wpa_supplicant.conf` (the known ones are kept; the last one chosen goes first),
+  wpa_supplicant reads it again and a new address is asked (DHCP). The menu says *Connected to …*
+  and closes, or *Could not connect: check the password* after ~30 s. **Refresh** scans again,
+  **Wi-Fi Settings…** opens `wpaconf`; Esc or a click elsewhere closes the menu.
+
+![The volume box](../screenshots/volume.png)
+![The Wi-Fi menu](../screenshots/wifimenu.png) The active application is the frontmost decorated window;
 clicking the panel or the desktop does not change it.
 
 - **Click a menu title** to open its drop-down; slide to another title to switch; click an
@@ -463,6 +479,7 @@ the terminal's **current working directory**.
 | `fsbench` | `fsbench [big-file]` | Measures the SD card: reading a big file (default `SD:/doom/freedoom1.wad`, MB/s), opening every app's `app.txt` twice (the second time from the sector cache), listing `SD:/apps` twice, writing + reading back a 4 MB file (`SD:/fsbench.tmp`, removed after; its content is checked). Compare with `sdhs=1` / `sdcache=0` in `cmdline.txt`. |
 | `coretest` | `coretest`, `coretest exit` | Tests the **app cores** (cores 2 and 3, which an app can take for itself): the same computation on an app core and on the main core (their times), a job stopped cleanly, an endless job stopped by releasing the core, a job that crashes (reported in `kmsg`, the system stays up), both app cores at once. `coretest exit` leaves a job running and quits: Onyx must stop it by itself. |
 | `tone` | `tone [Hz [ms [wave]]]`, `tone scale` | Plays a note on the audio output (the 3.5 mm jack) — default 440 Hz, 500 ms, sine; wave `square`, `sine`, `triangle`, `saw`, `noise`; `scale` plays a C major scale. Tests the sound system. |
+| `volume` | `volume`, `volume 0..10`, `volume mute` / `unmute` / `toggle` | The master volume of all the sound (0 silent … 10 full) and mute; without an argument, shows it. Kept in `SD:/etc/sound.ini` (applied at boot); the menu bar's speaker follows. |
 | `wifiscan` | `wifiscan` | Lists the Wi-Fi access points around (about 3 s), strongest first: signal (dBm + bars), channel, security (open / WEP / WPA / WPA2), SSID; `*` marks the network the Pi is on. |
 | `nslookup` | `nslookup <name>` | Resolves a host name through the DNS server (shown on the first line) and prints its IPv4 address. |
 | `netstat` | `netstat` | The network configuration (hostname, IP, mask, gateway, DNS, DHCP) and the open TCP sockets: state (LISTEN / ESTAB), local port, remote address, owning PID. |

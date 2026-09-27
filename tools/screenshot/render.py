@@ -666,6 +666,40 @@ def draw_wifi(cv, x, y, up):
                 if 17 <= d2 <= 30 or (t in (0, 1) and d2 <= 30):
                     cv.fill(cx + dx, cy + dy, 1, 1, C(0x8A96A8))
 
+def draw_speaker(cv, x, y, vol=7, mute=False):
+    """menubar draw_speaker(): a box + a cone, 1..3 waves by the volume, a cross when muted."""
+    c = C(0x8A96A8 if mute or vol == 0 else 0xE8ECF0)
+    cv.fill(x, y + 4, 3, 4, c)
+    for k in range(4): cv.fill(x + 3 + k, y + 3 - k, 1, 6 + 2 * k, c)
+    if mute or vol == 0:
+        for k in range(5): cv.fill(x + 10 + k, y + 4 + k, 1, 1, c); cv.fill(x + 14 - k, y + 4 + k, 1, 1, c)
+        return
+    for w in range(3 if vol >= 7 else 2 if vol >= 4 else 1):
+        r = 3 + 3 * w
+        for dy in range(-r, r + 1):
+            for dx in range(1, r + 1):
+                d2 = dx * dx + dy * dy
+                if r * r - r <= d2 <= r * r + r and dx * 3 >= abs(dy) * 2: cv.fill(x + 7 + dx, y + 6 + dy, 1, 1, c)
+
+def draw_volume_box(cv, W, vol=7, mute=False):
+    """menubar draw_volume_box(): the notification-style box under the speaker, slider + Mute."""
+    VW, VH = 236, 92
+    spk = W - 5 * FW - 12 - 27 - 26
+    bx, by = max(2, spk + 16 - VW), MB_H + 4
+    cv.fill(bx + 3, by + 3, VW, VH, C(0x101418)); cv.fill(bx, by, VW, VH, C(0x262F3B))
+    cv.frame(bx, by, VW, VH, C(0x161C24)); cv.fill(bx, by, 4, VH, C(0x60FF90))
+    cv.text(bx + 14, by + 8, "Volume", C(0xE8ECF0))
+    v = "Muted" if mute else str(vol)
+    cv.text(bx + VW - 14 - len(v) * FW, by + 8, v, C(0x8A96A8 if mute else 0xE8ECF0))
+    x0, x1, ty = bx + 20, bx + VW - 20, by + 44
+    kx = x0 + (x1 - x0) * vol // 10
+    cv.fill(x0, ty, x1 - x0, 4, C(0x404A5A)); cv.fill(x0, ty, kx - x0, 4, C(0x8A96A8 if mute else 0x60FF90))
+    for i in range(11): cv.fill(x0 + (x1 - x0) * i // 10, ty + 8, 1, 3, C(0x404A5A))
+    cv.fill(kx - 5, ty - 6, 11, 16, C(0x8A96A8 if mute else 0xE8ECF0)); cv.frame(kx - 5, ty - 6, 11, 16, C(0x161C24))
+    cv.frame(bx + 18, by + 65, 14, 14, C(0xE8ECF0))
+    if mute: cv.fill(bx + 21, by + 68, 8, 8, C(0x60FF90))
+    cv.text(bx + 40, by + 65 + (14 - 10 + 1) // 2 - 2, "Mute", C(0xE8ECF0))
+
 def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12:34", wifi=True):
     """The system menu bar (Apps/menubar/main.cpp draw()): app name (bold) + menus + clock,
     optionally with one drop-down open. items = [(label, shortcut) | None for a separator]."""
@@ -681,6 +715,7 @@ def draw_menubar(cv, W, app, menus, open_idx=-1, items=None, hover=-1, clock="12
         x += w
     cv.text(W - 5 * FW - 12, ty, clock, C(0xE8ECF0))
     draw_wifi(cv, W - 5 * FW - 12 - 27, (face - 12) // 2 + 1, wifi)
+    draw_speaker(cv, W - 5 * FW - 12 - 27 - 26, (face - 12) // 2 + 1)
     if open_idx >= 0 and items:
         dw = max(120, max((len(l) + len(k) + 5) * FW + 20 for l, k in [i for i in items if i]))
         dh = 6 + sum(9 if i is None else FH + 8 for i in items)
@@ -700,6 +735,46 @@ def app_menubar():	# the bar over a strip of desktop, Writer active, Format open
     draw_menubar(cv, W, "Writer", ["File", "Format", "Color", "Style"], open_idx=2,
                  items=[("Bold", "^B"), ("Italic", ""), ("Underline", "^U"), ("Strikethrough", ""),
                         ("Highlight", ""), None, ("Smaller", ""), ("Bigger", "")], hover=2)
+    return cv
+
+def app_volume():	# the menu bar's volume box (a click on the speaker)
+    W, H = 1024, 150; cv = Canvas(W, H, C(0x204060))
+    draw_menubar(cv, W, "Onyx", [])
+    draw_volume_box(cv, W, 7)
+    return cv
+
+def app_wifimenu():	# the Wi-Fi menu (a click on the Wi-Fi icon): a secured network opened to join it
+    W, H = 1024, 420; cv = Canvas(W, H, C(0x204060))
+    draw_menubar(cv, W, "Onyx", [])
+    MW, HEAD, ROW, EXTRA, FOOT = 330, 48, 30, 66, 34
+    nets = [("Maison", -48, True, True, True), ("Voisin-5G", -61, True, False, False), ("FreeWifi", -70, False, False, False),
+            ("Livebox-12AB", -79, True, False, False)]
+    opened = 1
+    mh = HEAD + len(nets) * ROW + EXTRA + FOOT
+    bx, by = W - MW - 60, 34
+    cv.fill(bx, by, MW, mh, C(0x262F3B)); cv.frame(bx, by, MW, mh, C(0x161C24)); cv.fill(bx, by, 4, mh, C(0x60FF90))
+    cv.text(bx + 14, by + 8, "Wi-Fi", C(0xE8ECF0)); cv.text(bx + 14, by + 8 + FH + 2, "Type the password, then Connect", C(0x8A96A8))
+    cv.fill(bx + 8, by + HEAD - 3, MW - 16, 1, C(0x404A5A))
+    for i, (name, lvl, sec, conn, known) in enumerate(nets):
+        y = by + HEAD + i * ROW + (EXTRA if i > opened else 0)
+        if i == opened: cv.fill(bx + 4, y, MW - 5, ROW + EXTRA, C(0x2C3848))
+        n = 4 if lvl >= -55 else 3 if lvl >= -67 else 2 if lvl >= -78 else 1
+        for k in range(4): cv.fill(bx + 14 + k * 4, y + 8 + 12 - (k + 1) * 3, 3, (k + 1) * 3, C(0xE8ECF0 if k < n else 0x485466))
+        cv.text(bx + 40, y + (ROW - FH) // 2, name, C(0xE8ECF0))
+        rx = bx + MW - 14
+        if conn: t = "Connected"; rx -= len(t) * FW; cv.text(rx, y + (ROW - FH) // 2, t, C(0x60FF90)); rx -= 8
+        if sec: cv.frame(rx - 10 + 1, y + 10, 6, 5, C(0x8A96A8)); cv.fill(rx - 10, y + 14, 8, 6, C(0x8A96A8))
+        if i == opened:
+            py = y + ROW + 4
+            cv.fill(bx + 14, py, MW - 132, FH + 10, C(0x141A22)); cv.frame(bx + 14, py, MW - 132, FH + 10, C(0x404A5A))
+            cv.text(bx + 20, py + 5, "********", C(0xE8ECF0))
+            cv.frame(bx + 14, py + 34, 12, 12, C(0xE8ECF0)); cv.text(bx + 32, py + 32, "Show password", C(0xE8ECF0))
+            cv.fill(bx + MW - 104, py + 30, 90, 28, C(0x3A4A60)); cv.frame(bx + MW - 104, py + 30, 90, 28, C(0x161C24))
+            cv.text(bx + MW - 104 + (90 - 7 * FW) // 2, py + 36, "Connect", C(0xE8ECF0))
+    fy = by + mh - FOOT
+    cv.fill(bx + 8, fy, MW - 16, 1, C(0x404A5A))
+    cv.text(bx + 14, fy + 9, "Refresh", C(0x60FF90)); s2 = "Wi-Fi Settings..."
+    cv.text(bx + MW - 14 - len(s2) * FW, fy + 9, s2, C(0x60FF90))
     return cv
 
 SHELF_H, SHELF_TAB = 100, 22
@@ -1215,7 +1290,8 @@ if __name__ == "__main__":
         window(fn(), title, True).img.save(os.path.join(OUT, fname + ".png"))
         print("wrote", fname + ".png")
     # borderless apps (no chrome): app drawer, demo sidebar, the panel itself
-    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar), ("shelf", app_shelf), ("agenda", app_agenda)]:
+    for fname, fn in [("applist", app_applist), ("demoF", app_demoF), ("panel", app_panel), ("menubar", app_menubar), ("shelf", app_shelf), ("agenda", app_agenda),
+                     ("volume", app_volume), ("wifimenu", app_wifimenu)]:
         fn().img.save(os.path.join(OUT, fname + ".png")); print("wrote", fname + ".png")
     # voronoy is windowless: its "screenshot" is the wallpaper it paints
     voronoi_wallpaper(1024, 768).save(os.path.join(OUT, "voronoy.png")); print("wrote voronoy.png")

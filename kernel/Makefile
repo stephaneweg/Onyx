@@ -62,6 +62,11 @@ LIBS = \
 
 include $(CIRCLEHOME)/Rules.mk
 
+# Joining another Wi-Fi network without a reboot (kapi v60 wlan_reconnect, sys/net.cpp): the
+# reconfiguration handler wpa_supplicant registers for SIGHUP (Circle's eloop has no signals) is
+# caught here, then run from the supplicant's own eloop -- no change to hostap (upstream's).
+LDFLAGS += --wrap=eloop_register_signal_reconfig
+
 # The V3D packets (kern/v3d_cl.h) use default member initialisers on bit-fields: C++20.
 sys/v3d.o: CPPFLAGS += -std=c++20
 

@@ -29,6 +29,7 @@ int  SoundInstrument (unsigned nPid, int nVoice, const struct kapi_fm_instrument
 int  SoundWrite (unsigned nPid, const s16 *pFrames, unsigned nFrames);	// frames taken
 int  SoundStatus (unsigned *pRate, unsigned *pFreeFrames, unsigned *pOwnerPid);
 void SoundOnProcessGone (unsigned nPid);
+int  SoundVolume (int nVolume, int nMute);		// 0..10, mute 0 / 1 (-1: keep) -> volume | 0x100 if muted
 
 #ifdef ARM_ALLOW_MULTI_CORE
 void SoundCoreMain (void);				// core 1's loop (kernel.cpp starts it)
