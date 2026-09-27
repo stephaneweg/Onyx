@@ -1473,6 +1473,20 @@ boolean CKernel::Initialize (void)
 					CEMMCDevice::IsHighSpeed () ? "High Speed 50 MHz" : "25 MHz",
 					m_Options.GetAppOptionDecimal ("sdcache", 1) ? "on" : "off");
 
+			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3:
+			for (int i = 1; i <= 3; i++)
+			{
+				char Vol[8] = { 'S', 'D', (char) ('0' + i), ':', 0 };
+				if (f_mount (&m_FileSystemN[i - 1], Vol, 1) == FR_OK)
+				{
+					m_Logger.Write (FromKernel, LogNotice, "SD card partition %d mounted (%s)", i + 1, Vol);
+				}
+				else
+				{
+					f_mount (0, Vol, 0);	// (not FAT, or no such partition)
+				}
+			}
+
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 

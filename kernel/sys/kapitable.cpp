@@ -73,6 +73,7 @@ int kapi_win_raise (unsigned);
 int kapi_win_close (unsigned);
 int kapi_seek (void *, unsigned long long);
 void *kapi_code_alloc (unsigned long);
+unsigned long long kapi_fsize64 (void *);
 int  kapi_drag_begin (int, const void *, unsigned, const char *);
 int  kapi_drag_data (int *, void *, unsigned);
 unsigned kapi_get_modifiers (void);
@@ -355,4 +356,5 @@ void KApiTableInit (void)
 	t->win_close         = kapi_win_close;
 	t->seek              = kapi_seek;
 	t->code_alloc        = kapi_code_alloc;
+	t->fsize64           = kapi_fsize64;
 }

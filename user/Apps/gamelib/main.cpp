@@ -6,7 +6,8 @@
 // Screen, on the whole display. A click selects a tile, a double-click (or Enter) plays. A USB gamepad works too: the d-pad
 // moves, Start (or A) plays, L / R turn a page.
 //
-//   * The folder: SD:/roms by default; Library > Choose Folder... (kept in config.ini).
+//   * The folders: SD:/roms by default; Folders > Add Folder... / Remove <folder> (any volume: SD:, SD1: ..,
+//     e.g. an exFAT partition of the card), kept in config.ini, one `folder = SD1:/games` line each.
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
 //     user/gb, user/gba, user/nes, user/snes) and its screen kept -- made in the background, a little every frame, and
 //     cached in SD:/apps/gamelib.app/thumbs/ (Library > Refresh finds new ROMs).
@@ -37,7 +38,8 @@ enum { SYS_GC, SYS_N64, SYS_SNES, SYS_GBA, SYS_GBC, SYS_GB, SYS_NES, NSYS };		//
 static const char *const SYS_NAME[NSYS] = { "GameCube", "Nintendo 64", "Super Nintendo", "Game Boy Advance", "Game Boy Color", "Game Boy", "NES" };
 struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
 static Game g_games[MAXG]; static int g_ng = 0;
-static char g_folder[200] = "SD:/roms";
+enum { MAXF = 8 };
+static char g_folder[MAXF][200] = { "SD:/roms" }; static int g_nf = 1;	// the watched folders
 static bool g_full = false;
 static int g_scroll = 0, g_sel = 0, g_hover = -1;
 static Root *g_root = 0;
@@ -95,7 +97,7 @@ static void rescan (void)
 {
 	for (int i = 0; i < g_ng; i++) delete [] g_games[i].thumb;
 	g_ng = 0;
-	scan (g_folder, 0);
+	for (int f = 0; f < g_nf; f++) scan (g_folder[f], 0);
 	// by system (Super Nintendo, Advance, Color, Game Boy, NES), then by name
 	for (int i = 1; i < g_ng; i++)
 	{
@@ -390,9 +392,9 @@ public:
 		canvas.clear (0x00141414);
 		if (g_ng == 0)
 		{
-			canvas.text (24, 30, "No Game Boy / Advance ROM found in", 0x00C8C8C8);
-			canvas.text (24, 52, g_folder, 0x00FFFFFF);
-			canvas.text (24, 84, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
+			canvas.text (24, 30, "No ROM found in", 0x00C8C8C8);
+			for (int f = 0; f < g_nf; f++) canvas.text (24, 52 + f * 20, g_folder[f], 0x00FFFFFF);
+			canvas.text (24, 64 + g_nf * 20, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there (sub-folders too), or Folders > Add Folder...", 0x00909090);
 			return;
 		}
 		// section titles
@@ -494,40 +496,79 @@ static void pad_poll (void)
 
 static void on_refresh () { rescan (); g_root->invalidate (true); }
 static void on_full () { g_full = !g_full; g_root->invalidate (true); }
-static void on_folder ()
+static void build_menu ();
+static void save_folders ()
 {
-	// pick any file of the folder (a ROM): its folder becomes the library's
-	char p[256];
-	if (!wk_file_open (p, sizeof p, g_folder)) return;
-	int e = slen (p); while (e > 0 && p[e - 1] != '/') e--;
-	if (e > 1 && p[e - 2] != ':') e--;			// "SD:/roms/x.gbc" -> "SD:/roms" ("SD:/x" -> "SD:/")
-	p[e] = 0;
-	if (!p[0]) return;
-	scpy (g_folder, p, sizeof g_folder);
-	char ini[300]; int n = 0;
-	lx_cat (ini, sizeof ini, &n, "; Game Library settings\nfolder = "); lx_cat (ini, sizeof ini, &n, g_folder); lx_cat (ini, sizeof ini, &n, "\n");
+	char ini[MAXF * 202 + 64]; int n = 0;
+	lx_cat (ini, sizeof ini, &n, "; Game Library settings: the watched folders, one line each\n");
+	for (int f = 0; f < g_nf; f++) { lx_cat (ini, sizeof ini, &n, "folder = "); lx_cat (ini, sizeof ini, &n, g_folder[f]); lx_cat (ini, sizeof ini, &n, "\n"); }
+	if (g_nf == 0) lx_cat (ini, sizeof ini, &n, "folder =\n");			// (none: not the default)
 	kapi_save_file ("SD:/apps/gamelib.app/config.ini", ini, (unsigned) n);
-	on_refresh ();
 }
+static void on_add ()
+{
+	char p[256];
+	if (g_nf >= MAXF) { wk_messagebox ("Game Library", "Too many folders (8 at most).", MB_OK); return; }
+	if (!wk_folder_open (p, sizeof p, g_folder[g_nf - 1 >= 0 ? g_nf - 1 : 0])) return;
+	int e = slen (p); if (e > 1 && p[e - 1] == '/' && p[e - 2] != ':') p[--e] = 0;	// "SD:/roms/" -> "SD:/roms"
+	if (e > 63) { wk_messagebox ("Game Library", "This folder's path is too long (63 characters at most).", MB_OK); return; }
+	for (int f = 0; f < g_nf; f++) { const char *a = g_folder[f], *b = p; while (*a && low (*a) == low (*b)) a++, b++; if (!*a && !*b) return; }
+	scpy (g_folder[g_nf++], p, sizeof g_folder[0]);
+	save_folders (); build_menu (); on_refresh ();
+}
+static void remove_folder (int f)
+{
+	if (f < 0 || f >= g_nf) return;
+	for (int k = f; k < g_nf - 1; k++) scpy (g_folder[k], g_folder[k + 1], sizeof g_folder[0]);
+	g_nf--;
+	save_folders (); build_menu (); on_refresh ();
+}
+// (a menu action takes no argument: one per slot)
+static void on_rm0 () { remove_folder (0); } static void on_rm1 () { remove_folder (1); }
+static void on_rm2 () { remove_folder (2); } static void on_rm3 () { remove_folder (3); }
+static void on_rm4 () { remove_folder (4); } static void on_rm5 () { remove_folder (5); }
+static void on_rm6 () { remove_folder (6); } static void on_rm7 () { remove_folder (7); }
+static const MenuAction ON_RM[MAXF] = { on_rm0, on_rm1, on_rm2, on_rm3, on_rm4, on_rm5, on_rm6, on_rm7 };
 static void on_quit () { kapi_exit (0); }
 static void on_play () { play (g_sel); }
 
+static Menu g_menu;
+static void build_menu ()
+{
+	g_menu = Menu ();
+	g_menu.menu ("Library");
+	g_menu.item ("Play",              "Enter", 0, on_play);
+	g_menu.item ("Refresh",           "^R", WK_CTRL ('R'), on_refresh);
+	g_menu.separator ();
+	g_menu.item ("Quit",              "^Q", WK_CTRL ('Q'), on_quit);
+	g_menu.menu ("Folders");
+	g_menu.item ("Add Folder...",     "",   0, on_add);
+	if (g_nf > 0) g_menu.separator ();
+	for (int f = 0; f < g_nf; f++)
+	{
+		char l[220]; int n = 0; lx_cat (l, sizeof l, &n, "Remove "); lx_cat (l, sizeof l, &n, g_folder[f]);
+		g_menu.item (l, "", 0, ON_RM[f]);
+	}
+	g_menu.menu ("View");
+	g_menu.item ("Play Full Screen On / Off", "", 0, on_full);
+	g_menu.publish ();
+}
+
 int main (void)
 {
-	if (app_ini_load_path ("SD:/apps/gamelib.app/config.ini") >= 0) scpy (g_folder, app_ini_get (0, "folder", "SD:/roms"), sizeof g_folder);
+	if (app_ini_load_path ("SD:/apps/gamelib.app/config.ini") >= 0)
+	{
+		// one `folder = <path>` line per watched folder (an .ini value: 63 characters at most)
+		int nf = 0; bool any = false;
+		for (int i = 0; i < g_ini_n && nf < MAXF; i++)
+			if (g_ini_sec[i][0] == 0 && ax_streq (g_ini_key[i], "folder"))
+			{ any = true; if (g_ini_val[i][0]) scpy (g_folder[nf++], g_ini_val[i], sizeof g_folder[0]); }
+		if (any) g_nf = nf;
+	}
 	LibRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
-	static Menu menu;
-	menu.menu ("Library");
-	menu.item ("Play",              "Enter", 0, on_play);
-	menu.item ("Refresh",           "^R", WK_CTRL ('R'), on_refresh);
-	menu.item ("Choose Folder...",  "",   0, on_folder);
-	menu.separator ();
-	menu.item ("Quit",              "^Q", WK_CTRL ('Q'), on_quit);
-	menu.menu ("View");
-	menu.item ("Play Full Screen On / Off", "", 0, on_full);
-	menu.publish ();
+	build_menu ();
 	rescan ();
 	root.attach ();
 	while (!should_exit ())

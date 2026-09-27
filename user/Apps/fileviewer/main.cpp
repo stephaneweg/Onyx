@@ -240,7 +240,32 @@ static void preview_clear (void)
 }
 // A path served by a file-system provider (FTP:..., FTPS:...), not the SD card: opening a
 // file there downloads it whole, so previews are limited to small files.
-static bool is_remote (const char *path) { return !(lower (path[0]) == 's' && lower (path[1]) == 'd' && path[2] == ':'); }
+// The SD card's volumes: SD: (partition 1, the boot one) and SD1: .. SD3: (partitions 2..4, FAT or exFAT).
+static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" prefix, 0 = not the card
+{
+	if (lower (path[0]) != 's' || lower (path[1]) != 'd') return 0;
+	if (path[2] == ':') return 3;
+	return path[2] >= '0' && path[2] <= '3' && path[3] == ':' ? 4 : 0;
+}
+static bool is_remote (const char *path) { return sd_volume (path) == 0; }
+// The volume of a path: "SD1:/roms" -> "SD1:" ("SD0:" is "SD:"), "FTP:host/x" -> "FTP:host".
+static void volume_of (const char *path, char *out, int cap)
+{
+	int n = 0;
+	if (int v = sd_volume (path))
+	{
+		for (int i = 0; i < v - 1 && n < cap - 2; i++) out[n++] = (char) (path[i] >= 'a' && path[i] <= 'z' ? path[i] - 32 : path[i]);
+		if (n == 3 && out[2] == '0') n = 2;
+		out[n++] = ':';
+	}
+	else for (int i = 0; path[i] && path[i] != '/' && n < cap - 1; i++) out[n++] = lower (path[i]);
+	out[n] = '\0';
+}
+static bool same_volume (const char *a, const char *b)
+{
+	char va[64], vb[64]; volume_of (a, va, sizeof va); volume_of (b, vb, sizeof vb);
+	return ci_cmp (va, vb) == 0;
+}
 #define REMOTE_PREVIEW_MAX	(1024u * 1024)
 
 static void preview_build (void)
@@ -530,6 +555,15 @@ static void show_root (const char *path)
 }
 static void op_open_trash () { trash_ensure (); show_root (TRASH_FILES); status ("Trash: Restore puts an item back, Del deletes it for good"); }
 static void op_show_sd ()    { show_root ("SD:/"); }
+static bool volume_mounted (const char *root) { void *d = kapi_opendir (root); if (d) kapi_closedir (d); return d != 0; }
+static void show_volume (const char *root)
+{
+	if (volume_mounted (root)) show_root (root);
+	else status ("No FAT / exFAT partition there: ", root);
+}
+static void op_show_sd1 ()   { show_volume ("SD1:/"); }
+static void op_show_sd2 ()   { show_volume ("SD2:/"); }
+static void op_show_sd3 ()   { show_volume ("SD3:/"); }
 
 // Go > Connect to Server...: protocol (FTP / FTPS), server, port, user, password and
 // folder. The login goes to /bin/ftpfs over IPC ("ftpfs" service, like `ftpfs login`) --
@@ -754,8 +788,8 @@ static bool transfer (const char *src, const char *dir, bool move)
 			shelf_moved (src, dst);			// the Shelf's references follow
 			return true;
 		}
-		if (is_remote (src) == is_remote (dir)) return false;	// same volume: a real failure
-		// Across volumes (SD <-> FTP), rename cannot work: copy, then delete the source.
+		if (same_volume (src, dir)) return false;		// same volume: a real failure
+		// Across volumes (SD <-> SD1: <-> FTP), rename cannot work: copy, then delete the source.
 		if (!(isDir ? copy_tree (src, dst, 0) : copy_file (src, dst))) return false;
 		if (isDir) remove_tree (src, 0); else kapi_remove (src);
 		shelf_moved (src, dst);
@@ -858,7 +892,7 @@ public:
 			if (c == 0)
 			{
 				if (in_trash ()) seg = "Trash";
-				else if (!is_remote (g_col[0].path)) seg = "SD:";
+				else if (!is_remote (g_col[0].path)) { volume_of (g_col[0].path, buf, sizeof buf); seg = buf; }
 				else					// "FTP:host/dir", without user:password@
 				{
 					const char *r = g_col[0].path, *colon = r;
@@ -1206,6 +1240,10 @@ int main (void)
 	menu.item ("Refresh",    "^L",    WK_CTRL ('L'), op_refresh);
 	menu.menu ("Go");
 	menu.item ("SD Card",    "",      0,             op_show_sd);
+	// the card's other FAT / exFAT partitions, when there are some
+	if (volume_mounted ("SD1:/")) menu.item ("SD1: (partition 2)", "", 0, op_show_sd1);
+	if (volume_mounted ("SD2:/")) menu.item ("SD2: (partition 3)", "", 0, op_show_sd2);
+	if (volume_mounted ("SD3:/")) menu.item ("SD3: (partition 4)", "", 0, op_show_sd3);
 	menu.item ("Trash",      "",      0,             op_open_trash);
 	menu.item ("Connect to Server...", "", 0,       op_connect);
 	menu.separator ();
@@ -1228,9 +1266,12 @@ int main (void)
 		op_open_trash ();
 	else if (args[0] && is_remote (args))			// FTP:host/path (ftpfs)
 		show_root (args);
-	else if (args[0] == 'S' && args[1] == 'D' && args[2] == ':')
+	else if (sd_volume (args))					// SD:/..., SD1:/...
 	{
-		const char *p = args + 3; if (*p == '/') p++;
+		char root[8]; volume_of (args, root, sizeof root - 1);
+		int rn = 0; while (root[rn]) rn++; root[rn++] = '/'; root[rn] = '\0';
+		if (ci_cmp (root, "SD:/") != 0) show_root (root);
+		const char *p = args + sd_volume (args); if (*p == '/') p++;
 		while (*p)
 		{
 			char seg[NAMEL]; int n = 0;

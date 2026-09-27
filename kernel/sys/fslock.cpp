@@ -16,6 +16,11 @@
 #include <circle/types.h>
 #include <fatfs/ff.h>
 
+// The SD card's partitions (FatFs volumes SD, SD1..SD3: 0..3) share ONE lock: the driver
+// yields in the middle of a command, and another task must not send the same card a
+// command meanwhile through another volume.
+static inline int LockSlot (int vol) { return vol >= 0 && vol <= 3 ? 0 : vol; }
+
 static CTask   *s_pOwner[FF_VOLUMES + 1];
 static unsigned          s_nDepth[FF_VOLUMES + 1];
 
@@ -28,6 +33,7 @@ static inline boolean IrqsOn (void)
 
 void OnyxFsLockTake (int vol)
 {
+	vol = LockSlot (vol);
 	if (!CScheduler::IsActive () || vol < 0 || vol > FF_VOLUMES)
 	{
 		return;
@@ -58,6 +64,7 @@ void OnyxFsLockTake (int vol)
 
 void OnyxFsLockGive (int vol)
 {
+	vol = LockSlot (vol);
 	if (!CScheduler::IsActive () || vol < 0 || vol > FF_VOLUMES)
 	{
 		return;

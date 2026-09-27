@@ -44,17 +44,17 @@ class FileDialog : public Modal
 	char  m_dir[256], m_ent[MAXENT][96], m_isdir[MAXENT];
 	int   m_count, m_sel, m_top, m_rows, m_rowH;
 	int   m_lx, m_ly, m_lw, m_lh;		// file-list rect (box-local)
-	bool  m_save;
+	bool  m_save, m_folder;		// m_folder: pick a directory (no filename box)
 	Textbox   *m_nameBox;
 	Scrollbar *m_sb;
 	void read (); void goUp (); void enter (const char *name); void click (int row); void syncSb ();
 public:
-	FileDialog (const char *startDir, const char *defName, bool save);
+	FileDialog (const char *startDir, const char *defName, bool save, bool folder = false);
 	void onScroll (int v) override { m_top = v; invalidate (true); }
 	void onButton (int tag) override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;	// list area
 	void onDraw () override;
-	void getResult (char *out, unsigned cap);		// dir + "/" + filename
+	void getResult (char *out, unsigned cap);		// dir + "/" + filename (folder mode: dir)
 };
 
 // Colour dialog (WPF-style ColorPicker dialog): R / G / B sliders, a 16-colour palette,
@@ -78,6 +78,7 @@ private:
 int  wk_messagebox (const char *title, const char *text, int buttons);
 bool wk_file_open (char *out, unsigned cap, const char *startDir);
 bool wk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);
+bool wk_folder_open (char *out, unsigned cap, const char *startDir);	// pick a directory
 bool wk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 
 } // namespace wtk

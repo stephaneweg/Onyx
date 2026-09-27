@@ -55,41 +55,62 @@ static const char *CurCwd (void)
 	return (pAS != 0) ? pAS->GetCwd () : "SD:/";
 }
 
+// The volume prefix of a path ("SD:", "SD1:", "USB:"... letters then letters / digits, then
+// ':'): its length with the ':', 0 if none.
+static unsigned VolumePrefix (const char *p)
+{
+	auto alpha = [] (char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+	if (!alpha (p[0])) return 0;
+	unsigned i = 1;
+	while (alpha (p[i]) || (p[i] >= '0' && p[i] <= '9')) i++;
+	return p[i] == ':' ? i + 1 : 0;
+}
+
 // Resolve an app-supplied path to a clean absolute FatFs path in pOut. A path that
-// already starts with "SD:" is taken as absolute; "/x" is volume-root-relative; any
-// other form (incl. "./x", "../x", "x") is relative to the current working dir.
-// ".", ".." and redundant slashes are normalised away. Lets ls/cat/redirection/etc.
-// use relative or absolute paths transparently.
+// starts with a volume ("SD:", "SD1:"...: the SD card's partitions; "SD0:" is "SD:", the
+// first) is taken as absolute; "/x" is relative to the current volume's root; any other
+// form (incl. "./x", "../x", "x") is relative to the current working dir. ".", ".." and
+// redundant slashes are normalised away. Lets ls/cat/redirection/etc. use relative or
+// absolute paths transparently.
 static void ResolvePath (const char *pIn, char *pOut, unsigned nCap)
 {
-	if (pIn == 0) { pOut[0] = '\0'; return; }
+	if (pIn == 0 || nCap < 8) { if (nCap) pOut[0] = '\0'; return; }
 
 	char raw[512];
 	unsigned r = 0;
-	if (pIn[0] == 'S' && pIn[1] == 'D' && pIn[2] == ':')		// already absolute
+	auto put = [&] (const char *p, unsigned n) { for (unsigned i = 0; i < n && p[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = p[i]; };
+	auto putVolume = [&] (const char *p, unsigned n)	// (upper case; SD0: -> SD:)
 	{
-		for (unsigned i = 0; pIn[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = pIn[i];
+		if (n == 4 && (p[0] == 'S' || p[0] == 's') && (p[1] == 'D' || p[1] == 'd') && p[2] == '0') { put ("SD:", 3); return; }
+		for (unsigned i = 0; i < n && r < sizeof (raw) - 1; i++) raw[r++] = p[i] >= 'a' && p[i] <= 'z' ? (char) (p[i] - 32) : p[i];
+	};
+	const char *cwd = CurCwd ();
+	unsigned nIn = VolumePrefix (pIn);
+	if (nIn)							// already absolute
+	{
+		putVolume (pIn, nIn);
+		put (pIn + nIn, ~0u);
 	}
-	else if (pIn[0] == '/')						// volume-root-relative
+	else if (pIn[0] == '/')						// the current volume's root
 	{
-		const char *p = "SD:";
-		while (*p && r < sizeof (raw) - 1) raw[r++] = *p++;
-		for (unsigned i = 0; pIn[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = pIn[i];
+		unsigned n = VolumePrefix (cwd);
+		if (n) put (cwd, n); else put ("SD:", 3);
+		put (pIn, ~0u);
 	}
 	else								// relative to cwd
 	{
-		const char *cwd = CurCwd ();
-		for (unsigned i = 0; cwd[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = cwd[i];
+		put (cwd, ~0u);
 		if (r < sizeof (raw) - 1) raw[r++] = '/';
-		for (unsigned i = 0; pIn[i] != '\0' && r < sizeof (raw) - 1; i++) raw[r++] = pIn[i];
+		put (pIn, ~0u);
 	}
 	raw[r] = '\0';
 
-	// Normalise the part after "SD:": process '.', '..' and collapse '/' runs.
+	// Normalise the part after the volume: process '.', '..' and collapse '/' runs.
+	unsigned nVol = VolumePrefix (raw);
 	unsigned starts[64]; int depth = 0;
 	unsigned o = 0;
-	if (nCap >= 4) { pOut[o++] = 'S'; pOut[o++] = 'D'; pOut[o++] = ':'; }
-	unsigned i = 3;					// skip "SD:"
+	for (unsigned k = 0; k < nVol && o < nCap - 1; k++) pOut[o++] = raw[k];
+	unsigned i = nVol;
 	while (raw[i] != '\0')
 	{
 		while (raw[i] == '/') i++;
@@ -113,7 +134,7 @@ static void ResolvePath (const char *pIn, char *pOut, unsigned nCap)
 		}
 		i = j;
 	}
-	if (o == 3 && nCap > 4) pOut[o++] = '/';		// nothing left => root "SD:/"
+	if (o == nVol && o < nCap - 1) pOut[o++] = '/';	// nothing left => the volume's root "SD1:/"
 	pOut[o] = '\0';
 }
 
@@ -1322,7 +1343,16 @@ unsigned kapi_fsize (void *pHandle)
 		return 0;
 	}
 	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
-	return (unsigned) f_size ((FIL *) pHandle);
+	FSIZE_t n = f_size ((FIL *) pHandle);
+	return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (unsigned) n;	// (an exFAT file over 4 GB: fsize64)
+}
+
+// v59: the whole size (exFAT: files over 4 GB)
+unsigned long long kapi_fsize64 (void *pHandle)
+{
+	if (pHandle == 0) return 0;
+	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
+	return (unsigned long long) f_size ((FIL *) pHandle);
 }
 
 // v57: the read position (FatFs fast seek: a big file's cluster map made at its first seek)
@@ -1603,7 +1633,7 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 		pEnt->name[i] = Info.fname[i];
 	}
 	pEnt->name[i] = '\0';
-	pEnt->size = (unsigned) Info.fsize;
+	pEnt->size = Info.fsize > 0xFFFFFFFFu ? 0xFFFFFFFFu : (unsigned) Info.fsize;	// (over 4 GB: fsize64 once opened)
 	pEnt->is_dir = (Info.fattrib & AM_DIR) ? 1 : 0;
 	return 1;
 }
@@ -1645,6 +1675,11 @@ int kapi_rename (const char *pFrom, const char *pTo)
 	char absF[300], absT[300];
 	ResolvePath (pFrom, absF, sizeof absF);
 	ResolvePath (pTo, absT, sizeof absT);
+	// f_rename ignores the new name's volume (it renames within the old one): across
+	// volumes (SD: -> SD1:) fail, the caller copies then deletes.
+	int vf = VolumePrefix (absF), vt = VolumePrefix (absT);
+	if (vf != vt) return -1;
+	for (int i = 0; i < vf; i++) if (absF[i] != absT[i]) return -1;
 	return (f_rename (absF, absT) == FR_OK) ? 0 : -1;
 }
 
@@ -1980,7 +2015,8 @@ void kapi_shutdown (int nMode)
 {
 	CLogger::Get ()->Write ("kernel", LogNotice, "session end: %s", nMode ? "restart" : "halt");
 	CScheduler::Get ()->MsSleep (300);		// let the last frame / log line out
-	f_mount (0, "SD:", 0);				// unmount: flush + release the volume
+	f_mount (0, "SD:", 0);				// unmount: flush + release the volumes
+	f_mount (0, "SD1:", 0); f_mount (0, "SD2:", 0); f_mount (0, "SD3:", 0);
 	if (nMode == 1)
 	{
 		reboot ();

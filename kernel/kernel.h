@@ -75,7 +75,8 @@ private:
 	CLogger			m_Logger;
 	C2DGraphics		m_2DGraphics;		// HDMI framebuffer (double-buffered, VSync)
 	CEMMCDevice		m_EMMC;			// SD card (#11)
-	FATFS			m_FileSystem;		// FatFs mount of the SD card
+	FATFS			m_FileSystem;		// FatFs mount of the SD card (its 1st partition: SD:, alias SD0:)
+	FATFS			m_FileSystemN[3];	// its partitions 2..4 when FAT: SD1: .. SD3:
 	CUSBHCIDevice		m_USB;			// USB host: mouse + keyboard (#13)
 	// Network stack (brought up in a background task -- never blocks boot). The
 	// WLAN device is a separate SDIO peripheral, independent of the SD card (EMMC).

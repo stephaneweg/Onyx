@@ -529,6 +529,11 @@ Notes / caveats:
 > `DatePicker (…, y, m, d, cb)` (`format (buf)` → `YYYY-MM-DD`); `ImageBox (…, IMG_FIT /
 > IMG_FILL / IMG_NONE)` — `load (path)` (any `imgload` format) or `setPixels`;
 > `wk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
+> `wk_file_open` / `wk_file_save` / **`wk_folder_open (out, cap, startDir)`** (a folder, no file
+> name) — the file dialog; `..` at a volume's root lists the **volumes** that are mounted
+> (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB:`…). Paths may start with any
+> volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
+> gives an exFAT file's real size; `kapi_rename` fails across volumes (copy + remove instead).
 > `Combobox (l, t, w, h, text, onEnter, onPick)` — an editable `Textbox` with a drop-down
 > list of suggestions (`addOption`, `clearOptions`, `pick (i)`; arrow click or Down / Up;
 > `onPick` fires with `picked` = the index). Used by the File Viewer's Connect dialog.

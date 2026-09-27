@@ -42,6 +42,7 @@ git -C circle diff Step51..onyx
 | 10 | **Multi-cluster transfers** in `f_read` / `f_write` (one SD command across contiguous clusters) | `addon/fatfs/ff.c` | `libfatfs` |
 | 9 | **High Speed SD at run time** (`CEMMCDevice::SetHighSpeed`) + the host's High Speed Enable bit | `addon/SDCard/emmc.{h,cpp}` | `libsdcard` |
 | 11 | **FatFs fast seek** on (`FF_USE_FASTSEEK 1`: `kapi_seek` in a GameCube disc image) | `addon/fatfs/ffconf.h` | `libfatfs` + the kernel (the `FIL` layout: clean rebuild) |
+| 13 | **The SD card's partitions as volumes** `SD:` `SD1:` … `SD3:` + **exFAT** on | `addon/fatfs/ffconf.h`, `addon/fatfs/diskio.cpp`, `addon/fatfs/ff.c` | `libfatfs` + the kernel (`FSIZE_t` is 64-bit: clean rebuild) |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -508,6 +509,30 @@ partial `UpdateDisplay (x, y, w, h)` of patch 6 now uses `SetAreaPitch` (the gat
 gone). `UpdateDisplayAsync` starts the DMA and returns; the routine runs from the DMA's
 interrupt. The Onyx compositor (`CCompositorTask::Present`, kernel.cpp) yields to the other
 tasks until it is called, and draws nothing into the off-screen buffer meanwhile.
+
+## 13. SD card partitions as volumes, exFAT
+
+**Why.** Upstream maps each FatFs volume to a whole device (`emmc1`, `umsd1`…): only the first
+FAT partition of the card was seen, and exFAT was off (files ≤ 4 GB, no exFAT user partition).
+The Pi 4 boots only from a FAT32 partition 1; a second partition, formatted exFAT, can hold the
+big files (ROMs, disc images).
+
+**What.**
+
+- `ffconf.h`: `FF_VOLUMES 9`, `FF_VOLUME_STRS "SD","SD1","SD2","SD3","USB","USB2","USB3","FD","NVME"`;
+  `FF_FS_EXFAT 1` (needs `FF_USE_LFN`; `FSIZE_t` becomes 64-bit → rebuild the kernel clean).
+- `diskio.cpp`: volumes 0–3 open Circle's **partition devices** `emmc1-1` … `emmc1-4` (the MBR
+  partitions the partition manager registers); volume 0 falls back to the whole `emmc1` for a
+  card without a partition table (a "superfloppy"). `volume_device()` is used by
+  `disk_initialize` and the `GET_SECTOR_COUNT` / `CTRL_SYNC` / `CTRL_EJECT` ioctls; the sector
+  cache (patch 8) stays per volume.
+- `ff.c`: the multi-cluster **write** extension (patch 10) is skipped on exFAT: a contiguous
+  exFAT file (`NoFatChain`) that becomes fragmented must first have its FAT chain written,
+  which upstream does cluster by cluster (reads keep the fast path).
+
+The kernel mounts `SD1:`…`SD3:` when `f_mount` succeeds and shares one lock slot between the
+four SD volumes (one card). `tools/tests/run_fs_test.sh` runs the FatFs test on FAT32 **and exFAT**
+images (the fork's image must equal upstream's).
 
 ## Not a patch: build configuration
 

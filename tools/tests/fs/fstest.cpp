@@ -52,7 +52,8 @@ int main (int argc, char **argv)
 	disk_cache_enable (cache);
 
 	static BYTE work[FF_MAX_SS * 8];
-	MKFS_PARM opt = { FM_FAT32, 0, 0, 0, (UINT) (argc > 5 ? atoi (argv[5]) : 1024) };	// (FAT32 needs >= 65526 clusters: 1 KB ones on 96 MB)
+	bool exfat = argc > 6 && strcmp (argv[6], "exfat") == 0;	// (the user partitions' format)
+	MKFS_PARM opt = { (BYTE) (exfat ? FM_EXFAT : FM_FAT32), 0, 0, 0, (UINT) (argc > 5 ? atoi (argv[5]) : 1024) };	// (FAT32 needs >= 65526 clusters: 1 KB ones on 96 MB)
 	{ FRESULT mr = f_mkfs ("SD:", &opt, work, sizeof work); CHECK (mr == FR_OK, "mkfs %d", (int) mr); }
 	FATFS fs;
 	CHECK (f_mount (&fs, "SD:", 1) == FR_OK, "mount");

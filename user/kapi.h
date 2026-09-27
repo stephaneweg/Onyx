@@ -356,6 +356,8 @@ static inline int kapi_seek (void *h, unsigned long long pos) { return KT->versi
 // Writable + executable memory for generated code, a JIT (v58): 0 on an older kernel / full.
 // After writing code: clean the D-cache / invalidate the I-cache over it (__builtin___clear_cache).
 static inline void *kapi_code_alloc (unsigned long size) { return KT->version >= 58 ? KT->code_alloc (size) : 0; }
+// A file's whole size (v59: over 4 GB on exFAT; an older kernel: fsize).
+static inline unsigned long long kapi_fsize64 (void *h) { return KT->version >= 59 ? KT->fsize64 (h) : KT->fsize (h); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

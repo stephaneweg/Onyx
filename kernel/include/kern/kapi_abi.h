@@ -61,7 +61,9 @@
 //      level remote desktop (rdpd): their place, size, state and pixels.
 // v57: + seek -- set the read position of an opened file (random access: the GameCube discs).
 // v58: + code_alloc -- executable memory for generated code (the GameCube emulator's JIT).
-#define KAPI_ABI_VERSION	58
+// v59: + fsize64 -- a file's size over 4 GB (exFAT partitions); paths may name the SD card's
+//      partitions: SD: (= SD0:) the first, SD1: .. SD3: the others.
+#define KAPI_ABI_VERSION	59
 
 #ifdef __cplusplus
 extern "C" {
@@ -748,6 +750,11 @@ struct TKApiTable
 	// memory). After writing code: clean the D-cache and invalidate the I-cache over it
 	// (DC CVAU, DSB ISH, IC IVAU, DSB ISH, ISB). Freed when the app exits.
 	void *(*code_alloc) (unsigned long size);
+
+	// --- v59 additions ---
+	// fsize64: the size of a file opened with open(), whole (fsize and readdir's size stop at
+	// 0xFFFFFFFF: a file over 4 GB on an exFAT partition).
+	unsigned long long (*fsize64) (void *h);
 };
 
 #ifdef __cplusplus
