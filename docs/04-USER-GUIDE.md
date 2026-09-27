@@ -507,7 +507,9 @@ viewer (TigerVNC, RealVNC, UltraVNC, TightVNC, Remmina…) and connect to `<pi-i
   with **your computer's layout** (the viewer sends characters); Ctrl+letter, arrows,
   Home/End, Page Up/Down, Delete, Esc and Enter work.
 - Only the parts of the screen that change are sent (64×64 tiles, zlib-compressed when the
-  viewer supports it), up to ~20 updates per second.
+  viewer supports it), up to ~20 updates per second — fewer when the whole screen keeps
+  changing (a game): the next update waits twice as long as the last one took, so VNC never
+  takes more than about a third of the core the apps share.
 - One viewer at a time. The picture is what the compositor shows, cursor included.
 
 > ⚠️ Not secure: no password and no encryption. Remove the `vncd` line from

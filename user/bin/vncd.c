@@ -23,6 +23,10 @@
 
 #define TILE		64
 #define MIN_FRAME_TICKS	5		// >= 50 ms between screen grabs (<= 20 updates/s)
+// ... and at least twice the time the last update took (grab + compare + encode + send):
+// a screen that changes everywhere (a game) then costs core 0 at most ~1/3 of its time,
+// the updates slow down instead of starving the apps there.
+#define BUSY_FACTOR	2
 
 static int  g_sock;
 static int  g_W, g_H;
@@ -435,13 +439,15 @@ static void session (void)
 		// Answer a pending update request once enough time has passed since the last
 		// grab. An incremental request with no change stays pending (standard RFB).
 		unsigned now = kapi_get_ticks ();
-		if (req && now - last_grab >= MIN_FRAME_TICKS)
+		if (req && (int) (now - last_grab) >= MIN_FRAME_TICKS)	// (signed: last_grab may be ahead)
 		{
 			last_grab = now;
 			// 2 = the screen has not changed since the previous grab: an incremental
 			// request just stays pending (no diff / encode); a full one is answered.
 			int g = kapi_screen_grab (g_cur, g_W, g_H);
 			if ((g != 2 || req_full) && send_update (req_full, rx, ry, rw, rh)) { req = 0; req_full = 0; }
+			unsigned took = kapi_get_ticks () - now;
+			if (took * BUSY_FACTOR > MIN_FRAME_TICKS) last_grab = now + took * BUSY_FACTOR - MIN_FRAME_TICKS;
 		}
 		kapi_msleep (10);
 	}
