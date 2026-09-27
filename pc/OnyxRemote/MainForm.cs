@@ -175,7 +175,7 @@ namespace OnyxRemote
 			mdi.MouseUp += (s, e) => DeskPointer (e, 0);
 			mdi.MouseMove += (s, e) => DeskPointer (e, 0);
 			Move += (s, e) => PlaceDrop ();
-			Resize += (s, e) => { PlaceDrop (); barPanel.Invalidate (); };
+			Resize += (s, e) => { PlaceDrop (); barPanel.Invalidate (); Sync (); };	// (Sync: the desktop's picture to the new size)
 			try
 			{
 				foreach (var line in File.ReadAllLines (SettingsPath))
@@ -324,11 +324,17 @@ namespace OnyxRemote
 				else if (!open && drop.Visible) drop.Hide ();
 				if (open) PlaceDrop ();
 				// the desktop: its picture (below the bar) + the bubbles, as the MDI area's background
-				if (desktop.Checked && deskBmp != null && (deskDirty || mdi.BackgroundImage == null))
+				// (the MDI area tiles its background image: the picture is made at least the area's
+				// size, the part beyond the Pi's screen a plain colour -- else the desktop repeated)
+				int bw = Math.Max (deskBmp?.Width ?? 1, mdi.ClientSize.Width), bh = Math.Max (Math.Max (1, (deskBmp?.Height ?? 1) - Bar.BarH), mdi.ClientSize.Height);
+				bool resized = backBmp == null || backBmp.Width != bw || backBmp.Height != bh;
+				if (desktop.Checked && deskBmp != null && (deskDirty || resized || mdi.BackgroundImage == null))
 				{
-					backBmp = Pix.Make (backBmp, deskBmp.Width, Math.Max (1, deskBmp.Height - Bar.BarH));
+					Bitmap old = null;
+					if (resized) { old = backBmp; backBmp = new Bitmap (bw, bh, System.Drawing.Imaging.PixelFormat.Format32bppRgb); }
 					using (var g = Graphics.FromImage (backBmp))
 					{
+						g.Clear (Color.FromArgb (16, 18, 28));
 						g.DrawImageUnscaled (deskBmp, 0, -Bar.BarH);
 						foreach (var m in bubbleOrder)
 						{
@@ -343,6 +349,7 @@ namespace OnyxRemote
 					}
 					mdi.BackgroundImageLayout = ImageLayout.None;
 					mdi.BackgroundImage = backBmp;
+					old?.Dispose ();
 					mdi.Invalidate ();
 				}
 				else if (!desktop.Checked && mdi.BackgroundImage != null) mdi.BackgroundImage = null;
