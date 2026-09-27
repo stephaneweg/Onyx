@@ -31,6 +31,8 @@
 #include <circle/timer.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
+#include <circle/sched/synchronizationevent.h>
+#include <circle/interrupt.h>
 #include <circle/util.h>
 #include <circle/types.h>
 
@@ -41,6 +43,7 @@ static const char From[] = "v3d";
 #define V3D_HUB_IDENT0		(V3D_HUB + 0x08)
 #define V3D_HUB_IDENT1		(V3D_HUB + 0x0C)
 #define V3D_HUB_IDENT2		(V3D_HUB + 0x10)
+#define V3D_HUB_INT_MSK_SET	(V3D_HUB + 0x60)
 #define V3D_CORE0		(ARM_IO_BASE + 0xC04000)
 #define V3D_CTL_IDENT0		(V3D_CORE0 + 0x000)
 #define V3D_CTL_SLCACTL		(V3D_CORE0 + 0x024)
@@ -49,7 +52,13 @@ static const char From[] = "v3d";
 #define V3D_CTL_L2TFLEND	(V3D_CORE0 + 0x038)
 #define V3D_CTL_INT_STS		(V3D_CORE0 + 0x050)
 #define V3D_CTL_INT_CLR		(V3D_CORE0 + 0x058)
-#define   V3D_INT_OUTOMEM	(1 << 2)
+#define V3D_CTL_INT_MSK_SET	(V3D_CORE0 + 0x060)
+#define V3D_CTL_INT_MSK_CLR	(V3D_CORE0 + 0x064)
+#define   V3D_INT_FRDONE	(1 << 0)		// render frame done
+#define   V3D_INT_FLDONE	(1 << 1)		// bin (tile lists) done
+#define   V3D_INT_OUTOMEM	(1 << 2)		// the binner wants memory
+#define   V3D_INTS		(V3D_INT_FRDONE | V3D_INT_FLDONE | V3D_INT_OUTOMEM)
+#define V3D_IRQ			GIC_SPI (74)		// (the device tree's v3d node: core and hub share it)
 #define V3D_CLE_CT0CS		(V3D_CORE0 + 0x100)
 #define V3D_CLE_CT1CS		(V3D_CORE0 + 0x104)
 #define V3D_CLE_CT0CA		(V3D_CORE0 + 0x110)
@@ -210,6 +219,8 @@ static boolean PowerOn (void)
 	return TRUE;
 }
 
+static void IrqOn (void);
+
 static boolean Up (void)
 {
 	if (s_nState) return s_nState > 0;
@@ -239,10 +250,158 @@ static boolean Up (void)
 	memcpy (p + STATE_FS_COLOR, FS_COLOR, sizeof FS_COLOR);
 	memcpy (p + STATE_FS_TEX, FS_TEX, sizeof FS_TEX);
 	CleanDataCacheRange ((uintptr) p, STATE_END);
+	IrqOn ();
 	Fmt (s_Info, sizeof s_Info, "V3D %u.%u (%u core)", nTver, nRev, nCores);
 	CLogger::Get ()->Write (From, LogNotice, "%s ready", s_Info);
 	s_nState = 1;
 	return TRUE;
+}
+
+// ---- completion by interrupt --------------------------------------------------------------------------------
+// The V3D core interrupt (GIC SPI 74): bin done, render done, and the binner's out-of-memory
+// requests (answered from the overflow pool right there). The drawing task sleeps on an event;
+// it wakes every 2 ms anyway and checks the frame counters, so a missing interrupt only costs
+// latency (then it is logged once and the overflow requests are served by the task).
+static CSynchronizationEvent s_BinDone, s_RenderDone;
+static volatile unsigned s_nChunk = 0;
+static volatile boolean s_bIrqSeen = FALSE;
+static boolean s_bIrqWarned = FALSE;
+
+static void GiveChunk (void)
+{
+	if (s_nChunk < OVERFLOW_CHUNKS)
+	{
+		unsigned n = s_nChunk;
+		s_nChunk = n + 1;
+		write32 (V3D_PTB_BPOA, s_Overflow.Bus (n * OVERFLOW_CHUNK));
+		write32 (V3D_PTB_BPOS, OVERFLOW_CHUNK);
+		write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
+	}
+	else
+		write32 (V3D_CTL_INT_MSK_SET, V3D_INT_OUTOMEM);	// (none left: no interrupt storm)
+}
+
+static void V3DIrq (void *)
+{
+	u32 nSts = read32 (V3D_CTL_INT_STS);
+	s_bIrqSeen = TRUE;
+	if (nSts & V3D_INT_OUTOMEM) GiveChunk ();
+	if (nSts & V3D_INT_FLDONE) { write32 (V3D_CTL_INT_CLR, V3D_INT_FLDONE); s_BinDone.Set (); }
+	if (nSts & V3D_INT_FRDONE) { write32 (V3D_CTL_INT_CLR, V3D_INT_FRDONE); s_RenderDone.Set (); }
+}
+
+static void IrqOn (void)
+{
+	write32 (V3D_HUB_INT_MSK_SET, ~0u);				// (no hub interrupt used)
+	write32 (V3D_CTL_INT_MSK_SET, ~(u32) V3D_INTS);
+	write32 (V3D_CTL_INT_CLR, V3D_INTS);
+	CInterruptSystem::Get ()->ConnectIRQ (V3D_IRQ, V3DIrq, 0);
+	write32 (V3D_CTL_INT_MSK_CLR, V3D_INTS);
+}
+
+// Waits until the frame counter nReg moves off nOld: the event, or 2 ms slices. FALSE: timed out.
+static boolean WaitCounter (CSynchronizationEvent &Ev, uintptr nReg, u32 nOld)
+{
+	unsigned t0 = CTimer::Get ()->GetClockTicks ();
+	while ((read32 (nReg) & 0xFF) == nOld)
+	{
+		Ev.WaitWithTimeout (2000);
+		if (!s_bIrqSeen)						// (no interrupt yet: serve the binner here)
+		{
+			EnterCritical ();
+			if (read32 (V3D_CTL_INT_STS) & V3D_INT_OUTOMEM) GiveChunk ();
+			LeaveCritical ();
+		}
+		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) return FALSE;
+	}
+	if (!s_bIrqSeen && !s_bIrqWarned)
+	{
+		s_bIrqWarned = TRUE;
+		CLogger::Get ()->Write (From, LogWarning, "no V3D interrupt seen: waiting by polling");
+	}
+	return TRUE;
+}
+
+// ---- the target: straight into the caller's pixels when the GPU can reach them ---------------------------------
+// The pixels are the caller's virtual memory: each 4 KB page is translated (AT S1E1R); if the
+// whole span is physically contiguous below 1 GB (a window canvas is), the GPU stores (and
+// loads) the tiles right there, R and B swapped so that memory holds 0x00RRGGBB, alpha not
+// written (the colour write mask) and cleared to 0. Else the frame goes through s_Target and
+// is copied.
+struct TTarget
+{
+	boolean bDirect;
+	u32 nBus, nStrideBytes;		// where the GPU stores / loads, bytes a row
+	uintptr ulVA; u32 nSpan;	// (direct: the caller's span, for the cache maintenance)
+};
+
+static u64 PhysOf (uintptr ulVA)
+{
+	u64 nPar;
+	asm volatile ("at s1e1r, %1\n\tisb\n\tmrs %0, par_el1" : "=r" (nPar) : "r" (ulVA) : "memory");
+	if (nPar & 1) return ~0ull;
+	return (nPar & 0x0000FFFFFFFFF000ull) | (ulVA & 0xFFF);
+}
+
+static void ResolveTarget (unsigned *pPx, int w, int h, int nStride, TTarget &T)
+{
+	T.bDirect = FALSE;
+	T.nBus = s_Target.Bus (); T.nStrideBytes = (u32) w * 4;
+	uintptr ulVA = (uintptr) pPx;
+	u64 nSpan = ((u64) (h - 1) * (u64) nStride + (u64) w) * 4;
+	if ((ulVA & 3) || nSpan > 0x10000000) return;
+	EnterCritical ();						// (PAR_EL1 is ours meanwhile)
+	u64 nPA = PhysOf (ulVA);
+	boolean bOK = nPA != ~0ull && nPA + nSpan <= 0x40000000;
+	for (u64 nOff = 4096 - (ulVA & 4095); bOK && nOff < nSpan; nOff += 4096)
+		bOK = PhysOf (ulVA + nOff) == nPA + nOff;
+	LeaveCritical ();
+	static int s_nLogged = -1;				// (the mode in kmsg when it changes)
+	if (s_nLogged != (int) bOK)
+	{
+		s_nLogged = (int) bOK;
+		CLogger::Get ()->Write (From, LogNotice, bOK ? "frames rendered straight into the target (at %lX)"
+							 : "frames rendered into a GPU buffer, then copied (target at %lX)", (unsigned long) nPA);
+	}
+	if (!bOK) return;
+	T.bDirect = TRUE;
+	T.nBus = (u32) nPA; T.nStrideBytes = (u32) nStride * 4;
+	T.ulVA = ulVA; T.nSpan = (u32) nSpan;
+}
+
+// Before the GPU runs: the frame's pixels (copy mode: loaded into s_Target when bKeep)
+static void TargetBefore (const TTarget &T, const unsigned *pPx, int w, int h, int nStride, boolean bKeep)
+{
+	if (T.bDirect) { CleanAndInvalidateDataCacheRange (T.ulVA, T.nSpan); return; }
+	if (bKeep)
+		for (int y = 0; y < h; y++)
+		{
+			const unsigned *src = pPx + (long) y * nStride;
+			u32 *d = (u32 *) (s_Target.p + (u32) y * (u32) w * 4);
+			for (int x = 0; x < w; x++)
+			{
+				u32 c = src[x];
+				d[x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+			}
+		}
+	CleanAndInvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
+}
+
+// After: the picture in the caller's pixels
+static void TargetAfter (const TTarget &T, unsigned *pPx, int w, int h, int nStride)
+{
+	if (T.bDirect) { CleanAndInvalidateDataCacheRange (T.ulVA, T.nSpan); return; }
+	InvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
+	for (int y = 0; y < h; y++)
+	{
+		const u32 *src = (const u32 *) (s_Target.p + (u32) y * (u32) w * 4);
+		unsigned *d = pPx + (long) y * nStride;
+		for (int x = 0; x < w; x++)
+		{
+			u32 c = src[x];
+			d[x] = ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+		}
+	}
 }
 
 // ---- a frame ---------------------------------------------------------------------------------------------------
@@ -263,12 +422,12 @@ static void Fail (const char *pWhat)
 	s_nState = -1;
 }
 
-// The rendering list: each 64 x 64 tile cleared (or loaded from s_Target), its triangles
-// drawn, stored into s_Target (raster RGBA8, w * 4 bytes a row).
-static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boolean bLoad)
+// The rendering list: each 64 x 64 tile cleared (or loaded from the target), its triangles
+// drawn, stored into the target (raster RGBA8; direct: R / B swapped = 0x00RRGGBB).
+static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boolean bLoad, const TTarget &T)
 {
 	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64;
-	u32 nClearRGBA = 0xFF000000 | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
+	u32 nClearRGBA = (T.bDirect ? 0 : 0xFF000000) | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
 	R << TileRenderingModeCfgCommon (1, (u16) w, (u16) h, 0, false, false, 0, false, 2, false);
 	R << TileRenderingModeCfgClearColorsPart1 (0, nClearRGBA, 0);
 	R << TileRenderingModeCfgColor (0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -297,13 +456,13 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	Ind << OP_TILE_COORDINATES_IMPLICIT;
 	if (bLoad)							// the target's pixels first
 		Ind << LoadTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DECIMATE_MODE_SAMPLE_0,
-					      V3D_OUTPUT_IMAGE_FORMAT_RGBA8, true, false, false, (u32) (w * 4), 0, s_Target.Bus ());
+					      V3D_OUTPUT_IMAGE_FORMAT_RGBA8, !T.bDirect, false, T.bDirect, T.nStrideBytes, 0, T.nBus);
 	Ind << OP_END_OF_LOADS;
 	Ind << PrimListFormat (LIST_TRIANGLES, false);
 	Ind << BranchToImplicitTileList (0);
 	Ind << StoreTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DITHER_MODE_NONE,
-				       V3D_DECIMATE_MODE_SAMPLE_0, V3D_OUTPUT_IMAGE_FORMAT_RGBA8, false, false, false,
-				       (u32) (w * 4), 0, s_Target.Bus ());
+				       V3D_DECIMATE_MODE_SAMPLE_0, V3D_OUTPUT_IMAGE_FORMAT_RGBA8, false, false, T.bDirect,
+				       T.nStrideBytes, 0, T.nBus);
 	Ind << ClearTileBuffers (true, true);
 	Ind << OP_END_OF_TILE_MARKER;
 	Ind << OP_RETURN_FROM_SUB_LIST;
@@ -314,7 +473,7 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	R << OP_END_OF_RENDERING;
 }
 
-// Bins then renders (polled, with a time limit). 0 ok, -3 the GPU did not finish.
+// Bins then renders (the interrupt, with a time limit). 0 ok, -3 the GPU did not finish.
 static int Run (CList &B, CList &R, CList &Ind, u32 nAllocSize)
 {
 	CleanDataCacheRange ((uintptr) s_BCL.p, B.Size ());
@@ -324,37 +483,24 @@ static int Run (CList &B, CList &R, CList &Ind, u32 nAllocSize)
 
 	// ---- bin
 	InvalidateGpuCaches ();
-	write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
+	s_nChunk = 0;
+	write32 (V3D_CTL_INT_CLR, V3D_INTS);
+	write32 (V3D_CTL_INT_MSK_CLR, V3D_INTS);
+	s_BinDone.Clear (); s_RenderDone.Clear ();
 	u32 nBfc = read32 (V3D_CLE_BFC) & 0xFF;
 	write32 (V3D_CLE_CT0QMA, s_TileAlloc.Bus ());
 	write32 (V3D_CLE_CT0QMS, nAllocSize);
 	write32 (V3D_CLE_CT0QTS, s_TileState.Bus () | (1 << 1));
 	write32 (V3D_CLE_CT0QBA, B.Start ());
 	write32 (V3D_CLE_CT0QEA, B.Start () + B.Size ());
-	unsigned t0 = CTimer::Get ()->GetClockTicks (), nChunk = 0;
-	while ((read32 (V3D_CLE_BFC) & 0xFF) == nBfc)
-	{
-		if ((read32 (V3D_CTL_INT_STS) & V3D_INT_OUTOMEM) && nChunk < OVERFLOW_CHUNKS)	// more tile-list memory
-		{
-			write32 (V3D_PTB_BPOA, s_Overflow.Bus (nChunk++ * OVERFLOW_CHUNK));
-			write32 (V3D_PTB_BPOS, OVERFLOW_CHUNK);
-			write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
-		}
-		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) { Fail ("binning"); return -3; }
-		CScheduler::Get ()->Yield ();
-	}
+	if (!WaitCounter (s_BinDone, V3D_CLE_BFC, nBfc)) { Fail ("binning"); return -3; }
 
 	// ---- render
 	InvalidateGpuCaches ();
 	u32 nRfc = read32 (V3D_CLE_RFC) & 0xFF;
 	write32 (V3D_CLE_CT1QBA, R.Start ());
 	write32 (V3D_CLE_CT1QEA, R.Start () + R.Size ());
-	t0 = CTimer::Get ()->GetClockTicks ();
-	while ((read32 (V3D_CLE_RFC) & 0xFF) == nRfc)
-	{
-		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) { Fail ("rendering"); return -3; }
-		CScheduler::Get ()->Yield ();
-	}
+	if (!WaitCounter (s_RenderDone, V3D_CLE_RFC, nRfc)) { Fail ("rendering"); return -3; }
 
 	return 0;
 }
@@ -368,7 +514,8 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 		return -2;
 	memcpy (s_Verts.p, pV, n * sizeof (kapi_gpu_vertex));
 	CleanDataCacheRange ((uintptr) s_Verts.p, n * sizeof (kapi_gpu_vertex));
-	CleanAndInvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));	// (no dirty line over the GPU's output)
+	TTarget T; ResolveTarget (pDst, w, h, nStride, T);
+	TargetBefore (T, pDst, w, h, nStride, FALSE);
 
 	// ---- uniforms, shader state record, attributes
 	CList Ind (s_Ind);
@@ -439,7 +586,7 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 	B << ClipperZScaleAndOffset (0.5f, 0.5f);
 	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
 	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
-	B << ColorWriteMasks (0);
+	B << ColorWriteMasks (T.bDirect ? 0x8 : 0);		// (direct: alpha not written, stays 0)
 	B << BlendConstantColor (0, 0, 0, 0);
 	B << OP_ZERO_ALL_FLAT_SHADE_FLAGS;
 	B << OP_ZERO_ALL_NON_PERSPECTIVE_FLAGS;
@@ -454,26 +601,14 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 
 	// ---- the rendering list, then the GPU
 	CList R (s_RCL);
-	BuildRCL (R, Ind, w, h, nClear, FALSE);
+	BuildRCL (R, Ind, w, h, nClear, FALSE, T);
 	if (B.Overflow () || R.Overflow () || Ind.Overflow ()) return -2;
 	int nRes = Run (B, R, Ind, nAllocSize);
 	if (nRes != 0) return nRes;
 
-	// ---- the picture: RGBA8 (R first in memory) -> 0x00RRGGBB
-	InvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
-	for (int y = 0; y < h; y++)
-	{
-		const u32 *s = (const u32 *) (s_Target.p + (u32) y * (u32) w * 4);
-		unsigned *d = pDst + (long) y * nStride;
-		for (int x = 0; x < w; x++)
-		{
-			u32 c = s[x];
-			d[x] = ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
-		}
-	}
+	TargetAfter (T, pDst, w, h, nStride);
 	return 0;
 }
-
 
 // ---- v53: textures -------------------------------------------------------------------------------------------
 // A texture: its TEXTURE_SHADER_STATE (32 bytes, at 0) then its texels (RGBA8, R first in
@@ -586,18 +721,8 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	memcpy (s_Verts3.p, pV, nV * sizeof (kapi_gpu_vertex3));
 	CleanDataCacheRange ((uintptr) s_Verts3.p, nV * sizeof (kapi_gpu_vertex3));
 	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
-	if (bKeep)							// the target's pixels, as RGBA8
-		for (int y = 0; y < h; y++)
-		{
-			const unsigned *src = F.pixels + (long) y * F.stride;
-			u32 *d = (u32 *) (s_Target.p + (u32) y * (u32) w * 4);
-			for (int x = 0; x < w; x++)
-			{
-				u32 c = src[x];
-				d[x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
-			}
-		}
-	CleanAndInvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
+	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T);
+	TargetBefore (T, F.pixels, w, h, F.stride, bKeep);
 
 	f32 fXs = (f32) (w / 2) * 256.0f, fYs = (f32) (h / 2) * -256.0f;
 	static const f32 Ident[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
@@ -615,7 +740,7 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	B << ClipperZScaleAndOffset (0.5f, 0.5f);
 	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
 	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
-	B << ColorWriteMasks (0);
+	B << ColorWriteMasks (T.bDirect ? 0x8 : 0);		// (direct: alpha not written, stays 0)
 	B << BlendConstantColor (0, 0, 0, 0);
 	B << OP_ZERO_ALL_FLAT_SHADE_FLAGS;
 	B << OP_ZERO_ALL_NON_PERSPECTIVE_FLAGS;
@@ -735,22 +860,12 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	B << OP_FLUSH;
 
 	CList R (s_RCL);
-	BuildRCL (R, Ind, w, h, F.clear, bKeep);
+	BuildRCL (R, Ind, w, h, F.clear, bKeep, T);
 	if (B.Overflow () || R.Overflow () || Ind.Overflow ()) return -2;
 	int nRes = Run (B, R, Ind, nAllocSize);
 	if (nRes != 0) return nRes;
 
-	InvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
-	for (int y = 0; y < h; y++)
-	{
-		const u32 *src = (const u32 *) (s_Target.p + (u32) y * (u32) w * 4);
-		unsigned *d = F.pixels + (long) y * F.stride;
-		for (int x = 0; x < w; x++)
-		{
-			u32 c = src[x];
-			d[x] = ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
-		}
-	}
+	TargetAfter (T, F.pixels, w, h, F.stride);
 	return 0;
 }
 

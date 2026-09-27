@@ -934,7 +934,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   released (`PM_GRAFX` `V3DRSTN`, with the PM password) and the V3D's async AXI bridges opened
   (`ASB_V3D_M_CTRL` / `_S_CTRL` at `0xFEC11008/C`, waiting for the ACK bit with a time limit);
   then `HUB_IDENT1` must say version 4 (kmsg: `HUB_IDENT0..2`, `CTL_IDENT0`). Any failure leaves
-  the GPU off; `gpu_info` says why.
+  the GPU off; `gpu_info` says why. The interrupt is connected there too (see below).
 - **Memory**: no V3D MMU — the GPU gets physical addresses, all its buffers come from Circle's
   low heap (`HEAP_LOW`, < 1 GB, page aligned): the control lists, the shaders and default
   attributes, the vertices, the render target (raster RGBA8), the tile allocation (the tiles ×
@@ -996,8 +996,23 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   regfile read right after its write, the thread-switch rules, no TLB access before the
   scoreboard wait). `qpuasm -d HEX…` disassembles. It re-assembles the three v52 shaders bit
   for bit.
-- **Not yet**: rendering straight into the window, an interrupt instead of polling, several
-  frames in flight, mipmaps, alpha test, shaders chosen by the app.
+- **Straight into the target** (v52 and v53): the caller's pixel pointer is translated page
+  by page (`AT S1E1R` → `PAR_EL1`, IRQs off); when the whole span (`(h − 1) × stride + w`
+  pixels) is physically contiguous below 1 GB — a window canvas is — the tile stores (and the
+  `KEEP` loads) go straight there: raster RGBA8 with **R/B swap** (= 0x00RRGGBB in memory),
+  the row pitch = the caller's stride, alpha not written (`COLOR_WRITE_MASKS` 0x8) and
+  cleared to 0; the span is cleaned + invalidated from the CPU caches before and after. Other
+  buffers go through `s_Target` and a copy, as before. kmsg says which mode is used (when it
+  changes).
+- **Completion by interrupt**: the V3D core interrupt (GIC SPI 74, shared by core and hub in
+  the Pi 4's device tree; the hub's are masked) is connected at bring-up with `FLDONE` (bin
+  done), `FRDONE` (render done) and `OUTOMEM` unmasked. The handler answers the binner's
+  memory requests from the overflow pool (and masks `OUTOMEM` once the pool is used up) and
+  sets the bin / render events; the drawing task sleeps on them (`WaitWithTimeout`, 2 ms
+  slices, the frame counters `BFC` / `RFC` re-checked each time, 0.5 s at most). Without an
+  interrupt it degrades to that 2 ms polling (logged once) and serves the binner itself.
+- **Not yet**: several frames in flight (the caller waits for its frame), mipmaps, alpha
+  test, shaders chosen by the app.
 
 ---
 
