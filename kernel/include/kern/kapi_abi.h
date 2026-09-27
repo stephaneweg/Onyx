@@ -47,7 +47,9 @@
 //      mapping is done in user space (user/gamepad.h, SD:/etc/gamepad.ini).
 // v51: + core_acquire/core_run/core_state/core_release -- app cores: an app acquires core 2
 //      or 3 and runs one function of its own there (no kapi calls, no malloc on it).
-#define KAPI_ABI_VERSION	51
+// v52: + gpu_info/gpu_draw -- the V3D GPU (VideoCore VI): depth-tested Gouraud triangles
+//      rendered by the GPU into the caller's pixels (sys/v3d.cpp).
+#define KAPI_ABI_VERSION	52
 
 #ifdef __cplusplus
 extern "C" {
@@ -157,6 +159,10 @@ struct kapi_pad
 	int      nhats;
 	int      hats[KAPI_PAD_HATS];
 };
+
+// A GPU vertex (kapi v52): position in normalized device coordinates + colour (RGBA8).
+struct kapi_gpu_vertex { float x, y, z; unsigned char r, g, b, a; };
+#define KAPI_GPU_MAX_VERTS	(3 * 65536)
 
 struct TKApiTable
 {
@@ -593,6 +599,18 @@ struct TKApiTable
 	int  (*core_run) (int core, void (*fn) (void *), void *arg, void *stack_top);
 	int  (*core_state) (int core);
 	void (*core_release) (int core);
+
+	// --- v52 additions (the V3D GPU) ---
+	// gpu_info: brings the GPU up on first use; its description in buf ("V3D 4.2 ...");
+	// 1 = usable, 0 = not (buf says why). gpu_draw: n vertices (a triangle list, n a
+	// multiple of 3, at most KAPI_GPU_MAX_VERTS), x y z in normalized device coordinates
+	// (-1..1, y up; z -1 near .. 1 far, depth-tested: the nearest wins), colours
+	// interpolated across each triangle; the picture (w x h, cleared to clear = 0xRRGGBB)
+	// lands in pixels (0x00RRGGBB, stride = pixels per row). 0 ok, -1 no GPU, -2 bad
+	// arguments, -3 the GPU did not finish (it is then left off).
+	int  (*gpu_info) (char *buf, unsigned cap);
+	int  (*gpu_draw) (const struct kapi_gpu_vertex *v, unsigned n, unsigned clear,
+			  unsigned *pixels, int w, int h, int stride);
 };
 
 #ifdef __cplusplus

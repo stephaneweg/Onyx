@@ -327,6 +327,11 @@ static inline int  kapi_core_acquire (void) { return KT->version >= 51 ? KT->cor
 static inline int  kapi_core_run (int core, void (*fn) (void *), void *arg, void *stack_top) { return KT->version >= 51 ? KT->core_run (core, fn, arg, stack_top) : -1; }
 static inline int  kapi_core_state (int core) { return KT->version >= 51 ? KT->core_state (core) : KAPI_CORE_NOTYOURS; }
 static inline void kapi_core_release (int core) { if (KT->version >= 51) KT->core_release (core); }
+// The V3D GPU (v52): gpu_info brings it up (1 = usable, buf says what / why not); gpu_draw
+// renders a depth-tested triangle list (NDC positions + RGBA8 colours) into pixels.
+static inline int  kapi_gpu_info (char *buf, unsigned cap) { if (KT->version >= 52) return KT->gpu_info (buf, cap); if (buf && cap) buf[0] = 0; return 0; }
+static inline int  kapi_gpu_draw (const struct kapi_gpu_vertex *v, unsigned n, unsigned clear, unsigned *pixels, int w, int h, int stride)
+{ return KT->version >= 52 ? KT->gpu_draw (v, n, clear, pixels, w, h, stride) : -1; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

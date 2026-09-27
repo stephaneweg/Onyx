@@ -8,6 +8,7 @@
 #include <kern/kapitable.h>
 #include <kern/kapi_abi.h>
 #include <kern/appcore.h>
+#include <kern/v3d.h>
 #include <circle/types.h>
 #include <circle/util.h>		// memset / memcpy / memmove (ABI v36)
 
@@ -336,4 +337,6 @@ void KApiTableInit (void)
 	t->core_run          = kapi_core_run;
 	t->core_state        = kapi_core_state;
 	t->core_release      = kapi_core_release;
+	t->gpu_info          = kapi_gpu_info;
+	t->gpu_draw          = kapi_gpu_draw;
 }

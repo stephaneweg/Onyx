@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -107,6 +107,9 @@ BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o basic/basbax.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.
 graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)
+# The teapot demo computes its geometry in float: FP/SIMD too.
+teapot.elf: CXXFLAGS := $(CXXFLAGS_FP)
+teapot.elf: Apps/teapot/teapot.h Apps/teapot/teapot_data.inc
 graphcalc.elf: Apps/graphcalc/expr.h
 basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@

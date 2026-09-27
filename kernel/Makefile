@@ -35,6 +35,7 @@ OBJS = \
 	sys/debugcon.o \
 	sys/fslock.o \
 	sys/appcore.o \
+	sys/v3d.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 
@@ -60,6 +61,9 @@ LIBS = \
 	$(CIRCLEHOME)/lib/libcircle.a
 
 include $(CIRCLEHOME)/Rules.mk
+
+# The V3D packets (kern/v3d_cl.h) use default member initialisers on bit-fields: C++20.
+sys/v3d.o: CPPFLAGS += -std=c++20
 
 # Apps call the kernel through the kapi ABI table at a fixed VA (see
 # kern/kapi_abi.h), NOT by linking against kernel addresses -- so they no longer

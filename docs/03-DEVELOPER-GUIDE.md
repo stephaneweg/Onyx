@@ -281,6 +281,14 @@ Notes / caveats:
 > Gamepad app, `padconf`) or the
 > built-in mapping (pads Circle knows). Used by gbemu, gamelib, BASIC (`PAD`, `STICK`, `STRIG`).
 > Host test: `sh tools/tests/run_gamepad_test.sh`.
+> **The GPU (ABI v52)**: `kapi_gpu_info (buf, cap)` (1 = the V3D is usable; the first call brings
+> it up) and `kapi_gpu_draw (verts, n, clear, pixels, w, h, stride)`: a triangle list of
+> `struct kapi_gpu_vertex { float x, y, z; unsigned char r, g, b, a; }` in normalized device
+> coordinates (y up, z −1 near … 1 far), depth-tested and Gouraud-shaded by the GPU into the
+> app's pixels (e.g. its window canvas: `canvas.px`, `canvas.stride`). The app transforms and
+> lights its geometry itself (floats: build it with `CXXFLAGS_FP`, like `teapot`); keep a
+> software path for `r < 0`. See `user/Apps/teapot` (`teapot.h` is portable:
+> `tools/tests/teapot/teapot_host.cpp` renders it on a PC) and docs/02 §15.
 > **App cores (ABI v51)**: an app may take a whole core (2 or 3) for a function of its own —
 > `int c = kapi_core_acquire ();` (−1: none free), `kapi_core_run (c, fn, arg, stack_top)` (the
 > stack is the app's memory, 16-byte aligned), poll `kapi_core_state (c)` (`KAPI_CORE_IDLE` once

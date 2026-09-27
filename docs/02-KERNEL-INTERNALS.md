@@ -516,7 +516,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 51`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 52`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -529,7 +529,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`).
 
 ### Categories of exposed functions
 
@@ -563,6 +563,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Run as (v49) | `exec_as(path, args, name)` → `ExecPath` with the process named `name` instead of after the path (1 = started). User space runs a format's program this way (`launch.h`: `SD:/bin/basic` for an app's `main.bax` is named after the app). |
 | Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/gamepad.h`, `SD:/etc/gamepad.ini`). |
 | App cores (v51) | `core_acquire()` → 2 or 3 (a free app core, now the caller's) or −1; `core_run(core, fn, arg, stack_top)` → 0, or −1 (not yours / still running / `fn` or the stack not a user address): the core calls `fn (arg)` in the caller's address space on the given stack (16-byte aligned, the caller's memory); `core_state(core)` → `KAPI_CORE_IDLE` (0: `fn` returned), `KAPI_CORE_RUNNING` (1), `KAPI_CORE_FAULT` (−2: `fn` faulted and was stopped, logged to kmsg) or `KAPI_CORE_NOTYOURS` (−1); `core_release(core)` stops `fn` if it runs and frees the core (done at the app's exit anyway). `fn` makes **no kapi call and no allocation**. See §14. |
+| GPU (v52) | `gpu_info(buf, cap)` → 1 (the V3D is up; `buf` = "V3D 4.2 (1 core)") or 0 (`buf` says why); the first call brings the GPU up. `gpu_draw(v, n, clear, pixels, w, h, stride)`: `n` vertices `struct kapi_gpu_vertex { float x, y, z; u8 r, g, b, a; }` (a triangle list; normalized device coordinates, y up, z −1 near … 1 far; depth test *less*, both faces; colours interpolated) rendered by the GPU into `pixels` (0x00RRGGBB, `w` × `h` ≤ 2048, `stride` pixels a row) after clearing it to `clear` (0xRRGGBB) → 0, −1 no GPU, −2 bad arguments / too many vertices (`KAPI_GPU_MAX_VERTS` = 196608), −3 the GPU did not finish (it is then left off). See §15. |
 | Held keys (v48) | `key_held(key)` → 1 while the key is held **and** the caller's window has the keyboard (`KeyTargetLocked`), else 0 — for games, since key events only report presses. Keys: `KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` (the **US position** of the key), `'0'..'9'`. The WM keeps two bitsets over the logical codes: the USB one, rebuilt from every raw report (`KeyRawStub` → `SetUsbHeld`, HID usage → key), and the injected one (`inject_key_held(key, down)`, from vncd's RFB key down / up); `KeyHeld` ORs them. |
 | FM (v47) | `sound_instrument(voice, const struct kapi_fm_instrument *)` — a 2-operator FM instrument (OPL2 style, `struct kapi_fm_op op[2]` = modulator / carrier: `mult`, `level`, `ksl`, `attack`, `decay`, `sustain`, `release`, `wave`, `flags` FM_SUSTAINED / FM_TREMOLO / FM_VIBRATO / FM_KSR; `feedback`, `connection`) for that voice; then `sound_start(voice, milliHz, SOUND_FM, volume)`. Owner only. See §12. |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
@@ -917,6 +918,50 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   waits in `WFE`, the main thread runs it in `onyx_rpc_serve` and `SEV`s). Doom's engine runs
   that way (`user/doom`), with its malloc, files and saves.
 
+## 15. The GPU (V3D)
+
+Source: [`kernel/sys/v3d.cpp`](../kernel/sys/v3d.cpp), the packets
+[`kern/v3d_cl.h`](../kernel/include/kern/v3d_cl.h); demo `user/Apps/teapot`.
+
+The Raspberry Pi 4's VideoCore VI 3D core (**V3D 4.2**) driven from the kernel, bare metal —
+after Random06457's *rpi4-gpu-bare-metal-examples* (MIT: the packet structs, the three shaders,
+the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the binner's memory).
+
+- **Bring-up** (the first `gpu_info` / `gpu_draw`, never at boot): the firmware turns the V3D
+  power domain (10) and clock (5) on and the clock to its maximum (mailbox); the reset is
+  released (`PM_GRAFX` `V3DRSTN`, with the PM password) and the V3D's async AXI bridges opened
+  (`ASB_V3D_M_CTRL` / `_S_CTRL` at `0xFEC11008/C`, waiting for the ACK bit with a time limit);
+  then `HUB_IDENT1` must say version 4 (kmsg: `HUB_IDENT0..2`, `CTL_IDENT0`). Any failure leaves
+  the GPU off; `gpu_info` says why.
+- **Memory**: no V3D MMU — the GPU gets physical addresses, all its buffers come from Circle's
+  low heap (`HEAP_LOW`, < 1 GB, page aligned): the control lists, the shaders and default
+  attributes, the vertices, the render target (raster RGBA8), the tile allocation (the tiles ×
+  64 B + 2 MB), the tile state (256 B a tile) and a 4 MB overflow pool. CPU caches: cleaned
+  after the CPU writes (the lists, the vertices), the target cleaned and invalidated before
+  the GPU writes it and invalidated before the CPU reads it; the GPU's L2T and slice caches
+  are flushed before each job.
+- **A frame** (`gpu_draw`): the vertices are copied into the GPU buffer; the **binning list**
+  (`TILE_BINNING_MODE_CFG`, the clip window, `CFG_BITS` with the depth test *less* and depth
+  writes, the viewport scaling and offset, `GL_SHADER_STATE` → a shader record + two
+  attribute records over the same 16-byte vertices — position 3 floats, colour 4 normalized
+  bytes —, `VERTEX_ARRAY_PRIMS` triangles) sorts the triangles into 64 × 64 tile lists; the
+  **rendering list** configures the tile buffer (one RGBA8 target, Z cleared to 1.0), clears,
+  then for each tile runs its list, stores the colours (`STORE_TILE_BUFFER_GENERAL`, raster)
+  and clears again. Jobs: `CT0QMA/QMS/QTS/QBA/QEA` (bin), `CT1QBA/QEA` (render); the end is
+  polled on the frame counters `BFC` / `RFC` (the caller's task yields meanwhile; one frame
+  at a time), 0.5 s at most — past that the state of the control-list executors is logged
+  and the GPU left off. The binner's out-of-memory requests (`INT_STS` `OUTOMEM`) are answered
+  from the overflow pool (`PTB_BPOA` / `BPOS`). The RGBA8 picture is copied into the caller's
+  pixels as 0x00RRGGBB.
+- **Shaders**: fixed — a vertex shader (position → screen, colour → varyings), its coordinate
+  shader for the binner, a fragment shader writing the interpolated colour: Mesa-compiled QPU
+  code taken from Random06457's example. The geometry, the lighting and the projection are the
+  app's (the CPU); the GPU does the rasterization, the interpolation and the depth test.
+- **Not yet**: textures, blending, shaders chosen by the app, an interrupt instead of polling,
+  several frames in flight.
+
+---
+
 ## Annex — useful constants
 
 | Constant | Value | File |
@@ -929,7 +974,7 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 51 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 52 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |
