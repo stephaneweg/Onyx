@@ -10,6 +10,7 @@
 //
 // extern "C": stable, unmangled names for the symbol-export/link step.
 //
+#include <kern/crashlog.h>
 #include <kern/vfs.h>
 #include <kern/sound.h>
 #include <kern/addrspace.h>
@@ -1845,6 +1846,7 @@ void *kapi_sbrk (long nIncrement)
 // restarting the machine. Circle's reboot() is NORETURN.
 void kapi_reboot (void)
 {
+	CrashLogCleanEnd ();
 	reboot ();
 }
 
@@ -2015,6 +2017,7 @@ void kapi_shutdown (int nMode)
 {
 	CLogger::Get ()->Write ("kernel", LogNotice, "session end: %s", nMode ? "restart" : "halt");
 	CScheduler::Get ()->MsSleep (300);		// let the last frame / log line out
+	CrashLogCleanEnd ();				// (a clean end: no crash report, no watchdog)
 	f_mount (0, "SD:", 0);				// unmount: flush + release the volumes
 	f_mount (0, "SD1:", 0); f_mount (0, "SD2:", 0); f_mount (0, "SD3:", 0);
 	if (nMode == 1)

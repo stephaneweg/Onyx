@@ -36,6 +36,7 @@ OBJS = \
 	sys/fslock.o \
 	sys/appcore.o \
 	sys/v3d.o \
+	sys/crashlog.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 

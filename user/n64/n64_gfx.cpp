@@ -477,6 +477,10 @@ void Machine::gfxTri (int a, int b, int c)
 	}
 	GVertex o[3];
 	static const float WHITE[4] = { 1, 1, 1, 1 }, BLACK[4] = { 0, 0, 0, 0 };
+	// the decal z mode (paths, shadows, grass patches on the ground): the RDP lets them pass
+	// within the depth slope of the surface below; here they are drawn a little nearer (in
+	// NDC depth) so that the "less or equal" test does not make them flicker (z-fighting)
+	float zBias = (omL & OM_ZMODE) == 0xC00 ? 2e-4f : 0.0f;
 	for (int k = 0; k < 3; k++)
 	{
 		const Vtx &v = *V[k];
@@ -484,7 +488,7 @@ void Machine::gfxTri (int a, int b, int c)
 		// the viewport folded in: the N64 screen -> this frame's NDC, y up
 		g.x = v.x * (sx / (W / 2)) + v.w * (tx / (W / 2) - 1);
 		g.y = v.y * (sy / (H / 2)) + v.w * (1 - ty / (H / 2));
-		g.z = v.z; g.w = v.w;
+		g.z = v.z - zBias * v.w; g.w = v.w;
 		float shade[4] = { v.r, v.g, v.b, v.a };
 		if (!(geom & G_SHADE)) shade[0] = shade[1] = shade[2] = shade[3] = 1;
 		// the combiner is affine in the texel for almost every mode: its result for a black

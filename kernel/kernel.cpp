@@ -2,6 +2,7 @@
 // kernel.cpp
 //
 #include "kernel.h"
+#include <kern/crashlog.h>
 #include <circle/machineinfo.h>
 #include <circle/memory.h>
 #include <circle/sched/task.h>
@@ -221,18 +222,25 @@ class CCompositorTask : public CTask
 	// A present: the rectangle (w = 0: the screen) sent by the frame buffer's 2D DMA, read in
 	// place in the off-screen buffer; meanwhile the other tasks run (core 0 not held by a busy
 	// wait), and nothing draws into that buffer until it is done (only this task does).
-	static volatile boolean s_bSent;
-	static void Sent (void *) { s_bSent = TRUE; }
 	void Present (unsigned x, unsigned y, unsigned w, unsigned h)
 	{
 		if (!g_bDisplayDma)				// (cmdline.txt dispdma=0: the synchronous copy, as before)
 		{
+			CrashLogCrumb (CRUMB_PRESENT, 2);
 			if (w == 0) m_p2D->UpdateDisplay (); else m_p2D->UpdateDisplay (x, y, w, h);
+			CrashLogCrumb (CRUMB_PRESENT, 0);
 			return;
 		}
-		s_bSent = FALSE;
-		m_p2D->UpdateDisplayAsync (x, y, w, h, Sent, 0);
-		while (!s_bSent) CScheduler::Get ()->Yield ();
+		// the DMA started, then polled between yields -- not its completion interrupt: under a
+		// heavy GPU load (Ocarina of Time, n64emu) one got lost now and then, and the compositor
+		// waited for ever (the screen, the apps presenting, the sound feeder behind them: all stuck)
+		CrashLogCrumb (CRUMB_PRESENT, 2);
+		if (m_p2D->UpdateDisplayStart (x, y, w, h))
+		{
+			CrashLogCrumb (CRUMB_PRESENT, 3);
+			while (!m_p2D->UpdateDisplayPoll ()) CScheduler::Get ()->Yield ();
+		}
+		CrashLogCrumb (CRUMB_PRESENT, 0);
 	}
 
 public:
@@ -302,7 +310,6 @@ private:
 	boolean		m_bFirst;
 };
 
-volatile boolean CCompositorTask::s_bSent;
 
 // Cascade kill: when a process dies, its still-running children must die too (e.g.
 // killing the terminal also kills its shell + whatever the shell spawned). We track
@@ -396,6 +403,7 @@ public:
 			TerminateOrphans ();			// kill children of dead parents
 			CScheduler::Get ()->ReapTerminatedTasks ();
 			LogStalls ();
+			CrashLogAlive ();			// (the crash record's uptime + the hang watchdog)
 
 			unsigned nPeriod = NetIsUp () ? 4 : 20;	// x 50 ms
 			if (++nTick >= nPeriod)
@@ -1356,6 +1364,10 @@ boolean CKernel::Initialize (void)
 {
 	boolean bOK = TRUE;
 
+	// The crash record (kern/crashlog.h): the previous session's kept aside, this one's
+	// started -- before the first log line.
+	CrashLogInit ();
+
 	// Bring up the HDMI text console FIRST (like VMKernel) so the boot log is
 	// visible on screen even without a serial cable.
 	if (bOK)
@@ -1499,6 +1511,7 @@ boolean CKernel::Initialize (void)
 				}
 			}
 
+			CrashLogReport ();		// the previous session, if it froze: SD:/etc/lastcrash.txt
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 
@@ -1573,6 +1586,8 @@ TShutdownMode CKernel::Run (void)
 		// Reaper: reclaims ended apps; it also blinks the ACT LED (headless sign of
 		// life from the very start of the userland).
 		new CReaperTask;
+		// the hang watchdog (fed by the reaper): cmdline.txt hangreboot= seconds, 0 = off
+		CrashLogStartWatchdog (m_Options.GetAppOptionDecimal ("hangreboot", 15));
 		m_Logger.Write (FromKernel, LogNotice, "reaper started");
 
 		// Input: pumps USB plug-and-play, so the keyboard/mouse enumerate while the

@@ -869,6 +869,34 @@ visible **directly on the framebuffer**.
   compositor **detects** `DebugConsoleActive()` and **stops presenting** so as not to
   contend for the framebuffer.
 
+### The crash record (`lastcrash.txt`)
+
+Source: [`kernel/sys/crashlog.cpp`](../kernel/sys/crashlog.cpp),
+[`kern/crashlog.h`](../kernel/include/kern/crashlog.h).
+
+A frozen Pi (the scheduler stopped: the green LED stays lit or dark, no SOS) left nothing to
+read. Now 64 KB of RAM kept out of the heap (Circle fork, docs/05 §15) hold, for the running
+session, cleaned to RAM as they are written:
+
+- the **tail of the kernel log** (`CLogSwitch::Write` copies every line, ~62 KB ring);
+- the **last 16 places core 0 was interrupted at** (`KernelIRQExit`, each IRQ): PC, LR, SP_EL0,
+  whether IRQs were masked, the task's name — a kernel loop shows itself there;
+- **breadcrumbs**: the GPU (`idle / clipping / binning / rendering / texture upload`) and the
+  compositor's display copy (`composing / display DMA / waiting for the display DMA`);
+- the reaper's **last pass** (uptime), and a **panic**'s registers (`DumpAndHalt`, before the
+  panic screen).
+
+The **BCM watchdog** is armed by the reaper (every second, `cmdline.txt hangreboot=` seconds,
+default 15, at most ~15; 0 = off): when the scheduler stops, the Pi restarts by itself (a panic
+too, after its screen and SOS). `kapi_shutdown` / `kapi_reboot` stop it and mark the session
+clean. At the next boot, a session that did not end cleanly (its record still in RAM: a power cut
+loses it) is written to **`SD:/etc/lastcrash.txt`** and noted in `kmsg` (`crashlog`). Best
+effort: nothing if the RAM did not keep its contents through the reset.
+
+The panic screen is now copied into the displayed frame buffer **by the CPU** (not the DMA:
+the compositor's display DMA may be in flight, and waiting for it hung the panic before its
+screen and its SOS).
+
 ---
 
 ## 14. App cores (cores 2 and 3)

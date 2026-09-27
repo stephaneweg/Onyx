@@ -1,6 +1,7 @@
 //
 // debugcon.cpp -- see debugcon.h.
 //
+#include <kern/crashlog.h>
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
 #include <circle/2dgraphics.h>
@@ -88,6 +89,7 @@ CLogSwitch::CLogSwitch (void)
 
 int CLogSwitch::Write (const void *pBuffer, size_t nCount)
 {
+	CrashLogText (pBuffer, nCount);			// (the crash record's log tail)
 	CDevice *pTarget = (m_bDebug && m_pDebug != 0) ? m_pDebug : m_bMuted ? 0 : m_pNormal;
 	if (pTarget != 0)
 	{

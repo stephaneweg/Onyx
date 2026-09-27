@@ -110,7 +110,12 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   folders stay in memory, so opening files and listing folders no longer asks the card for
   every sector; writes still go to the card at once). For comparisons with `fsbench`.
 - **`dispdma`**: `dispdma=0` makes the compositor's copies to the screen synchronous again (the
-  asynchronous 2D DMA, docs/05 §12, off) — to tell a display problem from another one.
+  2D DMA started then polled, docs/05 §12, off) — to tell a display problem from another one.
+- **`hangreboot`**: the **hang watchdog**, in seconds (default `15`, `0` = off): if Onyx freezes
+  (the green LED stops blinking), the Pi restarts by itself after that time, and the next boot
+  writes what it was doing (the last kernel log lines, where the processor was stuck, what the
+  GPU and the display were doing, a panic's registers) to **`SD:/etc/lastcrash.txt`**. Send that
+  file along with a freeze report.
 - **`gpudirect`**: `gpudirect=0`: the GPU renders into its own buffer, then copied, instead of
   writing the window's (or the full screen's) pixels itself — the same kind of test.
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).

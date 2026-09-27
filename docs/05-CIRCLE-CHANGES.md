@@ -508,8 +508,24 @@ void C2DGraphics::UpdateDisplayAsync (unsigned x, unsigned y, unsigned w, unsign
 The overloads clean only the rectangle's rows from the data cache (not the whole span). The
 partial `UpdateDisplay (x, y, w, h)` of patch 6 now uses `SetAreaPitch` (the gathering buffer is
 gone). `UpdateDisplayAsync` starts the DMA and returns; the routine runs from the DMA's
-interrupt. The Onyx compositor (`CCompositorTask::Present`, kernel.cpp) yields to the other
-tasks until it is called, and draws nothing into the off-screen buffer meanwhile.
+interrupt.
+
+**Polled, without the interrupt.** Under a heavy GPU load (Ocarina of Time in `n64emu`) a
+completion interrupt was now and then never seen, and the compositor waited for ever (the
+screen, the apps presenting, the sound feeder behind them: all stuck). So the compositor
+(`CCompositorTask::Present`, kernel.cpp) no longer uses `UpdateDisplayAsync`; it starts the DMA
+and polls it between yields:
+
+```cpp
+boolean C2DGraphics::UpdateDisplayStart (unsigned x, unsigned y, unsigned w, unsigned h); // FALSE: done at once
+boolean C2DGraphics::UpdateDisplayPoll (void);                  // TRUE once the transfer is over
+boolean CBcmFrameBuffer::SetAreaPitchStart (const TArea &, const void *, unsigned nSourcePitch);
+boolean CBcmFrameBuffer::SetAreaPoll (void);                    // (frees the frame buffer's DMA channel)
+boolean CDMAChannel::Poll (void);  boolean CDMA4Channel::Poll (void);   // not active any more
+```
+
+It draws nothing into the off-screen buffer until the poll says done. `cmdline.txt
+dispdma=0` still makes every copy synchronous (`UpdateDisplay`).
 
 ## 13. SD card partitions as volumes, exFAT
 
@@ -573,6 +589,17 @@ cd circle && ./configure -r 4 -p aarch64-none-elf- -d DEPTH=32 -f
 ```
 
 See the [Developer Guide §2](03-DEVELOPER-GUIDE.md) for the full Circle build.
+
+## 15. A crash area kept out of the heap
+
+**Why.** A frozen Pi (a kernel hang, a bus wedged by the GPU) leaves nothing to read: `kmsg` is
+gone with the session. Onyx keeps a crash record in RAM that survives the watchdog's reboot.
+
+**What.** `CMemorySystem::SetupHighMemAbove4G` (`lib/memory64.cpp`) keeps the top
+`ONYX_CRASH_AREA_SIZE` (64 KB) of the `[3 GB, RAM top)` low-RAM top out of the high heap and
+publishes its address in `u64 g_ulOnyxCrashArea` (`include/circle/memory.h`; 0 when the board
+has no RAM there, e.g. 2 GB). It stays mapped NORMAL (cacheable): the kernel cleans each write to
+the point of coherency. See [docs/02 §13](02-KERNEL-INTERNALS.md).
 
 ## Updating the fork (submodule)
 

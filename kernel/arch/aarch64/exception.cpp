@@ -7,6 +7,7 @@
 //
 #include <kern/trapframe.h>
 #include <kern/appcore.h>
+#include <kern/crashlog.h>
 #include <circle/multicore.h>
 #include <kern/layout.h>		// IS_USER_VA (preempt-gate classification)
 #include <kern/gui/gimage.h>
@@ -19,6 +20,9 @@
 #include <circle/startup.h>		// halt()
 #include <circle/actled.h>		// panic SOS on the ACT LED (headless)
 #include <circle/timer.h>		// SimpleMsDelay
+#include <circle/bcmframebuffer.h>	// the panic screen, by the CPU
+#include <circle/synchronize.h>
+#include <circle/util.h>
 #include <circle/types.h>
 
 // Panic surface: the framebuffer actually shown on HDMI (the compositor's
@@ -52,13 +56,18 @@ static void PanicToScreen (unsigned nEC, u64 ulELR, u64 ulFAR, u64 ulSPSR)
 	Line.Format ("FAR=%lp  SPSR=%lp", (void *) ulFAR, (void *) ulSPSR);
 	Img.DrawText (16, 56, (const char *) Line, 0x00FFFF00);
 
-	// UpdateDisplay() DMAs the frame out, and Circle's DMA path enters a critical
-	// section that asserts FIQ is NOT masked (synchronize64.cpp). The exception entry
-	// masked everything, so without this the panic screen tripped that assert and
-	// stayed black -- faults looked like silent hangs. Unmask FIQ just for the present.
-	asm volatile ("msr daifclr, #1" ::: "memory");
-	s_pPanicGraphics->UpdateDisplay ();				// push to the display
-	asm volatile ("msr daifset, #1" ::: "memory");
+	// Copied into the displayed frame buffer by the CPU, not by UpdateDisplay's DMA: the
+	// compositor's display DMA may be in flight (its channel taken, its completion never
+	// seen with the IRQs masked here), and waiting for it hung the panic before the screen
+	// and the SOS -- a panic then looked like a silent hang.
+	CBcmFrameBuffer *pFB = (CBcmFrameBuffer *) s_pPanicGraphics->GetDisplay ();
+	u8 *pDst = pFB != 0 ? (u8 *) (uintptr) pFB->GetBuffer () : 0;
+	if (pDst == 0 || pFB->GetDepth () != 32) return;
+	unsigned nPitch = pFB->GetPitch ();
+	const u8 *pSrc = (const u8 *) s_pPanicGraphics->GetBuffer ();
+	for (int y = 0; y < nH; y++)
+		memcpy (pDst + (unsigned) y * nPitch, pSrc + (unsigned) y * (unsigned) nW * 4, (unsigned) nW * 4);
+	CleanDataCacheRange ((uintptr) pDst, (unsigned) nH * nPitch);
 }
 
 // Headless sign of a kernel panic: blink SOS (... --- ...) on the green ACT LED forever,
@@ -120,6 +129,16 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 	Frame.unused   = 0;
 
 	unsigned nEC = (unsigned) ((Frame.esr_el1 >> 26) & 0x3F);
+
+	// The crash record first (read back after the watchdog reboot: SD:/etc/lastcrash.txt).
+	{
+		CString Line;
+		Line.Format ("EC=%#x ELR=%lp FAR=%lp SPSR=%lp LR=%lp SP=%lp task %s", nEC, (void *) pFrame->elr_el1,
+			     (void *) Frame.far_el1, (void *) pFrame->spsr_el1, (void *) pFrame->x[30], (void *) Frame.sp_el1,
+			     CScheduler::IsActive () && CScheduler::Get ()->GetCurrentTask ()
+			     ? CScheduler::Get ()->GetCurrentTask ()->GetName () : "-");
+		CrashLogPanic (Line);
+	}
 
 	// Paint a visible red panic (EC/ELR/FAR) on the displayed framebuffer -- the
 	// boot console is no longer scanned out once the compositor runs.
@@ -233,6 +252,8 @@ void KernelIRQExit (TTrapFrame *pFrame)
 	{
 		return;
 	}
+
+	CrashLogSample (pFrame);			// (the crash record: where core 0 was)
 
 	// Stall watchdog: where is the current task, if it has not yielded for too long?
 	CScheduler::Get ()->StallSample (pFrame->elr_el1, pFrame->x[30]);

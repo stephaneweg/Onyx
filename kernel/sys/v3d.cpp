@@ -17,6 +17,7 @@
 // answered from an overflow pool. CPU caches: cleaned before the GPU reads, invalidated
 // before we read what it wrote. The result is copied into the caller's pixels (0x00RRGGBB).
 //
+#include <kern/crashlog.h>
 #include <kern/kapi_abi.h>
 #include <kern/v3d_cl.h>
 #include <kern/v3d_tiling.h>
@@ -501,6 +502,7 @@ static int Run (CList &B, CList &R, CList &Ind, u32 nAllocSize)
 	write32 (V3D_CLE_CT0QMS, nAllocSize);
 	write32 (V3D_CLE_CT0QTS, s_TileState.Bus () | (1 << 1));
 	write32 (V3D_CLE_CT0QBA, B.Start ());
+	CrashLogCrumb (CRUMB_V3D, 2);
 	write32 (V3D_CLE_CT0QEA, B.Start () + B.Size ());
 	if (!WaitCounter (s_BinDone, V3D_CLE_BFC, nBfc)) { Fail ("binning"); return -3; }
 
@@ -508,8 +510,10 @@ static int Run (CList &B, CList &R, CList &Ind, u32 nAllocSize)
 	InvalidateGpuCaches ();
 	u32 nRfc = read32 (V3D_CLE_RFC) & 0xFF;
 	write32 (V3D_CLE_CT1QBA, R.Start ());
+	CrashLogCrumb (CRUMB_V3D, 3);
 	write32 (V3D_CLE_CT1QEA, R.Start () + R.Size ());
 	if (!WaitCounter (s_RenderDone, V3D_CLE_RFC, nRfc)) { Fail ("rendering"); return -3; }
+	CrashLogCrumb (CRUMB_V3D, 0);
 
 	return 0;
 }
@@ -914,7 +918,9 @@ extern "C" int kapi_gpu_texture (int nHandle, const unsigned *pPixels, int w, in
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame reads them)
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
+	CrashLogCrumb (CRUMB_V3D, 4);
 	int r = s_nState > 0 ? Texture (nHandle, pPixels, w, h, nStride) : -1;
+	CrashLogCrumb (CRUMB_V3D, 0);
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
 	return r;
@@ -989,9 +995,11 @@ extern "C" int kapi_gpu_render (const kapi_gpu_frame *pF, const kapi_gpu_vertex3
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
 	unsigned nCV = 0, nCB = 0;
+	CrashLogCrumb (CRUMB_V3D, 1);
 	int r = s_nState <= 0 ? -1
 	      : !ClipFrame (pV, nV, pB, nB, &nCV, &nCB) ? -4
 	      : Render (*pF, s_pClipV, nCV, s_pClipB, nCB);
+	CrashLogCrumb (CRUMB_V3D, 0);
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
 	return r;
