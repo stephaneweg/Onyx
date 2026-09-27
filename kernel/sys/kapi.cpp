@@ -1847,6 +1847,7 @@ void *kapi_sbrk (long nIncrement)
 void kapi_reboot (void)
 {
 	CrashLogCleanEnd ();
+	CrashLogClockSave ();
 	reboot ();
 }
 
@@ -2018,6 +2019,7 @@ void kapi_shutdown (int nMode)
 	CLogger::Get ()->Write ("kernel", LogNotice, "session end: %s", nMode ? "restart" : "halt");
 	CScheduler::Get ()->MsSleep (300);		// let the last frame / log line out
 	CrashLogCleanEnd ();				// (a clean end: no crash report, no watchdog)
+	CrashLogClockSave ();				// (the time for the next boot)
 	f_mount (0, "SD:", 0);				// unmount: flush + release the volumes
 	f_mount (0, "SD1:", 0); f_mount (0, "SD2:", 0); f_mount (0, "SD3:", 0);
 	if (nMode == 1)

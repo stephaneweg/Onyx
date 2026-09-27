@@ -111,6 +111,9 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   every sector; writes still go to the card at once). For comparisons with `fsbench`.
 - **`dispdma`**: `dispdma=0` makes the compositor's copies to the screen synchronous again (the
   2D DMA started then polled, docs/05 §12, off) — to tell a display problem from another one.
+- **The date of the files**: the Pi has no clock of its own; Onyx keeps the last time it knew in
+  `SD:/etc/clock` (every 10 minutes and at shutdown) and starts from it at boot, until the
+  network time (NTP) corrects it — so the files written early at boot get a date too.
 - **`hangreboot`**: the **hang watchdog**, in seconds (default `15`, `0` = off): if Onyx freezes
   (the green LED stops blinking), core 1 notices it after 10 s, writes a report into the
   sectors of `SD:/etc/crashdump.txt` (prepared at boot) and restarts the Pi (the hardware watchdog

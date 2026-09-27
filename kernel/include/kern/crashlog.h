@@ -31,7 +31,9 @@ void CrashLogText (const void *pText, size_t nCount);	// (the logger's output, C
 void CrashLogSample (const TTrapFrame *pFrame);		// (core 0, each IRQ)
 void CrashLogAlive (void);				// (the reaper, 20 times a second: uptime + watchdog)
 void CrashLogCrumb (unsigned nIndex, u32 nValue);
-void CrashLogPower (void);				// (once a second: throttling + temperature -> kmsg, record)
+void CrashLogPower (void);
+void CrashLogClockRestore (void);			// (boot, SD: mounted: SD:/etc/clock until NTP)
+void CrashLogClockSave (void);				// (every 10 minutes, shutdown / reboot)				// (once a second: throttling + temperature -> kmsg, record)
 void CrashLogPanic (const char *pLine);			// before the panic screen
 void CrashLogCleanEnd (void);				// shutdown / reboot: stops the watchdog
 

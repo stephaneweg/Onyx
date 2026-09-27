@@ -520,3 +520,39 @@ void CrashLogPower (void)
 					"SoC %u C, throttling: %s (%08X)", nTemp, ThrottleText (nThr, Buf), nThr);
 	s_bFirst = FALSE; s_nLastThr = nThr; s_nLastTempStep = nStep;
 }
+
+// ---- the clock kept across boots (no battery-backed clock on the Pi) ------------------------------------
+// Until NTP answers (~15 s after boot, if the network comes up at all), the time was 0 and the
+// files written meanwhile (crashdump.txt, lastcrash.txt...) had no date. SD:/etc/clock holds the
+// last time seen (UTC seconds, text), written every 10 minutes and at shutdown / reboot; at boot
+// it is the time until NTP corrects it (behind by how long the Pi was off).
+#define CLOCK_PATH	"SD:/etc/clock"
+#define CLOCK_VALID	1700000000u			// (2023: a time NTP or the file gave)
+
+void CrashLogClockRestore (void)
+{
+	if (CTimer::Get ()->GetUniversalTime () >= CLOCK_VALID) return;
+	FIL File; UINT n; char Buf[24];
+	if (f_open (&File, CLOCK_PATH, FA_READ) != FR_OK) return;
+	boolean bOK = f_read (&File, Buf, sizeof Buf - 1, &n) == FR_OK;
+	f_close (&File);
+	if (!bOK) return;
+	Buf[n] = 0;
+	unsigned nTime = 0;
+	for (unsigned i = 0; Buf[i] >= '0' && Buf[i] <= '9'; i++) nTime = nTime * 10 + (unsigned) (Buf[i] - '0');
+	if (nTime < CLOCK_VALID) return;
+	CTimer::Get ()->SetTime (nTime, FALSE);
+	CLogger::Get ()->Write ("clock", LogNotice, "time restored from %s (until NTP)", CLOCK_PATH);
+}
+
+void CrashLogClockSave (void)
+{
+	unsigned nTime = CTimer::Get ()->GetUniversalTime ();
+	if (nTime < CLOCK_VALID) return;
+	char Buf[16]; int i = 15; Buf[i] = 0; Buf[--i] = '\n';
+	do { Buf[--i] = (char) ('0' + nTime % 10); nTime /= 10; } while (nTime != 0);
+	FIL File; UINT n;
+	if (f_open (&File, CLOCK_PATH, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK) return;
+	f_write (&File, Buf + i, (UINT) (15 - i), &n);
+	f_close (&File);
+}

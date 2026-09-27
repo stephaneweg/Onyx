@@ -87,3 +87,4 @@ sdcard/doom/*.WAD
 sdcard/doom/savegame/
 sdcard/doom/*.cfg
 user/doom/build/
+sdcard/etc/clock

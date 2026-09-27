@@ -476,6 +476,7 @@ public:
 			unsigned nNow = CTimer::Get ()->GetTicks ();
 
 			CrashLogPower ();			// (under-voltage / heat: kmsg + the crash record)
+			if (nSec % 600 == 60) CrashLogClockSave ();	// (SD:/etc/clock: the time at the next boot)
 
 			// 1. Compositor liveness.
 			unsigned nFrames = m_pWM->FrameCount ();
@@ -1517,6 +1518,7 @@ boolean CKernel::Initialize (void)
 				}
 			}
 
+			CrashLogClockRestore ();	// the last time seen (no clock on the Pi) until NTP
 			CrashLogReport ();		// the previous session, if it froze: SD:/etc/lastcrash.txt
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda

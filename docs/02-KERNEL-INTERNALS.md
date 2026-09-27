@@ -924,6 +924,12 @@ now, or since boot) and the SoC temperature. A change (or each 5 °C above 60 °
 highest temperature go into the crash record (breadcrumbs 2–4), printed in every report — a
 freeze that only a cold boot brings back smells of the supply or the heat.
 
+**The clock across boots.** The Pi has no battery-backed clock: until NTP answers (~15 s),
+the time was 0 and the files written meanwhile (`crashdump.txt`, `lastcrash.txt`) had no date.
+`SD:/etc/clock` keeps the last time seen (UTC seconds, text; written every 10 minutes by the GUI
+watchdog task and by `kapi_shutdown` / `kapi_reboot`) and is read back at boot, right after SD: is
+mounted (`CrashLogClockRestore`) — behind by how long the Pi was off, until NTP corrects it.
+
 Headless signs on the green ACT LED (a GPIO set / clear, no lock): **3 s of fast blinks** when
 core 1 sees the hang, the SD write's own flicker, then **3 s lit** (written) or **3 slow blinks**
 (the write failed) before the restart; no blinking at all = core 1 stuck too (a wedged bus).
