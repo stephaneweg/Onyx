@@ -71,6 +71,8 @@ public:
 	bool load (const u8 *rom, u32 size);		// false: not an N64 ROM
 	void reset ();
 	void runFrame ();				// until the next vertical interrupt of the VI
+	void setAudioRate (int hz);			// the host's sample rate (0: no sound kept)
+	int  audioRead (short *lr, int maxFrames);	// stereo frames at that rate, → how many
 	void setPad (int n, u32 buttons, int x, int y) { if (n >= 0 && n < 4) { padBtn[n] = (u16) buttons; padX[n] = (s8) x; padY[n] = (s8) y; } }
 
 	// the picture of the last frame (from the VI registers), 0x00RRGGBB
@@ -127,6 +129,7 @@ public:
 	u32  rspTasks[8];				// the tasks run, by type
 	u32  irqCount[6];				// MI interrupts raised: SP SI AI VI PI DP
 	u32  lastTask;
+	u32  audioTasks, audioUnknown;			// audio tasks done / of a microcode not known
 	u32  excCount[32]; u32 lastExcPc = 0; int lastExcCode = -1;	// (the tests)
 #ifdef N64_TRACE
 	bool traceOn = false; u32 traceBuf[4096]; u64 traceN = 0;
@@ -233,6 +236,24 @@ private:
 	bool frameDone;
 	// audio
 	u32  aiFifo[2][2]; int aiCount;			// the queued DMAs (address, length)
+	u32  aiRate () const;
+	void aiOutput (u32 addr, u32 len, u32 rate);
+	enum { ABUF = 8192 };
+	s16  abuf[ABUF * 2]; u32 aHead, aTail;		// the output ring (host rate)
+	u32  outRate, resAcc; s32 lastL, lastR;
+	// the audio microcode (n64_audio.cpp): its DMEM image and its state
+	void audioTask ();
+	s16  aS (u32 a);
+	void aW (u32 a, s16 v);
+	void aLoad (u32 dmem, u32 addr, u32 count);
+	void aSave (u32 dmem, u32 addr, u32 count);
+	void aAdpcm (u32 flags, u32 state);
+	void aResample (u32 flags, u32 pitch, u32 state);
+	void aEnvMix (u32 w0, u32 w1);
+	u8   aDmem[4096];
+	s16  aBook[256];
+	u32  aIn, aOut, aCount, aLoop;
+	u16  aEnvV[3], aEnvS[3];
 	// the controllers
 	u16  padBtn[4]; s8 padX[4], padY[4];
 };

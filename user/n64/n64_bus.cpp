@@ -22,6 +22,7 @@ Machine::Machine () : rdram (0), rom (0), romSize (0)
 	zero (sram, sizeof sram); zero (eeprom, sizeof eeprom);
 	sramDirty = eepromDirty = false; eepromSize = 0; saveType = 0;
 	pal = false; cic = 6102; title[0] = 0;
+	outRate = 0; aHead = aTail = 0;
 	for (int i = 0; i < 4; i++) { padBtn[i] = 0; padX[i] = padY[i] = 0; }
 	reset ();
 }
@@ -106,6 +107,9 @@ void Machine::reset ()
 	for (int i = 0; i < 8; i++) rspTasks[i] = 0;
 	for (int i = 0; i < 6; i++) irqCount[i] = 0;
 	lastTask = 0;
+	audioTasks = audioUnknown = 0;
+	resAcc = 0; lastL = lastR = 0; aIn = aOut = aCount = aLoop = 0;
+	zero (aDmem, sizeof aDmem); zero (aBook, sizeof aBook); zero (aEnvV, sizeof aEnvV); zero (aEnvS, sizeof aEnvS);
 	for (int i = 0; i < 32; i++) excCount[i] = 0;
 	viLineNow = 0; viLines = pal ? 313 : 263;
 	viCyclesLine = (u64) ((pal ? CPU_HZ / 50 : CPU_HZ / 60) / viLines);
@@ -461,8 +465,8 @@ void Machine::pifProcess ()
 void Machine::aiPush ()
 {
 	u32 len = aiFifo[0][1];
-	u32 rate = ((pal ? VI_CLOCK_PAL : VI_CLOCK_NTSC) / ((ai[4] & 0x3FFF) + 1));
-	if (rate < 4000) rate = 4000;
+	u32 rate = aiRate ();
+	aiOutput (aiFifo[0][0], len, rate);
 	u64 samples = len / 4;
 	schedule (EV_AI, samples * (u64) CPU_HZ / rate + 1);
 }
@@ -510,7 +514,7 @@ void Machine::spStatusWrite (u32 v)
 	if (wasHalted && !(s & 1)) runRsp ();
 }
 
-// The RSP started: its task is done at once, at a high level (n64_gfx.cpp / n64_audio.cpp later).
+// The RSP started: its task is done at once, at a high level (n64_gfx.cpp, n64_audio.cpp).
 void Machine::runRsp ()
 {
 	u32 type = dmem[0xFC0 / 4];					// the OSTask: 1 graphics, 2 audio
@@ -519,6 +523,7 @@ void Machine::runRsp ()
 	sp[4] |= 1 | 2 | 0x200;						// halted, broke, signal 2 (task done)
 	if (sp[4] & 0x40) schedule (EV_SP, 1000);
 	if (type == 1) { gfxTask (); schedule (EV_DP, 2000); }		// (the display list's full sync)
+	else if (type == 2) audioTask ();
 }
 
 // An 8 or 16-bit read: on the PI bus, the word at the address rounded to 2 (the CPU then takes

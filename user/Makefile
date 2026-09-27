@@ -98,7 +98,7 @@ SNES_OBJS = snes/snes.o snes/snes_cpu.o snes/snes_ppu.o snes/snes_apu.o
 snes/%.o: snes/%.cpp snes/snes.h snes/snes_gauss.inc
 	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
 # The Nintendo 64 core (n64/: the FPU is used: FP/SIMD flags), for n64emu.
-N64_OBJS = n64/n64_cpu.o n64/n64_bus.o n64/n64_gfx.o
+N64_OBJS = n64/n64_cpu.o n64/n64_bus.o n64/n64_gfx.o n64/n64_audio.o
 n64/%.o: n64/%.cpp n64/n64.h
 	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -fno-math-errno -O3 -I. -c $< -o $@
 n64/libn64.a: $(N64_OBJS)

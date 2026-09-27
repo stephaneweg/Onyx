@@ -66,6 +66,8 @@ int main (int argc, char **argv)
 	n64::Machine *m = new n64::Machine;
 	if (!m->load (d, (unsigned) n)) { printf ("load failed\n"); return 1; }
 	int frames = atoi (argv[2]);
+	FILE *wav = 0; long wavN = 0;				// N64_WAV=out.wav: the sound, 32 kHz stereo
+	if (getenv ("N64_WAV")) { wav = fopen (getenv ("N64_WAV"), "wb"); m->setAudioRate (32000); if (wav) fseek (wav, 44, SEEK_SET); }
 	clock_t t0 = clock ();
 	for (int i = 0; i < frames && !m->halted; i++)
 	{
@@ -73,6 +75,7 @@ int main (int argc, char **argv)
 		m->traceOn = i == frames - 1;
 #endif
 		m->runFrame ();
+		if (wav) { short pcm[8192]; int k; while ((k = m->audioRead (pcm, 4096)) > 0) { fwrite (pcm, 4, (size_t) k, wav); wavN += k; } }
 		if (getenv ("N64_GFXEVERY") && i % atoi (getenv ("N64_GFXEVERY")) == 0 && getenv ("N64_GFX"))
 		{
 			char p[256]; snprintf (p, sizeof p, "%s_%05d.ppm", getenv ("N64_GFX"), i);
@@ -80,6 +83,12 @@ int main (int argc, char **argv)
 		}
 	}
 	double s = (double) (clock () - t0) / CLOCKS_PER_SEC;
+	if (wav)
+	{
+		unsigned hd[11] = { 0x46464952, (unsigned) (36 + wavN * 4), 0x45564157, 0x20746D66, 16, 0x00020001, 32000, 128000, 0x00100004, 0x61746164, (unsigned) (wavN * 4) };
+		fseek (wav, 0, SEEK_SET); fwrite (hd, 4, 11, wav); fclose (wav);
+		printf ("sound: %ld frames (%.1f s), audio tasks %u, of an unknown microcode %u\n", wavN, wavN / 32000.0, m->audioTasks, m->audioUnknown);
+	}
 	printf ("%s: CIC %u, %s, %d frames, %.2f s (%.1f fps), pc %08X, %dx%d%s%s\n", m->title, m->cic, m->pal ? "PAL" : "NTSC",
 		frames, s, frames / (s > 0 ? s : 1), m->pc, m->fbW, m->fbH, m->halted ? " HALTED: " : "", m->haltMsg);
 	if (getenv ("N64_STATE"))

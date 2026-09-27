@@ -12,7 +12,9 @@
 //     (bottom) = A, X (left) = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons,
 //     the D-pad. F11: full screen (Esc back), F12: the speed, P: pause.
 //   * The cartridge's save (SRAM / EEPROM) is <rom>.sav beside the ROM.
-//   * No sound yet.
+//   * The sound: the audio tasks of Zelda Ocarina of Time / Majora's Mask (their microcode, at a
+//     high level: user/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
+//     audio queue's (as snesemu), else the clock. Sound > Sound On / Off.
 //
 #include "kapi.h"
 #include "launch.h"
@@ -29,6 +31,9 @@ static unsigned char *g_rom = 0;
 static char g_rom_path[256], g_sav_path[260];
 static int g_zoom = 2;
 static bool g_paused = false;
+static bool g_sound = true;
+static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
+static volatile bool g_audioOn = false;				// the machine's sound is kept
 static unsigned *g_fs = 0; static int g_fsw, g_fsh;
 static Root *g_root = 0;
 static bool g_stats = false;
@@ -197,6 +202,11 @@ static void on_zoom1 () { set_zoom (1); }
 static void on_zoom2 () { set_zoom (2); }
 static void on_zoom3 () { set_zoom (3); }
 static void on_full () { full_screen (!g_fs); }
+static void on_sound ()
+{
+	g_sound = !g_sound;
+	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+}
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
 static void on_reset () { ec_hold (&g_ec); save_ram (); g_m->reset (); load_ram (); ec_resume (&g_ec); }
@@ -269,6 +279,9 @@ static void n64_frame (EmuCore *ec)
 	int n = g_m->fbW * g_m->fbH;
 	for (int i = 0; i < n; i++) d[i] = g_m->fb[i];
 	ec_publish (ec);
+	static short pcm[4096 * 2];
+	int k;
+	while ((k = g_m->audioRead (pcm, 4096)) > 0) if (g_audioOn) ec_audio_push (ec, pcm, k);
 }
 
 int main (void)
@@ -344,9 +357,14 @@ int main (void)
 	menu.item ("Zoom 3x",      "",    0, on_zoom3);
 	menu.separator ();
 	menu.item ("Show Speed",   "F12", 0, on_stats);
+	menu.menu ("Sound");
+	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.publish ();
 	if (wantFull) full_screen (true);
 
+	static short pcm[4096 * 2];
+	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0, stQueued = 0;
+	g_m->setAudioRate (SOUND_RATE);
 	if (!ec_init (&g_ec, n64::FB_MAX_W, n64::FB_MAX_H, n64_frame)) return 1;
 	g_loading = false;
 
@@ -359,10 +377,32 @@ int main (void)
 		pump_events ();
 		g_ec.btn = pad_state ();
 		if (g_paused) { show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
+		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		unsigned fps = fps100 ();
-		unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * fps / 10000);
-		if (due - asked > 4 && due > asked) asked = due - 1;		// far behind: do not race
-		if (asked < due && ec_pending (&g_ec) == 0) { ec_request (&g_ec, 1); asked++; }
+		// with sound the game's audio paces it (kept ~60 ms ahead; a game without sound of ours
+		// leaves the queue empty: then the clock), else the clock
+		bool audio = g_sound && g_audio == 1;
+		unsigned queued = 0;
+		if (audio)
+		{
+			kapi_sound_status (&rate, &freeFrames, &owner);
+			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
+			queued = cap - freeFrames;
+			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
+			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			stQueued = queued;
+		}
+		if (audio && g_m->audioTasks > 0)
+		{
+			if (queued + ec_audio_count (&g_ec) < 2600 && ec_pending (&g_ec) == 0) ec_request (&g_ec, 1);
+			t0 = kapi_get_ticks (); asked = 0;
+		}
+		else
+		{
+			unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * fps / 10000);
+			if (due - asked > 4 && due > asked) asked = due - 1;		// far behind: do not race
+			if (asked < due && ec_pending (&g_ec) == 0) { ec_request (&g_ec, 1); asked++; }
+		}
 		ec_pump (&g_ec);
 		if (ec_pending (&g_ec) == 0 && ec_take (&g_ec))
 		{
@@ -384,6 +424,7 @@ int main (void)
 			fmt_num (g_statText, &k, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &k, " ms  draw ");
 			fmt_num (g_statText, &k, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &k, " ms");
 			cat (g_statText, &k, g_gfxAge < 30 ? "  GPU" : "  framebuffer");
+			if (g_sound && g_audio == 1 && g_m->audioTasks) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); }
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
 		}
