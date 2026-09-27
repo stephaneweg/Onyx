@@ -1,0 +1,54 @@
+From cfc99bbb5d928d9562511f8f61a6240632f36afa Mon Sep 17 00:00:00 2001
+From: stephaneweg <steph.wegener@gmail.com>
+Date: Sun, 27 Sep 2026 22:32:18 +0000
+Subject: [PATCH] sched/scheduler: Do not panic when waking a task, whose
+ timeout expired
+
+A task waiting with CSynchronizationEvent::WaitWithTimeout() is set ready by
+GetNextTask() when its timeout expires, but it stays on the event's wait list
+until it runs again and removes itself in BlockTask(). If the event is set in
+this window, which is possible, because Set() can be called from interrupt
+context, WakeTasks() finds a task, which is not blocked any more, and the
+assertion (or the LogPanic with NDEBUG) halts the system.
+
+Such a task has already been woken, so it is only removed from the list now.
+---
+ lib/sched/scheduler.cpp | 20 ++++++++------------
+ 1 file changed, 8 insertions(+), 12 deletions(-)
+
+diff --git a/lib/sched/scheduler.cpp b/lib/sched/scheduler.cpp
+index 700105b3..025cbe7b 100644
+--- a/lib/sched/scheduler.cpp
++++ b/lib/sched/scheduler.cpp
+@@ -388,20 +388,16 @@ void CScheduler::WakeTasks (CTask **ppWaitListHead)
+ 
+ 	while (pTask)
+ 	{
+-#ifdef NDEBUG
+-		if (   pTask == 0
+-		    ||    (pTask->GetState () != TaskStateBlocked
+-		       && pTask->GetState () != TaskStateBlockedWithTimeout))
++		// A task, which waits with a timeout, is set ready by GetNextTask() when the
++		// timeout expires, but it remains on the wait list until it runs again and removes
++		// itself in BlockTask(). If the event is set in this window (e.g. from an interrupt
++		// handler), the task is not blocked any more. It has been woken already, so it is
++		// only removed from the list here.
++		if (   pTask->GetState () == TaskStateBlocked
++		    || pTask->GetState () == TaskStateBlockedWithTimeout)
+ 		{
+-			CLogger::Get ()->Write (FromScheduler, LogPanic, "Tried to wake non-blocked task");
++			pTask->SetState (TaskStateReady);
+ 		}
+-#else
+-		assert (pTask != 0);
+-		assert (   pTask->GetState () == TaskStateBlocked
+-		        || pTask->GetState () == TaskStateBlockedWithTimeout);
+-#endif
+-
+-		pTask->SetState (TaskStateReady);
+ 
+ 		CTask* pNext = pTask->m_pWaitListNext;
+ 		pTask->m_pWaitListNext = 0;
+-- 
+2.43.0
+

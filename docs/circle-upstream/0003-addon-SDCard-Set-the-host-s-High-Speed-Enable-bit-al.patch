@@ -1,0 +1,46 @@
+From cc8f0b354dec077cd00356cff10a19eff181a8d5 Mon Sep 17 00:00:00 2001
+From: stephaneweg <steph.wegener@gmail.com>
+Date: Sun, 27 Sep 2026 22:33:48 +0000
+Subject: [PATCH] addon/SDCard: Set the host's High Speed Enable bit; align the
+ CMD6 buffer
+
+When the card has been switched to High Speed mode with CMD6, the clock was
+raised to 50 MHz, but the High Speed Enable bit of the host controller
+(CONTROL0 bit 2, HCTL_HS_EN in the SD Host Controller Simplified Specification)
+was not set, so the host kept sampling with the Default Speed timing. Set it
+before raising the clock.
+
+The 64-byte CMD6 status buffer is a u8 array on the stack, but the PIO data
+transfer reads it word by word and asserts a word-aligned m_buf: align it.
+---
+ addon/SDCard/emmc.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/addon/SDCard/emmc.cpp b/addon/SDCard/emmc.cpp
+index 2e921a54..ba6aa5d7 100644
+--- a/addon/SDCard/emmc.cpp
++++ b/addon/SDCard/emmc.cpp
+@@ -2162,7 +2162,7 @@ int CEMMCDevice::CardReset (void)
+ 		if (m_pSCR->sd_version >= SD_VER_1_1)
+ 		{
+ 			// 512 bit response
+-			u8 cmd6_resp[64];
++			u8 cmd6_resp[64] __attribute__ ((aligned (4)));	// read word by word
+ 			m_buf = &cmd6_resp[0];
+ 			m_block_size = 64;
+ 
+@@ -2192,6 +2192,11 @@ int CEMMCDevice::CardReset (void)
+ 					{
+ 						// Success; switch clock to 50MHz
+ #ifndef USE_SDHOST
++						// Set the host's High Speed Enable bit first (CONTROL0 bit 2,
++						// HCTL_HS_EN in the SD Host Controller spec), so that it samples
++						// with the High Speed timing
++						u32 control0 = read32 (EMMC_CONTROL0);
++						write32 (EMMC_CONTROL0, control0 | (1 << 2));
+ 						SwitchClockRate (base_clock, SD_CLOCK_HIGH);
+ #else
+ 						m_Host.SetClock (SD_CLOCK_HIGH);
+-- 
+2.43.0
+

@@ -1,0 +1,176 @@
+From aa54f05be6476060fcf44e6e57112e16d02fa999 Mon Sep 17 00:00:00 2001
+From: stephaneweg <steph.wegener@gmail.com>
+Date: Sun, 27 Sep 2026 22:33:21 +0000
+Subject: [PATCH] heapallocator: Optionally reuse blocks bigger than the
+ largest bucket
+
+Blocks, which are bigger than the largest bucket size, cannot be returned to a
+free list and their memory is lost, when they are freed. An application, which
+allocates and frees big blocks repeatedly (e.g. frame buffers, file buffers),
+runs out of heap after a while.
+
+With the new system option HEAP_LARGE_BLOCK_REUSE (off by default), the size of
+such blocks is rounded up to the next power of two and they are returned to a
+free list per power of two on free, from which the next allocation of the same
+class is served. This costs up to twice the requested size for such blocks.
+---
+ include/circle/heapallocator.h | 10 +++++-
+ include/circle/sysconfig.h     |  9 +++++
+ lib/heapallocator.cpp          | 63 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 81 insertions(+), 1 deletion(-)
+
+diff --git a/include/circle/heapallocator.h b/include/circle/heapallocator.h
+index e82cb51a..6bc29058 100644
+--- a/include/circle/heapallocator.h
++++ b/include/circle/heapallocator.h
+@@ -40,6 +40,10 @@ ASSERT_STATIC (DATA_CACHE_LINE_LENGTH_MAX >= 16);
+ 
+ #define HEAP_BLOCK_MAX_BUCKETS	20
+ 
++#ifdef HEAP_LARGE_BLOCK_REUSE
++#define HEAP_LARGE_LISTS	32		// free lists for blocks of HEAP_BLOCK_ALIGN << n bytes
++#endif
++
+ struct THeapBlockHeader
+ {
+ 	u32			 nMagic;
+@@ -96,7 +100,8 @@ public:
+ 
+ 	/// \param pBlock Memory block to be freed
+ 	/// \note Memory space of blocks, which are bigger than the largest bucket size,\n
+-	///	  cannot be returned to a free list and is lost.
++	///	  cannot be returned to a free list and is lost (unless HEAP_LARGE_BLOCK_REUSE\n
++	///	  is defined in sysconfig.h).
+ 	void Free (void *pBlock);
+ 
+ #ifdef HEAP_DEBUG
+@@ -117,6 +122,9 @@ private:
+ 	u8		*m_pLimit;
+ 	size_t	 	 m_nReserve;
+ 	THeapBlockBucket m_Bucket[HEAP_BLOCK_MAX_BUCKETS+1];
++#ifdef HEAP_LARGE_BLOCK_REUSE
++	THeapBlockHeader *m_pLargeFreeList[HEAP_LARGE_LISTS];
++#endif
+ 	CSpinLock	 m_SpinLock;
+ 
+ 	static u32 s_nBucketSize[];
+diff --git a/include/circle/sysconfig.h b/include/circle/sysconfig.h
+index 566e6eb7..1b28606b 100644
+--- a/include/circle/sysconfig.h
++++ b/include/circle/sysconfig.h
+@@ -88,6 +88,15 @@
+ #define HEAP_BLOCK_BUCKET_SIZES	0x40,0x400,0x1000,0x4000,0x10000,0x40000,0x80000
+ #endif
+ 
++// HEAP_LARGE_BLOCK_REUSE makes blocks, which are bigger than the largest
++// bucket size, reusable: their size is rounded up to the next power of two
++// and they are returned to a free list per power of two, when they are freed
++// (instead of being lost). This costs up to twice the requested size for such
++// blocks, but an application, which allocates and frees big blocks repeatedly
++// (e.g. frame buffers, file buffers), does not run out of heap any more.
++
++//#define HEAP_LARGE_BLOCK_REUSE
++
+ ///////////////////////////////////////////////////////////////////////
+ //
+ // Raspberry Pi 1, Zero (W) and Zero 2 W
+diff --git a/lib/heapallocator.cpp b/lib/heapallocator.cpp
+index f1f93839..c33e194a 100644
+--- a/lib/heapallocator.cpp
++++ b/lib/heapallocator.cpp
+@@ -53,8 +53,38 @@ void CHeapAllocator::Setup (uintptr nBase, size_t nSize, size_t nReserve)
+ 	m_pNext = (u8 *) nBase;
+ 	m_pLimit = (u8 *) (nBase + nSize);
+ 	m_nReserve = nReserve;
++
++#ifdef HEAP_LARGE_BLOCK_REUSE
++	for (unsigned i = 0; i < HEAP_LARGE_LISTS; i++)
++	{
++		m_pLargeFreeList[i] = 0;
++	}
++#endif
++}
++
++#ifdef HEAP_LARGE_BLOCK_REUSE
++
++// Rounds a block size up to HEAP_BLOCK_ALIGN << n, returns n (-1 if too big)
++static int LargeBlockClass (size_t *pnSize)
++{
++	size_t nRounded = HEAP_BLOCK_ALIGN;
++	int nClass = 0;
++	while (nRounded < *pnSize)
++	{
++		nRounded <<= 1;
++		if (++nClass >= HEAP_LARGE_LISTS)
++		{
++			return -1;
++		}
++	}
++
++	*pnSize = nRounded;
++
++	return nClass;
+ }
+ 
++#endif
++
+ size_t CHeapAllocator::GetFreeSpace (void) const
+ {
+ 	return m_pLimit - m_pNext;
+@@ -96,6 +126,14 @@ void *CHeapAllocator::DoAllocate (size_t nSize)
+ 		}
+ 	}
+ 
++#ifdef HEAP_LARGE_BLOCK_REUSE
++	int nLargeClass = -1;
++	if (pBucket->nSize == 0)
++	{
++		nLargeClass = LargeBlockClass (&nSize);
++	}
++#endif
++
+ 	THeapBlockHeader *pBlockHeader;
+ 	if (   pBucket->nSize > 0
+ 	    && (pBlockHeader = pBucket->pFreeList) != 0)
+@@ -103,6 +141,14 @@ void *CHeapAllocator::DoAllocate (size_t nSize)
+ 		assert (pBlockHeader->nMagic == HEAP_BLOCK_FREE_MAGIC);
+ 		pBucket->pFreeList = pBlockHeader->pNext;
+ 	}
++#ifdef HEAP_LARGE_BLOCK_REUSE
++	else if (   nLargeClass >= 0
++		 && (pBlockHeader = m_pLargeFreeList[nLargeClass]) != 0)
++	{
++		assert (pBlockHeader->nMagic == HEAP_BLOCK_FREE_MAGIC);
++		m_pLargeFreeList[nLargeClass] = pBlockHeader->pNext;
++	}
++#endif
+ 	else
+ 	{
+ 		pBlockHeader = (THeapBlockHeader *) m_pNext;
+@@ -237,6 +283,23 @@ void CHeapAllocator::DoFree (void *pBlock)
+ 		}
+ 	}
+ 
++#ifdef HEAP_LARGE_BLOCK_REUSE
++	size_t nSize = pBlockHeader->nSize;
++	int nLargeClass = LargeBlockClass (&nSize);
++	if (   nLargeClass >= 0
++	    && nSize == pBlockHeader->nSize)
++	{
++		m_SpinLock.Acquire ();
++
++		pBlockHeader->pNext = m_pLargeFreeList[nLargeClass];
++		m_pLargeFreeList[nLargeClass] = pBlockHeader;
++
++		m_SpinLock.Release ();
++
++		return;
++	}
++#endif
++
+ #ifdef HEAP_DEBUG
+ 	CLogger::Get ()->Write (m_pHeapName, LogDebug, "Trying to free large block (size %u)",
+ 				pBlockHeader->nSize);
+-- 
+2.43.0
+

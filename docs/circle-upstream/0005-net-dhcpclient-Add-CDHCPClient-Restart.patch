@@ -1,0 +1,78 @@
+From 568beac6200766e8fd49e1145288a1f28f7f1fb3 Mon Sep 17 00:00:00 2001
+From: stephaneweg <steph.wegener@gmail.com>
+Date: Sun, 27 Sep 2026 22:34:35 +0000
+Subject: [PATCH] net/dhcpclient: Add CDHCPClient::Restart ()
+
+When the WLAN joins another network while the system is running (e.g. after
+wpa_supplicant has reloaded its configuration), the DHCP client keeps the old
+lease until its renewal time, so the system keeps an address of the old network.
+
+CDHCPClient::Restart () drops the lease and starts over (discover / request).
+The bound state now sleeps in steps of 0.5 seconds (instead of 10 seconds at a
+time), so that a restart is seen at once.
+---
+ include/circle/net/dhcpclient.h |  5 +++++
+ lib/net/dhcpclient.cpp          | 17 ++++++++++++++++-
+ 2 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/include/circle/net/dhcpclient.h b/include/circle/net/dhcpclient.h
+index 6bbd1489..458a37c0 100644
+--- a/include/circle/net/dhcpclient.h
++++ b/include/circle/net/dhcpclient.h
+@@ -39,6 +39,11 @@ enum TDHCPStatus
+ class CDHCPClient : public CTask
+ {
+ public:
++	/// \brief Drop the lease and request a new one at once (e.g. the WLAN has joined\n
++	///	   another network); takes effect within 0.5 seconds in the bound state
++	static void Restart (void) { s_bRestart = TRUE; }
++	static volatile boolean s_bRestart;
++
+ 	CDHCPClient (CNetSubSystem *pNetSubSystem, const char *pHostname);
+ 	~CDHCPClient (void);
+ 
+diff --git a/lib/net/dhcpclient.cpp b/lib/net/dhcpclient.cpp
+index cad21776..42693a94 100644
+--- a/lib/net/dhcpclient.cpp
++++ b/lib/net/dhcpclient.cpp
+@@ -125,6 +125,8 @@ CDHCPClient::~CDHCPClient (void)
+ 	m_pNetSubSystem = 0;
+ }
+ 
++volatile boolean CDHCPClient::s_bRestart = FALSE;
++
+ void CDHCPClient::Run (void)
+ {
+ 	if (m_Socket.Bind (DHCP_PORT_CLIENT) < 0)
+@@ -139,6 +141,7 @@ void CDHCPClient::Run (void)
+ 	while (1)
+ 	{
+ 	InitState:
++		s_bRestart = FALSE;
+ 		switch (SelectAndRequest ())
+ 		{
+ 		case DHCPStatusSuccess:
+@@ -167,7 +170,19 @@ void CDHCPClient::Run (void)
+ 				CScheduler::Get ()->Yield ();
+ 			}
+ 
+-			CScheduler::Get ()->Sleep (10);
++			for (int k = 0; k < 20 && !s_bRestart; k++)	// 10 seconds, a restart seen at once
++			{
++				CScheduler::Get ()->MsSleep (500);
++			}
++			if (s_bRestart)
++			{
++				break;
++			}
++		}
++		if (s_bRestart)
++		{
++			HaltNetwork ();
++			goto InitState;
+ 		}
+ 
+ 	//RenewingState:
+-- 
+2.43.0
+

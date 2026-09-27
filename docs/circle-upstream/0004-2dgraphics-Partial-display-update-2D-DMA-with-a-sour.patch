@@ -1,0 +1,371 @@
+From 139208016990dc4c42422cb833a9f3f414381445 Mon Sep 17 00:00:00 2001
+From: stephaneweg <steph.wegener@gmail.com>
+Date: Sun, 27 Sep 2026 22:34:28 +0000
+Subject: [PATCH] 2dgraphics: Partial display update, 2D DMA with a source
+ stride
+
+C2DGraphics::UpdateDisplay () copies the whole offscreen buffer to the frame
+buffer. An application, which knows the changed rectangles (a window manager,
+a game with a status line), can now copy only them:
+
+  void C2DGraphics::UpdateDisplay (unsigned nPosX, unsigned nPosY,
+                                   unsigned nWidth, unsigned nHeight);
+  void C2DGraphics::UpdateDisplayAsync (unsigned nPosX, unsigned nPosY,
+                                        unsigned nWidth, unsigned nHeight,
+                                        CDisplay::TAreaCompletionRoutine *pRoutine,
+                                        void *pParam);
+
+The rectangle is read in place from the offscreen buffer: the DMA engines get
+a source stride too (legacy DMA: STRIDE bits 0-15, DMA4: SRCI bits 16-31):
+
+  CDMAChannel::SetupMemCopy2D () / CDMA4Channel::SetupMemCopy2D ()
+      (new overload with nSourceStride)
+  CBcmFrameBuffer::SetAreaPitch (const TArea &, const void *, unsigned nSourcePitch,
+                                 TAreaCompletionRoutine * = nullptr, void * = nullptr)
+
+Only the rectangle's rows are cleaned from the data cache. The asynchronous
+variant starts the DMA and returns, the routine is called from the DMA
+interrupt, so the CPU can run other tasks meanwhile. With VSync (page
+flipping) or a display, which is not the frame buffer, the whole screen is
+updated as before.
+---
+ include/circle/2dgraphics.h     | 16 +++++++++
+ include/circle/bcmframebuffer.h |  5 +++
+ include/circle/dma4channel.h    |  5 +++
+ include/circle/dmachannel.h     |  6 ++++
+ lib/2dgraphics.cpp              | 60 +++++++++++++++++++++++++++++++++
+ lib/bcmframebuffer.cpp          | 43 +++++++++++++++++++++++
+ lib/dma4channel.cpp             | 50 +++++++++++++++++++++++++++
+ lib/dmachannel.cpp              | 54 +++++++++++++++++++++++++++++
+ 8 files changed, 239 insertions(+)
+
+diff --git a/include/circle/2dgraphics.h b/include/circle/2dgraphics.h
+index 21d1499d..2635847a 100644
+--- a/include/circle/2dgraphics.h
++++ b/include/circle/2dgraphics.h
+@@ -218,6 +218,22 @@ public:
+ 	/// \brief If VSync is enabled, this method is blocking until the screen refresh signal is received (every 16ms for 60FPS refresh rate)
+ 	void UpdateDisplay (void);
+ 
++	/// \brief Copies only a rectangle of the offscreen buffer to the display (a partial
++	///	   update: much less memory traffic than the whole screen for small changes)
++	/// \param nPosX X of the top-left corner
++	/// \param nPosY Y of the top-left corner
++	/// \param nWidth Width in pixels
++	/// \param nHeight Height in pixels
++	/// \note With VSync (page flipping) or a non-framebuffer display this updates the
++	///	  whole screen.
++	void UpdateDisplay (unsigned nPosX, unsigned nPosY, unsigned nWidth, unsigned nHeight);
++
++	/// \brief The same without waiting: the DMA reads the rectangle in place, pRoutine
++	///	   is called (from its interrupt) when it is done -- the buffer must not change
++	///	   there until then. The whole screen with nWidth = 0.
++	void UpdateDisplayAsync (unsigned nPosX, unsigned nPosY, unsigned nWidth, unsigned nHeight,
++				 CDisplay::TAreaCompletionRoutine *pRoutine, void *pParam);
++
+ private:
+ 	void SetPixel (unsigned nX, unsigned nY, CDisplay::TRawColor nColor)
+ 	{
+diff --git a/include/circle/bcmframebuffer.h b/include/circle/bcmframebuffer.h
+index a8bace49..affcfeb7 100644
+--- a/include/circle/bcmframebuffer.h
++++ b/include/circle/bcmframebuffer.h
+@@ -56,6 +56,11 @@ public:
+ 	void SetArea (const TArea &rArea, const void *pPixels,
+ 		      TAreaCompletionRoutine *pRoutine = nullptr,
+ 		      void *pParam = nullptr);
++	// the pixels are a rectangle of a bigger image (nSourcePitch bytes a line): the DMA
++	// reads them in place (no gathering)
++	void SetAreaPitch (const TArea &rArea, const void *pPixels, unsigned nSourcePitch,
++			   TAreaCompletionRoutine *pRoutine = nullptr,
++			   void *pParam = nullptr);
+ 
+ 	u32 GetWidth (void) const;
+ 	u32 GetHeight (void) const;
+diff --git a/include/circle/dma4channel.h b/include/circle/dma4channel.h
+index 0ec1a766..5b2f9354 100644
+--- a/include/circle/dma4channel.h
++++ b/include/circle/dma4channel.h
+@@ -67,6 +67,11 @@ public:
+ 	// each block on destination, source is continuous, destination cache is not touched
+ 	// nBurstLength > 0 increases speed, but may congest the system bus
+ 	// (this method is not supported with DMA_CHANNEL_LITE)
++	// the same with a source stride too: a rectangle of a bigger image, no gathering
++	void SetupMemCopy2D (void *pDestination, const void *pSource,
++			     size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
++			     unsigned nBurstLength, size_t nSourceStride);
++
+ 	void SetupMemCopy2D (void *pDestination, const void *pSource,
+ 			     size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
+ 			     unsigned nBurstLength = 0);
+diff --git a/include/circle/dmachannel.h b/include/circle/dmachannel.h
+index 2e118efe..e5b51e73 100644
+--- a/include/circle/dmachannel.h
++++ b/include/circle/dmachannel.h
+@@ -107,6 +107,12 @@ public:
+ 			     size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
+ 			     unsigned nBurstLength = 0);
+ 
++	/// \brief The same, the source a rectangle too: nSourceStride bytes skipped after each
++	///	   of its blocks (only the blocks are cleaned from the data cache)
++	void SetupMemCopy2D (void *pDestination, const void *pSource,
++			     size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
++			     unsigned nBurstLength, size_t nSourceStride);
++
+ 	/// \brief Set completion routine to be called, when the transfer is finished
+ 	/// \param pRoutine Pointer to the completion routine
+ 	/// \param pParam   User parameter
+diff --git a/lib/2dgraphics.cpp b/lib/2dgraphics.cpp
+index 16a0081f..5bcd06a3 100644
+--- a/lib/2dgraphics.cpp
++++ b/lib/2dgraphics.cpp
+@@ -537,6 +537,66 @@ CDisplay *C2DGraphics::GetDisplay (void)
+ 	return m_pDisplay;
+ }
+ 
++void C2DGraphics::UpdateDisplay (unsigned nPosX, unsigned nPosY, unsigned nWidth, unsigned nHeight)
++{
++#if RASPPI <= 4
++	if (m_bVSync)
++	{
++		UpdateDisplay ();
++		return;
++	}
++#endif
++	if (!m_pFrameBuffer || m_pDisplay != m_pFrameBuffer)	// (another kind of display)
++	{
++		UpdateDisplay ();
++		return;
++	}
++
++	if (nPosX >= m_nWidth || nPosY >= m_nHeight || !nWidth || !nHeight)
++	{
++		return;
++	}
++	if (nWidth > m_nWidth - nPosX)
++	{
++		nWidth = m_nWidth - nPosX;
++	}
++	if (nHeight > m_nHeight - nPosY)
++	{
++		nHeight = m_nHeight - nPosY;
++	}
++
++	// the frame buffer's 2D DMA reads the rectangle in place (a source stride: no gathering)
++	unsigned nBytes = m_nDepth / 8;
++	CDisplay::TArea Area {nPosX, nPosX + nWidth - 1, nPosY, nPosY + nHeight - 1};
++	m_pFrameBuffer->SetAreaPitch (Area, m_pBuffer8 + (nPosY * m_nWidth + nPosX) * nBytes, m_nWidth * nBytes);
++}
++
++void C2DGraphics::UpdateDisplayAsync (unsigned nPosX, unsigned nPosY, unsigned nWidth, unsigned nHeight,
++				      CDisplay::TAreaCompletionRoutine *pRoutine, void *pParam)
++{
++	if (!nWidth) { nPosX = nPosY = 0; nWidth = m_nWidth; nHeight = m_nHeight; }
++#if RASPPI <= 4
++	if (m_bVSync)
++	{
++		UpdateDisplay ();
++		(*pRoutine) (pParam);
++		return;
++	}
++#endif
++	if (!m_pFrameBuffer || m_pDisplay != m_pFrameBuffer || nPosX >= m_nWidth || nPosY >= m_nHeight || !nHeight)
++	{
++		UpdateDisplay (nPosX, nPosY, nWidth, nHeight);
++		(*pRoutine) (pParam);
++		return;
++	}
++	if (nWidth > m_nWidth - nPosX) nWidth = m_nWidth - nPosX;
++	if (nHeight > m_nHeight - nPosY) nHeight = m_nHeight - nPosY;
++	unsigned nBytes = m_nDepth / 8;
++	CDisplay::TArea Area {nPosX, nPosX + nWidth - 1, nPosY, nPosY + nHeight - 1};
++	m_pFrameBuffer->SetAreaPitch (Area, m_pBuffer8 + (nPosY * m_nWidth + nPosX) * nBytes, m_nWidth * nBytes,
++				      pRoutine, pParam);
++}
++
+ void C2DGraphics::UpdateDisplay (void)
+ {
+ #if RASPPI <= 4
+diff --git a/lib/bcmframebuffer.cpp b/lib/bcmframebuffer.cpp
+index b032a79f..84b3e3a6 100644
+--- a/lib/bcmframebuffer.cpp
++++ b/lib/bcmframebuffer.cpp
+@@ -217,6 +217,49 @@ void CBcmFrameBuffer::SetPixel (unsigned nPosX, unsigned nPosY, TRawColor nColor
+ 	}
+ }
+ 
++// the source rectangle in place in a bigger image (nSourcePitch bytes a line)
++void CBcmFrameBuffer::SetAreaPitch (const TArea &rArea, const void *pPixels, unsigned nSourcePitch,
++				    TAreaCompletionRoutine *pRoutine, void *pParam)
++{
++	u32 x1 = rArea.x1, x2 = rArea.x2, y1 = rArea.y1, y2 = rArea.y2;
++	size_t ulBlockLength = (x2-x1+1) * m_nDepth/8;
++#ifdef SCREEN_DMA_BURST_LENGTH
++	while (AtomicCompareExchange (&m_nDMAInUse, 0, 1))
++	{
++	}
++
++	void *pDestination = (void *) (uintptr) (m_nBufferPtr + y1*m_nPitch + x1*m_nDepth/8);
++	m_DMAChannel.SetupMemCopy2D (pDestination, pPixels, ulBlockLength, y2-y1+1,
++				     m_nPitch-ulBlockLength, SCREEN_DMA_BURST_LENGTH,
++				     nSourcePitch-ulBlockLength);
++	if (pRoutine)
++	{
++		m_pCompletionRoutine = pRoutine;
++		m_pCompletionParam = pParam;
++
++		m_DMAChannel.SetCompletionRoutine (DMACompletionRoutine, this);
++		m_DMAChannel.Start ();
++	}
++	else
++	{
++		m_DMAChannel.Start ();
++		m_DMAChannel.Wait ();
++
++		AtomicSet (&m_nDMAInUse, 0);
++	}
++#else
++	const u8 *q = static_cast<const u8 *> (pPixels);
++	for (u32 y = y1; y <= y2; y++, q += nSourcePitch)
++	{
++		memcpy (PTR_ADD (u8 *, m_nBufferPtr, x1*m_nDepth/8, y*m_nPitch), q, ulBlockLength);
++	}
++	if (pRoutine)
++	{
++		(*pRoutine) (pParam);
++	}
++#endif
++}
++
+ void CBcmFrameBuffer::SetArea (const TArea &rArea, const void *pPixels,
+ 			       TAreaCompletionRoutine *pRoutine, void *pParam)
+ {
+diff --git a/lib/dma4channel.cpp b/lib/dma4channel.cpp
+index 476fd36c..e0afbb67 100644
+--- a/lib/dma4channel.cpp
++++ b/lib/dma4channel.cpp
+@@ -360,6 +360,56 @@ void CDMA4Channel::SetupCyclicIOWrite (uintptr ulIOAddress, const void *ppSource
+ 	m_nBufferLength = ulLength;
+ }
+ 
++// the source is a rectangle too: nSourceStride bytes skipped after each of its blocks. Only the
++// blocks themselves are cleaned from the data cache.
++void CDMA4Channel::SetupMemCopy2D (void *pDestination, const void *pSource,
++				  size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
++				  unsigned nBurstLength, size_t nSourceStride)
++{
++	assert (pDestination != 0);
++	assert (pSource != 0);
++	assert (nBlockLength > 0);
++	assert (nBlockLength <= LEN4_XLENGTH_2D_MAX);
++	assert (nBlockCount > 0);
++	assert (nBlockCount <= LEN4_YLENGTH_MAX);
++	assert (nBlockStride <= DEST4_STRIDE_MAX);
++	assert (nSourceStride <= SOURCE4_STRIDE_MAX);
++	assert (nBurstLength <= BURST4_MAX);
++
++	assert (m_pControlBlock[0] != 0);
++
++	m_pControlBlock[0]->nTransferInformation     =   TI4_WAIT_RD_RESP
++						       | TI4_WAIT_RESP
++						       | TI4_TDMODE;
++	m_pControlBlock[0]->nSourceAddress           = ADDRESS4_LOW (pSource);
++	m_pControlBlock[0]->nSourceInformation	     =   (nSourceStride << SOURCE4_STRIDE_SHIFT)
++						       | (SIZE4_128 << SOURCE4_SIZE_SHIFT)
++						       | SOURCE4_INC
++						       | (nBurstLength << SOURCE4_BURST_LEN_SHIFT)
++						       |    (ADDRESS4_HIGH (pSource)
++						         << SOURCE4_ADDR_SHIFT);
++	m_pControlBlock[0]->nDestinationAddress      = ADDRESS4_LOW (pDestination);
++	m_pControlBlock[0]->nDestinationInformation  =   (nBlockStride << DEST4_STRIDE_SHIFT)
++						       | (SIZE4_128 << DEST4_SIZE_SHIFT)
++						       | DEST4_INC
++						       | (nBurstLength << DEST4_BURST_LEN_SHIFT)
++						       |    (ADDRESS4_HIGH (pDestination)
++						         << DEST4_ADDR_SHIFT);
++	m_pControlBlock[0]->nTransferLength          =   ((nBlockCount-1) << LEN4_YLENGTH_SHIFT)
++						       | (nBlockLength << LEN4_XLENGTH_SHIFT);
++	m_pControlBlock[0]->nNextControlBlockAddress = 0;
++
++	m_nDestinationAddress = 0;
++
++	uintptr ulRow = (uintptr) pSource;
++	for (unsigned i = 0; i < nBlockCount; i++, ulRow += nBlockLength + nSourceStride)
++	{
++		CleanDataCacheRange (ulRow, nBlockLength);
++	}
++
++	m_nBuffers = 1;
++}
++
+ void CDMA4Channel::SetupMemCopy2D (void *pDestination, const void *pSource,
+ 				  size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
+ 				  unsigned nBurstLength)
+diff --git a/lib/dmachannel.cpp b/lib/dmachannel.cpp
+index af6fb219..26cb5c77 100644
+--- a/lib/dmachannel.cpp
++++ b/lib/dmachannel.cpp
+@@ -368,6 +368,60 @@ void CDMAChannel::SetupMemCopy2D (void *pDestination, const void *pSource,
+ 	m_nBuffers = 1;
+ }
+ 
++// a rectangle of a bigger source image
++void CDMAChannel::SetupMemCopy2D (void *pDestination, const void *pSource,
++				  size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
++				  unsigned nBurstLength, size_t nSourceStride)
++{
++#if RASPPI >= 4
++	if (m_pDMA4Channel != 0)
++	{
++		m_pDMA4Channel->SetupMemCopy2D (pDestination, pSource, nBlockLength,
++						nBlockCount, nBlockStride, nBurstLength, nSourceStride);
++
++		return;
++	}
++#endif
++
++	assert (pDestination != 0);
++	assert (pSource != 0);
++	assert (nBlockLength > 0);
++	assert (nBlockLength <= 0xFFFF);
++	assert (nBlockCount > 0);
++	assert (nBlockCount <= 0x3FFF);
++	assert (nBlockStride <= 0x7FFF);
++	assert (nSourceStride <= 0x7FFF);
++	assert (nBurstLength <= 15);
++
++	assert (!(read32 (ARM_DMACHAN_DEBUG (m_nChannel)) & DEBUG_LITE));
++
++	assert (m_pControlBlock[0] != 0);
++
++	m_pControlBlock[0]->nTransferInformation     =   (nBurstLength << TI_BURST_LENGTH_SHIFT)
++						       | TI_SRC_WIDTH
++						       | TI_SRC_INC
++						       | TI_DEST_WIDTH
++						       | TI_DEST_INC
++						       | TI_TDMODE;
++	m_pControlBlock[0]->nSourceAddress           = BUS_ADDRESS ((uintptr) pSource);
++	m_pControlBlock[0]->nDestinationAddress      = BUS_ADDRESS ((uintptr) pDestination);
++	m_pControlBlock[0]->nTransferLength          =   ((nBlockCount-1) << TXFR_LEN_YLENGTH_SHIFT)
++						       | (nBlockLength << TXFR_LEN_XLENGTH_SHIFT);
++	m_pControlBlock[0]->n2DModeStride            =   (nBlockStride << STRIDE_DEST_SHIFT)
++						       | (nSourceStride << STRIDE_SRC_SHIFT);
++	m_pControlBlock[0]->nNextControlBlockAddress = 0;
++
++	m_nDestinationAddress = 0;
++
++	uintptr ulRow = (uintptr) pSource;
++	for (unsigned i = 0; i < nBlockCount; i++, ulRow += nBlockLength + nSourceStride)
++	{
++		CleanDataCacheRange (ulRow, nBlockLength);
++	}
++
++	m_nBuffers = 1;
++}
++
+ void CDMAChannel::SetCompletionRoutine (TDMACompletionRoutine *pRoutine, void *pParam)
+ {
+ #if RASPPI >= 4
+-- 
+2.43.0
+

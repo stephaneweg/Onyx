@@ -606,6 +606,13 @@ low-RAM top from the device tree, or the `[4 GB, RAM end)` chunk of the fallback
 never waits for ever behind core 0. It stays mapped NORMAL (cacheable): the kernel cleans each write to
 the point of coherency. See [docs/02 §13](02-KERNEL-INTERNALS.md).
 
+## Contributions to upstream Circle
+
+The fork's changes useful to every Circle user are prepared as clean pull-request branches on
+upstream `develop` (the scheduler's `WakeTasks` race, the SD High Speed fixes, large heap blocks
+reuse, partial display updates with a DMA source stride, the DHCP restart), with the patches and
+the pull-request texts: see [`docs/circle-upstream/README.md`](circle-upstream/README.md).
+
 ## Updating the fork (submodule)
 
 ```sh
