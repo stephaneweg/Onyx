@@ -1,4 +1,6 @@
-// RemoteWindow.cs -- one Onyx window on the PC: its frame (as the app drew it on the Pi: title
+// RemoteWindow.cs -- one Onyx window on the PC. By default a native Windows window (its title
+// bar, its close button) showing the Onyx window's content; with "Onyx window frames": its frame
+// as the app drew it on the Pi (title
 // bar, borders, close box) and its content. The title bar moves this PC window (not the Pi's),
 // the close box closes the Onyx app, the rest goes to the app: the pointer in the window's
 // coordinates (rdpd puts it back on the Pi's screen), the keys, the focus (the Onyx window is
@@ -53,9 +55,12 @@ namespace OnyxRemote
 		protected override void OnHandleDestroyed (EventArgs e) { Undock (); base.OnHandleDestroyed (e); }
 		int buttons;
 
-		public RemoteWindow (Connection c, uint id)
+		readonly bool onyxFrames;			// draw the Onyx frame (else a native one)
+		bool native;					// a framed Onyx window shown in a native frame
+
+		public RemoteWindow (Connection c, uint id, bool withOnyxFrames)
 		{
-			conn = c; Id = id;
+			conn = c; Id = id; onyxFrames = withOnyxFrames;
 			desk = id == WinModel.DESKTOP_ID;
 			// the desktop: a normal PC window (its title, movable), else borderless: the Onyx
 			// frame is part of what is drawn
@@ -74,7 +79,11 @@ namespace OnyxRemote
 		{
 			bool sizeChanged = m.W != w || m.H != h || m.OW != ow || m.OH != oh;
 			w = m.W; h = m.H; ow = m.OW; oh = m.OH; il = m.IL; it = m.IT; flags = m.Flags;
-			frame = m.HasFrame; keys = (m.State & WinModel.KEYS) != 0;
+			frame = m.HasFrame && onyxFrames; keys = (m.State & WinModel.KEYS) != 0;
+			bool wasNative = native;
+			native = !desk && m.HasFrame && !onyxFrames;
+			if (native && !wasNative) { FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; }
+			else if (!native && wasNative) FormBorderStyle = FormBorderStyle.None;
 			if (Text != m.Title) Text = m.Title;
 			TopMost = (flags & WinModel.TOPMOST) != 0;
 			ShowInTaskbar = desk || (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) == 0;
@@ -90,10 +99,21 @@ namespace OnyxRemote
 			// a borderless one (menu bar, bubbles) follows the Pi
 			Point at = new Point (origin.X + m.X - (frame ? il : 0), origin.Y + m.Y - (frame ? it : 0));
 			if (desk) placed = true;					// (centred on the PC's screen)
-			if (!placed || !frame) { if (Location != at) Location = at; placed = true; }
+			if (native)							// its client area where the Pi has it
+			{
+				int bx = (Width - ClientSize.Width) / 2;
+				at = new Point (origin.X + m.X - bx, origin.Y + m.Y - (Height - ClientSize.Height - bx));
+			}
+			if (!placed || !(frame || native)) { if (Location != at) Location = at; placed = true; }
 			// the Onyx menu bar (topmost, borderless, at the top): docked at the top of the PC's
 			// screen as an application bar -- Windows keeps that strip for it
 			if (!docked && (flags & WinModel.TOPMOST) != 0 && !frame && m.Y == 0 && IsHandleCreated) DockBar (origin, h);
+			// a window with a title bar is never under the menu bar (the work area starts below it)
+			if ((frame || native || desk) && (flags & WinModel.TOPMOST) == 0 && !dragging)
+			{
+				int top = Screen.FromPoint (Location).WorkingArea.Top;
+				if (Top < top) Top = top;
+			}
 			if (m.Dirty)
 			{
 				Fill (content, m.Content, w, h);

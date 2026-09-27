@@ -41,7 +41,7 @@ namespace OnyxRemote
 		bool bpp16;
 		volatile bool stop;
 
-		public void Open (string host, int port, bool bits16, bool desktopOn)
+		public void Open (string host, int port, bool bits16, bool desktopOn, bool onyxFrames)
 		{
 			bpp16 = bits16;
 			tcp = new TcpClient ();
@@ -54,7 +54,7 @@ namespace OnyxRemote
 			ScreenW = hello[8] | hello[9] << 8; ScreenH = hello[10] | hello[11] << 8; KernelAbi = hello[12] | hello[13] << 8;
 			byte[] ans = new byte[9];
 			Encoding.ASCII.GetBytes ("ONYXRDP1").CopyTo (ans, 0);
-			ans[8] = (byte) (bits16 ? 1 : 0);
+			ans[8] = (byte) ((bits16 ? 1 : 0) | (onyxFrames ? 0 : 2));	// (2: no frames sent)
 			Send (ans);
 			Desktop (desktopOn);
 			new Thread (ReadLoop) { IsBackground = true, Name = "rdpd reader" }.Start ();

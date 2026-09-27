@@ -500,15 +500,17 @@ connection waits until the first ends.
 ### Remote windows on a PC (`rdpd` + Onyx Remote)
 
 `rdpd` (started by `SD:/etc/autostart`, port **3390**) lets a Windows PC show the Onyx
-windows **each as a window of its own**, with their Onyx frame (title bar, borders, close
-box), next to the PC's windows. Run **`OnyxRemote.exe`** (in `pc/dist/`, with .NET Framework
+windows **each as a window of its own**, next to the PC's windows: a normal Windows window
+(its title bar, its close button) showing the Onyx window's content — or, with **Onyx window
+frames** ticked, with its Onyx frame (title bar, borders, close box) as on the Pi. Run **`OnyxRemote.exe`** (in `pc/dist/`, with .NET Framework
 4.8, already on Windows 10 / 11), type the Pi's address, **Connect**.
 
 - Faster than VNC: only the windows that change are sent, only their changed parts,
   compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
   halves the data (a game in a big window).
-- Drag an Onyx window by its title bar to place it on the PC (the Pi's window stays where
-  it is); its close box (or Alt+F4) closes the Onyx app. Clicking a window brings it to the
+- Drag a window by its title bar to place it on the PC (the Pi's window stays where it is);
+  its close button (or Alt+F4) closes the Onyx app. The Onyx menu bar is docked at the top
+  of the PC's screen: no window goes under it. Clicking a window brings it to the
   front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
 - The menu bar and the notification bubbles appear as on the Pi (on top); **Show the Onyx
   desktop** adds a window with the Onyx desktop (the wallpaper and what is drawn on it);

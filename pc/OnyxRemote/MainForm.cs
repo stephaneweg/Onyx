@@ -13,7 +13,7 @@ namespace OnyxRemote
 	{
 		readonly TextBox host = new TextBox ();
 		readonly NumericUpDown port = new NumericUpDown ();
-		readonly CheckBox bits16 = new CheckBox (), desktop = new CheckBox ();
+		readonly CheckBox bits16 = new CheckBox (), desktop = new CheckBox (), frames = new CheckBox ();
 		readonly Button go = new Button ();
 		readonly Label status = new Label ();
 		Connection conn;
@@ -25,16 +25,17 @@ namespace OnyxRemote
 		{
 			Text = "Onyx Remote";
 			FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
-			ClientSize = new Size (360, 170);
+			ClientSize = new Size (360, 190);
 			Font = new Font ("Segoe UI", 9f);
 			var l1 = new Label { Text = "Onyx (IP or name):", Location = new Point (12, 15), AutoSize = true };
 			host.SetBounds (130, 12, 140, 23);
 			port.SetBounds (280, 12, 68, 23); port.Minimum = 1; port.Maximum = 65535; port.Value = 3390;
 			bits16.Text = "16-bit colours (faster)"; bits16.SetBounds (12, 45, 200, 22);
 			desktop.Text = "Show the Onyx desktop"; desktop.SetBounds (12, 68, 200, 22);
+			frames.Text = "Onyx window frames"; frames.SetBounds (12, 91, 200, 22);
 			go.Text = "Connect"; go.SetBounds (268, 45, 80, 28);
-			status.SetBounds (12, 100, 336, 60);
-			Controls.AddRange (new Control[] { l1, host, port, bits16, desktop, go, status });
+			status.SetBounds (12, 120, 336, 60);
+			Controls.AddRange (new Control[] { l1, host, port, bits16, desktop, frames, go, status });
 			AcceptButton = go;
 			go.Click += (s, e) => { if (conn == null) Connect (); else Disconnect ("disconnected"); };
 			desktop.CheckedChanged += (s, e) => { if (conn != null) { conn.Desktop (desktop.Checked); Sync (); } };
@@ -49,6 +50,7 @@ namespace OnyxRemote
 					else if (k == "port" && int.TryParse (v, out int p) && p > 0 && p < 65536) port.Value = p;
 					else if (k == "bits16") bits16.Checked = v == "1";
 					else if (k == "desktop") desktop.Checked = v == "1";
+					else if (k == "frames") frames.Checked = v == "1";
 				}
 			}
 			catch { }
@@ -75,19 +77,19 @@ namespace OnyxRemote
 			try
 			{
 				File.WriteAllLines (SettingsPath, new[] { "host=" + host.Text, "port=" + port.Value,
-					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0) });
+					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0), "frames=" + (frames.Checked ? 1 : 0) });
 			}
 			catch { }
 			var c = new Connection ();
 			status.Text = "Connecting...";
 			Refresh ();
-			try { c.Open (host.Text.Trim (), (int) port.Value, bits16.Checked, desktop.Checked); }
+			try { c.Open (host.Text.Trim (), (int) port.Value, bits16.Checked, desktop.Checked, frames.Checked); }
 			catch (Exception e) { status.Text = "Cannot connect: " + e.Message; return; }
 			conn = c;
 			c.RoundDone += () => BeginInvoke ((Action) (() => { if (conn != c) return; Sync (); rounds++; c.Ready (); }));
 			c.Closed += why => BeginInvoke ((Action) (() => { if (conn == c) Disconnect (why); }));
 			go.Text = "Disconnect";
-			host.Enabled = port.Enabled = bits16.Enabled = false;
+			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = false;
 		}
 
 		void Disconnect (string why)
@@ -96,7 +98,7 @@ namespace OnyxRemote
 			foreach (var w in wins.Values) { w.GoneOnPi = true; w.Close (); }
 			wins.Clear ();
 			go.Text = "Connect";
-			host.Enabled = port.Enabled = bits16.Enabled = true;
+			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = true;
 			status.Text = why;
 		}
 
@@ -118,7 +120,7 @@ namespace OnyxRemote
 					keep.Add (id);
 					if (!wins.TryGetValue (id, out RemoteWindow w))
 					{
-						w = new RemoteWindow (conn, id);
+						w = new RemoteWindow (conn, id, frames.Checked);
 						w.DesktopClosed += () => desktop.Checked = false;
 						wins[id] = w;
 						w.Apply (m, origin);

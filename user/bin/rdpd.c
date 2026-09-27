@@ -1,7 +1,8 @@
 //
 // rdpd -- the window-level remote desktop server ("Onyx Remote"): the client (pc/OnyxRemote,
-// .NET) shows each Onyx window as a window of its own on the PC -- its frame (title bar,
-// borders, close box) and its content, as on the Pi -- instead of a picture of the screen.
+// .NET) shows each Onyx window as a window of its own on the PC -- its content in a native
+// window, or with its Onyx frame (title bar, borders, close box) as on the Pi -- instead of
+// a picture of the screen.
 //   usage: rdpd [port]          (default 3390; e.g. `rdpd` in SD:/etc/autostart)
 //          rdpd list            (the windows the kernel lists, as rdpd sees them: a check)
 //
@@ -17,7 +18,8 @@
 //
 // Protocol (TCP, little-endian). Hello: the server sends "ONYXRDP1", u16 screen w, h, u16 the
 // kernel's kapi version (below 56: no window can be listed -- an old kernel image); the
-// client answers "ONYXRDP1", u8 options (bit 0: 16-bit pixels). Then messages:
+// client answers "ONYXRDP1", u8 options (bit 0: 16-bit pixels, bit 1: no frames -- the client
+// shows the contents in native windows). Then messages:
 //   server -> client: u8 type, u32 length, payload
 //     1 WIN     u32 id, s16 x y (client area on the Pi's screen), u16 w h (client area),
 //               u16 ow oh il it (the whole window with its frame, the client area's place
@@ -52,7 +54,7 @@
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
-static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop;
+static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop, g_noFrames;
 
 // ---- output -------------------------------------------------------------------------------
 
@@ -279,7 +281,7 @@ static void round_send (void)
 			  || old.state != L[i].state || strcmp (old.title, L[i].title) != 0;
 		if (moved) send_win (&L[i]);
 		int newChrome = !w->sent || w->chromeGen != L[i].chromeGen || old.ow != L[i].ow || old.oh != L[i].oh;
-		if (newChrome) send_chrome (w);
+		if (newChrome && !g_noFrames) send_chrome (w);
 		if (!w->sent || w->gen != L[i].gen) send_content (w, !w->sent);
 		w->gen = L[i].gen; w->chromeGen = L[i].chromeGen; w->sent = 1;
 	}
@@ -319,7 +321,7 @@ static void session (void)
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
 	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (KT->version); flush_out ();
 	if (!need (9) || memcmp (g_in, "ONYXRDP1", 8) != 0) return;
-	g_bpp16 = g_in[8] & 1;
+	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0;
 	consume (9);
 	int ready = 0;
 	unsigned last = kapi_get_ticks () - 100, wait = MIN_ROUND_TICKS;
