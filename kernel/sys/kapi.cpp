@@ -403,6 +403,25 @@ static boolean FsDirect (CWindowManager *pWM)
 	return s_pDirectWin != 0 && pWM->FullscreenWindow () == s_pDirectWin;
 }
 
+// Map the displayed framebuffer into pAS at USER_FULLSCREEN_SCREEN (normal uncached: the
+// kernel's own map of it is Device memory, slow to read); its first pixel's VA, 0 if none.
+static unsigned *MapScreen (CAddressSpace *pAS, unsigned *pPitch)
+{
+	CBcmFrameBuffer *pFB = g_pGraphics != 0 && pAS != 0 ? (CBcmFrameBuffer *) g_pGraphics->GetDisplay () : 0;
+	if (pFB == 0 || pFB->GetDepth () != 32 || pFB->GetBuffer () == 0)
+	{
+		return 0;
+	}
+	u64 ulPhys = pFB->GetBuffer (), ulBase = ulPhys & ~(u64) (KPAGE_SIZE - 1);
+	u64 ulEnd = ulPhys + (u64) pFB->GetPitch () * pFB->GetHeight ();
+	unsigned nPages = (unsigned) ((ulEnd - ulBase + KPAGE_SIZE - 1) / KPAGE_SIZE);
+	TKPageAttr Attr = KPAGE_ATTR_APP_SCREEN;
+	pAS->MapContig (USER_FULLSCREEN_SCREEN, ulBase, nPages, Attr);
+	DataSyncBarrier ();
+	if (pPitch != 0) *pPitch = pFB->GetPitch ();
+	return (unsigned *) (USER_FULLSCREEN_SCREEN + (ulPhys - ulBase));
+}
+
 // --- v38: remote screen (vncd) ----------------------------------------------
 // Composite the current screen (windows + wallpaper + cursor, exactly what the
 // compositor shows) straight into the caller's buffer of w*h 0x00RRGGBB pixels. w/h
@@ -423,11 +442,10 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 		return 2;
 	}
 	s_nGen = nGen; s_pLast = pDst;
-	if (FsDirect (pWM))						// straight from the screen
-	{
-		CBcmFrameBuffer *pFB = (CBcmFrameBuffer *) g_pGraphics->GetDisplay ();
-		const u8 *pSrc = (const u8 *) (uintptr) pFB->GetBuffer ();
-		for (int y = 0; y < nH; y++) memcpy (pDst + (size_t) y * nW, pSrc + (size_t) y * pFB->GetPitch (), (size_t) nW * 4);
+	unsigned nPitch = 0; const u8 *pSrc;
+	if (FsDirect (pWM) && (pSrc = (const u8 *) MapScreen (CurrentAS (), &nPitch)) != 0)	// the screen itself
+	{								// (mapped in the grabber, uncached)
+		for (int y = 0; y < nH; y++) memcpy (pDst + (size_t) y * nW, pSrc + (size_t) y * nPitch, (size_t) nW * 4);
 		return 1;
 	}
 	if (pWM->FullscreenWindow () != 0 && pWM->FullscreenBuffer () != 0)
@@ -1853,22 +1871,21 @@ unsigned *kapi_fullscreen_direct (int *pW, int *pH, int *pStride)
 		return 0;
 	}
 	CBcmFrameBuffer *pFB = (CBcmFrameBuffer *) g_pGraphics->GetDisplay ();
-	if (pFB == 0 || pFB->GetDepth () != 32 || (int) pFB->GetWidth () != g_nScreenWidth
-	    || (int) pFB->GetHeight () != g_nScreenHeight || pFB->GetBuffer () == 0)
+	if (pFB == 0 || (int) pFB->GetWidth () != g_nScreenWidth || (int) pFB->GetHeight () != g_nScreenHeight)
 	{
 		return 0;
 	}
-	u64 ulPhys = pFB->GetBuffer (), ulBase = ulPhys & ~(u64) (KPAGE_SIZE - 1);
-	u64 ulEnd = ulPhys + (u64) pFB->GetPitch () * pFB->GetHeight ();
-	unsigned nPages = (unsigned) ((ulEnd - ulBase + KPAGE_SIZE - 1) / KPAGE_SIZE);
-	TKPageAttr Attr = KPAGE_ATTR_APP_SCREEN;
-	pAS->MapContig (USER_FULLSCREEN_SCREEN, ulBase, nPages, Attr);
-	DataSyncBarrier ();
+	unsigned nPitch = 0;
+	unsigned *pScreen = MapScreen (pAS, &nPitch);
+	if (pScreen == 0)
+	{
+		return 0;
+	}
 	s_pDirectWin = pAS->GetWindow ();
 	if (pW != 0) *pW = g_nScreenWidth;
 	if (pH != 0) *pH = g_nScreenHeight;
-	if (pStride != 0) *pStride = (int) (pFB->GetPitch () / 4);
-	return (unsigned *) (USER_FULLSCREEN_SCREEN + (ulPhys - ulBase));
+	if (pStride != 0) *pStride = (int) (nPitch / 4);
+	return pScreen;
 }
 
 // Show the full-screen back buffer (copy to the framebuffer + present), then yield.
