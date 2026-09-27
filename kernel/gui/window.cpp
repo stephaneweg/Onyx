@@ -11,7 +11,7 @@
 
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 		  unsigned nFlags)
-:	m_nX (x), m_nY (y), m_nFlags (nFlags),
+:	m_nGen (0), m_nChromeGen (0), m_nX (x), m_nY (y), m_nFlags (nFlags),
 	m_nLogicalW (nClientW), m_nLogicalH (nClientH),
 	m_pRawAlloc (0), m_ulCanvasPhys (0), m_nCanvasPages (0),
 	m_nOuterW (0), m_nOuterH (0),
@@ -20,6 +20,8 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
 	m_bExitRequested (FALSE)
 {
+	static unsigned s_nNextId = 0;
+	m_nId = ++s_nNextId;
 	m_nOwnerPid = 0;
 	m_Menu[0] = '\0';
 
@@ -120,6 +122,7 @@ void CWindow::SetLogicalSize (int w, int h)
 	{						// canvas's full size: always big enough); the app
 		m_nOuterW = ChromeL () + w + ChromeR ();	// redraws it (wtk: wk_decorate_window)
 		m_nOuterH = ChromeT () + h + ChromeB ();
+		m_nChromeGen++;
 	}
 	if (h < m_nMinLogicalH)
 	{
@@ -223,7 +226,7 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 void CWindow::CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const
 {
 	int nSize = WIN_TITLEBAR_H - 10;		// square inset in the title bar
-	int x1 = m_nX + m_Canvas.Width () + 2 * WIN_BORDER - 1;
+	int x1 = m_nX + OuterWidth () - 1;		// (the frame as it is now: resize_window)
 	*px1 = x1 - 4;
 	*px0 = *px1 - nSize;
 	*py0 = m_nY + 5;

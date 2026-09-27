@@ -344,6 +344,13 @@ static inline int  kapi_gpu_render (const struct kapi_gpu_frame *f, const struct
 // its pixels (stride in pixels), or 0 (keep drawing into the back buffer + present_fb).
 static inline unsigned *kapi_fullscreen_direct (int *w, int *h, int *stride)
 { return KT->version >= 55 ? KT->fullscreen_direct (w, h, stride) : 0; }
+// The windows as objects (v56, the remote desktop rdpd): list (bottom to top), a client
+// rectangle's pixels, to the front, close.
+static inline int kapi_win_list (struct kapi_win_info *out, int max) { return KT->version >= 56 ? KT->win_list (out, max) : 0; }
+static inline int kapi_win_read (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride)
+{ return KT->version >= 56 ? KT->win_read (id, part, x, y, w, h, dst, stride) : -1; }
+static inline int kapi_win_raise (unsigned id) { return KT->version >= 56 ? KT->win_raise (id) : -1; }
+static inline int kapi_win_close (unsigned id) { return KT->version >= 56 ? KT->win_close (id) : -1; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

@@ -291,6 +291,16 @@ static inline u8 byteOf (const u32 *words, u32 a) { return (u8) (words[a >> 2] >
 // block of an unaligned destination loses its misalignment, a block's end is rounded up to 8
 // bytes; the lengths read back afterwards (127 or 127 - misalign); the time from the domain's
 // BSD registers.
+//   Ported from ares (https://github.com/ares-emulator/ares, ares/n64/pi/dma.cpp), under its
+//   ISC licence: Copyright (c) 2004-2025 ares team, Near et al. Permission to use, copy, modify,
+//   and/or distribute this software for any purpose with or without fee is hereby granted,
+//   provided that the above copyright notice and this permission notice appear in all copies.
+//   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS
+//   SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL
+//   THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+//   DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+//   CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+//   OR PERFORMANCE OF THIS SOFTWARE.
 u32 Machine::piHalf (u32 a)
 {
 	if (a >= 0x10000000 && a < 0x1FC00000)

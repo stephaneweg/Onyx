@@ -978,6 +978,18 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   from any VNC viewer, no monitor needed. It grabs the screen with `kapi_screen_grab`
   and injects input with `kapi_inject_pointer`/`kapi_inject_key` (ABI v38); it is a
   newlib program linked with the vendored zlib (`ZLIB_PROGS` in `user/bin/Makefile`).
+- **Window-level remote desktop**: `/bin/rdpd` (autostarted, port 3390) + the Windows client
+  `pc/OnyxRemote` (.NET Framework 4.8, built by `sh pc/build.sh` into `pc/dist/OnyxRemote.exe`).
+  Each Onyx window is a window of its own on the PC (its frame + its content), composited by
+  the PC: nothing is composited for it on the Pi. `rdpd` lists the windows (ABI v56
+  `kapi_win_list`), reads only those whose `gen` changed (`kapi_win_read`), compares their
+  64 × 64 tiles with what the client has and sends the changed runs, LZ4-compressed (its own
+  compressor, the standard block format), 32 or 16 bits a pixel; a frame when `chromeGen`
+  changes. The client sends the pointer in window coordinates (rdpd adds the window's place,
+  raises it when clicked), keysyms (`user/bin/remotekeys.h`, shared with vncd: specials,
+  modifiers, letters / digits as held keys only) and the characters typed (the PC's layout).
+  The protocol is described at the top of `user/bin/rdpd.c`. Host test (mock kapi, a Python
+  client): `sh tools/tests/run_rdpd_test.sh`.
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial
   cable.

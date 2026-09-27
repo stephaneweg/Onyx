@@ -66,6 +66,8 @@ sdcard/apps/lisa.app/config.ini
 # The PC tools' build folders (pc/build.sh; the result, pc/dist/, is kept)
 pc/OnyxBasic/bin/
 pc/OnyxBasic/obj/
+pc/OnyxRemote/bin/
+pc/OnyxRemote/obj/
 tools/basc/basc
 
 # Game Boy ROMs, saves and the Game Library's thumbnails: the user's own, never committed

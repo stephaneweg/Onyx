@@ -219,7 +219,15 @@ public:
 	// (the chrome copy is blitted whole: its allocated size when larger)
 	int OuterWidth (void) const	{ int w = ChromeL () + m_nLogicalW + ChromeR (); return HasChrome () && m_nOuterW > w ? m_nOuterW : w; }
 	int OuterHeight (void) const	{ int h = ChromeT () + m_nLogicalH + ChromeB (); return HasChrome () && m_nOuterH > h ? m_nOuterH : h; }
-	void Damage (void) const	{ ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
+	void Damage (void) const	{ m_nGen++; ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
+	// For the remote desktop (rdpd, kapi v56): a serial never reused, and a counter bumped
+	// whenever the window changes (Damage: drawn, moved, resized...; Touch: full screen).
+	unsigned Id (void) const	{ return m_nId; }
+	unsigned Gen (void) const	{ return m_nGen; }
+	void Touch (void) const		{ m_nGen++; }
+	unsigned ChromeGen (void) const	{ return m_nChromeGen; }
+	void ChromeTouch (void)		{ m_nChromeGen++; }
+	unsigned Flags (void) const	{ return m_nFlags; }
 	// Does the window paint every pixel of [x0, x1) x [y0, y1) opaquely? (Then what lies
 	// below it there need not be drawn.)
 	boolean CoversOpaque (int x0, int y0, int x1, int y1) const
@@ -283,6 +291,9 @@ public:
 private:
 	void CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const;
 
+	unsigned	m_nId;		// (Id)
+	mutable volatile unsigned m_nGen;	// (Gen)
+	volatile unsigned m_nChromeGen;	// (ChromeGen)
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
 	unsigned	m_nFlags;	// WIN_FLAG_* (borderless, ...)

@@ -30,3 +30,13 @@ Runtime The program's window has a Program menu (Stop, Restart) and a View menu 
         SHELL runs a Windows command (cmd.exe) and shows its output.
 
 Built on Linux by pc/build.sh (mingw-w64 + the .NET SDK).
+
+Onyx Remote
+===========
+
+OnyxRemote.exe (+ OnyxRemote.exe.config): the Onyx windows on this PC, each as a window of
+its own with its Onyx frame -- the client of rdpd (port 3390, started at boot on the Pi).
+Type the Pi's address, Connect. Drag a window by its title bar to place it; its close box
+closes the Onyx app; clicking a window gives it the keyboard. "16-bit colours" sends half
+the data (games); "Show the Onyx desktop" adds the desktop. No password, no encryption:
+trusted LAN only.

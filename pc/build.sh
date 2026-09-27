@@ -1,7 +1,7 @@
 #!/bin/sh
-# build.sh -- Onyx BASIC for Windows, built on Linux: obcore.dll (mingw-w64: the compiler, VM
-# and screen of user/basic) and OnyxBasic.exe (the .NET Framework 4.8 editor + runtime; the
-# .NET SDK with EnableWindowsTargeting). Result: pc/dist/ -- copy that folder to the PC.
+# build.sh -- the Onyx tools for Windows, built on Linux: obcore.dll (mingw-w64: the compiler, VM
+# and screen of user/basic), OnyxBasic.exe (the .NET Framework 4.8 editor + runtime) and OnyxRemote.exe
+# (the client of rdpd; the .NET SDK with EnableWindowsTargeting). Result: pc/dist/ -- copy it to the PC.
 #   sh pc/build.sh
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -16,4 +16,7 @@ DOTNET=${DOTNET:-$(command -v dotnet || echo "$HOME/.dotnet/dotnet")}
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxBasic/OnyxBasic.csproj" -c Release -o "$HERE/OnyxBasic/bin/out" -v quiet -nologo
 cp "$HERE/OnyxBasic/bin/out/OnyxBasic.exe" "$HERE/OnyxBasic/bin/out/OnyxBasic.exe.config" "$DIST/"
 cp "$ROOT/sdcard/apps/qbasic.app/help.txt" "$DIST/help.txt"
+# Onyx Remote: the client of rdpd (the Onyx windows on the PC)
+DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxRemote/OnyxRemote.csproj" -c Release -o "$HERE/OnyxRemote/bin/out" -v quiet -nologo
+cp "$HERE/OnyxRemote/bin/out/OnyxRemote.exe" "$HERE/OnyxRemote/bin/out/OnyxRemote.exe.config" "$DIST/"
 echo "built: $DIST"

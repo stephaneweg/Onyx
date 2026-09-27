@@ -251,7 +251,7 @@ int kapi_get_chrome (struct kapi_chrome *out)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0) pWin->Damage ();			// the caller is about to (re)draw its chrome
+	if (pWin != 0) { pWin->Damage (); pWin->ChromeTouch (); }	// the caller is about to (re)draw its chrome
 	if (pWin == 0 || out == 0)
 	{
 		return 0;
@@ -1908,6 +1908,7 @@ void kapi_present_fb (void)
 		}
 		g_pGraphics->UpdateDisplay ();
 		ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
+		pAS->GetWindow ()->Touch ();		// (rdpd)
 	}
 	if (CScheduler::IsActive ())
 	{
@@ -2057,6 +2058,103 @@ int kapi_pad_state (int nIndex, struct kapi_pad *pOut)
 	CAddressSpace *pAS = CurrentAS ();
 	pOut->focus = pWM != 0 && pAS != 0 && pWM->HasKeyFocus (pAS->GetWindow ()) ? 1 : 0;
 	return 1;
+}
+
+}  // extern "C"
+
+// ---- v56: the windows as objects (the window-level remote desktop, rdpd) --------------------
+static CWindow *WinById (CWindowManager *pWM, unsigned nId)
+{
+	CWindow *List[WM_MAX_WINDOWS];
+	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
+	for (unsigned i = 0; i < n; i++) if (List[i]->Id () == nId) return List[i];
+	return 0;				// (a CWindow is never freed: see Composite)
+}
+
+extern "C" {
+
+int kapi_win_list (struct kapi_win_info *pOut, int nMax)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0 || pOut == 0 || nMax <= 0 || !IS_USER_VA (pOut) || !IS_USER_VA ((u8 *) (pOut + nMax) - 1)) return 0;
+	CWindow *List[WM_MAX_WINDOWS];
+	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
+	CWindow *pFs = pWM->FullscreenWindow ();
+	int k = 0;
+	for (unsigned i = 0; i < n && k < nMax; i++)
+	{
+		CWindow *pW = List[i];
+		struct kapi_win_info &I = pOut[k++];
+		I.id = pW->Id (); I.pid = pW->OwnerPid ();
+		I.x = pW->X () + pW->ChromeL (); I.y = pW->Y () + pW->ChromeT ();
+		I.w = pW->ClientWidth (); I.h = pW->ClientHeight ();
+		I.flags = pW->Flags (); I.alpha = pW->Alpha (); I.gen = pW->Gen ();
+		I.state = pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0;
+		if (pW == pFs) { I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN; }
+		I.ow = I.oh = I.il = I.it = 0; I.chromeGen = pW->ChromeGen ();
+		if (pW->HasChrome () && pW != pFs) { I.ow = pW->OuterW (); I.oh = pW->OuterH (); I.il = pW->ChromeL (); I.it = pW->ChromeT (); }
+		const char *t = pW->Title ();
+		unsigned j = 0;
+		for (; j + 1 < sizeof I.title && t[j]; j++) I.title[j] = t[j];
+		I.title[j] = 0;
+	}
+	return k;
+}
+
+int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned *pDst, int nStride)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
+	if (pW == 0 || pDst == 0) return -1;
+	const u8 *pSrc; unsigned nPitch; int W, H;
+	if (nPart == 1 || nPart == 2)
+	{
+		if (!pW->HasChrome ()) return -1;
+		W = pW->OuterW (); H = pW->OuterH ();
+		pSrc = (const u8 *) pW->ChromePhys (nPart - 1); nPitch = (unsigned) W * 4;
+	}
+	else if (nPart != 0) return -1;
+	else if (pW == pWM->FullscreenWindow ())
+	{
+		W = g_nScreenWidth; H = g_nScreenHeight;
+		if (FsDirect (pWM) && (pSrc = (const u8 *) MapScreen (CurrentAS (), &nPitch)) != 0) {}
+		else if (pWM->FullscreenBuffer () != 0) { pSrc = (const u8 *) pWM->FullscreenBuffer (); nPitch = (unsigned) W * 4; }
+		else return -1;
+	}
+	else
+	{
+		W = pW->ClientWidth (); H = pW->ClientHeight ();
+		pSrc = (const u8 *) pW->CanvasBuffer (); nPitch = (unsigned) pW->Canvas ()->Width () * 4;
+		if (pSrc == 0) return -1;
+	}
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > W) w = W - x;
+	if (y + h > H) h = H - y;
+	if (w <= 0 || h <= 0) return 0;
+	if (nStride < w || !IS_USER_VA (pDst) || !IS_USER_VA (pDst + (size_t) (h - 1) * nStride + w - 1)) return -1;
+	for (int r = 0; r < h; r++)
+		memcpy (pDst + (size_t) r * nStride, pSrc + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
+	return 0;
+}
+
+int kapi_win_raise (unsigned nId)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
+	if (pW == 0) return -1;
+	pWM->Raise (pW);
+	ScreenDirty ();
+	return 0;
+}
+
+int kapi_win_close (unsigned nId)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
+	if (pW == 0) return -1;
+	pW->RequestExit ();
+	return 0;
 }
 
 }  // extern "C"

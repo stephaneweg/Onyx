@@ -27,3 +27,5 @@ keyb FR
 telnetd
 # Remote desktop (VNC, port 5900): any VNC viewer. NO password either.
 vncd
+# Remote windows (port 3390): the Onyx windows on a Windows PC (pc/dist/OnyxRemote.exe).
+rdpd

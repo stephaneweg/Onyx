@@ -78,7 +78,7 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.
-LIBC_PROGS = libctest.elf
+LIBC_PROGS = libctest.elf rdpd.elf
 
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
@@ -140,3 +140,6 @@ endif
 
 clean:
 	rm -f *.elf *.o
+
+# the remote desktops share the keyboard translation
+vncd.elf rdpd.elf: remotekeys.h

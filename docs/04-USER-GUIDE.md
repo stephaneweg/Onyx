@@ -466,6 +466,7 @@ the terminal's **current working directory**.
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
 | `groq` | `groq <question…>`, `groq -j < messages.json`, `-c <config>` | Asks a large language model through the **Groq** chat API (HTTPS) and prints the answer — the engine behind **Lisa**. Reads `SD:/apps/lisa.app/config.ini` (`key` = your Groq API key, `model`, `role` = the system prompt, `temperature`, `max_tokens`). `-j`: stdin is a JSON array of `{"role","content"}` messages (a whole conversation). Non-ASCII text is converted between Latin-1 and UTF-8. |
 | `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves one client at a time with its own `cmd` (see §7). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
+| `rdpd` | `rdpd [port]` | **Remote windows** (port **3390**): the Onyx windows shown one by one on a Windows PC by `OnyxRemote.exe` (pc/dist). Started at boot by `SD:/etc/autostart`. **No password, no encryption.** See *Remote windows on a PC* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
 | `notifytest` | `notifytest [-t <title>] <message>` | Sends a **notification** (bubble under the menu bar) — handy to test `notifyd` from the terminal or telnet, e.g. `notifytest -t Build "Kernel staged"`. The title defaults to "Test". |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
@@ -495,6 +496,24 @@ connection waits until the first ends.
 > ⚠️ Not secure: no authentication and no encryption — anyone who can reach port 23
 > gets a shell. Remove the `telnetd` line from `SD:/etc/autostart` on an untrusted
 > network, or run it by hand (`telnetd 2323`) when needed.
+
+### Remote windows on a PC (`rdpd` + Onyx Remote)
+
+`rdpd` (started by `SD:/etc/autostart`, port **3390**) lets a Windows PC show the Onyx
+windows **each as a window of its own**, with their Onyx frame (title bar, borders, close
+box), next to the PC's windows. Run **`OnyxRemote.exe`** (in `pc/dist/`, with .NET Framework
+4.8, already on Windows 10 / 11), type the Pi's address, **Connect**.
+
+- Faster than VNC: only the windows that change are sent, only their changed parts,
+  compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
+  halves the data (a game in a big window).
+- Drag an Onyx window by its title bar to place it on the PC (the Pi's window stays where
+  it is); its close box (or Alt+F4) closes the Onyx app. Clicking a window brings it to the
+  front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
+- The menu bar and the notification bubbles appear as on the Pi (on top); **Show the Onyx
+  desktop** adds the desktop window. The connection window shows the updates a second.
+- One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
+  line from `SD:/etc/autostart` otherwise).
 
 ### Remote desktop (`vncd`)
 

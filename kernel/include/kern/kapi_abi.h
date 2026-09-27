@@ -57,7 +57,9 @@
 //      colour2, clamped to 1); KAPI_GPU_B_ALPHATEST(t): the pixels whose alpha < t / 255 are not drawn.
 // v55: + fullscreen_direct -- a full-screen app draws straight into the displayed framebuffer
 //      (no copy by present_fb; the GPU renders there too).
-#define KAPI_ABI_VERSION	55
+// v56: + win_list/win_read/win_raise/win_close -- the windows as objects, for the window-
+//      level remote desktop (rdpd): their place, size, state and pixels.
+#define KAPI_ABI_VERSION	56
 
 #ifdef __cplusplus
 extern "C" {
@@ -218,6 +220,26 @@ struct kapi_gpu_batch
 #define KAPI_GPU_WRAP_MIRROR	2
 #define KAPI_GPU_B_NOMATRIX	(1u << 17)
 #define KAPI_GPU_B_ALPHATEST(t)	(1u << 18 | ((t) & 255u) << 19)	// (v54) alpha < t / 255: not drawn
+
+// A window, for the remote desktop (v56 win_list): its client area on the screen (x, y, w,
+// h: without the frame; the full-screen window: the whole screen), WIN_FLAG_* flags, its
+// opacity, a counter that changes whenever it is redrawn / moved / resized, its state.
+#define KAPI_WIN_KEYS		1	// it has the keyboard
+#define KAPI_WIN_FULLSCREEN	2	// the full-screen window (its pixels: the screen's)
+struct kapi_win_info
+{
+	unsigned id;			// never reused
+	unsigned pid;			// the owner (0: the kernel)
+	int x, y, w, h;
+	unsigned flags;			// WIN_FLAG_BORDERLESS 1, BACKMOST 2, TOPMOST 4, TRANSPARENT 8, SYSTEM 16
+	int alpha;			// 0..255
+	unsigned gen;
+	unsigned state;			// KAPI_WIN_*
+	char title[48];
+	int ow, oh;			// the whole window with its frame (0 0: no frame)
+	int il, it;			// the client area's place in it (frame left, top)
+	unsigned chromeGen;		// changes when the app redraws its frame
+};
 // The target of gpu_render: w x h pixels (0x00RRGGBB, stride = pixels per row), cleared to
 // clear (0xRRGGBB) -- or, KAPI_GPU_F_KEEP, drawn over what they hold.
 struct kapi_gpu_frame
@@ -698,6 +720,17 @@ struct TKApiTable
 	// possible), and present_fb stops copying the back buffer (it only yields). *stride:
 	// pixels a row. 0 if not possible (then keep the back buffer). fullscreen_end ends it.
 	unsigned *(*fullscreen_direct) (int *w, int *h, int *stride);
+
+	// --- v56 additions (the window-level remote desktop, rdpd) ---
+	// win_list: the windows, bottom to top (at most max) -> how many. win_read: the pixels
+	// (0x00RRGGBB) of a rectangle of window id's client area (part 0) or of its frame (part
+	// 1 active, 2 inactive: ow x oh, the client area inside is not drawn there) into dst
+	// (stride in pixels), clipped to it -> 0, -1 no such window / part. win_raise: to the front (it gets the keys);
+	// win_close: asked to close (as its close box) -> 0 / -1.
+	int (*win_list) (struct kapi_win_info *out, int max);
+	int (*win_read) (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
+	int (*win_raise) (unsigned id);
+	int (*win_close) (unsigned id);
 };
 
 #ifdef __cplusplus

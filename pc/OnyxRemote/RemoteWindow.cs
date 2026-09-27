@@ -1,0 +1,176 @@
+// RemoteWindow.cs -- one Onyx window on the PC: its frame (as the app drew it on the Pi: title
+// bar, borders, close box) and its content. The title bar moves this PC window (not the Pi's),
+// the close box closes the Onyx app, the rest goes to the app: the pointer in the window's
+// coordinates (rdpd puts it back on the Pi's screen), the keys, the focus (the Onyx window is
+// raised and gets the keyboard).
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+namespace OnyxRemote
+{
+	class RemoteWindow : Form
+	{
+		public readonly uint Id;
+		readonly Connection conn;
+		Bitmap content, chromeA, chromeI;
+		int w, h, ow, oh, il, it;
+		bool frame, keys, placed;
+		uint flags;
+		bool dragging; Point dragFrom;
+		int buttons;
+
+		public RemoteWindow (Connection c, uint id)
+		{
+			conn = c; Id = id;
+			FormBorderStyle = FormBorderStyle.None;
+			StartPosition = FormStartPosition.Manual;
+			KeyPreview = true;
+			SetStyle (ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque, true);
+			BackColor = Color.Black;
+		}
+
+		protected override bool ShowWithoutActivation { get { return (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) != 0; } }
+
+		// From the model (UI thread, under the connection's lock).
+		public void Apply (WinModel m, Point origin)
+		{
+			bool sizeChanged = m.W != w || m.H != h || m.OW != ow || m.OH != oh;
+			w = m.W; h = m.H; ow = m.OW; oh = m.OH; il = m.IL; it = m.IT; flags = m.Flags;
+			frame = m.HasFrame; keys = (m.State & WinModel.KEYS) != 0;
+			if (Text != m.Title) Text = m.Title;
+			TopMost = (flags & WinModel.TOPMOST) != 0;
+			ShowInTaskbar = (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) == 0;
+			if ((flags & WinModel.TRANSPARENT) != 0) TransparencyKey = Color.FromArgb (255, 0, 255);
+			Opacity = m.Alpha >= 255 ? 1.0 : m.Alpha / 255.0;
+			int fw = frame ? ow : w, fh = frame ? oh : h;
+			if (sizeChanged || content == null)
+			{
+				Swap (ref content, w, h); Swap (ref chromeA, ow, oh); Swap (ref chromeI, ow, oh);
+				ClientSize = new Size (Math.Max (fw, 1), Math.Max (fh, 1));
+			}
+			// the Pi's place at first; then a framed window stays where it is put on the PC,
+			// a borderless one (menu bar, bubbles) follows the Pi
+			Point at = new Point (origin.X + m.X - (frame ? il : 0), origin.Y + m.Y - (frame ? it : 0));
+			if (!placed || !frame) { if (Location != at) Location = at; placed = true; }
+			if (m.Dirty)
+			{
+				Fill (content, m.Content, w, h);
+				if (frame) { Fill (chromeA, m.ChromeA, ow, oh); Fill (chromeI, m.ChromeI, ow, oh); }
+				m.Dirty = false;
+				Invalidate ();
+			}
+		}
+
+		static void Swap (ref Bitmap b, int w, int h)
+		{
+			b?.Dispose (); b = null;
+			if (w > 0 && h > 0) b = new Bitmap (w, h, PixelFormat.Format32bppRgb);
+		}
+
+		static void Fill (Bitmap b, int[] px, int w, int h)
+		{
+			if (b == null || px.Length < w * h) return;
+			var d = b.LockBits (new Rectangle (0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
+			for (int y = 0; y < h; y++) Marshal.Copy (px, y * w, d.Scan0 + y * d.Stride, w);
+			b.UnlockBits (d);
+		}
+
+		protected override void OnPaint (PaintEventArgs e)
+		{
+			var g = e.Graphics;
+			g.CompositingMode = CompositingMode.SourceCopy;
+			g.InterpolationMode = InterpolationMode.NearestNeighbor;
+			if (frame) { var c = keys ? chromeA : chromeI; if (c != null) g.DrawImageUnscaled (c, 0, 0); }
+			if (content != null) g.DrawImageUnscaled (content, frame ? il : 0, frame ? it : 0);
+		}
+
+		// ---- the pointer ----
+		bool InTitle (Point p) { return frame && p.Y < it; }
+		bool InCloseBox (Point p)
+		{
+			int size = it - 10, x1 = ow - 5, x0 = x1 - size;	// as the kernel's CloseBoxRect
+			return frame && p.X >= x0 && p.X <= x1 && p.Y >= 5 && p.Y <= 5 + size;
+		}
+		static int Buttons (MouseButtons b) { return ((b & MouseButtons.Left) != 0 ? 1 : 0) | ((b & MouseButtons.Right) != 0 ? 2 : 0) | ((b & MouseButtons.Middle) != 0 ? 4 : 0); }
+		void SendPointer (Point p, int b, int wheel)
+		{
+			int x = p.X - (frame ? il : 0), y = p.Y - (frame ? it : 0);
+			conn.Pointer (Id, x, y, b, wheel);
+			buttons = b;
+		}
+
+		protected override void OnMouseDown (MouseEventArgs e)
+		{
+			if (buttons == 0 && InTitle (e.Location))
+			{
+				if (e.Button == MouseButtons.Left && InCloseBox (e.Location)) conn.CloseWindow (Id);
+				else if (e.Button == MouseButtons.Left) { dragging = true; dragFrom = e.Location; }
+				return;
+			}
+			SendPointer (e.Location, Buttons (MouseButtons), 0);
+		}
+		protected override void OnMouseMove (MouseEventArgs e)
+		{
+			if (dragging) { Location = new Point (Location.X + e.X - dragFrom.X, Location.Y + e.Y - dragFrom.Y); return; }
+			if (buttons != 0 || !InTitle (e.Location)) SendPointer (e.Location, Buttons (MouseButtons), 0);
+		}
+		protected override void OnMouseUp (MouseEventArgs e)
+		{
+			if (dragging) { dragging = false; return; }
+			SendPointer (e.Location, Buttons (MouseButtons), 0);
+		}
+		protected override void OnMouseWheel (MouseEventArgs e) { SendPointer (e.Location, Buttons (MouseButtons), e.Delta > 0 ? 1 : -1); }
+
+		// ---- the keyboard ----
+		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
+		{
+			const int WM_KEYDOWN = 0x100, WM_SYSKEYDOWN = 0x104;
+			if (msg.Msg == WM_KEYDOWN || msg.Msg == WM_SYSKEYDOWN)
+			{
+				Keys k = keyData & Keys.KeyCode;
+				uint sym = KeyMap.Special (k);
+				if (sym != 0 && !KeyMap.IsModifier (k)) { conn.Key (true, false, sym); return true; }	// (no dialog-key handling)
+			}
+			return base.ProcessCmdKey (ref msg, keyData);
+		}
+		protected override void OnKeyDown (KeyEventArgs e)
+		{
+			if (KeyMap.IsModifier (e.KeyCode)) conn.Key (true, false, KeyMap.Special (e.KeyCode));
+			else { uint h = KeyMap.Held (e.KeyCode); if (h != 0) conn.Key (true, true, h); }
+			if (e.Alt && e.KeyCode == Keys.F4) return;
+			e.Handled = true;
+		}
+		protected override void OnKeyUp (KeyEventArgs e)
+		{
+			uint s = KeyMap.Special (e.KeyCode);
+			if (s != 0) conn.Key (false, false, s);
+			else { uint h = KeyMap.Held (e.KeyCode); if (h != 0) conn.Key (false, true, h); }
+			e.Handled = true;
+		}
+		protected override void OnKeyPress (KeyPressEventArgs e)
+		{
+			char c = e.KeyChar;
+			if (c == '\r' || c == '\b' || c == '\t' || c == (char) 27) return;	// (sent as keys)
+			if (c < 256) conn.Char (c);
+			e.Handled = true;
+		}
+
+		// ---- focus, closing ----
+		protected override void OnActivated (EventArgs e) { base.OnActivated (e); conn.Raise (Id); }
+		public bool GoneOnPi;					// (the Onyx window is gone: really close)
+		protected override void OnFormClosing (FormClosingEventArgs e)
+		{
+			if (!GoneOnPi && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; conn.CloseWindow (Id); }	// (Alt+F4: the app closes)
+			base.OnFormClosing (e);
+		}
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing) { content?.Dispose (); chromeA?.Dispose (); chromeI?.Dispose (); }
+			base.Dispose (disposing);
+		}
+	}
+}

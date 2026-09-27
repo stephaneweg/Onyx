@@ -11,6 +11,10 @@
 //     RDRAM, VADPCM decoding (the 2 x 8 prediction of the codebook), resampling (a 4-tap
 //     interpolation, 64 phases), the envelope mixer (dry / wet, left / right, volumes ramped
 //     every 8 samples), mixing with a gain, interleaving the two channels for the AI.
+//   * Written for Onyx; what each command computes follows the behaviour described by the
+//     open-source HLE audio of mupen64plus-rsp-hle (its alist / "nead" code, GPL-2) and the OoT
+//     decompilation's abi.h (the command encodings) -- not copied; the resampler's filter is
+//     our own (Catmull-Rom), not the microcode's table.
 //   * The AI plays 16-bit stereo big-endian frames at VI_CLOCK / (DACRATE + 1) Hz; each DMA's
 //     frames are resampled (linearly) into a ring that audioRead () empties.
 //
