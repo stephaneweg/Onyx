@@ -115,6 +115,27 @@ public:
 		if (!root->valid) { root->draw (); kapi_present (); }
 	}
 	void pumpEvents () override { pump_events (); if (root && !fsBuf) root->tooltipTick (); }
+	// 3D on the GPU (kapi v53): the textures, the frame drawn right into the active page
+	int gpuState = -1;					// -1 not asked, 0 no GPU, 1 yes
+	bool gpuReady ()
+	{
+		if (gpuState < 0) gpuState = kapi_gpu_info (0, 0) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1 ? 1 : 0;
+		return gpuState == 1;
+	}
+	bool gpu3d () override { return gpuReady (); }
+	int gpuTexture (const unsigned *px, int w, int h) override
+	{
+		if (!gpuReady ()) return -1;
+		return kapi_gpu_texture (-1, px, w, h, w);
+	}
+	int gpuRender (unsigned *dst, int w, int h, const bas::G3Vertex *v, int nv, const bas::G3Batch *b, int nb, unsigned clear, bool keep) override
+	{
+		if (!gpuReady ()) return -1;
+		struct kapi_gpu_frame f = { dst, w, h, w, clear, keep ? KAPI_GPU_F_KEEP : 0u };
+		int r = kapi_gpu_render (&f, (const struct kapi_gpu_vertex3 *) v, (unsigned) nv, (const struct kapi_gpu_batch *) b, (unsigned) nb);
+		if (r == -1 || r == -3) gpuState = 0;		// (no GPU / it stopped: software from now on)
+		return r;
+	}
 	bool stopRequested () override { return (console && !root) ? false : should_exit () != 0; }
 	unsigned nowMs () override { return kapi_get_ticks () * 10; }
 	void sleepRaw (int ms) override { kapi_msleep ((unsigned) (ms > 0 ? ms : 1)); }

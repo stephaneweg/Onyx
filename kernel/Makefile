@@ -87,10 +87,10 @@ all: $(TARGET).img apps
 SDCARD = ../sdcard
 # Apps written in BASIC: compiled on this machine (tools/basc, the same compiler core) to
 # apps/<name>.app/main.bax -- "name=source.bas" pairs.
-BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas
+BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas planets3d=$(SDCARD)/basic/examples/planets3d.bas
 BASC = ../tools/basc/basc
 BASC_SRC = ../tools/basc/basc.cpp ../user/basic/bascomp.cpp ../user/basic/basnum.cpp ../user/basic/basbax.cpp ../user/basic/basvm.cpp
-$(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h
+$(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h ../user/basic/bas3d.h ../user/basic/bas3dscene.h
 	@g++ -std=c++17 -O1 -I../user -o $@ $(BASC_SRC)
 .PHONY: stage
 stage: apps $(BASC)

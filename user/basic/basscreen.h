@@ -11,6 +11,7 @@
 
 #include "basic/bas.h"
 #include "basic/basfont.h"
+#include "basic/bas3d.h"
 
 namespace bas {
 
@@ -70,6 +71,12 @@ public:
 	virtual bool soundReady () { return true; }	// the sound output can be used (PLAY "MB")
 	virtual void endSound () {}			// the program ended: release the output
 	virtual void leaveFullscreen () {}
+	// 3D on a GPU (the platform's; else the software renderer draws): a texture -> the
+	// platform's handle (< 0: none); a frame into w x h pixels (stride = w) whose batches name
+	// the platform's handles -> 0 ok, < 0 failed (then drawn in software).
+	virtual int gpuTexture (const unsigned *px, int w, int h) { (void) px; (void) w; (void) h; return -1; }
+	virtual int gpuRender (unsigned *dst, int w, int h, const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
+	{ (void) dst; (void) w; (void) h; (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
 
 	// ---- the state -----------------------------------------------------------------------------------
 	bool win, windowCmd, textUsed;			// the window exists; WINDOW was used; text was shown
@@ -96,7 +103,62 @@ public:
 		for (int i = 0; i < 8; i++) pg[i] = 0;
 		vgaPalette (pal);
 	}
-	virtual ~ScreenHost () { for (int i = 0; i < 8; i++) delete [] pg[i]; delete [] tchar; delete [] tattr; }
+	virtual ~ScreenHost ()
+	{
+		for (int i = 0; i < 8; i++) delete [] pg[i];
+		delete [] tchar; delete [] tattr;
+		for (int i = 0; i < ntex3; i++) delete [] tex3[i].px;
+		delete [] zb3; delete [] bt3;
+	}
+
+	// ---- 3D (basic/bas3d.h) ------------------------------------------------------------------------
+	enum { MAX_TEX3 = 256 };
+	struct Tex3 { unsigned *px; int w, h, gpu; };
+	Tex3 tex3[MAX_TEX3]; int ntex3 = 0;
+	float *zb3 = 0; int zb3n = 0;			// the software renderer's depth buffer
+	G3Batch *bt3 = 0; int bt3n = 0;			// the batches with the platform's texture handles
+	int texture3d (const unsigned *px, int w, int h) override
+	{
+		if (ntex3 >= MAX_TEX3 || w <= 0 || h <= 0) return 0;
+		Tex3 &t = tex3[ntex3];
+		t.px = new unsigned[w * h]; t.w = w; t.h = h;
+		for (int i = 0; i < w * h; i++) t.px[i] = px[i];
+		t.gpu = gpuTexture (px, w, h);
+		return ++ntex3;
+	}
+	int render3d (const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep) override
+	{
+		unsigned *d = db ();
+		if (!d) return -1;
+		bool gpuOk = true;					// the textures, as the platform's handles
+		if (nb > bt3n) { delete [] bt3; bt3 = new G3Batch[nb]; bt3n = nb; }
+		for (int i = 0; i < nb; i++)
+		{
+			bt3[i] = b[i];
+			if (b[i].texture > 0)
+			{
+				int g = b[i].texture <= ntex3 ? tex3[b[i].texture - 1].gpu : -1;
+				if (g < 0) gpuOk = false;
+				bt3[i].texture = g;
+			}
+			else bt3[i].texture = -1;
+		}
+		if (!gpuOk || gpuRender (d, W, H, v, nv, bt3, nb, clear, keep) != 0)
+		{
+			if (zb3n < W * H) { delete [] zb3; zb3 = new float[W * H]; zb3n = W * H; }
+			swRender (d, W, H, W, zb3, v, nv, b, nb, clear, keep, [this] (int t) -> const G3Texture *
+			{
+				static G3Texture T;
+				if (t < 1 || t > ntex3) return 0;
+				T.px = tex3[t - 1].px; T.w = tex3[t - 1].w; T.h = tex3[t - 1].h;
+				return &T;
+			});
+		}
+		markDirty ();
+		return 0;
+	}
+	unsigned rgbColor (int c) override { return rgb (c, 0xFFFFFF); }
+	double pixelAspect () override { return sx && sy ? (double) sx / (double) sy : 1.0; }
 
 	// ---- input from the platform ------------------------------------------------------------------
 	void pushKey (long k)

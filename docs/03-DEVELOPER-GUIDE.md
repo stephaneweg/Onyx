@@ -839,6 +839,17 @@ barwidth = 40
   `PLAY "MB"` notes go to a 32-note queue that `bgTick ()` plays from `pump ()`;
   `KEYDOWN` maps its key to a `KEY_*` code for `kapi_key_held`. `PAD` / `STICK` / `STRIG` call
   `Host::padButtons` / `padAxis` (Onyx: `user/gamepad.h`; the PC: winmm `joyGetPosEx`).
+- **3D** (`basic/bas3d.h`, `basic/bas3dscene.h`): the VM's `Scene3D` turns the 3D statements
+  into vertices + batches in the layout of kapi v53 (`G3Vertex` = `kapi_gpu_vertex3`,
+  `G3Batch` = `kapi_gpu_batch`, same flag bits): the vertices stay in model space, each
+  batch carries projection × view × model (a new batch when the matrix, the texture or the
+  state changes); the shapes are lit on the CPU (the normal turned by the model matrix).
+  `RENDER3D` calls `Host::render3d`; `ScreenHost` keeps a copy of each texture (`GRAB3D` →
+  `Host::texture3d`) and asks the platform (`gpuTexture` / `gpuRender`: Onyx's runtime =
+  `kapi_gpu_texture` / `kapi_gpu_render` into the active page), else draws with `swRender`
+  (the same semantics in software: near-plane clipping, perspective-correct, depth, culling,
+  blending). Host test: `sh tools/tests/run_basic3d_test.sh` (a window-less `ScreenHost`
+  saves each `RENDER3D` as a PPM and checks some pixels).
 - **Compiled programs** (`basbax.cpp`): `saveBax ()` writes a `Program` table by table
   (little-endian; header "OBAX", the format and the VM's opcode / builtin / statement counts,
   so a `.bax` from another VM is refused), `loadBax ()` reads it back, `load ()` takes a

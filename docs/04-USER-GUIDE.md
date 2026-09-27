@@ -768,6 +768,7 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 | **FreeCell** | All the cards face up in eight columns, four **free cells** (top left, one card each), four foundations (top right). **Drag** cards: a column takes a card one lower in the other colour (anything on an empty column); a **run** moves at once when free cells and empty columns allow it. **Double-click**: to the foundation, else to a free cell. Cards no longer needed go home by themselves. **^Z** undo; Game ▸ **Select Game...** plays deal 1–32000 — the same deals as Microsoft FreeCell; Restart Game. |
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
+| **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
 | **Teapot (GPU)** (`teapot`) | The demo of the Raspberry Pi 4's **GPU** (V3D): the Utah teapot turning, lit (6400 triangles), drawn by the GPU with a depth buffer. The top line shows the renderer (`V3D 4.2 (1 core)`), the triangles, the frames a second and the time of one frame. **Space** pause, **G** GPU / software (the same picture drawn by the CPU, to compare), **Up / Down** tilt. Without a usable GPU it draws in software and the top line says why (the details are in `kmsg`). Reads and writes no file. |
 | **GPU demo** (`gpudemo`) | The GPU's full pipeline: six **textured cubes** turning (each moved by the GPU with its own matrix), a **glass pane** in front (transparency) and **glowing sparks** (additive light). Each cube's texture has a size that the GPU stores differently (its label: `4x4 LT`, `8x8 UB1`, `16x16 UB2`, `64x64 UIF`, `256 UIF/XOR`, `100x60 UIF`); every face should show a white border, a yellow dot in a corner and a dark arrow — a scrambled face means that layout is wrong. **F** nearest / linear filtering, **C** culling (back / none / front: with *back* only the outer faces show), **B** blending on / off, **T** textures on / off, **Space** pause. The top line: the GPU, the settings, frames a second, time of a frame (and the error, if the GPU refused a frame). Reads and writes no file. |
@@ -938,6 +939,26 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
   button A of pad 0/1, 4–7 button B; even `n` = pressed since the last call, odd = held).
   Nothing is pressed while the program's window is in the background. Also in the Windows
   runtime (Windows game controllers).
+- **3D** (Onyx: drawn by the GPU; software when there is none, and in the Windows runtime):
+  a frame is built between **`SCENE3D [colour]`** (clears to `colour`, black by default; `-1`
+  draws over the screen as it is) and **`RENDER3D`** (draws it on the screen; `PRINT` / `LINE`
+  after it go on top). The camera: **`CAMERA3D ex, ey, ez, tx, ty, tz [, fov]`** (the eye, the
+  point looked at, the field of view in degrees, 60), y is up. The light: **`LIGHT3D dx, dy, dz
+  [, ambient%]`** (the direction it comes from; `0, 0, 0` = no lighting). Placing things: the
+  statements act on the shapes drawn after them — **`TRANSLATE3D x, y, z`**, **`ROTATE3D ax, ay,
+  az`** (degrees, around X then Y then Z), **`SCALE3D s [, sy, sz]`**, **`IDENTITY3D`**, and
+  **`PUSH3D`** / **`POP3D`** to save and restore the placement (32 levels: a moon around its
+  planet). The look: **`COLOR3D c [, alpha]`** (a colour or `RGB ()`, alpha 0–255),
+  **`TEXTURE3D t [, smooth [, wrap]]`** (`0` none; smooth 1 = filtered; wrap 0 repeat, 1 clamp,
+  2 mirror), **`BLEND3D m`** (0 opaque, 1 transparent, 2 added light, 3 multiply),
+  **`DEPTH3D test [, write]`**, **`CULL3D m`** (0 both faces, 1 the front only — the default —,
+  2 the back only). The shapes (lit): **`CUBE3D [size]`**, **`SPHERE3D [radius [, detail]]`**,
+  **`CYLINDER3D [radius [, height [, detail]]]`** (standing on y = 0), **`PLANE3D [w [, d]]`**
+  (flat on y = 0, facing up); and any triangles: **`VERTEX3D x, y, z [, s, t]`**, three by
+  three (counter-clockwise = the front; `s, t` = texture coordinates 0–1). **`t = GRAB3D (x, y,
+  w, h)`** makes a texture of a rectangle of the screen (draw it with `LINE`, `CIRCLE`,
+  `PSET`…; magenta `RGB (255, 0, 255)` = transparent); **`GPU3D`** is -1 when the GPU draws.
+  Example: `SD:/basic/examples/planets3d.bas` (the **Planets 3D** app).
 - **Events**: `ON TIMER (n) GOSUB`, `ON KEY (n) GOSUB` (F1–F12, arrows, user keys) with
   `TIMER` / `KEY (n)` `ON` / `OFF` / `STOP`. `INKEY$` returns F1–F10 as `CHR$(0) + CHR$(59…68)`.
 - **Programs**: `CHAIN` (with `COMMON` variables and the open files), `RUN`, `CLEAR`,
@@ -971,7 +992,7 @@ An app bundle may contain **`main.bas` or `main.bax` instead of `main`**:
 app — the launchers see the file and run it with `SD:/bin/basic` (the programs for such
 formats are listed in `SD:/etc/runners.ini`). **File ▸ Make App...** in the editor creates
 one from the current program (it asks for the folder name and the title, and whether to
-compile it). Examples: **BASIC Demo** (`basicdemo`, `main.bas`) and **Arkanoid**
+compile it). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Planets 3D** and **Arkanoid**
 (`arkanoid`: `main.bax`, compiled at build time from `SD:/basic/examples/arkanoid.bas` — the
 game is written in BASIC).
 

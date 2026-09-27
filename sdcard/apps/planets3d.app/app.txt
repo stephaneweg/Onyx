@@ -1,0 +1,3 @@
+# Onyx application metadata -- an app written in BASIC (main.bax, compiled from SD:/basic/examples/planets3d.bas).
+name = Planets 3D
+category = Demos

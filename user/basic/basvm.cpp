@@ -18,6 +18,7 @@
 #include "basic/basnum.h"
 #define BASFONT_TABLES_ONLY
 #include "basic/basfont.h"
+#include "basic/bas3dscene.h"
 
 namespace bas {
 
@@ -199,6 +200,7 @@ public:
 	// GET / PUT # serialisation buffer
 	char *ser; int serLen, serCap;
 	bool strigLast[4];				// STRIG (even n): the button at the last call
+	Scene3D s3;					// SCENE3D ... RENDER3D (basic/bas3dscene.h)
 
 	VM (Program *p, Host &h, Error *e) : P (p), H (h), err (e), sp (0), G (0), nf (0), ngs (0), pc (0), opPc (0),
 		failed (false), ended (false), rnd (327680), lastRnd (0), dataPtr (0), chan (0), inPos (0),
@@ -1268,6 +1270,25 @@ public:
 		case B_MOUSEB: pushN (H.mouse (2)); break;
 		case B_PLAYN: pushN (H.bgNotes ()); break;
 		case B_PAD: pushN ((double) H.padButtons (argc > 0 ? (int) a[0].n : -1)); if (!H.poll ()) ended = true; break;
+		case B_GPU3D: pushN (H.gpu3d () ? 1 : 0); break;
+		case B_GRAB3D:					// a texture from a rectangle of the screen (magenta: transparent)
+		{
+			int x = (int) a[0].n, y = (int) a[1].n, w = (int) a[2].n, h = (int) a[3].n;
+			if (w < 1 || h < 1 || w > 1024 || h > 1024) { fail ("Illegal function call (GRAB3D size)"); break; }
+			int *px = new int[w * h];
+			H.readRect (x, y, w, h, px, true);
+			unsigned *tx = (unsigned *) px;
+			for (int i = 0; i < w * h; i++)
+			{
+				unsigned c = (unsigned) px[i] & 0xFFFFFF;
+				tx[i] = c == 0xFF00FF ? 0 : 0xFF000000 | c;
+			}
+			int t = H.texture3d (tx, w, h);
+			delete [] px;
+			if (t <= 0) { fail ("Out of memory (GRAB3D: no texture left)"); break; }
+			pushN (t);
+			break;
+		}
 		case B_STICK:					// QBasic: 0 / 1 = x / y of joystick A (pad 0), 2 / 3 of B; 1..199
 		{
 			int n = (int) a[0].n, pad = (n >> 1) & 1, ax = n & 1;
@@ -1351,6 +1372,7 @@ public:
 		if (failed) { for (int i = 0; i < argc; i++) vclear (a[i]); return; }
 		char t1[512], t2[512];
 		auto N = [&] (int i, int def) { return i < argc ? (int) a[i].n : def; };
+		auto F = [&] (int i, float def) { return i < argc ? (float) a[i].n : def; };
 		switch (id)
 		{
 		case S_CLS: H.cls (N (0, -1)); break;
@@ -1448,6 +1470,80 @@ public:
 		}
 		case S_PCOPY: H.pcopy (N (0, 0), N (1, 0)); break;
 		case S_FULLSCREEN: H.fullscreen (N (0, 1) != 0); break;
+		// ---- 3D (basic/bas3dscene.h)
+		case S_SCENE3D:
+		{
+			int c = N (0, 0);
+			s3.begin (c < 0 ? 0 : H.rgbColor (c), c < 0);
+			H.screenSize (&scrW, &scrH);
+			s3.camera ((float) ((double) scrW / (double) (scrH > 0 ? scrH : 1) * H.pixelAspect ()));
+			break;
+		}
+		case S_CAMERA3D:
+			for (int k = 0; k < 3; k++) { s3.eye[k] = F (k, 0); s3.target[k] = F (3 + k, 0); }
+			s3.fov = F (6, 60); if (s3.fov < 1) s3.fov = 1; if (s3.fov > 170) s3.fov = 170;
+			H.screenSize (&scrW, &scrH);
+			s3.camera ((float) ((double) scrW / (double) (scrH > 0 ? scrH : 1) * H.pixelAspect ()));
+			break;
+		case S_LIGHT3D:
+			s3.light[0] = F (0, 0); s3.light[1] = F (1, 0); s3.light[2] = F (2, 0); s3.normL ();
+			if (argc > 3) { float amb = F (3, 30) / 100; s3.ambient = amb < 0 ? 0 : amb > 1 ? 1 : amb; }
+			break;
+		case S_IDENTITY3D: s3.identity (); break;
+		case S_TRANSLATE3D: s3.translate (F (0, 0), F (1, 0), F (2, 0)); break;
+		case S_ROTATE3D: s3.rotate (F (0, 0), F (1, 0), F (2, 0)); break;
+		case S_SCALE3D: { float k = F (0, 1); s3.scale (k, argc > 1 ? F (1, 1) : k, argc > 2 ? F (2, 1) : k); break; }
+		case S_PUSH3D: if (!s3.push ()) fail ("Out of stack space (PUSH3D: 32 levels)"); break;
+		case S_POP3D: if (!s3.pop ()) fail ("Illegal function call (POP3D without PUSH3D)"); break;
+		case S_COLOR3D:
+		{
+			s3.color = H.rgbColor (N (0, 15));
+			int al = N (1, 255); s3.alpha = al < 0 ? 0 : al > 255 ? 255 : al;
+			break;
+		}
+		case S_TEXTURE3D:
+		{
+			int t = N (0, 0);
+			s3.setTexture (t > 0 ? t : 0);
+			unsigned f = s3.flags & ~(unsigned) (G3_LINEAR | 3 << G3_WRAP_S_SHIFT | 3 << G3_WRAP_T_SHIFT);
+			if (N (1, 0)) f |= G3_LINEAR;
+			unsigned wr = (unsigned) N (2, 0) & 3; if (wr == 3) wr = 0;
+			f |= wr << G3_WRAP_S_SHIFT | wr << G3_WRAP_T_SHIFT;
+			s3.setFlags (f);
+			break;
+		}
+		case S_BLEND3D:
+		{
+			int m = N (0, 0); if (m < 0 || m > 3) { fail ("Illegal function call (BLEND3D 0..3)"); break; }
+			s3.setFlags ((s3.flags & ~(15u << G3_BLEND_SHIFT)) | (unsigned) m << G3_BLEND_SHIFT);
+			break;
+		}
+		case S_DEPTH3D:
+		{
+			unsigned f = s3.flags & ~(unsigned) (G3_ZFUNC | G3_NOZWRITE);
+			bool test = N (0, 1) != 0, wr = N (1, test ? 1 : 0) != 0;
+			if (!test) f |= 7;				// always
+			if (!wr) f |= G3_NOZWRITE;
+			s3.setFlags (f);
+			break;
+		}
+		case S_CULL3D:
+		{
+			int m = N (0, 1);
+			unsigned f = s3.flags & ~(unsigned) (G3_CULL_BACK | G3_CULL_FRONT);
+			if (m == 1) f |= G3_CULL_BACK; else if (m == 2) f |= G3_CULL_FRONT;
+			s3.setFlags (f);
+			break;
+		}
+		case S_VERTEX3D: s3.vertex (F (0, 0), F (1, 0), F (2, 0), F (3, 0), F (4, 0)); break;
+		case S_CUBE3D: s3.cube (F (0, 1)); break;
+		case S_SPHERE3D: s3.sphere (F (0, 1), N (1, 16)); break;
+		case S_CYLINDER3D: s3.cylinder (F (0, 0.5f), F (1, 1), N (2, 16)); break;
+		case S_PLANE3D: s3.plane (F (0, 1), argc > 1 ? F (1, 1) : F (0, 1)); break;
+		case S_RENDER3D:
+			if (H.render3d (s3.v.d, s3.v.n, s3.b.d, s3.b.n, s3.clear, s3.keep) < 0) fail ("Feature unavailable (RENDER3D)");
+			if (!H.poll ()) ended = true;
+			break;
 		case S_KEYDEF:
 		{
 			int k = N (0, 0); int n; const char *s = sdata (a[1], &n);

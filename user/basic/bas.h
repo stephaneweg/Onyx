@@ -17,6 +17,7 @@
 namespace bas {
 
 struct Error { int line; char msg[120]; };	// line: 1-based source line (0 = none)
+struct G3Vertex; struct G3Batch;		// (basic/bas3d.h)
 
 // ---- the outside world -------------------------------------------------------------------
 // Colours: 0..15 = the QBasic palette; RGB(r,g,b) values have bit 24 set (0x1RRGGBB).
@@ -60,6 +61,17 @@ struct Host
 	virtual void circle (int x, int y, int r, int c, int fill) { (void) x; (void) y; (void) r; (void) c; (void) fill; }
 	virtual void drawText (int x, int y, const char *s, int c) { (void) x; (void) y; (void) s; (void) c; }
 	virtual int  mouse (int what) { (void) what; return 0; }	// 0 x, 1 y, 2 buttons
+	// 3D (SCENE3D ... RENDER3D, basic/bas3d.h): a texture from w x h pixels 0xAARRGGBB -> its
+	// number (1..; 0 = none left); a frame of vertices + batches drawn on the active page
+	// (cleared to clear 0xRRGGBB unless keep) -> 0 ok, < 0 not possible; the 0xRRGGBB of a
+	// colour value (palette index or RGB ()); the width / height of a displayed pixel; true
+	// when the GPU draws.
+	virtual int  texture3d (const unsigned *px, int w, int h) { (void) px; (void) w; (void) h; return 0; }
+	virtual int  render3d (const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
+	{ (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
+	virtual unsigned rgbColor (int c) { return (c & 0x1000000) ? (unsigned) c & 0xFFFFFF : 0xFFFFFF; }
+	virtual double pixelAspect () { return 1; }
+	virtual bool gpu3d () { return false; }
 	// Time.
 	virtual void sleepMs (int ms) { (void) ms; }
 	virtual bool poll () { return true; }			// keep the window alive; false = quit

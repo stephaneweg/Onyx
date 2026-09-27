@@ -36,7 +36,10 @@ static const char *const KEYWORDS[] = {
 	"BINARY", "RANDOM", "USING", "TAB", "SPC",
 	"TYPE", "RESUME", "FIELD", "LSET", "RSET", "COMMON", "CHAIN", "RUN", "CLEAR", "TRON", "TROFF", "KEY",
 	"PAINT", "DRAW", "VIEW", "PALETTE", "PCOPY", "GET", "PUT", "RESET", "FILES", "CHDIR", "SHELL", "ENVIRON",
-	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", "FULLSCREEN", 0 };
+	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", "FULLSCREEN",
+	"SCENE3D", "RENDER3D", "CAMERA3D", "LIGHT3D", "IDENTITY3D", "TRANSLATE3D", "ROTATE3D", "SCALE3D", "PUSH3D",
+	"POP3D", "COLOR3D", "TEXTURE3D", "BLEND3D", "DEPTH3D", "CULL3D", "VERTEX3D", "CUBE3D", "SPHERE3D",
+	"CYLINDER3D", "PLANE3D", 0 };
 
 struct BFn { const char *name; int id; int ret; const char *args; };
 static const BFn BFNS[] = {
@@ -74,6 +77,7 @@ static const BFn BFNS[] = {
 	{ "SCREEN", B_SCREEN, TY_NUM, "NN[N" }, { "KEYDOWN", B_KEYDOWN, TY_NUM, "S" },
 	{ "PLAY", B_PLAYN, TY_NUM, "N" },
 	{ "STICK", B_STICK, TY_NUM, "N" }, { "STRIG", B_STRIG, TY_NUM, "N" }, { "PAD", B_PAD, TY_NUM, "[N" },
+	{ "GRAB3D", B_GRAB3D, TY_NUM, "NNNN" }, { "GPU3D", B_GPU3D, TY_NUM, "" },
 	{ 0, 0, 0, 0 } };
 
 // Block terminators (what ends a statement block).
@@ -1436,7 +1440,14 @@ public:
 			{ "NOTIFY", S_NOTIFY, "SS" }, { "SETCLIPBOARD", S_SETCLIPBOARD, "S" }, { "EXEC", S_EXEC, "S[S" },
 			{ "LAUNCH", S_LAUNCH, "S" }, { "KILL", S_KILL, "S" }, { "MKDIR", S_MKDIR, "S" }, { "RMDIR", S_RMDIR, "S" },
 			{ "WIDTH", S_WIDTH, "[NN" }, { "PLAY", S_PLAY, "S" }, { "NOTEON", S_NOTEON, "NN[NN" },
-			{ "NOTEOFF", S_NOTEOFF, "[N" }, { 0, 0, 0 } };
+			{ "NOTEOFF", S_NOTEOFF, "[N" },
+			{ "SCENE3D", S_SCENE3D, "[N" }, { "RENDER3D", S_RENDER3D, "" }, { "CAMERA3D", S_CAMERA3D, "NNNNNN[N" },
+			{ "LIGHT3D", S_LIGHT3D, "NNN[N" }, { "IDENTITY3D", S_IDENTITY3D, "" }, { "TRANSLATE3D", S_TRANSLATE3D, "NNN" },
+			{ "ROTATE3D", S_ROTATE3D, "NNN" }, { "SCALE3D", S_SCALE3D, "N[NN" }, { "PUSH3D", S_PUSH3D, "" },
+			{ "POP3D", S_POP3D, "" }, { "COLOR3D", S_COLOR3D, "N[N" }, { "TEXTURE3D", S_TEXTURE3D, "N[NN" },
+			{ "BLEND3D", S_BLEND3D, "N" }, { "DEPTH3D", S_DEPTH3D, "N[N" }, { "CULL3D", S_CULL3D, "N" },
+			{ "VERTEX3D", S_VERTEX3D, "NNN[NN" }, { "CUBE3D", S_CUBE3D, "[N" }, { "SPHERE3D", S_SPHERE3D, "[NN" },
+			{ "CYLINDER3D", S_CYLINDER3D, "[NNN" }, { "PLANE3D", S_PLANE3D, "[NN" }, { 0, 0, 0 } };
 		for (int i = 0; S[i].name; i++)
 		{
 			if (!bseq (S[i].name, w)) continue;

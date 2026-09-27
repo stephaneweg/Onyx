@@ -604,6 +604,17 @@ def icon_gpudemo():		# a textured cube (three shaded faces) behind a glass pane
     pframe(px, 20, 20, 35, 35, (200, 220, 255)); pframe(px, 21, 21, 34, 34, (140, 170, 230))
     return px
 
+def icon_planets3d():	# a ringed planet and a small moon on a starry sky
+    px = blank()
+    prect(px, 2, 2, 37, 37, (6, 8, 22))
+    for (x, y) in ((6, 6), (31, 5), (34, 30), (8, 33), (22, 4)): prect(px, x, y, x, y, (240, 240, 255))
+    pdisc(px, 18, 20, 9, (200, 150, 90)); prect(px, 10, 17, 26, 18, (160, 110, 60)); prect(px, 10, 22, 26, 22, (225, 180, 120))
+    for i in range(-15, 16):
+        y = 21 + (i * 5) // 15
+        if abs(i) > 8 or y > 22: prect(px, 18 + i, y, 18 + i, y, (230, 210, 170))
+    pdisc(px, 32, 11, 3, (170, 170, 185))
+    return px
+
 def icon_doom():		# a red-brown Doom-ish emblem: a skull-like shape on dark stone
     px = blank()
     prect(px, 2, 2, 37, 37, (40, 30, 26)); pframe(px, 2, 2, 37, 37, (90, 60, 40))
@@ -636,7 +647,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d,
 }
 
 

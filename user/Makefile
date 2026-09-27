@@ -102,7 +102,7 @@ snes/libsnes.a: $(SNES_OBJS)
 
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
 # (linked into the qbasic editor too), and the runtime /bin/basic (basic/runtime.cpp).
-BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h
+BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h
 BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o basic/basbax.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.
