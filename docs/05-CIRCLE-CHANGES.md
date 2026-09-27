@@ -42,6 +42,7 @@ git -C circle diff Step51..onyx
 | 10 | **Multi-cluster transfers** in `f_read` / `f_write` (one SD command across contiguous clusters) | `addon/fatfs/ff.c` | `libfatfs` |
 | 9 | **High Speed SD at run time** (`CEMMCDevice::SetHighSpeed`) + the host's High Speed Enable bit | `addon/SDCard/emmc.{h,cpp}` | `libsdcard` |
 | 11 | **FatFs fast seek** on (`FF_USE_FASTSEEK 1`: `kapi_seek` in a GameCube disc image) | `addon/fatfs/ffconf.h` | `libfatfs` + the kernel (the `FIL` layout: clean rebuild) |
+| 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
 
@@ -480,6 +481,33 @@ builds it at the first seek of a file bigger than 4 MB (`f_lseek (fp, CREATE_LIN
 table grown once if the file is fragmented) and `kapi_close` frees it: a GameCube disc image
 (1.4 GB) is then read anywhere at once. The option adds `cltbl` to `FIL`: **the kernel must be
 rebuilt clean** with the new `libfatfs`.
+
+## 12. 2D DMA with a source stride, asynchronous partial updates
+
+**Why.** Circle's `SetupMemCopy2D` only knows a destination stride: the source must be one
+contiguous block. So patch 6 gathered each damaged rectangle's rows into a buffer with the CPU
+(a copy as big as the DMA's) before the frame buffer's DMA copied it to the screen, and
+`SetArea` then **busy-waited** for the DMA: core 0 (the GUI, the apps' tasks) stood still for
+the whole transfer (2–4 ms for a full 1080p screen).
+
+**What.** Both DMA engines have a source stride too (legacy `STRIDE` bits 0–15, DMA4 `SRCI`
+bits 16–31):
+
+```cpp
+void SetupMemCopy2D (void *pDestination, const void *pSource,
+                     size_t nBlockLength, unsigned nBlockCount, size_t nBlockStride,
+                     unsigned nBurstLength, size_t nSourceStride);	// CDMAChannel, CDMA4Channel
+void CBcmFrameBuffer::SetAreaPitch (const TArea &, const void *pPixels, unsigned nSourcePitch,
+                                    TAreaCompletionRoutine *pRoutine = nullptr, void *pParam = nullptr);
+void C2DGraphics::UpdateDisplayAsync (unsigned x, unsigned y, unsigned w, unsigned h,	// w = 0: all
+                                      CDisplay::TAreaCompletionRoutine *pRoutine, void *pParam);
+```
+
+The overloads clean only the rectangle's rows from the data cache (not the whole span). The
+partial `UpdateDisplay (x, y, w, h)` of patch 6 now uses `SetAreaPitch` (the gathering buffer is
+gone). `UpdateDisplayAsync` starts the DMA and returns; the routine runs from the DMA's
+interrupt. The Onyx compositor (`CCompositorTask::Present`, kernel.cpp) yields to the other
+tasks until it is called, and draws nothing into the off-screen buffer meanwhile.
 
 ## Not a patch: build configuration
 

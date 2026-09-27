@@ -215,6 +215,18 @@ private:
 //
 class CCompositorTask : public CTask
 {
+	// A present: the rectangle (w = 0: the screen) sent by the frame buffer's 2D DMA, read in
+	// place in the off-screen buffer; meanwhile the other tasks run (core 0 not held by a busy
+	// wait), and nothing draws into that buffer until it is done (only this task does).
+	static volatile boolean s_bSent;
+	static void Sent (void *) { s_bSent = TRUE; }
+	void Present (unsigned x, unsigned y, unsigned w, unsigned h)
+	{
+		s_bSent = FALSE;
+		m_p2D->UpdateDisplayAsync (x, y, w, h, Sent, 0);
+		while (!s_bSent) CScheduler::Get ()->Yield ();
+	}
+
 public:
 	CCompositorTask (C2DGraphics *p2D, CWindowManager *pWM)
 	:	m_p2D (p2D), m_pWM (pWM), m_bFirst (TRUE)
@@ -258,7 +270,7 @@ public:
 				{
 					nLastTicks = nTicks; m_bFirst = FALSE;
 					m_pWM->Composite (&Screen);
-					m_p2D->UpdateDisplay ();
+					Present (0, 0, 0, 0);
 				}
 				else
 				{
@@ -266,9 +278,9 @@ public:
 					{
 						Screen.SetClip (Damage.x0[i], Damage.y0[i], Damage.x1[i], Damage.y1[i]);
 						m_pWM->Composite (&Screen, i == 0);
-						m_p2D->UpdateDisplay ((unsigned) Damage.x0[i], (unsigned) Damage.y0[i],
-								      (unsigned) (Damage.x1[i] - Damage.x0[i]),
-								      (unsigned) (Damage.y1[i] - Damage.y0[i]));
+						Present ((unsigned) Damage.x0[i], (unsigned) Damage.y0[i],
+							 (unsigned) (Damage.x1[i] - Damage.x0[i]),
+							 (unsigned) (Damage.y1[i] - Damage.y0[i]));
 					}
 				}
 			}
@@ -281,6 +293,8 @@ private:
 	CWindowManager *m_pWM;
 	boolean		m_bFirst;
 };
+
+volatile boolean CCompositorTask::s_bSent;
 
 // Cascade kill: when a process dies, its still-running children must die too (e.g.
 // killing the terminal also kills its shell + whatever the shell spawned). We track

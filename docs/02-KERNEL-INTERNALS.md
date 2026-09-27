@@ -100,7 +100,10 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      The task takes the damage (`ScreenTakeDamage`) and for each rectangle composites with
      the screen image **clipped** to it (`GImage::SetClip`: every blit and fill stays
      inside) and sends just that rectangle to the display (`C2DGraphics::UpdateDisplay
-     (x, y, w, h)`, our Circle patch: rows gathered, then the frame buffer's 2D DMA); the
+     (x, y, w, h)`, our Circle patches 6 / 12: the frame buffer's 2D DMA reads the rectangle in
+     place, source and destination strides; `CCompositorTask::Present` starts it with
+     `UpdateDisplayAsync` and **yields** to the other tasks until its interrupt says it is
+     done, instead of spinning); the
      whole screen only when told, plus a safety refresh every 2 s. A window animating
      (a game, an emulator) costs its own area instead of the whole screen, a mouse move
      two cursor-sized spots. An idle desktop
