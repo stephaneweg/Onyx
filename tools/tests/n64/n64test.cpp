@@ -73,6 +73,11 @@ int main (int argc, char **argv)
 		m->traceOn = i == frames - 1;
 #endif
 		m->runFrame ();
+		if (getenv ("N64_GFXEVERY") && i % atoi (getenv ("N64_GFXEVERY")) == 0 && getenv ("N64_GFX"))
+		{
+			char p[256]; snprintf (p, sizeof p, "%s_%05d.ppm", getenv ("N64_GFX"), i);
+			gfxPpm (m, p, 1);
+		}
 	}
 	double s = (double) (clock () - t0) / CLOCKS_PER_SEC;
 	printf ("%s: CIC %u, %s, %d frames, %.2f s (%.1f fps), pc %08X, %dx%d%s%s\n", m->title, m->cic, m->pal ? "PAL" : "NTSC",
@@ -136,6 +141,23 @@ int main (int argc, char **argv)
 	{
 		unsigned a = (unsigned) strtoul (getenv ("N64_MEM"), 0, 16);
 		for (int k = 0; k < 16; k++) printf ("  %08X: %08X %08X %08X %08X\n", a + 16 * k, m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k], m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k + 1], m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k + 2], m->rdram[((a & 0x7FFFFF) >> 2) + 4 * k + 3]);
+	}
+	if (getenv ("N64_TEXDUMP"))		// the textures of the last frame, as pictures (alpha over a grey checker)
+	{
+		for (int i = 0; i < n64::Machine::MAX_TEX; i++)
+		{
+			const n64::GTexture &T = m->tex[i];
+			if (T.w <= 0 || T.lastUse + 2 < m->gfxSerial) continue;
+			char p[256]; snprintf (p, sizeof p, "%s_%03d_%dx%d.ppm", getenv ("N64_TEXDUMP"), i, T.w, T.h);
+			FILE *f = fopen (p, "wb"); if (!f) continue;
+			fprintf (f, "P6\n%d %d\n255\n", T.w, T.h);
+			for (int k = 0; k < T.w * T.h; k++)
+			{
+				unsigned c = T.px[k], a = c >> 24, bg = (((k % T.w) / 4 + (k / T.w) / 4) & 1) ? 90 : 160;
+				for (int sh = 16; sh >= 0; sh -= 8) fputc ((int) ((((c >> sh) & 255) * a + bg * (255 - a)) / 255), f);
+			}
+			fclose (f);
+		}
 	}
 	if (argc > 3) ppm (m, argv[3]);
 	if (getenv ("N64_GFX")) gfxPpm (m, getenv ("N64_GFX"), getenv ("N64_SCALE") ? atoi (getenv ("N64_SCALE")) : 2);

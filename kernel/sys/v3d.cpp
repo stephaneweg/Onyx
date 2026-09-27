@@ -169,8 +169,11 @@ static volatile boolean s_bBusy = FALSE;
 #define STATE_CS_CLIP	(STATE_VS_CLIP + 1024)
 #define STATE_FS_COLOR	(STATE_CS_CLIP + 1024)
 #define STATE_FS_TEX	(STATE_FS_COLOR + 512)
-#define STATE_END	(STATE_FS_TEX + 512)
-static_assert (sizeof VS_CLIP <= 1024 && sizeof CS_CLIP <= 1024 && sizeof FS_COLOR <= 512 && sizeof FS_TEX <= 512, "shader space");
+#define STATE_FS_COLOR_AT (STATE_FS_TEX + 512)
+#define STATE_FS_TEX_AT	(STATE_FS_COLOR_AT + 512)
+#define STATE_END	(STATE_FS_TEX_AT + 512)
+static_assert (sizeof VS_CLIP <= 1024 && sizeof CS_CLIP <= 1024 && sizeof FS_COLOR <= 512 && sizeof FS_TEX <= 512
+	       && sizeof FS_COLOR_AT <= 512 && sizeof FS_TEX_AT <= 512, "shader space");
 
 static void Fmt (char *pOut, unsigned nCap, const char *pFmt, u32 a, u32 b, u32 c)
 {
@@ -249,6 +252,8 @@ static boolean Up (void)
 	memcpy (p + STATE_CS_CLIP, CS_CLIP, sizeof CS_CLIP);
 	memcpy (p + STATE_FS_COLOR, FS_COLOR, sizeof FS_COLOR);
 	memcpy (p + STATE_FS_TEX, FS_TEX, sizeof FS_TEX);
+	memcpy (p + STATE_FS_COLOR_AT, FS_COLOR_AT, sizeof FS_COLOR_AT);
+	memcpy (p + STATE_FS_TEX_AT, FS_TEX_AT, sizeof FS_TEX_AT);
 	CleanDataCacheRange ((uintptr) p, STATE_END);
 	IrqOn ();
 	Fmt (s_Info, sizeof s_Info, "V3D %u.%u (%u core)", nTver, nRev, nCores);
@@ -716,7 +721,7 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	u32 nAllocSize = ((nTiles * 64 + 4095) & ~4095u) + 2 * 1024 * 1024;
 	if (!Alloc (s_Verts3, (nV ? nV : 3) * sizeof (kapi_gpu_vertex3)) || !Alloc (s_Target, (u32) (w * h * 4))
 	    || !Alloc (s_TileAlloc, nAllocSize) || !Alloc (s_TileState, nTiles * 256)
-	    || !Alloc (s_BCL, 1024 + nB * 64) || !Alloc (s_Ind, 4096 + nB * 384))
+	    || !Alloc (s_BCL, 1024 + nB * 64) || !Alloc (s_Ind, 4096 + nB * 512))
 		return -2;
 	memcpy (s_Verts3.p, pV, nV * sizeof (kapi_gpu_vertex3));
 	CleanDataCacheRange ((uintptr) s_Verts3.p, nV * sizeof (kapi_gpu_vertex3));
@@ -785,8 +790,9 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 			Ind << (u32) (pTex->Mem.Bus (0) | 3);			// p0: texture state, 2 words (f16 RG, BA)
 			Ind << nSampler;					// p1: sampler state, 16-bit output
 		}
-		else
-			Ind << 0u;
+		boolean bAT = (b.flags & (1u << 18)) != 0;			// (v54) the alpha test: its threshold
+		if (bAT) Ind << (f32) ((b.flags >> 19) & 255) / 255.0f;
+		if (!pTex && !bAT) Ind << 0u;
 
 		// the shader state record + its attributes (position, s t, colour)
 		Ind.Align (32);
@@ -795,13 +801,13 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 		Rec.enable_clipping = true;
 		Rec.fragment_shader_uses_real_pixel_centre_w_in_addition_to_centroid_w2 = true;
 		Rec.disable_implicit_point_line_varyings = true;
-		Rec.number_of_varyings_in_fragment_shader = 6;
+		Rec.number_of_varyings_in_fragment_shader = 10;
 		Rec.coordinate_shader_output_vpm_segment_size = 1;
 		Rec.coordinate_shader_input_vpm_segment_size = 1;
 		Rec.vertex_shader_output_vpm_segment_size = 2;
 		Rec.vertex_shader_input_vpm_segment_size = 2;
 		Rec.address_of_default_attribute_values = s_State.Bus (0);
-		Rec.fragment_shader_code_address = s_State.Bus (pTex ? STATE_FS_TEX : STATE_FS_COLOR) >> 3;
+		Rec.fragment_shader_code_address = s_State.Bus (pTex ? (bAT ? STATE_FS_TEX_AT : STATE_FS_TEX) : (bAT ? STATE_FS_COLOR_AT : STATE_FS_COLOR)) >> 3;
 		Rec.fragment_shader_uniforms_address = nFragUnif;
 		Rec.fragment_shader_4_way_threadable = true;
 		Rec.fragment_shader_start_in_final_thread_section = false;
@@ -837,6 +843,8 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 		A.type = 4;							// byte
 		A.normalized_int_type = true;
 		Ind << A;
+		A.address = s_Verts3.Bus (28);					// r2 g2 b2 a2 (v54)
+		Ind << A;
 
 		// the state, then the triangles
 		u32 nZ = KAPI_GPU_B_ZFUNC (b.flags);
@@ -854,7 +862,7 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 			B << BlendCfg (0, f[2], f[3], 0, f[0], f[1], 0xF);
 			nPrevBlend = nBlend;
 		}
-		B << GlShaderState (nShaderRec, 3);
+		B << GlShaderState (nShaderRec, 4);
 		B << VertexArrayPrims (4, b.count, b.first);			// triangles
 	}
 	B << OP_FLUSH;

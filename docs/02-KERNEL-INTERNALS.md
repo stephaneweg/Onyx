@@ -516,7 +516,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 53`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 54`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -529,7 +529,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`, v54 = `kapi_gpu_vertex3` second (added) colour `r2 g2 b2 a2` in place of `reserved`, `KAPI_GPU_B_ALPHATEST(t)`).
 
 ### Categories of exposed functions
 
@@ -564,7 +564,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/gamepad.h`, `SD:/etc/gamepad.ini`). |
 | App cores (v51) | `core_acquire()` → 2 or 3 (a free app core, now the caller's) or −1; `core_run(core, fn, arg, stack_top)` → 0, or −1 (not yours / still running / `fn` or the stack not a user address): the core calls `fn (arg)` in the caller's address space on the given stack (16-byte aligned, the caller's memory); `core_state(core)` → `KAPI_CORE_IDLE` (0: `fn` returned), `KAPI_CORE_RUNNING` (1), `KAPI_CORE_FAULT` (−2: `fn` faulted and was stopped, logged to kmsg) or `KAPI_CORE_NOTYOURS` (−1); `core_release(core)` stops `fn` if it runs and frees the core (done at the app's exit anyway). `fn` makes **no kapi call and no allocation**. See §14. |
 | GPU (v52) | `gpu_info(buf, cap)` → 1 (the V3D is up; `buf` = "V3D 4.2 (1 core)") or 0 (`buf` says why); the first call brings the GPU up. `gpu_draw(v, n, clear, pixels, w, h, stride)`: `n` vertices `struct kapi_gpu_vertex { float x, y, z; u8 r, g, b, a; }` (a triangle list; normalized device coordinates, y up, z −1 near … 1 far; depth test *less*, both faces; colours interpolated) rendered by the GPU into `pixels` (0x00RRGGBB, `w` × `h` ≤ 2048, `stride` pixels a row) after clearing it to `clear` (0xRRGGBB) → 0, −1 no GPU, −2 bad arguments / too many vertices (`KAPI_GPU_MAX_VERTS` = 196608), −3 the GPU did not finish (it is then left off). See §15. |
-| GPU (v53) | `gpu_texture(handle, pixels, w, h, stride)`: a texture of `w` × `h` (≤ 2048) pixels 0xAARRGGBB; `handle` < 0 makes one (≤ 256 in all), ≥ 0 replaces its pixels, `pixels` = 0 frees it → the handle, −1 no GPU, −2 bad arguments, −4 no memory / no free handle; a program's textures are freed when it ends. `gpu_render(f, v, nv, b, nb)`: one frame into `struct kapi_gpu_frame { pixels, w, h, stride, clear, flags }` (`KAPI_GPU_F_KEEP`: drawn over the pixels instead of clearing them) of `nv` vertices `struct kapi_gpu_vertex3 { float x, y, z, w, s, t; u8 r, g, b, a; u32 reserved; }` in `nb` (≤ 4096) batches `struct kapi_gpu_batch { first, count, texture, flags, float matrix[16]; }`: each batch draws its triangles with its own matrix (row by row, clip = M·(x y z w), transformed by the GPU, which divides by w and clips; `KAPI_GPU_B_NOMATRIX` = identity), texture (−1: colour only, else texel × colour; `B_LINEAR`, `B_WRAP_S/T(REPEAT, CLAMP, MIRROR)`), depth test (`B_ZFUNC`: less by default, … always) and writes (`B_NOZWRITE`), culling (`B_CULL_BACK/FRONT`, front = counter-clockwise, y up) and blending (`B_BLEND(ALPHA, ADD, MUL, PREMUL)`) → 0, −1, −2, −3 as `gpu_draw`. See §15. |
+| GPU (v53) | `gpu_texture(handle, pixels, w, h, stride)`: a texture of `w` × `h` (≤ 2048) pixels 0xAARRGGBB; `handle` < 0 makes one (≤ 256 in all), ≥ 0 replaces its pixels, `pixels` = 0 frees it → the handle, −1 no GPU, −2 bad arguments, −4 no memory / no free handle; a program's textures are freed when it ends. `gpu_render(f, v, nv, b, nb)`: one frame into `struct kapi_gpu_frame { pixels, w, h, stride, clear, flags }` (`KAPI_GPU_F_KEEP`: drawn over the pixels instead of clearing them) of `nv` vertices `struct kapi_gpu_vertex3 { float x, y, z, w, s, t; u8 r, g, b, a; u8 r2, g2, b2, a2; }` (v54: the second colour is added after the texel × colour product and clamped to 1 — 0 for the v53 behaviour) in `nb` (≤ 4096) batches `struct kapi_gpu_batch { first, count, texture, flags, float matrix[16]; }`: each batch draws its triangles with its own matrix (row by row, clip = M·(x y z w), transformed by the GPU, which divides by w and clips; `KAPI_GPU_B_NOMATRIX` = identity), texture (−1: colour only, else texel × colour; `B_LINEAR`, `B_WRAP_S/T(REPEAT, CLAMP, MIRROR)`), depth test (`B_ZFUNC`: less by default, … always) and writes (`B_NOZWRITE`), culling (`B_CULL_BACK/FRONT`, front = counter-clockwise, y up), alpha test (v54: `B_ALPHATEST(t)`, fragments whose alpha < t / 255 are discarded) and blending (`B_BLEND(ALPHA, ADD, MUL, PREMUL)`) → 0, −1, −2, −3 as `gpu_draw`. See §15. |
 | Held keys (v48) | `key_held(key)` → 1 while the key is held **and** the caller's window has the keyboard (`KeyTargetLocked`), else 0 — for games, since key events only report presses. Keys: `KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` (the **US position** of the key), `'0'..'9'`. The WM keeps two bitsets over the logical codes: the USB one, rebuilt from every raw report (`KeyRawStub` → `SetUsbHeld`, HID usage → key), and the injected one (`inject_key_held(key, down)`, from vncd's RFB key down / up); `KeyHeld` ORs them. |
 | FM (v47) | `sound_instrument(voice, const struct kapi_fm_instrument *)` — a 2-operator FM instrument (OPL2 style, `struct kapi_fm_op op[2]` = modulator / carrier: `mult`, `level`, `ksl`, `attack`, `decay`, `sustain`, `release`, `wave`, `flags` FM_SUSTAINED / FM_TREMOLO / FM_VIBRATO / FM_KSR; `feedback`, `connection`) for that voice; then `sound_start(voice, milliHz, SOUND_FM, volume)`. Owner only. See §12. |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
@@ -961,7 +961,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   app's (the CPU); the GPU does the rasterization, the interpolation and the depth test.
 - **The full pipeline** (kapi v53, `gpu_render`): the same frame recipe with **batches**. Each
   batch has its own shader record (the attributes: position x y z w — 4 floats —, s t, colour;
-  32-byte vertices), its uniforms (the batch's 4 × 4 matrix, then the viewport scales), its
+  s t, colour, added colour; 32-byte vertices), its uniforms (the batch's 4 × 4 matrix, then the viewport scales), its
   `CFG_BITS` (depth function and writes, culling: `clockwise_primitives` set, front =
   counter-clockwise in y-up coordinates, as GL), its blending (`BLEND_ENABLES` +
   `BLEND_CFG`: alpha `SRC_ALPHA / INV_SRC_ALPHA`, add `SRC_ALPHA / ONE`, multiply
@@ -971,11 +971,14 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 - **Shaders of v53** (hand-written: [`sys/v3d_shaders.qasm`](../kernel/sys/v3d_shaders.qasm) →
   `v3d_shaders.inc`, assembled by `tools/qpu/qpuasm`, see below): `VS_CLIP` — the 10 inputs,
   the matrix product (16 `ldunif`), 1/w on the SFU (`recip`, r4), Xs Ys in 24.8 fixed point,
-  Zs, 1/Wc, then the 6 varyings s t r g b a; `CS_CLIP` — its binner copy (clip X Y Z W, then Xs
+  Zs, 1/Wc, then the 10 varyings s t r g b a r2 g2 b2 a2 (v54); `CS_CLIP` — its binner copy (clip X Y Z W, then Xs
   Ys); `FS_COLOR` — the interpolated colour (varying = `ldvary` × W + C, C in r5 two
   instructions later); `FS_TEX` — the texture lookup (T to `tmut`, the TMU configuration
   p0 / p1 by `wrtmuc`, S to `tmus` starts it, as Mesa orders them; a thread switch while it
-  runs; `ldtmu` returns R G and B A as half floats) multiplied by the colour. The fragment
+  runs; `ldtmu` returns R G and B A as half floats) multiplied by the colour; both then add the
+  second colour and clamp to 1 (v54). `FS_COLOR_AT` / `FS_TEX_AT` (v54, `B_ALPHATEST`) read
+  the threshold as one more uniform and discard the fragment (`fsub.pushn`, then
+  `setmsf.ifa -, 0`) when alpha is below it. The fragment
   shaders end with the TLB writes (`vfpack tlb`) after the last-segment thread switch.
 - **Textures** (`gpu_texture`, ≤ 256, owned by the program that made them, freed with its
   address space): a 32-byte `TEXTURE_SHADER_STATE` (base address, size, RGBA8, swizzle, and
@@ -1028,7 +1031,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 53 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 54 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

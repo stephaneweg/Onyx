@@ -299,6 +299,10 @@ Notes / caveats:
 > space), texture (−1 none), `KAPI_GPU_B_*` flags (depth test / writes, culling, blending
 > alpha / add / multiply, linear filter, wrap). Draw opaque batches first, then the blended
 > ones with `KAPI_GPU_B_NOZWRITE`. `frame.flags = KAPI_GPU_F_KEEP` draws over the pixels.
+> **v54**: each vertex also carries `r2 g2 b2 a2`, a colour **added** after texel × colour
+> (0 = unchanged; the N64 emulator's colour combiner is `texel × c1 + c2`), and
+> `KAPI_GPU_B_ALPHATEST(t)` discards the fragments whose alpha is below `t` / 255 (cut-out
+> foliage, fences, text) without blending or depth sorting.
 > Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.

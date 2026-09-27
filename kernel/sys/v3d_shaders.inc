@@ -10,6 +10,10 @@ static const u64 VS_CLIP[] = {
 	0x3DE02188BC807007ull,	// ldvpmv_in rf8, 7              ; nop
 	0x3DE02189BC807008ull,	// ldvpmv_in rf9, 8              ; nop
 	0x3DE0218ABC807009ull,	// ldvpmv_in rf10, 9             ; nop
+	0x3DE0218FBC80700Aull,	// ldvpmv_in rf15, 10            ; nop
+	0x3DE02190BC80700Bull,	// ldvpmv_in rf16, 11            ; nop
+	0x3DE02191BC80700Cull,	// ldvpmv_in rf17, 12            ; nop
+	0x3DE02192BC80700Dull,	// ldvpmv_in rf18, 13            ; nop
 	0x3C403186BB800000ull,	// nop                           ; nop                         ; ldunif
 	0x54403006BBB80040ull,	// nop                           ; fmul r0, rf1, r5            ; ldunif
 	0x54403046BBB80080ull,	// nop                           ; fmul r1, rf2, r5            ; ldunif
@@ -55,6 +59,10 @@ static const u64 VS_CLIP[] = {
 	0x3DE02180F8837207ull,	// stvpmv 7, rf8                 ; nop
 	0x3DE02180F8837248ull,	// stvpmv 8, rf9                 ; nop
 	0x3DE02180F8837289ull,	// stvpmv 9, rf10                ; nop
+	0x3DE02180F88373CAull,	// stvpmv 10, rf15               ; nop
+	0x3DE02180F883740Bull,	// stvpmv 11, rf16               ; nop
+	0x3DE02180F883744Cull,	// stvpmv 12, rf17               ; nop
+	0x3DE02180F883748Dull,	// stvpmv 13, rf18               ; nop
 	0x3C003186BB816000ull,	// vpmwt -                       ; nop
 	0x3C203186BB800000ull,	// nop                           ; nop                         ; thrsw
 	0x3C003186BB800000ull,	// nop                           ; nop
@@ -118,11 +126,63 @@ static const u64 FS_COLOR[] = {
 	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
 	0x3D10218405829000ull,	// fadd rf4, r1, r5              ; nop                         ; ldvary.r0
 	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
-	0x3D30218505829000ull,	// fadd rf5, r1, r5              ; nop                         ; thrsw; ldvary.r0
+	0x3D10218505829000ull,	// fadd rf5, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218605829000ull,	// fadd rf6, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218705829000ull,	// fadd rf7, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218805829000ull,	// fadd rf8, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D30218905829000ull,	// fadd rf9, r1, r5              ; nop                         ; thrsw; ldvary.r0
 	0x54203046BBC00000ull,	// nop                           ; fmul r1, r0, rf0            ; thrsw
-	0x3C00218605829000ull,	// fadd rf6, r1, r5              ; nop
-	0x3C2031873583E0C4ull,	// vfpack tlb, rf3, rf4          ; nop                         ; thrsw
-	0x3C0031873583E146ull,	// vfpack tlb, rf5, rf6          ; nop
+	0x3C00218A05829000ull,	// fadd rf10, r1, r5             ; nop
+	0x3C0031800583E0C7ull,	// fadd r0, rf3, rf7             ; nop
+	0x3C0031810583E108ull,	// fadd r1, rf4, rf8             ; nop
+	0x3C0031820583E149ull,	// fadd r2, rf5, rf9             ; nop
+	0x3C0031830583E18Aull,	// fadd r3, rf6, rf10            ; nop
+	0x3DE0318085838028ull,	// fmin r0, r0, 0x3f800000       ; nop
+	0x3DE0318185839028ull,	// fmin r1, r1, 0x3f800000       ; nop
+	0x3DE031828583A028ull,	// fmin r2, r2, 0x3f800000       ; nop
+	0x3DE031838583B028ull,	// fmin r3, r3, 0x3f800000       ; nop
+	0x3C20318735808000ull,	// vfpack tlb, r0, r1            ; nop                         ; thrsw
+	0x3C0031873581A000ull,	// vfpack tlb, r2, r3            ; nop
+	0x3C003186BB800000ull,	// nop                           ; nop
+};
+static const u64 FS_COLOR_AT[] = {
+	0x3D103186BB800000ull,	// nop                           ; nop                         ; ldvary.r0
+	0x3D82F186BB800000ull,	// nop                           ; nop                         ; ldunifrf.rf11
+	0x3D103186BB800000ull,	// nop                           ; nop                         ; ldvary.r0
+	0x3C003186BB800000ull,	// nop                           ; nop
+	0x3D103186BB800000ull,	// nop                           ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218305829000ull,	// fadd rf3, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218405829000ull,	// fadd rf4, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218505829000ull,	// fadd rf5, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218605829000ull,	// fadd rf6, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218705829000ull,	// fadd rf7, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10218805829000ull,	// fadd rf8, r1, r5              ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D30218905829000ull,	// fadd rf9, r1, r5              ; nop                         ; thrsw; ldvary.r0
+	0x54203046BBC00000ull,	// nop                           ; fmul r1, r0, rf0            ; thrsw
+	0x3C00218A05829000ull,	// fadd rf10, r1, r5             ; nop
+	0x3C0031800583E0C7ull,	// fadd r0, rf3, rf7             ; nop
+	0x3C0031810583E108ull,	// fadd r1, rf4, rf8             ; nop
+	0x3C0031820583E149ull,	// fadd r2, rf5, rf9             ; nop
+	0x3C0031830583E18Aull,	// fadd r3, rf6, rf10            ; nop
+	0x3DE0318085838028ull,	// fmin r0, r0, 0x3f800000       ; nop
+	0x3DE0318185839028ull,	// fmin r1, r1, 0x3f800000       ; nop
+	0x3DE031828583A028ull,	// fmin r2, r2, 0x3f800000       ; nop
+	0x3DE031838583B028ull,	// fmin r3, r3, 0x3f800000       ; nop
+	0x3C00B186458332C0ull,	// fsub.pushn -, r3, rf11        ; nop
+	0x3DE83186BA837000ull,	// setmsf.ifa -, 0               ; nop
+	0x3C20318735808000ull,	// vfpack tlb, r0, r1            ; nop                         ; thrsw
+	0x3C0031873581A000ull,	// vfpack tlb, r2, r3            ; nop
 	0x3C003186BB800000ull,	// nop                           ; nop
 };
 static const u64 FS_TEX[] = {
@@ -139,14 +199,68 @@ static const u64 FS_TEX[] = {
 	0x3D1021840582B000ull,	// fadd rf4, r3, r5              ; nop                         ; ldvary.r0
 	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
 	0x3D1021850582B000ull,	// fadd rf5, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021860582B000ull,	// fadd rf6, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021870582B000ull,	// fadd rf7, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021880582B000ull,	// fadd rf8, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021890582B000ull,	// fadd rf9, r3, r5              ; nop                         ; ldvary.r0
 	0x542030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0            ; thrsw
-	0x3C2021860582B000ull,	// fadd rf6, r3, r5              ; nop                         ; thrsw
+	0x3C20218A0582B000ull,	// fadd rf10, r3, r5             ; nop                         ; thrsw
 	0x3C003186BB800000ull,	// nop                           ; nop
 	0x3C903186BB800000ull,	// nop                           ; nop                         ; ldtmu.r0
 	0x6490B046BBC000C0ull,	// nop                           ; fmul r1, r0.l, rf3          ; ldtmu.r2
-	0x74003006BBC00100ull,	// nop                           ; fmul r0, r0.h, rf4
-	0x640030C6BBC80140ull,	// nop                           ; fmul r3, r2.l, rf5
-	0x74003086BBC80180ull,	// nop                           ; fmul r2, r2.h, rf6
+	0x7400300105E311C4ull,	// fadd r1, r1, rf7              ; fmul r0, r0.h, rf4
+	0x640030C005EB0205ull,	// fadd r0, r0, rf8              ; fmul r3, r2.l, rf5
+	0x7400308305EB3246ull,	// fadd r3, r3, rf9              ; fmul r2, r2.h, rf6
+	0x3C00318205832280ull,	// fadd r2, r2, rf10             ; nop
+	0x3DE0318185839028ull,	// fmin r1, r1, 0x3f800000       ; nop
+	0x3DE0318085838028ull,	// fmin r0, r0, 0x3f800000       ; nop
+	0x3DE031838583B028ull,	// fmin r3, r3, 0x3f800000       ; nop
+	0x3DE031828583A028ull,	// fmin r2, r2, 0x3f800000       ; nop
+	0x3C20318735801000ull,	// vfpack tlb, r1, r0            ; nop                         ; thrsw
+	0x3C00318735813000ull,	// vfpack tlb, r3, r2            ; nop
+	0x3C003186BB800000ull,	// nop                           ; nop
+};
+static const u64 FS_TEX_AT[] = {
+	0x3D103186BB800000ull,	// nop                           ; nop                         ; ldvary.r0
+	0x54003046BBC00000ull,	// nop                           ; fmul r1, r0, rf0
+	0x3D10318105829000ull,	// fadd r1, r1, r5               ; nop                         ; ldvary.r0
+	0x54003086BBC00000ull,	// nop                           ; fmul r2, r0, rf0
+	0x3D1031820582A000ull,	// fadd r2, r2, r5               ; nop                         ; ldvary.r0
+	0x3C003886BBE80000ull,	// nop                           ; mov tmut, r2
+	0x564030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0            ; wrtmuc
+	0x3E9021830582B000ull,	// fadd rf3, r3, r5              ; nop                         ; ldvary.r0; wrtmuc
+	0x3C003846BBE40000ull,	// nop                           ; mov tmus, r1
+	0x5582F0C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0            ; ldunifrf.rf11
+	0x3D1021840582B000ull,	// fadd rf4, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021850582B000ull,	// fadd rf5, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021860582B000ull,	// fadd rf6, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021870582B000ull,	// fadd rf7, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021880582B000ull,	// fadd rf8, r3, r5              ; nop                         ; ldvary.r0
+	0x540030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0
+	0x3D1021890582B000ull,	// fadd rf9, r3, r5              ; nop                         ; ldvary.r0
+	0x542030C6BBC00000ull,	// nop                           ; fmul r3, r0, rf0            ; thrsw
+	0x3C20218A0582B000ull,	// fadd rf10, r3, r5             ; nop                         ; thrsw
+	0x3C003186BB800000ull,	// nop                           ; nop
+	0x3C903186BB800000ull,	// nop                           ; nop                         ; ldtmu.r0
+	0x6490B046BBC000C0ull,	// nop                           ; fmul r1, r0.l, rf3          ; ldtmu.r2
+	0x7400300105E311C4ull,	// fadd r1, r1, rf7              ; fmul r0, r0.h, rf4
+	0x640030C005EB0205ull,	// fadd r0, r0, rf8              ; fmul r3, r2.l, rf5
+	0x7400308305EB3246ull,	// fadd r3, r3, rf9              ; fmul r2, r2.h, rf6
+	0x3C00318205832280ull,	// fadd r2, r2, rf10             ; nop
+	0x3DE0318185839028ull,	// fmin r1, r1, 0x3f800000       ; nop
+	0x3DE0318085838028ull,	// fmin r0, r0, 0x3f800000       ; nop
+	0x3DE031838583B028ull,	// fmin r3, r3, 0x3f800000       ; nop
+	0x3DE031828583A028ull,	// fmin r2, r2, 0x3f800000       ; nop
+	0x3C00B186458322C0ull,	// fsub.pushn -, r2, rf11        ; nop
+	0x3DE83186BA837000ull,	// setmsf.ifa -, 0               ; nop
 	0x3C20318735801000ull,	// vfpack tlb, r1, r0            ; nop                         ; thrsw
 	0x3C00318735813000ull,	// vfpack tlb, r3, r2            ; nop
 	0x3C003186BB800000ull,	// nop                           ; nop

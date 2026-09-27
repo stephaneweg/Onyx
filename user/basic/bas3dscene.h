@@ -124,7 +124,7 @@ struct Scene3D
 		q.x = x; q.y = y; q.z = z; q.w = 1; q.s = s; q.t = t;
 		auto ch = [shade] (unsigned c) -> unsigned char { float f = (float) c * shade; return (unsigned char) (f >= 255 ? 255 : f < 0 ? 0 : f + 0.5f); };
 		q.r = ch ((color >> 16) & 255); q.g = ch ((color >> 8) & 255); q.b = ch (color & 255);
-		q.a = (unsigned char) alpha; q.reserved = 0;
+		q.a = (unsigned char) alpha; q.r2 = q.g2 = q.b2 = q.a2 = 0;
 		v.push (q);
 	}
 	float shade (float nx, float ny, float nz)		// the light on a model-space normal
@@ -193,7 +193,7 @@ struct Scene3D
 		G3Vertex &q = pend[npend++];
 		q.x = x; q.y = y; q.z = z; q.w = 1; q.s = s; q.t = t;
 		q.r = (unsigned char) ((color >> 16) & 255); q.g = (unsigned char) ((color >> 8) & 255); q.b = (unsigned char) (color & 255);
-		q.a = (unsigned char) alpha; q.reserved = 0;
+		q.a = (unsigned char) alpha; q.r2 = q.g2 = q.b2 = q.a2 = 0;
 		if (npend < 3) return;
 		npend = 0;
 		if (!open ()) return;

@@ -16,7 +16,7 @@
 
 namespace bas {
 
-struct G3Vertex { float x, y, z, w, s, t; unsigned char r, g, b, a; unsigned reserved; };
+struct G3Vertex { float x, y, z, w, s, t; unsigned char r, g, b, a, r2, g2, b2, a2; };	// (r2..a2: added)
 struct G3Batch { unsigned first, count; int texture; unsigned flags; float m[16]; };
 static_assert (sizeof (G3Vertex) == 32 && sizeof (G3Batch) == 80, "the kapi v53 layout");
 
@@ -27,13 +27,13 @@ enum
 	G3_NOZWRITE = 1 << 3, G3_CULL_BACK = 1 << 4, G3_CULL_FRONT = 1 << 5,
 	G3_BLEND_SHIFT = 8,				// 0 opaque, 1 alpha, 2 add, 3 multiply, 4 premultiplied
 	G3_LINEAR = 1 << 12, G3_WRAP_S_SHIFT = 13, G3_WRAP_T_SHIFT = 15,	// wrap: 0 repeat, 1 clamp, 2 mirror
-	G3_NOMATRIX = 1 << 17
+	G3_NOMATRIX = 1 << 17, G3_ALPHATEST = 1 << 18		// (+ the threshold << 19)
 };
 
 struct G3Texture { const unsigned *px; int w, h; };	// 0xAARRGGBB
 
 // ---- the software renderer ------------------------------------------------------------------------------------
-struct G3Clip { float x, y, z, w, s, t, r, g, b, a; };	// a vertex in clip space (colour 0..255)
+struct G3Clip { float x, y, z, w, s, t, r, g, b, a, r2, g2, b2, a2; };	// a vertex in clip space (colours 0..255)
 
 static inline float g3lerp (float a, float b, float f) { return a + (b - a) * f; }
 
@@ -109,11 +109,12 @@ static void g3raster (unsigned *dst, int W, int H, int stride, float *zb, const 
 	bool zw = !(flags & G3_NOZWRITE) && zf != 7;
 	int blend = (int) (flags >> G3_BLEND_SHIFT) & 15;
 	// the attributes over w (perspective-correct), per vertex in edge order
-	float A[3][6];
+	float A[3][10];
 	for (int k = 0; k < 3; k++)
 	{
 		const G3Clip &v = c[o[k]]; float iw = IW[o[k]];
 		A[k][0] = v.s * iw; A[k][1] = v.t * iw; A[k][2] = v.r * iw; A[k][3] = v.g * iw; A[k][4] = v.b * iw; A[k][5] = v.a * iw;
+		A[k][6] = v.r2 * iw; A[k][7] = v.g2 * iw; A[k][8] = v.b2 * iw; A[k][9] = v.a2 * iw;
 	}
 	float PX[3] = { X[o[0]], X[o[1]], X[o[2]] }, PY[3] = { Y[o[0]], Y[o[1]], Y[o[2]] };
 	float PZ[3] = { Z[o[0]], Z[o[1]], Z[o[2]] }, PW[3] = { IW[o[0]], IW[o[1]], IW[o[2]] };
@@ -141,14 +142,20 @@ static void g3raster (unsigned *dst, int W, int H, int stride, float *zb, const 
 			}
 			if (!pass) continue;
 			float iw = b0 * PW[0] + b1 * PW[1] + b2 * PW[2], w = 1.0f / iw;
-			float at[6];
-			for (int k = 0; k < 6; k++) at[k] = (b0 * A[0][k] + b1 * A[1][k] + b2 * A[2][k]) * w;
+			float at[10];
+			for (int k = 0; k < 10; k++) at[k] = (b0 * A[0][k] + b1 * A[1][k] + b2 * A[2][k]) * w;
 			float r = at[2], g = at[3], bl = at[4], a = at[5];
 			if (T)
 			{
 				float tx[4]; g3sample (T, at[0], at[1], flags, tx);
 				r *= tx[0] / 255; g *= tx[1] / 255; bl *= tx[2] / 255; a *= tx[3] / 255;
 			}
+			r += at[6]; g += at[7]; bl += at[8]; a += at[9];		// (the added colour)
+			if (r > 255) r = 255;
+			if (g > 255) g = 255;
+			if (bl > 255) bl = 255;
+			if (a > 255) a = 255;
+			if ((flags & G3_ALPHATEST) && a < (float) ((flags >> 19) & 255)) continue;
 			unsigned &d = dst[(long) y * stride + x];
 			float dr = (float) ((d >> 16) & 255), dg = (float) ((d >> 8) & 255), db = (float) (d & 255), fa = a / 255;
 			switch (blend)
@@ -191,6 +198,7 @@ static void swRender (unsigned *dst, int W, int H, int stride, float *zb, const 
 				q.z = M[8] * p.x + M[9] * p.y + M[10] * p.z + M[11] * p.w;
 				q.w = M[12] * p.x + M[13] * p.y + M[14] * p.z + M[15] * p.w;
 				q.s = p.s; q.t = p.t; q.r = p.r; q.g = p.g; q.b = p.b; q.a = p.a;
+				q.r2 = p.r2; q.g2 = p.g2; q.b2 = p.b2; q.a2 = p.a2;
 			}
 			// clipped against the near plane (z >= -w, w > 0): a polygon of up to 4 vertices
 			G3Clip poly[4]; int n = 0;
@@ -208,6 +216,7 @@ static void swRender (unsigned *dst, int W, int H, int stride, float *zb, const 
 					q.x = g3lerp (a.x, b.x, f); q.y = g3lerp (a.y, b.y, f); q.z = g3lerp (a.z, b.z, f); q.w = g3lerp (a.w, b.w, f);
 					q.s = g3lerp (a.s, b.s, f); q.t = g3lerp (a.t, b.t, f); q.r = g3lerp (a.r, b.r, f);
 					q.g = g3lerp (a.g, b.g, f); q.b = g3lerp (a.b, b.b, f); q.a = g3lerp (a.a, b.a, f);
+					q.r2 = g3lerp (a.r2, b.r2, f); q.g2 = g3lerp (a.g2, b.g2, f); q.b2 = g3lerp (a.b2, b.b2, f); q.a2 = g3lerp (a.a2, b.a2, f);
 					if (q.w <= EPS) n--;
 				}
 			}

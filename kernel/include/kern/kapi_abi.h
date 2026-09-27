@@ -52,7 +52,10 @@
 // v53: + gpu_texture/gpu_render -- the GPU's full pipeline: textures (RGBA8, nearest /
 //      linear, repeat / clamp / mirror), batches with their own 4 x 4 matrix (transformed
 //      by the GPU), texture, blending (alpha / add / multiply), depth test and culling.
-#define KAPI_ABI_VERSION	53
+// v54: gpu_render: the vertex's last 4 bytes (reserved until then, 0 in the programs of v53) are
+//      a second colour r2 g2 b2 a2, added to the result (colour + colour2, or texel * colour +
+//      colour2, clamped to 1); KAPI_GPU_B_ALPHATEST(t): the pixels whose alpha < t / 255 are not drawn.
+#define KAPI_ABI_VERSION	54
 
 #ifdef __cplusplus
 extern "C" {
@@ -169,13 +172,14 @@ struct kapi_gpu_vertex { float x, y, z; unsigned char r, g, b, a; };
 
 // kapi v53 (gpu_texture / gpu_render). A vertex: its position, transformed by the batch's
 // matrix into clip space (the GPU divides by w and clips), its texture coordinates (0..1
-// across the texture) and its colour (multiplied by the texel when the batch is textured).
+// across the texture) and its colour (multiplied by the texel when the batch is textured);
+// v54: a second colour, added (0 0 0 0: none -- what v53 had there).
 struct kapi_gpu_vertex3
 {
 	float x, y, z, w;
 	float s, t;
 	unsigned char r, g, b, a;
-	unsigned reserved;
+	unsigned char r2, g2, b2, a2;	// (v54; 0 before)
 };
 // A batch: vertices [first, first + count) of the gpu_render call (a triangle list), drawn
 // with its own state. matrix: row by row, clip = matrix * (x y z w) (KAPI_GPU_B_NOMATRIX:
@@ -211,6 +215,7 @@ struct kapi_gpu_batch
 #define KAPI_GPU_WRAP_CLAMP	1
 #define KAPI_GPU_WRAP_MIRROR	2
 #define KAPI_GPU_B_NOMATRIX	(1u << 17)
+#define KAPI_GPU_B_ALPHATEST(t)	(1u << 18 | ((t) & 255u) << 19)	// (v54) alpha < t / 255: not drawn
 // The target of gpu_render: w x h pixels (0x00RRGGBB, stride = pixels per row), cleared to
 // clear (0xRRGGBB) -- or, KAPI_GPU_F_KEEP, drawn over what they hold.
 struct kapi_gpu_frame

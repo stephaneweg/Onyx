@@ -17,6 +17,10 @@
 //     blending recognised), the depth test / update, the fill and texture rectangles.
 //
 #include "n64/n64.h"
+#ifdef N64_TRACE
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 namespace n64 {
 
@@ -248,8 +252,12 @@ u32 Machine::gfxFlags ()
 	bool two = ((omH >> 20) & 3) == 1;
 	u32 p = (omL >> (two ? 28 : 30)) & 3, a = (omL >> (two ? 24 : 26)) & 3, m = (omL >> (two ? 20 : 22)) & 3, b = (omL >> (two ? 16 : 18)) & 3;
 	bool blend = ((omL & OM_FORCEBL) && p == 0 && a == 0 && m == 1 && b == 0) || (omL & OM_ZMODE) == 0x800;
-	if (!blend && (omL & 3) == 1) blend = true;			// alpha compare: (no alpha test yet) blended
 	if (blend) f |= GF_BLEND_ALPHA;
+	if ((omL & 3) == 1)						// alpha compare against the blend colour's alpha
+	{
+		u32 t = (u32) (blendC[3] * 255.0f + 0.5f);
+		f |= GF_ALPHATEST | (t ? t : 1) << 19;
+	}
 	if (((omH >> 12) & 3) == 2) f |= GF_LINEAR;			// bilinear filter
 	return f;
 }
@@ -293,6 +301,9 @@ int Machine::gfxTexture (int t)
 		else if (oldest && tex[i].lastUse < oldest) { oldest = tex[i].lastUse; victim = i; }
 	}
 	// decode it from TMEM
+#ifdef N64_TRACE
+	if (getenv ("N64_TEXLOG")) printf ("tex %d: fmt %d siz %d %dx%d line %d tmem %d pal %d tlut %d  timg %08X siz %u w %u\n", victim, T.fmt, T.siz, w, h, T.line, T.tmem, T.pal, tlut, timg, timgSiz, timgW);
+#endif
 	GTexture &X = tex[victim];
 	X.key = key; X.w = w; X.h = h; X.lastUse = gfxSerial; X.dirty = true;
 	for (int y = 0; y < h; y++)
@@ -385,7 +396,7 @@ void Machine::gfxLoad (u32 w0, u32 w1, int kind)
 			{
 				for (int k = 0; k < 2; k++)
 				{
-					u32 a = ((dst / 2 + i * 4 + (u32) k * 2) ^ (odd ? 4u : 0u)) & 0x7FE;
+					u32 a = ((dst + i * 4 + (u32) k * 2) ^ (odd ? 4u : 0u)) & 0x7FE;
 					tmem[a] = b[k * 4]; tmem[a + 1] = b[k * 4 + 1];
 					tmem[a + 0x800] = b[k * 4 + 2]; tmem[a + 0x801] = b[k * 4 + 3];
 				}
@@ -412,7 +423,7 @@ void Machine::gfxLoad (u32 w0, u32 w1, int kind)
 			for (int x = s0; x <= s1; x++)
 			{
 				u32 src = timg + ((u32) y * timgW + (u32) x) * 4;
-				u32 a = ((row / 2 + (u32) (x - s0) * 2) ^ sw) & 0x7FE;
+				u32 a = ((row + (u32) (x - s0) * 2) ^ sw) & 0x7FE;
 				tmem[a] = rdB (src); tmem[a + 1] = rdB (src + 1); tmem[a + 0x800] = rdB (src + 2); tmem[a + 0x801] = rdB (src + 3);
 			}
 			continue;
@@ -476,10 +487,22 @@ void Machine::gfxTri (int a, int b, int c)
 		g.z = v.z; g.w = v.w;
 		float shade[4] = { v.r, v.g, v.b, v.a };
 		if (!(geom & G_SHADE)) shade[0] = shade[1] = shade[2] = shade[3] = 1;
-		float col[4];
-		gfxCombine (shade, textured ? WHITE : BLACK, col);
-		g.r = c8 (col[0]); g.g = c8 (col[1]); g.b = c8 (col[2]); g.a = c8 (col[3]);
-		g.reserved = 0;
+		// the combiner is affine in the texel for almost every mode: its result for a black
+		// texel is the added colour, the difference with a white one the texel's factor
+		float c0[4], c1[4];
+		gfxCombine (shade, BLACK, c0);
+		if (textured)
+		{
+			gfxCombine (shade, WHITE, c1);
+			for (int j = 0; j < 4; j++) { c1[j] -= c0[j]; if (c1[j] < 0) c1[j] = 0; }
+			g.r = c8 (c1[0]); g.g = c8 (c1[1]); g.b = c8 (c1[2]); g.a = c8 (c1[3]);
+			g.r2 = c8 (c0[0]); g.g2 = c8 (c0[1]); g.b2 = c8 (c0[2]); g.a2 = c8 (c0[3]);
+		}
+		else
+		{
+			g.r = c8 (c0[0]); g.g = c8 (c0[1]); g.b = c8 (c0[2]); g.a = c8 (c0[3]);
+			g.r2 = g.g2 = g.b2 = g.a2 = 0;
+		}
 		if (textured)
 		{
 			float u = v.s / 32.0f, w = v.t / 32.0f;
@@ -502,7 +525,7 @@ void Machine::gfxRect (float x0, float y0, float x1, float y1, float s0, float t
 	int texId = -1; float tw = 1, th = 1;
 	u32 flags = GF_ZALWAYS | GF_NOZWRITE;
 	u32 cyc = (omH >> 20) & 3;
-	float col[4] = { 1, 1, 1, 1 };
+	float col[4] = { 1, 1, 1, 1 }, add[4] = { 0, 0, 0, 0 };
 	if (fill)
 	{
 		u32 c = cimgSiz == 3 ? fillColor : fillColor >> 16;
@@ -514,12 +537,18 @@ void Machine::gfxRect (float x0, float y0, float x1, float y1, float s0, float t
 		if (cyc != 2)							// (copy mode: the texels as they are)
 		{
 			static const float WHITE[4] = { 1, 1, 1, 1 }, BLACK[4] = { 0, 0, 0, 0 };
-			gfxCombine (WHITE, textured ? WHITE : BLACK, col);
+			gfxCombine (WHITE, BLACK, add);
+			if (textured)
+			{
+				gfxCombine (WHITE, WHITE, col);
+				for (int j = 0; j < 4; j++) { col[j] -= add[j]; if (col[j] < 0) col[j] = 0; }
+			}
+			else { for (int j = 0; j < 4; j++) col[j] = add[j]; add[0] = add[1] = add[2] = add[3] = 0; }
 			if ((geom & G_ZBUFFER) && (omL & OM_ZCMP)) flags = GF_ZLEQUAL | GF_NOZWRITE;
 			u32 f = gfxFlags ();
-			flags |= f & (GF_BLEND_ALPHA | GF_LINEAR);
+			flags |= f & (GF_BLEND_ALPHA | GF_LINEAR | GF_ALPHATEST | 0xFF80000u);
 		}
-		else if ((omL & 3) == 1 || (omL & OM_FORCEBL)) flags |= GF_BLEND_ALPHA;	// (copy with alpha compare)
+		else if ((omL & 3) == 1) flags |= GF_ALPHATEST | 1u << 19;	// (copy with alpha compare: alpha 0 not drawn)
 		if (textured)
 		{
 			texId = gfxTexture (rectTile);
@@ -540,7 +569,7 @@ void Machine::gfxRect (float x0, float y0, float x1, float y1, float s0, float t
 		q[k].x = P[k][0]; q[k].y = P[k][1]; q[k].z = 0; q[k].w = 1;
 		q[k].s = P[k][2] / tw; q[k].t = P[k][3] / th;
 		q[k].r = c8 (col[0]); q[k].g = c8 (col[1]); q[k].b = c8 (col[2]); q[k].a = fill ? 255 : c8 (col[3]);
-		q[k].reserved = 0;
+		q[k].r2 = c8 (add[0]); q[k].g2 = c8 (add[1]); q[k].b2 = c8 (add[2]); q[k].a2 = c8 (add[3]);
 	}
 	GVertex t1v[3] = { q[0], q[2], q[1] }, t2v[3] = { q[0], q[3], q[2] };
 	gfxEmit (t1v, texId, flags);

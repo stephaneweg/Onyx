@@ -41,12 +41,13 @@ enum { BTN_A = 0x8000, BTN_B = 0x4000, BTN_Z = 0x2000, BTN_START = 0x1000, BTN_D
 // ---- the graphics of a frame, for a renderer (the layout of kapi v53: kapi_gpu_vertex3 / _batch) ----
 // The display lists' triangles, in clip space (x y z w, the GPU divides and clips), texture
 // coordinates 0..1 across their texture, a colour; batches of them with a texture and a state.
-struct GVertex { float x, y, z, w, s, t; u8 r, g, b, a; u32 reserved; };
+struct GVertex { float x, y, z, w, s, t; u8 r, g, b, a, r2, g2, b2, a2; };	// (r2..a2: added, v54)
 struct GBatch { u32 first, count; s32 tex; u32 flags; float m[16]; };
 enum
 {
 	GF_ZALWAYS = 7, GF_ZLEQUAL = 3, GF_NOZWRITE = 1 << 3, GF_CULL_BACK = 1 << 4, GF_CULL_FRONT = 1 << 5,
-	GF_BLEND_ALPHA = 1 << 8, GF_LINEAR = 1 << 12, GF_WRAP_S_SHIFT = 13, GF_WRAP_T_SHIFT = 15, GF_NOMATRIX = 1 << 17
+	GF_BLEND_ALPHA = 1 << 8, GF_LINEAR = 1 << 12, GF_WRAP_S_SHIFT = 13, GF_WRAP_T_SHIFT = 15, GF_NOMATRIX = 1 << 17,
+	GF_ALPHATEST = 1 << 18				// (+ the threshold 0..255 << 19)
 };
 struct GTexture { u32 *px; int w, h; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB
 struct GFrame

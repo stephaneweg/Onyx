@@ -167,7 +167,7 @@ static void buildCube (int first)
 			v.w = 1;
 			v.s = ST[c][0]; v.t = ST[c][1];
 			v.r = v.g = v.b = SHADE[f]; v.a = 255;
-			v.reserved = 0;
+			v.r2 = v.g2 = v.b2 = v.a2 = 0;
 		}
 }
 static void quad (int first, float x0, float y0, float x1, float y1, float z, unsigned char a)
@@ -179,7 +179,7 @@ static void quad (int first, float x0, float y0, float x1, float y1, float z, un
 		const float *p = P[TRI[t]];
 		kapi_gpu_vertex3 &v = g_v[first + t];
 		v.x = p[0]; v.y = p[1]; v.z = z; v.w = 1; v.s = p[2]; v.t = p[3];
-		v.r = v.g = v.b = 255; v.a = a; v.reserved = 0;
+		v.r = v.g = v.b = 255; v.a = a; v.r2 = v.g2 = v.b2 = v.a2 = 0;
 	}
 }
 

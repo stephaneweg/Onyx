@@ -4,10 +4,10 @@
 # and checked against the V3D 4.2 instruction restrictions.
 #
 # The vertex (kapi_gpu_vertex3): position x y z w (clip space, floats), s t (floats), r g b a
-# (normalized bytes). The VPM input of the vertex shader is those 10 values in that order; the
-# coordinate shader reads the 4 of the position only.
+# (normalized bytes), r2 g2 b2 a2 (the added colour, v54). The VPM input of the vertex shader is
+# those 14 values in that order; the coordinate shader reads the 4 of the position only.
 
-# ---- vertex shader (render): Xs Ys (24.8 fixed point) Zs 1/Wc, then the varyings s t r g b a ----
+# ---- vertex shader (render): Xs Ys (24.8 fixed point) Zs 1/Wc, then the varyings s t r g b a r2 g2 b2 a2
 # uniforms: the 4 x 4 matrix (row by row: clip = M * (x y z w)), then x scale, y scale (the half
 # viewport * 256, y negated), z scale, z offset.
 .name VS_CLIP vertex
@@ -21,6 +21,10 @@ ldvpmv_in rf7, 6              ; nop                         # r
 ldvpmv_in rf8, 7              ; nop                         # g
 ldvpmv_in rf9, 8              ; nop                         # b
 ldvpmv_in rf10, 9             ; nop                         # a
+ldvpmv_in rf15, 10            ; nop                         # r2
+ldvpmv_in rf16, 11            ; nop                         # g2
+ldvpmv_in rf17, 12            ; nop                         # b2
+ldvpmv_in rf18, 13            ; nop                         # a2
 nop                           ; nop                         ; ldunif          # m00
 nop                           ; fmul r0, rf1, r5            ; ldunif          # m01
 nop                           ; fmul r1, rf2, r5            ; ldunif          # m02
@@ -66,6 +70,10 @@ stvpmv 6, rf7                 ; nop
 stvpmv 7, rf8                 ; nop
 stvpmv 8, rf9                 ; nop
 stvpmv 9, rf10                ; nop
+stvpmv 10, rf15               ; nop
+stvpmv 11, rf16               ; nop
+stvpmv 12, rf17               ; nop
+stvpmv 13, rf18               ; nop
 vpmwt -                       ; nop
 nop                           ; nop                         ; thrsw
 nop                           ; nop
@@ -120,9 +128,12 @@ nop                           ; nop                         ; thrsw
 nop                           ; nop
 nop                           ; nop
 
-# ---- fragment shader: the interpolated colour ------------------------------------------------------
+# ---- fragment shaders ----------------------------------------------------------------------------------
 # rf0 = W (payload); a varying = ldvary * W + C, C landing in r5 two instructions after its ldvary.
-# s and t are read (in order) and left unused.
+# The varyings, in order: s t r g b a r2 g2 b2 a2. The result: colour + colour2 (FS_COLOR) or
+# texel * colour + colour2 (FS_TEX), each channel clamped to 1. The _AT variants drop the pixels
+# whose alpha is below a threshold (a uniform): setmsf clears their sample flags, as Mesa's discard.
+
 .name FS_COLOR frag
 nop                           ; nop                         ; ldvary.r0       # s (unused)
 nop                           ; nop
@@ -134,16 +145,67 @@ fadd rf3, r1, r5              ; nop                         ; ldvary.r0       # 
 nop                           ; fmul r1, r0, rf0
 fadd rf4, r1, r5              ; nop                         ; ldvary.r0       # G ; b
 nop                           ; fmul r1, r0, rf0
-fadd rf5, r1, r5              ; nop                         ; thrsw ; ldvary.r0   # B ; a
+fadd rf5, r1, r5              ; nop                         ; ldvary.r0       # B ; a
+nop                           ; fmul r1, r0, rf0
+fadd rf6, r1, r5              ; nop                         ; ldvary.r0       # A ; r2
+nop                           ; fmul r1, r0, rf0
+fadd rf7, r1, r5              ; nop                         ; ldvary.r0       # R2 ; g2
+nop                           ; fmul r1, r0, rf0
+fadd rf8, r1, r5              ; nop                         ; ldvary.r0       # G2 ; b2
+nop                           ; fmul r1, r0, rf0
+fadd rf9, r1, r5              ; nop                         ; thrsw ; ldvary.r0   # B2 ; a2
 nop                           ; fmul r1, r0, rf0            ; thrsw           # (last segment)
-fadd rf6, r1, r5              ; nop                         # A
-vfpack tlb, rf3, rf4          ; nop                         ; thrsw           # (end)
-vfpack tlb, rf5, rf6          ; nop
+fadd rf10, r1, r5             ; nop                         # A2
+fadd r0, rf3, rf7             ; nop
+fadd r1, rf4, rf8             ; nop
+fadd r2, rf5, rf9             ; nop
+fadd r3, rf6, rf10            ; nop
+fmin r0, r0, 0x3f800000       ; nop
+fmin r1, r1, 0x3f800000       ; nop
+fmin r2, r2, 0x3f800000       ; nop
+fmin r3, r3, 0x3f800000       ; nop
+vfpack tlb, r0, r1            ; nop                         ; thrsw           # (end)
+vfpack tlb, r2, r3            ; nop
 nop                           ; nop
 
-# ---- fragment shader: texture * colour --------------------------------------------------------------
-# uniforms: TMU config p0 (texture state | 3 = two words returned: RG, BA as f16), p1 (sampler state),
-# written (wrtmuc) between the T and the S coordinates, as Mesa does.
+.name FS_COLOR_AT frag
+nop                           ; nop                         ; ldvary.r0       # s (unused)
+nop                           ; nop                         ; ldunifrf.rf11   # the alpha threshold
+nop                           ; nop                         ; ldvary.r0       # t (unused)
+nop                           ; nop
+nop                           ; nop                         ; ldvary.r0       # r
+nop                           ; fmul r1, r0, rf0
+fadd rf3, r1, r5              ; nop                         ; ldvary.r0       # R ; g
+nop                           ; fmul r1, r0, rf0
+fadd rf4, r1, r5              ; nop                         ; ldvary.r0       # G ; b
+nop                           ; fmul r1, r0, rf0
+fadd rf5, r1, r5              ; nop                         ; ldvary.r0       # B ; a
+nop                           ; fmul r1, r0, rf0
+fadd rf6, r1, r5              ; nop                         ; ldvary.r0       # A ; r2
+nop                           ; fmul r1, r0, rf0
+fadd rf7, r1, r5              ; nop                         ; ldvary.r0       # R2 ; g2
+nop                           ; fmul r1, r0, rf0
+fadd rf8, r1, r5              ; nop                         ; ldvary.r0       # G2 ; b2
+nop                           ; fmul r1, r0, rf0
+fadd rf9, r1, r5              ; nop                         ; thrsw ; ldvary.r0   # B2 ; a2
+nop                           ; fmul r1, r0, rf0            ; thrsw           # (last segment)
+fadd rf10, r1, r5             ; nop                         # A2
+fadd r0, rf3, rf7             ; nop
+fadd r1, rf4, rf8             ; nop
+fadd r2, rf5, rf9             ; nop
+fadd r3, rf6, rf10            ; nop
+fmin r0, r0, 0x3f800000       ; nop
+fmin r1, r1, 0x3f800000       ; nop
+fmin r2, r2, 0x3f800000       ; nop
+fmin r3, r3, 0x3f800000       ; nop
+fsub.pushn -, r3, rf11        ; nop                         # alpha < threshold: flag A
+setmsf.ifa -, 0               ; nop                         # those pixels are not written
+vfpack tlb, r0, r1            ; nop                         ; thrsw           # (end)
+vfpack tlb, r2, r3            ; nop
+nop                           ; nop
+
+# the texture: uniforms p0 (texture state | 3 = two words returned: RG, BA as f16), p1 (sampler
+# state), written (wrtmuc) between the T and the S coordinates, as Mesa does; _AT: the threshold.
 .name FS_TEX frag
 nop                           ; nop                         ; ldvary.r0            # s
 nop                           ; fmul r1, r0, rf0
@@ -158,14 +220,69 @@ nop                           ; fmul r3, r0, rf0
 fadd rf4, r3, r5              ; nop                         ; ldvary.r0            # G ; b
 nop                           ; fmul r3, r0, rf0
 fadd rf5, r3, r5              ; nop                         ; ldvary.r0            # B ; a
+nop                           ; fmul r3, r0, rf0
+fadd rf6, r3, r5              ; nop                         ; ldvary.r0            # A ; r2
+nop                           ; fmul r3, r0, rf0
+fadd rf7, r3, r5              ; nop                         ; ldvary.r0            # R2 ; g2
+nop                           ; fmul r3, r0, rf0
+fadd rf8, r3, r5              ; nop                         ; ldvary.r0            # G2 ; b2
+nop                           ; fmul r3, r0, rf0
+fadd rf9, r3, r5              ; nop                         ; ldvary.r0            # B2 ; a2
 nop                           ; fmul r3, r0, rf0            ; thrsw                # (wait for the TMU)
-fadd rf6, r3, r5              ; nop                         ; thrsw                # A (last segment)
+fadd rf10, r3, r5             ; nop                         ; thrsw                # A2 (last segment)
 nop                           ; nop
 nop                           ; nop                         ; ldtmu.r0             # texel R G
 nop                           ; fmul r1, r0.l, rf3          ; ldtmu.r2             # R ; texel B A
-nop                           ; fmul r0, r0.h, rf4          # G
-nop                           ; fmul r3, r2.l, rf5          # B
-nop                           ; fmul r2, r2.h, rf6          # A
+fadd r1, r1, rf7              ; fmul r0, r0.h, rf4          # R + R2 ; G
+fadd r0, r0, rf8              ; fmul r3, r2.l, rf5          # G + G2 ; B
+fadd r3, r3, rf9              ; fmul r2, r2.h, rf6          # B + B2 ; A
+fadd r2, r2, rf10             ; nop                         # A + A2
+fmin r1, r1, 0x3f800000       ; nop
+fmin r0, r0, 0x3f800000       ; nop
+fmin r3, r3, 0x3f800000       ; nop
+fmin r2, r2, 0x3f800000       ; nop
 vfpack tlb, r1, r0            ; nop                         ; thrsw                # (end)
 vfpack tlb, r3, r2            ; nop
 nop                           ; nop
+
+.name FS_TEX_AT frag
+nop                           ; nop                         ; ldvary.r0            # s
+nop                           ; fmul r1, r0, rf0
+fadd r1, r1, r5               ; nop                         ; ldvary.r0            # S ; t
+nop                           ; fmul r2, r0, rf0
+fadd r2, r2, r5               ; nop                         ; ldvary.r0            # T ; r
+nop                           ; mov tmut, r2                # T (Mesa's order: T, the configs, S)
+nop                           ; fmul r3, r0, rf0            ; wrtmuc               # p0
+fadd rf3, r3, r5              ; nop                         ; ldvary.r0 ; wrtmuc   # R ; g ; p1
+nop                           ; mov tmus, r1                # S: the lookup starts
+nop                           ; fmul r3, r0, rf0                         ; ldunifrf.rf11   # the alpha threshold
+fadd rf4, r3, r5              ; nop                         ; ldvary.r0            # G ; b
+nop                           ; fmul r3, r0, rf0
+fadd rf5, r3, r5              ; nop                         ; ldvary.r0            # B ; a
+nop                           ; fmul r3, r0, rf0
+fadd rf6, r3, r5              ; nop                         ; ldvary.r0            # A ; r2
+nop                           ; fmul r3, r0, rf0
+fadd rf7, r3, r5              ; nop                         ; ldvary.r0            # R2 ; g2
+nop                           ; fmul r3, r0, rf0
+fadd rf8, r3, r5              ; nop                         ; ldvary.r0            # G2 ; b2
+nop                           ; fmul r3, r0, rf0
+fadd rf9, r3, r5              ; nop                         ; ldvary.r0            # B2 ; a2
+nop                           ; fmul r3, r0, rf0            ; thrsw                # (wait for the TMU)
+fadd rf10, r3, r5             ; nop                         ; thrsw                # A2 (last segment)
+nop                           ; nop
+nop                           ; nop                         ; ldtmu.r0             # texel R G
+nop                           ; fmul r1, r0.l, rf3          ; ldtmu.r2             # R ; texel B A
+fadd r1, r1, rf7              ; fmul r0, r0.h, rf4          # R + R2 ; G
+fadd r0, r0, rf8              ; fmul r3, r2.l, rf5          # G + G2 ; B
+fadd r3, r3, rf9              ; fmul r2, r2.h, rf6          # B + B2 ; A
+fadd r2, r2, rf10             ; nop                         # A + A2
+fmin r1, r1, 0x3f800000       ; nop
+fmin r0, r0, 0x3f800000       ; nop
+fmin r3, r3, 0x3f800000       ; nop
+fmin r2, r2, 0x3f800000       ; nop
+fsub.pushn -, r2, rf11        ; nop                         # alpha < threshold: flag A
+setmsf.ifa -, 0               ; nop                         # those pixels are not written
+vfpack tlb, r1, r0            ; nop                         ; thrsw                # (end)
+vfpack tlb, r3, r2            ; nop
+nop                           ; nop
+
