@@ -29,7 +29,7 @@ void Machine::hwReset ()
 	piIntsr = 0; piIntmr = 0; piFifoBase = piFifoEnd = piFifoWptr = 0; gatherN = 0;
 	zero (vi, sizeof vi); zero (siReg, sizeof siReg); zero (siBuf, sizeof siBuf); siPoll = 0;
 	zero (exiReg, sizeof exiReg); zero (exiCmd, sizeof exiCmd); zero (exiPhase, sizeof exiPhase);
-	zero (diReg, sizeof diReg); diReads = diLastOff = 0; dspBootKey = dspMailsIn = dspLastMail = 0; zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
+	zero (diReg, sizeof diReg); diReads = diLastOff = 0; hwLastRead = hwLastReadN = 0; dspBootKey = dspMailsIn = dspLastMail = 0; zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
 	zero (irqCount, sizeof irqCount);
 	diDoneAt = ~0ull; dicover = 0; aiSampleAt = 0;
 	dspMailIn = dspMailOut = 0; dspMailOutValid = false; dspBootStep = 0;
@@ -141,6 +141,11 @@ void Machine::status (char *out, int cap)
 	put (", picture: "); put ((tfbl & 0x00FFFFFF) == 0 ? "not set up yet" : (vi[0x02 / 2] & 1) ? "on" : "off");
 	put (", 3D frames "); dec (gfxSerial);
 	put (", DSP step "); dec ((u32) dspBootStep); put (" (mails "); dec (dspMailsIn); put (", last "); hex (dspLastMail); put (")");
+	// what it waits for: the register it reads over and over, the interrupts (pending / enabled)
+	put (" | polls "); hex (hwLastRead); put (" x"); dec (hwLastReadN);
+	put (", EE "); dec ((msr >> 15) & 1); put (", PI "); hex (piIntsr); put ("/"); hex (piIntmr);
+	put (", DSP csr "); hex (dspReg[0x0A / 2]); put (", DI "); hex (diReg[0]); put (" "); hex (diReg[7]);
+	put (", EXI0 "); hex (exiReg[0][0]); put (" "); hex (exiReg[0][3]);
 	if (halted) { put (", stopped: "); put (haltMsg); }
 	out[n] = 0;
 }
@@ -377,6 +382,7 @@ void Machine::gatherFlush ()
 u32 Machine::hwRead (u32 pa, int size)
 {
 	u32 off = pa & 0xFFFF;
+	if (pa == hwLastRead) hwLastReadN++; else { hwLastRead = pa; hwLastReadN = 1; }
 	switch (pa >> 12)
 	{
 	case 0x0C000: return cpRead (off, size);			// the command processor (gc_gx.cpp)
