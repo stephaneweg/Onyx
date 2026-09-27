@@ -137,6 +137,7 @@ namespace OnyxRemote
 		readonly ToolStripButton desktop = new ToolStripButton ("Desktop") { CheckOnClick = true };
 		readonly ToolStripButton frames = new ToolStripButton ("Onyx frames") { CheckOnClick = true };
 		readonly ToolStripButton go = new ToolStripButton ("Connect");
+		readonly ToolStripButton console = new ToolStripButton ("Console") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
 		readonly ToolStripLabel status = new ToolStripLabel ("Not connected");
 		readonly BarPanel barPanel;
 		readonly DropLayer drop;
@@ -158,13 +159,14 @@ namespace OnyxRemote
 			mdi.BackColor = Color.FromArgb (32, 64, 96);
 			var ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
 			host.Width = 130; port.Width = 45; port.Text = "3390";
-			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go,
+			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go, console,
 				new ToolStripSeparator (), bits16, desktop, frames, new ToolStripSeparator (), status });
 			barPanel = new BarPanel (this) { Dock = DockStyle.Top, Height = 32, Visible = false };
 			Controls.Add (barPanel);
 			Controls.Add (ts);
 			drop = new DropLayer (this);
 			go.Click += (s, e) => { if (Conn == null) Connect (); else Disconnect ("Disconnected"); };
+			console.Click += (s, e) => OpenConsole ();
 			desktop.CheckedChanged += (s, e) => { if (Conn != null) { Conn.Desktop (desktop.Checked); Sync (); } };
 			host.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter && Conn == null) { e.SuppressKeyPress = true; Connect (); } };
 			MdiChildActivate += (s, e) => { if (ActiveMdiChild is RemoteWindow rw && Conn != null) Conn.Raise (rw.Id); };
@@ -201,6 +203,17 @@ namespace OnyxRemote
 			tick.Start ();
 		}
 
+		// a telnet console on the Pi: its own window (the address typed, port 23 -- "host:port" for another)
+		void OpenConsole ()
+		{
+			string h = host.Text.Trim (); int p = 23;
+			int colon = h.LastIndexOf (':');
+			if (colon > 0 && int.TryParse (h.Substring (colon + 1), out int pp)) { p = pp; h = h.Substring (0, colon); }
+			if (h.Length == 0) { status.Text = "Type the Pi's address first"; return; }
+			SaveSettings ();
+			new TelnetForm (h, p).Show ();
+		}
+
 		void DeskPointer (MouseEventArgs e, int wheel)
 		{
 			if (Conn == null || !desktop.Checked) return;
@@ -210,12 +223,7 @@ namespace OnyxRemote
 		void Connect ()
 		{
 			int p; if (!int.TryParse (port.Text, out p) || p <= 0 || p > 65535) p = 3390;
-			try
-			{
-				File.WriteAllLines (SettingsPath, new[] { "host=" + host.Text, "port=" + p,
-					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0), "frames=" + (frames.Checked ? 1 : 0) });
-			}
-			catch { }
+			SaveSettings ();
 			var c = new Connection ();
 			status.Text = "Connecting...";
 			Refresh ();
@@ -226,6 +234,17 @@ namespace OnyxRemote
 			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
 			go.Text = "Disconnect";
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = false;
+		}
+
+		void SaveSettings ()
+		{
+			int p; if (!int.TryParse (port.Text, out p) || p <= 0 || p > 65535) p = 3390;
+			try
+			{
+				File.WriteAllLines (SettingsPath, new[] { "host=" + host.Text, "port=" + p,
+					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0), "frames=" + (frames.Checked ? 1 : 0) });
+			}
+			catch { }
 		}
 
 		void Disconnect (string why)

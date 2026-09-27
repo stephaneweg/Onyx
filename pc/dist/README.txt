@@ -39,7 +39,9 @@ client of rdpd (port 3390, started at boot on the Pi). Type the Pi's address, Co
 menu bar across the top; the Onyx windows as child windows inside (normal windows, or with their
 Onyx frame: "Onyx frames"), moved freely; their close button closes the Onyx app; clicking a
 window gives it the keyboard. "Desktop" shows the Onyx desktop behind them; "16-bit colours"
-sends half the data (games). No password, no encryption: trusted LAN only.
+sends half the data (games). "Console": a telnet console on the Pi (telnetd, port 23; or type
+address:port) in its own window -- scroll, select and copy the output, Enter sends the command
+line, Up / Down the history, Ctrl+C interrupts. No password, no encryption: trusted LAN only.
 
 NintendoEMU
 ===========

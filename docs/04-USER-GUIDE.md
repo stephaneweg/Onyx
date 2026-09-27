@@ -556,6 +556,13 @@ connection waits until the first ends.
   compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
   halves the data (a game in a big window). The tool bar shows the updates a second; it says
   when the Pi's kernel is too old for rdpd (copy the new `kernel8-rpi4.img`).
+- **Console** opens a **telnet console** on the Pi in a window of its own (the Onyx shell served
+  by `telnetd`, port 23 — type `address:port` in the address box for another port; it works
+  without Connect): the output in a text box you can **scroll, select and copy** (right click:
+  Copy, Select All, Clear, Save As...), the command typed in the line below — **Enter** sends
+  it, **Up / Down** recall the previous ones, **Esc** clears the line, **Ctrl+C** (nothing
+  selected) or the **Ctrl+C** button interrupts the running command; `clear` clears the text.
+  **Reconnect** after the Pi restarted.
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 
