@@ -442,7 +442,8 @@ Notes / caveats:
 > CTR it uses are cached in host registers (x9–x15, x27, x28: loaded at first use, the dirty
 > ones written back at the exits, before the interpreter, and around a slow-path call); the
 > integer unit, CR logic, rotates,
-> shifts, compares, the branches (CTR / CR conditions, LR) and the loads / stores are native (a
+> shifts, compares, divw / divwu, the branches (CTR / CR conditions, LR), mftb, the loads / stores,
+> lmw / stmw and dcbz (MEM1 in one go) are native (a
 > load / store whose address maps MEM1 through the OS's standard BATs, or in real mode, reads
 > the host memory directly and byte-swaps; the rest calls `read32`… with the cycle count exact),
 > every other instruction (the FPU, the paired singles for now) calls the interpreter's `exec`.
@@ -450,7 +451,7 @@ Notes / caveats:
 > side by side, so an FPR is one q register, cached like the GPRs (q8–q31, lane 0 = ps0); the
 > paired singles compute both halves at once (FADD / FMLA .2D, by-element for muls0 / madds1,
 > FCVTN + FCVTL for the single rounding, ZIP / EXT for the merges, FCMGE + BSL for ps_sel); the
-> plain FPU works on lane 0 (fadd… fmadd, the 25-bit multiplicand — skipped when the operand is
+> plain FPU works on lane 0 (fadd… fmadd, fres / frsqrte (ps_res / ps_rsqrte on both), the 25-bit multiplicand — skipped when the operand is
 > known to hold a single exactly —, fsel, fcmp, frsp, fctiwz, the moves), lfs / lfd / stfs /
 > stfd, psq_l / psq_st and their indexed forms, **specialised for the GQR's value found at
 > translation** (a float type: one 8-byte access for the pair; u8 / u16 / s8 / s16 with a scale:

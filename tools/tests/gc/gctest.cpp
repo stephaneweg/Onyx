@@ -174,7 +174,8 @@ static void fuzzInit (Machine &m, u64 seed, u32 *prog, int n)
 {
 	m.reset ();
 	rng = seed;
-	for (int i = 0; i < 32; i++) m.gpr[i] = rn (3) ? rnd32 () : rn (100);
+	static const u32 edge[] = { 0, 0xFFFFFFFFu, 0x80000000u, 0x7FFFFFFFu, 1, 0x8000u, 0xFFFF8000u };
+	for (int i = 0; i < 32; i++) m.gpr[i] = rn (3) ? rnd32 () : rn (2) ? rn (100) : edge[rn (7)];
 	m.gpr[1] = 0x80400000; m.gpr[2] = 0xCC008000;			// (the data; the write-gather pipe)
 	for (int i = 0; i < 32; i++) for (int k = 0; k < 2; k++) { u64 u = fpVal (); memcpy (&m.ps[i][k], &u, 8); }
 	m.cr = rnd32 (); m.xer = rnd32 () & 0xE000007F; m.lr = rnd32 (); m.ctr = rnd32 ();
@@ -195,23 +196,24 @@ static u32 fuzzInsn ()
 	auto R = [] () { return 3 + rn (29); };				// (r1: the data's base, r2 kept)
 	auto F = [] () { return rn (32); };
 	u32 d = F (), a = F (), b = F (), c = F ();
-	static const u32 x59[] = { 18, 20, 21, 25, 28, 29, 30, 31 };
-	static const u32 psA[] = { 10, 11, 12, 13, 14, 15, 18, 20, 21, 23, 25, 28, 29, 30, 31 };
+	static const u32 x59[] = { 18, 20, 21, 25, 28, 29, 30, 31, 24 };
+	static const u32 psA[] = { 10, 11, 12, 13, 14, 15, 18, 20, 21, 23, 25, 28, 29, 30, 31, 24, 26 };
 	static const u32 psX[] = { 40, 72, 136, 264, 528, 560, 592, 624 };
 	static const u32 f63x[] = { 12, 15, 40, 72, 136, 264 };
 	switch (rn (25))
 	{
-	case 0: case 1: return 59u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | x59[rn (8)] << 1;	// single
-	case 2: return 63u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | x59[rn (8)] << 1;		// double
+	case 0: case 1: return 59u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | x59[rn (9)] << 1;	// single (+ fres)
+	case 2: return 63u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | (rn (9) ? x59[rn (8)] : 26u) << 1;		// double (+ frsqrte)
 	case 3: return 63u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | 23u << 1;			// fsel
 	case 4: return 63u << 26 | d << 21 | b << 11 | f63x[rn (6)] << 1;
 	case 5: return 63u << 26 | rn (8) << 23 | a << 16 | b << 11 | (rn (2) ? 32u : 0u) << 1;	// fcmpu / fcmpo
-	case 6: case 7: case 8: return 4u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | psA[rn (15)] << 1;
+	case 6: case 7: case 8: return 4u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | psA[rn (17)] << 1;
 	case 9: return 4u << 26 | d << 21 | a << 16 | b << 11 | psX[rn (8)] << 1;
 	case 10: return (48u + rn (4) * 2) << 26 | d << 21 | 1u << 16 | (rn (0x80) * 8);		// lfs lfd stfs stfd
 	case 11: if (rn (3) == 0) return 4u << 26 | d << 21 | 1u << 16 | 4u << 11 | (u32) rn (2) << 10 | rn (4) << 7 | (rn (2) ? 6u : 7u) << 1;	// psq_lx / psq_stx (r1 + r4)
 		return (rn (2) ? 56u : 60u) << 26 | d << 21 | 1u << 16 | (u32) rn (2) << 15 | rn (4) << 12 | (rn (0x40) * 8);	// psq_l / psq_st
-	case 12: return 63u << 26 | d << 21 | 583u << 1;						// mffs (FPRF)
+	case 12: if (rn (2)) return 31u << 26 | R () << 21 | (12u + rn (2)) << 16 | 8u << 11 | 371u << 1;	// mftb (TBL / TBU)
+		return 63u << 26 | d << 21 | 583u << 1;						// mffs (FPRF)
 	case 13: return 31u << 26 | d << 21 | 1u << 16 | 4u << 11 | 983u << 1;			// stfiwx (r4 = 0x100 below)
 	case 14: { static const u32 xo[] = { 266, 10, 138, 234, 202, 40, 8, 136, 232, 200, 104, 235, 75, 11, 459 };
 		return 31u << 26 | R () << 21 | R () << 16 | R () << 11 | xo[rn (15)] << 1 | rn (2); }

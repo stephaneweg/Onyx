@@ -225,7 +225,7 @@ struct Jit
 	void linkTo (u32 key, void *code);
 	bool stdMap;					// the BATs map 0x80000000 / 0xC0000000 onto MEM1 as the OS does
 	// the Machine's fields
-	int oPc, oCycles, oUntil, oEnd, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather;
+	int oPc, oCycles, oUntil, oEnd, oTb, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather;
 	// the block being translated
 	u32 bKey, synced; int dmode; bool fpOk;
 	bool idle;					// the block is a polling loop (idleLoop)
@@ -717,6 +717,45 @@ struct Jit
 		return n;
 	}
 
+	// w1 = an address -> x4 = [w1, w1 + len) in the host's MEM1, else (-> the branch) the cold path
+	u32 *fastBlock (u32 len)
+	{
+		if (dmode == 2) { u32 *b = a.p; a.b (a.p); return b; }
+		if (dmode == 0) a.mov (3, 1);
+		else { a.logi (AND_I, 3, 1, 0xBFFFFFFFu); a.logi (EOR_I, 3, 3, 0x80000000u); }
+		a.movw (4, MEM1_SIZE - len);
+		a.cmp (3, 4);
+		u32 *b = a.p; a.bcond (HI, a.p);
+		a.put (0x8B204000u | 3u << 16 | (u32) XMEM << 5 | 4u);	// ADD x4, x20, w3, UXTW
+		return b;
+	}
+	void multi (u32 op, u32 pc, u32 idx, bool load)		// lmw / stmw: MEM1 at once, else the interpreter
+	{
+		int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31);
+		u32 disp = (u32) (s32) (s16) op;
+		if (ra == 0) a.movw (1, disp); else addConst (1, G (ra), disp);
+		if (load)						// (rD..r31 out of the cache: written in memory)
+			for (int r = d; r < 32; r++)
+				if (gHost[r] >= 0)
+				{
+					if (gDirty[r]) a.ldst (STR_W, 2, gHost[r], XM, r * 4);
+					hGuest[gHost[r]] = -1; gHost[r] = -1; gDirty[r] = false;
+				}
+		Def &cd = interpSide (op, pc, idx, true);
+		cd.site = fastBlock ((u32) (32 - d) * 4);
+		for (int r = d; r < 32; r++)
+		{
+			int off = (r - d) * 4;
+			if (load) { a.ldst (LDR_W, 2, 5, 4, off); a.un (REV_W, 5, 5); a.ldst (STR_W, 2, 5, XM, r * 4); }
+			else
+			{
+				int src = gHost[r];
+				if (src < 0) { a.ldst (LDR_W, 2, 5, XM, r * 4); src = 5; }
+				a.un (REV_W, 6, src); a.ldst (STR_W, 2, 6, 4, off);
+			}
+		}
+		cd.ret = a.p;
+	}
 	bool insn (u32 op, u32 pc, u32 idx);
 	bool op31 (u32 op, u32 pc, u32 idx);
 	bool idleLoop (u32 pa, u32 pc);
@@ -942,6 +981,8 @@ bool Jit::insn (u32 op, u32 pc, u32 idx)
 	case 57: return psq (op, pc, idx, true, true);			// psq_lu
 	case 60: return psq (op, pc, idx, false, false);		// psq_st
 	case 61: return psq (op, pc, idx, false, true);			// psq_stu
+	case 46: multi (op, pc, idx, true); return false;		// lmw
+	case 47: multi (op, pc, idx, false); return false;		// stmw
 	case 32: load (op, false, 4, false, false, pc, idx); return false;	// lwz
 	case 33: load (op, false, 4, false, true, pc, idx); return false;	// lwzu
 	case 34: load (op, false, 1, false, false, pc, idx); return false;	// lbz
@@ -968,7 +1009,7 @@ bool Jit::op31 (u32 op, u32 pc, u32 idx)
 	u32 xo = (op >> 1) & 0x3FF;
 	u32 x9 = (op >> 1) & 0x1FF;
 	if (!(op & 0x400) && (x9 == 266 || x9 == 10 || x9 == 138 || x9 == 234 || x9 == 202 || x9 == 40 || x9 == 8 || x9 == 136 ||
-	                      x9 == 232 || x9 == 200 || x9 == 104 || x9 == 235 || x9 == 75 || x9 == 11 || x9 == 459))
+	                      x9 == 232 || x9 == 200 || x9 == 104 || x9 == 235 || x9 == 75 || x9 == 11 || x9 == 459 || x9 == 491))
 	{								// the XO-form arithmetic, without OE
 		bool one = x9 == 234 || x9 == 202 || x9 == 232 || x9 == 200 || x9 == 104;	// (rA only)
 		int x = G (ra), y = one ? WZR : G (rb);
@@ -987,9 +1028,16 @@ bool Jit::op31 (u32 op, u32 pc, u32 idx)
 		case 235: a.alu (MUL_W, r, x, y); break;			// mullw
 		case 75: a.alu (SMULL, 5, x, y); a.bfm (UBFM_X, r, 5, 32, 63); break;	// mulhw
 		case 11: a.alu (UMULL, 5, x, y); a.bfm (UBFM_X, r, 5, 32, 63); break;	// mulhwu
+		case 491:							// divw (/ 0: -1 or 0 by the sign; INT_MIN / -1: -1)
+			a.alu (SDIV_W, 5, x, y);
+			a.asr (6, x, 31); a.cmpi (y, 0); a.csel (CSEL_W, 5, 6, 5, EQ);
+			a.movz (7, 0x8000, 1); a.cmp (x, 7);
+			a.put (0x3A400800u | 1u << 16 | (u32) EQ << 12 | (u32) y << 5 | 0u);	// CCMN y, #1, #0, EQ
+			a.put (0x5A800000u | 31u << 16 | (u32) NE << 12 | 5u << 5 | (u32) r);	// CSINV r, w5, wzr, NE
+			break;
 		default: a.alu (UDIV_W, r, x, y); break;			// divwu
 		}
-		if (x9 != 266 && x9 != 40 && x9 != 104 && x9 != 235 && x9 != 75 && x9 != 11 && x9 != 459) setCaFlag ();
+		if (x9 != 266 && x9 != 40 && x9 != 104 && x9 != 235 && x9 != 75 && x9 != 11 && x9 != 459 && x9 != 491) setCaFlag ();
 		if (rc) setCr0 (r);
 		return false;
 	}
@@ -1062,6 +1110,7 @@ bool Jit::op31 (u32 op, u32 pc, u32 idx)
 	{
 		u32 n = ((op >> 16) & 31) | ((op >> 6) & 0x3E0);
 		if (n == 1 || n == 8 || n == 9) { int v = G (n == 1 ? G_XER : n == 8 ? G_LR : G_CTR); a.mov (W (d), v); return false; }
+		if (n == 268 || n == 269) return op31 ((op & ~(0x3FFu << 1)) | 371u << 1, pc, idx);	// (the timebase)
 		interp (op, pc, idx, false);
 		return false;
 	}
@@ -1074,6 +1123,29 @@ bool Jit::op31 (u32 op, u32 pc, u32 idx)
 		return true;
 	}
 	case 86: case 54: case 278: case 246: case 598: case 854: case 306: case 566: case 470: return false;	// dcbf dcbst dcbt dcbtst sync eieio tlbie tlbsync dcbi
+	case 1014:							// dcbz: 32 bytes of MEM1 at once
+	{
+		eaX (op, false);
+		a.logi (AND_I, 1, 1, ~31u);
+		Def &cd = interpSide (op, pc, idx, true);
+		cd.site = fastBlock (32);
+		a.put (0xA9007C9Fu);					// STP xzr, xzr, [x4]
+		a.put (0xA9017C9Fu);					// STP xzr, xzr, [x4, #16]
+		cd.ret = a.p;
+		return false;
+	}
+	case 371:							// mftb (TBL / TBU): from the cycles
+	{
+		u32 n = ((op >> 16) & 31) | ((op >> 6) & 0x3E0);
+		if (n != 268 && n != 269) break;
+		a.ldst (LDR_X, 3, 5, XM, oEnd); a.alu (SUB_W | X64, 5, 5, XDC);
+		if (idx * 2 > synced) a.imm (ADD_WI | X64, 5, 5, idx * 2 - synced);
+		a.movz (6, CYC_PER_TB, 0, true); a.alu (UDIV_W | X64, 5, 5, 6);
+		a.ldst (LDR_X, 3, 6, XM, oTb); a.alu (ADD_W | X64, 5, 5, 6);
+		if (n == 269) a.bfm (UBFM_X, 5, 5, 32, 63);
+		a.mov (W (d), 5);
+		return false;
+	}
 	case 23: load (op, true, 4, false, false, pc, idx); return false;	// lwzx
 	case 55: load (op, true, 4, false, true, pc, idx); return false;	// lwzux
 	case 87: load (op, true, 1, false, false, pc, idx); return false;	// lbzx
@@ -1117,10 +1189,11 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 	if (prim == 59 || prim == 63)
 	{
 		bool single = prim == 59;
-		if (x5 == 18 || x5 == 20 || x5 == 21 || x5 == 25 || x5 >= 28)
+		if (x5 == 18 || x5 == 20 || x5 == 21 || x5 == 25 || x5 >= 28 || (single && x5 == 24) || (!single && x5 == 26))
 		{
 			fpCheck (op, pc, idx);
-			int ha = FG (ra), hb = x5 != 25 ? FG (rb) : -1, hc = (x5 == 25 || x5 >= 28) ? FG (rc) : -1;
+			bool one = x5 == 24 || x5 == 26;			// (fres, frsqrte: frB only)
+			int ha = one ? -1 : FG (ra), hb = x5 != 25 ? FG (rb) : -1, hc = (x5 == 25 || x5 >= 28) ? FG (rc) : -1;
 			int hd = FRes (d, !single, true);			// (a double result keeps ps1)
 			int mc = hc;
 			if (hc >= 0 && single && !isS (sgl0, rc)) { force25x (hc, 0); a.fp1 (FMOV_DX, 2, 5); mc = 2; }
@@ -1130,6 +1203,8 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 			case 20: a.fp3 (FSUB_D, 3, ha, hb); break;
 			case 21: a.fp3 (FADD_D, 3, ha, hb); break;
 			case 25: a.fp3 (FMUL_D, 3, ha, mc); break;
+			case 24: a.put (FMOV_D1 | 4); a.fp3 (FDIV_D, 3, 4, hb); break;	// fres: 1 / b (rounded to single)
+			case 26: a.fp1 (0x1E61C000u, 5, hb); a.put (FMOV_D1 | 4); a.fp3 (FDIV_D, 3, 4, 5); break;	// frsqrte: 1 / sqrt (b)
 			case 28: a.fp4 (FNMSUB_D, 3, ha, mc, hb); break;		// a * c - b
 			case 29: a.fp4 (FMADD_D, 3, ha, mc, hb); break;		// a * c + b
 			case 30: a.fp4 (FNMSUB_D, 3, ha, mc, hb); a.fp1 (FNEG_D, 3, 3); break;
@@ -1211,7 +1286,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 	}
 	else								// the paired singles
 	{
-		bool arith = x5 == 10 || x5 == 11 || (x5 >= 12 && x5 <= 15) || x5 == 18 || x5 == 20 || x5 == 21 || x5 == 23 || x5 == 25 || x5 >= 28;
+		bool arith = x5 == 10 || x5 == 11 || (x5 >= 12 && x5 <= 15) || x5 == 18 || x5 == 20 || x5 == 21 || x5 == 23 || x5 == 24 || x5 == 25 || x5 == 26 || x5 >= 28;
 		bool move = x10 == 40 || x10 == 72 || x10 == 136 || x10 == 264 || x10 == 528 || x10 == 560 || x10 == 592 || x10 == 624;
 		if (!arith && !move) { interp (op, pc, idx, false); return false; }
 		fpCheck (op, pc, idx);
@@ -1264,8 +1339,9 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 		}
 		default:
 		{
-			bool usesB = x5 != 12 && x5 != 13 && x5 != 25, usesC = x5 != 18 && x5 != 20 && x5 != 21;
-			int ha = FG (ra), hb = usesB ? FG (rb) : -1, hc = usesC ? FG (rc) : -1, hd = FRes (d, false, true);
+			bool usesB = x5 != 12 && x5 != 13 && x5 != 25, usesC = x5 != 18 && x5 != 20 && x5 != 21 && x5 != 24 && x5 != 26;
+			bool usesA = x5 != 24 && x5 != 26;
+			int ha = usesA ? FG (ra) : -1, hb = usesB ? FG (rb) : -1, hc = usesC ? FG (rc) : -1, hd = FRes (d, false, true);
 			// the multiplicand: both halves of c (mul, madd...), or one half for both (muls0/1, madds0/1)
 			int mc = hc, lane = -1;
 			if (x5 == 12 || x5 == 14) lane = 0;
@@ -1291,6 +1367,8 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 			switch (x5)
 			{
 			case 18: a.fp3 (FDIV_2D, 6, ha, hb); break;
+			case 24: a.put (FMOV_D1 | 4); a.put (0x4E080400u | 4u << 5 | 4u); a.fp3 (FDIV_2D, 6, 4, hb); break;	// ps_res: 1 / b
+			case 26: a.fp1 (0x6EE1F800u, 5, hb); a.put (FMOV_D1 | 4); a.put (0x4E080400u | 4u << 5 | 4u); a.fp3 (FDIV_2D, 6, 4, 5); break;	// ps_rsqrte
 			case 20: a.fp3 (FSUB_2D, 6, ha, hb); break;
 			case 21: a.fp3 (FADD_2D, 6, ha, hb); break;
 			case 25: a.fp3 (FMUL_2D, 6, ha, mc); break;
@@ -1489,7 +1567,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 {
 	m = mm;
 	code = (u32 *) mem; codeEnd = code + size / 4;
-	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oEnd = OFF (jitEnd); oCr = OFF (cr); oXer = OFF (xer);
+	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oEnd = OFF (jitEnd); oTb = OFF (tbBase); oCr = OFF (cr); oXer = OFF (xer);
 	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1); oScratch = OFF (jitScratch);
 	oPs = OFF (ps); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr); oGatherN = OFF (gatherN); oGather = OFF (gather);
 	ctx = new u8[FAST_OFF + (sizeof (Fast) << FAST_BITS)];
