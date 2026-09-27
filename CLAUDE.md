@@ -5,6 +5,9 @@
 GUI. The repository folder is historically named `Zircon` (a legacy name — keep filesystem
 paths like `Zircon/circle` as-is; no relation to Google/Fuchsia's Zircon).
 
+**Continuing the work? Read `docs/HANDOFF.md` first** (where things stand, the conventions, the
+next task: the GameCube emulator).
+
 The reference documentation is in **`docs/`** and is written in **English**:
 
 - `docs/01-PROJECT-OVERVIEW.md`
