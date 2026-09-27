@@ -32,6 +32,27 @@ enum { CPU_HZ = 486000000, BUS_HZ = 162000000, TB_HZ = BUS_HZ / 4, CYC_PER_TB = 
 static inline u32 bswap32 (u32 v) { return __builtin_bswap32 (v); }
 static inline u16 bswap16 (u16 v) { return (u16) __builtin_bswap16 (v); }
 
+// ---- the graphics of a frame, for a renderer (the layout of kapi v53/v54: kapi_gpu_vertex3 / _batch) ----
+// The GX's triangles in clip space (the GPU divides and clips), texture coordinates 0..1 across
+// their texture, the TEV's result as texel x colour + colour2; batches with a texture and a state.
+struct GVertex { float x, y, z, w, s, t; u8 r, g, b, a, r2, g2, b2, a2; };
+struct GBatch { u32 first, count; s32 tex; u32 flags; float m[16]; };
+enum
+{
+	GF_ZALWAYS = 7, GF_NOZWRITE = 1 << 3, GF_CULL_BACK = 1 << 4, GF_CULL_FRONT = 1 << 5,
+	GF_BLEND_SHIFT = 8, GF_LINEAR = 1 << 12, GF_WRAP_S_SHIFT = 13, GF_WRAP_T_SHIFT = 15, GF_NOMATRIX = 1 << 17,
+	GF_ALPHATEST = 1 << 18				// (+ the threshold 0..255 << 19)
+};
+struct GTexture { u32 *px; int w, h; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB
+struct GFrame
+{
+	enum { MAXV = 3 * 60000, MAXB = 4096 };
+	GVertex *v; int nv;
+	GBatch *b; int nb;
+	u32 clear;					// 0xRRGGBB
+	int width, height;				// the EFB area copied to the XFB
+};
+
 class Machine
 {
 public:
@@ -141,6 +162,7 @@ public:
 	u32 cpRegs[0x100];				// the CP registers loaded by the FIFO (VCD, VAT, array bases / strides)
 	u32 xfRegs[0x1100];				// the XF memory (matrices 0x000-0x4FF, lights 0x600-, registers 0x1000-)
 	u32 bpRegs[0x100];				// the BP registers
+	u32 bpKonst[8];					// the TEV's konst colours (BP 0xE0-0xE7 with bit 23)
 	u32 gxCmds, gxPrims, gxVerts, gxCopies;	// (the tests)
 	u32 cpRead (u32 off, int size);
 	void cpWrite (u32 off, u32 v, int size);
@@ -154,6 +176,15 @@ public:
 	void gxXf (u32 addr, int n, const u8 *data);
 	void gxPrimitive (int prim, int vat, int count, const u8 *verts);	// (gc_gxdraw.cpp later: the drawing)
 	void gxCopy (u32 v);				// an EFB copy (to the XFB or a texture)
+	// the drawing (gc_gxdraw.cpp): frames of GPU triangles, the textures decoded
+	enum { MAX_TEX = 256 };
+	GFrame gfxFrame[2]; int gfxBuild, gfxReady; u32 gfxSerial;
+	GTexture tex[MAX_TEX]; u32 texClock;
+	u8 *tmem;					// the TMEM (1 MB: the TLUTs)
+	u32 gxClearNext;				// the colour the next frame starts with
+	void gxInit ();
+	int  gxTexture (int map);			// the texture of a map (decoded, cached) -> its index, -1
+	void gxEmit (const GVertex *v3, int tex, u32 flags);
 	// the DSP (gc_dsp.cpp): its ROM and microcode at a high level -- the mailboxes, the boot
 	void dspReset ();
 	void dspMailReceived (u32 mail);

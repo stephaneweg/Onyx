@@ -4,6 +4,7 @@
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
 #include "gc/gc.h"
+#include "basic/bas3d.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +92,30 @@ static void ppm (const Machine &m, const char *path)
 	fclose (f);
 }
 
+// the last GPU frame, rendered by the BASIC 3D's software renderer (as the GPU would draw it)
+static void gfxPpm (Machine &m, const char *path)
+{
+	if (m.gfxReady < 0) { printf ("  (no GX frame)\n"); return; }
+	const GFrame &F = m.gfxFrame[m.gfxReady];
+	int W = F.width, H = F.height;
+	static unsigned px[1024 * 1024]; static float zb[1024 * 1024];
+	static_assert (sizeof (GVertex) == sizeof (bas::G3Vertex) && sizeof (GBatch) == sizeof (bas::G3Batch), "layout");
+	static bas::G3Batch bt[GFrame::MAXB];
+	for (int i = 0; i < F.nb; i++) { __builtin_memcpy (&bt[i], &F.b[i], sizeof bt[i]); bt[i].texture = F.b[i].tex >= 0 ? F.b[i].tex + 1 : 0; }
+	Machine *mp = &m;
+	bas::swRender (px, W, H, W, zb, (const bas::G3Vertex *) F.v, F.nv, bt, F.nb, F.clear, false, [mp] (int t) -> const bas::G3Texture *
+	{
+		static bas::G3Texture T;
+		T.px = mp->tex[t - 1].px; T.w = mp->tex[t - 1].w; T.h = mp->tex[t - 1].h;
+		return &T;
+	});
+	FILE *f = fopen (path, "wb"); if (!f) return;
+	fprintf (f, "P6\n%d %d\n255\n", W, H);
+	for (int i = 0; i < W * H; i++) { unsigned c = px[i]; fputc ((int) (c >> 16), f); fputc ((int) (c >> 8) & 255, f); fputc ((int) c & 255, f); }
+	fclose (f);
+	printf ("  GX frame: %d vertices, %d batches, %dx%d -> %s\n", F.nv, F.nb, W, H, path);
+}
+
 // a .dol run for some fields: the picture, the results it leaves at 0x80700000, the interrupts
 static int dolTest (const char *dol, int frames, const char *out)
 {
@@ -99,6 +124,7 @@ static int dolTest (const char *dol, int frames, const char *out)
 	if (!m.loadDol (d, (u32) n)) { printf ("FAIL: not a .dol\n"); return 1; }
 	for (int i = 0; i < frames && !m.halted; i++) m.runFrame ();
 	if (out) ppm (m, out);
+	if (out && getenv ("GC_GX")) gfxPpm (m, getenv ("GC_GX"));
 	printf ("%d fields, pc %08X%s%s, %dx%d, gx %u cmds %u prims\n", m.frames, m.pc, m.halted ? " HALTED: " : "", m.haltMsg, m.fbW, m.fbH, m.gxCmds, m.gxPrims);
 	printf ("results: %08X %08X %08X %08X %08X\n", m.read32 (0x80700000), m.read32 (0x80700004), m.read32 (0x80700008), m.read32 (0x8070000C), m.read32 (0x80700010));
 	printf ("PI irqs:"); for (int i = 0; i < 14; i++) printf (" %u", m.irqCount[i]); printf ("\n");

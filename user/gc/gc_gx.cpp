@@ -249,6 +249,7 @@ void Machine::gxXf (u32 addr, int n, const u8 *data)
 void Machine::gxBp (u32 v)
 {
 	u32 r = v >> 24, val = v & 0xFFFFFF;
+	if (r >= 0xE0 && r <= 0xE7 && (val & 0x800000)) { bpKonst[r - 0xE0] = val; return; }	// (a konst colour)
 	u32 m = bpRegs[0xFE] ? bpRegs[0xFE] : 0xFFFFFF;
 	if (r != 0xFE) { val = (bpRegs[r] & ~m) | (val & m); bpRegs[0xFE] = 0xFFFFFF; }
 	bpRegs[r] = val;
@@ -271,6 +272,12 @@ void Machine::gxBp (u32 v)
 		break;
 	}
 	case 0x52: gxCopy (val); break;					// an EFB copy
+	case 0x65:							// load a TLUT: from memory (0x64) into the TMEM
+	{
+		u32 src = (bpRegs[0x64] & 0x1FFFFF) << 5, dst = (val & 0x3FF) << 9, n = (val & 0x1FFC00) >> 5;
+		for (u32 i = 0; i < n && src + i < MEM1_SIZE && dst + i < 0x100000; i++) tmem[dst + i] = mem1[src + i];
+		break;
+	}
 	}
 }
 

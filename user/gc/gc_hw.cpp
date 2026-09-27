@@ -36,7 +36,8 @@ void Machine::hwReset ()
 	aidmaNextAt = ~0ull; aidmaLeft = 0; aidmaAddr = 0;
 	gpBytes = 0; frames = 0;
 	zero (cpReg16, sizeof cpReg16); zero (peReg16, sizeof peReg16);
-	zero (cpRegs, sizeof cpRegs); zero (xfRegs, sizeof xfRegs); zero (bpRegs, sizeof bpRegs);
+	zero (cpRegs, sizeof cpRegs); zero (xfRegs, sizeof xfRegs); zero (bpRegs, sizeof bpRegs); zero (bpKonst, sizeof bpKonst);
+	gxInit ();
 	cpFifoBase = cpFifoEnd = cpFifoRptr = cpFifoWptr = cpBreak = 0;
 	gxCmds = gxPrims = gxVerts = gxCopies = 0;
 	dspQHead = dspQTail = 0; dspBootN = 0; dspUcode = 0; dspCmdlistLeft = 0;
