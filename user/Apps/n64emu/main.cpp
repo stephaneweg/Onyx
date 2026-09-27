@@ -24,6 +24,7 @@
 #include "n64/n64.h"
 #include "wtk/dialog.h"
 #include "emucore.h"
+#include "basic/bas3d.h"
 
 using namespace wtk;
 
@@ -45,6 +46,7 @@ static bool g_loading = true;
 static unsigned g_loadDone = 0, g_loadSize = 1;
 static char g_loadName[64];
 static bool g_gpu = false;					// kapi v53 usable
+static bool g_gpuOn = true;					// View > Draw with the GPU (off: the software renderer)
 static int g_gpuTex[n64::Machine::MAX_TEX];			// the machine's texture -> the GPU's handle
 static unsigned g_lastSerial = 0, g_gfxAge = 1000;		// frames since the last graphics frame
 static int g_fbW = 320, g_fbH = 240;
@@ -140,9 +142,41 @@ static void fb_frame (unsigned *px, int w, int h, int stride)
 	}
 }
 
+// The last graphics frame by the software renderer of the BASIC 3D (View > Draw with the GPU off:
+// slow, to tell a GPU problem from another one), at the console's size, then scaled.
+static bool sw_frame (unsigned *px, int w, int h, int stride)
+{
+	if (g_m->gfxReady < 0) return false;
+	const n64::GFrame &F = g_m->gfxFrame[g_m->gfxReady];
+	int W = F.width, H = F.height;
+	if (W <= 0 || H <= 0 || W > n64::FB_MAX_W || H > n64::FB_MAX_H) return false;
+	static unsigned *pic = 0; static float *zb = 0;
+	if (!pic) { pic = new unsigned[n64::FB_MAX_W * n64::FB_MAX_H]; zb = new float[n64::FB_MAX_W * n64::FB_MAX_H]; }
+	static bas::G3Batch bt[n64::GFrame::MAXB];
+	static bas::G3Texture tx[n64::Machine::MAX_TEX];
+	for (int i = 0; i < F.nb; i++)
+	{
+		const n64::GBatch &B = F.b[i];
+		bt[i].first = B.first; bt[i].count = B.count; bt[i].flags = B.flags;
+		bt[i].texture = B.tex >= 0 ? B.tex + 1 : 0;
+		for (int k = 0; k < 16; k++) bt[i].m[k] = B.m[k];
+	}
+	for (int i = 0; i < n64::Machine::MAX_TEX; i++) { tx[i].px = g_m->tex[i].px; tx[i].w = g_m->tex[i].w; tx[i].h = g_m->tex[i].h; }
+	bas::swRender (pic, W, H, W, zb, (const bas::G3Vertex *) F.v, F.nv, bt, F.nb, F.clear, false,
+		       [] (int t) -> const bas::G3Texture * { return &tx[t - 1]; });
+	for (int y = 0; y < h; y++)
+	{
+		const unsigned *r = pic + (y * H / h) * W;
+		unsigned *d = px + (long) y * stride;
+		for (int x = 0; x < w; x++) d[x] = r[x * W / w];
+	}
+	return true;
+}
+
 static void draw_into (unsigned *px, int w, int h, int stride)
 {
-	if (g_gfxAge < 30 && gpu_frame (px, w, h, stride)) return;
+	if (g_gfxAge < 30 && g_gpuOn && gpu_frame (px, w, h, stride)) return;
+	if (g_gfxAge < 30 && (!g_gpuOn || !g_gpu) && sw_frame (px, w, h, stride)) return;
 	fb_frame (px, w, h, stride);
 }
 
@@ -218,6 +252,7 @@ static void on_sound ()
 	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
+static void on_gpu () { g_gpuOn = !g_gpuOn; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
 static void on_reset () { ec_hold (&g_ec); save_ram (); g_m->reset (); load_ram (); ec_resume (&g_ec); }
 static void on_quit () { kapi_exit (0); }
@@ -367,6 +402,7 @@ int main (void)
 	menu.item ("Zoom 3x",      "",    0, on_zoom3);
 	menu.separator ();
 	menu.item ("Show Speed",   "F12", 0, on_stats);
+	menu.item ("Draw with the GPU On / Off", "", 0, on_gpu);
 	menu.menu ("Sound");
 	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.publish ();
@@ -433,7 +469,7 @@ int main (void)
 			fmt_num (g_statText, &k, (unsigned) ((unsigned long long) stEmu * 10000000ull / el), 1); cat (g_statText, &k, " fps  emu ");
 			fmt_num (g_statText, &k, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &k, " ms  draw ");
 			fmt_num (g_statText, &k, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &k, " ms");
-			cat (g_statText, &k, g_gfxAge < 30 ? "  GPU" : "  framebuffer");
+			cat (g_statText, &k, g_gfxAge < 30 ? (g_gpuOn && g_gpu ? "  GPU" : "  software") : "  framebuffer");
 			if (g_sound && g_audio == 1 && g_m->audioTasks) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); }
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
