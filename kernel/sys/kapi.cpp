@@ -2076,7 +2076,9 @@ extern "C" {
 int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0 || pOut == 0 || nMax <= 0 || !IS_USER_VA (pOut) || !IS_USER_VA ((u8 *) (pOut + nMax) - 1)) return 0;
+	// (no IS_USER_VA check: an app's stack is its kernel task's -- apps run at EL1 -- so a
+	// buffer on the caller's stack is not in the user range)
+	if (pWM == 0 || pOut == 0 || nMax <= 0) return 0;
 	CWindow *List[WM_MAX_WINDOWS];
 	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
 	CWindow *pFs = pWM->FullscreenWindow ();
@@ -2114,7 +2116,7 @@ int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned
 	if (pWM != 0 && nId == KAPI_WIN_DESKTOP)		// the whole desktop, composited straight in
 	{
 		if (nPart != 0 || x != 0 || y != 0 || w != g_nScreenWidth || h != g_nScreenHeight || nStride != w
-		    || pDst == 0 || !IS_USER_VA (pDst) || !IS_USER_VA (pDst + (size_t) w * h - 1)) return -1;
+		    || pDst == 0) return -1;
 		GImage Img ((u32 *) pDst, w, h);
 		pWM->CompositeDesktop (&Img);
 		return 0;
@@ -2147,7 +2149,7 @@ int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned
 	if (x + w > W) w = W - x;
 	if (y + h > H) h = H - y;
 	if (w <= 0 || h <= 0) return 0;
-	if (nStride < w || !IS_USER_VA (pDst) || !IS_USER_VA (pDst + (size_t) (h - 1) * nStride + w - 1)) return -1;
+	if (nStride < w) return -1;
 	for (int r = 0; r < h; r++)
 		memcpy (pDst + (size_t) r * nStride, pSrc + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
 	return 0;
