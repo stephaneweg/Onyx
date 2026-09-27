@@ -349,10 +349,13 @@ static u64 PhysOf (uintptr ulVA)
 	return (nPar & 0x0000FFFFFFFFF000ull) | (ulVA & 0xFFF);
 }
 
+boolean g_bGpuDirect = TRUE;				// cmdline.txt gpudirect=0: always through s_Target
+
 static void ResolveTarget (unsigned *pPx, int w, int h, int nStride, TTarget &T)
 {
 	T.bDirect = FALSE;
 	T.nBus = s_Target.Bus (); T.nStrideBytes = (u32) w * 4;
+	if (!g_bGpuDirect) return;
 	uintptr ulVA = (uintptr) pPx;
 	u64 nSpan = ((u64) (h - 1) * (u64) nStride + (u64) w) * 4;
 	if ((ulVA & 3) || nSpan > 0x10000000) return;

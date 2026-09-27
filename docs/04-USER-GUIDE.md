@@ -109,6 +109,10 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`sdcache`**: `sdcache=0` turns off the **sector cache** (on by default: the FAT and the
   folders stay in memory, so opening files and listing folders no longer asks the card for
   every sector; writes still go to the card at once). For comparisons with `fsbench`.
+- **`dispdma`**: `dispdma=0` makes the compositor's copies to the screen synchronous again (the
+  asynchronous 2D DMA, docs/05 §12, off) — to tell a display problem from another one.
+- **`gpudirect`**: `gpudirect=0`: the GPU renders into its own buffer, then copied, instead of
+  writing the window's (or the full screen's) pixels itself — the same kind of test.
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin

@@ -213,6 +213,9 @@ private:
 // and presents at ~60 fps. It is the single owner of UpdateDisplay(); window
 // owners only draw into their own canvas.
 //
+boolean g_bDisplayDma = TRUE;			// cmdline.txt dispdma=0: no asynchronous display DMA
+extern boolean g_bGpuDirect;			// (sys/v3d.cpp) gpudirect=0: the GPU never writes the window itself
+
 class CCompositorTask : public CTask
 {
 	// A present: the rectangle (w = 0: the screen) sent by the frame buffer's 2D DMA, read in
@@ -222,6 +225,11 @@ class CCompositorTask : public CTask
 	static void Sent (void *) { s_bSent = TRUE; }
 	void Present (unsigned x, unsigned y, unsigned w, unsigned h)
 	{
+		if (!g_bDisplayDma)				// (cmdline.txt dispdma=0: the synchronous copy, as before)
+		{
+			if (w == 0) m_p2D->UpdateDisplay (); else m_p2D->UpdateDisplay (x, y, w, h);
+			return;
+		}
 		s_bSent = FALSE;
 		m_p2D->UpdateDisplayAsync (x, y, w, h, Sent, 0);
 		while (!s_bSent) CScheduler::Get ()->Yield ();
@@ -1431,6 +1439,10 @@ boolean CKernel::Initialize (void)
 		// the rest of the system only uses core 0.
 		// netcore=1 (cmdline.txt): the network stack on core 3 (then not an app core)
 		g_bNetCore = m_Options.GetAppOptionDecimal ("netcore", 0) != 0;
+		// (diagnostics) dispdma=0: the compositor's copies to the screen synchronous (the
+		// asynchronous 2D DMA off); gpudirect=0: the GPU renders into its own buffer, copied
+		g_bDisplayDma = m_Options.GetAppOptionDecimal ("dispdma", 1) != 0;
+		g_bGpuDirect = m_Options.GetAppOptionDecimal ("gpudirect", 1) != 0;
 		s_pCores = new COnyxCores;
 		if (s_pCores == 0 || !s_pCores->Initialize ())
 			m_Logger.Write (FromKernel, LogWarning, "secondary cores did not start (no sound producer)");
