@@ -16,6 +16,9 @@
 #include <circle/device.h>
 #include <circle/devicenameservice.h>
 #include <circle/multicore.h>
+#include <circle/bcm2835.h>
+#include <circle/memio.h>
+#include <circle/actled.h>
 
 #define CRASH_MAGIC	0x4F4E5843u		// "ONXC"
 #define CRASH_VERSION	2
@@ -347,6 +350,34 @@ static void OutDec (u64 v)
 }
 static void OutTicks (u32 t) { OutDec (t / 100); Out ("."); OutDec ((t % 100) / 10); OutDec (t % 10); Out (" s"); }
 
+// ---- core 1: signs on the green ACT LED (headless: no screen) ------------------------------------
+static void FeedWatchdog (void)			// (as CBcmWatchdog::Start, without its lock)
+{
+	if (s_nWatchdog == 0) return;
+	write32 (ARM_PM_WDOG, ARM_PM_PASSWD | ((s_nWatchdog << 16) & ARM_PM_WDOG_TIME));
+	write32 (ARM_PM_RSTC, ARM_PM_PASSWD | ARM_PM_RSTC_REBOOT | (read32 (ARM_PM_RSTC) & ARM_PM_RSTC_CLEAR));
+}
+
+static void WaitMs (unsigned nMs)
+{
+	u64 t0 = Cntpct (), n = Cntfrq () * nMs / 1000;
+	while (Cntpct () - t0 < n) {}
+}
+
+// nCount blinks of nOnMs on / nOffMs off (CActLED: a GPIO set / clear, no lock)
+static void Blink (unsigned nCount, unsigned nOnMs, unsigned nOffMs)
+{
+	CActLED *pLED = CActLED::Get ();
+	for (unsigned i = 0; i < nCount; i++)
+	{
+		if (pLED) pLED->On ();
+		WaitMs (nOnMs);
+		if (pLED) pLED->Off ();
+		WaitMs (nOffMs);
+		FeedWatchdog ();
+	}
+}
+
 static void BuildDump (u64 ulStalled)
 {
 	const TCrashHeader *pRec = s_pRec;
@@ -392,9 +423,11 @@ void CrashLogCoreCheck (void)
 	TCrashHeader *pRec = s_pRec;
 	pRec->nDumpStep = 1; Clean (&pRec->nDumpStep, 4);
 	DataMemBarrier ();
+	Blink (30, 50, 50);				// core 1 saw the hang: 3 s of fast blinks
 	BuildDump ((ulNow - ulAlive) / ulFrq);
 	CleanDataCacheRange ((uintptr) s_DumpBuf, DUMP_SIZE);
 	pRec->nDumpStep = 2; Clean (&pRec->nDumpStep, 4);
+	FeedWatchdog ();
 	boolean bOK = TRUE;
 	for (unsigned k = 0; k < s_nDumpSectors; )
 	{
@@ -407,6 +440,8 @@ void CrashLogCoreCheck (void)
 	}
 	pRec->nDumpStep = bOK ? 3 : 4; Clean (&pRec->nDumpStep, 4);
 	DataSyncBarrier ();
+	if (bOK) { CActLED *pLED = CActLED::Get (); if (pLED) pLED->On (); WaitMs (3000); }	// written: 3 s on
+	else Blink (3, 1000, 1000);					// failed: 3 slow blinks
 	s_Watchdog.Restart ();			// (does not return)
 }
 

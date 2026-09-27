@@ -114,7 +114,8 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`hangreboot`**: the **hang watchdog**, in seconds (default `15`, `0` = off): if Onyx freezes
   (the green LED stops blinking), core 1 notices it after 10 s, writes a report into the
   sectors of `SD:/etc/crashdump.txt` (prepared at boot) and restarts the Pi (the hardware watchdog
-  does it after that time if even that fails); the next boot keeps what it was doing (the last kernel log lines, where the processor was stuck, what the
+  does it after that time if even that fails — the green LED then blinks fast for 3 s, then stays
+  lit 3 s if the report was written, or blinks slowly 3 times if not); the next boot keeps what it was doing (the last kernel log lines, where the processor was stuck, what the
   GPU and the display were doing, a panic's registers) to **`SD:/etc/lastcrash.txt`**. Send that
   file along with a freeze report.
 - **`gpudirect`**: `gpudirect=0`: the GPU renders into its own buffer, then copied, instead of
