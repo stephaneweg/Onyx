@@ -390,8 +390,9 @@ namespace NintendoEMU
 						speedText = string.Format ("{0:0.0} fps ({1:0} shown), {2:0}% speed{3}{4}", frames / s, shown / s,
 							frames / s * frameMs / 10.0, Native.ne_is_3d (h) != 0 ? ", 3D" : "",
 							audioOk && soundOn && hadAudio ? string.Format (", sound {0} ms", Native.ne_audio_queued () * 1000 / RATE) : "");
+						if (game.System == Sys.GC) speedText += "\n" + Native.Status (h);
 						frames = 0; shown = 0; statT = now;
-						if (glOn != IntPtr.Zero) { string t = stats ? speedText + ", OpenGL" : null; try { BeginInvoke ((Action) (() => ShowTitle (t))); } catch { } }
+						if (glOn != IntPtr.Zero) { string t = stats ? speedText.Replace ("\n", "  |  ") + ", OpenGL" : null; try { BeginInvoke ((Action) (() => ShowTitle (t))); } catch { } }
 					}
 				}
 			}

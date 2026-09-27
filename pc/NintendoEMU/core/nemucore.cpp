@@ -788,6 +788,14 @@ NE_API unsigned ne_video (void *h, unsigned *px, int cap, int *w, int *hh)
 	return s;
 }
 
+// a GameCube game's state, for the speed display (to tell a slow game from a stuck one); "" others
+NE_API void ne_status (void *h, char *out, int cap)
+{
+	Emu *e = (Emu *) h;
+	if (cap > 0) out[0] = 0;
+	if (e && e->gc) e->gc->status (out, cap);
+}
+
 // what the speed display shows: 1 = the 3D renderer drew the last picture
 NE_API int ne_is_3d (void *h) { Emu *e = (Emu *) h; return (e->sys == NE_N64 || e->sys == NE_GC) && e->gfxAge < 30; }
 NE_API int ne_halted (void *h, char *msg, int cap)

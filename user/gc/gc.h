@@ -253,6 +253,10 @@ public:
 	u32 dspQueue[16]; int dspQHead, dspQTail;
 	u32 dspBootMails[10]; int dspBootN; u32 dspUcode; u32 dspCmdlistLeft;
 
+	// what a front end shows to tell a slow game from a stuck one (F12): the DVD reads so far
+	u32 diReads, diLastOff;
+	void status (char *out, int cap);			// "pc 80012345, DVD 123 reads, picture: ..., DSP ..."
+
 private:
 	friend struct Jit;
 	void exec (u32 op);

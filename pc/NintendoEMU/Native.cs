@@ -41,6 +41,8 @@ namespace NintendoEMU
 		[DllImport (DLL, CallingConvention = CC)] static extern int ne_gl_attach (IntPtr h, IntPtr hwnd, byte[] err, int cap);
 		[DllImport (DLL, CallingConvention = CC)] public static extern void ne_gl_detach (IntPtr h);
 		[DllImport (DLL, CallingConvention = CC)] public static extern void ne_redraw (IntPtr h);
+		[DllImport (DLL, CallingConvention = CC)] static extern void ne_status (IntPtr h, byte[] o, int cap);
+		public static string Status (IntPtr h) { var b = new byte[256]; ne_status (h, b, b.Length); return FromZ (b); }
 		// OpenGL for the 3D (the calling thread: the game's) -> null, or why not
 		public static string GlAttach (IntPtr h, IntPtr hwnd) { var b = new byte[256]; return ne_gl_attach (h, hwnd, b, b.Length) != 0 ? null : FromZ (b); }
 

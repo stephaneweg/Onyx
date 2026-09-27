@@ -29,7 +29,7 @@ void Machine::hwReset ()
 	piIntsr = 0; piIntmr = 0; piFifoBase = piFifoEnd = piFifoWptr = 0; gatherN = 0;
 	zero (vi, sizeof vi); zero (siReg, sizeof siReg); zero (siBuf, sizeof siBuf); siPoll = 0;
 	zero (exiReg, sizeof exiReg); zero (exiCmd, sizeof exiCmd); zero (exiPhase, sizeof exiPhase);
-	zero (diReg, sizeof diReg); zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
+	zero (diReg, sizeof diReg); diReads = diLastOff = 0; zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
 	zero (irqCount, sizeof irqCount);
 	diDoneAt = ~0ull; dicover = 0; aiSampleAt = 0;
 	dspMailIn = dspMailOut = 0; dspMailOutValid = false; dspBootStep = 0;
@@ -125,6 +125,24 @@ void Machine::viOutput ()
 			d[x + 1] = (u32) clamp8 ((c1 + r) >> 8) << 16 | (u32) clamp8 ((c1 + g) >> 8) << 8 | clamp8 ((c1 + b) >> 8);
 		}
 	}
+}
+
+// ---- what the front end shows (F12): where the CPU is, what the game has done so far -------------------------
+void Machine::status (char *out, int cap)
+{
+	static const char HX[] = "0123456789ABCDEF";
+	int n = 0;
+	auto put = [&] (const char *t) { while (*t && n < cap - 1) out[n++] = *t++; };
+	auto hex = [&] (u32 v) { for (int i = 7; i >= 0 && n < cap - 1; i--) out[n++] = HX[(v >> (i * 4)) & 15]; };
+	auto dec = [&] (u32 v) { char t[12]; int k = 0; do { t[k++] = (char) ('0' + v % 10); v /= 10; } while (v); while (k && n < cap - 1) out[n++] = t[--k]; };
+	u32 tfbl = vi32 (vi, 0x1C);
+	put ("pc "); hex (pc);
+	put (", DVD "); dec (diReads); put (" reads (at "); hex (diLastOff); put (")");
+	put (", picture: "); put ((tfbl & 0x00FFFFFF) == 0 ? "not set up yet" : (vi[0x02 / 2] & 1) ? "on" : "off");
+	put (", 3D frames "); dec (gfxSerial);
+	put (", DSP step "); dec ((u32) dspBootStep);
+	if (halted) { put (", stopped: "); put (haltMsg); }
+	out[n] = 0;
 }
 
 // ---- one field ---------------------------------------------------------------------------------------------------
@@ -308,7 +326,7 @@ void Machine::diCommand ()
 	{
 	case 0xA8:							// read (DMA)
 		if (sub == 0x40) readDisc (0, 0x20, diReg[5]);		// the disc ID
-		else readDisc (diReg[3] << 2, len, diReg[5]);
+		else { readDisc (diReg[3] << 2, len, diReg[5]); diReads++; diLastOff = diReg[3] << 2; }
 		delay = 20000 + len * 40;
 		diReg[5] += len; diReg[6] = 0;
 		break;

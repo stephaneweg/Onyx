@@ -21,6 +21,7 @@ int ne_audio (void *h, short *lr, int maxFrames);
 unsigned ne_video (void *h, unsigned *px, int cap, int *w, int *hh);
 int ne_is_3d (void *h);
 void ne_close (void *h);
+void ne_status (void *h, char *out, int cap);
 int ne_thumb (const char *path, unsigned *px, unsigned *banner, char *name, int cap);
 }
 
@@ -65,6 +66,8 @@ int main (int argc, char **argv)
 	static unsigned px[2560 * 2200];
 	unsigned serial = ne_video (h, px, (int) (sizeof px / 4), &w, &hh);
 	printf ("%d frames in %.2f s (%.0f fps), picture %dx%d (serial %u, %s), sound %ld frames\n", frames, s, frames / (s > 0 ? s : 1), w, hh, serial, ne_is_3d (h) ? "3D" : "2D", audio);
+	char st[256]; ne_status (h, st, sizeof st);
+	if (st[0]) printf ("status: %s\n", st);
 	if (argc > 3 && serial) ppm (argv[3], px, w, hh);
 	ne_close (h);
 	return serial ? 0 : 1;
