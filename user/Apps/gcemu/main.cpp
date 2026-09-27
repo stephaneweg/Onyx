@@ -119,9 +119,15 @@ static bool gpu_frame (unsigned *px, int w, int h, int stride)
 	for (int i = 0; i < gc::Machine::MAX_TEX; i++)
 	{
 		gc::GTexture &T = g_m->tex[i];
-		if (!T.dirty || T.w <= 0) continue;
-		int h2 = kapi_gpu_texture (g_gpuTex[i], T.px, T.w, T.h, T.w);
-		if (h2 < 0 && g_gpuTex[i] >= 0) h2 = kapi_gpu_texture (-1, T.px, T.w, T.h, T.w);
+		if (!T.dirty) continue;
+		// (the machine runs on the app core meanwhile and may give this slot another texture:
+		// its size read once, and never more pixels than the slot holds -- the kernel reads them)
+		int w = *(volatile int *) &T.w, h = *(volatile int *) &T.h;
+		const unsigned *px = *(unsigned *const volatile *) &T.px;
+		int cap = *(volatile int *) &T.cap;
+		if (w <= 0 || h <= 0 || !px || w * h > cap) continue;
+		int h2 = kapi_gpu_texture (g_gpuTex[i], px, w, h, w);
+		if (h2 < 0 && g_gpuTex[i] >= 0) h2 = kapi_gpu_texture (-1, px, w, h, w);
 		g_gpuTex[i] = h2;
 		T.dirty = false;
 	}

@@ -106,9 +106,14 @@ static bool gpu_frame (unsigned *px, int w, int h, int stride)
 	for (int i = 0; i < n64::Machine::MAX_TEX; i++)
 	{
 		n64::GTexture &T = g_m->tex[i];
-		if (!T.dirty || T.w <= 0) continue;
-		int h2 = kapi_gpu_texture (g_gpuTex[i], T.px, T.w, T.h, T.w);
-		if (h2 < 0 && g_gpuTex[i] >= 0) h2 = kapi_gpu_texture (-1, T.px, T.w, T.h, T.w);
+		if (!T.dirty) continue;
+		// (the machine runs on the app core meanwhile and may give this slot another texture:
+		// its size read once, and never more pixels than the slot holds -- the kernel reads them)
+		int w = *(volatile int *) &T.w, h = *(volatile int *) &T.h;
+		const unsigned *px = *(unsigned *const volatile *) &T.px;
+		if (w <= 0 || h <= 0 || !px || w * h > (int) n64::Machine::TEX_PIXELS) continue;
+		int h2 = kapi_gpu_texture (g_gpuTex[i], px, w, h, w);
+		if (h2 < 0 && g_gpuTex[i] >= 0) h2 = kapi_gpu_texture (-1, px, w, h, w);
 		g_gpuTex[i] = h2;
 		T.dirty = false;
 	}
@@ -161,7 +166,12 @@ static bool sw_frame (unsigned *px, int w, int h, int stride)
 		bt[i].texture = B.tex >= 0 ? B.tex + 1 : 0;
 		for (int k = 0; k < 16; k++) bt[i].m[k] = B.m[k];
 	}
-	for (int i = 0; i < n64::Machine::MAX_TEX; i++) { tx[i].px = g_m->tex[i].px; tx[i].w = g_m->tex[i].w; tx[i].h = g_m->tex[i].h; }
+	for (int i = 0; i < n64::Machine::MAX_TEX; i++)
+	{
+		int w = *(volatile int *) &g_m->tex[i].w, h = *(volatile int *) &g_m->tex[i].h;
+		if (w <= 0 || h <= 0 || w * h > (int) n64::Machine::TEX_PIXELS) w = h = 1;	// (a slot being refilled)
+		tx[i].px = g_m->tex[i].px; tx[i].w = w; tx[i].h = h;
+	}
 	bas::swRender (pic, W, H, W, zb, (const bas::G3Vertex *) F.v, F.nv, bt, F.nb, F.clear, false,
 		       [] (int t) -> const bas::G3Texture * { return &tx[t - 1]; });
 	for (int y = 0; y < h; y++)
