@@ -730,20 +730,16 @@ void CScheduler::WakeTasks (CTask **ppWaitListHead)
 
 	while (pTask)
 	{
-#ifdef NDEBUG
-		if (   pTask == 0
-		    || (   pTask->GetState () != TaskStateBlocked
-		        && pTask->GetState () != TaskStateBlockedWithTimeout))
+		// A task whose timeout already expired (GetNextTask made it Ready, WakeTicks 0) is still
+		// on the list until it runs again and unlinks itself: an event set in that window (the
+		// V3D's frame-done interrupt, right after one of the drawing task's 2 ms waits ended)
+		// found it not blocked -- the assertion halted all four cores (the random N64 freeze).
+		// It is awake already: only unlinked here (its own unlinking then finds nothing).
+		if (   pTask->GetState () == TaskStateBlocked
+		    || pTask->GetState () == TaskStateBlockedWithTimeout)
 		{
-			CLogger::Get ()->Write (FromScheduler, LogPanic, "Tried to wake non-blocked task");
+			pTask->SetState (TaskStateReady);
 		}
-#else
-		assert (pTask != 0);
-		assert (   pTask->GetState () == TaskStateBlocked
-		        || pTask->GetState () == TaskStateBlockedWithTimeout);
-#endif
-
-		pTask->SetState (TaskStateReady);
 
 		CTask *pNext = pTask->m_pWaitListNext;
 		pTask->m_pWaitListNext = 0;

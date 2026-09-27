@@ -356,6 +356,12 @@ and `hogsched=0` (plain round-robin) → `CScheduler::Configure`.
 - Circle's public + friend API is preserved (`Yield`, `Sleep/MsSleep`,
   `GetCurrentTask`, `AddTask`, `BlockTask`, `WakeTasks`…) → Circle drivers that block
   (USB, etc.) work without modification.
+- `WakeTasks` **tolerates a task that is no longer blocked**: a `BlockTask` with a timeout that
+  expired is made Ready by `GetNextTask` but stays on the event's list until it runs again and
+  unlinks itself; an event set in that window (the V3D's frame-done interrupt right after one of
+  the drawing task's 2 ms waits ended) found it Ready, and Circle's assertion halted all four
+  cores — the random freeze of `n64emu` with the GPU (found with the crash record,
+  `sched/scheduler.cpp(742)`). Such a task is now only unlinked.
 - `Yield()` performs the context switch **with the IRQ disabled** for atomicity, then
   **restores the full `DAIF`** of the resumed task (each task keeps its own IRQ
   enable state).
