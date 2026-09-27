@@ -53,7 +53,7 @@ static inline int lx_entry (int i, char *ext, int ecap, char *prog, int pcap)
 	return 0;
 }
 
-// The runner of a file, by its extension: 1 + out, 0 if none.
+// The runner of a file, by its extension (runners.ini, else the built-in list): 1 + out, 0 if none.
 static inline int lx_runner (const char *path, char *out, int cap)
 {
 	int n = lx_len (path), d = n;
@@ -66,6 +66,19 @@ static inline int lx_runner (const char *path, char *out, int cap)
 	{
 		int j = 0; while (e2[j] && e2[j] == ext[j]) j++;
 		if (e2[j] == '\0' && ext[j] == '\0') { int m = 0; lx_cat (out, cap, &m, prog); return 1; }
+	}
+	// Not in runners.ini (an older copy on the card): Onyx's own runners
+	static const char *const known[][2] = {
+		{ "bax", "SD:/bin/basic" }, { "bas", "SD:/bin/basic" },
+		{ "gb", "SD:/apps/gbemu.app/main" }, { "gbc", "SD:/apps/gbemu.app/main" },
+		{ "gba", "SD:/apps/gbaemu.app/main" }, { "nes", "SD:/apps/nesemu.app/main" },
+		{ "sfc", "SD:/apps/snesemu.app/main" }, { "smc", "SD:/apps/snesemu.app/main" },
+		{ "wad", "SD:/apps/doom.app/main" } };
+	for (unsigned i = 0; i < sizeof known / sizeof known[0]; i++)
+	{
+		const char *e = known[i][0];
+		int j = 0; while (e[j] && e[j] == ext[j]) j++;
+		if (e[j] == '\0' && ext[j] == '\0') { int m = 0; lx_cat (out, cap, &m, known[i][1]); return 1; }
 	}
 	return 0;
 }
