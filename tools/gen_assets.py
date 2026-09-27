@@ -567,6 +567,16 @@ def icon_gbaemu():		# a Game Boy Advance: wide purple body, screen in the middle
     pdisc(px, 34, 18, 1, (230, 230, 240)); pdisc(px, 31, 21, 1, (230, 230, 240))
     return px
 
+def icon_nesemu():		# a NES pad: light grey body, black face, d-pad, Select / Start, red B / A
+    px = blank()
+    prect(px, 2, 12, 37, 28, (200, 200, 204)); pframe(px, 2, 12, 37, 28, (80, 80, 88))
+    prect(px, 4, 16, 35, 26, (40, 40, 44))
+    prect(px, 8, 19, 10, 25, (200, 200, 204)); prect(px, 6, 21, 12, 23, (200, 200, 204))
+    prect(px, 15, 22, 17, 23, (150, 150, 156)); prect(px, 20, 22, 22, 23, (150, 150, 156))
+    pdisc(px, 27, 22, 2, (200, 40, 40)); pdisc(px, 32, 22, 2, (200, 40, 40))
+    prect(px, 4, 13, 35, 14, (160, 30, 30))
+    return px
+
 def icon_doom():		# a red-brown Doom-ish emblem: a skull-like shape on dark stone
     px = blank()
     prect(px, 2, 2, 37, 37, (40, 30, 26)); pframe(px, 2, 2, 37, 37, (90, 60, 40))
@@ -599,7 +609,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu,
 }
 
 

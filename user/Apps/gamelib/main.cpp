@@ -1,14 +1,14 @@
 //
-// gamelib -- the Game Library: every Game Boy / Color / Advance ROM of a folder (and its
+// gamelib -- the Game Library: every Game Boy / Color / Advance and NES ROM of a folder (and its
 // sub-folders), a tile each -- a picture of its title screen and its name -- in a dark
 // grid, one section per system. Click a tile (or arrows + Enter) to play: the ROM opens
-// with its runner (SD:/etc/runners.ini: gbemu, gbaemu), in a window or, with View > Play Full
+// with its runner (SD:/etc/runners.ini: gbemu, gbaemu, nesemu), in a window or, with View > Play Full
 // Screen, on the whole display. A click selects a tile, a double-click (or Enter) plays. A USB gamepad works too: the d-pad
 // moves, Start (or A) plays, L / R turn a page.
 //
 //   * The folder: SD:/roms by default; Library > Choose Folder... (kept in config.ini).
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
-//     user/gb, user/gba) and its screen kept -- made in the background, a little every frame, and
+//     user/gb, user/gba, user/nes) and its screen kept -- made in the background, a little every frame, and
 //     cached in SD:/apps/gamelib.app/thumbs/ (Library > Refresh finds new ROMs).
 //
 #include "kapi.h"
@@ -18,6 +18,7 @@
 #include "wtk/wtk.h"
 #include "gb/gb.h"
 #include "gba/gba.h"
+#include "nes/nes.h"
 
 using namespace wtk;
 
@@ -31,8 +32,8 @@ using namespace wtk;
 #define MAXG	256
 #define THUMB_FRAMES	420		// ~7 s of game time: past the logos, on the title screen
 
-enum { SYS_GBA, SYS_GBC, SYS_GB, NSYS };			// the sections, in this order
-static const char *const SYS_NAME[NSYS] = { "Game Boy Advance", "Game Boy Color", "Game Boy" };
+enum { SYS_GBA, SYS_GBC, SYS_GB, SYS_NES, NSYS };			// the sections, in this order
+static const char *const SYS_NAME[NSYS] = { "Game Boy Advance", "Game Boy Color", "Game Boy", "NES" };
 struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
 static Game g_games[MAXG]; static int g_ng = 0;
 static char g_folder[200] = "SD:/roms";
@@ -76,13 +77,13 @@ static void scan (const char *dir, int depth)
 		if (e.name[0] == '.') continue;
 		char p[200]; int n = 0; lx_cat (p, sizeof p, &n, dir); if (n && p[n - 1] != '/') lx_cat (p, sizeof p, &n, "/"); lx_cat (p, sizeof p, &n, e.name);
 		if (e.is_dir) { scan (p, depth + 1); continue; }
-		bool gbc = ends (e.name, ".gbc"), gbf = ends (e.name, ".gb"), agb = ends (e.name, ".gba");
-		if (!gbc && !gbf && !agb) continue;
+		bool gbc = ends (e.name, ".gbc"), gbf = ends (e.name, ".gb"), agb = ends (e.name, ".gba"), nes = ends (e.name, ".nes");
+		if (!gbc && !gbf && !agb && !nes) continue;
 		Game &g = g_games[g_ng++];
 		scpy (g.path, p, sizeof g.path);
 		nice_name (e.name, g.name, sizeof g.name);
 		scpy (g.key, e.name, sizeof g.key);
-		g.sys = agb ? SYS_GBA : gbc ? SYS_GBC : SYS_GB; g.thumb = 0; g.tried = false;
+		g.sys = agb ? SYS_GBA : gbc ? SYS_GBC : nes ? SYS_NES : SYS_GB; g.thumb = 0; g.tried = false;
 	}
 	kapi_closedir (d);
 }
@@ -91,7 +92,7 @@ static void rescan (void)
 	for (int i = 0; i < g_ng; i++) delete [] g_games[i].thumb;
 	g_ng = 0;
 	scan (g_folder, 0);
-	// by system (Advance, Color, Game Boy), then by name
+	// by system (Advance, Color, Game Boy, NES), then by name
 	for (int i = 1; i < g_ng; i++)
 	{
 		Game t = g_games[i]; int j = i;
@@ -127,8 +128,9 @@ static void thumb_save (const Game &g)
 }
 
 // The picture being made: one game at a time -- its ROM read a piece per call (a GBA ROM is up
-// to 32 MB), then some frames run per call. A GBA screen (240 x 160) is shrunk to 160 x 107.
-static gb::Machine *g_tm = 0; static gba::Machine *g_tma = 0;
+// to 32 MB), then some frames run per call. A GBA screen (240 x 160) is shrunk to 160 x 107, a
+// NES one (256 x 240) to 154 x 144.
+static gb::Machine *g_tm = 0; static gba::Machine *g_tma = 0; static nes::Machine *g_tmn = 0;
 static unsigned char *g_trom = 0; static unsigned g_tsize = 0, g_tread = 0; static void *g_tfile = 0;
 static int g_tgame = -1, g_tframe = 0; static bool g_tloaded = false;
 static void thumb_work (void)
@@ -161,16 +163,18 @@ static void thumb_work (void)
 		kapi_close (g_tfile); g_tfile = 0;
 		bool ok;
 		if (g.sys == SYS_GBA) { if (!g_tma) { g_tma = new gba::Machine; g_tma->setAudioRate (8000); } ok = g_tma->load (g_trom, (int) g_tread); }
+		else if (g.sys == SYS_NES) { if (!g_tmn) { g_tmn = new nes::Machine; g_tmn->setAudioRate (8000); } ok = g_tmn->load (g_trom, (int) g_tread); }
 		else { if (!g_tm) { g_tm = new gb::Machine; g_tm->setAudioRate (8000); } ok = g_tm->load (g_trom, (int) g_tread); }
 		if (!ok) { g_tgame = -1; return; }
 		g_tloaded = true;
 		return;
 	}
 	static short pcm[4096];
-	int per = g.sys == SYS_GBA ? 4 : 12;
+	int per = g.sys == SYS_GBA ? 4 : g.sys == SYS_NES ? 6 : 12;
 	for (int k = 0; k < per && g_tframe < THUMB_FRAMES; k++, g_tframe++)
 	{
 		if (g.sys == SYS_GBA) { g_tma->runFrame (); g_tma->audioRead (pcm, 2048); }
+		else if (g.sys == SYS_NES) { g_tmn->runFrame (); g_tmn->audioRead (pcm, 2048); }
 		else { g_tm->runFrame (); g_tm->audioRead (pcm, 2048); }
 	}
 	if (g_tframe >= THUMB_FRAMES)
@@ -183,6 +187,14 @@ static void thumb_work (void)
 			for (int i = 0; i < TW * TH; i++) g.thumb[i] = 0;
 			for (int y = 0; y < 107; y++)
 				for (int x = 0; x < TW; x++) g.thumb[(oy + y) * TW + x] = g_tma->fb[(y * 160 / 107) * gba::W + x * 3 / 2];
+		}
+		else if (g.sys == SYS_NES)
+		{
+			// 256 x 240 -> 154 x 144, centred on black
+			int ox = (TW - 154) / 2;
+			for (int i = 0; i < TW * TH; i++) g.thumb[i] = 0;
+			for (int y = 0; y < TH; y++)
+				for (int x = 0; x < 154; x++) g.thumb[y * TW + ox + x] = g_tmn->fb[(y * 240 / TH) * nes::W + x * 256 / 154];
 		}
 		else for (int i = 0; i < TW * TH; i++) g.thumb[i] = g_tm->fb[i];
 		thumb_save (g);
@@ -248,7 +260,7 @@ public:
 		{
 			canvas.text (24, 30, "No Game Boy / Advance ROM found in", 0x00C8C8C8);
 			canvas.text (24, 52, g_folder, 0x00FFFFFF);
-			canvas.text (24, 84, "Put .gb / .gbc / .gba files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
+			canvas.text (24, 84, "Put .gb / .gbc / .gba / .nes files there (sub-folders too), or Library > Choose Folder...", 0x00909090);
 			return;
 		}
 		// section titles

@@ -296,7 +296,7 @@ Notes / caveats:
 > `ec_request (&ec, n)`, `ec_pump` (frames made here when there is no core), `ec_take` /
 > `ec_front` (the latest picture: a triple buffer, nobody waits), `ec_audio_pop`, `ec_hold` /
 > `ec_resume` around anything that touches the machine (reset, battery save), `ec_shutdown`.
-> See `gbemu` / `gbaemu`; `/bin/coretest` exercises the raw kapi.
+> See `gbemu` / `gbaemu` / `nesemu`; `/bin/coretest` exercises the raw kapi.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
 > sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
@@ -337,6 +337,20 @@ Notes / caveats:
 > nes, unsafe, saves); `tools/tests/gba/gbatest.cpp <rom> <seconds> [out.ppm] [keys]` runs a
 > game headless (`GBA_SHOTS`, `GBA_AUDIO`, `GBA_SAVE`, `GBA_LOAD`, `GBA_REGS`; built with
 > `-DGBA_DEBUG`, `GBA_WATCH=<addr>` prints every write there).
+> **NES core** (`user/nes/nes.h`, `nes/libnes.a`): `nes::Machine` — the same shape (`load` an
+> iNES / NES 2.0 file, `runFrame` → `fb` 256×240, `setButtons (nes::BTN_*)`, `setAudioRate`,
+> `audioRead`, `setSaveRam` / `sram` (8 KB) / `battery` / `sramDirty`, `setPal`). The 6502 (official
+> + stable unofficial opcodes, from the generated table `nes_optable.inc`), stepped an instruction
+> at a time with the PPU and APU brought up to each access; the PPU (`nes_ppu.cpp`) renders a line
+> at dot 1 from the loopy `v` / `t` registers, with the sprite 0 hit dot, vblank / NMI and the A12
+> edges the MMC3 counts; the APU (`nes_apu.cpp`: 2 pulses, triangle, noise, DMC, the frame counter
+> and its IRQ) mixes through the nonlinear tables `nes_mix.inc`. Mappers 0, 1, 2, 3, 4, 7, 66; NTSC
+> and PAL (312 lines, 3.2 dots per CPU cycle, the PAL APU tables; `load` reads it from the header,
+> `nesemu` also from the file name). Used by `nesemu` and `gamelib`. **Host test**:
+> `NES_TEST_ROMS=<christopherpow nes-test-roms> sh tools/tests/run_nes_test.sh` (nestest against
+> its trace, blargg all_instrs / instr_timing, apu_test 1-8, mmc3_test 1-3 and 5);
+> `tools/tests/nes/nestest.cpp run <rom> <seconds> [out.ppm] [keys]` runs a game headless
+> (`NES_PAL=1`, `NES_AUDIO=<file>`).
 > **Doom** (`user/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
 > sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
 > `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),
@@ -678,7 +692,7 @@ SD:apps/<nom>.app/
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
 **`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
-`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `wad = SD:/apps/doom.app/main`):
+`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `nes = SD:/apps/nesemu.app/main`, `wad = SD:/apps/doom.app/main`):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,

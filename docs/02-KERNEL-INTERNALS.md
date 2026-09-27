@@ -870,7 +870,7 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   the display always gets the latest complete picture) and the sound from a single-producer
   ring (`ec_audio_push` / `ec_audio_pop`), and stops the machine between two frames to touch
   it (`ec_hold` / `ec_resume`: reset, palettes, battery saves). Without a free core,
-  `ec_pump` runs the same frames on the main thread. `gbemu` and `gbaemu` use it.
+  `ec_pump` runs the same frames on the main thread. `gbemu`, `gbaemu` and `nesemu` use it.
 - **Test**: `/bin/coretest` (the same computation on an app core and on core 0, a job
   stopped by its flag, an endless job stopped by `core_release`, a faulting job, both app
   cores at once); `coretest exit` leaves a job spinning and exits (the teardown must stop it).
