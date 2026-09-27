@@ -103,6 +103,12 @@ n64/%.o: n64/%.cpp n64/n64.h
 	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -fno-math-errno -O3 -I. -c $< -o $@
 n64/libn64.a: $(N64_OBJS)
 	$(AR) rcs $@ $^
+# The GameCube core (gc/: the FPU is used, as n64/), for gcemu.
+GC_OBJS = gc/gc_cpu.o gc/gc_mem.o
+gc/%.o: gc/%.cpp gc/gc.h
+	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -fno-math-errno -O3 -I. -c $< -o $@
+gc/libgc.a: $(GC_OBJS)
+	$(AR) rcs $@ $^
 
 snes/libsnes.a: $(SNES_OBJS)
 	$(AR) rcs $@ $^
