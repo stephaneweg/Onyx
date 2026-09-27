@@ -215,6 +215,12 @@ static inline int pad_axis_norm (const struct kapi_pad *p, int axis1)
 	return r < -1000 ? -1000 : r > 1000 ? 1000 : (int) r;
 }
 
+// an axis the d-pad / left stick or a trigger takes
+static inline int pad_axis_used (const struct pad_map *m, int ax)
+{
+	return ax > 0 && (ax == m->x_axis || ax == m->y_axis || ax == m->l2_axis || ax == -m->l2_axis || ax == m->r2_axis || ax == -m->r2_axis);
+}
+
 // The PAD_* mask of a raw state through a mapping (the focus is not looked at).
 static inline unsigned pad_apply (const struct kapi_pad *p, const struct pad_map *m, int *lx, int *ly, int *rx, int *ry)
 {
@@ -247,8 +253,10 @@ static inline unsigned pad_apply (const struct kapi_pad *p, const struct pad_map
 	if ((b & PAD_UP) && (b & PAD_DOWN)) b &= ~(unsigned) (PAD_UP | PAD_DOWN);
 	if (lx) *lx = x;
 	if (ly) *ly = y;
-	if (rx) *rx = pad_axis_norm (p, m->rx_axis);
-	if (ry) *ry = pad_axis_norm (p, m->ry_axis);
+	// the right stick: never an axis the d-pad / left stick or a trigger already uses (a pad whose
+	// d-pad is on axes 3 / 4, mapped so, would also move the right stick of the defaults)
+	if (rx) *rx = pad_axis_used (m, m->rx_axis) ? 0 : pad_axis_norm (p, m->rx_axis);
+	if (ry) *ry = pad_axis_used (m, m->ry_axis) ? 0 : pad_axis_norm (p, m->ry_axis);
 	return b;
 }
 

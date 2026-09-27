@@ -37,5 +37,14 @@ int main ()
 	assert (pad_buttons (0) == 0);
 	fake_pad.axes[2].value = 200; fake_pad.axes[3].value = 10;
 	printf ("triggers: %x\n", pad_buttons (0)); assert (pad_buttons (0) == (PAD_L2 | PAD_R2));
+	// a pad whose d-pad is on axes 3 / 4 (axes 1 / 2 idle at 127), mapped so by the Gamepad app: the
+	// right stick of the defaults (3 / 4) must not see it (n64emu: C buttons at every move)
+	fake_ini = "[2222:3333]\ndpad = axes\nx_axis = 3\ny_axis = 4\n";
+	pad_config_reload ();
+	memset (&fake_pad, 0, sizeof fake_pad); fake_pad.vid = 0x2222; fake_pad.pid = 0x3333; fake_pad.focus = 1; fake_pad.naxes = 4;
+	for (int i = 0; i < 4; i++) { fake_pad.axes[i].minimum = 0; fake_pad.axes[i].maximum = 255; fake_pad.axes[i].value = 127; }
+	fake_pad.axes[2].value = 255;
+	pad_read (0, &in);
+	printf ("d-pad on axes 3/4: %x, rx %d\n", in.buttons, in.rx); assert (in.buttons == PAD_RIGHT && in.rx == 0 && in.lx == 1000);
 	puts ("ok"); return 0;
 }
