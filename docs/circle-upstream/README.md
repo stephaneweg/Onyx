@@ -83,9 +83,8 @@ set the base repository `rsta2/circle` and the base branch `develop`, and paste 
 >    reads `m_buf` word by word and asserts `((uintptr) m_buf & 3) == 0`. It is now declared
 >    word aligned.
 >
-> Tested on a Raspberry Pi 4 with several SDHC/SDXC cards: High Speed at 50 MHz, about 16 MB/s
-> sequential reads (about 10 MB/s at 25 MHz), no read-back errors in a 4000-operation
-> file-system stress test.
+> Used on a Raspberry Pi 4 (SDXC card): High Speed at 50 MHz, about 16 MB/s sequential reads
+> (about 10 MB/s at 25 MHz).
 
 ---
 
@@ -112,8 +111,7 @@ set the base repository `rsta2/circle` and the base branch `develop`, and paste 
 > affected. 32 classes cover any size.
 >
 > In Onyx (a multi-process OS on Circle) each application's window canvas (up to ~3 MB) was
-> lost at every launch before this change; with it, the heap stays flat over hundreds of
-> launches.
+> lost at every launch before this change; with it, the canvases are reused.
 
 ---
 
