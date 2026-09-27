@@ -904,7 +904,14 @@ stream (`CNTKCTL_EL1.EVNTEN`, `EVNTI` 15) and calls `CrashLogCoreCheck`: when th
 **raw** through the `emmc1` device into those sectors (runs of consecutive sectors in one
 write; `g_bCrashDumping` keeps `OnyxDriverWait` from yielding) and restarts the Pi
 (`CBcmWatchdog::Restart`). No FatFs, heap, logger or scheduler call: core 0 may hold their
-locks. `hangreboot=0` turns it off with the watchdog. `kmsg` tells at boot where the record is
+locks; core 1 takes the sound lock only with `TryAcquire`, so a core 0 frozen while holding it
+does not stop the watch. Its progress is kept in the RAM record (`nDumpStep`: started, text
+ready, written, the write failed): when the SD write cannot finish (a wedged bus), the hardware
+watchdog restarts the Pi and the RAM report (the record of an 8 GB Pi sits at the top of the RAM
+above 4 GB) says how far core 1 got. **A stuck GUI with the scheduler alive** (the compositor
+without a frame for 12 s, the GUI watchdog task) asks for the same report
+(`CrashLogRequest`: core 0 masks its IRQs and waits, core 1 writes it, then the restart).
+`hangreboot=0` turns it off with the watchdog. `kmsg` tells at boot where the record is
 and whether the dump is armed (`crashlog: ...`). Test: `hangtest` (IRQs masked) / `hangtest irq`.
 
 The panic screen is now copied into the displayed frame buffer **by the CPU** (not the DMA:

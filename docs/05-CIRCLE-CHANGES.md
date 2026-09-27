@@ -596,9 +596,14 @@ See the [Developer Guide §2](03-DEVELOPER-GUIDE.md) for the full Circle build.
 gone with the session. Onyx keeps a crash record in RAM that survives the watchdog's reboot.
 
 **What.** `CMemorySystem::SetupHighMemAbove4G` (`lib/memory64.cpp`) keeps the top
-`ONYX_CRASH_AREA_SIZE` (64 KB) of the `[3 GB, RAM top)` low-RAM top out of the high heap and
-publishes its address in `u64 g_ulOnyxCrashArea` (`include/circle/memory.h`; 0 when the board
-has no RAM there, e.g. 2 GB). It stays mapped NORMAL (cacheable): the kernel cleans each write to
+`ONYX_CRASH_AREA_SIZE` (64 KB) of the first RAM segment it adds above 3 GB (the `[3 GB, RAM top)`
+low-RAM top from the device tree, or the `[4 GB, RAM end)` chunk of the fallback — the case of an
+8 GB Pi 4 without a captured device tree) out of the high heap and publishes its address in
+`u64 g_ulOnyxCrashArea` (`include/circle/memory.h`; 0 when the board has no RAM there, e.g. 2 GB).
+
+`CSpinLock::TryAcquire ()` (`include/circle/spinlock.h`, `lib/spinlock.cpp`): one try, FALSE
+(nothing held, the IRQ level restored) when another core holds the lock — core 1's crash watch
+never waits for ever behind core 0. It stays mapped NORMAL (cacheable): the kernel cleans each write to
 the point of coherency. See [docs/02 §13](02-KERNEL-INTERNALS.md).
 
 ## Updating the fork (submodule)

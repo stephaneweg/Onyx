@@ -295,7 +295,7 @@ void SoundCoreMain (void)
 	{
 		CrashLogCoreCheck ();
 		if (!s_bRunning || s_nAheadWr - s_nAheadRd >= SND_AHEAD) { asm volatile ("wfe"); continue; }
-		s_Lock.Acquire ();
+		if (!s_Lock.TryAcquire ()) continue;		// (never stuck behind core 0: the crash watch goes on)
 		Render (s_Ahead[s_nAheadWr % SND_AHEAD], SND_FRAMES);
 		s_Lock.Release ();
 		DataMemBarrier ();

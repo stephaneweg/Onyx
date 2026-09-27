@@ -487,6 +487,10 @@ public:
 				CLogger::Get ()->Write (From, LogWarning,
 					"compositor STALLED: no frame for %u s; tasks: %s", nStallSec, Tasks);
 			}
+			if (nStallSec == 12 && !DebugConsoleActive ())	// (its tasks' states logged at 2 s)
+			{
+				CrashLogRequest ("the compositor produced no frame for 12 s");
+			}
 			else if (nStallSec == 0 && bStalled)
 			{
 				bStalled = FALSE;

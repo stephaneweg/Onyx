@@ -18,7 +18,7 @@
 #include <circle/multicore.h>
 
 #define CRASH_MAGIC	0x4F4E5843u		// "ONXC"
-#define CRASH_VERSION	1
+#define CRASH_VERSION	2
 #define STATE_RUNNING	1
 #define STATE_CLEAN	2
 #define STATE_PANIC	3
@@ -39,6 +39,7 @@ struct TCrashHeader
 	u32	nLogHead;			// bytes of log written (ring: % LOG_SIZE)
 	u32	nSampleHead;			// samples written (ring: % SAMPLES)
 	u32	nWatchdog;			// seconds (0: off)
+	u32	nDumpStep;			// core 1's report: 1 started, 2 text ready, 3 written, 4 the SD write failed
 	u32	Crumb[CRUMB_COUNT];
 	TCrashSample Sample[SAMPLES];
 	char	szPanic[256];
@@ -75,7 +76,8 @@ static CDevice *s_pDumpDev = 0;
 static char s_DumpBuf[DUMP_SIZE] __attribute__ ((aligned (64)));
 static volatile boolean s_bArmed = FALSE;
 static volatile u64 s_ulAliveCnt = 0;			// CNTPCT at the reaper's last pass
-volatile boolean g_bCrashDumping = FALSE;		// (OnyxDriverWait: never yield then)
+volatile boolean g_bCrashDumping = FALSE;
+static const char *volatile s_pReason = 0;		// a report asked for by core 0 (CrashLogRequest)		// (OnyxDriverWait: never yield then)
 
 static inline u64 Cntpct (void) { u64 v; asm volatile ("isb; mrs %0, cntpct_el0" : "=r" (v)); return v; }
 static inline u64 Cntfrq (void) { u64 v; asm volatile ("mrs %0, cntfrq_el0" : "=r" (v)); return v; }
@@ -244,6 +246,10 @@ static void ReportFromRAM (void)
 	s.Format ("Last sign of life of the scheduler (the reaper): %u.%02u s after boot; hang watchdog %u s\r\n",
 		  pRec->nAliveTick / 100, pRec->nAliveTick % 100, pRec->nWatchdog);
 	Put (File, s);
+	static const char *Step[] = { "not started (core 1 did not see the hang, or was stuck too)", "started", "text ready, the SD write never ended",
+				      "written", "the SD write failed" };
+	s.Format ("Core 1's report into SD:/etc/crashdump.txt: %s\r\n", Step[pRec->nDumpStep < 5 ? pRec->nDumpStep : 0]);
+	Put (File, s);
 	s.Format ("GPU: %s, display: %s\r\n", CrumbName (CRUMB_V3D, pRec->Crumb[CRUMB_V3D]),
 		  CrumbName (CRUMB_PRESENT, pRec->Crumb[CRUMB_PRESENT]));
 	Put (File, s);
@@ -346,7 +352,8 @@ static void BuildDump (u64 ulStalled)
 	const TCrashHeader *pRec = s_pRec;
 	s_nOut = 0;
 	Out (DUMP_MARK " -- session #"); OutDec (pRec->nBoot);
-	Out (": core 0 stopped for "); OutDec (ulStalled); Out (" s; written by core 1, then the Pi restarted\r\n");
+	if (s_pReason != 0) { Out (": "); Out (s_pReason); Out (" (the scheduler still ran); written by core 1, then the Pi restarted\r\n"); }
+	else { Out (": core 0 stopped for "); OutDec (ulStalled); Out (" s; written by core 1, then the Pi restarted\r\n"); }
 	if (pRec->nState == STATE_PANIC) { Out ("A kernel panic: "); Out (pRec->szPanic); Out ("\r\n"); }
 	Out ("Last pass of the reaper (the scheduler alive): "); OutTicks (pRec->nAliveTick); Out (" after boot\r\n");
 	Out ("GPU: "); Out (CrumbName (CRUMB_V3D, pRec->Crumb[CRUMB_V3D]));
@@ -379,20 +386,27 @@ void CrashLogCoreCheck (void)
 	if (!s_bArmed || s_nWatchdog == 0) return;	// (hangreboot=0: no dump, no restart)
 	u64 ulNow = Cntpct (), ulFrq = Cntfrq ();
 	u64 ulAlive = s_ulAliveCnt;
-	if (ulFrq == 0 || ulNow - ulAlive < DUMP_AFTER_S * ulFrq) return;
+	if (ulFrq == 0 || (s_pReason == 0 && ulNow - ulAlive < DUMP_AFTER_S * ulFrq)) return;
 	s_bArmed = FALSE;
 	g_bCrashDumping = TRUE;
+	TCrashHeader *pRec = s_pRec;
+	pRec->nDumpStep = 1; Clean (&pRec->nDumpStep, 4);
 	DataMemBarrier ();
 	BuildDump ((ulNow - ulAlive) / ulFrq);
 	CleanDataCacheRange ((uintptr) s_DumpBuf, DUMP_SIZE);
+	pRec->nDumpStep = 2; Clean (&pRec->nDumpStep, 4);
+	boolean bOK = TRUE;
 	for (unsigned k = 0; k < s_nDumpSectors; )
 	{
 		unsigned n = 1;				// (a run of consecutive sectors: one write)
 		while (k + n < s_nDumpSectors && s_DumpLBA[k + n] == s_DumpLBA[k] + n) n++;
-		if (s_pDumpDev->Seek (s_DumpLBA[k] * 512) == s_DumpLBA[k] * 512)
-			s_pDumpDev->Write (s_DumpBuf + k * 512, n * 512);
+		if (   s_pDumpDev->Seek (s_DumpLBA[k] * 512) != s_DumpLBA[k] * 512
+		    || s_pDumpDev->Write (s_DumpBuf + k * 512, n * 512) != (int) (n * 512))
+			bOK = FALSE;
 		k += n;
 	}
+	pRec->nDumpStep = bOK ? 3 : 4; Clean (&pRec->nDumpStep, 4);
+	DataSyncBarrier ();
 	s_Watchdog.Restart ();			// (does not return)
 }
 
@@ -402,4 +416,14 @@ void CrashLogCoreInit (void)
 	u64 v; asm volatile ("mrs %0, cntkctl_el1" : "=r" (v));
 	v = (v & ~0xF0ul) | (15ul << 4) | (1ul << 2);
 	asm volatile ("msr cntkctl_el1, %0; isb" :: "r" (v));
+}
+
+void CrashLogRequest (const char *pReason)
+{
+	if (!s_bArmed || s_nWatchdog == 0) return;
+	CLogger::Get ()->Write ("crashlog", LogError, "%s: crash report, then restart", pReason);
+	asm volatile ("msr daifset, #3" ::: "memory");	// (core 0 stays out of the way: no SD access)
+	s_pReason = pReason;
+	DataSyncBarrier ();
+	for (;;) asm volatile ("wfe");			// core 1 writes the report and restarts the Pi
 }
