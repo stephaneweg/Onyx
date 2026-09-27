@@ -513,8 +513,10 @@ frames** ticked, with its Onyx frame (title bar, borders, close box) as on the P
   of the PC's screen: no window goes under it. Clicking a window brings it to the
   front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
 - The menu bar and the notification bubbles appear as on the Pi (on top); **Show the Onyx
-  desktop** adds a window with the Onyx desktop (the wallpaper and what is drawn on it);
-  closing that window unticks the option. If the connection window says the kernel is too
+  desktop** opens a normal window, *Onyx Desktop*, holding the whole Onyx desktop — the
+  wallpaper, and the menu bar and the bubbles drawn inside it where they are on the Pi
+  (then not over the PC's screen); the apps' windows stay windows of their own. Closing
+  it unticks the option. If the connection window says the kernel is too
   old, copy the new `kernel8-rpi4.img` to the SD card. The connection window shows the updates a second.
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).

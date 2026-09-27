@@ -18,6 +18,7 @@ namespace OnyxRemote
 		readonly Label status = new Label ();
 		Connection conn;
 		readonly Dictionary<uint, RemoteWindow> wins = new Dictionary<uint, RemoteWindow> ();
+		readonly Dictionary<uint, Overlay> overlayCache = new Dictionary<uint, Overlay> ();
 		int rounds; DateTime since = DateTime.Now;
 		static readonly string SettingsPath = Path.Combine (Environment.GetFolderPath (Environment.SpecialFolder.ApplicationData), "OnyxRemote.txt");
 
@@ -110,10 +111,26 @@ namespace OnyxRemote
 			lock (conn.Lock)
 			{
 				var keep = new HashSet<uint> ();
+				// with the desktop shown, the windows without a frame (the menu bar, the bubbles)
+				// are drawn inside its window, not over the PC's screen
+				bool deskShown = desktop.Checked && conn.Windows.ContainsKey (WinModel.DESKTOP_ID);
+				RemoteWindow deskWin = null;
+				var overlays = new List<Overlay> ();
+				bool overlaysChanged = false;
 				foreach (uint id in conn.ZOrder)			// (bottom to top: new ones open in that order)
 				{
 					if (!conn.Windows.TryGetValue (id, out WinModel m)) continue;
 					bool isDesk = id == WinModel.DESKTOP_ID;
+					if (deskShown && !isDesk && (m.Flags & WinModel.BORDERLESS) != 0 && (m.Flags & WinModel.BACKMOST) == 0
+					    && (m.State & WinModel.FULLSCREEN) == 0 && m.W > 0 && m.H > 0)
+					{
+						if (!overlayCache.TryGetValue (id, out Overlay o)) { o = new Overlay { Id = id }; overlayCache[id] = o; m.Dirty = true; }
+						if (m.Dirty || o.W != m.W || o.H != m.H || o.X != m.X || o.Y != m.Y) overlaysChanged = true;
+						if (m.Dirty || o.W != m.W || o.H != m.H) { RemoteWindow.FillOverlay (o, m); m.Dirty = false; }
+						o.X = m.X; o.Y = m.Y; o.Key = (m.Flags & WinModel.TRANSPARENT) != 0; o.Alpha = m.Alpha / 255f;
+						if (m.Alpha > 0) overlays.Add (o);
+						continue;
+					}
 					if ((m.Flags & WinModel.BACKMOST) != 0 && !isDesk) continue;	// (drawn in the desktop's view)
 					if (isDesk && !desktop.Checked) continue;
 					if (m.Alpha == 0 || m.W <= 0 || m.H <= 0) continue;
@@ -128,7 +145,16 @@ namespace OnyxRemote
 						w.Apply (m, origin);				// (again, its handle made: the menu bar docks)
 					}
 					else w.Apply (m, origin);
+					if (isDesk) deskWin = w;
 				}
+				if (deskWin != null)
+				{
+					bool same = deskWin.Overlays.Count == overlays.Count;
+					for (int i = 0; same && i < overlays.Count; i++) same = deskWin.Overlays[i] == overlays[i];
+					if (!same || overlaysChanged) { deskWin.Overlays = overlays; deskWin.Invalidate (); }
+				}
+				foreach (var id in new List<uint> (overlayCache.Keys))
+					if (!deskShown || !conn.Windows.ContainsKey (id)) { overlayCache[id].Bmp?.Dispose (); overlayCache.Remove (id); }
 				foreach (var id in new List<uint> (wins.Keys))
 					if (!keep.Contains (id)) { wins[id].GoneOnPi = true; wins[id].Close (); wins.Remove (id); }
 			}

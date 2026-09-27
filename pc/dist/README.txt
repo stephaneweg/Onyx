@@ -39,5 +39,5 @@ its own (a Windows window, or with its Onyx frame: "Onyx window frames") -- the 
 rdpd (port 3390, started at boot on the Pi).
 Type the Pi's address, Connect. Drag a window by its title bar to place it; its close box
 closes the Onyx app; clicking a window gives it the keyboard. "16-bit colours" sends half
-the data (games); "Show the Onyx desktop" adds the desktop. No password, no encryption:
+the data (games); "Show the Onyx desktop" opens a window holding the Onyx desktop (wallpaper, menu bar, bubbles). No password, no encryption:
 trusted LAN only.

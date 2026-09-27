@@ -6,6 +6,7 @@
 // coordinates (rdpd puts it back on the Pi's screen), the keys, the focus (the Onyx window is
 // raised and gets the keyboard).
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -14,8 +15,16 @@ using System.Windows.Forms;
 
 namespace OnyxRemote
 {
+	// A window without a frame (the menu bar, a bubble...) drawn inside the desktop's window,
+	// where it is on the Pi's screen, when the desktop is shown.
+	class Overlay
+	{
+		public uint Id; public Bitmap Bmp; public int X, Y, W, H; public bool Key; public float Alpha = 1f;
+	}
+
 	class RemoteWindow : Form
 	{
+		public List<Overlay> Overlays = new List<Overlay> ();	// (the desktop's window only)
 		public readonly uint Id;
 		readonly Connection conn;
 		Bitmap content, chromeA, chromeI;
@@ -90,7 +99,8 @@ namespace OnyxRemote
 			if ((flags & WinModel.TRANSPARENT) != 0) TransparencyKey = Color.FromArgb (255, 0, 255);
 			Opacity = m.Alpha >= 255 ? 1.0 : m.Alpha / 255.0;
 			int fw = frame ? ow : w, fh = frame ? oh : h;
-			if (sizeChanged || content == null)
+			bool fresh = sizeChanged || content == null;
+			if (fresh)
 			{
 				Swap (ref content, w, h); Swap (ref chromeA, ow, oh); Swap (ref chromeI, ow, oh);
 				ClientSize = new Size (Math.Max (fw, 1), Math.Max (fh, 1));
@@ -114,7 +124,7 @@ namespace OnyxRemote
 				int top = Screen.FromPoint (Location).WorkingArea.Top;
 				if (Top < top) Top = top;
 			}
-			if (m.Dirty)
+			if (m.Dirty || fresh)					// (fresh: its pixels, even if already seen)
 			{
 				Fill (content, m.Content, w, h);
 				if (frame) { Fill (chromeA, m.ChromeA, ow, oh); Fill (chromeI, m.ChromeI, ow, oh); }
@@ -144,6 +154,26 @@ namespace OnyxRemote
 			g.InterpolationMode = InterpolationMode.NearestNeighbor;
 			if (frame) { var c = keys ? chromeA : chromeI; if (c != null) g.DrawImageUnscaled (c, 0, 0); }
 			if (content != null) g.DrawImageUnscaled (content, frame ? il : 0, frame ? it : 0);
+			foreach (var o in Overlays)				// (bottom to top)
+			{
+				if (o.Bmp == null) continue;
+				if (!o.Key && o.Alpha >= 1f) { g.DrawImageUnscaled (o.Bmp, o.X, o.Y); continue; }
+				using (var ia = new ImageAttributes ())
+				{
+					if (o.Key) ia.SetColorKey (Color.FromArgb (255, 0, 255), Color.FromArgb (255, 0, 255));
+					if (o.Alpha < 1f) ia.SetColorMatrix (new ColorMatrix { Matrix33 = o.Alpha });
+					g.CompositingMode = CompositingMode.SourceOver;
+					g.DrawImage (o.Bmp, new Rectangle (o.X, o.Y, o.W, o.H), 0, 0, o.W, o.H, GraphicsUnit.Pixel, ia);
+					g.CompositingMode = CompositingMode.SourceCopy;
+				}
+			}
+		}
+
+		// (the desktop's overlays) a model's pixels into a bitmap of its size
+		public static void FillOverlay (Overlay o, WinModel m)
+		{
+			if (o.Bmp == null || o.W != m.W || o.H != m.H) { o.Bmp?.Dispose (); o.Bmp = new Bitmap (m.W, m.H, PixelFormat.Format32bppRgb); o.W = m.W; o.H = m.H; }
+			Fill (o.Bmp, m.Content, m.W, m.H);
 		}
 
 		// ---- the pointer ----
@@ -229,7 +259,7 @@ namespace OnyxRemote
 		}
 		protected override void Dispose (bool disposing)
 		{
-			if (disposing) { content?.Dispose (); chromeA?.Dispose (); chromeI?.Dispose (); }
+			if (disposing) { content?.Dispose (); chromeA?.Dispose (); chromeI?.Dispose (); foreach (var o in Overlays) o.Bmp?.Dispose (); }
 			base.Dispose (disposing);
 		}
 	}
