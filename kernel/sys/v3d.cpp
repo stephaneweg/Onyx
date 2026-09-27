@@ -21,6 +21,7 @@
 #include <kern/v3d_cl.h>
 #include <kern/v3d_tiling.h>
 #include <kern/v3d.h>
+#include <kern/v3d_clip.h>
 #include <kern/addrspace.h>
 #include <circle/memio.h>
 #include <circle/bcm2835.h>
@@ -916,6 +917,56 @@ extern "C" int kapi_gpu_texture (int nHandle, const unsigned *pPixels, int w, in
 	return r;
 }
 
+// ---- the triangles made safe for the V3D ----------------------------------------------------------------------
+// The V3D's own clipper is given only well-formed triangles: each one is transformed by its batch's
+// matrix and clipped against the near plane (z >= -w, w > 0) and a guard band 4 x the screen (|x|,
+// |y| <= 4 w); inside ones pass as they are, the matrix applied (the batch becomes NOMATRIX). An
+// app's extreme coordinates -- Ocarina of Time's triangles crossing the camera plane, projected
+// ~50000 screens away -- froze the whole Pi within seconds (the binner's fixed point overflowing:
+// the GPU wedged, then the bus), while the software renderer, which clips them, never did.
+// The frame's batches with their triangles transformed and clipped (NOMATRIX): into s_pClipV / s_pClipB.
+static kapi_gpu_vertex3 *s_pClipV = 0; static unsigned s_nClipVCap = 0;
+static kapi_gpu_batch *s_pClipB = 0; static unsigned s_nClipBCap = 0;
+
+static boolean ClipFrame (const kapi_gpu_vertex3 *pV, unsigned nV, const kapi_gpu_batch *pB, unsigned nB,
+			  unsigned *pOutV, unsigned *pOutB)
+{
+	unsigned nCap = nV * 2 + 64;					// (clipped triangles: at most 7 each; beyond: dropped)
+	if (nCap > KAPI_GPU_MAX_VERTS) nCap = KAPI_GPU_MAX_VERTS;
+	if (s_nClipVCap < nCap) { delete [] s_pClipV; s_pClipV = new kapi_gpu_vertex3[nCap]; s_nClipVCap = s_pClipV ? nCap : 0; }
+	if (s_nClipBCap < nB + 1) { delete [] s_pClipB; s_pClipB = new kapi_gpu_batch[nB + 1]; s_nClipBCap = s_pClipB ? nB + 1 : 0; }
+	if (s_pClipV == 0 || s_pClipB == 0) return FALSE;
+	static const f32 Ident[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
+	unsigned n = 0;
+	for (unsigned i = 0; i < nB; i++)
+	{
+		const kapi_gpu_batch &b = pB[i];
+		kapi_gpu_batch &o = s_pClipB[i];
+		o = b; o.flags |= KAPI_GPU_B_NOMATRIX; o.first = n;
+		for (int k = 0; k < 16; k++) o.matrix[k] = Ident[k];
+		const f32 *M = (b.flags & KAPI_GPU_B_NOMATRIX) ? Ident : b.matrix;
+		for (unsigned t = 0; t + 3 <= b.count && n + 21 <= nCap; t += 3)
+		{
+			kapi_gpu_vertex3 T[3], Out[21];
+			for (int k = 0; k < 3; k++)
+			{
+				const kapi_gpu_vertex3 &p = pV[b.first + t + k];
+				kapi_gpu_vertex3 &q = T[k];
+				q = p;
+				q.x = M[0] * p.x + M[1] * p.y + M[2] * p.z + M[3] * p.w;
+				q.y = M[4] * p.x + M[5] * p.y + M[6] * p.z + M[7] * p.w;
+				q.z = M[8] * p.x + M[9] * p.y + M[10] * p.z + M[11] * p.w;
+				q.w = M[12] * p.x + M[13] * p.y + M[14] * p.z + M[15] * p.w;
+			}
+			unsigned k = V3DClipTriangle (T, Out);
+			for (unsigned j = 0; j < k; j++) s_pClipV[n++] = Out[j];
+		}
+		o.count = n - o.first;
+	}
+	*pOutV = n; *pOutB = nB;
+	return TRUE;
+}
+
 extern "C" int kapi_gpu_render (const kapi_gpu_frame *pF, const kapi_gpu_vertex3 *pV, unsigned nV,
 				const kapi_gpu_batch *pB, unsigned nB)
 {
@@ -934,7 +985,10 @@ extern "C" int kapi_gpu_render (const kapi_gpu_frame *pF, const kapi_gpu_vertex3
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// one frame at a time
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
-	int r = s_nState > 0 ? Render (*pF, pV, nV, pB, nB) : -1;
+	unsigned nCV = 0, nCB = 0;
+	int r = s_nState <= 0 ? -1
+	      : !ClipFrame (pV, nV, pB, nB, &nCV, &nCB) ? -4
+	      : Render (*pF, s_pClipV, nCV, s_pClipB, nCB);
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
 	return r;
