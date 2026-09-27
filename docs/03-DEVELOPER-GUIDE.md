@@ -443,11 +443,15 @@ Notes / caveats:
 > load / store whose address maps MEM1 through the OS's standard BATs, or in real mode, reads
 > the host memory directly and byte-swaps; the rest calls `read32`… with the cycle count exact),
 > every other instruction (the FPU, the paired singles for now) calls the interpreter's `exec`.
-> The FPU and the paired singles are native too (fadd… fmadd, the single rounding, the 25-bit
-> multiplicand — skipped when the operand is known to hold a single exactly —, fsel, fcmp,
-> frsp, fctiwz, the moves / merges, ps_sum / muls / madds, lfs / lfd / stfs / stfd, psq_l /
-> psq_st with a float GQR type); a NaN result re-runs the instruction in the interpreter, FPRF
-> is set lazily (`fprfVal` / `fprfPending`). A block's exit to a known address is **linked**:
+> The FPU and the paired singles are native too, on NEON: `ps[32][2]` keeps both halves of an FPR
+> side by side, so an FPR is one q register, cached like the GPRs (q8–q31, lane 0 = ps0); the
+> paired singles compute both halves at once (FADD / FMLA .2D, by-element for muls0 / madds1,
+> FCVTN + FCVTL for the single rounding, ZIP / EXT for the merges, FCMGE + BSL for ps_sel); the
+> plain FPU works on lane 0 (fadd… fmadd, the 25-bit multiplicand — skipped when the operand is
+> known to hold a single exactly —, fsel, fcmp, frsp, fctiwz, the moves), lfs / lfd / stfs /
+> stfd, psq_l / psq_st with a float GQR type (one 8-byte access); a NaN result re-runs the
+> instruction in the interpreter (from the cache's state at that branch), FPRF is set lazily
+> (the source FPR noted at translation, `fprfVal` / `fprfPending` written only when needed). A block's exit to a known address is **linked**:
 > once that block is translated the exit's branch is patched to jump straight to it (back to
 > its stub when that block is dropped), while `cycles < jitUntil` (the next event / the
 > decrementer; `piUpdate` and `decWrite` zero it to come back); an exit to a register (blr,
@@ -456,7 +460,10 @@ Notes / caveats:
 > 4 KB pages written; a BAT change, HID0's ICFI or a reset drop everything. `b .` jumps to the
 > next event (idle). `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
 > Tested by `run_gc_test.sh` under `qemu-aarch64` (`GC_JIT=1`): cputest / pstest / hwtest /
-> gxtest identical to the interpreter's, `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
+> gxtest identical to the interpreter's, `gctest fuzz` (random sequences of FPU / paired-single /
+> load-store / integer / branch instructions from random states with NaNs, infinities,
+> denormals, run by both, every register, the FPSCR and the memory compared: it found a
+> cache bug and an interpreter bug — `srawi` / `sraw` with rA = rS took CA from the result), `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
 > against qemu-ppc's result: ~40× the interpreter's speed (integer), ~10× (float);
 > `GC_PROFILE=1` prints the host instructions per guest instruction, `GC_DUMP=prefix` the
 > hottest blocks' code (for `aarch64-linux-gnu-objdump -b binary -m aarch64`).

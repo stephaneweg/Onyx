@@ -365,7 +365,7 @@ void Machine::exec (u32 op)
 		FPCHECK
 		ea = ((op >> 26) == 49 ? gpr[a] : RA0) + (u32) SIMM;
 		u32 v = read32 (ea); if (memFault) return;
-		ps0[d] = ps1[d] = u2d (cvtToDouble (v));
+		ps[d][0] = ps[d][1] = u2d (cvtToDouble (v));
 		if ((op >> 26) == 49) gpr[a] = ea;
 		return;
 	}
@@ -374,20 +374,20 @@ void Machine::exec (u32 op)
 		FPCHECK
 		ea = ((op >> 26) == 51 ? gpr[a] : RA0) + (u32) SIMM;
 		u64 v = read64 (ea); if (memFault) return;
-		ps0[d] = u2d (v);
+		ps[d][0] = u2d (v);
 		if ((op >> 26) == 51) gpr[a] = ea;
 		return;
 	}
 	case 52: case 53:						// stfs, stfsu
 		FPCHECK
 		ea = ((op >> 26) == 53 ? gpr[a] : RA0) + (u32) SIMM;
-		write32 (ea, cvtToSingle (d2u (ps0[d])));
+		write32 (ea, cvtToSingle (d2u (ps[d][0])));
 		if ((op >> 26) == 53 && !memFault) gpr[a] = ea;
 		return;
 	case 54: case 55:						// stfd, stfdu
 		FPCHECK
 		ea = ((op >> 26) == 55 ? gpr[a] : RA0) + (u32) SIMM;
-		write64 (ea, d2u (ps0[d]));
+		write64 (ea, d2u (ps[d][0]));
 		if ((op >> 26) == 55 && !memFault) gpr[a] = ea;
 		return;
 	case 56: case 57:						// psq_l, psq_lu
@@ -400,7 +400,7 @@ void Machine::exec (u32 op)
 		double x = quantLoad (ea, type, scale, size);
 		double y = w ? 1.0 : quantLoad (ea + (u32) size, type, scale, size);
 		if (memFault) return;
-		ps0[d] = x; ps1[d] = y;
+		ps[d][0] = x; ps[d][1] = y;
 		if ((op >> 26) == 57) gpr[a] = ea;
 		return;
 	}
@@ -412,8 +412,8 @@ void Machine::exec (u32 op)
 		ea = ((op >> 26) == 61 ? gpr[a] : RA0) + (u32) off;
 		u32 g = gqr[(op >> 12) & 7]; bool w = (op >> 15) & 1;
 		int type = (int) g & 7, scale = (int) (g >> 8) & 63, size;
-		quantStore (ea, ps0[d], type, scale, size);
-		if (!w && !memFault) quantStore (ea + (u32) size, ps1[d], type, scale, size);
+		quantStore (ea, ps[d][0], type, scale, size);
+		if (!w && !memFault) quantStore (ea + (u32) size, ps[d][1], type, scale, size);
 		if ((op >> 26) == 61 && !memFault) gpr[a] = ea;
 		return;
 	}
@@ -583,7 +583,7 @@ void Machine::op31 (u32 op)
 		else
 		{
 			gpr[a] = (u32) (v >> n);
-			xer = (v < 0 && n && (gpr[d] << (32 - n))) ? xer | XER_CA : xer & ~XER_CA;
+			xer = (v < 0 && n && ((u32) v << (32 - n))) ? xer | XER_CA : xer & ~XER_CA;	// (rS as it was: rA may be rS)
 		}
 		break;
 	}
@@ -591,7 +591,7 @@ void Machine::op31 (u32 op)
 	{
 		u32 n = b; s32 v = (s32) gpr[d];
 		gpr[a] = (u32) (v >> n);
-		xer = (v < 0 && n && (gpr[d] << (32 - n))) ? xer | XER_CA : xer & ~XER_CA;
+		xer = (v < 0 && n && ((u32) v << (32 - n))) ? xer | XER_CA : xer & ~XER_CA;	// (rS as it was: rA may be rS)
 		break;
 	}
 	case 26: gpr[a] = gpr[d] ? (u32) __builtin_clz (gpr[d]) : 32; break;	// cntlzw
@@ -695,7 +695,7 @@ void Machine::op31 (u32 op)
 		FPCHECK
 		ea = (xo == 567 ? gpr[a] : RA0) + gpr[b];
 		u32 v = read32 (ea); if (memFault) return;
-		ps0[d] = ps1[d] = u2d (cvtToDouble (v));
+		ps[d][0] = ps[d][1] = u2d (cvtToDouble (v));
 		if (xo == 567) gpr[a] = ea;
 		return;
 	}
@@ -704,25 +704,25 @@ void Machine::op31 (u32 op)
 		FPCHECK
 		ea = (xo == 631 ? gpr[a] : RA0) + gpr[b];
 		u64 v = read64 (ea); if (memFault) return;
-		ps0[d] = u2d (v);
+		ps[d][0] = u2d (v);
 		if (xo == 631) gpr[a] = ea;
 		return;
 	}
 	case 663: case 695:						// stfsx, stfsux
 		FPCHECK
 		ea = (xo == 695 ? gpr[a] : RA0) + gpr[b];
-		write32 (ea, cvtToSingle (d2u (ps0[d])));
+		write32 (ea, cvtToSingle (d2u (ps[d][0])));
 		if (xo == 695 && !memFault) gpr[a] = ea;
 		return;
 	case 727: case 759:						// stfdx, stfdux
 		FPCHECK
 		ea = (xo == 759 ? gpr[a] : RA0) + gpr[b];
-		write64 (ea, d2u (ps0[d]));
+		write64 (ea, d2u (ps[d][0]));
 		if (xo == 759 && !memFault) gpr[a] = ea;
 		return;
 	case 983:							// stfiwx
 		FPCHECK
-		write32 (RA0 + gpr[b], (u32) d2u (ps0[d]));
+		write32 (RA0 + gpr[b], (u32) d2u (ps[d][0]));
 		return;
 	case 310: LOADG (d, read32 (RA0 + gpr[b])); return;		// eciwx
 	case 438: write32 (RA0 + gpr[b], gpr[d]); return;		// ecowx
@@ -758,7 +758,7 @@ void Machine::op59 (u32 op)
 	FPCHECK
 	if (fprfPending) { fprfPending = false; setFprf (fprfVal); }	// (what the JIT left)
 	u32 d = RD, a = RA, b = RB, c = RC;
-	double fa = ps0[a], fb = ps0[b], fc = ps0[c], r;
+	double fa = ps[a][0], fb = ps[b][0], fc = ps[c][0], r;
 	switch ((op >> 1) & 0x1F)
 	{
 	case 18: r = fa / fb; break;					// fdivs
@@ -776,7 +776,7 @@ void Machine::op59 (u32 op)
 		return;
 	}
 	r = roundSingle (pickNaN (r, fa, fb, fc));
-	ps0[d] = ps1[d] = r;
+	ps[d][0] = ps[d][1] = r;
 	setFprf (r);
 	if (RCBIT) setCr1 ();
 }
@@ -786,7 +786,7 @@ void Machine::op63 (u32 op)
 	FPCHECK
 	if (fprfPending) { fprfPending = false; setFprf (fprfVal); }	// (what the JIT left)
 	u32 d = RD, a = RA, b = RB, c = RC;
-	double fa = ps0[a], fb = ps0[b], fc = ps0[c], r;
+	double fa = ps[a][0], fb = ps[b][0], fc = ps[c][0], r;
 	switch ((op >> 1) & 0x1F)
 	{
 	case 18: r = fa / fb; goto arith;				// fdiv
@@ -798,7 +798,7 @@ void Machine::op63 (u32 op)
 	case 30: r = fnegd (__builtin_fma (fa, fc, -fb)); goto arith;		// fnmsub
 	case 31: r = fnegd (__builtin_fma (fa, fc, fb)); goto arith;		// fnmadd
 	case 26: r = frsqrte (fb); goto arith;				// frsqrte
-	case 23: ps0[d] = (fa >= 0.0) ? fc : fb; if (RCBIT) setCr1 (); return;	// fsel (NaN -> fb)
+	case 23: ps[d][0] = (fa >= 0.0) ? fc : fb; if (RCBIT) setCr1 (); return;	// fsel (NaN -> fb)
 	}
 	switch ((op >> 1) & 0x3FF)
 	{
@@ -812,7 +812,7 @@ void Machine::op63 (u32 op)
 	}
 	case 12:							// frsp
 		r = roundSingle (fb);
-		ps0[d] = r; setFprf (r);
+		ps[d][0] = r; setFprf (r);
 		if (RCBIT) setCr1 ();
 		return;
 	case 14: case 15:						// fctiw, fctiwz
@@ -827,15 +827,15 @@ void Machine::op63 (u32 op)
 			else if (t < -2147483648.0) i = (s32) 0x80000000;
 			else i = (s32) t;
 		}
-		ps0[d] = u2d (0xFFF8000000000000ull | (u32) i);
+		ps[d][0] = u2d (0xFFF8000000000000ull | (u32) i);
 		if (RCBIT) setCr1 ();
 		return;
 	}
-	case 40: ps0[d] = fnegd (fb); break;				// fneg
-	case 72: ps0[d] = fb; break;					// fmr
-	case 136: ps0[d] = fnegd (fabsd (fb)); break;			// fnabs
-	case 264: ps0[d] = fabsd (fb); break;				// fabs
-	case 583: ps0[d] = u2d ((u64) fpscr); break;			// mffs
+	case 40: ps[d][0] = fnegd (fb); break;				// fneg
+	case 72: ps[d][0] = fb; break;					// fmr
+	case 136: ps[d][0] = fnegd (fabsd (fb)); break;			// fnabs
+	case 264: ps[d][0] = fabsd (fb); break;				// fabs
+	case 583: ps[d][0] = u2d ((u64) fpscr); break;			// mffs
 	case 711:							// mtfsf
 	{
 		u32 fm = (op >> 17) & 0xFF, m = 0;
@@ -867,7 +867,7 @@ void Machine::op63 (u32 op)
 	return;
 arith:
 	r = pickNaN (r, fa, fb, fc);
-	ps0[d] = r;
+	ps[d][0] = r;
 	setFprf (r);
 	if (RCBIT) setCr1 ();
 }
@@ -878,7 +878,7 @@ void Machine::op4 (u32 op)
 	FPCHECK
 	if (fprfPending) { fprfPending = false; setFprf (fprfVal); }	// (what the JIT left)
 	u32 d = RD, a = RA, b = RB, c = RC;
-	double a0 = ps0[a], a1 = ps1[a], b0 = ps0[b], b1 = ps1[b], c0 = ps0[c], c1 = ps1[c], r0, r1;
+	double a0 = ps[a][0], a1 = ps[a][1], b0 = ps[b][0], b1 = ps[b][1], c0 = ps[c][0], c1 = ps[c][1], r0, r1;
 	switch ((op >> 1) & 0x1F)
 	{
 	case 10: r0 = a0 + b1; r1 = c1; goto single0;			// ps_sum0
@@ -890,7 +890,7 @@ void Machine::op4 (u32 op)
 	case 18: r0 = a0 / b0; r1 = a1 / b1; goto both;			// ps_div
 	case 20: r0 = a0 - b0; r1 = a1 - b1; goto both;			// ps_sub
 	case 21: r0 = a0 + b0; r1 = a1 + b1; goto both;			// ps_add
-	case 23: ps0[d] = a0 >= 0.0 ? c0 : b0; ps1[d] = a1 >= 0.0 ? c1 : b1; if (RCBIT) setCr1 (); return;	// ps_sel
+	case 23: ps[d][0] = a0 >= 0.0 ? c0 : b0; ps[d][1] = a1 >= 0.0 ? c1 : b1; if (RCBIT) setCr1 (); return;	// ps_sel
 	case 24: r0 = fres (b0); r1 = fres (b1); goto both;		// ps_res
 	case 25: r0 = a0 * force25 (c0); r1 = a1 * force25 (c1); goto both;	// ps_mul
 	case 26: r0 = frsqrte (b0); r1 = frsqrte (b1); goto both;	// ps_rsqrte
@@ -913,13 +913,13 @@ void Machine::op4 (u32 op)
 			double x = quantLoad (ea, type, scale, size);
 			double y = w ? 1.0 : quantLoad (ea + (u32) size, type, scale, size);
 			if (memFault) return;
-			ps0[d] = x; ps1[d] = y;
+			ps[d][0] = x; ps[d][1] = y;
 		}
 		else
 		{
 			int type = (int) g & 7, scale = (int) (g >> 8) & 63;
-			quantStore (ea, ps0[d], type, scale, size);
-			if (!w && !memFault) quantStore (ea + (u32) size, ps1[d], type, scale, size);
+			quantStore (ea, ps[d][0], type, scale, size);
+			if (!w && !memFault) quantStore (ea + (u32) size, ps[d][1], type, scale, size);
 			if (memFault) return;
 		}
 		if (x6 == 38 || x6 == 39) gpr[a] = ea;
@@ -938,14 +938,14 @@ void Machine::op4 (u32 op)
 		fpscr = (fpscr & ~0xF000u) | (f << 12);
 		return;
 	}
-	case 40: ps0[d] = fnegd (b0); ps1[d] = fnegd (b1); break;	// ps_neg
-	case 72: ps0[d] = b0; ps1[d] = b1; break;			// ps_mr
-	case 136: ps0[d] = fnegd (fabsd (b0)); ps1[d] = fnegd (fabsd (b1)); break;	// ps_nabs
-	case 264: ps0[d] = fabsd (b0); ps1[d] = fabsd (b1); break;	// ps_abs
-	case 528: ps0[d] = a0; ps1[d] = b0; break;			// ps_merge00
-	case 560: ps0[d] = a0; ps1[d] = b1; break;			// ps_merge01
-	case 592: ps0[d] = a1; ps1[d] = b0; break;			// ps_merge10
-	case 624: ps0[d] = a1; ps1[d] = b1; break;			// ps_merge11
+	case 40: ps[d][0] = fnegd (b0); ps[d][1] = fnegd (b1); break;	// ps_neg
+	case 72: ps[d][0] = b0; ps[d][1] = b1; break;			// ps_mr
+	case 136: ps[d][0] = fnegd (fabsd (b0)); ps[d][1] = fnegd (fabsd (b1)); break;	// ps_nabs
+	case 264: ps[d][0] = fabsd (b0); ps[d][1] = fabsd (b1); break;	// ps_abs
+	case 528: ps[d][0] = a0; ps[d][1] = b0; break;			// ps_merge00
+	case 560: ps[d][0] = a0; ps[d][1] = b1; break;			// ps_merge01
+	case 592: ps[d][0] = a1; ps[d][1] = b0; break;			// ps_merge10
+	case 624: ps[d][0] = a1; ps[d][1] = b1; break;			// ps_merge11
 	case 1014:							// dcbz_l
 	{
 		u32 ea = (RA0 + gpr[b]) & ~31u;
@@ -960,19 +960,19 @@ void Machine::op4 (u32 op)
 	if (RCBIT) setCr1 ();
 	return;
 single0:
-	ps0[d] = roundSingle (pickNaN (r0, a0, b1, 0.0)); ps1[d] = r1;
-	setFprf (ps0[d]);
+	ps[d][0] = roundSingle (pickNaN (r0, a0, b1, 0.0)); ps[d][1] = r1;
+	setFprf (ps[d][0]);
 	if (RCBIT) setCr1 ();
 	return;
 single1:
-	ps0[d] = r0; ps1[d] = roundSingle (pickNaN (r1, a0, b1, 0.0));
-	setFprf (ps1[d]);
+	ps[d][0] = r0; ps[d][1] = roundSingle (pickNaN (r1, a0, b1, 0.0));
+	setFprf (ps[d][1]);
 	if (RCBIT) setCr1 ();
 	return;
 both:
-	ps0[d] = roundSingle (pickNaN (r0, a0, b0, c0));
-	ps1[d] = roundSingle (pickNaN (r1, a1, b1, c1));
-	setFprf (ps0[d]);
+	ps[d][0] = roundSingle (pickNaN (r0, a0, b0, c0));
+	ps[d][1] = roundSingle (pickNaN (r1, a1, b1, c1));
+	setFprf (ps[d][0]);
 	if (RCBIT) setCr1 ();
 }
 

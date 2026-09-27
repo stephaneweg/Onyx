@@ -80,7 +80,12 @@ enum : u32
 	FCVT_SD = 0x1E624000, FCVT_DS = 0x1E22C000, FCVTZS_WD = 0x1E780000,
 	FMOV_DX = 0x9E670000, FMOV_XD = 0x9E660000, FMOV_SW = 0x1E270000, FMOV_WS = 0x1E260000,
 	FCMP_D = 0x1E602000, FCMP_D0 = 0x1E602008, FCSEL_D = 0x1E600C00, FMOV_D1 = 0x1E6E1000,
-	LDR_D = 0xFD400000, STR_D = 0xFD000000
+	LDR_D = 0xFD400000, STR_D = 0xFD000000, LDR_Q = 0x3DC00000, STR_Q = 0x3D800000,
+	// NEON on two doubles (a paired single: ps0 = lane 0, ps1 = lane 1)
+	FADD_2D = 0x4E60D400, FSUB_2D = 0x4EE0D400, FMUL_2D = 0x6E60DC00, FDIV_2D = 0x6E60FC00, FMLA_2D = 0x4E60CC00,
+	FNEG_2D = 0x6EE0F800, FABS_2D = 0x4EE0F800, FMUL_2DE = 0x4FC09000, FMLA_2DE = 0x4FC01000,
+	FCVTN_2S = 0x0E616800, FCVTL_2D = 0x0E617800, FMAXP_D = 0x7E70F800, FCMGE0_2D = 0x6EE0C800,
+	BSL_16B = 0x6E601C00, ORR_16B = 0x4EA01C00, ZIP1_2D = 0x4EC03800, ZIP2_2D = 0x4EC07800, EXT_16B = 0x6E000000
 };
 
 // a logical immediate (AND / ORR / EOR #imm): N:immr:imms, false if the value has no encoding
@@ -171,6 +176,12 @@ struct Asm
 	void fp3 (u32 op, int rd, int rn, int rm) { put (op | (u32) rm << 16 | (u32) rn << 5 | rd); }
 	void fp4 (u32 op, int rd, int rn, int rm, int ra) { put (op | (u32) rm << 16 | (u32) ra << 10 | (u32) rn << 5 | rd); }
 	void fcsel (int rd, int rn, int rm, int cond) { put (FCSEL_D | (u32) rm << 16 | (u32) cond << 12 | (u32) rn << 5 | rd); }
+	void vmov (int rd, int rn) { if (rd != rn) put (ORR_16B | (u32) rn << 16 | (u32) rn << 5 | rd); }
+	void ins (int rd, int di, int rn, int si) { put (0x6E000400u | (u32) ((di << 4) | 8) << 16 | (u32) (si << 3) << 11 | (u32) rn << 5 | rd); }	// Vd.D[di] = Vn.D[si]
+	void insX (int rd, int di, int xn) { put (0x4E001C00u | (u32) ((di << 4) | 8) << 16 | (u32) xn << 5 | rd); }	// Vd.D[di] = Xn
+	void umovX (int xd, int rn, int si) { put (0x4E003C00u | (u32) ((si << 4) | 8) << 16 | (u32) rn << 5 | xd); }	// Xd = Vn.D[si]
+	void byElem (u32 op, int rd, int rn, int rm, int idx) { put (op | (u32) idx << 11 | (u32) rm << 16 | (u32) rn << 5 | rd); }
+	void ext8 (int rd, int rn, int rm) { put (EXT_16B | (u32) rm << 16 | 8u << 11 | (u32) rn << 5 | rd); }
 	// branches (to a known place; a forward one is put as 0 and patched)
 	static u32 rel (u32 *from, u32 *to, int bits) { return (u32) (to - from) & ((1u << bits) - 1); }
 	void b (u32 *t) { put (0x14000000u | rel (p, t, 26)); }
@@ -214,7 +225,7 @@ struct Jit
 	void linkTo (u32 key, void *code);
 	bool stdMap;					// the BATs map 0x80000000 / 0xC0000000 onto MEM1 as the OS does
 	// the Machine's fields
-	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs0, oPs1, oFpscr, oFprfVal, oFprfPend, oGqr;
+	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr;
 	// the block being translated
 	u32 bKey, synced; int dmode; bool fpOk;
 	u32 sgl0, sgl1;					// the FPRs (ps0 / ps1) known to hold a single exactly: no force25
@@ -264,6 +275,9 @@ struct Jit
 		for (int g = 0; g < NG; g++) { gHost[g] = -1; gDirty[g] = false; }
 		for (int h = 0; h < 32; h++) { hGuest[h] = -1; hStamp[h] = 0; }
 		stamp = 0; pinned = 0;
+		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; }
+		for (int h = 0; h < 32; h++) { hfGuest[h] = -1; hfStamp[h] = 0; }
+		fpinned = 0; fprfR = -1;
 	}
 	int alloc ()
 	{
@@ -299,20 +313,100 @@ struct Jit
 		return h;
 	}
 	int RW (int g) { int h = G (g); gDirty[g] = true; return h; }	// read, then modified
-	void spill (bool all)						// the dirty ones to memory (the state stays)
+	// the dirty ones to memory (the state stays): all (+ the pending FPRF: before the exits, the
+	// interpreter) or those a call clobbers (the caller-saved GPRs, the FPRs)
+	void spill (bool all)
 	{
 		for (int g = 0; g < NG; g++)
 			if (gHost[g] >= 0 && gDirty[g] && (all || !calleeSaved (gHost[g]))) a.ldst (STR_W, 2, gHost[g], XM, gOff (g));
+		for (int r = 0; r < 32; r++)
+			if (fHost[r] >= 0 && fDirty[r]) a.ldst (STR_Q, 4, fHost[r], XM, fOff (r));
+		if (all) fprfFlush ();
 	}
 	void reload (bool all)
 	{
 		for (int g = 0; g < NG; g++)
 			if (gHost[g] >= 0 && (all || !calleeSaved (gHost[g]))) a.ldst (LDR_W, 2, gHost[g], XM, gOff (g));
+		for (int r = 0; r < 32; r++)
+			if (fHost[r] >= 0) a.ldst (LDR_Q, 4, fHost[r], XM, fOff (r));
 	}
 	void dropAll ()
 	{
 		for (int g = 0; g < NG; g++) { gHost[g] = -1; gDirty[g] = false; }
 		for (int h = 0; h < 32; h++) hGuest[h] = -1;
+		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; }
+		for (int h = 0; h < 32; h++) hfGuest[h] = -1;
+		fprfR = -1;
+	}
+
+	// ---- the FPRs in NEON registers (a cache for the block too): a q register holds both
+	// halves (ps0 = lane 0, ps1 = lane 1); the pool q8..q31, all treated as caller-saved (a helper
+	// may use their upper halves), v0..v7 the temporaries. FPRF is set lazily: fprfR's half
+	// fprfLane is its source, written to fprfVal (+ fprfPending) before the FPR changes otherwise,
+	// at the exits, before the interpreter.
+	int fHost[32]; bool fDirty[32]; int hfGuest[32]; u32 hfStamp[32]; u32 fpinned;
+	int fprfR, fprfLane;
+	int fOff (int r) { return oPs + 16 * r; }
+	int falloc ()
+	{
+		int best = -1; u32 bs = ~0u;
+		for (int h = 8; h < 32; h++)
+		{
+			if (fpinned & (1u << h)) continue;
+			if (hfGuest[h] < 0) { best = h; break; }
+			if (hfStamp[h] < bs) { bs = hfStamp[h]; best = h; }
+		}
+		int g = hfGuest[best];
+		if (g >= 0)
+		{
+			if (fDirty[g]) a.ldst (STR_Q, 4, best, XM, fOff (g));
+			fHost[g] = -1; fDirty[g] = false; hfGuest[best] = -1;
+		}
+		return best;
+	}
+	// FPR r's register (loaded or not): setsFprf false = it is to be changed otherwise than by an
+	// instruction that sets FPRF (a pending FPRF from it is written first). Mark it dirty (fSet)
+	// once written: a side path taken before that sees it clean.
+	int FRes (int r, bool load, bool setsFprf)
+	{
+		if (!setsFprf && fprfR == r) { fprfFlush (); fprfR = -1; }
+		int h = fHost[r];
+		if (h < 0)
+		{
+			h = falloc (); fHost[r] = h; hfGuest[h] = r; fDirty[r] = false;
+			if (load) a.ldst (LDR_Q, 4, h, XM, fOff (r));
+		}
+		hfStamp[h] = ++stamp; fpinned |= 1u << h;
+		return h;
+	}
+	int FG (int r) { return FRes (r, true, true); }
+	// the cache's state at a branch to a side path emitted later (the registers stay where they are;
+	// what is dirty, the pending FPRF are as at the branch)
+	struct Snap { bool g[NG], f[32]; int fprfR, fprfLane; };
+	void snap (Snap &sn) { for (int i = 0; i < NG; i++) sn.g[i] = gDirty[i]; for (int i = 0; i < 32; i++) sn.f[i] = fDirty[i]; sn.fprfR = fprfR; sn.fprfLane = fprfLane; }
+	void unsnap (const Snap &sn) { for (int i = 0; i < NG; i++) gDirty[i] = sn.g[i]; for (int i = 0; i < 32; i++) fDirty[i] = sn.f[i]; fprfR = sn.fprfR; fprfLane = sn.fprfLane; }
+	u32 *interpSideAt (u32 op, u32 pc, u32 idx, const Snap &at)
+	{
+		Snap now; snap (now);
+		unsnap (at);
+		u32 *b = interpSide (op, pc, idx, true);
+		unsnap (now);
+		return b;
+	}
+	void fSet (int r) { fDirty[r] = true; }
+	void fprfSet (int r, int lane) { fprfR = r; fprfLane = lane; }
+	void fprfFlush ()
+	{
+		if (fprfR < 0) return;
+		int h = fHost[fprfR];
+		if (h >= 0 && !fprfLane) a.ldst (STR_D, 3, h, XM, oFprfVal);
+		else
+		{
+			if (h >= 0) a.ins (7, 0, h, 1);
+			else a.ldst (LDR_D, 3, 7, XM, fOff (fprfR) + 8 * fprfLane);
+			a.ldst (STR_D, 3, 7, XM, oFprfVal);
+		}
+		a.ldst (STRB, 0, WONE, XM, oFprfPend);
 	}
 	void ldG (int t, int r) { a.mov (t, G (r)); }
 	void stG (int t, int r) { a.mov (W (r), t); }
@@ -492,18 +586,16 @@ struct Jit
 		interpSide (op, pc, idx, false);
 		Asm::patch (ok, a.p);
 	}
-	void ldPs (int dd, int r, int half) { a.ldst (LDR_D, 3, dd, XM, (half ? oPs1 : oPs0) + 8 * r); }
-	void stPs (int dd, int r, int half) { a.ldst (STR_D, 3, dd, XM, (half ? oPs1 : oPs0) + 8 * r); }
-	void fprf (int dd) { a.ldst (STR_D, 3, dd, XM, oFprfVal); a.ldst (STRB, 0, WONE, XM, oFprfPend); }
 	void roundS (int dd) { a.fp1 (FCVT_SD, dd, dd); a.fp1 (FCVT_DS, dd, dd); }
-	// the multiplicand of a single-precision multiply: its mantissa rounded to 25 bits (dd in place)
-	void force25 (int dd)
+	void roundS2 (int vd) { a.fp1 (FCVTN_2S, vd, vd); a.fp1 (FCVTL_2D, vd, vd); }	// (both halves)
+	// the multiplicand of a single-precision multiply: its mantissa rounded to 25 bits (lane `lane`
+	// of vs -> x5)
+	void force25x (int vs, int lane)
 	{
-		a.fp1 (FMOV_XD, 5, dd);
+		a.umovX (5, vs, lane);
 		a.logi (AND_I, 6, 5, 0x8000000ull, true);
 		a.logi (AND_I, 5, 5, 0xFFFFFFFFF8000000ull, true);
 		a.alu (ADD_W | X64, 5, 5, 6);
-		a.fp1 (FMOV_DX, dd, 5);
 	}
 	// a single's bits (w ws) -> the double the 750 loads (d dd): FCVT; inf / a signalling NaN: cvtToDouble
 	void cvtD (int dd, int ws)
@@ -589,16 +681,13 @@ struct Jit
 	int bcTests (u32 bo, u32 bi, bool ctrToo, u32 **nt)
 	{
 		int n = 0;
+		int crh = !(bo & 16) ? G (G_CR) : -1;			// (all the registers taken before a branch)
 		if (ctrToo && !(bo & 4))
 		{
 			int c = RW (G_CTR); a.imm (SUB_WI, c, c, 1);
 			nt[n++] = a.p; a.cbz (c, a.p, (bo & 2) != 0);	// (bo & 2: branch if ctr == 0)
 		}
-		if (!(bo & 16))
-		{
-			int c = G (G_CR);
-			nt[n++] = a.p; a.tbz (c, (int) (31 - bi), a.p, !(bo & 8));	// (bo & 8: branch if the bit is set)
-		}
+		if (crh >= 0) { nt[n++] = a.p; a.tbz (crh, (int) (31 - bi), a.p, !(bo & 8)); }	// (bo & 8: branch if the bit is set)
 		return n;
 	}
 
@@ -941,8 +1030,10 @@ bool Jit::op31 (u32 op, u32 pc, u32 idx)
 }
 
 // ---- the floating point, the paired singles ----------------------------------------------------------------------
-// A result that is a NaN goes to the interpreter (the 750 keeps the first NaN operand); FPRF is left
-// to set (fprfVal / fprfPending: the interpreter sets it when it looks at the FPSCR).
+// The FPRs are cached in q8..q31 (lane 0 = ps0, lane 1 = ps1): the plain FPU works on lane 0 (a
+// double result keeps ps1, a single one goes to both), the paired singles on both lanes at once.
+// A result that is a NaN goes to the interpreter (the 750 keeps the first NaN operand); FPRF is set
+// lazily (fprfSet). Every register an instruction uses is taken before its first branch.
 bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 {
 	u32 prim = op >> 26;
@@ -950,52 +1041,54 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 	u32 x5 = (op >> 1) & 0x1F, x10 = (op >> 1) & 0x3FF;
 	if (op & 1) { interp (op, pc, idx, false); return false; }	// (Rc: CR1 from the FPSCR)
 	u32 *nan[2] = { 0, 0 };
+	Snap atNan;							// (the state at the NaN branch)
 	if (prim == 59 || prim == 63)
 	{
 		bool single = prim == 59;
 		if (x5 == 18 || x5 == 20 || x5 == 21 || x5 == 25 || x5 >= 28)
 		{
 			fpCheck (op, pc, idx);
-			ldPs (0, ra, 0);
-			if (x5 != 25) ldPs (1, rb, 0);
-			if (x5 == 25 || x5 >= 28) { ldPs (2, rc, 0); if (single && !isS (sgl0, rc)) force25 (2); }
+			int ha = FG (ra), hb = x5 != 25 ? FG (rb) : -1, hc = (x5 == 25 || x5 >= 28) ? FG (rc) : -1;
+			int hd = FRes (d, !single, true);			// (a double result keeps ps1)
+			int mc = hc;
+			if (hc >= 0 && single && !isS (sgl0, rc)) { force25x (hc, 0); a.fp1 (FMOV_DX, 2, 5); mc = 2; }
 			switch (x5)
 			{
-			case 18: a.fp3 (FDIV_D, 3, 0, 1); break;
-			case 20: a.fp3 (FSUB_D, 3, 0, 1); break;
-			case 21: a.fp3 (FADD_D, 3, 0, 1); break;
-			case 25: a.fp3 (FMUL_D, 3, 0, 2); break;
-			case 28: a.fp4 (FNMSUB_D, 3, 0, 2, 1); break;		// a * c - b
-			case 29: a.fp4 (FMADD_D, 3, 0, 2, 1); break;		// a * c + b
-			case 30: a.fp4 (FNMSUB_D, 3, 0, 2, 1); a.fp1 (FNEG_D, 3, 3); break;
-			default: a.fp4 (FMADD_D, 3, 0, 2, 1); a.fp1 (FNEG_D, 3, 3); break;
+			case 18: a.fp3 (FDIV_D, 3, ha, hb); break;
+			case 20: a.fp3 (FSUB_D, 3, ha, hb); break;
+			case 21: a.fp3 (FADD_D, 3, ha, hb); break;
+			case 25: a.fp3 (FMUL_D, 3, ha, mc); break;
+			case 28: a.fp4 (FNMSUB_D, 3, ha, mc, hb); break;		// a * c - b
+			case 29: a.fp4 (FMADD_D, 3, ha, mc, hb); break;		// a * c + b
+			case 30: a.fp4 (FNMSUB_D, 3, ha, mc, hb); a.fp1 (FNEG_D, 3, 3); break;
+			default: a.fp4 (FMADD_D, 3, ha, mc, hb); a.fp1 (FNEG_D, 3, 3); break;
 			}
-			a.fp3 (FCMP_D, 0, 3, 3); nan[0] = a.p; a.bcond (VS, a.p);
-			if (single) roundS (3);
-			stPs (3, d, 0);
-			if (single) stPs (3, d, 1);
-			fprf (3);
+			a.fp3 (FCMP_D, 0, 3, 3); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			if (single) { roundS (3); a.put (0x4E080400u | 3u << 5 | (u32) hd); }	// (DUP Vd.2D, V3.D[0])
+			else a.ins (hd, 0, 3, 0);
+			fSet (d); fprfSet (d, 0);
 			setS (sgl0, d, single); if (single) setS (sgl1, d, true);
 		}
 		else if (prim == 63 && x5 == 23)				// fsel
 		{
 			fpCheck (op, pc, idx);
-			ldPs (0, ra, 0); ldPs (1, rb, 0); ldPs (2, rc, 0);
-			a.fp1 (FCMP_D0, 0, 0);
-			a.fcsel (3, 2, 1, GE);
-			stPs (3, d, 0);
+			int ha = FG (ra), hb = FG (rb), hc = FG (rc), hd = FRes (d, true, false);
+			a.fp1 (FCMP_D0, 0, ha);
+			a.fcsel (3, hc, hb, GE);
+			a.ins (hd, 0, 3, 0); fSet (d);
 			setS (sgl0, d, isS (sgl0, rc) && isS (sgl0, rb));
 			return false;
 		}
 		else if (prim == 63 && (x10 == 0 || x10 == 32))		// fcmpu, fcmpo
 		{
 			fpCheck (op, pc, idx);
+			fprfFlush (); fprfR = -1;				// (its FPCC goes over the FPRF to set)
 			a.ldst (LDRB, 0, 5, XM, oFprfPend);
 			u32 *j = a.p; a.cbz (5, a.p);
 			a.side++; a.movX (0, XM); callKeep (H_FPRF); a.side--;
 			Asm::patch (j, a.p);
-			ldPs (0, ra, 0); ldPs (1, rb, 0);
-			a.fp3 (FCMP_D, 0, 0, 1);
+			int ha = FG (ra), hb = FG (rb);
+			a.fp3 (FCMP_D, 0, ha, hb);
 			a.movz (3, 4, 0); a.movz (4, 8, 0); a.csel (CSEL_W, 3, 4, 3, MI);
 			a.movz (4, 2, 0); a.csel (CSEL_W, 3, 4, 3, EQ);
 			a.movz (4, 1, 0); a.csel (CSEL_W, 3, 4, 3, VS);
@@ -1006,26 +1099,36 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 		else if (prim == 63 && (x10 == 12 || x10 == 15))		// frsp, fctiwz
 		{
 			fpCheck (op, pc, idx);
-			ldPs (1, rb, 0);
-			a.fp3 (FCMP_D, 0, 1, 1); nan[0] = a.p; a.bcond (VS, a.p);
-			if (x10 == 12) { roundS (1); stPs (1, d, 0); fprf (1); setS (sgl0, d, true); }
+			int hb = FG (rb), hd = FRes (d, true, x10 == 12);
+			a.fp3 (FCMP_D, 0, hb, hb); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			if (x10 == 12)
+			{
+				a.fp1 (FCVT_SD, 3, hb); a.fp1 (FCVT_DS, 3, 3);
+				a.ins (hd, 0, 3, 0); fSet (d); fprfSet (d, 0);
+				setS (sgl0, d, true);
+			}
 			else
 			{
-				a.fp1 (FCVTZS_WD, 5, 1);
+				a.fp1 (FCVTZS_WD, 5, hb);
 				a.movz (6, 0xFFF8, 3, true);
 				a.alu (ORR_W | X64, 5, 5, 6);
-				a.ldst (STR_X, 3, 5, XM, oPs0 + 8 * d);
+				a.insX (hd, 0, 5); fSet (d);
 				setS (sgl0, d, false);
 			}
 		}
 		else if (prim == 63 && (x10 == 40 || x10 == 72 || x10 == 136 || x10 == 264))	// fneg, fmr, fnabs, fabs
 		{
 			fpCheck (op, pc, idx);
-			ldPs (1, rb, 0);
-			if (x10 == 40) a.fp1 (FNEG_D, 1, 1);
-			else if (x10 == 136) { a.fp1 (FABS_D, 1, 1); a.fp1 (FNEG_D, 1, 1); }
-			else if (x10 == 264) a.fp1 (FABS_D, 1, 1);
-			stPs (1, d, 0);
+			int hb = FG (rb), hd = FRes (d, true, false);
+			if (x10 == 72) a.ins (hd, 0, hb, 0);
+			else
+			{
+				if (x10 == 40) a.fp1 (FNEG_D, 3, hb);
+				else if (x10 == 136) { a.fp1 (FABS_D, 3, hb); a.fp1 (FNEG_D, 3, 3); }
+				else a.fp1 (FABS_D, 3, hb);
+				a.ins (hd, 0, 3, 0);
+			}
+			fSet (d);
 			setS (sgl0, d, isS (sgl0, rb));
 			return false;
 		}
@@ -1037,74 +1140,96 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 		bool move = x10 == 40 || x10 == 72 || x10 == 136 || x10 == 264 || x10 == 528 || x10 == 560 || x10 == 592 || x10 == 624;
 		if (!arith && !move) { interp (op, pc, idx, false); return false; }
 		fpCheck (op, pc, idx);
-		ldPs (0, ra, 0); ldPs (1, ra, 1); ldPs (2, rb, 0); ldPs (3, rb, 1); ldPs (4, rc, 0); ldPs (5, rc, 1);
 		if (move)
 		{
-			switch (x10)
-			{
-			case 40: a.fp1 (FNEG_D, 6, 2); a.fp1 (FNEG_D, 7, 3); break;
-			case 72: a.fp1 (FMOV_D, 6, 2); a.fp1 (FMOV_D, 7, 3); break;
-			case 136: a.fp1 (FABS_D, 6, 2); a.fp1 (FNEG_D, 6, 6); a.fp1 (FABS_D, 7, 3); a.fp1 (FNEG_D, 7, 7); break;
-			case 264: a.fp1 (FABS_D, 6, 2); a.fp1 (FABS_D, 7, 3); break;
-			case 528: a.fp1 (FMOV_D, 6, 0); a.fp1 (FMOV_D, 7, 2); break;
-			case 560: a.fp1 (FMOV_D, 6, 0); a.fp1 (FMOV_D, 7, 3); break;
-			case 592: a.fp1 (FMOV_D, 6, 1); a.fp1 (FMOV_D, 7, 2); break;
-			default: a.fp1 (FMOV_D, 6, 1); a.fp1 (FMOV_D, 7, 3); break;
-			}
-			stPs (6, d, 0); stPs (7, d, 1);
+			bool usesA = x10 >= 528;
+			int ha = usesA ? FG (ra) : -1, hb = FG (rb), hd = FRes (d, false, false);
 			bool l0 = x10 == 592 || x10 == 624 ? isS (sgl1, ra) : x10 >= 528 ? isS (sgl0, ra) : isS (sgl0, rb);
 			bool l1 = x10 == 528 || x10 == 592 ? isS (sgl0, rb) : isS (sgl1, rb);
+			switch (x10)
+			{
+			case 40: a.fp1 (FNEG_2D, hd, hb); break;
+			case 72: a.vmov (hd, hb); break;
+			case 136: a.fp1 (FABS_2D, hd, hb); a.fp1 (FNEG_2D, hd, hd); break;
+			case 264: a.fp1 (FABS_2D, hd, hb); break;
+			case 528: a.fp3 (ZIP1_2D, hd, ha, hb); break;		// (a0, b0)
+			case 624: a.fp3 (ZIP2_2D, hd, ha, hb); break;		// (a1, b1)
+			case 592: a.ext8 (hd, ha, hb); break;			// (a1, b0)
+			default: a.vmov (4, hb); a.ins (4, 0, ha, 0); a.vmov (hd, 4); break;	// (a0, b1)
+			}
+			fSet (d);
 			setS (sgl0, d, l0); setS (sgl1, d, l1);
 			return false;
 		}
 		switch (x5)
 		{
-		case 10: case 11:					// ps_sum0, ps_sum1
+		case 10: case 11:					// ps_sum0 (a0 + b1, c1), ps_sum1 (c0, a0 + b1)
 		{
-			int r = x5 == 10 ? 6 : 7;
-			a.fp3 (FADD_D, r, 0, 3);
-			a.fp3 (FCMP_D, 0, r, r); nan[0] = a.p; a.bcond (VS, a.p);
-			roundS (r);
-			if (x5 == 10) { stPs (6, d, 0); stPs (5, d, 1); }
-			else { stPs (4, d, 0); stPs (7, d, 1); }
-			fprf (r);
+			int ha = FG (ra), hb = FG (rb), hc = FG (rc), hd = FRes (d, false, true);
+			a.ins (4, 0, hb, 1);
+			a.fp3 (FADD_D, 5, ha, 4);
+			a.fp3 (FCMP_D, 0, 5, 5); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			roundS (5);
+			a.vmov (hd, hc);
+			a.ins (hd, x5 == 10 ? 0 : 1, 5, 0);
+			fSet (d); fprfSet (d, x5 == 10 ? 0 : 1);
 			if (x5 == 10) { setS (sgl1, d, isS (sgl1, rc)); setS (sgl0, d, true); }
 			else { setS (sgl0, d, isS (sgl0, rc)); setS (sgl1, d, true); }
 			break;
 		}
 		case 23:						// ps_sel
-			a.fp1 (FCMP_D0, 0, 0); a.fcsel (6, 4, 2, GE);
-			a.fp1 (FCMP_D0, 0, 1); a.fcsel (7, 5, 3, GE);
-			stPs (6, d, 0); stPs (7, d, 1);
-			{ bool l0 = isS (sgl0, rc) && isS (sgl0, rb), l1 = isS (sgl1, rc) && isS (sgl1, rb); setS (sgl0, d, l0); setS (sgl1, d, l1); }
+		{
+			int ha = FG (ra), hb = FG (rb), hc = FG (rc), hd = FRes (d, false, false);
+			bool l0 = isS (sgl0, rc) && isS (sgl0, rb), l1 = isS (sgl1, rc) && isS (sgl1, rb);
+			a.fp1 (FCMGE0_2D, 4, ha);
+			a.fp3 (BSL_16B, 4, hc, hb);
+			a.vmov (hd, 4); fSet (d);
+			setS (sgl0, d, l0); setS (sgl1, d, l1);
 			return false;
+		}
 		default:
 		{
-			int m0 = 4, m1 = 5;					// the multiplicands of each half
-			if (x5 == 12 || x5 == 14) m1 = 4;
-			if (x5 == 13 || x5 == 15) m0 = 5;
-			if ((x5 == 12 || x5 == 14 || x5 == 25 || x5 >= 28) && !isS (sgl0, rc)) force25 (4);
-			if ((x5 == 13 || x5 == 15 || x5 == 25 || x5 >= 28) && !isS (sgl1, rc)) force25 (5);
-			for (int h = 0; h < 2; h++)
+			bool usesB = x5 != 12 && x5 != 13 && x5 != 25, usesC = x5 != 18 && x5 != 20 && x5 != 21;
+			int ha = FG (ra), hb = usesB ? FG (rb) : -1, hc = usesC ? FG (rc) : -1, hd = FRes (d, false, true);
+			// the multiplicand: both halves of c (mul, madd...), or one half for both (muls0/1, madds0/1)
+			int mc = hc, lane = -1;
+			if (x5 == 12 || x5 == 14) lane = 0;
+			if (x5 == 13 || x5 == 15) lane = 1;
+			if (usesC)
 			{
-				int r = 6 + h, fa = h, fb = 2 + h, mc = h ? m1 : m0;
-				switch (x5)
+				if (lane >= 0)
 				{
-				case 12: case 13: case 25: a.fp3 (FMUL_D, r, fa, mc); break;
-				case 14: case 15: case 29: a.fp4 (FMADD_D, r, fa, mc, fb); break;
-				case 18: a.fp3 (FDIV_D, r, fa, fb); break;
-				case 20: a.fp3 (FSUB_D, r, fa, fb); break;
-				case 21: a.fp3 (FADD_D, r, fa, fb); break;
-				case 28: a.fp4 (FNMSUB_D, r, fa, mc, fb); break;
-				case 30: a.fp4 (FNMSUB_D, r, fa, mc, fb); a.fp1 (FNEG_D, r, r); break;
-				default: a.fp4 (FMADD_D, r, fa, mc, fb); a.fp1 (FNEG_D, r, r); break;
+					if (!isS (lane ? sgl1 : sgl0, rc)) { force25x (hc, lane); a.insX (4, 0, 5); mc = 4; lane = 0; }
+				}
+				else
+				{
+					bool f0 = !isS (sgl0, rc), f1 = !isS (sgl1, rc);
+					if (f0 || f1)
+					{
+						a.vmov (4, hc);
+						if (f0) { force25x (hc, 0); a.insX (4, 0, 5); }
+						if (f1) { force25x (hc, 1); a.insX (4, 1, 5); }
+						mc = 4;
+					}
 				}
 			}
-			a.fp3 (FCMP_D, 0, 6, 6); nan[0] = a.p; a.bcond (VS, a.p);
-			a.fp3 (FCMP_D, 0, 7, 7); nan[1] = a.p; a.bcond (VS, a.p);
-			roundS (6); roundS (7);
-			stPs (6, d, 0); stPs (7, d, 1);
-			fprf (6);
+			switch (x5)
+			{
+			case 18: a.fp3 (FDIV_2D, 6, ha, hb); break;
+			case 20: a.fp3 (FSUB_2D, 6, ha, hb); break;
+			case 21: a.fp3 (FADD_2D, 6, ha, hb); break;
+			case 25: a.fp3 (FMUL_2D, 6, ha, mc); break;
+			case 12: case 13: a.byElem (FMUL_2DE, 6, ha, mc, lane); break;
+			case 14: case 15: a.vmov (6, hb); a.byElem (FMLA_2DE, 6, ha, mc, lane); break;
+			case 29: a.vmov (6, hb); a.fp3 (FMLA_2D, 6, ha, mc); break;				// a * c + b
+			case 28: a.fp1 (FNEG_2D, 6, hb); a.fp3 (FMLA_2D, 6, ha, mc); break;			// a * c - b
+			case 30: a.fp1 (FNEG_2D, 6, hb); a.fp3 (FMLA_2D, 6, ha, mc); a.fp1 (FNEG_2D, 6, 6); break;
+			default: a.vmov (6, hb); a.fp3 (FMLA_2D, 6, ha, mc); a.fp1 (FNEG_2D, 6, 6); break;
+			}
+			a.fp1 (FMAXP_D, 5, 6);					// (a NaN in either half)
+			a.fp3 (FCMP_D, 0, 5, 5); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			roundS2 (6);
+			a.vmov (hd, 6); fSet (d); fprfSet (d, 0);
 			setS (sgl0, d, true); setS (sgl1, d, true);
 		}
 		}
@@ -1114,7 +1239,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 		u32 *skip = a.p; a.b (a.p);
 		Asm::patch (nan[0], a.p);
 		if (nan[1]) Asm::patch (nan[1], a.p);
-		u32 *back = interpSide (op, pc, idx, true);
+		u32 *back = interpSideAt (op, pc, idx, atNan);
 		Asm::patch (skip, a.p); Asm::patch (back, a.p);
 	}
 	return false;
@@ -1127,9 +1252,9 @@ bool Jit::fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd)
 	fpCheck (op, pc, idx);
 	if (kind >= 2)
 	{
-		if (kind == 2) { a.ldst (LDR_X, 3, 8, XM, oPs0 + 8 * d); cvtS (2, 8); }
-		else if (kind == 3) a.ldst (LDR_X, 3, 2, XM, oPs0 + 8 * d);
-		else a.ldst (LDR_W, 2, 2, XM, oPs0 + 8 * d);
+		int hs = FG (d);
+		a.fp1 (FMOV_XD, kind == 2 ? 8 : 2, hs);
+		if (kind == 2) cvtS (2, 8);
 		if (x) eaX (op, upd); else eaD (op, upd);
 		if (upd) a.mov (WEA, 1);
 		memop (true, kind == 3 ? 8 : 4, pc, idx);
@@ -1138,8 +1263,15 @@ bool Jit::fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd)
 	{
 		if (x) eaX (op, upd); else eaD (op, upd);
 		if (upd) a.mov (WEA, 1);
-		if (kind == 0) { memop (false, 4, pc, idx); cvtD (0, 0); stPs (0, d, 0); stPs (0, d, 1); setS (sgl0, d, true); setS (sgl1, d, true); }
-		else { memop (false, 8, pc, idx); a.fp1 (FMOV_DX, 0, 0); stPs (0, d, 0); setS (sgl0, d, false); }
+		int hd = FRes (d, kind == 1, false);			// (lfd keeps ps1)
+		if (kind == 0)
+		{
+			memop (false, 4, pc, idx); cvtD (0, 0);
+			a.put (0x4E080400u | (u32) hd);			// DUP Vd.2D, V0.D[0]
+			setS (sgl0, d, true); setS (sgl1, d, true);
+		}
+		else { memop (false, 8, pc, idx); a.insX (hd, 0, 0); setS (sgl0, d, false); }
+		fSet (d);
 	}
 	if (upd) stG (WEA, ra);
 	return false;
@@ -1153,47 +1285,54 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 	int q = (int) ((op >> 12) & 7); bool w = (op >> 15) & 1;
 	u32 off = (u32) ((s32) ((op & 0xFFF) << 20) >> 20);
 	fpCheck (op, pc, idx);
+	int hbase = (ra == 0 && !upd) ? -1 : (upd ? RW (ra) : G (ra));	// (all taken before the branch)
+	int hd = load ? FRes (d, false, false) : FG (d);
 	ldF (5, oGqr + 4 * q);
 	a.ubfx (6, 5, load ? 16 : 0, 3);
+	Snap atOther; snap (atOther);
 	u32 *other = a.p; a.cbz (6, a.p, true);
 	if (load)
 	{
-		if (ra == 0 && !upd) a.movw (1, off); else addConst (1, G (ra), off);
+		if (hbase < 0) a.movw (1, off); else addConst (1, hbase, off);
 		if (upd) a.mov (WEA, 1);
 		if (w)
 		{
 			memop (false, 4, pc, idx);
-			cvtD (0, 0); stPs (0, d, 0);
-			a.put (FMOV_D1 | 1); stPs (1, d, 1);
+			cvtD (0, 0);
+			a.put (FMOV_D1 | 1);
+			a.ins (hd, 0, 0, 0); a.ins (hd, 1, 1, 0);
 		}
 		else
 		{
 			memop (false, 8, pc, idx);
 			a.movX (XK1, 0);
 			a.bfm (UBFM_X, 0, XK1, 32, 63);
-			cvtD (0, 0); stPs (0, d, 0);
+			cvtD (0, 0); a.fp1 (FMOV_XD, XK2, 0);		// (ps0, kept in x26 across the next)
 			a.mov (0, XK1);
-			cvtD (0, 0); stPs (0, d, 1);
+			cvtD (0, 0);
+			a.insX (hd, 0, XK2); a.ins (hd, 1, 0, 0);
 		}
+		fSet (d);
 	}
 	else
 	{
-		if (w) { a.ldst (LDR_X, 3, 8, XM, oPs0 + 8 * d); cvtS (2, 8); }
+		a.fp1 (FMOV_XD, 8, hd);
+		if (w) cvtS (2, 8);
 		else
 		{
-			a.ldst (LDR_X, 3, 8, XM, oPs0 + 8 * d); cvtS (XK1, 8);
-			a.ldst (LDR_X, 3, 8, XM, oPs1 + 8 * d); cvtS (XK2, 8);
+			cvtS (XK1, 8);
+			a.umovX (8, hd, 1); cvtS (XK2, 8);
 			a.alu (ORR_W | X64, 2, XK2, XK1, 0, 32);
 		}
-		if (ra == 0 && !upd) a.movw (1, off); else addConst (1, G (ra), off);
+		if (hbase < 0) a.movw (1, off); else addConst (1, hbase, off);
 		if (upd) a.mov (WEA, 1);
 		memop (true, w ? 4 : 8, pc, idx);
 	}
-	if (upd) stG (WEA, ra);
+	if (upd) a.mov (hbase, WEA);
 	if (load) { setS (sgl0, d, true); setS (sgl1, d, true); }	// (the integer types too: small integers x 2^n)
 	u32 *skip = a.p; a.b (a.p);
 	Asm::patch (other, a.p);
-	u32 *back = interpSide (op, pc, idx, true);
+	u32 *back = interpSideAt (op, pc, idx, atOther);
 	Asm::patch (skip, a.p); Asm::patch (back, a.p);
 	return false;
 }
@@ -1206,7 +1345,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	code = (u32 *) mem; codeEnd = code + size / 4;
 	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oCr = OFF (cr); oXer = OFF (xer);
 	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1); oScratch = OFF (jitScratch);
-	oPs0 = OFF (ps0); oPs1 = OFF (ps1); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr);
+	oPs = OFF (ps); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr);
 	ctx = new u8[FAST_OFF + (sizeof (Fast) << FAST_BITS)];
 	fast = (Fast *) (ctx + FAST_OFF);
 	u64 *h = (u64 *) ctx;
@@ -1265,7 +1404,7 @@ void Jit::flushAll ()
 	for (u32 i = 0; i < (1u << HASH_BITS); i++) hashHead[i] = linkHead[i] = NONE;
 	nLinks = 0;
 	for (u32 i = 0; i < NPAGES; i++) pageHead[i] = NONE;
-	for (u32 i = 0; i < (1u << FAST_BITS); i++) { fast[i].key = NOKEY; fast[i].code = 0; }
+	for (u32 i = 0; i < (1u << FAST_BITS); i++) { fast[i].key = NOKEY; fast[i].code = exitStub; }	// (a pc giving NOKEY lands in jitRun)
 	stdMap = true;
 	for (u32 i = 0; i < (MEM1_SIZE >> 17); i++)
 		if (m->dmap[(0x80000000u >> 17) + i] != i + 1 || m->dmap[(0xC0000000u >> 17) + i] != i + 1) stdMap = false;
@@ -1276,6 +1415,7 @@ static inline u32 hashOf (u32 key) { return (key >> 2) & ((1u << HASH_BITS) - 1)
 
 void *Jit::lookup (u32 key)
 {
+	if (key == NOKEY) return 0;
 	Fast &f = fast[(key >> 2) & ((1u << FAST_BITS) - 1)];
 	if (f.key == key) return f.code;
 	for (u32 i = hashHead[hashOf (key)]; i != NONE; i = blocks[i].hashNext)
@@ -1290,7 +1430,7 @@ void Jit::unlink (u32 i)
 	while (*pp != NONE && *pp != i) pp = &blocks[*pp].hashNext;
 	if (*pp == i) *pp = b.hashNext;
 	Fast &f = fast[(b.key >> 2) & ((1u << FAST_BITS) - 1)];
-	if (f.key == b.key && f.code == b.code) f.key = NOKEY;
+	if (f.key == b.key && f.code == b.code) { f.key = NOKEY; f.code = exitStub; }
 	for (u32 k = linkHead[hashOf (b.key)]; k != NONE; k = links[k].next)	// (the exits to it: to their stubs)
 		if (links[k].key == b.key)
 		{
@@ -1357,7 +1497,7 @@ void *Jit::compile (u32 pc, u32 key)
 	for (;;)
 	{
 		u32 op = bswap32 (*(const u32 *) (m->mem1 + pa + n * 4));
-		pinned = 0;
+		pinned = 0; fpinned = 0;
 		bool end = insn (op, pc + n * 4, n);
 		n++;
 		if (end) break;
@@ -1417,6 +1557,15 @@ void Machine::jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns)
 	}
 }
 
+// (the tests) the block translated for pc (the last one), its code
+bool Machine::jitCode (u32 pc, const u32 *&code, u32 &words)
+{
+	if (!jit) return false;
+	for (u32 i = jit->nBlocks; i-- > 0;)
+		if ((jit->blocks[i].key & ~3u) == pc) { code = (const u32 *) jit->blocks[i].code; words = jit->blocks[i].size; return true; }
+	return false;
+}
+
 // (the test's profile) the n-th most run block: its address, runs, code -> false: none
 bool Machine::jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words)
 {
@@ -1446,6 +1595,7 @@ void Machine::jitRun (u64 until) { jit = 0; run (until); }
 void Machine::jitInvalidate (u32, u32) {}
 void Machine::jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns) { runs = hostInsns = guestInsns = 0; }
 bool Machine::jitHot (int, u32 &, u64 &, const u32 *&, u32 &) { return false; }
+bool Machine::jitCode (u32, const u32 *&, u32 &) { return false; }
 
 #endif
 

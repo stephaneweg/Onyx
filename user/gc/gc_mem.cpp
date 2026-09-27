@@ -30,7 +30,7 @@ void Machine::reset ()
 {
 	zero (mem1, MEM1_SIZE); zero (lcache, sizeof lcache);
 	zero (gpr, sizeof gpr);
-	for (int i = 0; i < 32; i++) ps0[i] = ps1[i] = 0.0;
+	for (int i = 0; i < 32; i++) ps[i][0] = ps[i][1] = 0.0;
 	cr = lr = ctr = xer = fpscr = 0; fprfPending = false; fprfVal = 0.0;
 	msr = 0x00002032;					// FP, IR, DR (as the IPL leaves it)
 	pc = npc = 0x80003100;

@@ -5,8 +5,10 @@
 #     the interpreter (linked at 0x80003100): every result, CR, XER, FPRF must match;
 #   * the paired singles / quantized loads and stores against the manual (pstest.S).
 #   * the JIT (gc_jit.cpp, AArch64): the same programs built for aarch64-linux, run under
-#     qemu-aarch64 with GC_JIT=1 (skipped without g++-aarch64-linux-gnu), + bench.c's result
-#     against qemu-ppc's and its speed, the interpreter's then the JIT's.
+#     qemu-aarch64 with GC_JIT=1 (skipped without g++-aarch64-linux-gnu); random instruction
+#     sequences (gctest fuzz: the FPU, the paired singles, loads / stores, the integer unit,
+#     branches) run by both, the whole state compared; bench.c's result against qemu-ppc's and
+#     its speed, the interpreter's then the JIT's.
 # Needs gcc-powerpc-linux-gnu, binutils-powerpc-linux-gnu and qemu-user.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
@@ -57,6 +59,7 @@ if command -v aarch64-linux-gnu-g++ > /dev/null && command -v qemu-aarch64 > /de
 	echo "the JIT:"
 	GC_JIT=1 $Q cpu "$T/cputest.elf" "$T/expected.bin"
 	GC_JIT=1 $Q ps "$T/pstest.elf"
+	$Q fuzz 1 1500 150
 	out=$(GC_JIT=1 $Q dol "$T/hwtest.dol" 40 "$T/hwj.ppm")
 	echo "$out" | grep -q "results: 0000001E 0000000F 00001234 .* 600D600D" && echo "ok  : hwtest.dol (JIT)" || { echo "FAIL hwtest.dol (JIT)"; echo "$out"; exit 1; }
 	GC_JIT=0 GC_GX="$T/gxi.ppm" $Q dol "$T/gxtest.dol" 5 "$T/gxxfbi.ppm" > /dev/null

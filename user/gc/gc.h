@@ -101,7 +101,7 @@ public:
 
 	// ---- the CPU (gc_cpu.cpp) ----
 	u32 gpr[32];
-	double ps0[32], ps1[32];			// the FPRs: ps0 is the FPR of the plain FPU
+	double ps[32][2];				// the FPRs: [0] (ps0) is the FPR of the plain FPU, [1] ps1
 	u32 cr, lr, ctr, xer, msr, fpscr;
 	double fprfVal; bool fprfPending;		// (the JIT) FPSCR's FPRF is that result's class, to set
 	u32 pc, npc, curPc;				// the instruction to run, the next one, the one running
@@ -132,7 +132,9 @@ public:
 	u32  jitBlocks, jitCompiles;			// (stats) blocks translated, now / in all
 	bool jitProfile;				// (the tests) count each block's runs
 	void jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns);
+	u32  fpscrNow () { if (fprfPending) { fprfPending = false; setFprf (fprfVal); } return fpscr; }	// (FPRF set)
 	bool jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words);
+	bool jitCode (u32 pc, const u32 *&code, u32 &words);
 
 	// ---- memory (gc_mem.cpp) ----
 	u8 *mem1;					// MEM1, big-endian

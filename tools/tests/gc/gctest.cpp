@@ -3,6 +3,7 @@
 //       in the interpreter and compares its output with qemu-ppc's (run_gc_test.sh)
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results
 //   gctest bench <file.elf> [entry]           a function's speed (bench.c: run_bench, run_fbench)
+//   gctest fuzz [seed] [count] [length]      the JIT against the interpreter: random sequences
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
 // GC_JIT=1: the JIT runs the CPU (an AArch64 host: run_gc_test.sh builds it for qemu-aarch64)
 #include "gc/gc.h"
@@ -150,6 +151,147 @@ static int benchTest (const char *elf, const char *entry)
 	return 0;
 }
 
+
+// ---- the JIT against the interpreter: random instruction sequences (the FPU, the paired singles,
+// the loads / stores, the integer unit), the same start, the whole state compared at the end
+static u64 rng = 1;
+static u32 rnd32 () { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return (u32) rng; }
+static u32 rn (u32 n) { return rnd32 () % n; }
+static u64 fpVal ()
+{
+	static const u64 special[] = { 0, 0x8000000000000000ull, 0x3FF0000000000000ull, 0xBFF0000000000000ull, 0x3FE0000000000000ull,
+		0x7FF0000000000000ull, 0xFFF0000000000000ull, 0x7FF8000000000000ull, 0x7FF4000000000000ull, 0x3810000000000000ull,
+		0x36A0000000000000ull, 0x47EFFFFFE0000000ull, 0x4415AF1D78B58C40ull, 0xC0091EB851EB851Full, 0x0000000000000001ull };
+	switch (rn (6))
+	{
+	case 0: return special[rn (sizeof special / 8)];
+	case 1: case 2: { float f = (float) ((int) rn (2000) - 1000) / (float) (1 + rn (64)); double d = f; u64 u; memcpy (&u, &d, 8); return u; }	// a single
+	case 3: { u32 w = rnd32 (); if ((w & 0x7F800000) == 0x7F800000 && rn (4)) w &= ~0x40000000u; float f; memcpy (&f, &w, 4); double d = f; u64 u; memcpy (&u, &d, 8); return u; }
+	default: { double d = (double) ((int) rn (100000) - 50000) / (double) (1 + rn (1000)) * 1.0000001; u64 u; memcpy (&u, &d, 8); return u; }
+	}
+}
+static void fuzzInit (Machine &m, u64 seed, u32 *prog, int n)
+{
+	m.reset ();
+	rng = seed;
+	for (int i = 0; i < 32; i++) m.gpr[i] = rn (3) ? rnd32 () : rn (100);
+	m.gpr[1] = 0x80400000;
+	for (int i = 0; i < 32; i++) for (int k = 0; k < 2; k++) { u64 u = fpVal (); memcpy (&m.ps[i][k], &u, 8); }
+	m.cr = rnd32 (); m.xer = rnd32 () & 0xE000007F; m.lr = rnd32 (); m.ctr = rnd32 ();
+	m.gqr[0] = 0; m.gqr[1] = 0x03040304; m.gqr[2] = 0x3E073E07; m.gqr[3] = 0x00050005;
+	for (u32 i = 0; i < 0x400; i += 4)
+	{
+		u32 w = rnd32 ();
+		if (!rn (3)) { float f = (float) ((int) rn (200) - 100) * 0.125f; memcpy (&w, &f, 4); }
+		m.write32 (0x80400000 + i, w);
+	}
+	for (int i = 0; i < n; i++) m.write32 (0x80010000 + (u32) i * 4, prog[i]);
+	m.write32 (0x80010000 + (u32) n * 4, 0x4E800020);		// blr
+	m.write32 (0x80001000, 0x48000000);				// b .
+	m.pc = 0x80010000; m.lr = 0x80001000;
+}
+static u32 fuzzInsn ()
+{
+	auto R = [] () { return 3 + rn (29); };				// (r1: the data's base, r2 kept)
+	auto F = [] () { return rn (32); };
+	u32 d = F (), a = F (), b = F (), c = F ();
+	static const u32 x59[] = { 18, 20, 21, 25, 28, 29, 30, 31 };
+	static const u32 psA[] = { 10, 11, 12, 13, 14, 15, 18, 20, 21, 23, 25, 28, 29, 30, 31 };
+	static const u32 psX[] = { 40, 72, 136, 264, 528, 560, 592, 624 };
+	static const u32 f63x[] = { 12, 15, 40, 72, 136, 264 };
+	switch (rn (25))
+	{
+	case 0: case 1: return 59u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | x59[rn (8)] << 1;	// single
+	case 2: return 63u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | x59[rn (8)] << 1;		// double
+	case 3: return 63u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | 23u << 1;			// fsel
+	case 4: return 63u << 26 | d << 21 | b << 11 | f63x[rn (6)] << 1;
+	case 5: return 63u << 26 | rn (8) << 23 | a << 16 | b << 11 | (rn (2) ? 32u : 0u) << 1;	// fcmpu / fcmpo
+	case 6: case 7: case 8: return 4u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | psA[rn (15)] << 1;
+	case 9: return 4u << 26 | d << 21 | a << 16 | b << 11 | psX[rn (8)] << 1;
+	case 10: return (48u + rn (4) * 2) << 26 | d << 21 | 1u << 16 | (rn (0x80) * 8);		// lfs lfd stfs stfd
+	case 11: return (rn (2) ? 56u : 60u) << 26 | d << 21 | 1u << 16 | (u32) rn (2) << 15 | rn (4) << 12 | (rn (0x40) * 8);	// psq_l / psq_st
+	case 12: return 63u << 26 | d << 21 | 583u << 1;						// mffs (FPRF)
+	case 13: return 31u << 26 | d << 21 | 1u << 16 | 4u << 11 | 983u << 1;			// stfiwx (r4 = 0x100 below)
+	case 14: { static const u32 xo[] = { 266, 10, 138, 234, 202, 40, 8, 136, 232, 200, 104, 235, 75, 11, 459 };
+		return 31u << 26 | R () << 21 | R () << 16 | R () << 11 | xo[rn (15)] << 1 | rn (2); }
+	case 15: { static const u32 xo[] = { 28, 60, 444, 412, 316, 476, 124, 284, 24, 536, 792, 824, 26, 954, 922 };
+		return 31u << 26 | R () << 21 | R () << 16 | R () << 11 | xo[rn (15)] << 1 | rn (2); }
+	case 16: return (20u + rn (2)) << 26 | R () << 21 | R () << 16 | rn (32) << 11 | rn (32) << 6 | rn (32) << 1 | rn (2);	// rlwimi / rlwinm
+	case 17: return (10u + rn (6)) << 26 | R () << 21 | R () << 16 | (rn (2) ? rnd32 () & 0xFFFF : rn (8));	// cmpli cmpi addic addic. addi addis
+	case 18: return 31u << 26 | rn (8) << 23 | R () << 16 | R () << 11 | (rn (2) ? 32u : 0u) << 1;	// cmp / cmpl
+	case 19: return 19u << 26 | rn (32) << 21 | rn (32) << 16 | rn (32) << 11 | (rn (2) ? 193u : 449u) << 1;	// crxor / cror
+	case 20: { static const u32 o[] = { 32, 34, 36, 38, 40, 42, 44 }; return o[rn (7)] << 26 | R () << 21 | 1u << 16 | (rn (0x100) * 4); }	// lwz lbz stw stb lhz lha sth
+	case 21: return 31u << 26 | R () << 21 | (rn (2) ? 8u : 9u) << 16 | 467u << 1;		// mtlr / mtctr
+	case 22: return 31u << 26 | R () << 21 | (rn (2) ? 8u : 9u) << 16 | 339u << 1;		// mflr / mfctr
+	case 23:
+		switch (rn (12))						// the rest: branches forward, the interpreter's
+		{
+		case 0: return 16u << 26 | rn (32) << 21 | rn (32) << 16 | (1 + rn (4)) * 4;		// bc +4..16 (any BO)
+		case 1: return 18u << 26 | (1 + rn (3)) * 4;						// b +4..12
+		case 2: return 31u << 26 | R () << 21 | (912u + rn (8) - 896u) << 16 | 28u << 11 | 467u << 1;	// mtspr GQRn (-> jitRun)
+		case 3: return 31u << 26 | R () << 21 | 1u << 16 | (rn (2) ? 467u : 339u) << 1;	// mtxer / mfxer
+		case 4: return 31u << 26 | R () << 21 | 1u << 16 | 4u << 11 | 1014u << 1;		// dcbz (r1 + 0x100)
+		case 5: return 31u << 26 | R () << 21 | 1u << 16 | 4u << 11 | (rn (2) ? 20u : 150u) << 1 | 1;	// lwarx / stwcx.
+		case 6: return 19u << 26 | rn (8) << 23 | rn (8) << 18;					// mcrf
+		case 7: return 31u << 26 | R () << 21 | rnd32 () % 256 << 12 | 144u << 1;		// mtcrf
+		case 8: return 31u << 26 | R () << 21 | 19u << 1;					// mfcr
+		case 9: return 31u << 26 | R () << 21 | R () << 16 | R () << 11 | 491u << 1 | rn (2);	// divw
+		case 10: return 23u << 26 | R () << 21 | R () << 16 | R () << 11 | rn (32) << 6 | rn (32) << 1 | rn (2);	// rlwnm
+		default: return (rn (2) ? 46u : 47u) << 26 | (24u + rn (8)) << 21 | 1u << 16 | (rn (0x40) * 4);	// lmw / stmw (r24..)
+		}
+	default: return (24u + rn (6)) << 26 | R () << 21 | R () << 16 | (rnd32 () & 0xFFFF);	// ori oris xori xoris andi. andis.
+	}
+}
+static int fuzzTest (u64 seed0, int count, int len)
+{
+	static Machine A, B;
+	if (!B.jitEnable ()) { printf ("FAIL: no JIT on this host\n"); return 1; }
+	static u32 prog[1024];
+	int bad = 0;
+	int t0 = getenv ("GC_FUZZSTART") ? atoi (getenv ("GC_FUZZSTART")) : 0;
+	for (int t = t0; t < t0 + count && bad < 3; t++)
+	{
+		u64 seed = seed0 * 1000003ull + (u64) t + 1;
+		rng = seed ^ 0x9E3779B97F4A7C15ull;
+		for (int i = 0; i < len; i++) prog[i] = fuzzInsn ();
+		if (getenv ("GC_FUZZV")) { printf ("sequence %d\n", t); fflush (stdout); }
+		if (getenv ("GC_FUZZDUMP")) { FILE *f = fopen (getenv ("GC_FUZZDUMP"), "wb"); for (int i = 0; i < len; i++) { u32 w = __builtin_bswap32 (prog[i]); fwrite (&w, 4, 1, f); } fclose (f); }
+		fuzzInit (A, seed, prog, len); fuzzInit (B, seed, prog, len);
+		A.gpr[4] = B.gpr[4] = 0x100;
+		while (A.pc != 0x80001000 && !A.halted && A.cycles < 1000000) A.step ();
+		while (B.pc != 0x80001000 && !B.halted && B.cycles < 1000000) B.run (B.cycles + 1000);
+		if (getenv ("GC_FUZZF"))					// (the FPRs listed: both machines)
+		{
+			const char *q = getenv ("GC_FUZZF");
+			while (*q) { int r = (int) strtol (q, (char **) &q, 10); u64 x, y, x1, y1; memcpy (&x, &A.ps[r][0], 8); memcpy (&y, &B.ps[r][0], 8); memcpy (&x1, &A.ps[r][1], 8); memcpy (&y1, &B.ps[r][1], 8);
+				printf ("  f%d: %016llX %016llX | JIT %016llX %016llX\n", r, x, x1, y, y1); while (*q == ' ') q++; }
+		}
+		if (getenv ("GC_FUZZBLOCK"))					// (a block's code: GC_FUZZBLOCK=pc -> fzblock.bin)
+		{
+			const u32 *code; u32 words;
+			if (B.jitCode ((u32) strtoul (getenv ("GC_FUZZBLOCK"), 0, 16), code, words)) { FILE *f = fopen ("fzblock.bin", "wb"); fwrite (code, 4, words, f); fclose (f); printf ("  block: %u words\n", words); }
+		}
+		char diff[256] = "";
+		for (int i = 0; i < 32 && !diff[0]; i++) if (A.gpr[i] != B.gpr[i]) snprintf (diff, sizeof diff, "r%d: %08X, JIT %08X", i, A.gpr[i], B.gpr[i]);
+		for (int i = 0; i < 32 && !diff[0]; i++) for (int k = 0; k < 2 && !diff[0]; k++)
+			if (memcmp (&A.ps[i][k], &B.ps[i][k], 8)) { u64 x, y; memcpy (&x, &A.ps[i][k], 8); memcpy (&y, &B.ps[i][k], 8); snprintf (diff, sizeof diff, "f%d.ps%d: %016llX, JIT %016llX", i, k, x, y); }
+		if (!diff[0] && A.cr != B.cr) snprintf (diff, sizeof diff, "cr: %08X, JIT %08X", A.cr, B.cr);
+		if (!diff[0] && A.xer != B.xer) snprintf (diff, sizeof diff, "xer: %08X, JIT %08X", A.xer, B.xer);
+		if (!diff[0] && (A.lr != B.lr || A.ctr != B.ctr)) snprintf (diff, sizeof diff, "lr / ctr differ");
+		if (!diff[0] && A.fpscrNow () != B.fpscrNow ()) snprintf (diff, sizeof diff, "fpscr: %08X, JIT %08X", A.fpscr, B.fpscr);
+		for (u32 i = 0; i < 0x400 && !diff[0]; i += 4) if (A.read32 (0x80400000 + i) != B.read32 (0x80400000 + i))
+			snprintf (diff, sizeof diff, "memory +%X: %08X, JIT %08X", i, A.read32 (0x80400000 + i), B.read32 (0x80400000 + i));
+		if (!diff[0] && (A.pc != B.pc || A.halted != B.halted)) snprintf (diff, sizeof diff, "pc %08X / %08X (%s)", A.pc, B.pc, A.haltMsg);
+		if (diff[0])
+		{
+			printf ("  sequence %d (seed %llu): %s\n", t, (unsigned long long) seed, diff);
+			bad++;
+		}
+	}
+	printf ("%s: the JIT against the interpreter, %d random sequences of %d instructions%s\n", bad ? "FAIL" : "ok  ", count, len, bad ? "" : ": identical");
+	return bad != 0;
+}
+
 static void ppm (const Machine &m, const char *path)
 {
 	FILE *f = fopen (path, "wb"); if (!f) return;
@@ -206,6 +348,7 @@ int main (int argc, char **argv)
 	if (argc >= 4 && !strcmp (argv[1], "dol")) return dolTest (argv[2], atoi (argv[3]), argc > 4 ? argv[4] : 0);
 	if (argc >= 3 && !strcmp (argv[1], "ps")) return psTest (argv[2]);
 	if (argc >= 3 && !strcmp (argv[1], "bench")) return benchTest (argv[2], argc > 3 ? argv[3] : 0);
+	if (argc >= 2 && !strcmp (argv[1], "fuzz")) return fuzzTest (argc > 2 ? strtoull (argv[2], 0, 10) : 1, argc > 3 ? atoi (argv[3]) : 2000, argc > 4 ? atoi (argv[4]) : 150);
 	if (argc >= 4 && !strcmp (argv[1], "cpu")) return cpuTest (argv[2], argv[3]);
 	fprintf (stderr, "gctest cpu <cputest.elf> <expected.bin>\n");
 	return 2;
