@@ -112,6 +112,7 @@ public:
 	u64 cycles;					// CPU cycles run
 	u64 jitUntil;					// the JIT's blocks chain until then (0: back to jitRun now)
 	u64 jitScratch;					// (the JIT: a 64-bit value read by a helper)
+	u64 jitEnd;					// (the JIT: jitUntil as its cycle countdown in x26 started, or resynced)
 	u32 gatherN; u8 gather[64];			// the write-gather pipe (0x0C008000): its bytes, sent 32 at a time
 	Jit *jit;					// the JIT (0: the interpreter runs the CPU)
 	bool jitFlush;					// its code is to be thrown away (a BAT changed, a reset)

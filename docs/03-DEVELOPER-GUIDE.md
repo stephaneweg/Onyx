@@ -454,7 +454,12 @@ Notes / caveats:
 > known to hold a single exactly —, fsel, fcmp, frsp, fctiwz, the moves), lfs / lfd / stfs /
 > stfd, psq_l / psq_st with a float GQR type (one 8-byte access); a NaN result re-runs the
 > instruction in the interpreter (from the cache's state at that branch), FPRF is set lazily
-> (the source FPR noted at translation, `fprfVal` / `fprfPending` written only when needed). A block's exit to a known address is **linked**:
+> (the source FPR noted at translation, `fprfVal` / `fprfPending` written only when needed).
+> The cycles are a countdown in x26 (to `jitEnd`, = `jitUntil` when set; written to `cycles` when
+> leaving and before a helper that reads them, resynced after one that may change `jitUntil`).
+> The rare paths (a slow memory access, a NaN, a conversion's odd case, the interpreter leaving)
+> are emitted after the block's main code, each with the cache's state at its branch.
+> A block's exit to a known address is **linked**:
 > once that block is translated the exit's branch is patched to jump straight to it (back to
 > its stub when that block is dropped), while `cycles < jitUntil` (the next event / the
 > decrementer; `piUpdate` and `decWrite` zero it to come back); an exit to a register (blr,

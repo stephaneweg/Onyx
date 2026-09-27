@@ -53,7 +53,7 @@ static void flushCode (void *from, void *to)
 }
 
 // ---- the AArch64 assembler (what the translation uses) -------------------------------------------------------
-enum { WZR = 31, SP = 31, XM = 19, XMEM = 20, XCTX = 21, WMSZ = 22, WEA = 23, WONE = 24, XK1 = 25, XK2 = 26 };
+enum { WZR = 31, SP = 31, XM = 19, XMEM = 20, XCTX = 21, WMSZ = 22, WEA = 23, WONE = 24, XK1 = 25, XDC = 26 };
 enum { EQ = 0, NE, HS, LO, MI, PL, VS, VC, HI, LS, GE, LT, GT, LE };
 enum : u32
 {
@@ -225,7 +225,7 @@ struct Jit
 	void linkTo (u32 key, void *code);
 	bool stdMap;					// the BATs map 0x80000000 / 0xC0000000 onto MEM1 as the OS does
 	// the Machine's fields
-	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather;
+	int oPc, oCycles, oUntil, oEnd, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather;
 	// the block being translated
 	u32 bKey, synced; int dmode; bool fpOk;
 	bool idle;					// the block is a polling loop (idleLoop)
@@ -382,19 +382,35 @@ struct Jit
 		return h;
 	}
 	int FG (int r) { return FRes (r, true, true); }
-	// the cache's state at a branch to a side path emitted later (the registers stay where they are;
-	// what is dirty, the pending FPRF are as at the branch)
-	struct Snap { bool g[NG], f[32]; int fprfR, fprfLane; };
-	void snap (Snap &sn) { for (int i = 0; i < NG; i++) sn.g[i] = gDirty[i]; for (int i = 0; i < 32; i++) sn.f[i] = fDirty[i]; sn.fprfR = fprfR; sn.fprfLane = fprfLane; }
-	void unsnap (const Snap &sn) { for (int i = 0; i < NG; i++) gDirty[i] = sn.g[i]; for (int i = 0; i < 32; i++) fDirty[i] = sn.f[i]; fprfR = sn.fprfR; fprfLane = sn.fprfLane; }
-	u32 *interpSideAt (u32 op, u32 pc, u32 idx, const Snap &at)
+	// ---- the cold paths: emitted after the block's main code (the slow memory accesses, a NaN,
+	// the conversions' rare cases, the interpreter leaving...), each with the cache's state and
+	// the cycles as at its branch; they come back to the main code (ret) or leave the block
+	struct St { int gH[NG], fH[32]; bool gD[NG], fD[32]; int fprfR, fprfLane; u32 synced; };
+	enum { D_MEM, D_INTERP, D_IEXIT, D_CVTD, D_CVTS, D_FPRF };
+	struct Def { int kind; bool store, back; int size, dm, r1, r2; u32 op, pc, idx; u32 *site, *ret, *ret2; St st; };
+	enum { MAX_DEFS = 400 };
+	Def defs[MAX_DEFS]; int nDefs;
+	void saveSt (St &t)
 	{
-		Snap now; snap (now);
-		unsnap (at);
-		u32 *b = interpSide (op, pc, idx, true);
-		unsnap (now);
-		return b;
+		for (int i = 0; i < NG; i++) { t.gH[i] = gHost[i]; t.gD[i] = gDirty[i]; }
+		for (int i = 0; i < 32; i++) { t.fH[i] = fHost[i]; t.fD[i] = fDirty[i]; }
+		t.fprfR = fprfR; t.fprfLane = fprfLane; t.synced = synced;
 	}
+	void loadSt (const St &t)
+	{
+		for (int i = 0; i < NG; i++) { gHost[i] = t.gH[i]; gDirty[i] = t.gD[i]; }
+		for (int i = 0; i < 32; i++) { fHost[i] = t.fH[i]; fDirty[i] = t.fD[i]; }
+		fprfR = t.fprfR; fprfLane = t.fprfLane; synced = t.synced;
+	}
+	Def &defer (int kind)				// (then its branch at d.site, and d.ret)
+	{
+		Def &d = defs[nDefs++];
+		d.kind = kind; d.site = d.ret = d.ret2 = 0; d.back = true;
+		saveSt (d.st);
+		return d;
+	}
+	bool defFull () { return nDefs > MAX_DEFS - 8; }
+	void emitDefs ();
 	void fSet (int r) { fDirty[r] = true; }
 	void fprfSet (int r, int lane) { fprfR = r; fprfLane = lane; }
 	void fprfFlush ()
@@ -424,21 +440,18 @@ struct Jit
 		else if (!(c & 0xFFF) && c < 0x1000000) a.imm (ADD_WI, rd, rn, c >> 12, 1);
 		else { a.movw (4, c); a.alu (ADD_W, rd, rn, 4); }
 	}
-	void addCycles (int reg, u32 n)			// m->cycles += n (through x<reg>)
+	// The cycles: x26 counts down to jitEnd (= jitUntil when set): the cycles run are jitEnd - x26,
+	// written to m->cycles when leaving (exitStub) and before a helper that reads them.
+	void dc (u32 n) { if (n) a.imm (SUB_WI | X64, XDC, XDC, n); }		// n cycles run
+	void uc (u32 n) { if (n) a.imm (ADD_WI | X64, XDC, XDC, n); }
+	void sync (u32 total) { if (total > synced) { dc (total - synced); synced = total; } }
+	void cyclesOut () { a.ldst (LDR_X, 3, 5, XM, oEnd); a.alu (SUB_W | X64, 5, 5, XDC); a.ldst (STR_X, 3, 5, XM, oCycles); }
+	void resync ()							// (after a helper: jitUntil may have changed)
 	{
-		if (!n) return;
-		a.ldst (LDR_X, 3, reg, XM, oCycles);
-		a.imm (ADD_WI | X64, reg, reg, n);
-		a.ldst (STR_X, 3, reg, XM, oCycles);
+		a.ldst (LDR_X, 3, 5, XM, oEnd); a.ldst (LDR_X, 3, 6, XM, oUntil);
+		a.alu (SUB_W | X64, 5, 5, 6); a.alu (SUB_W | X64, XDC, XDC, 5);
+		a.ldst (STR_X, 3, 6, XM, oEnd);
 	}
-	void subCycles (int reg, u32 n)
-	{
-		if (!n) return;
-		a.ldst (LDR_X, 3, reg, XM, oCycles);
-		a.imm (SUB_WI | X64, reg, reg, n);
-		a.ldst (STR_X, 3, reg, XM, oCycles);
-	}
-	void sync (u32 total) { if (total > synced) { addCycles (5, total - synced); synced = total; } }
 	void helper (int h) { a.ldst (LDR_X, 3, 16, XCTX, h * 8); a.blr (16); }
 	void callKeep (int h) { spill (false); helper (h); reload (false); }	// a helper that leaves the guest alone
 	// leave the block: pc = w0; the registers written back; its cycles; to the next block
@@ -447,9 +460,7 @@ struct Jit
 	{
 		spill (true);
 		stF (0, oPc);
-		a.ldst (LDR_X, 3, 1, XM, oCycles);
-		if (total > synced) a.imm (ADD_WI | X64, 1, 1, total - synced);
-		a.ldst (STR_X, 3, 1, XM, oCycles);
+		if (total > synced) dc (total - synced);
 		if (toC) { a.b (exitStub); return; }
 		a.movw (2, bKey & 3);
 		a.b (dispatch);
@@ -459,12 +470,8 @@ struct Jit
 	{
 		if (toC) { a.movw (0, target); exitReg (total, true); return; }
 		spill (true);
-		a.ldst (LDR_X, 3, 1, XM, oCycles);
-		if (total > synced) a.imm (ADD_WI | X64, 1, 1, total - synced);
-		a.ldst (STR_X, 3, 1, XM, oCycles);
-		a.ldst (LDR_X, 3, 3, XM, oUntil);
-		a.alu (SUBS_W | X64, WZR, 1, 3);
-		u32 *late = a.p; a.bcond (HS, a.p);
+		a.imm (SUBS_WI | X64, XDC, XDC, total > synced ? total - synced : 0);
+		u32 *late = a.p; a.bcond (LE, a.p);
 		u32 key = target | (bKey & 3);
 		u32 *site = a.p; a.b (a.p);
 		u32 *stub = a.p;
@@ -498,28 +505,31 @@ struct Jit
 		sync (idx * 2);
 		spill (true); dropAll ();
 		sgl0 = sgl1 = 0;
+		cyclesOut ();
 		a.movX (0, XM); a.movw (1, op); a.movw (2, pc);
 		helper (H_INTERP);
-		u32 *j = a.p; a.cbz (0, a.p);
-		addCycles (1, 2);
-		a.b (exitStub);
-		Asm::patch (j, a.p);
+		resync ();
+		Def &df = defer (D_IEXIT);
+		df.site = a.p; a.cbz (0, a.p, true);			// (it left: an exception, a branch)
 		if (toC) exitTo (pc + 4, (idx + 1) * 2, true);
 	}
 
-	// a load (w1 = the address -> w0 / x0) or a store (w1 = the address, w2 / x2 = the value); size 1 / 2 / 4 / 8
+	// a load (w1 = the address -> w0 / x0) or a store (w1 = the address, w2 / x2 = the value); size 1 / 2 / 4 / 8.
+	// MEM1 read / written here; the rest (the hardware, the pipe, a DSI) on the cold path.
 	void memop (bool store, int size, u32 pc, u32 idx)
 	{
-		u32 *slow1 = 0, *slow2 = 0, *done = 0;
+		Def &df = defer (D_MEM);
+		df.store = store; df.size = size; df.pc = pc; df.idx = idx; df.dm = dmode;
 		int ra = 1;
-		if (dmode == 0) { a.cmp (1, WMSZ); slow1 = a.p; a.bcond (HS, a.p); }
-		else if (dmode == 1)
+		if (dmode == 0) { a.cmp (1, WMSZ); df.site = a.p; a.bcond (HS, a.p); }
+		else if (dmode == 1)					// (0x80000000 / 0xC0000000 + MEM1)
 		{
-			slow1 = a.p; a.tbz (1, 31, a.p);
-			a.ubfx (3, 1, 0, 30);
-			a.cmp (3, WMSZ); slow2 = a.p; a.bcond (HS, a.p);
+			a.logi (AND_I, 3, 1, 0xBFFFFFFFu);
+			a.logi (EOR_I, 3, 3, 0x80000000u);
+			a.cmp (3, WMSZ); df.site = a.p; a.bcond (HS, a.p);
 			ra = 3;
 		}
+		else { df.site = a.p; a.b (a.p); }
 		if (dmode != 2)
 		{
 			if (!store)
@@ -536,15 +546,15 @@ struct Jit
 				else if (size == 2) { a.un (REV16_W, 4, 2); a.ldstr (STRH_R, 4, XMEM, ra); }
 				else a.ldstr (STRB_R, 2, XMEM, ra);
 			}
-			done = a.p; a.b (a.p);
 		}
-		if (slow1) Asm::patch (slow1, a.p);
-		if (slow2) Asm::patch (slow2, a.p);
-		if (done) a.side++;
-		u32 *pipeDone = 0;
-		if (store && dmode != 2)				// the write-gather pipe (the GX FIFO): appended here
+		df.ret = a.p;
+	}
+	void memCold (const Def &d)
+	{
+		bool store = d.store; int size = d.size;
+		if (store && d.dm != 2)					// the write-gather pipe (the GX FIFO): appended here
 		{
-			a.movw (5, dmode == 1 ? 0xCC008000u : 0x0C008000u);
+			a.movw (5, d.dm == 1 ? 0xCC008000u : 0x0C008000u);
 			a.cmp (1, 5);
 			u32 *notPipe = a.p; a.bcond (NE, a.p);
 			ldF (5, oGatherN);
@@ -555,59 +565,64 @@ struct Jit
 			else a.ldstr (0x38204800u, 2, 6, 5);
 			a.imm (ADD_WI, 5, 5, (u32) size); stF (5, oGatherN);
 			a.cmpi (5, 32);
-			u32 *part = a.p; a.bcond (LO, a.p);
+			a.bcond (LO, d.ret);
 			a.movX (0, XM); callKeep (H_GATHER);		// (a burst: the FIFO's commands run)
-			Asm::patch (part, a.p);
-			pipeDone = a.p; a.b (a.p);
+			resync ();
+			a.b (d.ret);
 			Asm::patch (notPipe, a.p);
 		}
-		u32 pend = idx * 2 - synced;
-		addCycles (5, pend);
+		u32 pend = d.idx * 2 - synced;
+		dc (pend);
 		spill (true);						// (an exception leaves from here)
+		cyclesOut ();
 		a.movX (0, XM);
-		a.movw (store ? 3 : 2, pc);
+		a.movw (store ? 3 : 2, d.pc);
 		static const int hs[2][9] = { { 0, H_RD8, H_RD16, 0, H_RD32, 0, 0, 0, H_RD64 }, { 0, H_WR8, H_WR16, 0, H_WR32, 0, 0, 0, H_WR64 } };
 		helper (hs[store][size]);
+		resync ();
 		u32 *ok = a.p; a.tbz (0, 32, a.p);
-		addCycles (5, 2);
+		dc (2);
 		a.b (exitStub);
 		Asm::patch (ok, a.p);
-		subCycles (5, pend);
+		uc (pend);
 		reload (false);
 		if (!store && size == 8) a.ldst (LDR_X, 3, 0, XM, oScratch);
-		if (pipeDone) Asm::patch (pipeDone, a.p);
-		if (done) { Asm::patch (done, a.p); a.side--; }
+		a.b (d.ret);
 	}
-	// the interpreter for this instruction off the main path (a NaN, the FPU off, a GQR type):
-	// then back to the main path (-> the branch to patch to it) or out (0)
-	u32 *interpSide (u32 op, u32 pc, u32 idx, bool back)
+	// the interpreter for this instruction on a cold path (a NaN, the FPU off, a GQR type): then
+	// back to d.ret (with every register reloaded) or out
+	Def &interpSide (u32 op, u32 pc, u32 idx, bool back)
 	{
-		a.side++;
-		u32 pend = idx * 2 - synced;
-		addCycles (5, pend);
+		Def &d = defer (D_INTERP);
+		d.op = op; d.pc = pc; d.idx = idx; d.back = back;
+		return d;
+	}
+	void interpCold (const Def &d)
+	{
+		u32 pend = d.idx * 2 - synced;
+		dc (pend);
 		spill (true);
-		a.movX (0, XM); a.movw (1, op); a.movw (2, pc);
+		cyclesOut ();
+		a.movX (0, XM); a.movw (1, d.op); a.movw (2, d.pc);
 		helper (H_INTERP);
+		resync ();
 		u32 *j = a.p; a.cbz (0, a.p);
-		addCycles (1, 2);
+		dc (2);
 		a.b (exitStub);
 		Asm::patch (j, a.p);
-		if (!back) { a.movw (0, pc + 4); stF (0, oPc); addCycles (1, 2); a.b (exitStub); a.side--; return 0; }
-		subCycles (5, pend);
+		if (!d.back) { a.movw (0, d.pc + 4); stF (0, oPc); dc (2); a.b (exitStub); return; }
+		uc (pend);
 		reload (true);						// (it may have written any of them)
-		u32 *b = a.p; a.b (a.p);
-		a.side--;
-		return b;
+		a.b (d.ret);
 	}
 	// the FPU's use is checked once a block (MSR.FP: else the interpreter takes the exception)
 	void fpCheck (u32 op, u32 pc, u32 idx)
 	{
 		if (fpOk) return;
 		fpOk = true;
-		ldF (5, oMsr);
-		u32 *ok = a.p; a.tbz (5, 13, a.p, true);
-		interpSide (op, pc, idx, false);
-		Asm::patch (ok, a.p);
+		ldF (5, oMsr); a.ubfx (5, 5, 13, 1);
+		Def &d = interpSide (op, pc, idx, false);
+		d.site = a.p; a.cbz (5, a.p);
 	}
 	void roundS (int dd) { a.fp1 (FCVT_SD, dd, dd); a.fp1 (FCVT_DS, dd, dd); }
 	void roundS2 (int vd) { a.fp1 (FCVTN_2S, vd, vd); a.fp1 (FCVTL_2D, vd, vd); }	// (both halves)
@@ -624,16 +639,10 @@ struct Jit
 	void cvtD (int dd, int ws)
 	{
 		a.ubfx (5, ws, 22, 9); a.cmpi (5, 0x1FE);
-		u32 *slow = a.p; a.bcond (EQ, a.p);
+		Def &d = defer (D_CVTD); d.r1 = dd; d.r2 = ws;
+		d.site = a.p; a.bcond (EQ, a.p);
 		a.fp1 (FMOV_SW, dd, ws); a.fp1 (FCVT_DS, dd, dd);
-		u32 *done = a.p; a.b (a.p);
-		Asm::patch (slow, a.p);
-		a.side++;
-		if (ws != 0) a.mov (0, ws);
-		callKeep (H_CVTD);
-		a.fp1 (FMOV_DX, dd, 0);
-		a.side--;
-		Asm::patch (done, a.p);
+		d.ret = a.p;
 	}
 	// a double's bits (x xs) -> the single the 750 stores (w wd): the bits taken as they are; the
 	// denormal range: cvtToSingle
@@ -641,21 +650,14 @@ struct Jit
 	{
 		a.bfm (UBFM_X, 5, xs, 52, 62);
 		a.cmpi (5, 896);
-		u32 *fast1 = a.p; a.bcond (HI, a.p);
-		a.bfm (UBFM_X, 6, xs, 63, 62);				// (x << 1: zero)
-		u32 *fast2 = a.p; a.cbz (6, a.p, false, true);
-		a.side++;
-		a.movX (0, xs);
-		callKeep (H_CVTS);
-		a.mov (wd, 0);
-		u32 *done = a.p; a.b (a.p);
-		a.side--;
-		Asm::patch (fast1, a.p); Asm::patch (fast2, a.p);
+		Def &d = defer (D_CVTS); d.r1 = wd; d.r2 = xs;
+		d.site = a.p; a.bcond (LS, a.p);
+		d.ret2 = a.p;
 		a.bfm (UBFM_X, 6, xs, 32, 63);
 		a.logi (AND_I, 6, 6, 0xC0000000u);
 		a.bfm (UBFM_X, 7, xs, 29, 58);
 		a.alu (ORR_W, wd, 6, 7);
-		Asm::patch (done, a.p);
+		d.ret = a.p;
 	}
 	bool fpInsn (u32 op, u32 pc, u32 idx);
 	bool fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd);
@@ -721,12 +723,9 @@ struct Jit
 	{
 		spill (true);
 		a.movw (0, target); stF (0, oPc);
-		a.ldst (LDR_X, 3, 1, XM, oCycles);
-		if (total > synced) a.imm (ADD_WI | X64, 1, 1, total - synced);
-		a.ldst (LDR_X, 3, 3, XM, oUntil);
-		a.alu (SUBS_W | X64, WZR, 1, 3);
-		a.csel (CSEL_W | X64, 1, 3, 1, LO);
-		a.ldst (STR_X, 3, 1, XM, oCycles);
+		if (total > synced) dc (total - synced);
+		a.imm (SUBS_WI | X64, WZR, XDC, 0);
+		a.csel (CSEL_W | X64, XDC, WZR, XDC, GT);			// (to the event: nothing left)
 		a.b (exitStub);
 	}
 };
@@ -829,14 +828,7 @@ bool Jit::insn (u32 op, u32 pc, u32 idx)
 		if (op & 1) a.movw (W (G_LR), pc + 4);
 		if (target == pc && idx == 0 && !(op & 1))		// "b .": idle until the next event
 		{
-			a.movw (0, target); stF (0, oPc);
-			a.ldst (LDR_X, 3, 1, XM, oCycles);
-			a.imm (ADD_WI | X64, 1, 1, 2);
-			a.ldst (LDR_X, 3, 3, XM, oUntil);
-			a.alu (SUBS_W | X64, WZR, 1, 3);
-			a.csel (CSEL_W | X64, 1, 3, 1, LO);
-			a.ldst (STR_X, 3, 1, XM, oCycles);
-			a.b (exitStub);
+			idleExit (target, 2);
 			return true;
 		}
 		exitTo (target, (idx + 1) * 2, false);
@@ -1120,8 +1112,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31), rb = (int) ((op >> 11) & 31), rc = (int) ((op >> 6) & 31);
 	u32 x5 = (op >> 1) & 0x1F, x10 = (op >> 1) & 0x3FF;
 	if (op & 1) { interp (op, pc, idx, false); return false; }	// (Rc: CR1 from the FPSCR)
-	u32 *nan[2] = { 0, 0 };
-	Snap atNan;							// (the state at the NaN branch)
+	int nanDef = -1;						// (its cold path: the interpreter)
 	if (prim == 59 || prim == 63)
 	{
 		bool single = prim == 59;
@@ -1143,7 +1134,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 			case 30: a.fp4 (FNMSUB_D, 3, ha, mc, hb); a.fp1 (FNEG_D, 3, 3); break;
 			default: a.fp4 (FMADD_D, 3, ha, mc, hb); a.fp1 (FNEG_D, 3, 3); break;
 			}
-			a.fp3 (FCMP_D, 0, 3, 3); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			a.fp3 (FCMP_D, 0, 3, 3); { nanDef = nDefs; Def &nd = interpSide (op, pc, idx, true); nd.site = a.p; a.bcond (VS, a.p); }
 			if (single) { roundS (3); a.put (0x4E080400u | 3u << 5 | (u32) hd); }	// (DUP Vd.2D, V3.D[0])
 			else a.ins (hd, 0, 3, 0);
 			fSet (d); fprfSet (d, 0);
@@ -1164,9 +1155,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 			fpCheck (op, pc, idx);
 			fprfFlush (); fprfR = -1;				// (its FPCC goes over the FPRF to set)
 			a.ldst (LDRB, 0, 5, XM, oFprfPend);
-			u32 *j = a.p; a.cbz (5, a.p);
-			a.side++; a.movX (0, XM); callKeep (H_FPRF); a.side--;
-			Asm::patch (j, a.p);
+			{ Def &fd = defer (D_FPRF); fd.site = a.p; a.cbz (5, a.p, true); fd.ret = a.p; }
 			int ha = FG (ra), hb = FG (rb);
 			a.fp3 (FCMP_D, 0, ha, hb);
 			a.movz (3, 4, 0); a.movz (4, 8, 0); a.csel (CSEL_W, 3, 4, 3, MI);
@@ -1180,7 +1169,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 		{
 			fpCheck (op, pc, idx);
 			int hb = FG (rb), hd = FRes (d, true, x10 == 12);
-			a.fp3 (FCMP_D, 0, hb, hb); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			a.fp3 (FCMP_D, 0, hb, hb); { nanDef = nDefs; Def &nd = interpSide (op, pc, idx, true); nd.site = a.p; a.bcond (VS, a.p); }
 			if (x10 == 12)
 			{
 				a.fp1 (FCVT_SD, 3, hb); a.fp1 (FCVT_DS, 3, 3);
@@ -1248,7 +1237,7 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 			int ha = FG (ra), hb = FG (rb), hc = FG (rc), hd = FRes (d, false, true);
 			a.ins (4, 0, hb, 1);
 			a.fp3 (FADD_D, 5, ha, 4);
-			a.fp3 (FCMP_D, 0, 5, 5); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			a.fp3 (FCMP_D, 0, 5, 5); { nanDef = nDefs; Def &nd = interpSide (op, pc, idx, true); nd.site = a.p; a.bcond (VS, a.p); }
 			roundS (5);
 			a.vmov (hd, hc);
 			a.ins (hd, x5 == 10 ? 0 : 1, 5, 0);
@@ -1307,21 +1296,14 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 			default: a.vmov (6, hb); a.fp3 (FMLA_2D, 6, ha, mc); a.fp1 (FNEG_2D, 6, 6); break;
 			}
 			a.fp1 (FMAXP_D, 5, 6);					// (a NaN in either half)
-			a.fp3 (FCMP_D, 0, 5, 5); snap (atNan); nan[0] = a.p; a.bcond (VS, a.p);
+			a.fp3 (FCMP_D, 0, 5, 5); { nanDef = nDefs; Def &nd = interpSide (op, pc, idx, true); nd.site = a.p; a.bcond (VS, a.p); }
 			roundS2 (6);
 			a.vmov (hd, 6); fSet (d); fprfSet (d, 0);
 			setS (sgl0, d, true); setS (sgl1, d, true);
 		}
 		}
 	}
-	if (nan[0])							// a NaN: the interpreter does it again
-	{
-		u32 *skip = a.p; a.b (a.p);
-		Asm::patch (nan[0], a.p);
-		if (nan[1]) Asm::patch (nan[1], a.p);
-		u32 *back = interpSideAt (op, pc, idx, atNan);
-		Asm::patch (skip, a.p); Asm::patch (back, a.p);
-	}
+	if (nanDef >= 0) defs[nanDef].ret = a.p;			// (a NaN: the interpreter did it again)
 	return false;
 }
 
@@ -1369,8 +1351,7 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 	int hd = load ? FRes (d, false, false) : FG (d);
 	ldF (5, oGqr + 4 * q);
 	a.ubfx (6, 5, load ? 16 : 0, 3);
-	Snap atOther; snap (atOther);
-	u32 *other = a.p; a.cbz (6, a.p, true);
+	int oth = nDefs; { Def &od = interpSide (op, pc, idx, true); od.site = a.p; a.cbz (6, a.p, true); }
 	if (load)
 	{
 		if (hbase < 0) a.movw (1, off); else addConst (1, hbase, off);
@@ -1387,10 +1368,11 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 			memop (false, 8, pc, idx);
 			a.movX (XK1, 0);
 			a.bfm (UBFM_X, 0, XK1, 32, 63);
-			cvtD (0, 0); a.fp1 (FMOV_XD, XK2, 0);		// (ps0, kept in x26 across the next)
+			cvtD (0, 0); a.ldst (STR_D, 3, 0, XM, oScratch);	// (ps0, kept across the next)
 			a.mov (0, XK1);
 			cvtD (0, 0);
-			a.insX (hd, 0, XK2); a.ins (hd, 1, 0, 0);
+			a.ldst (LDR_D, 3, 1, XM, oScratch);
+			a.ins (hd, 0, 1, 0); a.ins (hd, 1, 0, 0);
 		}
 		fSet (d);
 	}
@@ -1401,8 +1383,8 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 		else
 		{
 			cvtS (XK1, 8);
-			a.umovX (8, hd, 1); cvtS (XK2, 8);
-			a.alu (ORR_W | X64, 2, XK2, XK1, 0, 32);
+			a.umovX (8, hd, 1); cvtS (2, 8);
+			a.alu (ORR_W | X64, 2, 2, XK1, 0, 32);
 		}
 		if (hbase < 0) a.movw (1, off); else addConst (1, hbase, off);
 		if (upd) a.mov (WEA, 1);
@@ -1410,10 +1392,7 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 	}
 	if (upd) a.mov (hbase, WEA);
 	if (load) { setS (sgl0, d, true); setS (sgl1, d, true); }	// (the integer types too: small integers x 2^n)
-	u32 *skip = a.p; a.b (a.p);
-	Asm::patch (other, a.p);
-	u32 *back = interpSideAt (op, pc, idx, atOther);
-	Asm::patch (skip, a.p); Asm::patch (back, a.p);
+	defs[oth].ret = a.p;
 	return false;
 }
 
@@ -1423,7 +1402,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 {
 	m = mm;
 	code = (u32 *) mem; codeEnd = code + size / 4;
-	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oCr = OFF (cr); oXer = OFF (xer);
+	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oEnd = OFF (jitEnd); oCr = OFF (cr); oXer = OFF (xer);
 	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1); oScratch = OFF (jitScratch);
 	oPs = OFF (ps); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr); oGatherN = OFF (gatherN); oGather = OFF (gather);
 	ctx = new u8[FAST_OFF + (sizeof (Fast) << FAST_BITS)];
@@ -1450,8 +1429,11 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	a.movX (XCTX, 2);
 	a.movw (WMSZ, MEM1_SIZE);
 	a.movz (WONE, 1, 0);
+	a.ldst (LDR_X, 3, 3, XM, oUntil); a.ldst (LDR_X, 3, 4, XM, oCycles);
+	a.alu (SUB_W | X64, XDC, 3, 4); a.ldst (STR_X, 3, 3, XM, oEnd);	// (the countdown)
 	a.br (1);
 	exitStub = a.p;
+	a.ldst (LDR_X, 3, 3, XM, oEnd); a.alu (SUB_W | X64, 3, 3, XDC); a.ldst (STR_X, 3, 3, XM, oCycles);
 	a.put (0xA94153F3);						// ldp x19, x20, [sp, #16]
 	a.put (0xA9425BF5);						// ldp x21, x22, [sp, #32]
 	a.put (0xA94363F7);						// ldp x23, x24, [sp, #48]
@@ -1459,11 +1441,10 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	a.put (0xA94573FB);						// ldp x27, x28, [sp, #80]
 	a.put (0xA8C67BFD);						// ldp x29, x30, [sp], #96
 	a.ret ();
-	// the dispatcher: w0 = pc, x1 = cycles, w2 = the mode (IR, DR) -> the next block, or back
+	// the dispatcher: w0 = pc, w2 = the mode (IR, DR) -> the next block, or back
 	dispatch = a.p;
-	a.ldst (LDR_X, 3, 3, XM, oUntil);
-	a.alu (SUBS_W | X64, WZR, 1, 3);
-	a.bcond (HS, exitStub);
+	a.imm (SUBS_WI | X64, WZR, XDC, 0);
+	a.bcond (LE, exitStub);
 	a.alu (ORR_W, 4, 0, 2);
 	a.ubfx (5, 0, 2, FAST_BITS);
 	a.alu (ADD_W | X64, 5, XCTX, 5, 0, 4);
@@ -1548,6 +1529,40 @@ void Jit::invalidate (u32 pa, u32 len)
 	}
 }
 
+void Jit::emitDefs ()
+{
+	a.side++;
+	for (int i = 0; i < nDefs; i++)
+	{
+		const Def &d = defs[i];
+		loadSt (d.st);
+		Asm::patch (d.site, a.p);
+		switch (d.kind)
+		{
+		case D_MEM: memCold (d); break;
+		case D_INTERP: interpCold (d); break;
+		case D_IEXIT: dc (2); a.b (exitStub); break;	// (the interpreter left: pc is set)
+		case D_CVTD:
+			if (d.r2 != 0) a.mov (0, d.r2);
+			callKeep (H_CVTD);
+			a.fp1 (FMOV_DX, d.r1, 0);
+			a.b (d.ret);
+			break;
+		case D_CVTS:
+			a.bfm (UBFM_X, 6, d.r2, 63, 62);			// (x << 1: zero -> the plain way)
+			a.cbz (6, d.ret2, false, true);
+			a.movX (0, d.r2);
+			callKeep (H_CVTS);
+			a.mov (d.r1, 0);
+			a.b (d.ret);
+			break;
+		default: a.movX (0, XM); callKeep (H_FPRF); a.b (d.ret); break;	// (D_FPRF)
+		}
+	}
+	a.side--;
+	nDefs = 0;
+}
+
 void *Jit::compile (u32 pc, u32 key)
 {
 	u32 pa = pc;
@@ -1559,7 +1574,7 @@ void *Jit::compile (u32 pc, u32 key)
 	}
 	if (pa >= MEM1_SIZE || (pc & 3)) return 0;
 	if (codeEnd - a.p < 16384 || nBlocks >= MAX_BLOCKS || nLinks + 2 * MAX_INSNS >= 2 * MAX_BLOCKS) flushAll ();
-	bKey = key; synced = 0; fpOk = false; sgl0 = sgl1 = 0;
+	bKey = key; synced = 0; fpOk = false; sgl0 = sgl1 = 0; nDefs = 0;
 	idle = idleLoop (pa, pc);
 	cacheReset ();
 	dmode = !(key & 2) ? 0 : stdMap ? 1 : 2;
@@ -1582,8 +1597,9 @@ void *Jit::compile (u32 pc, u32 key)
 		bool end = insn (op, pc + n * 4, n);
 		n++;
 		if (end) break;
-		if (n >= MAX_INSNS || !((pa + n * 4) & 0xFFF)) { exitTo (pc + n * 4, n * 2, false); break; }
+		if (n >= MAX_INSNS || !((pa + n * 4) & 0xFFF) || defFull ()) { exitTo (pc + n * 4, n * 2, false); break; }
 	}
+	emitDefs ();
 	flushCode (start, a.p);
 	b.words = a.mainWords; b.insns = n; b.size = (u32) (a.p - start);
 	b.key = key; b.pa = pa; b.code = start;
