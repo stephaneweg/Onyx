@@ -661,7 +661,8 @@ struct Jit
 	}
 	bool fpInsn (u32 op, u32 pc, u32 idx);
 	bool fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd);
-	bool psq (u32 op, u32 pc, u32 idx, bool load, bool upd);
+	bool psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x = false);
+	void eaPsq (int hbase, int hidx, u32 off);
 	// the effective address into w1: (rA|0) + d, or (rA|0) + rB
 	void eaD (u32 op, bool upd)
 	{
@@ -1203,6 +1204,11 @@ bool Jit::fpInsn (u32 op, u32 pc, u32 idx)
 		}
 		else { interp (op, pc, idx, false); return false; }
 	}
+	else if (((op >> 1) & 0x3F) == 6 || ((op >> 1) & 0x3F) == 7 || ((op >> 1) & 0x3F) == 38 || ((op >> 1) & 0x3F) == 39)
+	{								// psq_lx, psq_stx, psq_lux, psq_stux
+		u32 x6 = (op >> 1) & 0x3F;
+		return psq (op, pc, idx, x6 == 6 || x6 == 38, x6 >= 38, true);
+	}
 	else								// the paired singles
 	{
 		bool arith = x5 == 10 || x5 == 11 || (x5 >= 12 && x5 <= 15) || x5 == 18 || x5 == 20 || x5 == 21 || x5 == 23 || x5 == 25 || x5 >= 28;
@@ -1339,24 +1345,70 @@ bool Jit::fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd)
 	return false;
 }
 
-// psq_l / psq_st (+ u): a float GQR type translated (two floats in one 8-byte access, or one with W);
-// the other types (the integers scaled) through the interpreter
-bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
+// psq_l / psq_st (+ u): translated for the GQR's value when the block is translated (a float type:
+// two floats in one 8-byte access, or one with W; an integer type u8 / u16 / s8 / s16 with its
+// scale: both elements in one access, converted and scaled); the GQR checked at run time, another
+// value through the interpreter
+void Jit::eaPsq (int hbase, int hidx, u32 off)
 {
-	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31);
-	int q = (int) ((op >> 12) & 7); bool w = (op >> 15) & 1;
-	u32 off = (u32) ((s32) ((op & 0xFFF) << 20) >> 20);
+	if (hidx >= 0) { if (hbase < 0) a.mov (1, hidx); else a.alu (ADD_W, 1, hbase, hidx); }
+	else if (hbase < 0) a.movw (1, off);
+	else addConst (1, hbase, off);
+}
+static double qmul (int s6) { s6 &= 63; if (s6 & 0x20) s6 -= 64; double m = 1.0; while (s6 > 0) { m *= 2.0; s6--; } while (s6 < 0) { m *= 0.5; s6++; } return m; }
+static u64 dbits (double v) { u64 u; __builtin_memcpy (&u, &v, 8); return u; }
+
+bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
+{
+	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31), rb = (int) ((op >> 11) & 31);
+	int q = x ? (int) ((op >> 7) & 7) : (int) ((op >> 12) & 7); bool w = x ? (op >> 10) & 1 : (op >> 15) & 1;
+	u32 off = x ? 0 : (u32) ((s32) ((op & 0xFFF) << 20) >> 20);
+	u32 g = m->gqr[q];
+	int type = (int) (load ? g >> 16 : g) & 7, scale = (int) (load ? g >> 24 : g >> 8) & 63;
+	bool isInt = type >= 4;
 	fpCheck (op, pc, idx);
 	int hbase = (ra == 0 && !upd) ? -1 : (upd ? RW (ra) : G (ra));	// (all taken before the branch)
+	int hidx = x ? G (rb) : -1;
 	int hd = load ? FRes (d, false, false) : FG (d);
 	ldF (5, oGqr + 4 * q);
-	a.ubfx (6, 5, load ? 16 : 0, 3);
-	int oth = nDefs; { Def &od = interpSide (op, pc, idx, true); od.site = a.p; a.cbz (6, a.p, true); }
+	int oth = nDefs;
+	if (!isInt)							// (types 0..3: floats)
+	{
+		a.ubfx (6, 5, load ? 18 : 2, 1);
+		Def &od = interpSide (op, pc, idx, true); od.site = a.p; a.cbz (6, a.p, true);
+	}
+	else								// (this type and scale)
+	{
+		a.ubfx (6, 5, load ? 16 : 0, 14);
+		a.logi (AND_I, 6, 6, 0x3F07u);
+		a.movw (7, (u32) (scale << 8 | type));
+		a.cmp (6, 7);
+		Def &od = interpSide (op, pc, idx, true); od.site = a.p; a.bcond (NE, a.p);
+	}
+	int es = (type == 4 || type == 6) ? 1 : 2, bits = es * 8;	// (an integer's size)
+	bool sgn = type >= 6;
 	if (load)
 	{
-		if (hbase < 0) a.movw (1, off); else addConst (1, hbase, off);
+		eaPsq (hbase, hidx, off);
 		if (upd) a.mov (WEA, 1);
-		if (w)
+		if (isInt)
+		{
+			memop (false, w ? es : 2 * es, pc, idx);
+			int sh = w ? 0 : bits;
+			a.bfm (sgn ? SBFM_W : UBFM_W, 5, 0, sh, sh + bits - 1);
+			a.fp1 (sgn ? 0x1E620000u : 0x1E630000u, 0, 5);		// SCVTF / UCVTF d0, w5
+			if (w) a.put (FMOV_D1 | 1);
+			else { a.bfm (sgn ? SBFM_W : UBFM_W, 6, 0, 0, bits - 1); a.fp1 (sgn ? 0x1E620000u : 0x1E630000u, 1, 6); }
+			double mul = qmul (-scale);
+			if (mul != 1.0)
+			{
+				a.movx (5, dbits (mul)); a.fp1 (FMOV_DX, 2, 5);
+				a.fp3 (FMUL_D, 0, 0, 2);
+				if (!w) a.fp3 (FMUL_D, 1, 1, 2);
+			}
+			a.fp3 (ZIP1_2D, hd, 0, 1);
+		}
+		else if (w)
 		{
 			memop (false, 4, pc, idx);
 			cvtD (0, 0);
@@ -1376,6 +1428,41 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 		}
 		fSet (d);
 	}
+	else if (isInt)
+	{
+		// (double) (float) v * 2^scale, a NaN to the interpreter, truncated, clamped to the type
+		a.fp1 (FCVT_SD, 0, hd); a.fp1 (FCVT_DS, 0, 0);
+		if (!w) { a.ins (1, 0, hd, 1); a.fp1 (FCVT_SD, 1, 1); a.fp1 (FCVT_DS, 1, 1); }
+		a.fp3 (FCMP_D, 0, 0, 0);
+		{ Def &nd = interpSide (op, pc, idx, true); nd.site = a.p; a.bcond (VS, a.p); defs[nDefs - 1].ret = 0; }
+		int nan1 = nDefs - 1, nan2 = -1;
+		if (!w) { a.fp3 (FCMP_D, 0, 1, 1); nan2 = nDefs; Def &nd = interpSide (op, pc, idx, true); nd.site = a.p; a.bcond (VS, a.p); }
+		double mul = qmul (scale);
+		if (mul != 1.0)
+		{
+			a.movx (5, dbits (mul)); a.fp1 (FMOV_DX, 2, 5);
+			a.fp3 (FMUL_D, 0, 0, 2);
+			if (!w) a.fp3 (FMUL_D, 1, 1, 2);
+		}
+		int lo = type == 6 ? -128 : type == 7 ? -32768 : 0, hi = type == 4 ? 255 : type == 5 ? 65535 : type == 6 ? 127 : 32767;
+		a.movw (7, (u32) lo); a.movw (8, (u32) hi);
+		for (int k = 0; k < (w ? 1 : 2); k++)
+		{
+			int r = k ? 6 : 5;
+			a.fp1 (FCVTZS_WD, r, k);
+			a.cmp (r, 7); a.csel (CSEL_W, r, 7, r, LT);
+			a.cmp (r, 8); a.csel (CSEL_W, r, 8, r, GT);
+		}
+		if (w) a.ubfx (2, 5, 0, bits);
+		else { a.ubfx (2, 6, 0, bits); a.bfi (2, 5, bits, bits); }
+		eaPsq (hbase, hidx, off);
+		if (upd) a.mov (WEA, 1);
+		memop (true, w ? es : 2 * es, pc, idx);
+		if (upd) a.mov (hbase, WEA);
+		defs[oth].ret = defs[nan1].ret = a.p;
+		if (nan2 >= 0) defs[nan2].ret = a.p;
+		return false;
+	}
 	else
 	{
 		a.fp1 (FMOV_XD, 8, hd);
@@ -1386,7 +1473,7 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd)
 			a.umovX (8, hd, 1); cvtS (2, 8);
 			a.alu (ORR_W | X64, 2, 2, XK1, 0, 32);
 		}
-		if (hbase < 0) a.movw (1, off); else addConst (1, hbase, off);
+		eaPsq (hbase, hidx, off);
 		if (upd) a.mov (WEA, 1);
 		memop (true, w ? 4 : 8, pc, idx);
 	}

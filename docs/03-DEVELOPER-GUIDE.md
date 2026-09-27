@@ -452,7 +452,10 @@ Notes / caveats:
 > FCVTN + FCVTL for the single rounding, ZIP / EXT for the merges, FCMGE + BSL for ps_sel); the
 > plain FPU works on lane 0 (fadd… fmadd, the 25-bit multiplicand — skipped when the operand is
 > known to hold a single exactly —, fsel, fcmp, frsp, fctiwz, the moves), lfs / lfd / stfs /
-> stfd, psq_l / psq_st with a float GQR type (one 8-byte access); a NaN result re-runs the
+> stfd, psq_l / psq_st and their indexed forms, **specialised for the GQR's value found at
+> translation** (a float type: one 8-byte access for the pair; u8 / u16 / s8 / s16 with a scale:
+> both elements in one access, converted and scaled, or rounded to single, scaled, truncated and
+> clamped), the GQR checked at run time (another value: the interpreter); a NaN result re-runs the
 > instruction in the interpreter (from the cache's state at that branch), FPRF is set lazily
 > (the source FPR noted at translation, `fprfVal` / `fprfPending` written only when needed).
 > The cycles are a countdown in x26 (to `jitEnd`, = `jitUntil` when set; written to `cycles` when

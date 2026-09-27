@@ -209,7 +209,8 @@ static u32 fuzzInsn ()
 	case 6: case 7: case 8: return 4u << 26 | d << 21 | a << 16 | b << 11 | c << 6 | psA[rn (15)] << 1;
 	case 9: return 4u << 26 | d << 21 | a << 16 | b << 11 | psX[rn (8)] << 1;
 	case 10: return (48u + rn (4) * 2) << 26 | d << 21 | 1u << 16 | (rn (0x80) * 8);		// lfs lfd stfs stfd
-	case 11: return (rn (2) ? 56u : 60u) << 26 | d << 21 | 1u << 16 | (u32) rn (2) << 15 | rn (4) << 12 | (rn (0x40) * 8);	// psq_l / psq_st
+	case 11: if (rn (3) == 0) return 4u << 26 | d << 21 | 1u << 16 | 4u << 11 | (u32) rn (2) << 10 | rn (4) << 7 | (rn (2) ? 6u : 7u) << 1;	// psq_lx / psq_stx (r1 + r4)
+		return (rn (2) ? 56u : 60u) << 26 | d << 21 | 1u << 16 | (u32) rn (2) << 15 | rn (4) << 12 | (rn (0x40) * 8);	// psq_l / psq_st
 	case 12: return 63u << 26 | d << 21 | 583u << 1;						// mffs (FPRF)
 	case 13: return 31u << 26 | d << 21 | 1u << 16 | 4u << 11 | 983u << 1;			// stfiwx (r4 = 0x100 below)
 	case 14: { static const u32 xo[] = { 266, 10, 138, 234, 202, 40, 8, 136, 232, 200, 104, 235, 75, 11, 459 };
@@ -256,7 +257,7 @@ static int fuzzTest (u64 seed0, int count, int len)
 	static Machine A, B;
 	if (!B.jitEnable ()) { printf ("FAIL: no JIT on this host\n"); return 1; }
 	static u32 prog[1024];
-	int bad = 0;
+	int bad = 0, skipped = 0;
 	int t0 = getenv ("GC_FUZZSTART") ? atoi (getenv ("GC_FUZZSTART")) : 0;
 	for (int t = t0; t < t0 + count && bad < 3; t++)
 	{
@@ -269,6 +270,7 @@ static int fuzzTest (u64 seed0, int count, int len)
 		A.gpr[4] = B.gpr[4] = 0x100;
 		while (A.pc != 0x80001000 && !A.halted && A.cycles < 1000000) A.step ();
 		while (B.pc != 0x80001000 && !B.halted && B.cycles < 1000000) B.run (B.cycles + 1000);
+		if (A.pc != 0x80001000 && !A.halted) { skipped++; continue; }	// (it loops: stopped at another point)
 		if (getenv ("GC_FUZZF"))					// (the FPRs listed: both machines)
 		{
 			const char *q = getenv ("GC_FUZZF");
@@ -299,7 +301,7 @@ static int fuzzTest (u64 seed0, int count, int len)
 			bad++;
 		}
 	}
-	printf ("%s: the JIT against the interpreter, %d random sequences of %d instructions%s\n", bad ? "FAIL" : "ok  ", count, len, bad ? "" : ": identical");
+	printf ("%s: the JIT against the interpreter, %d random sequences of %d instructions%s (%d looping, not compared)\n", bad ? "FAIL" : "ok  ", count, len, bad ? "" : ": identical", skipped);
 	return bad != 0;
 }
 
