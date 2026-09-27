@@ -255,6 +255,7 @@ public:
 
 	// what a front end shows to tell a slow game from a stuck one (F12): the DVD reads so far
 	u32 diReads, diLastOff;
+	u32 dspBootKey, dspMailsIn, dspLastMail;		// (the DSP's boot: the pending key; mails the CPU sent)
 	void status (char *out, int cap);			// "pc 80012345, DVD 123 reads, picture: ..., DSP ..."
 
 private:

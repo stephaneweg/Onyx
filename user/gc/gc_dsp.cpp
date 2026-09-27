@@ -41,7 +41,7 @@ void Machine::dspHleStep ()
 void Machine::dspReset ()
 {
 	dspQHead = dspQTail = 0; dspMailOutValid = false;
-	dspBootN = 0; dspUcode = 0; dspCmdlistLeft = 0; dspBootStep = 1;
+	dspBootN = 0; dspBootKey = 0; dspUcode = 0; dspCmdlistLeft = 0; dspBootStep = 1;
 	dspReg[0x0A / 2] &= ~0x0801u;
 	dspPush (0x8071FEEDu, false);					// the ROM is ready
 }
@@ -49,19 +49,23 @@ void Machine::dspReset ()
 void Machine::dspMailReceived (u32 mail)
 {
 	dspMailIn = mail & 0x7FFFFFFF;					// (read at once: the CPU sees it taken)
+	dspMailsIn++; dspLastMail = mail;
 	if (dspBootStep == 1)						// the ROM: the microcode's description, in pairs
 	{
-		if (dspBootN < 10) dspBootMails[dspBootN++] = mail & 0x7FFFFFFF;
-		if (dspBootN >= 2 && (dspBootMails[dspBootN - 2] | 0x80000000u) == 0x80F3D001u)	// the start: it runs
+		// key (0x80F3xxxx), then its value (as Dolphin's ROM HLE): A001 its address in main memory,
+		// A002 its length, C002 its IRAM address, B002 the DRAM length, D001 its start: it runs.
+		// By key, not by place: some games send more (or boot the DSP twice without a reset).
+		u32 m = mail | 0x80000000u;
+		if (dspBootKey == 0 && (m & 0xFFFF0000u) == 0x80F30000u) { dspBootKey = m; return; }
+		u32 key = dspBootKey; dspBootKey = 0;
+		u32 v = mail & 0x7FFFFFFF;
+		if (key == 0x80F3A001u) dspBootMails[0] = v;
+		else if (key == 0x80F3A002u) dspBootMails[1] = v;
+		else if (key == 0x80F3D001u)
 		{
 			// which microcode: a checksum of its IRAM image (the AX one, the Zelda ones, the IPL's...)
-			u32 iram = 0, len = 0;
-			for (int i = 0; i + 1 < dspBootN; i += 2)
-			{
-				u32 k = dspBootMails[i] | 0x80000000u;
-				if (k == 0x80F3A001u) iram = dspBootMails[i + 1];
-				if (k == 0x80F3C002u) len = dspBootMails[i + 1];
-			}
+			u32 iram = dspBootMails[0], len = dspBootMails[1];
+			if (len > 0x2000) len = 0x2000;
 			u32 h = 0;
 			for (u32 i = 0; i < len && (iram & 0x01FFFFFF) + i < MEM1_SIZE; i++) h = h * 31 + mem1[(iram & 0x01FFFFFF) + i];
 			dspUcode = h; dspBootStep = 2;

@@ -29,7 +29,7 @@ void Machine::hwReset ()
 	piIntsr = 0; piIntmr = 0; piFifoBase = piFifoEnd = piFifoWptr = 0; gatherN = 0;
 	zero (vi, sizeof vi); zero (siReg, sizeof siReg); zero (siBuf, sizeof siBuf); siPoll = 0;
 	zero (exiReg, sizeof exiReg); zero (exiCmd, sizeof exiCmd); zero (exiPhase, sizeof exiPhase);
-	zero (diReg, sizeof diReg); diReads = diLastOff = 0; zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
+	zero (diReg, sizeof diReg); diReads = diLastOff = 0; dspBootKey = dspMailsIn = dspLastMail = 0; zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
 	zero (irqCount, sizeof irqCount);
 	diDoneAt = ~0ull; dicover = 0; aiSampleAt = 0;
 	dspMailIn = dspMailOut = 0; dspMailOutValid = false; dspBootStep = 0;
@@ -140,7 +140,7 @@ void Machine::status (char *out, int cap)
 	put (", DVD "); dec (diReads); put (" reads (at "); hex (diLastOff); put (")");
 	put (", picture: "); put ((tfbl & 0x00FFFFFF) == 0 ? "not set up yet" : (vi[0x02 / 2] & 1) ? "on" : "off");
 	put (", 3D frames "); dec (gfxSerial);
-	put (", DSP step "); dec ((u32) dspBootStep);
+	put (", DSP step "); dec ((u32) dspBootStep); put (" (mails "); dec (dspMailsIn); put (", last "); hex (dspLastMail); put (")");
 	if (halted) { put (", stopped: "); put (haltMsg); }
 	out[n] = 0;
 }
