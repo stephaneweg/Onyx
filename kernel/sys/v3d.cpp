@@ -19,7 +19,9 @@
 //
 #include <kern/kapi_abi.h>
 #include <kern/v3d_cl.h>
+#include <kern/v3d_tiling.h>
 #include <kern/v3d.h>
+#include <kern/addrspace.h>
 #include <circle/memio.h>
 #include <circle/bcm2835.h>
 #include <circle/string.h>
@@ -99,6 +101,10 @@ static const u64 COORD_SHADER[] = {
 	0x3C003183F581A000, 0x3DE02180F881F005, 0x3C003186BB816000, 0x3C203186BB800000,
 	0x3C003186BB800000, 0x3C003186BB800000 };
 
+// the v53 shaders (hand-written QPU code: v3d_shaders.qasm, assembled by tools/qpu/qpuasm):
+// VS_CLIP / CS_CLIP (the batch's matrix, the divide by w), FS_COLOR, FS_TEX (texture * colour)
+#include "v3d_shaders.inc"
+
 // ---- GPU memory: low heap, page aligned, physical = virtual ------------------------------------------------
 struct TGpuBuf
 {
@@ -148,6 +154,14 @@ static volatile boolean s_bBusy = FALSE;
 #define OVERFLOW_CHUNK	(256 * 1024)
 #define OVERFLOW_CHUNKS	16
 #define TIMEOUT_US	500000
+
+// s_State: the default attributes (0), the v52 shaders (256, 512, 1024), the v53 ones
+#define STATE_VS_CLIP	2048
+#define STATE_CS_CLIP	(STATE_VS_CLIP + 1024)
+#define STATE_FS_COLOR	(STATE_CS_CLIP + 1024)
+#define STATE_FS_TEX	(STATE_FS_COLOR + 512)
+#define STATE_END	(STATE_FS_TEX + 512)
+static_assert (sizeof VS_CLIP <= 1024 && sizeof CS_CLIP <= 1024 && sizeof FS_COLOR <= 512 && sizeof FS_TEX <= 512, "shader space");
 
 static void Fmt (char *pOut, unsigned nCap, const char *pFmt, u32 a, u32 b, u32 c)
 {
@@ -220,7 +234,11 @@ static boolean Up (void)
 	memcpy (p + 256, FRAG_SHADER, sizeof FRAG_SHADER);
 	memcpy (p + 512, VTX_SHADER, sizeof VTX_SHADER);
 	memcpy (p + 1024, COORD_SHADER, sizeof COORD_SHADER);
-	CleanDataCacheRange ((uintptr) p, 2048);
+	memcpy (p + STATE_VS_CLIP, VS_CLIP, sizeof VS_CLIP);
+	memcpy (p + STATE_CS_CLIP, CS_CLIP, sizeof CS_CLIP);
+	memcpy (p + STATE_FS_COLOR, FS_COLOR, sizeof FS_COLOR);
+	memcpy (p + STATE_FS_TEX, FS_TEX, sizeof FS_TEX);
+	CleanDataCacheRange ((uintptr) p, STATE_END);
 	Fmt (s_Info, sizeof s_Info, "V3D %u.%u (%u core)", nTver, nRev, nCores);
 	CLogger::Get ()->Write (From, LogNotice, "%s ready", s_Info);
 	s_nState = 1;
@@ -243,6 +261,102 @@ static void Fail (const char *pWhat)
 				read32 (V3D_CLE_CT1CA), read32 (V3D_CTL_INT_STS));
 	Fmt (s_Info, sizeof s_Info, "V3D: stopped (a frame did not finish)", 0, 0, 0);
 	s_nState = -1;
+}
+
+// The rendering list: each 64 x 64 tile cleared (or loaded from s_Target), its triangles
+// drawn, stored into s_Target (raster RGBA8, w * 4 bytes a row).
+static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boolean bLoad)
+{
+	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64;
+	u32 nClearRGBA = 0xFF000000 | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
+	R << TileRenderingModeCfgCommon (1, (u16) w, (u16) h, 0, false, false, 0, false, 2, false);
+	R << TileRenderingModeCfgClearColorsPart1 (0, nClearRGBA, 0);
+	R << TileRenderingModeCfgColor (0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+	R << TileRenderingModeCfgZSClearValues (0, 1.0f);
+	R << TileListInitialBlockSize (0, true);
+	u32 stW = 1, stH = 1, fW, fH;
+	for (;;)
+	{
+		fW = (tilesX + stW - 1) / stW; fH = (tilesY + stH - 1) / stH;
+		if (fW * fH < 256) break;
+		if (stW < stH) stW++; else stH++;
+	}
+	R << MulticoreRenderingTileListSetBase (s_TileAlloc.Bus ());
+	R << MulticoreRenderingSupertileCfg (stW, stH, fW, fH, tilesX, tilesY, 1, false, false);
+	R << TileCoordinates (0, 0);				// clear, then a dummy store (a hardware race)
+	R << OP_END_OF_LOADS;
+	R << StoreTileBufferGeneral ();
+	R << ClearTileBuffers (true, true);
+	R << OP_END_OF_TILE_MARKER;
+	R << TileCoordinates (0, 0);
+	R << OP_END_OF_LOADS;
+	R << StoreTileBufferGeneral ();
+	R << OP_END_OF_TILE_MARKER;
+	R << OP_FLUSH_VCD_CACHE;
+	u32 nGeneric = Ind.Bus ();					// each tile: its list, store, clear
+	Ind << OP_TILE_COORDINATES_IMPLICIT;
+	if (bLoad)							// the target's pixels first
+		Ind << LoadTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DECIMATE_MODE_SAMPLE_0,
+					      V3D_OUTPUT_IMAGE_FORMAT_RGBA8, true, false, false, (u32) (w * 4), 0, s_Target.Bus ());
+	Ind << OP_END_OF_LOADS;
+	Ind << PrimListFormat (LIST_TRIANGLES, false);
+	Ind << BranchToImplicitTileList (0);
+	Ind << StoreTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DITHER_MODE_NONE,
+				       V3D_DECIMATE_MODE_SAMPLE_0, V3D_OUTPUT_IMAGE_FORMAT_RGBA8, false, false, false,
+				       (u32) (w * 4), 0, s_Target.Bus ());
+	Ind << ClearTileBuffers (true, true);
+	Ind << OP_END_OF_TILE_MARKER;
+	Ind << OP_RETURN_FROM_SUB_LIST;
+	R << StartAddressOfGenericTileList (nGeneric, Ind.Bus ());
+	for (u32 y = 0; y <= (u32) (h - 1) / (64 * stH); y++)
+		for (u32 x = 0; x <= (u32) (w - 1) / (64 * stW); x++)
+			R << SupertileCoorinates ((u8) x, (u8) y);
+	R << OP_END_OF_RENDERING;
+}
+
+// Bins then renders (polled, with a time limit). 0 ok, -3 the GPU did not finish.
+static int Run (CList &B, CList &R, CList &Ind, u32 nAllocSize)
+{
+	CleanDataCacheRange ((uintptr) s_BCL.p, B.Size ());
+	CleanDataCacheRange ((uintptr) s_RCL.p, R.Size ());
+	CleanDataCacheRange ((uintptr) s_Ind.p, Ind.Size ());
+	DataSyncBarrier ();
+
+	// ---- bin
+	InvalidateGpuCaches ();
+	write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
+	u32 nBfc = read32 (V3D_CLE_BFC) & 0xFF;
+	write32 (V3D_CLE_CT0QMA, s_TileAlloc.Bus ());
+	write32 (V3D_CLE_CT0QMS, nAllocSize);
+	write32 (V3D_CLE_CT0QTS, s_TileState.Bus () | (1 << 1));
+	write32 (V3D_CLE_CT0QBA, B.Start ());
+	write32 (V3D_CLE_CT0QEA, B.Start () + B.Size ());
+	unsigned t0 = CTimer::Get ()->GetClockTicks (), nChunk = 0;
+	while ((read32 (V3D_CLE_BFC) & 0xFF) == nBfc)
+	{
+		if ((read32 (V3D_CTL_INT_STS) & V3D_INT_OUTOMEM) && nChunk < OVERFLOW_CHUNKS)	// more tile-list memory
+		{
+			write32 (V3D_PTB_BPOA, s_Overflow.Bus (nChunk++ * OVERFLOW_CHUNK));
+			write32 (V3D_PTB_BPOS, OVERFLOW_CHUNK);
+			write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
+		}
+		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) { Fail ("binning"); return -3; }
+		CScheduler::Get ()->Yield ();
+	}
+
+	// ---- render
+	InvalidateGpuCaches ();
+	u32 nRfc = read32 (V3D_CLE_RFC) & 0xFF;
+	write32 (V3D_CLE_CT1QBA, R.Start ());
+	write32 (V3D_CLE_CT1QEA, R.Start () + R.Size ());
+	t0 = CTimer::Get ()->GetClockTicks ();
+	while ((read32 (V3D_CLE_RFC) & 0xFF) == nRfc)
+	{
+		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) { Fail ("rendering"); return -3; }
+		CScheduler::Get ()->Yield ();
+	}
+
+	return 0;
 }
 
 static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigned *pDst, int w, int h, int nStride)
@@ -338,89 +452,12 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 	B << VertexArrayPrims (4, n, 0);				// triangles
 	B << OP_FLUSH;
 
-	// ---- the rendering list
-	u32 nClearRGBA = 0xFF000000 | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
+	// ---- the rendering list, then the GPU
 	CList R (s_RCL);
-	R << TileRenderingModeCfgCommon (1, (u16) w, (u16) h, 0, false, false, 0, false, 2, false);
-	R << TileRenderingModeCfgClearColorsPart1 (0, nClearRGBA, 0);
-	R << TileRenderingModeCfgColor (0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-	R << TileRenderingModeCfgZSClearValues (0, 1.0f);
-	R << TileListInitialBlockSize (0, true);
-	u32 stW = 1, stH = 1, fW, fH;
-	for (;;)
-	{
-		fW = (tilesX + stW - 1) / stW; fH = (tilesY + stH - 1) / stH;
-		if (fW * fH < 256) break;
-		if (stW < stH) stW++; else stH++;
-	}
-	R << MulticoreRenderingTileListSetBase (s_TileAlloc.Bus ());
-	R << MulticoreRenderingSupertileCfg (stW, stH, fW, fH, tilesX, tilesY, 1, false, false);
-	R << TileCoordinates (0, 0);				// clear, then a dummy store (a hardware race)
-	R << OP_END_OF_LOADS;
-	R << StoreTileBufferGeneral ();
-	R << ClearTileBuffers (true, true);
-	R << OP_END_OF_TILE_MARKER;
-	R << TileCoordinates (0, 0);
-	R << OP_END_OF_LOADS;
-	R << StoreTileBufferGeneral ();
-	R << OP_END_OF_TILE_MARKER;
-	R << OP_FLUSH_VCD_CACHE;
-	u32 nGeneric = Ind.Bus ();					// each tile: its list, store, clear
-	Ind << OP_TILE_COORDINATES_IMPLICIT;
-	Ind << OP_END_OF_LOADS;
-	Ind << PrimListFormat (LIST_TRIANGLES, false);
-	Ind << BranchToImplicitTileList (0);
-	Ind << StoreTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DITHER_MODE_NONE,
-				       V3D_DECIMATE_MODE_SAMPLE_0, V3D_OUTPUT_IMAGE_FORMAT_RGBA8, false, false, false,
-				       (u32) (w * 4), 0, s_Target.Bus ());
-	Ind << ClearTileBuffers (true, true);
-	Ind << OP_END_OF_TILE_MARKER;
-	Ind << OP_RETURN_FROM_SUB_LIST;
-	R << StartAddressOfGenericTileList (nGeneric, Ind.Bus ());
-	for (u32 y = 0; y <= (u32) (h - 1) / (64 * stH); y++)
-		for (u32 x = 0; x <= (u32) (w - 1) / (64 * stW); x++)
-			R << SupertileCoorinates ((u8) x, (u8) y);
-	R << OP_END_OF_RENDERING;
+	BuildRCL (R, Ind, w, h, nClear, FALSE);
 	if (B.Overflow () || R.Overflow () || Ind.Overflow ()) return -2;
-
-	CleanDataCacheRange ((uintptr) s_BCL.p, B.Size ());
-	CleanDataCacheRange ((uintptr) s_RCL.p, R.Size ());
-	CleanDataCacheRange ((uintptr) s_Ind.p, Ind.Size ());
-	DataSyncBarrier ();
-
-	// ---- bin
-	InvalidateGpuCaches ();
-	write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
-	u32 nBfc = read32 (V3D_CLE_BFC) & 0xFF;
-	write32 (V3D_CLE_CT0QMA, s_TileAlloc.Bus ());
-	write32 (V3D_CLE_CT0QMS, nAllocSize);
-	write32 (V3D_CLE_CT0QTS, s_TileState.Bus () | (1 << 1));
-	write32 (V3D_CLE_CT0QBA, B.Start ());
-	write32 (V3D_CLE_CT0QEA, B.Start () + B.Size ());
-	unsigned t0 = CTimer::Get ()->GetClockTicks (), nChunk = 0;
-	while ((read32 (V3D_CLE_BFC) & 0xFF) == nBfc)
-	{
-		if ((read32 (V3D_CTL_INT_STS) & V3D_INT_OUTOMEM) && nChunk < OVERFLOW_CHUNKS)	// more tile-list memory
-		{
-			write32 (V3D_PTB_BPOA, s_Overflow.Bus (nChunk++ * OVERFLOW_CHUNK));
-			write32 (V3D_PTB_BPOS, OVERFLOW_CHUNK);
-			write32 (V3D_CTL_INT_CLR, V3D_INT_OUTOMEM);
-		}
-		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) { Fail ("binning"); return -3; }
-		CScheduler::Get ()->Yield ();
-	}
-
-	// ---- render
-	InvalidateGpuCaches ();
-	u32 nRfc = read32 (V3D_CLE_RFC) & 0xFF;
-	write32 (V3D_CLE_CT1QBA, R.Start ());
-	write32 (V3D_CLE_CT1QEA, R.Start () + R.Size ());
-	t0 = CTimer::Get ()->GetClockTicks ();
-	while ((read32 (V3D_CLE_RFC) & 0xFF) == nRfc)
-	{
-		if (CTimer::Get ()->GetClockTicks () - t0 > TIMEOUT_US) { Fail ("rendering"); return -3; }
-		CScheduler::Get ()->Yield ();
-	}
+	int nRes = Run (B, R, Ind, nAllocSize);
+	if (nRes != 0) return nRes;
 
 	// ---- the picture: RGBA8 (R first in memory) -> 0x00RRGGBB
 	InvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
@@ -431,6 +468,286 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 		for (int x = 0; x < w; x++)
 		{
 			u32 c = s[x];
+			d[x] = ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+		}
+	}
+	return 0;
+}
+
+
+// ---- v53: textures -------------------------------------------------------------------------------------------
+// A texture: its TEXTURE_SHADER_STATE (32 bytes, at 0) then its texels (RGBA8, R first in
+// memory, at 256), laid out as the TMU reads the level 0 of that size (Mesa's
+// v3d_setup_slices): a line of 4 x 4 utiles (LT) when a side is <= 4, 8 x 8 blocks of 2 x 2
+// utiles in 1 or 2 columns (UBLINEAR) up to 16 wide, else UIF: columns of 4 such blocks,
+// padded (ub_pad) and XOR-ed as the hardware expects.
+struct TTexture
+{
+	TGpuBuf Mem;
+	CAddressSpace *pOwner;			// 0: free
+	u16 w, h;
+};
+static TTexture s_Tex[KAPI_GPU_MAX_TEXTURES];
+#define TEX_TEXELS	256
+
+static void SetBits (u8 *p, u32 nStart, u32 nSize, u32 v)
+{
+	for (u32 i = 0; i < nSize; i++)
+		if (v & (1u << i)) p[(nStart + i) / 8] |= (u8) (1 << ((nStart + i) % 8));
+}
+
+static CAddressSpace *CurrentAS (void)
+{
+	return (CAddressSpace *) CScheduler::Get ()->GetCurrentTask ()->GetUserData (TASK_USER_DATA_USER);
+}
+
+static void FreeTex (TTexture &t)
+{
+	if (t.Mem.pRaw != 0) CMemorySystem::HeapFree (t.Mem.pRaw);
+	t.Mem.pRaw = t.Mem.p = 0; t.Mem.nSize = 0;
+	t.pOwner = 0;
+}
+
+static int Texture (int nHandle, const unsigned *pPx, int w, int h, int nStride)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (nHandle >= 0)
+	{
+		if (nHandle >= KAPI_GPU_MAX_TEXTURES || s_Tex[nHandle].pOwner != pAS || pAS == 0) return -2;
+		if (pPx == 0) { FreeTex (s_Tex[nHandle]); return 0; }
+	}
+	if (pPx == 0 || w <= 0 || h <= 0 || w > KAPI_GPU_MAX_TEXSIZE || h > KAPI_GPU_MAX_TEXSIZE || nStride < w) return -2;
+	if (nHandle < 0)
+	{
+		for (int i = 0; i < KAPI_GPU_MAX_TEXTURES; i++)
+			if (s_Tex[i].pOwner == 0) { nHandle = i; break; }
+		if (nHandle < 0) return -4;
+	}
+	TTexture &t = s_Tex[nHandle];
+	TLayout L; Layout ((u32) w, (u32) h, L);
+	u32 nBytes = TEX_TEXELS + L.nPadW * L.nPadH * 4;
+	if (!Alloc (t.Mem, nBytes)) { FreeTex (t); return -4; }
+	t.pOwner = pAS; t.w = (u16) w; t.h = (u16) h;
+	u8 *pT = t.Mem.p + TEX_TEXELS;
+	memset (pT, 0, nBytes - TEX_TEXELS);
+	for (int y = 0; y < h; y++)
+	{
+		const unsigned *src = pPx + (long) y * nStride;
+		for (int x = 0; x < w; x++)
+		{
+			u32 c = src[x];					// 0xAARRGGBB -> R G B A in memory
+			*(u32 *) (pT + TexelOffset (L, (u32) x, (u32) y)) = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
+		}
+	}
+	u8 *pS = t.Mem.p;					// TEXTURE_SHADER_STATE (Mesa v3d_packet.xml, 4.2)
+	memset (pS, 0, 32);
+	u32 nBase = t.Mem.Bus (TEX_TEXELS);			// (64-byte aligned; its low bits are flags)
+	memcpy (pS, &nBase, 4);
+	SetBits (pS, 58, 14, (u32) w);				// image width
+	SetBits (pS, 72, 14, (u32) h);				// image height
+	SetBits (pS, 86, 14, 1);				// depth
+	SetBits (pS, 100, 7, 4);				// RGBA8
+	SetBits (pS, 108, 3, 2); SetBits (pS, 111, 3, 3);	// swizzle R G B A
+	SetBits (pS, 114, 3, 4); SetBits (pS, 117, 3, 5);
+	if (L.nKind == TL_UIF)
+	{
+		SetBits (pS, 107, 1, 1);			// extended (Mesa sets it with a strictly-UIF level 0)
+		SetBits (pS, 128, 4, L.nUbPad);			// level 0 UB_PAD
+		SetBits (pS, 132, 1, L.bXor ? 1 : 0);		// level 0 XOR enable
+		SetBits (pS, 134, 1, 1);			// level 0 is strictly UIF
+	}
+	CleanDataCacheRange ((uintptr) t.Mem.p, nBytes);
+	return nHandle;
+}
+
+void V3DReleaseAS (CAddressSpace *pAS)
+{
+	if (pAS == 0) return;
+	for (int i = 0; i < KAPI_GPU_MAX_TEXTURES; i++)
+		if (s_Tex[i].pOwner == pAS)
+		{
+			while (s_bBusy) CScheduler::Get ()->Yield ();	// (not in the middle of a frame)
+			FreeTex (s_Tex[i]);
+		}
+}
+
+// ---- v53: a frame of batches -----------------------------------------------------------------------------------
+static TGpuBuf s_Verts3;
+
+static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned nV, const kapi_gpu_batch *pB, unsigned nB)
+{
+	int w = F.w, h = F.h;
+	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64, nTiles = tilesX * tilesY;
+	u32 nAllocSize = ((nTiles * 64 + 4095) & ~4095u) + 2 * 1024 * 1024;
+	if (!Alloc (s_Verts3, (nV ? nV : 3) * sizeof (kapi_gpu_vertex3)) || !Alloc (s_Target, (u32) (w * h * 4))
+	    || !Alloc (s_TileAlloc, nAllocSize) || !Alloc (s_TileState, nTiles * 256)
+	    || !Alloc (s_BCL, 1024 + nB * 64) || !Alloc (s_Ind, 4096 + nB * 384))
+		return -2;
+	memcpy (s_Verts3.p, pV, nV * sizeof (kapi_gpu_vertex3));
+	CleanDataCacheRange ((uintptr) s_Verts3.p, nV * sizeof (kapi_gpu_vertex3));
+	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
+	if (bKeep)							// the target's pixels, as RGBA8
+		for (int y = 0; y < h; y++)
+		{
+			const unsigned *src = F.pixels + (long) y * F.stride;
+			u32 *d = (u32 *) (s_Target.p + (u32) y * (u32) w * 4);
+			for (int x = 0; x < w; x++)
+			{
+				u32 c = src[x];
+				d[x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+			}
+		}
+	CleanAndInvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
+
+	f32 fXs = (f32) (w / 2) * 256.0f, fYs = (f32) (h / 2) * -256.0f;
+	static const f32 Ident[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
+
+	CList Ind (s_Ind);
+	CList B (s_BCL);
+	B << TileBinningModeCfg (0, 0, 1, 0, false, false, (u16) w, (u16) h);
+	B << OP_FLUSH_VCD_CACHE;
+	B << OcclusionQueryCounter (0);
+	B << OP_START_TILE_BINNING;
+	B << ClipWindow (0, 0, (u16) w, (u16) h);
+	B << PointSize (1.0f);
+	B << LineWidth (1.0f);
+	B << ClipperXYScaling (fXs, fYs);
+	B << ClipperZScaleAndOffset (0.5f, 0.5f);
+	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
+	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
+	B << ColorWriteMasks (0);
+	B << BlendConstantColor (0, 0, 0, 0);
+	B << OP_ZERO_ALL_FLAT_SHADE_FLAGS;
+	B << OP_ZERO_ALL_NON_PERSPECTIVE_FLAGS;
+	B << OP_ZERO_ALL_CENTROID_FLAGS;
+	B << TransformFeedbackSpecs (0, false);
+	B << OcclusionQueryCounter (0);
+	B << SampleState (0xF, 1.0f);
+	B << VcmCacheSize (4, 4);
+	u32 nPrevBlend = ~0u;
+
+	for (unsigned i = 0; i < nB; i++)
+	{
+		const kapi_gpu_batch &b = pB[i];
+		if (b.count == 0) continue;
+		const f32 *M = (b.flags & KAPI_GPU_B_NOMATRIX) ? Ident : b.matrix;
+		const TTexture *pTex = b.texture >= 0 ? &s_Tex[b.texture] : 0;
+
+		// uniforms: vertex (matrix, x y scales, z scale / offset), coordinate (matrix, x y scales)
+		Ind.Align (4);
+		u32 nVtxUnif = Ind.Bus ();
+		for (int k = 0; k < 16; k++) Ind << M[k];
+		Ind << fXs << fYs << 0.5f << 0.5f;
+		u32 nCoordUnif = Ind.Bus ();
+		for (int k = 0; k < 16; k++) Ind << M[k];
+		Ind << fXs << fYs;
+		u32 nFragUnif = Ind.Bus ();
+		if (pTex)
+		{
+			Ind.Align (32);						// the sampler state
+			u32 nSampler = Ind.Bus ();
+			u8 S[32]; memset (S, 0, sizeof S);
+			boolean bLinear = (b.flags & KAPI_GPU_B_LINEAR) != 0;
+			static const u32 Wrap[4] = { 0, 1, 2, 0 };		// repeat, clamp, mirror
+			SetBits (S, 0, 1, bLinear ? 0 : 1);			// mag nearest
+			SetBits (S, 1, 1, bLinear ? 0 : 1);			// min nearest
+			SetBits (S, 2, 1, 1);					// mip nearest
+			SetBits (S, 48, 3, Wrap[(b.flags >> 13) & 3]);
+			SetBits (S, 51, 3, Wrap[(b.flags >> 15) & 3]);
+			SetBits (S, 54, 3, 1);
+			for (unsigned k = 0; k < sizeof S; k++) Ind << S[k];
+			nFragUnif = Ind.Bus ();
+			Ind << (u32) (pTex->Mem.Bus (0) | 3);			// p0: texture state, 2 words (f16 RG, BA)
+			Ind << nSampler;					// p1: sampler state, 16-bit output
+		}
+		else
+			Ind << 0u;
+
+		// the shader state record + its attributes (position, s t, colour)
+		Ind.Align (32);
+		u32 nShaderRec = Ind.Bus ();
+		GLShaderStateRecord Rec {};
+		Rec.enable_clipping = true;
+		Rec.fragment_shader_uses_real_pixel_centre_w_in_addition_to_centroid_w2 = true;
+		Rec.disable_implicit_point_line_varyings = true;
+		Rec.number_of_varyings_in_fragment_shader = 6;
+		Rec.coordinate_shader_output_vpm_segment_size = 1;
+		Rec.coordinate_shader_input_vpm_segment_size = 1;
+		Rec.vertex_shader_output_vpm_segment_size = 2;
+		Rec.vertex_shader_input_vpm_segment_size = 2;
+		Rec.address_of_default_attribute_values = s_State.Bus (0);
+		Rec.fragment_shader_code_address = s_State.Bus (pTex ? STATE_FS_TEX : STATE_FS_COLOR) >> 3;
+		Rec.fragment_shader_uniforms_address = nFragUnif;
+		Rec.fragment_shader_4_way_threadable = true;
+		Rec.fragment_shader_start_in_final_thread_section = false;
+		Rec.fragment_shader_propagate_nans = true;
+		Rec.vertex_shader_code_address = s_State.Bus (STATE_VS_CLIP) >> 3;
+		Rec.vertex_shader_uniforms_address = nVtxUnif;
+		Rec.vertex_shader_4_way_threadable = true;
+		Rec.vertex_shader_start_in_final_thread_section = true;
+		Rec.vertex_shader_propagate_nans = true;
+		Rec.coordinate_shader_code_address = s_State.Bus (STATE_CS_CLIP) >> 3;
+		Rec.coordinate_shader_uniforms_address = nCoordUnif;
+		Rec.coordinate_shader_4_way_threadable = true;
+		Rec.coordinate_shader_start_in_final_thread_section = true;
+		Rec.coordinate_shader_propagate_nans = true;
+		Ind << Rec;
+		GlShaderStateAttributeRecord A {};
+		A.address = s_Verts3.Bus (0);					// x y z w
+		A.number_of_values_read_by_vertex_shader = 4;
+		A.number_of_values_read_by_coordinate_shader = 4;
+		A.stride = sizeof (kapi_gpu_vertex3);
+		A.maximum_index = 0xFFFFFF;
+		A.vec_size = 0;							// (4)
+		A.type = 2;							// float
+		Ind << A;
+		A.address = s_Verts3.Bus (16);					// s t
+		A.number_of_values_read_by_vertex_shader = 2;
+		A.number_of_values_read_by_coordinate_shader = 0;
+		A.vec_size = 2;
+		Ind << A;
+		A.address = s_Verts3.Bus (24);					// r g b a
+		A.number_of_values_read_by_vertex_shader = 4;
+		A.vec_size = 0;
+		A.type = 4;							// byte
+		A.normalized_int_type = true;
+		Ind << A;
+
+		// the state, then the triangles
+		u32 nZ = KAPI_GPU_B_ZFUNC (b.flags);
+		if (nZ == 0) nZ = 1;						// LESS
+		u32 nBlend = (b.flags >> 8) & 15;
+		boolean bZWrite = !(b.flags & KAPI_GPU_B_NOZWRITE) && nZ != 7;
+		B << CfgBits (!(b.flags & KAPI_GPU_B_CULL_FRONT), !(b.flags & KAPI_GPU_B_CULL_BACK), true, false, 0, 0, false,
+			      nZ, bZWrite, false, false, false, nBlend != 0, false, false);
+		if (nBlend != 0 && nBlend != nPrevBlend)
+		{
+			// factors: 0 zero, 1 one, 4 dst colour, 6 src alpha, 7 1 - src alpha; mode 0 add
+			static const u8 Fac[5][4] = { { 1, 0, 1, 0 }, { 6, 7, 1, 7 }, { 6, 1, 6, 1 }, { 4, 0, 4, 0 }, { 1, 7, 1, 7 } };
+			const u8 *f = Fac[nBlend <= 4 ? nBlend : 1];
+			B << BlendEnables (1);
+			B << BlendCfg (0, f[2], f[3], 0, f[0], f[1], 0xF);
+			nPrevBlend = nBlend;
+		}
+		B << GlShaderState (nShaderRec, 3);
+		B << VertexArrayPrims (4, b.count, b.first);			// triangles
+	}
+	B << OP_FLUSH;
+
+	CList R (s_RCL);
+	BuildRCL (R, Ind, w, h, F.clear, bKeep);
+	if (B.Overflow () || R.Overflow () || Ind.Overflow ()) return -2;
+	int nRes = Run (B, R, Ind, nAllocSize);
+	if (nRes != 0) return nRes;
+
+	InvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
+	for (int y = 0; y < h; y++)
+	{
+		const u32 *src = (const u32 *) (s_Target.p + (u32) y * (u32) w * 4);
+		unsigned *d = F.pixels + (long) y * F.stride;
+		for (int x = 0; x < w; x++)
+		{
+			u32 c = src[x];
 			d[x] = ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
 		}
 	}
@@ -459,6 +776,42 @@ extern "C" int kapi_gpu_draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nC
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();			// (killed meanwhile: it ends after the frame)
 	int r = s_nState > 0 ? Draw (pV, n, nClear, pDst, w, h, nStride) : -1;
+	s_bBusy = FALSE;
+	CScheduler::Get ()->LeaveNoKill ();
+	return r;
+}
+
+extern "C" int kapi_gpu_texture (int nHandle, const unsigned *pPixels, int w, int h, int nStride)
+{
+	if (!Up ()) return -1;
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame reads them)
+	s_bBusy = TRUE;
+	CScheduler::Get ()->EnterNoKill ();
+	int r = s_nState > 0 ? Texture (nHandle, pPixels, w, h, nStride) : -1;
+	s_bBusy = FALSE;
+	CScheduler::Get ()->LeaveNoKill ();
+	return r;
+}
+
+extern "C" int kapi_gpu_render (const kapi_gpu_frame *pF, const kapi_gpu_vertex3 *pV, unsigned nV,
+				const kapi_gpu_batch *pB, unsigned nB)
+{
+	if (!Up ()) return -1;
+	if (pF == 0 || pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
+	    || pF->stride < pF->w || nV > KAPI_GPU_MAX_VERTS || (nV && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0))
+		return -2;
+	CAddressSpace *pAS = CurrentAS ();
+	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, its texture
+	{
+		const kapi_gpu_batch &b = pB[i];
+		if (b.count % 3 != 0 || b.first > nV || b.count > nV - b.first) return -2;
+		if (b.texture >= KAPI_GPU_MAX_TEXTURES || (b.texture >= 0 && s_Tex[b.texture].pOwner != pAS) || b.texture < -1)
+			return -2;
+	}
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// one frame at a time
+	s_bBusy = TRUE;
+	CScheduler::Get ()->EnterNoKill ();
+	int r = s_nState > 0 ? Render (*pF, pV, nV, pB, nB) : -1;
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
 	return r;

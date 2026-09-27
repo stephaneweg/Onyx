@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -110,6 +110,7 @@ graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)
 # The teapot demo computes its geometry in float: FP/SIMD too.
 teapot.elf: CXXFLAGS := $(CXXFLAGS_FP)
 teapot.elf: Apps/teapot/teapot.h Apps/teapot/teapot_data.inc
+gpudemo.elf: CXXFLAGS := $(CXXFLAGS_FP)
 graphcalc.elf: Apps/graphcalc/expr.h
 basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@

@@ -332,6 +332,14 @@ static inline void kapi_core_release (int core) { if (KT->version >= 51) KT->cor
 static inline int  kapi_gpu_info (char *buf, unsigned cap) { if (KT->version >= 52) return KT->gpu_info (buf, cap); if (buf && cap) buf[0] = 0; return 0; }
 static inline int  kapi_gpu_draw (const struct kapi_gpu_vertex *v, unsigned n, unsigned clear, unsigned *pixels, int w, int h, int stride)
 { return KT->version >= 52 ? KT->gpu_draw (v, n, clear, pixels, w, h, stride) : -1; }
+// The GPU's full pipeline (v53): textures (0xAARRGGBB; handle < 0 = a new one, pixels 0 =
+// free), and gpu_render: batches (each: its vertices, matrix, texture, blending, depth test,
+// culling) drawn in one frame into f->pixels. See kern/kapi_abi.h.
+static inline int  kapi_gpu_texture (int handle, const unsigned *pixels, int w, int h, int stride)
+{ return KT->version >= 53 ? KT->gpu_texture (handle, pixels, w, h, stride) : -1; }
+static inline int  kapi_gpu_render (const struct kapi_gpu_frame *f, const struct kapi_gpu_vertex3 *v, unsigned nv,
+				    const struct kapi_gpu_batch *b, unsigned nb)
+{ return KT->version >= 53 ? KT->gpu_render (f, v, nv, b, nb) : -1; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

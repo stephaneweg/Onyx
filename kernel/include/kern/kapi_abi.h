@@ -49,7 +49,10 @@
 //      or 3 and runs one function of its own there (no kapi calls, no malloc on it).
 // v52: + gpu_info/gpu_draw -- the V3D GPU (VideoCore VI): depth-tested Gouraud triangles
 //      rendered by the GPU into the caller's pixels (sys/v3d.cpp).
-#define KAPI_ABI_VERSION	52
+// v53: + gpu_texture/gpu_render -- the GPU's full pipeline: textures (RGBA8, nearest /
+//      linear, repeat / clamp / mirror), batches with their own 4 x 4 matrix (transformed
+//      by the GPU), texture, blending (alpha / add / multiply), depth test and culling.
+#define KAPI_ABI_VERSION	53
 
 #ifdef __cplusplus
 extern "C" {
@@ -163,6 +166,64 @@ struct kapi_pad
 // A GPU vertex (kapi v52): position in normalized device coordinates + colour (RGBA8).
 struct kapi_gpu_vertex { float x, y, z; unsigned char r, g, b, a; };
 #define KAPI_GPU_MAX_VERTS	(3 * 65536)
+
+// kapi v53 (gpu_texture / gpu_render). A vertex: its position, transformed by the batch's
+// matrix into clip space (the GPU divides by w and clips), its texture coordinates (0..1
+// across the texture) and its colour (multiplied by the texel when the batch is textured).
+struct kapi_gpu_vertex3
+{
+	float x, y, z, w;
+	float s, t;
+	unsigned char r, g, b, a;
+	unsigned reserved;
+};
+// A batch: vertices [first, first + count) of the gpu_render call (a triangle list), drawn
+// with its own state. matrix: row by row, clip = matrix * (x y z w) (KAPI_GPU_B_NOMATRIX:
+// the identity -- the vertices are already in clip space).
+struct kapi_gpu_batch
+{
+	unsigned first, count;
+	int texture;			// a gpu_texture handle, or -1 (colour only)
+	unsigned flags;			// KAPI_GPU_B_*
+	float matrix[16];
+};
+#define KAPI_GPU_B_ZFUNC(f)	((f) & 7)	// the depth test (0 = LESS, the default):
+#define KAPI_GPU_Z_LESS		0
+#define KAPI_GPU_Z_EQUAL	2
+#define KAPI_GPU_Z_LEQUAL	3
+#define KAPI_GPU_Z_GREATER	4
+#define KAPI_GPU_Z_NOTEQUAL	5
+#define KAPI_GPU_Z_GEQUAL	6
+#define KAPI_GPU_Z_ALWAYS	7		// (no depth test)
+#define KAPI_GPU_B_NOZWRITE	(1u << 3)	// the depth buffer is not updated
+#define KAPI_GPU_B_CULL_BACK	(1u << 4)	// front = counter-clockwise in NDC (y up)
+#define KAPI_GPU_B_CULL_FRONT	(1u << 5)
+#define KAPI_GPU_B_BLEND(m)	(((m) & 15) << 8)
+#define KAPI_GPU_BLEND_NONE	0		// opaque
+#define KAPI_GPU_BLEND_ALPHA	1		// src * a + dst * (1 - a)
+#define KAPI_GPU_BLEND_ADD	2		// src * a + dst
+#define KAPI_GPU_BLEND_MUL	3		// src * dst
+#define KAPI_GPU_BLEND_PREMUL	4		// src + dst * (1 - a)
+#define KAPI_GPU_B_LINEAR	(1u << 12)	// bilinear texture filtering (else nearest)
+#define KAPI_GPU_B_WRAP_S(m)	(((m) & 3) << 13)
+#define KAPI_GPU_B_WRAP_T(m)	(((m) & 3) << 15)
+#define KAPI_GPU_WRAP_REPEAT	0
+#define KAPI_GPU_WRAP_CLAMP	1
+#define KAPI_GPU_WRAP_MIRROR	2
+#define KAPI_GPU_B_NOMATRIX	(1u << 17)
+// The target of gpu_render: w x h pixels (0x00RRGGBB, stride = pixels per row), cleared to
+// clear (0xRRGGBB) -- or, KAPI_GPU_F_KEEP, drawn over what they hold.
+struct kapi_gpu_frame
+{
+	unsigned *pixels;
+	int w, h, stride;
+	unsigned clear;
+	unsigned flags;
+};
+#define KAPI_GPU_F_KEEP		(1u << 0)
+#define KAPI_GPU_MAX_BATCHES	4096
+#define KAPI_GPU_MAX_TEXTURES	256
+#define KAPI_GPU_MAX_TEXSIZE	2048
 
 struct TKApiTable
 {
@@ -611,6 +672,17 @@ struct TKApiTable
 	int  (*gpu_info) (char *buf, unsigned cap);
 	int  (*gpu_draw) (const struct kapi_gpu_vertex *v, unsigned n, unsigned clear,
 			  unsigned *pixels, int w, int h, int stride);
+
+	// --- v53 additions (the GPU: textures, batches) ---
+	// gpu_texture: handle < 0 makes a texture, else replaces the pixels of that one; w x h
+	// (1..KAPI_GPU_MAX_TEXSIZE) pixels 0xAARRGGBB, stride in pixels. Returns the handle (>= 0)
+	// or -1 no GPU, -2 bad arguments, -4 no memory / no free texture. pixels == 0 frees the
+	// handle (0). The textures of a program are freed when it ends.
+	// gpu_render: nb batches (KAPI_GPU_MAX_BATCHES at most) over nv vertices, one frame
+	// into f; 0 ok, -1 no GPU, -2 bad arguments, -3 the GPU did not finish (left off).
+	int  (*gpu_texture) (int handle, const unsigned *pixels, int w, int h, int stride);
+	int  (*gpu_render) (const struct kapi_gpu_frame *f, const struct kapi_gpu_vertex3 *v, unsigned nv,
+			    const struct kapi_gpu_batch *b, unsigned nb);
 };
 
 #ifdef __cplusplus

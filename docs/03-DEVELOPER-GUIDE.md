@@ -289,6 +289,19 @@ Notes / caveats:
 > lights its geometry itself (floats: build it with `CXXFLAGS_FP`, like `teapot`); keep a
 > software path for `r < 0`. See `user/Apps/teapot` (`teapot.h` is portable:
 > `tools/tests/teapot/teapot_host.cpp` renders it on a PC) and docs/02 §15.
+> **The GPU's full pipeline (ABI v53)**: textures — `int t = kapi_gpu_texture (-1, argb, w, h, stride);`
+> (0xAARRGGBB, up to 2048 × 2048, 256 handles; the same call with `t` replaces the pixels,
+> with `pixels = 0` frees it; freed anyway when the app ends) — and
+> `kapi_gpu_render (&frame, verts, nv, batches, nb)`: `struct kapi_gpu_vertex3 { x, y, z, w, s, t, r, g, b, a }`,
+> each `struct kapi_gpu_batch` draws `count` vertices from `first` with its own **4 × 4 matrix**
+> (row by row, clip = M · (x y z w): build model × view × projection once per object on the
+> CPU, the GPU transforms every vertex; `KAPI_GPU_B_NOMATRIX` if they are already in clip
+> space), texture (−1 none), `KAPI_GPU_B_*` flags (depth test / writes, culling, blending
+> alpha / add / multiply, linear filter, wrap). Draw opaque batches first, then the blended
+> ones with `KAPI_GPU_B_NOZWRITE`. `frame.flags = KAPI_GPU_F_KEEP` draws over the pixels.
+> Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
+> after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
+> (committed; the kernel build does not need the tool). docs/02 §15.
 > **App cores (ABI v51)**: an app may take a whole core (2 or 3) for a function of its own —
 > `int c = kapi_core_acquire ();` (−1: none free), `kapi_core_run (c, fn, arg, stack_top)` (the
 > stack is the app's memory, 16-byte aligned), poll `kapi_core_state (c)` (`KAPI_CORE_IDLE` once

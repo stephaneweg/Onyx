@@ -594,6 +594,16 @@ def icon_teapot():		# a copper teapot on a dark tile
     prect(px, 5, 18, 9, 27, (160, 85, 55)); prect(px, 7, 20, 9, 25, (28, 28, 42))
     return px
 
+def icon_gpudemo():		# a textured cube (three shaded faces) behind a glass pane
+    px = blank()
+    prect(px, 2, 2, 37, 37, (20, 24, 34))
+    prect(px, 9, 14, 24, 29, (200, 140, 60)); pframe(px, 9, 14, 24, 29, (250, 250, 250))
+    for i in range(6): prect(px, 10 + i, 13 - i, 25 + i, 13 - i, (230, 180, 90))
+    for i in range(6): prect(px, 25 + i, 13 - i, 25 + i, 28 - i, (150, 100, 40))
+    prect(px, 13, 20, 20, 21, (30, 20, 10)); prect(px, 18, 17, 20, 21, (30, 20, 10))
+    pframe(px, 20, 20, 35, 35, (200, 220, 255)); pframe(px, 21, 21, 34, 34, (140, 170, 230))
+    return px
+
 def icon_doom():		# a red-brown Doom-ish emblem: a skull-like shape on dark stone
     px = blank()
     prect(px, 2, 2, 37, 37, (40, 30, 26)); pframe(px, 2, 2, 37, 37, (90, 60, 40))
@@ -626,7 +636,7 @@ ICONS = {
     "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
-    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot,
+    "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo,
 }
 
 

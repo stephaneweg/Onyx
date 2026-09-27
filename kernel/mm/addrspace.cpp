@@ -11,6 +11,7 @@
 #include <kern/kapitable.h>		// KApiTablePhys
 #include <kern/applaunch.h>		// g_bVerbose (gated lifecycle logging)
 #include <kern/net.h>			// NetCloseByPid (reclaim a dead process's sockets)
+#include <kern/v3d.h>			// V3DReleaseAS (free a dead process's GPU textures)
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -172,6 +173,8 @@ CAddressSpace::~CAddressSpace (void)
 		m_pWindow = 0;
 		return;
 	}
+
+	V3DReleaseAS (this);			// its GPU textures (no frame of it is in flight now)
 
 	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the
 	// scheduler core: IRQs are enabled and the task is already quiescent, so it is

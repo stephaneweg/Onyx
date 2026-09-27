@@ -37,6 +37,8 @@ static constexpr u8 OP_PRIM_LIST_FORMAT = 56;
 static constexpr u8 OP_GL_SHADER_STATE = 64;
 static constexpr u8 OP_VCM_CACHE_SIZE = 71;
 static constexpr u8 OP_TRANSFORM_FEEDBACK_SPECS = 74;
+static constexpr u8 OP_BLEND_ENABLES = 83;
+static constexpr u8 OP_BLEND_CFG = 84;
 static constexpr u8 OP_BLEND_CONSTANT_COLOR = 86;
 static constexpr u8 OP_COLOR_WRITE_MASKS = 87;
 static constexpr u8 OP_ZERO_ALL_CENTROID_FLAGS = 88;
@@ -652,6 +654,26 @@ struct ColorWriteMasks : CLPacket
     u32 mask;
 } PACKED;
 static_assert(sizeof(ColorWriteMasks) == 5);
+
+// (Onyx) the blend equation of the render targets in mask (Mesa v3d_packet.xml, V3D 4.2)
+struct BlendCfg : CLPacket
+{
+    BlendCfg(u32 alphaMode, u32 alphaSrc, u32 alphaDst, u32 colorMode, u32 colorSrc, u32 colorDst, u32 rtMask) :
+        CLPacket(OP_BLEND_CFG),
+        bits((alphaMode & 15) | (alphaSrc & 15) << 4 | (alphaDst & 15) << 8 | (colorMode & 15) << 12
+             | (colorSrc & 15) << 16 | (colorDst & 15) << 20 | (rtMask & 15) << 24)
+    {
+    }
+    u32 bits;
+} PACKED;
+static_assert(sizeof(BlendCfg) == 5);
+
+struct BlendEnables : CLPacket
+{
+    BlendEnables(u8 mask) : CLPacket(OP_BLEND_ENABLES), mask(mask) {}
+    u8 mask;
+} PACKED;
+static_assert(sizeof(BlendEnables) == 2);
 
 struct BlendConstantColor : CLPacket
 {

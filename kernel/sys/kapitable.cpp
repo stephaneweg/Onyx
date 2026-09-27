@@ -339,4 +339,6 @@ void KApiTableInit (void)
 	t->core_release      = kapi_core_release;
 	t->gpu_info          = kapi_gpu_info;
 	t->gpu_draw          = kapi_gpu_draw;
+	t->gpu_texture       = kapi_gpu_texture;
+	t->gpu_render        = kapi_gpu_render;
 }
