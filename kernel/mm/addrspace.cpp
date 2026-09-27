@@ -74,7 +74,8 @@ CAddressSpace::CAddressSpace (void)
 	m_nOwnedPages (0),
 	m_ulHeapBrk (USER_HEAP_BASE),
 	m_ulHeapEnd (USER_HEAP_BASE),
-	m_ulSurfaceNext (USER_SURFACE_BASE)
+	m_ulSurfaceNext (USER_SURFACE_BASE),
+	m_ulCodeNext (USER_CODE_BASE)
 {
 	m_Args[0] = '\0';
 	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
@@ -421,6 +422,25 @@ void *CAddressSpace::Sbrk (long nIncrement)
 	}
 	m_ulHeapBrk = ulWant;
 	return (void *) ulOld;
+}
+
+void *CAddressSpace::CodeAlloc (u64 ulSize)
+{
+	u64 ulPages = (ulSize + KPAGE_SIZE - 1) / KPAGE_SIZE;
+	if (ulPages == 0 || m_ulCodeNext + ulPages * KPAGE_SIZE > USER_CODE_END) return 0;
+	u64 ulVA = m_ulCodeNext;
+	TKPageAttr Attr = KPAGE_ATTR_APP_RWX;
+	for (u64 i = 0; i < ulPages; i++)
+	{
+		if (MapNewPage (ulVA + i * KPAGE_SIZE, Attr) == 0)
+		{
+			m_ulCodeNext = ulVA + i * KPAGE_SIZE;	// (what is mapped stays, freed at teardown)
+			return 0;
+		}
+	}
+	m_ulCodeNext = ulVA + ulPages * KPAGE_SIZE;
+	DataSyncBarrier ();
+	return (void *) ulVA;
 }
 
 void CAddressSpace::Activate (void)

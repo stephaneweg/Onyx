@@ -430,6 +430,25 @@ Notes / caveats:
 > `gc_dsp.cpp` the DSP's ROM / microcode handshake at a high level (silent); `gc_boot.cpp` the
 > IPL's state, `.dol` loading, discs booted by running their apploader on the CPU.
 > `gcemu` reads a disc image on demand (`kapi_seek`, the main thread serving the app core).
+> **The JIT** (`gc_jit.cpp`, AArch64 hosts): `Machine::jitEnable()` (code memory from the host's
+> `gc::codeAlloc` hook: `kapi_code_alloc` (ABI v58) on Onyx, `mmap` RWX in the host test), then
+> `run()` goes through `jitRun()`: the PowerPC code is translated a **block** at a time (to its
+> branch, ≤ 64 instructions, within a 4 KB page) by a small built-in AArch64 assembler. The
+> guest registers stay in the `Machine` (x19 = it, x20 = MEM1, x21 = the helpers + a 64K-entry
+> direct-mapped table of blocks, w22 = MEM1's size); the integer unit, CR logic, rotates,
+> shifts, compares, the branches (CTR / CR conditions, LR) and the loads / stores are native (a
+> load / store whose address maps MEM1 through the OS's standard BATs, or in real mode, reads
+> the host memory directly and byte-swaps; the rest calls `read32`… with the cycle count exact),
+> every other instruction (the FPU, the paired singles for now) calls the interpreter's `exec`.
+> A block ends with the next pc + its cycles, then jumps to the next block through the table
+> while `cycles < jitUntil` (the next event / the decrementer; `piUpdate` and `decWrite` zero it
+> to come back); `jitRun` (C) takes the interrupts, translates what is missing. Blocks are keyed
+> by address + MSR IR / DR; `icbi`, the DVD / ARAM / locked-cache DMAs drop the blocks of the
+> 4 KB pages written; a BAT change, HID0's ICFI or a reset drop everything. `b .` jumps to the
+> next event (idle). `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
+> Tested by `run_gc_test.sh` under `qemu-aarch64` (`GC_JIT=1`): cputest / pstest / hwtest /
+> gxtest identical to the interpreter's, `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
+> against qemu-ppc's result: ~20× the interpreter's speed.
 > **Host test** (`sh tools/tests/run_gc_test.sh`, needs gcc-powerpc-linux-gnu + qemu-user):
 > `tools/tests/gc/cputest.c` compiled once runs under `qemu-ppc -cpu 750` and in the interpreter
 > (10485 result words identical), `pstest.S` the paired singles against the manual, `hwtest.c`

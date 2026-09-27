@@ -54,6 +54,9 @@ public:
 	// The user allocator (user/umm.h) calls this through kapi_sbrk.
 	void *Sbrk (long nIncrement);
 
+	// Fresh zeroed pages, EL1 read/write/execute, in the code arena (a JIT) -> VA, 0 full.
+	void *CodeAlloc (u64 ulSize);
+
 	// Load TTBR0_EL1 = L2-base | (ASID << 48); isb.
 	void Activate (void);
 
@@ -121,6 +124,7 @@ private:
 	u64			     m_ulHeapBrk; // logical heap break (kapi_sbrk), >= USER_HEAP_BASE
 	u64			     m_ulHeapEnd; // page-aligned top of the mapped heap region
 	u64			     m_ulSurfaceNext; // next free VA in the surface arena (bump)
+	u64			     m_ulCodeNext; // next free VA in the code arena (bump)
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

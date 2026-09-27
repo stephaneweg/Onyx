@@ -4,6 +4,9 @@
 #     compiled once (powerpc-linux-gnu-gcc), run under qemu-ppc -cpu 750 (the reference) and in
 #     the interpreter (linked at 0x80003100): every result, CR, XER, FPRF must match;
 #   * the paired singles / quantized loads and stores against the manual (pstest.S).
+#   * the JIT (gc_jit.cpp, AArch64): the same programs built for aarch64-linux, run under
+#     qemu-aarch64 with GC_JIT=1 (skipped without g++-aarch64-linux-gnu), + bench.c's result
+#     against qemu-ppc's and its speed, the interpreter's then the JIT's.
 # Needs gcc-powerpc-linux-gnu, binutils-powerpc-linux-gnu and qemu-user.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
@@ -46,3 +49,29 @@ for (x, y), want, what in checks:
 print("ok  : gxtest.dol: the GX frame (textured quad, shaded triangle)" if not bad else "FAIL gxtest.dol")
 sys.exit(bad)
 X
+
+# the JIT: the same checks on an AArch64 build (qemu-aarch64), GC_JIT=1
+if command -v aarch64-linux-gnu-g++ > /dev/null && command -v qemu-aarch64 > /dev/null; then
+	aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest_a64"
+	Q="qemu-aarch64 -L /usr/aarch64-linux-gnu $T/gctest_a64"
+	echo "the JIT:"
+	GC_JIT=1 $Q cpu "$T/cputest.elf" "$T/expected.bin"
+	GC_JIT=1 $Q ps "$T/pstest.elf"
+	out=$(GC_JIT=1 $Q dol "$T/hwtest.dol" 40 "$T/hwj.ppm")
+	echo "$out" | grep -q "results: 0000001E 0000000F 00001234 .* 600D600D" && echo "ok  : hwtest.dol (JIT)" || { echo "FAIL hwtest.dol (JIT)"; echo "$out"; exit 1; }
+	GC_JIT=0 GC_GX="$T/gxi.ppm" $Q dol "$T/gxtest.dol" 5 "$T/gxxfbi.ppm" > /dev/null
+	GC_JIT=1 GC_GX="$T/gxj.ppm" $Q dol "$T/gxtest.dol" 5 "$T/gxxfbj.ppm" > /dev/null
+	cmp -s "$T/gxi.ppm" "$T/gxj.ppm" && echo "ok  : gxtest.dol (JIT): the interpreter's GX frame" || { echo "FAIL gxtest.dol (JIT): another frame"; exit 1; }
+	F2="-mcpu=750 -O2 -fno-stack-protector -fno-pic -fno-pie"
+	powerpc-linux-gnu-gcc $F2 -c "$here/gc/bench.c" -o "$T/bench.o"
+	printf '#include <stdio.h>\nunsigned run_bench (unsigned *);\nint main (void) { unsigned o; run_bench (&o); printf ("%%08X\\n", o); return 0; }\n' > "$T/bench_main.c"
+	powerpc-linux-gnu-gcc $F2 -static "$T/bench_main.c" "$T/bench.o" -o "$T/bench_q"
+	want=$(qemu-ppc -cpu 750 "$T/bench_q")
+	powerpc-linux-gnu-ld -Ttext=0x80003100 -e run_bench -nostdlib "$T/bench.o" -o "$T/bench.elf"
+	for j in 0 1; do
+		out=$(GC_JIT=$j $Q bench "$T/bench.elf" | head -1)
+		echo "$out" | grep -q "result $want" && echo "ok  : bench.c ($([ $j = 1 ] && echo JIT || echo interpreter)): $out" || { echo "FAIL bench.c: $out, qemu-ppc $want"; exit 1; }
+	done
+else
+	echo "skip: the JIT (no aarch64-linux-gnu-g++ / qemu-aarch64)"
+fi

@@ -83,6 +83,7 @@ void Machine::decWrite (u32 v)
 	// it counts down at the timebase's rate and interrupts when it goes from 0 to -1
 	decAt = (s32) v >= 0 ? cycles + ((u64) v + 1) * CYC_PER_TB : ~0ull;
 	if ((s32) v < 0) dec = v;
+	jitUntil = 0;						// (the JIT's blocks: back to see it)
 }
 
 void Machine::exception (u32 vector, u32 ret)
@@ -103,6 +104,7 @@ void Machine::checkInterrupts ()
 
 void Machine::run (u64 until)
 {
+	if (jit) { jitRun (until); return; }
 	while (cycles < until && !halted)
 	{
 		if (cycles >= decAt) { decAt = ~0ull; dec = 0xFFFFFFFF; decPending = true; }
@@ -199,7 +201,7 @@ void Machine::mtspr (u32 n, u32 v)
 			if (m && c)
 			{
 				if (v & 0x10) for (u32 i = 0; i < len; i++) c[i] = m[i];	// LD: memory -> cache
-				else for (u32 i = 0; i < len; i++) m[i] = c[i];
+				else { jitInvalidate (mem & 0x01FFFFFF, len); for (u32 i = 0; i < len; i++) m[i] = c[i]; }
 			}
 			dmaL &= ~3u;
 		}
@@ -211,7 +213,7 @@ void Machine::mtspr (u32 n, u32 v)
 	case 938: case 954: pmc[1] = v; return;
 	case 941: case 957: pmc[2] = v; return;
 	case 942: case 958: pmc[3] = v; return;
-	case 1008: hid0 = v; return;
+	case 1008: hid0 = v; if (v & 0x800) jitFlush = true; return;	// (ICFI: the instruction cache flash-invalidated)
 	case 1009: hid1 = v; return;
 	case 1011: hid4 = v; return;
 	case 1017: l2cr = v & ~1u; return;			// (the invalidate bit reads back clear)
@@ -652,7 +654,13 @@ void Machine::op31 (u32 op)
 	case 659: gpr[d] = sr[gpr[b] >> 28]; return;			// mfsrin
 	case 210: sr[a & 15] = gpr[d]; return;				// mtsr
 	case 242: sr[gpr[b] >> 28] = gpr[d]; return;			// mtsrin
-	case 86: case 54: case 278: case 246: case 982: case 598: case 854: case 306: case 566: return;	// dcbf dcbst dcbt dcbtst icbi sync eieio tlbie tlbsync
+	case 86: case 54: case 278: case 246: case 598: case 854: case 306: case 566: return;	// dcbf dcbst dcbt dcbtst sync eieio tlbie tlbsync
+	case 982:							// icbi: the JIT's code there is stale
+	{
+		u32 pa;
+		if (translate (RA0 + gpr[b], pa, false, false)) jitInvalidate (pa & ~31u, 32);
+		return;
+	}
 	case 470: return;						// dcbi (the data is kept)
 	case 1014:							// dcbz
 	{
@@ -792,8 +800,8 @@ void Machine::op59 (u32 op)
 	case 25: r = fa * force25 (fc); break;				// fmuls
 	case 28: r = __builtin_fma (fa, force25 (fc), -fb); break;	// fmsubs
 	case 29: r = __builtin_fma (fa, force25 (fc), fb); break;	// fmadds
-	case 30: r = -__builtin_fma (fa, force25 (fc), -fb); break;	// fnmsubs
-	case 31: r = -__builtin_fma (fa, force25 (fc), fb); break;	// fnmadds
+	case 30: r = fnegd (__builtin_fma (fa, force25 (fc), -fb)); break;	// fnmsubs
+	case 31: r = fnegd (__builtin_fma (fa, force25 (fc), fb)); break;	// fnmadds
 	default:
 		halted = true;
 		{ const char *m = "unknown op59 "; int n = 0; while (m[n]) { haltMsg[n] = m[n]; n++; } hex8 (haltMsg + n, op); haltMsg[n + 8] = 0; }
@@ -818,8 +826,8 @@ void Machine::op63 (u32 op)
 	case 25: r = fa * fc; goto arith;				// fmul
 	case 28: r = __builtin_fma (fa, fc, -fb); goto arith;		// fmsub
 	case 29: r = __builtin_fma (fa, fc, fb); goto arith;		// fmadd
-	case 30: r = -__builtin_fma (fa, fc, -fb); goto arith;		// fnmsub
-	case 31: r = -__builtin_fma (fa, fc, fb); goto arith;		// fnmadd
+	case 30: r = fnegd (__builtin_fma (fa, fc, -fb)); goto arith;		// fnmsub
+	case 31: r = fnegd (__builtin_fma (fa, fc, fb)); goto arith;		// fnmadd
 	case 26: r = frsqrte (fb); goto arith;				// frsqrte
 	case 23: ps0[d] = (fa >= 0.0) ? fc : fb; if (RCBIT) setCr1 (); return;	// fsel (NaN -> fb)
 	}
@@ -918,8 +926,8 @@ void Machine::op4 (u32 op)
 	case 26: r0 = frsqrte (b0); r1 = frsqrte (b1); goto both;	// ps_rsqrte
 	case 28: r0 = __builtin_fma (a0, force25 (c0), -b0); r1 = __builtin_fma (a1, force25 (c1), -b1); goto both;	// ps_msub
 	case 29: r0 = __builtin_fma (a0, force25 (c0), b0); r1 = __builtin_fma (a1, force25 (c1), b1); goto both;	// ps_madd
-	case 30: r0 = -__builtin_fma (a0, force25 (c0), -b0); r1 = -__builtin_fma (a1, force25 (c1), -b1); goto both;	// ps_nmsub
-	case 31: r0 = -__builtin_fma (a0, force25 (c0), b0); r1 = -__builtin_fma (a1, force25 (c1), b1); goto both;	// ps_nmadd
+	case 30: r0 = fnegd (__builtin_fma (a0, force25 (c0), -b0)); r1 = fnegd (__builtin_fma (a1, force25 (c1), -b1)); goto both;	// ps_nmsub
+	case 31: r0 = fnegd (__builtin_fma (a0, force25 (c0), b0)); r1 = fnegd (__builtin_fma (a1, force25 (c1), b1)); goto both;	// ps_nmadd
 	}
 	switch ((op >> 1) & 0x3F)					// the indexed quantized loads / stores
 	{

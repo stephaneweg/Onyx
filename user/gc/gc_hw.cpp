@@ -21,7 +21,7 @@ void Machine::piRaise (u32 bits)
 	piIntsr |= bits; piUpdate ();
 }
 void Machine::piLower (u32 bits) { piIntsr &= ~bits; piUpdate (); }
-void Machine::piUpdate () { extIrq = (piIntsr & piIntmr) != 0; }
+void Machine::piUpdate () { extIrq = (piIntsr & piIntmr) != 0; jitUntil = 0; }
 
 // ---- reset -----------------------------------------------------------------------------------------------------
 void Machine::hwReset ()
@@ -284,6 +284,7 @@ bool Machine::readDisc (u32 off, u32 len, u32 dst)
 {
 	u8 *d = ptr (dst & 0x01FFFFFF);
 	if (!d || (dst & 0x01FFFFFF) + len > MEM1_SIZE) return false;
+	jitInvalidate (dst & 0x01FFFFFF, len);
 	if (!disc && discRead) return discRead (discCtx, off, len, d);
 	for (u32 i = 0; i < len; i++) d[i] = disc && off + i < discSize ? disc[off + i] : 0;
 	return true;
@@ -472,6 +473,7 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 			u32 cnt = ((u32) (dspReg[0x28 / 2] & 0x7FFF) << 16 | w);
 			bool toMain = dspReg[0x28 / 2] & 0x8000;
 			u8 *m = ptr (mm & 0x01FFFFFF);
+			if (toMain) jitInvalidate (mm & 0x01FFFFFF, cnt);
 			for (u32 i = 0; m && i < cnt && (mm & 0x01FFFFFF) + i < MEM1_SIZE; i++)
 			{
 				u32 a = (ar + i) & (ARAM_SIZE - 1);

@@ -1351,6 +1351,13 @@ int kapi_seek (void *pHandle, unsigned long long ullPos)
 	return f_lseek (pFile, (FSIZE_t) ullPos) == FR_OK ? 0 : -1;
 }
 
+// v58: executable memory for generated code (a JIT), in the process's code arena
+void *kapi_code_alloc (unsigned long ulSize)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	return pAS != 0 ? pAS->CodeAlloc (ulSize) : 0;
+}
+
 void kapi_close (void *pHandle)
 {
 	if (VfsIsFile (pHandle)) { VfsClose (pHandle); return; }

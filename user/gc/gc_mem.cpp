@@ -13,7 +13,8 @@ static void zero (void *p, u32 n) { u8 *d = (u8 *) p; while (n--) *d++ = 0; }
 
 Machine::Machine ()
 {
-	mem1 = new u8[MEM1_SIZE];
+	mem1 = new u8[MEM1_SIZE + 16];			// (+16: the JIT's unaligned accesses at the end)
+	jit = 0; jitUntil = 0; jitFlush = false; jitBlocks = jitCompiles = 0;
 	aram = new u8[ARAM_SIZE];
 	disc = 0; discSize = 0; discRead = 0; discCtx = 0; pal = false; title[0] = 0; gameId[0] = 0;
 	for (int i = 0; i < 2; i++) gfxFrame[i].v = 0, gfxFrame[i].b = 0;
@@ -53,6 +54,7 @@ void Machine::reset ()
 	dbat[6] = 0xE00001FE; dbat[7] = 0xE0000002;
 	batRebuild ();
 	tbBase = 0; cycles = 0; decAt = ~0ull; decPending = false; resv = false; resvAddr = 0; idleSkips = 0; curPc = pc; halted = false; haltMsg[0] = 0; extIrq = 0; memFault = false;
+	jitFlush = true;
 	hwReset ();
 }
 
@@ -75,6 +77,7 @@ void Machine::batRebuild ()
 				map[(first & ~bl) + k] = ((phys & ~bl) + k) + 1;
 		}
 	}
+	jitFlush = true;					// (the JIT's code assumed the old map)
 }
 
 bool Machine::translate (u32 ea, u32 &pa, bool data, bool)

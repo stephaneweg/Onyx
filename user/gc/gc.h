@@ -13,6 +13,8 @@
 //                 display interrupts, the framebuffer in YUV 4:2:2 -> RGB), SI (the pads),
 //                 EXI (the RTC / SRAM, no memory card yet), DI (the DVD drive, reading an
 //                 ISO / GCM image), AI / DSP (the mailboxes, the audio and ARAM DMAs), MI
+//   * gc_jit.cpp  the Gekko's JIT (AArch64 hosts): its code translated to native code a block
+//                 at a time, the interpreter for what it does not translate
 //   * gc_boot.cpp starting a program: a .dol, or a disc image through its apploader (run by
 //                 the CPU, as the IPL does), with the memory the IPL leaves
 //
@@ -28,6 +30,10 @@ typedef signed char s8; typedef short s16; typedef int s32; typedef long long s6
 
 enum { MEM1_SIZE = 24 * 1024 * 1024, LCACHE_SIZE = 16 * 1024 };
 enum { CPU_HZ = 486000000, BUS_HZ = 162000000, TB_HZ = BUS_HZ / 4, CYC_PER_TB = CPU_HZ / TB_HZ };
+
+// The host's writable and executable memory, for the JIT's code (Onyx: kapi_code_alloc) -> 0 none.
+extern void *(*codeAlloc) (u32 size);
+struct Jit;
 
 static inline u32 bswap32 (u32 v) { return __builtin_bswap32 (v); }
 static inline u16 bswap16 (u16 v) { return (u16) __builtin_bswap16 (v); }
@@ -70,6 +76,9 @@ public:
 	u32 ibat[8], dbat[8];				// upper, lower pairs (IBAT0U, IBAT0L, IBAT1U...)
 	u32 sr[16], sdr1;
 	u64 cycles;					// CPU cycles run
+	u64 jitUntil;					// the JIT's blocks chain until then (0: back to jitRun now)
+	Jit *jit;					// the JIT (0: the interpreter runs the CPU)
+	bool jitFlush;					// its code is to be thrown away (a BAT changed, a reset)
 	bool halted; char haltMsg[96];
 	u32 extIrq;					// an external interrupt is asserted (the PI's)
 
@@ -82,6 +91,10 @@ public:
 	u32  resvAddr; bool resv;			// lwarx / stwcx.
 	u32  idleSkips;					// (stats) idle loops skipped
 	void checkInterrupts ();
+	bool jitEnable ();				// the JIT runs the CPU from now on (false: no code memory / not AArch64)
+	void jitRun (u64 untilCycle);
+	void jitInvalidate (u32 pa, u32 len);		// code written there (icbi, a DMA): its blocks are dropped
+	u32  jitBlocks, jitCompiles;			// (stats) blocks translated, now / in all
 
 	// ---- memory (gc_mem.cpp) ----
 	u8 *mem1;					// MEM1, big-endian
@@ -198,6 +211,7 @@ public:
 	u32 dspBootMails[10]; int dspBootN; u32 dspUcode; u32 dspCmdlistLeft;
 
 private:
+	friend struct Jit;
 	void exec (u32 op);
 	void op4 (u32 op);				// the paired singles
 	void op19 (u32 op);

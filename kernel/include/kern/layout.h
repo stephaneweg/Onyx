@@ -99,6 +99,12 @@
 #define USER_SURFACE_BASE	(0x360000000ULL)	// 13.5 GB
 #define USER_SURFACE_END	(14ULL * GIGABYTE)	// 14 GB (kapi table sits just above)
 
+// Per-process arena for generated code (v58 kapi_code_alloc: a JIT's translated blocks),
+// between the kapi table (14 GB) and the full-screen canvas (15 GB). Bump-allocated,
+// 64 KB pages owned by the address space (freed on teardown).
+#define USER_CODE_BASE		(0x390000000ULL)	// 14.25 GB
+#define USER_CODE_END		(15ULL * GIGABYTE)	// 15 GB: 768 MB
+
 #define IS_USER_VA(va) \
 	((u64)(va) >= USER_VA_BASE && (u64)(va) < USER_VA_END)
 
@@ -168,6 +174,11 @@ struct TKPageAttr
 // (what the app writes reaches the scan-out at once), never executable.
 #define KPAGE_ATTR_APP_SCREEN \
 	{ ATTRINDX_COHERENT, ATTRIB_AP_RW_EL1,  ATTRIB_SH_OUTER_SHAREABLE, 1, 1, 1 }
+
+// Generated code (kapi_code_alloc, a JIT): EL1 read/write AND execute at EL1. The
+// app writes the code, cleans the D-cache and invalidates the I-cache, then runs it.
+#define KPAGE_ATTR_APP_RWX \
+	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 0, 1 }
 
 // App read-only data (the shared kapi ABI table): EL1 read-only, never executable.
 #define KPAGE_ATTR_APP_RODATA \

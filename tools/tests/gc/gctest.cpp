@@ -3,12 +3,40 @@
 //       in the interpreter and compares its output with qemu-ppc's (run_gc_test.sh)
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
+// GC_JIT=1: the JIT runs the CPU (an AArch64 host: run_gc_test.sh builds it for qemu-aarch64)
 #include "gc/gc.h"
 #include "basic/bas3d.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#if defined(__aarch64__)
+#include <sys/mman.h>
+#endif
 using namespace gc;
+
+static bool useJit;
+static void *hostCode (u32 size)
+{
+#if defined(__aarch64__)
+	void *p = mmap (0, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	return p == MAP_FAILED ? 0 : p;
+#else
+	(void) size; return 0;
+#endif
+}
+static void startJit (Machine &m)
+{
+	if (!useJit) return;
+	if (!m.jitEnable ()) { printf ("FAIL: no JIT on this host\n"); exit (1); }
+}
+// run a function called with lr = 0x80001000 ("b ." there) until it returns
+static void runToReturn (Machine &m, u64 limit)
+{
+	m.write32 (0x80001000, 0x48000000);
+	if (!useJit) { while (m.pc != 0x80001000 && !m.halted && m.cycles < limit) m.step (); return; }
+	while (m.pc != 0x80001000 && !m.halted && m.cycles < limit) m.run (m.cycles + 20000);
+}
 
 static unsigned char *slurp (const char *p, long *n)
 {
@@ -42,7 +70,8 @@ static int cpuTest (const char *elf, const char *exp)
 	static Machine m;
 	u32 entry = loadElf (m, e);
 	m.pc = entry; m.gpr[1] = 0x80400000; m.gpr[3] = 0x80500000; m.lr = 0x80001000;
-	while (m.pc != 0x80001000 && !m.halted && m.cycles < 400000000ull) m.step ();
+	startJit (m);
+	runToReturn (m, 400000000ull);
 	if (m.halted) { printf ("FAIL halted: %s\n", m.haltMsg); return 1; }
 	if (m.pc != 0x80001000) { printf ("FAIL did not return (pc %08X)\n", m.pc); return 1; }
 	u32 words = m.gpr[3];
@@ -68,7 +97,8 @@ static int psTest (const char *elf)
 	long n; unsigned char *e = slurp (elf, &n);
 	static Machine m;
 	m.pc = loadElf (m, e); m.gpr[1] = 0x80400000; m.gpr[3] = 0x80500000; m.lr = 0x80001000;
-	while (m.pc != 0x80001000 && !m.halted && m.cycles < 1000000) m.step ();
+	startJit (m);
+	runToReturn (m, 1000000);
 	if (m.halted) { printf ("FAIL halted: %s\n", m.haltMsg); return 1; }
 	static const u32 want[15] = { 0x40600000, 0x40300000, 0x0018FFFA, 0x40D00000, 0x40980000, 0xBE800000, 0x3FC00000, 0x40980000,
 		0x40400000, 0x3FC00000, 0x40900000, 0xBF400000, 0xBFC00000, 0x3E800000, 0x00400000 };
@@ -82,6 +112,23 @@ static int psTest (const char *elf)
 	}
 	printf ("%s: paired singles, %d of 15 differ\n", bad ? "FAIL" : "ok  ", bad);
 	return bad != 0;
+}
+
+// a function's speed: run_bench (r3 = where its result goes) -> the result, the cycles, the time
+static int benchTest (const char *elf)
+{
+	long n; unsigned char *e = slurp (elf, &n);
+	static Machine m;
+	m.pc = loadElf (m, e); m.gpr[1] = 0x80400000; m.gpr[3] = 0x80500000; m.lr = 0x80001000;
+	startJit (m);
+	struct timespec t0, t1; clock_gettime (CLOCK_MONOTONIC, &t0);
+	runToReturn (m, 100000000000ull);
+	clock_gettime (CLOCK_MONOTONIC, &t1);
+	double s = (double) (t1.tv_sec - t0.tv_sec) + (double) (t1.tv_nsec - t0.tv_nsec) * 1e-9;
+	printf ("result %08X, %llu instructions, %.3f s, %.1f M instructions / s%s%s\n", be32 (m.mem1 + 0x500000), m.cycles / 2, s, (double) m.cycles / 2 / s / 1e6,
+		m.halted ? " HALTED " : "", m.haltMsg);
+	if (useJit) printf ("JIT: %u blocks translated\n", m.jitCompiles);
+	return 0;
 }
 
 static void ppm (const Machine &m, const char *path)
@@ -122,19 +169,24 @@ static int dolTest (const char *dol, int frames, const char *out)
 	long n; unsigned char *d = slurp (dol, &n);
 	static Machine m;
 	if (!m.loadDol (d, (u32) n)) { printf ("FAIL: not a .dol\n"); return 1; }
+	startJit (m);
 	for (int i = 0; i < frames && !m.halted; i++) m.runFrame ();
 	if (out) ppm (m, out);
 	if (out && getenv ("GC_GX")) gfxPpm (m, getenv ("GC_GX"));
 	printf ("%d fields, pc %08X%s%s, %dx%d, gx %u cmds %u prims\n", m.frames, m.pc, m.halted ? " HALTED: " : "", m.haltMsg, m.fbW, m.fbH, m.gxCmds, m.gxPrims);
 	printf ("results: %08X %08X %08X %08X %08X\n", m.read32 (0x80700000), m.read32 (0x80700004), m.read32 (0x80700008), m.read32 (0x8070000C), m.read32 (0x80700010));
 	printf ("PI irqs:"); for (int i = 0; i < 14; i++) printf (" %u", m.irqCount[i]); printf ("\n");
+	if (useJit) printf ("JIT: %u blocks translated, %u live\n", m.jitCompiles, m.jitBlocks);
 	return m.halted;
 }
 
 int main (int argc, char **argv)
 {
+	codeAlloc = hostCode;
+	useJit = getenv ("GC_JIT") && atoi (getenv ("GC_JIT"));
 	if (argc >= 4 && !strcmp (argv[1], "dol")) return dolTest (argv[2], atoi (argv[3]), argc > 4 ? argv[4] : 0);
 	if (argc >= 3 && !strcmp (argv[1], "ps")) return psTest (argv[2]);
+	if (argc >= 3 && !strcmp (argv[1], "bench")) return benchTest (argv[2]);
 	if (argc >= 4 && !strcmp (argv[1], "cpu")) return cpuTest (argv[2], argv[3]);
 	fprintf (stderr, "gctest cpu <cputest.elf> <expected.bin>\n");
 	return 2;

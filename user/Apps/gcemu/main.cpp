@@ -11,7 +11,9 @@
 //   * Keys: arrows = the stick, X = A, C = B, S = X, A = Y, Z = Z, Enter = Start, Q / W = L / R,
 //     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/gamepad.h). F11: full
 //     screen (Esc back), F12: the speed, P: pause.
-//   * Not yet: the sound, the memory cards; the speed on the Pi (an interpreter: slow).
+//   * The CPU: the JIT (user/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
+//     from kapi v58 code_alloc); Game > Interpreter (or --interp) runs the interpreter instead.
+//   * Not yet: the sound, the memory cards.
 //
 #include "kapi.h"
 #include "launch.h"
@@ -41,6 +43,9 @@ static unsigned g_lastSerial = 0, g_gfxAge = 1000;
 static int g_fbW = 640, g_fbH = 480;
 static void *g_disc = 0;					// the disc image's file
 static bool g_onCore = false;					// the machine runs on an app core
+static gc::Jit *g_jit = 0;					// the JIT (0: none: an older kernel)
+static volatile int g_wantJit = 1;				// the menu's choice, applied between fields
+static void *code_alloc (unsigned n) { return kapi_code_alloc (n); }
 
 static inline unsigned long long now_us (void)
 {
@@ -219,6 +224,7 @@ static void on_zoom2 () { set_zoom (2); }
 static void on_full () { full_screen (!g_fs); }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
+static void on_interp () { g_wantJit = !g_wantJit; }
 static void on_quit () { kapi_exit (0); }
 
 bool EmuRoot::onKey (long k)
@@ -283,6 +289,8 @@ static void pad_state (void)
 static void gc_frame (EmuCore *ec)
 {
 	unsigned w1 = g_padW[1], w2 = g_padW[2];
+	gc::Jit *want = g_wantJit ? g_jit : 0;
+	if (want != g_m->jit) { g_m->jit = want; g_m->jitFlush = true; }	// (what ran meanwhile may have changed the code)
 	g_m->setPad (0, g_padW[0], (signed char) w1, (signed char) (w1 >> 8), (signed char) (w1 >> 16), (signed char) (w1 >> 24), (int) (w2 & 255), (int) (w2 >> 8));
 	g_m->runFrame ();
 	unsigned *d = ec_back (ec);
@@ -304,7 +312,10 @@ int main (void)
 	g_path[n] = 0;
 	if (!g_path[0]) { lx_launch ("gamelib", ""); return 0; }
 	for (; args[i]; i++)
+	{
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'f' && args[i + 3] == 'u' && args[i + 4] == 'l' && args[i + 5] == 'l') wantFull = true;
+		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'i' && args[i + 3] == 'n' && args[i + 4] == 't') g_wantJit = 0;
+	}
 
 	{ int b = slen (g_path); while (b > 0 && g_path[b - 1] != '/' && g_path[b - 1] != ':') b--; scpy (g_loadName, g_path + b, sizeof g_loadName); }
 	char title[64]; scpy (title, g_loadName, sizeof title);
@@ -344,12 +355,17 @@ int main (void)
 		return 1;
 	}
 
+	gc::codeAlloc = code_alloc;				// (the JIT's code memory: taken here, not on the app core)
+	if (g_m->jitEnable ()) g_jit = g_m->jit;
+	if (!g_wantJit) g_m->jit = 0;
+
 	g_gpu = kapi_gpu_info (0, 0) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1;
 	for (int k = 0; k < gc::Machine::MAX_TEX; k++) g_gpuTex[k] = -1;
 
 	static Menu menu;
 	menu.menu ("Game");
 	menu.item ("Pause",        "P",   0, on_pause);
+	if (g_jit) menu.item ("Interpreter (no JIT)", "", 0, on_interp);
 	menu.separator ();
 	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
@@ -399,6 +415,7 @@ int main (void)
 			fmt_num (g_statText, &k, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &k, " ms  draw ");
 			fmt_num (g_statText, &k, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &k, " ms");
 			cat (g_statText, &k, g_gfxAge < 30 ? "  GPU" : "  framebuffer");
+			cat (g_statText, &k, g_m->jit ? "  JIT" : "  interpreter");
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
 		}

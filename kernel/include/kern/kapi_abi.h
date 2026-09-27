@@ -60,7 +60,8 @@
 // v56: + win_list/win_read/win_raise/win_close -- the windows as objects, for the window-
 //      level remote desktop (rdpd): their place, size, state and pixels.
 // v57: + seek -- set the read position of an opened file (random access: the GameCube discs).
-#define KAPI_ABI_VERSION	57
+// v58: + code_alloc -- executable memory for generated code (the GameCube emulator's JIT).
+#define KAPI_ABI_VERSION	58
 
 #ifdef __cplusplus
 extern "C" {
@@ -740,6 +741,13 @@ struct TKApiTable
 	// A big file's cluster map is built at its first seek (FatFs fast seek): then any position
 	// is reached without walking the FAT.
 	int (*seek) (void *h, unsigned long long pos);
+
+	// --- v58 additions ---
+	// code_alloc: size bytes (rounded up to 64 KB pages) of zeroed memory the app may write
+	// AND execute (a JIT's generated code) -> its address, 0 (the 768 MB arena is full / no
+	// memory). After writing code: clean the D-cache and invalidate the I-cache over it
+	// (DC CVAU, DSB ISH, IC IVAU, DSB ISH, ISB). Freed when the app exits.
+	void *(*code_alloc) (unsigned long size);
 };
 
 #ifdef __cplusplus

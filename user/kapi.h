@@ -353,6 +353,9 @@ static inline int kapi_win_raise (unsigned id) { return KT->version >= 56 ? KT->
 static inline int kapi_win_close (unsigned id) { return KT->version >= 56 ? KT->win_close (id) : -1; }
 // The read position of an opened file (v57): 0, or -1 (an older kernel, a file not seekable).
 static inline int kapi_seek (void *h, unsigned long long pos) { return KT->version >= 57 ? KT->seek (h, pos) : -1; }
+// Writable + executable memory for generated code, a JIT (v58): 0 on an older kernel / full.
+// After writing code: clean the D-cache / invalidate the I-cache over it (__builtin___clear_cache).
+static inline void *kapi_code_alloc (unsigned long size) { return KT->version >= 58 ? KT->code_alloc (size) : 0; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
