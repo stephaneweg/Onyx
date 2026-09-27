@@ -20,6 +20,9 @@ struct TTrapFrame;
 // breadcrumbs
 #define CRUMB_V3D		0	// 0 idle, 1 clipping, 2 binning, 3 rendering, 4 texture upload
 #define CRUMB_PRESENT		1	// 0 idle, 1 composing, 2 display DMA, 3 display DMA wait
+#define CRUMB_THROTTLED		2	// the firmware's GET_THROTTLED bits
+#define CRUMB_TEMP		3	// the SoC's temperature, degrees C
+#define CRUMB_TEMP_MAX		4
 #define CRUMB_COUNT		8
 
 void CrashLogInit (void);				// at boot, before the first log line is kept
@@ -28,6 +31,7 @@ void CrashLogText (const void *pText, size_t nCount);	// (the logger's output, C
 void CrashLogSample (const TTrapFrame *pFrame);		// (core 0, each IRQ)
 void CrashLogAlive (void);				// (the reaper, 20 times a second: uptime + watchdog)
 void CrashLogCrumb (unsigned nIndex, u32 nValue);
+void CrashLogPower (void);				// (once a second: throttling + temperature -> kmsg, record)
 void CrashLogPanic (const char *pLine);			// before the panic screen
 void CrashLogCleanEnd (void);				// shutdown / reboot: stops the watchdog
 

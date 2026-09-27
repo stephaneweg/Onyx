@@ -19,6 +19,7 @@
 #include <circle/bcm2835.h>
 #include <circle/memio.h>
 #include <circle/actled.h>
+#include <circle/bcmpropertytags.h>
 
 #define CRASH_MAGIC	0x4F4E5843u		// "ONXC"
 #define CRASH_VERSION	2
@@ -204,6 +205,8 @@ void CrashLogCleanEnd (void)
 	Clean (&pRec->nState, 4);
 }
 
+static const char *ThrottleText (u32 v, char *pBuf);
+
 // ---- the report ---------------------------------------------------------------------------------
 static const char *CrumbName (unsigned nIndex, u32 v)
 {
@@ -253,6 +256,12 @@ static void ReportFromRAM (void)
 				      "written", "the SD write failed" };
 	s.Format ("Core 1's report into SD:/etc/crashdump.txt: %s\r\n", Step[pRec->nDumpStep < 5 ? pRec->nDumpStep : 0]);
 	Put (File, s);
+	{
+		char Buf[128];
+		s.Format ("Power: SoC %u C (max %u C this session), throttling: %s\r\n", pRec->Crumb[CRUMB_TEMP],
+			  pRec->Crumb[CRUMB_TEMP_MAX], ThrottleText (pRec->Crumb[CRUMB_THROTTLED], Buf));
+		Put (File, s);
+	}
 	s.Format ("GPU: %s, display: %s\r\n", CrumbName (CRUMB_V3D, pRec->Crumb[CRUMB_V3D]),
 		  CrumbName (CRUMB_PRESENT, pRec->Crumb[CRUMB_PRESENT]));
 	Put (File, s);
@@ -387,6 +396,11 @@ static void BuildDump (u64 ulStalled)
 	else { Out (": core 0 stopped for "); OutDec (ulStalled); Out (" s; written by core 1, then the Pi restarted\r\n"); }
 	if (pRec->nState == STATE_PANIC) { Out ("A kernel panic: "); Out (pRec->szPanic); Out ("\r\n"); }
 	Out ("Last pass of the reaper (the scheduler alive): "); OutTicks (pRec->nAliveTick); Out (" after boot\r\n");
+	{
+		char Buf[128];
+		Out ("Power: SoC "); OutDec (pRec->Crumb[CRUMB_TEMP]); Out (" C (max "); OutDec (pRec->Crumb[CRUMB_TEMP_MAX]);
+		Out (" C this session), throttling: "); Out (ThrottleText (pRec->Crumb[CRUMB_THROTTLED], Buf)); Out ("\r\n");
+	}
 	Out ("GPU: "); Out (CrumbName (CRUMB_V3D, pRec->Crumb[CRUMB_V3D]));
 	Out (", display: "); Out (CrumbName (CRUMB_PRESENT, pRec->Crumb[CRUMB_PRESENT])); Out ("\r\n");
 	Out ("\r\nCore 0, last interrupted at (newest first; t = time after boot; IRQ timer ticks):\r\n");
@@ -461,4 +475,48 @@ void CrashLogRequest (const char *pReason)
 	s_pReason = pReason;
 	DataSyncBarrier ();
 	for (;;) asm volatile ("wfe");			// core 1 writes the report and restarts the Pi
+}
+
+// ---- power and temperature (the firmware's view), once a second from the GUI watchdog --------------
+// GET_THROTTLED: bit 0 under-voltage now, 1 ARM frequency capped, 2 throttled, 3 soft temperature
+// limit; bits 16-19 the same "has occurred since boot". A change is logged; the last values are
+// kept in the crash record (a freeze under a weak supply or heat shows there).
+static const char *ThrottleText (u32 v, char *pBuf)
+{
+	static const char *Name[] = { "under-voltage", "ARM freq capped", "throttled", "soft temp limit" };
+	unsigned n = 0; pBuf[0] = 0;
+	for (int i = 0; i < 4; i++)
+		if (v & (1u << i) || v & (1u << (16 + i)))
+		{
+			const char *a = Name[i];
+			if (n) { pBuf[n++] = ','; pBuf[n++] = ' '; }
+			while (*a) pBuf[n++] = *a++;
+			const char *b = (v & (1u << i)) ? " NOW" : " (earlier)";
+			while (*b) pBuf[n++] = *b++;
+		}
+	if (n == 0) { const char *a = "none"; while (*a) pBuf[n++] = *a++; }
+	pBuf[n] = 0;
+	return pBuf;
+}
+
+void CrashLogPower (void)
+{
+	CBcmPropertyTags Tags;
+	TPropertyTagSimple Thr; Thr.nValue = 0;
+	u32 nThr = Tags.GetTag (PROPTAG_GET_THROTTLED, &Thr, sizeof Thr, 4) ? Thr.nValue : 0xFFFFFFFFu;
+	TPropertyTagTemperature Temp; Temp.nTemperatureId = TEMPERATURE_ID;
+	u32 nTemp = Tags.GetTag (PROPTAG_GET_TEMPERATURE, &Temp, sizeof Temp, 4) ? Temp.nValue / 1000 : 0;
+	static u32 s_nLastThr = 0; static u32 s_nLastTempStep = 0; static boolean s_bFirst = TRUE;
+	if (s_pRec != 0)
+	{
+		s_pRec->Crumb[CRUMB_THROTTLED] = nThr; s_pRec->Crumb[CRUMB_TEMP] = nTemp;
+		if (nTemp > s_pRec->Crumb[CRUMB_TEMP_MAX]) s_pRec->Crumb[CRUMB_TEMP_MAX] = nTemp;
+		Clean (s_pRec->Crumb, sizeof s_pRec->Crumb);
+	}
+	char Buf[128];
+	u32 nStep = nTemp / 5;
+	if (s_bFirst || nThr != s_nLastThr || (nStep != s_nLastTempStep && nTemp >= 60))
+		CLogger::Get ()->Write ("power", nThr != 0 && nThr != 0xFFFFFFFFu ? LogWarning : LogNotice,
+					"SoC %u C, throttling: %s (%08X)", nTemp, ThrottleText (nThr, Buf), nThr);
+	s_bFirst = FALSE; s_nLastThr = nThr; s_nLastTempStep = nStep;
 }

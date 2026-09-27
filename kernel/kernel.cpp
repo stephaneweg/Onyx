@@ -475,6 +475,8 @@ public:
 			nSec++;
 			unsigned nNow = CTimer::Get ()->GetTicks ();
 
+			CrashLogPower ();			// (under-voltage / heat: kmsg + the crash record)
+
 			// 1. Compositor liveness.
 			unsigned nFrames = m_pWM->FrameCount ();
 			nStallSec = (nFrames == nLastFrames) ? nStallSec + 1 : 0;

@@ -911,6 +911,13 @@ watchdog restarts the Pi and the RAM report (the record of an 8 GB Pi sits at th
 above 4 GB) says how far core 1 got. **A stuck GUI with the scheduler alive** (the compositor
 without a frame for 12 s, the GUI watchdog task) asks for the same report
 (`CrashLogRequest`: core 0 masks its IRQs and waits, core 1 writes it, then the restart).
+**Power and heat.** Once a second the GUI watchdog task calls `CrashLogPower`: the firmware's
+`GET_THROTTLED` bits (under-voltage, ARM frequency capped, throttled, soft temperature limit —
+now, or since boot) and the SoC temperature. A change (or each 5 °C above 60 °C) is logged
+(`power: SoC 71 C, throttling: under-voltage (earlier)`), and the last values plus the session's
+highest temperature go into the crash record (breadcrumbs 2–4), printed in every report — a
+freeze that only a cold boot brings back smells of the supply or the heat.
+
 Headless signs on the green ACT LED (a GPIO set / clear, no lock): **3 s of fast blinks** when
 core 1 sees the hang, the SD write's own flicker, then **3 s lit** (written) or **3 slow blinks**
 (the write failed) before the restart; no blinking at all = core 1 stuck too (a wedged bus).
