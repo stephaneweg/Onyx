@@ -499,28 +499,25 @@ connection waits until the first ends.
 
 ### Remote windows on a PC (`rdpd` + Onyx Remote)
 
-`rdpd` (started by `SD:/etc/autostart`, port **3390**) lets a Windows PC show the Onyx
-windows **each as a window of its own**, next to the PC's windows: a normal Windows window
-(its title bar, its close button) showing the Onyx window's content — or, with **Onyx window
-frames** ticked, with its Onyx frame (title bar, borders, close box) as on the Pi. Run **`OnyxRemote.exe`** (in `pc/dist/`, with .NET Framework
-4.8, already on Windows 10 / 11), type the Pi's address, **Connect**.
+`rdpd` (started by `SD:/etc/autostart`, port **3390**) serves the Onyx windows one by one to
+**Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
+11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
+**Connect**.
 
+- At the top, the **Onyx menu bar** across the window's width (the menus on the left, the
+  status and the clock on the right); its menus open over the windows.
+- Below, each Onyx window is a **child window** inside Onyx Remote, where it is on the Pi: a
+  normal window (its title, its close button) showing the Onyx window's content — or, with
+  **Onyx frames**, with the frame drawn by Onyx. Move it by its title bar inside Onyx Remote
+  (the Pi's window stays where it is); its close button (or Alt+F4) closes the Onyx app;
+  clicking a window brings it to the front on the Pi too, so it gets the keyboard. The keys are
+  typed with the PC's layout.
+- **Desktop** shows the Onyx desktop (the wallpaper, the notification bubbles) behind the
+  windows; a click there goes to the desktop.
 - Faster than VNC: only the windows that change are sent, only their changed parts,
   compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
-  halves the data (a game in a big window).
-- Drag a window by its title bar to place it on the PC (the Pi's window stays where it is);
-  its close button (or Alt+F4) closes the Onyx app. Without the desktop, only the Onyx menu
-  bar (docked at the top of the PC's screen, stretched to its width — the menus on the left,
-  the status and the clock on the right; no window goes under it) and the apps' windows
-  appear — the shelf, the bubbles and the other frameless Onyx windows stay on the Pi; an
-  Onyx app in full screen shows in a normal window. Clicking a window brings it to the
-  front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
-- The menu bar and the notification bubbles appear as on the Pi (on top); **Show the Onyx
-  desktop** opens a normal window, *Onyx Desktop*, holding the whole Onyx desktop — the
-  wallpaper, and the menu bar and the bubbles drawn inside it where they are on the Pi
-  (then not over the PC's screen); the apps' windows stay windows of their own. Closing
-  it unticks the option. If the connection window says the kernel is too
-  old, copy the new `kernel8-rpi4.img` to the SD card. The connection window shows the updates a second.
+  halves the data (a game in a big window). The tool bar shows the updates a second; it says
+  when the Pi's kernel is too old for rdpd (copy the new `kernel8-rpi4.img`).
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 

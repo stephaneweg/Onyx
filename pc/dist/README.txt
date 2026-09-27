@@ -34,10 +34,9 @@ Built on Linux by pc/build.sh (mingw-w64 + the .NET SDK).
 Onyx Remote
 ===========
 
-OnyxRemote.exe (+ OnyxRemote.exe.config): the Onyx windows on this PC, each as a window of
-its own (a Windows window, or with its Onyx frame: "Onyx window frames") -- the client of
-rdpd (port 3390, started at boot on the Pi).
-Type the Pi's address, Connect. Drag a window by its title bar to place it; its close box
-closes the Onyx app; clicking a window gives it the keyboard. "16-bit colours" sends half
-the data (games); "Show the Onyx desktop" opens a window holding the Onyx desktop (wallpaper, menu bar, bubbles). No password, no encryption:
-trusted LAN only.
+OnyxRemote.exe (+ OnyxRemote.exe.config): the Onyx session in one window of this PC -- the
+client of rdpd (port 3390, started at boot on the Pi). Type the Pi's address, Connect. The Onyx
+menu bar across the top; the Onyx windows as child windows inside (normal windows, or with their
+Onyx frame: "Onyx frames"), moved freely; their close button closes the Onyx app; clicking a
+window gives it the keyboard. "Desktop" shows the Onyx desktop behind them; "16-bit colours"
+sends half the data (games). No password, no encryption: trusted LAN only.

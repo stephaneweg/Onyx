@@ -998,9 +998,11 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   and injects input with `kapi_inject_pointer`/`kapi_inject_key` (ABI v38); it is a
   newlib program linked with the vendored zlib (`ZLIB_PROGS` in `user/bin/Makefile`).
 - **Window-level remote desktop**: `/bin/rdpd` (autostarted, port 3390) + the Windows client
-  `pc/OnyxRemote` (.NET Framework 4.8, built by `sh pc/build.sh` into `pc/dist/OnyxRemote.exe`).
-  Each Onyx window is a window of its own on the PC (its frame + its content), composited by
-  the PC: nothing is composited for it on the Pi. `rdpd` lists the windows (ABI v56
+  `pc/OnyxRemote` (.NET Framework 4.8, built by `sh pc/build.sh` into `pc/dist/OnyxRemote.exe`):
+  one MDI window -- the Onyx menu bar across its top (stretched: `BarView`, its drop-down menus
+  in a colour-keyed layer over the children), each Onyx window a child window (native frame or
+  the Onyx one), the desktop + bubbles as the MDI area's background -- composited by the PC:
+  nothing is composited for it on the Pi. `rdpd` lists the windows (ABI v56
   `kapi_win_list`), reads only those whose `gen` changed (`kapi_win_read`), compares their
   64 × 64 tiles with what the client has and sends the changed runs, LZ4-compressed (its own
   compressor, the standard block format), 32 or 16 bits a pixel; a frame when `chromeGen`
