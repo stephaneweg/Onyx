@@ -511,7 +511,9 @@ box), next to the PC's windows. Run **`OnyxRemote.exe`** (in `pc/dist/`, with .N
   it is); its close box (or Alt+F4) closes the Onyx app. Clicking a window brings it to the
   front on the Pi too, so it gets the keyboard; the keys are typed with the PC's layout.
 - The menu bar and the notification bubbles appear as on the Pi (on top); **Show the Onyx
-  desktop** adds the desktop window. The connection window shows the updates a second.
+  desktop** adds a window with the Onyx desktop (the wallpaper and what is drawn on it);
+  closing that window unticks the option. If the connection window says the kernel is too
+  old, copy the new `kernel8-rpi4.img` to the SD card. The connection window shows the updates a second.
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 

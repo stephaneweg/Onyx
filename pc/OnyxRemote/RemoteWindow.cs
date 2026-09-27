@@ -21,19 +21,53 @@ namespace OnyxRemote
 		bool frame, keys, placed;
 		uint flags;
 		bool dragging; Point dragFrom;
+		bool docked;
+		readonly bool desk;
+
+		// ---- the application bar (the Onyx menu bar at the top of the PC's screen) ----
+		[StructLayout (LayoutKind.Sequential)]
+		struct RECT { public int left, top, right, bottom; }
+		[StructLayout (LayoutKind.Sequential)]
+		struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public RECT rc; public IntPtr lParam; }
+		[DllImport ("shell32.dll")] static extern IntPtr SHAppBarMessage (uint msg, ref APPBARDATA data);
+		const uint ABM_NEW = 0, ABM_REMOVE = 1, ABM_QUERYPOS = 2, ABM_SETPOS = 3, ABE_TOP = 1;
+
+		void DockBar (Point origin, int height)
+		{
+			var d = new APPBARDATA { cbSize = Marshal.SizeOf (typeof (APPBARDATA)), hWnd = Handle, uEdge = ABE_TOP };
+			SHAppBarMessage (ABM_NEW, ref d);
+			Rectangle scr = Screen.FromPoint (origin).Bounds;
+			d.rc = new RECT { left = scr.Left, top = scr.Top, right = scr.Right, bottom = scr.Top + height };
+			SHAppBarMessage (ABM_QUERYPOS, ref d);
+			d.rc.bottom = d.rc.top + height;
+			SHAppBarMessage (ABM_SETPOS, ref d);
+			docked = true;
+		}
+		void Undock ()
+		{
+			if (!docked) return;
+			var d = new APPBARDATA { cbSize = Marshal.SizeOf (typeof (APPBARDATA)), hWnd = Handle };
+			SHAppBarMessage (ABM_REMOVE, ref d);
+			docked = false;
+		}
+		protected override void OnHandleDestroyed (EventArgs e) { Undock (); base.OnHandleDestroyed (e); }
 		int buttons;
 
 		public RemoteWindow (Connection c, uint id)
 		{
 			conn = c; Id = id;
-			FormBorderStyle = FormBorderStyle.None;
-			StartPosition = FormStartPosition.Manual;
+			desk = id == WinModel.DESKTOP_ID;
+			// the desktop: a normal PC window (its title, movable), else borderless: the Onyx
+			// frame is part of what is drawn
+			FormBorderStyle = desk ? FormBorderStyle.FixedSingle : FormBorderStyle.None;
+			MaximizeBox = false;
+			StartPosition = desk ? FormStartPosition.CenterScreen : FormStartPosition.Manual;
 			KeyPreview = true;
 			SetStyle (ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque, true);
 			BackColor = Color.Black;
 		}
 
-		protected override bool ShowWithoutActivation { get { return (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) != 0; } }
+		protected override bool ShowWithoutActivation { get { return !desk && (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) != 0; } }
 
 		// From the model (UI thread, under the connection's lock).
 		public void Apply (WinModel m, Point origin)
@@ -43,7 +77,7 @@ namespace OnyxRemote
 			frame = m.HasFrame; keys = (m.State & WinModel.KEYS) != 0;
 			if (Text != m.Title) Text = m.Title;
 			TopMost = (flags & WinModel.TOPMOST) != 0;
-			ShowInTaskbar = (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) == 0;
+			ShowInTaskbar = desk || (flags & (WinModel.SYSTEM | WinModel.BORDERLESS)) == 0;
 			if ((flags & WinModel.TRANSPARENT) != 0) TransparencyKey = Color.FromArgb (255, 0, 255);
 			Opacity = m.Alpha >= 255 ? 1.0 : m.Alpha / 255.0;
 			int fw = frame ? ow : w, fh = frame ? oh : h;
@@ -55,7 +89,11 @@ namespace OnyxRemote
 			// the Pi's place at first; then a framed window stays where it is put on the PC,
 			// a borderless one (menu bar, bubbles) follows the Pi
 			Point at = new Point (origin.X + m.X - (frame ? il : 0), origin.Y + m.Y - (frame ? it : 0));
+			if (desk) placed = true;					// (centred on the PC's screen)
 			if (!placed || !frame) { if (Location != at) Location = at; placed = true; }
+			// the Onyx menu bar (topmost, borderless, at the top): docked at the top of the PC's
+			// screen as an application bar -- Windows keeps that strip for it
+			if (!docked && (flags & WinModel.TOPMOST) != 0 && !frame && m.Y == 0 && IsHandleCreated) DockBar (origin, h);
 			if (m.Dirty)
 			{
 				Fill (content, m.Content, w, h);
@@ -161,10 +199,12 @@ namespace OnyxRemote
 
 		// ---- focus, closing ----
 		protected override void OnActivated (EventArgs e) { base.OnActivated (e); conn.Raise (Id); }
-		public bool GoneOnPi;					// (the Onyx window is gone: really close)
+		public bool GoneOnPi;
+		public event Action DesktopClosed;					// (the Onyx window is gone: really close)
 		protected override void OnFormClosing (FormClosingEventArgs e)
 		{
-			if (!GoneOnPi && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; conn.CloseWindow (Id); }	// (Alt+F4: the app closes)
+			if (!GoneOnPi && desk && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; DesktopClosed?.Invoke (); }	// (unticks the option)
+			else if (!GoneOnPi && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; conn.CloseWindow (Id); }	// (Alt+F4: the app closes)
 			base.OnFormClosing (e);
 		}
 		protected override void Dispose (bool disposing)

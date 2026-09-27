@@ -2081,6 +2081,13 @@ int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
 	CWindow *pFs = pWM->FullscreenWindow ();
 	int k = 0;
+	{	// the desktop first (it is not a window: the wallpaper + the backmost windows)
+		struct kapi_win_info &I = pOut[k++];
+		memset (&I, 0, sizeof I);
+		I.id = KAPI_WIN_DESKTOP; I.w = g_nScreenWidth; I.h = g_nScreenHeight;
+		I.flags = WIN_FLAG_BACKMOST | WIN_FLAG_BORDERLESS; I.alpha = 255; I.gen = pWM->DesktopGen ();
+		memcpy (I.title, "Onyx Desktop", 13);
+	}
 	for (unsigned i = 0; i < n && k < nMax; i++)
 	{
 		CWindow *pW = List[i];
@@ -2104,6 +2111,14 @@ int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned *pDst, int nStride)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM != 0 && nId == KAPI_WIN_DESKTOP)		// the whole desktop, composited straight in
+	{
+		if (nPart != 0 || x != 0 || y != 0 || w != g_nScreenWidth || h != g_nScreenHeight || nStride != w
+		    || pDst == 0 || !IS_USER_VA (pDst) || !IS_USER_VA (pDst + (size_t) w * h - 1)) return -1;
+		GImage Img ((u32 *) pDst, w, h);
+		pWM->CompositeDesktop (&Img);
+		return 0;
+	}
 	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
 	if (pW == 0 || pDst == 0) return -1;
 	const u8 *pSrc; unsigned nPitch; int W, H;

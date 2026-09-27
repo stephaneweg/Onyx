@@ -985,7 +985,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   `kapi_win_list`), reads only those whose `gen` changed (`kapi_win_read`), compares their
   64 × 64 tiles with what the client has and sends the changed runs, LZ4-compressed (its own
   compressor, the standard block format), 32 or 16 bits a pixel; a frame when `chromeGen`
-  changes. The client sends the pointer in window coordinates (rdpd adds the window's place,
+  changes; the desktop (`KAPI_WIN_DESKTOP`, the wallpaper + the backmost windows) only when
+  the client asks for it (message 7). The hello carries the kernel's kapi version (the
+  client warns below 56). The client sends the pointer in window coordinates (rdpd adds the window's place,
   raises it when clicked), keysyms (`user/bin/remotekeys.h`, shared with vncd: specials,
   modifiers, letters / digits as held keys only) and the characters typed (the PC's layout).
   The protocol is described at the top of `user/bin/rdpd.c`. Host test (mock kapi, a Python

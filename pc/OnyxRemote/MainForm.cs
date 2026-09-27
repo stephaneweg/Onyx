@@ -37,7 +37,7 @@ namespace OnyxRemote
 			Controls.AddRange (new Control[] { l1, host, port, bits16, desktop, go, status });
 			AcceptButton = go;
 			go.Click += (s, e) => { if (conn == null) Connect (); else Disconnect ("disconnected"); };
-			desktop.CheckedChanged += (s, e) => { if (conn != null) Sync (); };
+			desktop.CheckedChanged += (s, e) => { if (conn != null) { conn.Desktop (desktop.Checked); Sync (); } };
 			try
 			{
 				foreach (var line in File.ReadAllLines (SettingsPath))
@@ -57,8 +57,11 @@ namespace OnyxRemote
 			{
 				if (conn == null) return;
 				double sec = (DateTime.Now - since).TotalSeconds;
-				status.Text = string.Format ("Connected to {0} ({1} x {2}): {3} windows, {4:0.0} updates / s",
-					host.Text, conn.ScreenW, conn.ScreenH, wins.Count, rounds / Math.Max (sec, 0.001));
+				if (conn.KernelAbi < 56)
+					status.Text = string.Format ("The Onyx kernel on the Pi is too old (kapi v{0}, rdpd needs v56): copy the new kernel8-rpi4.img to the SD card.", conn.KernelAbi);
+				else
+					status.Text = string.Format ("Connected to {0} ({1} x {2}): {3} windows, {4:0.0} updates / s",
+						host.Text, conn.ScreenW, conn.ScreenH, wins.Count, rounds / Math.Max (sec, 0.001));
 				rounds = 0; since = DateTime.Now;
 			};
 			tick.Start ();
@@ -75,7 +78,7 @@ namespace OnyxRemote
 			var c = new Connection ();
 			status.Text = "Connecting...";
 			Refresh ();
-			try { c.Open (host.Text.Trim (), (int) port.Value, bits16.Checked); }
+			try { c.Open (host.Text.Trim (), (int) port.Value, bits16.Checked, desktop.Checked); }
 			catch (Exception e) { status.Text = "Cannot connect: " + e.Message; return; }
 			conn = c;
 			c.RoundDone += () => BeginInvoke ((Action) (() => { if (conn != c) return; Sync (); rounds++; c.Ready (); }));
@@ -98,22 +101,26 @@ namespace OnyxRemote
 		void Sync ()
 		{
 			if (conn == null) return;
-			Point origin = Screen.PrimaryScreen.WorkingArea.Location;
+			Point origin = Screen.PrimaryScreen.Bounds.Location;	// (the Pi's screen = the PC's, from its top left)
 			lock (conn.Lock)
 			{
 				var keep = new HashSet<uint> ();
 				foreach (uint id in conn.ZOrder)			// (bottom to top: new ones open in that order)
 				{
 					if (!conn.Windows.TryGetValue (id, out WinModel m)) continue;
-					if ((m.Flags & WinModel.BACKMOST) != 0 && !desktop.Checked) continue;
+					bool isDesk = id == WinModel.DESKTOP_ID;
+					if ((m.Flags & WinModel.BACKMOST) != 0 && !isDesk) continue;	// (drawn in the desktop's view)
+					if (isDesk && !desktop.Checked) continue;
 					if (m.Alpha == 0 || m.W <= 0 || m.H <= 0) continue;
 					keep.Add (id);
 					if (!wins.TryGetValue (id, out RemoteWindow w))
 					{
 						w = new RemoteWindow (conn, id);
+						w.DesktopClosed += () => desktop.Checked = false;
 						wins[id] = w;
 						w.Apply (m, origin);
 						w.Show ();
+						w.Apply (m, origin);				// (again, its handle made: the menu bar docks)
 					}
 					else w.Apply (m, origin);
 				}

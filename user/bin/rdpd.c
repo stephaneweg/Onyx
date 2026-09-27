@@ -14,7 +14,8 @@
 // when clicked), the keys as X11 keysyms (remotekeys.h, as vncd).
 // One client at a time, NO password and no encryption -- trusted LAN only, like vncd.
 //
-// Protocol (TCP, little-endian). Hello: the server sends "ONYXRDP1", u16 screen w, h; the
+// Protocol (TCP, little-endian). Hello: the server sends "ONYXRDP1", u16 screen w, h, u16 the
+// kernel's kapi version (below 56: no window can be listed -- an old kernel image); the
 // client answers "ONYXRDP1", u8 options (bit 0: 16-bit pixels). Then messages:
 //   server -> client: u8 type, u32 length, payload
 //     1 WIN     u32 id, s16 x y (client area on the Pi's screen), u16 w h (client area),
@@ -34,6 +35,8 @@
 //     3 KEY     u8 flags (1 down, 2 held only: a letter / digit / space typed as CHAR, its
 //               down / up only tracked for the games), u32 X11 keysym
 //     6 CHAR    u32 the character typed (Latin-1; the PC's keyboard layout applied)
+//     7 DESKTOP u8 on (send the desktop: the window KAPI_WIN_DESKTOP = 0xFFFFFFFF, the
+//               wallpaper + the backmost windows, screen-sized; off by default)
 //     4 RAISE   u32 id (the PC window got the focus: the Onyx window takes the keyboard)
 //     5 CLOSE   u32 id (its close box)
 //
@@ -43,11 +46,11 @@
 #include "remotekeys.h"
 
 #define TILE		64
-#define MAXWIN		16
+#define MAXWIN		20		// (the window manager's 16 + the desktop)
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
-static int g_sock, g_dead, g_W, g_H, g_bpp16;
+static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop;
 
 // ---- output -------------------------------------------------------------------------------
 
@@ -255,6 +258,12 @@ static void round_send (void)
 {
 	struct kapi_win_info L[MAXWIN];
 	int n = kapi_win_list (L, MAXWIN);
+	if (!g_desktop)							// (only when asked for)
+	{
+		int k = 0;
+		for (int i = 0; i < n; i++) if (L[i].id != KAPI_WIN_DESKTOP) L[k++] = L[i];
+		n = k;
+	}
 	for (int i = 0; i < MAXWIN; i++) g_win[i].alive = 0;
 	for (int i = 0; i < n; i++)
 	{
@@ -304,9 +313,9 @@ static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 
 static void session (void)
 {
-	g_inlen = g_outlen = 0; g_dead = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
+	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
-	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); flush_out ();
+	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (KT->version); flush_out ();
 	if (!need (9) || memcmp (g_in, "ONYXRDP1", 8) != 0) return;
 	g_bpp16 = g_in[8] & 1;
 	consume (9);
@@ -323,6 +332,7 @@ static void session (void)
 			else if (t == 2) len = 11;
 			else if (t == 3) len = 6;
 			else if (t == 4 || t == 5 || t == 6) len = 5;
+			else if (t == 7) len = 2;
 			else { g_dead = 1; break; }
 			if (g_inlen < len) break;
 			const unsigned char *m = g_in + 1;
@@ -333,6 +343,7 @@ static void session (void)
 			else if (t == 6) { unsigned c = get32 (m); char one[2] = { (char) c, 0 }; if (c > 0 && c < 256) kapi_inject_key (one); }
 			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) kapi_win_raise (get32 (m)); }
 			else if (t == 5) kapi_win_close (get32 (m));
+			else if (t == 7) g_desktop = m[0] != 0;
 			consume (len);
 		}
 		if (g_dead) break;

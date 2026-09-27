@@ -370,7 +370,12 @@ public:
 	// into the app. The app draws into it; CommitWallpaper makes it the live desktop
 	// background. The frames are kernel-owned, so the wallpaper outlives the app.
 	u32 *EnsureWallpaperBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages);
-	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; ScreenDirty (); }
+	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; m_nWallGen++; ScreenDirty (); }
+
+	// The desktop alone (the wallpaper + the backmost windows, no other window, no cursor),
+	// for the remote desktop (rdpd: kapi_win_read of KAPI_WIN_DESKTOP); its change counter.
+	void CompositeDesktop (GImage *pScreen);
+	unsigned DesktopGen (void);
 
 	// Set the desktop wallpaper (takes ownership of pImage; deletes any previous).
 	// Pass 0 to clear it (back to the solid desktop colour).
@@ -482,6 +487,7 @@ private:
 	unsigned   m_nWallPages;	// 64 KB pages spanned
 	GImage	   m_WallImage;		// wraps the buffer
 	boolean	   m_bLiveWall;		// committed? (drawn instead of m_pWallpaper)
+	volatile unsigned m_nWallGen;	// bumped when the wallpaper changes (DesktopGen)
 
 	// Cursor + drag state (mutated from the input thread, read by Composite).
 	int	   m_nCursorX;

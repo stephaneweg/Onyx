@@ -42,8 +42,8 @@ def recv(n):
         if not c: raise EOFError
         b += c
     return b
-h = recv(12)
-check(h[:8] == b"ONYXRDP1" and struct.unpack("<HH", h[8:]) == (1024, 768), "hello: ONYXRDP1, 1024 x 768")
+h = recv(14)
+check(h[:8] == b"ONYXRDP1" and struct.unpack("<HHH", h[8:]) == (1024, 768, 56), "hello: ONYXRDP1, 1024 x 768, kapi 56")
 s.sendall(b"ONYXRDP1\x00" + b"\x01")		# 32-bit pixels, READY
 
 def round_():

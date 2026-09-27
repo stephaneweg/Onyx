@@ -13,6 +13,7 @@
 #define KEY_RIGHT 0x103
 #define KAPI_WIN_KEYS 1
 #define KAPI_WIN_FULLSCREEN 2
+#define KAPI_WIN_DESKTOP 0xFFFFFFFFu
 struct kapi_win_info { unsigned id, pid; int x, y, w, h; unsigned flags; int alpha; unsigned gen, state; char title[48]; int ow, oh, il, it; unsigned chromeGen; };
 static int mock_lists;
 static unsigned mock_px (unsigned id, int part, int x, int y)
@@ -43,5 +44,7 @@ static inline void kapi_inject_pointer (int x, int y, unsigned b, int w) { print
 static inline void kapi_inject_key (const char *s) { printf ("KEY %d\n", (unsigned char) s[0]); fflush (stdout); }
 static inline void kapi_inject_key_held (int k, int d) { printf ("HELD %d %d\n", k, d); fflush (stdout); }
 static inline void kapi_inject_modifiers (unsigned m) { printf ("MODS %u\n", m); fflush (stdout); }
+struct mock_kt { unsigned version; }; static const struct mock_kt mock_kt_ = { 56 };
+#define KT (&mock_kt_)
 static inline void kapi_screen_size (int *w, int *h) { *w = 1024; *h = 768; }
 #endif

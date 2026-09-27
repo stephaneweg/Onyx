@@ -348,7 +348,7 @@ u32 g_WinTitleTextColor = 0x00FFFFFF;
 
 CWindowManager::CWindowManager (void)
 :	m_nWindows (0), m_pWallpaper (0), m_pCursor (0),
-	m_pWallRaw (0), m_ulWallPhys (0), m_nWallPages (0), m_bLiveWall (FALSE),
+	m_pWallRaw (0), m_ulWallPhys (0), m_nWallPages (0), m_bLiveWall (FALSE), m_nWallGen (0),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
@@ -719,6 +719,29 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	}
 }
 
+void CWindowManager::CompositeDesktop (GImage *pScreen)
+{
+	CWindow *pSnapshot[WM_MAX_WINDOWS];
+	m_SpinLock.Acquire ();
+	unsigned nCount = m_nWindows;
+	for (unsigned i = 0; i < nCount; i++) pSnapshot[i] = m_pWindows[i];
+	GImage *pWall = (m_bLiveWall && m_WallImage.IsValid ()) ? &m_WallImage : m_pWallpaper;
+	m_SpinLock.Release ();
+	pScreen->Clear (WIN_COLOR_DESKTOP);
+	if (pWall != 0 && pWall->IsValid ()) pScreen->PutOther (pWall, 0, 0, FALSE);
+	for (unsigned i = 0; i < nCount; i++)
+		if (pSnapshot[i] != 0 && pSnapshot[i]->Backmost ()) pSnapshot[i]->DrawTo (pScreen, FALSE);
+}
+
+unsigned CWindowManager::DesktopGen (void)
+{
+	m_SpinLock.Acquire ();
+	unsigned g = m_nWallGen;
+	for (unsigned i = 0; i < m_nWindows; i++) if (m_pWindows[i]->Backmost ()) g += m_pWindows[i]->Gen ();
+	m_SpinLock.Release ();
+	return g;
+}
+
 unsigned CWindowManager::Snapshot (CWindow **ppOut, unsigned nMax)
 {
 	m_SpinLock.Acquire ();
@@ -733,6 +756,7 @@ unsigned CWindowManager::Snapshot (CWindow **ppOut, unsigned nMax)
 
 void CWindowManager::SetWallpaper (GImage *pImage)
 {
+	m_nWallGen++;
 	ScreenDirty ();
 	m_SpinLock.Acquire ();
 	GImage *pOld = m_pWallpaper;

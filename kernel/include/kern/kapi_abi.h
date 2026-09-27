@@ -226,6 +226,8 @@ struct kapi_gpu_batch
 // opacity, a counter that changes whenever it is redrawn / moved / resized, its state.
 #define KAPI_WIN_KEYS		1	// it has the keyboard
 #define KAPI_WIN_FULLSCREEN	2	// the full-screen window (its pixels: the screen's)
+#define KAPI_WIN_DESKTOP	0xFFFFFFFFu	// the id of the desktop (listed first: the wallpaper
+						// + the backmost windows, screen-sized; read whole only)
 struct kapi_win_info
 {
 	unsigned id;			// never reused

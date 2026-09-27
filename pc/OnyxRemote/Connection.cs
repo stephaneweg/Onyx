@@ -23,12 +23,13 @@ namespace OnyxRemote
 		public bool Dirty = true;			// pixels changed since shown
 		public const uint BORDERLESS = 1, BACKMOST = 2, TOPMOST = 4, TRANSPARENT = 8, SYSTEM = 16;
 		public const int KEYS = 1, FULLSCREEN = 2;
+		public const uint DESKTOP_ID = 0xFFFFFFFF;		// (the desktop: the wallpaper + the backmost windows)
 		public bool HasFrame { get { return OW > 0 && OH > 0; } }
 	}
 
 	class Connection
 	{
-		public int ScreenW, ScreenH;
+		public int ScreenW, ScreenH, KernelAbi;
 		public readonly object Lock = new object ();
 		public readonly Dictionary<uint, WinModel> Windows = new Dictionary<uint, WinModel> ();
 		public List<uint> ZOrder = new List<uint> ();
@@ -40,7 +41,7 @@ namespace OnyxRemote
 		bool bpp16;
 		volatile bool stop;
 
-		public void Open (string host, int port, bool bits16)
+		public void Open (string host, int port, bool bits16, bool desktopOn)
 		{
 			bpp16 = bits16;
 			tcp = new TcpClient ();
@@ -48,13 +49,14 @@ namespace OnyxRemote
 			tcp.Connect (host, port);
 			net = tcp.GetStream ();
 			rd = new BinaryReader (net);
-			byte[] hello = rd.ReadBytes (12);
-			if (hello.Length < 12 || Encoding.ASCII.GetString (hello, 0, 8) != "ONYXRDP1") throw new IOException ("not an Onyx rdpd server");
-			ScreenW = hello[8] | hello[9] << 8; ScreenH = hello[10] | hello[11] << 8;
+			byte[] hello = rd.ReadBytes (14);
+			if (hello.Length < 14 || Encoding.ASCII.GetString (hello, 0, 8) != "ONYXRDP1") throw new IOException ("not an Onyx rdpd server (or an older rdpd: update the SD card)");
+			ScreenW = hello[8] | hello[9] << 8; ScreenH = hello[10] | hello[11] << 8; KernelAbi = hello[12] | hello[13] << 8;
 			byte[] ans = new byte[9];
 			Encoding.ASCII.GetBytes ("ONYXRDP1").CopyTo (ans, 0);
 			ans[8] = (byte) (bits16 ? 1 : 0);
 			Send (ans);
+			Desktop (desktopOn);
 			new Thread (ReadLoop) { IsBackground = true, Name = "rdpd reader" }.Start ();
 			Ready ();
 		}
@@ -78,6 +80,7 @@ namespace OnyxRemote
 			b[0] = 3; b[1] = (byte) ((down ? 1 : 0) | (heldOnly ? 2 : 0)); BitConverter.GetBytes (keysym).CopyTo (b, 2);
 			Send (b);
 		}
+		public void Desktop (bool on) { Send (new byte[] { 7, (byte) (on ? 1 : 0) }); }
 		public void Char (uint c) { byte[] b = new byte[5]; b[0] = 6; BitConverter.GetBytes (c).CopyTo (b, 1); Send (b); }
 		public void Raise (uint id) { byte[] b = new byte[5]; b[0] = 4; BitConverter.GetBytes (id).CopyTo (b, 1); Send (b); }
 		public void CloseWindow (uint id) { byte[] b = new byte[5]; b[0] = 5; BitConverter.GetBytes (id).CopyTo (b, 1); Send (b); }
