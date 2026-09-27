@@ -112,6 +112,7 @@ public:
 	u64 cycles;					// CPU cycles run
 	u64 jitUntil;					// the JIT's blocks chain until then (0: back to jitRun now)
 	u64 jitScratch;					// (the JIT: a 64-bit value read by a helper)
+	u32 gatherN; u8 gather[64];			// the write-gather pipe (0x0C008000): its bytes, sent 32 at a time
 	Jit *jit;					// the JIT (0: the interpreter runs the CPU)
 	bool jitFlush;					// its code is to be thrown away (a BAT changed, a reset)
 	bool halted; char haltMsg[96];
@@ -211,6 +212,7 @@ public:
 	// command processor reads them (the commands: CP / XF / BP registers, display lists, the
 	// primitives -- their vertices), the pixel engine (tokens, "draw done")
 	void gpWrite (u32 v, int size);
+	void gatherFlush ();				// its whole 32-byte bursts into the GX FIFO
 	u32 gpBytes;
 	u16 cpReg16[0x40];				// the CP's MMIO registers (0x0C000000)
 	u32 cpFifoBase, cpFifoEnd, cpFifoRptr, cpFifoWptr, cpBreak;

@@ -26,7 +26,7 @@ void Machine::piUpdate () { extIrq = (piIntsr & piIntmr) != 0; jitUntil = 0; }
 // ---- reset -----------------------------------------------------------------------------------------------------
 void Machine::hwReset ()
 {
-	piIntsr = 0; piIntmr = 0; piFifoBase = piFifoEnd = piFifoWptr = 0;
+	piIntsr = 0; piIntmr = 0; piFifoBase = piFifoEnd = piFifoWptr = 0; gatherN = 0;
 	zero (vi, sizeof vi); zero (siReg, sizeof siReg); zero (siBuf, sizeof siBuf); siPoll = 0;
 	zero (exiReg, sizeof exiReg); zero (exiCmd, sizeof exiCmd); zero (exiPhase, sizeof exiPhase);
 	zero (diReg, sizeof diReg); zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
@@ -322,17 +322,29 @@ void Machine::diCommand ()
 // ---- the GX FIFO: the write-gather pipe's bytes go to the FIFO in memory (gc_gx.cpp reads them) -------------
 void Machine::gpWrite (u32 v, int size)
 {
-	u32 w = piFifoWptr & 0x03FFFFFF;
-	u8 *p = ptr (w & 0x01FFFFFF);
-	for (int i = 0; i < size; i++)
+	for (int i = 0; i < size; i++) gather[gatherN++] = (u8) (v >> ((size - 1 - i) * 8));
+	if (gatherN >= 32) gatherFlush ();
+}
+
+// The pipe sends 32 bytes at a time (GXFlush pads with NOPs): each burst to the FIFO's write
+// pointer (wrapping at its end), then the commands run.
+void Machine::gatherFlush ()
+{
+	u32 done = 0;
+	while (gatherN - done >= 32)
 	{
-		if (p) p[i] = (u8) (v >> ((size - 1 - i) * 8));
+		u32 w = piFifoWptr & 0x03FFFFFF;
+		u8 *p = ptr (w & 0x01FFFFFF);
+		if (p && (w & 0x01FFFFFF) + 32 <= MEM1_SIZE) for (int i = 0; i < 32; i++) p[i] = gather[done + i];
+		w += 32;
+		gpBytes += 32;
+		if (piFifoEnd && w >= (piFifoEnd & 0x03FFFFFF)) w = piFifoBase & 0x03FFFFFF;
+		piFifoWptr = w;
+		done += 32;
 	}
-	w += (u32) size;
-	gpBytes += (u32) size;
-	if (piFifoEnd && w >= (piFifoEnd & 0x03FFFFFF)) w = piFifoBase & 0x03FFFFFF, w |= 0;
-	piFifoWptr = w;
-	gxFifoKick ();
+	for (u32 i = done; i < gatherN; i++) gather[i - done] = gather[i];
+	gatherN -= done;
+	if (done) gxFifoKick ();
 }
 
 // ---- the registers ---------------------------------------------------------------------------------------------

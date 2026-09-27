@@ -32,7 +32,7 @@ enum
 	MAX_INSNS = 64, NPAGES = MEM1_SIZE >> 12, STUB_WORDS = 256
 };
 static const u32 NONE = 0xFFFFFFFFu, NOKEY = 0xFFFFFFFFu;
-enum { H_INTERP, H_RD8, H_RD16, H_RD32, H_WR8, H_WR16, H_WR32, H_RD64, H_WR64, H_CVTD, H_CVTS, H_FPRF };
+enum { H_INTERP, H_RD8, H_RD16, H_RD32, H_WR8, H_WR16, H_WR32, H_RD64, H_WR64, H_CVTD, H_CVTS, H_FPRF, H_GATHER };
 
 static inline u32 rotl (u32 v, int n) { n &= 31; return n ? (v << n) | (v >> (32 - n)) : v; }
 static inline u32 mask (int mb, int me)
@@ -225,7 +225,7 @@ struct Jit
 	void linkTo (u32 key, void *code);
 	bool stdMap;					// the BATs map 0x80000000 / 0xC0000000 onto MEM1 as the OS does
 	// the Machine's fields
-	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr;
+	int oPc, oCycles, oUntil, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather;
 	// the block being translated
 	u32 bKey, synced; int dmode; bool fpOk;
 	u32 sgl0, sgl1;					// the FPRs (ps0 / ps1) known to hold a single exactly: no force25
@@ -259,6 +259,7 @@ struct Jit
 	static u64 hCvtD (u32 v) { return cvtToDouble (v); }
 	static u32 hCvtS (u64 v) { return cvtToSingle (v); }
 	static void hFprf (Machine *m) { if (m->fprfPending) { m->fprfPending = false; m->setFprf (m->fprfVal); } }
+	static void hGather (Machine *m) { m->gatherFlush (); }
 
 	// ---- the guest registers in host registers (a cache for the block) ----
 	// Guest 0..31 = the GPRs, then CR, XER, LR, CTR: loaded when first used, written back (the
@@ -539,6 +540,26 @@ struct Jit
 		if (slow1) Asm::patch (slow1, a.p);
 		if (slow2) Asm::patch (slow2, a.p);
 		if (done) a.side++;
+		u32 *pipeDone = 0;
+		if (store && dmode != 2)				// the write-gather pipe (the GX FIFO): appended here
+		{
+			a.movw (5, dmode == 1 ? 0xCC008000u : 0x0C008000u);
+			a.cmp (1, 5);
+			u32 *notPipe = a.p; a.bcond (NE, a.p);
+			ldF (5, oGatherN);
+			a.imm (ADD_WI | X64, 6, XM, (u32) oGather);
+			if (size == 8) { a.un (REV_X, 4, 2); a.ldstr (0xF8204800u, 4, 6, 5); }	// (STR x4, [x6, w5, UXTW])
+			else if (size == 4) { a.un (REV_W, 4, 2); a.ldstr (0xB8204800u, 4, 6, 5); }
+			else if (size == 2) { a.un (REV16_W, 4, 2); a.ldstr (0x78204800u, 4, 6, 5); }
+			else a.ldstr (0x38204800u, 2, 6, 5);
+			a.imm (ADD_WI, 5, 5, (u32) size); stF (5, oGatherN);
+			a.cmpi (5, 32);
+			u32 *part = a.p; a.bcond (LO, a.p);
+			a.movX (0, XM); callKeep (H_GATHER);		// (a burst: the FIFO's commands run)
+			Asm::patch (part, a.p);
+			pipeDone = a.p; a.b (a.p);
+			Asm::patch (notPipe, a.p);
+		}
 		u32 pend = idx * 2 - synced;
 		addCycles (5, pend);
 		spill (true);						// (an exception leaves from here)
@@ -553,6 +574,7 @@ struct Jit
 		subCycles (5, pend);
 		reload (false);
 		if (!store && size == 8) a.ldst (LDR_X, 3, 0, XM, oScratch);
+		if (pipeDone) Asm::patch (pipeDone, a.p);
 		if (done) { Asm::patch (done, a.p); a.side--; }
 	}
 	// the interpreter for this instruction off the main path (a NaN, the FPU off, a GQR type):
@@ -1345,14 +1367,14 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	code = (u32 *) mem; codeEnd = code + size / 4;
 	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oCr = OFF (cr); oXer = OFF (xer);
 	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1); oScratch = OFF (jitScratch);
-	oPs = OFF (ps); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr);
+	oPs = OFF (ps); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr); oGatherN = OFF (gatherN); oGather = OFF (gather);
 	ctx = new u8[FAST_OFF + (sizeof (Fast) << FAST_BITS)];
 	fast = (Fast *) (ctx + FAST_OFF);
 	u64 *h = (u64 *) ctx;
 	h[H_INTERP] = (u64) &hInterp;
 	h[H_RD8] = (u64) &hRd8; h[H_RD16] = (u64) &hRd16; h[H_RD32] = (u64) &hRd32;
 	h[H_WR8] = (u64) &hWr8; h[H_WR16] = (u64) &hWr16; h[H_WR32] = (u64) &hWr32;
-	h[H_RD64] = (u64) &hRd64; h[H_WR64] = (u64) &hWr64; h[H_CVTD] = (u64) &hCvtD; h[H_CVTS] = (u64) &hCvtS; h[H_FPRF] = (u64) &hFprf;
+	h[H_RD64] = (u64) &hRd64; h[H_WR64] = (u64) &hWr64; h[H_CVTD] = (u64) &hCvtD; h[H_CVTS] = (u64) &hCvtS; h[H_FPRF] = (u64) &hFprf; h[H_GATHER] = (u64) &hGather;
 	blocks = new Block[MAX_BLOCKS];
 	links = new Link[2 * MAX_BLOCKS];
 

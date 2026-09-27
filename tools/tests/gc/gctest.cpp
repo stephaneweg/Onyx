@@ -175,7 +175,7 @@ static void fuzzInit (Machine &m, u64 seed, u32 *prog, int n)
 	m.reset ();
 	rng = seed;
 	for (int i = 0; i < 32; i++) m.gpr[i] = rn (3) ? rnd32 () : rn (100);
-	m.gpr[1] = 0x80400000;
+	m.gpr[1] = 0x80400000; m.gpr[2] = 0xCC008000;			// (the data; the write-gather pipe)
 	for (int i = 0; i < 32; i++) for (int k = 0; k < 2; k++) { u64 u = fpVal (); memcpy (&m.ps[i][k], &u, 8); }
 	m.cr = rnd32 (); m.xer = rnd32 () & 0xE000007F; m.lr = rnd32 (); m.ctr = rnd32 ();
 	m.gqr[0] = 0; m.gqr[1] = 0x03040304; m.gqr[2] = 0x3E073E07; m.gqr[3] = 0x00050005;
@@ -224,7 +224,7 @@ static u32 fuzzInsn ()
 	case 21: return 31u << 26 | R () << 21 | (rn (2) ? 8u : 9u) << 16 | 467u << 1;		// mtlr / mtctr
 	case 22: return 31u << 26 | R () << 21 | (rn (2) ? 8u : 9u) << 16 | 339u << 1;		// mflr / mfctr
 	case 23:
-		switch (rn (12))						// the rest: branches forward, the interpreter's
+		switch (rn (14))						// the rest: branches forward, the interpreter's
 		{
 		case 0: return 16u << 26 | rn (32) << 21 | rn (32) << 16 | (1 + rn (4)) * 4;		// bc +4..16 (any BO)
 		case 1: return 18u << 26 | (1 + rn (3)) * 4;						// b +4..12
@@ -237,7 +237,16 @@ static u32 fuzzInsn ()
 		case 8: return 31u << 26 | R () << 21 | 19u << 1;					// mfcr
 		case 9: return 31u << 26 | R () << 21 | R () << 16 | R () << 11 | 491u << 1 | rn (2);	// divw
 		case 10: return 23u << 26 | R () << 21 | R () << 16 | R () << 11 | rn (32) << 6 | rn (32) << 1 | rn (2);	// rlwnm
-		default: return (rn (2) ? 46u : 47u) << 26 | (24u + rn (8)) << 21 | 1u << 16 | (rn (0x40) * 4);	// lmw / stmw (r24..)
+		case 11: return (rn (2) ? 46u : 47u) << 26 | (24u + rn (8)) << 21 | 1u << 16 | (rn (0x40) * 4);	// lmw / stmw (r24..)
+		default:							// to the write-gather pipe (r2)
+			switch (rn (5))
+			{
+			case 0: return 36u << 26 | R () << 21 | 2u << 16;		// stw
+			case 1: return 38u << 26 | R () << 21 | 2u << 16;		// stb
+			case 2: return 44u << 26 | R () << 21 | 2u << 16;		// sth
+			case 3: return 52u << 26 | F () << 21 | 2u << 16;		// stfs
+			default: return 60u << 26 | F () << 21 | 2u << 16 | (u32) rn (2) << 15;	// psq_st (GQR0)
+			}
 		}
 	default: return (24u + rn (6)) << 26 | R () << 21 | R () << 16 | (rnd32 () & 0xFFFF);	// ori oris xori xoris andi. andis.
 	}
@@ -281,6 +290,8 @@ static int fuzzTest (u64 seed0, int count, int len)
 		if (!diff[0] && A.fpscrNow () != B.fpscrNow ()) snprintf (diff, sizeof diff, "fpscr: %08X, JIT %08X", A.fpscr, B.fpscr);
 		for (u32 i = 0; i < 0x400 && !diff[0]; i += 4) if (A.read32 (0x80400000 + i) != B.read32 (0x80400000 + i))
 			snprintf (diff, sizeof diff, "memory +%X: %08X, JIT %08X", i, A.read32 (0x80400000 + i), B.read32 (0x80400000 + i));
+		if (!diff[0] && (A.gatherN != B.gatherN || memcmp (A.gather, B.gather, A.gatherN) || A.piFifoWptr != B.piFifoWptr || memcmp (A.mem1, B.mem1, 0x3000)))
+			snprintf (diff, sizeof diff, "the write-gather pipe: %u bytes, JIT %u (FIFO at %X / %X)", A.gatherN, B.gatherN, A.piFifoWptr, B.piFifoWptr);
 		if (!diff[0] && (A.pc != B.pc || A.halted != B.halted)) snprintf (diff, sizeof diff, "pc %08X / %08X (%s)", A.pc, B.pc, A.haltMsg);
 		if (diff[0])
 		{

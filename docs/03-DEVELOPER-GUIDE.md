@@ -430,6 +430,9 @@ Notes / caveats:
 > `gc_dsp.cpp` the DSP's ROM / microcode handshake at a high level (silent); `gc_boot.cpp` the
 > IPL's state, `.dol` loading, discs booted by running their apploader on the CPU.
 > `gcemu` reads a disc image on demand (`kapi_seek`, the main thread serving the app core).
+> The **write-gather pipe** (0x0C008000) keeps its bytes (`gather`) and sends them to the GX FIFO
+> 32 at a time, as the hardware (`gatherFlush`: the burst at the PI's write pointer, then the
+> commands run); the JIT appends a store to it inline (a call only at each burst).
 > **The JIT** (`gc_jit.cpp`, AArch64 hosts): `Machine::jitEnable()` (code memory from the host's
 > `gc::codeAlloc` hook: `kapi_code_alloc` (ABI v58) on Onyx, `mmap` RWX in the host test), then
 > `run()` goes through `jitRun()`: the PowerPC code is translated a **block** at a time (to its
