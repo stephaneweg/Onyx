@@ -532,6 +532,13 @@ big files (ROMs, disc images).
   exFAT file (`NoFatChain`) that becomes fragmented must first have its FAT chain written,
   which upstream does cluster by cluster (reads keep the fast path).
 
+**Rebuild everything that includes `ff.h`** after changing `ffconf.h`: `FF_FS_EXFAT` makes
+`FSIZE_t` 64-bit, so `FIL` / `FATFS` / `FILINFO` grow. Besides `libfatfs` and the kernel (clean),
+that is **`addon/wlan`** (`libwlan.a`: the Wi-Fi firmware is read through FatFs) and
+**`addon/wlan/hostap/wpa_supplicant`** (`make -f Makefile.circle`: it reads `wpa_supplicant.conf`).
+With stale ones, their `FIL` on the stack is too small: FatFs writes past it on the network
+core — Onyx booted but the Wi-Fi never came up.
+
 The kernel mounts `SD1:`…`SD3:` when `f_mount` succeeds and shares one lock slot between the
 four SD volumes (one card). `tools/tests/run_fs_test.sh` runs the FatFs test on FAT32 **and exFAT**
 images (the fork's image must equal upstream's), and first `fstest parts`: an MBR card image with

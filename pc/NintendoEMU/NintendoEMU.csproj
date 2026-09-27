@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- NintendoEMU: the emulators of Onyx (Game Boy / Color / Advance, NES, Super Nintendo,
+       Nintendo 64, GameCube) in one Windows program, with a library of the games. The cores
+       are nemucore.dll (core/nemucore.cpp + user/*, mingw-w64). .NET Framework 4.8.
+       Build: sh pc/build.sh -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>NintendoEMU</AssemblyName>
+    <RootNamespace>NintendoEMU</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>NintendoEMU</AssemblyTitle>
+    <Product>NintendoEMU</Product>
+    <Version>1.0.0</Version>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="core/**" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
