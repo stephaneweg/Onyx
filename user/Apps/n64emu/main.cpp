@@ -432,7 +432,9 @@ int main (void)
 	{
 		pump_events ();
 		g_ec.btn = pad_state ();
-		if (g_paused) { show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
+		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
+		// may read its frame and textures; drawn while it runs, they may change under the kernel)
+		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
 		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		unsigned fps = fps100 ();
 		// with sound the game's audio paces it (kept ~60 ms ahead; a game without sound of ours

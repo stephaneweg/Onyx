@@ -394,7 +394,9 @@ int main (void)
 		pump_events ();
 		pad_state ();
 		serve_reads ();
-		if (g_paused) { show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
+		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
+		// may read its frame and textures; drawn while it runs, they may change under the kernel)
+		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
 		unsigned fps = fps100 ();
 		unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * fps / 10000);
 		if (due - asked > 4 && due > asked) asked = due - 1;
