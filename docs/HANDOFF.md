@@ -70,6 +70,24 @@ answer in French. The docs stay in English.
   `pr/dhcp-restart`), based on upstream `develop`; texts, patches and an issue draft (RAM above
   3 GB on the Pi 4) in `docs/circle-upstream/`. The user opens the pull requests.
 
+## Next: the desktop redesign -- a modernised CDE (branch `Elegant-UI`)
+
+- **Designed with the user on 2026-09-28, nothing implemented yet: `docs/gui-redesign/README.md`**
+  (the decisions, the mock-ups `docs/gui-redesign/mockups/cde-modern*.png` and `retro-*.png`, how
+  it is drawn, its cost, a first plan, the open questions). Today's windowed desktop kept and
+  restyled: CDE's Front Panel as a dock (the apps' categories and their drawers, the Shelf's tabs
+  as its switcher; it replaces the Shelf and the panel), the user's framed button, one colour per
+  kind of frame (the themes Peach, Steel, Sage, Brick, Slate; Grey), everything drawn by code (no
+  skin bitmap), no drop shadows, the agenda widget part of the wallpaper.
+- The branch `Elegant-UI` restarted from `main` for it (the mock-ups and their scripts
+  `tools/screenshot/mockup_cde_modern.py`, `mockup_retro.py` brought back). The phone-like
+  "elegant layout" it held first (kapi app_frame / app_ring / app_switch, `WIN_FLAG_ALPHA`,
+  `user/elegant.h`, the `.aaf` fonts, the PC simulator) is on **`archive/elegant-ui-2026-09-28`**,
+  to take pieces back from (the per-pixel transparency for the agenda widget and the rounded
+  corners, the anti-aliased fonts).
+- Keep the emulators' optimisations intact (the user's request): the compositor's opaque fast
+  path (`CoversOpaque`), the V3D, `gpudirect`, `dispdma`, `fullscreen_direct`, the app cores.
+
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
 - **Done (cloud session), all pushed:** option A of `docs/GC-WINDOWS-REPORT.md` §5 -- the GX on the
