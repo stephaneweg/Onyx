@@ -152,8 +152,17 @@ bool Widget::handleKey (long k)
 }
 
 // ---- focus -------------------------------------------------------------------
-void Widget::clearFocusTree () { hasFocus = false; for (Widget *c = firstChild; c; c = c->nextSib) c->clearFocusTree (); }
-void Widget::focusPathUp ()    { hasFocus = true;  if (parent) parent->focusPathUp (); }
+// (a control that can take the focus shows it: it is redrawn when it gains or loses it)
+void Widget::clearFocusTree ()
+{
+	if (hasFocus) { hasFocus = false; if (canFocus) invalidate (true); }
+	for (Widget *c = firstChild; c; c = c->nextSib) c->clearFocusTree ();
+}
+void Widget::focusPathUp ()
+{
+	if (!hasFocus) { hasFocus = true; if (canFocus) invalidate (true); }
+	if (parent) parent->focusPathUp ();
+}
 void Widget::setFocus ()
 {
 	Widget *r = this; while (r->parent) r = r->parent;	// root

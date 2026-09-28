@@ -20,6 +20,7 @@ void Root::init (unsigned *fb)
 	canvas.adopt (fb, width, height);		// the root draws straight into the window canvas
 	wk_decorate_window ();				// title bar / borders / close box (no-op if borderless)
 	wtk::init ();					// load the global font family once (SD:/fonts/ns-sans.fnt)
+	bg = C_BG;					// (the theme is read by now: SD:/etc/theme.txt)
 	active () = this;
 	hasFocus = true;
 }
@@ -115,12 +116,11 @@ class ToolTipBox : public Widget
 {
 public:
 	const char *text;
-	ToolTipBox (int l, int t, int w, int h, const char *s) : Widget (l, t, w, h), text (s) {}
+	ToolTipBox (int l, int t, int w, int h, const char *s) : Widget (l, t, w, h), text (s) { transparent = true; }
 	void onDraw () override
 	{
-		canvas.clear (0x00FFF6C8);
-		canvas.frameRect (0, 0, width, height, 0x00605030);
-		canvas.text (5, (height - wk_fh ()) / 2, text, 0x00202020);
+		wk_popup (canvas, 0, 0, width, height, 5, 0x00FFF8D6);
+		canvas.text (6, (height - wk_fh ()) / 2, text, 0x00201C1A);
 	}
 };
 
@@ -155,7 +155,7 @@ void Root::tooltipTick ()
 	for (Widget *c = firstChild; c; c = c->nextSib) if (c->modal) return;	// not over a dialog
 	Widget *w = tip_at (this, m_mx, m_my);
 	if (w == 0 || w == this) return;
-	int tw = wk_len (w->tip) * wk_fw () + 10, th = wk_fh () + 6;
+	int tw = wk_len (w->tip) * wk_fw () + 12, th = wk_fh () + 8;
 	int x = m_mx + 12, y = m_my + 20;
 	if (x + tw > width) x = width - tw - 2;
 	if (y + th > height) y = m_my - th - 4;

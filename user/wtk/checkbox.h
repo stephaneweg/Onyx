@@ -15,6 +15,7 @@ public:
 	Checkbox (int l, int t, int w, int h, const char *s, bool chk, Action cb_, unsigned bg_ = C_BG);
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	bool onKey (long k) override;		// Space / Enter toggle
 };
 
 } // namespace wtk

@@ -17,9 +17,13 @@ public:
 	{
 		unsigned c = pressed ? C_FACE_DN : (hover ? sp->gripHi : sp->gripCol);
 		canvas.clear (c);
-		// a short centred hint line so the grip reads as draggable
-		if (sp->vertical) canvas.fillRect (width / 2 - 10, height / 2, 20, 2, C_BORDER);
-		else              canvas.fillRect (width / 2, height / 2 - 10, 2, 20, C_BORDER);
+		// three dots in the middle, so the grip reads as draggable
+		for (int i = -1; i <= 1; i++)
+		{
+			int cx = sp->vertical ? width / 2 + i * 6 : width / 2, cy = sp->vertical ? height / 2 : height / 2 + i * 6;
+			wk_rbox (canvas, cx - 1, cy - 1, 3, 3, 1, wk_tone (c, 80), wk_tone (c, 80));
+			wk_rbox (canvas, cx, cy, 2, 2, 1, wk_tone (c, 210), wk_tone (c, 210), 160);
+		}
 	}
 
 	bool onMouse (int mx, int my, int bl, int /*br*/, int /*bm*/, int /*wheel*/) override

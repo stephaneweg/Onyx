@@ -54,6 +54,17 @@ void TabHost::layout ()
 	}
 }
 
+// The header: a raised strip (a light gradient of the background), an etched line below it.
+void TabHost::onDraw ()
+{
+	canvas.clear (bg);
+	if (headerH > 2)
+	{
+		wk_rbox (canvas, 0, 0, width, headerH - 2, 0, wk_tone (bg, 150), wk_tone (bg, 126));
+		wk_etch_h (canvas, 0, headerH - 2, width, bg);
+	}
+}
+
 void TabHost::onPick (Widget &w)
 {
 	Dropdown &d = (Dropdown &) w;

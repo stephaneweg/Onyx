@@ -26,6 +26,7 @@ public:
 	int  count   () const { return ntabs; }
 	int  current () const { return active; }
 	void layout () override;
+	void onDraw () override;
 
 private:
 	Dropdown   *picker;			// the task popup menu

@@ -22,45 +22,59 @@ ColorPicker::ColorPicker (int l, int t, int w, int h, unsigned initial, Action c
   : Widget (l, t, w, h), color (initial), open (false), cb (cb_), m_boxW (w), m_boxH (h)
 { canFocus = true; }
 
+enum { PAL_PAD = 4, PAL_GAP = 2 };	// the palette panel: its padding, its gap below the swatch
+
 void ColorPicker::setOpen (bool o)
 {
 	if (o == open) return;
 	open = o;
 	catchOutside = o;
-	int gw = PAL_COLS * PAL_CELL, gh = PAL_ROWS * PAL_CELL;
-	resizeTo (o ? (m_boxW > gw ? m_boxW : gw) : m_boxW, o ? m_boxH + 2 + gh : m_boxH);
+	transparent = o;					// (the panel's rounded corners: see-through)
+	int gw = PAL_COLS * PAL_CELL + 2 * PAL_PAD, gh = PAL_ROWS * PAL_CELL + 2 * PAL_PAD;
+	resizeTo (o ? (m_boxW > gw ? m_boxW : gw) : m_boxW, o ? m_boxH + PAL_GAP + gh : m_boxH);
 	if (o) bringToFront ();
 	invalidate (true);
 	if (parent) parent->invalidate (true);
 }
 
+// The swatch: the colour in a rounded well (a dark line, a light one inside); open, the palette
+// below it in a floating panel.
 void ColorPicker::onDraw ()
 {
-	canvas.fillRect (0, 0, m_boxW, m_boxH, color);
-	canvas.frameRect (0, 0, m_boxW, m_boxH, 0x00FFFFFF);
-	canvas.frameRect (-1, -1, m_boxW + 2, m_boxH + 2, 0x00000000);
+	canvas.clear (open ? WK_TRANSPARENT_KEY : bgColor ());
+	if (open) canvas.fillRect (0, 0, m_boxW, m_boxH, bgColor ());
+	wk_rbox (canvas, 0, 0, m_boxW, m_boxH, 4, color, color);
+	wk_rline (canvas, 1, 1, m_boxW - 2, m_boxH - 2, 3, 0x00FFFFFF, 150);
+	wk_rline (canvas, 0, 0, m_boxW, m_boxH, 4, hover || open ? C_ACCENT : wk_tone (C_FACE, 60), 230);
 	if (open)
+	{
+		int y0 = m_boxH + PAL_GAP;
+		wk_popup (canvas, 0, y0, PAL_COLS * PAL_CELL + 2 * PAL_PAD, PAL_ROWS * PAL_CELL + 2 * PAL_PAD, 6, C_FIELD);
 		for (int r = 0; r < PAL_ROWS; r++)
 			for (int c = 0; c < PAL_COLS; c++)
 			{
-				int gx = c * PAL_CELL, gy = m_boxH + 2 + r * PAL_CELL;
-				canvas.fillRect (gx, gy, PAL_CELL, PAL_CELL, pal_color (r * PAL_COLS + c));
-				canvas.frameRect (gx, gy, PAL_CELL, PAL_CELL, 0x00303030);
+				unsigned pc = pal_color (r * PAL_COLS + c);
+				int gx = PAL_PAD + c * PAL_CELL + 2, gy = y0 + PAL_PAD + r * PAL_CELL + 2, cs = PAL_CELL - 4;
+				wk_rbox (canvas, gx, gy, cs, cs, 3, pc, pc);
+				wk_rline (canvas, gx, gy, cs, cs, 3, pc == color ? C_ACCENT : wk_tone (C_FACE, 70), pc == color ? 255 : 150);
 			}
+	}
 }
 
 bool ColorPicker::onMouse (int mx, int my, int bl, int, int, int)
 {
-	if (mx < 0) { pressed = false; return false; }
+	if (mx < 0) { pressed = false; if (hover) { hover = false; invalidate (true); } return false; }
+	bool h = mx < m_boxW && my < m_boxH;
+	if (h != hover) { hover = h; invalidate (true); }
 	if (bl && !pressed)
 	{
 		pressed = true;
 		if (open)
 		{
-			int gy0 = m_boxH + 2;
-			if (mx >= 0 && mx < PAL_COLS * PAL_CELL && my >= gy0 && my < gy0 + PAL_ROWS * PAL_CELL)
+			int gx0 = PAL_PAD, gy0 = m_boxH + PAL_GAP + PAL_PAD;
+			if (mx >= gx0 && mx < gx0 + PAL_COLS * PAL_CELL && my >= gy0 && my < gy0 + PAL_ROWS * PAL_CELL)
 			{
-				int c = mx / PAL_CELL, r = (my - gy0) / PAL_CELL;
+				int c = (mx - gx0) / PAL_CELL, r = (my - gy0) / PAL_CELL;
 				color = pal_color (r * PAL_COLS + c);
 				setOpen (false);
 				if (cb) cb (*this);

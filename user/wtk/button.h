@@ -1,5 +1,6 @@
 //
-// wtk/button.h -- flat themed button; fires cb on release-over.
+// wtk/button.h -- a push button (the theme's framed button: wtk/paint.h); fires cb on
+// release-over.
 //
 #ifndef _wtk_button_h
 #define _wtk_button_h

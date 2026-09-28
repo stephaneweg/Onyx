@@ -2,50 +2,68 @@
 
 namespace wtk {
 
-enum { DD_ARROW_W = 20 };	// the drop button (as Combobox::ARROW_W)
+// The open list: a floating panel DD_GAP px below the box, its rows DD_PAD px inside it.
+enum { DD_GAP = 2, DD_PAD = 3 };
 
 Dropdown::Dropdown (int l, int t, int w, int h, const char *const *options, int n, int initial, Action cb_)
-  : Widget (l, t, w, h), opts (options), nopts (n), sel (initial), rowH (h), open (false), cb (cb_)
+  : Widget (l, t, w, h), opts (options), nopts (n), sel (initial), rowH (h), open (false), cb (cb_), m_hot (-1)
 { canFocus = true; }
 
 void Dropdown::setOptions (const char *const *options, int n, int initial)
 { setOpen (false); opts = options; nopts = n; sel = (initial >= 0 && initial < n) ? initial : 0; invalidate (true); }
+
+int Dropdown::listTop () const { return rowH + DD_GAP + DD_PAD; }
+
+int Dropdown::rowAt (int mx, int my) const
+{
+	if (!open || mx < 0 || mx >= width || my < listTop ()) return -1;
+	int i = (my - listTop ()) / rowH;
+	return i < nopts ? i : -1;
+}
 
 void Dropdown::setOpen (bool o)
 {
 	if (o && nopts == 0) o = false;
 	if (o == open) return;
 	open = o;
+	m_hot = -1;
 	catchOutside = o;					// while open, grab clicks anywhere (to close)
-	resizeTo (width, o ? rowH + nopts * rowH : rowH);	// grow downward / shrink back
+	transparent = o;					// (the list's rounded corners: see-through)
+	resizeTo (width, o ? listTop () + nopts * rowH + DD_PAD : rowH);	// grow downward / shrink back
 	if (o) bringToFront ();					// draw the list over later siblings
 	invalidate (true);
 	if (parent) parent->invalidate (true);			// repaint behind a closing popup
 }
 
+// Its options in a floating panel below a box: the box a raised button (the chosen option, a
+// chevron), the list light, the row under the pointer in the accent.
+void wk_draw_option_list (Canvas &cv, int y0, int w, int rowH, const char *const *opts, int n,
+			  int sel, int hot)
+{
+	int fh = wk_fh ();
+	wk_popup (cv, 0, y0, w, n * rowH + 2 * DD_PAD, 6, C_FIELD);
+	for (int i = 0; i < n; i++)
+	{
+		int ry = y0 + DD_PAD + i * rowH;
+		bool h = i == hot || (hot < 0 && i == sel);
+		if (h) wk_hilite (cv, DD_PAD, ry, w - 2 * DD_PAD, rowH, 4, i == hot);
+		cv.text (10, ry + (rowH - fh) / 2, opts[i], h ? wk_hilite_ink (i == hot) : C_FIELD_TEXT);
+	}
+}
+
 void Dropdown::onDraw ()
 {
-	int fh = wk_fh (), ax = width - DD_ARROW_W;
-	canvas.clear (disabled ? C_FACE_DN : C_FIELD);
-	// The box: like a Textbox (field colour, border, accent frame when focused).
-	canvas.frameRect (0, 0, ax + 1, rowH, C_BORDER);
-	if (hasFocus && !disabled) canvas.frameRect (1, 1, ax - 1, rowH - 2, C_ACCENT);
-	if (sel >= 0 && sel < nopts) canvas.text (4, (rowH - fh) / 2, opts[sel], disabled ? C_DIS : C_TEXT);
-	// The drop button: a raised face with a triangle (down; up while open).
-	canvas.fillRect (ax, 0, DD_ARROW_W, rowH, open ? C_FACE_DN : (hover && !disabled ? C_FACE_HI : C_FACE));
-	canvas.frameRect (ax, 0, DD_ARROW_W, rowH, C_BORDER);
-	unsigned tc = (nopts && !disabled) ? C_TEXT : C_DIS;
-	int cx = ax + DD_ARROW_W / 2, cy = rowH / 2;
-	for (int r = 0; r < 4; r++)
-		canvas.fillRect (cx - 3 + r, open ? cy + 1 - r : cy - 1 + r, 7 - 2 * r, 1, tc);
-	if (open)
-		for (int i = 0; i < nopts; i++)
-		{
-			int ry = rowH + i * rowH;
-			canvas.fillRect (0, ry, width, rowH, i == sel ? C_FACE_HI : C_FIELD);
-			canvas.frameRect (0, ry, width, rowH, C_BORDER);
-			canvas.text (6, ry + (rowH - fh) / 2, opts[i], C_TEXT);
-		}
+	int fh = wk_fh ();
+	canvas.clear (WK_TRANSPARENT_KEY);
+	canvas.fillRect (0, 0, width, rowH, bgColor ());
+	int st = disabled ? WK_DISABLED : open ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
+	if (hasFocus && !disabled && !open) st |= WK_FOCUS;
+	wk_raised (canvas, 0, 0, width, rowH, 5, C_FACE, st);
+	int d = open ? 1 : 0;
+	if (sel >= 0 && sel < nopts) canvas.text (9 + d, (rowH - fh) / 2 + d, opts[sel], disabled ? C_DIS : C_TEXT);
+	wk_glyph (canvas, open ? WKG_CHEV_UP : WKG_CHEV_DOWN, width - 13 + d, rowH / 2 + d, 9,
+		  (nopts && !disabled) ? C_TEXT : C_DIS);
+	if (open) wk_draw_option_list (canvas, rowH + DD_GAP, width, rowH, opts, nopts, sel, m_hot);
 }
 
 bool Dropdown::onMouse (int mx, int my, int bl, int, int, int)
@@ -53,16 +71,17 @@ bool Dropdown::onMouse (int mx, int my, int bl, int, int, int)
 	if (mx < 0 && !open) { if (hover) { hover = false; invalidate (true); } pressed = false; return false; }
 	bool wh = hover; hover = mx >= 0 && my >= 0 && mx < width && my < rowH; if (hover != wh) invalidate (true);
 	if (disabled) return true;
+	int hot = rowAt (mx, my);
+	if (open && hot != m_hot) { m_hot = hot; invalidate (true); }
 	if (bl && !pressed)
 	{
 		pressed = true;
 		if (open)
 		{
-			if (mx >= 0 && mx < width && my >= rowH && my < rowH + nopts * rowH)
+			if (hot >= 0)
 			{
-				int ns = (my - rowH) / rowH;
-				bool changed = ns >= 0 && ns < nopts && ns != sel;
-				if (ns >= 0 && ns < nopts) sel = ns;
+				bool changed = hot != sel;
+				sel = hot;
 				setOpen (false);
 				if (changed && cb) cb (*this);
 			}
@@ -83,7 +102,7 @@ bool Dropdown::onKey (long k)
 		int ns = sel + (k == KEY_DOWN ? 1 : -1);
 		if (ns < 0) ns = 0;
 		if (ns >= nopts) ns = nopts - 1;
-		if (ns != sel) { sel = ns; invalidate (true); if (cb) cb (*this); }
+		if (ns != sel) { sel = ns; m_hot = -1; invalidate (true); if (cb) cb (*this); }
 		return true;
 	}
 	if (k == KEY_ENTER || k == ' ') { setOpen (!open); return true; }

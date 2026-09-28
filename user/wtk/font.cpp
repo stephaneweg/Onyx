@@ -8,6 +8,7 @@
 #include "wtk/font.h"
 #include "wtk/canvas.h"
 #include "kapi.h"		// kapi_open / kapi_fsize / kapi_read / kapi_close
+#include "wtk/theme.h"		// wk_theme_load
 
 namespace wtk {
 
@@ -108,6 +109,7 @@ void init ()
 	static bool tried = false;
 	if (tried) return;
 	tried = true;
+	wk_theme_load ();				// the palette (SD:/etc/theme.txt)
 	Font *r = registry ();
 	static const char *const path[FONT_COUNT] = {
 		"SD:/fonts/ns-sans.fnt",	// FONT_SANS    (shipped)

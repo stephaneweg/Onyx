@@ -26,6 +26,11 @@ public:
 	void close (int r) { result = r; done = true; }
 	virtual void onButton (int tag)   { (void) tag; }	// from a dialog button
 	virtual void onScroll (int value) { (void) value; }	// from a dialog scrollbar
+	unsigned bgColor () override;		// the face (its controls blend into it)
+	// The box: a rounded panel of the face, a title strip in the active frame's colour, an
+	// outline; its corners see-through. The title strip's height: titleH ().
+	void drawBox (const char *title);
+	static int titleH ();
 };
 
 class MessageBox : public Modal

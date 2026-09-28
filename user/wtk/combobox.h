@@ -24,6 +24,9 @@ public:
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;
 private:
+	int  m_hot;				// the list's row under the pointer (-1 none)
+	bool m_arrowHot = false;		// the pointer over the arrow
+	int  rowAt (int mx, int my) const;
 	void setOpen (bool o);
 };
 

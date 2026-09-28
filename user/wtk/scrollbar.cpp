@@ -32,14 +32,13 @@ void Scrollbar::scrollBy (int units)			// wheel / programmatic nudge
 
 void Scrollbar::onDraw ()
 {
-	canvas.clear (C_FIELD); canvas.frameRect (0, 0, width, height, C_BORDER);
+	canvas.clear (bgColor ());
 	int span = vertical ? height : width, thumb = span / 5;
 	if (thumb < 14) thumb = 14;
 	if (thumb > span) thumb = span;
 	int pos = (span - thumb) * value / (vmax > 0 ? vmax : 1);
-	unsigned face = (hover || pressed) ? C_FACE_HI : C_FACE;
-	if (vertical) canvas.fillRect (1, pos, width - 2, thumb, face);
-	else          canvas.fillRect (pos, 1, thumb, height - 2, face);
+	wk_scroll_bar (canvas, 0, 0, width, height, vertical, pos, thumb, bgColor (),
+		       hover || pressed ? WK_HOT : WK_NORMAL);
 }
 
 bool Scrollbar::onMouse (int mx, int my, int bl, int, int, int wheel)

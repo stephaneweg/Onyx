@@ -17,6 +17,7 @@ public:
 	Root (int w, int h, const char *title);				// decorated window
 	Root (int x, int y, int w, int h, const char *title, unsigned flags); // positioned / borderless
 	void setBg (unsigned c) { bg = c; invalidate (true); }
+	unsigned bgColor () override { return bg; }
 	void onDraw () override;
 	void run ();
 	void attach ();				// hook the kapi pointer / key streams (run () does it); for
