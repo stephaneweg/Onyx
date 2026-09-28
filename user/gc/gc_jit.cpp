@@ -293,6 +293,15 @@ struct Jit
 	// instead (pHost, hGuest = 64 + the GPR: basePtr) -- forgotten when that GPR is written, made
 	// again after a call that clobbers it.
 	enum { G_CR = 32, G_XER, G_LR, G_CTR, NG, P_BASE = 64 };
+	// the guest registers kept in host registers across the blocks (the most used: LR, CR, r3, r0 --
+	// callee-saved ones, which the helpers keep): no load at a block's first use, no store at its
+	// exits; the enter stub loads them, the exit stub stores them, and so around the interpreter
+	enum { N_SRA = 4 };
+	static constexpr int SRA_G[N_SRA] = { G_LR, G_CR, 3, 0 }, SRA_H[N_SRA] = { 24, 27, 28, 29 };
+	static bool isSra (int g) { return g == G_LR || g == G_CR || g == 3 || g == 0; }
+	void sraMap () { for (int i = 0; i < N_SRA; i++) { gHost[SRA_G[i]] = SRA_H[i]; hGuest[SRA_H[i]] = SRA_G[i]; gDirty[SRA_G[i]] = true; } }
+	void sraStore () { for (int i = 0; i < N_SRA; i++) a.ldst (STR_W, 2, SRA_H[i], XM, gOff (SRA_G[i])); }
+	void sraLoad () { for (int i = 0; i < N_SRA; i++) a.ldst (LDR_W, 2, SRA_H[i], XM, gOff (SRA_G[i])); }
 	int gHost[NG]; bool gDirty[NG]; int hGuest[32]; u32 hStamp[32], stamp, pinned;
 	int pHost[32]; u32 bWrit;			// (the GPRs' pointers; the GPRs written so far in the block)
 	int gOff (int g) { return g < 32 ? g * 4 : g == G_CR ? oCr : g == G_XER ? oXer : g == G_LR ? oLr : oCtr; }
@@ -305,12 +314,13 @@ struct Jit
 		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; pHost[r] = -1; }
 		for (int h = 0; h < 32; h++) { hfGuest[h] = -1; hfStamp[h] = 0; }
 		fpinned = 0; fprfR = -1; bWrit = 0;
+		sraMap ();
 	}
 	int alloc ()
 	{
-		static const int pool[10] = { 9, 10, 11, 12, 13, 14, 15, 24, 27, 28 };
+		static const int pool[8] = { 9, 10, 11, 12, 13, 14, 15, 18 };
 		int best = -1; u32 bs = ~0u;
-		for (int i = 0; i < 10; i++)
+		for (int i = 0; i < 8; i++)
 		{
 			int h = pool[i];
 			if (pinned & (1u << h)) continue;
@@ -362,7 +372,7 @@ struct Jit
 	void spill (bool all)
 	{
 		for (int g = 0; g < NG; g++)
-			if (gHost[g] >= 0 && gDirty[g] && (all || !calleeSaved (gHost[g]))) a.ldst (STR_W, 2, gHost[g], XM, gOff (g));
+			if (gHost[g] >= 0 && gDirty[g] && !isSra (g) && (all || !calleeSaved (gHost[g]))) a.ldst (STR_W, 2, gHost[g], XM, gOff (g));
 		for (int r = 0; r < 32; r++)
 			if (fHost[r] >= 0 && fDirty[r]) a.ldst (STR_Q, 4, fHost[r], XM, fOff (r));
 		if (all) fprfFlush ();
@@ -370,7 +380,7 @@ struct Jit
 	void reload (bool all)
 	{
 		for (int g = 0; g < NG; g++)
-			if (gHost[g] >= 0 && (all || !calleeSaved (gHost[g]))) a.ldst (LDR_W, 2, gHost[g], XM, gOff (g));
+			if (gHost[g] >= 0 && !isSra (g) && (all || !calleeSaved (gHost[g]))) a.ldst (LDR_W, 2, gHost[g], XM, gOff (g));
 		for (int r = 0; r < 32; r++)
 			if (fHost[r] >= 0) a.ldst (LDR_Q, 4, fHost[r], XM, fOff (r));
 		for (int g = 0; g < 32; g++)				// (the pointers: from their GPRs again)
@@ -389,6 +399,7 @@ struct Jit
 		for (int g = 0; g < 32; g++) pHost[g] = -1;
 		bWrit = ~0u;						// (an instruction interpreted: any GPR may have changed)
 		for (int h = 0; h < 32; h++) hGuest[h] = -1;
+		sraMap ();
 		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; }
 		for (int h = 0; h < 32; h++) hfGuest[h] = -1;
 		fprfR = -1;
@@ -577,11 +588,12 @@ struct Jit
 	{
 		gqrOk = 0;						// (it may be an mtspr)
 		sync (idx * 2);
-		spill (true); dropAll ();
+		spill (true); sraStore (); dropAll ();
 		sgl0 = sgl1 = 0;
 		cyclesOut ();
 		a.movX (0, XM); a.movw (1, op); a.movw (2, pc);
 		helper (H_INTERP);
+		sraLoad ();
 		resync ();
 		Def &df = defer (D_IEXIT);
 		df.site = a.p; a.cbz (0, a.p, true);			// (it left: an exception, a branch)
@@ -756,10 +768,11 @@ struct Jit
 	{
 		u32 pend = d.idx * 2 - synced;
 		dc (pend);
-		spill (true);
+		spill (true); sraStore ();
 		cyclesOut ();
 		a.movX (0, XM); a.movw (1, d.op); a.movw (2, d.pc);
 		helper (H_INTERP);
+		sraLoad ();
 		resync ();
 		u32 *j = a.p; a.cbz (0, a.p);
 		dc (2);
@@ -930,7 +943,7 @@ struct Jit
 			for (int r = d; r < 32; r++)
 			{
 				ptrDrop (r);
-				if (gHost[r] >= 0)
+				if (gHost[r] >= 0 && !isSra (r))
 				{
 					if (gDirty[r]) a.ldst (STR_W, 2, gHost[r], XM, r * 4);
 					hGuest[gHost[r]] = -1; gHost[r] = -1; gDirty[r] = false;
@@ -941,7 +954,8 @@ struct Jit
 		for (int r = d; r < 32; r++)
 		{
 			int off = (r - d) * 4;
-			if (load) { a.ldst (LDR_W, 2, 5, 4, off); a.un (REV_W, 5, 5); a.ldst (STR_W, 2, 5, XM, r * 4); }
+			if (load && isSra (r)) { a.ldst (LDR_W, 2, 5, 4, off); a.un (REV_W, gHost[r], 5); }
+			else if (load) { a.ldst (LDR_W, 2, 5, 4, off); a.un (REV_W, 5, 5); a.ldst (STR_W, 2, 5, XM, r * 4); }
 			else
 			{
 				int src = gHost[r];
@@ -1034,7 +1048,11 @@ bool Jit::crDead (u32 pa, int f, int depth)
 		}
 		case 18:								// b
 		{
-			if ((op & 3) || depth <= 0) return false;				// (bl, ba)
+			// a call: CR0 is volatile across it (the ABI) -- the callee may set it, the caller does
+			// not read it after without setting it again: set, for CR0 (CR1 carries the varargs'
+			// flag in, CR2-4 are kept: read)
+			if ((op & 3) == 1) return f == 0;
+			if ((op & 3) || depth <= 0) return false;				// (ba)
 			u32 off = op & 0x03FFFFFC; if (off & 0x02000000) off |= 0xFC000000;
 			return crDead (pa + off, f, depth - 1);
 		}
@@ -1912,11 +1930,13 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	a.ldst (LDR_X, 3, XMEM, XM, oMem1);
 	a.movX (XCTX, 2);
 	a.movw (WMSZ, MEM1_SIZE);
+	for (int i = 0; i < N_SRA; i++) a.ldst (LDR_W, 2, SRA_H[i], XM, SRA_G[i] == G_LR ? oLr : SRA_G[i] == G_CR ? oCr : SRA_G[i] * 4);	// (the kept guest registers)
 	a.ldst (LDR_X, 3, 3, XM, oUntil); a.ldst (LDR_X, 3, 4, XM, oCycles);
 	a.alu (SUB_W | X64, XDC, 3, 4); a.ldst (STR_X, 3, 3, XM, oEnd);	// (the countdown)
 	a.br (1);
 	exitStub = a.p;
 	a.ldst (LDR_X, 3, 3, XM, oEnd); a.alu (SUB_W | X64, 3, 3, XDC); a.ldst (STR_X, 3, 3, XM, oCycles);
+	for (int i = 0; i < N_SRA; i++) a.ldst (STR_W, 2, SRA_H[i], XM, SRA_G[i] == G_LR ? oLr : SRA_G[i] == G_CR ? oCr : SRA_G[i] * 4);
 	a.put (0xA94153F3);						// ldp x19, x20, [sp, #16]
 	a.put (0xA9425BF5);						// ldp x21, x22, [sp, #32]
 	a.put (0xA94363F7);						// ldp x23, x24, [sp, #48]
@@ -2184,6 +2204,27 @@ void Machine::jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns)
 	}
 }
 
+// (the tests) translate the block at pc now; a block's instructions with their main code's words
+bool Machine::jitCompileAt (u32 pc)
+{
+	if (!jit) return false;
+	u32 key = pc | ((msr & MSR_IR) ? 1 : 0) | ((msr & MSR_DR) ? 2 : 0);
+	return jit->lookup (key) || jit->compile (pc, key);
+}
+int Machine::jitBlockInsns (u32 pc, u32 *ops, u32 *words, int max)
+{
+	if (!jit || !jit->profInsns) return 0;
+	for (u32 i = jit->nBlocks; i-- > 0;)
+	{
+		const Jit::Block &b = jit->blocks[i];
+		if ((b.key & ~3u) != pc || b.prof == ~0u) continue;
+		int n = 0;
+		for (u32 k = b.prof; k < b.prof + b.profN && n < max; k++, n++) { ops[n] = jit->profInsns[k].op; words[n] = jit->profInsns[k].words; }
+		return n;
+	}
+	return 0;
+}
+
 // (the tests) the block translated for pc (the last one), its code
 bool Machine::jitCode (u32 pc, const u32 *&code, u32 &words)
 {
@@ -2345,6 +2386,8 @@ bool Machine::jitHot (int, u32 &, u64 &, const u32 *&, u32 &) { return false; }
 bool Machine::jitCode (u32, const u32 *&, u32 &) { return false; }
 int Machine::jitReport (char *out, int cap, int) { if (cap > 0) out[0] = 0; return 0; }
 int Machine::jitHotCode (u8 *, int, int) { return 0; }
+bool Machine::jitCompileAt (u32) { return false; }
+int Machine::jitBlockInsns (u32, u32 *, u32 *, int) { return 0; }
 
 #endif
 

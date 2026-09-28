@@ -10,6 +10,10 @@
 //       blocks kept, its data through the uncached mirror -- the blocks' base pointers made for the
 //       other one meet another value)
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
+//   gctest jitsize <jitprof.bin>              the hot blocks of a Pi's profile (gcemu --jitprof)
+//       translated again by this JIT: the host instructions of their main code a guest one,
+//       weighted by the runs counted there (the GPRs pointing into MEM1, the GQRs 0);
+//       GC_JITDUMP=pc: that block's main code into jitdump.bin
 // GC_JIT=1: the JIT runs the CPU (an AArch64 host -- run_gc_test.sh builds it for qemu-aarch64 --
 // or an x86-64 one)
 #include "gc/gc.h"
@@ -18,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <vector>
 #if defined(_WIN32)
 #include <windows.h>
 #elif defined(__aarch64__) || defined(__x86_64__)
@@ -376,6 +381,56 @@ static void gfxPpm (Machine &m, const char *path)
 }
 
 // a .dol run for some fields: the picture, the results it leaves at 0x80700000, the interrupts
+static int jitSize (const char *path)
+{
+	FILE *f = fopen (path, "rb"); if (!f) { printf ("FAIL: %s\n", path); return 1; }
+	std::vector<u8> d; { u8 buf[65536]; size_t k; while ((k = fread (buf, 1, sizeof buf, f)) > 0) d.insert (d.end (), buf, buf + k); } fclose (f);
+	static Machine B; B.jitProfile = true;
+	if (!B.jitEnable ()) { printf ("FAIL: no JIT on this host\n"); return 1; }
+	B.reset ();
+	for (int i = 1; i < 32; i++) B.gpr[i] = 0x80400000;		// (the base pointers made: as for MEM1's)
+	size_t n = 0; int blocks = 0;
+	static double cls[65536], cnt[65536]; double host = 0, guest = 0;
+	while (n + 16 <= d.size ())
+	{
+		u32 h[4]; memcpy (h, d.data () + n, 16); n += 16;
+		u32 pc = h[0], runs = h[1], gw = h[2], hw = h[3];
+		if (n + (size_t) gw * 4 + (size_t) hw * 4 > d.size ()) break;
+		for (u32 i = 0; i < gw; i++)				// (the guest code where it was)
+		{
+			u32 w; memcpy (&w, d.data () + n + i * 4, 4);
+			u32 pa = (pc + i * 4) & 0x01FFFFFF;
+			if (pa + 4 <= MEM1_SIZE) memcpy (B.mem1 + pa, &w, 4);
+		}
+		n += (size_t) gw * 4 + (size_t) hw * 4;
+		if (!B.jitCompileAt (pc)) continue;
+		static u32 ops[256], words[256];
+		int k = B.jitBlockInsns (pc, ops, words, 256);
+		for (int i = 0; i < k; i++)
+		{
+			u32 op = ops[i], p = op >> 26;
+			u32 c = p == 4 || p == 19 || p == 31 || p == 59 || p == 63 ? (p << 10 | ((op >> 1) & 0x3FF)) : p << 10;
+			cls[c] += (double) runs * words[i]; cnt[c] += op ? runs : 0; host += (double) runs * words[i]; guest += op ? runs : 0;
+		}
+		blocks++;
+	}
+	printf ("%d blocks: %.0f guest instructions, %.0f host (%.2f a guest one)\n", blocks, guest, host, guest ? host / guest : 0);
+	if (getenv ("GC_JITDUMP"))					// (a block's main code -> jitdump.bin)
+	{
+		const u32 *code; u32 words;
+		if (B.jitCode ((u32) strtoul (getenv ("GC_JITDUMP"), 0, 16), code, words)) { FILE *o = fopen ("jitdump.bin", "wb"); fwrite (code, 4, words, o); fclose (o); printf ("  jitdump.bin: %u words\n", words); }
+	}
+	for (int t = 0; t < 30; t++)
+	{
+		int best = -1;
+		for (int c = 0; c < 65536; c++) if (cls[c] > 0 && (best < 0 || cls[c] > cls[best])) best = c;
+		if (best < 0) break;
+		printf ("  %2d / %3d: %6.1f %%  %5.1f a guest one\n", best >> 10, best & 0x3FF, 100.0 * cls[best] / host, cnt[best] ? cls[best] / cnt[best] : 0.0);
+		cls[best] = 0;
+	}
+	return 0;
+}
+
 static int dolTest (const char *dol, int frames, const char *out)
 {
 	long n; unsigned char *d = slurp (dol, &n);
@@ -397,6 +452,7 @@ int main (int argc, char **argv)
 	codeAlloc = hostCode;
 	useJit = getenv ("GC_JIT") && atoi (getenv ("GC_JIT"));
 	if (argc >= 4 && !strcmp (argv[1], "dol")) return dolTest (argv[2], atoi (argv[3]), argc > 4 ? argv[4] : 0);
+	if (argc >= 3 && !strcmp (argv[1], "jitsize")) return jitSize (argv[2]);
 	if (argc >= 3 && !strcmp (argv[1], "ps")) return psTest (argv[2]);
 	if (argc >= 3 && !strcmp (argv[1], "bench")) return benchTest (argv[2], argc > 3 ? argv[3] : 0);
 	if (argc >= 2 && !strcmp (argv[1], "fuzz")) return fuzzTest (argc > 2 ? strtoull (argv[2], 0, 10) : 1, argc > 3 ? atoi (argv[3]) : 2000, argc > 4 ? atoi (argv[4]) : 150);

@@ -170,6 +170,40 @@ answer in French. The docs stay in English.
   compiler hints as unlikely out of line; the FP compares fused), a second, optimising tier for
   the hot code (whole functions, the registers kept across blocks, the hot code packed), then the
   display's `gpu_render2` (~20-45 ms a frame on core 0: the kernel's clipping and copies).
+- **The speed, third pass (local session, 2026-09-28 evening).** Measured in the game (Outset's
+  bridge, ~96k vertices a frame) with `--statlog=FTP:<pc>:2121` (F12's lines whole, every
+  second; docs/03): 30.6 -> **~38 fields/s** (~19 fps of 25; F10 said 14-15 fps, 60 %, before).
+  - LR, CR, r3, r0 kept in host registers across the blocks (the JIT's SRA), a call counting as
+    setting CR0 (`crDead`), `gctest jitsize` (6.56 -> 5.85 host instructions a guest one on the
+    Pi profile's hot blocks); `gctest fuzz` (GC_FUZZC, GC_FUZZ2 too) passes.
+  - gcemu's loop: the TEV frame prepared and drawn after the next field is asked for, two fields
+    asked for when a frame is drawn and the game is behind (the machine, its field done, idled
+    ~13 ms each frame while `gpu_render2` ran), the main thread naps while the field's end is
+    far (a yield in a loop: core 0 busy, heat).
+  - The kernel's `ClipFrame2`: the triangles inside copied once, straight into the GPU's buffer
+    (were four copies): `gpu_render2` 34 -> 25 ms a frame; its split in kmsg (docs/02).
+  - Where it stands: the machine (core 2) ~26 ms a field, busy ~99 % — the bottleneck; the GX
+    (core 3) ~22-24 ms, ~87 %; the main thread ~32 ms a frame (prep 6.8, clip 9.8, GPU 14).
+  - **The Pi was throttling**: kmsg `power: SoC 81-84 C ... soft temp limit NOW`, the cores
+    ~1.3 GHz (the PMU's cycles against the time) instead of 1.5: a fan / heatsink is ~+15 %.
+  - Measures (`--pmu=08,01,52,53`, docs/03): the machine's IPC 0.84, L1I refills 11.4 and L2
+    read refills 3.2 a thousand instructions — its data from the RAM. `--nodraw` (the frames
+    recorded, not drawn): the machine 37 -> 30 M cycles a field (IPC 1.02), ~45 fields/s, the GX
+    core then 98 % busy: **the display's copies (core 0) cost the machine ~18 %** through the
+    shared L2 / RAM, and the GX is right behind.
+  - The JIT profile (`--jitprof`, 180 s, the game): 5.36 host instructions a guest one on the
+    main paths; the branches ~33 % of them (bc 12.7, bclr 8.8 -- plus the dispatcher's --, b / bl
+    7.7, bcctr 3.4), the loads / stores ~42 % (lwz 13.4 at 5.7 each, lfs 9.6 at 10.1), fcmpo 4.5 %
+    at 14.8 each. The hottest loop (~17 %): a linked list searched through two function pointers
+    a node (`8024A118..8024A150`: bctrl -> `8024A7E0` -> bctrl -> `80043E1C` -> blr -> blr), 22k
+    nodes a field: four trips through the dispatcher a node.
+  Next, by gain: (1) the display's memory traffic -- the recorder rejecting the triangles behind
+  the eye (~17 % of them: the kernel drops them anyway), then `Out::prepare`'s copy and the
+  kernel's (a GPU-visible buffer the app writes, clipped in place; per-batch strides and the XFB
+  rectangle's transform in the shaders); (2) the JIT's calls / returns on the host's own `bl` /
+  `ret` with a stack of return addresses (Dolphin's "BLR optimisation": no dispatcher trip, the
+  return predicted), the indirect calls inline-cached; (3) the recorder on NEON (~470 ns a
+  vertex, the GX's ~15 of its ~22 ms) before the GX caps the speed at ~45 fields/s.
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
   - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
     stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then

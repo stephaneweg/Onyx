@@ -33,6 +33,9 @@
 //     the interpreter, the slow memory accesses -- into jitprof.txt, the costliest blocks' guest
 //     and host code into jitprof.bin, every 60 s and at the end (tools/gc/jitprof.py reads them).
 //     --pmu[=e1,e2,e3,e4]: the app cores' performance counters (hex events), F12's fifth line.
+//     --statlog[=<folder>]: F12's lines of every second into statlog.txt there (SD:/gcdump by
+//     default; the last ~200 KB kept, saved every 5 s), without --diag's frame dumps and end -- a
+//     measure of the game played (F12's lines complete, whatever the window's width).
 //
 #include "kapi.h"
 #include "launch.h"
@@ -61,10 +64,12 @@ static char g_statFps[48] = "";
 static volatile bool g_dumpReq = false;				// (F9) the frame shown, dumped
 static char g_note[200] = ""; static unsigned g_noteUntil = 0;	// (a message a few seconds)
 static bool g_diag = false;					// --diag[=<folder>]
+static bool g_statLog = false;					// --statlog[=<folder>]: --diag's log alone (no dumps, no end)
 static char g_dumpDir[128] = "SD:/gcdump";			// (where F9 / --diag write: a folder, or FTP:host:port/...)
 static bool g_tevBuf = false;					// --tevbuf: the TEV frames drawn into a buffer of ours, then copied
 static bool g_jitProf = false;					// --jitprof: the JIT's profile (with --diag)
 static bool g_gxOne = false;					// --gxone: the GX on the machine's core even with a second one
+static bool g_noDraw = false;					// --nodraw (a measure): the TEV frames recorded, not drawn
 static bool g_pmu = false;					// --pmu[=e1,e2,e3,e4]: the app core's performance counters (F12's 5th line)
 static unsigned g_pmuEv[4] = { 0x08, 0x03, 0x17, 0x10 };		// (the events, hex: instructions, L1D, L2 refills, mispredictions)
 static volatile unsigned long long g_pmuField[gc::PMU_N];	// (--pmu) their counts in runFrame, all in
@@ -628,15 +633,31 @@ static void jit_report (void)
 	delete [] t; delete [] c;
 }
 
+// (--statlog: a second's first line in the log -- "<n> s")
+static bool sec_line (const char *l, unsigned at, unsigned n)
+{
+	unsigned j = at; while (j < n && l[j] >= '0' && l[j] <= '9') j++;
+	return j > at && j + 2 < n && l[j] == ' ' && l[j + 1] == 's' && l[j + 2] == '\n';
+}
+
 // --diag: F12's lines every second into SD:/gcdump/diag.txt (saved every 5 s: less time taken from the
-// game), a frame dumped every 60 s, the end after 200 s
+// game), a frame dumped every 60 s, the end after 200 s; --statlog: into statlog.txt, the log alone
+// (its oldest half dropped when full), no end
 static void diag_tick (void)
 {
 	static char *log = 0; static unsigned n = 0, secs = 0;
 	enum { CAP = 256 * 1024 };
 	static char path[200];
-	if (!log) { log = new char[CAP]; kapi_mkdir (g_dumpDir); int k = 0; path[0] = 0; cat (path, &k, g_dumpDir); cat (path, &k, "/diag.txt"); }
+	if (!log) { log = new char[CAP]; kapi_mkdir (g_dumpDir); int k = 0; path[0] = 0; cat (path, &k, g_dumpDir); cat (path, &k, g_statLog ? "/statlog.txt" : "/diag.txt"); }
 	if (!g_m->gpu) tev_line ();
+	if (g_statLog && n > CAP - 8192)			// (the oldest half dropped, from a second's start)
+	{
+		unsigned h = n / 2;
+		while (h + 1 < n && !(log[h] == '\n' && sec_line (log, h + 1, n))) h++;
+		h++;
+		for (unsigned i = h; i < n; i++) log[i - h] = log[i];
+		n -= h;
+	}
 	secs++;
 	const char *lines[5] = { g_statState, g_statText, g_statTev, g_statPerf, g_statPmu };
 	char t[16]; int k = 0; t[0] = 0; fmt_num (t, &k, secs, 0); cat (t, &k, " s\n");
@@ -645,6 +666,12 @@ static void diag_tick (void)
 		const char *s = j == 0 ? t : lines[j - 1];
 		for (int i = 0; s[i] && n < CAP - 2; i++) log[n++] = s[i];
 		if (j) log[n++] = '\n';
+	}
+	if (g_statLog)
+	{
+		if (secs % 5 == 0) kapi_save_file (path, log, n);
+		if (g_jitProf && secs % 60 == 0) jit_report ();
+		return;
 	}
 	if (secs % 5 == 0 || secs >= 200) kapi_save_file (path, log, n);
 	if (secs % 60 == 0) g_dumpReq = true;
@@ -677,6 +704,7 @@ int main (void)
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 't' && args[i + 3] == 'e' && args[i + 4] == 'v' && args[i + 5] == 'b') g_tevBuf = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'j' && args[i + 3] == 'i' && args[i + 4] == 't' && args[i + 5] == 'p') g_jitProf = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'g' && args[i + 3] == 'x' && args[i + 4] == 'o') g_gxOne = true;
+		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'n' && args[i + 3] == 'o' && args[i + 4] == 'd' && args[i + 5] == 'r') g_noDraw = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'p' && args[i + 3] == 'm' && args[i + 4] == 'u')
 		{
 			g_pmu = true;
@@ -690,12 +718,17 @@ int main (void)
 					if (args[j] == ',') j++;
 				}
 		}
-		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'd' && args[i + 3] == 'i' && args[i + 4] == 'a' && args[i + 5] == 'g')
+		bool diag = args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'd' && args[i + 3] == 'i' && args[i + 4] == 'a' && args[i + 5] == 'g';
+		bool statLog = args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 's' && args[i + 3] == 't' && args[i + 4] == 'a' && args[i + 5] == 't'
+			&& args[i + 6] == 'l' && args[i + 7] == 'o' && args[i + 8] == 'g';
+		if (diag || statLog)
 		{
 			g_diag = true;
-			if (args[i + 6] == '=')					// --diag=<folder>
+			if (statLog) g_statLog = true;
+			int e = i + (statLog ? 9 : 6);
+			if (args[e] == '=')					// --diag=<folder>, --statlog=<folder>
 			{
-				int j = i + 7, k = 0;
+				int j = e + 1, k = 0;
 				while (args[j] && args[j] != ' ' && k < (int) sizeof g_dumpDir - 1) g_dumpDir[k++] = args[j++];
 				while (k > 0 && g_dumpDir[k - 1] == '/') k--;
 				g_dumpDir[k] = 0;
@@ -795,6 +828,7 @@ int main (void)
 	unsigned freeFrames = 0, rate = SOUND_RATE, owner = 0, stQueued = 0;
 	static short pcm[4096 * 2];
 	unsigned long long stT = now_us (), drawUs = 0, stEmuUs = 0; unsigned stDone = 0, stShown = 0;
+	unsigned long long reqEnd = 0; unsigned fieldUs = 20000;	// (the fields asked for: done by then; a field's time)
 	while (!should_exit ())
 	{
 		pump_events ();
@@ -806,21 +840,23 @@ int main (void)
 		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		// a new image, the machine between two fields: taken before the next field is asked for --
 		// else, slower than real time, the next one was always asked first and nothing was shown.
-		// The TEV's frame is prepared now and drawn after the request (the GPU then works while the
-		// machine runs); the other pictures, and a frame to dump, are drawn now.
+		// The TEV's frame is prepared and drawn after the request (under gxLock -- the GX may be on
+		// the machine's core or its own: the recorder's finished frame and the textures kept still
+		// meanwhile -- while the machine runs the next field; the GPU then draws meanwhile too); the
+		// other pictures, and a frame to dump, are drawn now.
 		bool shown = false, later = false;
 		if (ec_pending (&g_ec) == 0 && ec_take (&g_ec))
 		{
 			g_fbW = g_m->fbW; g_fbH = g_m->fbH;
 			if (g_m->gfxSerial != g_lastSerial) { g_lastSerial = g_m->gfxSerial; g_gfxAge = 0; } else if (g_gfxAge < 1000) g_gfxAge++;
-			unsigned long long d0 = now_us ();
-			int tw, th; target_size (&tw, &th);
-			if (g_m->gpu && g_gfxAge < 30 && !g_dumpReq && g_out.prepare (g_rec, *g_m, tw, th)) later = true;
-			else { show_frame (); stShown++; shown = true; }
-			drawUs += now_us () - d0;
+			if (g_m->gpu && g_gfxAge < 30 && !g_dumpReq) later = !g_noDraw;
+			else { unsigned long long d0 = now_us (); show_frame (); stShown++; shown = true; drawUs += now_us () - d0; }
 		}
 		// with sound the game's audio paces it (kept ~60 ms ahead), else -- no sound of ours, or
-		// the game makes none yet -- the clock
+		// the game makes none yet -- the clock. A TEV frame to draw (Out::prepare and gpu_render2:
+		// ~40 ms on this thread with ~100k vertices, longer than a field on the machine): two fields
+		// asked for at once when behind -- else the machine, its field done, idled till the frame
+		// was drawn and the next one asked for (the picture then taken after the second)
 		bool audio = g_sound && g_audio == 1;
 		unsigned queued = 0;
 		if (audio)
@@ -834,7 +870,12 @@ int main (void)
 		}
 		if (audio && g_audioMade > 0)
 		{
-			if (queued + ec_audio_count (&g_ec) < 2600 && ec_pending (&g_ec) == 0) ec_request (&g_ec, 1);
+			unsigned q = queued + ec_audio_count (&g_ec), fieldFrames = SOUND_RATE * 100 / fps100 ();
+			if (q < 2600 && ec_pending (&g_ec) == 0)
+			{
+				unsigned k = later && q + fieldFrames < 2600 ? 2 : 1;
+				ec_request (&g_ec, k); reqEnd = now_us () + k * fieldUs;
+			}
 			t0 = kapi_get_ticks (); asked = 0;
 		}
 		else
@@ -842,13 +883,31 @@ int main (void)
 			unsigned fps = fps100 ();
 			unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * fps / 10000);
 			if (due - asked > 4 && due > asked) asked = due - 1;
-			if (asked < due && ec_pending (&g_ec) == 0) { ec_request (&g_ec, 1); asked++; }
+			if (asked < due && ec_pending (&g_ec) == 0)
+			{
+				unsigned k = later && due - asked >= 2 ? 2 : 1;
+				ec_request (&g_ec, k); asked += k; reqEnd = now_us () + k * fieldUs;
+			}
 		}
 		if (kapi_get_ticks () - lastSave > 300 && ec_pending (&g_ec) == 0) { card_save (); lastSave = kapi_get_ticks (); }	// (3 s)
-		if (later) { unsigned long long d0 = now_us (); show_frame (); drawUs += now_us () - d0; stShown++; shown = true; }
+		if (later)
+		{
+			unsigned long long d0 = now_us ();
+			int tw, th; target_size (&tw, &th);
+			g_out.prepare (g_rec, *g_m, tw, th);			// (none yet: show_frame shows the rest)
+			show_frame (); drawUs += now_us () - d0; stShown++; shown = true;
+		}
 		ec_pump (&g_ec);
 		serve_reads ();
-		if (!shown && g_rdState != 1) kapi_msleep (1);
+		// nothing to do: the machine running a field -- a yield, its end seen at once (a 1 ms sleep
+		// lasts till the scheduler's next tick, up to ~11 ms, the machine idle meanwhile), but a nap
+		// while that end is further (else core 0 spins: heat, the Pi throttled); the machine idle,
+		// paced by the sound or the clock -- a nap
+		if (!shown && g_rdState != 1)
+		{
+			if (ec_pending (&g_ec) == 0 || now_us () + 12000 < reqEnd) kapi_msleep (1);
+			else kapi_yield ();
+		}
 		unsigned long long tn = now_us ();
 		if (tn - stT >= 1000000)
 		{
@@ -874,6 +933,7 @@ int main (void)
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			g_m->status (g_statState, sizeof g_statState);	// (read while it may run: a diagnostic)
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
+			if (stEmu) fieldUs = (unsigned) (emuUs / stEmu);
 			if (g_m->gpu) { tev_line (); perf_line (stEmu, el); }
 			if (g_pmu) pmu_line (stEmu);
 			if (g_diag) diag_tick ();

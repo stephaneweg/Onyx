@@ -355,10 +355,15 @@ Notes / caveats:
 > shown into `SD:/gcdump/frame_<n>.gxf` (the recorded frame, its programs and textures, and the
 > picture the GPU made), `--diag[=<folder>]` writes F12's lines of every second into
 > `<folder>/diag.txt` (saved every 5 s), dumps a frame every 60 s (the machine waits meanwhile:
-> a few seconds over FTP) and quits after 200 s; F12's fourth line is where a field's time went
+> a few seconds over FTP) and quits after 200 s; `--statlog[=<folder>]` writes the same lines
+> into `<folder>/statlog.txt` without the dumps and the end (the last ~200 KB kept, saved every
+> 5 s: a measure of a game played, F12's lines whole whatever the window's width); `--nodraw`
+> (a measure) records the TEV frames but neither prepares nor draws them (the window stays
+> still): the machine's speed without the display's work beside it; F12's fourth line is where a field's time went
 > on the app core — the GX (`Machine::timeFifo`, all in), its primitives (`timePrim`: decoding,
 > state, textures, the recorder), the textures (`timeTex`), the recorder (`Rec::drawTicks`) —
-> and a frame's on the main thread (`Out::prepare`, `gpu_render2`); the counters read the ARM's
+> and a frame's on the main thread (`Out::prepare`, `gpu_render2` — the kernel splits the latter
+> in kmsg every 256 frames: `render2, a frame: clip … lists … GPU … target …`); the counters read the ARM's
 > clock (`gcClock`, nothing on other hosts) — the folder may be an FTP
 > one (`--diag=FTP:<pc>:<port>/<dir>`) so the files land on the PC at once (`--tevbuf`: the
 > frames drawn into a buffer of gcemu's, then copied — the GPU no longer writing the window's
@@ -413,10 +418,17 @@ Notes / caveats:
 > loop: `if (ec_pending (&ec) == 0 && ec_take (&ec)) ...` first, then `ec_request`) — the other
 > way round, a machine slower than real time always has its next frame asked first and the
 > window is never drawn again. What reads the machine (its frame, its textures) runs while it
-> waits; what only reads a copy may run while it works: gcemu copies the TEV frame into the
-> kernel's arrays (`Out::prepare`, the machine waiting), asks for the next field, then draws
-> (`Out::submit` → `gpu_render2`) while the field runs — and not again when the same frame is
-> already in the window (a 30 fps game: every other field).
+> waits, or under a lock it respects; what only reads a copy may run while it works: gcemu asks
+> for the next field, then copies the TEV frame into the kernel's arrays (`Out::prepare`, under
+> the GX's lock: the recorder's finished frame and the textures kept still) and draws it
+> (`Out::submit` → `gpu_render2`) while the field runs — two fields asked for at once when
+> behind real time (the drawing, ~30 ms with ~100k vertices, is longer than a field: the
+> machine, its field done, no longer idles until the next request; the picture is then taken
+> after the second) — and not again when the same frame is already in the window (a 30 fps
+> game: every other field). While a field runs the main thread yields (its end seen at once),
+> but naps (`kapi_msleep (1)`: to the scheduler's next tick) while that end, expected from the
+> last second's time a field, is further than 12 ms — a yield in a loop kept core 0 busy
+> (heat: the Pi 4 throttles its clock above ~80 °C, kmsg's `power:` lines).
 > See `gbemu` / `gbaemu` / `nesemu` / `snesemu`; `/bin/coretest` exercises the raw kapi.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
@@ -556,8 +568,12 @@ Notes / caveats:
 > branch, ≤ 64 instructions, within a 4 KB page) by a small built-in AArch64 assembler. The
 > guest registers live in the `Machine` (x19 = it, x20 = MEM1, x21 = the helpers + a 64K-entry
 > direct-mapped table of blocks, w22 = MEM1's size); **within a block** the GPRs, CR, XER, LR and
-> CTR it uses are cached in host registers (x9–x15, x27, x28: loaded at first use, the dirty
-> ones written back at the exits, before the interpreter, and around a slow-path call); the
+> CTR it uses are cached in host registers (x9–x15, x18: loaded at first use, the dirty
+> ones written back at the exits, before the interpreter, and around a slow-path call); **LR,
+> CR, r3 and r0** — the most used — **live in x24, x27, x28, x29 across the blocks** (`SRA_G` /
+> `SRA_H`: callee-saved, the helpers keep them; loaded by the enter stub, stored by the exit
+> stub and around the interpreter's calls, `lmw` loading them straight: no load at a block's
+> first use, no store at its exits); the
 > integer unit, CR logic, rotates,
 > shifts, compares, divw / divwu, the branches (CTR / CR conditions, LR), mftb, the loads / stores,
 > lmw / stmw and dcbz (MEM1 in one go) are native (a
@@ -590,7 +606,11 @@ Notes / caveats:
 > is in 1 MB chunks, the blocks' main code from a chunk's start up, their rare paths from its end
 > down (a b.cond's reach) -- the main code dense in the I-cache (`--pmu=08,02,05,01` counts the
 > TLB and L1I refills: the L1I ones were ~20 a thousand instructions, 17.5 with the split; the
-> TLBs, with Onyx's 64 KB pages, ~0.3).
+> TLBs, with Onyx's 64 KB pages, ~0.3). In The Wind Waker's game (Outset, ~96k vertices a frame)
+> `--pmu=08,01,52,53` gave 11.4 L1I refills and 3.2 L2 read refills a thousand instructions
+> (0.1 write ones) — about as many as the L1D refills: the machine's data comes from the RAM,
+> its IPC ~0.84; with `--nodraw` 37 → 30 M cycles a field for the same instructions (IPC 1.02):
+> the display's copies on core 0 (through the L2 the four cores share) cost it ~18 %.
 > A block's exit to a known address is **linked**:
 > once that block is translated the exit's branch is patched to jump straight to it (back to
 > its stub when that block is dropped), while `cycles < jitUntil` (the next event / the
@@ -604,9 +624,10 @@ Notes / caveats:
 > compare (or a record form) right before a conditional branch on its field's LT / GT / EQ: the
 > branch tests the host's flags, and the CR field is made only on the paths where it may still
 > be read (`crSet`, `crDead`: the guest code of the block's 4 KB page scanned from each path --
-> set again before a read: not made; a call, a return, leaving the page, a CR logic op on it:
-> made) -- an exception that does not come back then leaves the older field, which only a crash
-> report shows. `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
+> set again before a read: not made; a call (`bl`) sets CR0 again as far as the caller knows —
+> the ABI's volatile field: the callee may set it, the caller does not read it after without
+> setting it again —; a return, leaving the page, a CR logic op on it: made) -- an exception
+> that does not come back then leaves the older field, which only a crash report shows. `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
 > Tested by `run_gc_test.sh` under `qemu-aarch64` (`GC_JIT=1`): cputest / pstest / hwtest /
 > gxtest identical to the interpreter's, `gctest fuzz` (random sequences of FPU / paired-single /
 > load-store / integer / branch instructions from random states with NaNs, infinities,
@@ -620,7 +641,10 @@ Notes / caveats:
 > the CR is not compared after an exception that stopped the run -- see `crDead`), `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
 > against qemu-ppc's result: ~40× the interpreter's speed (integer), ~10× (float);
 > `GC_PROFILE=1` prints the host instructions per guest instruction, `GC_DUMP=prefix` the
-> hottest blocks' code (for `aarch64-linux-gnu-objdump -b binary -m aarch64`).
+> hottest blocks' code (for `aarch64-linux-gnu-objdump -b binary -m aarch64`); `gctest jitsize
+> <jitprof.bin>` translates again the hot blocks of a Pi's profile (gcemu `--jitprof`) and prints
+> their host instructions a guest one weighted by the runs counted there (6.56 → 5.85 with the
+> base pointers, the hot / cold chunks and the kept registers), `GC_JITDUMP=<pc>` one's code.
 > **The x86-64 JIT** (`gc_jit_x64.cpp`, NintendoEMU / x86-64 Linux hosts; `gc_jit.cpp` is the
 > AArch64 one): the same design (blocks, links, the dispatcher's table, idle loops, the rare paths
 > after the block, the cycles as a countdown) with a small x86-64 assembler (REX / ModRM / SIB,

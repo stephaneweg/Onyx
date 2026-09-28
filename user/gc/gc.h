@@ -298,6 +298,10 @@ public:
 	u32  fpscrNow () { if (fprfPending) { fprfPending = false; setFprf (fprfVal); } return fpscr; }	// (FPRF set)
 	bool jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words);
 	bool jitCode (u32 pc, const u32 *&code, u32 &words);
+	// (the tests: gctest jitsize) translate the block at pc now (the state as it is), and a block's
+	// instructions with their main code's host words (jitProfile on) -> how many
+	bool jitCompileAt (u32 pc);
+	int  jitBlockInsns (u32 pc, u32 *ops, u32 *words, int max);
 
 	// ---- memory (gc_mem.cpp) ----
 	u8 *mem1;					// MEM1, big-endian

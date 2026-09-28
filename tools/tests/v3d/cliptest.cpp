@@ -65,6 +65,33 @@ int main ()
 	int diff = 0; for (int i = 0; i < W * H; i++) { int d = 0; for (int s = 0; s < 24; s += 8) d += abs ((int) ((a[i] >> s) & 255) - (int) ((b[i] >> s) & 255)); if (d > 24) diff++; }
 	printf ("random: %d triangles -> %d vertices after clipping, %d pixels of %d differ\n", NT, nc, diff, W * H);
 	CHECK (diff < W * H / 500, "random: the pictures differ (%d pixels)", diff);
+
+	// the generic vertices (gpu_render2: n floats): the same positions as V3DClipTriangle's; a
+	// triangle whose three vertices are V3DInsideN (the kernel then copies it as it is) unchanged
+	int insideN = 0;
+	for (int t = 0; t < NT; t++)
+	{
+		enum { N = 7 };
+		float in[3 * N], outN[21 * N];
+		kapi_gpu_vertex3 T[3], o3[21];
+		for (int k = 0; k < 3; k++)
+		{
+			const bas::G3Vertex &p = v[t * 3 + k];
+			T[k] = V (p.x, p.y, p.z, p.w);
+			float *q = in + k * N; q[0] = p.x; q[1] = p.y; q[2] = p.z; q[3] = p.w; q[4] = (float) t; q[5] = (float) k; q[6] = 1;
+		}
+		unsigned m = V3DClipTriangleN (in, N, outN), m3 = V3DClipTriangle (T, o3);
+		CHECK (m == m3, "N: triangle %d: %u vertices, not %u", t, m, m3);
+		for (unsigned j = 0; j < m && j < m3; j++)
+			CHECK (outN[j * N] == o3[j].x && outN[j * N + 1] == o3[j].y && outN[j * N + 2] == o3[j].z && outN[j * N + 3] == o3[j].w,
+			       "N: triangle %d vertex %u moved", t, j);
+		if (V3DInsideN (in) && V3DInsideN (in + N) && V3DInsideN (in + 2 * N))
+		{
+			insideN++;
+			CHECK (m == 3 && memcmp (outN, in, sizeof in) == 0, "N: triangle %d inside but changed", t);
+		}
+	}
+	printf ("generic vertices: %d of %d triangles inside (copied as they are)\n", insideN, NT);
 	puts (fails ? "FAIL" : "ok");
 	return fails ? 1 : 0;
 }

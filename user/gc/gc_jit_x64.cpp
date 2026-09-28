@@ -1839,6 +1839,9 @@ void Machine::jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns)
 }
 
 // (the tests) the block translated for pc (the last one), its code
+bool Machine::jitCompileAt (u32) { return false; }			// (gctest jitsize: the AArch64 JIT's)
+int Machine::jitBlockInsns (u32, u32 *, u32 *, int) { return 0; }
+
 bool Machine::jitCode (u32 pc, const u32 *&code, u32 &words)
 {
 	if (!jit) return false;

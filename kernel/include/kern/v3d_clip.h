@@ -92,14 +92,19 @@ static inline float V3DClipDistN (const float *v, int nPlane)
 	}
 }
 
+// A vertex inside every plane (NaN: not): a triangle whose three are needs no clipping.
+static inline bool V3DInsideN (const float *v)
+{
+	for (int p = 0; p < 6; p++) if (!(V3DClipDistN (v, p) >= 0)) return false;
+	return true;
+}
+
 // One triangle (pIn: 3 vertices of n floats) -> its clipped fan into pOut (room for 21 vertices
 // of n floats): how many vertices written.
 static inline unsigned V3DClipTriangleN (const float *pIn, unsigned n, float *pOut)
 {
-	bool bInside = true;
-	for (int p = 0; p < 6 && bInside; p++)
-		for (int k = 0; k < 3; k++) if (!(V3DClipDistN (pIn + k * n, p) >= 0)) { bInside = false; break; }	// (NaN: not inside)
-	if (bInside) { for (unsigned i = 0; i < 3 * n; i++) pOut[i] = pIn[i]; return 3; }
+	if (V3DInsideN (pIn) && V3DInsideN (pIn + n) && V3DInsideN (pIn + 2 * n))
+		{ for (unsigned i = 0; i < 3 * n; i++) pOut[i] = pIn[i]; return 3; }
 	float A[10 * CLIP_MAX_FLOATS], B[10 * CLIP_MAX_FLOATS]; unsigned nA = 3;
 	for (unsigned i = 0; i < 3 * n; i++) A[i] = pIn[i];
 	for (int p = 0; p < 6 && nA >= 3; p++)

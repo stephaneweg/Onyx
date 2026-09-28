@@ -1086,6 +1086,16 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   never uses it for fragment shaders; neither do `user/v3d/gxtev` nor gcemu since: they end
   with the last-segment pair (two `thrsw` in a row, the live values in registers of the register
   file — the accumulators do not survive a thread switch) before the TLB writes.
+- **`gpu_render2`'s clipping** (`ClipFrame2`): a triangle whose three vertices are inside every
+  plane (`V3DInsideN`: the near plane, w > 0, the guard band — nearly all of them) is copied
+  once, its program's inputs only, straight into the GPU's vertex buffer (`s_Verts2`, sized for
+  the clipped fans); the others go through `V3DClipTriangleN` (every float interpolated) into the
+  same buffer. Before, each vertex was copied four times (staged, clipped, into a buffer, into
+  the GPU's) — ~30 MB a frame for The Wind Waker's ~100k vertices through the L2 the app cores
+  share: its `gpu_render2` went from ~34 to ~25 ms a frame. Every 256 frames kmsg gets
+  `render2, a frame: clip … us, lists … us, GPU … us, target … us; … vertices` (the clipping and
+  its copy; the lists, the uniforms and the target's cache cleaning; the binning and rendering;
+  the target after) — Wind Waker's game: ~9.8 ms, ~0.9, ~14, ~0.2 for ~80k vertices drawn.
 - **Textures** (`gpu_texture`, ≤ 256, owned by the program that made them, freed with its
   address space): a 32-byte `TEXTURE_SHADER_STATE` (base address, size, RGBA8, swizzle, and
   for UIF: *level 0 strictly UIF*, its `UB_PAD`, XOR) then the texels, in the layout the texture

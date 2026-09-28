@@ -1079,8 +1079,11 @@ static int Program (int nHandle, const kapi_gpu_program *pP)
 	return nHandle;
 }
 
-// the frame's triangles clipped (the near plane, the guard band): s_pClip2 (stride floats a vertex)
-static float *s_pClip2 = 0; static unsigned s_nClip2Cap = 0;	// (floats)
+// the frame's triangles clipped (the near plane, the guard band), straight into the GPU's vertex
+// buffer (s_Verts2, stride floats a vertex): a triangle inside -- nearly all -- copied once as it is
+// (its vertices' inputs: the floats beyond are not read), the others through V3DClipTriangleN.
+// (Before: each vertex copied four times -- staged, clipped, into a buffer, into the GPU's --
+// ~30 MB a frame of Wind Waker's ~100k vertices, the L2 shared with the app cores flushed.)
 static kapi_gpu_batch2 *s_pClipB2 = 0; static unsigned s_nClipB2Cap = 0;
 static TGpuBuf s_Verts2;
 
@@ -1088,13 +1091,9 @@ static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const
 {
 	unsigned nCap = nV * 2 + 64;					// (vertices; beyond: dropped)
 	if (nCap > KAPI_GPU_MAX_VERTS) nCap = KAPI_GPU_MAX_VERTS;
-	if (s_nClip2Cap < nCap * nStride)
-	{
-		delete [] s_pClip2; s_pClip2 = new float[nCap * nStride];
-		s_nClip2Cap = s_pClip2 ? nCap * nStride : 0;
-	}
 	if (s_nClipB2Cap < nB + 1) { delete [] s_pClipB2; s_pClipB2 = new kapi_gpu_batch2[nB + 1]; s_nClipB2Cap = s_pClipB2 ? nB + 1 : 0; }
-	if (s_pClip2 == 0 || s_pClipB2 == 0) return FALSE;
+	if (s_pClipB2 == 0 || !Alloc (s_Verts2, nCap * nStride * 4)) return FALSE;
+	float *pOut = (float *) s_Verts2.p;
 	static float Out[21 * CLIP_MAX_FLOATS], T[3 * CLIP_MAX_FLOATS];	// (one frame at a time: s_bBusy)
 	unsigned n = 0;
 	for (unsigned i = 0; i < nB; i++)
@@ -1102,15 +1101,21 @@ static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const
 		const kapi_gpu_batch2 &b = pB[i];
 		kapi_gpu_batch2 &o = s_pClipB2[i];
 		o = b; o.first = n;
-		unsigned nIn = s_Prog[b.program].nInputs;		// (the floats beyond: not interpolated, not read)
+		unsigned nIn = s_Prog[b.program].nInputs, nBytes = nIn * 4;
 		for (unsigned t = 0; t + 3 <= b.count && n + 21 <= nCap; t += 3)
 		{
-			const float *pT = pV + (b.first + t) * nStride;
-			for (int k = 0; k < 3; k++)
-				for (unsigned j = 0; j < nIn; j++) T[k * nIn + j] = pT[k * nStride + j];
+			const float *p0 = pV + (b.first + t) * nStride, *p1 = p0 + nStride, *p2 = p1 + nStride;
+			if (V3DInsideN (p0) && V3DInsideN (p1) && V3DInsideN (p2))
+			{
+				float *d = pOut + n * nStride;
+				memcpy (d, p0, nBytes); memcpy (d + nStride, p1, nBytes); memcpy (d + 2 * nStride, p2, nBytes);
+				n += 3;
+				continue;
+			}
+			for (unsigned j = 0; j < nIn; j++) { T[j] = p0[j]; T[nIn + j] = p1[j]; T[2 * nIn + j] = p2[j]; }
 			unsigned m = V3DClipTriangleN (T, nIn, Out);
 			for (unsigned j = 0; j < m; j++, n++)
-				memcpy (s_pClip2 + n * nStride, Out + j * nIn, nIn * 4);
+				memcpy (pOut + n * nStride, Out + j * nIn, nBytes);
 		}
 		o.count = n - o.first;
 	}
@@ -1118,9 +1123,13 @@ static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const
 	return TRUE;
 }
 
+// gpu_render2's time (us, summed): the clipping, the lists and copies, the GPU, the target after
+static unsigned s_nR2Frames = 0; static u64 s_nR2Clip = 0, s_nR2Lists = 0, s_nR2Gpu = 0, s_nR2After = 0, s_nR2Verts = 0;
+
 static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsigned nStride,
 		    const kapi_gpu_batch2 *pB, unsigned nB, const unsigned *pUni)
 {
+	unsigned tStart = CTimer::Get ()->GetClockTicks ();
 	int w = F.w, h = F.h;
 	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64, nTiles = tilesX * tilesY;
 	u32 nAllocSize = ((nTiles * 64 + 4095) & ~4095u) + 2 * 1024 * 1024;
@@ -1132,7 +1141,7 @@ static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsig
 	    || !Alloc (s_TileAlloc, nAllocSize) || !Alloc (s_TileState, nTiles * 256)
 	    || !Alloc (s_BCL, 1024 + nB * 96) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
 		return -2;
-	memcpy (s_Verts2.p, pV, nV * nStride * 4);
+	if (pV != (const float *) s_Verts2.p) memcpy (s_Verts2.p, pV, nV * nStride * 4);	// (ClipFrame2's: there already)
 	CleanDataCacheRange ((uintptr) s_Verts2.p, nV * nStride * 4);
 	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
 	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T);
@@ -1287,10 +1296,14 @@ static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsig
 	CList R (s_RCL);
 	BuildRCL (R, Ind, w, h, F.clear, bKeep, T);
 	if (B.Overflow () || R.Overflow () || Ind.Overflow ()) return -2;
+	unsigned tRun = CTimer::Get ()->GetClockTicks ();
 	int nRes = Run (B, R, Ind, nAllocSize);
 	if (nRes != 0) return nRes;
+	unsigned tAfter = CTimer::Get ()->GetClockTicks ();
 
 	TargetAfter (T, F.pixels, w, h, F.stride);
+	unsigned tEnd = CTimer::Get ()->GetClockTicks ();
+	s_nR2Lists += tRun - tStart; s_nR2Gpu += tAfter - tRun; s_nR2After += tEnd - tAfter; s_nR2Verts += nV;
 	return 0;
 }
 
@@ -1338,10 +1351,20 @@ extern "C" int kapi_gpu_render2 (const kapi_gpu_frame *pF, const float *pV, unsi
 	CScheduler::Get ()->EnterNoKill ();
 	unsigned nCV = 0;
 	CrashLogCrumb (CRUMB_V3D, 1);
+	unsigned tClip = CTimer::Get ()->GetClockTicks ();
+	boolean bClipped = s_nState > 0 && ClipFrame2 (pV, nV, nStride, pB, nB, &nCV);
+	s_nR2Clip += CTimer::Get ()->GetClockTicks () - tClip;
 	int r = s_nState <= 0 ? -1
-	      : !ClipFrame2 (pV, nV, nStride, pB, nB, &nCV) ? -4
-	      : Render2 (*pF, s_pClip2, nCV, nStride, s_pClipB2, nB, pUni);
+	      : !bClipped ? -4
+	      : Render2 (*pF, (const float *) s_Verts2.p, nCV, nStride, s_pClipB2, nB, pUni);
 	CrashLogCrumb (CRUMB_V3D, 0);
+	if (++s_nR2Frames == 256)				// (where core 0's time goes: in kmsg)
+	{
+		CLogger::Get ()->Write (From, LogNotice, "render2, a frame: clip %u us, lists %u us, GPU %u us, target %u us; %u vertices",
+					(unsigned) (s_nR2Clip / 256), (unsigned) (s_nR2Lists / 256), (unsigned) (s_nR2Gpu / 256),
+					(unsigned) (s_nR2After / 256), (unsigned) (s_nR2Verts / 256));
+		s_nR2Frames = 0; s_nR2Clip = s_nR2Lists = s_nR2Gpu = s_nR2After = s_nR2Verts = 0;
+	}
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
 	return r;
