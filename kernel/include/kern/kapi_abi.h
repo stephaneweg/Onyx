@@ -69,7 +69,9 @@
 //      batches with their uniforms, up to 8 textures, blend factors, write mask, scissor.
 // v62: + gpu_render3 -- gpu_render2's batches with their vertices where the app keeps them (each
 //      its offset and stride), x / y framed by the kernel on the way (no common array to make).
-#define KAPI_ABI_VERSION	62
+// v63: + gpu_vbuf -- GPU-visible memory the app writes: gpu_render3 draws vertices there in place
+//      (framed in place, clipped into its free end: nothing copied).
+#define KAPI_ABI_VERSION	63
 
 #ifdef __cplusplus
 extern "C" {
@@ -844,6 +846,12 @@ struct TKApiTable
 	int (*gpu_render3) (const struct kapi_gpu_frame *f, const float *v, unsigned nfloats,
 			    const struct kapi_gpu_batch3 *b, unsigned nb, const unsigned *uni, unsigned nuni,
 			    const float *view);
+	// --- v63 ---
+	// gpu_vbuf: `bytes` of memory the GPU reads too (up to 8 a program, 64 MB each; freed when
+	// it ends) -> its address, 0 none. gpu_render3 with v[nfloats] inside one draws the vertices
+	// where they are: their x / y framed IN PLACE (draw them again with view 0), the triangles
+	// that need clipping clipped into the buffer's end past nfloats (keep room there).
+	void *(*gpu_vbuf) (unsigned bytes);
 };
 
 #ifdef __cplusplus

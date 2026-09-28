@@ -47,7 +47,7 @@ static inline u64 clockRate ()
 }
 
 enum { MAX_PROGS = 1024, ARENA_WORDS = 1 << 20, ARENA_UNI = 1 << 18 };
-enum { MAX_FLOATS = 3 << 20, MAX_BATCHES = 4096, MAX_UNIS = 1 << 18 };
+enum { MAX_FLOATS = 3 << 20, MAX_BATCHES = 4096, MAX_UNIS = 1 << 18, FAN_ROOM = 1 << 18 };
 
 // a TEV configuration's program: its code and layout (made on the app core), its GPU handle (the main thread's)
 struct Prog
@@ -85,7 +85,8 @@ struct Frame
 	u32 *u; u32 nu;
 	u32 clear; bool keep;
 	float rect[4];				// the EFB's rectangle the XFB copy took: x, y, w, h
-	void reset () { nf = nv = nb = nu = 0; rect[0] = rect[1] = 0; rect[2] = EFB_W; rect[3] = 480; }
+	bool inVbuf, framed;			// (gcemu: v in the GPU's reach -- drawn in place; its x / y framed there already)
+	void reset () { nf = nv = nb = nu = 0; rect[0] = rect[1] = 0; rect[2] = EFB_W; rect[3] = 480; framed = false; }
 };
 
 // A frame's EFB clip space -> its picture's: x' = t[0] x + t[1] w, y' = t[2] y + t[3] w
@@ -135,7 +136,16 @@ public:
 		pl.valid = false;
 		for (int i = 0; i < 3; i++)
 		{
-			frame[i].v = new float[MAX_FLOATS]; frame[i].b = new Batch[MAX_BATCHES]; frame[i].u = new u32[MAX_UNIS];
+#ifndef GXV3D_HOST
+			// (kapi v63: in the GPU's reach, drawn where it is -- room past the vertices for the
+			// triangles the kernel clips; none left: our memory, the kernel's copy)
+			frame[i].v = (float *) kapi_gpu_vbuf ((MAX_FLOATS + FAN_ROOM) * 4);
+			frame[i].inVbuf = frame[i].v != 0;
+			if (!frame[i].v) frame[i].v = new float[MAX_FLOATS];
+#else
+			frame[i].v = new float[MAX_FLOATS]; frame[i].inVbuf = false;
+#endif
+			frame[i].b = new Batch[MAX_BATCHES]; frame[i].u = new u32[MAX_UNIS];
 			if (!frame[i].v || !frame[i].b || !frame[i].u) return false;
 			frame[i].reset (); frame[i].clear = 0; frame[i].keep = false;
 		}
@@ -754,6 +764,7 @@ static inline unsigned long long dumpFrame (const Rec &r, const gc::Machine &m, 
 	H.magic[0] = 'G'; H.magic[1] = 'X'; H.magic[2] = 'F'; H.magic[3] = '1';
 	H.version = 2; H.sizeBatch = sizeof (Batch); H.sizeProg = sizeof (Prog);
 	for (int k = 0; k < 4; k++) H.rect[k] = F.rect[k];
+	if (F.framed) { H.rect[0] = H.rect[1] = 0; H.rect[2] = EFB_W; H.rect[3] = EFB_H; }	// (its vertices framed in place already)
 	H.nf = F.nf; H.nv = F.nv; H.nb = F.nb; H.nu = F.nu; H.clear = F.clear; H.keep = F.keep; H.nProgs = nProgs; H.nTex = nTex;
 	H.pw = pic ? pw : 0; H.ph = pic ? ph : 0; H.ret = ret;
 	put (&H, sizeof H);
@@ -840,6 +851,7 @@ struct Out
 	bool prepOk = false; int prepFrame = -1, prepW = 0, prepH = 0, prepStride = 4; u32 prepSerial = 0;
 	u32 prepNv = 0, prepNb = 0, prepNu = 0, prepClear = 0; bool prepKeep = false;
 	const float *prepV = 0; u32 prepNf = 0; float prepView[4];	// (gpu_render3: the held frame's vertices, their framing)
+	Frame *prepF = 0;
 	bool shownOk = false; const unsigned *shownPx = 0; int shownW = 0, shownH = 0, shownStride = 0; u32 shownSerial = 0;
 
 	// The machine waiting: its last finished frame into the kernel's arrays for a w x h target (the
@@ -923,6 +935,7 @@ struct Out
 		}
 		prepNv = nv; prepNb = nb; prepNu = 4 + F.nu; prepStride = maxStride; prepClear = F.clear; prepKeep = F.keep;
 		prepV = F.v; prepNf = F.nf; for (int k = 0; k < 4; k++) prepView[k] = view[k];
+		prepF = &r.frame[fi];
 		prepFrame = fi; prepSerial = r.serial; prepW = w; prepH = h; prepOk = true;
 		st.drawn = nb;
 		st.prepTicks += clockTicks () - t0;
@@ -938,8 +951,11 @@ struct Out
 		struct kapi_gpu_frame fr = { px, prepW, prepH, stride, prepClear, prepKeep ? KAPI_GPU_F_KEEP : 0u };
 		st.frames++; st.gpuVerts += prepNv;
 		u64 t1 = clockTicks ();
-		st.ret = v62 ? kapi_gpu_render3 (&fr, prepV, prepNf, rb3, prepNb, ru, prepNu, prepView)
+		// (a frame in the GPU's reach: framed in place by the first call -- then as it is)
+		bool inPlace = v62 && prepF && prepF->inVbuf;
+		st.ret = v62 ? kapi_gpu_render3 (&fr, prepV, prepNf, rb3, prepNb, ru, prepNu, inPlace && prepF->framed ? 0 : prepView)
 			     : kapi_gpu_render2 (&fr, rv, prepNv, (unsigned) prepStride, rb, prepNb, ru, prepNu);
+		if (inPlace && st.ret != -1 && st.ret != -2) prepF->framed = true;
 		st.gpuTicks += clockTicks () - t1;
 		shownOk = st.ret == 0; shownPx = px; shownStride = stride; shownW = prepW; shownH = prepH; shownSerial = prepSerial;
 		return st.ret == 0;

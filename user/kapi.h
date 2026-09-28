@@ -374,6 +374,9 @@ static inline int kapi_gpu_render2 (const struct kapi_gpu_frame *f, const float 
 static inline int kapi_gpu_render3 (const struct kapi_gpu_frame *f, const float *v, unsigned nfloats,
 				    const struct kapi_gpu_batch3 *b, unsigned nb, const unsigned *uni, unsigned nuni, const float *view)
 { return KT->version >= 62 ? KT->gpu_render3 (f, v, nfloats, b, nb, uni, nuni, view) : -1; }
+// (v63) gpu_vbuf: memory the GPU reads too -- gpu_render3 draws vertices there in place (framed in
+// place: view 0 to draw them again; the clipped triangles into the room past nfloats) -> 0 none
+static inline void *kapi_gpu_vbuf (unsigned bytes) { return KT->version >= 63 ? KT->gpu_vbuf (bytes) : 0; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

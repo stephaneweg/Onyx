@@ -442,8 +442,10 @@ Notes / caveats:
 > GX's lock: the recorder's finished frame and the textures kept still; it marks that frame
 > `held`: of the recorder's three frames, the GX builds into the other two meanwhile) and draws
 > it (`Out::submit` → `gpu_render3`, kapi v62: the kernel reads the frame's vertices where they
-> are and frames them onto the XFB copy's rectangle on the way; an older kernel: the vertices
-> copied into one array for `gpu_render2`, as before) while the field runs — two fields asked for at once when
+> are and frames them onto the XFB copy's rectangle on the way — kapi v63: the recorder's three
+> frames are `gpu_vbuf` memory, drawn in place, nothing copied, the frame framed there once
+> (`Frame::framed`: drawn again with `view` 0; F9's dump then says the whole EFB); an older
+> kernel: the vertices copied into one array for `gpu_render2`, as before) while the field runs — two fields asked for at once when
 > behind real time (the drawing, ~30 ms with ~100k vertices, is longer than a field: the
 > machine, its field done, no longer idles until the next request; the picture is then taken
 > after the second) — and not again when the same frame is already in the window (a 30 fps
