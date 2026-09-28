@@ -269,6 +269,13 @@ answer in French. The docs stay in English.
 
 ## Other open items
 
+- **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
+  after the GUI work). Leads: the game draws the eyes and eyebrows after the hair with their own
+  depth compare so they show through it, and uses the EFB's alpha around them -- a draw left out
+  (`GCV3D_SKIPLOG` / F12's third line: the reason), the depth function or its precision (the V3D's
+  against the EFB's 24 bits: z-fighting on the face), or the destination alpha (`dstAlpha`, the
+  EFB's RGBA6 / RGB8 format) not kept. To start: F9 on a close view of Link's face, then
+  `gcv3d --replay` (docs/03) -- the recorder's batches for the eyes, their state and textures.
 - VNC (`vncd`): the image froze while the sound went on, OnyxRemote (rdpd) kept working —
   not investigated yet.
 - Ideas (IDEAS.md): an ISO9660 driver + `mount` of ISO / disk / partition images as volumes
