@@ -21,6 +21,9 @@ Machine::Machine ()
 	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
 	tmem = 0;
 	for (int i = 0; i < 4; i++) { padBtn[i] = 0; padSX[i] = padSY[i] = padCX[i] = padCY[i] = 0; padL[i] = padR[i] = 0; }
+	for (int s = 0; s < 2; s++) { card[s].flash = 0; card[s].size = 0; }	// (the slots empty until the front end fills them)
+	audioHostRate = 0;					// (no sound until the front end asks for it)
+	gpu = 0;						// (the GX drawn for kapi gpu_render, until a front end has a GPU)
 	reset ();
 }
 

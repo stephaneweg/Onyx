@@ -26,7 +26,7 @@
 namespace gc {
 
 typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef unsigned long long u64;
-typedef signed char s8; typedef short s16; typedef int s32; typedef long long s64;
+typedef signed char s8; typedef short s16; typedef int s32; typedef long long s64; typedef float f32;
 
 enum { MEM1_SIZE = 24 * 1024 * 1024, LCACHE_SIZE = 16 * 1024 };
 enum { CPU_HZ = 486000000, BUS_HZ = 162000000, TB_HZ = BUS_HZ / 4, CYC_PER_TB = CPU_HZ / TB_HZ };
@@ -82,7 +82,39 @@ enum
 	GF_BLEND_SHIFT = 8, GF_LINEAR = 1 << 12, GF_WRAP_S_SHIFT = 13, GF_WRAP_T_SHIFT = 15, GF_NOMATRIX = 1 << 17,
 	GF_ALPHATEST = 1 << 18				// (+ the threshold 0..255 << 19)
 };
-struct GTexture { u32 *px; int w, h, cap; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB (cap: its room)
+struct GTexture { u32 *px; int w, h, cap, levels; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB, its mipmaps after (cap: its room)
+
+// the Zelda microcode's audio (gc_zelda.cpp): its mixing buffers (0x50 samples: a frame), the tables
+// the game gives it, where its voices (VPBs) and its reverbs are
+struct ZeldaMix
+{
+	s16 fl[0x50], fr[0x50], bl[0x50], br[0x50];			// front / back, left / right
+	s16 flR[0x50], frR[0x50], blR[0x50], brR[0x50];			// (their reverb)
+	s16 u0R[0x50], u1R[0x50], u0[0x50], u1[0x50], u2[0x50];		// (other reverb / mixing buffers)
+	s16 resample[0x100], patterns[0x100], sine[0x80], afc[0x20];
+	s16 last8[4][8]; u16 reverbFrame[4];
+	u32 vpbBase, reverbBase; u16 outVolume; bool prepared;
+};
+
+// the Zelda microcode's variants (Dolphin's flags): its protocol (gc_dsp.cpp), its mixing (gc_zelda.cpp)
+enum
+{
+	Z_LIGHT = 1, Z_SYNC_PER_FRAME = 2, Z_NO_CMD_0D = 4, Z_GBA_CRYPTO = 8, Z_WEIRD_CMD_0C = 16, Z_COMBINED_CMD_0D = 32,
+	Z_FOUR_DESTS = 64, Z_TINY_VPB = 128, Z_VOLUME_STEP = 256, Z_LOUDER = 512
+};
+
+// the microcode the DSP runs (gc_dsp.cpp): which one, where its mail protocol is
+enum { DSP_AX, DSP_ZELDA, DSP_CARD };
+struct DspUcode
+{
+	u32 crc; int kind; u32 flags; int state;
+	bool uploading; int uploadStep; u32 upload[10];		// (a task switch: the next microcode's description)
+	// the Zelda microcode: the commands' words, the frames of audio asked for, the voices ready
+	u32 zExpected, zPending, zCmd[64]; int zRd, zWr; bool zCanExec, zSecondHalf;
+	u32 zVoices, zFrames, zFrame, zVoice, zSyncMax, zOutL, zOutR;
+	u16 zSkip[256];
+	ZeldaMix mix;
+};
 struct GFrame
 {
 	enum { MAXV = 3 * 60000, MAXB = 4096 };
@@ -90,6 +122,72 @@ struct GFrame
 	GBatch *b; int nb;
 	u32 clear;					// 0xRRGGBB
 	int width, height;				// the EFB area copied to the XFB
+};
+
+// ---- the GX for a GPU with shaders (gc_gxgpu.cpp) ------------------------------------------------------------
+// A front end with a programmable GPU (NintendoEMU's OpenGL) sets Machine::gpu: the draws reach it as
+// the game gave them -- the vertices in model space with their matrix indices; the XF memory (the
+// matrices, the lights: Machine::xfRegs, changed when xfSerial does); the state of the XF and of the
+// TEV as a uniform block (GxState, std140) -- and the EFB copies (to textures, to the XFB), in the
+// order the game made them, while the machine runs (on its thread). The GPU does the transform, the
+// lighting, the texgens, the TEV per pixel, the fog, the alpha test; the EFB is its render target and
+// a copy of it to a texture is a texture of the GPU (not in MEM1). Without it, gc_gxdraw.cpp
+// transforms and colours the vertices on the CPU (the frames of GPU triangles of kapi gpu_render).
+struct GxVertex { float pos[3], nrm[3]; u8 c0[4], c1[4]; float tc[8][2]; u8 mtx[12]; };	// mtx: pos, tex 0..7
+enum { GX_TRIANGLES, GX_LINES, GX_POINTS };
+enum { GX_VCD_NRM = 1, GX_VCD_C0 = 2, GX_VCD_C1 = 4 };
+struct GxState
+{
+	// the uniform block (std140: rows of 4 x 32 bits) -- the vertex stage
+	s32 vtx[4];			// the VCD (GX_VCD_*), the colour channels, the texgens, dual texture
+	s32 chan[4];			// COLOR0 / COLOR1 / ALPHA0 / ALPHA1 control
+	u32 matAmb[4];			// MATERIAL0 / MATERIAL1 / AMBIENT0 / AMBIENT1 (RGBA8)
+	s32 texgen[8][4];		// TEXMTXINFO, POSTMTXINFO, -, -
+	f32 proj[8];			// the projection's 6 parameters, its type (1: orthographic), -
+	f32 vp[4];			// the viewport's signs (x, y: the picture upside down), the EFB's size
+	// the pixel stage
+	s32 gen[4];			// TEV stages, indirect stages, the alpha test's logic, the EFB's format
+	s32 tevC[16], tevA[16];		// the stages' colour / alpha combiners
+	s32 tref[16];			// the stages' map | coordinate << 3 | enabled << 6 | channel << 7
+	s32 ksel[16];			// the stages' konst colour | konst alpha << 5
+	s32 swap[16];			// the 4 swap tables: the source of r, g, b, a
+	s32 regs[16], konst[16];	// PREV / C0 / C1 / C2 (s11), K0..K3 (rgba 0..255)
+	s32 alpha[4];			// the alpha test: comparison 0, 1, reference 0, 1
+	s32 zenv[4];			// the z texture: op, format, bias; the destination alpha (0x100 | alpha)
+	s32 fogI[4];			// the fog: type, orthographic, b magnitude, b shift
+	f32 fogF[4];			// a, c, the range's centre, enabled
+	f32 fogColor[4];		// (0..255)
+	f32 fogK[12];			// the range adjustment's k
+	s32 ind[16];			// the stages' indirect command
+	s32 indMtx[12];			// the 3 indirect matrices (BP 0x06-0x0E)
+	s32 indRef[4];			// IREF, the indirect scales (SS0, SS1), -
+	f32 texSize[8][4];		// the maps: width, height (the texels a coordinate of 1 spans)
+	f32 tcScale[8][4];		// the coordinates: the rasterizer's scale (s, t), projective, -
+	// the render state (not in the uniform block)
+	u32 zmode, cmode0, cmode1, peCtrl, cull, lpSize;
+	s32 scissor[4];			// x0, y0, x1, y1 in the EFB
+	f32 viewport[6];		// x, y, w, h in the EFB; the depth range (0..1)
+	u32 texMode[8][2];		// the maps' TX_SETMODE0 / 1
+	s32 tex[8];			// the maps' textures: an index in tex[], GX_TEX_COPY + an EFB copy's slot, -1
+	u32 serial;			// (changes with the state)
+};
+enum { GX_UBO_BYTES = 1200, GX_TEX_COPY = 0x10000, GX_COPIES = 64 };
+struct GxCopy
+{
+	s32 x, y, w, h;			// the EFB's rectangle
+	u32 addr; s32 slot;		// where it goes: an EFB copy's slot (-1: the XFB)
+	u32 fmt;			// the texture format (0..15, Dolphin's EFBCopyFormat)
+	bool half, intensity, depth, clear, toXfb;
+	u32 efbFmt;			// the EFB's pixel format (PE_CONTROL)
+	u32 clearColor, clearZ;		// ARGB, 24-bit
+	bool colorMask, alphaMask, zMask;
+};
+class Machine;
+struct GxGpu
+{
+	virtual void draw (Machine &m, const GxState &s, const GxVertex *v, int nv, const u32 *idx, int ni, int prim) = 0;
+	virtual void copy (Machine &m, const GxCopy &c) = 0;
+	virtual ~GxGpu () {}
 };
 
 class Machine
@@ -113,6 +211,7 @@ public:
 	u64 jitUntil;					// the JIT's blocks chain until then (0: back to jitRun now)
 	u64 jitScratch;					// (the JIT: a 64-bit value read by a helper)
 	u64 jitEnd;					// (the JIT: jitUntil as its cycle countdown in x26 started, or resynced)
+	u64 jitArg[3];					// (the x86-64 JIT: its helpers' arguments)
 	u32 gatherN; u8 gather[64];			// the write-gather pipe (0x0C008000): its bytes, sent 32 at a time
 	Jit *jit;					// the JIT (0: the interpreter runs the CPU)
 	bool jitFlush;					// its code is to be thrown away (a BAT changed, a reset)
@@ -188,10 +287,23 @@ public:
 	int viLine, viLinesFrame; u64 viNextLine; u64 viCyclesLine;
 	u32 siReg[0x40]; u8 siBuf[128]; u32 siPoll;
 	u32 exiReg[3][5]; u32 exiCmd[3]; int exiPhase[3]; u8 sram[64]; u32 rtcBase;
+	u64 exiTcAt[3];					// (a card's DMA: its transfer done then)
+	// the memory cards (gc_card.cpp): slot A, B -- their flash is the front end's (Dolphin's .raw)
+	struct Card { u8 *flash; u32 size; bool dirty; u8 status, cmd, intSwitch; bool intSet; u32 pos, addr; u64 doneAt; u8 prog[128]; };
+	Card card[2];
+	enum { CARD_SIZE = 2 * 1024 * 1024 };			// (251 blocks)
+	void cardInsert (int slot, u8 *flash, u32 size);	// (0: the slot empty)
+	u8   cardByte (int slot, u8 in);
+	void cardCs (int slot, bool selected);
+	u32  cardDma (int slot, u32 mem, u32 len, bool toMem);
+	void cardDone (int slot);
+	void cardAttach (int slot);
+	void cardReset (int slot);
+	void exiUpdate ();
 	u32 diReg[10]; u64 diDoneAt; u32 dicover;
 	u32 aiReg[4]; u64 aiSampleAt;
-	u16 dspReg[0x40]; u32 dspMailIn, dspMailOut; bool dspMailOutValid; int dspBootStep;
-	u64 aidmaNextAt; u32 aidmaLeft, aidmaAddr;
+	u16 dspReg[0x40]; u32 dspMailIn; int dspBootStep;
+	u64 aidmaNextAt, aidIrqAt, dspIrqAt; u32 aidmaLeft, aidmaAddr;
 	u16 miReg[0x40];
 	u16 padBtn[4]; s8 padSX[4], padSY[4], padCX[4], padCY[4]; u8 padL[4], padR[4];
 	void piRaise (u32 bits);
@@ -201,6 +313,7 @@ public:
 	void viOutput ();
 	void siTransfer ();
 	void siPollAll ();
+	void siUpdate ();
 	void exiTransfer (int ch);
 	u32  exiIpl (int ch, u32 data, bool write, int len);
 	void diCommand ();
@@ -222,7 +335,7 @@ public:
 	u32 xfRegs[0x1100];				// the XF memory (matrices 0x000-0x4FF, lights 0x600-, registers 0x1000-)
 	u32 bpRegs[0x100];				// the BP registers
 	u32 bpKonst[8];					// the TEV's konst colours (BP 0xE0-0xE7 with bit 23)
-	u32 gxCmds, gxPrims, gxVerts, gxCopies;	// (the tests)
+	u32 gxCmds, gxPrims, gxVerts, gxCopies, gxIndirect, texDecodes;	// (the tests: the GPU's draws with indirect texturing, the textures decoded)
 	u32 cpRead (u32 off, int size);
 	void cpWrite (u32 off, u32 v, int size);
 	u32 peRead (u32 off, int size);
@@ -239,19 +352,57 @@ public:
 	enum { MAX_TEX = 256 };
 	GFrame gfxFrame[2]; int gfxBuild, gfxReady; u32 gfxSerial;
 	GTexture tex[MAX_TEX]; u32 texClock;
+	s16 texFind[1024];				// (a key's slot in tex[], by its low bits: a hint, checked)
 	u8 *tmem;					// the TMEM (1 MB: the TLUTs)
 	u32 gxClearNext;				// the colour the next frame starts with
+	u32 xfbCopyAddr[2];				// the last two XFBs an EFB copy went to (double buffering)
+	bool xfbIsCopy ();				// the VI shows one: its picture is the last GX frame (not MEM1's)
 	void gxInit ();
-	int  gxTexture (int map);			// the texture of a map (decoded, cached) -> its index, -1
+	int  gxTexture (int map, bool mips = false);	// the texture of a map (decoded, cached) -> its index, -1
 	void gxEmit (const GVertex *v3, int tex, u32 flags);
-	// the DSP (gc_dsp.cpp): its ROM and microcode at a high level -- the mailboxes, the boot
+	// the GX for a GPU with shaders (gc_gxgpu.cpp)
+	GxGpu *gpu;					// (0: the frames of gc_gxdraw.cpp)
+	GxState gxs; bool gxsDirty; u32 xfSerial;
+	struct EfbCopy { u32 addr, bytes; u16 w, h; u8 fmt; u64 hash; u32 use; };
+	EfbCopy efbCopies[GX_COPIES];			// (the copies to textures: where they went, the memory there then)
+	void gxGpuPrimitive (int prim, int count, const GxVertex *v, u32 vcd);
+	void gxGpuState (u32 vcd);
+	void gxGpuCopy (u32 v);
+	int  gpuTexture (int map);
+	// the DSP (gc_dsp.cpp): its ROM and microcodes at a high level -- the mailboxes, the boot, the
+	// protocols of AX and of the Zelda microcode
+	enum { DSP_QUEUE = 64 };
 	void dspReset ();
+	void dspSetProgram (int step);
 	void dspMailReceived (u32 mail);
-	void dspHleStep ();
+	u16  dspMailHigh ();
+	u16  dspMailLow ();
 	void dspIrqUpdate ();
-	void dspPush (u32 mail, bool irq);
-	u32 dspQueue[16]; int dspQHead, dspQTail;
-	u32 dspBootMails[10]; int dspBootN; u32 dspUcode; u32 dspCmdlistLeft;
+	void dspInterrupt (u32 delay);
+	void dspPush (u32 mail, bool irq, u32 delay = 0);
+	void dspStartUcode (u32 addr, u32 len);
+	void dspUpload (u32 mail);
+	void dspAxMail (u32 mail);
+	void dspZeldaMail (u32 mail);
+	void dspZRun ();
+	void dspZRender ();
+	void dspZAck (bool done, u32 sync);
+	u32  dspZRead ();
+	void dspZWrite (u32 v);
+	// the Zelda microcode's mixing (gc_zelda.cpp): a frame begun, a voice added, the frame out
+	void zPrepare ();
+	void zAddVoice (u32 id);
+	void zFinalize ();
+	// the sound out (gc_hw.cpp): the audio DMA's samples, at its rate, handed to the host at its own
+	enum { AUDIO_RING = 16384 };
+	s16 audioBuf[AUDIO_RING * 2]; u32 audioW, audioR, audioHostRate, audioFrac; s16 audioPrev[2];
+	void setAudioRate (int rate) { audioHostRate = (u32) rate; }	// (0: no sound kept)
+	int  audioRead (s16 *lr, int maxFrames);		// -> the frames written (stereo, at the host's rate)
+	void audioBlock (u32 addr);				// (a block of the audio DMA: 8 frames, R L big-endian)
+	u32  aidRate () const { return (aiReg[0] & 0x40) ? 32000 : 48000; }	// (AICR.AIDFR: the DMA's rate)
+	u32 dspQueue[DSP_QUEUE]; u8 dspQIrq[DSP_QUEUE]; int dspQHead, dspQTail; u32 dspLastOut;
+	u32 dspBootMails[2]; u32 dspUcode;
+	DspUcode dspUc, dspSaved; bool dspHaveSaved;
 
 	// what a front end shows to tell a slow game from a stuck one (F12): the DVD reads so far
 	u32 diReads, diLastOff;

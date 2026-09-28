@@ -1849,7 +1849,7 @@ bool Machine::jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words)
 	return true;
 }
 
-#else	// not an AArch64 host: the interpreter only
+#elif !defined(__x86_64__)	// neither AArch64 nor x86-64 (gc_jit_x64.cpp): the interpreter only
 
 struct Jit {};
 bool Machine::jitEnable () { return false; }

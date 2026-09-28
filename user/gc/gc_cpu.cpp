@@ -9,6 +9,9 @@
 // algorithm; a single store the reverse.
 //
 #include "gc/gc.h"
+#ifdef GC_TRACE
+#include <stdio.h>
+#endif
 
 namespace gc {
 
@@ -65,6 +68,9 @@ void Machine::exception (u32 vector, u32 ret)
 void Machine::checkInterrupts ()
 {
 	if (!(msr & MSR_EE)) return;
+#ifdef GC_TRACE
+	if (extIrq && (piIntsr & piIntmr & ~0x100u)) printf ("interrupt: PI %04X (DSP csr %04X) at %08X\n", piIntsr & piIntmr, dspReg[0x0A / 2], pc);
+#endif
 	if (extIrq) { exception (0x500, pc); return; }
 	if (decPending) { decPending = false; exception (0x900, pc); }
 }
@@ -180,7 +186,7 @@ void Machine::mtspr (u32 n, u32 v)
 	case 938: case 954: pmc[1] = v; return;
 	case 941: case 957: pmc[2] = v; return;
 	case 942: case 958: pmc[3] = v; return;
-	case 1008: hid0 = v; if (v & 0x800) jitFlush = true; return;	// (ICFI: the instruction cache flash-invalidated)
+	case 1008: hid0 = v & ~0xC00u; if (v & 0x800) jitFlush = true; return;	// (ICFI: the instruction cache flash-invalidated; ICFI / DCFI read back 0)
 	case 1009: hid1 = v; return;
 	case 1011: hid4 = v; return;
 	case 1017: l2cr = v & ~1u; return;			// (the invalidate bit reads back clear)

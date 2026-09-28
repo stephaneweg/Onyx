@@ -7,6 +7,12 @@
 // and the pixel engine are in gc_gx.cpp.
 //
 #include "gc/gc.h"
+#ifdef GC_TRACE
+#include <stdio.h>
+#define STRACE(...) printf (__VA_ARGS__)
+#else
+#define STRACE(...) ((void) 0)
+#endif
 
 namespace gc {
 
@@ -29,21 +35,40 @@ void Machine::hwReset ()
 	piIntsr = 0; piIntmr = 0; piFifoBase = piFifoEnd = piFifoWptr = 0; gatherN = 0;
 	zero (vi, sizeof vi); zero (siReg, sizeof siReg); zero (siBuf, sizeof siBuf); siPoll = 0;
 	zero (exiReg, sizeof exiReg); zero (exiCmd, sizeof exiCmd); zero (exiPhase, sizeof exiPhase);
+	for (int i = 0; i < 3; i++) exiTcAt[i] = ~0ull;
+	exiReg[0][0] = exiReg[1][0] = 0x800;			// EXTINT: the slots' devices, as the IPL leaves them
 	zero (diReg, sizeof diReg); diReads = diLastOff = 0; hwLastRead = hwLastReadN = 0; dspBootKey = dspMailsIn = dspLastMail = 0; zero (aiReg, sizeof aiReg); zero (dspReg, sizeof dspReg); zero (miReg, sizeof miReg);
 	zero (irqCount, sizeof irqCount);
 	diDoneAt = ~0ull; dicover = 0; aiSampleAt = 0;
-	dspMailIn = dspMailOut = 0; dspMailOutValid = false; dspBootStep = 0;
-	aidmaNextAt = ~0ull; aidmaLeft = 0; aidmaAddr = 0;
+	aiReg[0] = 0x40;					// AICR: the DMA at 32 kHz (AIDFR), as the IPL leaves it
+	audioW = audioR = audioFrac = 0; audioPrev[0] = audioPrev[1] = 0;
+	dspMailIn = 0; dspBootStep = 0; dspLastOut = 0; dspHaveSaved = false;
+	aidmaNextAt = aidIrqAt = dspIrqAt = ~0ull; aidmaLeft = 0; aidmaAddr = 0;
 	gpBytes = 0; frames = 0;
 	zero (cpReg16, sizeof cpReg16); zero (peReg16, sizeof peReg16);
 	zero (cpRegs, sizeof cpRegs); zero (xfRegs, sizeof xfRegs); zero (bpRegs, sizeof bpRegs); zero (bpKonst, sizeof bpKonst);
 	gxInit ();
 	cpFifoBase = cpFifoEnd = cpFifoRptr = cpFifoWptr = cpBreak = 0;
-	gxCmds = gxPrims = gxVerts = gxCopies = 0;
-	dspQHead = dspQTail = 0; dspBootN = 0; dspUcode = 0; dspCmdlistLeft = 0;
-	// the video: NTSC or PAL (from the disc's region), 640 x 480 until the game sets it up
+	gxCmds = gxPrims = gxVerts = gxCopies = gxIndirect = texDecodes = 0;
+	// the DSP as the IPL leaves it: halted, its ROM ready (its mail seen once it runs)
+	dspQHead = dspQTail = 0; dspUcode = 0; zero (&dspUc, sizeof dspUc);
+	dspReg[0x0A / 2] = 0x0804;				// CSR: DSPINIT, HALT
+	dspReset ();
+	dspReg[0x16 / 2] = 1;					// AR_MODE: the ARAM controller is ready (ARInit waits for it)
+	dspReg[0x1A / 2] = 156;					// AR_REFRESH
+	// the video as the IPL leaves it: NTSC or PAL (from the disc's region), 640 x 480 until the game
+	// sets it up; the timings, and the two display interrupts (the middle of the frame, its first
+	// line) that VIInit keeps when it finds the VI enabled -- the games' retrace
 	vi[0x02 / 2] = pal ? 0x0101 : 0x0001;			// DCR: enabled, the format
 	vi[0x00 / 2] = (u16) ((pal ? 287 : 240) << 4 | 6);	// VTR: active lines a field
+	vi[0x04 / 2] = 71 << 8 | 105; vi[0x06 / 2] = 429;	// HTR0: HCS, HCE, HLW
+	vi[0x08 / 2] = 0x02EA; vi[0x0A / 2] = 0x5140;		// HTR1: HBS640 373, HBE640 162, HSY 64
+	vi[0x0C / 2] = 5; vi[0x0E / 2] = 502;			// VTO: PSB, PRB
+	vi[0x10 / 2] = 4; vi[0x12 / 2] = 503;			// VTE
+	vi[0x14 / 2] = vi[0x16 / 2] = 12 | 520 << 5;		// BBOI
+	vi[0x18 / 2] = vi[0x1A / 2] = 13 | 519 << 5;		// BBEI
+	vi[0x30 / 2] = (u16) (0x1000 | (pal ? 313 : 263)); vi[0x32 / 2] = 430;	// DI0: enabled, VCT, HCT
+	vi[0x34 / 2] = 0x1000 | 1; vi[0x36 / 2] = 1;		// DI1: line 1
 	vi[0x48 / 2] = 0x2828;					// HSW: 640 pixels a line, the stride
 	viLinesFrame = pal ? 625 : 525;
 	viCyclesLine = (u64) CPU_HZ / ((pal ? 25 : 30) * (u64) viLinesFrame);
@@ -60,6 +85,8 @@ void Machine::hwReset ()
 		sram[0] = (u8) (c >> 8); sram[1] = (u8) c; sram[2] = (u8) (ci >> 8); sram[3] = (u8) ci;
 	}
 	rtcBase = 0x2F000000;					// (a fixed date: the RTC has no clock of its own here)
+	// the memory cards stay in their slots: an erased one formatted, the SRAM's flash ID set from theirs
+	for (int s = 0; s < 2; s++) { cardReset (s); if (card[s].flash) cardAttach (s); }
 	zero (aram, ARAM_SIZE);
 }
 
@@ -88,8 +115,18 @@ void Machine::viLineStep ()
 // the framebuffer the VI shows (YUV 4:2:2, Y0 U Y1 V) -> fb (RGB)
 static inline u8 clamp8 (int v) { return (u8) (v < 0 ? 0 : v > 255 ? 255 : v); }
 
+// The VI shows an XFB an EFB copy went to: the GX frame is its picture (the copy itself is not
+// done in MEM1), what the front ends show -- even while the game draws nothing new (loading).
+bool Machine::xfbIsCopy ()
+{
+	u32 tfbl = vi32 (vi, 0x1C);
+	u32 top = ((tfbl & 0x00FFFFFF) << ((tfbl & 0x10000000) ? 5 : 0)) & 0x01FFFFFF;
+	return (tfbl & 0x00FFFFFF) && (top == (xfbCopyAddr[0] & 0x01FFFFFF) || top == (xfbCopyAddr[1] & 0x01FFFFFF));
+}
+
 void Machine::viOutput ()
 {
+	if (xfbIsCopy () && gfxReady >= 0) return;			// (not shown: the GX frame is)
 	u32 tfbl = vi32 (vi, 0x1C), bfbl = vi32 (vi, 0x24);
 	u32 top = (tfbl & 0x00FFFFFF) << ((tfbl & 0x10000000) ? 5 : 0);
 	u32 bot = (bfbl & 0x00FFFFFF) << ((bfbl & 0x10000000) ? 5 : 0);
@@ -140,12 +177,15 @@ void Machine::status (char *out, int cap)
 	put (", DVD "); dec (diReads); put (" reads (at "); hex (diLastOff); put (")");
 	put (", picture: "); put ((tfbl & 0x00FFFFFF) == 0 ? "not set up yet" : (vi[0x02 / 2] & 1) ? "on" : "off");
 	put (", 3D frames "); dec (gfxSerial);
-	put (", DSP step "); dec ((u32) dspBootStep); put (" (mails "); dec (dspMailsIn); put (", last "); hex (dspLastMail); put (")");
+	put (", DSP step "); dec ((u32) dspBootStep);
+	if (dspBootStep == 2) { put (dspUc.kind == DSP_ZELDA ? " Zelda " : dspUc.kind == DSP_CARD ? " card " : " AX "); hex (dspUcode); }
+	put (" (mails "); dec (dspMailsIn); put (", last "); hex (dspLastMail); put (")");
 	// what it waits for: the register it reads over and over, the interrupts (pending / enabled)
 	put (" | polls "); hex (hwLastRead); put (" x"); dec (hwLastReadN);
 	put (", EE "); dec ((msr >> 15) & 1); put (", PI "); hex (piIntsr); put ("/"); hex (piIntmr);
 	put (", DSP csr "); hex (dspReg[0x0A / 2]); put (", DI "); hex (diReg[0]); put (" "); hex (diReg[7]);
 	put (", EXI0 "); hex (exiReg[0][0]); put (" "); hex (exiReg[0][3]);
+	put (jit ? ", JIT" : ", interpreter");
 	if (halted) { put (", stopped: "); put (haltMsg); }
 	out[n] = 0;
 }
@@ -153,13 +193,30 @@ void Machine::status (char *out, int cap)
 // ---- one field ---------------------------------------------------------------------------------------------------
 void Machine::runFrame ()
 {
-	int endLine = viLine <= viLinesFrame / 2 ? viLinesFrame / 2 : viLinesFrame;
+	// (the lines run 1..viLinesFrame: the first field ends halfway, the second at the frame's end)
+	int endLine = viLine >= viLinesFrame / 2 && viLine < viLinesFrame ? viLinesFrame : viLinesFrame / 2;
 	u64 guard = cycles + (u64) CPU_HZ;			// (a second at most)
 	while (!halted && cycles < guard)
 	{
 		u64 until = viNextLine;
 		if (diDoneAt < until) until = diDoneAt;
 		if (aidmaNextAt < until) until = aidmaNextAt;
+		if (aidIrqAt < until) until = aidIrqAt;
+		if (dspIrqAt < until) until = dspIrqAt;
+		for (int ch = 0; ch < 2; ch++)
+		{
+			if (exiTcAt[ch] < until) until = exiTcAt[ch];
+			if (card[ch].doneAt < until) until = card[ch].doneAt;
+		}
+		// while the AI plays, each sample is an event: a loop polling its counter (AIInit times its
+		// edges) is not skipped past one (the JIT's polling loops run to the next event)
+		if (aiReg[0] & 1)
+		{
+			u64 per = (u64) CPU_HZ / ((aiReg[0] & 2) ? 48000 : 32000);
+			u64 nx = aiSampleAt + per;
+			if (nx <= cycles) nx = aiSampleAt + per * ((cycles - aiSampleAt) / per + 1);
+			if (nx < until) until = nx;
+		}
 		run (until);
 		events ();
 		if (cycles >= viNextLine)
@@ -183,23 +240,27 @@ void Machine::events ()
 		diReg[7] &= ~1u;					// (DICR: TSTART done)
 		if (diReg[0] & 0x08) piRaise (PI_DI);
 	}
+	if (cycles >= dspIrqAt) { dspIrqAt = ~0ull; dspInterrupt (0); }	// (a DSP mail's interrupt, delayed)
+	for (int ch = 0; ch < 2; ch++)					// the memory cards: a DMA's end, a command's
+	{
+		if (cycles >= exiTcAt[ch]) { exiTcAt[ch] = ~0ull; exiReg[ch][0] |= 8; exiUpdate (); }
+		if (cycles >= card[ch].doneAt) cardDone (ch);
+	}
+	if (cycles >= aidIrqAt) { aidIrqAt = ~0ull; dspReg[0x0A / 2] |= 0x08; dspIrqUpdate (); }	// AIDINT: a DMA started
 	if (cycles >= aidmaNextAt)
 	{
-		// the audio DMA reads 32 bytes (8 stereo frames at 32 kHz) a block; a new block:
-		// the next one starts, the DSP interrupts when the whole buffer has begun
-		if (aidmaLeft > 0) aidmaLeft--;
+		// the audio DMA reads 32 bytes (8 stereo frames at 32 kHz) a block; at the buffer's end it
+		// starts again from the address and length set now, and the DSP interrupts (AIDINT)
+		if (aidmaLeft > 0) { audioBlock (aidmaAddr); aidmaLeft--; aidmaAddr += 32; }
 		if (aidmaLeft == 0)
 		{
 			u16 ctl = dspReg[0x36 / 2];
-			if (ctl & 0x8000)
-			{
-				aidmaLeft = ctl & 0x7FFF;
-				dspReg[0x0A / 2] |= 0x08;			// AIDINT
-				if (dspReg[0x0A / 2] & 0x10) piRaise (PI_DSP);
-			}
+			aidmaAddr = ((u32) dspReg[0x30 / 2] << 16 | dspReg[0x32 / 2]) & 0x03FFFFE0;
+			aidmaLeft = ctl & 0x7FFF;
+			dspReg[0x0A / 2] |= 0x08;				// AIDINT
+			dspIrqUpdate ();
 		}
-		dspReg[0x3A / 2] = (u16) aidmaLeft;
-		aidmaNextAt = (dspReg[0x36 / 2] & 0x8000) ? cycles + (u64) CPU_HZ * 8 / 32000 : ~0ull;
+		aidmaNextAt = (dspReg[0x36 / 2] & 0x8000) ? aidmaNextAt + (u64) CPU_HZ * 8 / aidRate () : ~0ull;
 	}
 }
 
@@ -211,51 +272,86 @@ void Machine::setPad (int n, u32 b, int sx, int sy, int cx, int cy, int l, int r
 	padL[n] = (u8) l; padR[n] = (u8) r;
 }
 
-// the report of a poll (analog mode 3): buttons, stick, C stick, triggers -> the channel's INBUF
+// COMCSR (0x34): TCINT 31, TCINTMSK 30, COMERR 29 (the last transfer failed), RDSTINT 28 (a poll's
+// data is there), RDSTINTMSK 27, OUTLNGTH 16-22, INLNGTH 8-14, CHANNEL 1-2, TSTART 0. SISR (0x38),
+// a byte a channel (channel 0 the top one): RDST 0x20, WRST 0x10, NOREP 8, COLL 4, OVRUN 2, UNRUN 1;
+// WR (bit 31) sends the channels' output commands.
+void Machine::siUpdate ()
+{
+	u32 &cs = siReg[0x34 / 4];
+	cs = (siReg[0x38 / 4] & 0x20202020u) ? cs | 0x10000000u : cs & ~0x10000000u;
+	if (((cs & 0x80000000u) && (cs & 0x40000000u)) || ((cs & 0x10000000u) && (cs & 0x08000000u))) piRaise (PI_SI);
+	else piLower (PI_SI);
+}
+
+// the report of a poll (analog mode 3): buttons, stick, C stick, triggers -> the channel's INBUF;
+// the other channels answer nothing (NOREP, ERRSTAT + ERRLATCH)
 void Machine::siPollAll ()
 {
 	for (int c = 0; c < 4; c++)
 	{
-		u32 h, l;
 		if (c == 0)
 		{
 			u16 b = padBtn[c] | 0x0080;
-			h = (u32) b << 16 | (u32) (u8) (padSX[c] + 128) << 8 | (u8) (padSY[c] + 128);
-			l = (u32) (u8) (padCX[c] + 128) << 24 | (u32) (u8) (padCY[c] + 128) << 16 | (u32) padL[c] << 8 | padR[c];
+			siReg[1] = (u32) b << 16 | (u32) (u8) (padSX[c] + 128) << 8 | (u8) (padSY[c] + 128);
+			siReg[2] = (u32) (u8) (padCX[c] + 128) << 24 | (u32) (u8) (padCY[c] + 128) << 16 | (u32) padL[c] << 8 | padR[c];
+			siReg[0x38 / 4] |= 0x20000000u;			// RDST0
 		}
-		else { h = 0x80000000u; l = 0; }			// ErrStat: nothing there
-		siReg[c * 3 + 1] = h; siReg[c * 3 + 2] = l;
+		else
+		{
+			siReg[c * 3 + 1] |= 0xC0000000u;
+			siReg[0x38 / 4] |= 0x08000000u >> (c * 8);		// NOREP
+		}
 	}
-	// SISR: RDST for channel 0, NOREP for the others
-	siReg[0x38 / 4] = (0x20u << 24) | (0x08u << 16) | (0x08u << 8) | 0x08u;
+	siUpdate ();
 }
 
-// a transfer through the SI buffer (the ID of the pad, its origin...)
+// a transfer through the SI buffer (the ID of the pad, its origin...), done at once
 void Machine::siTransfer ()
 {
 	u32 &cs = siReg[0x34 / 4];
 	int ch = (int) (cs >> 1) & 3;
 	u8 cmd = siBuf[0];
 	int inLen = (int) (cs >> 8) & 0x7F; if (!inLen) inLen = 128;
-	if (ch != 0) { cs |= 0x20000000; siReg[0x38 / 4] |= 0x08u << (24 - ch * 8); }	// COMERR, NOREP
+	if (ch != 0) { cs |= 0x20000000; siReg[0x38 / 4] |= 0x08000000u >> (ch * 8); }	// COMERR, NOREP
 	else
 	{
 		u8 r[128]; zero (r, sizeof r);
 		switch (cmd)
 		{
 		case 0x00: case 0xFF: r[0] = 0x09; r[1] = 0x00; r[2] = 0x00; break;		// a standard pad
+		case 0x40:								// a poll (direct)
+			r[0] = (u8) (siReg[1] >> 24); r[1] = (u8) (siReg[1] >> 16); r[2] = (u8) (siReg[1] >> 8); r[3] = (u8) siReg[1];
+			r[4] = (u8) (siReg[2] >> 24); r[5] = (u8) (siReg[2] >> 16); r[6] = (u8) (siReg[2] >> 8); r[7] = (u8) siReg[2];
+			break;
 		case 0x41: case 0x42:							// the origin / calibrate
 			r[0] = 0x00; r[1] = 0x80; r[2] = 0x80; r[3] = 0x80; r[4] = 0x80; r[5] = 0x80; r[6] = 0x1F; r[7] = 0x1F; break;
 		default: break;
 		}
 		for (int i = 0; i < inLen && i < 128; i++) siBuf[i] = r[i];
+		cs &= ~0x20000000u;
 	}
 	cs &= ~1u;							// TSTART done
 	cs |= 0x80000000u;						// TCINT
-	if (cs & 0x40000000u) piRaise (PI_SI);
+	siUpdate ();
 }
 
-// ---- EXI: the IPL chip (RTC, SRAM); the memory card slots are empty ------------------------------------------
+// ---- EXI: the IPL chip (RTC, SRAM), the memory cards (gc_card.cpp) ------------------------------------------------
+// A channel's status (reg 0): EXIINTMASK 0, EXIINT 1 (the device's: a card's command done), TCINTMASK
+// 2, TCINT 3, CLK 4-6, CS 7-9 (a chip select each), EXTINTMASK 10, EXTINT 11 (a device came / went),
+// EXT 12 (a card in the slot), ROMDIS 13.
+void Machine::exiUpdate ()
+{
+	bool on = false;
+	for (int ch = 0; ch < 3; ch++)
+	{
+		u32 &st = exiReg[ch][0];
+		if (ch < 2 && card[ch].flash && card[ch].intSwitch && card[ch].intSet) st |= 2;
+		if (((st & 2) && (st & 1)) || ((st & 8) && (st & 4)) || ((st & 0x800) && (st & 0x400))) on = true;
+	}
+	if (on) piRaise (PI_EXI); else piLower (PI_EXI);
+}
+
 u32 Machine::exiIpl (int ch, u32 data, bool write, int len)
 {
 	if (exiPhase[ch] == 0)						// the command: bit 31 write, the address << 6
@@ -292,22 +388,44 @@ void Machine::exiTransfer (int ch)
 	int cs = (int) (e[0] >> 7) & 7;					// the chip selected
 	bool dma = cr & 2;
 	int rw = (int) (cr >> 2) & 3, len = (int) ((cr >> 4) & 3) + 1;
+	bool isCard = ch < 2 && cs == 1 && card[ch].flash;		// (a memory card: chip select 0)
+	e[3] &= ~1u;
 	if (!dma)
 	{
 		u32 data = e[4], r = 0;
-		if (ch == 0 && cs == 2) r = exiIpl (ch, data, rw != 0, len);	// (cs 1 = bit 8 = value 2)
+		if (isCard)							// its bytes, the first in the top one
+			for (int i = 0; i < len; i++) r |= (u32) cardByte (ch, rw != 0 ? (u8) (data >> (24 - i * 8)) : 0) << (24 - i * 8);
+		else if (ch == 0 && cs == 2) r = exiIpl (ch, data, rw != 0, len);	// (cs 1 = bit 8 = value 2)
 		else if (ch == 2 && cs == 1) r = 0x04120000;			// (AD16: its ID)
 		else r = 0;							// nothing there
 		if (rw != 1) e[4] = r;
+	}
+	else if (isCard && rw < 2)						// the data of a card's command: done after its time
+	{
+		u32 t = cardDma (ch, e[1], e[2], rw == 0);
+		exiTcAt[ch] = cycles + (t ? t : 1);
+		return;
+	}
+	else if (ch == 0 && cs == 2 && rw < 2)				// the IPL chip by DMA (the OS reads the SRAM so)
+	{
+		u32 m = e[1] & 0x01FFFFFF, n = e[2];
+		if (m + n > MEM1_SIZE) n = m < MEM1_SIZE ? MEM1_SIZE - m : 0;
+		for (u32 i = 0; i < n; i += 4)
+		{
+			int k = n - i < 4 ? (int) (n - i) : 4;
+			u32 w = 0;
+			if (rw == 1) for (int j = 0; j < k; j++) w |= (u32) mem1[m + i + j] << (24 - j * 8);
+			u32 r = exiIpl (ch, w, rw == 1, k);
+			if (rw == 0) for (int j = 0; j < k; j++) mem1[m + i + j] = (u8) (r >> (24 - j * 8));
+		}
 	}
 	else if (rw == 0)
 	{
 		u8 *p = ptr (e[1] & 0x01FFFFFF);
 		for (u32 i = 0; p && i < e[2]; i++) p[i] = 0;
 	}
-	e[3] &= ~1u;
 	e[0] |= 8;							// TCINT
-	if (e[0] & 4) piRaise (PI_EXI);
+	exiUpdate ();
 }
 
 // ---- DI: the DVD drive ------------------------------------------------------------------------------------------
@@ -415,10 +533,10 @@ u32 Machine::hwRead (u32 pa, int size)
 		{
 		case 0x00: return dspMailIn >> 16;			// (the CPU -> DSP mailbox: bit 15 = not read yet)
 		case 0x02: return dspMailIn & 0xFFFF;
-		case 0x04: dspHleStep (); return dspMailOutValid ? (dspMailOut >> 16) | 0x8000 : dspMailOut >> 16 & 0x7FFF;
-		case 0x06: { u16 v = (u16) dspMailOut; dspMailOutValid = false; dspHleStep (); return v; }
-		case 0x0A: return dspReg[0x0A / 2] & ~0x0801u;		// (reset / init done)
-		case 0x3A: return (u16) aidmaLeft;
+		case 0x04: return dspMailHigh ();			// the DSP -> CPU mailbox
+		case 0x06: return dspMailLow ();
+		case 0x0A: return dspReg[0x0A / 2] & ~0x0603u;		// (reset, PIINT, the DMAs: done)
+		case 0x3A: return (u16) (aidmaLeft > 0 ? aidmaLeft - 1 : 0);	// (the blocks left, less the one playing)
 		}
 		return dspReg[off / 2];
 	}
@@ -434,14 +552,15 @@ u32 Machine::hwRead (u32 pa, int size)
 		{
 			u32 o = off & 0xFF;
 			if (o >= 0x80) { u32 i = o - 0x80; return (u32) siBuf[i] << 24 | siBuf[i + 1] << 16 | siBuf[i + 2] << 8 | siBuf[i + 3]; }
-			if (o < 0x30 && (o % 12) == 4) siReg[0x38 / 4] &= ~(0x20u << (24 - (o / 12) * 8));	// (reading INBUFH: RDST off)
+			if (o < 0x30 && (o % 12) != 0) { siReg[0x38 / 4] &= ~(0x20000000u >> ((o / 12) * 8)); siUpdate (); }	// (reading INBUF: RDST off)
+			STRACE ("SI read %02X = %08X (pc %08X)\n", o, siReg[o / 4], curPc);
 			return siReg[o / 4];
 		}
 		if (off < 0x6C00)					// EXI
 		{
 			u32 o = off & 0xFF; int ch = (int) o / 0x14, r = (int) (o % 0x14) / 4;
 			if (ch > 2) return 0;
-			if (r == 0) return (exiReg[ch][0] & ~0x1000u) | (ch == 0 ? 0 : 0);	// (EXT: nothing plugged in the slots)
+			if (r == 0) return (exiReg[ch][0] & ~0x1000u) | (ch < 2 && card[ch].flash ? 0x1000u : 0);	// (EXT: a card in the slot)
 			return exiReg[ch][r];
 		}
 		{							// AI
@@ -497,42 +616,72 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 		switch (off)
 		{
 		case 0x00: dspMailIn = (dspMailIn & 0xFFFF) | (u32) w << 16; return;
-		case 0x02: dspMailIn = (dspMailIn & 0xFFFF0000) | w; dspMailReceived (dspMailIn | 0x80000000u); return;
+		case 0x02: dspMailIn = (dspMailIn & 0xFFFF0000) | w; dspMailReceived (dspMailIn); return;	// (as written: bit 31 is the mail's)
 		case 0x0A:
 		{
 			u16 &csr = dspReg[0x0A / 2];
-			// the interrupt bits written as 1 are acknowledged; the masks and control bits are set
+			u16 old = csr;
+			// the interrupt bits written as 1 are acknowledged; HALT (4), the masks and DSPINIT
+			// (0x800) are kept; RES (1), PIINT (2) and the DMA states (0x200, 0x400) read 0 (done)
 			u16 ack = w & (0x08 | 0x20 | 0x80);
-			csr = (u16) ((csr & ~ack & (0x08 | 0x20 | 0x80)) | (w & ~(0x08 | 0x20 | 0x80 | 0x01)));
-			if (w & 1) dspReset ();
-			if (w & 2) csr |= 0x80;					// PIINT: the CPU interrupts the DSP (-> HLE)
+			csr = (u16) ((csr & ~ack & (0x08 | 0x20 | 0x80)) | (w & 0x0954));
+			if (w & 1)						// a reset: the ROM again, the audio DMA stopped
+			{
+				dspReset ();
+				dspReg[0x36 / 2] = 0; aidmaNextAt = aidIrqAt = ~0ull; aidmaLeft = 0;
+			}
+			// DSPINIT 1 -> 0: the DSP runs the IPL's init code (__OSInitAudioSystem): it mails
+			// 0x80544348 (seen once the DSP is not halted), then halts
+			if ((old & 0x800) && !(csr & 0x800)) dspSetProgram (3);
 			dspIrqUpdate ();
 			return;
 		}
-		case 0x28: dspReg[0x28 / 2] = w; return;
+		case 0x12: dspReg[0x12 / 2] = w & 0x7F; return;		// AR_INFO (the ARAM's size)
+		case 0x16: return;						// AR_MODE: read only
+		case 0x1A: dspReg[0x1A / 2] = w & 0x7FF; return;		// AR_REFRESH
+		case 0x20: case 0x24: dspReg[off / 2] = w & 0x3FF; return;	// the ARAM DMA's addresses
+		case 0x22: case 0x26: dspReg[off / 2] = w & 0xFFE0; return;
+		case 0x28: dspReg[0x28 / 2] = w & 0x83FF; return;
 		case 0x2A:							// ARAM DMA count low: the transfer
 		{
-			dspReg[0x2A / 2] = w;
-			u32 mm = (u32) dspReg[0x20 / 2] << 16 | dspReg[0x22 / 2], ar = (u32) dspReg[0x24 / 2] << 16 | dspReg[0x26 / 2];
-			u32 cnt = ((u32) (dspReg[0x28 / 2] & 0x7FFF) << 16 | w);
+			dspReg[0x2A / 2] = w & 0xFFE0;
+			u32 mm = ((u32) dspReg[0x20 / 2] << 16 | dspReg[0x22 / 2]) & 0x01FFFFFF;
+			u32 ar = ((u32) dspReg[0x24 / 2] << 16 | dspReg[0x26 / 2]) & 0x03FFFFFF;
+			u32 cnt = (u32) (dspReg[0x28 / 2] & 0x3FF) << 16 | dspReg[0x2A / 2];
 			bool toMain = dspReg[0x28 / 2] & 0x8000;
-			u8 *m = ptr (mm & 0x01FFFFFF);
-			if (toMain) jitInvalidate (mm & 0x01FFFFFF, cnt);
-			for (u32 i = 0; m && i < cnt && (mm & 0x01FFFFFF) + i < MEM1_SIZE; i++)
+			if (mm + cnt > MEM1_SIZE) cnt = mm < MEM1_SIZE ? MEM1_SIZE - mm : 0;
+			if (toMain) jitInvalidate (mm, cnt);
+			// the ARAM is 16 MB; above, the expansion port (nothing there: reads 0, writes lost)
+			for (u32 i = 0; i < cnt; i++)
 			{
-				u32 a = (ar + i) & (ARAM_SIZE - 1);
-				if (toMain) m[i] = aram[a]; else aram[a] = m[i];
+				u32 a = ar + i;
+				if (toMain) mem1[mm + i] = a < ARAM_SIZE ? aram[a] : 0;
+				else if (a < ARAM_SIZE) aram[a] = mem1[mm + i];
 			}
-			dspReg[0x28 / 2] = 0; dspReg[0x2A / 2] = 0;
+			dspReg[0x22 / 2] = (u16) ((mm + cnt) & 0xFFE0); dspReg[0x20 / 2] = (u16) ((mm + cnt) >> 16);
+			dspReg[0x26 / 2] = (u16) ((ar + cnt) & 0xFFE0); dspReg[0x24 / 2] = (u16) (((ar + cnt) >> 16) & 0x3FF);
+			dspReg[0x28 / 2] &= 0x8000; dspReg[0x2A / 2] = 0;
 			dspReg[0x0A / 2] |= 0x20;				// ARINT
 			dspIrqUpdate ();
 			return;
 		}
-		case 0x36:							// the AI DMA's control: start / stop
+		case 0x30: dspReg[0x30 / 2] = w & 0x3FF; return;		// the audio DMA's address
+		case 0x32: dspReg[0x32 / 2] = w & 0xFFE0; return;
+		case 0x36:							// the audio DMA's control: start / stop
+		{
+			bool was = dspReg[0x36 / 2] & 0x8000;
 			dspReg[0x36 / 2] = w;
-			aidmaAddr = (u32) dspReg[0x30 / 2] << 16 | dspReg[0x32 / 2];
-			if (w & 0x8000) { aidmaLeft = w & 0x7FFF; if (aidmaNextAt == ~0ull) aidmaNextAt = cycles + (u64) CPU_HZ * 8 / 32000; }
+			if (!was && (w & 0x8000))				// started: from this buffer; AIDINT soon
+			{
+				aidmaAddr = ((u32) dspReg[0x30 / 2] << 16 | dspReg[0x32 / 2]) & 0x03FFFFE0;
+				aidmaLeft = w & 0x7FFF;
+				aidmaNextAt = cycles + (u64) CPU_HZ * 8 / aidRate ();
+				aidIrqAt = cycles + 200;
+			}
+			else if (!(w & 0x8000)) aidmaNextAt = ~0ull;
 			return;
+		}
+		case 0x3A: return;						// (the blocks left: read only)
 		}
 		dspReg[off / 2] = w;
 		return;
@@ -556,17 +705,26 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 		if (off < 0x6800)					// SI
 		{
 			u32 o = off & 0xFF;
+			STRACE ("SI write %02X = %08X size %d (pc %08X)\n", o, v, size, curPc);
 			if (o >= 0x80) { u32 i = o - 0x80; if (size == 4) { siBuf[i] = (u8) (v >> 24); siBuf[i + 1] = (u8) (v >> 16); siBuf[i + 2] = (u8) (v >> 8); siBuf[i + 3] = (u8) v; } else siBuf[i] = (u8) v; return; }
 			if (o == 0x34)
 			{
+				// the channel, the lengths and the masks as written; TCINT written as 1: acknowledged;
+				// COMERR (the last transfer's) and RDSTINT (the polls') are not written
 				u32 &cs = siReg[0x34 / 4];
-				u32 ack = v & 0x90000000u;			// TCINT / RDSTINT written as 1: acknowledged
-				cs = (cs & ~ack & 0x90000000u) | (v & ~0x90000000u);
-				if (!((cs & 0x80000000u) && (cs & 0x40000000u))) piLower (PI_SI);
-				if (v & 1) siTransfer ();
+				u32 keep = cs & (v & 0x80000000u ? 0x20000000u : 0xA0000000u);
+				cs = keep | (v & 0x487F7F06u);
+				if (v & 1) siTransfer (); else siUpdate ();
 				return;
 			}
-			if (o == 0x38) { siReg[0x38 / 4] &= ~(v & 0x0F0F0F0F); return; }	// (the error bits written: cleared)
+			if (o == 0x38)						// the error bits written as 1: cleared; WR: sent
+			{
+				u32 &sr = siReg[0x38 / 4];
+				sr &= ~(v & 0x0F0F0F0Fu);
+				if (v & 0x80000000u) sr &= ~0x90101010u;
+				siUpdate ();
+				return;
+			}
 			siReg[o / 4] = v;
 			return;
 		}
@@ -575,13 +733,19 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 			u32 o = off & 0xFF; int ch = (int) o / 0x14, r = (int) (o % 0x14) / 4;
 			if (ch > 2) return;
 			u32 *e = exiReg[ch];
+			if (ch == 0) STRACE ("EXI0 write r%d = %08X (status %08X, pc %08X)\n", r, v, e[0], curPc);
 			if (r == 0)
 			{
 				u32 ack = v & 0x80A;				// EXTINT, TCINT, EXIINT written as 1: acknowledged
 				u32 oldCs = e[0] & 0x380;
-				e[0] = (e[0] & ~ack & 0x80A) | (v & ~0x80Au);
-				if ((e[0] & 0x380) != oldCs) exiPhase[ch] = 0;	// (a new chip select: a new command)
-				if (!((e[0] & 8) && (e[0] & 4))) piLower (PI_EXI);
+				e[0] = (e[0] & ~ack & 0x80A) | (v & ~0x180Au);
+				u32 cs = e[0] & 0x380;
+				if (cs != oldCs)				// (a new chip select: a new command)
+				{
+					exiPhase[ch] = 0;
+					if (ch < 2 && card[ch].flash && ((cs ^ oldCs) & 0x80)) cardCs (ch, (cs & 0x80) != 0);
+				}
+				exiUpdate ();
 				return;
 			}
 			e[r] = v;
@@ -604,6 +768,43 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 			return;
 		}
 	}
+}
+
+// ---- the sound out: the audio DMA's blocks, resampled (linearly) to the host's rate ------------------------------
+// A block is 8 stereo frames, big-endian, the right channel first (as the AX microcode writes them).
+void Machine::audioBlock (u32 addr)
+{
+	if (!audioHostRate || addr + 32 > MEM1_SIZE) return;
+	u32 step = (u32) (((u64) aidRate () << 16) / audioHostRate);	// (source frames an output frame, 16.16)
+	const u8 *p = mem1 + addr;
+	for (int i = 0; i < 8; i++, p += 4)
+	{
+		s32 r = (s16) (p[0] << 8 | p[1]), l = (s16) (p[2] << 8 | p[3]);
+		while (audioFrac < 0x10000)				// (the outputs between the last frame and this one)
+		{
+			if (audioW - audioR < AUDIO_RING)			// (full: the host is behind -- dropped)
+			{
+				s16 *o = audioBuf + (audioW & (AUDIO_RING - 1)) * 2;
+				o[0] = (s16) (audioPrev[0] + (s32) (((s64) (l - audioPrev[0]) * audioFrac) >> 16));
+				o[1] = (s16) (audioPrev[1] + (s32) (((s64) (r - audioPrev[1]) * audioFrac) >> 16));
+				audioW++;
+			}
+			audioFrac += step;
+		}
+		audioFrac -= 0x10000;
+		audioPrev[0] = (s16) l; audioPrev[1] = (s16) r;
+	}
+}
+
+int Machine::audioRead (s16 *lr, int maxFrames)
+{
+	int n = 0;
+	for (; n < maxFrames && audioR != audioW; n++, audioR++)
+	{
+		const s16 *i = audioBuf + (audioR & (AUDIO_RING - 1)) * 2;
+		lr[n * 2] = i[0]; lr[n * 2 + 1] = i[1];
+	}
+	return n;
 }
 
 // the streaming sample counter (AISCNT): counts while PSTAT, interrupts at AIIT

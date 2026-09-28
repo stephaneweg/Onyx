@@ -8,12 +8,13 @@
 //   void *h = ne_open (path, 44100, err, n);   a ROM / disc image (the system from its extension)
 //   the game's thread: ne_set_keys (h, vk[256]); ne_run_frame (h, draw); ne_audio (h, pcm, n)
 //   the window:        ne_video (h, px, cap, &w, &h) (the last finished picture), ne_aspect (h)
-//   ne_close (h)                                the battery save written beside the ROM (<rom>.sav)
+//   ne_close (h)                                the battery save written beside the ROM (<rom>.sav;
+//                                               a GameCube's: its memory card in slot A, a raw image)
 //
 // The Nintendo 64 and GameCube pictures are 3D: each frame's triangles and textures (what the
-// Pi's GPU draws on Onyx) are drawn here by the BASIC 3D's software renderer (user/basic/bas3d.h),
-// ne_set_scale times the console's resolution. The GameCube's CPU is interpreted (the JIT is
-// AArch64 code), so it runs slowly.
+// Pi's GPU draws on Onyx) are drawn here by OpenGL, or by the BASIC 3D's software renderer
+// (user/basic/bas3d.h), ne_set_scale times the console's resolution. The GameCube's CPU is
+// translated to x86-64 (user/gc/gc_jit_x64.cpp; NEMU_GC_INTERP=1: interpreted).
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,9 @@
 #define NE_API extern "C" __declspec(dllexport)
 #else
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #define NE_API extern "C" __attribute__ ((visibility ("default")))
 #endif
 #include "gb/gb.h"
@@ -288,10 +291,22 @@ struct Emu
 	struct Gl *gl;						// the OpenGL renderer (Windows), 0: the software one
 	Lock lock;
 	int saveTick;
+	unsigned char *card; int cardSize;			// (the GameCube's memory card in slot A: its flash)
+	gc::GxGpu *gx;						// (the GameCube's GX on the GPU: gxgl.cpp, with OpenGL)
 };
+
+// the GameCube's GX drawn by the GPU's shaders (gxgl.cpp)
+gc::GxGpu *gxgl_create (int scale, char *err, int cap);
+void gxgl_destroy (gc::GxGpu *g);
+bool gxgl_present (gc::GxGpu *g, int x, int y, int w, int h, int W, int H);
+void gxgl_release (gc::GxGpu *g);
+void gxgl_set_scale (gc::GxGpu *g, int scale);
 
 static bool gl_draw (Emu *e);
 static void gl_free (Emu *e);
+// a GameCube game's picture: its last GX frame while it draws, or while the VI shows the XFB its
+// copies go to (the game loading); else its framebuffer (a program drawing with its CPU)
+static bool gc3d (Emu *e) { return e->gc->gfxReady >= 0 && (e->gfxAge < 30 || e->gc->xfbIsCopy ()); }
 
 static void set_sav_path (Emu *e)
 {
@@ -306,6 +321,17 @@ static bool disc_read (void *ctx, gc::u32 off, gc::u32 len, gc::u8 *dst)
 {
 	FILE *f = (FILE *) ctx;
 	return u8seek (f, off) && fread (dst, 1, len, f) == len;
+}
+
+// the GameCube JIT's code memory (user/gc/gc_jit_x64.cpp: the PowerPC translated to x86-64)
+static void *code_alloc (gc::u32 size)
+{
+#ifdef _WIN32
+	return VirtualAlloc (0, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+#else
+	void *p = mmap (0, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	return p == MAP_FAILED ? 0 : p;
+#endif
 }
 
 static void load_save (Emu *e)
@@ -350,6 +376,9 @@ NE_API void ne_save (void *h)
 		if (e->n64->saveType == 1 && e->n64->sramDirty) { if (write_file (e->sav, e->n64->sram, 0x8000)) e->n64->sramDirty = false; }
 		else if (e->n64->saveType >= 2 && e->n64->eepromDirty && write_file (e->sav, e->n64->eeprom, e->n64->eepromSize)) e->n64->eepromDirty = false;
 		break;
+	case NE_GC:
+		if (e->gc && e->card && e->gc->card[0].dirty && write_file (e->sav, e->card, e->cardSize)) e->gc->card[0].dirty = false;
+		break;
 	}
 }
 
@@ -360,6 +389,7 @@ NE_API void ne_close (void *h)
 	ne_save (e);
 	gl_free (e);
 	delete e->gb; delete e->gba; delete e->nes; delete e->snes; delete e->n64; delete e->gc;
+	free (e->card);
 	if (e->disc) fclose (e->disc);
 	free (e->rom); free (e->pic[0]); free (e->pic[1]); free (e->zb); free (e->tris);
 	delete e;
@@ -379,6 +409,18 @@ NE_API void *ne_open (const char *path, int audioRate, char *err, int errCap)
 	if (sys == NE_GC)
 	{
 		e->gc = new gc::Machine;
+		e->gc->setAudioRate (audioRate);
+		// the memory card in slot A: <game>.sav, the card's flash as is (a Dolphin .raw: 59 to 2043
+		// blocks); none yet: a 251-block one, erased (formatted at the boot)
+		{
+			int n = 0;
+			unsigned char *d = slurp (e->sav, &n, 16 << 20);
+			bool fits = d && n >= (512 << 10) && (n & (n - 1)) == 0;
+			e->cardSize = fits ? n : (int) gc::Machine::CARD_SIZE;
+			e->card = fits ? d : (unsigned char *) malloc ((size_t) e->cardSize);
+			if (!fits) { free (d); if (e->card) memset (e->card, 0xFF, (size_t) e->cardSize); }
+			if (e->card) e->gc->cardInsert (0, e->card, (unsigned) e->cardSize);
+		}
 		if (ends (path, ".dol"))
 		{
 			e->rom = slurp (path, &e->romSize, 64 << 20);
@@ -395,6 +437,9 @@ NE_API void *ne_open (const char *path, int audioRate, char *err, int errCap)
 			}
 		}
 		if (!ok) { seterr (err, errCap, "Not a GameCube disc image (.iso / .gcm) or program (.dol), or its start failed."); ne_close (e); return 0; }
+		// the CPU: the JIT (NEMU_GC_INTERP=1: the interpreter, to compare)
+		const char *interp = getenv ("NEMU_GC_INTERP");
+		if (!interp || !atoi (interp)) { gc::codeAlloc = code_alloc; e->gc->jitEnable (); }
 		return e;
 	}
 	e->rom = slurp (path, &e->romSize, 128 << 20);
@@ -453,7 +498,13 @@ NE_API int ne_aspect1000 (void *h)
 	return 1333;
 }
 
-NE_API void ne_set_scale (void *h, int s) { Emu *e = (Emu *) h; if (e) e->scale = s < 1 ? 1 : s > 4 ? 4 : s; }
+NE_API void ne_set_scale (void *h, int s)
+{
+	Emu *e = (Emu *) h;
+	if (!e) return;
+	e->scale = s < 1 ? 1 : s > 4 ? 4 : s;
+	if (e->gx) gxgl_set_scale (e->gx, e->scale);		// (the EFB's resolution)
+}
 NE_API void ne_set_keys (void *h, const unsigned char *vk) { Emu *e = (Emu *) h; if (e) memcpy (e->keys, vk, 256); }
 
 NE_API void ne_reset (void *h)
@@ -735,13 +786,46 @@ static void draw (Emu *e)
 		break;
 	case NE_GC:
 		static_assert (sizeof (gc::GVertex) == sizeof (bas::G3Vertex) && sizeof (gc::GBatch) == sizeof (bas::G3Batch), "layout");
-		if (e->gfxAge < 30 && e->gc->gfxReady >= 0) render3d (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex, gc::Machine::MAX_TEX);
+		if (gc3d (e)) render3d (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex, gc::Machine::MAX_TEX);
 		else copy_fb (e, e->gc->fb, e->gc->fbW, e->gc->fbH);
 		break;
 	}
 }
 
 // One video frame of the game (draw = 0: not drawn, to catch up). The game's own thread.
+// (a test: NEMU_GX_DUMP=<prefix> -- the GPU's picture every 250 fields -> <prefix>_<field>.ppm, and
+// what OpenGL is, in <prefix>.txt)
+int gxgl_read (gc::GxGpu *g, unsigned *px, int cap, int *w, int *h);
+const char *gxgl_name (gc::GxGpu *g);
+static unsigned long long ne_ms ()
+{
+#ifdef _WIN32
+	return GetTickCount64 ();
+#else
+	struct timespec t; clock_gettime (CLOCK_MONOTONIC, &t); return (unsigned long long) t.tv_sec * 1000 + (unsigned long long) t.tv_nsec / 1000000;
+#endif
+}
+static void gx_dump (Emu *e)
+{
+	static const char *pre = getenv ("NEMU_GX_DUMP");
+	static int field;
+	if (!pre || !e->gl || (++field % 250)) return;
+	char path[1100];
+	snprintf (path, sizeof path, "%s.txt", pre);
+	FILE *f = fopen (path, "a");
+	static unsigned long long t0; unsigned long long now = ne_ms ();
+	if (!t0) t0 = now;
+	if (f) { fprintf (f, "field %d (%llu ms): GX on the GPU: %s, %s\n", field, now - t0, e->gx ? gxgl_name (e->gx) : "no", gc3d (e) ? "3D" : "framebuffer"); fclose (f); }
+	static unsigned px[2560 * 2112];
+	int w = 0, h = 0;
+	if (!e->gx || !gxgl_read (e->gx, px, 2560 * 2112, &w, &h)) return;
+	snprintf (path, sizeof path, "%s_%05d.ppm", pre, field);
+	if (!(f = fopen (path, "wb"))) return;
+	fprintf (f, "P6\n%d %d\n255\n", w, h);
+	for (int i = 0; i < w * h; i++) { unsigned c = px[i]; fputc ((int) (c >> 16) & 255, f); fputc ((int) (c >> 8) & 255, f); fputc ((int) c & 255, f); }
+	fclose (f);
+}
+
 NE_API int ne_run_frame (void *h, int drawIt)
 {
 	Emu *e = (Emu *) h;
@@ -761,6 +845,7 @@ NE_API int ne_run_frame (void *h, int drawIt)
 		if (e->gc->halted) return 0;
 		e->gc->runFrame ();
 		if (e->gc->gfxSerial != e->lastSerial) { e->lastSerial = e->gc->gfxSerial; e->gfxAge = 0; } else if (e->gfxAge < 1000) e->gfxAge++;
+		gx_dump (e);
 		break;
 	}
 	if (drawIt) draw (e);
@@ -777,6 +862,7 @@ NE_API int ne_audio (void *h, short *lr, int maxFrames)
 	if (e->nes) return e->nes->audioRead (lr, maxFrames);
 	if (e->snes) return e->snes->audioRead (lr, maxFrames);
 	if (e->n64) return e->n64->audioRead (lr, maxFrames);
+	if (e->gc) return e->gc->audioRead (lr, maxFrames);
 	return 0;
 }
 
@@ -802,7 +888,7 @@ NE_API void ne_status (void *h, char *out, int cap)
 }
 
 // what the speed display shows: 1 = the 3D renderer drew the last picture
-NE_API int ne_is_3d (void *h) { Emu *e = (Emu *) h; return (e->sys == NE_N64 || e->sys == NE_GC) && e->gfxAge < 30; }
+NE_API int ne_is_3d (void *h) { Emu *e = (Emu *) h; return e->sys == NE_GC ? gc3d (e) : e->sys == NE_N64 && e->gfxAge < 30; }
 NE_API int ne_halted (void *h, char *msg, int cap)
 {
 	Emu *e = (Emu *) h;
@@ -899,6 +985,7 @@ static void gl_free (Emu *e)
 {
 	Gl *g = e->gl;
 	if (!g) return;
+	if (e->gx) { if (e->gc) e->gc->gpu = 0; gxgl_destroy (e->gx); e->gx = 0; }	// (the context still current)
 	if (g->rc) { wglMakeCurrent (0, 0); wglDeleteContext (g->rc); }
 	if (g->dc) ReleaseDC (g->hwnd, g->dc);
 	free (g->snap);
@@ -946,6 +1033,14 @@ NE_API int ne_gl_attach (void *h, void *hwnd, char *err, int cap)
 	glUniform1i_ (g->uTex, 0);
 	glGenTextures (1024, g->tex); glGenTextures (1, &g->fbTex);
 	for (int i = 0; i < 4; i++) glEnableVertexAttribArray_ ((GLuint) i);
+	// a GameCube game: its GX on the GPU's shaders (OpenGL 3.3; why not: nemu_gl.log), else the frames above
+	if (e->gc)
+	{
+		char why[512];
+		e->gx = gxgl_create (e->scale, why, sizeof why);
+		if (e->gx) e->gc->gpu = e->gx;
+		else { FILE *lf = fopen ("nemu_gl.log", "w"); if (lf) { fputs (why, lf); fclose (lf); } }
+	}
 	return 1;
 }
 NE_API void ne_gl_detach (void *h) { gl_free ((Emu *) h); }
@@ -982,6 +1077,7 @@ template <typename FR, typename TX>
 static void gl_frame (Emu *e, const FR &fr, TX *tex, int ntex)
 {
 	Gl *g = e->gl;
+	glUseProgram_ (g->prog);
 	int x, y, w, h, W, H; gl_rect (e, &x, &y, &w, &h, &W, &H);
 	gl_textures (g, tex, ntex);
 	glDisable (GL_SCISSOR_TEST);
@@ -1050,6 +1146,7 @@ static void gl_frame (Emu *e, const FR &fr, TX *tex, int ntex)
 static void gl_fb (Emu *e, const unsigned *px, int fw, int fh)
 {
 	Gl *g = e->gl;
+	glUseProgram_ (g->prog);
 	int x, y, w, h, W, H; gl_rect (e, &x, &y, &w, &h, &W, &H);
 	glDisable (GL_SCISSOR_TEST); glDisable (GL_DEPTH_TEST); glDisable (GL_BLEND); glDisable (GL_CULL_FACE);
 	glViewport (0, 0, W, H);
@@ -1085,9 +1182,16 @@ static bool gl_draw (Emu *e)
 		if (e->gfxAge < 30 && e->n64->gfxReady >= 0) gl_frame (e, e->n64->gfxFrame[e->n64->gfxReady], e->n64->tex, n64::Machine::MAX_TEX);
 		else gl_fb (e, e->n64->fb, e->n64->fbW, e->n64->fbH);
 	}
+	else if (e->gx && gc3d (e))					// (the GPU's picture: the last XFB copy)
+	{
+		int x, y, w, h, W, H; gl_rect (e, &x, &y, &w, &h, &W, &H);
+		gxgl_present (e->gx, x, y, w, h, W, H);
+		SwapBuffers (e->gl->dc);
+	}
 	else
 	{
-		if (e->gfxAge < 30 && e->gc->gfxReady >= 0) gl_frame (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex, gc::Machine::MAX_TEX);
+		if (e->gx) gxgl_release (e->gx);
+		if (gc3d (e)) gl_frame (e, e->gc->gfxFrame[e->gc->gfxReady], e->gc->tex, gc::Machine::MAX_TEX);
 		else gl_fb (e, e->gc->fb, e->gc->fbW, e->gc->fbH);
 	}
 	e->lock.take (); e->serial++; e->lock.give ();		// (a new picture: for the speed)

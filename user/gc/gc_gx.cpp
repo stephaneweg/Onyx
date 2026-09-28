@@ -241,6 +241,8 @@ void Machine::gxRunDl (u32 addr, u32 size)
 
 void Machine::gxXf (u32 addr, int n, const u8 *data)
 {
+	if (addr < 0x1000) xfSerial++;					// (a GPU's copies: the matrices, the lights,
+	if (addr + (u32) n > 0x1000) gxsDirty = true;			// the registers' state)
 	for (int i = 0; i < n; i++, addr++)
 		if (addr < 0x1100) xfRegs[addr] = be32 (data + i * 4);
 }
@@ -249,6 +251,7 @@ void Machine::gxXf (u32 addr, int n, const u8 *data)
 void Machine::gxBp (u32 v)
 {
 	u32 r = v >> 24, val = v & 0xFFFFFF;
+	gxsDirty = true;
 	if (r >= 0xE0 && r <= 0xE7 && (val & 0x800000)) { bpKonst[r - 0xE0] = val; return; }	// (a konst colour)
 	u32 m = bpRegs[0xFE] ? bpRegs[0xFE] : 0xFFFFFF;
 	if (r != 0xFE) { val = (bpRegs[r] & ~m) | (val & m); bpRegs[0xFE] = 0xFFFFFF; }

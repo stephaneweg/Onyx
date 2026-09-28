@@ -4,15 +4,17 @@
 # (the client of rdpd; the .NET SDK with EnableWindowsTargeting), NintendoEMU.exe + nemucore.dll (the
 # emulators of Onyx). Result: pc/dist/ -- copy it to the PC.
 #   sh pc/build.sh
+# On Windows (Git Bash / MSYS2): a MinGW-w64 g++ (e.g. WinLibs) and the .NET SDK on the PATH.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 DIST="$HERE/dist"
 mkdir -p "$DIST"
+STRIP=$(command -v x86_64-w64-mingw32-strip || echo strip)
 x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libgcc -static-libstdc++ \
 	-I "$ROOT/user" -o "$DIST/obcore.dll" "$HERE/obcore/obcore.cpp" \
 	"$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/basbax.cpp" -lwinmm
-x86_64-w64-mingw32-strip "$DIST/obcore.dll"
+"$STRIP" "$DIST/obcore.dll"
 DOTNET=${DOTNET:-$(command -v dotnet || echo "$HOME/.dotnet/dotnet")}
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxBasic/OnyxBasic.csproj" -c Release -o "$HERE/OnyxBasic/bin/out" -v quiet -nologo
 cp "$HERE/OnyxBasic/bin/out/OnyxBasic.exe" "$HERE/OnyxBasic/bin/out/OnyxBasic.exe.config" "$DIST/"
@@ -22,10 +24,10 @@ DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxRemote/
 cp "$HERE/OnyxRemote/bin/out/OnyxRemote.exe" "$HERE/OnyxRemote/bin/out/OnyxRemote.exe.config" "$DIST/"
 # NintendoEMU: the emulators of Onyx (user/gb, gba, nes, snes, n64, gc) + a library of the games
 x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libgcc -static-libstdc++ \
-	-I "$ROOT/user" -o "$DIST/nemucore.dll" "$HERE/NintendoEMU/core/nemucore.cpp" \
+	-I "$ROOT/user" -o "$DIST/nemucore.dll" "$HERE/NintendoEMU/core/nemucore.cpp" "$HERE/NintendoEMU/core/gxgl.cpp" \
 	"$ROOT/user/gb/gb.cpp" "$ROOT"/user/gba/*.cpp "$ROOT"/user/nes/*.cpp "$ROOT"/user/snes/*.cpp \
 	"$ROOT"/user/n64/*.cpp "$ROOT"/user/gc/*.cpp -lwinmm -lopengl32 -lgdi32
-x86_64-w64-mingw32-strip "$DIST/nemucore.dll"
+"$STRIP" "$DIST/nemucore.dll"
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/NintendoEMU/NintendoEMU.csproj" -c Release -o "$HERE/NintendoEMU/bin/out" -v quiet -nologo
 cp "$HERE/NintendoEMU/bin/out/NintendoEMU.exe" "$HERE/NintendoEMU/bin/out/NintendoEMU.exe.config" "$DIST/"
 echo "built: $DIST"

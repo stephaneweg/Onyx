@@ -432,9 +432,28 @@ Notes / caveats:
 > writes it; the commands, display lists, vertex sizes from VCD / VAT, tokens, "draw done");
 > `gc_gxdraw.cpp` the drawing at a high level: vertices decoded and transformed (XF matrices,
 > projection, viewport), lit, texgens, the TEV per vertex (texel x c1 + c2), the GX texture
-> formats (TLUTs in TMEM) -> a `GFrame` in the kapi v54 layout, ended by the EFB -> XFB copy;
-> `gc_dsp.cpp` the DSP's ROM / microcode handshake at a high level (silent); `gc_boot.cpp` the
+> formats (TLUTs in TMEM; their mipmaps for a GPU) -> a `GFrame` in the kapi v54 layout, ended by
+> the EFB -> XFB copy — or, with a GPU backend (`Machine::gpu`), the draws as the game gave them
+> (`gc_gxgpu.cpp`, below); `gc_dsp.cpp` the DSP at a high level (as Dolphin's HLE): the ROM's
+> boot mails, the microcode told by its CRC (AX, the "Zelda" one and its variants' flags, the
+> memory card's), the mail queue with its interrupts (a mail's IRQ raised when the previous one is
+> read, none seen while the DSP is halted), the task switch (DSP_YIELD, a new microcode, DSP_RESUME);
+> AX's protocol acknowledged (silent), the Zelda protocol (command lists acked with sync mails, the
+> frames rendered as the CPU says the voices are ready, DSP_FRAME_END) with its **audio renderer**
+> `gc_zelda.cpp` (Dolphin's ZeldaAudioRenderer: the 0xC0-word voice blocks, AFC ADPCM and PCM8 /
+> PCM16 from ARAM or MRAM, 4-tap resampling, volume ramps, Dolby, the reverbs, 0x50-sample frames
+> into the game's buffers — a game on this microcode, e.g. The Wind Waker, waits for its streams
+> to play: without it, a black screen after the intro); `gc_card.cpp` the **memory card** (an EXI
+> device: the Nintendo commands 00 / 52 / 81 / 83 / 85 / 89 / F1 / F2 / F4, DMA with the card's
+> delays, EXIINT, the EXT bit; a blank card formatted as the SDK's CARDFormat would, its serial
+> from this console's SRAM, the SRAM's flash ID taken back from the card; the flash is the front
+> end's: `cardInsert`, Dolphin's `.raw` layout, `card[s].dirty` after a write); `gc_boot.cpp` the
 > IPL's state, `.dol` loading, discs booted by running their apploader on the CPU.
+> The **sound out**: the audio DMA's 32-byte blocks (8 frames, right channel first, big-endian;
+> 32 or 48 kHz by AICR's AIDFR, 32 kHz as the IPL leaves it) resampled to the front end's rate
+> (`setAudioRate`) into a ring that `audioRead` empties. `runFrame` runs **one field** (the lines
+> 1..313 / 314..625 in PAL): a front end calling it 50 / 60 times a second plays in real time
+> (it ran a whole frame before: twice too fast).
 > `gcemu` reads a disc image on demand (`kapi_seek`, the main thread serving the app core).
 > The **write-gather pipe** (0x0C008000) keeps its bytes (`gather`) and sends them to the GX FIFO
 > 32 at a time, as the hardware (`gatherFlush`: the burst at the PI's write pointer, then the
@@ -487,6 +506,28 @@ Notes / caveats:
 > against qemu-ppc's result: ~40× the interpreter's speed (integer), ~10× (float);
 > `GC_PROFILE=1` prints the host instructions per guest instruction, `GC_DUMP=prefix` the
 > hottest blocks' code (for `aarch64-linux-gnu-objdump -b binary -m aarch64`).
+> **The x86-64 JIT** (`gc_jit_x64.cpp`, NintendoEMU / x86-64 Linux hosts; `gc_jit.cpp` is the
+> AArch64 one): the same design (blocks, links, the dispatcher's table, idle loops, the rare paths
+> after the block, the cycles as a countdown) with a small x86-64 assembler (REX / ModRM / SIB,
+> SSE2, VEX for FMA3): the guest GPRs cached in rbx, rbp, rsi, rdi, r12, r10, r11, the FPRs in
+> xmm6–15 (a paired single = one xmm, both halves), the constants in the code buffer
+> (RIP-relative); the helpers take only the `Machine *` (their arguments in `jitArg[]`: the
+> Windows and System V ABIs alike). The same fuzz test (`gctest fuzz`) checks it against the
+> interpreter. Two fixes found with it and shared: HID0's ICFI / DCFI read back 0 (a game setting
+> ICFI flushed every block), and each AI sample is an event while the AI plays (`__AI_SRC_INIT`
+> polls its counter).
+> **The GX on a GPU with shaders** (`gc_gxgpu.cpp`): a front end sets `Machine::gpu` (a
+> `GxGpu`: `draw`, `copy`); each primitive then reaches it as the game gave it — its vertices in
+> model space with their matrix indices (`GxVertex`), its triangles / lines / points as indices —
+> with a `GxState`: the XF's state (colour channels, texgens, projection) and the BP's (the 16 TEV
+> stages, swap tables, konst colours, alpha test, z texture, fog, indirect texturing, depth /
+> blending / culling / scissor, the maps' textures) laid out as a std140 uniform block, rebuilt
+> when a register changed (`gxsDirty`; the XF memory — matrices, lights — has its own
+> `xfSerial`). The EFB copies go to it too: to the XFB (the picture), or to a texture — kept by the
+> GPU, not written to MEM1: a slot (`efbCopies`) remembers the address and a hash of MEM1 there,
+> so a texture read from that address (MEM1 not written since) is the copy. NintendoEMU's
+> backend is `pc/NintendoEMU/core/gxgl.cpp` (below); without a backend (the Pi today) nothing
+> changes.
 > **Host test** (`sh tools/tests/run_gc_test.sh`, needs gcc-powerpc-linux-gnu + qemu-user):
 > `tools/tests/gc/cputest.c` compiled once runs under `qemu-ppc -cpu 750` and in the interpreter
 > (10485 result words identical), `pstest.S` the paired singles against the manual, `hwtest.c`
@@ -1000,17 +1041,44 @@ barwidth = 40
   `ne_set_keys` (the Windows key states) + XInput pad 0, mapped per system exactly as the Onyx
   apps do, `ne_run_frame (h, draw)`, `ne_audio`, `ne_video` (the last picture, double-buffered
   under a lock: the game runs on its own thread), `ne_thumb` (the library's picture), `ne_save`
-  (`<rom>.sav`, as on Onyx), waveOut (`ne_audio_*`). The N64 / GameCube `GFrame`s go to
+  (`<rom>.sav`, as on Onyx; a GameCube's is its **memory card** in slot A, a 2 MB raw image —
+  Dolphin's `.raw` sizes accepted — inserted before the boot and written when `card[0].dirty`),
+  waveOut (`ne_audio_*`; the GameCube's sound through `Machine::audioRead`). The N64 `GFrame`s go to
   **OpenGL** (`ne_gl_attach (h, hwnd)` from the game's thread: a WGL context on the picture
   control, GLSL 1.20 — colour = texel × colour + colour2, alpha test, the batch's matrix, blending
   / depth / cull / wrap from the flags, as `kapi_gpu_render`; the machine's dirty textures uploaded;
   a CPU-drawn framebuffer as a textured quad), else `bas::swTriangles` + `g3raster` in bands of 16
-  rows on every core (`user/basic/bas3d.h`) at `ne_set_scale` × their size. Pads: XInput, else
+  rows on every core (`user/basic/bas3d.h`) at `ne_set_scale` × their size. A GameCube game with
+  OpenGL 3.3 gets **`core/gxgl.cpp`** as its `Machine::gpu` (the GX's real pipeline on the GPU):
+  the EFB is a framebuffer (RGBA8 + depth 24, `ne_set_scale` × 640 × 528, its rows the EFB's); a
+  draw's vertices, the XF memory and the `GxState` go to three ring buffers (persistently mapped,
+  their quarters fenced; else unsynchronized maps) and two uniform blocks; the vertex shader
+  transforms, lights (the two channels, 8 lights: spot / specular attenuation, diffuse functions)
+  and makes the texture coordinates (texgens, dual texture); the fragment shader is the TEV in
+  integers as the hardware (the lerp with c + c >> 7, the scale inside it, compare modes, swap
+  tables, konst colours, the last stage into PREV, & 255), indirect texturing (matrices, wraps,
+  bump alpha), the alpha test, the z texture, the fog (with its range adjustment), RGBA6 / RGB565
+  EFB formats, the destination alpha (dual-source blending); GX blending / logic ops / depth /
+  culling / scissor are GL state. Each TEV configuration gets a **specialized program** (the
+  ubershader's code with the stages unrolled and the state's choices as constants — ~1.6× faster
+  on an integrated GPU), compiled by the driver's threads when it has `KHR_parallel_shader_compile`
+  (the ubershader meanwhile), else at once (the driver caches them on disk: a pause only the first
+  time a configuration is seen). Consecutive draws of one state are one draw call; textures are
+  uploaded with their mipmaps, sampled through cached sampler objects. An EFB copy to a texture
+  renders the rectangle into a texture of ours converted as the texture decoder would read it
+  (intensity Y = 0.257 R + 0.504 G + 0.098 B + 16, RGB565, RGB5A3, the depth's bytes for Z
+  formats), box-filtered when halved; a copy to the XFB is the picture, presented into the window
+  (`gxgl_present`). `NEMU_GX_UBER=1` forces the ubershader, `NEMU_GX_SYNC=1` compiles at once,
+  `NEMU_GX_DUMP=<prefix>` writes the GPU's picture every 250 fields (+ what GL is). Pads: XInput, else
   the first Windows joystick (winmm `joyGetPosEx`) through `ne_pad_map` (PAD_* bit → button / axis
   end / hat direction; `PadDialog.cs`). `NintendoEMU.exe` (.NET
   4.8 WinForms): `MainForm` (the library, `library.txt`, the pictures made by a worker thread),
   `GameForm` (the game thread: paced by the sound queue — ~70 ms — when the game makes sound,
   else by the clock, a picture skipped to catch up; the window draws with `StretchDIBits`).
+  View ▸ 3D Renderer ▸ *Use the High-Performance Graphics Card* (`GpuPreference` in
+  `GameForm.cs`) writes Windows' own per-application choice (`HKCU\Software\Microsoft\DirectX\
+  UserGpuPreferences`, what Settings ▸ Display ▸ Graphics writes) for a laptop with two graphics
+  cards: a .NET program cannot export `NvOptimusEnablement`.
   Test: `sh tools/tests/run_nemu_test.sh` (the C API on Linux: each core a few frames, a picture,
   the library pictures; `NEMU_ROMS=<folder>` of ROMs).
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host

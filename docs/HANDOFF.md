@@ -70,31 +70,29 @@ answer in French. The docs stay in English.
   `pr/dhcp-restart`), based on upstream `develop`; texts, patches and an issue draft (RAM above
   3 GB on the Pi 4) in `docs/circle-upstream/`. The user opens the pull requests.
 
-## Next: the GameCube emulator (start with the Windows version)
+## Next: the GameCube emulator on the Pi (the Windows version works)
 
-- **Symptom:** The Legend of Zelda: The Wind Waker (the user's ISO, 1.2 GB, local only) shows a
-  black screen, on the Pi (`gcemu`) and on Windows (NintendoEMU). The last status seen (window
-  title on Windows, F12 line on the Pi): `pc 80308104, DVD 0 reads (at 00000000), picture: not
-  set up yet, 3D frames 0, DSP step 1` — the game never reads the disc after the boot. The user
-  says it is still "0 DVD reads" after the DSP boot-mail fix below.
-- **Already done:** VI output black until the XFB address is set (was green noise);
-  the DSP ROM boot mails decoded by key like Dolphin (A001 address, A002 length, C002, B002,
-  D001 start → DSP_INIT) in `user/gc/gc_dsp.cpp`; `Machine::status()` (`user/gc/gc_hw.cpp`) now
-  also shows **what the game polls**: `| polls <address> x<reads in a row>, EE, PI intsr/intmr,
-  DSP csr, DI sr + cr, EXI0 cr + ...` — build NintendoEMU (`sh pc/build.sh`), run the ISO, read the
-  title bar: the polled register says what it waits for (DSP mailbox / DSP csr → the DSP HLE or
-  the AX / "Zelda" ucode; DI → the disc interface; EXI → the memory card / RTC / SRAM; nothing
-  polled with EE 0/1 → an interrupt that never comes).
-- **Likely next steps:** find what 80308104 waits on; Wind Waker uses the "Zelda" DSP ucode (not
-  AX): it may need an HLE of it (Dolphin's `ZeldaUCode` is the reference); check DI command
-  handling / DI interrupt, EXI transfers completing (TCINT), the PI interrupt mask.
-- **Known limits:** the interpreter on x86 runs ~75 MIPS (~15 % speed); the JIT is AArch64-only
-  (Pi). NintendoEMU plays GC games only slowly on Windows for now.
+- **Done on Windows (a local session):** The Wind Waker (the user's PAL ISO, local only) is
+  **playable in NintendoEMU**: title, memory card, name entry, intro story, Outset Island, with
+  its sound and its pictures drawn by the GPU (GL 3.3 shaders: the GX pipeline, the TEV per
+  pixel, EFB copies), in real time — an **x86-64 JIT**, the DSP HLE (AX / Zelda protocols) with
+  the **Zelda microcode's audio renderer**, the **memory card**, and a dozen hardware fixes
+  (among them `runFrame` ran two fields: every GC game ran twice too fast). **Everything is in
+  [`docs/GC-WINDOWS-REPORT.md`](GC-WINDOWS-REPORT.md)** — what changed, why, and what the Pi port
+  needs.
+- **Next (a cloud session can do it, the ISO being local):** port to the Pi's `gcemu` — rebuild
+  with the new core (`gc_card.o gc_zelda.o gc_gxgpu.o` already in `user/Makefile`), then the
+  app's sound (`setAudioRate` / `audioRead`) and memory card (`<game>.sav`, `cardInsert`), then
+  the rendering (report §5: a V3D `GxGpu` backend with generated QPU fragment shaders, or the
+  cheaper fixes of the per-vertex path). Re-run `run_gc_test.sh` (the AArch64 JIT, `gctest fuzz`).
+- **Known limits:** AX games (most of the library) are silent (only the Zelda microcode is
+  rendered); on the Pi the GX is still the per-vertex approximation (grey characters, white tiles
+  where the game uses EFB copies).
 
 ## Other open items
 
 - VNC (`vncd`): the image froze while the sound went on, OnyxRemote (rdpd) kept working —
   not investigated yet.
 - Ideas (IDEAS.md): an ISO9660 driver + `mount` of ISO / disk / partition images as volumes
-  `VD0:`, `VD1:`…; an mstsc-compatible RDP server (~3000–4500 lines, TLS without NLA); GC
-  interpreter idle-loop skipping / an x86 JIT; NintendoEMU keyboard remapping.
+  `VD0:`, `VD1:`…; an mstsc-compatible RDP server (~3000–4500 lines, TLS without NLA); the AX
+  microcode's audio for the GameCube (Dolphin's `AXUCode`); NintendoEMU keyboard remapping.

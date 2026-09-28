@@ -28,20 +28,18 @@ void Machine::gxInit ()
 		gfxFrame[i].nv = 0; gfxFrame[i].nb = 0; gfxFrame[i].clear = 0; gfxFrame[i].width = 640; gfxFrame[i].height = 480;
 	}
 	gfxBuild = 0; gfxReady = -1; gfxSerial = 0; texClock = 0; gxClearNext = 0;
-	for (int i = 0; i < MAX_TEX; i++) { if (!tex[i].px) tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
+	xfbCopyAddr[0] = xfbCopyAddr[1] = 0xFFFFFFFFu;
+	for (int i = 0; i < MAX_TEX; i++) { if (!tex[i].px) tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].levels = 1; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
+	zero (&gxs, sizeof gxs); for (int i = 0; i < 8; i++) gxs.tex[i] = -1;
+	for (int i = 0; i < 1024; i++) texFind[i] = -1;
+	gxsDirty = true; xfSerial = 0;
+	zero (efbCopies, sizeof efbCopies);
 	if (!tmem) tmem = new u8[0x100000];
 	zero (tmem, 0x100000);
 }
 
 // ---- the vertices ----------------------------------------------------------------------------------------------
-struct Vtx
-{
-	float p[3], n[3]; bool hasN;
-	float c[2][4]; bool hasC[2];
-	float t[8][2]; bool hasT[8];
-	int pm, tm[8];
-};
-
+// (decoded into GxVertex: the GPU's as they are, gc_gxgpu.cpp; transformed here for the frames)
 static const int kCompSize[8] = { 1, 1, 2, 2, 4, 0, 0, 0 };
 
 // one component of a format (u8, s8, u16, s16, f32), dequantized by 2^-shift
@@ -57,17 +55,19 @@ static inline float comp (const u8 *p, int fmt, float scale)
 	}
 }
 
-// a colour (RGB565, RGB888, RGB888x, RGBA4444, RGBA6666, RGBA8888) -> 0..1
-static int colour (const u8 *p, int fmt, float *c)
+// a colour (RGB565, RGB888, RGB888x, RGBA4444, RGBA6666, RGBA8888) -> RGBA8
+static int colour (const u8 *p, int fmt, u8 *c)
 {
+	auto x5 = [] (u32 v) { return (u8) (v << 3 | v >> 2); };
+	auto x6 = [] (u32 v) { return (u8) (v << 2 | v >> 4); };
 	switch (fmt)
 	{
-	case 0: { u32 v = be16 (p); c[0] = ((v >> 11) & 31) / 31.f; c[1] = ((v >> 5) & 63) / 63.f; c[2] = (v & 31) / 31.f; c[3] = 1.f; return 2; }
-	case 1: c[0] = p[0] / 255.f; c[1] = p[1] / 255.f; c[2] = p[2] / 255.f; c[3] = 1.f; return 3;
-	case 2: c[0] = p[0] / 255.f; c[1] = p[1] / 255.f; c[2] = p[2] / 255.f; c[3] = 1.f; return 4;
-	case 3: { u32 v = be16 (p); c[0] = (v >> 12) / 15.f; c[1] = ((v >> 8) & 15) / 15.f; c[2] = ((v >> 4) & 15) / 15.f; c[3] = (v & 15) / 15.f; return 2; }
-	case 4: { u32 v = (u32) p[0] << 16 | p[1] << 8 | p[2]; c[0] = (v >> 18) / 63.f; c[1] = ((v >> 12) & 63) / 63.f; c[2] = ((v >> 6) & 63) / 63.f; c[3] = (v & 63) / 63.f; return 3; }
-	default: c[0] = p[0] / 255.f; c[1] = p[1] / 255.f; c[2] = p[2] / 255.f; c[3] = p[3] / 255.f; return 4;
+	case 0: { u32 v = be16 (p); c[0] = x5 ((v >> 11) & 31); c[1] = x6 ((v >> 5) & 63); c[2] = x5 (v & 31); c[3] = 255; return 2; }
+	case 1: c[0] = p[0]; c[1] = p[1]; c[2] = p[2]; c[3] = 255; return 3;
+	case 2: c[0] = p[0]; c[1] = p[1]; c[2] = p[2]; c[3] = 255; return 4;
+	case 3: { u32 v = be16 (p); c[0] = (u8) ((v >> 12) * 17); c[1] = (u8) (((v >> 8) & 15) * 17); c[2] = (u8) (((v >> 4) & 15) * 17); c[3] = (u8) ((v & 15) * 17); return 2; }
+	case 4: { u32 v = (u32) p[0] << 16 | p[1] << 8 | p[2]; c[0] = x6 (v >> 18); c[1] = x6 ((v >> 12) & 63); c[2] = x6 ((v >> 6) & 63); c[3] = x6 (v & 63); return 3; }
+	default: c[0] = p[0]; c[1] = p[1]; c[2] = p[2]; c[3] = p[3]; return 4;
 	}
 }
 
@@ -97,11 +97,19 @@ static inline u32 tlutColour (const u8 *tl, u32 idx, int fmt)
 	return c5a3 (v);
 }
 
+// the formats' tiles (texels), their bytes
+static const int kTileW[16] = { 8, 8, 8, 4, 4, 4, 4, 0, 8, 8, 4, 0, 0, 0, 8, 0 };
+static const int kTileH[16] = { 8, 4, 4, 4, 4, 4, 4, 0, 8, 4, 4, 0, 0, 0, 8, 0 };
+static u32 levelBytes (int w, int h, int fmt)
+{
+	if (fmt > 14 || !kTileW[fmt]) return 0;
+	return (u32) ((w + kTileW[fmt] - 1) / kTileW[fmt] * ((h + kTileH[fmt] - 1) / kTileH[fmt])) * (fmt == 6 ? 64 : 32);
+}
+
 // decode w x h texels of format fmt at src (the tiles of the GX formats) into out (0xAARRGGBB)
 static void decodeTexture (u32 *out, const u8 *src, const u8 *srcEnd, int w, int h, int fmt, const u8 *tlut, int tlfmt)
 {
-	static const int bw[16] = { 8, 8, 8, 4, 4, 4, 4, 0, 8, 8, 4, 0, 0, 0, 8, 0 };	// the tiles' size
-	static const int bh[16] = { 8, 4, 4, 4, 4, 4, 4, 0, 8, 4, 4, 0, 0, 0, 8, 0 };
+	const int *bw = kTileW, *bh = kTileH;
 	if (fmt > 14 || !bw[fmt]) { for (int i = 0; i < w * h; i++) out[i] = 0xFFFF00FF; return; }
 	int tw = bw[fmt], th = bh[fmt];
 	const u8 *p = src;
@@ -163,8 +171,9 @@ static void decodeTexture (u32 *out, const u8 *src, const u8 *srcEnd, int w, int
 		}
 }
 
-// the texture of map n (0..7): TEXIMAGE0 (size, format), TEXIMAGE3 (address), TEXTLUT
-int Machine::gxTexture (int map)
+// the texture of map n (0..7): TEXIMAGE0 (size, format), TEXIMAGE3 (address), TEXTLUT; with its
+// mipmaps (a GPU's) as far as TX_SETMODE1's maximum LOD, when the minifying filter uses them
+int Machine::gxTexture (int map, bool mips)
 {
 	u32 img0 = bpRegs[(map < 4 ? 0x88 : 0xA8) + (map & 3)], img3 = bpRegs[(map < 4 ? 0x94 : 0xB4) + (map & 3)];
 	u32 tl = bpRegs[(map < 4 ? 0x98 : 0xB8) + (map & 3)];
@@ -173,26 +182,48 @@ int Machine::gxTexture (int map)
 	if (w > 1024 || h > 1024 || addr >= MEM1_SIZE) return -1;
 	int tlfmt = (int) (tl >> 10) & 3;
 	u32 tloff = (tl & 0x3FF) << 9;
+	int levels = 1;
+	if (mips)
+	{
+		u32 m0 = bpRegs[(map < 4 ? 0x80 : 0xA0) + (map & 3)], m1 = bpRegs[(map < 4 ? 0x84 : 0xA4) + (map & 3)];
+		int minf = (int) (m0 >> 5) & 7, maxLod = (int) ((m1 >> 8) & 0xFF) >> 4;
+		if (minf != 0 && minf != 4)
+			while (levels <= maxLod && ((w >> levels) > 0 || (h >> levels) > 0)) levels++;
+	}
 	// its size in memory, a hash of samples of it (the texture can change: its key follows)
-	static const int bpp[16] = { 4, 8, 8, 16, 16, 16, 32, 0, 4, 8, 16, 0, 0, 0, 4, 0 };
-	u32 bytes = (u32) (((w + 7) & ~7) * ((h + 7) & ~7) * bpp[fmt] / 8);
+	u32 bytes = 0, texels = 0;
+	for (int l = 0; l < levels; l++)
+	{
+		int lw = w >> l ? w >> l : 1, lh = h >> l ? h >> l : 1;
+		bytes += levelBytes (lw, lh, fmt); texels += (u32) (lw * lh);
+	}
 	if (addr + bytes > MEM1_SIZE) bytes = MEM1_SIZE - addr;
 	u64 hsh = 1469598103934665603ull;
 	u32 step = bytes / 64 + 1;
 	for (u32 i = 0; i < bytes; i += step * 4 > 4 ? step : 1) { hsh ^= mem1[addr + i]; hsh *= 1099511628211ull; }
 	if (fmt >= 8 && fmt <= 10) for (u32 i = 0; i < 64; i++) { hsh ^= tmem[(tloff + i * 8) & 0xFFFFF]; hsh *= 1099511628211ull; }
-	u64 key = hsh ^ ((u64) addr << 32) ^ (u64) img0 * 0x9E3779B97F4A7C15ull ^ (u64) tl << 20;
+	u64 key = hsh ^ ((u64) addr << 32) ^ (u64) img0 * 0x9E3779B97F4A7C15ull ^ (u64) tl << 20 ^ (u64) levels << 58;
 	texClock++;
+	int hint = texFind[key & 1023];
+	if (hint >= 0 && tex[hint].w && tex[hint].key == key) { tex[hint].lastUse = texClock; return hint; }
 	int lru = 0;
 	for (int i = 0; i < MAX_TEX; i++)
 	{
-		if (tex[i].w && tex[i].key == key) { tex[i].lastUse = texClock; return i; }
+		if (tex[i].w && tex[i].key == key) { tex[i].lastUse = texClock; texFind[key & 1023] = (s16) i; return i; }
 		if (tex[i].lastUse < tex[lru].lastUse) lru = i;
 	}
+	texFind[key & 1023] = (s16) lru;
 	GTexture &T = tex[lru];
-	if (T.cap < w * h) { delete [] T.px; T.cap = w * h < 64 * 64 ? 64 * 64 : w * h; T.px = new u32[T.cap]; }	// (its size, not 4 MB each)
-	T.w = w; T.h = h; T.key = key; T.lastUse = texClock; T.dirty = true;
-	decodeTexture (T.px, mem1 + addr, mem1 + MEM1_SIZE, w, h, fmt, tmem + (tloff & 0xFFFFF), tlfmt);
+	texDecodes++;
+	if (T.cap < (int) texels) { delete [] T.px; T.cap = texels < 64 * 64 ? 64 * 64 : (int) texels; T.px = new u32[T.cap]; }	// (its size, not 4 MB each)
+	T.w = w; T.h = h; T.levels = levels; T.key = key; T.lastUse = texClock; T.dirty = true;
+	u32 *out = T.px; const u8 *src = mem1 + addr;
+	for (int l = 0; l < levels; l++)
+	{
+		int lw = w >> l ? w >> l : 1, lh = h >> l ? h >> l : 1;
+		decodeTexture (out, src, mem1 + MEM1_SIZE, lw, lh, fmt, tmem + (tloff & 0xFFFFF), tlfmt);
+		out += lw * lh; src += levelBytes (lw, lh, fmt);
+	}
 	return lru;
 }
 
@@ -216,12 +247,89 @@ void Machine::gxEmit (const GVertex *v3, int t, u32 flags)
 // ---- a primitive -------------------------------------------------------------------------------------------------
 void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 {
-	if (prim >= 5 || count <= 0) return;				// (lines, points: not drawn)
+	if (count <= 0 || (prim >= 5 && !gpu)) return;			// (lines, points: a GPU's only)
 	u32 lo = cpRegs[0x50], hi = cpRegs[0x60];
 	u32 va = cpRegs[0x70 + vat], vb = cpRegs[0x80 + vat], vc = cpRegs[0x90 + vat];
 	auto xfF = [&] (u32 a) { return u2f (xfRegs[a]); };
 	u32 mat = xfRegs[0x1018], mat2 = xfRegs[0x1019];
 	int vsz = gxVertexSize (vat);
+	u32 vcd = (((lo >> 11) & 3) ? GX_VCD_NRM : 0) | (((lo >> 13) & 3) ? GX_VCD_C0 : 0) | (((lo >> 15) & 3) ? GX_VCD_C1 : 0);
+	// ---- the vertices ----
+	static GxVertex vx[0x10000];
+	if (count > 0x10000) count = 0x10000;
+	const u8 *p = data;
+	for (int i = 0; i < count; i++, p += vsz)
+	{
+		GxVertex &v = vx[i];
+		const u8 *q = p;
+		v.mtx[0] = (u8) (mat & 63);
+		for (int k = 0; k < 8; k++) v.mtx[1 + k] = (u8) (k < 4 ? (mat >> (6 + 6 * k)) & 63 : (mat2 >> (6 * (k - 4))) & 63);
+		if (lo & 1) v.mtx[0] = *q++ & 63;
+		for (int k = 0; k < 8; k++) if (lo & (2u << k)) v.mtx[1 + k] = *q++ & 63;
+		auto fetch = [&] (int type, int arr, const u8 *&src) -> const u8 *
+		{
+			if (type == 1) return src;
+			u32 idx = type == 2 ? *src : be16 (src);
+			src += type == 2 ? 1 : 2;
+			u32 a = ((cpRegs[0xA0 + arr] & 0x03FFFFFF) + idx * (cpRegs[0xB0 + arr] & 0xFF)) & 0x01FFFFFF;
+			return mem1 + (a < MEM1_SIZE - 64 ? a : 0);
+		};
+		// the position
+		int t = (int) (lo >> 9) & 3;
+		v.pos[0] = v.pos[1] = v.pos[2] = 0;
+		if (t)
+		{
+			int fmt = (int) (va >> 1) & 7, n = (va & 1) ? 3 : 2, cs = kCompSize[fmt];
+			float sc = fmt == 4 ? 1.f : 1.f / (float) (1u << ((va >> 4) & 31));
+			const u8 *src = fetch (t, 0, q);
+			for (int c = 0; c < n; c++) v.pos[c] = comp (src + c * cs, fmt, sc);
+			if (t == 1) q += n * cs;
+		}
+		// the normal (the binormal, the tangent: skipped)
+		t = (int) (lo >> 11) & 3;
+		v.nrm[0] = v.nrm[1] = v.nrm[2] = 0;
+		if (t)
+		{
+			int fmt = (int) (va >> 10) & 7, cs = kCompSize[fmt];
+			bool nbt = (va >> 9) & 1, idx3 = (va >> 31) & 1;
+			float sc = fmt == 1 ? 1 / 64.f : fmt == 3 ? 1 / 16384.f : 1.f;
+			const u8 *src = fetch (t, 1, q);
+			for (int c = 0; c < 3; c++) v.nrm[c] = comp (src + c * cs, fmt, sc);
+			if (t == 1) q += (nbt ? 9 : 3) * cs;
+			else if (nbt && idx3) q += t == 2 ? 2 : 4;
+		}
+		// the colours
+		for (int k = 0; k < 2; k++)
+		{
+			u8 *c = k ? v.c1 : v.c0;
+			c[0] = c[1] = c[2] = c[3] = 255;
+			t = (int) (lo >> (13 + 2 * k)) & 3;
+			if (!t) continue;
+			const u8 *src = fetch (t, 2 + k, q);
+			int n = colour (src, (int) (va >> (14 + 4 * k)) & 7, c);
+			if (t == 1) q += n;
+		}
+		// the texture coordinates
+		static const int cntBit[8] = { 21, 0, 9, 18, 27, 5, 14, 23 };
+		static const int fmtBit[8] = { 22, 1, 10, 19, 28, 6, 15, 24 };
+		static const int shBit[8] = { 25, 4, 13, 22, 0, 9, 18, 27 };
+		static const int reg[8] = { 0, 1, 1, 1, 2, 2, 2, 2 };
+		static const int regFmt[8] = { 0, 1, 1, 1, 1, 2, 2, 2 };
+		for (int k = 0; k < 8; k++)
+		{
+			t = (int) (hi >> (2 * k)) & 3;
+			v.tc[k][0] = v.tc[k][1] = 0;
+			if (!t) continue;
+			u32 rc = regFmt[k] == 0 ? va : regFmt[k] == 1 ? vb : vc;
+			u32 rs = reg[k] == 0 ? va : reg[k] == 1 ? vb : vc;
+			int fmt = (int) (rc >> fmtBit[k]) & 7, n = ((rc >> cntBit[k]) & 1) ? 2 : 1, cs = kCompSize[fmt];
+			float sc = fmt == 4 ? 1.f : 1.f / (float) (1u << ((rs >> shBit[k]) & 31));
+			const u8 *src = fetch (t, 4 + k, q);
+			for (int c = 0; c < n; c++) v.tc[k][c] = comp (src + c * cs, fmt, sc);
+			if (t == 1) q += n * cs;
+		}
+	}
+	if (gpu) { gxGpuPrimitive (prim, count, vx, vcd); return; }
 	// ---- this draw's state ----
 	u32 genmode = bpRegs[0x00];
 	int nStages = (int) ((genmode >> 10) & 15) + 1;
@@ -281,81 +389,6 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 		u32 ra = bpKonst[r * 2], bg = bpKonst[r * 2 + 1];
 		tv.konst[r][0] = (ra & 0xFF) / 255.f; tv.konst[r][3] = ((ra >> 12) & 0xFF) / 255.f; tv.konst[r][2] = (bg & 0xFF) / 255.f; tv.konst[r][1] = ((bg >> 12) & 0xFF) / 255.f;
 	}
-	// ---- the vertices ----
-	static Vtx vx[0x10000];
-	if (count > 0x10000) count = 0x10000;
-	const u8 *p = data;
-	for (int i = 0; i < count; i++, p += vsz)
-	{
-		Vtx &v = vx[i];
-		const u8 *q = p;
-		v.pm = (int) (mat & 63);
-		for (int k = 0; k < 8; k++) v.tm[k] = k < 4 ? (int) ((mat >> (6 + 6 * k)) & 63) : (int) ((mat2 >> (6 * (k - 4))) & 63);
-		if (lo & 1) v.pm = *q++ & 63;
-		for (int k = 0; k < 8; k++) if (lo & (2u << k)) v.tm[k] = *q++ & 63;
-		auto fetch = [&] (int type, int arr, const u8 *&src) -> const u8 *
-		{
-			if (type == 1) return src;
-			u32 idx = type == 2 ? *src : be16 (src);
-			src += type == 2 ? 1 : 2;
-			u32 a = ((cpRegs[0xA0 + arr] & 0x03FFFFFF) + idx * (cpRegs[0xB0 + arr] & 0xFF)) & 0x01FFFFFF;
-			return mem1 + (a < MEM1_SIZE - 64 ? a : 0);
-		};
-		// the position
-		int t = (int) (lo >> 9) & 3;
-		v.p[0] = v.p[1] = v.p[2] = 0;
-		if (t)
-		{
-			int fmt = (int) (va >> 1) & 7, n = (va & 1) ? 3 : 2, cs = kCompSize[fmt];
-			float sc = fmt == 4 ? 1.f : 1.f / (float) (1u << ((va >> 4) & 31));
-			const u8 *src = fetch (t, 0, q);
-			for (int c = 0; c < n; c++) v.p[c] = comp (src + c * cs, fmt, sc);
-			if (t == 1) q += n * cs;
-		}
-		// the normal
-		t = (int) (lo >> 11) & 3;
-		v.hasN = t != 0;
-		if (t)
-		{
-			int fmt = (int) (va >> 10) & 7, cs = kCompSize[fmt];
-			bool nbt = (va >> 9) & 1, idx3 = (va >> 31) & 1;
-			float sc = fmt == 1 ? 1 / 64.f : fmt == 3 ? 1 / 16384.f : 1.f;
-			const u8 *src = fetch (t, 1, q);
-			for (int c = 0; c < 3; c++) v.n[c] = comp (src + c * cs, fmt, sc);
-			if (t == 1) q += (nbt ? 9 : 3) * cs;
-			else if (nbt && idx3) q += t == 2 ? 2 : 4;
-		}
-		// the colours
-		for (int k = 0; k < 2; k++)
-		{
-			t = (int) (lo >> (13 + 2 * k)) & 3;
-			v.hasC[k] = t != 0;
-			if (!t) continue;
-			const u8 *src = fetch (t, 2 + k, q);
-			int n = colour (src, (int) (va >> (14 + 4 * k)) & 7, v.c[k]);
-			if (t == 1) q += n;
-		}
-		// the texture coordinates
-		static const int cntBit[8] = { 21, 0, 9, 18, 27, 5, 14, 23 };
-		static const int fmtBit[8] = { 22, 1, 10, 19, 28, 6, 15, 24 };
-		static const int shBit[8] = { 25, 4, 13, 22, 0, 9, 18, 27 };
-		static const int reg[8] = { 0, 1, 1, 1, 2, 2, 2, 2 };
-		static const int regFmt[8] = { 0, 1, 1, 1, 1, 2, 2, 2 };
-		for (int k = 0; k < 8; k++)
-		{
-			t = (int) (hi >> (2 * k)) & 3;
-			v.hasT[k] = t != 0;
-			v.t[k][0] = v.t[k][1] = 0;
-			if (!t) continue;
-			u32 rc = regFmt[k] == 0 ? va : regFmt[k] == 1 ? vb : vc;
-			u32 rs = reg[k] == 0 ? va : reg[k] == 1 ? vb : vc;
-			int fmt = (int) (rc >> fmtBit[k]) & 7, n = ((rc >> cntBit[k]) & 1) ? 2 : 1, cs = kCompSize[fmt];
-			float sc = fmt == 4 ? 1.f : 1.f / (float) (1u << ((rs >> shBit[k]) & 31));
-			const u8 *src = fetch (t, 4 + k, q);
-			for (int c = 0; c < n; c++) v.t[k][c] = comp (src + c * cs, fmt, sc);
-			if (t == 1) q += n * cs;
-		}
-	}
 	// ---- per vertex: transform, light, texgen, TEV ----
 	static GVertex out[0x10000];
 	int efbW = (int) (bpRegs[0x4A] & 0x3FF) + 1, efbH = (int) ((bpRegs[0x4A] >> 10) & 0x3FF) + 1;
@@ -367,16 +400,19 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 	u32 numChans = xfRegs[0x1009] & 3;
 	for (int i = 0; i < count; i++)
 	{
-		Vtx &v = vx[i];
+		const GxVertex &v = vx[i];
+		const bool hasN = vcd & GX_VCD_NRM, hasC[2] = { (vcd & GX_VCD_C0) != 0, (vcd & GX_VCD_C1) != 0 };
+		float vcolour[2][4];
+		for (int c = 0; c < 4; c++) { vcolour[0][c] = v.c0[c] / 255.f; vcolour[1][c] = v.c1[c] / 255.f; }
 		// the position matrix (3 x 4 at pm * 4), the normal matrix (3 x 3 at 0x400 + pm % 32 * 3)
-		u32 m = (u32) v.pm * 4;
+		u32 m = (u32) v.mtx[0] * 4;
 		float e[3];
-		for (int r = 0; r < 3; r++) e[r] = xfF (m + r * 4) * v.p[0] + xfF (m + r * 4 + 1) * v.p[1] + xfF (m + r * 4 + 2) * v.p[2] + xfF (m + r * 4 + 3);
+		for (int r = 0; r < 3; r++) e[r] = xfF (m + r * 4) * v.pos[0] + xfF (m + r * 4 + 1) * v.pos[1] + xfF (m + r * 4 + 2) * v.pos[2] + xfF (m + r * 4 + 3);
 		float nrm[3] = { 0, 0, 1 };
-		if (v.hasN)
+		if (hasN)
 		{
-			u32 nm = 0x400 + ((u32) v.pm & 31) * 3;
-			for (int r = 0; r < 3; r++) nrm[r] = xfF (nm + r * 3) * v.n[0] + xfF (nm + r * 3 + 1) * v.n[1] + xfF (nm + r * 3 + 2) * v.n[2];
+			u32 nm = 0x400 + ((u32) v.mtx[0] & 31) * 3;
+			for (int r = 0; r < 3; r++) nrm[r] = xfF (nm + r * 3) * v.nrm[0] + xfF (nm + r * 3 + 1) * v.nrm[1] + xfF (nm + r * 3 + 2) * v.nrm[2];
 			float l = __builtin_sqrtf (nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);
 			if (l > 0) { nrm[0] /= l; nrm[1] /= l; nrm[2] /= l; }
 		}
@@ -399,7 +435,7 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 				u32 mc = xfRegs[0x100C + (u32) k], am = xfRegs[0x100A + (u32) k];
 				float mat4[4] = { (mc >> 24) / 255.f, ((mc >> 16) & 255) / 255.f, ((mc >> 8) & 255) / 255.f, (mc & 255) / 255.f };
 				float amb4[4] = { (am >> 24) / 255.f, ((am >> 16) & 255) / 255.f, ((am >> 8) & 255) / 255.f, (am & 255) / 255.f };
-				const float *vcol = v.hasC[k] ? v.c[k] : (v.hasC[0] ? v.c[0] : 0);
+				const float *vcol = hasC[k] ? vcolour[k] : (hasC[0] ? vcolour[0] : 0);
 				float matv[4], ambv[4];
 				for (int c = 0; c < 4; c++) { matv[c] = (ctl & 1) && vcol ? vcol[c] : mat4[c]; ambv[c] = (ctl & 0x40) && vcol ? vcol[c] : amb4[c]; }
 				float res[4];
@@ -458,13 +494,13 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 			u32 tg = xfRegs[0x1040 + (u32) texCoord];
 			int src = (int) (tg >> 7) & 31, type = (int) (tg >> 4) & 7;
 			float in[4] = { 0, 0, 1, 1 };
-			if (src == 0) { in[0] = v.p[0]; in[1] = v.p[1]; in[2] = v.p[2]; }
-			else if (src == 1 && v.hasN) { in[0] = v.n[0]; in[1] = v.n[1]; in[2] = v.n[2]; }
-			else if (src >= 5 && src <= 12) { in[0] = v.t[src - 5][0]; in[1] = v.t[src - 5][1]; in[2] = 1; }
+			if (src == 0) { in[0] = v.pos[0]; in[1] = v.pos[1]; in[2] = v.pos[2]; }
+			else if (src == 1 && hasN) { in[0] = v.nrm[0]; in[1] = v.nrm[1]; in[2] = v.nrm[2]; }
+			else if (src >= 5 && src <= 12) { in[0] = v.tc[src - 5][0]; in[1] = v.tc[src - 5][1]; in[2] = 1; }
 			if (!((tg >> 2) & 1) && src >= 5) in[2] = 1.f;	// AB11
 			if (type == 0)
 			{
-				u32 tm = (u32) v.tm[texCoord] * 4;
+				u32 tm = (u32) v.mtx[1 + texCoord] * 4;
 				bool stq = (tg >> 1) & 1;
 				float r0 = xfF (tm) * in[0] + xfF (tm + 1) * in[1] + xfF (tm + 2) * in[2] + xfF (tm + 3) * in[3];
 				float r1 = xfF (tm + 4) * in[0] + xfF (tm + 5) * in[1] + xfF (tm + 6) * in[2] + xfF (tm + 7) * in[3];
@@ -587,11 +623,15 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 }
 
 // BP 0x52: an EFB copy. To the XFB (bit 14): the frame is finished; bit 11: the EFB is cleared
-// after (the next frame starts with the clear colour, BP 0x4F / 0x50).
+// after (the next frame starts with the clear colour, BP 0x4F / 0x50). A GPU does them all.
 void Machine::gxCopy (u32 v)
 {
 	gxCopies++;
-	if (!(v & 0x4000)) return;					// (a copy to a texture: not done)
+	if (gpu) gxGpuCopy (v);
+	if (!(v & 0x4000)) return;					// (a copy to a texture: the GPU's only)
+	u32 dst = (bpRegs[0x4B] & 0xFFFFFF) << 5;			// (the XFB it goes to: its picture is this frame's)
+	if (dst != xfbCopyAddr[0]) { xfbCopyAddr[1] = xfbCopyAddr[0]; xfbCopyAddr[0] = dst; }
+	if (gpu) { gfxReady = 0; gfxSerial++; return; }		// (the picture: the GPU's)
 	GFrame &F = gfxFrame[gfxBuild];
 	F.width = (int) (bpRegs[0x4A] & 0x3FF) + 1; F.height = (int) ((bpRegs[0x4A] >> 10) & 0x3FF) + 1;
 	if (F.nv == 0 && gfxReady >= 0 && !(v & 0x800)) return;	// (an empty copy)

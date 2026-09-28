@@ -902,13 +902,23 @@ GameCube, **the same cores** as on the Pi — in one program with a library of y
   sticks an axis each (kept in `settings.ini`). **P** pause, **F11** or **Alt+Enter** full screen (**Esc** back), **F12**
   the speed, **Ctrl+R** reset, Ctrl+W close; View ▸ Size 1x–5x, Smooth Picture; Sound ▸ On / Off.
 - **Saves**: `<game>.sav` beside the game — the **same files as on Onyx**, so a save can go
-  from the Pi to the PC and back.
-- **3D** (Nintendo 64, GameCube): drawn by the PC's graphics card with **OpenGL** (2.0 or later),
-  at the window's size; View ▸ **3D Renderer** ▸ Software uses the BASIC 3D's renderer on every core
-  of the processor instead (1–4 × the console's resolution: View ▸ 3D Resolution) — also the
-  fallback when OpenGL is missing. With OpenGL, F12's speed shows in the title bar.
-  The GameCube runs **slowly**: its CPU is interpreted (the JIT is Pi code), and it has no sound
-  yet — as on Onyx.
+  from the Pi to the PC and back. A GameCube disc's `<game>.sav` is its **memory card** (slot A,
+  251 blocks, made and formatted the first time; a card image from Dolphin — a `.raw` of 59 to
+  2043 blocks — can be copied over it).
+- **3D** (Nintendo 64, GameCube): drawn by the PC's graphics card with **OpenGL** (Nintendo 64:
+  2.0 or later, at the window's size); View ▸ **3D Renderer** ▸ Software uses the BASIC 3D's
+  renderer on every core of the processor instead — also the fallback when OpenGL is missing. With OpenGL, F12's speed shows in the title bar.
+  A **GameCube** game (OpenGL 3.3) is drawn by the graphics card the way the console draws: its
+  lighting, its colour combiner (the TEV: the cel shading of The Wind Waker), fog, transparency,
+  the effects made by copying the picture into textures (blur, glow), at **1–4 × the console's
+  resolution** (View ▸ 3D Resolution: 2 × by default). The first time a new effect shows, the
+  picture may pause a moment while the graphics card prepares it (only once: the card keeps it).
+  A laptop with two graphics cards: View ▸ 3D Renderer ▸ **Use the High-Performance Graphics
+  Card** (Windows' own setting for NintendoEMU; it applies the next time NintendoEMU starts).
+- **GameCube**: its CPU is **recompiled** to the PC's own code as it runs (a JIT), so games run at
+  full speed on a recent PC; **sound** for the games on the "Zelda" sound microcode (The Wind
+  Waker…) — the games on Nintendo's usual one (AX) are silent for now; the memory card above.
+  A key pressed briefly moves a menu's cursor by one (the game repeats it when held).
 
 ![NintendoEMU](../screenshots/nintendoemu.png)
 *NintendoEMU's library (test ROMs): a picture per game, taken from the game itself.*

@@ -5,14 +5,17 @@
 //   gctest bench <file.elf> [entry]           a function's speed (bench.c: run_bench, run_fbench)
 //   gctest fuzz [seed] [count] [length]      the JIT against the interpreter: random sequences
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
-// GC_JIT=1: the JIT runs the CPU (an AArch64 host: run_gc_test.sh builds it for qemu-aarch64)
+// GC_JIT=1: the JIT runs the CPU (an AArch64 host -- run_gc_test.sh builds it for qemu-aarch64 --
+// or an x86-64 one)
 #include "gc/gc.h"
 #include "basic/bas3d.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#if defined(__aarch64__)
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__aarch64__) || defined(__x86_64__)
 #include <sys/mman.h>
 #endif
 using namespace gc;
@@ -20,7 +23,9 @@ using namespace gc;
 static bool useJit;
 static void *hostCode (u32 size)
 {
-#if defined(__aarch64__)
+#if defined(_WIN32)
+	return VirtualAlloc (0, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+#elif defined(__aarch64__) || defined(__x86_64__)
 	void *p = mmap (0, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	return p == MAP_FAILED ? 0 : p;
 #else

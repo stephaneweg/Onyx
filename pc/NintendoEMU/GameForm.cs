@@ -10,6 +10,34 @@ using System.Windows.Forms;
 
 namespace NintendoEMU
 {
+	// Windows' graphics card for this program (a laptop with two): its per-application preference
+	// (HKCU\Software\Microsoft\DirectX\UserGpuPreferences, what Settings > Display > Graphics
+	// writes) -- "GpuPreference=2;" the high-performance one; no value: Windows decides
+	static class GpuPreference
+	{
+		const string Key = @"Software\Microsoft\DirectX\UserGpuPreferences";
+		public static bool HighPerformance
+		{
+			get
+			{
+				try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey (Key)) return (k?.GetValue (Application.ExecutablePath) as string)?.Contains ("GpuPreference=2") == true; }
+				catch { return false; }
+			}
+			set
+			{
+				try
+				{
+					using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey (Key))
+					{
+						if (value) k.SetValue (Application.ExecutablePath, "GpuPreference=2;");
+						else k.DeleteValue (Application.ExecutablePath, false);
+					}
+				}
+				catch { }
+			}
+		}
+	}
+
 	// the picture: drawn with StretchDIBits (fast, no copy into a Bitmap)
 	class Screen : Control
 	{
@@ -184,6 +212,18 @@ namespace NintendoEMU
 				miGl = new ToolStripMenuItem ("&OpenGL (the graphics card)", null, (s, e) => SetRenderer (true)) { Checked = wantGl };
 				miSoft = new ToolStripMenuItem ("&Software (the processor)", null, (s, e) => SetRenderer (false)) { Checked = !wantGl };
 				ren.DropDownItems.Add (miGl); ren.DropDownItems.Add (miSoft);
+				// a laptop with two graphics cards: Windows' own choice for this program (Settings >
+				// Display > Graphics), the powerful one when checked -- the next time NintendoEMU starts
+				ren.DropDownItems.Add (new ToolStripSeparator ());
+				var miFast = new ToolStripMenuItem ("Use the &High-Performance Graphics Card") { Checked = GpuPreference.HighPerformance };
+				miFast.Click += (s, e) =>
+				{
+					GpuPreference.HighPerformance = !GpuPreference.HighPerformance;
+					miFast.Checked = GpuPreference.HighPerformance;
+					MessageBox.Show (this, "Windows will give NintendoEMU " + (miFast.Checked ? "the high-performance graphics card" : "its default graphics card") +
+						" the next time it starts.", "NintendoEMU");
+				};
+				ren.DropDownItems.Add (miFast);
 				view.DropDownItems.Add (ren);
 			}
 			miStats = new ToolStripMenuItem ("Show &Speed", null, (s, e) => { stats = !stats; miStats.Checked = stats; if (!stats) screen.Overlay = paused ? "Paused" : null; screen.Invalidate (); }) { ShortcutKeyDisplayString = "F12" };
