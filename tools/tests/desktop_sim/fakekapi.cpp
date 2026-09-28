@@ -27,7 +27,8 @@
 // instead of the card's (sample data: tools/tests/desktop_sim/sd); SIM_PIPE: what a spawned
 // program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
-// the pointer for kapi_cursor_pos; SIM_MENU, SIM_RUNNING, SIM_WALL: below.
+// the pointer for kapi_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
+// the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
 //
 #include <sys/mman.h>
 #include <stdio.h>
@@ -295,7 +296,12 @@ static void step (void)
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "exit")) exit (0);
 }
-static void h_msleep (unsigned ms) { g_ticks += ms / 10 + 1; step (); }
+static void h_msleep (unsigned ms)
+{
+	g_ticks += ms / 10 + 1;
+	if (getenv ("SIM_SLEEP")) usleep (ms * 1000);	// real time (NetSurf's scheduler reads the clock)
+	step ();
+}
 static unsigned h_get_ticks (void) { return g_ticks; }
 static int h_should_exit (void) { return 0; }
 static void yield (void) {}
