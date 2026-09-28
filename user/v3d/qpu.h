@@ -88,6 +88,7 @@ struct Prog
 	int badAt;
 	Prog () : n (0), bad (false), badAt (-1) {}
 	Prog &operator<< (const I &i);
+	void set (int k, const I &i);		// instruction k replaced
 	const u64 *words () const { return w; }
 	int count () const { return n; }
 	bool ok () const { return !bad; }

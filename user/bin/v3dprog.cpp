@@ -7,6 +7,8 @@
 #include "kapi.h"
 #include "applib.h"
 #include "v3d/shaders.h"
+#include "v3d/gxtev.h"
+#include "v3d/gxtev_ref.h"
 
 #define W 64
 #define H 64
@@ -109,6 +111,150 @@ static bool check (const char *name, int r)
 	s_nTests++; s_nFail++;
 	ax_puts ("FAIL  "); ax_puts (name); ax_puts ("  (gpu_render2 returned "); putint (r); ax_putln (")");
 	return false;
+}
+
+
+// ---- the GameCube's TEV (user/v3d/gxtev): generated shaders against the CPU's reference --------------------
+// Each configuration draws 64 quads (8 x 8 pixels), each with its own rasterized colours and texels
+// (constant over the quad: the texel centres), and its quad's centre must be what gxtev_ref.h says.
+static unsigned s_Seed = 12345;
+static unsigned rnd () { s_Seed = s_Seed * 1103515245u + 12345u; return s_Seed >> 8; }
+static int rr (int n) { return (int) (rnd () % (unsigned) n); }
+static gxtev::Shader s_Tev;
+static qpu::Prog s_TevVS;
+static float s_TV[64 * 6 * 40];
+static unsigned s_TU[4096];
+
+static void randomTev (gxtev::Config &c, int nStages, int nLooks)
+{
+	memset (&c, 0, sizeof c);
+	c.nStages = nStages;
+	int looks = 0;
+	for (int st = 0; st < nStages; st++)
+	{
+		c.cenv[st] = rnd () & 0xFFFFFF; c.aenv[st] = rnd () & 0xFFFFFF;
+		unsigned tr = (unsigned) rr (8) | (unsigned) rr (8) << 3;
+		if (looks < nLooks && (nStages - st <= nLooks - looks || rr (2))) { tr |= 64; looks++; }
+		static const int chans[4] = { 0, 1, 7, 0 };
+		tr |= (unsigned) chans[rr (4)] << 7;
+		c.tref[st] = tr;
+		c.ksel[st] = (unsigned) rr (32) | (unsigned) rr (32) << 5;
+	}
+	for (int k = 0; k < 16; k++) c.swap[k] = (unsigned char) (rr (2) ? k & 3 : rr (4));
+	c.alphaFunc[0] = (unsigned char) (rr (3) ? 7 : rr (8)); c.alphaFunc[1] = (unsigned char) (rr (3) ? 7 : rr (8));
+	c.alphaLogic = (unsigned char) rr (4);
+	c.efbFmt = (unsigned char) rr (3);
+	c.dstAlpha = rr (4) == 0;
+	c.projMask = (unsigned char) rr (256);
+}
+
+static void tevTest (const char *name, const gxtev::Config &cf)
+{
+	if (!gxtev::build (cf, s_Tev)) { s_nTests++; s_nFail++; ax_puts ("FAIL  "); ax_puts (name); ax_puts (" (not generated: "); ax_puts (s_Tev.err); ax_putln (")"); return; }
+	int nIn = 4 + s_Tev.nVary;
+	s_TevVS.n = 0; s_TevVS.bad = false; qpu::passVS (s_TevVS, nIn);
+	struct kapi_gpu_program P;
+	P.vs = s_TevVS.words (); P.nvs = (unsigned) s_TevVS.count (); P.cs = s_CS.words (); P.ncs = (unsigned) s_CS.count ();
+	P.fs = s_Tev.prog.words (); P.nfs = (unsigned) s_Tev.prog.count ();
+	P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) s_Tev.nVary; P.flags = s_Tev.flags;
+	int prog = kapi_gpu_program (-1, &P);
+	// the dynamic values, the textures (4 x 4 each lookup)
+	gxtev::Dyn dy;
+	for (int k = 0; k < 16; k++) { dy.regs[k] = rr (2048) - 1024; dy.konst[k] = rr (256); }
+	dy.aref[0] = rr (256); dy.aref[1] = rr (256); dy.dstA = (float) rr (256) / 255.0f;
+	static unsigned Tx[8][16];
+	int th[8];
+	for (int L = 0; L < s_Tev.nLook; L++)
+	{
+		for (int i = 0; i < 16; i++) Tx[L][i] = rnd () | (unsigned) rr (256) << 24;
+		th[L] = kapi_gpu_texture (-1, Tx[L], 4, 4, 4);
+	}
+	// the quads: per quad its colours (bytes / 255) and texels (their centres, x q when projective)
+	struct Q { int c0[4], c1[4], tx[8], ty[8]; float q[8]; } quads[64];
+	unsigned nV = 0;
+	for (int i = 0; i < 64; i++)
+	{
+		Q &qd = quads[i];
+		for (int k = 0; k < 4; k++) { qd.c0[k] = rr (256); qd.c1[k] = rr (256); }
+		for (int L = 0; L < 8; L++) { qd.tx[L] = rr (4); qd.ty[L] = rr (4); qd.q[L] = rr (2) ? 1.0f : 2.0f; }
+		float x0 = -1 + (i & 7) * 0.25f, y1 = 1 - (i >> 3) * 0.25f;
+		float Pp[4][2] = { { x0, y1 - 0.25f }, { x0 + 0.25f, y1 - 0.25f }, { x0 + 0.25f, y1 }, { x0, y1 } };
+		static const int T6[6] = { 0, 1, 2, 0, 2, 3 };
+		for (int k = 0; k < 6; k++)
+		{
+			float *v = s_TV + nV * (unsigned) nIn;
+			v[0] = Pp[T6[k]][0]; v[1] = Pp[T6[k]][1]; v[2] = 0; v[3] = 1;
+			for (int j = 0; j < s_Tev.nVary; j++)
+			{
+				const gxtev::Vary &vy = s_Tev.vary[j];
+				float f;
+				if (vy.kind == gxtev::V_C0) f = (float) qd.c0[vy.a] / 255.0f;
+				else if (vy.kind == gxtev::V_C1) f = (float) qd.c1[vy.a] / 255.0f;
+				else
+				{
+					int L = vy.a; float q = s_Tev.look[L].proj ? qd.q[L] : 1.0f;
+					f = vy.b == 0 ? ((float) qd.tx[L] + 0.5f) / 4.0f * q : vy.b == 1 ? ((float) qd.ty[L] + 0.5f) / 4.0f * q : q;
+				}
+				v[4 + j] = f;
+			}
+			nV++;
+		}
+	}
+	// the uniforms: view (0..3), then the fragment shader's
+	for (int k = 0; k < 4; k++) s_TU[k] = s_View[k];
+	kapi_gpu_batch2 b = batch (prog, 0, nV);
+	b.fsUni = 4; b.fsNUni = (unsigned) s_Tev.nUni;
+	for (int i = 0; i < s_Tev.nUni; i++)
+	{
+		const gxtev::Uni &u = s_Tev.uni[i];
+		unsigned v = 0;
+		switch (u.kind)
+		{
+		case gxtev::U_CONST: v = u.value; break;
+		case gxtev::U_REG: v = (unsigned) dy.regs[u.a * 4 + u.b]; break;
+		case gxtev::U_KONST: v = (unsigned) dy.konst[u.a * 4 + u.b]; break;
+		case gxtev::U_ALPHAREF: v = (unsigned) dy.aref[u.a]; break;
+		case gxtev::U_TEXP0: b.tex[u.a] = th[u.a]; b.texUni[u.a] = i; b.texFlags[u.a] = 0; break;
+		case gxtev::U_DSTALPHA: v = fbits (dy.dstA); break;
+		default: break;
+		}
+		s_TU[4 + i] = v;
+	}
+	kapi_gpu_frame F; F.pixels = s_Px; F.w = W; F.h = H; F.stride = W; F.clear = 0x123456; F.flags = 0;
+	int r = prog < 0 ? prog : kapi_gpu_render2 (&F, s_TV, nV, (unsigned) nIn, &b, 1, s_TU, 4 + (unsigned) s_Tev.nUni);
+	if (prog >= 0) kapi_gpu_program (prog, 0);
+	for (int L = 0; L < s_Tev.nLook; L++) if (th[L] >= 0) kapi_gpu_texture (th[L], 0, 0, 0, 0);
+	if (r != 0) { s_nTests++; s_nFail++; ax_puts ("FAIL  "); ax_puts (name); ax_puts (" (gpu_render2 / gpu_program: "); putint (r); ax_putln (")"); return; }
+	// the quads' centres
+	for (int i = 0; i < 64; i++)
+	{
+		const Q &qd = quads[i];
+		int texel[8][4];
+		for (int L = 0; L < s_Tev.nLook; L++)
+		{
+			unsigned c = Tx[L][qd.ty[L] * 4 + qd.tx[L]];			// 0xAARRGGBB -> R G B A
+			texel[L][0] = (int) (c >> 16 & 255); texel[L][1] = (int) (c >> 8 & 255); texel[L][2] = (int) (c & 255); texel[L][3] = (int) (c >> 24);
+		}
+		int o[4];
+		bool pass = gxtev::reference (cf, dy, qd.c0, qd.c1, texel, o);
+		unsigned want = 0x123456;
+		if (pass)
+		{
+			int fmt = cf.efbFmt <= 2 ? cf.efbFmt : 0, e[3];
+			for (int ch = 0; ch < 3; ch++)
+			{
+				int shr = fmt == 1 ? 2 : fmt == 2 ? (ch == 1 ? 2 : 3) : 0, mx = fmt == 1 ? 63 : fmt == 2 ? (ch == 1 ? 63 : 31) : 255;
+				e[ch] = ((o[ch] >> shr) * 255 * 2 + mx) / (2 * mx);		// (rounded)
+			}
+			want = (unsigned) (e[0] << 16 | e[1] << 8 | e[2]);
+		}
+		int x = (i & 7) * 8 + 4, y = (i >> 3) * 8 + 4;
+		unsigned got = s_Px[y * W + x];
+		if (!near (got, want, 1)) { result (name, false, x, y, got, want); return; }
+	}
+	s_nTests++;
+	ax_puts ("PASS  "); ax_puts (name); ax_puts (" ("); putint (cf.nStages); ax_puts (" stages, "); putint (s_Tev.nLook);
+	ax_puts (" lookups, "); putint (s_Tev.prog.count ()); ax_putln (" instructions)");
 }
 
 int main (void)
@@ -297,6 +443,25 @@ int main (void)
 				p[i].x = (i & 7) * 8 + 4; p[i].y = (i >> 3) * 8 + 4; p[i].c = r << 16 | g << 8 | 128;
 			}
 			expect ("64 batches, their own uniforms", p, 64);
+		}
+	}
+
+	// 13..: the TEV
+	{
+		gxtev::Config cf; memset (&cf, 0, sizeof cf);
+		cf.nStages = 1;
+		cf.cenv[0] = 0xF << 12 | 8 << 8 | 10 << 4 | 0xF | 1u << 19;		// MODULATE: texc x rasc
+		cf.aenv[0] = 7u << 13 | 4u << 10 | 5u << 7 | 7u << 4 | 1u << 19;
+		cf.tref[0] = 64;
+		for (int k = 0; k < 16; k++) cf.swap[k] = (unsigned char) (k & 3);
+		cf.alphaFunc[0] = cf.alphaFunc[1] = 7;
+		tevTest ("TEV modulate", cf);
+		static const int shape[][2] = { { 1, 0 }, { 2, 1 }, { 3, 2 }, { 4, 4 }, { 6, 5 }, { 8, 8 }, { 12, 3 }, { 16, 6 } };
+		for (int k = 0; k < 8; k++)
+		{
+			char nm[32] = "TEV random "; int p = 11; nm[p++] = (char) ('1' + k); nm[p] = 0;
+			randomTev (cf, shape[k][0], shape[k][1]);
+			tevTest (nm, cf);
 		}
 	}
 

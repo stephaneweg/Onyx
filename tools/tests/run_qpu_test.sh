@@ -16,3 +16,5 @@ g++ -std=c++17 -O1 -w -I"$Q" -I"$Q/mesa" "$here/v3d/qpusim_test.cpp" "$Q/qpusim.
 "$T/qpusim"
 g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/shaders_test.cpp" "$root/user/v3d/shaders.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/shaders"
 "$T/shaders"
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/gxtev_test.cpp" "$root/user/v3d/gxtev.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/gxtev"
+"$T/gxtev" ${GXTEV_N:-2000}

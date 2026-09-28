@@ -2,6 +2,7 @@
 // qpusim.cpp -- see qpusim.h.
 //
 #include "qpusim.h"
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 extern "C" {
@@ -372,6 +373,15 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 				}
 				sigWrite (v);
 			}
+			if (in.sig.thrsw && !(ip > 0 && ins[(size_t) ip - 1].sig.thrsw))	// (a switch after its 2 delay slots -- a pair
+			{									// is one switch --: the accumulators lost)
+				for (int r = 0; r < 6; r++)
+				{
+					Pending pd; pd.reg = r; pd.at = ip + 2;
+					for (int l = 0; l < L; l++) { pd.v[l] = 0xDEAD0000u + (uint32_t) (r * 16 + l); pd.mask[l] = true; }
+					s.pend.push_back (pd);
+				}
+			}
 			if (in.sig.ldvpm || in.sig.ldtlb || in.sig.ldtlbu || in.sig.ldunifa || in.sig.ldunifarf) { run.error = "a signal not modelled"; delete S; return false; }
 			// the writes of this instruction, then the delayed ones due now
 			for (int k = 0; k < 70; k++)
@@ -387,6 +397,18 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 				}
 				else k++;
 			}
+			for (const Run::Watch &w : run.watch)
+				if (w.ip == ip)
+					for (size_t l = 0; l < (size_t) L && l < np; l++)
+					{
+						int32_t v = (int32_t) (w.reg < 6 ? s.acc[w.reg][l] : s.rf[w.reg - 6][l]);
+						if (v < w.lo || v > w.hi)
+						{
+							char b[160]; snprintf (b, sizeof b, "the value range: after instruction %d, %s%d = %d, not in %lld..%lld",
+									      ip, w.reg < 6 ? "r" : "rf", w.reg < 6 ? w.reg : w.reg - 6, v, w.lo, w.hi);
+							run.error = b; delete S; return false;
+						}
+					}
 			if (in.alu.mul.magic_write && in.alu.mul.waddr == V3D_QPU_WADDR_TMUS) { s.ncfg = 0; s.haveT = false; }
 			if (in.alu.add.magic_write && in.alu.add.waddr == V3D_QPU_WADDR_TMUS && haveAdd) { s.ncfg = 0; s.haveT = false; }
 		}

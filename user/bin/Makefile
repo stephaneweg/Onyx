@@ -105,7 +105,7 @@ $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 CXXFLAGS_FP = $(CFLAGS_FP) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h
+$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
 	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../v3d/libv3d.a -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup

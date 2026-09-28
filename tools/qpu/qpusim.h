@@ -11,7 +11,8 @@
 // (recip, rsqrt, exp, log, sin -> r4 three instructions later), the TMU (a 2D RGBA8 texture:
 // nearest or bilinear, repeat / clamp / mirror; the result as f16 pairs RG, BA), the TLB colour
 // writes (f16 pairs -> RGBA8) and the multisample flags (setmsf: a pixel not written).
-// Not modelled: timing, threads, the flag updates (andz ...), branches, VPM, general TMU access.
+// The accumulators are garbage after a thread switch (as on the hardware). Not modelled: timing,
+// threads, the flag updates (andz ...), branches, VPM, general TMU access.
 //
 #ifndef QPUSIM_H
 #define QPUSIM_H
@@ -44,6 +45,8 @@ struct Run
 	std::vector<uint32_t> uniforms;
 	std::map<uint32_t, Texture> textures;	// by the value of the uniform p0 & ~15 (the texture state's address)
 	std::string error;			// set when the program does something not modelled
+	struct Watch { int ip, reg; long long lo, hi; };	// (tests: after instruction ip, register reg -- 0..5 r0..r5,
+	std::vector<Watch> watch;			//  6 + n rf n -- must be in lo..hi as a signed integer, else an error)
 	long instructions;
 };
 

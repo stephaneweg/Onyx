@@ -98,4 +98,12 @@ Prog &Prog::operator<< (const I &i)
 	return *this;
 }
 
+void Prog::set (int k, const I &i)
+{
+	if (k < 0 || k >= n) return;
+	uint64_t word = 0;
+	if (!i.ok || !v3d_qpu_instr_pack (&s_dev, &i.in, &word)) { if (!bad) badAt = k; bad = true; }
+	w[k] = word;
+}
+
 } // namespace qpu
