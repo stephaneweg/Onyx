@@ -13,7 +13,11 @@
 //     screen (Esc back), F12: the speed, P: pause.
 //   * The CPU: the JIT (user/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
 //     from kapi v58 code_alloc); Game > Interpreter (or --interp) runs the interpreter instead.
-//   * Not yet: the sound, the memory cards.
+//   * The sound: the machine's audio (the AI's DMA, the Zelda microcode's music) resampled to
+//     SOUND_RATE, pushed by the app core into emucore's ring, written to the kapi sound queue
+//     here; with it, the sound paces the game (Sound > Sound On / Off).
+//   * The memory card (slot A): <game>.sav beside the disc image (2 MB, Dolphin's .raw; the same
+//     file as NintendoEMU's), written back a few seconds after the game saved, and on exit.
 //
 #include "kapi.h"
 #include "launch.h"
@@ -47,6 +51,12 @@ static bool g_onCore = false;					// the machine runs on an app core
 static gc::Jit *g_jit = 0;					// the JIT (0: none: an older kernel)
 static volatile int g_wantJit = 1;				// the menu's choice, applied between fields
 static void *code_alloc (unsigned n) { return kapi_code_alloc (n); }
+static bool g_sound = true;
+static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
+static volatile bool g_audioOn = false;				// the machine's sound is kept
+static volatile unsigned g_audioMade = 0;			// frames of sound the machine made
+static char g_sav_path[260];
+static unsigned char *g_card = 0; static unsigned g_cardSize = 0;
 
 static inline unsigned long long now_us (void)
 {
@@ -232,7 +242,8 @@ static void on_full () { full_screen (!g_fs); }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
 static void on_interp () { g_wantJit = !g_wantJit; }
-static void on_quit () { kapi_exit (0); }
+static void card_save (void);
+static void on_quit () { ec_hold (&g_ec); card_save (); kapi_exit (0); }	// (the card written first)
 
 bool EmuRoot::onKey (long k)
 {
@@ -304,6 +315,32 @@ static void gc_frame (EmuCore *ec)
 	int n = g_m->fbW * g_m->fbH;
 	for (int i = 0; i < n; i++) d[i] = g_m->fb[i];
 	ec_publish (ec);
+	static short pcm[4096 * 2];
+	int k;
+	while ((k = g_m->audioRead (pcm, 4096)) > 0) { g_audioMade += (unsigned) k; if (g_audioOn) ec_audio_push (ec, pcm, k); }
+}
+
+// ---- the memory card: <game>.sav --------------------------------------------------------------------------------
+static void card_load (void)
+{
+	g_cardSize = gc::Machine::CARD_SIZE;
+	void *f = kapi_open (g_sav_path);
+	unsigned n = f ? kapi_fsize (f) : 0;
+	if (f && n >= 512 * 1024 && n <= 16 * 1024 * 1024 && (n & (n - 1)) == 0) g_cardSize = n;	// (a Dolphin .raw of another size)
+	g_card = new unsigned char[g_cardSize];
+	for (unsigned i = 0; i < g_cardSize; i++) g_card[i] = 0xFF;			// (blank: the game formats it)
+	if (f) { if (n == g_cardSize) kapi_read (f, g_card, g_cardSize); kapi_close (f); }
+	g_m->cardInsert (0, g_card, g_cardSize);
+}
+static void card_save (void)
+{
+	if (!g_card || !g_m->card[0].dirty) return;
+	if (kapi_save_file (g_sav_path, g_card, g_cardSize) >= 0) g_m->card[0].dirty = false;
+}
+static void on_sound ()
+{
+	g_sound = !g_sound;
+	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
 }
 
 int main (void)
@@ -336,6 +373,15 @@ int main (void)
 	root.invalidate (true); root.draw (); kapi_present ();
 
 	g_m = new gc::Machine;
+	g_m->setAudioRate (SOUND_RATE);
+	scpy (g_sav_path, g_path, sizeof g_sav_path);
+	{
+		int e = slen (g_sav_path), d = e;
+		while (d > 0 && g_sav_path[d - 1] != '.' && g_sav_path[d - 1] != '/') d--;
+		if (d > 0 && g_sav_path[d - 1] == '.') e = d - 1;
+		scpy (g_sav_path + e, ".sav", sizeof g_sav_path - e);
+	}
+	card_load ();
 	bool ok = false;
 	void *f = kapi_open (g_path);
 	if (!f) { g_loading = false; wk_messagebox ("GameCube", "Cannot open the file.", MB_OK); return 1; }
@@ -375,6 +421,8 @@ int main (void)
 	if (g_jit) menu.item ("Interpreter (no JIT)", "", 0, on_interp);
 	menu.separator ();
 	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.menu ("Sound");
+	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Size 640 x 480", "",  0, on_zoom1);
@@ -388,7 +436,9 @@ int main (void)
 	g_onCore = ec_on_core (&g_ec);
 	g_loading = false;
 
-	unsigned t0 = kapi_get_ticks (), asked = 0;
+	unsigned t0 = kapi_get_ticks (), asked = 0, lastSave = kapi_get_ticks ();
+	unsigned freeFrames = 0, rate = SOUND_RATE, owner = 0, stQueued = 0;
+	static short pcm[4096 * 2];
 	unsigned long long stT = now_us (), drawUs = 0, stEmuUs = 0; unsigned stDone = 0, stShown = 0;
 	while (!should_exit ())
 	{
@@ -398,10 +448,33 @@ int main (void)
 		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
 		// may read its frame and textures; drawn while it runs, they may change under the kernel)
 		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
-		unsigned fps = fps100 ();
-		unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * fps / 10000);
-		if (due - asked > 4 && due > asked) asked = due - 1;
-		if (asked < due && ec_pending (&g_ec) == 0) { ec_request (&g_ec, 1); asked++; }
+		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		// with sound the game's audio paces it (kept ~60 ms ahead), else -- no sound of ours, or
+		// the game makes none yet -- the clock
+		bool audio = g_sound && g_audio == 1;
+		unsigned queued = 0;
+		if (audio)
+		{
+			kapi_sound_status (&rate, &freeFrames, &owner);
+			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
+			queued = cap - freeFrames;
+			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
+			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			stQueued = queued;
+		}
+		if (audio && g_audioMade > 0)
+		{
+			if (queued + ec_audio_count (&g_ec) < 2600 && ec_pending (&g_ec) == 0) ec_request (&g_ec, 1);
+			t0 = kapi_get_ticks (); asked = 0;
+		}
+		else
+		{
+			unsigned fps = fps100 ();
+			unsigned due = (unsigned) ((unsigned long long) (kapi_get_ticks () - t0) * fps / 10000);
+			if (due - asked > 4 && due > asked) asked = due - 1;
+			if (asked < due && ec_pending (&g_ec) == 0) { ec_request (&g_ec, 1); asked++; }
+		}
+		if (kapi_get_ticks () - lastSave > 300 && ec_pending (&g_ec) == 0) { card_save (); lastSave = kapi_get_ticks (); }	// (3 s)
 		ec_pump (&g_ec);
 		serve_reads ();
 		if (ec_pending (&g_ec) == 0 && ec_take (&g_ec))
@@ -425,12 +498,14 @@ int main (void)
 			fmt_num (g_statText, &k, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &k, " ms");
 			cat (g_statText, &k, g_gfxAge < 30 ? "  GPU" : "  framebuffer");
 			cat (g_statText, &k, g_m->jit ? "  JIT" : "  interpreter");
+			if (g_sound && g_audio == 1 && g_audioMade) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); }
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			g_m->status (g_statState, sizeof g_statState);	// (read while it may run: a diagnostic)
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
 		}
 	}
 	ec_shutdown (&g_ec);
+	card_save ();
 	if (g_fs) kapi_fullscreen_end ();
 	if (g_disc) kapi_close (g_disc);
 	return 0;
