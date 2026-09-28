@@ -30,8 +30,10 @@ void Machine::gxInit ()
 	gfxBuild = 0; gfxReady = -1; gfxSerial = 0; texClock = 0; gxClearNext = 0;
 	xfbCopyAddr[0] = xfbCopyAddr[1] = 0xFFFFFFFFu;
 	texFlush ();
+	u32 serial = gxs.serial;				// (the serials go on: what was made of the old ones must not match)
 	zero (&gxs, sizeof gxs); for (int i = 0; i < 8; i++) gxs.tex[i] = -1;
-	gxsDirty = true; xfSerial = 0;
+	gxs.serial = serial + 1;
+	gxsDirty = true; xfSerial++;
 	zero (efbCopies, sizeof efbCopies);
 	if (!tmem) tmem = new u8[0x100000];
 	zero (tmem, 0x100000);

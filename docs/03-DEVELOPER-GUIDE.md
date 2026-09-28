@@ -344,7 +344,18 @@ Notes / caveats:
 > for bit over a whole run). The recorder's vertex loop and `gxPrimitive`'s decoder work from
 > plans made once a draw (the matrices of the last index, the lit channels' lights, the texgens,
 > the varyings; the attributes present with their formats and arrays, a vertex template) with
-> the same arithmetic as before. A triangle whose three vertices are before the near plane or
+> the same arithmetic as before. The recorder's plan (`Rec::Plan`) is **kept from a draw to the
+> next**: `planState` (the TEV's configuration and program, the textures, the batch and its
+> uniforms, the vertex stage's plan) is made again only when `GxState::serial` changed,
+> `planXf` (the lights, the texgens' post-transform matrices) when `Machine::xfSerial` did (every
+> XF memory write, the indexed loads too), and the matrices of the vertices' indices stay while
+> the XF memory is the same; a draw of the same plan right after its last one goes on in that
+> batch. The Wind Waker's draws are 4.6 vertices on average, ~90 % of them with the last one's
+> state and XF memory: its recorder 15.7 -> 8.2 ms a field on the Pi (the GX core 92 -> 61 %
+> busy). A colour's varying (`/ 255`) comes from a table (the colours are integers 0..255) and a
+> texture coordinate's `/ size` is a product when the size is a power of two (both exact: the
+> recordings bit for bit the same, `GCV3D_VHASH` over 2400 fields). The GX's reset keeps its
+> state's serial and `xfSerial` going (a plan made before must not match). A triangle whose three vertices are before the near plane or
 > behind the eye (the kernel's first two clipping planes, `V3DClipDistN`: the kernel would drop
 > it) is not recorded — ~10 % of The Wind Waker's, copied for nothing by the recorder,
 > `Out::prepare` and the kernel before (the pictures the same: gcv3d; F12's fourth line counts

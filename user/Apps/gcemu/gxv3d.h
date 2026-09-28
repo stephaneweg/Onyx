@@ -129,6 +129,8 @@ public:
 	{
 		arena = new unsigned long long[ARENA_WORDS]; uniArena = new gxtev::Uni[ARENA_UNI];
 		tmp = new float[0x10000 * 68]; oc = new u8[0x10000];
+		for (int i = 0; i < 256; i++) inv255[i] = (float) i / 255.0f;
+		pl.valid = false;
 		for (int i = 0; i < 2; i++)
 		{
 			frame[i].v = new float[MAX_FLOATS]; frame[i].b = new Batch[MAX_BATCHES]; frame[i].u = new u32[MAX_UNIS];
@@ -300,10 +302,49 @@ public:
 		record (m, s, vx, nv, idx, ni, prim);
 		drawTicks = drawTicks + (clockTicks () - t0);
 	}
-	void record (gc::Machine &m, const gc::GxState &s, const gc::GxVertex *vx, int nv, const u32 *idx, int ni, int prim)
+	// ---- a draw's plan: what record () makes of the GX state (its serial) and of the XF memory (the
+	// matrices, the lights: xfSerial) -- the last draw's for ~90 % of The Wind Waker's (4.6 vertices
+	// each): made again only when one of them changed (a machine reset: both go on); the matrices of
+	// the vertices' indices kept across the draws while the XF memory is the same. The same
+	// arithmetic as before: the recordings bit for bit the same (GCV3D_VHASH).
+	struct TgPlan { u32 info, pr; int srcSel, type, sr; bool three, norm; float post[12]; };
+	struct VyPlan { int kind, a, coord; float scale, ts, inv; };	// (kind 0 / 1: a colour; 2: a coordinate's q; 3: s / t -- inv = 1 / ts: a power of two)
+	enum { PLAN_UNIS = 512 };
+	struct Plan
 	{
-		if (prim != gc::GX_TRIANGLES || ni < 3) { skip (SK_PRIM, s, nv, prim, false); return; }	// (lines, points: not yet)
-		Frame &F = frame[build];
+		bool valid; u32 serial, xfSerial;
+		int why, whyArg; bool whyCount, unsup;		// (the state's draws left out: SK_*, -1 none)
+		int pi; Batch b; u32 u[PLAN_UNIS];		// (the batch but its vertices; its uniforms, when they fit)
+		float ax, bx, ay, by, az, bz, m0[4], m1[4], a0[4], a1[4], P0, P1, P2, P3, P4, P5, VP0, VP1;
+		bool hasN, h0, h1, proj, lit0, lit1, lit0c, lit1c, lit0L, lit0aL, lit1L, lit1aL, a0Own, a1Own, needN, dual;
+		int tMax, c0End, c1End, lmask, vtx1, nVary;
+		ChanPlan cp0, cp0a, cp1, cp1a;
+		TgPlan tp[8]; VyPlan vp[64];
+		float Mp[12], Mn[9], Mt[8][12]; u32 lastPm, lastTm[8];	// (the matrices of the last indices: the XF memory's)
+		u32 lastSerial, lastNb;				// (the batch it made last: its frame (serial), its index)
+	};
+	Plan pl;
+	float inv255[256];				// (i / 255.0f: a colour's varying -- the colours are integers 0..255)
+	static u32 uniValue (const gc::GxState &s, const gxtev::Uni &u)
+	{
+		u32 v = 0;
+		switch (u.kind)
+		{
+		case gxtev::U_CONST: v = u.value; break;
+		case gxtev::U_REG: v = (u32) s.regs[u.a * 4 + u.b]; break;
+		case gxtev::U_KONST: v = (u32) s.konst[u.a * 4 + u.b]; break;
+		case gxtev::U_ALPHAREF: v = (u32) s.alpha[2 + u.a]; break;
+		case gxtev::U_DSTALPHA: { float a = (float) (s.zenv[3] & 255) / 255.0f; __builtin_memcpy (&v, &a, 4); } break;
+		default: break;						// (the TMU words: the kernel's)
+		}
+		return v;
+	}
+	// the state's part (its serial): the TEV's configuration and program, the textures, the batch and
+	// its uniforms, the vertex stage's plan; pl.why: the draws left out
+	void planState (gc::Machine &m, const gc::GxState &s)
+	{
+		(void) m;
+		pl.valid = true; pl.serial = s.serial; pl.why = -1; pl.whyArg = 0; pl.whyCount = true; pl.lastNb = ~0u;
 		// the TEV's configuration
 		gxtev::Config c; __builtin_memset (&c, 0, sizeof c);
 		c.nStages = s.gen[0] < 1 ? 1 : s.gen[0] > 16 ? 16 : s.gen[0];
@@ -336,17 +377,18 @@ public:
 		bool unsup = false;
 		for (int st = 0; st < c.nStages; st++) if (s.ind[st]) unsup = true;
 		if (s.fogI[0] || s.zenv[0]) unsup = true;
-		if (unsup) unsupported++;
+		pl.unsup = unsup;
 		int pi = findProg (c);
-		if (pi < 0) { skip (SK_PROG, s, nv, 0); return; }
+		if (pi < 0) { pl.why = SK_PROG; return; }
+		pl.pi = pi;
 		const Prog &P = prog[pi];
 		// its textures
-		Batch b;
+		Batch &b = pl.b;
 		for (int k = 0; k < 8; k++) { b.texSlot[k] = -1; b.texFlags[k] = 0; }
 		for (int L = 0; L < P.nLook; L++)
 		{
 			int mp = P.look[L].map, t = s.tex[mp];
-			if (t < 0 || t >= gc::GX_TEX_COPY) { skip (t < 0 ? SK_NOTEX : SK_COPYTEX, s, nv, mp); return; }	// (an EFB copy: not yet)
+			if (t < 0 || t >= gc::GX_TEX_COPY) { pl.why = t < 0 ? SK_NOTEX : SK_COPYTEX; pl.whyArg = mp; return; }	// (an EFB copy: not yet)
 			b.texSlot[L] = t;
 			u32 tm0 = s.texMode[mp][0];
 			static const u32 WRAP[4] = { 1, 0, 2, 0 };			// GX clamp, repeat, mirror -> ours
@@ -361,51 +403,34 @@ public:
 		else
 		{
 			u32 zf = (zm >> 1) & 7;
-			if (zf == 0) { skip (SK_ZNEVER, s, nv, 0, false); return; }	// (never)
+			if (zf == 0) { pl.why = SK_ZNEVER; pl.whyCount = false; return; }	// (never)
 			flags |= KAPI_GPU_B_ZFUNC (zf);
 			if (!(zm & 0x10)) flags |= KAPI_GPU_B_NOZWRITE;
 		}
 		// (GX's front: clockwise on the screen; the kernel's: counter-clockwise)
 		if (s.cull == 1) flags |= KAPI_GPU_B_CULL_FRONT;		// (GX: the back culled)
 		else if (s.cull == 2) flags |= KAPI_GPU_B_CULL_BACK;
-		else if (s.cull == 3) { skip (SK_CULLALL, s, nv, 0, false); return; }
+		else if (s.cull == 3) { pl.why = SK_CULLALL; pl.whyCount = false; return; }
 		b.flags = flags; b.blend = blend;
 		b.wmask = ((cm >> 3) & 1 ? 0 : 7) | (hasAlpha && ((cm >> 4) & 1) ? 0 : 8);
-		if (b.wmask == 15 && !(zm & 0x10)) { skip (SK_NOWRITE, s, nv, 0, false); return; }	// (nothing written)
+		if (b.wmask == 15 && !(zm & 0x10)) { pl.why = SK_NOWRITE; pl.whyCount = false; return; }	// (nothing written)
 		for (int k = 0; k < 4; k++) b.scissor[k] = (float) s.scissor[k];
 		// its uniforms
-		if (F.nu + P.nUni > MAX_UNIS || F.nb >= MAX_BATCHES) { skip (SK_LIMIT, s, nv, 0); return; }
-		b.uni = F.nu;
-		for (u32 i = 0; i < P.nUni; i++)
-		{
-			const gxtev::Uni &u = uniArena[P.uni + i];
-			u32 v = 0;
-			switch (u.kind)
-			{
-			case gxtev::U_CONST: v = u.value; break;
-			case gxtev::U_REG: v = (u32) s.regs[u.a * 4 + u.b]; break;
-			case gxtev::U_KONST: v = (u32) s.konst[u.a * 4 + u.b]; break;
-			case gxtev::U_ALPHAREF: v = (u32) s.alpha[2 + u.a]; break;
-			case gxtev::U_DSTALPHA: { float a = (float) (s.zenv[3] & 255) / 255.0f; __builtin_memcpy (&v, &a, 4); } break;
-			default: break;						// (the TMU words: the kernel's)
-			}
-			F.u[F.nu++] = v;
-		}
-		// the vertices
-		int stride = b.stride;
-		if (nv > 0x10000) nv = 0x10000;
+		for (u32 i = 0; i < P.nUni && i < PLAN_UNIS; i++) pl.u[i] = uniValue (s, uniArena[P.uni + i]);
+		// the vertex stage
 		const float *vpf = s.viewport;
 		float vx0 = vpf[0], vy0 = vpf[1], vw = vpf[2], vh = vpf[3], d0 = vpf[4], d1 = vpf[5];
-		float ax = (2 * vx0 - 2 * cx) / cw - 1, bx = vw / cw;		// x' = ax W + bx (X + W)
-		float ay = 1 - (2 * vy0 - 2 * cy) / ch, by = vh / ch;		// y' = ay W - by (Y + W)
-		float az = 2 * d0 - 1, bz = d1 - d0;				// z' = az W + bz (Z + W)
-		bool hasN = (s.vtx[0] & gc::GX_VCD_NRM) != 0, h0 = (s.vtx[0] & gc::GX_VCD_C0) != 0, h1 = (s.vtx[0] & gc::GX_VCD_C1) != 0;
-		float m0[4], m1[4], a0[4], a1[4];
-		rgba (s.matAmb[0], m0); rgba (s.matAmb[1], m1); rgba (s.matAmb[2], a0); rgba (s.matAmb[3], a1);
-		bool proj = s.proj[6] != 0;
+		pl.ax = (2 * vx0 - 2 * cx) / cw - 1; pl.bx = vw / cw;		// x' = ax W + bx (X + W)
+		pl.ay = 1 - (2 * vy0 - 2 * cy) / ch; pl.by = vh / ch;		// y' = ay W - by (Y + W)
+		pl.az = 2 * d0 - 1; pl.bz = d1 - d0;				// z' = az W + bz (Z + W)
+		bool hasN = (s.vtx[0] & gc::GX_VCD_NRM) != 0, h1 = (s.vtx[0] & gc::GX_VCD_C1) != 0;
+		pl.hasN = hasN; pl.h0 = (s.vtx[0] & gc::GX_VCD_C0) != 0; pl.h1 = h1;
+		rgba (s.matAmb[0], pl.m0); rgba (s.matAmb[1], pl.m1); rgba (s.matAmb[2], pl.a0); rgba (s.matAmb[3], pl.a1);
+		pl.proj = s.proj[6] != 0;
 		int tMax = -1;							// (the texgens up to the last one a lookup reads:
 		for (int L = 0; L < P.nLook; L++) if (P.look[L].coord > tMax) tMax = P.look[L].coord;	// an emboss one's source is earlier)
 		if (tMax >= s.vtx[2]) tMax = s.vtx[2] - 1;
+		pl.tMax = tMax;
 		// the colour channels the program reads (its varyings, a texgen from a colour), lit only
 		// then: COLOR0 / 1's RGB, ALPHA0 / 1 (from COLOR's lighting when its control is the same);
 		// the normal only for a lit channel
@@ -426,41 +451,30 @@ public:
 		bool same0 = s.chan[2] == s.chan[0], same1 = s.chan[3] == s.chan[1];
 		int c0End = u0 ? (u0a && same0 ? 4 : 3) : 0, c1End = u1 ? (u1a && same1 ? 4 : 3) : 0;
 		bool a0Own = lit0 && u0a && !(u0 && same0), a1Own = lit1 && u1a && !(u1 && same1);
-		int lmask = (lit0 && u0 ? lightMask (s.chan[0]) : 0) | (a0Own ? lightMask (s.chan[2]) : 0)
-			  | (lit1 && u1 ? lightMask (s.chan[1]) : 0) | (a1Own ? lightMask (s.chan[3]) : 0);
-		readLights (m, lmask);
-		bool needN = hasN && lmask != 0;
-		// (the draw's constants in locals: the loop's stores to tmp do not make them read again)
-		const bool lit0c = lit0 && c0End, lit1c = lit1 && c1End;
-		ChanPlan cp0, cp0a, cp1, cp1a;
-		if (lit0c) chanPlan (cp0, s.chan[0]);
-		if (lit0 && a0Own) chanPlan (cp0a, s.chan[2]);
-		if (lit1c) chanPlan (cp1, s.chan[1]);
-		if (lit1 && a1Own) chanPlan (cp1a, s.chan[3]);
-		const bool lit0L = lit0c && (s.chan[0] & 2), lit0aL = lit0 && a0Own && (s.chan[2] & 2);
-		const bool lit1L = lit1c && (s.chan[1] & 2), lit1aL = lit1 && a1Own && (s.chan[3] & 2);
-		const float P0 = s.proj[0], P1 = s.proj[1], P2 = s.proj[2], P3 = s.proj[3], P4 = s.proj[4], P5 = s.proj[5];
-		const float VP0 = s.vp[0], VP1 = s.vp[1];
-		const int vtx1 = s.vtx[1]; const bool dual = s.vtx[3] != 0;
-		// the texgens' plans (their post-transform matrices read once) and the varyings'
-		struct TgPlan { u32 info; int srcSel, type, sr; bool three, norm; float post[12]; };
-		TgPlan tp[8];
+		pl.lmask = (lit0 && u0 ? lightMask (s.chan[0]) : 0) | (a0Own ? lightMask (s.chan[2]) : 0)
+			 | (lit1 && u1 ? lightMask (s.chan[1]) : 0) | (a1Own ? lightMask (s.chan[3]) : 0);
+		pl.needN = hasN && pl.lmask != 0;
+		pl.lit0 = lit0; pl.lit1 = lit1; pl.c0End = c0End; pl.c1End = c1End; pl.a0Own = a0Own; pl.a1Own = a1Own;
+		pl.lit0c = lit0 && c0End; pl.lit1c = lit1 && c1End;
+		pl.lit0L = pl.lit0c && (s.chan[0] & 2); pl.lit0aL = lit0 && a0Own && (s.chan[2] & 2);
+		pl.lit1L = pl.lit1c && (s.chan[1] & 2); pl.lit1aL = lit1 && a1Own && (s.chan[3] & 2);
+		pl.P0 = s.proj[0]; pl.P1 = s.proj[1]; pl.P2 = s.proj[2]; pl.P3 = s.proj[3]; pl.P4 = s.proj[4]; pl.P5 = s.proj[5];
+		pl.VP0 = s.vp[0]; pl.VP1 = s.vp[1];
+		pl.vtx1 = s.vtx[1]; pl.dual = s.vtx[3] != 0;
+		// the texgens' plans (their post-transform matrices: planXf) and the varyings'
 		for (int t = 0; t <= tMax; t++)
 		{
-			TgPlan &q = tp[t];
+			TgPlan &q = pl.tp[t];
 			q.info = (u32) s.texgen[t][0]; q.srcSel = (int) (q.info >> 7) & 31; q.type = (int) (q.info >> 4) & 7;
 			q.sr = (int) (q.info >> 12) & 7; q.three = (q.info & 2) != 0;
-			u32 pinfo = (u32) s.texgen[t][1], pr = pinfo & 63;
-			q.norm = (pinfo & 256) != 0;
-			for (int k = 0; k < 3; k++) for (int c = 0; c < 4; c++) q.post[k * 4 + c] = f (m, 0x500 + ((pr + (u32) k) & 63) * 4 + (u32) c);
+			u32 pinfo = (u32) s.texgen[t][1];
+			q.pr = pinfo & 63; q.norm = (pinfo & 256) != 0;
 		}
-		struct VyPlan { int kind, a, coord; float scale, ts; };		// (kind 0 / 1: a colour; 2: a coordinate's q; 3: s / t)
-		VyPlan vp[64];
-		const int nVary = P.nVary;
-		for (int k = 0; k < nVary; k++)
+		pl.nVary = P.nVary;
+		for (int k = 0; k < P.nVary; k++)
 		{
 			const gxtev::Vary &vy = P.vary[k];
-			VyPlan &q = vp[k];
+			VyPlan &q = pl.vp[k];
 			if (vy.kind == gxtev::V_C0) { q.kind = 0; q.a = vy.a; }
 			else if (vy.kind == gxtev::V_C1) { q.kind = 1; q.a = vy.a; }
 			else
@@ -468,12 +482,80 @@ public:
 				const gxtev::Lookup &lk = P.look[vy.a];
 				q.coord = lk.coord; q.a = vy.b;
 				if (vy.b == 2) q.kind = 2;
-				else { q.kind = 3; q.ts = s.texSize[lk.map][vy.b]; q.scale = s.tcScale[lk.coord][vy.b]; }
+				else
+				{
+					q.kind = 3; q.ts = s.texSize[lk.map][vy.b]; q.scale = s.tcScale[lk.coord][vy.b];
+					u32 bits; __builtin_memcpy (&bits, &q.ts, 4);			// (a power of two -- no mantissa, normal:
+					q.inv = q.ts > 0 && !(bits & 0x7FFFFF) && (bits >> 23) ? 1.0f / q.ts : 0;	// * 1 / ts is / ts)
+				}
 			}
 		}
-		float Mp[12], Mn[9]; u32 lastPm = ~0u;				// (the position / normal matrices of the last index)
+	}
+	// the XF memory's part: the lit channels' lights, the texgens' post-transform matrices; the
+	// matrices of the indices forgotten
+	void planXf (gc::Machine &m, const gc::GxState &s)
+	{
+		pl.xfSerial = m.xfSerial;
+		readLights (m, pl.lmask);
+		if (pl.lit0c) chanPlan (pl.cp0, s.chan[0]);
+		if (pl.lit0 && pl.a0Own) chanPlan (pl.cp0a, s.chan[2]);
+		if (pl.lit1c) chanPlan (pl.cp1, s.chan[1]);
+		if (pl.lit1 && pl.a1Own) chanPlan (pl.cp1a, s.chan[3]);
+		for (int t = 0; t <= pl.tMax; t++)
+		{
+			TgPlan &q = pl.tp[t];
+			for (int k = 0; k < 3; k++) for (int c = 0; c < 4; c++) q.post[k * 4 + c] = f (m, 0x500 + ((q.pr + (u32) k) & 63) * 4 + (u32) c);
+		}
+		pl.lastPm = ~0u;
+		for (int t = 0; t < 8; t++) pl.lastTm[t] = ~0u;
+	}
+
+	void record (gc::Machine &m, const gc::GxState &s, const gc::GxVertex *vx, int nv, const u32 *idx, int ni, int prim)
+	{
+		if (prim != gc::GX_TRIANGLES || ni < 3) { skip (SK_PRIM, s, nv, prim, false); return; }	// (lines, points: not yet)
+		Frame &F = frame[build];
+		bool fresh = !pl.valid || pl.serial != s.serial;
+		if (fresh) planState (m, s);
+		if (pl.unsup) unsupported++;
+		if (pl.why >= 0) { skip (pl.why, s, nv, pl.whyArg, pl.whyCount); return; }
+		if (fresh || pl.xfSerial != m.xfSerial) planXf (m, s);
+		const Prog &P = prog[pl.pi];
+		// its batch: the last one again when this plan made it right before (its vertices then follow
+		// on), else a new one -- merged below with the last when they match, as before
+		if (F.nu + P.nUni > MAX_UNIS || F.nb >= MAX_BATCHES) { skip (SK_LIMIT, s, nv, 0); return; }
+		bool again = !fresh && pl.lastSerial == serial && F.nb && pl.lastNb == F.nb - 1
+			  && F.b[F.nb - 1].off + F.b[F.nb - 1].count * (u32) F.b[F.nb - 1].stride == F.nf;
+		Batch b = pl.b;
+		b.uni = F.nu;
+		if (!again)
+		{
+			if (P.nUni <= PLAN_UNIS) for (u32 i = 0; i < P.nUni; i++) F.u[F.nu++] = pl.u[i];
+			else for (u32 i = 0; i < P.nUni; i++) F.u[F.nu++] = uniValue (s, uniArena[P.uni + i]);
+		}
+		// the vertices (the plan's constants in locals: the loop's stores to tmp do not make them read again)
+		int stride = b.stride;
+		if (nv > 0x10000) nv = 0x10000;
+		const float ax = pl.ax, bx = pl.bx, ay = pl.ay, by = pl.by, az = pl.az, bz = pl.bz;
+		const bool hasN = pl.hasN, h0 = pl.h0, h1 = pl.h1, proj = pl.proj;
+		float m0[4], m1[4], a0[4], a1[4];
+		for (int k = 0; k < 4; k++) { m0[k] = pl.m0[k]; m1[k] = pl.m1[k]; a0[k] = pl.a0[k]; a1[k] = pl.a1[k]; }
+		const int tMax = pl.tMax, c0End = pl.c0End, c1End = pl.c1End;
+		const bool lit0 = pl.lit0, lit1 = pl.lit1, a0Own = pl.a0Own, a1Own = pl.a1Own, needN = pl.needN;
+		const bool lit0c = pl.lit0c, lit1c = pl.lit1c, lit0L = pl.lit0L, lit0aL = pl.lit0aL, lit1L = pl.lit1L, lit1aL = pl.lit1aL;
+		const ChanPlan &cp0 = pl.cp0, &cp0a = pl.cp0a, &cp1 = pl.cp1, &cp1a = pl.cp1a;
+		const float P0 = pl.P0, P1 = pl.P1, P2 = pl.P2, P3 = pl.P3, P4 = pl.P4, P5 = pl.P5;
+		const float VP0 = pl.VP0, VP1 = pl.VP1;
+		const int vtx1 = pl.vtx1; const bool dual = pl.dual;
+		const TgPlan *tp = pl.tp; const VyPlan *vp = pl.vp;
+		const int nVary = pl.nVary;
+		float Mp[12], Mn[9]; u32 lastPm = pl.lastPm;			// (the position / normal matrices of the last index)
+		if (lastPm != ~0u) { for (int k = 0; k < 12; k++) Mp[k] = pl.Mp[k]; for (int k = 0; k < 9; k++) Mn[k] = pl.Mn[k]; }
 		float Mt[8][12]; u32 lastTm[8];					// (each texgen's of its last index)
-		for (int t = 0; t < 8; t++) lastTm[t] = ~0u;
+		for (int t = 0; t < 8; t++)
+		{
+			lastTm[t] = pl.lastTm[t];
+			if (t <= tMax && lastTm[t] != ~0u) for (int k = 0; k < 12; k++) Mt[t][k] = pl.Mt[t][k];
+		}
 		float tg[8][3];
 		for (int t = 0; t < 8; t++) { tg[t][0] = tg[t][1] = 0; tg[t][2] = 1; }	// (the ones above tMax: so)
 		for (int i = 0; i < nv; i++)
@@ -553,14 +635,21 @@ public:
 			{
 				const VyPlan &q = vp[k];
 				float x;
-				if (q.kind == 0) x = col0[q.a] / 255.0f;
-				else if (q.kind == 1) x = col1[q.a] / 255.0f;
+				if (q.kind == 0) x = inv255[(int) col0[q.a]];		// (the colours: integers 0..255)
+				else if (q.kind == 1) x = inv255[(int) col1[q.a]];
 				else if (q.kind == 2) x = tg[q.coord][2];
-				else x = q.ts > 0 ? tg[q.coord][q.a] * q.scale / q.ts : 0;
+				else x = q.ts > 0 ? (q.inv > 0 ? tg[q.coord][q.a] * q.scale * q.inv : tg[q.coord][q.a] * q.scale / q.ts) : 0;
 				o[4 + k] = x;
 			}
 		}
 		drawVerts = drawVerts + (u64) nv;
+		pl.lastPm = lastPm;
+		if (lastPm != ~0u) { for (int k = 0; k < 12; k++) pl.Mp[k] = Mp[k]; for (int k = 0; k < 9; k++) pl.Mn[k] = Mn[k]; }
+		for (int t = 0; t <= tMax; t++)
+		{
+			pl.lastTm[t] = lastTm[t];
+			if (lastTm[t] != ~0u) for (int k = 0; k < 12; k++) pl.Mt[t][k] = Mt[t][k];
+		}
 		// its triangles
 		u32 need = (u32) ni * (u32) stride;
 		if (F.nf + need > MAX_FLOATS) { skip (SK_LIMIT, s, nv, 1); F.nu = b.uni; return; }
@@ -590,6 +679,7 @@ public:
 		b.count = kept * 3;
 		if (!b.count) { F.nu = b.uni; return; }				// (all of it behind the eye)
 		F.nf += b.count * (u32) stride; F.nv += b.count;
+		if (again) { F.b[F.nb - 1].count += b.count; return; }	// (the plan's batch: on)
 		// (the same program and state right after: one batch)
 		if (F.nb)
 		{
@@ -597,9 +687,9 @@ public:
 			if (l.prog == b.prog && l.flags == b.flags && l.blend == b.blend && l.wmask == b.wmask && l.off + l.count * (u32) l.stride == b.off
 			    && !__builtin_memcmp (l.scissor, b.scissor, sizeof b.scissor) && !__builtin_memcmp (l.texSlot, b.texSlot, sizeof b.texSlot)
 			    && !__builtin_memcmp (l.texFlags, b.texFlags, sizeof b.texFlags) && sameUni (F, l.uni, b.uni, P.nUni))
-			{ l.count += b.count; F.nu = b.uni; return; }
+			{ l.count += b.count; F.nu = b.uni; pl.lastSerial = serial; pl.lastNb = F.nb - 1; return; }
 		}
-		F.b[F.nb++] = b;
+		F.b[F.nb++] = b; pl.lastSerial = serial; pl.lastNb = F.nb - 1;
 	}
 	static bool sameUni (const Frame &F, u32 a, u32 b, u32 n) { for (u32 i = 0; i < n; i++) if (F.u[a + i] != F.u[b + i]) return false; return true; }
 

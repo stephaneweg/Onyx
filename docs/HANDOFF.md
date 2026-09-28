@@ -203,9 +203,15 @@ answer in French. The docs stay in English.
   `gctest calltest`, the fuzz pass): branch mispredictions 5.6 -> 2.0 a thousand instructions,
   **~42 fields/s** (21 fps) on Outset. Both app cores are now full: the machine ~23 ms a field,
   the GX ~22 (the recorder ~15.7 of it); core 0 ~29 ms a frame (prep 5.8, gpu_render2 23).
-  Next, by gain: (1) the recorder on NEON (~500 ns a vertex; four at once, the same arithmetic
-  so the recordings stay bit for bit -- `GCV3D_VHASH`), or its vertex stage in a GPU vertex
-  shader; (2) the display's copies (`Out::prepare`'s and the kernel's: a GPU-visible buffer the
+  Then the recorder's plans kept from a draw to the next (the draws: 4.6 vertices, ~90 % of them
+  with the last one's state): the recorder 15.7 -> 8.2 ms a field, the GX core ~61 % busy (docs/03).
+  **Only the machine is full now** (~23 ms a field: ~43 fields/s). Seen meanwhile: after a few
+  hundred FTP transfers (`--statlog=FTP:...` every 5 s over long runs) the Pi's `ftpfs` no longer
+  opened its passive data connections ("Passive data channel timed out" on the PC; a failed
+  `cat FTP:... > file` then leaves cat's error in the file) until a reboot -- not investigated;
+  `--statlog` on `SD:/gcdump`, read with `cat` over telnet, avoids it.
+  Next, by gain: (1) the machine: where its time goes outside the JIT's code (the events, the
+  DSP / audio, the helpers), the JIT's code size (L1I), the display's copies; (2) the display's copies (`Out::prepare`'s and the kernel's: a GPU-visible buffer the
   app writes, clipped in place, per-batch strides, the XFB rectangle's transform in the shaders)
   -- they cost the machine ~18 % (`--nodraw`); (3) the JIT: a fifth kept register (r4 / r1:
   x22 freed by a 32 MB MEM1 test), the FP compares fused with their branch (fcmpo 14.8 host
