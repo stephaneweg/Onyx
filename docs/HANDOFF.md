@@ -255,7 +255,7 @@ answer in French. The docs stay in English.
   What is left, estimated: the next section.
 - **gcemu's speed: what is left, estimated (2026-09-28, end of the day).** Where it stands (The Wind
   Waker PAL, Outset; the Pi throttling at 80-83 °C): **~46-49 fields/s of 50 (92-98 %), ~23-24
-  fps of 25**. The machine (core 2) is the only full core: ~29-30 M cycles, ~21 ms a field; the
+  fps of 25** -- "perfectly smooth" on the user's TV. The machine (core 2) is the only full core: ~29-30 M cycles, ~21 ms a field; the
   GX core ~44-69 % busy (9-14 ms a field); core 0 ~17-21 ms a frame (the kernel's pass ~3.5 ms,
   the GPU ~13 ms). Full speed everywhere needs the machine at <= 20 ms a field: its cycles down
   by ~5-10 % here, more in heavier scenes. The gains below are on the machine's time unless said,
@@ -297,6 +297,13 @@ answer in French. The docs stay in English.
 
 ## Other open items
 
+- **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
+  after the GUI work). Leads: the game draws the eyes and eyebrows after the hair with their own
+  depth compare so they show through it, and uses the EFB's alpha around them -- a draw left out
+  (`GCV3D_SKIPLOG` / F12's third line: the reason), the depth function or its precision (the V3D's
+  against the EFB's 24 bits: z-fighting on the face), or the destination alpha (`dstAlpha`, the
+  EFB's RGBA6 / RGB8 format) not kept. To start: F9 on a close view of Link's face, then
+  `gcv3d --replay` (docs/03) -- the recorder's batches for the eyes, their state and textures.
 - VNC (`vncd`): the image froze while the sound went on, OnyxRemote (rdpd) kept working —
   not investigated yet.
 - Ideas (IDEAS.md): an ISO9660 driver + `mount` of ISO / disk / partition images as volumes
