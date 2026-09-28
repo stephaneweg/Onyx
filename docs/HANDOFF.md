@@ -228,12 +228,46 @@ answer in French. The docs stay in English.
   opened its passive data connections ("Passive data channel timed out" on the PC; a failed
   `cat FTP:... > file` then leaves cat's error in the file) until a reboot -- not investigated;
   `--statlog` on `SD:/gcdump`, read with `cat` over telnet, avoids it.
-  Next, by gain: (1) the machine: where its time goes outside the JIT's code (the events, the
-  DSP / audio, the helpers), the JIT's code size (L1I), the display's copies; (2) the display's copies (`Out::prepare`'s and the kernel's: a GPU-visible buffer the
-  app writes, clipped in place, per-batch strides, the XFB rectangle's transform in the shaders)
-  -- they cost the machine ~18 % (`--nodraw`); (3) the JIT: a fifth kept register (r4 / r1:
-  x22 freed by a 32 MB MEM1 test), the FP compares fused with their branch (fcmpo 14.8 host
-  instructions), the L1I (11.4 refills a thousand instructions: smaller code).
+  Then **kapi v62 `gpu_render3`** (the kernel reads the recorder's frame where it is: each batch's
+  offset and stride, framed on the way) and the recorder's three frames (the one drawn is never
+  built into): `Out::prepare` 5.9 -> 0.1 ms, the machine 33.5 -> 29.9 M cycles a field, **~46-47
+  fields/s (~23 fps, 94 %)** on Outset -- measured: without the display at all (`--nodraw`) the
+  machine runs at full speed (26.8 M cycles, IPC 1.14); `--noren` (prepared, not drawn) said the
+  copy in `Out::prepare` cost it ~2.9 M cycles, the kernel's copy + the GPU ~3.8 M. The machine's
+  time is 98 % in the JIT's code (--pmu: `in JIT`), its runs end ~310 times a field on VI lines
+  and ~80 on the audio DMA, the JIT is entered ~2000 times (mtmsr / mtspr / rfi / sc leave it).
+  Then **kapi v63 `gpu_vbuf`**: the recorder's frames in GPU-visible memory, `gpu_render3` draws
+  them in place (framed in place, runs of the inside triangles, the clipped ones into the
+  buffer's end): no copy left (docs/02). The user's game then: ~48-49 fields/s (~24 fps, 92-98 %)
+  in the scenes played, the GX core ~44 % busy. Not yet measured against v62 on the same spot:
+  the kernel's pass still reads every vertex's position and writes its x / y back (the framing),
+  ~85 ns a vertex against ~105 for the copy.
+  What is left, estimated: the next section.
+- **gcemu's speed: what is left, estimated (2026-09-28, end of the day).** Where it stands (The Wind
+  Waker PAL, Outset; the Pi throttling at 80-83 °C): **~46-49 fields/s of 50 (92-98 %), ~23-24
+  fps of 25**. The machine (core 2) is the only full core: ~29-30 M cycles, ~21 ms a field; the
+  GX core ~44-69 % busy (9-14 ms a field); core 0 ~17-21 ms a frame (the kernel's pass ~3.5 ms,
+  the GPU ~13 ms). Full speed everywhere needs the machine at <= 20 ms a field: its cycles down
+  by ~5-10 % here, more in heavier scenes. The gains below are on the machine's time unless said,
+  from the measures of this session (`--pmu`, `--nodraw`, `--noren`, `--jitprof`); they do not
+  simply add up.
+
+  | # | What | Estimated gain | Effort, risk |
+  |---|---|---|---|
+  | 1 | A fan / heatsink on the Pi (kmsg `power: SoC 80-83 C ... soft temp limit NOW`: the cores ~1.3-1.4 GHz instead of 1.5) | +7-15 % on every core | none (hardware) |
+  | 2 | Then an overclock (`arm_freq` 1750-2000 + `over_voltage` in config.txt, with the cooling) | +15-30 % more | the user's call (boot config) |
+  | 3 | The display's last traffic: the XFB framing in the vertex / coordinate shaders (`user/v3d/shaders.cpp`: 4 more uniforms, 2 fmul + fadd a coordinate) so the kernel only reads the positions -- or the recorder flagging the batches wholly inside (it has the positions; a conservative guard band) so the kernel skips them. The display still costs the machine ~9 % (`--nodraw`: 26.8 against 29.3 M cycles) | -3-5 % (the kernel's pass 3.5 -> < 1 ms a frame) | medium (QPU code, v3dprog) |
+  | 4 | JIT, small: the call landing's cycle check (its return checked them: -2 instructions a call), `and` / `orr` immediates on blr / bctrl (-1 each), the CR field from an NZCV table (`mrs nzcv` + `ldrb`: 7 -> 5 instructions a materialized compare, the same results), fcmpo / fcmpu fused with their branch like the integer compares (14.4 host instructions each, ~4 % of the hot code) | -2-4 % | small, fuzz + calltest under qemu |
+  | 5 | JIT: mtmsr / mfmsr native (OSDisable / RestoreInterrupts: ~550 of the ~2000 exits to C a field; each one also empties the call / return pairs): exit only when EE comes on with an interrupt pending, or IR / DR change | -1-2 % | small-medium |
+  | 6 | Fewer run ends: a VI line (~310 a field) only when a VI interrupt can fire on it; the audio DMA's ~80 | -0.5-1 % | small |
+  | 7 | Fastmem: MEM1 mapped so that a load / store needs no address test (`and` + `ldr` + `rev`), the kernel forwarding an app core's data abort (`AppCoreOnFault`) to a handler that patches the site to its slow path (Dolphin's backpatching): -3 instructions an access, ~15 % less host code (the L1I: 11 refills a thousand instructions) | -5-10 % | large (kernel + JIT + tests) |
+  | 8 | A second JIT tier for the hottest code (whole functions / traces, the registers kept across their blocks, the code packed): the hot 80 blocks are ~47 % of the time | -10-20 % | large |
+  | 9 | The GX (not the bottleneck now): the recorder's vertex loop on NEON, four vertices at once (-30-50 % of its 5-8 ms); indexed geometry / packed attributes (less memory traffic: the machine -1-3 %) | GX only, machine -1-3 % | medium-large |
+
+  Likely path: 3 + 4 + 5 give ~50 fields/s in the scenes measured; with 1 there is a margin; 7 and
+  8 are for heavier scenes and games. Not worth it: a degraded display (the sea left out...) --
+  the machine emulates the game's CPU whatever is drawn; SVE / SVE2 -- the Cortex-A72 has NEON
+  only, and the JIT already keeps the FPRs and paired singles in NEON registers.
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
   - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
     stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then

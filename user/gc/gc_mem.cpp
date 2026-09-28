@@ -25,6 +25,8 @@ Machine::Machine ()
 	texPool = new u32[TEX_POOL]; texPoolTop = 0; texFlushes = 0;
 	timeFifo = timePrim = timeTex = 0;
 	pmuOn = false; for (int k = 0; k < PMU_N; k++) pmuFifo[k] = 0;
+	for (int k = 0; k < 10; k++) evWhy[k] = 0;
+	jitCyc = 0;
 	gxAsync = false; gxDoneW = 0; gxIrqBits = 0; gxLockV = 0; gxWaitTicks = 0;
 	texEpoch = 1; for (int m = 0; m < 8; m++) texMemo[m].epoch = 0;
 	tmem = 0;

@@ -405,6 +405,8 @@ public:
 	u32 gxCmds, gxPrims, gxVerts, gxCopies, gxIndirect, texDecodes;	// (the tests: the GPU's draws with indirect texturing, the textures decoded)
 	u64 timeFifo, timePrim, timeTex;		// (gcClock ticks in gxFifoKick, gxPrimitive, gpuTexture: all in)
 	bool pmuOn; u64 pmuFifo[PMU_N];			// (the front end's --pmu) the counters' counts in gxFifoKick
+	u32 evWhy[10];					// (a measure) the runs' ends: VI line, DI, AI DMA, AID irq, DSP irq, EXI, card, AI sample; the JIT's entries
+	u64 jitCyc;					// (a measure, pmuOn) the cycles inside the JIT's code, its helpers too
 	// The GX on a core of its own (gxAsync, gc_gx.cpp): the front end runs gxStep there in a loop;
 	// the CPU's side publishes the FIFO's write pointer (gatherFlush: waiting when the FIFO is
 	// full), waits for the GX at the CP / PE / FIFO registers (gxSync), takes its interrupts

@@ -709,6 +709,7 @@ static int Texture (int nHandle, const unsigned *pPx, int w, int h, int nStride)
 }
 
 static void ReleaseProgs (CAddressSpace *pAS);
+static void ReleaseVBufs (CAddressSpace *pAS);
 
 void V3DReleaseAS (CAddressSpace *pAS)
 {
@@ -720,6 +721,8 @@ void V3DReleaseAS (CAddressSpace *pAS)
 			FreeTex (s_Tex[i]);
 		}
 	ReleaseProgs (pAS);
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not in the middle of a frame)
+	ReleaseVBufs (pAS);
 }
 
 // ---- v53: a frame of batches -----------------------------------------------------------------------------------
@@ -1084,15 +1087,93 @@ static int Program (int nHandle, const kapi_gpu_program *pP)
 // (its vertices' inputs: the floats beyond are not read), the others through V3DClipTriangleN.
 // (Before: each vertex copied four times -- staged, clipped, into a buffer, into the GPU's --
 // ~30 MB a frame of Wind Waker's ~100k vertices, the L2 shared with the app cores flushed.)
+// (the output: each batch's vertices at bus address s_pOutBus[i], s_pOutStride[i] floats each, drawn as
+// its runs s_pRun[s_pRunAt[i] .. s_pRunAt[i + 1]) -- {first, count} of those vertices)
 static kapi_gpu_batch2 *s_pClipB2 = 0; static unsigned s_nClipB2Cap = 0;
+static u32 *s_pOutOff = 0, *s_pOutStride = 0, *s_pOutBus = 0, *s_pRunAt = 0;
+static u32 (*s_pRun)[2] = 0; static unsigned s_nRunCap = 0, s_nRuns = 0;
 static TGpuBuf s_Verts2;
 
-static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const kapi_gpu_batch2 *pB, unsigned nB, unsigned *pOutV)
+static boolean ClipBatches (unsigned nB)
+{
+	if (s_nClipB2Cap >= nB + 1) return TRUE;
+	delete [] s_pClipB2; delete [] s_pOutOff; delete [] s_pOutStride; delete [] s_pOutBus; delete [] s_pRunAt;
+	s_pClipB2 = new kapi_gpu_batch2[nB + 1]; s_pOutOff = new u32[nB + 1]; s_pOutStride = new u32[nB + 1];
+	s_pOutBus = new u32[nB + 1]; s_pRunAt = new u32[nB + 1];
+	s_nClipB2Cap = s_pClipB2 && s_pOutOff && s_pOutStride && s_pOutBus && s_pRunAt ? nB + 1 : 0;
+	return s_nClipB2Cap != 0;
+}
+static boolean AddRun (u32 nFirst, u32 nCount)			// (a run of the batch being made)
+{
+	if (nCount == 0) return TRUE;
+	if (s_nRuns >= s_nRunCap)
+	{
+		unsigned nCap = s_nRunCap ? s_nRunCap * 2 : 4096;
+		u32 (*p)[2] = new u32[nCap][2];
+		if (p == 0) return FALSE;
+		for (unsigned i = 0; i < s_nRuns; i++) { p[i][0] = s_pRun[i][0]; p[i][1] = s_pRun[i][1]; }
+		delete [] s_pRun; s_pRun = p; s_nRunCap = nCap;
+	}
+	s_pRun[s_nRuns][0] = nFirst; s_pRun[s_nRuns][1] = nCount; s_nRuns++;
+	return TRUE;
+}
+// the copying clips' batches: each one run, from s_Verts2
+static boolean CopiedRuns (unsigned nB)
+{
+	s_nRuns = 0;
+	for (unsigned i = 0; i < nB; i++)
+	{
+		s_pOutBus[i] = s_Verts2.Bus (s_pOutOff[i] * 4);
+		s_pRunAt[i] = s_nRuns;
+		if (!AddRun (0, s_pClipB2[i].count)) return FALSE;
+	}
+	s_pRunAt[nB] = s_nRuns;
+	return TRUE;
+}
+
+// ---- v63: GPU-visible memory an app writes (gpu_vbuf): low, physically contiguous, mapped into it
+struct TVBuf { CAddressSpace *pOwner; u8 *pRaw, *p; u32 nSize; u64 ulVA; };
+enum { MAX_VBUFS = 8 };
+static TVBuf s_VBuf[MAX_VBUFS];
+
+extern "C" void *kapi_gpu_vbuf (unsigned nBytes)
+{
+	if (!Up ()) return 0;
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || nBytes == 0 || nBytes > (64u << 20)) return 0;
+	int k = -1;
+	for (int i = 0; i < MAX_VBUFS; i++) if (s_VBuf[i].pOwner == 0) { k = i; break; }
+	if (k < 0) return 0;
+	u32 nSize = (nBytes + KPAGE_SIZE - 1) & ~(u32) (KPAGE_SIZE - 1);
+	u8 *pRaw = (u8 *) CMemorySystem::HeapAllocate (nSize + KPAGE_SIZE, HEAP_LOW);
+	if (pRaw == 0) return 0;
+	u8 *p = (u8 *) (((uintptr) pRaw + KPAGE_SIZE - 1) & ~(uintptr) (KPAGE_SIZE - 1));
+	if ((uintptr) p + nSize > 0x40000000) { CMemorySystem::HeapFree (pRaw); return 0; }
+	memset (p, 0, nSize);
+	void *pVA = pAS->MapSurface ((u64) (uintptr) p, nSize / KPAGE_SIZE);
+	if (pVA == 0) { CMemorySystem::HeapFree (pRaw); return 0; }
+	TVBuf &b = s_VBuf[k];
+	b.pRaw = pRaw; b.p = p; b.nSize = nSize; b.ulVA = (u64) (uintptr) pVA; b.pOwner = pAS;
+	return pVA;
+}
+static void ReleaseVBufs (CAddressSpace *pAS)
+{
+	for (int i = 0; i < MAX_VBUFS; i++)
+		if (s_VBuf[i].pOwner == pAS) { CMemorySystem::HeapFree (s_VBuf[i].pRaw); s_VBuf[i].pOwner = 0; }
+}
+static int FindVBuf (CAddressSpace *pAS, const float *pV, unsigned nFloats)
+{
+	u64 a = (u64) (uintptr) pV, e = a + (u64) nFloats * 4;
+	for (int i = 0; i < MAX_VBUFS; i++)
+		if (s_VBuf[i].pOwner == pAS && a >= s_VBuf[i].ulVA && e <= s_VBuf[i].ulVA + s_VBuf[i].nSize) return i;
+	return -1;
+}
+
+static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const kapi_gpu_batch2 *pB, unsigned nB, unsigned *pOutFloats)
 {
 	unsigned nCap = nV * 2 + 64;					// (vertices; beyond: dropped)
 	if (nCap > KAPI_GPU_MAX_VERTS) nCap = KAPI_GPU_MAX_VERTS;
-	if (s_nClipB2Cap < nB + 1) { delete [] s_pClipB2; s_pClipB2 = new kapi_gpu_batch2[nB + 1]; s_nClipB2Cap = s_pClipB2 ? nB + 1 : 0; }
-	if (s_pClipB2 == 0 || !Alloc (s_Verts2, nCap * nStride * 4)) return FALSE;
+	if (!ClipBatches (nB) || !Alloc (s_Verts2, nCap * nStride * 4)) return FALSE;
 	float *pOut = (float *) s_Verts2.p;
 	static float Out[21 * CLIP_MAX_FLOATS], T[3 * CLIP_MAX_FLOATS];	// (one frame at a time: s_bBusy)
 	unsigned n = 0;
@@ -1118,16 +1199,123 @@ static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const
 				memcpy (pOut + n * nStride, Out + j * nIn, nBytes);
 		}
 		o.count = n - o.first;
+		s_pOutOff[i] = o.first * nStride; s_pOutStride[i] = nStride;
 	}
-	*pOutV = n;
+	*pOutFloats = n * nStride;
+	return CopiedRuns (nB);
+}
+
+// gpu_render3's: each batch's triangles read at its offset and stride, x / y framed (view, else as
+// they are) into the GPU's buffer at that stride -- then kept as they are when inside every plane,
+// else clipped (V3DClipTriangleN) in their place
+static boolean ClipFrame3 (const float *pV, const kapi_gpu_batch3 *pB, unsigned nB, const float *pView, unsigned *pOutFloats)
+{
+	u64 nIn = 0;
+	for (unsigned i = 0; i < nB; i++) nIn += (u64) pB[i].b.count * pB[i].stride;
+	u64 nCap = nIn * 2 + 21 * CLIP_MAX_FLOATS;			// (floats; a batch's triangles beyond: dropped)
+	if (nCap > (u64) KAPI_GPU_MAX_VERTS * 32) nCap = (u64) KAPI_GPU_MAX_VERTS * 32;	// (25 MB: 196k vertices of 32 floats)
+	if (!ClipBatches (nB) || !Alloc (s_Verts2, (u32) nCap * 4)) return FALSE;
+	float *pOut = (float *) s_Verts2.p;
+	float v0 = 1, v1 = 0, v2 = 1, v3 = 0;
+	if (pView) { v0 = pView[0]; v1 = pView[1]; v2 = pView[2]; v3 = pView[3]; }
+	static float Out[21 * CLIP_MAX_FLOATS], T[3 * CLIP_MAX_FLOATS];	// (one frame at a time: s_bBusy)
+	u32 n = 0;							// (floats written)
+	for (unsigned i = 0; i < nB; i++)
+	{
+		const kapi_gpu_batch3 &b3 = pB[i];
+		kapi_gpu_batch2 &o = s_pClipB2[i];
+		o = b3.b; o.first = 0;
+		unsigned nIn = s_Prog[o.program].nInputs, nStride = b3.stride, nRest = (nIn - 4) * 4;
+		u32 nStart = n;
+		const float *pT = pV + b3.off;
+		for (unsigned t = 0; t + 3 <= b3.b.count && n + 21 * nStride <= nCap; t += 3, pT += 3 * nStride)
+		{
+			float *d = pOut + n;
+			for (int k = 0; k < 3; k++)				// (framed, its inputs only)
+			{
+				const float *s = pT + k * nStride;
+				float *e = d + k * nStride;
+				e[0] = v0 * s[0] + v1 * s[3]; e[1] = v2 * s[1] + v3 * s[3]; e[2] = s[2]; e[3] = s[3];
+				memcpy (e + 4, s + 4, nRest);
+			}
+			if (V3DInsideN (d) && V3DInsideN (d + nStride) && V3DInsideN (d + 2 * nStride)) { n += 3 * nStride; continue; }
+			for (int k = 0; k < 3; k++) memcpy (T + k * nIn, d + k * nStride, nIn * 4);
+			unsigned m = V3DClipTriangleN (T, nIn, Out);
+			for (unsigned j = 0; j < m; j++, n += nStride) memcpy (pOut + n, Out + j * nIn, nIn * 4);
+		}
+		o.count = (n - nStart) / nStride;
+		s_pOutOff[i] = nStart; s_pOutStride[i] = nStride;
+	}
+	*pOutFloats = n;
+	return CopiedRuns (nB);
+}
+
+// gpu_render3 on a vbuf: nothing copied -- each batch's vertices framed in place (view), its
+// triangles inside every plane drawn where they are (runs), the others clipped into the buffer's
+// end past nFloats (each at a whole number of its batch's strides from the batch: a run of it)
+static boolean ClipInPlace (const TVBuf &vb, float *pK, unsigned nFloats, const kapi_gpu_batch3 *pB, unsigned nB,
+			    const float *pView, u32 *pFirst, u32 *pEnd)
+{
+	if (!ClipBatches (nB)) return FALSE;
+	float v0 = 1, v1 = 0, v2 = 1, v3 = 0;
+	if (pView) { v0 = pView[0]; v1 = pView[1]; v2 = pView[2]; v3 = pView[3]; }
+	float *pBuf = (float *) vb.p;
+	u32 nCap = vb.nSize / 4 - (u32) (pK - pBuf);			// (floats from pK to the buffer's end)
+	u32 nFan = nFloats, nLow = nFloats;				// (the clipped ones from there; what was touched)
+	static float Out[21 * CLIP_MAX_FLOATS], T[3 * CLIP_MAX_FLOATS];	// (one frame at a time: s_bBusy)
+	s_nRuns = 0;
+	for (unsigned i = 0; i < nB; i++)
+	{
+		const kapi_gpu_batch3 &b3 = pB[i];
+		kapi_gpu_batch2 &o = s_pClipB2[i];
+		o = b3.b; o.first = 0;
+		unsigned nIn = s_Prog[o.program].nInputs, nStride = b3.stride;
+		float *pBase = pK + b3.off;
+		if (b3.off < nLow) nLow = b3.off;
+		s_pOutOff[i] = 0; s_pOutStride[i] = nStride; s_pOutBus[i] = (u32) (uintptr) pBase; s_pRunAt[i] = s_nRuns;
+		u32 nRun = 0, nRunCount = 0;					// (the run being made: its first vertex, count)
+		for (u32 t = 0; t + 3 <= b3.b.count; t += 3)
+		{
+			float *d = pBase + t * nStride;
+			if (pView)
+				for (int k = 0; k < 3; k++)
+				{
+					float *e = d + k * nStride;
+					float x = v0 * e[0] + v1 * e[3], y = v2 * e[1] + v3 * e[3];
+					e[0] = x; e[1] = y;
+				}
+			if (V3DInsideN (d) && V3DInsideN (d + nStride) && V3DInsideN (d + 2 * nStride))
+			{
+				if (nRunCount == 0) nRun = t;
+				nRunCount += 3;
+				continue;
+			}
+			if (!AddRun (nRun, nRunCount)) return FALSE;
+			nRunCount = 0;
+			for (int k = 0; k < 3; k++) memcpy (T + k * nIn, d + k * nStride, nIn * 4);
+			unsigned m = V3DClipTriangleN (T, nIn, Out);
+			if (m == 0) continue;
+			u32 nAt = nFan, nRel = nAt - b3.off;			// (a whole number of strides from the batch)
+			if (nRel % nStride) { nAt += nStride - nRel % nStride; nRel = nAt - b3.off; }
+			if (nAt + m * nStride > nCap) continue;			// (no room left: that one dropped)
+			for (unsigned j = 0; j < m; j++) memcpy (pK + nAt + j * nStride, Out + j * nIn, nIn * 4);
+			if (!AddRun (nRel / nStride, m)) return FALSE;
+			nFan = nAt + m * nStride;
+		}
+		if (!AddRun (nRun, nRunCount)) return FALSE;
+		u32 nCount = 0;
+		for (u32 r = s_pRunAt[i]; r < s_nRuns; r++) nCount += s_pRun[r][1];
+		o.count = nCount;
+	}
+	s_pRunAt[nB] = s_nRuns;
+	*pFirst = nLow; *pEnd = nFan;
 	return TRUE;
 }
 
 // gpu_render2's time (us, summed): the clipping, the lists and copies, the GPU, the target after
 static unsigned s_nR2Frames = 0; static u64 s_nR2Clip = 0, s_nR2Lists = 0, s_nR2Gpu = 0, s_nR2After = 0, s_nR2Verts = 0;
 
-static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsigned nStride,
-		    const kapi_gpu_batch2 *pB, unsigned nB, const unsigned *pUni)
+static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned nB, const unsigned *pUni)
 {
 	unsigned tStart = CTimer::Get ()->GetClockTicks ();
 	int w = F.w, h = F.h;
@@ -1136,13 +1324,10 @@ static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsig
 	u32 nUniBytes = 0;
 	for (unsigned i = 0; i < nB; i++)
 		nUniBytes += (pB[i].vsNUni + pB[i].csNUni + pB[i].fsNUni) * 4 + 8 * 32 + 64;
-	u32 nVBytes = (nV ? nV : 3) * nStride * 4;
-	if (!Alloc (s_Verts2, nVBytes) || !Alloc (s_Target, (u32) (w * h * 4))
+	if (!Alloc (s_Target, (u32) (w * h * 4))
 	    || !Alloc (s_TileAlloc, nAllocSize) || !Alloc (s_TileState, nTiles * 256)
-	    || !Alloc (s_BCL, 1024 + nB * 96) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
+	    || !Alloc (s_BCL, 1024 + nB * 96 + s_nRuns * 16) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
 		return -2;
-	if (pV != (const float *) s_Verts2.p) memcpy (s_Verts2.p, pV, nV * nStride * 4);	// (ClipFrame2's: there already)
-	CleanDataCacheRange ((uintptr) s_Verts2.p, nV * nStride * 4);
 	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
 	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T);
 	TargetBefore (T, F.pixels, w, h, F.stride, bKeep);
@@ -1248,10 +1433,10 @@ static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsig
 			GlShaderStateAttributeRecord A {};
 			u32 nVals = P.nInputs - k * 4 < 4 ? P.nInputs - k * 4 : 4;
 			u32 nCS = k * 4 >= P.nCSInputs ? 0 : (P.nCSInputs - k * 4 < 4 ? P.nCSInputs - k * 4 : 4);
-			A.address = s_Verts2.Bus (k * 16);
+			A.address = s_pOutBus[i] + k * 16;
 			A.number_of_values_read_by_vertex_shader = nVals;
 			A.number_of_values_read_by_coordinate_shader = nCS;
-			A.stride = nStride * 4;
+			A.stride = s_pOutStride[i] * 4;
 			A.maximum_index = 0xFFFFFF;
 			A.vec_size = nVals & 3;						// (0: 4)
 			A.type = 2;							// float
@@ -1289,7 +1474,8 @@ static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsig
 			for (int k = 0; k < 4; k++) PrevClip[k] = C[k];
 		}
 		B << (u8) OP_GL_SHADER_STATE << (u32) (nShaderRec | nAttr);	// (5 bits of arrays: up to 16)
-		B << VertexArrayPrims (4, b.count, b.first);			// triangles
+		for (u32 r = s_pRunAt[i]; r < s_pRunAt[i + 1]; r++)		// triangles: the batch's runs of its vertices
+			B << VertexArrayPrims (4, s_pRun[r][1], s_pRun[r][0]);
 	}
 	B << OP_FLUSH;
 
@@ -1303,8 +1489,19 @@ static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsig
 
 	TargetAfter (T, F.pixels, w, h, F.stride);
 	unsigned tEnd = CTimer::Get ()->GetClockTicks ();
-	s_nR2Lists += tRun - tStart; s_nR2Gpu += tAfter - tRun; s_nR2After += tEnd - tAfter; s_nR2Verts += nV;
+	u32 nVerts = 0; for (unsigned i = 0; i < nB; i++) nVerts += pB[i].count;
+	s_nR2Lists += tRun - tStart; s_nR2Gpu += tAfter - tRun; s_nR2After += tEnd - tAfter; s_nR2Verts += nVerts;
 	return 0;
+}
+
+// (where core 0's time goes: in kmsg every 256 frames of gpu_render2 / 3)
+static void R2Log (void)
+{
+	if (++s_nR2Frames < 256) return;
+	CLogger::Get ()->Write (From, LogNotice, "render2, a frame: clip %u us, lists %u us, GPU %u us, target %u us; %u vertices",
+				(unsigned) (s_nR2Clip / 256), (unsigned) (s_nR2Lists / 256), (unsigned) (s_nR2Gpu / 256),
+				(unsigned) (s_nR2After / 256), (unsigned) (s_nR2Verts / 256));
+	s_nR2Frames = 0; s_nR2Clip = s_nR2Lists = s_nR2Gpu = s_nR2After = s_nR2Verts = 0;
 }
 
 extern "C" int kapi_gpu_program (int nHandle, const kapi_gpu_program *pP)
@@ -1349,22 +1546,77 @@ extern "C" int kapi_gpu_render2 (const kapi_gpu_frame *pF, const float *pV, unsi
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// one frame at a time
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
-	unsigned nCV = 0;
+	unsigned nOut = 0;
 	CrashLogCrumb (CRUMB_V3D, 1);
 	unsigned tClip = CTimer::Get ()->GetClockTicks ();
-	boolean bClipped = s_nState > 0 && ClipFrame2 (pV, nV, nStride, pB, nB, &nCV);
+	boolean bClipped = s_nState > 0 && ClipFrame2 (pV, nV, nStride, pB, nB, &nOut);
+	if (bClipped) CleanDataCacheRange ((uintptr) s_Verts2.p, nOut * 4);	// (the GPU reads them from memory)
 	s_nR2Clip += CTimer::Get ()->GetClockTicks () - tClip;
 	int r = s_nState <= 0 ? -1
 	      : !bClipped ? -4
-	      : Render2 (*pF, (const float *) s_Verts2.p, nCV, nStride, s_pClipB2, nB, pUni);
+	      : Render2 (*pF, s_pClipB2, nB, pUni);
 	CrashLogCrumb (CRUMB_V3D, 0);
-	if (++s_nR2Frames == 256)				// (where core 0's time goes: in kmsg)
+	R2Log ();
+	s_bBusy = FALSE;
+	CScheduler::Get ()->LeaveNoKill ();
+	return r;
+}
+
+extern "C" int kapi_gpu_render3 (const kapi_gpu_frame *pF, const float *pV, unsigned nFloats,
+				 const kapi_gpu_batch3 *pB, unsigned nB, const unsigned *pUni, unsigned nUni, const float *pView)
+{
+	if (!Up ()) return -1;
+	if (pF == 0 || pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
+	    || pF->stride < pF->w || (nFloats && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0)
+	    || nUni > KAPI_GPU_MAX_UNIFORMS || (nUni && pUni == 0))
+		return -2;
+	CAddressSpace *pAS = CurrentAS ();
+	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, program, uniforms, textures
 	{
-		CLogger::Get ()->Write (From, LogNotice, "render2, a frame: clip %u us, lists %u us, GPU %u us, target %u us; %u vertices",
-					(unsigned) (s_nR2Clip / 256), (unsigned) (s_nR2Lists / 256), (unsigned) (s_nR2Gpu / 256),
-					(unsigned) (s_nR2After / 256), (unsigned) (s_nR2Verts / 256));
-		s_nR2Frames = 0; s_nR2Clip = s_nR2Lists = s_nR2Gpu = s_nR2After = s_nR2Verts = 0;
+		const kapi_gpu_batch2 &b = pB[i].b;
+		unsigned nStride = pB[i].stride;
+		if (b.count % 3 != 0 || nStride < 4 || nStride > CLIP_MAX_FLOATS
+		    || (u64) pB[i].off + (u64) b.count * nStride > nFloats || b.count > KAPI_GPU_MAX_VERTS) return -2;
+		if (b.program < 0 || b.program >= KAPI_GPU_MAX_PROGRAMS || s_Prog[b.program].pOwner != pAS
+		    || s_Prog[b.program].nInputs > nStride)
+			return -2;
+		if (b.vsUni > nUni || b.vsNUni > nUni - b.vsUni || b.csUni > nUni || b.csNUni > nUni - b.csUni
+		    || b.fsUni > nUni || b.fsNUni > nUni - b.fsUni)
+			return -2;
+		if (b.blend != 0 && ((b.blend >> 20 & 7) > 4 || (b.blend >> 24 & 7) > 4)) return -2;
+		for (int k = 0; k < 8; k++)
+		{
+			if (b.tex[k] < 0) continue;
+			if (b.tex[k] >= KAPI_GPU_MAX_TEXTURES || s_Tex[b.tex[k]].pOwner != pAS) return -2;
+			if (b.texUni[k] >= 0 && (unsigned) b.texUni[k] + 2 > b.fsNUni) return -2;
+		}
 	}
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// one frame at a time
+	s_bBusy = TRUE;
+	CScheduler::Get ()->EnterNoKill ();
+	unsigned nOut = 0;
+	CrashLogCrumb (CRUMB_V3D, 1);
+	unsigned tClip = CTimer::Get ()->GetClockTicks ();
+	int vb = s_nState > 0 ? FindVBuf (pAS, pV, nFloats) : -1;	// (a vbuf's: drawn in place)
+	boolean bClipped = FALSE;
+	if (vb >= 0)
+	{
+		float *pK = (float *) (s_VBuf[vb].p + ((u64) (uintptr) pV - s_VBuf[vb].ulVA));
+		u32 nFirst = 0, nEnd = 0;
+		bClipped = ClipInPlace (s_VBuf[vb], pK, nFloats, pB, nB, pView, &nFirst, &nEnd);
+		if (bClipped && nEnd > nFirst) CleanDataCacheRange ((uintptr) (pK + nFirst), (nEnd - nFirst) * 4);
+	}
+	else if (s_nState > 0)
+	{
+		bClipped = ClipFrame3 (pV, pB, nB, pView, &nOut);
+		if (bClipped) CleanDataCacheRange ((uintptr) s_Verts2.p, nOut * 4);
+	}
+	s_nR2Clip += CTimer::Get ()->GetClockTicks () - tClip;
+	int r = s_nState <= 0 ? -1
+	      : !bClipped ? -4
+	      : Render2 (*pF, s_pClipB2, nB, pUni);
+	CrashLogCrumb (CRUMB_V3D, 0);
+	R2Log ();
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
 	return r;

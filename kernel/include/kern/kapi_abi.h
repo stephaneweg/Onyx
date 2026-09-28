@@ -67,7 +67,11 @@
 //      + wlan_reconnect -- join by wpa_supplicant.conf again without a reboot (the Wi-Fi menu).
 // v61: + gpu_program / gpu_render2 -- the app's own QPU shaders (vertex, coordinate, fragment),
 //      batches with their uniforms, up to 8 textures, blend factors, write mask, scissor.
-#define KAPI_ABI_VERSION	61
+// v62: + gpu_render3 -- gpu_render2's batches with their vertices where the app keeps them (each
+//      its offset and stride), x / y framed by the kernel on the way (no common array to make).
+// v63: + gpu_vbuf -- GPU-visible memory the app writes: gpu_render3 draws vertices there in place
+//      (framed in place, clipped into its free end: nothing copied).
+#define KAPI_ABI_VERSION	63
 
 #ifdef __cplusplus
 extern "C" {
@@ -302,6 +306,13 @@ struct kapi_gpu_batch2
 	int tex[8];			// gpu_texture handles (-1: none)
 	unsigned texFlags[8];
 	int texUni[8];			// p0 at fsUni + texUni[i], p1 right after (-1: not used)
+};
+// A batch of gpu_render3: count vertices (triangles) of `stride` floats (>= its program's inputs,
+// <= 64) from float `off` of the call's array, the rest as gpu_render2's (b.first unused)
+struct kapi_gpu_batch3
+{
+	struct kapi_gpu_batch2 b;
+	unsigned off, stride;
 };
 // blending (V3D's factors: 0 zero, 1 one, 2 src colour, 3 1 - src colour, 4 dst colour,
 // 5 1 - dst colour, 6 src alpha, 7 1 - src alpha, 8 dst alpha, 9 1 - dst alpha, 10 const colour,
@@ -828,6 +839,19 @@ struct TKApiTable
 	// the uniforms uni[nuni] -> 0, -1 no GPU, -2 bad arguments, -3 the GPU did not finish.
 	int (*gpu_render2) (const struct kapi_gpu_frame *f, const float *v, unsigned nv, unsigned stride,
 			    const struct kapi_gpu_batch2 *b, unsigned nb, const unsigned *uni, unsigned nuni);
+	// --- v62 ---
+	// gpu_render3: as gpu_render2, each batch's vertices where they are in v[nfloats] (off,
+	// stride), their x / y framed on the way -- x' = view[0] x + view[1] w, y' = view[2] y +
+	// view[3] w (view 0: as they are) -> as gpu_render2.
+	int (*gpu_render3) (const struct kapi_gpu_frame *f, const float *v, unsigned nfloats,
+			    const struct kapi_gpu_batch3 *b, unsigned nb, const unsigned *uni, unsigned nuni,
+			    const float *view);
+	// --- v63 ---
+	// gpu_vbuf: `bytes` of memory the GPU reads too (up to 8 a program, 64 MB each; freed when
+	// it ends) -> its address, 0 none. gpu_render3 with v[nfloats] inside one draws the vertices
+	// where they are: their x / y framed IN PLACE (draw them again with view 0), the triangles
+	// that need clipping clipped into the buffer's end past nfloats (keep room there).
+	void *(*gpu_vbuf) (unsigned bytes);
 };
 
 #ifdef __cplusplus

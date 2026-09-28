@@ -2277,7 +2277,14 @@ void Machine::jitRun (u64 until)
 		if (!c) c = j.compile (pc, key);
 		if (!c) { step (); continue; }				// (not in MEM1: the interpreter, its exception)
 		if (jitProfile) jitEnters++;
-		j.enter (this, c, j.ctx);
+		evWhy[8]++;
+		if (pmuOn)
+		{
+			u64 a[PMU_N], b[PMU_N];
+			gcPmuRead (a); j.enter (this, c, j.ctx); gcPmuRead (b);
+			jitCyc += b[0] - a[0];
+		}
+		else j.enter (this, c, j.ctx);
 		// a polling loop skipped to the next event: with the GX on its own core, what it has
 		// still to draw is done first (the game waits for it: it must not see a slower GPU)
 		if (idleHit) { idleHit = 0; if (gxAsync) gxSync (); }

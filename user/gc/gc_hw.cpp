@@ -199,15 +199,15 @@ void Machine::runFrame ()
 	u64 guard = cycles + (u64) CPU_HZ;			// (a second at most)
 	while (!halted && cycles < guard)
 	{
-		u64 until = viNextLine;
-		if (diDoneAt < until) until = diDoneAt;
-		if (aidmaNextAt < until) until = aidmaNextAt;
-		if (aidIrqAt < until) until = aidIrqAt;
-		if (dspIrqAt < until) until = dspIrqAt;
+		u64 until = viNextLine; int why = 0;
+		if (diDoneAt < until) { until = diDoneAt; why = 1; }
+		if (aidmaNextAt < until) { until = aidmaNextAt; why = 2; }
+		if (aidIrqAt < until) { until = aidIrqAt; why = 3; }
+		if (dspIrqAt < until) { until = dspIrqAt; why = 4; }
 		for (int ch = 0; ch < 2; ch++)
 		{
-			if (exiTcAt[ch] < until) until = exiTcAt[ch];
-			if (card[ch].doneAt < until) until = card[ch].doneAt;
+			if (exiTcAt[ch] < until) { until = exiTcAt[ch]; why = 5; }
+			if (card[ch].doneAt < until) { until = card[ch].doneAt; why = 6; }
 		}
 		// while the AI plays, each sample is an event: a loop polling its counter (AIInit times its
 		// edges) is not skipped past one (the JIT's polling loops run to the next event)
@@ -216,8 +216,9 @@ void Machine::runFrame ()
 			u64 per = (u64) CPU_HZ / ((aiReg[0] & 2) ? 48000 : 32000);
 			u64 nx = aiSampleAt + per;
 			if (nx <= cycles) nx = aiSampleAt + per * ((cycles - aiSampleAt) / per + 1);
-			if (nx < until) until = nx;
+			if (nx < until) { until = nx; why = 7; }
 		}
+		evWhy[why]++;
 		run (until);
 		events ();
 		if (cycles >= viNextLine)
