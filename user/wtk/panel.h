@@ -12,7 +12,8 @@ class Panel : public Widget
 {
 public:
 	unsigned bg;
-	Panel (int l, int t, int w, int h, unsigned bg_ = 0x00303D45);
+	Panel (int l, int t, int w, int h, unsigned bg_ = C_BG);
+	unsigned bgColor () override { return bg; }
 	void onDraw () override;
 };
 

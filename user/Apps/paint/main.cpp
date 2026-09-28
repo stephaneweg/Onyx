@@ -53,23 +53,25 @@ public:
 	}
 };
 
-// Status strip: current colour swatch + name + brush size (information only).
+// Status strip: current colour swatch + name + brush size (information only). The theme's
+// face under an etched line; the swatch rounded, outlined.
 class StatusBar : public Widget
 {
 public:
 	StatusBar (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void onDraw () override
 	{
-		canvas.clear (0x00303840);
-		canvas.fillRect (6, 3, 28, ST_H - 6, g_col);
-		canvas.frameRect (6, 3, 28, ST_H - 6, 0x00a0a8b0);
+		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 118));
+		wk_etch_h (canvas, 0, 0, width, C_FACE);
+		wk_rbox (canvas, 6, 4, 28, ST_H - 7, 3, g_col, g_col);
+		wk_rline (canvas, 6, 4, 28, ST_H - 7, 3, wk_tone (C_FACE, 70));
 		const char *name = "custom";
 		for (int i = 0; i < NSW; i++) if (SW[i] == g_col) name = SWNAME[i];
 		char b[48]; int p = 0;
 		for (int i = 0; name[i]; i++) b[p++] = name[i];
 		const char *t = "   brush "; for (int i = 0; t[i]; i++) b[p++] = t[i];
 		p += ax_itoa (g_brush, b + p); b[p] = '\0';
-		canvas.text (42, (ST_H - wk_fh ()) / 2, b, 0x00d0d0d0);
+		canvas.text (42, (ST_H - wk_fh ()) / 2 + 1, b, C_TEXT);
 	}
 };
 

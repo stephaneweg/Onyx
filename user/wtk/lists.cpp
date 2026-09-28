@@ -6,10 +6,16 @@
 
 namespace wtk {
 
-static const unsigned L_SEL = 0x00355070, L_SELDIM = 0x003A4452, L_TXT = 0x00E0E6EE, L_DIM = 0x008A96A8;
 #define DBL_TICKS	70			// double-click window (HZ ticks)
 
 static int row_h () { return wk_fh () + 4; }
+
+// A list's field: sunken, rounded; the rows inside from y = 2.
+static void list_field (Canvas &cv, int w, int h, bool focus, bool disabled, unsigned bg)
+{
+	cv.clear (bg);
+	wk_sunken (cv, 0, 0, w, h, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, focus && !disabled);
+}
 
 // ---- ListBox -----------------------------------------------------------------------------
 ListBox::ListBox (int l, int t, int w, int h, Action onSelect_, Action onActivate_)
@@ -61,19 +67,17 @@ void ListBox::pick (int i, bool fire)
 
 void ListBox::onDraw ()
 {
-	int fh = wk_fh (), rh = row_h (), R = rows ();
-	WkThumb t = wk_thumb (count, R, top, height - 2);
-	int tw = width - (t.show ? WK_SBW : 0);
-	canvas.clear (C_FIELD);
+	int rh = row_h (), R = rows ();
+	WkThumb t = wk_thumb (count, R, top, height - 4);
+	int tw = width - (t.show ? WK_SBW + 2 : 0);
+	list_field (canvas, width, height, hasFocus, disabled, bgColor ());
 	for (int r = 0; r < R && top + r < count; r++)
 	{
 		int i = top + r, y = 2 + r * rh;
-		if (i == sel) canvas.fillRect (2, y, tw - 4, rh, hasFocus ? L_SEL : L_SELDIM);
-		canvas.text (6, y + 2, m_items[i], disabled ? C_DIS : L_TXT);
+		if (i == sel) wk_hilite (canvas, 3, y, tw - 6, rh, 4, hasFocus);
+		canvas.text (8, y + 2, m_items[i], disabled ? C_DIS : i == sel ? wk_hilite_ink (hasFocus) : C_FIELD_TEXT);
 	}
-	if (t.show) wk_draw_vscroll (canvas, width - WK_SBW - 1, 1, WK_SBW, height - 2, t, C_FIELD, C_FACE);
-	canvas.frameRect (0, 0, width, height, hasFocus ? C_ACCENT : C_BORDER);
-	(void) fh;
+	if (t.show) wk_draw_vscroll (canvas, width - WK_SBW - 2, 2, WK_SBW, height - 4, t, C_FIELD, m_thumb);
 }
 
 bool ListBox::onMouse (int mx, int my, int bl, int, int, int wheel)
@@ -81,18 +85,18 @@ bool ListBox::onMouse (int mx, int my, int bl, int, int, int wheel)
 	if (mx < 0) { pressed = false; m_thumb = false; return false; }
 	if (disabled) return true;
 	if (wheel) { scrollTo (top - wheel); return true; }
-	WkThumb t = wk_thumb (count, rows (), top, height - 2);
+	WkThumb t = wk_thumb (count, rows (), top, height - 4);
 	if (m_thumb)
 	{
-		if (!bl) m_thumb = false;
-		else scrollTo ((int) wk_thumb_pos (my - 1, height - 2, count, rows (), t.h));
+		if (!bl) { m_thumb = false; invalidate (true); }
+		else scrollTo ((int) wk_thumb_pos (my - 2, height - 4, count, rows (), t.h));
 		return true;
 	}
 	if (bl && !pressed)
 	{
 		pressed = true; setFocus ();
-		if (t.show && mx >= width - WK_SBW - 1)
-		{ m_thumb = true; scrollTo ((int) wk_thumb_pos (my - 1, height - 2, count, rows (), t.h)); return true; }
+		if (t.show && mx >= width - WK_SBW - 2)
+		{ m_thumb = true; invalidate (true); scrollTo ((int) wk_thumb_pos (my - 2, height - 4, count, rows (), t.h)); return true; }
 		int i = top + (my - 2) / row_h ();
 		if (i >= count) return true;
 		unsigned now = kapi_get_ticks ();
@@ -204,26 +208,22 @@ void TreeView::pick (int id, bool fire)
 
 void TreeView::onDraw ()
 {
-	int fw = wk_fw (), rh = row_h (), R = rows ();
-	WkThumb t = wk_thumb (m_nvis, R, top, height - 2);
-	int tw = width - (t.show ? WK_SBW : 0);
-	canvas.clear (C_FIELD);
+	int rh = row_h (), R = rows ();
+	WkThumb t = wk_thumb (m_nvis, R, top, height - 4);
+	int tw = width - (t.show ? WK_SBW + 2 : 0);
+	list_field (canvas, width, height, hasFocus, disabled, bgColor ());
 	for (int r = 0; r < R && top + r < m_nvis; r++)
 	{
 		int id = m_vis[top + r], y = 2 + r * rh, x = 4 + m_nodes[id].depth * 16;
-		if (id == sel) canvas.fillRect (2, y, tw - 4, rh, hasFocus ? L_SEL : L_SELDIM);
-		if (hasChildren (id))				// [+] / [-]
-		{
-			int bs = 9, by = y + (rh - bs) / 2;
-			canvas.frameRect (x, by, bs, bs, L_DIM);
-			canvas.fillRect (x + 2, by + 4, 5, 1, L_TXT);
-			if (!m_nodes[id].open) canvas.fillRect (x + 4, by + 2, 1, 5, L_TXT);
-		}
-		canvas.text (x + 14, y + 2, m_nodes[id].label, disabled ? C_DIS : L_TXT);
+		bool s = id == sel;
+		if (s) wk_hilite (canvas, 3, y, tw - 6, rh, 4, hasFocus);
+		unsigned ink = disabled ? C_DIS : s ? wk_hilite_ink (hasFocus) : C_FIELD_TEXT;
+		if (hasChildren (id))				// the expander: a chevron, right / down
+			wk_glyph (canvas, m_nodes[id].open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, x + 5, y + rh / 2, 8,
+				  s ? ink : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+		canvas.text (x + 14, y + 2, m_nodes[id].label, ink);
 	}
-	if (t.show) wk_draw_vscroll (canvas, width - WK_SBW - 1, 1, WK_SBW, height - 2, t, C_FIELD, C_FACE);
-	canvas.frameRect (0, 0, width, height, hasFocus ? C_ACCENT : C_BORDER);
-	(void) fw;
+	if (t.show) wk_draw_vscroll (canvas, width - WK_SBW - 2, 2, WK_SBW, height - 4, t, C_FIELD, m_thumb);
 }
 
 bool TreeView::onMouse (int mx, int my, int bl, int, int, int wheel)
@@ -231,18 +231,18 @@ bool TreeView::onMouse (int mx, int my, int bl, int, int, int wheel)
 	if (mx < 0) { pressed = false; m_thumb = false; return false; }
 	if (disabled) return true;
 	if (wheel) { scrollTo (top - wheel); return true; }
-	WkThumb t = wk_thumb (m_nvis, rows (), top, height - 2);
+	WkThumb t = wk_thumb (m_nvis, rows (), top, height - 4);
 	if (m_thumb)
 	{
-		if (!bl) m_thumb = false;
-		else scrollTo ((int) wk_thumb_pos (my - 1, height - 2, m_nvis, rows (), t.h));
+		if (!bl) { m_thumb = false; invalidate (true); }
+		else scrollTo ((int) wk_thumb_pos (my - 2, height - 4, m_nvis, rows (), t.h));
 		return true;
 	}
 	if (bl && !pressed)
 	{
 		pressed = true; setFocus ();
-		if (t.show && mx >= width - WK_SBW - 1)
-		{ m_thumb = true; scrollTo ((int) wk_thumb_pos (my - 1, height - 2, m_nvis, rows (), t.h)); return true; }
+		if (t.show && mx >= width - WK_SBW - 2)
+		{ m_thumb = true; invalidate (true); scrollTo ((int) wk_thumb_pos (my - 2, height - 4, m_nvis, rows (), t.h)); return true; }
 		int r = top + (my - 2) / row_h ();
 		if (r >= m_nvis) return true;
 		int id = m_vis[r], x = 4 + m_nodes[id].depth * 16;

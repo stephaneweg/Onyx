@@ -33,6 +33,12 @@ class ShutRoot : public Root
 public:
 	ShutRoot (int x, int y) : Root (x, y, W, H, "Shut Down", 0) {}
 	bool onKey (long k) override { if (k == 27) { kapi_exit (0); return true; } return false; }
+	void onDraw () override				// the question in bold, a groove above the buttons
+	{
+		Root::onDraw ();
+		wk_text_l (canvas, 18, 14, 18, "Do you want to shut down Onyx?", C_TEXT, 2);
+		wk_etch_h (canvas, 12, H - 56, W - 24, bg);
+	}
 };
 
 int main (void)
@@ -43,7 +49,6 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 
-	root.addChild (new Label (16, 14, W - 32, 18, "Do you want to shut down Onyx?", C_TEXT, root.bg));
 	g_msg = new Label (16, 38, W - 32, 18, "Open documents are not saved automatically.", C_DIS, root.bg);
 	root.addChild (g_msg);
 	root.addChild (new Button (W - 3 * 112, H - 44, 104, 30, "Restart",   on_restart));

@@ -11,16 +11,6 @@ namespace wtk {
 static void copy_text (char *d, const char *s, int cap)
 { int i = 0; if (s) for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
 
-// A filled disc (radius r) centred at (cx, cy).
-static void disc (Canvas &cv, int cx, int cy, int r, unsigned c)
-{
-	for (int dy = -r; dy <= r; dy++)
-	{
-		int dx = 0; while ((dx + 1) * (dx + 1) + dy * dy <= r * r) dx++;
-		cv.fillRect (cx - dx, cy + dy, 2 * dx + 1, 1, c);
-	}
-}
-
 // ---- RadioButton ---------------------------------------------------------------------------
 RadioButton::RadioButton (int l, int t, int w, int h, const char *s, int group_, bool chk, Action cb_, unsigned bg_)
   : Widget (l, t, w, h), group (group_), checked (chk), cb (cb_), bg (bg_)
@@ -43,22 +33,21 @@ void RadioButton::select ()
 void RadioButton::onDraw ()
 {
 	canvas.clear (bg);
-	int fh = wk_fh (), r = fh / 2 - 1, cy = height / 2;
-	disc (canvas, r + 1, cy, r + 1, C_BORDER);
-	disc (canvas, r + 1, cy, r, (!disabled && hover) ? C_FACE_HI : C_FACE);
-	if (checked) disc (canvas, r + 1, cy, r / 2, C_ACCENT);
-	if (hasFocus) canvas.frameRect (2 * r + 5, (height - fh) / 2 - 1, wk_len (text) * wk_fw () + 4, fh + 2, C_FACE);
-	canvas.text (2 * r + 7, (height - fh) / 2, text, disabled ? C_DIS : C_TEXT);
+	int fh = wk_fh (), bs = fh - 2 < height ? fh - 2 : height, by = (height - bs) / 2;
+	int st = disabled ? WK_DISABLED : pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
+	if (hasFocus && !disabled) st |= WK_FOCUS;
+	wk_radio_mark (canvas, 0, by, bs, checked, st);
+	canvas.text (bs + 7, (height - fh) / 2, text, disabled ? C_DIS : C_TEXT);
 }
 
 bool RadioButton::onMouse (int mx, int, int bl, int, int, int)
 {
-	if (mx < 0) { if (hover) { hover = false; invalidate (true); } pressed = false; return false; }
+	if (mx < 0) { if (hover || pressed) { hover = false; pressed = false; invalidate (true); } return false; }
 	if (disabled) return true;
-	bool wh = hover; hover = true;
+	bool wh = hover, wp = pressed; hover = true;
 	if (bl && !pressed) { pressed = true; setFocus (); }
 	else if (!bl && pressed) { pressed = false; select (); }
-	if (hover != wh) invalidate (true);
+	if (hover != wh || pressed != wp) invalidate (true);
 	return true;
 }
 
@@ -80,16 +69,23 @@ RadioButton *wk_radio_checked (Widget *parent, int group)
 
 // ---- GroupBox ------------------------------------------------------------------------------
 GroupBox::GroupBox (int l, int t, int w, int h, const char *title_, unsigned bg_)
-  : Widget (l, t, w, h), bg (bg_), frame (0x00485870)
+  : Widget (l, t, w, h), bg (bg_), frame (0)
 { copy_text (title, title_, sizeof title); }
 
+// An etched rounded frame (or a plain line in `frame`, when the app sets a colour), the title
+// in bold over it.
 void GroupBox::onDraw ()
 {
-	int fh = wk_fh (), fw = wk_fw (), y = fh / 2;
+	int fh = wk_fh (), y = fh / 2;
 	canvas.clear (bg);
-	canvas.frameRect (0, y, width, height - y, frame);
-	int tw = wk_len (title) * fw;
-	if (tw) { canvas.fillRect (8, 0, tw + 8, fh, bg); canvas.text (12, 0, title, C_TEXT); }
+	if (frame) wk_rline (canvas, 0, y, width, height - y, 6, frame, 255);
+	else wk_etch_box (canvas, 0, y, width, height - y, 6, bg);
+	if (title[0])
+	{
+		int tw = wk_text_w (title, 2);
+		canvas.fillRect (8, 0, tw + 8, fh, bg);
+		wk_text_l (canvas, 12, 0, fh, title, C_TEXT, 2);
+	}
 }
 
 // ---- ToggleSwitch --------------------------------------------------------------------------
@@ -100,26 +96,21 @@ ToggleSwitch::ToggleSwitch (int l, int t, int w, int h, const char *s, bool on_,
 void ToggleSwitch::onDraw ()
 {
 	canvas.clear (bg);
-	int fh = wk_fh (), ph = fh, pw = 2 * fh, py = (height - ph) / 2, r = ph / 2;
-	unsigned track = on ? 0x0040A060 : 0x00404A5A;
-	if (disabled) track = 0x00303840;
-	disc (canvas, r, py + r, r, track);				// the pill: two discs + a bar
-	disc (canvas, pw - r - 1, py + r, r, track);
-	canvas.fillRect (r, py, pw - 2 * r, ph + 1, track);
-	int kx = on ? pw - r - 1 : r;					// the knob
-	disc (canvas, kx, py + r, r - 2, (!disabled && hover) ? 0x00FFFFFF : 0x00E0E6EE);
-	if (hasFocus) canvas.frameRect (pw + 4, (height - fh) / 2 - 1, wk_len (text) * wk_fw () + 4, fh + 2, C_FACE);
-	canvas.text (pw + 6, (height - fh) / 2, text, disabled ? C_DIS : C_TEXT);
+	int fh = wk_fh (), ph = fh + 2 < height ? fh + 2 : height, pw = 2 * ph - 2, py = (height - ph) / 2;
+	int st = disabled ? WK_DISABLED : pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
+	if (hasFocus && !disabled) st |= WK_FOCUS;
+	wk_switch_mark (canvas, 0, py, pw, ph, on, st);
+	canvas.text (pw + 8, (height - fh) / 2, text, disabled ? C_DIS : C_TEXT);
 }
 
 bool ToggleSwitch::onMouse (int mx, int, int bl, int, int, int)
 {
-	if (mx < 0) { if (hover) { hover = false; invalidate (true); } pressed = false; return false; }
+	if (mx < 0) { if (hover || pressed) { hover = false; pressed = false; invalidate (true); } return false; }
 	if (disabled) return true;
-	bool wh = hover; hover = true;
+	bool wh = hover, wp = pressed; hover = true;
 	if (bl && !pressed) { pressed = true; setFocus (); }
-	else if (!bl && pressed) { pressed = false; on = !on; if (cb) cb (*this); invalidate (true); }
-	if (hover != wh) invalidate (true);
+	else if (!bl && pressed) { pressed = false; on = !on; if (cb) cb (*this); }
+	if (hover != wh || pressed != wp) invalidate (true);
 	return true;
 }
 
@@ -131,7 +122,7 @@ bool ToggleSwitch::onKey (long k)
 
 // ---- NumericUpDown -------------------------------------------------------------------------
 NumericUpDown::NumericUpDown (int l, int t, int w, int h, int lo, int hi, int val, int step_, Action cb_)
-  : Widget (l, t, w, h), value (val), vmin (lo), vmax (hi), step (step_ > 0 ? step_ : 1), cb (cb_), m_elen (-1)
+  : Widget (l, t, w, h), value (val), vmin (lo), vmax (hi), step (step_ > 0 ? step_ : 1), cb (cb_), m_elen (-1), m_down (0)
 { canFocus = true; if (value < vmin) value = vmin; if (value > vmax) value = vmax; }
 
 void NumericUpDown::setValue (int v)
@@ -154,11 +145,13 @@ void NumericUpDown::commit ()
 	setValue (neg ? -v : v);
 }
 
+enum { NUD_BW = 18 };		// the arrow buttons' width
+
 void NumericUpDown::onDraw ()
 {
-	int fh = wk_fh (), fw = wk_fw (), bw = 16;
-	canvas.clear (C_FIELD);
-	canvas.frameRect (0, 0, width, height, hasFocus ? C_ACCENT : C_BORDER);
+	int fh = wk_fh (), fw = wk_fw (), bw = NUD_BW;
+	canvas.clear (bgColor ());
+	wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, hasFocus && !disabled);
 	char b[16]; int p = 0;
 	if (m_elen >= 0) { for (int i = 0; i < m_elen; i++) b[p++] = m_edit[i]; }
 	else
@@ -169,30 +162,33 @@ void NumericUpDown::onDraw ()
 		while (n) b[p++] = t[--n];
 	}
 	b[p] = '\0';
-	canvas.text (width - bw - 6 - p * fw, (height - fh) / 2, b, disabled ? C_DIS : C_TEXT);	// right-aligned
-	if (m_elen >= 0) canvas.fillRect (width - bw - 5, (height - fh) / 2, 2, fh, C_ACCENT);	// caret
-	int bx = width - bw, hh = height / 2;
-	canvas.fillRect (bx, 1, bw - 1, hh - 1, C_FACE);
-	canvas.fillRect (bx, hh, bw - 1, height - hh - 1, C_FACE);
-	canvas.fillRect (bx, hh, bw - 1, 1, C_BORDER);
-	for (int i = 0; i < 4; i++)				// the arrows
-	{
-		canvas.fillRect (bx + bw / 2 - i - 1, hh / 2 - 2 + i, 2 * i + 1, 1, C_TEXT);
-		canvas.fillRect (bx + bw / 2 - i - 1, hh + (height - hh) / 2 + 1 - i, 2 * i + 1, 1, C_TEXT);
-	}
+	canvas.text (width - bw - 8 - p * fw, (height - fh) / 2, b, disabled ? C_DIS : C_FIELD_TEXT);	// right-aligned
+	if (m_elen >= 0) canvas.fillRect (width - bw - 7, (height - fh) / 2, 2, fh, C_ACCENT);	// caret
+	int bx = width - bw - 2, hh = (height - 4) / 2;			// the arrows: two small buttons
+	int su = disabled ? WK_DISABLED : m_down == 1 ? WK_PRESSED : WK_NORMAL;
+	int sd = disabled ? WK_DISABLED : m_down == 2 ? WK_PRESSED : WK_NORMAL;
+	wk_raised (canvas, bx, 2, bw, hh, 3, C_FACE, su);
+	wk_raised (canvas, bx, 2 + hh, bw, height - 4 - hh, 3, C_FACE, sd);
+	unsigned gc = disabled ? C_DIS : C_TEXT;
+	wk_glyph (canvas, WKG_UP, bx + bw / 2, 2 + hh / 2, 8, gc);
+	wk_glyph (canvas, WKG_DOWN, bx + bw / 2, 2 + hh + (height - 4 - hh) / 2, 8, gc);
 }
 
 bool NumericUpDown::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
-	if (mx < 0) { pressed = false; return false; }
+	if (mx < 0) { pressed = false; if (m_down) { m_down = 0; invalidate (true); } return false; }
 	if (disabled) return true;
 	if (wheel) { commit (); setValue (value + (wheel > 0 ? step : -step)); return true; }
 	if (bl && !pressed)
 	{
 		pressed = true; setFocus ();
-		if (mx >= width - 16) { commit (); setValue (value + (my < height / 2 ? step : -step)); }
+		if (mx >= width - NUD_BW - 2)
+		{
+			m_down = my < height / 2 ? 1 : 2;
+			commit (); setValue (value + (m_down == 1 ? step : -step));
+		}
 	}
-	else if (!bl) pressed = false;
+	else if (!bl) { pressed = false; if (m_down) { m_down = 0; invalidate (true); } }
 	return true;
 }
 

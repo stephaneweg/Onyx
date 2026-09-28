@@ -21,6 +21,8 @@
 #define WIN_FLAG_TOPMOST	(1u << 2)	// pinned to the top, never active (the menu bar)
 #define WIN_FLAG_TRANSPARENT	(1u << 3)	// magenta (0xFF00FF) client pixels are see-through
 #define WIN_FLAG_SYSTEM		(1u << 4)	// system component: not listed as an open app (panel taskbar)
+#define WIN_FLAG_ALPHA		(1u << 5)	// (v64, borderless) the pixels' top byte is a transparency
+						// (0 opaque .. 255 see-through; clicks there go below)
 
 // Event kinds (must match kern/gui/window.h).
 #define GUI_EVENT_CLICK		1
@@ -46,6 +48,8 @@
 #define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; kapi_drag_data
 #define GUI_EVENT_DRAG_OVER	16	// a drag hovers us (GUI_DND_FLAGS & DND_F_LEAVE: it left)
 #define GUI_EVENT_DRAG_DONE	17	// to the source: GUI_DND_PID (0 = none) + GUI_DND_FLAGS
+#define GUI_EVENT_WINCTL	18	// (v64) a title button: value KAPI_FRAME_MENU (the window menu)
+					// or KAPI_FRAME_MAXIMISE (also a double click on the title)
 #define GUI_DND_FLAGS(v)	((unsigned) (((unsigned long) (v) >> 32) & 0xFF))
 #define GUI_DND_PID(v)		((int) ((unsigned long) (v) & 0xFFFFFFFF))
 #define DND_F_COPY		1	// Ctrl held: copy instead of move
@@ -377,6 +381,14 @@ static inline int kapi_gpu_render3 (const struct kapi_gpu_frame *f, const float 
 // (v63) gpu_vbuf: memory the GPU reads too -- gpu_render3 draws vertices there in place (framed in
 // place: view 0 to draw them again; the clipped triangles into the room past nfloats) -> 0 none
 static inline void *kapi_gpu_vbuf (unsigned bytes) { return KT->version >= 63 ? KT->gpu_vbuf (bytes) : 0; }
+// (v64) the windows of the modernised CDE desktop: minimise one (0: mine; back with win_raise /
+// raise_app), my window's place and size and the work area (the screen less the menu bar and the
+// dock), resize my window letting its canvas grow (*stride: its pixels a row; redraw everything,
+// the frame too) -> 0 on an older kernel / no memory.
+static inline int kapi_win_minimise (unsigned id) { return KT->version >= 64 ? KT->win_minimise (id) : -1; }
+static inline int kapi_win_geometry (struct kapi_win_geom *out) { return KT->version >= 64 ? KT->win_geometry (out) : -1; }
+static inline unsigned *kapi_resize_window2 (int w, int h, int *stride)
+{ return KT->version >= 64 ? KT->resize_window2 (w, h, stride) : 0; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

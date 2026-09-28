@@ -13,10 +13,11 @@ namespace wtk {
 class GroupBox : public Widget
 {
 public:
-	char title[48]; unsigned bg, frame;
+	char title[48]; unsigned bg, frame;	// frame: 0 = etched (the default), else a line's colour
 	GroupBox (int l, int t, int w, int h, const char *title_, unsigned bg_ = C_BG);
 	int  contentTop () const { return wk_fh () + 4; }
 	void onDraw () override;
+	unsigned bgColor () override { return bg; }
 };
 
 } // namespace wtk

@@ -156,10 +156,9 @@ public:
 
 int main (void)
 {
-	WriterRoot root;
-	root.setBg (0x00303840);
+	WriterRoot root;				// (its background: the theme's face)
 
-	g_fn = new Label (8, 3, W - 16, PATH_H - 6, g_path, 0x00C8D0DA, 0x00303840);
+	g_fn = new Label (8, 3, W - 16, PATH_H - 6, g_path, C_TEXT, C_BG);
 	root.addChild (g_fn);
 
 	// Body: the rich-text document
@@ -172,6 +171,9 @@ int main (void)
 		"The wheel and the arrow keys scroll. File > Open... / Save / Save As... load and "
 		"store plain text, or Rich Text Format with its styles when the name ends in .rtf.");
 	root.addChild (g_rtb);
+	g_fn->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;	// (maximised: the page fills the window)
+	g_rtb->anchor = ANCHOR_FILL;
+	root.setResizable (true);
 
 	static Menu menu;
 	menu.menu ("File");

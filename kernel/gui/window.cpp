@@ -18,8 +18,9 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
-	m_bExitRequested (FALSE)
+	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nChromeGenShown (0), m_nRetireFrame (0)
 {
+	m_pRetired[0] = m_pRetired[1] = m_pRetired[2] = 0;
 	static unsigned s_nNextId = 0;
 	m_nId = ++s_nNextId;
 	m_nOwnerPid = 0;
@@ -71,29 +72,41 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	{
 		m_nOuterW = nClientW + 2 * WIN_BORDER;
 		m_nOuterH = nClientH + WIN_TITLEBAR_H + WIN_BORDER;
-		unsigned nCopyBytes = (unsigned) (m_nOuterW * m_nOuterH) * sizeof (u32);
-		unsigned nPages = (nCopyBytes + KPAGE_MASK) / KPAGE_SIZE;
-		if (nPages == 0)
-		{
-			nPages = 1;
-		}
-		for (int i = 0; i < 2; i++)
-		{
-			m_pChromeRaw[i] = new u8[nPages * KPAGE_SIZE + KPAGE_SIZE];
-			if (m_pChromeRaw[i] == 0)
-			{
-				break;				// HasChrome() stays false if [0] failed
-			}
-			uintptr ulC = ((uintptr) m_pChromeRaw[i] + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
-			m_ulChromePhys[i] = ulC;
-			m_nChromePages[i] = nPages;
-			memset ((void *) ulC, 0, nPages * KPAGE_SIZE);
-		}
+		AllocChrome (m_nOuterW, m_nOuterH, m_pChromeRaw, m_ulChromePhys, m_nChromePages);
 	}
+}
+
+// The two chrome copies for an nOuterW x nOuterH frame (zeroed). FALSE if [0] failed (then none).
+boolean CWindow::AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhys[2], unsigned nPages[2])
+{
+	unsigned nCopyBytes = (unsigned) (nOuterW * nOuterH) * sizeof (u32);
+	unsigned n = (nCopyBytes + KPAGE_MASK) / KPAGE_SIZE;
+	if (n == 0)
+	{
+		n = 1;
+	}
+	pRaw[0] = pRaw[1] = 0; ulPhys[0] = ulPhys[1] = 0; nPages[0] = nPages[1] = 0;
+	for (int i = 0; i < 2; i++)
+	{
+		pRaw[i] = new u8[n * KPAGE_SIZE + KPAGE_SIZE];
+		if (pRaw[i] == 0)
+		{
+			break;				// HasChrome() stays false if [0] failed
+		}
+		uintptr ulC = ((uintptr) pRaw[i] + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
+		ulPhys[i] = ulC;
+		nPages[i] = n;
+		memset ((void *) ulC, 0, n * KPAGE_SIZE);
+	}
+	return ulPhys[0] != 0;
 }
 
 CWindow::~CWindow (void)
 {
+	for (int i = 0; i < 3; i++)
+	{
+		if (m_pRetired[i] != 0) { delete [] (u8 *) m_pRetired[i]; m_pRetired[i] = 0; }
+	}
 	if (m_pRawAlloc != 0)
 	{
 		delete [] (u8 *) m_pRawAlloc;
@@ -175,20 +188,117 @@ static void BlendRect (GImage *pScreen, const u32 *pSrc, int nStride, int dx, in
 	}
 }
 
+// Blend (sw x sh) pixels whose top byte is a transparency (0 = opaque, 255 = see-through) onto
+// the screen at (dx,dy), times the window's opacity nAlpha (1..255). Clipped to the screen's clip
+// rectangle. (WIN_FLAG_ALPHA canvases; the frames' rounded corners.)
+static void BlendAlphaRect (GImage *pScreen, const u32 *pSrc, int nStride, int dx, int dy,
+			    int sw, int sh, int nAlpha)
+{
+	u32 *pDst = pScreen->Buffer ();
+	if (pDst == 0 || pSrc == 0) return;
+	int W = pScreen->Width ();
+	int x0 = dx > pScreen->ClipX0 () ? dx : pScreen->ClipX0 (), x1 = dx + sw < pScreen->ClipX1 () ? dx + sw : pScreen->ClipX1 ();
+	int y0 = dy > pScreen->ClipY0 () ? dy : pScreen->ClipY0 (), y1 = dy + sh < pScreen->ClipY1 () ? dy + sh : pScreen->ClipY1 ();
+	for (int ty = y0; ty < y1; ty++)
+	{
+		const u32 *s = pSrc + (ty - dy) * nStride + (x0 - dx);
+		u32 *d = pDst + ty * W + x0;
+		for (int n = x1 - x0; n > 0; n--, s++, d++)
+		{
+			u32 c = *s;
+			unsigned a = 255 - (c >> 24);
+			if (nAlpha < 255) a = a * (unsigned) nAlpha / 255;
+			if (a == 0) continue;
+			if (a == 255) { *d = c & 0x00FFFFFF; continue; }
+			u32 b = *d;
+			unsigned ia = 255 - a;
+			u32 r  = (((c >> 16) & 0xFF) * a + ((b >> 16) & 0xFF) * ia) / 255;
+			u32 g  = (((c >> 8)  & 0xFF) * a + ((b >> 8)  & 0xFF) * ia) / 255;
+			u32 bl = (( c        & 0xFF) * a + ( b        & 0xFF) * ia) / 255;
+			*d = (r << 16) | (g << 8) | bl;
+		}
+	}
+}
+
+// A frame's rounded corners: on the corner's row k (0 = the outer edge's), the first
+// CornerSpan (k) pixels from the side may be see-through; the others are wholly inside the
+// shape of radius KAPI_FRAME_RADIUS (their farthest point from the arc's centre within it), so
+// the app draws them opaque.
+static int CornerSpan (int k)
+{
+	static int s_Span[KAPI_FRAME_RADIUS];
+	static volatile boolean s_bDone = FALSE;
+	if (!s_bDone)
+	{
+		const int R = KAPI_FRAME_RADIUS;
+		for (int j = 0; j < R; j++)
+		{
+			int i = 0;
+			while (i < R && (R - i) * (R - i) + (R - j) * (R - j) > R * R) i++;
+			s_Span[j] = i;
+		}
+		s_bDone = TRUE;
+	}
+	return k >= 0 && k < KAPI_FRAME_RADIUS ? s_Span[k] : 0;
+}
+
+boolean CWindow::CornersIn (int x0, int y0, int x1, int y1) const
+{
+	if (Borderless ()) return FALSE;
+	int W = OuterWidth (), H = OuterHeight ();
+	for (int k = 0; k < KAPI_FRAME_RADIUS && 2 * k < H; k++)
+	{
+		int n = CornerSpan (k), ya = m_nY + k, yb = m_nY + H - 1 - k;
+		if (!((ya >= y0 && ya < y1) || (yb >= y0 && yb < y1))) continue;
+		if ((m_nX < x1 && m_nX + n > x0) || (m_nX + W - n < x1 && m_nX + W > x0)) return TRUE;
+	}
+	return FALSE;
+}
+
+// Rows [r0, r1) of a frame's chrome copy (W x H) at (x0, y0 + r0): the corner squares blended
+// by their pixels' transparency, the rest opaque.
+static void ChromeRows (GImage *pScreen, const GImage *pChrome, int x0, int y0, int r0, int r1)
+{
+	const int R = KAPI_FRAME_RADIUS;
+	int W = pChrome->Width (), H = pChrome->Height ();
+	const u32 *pCopy = pChrome->Buffer ();
+	for (int r = r0; r < r1; )
+	{
+		boolean bCorner = r < R || r >= H - R;
+		int e = r < R ? R : r >= H - R ? H : H - R;		// this kind of row ends there
+		if (e > r1) e = r1;
+		if (bCorner && W > 2 * R)
+		{
+			BlendAlphaRect (pScreen, pCopy + r * W, W, x0, y0 + r, R, e - r, 255);
+			pScreen->PutOtherPart (pChrome, x0 + R, y0 + r, R, r, W - 2 * R, e - r, FALSE);
+			BlendAlphaRect (pScreen, pCopy + r * W + W - R, W, x0 + W - R, y0 + r, R, e - r, 255);
+		}
+		else pScreen->PutOtherPart (pChrome, x0, y0 + r, 0, r, W, e - r, FALSE);
+		r = e;
+	}
+}
+
 void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 {
 	int nAlpha = m_nAlpha;
-	if (nAlpha <= 0)
+	if (nAlpha <= 0 || m_bMinimised)
 	{
-		return;					// fully faded out: invisible
+		return;					// fully faded out / minimised: invisible
+	}
+	if (AlphaCanvas ())				// per-pixel transparency (the dock, the agenda)
+	{
+		BlendAlphaRect (pScreen, m_Canvas.Buffer (), m_Canvas.Width (), m_nX, m_nY,
+				ClientWidth (), ClientHeight (), nAlpha);
+		return;
 	}
 	if (nAlpha < 255)
 	{
-		// Translucent (a fade in / out): blend chrome + client over what is below.
+		// Translucent (a fade in / out): blend chrome + client over what is below (the
+		// frame's corners by their own transparency too).
 		if (!Borderless () && m_ulChromePhys[0] != 0)
 		{
-			BlendRect (pScreen, (const u32 *) m_ulChromePhys[bActive ? 0 : 1], m_nOuterW,
-				   m_nX, m_nY, m_nOuterW, m_nOuterH, nAlpha, FALSE);
+			BlendAlphaRect (pScreen, (const u32 *) m_ulChromePhys[bActive ? 0 : 1], m_nOuterW,
+					m_nX, m_nY, m_nOuterW, m_nOuterH, nAlpha);
 		}
 		BlendRect (pScreen, m_Canvas.Buffer (), m_Canvas.Width (), m_nX + ChromeL (),
 			   m_nY + ChromeT (), ClientWidth (), ClientHeight (), nAlpha, Transparent ());
@@ -203,16 +313,41 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 	int x0 = m_nX;
 	int y0 = m_nY;
 
-	// Window chrome is now drawn USER-SIDE: the app renders its title bar / borders /
-	// close box into two pre-composited copies (active + inactive). The compositor just
-	// picks the copy matching focus and blits it -- OPAQUE: the chrome is a plain
-	// rectangle (no rounded/transparent corners), so we skip the per-pixel transparency
-	// test. The kernel keeps only the chrome BEHAVIOUR (title-bar drag, close-box hit).
+	// The frame is drawn USER-SIDE: the app renders its title bar / borders / buttons into two
+	// copies (active + inactive); the compositor picks the one matching focus and blits its
+	// bands round the client area (opaque but for the rounded corners' squares, blended by their
+	// pixels' transparency). The kernel keeps the frame's BEHAVIOUR (drag, the title buttons).
 	if (!Borderless () && m_ulChromePhys[0] != 0)
 	{
-		u32 *pCopy = (u32 *) m_ulChromePhys[bActive ? 0 : 1];
-		GImage Chrome (pCopy, m_nOuterW, m_nOuterH);
-		pScreen->PutOther (&Chrome, x0, y0, FALSE);
+		GImage Chrome ((u32 *) m_ulChromePhys[bActive ? 0 : 1], m_nOuterW, m_nOuterH);
+		int T = ChromeT (), B = ChromeB (), H = m_nOuterH;
+		if (Transparent () || T + ch + B > H)
+		{
+			ChromeRows (pScreen, &Chrome, x0, y0, 0, H);	// (a see-through client: all of it)
+		}
+		else
+		{
+			ChromeRows (pScreen, &Chrome, x0, y0, 0, T);			// the title bar
+			ChromeRows (pScreen, &Chrome, x0, y0, T + ch, H);		// the bottom border
+			int L = ChromeL (), Rt = m_nOuterW - L - cw;			// the sides
+			for (int r = T; r < T + ch; )
+			{
+				int e = r < KAPI_FRAME_RADIUS ? KAPI_FRAME_RADIUS : r >= H - KAPI_FRAME_RADIUS ? T + ch : H - KAPI_FRAME_RADIUS;
+				if (e > T + ch) e = T + ch;
+				if (r < KAPI_FRAME_RADIUS || r >= H - KAPI_FRAME_RADIUS)	// (beside a corner)
+				{
+					BlendAlphaRect (pScreen, Chrome.Buffer () + r * m_nOuterW, m_nOuterW, x0, y0 + r, L, e - r, 255);
+					BlendAlphaRect (pScreen, Chrome.Buffer () + r * m_nOuterW + L + cw, m_nOuterW,
+							x0 + L + cw, y0 + r, Rt, e - r, 255);
+				}
+				else
+				{
+					pScreen->PutOtherPart (&Chrome, x0, y0 + r, 0, r, L, e - r, FALSE);
+					pScreen->PutOtherPart (&Chrome, x0 + L + cw, y0 + r, L + cw, r, Rt, e - r, FALSE);
+				}
+				r = e;
+			}
+		}
 	}
 
 	// Client area = the owner's canvas, blitted opaque inside the chrome. Only the
@@ -225,23 +360,126 @@ void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 
 void CWindow::CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const
 {
-	int nSize = WIN_TITLEBAR_H - 10;		// square inset in the title bar
-	int x1 = m_nX + OuterWidth () - 1;		// (the frame as it is now: resize_window)
-	*px1 = x1 - 4;
-	*px0 = *px1 - nSize;
-	*py0 = m_nY + 5;
-	*py1 = *py0 + nSize;
+	*px1 = m_nX + OuterWidth () - KAPI_FRAME_BTN_EDGE - 1;		// (the frame as it is now)
+	*px0 = *px1 - KAPI_FRAME_BTN_W + 1;
+	*py0 = m_nY + KAPI_FRAME_BTN_Y;
+	*py1 = *py0 + KAPI_FRAME_BTN_H - 1;
 }
 
 boolean CWindow::HitCloseBox (int sx, int sy) const
 {
-	if (Borderless ())
+	return HitTitleButton (sx, sy) == KAPI_FRAME_CLOSE;
+}
+
+// The title buttons (kapi_abi.h KAPI_FRAME_*): the window menu at the left; close, maximise,
+// minimise from the right.
+int CWindow::HitTitleButton (int sx, int sy) const
+{
+	if (Borderless () || m_bMinimised)
 	{
-		return FALSE;			// no close box on a borderless window
+		return -1;
 	}
-	int x0, y0, x1, y1;
-	CloseBoxRect (&x0, &y0, &x1, &y1);
-	return sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
+	int y = sy - (m_nY + KAPI_FRAME_BTN_Y);
+	if (y < 0 || y >= KAPI_FRAME_BTN_H)
+	{
+		return -1;
+	}
+	int xl = sx - (m_nX + KAPI_FRAME_BTN_EDGE);
+	if (xl >= 0 && xl < KAPI_FRAME_BTN_W)
+	{
+		return KAPI_FRAME_MENU;
+	}
+	int xr = (m_nX + OuterWidth () - KAPI_FRAME_BTN_EDGE) - 1 - sx;	// from the right, 0 = its last pixel
+	if (xr < 0)
+	{
+		return -1;
+	}
+	static const int Order[3] = { KAPI_FRAME_CLOSE, KAPI_FRAME_MAXIMISE, KAPI_FRAME_MINIMISE };
+	for (int i = 0; i < 3; i++)
+	{
+		int d = xr - i * KAPI_FRAME_BTN_STEP;
+		if (d >= 0 && d < KAPI_FRAME_BTN_W)
+		{
+			return Order[i];
+		}
+	}
+	return -1;
+}
+
+boolean CWindow::OpaqueAt (int sx, int sy) const
+{
+	int x = sx - m_nX, y = sy - m_nY;
+	if (x < 0 || y < 0 || x >= ClientWidth () || y >= ClientHeight () || m_Canvas.Buffer () == 0)
+	{
+		return FALSE;
+	}
+	return (m_Canvas.Buffer ()[y * m_Canvas.Width () + x] >> 24) != 0xFF;
+}
+
+boolean CWindow::Grow (int w, int h)
+{
+	int cw = m_Canvas.Width (), ch = m_Canvas.Height ();
+	if (w <= cw && h <= ch)
+	{
+		return TRUE;					// it fits already
+	}
+	if (w < cw) w = cw;
+	if (h < ch) h = ch;
+	if (m_pRetired[0] != 0 || m_pRetired[1] != 0 || m_pRetired[2] != 0)
+	{
+		return FALSE;					// (the last growth not freed yet)
+	}
+	unsigned nBytes = (unsigned) (w * h) * sizeof (u32);
+	unsigned nPages = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
+	void *pRaw = new u8[nPages * KPAGE_SIZE + KPAGE_SIZE];
+	if (pRaw == 0)
+	{
+		return FALSE;
+	}
+	void *pChRaw[2] = { 0, 0 }; u64 ulChPhys[2] = { 0, 0 }; unsigned nChPages[2] = { 0, 0 };
+	if (!Borderless ()
+	    && !AllocChrome (w + 2 * WIN_BORDER, h + WIN_TITLEBAR_H + WIN_BORDER, pChRaw, ulChPhys, nChPages))
+	{
+		if (pChRaw[1] != 0) delete [] (u8 *) pChRaw[1];
+		if (pChRaw[0] != 0) delete [] (u8 *) pChRaw[0];
+		delete [] (u8 *) pRaw;
+		return FALSE;
+	}
+	uintptr ulAligned = ((uintptr) pRaw + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
+	memset ((void *) ulAligned, 0, nPages * KPAGE_SIZE);
+	Damage ();
+	// the old memory is retired (the compositor may be blitting it right now), the new one in
+	m_pRetired[0] = m_pRawAlloc;
+	m_pRawAlloc = pRaw; m_ulCanvasPhys = ulAligned; m_nCanvasPages = nPages;
+	m_Canvas.Wrap ((u32 *) ulAligned, w, h);
+	if (!Borderless ())
+	{
+		m_pRetired[1] = m_pChromeRaw[0]; m_pRetired[2] = m_pChromeRaw[1];
+		for (int i = 0; i < 2; i++)
+		{
+			m_pChromeRaw[i] = pChRaw[i]; m_ulChromePhys[i] = ulChPhys[i]; m_nChromePages[i] = nChPages[i];
+		}
+	}
+	m_nRetireFrame = CWindowManager::Get () != 0 ? CWindowManager::Get ()->FrameCount () : 0;
+	m_nChromeGen++;
+	return TRUE;
+}
+
+void CWindow::FreeRetired (void)
+{
+	if (m_pRetired[0] == 0 && m_pRetired[1] == 0 && m_pRetired[2] == 0)
+	{
+		return;
+	}
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM != 0 && pWM->FrameCount () - m_nRetireFrame < 3)
+	{
+		return;						// (a frame begun before may still read it)
+	}
+	for (int i = 0; i < 3; i++)
+	{
+		if (m_pRetired[i] != 0) { delete [] (u8 *) m_pRetired[i]; m_pRetired[i] = 0; }
+	}
 }
 
 void CWindow::PushEvent (const GUIEvent &Event)
@@ -353,6 +591,7 @@ CWindowManager::CWindowManager (void)
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
 	m_pDragWindow (0), m_nDragDX (0), m_nDragDY (0),
+	m_pTitleClick (0), m_nTitleClickTicks (0), m_pBtnDown (0), m_nBtnDown (-1),
 	m_pPtrOverWindow (0), m_pPtrCaptureWindow (0), m_nWheelSpeed (2),
 	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0),
 	m_pFullscreen (0), m_pFsRaw (0), m_ulFsPhys (0), m_nFsPages (0),
@@ -412,6 +651,8 @@ void CWindowManager::Remove (CWindow *pWindow)
 	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
 	if (m_pFullscreen == pWindow)		{ m_pFullscreen = 0; }	// its app quit: desktop back
 	if (m_pDndOver == pWindow)		{ m_pDndOver = 0; }
+	if (m_pTitleClick == pWindow)		{ m_pTitleClick = 0; }
+	if (m_pBtnDown == pWindow)		{ m_pBtnDown = 0; }
 	if (m_bDnd && m_pDndSrc == pWindow)	{ m_bDnd = FALSE; m_pDndSrc = 0; }	// source gone
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
@@ -432,6 +673,7 @@ void CWindowManager::Remove (CWindow *pWindow)
 // Caller holds m_SpinLock.
 void CWindowManager::RaiseLocked (CWindow *pWindow)
 {
+	if (pWindow != 0 && pWindow->Minimised ()) pWindow->SetMinimised (FALSE);	// (back from the dock)
 	if (pWindow != 0) pWindow->Damage ();
 	if (pWindow != 0 && pWindow->Backmost ())
 	{
@@ -464,7 +706,7 @@ CWindow *CWindowManager::ActiveLocked (void)
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
 		CWindow *p = m_pWindows[i];
-		if (p != 0 && !p->Topmost () && !p->Backmost () && !p->Borderless ())
+		if (p != 0 && !p->Topmost () && !p->Backmost () && !p->Borderless () && !p->Minimised ())
 		{
 			return p;
 		}
@@ -508,7 +750,7 @@ CWindow *CWindowManager::KeyTargetLocked (void)
 	}
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
-		if (m_pWindows[i] != 0 && !m_pWindows[i]->Topmost ())
+		if (m_pWindows[i] != 0 && !m_pWindows[i]->Topmost () && !m_pWindows[i]->Minimised ())
 		{
 			return m_pWindows[i];
 		}
@@ -536,6 +778,57 @@ int CWindowManager::TopInset (void)
 	int n = TopInsetLocked ();
 	m_SpinLock.Release ();
 	return n;
+}
+
+// The height kept by the topmost windows standing on the screen's bottom edge (the dock: its
+// bar -- the smallest it has been; its drawers grow it upward for a while).
+int CWindowManager::BottomInsetLocked (void)
+{
+	int nInset = 0;
+	for (unsigned i = 0; i < m_nWindows; i++)
+	{
+		CWindow *p = m_pWindows[i];
+		if (p != 0 && p->Topmost () && p->Y () > 0 && !p->Minimised ()
+		    && p->Y () + p->OuterHeight () >= g_nScreenHeight && p->MinLogicalHeight () > nInset)
+		{
+			nInset = p->MinLogicalHeight ();
+		}
+	}
+	return nInset;
+}
+
+void CWindowManager::WorkArea (int *px, int *py, int *pw, int *ph)
+{
+	m_SpinLock.Acquire ();
+	int t = TopInsetLocked (), b = BottomInsetLocked ();
+	m_SpinLock.Release ();
+	if (t + b > g_nScreenHeight / 2) b = 0;
+	*px = 0; *py = t; *pw = g_nScreenWidth; *ph = g_nScreenHeight - t - b;
+}
+
+// Caller holds m_SpinLock.
+void CWindowManager::MinimiseLocked (CWindow *pWindow)
+{
+	if (pWindow == 0 || pWindow->Topmost () || pWindow->Backmost () || pWindow->Minimised ())
+	{
+		return;
+	}
+	if (m_pPtrOverWindow == pWindow)
+	{
+		EmitPointer (pWindow, GUI_EVENT_PTR_LEAVE, -1, -1, 0, 0);
+		m_pPtrOverWindow = 0;
+	}
+	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
+	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
+	if (m_pFullscreen == pWindow)		{ return; }
+	pWindow->SetMinimised (TRUE);
+}
+
+void CWindowManager::Minimise (CWindow *pWindow)
+{
+	m_SpinLock.Acquire ();
+	MinimiseLocked (pWindow);
+	m_SpinLock.Release ();
 }
 
 unsigned CWindowManager::GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
@@ -627,6 +920,7 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	for (unsigned i = 0; i < nCount; i++)
 	{
 		pSnapshot[i] = m_pWindows[i];
+		if (bCountFrame && pSnapshot[i] != 0) pSnapshot[i]->FreeRetired ();	// (a grown window's old memory)
 	}
 	// A committed app-written wallpaper (m_WallImage) takes priority over the
 	// kernel-set one (m_pWallpaper).
@@ -898,7 +1192,7 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
 		CWindow *pWin = m_pWindows[i];
-		if (pWin == 0)
+		if (pWin == 0 || pWin->Minimised () || pWin->Alpha () <= 0)
 		{
 			continue;
 		}
@@ -908,6 +1202,10 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 		int y1 = y0 + pWin->ChromeT () + pWin->ClientHeight () + pWin->ChromeB () - 1;
 		if (x >= x0 && x <= x1 && y >= y0 && y <= y1)
 		{
+			if (pWin->AlphaCanvas () && !pWin->OpaqueAt (x, y))
+			{
+				continue;			// a see-through pixel: what lies below
+			}
 			// Borderless windows have no title bar (ChromeT == 0), so a hit is
 			// always in the client area -- never a drag region.
 			*pbOnTitleBar = !pWin->Borderless () && (y < y0 + pWin->ChromeT ());
@@ -931,6 +1229,18 @@ static void EmitDnd (CWindow *pWin, int nEvent, int cx, int cy, unsigned nFlags,
 	Ev.ulSender  = 0;
 	Ev.nEvent    = nEvent;
 	Ev.lValue    = lRaw >= 0 ? lRaw : ((long) nFlags << 32) | ((long) cx << 16) | (long) cy;
+	pWin->PushEvent (Ev);
+}
+
+// A title button for the app (GUI_EVENT_WINCTL, v64): the window menu, maximise.
+static void EmitWinCtl (CWindow *pWin, int nWhat)
+{
+	if (pWin == 0 || pWin->PointerHandler () == 0) return;
+	GUIEvent Ev;
+	Ev.ulHandler = pWin->PointerHandler ();
+	Ev.ulSender  = 0;
+	Ev.nEvent    = GUI_EVENT_WINCTL;
+	Ev.lValue    = nWhat;
 	pWin->PushEvent (Ev);
 }
 
@@ -1183,15 +1493,32 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		{
 			CWindow *pWin = m_pWindows[nHit];
 			RaiseLocked (pWin);
-			if (pWin->HitCloseBox (x, y))
+			int nBtn = pWin->HitTitleButton (x, y);
+			if (nBtn == KAPI_FRAME_MENU)
 			{
-				pWin->RequestExit ();
+				EmitWinCtl (pWin, KAPI_FRAME_MENU);	// (a menu opens at the press)
+			}
+			else if (nBtn >= 0)
+			{
+				m_pBtnDown = pWin;			// acted on at the release, over it
+				m_nBtnDown = nBtn;
 			}
 			else if (bOnTitle)
 			{
-				m_pDragWindow = pWin;
-				m_nDragDX = x - pWin->X ();
-				m_nDragDY = y - pWin->Y ();
+				unsigned nNow = CTimer::Get ()->GetTicks ();
+				if (m_pTitleClick == pWin && nNow - m_nTitleClickTicks < HZ * 4 / 10)
+				{
+					m_pTitleClick = 0;			// a double click: maximise / restore
+					EmitWinCtl (pWin, KAPI_FRAME_MAXIMISE);
+				}
+				else
+				{
+					m_pTitleClick = pWin;
+					m_nTitleClickTicks = nNow;
+					m_pDragWindow = pWin;
+					m_nDragDX = x - pWin->X ();
+					m_nDragDY = y - pWin->Y ();
+				}
 			}
 			else if (pWin->ClickHandler () != 0)
 			{
@@ -1218,6 +1545,18 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	else if (!bLeftNow && bLeftWas)
 	{
 		m_pDragWindow = 0;
+		if (m_pBtnDown != 0)				// a title button's release: over it, it acts
+		{
+			CWindow *pWin = m_pBtnDown;
+			int nBtn = m_nBtnDown;
+			m_pBtnDown = 0;
+			if (pWin->HitTitleButton (x, y) == nBtn)
+			{
+				if (nBtn == KAPI_FRAME_CLOSE)		pWin->RequestExit ();
+				else if (nBtn == KAPI_FRAME_MINIMISE)	MinimiseLocked (pWin);
+				else					EmitWinCtl (pWin, nBtn);
+			}
+		}
 	}
 
 	// Right-click press + drag motion for app-drawn UIs (left press handled above).

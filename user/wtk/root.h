@@ -17,6 +17,7 @@ public:
 	Root (int w, int h, const char *title);				// decorated window
 	Root (int x, int y, int w, int h, const char *title, unsigned flags); // positioned / borderless
 	void setBg (unsigned c) { bg = c; invalidate (true); }
+	unsigned bgColor () override { return bg; }
 	void onDraw () override;
 	void run ();
 	void attach ();				// hook the kapi pointer / key streams (run () does it); for
@@ -35,6 +36,18 @@ public:
 
 	static Root *current ();		// the active window (for modal dialogs)
 
+	// The window's frame (kapi v64). setResizable (true): the app lays itself out at any size
+	// (its anchors, its layout do) -- then its maximise button works: the window fills the
+	// work area (between the menu bar and the dock) and back; onResized () follows (the new
+	// size: width, height). The window menu (its button, top left): Restore / Maximise,
+	// Minimise, Close.
+	void setResizable (bool on);
+	bool resizable () const { return m_resizable; }
+	bool maximised () const { return m_maxed; }
+	void maximise (bool on);
+	virtual void onResized () {}
+	void windowMenu ();
+
 	// Tooltips (Widget::tip): after the pointer rests ~0.6 s over a widget with a tip,
 	// a small box shows the text next to it; any pointer event hides it.
 	void tooltipTick ();
@@ -45,6 +58,8 @@ private:
 	int      m_mx, m_my;			// last pointer position (client coords)
 	unsigned m_moveT;			// ticks of the last pointer event
 	bool     m_tipDone;			// already shown for this rest
+	bool     m_resizable, m_maxed;		// (setResizable, maximise)
+	int      m_rx, m_ry, m_rw, m_rh;	// the window's place and size before it was maximised
 	void init (unsigned *fb);		// shared ctor tail (adopt canvas + decorate + register)
 	static Root *&active ();		// single active window per app (reachable from C callbacks)
 	static void ptrEvent (unsigned long, int ev, long v);

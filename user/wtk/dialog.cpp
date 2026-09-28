@@ -20,7 +20,20 @@ static void dlg_btn (Widget &w) { if (w.parent) ((Modal *) w.parent)->onButton (
 static void dlg_scr (Widget &w) { if (w.parent) ((Modal *) w.parent)->onScroll (((Scrollbar &) w).value); }
 
 // ---- Modal -------------------------------------------------------------------
-Modal::Modal (int w, int h) : Widget (0, 0, w, h), done (false), result (0) { modal = true; }
+Modal::Modal (int w, int h) : Widget (0, 0, w, h), done (false), result (0) { modal = true; transparent = true; }
+
+unsigned Modal::bgColor () { return C_FACE; }
+int Modal::titleH () { return wk_fh () + 10; }
+
+void Modal::drawBox (const char *title)
+{
+	unsigned ol = WK_OUTLINE == 2 ? 0x00000000 : wk_tone (C_FRAME_ACTIVE, 44);
+	canvas.clear (ol);
+	wk_rbox (canvas, 0, 0, width, height, 8, C_FACE, C_FACE);
+	wk_title_strip (canvas, 1, 1, width - 2, titleH (), title, 7);
+	wk_rline (canvas, 0, 0, width, height, 8, ol, 255);
+	wk_corner_key (canvas, 0, 0, width, height, 8);
+}
 
 int Modal::run ()
 {
@@ -83,17 +96,14 @@ bool MessageBox::onKey (long k)
 void MessageBox::onDraw ()
 {
 	int fh = wk_fh ();
-	canvas.clear (C_FACE_DN);
-	canvas.frameRect (0, 0, width, height, C_ACCENT);
-	canvas.fillRect (0, 0, width, fh + 8, C_FACE);
-	canvas.text (8, 4, m_title, C_TEXT);
+	drawBox (m_title);
 	const char *p = m_text; int line = 0; char buf[96];
 	while (*p)
 	{
 		int n = 0; while (p[n] && p[n] != '\n' && n < 95) n++;
 		for (int i = 0; i < n; i++) buf[i] = p[i];
 		buf[n] = '\0';
-		canvas.text (10, fh + 14 + line * (fh + 2), buf, C_TEXT);
+		canvas.text (14, titleH () + 10 + line * (fh + 2), buf, C_TEXT);
 		p += n; if (*p == '\n') p++;
 		line++;
 	}
@@ -117,10 +127,10 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 	int W = r ? r->width : width, H = r ? r->height : height;
 	left = (W - width) / 2; top = (H - height) / 2;
 	int fh = wk_fh ();
-	m_rowH = fh + 2;
-	m_lx = 10; m_ly = fh + 24;
+	m_rowH = fh + 4;
+	m_lx = 10; m_ly = titleH () + fh + 12;
 	m_lw = width - 20 - 14; m_lh = height - m_ly - 78;
-	m_rows = m_lh / m_rowH; if (m_rows < 1) m_rows = 1;
+	m_rows = (m_lh - 4) / m_rowH; if (m_rows < 1) m_rows = 1;
 	m_count = 0; m_sel = -1; m_top = 0;
 
 	m_sb = new Scrollbar (m_lx + m_lw + 2, m_ly, 12, m_lh, true, 1, 0, dlg_scr); addChild (m_sb);
@@ -214,8 +224,8 @@ bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)
 	if (bl && !pressed)					// press edge in the list area
 	{
 		pressed = true;
-		if (mx >= m_lx && mx < m_lx + m_lw && my >= m_ly && my < m_ly + m_lh)
-			click (m_top + (my - m_ly - 1) / m_rowH);
+		if (mx >= m_lx && mx < m_lx + m_lw && my >= m_ly + 2 && my < m_ly + m_lh)
+			click (m_top + (my - m_ly - 2) / m_rowH);
 	}
 	else if (!bl) pressed = false;
 	return true;						// modal: consume everything
@@ -224,24 +234,21 @@ bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)
 void FileDialog::onDraw ()
 {
 	int fh = wk_fh ();
-	canvas.clear (C_FACE_DN);
-	canvas.frameRect (0, 0, width, height, C_ACCENT);
-	canvas.fillRect (0, 0, width, fh + 8, C_FACE);
-	canvas.text (8, 4, m_folder ? "Choose folder" : m_save ? "Save file" : "Open file", C_TEXT);
-	canvas.text (10, fh + 12, m_dir[0] ? m_dir : "Volumes", C_DIS);
+	drawBox (m_folder ? "Choose folder" : m_save ? "Save file" : "Open file");
+	canvas.text (12, titleH () + 6, m_dir[0] ? m_dir : "Volumes", C_DIS);
 
-	canvas.fillRect (m_lx, m_ly, m_lw, m_lh, C_FIELD);
-	canvas.frameRect (m_lx, m_ly, m_lw, m_lh, C_BORDER);
+	wk_sunken (canvas, m_lx, m_ly, m_lw, m_lh, 4, C_FIELD, false);
 	for (int r = 0; r < m_rows; r++)
 	{
 		int idx = m_top + r; if (idx >= m_count) break;
-		int ry = m_ly + 1 + r * m_rowH;
-		if (idx == m_sel) canvas.fillRect (m_lx + 1, ry, m_lw - 2, m_rowH, C_FACE_HI);
+		int ry = m_ly + 2 + r * m_rowH;
+		bool s = idx == m_sel;
+		if (s) wk_hilite (canvas, m_lx + 3, ry, m_lw - 6, m_rowH, 4, true);
 		char row[100]; int k = 0;
 		for (; m_ent[idx][k] && k < 96; k++) row[k] = m_ent[idx][k];
 		if (m_isdir[idx] && !fd_dotdot (m_ent[idx]) && k < 97) row[k++] = '/';
 		row[k] = '\0';
-		canvas.text (m_lx + 4, ry, row, m_isdir[idx] ? C_ACCENT : C_TEXT);
+		canvas.text (m_lx + 8, ry + (m_rowH - fh) / 2, row, s ? C_SEL_TEXT : m_isdir[idx] ? wk_tone (C_ACCENT, 84) : C_FIELD_TEXT);
 	}
 }
 
@@ -256,6 +263,124 @@ void FileDialog::getResult (char *out, unsigned cap)
 }
 
 // ---- convenience -------------------------------------------------------------
+// ---- PopupMenu ------------------------------------------------------------------------------------
+enum { PM_PAD = 4, PM_SEP = 9 };
+static int pm_row () { return wk_fh () + 8; }
+
+PopupMenu::PopupMenu (int x, int y) : Modal (120, 2 * PM_PAD), m_n (0), m_hot (-1) { left = x; top = y; }
+
+void PopupMenu::add (const char *label, int id, bool enabled, const char *hint)
+{
+	if (m_n >= MAXI) return;
+	m_label[m_n] = label; m_hint[m_n] = hint; m_id[m_n] = id; m_on[m_n] = enabled; m_sep[m_n] = false;
+	m_n++;
+}
+
+void PopupMenu::separator ()
+{
+	if (m_n >= MAXI) return;
+	m_label[m_n] = 0; m_hint[m_n] = 0; m_id[m_n] = -1; m_on[m_n] = false; m_sep[m_n] = true;
+	m_n++;
+}
+
+int PopupMenu::rowY (int i) const
+{
+	int y = PM_PAD;
+	for (int k = 0; k < i; k++) y += m_sep[k] ? PM_SEP : pm_row ();
+	return y;
+}
+
+int PopupMenu::rowAt (int mx, int my) const
+{
+	if (mx < 0 || mx >= width) return -1;
+	for (int i = 0; i < m_n; i++)
+	{
+		int y = rowY (i), h = m_sep[i] ? PM_SEP : pm_row ();
+		if (my >= y && my < y + h) return m_sep[i] || !m_on[i] ? -1 : i;
+	}
+	return -1;
+}
+
+int PopupMenu::run ()
+{
+	int w = 0, lw = 0, hw = 0;
+	for (int i = 0; i < m_n; i++)
+		if (!m_sep[i])
+		{
+			int a = wk_text_w (m_label[i]), b = m_hint[i] ? wk_text_w (m_hint[i]) : 0;
+			if (a > lw) lw = a;
+			if (b > hw) hw = b;
+		}
+	w = 14 + lw + (hw ? 24 + hw : 0) + 14;
+	if (w < 150) w = 150;
+	int h = rowY (m_n) + PM_PAD;
+	Root *r = Root::current ();
+	if (r)							// (in the window)
+	{
+		if (left + w > r->width) left = r->width - w;
+		if (top + h > r->height) top = r->height - h;
+		if (left < 0) left = 0;
+		if (top < 0) top = 0;
+	}
+	resizeTo (w, h);
+	int res = Modal::run ();
+	return res > 0 ? m_id[res - 1] : -1;
+}
+
+void PopupMenu::onDraw ()
+{
+	int fh = wk_fh ();
+	canvas.clear (WK_TRANSPARENT_KEY);
+	wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+	for (int i = 0; i < m_n; i++)
+	{
+		int y = rowY (i);
+		if (m_sep[i]) { wk_etch_h (canvas, 8, y + PM_SEP / 2 - 1, width - 16, C_FIELD); continue; }
+		bool hot = i == m_hot;
+		if (hot) wk_hilite (canvas, PM_PAD, y, width - 2 * PM_PAD, pm_row (), 5, true);
+		unsigned ink = !m_on[i] ? wk_mix (C_FIELD, C_FIELD_TEXT, 110) : hot ? C_SEL_TEXT : C_FIELD_TEXT;
+		canvas.text (14, y + (pm_row () - fh) / 2, m_label[i], ink);
+		if (m_hint[i])
+			canvas.text (width - 14 - wk_text_w (m_hint[i]), y + (pm_row () - fh) / 2, m_hint[i],
+				     hot ? C_SEL_TEXT : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+	}
+}
+
+bool PopupMenu::onMouse (int mx, int my, int bl, int, int, int)
+{
+	int hot = (mx >= 0 && my >= 0 && mx < width && my < height) ? rowAt (mx, my) : -1;
+	if (hot != m_hot) { m_hot = hot; invalidate (true); }
+	if (bl && !pressed)
+	{
+		pressed = true;
+		if (mx < 0 || my < 0 || mx >= width || my >= height) close (0);	// elsewhere: nothing
+	}
+	else if (!bl && pressed)
+	{
+		pressed = false;
+		if (hot >= 0) close (hot + 1);
+	}
+	return true;
+}
+
+bool PopupMenu::onKey (long k)
+{
+	if (k == 27) { close (0); return true; }
+	if (k == KEY_DOWN || k == KEY_UP)
+	{
+		int i = m_hot;
+		for (int n = 0; n < m_n; n++)
+		{
+			i = k == KEY_DOWN ? (i + 1) % m_n : (i <= 0 ? m_n - 1 : i - 1);
+			if (!m_sep[i] && m_on[i]) break;
+		}
+		m_hot = i; invalidate (true);
+		return true;
+	}
+	if (k == KEY_ENTER && m_hot >= 0) { close (m_hot + 1); return true; }
+	return true;
+}
+
 int wk_messagebox (const char *title, const char *text, int buttons)
 { MessageBox m (title, text, buttons); return m.run (); }
 
@@ -272,7 +397,7 @@ bool wk_folder_open (char *out, unsigned cap, const char *startDir)
 static const unsigned CD_PAL[16] = {
 	0x00000000, 0x00808080, 0x00C0C0C0, 0x00FFFFFF, 0x00800000, 0x00FF0000, 0x00FF8000, 0x00FFFF00,
 	0x00008000, 0x0000FF00, 0x00008080, 0x0000FFFF, 0x00000080, 0x000000FF, 0x00800080, 0x00FF00FF };
-enum { CD_W = 360, CD_H = 236, CD_SX = 44, CD_SW = 170, CD_PY = 132, CD_PC = 20 };
+enum { CD_W = 360, CD_H = 248, CD_SX = 44, CD_SW = 170, CD_PY = 142, CD_PC = 20, CD_Y0 = 40 };
 
 static void cd_slide (Widget &w)
 {
@@ -288,9 +413,9 @@ ColorDialog::ColorDialog (unsigned initial, const char *title)
 	int W = rt ? rt->width : width, H = rt ? rt->height : height;
 	left = (W - width) / 2; top = (H - height) / 2;
 	int fh = wk_fh ();
-	r = new Slider (CD_SX, 30,           CD_SW, fh + 6, 0, 255, (color >> 16) & 255, cd_slide, C_FACE_DN); addChild (r);
-	g = new Slider (CD_SX, 30 + fh + 12, CD_SW, fh + 6, 0, 255, (color >> 8) & 255,  cd_slide, C_FACE_DN); addChild (g);
-	b = new Slider (CD_SX, 30 + 2 * (fh + 12), CD_SW, fh + 6, 0, 255, color & 255,  cd_slide, C_FACE_DN); addChild (b);
+	r = new Slider (CD_SX, CD_Y0,           CD_SW, fh + 6, 0, 255, (color >> 16) & 255, cd_slide, C_FACE); addChild (r);
+	g = new Slider (CD_SX, CD_Y0 + fh + 12, CD_SW, fh + 6, 0, 255, (color >> 8) & 255,  cd_slide, C_FACE); addChild (g);
+	b = new Slider (CD_SX, CD_Y0 + 2 * (fh + 12), CD_SW, fh + 6, 0, 255, color & 255,  cd_slide, C_FACE); addChild (b);
 	Button *bt;
 	bt = new Button (width - 180, height - 38, 82, 28, "OK",     dlg_btn); bt->tag = 1; addChild (bt);
 	bt = new Button (width - 92,  height - 38, 82, 28, "Cancel", dlg_btn); bt->tag = 0; addChild (bt);
@@ -305,31 +430,30 @@ void ColorDialog::syncSliders ()
 void ColorDialog::onDraw ()
 {
 	int fh = wk_fh ();
-	canvas.clear (C_FACE_DN);
-	canvas.frameRect (0, 0, width, height, C_ACCENT);
-	canvas.text (10, 6, m_title, C_TEXT);
+	drawBox (m_title);
 	const char *lab[3] = { "R", "G", "B" };
 	for (int i = 0; i < 3; i++)
 	{
-		int y = 30 + i * (fh + 12) + 3;
+		int y = CD_Y0 + i * (fh + 12) + 3;
 		canvas.text (20, y, lab[i], C_TEXT);
 		int v = i == 0 ? (color >> 16) & 255 : i == 1 ? (color >> 8) & 255 : color & 255;
 		char n[4] = { (char) ('0' + v / 100), (char) ('0' + v / 10 % 10), (char) ('0' + v % 10), 0 };
 		canvas.text (CD_SX + CD_SW + 8, y, n, C_TEXT);
 	}
 	int px = CD_SX + CD_SW + 44, pw = width - px - 12, ph = 3 * (fh + 12) - 6;	// preview: old | new
-	canvas.fillRect (px, 30, pw / 2, ph, orig);
-	canvas.fillRect (px + pw / 2, 30, pw - pw / 2, ph, color);
-	canvas.frameRect (px, 30, pw, ph, C_BORDER);
+	wk_rbox (canvas, px, CD_Y0, pw, ph, 5, orig, orig);
+	wk_rbox (canvas, px + pw / 2, CD_Y0, pw - pw / 2, ph, 5, color, color, 255, WK_TR | WK_BR);
+	wk_rline (canvas, px, CD_Y0, pw, ph, 5, wk_tone (C_FACE, 60), 220);
 	static const char *HX = "0123456789ABCDEF";
 	char hex[8] = { '#', HX[(color >> 20) & 15], HX[(color >> 16) & 15], HX[(color >> 12) & 15],
 			HX[(color >> 8) & 15], HX[(color >> 4) & 15], HX[color & 15], 0 };
-	canvas.text (px, 30 + ph + 4, hex, C_TEXT);
+	canvas.text (px, CD_Y0 + ph + 4, hex, C_TEXT);
 	for (int i = 0; i < 16; i++)				// the palette
 	{
 		int x = 20 + (i % 8) * (CD_PC + 4), y = CD_PY + 8 + (i / 8) * (CD_PC + 4);
-		canvas.fillRect (x, y, CD_PC, CD_PC, CD_PAL[i]);
-		canvas.frameRect (x - 1, y - 1, CD_PC + 2, CD_PC + 2, CD_PAL[i] == color ? C_ACCENT : C_BORDER);
+		wk_rbox (canvas, x, y, CD_PC, CD_PC, 4, CD_PAL[i], CD_PAL[i]);
+		wk_rline (canvas, x, y, CD_PC, CD_PC, 4, CD_PAL[i] == color ? C_ACCENT : wk_tone (C_FACE, 70), CD_PAL[i] == color ? 255 : 170);
+		if (CD_PAL[i] == color) wk_rline (canvas, x - 1, y - 1, CD_PC + 2, CD_PC + 2, 5, C_ACCENT, 160);
 	}
 }
 

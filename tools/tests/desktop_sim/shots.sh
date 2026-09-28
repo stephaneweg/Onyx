@@ -1,0 +1,146 @@
+#!/bin/sh
+# tools/tests/desktop_sim/shots.sh -- the documentation's screenshots (screenshots/*.png), taken
+# from the REAL apps run on the PC: each app built for the host against the stand-in kernel
+# (fakekapi.cpp; wtk with its real image codecs), driven by a script of events, its window dumped
+# (the frame wtk drew + the client area), then made a PNG of its own (shot.py: the rounded corners
+# see-through) or laid over the wallpaper with others (compose.py: the desktop, the menu bar, the
+# dock...). Sample files (a note, appointments) come from sd/ (SIM_OVERLAY), not from the card.
+#
+#   sh tools/tests/desktop_sim/shots.sh [name ...]	(default: all of them)
+#
+# Needs g++, python3 with Pillow + numpy. Not made here: nintendoemu.png (an emulator's) and
+# arkanoid.png (a BASIC program's): tools/screenshot/render.py's.
+set -e
+cd "$(dirname "$0")/../../.."
+D=tools/tests/desktop_sim
+OUT=${SHOTS_TMP:-/tmp/onyx_shots}
+PNG=screenshots
+WANT=" $* "
+rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes"
+: > "$OUT/log.txt"
+export SIM_WRITES="$OUT/writes"			# (what the apps save: there, never on the card)
+CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+
+want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+# ---- the building ------------------------------------------------------------------------------
+# wtk (with the image codecs, on the host's libc) and the stand-in kernel, once; then the apps
+for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
+$CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
+build () {
+	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
+	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
+}
+APPS="2048 agenda applist calendar dock eyes fileviewer freecell graphcalc iconedit invaders irc
+      mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme tinycalc
+      tinypad widgets wifimenu"
+for a in $APPS; do build $a & done; wait
+
+# ---- the running -------------------------------------------------------------------------------
+# sim APP DUMP "SCRIPT" [VAR=value ...]: APP run through the script, then its window -> DUMP.elsm
+sim () {
+	app=$1; dump=$2; script=$3; shift 3
+	if ! env SIM_OVERLAY=$D/sd "$@" SIM="$script;dump $OUT/$dump.elsm;exit" "$OUT/$app" >>"$OUT/log.txt" 2>&1
+	then echo "shots: $app failed (see $OUT/log.txt)"; exit 1; fi
+}
+png () { python3 $D/shot.py "$OUT/$1.elsm" "$PNG/$1.png" >/dev/null && echo "  $PNG/$1.png"; }
+scene () { out=$1; shift; python3 $D/compose.py "$PNG/$out.png" "$@" >/dev/null && echo "  $PNG/$out.png"; }
+# typ "text": typing it (a key a step; a space is key 32)
+typ () {
+	s=$1; o=""
+	while [ -n "$s" ]; do
+		c=${s%"${s#?}"}; s=${s#?}
+		if [ "$c" = " " ]; then o="$o;key 32"; else o="$o;key $c"; fi
+	done
+	printf '%s' "${o#;}"
+}
+# stroke x0 y0 x1 y1 ...: a drag through the points (a step every 3 pixels); ring cx cy r: a circle
+stroke () {
+	awk -v p="$*" 'BEGIN { n = split (p, a, " "); printf "down %d %d", a[1], a[2]
+		for (i = 3; i < n; i += 2) { x0 = a[i-2]; y0 = a[i-1]; x1 = a[i]; y1 = a[i+1]
+			k = int (sqrt ((x1-x0)^2 + (y1-y0)^2) / 3) + 1
+			for (j = 1; j <= k; j++) printf ";move %d %d", x0 + (x1-x0)*j/k, y0 + (y1-y0)*j/k }
+		printf ";up %d %d", a[n-1], a[n] }'
+}
+ring () {
+	awk -v cx=$1 -v cy=$2 -v r=$3 'BEGIN { n = int (6.2832 * r / 3); printf "down %d %d", cx + r, cy
+		for (i = 1; i <= n; i++) printf ";move %d %d", cx + r*cos (i*6.2832/n), cy + r*sin (i*6.2832/n)
+		printf ";up %d %d", cx + r, cy }'
+}
+W="wait;wait;wait"
+P=SIM_POS=100,100
+
+# ---- the apps, a window each -------------------------------------------------------------------
+if want tinycalc; then sim tinycalc tinycalc "wait;$(typ '12*3.5=');$W" $P; png tinycalc; fi
+if want terminal; then
+	sim terminal terminal "$W" $P SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n/ $ echo onyx | wc -c\n5\n/ $ '
+	png terminal
+fi
+if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad; fi
+if want paint; then
+	sim paint paint "wait;menu 14;menu 9;$(ring 120 140 64);menu 15;$(ring 120 140 30);$(ring 120 140 14);menu 12;menu 8;$(stroke 240 60 380 230);menu 13;$(stroke 380 60 240 230);$W" $P
+	png paint
+fi
+if want calendar; then sim calendar calendar "wait;down 196 199;up 196 199;$W" $P; png calendar; fi
+if want mandelbrot; then sim mandelbrot mandelbrot "$W" $P; png mandelbrot; fi
+if want eyes; then sim eyes eyes "$W" $P SIM_CURSOR=260,-40; png eyes; fi
+if want taskman; then sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;$W" $P; png taskman; fi
+if want 2048; then
+	m=""; for k in 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x102 0x100 0x103 0x100; do m="$m;key $k;wait"; done
+	sim 2048 2048 "wait$m;$W" $P; png 2048
+fi
+if want minesweeper; then sim minesweeper minesweeper "wait;down 140 111;up 140 111;rdown 92 159;rup 92 159;$W" $P; png minesweeper; fi
+if want irc; then
+	sim irc irc "$W;wait;$(typ 'hello from Onyx :)');key 13;wait;$(typ 'what are you all running it on?');$W" $P \
+	SIM_NET=':irc.libera.chat NOTICE * :*** Looking up your hostname...\r\n:irc.libera.chat 001 onyx-user :Welcome to Libera.Chat, onyx-user\r\n:onyx-user!~onyx@192.168.1.42 JOIN #onyx\r\n:irc.libera.chat 332 onyx-user #onyx :Onyx -- a homemade OS for the Raspberry Pi 4\r\n:alice!~alice@host JOIN #onyx\r\n:alice!~alice@host PRIVMSG #onyx :hey, is this the bare-metal Pi channel?\r\n:bob!~bob@host PRIVMSG #onyx :yep -- Onyx, a hobby OS on Circle\r\n'
+	png irc
+fi
+if want fileviewer; then sim fileviewer fileviewer "wait;down 16 133;up 16 133;wait;down 236 173;up 236 173;$W" $P; png fileviewer; fi
+if want solitaire; then sim solitaire solitaire "$W" $P; png solitaire; fi
+if want freecell; then sim freecell freecell "$W" $P; png freecell; fi
+if want pipes; then sim pipes pipes "$W" $P; png pipes; fi
+if want invaders; then sim invaders invaders "$W;$W;$W;key 32;$W;$W;$W;$W" $P; png invaders; fi
+if want graphcalc; then sim graphcalc graphcalc "$W" $P; png graphcalc; fi
+if want iconedit; then sim iconedit iconedit "$W" $P SIM_ARGS=SD:/apps/invaders.app/icon.bmp; png iconedit; fi
+if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sample.rtf; png rtfview; fi
+if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
+if want applist; then sim applist applist "$W" $P; png applist; fi
+if want theme; then sim theme theme "$W" $P; png theme; fi
+
+# ---- the desktop's parts, over the wallpaper ------------------------------------------------------
+MENU_TINYPAD='tinypad|MFile/I0~New~^N/I1~Open...~^O/-/I2~Save~^S/I3~Save As...~/MEdit/I4~Cut~^X/I5~Copy~^C/I6~Paste~^V/-/I7~Select All~^A/I8~Copy All~'
+if want menubar; then
+	sim menubar menubar "wait;wait;down 150 15;up 150 15;wait;wait;move 160 70;$W" SIM_MENU="$MENU_TINYPAD"
+	scene menubar "$OUT/menubar.elsm" --crop=0,0,1024,200
+fi
+if want volume; then
+	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
+	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
+fi
+if want clock; then
+	sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
+	scene clock "$OUT/clock.elsm" --crop=624,0,1024,330
+fi
+if want wifimenu; then
+	sim menubar bar "$W" SIM_MENU="$MENU_TINYPAD"
+	sim wifimenu wifimenu "$W"
+	scene wifimenu "$OUT/bar.elsm" "$OUT/wifimenu.elsm" --crop=0,0,1024,300
+fi
+if want dock; then
+	sim dock dock "wait;wait;down 222 40;up 222 40;$W" SIM_RUNNING=terminal,tetris,tinycalc
+	scene dock "$OUT/dock.elsm" --crop=100,180,924,768
+fi
+if want agenda; then
+	sim agenda agenda "$W"
+	scene agenda "$OUT/agenda.elsm" --crop=0,20,400,200
+fi
+if want desktop; then
+	sim agenda d_agenda "$W"
+	sim tinycalc d_calc "wait;$(typ '12*3.5=');$W" SIM_POS=52,250 SIM_INACTIVE=1
+	sim terminal d_term "$W" SIM_POS=388,128 SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n 22 a S  tinycalc\n/ $ echo onyx | wc -c\n5\n/ $ '
+	sim dock d_dock "wait;wait;down 102 40;up 102 40;$W" SIM_RUNNING=terminal,tinycalc
+	sim menubar d_bar "$W" SIM_MENU='terminal|'
+	scene desktop "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm"
+fi
+echo "shots: done"

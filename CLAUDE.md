@@ -6,7 +6,8 @@ GUI. The repository folder is historically named `Zircon` (a legacy name — kee
 paths like `Zircon/circle` as-is; no relation to Google/Fuchsia's Zircon).
 
 **Continuing the work? Read `docs/HANDOFF.md` first** (where things stand, the conventions, the
-next task: the GameCube emulator).
+next tasks: after the desktop redesign — a modernised CDE, `docs/gui-redesign/README.md`, done
+and in `main` — its next ideas, and the GameCube emulator).
 
 The reference documentation is in **`docs/`** and is written in **English**:
 
@@ -19,8 +20,8 @@ The reference documentation is in **`docs/`** and is written in **English**:
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by
 **`docs/build_docs.py`** (`python docs/build_docs.py` → `.docx` via pandoc using the themed
 **`docs/assets/reference.docx`** = the Onyx visual signature; `.pdf` via Word). Screenshots
-(simulated but faithful) are in `screenshots/`, produced by **`tools/screenshot/render.py`**;
-the `.md` reference them as `../screenshots/<x>.png`.
+(the real apps, run on the PC) are in `screenshots/`, produced by
+**`sh tools/tests/desktop_sim/shots.sh`**; the `.md` reference them as `../screenshots/<x>.png`.
 
 > Note: in-OS strings and the rendered screenshots may still say "Zircon" (legacy); the docs
 > use "Onyx". Renaming the code/app strings to Onyx is a separate, pending task.
@@ -38,7 +39,7 @@ documentation in the same session**, without being asked again:
   in `docs/04-USER-GUIDE.md` (controls, files read/written) and `docs/03` if relevant. Add
   the `.elf` to `user/Makefile` (or `user/bin/Makefile`).
 - **If the change is visible on screen** → regenerate the affected screenshot(s) with
-  `tools/screenshot/render.py` (add/update the matching `app_<name>()`); this may be handled
+  `sh tools/tests/desktop_sim/shots.sh <name>` (add the app's scenario there); this may be handled
   by a dedicated chat.
 - After editing the `.md` (or the screenshots), **regenerate the exports**:
   `python docs/build_docs.py`. Keep the English wording and the "Onyx" name.

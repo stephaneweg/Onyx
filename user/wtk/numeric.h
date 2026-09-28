@@ -22,6 +22,7 @@ public:
 	bool onKey (long k) override;
 private:
 	char m_edit[16]; int m_elen;		// digits being typed (m_elen < 0: not editing)
+	int  m_down;				// the arrow held: 1 up, 2 down, 0 none
 	void commit ();
 };
 

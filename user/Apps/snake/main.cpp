@@ -15,6 +15,7 @@
 #define NCELLS	(GW * GH)
 
 static unsigned *fb;
+static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 
 static int g_sx[NCELLS], g_sy[NCELLS];	// body; [0] = head
 static int g_len;
@@ -100,33 +101,50 @@ static int itoa (int v, char *b)
 
 static void cell (int x, int y, unsigned c) { fill_rect (OX + x * CELL, OY + y * CELL, CELL - 1, CELL - 1, c); }
 
+// The theme's look (wtk/paint.h): the face around, the field sunken (its own dark); drawn once
+// into g_bg, copied at each frame.
+static void paint_bg (void)
+{
+	using namespace wtk;
+	g_bg.alloc (W, H);
+	g_bg.clear (C_BG);
+	wk_text_l (g_bg, OX, 4, 20, "Score:", C_TEXT);
+	wk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x000c0e12);
+}
+
+// A message box over the field (the theme's dialog: a title strip, the face, an outline).
+static void msgbox (int cx, int cy, const char *title, const char *text)
+{
+	using namespace wtk;
+	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
+	wk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
+	wk_rline (g_cv, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
+	wk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
+}
+
 static void redraw (void)
 {
-	fill_rect (0, 0, W, H, 0x00141820);
+	g_cv.putOther (g_bg, 0, 0, false);
 	char buf[16];
 	itoa (g_score, buf);
-	wtk::draw_text (fb, W, H, OX, 8, "score:", 0x0090a0b0);
-	wtk::draw_text (fb, W, H, OX + 7 * kapi_font_width (), 8, buf, 0x00ffffff);
-
-	fill_rect (OX - 2, OY - 2, GW * CELL + 3, GH * CELL + 3, 0x00404858);
-	fill_rect (OX, OY, GW * CELL, GH * CELL, 0x000c0e12);
+	wtk::wk_text_l (g_cv, OX + 7 * kapi_font_width (), 4, 20, buf, wtk::C_TEXT, 2);
 
 	cell (g_fx, g_fy, 0x00ff4040);				// food
 	for (int i = 0; i < g_len; i++)
 		cell (g_sx[i], g_sy[i], i == 0 ? 0x0080ff80 : 0x0040c040);
 
-	if (g_over)
-	{
-		wtk::draw_text (fb, W, H, W / 2 - 40, OY + GH * CELL / 2 - 4, "GAME OVER", 0x00ff6060);
-		wtk::draw_text (fb, W, H, W / 2 - 44, OY + GH * CELL / 2 + 10, "r = restart", 0x00ffa0a0);
-	}
+	if (g_over) msgbox (OX + GW * CELL / 2, OY + GH * CELL / 2, "Game over", "r: restart");
 }
 
 int main (void)
 {
 	fb = kapi_create_window (W, H, "snake");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	g_cv.adopt (fb, W, H);
+	paint_bg ();
 
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);

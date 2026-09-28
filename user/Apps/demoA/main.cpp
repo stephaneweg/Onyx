@@ -55,12 +55,13 @@ int main (void)
 	{
 		return 1;
 	}
-	wtk::wk_decorate_window ();			// user-side window chrome
+	wtk::wk_decorate_window ();			// user-side window chrome (reads the theme)
+	unsigned bg = wtk::C_BG;			// (the theme's face)
 
 	int x = 10, y = 10, dx = 3, dy = 2, s = 36;
 	while (!should_exit ())
 	{
-		clear (0x00102030);
+		clear (bg);
 
 		x += dx;
 		y += dy;

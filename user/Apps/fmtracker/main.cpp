@@ -57,6 +57,7 @@ static NumericUpDown *g_rowsBox = 0, *g_speedBox = 0;
 static Root *g_root = 0;
 
 static FmsPattern &pat () { return g_song.pat[g_pat]; }
+
 static void redraw ();			// repaint the grid + the headers (below)
 static int visible_rows () { return (H - ST_H - GRID_Y) / ROW_H; }
 
@@ -68,6 +69,44 @@ static void set_status (const char *a, const char *b = "")
 	g_status->setText (s);
 }
 static void itoa_ (int v, char *b) { char t[12]; int n = 0, k = 0; if (v < 0) { b[k++] = '-'; v = -v; } do { t[n++] = (char) ('0' + v % 10); v /= 10; } while (v); while (n) b[k++] = t[--n]; b[k] = 0; }
+
+// ---- the look (the theme's) -------------------------------------------------------------------------
+// A heading on the face: bold.
+class Heading : public Label
+{
+public:
+	Heading (int l, int t, int w, int h, const char *s, unsigned bg_) : Label (l, t, w, h, s, C_TEXT, bg_) {}
+	void onDraw () override { canvas.clear (bg); wk_text_l (canvas, 2, 0, height, text, fg, 2); }
+};
+
+// The status bar: the face's gradient, an etched line along its top.
+class StatusBar : public Label
+{
+public:
+	StatusBar (int l, int t, int w, int h) : Label (l, t, w, h, "", C_TEXT, C_FACE) {}
+	void onDraw () override
+	{
+		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+		wk_etch_h (canvas, 0, 0, width, C_FACE);
+		wk_text_l (canvas, 8, 2, height - 2, text, fg);
+	}
+};
+
+// A box drawn square (a pattern grid) finished as a sunken well: its corners rounded into the
+// background behind it, the outline (the accent's when focused).
+static void well_frame (Canvas &c, int w, int h, unsigned bg, bool focus)
+{
+	const WkCorner &k = wk_corner (4);
+	for (int j = 0; j < 4; j++)
+		for (int i = 0; i < k.off[j] + k.n[j]; i++)
+		{
+			int a = 255 - (i < k.off[j] ? 0 : k.a[j][i - k.off[j]]);
+			wk_blend_px (c, i, j, bg, a); wk_blend_px (c, w - 1 - i, j, bg, a);
+			wk_blend_px (c, i, h - 1 - j, bg, a); wk_blend_px (c, w - 1 - i, h - 1 - j, bg, a);
+		}
+	wk_rline (c, 0, 0, w, h, 4, focus ? C_ACCENT : wk_tone (C_FACE, 72), focus ? 255 : 210);
+	if (focus) wk_rline (c, 1, 1, w - 2, h - 2, 3, C_ACCENT, 110);
+}
 
 // ---- audio ------------------------------------------------------------------------------------------
 static void upload (int ch)
@@ -179,12 +218,12 @@ public:
 	Checkbox *chk[2][4];			// sustained, tremolo, vibrato, ksr
 	enum { B_OK = 1, B_CANCEL = 0, B_TEST = 2, B_LOAD = 3, B_SAVE = 4 };
 
-	InsDialog (int channel) : Modal (560, 452), ch (channel)
+	InsDialog (int channel) : Modal (560, 466), ch (channel)	// (the buttons below the Feedback row)
 	{
 		left = (W - width) / 2; top = (H - height) / 2;
 		ins = g_song.ins[ch];
 		int y = wk_fh () + 16;
-		addChild (new Label (12, y + 4, 60, 20, "Name", C_TEXT, C_FACE_DN));
+		addChild (new Label (12, y + 4, 60, 20, "Name", C_TEXT, C_FACE));
 		name = new Textbox (70, y, 120, 26, ins.name); addChild (name);
 		load_presets ();
 		preset = new Dropdown (200, y, 170, 26, g_presetPtr, g_npreset, 0, dlg_preset);
@@ -195,12 +234,12 @@ public:
 		static const char *const rows[7] = { "Multiplier", "Level (0 = loud)", "Key scale level", "Attack", "Decay", "Sustain level", "Release" };
 		static const int lo[7] = { 0, 0, 0, 0, 0, 0, 0 }, hi[7] = { 15, 63, 3, 15, 15, 15, 15 };
 		static const int field[7] = { P_MULT, P_TL, P_KSL, P_AR, P_DR, P_SL, P_RR };
-		addChild (new Label (200, y, 150, 20, "Modulator", C_ACCENT, C_FACE_DN));
-		addChild (new Label (380, y, 150, 20, "Carrier", C_ACCENT, C_FACE_DN));
+		addChild (new Heading (200, y, 150, 20, "Modulator", C_FACE));
+		addChild (new Heading (380, y, 150, 20, "Carrier", C_FACE));
 		y += 24;
 		for (int r = 0; r < 7; r++)
 		{
-			addChild (new Label (12, y + r * 30 + 4, 180, 20, rows[r], C_TEXT, C_FACE_DN));
+			addChild (new Label (12, y + r * 30 + 4, 180, 20, rows[r], C_TEXT, C_FACE));
 			for (int o = 0; o < 2; o++)
 			{
 				num[o][r] = new NumericUpDown (200 + o * 180, y + r * 30, 110, 26, lo[r], hi[r], ins.p[field[r] + o], 1, dlg_changed);
@@ -208,7 +247,7 @@ public:
 			}
 		}
 		y += 7 * 30;
-		addChild (new Label (12, y + 4, 180, 20, "Wave", C_TEXT, C_FACE_DN));
+		addChild (new Label (12, y + 4, 180, 20, "Wave", C_TEXT, C_FACE));
 		for (int o = 0; o < 2; o++) wave[o] = new Dropdown (200 + o * 180, y, 150, 26, WAVES, 4, ins.p[P_WAVE + o] & 3, dlg_changed);
 		y += 32;
 		static const char *const flags[4] = { "Sustain", "Tremolo", "Vibrato", "KSR" };
@@ -216,13 +255,13 @@ public:
 		for (int f = 0; f < 4; f++)
 			for (int o = 0; o < 2; o++)
 			{
-				chk[o][f] = new Checkbox (200 + o * 180 + (f % 2) * 88, y + (f / 2) * 24, 88, 22, flags[f], ins.p[ffield[f] + o] != 0, dlg_changed, C_FACE_DN);
+				chk[o][f] = new Checkbox (200 + o * 180 + (f % 2) * 88, y + (f / 2) * 24, 88, 22, flags[f], ins.p[ffield[f] + o] != 0, dlg_changed, C_FACE);
 				addChild (chk[o][f]);
 			}
 		y += 54;
-		addChild (new Label (12, y + 4, 90, 20, "Feedback", C_TEXT, C_FACE_DN));
+		addChild (new Label (12, y + 4, 90, 20, "Feedback", C_TEXT, C_FACE));
 		fb = new NumericUpDown (100, y, 80, 26, 0, 7, ins.p[P_FB] & 7, 1, dlg_changed); addChild (fb);
-		addChild (new Label (200, y + 4, 90, 20, "Connection", C_TEXT, C_FACE_DN));
+		addChild (new Label (200, y + 4, 90, 20, "Connection", C_TEXT, C_FACE));
 		conn = new Dropdown (292, y, 130, 26, CONNS, 2, ins.p[P_CON] & 1, dlg_changed);
 		b = new Button (12, height - 40, 90, 30, "Test", dlg_btn); b->tag = B_TEST; addChild (b);
 		b = new Button (width - 192, height - 40, 86, 30, "OK", dlg_btn); b->tag = B_OK; addChild (b);
@@ -297,10 +336,8 @@ public:
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
 	void onDraw () override
 	{
-		canvas.clear (C_FACE_DN);
-		canvas.frameRect (0, 0, width, height, C_ACCENT);
 		char t[48] = "Instrument of channel "; int n = fms_len (t); t[n++] = (char) ('1' + ch); t[n] = 0;
-		canvas.text (10, 6, t, C_TEXT);
+		drawBox (t);
 	}
 };
 static void dlg_btn (Widget &w) { ((Modal *) w.parent)->onButton (w.tag); }
@@ -336,14 +373,15 @@ class ChanHeader : public Widget
 public:
 	int ch; bool down;
 	ChanHeader (int l, int t, int w, int h, int c) : Widget (l, t, w, h), ch (c), down (false) {}
-	void onDraw () override
+	void onDraw () override			// a raised header; the cursor's channel: the accent's ring
 	{
 		bool muted = pat ().mute[ch] != 0;
-		canvas.clear (down ? C_FACE_DN : (hover ? C_FACE_HI : C_FACE));
-		canvas.frameRect (0, 0, width, height, g_ch == ch ? C_ACCENT : C_BORDER);
+		canvas.clear (bgColor ());
+		wk_raised (canvas, 0, 0, width, height, 4, C_FACE, (down ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL) | (g_ch == ch ? WK_FOCUS : 0));
 		char t[24]; t[0] = (char) ('1' + ch); t[1] = ' '; fms_copy (t + 2, g_song.ins[ch].name[0] ? g_song.ins[ch].name : "(none)", 12);
-		canvas.text (6, (height - wk_fh ()) / 2, t, muted ? C_DIS : C_TEXT);
-		if (muted) canvas.text (width - 3 * wk_fw () - 4, (height - wk_fh ()) / 2, "off", 0x00FF7070);
+		int d = down ? 1 : 0;
+		canvas.text (6 + d, (height - wk_fh ()) / 2 + d, t, muted ? C_DIS : C_TEXT);
+		if (muted) canvas.text (width - 3 * wk_fw () - 5 + d, (height - wk_fh ()) / 2 + d, "off", wk_bright (C_FACE) > 140 ? 0x00C03030 : 0x00FF7070);
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
 	{
@@ -403,15 +441,17 @@ public:
 			{
 				int x = NUM_W + c * COL_W;
 				bool cur = r == g_row && c == g_ch;
-				if (r == g_row) canvas.fillRect (x, y, COL_W, rh, cur ? 0x00355070 : (playRow ? 0x00305A30 : 0x00202C3A));
+				if (r == g_row && !cur) canvas.fillRect (x, y, COL_W, rh, playRow ? 0x00305A30 : 0x00202C3A);
 				canvas.fillRect (x, y, 1, rh, 0x00283444);
+				if (cur) wk_hilite (canvas, x + 1, y, COL_W - 1, rh, 4, hasFocus);	// the cursor: the selection's look
 				unsigned char v = p.n[c * p.rows + r];
 				char t[4]; fms_note_text (v, t);
 				unsigned col = p.mute[c] ? 0x00606870 : ((v & 7) && !(v & 128) ? 0x00F0F0A0 : 0x00506070);
+				if (cur) col = wk_hilite_ink (hasFocus);
 				canvas.text (x + (COL_W - 3 * wk_fw ()) / 2, y + (rh - fh) / 2, t, col);
-				if (cur && hasFocus) canvas.frameRect (x, y, COL_W, rh, C_ACCENT);
 			}
 		}
+		well_frame (canvas, width, height, bgColor (), hasFocus);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
@@ -645,7 +685,7 @@ public:
 		static const int cap[3] = { 20, 20, 50 };
 		for (int i = 0; i < 3; i++)
 		{
-			addChild (new Label (12, wk_fh () + 20 + i * 32, 80, 20, lab[i], C_TEXT, C_FACE_DN));
+			addChild (new Label (12, wk_fh () + 20 + i * 32, 80, 20, lab[i], C_TEXT, C_FACE));
 			t[i] = new Textbox (96, wk_fh () + 16 + i * 32, cap[i] > 20 ? 330 : 200, 26, val[i]);
 			addChild (t[i]);
 		}
@@ -655,7 +695,7 @@ public:
 		t[0]->setFocus ();
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
-	void onDraw () override { canvas.clear (C_FACE_DN); canvas.frameRect (0, 0, width, height, C_ACCENT); canvas.text (10, 6, "Song information", C_TEXT); }
+	void onDraw () override { drawBox ("Song information"); }
 };
 static void op_info ()
 {
@@ -728,6 +768,7 @@ class TrackerRoot : public Root
 {
 public:
 	TrackerRoot () : Root (W, H, "FM Tracker") {}
+	void onDraw () override { Root::onDraw (); wk_etch_h (canvas, 0, TOOL_H + 1, width, bg); }	// (the toolbar's edge)
 	void onTick () override { tick (); }
 	bool onKey (long k) override
 	{
@@ -746,10 +787,9 @@ public:
 
 int main (void)
 {
-	TrackerRoot root;
+	TrackerRoot root;				// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
-	root.setBg (C_FACE_DN);
 	fms_new (&g_song);
 
 	// toolbar
@@ -757,14 +797,14 @@ int main (void)
 	root.addChild (new Button (x, 4, 70, 28, "Play", on_play)); x += 76;
 	root.addChild (new Button (x, 4, 70, 28, "Stop", on_stop)); x += 84;
 	root.addChild (new Button (x, 4, 28, 28, "<", on_prev)); x += 32;
-	g_patLabel = new Label (x, 8, 110, 20, "Pattern 1/1", C_TEXT, C_FACE_DN); root.addChild (g_patLabel); x += 112;
+	g_patLabel = new Label (x, 8, 110, 20, "Pattern 1/1", C_TEXT, C_BG); root.addChild (g_patLabel); x += 112;
 	root.addChild (new Button (x, 4, 28, 28, ">", on_next)); x += 32;
 	root.addChild (new Button (x, 4, 28, 28, "+", on_add)); x += 44;
-	root.addChild (new Label (x, 8, 44, 20, "Rows", C_TEXT, C_FACE_DN)); x += 46;
+	root.addChild (new Label (x, 8, 44, 20, "Rows", C_TEXT, C_BG)); x += 46;
 	g_rowsBox = new NumericUpDown (x, 4, 76, 28, 1, FMS_MAXROWS, 64, 1, on_rows); root.addChild (g_rowsBox); x += 88;
-	root.addChild (new Label (x, 8, 52, 20, "Speed", C_TEXT, C_FACE_DN)); x += 54;
+	root.addChild (new Label (x, 8, 52, 20, "Speed", C_TEXT, C_BG)); x += 54;
 	g_speedBox = new NumericUpDown (x, 4, 64, 28, 1, 40, 3, 1, on_speed); root.addChild (g_speedBox); x += 76;
-	g_octLabel = new Label (x, 8, 90, 20, "Octave 4", C_ACCENT, C_FACE_DN); root.addChild (g_octLabel);
+	g_octLabel = new Heading (x, 8, 90, 20, "Octave 4", C_BG); root.addChild (g_octLabel);
 
 	// channel headers, grid, scrollbar, status
 	for (int c = 0; c < FMS_CH; c++) { g_head[c] = new ChanHeader (NUM_W + c * COL_W, HEAD_Y, COL_W - 2, HEAD_H, c); root.addChild (g_head[c]); }
@@ -772,7 +812,7 @@ int main (void)
 	root.addChild (g_grid);
 	g_sb = new Scrollbar (W - SB_W - 2, GRID_Y, SB_W, H - ST_H - GRID_Y, true, 1, 0, on_scroll);
 	root.addChild (g_sb);
-	g_status = new Label (0, H - ST_H, W, ST_H, "", C_TEXT, C_FACE);
+	g_status = new StatusBar (0, H - ST_H, W, ST_H);
 	root.addChild (g_status);
 
 	static Menu menu;

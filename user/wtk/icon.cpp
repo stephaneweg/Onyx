@@ -25,7 +25,10 @@ void Icon::setIcon (const char *bmp)
 
 void Icon::onDraw ()
 {
-	canvas.clear (pressed ? 0x00405468 : (hover ? 0x00303F50 : bg));
+	canvas.clear (bg);
+	if (pressed || hover)					// pointed / pressed: the accent, faint
+		wk_rbox (canvas, 0, 0, width, height, 6, wk_mix (bg, C_ACCENT, pressed ? 110 : 60),
+			 wk_mix (bg, C_ACCENT, pressed ? 130 : 76));
 	int fh = wk_fh (), labelH = text[0] ? fh + 2 : 0;
 	if (pix && iw > 0 && ih > 0)
 	{
@@ -45,7 +48,7 @@ void Icon::onDraw ()
 	if (text[0])
 	{
 		int fw = wk_fw (), tx = (width - wk_len (text) * fw) / 2; if (tx < 0) tx = 0;
-		canvas.text (tx, height - fh, text, C_TEXT);
+		canvas.text (tx, height - fh, text, wk_ink_on (bg));
 	}
 	if (badged) for (int r = 0; r < 8; r++) canvas.fillRect (width - 2 - r, 2 + r, r + 1, 1, C_ACCENT);
 }

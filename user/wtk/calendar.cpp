@@ -31,22 +31,38 @@ Calendar::Calendar (int l, int t, int y, int m, int d, Action cb_)
 void Calendar::setDate (int y, int m, int d)
 { year = viewYear = y; month = viewMonth = m; day = d; invalidate (true); }
 
+// A card: a raised header (the month, chevrons), the week days, the days -- the chosen one in
+// the accent, today ringed, the weekend in a muted red.
 void Calendar::onDraw ()
 {
 	int fh = wk_fh (), fw = wk_fw ();
-	canvas.clear (0x001C232C);
-	canvas.frameRect (0, 0, width, height, hasFocus ? C_ACCENT : 0x00485870);
-	canvas.fillRect (1, 1, width - 2, CAL_HDR - 1, 0x00303D4D);
-	canvas.text (8, (CAL_HDR - fh) / 2, "<", C_TEXT);
-	canvas.text (width - 8 - fw, (CAL_HDR - fh) / 2, ">", C_TEXT);
+	const unsigned WEEKEND = 0x00B0504A;
+	if (transparent)					// (floating: a DatePicker's drop-down)
+	{
+		canvas.clear (WK_TRANSPARENT_KEY);
+		wk_popup (canvas, 0, 0, width, height, 6, C_FIELD);
+		if (hasFocus) wk_rline (canvas, 0, 0, width, height, 6, C_ACCENT, 200);
+	}
+	else
+	{
+		canvas.clear (bgColor ());
+		wk_rbox (canvas, 0, 0, width, height, 6, C_FIELD, C_FIELD);
+		wk_rline (canvas, 0, 0, width, height, 6, hasFocus ? C_ACCENT : wk_tone (C_FACE, 72), hasFocus ? 255 : 210);
+	}
+	wk_rbox (canvas, 1, 1, width - 2, CAL_HDR - 1, 5, wk_tone (C_FACE, 166), wk_tone (C_FACE, 128), 255, WK_TL | WK_TR);
+	for (int i = 1; i < width - 1; i++) canvas.pixel (i, CAL_HDR, wk_tone (C_FACE, 100));
+	wk_glyph (canvas, WKG_CHEV_LEFT, 13, CAL_HDR / 2, 9, C_TEXT);
+	wk_glyph (canvas, WKG_CHEV_RIGHT, width - 14, CAL_HDR / 2, 9, C_TEXT);
 	char t[24]; int p = 0;
 	for (int i = 0; MONTHS[viewMonth - 1][i]; i++) t[p++] = MONTHS[viewMonth - 1][i];
 	t[p++] = ' ';
 	int y = viewYear; t[p++] = (char) ('0' + y / 1000 % 10); t[p++] = (char) ('0' + y / 100 % 10);
 	t[p++] = (char) ('0' + y / 10 % 10); t[p++] = (char) ('0' + y % 10); t[p] = '\0';
-	canvas.text ((width - p * fw) / 2, (CAL_HDR - fh) / 2, t, C_TEXT);
+	wk_text_c (canvas, 0, 0, width, CAL_HDR, t, C_TEXT, 2);
+	unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 140);
 	for (int i = 0; i < 7; i++)
-		canvas.text (1 + i * CAL_CELL_W + (CAL_CELL_W - 2 * fw) / 2, CAL_HDR + 1, DOWS[i], i >= 5 ? 0x00E0A070 : 0x008A96A8);
+		canvas.text (1 + i * CAL_CELL_W + (CAL_CELL_W - 2 * fw) / 2, CAL_HDR + 2, DOWS[i],
+			     i >= 5 ? wk_mix (C_FIELD, WEEKEND, 190) : dim);
 	int ty = 0, tm = 0, td = 0;
 	kapi_get_datetime (&ty, &tm, &td, 0, 0, 0);
 	int first = dayOfWeek (viewYear, viewMonth, 1), nd = daysIn (viewYear, viewMonth);
@@ -54,11 +70,12 @@ void Calendar::onDraw ()
 	{
 		int cell = first + d - 1, cx = 1 + (cell % 7) * CAL_CELL_W, cy = CAL_HDR + 18 + (cell / 7) * CAL_CELL_H;
 		bool isSel = viewYear == year && viewMonth == month && d == day;
-		if (isSel) canvas.fillRect (cx + 1, cy, CAL_CELL_W - 2, CAL_CELL_H - 1, 0x00355070);
-		if (viewYear == ty && viewMonth == tm && d == td) canvas.frameRect (cx + 1, cy, CAL_CELL_W - 2, CAL_CELL_H - 1, C_ACCENT);
+		bool isToday = viewYear == ty && viewMonth == tm && d == td;
+		if (isSel) wk_hilite (canvas, cx + 2, cy, CAL_CELL_W - 4, CAL_CELL_H - 1, 5, true);
+		if (isToday) wk_rline (canvas, cx + 2, cy, CAL_CELL_W - 4, CAL_CELL_H - 1, 5, isSel ? wk_tone (C_ACCENT, 50) : C_ACCENT, 255);
 		char b[3] = { (char) (d >= 10 ? '0' + d / 10 : ' '), (char) ('0' + d % 10), 0 };
-		canvas.text (cx + (CAL_CELL_W - 2 * fw) / 2, cy + (CAL_CELL_H - fh) / 2, b,
-			     (cell % 7) >= 5 ? 0x00E0A070 : C_TEXT);
+		unsigned ink = isSel ? C_SEL_TEXT : (cell % 7) >= 5 ? WEEKEND : C_FIELD_TEXT;
+		canvas.text (cx + (CAL_CELL_W - 2 * fw) / 2, cy + (CAL_CELL_H - fh) / 2, b, ink);
 	}
 }
 
@@ -151,8 +168,9 @@ void DatePicker::setOpen (bool o)
 	int w = width < CAL_W ? CAL_W : width;
 	if (o)
 	{
-		resizeTo (w, rowH + CAL_H);
-		cal = new Calendar (0, rowH, year, month, day, dp_pick);
+		resizeTo (w, rowH + 2 + CAL_H);
+		cal = new Calendar (0, rowH + 2, year, month, day, dp_pick);
+		cal->transparent = true;			// (its rounded corners: see-through)
 		addChild (cal);
 		cal->setFocus ();
 		bringToFront ();
@@ -171,14 +189,17 @@ void DatePicker::onDraw ()
 {
 	int fh = wk_fh ();
 	canvas.clear (WK_TRANSPARENT_KEY);
-	canvas.fillRect (0, 0, width, rowH, C_FIELD);
-	canvas.frameRect (0, 0, width, rowH, (hasFocus || open) ? C_ACCENT : C_BORDER);
+	canvas.fillRect (0, 0, width, rowH, bgColor ());
+	wk_sunken (canvas, 0, 0, width, rowH, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, (hasFocus || open) && !disabled);
 	char t[12]; format (t);
-	canvas.text (6, (rowH - fh) / 2, t, disabled ? C_DIS : C_TEXT);
-	int bx = width - 22;					// a tiny calendar glyph
-	canvas.fillRect (bx, 4, 16, rowH - 8, C_FACE);
-	canvas.fillRect (bx, 4, 16, 3, 0x00E05050);
-	for (int i = 0; i < 3; i++) canvas.fillRect (bx + 3 + i * 4, 10, 2, 2, C_TEXT);
+	canvas.text (7, (rowH - fh) / 2, t, disabled ? C_DIS : C_FIELD_TEXT);
+	int bw = 20, bx = width - bw - 2, bh = rowH - 6;			// the button: a small calendar
+	wk_raised (canvas, bx, 3, bw - 1, bh, 3, C_FACE, disabled ? WK_DISABLED : open ? WK_PRESSED : WK_NORMAL);
+	int gx = bx + (bw - 1 - 11) / 2, gy = 3 + (bh - 10) / 2;
+	wk_rbox (canvas, gx, gy, 11, 10, 2, 0x00FFFFFF, wk_tone (C_FIELD, 120));
+	wk_rbox (canvas, gx, gy, 11, 3, 1, 0x00D05048, 0x00B8403A, 255, WK_TL | WK_TR);
+	wk_rline (canvas, gx, gy, 11, 10, 2, wk_tone (C_FACE, 70), 200);
+	for (int i = 0; i < 3; i++) canvas.fillRect (gx + 2 + i * 3, gy + 5, 2, 2, C_TEXT);
 }
 
 bool DatePicker::onMouse (int mx, int my, int bl, int, int, int)

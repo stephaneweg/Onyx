@@ -1,0 +1,8 @@
+Onyx notes
+
+- the dock: the apps by category, a drawer each
+- the shelf's tabs are the dock's switcher now
+- frames: one colour a state, the gradient computed
+- the emulators keep their fast path (client damage)
+
+TODO: the Theme app's live preview, AA text

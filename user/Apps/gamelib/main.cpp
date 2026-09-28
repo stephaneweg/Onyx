@@ -383,18 +383,23 @@ static void play (int i)
 	lx_open (g_games[i].path, g_full ? "--fullscreen" : "");
 }
 
+// The theme's look (wtk/paint.h): the face; a section's title in bold over an etched line; a
+// game a raised card of the face (the one pointed at lighter, outlined in the accent; the chosen
+// one in the accent), its picture as it is.
 class LibRoot : public Root
 {
 public:
 	LibRoot () : Root (WIN_W, WIN_H, "Game Library") {}
+	void onResized () override { clamp (); invalidate (true); }	// (the grid follows the width)
 	void onDraw () override
 	{
-		canvas.clear (0x00141414);
+		canvas.clear (C_BG);
 		if (g_ng == 0)
 		{
-			canvas.text (24, 30, "No ROM found in", 0x00C8C8C8);
-			for (int f = 0; f < g_nf; f++) canvas.text (24, 52 + f * 20, g_folder[f], 0x00FFFFFF);
-			canvas.text (24, 64 + g_nf * 20, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there (sub-folders too), or Folders > Add Folder...", 0x00909090);
+			canvas.text (24, 30, "No ROM found in", C_TEXT);
+			for (int f = 0; f < g_nf; f++) canvas.drawFont (24, 52 + f * 20, g_folder[f], font (), C_TEXT, 1, 2);
+			canvas.text (24, 64 + g_nf * 20, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there (sub-folders too),", C_DIS);
+			canvas.text (24, 84 + g_nf * 20, "or Folders > Add Folder...", C_DIS);
 			return;
 		}
 		// section titles
@@ -403,8 +408,8 @@ public:
 		{
 			int n = 0; while (k + n < g_ng && g_games[k + n].sys == sec) n++;
 			if (!n) continue;
-			canvas.text (12, yy + 8, SYS_NAME[sec], 0x00FFFFFF);
-			canvas.text (13, yy + 8, SYS_NAME[sec], 0x00FFFFFF);
+			canvas.drawFont (12, yy + 6, SYS_NAME[sec], font (), C_TEXT, 1, 2);
+			wk_etch_h (canvas, 10, yy + 26, width - 20, C_BG);
 			yy += HEAD_H + ((n + c - 1) / c) * CELLH + 10;
 			k += n;
 		}
@@ -413,10 +418,14 @@ public:
 			int x, y; tile_pos (i, &x, &y);
 			if (y + CELLH < 0 || y > height) continue;
 			const Game &g = g_games[i];
-			bool hi = i == g_hover || i == g_sel;
-			int px = x + 6, py = y + 4;
-			canvas.fillRect (x, y, CELLW - 8, CELLH - 8, hi ? 0x00303848 : 0x001E1E1E);
-			if (hi) canvas.frameRect (x, y, CELLW - 8, CELLH - 8, i == g_sel ? 0x00E0E0E0 : 0x00707888);
+			bool sel = i == g_sel, hot = i == g_hover && !sel;
+			int px = x + 8, py = y + 6;
+			if (sel) wk_hilite (canvas, x, y, CELLW - 8, CELLH - 8, 8, true);
+			else
+			{
+				wk_rbox (canvas, x, y, CELLW - 8, CELLH - 8, 8, wk_tone (C_FACE, hot ? 196 : 170), wk_tone (C_FACE, hot ? 152 : 134));
+				wk_rline (canvas, x, y, CELLW - 8, CELLH - 8, 8, hot ? C_ACCENT : wk_tone (C_FACE, 76), hot ? 230 : 160);
+			}
 			if (g.thumb)
 				for (int r = 0; r < TH; r++)
 				{
@@ -427,12 +436,12 @@ public:
 				}
 			else
 			{
-				canvas.fillRect (px, py, TW, TH, 0x00282828);
-				canvas.text (px + 40, py + TH / 2 - 8, g_tgame == i ? "(loading)" : "", 0x00808080);
+				wk_sunken (canvas, px, py, TW, TH, 4, wk_tone (C_FACE, 112));
+				canvas.text (px + 44, py + TH / 2 - 8, g_tgame == i ? "(loading)" : "", C_TEXT);
 			}
 			char nm[24]; scpy (nm, g.name, sizeof nm);
 			if (slen (g.name) > 20) { nm[19] = '.'; nm[20] = '.'; nm[21] = 0; }
-			canvas.text (px, py + TH + 8, nm, hi ? 0x00FFFFFF : 0x00C8C8C8);
+			canvas.text (px, py + TH + 7, nm, sel ? wk_hilite_ink (true) : C_TEXT);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -570,6 +579,7 @@ int main (void)
 	g_root = &root;
 	build_menu ();
 	rescan ();
+	root.setResizable (true);			// (the grid lays itself out from the width)
 	root.attach ();
 	while (!should_exit ())
 	{

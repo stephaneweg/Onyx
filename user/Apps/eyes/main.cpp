@@ -53,14 +53,15 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "eyes");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
 
 	while (!should_exit ())
 	{
 		pump_events ();
 		int mx, my;
 		kapi_cursor_pos (&mx, &my);
-		for (int i = 0; i < W * H; i++) fb[i] = 0x00b8c0c8;	// face
+		unsigned bg = wtk::C_BG;
+		for (int i = 0; i < W * H; i++) fb[i] = bg;		// the theme's face
 		draw_eye (50, 55, 34, 12, mx, my);
 		draw_eye (130, 55, 34, 12, mx, my);
 		msleep (16);

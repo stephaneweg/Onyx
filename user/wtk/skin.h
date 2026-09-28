@@ -1,6 +1,6 @@
 //
 // wtk/skin.h -- 9-slice bitmap skin (port of uikit's Skin / the kernel CSkin) plus
-// user-side window decoration. A skin BMP holds `count` states stacked vertically
+// user-side window decoration (drawn by code: wtk/paint.h). A skin BMP holds `count` states stacked vertically
 // (button.bmp: normal/hover/pressed); margins mark the fixed corners/edges, the middle
 // tiles. Magenta (WK_TRANSPARENT_KEY) is the transparency key. Skins draw into RAW
 // 0x00RRGGBB buffers -- a Canvas's `px`, or a window-chrome buffer from kapi_get_chrome.
@@ -41,11 +41,23 @@ public:
 // The shared button skin (SD:/skins/button.bmp), loaded once; flat fallback if absent.
 Skin &wk_button_skin ();
 
-// Draw the standard window chrome (title bar + borders + close box + title text) into
-// both chrome copies of this window. No-op for a borderless window / no window. Drawn
-// once per size (guarded); Root calls it after creating its window; call it again after
-// kapi_resize_window (the frame then follows the new size).
+// Draw the window's frame (the modernised CDE: kapi v64 -- a gradient from the theme's frame
+// colour, rounded corners, the theme's outline, the title buttons: the window menu, minimise,
+// maximise, close; the title in bold) into both chrome copies of this window. No-op for a
+// borderless window / no window. Drawn once per size, title, theme and state (guarded); Root
+// calls it after creating its window; call it again after kapi_resize_window (the frame then
+// follows the new size).
 void wk_decorate_window ();
+// The frame's state, drawn by wk_decorate_window (Root keeps it): the window can be maximised
+// (its maximise button active), it is maximised (the button shows "restore"), the app answers
+// the window menu (GUI_EVENT_WINCTL, as a Root does: else its button is greyed -- an app
+// drawing its own window without a Root).
+enum { WK_WIN_RESIZABLE = 1, WK_WIN_MAXIMISED = 2, WK_WIN_MENU = 4 };
+void wk_window_state (int flags);
+int  wk_window_flags ();
+// A frame as wk_decorate_window draws it, into any W x H buffer (T: its title bar's height), in
+// the colour `frame` -- a preview (the Theme app). Its corners' outside: see-through (top byte).
+void wk_draw_frame (unsigned *fb, int W, int H, int T, const char *title, unsigned frame, bool active);
 
 } // namespace wtk
 

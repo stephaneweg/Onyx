@@ -17,13 +17,15 @@
 #include "wtk/wtk.h"
 #include "applib.h"
 
+using namespace wtk;
+
 #define W		680
 #define H		440
 #define SCROLLBACK	300		// bounded scrollback (rows)
 #define COLS		120		// stored chars per line (longer lines truncate)
 
 static unsigned *fb;
-static int g_fw = 8, g_fh = 16, g_vrows = 2, g_chatrows = 1;
+static int g_fw = 8, g_fh = 16, g_chatrows = 1;
 
 // Scrollback ring of complete lines (server + local echo). IRC lines arrive whole,
 // so unlike the terminal there is no partial "current line".
@@ -59,6 +61,7 @@ static bool g_addrfocus = false;	// true => typed keys edit the address, not the
 static char g_hist[HISTMAX][96];	// most-recent first
 static int  g_histn = 0;
 static int  g_chat_y = 4;		// top of the chat area (below the 2-row connect bar)
+static int  g_in_y = 0;			// top of the input line's field (at the bottom)
 // Hit rects (filled by redraw, read by the pointer handler).
 static int  g_barY0, g_barY1, g_addrX0, g_addrX1, g_btnX0, g_btnX1;
 static int  g_recY0, g_recY1, g_recX0[HISTMAX], g_recX1[HISTMAX];
@@ -472,90 +475,87 @@ static void on_key (unsigned long s, int ev, long key)
 
 // ---- drawing -----------------------------------------------------------------
 
-static void fill_rect (int x, int y, int w, int h, unsigned c)
-{
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
-}
-
-static void frame_rect (int x, int y, int w, int h, unsigned c)
-{
-	fill_rect (x, y, w, 1, c); fill_rect (x, y + h - 1, w, 1, c);
-	fill_rect (x, y, 1, h, c); fill_rect (x + w - 1, y, 1, h, c);
-}
+// The theme's look: the connect bar on the face (the address a field, Connect a framed button,
+// the recent servers links), the conversation and the input line in fields.
+#define ROW0_Y	2			// the connect bar's first row (its button's box)
+#define ROW0_H	(g_fh + 8)
+#define ROW1_Y	(ROW0_Y + ROW0_H + 2)	// its second: the recent servers
+#define BAR_H	(ROW1_Y + g_fh + 4)	// the bar, its etched line below
+#define IN_H	(g_fh + 6)		// the input line's field
+#define STATUS_INK	0x002F5E9E	// status lines: blue
+#define NOTICE_INK	0x009A6400	// notices: amber
 
 // The connect bar: "Server:" + an editable address field + a [Connect] button on the
 // first row, and a clickable "Recent:" server history on the second. Hit rects are
 // stashed in globals for the pointer handler.
-static void draw_connect_bar (void)
+static void draw_connect_bar (Canvas &cv)
 {
-	int by = 3;					// row 0 baseline
-	g_barY0 = 0; g_barY1 = g_fh + 3;
-	wtk::draw_text (fb, W, H, 4, by, "Server:", 0x0090a0b0);
+	g_barY0 = ROW0_Y; g_barY1 = ROW0_Y + ROW0_H;
+	wk_text_l (cv, 6, ROW0_Y, ROW0_H, "Server:", C_TEXT);
 
 	int ax = 4 + 8 * g_fw;				// address field box
 	int aw = 30 * g_fw;
 	g_addrX0 = ax; g_addrX1 = ax + aw;
-	fill_rect (ax, by - 1, aw, g_fh + 2, g_addrfocus ? 0x00203040 : 0x00181e26);
-	frame_rect (ax, by - 1, aw, g_fh + 2, g_addrfocus ? 0x0060ff90 : 0x00404a5a);
-	wtk::draw_text (fb, W, H, ax + 3, by, g_addr, 0x00ffffff);
-	if (g_addrfocus) fill_rect (ax + 3 + g_addrlen * g_fw, by, 2, g_fh, 0x0060ff90);
+	wk_sunken (cv, ax, ROW0_Y + 1, aw, IN_H, 4, C_FIELD, g_addrfocus);
+	cv.text (ax + 4, ROW0_Y + 4, g_addr, C_FIELD_TEXT);
+	if (g_addrfocus) cv.fillRect (ax + 4 + g_addrlen * g_fw, ROW0_Y + 4, 2, g_fh, C_ACCENT);
 
 	int bx = ax + aw + 8;				// [Connect] button
-	int bw = 9 * g_fw + 6;
+	int bw = 9 * g_fw + 16;
 	g_btnX0 = bx; g_btnX1 = bx + bw;
-	fill_rect (bx, by - 1, bw, g_fh + 2, 0x00355070);
-	frame_rect (bx, by - 1, bw, g_fh + 2, 0x0060a0e0);
-	wtk::draw_text (fb, W, H, bx + 3, by, "Connect", 0x00ffffff);
+	int x, y, w, h;
+	wk_framed (cv, bx, ROW0_Y, bw, ROW0_H, C_FACE, WK_NORMAL, &x, &y, &w, &h);
+	wk_text_c (cv, x, y, w, h, "Connect", C_TEXT);
 
-	int ry = by + g_fh + 4;				// row 1: recent-server history
+	int ry = ROW1_Y;				// row 1: recent-server history
 	g_recY0 = ry - 1; g_recY1 = ry + g_fh;
-	wtk::draw_text (fb, W, H, 4, ry, "Recent:", 0x0090a0b0);
+	cv.text (6, ry, "Recent:", C_TEXT);
 	int rx = 4 + 8 * g_fw;
 	for (int i = 0; i < g_histn && i < HISTMAX; i++)
 	{
 		int w = slen (g_hist[i]) * g_fw;
 		if (rx + w > W - 4) break;
 		g_recX0[i] = rx; g_recX1[i] = rx + w;
-		wtk::draw_text (fb, W, H, rx, ry, g_hist[i], 0x0080c8ff);
+		cv.text (rx, ry, g_hist[i], wk_tone (C_ACCENT, wk_bright (C_BG) > 140 ? 80 : 190));	// (links: the accent, legible)
 		rx += w + 2 * g_fw;
 	}
-	fill_rect (0, ry + g_fh + 2, W, 1, 0x00303840);	// separator under the bar
+	wk_etch_h (cv, 0, BAR_H, W, C_BG);		// separator under the bar
 }
 
 static void redraw (void)
 {
-	fill_rect (0, 0, W, H, 0x00101418);
-	draw_connect_bar ();
+	Canvas cv; cv.adopt (fb, W, H);
+	cv.clear (C_BG);
+	draw_connect_bar (cv);
 
 	int total = g_rcount;
 	int maxscroll = total - g_chatrows; if (maxscroll < 0) maxscroll = 0;
 	if (g_scroll > maxscroll) g_scroll = maxscroll;
 	int first = total - g_chatrows - g_scroll; if (first < 0) first = 0;
 
+	wk_sunken (cv, 4, g_chat_y - 3, W - 8, g_in_y - g_chat_y - 1, 4, C_FIELD, false);
 	for (int r = 0; r < g_chatrows; r++)
 	{
 		int idx = first + r;
 		if (idx < 0 || idx >= total) continue;
 		const char *line = ring_line (idx);
-		unsigned col = 0x00c8d0c0;
-		if (line[0] == '*') col = 0x0080b0ff;		// status lines in blue
-		else if (line[0] == '-') col = 0x00ffc060;	// notices in amber
-		wtk::draw_text (fb, W, H, 4, g_chat_y + r * g_fh, line, col);
+		unsigned col = C_FIELD_TEXT;
+		if (line[0] == '*') col = STATUS_INK;		// status lines in blue
+		else if (line[0] == '-') col = NOTICE_INK;	// notices in amber
+		cv.text (8, g_chat_y + r * g_fh, line, col);
 	}
 
-	// Input row: separator + "[channel] " prompt + the line being typed + caret.
-	int iy = g_chat_y + g_chatrows * g_fh + 2;
-	fill_rect (0, iy - 2, W, 1, 0x00303840);
+	// Input row: a field with the "[channel] " prompt + the line being typed + caret.
+	int iy = g_in_y;
+	wk_sunken (cv, 4, iy, W - 8, IN_H, 4, C_FIELD, !g_addrfocus);
 	char prompt[80]; prompt[0] = '\0';
 	scat (prompt, sizeof prompt, "["); scat (prompt, sizeof prompt, g_channel);
 	scat (prompt, sizeof prompt, "] ");
-	wtk::draw_text (fb, W, H, 4, iy, prompt, 0x0060ff90);
-	int px = 4 + slen (prompt) * g_fw;
-	wtk::draw_text (fb, W, H, px, iy, g_input, 0x00ffffff);
+	cv.text (8, iy + 3, prompt, wk_tone (C_ACCENT, 90));
+	int px = 8 + slen (prompt) * g_fw;
+	cv.text (px, iy + 3, g_input, C_FIELD_TEXT);
 	int cx = px + g_inlen * g_fw;
-	fill_rect (cx, iy, 2, g_fh, 0x0060ff90);
+	if (!g_addrfocus) cv.fillRect (cx, iy + 3, 2, g_fh, C_ACCENT);
 }
 
 // Pointer: click the address field to edit it, the Connect button or a Recent server
@@ -612,9 +612,9 @@ int main (void)
 	wtk::wk_decorate_window ();
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
-	g_vrows = (H - 8) / g_fh; if (g_vrows < 3) g_vrows = 3;
-	g_chat_y = 4 + 2 * g_fh + 6;			// below the 2-row connect bar + separator
-	g_chatrows = g_vrows - 4; if (g_chatrows < 1) g_chatrows = 1;	// bar + input reserved
+	g_chat_y = BAR_H + 2 + 4 + 3;			// below the 2-row connect bar + separator
+	g_in_y = H - 4 - IN_H;				// the input line at the bottom
+	g_chatrows = (g_in_y - 4 - g_chat_y - 3) / g_fh; if (g_chatrows < 1) g_chatrows = 1;
 
 	kapi_set_key_handler (on_key);
 	kapi_set_pointer_handler (on_ptr);

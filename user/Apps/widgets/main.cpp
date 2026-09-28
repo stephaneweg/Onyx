@@ -6,6 +6,7 @@
 //
 #include "kapi.h"
 #include "wtk/wtk.h"
+#include "img/imgload.hpp"
 
 using namespace wtk;
 
@@ -15,6 +16,27 @@ using namespace wtk;
 static Label *g_status;
 static Label *g_swatch;
 static unsigned g_color = 0x004080E0;
+
+// A sunken well of the theme (a field's look) round a child: the ImageBox.
+class Well : public Widget
+{
+public:
+	Well (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	unsigned bgColor () override { return C_FIELD; }
+	void onDraw () override { canvas.clear (parent ? parent->bgColor () : C_BG); wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD); }
+};
+
+// A picture into the ImageBox, an icon's magenta key (0xFF00FF) made see-through (the box shows
+// its background there).
+static void show_icon (ImageBox *ib, const char *path)
+{
+	ImgFrames im;
+	if (!img_load (path, &im)) return;
+	unsigned *p = im.px[0];
+	for (int i = 0; i < im.w * im.h; i++) if ((p[i] & 0x00FFFFFF) == WK_TRANSPARENT_KEY) p[i] = 0;
+	ib->setPixels (p, im.w, im.h, true);
+	img_free (&im);
+}
 
 static void say (const char *a, const char *b = "")
 {
@@ -100,11 +122,13 @@ int main (void)
 	tv->tip = "TreeView: [+]/[-], double-click, Left/Right";
 	root.addChild (tv);
 
-	ImageBox *ib = new ImageBox (220, 258, 220, 136, IMG_FIT, 0x00141A22);
+	Well *well = new Well (220, 258, 220, 136);
+	ImageBox *ib = new ImageBox (3, 4, 214, 129, IMG_FIT, C_FIELD);
 	ib->grow = true;
-	ib->load ("SD:/apps/imageview.app/icon.bmp");
+	show_icon (ib, "SD:/apps/imageview.app/icon.bmp");
 	ib->tip = "ImageBox: BMP GIF PNG JPEG PCX WebP";
-	root.addChild (ib);
+	well->addChild (ib);
+	root.addChild (well);
 
 	// Right column: dates + colour.
 	Calendar *cal = new Calendar (452, 8, y0, mo, d0, on_cal);
@@ -120,7 +144,7 @@ int main (void)
 	g_swatch = new Label (582, 246, 68, 28, "", C_TEXT, g_color);
 	root.addChild (g_swatch);
 
-	g_status = new Label (10, H - 32, W - 20, 22, "Hover a control for its tooltip.", C_ACCENT);
+	g_status = new Label (10, H - 32, W - 20, 22, "Hover a control for its tooltip.", wk_mix (C_ACCENT, C_TEXT, 140));
 	root.addChild (g_status);
 	root.run ();
 	return 0;

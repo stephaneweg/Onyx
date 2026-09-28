@@ -17,6 +17,7 @@
 #define H	(OY + GH * CELL + 8)
 
 static unsigned *fb;
+static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 static char  g_buf[4096];
 static int   g_lvloff[32], g_nlvl = 0, g_cur = 0;
 static char  g_wall[GH][GW], g_box[GH][GW], g_target[GH][GW];
@@ -117,11 +118,22 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
 }
 
+// The theme's look (wtk/paint.h): the face around, the floor in a sunken well (its own dark);
+// drawn once into g_bg, copied at each frame.
+static void paint_bg (void)
+{
+	using namespace wtk;
+	g_bg.alloc (W, H);
+	g_bg.clear (C_BG);
+	wk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00181c20);
+}
+
 static void redraw (void)
 {
-	fill_rect (0, 0, W, H, 0x00181c20);
-	wtk::draw_text (fb, W, H, 8, 8, g_won ? "SOLVED!  n:next r:reset" : "arrows move  r:reset n:next",
-			g_won ? 0x0060ff90 : 0x0090a0b0);
+	using namespace wtk;
+	g_cv.putOther (g_bg, 0, 0, false);
+	if (g_won) wk_text_l (g_cv, 8, 2, 20, "Solved!  n: next  r: reset", wk_mix (C_TEXT, 0x0030A050, 160), 2);
+	else wk_text_l (g_cv, 8, 2, 20, "arrows: move  r: reset  n: next", C_DIS);
 	for (int r = 0; r < GH; r++)
 		for (int c = 0; c < GW; c++)
 		{
@@ -139,7 +151,9 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "sokoban");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	g_cv.adopt (fb, W, H);
+	paint_bg ();
 
 	void *f = kapi_open ("SD:/apps/sokoban.app/levels.txt");
 	if (f != 0)

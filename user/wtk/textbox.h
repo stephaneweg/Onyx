@@ -12,6 +12,8 @@ class Textbox : public Widget
 {
 public:
 	char	 text[64]; int caret; bool password; Action cb;
+	int	 padR;				// px kept free at the right (a Combobox's arrow)
+	int	 vstart;			// the first character shown (set by onDraw)
 	Textbox (int l, int t, int w, int h, const char *s = "", Action cb_ = 0);
 	void setText (const char *s);
 	void onDraw () override;

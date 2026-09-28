@@ -109,12 +109,14 @@ public:
 
 int main (void)
 {
-	PadRoot root;
+	PadRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
-	root.setBg (0x00303840);			// path-bar/background tint
 
-	g_fn = new Label (6, 3, W - 12, PATH_H - 6, g_path, 0x00C8D0DA, 0x00303840); root.addChild (g_fn);
+	g_fn = new Label (6, 3, W - 12, PATH_H - 6, g_path, C_TEXT, C_BG); root.addChild (g_fn);
 	g_body = new Textarea (4, PATH_H, W - 8, H - PATH_H - 4, CAP); root.addChild (g_body);
+	g_fn->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;	// (maximised: the text fills the window;
+	g_body->Widget::anchor = ANCHOR_FILL;			// Textarea's own `anchor` is its selection's)
+	root.setResizable (true);
 
 	static Menu menu;
 	menu.menu ("File");

@@ -384,6 +384,21 @@ def icon_lisa():		# two chat bubbles: the user's (blue) and Lisa's (green, with 
         pset(px, 32 + d, 8, (255, 220, 80)); pset(px, 32, 8 + d, (255, 220, 80))
     return px
 
+def icon_irc():		# a chat bubble with the channel sign '#'
+    px = blank()
+    body, edge, ink = (64, 132, 172), (22, 62, 92), (240, 248, 255)
+    prect(px, 3, 4, 36, 28, body); pframe(px, 3, 4, 36, 28, edge)
+    for x0 in (13, 22):						# the '#': two uprights leaning right
+        for y in range(8, 26):
+            x = x0 + (25 - y) // 6
+            prect(px, x, y, x + 2, y, ink)
+    prect(px, 8, 12, 31, 13, ink); prect(px, 7, 19, 30, 20, ink)	# ... and two bars
+    for i in range(6):						# the tail, bottom left
+        prect(px, 9, 29 + i, 14 - i, 29 + i, body)
+        pset(px, 8, 29 + i, edge); pset(px, 15 - i, 29 + i, edge)
+    pset(px, 9, 35, edge)
+    return px
+
 def icon_arkanoid():		# rows of bricks, a ball and the paddle
     px = blank()
     prect(px, 2, 2, 37, 37, (16, 24, 56))
@@ -652,7 +667,7 @@ ICONS = {
     "fileviewer": icon_fileviewer, "menubar": icon_menubar,
     "notifyd": icon_notifyd, "shelf": icon_shelf, "widgets": icon_widgets, "imageview": icon_imageview, "agenda": icon_agenda, "shutdown": icon_shutdown, "plasma": icon_plasma,
     "qbasic": icon_qbasic, "basicdemo": icon_basprog, "fmtracker": icon_fmtracker,
-    "lisa": icon_lisa, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
+    "lisa": icon_lisa, "irc": icon_irc, "arkanoid": icon_arkanoid, "invaders": icon_invaders, "pipes": icon_pipes,
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,

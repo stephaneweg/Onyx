@@ -25,6 +25,7 @@ public:
 	int	 minA, minB;		// minimum pane sizes along the split axis
 	unsigned gripCol, gripHi;	// divider colour (idle / hover)
 	unsigned bg;			// backdrop (normally hidden: panes + grip tile us)
+	unsigned bgColor () override { return bg; }
 
 	Splitter (int l, int t, int w, int h, bool vertical_, int split_ = -1,
 		  unsigned bg_ = C_BG);

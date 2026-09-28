@@ -24,11 +24,23 @@ using namespace wtk;
 #define LEFTPANEL_W	200
 #define LEFTPANEL_MIN	18		// collapsed strip width
 
-// Palette (matches the activity-shell mockups: dark slate frame, subtle accents).
-#define COL_DESKTOP	0x00374249	// central content background
-#define COL_BAR		0x00222A30	// top / bottom bar background
-#define COL_PANEL	0x002C353C	// left panel background
-#define COL_DIM		0x0090A0AC	// muted text
+// The palette: the theme's -- the bars and the panel of the face, etched lines along the edges they
+// share with the content; the content a shade darker (a well), its muted text C_DIS.
+#define COL_CONTENT	wk_tone (C_FACE, 112)
+enum { EDGE_TOP, EDGE_BOTTOM, EDGE_RIGHT };
+class EtchPanel : public Panel
+{
+public:
+	int edge;
+	EtchPanel (int l, int t, int w, int h, int e) : Panel (l, t, w, h, C_FACE), edge (e) {}
+	void onDraw () override
+	{
+		canvas.clear (bg);
+		if (edge == EDGE_TOP) wk_etch_h (canvas, 0, 0, width, bg);
+		else if (edge == EDGE_BOTTOM) wk_etch_h (canvas, 0, height - 2, width, bg);
+		else wk_etch_v (canvas, width - 2, 0, height, bg);
+	}
+};
 
 static Root  *g_root;
 static Label *g_clock;
@@ -155,7 +167,7 @@ static void on_apps    (Widget &) { kapi_launch ("applist"); }	// app launcher, 
 static Panel *placeholder (const char *label, unsigned bg)
 {
 	Panel *p = new Panel (0, 0, 10, 10, bg);
-	p->addChild (new Label (10, 10, 280, wk_fh (), label, COL_DIM, bg));
+	p->addChild (new Label (10, 10, 280, wk_fh (), label, wk_mix (bg, C_TEXT, 150), bg));	// (muted)
 	return p;
 }
 
@@ -236,22 +248,21 @@ int main (void)
 	if (g_sh < 240) g_sh = 600;
 
 	Root root (0, 0, g_sw, g_sh, "shell", WIN_FLAG_BORDERLESS | WIN_FLAG_BACKMOST);
-	g_root = &root;
-	root.setBg (COL_DESKTOP);
+	g_root = &root;					// (its background: the theme's face)
 
 	int contentH = g_sh - TOPBAR_H - TIMELINE_H;
 
 	// --- top title bar -------------------------------------------------
-	Panel *top = new Panel (0, 0, g_sw, TOPBAR_H, COL_BAR);
-	top->addChild (new Label (10, (TOPBAR_H - wk_fh ()) / 2, 240, wk_fh (), "Accueil", C_TEXT, COL_BAR));
-	g_clock = new Label (g_sw - 60, (TOPBAR_H - wk_fh ()) / 2, 50, wk_fh (), "--:--", C_TEXT, COL_BAR);
+	Panel *top = new EtchPanel (0, 0, g_sw, TOPBAR_H, EDGE_BOTTOM);
+	top->addChild (new Label (10, (TOPBAR_H - wk_fh ()) / 2, 240, wk_fh (), "Accueil", C_TEXT, C_FACE));
+	g_clock = new Label (g_sw - 60, (TOPBAR_H - wk_fh ()) / 2, 50, wk_fh (), "--:--", C_TEXT, C_FACE);
 	top->addChild (g_clock);
 	top->addChild (new Button (g_sw - 150, 3, 80, TOPBAR_H - 6, "Accueil", on_home));
 	root.addChild (top);
 
 	// --- left activity panel (collapsible) -----------------------------
-	g_left = new Panel (0, TOPBAR_H, LEFTPANEL_W, contentH, COL_PANEL);
-	g_left_title = new Label (10, 10, LEFTPANEL_W - 16, wk_fh (), "Activite", COL_DIM, COL_PANEL);
+	g_left = new EtchPanel (0, TOPBAR_H, LEFTPANEL_W, contentH, EDGE_RIGHT);
+	g_left_title = new Label (10, 10, LEFTPANEL_W - 16, wk_fh (), "Activite", C_DIS, C_FACE);
 	g_left->addChild (g_left_title);
 	g_left->addChild (new Button (10, 14 + wk_fh (), LEFTPANEL_W - 20, 28, "Applications", on_apps));
 	g_collapse = new Button (LEFTPANEL_W - 14, TOPBAR_H + contentH / 2 - 14, 12, 28, "<", on_collapse);
@@ -260,19 +271,19 @@ int main (void)
 
 	// --- central area: principal (top) / secondary (bottom) draggable split ----
 	g_main = new VSplitter (LEFTPANEL_W, TOPBAR_H, g_sw - LEFTPANEL_W, contentH,
-				contentH * 2 / 3, COL_DESKTOP);
+				contentH * 2 / 3, COL_CONTENT);
 	// Each section hosts several "tasks", switched via a popup menu in its header. The
 	// principal section keeps placeholders (no real editor/browser yet); the secondary
 	// section starts empty and is filled by hosted apps as they register.
-	g_mainHost = new TabHost (0, 0, 10, 10, 26, COL_BAR);
-	g_mainHost->addTab ("Editeur",    placeholder ("Editeur de texte", COL_DESKTOP));
-	g_mainHost->addTab ("Navigateur", placeholder ("Navigateur web",   COL_DESKTOP));
-	g_secHost = new TabHost (0, 0, 10, 10, 26, COL_BAR);
+	g_mainHost = new TabHost (0, 0, 10, 10, 26, COL_CONTENT);
+	g_mainHost->addTab ("Editeur",    placeholder ("Editeur de texte", COL_CONTENT));
+	g_mainHost->addTab ("Navigateur", placeholder ("Navigateur web",   COL_CONTENT));
+	g_secHost = new TabHost (0, 0, 10, 10, 26, COL_CONTENT);
 	g_main->setPanes (g_mainHost, g_secHost);
 	root.addChild (g_main);
 
 	// --- bottom timeline bar -------------------------------------------
-	Panel *bottom = new Panel (0, g_sh - TIMELINE_H, g_sw, TIMELINE_H, COL_BAR);
+	Panel *bottom = new EtchPanel (0, g_sh - TIMELINE_H, g_sw, TIMELINE_H, EDGE_TOP);
 	bottom->addChild (new Button (4, 3, 90, TIMELINE_H - 6, "Journal", on_journal));
 	root.addChild (bottom);
 

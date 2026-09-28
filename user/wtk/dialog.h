@@ -26,6 +26,11 @@ public:
 	void close (int r) { result = r; done = true; }
 	virtual void onButton (int tag)   { (void) tag; }	// from a dialog button
 	virtual void onScroll (int value) { (void) value; }	// from a dialog scrollbar
+	unsigned bgColor () override;		// the face (its controls blend into it)
+	// The box: a rounded panel of the face, a title strip in the active frame's colour, an
+	// outline; its corners see-through. The title strip's height: titleH ().
+	void drawBox (const char *title);
+	static int titleH ();
 };
 
 class MessageBox : public Modal
@@ -75,6 +80,26 @@ private:
 };
 
 // Convenience: spin a one-shot dialog and return its outcome.
+// A pop-up menu at (x, y) of the window (a context menu, the window menu): a floating panel of
+// items -- the one under the pointer in the accent -- and separators. run () shows it until an
+// item is picked (its id), or a click elsewhere / Esc (-1).
+class PopupMenu : public Modal
+{
+	enum { MAXI = 16 };
+	const char *m_label[MAXI], *m_hint[MAXI]; int m_id[MAXI]; bool m_on[MAXI], m_sep[MAXI];
+	int m_n, m_hot;
+	int rowY (int i) const;
+	int rowAt (int mx, int my) const;
+public:
+	PopupMenu (int x, int y);
+	void add (const char *label, int id, bool enabled = true, const char *hint = 0);
+	void separator ();
+	int  run ();				// fits the menu in the window, shows it -> id / -1
+	void onDraw () override;
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	bool onKey (long k) override;
+};
+
 int  wk_messagebox (const char *title, const char *text, int buttons);
 bool wk_file_open (char *out, unsigned cap, const char *startDir);
 bool wk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);

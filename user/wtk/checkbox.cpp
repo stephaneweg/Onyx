@@ -9,21 +9,30 @@ Checkbox::Checkbox (int l, int t, int w, int h, const char *s, bool chk, Action 
 void Checkbox::onDraw ()
 {
 	canvas.clear (bg);
-	int bs = wk_fh (), by = (height - bs) / 2;
-	canvas.fillRect (0, by, bs, bs, (!disabled && hover) ? C_FACE_HI : C_FACE);
-	canvas.frameRect (0, by, bs, bs, C_BORDER);
-	if (checked) canvas.fillRect (3, by + 3, bs - 6, bs - 6, C_ACCENT);
-	canvas.text (bs + 6, (height - wk_fh ()) / 2, text, disabled ? C_DIS : C_TEXT);
+	int fh = wk_fh (), bs = fh - 2 < height ? fh - 2 : height, by = (height - bs) / 2;
+	int st = disabled ? WK_DISABLED : pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
+	if (hasFocus && !disabled) st |= WK_FOCUS;
+	wk_check_mark (canvas, 0, by, bs, checked, st);
+	canvas.text (bs + 7, (height - fh) / 2, text, disabled ? C_DIS : C_TEXT);
 }
 
 bool Checkbox::onMouse (int mx, int /*my*/, int bl, int, int, int)
 {
-	if (mx < 0) { if (hover) { hover = false; invalidate (true); } pressed = false; return false; }
+	if (mx < 0) { if (hover || pressed) { hover = false; pressed = false; invalidate (true); } return false; }
 	if (disabled) return true;
-	bool wh = hover; hover = true;
-	if (bl && !pressed) pressed = true;
-	else if (!bl && pressed) { pressed = false; checked = !checked; if (cb) cb (*this); invalidate (true); }
-	if (hover != wh) invalidate (true);
+	bool wh = hover, wp = pressed; hover = true;
+	if (bl && !pressed) { pressed = true; setFocus (); }
+	else if (!bl && pressed) { pressed = false; checked = !checked; if (cb) cb (*this); }
+	if (hover != wh || pressed != wp) invalidate (true);
+	return true;
+}
+
+bool Checkbox::onKey (long k)
+{
+	if (disabled || (k != ' ' && k != KEY_ENTER)) return false;
+	checked = !checked;
+	if (cb) cb (*this);
+	invalidate (true);
 	return true;
 }
 

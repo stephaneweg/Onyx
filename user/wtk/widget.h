@@ -9,6 +9,8 @@
 
 #include "wtk/canvas.h"
 #include "kapi.h"		// kapi_font_width/height (wk_fw/wk_fh)
+#include "wtk/theme.h"		// the palette
+#include "wtk/paint.h"		// the painter
 
 namespace wtk {
 
@@ -17,9 +19,7 @@ static inline int wk_len (const char *s) { int n = 0; while (s && s[n]) n++; ret
 static inline int wk_fw  () { int f = kapi_font_width  (); return f < 1 ? 8  : f; }
 static inline int wk_fh  () { int f = kapi_font_height (); return f < 1 ? 16 : f; }
 
-static const unsigned C_BG      = 0x00202830, C_FACE   = 0x00566074, C_FACE_HI = 0x00697690,
-		      C_FACE_DN = 0x00404A5A, C_BORDER = 0x00161C24, C_TEXT   = 0x00FFFFFF,
-		      C_ACCENT  = 0x0060FF90, C_DIS    = 0x008891A0, C_FIELD  = 0x00141A22;
+// (the palette -- C_BG, C_FACE, C_TEXT, C_ACCENT, C_FIELD... -- is the theme's: wtk/theme.h)
 
 // ---- integrated vertical scrollbar (Textarea / RichTextBox) ------------------
 // A widget that scrolls its own content reserves WK_SBW px on its right edge and shows a
@@ -57,12 +57,12 @@ static inline long wk_thumb_pos (int cy, int trackH, long total, long view, int 
 	return range * p / trange;
 }
 
-// Paint the track + thumb into a canvas at the right-edge gutter (x,y, w x trackH).
+// Paint the bar (a groove in a shade of `bg`, the thumb a raised pill) at the right-edge
+// gutter (x,y, w x trackH); hot: pointed / dragged.
 static inline void wk_draw_vscroll (Canvas &cv, int x, int y, int w, int trackH,
-				    const WkThumb &t, unsigned trackCol, unsigned thumbCol)
+				    const WkThumb &t, unsigned bg, bool hot = false)
 {
-	cv.fillRect (x, y, w, trackH, trackCol);
-	if (t.h < trackH) cv.fillRect (x + 1, y + t.y, w - 2, t.h, thumbCol);
+	wk_scroll_bar (cv, x, y, w, trackH, true, t.y, t.h < trackH ? t.h : 0, bg, hot ? WK_HOT : WK_NORMAL);
 }
 
 class Widget;
@@ -132,6 +132,9 @@ public:
 	virtual bool onMouse (int, int, int, int, int, int) { return false; }
 	virtual bool onKey (long) { return false; }
 	virtual RadioButton *asRadio () { return 0; }	// (no RTTI) a RadioButton says so
+	// The colour behind this widget (its parent's background): what its rounded, anti-aliased
+	// corners blend into. A container with its own background returns it.
+	virtual unsigned bgColor () { return parent ? parent->bgColor () : C_BG; }
 	// Reposition/resize children on resize / child add/remove. The DEFAULT applies the
 	// children's ANCHOR_* (passive resize); layout containers (Splitter, StackPanel,
 	// UniformGridLayout, TabHost) override with explicit placement. Never call directly.

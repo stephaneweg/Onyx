@@ -483,9 +483,8 @@ void RichTextBox::onDraw ()
 {
 	ensureLayout ();
 	const int pad = 4;
-	canvas.clear (disabled ? 0x00E8E8E8 : 0x00FFFFFF);
-	canvas.frameRect (0, 0, width, height, C_BORDER);
-	if (hasFocus && !disabled) canvas.frameRect (1, 1, width - 2, height - 2, C_ACCENT);
+	canvas.clear (bgColor ());				// the page: white (a document's own colours)
+	wk_sunken (canvas, 0, 0, width, height, 4, disabled ? 0x00E8E8E8 : 0x00FFFFFF, hasFocus && !disabled);
 
 	int viewTop = rowY[top];
 	int selA = -1, selB = -1; if (hasSel ()) selRange (selA, selB);
@@ -528,11 +527,9 @@ void RichTextBox::onDraw ()
 	}
 
 	// Auto vertical scrollbar: shown only when the document is taller than the view.
-	int trackH = height - 2;
+	int trackH = height - 4;
 	WkThumb th = wk_thumb (rowY[rowN], (long) (height - 2 * pad), rowY[top], trackH);
-	if (th.show)
-		wk_draw_vscroll (canvas, width - WK_SBW - 1, 1, WK_SBW, trackH, th,
-				 0x00DCE0E6, barDrag ? 0x00808898 : 0x00A0A8B6);
+	if (th.show) wk_draw_vscroll (canvas, width - WK_SBW - 2, 2, WK_SBW, trackH, th, 0x00FFFFFF, barDrag);
 }
 
 // ---- input -------------------------------------------------------------------
@@ -540,20 +537,20 @@ void RichTextBox::onDraw ()
 bool RichTextBox::onMouse (int mx, int my, int bl, int br, int bm, int wheel)
 {
 	(void) br; (void) bm;
-	if (mx < 0) { pressed = false; barDrag = false; return false; }
+	if (mx < 0) { pressed = false; if (barDrag) { barDrag = false; invalidate (true); } return false; }
 	if (disabled) return true;
 	if (wheel) { setTopRow (top - wheel); return true; }
 
 	ensureLayout ();
 	const int pad = 4;
 	long total = rowY[rowN], view = (long) (height - 2 * pad);
-	int trackH = height - 2;
+	int trackH = height - 4;
 	WkThumb th = wk_thumb (total, view, rowY[top], trackH);
-	bool overBar = th.show && mx >= width - WK_SBW - 1;
+	bool overBar = th.show && mx >= width - WK_SBW - 2;
 
 	if (bl && barDrag)				// continue an in-progress thumb drag
 	{
-		long pp = wk_thumb_pos (my - 1, trackH, total, view, th.h);
+		long pp = wk_thumb_pos (my - 2, trackH, total, view, th.h);
 		int r = 0; while (r + 1 < rowN && rowY[r + 1] <= pp) r++;
 		setTopRow (r);
 		return true;
@@ -563,8 +560,8 @@ bool RichTextBox::onMouse (int mx, int my, int bl, int br, int bm, int wheel)
 		pressed = true; setFocus ();
 		if (overBar)				// grab the thumb
 		{
-			barDrag = true;
-			long pp = wk_thumb_pos (my - 1, trackH, total, view, th.h);
+			barDrag = true; invalidate (true);
+			long pp = wk_thumb_pos (my - 2, trackH, total, view, th.h);
 			int r = 0; while (r + 1 < rowN && rowY[r + 1] <= pp) r++;
 			setTopRow (r);
 			return true;
@@ -577,7 +574,7 @@ bool RichTextBox::onMouse (int mx, int my, int bl, int br, int bm, int wheel)
 		int c = hitTest (mx, my); caret = c; goalX = xInRow (caret);
 		ensureVisible (); invalidate (true);
 	}
-	else if (!bl) { pressed = false; barDrag = false; }
+	else if (!bl) { pressed = false; if (barDrag) { barDrag = false; invalidate (true); } }
 	return true;
 }
 

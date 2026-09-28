@@ -21,6 +21,7 @@
 #define SBW	12			// app-list scrollbar width
 
 static unsigned *fb;
+static wtk::Canvas g_cv;		// the window's canvas (the painter draws on it)
 static int g_fw = 8, g_fh = 18, g_vis = 1;
 
 static char g_app[MAXAPPS][24]; static int g_napps = 0, g_appsel = -1, g_apptop = 0;
@@ -93,8 +94,6 @@ static void save_config (void)
 	scopy (g_msg, kapi_save_file (path, buf, b) >= 0 ? "saved" : "save failed", sizeof g_msg);
 }
 
-static void fill (int x, int y, int w, int h, unsigned c) { ax_fill (fb, W, H, x, y, w, h, c); }
-
 // App-list scrollbar geometry (x0/track-top/track-h/thumb-y/thumb-h). 0 if not needed.
 static int sb_geom (int *px0, int *pty0, int *pth, int *pthy, int *pthh)
 {
@@ -109,8 +108,7 @@ static void draw_app_scrollbar (void)
 {
 	int x0, ty0, th, thy, thh;
 	if (!sb_geom (&x0, &ty0, &th, &thy, &thh)) return;
-	fill (x0, ty0, SBW, th, 0x00202a34);			// track
-	fill (x0 + 1, thy, SBW - 2, thh, 0x005a7088);		// thumb
+	wtk::wk_scroll_bar (g_cv, x0, ty0, SBW - 3, th, true, thy - ty0, thh, wtk::C_FIELD);
 }
 // Keep app `idx` within the visible window (called when the selection changes).
 static void scroll_to_show (int idx)
@@ -119,29 +117,49 @@ static void scroll_to_show (int idx)
 	if (idx >= g_apptop + g_vis) g_apptop = idx - g_vis + 1;
 }
 
+// A push button drawn by hand: the theme's framed button (the clicks: on_click).
+static void button (int x, int y, int w, int h, const char *s)
+{
+	int bx, by, bw, bh;
+	wtk::wk_framed (g_cv, x, y, w, h, wtk::C_FACE, wtk::WK_NORMAL, &bx, &by, &bw, &bh);
+	wtk::wk_text_c (g_cv, bx, by, bw, bh, s, wtk::C_TEXT);
+}
+
+// The theme's look (wtk/paint.h): a header strip of the face, the app list and the key =
+// value table in sunken fields, the selection in the accent. The rows stay at LISTY + r *
+// g_fh (the clicks' mapping).
 static void redraw (void)
 {
-	fill (0, 0, W, H, 0x00202830);
-	fill (0, 0, LW, H, 0x00283440);				// left pane
-	wtk::draw_text (fb, W, H, 8, 6, "Apps", 0x0090c0ff);
+	using namespace wtk;
+	g_cv.clear (C_BG);
+	wk_rbox (g_cv, 0, 0, W, LISTY - 4, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+	wk_etch_h (g_cv, 0, LISTY - 4, W, C_FACE);
+	wk_text_l (g_cv, 8, 0, LISTY - 4, "Apps", C_TEXT, 2);
 	int maxtop = g_napps - g_vis; if (maxtop < 0) maxtop = 0;	// clamp the scroll offset
 	if (g_apptop > maxtop) g_apptop = maxtop;
 	if (g_apptop < 0) g_apptop = 0;
 	int listw = (g_napps > g_vis) ? LW - SBW : LW;			// room for the scrollbar
+	wk_sunken (g_cv, 3, LISTY - 2, LW - 2, g_vis * g_fh + 4, 4, C_FIELD);	// left pane
 	for (int r = 0; r < g_vis; r++)
 	{
 		int idx = g_apptop + r;
 		if (idx >= g_napps) break;
 		int y = LISTY + r * g_fh;
-		if (idx == g_appsel) fill (0, y, listw, g_fh, 0x00355070);
-		wtk::draw_text (fb, W, H, 8, y + 1, g_app[idx], 0x00e0e0e0);
+		if (idx == g_appsel) wk_hilite (g_cv, 6, y, listw - 8, g_fh, 4, true);
+		g_cv.text (10, y + 1, g_app[idx], idx == g_appsel ? wk_hilite_ink (true) : C_FIELD_TEXT);
 	}
 	draw_app_scrollbar ();
 
 	// Right pane header.
-	wtk::draw_text (fb, W, H, KEYX, 6, g_cur[0] ? g_cur : "(select an app)", 0x00ffd070);
+	if (g_cur[0]) wk_text_l (g_cv, KEYX, 0, LISTY - 4, g_cur, C_TEXT, 2);
+	else wk_text_l (g_cv, KEYX, 0, LISTY - 4, "(select an app)", C_DIS);
 
-	// Editable key=value rows + one trailing blank row to add a new key.
+	// Editable key=value rows + one trailing blank row to add a new key: a table in a
+	// field (a line under each row, the columns divided), the cell being edited outlined.
+	int ty = LISTY - 2, th = g_vis * g_fh + 4;
+	wk_sunken (g_cv, KEYX - 3, ty, W - KEYX, th, 4, C_FIELD);
+	unsigned grid = wk_mix (C_FIELD, C_FIELD_TEXT, 36);
+	g_cv.fillRect (VALX - 3, ty + 2, 1, th - 4, grid);
 	int shown = g_nkv + 1; if (shown > MAXKV) shown = MAXKV;
 	for (int r = 0; r < g_vis; r++)
 	{
@@ -150,25 +168,24 @@ static void redraw (void)
 		int y = LISTY + r * g_fh;
 		const char *kk = (idx < g_nkv) ? g_key[idx] : "";
 		const char *vv = (idx < g_nkv) ? g_val[idx] : "";
-		fill (KEYX, y, VALX - KEYX - 4, g_fh - 2, 0x00303d4d);
-		fill (VALX, y, W - VALX - 6, g_fh - 2, 0x00303d4d);
-		wtk::draw_text (fb, W, H, KEYX + 4, y + 1, kk, 0x00c8e0c8);
-		wtk::draw_text (fb, W, H, VALX + 4, y + 1, vv, 0x00e8e8c0);
+		g_cv.fillRect (KEYX, y + g_fh - 1, W - KEYX - 6, 1, grid);
+		g_cv.text (KEYX + 4, y + 1, kk, wk_tone (C_ACCENT, 84));
+		g_cv.text (VALX + 4, y + 1, vv, C_FIELD_TEXT);
 		if (g_focus >= 0 && g_focus / 2 == idx)
 		{
 			int col = g_focus % 2;
 			const char *t = col ? vv : kk;
 			int cx = (col ? VALX : KEYX) + 4 + ax_strlen (t) * g_fw;
-			fill (cx, y, 2, g_fh - 2, 0x0060ff90);
+			if (col) wk_rline (g_cv, VALX - 2, y - 1, W - VALX - 4, g_fh, 3, C_ACCENT);
+			else wk_rline (g_cv, KEYX - 1, y - 1, VALX - KEYX - 3, g_fh, 3, C_ACCENT);
+			g_cv.fillRect (cx, y + 1, 2, g_fh - 3, C_ACCENT);
 		}
 	}
 
 	// Buttons + status.
-	fill (380, BTN_Y, 80, 24, 0x00306030); ax_frame (fb, W, H, 380, BTN_Y, 80, 24, 0x00c0c0c0);
-	wtk::draw_text (fb, W, H, 404, BTN_Y + 4, "Apply", 0x00ffffff);
-	fill (470, BTN_Y, 80, 24, 0x00603030); ax_frame (fb, W, H, 470, BTN_Y, 80, 24, 0x00c0c0c0);
-	wtk::draw_text (fb, W, H, 486, BTN_Y + 4, "Discard", 0x00ffffff);
-	if (g_msg[0]) wtk::draw_text (fb, W, H, KEYX, BTN_Y + 4, g_msg, 0x0090c090);
+	button (380, BTN_Y, 80, 24, "Apply");
+	button (470, BTN_Y, 80, 24, "Discard");
+	if (g_msg[0]) g_cv.text (KEYX, BTN_Y + 4, g_msg, C_TEXT);
 }
 
 static void on_click (unsigned long s, int ev, long val)
@@ -234,7 +251,8 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "config");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	g_cv.adopt (fb, W, H);
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_fh += 2;					// row pitch

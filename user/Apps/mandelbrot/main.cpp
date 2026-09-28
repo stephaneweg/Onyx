@@ -10,7 +10,8 @@
 
 #define W	340
 #define RH	240			// render height (rows); status below
-#define H	(RH + 16)
+#define SBH	22			// the status bar
+#define H	(RH + SBH)
 
 // Fractal types (dropdown order).
 #define FR_MANDEL	0
@@ -39,9 +40,9 @@ static int g_dirty = 1;
 #define JCR	(-(FONE * 4 / 5))
 #define JCI	(FONE * 156 / 1000)
 
-// Fractal-type dropdown (top-left, drawn over the canvas; see applib.h).
+// Fractal-type dropdown (top-left, drawn over the canvas by dd_draw; its clicks: applib.h).
 static const char *const FRACTALS[] = { "Mandelbrot", "Julia", "Burning Ship", "Tricorn" };
-static ax_dropdown g_dd = { 4, 4, 120, 18, FRACTALS, 4, FR_MANDEL, 0 };
+static ax_dropdown g_dd = { 6, 6, 132, 24, FRACTALS, 4, FR_MANDEL, 0 };
 
 static void reset_view (void)
 {
@@ -105,15 +106,41 @@ static void render (void)
 		}
 		if ((py & 15) == 0) kapi_yield ();		// progressive display
 	}
-	// status bar: controls + zoom depth + iteration budget
-	for (int i = 0; i < W * 16; i++) fb[RH * W + i] = 0x00181c20;
+	// status bar (the theme's face): controls + zoom depth + iteration budget
+	using namespace wtk;
+	Canvas cv; cv.adopt (fb, W, H);
+	wk_rbox (cv, 0, RH, W, SBH, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 120));
+	wk_etch_h (cv, 0, RH, W, C_FACE);
 	char s[64]; int p = 0;
 	const char *t = "click:in  o:out  r:reset   z="; for (int i = 0; t[i]; i++) s[p++] = t[i];
 	p += ax_itoa (g_zoom, s + p);
 	s[p++] = ' '; s[p++] = 'i'; s[p++] = 't'; s[p++] = '=';
 	p += ax_itoa (g_maxit, s + p); s[p] = '\0';
-	wtk::draw_text (fb, W, H, 6, RH + 1, s, 0x0090b0a0);
+	wk_text_l (cv, 8, RH + 2, SBH - 2, s, C_TEXT);
 	g_dirty = 0;
+}
+
+// The fractal drop-down, drawn over the picture after each render: the theme's raised box (the
+// chosen fractal, a chevron) and, open, its list in a light floating panel -- its rows where
+// ax_dropdown_click finds them (d->h px each, under the box), the chosen one in the accent.
+static void dd_draw (const ax_dropdown *d)
+{
+	using namespace wtk;
+	Canvas cv; cv.adopt (fb, W, H);
+	int fh = wk_fh (), k = d->open ? 1 : 0;
+	wk_raised (cv, d->x, d->y, d->w, d->h, 5, C_FACE, d->open ? WK_PRESSED : WK_NORMAL);
+	if (d->sel >= 0 && d->sel < d->nopts) cv.text (d->x + 9 + k, d->y + (d->h - fh) / 2 + k, d->opts[d->sel], C_TEXT);
+	wk_glyph (cv, d->open ? WKG_CHEV_UP : WKG_CHEV_DOWN, d->x + d->w - 13 + k, d->y + d->h / 2 + k, 9, C_TEXT);
+	if (!d->open) return;
+	int ly = d->y + d->h, lh = d->nopts * d->h;
+	wk_rbox (cv, d->x, ly, d->w, lh, 6, wk_tone (C_FIELD, 140), C_FIELD);
+	wk_rline (cv, d->x, ly, d->w, lh, 6, wk_tone (C_FACE, 70), 230);
+	for (int i = 0; i < d->nopts; i++)
+	{
+		int ry = ly + i * d->h;
+		if (i == d->sel) wk_hilite (cv, d->x + 3, ry + 2, d->w - 6, d->h - 4, 4, true);
+		cv.text (d->x + 10, ry + (d->h - fh) / 2, d->opts[i], i == d->sel ? wk_hilite_ink (true) : C_FIELD_TEXT);
+	}
 }
 
 static void on_click (unsigned long s, int ev, long val)
@@ -167,8 +194,7 @@ int main (void)
 	while (!should_exit ())
 	{
 		pump_events ();
-		if (g_dirty) render ();
-		ax_dropdown_draw (&g_dd, fb, W, H);	// overlay on top, every frame
+		if (g_dirty) { render (); dd_draw (&g_dd); }	// the drop-down over it (once: its edges blend)
 		msleep (30);
 	}
 	return 0;

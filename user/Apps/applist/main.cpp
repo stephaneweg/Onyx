@@ -47,6 +47,24 @@ static void reposition (int top)
 	if (g_root) g_root->invalidate (true);
 }
 
+// The popup: a floating panel of the theme (the menu bar's drop-downs' look: light, rounded,
+// outlined; see-through round its corners -- WIN_FLAG_ALPHA), its title in bold over a groove.
+class ListRoot : public Root
+{
+public:
+	ListRoot (int x, int y) : Root (x, y, W, H, "applist", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA) {}
+	void onDraw () override
+	{
+		canvas.clear (0xFF000000);
+		wk_paint_alpha (true);
+		wk_rbox (canvas, 0, 0, W, H, 8, wk_tone (C_FIELD, 140), C_FIELD);
+		wk_rline (canvas, 0, 0, W, H, 8, wk_tone (C_FACE, 70), 200);
+		wk_paint_alpha (false);
+		wk_text_l (canvas, LX + 4, 3, VIEW_Y - 8, "Applications", C_FIELD_TEXT, 2);
+		wk_etch_h (canvas, 8, VIEW_Y - 4, W - 16, C_FIELD);
+	}
+};
+
 static void on_scroll (Widget &w) { reposition (((Scrollbar &) w).value); }
 static void on_icon (Widget &w) { lx_launch (g_names[w.tag], 0); kapi_exit (0); }	// no return
 
@@ -97,7 +115,7 @@ static void add_apps (Root &root)
 	{
 		char path[64];
 		ax_app_path (path, sizeof (path), g_names[n], ".app/icon.bmp");
-		g_icons[n] = new Icon (OFFSCREEN, VIEW_Y, CELLW - 8, CELLH - 8, path, g_names[n], on_icon, 0x00141c26);
+		g_icons[n] = new Icon (OFFSCREEN, VIEW_Y, CELLW - 8, CELLH - 8, path, g_names[n], on_icon, C_FIELD);
 		g_icons[n]->tag = n;
 		root.addChild (g_icons[n]);
 	}
@@ -129,18 +147,17 @@ int main (void)
 	if (y0 > sh - H - 4) y0 = sh - H - 4;
 	if (y0 < MENUBAR_H) y0 = MENUBAR_H;
 
-	Root root (x0, y0, W, H, "applist", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM);
+	ListRoot root (x0, y0);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
-	root.setBg (0x00141c26);
-	root.addChild (new Label (LX + 2, 6, W - 24, 16, "Applications", C_TEXT, 0x00141c26));
+	root.setBg (C_FIELD);				// (the controls blend into the panel)
 	add_apps (root);
 
 	g_total_rows = (g_count + COLS - 1) / COLS;
 	g_vis_rows   = (H - VIEW_Y - 6) / CELLH; if (g_vis_rows < 1) g_vis_rows = 1;
 	g_max_top    = (g_total_rows > g_vis_rows) ? g_total_rows - g_vis_rows : 0;
 	if (g_max_top > 0)
-		root.addChild (new Scrollbar (W - SB_W - 2, VIEW_Y, SB_W, H - VIEW_Y - 6, true, g_max_top, 0, on_scroll));
+		root.addChild (new Scrollbar (W - SB_W - 3, VIEW_Y, SB_W, H - VIEW_Y - 10, true, g_max_top, 0, on_scroll));
 	reposition (0);
 
 	root.run ();

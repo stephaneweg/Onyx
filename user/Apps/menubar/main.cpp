@@ -15,10 +15,15 @@
 // and applied at start); a click on the Wi-Fi icon opens the Wi-Fi menu (the wifimenu app: the
 // networks around, join one).
 //
+// A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app).
+//
+// The look: the modernised CDE (wtk/paint.h) -- a light bar in the theme's face, the open title
+// in the accent, rounded drop-downs, anti-aliased on what lies below.
+//
 // The window is TOPMOST (always above the others, never active, never gets the keys)
-// and TRANSPARENT: it is allocated full-screen but kept BAR_H tall; while a menu is
-// open it grows to the whole screen, all magenta (see-through) except the bar and the
-// drop-down, so a click anywhere else closes the menu.
+// and see-through per pixel (WIN_FLAG_ALPHA): it is allocated full-screen but kept BAR_H tall;
+// while a menu is open it grows to the whole screen, almost clear (a click anywhere else goes
+// to it and closes the menu) except the bar and the drop-down.
 //
 // Mouse: click a title to open (click it again or anywhere outside to close), slide to
 // another title to switch, click an item to run it; press on a title + release on an
@@ -32,16 +37,16 @@
 
 using namespace wtk;
 
-#define BAR_H		32			// bar height: 27-px face + BEVEL-px 3D edge
-#define BEVEL		5			// 3D edge under the face: black, light, normal, dark, black
+#define BAR_H		30			// the bar's height (its last row: a dark line)
 #define INK_TOP		2			// the 8x16 font's cap ink spans cell rows 2..11:
 #define INK_H		10			// centre on the ink, not on the 16-px cell
 #define MAXMENUS	12
 #define MAXITEMS	24
-#define KEYCOL		0x00FF00FFu		// transparent (magenta key)
+#define CLEAR		0xFF000000u		// a see-through pixel (the top byte: its transparency)
+#define CATCH		0xFE000000u		// ... almost: it still takes the clicks (a menu is open)
 
-static const unsigned C_BARBG = 0x00303D4D, C_BARLIGHT = 0x005A6E88, C_BARLINE = 0x00161C24, C_BARBLACK = 0x0005070A, C_BARTXT = 0x00E8ECF0,
-		      C_DROP = 0x00262F3B, C_DROPHI = 0x00355070, C_DIM = 0x008A96A8, C_SEP = 0x00404A5A;
+// The palette: the theme's (wtk/theme.h), set once the theme is read.
+static unsigned C_BARTXT, C_DROP, C_DIM, C_OUT;
 
 struct Item { int id; char label[40]; char key[12]; bool sep; int sub; };	// sub: a sub-menu (g_subs) or -1
 struct MenuDef { char title[24]; Item items[MAXITEMS]; int count; int x, w; };
@@ -276,10 +281,10 @@ static int drop_w (const MenuDef &m)
 static int item_h (const Item &it) { return it.sep ? 9 : g_fh + 8; }
 // y of a text cell whose cap ink is vertically centred in a band [top, top+h)
 static int text_y (int top, int h) { return top + (h - INK_H + 1) / 2 - INK_TOP; }
-static int drop_h (const MenuDef &m) { int h = 6; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
+static int drop_h (const MenuDef &m) { int h = 10; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
 static int drop_x (const MenuDef &m) { int x = m.x; int w = drop_w (m); if (x + w > g_sw - 2) x = g_sw - 2 - w; return x; }
 
-static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 3; for (int i = 0; i < idx; i++) yy += item_h (m.items[i]); return yy; }
+static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 5; for (int i = 0; i < idx; i++) yy += item_h (m.items[i]); return yy; }
 static int sub_w (const SubDef &sd)
 {
 	int w = 140;
@@ -287,7 +292,7 @@ static int sub_w (const SubDef &sd)
 	if (sd.count == 0) w = 22 * g_fw;
 	return w;
 }
-static int sub_h (const SubDef &sd) { return 6 + (sd.count ? sd.count : 1) * (g_fh + 8); }
+static int sub_h (const SubDef &sd) { return 10 + (sd.count ? sd.count : 1) * (g_fh + 8); }
 static void sub_rect (int *x, int *y, int *w, int *h)		// where the open sub-menu is
 {
 	const MenuDef &m = g_menus[g_open]; const SubDef &sd = g_subs[g_sub];
@@ -308,8 +313,8 @@ static int sub_item_at (int x, int y)
 {
 	if (!in_sub (x, y)) return -1;
 	int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
-	int i = (y - sy - 3) / (g_fh + 8);
-	return i >= 0 && i < g_subs[g_sub].count ? i : -1;
+	int i = (y - sy - 5) / (g_fh + 8);
+	return y >= sy + 5 && i >= 0 && i < g_subs[g_sub].count ? i : -1;
 }
 
 static int title_at (int x, int y)
@@ -319,7 +324,8 @@ static int title_at (int x, int y)
 	return -1;
 }
 // the status icons on the right: the clock, the Wi-Fi state left of it, the speaker left of that
-static int clk_x (void) { return g_sw - 5 * g_fw - 12; }
+static int clk_x (void) { return g_sw - 5 * g_fw - 14; }
+static bool on_clock (int x, int y) { return y >= 0 && y < BAR_H && x >= clk_x () - 6 && x < g_sw; }
 static int wifi_x (void) { return clk_x () - 27; }
 static int spk_x (void) { return wifi_x () - 26; }
 static bool on_wifi (int x, int y) { return y >= 0 && y < BAR_H && x >= wifi_x () - 3 && x < wifi_x () + 20; }
@@ -334,7 +340,7 @@ static int item_at (int x, int y)		// index in the open menu, -1 = none
 {
 	if (g_open < 0) return -1;
 	const MenuDef &m = g_menus[g_open];
-	int dx = drop_x (m), dw = drop_w (m), yy = BAR_H + 3;
+	int dx = drop_x (m), dw = drop_w (m), yy = BAR_H + 5;
 	if (x < dx || x >= dx + dw) return -1;
 	for (int i = 0; i < m.count; i++)
 	{
@@ -346,13 +352,7 @@ static int item_at (int x, int y)		// index in the open menu, -1 = none
 }
 
 // ---- drawing ----------------------------------------------------------------------------------
-// The bar skin: 2 states of 16 x BAR_H, 9-slice (corners 4 px wide, 1 top / BEVEL bottom rows).
-static Skin &bar_skin (void)
-{
-	static Skin s; static bool tried = false;
-	if (!tried) { tried = true; s.load ("SD:/skins/menubar.bmp", 2, 4, 4, 1, BEVEL); }
-	return s;
-}
+static unsigned C_BARDIM;			// the dimmed ink on the bar
 
 // The Wi-Fi state icon, 17 x 12 px, its box's top-left at (x, y). Integer geometry only.
 static void draw_wifi (int x, int y, bool up)
@@ -377,7 +377,7 @@ static void draw_wifi (int x, int y, bool up)
 			{
 				int d2 = dx * dx + dy * dy, s = dx + dy;
 				bool ring = d2 >= 17 && d2 <= 30, bar = (s == 0 || s == 1) && d2 <= 30;
-				if (ring || bar) g_cv.fillRect (cx + dx, cy + dy, 1, 1, C_DIM);
+				if (ring || bar) g_cv.fillRect (cx + dx, cy + dy, 1, 1, C_BARDIM);
 			}
 	}
 }
@@ -386,7 +386,7 @@ static void draw_wifi (int x, int y, bool up)
 // cross when muted (or at 0).
 static void draw_speaker (int x, int y)
 {
-	unsigned c = g_mute || g_vol == 0 ? C_DIM : C_BARTXT;
+	unsigned c = g_mute || g_vol == 0 ? C_BARDIM : C_BARTXT;
 	g_cv.fillRect (x, y + 4, 3, 4, c);
 	for (int k = 0; k < 4; k++) g_cv.fillRect (x + 3 + k, y + 3 - k, 1, 6 + 2 * k, c);
 	if (g_mute || g_vol == 0)
@@ -407,96 +407,112 @@ static void draw_speaker (int x, int y)
 	}
 }
 
-// The volume box: a notification-style frame under the speaker, a slider 0..10 and Mute.
+// A floating panel (a drop-down, the volume box, the calendar): light, rounded, outlined --
+// blended over what lies below (the canvas is see-through there).
+static void panel (int x, int y, int w, int h)
+{
+	wk_rbox (g_cv, x, y, w, h, 8, wk_tone (C_DROP, 140), C_DROP);
+	wk_rline (g_cv, x, y, w, h, 8, C_OUT, 200);
+}
+
+// The volume box: a panel under the speaker, a slider 0..10 and Mute.
 static void draw_volume_box (void)
 {
 	int bx, by; vol_box (&bx, &by);
-	g_cv.fillRect (bx + 3, by + 3, VW, VH, 0x00101418);		// shadow
-	g_cv.fillRect (bx, by, VW, VH, 0x00262F3B);
-	g_cv.frameRect (bx, by, VW, VH, 0x00161C24);
-	g_cv.fillRect (bx, by, 4, VH, C_ACCENT);			// accent strip (as the notifications)
-	g_cv.text (bx + 14, by + 8, "Volume", C_BARTXT);
+	panel (bx, by, VW, VH);
+	wk_text_l (g_cv, bx + 14, by + 6, 24, "Volume", C_FIELD_TEXT, 2);
 	char v[8]; int n = 0;
 	if (g_mute) { const char *m = "Muted"; while (m[n]) { v[n] = m[n]; n++; } }
 	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); }
 	v[n] = 0;
-	g_cv.text (bx + VW - 14 - n * g_fw, by + 8, v, g_mute ? C_DIM : C_BARTXT);
+	wk_text_l (g_cv, bx + VW - 14 - n * g_fw, by + 6, 24, v, C_DIM);
 	int x0, x1, ty; vol_track (&x0, &x1, &ty);
 	int kx = x0 + (x1 - x0) * g_vol / 10;
-	g_cv.fillRect (x0, ty, x1 - x0, 4, C_SEP);
-	g_cv.fillRect (x0, ty, kx - x0, 4, g_mute ? C_DIM : C_ACCENT);
-	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 8, 1, 3, C_SEP);
-	g_cv.fillRect (kx - 5, ty - 6, 11, 16, g_mute ? C_DIM : C_BARTXT);
-	g_cv.frameRect (kx - 5, ty - 6, 11, 16, 0x00161C24);
-	g_cv.frameRect (bx + 18, by + 65, 14, 14, C_BARTXT);		// Mute: a check box
-	if (g_mute) g_cv.fillRect (bx + 21, by + 68, 8, 8, C_ACCENT);
-	g_cv.text (bx + 40, text_y (by + 65, 14), "Mute", C_BARTXT);
+	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 10, 1, 3, C_DIM);
+	wk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? WK_DISABLED : g_volDrag ? WK_PRESSED : WK_NORMAL);
+	wk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, WK_NORMAL);
+	g_cv.text (bx + 42, text_y (by + 65, 15), "Mute", C_FIELD_TEXT);
+}
+
+// ---- the calendar (a click on the time) ----------------------------------------------------------
+class CalCard : public Calendar				// (its corners blend into the panel)
+{
+public:
+	CalCard (int y, int m, int d) : Calendar (0, 0, y, m, d, 0) {}
+	unsigned bgColor () override { return C_DROP; }
+};
+static CalCard *g_cal;
+static bool g_calOpen = false, g_calBtnHot = false, g_calBtnDown = false;
+#define CALW	(CAL_W + 20)
+#define CALH	(CAL_H + 20 + 36)
+static void cal_box (int *x, int *y) { *x = g_sw - CALW - 6; *y = BAR_H + 4; }
+static void cal_btn (int *x, int *y, int *w, int *h)
+{
+	int bx, by; cal_box (&bx, &by);
+	*w = 150; *h = 28; *x = bx + (CALW - *w) / 2; *y = by + 10 + CAL_H + 6;
+}
+static bool in_cal_box (int x, int y) { int bx, by; cal_box (&bx, &by); return x >= bx && x < bx + CALW && y >= by && y < by + CALH; }
+static bool on_cal_btn (int x, int y) { int bx, by, bw, bh; cal_btn (&bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
+
+static void draw_calendar_box (void)
+{
+	int bx, by; cal_box (&bx, &by);
+	panel (bx, by, CALW, CALH);
+	g_cal->draw ();
+	g_cv.putOther (g_cal->canvas, bx + 10, by + 10, false);
+	int x, y, w, h, lx, ly, lw, lh; cal_btn (&x, &y, &w, &h);
+	wk_framed (g_cv, x, y, w, h, C_FACE, g_calBtnDown ? WK_PRESSED : g_calBtnHot ? WK_HOT : WK_NORMAL, &lx, &ly, &lw, &lh);
+	wk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_TEXT);
 }
 
 static void draw (void)
 {
-	bool full = g_open >= 0 || g_volOpen;
+	bool full = g_open >= 0 || g_volOpen || g_calOpen;
 	int h = full ? g_sh : BAR_H;
-	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, KEYCOL);
-	// Bar + open title: the skin (SD:/skins/menubar.bmp, state 0 = bar, 1 = open title),
-	// or the same look drawn by hand without it (light top row; black/light/normal/dark/black edge).
-	Skin &sk = bar_skin ();
-	if (sk.valid ()) sk.drawOn (g_cv.px, g_sw, h, 0, 0, 0, g_sw, BAR_H);
-	else
-	{
-		const int e = BAR_H - BEVEL;
-		g_cv.fillRect (0, 0, g_sw, BAR_H, C_BARBG);
-		g_cv.fillRect (0, 0, g_sw, 1, C_BARLIGHT);
-		g_cv.fillRect (0, e,     g_sw, 1, C_BARBLACK);
-		g_cv.fillRect (0, e + 1, g_sw, 1, C_BARLIGHT);
-		g_cv.fillRect (0, e + 3, g_sw, 1, C_BARLINE);
-		g_cv.fillRect (0, e + 4, g_sw, 1, C_BARBLACK);
-	}
-	const int face = BAR_H - BEVEL;
-	int ty = text_y (0, face);
+	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
+	wk_paint_alpha (true);
+	// the bar: a light gradient of the face, a light line on top, a darker one below
+	wk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, wk_tone (C_FACE, 196), wk_tone (C_FACE, 150));
+	for (int x = 0; x < g_sw; x++) { wk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
-		if (i == g_open)
-		{
-			if (sk.valid ()) sk.drawOn (g_cv.px, g_sw, h, 1, m.x, 0, m.w, BAR_H);
-			else g_cv.fillRect (m.x, 1, m.w, face - 1, C_DROPHI);
-		}
-		g_cv.text (m.x + 8, ty, m.title, C_BARTXT);
-		if (i == (g_onyx ? 0 : 1)) g_cv.text (m.x + 9, ty, m.title, C_BARTXT);	// app name in bold
+		if (i == g_open) wk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
+		bool bold = i == (g_onyx ? 0 : 1);				// the app's name
+		wk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, bold ? 2 : 0);
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
 	int clkX = clk_x ();
-	g_cv.text (clkX, ty, clk, C_BARTXT);
+	if (g_calOpen) wk_hilite (g_cv, clkX - 6, 3, 5 * g_fw + 12, BAR_H - 7, 5, true);
+	wk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
 	g_lastMin = mm;
 	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
-	draw_wifi (wifi_x (), (face - 12) / 2 + 1, g_wifi == 1);
-	draw_speaker (spk_x (), (face - 12) / 2 + 1);
+	draw_wifi (wifi_x (), (BAR_H - 1 - 12) / 2, g_wifi == 1);
+	draw_speaker (spk_x (), (BAR_H - 1 - 12) / 2);
 	if (g_volOpen) draw_volume_box ();
+	if (g_calOpen) draw_calendar_box ();
 
 	if (g_open >= 0)
 	{
 		const MenuDef &m = g_menus[g_open];
 		int dx = drop_x (m), dw = drop_w (m), dh = drop_h (m);
-		g_cv.fillRect (dx + 3, BAR_H + 3, dw, dh, 0x00101418);		// shadow
-		g_cv.fillRect (dx, BAR_H, dw, dh, C_DROP);
-		g_cv.frameRect (dx, BAR_H, dw, dh, C_BARLINE);
-		int yy = BAR_H + 3;
+		panel (dx, BAR_H + 1, dw, dh);
+		int yy = BAR_H + 5;
 		for (int i = 0; i < m.count; i++)
 		{
 			const Item &it = m.items[i];
 			int ih = item_h (it);
-			if (it.sep) g_cv.fillRect (dx + 6, yy + ih / 2, dw - 12, 1, C_SEP);
+			if (it.sep) wk_etch_h (g_cv, dx + 10, yy + ih / 2 - 1, dw - 20, C_DROP);
 			else
 			{
-				if (i == g_hover || (g_sub >= 0 && i == g_subOwner)) g_cv.fillRect (dx + 2, yy, dw - 4, ih, C_DROPHI);
+				bool hot = i == g_hover || (g_sub >= 0 && i == g_subOwner);
+				if (hot) wk_hilite (g_cv, dx + 4, yy, dw - 8, ih, 5, true);
 				int iy = text_y (yy, ih);
-				g_cv.text (dx + 12, iy, it.label, C_BARTXT);
-				if (it.key[0]) g_cv.text (dx + dw - 12 - slen (it.key) * g_fw, iy, it.key, C_DIM);
-				if (it.sub >= 0)					// a sub-menu: a small arrow
-					for (int k = 0; k < 4; k++) g_cv.fillRect (dx + dw - 16 + k, yy + ih / 2 - 3 + k, 1, 7 - 2 * k, C_BARTXT);
+				g_cv.text (dx + 14, iy, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (it.key[0]) g_cv.text (dx + dw - 14 - slen (it.key) * g_fw, iy, it.key, hot ? C_SEL_TEXT : C_DIM);
+				if (it.sub >= 0) wk_glyph (g_cv, WKG_CHEV_RIGHT, dx + dw - 16, yy + ih / 2, 8, hot ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 			yy += ih;
 		}
@@ -504,19 +520,18 @@ static void draw (void)
 		{
 			const SubDef &sd = g_subs[g_sub];
 			int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
-			g_cv.fillRect (sx + 3, sy + 3, sw, sh, 0x00101418);
-			g_cv.fillRect (sx, sy, sw, sh, C_DROP);
-			g_cv.frameRect (sx, sy, sw, sh, C_BARLINE);
+			panel (sx, sy, sw, sh);
 			int ih = g_fh + 8;
-			if (sd.count == 0) g_cv.text (sx + 12, text_y (sy + 3, ih), sd.windows ? "(no open window)" : "(empty)", C_DIM);
+			if (sd.count == 0) g_cv.text (sx + 14, text_y (sy + 5, ih), sd.windows ? "(no open window)" : "(empty)", C_DIM);
 			for (int i = 0; i < sd.count; i++)
 			{
-				int iy = sy + 3 + i * ih;
-				if (i == g_subHover) g_cv.fillRect (sx + 2, iy, sw - 4, ih, C_DROPHI);
-				g_cv.text (sx + 12, text_y (iy, ih), sd.items[i].label, C_BARTXT);
+				int iy = sy + 5 + i * ih;
+				if (i == g_subHover) wk_hilite (g_cv, sx + 4, iy, sw - 8, ih, 5, true);
+				g_cv.text (sx + 14, text_y (iy, ih), sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 		}
 	}
+	wk_paint_alpha (false);
 	kapi_resize_window (g_sw, h);
 	kapi_present ();
 	g_dirty = false;
@@ -539,7 +554,7 @@ static void run_item (const Item &it)
 
 static void open_menu (int i)
 {
-	g_volOpen = false;
+	g_volOpen = false; g_calOpen = false;
 	if (i == 0) build_onyx_menu (g_menus[0]);		// the apps as they are now
 	g_open = i; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true;
 }
@@ -579,6 +594,27 @@ static void ptr (unsigned long, int ev, long v)
 	{
 	case GUI_EVENT_PTR_DOWN:
 		if (!(c & 1)) break;
+		if (g_calOpen && in_cal_box (x, y))			// the calendar: its month, its button
+		{
+			int bx, by; cal_box (&bx, &by);
+			if (on_cal_btn (x, y)) g_calBtnDown = true;
+			else g_cal->handleMouse (x - bx - 10, y - by - 10, 1, 0, 0, 0);
+			g_dirty = true;
+			break;
+		}
+		if (on_clock (x, y))					// the calendar, open / closed
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false;
+			g_calOpen = !g_calOpen; g_dirty = true;
+			if (g_calOpen)					// (today's month)
+			{
+				int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0);
+				g_cal->setDate (yy, mo, dd);
+			}
+			break;
+		}
+		if (g_calOpen) { g_calOpen = false; g_dirty = true; if (t < 0) break; }	// a click elsewhere
 		if (on_speaker (x, y))					// the volume box, open / closed
 		{
 			if (g_open >= 0) close_menu ();
@@ -608,6 +644,18 @@ static void ptr (unsigned long, int ev, long v)
 		break;
 	case GUI_EVENT_PTR_UP:
 		if (!(c & 1)) break;
+		if (g_calOpen)
+		{
+			int bx, by; cal_box (&bx, &by);
+			if (g_calBtnDown)
+			{
+				g_calBtnDown = false;
+				if (on_cal_btn (x, y)) { g_calOpen = false; if (kapi_raise_app ("calendar") == 0) lx_launch ("calendar", 0); }
+			}
+			else if (in_cal_box (x, y)) g_cal->handleMouse (x - bx - 10, y - by - 10, 0, 0, 0, 0);
+			g_dirty = true;
+			break;
+		}
 		if (g_volDrag) { g_volDrag = false; volume_save (g_vol, g_mute); break; }
 		if (g_open >= 0)
 		{
@@ -620,6 +668,12 @@ static void ptr (unsigned long, int ev, long v)
 		g_pressedTitle = false;
 		break;
 	case GUI_EVENT_PTR_MOVE:
+		if (g_calOpen)
+		{
+			bool h = on_cal_btn (x, y);
+			if (h != g_calBtnHot) { g_calBtnHot = h; g_dirty = true; }
+			break;
+		}
 		if (g_volDrag) { vol_set_at (x); break; }
 		if (g_open >= 0)
 		{
@@ -639,6 +693,9 @@ static void ptr (unsigned long, int ev, long v)
 	case GUI_EVENT_PTR_LEAVE:
 		if (g_hover != -1) { g_hover = -1; g_dirty = true; }
 		break;
+	case GUI_EVENT_PTR_WHEEL:				// the wheel over the calendar: the months
+		if (g_calOpen && in_cal_box (x, y)) { g_cal->handleMouse (5, 40, 0, 0, 0, GUI_PTR_WHEEL (v)); g_dirty = true; }
+		break;
 	}
 }
 
@@ -649,10 +706,15 @@ int main (void)
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
 	g_fb = kapi_create_window_ex (0, 0, g_sw, g_sh, "menubar",
-				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_TRANSPARENT | WIN_FLAG_SYSTEM);
+				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM);
 	if (g_fb == 0) return 1;
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
+	wtk::init ();					// the fonts, the theme: the palette
+	C_BARTXT = wk_ink_on (wk_tone (C_FACE, 176));
+	C_BARDIM = wk_mix (wk_tone (C_FACE, 176), C_BARTXT, 110);
+	C_DROP = C_FIELD; C_DIM = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = wk_tone (C_FACE, 70);
+	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
 	kapi_set_pointer_handler (ptr);
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)
 	{ int r = kapi_sound_volume (-1, -1); g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; }
@@ -685,7 +747,8 @@ int main (void)
 			int r = kapi_sound_volume (-1, -1);			// (the volume command may change it)
 			if ((r & 0xFF) != g_vol || ((r & 0x100) ? 1 : 0) != g_mute) { g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; g_dirty = true; }
 		}
+		if (g_calOpen && !g_cal->valid) g_dirty = true;		// (the calendar changed its month)
 		if (g_dirty) draw ();
-		msleep (g_open >= 0 || g_volOpen ? 16 : 50);
+		msleep (g_open >= 0 || g_volOpen || g_calOpen ? 16 : 50);
 	}
 }

@@ -1,10 +1,13 @@
 #include "wtk/combobox.h"
+#include "wtk/dropdown.h"		// wk_draw_option_list
 
 namespace wtk {
 
+enum { CB_GAP = 2, CB_PAD = 3 };	// the open list (as Dropdown's)
+
 Combobox::Combobox (int l, int t, int w, int h, const char *s, Action enter, Action pick_)
-  : Textbox (l, t, w, h, s, enter), nopts (0), picked (-1), rowH (h), open (false), onPick (pick_)
-{ canFocus = true; }
+  : Textbox (l, t, w, h, s, enter), nopts (0), picked (-1), rowH (h), open (false), onPick (pick_), m_hot (-1)
+{ canFocus = true; padR = ARROW_W; }
 
 void Combobox::clearOptions () { setOpen (false); nopts = 0; picked = -1; invalidate (true); }
 
@@ -22,13 +25,23 @@ void Combobox::pick (int i)
 	if (onPick) onPick (*this);
 }
 
+int Combobox::rowAt (int mx, int my) const
+{
+	int top = rowH + CB_GAP + CB_PAD;
+	if (!open || mx < 0 || mx >= width || my < top) return -1;
+	int i = (my - top) / rowH;
+	return i < nopts ? i : -1;
+}
+
 void Combobox::setOpen (bool o)
 {
 	if (o && nopts == 0) o = false;
 	if (o == open) return;
 	open = o;
+	m_hot = -1;
 	catchOutside = o;					// while open, grab clicks anywhere (to close)
-	resizeTo (width, o ? rowH + nopts * rowH : rowH);	// grow downward / shrink back
+	transparent = o;					// (the list's rounded corners: see-through)
+	resizeTo (width, o ? rowH + CB_GAP + 2 * CB_PAD + nopts * rowH : rowH);	// grow downward / shrink back
 	if (o) bringToFront ();
 	invalidate (true);
 	if (parent) parent->invalidate (true);			// repaint behind a closing list
@@ -36,46 +49,41 @@ void Combobox::setOpen (bool o)
 
 void Combobox::onDraw ()
 {
-	// The edit part: a Textbox drawn in the top row, left of the arrow button.
-	int h = height, w = width;
-	height = rowH; width = w - ARROW_W + 1;
+	// The edit part: a Textbox in the top row (its text clear of the arrow), then the arrow.
+	int h = height;
+	height = rowH;
 	Textbox::onDraw ();
-	height = h; width = w;
-	int fh = wk_fh (), ax = w - ARROW_W;
-	// The drop button: a raised face with a triangle (dimmed when there is nothing to list).
-	canvas.fillRect (ax, 0, ARROW_W, rowH, open ? C_FACE_DN : (hover && nopts ? C_FACE_HI : C_FACE));
-	canvas.frameRect (ax, 0, ARROW_W, rowH, C_BORDER);
-	unsigned tc = nopts ? C_TEXT : C_DIS;
-	int cx = ax + ARROW_W / 2, cy = rowH / 2;
-	for (int r = 0; r < 4; r++)				// 7-px wide triangle, down (up when open)
-		canvas.fillRect (cx - 3 + r, open ? cy + 1 - r : cy - 1 + r, 7 - 2 * r, 1, tc);
-	(void) fh;
+	height = h;
+	int ax = width - ARROW_W, bh = rowH - 6;
+	int st = !nopts || disabled ? WK_DISABLED : open ? WK_PRESSED : m_arrowHot ? WK_HOT : WK_NORMAL;
+	wk_raised (canvas, ax, 3, ARROW_W - 3, bh, 3, C_FACE, st);
+	int d = open ? 1 : 0;
+	wk_glyph (canvas, open ? WKG_CHEV_UP : WKG_CHEV_DOWN, ax + (ARROW_W - 3) / 2 + d, 3 + bh / 2 + d, 8,
+		  nopts && !disabled ? C_TEXT : C_DIS);
 	if (open)
-		for (int i = 0; i < nopts; i++)
-		{
-			int ry = rowH + i * rowH;
-			canvas.fillRect (0, ry, w, rowH, i == picked ? C_FACE_HI : C_FIELD);
-			canvas.frameRect (0, ry, w, rowH, C_BORDER);
-			canvas.text (6, ry + (rowH - fh) / 2, opts[i], C_TEXT);
-		}
+	{
+		canvas.fillRect (0, rowH, width, height - rowH, WK_TRANSPARENT_KEY);
+		const char *p[MAXOPT];
+		for (int i = 0; i < nopts; i++) p[i] = opts[i];
+		wk_draw_option_list (canvas, rowH + CB_GAP, width, rowH, p, nopts, picked, m_hot);
+	}
 }
 
 bool Combobox::onMouse (int mx, int my, int bl, int br, int bm, int wheel)
 {
+	bool ah = mx >= width - ARROW_W && mx < width && my >= 0 && my < rowH;
+	if (ah != m_arrowHot) { m_arrowHot = ah; invalidate (true); }
 	if (mx < 0 && !open) return Textbox::onMouse (mx, my, bl, br, bm, wheel);
+	int hot = rowAt (mx, my);
+	if (open && hot != m_hot) { m_hot = hot; invalidate (true); }
 	if (bl && !pressed)
 	{
 		bool inBox = mx >= 0 && mx < width && my >= 0 && my < rowH;
 		if (open)
 		{
 			pressed = true;
-			if (mx >= 0 && mx < width && my >= rowH && my < rowH + nopts * rowH)
-			{
-				int i = (my - rowH) / rowH;
-				setOpen (false);
-				pick (i);
-			}
-			else setOpen (false);				// the box or outside -> close
+			setOpen (false);				// the box, a row or outside: close
+			if (hot >= 0) pick (hot);
 			if (inBox && mx < width - ARROW_W) { pressed = false; return Textbox::onMouse (mx, my, bl, br, bm, wheel); }
 			return true;
 		}
