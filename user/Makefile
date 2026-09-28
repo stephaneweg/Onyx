@@ -70,8 +70,8 @@ wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
@@ -109,6 +109,20 @@ gc/%.o: gc/%.cpp gc/gc.h
 	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -fno-math-errno -O3 -I. -c $< -o $@
 gc/libgc.a: $(GC_OBJS)
 	$(AR) rcs $@ $^
+# The V3D QPU builder (v3d/: shaders generated at run time, e.g. the GameCube's TEV): the C++
+# builder + Mesa's QPU packer (tools/qpu/mesa, MIT) + the few libc functions it calls.
+V3D_MESA = ../tools/qpu/mesa
+V3D_OBJS = v3d/qpu.o v3d/qpu_pack.o v3d/qpu_instr.o v3d/shim.o
+v3d/qpu.o: v3d/qpu.cpp v3d/qpu.h
+	$(CXX) $(CXXFLAGS) -O2 -I. -I$(V3D_MESA) -c $< -o $@
+v3d/qpu_pack.o: $(V3D_MESA)/broadcom/qpu/qpu_pack.c
+	$(CC) $(CFLAGS) -std=gnu11 -DNDEBUG -w -I$(V3D_MESA) -c $< -o $@
+v3d/qpu_instr.o: $(V3D_MESA)/broadcom/qpu/qpu_instr.c
+	$(CC) $(CFLAGS) -std=gnu11 -DNDEBUG -w -I$(V3D_MESA) -c $< -o $@
+v3d/shim.o: v3d/shim.c
+	$(CC) $(CFLAGS) -c $< -o $@
+v3d/libv3d.a: $(V3D_OBJS)
+	$(AR) rcs $@ $^
 
 snes/libsnes.a: $(SNES_OBJS)
 	$(AR) rcs $@ $^
@@ -135,6 +149,6 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
 
 clean:
-	rm -f *.elf *.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a bin/basic.elf
+	rm -f *.elf *.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean
