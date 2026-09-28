@@ -70,24 +70,43 @@ answer in French. The docs stay in English.
   `pr/dhcp-restart`), based on upstream `develop`; texts, patches and an issue draft (RAM above
   3 GB on the Pi 4) in `docs/circle-upstream/`. The user opens the pull requests.
 
-## Next: the GameCube emulator on the Pi (the Windows version works)
+## Next: the GameCube on the Pi -- the TEV renderer shows a black screen (a local session, with the ISO)
 
-- **Done on Windows (a local session):** The Wind Waker (the user's PAL ISO, local only) is
-  **playable in NintendoEMU**: title, memory card, name entry, intro story, Outset Island, with
-  its sound and its pictures drawn by the GPU (GL 3.3 shaders: the GX pipeline, the TEV per
-  pixel, EFB copies), in real time — an **x86-64 JIT**, the DSP HLE (AX / Zelda protocols) with
-  the **Zelda microcode's audio renderer**, the **memory card**, and a dozen hardware fixes
-  (among them `runFrame` ran two fields: every GC game ran twice too fast). **Everything is in
-  [`docs/GC-WINDOWS-REPORT.md`](GC-WINDOWS-REPORT.md)** — what changed, why, and what the Pi port
-  needs.
-- **Next (a cloud session can do it, the ISO being local):** port to the Pi's `gcemu` — rebuild
-  with the new core (`gc_card.o gc_zelda.o gc_gxgpu.o` already in `user/Makefile`), then the
-  app's sound (`setAudioRate` / `audioRead`) and memory card (`<game>.sav`, `cardInsert`), then
-  the rendering (report §5: a V3D `GxGpu` backend with generated QPU fragment shaders, or the
-  cheaper fixes of the per-vertex path). Re-run `run_gc_test.sh` (the AArch64 JIT, `gctest fuzz`).
-- **Known limits:** AX games (most of the library) are silent (only the Zelda microcode is
-  rendered); on the Pi the GX is still the per-vertex approximation (grey characters, white tiles
-  where the game uses EFB copies).
+- **Done (cloud session), all pushed:** option A of `docs/GC-WINDOWS-REPORT.md` §5 -- the GX on the
+  V3D with generated QPU shaders:
+  - **Kernel ABI v61** `gpu_program` / `gpu_render2` (`kernel/sys/v3d.cpp`): the app's own
+    vertex / coordinate / fragment shaders, batches with uniform ranges, up to 8 textures, blend
+    factors, write mask, scissor; generic CPU clipping (`V3DClipTriangleN`).
+  - **QPU toolchain**: `user/v3d/qpu.h` (C++ instruction builder over Mesa's packer),
+    `user/v3d/shaders.h` (pass-through VS / CS, simple FS), `tools/qpu/qpulib` (instruction
+    restrictions checker), `tools/qpu/qpusim` (fragment-shader simulator).
+  - **TEV generator** `user/v3d/gxtev.{h,cpp}`: a TEV configuration -> fragment shader in
+    integers as the hardware; `user/v3d/gxtev_ref.h` = gxgl.cpp's GLSL TEV in C++. Checked:
+    `tools/tests/run_qpu_test.sh` (thousands of random configs in the simulator, exact) and on
+    the Pi: `/bin/v3dprog` -> **ALL PASS 22/22** (incl. 9 TEV configs, up to 16 stages / 8 lookups).
+  - **gcemu backend** `user/Apps/gcemu/gxv3d.h` (`Rec`: gc::GxGpu on the app core -- vertices
+    through gxgl.cpp's VS ported to C++, TEV program cached by key, uniforms, state; `Out`: main
+    thread -> gpu_program / gpu_texture / gpu_render2). View > TEV Shaders On / Off.
+  - **PC harness** `tools/tests/gc/gcv3d.cpp`: runs a `.dol` / `.iso` with the same `Rec` and
+    draws the last frame with a software V3D (the kernel's clipping, perspective varyings, depth,
+    cull, scissor, blending; the generated shaders in qpusim) -> `.ppm`. Build line in
+    `tools/tests/run_gc_test.sh`; `gcv3d <iso> <fields> out.ppm`, `GCV3D_EVERY=n` for more
+    frames, `GCV3D_DUMP=1` prints the batches. `gxtest.dol` renders right through it.
+- **The problem:** on the Pi, The Wind Waker with the TEV renderer shows **only a black screen**
+  (the old per-vertex path, View > TEV Shaders Off, still works). Not yet known whether
+  `gpu_render2` fails (then `draw_into` falls back to the XFB in MEM1, black with a GPU renderer),
+  whether every batch is dropped (`Rec::skipped`: a texture from an EFB copy, a program refused),
+  or whether the geometry is off (culling / viewport / depth mapping in `Rec::draw`, only checked
+  with gxtest's orthographic 2D draw).
+- **Next step for the local session:** run the game on the PC through `gcv3d` with the ISO:
+  if its frames are black too, the bug is in `gxv3d.h` (debug there: `GCV3D_DUMP=1`, compare
+  with NintendoEMU's gxgl.cpp, which renders the game right); if they are right, the difference
+  is the Pi (kernel `gpu_render2` limits / return code, `Out::render`, the real GPU) -- then add a
+  diagnostic to gcemu (F12 counters: render2's result, batches drawn / recorded, skipped; a key
+  dumping the frame to a file) for the user to report. Then stage 4: EFB copies to textures
+  (render to texture in the kernel), fog, indirect textures; stage 5: performance (dual-issue
+  scheduling of the generated code, the CPU vertex stage).
+- **Known limits:** AX games are silent (only the Zelda microcode is rendered).
 
 ## Other open items
 
