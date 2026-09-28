@@ -89,6 +89,7 @@ int  kapi_wlan_scan (struct kapi_wlan_ap *, int);
 int  kapi_wlan_reconnect (void);
 int  kapi_gpu_program (int, const struct kapi_gpu_program *);
 int  kapi_gpu_render2 (const struct kapi_gpu_frame *, const float *, unsigned, unsigned, const struct kapi_gpu_batch2 *, unsigned, const unsigned *, unsigned);
+int  kapi_gpu_render3 (const struct kapi_gpu_frame *, const float *, unsigned, const struct kapi_gpu_batch3 *, unsigned, const unsigned *, unsigned, const float *);
 int  kapi_sound_acquire (void);
 void kapi_sound_release (void);
 int  kapi_sound_start (int, unsigned, int, int);
@@ -365,4 +366,5 @@ void KApiTableInit (void)
 	t->wlan_reconnect    = kapi_wlan_reconnect;
 	t->gpu_program       = kapi_gpu_program;
 	t->gpu_render2       = kapi_gpu_render2;
+	t->gpu_render3       = kapi_gpu_render3;
 }

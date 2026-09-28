@@ -210,8 +210,18 @@ answer in French. The docs stay in English.
   opened its passive data connections ("Passive data channel timed out" on the PC; a failed
   `cat FTP:... > file` then leaves cat's error in the file) until a reboot -- not investigated;
   `--statlog` on `SD:/gcdump`, read with `cat` over telnet, avoids it.
-  Next, by gain: (1) the machine: where its time goes outside the JIT's code (the events, the
-  DSP / audio, the helpers), the JIT's code size (L1I), the display's copies; (2) the display's copies (`Out::prepare`'s and the kernel's: a GPU-visible buffer the
+  Then **kapi v62 `gpu_render3`** (the kernel reads the recorder's frame where it is: each batch's
+  offset and stride, framed on the way) and the recorder's three frames (the one drawn is never
+  built into): `Out::prepare` 5.9 -> 0.1 ms, the machine 33.5 -> 29.9 M cycles a field, **~46-47
+  fields/s (~23 fps, 94 %)** on Outset -- measured: without the display at all (`--nodraw`) the
+  machine runs at full speed (26.8 M cycles, IPC 1.14); `--noren` (prepared, not drawn) said the
+  copy in `Out::prepare` cost it ~2.9 M cycles, the kernel's copy + the GPU ~3.8 M. The machine's
+  time is 98 % in the JIT's code (--pmu: `in JIT`), its runs end ~310 times a field on VI lines
+  and ~80 on the audio DMA, the JIT is entered ~2000 times (mtmsr / mtspr / rfi / sc leave it).
+  Next, by gain: (1) the kernel's copy (~14 MB a frame): the recorder's frames in GPU-visible
+  memory (a kapi giving the app a physically contiguous buffer), the kernel only testing the
+  positions and clipping the few in their place, the framing in the vertex / coordinate
+  shaders -- then the machine near `--nodraw`'s full speed; (2) the display's copies (`Out::prepare`'s and the kernel's: a GPU-visible buffer the
   app writes, clipped in place, per-batch strides, the XFB rectangle's transform in the shaders)
   -- they cost the machine ~18 % (`--nodraw`); (3) the JIT: a fifth kept register (r4 / r1:
   x22 freed by a 32 MB MEM1 test), the FP compares fused with their branch (fcmpo 14.8 host

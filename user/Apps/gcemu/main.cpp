@@ -70,6 +70,7 @@ static bool g_tevBuf = false;					// --tevbuf: the TEV frames drawn into a buffe
 static bool g_jitProf = false;					// --jitprof: the JIT's profile (with --diag)
 static bool g_gxOne = false;					// --gxone: the GX on the machine's core even with a second one
 static bool g_noDraw = false;					// --nodraw (a measure): the TEV frames recorded, not drawn
+static bool g_noRen = false;					// --noren (a measure): the TEV frames prepared, not drawn
 static bool g_pmu = false;					// --pmu[=e1,e2,e3,e4]: the app core's performance counters (F12's 5th line)
 static unsigned g_pmuEv[4] = { 0x08, 0x03, 0x17, 0x10 };		// (the events, hex: instructions, L1D, L2 refills, mispredictions)
 static volatile unsigned long long g_pmuField[gc::PMU_N];	// (--pmu) their counts in runFrame, all in
@@ -616,6 +617,12 @@ static void pmu_line (unsigned fields)
 		cat (d, &k, " L2 "); fmt_num (d, &k, (unsigned) (c[3] * 10000 / ins), 1);
 		cat (d, &k, " br "); fmt_num (d, &k, (unsigned) (c[4] * 10000 / ins), 1);
 	}
+	static unsigned long long pJit = 0;			// (the cycles in the JIT's code: a share of the machine's)
+	unsigned long long dJit = g_m->jitCyc - pJit; pJit = g_m->jitCyc;
+	cat (d, &k, "  in JIT "); fmt_num (d, &k, (unsigned) (dA[0] ? dJit * 100 / dA[0] : 0), 0); cat (d, &k, " %");
+	static unsigned pEv[10];				// (the runs' ends a field: VI DI AIDMA AIDIRQ DSP EXI CARD AISAMPLE, the JIT's entries)
+	cat (d, &k, "  ends:");
+	for (int j = 0; j < 9; j++) { unsigned v = g_m->evWhy[j]; cat (d, &k, " "); fmt_num (d, &k, (v - pEv[j]) / fl, 0); pEv[j] = v; }
 }
 
 // --jitprof: the JIT's profile into the diag's folder (the machine held meanwhile: its blocks still)
@@ -707,6 +714,7 @@ int main (void)
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'j' && args[i + 3] == 'i' && args[i + 4] == 't' && args[i + 5] == 'p') g_jitProf = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'g' && args[i + 3] == 'x' && args[i + 4] == 'o') g_gxOne = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'n' && args[i + 3] == 'o' && args[i + 4] == 'd' && args[i + 5] == 'r') g_noDraw = true;
+		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'n' && args[i + 3] == 'o' && args[i + 4] == 'r' && args[i + 5] == 'e') g_noRen = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'p' && args[i + 3] == 'm' && args[i + 4] == 'u')
 		{
 			g_pmu = true;
@@ -897,7 +905,8 @@ int main (void)
 			unsigned long long d0 = now_us ();
 			int tw, th; target_size (&tw, &th);
 			g_out.prepare (g_rec, *g_m, tw, th);			// (none yet: show_frame shows the rest)
-			show_frame (); drawUs += now_us () - d0; stShown++; shown = true;
+			if (!g_noRen) show_frame ();
+			drawUs += now_us () - d0; stShown++; shown = true;
 		}
 		ec_pump (&g_ec);
 		serve_reads ();

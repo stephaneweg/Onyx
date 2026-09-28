@@ -107,7 +107,9 @@ public:
 	Prog prog[MAX_PROGS]; volatile int nProg = 0;
 	unsigned long long *arena = 0; u32 arenaN = 0;	// the programs' words
 	gxtev::Uni *uniArena = 0; u32 uniN = 0;
-	Frame frame[2]; int build = 0; volatile int ready = -1;
+	// three frames: the one built, the last one finished (ready), the one the main thread draws
+	// (held -- the kernel reads its vertices where they are: not built into meanwhile)
+	Frame frame[3]; int build = 0; volatile int ready = -1, held = -1;
 	u32 serial = 0;					// (frames finished)
 	u32 unsupported = 0, skipped = 0;		// (stats: draws with a feature not generated, not drawn)
 	// (stats) the draws left out, by reason: SK_*; onSkip (the PC's tests): told each one
@@ -131,7 +133,7 @@ public:
 		tmp = new float[0x10000 * 68]; oc = new u8[0x10000];
 		for (int i = 0; i < 256; i++) inv255[i] = (float) i / 255.0f;
 		pl.valid = false;
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < 3; i++)
 		{
 			frame[i].v = new float[MAX_FLOATS]; frame[i].b = new Batch[MAX_BATCHES]; frame[i].u = new u32[MAX_UNIS];
 			if (!frame[i].v || !frame[i].b || !frame[i].u) return false;
@@ -705,7 +707,8 @@ public:
 			if (c.h < 16) { F.rect[1] = 0; F.rect[3] = 480; }
 			__sync_synchronize ();
 			ready = build; serial++;
-			build ^= 1;
+			int nb = 0; while (nb == ready || nb == held) nb++;	// (neither the ready one nor the drawn one)
+			build = nb;
 			Frame &N = frame[build];
 			N.reset ();
 			N.keep = !c.clear;
@@ -778,9 +781,11 @@ static inline unsigned long long dumpFrame (const Rec &r, const gc::Machine &m, 
 struct Out
 {
 	int gpuTex[gc::Machine::MAX_TEX];
-	float *rv = 0; u32 rvCap = 0;			// (the vertices at one stride)
+	float *rv = 0; u32 rvCap = 0;			// (an older kernel: the vertices at one stride)
 	unsigned *ru = 0;
 	kapi_gpu_batch2 *rb = 0;
+	kapi_gpu_batch3 *rb3 = 0;			// (gpu_render3's: the frame's vertices where they are)
+	bool v62 = false;
 	qpu::Prog vs, cs;
 	// what the last frame gave (F12, --diag): gpu_render2's result (0 ok, -1 no GPU, -2 bad
 	// arguments, -3 the GPU did not finish, -4 no memory; 1 no frame yet), the batches recorded,
@@ -793,10 +798,12 @@ struct Out
 	bool init ()
 	{
 		for (int i = 0; i < gc::Machine::MAX_TEX; i++) gpuTex[i] = -1;
-		rvCap = MAX_FLOATS * 2; rv = new float[rvCap]; ru = new unsigned[MAX_UNIS + 8]; rb = new kapi_gpu_batch2[MAX_BATCHES];
+		v62 = KT->version >= 62;
+		rvCap = v62 ? 0 : MAX_FLOATS * 2; rv = v62 ? 0 : new float[rvCap];
+		ru = new unsigned[MAX_UNIS + 8]; rb = new kapi_gpu_batch2[MAX_BATCHES]; rb3 = new kapi_gpu_batch3[MAX_BATCHES];
 		qpu::passCS (cs);
 		__builtin_memset (&st, 0, sizeof st); st.ret = 1;
-		return rv && ru && rb;
+		return (rv || v62) && ru && rb && rb3;
 	}
 	// the textures decoded since (Machine::tex[]: dirty)
 	void textures (gc::Machine &m)
@@ -832,6 +839,7 @@ struct Out
 	// the frame prepared (prepare: the kernel's arrays rv / rb / ru), and the one the last submit drew
 	bool prepOk = false; int prepFrame = -1, prepW = 0, prepH = 0, prepStride = 4; u32 prepSerial = 0;
 	u32 prepNv = 0, prepNb = 0, prepNu = 0, prepClear = 0; bool prepKeep = false;
+	const float *prepV = 0; u32 prepNf = 0; float prepView[4];	// (gpu_render3: the held frame's vertices, their framing)
 	bool shownOk = false; const unsigned *shownPx = 0; int shownW = 0, shownH = 0, shownStride = 0; u32 shownSerial = 0;
 
 	// The machine waiting: its last finished frame into the kernel's arrays for a w x h target (the
@@ -850,6 +858,7 @@ struct Out
 		if (fi < 0) { prepOk = false; return false; }
 		if (prepOk && fi == prepFrame && r.serial == prepSerial && w == prepW && h == prepH) return true;
 		u64 t0 = clockTicks ();
+		r.held = fi;					// (the GX builds into the other two meanwhile)
 		const Frame &F = r.frame[fi];
 		textures (m);
 		int maxStride = 4;
@@ -868,7 +877,7 @@ struct Out
 			if (hnd < 0) { st.noProg++; continue; }
 			// (the kernel's clipping adds vertices only for the triangles across the near plane: an
 			// eighth of its limit left for them -- what goes beyond, the kernel drops, as here)
-			if (nv + b.count > KAPI_GPU_MAX_VERTS - KAPI_GPU_MAX_VERTS / 8 || (nv + b.count) * (u32) maxStride > rvCap) { st.limit += F.nb - i; break; }
+			if (nv + b.count > KAPI_GPU_MAX_VERTS - KAPI_GPU_MAX_VERTS / 8 || (!v62 && (nv + b.count) * (u32) maxStride > rvCap)) { st.limit += F.nb - i; break; }
 			kapi_gpu_batch2 &o = rb[nb];
 			__builtin_memset (&o, 0, sizeof o);
 			o.first = nv; o.count = b.count; o.program = hnd; o.flags = b.flags; o.blend = b.blend; o.wmask = b.wmask;
@@ -894,6 +903,13 @@ struct Out
 				o.tex[u.a] = t; o.texUni[u.a] = (int) k; o.texFlags[u.a] = b.texFlags[u.a];
 			}
 			if (!ok) { st.noTex++; continue; }
+			if (v62)				// (the kernel reads them where they are, framed on the way)
+			{
+				kapi_gpu_batch3 &o3 = rb3[nb];
+				o3.b = o; o3.b.first = 0; o3.off = b.off; o3.stride = (unsigned) b.stride;
+				nv += b.count; nb++;
+				continue;
+			}
 			// the vertices at the frame's stride, onto the XFB copy's rectangle
 			const float *sv = F.v + b.off;
 			float *d = rv + (size_t) nv * (size_t) maxStride;
@@ -906,6 +922,7 @@ struct Out
 			nv += b.count; nb++;
 		}
 		prepNv = nv; prepNb = nb; prepNu = 4 + F.nu; prepStride = maxStride; prepClear = F.clear; prepKeep = F.keep;
+		prepV = F.v; prepNf = F.nf; for (int k = 0; k < 4; k++) prepView[k] = view[k];
 		prepFrame = fi; prepSerial = r.serial; prepW = w; prepH = h; prepOk = true;
 		st.drawn = nb;
 		st.prepTicks += clockTicks () - t0;
@@ -921,7 +938,8 @@ struct Out
 		struct kapi_gpu_frame fr = { px, prepW, prepH, stride, prepClear, prepKeep ? KAPI_GPU_F_KEEP : 0u };
 		st.frames++; st.gpuVerts += prepNv;
 		u64 t1 = clockTicks ();
-		st.ret = kapi_gpu_render2 (&fr, rv, prepNv, (unsigned) prepStride, rb, prepNb, ru, prepNu);
+		st.ret = v62 ? kapi_gpu_render3 (&fr, prepV, prepNf, rb3, prepNb, ru, prepNu, prepView)
+			     : kapi_gpu_render2 (&fr, rv, prepNv, (unsigned) prepStride, rb, prepNb, ru, prepNu);
 		st.gpuTicks += clockTicks () - t1;
 		shownOk = st.ret == 0; shownPx = px; shownStride = stride; shownW = prepW; shownH = prepH; shownSerial = prepSerial;
 		return st.ret == 0;

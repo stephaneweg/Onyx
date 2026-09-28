@@ -385,7 +385,11 @@ Notes / caveats:
 > pixels itself). F10: the game's frames a second (its XFB copies) and the speed alone, in a
 > corner. `--pmu[=e1,e2,e3,e4]`: the app cores' performance counters, a fifth line (millions of
 > cycles a field, instructions a cycle, and a thousand instructions' L1D refills, L2 refills,
-> branch mispredictions -- the events, hex, default 08, 03, 17, 10), the CPU's part and the GX's.
+> branch mispredictions -- the events, hex, default 08, 03, 17, 10), the CPU's part and the GX's,
+> then the share of the machine's cycles inside the JIT's code (`in JIT`, its helpers too) and why
+> its runs ended a field (`ends`: a VI line, DI, the audio DMA, AID, DSP, EXI, card, an AI sample;
+> then the JIT's entries from C); `--noren` (a measure) prepares the TEV frames but does not draw
+> them.
 > `--jitprof` (with `--diag`): the JIT's profile every 60 s -- `jitprof.txt` (the costliest
 > blocks, the host instructions each guest instruction costs, the instructions left to the
 > interpreter, the slow memory accesses) and `jitprof.bin` (the blocks' code: `python
@@ -434,9 +438,12 @@ Notes / caveats:
 > way round, a machine slower than real time always has its next frame asked first and the
 > window is never drawn again. What reads the machine (its frame, its textures) runs while it
 > waits, or under a lock it respects; what only reads a copy may run while it works: gcemu asks
-> for the next field, then copies the TEV frame into the kernel's arrays (`Out::prepare`, under
-> the GX's lock: the recorder's finished frame and the textures kept still) and draws it
-> (`Out::submit` → `gpu_render2`) while the field runs — two fields asked for at once when
+> for the next field, then makes the kernel's batches of the TEV frame (`Out::prepare`, under the
+> GX's lock: the recorder's finished frame and the textures kept still; it marks that frame
+> `held`: of the recorder's three frames, the GX builds into the other two meanwhile) and draws
+> it (`Out::submit` → `gpu_render3`, kapi v62: the kernel reads the frame's vertices where they
+> are and frames them onto the XFB copy's rectangle on the way; an older kernel: the vertices
+> copied into one array for `gpu_render2`, as before) while the field runs — two fields asked for at once when
 > behind real time (the drawing, ~30 ms with ~100k vertices, is longer than a field: the
 > machine, its field done, no longer idles until the next request; the picture is then taken
 > after the second) — and not again when the same frame is already in the window (a 30 fps
