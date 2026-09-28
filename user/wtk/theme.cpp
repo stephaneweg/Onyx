@@ -11,6 +11,7 @@ namespace wtk {
 unsigned C_BG, C_FACE, C_FACE_HI, C_FACE_DN, C_BORDER, C_TEXT, C_ACCENT = 0x004992A7, C_DIS,
 	 C_FIELD, C_FIELD_TEXT, C_SEL_TEXT, C_FRAME_ACTIVE = 0x00F0B07A, C_FRAME_INACTIVE = WK_GREY;
 int	 WK_OUTLINE = 1;
+unsigned C_DOCK = 0x00A4BACE;
 
 const WkNamedTheme wk_themes[] = {
 	{ "Peach", 0x00F0B07A }, { "Steel", 0x007A98C0 }, { "Sage", 0x0080AA76 },
@@ -106,6 +107,7 @@ void wk_theme_load ()
 		else if (eq (k, "face") && colour (v, &c)) { face = c; haveFace = true; }
 		else if (eq (k, "accent") && colour (v, &c)) C_ACCENT = c;
 		else if (eq (k, "outline")) WK_OUTLINE = eq (v, "none") ? 0 : eq (v, "black") ? 2 : 1;
+		else if (eq (k, "dock") && colour (v, &c)) C_DOCK = c;
 	}
 	C_FRAME_ACTIVE = active;
 	wk_theme_face (haveFace ? face : C_FACE);

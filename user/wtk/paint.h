@@ -21,6 +21,15 @@
 
 namespace wtk {
 
+// ---- the canvas -------------------------------------------------------------------------------------
+// The alpha mode: the canvas's pixels carry a transparency in their top byte (0 opaque .. 255
+// see-through: a WIN_FLAG_ALPHA window -- clear it to 0xFF000000 first); what is drawn over a
+// see-through pixel keeps its own colour, partly see-through where it is anti-aliased. Off by
+// default (an opaque canvas: the blends are over what it holds).
+void wk_paint_alpha (bool on);
+// One pixel of c at opacity a (0..255) over what the canvas holds (the alpha mode heeded).
+void wk_blend_px (Canvas &cv, int x, int y, unsigned c, int a);
+
 // ---- colours ----------------------------------------------------------------------------------------
 unsigned wk_tone (unsigned c, int level);		// the grey profile: 128 = c, 255 = white, 0 = black
 unsigned wk_mix (unsigned a, unsigned b, int t);	// t = 0 (a) .. 256 (b)
@@ -99,7 +108,7 @@ void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int 
 // ---- glyphs -----------------------------------------------------------------------------------------
 enum { WKG_CHECK, WKG_UP, WKG_DOWN, WKG_LEFT, WKG_RIGHT, WKG_CLOSE, WKG_MIN, WKG_MAX, WKG_MENU,
        WKG_DOT, WKG_PLUS, WKG_MINUS, WKG_RESTORE, WKG_CHEV_UP, WKG_CHEV_DOWN, WKG_CHEV_LEFT,
-       WKG_CHEV_RIGHT, WKG_RING };
+       WKG_CHEV_RIGHT, WKG_RING, WKG_LOCK, WKG_GEAR, WKG_POWER };
 // A glyph centred on (cx, cy), about `size` px across, in colour c.
 void wk_glyph (Canvas &cv, int kind, int cx, int cy, int size, unsigned c);
 

@@ -274,7 +274,22 @@ static unsigned get_menu (char *buf, unsigned cap, char *title, unsigned tcap)
 	snprintf (buf, cap, "%s", sp.c_str ()); snprintf (title, tcap, "%s", t.c_str ());
 	return 5;
 }
-static int list_windows (char *b, unsigned n) { if (b && n) b[0] = 0; return 0; }
+// SIM_RUNNING="terminal,tetris": the apps with a window
+static int list_windows (char *b, unsigned n)
+{
+	const char *r = getenv ("SIM_RUNNING");
+	std::string s; int k = 0;
+	if (r) for (const char *p = r; *p; p++) { if (*p == ',') { s += '\n'; k++; } else s += *p; }
+	if (r && *r) { s += '\n'; k++; }
+	if (b && n) snprintf (b, n, "%s", s.c_str ());
+	return k;
+}
+static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
+static int mailbox_send (int, int, const void *, unsigned) { return 0; }
+static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
+static void *spawn (const char *p, const char *a, void *, void *) { fprintf (stderr, "sim: spawn %s %s\n", p, a ? a : ""); return 0; }
+static void *h_pipe (void) { return 0; }
+static void stream_close (void *) {}
 static int get_args (char *b, unsigned n) { const char *a = getenv ("SIM_ARGS"); snprintf (b, n, "%s", a ? a : ""); return (int) strlen (b); }
 static int clipboard_set (int, const void *, unsigned) { return 1; }
 static int clipboard_get (int *t, void *, unsigned, unsigned *serial) { if (t) *t = 0; if (serial) *serial = 0; return 0; }
@@ -318,6 +333,8 @@ static void setup (void)
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
 	T->shell_request = shell_request;
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
+	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
+	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";

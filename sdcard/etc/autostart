@@ -17,9 +17,10 @@ run voronoy
 run menubar
 # Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
 run notifyd
-# (The left panel -- app launcher and taskbar -- is replaced by the menu bar's Onyx menu:
-# the apps by category, Open Windows. "run panel" brings it back.)
-run shelf
+# The dock along the bottom (the apps by category in drawers, the Shelf's tabs, the Terminal,
+# the File Viewer, the Trash, lock / settings / power). It replaces the Shelf ("run shelf" brings
+# the old strip back) and the panel.
+run dock
 run agenda
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,

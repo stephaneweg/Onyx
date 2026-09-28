@@ -12,6 +12,7 @@
 //     face     = 0xD0C2BA     the apps' face: their background, the buttons
 //     accent   = 0x4992A7     focus, selection, checks
 //     outline  = dark         the frames' 1-px outline: none, dark or black
+//     dock     = 0xA4BACE     the dock's face
 //
 // Without the file (or a key), the defaults below: Peach over CDE's beige, a teal accent.
 //
@@ -35,6 +36,7 @@ extern unsigned C_SEL_TEXT;		// text on the accent (a selected row)
 extern unsigned C_FRAME_ACTIVE;		// the window in front's frame
 extern unsigned C_FRAME_INACTIVE;	// the other windows' frames
 extern int	WK_OUTLINE;		// the frames' 1-px outline: 0 none, 1 dark, 2 black
+extern unsigned C_DOCK;			// the dock's face (and the drawers' frame)
 
 // The named colour themes (the active frame's colour).
 struct WkNamedTheme { const char *name; unsigned frame; };

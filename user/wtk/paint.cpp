@@ -99,12 +99,34 @@ static int rcov (int i, int j, int w, int h, int r, int corners)
 	return 255;
 }
 
+// The alpha mode (wk_paint_alpha): the canvas's pixels carry a transparency in their top byte (a
+// WIN_FLAG_ALPHA window: the dock, the agenda); a blend over a see-through pixel then leaves the
+// colour itself, partly see-through -- not the colour darkened by the black below it.
+static bool s_alphaMode = false;
+void wk_paint_alpha (bool on) { s_alphaMode = on; }
+
 static inline void blend_px (Canvas &cv, int x, int y, unsigned c, int a)
 {
 	if (x < 0 || y < 0 || x >= cv.w || y >= cv.h || a <= 0) return;
 	unsigned *p = cv.px + (long) y * cv.stride + x;
-	*p = a >= 255 ? (c & 0x00FFFFFFu) : wk_over (*p, c, a);
+	if (a >= 255) { *p = c & 0x00FFFFFFu; return; }
+	if (s_alphaMode && (*p >> 24))
+	{
+		unsigned od = 255 - (*p >> 24), oa = (unsigned) a + od * (255 - (unsigned) a) / 255;	// opacities
+		if (oa == 0) return;
+		unsigned o = 0, d = *p;
+		for (int sh = 0; sh <= 16; sh += 8)
+		{
+			unsigned cs = (c >> sh) & 0xFF, ds = (d >> sh) & 0xFF;
+			o |= ((cs * (unsigned) a + ds * od * (255 - (unsigned) a) / 255) / oa) << sh;
+		}
+		*p = ((255 - oa) << 24) | o;
+		return;
+	}
+	*p = wk_over (*p, c, a);
 }
+
+void wk_blend_px (Canvas &cv, int x, int y, unsigned c, int a) { blend_px (cv, x, y, c, a); }
 
 static int clamp_r (int r, int w, int h)
 {
@@ -140,6 +162,7 @@ void wk_rbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsig
 		if (x1 > cv.w) x1 = cv.w;
 		unsigned *p = cv.px + (long) yy * cv.stride;
 		if (alpha >= 255) for (int xx = x0; xx < x1; xx++) p[xx] = c;
+		else if (s_alphaMode) for (int xx = x0; xx < x1; xx++) blend_px (cv, xx, yy, c, alpha);
 		else for (int xx = x0; xx < x1; xx++) p[xx] = wk_over (p[xx], c, alpha);
 	}
 }
@@ -456,6 +479,31 @@ static bool glyph_in (int kind, long px, long py, long s)	// s: the glyph's size
 		long R = s / 2 - t / 2, d2 = px * px + py * py;
 		long lo = R - t / 2, hi = R + t / 2;
 		return d2 >= lo * lo && d2 <= hi * hi;
+	}
+	case WKG_LOCK:
+	{
+		long bx = s * 40 / 100, R = s * 24 / 100, cy = -s * 8 / 100;
+		if (px >= -bx && px <= bx && py >= -s * 4 / 100 && py <= s / 2) return true;	// the body
+		long d2 = px * px + (py - cy) * (py - cy), lo = R - t / 2, hi = R + t / 2;	// the shackle
+		if (py <= cy && d2 >= lo * lo && d2 <= hi * hi) return true;
+		return py > cy && py < 0 && ((px >= R - t / 2 && px <= R + t / 2) || (px >= -R - t / 2 && px <= -R + t / 2));
+	}
+	case WKG_GEAR:
+	{
+		long d2 = px * px + py * py, hole = s * 15 / 100, body = s * 34 / 100;
+		if (d2 < hole * hole) return false;
+		if (d2 <= body * body) return true;
+		long L = s * 48 / 100, W = s * 10 / 100;		// four bars through the centre: 8 teeth
+		long u = (px + py) * 181 / 256, v = (py - px) * 181 / 256;		// (45 degrees turned)
+		return (px >= -L && px <= L && py >= -W && py <= W) || (py >= -L && py <= L && px >= -W && px <= W)
+		    || (u >= -L && u <= L && v >= -W && v <= W) || (v >= -L && v <= L && u >= -W && u <= W);
+	}
+	case WKG_POWER:
+	{
+		long R = s * 38 / 100, d2 = px * px + py * py, lo = R - t / 2, hi = R + t / 2;
+		bool ring = d2 >= lo * lo && d2 <= hi * hi && !(py < 0 && px > -s * 20 / 100 && px < s * 20 / 100);
+		bool bar = px >= -t / 2 && px <= t / 2 && py >= -s / 2 && py <= 0;
+		return ring || bar;
 	}
 	case WKG_DOT:   return px * px + py * py <= (s / 2) * (s / 2);
 	case WKG_PLUS:  return (px >= -s / 2 && px <= s / 2 && py >= -t / 2 && py <= t / 2) || (py >= -s / 2 && py <= s / 2 && px >= -t / 2 && px <= t / 2);
