@@ -36,6 +36,8 @@ NSU  := $(TP)/libnsutils
 GIF  := $(TP)/libnsgif
 BMP  := $(TP)/libnsbmp
 NSFB := $(TP)/libnsfb
+FT   := $(TP)/freetype-2.14.3
+FONTS := $(TP)/dejavu-fonts-ttf-2.37
 
 # the resources NetSurf reads at run time (Messages, the UA stylesheets...): staged into $(OUT)/res
 RESPATH := $(OUT)/res/
@@ -52,7 +54,7 @@ NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
          -I$(NS)/content/handlers/javascript/duktape \
          -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \
          -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
-         -I$(DOM)/bindings -I$(DOM)/src
+         -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF)
 
 # ---- sources -------------------------------------------------------------
 WAP_SRC := $(shell find $(WAP)/src -name '*.c')
@@ -99,7 +101,14 @@ GENFONT := $(OUT)/font-ns-sans.c
 FB_IMG := $(NS_FB_IMAGES)
 IMG_C  := $(foreach p,$(FB_IMG),$(OUT)/image-$(word 1,$(subst :, ,$(p))).c)
 
-LIB_ALL := $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+# FreeType: the modules of the Pi build (user/netsurf/Makefile's FT_FILES)
+FT_SRC := $(addprefix $(FT)/src/,base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c \
+          base/ftbbox.c base/ftbitmap.c base/ftglyph.c base/ftsynth.c base/ftmm.c autofit/autofit.c \
+          truetype/truetype.c sfnt/sfnt.c smooth/smooth.c psnames/psnames.c cache/ftcache.c)
+I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
+        '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include
+
+LIB_ALL := $(FT_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -157,6 +166,7 @@ $(call obj,$(1)): $(1)
 	@mkdir -p $(OUT)/o
 	$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
+$(foreach s,$(FT_SRC),$(eval $(call LIB_RULE,$(s),$(I_FT))))
 $(foreach s,$(WAP_SRC),$(eval $(call LIB_RULE,$(s),$(I_WAP))))
 $(foreach s,$(PU_SRC),$(eval $(call LIB_RULE,$(s),$(I_PU))))
 $(foreach s,$(NSU_SRC),$(eval $(call LIB_RULE,$(s),$(I_NSU))))
@@ -205,4 +215,6 @@ res:
 	@mkdir -p $(OUT)/res/icons
 	for f in arrow-l content directory directory2 hotlist-add hotlist-rmv search; do cp $(NS)/resources/icons/$$f.png $(OUT)/res/icons/ 2>/dev/null || true; done
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(OUT)/res/
+	@mkdir -p $(OUT)/res/fonts
+	cp $(FONTS)/ttf/*.ttf $(OUT)/res/fonts/
 	printf 'foreground_images:1\nbackground_images:1\nenable_javascript:1\n' > $(OUT)/res/Choices

@@ -4,7 +4,7 @@
 # files. Paths: NS_FB_FILES relative to frontends/framebuffer/, ONYX_CXX_FILES absolute.
 #
 NS_FB_FILES := gui.c framebuffer.c schedule.c bitmap.c fetch.c findfile.c \
-               corewindow.c local_history.c clipboard.c font_internal.c
+               corewindow.c local_history.c clipboard.c font_freetype.c
 
 # frontend toolbar/pointer/throbber bitmaps: res PNG -> image-NAME.c (name:respath pairs)
 NS_FB_IMAGES := \
@@ -19,6 +19,10 @@ NS_FB_IMAGES := \
   throbber0:throbber/throbber0.png throbber1:throbber/throbber1.png throbber2:throbber/throbber2.png \
   throbber3:throbber/throbber3.png throbber4:throbber/throbber4.png throbber5:throbber/throbber5.png \
   throbber6:throbber/throbber6.png throbber7:throbber/throbber7.png throbber8:throbber/throbber8.png
+
+# FreeType's compile flags for the library's clients (the same options as the library:
+# user/netsurf/freetype/)
+NS_FT_CF = -DFB_USE_FREETYPE '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>'
 
 # the Onyx glue in C++ (wtk): the window and its native toolbar
 ONYX_CXX_FILES := $(dir $(lastword $(MAKEFILE_LIST)))onyx_chrome.cpp
