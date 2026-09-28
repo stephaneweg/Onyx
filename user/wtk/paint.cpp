@@ -406,7 +406,6 @@ void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int 
 	unsigned f = C_FRAME_ACTIVE;
 	wk_rbox (cv, x, y, w, h, r, wk_tone (f, 164), wk_tone (f, 115), 255, WK_TL | WK_TR);
 	for (int i = x + (r > 1 ? r : 1); i < x + w - (r > 1 ? r : 1); i++) blend_px (cv, i, y + 1, 0x00FFFFFF, 110);
-	for (int i = x; i < x + w; i++) blend_px (cv, i, y + h - 1, wk_tone (f, 70), 170);
 	if (s) wk_text_c (cv, x, y, w, h, s, wk_ink_on (wk_tone (f, 140)), 2);
 }
 

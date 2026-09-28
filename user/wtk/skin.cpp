@@ -106,9 +106,10 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 {
 	const int R = KAPI_FRAME_RADIUS;
 	Canvas cv; cv.adopt (fb, W, H);
+	// one continuous gradient: the title bar lighter, the borders going on from it (no line
+	// between them)
 	wk_rbox (cv, 0, 0, W, T, 0, wk_tone (fc, 166), wk_tone (fc, 134));		// the title bar
-	wk_rbox (cv, 0, T, W, H - T, 0, wk_tone (fc, 128), wk_tone (fc, 112));	// the borders
-	for (int i = 0; i < W; i++) cv.pixel (i, T - 1, wk_tone (fc, 104));		// (under the title)
+	wk_rbox (cv, 0, T, W, H - T, 0, wk_tone (fc, 133), wk_tone (fc, 112));	// the borders
 	wk_rline (cv, 0, 0, W, H, R, wk_tone (fc, 70), 170);				// the edge
 	if (WK_OUTLINE) wk_rline (cv, 0, 0, W, H, R, WK_OUTLINE == 2 ? 0 : wk_tone (fc, 28), 255);
 	for (int i = R; i < W - R; i++) { unsigned *p = fb + W + i; *p = wk_over (*p, 0x00FFFFFF, 110); }	// the top light
