@@ -3,10 +3,10 @@
 step) over the wallpaper as the Onyx compositor does: each pixel 0xTTRRGGBB with TT its
 transparency (0 = opaque: a frame's rounded corners, a see-through window), at the window's place.
 
-    python3 tools/tests/desktop_sim/compose.py out.png a.elsm b.elsm ...
+    python3 tools/tests/desktop_sim/compose.py out.png a.elsm b.elsm ... [--flat=RRGGBB] [--crop=x0,y0,x1,y1]
 
 The dumps are drawn in the order given (the bottom first). The wallpaper: render.py's Voronoi
-(the desktop's default), or a flat colour with --flat=RRGGBB."""
+(the desktop's default), or a flat colour with --flat=RRGGBB; --crop keeps a part of the screen."""
 import os, struct, sys
 import numpy as np
 from PIL import Image
@@ -29,6 +29,7 @@ def load(path):
 
 def main():
 	flat = [a[7:] for a in sys.argv[1:] if a.startswith("--flat=")]
+	crop = [tuple(int(v) for v in a[7:].split(",")) for a in sys.argv[1:] if a.startswith("--crop=")]
 	args = [a for a in sys.argv[1:] if not a.startswith("--")]
 	out, dumps = args[0], args[1:]
 	img = wallpaper(flat[0] if flat else None)
@@ -41,7 +42,10 @@ def main():
 		a = (255 - (sub >> 24)).astype(np.float32)[..., None] / 255.0
 		rgb = np.stack([(sub >> 16) & 255, (sub >> 8) & 255, sub & 255], axis=-1).astype(np.float32)
 		img[y0:y1, x0:x1] = rgb * a + img[y0:y1, x0:x1] * (1 - a)
-	Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).save(out)
+	pic = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
+	if crop:
+		pic = pic.crop(crop[0])
+	pic.save(out, optimize=True)
 	print("wrote", out)
 
 if __name__ == "__main__":
