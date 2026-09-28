@@ -6,8 +6,8 @@ GUI. The repository folder is historically named `Zircon` (a legacy name — kee
 paths like `Zircon/circle` as-is; no relation to Google/Fuchsia's Zircon).
 
 **Continuing the work? Read `docs/HANDOFF.md` first** (where things stand, the conventions, the
-next tasks: the desktop redesign — a modernised CDE, `docs/gui-redesign/README.md`, implemented
-on the branch `Elegant-UI`, to test on the Pi — and the GameCube emulator).
+next tasks: after the desktop redesign — a modernised CDE, `docs/gui-redesign/README.md`, done
+and in `main` — its next ideas, and the GameCube emulator).
 
 The reference documentation is in **`docs/`** and is written in **English**:
 

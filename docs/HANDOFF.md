@@ -71,12 +71,13 @@ answer in French. The docs stay in English.
   `pr/dhcp-restart`), based on upstream `develop`; texts, patches and an issue draft (RAM above
   3 GB on the Pi 4) in `docs/circle-upstream/`. The user opens the pull requests.
 
-## The desktop redesign -- a modernised CDE (branch `Elegant-UI`): implemented
+## The desktop redesign -- a modernised CDE: implemented, in `main`
 
-- **Designed with the user on 2026-09-28 and implemented the same day** (not merged into `main`
-  yet: the user tests the staged `sdcard/` first). `docs/gui-redesign/README.md` has the
-  decisions, the mock-ups and §5 *where the work landed*; the user guide (`docs/04` §4-§6, §11)
-  describes the result; `screenshots/` are the real apps (`sh tools/tests/desktop_sim/shots.sh`).
+- **Designed with the user on 2026-09-28 and implemented the same day** on the branch
+  `Elegant-UI`, merged into `main` once the user had seen it running (through Onyx Remote).
+  `docs/gui-redesign/README.md` has the decisions, the mock-ups and §5 *where the work landed*;
+  the user guide (`docs/04` §4-§6, §11) describes the result; `screenshots/` are the real apps
+  (`sh tools/tests/desktop_sim/shots.sh`).
   In short: wtk's procedural painter (`user/wtk/paint.h`) and the theme's colours as variables
   (`theme.txt`: theme Peach / Steel / Sage / Brick / Slate or a colour, inactive, face, accent,
   outline, dock), every wtk widget restyled (the user's framed button), the window frames drawn

@@ -1,15 +1,15 @@
 # The desktop redesign — a modernised CDE
 
-> **Status: designed with the user (2026-09-28), implemented on `Elegant-UI` the same day**
-> (§5: what landed where; the user guide `docs/04` §5, §6, §11 describes it; the screenshots
-> in `screenshots/` are the real apps). The branch `Elegant-UI` restarted from `main` for it.
-> It replaces an earlier direction — a phone-like "elegant layout" (a top bar, a navigation bar,
-> a home screen, one app at a time) that was built on that branch, then dropped by the user in
-> favour of this one, which keeps and reuses today's windowed desktop. That work stays on the
-> branch **`archive/elegant-ui-2026-09-28`**, to take pieces back from when they are needed:
-> the per-pixel transparency (`WIN_FLAG_ALPHA`, `kernel/gui/window.cpp`'s `BlendAlphaRect` —
-> taken back), the drawing kit `user/elegant.h` (anti-aliased `.aaf` fonts, rounded boxes,
-> glows), `tools/fonts/gen_aafont.py` and `sdcard/fonts/`, the PC simulator
+> **Status: designed with the user (2026-09-28), implemented on `Elegant-UI` the same day and
+> merged into `main`** (§5: what landed where; the user guide `docs/04` §5, §6, §11 describes
+> it; the screenshots in `screenshots/` are the real apps). The branch `Elegant-UI` restarted
+> from `main` for it. It replaces an earlier direction — a phone-like "elegant layout" (a top
+> bar, a navigation bar, a home screen, one app at a time) that was built on that branch, then
+> dropped by the user in favour of this one, which keeps and reuses today's windowed desktop.
+> That work stays on the branch **`archive/elegant-ui-2026-09-28`**, to take pieces back from
+> when they are needed: the per-pixel transparency (`WIN_FLAG_ALPHA`, `kernel/gui/window.cpp`'s
+> `BlendAlphaRect` — taken back), the drawing kit `user/elegant.h` (anti-aliased `.aaf` fonts,
+> rounded boxes, glows), `tools/fonts/gen_aafont.py` and `sdcard/fonts/`, the PC simulator
 > `tools/tests/elegant_sim/`; its analysis is that branch's `docs/gui-redesign/README.md`.
 
 The mock-ups are made by `python3 tools/screenshot/mockup_cde_modern.py` (the chosen look) and
