@@ -29,9 +29,8 @@ void Machine::gxInit ()
 	}
 	gfxBuild = 0; gfxReady = -1; gfxSerial = 0; texClock = 0; gxClearNext = 0;
 	xfbCopyAddr[0] = xfbCopyAddr[1] = 0xFFFFFFFFu;
-	for (int i = 0; i < MAX_TEX; i++) { if (!tex[i].px) tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].levels = 1; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
+	texFlush ();
 	zero (&gxs, sizeof gxs); for (int i = 0; i < 8; i++) gxs.tex[i] = -1;
-	for (int i = 0; i < 1024; i++) texFind[i] = -1;
 	gxsDirty = true; xfSerial = 0;
 	zero (efbCopies, sizeof efbCopies);
 	if (!tmem) tmem = new u8[0x100000];
@@ -171,6 +170,15 @@ static void decodeTexture (u32 *out, const u8 *src, const u8 *srcEnd, int w, int
 		}
 }
 
+// every texture forgotten, the pool empty (the reset; the pool full: the draws of the frame being
+// made that read one before may then show another -- a frame, now and then)
+void Machine::texFlush ()
+{
+	for (int i = 0; i < MAX_TEX; i++) { tex[i].px = 0; tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].levels = 1; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
+	for (int i = 0; i < 1024; i++) texFind[i] = -1;
+	texPoolTop = 0; texFlushes++;
+}
+
 // the texture of map n (0..7): TEXIMAGE0 (size, format), TEXIMAGE3 (address), TEXTLUT; with its
 // mipmaps (a GPU's) as far as TX_SETMODE1's maximum LOD, when the minifying filter uses them
 int Machine::gxTexture (int map, bool mips)
@@ -212,10 +220,16 @@ int Machine::gxTexture (int map, bool mips)
 		if (tex[i].w && tex[i].key == key) { tex[i].lastUse = texClock; texFind[key & 1023] = (s16) i; return i; }
 		if (tex[i].lastUse < tex[lru].lastUse) lru = i;
 	}
-	texFind[key & 1023] = (s16) lru;
 	GTexture &T = tex[lru];
 	texDecodes++;
-	if (T.cap < (int) texels) { delete [] T.px; T.cap = texels < 64 * 64 ? 64 * 64 : (int) texels; T.px = new u32[T.cap]; }	// (its size, not 4 MB each)
+	if (T.cap < (int) texels)					// (its room from the pool: its size, not 4 MB each)
+	{
+		u32 room = texels < 64 * 64 ? 64 * 64 : texels;
+		if (!texPool || room > (u32) TEX_POOL) return -1;
+		if (texPoolTop + room > (u32) TEX_POOL) texFlush ();
+		T.px = texPool + texPoolTop; T.cap = (int) room; texPoolTop += room;
+	}
+	texFind[key & 1023] = (s16) lru;
 	T.w = w; T.h = h; T.levels = levels; T.key = key; T.lastUse = texClock; T.dirty = true;
 	u32 *out = T.px; const u8 *src = mem1 + addr;
 	for (int l = 0; l < levels; l++)

@@ -257,6 +257,60 @@ static void tevTest (const char *name, const gxtev::Config &cf)
 	ax_puts (" lookups, "); putint (s_Tev.prog.count ()); ax_putln (" instructions)");
 }
 
+// `v3dprog ww <w> <h> <flags> <percent> <variant>`: The Wind Waker's first frame as gcemu draws it --
+// the TEV program of its background (the rasterized colour, RGBA6), one quad covering <percent> of a
+// w x h target, the batch's flags (gcemu's: F = depth always, no depth write) -- to find what stops
+// the GPU there (it did not with the 64 x 64 tests). variant: +1 the plain varyings shader instead
+// of the TEV's, +2 the TEV in RGB8, +4 no scissor, +8 the flat colour shader (4 uniforms, final section),
+// +16 the flat colour shader with a thread switch. Prints gpu_render2's result.
+static unsigned s_Big[1920 * 1080];
+static int wwFrame (int w, int h, unsigned flags, float scale, int variant)
+{
+	if (w < 16 || h < 16 || w * h > 1920 * 1080) { ax_putln ("ww: bad size"); return 1; }
+	gxtev::Config ww; memset (&ww, 0, sizeof ww);
+	ww.nStages = 1; ww.cenv[0] = 0x08FFFA; ww.aenv[0] = 0x08FFD0; ww.tref[0] = 0; ww.ksel[0] = 6;
+	for (int k = 0; k < 16; k++) ww.swap[k] = (unsigned char) (k & 3);
+	ww.alphaFunc[0] = ww.alphaFunc[1] = 7; ww.efbFmt = (variant & 2) ? 0 : 1;
+	if (!gxtev::build (ww, s_Tev)) { ax_putln ("ww: not generated"); return 1; }
+	int nIn = 4 + s_Tev.nVary;
+	s_TevVS.n = 0; s_TevVS.bad = false; qpu::passVS (s_TevVS, nIn);
+	struct kapi_gpu_program P;
+	P.vs = s_TevVS.words (); P.nvs = (unsigned) s_TevVS.count (); P.cs = s_CS.words (); P.ncs = (unsigned) s_CS.count ();
+	P.fs = s_Tev.prog.words (); P.nfs = (unsigned) s_Tev.prog.count ();
+	P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) s_Tev.nVary; P.flags = s_Tev.flags;
+	if (variant & 1) { P.fs = s_VaryF.words (); P.nfs = (unsigned) s_VaryF.count (); P.varyings = 4; P.flags = KAPI_GPU_P_FS_FINAL; }
+	if (variant & 8) { P.fs = s_FlatF.words (); P.nfs = (unsigned) s_FlatF.count (); P.varyings = 0; P.flags = KAPI_GPU_P_FS_4WAY | KAPI_GPU_P_FS_FINAL; }
+	if (variant & 16) { P.fs = s_Flat.words (); P.nfs = (unsigned) s_Flat.count (); P.varyings = 0; P.flags = 0; }
+	int prog = kapi_gpu_program (-1, &P);
+	ax_puts ("ww: program "); putint (prog); ax_puts (" ("); putint ((int) P.nfs); ax_puts (" instructions, flags ");
+	putint ((int) P.flags); ax_puts ("), target "); putint (w); ax_puts (" x "); putint (h); ax_puts (", batch flags ");
+	puthex (flags); ax_puts (", quad "); putint ((int) (scale * 100)); ax_puts ("%, variant "); putint (variant); ax_putln ("");
+	if (prog < 0) return 1;
+	// the quad (gcemu's: z -0, w 1, its bottom row just above the frame's), the colour black, alpha 1
+	float x0 = -scale, x1 = scale, y0 = -0.998f * scale, y1 = scale;
+	float Pp[6][2] = { { x0, y1 }, { x1, y1 }, { x1, y0 }, { x0, y1 }, { x1, y0 }, { x0, y0 } };
+	for (int k = 0; k < 6; k++)
+	{
+		float *v = s_TV + k * nIn;
+		v[0] = Pp[k][0]; v[1] = Pp[k][1]; v[2] = -0.0f; v[3] = 1;
+		for (int j = 0; j < s_Tev.nVary; j++) v[4 + j] = s_Tev.vary[j].a == 3 ? 1.0f : 0.0f;
+	}
+	unsigned view[4]; qpu::viewUniforms (w, h, view);
+	for (int k = 0; k < 4; k++) s_TU[k] = view[k];
+	kapi_gpu_batch2 b = batch (prog, 0, 6);
+	b.flags = flags; b.fsUni = 4; b.fsNUni = (unsigned) s_Tev.nUni;
+	if (!(variant & 4)) { b.scissor[0] = 0; b.scissor[1] = 0; b.scissor[2] = w; b.scissor[3] = (int) (h * 0.998f + 0.5f); }
+	for (int i = 0; i < s_Tev.nUni; i++) s_TU[4 + i] = s_Tev.uni[i].kind == gxtev::U_CONST ? s_Tev.uni[i].value : 0;
+	if (variant & 1) { b.fsNUni = 0; }			// (varyFS: no uniforms)
+	if (variant & 24) { b.fsNUni = 4; s_TU[4] = s_TU[5] = s_TU[6] = 0; s_TU[7] = fbits (1.0f); }	// (flatFS: the colour)
+	kapi_gpu_frame F; F.pixels = s_Big; F.w = w; F.h = h; F.stride = w; F.clear = 0x404040; F.flags = 0;
+	int r = kapi_gpu_render2 (&F, s_TV, 6, (unsigned) nIn, &b, 1, s_TU, 4 + (unsigned) s_Tev.nUni);
+	kapi_gpu_program (prog, 0);
+	ax_puts ("ww: gpu_render2 "); putint (r); ax_puts (", the centre pixel "); puthex (s_Big[(h / 2) * w + w / 2] & 0xFFFFFF);
+	ax_puts (", a corner "); puthex (s_Big[2 * w + 2] & 0xFFFFFF); ax_putln ("");
+	return r ? 1 : 0;
+}
+
 int main (void)
 {
 	char info[96];
@@ -272,6 +326,35 @@ int main (void)
 		if (!all[i]->ok ()) { ax_puts ("shader "); putint ((int) i); ax_puts (": instruction "); putint (all[i]->badAt); ax_putln (" not encodable"); return 1; }
 	qpu::viewUniforms (W, H, s_View);
 	for (int k = 0; k < 4; k++) s_Uni[k] = s_View[k];		// every batch: vs 0..3, cs 0..1
+	{
+		char args[128]; kapi_get_args (args, sizeof args);
+		int a = 0; while (args[a] == ' ') a++;
+		if (args[a] == 'w' && args[a + 1] == 'w')			// the experiment above
+		{
+			a += 2;
+			auto num = [&] (int def) -> int
+			{
+				while (args[a] == ' ') a++;
+				if (!args[a]) return def;
+				int v = 0, base = 10;
+				if (args[a] == '0' && args[a + 1] == 'x') { base = 16; a += 2; }
+				for (;; a++)
+				{
+					char ch = args[a]; int dgt;
+					if (ch >= '0' && ch <= '9') dgt = ch - '0';
+					else if (base == 16 && ch >= 'a' && ch <= 'f') dgt = ch - 'a' + 10;
+					else if (base == 16 && ch >= 'A' && ch <= 'F') dgt = ch - 'A' + 10;
+					else break;
+					v = v * base + dgt;
+				}
+				return v;
+			};
+			int w = num (640), h = num (480);
+			unsigned fl = (unsigned) num (0xF);
+			int pct = num (100), variant = num (0);
+			return wwFrame (w, h, fl, (float) pct / 100.0f, variant);
+		}
+	}
 
 	int pFlat = program (s_VS, s_Flat, 8, 0, 0);			// (2 threads, a thread switch)
 	int pFlatF = program (s_VS, s_FlatF, 8, 0, KAPI_GPU_P_FS_4WAY | KAPI_GPU_P_FS_FINAL);
@@ -456,6 +539,18 @@ int main (void)
 		for (int k = 0; k < 16; k++) cf.swap[k] = (unsigned char) (k & 3);
 		cf.alphaFunc[0] = cf.alphaFunc[1] = 7;
 		tevTest ("TEV modulate", cf);
+		// The Wind Waker's first frame (the Nintendo logo's background): the rasterized colour, no
+		// texture, the alpha test always passing, the EFB in RGBA6 -- the program that stopped the GPU
+		// in gcemu (a frame that never finished rendering)
+		{
+			gxtev::Config ww; memset (&ww, 0, sizeof ww);
+			ww.nStages = 1; ww.cenv[0] = 0x08FFFA; ww.aenv[0] = 0x08FFD0; ww.tref[0] = 0; ww.ksel[0] = 6;
+			for (int k = 0; k < 16; k++) ww.swap[k] = (unsigned char) (k & 3);
+			ww.alphaFunc[0] = ww.alphaFunc[1] = 7; ww.efbFmt = 1;
+			tevTest ("TEV rasterized colour, RGBA6 (Wind Waker's first)", ww);
+			ww.efbFmt = 0;
+			tevTest ("TEV rasterized colour, RGB8", ww);
+		}
 		static const int shape[][2] = { { 1, 0 }, { 2, 1 }, { 3, 2 }, { 4, 4 }, { 6, 5 }, { 8, 8 }, { 12, 3 }, { 16, 6 } };
 		for (int k = 0; k < 8; k++)
 		{

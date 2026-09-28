@@ -4,7 +4,10 @@
 // correct varyings, depth, culling, scissor, write masks, blending, and the generated fragment
 // shaders run in the QPU simulator (tools/qpu/qpusim) -- into a .ppm.
 //   gcv3d <file.dol | file.iso> <fields> <out.ppm> [width height]
-//   GCV3D_EVERY=n: every n-th finished frame too (out.ppm -> out_<k>.ppm)
+//   GCV3D_EVERY=n: every n-th finished frame too (out.ppm -> out_<k>.ppm); GCV3D_DUMP=1: the batches,
+//   2: their programs' configurations too; GCV3D_SAVE=<file.gxf>: the last frame dumped as gcemu does
+//   gcv3d --replay <frame.gxf> <out.ppm>: a frame gcemu dumped on the Pi (F9 / --diag), drawn here at
+//   the Pi's size, and the picture the Pi's GPU made of it -> out_pi.ppm (the two to compare)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,6 +87,13 @@ static void drawFrame (Machine &m, const Frame &F, const char *path)
 		{
 			printf ("  batch %u: prog %d, %u vertices, stride %d, flags %X blend %X wmask %X scissor %.3f %.3f %.3f %.3f\n", bi, b.prog, b.count, b.stride, b.flags, b.blend, b.wmask,
 				b.scissor[0], b.scissor[1], b.scissor[2], b.scissor[3]);
+			if (atoi (getenv ("GCV3D_DUMP")) >= 2)				// (2: the program's configuration too)
+			{
+				const gxtev::Config &c = P.cfg;
+				printf ("    program: %u words, flags %X, %d varyings, %d lookups, %u uniforms; %d stages, alpha %d %d logic %d, efb %d, dst alpha %d, proj %02X\n",
+					P.nWords, P.flags, P.nVary, P.nLook, P.nUni, c.nStages, c.alphaFunc[0], c.alphaFunc[1], c.alphaLogic, c.efbFmt, (int) c.dstAlpha, c.projMask);
+				for (int st = 0; st < c.nStages; st++) printf ("      stage %d: cenv %06X aenv %06X tref %03X ksel %03X\n", st, c.cenv[st], c.aenv[st], c.tref[st], c.ksel[st]);
+			}
 			for (u32 k = 0; k < b.count && k < 6; k++) { const float *v = F.v + b.off + k * (u32) b.stride; printf ("    "); for (int j = 0; j < b.stride; j++) printf (" %.3f", v[j]); printf ("\n"); }
 		}
 		int zf = (int) (b.flags & 7); bool zw = !(b.flags & KAPI_GPU_B_NOZWRITE) && zf != 7;
@@ -173,6 +183,67 @@ static void drawFrame (Machine &m, const Frame &F, const char *path)
 	printf ("  frame: %u batches, %u vertices, %u uniforms -> %s (%ld triangles, %ld pixels)\n", F.nb, F.nv, F.nu, path, nTris, nPixels);
 }
 
+// --replay: a frame gcemu dumped (F9 / --diag, gxv3d::dumpFrame) -- its programs, textures, vertices
+// -- drawn here at the Pi's size into out.ppm, and the picture the Pi's GPU made of it into out_pi.ppm
+static int replay (Machine &m, const char *path, const char *out)
+{
+	FILE *f = fopen (path, "rb"); if (!f) { printf ("FAIL: %s\n", path); return 1; }
+	fseek (f, 0, SEEK_END); long n = ftell (f); fseek (f, 0, SEEK_SET);
+	std::vector<u8> d ((size_t) n);
+	if (fread (d.data (), 1, (size_t) n, f) != (size_t) n) { fclose (f); return 1; }
+	fclose (f);
+	size_t at = 0;
+	auto get = [&] (void *p, size_t k) { if (at + k > d.size ()) return false; memcpy (p, d.data () + at, k); at += k; return true; };
+	gxv3d::DumpHead hd;
+	if (!get (&hd, sizeof hd) || memcmp (hd.magic, "GXF1", 4) || hd.version != 1) { printf ("FAIL: not a frame dump\n"); return 1; }
+	if (hd.sizeBatch != sizeof (Batch) || hd.sizeProg != sizeof (Prog)) { printf ("FAIL: the dump's layout (batch %u, program %u) is not ours (%u, %u)\n", hd.sizeBatch, hd.sizeProg, (u32) sizeof (Batch), (u32) sizeof (Prog)); return 1; }
+	Frame &F = rec.frame[0]; F.reset ();
+	if (hd.nf > gxv3d::MAX_FLOATS || hd.nb > gxv3d::MAX_BATCHES || hd.nu > gxv3d::MAX_UNIS) { printf ("FAIL: too big\n"); return 1; }
+	bool ok = get (F.v, (size_t) hd.nf * 4) && get (F.b, (size_t) hd.nb * sizeof (Batch)) && get (F.u, (size_t) hd.nu * 4);
+	F.nf = hd.nf; F.nv = hd.nv; F.nb = hd.nb; F.nu = hd.nu; F.clear = hd.clear; F.keep = hd.keep != 0;
+	for (u32 i = 0; ok && i < hd.nProgs; i++)
+	{
+		u32 idx; Prog p;
+		ok = get (&idx, 4) && get (&p, sizeof p) && idx < (u32) gxv3d::MAX_PROGS;
+		if (!ok) break;
+		p.words = rec.arenaN; p.uni = rec.uniN; p.handle = -1;
+		ok = get (rec.arena + rec.arenaN, (size_t) p.nWords * 8) && get (rec.uniArena + rec.uniN, (size_t) p.nUni * sizeof (gxtev::Uni));
+		rec.arenaN += p.nWords; rec.uniN += p.nUni;
+		rec.prog[idx] = p;
+		if ((int) idx >= rec.nProg) rec.nProg = (int) idx + 1;
+	}
+	for (u32 i = 0; ok && i < hd.nTex; i++)
+	{
+		u32 w3[3];
+		ok = get (w3, sizeof w3) && w3[0] < (u32) Machine::MAX_TEX && w3[1] && w3[2] && w3[1] * w3[2] <= 4096u * 4096u;
+		if (!ok) break;
+		GTexture &T = m.tex[w3[0]];
+		T.px = new u32[w3[1] * w3[2]]; T.w = (int) w3[1]; T.h = (int) w3[2]; T.cap = T.w * T.h; T.levels = 1;
+		ok = get (T.px, (size_t) T.cap * 4);
+	}
+	std::vector<u32> pic ((size_t) hd.pw * hd.ph);
+	if (ok && hd.pw > 0) ok = get (pic.data (), pic.size () * 4);
+	if (!ok) { printf ("FAIL: the dump is cut short\n"); return 1; }
+	rec.ready = 0;
+	printf ("the dump: %u batches, %u vertices, %u uniforms, %u programs, %u textures; on the Pi: gpu_render2 %d, a %dx%d picture\n",
+		hd.nb, hd.nv, hd.nu, hd.nProgs, hd.nTex, hd.ret, hd.pw, hd.ph);
+	if (hd.pw > 0)
+	{
+		W = hd.pw; H = hd.ph;
+		char p[512]; snprintf (p, sizeof p, "%.*s_pi.ppm", (int) (strlen (out) - 4), out);
+		FILE *fo = fopen (p, "wb");
+		if (fo)
+		{
+			fprintf (fo, "P6\n%d %d\n255\n", hd.pw, hd.ph);
+			for (u32 c : pic) { fputc ((int) (c >> 16) & 255, fo); fputc ((int) (c >> 8) & 255, fo); fputc ((int) c & 255, fo); }
+			fclose (fo);
+			printf ("  the Pi's picture -> %s\n", p);
+		}
+	}
+	drawFrame (m, F, out);
+	return nFail ? 1 : 0;
+}
+
 static FILE *g_disc;
 static bool discRead (void *, u32 off, u32 len, u8 *dst)
 {
@@ -182,10 +253,11 @@ static bool discRead (void *, u32 off, u32 len, u8 *dst)
 
 int main (int argc, char **argv)
 {
-	if (argc < 4) { fprintf (stderr, "gcv3d <file.dol | file.iso> <fields> <out.ppm> [width height]\n"); return 2; }
+	if (argc < 4) { fprintf (stderr, "gcv3d <file.dol | file.iso> <fields> <out.ppm> [width height]\ngcv3d --replay <frame.gxf> <out.ppm>\n"); return 2; }
 	if (argc > 5) { W = atoi (argv[4]); H = atoi (argv[5]); }
 	static Machine m;
 	if (!rec.init ()) { printf ("FAIL: memory\n"); return 1; }
+	if (!strcmp (argv[1], "--replay")) return replay (m, argv[2], argv[3]);
 	const char *path = argv[1];
 	size_t pl = strlen (path);
 	bool ok;
@@ -220,6 +292,14 @@ int main (int argc, char **argv)
 	printf ("%d fields, pc %08X%s%s; %u frames, %d programs, %u draws with a feature not generated, %u not drawn\n", m.frames, m.pc,
 		m.halted ? " HALTED: " : "", m.haltMsg, rec.serial, (int) rec.nProg, rec.unsupported, rec.skipped);
 	if (rec.ready < 0) { printf ("FAIL: no frame\n"); return 1; }
+	if (getenv ("GCV3D_SAVE"))						// the last frame as gcemu dumps it (for --replay)
+	{
+		const Frame &F = rec.frame[rec.ready];
+		std::vector<u8> d ((size_t) gxv3d::dumpFrame (rec, m, F, 0, 0, 0, 0, 0, 0));
+		gxv3d::dumpFrame (rec, m, F, 0, 0, 0, 0, 0, d.data ());
+		FILE *fo = fopen (getenv ("GCV3D_SAVE"), "wb");
+		if (fo) { fwrite (d.data (), 1, d.size (), fo); fclose (fo); printf ("  the frame dumped -> %s (%u bytes)\n", getenv ("GCV3D_SAVE"), (u32) d.size ()); }
+	}
 	drawFrame (m, rec.frame[rec.ready], argv[3]);
 	return nFail ? 1 : 0;
 }

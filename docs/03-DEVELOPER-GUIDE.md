@@ -331,7 +331,23 @@ Notes / caveats:
 > `gc::GxGpu` -- the app core records each draw (the vertex stage of `gxgl.cpp` in C++, the TEV
 > program by its configuration, the uniforms, the state), the main thread gives the frame to
 > `kapi_gpu_render2`; `tools/tests/gc/gcv3d.cpp` runs a `.dol` / `.iso` on the PC with the same
-> recorder and draws its frame with a software V3D (the shaders in `qpusim`) into a `.ppm`.
+> recorder and draws its frame with a software V3D (the shaders in `qpusim`) into a `.ppm`
+> (`GCV3D_EVERY=n` more frames, `GCV3D_DUMP=1` / `2` the batches / their programs,
+> `GCV3D_SAVE=<f.gxf>` the last frame dumped). **On the Pi**, gcemu's F12 third line says what
+> the TEV renderer did (`gpu_render2`'s result, the batches drawn / recorded, the ones left out:
+> program refused, texture missing, nothing visible, over the vertex limit), F9 dumps the frame
+> shown into `SD:/gcdump/frame_<n>.gxf` (the recorded frame, its programs and textures, and the
+> picture the GPU made), `--diag[=<folder>]` writes F12's lines every second into
+> `<folder>/diag.txt`, dumps a frame every 20 s and quits after 200 s — the folder may be an FTP
+> one (`--diag=FTP:<pc>:<port>/<dir>`) so the files land on the PC at once (`--tevbuf`: the
+> frames drawn into a buffer of gcemu's, then copied — the GPU no longer writing the window's
+> pixels itself). `gcv3d --replay
+> <frame.gxf> <out.ppm>` draws a dump on the PC at the Pi's size next to the Pi's own picture
+> (`out_pi.ppm`): the same picture → the GPU is right, the recording is the question; another
+> one → the GPU side. `v3dprog ww <w> <h> <flags> <percent> <variant>` draws The Wind Waker's
+> first frame (its TEV program, one quad) into a w × h target — the experiment that found the
+> `P_FS_FINAL` hangs (docs/02 §15; variants: +1 the plain varyings shader, +2 RGB8, +4 no
+> scissor, +8 / +16 the flat shader final / with a thread switch).
 > Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.
@@ -350,6 +366,13 @@ Notes / caveats:
 > `ec_request (&ec, n)`, `ec_pump` (frames made here when there is no core), `ec_take` /
 > `ec_front` (the latest picture: a triple buffer, nobody waits), `ec_audio_pop`, `ec_hold` /
 > `ec_resume` around anything that touches the machine (reset, battery save), `ec_shutdown`.
+> Two rules the app core imposes: **its code allocates nothing** (the heap, `user/umm.h`, is not
+> shared safely between two cores, and `kapi_sbrk` from an app core grows the heap of whatever
+> task core 0 is running — make every buffer before, as gc::Machine's texture pool of
+> `TEX_POOL` texels); and **show the new picture before asking for the next frame** (in the main
+> loop: `if (ec_pending (&ec) == 0 && ec_take (&ec)) show ();` first, then `ec_request`) — the
+> other way round, a machine slower than real time always has its next frame asked first and
+> the window is never drawn again.
 > See `gbemu` / `gbaemu` / `nesemu` / `snesemu`; `/bin/coretest` exercises the raw kapi.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),

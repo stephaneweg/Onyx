@@ -139,19 +139,25 @@ void Machine::gxGpuState (u32 vcd)
 		}
 		s.serial++;
 	}
-	// the textures of the maps the stages (and the indirect stages) read
+	// the textures of the maps the stages (and the indirect stages) read (twice when the texture
+	// pool was emptied meanwhile: the maps before it again)
 	u32 used = 0;
 	for (int st = 0; st < s.gen[0]; st++) if (s.tref[st] & 0x40) used |= 1u << (s.tref[st] & 7);
 	for (int k = 0; k < s.gen[1]; k++) used |= 1u << ((bpRegs[0x27] >> (6 * k)) & 7);
-	for (int m = 0; m < 8; m++)
+	for (int pass = 0; pass < 2; pass++)
 	{
-		int t = (used >> m) & 1 ? gpuTexture (m) : -1;
-		if (t == s.tex[m]) continue;
-		s.tex[m] = t;
-		u32 img0 = bpRegs[(m < 4 ? 0x88 : 0xA8) + (m & 3)];		// (its size as the game gives it)
-		s.texSize[m][0] = (float) ((img0 & 0x3FF) + 1); s.texSize[m][1] = (float) (((img0 >> 10) & 0x3FF) + 1);
-		s.texSize[m][2] = s.texSize[m][3] = 0;
-		s.serial++;
+		u32 flushes = texFlushes;
+		for (int m = 0; m < 8; m++)
+		{
+			int t = (used >> m) & 1 ? gpuTexture (m) : -1;
+			if (t == s.tex[m]) continue;
+			s.tex[m] = t;
+			u32 img0 = bpRegs[(m < 4 ? 0x88 : 0xA8) + (m & 3)];		// (its size as the game gives it)
+			s.texSize[m][0] = (float) ((img0 & 0x3FF) + 1); s.texSize[m][1] = (float) (((img0 >> 10) & 0x3FF) + 1);
+			s.texSize[m][2] = s.texSize[m][3] = 0;
+			s.serial++;
+		}
+		if (texFlushes == flushes) break;
 	}
 }
 

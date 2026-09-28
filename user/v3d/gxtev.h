@@ -57,7 +57,7 @@ struct Shader
 	Uni uni[MAX_UNI]; int nUni;
 	Vary vary[64]; int nVary;
 	Lookup look[MAX_LOOKUPS]; int nLook;
-	unsigned flags;				// kapi_gpu_program flags (FS_FINAL when there is no thread switch)
+	unsigned flags;				// kapi_gpu_program flags (0: never FS_FINAL, see gxtev.cpp)
 	int nRegs;				// register-file registers used
 	const char *err;			// 0: ok
 	bool unsupported;			// a feature not generated was asked (drawn without it)

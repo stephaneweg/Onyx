@@ -9,9 +9,9 @@
 // (ldvary -> x W + C -> x 255 -> rounded integers), then the stages in order. The texture lookups
 // go in groups of 4 (the TMU's output FIFO: 8 words a thread with 2 threads): a group's coordinates
 // are read (ldvary) and its lookups started when its first stage comes, then a thread switch (the
-// last group's is the last-segment pair); each stage reads its two words (ldtmu) -- R G, B A as
-// f16 -- and turns them into 0..255. The end: PREV & 255, the alpha test (setmsf), the EFB's
-// format, the TLB writes.
+// last group's is the last-segment pair; without lookups the pair comes after the stages); each
+// stage reads its two words (ldtmu) -- R G, B A as f16 -- and turns them into 0..255. The end:
+// PREV & 255, the alpha test (setmsf), the EFB's format, the TLB writes.
 //
 #include "v3d/gxtev.h"
 
@@ -636,6 +636,16 @@ struct Gen
 		// the stages
 		for (int st = 0; st < c.nStages && !failed; st++) stage (st);
 		if (failed) return;
+		// no lookups: the last-segment pair here (only the registers live across it). The program never
+		// starts in its final section: KAPI_GPU_P_FS_FINAL stopped the GPU now and then on wide targets
+		// (>= 512 pixels) -- Mesa does not use it for fragment shaders either.
+		if (s.nLook == 0)
+		{
+			if (accBusy) { fail ("an accumulator live at the last thread switch"); return; }
+			emit (I ().thrsw (), 0, 0);
+			emit (I ().thrsw (), 0, 0);
+			nop_ (); nop_ ();
+		}
 		// the output: PREV & 255, the alpha test, the EFB's format
 		Val out[4];
 		for (int ch = 0; ch < 4; ch++)
@@ -684,11 +694,9 @@ struct Gen
 			ldunif (U_CONST, 0, 0, k.u);
 			emit (I ().m (V3D_QPU_M_FMUL, d, d, r5), 0, 0);
 		}
-		// the last-segment pair when there were no lookups is not needed (a single segment)
 		emit (I ().a (V3D_QPU_A_VFPACK, tlb, r0, r1).thrsw (), 0, 0);		// (end)
 		emit (I ().a (V3D_QPU_A_VFPACK, tlb, r2, r3), 0, 0);
 		nop_ ();
-		if (s.nLook == 0) s.flags |= FLAG_FS_FINAL;
 	}
 };
 

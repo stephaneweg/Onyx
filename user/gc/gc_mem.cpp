@@ -19,6 +19,7 @@ Machine::Machine ()
 	disc = 0; discSize = 0; discRead = 0; discCtx = 0; pal = false; title[0] = 0; gameId[0] = 0;
 	for (int i = 0; i < 2; i++) gfxFrame[i].v = 0, gfxFrame[i].b = 0;
 	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
+	texPool = new u32[TEX_POOL]; texPoolTop = 0; texFlushes = 0;
 	tmem = 0;
 	for (int i = 0; i < 4; i++) { padBtn[i] = 0; padSX[i] = padSY[i] = padCX[i] = padCY[i] = 0; padL[i] = padR[i] = 0; }
 	for (int s = 0; s < 2; s++) { card[s].flash = 0; card[s].size = 0; }	// (the slots empty until the front end fills them)
@@ -27,7 +28,7 @@ Machine::Machine ()
 	reset ();
 }
 
-Machine::~Machine () { delete [] mem1; delete [] aram; }
+Machine::~Machine () { delete [] mem1; delete [] aram; delete [] texPool; }
 
 void Machine::reset ()
 {

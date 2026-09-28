@@ -70,7 +70,7 @@ answer in French. The docs stay in English.
   `pr/dhcp-restart`), based on upstream `develop`; texts, patches and an issue draft (RAM above
   3 GB on the Pi 4) in `docs/circle-upstream/`. The user opens the pull requests.
 
-## Next: the GameCube on the Pi -- the TEV renderer shows a black screen (a local session, with the ISO)
+## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
 - **Done (cloud session), all pushed:** option A of `docs/GC-WINDOWS-REPORT.md` §5 -- the GX on the
   V3D with generated QPU shaders:
@@ -83,39 +83,70 @@ answer in French. The docs stay in English.
   - **TEV generator** `user/v3d/gxtev.{h,cpp}`: a TEV configuration -> fragment shader in
     integers as the hardware; `user/v3d/gxtev_ref.h` = gxgl.cpp's GLSL TEV in C++. Checked:
     `tools/tests/run_qpu_test.sh` (thousands of random configs in the simulator, exact) and on
-    the Pi: `/bin/v3dprog` -> **ALL PASS 22/22** (incl. 9 TEV configs, up to 16 stages / 8 lookups).
+    the Pi: `/bin/v3dprog` -> **ALL PASS 24/24** (incl. 11 TEV configs, Wind Waker's first two).
   - **gcemu backend** `user/Apps/gcemu/gxv3d.h` (`Rec`: gc::GxGpu on the app core -- vertices
     through gxgl.cpp's VS ported to C++, TEV program cached by key, uniforms, state; `Out`: main
     thread -> gpu_program / gpu_texture / gpu_render2). View > TEV Shaders On / Off.
   - **PC harness** `tools/tests/gc/gcv3d.cpp`: runs a `.dol` / `.iso` with the same `Rec` and
-    draws the last frame with a software V3D (the kernel's clipping, perspective varyings, depth,
-    cull, scissor, blending; the generated shaders in qpusim) -> `.ppm`. Build line in
-    `tools/tests/run_gc_test.sh`; `gcv3d <iso> <fields> out.ppm`, `GCV3D_EVERY=n` for more
-    frames, `GCV3D_DUMP=1` prints the batches. `gxtest.dol` renders right through it.
-- **The problem:** on the Pi, The Wind Waker with the TEV renderer shows **only a black screen**
-  (the old per-vertex path, View > TEV Shaders Off, still works). Not yet known whether
-  `gpu_render2` fails (then `draw_into` falls back to the XFB in MEM1, black with a GPU renderer),
-  whether every batch is dropped (`Rec::skipped`: a texture from an EFB copy, a program refused),
-  or whether the geometry is off (culling / viewport / depth mapping in `Rec::draw`, only checked
-  with gxtest's orthographic 2D draw).
-- **Next step for the local session:** run the game on the PC through `gcv3d` with the ISO:
-  if its frames are black too, the bug is in `gxv3d.h` (debug there: `GCV3D_DUMP=1`, compare
-  with NintendoEMU's gxgl.cpp, which renders the game right); if they are right, the difference
-  is the Pi (kernel `gpu_render2` limits / return code, `Out::render`, the real GPU) -- then add a
-  diagnostic to gcemu (F12 counters: render2's result, batches drawn / recorded, skipped; a key
-  dumping the frame to a file) for the user to report. Then stage 4: EFB copies to textures
-  (render to texture in the kernel), fog, indirect textures; stage 5: performance (dual-issue
-  scheduling of the generated code, the CPU vertex stage).
-- **Testing on the Pi yourself (if you want, the Pi being on the local network: ask the user
-  its IP):**
-  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button);
-  - deploy: in that console `ftpd SD:/` starts the FTP server (port 21) on the card's root; copy
-    the rebuilt files there with any FTP client (`kernel8-rpi4.img` needs a reboot: `reboot`;
-    `apps/gcemu.app/main`, `bin/*` do not);
-  - run the game: `run gcemu SD1:/roms/ZeldaWIndWaker/ZeldaWindWaker.iso` (the second partition;
-    quote the path if needed); `kmsg` shows the kernel's log (a GPU time-out is reported there);
-  - see the picture: `OnyxRemote.exe` (`pc/dist/`) connects to rdpd (port 3390, started at boot)
-    and shows the Onyx windows, gcemu's included (F12 in it: the speed line).
+    draws the last frame with a software V3D (the shaders in qpusim) -> `.ppm`. Build line in
+    `tools/tests/run_gc_test.sh` (on Windows: WinLibs MinGW `g++`, see its line); options in its
+    header (`GCV3D_EVERY`, `GCV3D_DUMP=1/2`, `GCV3D_SAVE`, `--replay`).
+- **The black screen -- fixed (local session, tested on the user's Pi with the ISO).** Three bugs,
+  one behind the other:
+  1. **The GPU hung** on the first TEV frame (`gpu_render2` -3, kmsg "rendering timed out ... GPU
+     left off", then -1 until a reboot). The TEV shaders without texture lookups were flagged
+     `KAPI_GPU_P_FS_FINAL` (start in the final thread section). `v3dprog ww` (a w x h target, one
+     quad with WW's first TEV program) showed it: hangs now and then on targets >= 512 pixels wide
+     (5 runs of 7, mostly the first frame after boot), never at 64 x 64 (the v3dprog tests). Now
+     `gxtev` always ends with the last-segment pair (as Mesa): no hang since, in hours of frames.
+     docs/02 §15.
+  2. **The window was never redrawn** once the game ran slower than real time: gcemu's loop asked
+     for the next field before looking for the new picture (`ec_pending` then never 0 there, the
+     F12 line showed `draw 0.0 ms`). The picture is now taken first. **n64emu has the same loop**
+     (a separate task was suggested to the user: same fix).
+  3. **No texture reached the GPU**: `Machine::gxTexture` allocated the texture pixels with `new`
+     on the app core -- `umm` is not safe across cores and `kapi_sbrk` from core 2 grows the heap of
+     the task core 0 happens to run (seldom gcemu): `px` null (and the decoding wrote through it).
+     Now a pool of `TEX_POOL` texels (64 MB) made with the machine; full, every texture is
+     forgotten (`texFlush`, the draws re-resolve). docs/03 (the app-core rules).
+  And `Out::render` kept only half of `KAPI_GPU_MAX_VERTS`: the island flyover (147 K vertices)
+  lost its last 250 batches (the logo, the sea); now 7/8 of it (the rest: the clipping's room).
+- **State:** The Wind Waker runs with the TEV on the Pi -- the title (island flyover, logo, "Press
+  Start"), the intro story; frames dumped on the Pi and replayed on the PC give the same picture
+  (<= 2 % of the pixels differ, on edges). Diagnostics for the next bugs: F12's third line, F9 /
+  `--diag[=FTP:<pc>:<port>]` dumps, `gcv3d --replay` (docs/03).
+- **Next: the speed.** Measured with `--diag` on the flyover (~370 batches, 147 K vertices a
+  frame): emu ~85-95 ms a field (the JIT'd CPU + the recorder's vertex stage in C++, app core) +
+  draw ~50 ms (main thread: `Out::render`'s copy, the kernel's CPU clipping, the GPU), one after
+  the other -> ~7 fields/s; lighter scenes 23-49 fields/s (60 is real time). By gain / effort:
+  1. **Overlap** the drawing with the next field: prepare the frame while the core waits (the
+     vertices / uniforms / batches copied out of `Rec::frame[ready]`, textures and programs
+     uploaded), then let the core run while the kernel clips and the GPU draws (the core may then
+     finish a frame: `Rec` needs a third frame buffer, or the copy done before it resumes).
+  2. **Measure** the recorder's share of a field (a cycle counter on the app core, e.g.
+     `cntvct_el0`, shown on F12), then speed up the vertex stage (per-draw precomputation of the
+     matrices / lights, fast paths for the unlit / untextured, NEON), then the transform and the
+     lighting in the GPU's vertex shader (a generated VS, as the TEV).
+  3. A fast path in the kernel's `V3DClipTriangleN` for the triangles fully inside (most).
+  4. Dual-issue scheduling of the generated TEV code.
+  Then stage 4: EFB copies to textures (`rec skipped` counts the draws reading one: the heat haze,
+  the bloom...), the fog, the indirect textures.
+- **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
+  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
+    stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then
+    `kill <pid> --force`; or `reboot`.
+  - files: an anonymous FTP server on the PC (e.g. Python's `pyftpdlib`, port 2121) and on the Pi
+    `cat FTP:<pc-ip>:2121/<file> > SD:/<path>` (ftpfs; `cp` does not go through it); gcemu's
+    `--diag=FTP:<pc-ip>:2121` writes its log and dumps straight there. Or `ftpd SD:/` on the Pi
+    (port 21). `apps/gcemu.app/main` and `bin/*` need no reboot, `kernel8-rpi4.img` does.
+  - run: `run gcemu SD1:/roms/ZeldaWIndWaker/ZeldaWIndWaker.iso --diag=...` (the second
+    partition); `v3dprog` must pass after any GPU change; a GPU hang leaves the GPU off until a
+    reboot (`v3dprog` then says `no GPU: V3D: stopped`).
+  - pitfalls: `grep` / `wc` read stdin only (`wc < file`; with a file argument they wait, and
+    once the telnet session is gone they spin on stdin's end -- an open bug, cmd too sometimes);
+    `kmsg` streams until Ctrl+C and consumes the log (each line is read once).
+  - the picture: `OnyxRemote.exe` (`pc/dist/`, rdpd port 3390); or VNC (vncd, no password):
+    `python -m vncdotool.command -s <pi-ip> capture x.png`, `... key p` (a key).
 
 ## Other open items
 

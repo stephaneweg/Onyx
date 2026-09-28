@@ -349,10 +349,14 @@ public:
 	void gxPrimitive (int prim, int vat, int count, const u8 *verts);	// (gc_gxdraw.cpp later: the drawing)
 	void gxCopy (u32 v);				// an EFB copy (to the XFB or a texture)
 	// the drawing (gc_gxdraw.cpp): frames of GPU triangles, the textures decoded
-	enum { MAX_TEX = 256 };
+	enum { MAX_TEX = 256, TEX_POOL = 16 << 20 };
 	GFrame gfxFrame[2]; int gfxBuild, gfxReady; u32 gfxSerial;
 	GTexture tex[MAX_TEX]; u32 texClock;
 	s16 texFind[1024];				// (a key's slot in tex[], by its low bits: a hint, checked)
+	u32 *texPool; u32 texPoolTop, texFlushes;	// the textures' pixels (TEX_POOL texels, made with the
+							// machine: it may run where nothing can be allocated -- gcemu's
+							// app core); full, every texture is forgotten (texFlush)
+	void texFlush ();
 	u8 *tmem;					// the TMEM (1 MB: the TLUTs)
 	u32 gxClearNext;				// the colour the next frame starts with
 	u32 xfbCopyAddr[2];				// the last two XFBs an EFB copy went to (double buffering)

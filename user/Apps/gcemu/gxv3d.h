@@ -403,6 +403,60 @@ public:
 	}
 };
 
+// ---- a frame dumped (gcemu: F9, --diag): what the recorder made -- the frame's vertices, batches and
+// uniforms, the programs and the textures its batches use -- and the picture the GPU made of it, for
+// tools/tests/gc/gcv3d.cpp --replay (the same frame through the PC's software V3D, to compare)
+struct DumpHead
+{
+	char magic[4]; u32 version, sizeBatch, sizeProg;
+	u32 nf, nv, nb, nu, clear, keep, nProgs, nTex;
+	int pw, ph, ret; u32 zero;			// (the picture's size, gpu_render2's result)
+};
+// its size; written into d when d != 0 (the machine not running: the frame and textures still)
+static inline unsigned long long dumpFrame (const Rec &r, const gc::Machine &m, const Frame &F,
+					   const unsigned *pic, int pw, int ph, int picStride, int ret, u8 *d)
+{
+	unsigned long long n = 0;
+	auto put = [&] (const void *p, unsigned long long k) { if (d) __builtin_memcpy (d + n, p, k); n += k; };
+	static u8 progUsed[MAX_PROGS], texUsed[gc::Machine::MAX_TEX];
+	__builtin_memset (progUsed, 0, sizeof progUsed); __builtin_memset (texUsed, 0, sizeof texUsed);
+	u32 nProgs = 0, nTex = 0;
+	for (u32 i = 0; i < F.nb; i++)
+	{
+		const Batch &b = F.b[i];
+		if (b.prog < 0 || b.prog >= MAX_PROGS) continue;
+		if (!progUsed[b.prog]) { progUsed[b.prog] = 1; nProgs++; }
+		for (int L = 0; L < r.prog[b.prog].nLook; L++)
+		{
+			int t = b.texSlot[L];
+			if (t >= 0 && t < gc::Machine::MAX_TEX && !texUsed[t] && m.tex[t].px && m.tex[t].w > 0) { texUsed[t] = 1; nTex++; }
+		}
+	}
+	DumpHead H; __builtin_memset (&H, 0, sizeof H);
+	H.magic[0] = 'G'; H.magic[1] = 'X'; H.magic[2] = 'F'; H.magic[3] = '1';
+	H.version = 1; H.sizeBatch = sizeof (Batch); H.sizeProg = sizeof (Prog);
+	H.nf = F.nf; H.nv = F.nv; H.nb = F.nb; H.nu = F.nu; H.clear = F.clear; H.keep = F.keep; H.nProgs = nProgs; H.nTex = nTex;
+	H.pw = pic ? pw : 0; H.ph = pic ? ph : 0; H.ret = ret;
+	put (&H, sizeof H);
+	put (F.v, (unsigned long long) F.nf * 4); put (F.b, (unsigned long long) F.nb * sizeof (Batch)); put (F.u, (unsigned long long) F.nu * 4);
+	for (u32 i = 0; i < MAX_PROGS; i++)
+	{
+		if (!progUsed[i]) continue;
+		const Prog &p = r.prog[i];
+		put (&i, 4); put (&p, sizeof p);
+		put (r.arena + p.words, (unsigned long long) p.nWords * 8); put (r.uniArena + p.uni, (unsigned long long) p.nUni * sizeof (gxtev::Uni));
+	}
+	for (u32 i = 0; i < (u32) gc::Machine::MAX_TEX; i++)
+	{
+		if (!texUsed[i]) continue;
+		const gc::GTexture &T = m.tex[i];
+		u32 w3[3] = { i, (u32) T.w, (u32) T.h };
+		put (w3, sizeof w3); put (T.px, (unsigned long long) T.w * (unsigned long long) T.h * 4);
+	}
+	if (pic) for (int y = 0; y < ph; y++) put (pic + (long) y * picStride, (unsigned long long) pw * 4);
+	return n;
+}
+
 #ifndef GXV3D_HOST		// (tools/tests/gc/gcv3d.cpp: the recording alone, drawn by its software V3D)
 // ---- the main thread: a finished frame into pixels ----------------------------------------------------------------
 struct Out
@@ -412,11 +466,18 @@ struct Out
 	unsigned *ru = 0;
 	kapi_gpu_batch2 *rb = 0;
 	qpu::Prog vs, cs;
+	// what the last frame gave (F12, --diag): gpu_render2's result (0 ok, -1 no GPU, -2 bad
+	// arguments, -3 the GPU did not finish, -4 no memory; 1 no frame yet), the batches recorded,
+	// given to the GPU, left out (their program refused, a texture missing, nothing visible, over
+	// the vertex limit); the programs and textures the kernel refused so far, the last error
+	struct Stats { int ret; u32 recorded, drawn, noProg, noTex, empty, limit, frames, progFails, texFails; int progErr, texErr; };
+	Stats st;
 	bool init ()
 	{
 		for (int i = 0; i < gc::Machine::MAX_TEX; i++) gpuTex[i] = -1;
 		rvCap = MAX_FLOATS * 2; rv = new float[rvCap]; ru = new unsigned[MAX_UNIS + 8]; rb = new kapi_gpu_batch2[MAX_BATCHES];
 		qpu::passCS (cs);
+		__builtin_memset (&st, 0, sizeof st); st.ret = 1;
 		return rv && ru && rb;
 	}
 	// the textures decoded since (Machine::tex[]: dirty)
@@ -430,6 +491,7 @@ struct Out
 			if (w <= 0 || h <= 0 || !T.px || w * h > T.cap) continue;
 			int h2 = kapi_gpu_texture (gpuTex[i], T.px, w, h, w);
 			if (h2 < 0 && gpuTex[i] >= 0) h2 = kapi_gpu_texture (-1, T.px, w, h, w);
+			if (h2 < 0) { st.texFails++; st.texErr = h2; }
 			gpuTex[i] = h2;
 			T.dirty = false;
 		}
@@ -445,6 +507,7 @@ struct Out
 		P.fs = r.arena + p.words; P.nfs = p.nWords;
 		P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) p.nVary; P.flags = p.flags;
 		int h = kapi_gpu_program (-1, &P);
+		if (h < 0) { st.progFails++; st.progErr = h; }
 		p.handle = h >= 0 ? h : -2;
 		return p.handle;
 	}
@@ -461,13 +524,16 @@ struct Out
 		for (int k = 0; k < 4; k++) ru[k] = view[k];
 		for (u32 i = 0; i < F.nu; i++) ru[4 + i] = F.u[i];
 		u32 nv = 0, nb = 0;
+		st.recorded = F.nb; st.noProg = st.noTex = st.empty = st.limit = 0;
 		for (u32 i = 0; i < F.nb; i++)
 		{
 			const Batch &b = F.b[i];
 			const Prog &p = r.prog[b.prog];
 			int hnd = program (r, b.prog);
-			if (hnd < 0) continue;
-			if (nv + b.count > KAPI_GPU_MAX_VERTS / 2 || (nv + b.count) * (u32) maxStride > rvCap) break;
+			if (hnd < 0) { st.noProg++; continue; }
+			// (the kernel's clipping adds vertices only for the triangles across the near plane: an
+			// eighth of its limit left for them -- what goes beyond, the kernel drops, as here)
+			if (nv + b.count > KAPI_GPU_MAX_VERTS - KAPI_GPU_MAX_VERTS / 8 || (nv + b.count) * (u32) maxStride > rvCap) { st.limit += F.nb - i; break; }
 			kapi_gpu_batch2 &o = rb[nb];
 			__builtin_memset (&o, 0, sizeof o);
 			o.first = nv; o.count = b.count; o.program = hnd; o.flags = b.flags; o.blend = b.blend; o.wmask = b.wmask;
@@ -477,7 +543,7 @@ struct Out
 			if (y0 < 0) y0 = 0;
 			if (x1 > w) x1 = w;
 			if (y1 > h) y1 = h;
-			if (x1 <= x0 || y1 <= y0) continue;
+			if (x1 <= x0 || y1 <= y0) { st.empty++; continue; }
 			o.scissor[0] = x0; o.scissor[1] = y0; o.scissor[2] = x1 - x0; o.scissor[3] = y1 - y0;
 			o.vsUni = 0; o.vsNUni = 4; o.csUni = 0; o.csNUni = 2;
 			o.fsUni = 4 + b.uni; o.fsNUni = p.nUni;
@@ -491,7 +557,7 @@ struct Out
 				if (t < 0) { ok = false; break; }
 				o.tex[u.a] = t; o.texUni[u.a] = (int) k; o.texFlags[u.a] = b.texFlags[u.a];
 			}
-			if (!ok) continue;
+			if (!ok) { st.noTex++; continue; }
 			// the vertices at the frame's stride
 			const float *sv = F.v + b.off;
 			float *d = rv + (size_t) nv * (size_t) maxStride;
@@ -503,7 +569,9 @@ struct Out
 			nv += b.count; nb++;
 		}
 		struct kapi_gpu_frame fr = { px, w, h, stride, F.clear, F.keep ? KAPI_GPU_F_KEEP : 0u };
-		return kapi_gpu_render2 (&fr, rv, nv, (unsigned) maxStride, rb, nb, ru, 4 + F.nu) == 0;
+		st.drawn = nb; st.frames++;
+		st.ret = kapi_gpu_render2 (&fr, rv, nv, (unsigned) maxStride, rb, nb, ru, 4 + F.nu);
+		return st.ret == 0;
 	}
 };
 
