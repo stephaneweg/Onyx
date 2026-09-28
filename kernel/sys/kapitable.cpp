@@ -87,6 +87,8 @@ int  kapi_vfs_req_data (unsigned, void *, unsigned, unsigned);
 int  kapi_vfs_reply (unsigned, int, const void *, unsigned);
 int  kapi_wlan_scan (struct kapi_wlan_ap *, int);
 int  kapi_wlan_reconnect (void);
+int  kapi_gpu_program (int, const struct kapi_gpu_program *);
+int  kapi_gpu_render2 (const struct kapi_gpu_frame *, const float *, unsigned, unsigned, const struct kapi_gpu_batch2 *, unsigned, const unsigned *, unsigned);
 int  kapi_sound_acquire (void);
 void kapi_sound_release (void);
 int  kapi_sound_start (int, unsigned, int, int);
@@ -361,4 +363,6 @@ void KApiTableInit (void)
 	t->fsize64           = kapi_fsize64;
 	t->sound_volume      = kapi_sound_volume;
 	t->wlan_reconnect    = kapi_wlan_reconnect;
+	t->gpu_program       = kapi_gpu_program;
+	t->gpu_render2       = kapi_gpu_render2;
 }

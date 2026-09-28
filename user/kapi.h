@@ -362,6 +362,13 @@ static inline unsigned long long kapi_fsize64 (void *h) { return KT->version >= 
 static inline int kapi_sound_volume (int volume, int mute) { return KT->version >= 60 ? KT->sound_volume (volume, mute) : 10; }
 // wpa_supplicant.conf read again + DHCP again, no reboot (-1: none / older kernel)
 static inline int kapi_wlan_reconnect (void) { return KT->version >= 60 ? KT->wlan_reconnect () : -1; }
+// v61: draws with the app's own QPU shaders (user/v3d/qpu.h builds them): gpu_program makes /
+// replaces / frees (p = 0) a program, gpu_render2 draws batches of them (kapi_abi.h).
+static inline int kapi_gpu_program (int handle, const struct kapi_gpu_program *p)
+{ return KT->version >= 61 ? KT->gpu_program (handle, p) : -1; }
+static inline int kapi_gpu_render2 (const struct kapi_gpu_frame *f, const float *v, unsigned nv, unsigned stride,
+				    const struct kapi_gpu_batch2 *b, unsigned nb, const unsigned *uni, unsigned nuni)
+{ return KT->version >= 61 ? KT->gpu_render2 (f, v, nv, stride, b, nb, uni, nuni) : -1; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

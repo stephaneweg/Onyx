@@ -708,6 +708,8 @@ static int Texture (int nHandle, const unsigned *pPx, int w, int h, int nStride)
 	return nHandle;
 }
 
+static void ReleaseProgs (CAddressSpace *pAS);
+
 void V3DReleaseAS (CAddressSpace *pAS)
 {
 	if (pAS == 0) return;
@@ -717,6 +719,7 @@ void V3DReleaseAS (CAddressSpace *pAS)
 			while (s_bBusy) CScheduler::Get ()->Yield ();	// (not in the middle of a frame)
 			FreeTex (s_Tex[i]);
 		}
+	ReleaseProgs (pAS);
 }
 
 // ---- v53: a frame of batches -----------------------------------------------------------------------------------
@@ -999,6 +1002,345 @@ extern "C" int kapi_gpu_render (const kapi_gpu_frame *pF, const kapi_gpu_vertex3
 	int r = s_nState <= 0 ? -1
 	      : !ClipFrame (pV, nV, pB, nB, &nCV, &nCB) ? -4
 	      : Render (*pF, s_pClipV, nCV, s_pClipB, nCB);
+	CrashLogCrumb (CRUMB_V3D, 0);
+	s_bBusy = FALSE;
+	CScheduler::Get ()->LeaveNoKill ();
+	return r;
+}
+
+// ---- v61: the app's own shaders --------------------------------------------------------------------------------
+// A program: its three shaders copied into GPU memory (each at a 256-byte boundary, followed by
+// NOPs: the QPU fetches ahead), its vertex layout and varyings. Its owner's end frees it.
+struct TProgram
+{
+	TGpuBuf Mem;
+	CAddressSpace *pOwner;			// 0: free
+	u32 nVS, nCS, nFS;			// offsets in Mem
+	u8 nInputs, nCSInputs, nCSOutputs, nVaryings;
+	u32 nFlags;
+};
+static TProgram s_Prog[KAPI_GPU_MAX_PROGRAMS];
+#define QPU_NOP		0x3C003186BB800000ull
+#define PROG_PAD	8				// NOPs after each shader
+
+static void FreeProg (TProgram &p)
+{
+	if (p.Mem.pRaw != 0) CMemorySystem::HeapFree (p.Mem.pRaw);
+	p.Mem.pRaw = p.Mem.p = 0; p.Mem.nSize = 0;
+	p.pOwner = 0;
+}
+
+static void ReleaseProgs (CAddressSpace *pAS)
+{
+	for (int i = 0; i < KAPI_GPU_MAX_PROGRAMS; i++)
+		if (s_Prog[i].pOwner == pAS)
+		{
+			while (s_bBusy) CScheduler::Get ()->Yield ();
+			FreeProg (s_Prog[i]);
+		}
+}
+
+static int Program (int nHandle, const kapi_gpu_program *pP)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0) return -2;
+	if (nHandle >= 0)
+	{
+		if (nHandle >= KAPI_GPU_MAX_PROGRAMS || s_Prog[nHandle].pOwner != pAS) return -2;
+		if (pP == 0) { FreeProg (s_Prog[nHandle]); return 0; }
+	}
+	if (pP == 0 || pP->vs == 0 || pP->cs == 0 || pP->fs == 0
+	    || pP->nvs == 0 || pP->ncs == 0 || pP->nfs == 0 || pP->nvs > 4096 || pP->ncs > 4096 || pP->nfs > 4096
+	    || pP->inputs < 4 || pP->inputs > CLIP_MAX_FLOATS || pP->csInputs < 4 || pP->csInputs > pP->inputs
+	    || pP->csOutputs < 6 || pP->csOutputs > 16 || pP->varyings > 64)
+		return -2;
+	if (nHandle < 0)
+	{
+		for (int i = 0; i < KAPI_GPU_MAX_PROGRAMS; i++)
+			if (s_Prog[i].pOwner == 0) { nHandle = i; break; }
+		if (nHandle < 0) return -4;
+	}
+	TProgram &p = s_Prog[nHandle];
+	u32 nVSb = ((pP->nvs + PROG_PAD) * 8 + 255) & ~255u, nCSb = ((pP->ncs + PROG_PAD) * 8 + 255) & ~255u;
+	u32 nFSb = ((pP->nfs + PROG_PAD) * 8 + 255) & ~255u;
+	FreeProg (p);
+	if (!Alloc (p.Mem, nVSb + nCSb + nFSb)) { FreeProg (p); return -4; }
+	p.pOwner = pAS;
+	p.nVS = 0; p.nCS = nVSb; p.nFS = nVSb + nCSb;
+	u64 *pW = (u64 *) p.Mem.p;
+	for (u32 i = 0; i < (nVSb + nCSb + nFSb) / 8; i++) pW[i] = QPU_NOP;
+	memcpy (p.Mem.p + p.nVS, pP->vs, pP->nvs * 8);
+	memcpy (p.Mem.p + p.nCS, pP->cs, pP->ncs * 8);
+	memcpy (p.Mem.p + p.nFS, pP->fs, pP->nfs * 8);
+	CleanDataCacheRange ((uintptr) p.Mem.p, nVSb + nCSb + nFSb);
+	p.nInputs = (u8) pP->inputs; p.nCSInputs = (u8) pP->csInputs;
+	p.nCSOutputs = (u8) pP->csOutputs; p.nVaryings = (u8) pP->varyings;
+	p.nFlags = pP->flags;
+	return nHandle;
+}
+
+// the frame's triangles clipped (the near plane, the guard band): s_pClip2 (stride floats a vertex)
+static float *s_pClip2 = 0; static unsigned s_nClip2Cap = 0;	// (floats)
+static kapi_gpu_batch2 *s_pClipB2 = 0; static unsigned s_nClipB2Cap = 0;
+static TGpuBuf s_Verts2;
+
+static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const kapi_gpu_batch2 *pB, unsigned nB, unsigned *pOutV)
+{
+	unsigned nCap = nV * 2 + 64;					// (vertices; beyond: dropped)
+	if (nCap > KAPI_GPU_MAX_VERTS) nCap = KAPI_GPU_MAX_VERTS;
+	if (s_nClip2Cap < nCap * nStride)
+	{
+		delete [] s_pClip2; s_pClip2 = new float[nCap * nStride];
+		s_nClip2Cap = s_pClip2 ? nCap * nStride : 0;
+	}
+	if (s_nClipB2Cap < nB + 1) { delete [] s_pClipB2; s_pClipB2 = new kapi_gpu_batch2[nB + 1]; s_nClipB2Cap = s_pClipB2 ? nB + 1 : 0; }
+	if (s_pClip2 == 0 || s_pClipB2 == 0) return FALSE;
+	static float Out[21 * CLIP_MAX_FLOATS], T[3 * CLIP_MAX_FLOATS];	// (one frame at a time: s_bBusy)
+	unsigned n = 0;
+	for (unsigned i = 0; i < nB; i++)
+	{
+		const kapi_gpu_batch2 &b = pB[i];
+		kapi_gpu_batch2 &o = s_pClipB2[i];
+		o = b; o.first = n;
+		unsigned nIn = s_Prog[b.program].nInputs;		// (the floats beyond: not interpolated, not read)
+		for (unsigned t = 0; t + 3 <= b.count && n + 21 <= nCap; t += 3)
+		{
+			const float *pT = pV + (b.first + t) * nStride;
+			for (int k = 0; k < 3; k++)
+				for (unsigned j = 0; j < nIn; j++) T[k * nIn + j] = pT[k * nStride + j];
+			unsigned m = V3DClipTriangleN (T, nIn, Out);
+			for (unsigned j = 0; j < m; j++, n++)
+				memcpy (s_pClip2 + n * nStride, Out + j * nIn, nIn * 4);
+		}
+		o.count = n - o.first;
+	}
+	*pOutV = n;
+	return TRUE;
+}
+
+static int Render2 (const kapi_gpu_frame &F, const float *pV, unsigned nV, unsigned nStride,
+		    const kapi_gpu_batch2 *pB, unsigned nB, const unsigned *pUni)
+{
+	int w = F.w, h = F.h;
+	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64, nTiles = tilesX * tilesY;
+	u32 nAllocSize = ((nTiles * 64 + 4095) & ~4095u) + 2 * 1024 * 1024;
+	u32 nUniBytes = 0;
+	for (unsigned i = 0; i < nB; i++)
+		nUniBytes += (pB[i].vsNUni + pB[i].csNUni + pB[i].fsNUni) * 4 + 8 * 32 + 64;
+	u32 nVBytes = (nV ? nV : 3) * nStride * 4;
+	if (!Alloc (s_Verts2, nVBytes) || !Alloc (s_Target, (u32) (w * h * 4))
+	    || !Alloc (s_TileAlloc, nAllocSize) || !Alloc (s_TileState, nTiles * 256)
+	    || !Alloc (s_BCL, 1024 + nB * 96) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
+		return -2;
+	memcpy (s_Verts2.p, pV, nV * nStride * 4);
+	CleanDataCacheRange ((uintptr) s_Verts2.p, nV * nStride * 4);
+	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
+	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T);
+	TargetBefore (T, F.pixels, w, h, F.stride, bKeep);
+
+	CList Ind (s_Ind);
+	CList B (s_BCL);
+	B << TileBinningModeCfg (0, 0, 1, 0, false, false, (u16) w, (u16) h);
+	B << OP_FLUSH_VCD_CACHE;
+	B << OcclusionQueryCounter (0);
+	B << OP_START_TILE_BINNING;
+	B << PointSize (1.0f);
+	B << LineWidth (1.0f);
+	B << ClipperXYScaling ((f32) (w / 2) * 256.0f, (f32) (h / 2) * -256.0f);
+	B << ClipperZScaleAndOffset (0.5f, 0.5f);
+	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
+	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
+	B << BlendConstantColor (0, 0, 0, 0);
+	B << OP_ZERO_ALL_FLAT_SHADE_FLAGS;
+	B << OP_ZERO_ALL_NON_PERSPECTIVE_FLAGS;
+	B << OP_ZERO_ALL_CENTROID_FLAGS;
+	B << TransformFeedbackSpecs (0, false);
+	B << OcclusionQueryCounter (0);
+	B << SampleState (0xF, 1.0f);
+	B << VcmCacheSize (4, 4);
+	u32 nPrevBlend = ~0u, nPrevMask = ~0u;
+	int PrevClip[4] = { -1, -1, -1, -1 };
+
+	for (unsigned i = 0; i < nB; i++)
+	{
+		const kapi_gpu_batch2 &b = pB[i];
+		if (b.count == 0) continue;
+		const TProgram &P = s_Prog[b.program];
+
+		// the uniforms: the samplers (32-byte aligned), then the three ranges, the fragment's patched
+		Ind.Align (32);
+		u32 nSampler[8] = { 0 };
+		for (int k = 0; k < 8; k++)
+		{
+			if (b.tex[k] < 0 || b.texUni[k] < 0) continue;
+			nSampler[k] = Ind.Bus ();
+			u8 S[32]; memset (S, 0, sizeof S);
+			boolean bLinear = (b.texFlags[k] & KAPI_GPU_B_LINEAR) != 0;
+			static const u32 Wrap[4] = { 0, 1, 2, 0 };		// repeat, clamp, mirror
+			SetBits (S, 0, 1, bLinear ? 0 : 1);			// mag nearest
+			SetBits (S, 1, 1, bLinear ? 0 : 1);			// min nearest
+			SetBits (S, 2, 1, 1);					// mip nearest
+			SetBits (S, 48, 3, Wrap[(b.texFlags[k] >> 13) & 3]);
+			SetBits (S, 51, 3, Wrap[(b.texFlags[k] >> 15) & 3]);
+			SetBits (S, 54, 3, 1);
+			for (unsigned j = 0; j < sizeof S; j++) Ind << S[j];
+		}
+		u32 nVtxUnif = Ind.Bus ();
+		for (unsigned k = 0; k < b.vsNUni; k++) Ind << (u32) pUni[b.vsUni + k];
+		u32 nCoordUnif = Ind.Bus ();
+		for (unsigned k = 0; k < b.csNUni; k++) Ind << (u32) pUni[b.csUni + k];
+		u32 nFragUnif = Ind.Bus ();
+		u32 nFragOff = Ind.Size ();
+		for (unsigned k = 0; k < b.fsNUni; k++) Ind << (u32) pUni[b.fsUni + k];
+		if (b.vsNUni + b.csNUni + b.fsNUni == 0) Ind << 0u;
+		if (!Ind.Overflow ())
+			for (int k = 0; k < 8; k++)
+			{
+				if (b.tex[k] < 0 || b.texUni[k] < 0) continue;
+				u32 *pU = (u32 *) (s_Ind.p + nFragOff) + b.texUni[k];
+				pU[0] = s_Tex[b.tex[k]].Mem.Bus (0) | 3;	// p0: texture state, 2 words (f16 RG, BA)
+				pU[1] = nSampler[k];				// p1: sampler state, 16-bit output
+			}
+
+		// the shader state record + its attributes (vec4 floats)
+		Ind.Align (32);
+		u32 nShaderRec = Ind.Bus ();
+		u32 nVSOut = 4 + P.nVaryings;
+		GLShaderStateRecord Rec {};
+		Rec.enable_clipping = true;
+		Rec.fragment_shader_does_z_writes = (P.nFlags & KAPI_GPU_P_FS_ZWRITE) != 0;
+		Rec.fragment_shader_uses_real_pixel_centre_w_in_addition_to_centroid_w2 = true;
+		Rec.disable_implicit_point_line_varyings = true;
+		Rec.number_of_varyings_in_fragment_shader = P.nVaryings;
+		Rec.coordinate_shader_output_vpm_segment_size = (P.nCSOutputs + 7) / 8;
+		Rec.coordinate_shader_input_vpm_segment_size = (P.nCSInputs + 7) / 8;
+		Rec.vertex_shader_output_vpm_segment_size = (nVSOut + 7) / 8;
+		Rec.vertex_shader_input_vpm_segment_size = (P.nInputs + 7) / 8;
+		Rec.address_of_default_attribute_values = s_State.Bus (0);
+		Rec.fragment_shader_code_address = P.Mem.Bus (P.nFS) >> 3;
+		Rec.fragment_shader_uniforms_address = nFragUnif;
+		Rec.fragment_shader_4_way_threadable = (P.nFlags & KAPI_GPU_P_FS_4WAY) != 0;
+		Rec.fragment_shader_start_in_final_thread_section = (P.nFlags & KAPI_GPU_P_FS_FINAL) != 0;
+		Rec.fragment_shader_propagate_nans = true;
+		Rec.vertex_shader_code_address = P.Mem.Bus (P.nVS) >> 3;
+		Rec.vertex_shader_uniforms_address = nVtxUnif;
+		Rec.vertex_shader_4_way_threadable = true;
+		Rec.vertex_shader_start_in_final_thread_section = true;
+		Rec.vertex_shader_propagate_nans = true;
+		Rec.coordinate_shader_code_address = P.Mem.Bus (P.nCS) >> 3;
+		Rec.coordinate_shader_uniforms_address = nCoordUnif;
+		Rec.coordinate_shader_4_way_threadable = true;
+		Rec.coordinate_shader_start_in_final_thread_section = true;
+		Rec.coordinate_shader_propagate_nans = true;
+		Ind << Rec;
+		u32 nAttr = (P.nInputs + 3) / 4;
+		for (u32 k = 0; k < nAttr; k++)
+		{
+			GlShaderStateAttributeRecord A {};
+			u32 nVals = P.nInputs - k * 4 < 4 ? P.nInputs - k * 4 : 4;
+			u32 nCS = k * 4 >= P.nCSInputs ? 0 : (P.nCSInputs - k * 4 < 4 ? P.nCSInputs - k * 4 : 4);
+			A.address = s_Verts2.Bus (k * 16);
+			A.number_of_values_read_by_vertex_shader = nVals;
+			A.number_of_values_read_by_coordinate_shader = nCS;
+			A.stride = nStride * 4;
+			A.maximum_index = 0xFFFFFF;
+			A.vec_size = nVals & 3;						// (0: 4)
+			A.type = 2;							// float
+			Ind << A;
+		}
+
+		// the state, then the triangles
+		u32 nZ = KAPI_GPU_B_ZFUNC (b.flags);
+		if (nZ == 0) nZ = 1;						// LESS
+		boolean bZWrite = !(b.flags & KAPI_GPU_B_NOZWRITE) && nZ != 7;
+		B << CfgBits (!(b.flags & KAPI_GPU_B_CULL_FRONT), !(b.flags & KAPI_GPU_B_CULL_BACK), true, false, 0, 0, false,
+			      nZ, bZWrite, false, false, false, b.blend != 0, false, false);
+		if (b.blend != 0 && b.blend != nPrevBlend)
+		{
+			u32 v = b.blend;
+			B << BlendEnables (1);
+			B << BlendCfg ((v >> 24) & 7, (v >> 12) & 15, (v >> 16) & 15, (v >> 20) & 7, (v >> 4) & 15, (v >> 8) & 15, 0xF);
+			nPrevBlend = v;
+		}
+		u32 nMask = (b.wmask & 15) | (T.bDirect ? 0x8 : 0);		// (direct: alpha not written, stays 0)
+		if (nMask != nPrevMask) { B << ColorWriteMasks (nMask); nPrevMask = nMask; }
+		int C[4] = { 0, 0, w, h };
+		if (b.scissor[2] > 0 && b.scissor[3] > 0)
+		{
+			int x0 = b.scissor[0] < 0 ? 0 : b.scissor[0], y0 = b.scissor[1] < 0 ? 0 : b.scissor[1];
+			int x1 = b.scissor[0] + b.scissor[2], y1 = b.scissor[1] + b.scissor[3];
+			if (x1 > w) x1 = w;
+			if (y1 > h) y1 = h;
+			if (x1 <= x0 || y1 <= y0) continue;				// (nothing visible)
+			C[0] = x0; C[1] = y0; C[2] = x1 - x0; C[3] = y1 - y0;
+		}
+		if (C[0] != PrevClip[0] || C[1] != PrevClip[1] || C[2] != PrevClip[2] || C[3] != PrevClip[3])
+		{
+			B << ClipWindow ((u16) C[0], (u16) C[1], (u16) C[2], (u16) C[3]);
+			for (int k = 0; k < 4; k++) PrevClip[k] = C[k];
+		}
+		B << (u8) OP_GL_SHADER_STATE << (u32) (nShaderRec | nAttr);	// (5 bits of arrays: up to 16)
+		B << VertexArrayPrims (4, b.count, b.first);			// triangles
+	}
+	B << OP_FLUSH;
+
+	CList R (s_RCL);
+	BuildRCL (R, Ind, w, h, F.clear, bKeep, T);
+	if (B.Overflow () || R.Overflow () || Ind.Overflow ()) return -2;
+	int nRes = Run (B, R, Ind, nAllocSize);
+	if (nRes != 0) return nRes;
+
+	TargetAfter (T, F.pixels, w, h, F.stride);
+	return 0;
+}
+
+extern "C" int kapi_gpu_program (int nHandle, const kapi_gpu_program *pP)
+{
+	if (!Up ()) return -1;
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame runs them)
+	s_bBusy = TRUE;
+	CScheduler::Get ()->EnterNoKill ();
+	int r = s_nState > 0 ? Program (nHandle, pP) : -1;
+	s_bBusy = FALSE;
+	CScheduler::Get ()->LeaveNoKill ();
+	return r;
+}
+
+extern "C" int kapi_gpu_render2 (const kapi_gpu_frame *pF, const float *pV, unsigned nV, unsigned nStride,
+				 const kapi_gpu_batch2 *pB, unsigned nB, const unsigned *pUni, unsigned nUni)
+{
+	if (!Up ()) return -1;
+	if (pF == 0 || pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
+	    || pF->stride < pF->w || nV > KAPI_GPU_MAX_VERTS || (nV && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0)
+	    || nStride < 4 || nStride > CLIP_MAX_FLOATS || nUni > KAPI_GPU_MAX_UNIFORMS || (nUni && pUni == 0))
+		return -2;
+	CAddressSpace *pAS = CurrentAS ();
+	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, program, uniforms, textures
+	{
+		const kapi_gpu_batch2 &b = pB[i];
+		if (b.count % 3 != 0 || b.first > nV || b.count > nV - b.first) return -2;
+		if (b.program < 0 || b.program >= KAPI_GPU_MAX_PROGRAMS || s_Prog[b.program].pOwner != pAS
+		    || s_Prog[b.program].nInputs > nStride)
+			return -2;
+		if (b.vsUni > nUni || b.vsNUni > nUni - b.vsUni || b.csUni > nUni || b.csNUni > nUni - b.csUni
+		    || b.fsUni > nUni || b.fsNUni > nUni - b.fsUni)
+			return -2;
+		if (b.blend != 0 && ((b.blend >> 20 & 7) > 4 || (b.blend >> 24 & 7) > 4)) return -2;
+		for (int k = 0; k < 8; k++)
+		{
+			if (b.tex[k] < 0) continue;
+			if (b.tex[k] >= KAPI_GPU_MAX_TEXTURES || s_Tex[b.tex[k]].pOwner != pAS) return -2;
+			if (b.texUni[k] >= 0 && (unsigned) b.texUni[k] + 2 > b.fsNUni) return -2;
+		}
+	}
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// one frame at a time
+	s_bBusy = TRUE;
+	CScheduler::Get ()->EnterNoKill ();
+	unsigned nCV = 0;
+	CrashLogCrumb (CRUMB_V3D, 1);
+	int r = s_nState <= 0 ? -1
+	      : !ClipFrame2 (pV, nV, nStride, pB, nB, &nCV) ? -4
+	      : Render2 (*pF, s_pClip2, nCV, nStride, s_pClipB2, nB, pUni);
 	CrashLogCrumb (CRUMB_V3D, 0);
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();

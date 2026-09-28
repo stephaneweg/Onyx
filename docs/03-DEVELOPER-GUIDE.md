@@ -307,6 +307,18 @@ Notes / caveats:
 > (0 = unchanged; the N64 emulator's colour combiner is `texel × c1 + c2`), and
 > `KAPI_GPU_B_ALPHATEST(t)` discards the fragments whose alpha is below `t` / 255 (cut-out
 > foliage, fences, text) without blending or depth sorting.
+> **ABI v61 — your own shaders**: `kapi_gpu_program (-1, &prog)` uploads a vertex, a coordinate
+> and a fragment shader (V3D 4.2 QPU words, generated at run time with `user/v3d/qpu.h`:
+> `qpu::Prog p; p << qpu::I ().a (V3D_QPU_A_FADD, rf (3), r1, r5).ldvary (r0); …`; every app
+> links `v3d/libv3d.a`; test them on the PC with `tools/qpu/qpusim` —
+> `tools/tests/run_qpu_test.sh`), then `kapi_gpu_render2 (&frame, verts, nv, stride, batches,
+> nb, uniforms, nuni)` draws `struct kapi_gpu_batch2` batches of vertices of `stride` floats
+> (the clip-space x y z w first, clipped by the kernel) with their program, uniform ranges,
+> up to 8 textures (the kernel writes each one's TMU words at `fsUni + texUni[i]`), blending
+> (`KAPI_GPU_BLEND2`), write mask and scissor. The vertex shader writes Xs Ys (24.8 fixed
+> point: x × w/2 × 256 …) Zs 1/Wc then the varyings; the coordinate shader Xc Yc Zc Wc Xs Ys;
+> the fragment shader ends with its TLB writes after the last thread switch — see the v53
+> shaders in `kernel/sys/v3d_shaders.qasm` for the recipes. Used by the GameCube's TEV.
 > Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.

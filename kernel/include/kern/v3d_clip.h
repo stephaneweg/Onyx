@@ -75,4 +75,69 @@ static inline unsigned V3DClipTriangle (const kapi_gpu_vertex3 *pIn, kapi_gpu_ve
 }
 
 
+// ---- v61: generic vertices (gpu_render2): n floats, the clip-space position first (x y z w),
+// every float interpolated linearly.
+#define CLIP_MAX_FLOATS	64
+
+static inline float V3DClipDistN (const float *v, int nPlane)
+{
+	switch (nPlane)
+	{
+	case 0:  return v[2] + v[3];
+	case 1:  return v[3] - CLIP_EPS;
+	case 2:  return CLIP_GUARD * v[3] - v[0];
+	case 3:  return CLIP_GUARD * v[3] + v[0];
+	case 4:  return CLIP_GUARD * v[3] - v[1];
+	default: return CLIP_GUARD * v[3] + v[1];
+	}
+}
+
+// One triangle (pIn: 3 vertices of n floats) -> its clipped fan into pOut (room for 21 vertices
+// of n floats): how many vertices written.
+static inline unsigned V3DClipTriangleN (const float *pIn, unsigned n, float *pOut)
+{
+	bool bInside = true;
+	for (int p = 0; p < 6 && bInside; p++)
+		for (int k = 0; k < 3; k++) if (!(V3DClipDistN (pIn + k * n, p) >= 0)) { bInside = false; break; }	// (NaN: not inside)
+	if (bInside) { for (unsigned i = 0; i < 3 * n; i++) pOut[i] = pIn[i]; return 3; }
+	float A[10 * CLIP_MAX_FLOATS], B[10 * CLIP_MAX_FLOATS]; unsigned nA = 3;
+	for (unsigned i = 0; i < 3 * n; i++) A[i] = pIn[i];
+	for (int p = 0; p < 6 && nA >= 3; p++)
+	{
+		unsigned nB = 0;
+		for (unsigned k = 0; k < nA; k++)
+		{
+			const float *a = A + k * n, *b = A + ((k + 1) % nA) * n;
+			float da = V3DClipDistN (a, p), db = V3DClipDistN (b, p);
+			bool ina = da >= 0, inb = db >= 0;		// (NaN: out)
+			if (ina && nB < 10) { float *o = B + nB++ * n; for (unsigned i = 0; i < n; i++) o[i] = a[i]; }
+			if (ina != inb && nB < 10 && da == da && db == db)
+			{
+				float *o = B + nB++ * n, t = da / (da - db);
+				for (unsigned i = 0; i < n; i++) o[i] = a[i] + (b[i] - a[i]) * t;
+				switch (p)						// exactly on the plane (float rounding)
+				{
+				case 0:  o[2] = -o[3]; break;
+				case 1:  if (o[3] < CLIP_EPS) o[3] = CLIP_EPS; break;
+				case 2:  o[0] = CLIP_GUARD * o[3]; break;
+				case 3:  o[0] = -CLIP_GUARD * o[3]; break;
+				case 4:  o[1] = CLIP_GUARD * o[3]; break;
+				default: o[1] = -CLIP_GUARD * o[3]; break;
+				}
+			}
+		}
+		for (unsigned i = 0; i < nB * n; i++) A[i] = B[i];
+		nA = nB;
+	}
+	if (nA < 3) return 0;
+	unsigned m = 0;
+	for (unsigned k = 1; k + 1 < nA && m + 3 <= 21; k++)
+	{
+		const float *v[3] = { A, A + k * n, A + (k + 1) * n };
+		for (int j = 0; j < 3; j++) { for (unsigned i = 0; i < n; i++) pOut[m * n + i] = v[j][i]; m++; }
+	}
+	return m;
+}
+
+
 #endif

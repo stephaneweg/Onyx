@@ -65,7 +65,9 @@
 //      partitions: SD: (= SD0:) the first, SD1: .. SD3: the others.
 // v60: + sound_volume -- the master volume (0..10) and mute, applied to everything played;
 //      + wlan_reconnect -- join by wpa_supplicant.conf again without a reboot (the Wi-Fi menu).
-#define KAPI_ABI_VERSION	60
+// v61: + gpu_program / gpu_render2 -- the app's own QPU shaders (vertex, coordinate, fragment),
+//      batches with their uniforms, up to 8 textures, blend factors, write mask, scissor.
+#define KAPI_ABI_VERSION	61
 
 #ifdef __cplusplus
 extern "C" {
@@ -259,6 +261,56 @@ struct kapi_gpu_frame
 };
 #define KAPI_GPU_F_KEEP		(1u << 0)
 #define KAPI_GPU_MAX_BATCHES	4096
+
+// kapi v61 (gpu_program / gpu_render2): draws with the app's own QPU shaders (user/v3d/qpu.h
+// builds them; the GameCube's TEV is generated so). A program: the vertex shader (render), the
+// coordinate shader (binning) and the fragment shader, as V3D 4.2 instructions. A vertex is
+// `inputs` floats, read in order by the vertex shader (the coordinate shader reads the first
+// `csInputs`); the first 4 are the clip-space position (x y z w), which the kernel clips
+// (the near plane, a guard band) before the GPU, interpolating every float. The vertex shader
+// writes Xs Ys Zs 1/Wc then the `varyings` the fragment shader reads (ldvary, in order).
+struct kapi_gpu_program
+{
+	const unsigned long long *vs, *cs, *fs;
+	unsigned nvs, ncs, nfs;		// instructions (4096 at most each)
+	unsigned inputs;		// floats a vertex (4..64)
+	unsigned csInputs;		// floats the coordinate shader reads (4..inputs)
+	unsigned csOutputs;		// values the coordinate shader writes (6: Xc Yc Zc Wc Xs Ys)
+	unsigned varyings;		// 0..64
+	unsigned flags;			// KAPI_GPU_P_*
+};
+#define KAPI_GPU_P_FS_4WAY	(1u << 0)	// the fragment shader runs 4 threads a QPU (16 registers)
+						// (else 2: 32 registers)
+#define KAPI_GPU_P_FS_FINAL	(1u << 1)	// the fragment shader starts in its last thread section
+						// (no thread switch before its end)
+#define KAPI_GPU_P_FS_ZWRITE	(1u << 2)	// the fragment shader writes the depth
+#define KAPI_GPU_MAX_PROGRAMS	256
+// A batch of gpu_render2: vertices [first, first + count) (triangles) with a program, its
+// uniforms (ranges of the call's uniform array: vertex, coordinate, fragment shader), up to 8
+// textures -- for each, the index in the fragment uniforms where the kernel puts its two
+// configuration words (p0: the texture state, returning 16-bit floats RG / BA; p1: the sampler,
+// from texFlags: KAPI_GPU_B_LINEAR / WRAP_S / WRAP_T) -- and its state.
+struct kapi_gpu_batch2
+{
+	unsigned first, count;
+	int program;
+	unsigned flags;			// KAPI_GPU_B_ZFUNC, NOZWRITE, CULL_BACK / FRONT
+	unsigned blend;			// 0 none, else KAPI_GPU_BLEND2 (...)
+	unsigned wmask;			// the channels NOT written: bit 0 R, 1 G, 2 B, 3 A
+	int scissor[4];			// x, y, w, h in the target (w <= 0: the whole target)
+	unsigned vsUni, vsNUni, csUni, csNUni, fsUni, fsNUni;
+	int tex[8];			// gpu_texture handles (-1: none)
+	unsigned texFlags[8];
+	int texUni[8];			// p0 at fsUni + texUni[i], p1 right after (-1: not used)
+};
+// blending (V3D's factors: 0 zero, 1 one, 2 src colour, 3 1 - src colour, 4 dst colour,
+// 5 1 - dst colour, 6 src alpha, 7 1 - src alpha, 8 dst alpha, 9 1 - dst alpha, 10 const colour,
+// 11 1 - const colour, 12 const alpha, 13 1 - const alpha, 14 src alpha saturate; the equations:
+// 0 add, 1 subtract, 2 reverse subtract, 3 min, 4 max)
+#define KAPI_GPU_BLEND2(cSrc, cDst, aSrc, aDst, cEq, aEq) \
+	(1u | ((cSrc) & 15u) << 4 | ((cDst) & 15u) << 8 | ((aSrc) & 15u) << 12 | ((aDst) & 15u) << 16 \
+	 | ((cEq) & 7u) << 20 | ((aEq) & 7u) << 24)
+#define KAPI_GPU_MAX_UNIFORMS	(1 << 20)
 #define KAPI_GPU_MAX_TEXTURES	256
 #define KAPI_GPU_MAX_TEXSIZE	2048
 
@@ -767,6 +819,15 @@ struct TKApiTable
 	// it (a network added / its password changed), then DHCP starts over. 0 asked (the joining
 	// takes seconds: watch net_status), -1 no Wi-Fi running.
 	int (*wlan_reconnect) (void);
+	// --- v61 ---
+	// gpu_program: handle < 0 makes a program from *p (the QPU code copied), else replaces that
+	// one; p = 0 frees it -> the handle, -1 no GPU, -2 bad arguments, -4 no memory / no handle.
+	// A program's handles are freed when it ends.
+	int (*gpu_program) (int handle, const struct kapi_gpu_program *p);
+	// gpu_render2: nb batches over nv vertices of `stride` floats (>= every program's inputs),
+	// the uniforms uni[nuni] -> 0, -1 no GPU, -2 bad arguments, -3 the GPU did not finish.
+	int (*gpu_render2) (const struct kapi_gpu_frame *f, const float *v, unsigned nv, unsigned stride,
+			    const struct kapi_gpu_batch2 *b, unsigned nb, const unsigned *uni, unsigned nuni);
 };
 
 #ifdef __cplusplus
