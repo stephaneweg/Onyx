@@ -119,6 +119,27 @@ static void onyx_pointer(unsigned long sender, int event, long value)
 		ring_push(&e);
 		break;
 	}
+	case GUI_EVENT_PTR_WHEEL: {
+		/* the wheel: NetSurf scrolls on buttons 4 (up) and 5 (down), 100 px a notch, by
+		 * moving the pixels already drawn and drawing the band that comes in (fb_pan) */
+		int n = GUI_PTR_WHEEL(value);	/* notches: + forward (up), - back (down) */
+		enum nsfb_key_code_e k = (n > 0) ? NSFB_KEY_MOUSE_4 : NSFB_KEY_MOUSE_5;
+		if (n < 0)
+			n = -n;
+		e.type = NSFB_EVENT_MOVE_ABSOLUTE;	/* (where: the element under it may scroll) */
+		e.value.vector.x = GUI_PTR_X(value);
+		e.value.vector.y = GUI_PTR_Y(value);
+		e.value.vector.z = 0;
+		ring_push(&e);
+		while (n-- > 0) {
+			e.type = NSFB_EVENT_KEY_DOWN;
+			e.value.keycode = k;
+			ring_push(&e);
+			e.type = NSFB_EVENT_KEY_UP;
+			ring_push(&e);
+		}
+		break;
+	}
 	default:
 		break;
 	}
