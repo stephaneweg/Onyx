@@ -28,7 +28,7 @@ namespace gc {
 typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef unsigned long long u64;
 typedef signed char s8; typedef short s16; typedef int s32; typedef long long s64; typedef float f32;
 
-enum { MEM1_SIZE = 24 * 1024 * 1024, LCACHE_SIZE = 16 * 1024 };
+enum { MEM1_SIZE = 24 * 1024 * 1024, LCACHE_SIZE = 16 * 1024, MEM1_GUARD = 64 * 1024 };	// (MEM1_GUARD: gc_mem.cpp)
 enum { CPU_HZ = 486000000, BUS_HZ = 162000000, TB_HZ = BUS_HZ / 4, CYC_PER_TB = CPU_HZ / TB_HZ };
 
 // The host's writable and executable memory, for the JIT's code (Onyx: kapi_code_alloc) -> 0 none.

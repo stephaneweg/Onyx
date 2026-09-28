@@ -7,6 +7,7 @@
 //   GCV3D_EVERY=n: every n-th finished frame too (out.ppm -> out_<k>.ppm); GCV3D_DUMP=1: the batches,
 //   2: their programs' configurations too; GCV3D_SAVE=<file.gxf>: the last frame dumped as gcemu does
 //   GCV3D_SKIPLOG=file: each draw the recorder leaves out (field, reason, vertices, the maps' textures)
+//   GCV3D_VHASH=1: each finished frame's recording hashed (vertices, batches, uniforms), a line a frame
 //   GC_CARD=file: a memory card in slot A (a 2 MB .sav / Dolphin .raw: read, never written back);
 //   GC_PAD="f0-f1:hex;...": the pad's buttons (Machine::PAD_*) held from field f0 to f1 (0x10000 /
 //   0x20000 / 0x40000 / 0x80000: the stick left / right / up / down), as gcrun's
@@ -341,6 +342,17 @@ int main (int argc, char **argv)
 		m.setPad (0, pb & 0xFFFF, (pb & 0x10000) ? -100 : (pb & 0x20000) ? 100 : 0, (pb & 0x40000) ? 100 : (pb & 0x80000) ? -100 : 0, 0, 0, 0, 0);
 		m.runFrame ();
 		hashLine (m, i + 1);
+		static u32 hashed = 0;
+		if (getenv ("GCV3D_VHASH") && rec.ready >= 0 && rec.serial != hashed)	// (the frame just finished: its recording's hash)
+		{
+			hashed = rec.serial;
+			const Frame &F = rec.frame[rec.ready];
+			unsigned long long x = 1469598103934665603ull;
+			auto mix = [&] (const void *d, size_t n) { const u8 *b = (const u8 *) d; for (size_t k = 0; k < n; k++) { x ^= b[k]; x *= 1099511628211ull; } };
+			mix (F.v, (size_t) F.nf * 4); mix (F.u, (size_t) F.nu * 4);
+			for (u32 k = 0; k < F.nb; k++) { const Batch &b = F.b[k]; mix (&b.first, 4); mix (&b.count, 4); mix (&b.prog, 4); mix (&b.flags, 12); mix (b.scissor, 16); mix (b.texSlot, 32); }
+			printf ("vhash %d %u %016llX %u %u\n", i + 1, rec.serial, x, F.nb, F.nf);
+		}
 		if (every > 0 && rec.serial != lastSerial && rec.serial % (u32) every == 0 && rec.ready >= 0)
 		{
 			lastSerial = rec.serial;

@@ -160,9 +160,15 @@ answer in French. The docs stay in English.
   left quarter (the title screen too). Found by comparing `gcrun GC_GL=1` and `gcv3d` on the same
   scripted game (`GC_PAD`, `GC_CARD`, `GC_HASH`: the same MEM1, so the drawing). Now the EFB's
   space + `Frame::rect` (docs/03).
-  Next, by gain: the JIT (a base register's host pointer kept across a block's accesses; the
-  block exits' write-backs; the FP compares), the recorder's per-vertex work (the per-draw
-  setup hoisted, a specialised vertex loader -- the GX core in heavy scenes), then the
+  Then (same day): the JIT's base pointers (a D-form access through a register found in MEM1:
+  one load / store; little measured gain -- the CPU part is memory-bound), the code buffer's
+  hot / cold chunks (L1I refills 20 -> 17.5 a thousand instructions, -7 % cycles), the
+  recorder's and the vertex decoder's per-draw plans (the recordings bit for bit the same:
+  `GCV3D_VHASH`). The CPU-bound scene of the intro: 20.4 -> 17.0 ms a field (50 fields/s, full
+  speed); the user saw 15-20 fps in the game before the GX plans.
+  Next, by gain: the JIT's hot code smaller still (the not-taken paths of the branches the
+  compiler hints as unlikely out of line; the FP compares fused), a second, optimising tier for
+  the hot code (whole functions, the registers kept across blocks, the hot code packed), then the
   display's `gpu_render2` (~20-45 ms a frame on core 0: the kernel's clipping and copies).
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
   - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd

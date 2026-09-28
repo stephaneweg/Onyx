@@ -238,6 +238,58 @@ public:
 		}
 	}
 
+	// a lit channel's plan (the draw's): its control's parts, the lights it sums (in their order)
+	struct ChanPlan { int ctl, dfn, atn, nL; bool matV, ambV; Light L[8]; };
+	void chanPlan (ChanPlan &c, int ctl) const
+	{
+		c.ctl = ctl; c.dfn = (ctl >> 7) & 3; c.atn = (ctl >> 9) & 3; c.matV = (ctl & 1) != 0; c.ambV = (ctl & 64) != 0;
+		c.nL = 0;
+		int mask = lightMask (ctl);
+		for (int L = 0; L < 8; L++) if (mask & (1 << L)) c.L[c.nL++] = lt[L];
+	}
+	// channel () through a plan (the same arithmetic: lit only -- (ctl & 2) set)
+	static void chanEval (const ChanPlan &c, const float regMat[4], const float regAmb[4], const float vcol[4],
+			      const float pos[3], const float n[3], float out[4], int c0, int c1)
+	{
+		const float *mat = c.matV ? vcol : regMat;
+		float lacc[4];
+		for (int k = c0; k < c1; k++) lacc[k] = c.ambV ? vcol[k] : regAmb[k];
+		int dfn = c.dfn, atn = c.atn;
+		for (int j = 0; j < c.nL; j++)
+		{
+			const Light &li = c.L[j];
+			const float *lcol = li.col, *cosA = li.cosA, *distA = li.distA, *lpos = li.pos, *ldir = li.dir;
+			float ld[3] = { lpos[0] - pos[0], lpos[1] - pos[1], lpos[2] - pos[2] }, at = 1.0f;
+			if (atn == 3)
+			{
+				float d2 = dot3 (ld, ld), d = __builtin_sqrtf (d2);
+				if (d > 0) { ld[0] /= d; ld[1] /= d; ld[2] /= d; }
+				float cs = dot3 (ld, ldir); if (cs < 0) cs = 0;
+				float den = distA[0] + distA[1] * d + distA[2] * d2;
+				float num = cosA[0] + cosA[1] * cs + cosA[2] * cs * cs; if (num < 0) num = 0;
+				at = den != 0 ? num / den : 0;
+			}
+			else if (atn == 1)
+			{
+				if (dot3 (ld, ld) > 0) norm3 (ld); else { ld[0] = n[0]; ld[1] = n[1]; ld[2] = n[2]; }
+				float cs = 0;
+				if (dot3 (n, ld) >= 0) { cs = dot3 (n, ldir); if (cs < 0) cs = 0; }
+				const float *da = dfn == 0 ? distA : li.daN;
+				float den = da[0] + da[1] * cs + da[2] * cs * cs;
+				float num = cosA[0] + cosA[1] * cs + cosA[2] * cs * cs; if (num < 0) num = 0;
+				at = den != 0 ? num / den : 0;
+			}
+			else { if (dot3 (ld, ld) > 0) norm3 (ld); else { ld[0] = n[0]; ld[1] = n[1]; ld[2] = n[2]; } }
+			float df = dfn == 0 ? 1.0f : dfn == 1 ? dot3 (ld, n) : (dot3 (ld, n) > 0 ? dot3 (ld, n) : 0);
+			for (int k = c0; k < c1; k++) { float x = at * df * lcol[k]; lacc[k] += __builtin_roundf (x); }
+		}
+		for (int k = c0; k < c1; k++)
+		{
+			float l = lacc[k] < 0 ? 0 : lacc[k] > 255 ? 255 : lacc[k];
+			out[k] = __builtin_floorf (mat[k] * (l + __builtin_floorf (l / 128.0f)) / 256.0f);
+		}
+	}
+
 	// ---- a draw (its time counted)
 	void draw (gc::Machine &m, const gc::GxState &s, const gc::GxVertex *vx, int nv, const u32 *idx, int ni, int prim) override
 	{
@@ -375,89 +427,132 @@ public:
 			  | (lit1 && u1 ? lightMask (s.chan[1]) : 0) | (a1Own ? lightMask (s.chan[3]) : 0);
 		readLights (m, lmask);
 		bool needN = hasN && lmask != 0;
+		// (the draw's constants in locals: the loop's stores to tmp do not make them read again)
+		const bool lit0c = lit0 && c0End, lit1c = lit1 && c1End;
+		ChanPlan cp0, cp0a, cp1, cp1a;
+		if (lit0c) chanPlan (cp0, s.chan[0]);
+		if (lit0 && a0Own) chanPlan (cp0a, s.chan[2]);
+		if (lit1c) chanPlan (cp1, s.chan[1]);
+		if (lit1 && a1Own) chanPlan (cp1a, s.chan[3]);
+		const bool lit0L = lit0c && (s.chan[0] & 2), lit0aL = lit0 && a0Own && (s.chan[2] & 2);
+		const bool lit1L = lit1c && (s.chan[1] & 2), lit1aL = lit1 && a1Own && (s.chan[3] & 2);
+		const float P0 = s.proj[0], P1 = s.proj[1], P2 = s.proj[2], P3 = s.proj[3], P4 = s.proj[4], P5 = s.proj[5];
+		const float VP0 = s.vp[0], VP1 = s.vp[1];
+		const int vtx1 = s.vtx[1]; const bool dual = s.vtx[3] != 0;
+		// the texgens' plans (their post-transform matrices read once) and the varyings'
+		struct TgPlan { u32 info; int srcSel, type, sr; bool three, norm; float post[12]; };
+		TgPlan tp[8];
+		for (int t = 0; t <= tMax; t++)
+		{
+			TgPlan &q = tp[t];
+			q.info = (u32) s.texgen[t][0]; q.srcSel = (int) (q.info >> 7) & 31; q.type = (int) (q.info >> 4) & 7;
+			q.sr = (int) (q.info >> 12) & 7; q.three = (q.info & 2) != 0;
+			u32 pinfo = (u32) s.texgen[t][1], pr = pinfo & 63;
+			q.norm = (pinfo & 256) != 0;
+			for (int k = 0; k < 3; k++) for (int c = 0; c < 4; c++) q.post[k * 4 + c] = f (m, 0x500 + ((pr + (u32) k) & 63) * 4 + (u32) c);
+		}
+		struct VyPlan { int kind, a, coord; float scale, ts; };		// (kind 0 / 1: a colour; 2: a coordinate's q; 3: s / t)
+		VyPlan vp[64];
+		const int nVary = P.nVary;
+		for (int k = 0; k < nVary; k++)
+		{
+			const gxtev::Vary &vy = P.vary[k];
+			VyPlan &q = vp[k];
+			if (vy.kind == gxtev::V_C0) { q.kind = 0; q.a = vy.a; }
+			else if (vy.kind == gxtev::V_C1) { q.kind = 1; q.a = vy.a; }
+			else
+			{
+				const gxtev::Lookup &lk = P.look[vy.a];
+				q.coord = lk.coord; q.a = vy.b;
+				if (vy.b == 2) q.kind = 2;
+				else { q.kind = 3; q.ts = s.texSize[lk.map][vy.b]; q.scale = s.tcScale[lk.coord][vy.b]; }
+			}
+		}
+		float Mp[12], Mn[9]; u32 lastPm = ~0u;				// (the position / normal matrices of the last index)
+		float Mt[8][12]; u32 lastTm[8];					// (each texgen's of its last index)
+		for (int t = 0; t < 8; t++) lastTm[t] = ~0u;
+		float tg[8][3];
+		for (int t = 0; t < 8; t++) { tg[t][0] = tg[t][1] = 0; tg[t][2] = 1; }	// (the ones above tMax: so)
 		for (int i = 0; i < nv; i++)
 		{
 			const gc::GxVertex &v = vx[i];
 			float *o = tmp + (size_t) i * (size_t) stride;
 			u32 pm = v.mtx[0];
+			if (pm != lastPm)
+			{
+				lastPm = pm;
+				for (int r = 0; r < 3; r++) for (int c = 0; c < 4; c++) Mp[r * 4 + c] = f (m, ((pm + (u32) r) & 63) * 4 + (u32) c);
+				u32 nb = (pm & 31) * 3;
+				for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) Mn[r * 3 + c] = f (m, 0x400 + ((nb + (u32) r * 3 + (u32) c) % 96));
+			}
 			float p4[4] = { v.pos[0], v.pos[1], v.pos[2], 1 };
 			float eye[3];
-			for (int r = 0; r < 3; r++) { u32 a = ((pm + (u32) r) & 63) * 4; eye[r] = f (m, a) * p4[0] + f (m, a + 1) * p4[1] + f (m, a + 2) * p4[2] + f (m, a + 3); }
+			for (int r = 0; r < 3; r++) eye[r] = Mp[r * 4] * p4[0] + Mp[r * 4 + 1] * p4[1] + Mp[r * 4 + 2] * p4[2] + Mp[r * 4 + 3];
 			float n[3] = { 0, 0, 0 };
 			if (needN)
 			{
-				u32 nb = (pm & 31) * 3;
-				for (int r = 0; r < 3; r++)
-				{
-					u32 w = nb + (u32) r * 3;
-					n[r] = f (m, 0x400 + (w % 96)) * v.nrm[0] + f (m, 0x400 + ((w + 1) % 96)) * v.nrm[1] + f (m, 0x400 + ((w + 2) % 96)) * v.nrm[2];
-				}
+				for (int r = 0; r < 3; r++) n[r] = Mn[r * 3] * v.nrm[0] + Mn[r * 3 + 1] * v.nrm[1] + Mn[r * 3 + 2] * v.nrm[2];
 				norm3 (n);
 			}
 			float X, Y, Z, W;
-			if (proj) { X = s.proj[0] * eye[0] + s.proj[1]; Y = s.proj[2] * eye[1] + s.proj[3]; Z = s.proj[4] * eye[2] + s.proj[5]; W = 1; }
-			else { X = s.proj[0] * eye[0] + s.proj[1] * eye[2]; Y = s.proj[2] * eye[1] + s.proj[3] * eye[2]; Z = s.proj[4] * eye[2] + s.proj[5]; W = -eye[2]; }
-			X *= s.vp[0]; Y *= s.vp[1]; Z = 2 * Z + W;
+			if (proj) { X = P0 * eye[0] + P1; Y = P2 * eye[1] + P3; Z = P4 * eye[2] + P5; W = 1; }
+			else { X = P0 * eye[0] + P1 * eye[2]; Y = P2 * eye[1] + P3 * eye[2]; Z = P4 * eye[2] + P5; W = -eye[2]; }
+			X *= VP0; Y *= VP1; Z = 2 * Z + W;
 			o[0] = ax * W + bx * (X + W); o[1] = ay * W - by * (Y + W); o[2] = az * W + bz * (Z + W); o[3] = W;
 			// the colour channels
 			float raw0[4], raw1[4], v0[4], v1[4], col0[4] = { 0, 0, 0, 0 }, col1[4] = { 0, 0, 0, 0 };
 			for (int k = 0; k < 4; k++) { raw0[k] = v.c0[k]; raw1[k] = v.c1[k]; v0[k] = h0 ? raw0[k] : 255; }
 			for (int k = 0; k < 4; k++) v1[k] = h1 ? raw1[k] : v0[k];
-			if (lit0)
-			{
-				if (c0End) channel (s.chan[0], m0, a0, v0, eye, n, col0, 0, c0End);
-				if (a0Own) channel (s.chan[2], m0, a0, v0, eye, n, col0, 3, 4);
-			}
-			if (lit1)
-			{
-				if (c1End) channel (s.chan[1], m1, a1, v1, eye, n, col1, 0, c1End);
-				if (a1Own) channel (s.chan[3], m1, a1, v1, eye, n, col1, 3, 4);
-			}
-			if (s.vtx[1] == 0) for (int k = 0; k < 4; k++) col0[k] = h0 ? raw0[k] : 255;
-			if (s.vtx[1] < 2) for (int k = 0; k < 4; k++) col1[k] = h1 ? raw1[k] : col0[k];
+			if (lit0c) { if (lit0L) chanEval (cp0, m0, a0, v0, eye, n, col0, 0, c0End); else for (int k = 0; k < c0End; k++) col0[k] = cp0.matV ? v0[k] : m0[k]; }
+			if (lit0 && a0Own) { if (lit0aL) chanEval (cp0a, m0, a0, v0, eye, n, col0, 3, 4); else col0[3] = cp0a.matV ? v0[3] : m0[3]; }
+			if (lit1c) { if (lit1L) chanEval (cp1, m1, a1, v1, eye, n, col1, 0, c1End); else for (int k = 0; k < c1End; k++) col1[k] = cp1.matV ? v1[k] : m1[k]; }
+			if (lit1 && a1Own) { if (lit1aL) chanEval (cp1a, m1, a1, v1, eye, n, col1, 3, 4); else col1[3] = cp1a.matV ? v1[3] : m1[3]; }
+			if (vtx1 == 0) for (int k = 0; k < 4; k++) col0[k] = h0 ? raw0[k] : 255;
+			if (vtx1 < 2) for (int k = 0; k < 4; k++) col1[k] = h1 ? raw1[k] : col0[k];
 			// the texture coordinates of the lookups
-			float tg[8][3];
-			for (int t = 0; t < 8; t++) { tg[t][0] = tg[t][1] = 0; tg[t][2] = 1; }
 			for (int t = 0; t <= tMax; t++)
 			{
-				u32 info = (u32) s.texgen[t][0];
-				int srcSel = (int) (info >> 7) & 31, type = (int) (info >> 4) & 7;
+				const TgPlan &q = tp[t];
 				float in[4] = { 0, 0, 1, 1 };
-				if (srcSel == 0) { in[0] = v.pos[0]; in[1] = v.pos[1]; in[2] = v.pos[2]; }
-				else if (srcSel == 1) { if (hasN) { in[0] = v.nrm[0]; in[1] = v.nrm[1]; in[2] = v.nrm[2]; } else in[2] = 0; }
-				else if (srcSel >= 5 && srcSel <= 12) { in[0] = v.tc[srcSel - 5][0]; in[1] = v.tc[srcSel - 5][1]; }
-				if (!(info & 4)) in[2] = 1;
-				if (type == 0)
+				if (q.srcSel == 0) { in[0] = v.pos[0]; in[1] = v.pos[1]; in[2] = v.pos[2]; }
+				else if (q.srcSel == 1) { if (hasN) { in[0] = v.nrm[0]; in[1] = v.nrm[1]; in[2] = v.nrm[2]; } else in[2] = 0; }
+				else if (q.srcSel >= 5 && q.srcSel <= 12) { in[0] = v.tc[q.srcSel - 5][0]; in[1] = v.tc[q.srcSel - 5][1]; }
+				if (!(q.info & 4)) in[2] = 1;
+				if (q.type == 0)
 				{
 					u32 r = v.mtx[1 + t];
-					for (int k = 0; k < 2; k++) { u32 a = ((r + (u32) k) & 63) * 4; tg[t][k] = f (m, a) * in[0] + f (m, a + 1) * in[1] + f (m, a + 2) * in[2] + f (m, a + 3) * in[3]; }
-					if (info & 2) { u32 a = ((r + 2) & 63) * 4; tg[t][2] = f (m, a) * in[0] + f (m, a + 1) * in[1] + f (m, a + 2) * in[2] + f (m, a + 3) * in[3]; }
-					else tg[t][2] = 1;
-					if (s.vtx[3])
+					float *T = Mt[t];
+					if (r != lastTm[t])
 					{
-						u32 pinfo = (u32) s.texgen[t][1], pr = pinfo & 63;
-						float q[3] = { tg[t][0], tg[t][1], tg[t][2] };
-						if ((pinfo & 256) && dot3 (q, q) > 0) norm3 (q);
-						for (int k = 0; k < 3; k++) { u32 a = 0x500 + ((pr + (u32) k) & 63) * 4; tg[t][k] = f (m, a) * q[0] + f (m, a + 1) * q[1] + f (m, a + 2) * q[2] + f (m, a + 3); }
+						lastTm[t] = r;
+						for (int k = 0; k < 3; k++) for (int c = 0; c < 4; c++) T[k * 4 + c] = f (m, ((r + (u32) k) & 63) * 4 + (u32) c);
+					}
+					for (int k = 0; k < 2; k++) tg[t][k] = T[k * 4] * in[0] + T[k * 4 + 1] * in[1] + T[k * 4 + 2] * in[2] + T[k * 4 + 3] * in[3];
+					if (q.three) tg[t][2] = T[8] * in[0] + T[9] * in[1] + T[10] * in[2] + T[11] * in[3];
+					else tg[t][2] = 1;
+					if (dual)
+					{
+						float qv[3] = { tg[t][0], tg[t][1], tg[t][2] };
+						if (q.norm && dot3 (qv, qv) > 0) norm3 (qv);
+						for (int k = 0; k < 3; k++) tg[t][k] = q.post[k * 4] * qv[0] + q.post[k * 4 + 1] * qv[1] + q.post[k * 4 + 2] * qv[2] + q.post[k * 4 + 3];
 					}
 				}
-				else if (type == 1) { int sr = (int) (info >> 12) & 7; tg[t][0] = tg[sr][0]; tg[t][1] = tg[sr][1]; tg[t][2] = tg[sr][2]; }
-				else { const float *cc = type == 2 ? col0 : col1; tg[t][0] = cc[0] / 255.0f; tg[t][1] = cc[1] / 255.0f; tg[t][2] = 1; }
+				else if (q.type == 1)				// (emboss: from an earlier texgen -- a later one or itself: not made yet, 0 0 1)
+				{
+					if (q.sr >= t) { tg[t][0] = 0; tg[t][1] = 0; tg[t][2] = 1; }
+					else { tg[t][0] = tg[q.sr][0]; tg[t][1] = tg[q.sr][1]; tg[t][2] = tg[q.sr][2]; }
+				}
+				else { const float *cc = q.type == 2 ? col0 : col1; tg[t][0] = cc[0] / 255.0f; tg[t][1] = cc[1] / 255.0f; tg[t][2] = 1; }
 			}
 			// the varyings, in the program's order
-			for (int k = 0; k < P.nVary; k++)
+			for (int k = 0; k < nVary; k++)
 			{
-				const gxtev::Vary &vy = P.vary[k];
+				const VyPlan &q = vp[k];
 				float x;
-				if (vy.kind == gxtev::V_C0) x = col0[vy.a] / 255.0f;
-				else if (vy.kind == gxtev::V_C1) x = col1[vy.a] / 255.0f;
-				else
-				{
-					const gxtev::Lookup &lk = P.look[vy.a];
-					const float *t = tg[lk.coord];
-					if (vy.b == 2) x = t[2];
-					else { float ts = s.texSize[lk.map][vy.b]; x = ts > 0 ? t[vy.b] * s.tcScale[lk.coord][vy.b] / ts : 0; }
-				}
+				if (q.kind == 0) x = col0[q.a] / 255.0f;
+				else if (q.kind == 1) x = col1[q.a] / 255.0f;
+				else if (q.kind == 2) x = tg[q.coord][2];
+				else x = q.ts > 0 ? tg[q.coord][q.a] * q.scale / q.ts : 0;
 				o[4 + k] = x;
 			}
 		}

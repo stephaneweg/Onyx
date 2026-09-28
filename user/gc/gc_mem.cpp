@@ -13,7 +13,9 @@ static void zero (void *p, u32 n) { u8 *d = (u8 *) p; while (n--) *d++ = 0; }
 
 Machine::Machine ()
 {
-	mem1 = new u8[MEM1_SIZE + 16];			// (+16: the JIT's unaligned accesses at the end)
+	// (a guard zone of MEM1_GUARD bytes before and after: the JIT's accesses through a base register
+	// found in MEM1 plus a displacement of up to 32 KB, not checked again)
+	mem1 = new u8[MEM1_SIZE + 2 * MEM1_GUARD] + MEM1_GUARD;
 	jit = 0; jitUntil = 0; jitFlush = false; jitBlocks = jitCompiles = 0; jitProfile = false;
 	jitInterpOps = 0; jitEnters = 0; for (int i = 0; i < 16; i++) jitSlowMem[0][i] = jitSlowMem[1][i] = 0;
 	aram = new u8[ARAM_SIZE];
@@ -33,7 +35,7 @@ Machine::Machine ()
 	reset ();
 }
 
-Machine::~Machine () { delete [] mem1; delete [] aram; delete [] texPool; }
+Machine::~Machine () { delete [] (mem1 - MEM1_GUARD); delete [] aram; delete [] texPool; }
 
 void Machine::reset ()
 {

@@ -271,63 +271,46 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 	u32 mat = xfRegs[0x1018], mat2 = xfRegs[0x1019];
 	int vsz = gxVertexSize (vat);
 	u32 vcd = (((lo >> 11) & 3) ? GX_VCD_NRM : 0) | (((lo >> 13) & 3) ? GX_VCD_C0 : 0) | (((lo >> 15) & 3) ? GX_VCD_C1 : 0);
-	// ---- the vertices ----
+	// ---- the vertices: a plan made once for the draw -- the attributes present, in the hardware's order,
+	// their formats, scales and arrays -- and a vertex with the defaults, then each vertex through them
 	static GxVertex vx[0x10000];
 	if (count > 0x10000) count = 0x10000;
-	const u8 *p = data;
-	for (int i = 0; i < count; i++, p += vsz)
+	struct Att { int kind, type, fmt, n, cs, adv, extra; float sc; u32 base, stride; };	// (kind: 0 the position, 1 the normal, 2 / 3 a colour, 4 + k texture coordinate k)
+	Att plan[12]; int np = 0;
+	GxVertex T;
+	T.mtx[0] = (u8) (mat & 63);
+	for (int k = 0; k < 8; k++) T.mtx[1 + k] = (u8) (k < 4 ? (mat >> (6 + 6 * k)) & 63 : (mat2 >> (6 * (k - 4))) & 63);
+	T.pos[0] = T.pos[1] = T.pos[2] = 0; T.nrm[0] = T.nrm[1] = T.nrm[2] = 0;
+	for (int c = 0; c < 4; c++) T.c0[c] = T.c1[c] = 255;
+	for (int k = 0; k < 8; k++) T.tc[k][0] = T.tc[k][1] = 0;
+	int nTm = 0, tmK[8];
+	for (int k = 0; k < 8; k++) if (lo & (2u << k)) tmK[nTm++] = k;
+	auto arr = [&] (Att &at, int a) { at.base = cpRegs[0xA0 + a] & 0x03FFFFFF; at.stride = cpRegs[0xB0 + a] & 0xFF; };
 	{
-		GxVertex &v = vx[i];
-		const u8 *q = p;
-		v.mtx[0] = (u8) (mat & 63);
-		for (int k = 0; k < 8; k++) v.mtx[1 + k] = (u8) (k < 4 ? (mat >> (6 + 6 * k)) & 63 : (mat2 >> (6 * (k - 4))) & 63);
-		if (lo & 1) v.mtx[0] = *q++ & 63;
-		for (int k = 0; k < 8; k++) if (lo & (2u << k)) v.mtx[1 + k] = *q++ & 63;
-		auto fetch = [&] (int type, int arr, const u8 *&src) -> const u8 *
-		{
-			if (type == 1) return src;
-			u32 idx = type == 2 ? *src : be16 (src);
-			src += type == 2 ? 1 : 2;
-			u32 a = ((cpRegs[0xA0 + arr] & 0x03FFFFFF) + idx * (cpRegs[0xB0 + arr] & 0xFF)) & 0x01FFFFFF;
-			return mem1 + (a < MEM1_SIZE - 64 ? a : 0);
-		};
-		// the position
-		int t = (int) (lo >> 9) & 3;
-		v.pos[0] = v.pos[1] = v.pos[2] = 0;
+		int t = (int) (lo >> 9) & 3;					// the position
 		if (t)
 		{
-			int fmt = (int) (va >> 1) & 7, n = (va & 1) ? 3 : 2, cs = kCompSize[fmt];
-			float sc = fmt == 4 ? 1.f : 1.f / (float) (1u << ((va >> 4) & 31));
-			const u8 *src = fetch (t, 0, q);
-			for (int c = 0; c < n; c++) v.pos[c] = comp (src + c * cs, fmt, sc);
-			if (t == 1) q += n * cs;
+			Att &at = plan[np++]; at.kind = 0; at.type = t; at.fmt = (int) (va >> 1) & 7; at.n = (va & 1) ? 3 : 2; at.cs = kCompSize[at.fmt];
+			at.sc = at.fmt == 4 ? 1.f : 1.f / (float) (1u << ((va >> 4) & 31));
+			at.adv = at.n * at.cs; at.extra = 0; arr (at, 0);
 		}
-		// the normal (the binormal, the tangent: skipped)
-		t = (int) (lo >> 11) & 3;
-		v.nrm[0] = v.nrm[1] = v.nrm[2] = 0;
+		t = (int) (lo >> 11) & 3;					// the normal (the binormal, the tangent: skipped)
 		if (t)
 		{
-			int fmt = (int) (va >> 10) & 7, cs = kCompSize[fmt];
+			Att &at = plan[np++]; at.kind = 1; at.type = t; at.fmt = (int) (va >> 10) & 7; at.n = 3; at.cs = kCompSize[at.fmt];
 			bool nbt = (va >> 9) & 1, idx3 = (va >> 31) & 1;
-			float sc = fmt == 1 ? 1 / 64.f : fmt == 3 ? 1 / 16384.f : 1.f;
-			const u8 *src = fetch (t, 1, q);
-			for (int c = 0; c < 3; c++) v.nrm[c] = comp (src + c * cs, fmt, sc);
-			if (t == 1) q += (nbt ? 9 : 3) * cs;
-			else if (nbt && idx3) q += t == 2 ? 2 : 4;
+			at.sc = at.fmt == 1 ? 1 / 64.f : at.fmt == 3 ? 1 / 16384.f : 1.f;
+			at.adv = (nbt ? 9 : 3) * at.cs; at.extra = nbt && idx3 ? (t == 2 ? 2 : 4) : 0; arr (at, 1);
 		}
-		// the colours
-		for (int k = 0; k < 2; k++)
+		static const int colBytes[8] = { 2, 3, 4, 2, 3, 4, 4, 4 };
+		for (int k = 0; k < 2; k++)					// the colours
 		{
-			u8 *c = k ? v.c1 : v.c0;
-			c[0] = c[1] = c[2] = c[3] = 255;
 			t = (int) (lo >> (13 + 2 * k)) & 3;
 			if (!t) continue;
-			const u8 *src = fetch (t, 2 + k, q);
-			int n = colour (src, (int) (va >> (14 + 4 * k)) & 7, c);
-			if (t == 1) q += n;
+			Att &at = plan[np++]; at.kind = 2 + k; at.type = t; at.fmt = (int) (va >> (14 + 4 * k)) & 7;
+			at.adv = colBytes[at.fmt]; at.extra = 0; at.n = 0; at.cs = 0; at.sc = 0; arr (at, 2 + k);
 		}
-		// the texture coordinates
-		static const int cntBit[8] = { 21, 0, 9, 18, 27, 5, 14, 23 };
+		static const int cntBit[8] = { 21, 0, 9, 18, 27, 5, 14, 23 };	// the texture coordinates
 		static const int fmtBit[8] = { 22, 1, 10, 19, 28, 6, 15, 24 };
 		static const int shBit[8] = { 25, 4, 13, 22, 0, 9, 18, 27 };
 		static const int reg[8] = { 0, 1, 1, 1, 2, 2, 2, 2 };
@@ -335,15 +318,40 @@ void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 		for (int k = 0; k < 8; k++)
 		{
 			t = (int) (hi >> (2 * k)) & 3;
-			v.tc[k][0] = v.tc[k][1] = 0;
 			if (!t) continue;
 			u32 rc = regFmt[k] == 0 ? va : regFmt[k] == 1 ? vb : vc;
 			u32 rs = reg[k] == 0 ? va : reg[k] == 1 ? vb : vc;
-			int fmt = (int) (rc >> fmtBit[k]) & 7, n = ((rc >> cntBit[k]) & 1) ? 2 : 1, cs = kCompSize[fmt];
-			float sc = fmt == 4 ? 1.f : 1.f / (float) (1u << ((rs >> shBit[k]) & 31));
-			const u8 *src = fetch (t, 4 + k, q);
-			for (int c = 0; c < n; c++) v.tc[k][c] = comp (src + c * cs, fmt, sc);
-			if (t == 1) q += n * cs;
+			Att &at = plan[np++]; at.kind = 4 + k; at.type = t; at.fmt = (int) (rc >> fmtBit[k]) & 7; at.n = ((rc >> cntBit[k]) & 1) ? 2 : 1;
+			at.cs = kCompSize[at.fmt]; at.sc = at.fmt == 4 ? 1.f : 1.f / (float) (1u << ((rs >> shBit[k]) & 31));
+			at.adv = at.n * at.cs; at.extra = 0; arr (at, 4 + k);
+		}
+	}
+	const bool pnIdx = lo & 1;
+	const u8 *p = data;
+	for (int i = 0; i < count; i++, p += vsz)
+	{
+		GxVertex &v = vx[i];
+		v = T;
+		const u8 *q = p;
+		if (pnIdx) v.mtx[0] = *q++ & 63;
+		for (int j = 0; j < nTm; j++) v.mtx[1 + tmK[j]] = *q++ & 63;
+		for (int j = 0; j < np; j++)
+		{
+			const Att &at = plan[j];
+			const u8 *src;
+			if (at.type == 1) { src = q; q += at.adv; }
+			else
+			{
+				u32 idx = at.type == 2 ? *q : be16 (q);
+				q += at.type == 2 ? 1 : 2;
+				u32 a = (at.base + idx * at.stride) & 0x01FFFFFF;
+				src = mem1 + (a < MEM1_SIZE - 64 ? a : 0);
+				q += at.extra;
+			}
+			if (at.kind == 0) { for (int c = 0; c < at.n; c++) v.pos[c] = comp (src + c * at.cs, at.fmt, at.sc); }
+			else if (at.kind == 1) { for (int c = 0; c < 3; c++) v.nrm[c] = comp (src + c * at.cs, at.fmt, at.sc); }
+			else if (at.kind < 4) colour (src, at.fmt, at.kind == 2 ? v.c0 : v.c1);
+			else { float *tc = v.tc[at.kind - 4]; for (int c = 0; c < at.n; c++) tc[c] = comp (src + c * at.cs, at.fmt, at.sc); }
 		}
 	}
 	if (gpu) { gxGpuPrimitive (prim, count, vx, vcd); return; }

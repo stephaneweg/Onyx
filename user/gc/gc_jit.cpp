@@ -29,7 +29,8 @@ enum { MSR_EE = 0x8000, MSR_IR = 0x20, MSR_DR = 0x10 };
 enum
 {
 	CODE_SIZE = 32 << 20, MAX_BLOCKS = 1 << 17, HASH_BITS = 16, FAST_BITS = 16, FAST_OFF = 4096,
-	MAX_INSNS = 64, NPAGES = MEM1_SIZE >> 12, STUB_WORDS = 256
+	MAX_INSNS = 64, NPAGES = MEM1_SIZE >> 12, STUB_WORDS = 256,
+	CHUNK_WORDS = (1 << 20) / 4, BLOCK_ROOM = (32 << 10) / 4, COLD_SCRATCH = 64 << 10
 };
 static const u32 NONE = 0xFFFFFFFFu, NOKEY = 0xFFFFFFFFu;
 enum { H_INTERP, H_RD8, H_RD16, H_RD32, H_WR8, H_WR16, H_WR32, H_RD64, H_WR64, H_CVTD, H_CVTS, H_FPRF, H_GATHER };
@@ -53,7 +54,7 @@ static void flushCode (void *from, void *to)
 }
 
 // ---- the AArch64 assembler (what the translation uses) -------------------------------------------------------
-enum { WZR = 31, SP = 31, XM = 19, XMEM = 20, XCTX = 21, WMSZ = 22, WEA = 23, WONE = 24, XK1 = 25, XDC = 26 };
+enum { WZR = 31, SP = 31, XM = 19, XMEM = 20, XCTX = 21, WMSZ = 22, WEA = 23, XK1 = 25, XDC = 26 };
 enum { EQ = 0, NE, HS, LO, MI, PL, VS, VC, HI, LS, GE, LT, GT, LE };
 enum : u32
 {
@@ -216,6 +217,12 @@ struct Jit
 	Machine *m;
 	Asm a;
 	u32 *code, *codeEnd, *codeStart;
+	// The buffer in chunks of CHUNK_WORDS: the blocks' main code from the chunk's start up (a.p), their
+	// cold paths and exit stubs from its end down (coldTop): all within a b.cond's reach (1 MB) of the
+	// main code, which stays dense (the I-cache). coldScratch: where the cold code is emitted once to
+	// learn its length.
+	u32 *chunkEnd, *coldTop, *coldScratch;
+	void nextChunk ();
 	u32 *dispatch, *exitStub;
 	void (*enter) (Machine *, void *, u8 *);
 	u8 *ctx;					// the helpers' addresses, then the fast table (at FAST_OFF)
@@ -281,10 +288,13 @@ struct Jit
 	// Guest 0..31 = the GPRs, then CR, XER, LR, CTR: loaded when first used, written back (the
 	// dirty ones) at the block's exits and before a helper that reads them; a helper that does
 	// not touch them (off the main path: the memory, the conversions) saves / reloads the
-	// caller-saved ones around its call. The pool: x9..x15, x27, x28; the temporaries are
-	// w0..w8 (x16 / x17: the assembler's).
-	enum { G_CR = 32, G_XER, G_LR, G_CTR, NG };
+	// caller-saved ones around its call. The pool: x9..x15, x24, x27, x28; the temporaries are
+	// w0..w8 (x16 / x17: the assembler's). A pool register may hold a GPR's pointer into MEM1
+	// instead (pHost, hGuest = 64 + the GPR: basePtr) -- forgotten when that GPR is written, made
+	// again after a call that clobbers it.
+	enum { G_CR = 32, G_XER, G_LR, G_CTR, NG, P_BASE = 64 };
 	int gHost[NG]; bool gDirty[NG]; int hGuest[32]; u32 hStamp[32], stamp, pinned;
+	int pHost[32]; u32 bWrit;			// (the GPRs' pointers; the GPRs written so far in the block)
 	int gOff (int g) { return g < 32 ? g * 4 : g == G_CR ? oCr : g == G_XER ? oXer : g == G_LR ? oLr : oCtr; }
 	static bool calleeSaved (int h) { return h >= 19; }
 	void cacheReset ()
@@ -292,15 +302,15 @@ struct Jit
 		for (int g = 0; g < NG; g++) { gHost[g] = -1; gDirty[g] = false; }
 		for (int h = 0; h < 32; h++) { hGuest[h] = -1; hStamp[h] = 0; }
 		stamp = 0; pinned = 0;
-		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; }
+		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; pHost[r] = -1; }
 		for (int h = 0; h < 32; h++) { hfGuest[h] = -1; hfStamp[h] = 0; }
-		fpinned = 0; fprfR = -1;
+		fpinned = 0; fprfR = -1; bWrit = 0;
 	}
 	int alloc ()
 	{
-		static const int pool[9] = { 9, 10, 11, 12, 13, 14, 15, 27, 28 };
+		static const int pool[10] = { 9, 10, 11, 12, 13, 14, 15, 24, 27, 28 };
 		int best = -1; u32 bs = ~0u;
-		for (int i = 0; i < 9; i++)
+		for (int i = 0; i < 10; i++)
 		{
 			int h = pool[i];
 			if (pinned & (1u << h)) continue;
@@ -308,12 +318,20 @@ struct Jit
 			if (hStamp[h] < bs) { bs = hStamp[h]; best = h; }
 		}
 		int g = hGuest[best];
-		if (g >= 0)						// (the least recently used goes)
+		if (g >= P_BASE) { pHost[g - P_BASE] = -1; hGuest[best] = -1; }	// (a pointer: forgotten)
+		else if (g >= 0)					// (the least recently used goes)
 		{
 			if (gDirty[g]) a.ldst (STR_W, 2, best, XM, gOff (g));
 			gHost[g] = -1; gDirty[g] = false; hGuest[best] = -1;
 		}
 		return best;
+	}
+	void ptrDrop (int g)						// (GPR g written: its pointer is no more)
+	{
+		if (g >= 32) return;
+		bWrit |= 1u << g;
+		int h = pHost[g];
+		if (h >= 0) { pHost[g] = -1; hGuest[h] = -1; }
 	}
 	int G (int g)							// guest g's value (read)
 	{
@@ -324,16 +342,18 @@ struct Jit
 	}
 	int W (int g)							// guest g's register, to write whole
 	{
+		ptrDrop (g);
 		int h = gHost[g];
 		if (h < 0) { h = alloc (); gHost[g] = h; hGuest[h] = g; }
 		gDirty[g] = true; hStamp[h] = ++stamp; pinned |= 1u << h;
 		return h;
 	}
-	int RW (int g) { int h = G (g); gDirty[g] = true; return h; }	// read, then modified
+	int RW (int g) { int h = G (g); gDirty[g] = true; ptrDrop (g); return h; }	// read, then modified
 	int Wlater (int g)						// guest g's register, written whole a little later: not
 	{								// loaded, not dirty yet (the cold paths before the write
-		int h = gHost[g];					// see the old value where it is: memory, or this register
-		if (h < 0) { h = alloc (); gHost[g] = h; hGuest[h] = g; gDirty[g] = false; }	// dirty)
+		ptrDrop (g);						// see the old value where it is: memory, or this register
+		int h = gHost[g];					// dirty)
+		if (h < 0) { h = alloc (); gHost[g] = h; hGuest[h] = g; gDirty[g] = false; }
 		hStamp[h] = ++stamp; pinned |= 1u << h;
 		return h;
 	}
@@ -353,10 +373,21 @@ struct Jit
 			if (gHost[g] >= 0 && (all || !calleeSaved (gHost[g]))) a.ldst (LDR_W, 2, gHost[g], XM, gOff (g));
 		for (int r = 0; r < 32; r++)
 			if (fHost[r] >= 0) a.ldst (LDR_Q, 4, fHost[r], XM, fOff (r));
+		for (int g = 0; g < 32; g++)				// (the pointers: from their GPRs again)
+		{
+			int h = pHost[g];
+			if (h < 0 || (!all && calleeSaved (h))) continue;
+			int v = gHost[g];
+			if (v < 0) { a.ldst (LDR_W, 2, 5, XM, gOff (g)); v = 5; }
+			a.logi (EOR_I, 5, v, 0x80000000u);
+			a.put (0x8B204000u | 5u << 16 | (u32) XMEM << 5 | (u32) h);	// ADD xh, x20, w5, UXTW
+		}
 	}
 	void dropAll ()
 	{
 		for (int g = 0; g < NG; g++) { gHost[g] = -1; gDirty[g] = false; }
+		for (int g = 0; g < 32; g++) pHost[g] = -1;
+		bWrit = ~0u;						// (an instruction interpreted: any GPR may have changed)
 		for (int h = 0; h < 32; h++) hGuest[h] = -1;
 		for (int r = 0; r < 32; r++) { fHost[r] = -1; fDirty[r] = false; }
 		for (int h = 0; h < 32; h++) hfGuest[h] = -1;
@@ -407,21 +438,21 @@ struct Jit
 	// ---- the cold paths: emitted after the block's main code (the slow memory accesses, a NaN,
 	// the conversions' rare cases, the interpreter leaving...), each with the cache's state and
 	// the cycles as at its branch; they come back to the main code (ret) or leave the block
-	struct St { int gH[NG], fH[32]; bool gD[NG], fD[32]; int fprfR, fprfLane; u32 synced; };
-	enum { D_MEM, D_INTERP, D_IEXIT, D_CVTD, D_CVTS, D_FPRF };
+	struct St { int gH[NG], fH[32], pH[32]; bool gD[NG], fD[32]; int fprfR, fprfLane; u32 synced; };
+	enum { D_MEM, D_INTERP, D_IEXIT, D_CVTD, D_CVTS, D_FPRF, D_STUB };
 	struct Def { int kind; bool store, back; int size, dm, r1, r2; u32 op, pc, idx; u32 *site, *ret, *ret2; St st; };
 	enum { MAX_DEFS = 400 };
 	Def defs[MAX_DEFS]; int nDefs;
 	void saveSt (St &t)
 	{
 		for (int i = 0; i < NG; i++) { t.gH[i] = gHost[i]; t.gD[i] = gDirty[i]; }
-		for (int i = 0; i < 32; i++) { t.fH[i] = fHost[i]; t.fD[i] = fDirty[i]; }
+		for (int i = 0; i < 32; i++) { t.fH[i] = fHost[i]; t.fD[i] = fDirty[i]; t.pH[i] = pHost[i]; }
 		t.fprfR = fprfR; t.fprfLane = fprfLane; t.synced = synced;
 	}
 	void loadSt (const St &t)
 	{
 		for (int i = 0; i < NG; i++) { gHost[i] = t.gH[i]; gDirty[i] = t.gD[i]; }
-		for (int i = 0; i < 32; i++) { fHost[i] = t.fH[i]; fDirty[i] = t.fD[i]; }
+		for (int i = 0; i < 32; i++) { fHost[i] = t.fH[i]; fDirty[i] = t.fD[i]; pHost[i] = t.pH[i]; }
 		fprfR = t.fprfR; fprfLane = t.fprfLane; synced = t.synced;
 	}
 	Def &defer (int kind)				// (then its branch at d.site, and d.ret)
@@ -433,6 +464,7 @@ struct Jit
 	}
 	bool defFull () { return nDefs > MAX_DEFS - 8; }
 	void emitDefs ();
+	void emitDefsHere ();
 	void fSet (int r) { fDirty[r] = true; }
 	void fprfSet (int r, int lane) { fprfR = r; fprfLane = lane; }
 	void fprfFlush ()
@@ -446,7 +478,7 @@ struct Jit
 			else a.ldst (LDR_D, 3, 7, XM, fOff (fprfR) + 8 * fprfLane);
 			a.ldst (STR_D, 3, 7, XM, oFprfVal);
 		}
-		a.ldst (STRB, 0, WONE, XM, oFprfPend);
+		a.movz (5, 1, 0); a.ldst (STRB, 0, 5, XM, oFprfPend);
 	}
 	void ldG (int t, int r) { a.mov (t, G (r)); }
 	void stG (int t, int r) { a.mov (W (r), t); }
@@ -496,14 +528,11 @@ struct Jit
 		u32 *late = a.p; a.bcond (LE, a.p);
 		u32 key = target | (bKey & 3);
 		u32 *site = a.p; a.b (a.p);
-		u32 *stub = a.p;
-		a.side++;
-		a.movw (0, target); stF (0, oPc); a.b (exitStub);
-		a.side--;
-		Asm::patch (late, stub);
 		void *to = lookup (key);
-		Asm::patch (site, to ? (u32 *) to : stub);
-		addLink (key, site, stub);
+		if (to) Asm::patch (site, (u32 *) to);
+		Def &st = defer (D_STUB);				// (its stub -- pc = target, out -- with the cold paths)
+		st.site = late; st.ret = site; st.op = target; st.r1 = (int) nLinks; st.back = to != 0;
+		addLink (key, site, site);
 	}
 
 	// CR field crf from the flags of a compare (signed / unsigned) + XER's SO
@@ -602,6 +631,56 @@ struct Jit
 			else if (size == 4) { a.un (REV_W, 4, reg); a.ldstr (STR_WR, 4, XMEM, ra); }
 			else if (size == 2) { a.un (REV16_W, 4, reg); a.ldstr (STRH_R, 4, XMEM, ra); }
 			else a.ldstr (STRB_R, reg, XMEM, ra);
+		}
+	}
+	// Guest ra's pointer into MEM1 (x20 + its offset in the 0x80000000 mirror) for a block's D-form
+	// accesses through it, their displacement in the load / store itself: made at the first one when
+	// the translation finds ra in MEM1 and not yet written in the block, checked there (not MEM1's
+	// then: that instruction by the interpreter, and out of the block); kept while ra is not written.
+	// -1: the plain path (ra 0, not MEM1's at translation, written earlier in the block).
+	int basePtr (int ra, u32 op, u32 pc, u32 idx)
+	{
+		if (dmode != 1 || ra == 0) return -1;
+		int h = pHost[ra];
+		if (h >= 0) { hStamp[h] = ++stamp; pinned |= 1u << h; return h; }
+		if (bWrit & (1u << ra)) return -1;
+		if ((m->gpr[ra] ^ 0x80000000u) >= (u32) MEM1_SIZE) return -1;	// (the hardware, the uncached mirror...)
+		int g = G (ra);
+		a.logi (EOR_I, 3, g, 0x80000000u);
+		a.cmp (3, WMSZ);
+		Def &d = interpSide (op, pc, idx, false); d.site = a.p; a.bcond (HS, a.p);
+		h = alloc ();
+		a.put (0x8B204000u | 3u << 16 | (u32) XMEM << 5 | (u32) h);		// ADD xh, x20, w3, UXTW
+		pHost[ra] = h; hGuest[h] = P_BASE + ra; hStamp[h] = ++stamp; pinned |= 1u << h;
+		return h;
+	}
+	// [xhp + disp] (disp -32768..32767): loaded into / stored from reg (or V fpv), as access () does
+	void ptrAccess (bool store, int size, int fpv, int reg, int hp, s32 disp)
+	{
+		u32 opc;							// (LDUR / STUR; + 0x01000000: the scaled offset form)
+		if (fpv >= 0) opc = size == 8 ? (store ? 0xFC000000u : 0xFC400000u) : (store ? 0xBC000000u : 0xBC400000u);
+		else if (size == 8) opc = store ? 0xF8000000u : 0xF8400000u;
+		else if (size == 4) opc = store ? 0xB8000000u : 0xB8400000u;
+		else if (size == 2) opc = store ? 0x78000000u : 0x78400000u;
+		else opc = store ? 0x38000000u : 0x38400000u;
+		int rt = fpv >= 0 ? (store ? 7 : fpv) : (store && size > 1 ? 4 : reg);
+		if (store)							// (the value byte-swapped first)
+		{
+			if (fpv >= 0) a.fp1 (REV32_8B, 7, fpv);
+			else if (size == 8) a.un (REV_X, 4, reg);
+			else if (size == 4) a.un (REV_W, 4, reg);
+			else if (size == 2) a.un (REV16_W, 4, reg);
+		}
+		int base = hp;
+		if (disp >= 0 && !(disp & (size - 1)) && disp / size < 4096) a.put (opc | 0x01000000u | (u32) (disp / size) << 10 | (u32) base << 5 | (u32) rt);
+		else if (disp >= -256 && disp < 256) a.put (opc | ((u32) disp & 0x1FF) << 12 | (u32) base << 5 | (u32) rt);
+		else { a.movx (17, (u64) (s64) disp); a.alu (ADD_W | X64, 17, hp, 17); a.put (opc | 0x01000000u | 17u << 5 | (u32) rt); }
+		if (!store)
+		{
+			if (fpv >= 0) a.fp1 (REV32_8B, fpv, fpv);
+			else if (size == 8) a.un (REV_X, reg, reg);
+			else if (size == 4) a.un (REV_W, reg, reg);
+			else if (size == 2) a.un (REV16_W, reg, reg);
 		}
 	}
 	void memCold (const Def &d)
@@ -765,6 +844,18 @@ struct Jit
 	// a load / store: size, sign-extended (lha), with update (rA = the address)
 	void load (u32 op, bool x, int size, bool sext, bool upd, u32 pc, u32 idx)
 	{
+		int hp = x ? -1 : basePtr ((int) ((op >> 16) & 31), op, pc, idx);
+		if (hp >= 0)							// (through the base's pointer)
+		{
+			if (upd) { eaD (op, upd); a.mov (WEA, 1); }
+			int rd = (int) ((op >> 21) & 31);
+			int d = Wlater (rd);
+			ptrAccess (false, size, -1, d, hp, (s32) (s16) op);
+			gDirty[rd] = true;
+			if (sext) a.bfm (SBFM_W, d, d, 0, 15);
+			if (upd) stG (WEA, (int) ((op >> 16) & 31));
+			return;
+		}
 		if (x) eaX (op, upd); else eaD (op, upd);
 		if (upd) a.mov (WEA, 1);
 		int rd = (int) ((op >> 21) & 31);
@@ -776,6 +867,14 @@ struct Jit
 	}
 	void store (u32 op, bool x, int size, bool upd, u32 pc, u32 idx)
 	{
+		int hp = x ? -1 : basePtr ((int) ((op >> 16) & 31), op, pc, idx);
+		if (hp >= 0)							// (through the base's pointer)
+		{
+			if (upd) { eaD (op, upd); a.mov (WEA, 1); }
+			ptrAccess (true, size, -1, G ((int) ((op >> 21) & 31)), hp, (s32) (s16) op);
+			if (upd) stG (WEA, (int) ((op >> 16) & 31));
+			return;
+		}
 		if (x) eaX (op, upd); else eaD (op, upd);
 		if (upd) a.mov (WEA, 1);
 		memop (true, size, pc, idx, -1, G ((int) ((op >> 21) & 31)));
@@ -829,11 +928,14 @@ struct Jit
 		if (ra == 0) a.movw (1, disp); else addConst (1, G (ra), disp);
 		if (load)						// (rD..r31 out of the cache: written in memory)
 			for (int r = d; r < 32; r++)
+			{
+				ptrDrop (r);
 				if (gHost[r] >= 0)
 				{
 					if (gDirty[r]) a.ldst (STR_W, 2, gHost[r], XM, r * 4);
 					hGuest[gHost[r]] = -1; gHost[r] = -1; gDirty[r] = false;
 				}
+			}
 		Def &cd = interpSide (op, pc, idx, true);
 		cd.site = fastBlock ((u32) (32 - d) * 4);
 		for (int r = d; r < 32; r++)
@@ -859,7 +961,7 @@ struct Jit
 		if (total > synced) dc (total - synced);
 		a.imm (SUBS_WI | X64, WZR, XDC, 0);
 		a.csel (CSEL_W | X64, XDC, WZR, XDC, GT);			// (to the event: nothing left)
-		a.ldst (STRB, 0, WONE, XM, oIdleHit);				// (jitRun: the GX's core caught up first)
+		a.movz (5, 1, 0); a.ldst (STRB, 0, 5, XM, oIdleHit);		// (jitRun: the GX's core caught up first)
 		a.b (exitStub);
 	}
 };
@@ -1571,39 +1673,44 @@ bool Jit::fpLoadStore (u32 op, u32 pc, u32 idx, int kind, bool x, bool upd)
 {
 	int d = (int) ((op >> 21) & 31), ra = (int) ((op >> 16) & 31);
 	fpCheck (op, pc, idx);
+	int hp = x ? -1 : basePtr (ra, op, pc, idx);		// (a base's pointer: made before the branches that come back)
+	s32 disp = (s32) (s16) op;
+	auto ea = [&] () { if (x) eaX (op, upd); else eaD (op, upd); if (upd) a.mov (WEA, 1); };	// (the address: w1; WEA)
+	auto mem = [&] (bool store, int size, int fpv)
+	{
+		if (hp >= 0) ptrAccess (store, size, fpv, store ? 2 : 0, hp, disp);
+		else memop (store, size, pc, idx, fpv);
+	};
 	int nanK = -1;
 	if (kind == 2 && isS (sgl0, d))					// (stfs of a single: FCVT is exact, a NaN aside)
 	{
 		int hs = FG (d);
-		if (x) eaX (op, upd); else eaD (op, upd);		// (the registers taken before the NaN's branch)
-		if (upd) a.mov (WEA, 1);
+		if (hp < 0 || upd) ea ();				// (the registers taken before the NaN's branch)
 		nanK = nanSide (hs, op, pc, idx);
 		a.fp1 (FCVT_SD, 0, hs);
-		memop (true, 4, pc, idx, 0);
+		mem (true, 4, 0);
 	}
 	else if (kind >= 2)
 	{
 		int hs = FG (d);
 		a.fp1 (FMOV_XD, kind == 2 ? 8 : 2, hs);
 		if (kind == 2) cvtS (2, 8);
-		if (x) eaX (op, upd); else eaD (op, upd);
-		if (upd) a.mov (WEA, 1);
-		memop (true, kind == 3 ? 8 : 4, pc, idx);
+		if (hp < 0 || upd) ea ();
+		mem (true, kind == 3 ? 8 : 4, -1);
 	}
 	else
 	{
-		if (x) eaX (op, upd); else eaD (op, upd);
-		if (upd) a.mov (WEA, 1);
+		if (hp < 0 || upd) ea ();
 		int hd = FRes (d, kind == 1, false);			// (lfd keeps ps1)
 		if (kind == 0)
 		{
-			memop (false, 4, pc, idx, 0);			// (s0)
+			mem (false, 4, 0);				// (s0)
 			a.fp1 (FCVT_DS, 0, 0);
 			nanK = nanSide (0, op, pc, idx);
 			a.put (0x4E080400u | (u32) hd);			// DUP Vd.2D, V0.D[0]
 			setS (sgl0, d, true); setS (sgl1, d, true);
 		}
-		else { memop (false, 8, pc, idx); a.insX (hd, 0, 0); setS (sgl0, d, false); }
+		else { mem (false, 8, -1); a.insX (hd, 0, 0); setS (sgl0, d, false); }
 		fSet (d);
 	}
 	if (upd) stG (WEA, ra);
@@ -1633,8 +1740,14 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 	int type = (int) (load ? g >> 16 : g) & 7, scale = (int) (load ? g >> 24 : g >> 8) & 63;
 	bool isInt = type >= 4;
 	fpCheck (op, pc, idx);
+	int hp = !x && !upd ? basePtr (ra, op, pc, idx) : -1;		// (a base's pointer: made before the branches)
 	int hbase = (ra == 0 && !upd) ? -1 : (upd ? RW (ra) : G (ra));	// (all taken before the branch)
 	int hidx = x ? G (rb) : -1;
+	auto pmem = [&] (bool store, int size, int fpv)
+	{
+		if (hp >= 0) ptrAccess (store, size, fpv, store ? 2 : 0, hp, (s32) off);
+		else memop (store, size, pc, idx, fpv);
+	};
 	int hd = load ? FRes (d, false, false) : FG (d);
 	int oth = -1;
 	u32 gbit = 1u << (q * 2 + (load ? 1 : 0));
@@ -1663,11 +1776,11 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 	int nan1 = -1;
 	if (load)
 	{
-		eaPsq (hbase, hidx, off);
+		if (hp < 0) eaPsq (hbase, hidx, off);
 		if (upd) a.mov (WEA, 1);
 		if (isInt)
 		{
-			memop (false, w ? es : 2 * es, pc, idx);
+			pmem (false, w ? es : 2 * es, -1);
 			int sh = w ? 0 : bits;
 			a.bfm (sgn ? SBFM_W : UBFM_W, 5, 0, sh, sh + bits - 1);
 			a.fp1 (sgn ? 0x1E620000u : 0x1E630000u, 0, 5);		// SCVTF / UCVTF d0, w5
@@ -1684,7 +1797,7 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 		}
 		else if (w)
 		{
-			memop (false, 4, pc, idx, 0);			// (s0)
+			pmem (false, 4, 0);			// (s0)
 			a.fp1 (FCVT_DS, 0, 0);
 			nan1 = nanSide (0, op, pc, idx);
 			a.put (FMOV_D1 | 1);
@@ -1692,7 +1805,7 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 		}
 		else
 		{
-			memop (false, 8, pc, idx, 0);			// (v0.2S: both singles)
+			pmem (false, 8, 0);			// (v0.2S: both singles)
 			a.fp1 (FCVTL_2D, hd, 0);
 			a.fp1 (FMAXP_D, 5, hd);				// (a NaN in either: the interpreter)
 			nan1 = nanSide (5, op, pc, idx);
@@ -1726,9 +1839,9 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 		}
 		if (w) a.ubfx (2, 5, 0, bits);
 		else { a.ubfx (2, 6, 0, bits); a.bfi (2, 5, bits, bits); }
-		eaPsq (hbase, hidx, off);
+		if (hp < 0) eaPsq (hbase, hidx, off);
 		if (upd) a.mov (WEA, 1);
-		memop (true, w ? es : 2 * es, pc, idx);
+		pmem (true, w ? es : 2 * es, -1);
 		if (upd) a.mov (hbase, WEA);
 		if (oth >= 0) defs[oth].ret = a.p;
 		defs[nan1].ret = a.p;
@@ -1740,9 +1853,9 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 		if (w) nan1 = nanSide (hd, op, pc, idx);
 		else { a.fp1 (FMAXP_D, 5, hd); nan1 = nanSide (5, op, pc, idx); }
 		a.fp1 (w ? FCVT_SD : FCVTN_2S, 0, hd);
-		eaPsq (hbase, hidx, off);
+		if (hp < 0) eaPsq (hbase, hidx, off);
 		if (upd) a.mov (WEA, 1);
-		memop (true, w ? 4 : 8, pc, idx, 0);
+		pmem (true, w ? 4 : 8, 0);
 	}
 	else
 	{
@@ -1754,9 +1867,9 @@ bool Jit::psq (u32 op, u32 pc, u32 idx, bool load, bool upd, bool x)
 			a.umovX (8, hd, 1); cvtS (2, 8);
 			a.alu (ORR_W | X64, 2, 2, XK1, 0, 32);
 		}
-		eaPsq (hbase, hidx, off);
+		if (hp < 0) eaPsq (hbase, hidx, off);
 		if (upd) a.mov (WEA, 1);
-		memop (true, w ? 4 : 8, pc, idx);
+		pmem (true, w ? 4 : 8, -1);
 	}
 	if (upd) a.mov (hbase, WEA);
 	if (load) { setS (sgl0, d, true); setS (sgl1, d, true); }	// (the integer types too: small integers x 2^n)
@@ -1783,6 +1896,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	h[H_RD64] = (u64) &hRd64; h[H_WR64] = (u64) &hWr64; h[H_CVTD] = (u64) &hCvtD; h[H_CVTS] = (u64) &hCvtS; h[H_FPRF] = (u64) &hFprf; h[H_GATHER] = (u64) &hGather;
 	blocks = new Block[MAX_BLOCKS];
 	links = new Link[2 * MAX_BLOCKS];
+	coldScratch = new u32[COLD_SCRATCH];
 	if (m->jitProfile) profInsns = new ProfInsn[PROF_INSNS];	// (here: the translations may run where nothing is allocated)
 
 	// enter (x0 = the Machine, x1 = the block, x2 = the context): save the callee-saved registers
@@ -1798,7 +1912,6 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	a.ldst (LDR_X, 3, XMEM, XM, oMem1);
 	a.movX (XCTX, 2);
 	a.movw (WMSZ, MEM1_SIZE);
-	a.movz (WONE, 1, 0);
 	a.ldst (LDR_X, 3, 3, XM, oUntil); a.ldst (LDR_X, 3, 4, XM, oCycles);
 	a.alu (SUB_W | X64, XDC, 3, 4); a.ldst (STR_X, 3, 3, XM, oEnd);	// (the countdown)
 	a.br (1);
@@ -1830,7 +1943,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 
 void Jit::flushAll ()
 {
-	a.p = codeStart;
+	a.p = codeStart; chunkEnd = codeStart + CHUNK_WORDS; coldTop = chunkEnd;
 	nBlocks = 0; nProf = 0;
 	for (u32 i = 0; i < (1u << HASH_BITS); i++) hashHead[i] = linkHead[i] = NONE;
 	nLinks = 0;
@@ -1899,7 +2012,24 @@ void Jit::invalidate (u32 pa, u32 len)
 	}
 }
 
+// the block's cold paths: emitted once into the scratch space (their length), then for real below the
+// chunk's cold code (a.p back to the main code after)
 void Jit::emitDefs ()
+{
+	if (nDefs)
+	{
+		u32 *hot = a.p;
+		a.p = coldScratch; emitDefsHere ();
+		u32 n = (u32) (a.p - coldScratch);
+		coldTop -= n;
+		a.p = coldTop; emitDefsHere ();
+		flushCode (coldTop, coldTop + n);
+		a.p = hot;
+	}
+	nDefs = 0;
+}
+
+void Jit::emitDefsHere ()
 {
 	a.side++;
 	for (int i = 0; i < nDefs; i++)
@@ -1909,6 +2039,11 @@ void Jit::emitDefs ()
 		Asm::patch (d.site, a.p);
 		switch (d.kind)
 		{
+		case D_STUB:						// an exit's stub: out with pc = the target
+			links[d.r1].stub = a.p;
+			if (!d.back) Asm::patch (d.ret, a.p);		// (its target not translated yet)
+			a.movw (0, d.op); stF (0, oPc); a.b (exitStub);
+			break;
 		case D_MEM: memCold (d); break;
 		case D_INTERP: interpCold (d); break;
 		case D_IEXIT: dc (2); a.b (exitStub); break;	// (the interpreter left: pc is set)
@@ -1930,7 +2065,14 @@ void Jit::emitDefs ()
 		}
 	}
 	a.side--;
-	nDefs = 0;
+}
+
+// the next chunk (its main code from its start, its cold code from its end); none left: everything dropped
+void Jit::nextChunk ()
+{
+	u32 *next = chunkEnd;
+	if (next + CHUNK_WORDS > codeEnd) { flushAll (); return; }
+	a.p = next; chunkEnd = next + CHUNK_WORDS; coldTop = chunkEnd;
 }
 
 void *Jit::compile (u32 pc, u32 key)
@@ -1943,7 +2085,8 @@ void *Jit::compile (u32 pc, u32 key)
 		pa = ((b - 1) << 17) | (pc & 0x1FFFF);
 	}
 	if (pa >= MEM1_SIZE || (pc & 3)) return 0;
-	if (codeEnd - a.p < 16384 || nBlocks >= MAX_BLOCKS || nLinks + 2 * MAX_INSNS >= 2 * MAX_BLOCKS) flushAll ();
+	if (nBlocks >= MAX_BLOCKS || nLinks + 2 * MAX_INSNS >= 2 * MAX_BLOCKS) flushAll ();
+	if (coldTop - a.p < BLOCK_ROOM) nextChunk ();				// (the block's main and cold code: room)
 	bKey = key; synced = 0; fpOk = false; sgl0 = sgl1 = 0; nDefs = 0; gqrOk = 0;
 	bPa = pa; pend.on = false;
 	idle = idleLoop (pa, pc);
@@ -1983,7 +2126,7 @@ void *Jit::compile (u32 pc, u32 key)
 	if (b.prof != ~0u) b.profN = nProf - b.prof;
 	emitDefs ();
 	flushCode (start, a.p);
-	b.words = a.mainWords; b.insns = n; b.size = (u32) (a.p - start);
+	b.words = a.mainWords; b.insns = n; b.size = (u32) (a.p - start);	// (the main code; the cold paths: at the chunk's end)
 	b.key = key; b.pa = pa; b.code = start;
 	b.hashNext = hashHead[hashOf (key)]; hashHead[hashOf (key)] = i;
 	b.pageNext = pageHead[pa >> 12]; pageHead[pa >> 12] = i;

@@ -339,7 +339,12 @@ Notes / caveats:
 > menus scripted -- The Wind Waker's first steps on Outset: Start at 900, A at 1050, 1200, 2200,
 > 2300, 2400, Start at 2500, A at 2600, then A every 60 fields to 22000; `GC_HASH=n`, in `gcrun`
 > too: MEM1's hash every n fields, two runs compared -- the GL and the TEV renderers gave the
-> same game, so a difference was the drawing's). The recorder keeps the vertices in the clip
+> same game, so a difference was the drawing's; `GCV3D_VHASH=1`: each finished frame's
+> recording hashed, a line a frame -- a change of the recorder or the vertex decoder checked bit
+> for bit over a whole run). The recorder's vertex loop and `gxPrimitive`'s decoder work from
+> plans made once a draw (the matrices of the last index, the lit channels' lights, the texgens,
+> the varyings; the attributes present with their formats and arrays, a vertex template) with
+> the same arithmetic as before. The recorder keeps the vertices in the clip
 > space of the whole EFB (640 x 528) and the scissors in its pixels; the frame's XFB copy
 > rectangle, known at its end (`Frame::rect`), is applied when it is drawn (`frameView`,
 > `frameScissor`: `Out::prepare`, gcv3d) -- the copy registers of the draw's time were used
@@ -559,8 +564,12 @@ Notes / caveats:
 > load / store whose address maps MEM1 through the OS's standard BATs, or in real mode, reads
 > the host memory directly and byte-swaps -- with the BATs, the 0x80000000 mirror checked by one
 > EOR and a compare, the value loaded straight into the destination's register or stored from the
-> source's, the uncached 0xC0000000 one tried first on the cold path; the rest calls `read32`…
-> with the cycle count exact),
+> source's, the uncached 0xC0000000 one tried first on the cold path; a D-form access through a
+> base register the translation finds in MEM1 (and not yet written in the block) makes that
+> register's host pointer (`basePtr`: checked there -- not MEM1's then: the instruction by the
+> interpreter, and out of the block) and the block's later accesses through it are one load /
+> store with the displacement (`ptrAccess`; MEM1 has a guard zone of `MEM1_GUARD` bytes on each
+> side for the displacements past its ends); the rest calls `read32`… with the cycle count exact),
 > every other instruction (the FPU, the paired singles for now) calls the interpreter's `exec`.
 > The FPU and the paired singles are native too, on NEON: `ps[32][2]` keeps both halves of an FPR
 > side by side, so an FPR is one q register, cached like the GPRs (q8–q31, lane 0 = ps0); the
@@ -576,8 +585,12 @@ Notes / caveats:
 > (the source FPR noted at translation, `fprfVal` / `fprfPending` written only when needed).
 > The cycles are a countdown in x26 (to `jitEnd`, = `jitUntil` when set; written to `cycles` when
 > leaving and before a helper that reads them, resynced after one that may change `jitUntil`).
-> The rare paths (a slow memory access, a NaN, a conversion's odd case, the interpreter leaving)
-> are emitted after the block's main code, each with the cache's state at its branch.
+> The rare paths (a slow memory access, a NaN, a conversion's odd case, the interpreter leaving,
+> an exit's stub) are emitted apart, each with the cache's state at its branch: the code buffer
+> is in 1 MB chunks, the blocks' main code from a chunk's start up, their rare paths from its end
+> down (a b.cond's reach) -- the main code dense in the I-cache (`--pmu=08,02,05,01` counts the
+> TLB and L1I refills: the L1I ones were ~20 a thousand instructions, 17.5 with the split; the
+> TLBs, with Onyx's 64 KB pages, ~0.3).
 > A block's exit to a known address is **linked**:
 > once that block is translated the exit's branch is patched to jump straight to it (back to
 > its stub when that block is dropped), while `cycles < jitUntil` (the next event / the
@@ -601,7 +614,9 @@ Notes / caveats:
 > cache bug and an interpreter bug — `srawi` / `sraw` with rA = rS took CA from the result;
 > `GC_FUZZC=1` their data through the uncached mirror, `GC_FUZZSTART=n` from the n-th,
 > `GC_FUZZDUMP=<f>` each one's code, `GC_FUZZPROG=<f>` + `GC_FUZZLEN=n` a failing one cut down,
-> `GC_FUZZG="3 11"` those GPRs, CR and XER printed, `GC_FUZZBLOCK=<pc>` the block there's code;
+> `GC_FUZZG="3 11"` those GPRs, CR and XER printed, `GC_FUZZBLOCK=<pc>` the block there's code,
+> `GC_FUZZ2=1` each one run a second time with the JIT's blocks kept and the data through the
+> other mirror (the blocks' base pointers meet another value);
 > the CR is not compared after an exception that stopped the run -- see `crDead`), `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
 > against qemu-ppc's result: ~40× the interpreter's speed (integer), ~10× (float);
 > `GC_PROFILE=1` prints the host instructions per guest instruction, `GC_DUMP=prefix` the

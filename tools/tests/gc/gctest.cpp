@@ -6,7 +6,9 @@
 //   gctest fuzz [seed] [count] [length]      the JIT against the interpreter: random sequences
 //       (GC_FUZZC=1: their data through the uncached mirror, 0xC0000000; GC_FUZZSTART=n: from the n-th;
 //       GC_FUZZDUMP=file: each one's code written there; GC_FUZZPROG=file: that code instead, its first
-//       GC_FUZZLEN instructions -- a failing one cut down)
+//       GC_FUZZLEN instructions -- a failing one cut down; GC_FUZZ2=1: each one run again, the JIT's
+//       blocks kept, its data through the uncached mirror -- the blocks' base pointers made for the
+//       other one meet another value)
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
 // GC_JIT=1: the JIT runs the CPU (an AArch64 host -- run_gc_test.sh builds it for qemu-aarch64 --
 // or an x86-64 one)
@@ -178,13 +180,14 @@ static u64 fpVal ()
 	default: { double d = (double) ((int) rn (100000) - 50000) / (double) (1 + rn (1000)) * 1.0000001; u64 u; memcpy (&u, &d, 8); return u; }
 	}
 }
-static void fuzzInit (Machine &m, u64 seed, u32 *prog, int n)
+static void fuzzInit (Machine &m, u64 seed, u32 *prog, int n, bool again = false)
 {
-	m.reset ();
+	if (!again) m.reset ();						// (again: the JIT's blocks kept)
+	else { m.halted = false; m.srr0 = 0; m.cycles = 0; m.tbBase = 0; }	// (mftb as in the first run: the JIT's idle loop at the end ran to its time slice's end)
 	rng = seed;
 	static const u32 edge[] = { 0, 0xFFFFFFFFu, 0x80000000u, 0x7FFFFFFFu, 1, 0x8000u, 0xFFFF8000u };
 	for (int i = 0; i < 32; i++) m.gpr[i] = rn (3) ? rnd32 () : rn (2) ? rn (100) : edge[rn (7)];
-	m.gpr[1] = getenv ("GC_FUZZC") ? 0xC0400000 : 0x80400000;	// (the data -- GC_FUZZC: through the uncached mirror)
+	m.gpr[1] = getenv ("GC_FUZZC") || again ? 0xC0400000 : 0x80400000;	// (the data -- GC_FUZZC: through the uncached mirror)
 	m.gpr[2] = 0xCC008000;					// (the write-gather pipe)
 	for (int i = 0; i < 32; i++) for (int k = 0; k < 2; k++) { u64 u = fpVal (); memcpy (&m.ps[i][k], &u, 8); }
 	m.cr = rnd32 (); m.xer = rnd32 () & 0xE000007F; m.lr = rnd32 (); m.ctr = rnd32 ();
@@ -286,12 +289,14 @@ static int fuzzTest (u64 seed0, int count, int len)
 		}
 		if (getenv ("GC_FUZZV")) { printf ("sequence %d\n", t); fflush (stdout); }
 		if (getenv ("GC_FUZZDUMP")) { FILE *f = fopen (getenv ("GC_FUZZDUMP"), "wb"); for (int i = 0; i < len; i++) { u32 w = __builtin_bswap32 (prog[i]); fwrite (&w, 4, 1, f); } fclose (f); }
-		fuzzInit (A, seed, prog, len); fuzzInit (B, seed, prog, len);
+		for (int pass = 0; pass < (getenv ("GC_FUZZ2") ? 2 : 1); pass++) {
+		if (pass && (A.halted || B.halted)) break;
+		fuzzInit (A, seed, prog, len, pass > 0); fuzzInit (B, seed, prog, len, pass > 0);
 		A.srr0 = B.srr0 = 0;						// (set by an exception only)
 		A.gpr[4] = B.gpr[4] = 0x100;
 		while (A.pc != 0x80001000 && !A.halted && A.cycles < 1000000) A.step ();
 		while (B.pc != 0x80001000 && !B.halted && B.cycles < 1000000) B.run (B.cycles + 1000);
-		if (A.pc != 0x80001000 && !A.halted) { skipped++; continue; }	// (it loops: stopped at another point)
+		if (A.pc != 0x80001000 && !A.halted) { skipped++; break; }	// (it loops: stopped at another point)
 		if (getenv ("GC_FUZZF"))					// (the FPRs listed: both machines)
 		{
 			const char *q = getenv ("GC_FUZZF");
@@ -328,8 +333,10 @@ static int fuzzTest (u64 seed0, int count, int len)
 		if (!diff[0] && (A.pc != B.pc || A.halted != B.halted)) snprintf (diff, sizeof diff, "pc %08X / %08X (%s)", A.pc, B.pc, A.haltMsg);
 		if (diff[0])
 		{
-			printf ("  sequence %d (seed %llu): %s\n", t, (unsigned long long) seed, diff);
+			printf ("  sequence %d (seed %llu)%s: %s\n", t, (unsigned long long) seed, pass ? ", run again" : "", diff);
 			bad++;
+			break;
+		}
 		}
 	}
 	printf ("%s: the JIT against the interpreter, %d random sequences of %d instructions%s (%d looping, not compared)\n", bad ? "FAIL" : "ok  ", count, len, bad ? "" : ": identical", skipped);
