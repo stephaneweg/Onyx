@@ -507,6 +507,24 @@ static bool glyph_in (int kind, long px, long py, long s)	// s: the glyph's size
 	case WKG_DOT:   return px * px + py * py <= (s / 2) * (s / 2);
 	case WKG_PLUS:  return (px >= -s / 2 && px <= s / 2 && py >= -t / 2 && py <= t / 2) || (py >= -s / 2 && py <= s / 2 && px >= -t / 2 && px <= t / 2);
 	case WKG_MINUS: return px >= -s / 2 && px <= s / 2 && py >= -t / 2 && py <= t / 2;
+	case WKG_RELOAD:
+	{
+		// a ring open at the top right, its upper end an arrowhead pointing clockwise
+		long R = s * 34 / 100, d2 = px * px + py * py, lo = R - t / 2, hi = R + t / 2;
+		bool gap = px > 0 && py < 0 && -py < px * 3;			// (the top-right opening)
+		if (d2 >= lo * lo && d2 <= hi * hi && !gap) return true;
+		long ax = R / 3, ay = -R;					// the arrow at the arc's upper end
+		return in_tri (px, py, ax - s * 6 / 100, ay - s * 20 / 100, ax - s * 6 / 100, ay + s * 20 / 100,
+			       ax + s * 22 / 100, ay);
+	}
+	case WKG_HOME:
+	{
+		// a house: the roof, the walls, a door
+		if (in_tri (px, py, -s * 50 / 100, -s * 2 / 100, s * 50 / 100, -s * 2 / 100, 0, -s * 48 / 100)) return true;
+		bool body = px >= -s * 32 / 100 && px <= s * 32 / 100 && py >= -s * 4 / 100 && py <= s * 42 / 100;
+		bool door = px > -s * 10 / 100 && px < s * 10 / 100 && py > s * 12 / 100;
+		return body && !door;
+	}
 	}
 	return false;
 }

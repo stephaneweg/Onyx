@@ -21,8 +21,12 @@
 
 #include "netsurf/types.h"
 
-#define FB_SCROLL_COLOUR 0xFFAAAAAA
-#define FB_FRAME_COLOUR 0xFFDDDDDD
+/* Onyx: the scroll bars' and the frame's colours follow the desktop's theme (gui.c sets them
+ * from user/netsurf/onyx_chrome.cpp's onyx_chrome_theme; these were 0xFFAAAAAA, 0xFFDDDDDD) */
+extern colour fb_scroll_colour;
+extern colour fb_frame_colour;
+#define FB_SCROLL_COLOUR fb_scroll_colour
+#define FB_FRAME_COLOUR fb_frame_colour
 #define FB_COLOUR_BLACK 0xFF000000
 #define FB_COLOUR_WHITE 0xFFFFFFFF
 

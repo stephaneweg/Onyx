@@ -20,5 +20,5 @@ NS_FB_IMAGES := \
   throbber3:throbber/throbber3.png throbber4:throbber/throbber4.png throbber5:throbber/throbber5.png \
   throbber6:throbber/throbber6.png throbber7:throbber/throbber7.png throbber8:throbber/throbber8.png
 
-# the Onyx glue in C++ (wtk): none yet
-ONYX_CXX_FILES :=
+# the Onyx glue in C++ (wtk): the window and its native toolbar
+ONYX_CXX_FILES := $(dir $(lastword $(MAKEFILE_LIST)))onyx_chrome.cpp

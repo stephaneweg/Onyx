@@ -137,7 +137,24 @@ $(NSTLS_OBJ): $(HERE)onyx_nstls.cpp $(HERE)onyx_nstls.h $(ZUSER)/tls/onyx_tls.hp
 	@mkdir -p $(OUT)/o
 	$(CXX) $(CXXF) -I$(ZUSER) -I$(ZUSER)/tls -I$(ZKINC) -I$(MBEDTLS)/include -c $< -o $@
 
-objs: $(ALL_OBJ)
+# The window and its native toolbar (onyx_chrome.cpp, netsurf-src.mk) on wtk: wtk's sources
+# compiled here with the same C++ flags, into an archive (the linker takes what is used).
+CXX_OBJ := $(patsubst %.cpp,$(OUT)/o/%.o,$(subst /,_,$(ONYX_CXX_FILES)))
+WTK_SRC := $(wildcard $(ZUSER)/wtk/*.cpp)
+WTK_OBJ := $(patsubst %.cpp,$(OUT)/wtk/%.o,$(notdir $(WTK_SRC)))
+define CXX_RULE
+$(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(1))): $(1) $(HERE)onyx_chrome.h
+	@mkdir -p $(OUT)/o
+	$$(CXX) $$(CXXF) -I$(ZUSER) -I$(ZKINC) -I$(HERE) -c $$< -o $$@
+endef
+$(foreach s,$(ONYX_CXX_FILES),$(eval $(call CXX_RULE,$(s))))
+$(OUT)/wtk/%.o: $(ZUSER)/wtk/%.cpp $(wildcard $(ZUSER)/wtk/*.h)
+	@mkdir -p $(OUT)/wtk
+	$(CXX) $(CXXF) -I$(ZUSER) -I$(ZKINC) -c $< -o $@
+$(OUT)/libwtk-ns.a: $(WTK_OBJ)
+	rm -f $@; $(AR) rcs $@ $^
+
+objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
@@ -155,7 +172,8 @@ link: objs $(NSTLS_OBJ)
 	  -c $(ZUSER)/libc/onyx_syscalls.c -o $(OUT)/o/onyx_syscalls.o
 	$(CXX) -mcpu=cortex-a72 -O2 -nostartfiles -fno-pic -fno-pie -fno-exceptions -fno-rtti \
 	  $(OUT)/o/crt0libc.o $(OUT)/o/onyx_syscalls.o \
-	  $(ALL_OBJ) $(NSTLS_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
+	  $(ALL_OBJ) $(CXX_OBJ) $(NSTLS_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
+	  $(OUT)/libwtk-ns.a \
 	  $(LDLIBS) -L$(MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto \
 	  $(LDFLAGS) -o $(OUT)/netsurf.elf
 	@echo "netsurf.elf: $$(stat -c %s $(OUT)/netsurf.elf 2>/dev/null) bytes"

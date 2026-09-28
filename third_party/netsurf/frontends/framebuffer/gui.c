@@ -21,6 +21,7 @@
 #include <getopt.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>	/* Onyx: strncasecmp */
 #include <stdbool.h>
 #include <stdlib.h>
 #include <nsutils/time.h>
@@ -56,6 +57,10 @@
 #include "framebuffer/bitmap.h"
 #include "framebuffer/local_history.h"
 #include "framebuffer/corewindow.h"
+
+/* Onyx: the window, its native toolbar (user/netsurf/onyx_chrome.cpp) */
+#include "desktop/searchweb.h"
+#include "netsurf/onyx_chrome.h"
 
 
 #define NSFB_TOOLBAR_DEFAULT_LAYOUT "blfsrutc"
@@ -466,6 +471,15 @@ static int fewidth;
 static int feheight;
 static const char *feurl;
 
+/* Onyx: the fbtk furniture's colours (fbtk.h), from the desktop's theme once the window is up */
+colour fb_scroll_colour = 0xFFAAAAAA;
+colour fb_frame_colour = 0xFFDDDDDD;
+
+static colour onyx_colour(unsigned rgb)	/* 0x00RRGGBB -> NetSurf's 0xAABBGGRR */
+{
+	return 0xFF000000 | ((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF);
+}
+
 static void
 framebuffer_pick_default_fename(void *ctx, const char *name, enum nsfb_type_e type)
 {
@@ -489,13 +503,13 @@ process_cmdline(int argc, char** argv)
 
 	febpp = 32;
 
-	fewidth = nsoption_int(window_width);
-	if (fewidth <= 0) {
-		fewidth = 800;
+	/* Onyx: without a size in Choices, one that fits the screen (onyx_chrome.cpp) */
+	onyx_chrome_default_size(&fewidth, &feheight);
+	if (nsoption_int(window_width) > 0) {
+		fewidth = nsoption_int(window_width);
 	}
-	feheight = nsoption_int(window_height);
-	if (feheight <= 0) {
-		feheight = 600;
+	if (nsoption_int(window_height) > 0) {
+		feheight = nsoption_int(window_height);
 	}
 
 	if ((nsoption_charp(homepage_url) != NULL) && 
@@ -1047,6 +1061,12 @@ static void
 fb_update_back_forward(struct gui_window *gw)
 {
 	struct browser_window *bw = gw->bw;
+
+	/* Onyx: the native toolbar's buttons (there is no fbtk toolbar) */
+	onyx_chrome_set_nav(browser_window_back_available(bw),
+			    browser_window_forward_available(bw));
+	if (gw->back == NULL)
+		return;
 
 	fbtk_set_bitmap(gw->back,
 			(browser_window_back_available(bw)) ?
@@ -1751,7 +1771,7 @@ resize_normal_browser_window(struct gui_window *gw, int furniture_width)
 	bool resized;
 	int width, height;
 	int statusbar_width;
-	int toolbar_height = fbtk_get_height(gw->toolbar);
+	int toolbar_height = gw->toolbar != NULL ? fbtk_get_height(gw->toolbar) : 0;	/* Onyx: none */
 
 	/* Resize the main window widget */
 	resized = fbtk_set_pos_and_size(gw->window, 0, 0, 0, 0);
@@ -1992,7 +2012,9 @@ gui_window_set_pointer(struct gui_window *g, gui_pointer_shape shape)
 static nserror
 gui_window_set_url(struct gui_window *g, nsurl *url)
 {
-	fbtk_set_text(g->url, nsurl_access(url));
+	onyx_chrome_set_url(nsurl_access(url));		/* Onyx: the native address field */
+	if (g->url != NULL)
+		fbtk_set_text(g->url, nsurl_access(url));
 	return NSERROR_OK;
 }
 
@@ -2047,7 +2069,7 @@ throbber_advance(void *pw)
 		return;
 	}
 
-	if (g->throbber_index >= 0) {
+	if (g->throbber_index >= 0 && g->throbber != NULL) {	/* Onyx: no fbtk throbber */
 		fbtk_set_bitmap(g->throbber, image);
 		framebuffer_schedule(100, throbber_advance, g);
 	}
@@ -2057,14 +2079,18 @@ static void
 gui_window_start_throbber(struct gui_window *g)
 {
 	g->throbber_index = 0;
-	framebuffer_schedule(100, throbber_advance, g);
+	onyx_chrome_set_busy(1);	/* Onyx: the native toolbar's reload becomes stop */
+	if (g->throbber != NULL)
+		framebuffer_schedule(100, throbber_advance, g);
 }
 
 static void
 gui_window_stop_throbber(struct gui_window *gw)
 {
 	gw->throbber_index = -1;
-	fbtk_set_bitmap(gw->throbber, &throbber0);
+	onyx_chrome_set_busy(0);
+	if (gw->throbber != NULL)
+		fbtk_set_bitmap(gw->throbber, &throbber0);
 
 	fb_update_back_forward(gw);
 
@@ -2220,6 +2246,11 @@ main(int argc, char** argv)
 	free(options);
 	nsoption_commandline(&argc, argv, nsoptions);
 
+	/* Onyx: the toolbar is the window's own (user/netsurf/onyx_chrome.cpp): no fbtk
+	 * toolbar -- and so no NetSurf close button, the window's close box closes it
+	 * ("q" = none: an empty option string reads as unset, the default layout) */
+	nsoption_set_charp(fb_toolbar_layout, strdup("q"));
+
 	/* message init */
 	messages = filepath_find(respaths, "Messages");
         ret = messages_add_from_file(messages);
@@ -2245,6 +2276,13 @@ main(int argc, char** argv)
 		die("Unable to initialise framebuffer");
 
 	framebuffer_set_cursor(&pointer_image);
+
+	{	/* Onyx: the furniture in the theme's colours (the window, so the theme, is up) */
+		unsigned face, track;
+		onyx_chrome_theme(&face, &track);
+		fb_frame_colour = onyx_colour(face);
+		fb_scroll_colour = onyx_colour(track);
+	}
 
 	if (fb_font_init() == false)
 		die("Unable to initialise the font system");
@@ -2288,6 +2326,100 @@ main(int argc, char** argv)
 	nslog_finalise();
 
 	return 0;
+}
+
+/* ---- Onyx: the native toolbar's and menu's commands (netsurf/onyx_chrome.h) ---- */
+
+static void onyx_navigate(struct browser_window *bw, nsurl *url)
+{
+	nserror error = browser_window_navigate(bw, url, NULL, BW_NAVIGATE_HISTORY,
+						NULL, NULL, NULL);
+	if (error != NSERROR_OK)
+		fb_warn_user("Errorcode:", messages_get_errorcode(error));
+}
+
+void onyx_browser_back(void)
+{
+	struct gui_window *gw = window_list;
+	if (gw == NULL)
+		return;
+	if (browser_window_back_available(gw->bw))
+		browser_window_history_back(gw->bw, false);
+	fb_update_back_forward(gw);
+}
+
+void onyx_browser_forward(void)
+{
+	struct gui_window *gw = window_list;
+	if (gw == NULL)
+		return;
+	if (browser_window_forward_available(gw->bw))
+		browser_window_history_forward(gw->bw, false);
+	fb_update_back_forward(gw);
+}
+
+void onyx_browser_reload(void)
+{
+	if (window_list != NULL)
+		browser_window_reload(window_list->bw, true);
+}
+
+void onyx_browser_stop(void)
+{
+	if (window_list != NULL)
+		browser_window_stop(window_list->bw);
+}
+
+void onyx_browser_home(void)
+{
+	const char *home = nsoption_charp(homepage_url);
+	nsurl *url;
+
+	if (window_list == NULL)
+		return;
+	if (home == NULL || home[0] == '\0')
+		home = NETSURF_HOMEPAGE;
+	if (nsurl_create(home, &url) == NSERROR_OK) {
+		onyx_navigate(window_list->bw, url);
+		nsurl_unref(url);
+	}
+}
+
+/* An address typed in the toolbar: a URL, a host ("example.com"), a path on the card
+ * ("/docs/a.html", "SD:/docs/a.html" -> file:), else words to search the web for. */
+void onyx_browser_go(const char *text)
+{
+	char buf[2100];
+	nsurl *url;
+	nserror error;
+
+	if (window_list == NULL || text == NULL)
+		return;
+	while (*text == ' ')
+		text++;
+	if (*text == '\0')
+		return;
+	if (text[0] == '/') {
+		snprintf(buf, sizeof buf, "file://%s", text);
+		text = buf;
+	} else if (strncasecmp(text, "SD:/", 4) == 0) {
+		snprintf(buf, sizeof buf, "file://%s", text + 3);
+		text = buf;
+	}
+	error = search_web_omni(text, SEARCH_WEB_OMNI_NONE, &url);
+	if (error != NSERROR_OK) {
+		fb_warn_user("Errorcode:", messages_get_errorcode(error));
+		return;
+	}
+	onyx_navigate(window_list->bw, url);
+	nsurl_unref(url);
+}
+
+/* The page was covered (a pop-up of the window): draw it again. */
+void onyx_browser_redraw(void)
+{
+	if (fbtk != NULL)
+		fbtk_request_redraw(fbtk);
 }
 
 void gui_resize(fbtk_widget_t *root, int width, int height)
