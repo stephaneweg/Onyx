@@ -106,7 +106,16 @@ answer in French. The docs stay in English.
   dumping the frame to a file) for the user to report. Then stage 4: EFB copies to textures
   (render to texture in the kernel), fog, indirect textures; stage 5: performance (dual-issue
   scheduling of the generated code, the CPU vertex stage).
-- **Known limits:** AX games are silent (only the Zelda microcode is rendered).
+- **Testing on the Pi yourself (if you want, the Pi being on the local network: ask the user
+  its IP):**
+  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button);
+  - deploy: in that console `ftpd SD:/` starts the FTP server (port 21) on the card's root; copy
+    the rebuilt files there with any FTP client (`kernel8-rpi4.img` needs a reboot: `reboot`;
+    `apps/gcemu.app/main`, `bin/*` do not);
+  - run the game: `run gcemu SD1:/roms/ZeldaWIndWaker/ZeldaWindWaker.iso` (the second partition;
+    quote the path if needed); `kmsg` shows the kernel's log (a GPU time-out is reported there);
+  - see the picture: `OnyxRemote.exe` (`pc/dist/`) connects to rdpd (port 3390, started at boot)
+    and shows the Onyx windows, gcemu's included (F12 in it: the speed line).
 
 ## Other open items
 
