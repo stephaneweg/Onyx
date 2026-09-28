@@ -47,7 +47,7 @@ doom: wtk/libwtk.a
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
-bin:
+bin: v3d/libv3d.a
 	@$(MAKE) --no-print-directory -C bin
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
@@ -112,9 +112,11 @@ gc/libgc.a: $(GC_OBJS)
 # The V3D QPU builder (v3d/: shaders generated at run time, e.g. the GameCube's TEV): the C++
 # builder + Mesa's QPU packer (tools/qpu/mesa, MIT) + the few libc functions it calls.
 V3D_MESA = ../tools/qpu/mesa
-V3D_OBJS = v3d/qpu.o v3d/qpu_pack.o v3d/qpu_instr.o v3d/shim.o
+V3D_OBJS = v3d/qpu.o v3d/shaders.o v3d/qpu_pack.o v3d/qpu_instr.o v3d/shim.o
 v3d/qpu.o: v3d/qpu.cpp v3d/qpu.h
 	$(CXX) $(CXXFLAGS) -O2 -I. -I$(V3D_MESA) -c $< -o $@
+v3d/shaders.o: v3d/shaders.cpp v3d/shaders.h v3d/qpu.h
+	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -I$(V3D_MESA) -c $< -o $@
 v3d/qpu_pack.o: $(V3D_MESA)/broadcom/qpu/qpu_pack.c
 	$(CC) $(CFLAGS) -std=gnu11 -DNDEBUG -w -I$(V3D_MESA) -c $< -o $@
 v3d/qpu_instr.o: $(V3D_MESA)/broadcom/qpu/qpu_instr.c

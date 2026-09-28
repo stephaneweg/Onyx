@@ -420,6 +420,17 @@ int qpu_check (const uint64_t *w, int n, int kind, char *err, unsigned errcap)
 	vs.last_sfu = vs.last_thrsw = vs.last_ldvary = -10; vs.end_thrsw = -1;
 	vs.kind = kind == QPU_FRAG ? 1 : 0;
 	if (vs.kind == 0) vs.last_thrsw_found = true;
+	if (vs.kind == 1)			/* a fragment shader without a last-THRSW pair: single segment */
+	{					/* (KAPI_GPU_P_FS_FINAL: it starts with the scoreboard locked) */
+		bool pair = false;
+		for (int k = 1; k < n; k++)
+		{
+			struct v3d_qpu_instr a, b;
+			if (v3d_qpu_instr_unpack (&devinfo, w[k - 1], &a) && v3d_qpu_instr_unpack (&devinfo, w[k], &b)
+			    && a.sig.thrsw && b.sig.thrsw) pair = true;
+		}
+		if (!pair) { vs.last_thrsw_found = true; vs.lock_ip = 0; }
+	}
 	if (setjmp (jb))
 	{
 		if (err && errcap) { size_t l = strlen (err); snprintf (err + l, errcap - l, " (instruction %d: %s)", i, i < n ? v3d_qpu_disasm (&devinfo, w[i]) : ""); }

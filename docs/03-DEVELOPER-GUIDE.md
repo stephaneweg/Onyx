@@ -318,7 +318,11 @@ Notes / caveats:
 > (`KAPI_GPU_BLEND2`), write mask and scissor. The vertex shader writes Xs Ys (24.8 fixed
 > point: x × w/2 × 256 …) Zs 1/Wc then the varyings; the coordinate shader Xc Yc Zc Wc Xs Ys;
 > the fragment shader ends with its TLB writes after the last thread switch — see the v53
-> shaders in `kernel/sys/v3d_shaders.qasm` for the recipes. Used by the GameCube's TEV.
+> shaders in `kernel/sys/v3d_shaders.qasm` for the recipes, or take the ready-made ones of
+> `user/v3d/shaders.h` (`passVS` / `passCS`: the position as it is, the other floats handed on as
+> varyings; `flatFS`, `varyFS`, `texFS`; `viewUniforms (w, h)`). `/bin/v3dprog` checks them on
+> the Pi (PASS / FAIL); `tools/tests/run_qpu_test.sh` checks the same programs on the PC (the
+> instruction restrictions, then the fragment shaders in the simulator). Used by the GameCube's TEV.
 > Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.

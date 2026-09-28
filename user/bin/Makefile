@@ -83,7 +83,11 @@ LIBC_PROGS = libctest.elf rdpd.elf
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
+# C++ console tools on the V3D QPU builder (../v3d/libv3d.a: shaders generated at run time),
+# with FP on.
+V3D_PROGS = v3dprog.elf
+
+all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -99,6 +103,10 @@ $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
 $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
+
+CXXFLAGS_FP = $(CFLAGS_FP) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
+$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h
+	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../v3d/libv3d.a -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.

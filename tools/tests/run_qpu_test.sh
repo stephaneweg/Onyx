@@ -14,3 +14,5 @@ g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/qpubuild_test
 "$T/qpubuild"
 g++ -std=c++17 -O1 -w -I"$Q" -I"$Q/mesa" "$here/v3d/qpusim_test.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/qpusim"
 "$T/qpusim"
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/shaders_test.cpp" "$root/user/v3d/shaders.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/shaders"
+"$T/shaders"
