@@ -29,7 +29,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" "$here/gc/gctest.cpp" "$root"/us
 # the GX FIFO through the write-gather pipe (a token and "draw done" reported by the PE)
 powerpc-linux-gnu-gcc $F -ffreestanding -nostdlib -Wl,-Ttext=0x80003100 -Wl,-e,_start "$here/gc/hwtest.c" -o "$T/hwtest.elf"
 python3 "$root/tools/gc/elf2dol.py" "$T/hwtest.elf" "$T/hwtest.dol"
-out=$("$T/gctest" dol "$T/hwtest.dol" 40 "$T/hw.ppm")
+out=$("$T/gctest" dol "$T/hwtest.dol" 80 "$T/hw.ppm")	# (fields: 2 a frame, one VI interrupt a frame)
 echo "$out" | grep -q "results: 0000001E 0000000F 00001234 .* 600D600D" && echo "ok  : hwtest.dol: 30 VI interrupts, PE token 0x1234 + draw done" || { echo "FAIL hwtest.dol"; echo "$out"; exit 1; }
 # the GX drawing: gxtest.c's commands through the FIFO (vertex format, matrices, projection,
 # viewport, TEV, an RGB565 texture) -> the GPU frame, rendered in software: the checker quad, the
@@ -60,7 +60,7 @@ if command -v aarch64-linux-gnu-g++ > /dev/null && command -v qemu-aarch64 > /de
 	GC_JIT=1 $Q cpu "$T/cputest.elf" "$T/expected.bin"
 	GC_JIT=1 $Q ps "$T/pstest.elf"
 	$Q fuzz 1 1500 150
-	out=$(GC_JIT=1 $Q dol "$T/hwtest.dol" 40 "$T/hwj.ppm")
+	out=$(GC_JIT=1 $Q dol "$T/hwtest.dol" 80 "$T/hwj.ppm")
 	echo "$out" | grep -q "results: 0000001E 0000000F 00001234 .* 600D600D" && echo "ok  : hwtest.dol (JIT)" || { echo "FAIL hwtest.dol (JIT)"; echo "$out"; exit 1; }
 	GC_JIT=0 GC_GX="$T/gxi.ppm" $Q dol "$T/gxtest.dol" 5 "$T/gxxfbi.ppm" > /dev/null
 	GC_JIT=1 GC_GX="$T/gxj.ppm" $Q dol "$T/gxtest.dol" 5 "$T/gxxfbj.ppm" > /dev/null

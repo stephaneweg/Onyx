@@ -42,6 +42,7 @@ int main (void)
 	R32 (0xCC002024) = 0x10000000 | ((0x00400000 + 1280) >> 5);	/* BFBL */
 	R16 (0xCC002048) = (40 << 8) | 80;			/* HSW: 40 reads a line, a stride of 2 lines */
 	R32 (0xCC002030) = 0x10000000 | (200 << 16);		/* DI0: at line 200, enabled */
+	R32 (0xCC002034) = 0;					/* DI1 off (the IPL leaves it on; the handler clears only DI0) */
 	R16 (0xCC002002) = 1;					/* DCR: on, NTSC */
 	R32 (0xCC003004) = 0x100;				/* PI: the VI interrupt */
 	/* the GX FIFO at 0x00600000 (64 KB), linked */
