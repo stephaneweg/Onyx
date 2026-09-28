@@ -6,6 +6,10 @@
 //   gcv3d <file.dol | file.iso> <fields> <out.ppm> [width height]
 //   GCV3D_EVERY=n: every n-th finished frame too (out.ppm -> out_<k>.ppm); GCV3D_DUMP=1: the batches,
 //   2: their programs' configurations too; GCV3D_SAVE=<file.gxf>: the last frame dumped as gcemu does
+//   GCV3D_SKIPLOG=file: each draw the recorder leaves out (field, reason, vertices, the maps' textures)
+//   GC_CARD=file: a memory card in slot A (a 2 MB .sav / Dolphin .raw: read, never written back);
+//   GC_PAD="f0-f1:hex;...": the pad's buttons (Machine::PAD_*) held from field f0 to f1 (0x10000 /
+//   0x20000 / 0x40000 / 0x80000: the stick left / right / up / down), as gcrun's
 //   gcv3d --replay <frame.gxf> <out.ppm>: a frame gcemu dumped on the Pi (F9 / --diag), drawn here at
 //   the Pi's size, and the picture the Pi's GPU made of it -> out_pi.ppm (the two to compare)
 #include <stdio.h>
@@ -52,6 +56,7 @@ static bool ztest (int f, float z, float old)
 
 static void drawFrame (Machine &m, const Frame &F, const char *path)
 {
+	float view[4]; gxv3d::frameView (F, view);		// (the EFB's clip space onto the XFB copy's rectangle)
 	col.assign ((size_t) W * H, F.clear & 0xFFFFFF); alp.assign ((size_t) W * H, 255); zb.assign ((size_t) W * H, 1.0f);
 	for (u32 bi = 0; bi < F.nb; bi++)
 	{
@@ -78,7 +83,8 @@ static void drawFrame (Machine &m, const Frame &F, const char *path)
 			run.textures[0x10000u * (unsigned) (L + 1)] = t;
 		}
 		if (!ok) continue;
-		int x0s = (int) (b.scissor[0] * W + 0.5f), y0s = (int) (b.scissor[1] * H + 0.5f), x1s = (int) (b.scissor[2] * W + 0.5f), y1s = (int) (b.scissor[3] * H + 0.5f);
+		float sc[4]; gxv3d::frameScissor (F, b, sc);
+		int x0s = (int) (sc[0] * W + 0.5f), y0s = (int) (sc[1] * H + 0.5f), x1s = (int) (sc[2] * W + 0.5f), y1s = (int) (sc[3] * H + 0.5f);
 		if (x0s < 0) x0s = 0;
 		if (y0s < 0) y0s = 0;
 		if (x1s > W) x1s = W;
@@ -86,7 +92,7 @@ static void drawFrame (Machine &m, const Frame &F, const char *path)
 		if (getenv ("GCV3D_DUMP"))
 		{
 			printf ("  batch %u: prog %d, %u vertices, stride %d, flags %X blend %X wmask %X scissor %.3f %.3f %.3f %.3f\n", bi, b.prog, b.count, b.stride, b.flags, b.blend, b.wmask,
-				b.scissor[0], b.scissor[1], b.scissor[2], b.scissor[3]);
+				sc[0], sc[1], sc[2], sc[3]);
 			if (atoi (getenv ("GCV3D_DUMP")) >= 2)				// (2: the program's configuration too)
 			{
 				const gxtev::Config &c = P.cfg;
@@ -109,7 +115,7 @@ static void drawFrame (Machine &m, const Frame &F, const char *path)
 				for (int i = 0; i < 3; i++)
 				{
 					iw[i] = 1.0f / v[i][3];
-					float nx = v[i][0] * iw[i], ny = v[i][1] * iw[i], nz = v[i][2] * iw[i];
+					float nx = view[0] * v[i][0] * iw[i] + view[1], ny = view[2] * v[i][1] * iw[i] + view[3], nz = v[i][2] * iw[i];
 					sx[i] = (nx + 1) * 0.5f * W; sy[i] = (1 - ny) * 0.5f * H; sz[i] = nz * 0.5f + 0.5f;
 				}
 				float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);	// (y down: < 0 counter-clockwise)
@@ -195,12 +201,13 @@ static int replay (Machine &m, const char *path, const char *out)
 	size_t at = 0;
 	auto get = [&] (void *p, size_t k) { if (at + k > d.size ()) return false; memcpy (p, d.data () + at, k); at += k; return true; };
 	gxv3d::DumpHead hd;
-	if (!get (&hd, sizeof hd) || memcmp (hd.magic, "GXF1", 4) || hd.version != 1) { printf ("FAIL: not a frame dump\n"); return 1; }
+	if (!get (&hd, sizeof hd) || memcmp (hd.magic, "GXF1", 4) || hd.version != 2) { printf ("FAIL: not a frame dump (or an older one)\n"); return 1; }
 	if (hd.sizeBatch != sizeof (Batch) || hd.sizeProg != sizeof (Prog)) { printf ("FAIL: the dump's layout (batch %u, program %u) is not ours (%u, %u)\n", hd.sizeBatch, hd.sizeProg, (u32) sizeof (Batch), (u32) sizeof (Prog)); return 1; }
 	Frame &F = rec.frame[0]; F.reset ();
 	if (hd.nf > gxv3d::MAX_FLOATS || hd.nb > gxv3d::MAX_BATCHES || hd.nu > gxv3d::MAX_UNIS) { printf ("FAIL: too big\n"); return 1; }
 	bool ok = get (F.v, (size_t) hd.nf * 4) && get (F.b, (size_t) hd.nb * sizeof (Batch)) && get (F.u, (size_t) hd.nu * 4);
 	F.nf = hd.nf; F.nv = hd.nv; F.nb = hd.nb; F.nu = hd.nu; F.clear = hd.clear; F.keep = hd.keep != 0;
+	for (int k = 0; k < 4; k++) F.rect[k] = hd.rect[k];
 	for (u32 i = 0; ok && i < hd.nProgs; i++)
 	{
 		u32 idx; Prog p;
@@ -244,11 +251,50 @@ static int replay (Machine &m, const char *path, const char *out)
 	return nFail ? 1 : 0;
 }
 
+// GCV3D_SKIPLOG: the draws the recorder leaves out
+static FILE *g_skipLog; static int g_field;
+static void onSkip (int why, const GxState &s, int nv, int arg)
+{
+	static const char *W[Rec::SK_N] = { "prim", "prog", "notex", "copytex", "znever", "cullall", "nowrite", "limit" };
+	fprintf (g_skipLog, "%d %s nv %d arg %d stages %d tex", g_field, W[why], nv, arg, s.gen[0]);
+	for (int k = 0; k < 8; k++) fprintf (g_skipLog, " %d", s.tex[k]);
+	fprintf (g_skipLog, "\n");
+}
+
+// GC_PAD: "f0-f1:hex;f0-f1:hex..." -> the buttons held at that field
+static u32 padAt (int field)
+{
+	const char *s = getenv ("GC_PAD");
+	u32 b = 0;
+	while (s && *s)
+	{
+		int f0 = (int) strtol (s, (char **) &s, 10), f1 = f0;
+		if (*s == '-') f1 = (int) strtol (s + 1, (char **) &s, 10);
+		if (*s == ':') s++;
+		u32 v = (u32) strtoul (s, (char **) &s, 16);
+		if (field >= f0 && field <= f1) b |= v;
+		while (*s == ';' || *s == ' ') s++;
+	}
+	return b;
+}
+
 static FILE *g_disc;
 static bool discRead (void *, u32 off, u32 len, u8 *dst)
 {
 	if (fseeko (g_disc, (off_t) off, SEEK_SET)) return false;
 	return fread (dst, 1, len, g_disc) == len;
+}
+
+// GC_HASH=n: every n fields a line "hash <field> <MEM1's FNV-1a> pc <pc> cycles <cycles>" (two runs compared)
+static void hashLine (Machine &m, int field)
+{
+	const char *h = getenv ("GC_HASH");
+	if (!h || atoi (h) <= 0 || field % atoi (h)) return;
+	unsigned long long x = 1469598103934665603ull;
+	const unsigned long long *p = (const unsigned long long *) m.mem1;
+	for (u32 i = 0; i < MEM1_SIZE / 8; i++) { x ^= p[i]; x *= 1099511628211ull; }
+	printf ("hash %d %016llX pc %08X cycles %llu\n", field, x, m.pc, (unsigned long long) m.cycles);
+	fflush (stdout);
 }
 
 int main (int argc, char **argv)
@@ -271,6 +317,14 @@ int main (int argc, char **argv)
 	else
 	{
 		g_disc = fopen (path, "rb"); if (!g_disc) { printf ("FAIL: %s\n", path); return 1; }
+		static u8 cardImg[Machine::CARD_SIZE];
+		if (getenv ("GC_CARD"))					// a memory card in slot A (never written back)
+		{
+			for (u32 i = 0; i < sizeof cardImg; i++) cardImg[i] = 0xFF;
+			FILE *cf = fopen (getenv ("GC_CARD"), "rb");
+			if (cf) { size_t k = fread (cardImg, 1, sizeof cardImg, cf); fclose (cf); printf ("card: %u bytes read\n", (u32) k); }
+			m.cardInsert (0, cardImg, sizeof cardImg);
+		}
 		fseeko (g_disc, 0, SEEK_END); off_t n = ftello (g_disc);
 		m.discRead = discRead;
 		ok = m.loadDiscImage ((u32) n);
@@ -279,9 +333,14 @@ int main (int argc, char **argv)
 	m.gpu = &rec;
 	int every = getenv ("GCV3D_EVERY") ? atoi (getenv ("GCV3D_EVERY")) : 0;
 	u32 lastSerial = 0; int shots = 0;
+	if (getenv ("GCV3D_SKIPLOG")) { g_skipLog = fopen (getenv ("GCV3D_SKIPLOG"), "w"); if (g_skipLog) rec.onSkip = onSkip; }
 	for (int i = 0; i < atoi (argv[2]) && !m.halted; i++)
 	{
+		g_field = i;
+		u32 pb = padAt (i);
+		m.setPad (0, pb & 0xFFFF, (pb & 0x10000) ? -100 : (pb & 0x20000) ? 100 : 0, (pb & 0x40000) ? 100 : (pb & 0x80000) ? -100 : 0, 0, 0, 0, 0);
 		m.runFrame ();
+		hashLine (m, i + 1);
 		if (every > 0 && rec.serial != lastSerial && rec.serial % (u32) every == 0 && rec.ready >= 0)
 		{
 			lastSerial = rec.serial;

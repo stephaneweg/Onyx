@@ -1868,6 +1868,10 @@ bool Machine::jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words)
 	return true;
 }
 
+// (gcemu --jitprof: the AArch64 JIT's report; none here)
+int Machine::jitReport (char *out, int cap, int) { if (cap > 0) out[0] = 0; return 0; }
+int Machine::jitHotCode (u8 *, int, int) { return 0; }
+
 #endif
 
 } // namespace gc

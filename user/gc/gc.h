@@ -96,6 +96,48 @@ static inline u64 gcClock ()
 }
 struct GcTimed { u64 &acc; u64 t0; GcTimed (u64 &a) : acc (a), t0 (gcClock ()) {} ~GcTimed () { acc += gcClock () - t0; } };
 
+// The ARM's performance counters (gcemu --pmu, AArch64 at EL1: the core that runs the machine
+// starts them): cycles, instructions, L1D refills, L2 refills, branch mispredictions. GcPmu adds
+// what a function used to a counter set (0: nothing).
+enum { PMU_N = 5 };
+static inline void gcPmuStart (const u32 *ev = 0)		// (ev: the 4 events, else these)
+{
+#if defined (__aarch64__)
+	static const u32 def[4] = { 0x08, 0x03, 0x17, 0x10 };
+	if (!ev) ev = def;
+	asm volatile ("msr pmevtyper0_el0, %0" :: "r" ((u64) ev[0]));	// INST_RETIRED
+	asm volatile ("msr pmevtyper1_el0, %0" :: "r" ((u64) ev[1]));	// L1D_CACHE_REFILL
+	asm volatile ("msr pmevtyper2_el0, %0" :: "r" ((u64) ev[2]));	// L2D_CACHE_REFILL
+	asm volatile ("msr pmevtyper3_el0, %0" :: "r" ((u64) ev[3]));	// BR_MIS_PRED
+	asm volatile ("msr pmccfiltr_el0, %0" :: "r" ((u64) 0));
+	asm volatile ("msr pmcntenset_el0, %0" :: "r" ((u64) 0x8000000Full));
+	asm volatile ("msr pmcr_el0, %0" :: "r" ((u64) 0x47));		// E, P, C, LC (64-bit cycles)
+	asm volatile ("isb");
+#else
+	(void) ev;
+#endif
+}
+static inline void gcPmuRead (u64 v[PMU_N])
+{
+#if defined (__aarch64__)
+	u64 t;
+	asm volatile ("mrs %0, pmccntr_el0" : "=r" (t)); v[0] = t;
+	asm volatile ("mrs %0, pmevcntr0_el0" : "=r" (t)); v[1] = t;
+	asm volatile ("mrs %0, pmevcntr1_el0" : "=r" (t)); v[2] = t;
+	asm volatile ("mrs %0, pmevcntr2_el0" : "=r" (t)); v[3] = t;
+	asm volatile ("mrs %0, pmevcntr3_el0" : "=r" (t)); v[4] = t;
+#else
+	for (int k = 0; k < PMU_N; k++) v[k] = 0;
+#endif
+}
+static inline void gcPmuAdd (u64 *acc, const u64 *a, const u64 *b)	// (the event counters: 32 bits)
+{
+	acc[0] += b[0] - a[0];
+	for (int k = 1; k < PMU_N; k++) acc[k] += (u32) (b[k] - a[k]);
+}
+struct GcPmu { u64 *acc; u64 v0[PMU_N]; GcPmu (u64 *a) : acc (a) { if (acc) gcPmuRead (v0); }
+	       ~GcPmu () { if (acc) { u64 v[PMU_N]; gcPmuRead (v); gcPmuAdd (acc, v0, v); } } };
+
 // the Zelda microcode's audio (gc_zelda.cpp): its mixing buffers (0x50 samples: a frame), the tables
 // the game gives it, where its voices (VPBs) and its reverbs are
 struct ZeldaMix
@@ -238,13 +280,21 @@ public:
 	void decWrite (u32 v);
 	u32  resvAddr; bool resv;			// lwarx / stwcx.
 	u32  idleSkips;					// (stats) idle loops skipped
+	u8   idleHit;					// the JIT skipped a polling loop's time (gxAsync: the GX waited for first)
 	void checkInterrupts ();
 	bool jitEnable ();				// the JIT runs the CPU from now on (false: no code memory / not AArch64)
 	void jitRun (u64 untilCycle);
 	void jitInvalidate (u32 pa, u32 len);		// code written there (icbi, a DMA): its blocks are dropped
 	u32  jitBlocks, jitCompiles;			// (stats) blocks translated, now / in all
-	bool jitProfile;				// (the tests) count each block's runs
+	bool jitProfile;				// (the tests, gcemu --jitprof) count each block's runs, and:
+	u32 *jitInterpOps;				// (given: 65536) the instructions the JIT left to the interpreter,
+							// by primary opcode << 10 | the extended one's 10 bits
+	u32 jitSlowMem[2][16];				// the accesses off MEM1's fast path: loads / stores, by the
+							// address's top 4 bits
+	u64 jitEnters;					// the JIT entered from jitRun
 	void jitStats (u64 &runs, u64 &hostInsns, u64 &guestInsns);
+	int  jitReport (char *out, int cap, int nTop);	// the profile as text -> its length
+	int  jitHotCode (u8 *out, int cap, int nTop);	// the costliest blocks' guest and host code -> bytes
 	u32  fpscrNow () { if (fprfPending) { fprfPending = false; setFprf (fprfVal); } return fpscr; }	// (FPRF set)
 	bool jitHot (int n, u32 &pc, u64 &runs, const u32 *&code, u32 &words);
 	bool jitCode (u32 pc, const u32 *&code, u32 &words);
@@ -349,6 +399,20 @@ public:
 	u32 bpKonst[8];					// the TEV's konst colours (BP 0xE0-0xE7 with bit 23)
 	u32 gxCmds, gxPrims, gxVerts, gxCopies, gxIndirect, texDecodes;	// (the tests: the GPU's draws with indirect texturing, the textures decoded)
 	u64 timeFifo, timePrim, timeTex;		// (gcClock ticks in gxFifoKick, gxPrimitive, gpuTexture: all in)
+	bool pmuOn; u64 pmuFifo[PMU_N];			// (the front end's --pmu) the counters' counts in gxFifoKick
+	// The GX on a core of its own (gxAsync, gc_gx.cpp): the front end runs gxStep there in a loop;
+	// the CPU's side publishes the FIFO's write pointer (gatherFlush: waiting when the FIFO is
+	// full), waits for the GX at the CP / PE / FIFO registers (gxSync), takes its interrupts
+	// (gxIrqTake); gxDoneW: the write pointer the GX has run to; gxLock: the frames and the
+	// textures the GX makes, against a reader (a front end drawing a frame).
+	bool gxAsync; volatile u32 gxDoneW, gxIrqBits, gxLockV; u64 gxWaitTicks;
+	bool gxStep ();					// (the GX's core) the FIFO up to the CPU's writes -> false: nothing new
+	void gxSync ();					// (the CPU's) everything written run by the GX (else: gxFifoKick)
+	void gxRaise (u32 bits);			// (the GX's) an interrupt for the CPU
+	void gxIrqTake ();				// (the CPU's) the GX's interrupts, raised here
+	void gxRoom (u32 w);				// (the CPU's) room in the FIFO at w for a burst
+	void gxLock ();
+	void gxUnlock ();
 	u32 cpRead (u32 off, int size);
 	void cpWrite (u32 off, u32 v, int size);
 	u32 peRead (u32 off, int size);

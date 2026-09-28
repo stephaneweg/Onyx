@@ -3,14 +3,16 @@
 //
 //   gcemu <game.iso | game.gcm | program.dol> [--fullscreen]   (without one: the Game Library)
 //   * The machine (the Gekko CPU, Flipper) runs on an app core (core 2 or 3, user/emucore.h)
-//     when one is free. Its graphics are high-level: each frame's triangles and textures are
-//     drawn by the GPU (kapi v54 gpu_render) straight into the window; a program that writes
-//     its framebuffer itself is shown from it.
+//     when one is free; with the TEV renderer, its GX (the graphics commands) on the second one
+//     when that is free too (gx_core; --gxone: on the machine's). Its graphics are high-level:
+//     each frame's triangles and textures are drawn by the GPU straight into the window; a
+//     program that writes its framebuffer itself is shown from it. The machine's cores run with
+//     FPCR 0 (IEEE: the Gekko's arithmetic is emulated so).
 //   * A disc image (1.4 GB) is not loaded: the DVD's reads are done from the file on demand
 //     (kapi v57 seek) by the main thread for the app core (a request, then the core waits).
 //   * Keys: arrows = the stick, X = A, C = B, S = X, A = Y, Z = Z, Enter = Start, Q / W = L / R,
 //     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/gamepad.h). F11: full
-//     screen (Esc back), F12: the speed, P: pause.
+//     screen (Esc back), F12: the speed, F10: the frames a second alone, P: pause.
 //   * The CPU: the JIT (user/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
 //     from kapi v58 code_alloc); Game > Interpreter (or --interp) runs the interpreter instead.
 //   * The sound: the machine's audio (the AI's DMA, the Zelda microcode's music) resampled to
@@ -27,6 +29,10 @@
 //     it is written); --diag=<folder> writes there instead (e.g.
 //     FTP:<pc>:2121 -- a PC's FTP server, through ftpfs). --tevbuf draws the TEV frames into a
 //     buffer of ours, then copies them (a test: the GPU no longer writes the window's pixels).
+//     --jitprof (with --diag): the JIT's profile -- the costliest blocks, the instructions left to
+//     the interpreter, the slow memory accesses -- into jitprof.txt, the costliest blocks' guest
+//     and host code into jitprof.bin, every 60 s and at the end (tools/gc/jitprof.py reads them).
+//     --pmu[=e1,e2,e3,e4]: the app cores' performance counters (hex events), F12's fifth line.
 //
 #include "kapi.h"
 #include "launch.h"
@@ -50,11 +56,19 @@ static char g_statText[128] = "";
 static char g_statState[200] = "";				// (F12, 2nd line) where the game is: gc::Machine::status
 static char g_statTev[160] = "";				// (F12, 3rd line) the TEV renderer's diagnostic
 static char g_statPerf[160] = "";				// (F12, 4th line) where the time goes (TEV)
+static bool g_fps = false;					// (F10) the frames a second alone, in a corner
+static char g_statFps[48] = "";
 static volatile bool g_dumpReq = false;				// (F9) the frame shown, dumped
 static char g_note[200] = ""; static unsigned g_noteUntil = 0;	// (a message a few seconds)
 static bool g_diag = false;					// --diag[=<folder>]
 static char g_dumpDir[128] = "SD:/gcdump";			// (where F9 / --diag write: a folder, or FTP:host:port/...)
 static bool g_tevBuf = false;					// --tevbuf: the TEV frames drawn into a buffer of ours, then copied
+static bool g_jitProf = false;					// --jitprof: the JIT's profile (with --diag)
+static bool g_gxOne = false;					// --gxone: the GX on the machine's core even with a second one
+static bool g_pmu = false;					// --pmu[=e1,e2,e3,e4]: the app core's performance counters (F12's 5th line)
+static unsigned g_pmuEv[4] = { 0x08, 0x03, 0x17, 0x10 };		// (the events, hex: instructions, L1D, L2 refills, mispredictions)
+static volatile unsigned long long g_pmuField[gc::PMU_N];	// (--pmu) their counts in runFrame, all in
+static char g_statPmu[200] = "";
 static EmuCore g_ec;
 static int g_stride;
 static bool g_loading = true;
@@ -69,6 +83,13 @@ static unsigned g_lastSerial = 0, g_gfxAge = 1000;
 static int g_fbW = 640, g_fbH = 480;
 static void *g_disc = 0;					// the disc image's file
 static bool g_onCore = false;					// the machine runs on an app core
+// The GX on a second app core (when there is one): the machine's core writes the FIFO, the GX's
+// core runs it meanwhile (gc::Machine::gxAsync); g_gxMode / g_gxSeen: the switches of gxAsync the
+// GX's core has seen (it runs nothing once it saw it off)
+static int g_gxCore = -1;
+static volatile int g_gxStop = 0;
+static volatile unsigned g_gxMode = 0, g_gxSeen = 0;
+static volatile unsigned long long g_gxBusyUs = 0;		// (stats) the GX core's time running the FIFO
 static gc::Jit *g_jit = 0;					// the JIT (0: none: an older kernel)
 static volatile int g_wantJit = 1;				// the menu's choice, applied between fields
 static void *code_alloc (unsigned n) { return kapi_code_alloc (n); }
@@ -240,6 +261,12 @@ static void overlay (Canvas &c)
 	if (n == 4) { c.text (4, y + 42, g_statTev, g_out.st.ret == 0 ? 0x00A0C0FF : 0x00FF8080); c.text (4, y + 62, g_statPerf, 0x00C0C0C0); }
 }
 static void note (const char *s) { scpy (g_note, s, sizeof g_note); g_noteUntil = kapi_get_ticks () + 300; }
+// F10: the game's frames a second and the speed (fields against 60 / 50 a second), top left
+static void fps_corner (Canvas &c)
+{
+	c.fillRect (0, 0, 8 * slen (g_statFps) + 8, 20, 0);
+	c.text (4, 2, g_statFps, 0x00FFFF60);
+}
 
 // F9 / --diag: the frame just drawn -- the recorder's frame, its programs and textures, the picture
 // the GPU made -- into SD:/gcdump/frame_<n>.gxf (the machine waits: nothing moves meanwhile)
@@ -247,11 +274,13 @@ static void dump_frame (const unsigned *px, int w, int h, int stride)
 {
 	static int count = 0;
 	if (!g_m->gpu || g_rec.ready < 0) { note ("F9: no frame of the TEV renderer to dump"); return; }
+	g_m->gxLock ();							// (the GX's core: the frame and textures still)
 	const gxv3d::Frame &F = g_rec.frame[g_rec.ready];
 	unsigned long long n = gxv3d::dumpFrame (g_rec, *g_m, F, px, w, h, stride, g_out.st.ret, 0);
 	unsigned char *d = n < 0x7FFFFFFF ? new unsigned char[n] : 0;
+	if (d) gxv3d::dumpFrame (g_rec, *g_m, F, px, w, h, stride, g_out.st.ret, d);
+	g_m->gxUnlock ();
 	if (!d) { note ("F9: not enough memory for the dump"); return; }
-	gxv3d::dumpFrame (g_rec, *g_m, F, px, w, h, stride, g_out.st.ret, d);
 	kapi_mkdir (g_dumpDir);
 	char path[200]; int k = 0; path[0] = 0;
 	cat (path, &k, g_dumpDir); cat (path, &k, "/frame_"); fmt_num (path, &k, (unsigned) ++count, 0); cat (path, &k, ".gxf");
@@ -285,6 +314,7 @@ public:
 		after_draw (canvas.px, width, height, canvas.stride);
 		if (g_paused) canvas.text (8, 8, "Paused", 0xFFFFFF);
 		if (g_stats) overlay (canvas);
+		else if (g_fps) fps_corner (canvas);
 		if (g_note[0] && kapi_get_ticks () < g_noteUntil) canvas.text (8, 24, g_note, 0x00FFFF60);
 	}
 	bool onKey (long k) override;
@@ -317,6 +347,7 @@ static void show_frame (void)
 		after_draw (p, ow, oh, g_fsStride);
 		Canvas c; c.adopt (g_fs, g_fsw, g_fsh, g_fsStride);
 		if (g_stats) overlay (c);
+		else if (g_fps) fps_corner (c);
 		if (g_note[0] && kapi_get_ticks () < g_noteUntil) c.text (8, 24, g_note, 0x00FFFF60);
 		kapi_present_fb ();
 	}
@@ -337,6 +368,7 @@ static void on_zoom2 () { set_zoom (2); }
 static void on_full () { full_screen (!g_fs); }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
+static void on_fps () { g_fps = !g_fps; g_root->invalidate (true); }
 static void on_dump () { g_dumpReq = true; g_root->invalidate (true); }
 static void on_interp () { g_wantJit = !g_wantJit; }
 static void on_tev () { g_wantTev = !g_wantTev; }
@@ -350,6 +382,7 @@ bool EmuRoot::onKey (long k)
 	if (k == 27 && g_fs) { full_screen (false); return true; }
 	if (k == 'p' || k == 'P') { on_pause (); return true; }
 	if (k == KEY_F1 + 11) { on_stats (); return true; }
+	if (k == KEY_F1 + 9) { on_fps (); return true; }
 	if (k == KEY_F1 + 8) { on_dump (); return true; }
 	return Root::onKey (k);
 }
@@ -402,16 +435,78 @@ static void pad_state (void)
 	g_padW[2] = (unsigned) l | (unsigned) r << 8;
 }
 
+// The FP unit in the IEEE mode the Gekko's arithmetic is emulated with (round to nearest, no
+// flush-to-zero, NaNs propagated): FPCR is set by no one at boot, a core has what it had at reset
+// (F12 shows the value found when it was not 0)
+static volatile unsigned long long g_fpcrWas = 0;
+static inline void fpcr_ieee (void)
+{
+#if defined (__aarch64__)
+	unsigned long long v; asm volatile ("mrs %0, fpcr" : "=r" (v));
+	if (v != 0) { g_fpcrWas = v; asm volatile ("msr fpcr, %0" :: "r" (0ull)); }
+#endif
+}
+
+// the GX's core: the FIFO as the machine's core writes it (no kapi call, nothing allocated)
+static void gx_core (void *)
+{
+	fpcr_ieee ();
+	if (g_pmu) gc::gcPmuStart (g_pmuEv);				// (this core's counters: the GX part)
+	while (!g_gxStop)
+	{
+		unsigned mode = __atomic_load_n (&g_gxMode, __ATOMIC_ACQUIRE);
+		bool ran = false;
+		if (__atomic_load_n (&g_m->gxAsync, __ATOMIC_ACQUIRE))
+		{
+			unsigned long long t0 = ec_now_us ();
+			ran = g_m->gxStep ();
+			if (ran) g_gxBusyUs = g_gxBusyUs + (ec_now_us () - t0);
+		}
+		if (g_gxSeen != mode) { g_gxSeen = mode; ec_sev (); }	// (the machine's core waits for that word)
+		if (!ran) ec_wfe ();
+	}
+}
+// (the machine's core) the GX on its core or not: the FIFO run first, the GX core's word waited for
+static void gx_async (bool on)
+{
+	if (on == g_m->gxAsync) return;
+	g_m->gxSync ();							// (all written run: by the GX core, or here)
+	if (on) g_m->gxDoneW = g_m->piFifoWptr & 0x03FFFFFF;
+	__atomic_store_n (&g_m->gxAsync, on, __ATOMIC_RELEASE);
+	unsigned mode = g_gxMode + 1;
+	__atomic_store_n (&g_gxMode, mode, __ATOMIC_RELEASE);
+	ec_sev ();
+	while (g_gxSeen != mode && !g_gxStop) ec_wfe ();
+}
+
 // One field of the machine: on the app core (no kapi call except the disc reads it asks for).
 static void gc_frame (EmuCore *ec)
 {
+	fpcr_ieee ();								// (this core's: once it is 0, a read a field)
 	unsigned w1 = g_padW[1], w2 = g_padW[2];
 	gc::GxGpu *wantGpu = g_wantTev && g_tevOk ? &g_rec : 0;
-	if (wantGpu != g_m->gpu) { g_m->gpu = wantGpu; g_m->gxsDirty = true; g_rec.ready = -1; }	// (the renderer changed)
+	if (wantGpu != g_m->gpu)						// (the renderer changed: the GX here meanwhile)
+	{
+		if (g_gxCore >= 0) gx_async (false);
+		g_m->gpu = wantGpu; g_m->gxsDirty = true; g_rec.ready = -1;
+	}
+	if (g_gxCore >= 0) gx_async (g_m->gpu != 0);			// (the TEV's GX on its core; the older drawing here)
 	gc::Jit *want = g_wantJit ? g_jit : 0;
 	if (want != g_m->jit) { g_m->jit = want; g_m->jitFlush = true; }	// (what ran meanwhile may have changed the code)
 	g_m->setPad (0, g_padW[0], (signed char) w1, (signed char) (w1 >> 8), (signed char) (w1 >> 16), (signed char) (w1 >> 24), (int) (w2 & 255), (int) (w2 >> 8));
-	g_m->runFrame ();
+	if (g_pmu)
+	{
+		static bool started = false;
+		if (!started) { gc::gcPmuStart (g_pmuEv); g_m->pmuOn = true; started = true; }	// (this core's counters)
+		unsigned long long a[gc::PMU_N], b[gc::PMU_N], acc[gc::PMU_N];
+		for (int k = 0; k < gc::PMU_N; k++) acc[k] = g_pmuField[k];
+		gc::gcPmuRead (a);
+		g_m->runFrame ();
+		gc::gcPmuRead (b);
+		gc::gcPmuAdd (acc, a, b);
+		for (int k = 0; k < gc::PMU_N; k++) g_pmuField[k] = acc[k];
+	}
+	else g_m->runFrame ();
 	unsigned *d = ec_back (ec);
 	int n = g_m->fbW * g_m->fbH;
 	for (int i = 0; i < n; i++) d[i] = g_m->fb[i];
@@ -460,7 +555,7 @@ static void tev_line (void)
 // looked up, the recorder), the textures, the recorder (the vertex stage: transformed, lit, into
 // the frame) and its vertices; a frame's on the main thread: the kernel's arrays made
 // (Out::prepare), then gpu_render2 (the clipping, the GPU)
-static void perf_line (unsigned fields)
+static void perf_line (unsigned fields, unsigned long long elUs)
 {
 	static unsigned long long pDraw = 0, pVerts = 0, pPrep = 0, pGpu = 0, pGVerts = 0; static unsigned pFrames = 0;
 	static unsigned long long pFifo = 0, pPrim = 0, pTex = 0;
@@ -477,11 +572,60 @@ static void perf_line (unsigned fields)
 	cat (d, &k, "a field: gx "); fmt_num (d, &k, (unsigned) (dFifo * 10000 / rate / fl), 1);
 	cat (d, &k, " ms (prims "); fmt_num (d, &k, (unsigned) (dPrim * 10000 / rate / fl), 1);
 	cat (d, &k, ", textures "); fmt_num (d, &k, (unsigned) (dTex * 10000 / rate / fl), 1);
+	if (g_gxCore >= 0)
+	{
+		static unsigned long long pBusy = 0, pWait = 0;
+		unsigned long long busy = g_gxBusyUs, wait = g_m->gxWaitTicks;
+		cat (d, &k, ", GX core "); fmt_num (d, &k, (unsigned) g_gxCore, 0); cat (d, &k, " busy ");
+		fmt_num (d, &k, (unsigned) ((busy - pBusy) * 100 / (elUs ? elUs : 1)), 0); cat (d, &k, " %, the machine waited ");
+		fmt_num (d, &k, (unsigned) ((wait - pWait) * 10000 / rate / fl), 1); cat (d, &k, " ms");
+		pBusy = busy; pWait = wait;
+	}
 	cat (d, &k, "), rec "); fmt_num (d, &k, (unsigned) (dDraw * 10000 / rate / fl), 1);
 	cat (d, &k, " ms, "); fmt_num (d, &k, (unsigned) (dVerts / fl), 0); cat (d, &k, " vertices  a frame: prep ");
 	fmt_num (d, &k, (unsigned) (dPrep * 10000 / rate / fr), 1); cat (d, &k, " ms, gpu_render2 ");
 	fmt_num (d, &k, (unsigned) (dGpu * 10000 / rate / fr), 1); cat (d, &k, " ms, ");
 	fmt_num (d, &k, (unsigned) (dGV / fr), 0); cat (d, &k, " vertices");
+}
+
+// --pmu, F12's fifth line: the app core's counters in the last second, split in the GX (gxFifoKick,
+// all in) and the rest (the CPU mostly): instructions a cycle; L1D refills, L2 refills, branch
+// mispredictions a thousand instructions; a field's millions of cycles
+static void pmu_line (unsigned fields)
+{
+	static unsigned long long pAll[gc::PMU_N], pGx[gc::PMU_N];
+	unsigned long long all[gc::PMU_N], gx[gc::PMU_N], dA[gc::PMU_N], dG[gc::PMU_N];
+	for (int k = 0; k < gc::PMU_N; k++) { all[k] = g_pmuField[k]; gx[k] = g_m->pmuFifo[k]; dA[k] = all[k] - pAll[k]; dG[k] = gx[k] - pGx[k]; pAll[k] = all[k]; pGx[k] = gx[k]; }
+	char *d = g_statPmu; int k = 0; d[0] = 0;
+	unsigned fl = fields ? fields : 1;
+	for (int part = 0; part < 2; part++)
+	{
+		unsigned long long c[gc::PMU_N];
+		for (int j = 0; j < gc::PMU_N; j++) c[j] = part ? dG[j] : g_m->gxAsync ? dA[j] : dA[j] - dG[j];	// (the GX on its core: apart)
+		unsigned long long ins = c[1] ? c[1] : 1;
+		cat (d, &k, part ? "  gx: " : "pmu cpu: "); fmt_num (d, &k, (unsigned) (c[0] / 100000 / fl), 1);
+		cat (d, &k, " Mcyc, ipc "); fmt_num (d, &k, (unsigned) (c[0] ? c[1] * 100 / c[0] : 0), 2);
+		cat (d, &k, " L1D "); fmt_num (d, &k, (unsigned) (c[2] * 10000 / ins), 1);
+		cat (d, &k, " L2 "); fmt_num (d, &k, (unsigned) (c[3] * 10000 / ins), 1);
+		cat (d, &k, " br "); fmt_num (d, &k, (unsigned) (c[4] * 10000 / ins), 1);
+	}
+}
+
+// --jitprof: the JIT's profile into the diag's folder (the machine held meanwhile: its blocks still)
+static void jit_report (void)
+{
+	enum { TEXT = 256 * 1024, CODE = 4 << 20 };
+	char *t = new char[TEXT]; unsigned char *c = new unsigned char[CODE];
+	if (t && c)
+	{
+		ec_hold (&g_ec);
+		int nt = g_m->jitReport (t, TEXT, 80), nc = g_m->jitHotCode (c, CODE, 80);
+		ec_resume (&g_ec);
+		char path[200]; int k = 0; path[0] = 0;
+		cat (path, &k, g_dumpDir); cat (path, &k, "/jitprof.txt"); kapi_save_file (path, t, (unsigned) nt);
+		k = 0; path[0] = 0; cat (path, &k, g_dumpDir); cat (path, &k, "/jitprof.bin"); kapi_save_file (path, c, (unsigned) nc);
+	}
+	delete [] t; delete [] c;
 }
 
 // --diag: F12's lines every second into SD:/gcdump/diag.txt (saved every 5 s: less time taken from the
@@ -494,9 +638,9 @@ static void diag_tick (void)
 	if (!log) { log = new char[CAP]; kapi_mkdir (g_dumpDir); int k = 0; path[0] = 0; cat (path, &k, g_dumpDir); cat (path, &k, "/diag.txt"); }
 	if (!g_m->gpu) tev_line ();
 	secs++;
-	const char *lines[4] = { g_statState, g_statText, g_statTev, g_statPerf };
+	const char *lines[5] = { g_statState, g_statText, g_statTev, g_statPerf, g_statPmu };
 	char t[16]; int k = 0; t[0] = 0; fmt_num (t, &k, secs, 0); cat (t, &k, " s\n");
-	for (int j = 0; j < 5; j++)
+	for (int j = 0; j < (g_pmu ? 6 : 5); j++)
 	{
 		const char *s = j == 0 ? t : lines[j - 1];
 		for (int i = 0; s[i] && n < CAP - 2; i++) log[n++] = s[i];
@@ -504,6 +648,7 @@ static void diag_tick (void)
 	}
 	if (secs % 5 == 0 || secs >= 200) kapi_save_file (path, log, n);
 	if (secs % 60 == 0) g_dumpReq = true;
+	if (g_jitProf && (secs % 60 == 0 || secs >= 200)) jit_report ();
 	if (secs >= 200) on_quit ();
 }
 
@@ -530,6 +675,21 @@ int main (void)
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'f' && args[i + 3] == 'u' && args[i + 4] == 'l' && args[i + 5] == 'l') wantFull = true;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'i' && args[i + 3] == 'n' && args[i + 4] == 't') g_wantJit = 0;
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 't' && args[i + 3] == 'e' && args[i + 4] == 'v' && args[i + 5] == 'b') g_tevBuf = true;
+		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'j' && args[i + 3] == 'i' && args[i + 4] == 't' && args[i + 5] == 'p') g_jitProf = true;
+		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'g' && args[i + 3] == 'x' && args[i + 4] == 'o') g_gxOne = true;
+		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'p' && args[i + 3] == 'm' && args[i + 4] == 'u')
+		{
+			g_pmu = true;
+			if (args[i + 5] == '=')					// --pmu=e1,e2,e3,e4 (hex)
+				for (int j = i + 6, e = 0; e < 4 && args[j] && args[j] != ' '; e++)
+				{
+					unsigned v = 0;
+					for (; args[j] && args[j] != ',' && args[j] != ' '; j++)
+						v = v * 16 + (unsigned) (args[j] <= '9' ? args[j] - '0' : (args[j] | 32) - 'a' + 10);
+					g_pmuEv[e] = v;
+					if (args[j] == ',') j++;
+				}
+		}
 		if (args[i] == '-' && args[i + 1] == '-' && args[i + 2] == 'd' && args[i + 3] == 'i' && args[i + 4] == 'a' && args[i + 5] == 'g')
 		{
 			g_diag = true;
@@ -591,6 +751,7 @@ int main (void)
 	}
 
 	gc::codeAlloc = code_alloc;				// (the JIT's code memory: taken here, not on the app core)
+	if (g_jitProf) { g_m->jitProfile = true; g_m->jitInterpOps = new unsigned[65536] (); }	// (before the JIT: its tables)
 	if (g_m->jitEnable ()) g_jit = g_m->jit;
 	if (!g_wantJit) g_m->jit = 0;
 
@@ -614,12 +775,20 @@ int main (void)
 	if (g_tevOk) menu.item ("TEV Shaders On / Off", "", 0, on_tev);
 	menu.separator ();
 	menu.item ("Show Speed",   "F12", 0, on_stats);
+	menu.item ("Show FPS",     "F10", 0, on_fps);
 	if (g_tevOk) menu.item ("Dump the Frame (TEV)", "F9", 0, on_dump);
 	menu.publish ();
 	if (wantFull) full_screen (true);
 
 	if (!ec_init (&g_ec, gc::Machine::FB_MAX_W, gc::Machine::FB_MAX_H, gc_frame)) return 1;
 	g_onCore = ec_on_core (&g_ec);
+	if (g_onCore && g_tevOk && !g_gxOne)				// a second app core: the GX there
+	{
+		int c = kapi_core_acquire ();
+		unsigned char *stack = c >= 0 ? new unsigned char[256 * 1024] : 0;
+		if (c >= 0 && stack && kapi_core_run (c, gx_core, 0, stack + 256 * 1024) == 0) g_gxCore = c;
+		else if (c >= 0) kapi_core_release (c);
+	}
 	g_loading = false;
 
 	unsigned t0 = kapi_get_ticks (), asked = 0, lastSave = kapi_get_ticks ();
@@ -687,21 +856,31 @@ int main (void)
 			unsigned doneNow = g_ec.done, stEmu = doneNow - stDone;
 			unsigned long long emuNow = g_ec.emuUs, emuUs = emuNow - stEmuUs;
 			int k = 0;
+			{
+				static unsigned lastFrames = 0;			// (the game's frames: its copies to the XFB)
+				unsigned fr = g_m->gfxSerial - lastFrames; lastFrames = g_m->gfxSerial;
+				int j = 0; g_statFps[0] = 0;
+				fmt_num (g_statFps, &j, (unsigned) ((unsigned long long) fr * 10000000ull / el), 1); cat (g_statFps, &j, " fps  ");
+				fmt_num (g_statFps, &j, (unsigned) ((unsigned long long) stEmu * 10000000000ull / el / fps100 ()), 0); cat (g_statFps, &j, " %");
+			}
 			fmt_num (g_statText, &k, (unsigned) ((unsigned long long) stEmu * 10000000ull / el), 1); cat (g_statText, &k, " fields/s  emu ");
 			fmt_num (g_statText, &k, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &k, " ms  draw ");
 			fmt_num (g_statText, &k, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &k, " ms");
 			cat (g_statText, &k, g_gfxAge >= 30 ? "  framebuffer" : g_m->gpu ? "  TEV" : "  GPU");
 			if (g_m->gpu) { cat (g_statText, &k, " "); fmt_num (g_statText, &k, (unsigned) g_rec.nProg, 0); cat (g_statText, &k, " progs"); }
 			cat (g_statText, &k, g_m->jit ? "  JIT" : "  interpreter");
+			if (g_fpcrWas) { cat (g_statText, &k, "  FPCR was "); char hx[12]; int j = 0; for (int b = 28; b >= 0; b -= 4) hx[j++] = "0123456789ABCDEF"[(g_fpcrWas >> b) & 15]; hx[j] = 0; cat (g_statText, &k, hx); }
 			if (g_sound && g_audio == 1 && g_audioMade) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); }
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			g_m->status (g_statState, sizeof g_statState);	// (read while it may run: a diagnostic)
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
-			if (g_m->gpu) { tev_line (); perf_line (stEmu); }
+			if (g_m->gpu) { tev_line (); perf_line (stEmu, el); }
+			if (g_pmu) pmu_line (stEmu);
 			if (g_diag) diag_tick ();
 		}
 	}
 	ec_shutdown (&g_ec);
+	if (g_gxCore >= 0) { g_gxStop = 1; ec_sev (); kapi_core_release (g_gxCore); }
 	card_save ();
 	if (g_fs) kapi_fullscreen_end ();
 	if (g_disc) kapi_close (g_disc);

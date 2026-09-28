@@ -100,13 +100,13 @@ snes/%.o: snes/%.cpp snes/snes.h snes/snes_gauss.inc
 # The Nintendo 64 core (n64/: the FPU is used: FP/SIMD flags), for n64emu.
 N64_OBJS = n64/n64_cpu.o n64/n64_bus.o n64/n64_gfx.o n64/n64_audio.o
 n64/%.o: n64/%.cpp n64/n64.h
-	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -fno-math-errno -O3 -I. -c $< -o $@
+	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -c $< -o $@
 n64/libn64.a: $(N64_OBJS)
 	$(AR) rcs $@ $^
 # The GameCube core (gc/: the FPU is used, as n64/), for gcemu.
 GC_OBJS = gc/gc_cpu.o gc/gc_mem.o gc/gc_hw.o gc/gc_gx.o gc/gc_gxdraw.o gc/gc_dsp.o gc/gc_boot.o gc/gc_jit.o gc/gc_card.o gc/gc_zelda.o gc/gc_gxgpu.o
 gc/%.o: gc/%.cpp gc/gc.h
-	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -fno-math-errno -O3 -I. -c $< -o $@
+	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -c $< -o $@
 gc/libgc.a: $(GC_OBJS)
 	$(AR) rcs $@ $^
 # The V3D QPU builder (v3d/: shaders generated at run time, e.g. the GameCube's TEV): the C++

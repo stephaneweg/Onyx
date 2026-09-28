@@ -15,12 +15,15 @@ Machine::Machine ()
 {
 	mem1 = new u8[MEM1_SIZE + 16];			// (+16: the JIT's unaligned accesses at the end)
 	jit = 0; jitUntil = 0; jitFlush = false; jitBlocks = jitCompiles = 0; jitProfile = false;
+	jitInterpOps = 0; jitEnters = 0; for (int i = 0; i < 16; i++) jitSlowMem[0][i] = jitSlowMem[1][i] = 0;
 	aram = new u8[ARAM_SIZE];
 	disc = 0; discSize = 0; discRead = 0; discCtx = 0; pal = false; title[0] = 0; gameId[0] = 0;
 	for (int i = 0; i < 2; i++) gfxFrame[i].v = 0, gfxFrame[i].b = 0;
 	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
 	texPool = new u32[TEX_POOL]; texPoolTop = 0; texFlushes = 0;
 	timeFifo = timePrim = timeTex = 0;
+	pmuOn = false; for (int k = 0; k < PMU_N; k++) pmuFifo[k] = 0;
+	gxAsync = false; gxDoneW = 0; gxIrqBits = 0; gxLockV = 0; gxWaitTicks = 0;
 	texEpoch = 1; for (int m = 0; m < 8; m++) texMemo[m].epoch = 0;
 	tmem = 0;
 	for (int i = 0; i < 4; i++) { padBtn[i] = 0; padSX[i] = padSY[i] = padCX[i] = padCY[i] = 0; padL[i] = padR[i] = 0; }
@@ -59,7 +62,7 @@ void Machine::reset ()
 	dbat[2] = 0xC0001FFF; dbat[3] = 0x0000002A;
 	dbat[6] = 0xE00001FE; dbat[7] = 0xE0000002;
 	batRebuild ();
-	tbBase = 0; cycles = 0; decAt = ~0ull; decPending = false; resv = false; resvAddr = 0; idleSkips = 0; curPc = pc; halted = false; haltMsg[0] = 0; extIrq = 0; memFault = false;
+	tbBase = 0; cycles = 0; decAt = ~0ull; decPending = false; resv = false; resvAddr = 0; idleSkips = 0; idleHit = 0; curPc = pc; halted = false; haltMsg[0] = 0; extIrq = 0; memFault = false;
 	jitFlush = true;
 	hwReset ();
 }

@@ -143,6 +143,27 @@ answer in French. The docs stay in English.
   4. Dual-issue scheduling of the generated TEV code.
   Then stage 4: EFB copies to textures (`rec skipped` counts the draws reading one: the heat haze,
   the bloom...), the fog, the indirect textures.
+- **The speed, second pass (local session, 2026-09-28).** `netcore=0` on the user's Pi (both app
+  cores free): the GX runs on core 3 while the machine runs on core 2 (docs/03, "The GX on its
+  own core"). A command-by-command copy of the FIFO near its end made that slower at first (4 fps):
+  the commands are now read in place. The Wind Waker (PAL, 50 fields/s) on the Pi: the title's
+  heavy flyover ~20 fields/s (the GX core ~90 % busy, ~45 ms a field: the recorder ~32), the
+  lighter scenes 35-50, the user's first steps on Outset ~15 fps (60-65 %). JIT (docs/03): the
+  memory fast path (one EOR check, loads into the destination), compare + branch fused on the
+  host's flags (`crDead`); `gctest fuzz` passes (GC_FUZZC too). The JIT profile (--jitprof,
+  200 s): 7.1 host instructions a guest one; lwz / stw 8.5, bc 7.7, b 9.2, lfs 12.3, cmpli 9.4
+  before those two changes; a block run ~10 guest instructions; the CPU part is ~90 % JIT code,
+  IPC ~0.85 (L2 refills ~4 a thousand instructions).
+  **Fixed: the camera "in Link's head"** (the user's report; on the PC it was right): not the
+  camera -- the recorder framed the vertices with the copy registers of the draw's time, and a
+  half-size EFB copy to a texture in the middle of the frame made the rest a 2x zoom of the top
+  left quarter (the title screen too). Found by comparing `gcrun GC_GL=1` and `gcv3d` on the same
+  scripted game (`GC_PAD`, `GC_CARD`, `GC_HASH`: the same MEM1, so the drawing). Now the EFB's
+  space + `Frame::rect` (docs/03).
+  Next, by gain: the JIT (a base register's host pointer kept across a block's accesses; the
+  block exits' write-backs; the FP compares), the recorder's per-vertex work (the per-draw
+  setup hoisted, a specialised vertex loader -- the GX core in heavy scenes), then the
+  display's `gpu_render2` (~20-45 ms a frame on core 0: the kernel's clipping and copies).
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
   - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
     stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then

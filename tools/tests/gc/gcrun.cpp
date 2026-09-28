@@ -143,6 +143,18 @@ static u32 padAt (int field)
 	return b;
 }
 
+// GC_HASH=n: every n fields a line "hash <field> <MEM1's FNV-1a> pc <pc> cycles <cycles>" (two runs compared)
+static void hashLine (Machine &m, int field)
+{
+	const char *h = getenv ("GC_HASH");
+	if (!h || atoi (h) <= 0 || field % atoi (h)) return;
+	unsigned long long x = 1469598103934665603ull;
+	const unsigned long long *p = (const unsigned long long *) m.mem1;
+	for (u32 i = 0; i < MEM1_SIZE / 8; i++) { x ^= p[i]; x *= 1099511628211ull; }
+	printf ("hash %d %016llX pc %08X cycles %llu\n", field, x, m.pc, (unsigned long long) m.cycles);
+	fflush (stdout);
+}
+
 int main (int argc, char **argv)
 {
 	if (argc < 3) { fprintf (stderr, "gcrun <iso> <fields> [every]\n"); return 2; }
@@ -189,6 +201,7 @@ int main (int argc, char **argv)
 		if (getenv ("GC_JITOFF") && i == atoi (getenv ("GC_JITOFF"))) { m.jit = 0; printf ("(the interpreter from here)\n"); }
 		if (getenv ("GC_PROF_FROM")) profOn = i >= atoi (getenv ("GC_PROF_FROM"));
 		m.runFrame ();
+		hashLine (m, i + 1);
 		if (wav)
 		{
 			static s16 pcm[48000 * 2];

@@ -261,7 +261,7 @@ void Machine::gxGpuCopy (u32 v)
 		e.addr = c.addr; e.bytes = bytes; e.w = (u16) w; e.h = (u16) h; e.fmt = (u8) c.fmt;
 		e.hash = memHash (mem1, c.addr, bytes); e.use = ++useClock;
 		c.slot = slot;
-		gxsDirty = true; texEpoch++;					// (a texture may be this copy now)
+		gxsDirty = true; __atomic_add_fetch (&texEpoch, 1u, __ATOMIC_RELAXED);	// (a texture may be this copy now)
 		for (int m = 0; m < 8; m++) gxs.tex[m] = -2;
 	}
 	gpu->copy (*this, c);

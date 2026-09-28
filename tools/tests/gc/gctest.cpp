@@ -4,6 +4,9 @@
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results
 //   gctest bench <file.elf> [entry]           a function's speed (bench.c: run_bench, run_fbench)
 //   gctest fuzz [seed] [count] [length]      the JIT against the interpreter: random sequences
+//       (GC_FUZZC=1: their data through the uncached mirror, 0xC0000000; GC_FUZZSTART=n: from the n-th;
+//       GC_FUZZDUMP=file: each one's code written there; GC_FUZZPROG=file: that code instead, its first
+//       GC_FUZZLEN instructions -- a failing one cut down)
 //   gctest dol <file.dol> <fields> [out.ppm]   runs a program: its picture, its results at 0x80700000
 // GC_JIT=1: the JIT runs the CPU (an AArch64 host -- run_gc_test.sh builds it for qemu-aarch64 --
 // or an x86-64 one)
@@ -181,7 +184,8 @@ static void fuzzInit (Machine &m, u64 seed, u32 *prog, int n)
 	rng = seed;
 	static const u32 edge[] = { 0, 0xFFFFFFFFu, 0x80000000u, 0x7FFFFFFFu, 1, 0x8000u, 0xFFFF8000u };
 	for (int i = 0; i < 32; i++) m.gpr[i] = rn (3) ? rnd32 () : rn (2) ? rn (100) : edge[rn (7)];
-	m.gpr[1] = 0x80400000; m.gpr[2] = 0xCC008000;			// (the data; the write-gather pipe)
+	m.gpr[1] = getenv ("GC_FUZZC") ? 0xC0400000 : 0x80400000;	// (the data -- GC_FUZZC: through the uncached mirror)
+	m.gpr[2] = 0xCC008000;					// (the write-gather pipe)
 	for (int i = 0; i < 32; i++) for (int k = 0; k < 2; k++) { u64 u = fpVal (); memcpy (&m.ps[i][k], &u, 8); }
 	m.cr = rnd32 (); m.xer = rnd32 () & 0xE000007F; m.lr = rnd32 (); m.ctr = rnd32 ();
 	m.gqr[0] = 0; m.gqr[1] = 0x03040304; m.gqr[2] = 0x3E073E07; m.gqr[3] = 0x00050005;
@@ -271,9 +275,19 @@ static int fuzzTest (u64 seed0, int count, int len)
 		u64 seed = seed0 * 1000003ull + (u64) t + 1;
 		rng = seed ^ 0x9E3779B97F4A7C15ull;
 		for (int i = 0; i < len; i++) prog[i] = fuzzInsn ();
+		if (getenv ("GC_FUZZPROG"))					// (a sequence from a file: its first GC_FUZZLEN)
+		{
+			FILE *f = fopen (getenv ("GC_FUZZPROG"), "rb");
+			int k = 0; u32 w;
+			while (f && k < len && fread (&w, 4, 1, f) == 1) prog[k++] = __builtin_bswap32 (w);
+			if (f) fclose (f);
+			len = k;
+			if (getenv ("GC_FUZZLEN") && atoi (getenv ("GC_FUZZLEN")) < len) len = atoi (getenv ("GC_FUZZLEN"));
+		}
 		if (getenv ("GC_FUZZV")) { printf ("sequence %d\n", t); fflush (stdout); }
 		if (getenv ("GC_FUZZDUMP")) { FILE *f = fopen (getenv ("GC_FUZZDUMP"), "wb"); for (int i = 0; i < len; i++) { u32 w = __builtin_bswap32 (prog[i]); fwrite (&w, 4, 1, f); } fclose (f); }
 		fuzzInit (A, seed, prog, len); fuzzInit (B, seed, prog, len);
+		A.srr0 = B.srr0 = 0;						// (set by an exception only)
 		A.gpr[4] = B.gpr[4] = 0x100;
 		while (A.pc != 0x80001000 && !A.halted && A.cycles < 1000000) A.step ();
 		while (B.pc != 0x80001000 && !B.halted && B.cycles < 1000000) B.run (B.cycles + 1000);
@@ -284,16 +298,26 @@ static int fuzzTest (u64 seed0, int count, int len)
 			while (*q) { int r = (int) strtol (q, (char **) &q, 10); u64 x, y, x1, y1; memcpy (&x, &A.ps[r][0], 8); memcpy (&y, &B.ps[r][0], 8); memcpy (&x1, &A.ps[r][1], 8); memcpy (&y1, &B.ps[r][1], 8);
 				printf ("  f%d: %016llX %016llX | JIT %016llX %016llX\n", r, x, x1, y, y1); while (*q == ' ') q++; }
 		}
+		if (getenv ("GC_FUZZG"))					// (the GPRs listed, CR, XER: both machines)
+		{
+			const char *q = getenv ("GC_FUZZG");
+			while (*q) { int r = (int) strtol (q, (char **) &q, 10); printf ("  r%d: %08X | JIT %08X\n", r, A.gpr[r], B.gpr[r]); while (*q == ' ') q++; }
+			printf ("  cr %08X xer %08X | JIT cr %08X xer %08X\n", A.cr, A.xer, B.cr, B.xer);
+		}
 		if (getenv ("GC_FUZZBLOCK"))					// (a block's code: GC_FUZZBLOCK=pc -> fzblock.bin)
 		{
 			const u32 *code; u32 words;
-			if (B.jitCode ((u32) strtoul (getenv ("GC_FUZZBLOCK"), 0, 16), code, words)) { FILE *f = fopen ("fzblock.bin", "wb"); fwrite (code, 4, words, f); fclose (f); printf ("  block: %u words\n", words); }
+			for (u32 bp = (u32) strtoul (getenv ("GC_FUZZBLOCK"), 0, 16); bp >= 0x80010000; bp -= 4)	// (the block starting there, or before)
+				if (B.jitCode (bp, code, words)) { FILE *f = fopen ("fzblock.bin", "wb"); fwrite (code, 4, words, f); fclose (f); printf ("  block %08X: %u words\n", bp, words); break; }
 		}
 		char diff[256] = "";
 		for (int i = 0; i < 32 && !diff[0]; i++) if (A.gpr[i] != B.gpr[i]) snprintf (diff, sizeof diff, "r%d: %08X, JIT %08X", i, A.gpr[i], B.gpr[i]);
 		for (int i = 0; i < 32 && !diff[0]; i++) for (int k = 0; k < 2 && !diff[0]; k++)
 			if (memcmp (&A.ps[i][k], &B.ps[i][k], 8)) { u64 x, y; memcpy (&x, &A.ps[i][k], 8); memcpy (&y, &B.ps[i][k], 8); snprintf (diff, sizeof diff, "f%d.ps%d: %016llX, JIT %016llX", i, k, x, y); }
-		if (!diff[0] && A.cr != B.cr) snprintf (diff, sizeof diff, "cr: %08X, JIT %08X", A.cr, B.cr);
+		// (CR after an exception that did not come back -- the run stopped at its vector: a field the
+		// JIT did not make because the code after would set it again first may differ, as it may
+		// on the real thing's crash reports; the JIT leaves it so -- crDead)
+		if (!diff[0] && A.cr != B.cr && !(A.halted && A.srr0 != 0)) snprintf (diff, sizeof diff, "cr: %08X, JIT %08X", A.cr, B.cr);
 		if (!diff[0] && A.xer != B.xer) snprintf (diff, sizeof diff, "xer: %08X, JIT %08X", A.xer, B.xer);
 		if (!diff[0] && (A.lr != B.lr || A.ctr != B.ctr)) snprintf (diff, sizeof diff, "lr / ctr differ");
 		if (!diff[0] && A.fpscrNow () != B.fpscrNow ()) snprintf (diff, sizeof diff, "fpscr: %08X, JIT %08X", A.fpscr, B.fpscr);

@@ -60,13 +60,19 @@ struct Prog
 	int handle;				// -1: not given to the GPU yet, -2: refused
 };
 
+// The vertices are recorded in the clip space of the whole EFB (EFB_W x EFB_H: x -1..1 = its columns
+// 0..640, y 1..-1 its rows 0..528), the scissors in its pixels: the rectangle the frame's XFB copy
+// takes is known at its end only (a copy to a texture meanwhile has its own) -- frameView maps them
+// onto it when the frame is drawn
+enum { EFB_W = 640, EFB_H = 528 };
+
 struct Batch
 {
 	u32 first, count;			// (vertices: floats from `off`, `stride` a vertex)
 	u32 off; int stride;
 	int prog;
 	u32 flags, blend, wmask;
-	float scissor[4];			// x0 y0 x1 y1 over the frame (0..1)
+	float scissor[4];			// x0 y0 x1 y1 in the EFB's pixels
 	u32 uni;				// its fragment uniforms in the frame's
 	int texSlot[8]; u32 texFlags[8];	// (Machine::tex[] slots, the lookups')
 };
@@ -77,8 +83,22 @@ struct Frame
 	Batch *b; u32 nb;
 	u32 *u; u32 nu;
 	u32 clear; bool keep;
-	void reset () { nf = nv = nb = nu = 0; }
+	float rect[4];				// the EFB's rectangle the XFB copy took: x, y, w, h
+	void reset () { nf = nv = nb = nu = 0; rect[0] = rect[1] = 0; rect[2] = EFB_W; rect[3] = 480; }
 };
+
+// A frame's EFB clip space -> its picture's: x' = t[0] x + t[1] w, y' = t[2] y + t[3] w
+static inline void frameView (const Frame &F, float t[4])
+{
+	float cx = F.rect[0], cy = F.rect[1], cw = F.rect[2], ch = F.rect[3];
+	t[0] = (float) EFB_W / cw; t[1] = ((float) EFB_W - 2 * cx) / cw - 1;
+	t[2] = (float) EFB_H / ch; t[3] = 1 - ((float) EFB_H - 2 * cy) / ch;
+}
+// a batch's scissor -> 0..1 over the frame's picture (x0 y0 x1 y1)
+static inline void frameScissor (const Frame &F, const Batch &b, float o[4])
+{
+	for (int k = 0; k < 4; k++) o[k] = (b.scissor[k] - F.rect[k & 1]) / F.rect[2 + (k & 1)];
+}
 
 class Rec : public gc::GxGpu
 {
@@ -89,6 +109,16 @@ public:
 	Frame frame[2]; int build = 0; volatile int ready = -1;
 	u32 serial = 0;					// (frames finished)
 	u32 unsupported = 0, skipped = 0;		// (stats: draws with a feature not generated, not drawn)
+	// (stats) the draws left out, by reason: SK_*; onSkip (the PC's tests): told each one
+	enum { SK_PRIM, SK_PROG, SK_NOTEX, SK_COPYTEX, SK_ZNEVER, SK_CULLALL, SK_NOWRITE, SK_LIMIT, SK_N };
+	u32 skipWhy[SK_N] = {};
+	void (*onSkip) (int why, const gc::GxState &s, int nv, int arg) = 0;
+	void skip (int why, const gc::GxState &s, int nv, int arg, bool count = true)
+	{
+		skipWhy[why]++;
+		if (count) skipped++;
+		if (onSkip) onSkip (why, s, nv, arg);
+	}
 	volatile u64 drawTicks = 0, drawVerts = 0;	// (stats: the time in draw (), the vertices it made)
 	float *tmp = 0;					// (a draw's vertices before its triangles)
 
@@ -217,7 +247,7 @@ public:
 	}
 	void record (gc::Machine &m, const gc::GxState &s, const gc::GxVertex *vx, int nv, const u32 *idx, int ni, int prim)
 	{
-		if (prim != gc::GX_TRIANGLES || ni < 3) return;			// (lines, points: not yet)
+		if (prim != gc::GX_TRIANGLES || ni < 3) { skip (SK_PRIM, s, nv, prim, false); return; }	// (lines, points: not yet)
 		Frame &F = frame[build];
 		// the TEV's configuration
 		gxtev::Config c; __builtin_memset (&c, 0, sizeof c);
@@ -253,7 +283,7 @@ public:
 		if (s.fogI[0] || s.zenv[0]) unsup = true;
 		if (unsup) unsupported++;
 		int pi = findProg (c);
-		if (pi < 0) { skipped++; return; }
+		if (pi < 0) { skip (SK_PROG, s, nv, 0); return; }
 		const Prog &P = prog[pi];
 		// its textures
 		Batch b;
@@ -261,18 +291,14 @@ public:
 		for (int L = 0; L < P.nLook; L++)
 		{
 			int mp = P.look[L].map, t = s.tex[mp];
-			if (t < 0 || t >= gc::GX_TEX_COPY) { skipped++; return; }		// (an EFB copy: not yet)
+			if (t < 0 || t >= gc::GX_TEX_COPY) { skip (t < 0 ? SK_NOTEX : SK_COPYTEX, s, nv, mp); return; }	// (an EFB copy: not yet)
 			b.texSlot[L] = t;
 			u32 tm0 = s.texMode[mp][0];
 			static const u32 WRAP[4] = { 1, 0, 2, 0 };			// GX clamp, repeat, mirror -> ours
 			b.texFlags[L] = KAPI_GPU_B_WRAP_S (WRAP[tm0 & 3]) | KAPI_GPU_B_WRAP_T (WRAP[(tm0 >> 2) & 3]) | ((tm0 & 0x10) ? KAPI_GPU_B_LINEAR : 0);
 		}
-		// the EFB's rectangle the XFB copy takes: the frame
-		u32 src = m.bpRegs[0x49], sz = m.bpRegs[0x4A];
-		float cx = (float) (src & 0x3FF), cy = (float) ((src >> 10) & 0x3FF);
-		float cw = (float) ((sz & 0x3FF) + 1), ch = (float) (((sz >> 10) & 0x3FF) + 1);
-		if (cw < 16) { cx = 0; cw = 640; }
-		if (ch < 16) { cy = 0; ch = 480; }
+		// the space the vertices are recorded in: the whole EFB (frameView: onto the XFB copy's rectangle)
+		const float cx = 0, cy = 0, cw = EFB_W, ch = EFB_H;
 		// the batch's state
 		b.prog = pi; b.stride = 4 + P.nVary;
 		u32 zm = s.zmode, flags = 0;
@@ -280,21 +306,20 @@ public:
 		else
 		{
 			u32 zf = (zm >> 1) & 7;
-			if (zf == 0) return;						// (never)
+			if (zf == 0) { skip (SK_ZNEVER, s, nv, 0, false); return; }	// (never)
 			flags |= KAPI_GPU_B_ZFUNC (zf);
 			if (!(zm & 0x10)) flags |= KAPI_GPU_B_NOZWRITE;
 		}
 		// (GX's front: clockwise on the screen; the kernel's: counter-clockwise)
 		if (s.cull == 1) flags |= KAPI_GPU_B_CULL_FRONT;		// (GX: the back culled)
 		else if (s.cull == 2) flags |= KAPI_GPU_B_CULL_BACK;
-		else if (s.cull == 3) return;
+		else if (s.cull == 3) { skip (SK_CULLALL, s, nv, 0, false); return; }
 		b.flags = flags; b.blend = blend;
 		b.wmask = ((cm >> 3) & 1 ? 0 : 7) | (hasAlpha && ((cm >> 4) & 1) ? 0 : 8);
-		if (b.wmask == 15 && !(zm & 0x10)) return;			// (nothing written)
-		b.scissor[0] = ((float) s.scissor[0] - cx) / cw; b.scissor[1] = ((float) s.scissor[1] - cy) / ch;
-		b.scissor[2] = ((float) s.scissor[2] - cx) / cw; b.scissor[3] = ((float) s.scissor[3] - cy) / ch;
+		if (b.wmask == 15 && !(zm & 0x10)) { skip (SK_NOWRITE, s, nv, 0, false); return; }	// (nothing written)
+		for (int k = 0; k < 4; k++) b.scissor[k] = (float) s.scissor[k];
 		// its uniforms
-		if (F.nu + P.nUni > MAX_UNIS || F.nb >= MAX_BATCHES) { skipped++; return; }
+		if (F.nu + P.nUni > MAX_UNIS || F.nb >= MAX_BATCHES) { skip (SK_LIMIT, s, nv, 0); return; }
 		b.uni = F.nu;
 		for (u32 i = 0; i < P.nUni; i++)
 		{
@@ -439,7 +464,7 @@ public:
 		drawVerts = drawVerts + (u64) nv;
 		// its triangles
 		u32 need = (u32) ni * (u32) stride;
-		if (F.nf + need > MAX_FLOATS) { skipped++; F.nu = b.uni; return; }
+		if (F.nf + need > MAX_FLOATS) { skip (SK_LIMIT, s, nv, 1); F.nu = b.uni; return; }
 		b.off = F.nf; b.first = F.nv; b.count = (u32) (ni / 3 * 3);
 		float *d = F.v + F.nf;
 		for (int i = 0; i < (int) b.count; i++)
@@ -466,10 +491,13 @@ public:
 	// ---- an EFB copy: to the XFB, the frame is done
 	void copy (gc::Machine &m, const gc::GxCopy &c) override
 	{
-		(void) m;
 		Frame &F = frame[build];
 		if (c.toXfb)
 		{
+			m.gxLock ();					// (a reader taking the ready one: after it)
+			F.rect[0] = (float) c.x; F.rect[1] = (float) c.y; F.rect[2] = (float) c.w; F.rect[3] = (float) c.h;
+			if (c.w < 16) { F.rect[0] = 0; F.rect[2] = EFB_W; }
+			if (c.h < 16) { F.rect[1] = 0; F.rect[3] = 480; }
 			__sync_synchronize ();
 			ready = build; serial++;
 			build ^= 1;
@@ -477,6 +505,7 @@ public:
 			N.reset ();
 			N.keep = !c.clear;
 			N.clear = c.clear ? c.clearColor & 0xFFFFFF : F.clear;
+			m.gxUnlock ();
 			return;
 		}
 		if (c.clear) { F.reset (); F.keep = false; F.clear = c.clearColor & 0xFFFFFF; }	// (drawn into a texture: dropped)
@@ -491,6 +520,7 @@ struct DumpHead
 	char magic[4]; u32 version, sizeBatch, sizeProg;
 	u32 nf, nv, nb, nu, clear, keep, nProgs, nTex;
 	int pw, ph, ret; u32 zero;			// (the picture's size, gpu_render2's result)
+	float rect[4];					// (version 2) the frame's XFB copy rectangle
 };
 // its size; written into d when d != 0 (the machine not running: the frame and textures still)
 static inline unsigned long long dumpFrame (const Rec &r, const gc::Machine &m, const Frame &F,
@@ -514,7 +544,8 @@ static inline unsigned long long dumpFrame (const Rec &r, const gc::Machine &m, 
 	}
 	DumpHead H; __builtin_memset (&H, 0, sizeof H);
 	H.magic[0] = 'G'; H.magic[1] = 'X'; H.magic[2] = 'F'; H.magic[3] = '1';
-	H.version = 1; H.sizeBatch = sizeof (Batch); H.sizeProg = sizeof (Prog);
+	H.version = 2; H.sizeBatch = sizeof (Batch); H.sizeProg = sizeof (Prog);
+	for (int k = 0; k < 4; k++) H.rect[k] = F.rect[k];
 	H.nf = F.nf; H.nv = F.nv; H.nb = F.nb; H.nu = F.nu; H.clear = F.clear; H.keep = F.keep; H.nProgs = nProgs; H.nTex = nTex;
 	H.pw = pic ? pw : 0; H.ph = pic ? ph : 0; H.ret = ret;
 	put (&H, sizeof H);
@@ -603,6 +634,13 @@ struct Out
 	// already prepared. -> false: no frame.
 	bool prepare (Rec &r, gc::Machine &m, int w, int h)
 	{
+		m.gxLock ();					// (the GX's core: no flip, no texture made meanwhile)
+		bool ok = prepareLocked (r, m, w, h);
+		m.gxUnlock ();
+		return ok;
+	}
+	bool prepareLocked (Rec &r, gc::Machine &m, int w, int h)
+	{
 		int fi = r.ready;
 		if (fi < 0) { prepOk = false; return false; }
 		if (prepOk && fi == prepFrame && r.serial == prepSerial && w == prepW && h == prepH) return true;
@@ -611,8 +649,9 @@ struct Out
 		textures (m);
 		int maxStride = 4;
 		for (u32 i = 0; i < F.nb; i++) if (F.b[i].stride > maxStride) maxStride = F.b[i].stride;
-		unsigned view[4]; qpu::viewUniforms (w, h, view);
-		for (int k = 0; k < 4; k++) ru[k] = view[k];
+		unsigned vu[4]; qpu::viewUniforms (w, h, vu);
+		for (int k = 0; k < 4; k++) ru[k] = vu[k];
+		float view[4]; frameView (F, view);
 		for (u32 i = 0; i < F.nu; i++) ru[4 + i] = F.u[i];
 		u32 nv = 0, nb = 0;
 		st.recorded = F.nb; st.noProg = st.noTex = st.empty = st.limit = 0;
@@ -628,8 +667,9 @@ struct Out
 			kapi_gpu_batch2 &o = rb[nb];
 			__builtin_memset (&o, 0, sizeof o);
 			o.first = nv; o.count = b.count; o.program = hnd; o.flags = b.flags; o.blend = b.blend; o.wmask = b.wmask;
-			int x0 = (int) (b.scissor[0] * (float) w + 0.5f), y0 = (int) (b.scissor[1] * (float) h + 0.5f);
-			int x1 = (int) (b.scissor[2] * (float) w + 0.5f), y1 = (int) (b.scissor[3] * (float) h + 0.5f);
+			float sc[4]; frameScissor (F, b, sc);
+			int x0 = (int) (sc[0] * (float) w + 0.5f), y0 = (int) (sc[1] * (float) h + 0.5f);
+			int x1 = (int) (sc[2] * (float) w + 0.5f), y1 = (int) (sc[3] * (float) h + 0.5f);
 			if (x0 < 0) x0 = 0;
 			if (y0 < 0) y0 = 0;
 			if (x1 > w) x1 = w;
@@ -649,12 +689,13 @@ struct Out
 				o.tex[u.a] = t; o.texUni[u.a] = (int) k; o.texFlags[u.a] = b.texFlags[u.a];
 			}
 			if (!ok) { st.noTex++; continue; }
-			// the vertices at the frame's stride
+			// the vertices at the frame's stride, onto the XFB copy's rectangle
 			const float *sv = F.v + b.off;
 			float *d = rv + (size_t) nv * (size_t) maxStride;
 			for (u32 k = 0; k < b.count; k++)
 			{
-				for (int j = 0; j < b.stride; j++) d[j] = sv[j];
+				d[0] = view[0] * sv[0] + view[1] * sv[3]; d[1] = view[2] * sv[1] + view[3] * sv[3];
+				for (int j = 2; j < b.stride; j++) d[j] = sv[j];
 				sv += b.stride; d += maxStride;
 			}
 			nv += b.count; nb++;

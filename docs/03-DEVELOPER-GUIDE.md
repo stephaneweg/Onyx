@@ -333,7 +333,18 @@ Notes / caveats:
 > `kapi_gpu_render2`; `tools/tests/gc/gcv3d.cpp` runs a `.dol` / `.iso` on the PC with the same
 > recorder and draws its frame with a software V3D (the shaders in `qpusim`) into a `.ppm`
 > (`GCV3D_EVERY=n` more frames, `GCV3D_DUMP=1` / `2` the batches / their programs,
-> `GCV3D_SAVE=<f.gxf>` the last frame dumped). **On the Pi**, gcemu's F12 third line says what
+> `GCV3D_SAVE=<f.gxf>` the last frame dumped, `GCV3D_SKIPLOG=<file>` each draw the recorder leaves
+> out and why -- `Rec::skipWhy`, `Rec::onSkip`; `GC_CARD=<f.sav>` a memory card, read only,
+> `GC_PAD="f0-f1:hex;..."` the pad's buttons held from field f0 to f1, as `gcrun`'s: the games'
+> menus scripted -- The Wind Waker's first steps on Outset: Start at 900, A at 1050, 1200, 2200,
+> 2300, 2400, Start at 2500, A at 2600, then A every 60 fields to 22000; `GC_HASH=n`, in `gcrun`
+> too: MEM1's hash every n fields, two runs compared -- the GL and the TEV renderers gave the
+> same game, so a difference was the drawing's). The recorder keeps the vertices in the clip
+> space of the whole EFB (640 x 528) and the scissors in its pixels; the frame's XFB copy
+> rectangle, known at its end (`Frame::rect`), is applied when it is drawn (`frameView`,
+> `frameScissor`: `Out::prepare`, gcv3d) -- the copy registers of the draw's time were used
+> before, and a half-size copy to a texture in the middle of a frame (The Wind Waker's effects)
+> framed what followed as a quarter of the picture (the camera "in Link's head"). **On the Pi**, gcemu's F12 third line says what
 > the TEV renderer did (`gpu_render2`'s result, the batches drawn / recorded, the ones left out:
 > program refused, texture missing, nothing visible, over the vertex limit), F9 dumps the frame
 > shown into `SD:/gcdump/frame_<n>.gxf` (the recorded frame, its programs and textures, and the
@@ -346,7 +357,26 @@ Notes / caveats:
 > clock (`gcClock`, nothing on other hosts) — the folder may be an FTP
 > one (`--diag=FTP:<pc>:<port>/<dir>`) so the files land on the PC at once (`--tevbuf`: the
 > frames drawn into a buffer of gcemu's, then copied — the GPU no longer writing the window's
-> pixels itself). `gcv3d --replay
+> pixels itself). F10: the game's frames a second (its XFB copies) and the speed alone, in a
+> corner. `--pmu[=e1,e2,e3,e4]`: the app cores' performance counters, a fifth line (millions of
+> cycles a field, instructions a cycle, and a thousand instructions' L1D refills, L2 refills,
+> branch mispredictions -- the events, hex, default 08, 03, 17, 10), the CPU's part and the GX's.
+> `--jitprof` (with `--diag`): the JIT's profile every 60 s -- `jitprof.txt` (the costliest
+> blocks, the host instructions each guest instruction costs, the instructions left to the
+> interpreter, the slow memory accesses) and `jitprof.bin` (the blocks' code: `python
+> tools/gc/jitprof.py jitprof.bin --top N --ppc <objdump> --a64 <objdump> --host` disassembles
+> both sides). The machine's cores set FPCR to 0 (IEEE: to nearest, no flush-to-zero; nothing
+> sets it at boot): F12 shows `FPCR was ...` when it was not.
+> **The GX on its own core** (when a second app core is free -- `netcore=0` in `cmdline.txt`
+> leaves cores 2 and 3 to the apps): the machine's core writes the FIFO (the write-gather pipe's
+> bursts: `gatherFlush` publishes the PI's write pointer), the GX's core runs it meanwhile
+> (`Machine::gxStep`: the commands up to that pointer, then `gxDoneW`), reading them in place (a
+> command cut by the FIFO's end only is copied). The machine waits for it (`gxSync`) where the
+> game can see its progress: a CP / PE / PI-FIFO register, a polling loop the JIT skips (the
+> game waiting for the GPU: `idleHit`), a full FIFO (`gxRoom`); the PE's token / finish come back
+> through `gxIrqBits` (raised on the machine's core); `gxLock` keeps the frame's flip and the
+> texture pool from the main thread's `Out::prepare`. F12's fourth line gives the GX core's busy
+> share and the machine's waits; `--gxone` keeps the GX on the machine's core, to compare. `gcv3d --replay
 > <frame.gxf> <out.ppm>` draws a dump on the PC at the Pi's size next to the Pi's own picture
 > (`out_pi.ppm`): the same picture → the GPU is right, the recording is the question; another
 > one → the GPU side. `v3dprog ww <w> <h> <flags> <percent> <variant>` draws The Wind Waker's
@@ -527,7 +557,10 @@ Notes / caveats:
 > shifts, compares, divw / divwu, the branches (CTR / CR conditions, LR), mftb, the loads / stores,
 > lmw / stmw and dcbz (MEM1 in one go) are native (a
 > load / store whose address maps MEM1 through the OS's standard BATs, or in real mode, reads
-> the host memory directly and byte-swaps; the rest calls `read32`… with the cycle count exact),
+> the host memory directly and byte-swaps -- with the BATs, the 0x80000000 mirror checked by one
+> EOR and a compare, the value loaded straight into the destination's register or stored from the
+> source's, the uncached 0xC0000000 one tried first on the cold path; the rest calls `read32`…
+> with the cycle count exact),
 > every other instruction (the FPU, the paired singles for now) calls the interpreter's `exec`.
 > The FPU and the paired singles are native too, on NEON: `ps[32][2]` keeps both halves of an FPR
 > side by side, so an FPR is one q register, cached like the GPRs (q8–q31, lane 0 = ps0); the
@@ -554,12 +587,22 @@ Notes / caveats:
 > 4 KB pages written; a BAT change, HID0's ICFI or a reset drop everything. `b .` jumps to the
 > next event (idle), and so does a **polling loop** (a block of loads, compares, masks branching
 > back to its start, each register it reads set earlier in the same pass or not by it at all:
-> nothing changes until an interrupt / the hardware — the VBlank waits, the DSP's mail). `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
+> nothing changes until an interrupt / the hardware — the VBlank waits, the DSP's mail). A
+> compare (or a record form) right before a conditional branch on its field's LT / GT / EQ: the
+> branch tests the host's flags, and the CR field is made only on the paths where it may still
+> be read (`crSet`, `crDead`: the guest code of the block's 4 KB page scanned from each path --
+> set again before a read: not made; a call, a return, leaving the page, a CR logic op on it:
+> made) -- an exception that does not come back then leaves the older field, which only a crash
+> report shows. `gcemu`: Game ▸ *Interpreter (no JIT)* / `--interp` to compare.
 > Tested by `run_gc_test.sh` under `qemu-aarch64` (`GC_JIT=1`): cputest / pstest / hwtest /
 > gxtest identical to the interpreter's, `gctest fuzz` (random sequences of FPU / paired-single /
 > load-store / integer / branch instructions from random states with NaNs, infinities,
 > denormals, run by both, every register, the FPSCR and the memory compared: it found a
-> cache bug and an interpreter bug — `srawi` / `sraw` with rA = rS took CA from the result), `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
+> cache bug and an interpreter bug — `srawi` / `sraw` with rA = rS took CA from the result;
+> `GC_FUZZC=1` their data through the uncached mirror, `GC_FUZZSTART=n` from the n-th,
+> `GC_FUZZDUMP=<f>` each one's code, `GC_FUZZPROG=<f>` + `GC_FUZZLEN=n` a failing one cut down,
+> `GC_FUZZG="3 11"` those GPRs, CR and XER printed, `GC_FUZZBLOCK=<pc>` the block there's code;
+> the CR is not compared after an exception that stopped the run -- see `crDead`), `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
 > against qemu-ppc's result: ~40× the interpreter's speed (integer), ~10× (float);
 > `GC_PROFILE=1` prints the host instructions per guest instruction, `GC_DUMP=prefix` the
 > hottest blocks' code (for `aarch64-linux-gnu-objdump -b binary -m aarch64`).

@@ -77,6 +77,7 @@ void Machine::checkInterrupts ()
 
 void Machine::run (u64 until)
 {
+	if (gxIrqBits) gxIrqTake ();				// (the GX's core: its token / finish)
 	if (jit) { jitRun (until); return; }
 	while (cycles < until && !halted)
 	{

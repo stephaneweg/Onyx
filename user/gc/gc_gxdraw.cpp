@@ -176,7 +176,7 @@ void Machine::texFlush ()
 {
 	for (int i = 0; i < MAX_TEX; i++) { tex[i].px = 0; tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].levels = 1; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
 	for (int i = 0; i < 1024; i++) texFind[i] = -1;
-	texPoolTop = 0; texFlushes++; texEpoch++;
+	texPoolTop = 0; texFlushes++; __atomic_add_fetch (&texEpoch, 1u, __ATOMIC_RELAXED);
 }
 
 // the texture of map n (0..7): TEXIMAGE0 (size, format), TEXIMAGE3 (address), TEXTLUT; with its
@@ -220,12 +220,13 @@ int Machine::gxTexture (int map, bool mips)
 		if (tex[i].w && tex[i].key == key) { tex[i].lastUse = texClock; texFind[key & 1023] = (s16) i; return i; }
 		if (tex[i].lastUse < tex[lru].lastUse) lru = i;
 	}
+	gxLock ();							// (a reader may be taking the textures)
 	GTexture &T = tex[lru];
 	texDecodes++;
 	if (T.cap < (int) texels)					// (its room from the pool: its size, not 4 MB each)
 	{
 		u32 room = texels < 64 * 64 ? 64 * 64 : texels;
-		if (!texPool || room > (u32) TEX_POOL) return -1;
+		if (!texPool || room > (u32) TEX_POOL) { gxUnlock (); return -1; }
 		if (texPoolTop + room > (u32) TEX_POOL) texFlush ();
 		T.px = texPool + texPoolTop; T.cap = (int) room; texPoolTop += room;
 	}
@@ -238,6 +239,7 @@ int Machine::gxTexture (int map, bool mips)
 		decodeTexture (out, src, mem1 + MEM1_SIZE, lw, lh, fmt, tmem + (tloff & 0xFFFFF), tlfmt);
 		out += lw * lh; src += levelBytes (lw, lh, fmt);
 	}
+	gxUnlock ();
 	return lru;
 }
 

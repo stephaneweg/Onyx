@@ -193,7 +193,7 @@ void Machine::status (char *out, int cap)
 // ---- one field ---------------------------------------------------------------------------------------------------
 void Machine::runFrame ()
 {
-	texEpoch++;						// (gpuTexture's answers: sampled again each field)
+	__atomic_add_fetch (&texEpoch, 1u, __ATOMIC_RELAXED);	// (gpuTexture's answers: sampled again each field)
 	// (the lines run 1..viLinesFrame: the first field ends halfway, the second at the frame's end)
 	int endLine = viLine >= viLinesFrame / 2 && viLine < viLinesFrame ? viLinesFrame : viLinesFrame / 2;
 	u64 guard = cycles + (u64) CPU_HZ;			// (a second at most)
@@ -434,7 +434,7 @@ bool Machine::readDisc (u32 off, u32 len, u32 dst)
 {
 	u8 *d = ptr (dst & 0x01FFFFFF);
 	if (!d || (dst & 0x01FFFFFF) + len > MEM1_SIZE) return false;
-	jitInvalidate (dst & 0x01FFFFFF, len); texEpoch++;
+	jitInvalidate (dst & 0x01FFFFFF, len); __atomic_add_fetch (&texEpoch, 1u, __ATOMIC_RELAXED);
 	if (!disc && discRead) return discRead (discCtx, off, len, d);
 	for (u32 i = 0; i < len; i++) d[i] = disc && off + i < discSize ? disc[off + i] : 0;
 	return true;
@@ -484,17 +484,25 @@ void Machine::gatherFlush ()
 	while (gatherN - done >= 32)
 	{
 		u32 w = piFifoWptr & 0x03FFFFFF;
+		if (gxAsync) gxRoom (w);				// (the FIFO full: the GX first)
 		u8 *p = ptr (w & 0x01FFFFFF);
 		if (p && (w & 0x01FFFFFF) + 32 <= MEM1_SIZE) for (int i = 0; i < 32; i++) p[i] = gather[done + i];
 		w += 32;
 		gpBytes += 32;
 		if (piFifoEnd && w >= (piFifoEnd & 0x03FFFFFF)) w = piFifoBase & 0x03FFFFFF;
-		piFifoWptr = w;
+		__atomic_store_n (&piFifoWptr, w, __ATOMIC_RELEASE);	// (the burst's bytes before: for the GX's core)
 		done += 32;
 	}
 	for (u32 i = done; i < gatherN; i++) gather[i - done] = gather[i];
 	gatherN -= done;
-	if (done) gxFifoKick ();
+	if (!done) return;
+	if (gxAsync)
+	{
+#if defined (__aarch64__)
+		asm volatile ("dsb ish\n\tsev" ::: "memory");		// (the GX's core woken)
+#endif
+	}
+	else gxFifoKick ();
 }
 
 // ---- the registers ---------------------------------------------------------------------------------------------
@@ -603,9 +611,9 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 		{
 		case 0x00: piIntsr &= ~(v & 0x3); piUpdate (); return;	// (the reset switch / PI error)
 		case 0x04: piIntmr = v; piUpdate (); return;
-		case 0x0C: piFifoBase = v & 0x03FFFFE0; return;
-		case 0x10: piFifoEnd = v & 0x03FFFFE0; return;
-		case 0x14: piFifoWptr = v & 0x03FFFFE0; return;
+		case 0x0C: if (gxAsync) gxSync (); piFifoBase = v & 0x03FFFFE0; return;
+		case 0x10: if (gxAsync) gxSync (); piFifoEnd = v & 0x03FFFFE0; return;
+		case 0x14: if (gxAsync) gxSync (); __atomic_store_n (&piFifoWptr, v & 0x03FFFFE0, __ATOMIC_RELEASE); return;
 		}
 		return;
 	case 0x0C004: miReg[(off & 0x7E) / 2] = (u16) v; return;	// MI
@@ -651,7 +659,7 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 			u32 cnt = (u32) (dspReg[0x28 / 2] & 0x3FF) << 16 | dspReg[0x2A / 2];
 			bool toMain = dspReg[0x28 / 2] & 0x8000;
 			if (mm + cnt > MEM1_SIZE) cnt = mm < MEM1_SIZE ? MEM1_SIZE - mm : 0;
-			if (toMain) { jitInvalidate (mm, cnt); texEpoch++; }
+			if (toMain) { jitInvalidate (mm, cnt); __atomic_add_fetch (&texEpoch, 1u, __ATOMIC_RELAXED); }
 			// the ARAM is 16 MB; above, the expansion port (nothing there: reads 0, writes lost)
 			for (u32 i = 0; i < cnt; i++)
 			{

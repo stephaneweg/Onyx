@@ -23,7 +23,7 @@ u32 Machine::cpRead (u32 off, int size)
 {
 	off &= 0x7F;
 	if (size == 4) return cpRead (off, 2) << 16 | cpRead (off + 2, 2);
-	gxFifoKick ();
+	gxSync ();
 	switch (off)
 	{
 	case 0x00: return 0x0014 | 0x0008;				// read idle, command idle (all done)
@@ -44,6 +44,7 @@ void Machine::cpWrite (u32 off, u32 v, int size)
 {
 	off &= 0x7E;
 	if (size == 4) { cpWrite (off, v >> 16, 2); cpWrite (off + 2, v & 0xFFFF, 2); return; }
+	if (gxAsync) gxSync ();					// (the GX idle: its FIFO's registers change)
 	cpReg16[off / 2] = (u16) v;
 	switch (off)
 	{
@@ -64,7 +65,7 @@ u32 Machine::peRead (u32 off, int size)
 {
 	off &= 0x7F;
 	if (size == 4) return peRead (off, 2) << 16 | peRead (off + 2, 2);
-	gxFifoKick ();
+	gxSync ();
 	return peReg16[off / 2];
 }
 
@@ -72,6 +73,7 @@ void Machine::peWrite (u32 off, u32 v, int size)
 {
 	off &= 0x7E;
 	if (size == 4) { peWrite (off, v >> 16, 2); peWrite (off + 2, v & 0xFFFF, 2); return; }
+	if (gxAsync) gxSync ();					// (the GX idle: the status it sets)
 	if (off == 0x0A)
 	{
 		u16 &st = peReg16[0x0A / 2];
@@ -90,8 +92,10 @@ void Machine::peWrite (u32 off, u32 v, int size)
 void Machine::gxFifoKick ()
 {
 	GcTimed timed (timeFifo);
-	if (!cpFifoEnd || !(cpReg16[0x02 / 2] & 1)) { cpFifoRptr = piFifoWptr & 0x03FFFFE0 & ~0x20000000u; return; }
-	u32 w = piFifoWptr & 0x01FFFFFF, base = cpFifoBase & 0x01FFFFFF, end = cpFifoEnd & 0x01FFFFFF;
+	GcPmu pmu (pmuOn ? pmuFifo : 0);
+	u32 wp = __atomic_load_n (&piFifoWptr, __ATOMIC_ACQUIRE);	// (gxAsync: the CPU's core writes it)
+	if (!cpFifoEnd || !(cpReg16[0x02 / 2] & 1)) { __atomic_store_n (&cpFifoRptr, wp & 0x03FFFFE0 & ~0x20000000u, __ATOMIC_RELEASE); return; }
+	u32 w = wp & 0x01FFFFFF, base = cpFifoBase & 0x01FFFFFF, end = cpFifoEnd & 0x01FFFFFF;
 	if (end <= base || end > MEM1_SIZE) return;
 	u32 r = cpFifoRptr & 0x01FFFFFF;
 	if (r < base || r >= end + 32) r = base;
@@ -100,26 +104,98 @@ void Machine::gxFifoKick ()
 	{
 		if (r >= end + 32 || r >= end) r = base;		// (the GP wraps at the end)
 		if (r == w) break;
-		// the bytes available from r (up to w, or to the end then from the base)
-		u32 avail = w >= r ? w - r : (end - r) + (w - base);
-		if (avail > sizeof tmp - 64) avail = sizeof tmp - 64;
-		const u8 *p;
-		if (w >= r || end - r >= avail) p = mem1 + r;
-		else
+		// the command at r, read in place (the bytes up to w, or to the FIFO's end); only one cut
+		// by the end is copied, its rest from the base (each command copied was quadratic: a GX
+		// on its own core finds much more written than the last burst)
+		u32 cap = sizeof tmp - 64;
+		u32 contig = w >= r ? w - r : end - r;
+		int n = gxCommand (mem1 + r, (int) (contig < cap ? contig : cap), false);
+		if (n <= 0 && w < r && contig < cap)
 		{
+			u32 avail = (end - r) + (w - base);
+			if (avail > cap) avail = cap;
 			u32 first = end - r;
 			for (u32 i = 0; i < first; i++) tmp[i] = mem1[r + i];
 			for (u32 i = first; i < avail; i++) tmp[i] = mem1[base + i - first];
-			p = tmp;
+			n = gxCommand (tmp, (int) avail, false);
 		}
-		int n = gxCommand (p, (int) avail, false);
 		if (n <= 0) break;					// (not all there yet)
 		r += (u32) n;
 		if (r >= end) r = base + (r - end);
+		__atomic_store_n (&cpFifoRptr, r, __ATOMIC_RELEASE);	// (the room the CPU may write into)
 	}
-	cpFifoRptr = r;
+	__atomic_store_n (&cpFifoRptr, r, __ATOMIC_RELEASE);
 	cpFifoWptr = w;
 }
+
+// ---- the GX on a core of its own (gxAsync) ----------------------------------------------------------------------
+static inline void gxWait () {
+#if defined (__aarch64__)
+	asm volatile ("wfe" ::: "memory");
+#endif
+}
+static inline void gxWake () {
+#if defined (__aarch64__)
+	asm volatile ("dsb ish\n\tsev" ::: "memory");
+#endif
+}
+
+// (the GX's core) the commands the CPU has written since: run
+bool Machine::gxStep ()
+{
+	u32 w = __atomic_load_n (&piFifoWptr, __ATOMIC_ACQUIRE) & 0x03FFFFFF;
+	if (w == __atomic_load_n (&gxDoneW, __ATOMIC_RELAXED)) return false;
+	gxFifoKick ();
+	__atomic_store_n (&gxDoneW, w, __ATOMIC_RELEASE);
+	gxWake ();
+	return true;
+}
+
+// (the CPU's) the GX has run all the CPU wrote (a command not all there waits for the rest), its
+// interrupts taken; without a GX core, the FIFO runs here
+void Machine::gxSync ()
+{
+	if (!gxAsync) { gxFifoKick (); return; }
+	u64 t0 = gcClock ();
+	while (__atomic_load_n (&gxDoneW, __ATOMIC_ACQUIRE) != (__atomic_load_n (&piFifoWptr, __ATOMIC_RELAXED) & 0x03FFFFFF))
+		gxWait ();
+	gxWaitTicks += gcClock () - t0;
+	gxIrqTake ();
+}
+
+// (the CPU's) before a burst at w: the FIFO's room (64 bytes kept free), else the GX runs first
+void Machine::gxRoom (u32 w)
+{
+	u32 base = piFifoBase & 0x01FFFFFF, end = piFifoEnd & 0x01FFFFFF;
+	if (!piFifoEnd || end <= base || !(cpReg16[0x02 / 2] & 1)) return;
+	u32 size = end - base, wr = w & 0x01FFFFFF;
+	u64 t0 = 0;
+	for (;;)
+	{
+		u32 r = __atomic_load_n (&cpFifoRptr, __ATOMIC_ACQUIRE) & 0x01FFFFFF;
+		u32 used = wr >= r ? wr - r : size - (r - wr);
+		if (used + 32 + 64 <= size) break;
+		if (!t0) t0 = gcClock ();
+		gxWait ();
+	}
+	if (t0) gxWaitTicks += gcClock () - t0;
+}
+
+// (the GX's) an interrupt for the CPU: its core raises it (gxIrqTake)
+void Machine::gxRaise (u32 bits)
+{
+	if (!gxAsync) { piRaise (bits); return; }
+	__atomic_fetch_or (&gxIrqBits, bits, __ATOMIC_RELEASE);
+	gxWake ();
+}
+void Machine::gxIrqTake ()
+{
+	u32 b = __atomic_exchange_n (&gxIrqBits, 0u, __ATOMIC_ACQ_REL);
+	if (b) piRaise (b);
+}
+
+void Machine::gxLock () { while (__atomic_exchange_n (&gxLockV, 1u, __ATOMIC_ACQUIRE)) gxWait (); }
+void Machine::gxUnlock () { __atomic_store_n (&gxLockV, 0u, __ATOMIC_RELEASE); gxWake (); }
 
 // the size of a vertex in the given VAT format (from the VCD)
 int Machine::gxVertexSize (int vat)
@@ -263,7 +339,7 @@ void Machine::gxBp (u32 v)
 	{
 		u16 &st = peReg16[0x0A / 2];
 		st |= 8;
-		if (st & 2) piRaise (PI_PE_FINISH);
+		if (st & 2) gxRaise (PI_PE_FINISH);
 		break;
 	}
 	case 0x47: peReg16[0x0E / 2] = (u16) val; break;		// PE_TOKEN
@@ -272,7 +348,7 @@ void Machine::gxBp (u32 v)
 		peReg16[0x0E / 2] = (u16) val;
 		u16 &st = peReg16[0x0A / 2];
 		st |= 4;
-		if (st & 1) piRaise (PI_PE_TOKEN);
+		if (st & 1) gxRaise (PI_PE_TOKEN);
 		break;
 	}
 	case 0x52: gxCopy (val); break;					// an EFB copy
@@ -280,7 +356,7 @@ void Machine::gxBp (u32 v)
 	{
 		u32 src = (bpRegs[0x64] & 0x1FFFFF) << 5, dst = (val & 0x3FF) << 9, n = (val & 0x1FFC00) >> 5;
 		for (u32 i = 0; i < n && src + i < MEM1_SIZE && dst + i < 0x100000; i++) tmem[dst + i] = mem1[src + i];
-		texEpoch++;						// (the textures with a palette: looked up again)
+		__atomic_add_fetch (&texEpoch, 1u, __ATOMIC_RELAXED);	// (the textures with a palette: looked up again)
 		break;
 	}
 	}
