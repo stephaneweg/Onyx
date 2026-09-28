@@ -300,6 +300,32 @@ static unsigned *wallpaper_buffer (int *w, int *h)
 }
 static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
 static int get_keymap (char *b, unsigned n) { if (b && n) snprintf (b, n, "FR"); return 2; }
+// (more of the system, answered simply: enough for the apps to show themselves)
+static int app_dir (char *b, unsigned n) { if (b && n) snprintf (b, n, "SD:apps/app.app/"); return (int) strlen (b); }
+static int f_mkdir (const char *p) { return mkdir (sdpath (p).c_str (), 0755) == 0 ? 0 : -1; }
+static int f_remove (const char *) { return -1; }
+static int f_rename (const char *, const char *) { return -1; }
+static int list_tasks (char *b, unsigned n) { if (b && n) snprintf (b, n, "Rk idle\nSk compositor\nRa menubar\nRa dock\nRa terminal\n"); return 5; }
+static int sound_acquire (void) { return -1; }
+static void sound_release (void) {}
+static int sound_start (int, unsigned, int, int) { return -1; }
+static int sound_stop (int) { return -1; }
+static int sound_write (const short *, unsigned) { return -1; }
+static int sound_status (unsigned *r, unsigned *f, unsigned *o) { if (r) *r = 44100; if (f) *f = 0; if (o) *o = 0; return -1; }
+static int proc_done (void *) { return 1; }
+static int h_wait (void *) { return 0; }
+static int stream_read (void *, void *, unsigned) { return 0; }
+static int stream_read_nb (void *, void *, unsigned) { return 0; }
+static int stream_write (void *, const void *, unsigned n) { return (int) n; }
+static void stream_eof (void *) {}
+static int stdin_read (void *, unsigned) { return 0; }
+static int f_seek (void *h, unsigned long long pos) { return fseek ((FILE *) h, (long) pos, SEEK_SET) == 0 ? 0 : -1; }
+static unsigned long long f_fsize64 (void *h) { return f_fsize (h); }
+static int net_info (char *b, unsigned n) { if (b && n) snprintf (b, n, "ip 192.168.1.42\n"); return 1; }
+static void h_exit (int st) { fprintf (stderr, "sim: exit %d\n", st); exit (0); }
+static int toggle_app (const char *n) { fprintf (stderr, "sim: toggle_app %s\n", n); return 1; }
+static int ram_detail (unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned *e)
+{ if (a) *a = 4194304; if (b) *b = 3145728; if (c) *c = 2097152; if (d) *d = 0; if (e) *e = 1; return 1; }
 static int s_wheel = 2;
 static void set_wheel (int v) { s_wheel = v; }
 static int get_wheel (void) { return s_wheel; }
@@ -358,6 +384,13 @@ static void setup (void)
 	T->wallpaper_buffer = wallpaper_buffer;
 	T->get_keymap = get_keymap; T->set_wheel_speed = set_wheel; T->get_wheel_speed = get_wheel;
 	T->kill = h_kill; T->set_keymap_data = set_keymap_data;
+	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;
+	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_start = sound_start;
+	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
+	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->stream_read_nb = stream_read_nb;
+	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
+	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
+	T->ram_detail = ram_detail;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";
