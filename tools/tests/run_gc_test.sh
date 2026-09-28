@@ -52,6 +52,30 @@ print("ok  : gxtest.dol: the GX frame (textured quad, shaded triangle)" if not b
 sys.exit(bad)
 X
 
+# gcemu's TEV renderer on the PC (user/Apps/gcemu/gxv3d.h): gxtest.dol recorded as for the Pi's
+# V3D, drawn by gcv3d.cpp's software V3D with the generated shaders in the QPU simulator
+Q="$root/tools/qpu"
+for f in mesa/broadcom/qpu/qpu_instr mesa/broadcom/qpu/qpu_pack mesa/broadcom/qpu/qpu_disasm ralloc_stub; do
+	gcc -std=gnu11 -O1 -w -I"$Q/mesa" -I"$Q" -c "$Q/$f.c" -o "$T/q_$(basename $f).o"
+done
+g++ -std=c++17 -O2 -w -I"$root/user" -I"$root/kernel/include" -I"$Q" -I"$Q/mesa" "$here/gc/gcv3d.cpp" "$root/user/v3d/gxtev.cpp" "$root/user/v3d/qpu.cpp" \
+	"$root/user/v3d/shaders.cpp" "$Q/qpusim.cpp" "$root"/user/gc/*.cpp "$T"/q_*.o -o "$T/gcv3d"
+"$T/gcv3d" "$T/gxtest.dol" 5 "$T/v3d.ppm" > /dev/null
+python3 - "$T/v3d.ppm" <<'X'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert('RGB'); p = im.load()
+checks = [((106, 106), (255, 255, 255), "the checker: white"), ((118, 106), (255, 0, 0), "the checker: red"), ((106, 118), (255, 0, 0), "the checker: red below"), ((118, 118), (255, 255, 255), "the checker: white again"),
+          ((450, 110), (255, 0, 0), "the triangle's red corner"), ((590, 375), (0, 255, 0), "its green corner"),
+          ((360, 375), (0, 0, 255), "its blue corner"), ((20, 20), (0, 0, 0), "the background")]
+bad = 0
+for (x, y), want, what in checks:
+    got = p[x, y]
+    if max(abs(a - b) for a, b in zip(got, want)) > 40: print("FAIL gcv3d: %s at %d,%d: %s" % (what, x, y, got)); bad += 1
+print("ok  : gxtest.dol through gcemu's TEV renderer (the generated shaders, simulated)" if not bad else "FAIL gxtest.dol (TEV renderer)")
+sys.exit(bad)
+X
+
 # the JIT: the same checks on an AArch64 build (qemu-aarch64), GC_JIT=1
 if command -v aarch64-linux-gnu-g++ > /dev/null && command -v qemu-aarch64 > /dev/null; then
 	aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest_a64"

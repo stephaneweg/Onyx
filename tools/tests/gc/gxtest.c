@@ -57,12 +57,18 @@ int main (void)
 	/* the BP: one texgen, one channel, one TEV stage; no depth, no blending, the alpha compare passes */
 	bp (0x00000000 | 1 | (1 << 4));
 	bp (0x40000000);
-	bp (0x41000000);
+	bp (0x41000000 | (1 << 3) | (1 << 4));			/* the colour and alpha written */
 	bp (0xF3000000 | (7 << 16) | (7 << 19));
+	/* the scissor: the whole 640 x 480 EFB (its coordinates + 342, the offset 342 / 2 taken away) */
+	bp (0x20000000 | 342 | (342 << 12)); bp (0x21000000 | (342 + 479) | ((342 + 639) << 12));
+	bp (0x59000000 | 171 | (171 << 10));
+	/* the swap tables: R G B A as they are (GXInit's) */
+	for (u32 t = 0; t < 4; t++) { bp ((0xF6 + 2 * t) << 24 | 0 | (1 << 2)); bp ((0xF7 + 2 * t) << 24 | 2 | (3 << 2)); }
 	/* the texture map 0: 8 x 8 RGB565 at 0x00500000, repeat */
 	bp (0x88000000 | 7 | (7 << 10) | (4 << 20));
 	bp (0x94000000 | (0x00500000 >> 5));
 	bp (0x80000000 | 1 | (1 << 2));
+	bp (0x30000000 | 7); bp (0x31000000 | 7);		/* the coordinate 0's scale: the texture's size (8 x 8) */
 	/* stage 0: texture 0 x the colour (modulate) */
 	bp (0x28000000 | 0x40);
 	bp (0xC0000000 | 15 | (10 << 4) | (8 << 8) | (15 << 12) | (1 << 19));

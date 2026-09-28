@@ -26,6 +26,7 @@
 #include "gc/gc.h"
 #include "wtk/dialog.h"
 #include "emucore.h"
+#include "gxv3d.h"
 
 using namespace wtk;
 
@@ -43,6 +44,10 @@ static int g_stride;
 static bool g_loading = true;
 static char g_loadName[64];
 static bool g_gpu = false;
+static gxv3d::Rec g_rec;					// the TEV renderer (kapi v61): the draws recorded by the machine,
+static gxv3d::Out g_out;					// drawn here
+static bool g_tevOk = false;					// (it could start)
+static volatile bool g_wantTev = true;				// the View menu's choice, applied between fields
 static int g_gpuTex[gc::Machine::MAX_TEX];
 static unsigned g_lastSerial = 0, g_gfxAge = 1000;
 static int g_fbW = 640, g_fbH = 480;
@@ -173,7 +178,8 @@ static void fb_frame (unsigned *px, int w, int h, int stride)
 
 static void draw_into (unsigned *px, int w, int h, int stride)
 {
-	if (g_gfxAge < 30 && gpu_frame (px, w, h, stride)) return;
+	if (g_m->gpu && g_gfxAge < 30 && g_out.render (g_rec, *g_m, px, w, h, stride)) return;
+	if (!g_m->gpu && g_gfxAge < 30 && gpu_frame (px, w, h, stride)) return;
 	fb_frame (px, w, h, stride);
 }
 
@@ -242,6 +248,7 @@ static void on_full () { full_screen (!g_fs); }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
 static void on_interp () { g_wantJit = !g_wantJit; }
+static void on_tev () { g_wantTev = !g_wantTev; }
 static void card_save (void);
 static void on_quit () { ec_hold (&g_ec); card_save (); kapi_exit (0); }	// (the card written first)
 
@@ -307,6 +314,8 @@ static void pad_state (void)
 static void gc_frame (EmuCore *ec)
 {
 	unsigned w1 = g_padW[1], w2 = g_padW[2];
+	gc::GxGpu *wantGpu = g_wantTev && g_tevOk ? &g_rec : 0;
+	if (wantGpu != g_m->gpu) { g_m->gpu = wantGpu; g_m->gxsDirty = true; g_rec.ready = -1; }	// (the renderer changed)
 	gc::Jit *want = g_wantJit ? g_jit : 0;
 	if (want != g_m->jit) { g_m->jit = want; g_m->jitFlush = true; }	// (what ran meanwhile may have changed the code)
 	g_m->setPad (0, g_padW[0], (signed char) w1, (signed char) (w1 >> 8), (signed char) (w1 >> 16), (signed char) (w1 >> 24), (int) (w2 & 255), (int) (w2 >> 8));
@@ -414,6 +423,8 @@ int main (void)
 
 	g_gpu = kapi_gpu_info (0, 0) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1;
 	for (int k = 0; k < gc::Machine::MAX_TEX; k++) g_gpuTex[k] = -1;
+	g_tevOk = g_gpu && KT->version >= 61 && g_rec.init () && g_out.init ();
+	if (g_tevOk && g_wantTev) g_m->gpu = &g_rec;
 
 	static Menu menu;
 	menu.menu ("Game");
@@ -427,6 +438,7 @@ int main (void)
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Size 640 x 480", "",  0, on_zoom1);
 	menu.item ("Size 960 x 720", "",  0, on_zoom2);
+	if (g_tevOk) menu.item ("TEV Shaders On / Off", "", 0, on_tev);
 	menu.separator ();
 	menu.item ("Show Speed",   "F12", 0, on_stats);
 	menu.publish ();
@@ -496,7 +508,8 @@ int main (void)
 			fmt_num (g_statText, &k, (unsigned) ((unsigned long long) stEmu * 10000000ull / el), 1); cat (g_statText, &k, " fields/s  emu ");
 			fmt_num (g_statText, &k, stEmu ? (unsigned) (emuUs / stEmu / 100) : 0, 1); cat (g_statText, &k, " ms  draw ");
 			fmt_num (g_statText, &k, stShown ? (unsigned) (drawUs / stShown / 100) : 0, 1); cat (g_statText, &k, " ms");
-			cat (g_statText, &k, g_gfxAge < 30 ? "  GPU" : "  framebuffer");
+			cat (g_statText, &k, g_gfxAge >= 30 ? "  framebuffer" : g_m->gpu ? "  TEV" : "  GPU");
+			if (g_m->gpu) { cat (g_statText, &k, " "); fmt_num (g_statText, &k, (unsigned) g_rec.nProg, 0); cat (g_statText, &k, " progs"); }
 			cat (g_statText, &k, g_m->jit ? "  JIT" : "  interpreter");
 			if (g_sound && g_audio == 1 && g_audioMade) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); }
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }

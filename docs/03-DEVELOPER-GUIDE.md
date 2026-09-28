@@ -327,7 +327,11 @@ Notes / caveats:
 > hardware, the texture lookups, the alpha test, the EFB format -> QPU code + the uniforms and
 > varyings the draw must give); `tools/tests/v3d/gxtev_test.cpp` checks thousands of random
 > configurations in the simulator against `user/v3d/gxtev_ref.h` (the GLSL TEV of `gxgl.cpp` in
-> C++), `/bin/v3dprog` a few on the GPU.
+> C++), `/bin/v3dprog` a few on the GPU. `gcemu` draws with them: `user/Apps/gcemu/gxv3d.h` is its
+> `gc::GxGpu` -- the app core records each draw (the vertex stage of `gxgl.cpp` in C++, the TEV
+> program by its configuration, the uniforms, the state), the main thread gives the frame to
+> `kapi_gpu_render2`; `tools/tests/gc/gcv3d.cpp` runs a `.dol` / `.iso` on the PC with the same
+> recorder and draws its frame with a software V3D (the shaders in `qpusim`) into a `.ppm`.
 > Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.

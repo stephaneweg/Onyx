@@ -71,7 +71,7 @@ wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
 
 $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
@@ -144,6 +144,7 @@ teapot.elf: Apps/teapot/teapot.h Apps/teapot/teapot_data.inc
 gpudemo.elf: CXXFLAGS := $(CXXFLAGS_FP)
 n64emu.elf: CXXFLAGS := $(CXXFLAGS_FP)
 gcemu.elf: CXXFLAGS := $(CXXFLAGS_FP)
+gcemu.elf: Apps/gcemu/gxv3d.h v3d/gxtev.h v3d/shaders.h
 graphcalc.elf: Apps/graphcalc/expr.h
 basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
