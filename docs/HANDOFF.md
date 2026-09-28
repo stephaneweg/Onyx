@@ -227,7 +227,7 @@ answer in French. The docs stay in English.
   What is left, estimated: the next section.
 - **gcemu's speed: what is left, estimated (2026-09-28, end of the day).** Where it stands (The Wind
   Waker PAL, Outset; the Pi throttling at 80-83 °C): **~46-49 fields/s of 50 (92-98 %), ~23-24
-  fps of 25**. The machine (core 2) is the only full core: ~29-30 M cycles, ~21 ms a field; the
+  fps of 25** -- "perfectly smooth" on the user's TV. The machine (core 2) is the only full core: ~29-30 M cycles, ~21 ms a field; the
   GX core ~44-69 % busy (9-14 ms a field); core 0 ~17-21 ms a frame (the kernel's pass ~3.5 ms,
   the GPU ~13 ms). Full speed everywhere needs the machine at <= 20 ms a field: its cycles down
   by ~5-10 % here, more in heavier scenes. The gains below are on the machine's time unless said,
