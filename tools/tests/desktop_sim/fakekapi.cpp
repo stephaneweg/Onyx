@@ -284,6 +284,20 @@ static int list_windows (char *b, unsigned n)
 	if (b && n) snprintf (b, n, "%s", s.c_str ());
 	return k;
 }
+// SIM_WALL=RRGGBB: the wallpaper the apps read (the agenda's ink); none: a dark blue
+static unsigned *wallpaper_buffer (int *w, int *h)
+{
+	static unsigned *buf;
+	if (!buf)
+	{
+		buf = (unsigned *) malloc (1024 * 768 * 4);
+		const char *e = getenv ("SIM_WALL");
+		unsigned c = e ? (unsigned) strtoul (e, 0, 16) : 0x00283C58;
+		for (int i = 0; i < 1024 * 768; i++) buf[i] = c;
+	}
+	if (w) *w = 1024; if (h) *h = 768;
+	return buf;
+}
 static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
 static int mailbox_send (int, int, const void *, unsigned) { return 0; }
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
@@ -335,6 +349,7 @@ static void setup (void)
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
 	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
+	T->wallpaper_buffer = wallpaper_buffer;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";

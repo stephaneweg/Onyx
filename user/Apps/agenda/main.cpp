@@ -4,7 +4,11 @@
 // the desktop (WIN_FLAG_BACKMOST: every window covers it) and re-reads the file every
 // few seconds, so a note typed in the calendar shows up by itself.
 //   * Click an appointment: the calendar opens on that day.
-//   * Drag the title bar: move the widget; its place is kept in its config.ini.
+//   * Drag the title: move the widget; its place is kept in its config.ini.
+// It is part of the wallpaper (the modernised CDE): no card, no shadow -- its text and an etched
+// line straight on the desktop (a see-through window, WIN_FLAG_ALPHA), the ink chosen from the
+// wallpaper's brightness under it (kapi_wallpaper_buffer): engraved (dark, a light line below) on
+// a light wallpaper, white with a soft shadow on a dark one.
 //
 #include "kapi.h"
 #include "applib.h"
@@ -14,15 +18,17 @@ using namespace wtk;
 
 #define AGENDA		"SD:/apps/calendar.app/agenda.txt"
 #define CONFIG		"SD:/apps/agenda.app/config.ini"
-#define W		340
-#define HDR		24			// title bar
-#define ROW		20
+#define W		344
+#define HDR		34			// the title, its etched line
+#define ROW		21
 #define NROWS		6
-#define H		(HDR + NROWS * ROW + 8)
+#define H		(HDR + 4 + NROWS * ROW + 8)
 #define MAXEV		64
+#define CATCH		0xFE000000u		// almost see-through: the clicks still land on the widget
 
-static const unsigned A_BG = 0x001C232C, A_EDGE = 0x00485870, A_HDR = 0x00303D4D,
-	A_TXT = 0x00E0E6EE, A_DIM = 0x008A96A8, A_TODAY = 0x0060FF90, A_HOT = 0x00355070;
+// The ink, from the wallpaper under the widget (light: engraved; dark: white, a soft shadow).
+static bool     g_light = false;
+static unsigned g_back = 0x00304058, g_ink = 0x00FAFCFF, g_dim = 0x00B8C4D0;
 
 struct Ev { int key; char note[96]; };		// key = YYYYMMDD
 static Ev   g_ev[MAXEV];
@@ -83,22 +89,68 @@ static bool reload (void)
 	return true;
 }
 
-// "Fri 26 Sep - note" (or "Today - note"), clipped to maxc characters.
-static void format (const Ev &e, char *out, int maxc)
+// The wallpaper under the widget (a sample every 4 px): its mean colour -> the ink. False: the
+// same as before.
+static bool read_back (int wx, int wy)
 {
-	int y = e.key / 10000, m = (e.key / 100) % 100, d = e.key % 100;
-	int p = 0;
-	auto put = [&] (const char *s) { for (int i = 0; s[i] && p < maxc; i++) out[p++] = s[i]; };
-	if (e.key == g_today) put ("Today");
-	else
-	{
-		put (DOW[dow (y, m, d)]); put (" ");
-		char dd[3] = { (char) ('0' + d / 10), (char) ('0' + d % 10), 0 };
-		put (dd[0] == '0' ? dd + 1 : dd); put (" "); put (MON[(m - 1) % 12]);
-		if (y != g_today / 10000) { char yy[6] = { ' ', (char) ('0' + y / 1000 % 10), (char) ('0' + y / 100 % 10), (char) ('0' + y / 10 % 10), (char) ('0' + y % 10), 0 }; put (yy); }
-	}
-	put (" - "); put (e.note);
-	if (p >= maxc && maxc > 3) { out[maxc - 2] = '.'; out[maxc - 1] = '.'; p = maxc; }
+	int ww = 0, wh = 0;
+	unsigned *wall = kapi_wallpaper_buffer (&ww, &wh);
+	unsigned r = 0, g = 0, b = 0, n = 0;
+	for (int y = wy; wall && y < wy + H && y < wh; y += 4)
+		for (int x = wx; x < wx + W && x < ww; x += 4)
+		{
+			if (x < 0 || y < 0) continue;
+			unsigned c = wall[(long) y * ww + x];
+			r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255; n++;
+		}
+	unsigned back = n && (r | g | b) ? ((r / n) << 16) | ((g / n) << 8) | (b / n) : 0x00304058;	// (none drawn: dark)
+	if (back == g_back) return false;
+	g_back = back;
+	g_light = wk_bright (back) > 128;
+	g_ink = g_light ? 0x00182232 : 0x00FAFCFF;
+	g_dim = wk_mix (g_ink, back, 97);
+	return true;
+}
+
+// Text straight on the wallpaper: engraved (a light line below) or with a soft shadow, each glyph
+// pixel blended (the canvas is see-through there).
+static void wall_text (Canvas &cv, int x, int y, const char *s, unsigned ink, int style)
+{
+	Font &f = font ();
+	if (!f.valid ()) { cv.text (x, y, s, ink); return; }
+	int gw = f.width (), gh = f.height ();
+	for (int pass = 0; pass < 2; pass++)
+		for (int i = 0; s[i]; i++)
+		{
+			const unsigned char *gl = f.glyph ((unsigned char) s[i], style);
+			if (!gl) continue;
+			for (int ry = 0; ry < gh; ry++)
+				for (int rx = 0; rx < gw; rx++)
+				{
+					if (!(gl[ry] & (0x80 >> rx))) continue;
+					int px = x + i * gw + rx, py = y + ry;
+					if (pass == 1) { wk_blend_px (cv, px, py, ink, 255); continue; }
+					if (g_light) wk_blend_px (cv, px, py + 1, wk_tone (g_back, 205), 200);	// engraved
+					else						// a soft shadow
+					{
+						wk_blend_px (cv, px + 1, py + 1, 0, 150);
+						wk_blend_px (cv, px + 2, py + 2, 0, 60);
+						wk_blend_px (cv, px, py + 2, 0, 40);
+						wk_blend_px (cv, px + 2, py, 0, 40);
+					}
+				}
+		}
+}
+
+// "Tue 29 Sep" (the year too when it is not this one).
+static void format_date (const Ev &e, char *out)
+{
+	int y = e.key / 10000, m = (e.key / 100) % 100, d = e.key % 100, p = 0;
+	auto put = [&] (const char *s) { for (int i = 0; s[i] && p < 22; i++) out[p++] = s[i]; };
+	put (DOW[dow (y, m, d)]); put (" ");
+	char dd[3] = { (char) ('0' + d / 10), (char) ('0' + d % 10), 0 };
+	put (dd[0] == '0' ? dd + 1 : dd); put (" "); put (MON[(m - 1) % 12]);
+	if (y != g_today / 10000) { char yy[6] = { ' ', (char) ('0' + y / 1000 % 10), (char) ('0' + y / 100 % 10), (char) ('0' + y / 10 % 10), (char) ('0' + y % 10), 0 }; put (yy); }
 	out[p] = '\0';
 }
 
@@ -110,33 +162,55 @@ public:
 	unsigned lastPoll = 0;
 
 	AgendaRoot (int x, int y) : Root (x, y, W, H, "agenda",
-		WIN_FLAG_BORDERLESS | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM), winX (x), winY (y) {}
+		WIN_FLAG_BORDERLESS | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA), winX (x), winY (y) {}
 
 	void onDraw () override
 	{
-		int fw = kapi_font_width (), fh = kapi_font_height ();
-		if (fw < 1) fw = 8;
-		if (fh < 1) fh = 16;
-		canvas.clear (A_BG);
-		canvas.frameRect (0, 0, W, H, A_EDGE);
-		canvas.fillRect (1, 1, W - 2, HDR - 1, A_HDR);
-		char t[48]; int p = 0;
+		int fh = wk_fh (), fw = wk_fw ();
+		canvas.clear (CATCH);
+		wk_paint_alpha (true);
+		wk_rbox (canvas, 12, 9, 16, 17, 3, 0x00FFFFFF, 0x00E8E8E8);		// a small calendar
+		wk_rbox (canvas, 12, 9, 16, 6, 3, 0x00D23A30, 0x00C0322C, 255, WK_TL | WK_TR);
+		wk_rline (canvas, 12, 9, 16, 17, 3, 0x00000000, 90);
 		const char *a = "Next appointments";
-		for (int i = 0; a[i]; i++) t[p++] = a[i];
-		if (g_nev) { t[p++] = ' '; t[p++] = '('; p += ax_itoa (g_nev, t + p); t[p++] = ')'; }
-		t[p] = '\0';
-		canvas.text (8, (HDR - fh) / 2, t, A_TXT);
-		canvas.text (9, (HDR - fh) / 2, t, A_TXT);		// bold
-		int maxc = (W - 16) / fw;
+		wall_text (canvas, 36, 5 + (26 - fh) / 2, a, g_ink, 2);
+		if (g_nev)
+		{
+			char t[12]; int p = 0; t[p++] = '('; p += ax_itoa (g_nev, t + p); t[p++] = ')'; t[p] = '\0';
+			wall_text (canvas, 36 + wk_len (a) * fw + 6, 5 + (26 - fh) / 2, t, g_dim, 0);
+		}
+		for (int i = 10; i < W - 10; i++)					// the etched line
+		{
+			wk_blend_px (canvas, i, 33, g_light ? wk_tone (g_back, 90) : 0, g_light ? 200 : 110);
+			wk_blend_px (canvas, i, 34, g_light ? wk_tone (g_back, 190) : 0x00FFFFFF, g_light ? 200 : 70);
+		}
+		int maxc = (W - 110) / fw;
 		for (int r = 0; r < NROWS && r < g_nev; r++)
 		{
 			int y = HDR + 4 + r * ROW;
-			if (r == hot) canvas.fillRect (2, y - 1, W - 4, ROW, A_HOT);
-			char line[128]; format (g_ev[r], line, maxc < 127 ? maxc : 127);
-			canvas.text (8, y + (ROW - fh) / 2, line, g_ev[r].key == g_today ? A_TODAY : A_TXT);
+			const Ev &e = g_ev[r];
+			if (r == hot) wk_rbox (canvas, 6, y, W - 12, ROW, 6, g_light ? 0 : 0x00FFFFFF, g_light ? 0 : 0x00FFFFFF, 34);
+			char date[24], note[128];
+			format_date (e, date);
+			int p = 0; for (; e.note[p] && p < maxc && p < 127; p++) note[p] = e.note[p];
+			note[p] = '\0';
+			if (e.note[p] && p > 2) { note[p - 1] = '.'; note[p - 2] = '.'; }
+			int ty = y + (ROW - fh) / 2;
+			if (e.key == g_today)
+			{
+				wk_rbox (canvas, 12, y + 1, 54, ROW - 3, 6, wk_tone (C_ACCENT, 150), C_ACCENT);
+				wk_text_c (canvas, 12, y + 1, 54, ROW - 3, "Today", C_SEL_TEXT);
+				wall_text (canvas, 100, ty, note, g_ink, 2);
+			}
+			else
+			{
+				wall_text (canvas, 14, ty, date, g_dim, 0);
+				wall_text (canvas, 100, ty, note, g_ink, 0);
+			}
 		}
-		if (g_nev == 0) canvas.text (8, HDR + 8, "No upcoming appointments.", A_DIM);
-		if (g_nev > NROWS) canvas.text (W - 3 * fw - 6, H - fh - 2, "...", A_DIM);
+		if (g_nev == 0) wall_text (canvas, 14, HDR + 8, "No upcoming appointments.", g_dim, 0);
+		if (g_nev > NROWS) wall_text (canvas, W - 3 * fw - 8, H - fh - 2, "...", g_dim, 0);
+		wk_paint_alpha (false);
 	}
 
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -155,6 +229,7 @@ public:
 				a = "y = "; for (int i = 0; a[i]; i++) cfg[p++] = a[i];
 				p += ax_itoa (winY, cfg + p); cfg[p++] = '\n';
 				kapi_save_file (CONFIG, cfg, (unsigned) p);
+				if (read_back (winX, winY)) invalidate (true);	// (the wallpaper there)
 			}
 			else
 			{
@@ -185,7 +260,8 @@ public:
 		unsigned now = kapi_get_ticks ();
 		if (now - lastPoll < 300) return;		// every ~3 s
 		lastPoll = now;
-		if (reload ()) invalidate (true);
+		bool b = read_back (winX, winY);		// (a new wallpaper)
+		if (reload () || b) invalidate (true);
 	}
 };
 
@@ -194,6 +270,7 @@ int main (void)
 	int x = 12, y = 40;				// below the menu bar, top-left
 	if (app_ini_load_path (CONFIG) >= 0) { x = app_ini_get_int (0, "x", x); y = app_ini_get_int (0, "y", y); }
 	reload ();
+	read_back (x, y);
 	AgendaRoot root (x, y);
 	if (root.canvas.px == 0) return 1;
 	root.run ();
