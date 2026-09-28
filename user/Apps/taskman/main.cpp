@@ -14,6 +14,7 @@
 #define NAMEL	32
 
 static unsigned *fb;
+static wtk::Canvas g_cv;		// the window's canvas (the painter draws on it)
 static int g_fw = 8, g_fh = 16, g_rows = 1;
 
 static char g_name[MAXT][NAMEL];
@@ -72,30 +73,30 @@ static void on_click (unsigned long s, int ev, long val)
 	if (row >= 0 && row < g_count) g_sel = row;
 }
 
-static void fill_rect (int x, int y, int w, int h, unsigned c)
-{
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
-}
-
+// The theme's look (wtk/paint.h): a header strip of the face, the list in a sunken field,
+// the selection in the accent. The rows stay at LISTY + i * g_fh (the clicks' mapping).
 static void redraw (void)
 {
-	fill_rect (0, 0, W, H, 0x00202830);
-	fill_rect (0, 0, W, LISTY - 2, 0x00303d4d);
+	using namespace wtk;
+	g_cv.clear (C_BG);
+	wk_rbox (g_cv, 0, 0, W, LISTY - 4, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+	wk_etch_h (g_cv, 0, LISTY - 4, W, C_FACE);
 	char hdr[40]; int p = ax_itoa (g_count, hdr);
 	const char *t = " tasks  k:kill ent:raise"; for (int i = 0; t[i]; i++) hdr[p++] = t[i];
 	hdr[p] = '\0';
-	wtk::draw_text (fb, W, H, 8, 9, hdr, 0x00e0e0e0);
+	wk_text_l (g_cv, 8, 0, LISTY - 4, hdr, C_TEXT);
 
+	wk_sunken (g_cv, 3, LISTY - 2, W - 6, H - LISTY - 1, 4, C_FIELD);
+	unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130), ink = wk_hilite_ink (true);
 	for (int i = 0; i < g_count && i < g_rows; i++)
 	{
 		int y = LISTY + i * g_fh;
-		if (i == g_sel) fill_rect (0, y, W, g_fh, 0x00355070);
+		bool sel = i == g_sel;
+		if (sel) wk_hilite (g_cv, 6, y, W - 12, g_fh, 4, true);
 		char st[2] = { g_state[i], 0 };
-		wtk::draw_text (fb, W, H, 8, y + 1, st, 0x00ffd070);		// state char
-		wtk::draw_text (fb, W, H, 26, y + 1, g_name[i], g_kernel[i] ? 0x00808890 : 0x00e8e8e8);
-		if (g_kernel[i]) wtk::draw_text (fb, W, H, W - 60, y + 1, "kernel", 0x00606870);
+		g_cv.text (12, y, st, sel ? ink : wk_tone (C_ACCENT, 84));	// state char
+		g_cv.text (30, y, g_name[i], sel ? ink : g_kernel[i] ? dim : C_FIELD_TEXT);
+		if (g_kernel[i]) g_cv.text (W - 62, y, "kernel", sel ? ink : dim);
 	}
 }
 
@@ -103,7 +104,8 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "taskman");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	g_cv.adopt (fb, W, H);
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 	g_rows = (H - LISTY) / g_fh; if (g_rows < 1) g_rows = 1;

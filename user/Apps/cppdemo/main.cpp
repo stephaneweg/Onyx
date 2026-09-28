@@ -45,7 +45,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "cppdemo");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
 
 	for (int i = 0; i < N; i++)			// heap-allocate a mix of subclasses
 	{
@@ -58,8 +58,9 @@ int main (void)
 	while (!should_exit ())
 	{
 		pump_events ();
-		for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) fb[y * W + x] = 0x00202830;
-		wtk::draw_text (fb, W, H, 8, 8, g_banner.text, 0x00FFFFFF);	// proves the ctor ran
+		unsigned bg = wtk::C_BG;				// (the theme's face)
+		for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) fb[y * W + x] = bg;
+		wtk::draw_text (fb, W, H, 8, 8, g_banner.text, wtk::C_TEXT);	// proves the ctor ran
 		for (int i = 0; i < N; i++) g_shapes[i]->draw ();	// virtual dispatch
 		msleep (16);
 	}

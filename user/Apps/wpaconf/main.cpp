@@ -23,7 +23,7 @@
 using namespace wtk;
 
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
-#define BGCOL		0x00283038
+#define BGCOL		C_BG			// (the theme's face)
 #define W		380
 #define H		308
 #define SCANW		70
@@ -205,13 +205,25 @@ static void on_reboot (Widget &)
 static void form_label (Root &root, int x, int y, int w, int h, const char *s)
 { root.addChild (new Label (x, y, w, h, s, C_TEXT, BGCOL)); }
 
+// The window: the form's title in a header strip of the face (bold, an etched line under it).
+class WpaRoot : public Root
+{
+public:
+	WpaRoot () : Root (W, H, "Wi-Fi Settings") {}
+	void onDraw () override
+	{
+		Root::onDraw ();
+		wk_rbox (canvas, 0, 0, W, 32, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+		wk_etch_h (canvas, 0, 32, W, C_FACE);
+		wk_text_l (canvas, 14, 0, 32, "Wi-Fi Settings", C_TEXT, 2);
+	}
+};
+
 int main (void)
 {
-	Root root (W, H, "Wi-Fi Settings");
+	WpaRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.setBg (BGCOL);
-
-	form_label (root, 12, 10, 240, 20, "Wi-Fi Settings");
 
 	int y = 42;
 	form_label (root, 12, y, LBLW, FH, "SSID");     g_ssid    = new Combobox (FX, y, FW - SCANW - 6, FH, "", 0, on_pick);

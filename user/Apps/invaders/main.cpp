@@ -52,6 +52,32 @@ static int spr_w (const char *const *rows) { return wk_len (rows[0]); }
 
 struct Shot { int x, y, vy; bool live; };
 
+// The theme's pieces (wtk/paint.h) round the space: the HUD a strip of the face (a dark edge
+// under it), a message box (a title strip, the face, an outline), a notice (a floating panel).
+static void hud_item (Canvas &c, int x, const char *label, long v)
+{
+	char n[16]; gitoa (v, n);
+	wk_text_l (c, x, 0, HUD - 1, label, C_TEXT);
+	wk_text_l (c, x + wk_text_w (label) + 6, 0, HUD - 1, n, C_TEXT, 2);
+}
+static int hud_w (const char *label, long v) { char n[16]; gitoa (v, n); return wk_text_w (label) + 6 + wk_text_w (n); }
+static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
+{
+	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
+	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+}
+static void notice (Canvas &c, int cx, int cy, const char *s)
+{
+	int w = wk_text_w (s, 2) + 48, h = wk_fh () + 20, x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 8, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
+	wk_rline (c, x, y, w, h, 8, wk_tone (C_FACE, 70), 220);
+	wk_text_c (c, x, y, w, h, s, C_TEXT, 2);
+}
+
 class Invaders : public GameView
 {
 public:
@@ -292,11 +318,12 @@ public:
 		// a few stars
 		for (int i = 0; i < 40; i++) c.pixel ((i * 97 + 13) % W, HUD + (i * 57 + 29) % (GROUND - HUD), 0x00404060);
 		// HUD
+		wk_rbox (c, 0, 0, W, HUD - 1, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
+		c.fillRect (0, HUD - 1, W, 1, wk_tone (C_FACE, 70));
+		hud_item (c, 8, "Score", score);
+		hud_item (c, (W - hud_w ("Hi", hiscore)) / 2, "Hi", hiscore);
+		hud_item (c, W - 8 - hud_w ("Wave", wave + 1), "Wave", wave + 1);
 		char t[48];
-		t[0] = 0; gcat (t, "SCORE "); gcatn (t, score); gtext (c, 8, 5, t, 0x00FFFFFF);
-		t[0] = 0; gcat (t, "HI "); gcatn (t, hiscore); gtext_c (c, W / 2, 5, t, 0x00FFFFFF, 1, 0);
-		t[0] = 0; gcat (t, "WAVE "); gcatn (t, wave + 1); gtext (c, W - 90, 5, t, 0x0080C0FF);
-		c.fillRect (0, HUD - 2, W, 1, 0x00303050);
 		// fleet
 		for (int r = 0; r < AROWS; r++) for (int col = 0; col < ACOLS; col++) if (alive[r][col])
 		{
@@ -321,9 +348,9 @@ public:
 		c.fillRect (0, GROUND, W, 2, 0x0040E040);
 		t[0] = 0; gcatn (t, lives); gtext (c, 8, GROUND + 6, t, 0x00FFFFFF);
 		for (int i = 0; i < lives - 1 && i < 5; i++) sprite (c, 28 + i * 32, GROUND + 8, SHIP, 8, 0x0040FF40, 1);
-		if (state == 1) gtext_c (c, W / 2, H / 2 - 16, "PAUSED", 0x00FFFF80, 2);
-		if (state == 3) { gtext_c (c, W / 2, H / 2 - 30, "GAME OVER", 0x00FF6060, 2); gtext_c (c, W / 2, H / 2 + 10, "Space: new game", 0x00FFFFFF); }
-		if (state == 4) { char m[24] = "WAVE "; gcatn (m, wave + 1); gcat (m, " CLEARED"); gtext_c (c, W / 2, H / 2 - 16, m, 0x0080FF80, 2); }
+		if (state == 1) notice (c, W / 2, H / 2, "Paused");
+		if (state == 3) msgbox (c, W / 2, H / 2, "Game over", "Space: new game");
+		if (state == 4) { char m[24] = "Wave "; gcatn (m, wave + 1); gcat (m, " cleared"); notice (c, W / 2, H / 2, m); }
 	}
 };
 

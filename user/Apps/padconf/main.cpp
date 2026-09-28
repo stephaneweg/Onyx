@@ -195,11 +195,24 @@ static void save_mapping (void)
 }
 
 // ---- the window ------------------------------------------------------------------------------------
+// The theme's look (wtk/paint.h): a key cap -- raised, or the accent while it is held -- and its
+// label.
+static void key_cap (Canvas &c, int x, int y, int w, int h, bool lit, const char *t)
+{
+	if (lit)
+	{
+		wk_rbox (c, x, y, w, h, 4, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 112));
+		wk_rline (c, x, y, w, h, 4, wk_tone (C_ACCENT, 70), 220);
+	}
+	else wk_raised (c, x, y, w, h, 4, C_FACE);
+	if (t[0]) wk_text_c (c, x, y, w, h, t, lit ? C_SEL_TEXT : C_TEXT);
+}
+
 static void pad_shape (Canvas &c, int x, int y, unsigned b)
 {
 	// a pad seen from above: d-pad left, face buttons right, shoulders on top, sticks' clicks
-	unsigned off = 0x00404650, on = 0x0060D060, txt = 0x00E0E0E0;
-	c.fillRect (x, y + 20, 300, 130, 0x00262A30); c.frameRect (x, y + 20, 300, 130, 0x00505860);
+	wk_rbox (c, x, y + 20, 300, 130, 14, wk_tone (C_FACE, 118), wk_tone (C_FACE, 96));
+	wk_rline (c, x, y + 20, 300, 130, 14, wk_tone (C_FACE, 60), 220);
 	struct { int bit, dx, dy, w, h; const char *t; } k[] = {
 		{ 8, 10, 0, 60, 16, "L" }, { 10, 80, 0, 50, 16, "L2" }, { 11, 170, 0, 50, 16, "R2" }, { 9, 230, 0, 60, 16, "R" },
 		{ 0, 44, 40, 22, 22, "" }, { 1, 44, 84, 22, 22, "" }, { 2, 22, 62, 22, 22, "" }, { 3, 66, 62, 22, 22, "" },
@@ -207,11 +220,7 @@ static void pad_shape (Canvas &c, int x, int y, unsigned b)
 		{ 12, 112, 56, 34, 14, "SEL" }, { 13, 154, 56, 34, 14, "STA" }, { 16, 136, 34, 28, 14, "H" },
 		{ 14, 104, 104, 34, 18, "L3" }, { 15, 162, 104, 34, 18, "R3" } };
 	for (unsigned i = 0; i < sizeof k / sizeof k[0]; i++)
-	{
-		bool lit = (b >> k[i].bit) & 1;
-		c.fillRect (x + k[i].dx, y + k[i].dy, k[i].w, k[i].h, lit ? on : off);
-		if (k[i].t[0]) c.text (x + k[i].dx + 3, y + k[i].dy + (k[i].h - 16) / 2, k[i].t, txt);
-	}
+		key_cap (c, x + k[i].dx, y + k[i].dy, k[i].w, k[i].h, (b >> k[i].bit) & 1, k[i].t);
 }
 
 class PadRoot : public Root
@@ -220,21 +229,30 @@ public:
 	PadRoot () : Root (W, H, "Gamepad") {}
 	void onDraw () override
 	{
-		canvas.clear (0x001C1F24);
+		canvas.clear (C_BG);
+		unsigned msg = wk_tone (C_ACCENT, 84);				// (a message: the dark accent)
 		char s[200]; int n;
-		for (int i = 0; i < PAD_MAX; i++)				// the tabs
+		wk_rbox (canvas, 0, 0, W, 38, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+		wk_etch_h (canvas, 0, 38, W, C_FACE);
+		for (int i = 0; i < PAD_MAX; i++)				// the tabs: the current one in the accent
 		{
-			struct kapi_pad p; bool there = kapi_pad_state (i, &p) != 0;
-			canvas.fillRect (10 + i * 100, 8, 94, 24, i == g_pad ? 0x00405070 : 0x002C3038);
+			struct kapi_pad p; bool there = kapi_pad_state (i, &p) != 0, cur = i == g_pad;
+			int tx = 10 + i * 100;
+			if (cur)
+			{
+				wk_hilite (canvas, tx, 8, 94, 24, 6, true);
+				wk_rline (canvas, tx, 8, 94, 24, 6, wk_tone (C_ACCENT, 70), 200);
+			}
+			else wk_raised (canvas, tx, 8, 94, 24, 6, C_FACE);
 			n = 0; s[0] = 0; cat (s, &n, sizeof s, "Pad "); cati (s, &n, sizeof s, i + 1); if (!there) cat (s, &n, sizeof s, " -");
-			canvas.text (22 + i * 100, 12, s, there ? 0x00FFFFFF : 0x00808080);
+			wk_text_l (canvas, tx + 12, 8, 24, s, cur ? C_SEL_TEXT : there ? C_TEXT : C_DIS, cur ? 2 : 0);
 		}
 		int y = 44;
 		if (!g_there)
 		{
-			canvas.text (14, y, "No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,", 0x00C8C8C8);
-			canvas.text (14, y + 18, "PlayStation 3 / 4, Switch Pro, or any USB HID gamepad).", 0x00C8C8C8);
-			if (g_msg[0]) canvas.text (14, H - 26, g_msg, 0x0080E080);
+			canvas.text (14, y, "No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,", C_TEXT);
+			canvas.text (14, y + 18, "PlayStation 3 / 4, Switch Pro, or any USB HID gamepad).", C_TEXT);
+			if (g_msg[0]) canvas.text (14, H - 26, g_msg, msg);
 			return;
 		}
 		struct pad_map m; int src = pad_map_for (&g_raw, &m);
@@ -243,53 +261,59 @@ public:
 		cat (s, &n, sizeof s, (g_raw.props & 1) ? "   known to Circle" : "   generic HID pad");
 		cat (s, &n, sizeof s, "   mapping: ");
 		cat (s, &n, sizeof s, src == 2 ? "its own (gamepad.ini)" : src == 1 ? "[default] of gamepad.ini" : "built-in");
-		canvas.text (14, y, s, 0x00FFFFFF); y += 26;
+		canvas.text (14, y, s, C_TEXT); y += 26;
 		// raw buttons
-		canvas.text (14, y, "Buttons", 0x00A0A8B0);
+		canvas.text (14, y, "Buttons", C_DIS);
 		int nb = g_raw.nbuttons > 32 ? 32 : g_raw.nbuttons;
 		if (nb < 1) nb = 16;
 		for (int i = 0; i < nb; i++)
 		{
 			bool d = (g_raw.buttons >> i) & 1;
 			int bx = 90 + (i % 16) * 31, by = y - 2 + (i / 16) * 22;
-			canvas.fillRect (bx, by, 28, 20, d ? 0x0060D060 : 0x00383C44);
-			n = 0; s[0] = 0; cati (s, &n, sizeof s, i + 1); canvas.text (bx + (i < 9 ? 10 : 6), by + 2, s, d ? 0 : 0x00C0C0C0);
+			n = 0; s[0] = 0; cati (s, &n, sizeof s, i + 1);
+			key_cap (canvas, bx, by, 28, 20, d, s);
 		}
 		y += nb > 16 ? 50 : 28;
-		// axes, hats
-		canvas.text (14, y, "Axes", 0x00A0A8B0);
+		// axes (a gauge each: a sunken track, a tint of the accent up to the value), hats
+		canvas.text (14, y, "Axes", C_DIS);
 		for (int i = 0; i < g_raw.naxes && i < 8; i++)
 		{
 			int bx = 90 + (i % 4) * 124, by = y + (i / 4) * 22;
 			int lo = g_raw.axes[i].minimum, hi = g_raw.axes[i].maximum, v = g_raw.axes[i].value;
-			canvas.fillRect (bx, by, 110, 18, 0x00383C44);
-			if (hi > lo) { int w = (v - lo) * 110 / (hi - lo); if (w < 0) w = 0; if (w > 110) w = 110; canvas.fillRect (bx, by, w, 18, 0x00406890); }
+			wk_sunken (canvas, bx, by, 110, 18, 4, C_FIELD);
+			if (hi > lo)
+			{
+				int w = (v - lo) * 110 / (hi - lo); if (w < 0) w = 0; if (w > 110) w = 110;
+				if (w > 2) wk_rbox (canvas, bx + 1, by + 1, w - 2, 16, 3, wk_mix (C_FIELD, C_ACCENT, 120), wk_mix (C_FIELD, C_ACCENT, 90));
+			}
 			n = 0; s[0] = 0; cati (s, &n, sizeof s, i + 1); cat (s, &n, sizeof s, ": "); cati (s, &n, sizeof s, v);
-			canvas.text (bx + 4, by + 1, s, 0x00FFFFFF);
+			canvas.text (bx + 4, by + 1, s, C_FIELD_TEXT);
 		}
 		y += g_raw.naxes > 4 ? 48 : 26;
-		n = 0; s[0] = 0; cat (s, &n, sizeof s, "Hats");
+		n = 0; s[0] = 0;
 		static const char *const DIR[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
 		for (int i = 0; i < g_raw.nhats; i++) { cat (s, &n, sizeof s, i ? ", " : "  "); int h = g_raw.hats[i]; cat (s, &n, sizeof s, h >= 0 && h < 8 ? DIR[h] : "centre"); }
 		if (!g_raw.nhats) cat (s, &n, sizeof s, "  none");
-		canvas.text (14, y, s, 0x00A0A8B0); y += 28;
+		canvas.text (14, y, "Hats", C_DIS);
+		canvas.text (14 + 4 * wk_fw (), y, s, C_TEXT); y += 28;
 		// what the apps see
 		int lx, ly, rx, ry;
 		unsigned b = pad_apply (&g_raw, &m, &lx, &ly, &rx, &ry);
-		canvas.text (14, y, "What the apps see:", 0x00A0A8B0);
+		canvas.text (14, y, "What the apps see:", C_DIS);
 		pad_shape (canvas, 150, y, b);
 		y += 160;
-		if (g_mapping)
+		if (g_mapping)						// the step: a band of a tint of the accent
 		{
-			canvas.fillRect (0, y - 4, W, 44, 0x00303848);
+			wk_rbox (canvas, 6, y - 5, W - 12, 44, 6, wk_mix (C_FIELD, C_ACCENT, 70), wk_mix (C_FIELD, C_ACCENT, 46));
+			wk_rline (canvas, 6, y - 5, W - 12, 44, 6, C_ACCENT, 200);
 			n = 0; s[0] = 0;
 			if (g_step >= PAD_NBUTTONS) cat (s, &n, sizeof s, "Release every button...");
 			else { cat (s, &n, sizeof s, g_waitRelease ? "Release, then press " : "Press "); cat (s, &n, sizeof s, STEP_TEXT[g_step]); }
-			canvas.text (14, y, s, 0x00FFFF80);
-			canvas.text (14, y + 18, "Esc: the pad has none (skip)   Backspace: cancel", 0x00A0A0A0);
+			wk_text_l (canvas, 14, y, 16, s, C_FIELD_TEXT, 2);
+			canvas.text (14, y + 18, "Esc: the pad has none (skip)   Backspace: cancel", wk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		}
-		else canvas.text (14, y, "Pad > Map Buttons... (M) if the buttons above are not in their places.", 0x00A0A0A0);
-		if (g_msg[0]) canvas.text (14, H - 26, g_msg, 0x0080E080);
+		else canvas.text (14, y, "Pad > Map Buttons... (M) if the buttons above are not in their places.", C_DIS);
+		if (g_msg[0]) canvas.text (14, H - 26, g_msg, msg);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{

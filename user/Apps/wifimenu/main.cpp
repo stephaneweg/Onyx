@@ -26,7 +26,9 @@ using namespace wtk;
 #define MAXKNOWN	16
 #define HMAX		(HEAD + MAXNET * ROW + EXTRA + FOOT)	// the window's buffer (shown: its first g_h rows)
 
-static const unsigned C_BOX = 0x00262F3B, C_LINE = 0x00161C24, C_TXT = 0x00E8ECF0, C_DIMT = 0x008A96A8, C_HI = 0x00355070;
+// The panel's colours: the theme's, as the menu bar's drop-downs (set in main, once the theme is
+// read); the open row (joining) a tint of the accent -- its widgets blend into it.
+static unsigned C_BOX, C_LINE, C_TXT, C_DIMT, C_LINK, C_OPEN;
 
 // ---- the networks around -------------------------------------------------------------------------
 struct Net { char ssid[33]; int level, security; bool connected, known; };
@@ -197,50 +199,57 @@ static void on_connect (Widget &) { join (); }
 static void on_show (Widget &) { g_pass->password = !g_show->checked; g_pass->invalidate (true); }
 
 // signal bars (4) by the level in dBm
-static void bars (Canvas &c, int x, int y, int level)
+static void bars (Canvas &c, int x, int y, int level, unsigned on, unsigned off)
 {
 	int n = level >= -55 ? 4 : level >= -67 ? 3 : level >= -78 ? 2 : level >= -88 ? 1 : 0;
-	for (int i = 0; i < 4; i++) c.fillRect (x + i * 4, y + 12 - (i + 1) * 3, 3, (i + 1) * 3, i < n ? C_TXT : 0x00485466);
+	for (int i = 0; i < 4; i++) c.fillRect (x + i * 4, y + 12 - (i + 1) * 3, 3, (i + 1) * 3, i < n ? on : off);
 }
-static void lock (Canvas &c, int x, int y)
+static void lock (Canvas &c, int x, int y, unsigned col)
 {
-	c.frameRect (x + 1, y, 6, 5, C_DIMT);
-	c.fillRect (x, y + 4, 8, 6, C_DIMT);
+	c.frameRect (x + 1, y, 6, 5, col);
+	c.fillRect (x, y + 4, 8, 6, col);
 }
 
+// A floating panel (the menu bar's drop-downs' look): light, rounded, outlined; see-through
+// round its corners (WIN_FLAG_ALPHA).
 class MenuRoot : public Root
 {
 public:
-	MenuRoot (int x, int y) : Root (x, y, W, HMAX, "Wi-Fi", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM) {}
+	MenuRoot (int x, int y) : Root (x, y, W, HMAX, "Wi-Fi", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA) {}
 	void onDraw () override
 	{
 		int h = height;
-		canvas.clear (C_BOX);
-		canvas.frameRect (0, 0, W, h, C_LINE);
-		canvas.fillRect (0, 0, 4, h, C_ACCENT);			// (as the notifications)
-		canvas.text (14, 8, "Wi-Fi", C_TXT);
-		canvas.text (14, 8 + g_fh + 2, g_status, g_join == FAILED ? 0x00FF8080 : C_DIMT);
-		canvas.fillRect (8, HEAD - 3, W - 16, 1, 0x00404A5A);
+		canvas.clear (0xFF000000);
+		wk_paint_alpha (true);
+		wk_rbox (canvas, 0, 0, W, h, 8, wk_tone (C_BOX, 140), C_BOX);
+		wk_rline (canvas, 0, 0, W, h, 8, C_LINE, 200);
+		wk_paint_alpha (false);
+		wk_text_l (canvas, 14, 8, g_fh, "Wi-Fi", C_TXT, 2);
+		canvas.text (14, 8 + g_fh + 2, g_status, g_join == FAILED ? 0x00C03030 : C_DIMT);
+		wk_etch_h (canvas, 10, HEAD - 3, W - 20, C_BOX);
 		if (g_scanning) canvas.text (14, HEAD + 7, "Looking for networks...", C_DIMT);
 		else if (g_nnet == 0) canvas.text (14, HEAD + 7, "No network around", C_DIMT);
 		for (int i = 0; i < g_nnet; i++)
 		{
 			const Net &n = g_net[i];
 			int y = row_y (i);
-			if (i == g_open) canvas.fillRect (4, y, W - 5, ROW + EXTRA, 0x002C3848);
-			else if (i == g_hover) canvas.fillRect (4, y, W - 5, ROW, C_HI);
-			bars (canvas, 14, y + 8, n.level);
-			canvas.text (40, y + (ROW - g_fh) / 2, n.ssid, C_TXT);
+			bool hot = i == g_hover && i != g_open;
+			unsigned bg = i == g_open ? C_OPEN : hot ? C_ACCENT : C_BOX;
+			if (i == g_open) wk_rbox (canvas, 4, y, W - 8, ROW + EXTRA, 6, C_OPEN, C_OPEN);
+			else if (hot) wk_hilite (canvas, 4, y, W - 8, ROW, 6, true);
+			unsigned ink = hot ? wk_hilite_ink (true) : C_TXT, dim = hot ? ink : C_DIMT;
+			bars (canvas, 14, y + 8, n.level, ink, wk_mix (bg, ink, 64));
+			canvas.text (40, y + (ROW - g_fh) / 2, n.ssid, ink);
 			int rx = W - 14;
-			if (n.connected) { const char *t = "Connected"; rx -= slen (t) * g_fw; canvas.text (rx, y + (ROW - g_fh) / 2, t, C_ACCENT); rx -= 8; }
-			else if (n.known) { const char *t = "Known"; rx -= slen (t) * g_fw; canvas.text (rx, y + (ROW - g_fh) / 2, t, C_DIMT); rx -= 8; }
-			if (n.security != WLAN_SEC_OPEN) lock (canvas, rx - 10, y + 10);
+			if (n.connected) { const char *t = "Connected"; rx -= slen (t) * g_fw; canvas.text (rx, y + (ROW - g_fh) / 2, t, hot ? ink : C_LINK); rx -= 8; }
+			else if (n.known) { const char *t = "Known"; rx -= slen (t) * g_fw; canvas.text (rx, y + (ROW - g_fh) / 2, t, dim); rx -= 8; }
+			if (n.security != WLAN_SEC_OPEN) lock (canvas, rx - 10, y + 10, dim);
 		}
 		int fy = h - FOOT + 9;
-		canvas.fillRect (8, h - FOOT, W - 16, 1, 0x00404A5A);
-		canvas.text (14, fy, "Refresh", C_ACCENT);
+		wk_etch_h (canvas, 10, h - FOOT, W - 20, C_BOX);
+		canvas.text (14, fy, "Refresh", C_LINK);
 		const char *s = "Wi-Fi Settings...";
-		canvas.text (W - 14 - slen (s) * g_fw, fy, s, C_ACCENT);
+		canvas.text (W - 14 - slen (s) * g_fw, fy, s, C_LINK);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -290,8 +299,12 @@ int main (void)
 	MenuRoot root (sw - W - 60, 34);				// under the Wi-Fi icon, near the right
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
+	C_BOX = C_FIELD; C_LINE = wk_tone (C_FACE, 70); C_TXT = C_FIELD_TEXT;	// (the theme is read)
+	C_DIMT = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_LINK = wk_tone (C_ACCENT, 84);
+	C_OPEN = wk_mix (C_FIELD, C_ACCENT, 56);
+	root.setBg (C_OPEN);						// (the open row's widgets blend into it)
 	g_pass = new Textbox (14, 0, W - 132, g_fh + 10, "", on_connect); g_pass->password = true; root.addChild (g_pass);
-	g_show = new Checkbox (14, 0, 150, g_fh + 6, "Show password", false, on_show, 0x002C3848); root.addChild (g_show);
+	g_show = new Checkbox (14, 0, 150, g_fh + 6, "Show password", false, on_show, C_OPEN); root.addChild (g_show);
 	g_connect = new Button (W - 104, 0, 90, 28, "Connect", on_connect); root.addChild (g_connect);
 	relayout ();
 	root.attach ();

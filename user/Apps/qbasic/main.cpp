@@ -48,6 +48,25 @@ static CodeArea *g_ed = 0;
 static Label *g_head = 0, *g_status = 0;
 static Root *g_root = 0;
 
+// A strip across the window (the module's name above the code, the status below it): the
+// face's gradient, etched lines on the edges given.
+enum { ETCH_BOTTOM = 1, ETCH_TOP = 2, ETCH_LEFT = 4 };
+class Strip : public Label
+{
+	int m_etch;
+public:
+	Strip (int l, int t, int w, int h, const char *s, int etch) : Label (l, t, w, h, s, C_TEXT, C_FACE), m_etch (etch) {}
+	void onDraw () override
+	{
+		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+		if (m_etch & ETCH_BOTTOM) wk_etch_h (canvas, 0, height - 2, width, C_FACE);
+		if (m_etch & ETCH_TOP) wk_etch_h (canvas, 0, 0, width, C_FACE);
+		if (m_etch & ETCH_LEFT) wk_etch_v (canvas, 0, 4, height - 6, C_FACE);
+		int t = m_etch & ETCH_TOP ? 2 : 0, b = m_etch & ETCH_BOTTOM ? 2 : 0;
+		wk_text_l (canvas, 8, t, height - t - b, text, fg, m_etch & ETCH_BOTTOM ? 2 : 0);
+	}
+};
+
 static void (*g_fkey[12]) (void);			// QBasic's keys: F1 help, F2 SUBs, F5 run
 class CodeArea : public Textarea
 {
@@ -222,7 +241,7 @@ public:
 	Textbox *tb;
 	InputBox (const char *title, const char *init) : Modal (360, 120), m_title (title)
 	{
-		left = (W - width) / 2; top = (H - height) / 2;
+		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
 		tb = new Textbox (12, wk_fh () + 16, width - 24, 26, init, dlg_enter);
 		addChild (tb);
 		Button *b;
@@ -232,12 +251,7 @@ public:
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
-	void onDraw () override
-	{
-		canvas.clear (C_FACE_DN);
-		canvas.frameRect (0, 0, width, height, C_ACCENT);
-		canvas.text (10, 6, m_title, C_TEXT);
-	}
+	void onDraw () override { drawBox (m_title); }
 };
 static bool ask_text (const char *title, char *out, int cap)
 {
@@ -254,7 +268,7 @@ public:
 	ListBox *list;
 	SubsDialog () : Modal (380, 320)
 	{
-		left = (W - width) / 2; top = (H - height) / 2;
+		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
 		list = new ListBox (12, wk_fh () + 14, width - 24, height - wk_fh () - 64, 0, dlg_enter);
 		for (int i = 0; i < g_nmod; i++)
 		{
@@ -278,12 +292,7 @@ public:
 		if (k == KEY_ENTER) { close (1); return true; }
 		return false;
 	}
-	void onDraw () override
-	{
-		canvas.clear (C_FACE_DN);
-		canvas.frameRect (0, 0, width, height, C_ACCENT);
-		canvas.text (10, 6, "SUBs and FUNCTIONs", C_TEXT);
-	}
+	void onDraw () override { drawBox ("SUBs and FUNCTIONs"); }
 };
 
 // ---- commands ------------------------------------------------------------------------------------
@@ -601,21 +610,24 @@ public:
 
 int main (void)
 {
-	IdeRoot root;
+	IdeRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
-	root.setBg (C_FACE_DN);
 	kapi_ipc_register ("qbasic");
 
-	g_head = new Label (0, 0, W, HEAD_H, "Main module", C_TEXT, C_FACE);
+	g_head = new Strip (0, 0, W, HEAD_H, "Main module", ETCH_BOTTOM);
+	g_head->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	root.addChild (g_head);
 	g_ed = new CodeArea (0, HEAD_H, W, H - HEAD_H - ST_H);
-	g_ed->anchor = ANCHOR_FILL;
+	g_ed->Widget::anchor = ANCHOR_FILL;		// (Textarea's own `anchor` is its selection's)
 	root.addChild (g_ed);
-	g_status = new Label (0, H - ST_H, W - 90, ST_H, "", C_TEXT, C_FACE_DN);
+	g_status = new Strip (0, H - ST_H, W - 90, ST_H, "", ETCH_TOP);
+	g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	root.addChild (g_status);
-	root.pos = new Label (W - 90, H - ST_H, 90, ST_H, "1:1", C_TEXT, C_FACE_DN);
+	root.pos = new Strip (W - 90, H - ST_H, 90, ST_H, "1:1", ETCH_TOP | ETCH_LEFT);
+	root.pos->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	root.addChild (root.pos);
+	root.setResizable (true);			// (the code fills the window: maximise works)
 
 	static Menu menu;
 	menu.menu ("File");

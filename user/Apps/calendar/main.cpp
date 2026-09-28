@@ -8,6 +8,8 @@
 #include "wtk/wtk.h"
 #include "applib.h"
 
+using namespace wtk;
+
 #define W	392
 #define H	320
 #define OX	8
@@ -163,26 +165,24 @@ static void on_click (unsigned long s, int ev, long val)
 	if (day >= 1 && day <= dim (g_year, g_month)) { g_sel = day; load_note (day); }
 }
 
-static void fill_rect (int x, int y, int w, int h, unsigned c)
-{
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
-}
-
+// The theme's look: the days light tiles on the face, the selected one in the accent, today
+// outlined in it; a note's mark a dot; the note being typed in a field.
 static void redraw (void)
 {
-	fill_rect (0, 0, W, H, 0x00202830);
+	Canvas cv; cv.adopt (fb, W, H);
+	int fw = kapi_font_width (), fh = kapi_font_height ();
+	cv.clear (C_BG);
 
 	char hdr[40]; int p = 0;
 	const char *mn = MONTHS[g_month - 1];
 	for (int i = 0; mn[i]; i++) hdr[p++] = mn[i];
-	hdr[p++] = ' '; p += ax_itoa (g_year, hdr + p);
-	wtk::draw_text (fb, W, H, OX, 10, hdr, 0x00ffffff);
-	wtk::draw_text (fb, W, H, W - 130, 10, "<- -> month  ^v year", 0x00708090);
+	hdr[p++] = ' '; p += ax_itoa (g_year, hdr + p); hdr[p] = '\0';
+	wk_text_l (cv, OX, 6, fh, hdr, C_TEXT, 2);
+	const char *hint = "<- -> month  ^v year";
+	cv.text (W - OX - wk_len (hint) * fw, 6, hint, C_DIS);
 
 	static const char *wd[7] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
-	for (int c = 0; c < 7; c++) wtk::draw_text (fb, W, H, OX + c * CW + 8, 30, wd[c], 0x0090b0d0);
+	for (int c = 0; c < 7; c++) cv.text (OX + c * CW + 6, 28, wd[c], C_DIS);
 
 	int first = dow (g_year, g_month, 1), ndays = dim (g_year, g_month);
 	for (int cell = 0; cell < 42; cell++)
@@ -190,31 +190,40 @@ static void redraw (void)
 		int day = cell - first + 1;
 		if (day < 1 || day > ndays) continue;
 		int col = cell % 7, row = cell / 7;
-		int x = OX + col * CW, y = OY + row * CH;
-		unsigned bg = 0x00283440;
-		if (day == g_sel) bg = 0x00355070;
-		else if (day == g_td && g_month == g_tm && g_year == g_ty) bg = 0x00405028;
-		fill_rect (x, y, CW - 2, CH - 2, bg);
+		int x = OX + col * CW, y = OY + row * CH, w = CW - 2, h = CH - 2;
+		bool sel = day == g_sel, today = day == g_td && g_month == g_tm && g_year == g_ty;
+		if (sel) wk_hilite (cv, x, y, w, h, 5, true);
+		else
+		{
+			wk_rbox (cv, x, y, w, h, 5, C_FIELD, wk_tone (C_FIELD, 122));
+			wk_rline (cv, x, y, w, h, 5, wk_tone (C_FACE, 80), 150);
+		}
+		if (today)
+		{
+			wk_rline (cv, x, y, w, h, 5, sel ? wk_tone (C_ACCENT, 50) : C_ACCENT, 255);
+			wk_rline (cv, x + 1, y + 1, w - 2, h - 2, 4, sel ? wk_tone (C_ACCENT, 50) : C_ACCENT, 150);
+		}
 		char ds[4]; ax_itoa (day, ds);
-		wtk::draw_text (fb, W, H, x + 4, y + 3, ds, 0x00e0e0e0);
-		if (has_note (day)) fill_rect (x + CW - 9, y + 4, 4, 4, 0x0060d0ff);
+		unsigned ink = sel ? wk_hilite_ink (true) : C_FIELD_TEXT;
+		wk_text_l (cv, x + 6, y + 4, fh, ds, ink, today ? 2 : 0);
+		if (has_note (day)) wk_glyph (cv, WKG_DOT, x + w - 9, y + 11, 6, sel ? ink : C_ACCENT);
 	}
 
 	// Note editor for the selected day.
-	int ny = OY + 6 * CH + 6;
+	int ny = OY + 6 * CH + 4;
 	if (g_sel != 0)
 	{
 		char lbl[40]; int q = 0;
 		const char *t = "note for day "; for (int i = 0; t[i]; i++) lbl[q++] = t[i];
 		q += ax_itoa (g_sel, lbl + q); lbl[q++] = ':'; lbl[q] = '\0';
-		wtk::draw_text (fb, W, H, OX, ny, lbl, 0x0090a0b0);
-		fill_rect (OX, ny + 14, W - 16, 18, 0x00101418);
-		wtk::draw_text (fb, W, H, OX + 4, ny + 15, g_note, 0x00ffffff);
-		int cx = OX + 4 + g_notelen * kapi_font_width ();
-		fill_rect (cx, ny + 15, 2, kapi_font_height (), 0x0060ff90);
-		wtk::draw_text (fb, W, H, OX, ny + 36, "type + Enter to save", 0x00607080);
+		cv.text (OX, ny, lbl, C_TEXT);
+		int ey = ny + fh + 2;
+		wk_sunken (cv, OX, ey, W - 2 * OX, fh + 4, 4, C_FIELD, true);
+		cv.text (OX + 4, ey + 2, g_note, C_FIELD_TEXT);
+		cv.fillRect (OX + 4 + g_notelen * fw, ey + 2, 2, fh, C_ACCENT);
+		cv.text (OX, ey + fh + 6, "type + Enter to save", C_DIS);
 	}
-	else wtk::draw_text (fb, W, H, OX, ny, "click a day to add a note", 0x00708090);
+	else cv.text (OX, ny, "click a day to add a note", C_DIS);
 }
 
 int main (void)

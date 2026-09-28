@@ -48,11 +48,15 @@ using namespace wtk;
 #define NAMEL	72
 #define CLICK_DELAY 70			// double-click window, HZ ticks (~700 ms)
 
-static const unsigned
-	C_COL     = 0x00181E26, C_COLSEP  = 0x00303A48, C_SEL_ACT = 0x00355070,
-	C_SEL_OLD = 0x003A4452, C_DIRTXT  = 0x0080C8FF, C_FILETXT = 0x00D8D8D8,
-	C_APPTXT  = 0x0090F0A0, C_DIMTXT  = 0x008A96A8, C_BAR     = 0x00303D4D,
-	C_PATH    = 0x00E0E0E0, C_PATHSEP = 0x00607080;
+// The theme's colours (wtk/theme.h: read when drawn). The columns are lists (the field, its
+// text; a selection in the accent -- dimmer in the columns without the keyboard), the path and
+// status bars the face; folders in the dark accent, app bundles in a dark green.
+#define C_COL		C_FIELD
+#define C_COLSEP	wk_mix (C_FIELD, C_FIELD_TEXT, 40)
+#define C_DIRTXT	wk_tone (C_ACCENT, 84)
+#define C_FILETXT	C_FIELD_TEXT
+#define C_APPTXT	0x002E7D32
+#define C_DIMTXT	wk_mix (C_FIELD, C_FIELD_TEXT, 130)
 
 // name = the file name (all file operations); label = what the column shows -- the same,
 // except for an app bundle: its friendly name from app.txt ("demoB.app" -> "Colour Field").
@@ -462,13 +466,7 @@ public:
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
-	void onDraw () override
-	{
-		canvas.clear (C_FACE_DN);
-		canvas.frameRect (0, 0, width, height, C_ACCENT);
-		canvas.fillRect (0, 0, width, wk_fh () + 8, C_FACE);
-		canvas.text (8, 4, m_title, C_TEXT);
-	}
+	void onDraw () override { drawBox (m_title); }	// (the dialogs' box: wtk/dialog.h)
 };
 
 static bool ask_name (const char *title, const char *init, char *out, int cap)
@@ -586,18 +584,18 @@ public:
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
 		int y = wk_fh () + 18, lx = 12, fx = 100, rh = 32;
 		const char *labels[5] = { "Protocol", "Server", "User", "Password", "Folder" };
-		for (int i = 0; i < 5; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE_DN));
-		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE_DN); addChild (ftp);
-		ftps = new RadioButton (fx + 90, y, 180, 24, "FTPS (TLS)", 1, false, 0, C_FACE_DN); addChild (ftps);
+		for (int i = 0; i < 5; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE));
+		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE); addChild (ftp);
+		ftps = new RadioButton (fx + 90, y, 180, 24, "FTPS (TLS)", 1, false, 0, C_FACE); addChild (ftps);
 		host   = new Combobox (fx, y + rh, 190, 26, "", 0, connect_picked);
-		addChild (new Label (fx + 198, y + rh + 4, 36, 20, "Port", C_TEXT, C_FACE_DN));
+		addChild (new Label (fx + 198, y + rh + 4, 36, 20, "Port", C_TEXT, C_FACE));
 		port   = new Textbox (fx + 238, y + rh, width - fx - 250, 26, "21");
 		user   = new Textbox (fx, y + 2 * rh, width - fx - 12, 26, "");
 		pass   = new Textbox (fx, y + 3 * rh, width - fx - 12, 26, "", dlg_enter);
 		pass->password = true;
 		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
 		addChild (port); addChild (user); addChild (pass); addChild (folder);
-		remember = new Checkbox (fx, y + 5 * rh + 18, width - fx - 12, 24, "Remember password", true, 0, C_FACE_DN);
+		remember = new Checkbox (fx, y + 5 * rh + 18, width - fx - 12, 24, "Remember password", true, 0, C_FACE);
 		remember->tip = "Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots";
 		addChild (remember);
 		host->tip = "A name (ftp.example.com) or an IP address; the arrow lists the remembered servers";
@@ -678,10 +676,7 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (C_FACE_DN);
-		canvas.frameRect (0, 0, width, height, C_ACCENT);
-		canvas.fillRect (0, 0, width, wk_fh () + 8, C_FACE);
-		canvas.text (8, 4, "Connect to Server", C_TEXT);
+		drawBox ("Connect to Server");
 		canvas.text (100, wk_fh () + 18 + 5 * 32 - 2, hint, C_DIS);
 	}
 };
@@ -871,20 +866,16 @@ static void vscroll_to (int slot, int my)
 }
 static unsigned g_lastTick = 0; static int g_lastSlot = -1, g_lastRow = -1;
 
-static void draw_arrow (Canvas &cv, int x, int y, unsigned c)	// small right-pointing triangle
-{
-	for (int i = 0; i < 4; i++) cv.fillRect (x + i, y + i, 1, 9 - 2 * i, c);
-}
-
 class ViewerRoot : public Root
 {
 public:
 	ViewerRoot () : Root (W, H, "File Viewer") {}
 
-	void drawPathBar ()
+	void drawPathBar ()				// a strip of the face; the active column's folder in the accent
 	{
-		canvas.fillRect (0, TB_H, W, BC_H, C_BAR);
-		int x = 8, y = TB_H + (BC_H - g_fh) / 2;
+		wk_rbox (canvas, 0, TB_H, W, BC_H - 2, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+		wk_etch_h (canvas, 0, TB_H + BC_H - 2, W, C_FACE);
+		int x = 8, y = TB_H + (BC_H - 2 - g_fh) / 2;
 		for (int c = 0; c < g_ncol; c++)
 		{
 			const char *seg;
@@ -907,8 +898,9 @@ public:
 				}
 			}
 			else { const Entry &e = g_col[c - 1].e[g_col[c - 1].sel]; scopy (buf, e.name, sizeof buf); seg = buf; }
-			if (c > 0) { draw_arrow (canvas, x, y + (g_fh - 9) / 2, C_PATHSEP); x += 10; }
-			canvas.text (x, y, seg, c == g_active ? C_ACCENT : C_PATH);
+			if (c > 0) { wk_glyph (canvas, WKG_CHEV_RIGHT, x + 4, y + g_fh / 2, 8, C_DIS); x += 14; }
+			if (c == g_active) wk_hilite (canvas, x - 4, TB_H + 2, slen (seg) * g_fw + 8, BC_H - 6, 5, true);
+			canvas.text (x, y, seg, c == g_active ? C_SEL_TEXT : C_TEXT);
 			x += slen (seg) * g_fw + 6;
 			g_crumbX[c] = x;
 			if (x > W - 40) { for (int k = c + 1; k < g_ncol; k++) g_crumbX[k] = x; break; }
@@ -921,29 +913,30 @@ public:
 		canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL);
 		canvas.fillRect (x + COLW - 1, COL_Y, 1, COL_H, C_COLSEP);
 		int maxChars = (COLW - 30) / g_fw;
+		WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
+		int rw = COLW - 7 - (t.show ? WK_SBW + 1 : 0);	// a row's highlight (clear of the scroll bar)
 		for (int r = 0; r < g_rows; r++)
 		{
 			int idx = k.top + r;
 			if (idx >= k.count) break;
 			const Entry &e = k.e[idx];
 			int y = COL_Y + r * g_rowH;
-			if (idx == k.sel) canvas.fillRect (x, y, COLW - 1, g_rowH, slot == g_active ? C_SEL_ACT : C_SEL_OLD);
+			bool sel = idx == k.sel, hot = sel && slot == g_active;
+			if (sel) wk_hilite (canvas, x + 3, y, rw, g_rowH, 4, hot);
 			char name[NAMEL]; scopy (name, e.label, sizeof name);
 			if (slen (name) > maxChars) { name[maxChars - 2] = '.'; name[maxChars - 1] = '.'; name[maxChars] = '\0'; }
-			unsigned col = e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
+			unsigned col = hot ? C_SEL_TEXT : e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
 			canvas.text (x + 8, y + 2, name, col);
-			if (e.isdir && !e.isapp) draw_arrow (canvas, x + COLW - 16, y + (g_rowH - 9) / 2, C_DIMTXT);
+			if (e.isdir && !e.isapp) wk_glyph (canvas, WKG_CHEV_RIGHT, x + COLW - 13, y + g_rowH / 2, 8, hot ? C_SEL_TEXT : C_DIMTXT);
 		}
 		if (g_dropSlot == slot)				// drop target highlight
 		{
 			if (g_dropRow >= k.top && g_dropRow < k.top + g_rows)
-				canvas.frameRect (x + 1, COL_Y + (g_dropRow - k.top) * g_rowH, COLW - 3, g_rowH, 0x0090C0FF);
+				wk_rline (canvas, x + 2, COL_Y + (g_dropRow - k.top) * g_rowH, COLW - 5, g_rowH, 4, C_ACCENT);
 			else if (g_dropRow < 0)
-				canvas.frameRect (x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 0x0090C0FF);
+				wk_rline (canvas, x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 4, C_ACCENT);
 		}
-		WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
-		if (t.show) wk_draw_vscroll (canvas, x + COLW - 1 - WK_SBW, COL_Y, WK_SBW, COL_H, t, C_COLSEP,
-					     g_vdrag == slot ? C_FACE_HI : C_FACE);
+		if (t.show) wk_draw_vscroll (canvas, x + COLW - 1 - WK_SBW, COL_Y, WK_SBW, COL_H, t, C_COL, g_vdrag == slot);
 		if (k.count == 0) canvas.text (x + 8, COL_Y + 4, "(empty)", C_DIMTXT);
 	}
 
@@ -986,7 +979,7 @@ public:
 		char line[80];
 		scopy (line, g_pvKind == PV_APP ? g_pvTitle : e->name, sizeof line);
 		if (slen (line) > maxChars) { line[maxChars - 2] = '.'; line[maxChars - 1] = '.'; line[maxChars] = '\0'; }
-		canvas.text (tx, y, line, C_TEXT); y += g_fh + 6;
+		canvas.text (tx, y, line, C_FILETXT); y += g_fh + 6;
 		if (g_pvKind == PV_APP)					// the bundle's folder name
 		{
 			scopy (line, e->name, sizeof line);
@@ -1029,7 +1022,7 @@ public:
 		if (g_pvKind == PV_TEXT)
 		{
 			y += 6;
-			canvas.fillRect (x + 4, y - 2, COLW - 9, COL_Y + COL_H - y - 2, C_FIELD);
+			wk_sunken (canvas, x + 4, y - 2, COLW - 9, COL_Y + COL_H - y - 2, 4, C_FIELD);
 			const char *p = g_pvText;
 			while (*p && y + g_fh < COL_Y + COL_H - 4)
 			{
@@ -1059,8 +1052,9 @@ public:
 			else { canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL); canvas.fillRect (x + COLW - 1, COL_Y, 1, COL_H, C_COLSEP); }
 		}
 		(void) t;
-		canvas.fillRect (0, H - ST_H, W, ST_H, C_BAR);
-		canvas.text (8, H - ST_H + (ST_H - g_fh) / 2, g_status, C_PATH);
+		wk_rbox (canvas, 0, H - ST_H, W, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));	// status bar
+		wk_etch_h (canvas, 0, H - ST_H, W, C_FACE);
+		canvas.text (8, H - ST_H + (ST_H - g_fh) / 2 + 1, g_status, C_TEXT);
 	}
 
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override

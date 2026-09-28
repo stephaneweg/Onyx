@@ -22,6 +22,8 @@
 #define H		400
 #define SCROLLBACK	200		// bounded scrollback (rows)
 #define COLS		112		// stored chars per line
+#define TERM_BG		0x001A3A46	// the console's own colours (a terminal stays dark: a deep
+#define TERM_FG		0x00D4EAF0	// teal, as the modernised CDE's mock-up)
 
 static int g_fw = 8, g_fh = 16, g_vrows = 1, g_cols = COLS;	// g_cols = columns that fit the view
 
@@ -150,7 +152,7 @@ public:
 	void onDraw () override
 	{
 		recompute ();
-		canvas.clear (0x00101418);
+		canvas.clear (TERM_BG);
 
 		int total = g_rcount + 1;			// + the current line
 		int maxscroll = total - g_vrows; if (maxscroll < 0) maxscroll = 0;
@@ -162,11 +164,11 @@ public:
 			int idx = first + r;
 			if (idx < 0 || idx >= total) continue;
 			const char *line = (idx < g_rcount) ? ring_line (idx) : g_cur;
-			canvas.text (4, 4 + r * g_fh, line, 0x00c8d0c0);
+			canvas.text (4, 4 + r * g_fh, line, TERM_FG);
 			if (idx == g_rcount && g_scroll == 0)		// caret at the end of the live line
 			{
 				int cx = 4 + g_curlen * g_fw;
-				canvas.fillRect (cx, 4 + r * g_fh, 2, g_fh, 0x0060ff90);
+				canvas.fillRect (cx, 4 + r * g_fh, 2, g_fh, wk_tone (C_ACCENT, 180));	// (the accent, lit)
 			}
 		}
 	}
@@ -194,6 +196,10 @@ static void sa_ptr (unsigned long, int ev, long v)
 	case GUI_EVENT_PTR_UP:    if (c & 1) bl = 0; if (c & 2) br = 0; if (c & 4) bm = 0; break;
 	case GUI_EVENT_PTR_LEAVE: g_saroot->handleMouse (-1, -1, 0, 0, 0, 0); return;
 	case GUI_EVENT_PTR_WHEEL: g_saroot->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v)); return;
+	case GUI_EVENT_WINCTL:				// a title button: the window menu, maximise
+		if (v == KAPI_FRAME_MENU) g_saroot->windowMenu ();
+		else if (v == KAPI_FRAME_MAXIMISE) g_saroot->maximise (!g_saroot->maximised ());
+		return;
 	default: break;
 	}
 	g_saroot->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, 0);
@@ -255,10 +261,11 @@ int main (void)
 	// --- standalone fallback: our own decorated window ------------------
 	Root root (W, H, "terminal");
 	if (root.canvas.px == 0) return 1;
-	root.setBg (0x00101418);
+	root.setBg (TERM_BG);				// (the console covers the window)
 	TermView *view = new TermView (W, H);
 	view->anchor = ANCHOR_FILL;
 	root.addChild (view);
+	root.setResizable (true);			// (the view reflows to any size: maximise works)
 	view->setFocus ();			// keys route to the terminal
 	g_saroot = &root;
 	start_cmd ();

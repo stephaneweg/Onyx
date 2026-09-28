@@ -22,8 +22,7 @@ using namespace wtk;
 #define TMAX	4
 #define OMAX	16
 #define CLOCK_W	44
-#define BG	0x00222a36
-#define SEP	0x00425068
+#define BG	C_FIELD		// the bar's face: a floating panel's (the theme's)
 #define OFFP	4000		// park hidden icons off the canvas (clipped away)
 
 static int        g_pos = 1, g_vert = 1, g_sw = 800, g_sh = 600;
@@ -69,20 +68,41 @@ static void refresh_open (void)
 static int is_open (const char *n)   { for (int i = 0; i < g_open_count; i++) if (ax_streq (g_open[i], n)) return 1; return 0; }
 static int is_pinned (const char *n) { for (int i = 0; i < g_ql_count; i++) if (ax_streq (g_ql_name[i], n)) return 1; return 0; }
 
-// The bar: draws its own background + the three separators, behind the icon/clock widgets.
+// The bar: draws its own background + the three separators, behind the icon/clock widgets --
+// a floating panel of the theme (light, rounded, outlined; see-through round its corners:
+// WIN_FLAG_ALPHA), etched grooves between its groups.
 class PanelRoot : public Root
 {
 public:
 	PanelRoot (int x, int y, int w, int h, const char *t, unsigned flags) : Root (x, y, w, h, t, flags) {}
 	void sep_at (int a)
-	{ if (g_vert) canvas.fillRect (4, a, BAR - 8, 2, SEP); else canvas.fillRect (a, 4, 2, BAR - 8, SEP); }
+	{ if (g_vert) wk_etch_h (canvas, 6, a, BAR - 12, BG); else wk_etch_v (canvas, a, 6, BAR - 12, BG); }
 	void onDraw () override
 	{
-		if (g_vert) canvas.fillRect (0, 0, BAR, g_content_len, BG);
-		else        canvas.fillRect (0, 0, g_content_len, BAR, BG);
+		int w = g_vert ? BAR : g_content_len, h = g_vert ? g_content_len : BAR;
+		canvas.clear (0xFF000000);
+		wk_paint_alpha (true);
+		wk_rbox (canvas, 0, 0, w, h, 8, wk_tone (BG, 140), BG);
+		wk_rline (canvas, 0, 0, w, h, 8, wk_tone (C_FACE, 70), 200);
+		wk_paint_alpha (false);
 		sep_at (48);					// below the apps button
 		sep_at (g_tb_start - 4);				// launchers | running
 		sep_at (g_tb_start + g_tb_count * STEP + 1);	// running | clock
+	}
+};
+
+// The apps button: its nine squares drawn by code in the panel's ink (apps.bmp is white, for
+// the old dark bar), where the bitmap had them.
+class AppsIcon : public Icon
+{
+public:
+	AppsIcon () : Icon (0, 0, ICON, ICON, 0, "", on_apps, BG) {}
+	void onDraw () override
+	{
+		Icon::onDraw ();
+		unsigned c = wk_mix (bg, C_FIELD_TEXT, 170);
+		for (int j = 0; j < 3; j++)
+			for (int i = 0; i < 3; i++) wk_rbox (canvas, 6 + i * 12, 6 + j * 12, 8, 8, 2, c, c);
 	}
 };
 
@@ -189,11 +209,12 @@ int main (void)
 	if (g_vert) { g_win_w = BAR; g_win_h = MAXLEN; cross0 = (g_pos == 1) ? 2 : g_sw - BAR - 2; x0 = cross0; y0 = 2; }
 	else        { g_win_w = MAXLEN; g_win_h = BAR; cross0 = (g_pos == 2) ? 2 : g_sh - BAR - 2; x0 = 2; y0 = cross0; }
 
-	PanelRoot root (x0, y0, g_win_w, g_win_h, "panel", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM);
+	PanelRoot root (x0, y0, g_win_w, g_win_h, "panel", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
+	root.setBg (BG);
 
-	g_apps_icon = new Icon (0, 0, ICON, ICON, "SD:apps/panel.app/apps.bmp", "", on_apps, BG);
+	g_apps_icon = new AppsIcon ();
 	root.addChild (g_apps_icon);
 	place_icon (g_apps_icon, 4);
 	load_quicklaunch (root);
@@ -204,7 +225,7 @@ int main (void)
 		g_tb_icon[s] = new Icon (OFFP, OFFP, ICON, ICON, 0, "", on_icon, BG);
 		root.addChild (g_tb_icon[s]);
 	}
-	g_clock = new Label (0, 0, CLOCK_W, 16, "--:--", C_TEXT, BG);
+	g_clock = new Label (0, 0, CLOCK_W, 16, "--:--", C_FIELD_TEXT, BG);
 	root.addChild (g_clock);
 
 	kapi_set_pointer_handler (ptr_event);

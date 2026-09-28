@@ -75,14 +75,16 @@ public:
 
 int main (void)
 {
-	RtfRoot root;
+	RtfRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
-	root.setBg (0x00303840);
-	g_fn = new Label (8, 3, W - 16, PATH_H - 6, "", 0x00C8D0DA, 0x00303840);
+	g_fn = new Label (8, 3, W - 16, PATH_H - 6, "", C_TEXT, C_BG);
 	root.addChild (g_fn);
 	g_rtb = new RichTextBox (6, PATH_H, W - 12, H - PATH_H - 6, 65536);
 	g_rtb->readonly = true;
 	root.addChild (g_rtb);
+	g_fn->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;	// (maximised: the page fills the window)
+	g_rtb->anchor = ANCHOR_FILL;
+	root.setResizable (true);
 	static Menu menu;
 	menu.menu ("File");
 	menu.item ("Open...",        "^O", WK_CTRL ('O'), on_open);

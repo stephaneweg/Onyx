@@ -33,6 +33,25 @@ static int opposite (int d) { return d == N ? S : d == S ? N : d == E ? Wd : E; 
 static int dx_of (int d) { return d == E ? 1 : d == Wd ? -1 : 0; }
 static int dy_of (int d) { return d == S ? 1 : d == N ? -1 : 0; }
 
+// The theme's pieces (wtk/paint.h) over the board: a message box (a title strip, the face, an
+// outline), a notice (a floating panel of the face).
+static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
+{
+	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
+	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+}
+static void notice (Canvas &c, int cx, int cy, const char *s)
+{
+	int w = wk_text_w (s, 2) + 48, h = wk_fh () + 20, x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 8, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
+	wk_rline (c, x, y, w, h, 8, wk_tone (C_FACE, 70), 220);
+	wk_text_c (c, x, y, w, h, s, C_TEXT, 2);
+}
+
 struct Tile
 {
 	int type;
@@ -57,8 +76,9 @@ public:
 	int  wx, wy, wside;			// the tile being filled + the side the water entered
 	unsigned stateT;
 	int  bombX, bombY; unsigned bombT;	// replaced piece flash
+	Canvas bg; bool bgDone;			// the static background (the theme's), drawn once
 
-	Pipes (int l, int t_, int w, int h) : GameView (l, t_, w, h), hiscore (0)
+	Pipes (int l, int t_, int w, int h) : GameView (l, t_, w, h), hiscore (0), bgDone (false)
 	{ rng_seed (gms () * 2654435761u + 7); newGame (); }
 
 	int randPiece () { int r = rng_n (100); return r < 8 ? 7 : 1 + rng_n (6); }
@@ -258,17 +278,28 @@ public:
 		if (CONN[type]) { canvas.fillRect (cx - 6, cy - 6, 12, 12, PIPE); canvas.fillRect (cx - 4, cy - 4, 8, 8, 0x00282C30); }
 		if (type == 7) { canvas.fillRect (cx - 6, cy - 4, 12, 8, 0x00282C30); canvas.fillRect (cx - 4, cy - 6, 8, 12, 0x00282C30); }
 	}
+	// The theme's look round the board: the face, the queue and the board in sunken wells (their
+	// own dark); drawn once, copied at each frame.
+	void paintBg ()
+	{
+		bg.alloc (W, H);
+		bg.clear (C_BG);
+		wk_sunken (bg, QX - 4, BY - 4, QW + 8, NQ * QW + 8, 5, 0x00181C20);
+		gtext (bg, QX + (QW - gtext_w ("next")) / 2, BY + NQ * QW + 8, "next", C_TEXT);
+		wk_sunken (bg, BX - 3, BY - 3, GW * CELL + 6, GH * CELL + 6, 5, 0x00181C20);
+		bgDone = true;
+	}
 	void paint () override
 	{
 		Canvas &c = canvas;
-		c.fillRect (0, 0, W, H, 0x00283038);
+		if (!bgDone) paintBg ();
+		c.putOther (bg, 0, 0, false);
 		char s[64];
-		s[0] = 0; gcat (s, "Score "); gcatn (s, score); gtext (c, 10, 6, s, 0x00FFFFFF);
-		s[0] = 0; gcat (s, "Round "); gcatn (s, level + 1); gtext (c, BX + 120, 6, s, 0x0080C0FF);
+		s[0] = 0; gcat (s, "Score "); gcatn (s, score); gtext (c, 10, 6, s, C_TEXT, 1, 2);
+		s[0] = 0; gcat (s, "Round "); gcatn (s, level + 1); gtext (c, BX + 120, 6, s, C_TEXT);
 		s[0] = 0; gcat (s, "Pipes "); gcatn (s, done); gcat (s, " / "); gcatn (s, need);
-		gtext (c, BX + 240, 6, s, done >= need ? 0x0080FF80 : 0x00FFD080);
+		gtext (c, BX + 240, 6, s, done >= need ? wk_mix (C_TEXT, 0x0030A050, 160) : C_TEXT);
 		// queue
-		c.fillRect (QX - 4, BY - 4, QW + 8, NQ * QW + 8, 0x00181C20);
 		for (int i = 0; i < NQ; i++)
 		{
 			int y = BY + i * QW;
@@ -276,14 +307,13 @@ public:
 			c.frameRect (QX, y, QW, QW, 0x00202428);
 			drawPiece (QX, y, queue[i], QW);
 		}
-		gtext (c, QX, BY + NQ * QW + 8, "next", 0x00C0C8D0);
-		// countdown bar
+		// countdown bar (a sunken track, the water rising in it)
 		if (state == 0)
 		{
 			int total = 22000 - level * 1500; if (total < 8000) total = 8000;
 			int hbar = (int) ((long) (GH * CELL) * countdown / total);
-			c.fillRect (BX - 14, BY, 8, GH * CELL, 0x00181C20);
-			c.fillRect (BX - 14, BY + GH * CELL - hbar, 8, hbar, 0x0040A0FF);
+			wk_sunken (c, BX - 15, BY - 3, 10, GH * CELL + 6, 4, 0x00181C20);
+			if (hbar > 0) wk_rbox (c, BX - 14, BY + GH * CELL - hbar, 8, hbar, 3, 0x0060B4FF, 0x003C96F0);
 		}
 		// board
 		for (int y = 0; y < GH; y++) for (int x = 0; x < GW; x++)
@@ -320,10 +350,10 @@ public:
 		c.frameRect (BX + curX * CELL + 1, BY + curY * CELL + 1, CELL - 2, CELL - 2, 0x00FFFF60);
 		// footer
 		const char *hint = state == 0 ? "Lay pipes! F = let the water flow now" : fast ? "Fast flow: double points" : "";
-		gtext (c, BX, BY + GH * CELL + 10, hint, 0x00C0C8D0);
-		if (state == 2) { gtext_c (c, BX + GW * CELL / 2, BY + GH * CELL / 2 - 30, "ROUND WON!", 0x0080FF80, 2); gtext_c (c, BX + GW * CELL / 2, BY + GH * CELL / 2 + 10, "Click for the next round", 0x00FFFFFF); }
-		if (state == 3) { gtext_c (c, BX + GW * CELL / 2, BY + GH * CELL / 2 - 30, "IT SPILLED!", 0x00FF6060, 2); gtext_c (c, BX + GW * CELL / 2, BY + GH * CELL / 2 + 10, "Click for a new game", 0x00FFFFFF); }
-		if (state == 4) gtext_c (c, BX + GW * CELL / 2, BY + GH * CELL / 2 - 16, "PAUSED", 0x00FFFF80, 2);
+		gtext (c, BX, BY + GH * CELL + 10, hint, C_TEXT);
+		if (state == 2) msgbox (c, BX + GW * CELL / 2, BY + GH * CELL / 2, "Round won!", "Click for the next round");
+		if (state == 3) msgbox (c, BX + GW * CELL / 2, BY + GH * CELL / 2, "It spilled!", "Click for a new game");
+		if (state == 4) notice (c, BX + GW * CELL / 2, BY + GH * CELL / 2, "Paused");
 	}
 };
 

@@ -38,15 +38,20 @@ static bool g_click = false;
 
 static unsigned now_ms (void) { return kapi_get_ticks () * 10; }
 
+// The bubble: a floating panel of the theme (the menu bar's drop-downs' look), see-through
+// round its rounded corners (WIN_FLAG_ALPHA); an accent pill at its left, the title in bold.
 static void draw (const Note &n)
 {
-	g_cv.clear (0x00262F3B);
-	g_cv.frameRect (0, 0, NW, NH, 0x00161C24);
-	g_cv.fillRect (0, 0, 4, NH, C_ACCENT);			// accent strip
-	g_cv.text (14, 8, n.title, C_TEXT);
-	g_cv.text (15, 8, n.title, C_TEXT);			// bold
+	g_cv.clear (0xFF000000);
+	wk_paint_alpha (true);
+	wk_rbox (g_cv, 0, 0, NW, NH, 8, wk_tone (C_FIELD, 140), C_FIELD);
+	wk_rline (g_cv, 0, 0, NW, NH, 8, wk_tone (C_FACE, 70), 200);
+	wk_paint_alpha (false);
+	wk_rbox (g_cv, 7, 9, 4, NH - 18, 2, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 110));
+	wk_text_l (g_cv, 18, 8, g_fh, n.title, C_FIELD_TEXT, 2);
 	// Word-wrap the text over up to 3 lines.
-	int maxc = (NW - 28) / g_fw, y = 12 + g_fh, lines = 0;
+	unsigned ink = wk_mix (C_FIELD, C_FIELD_TEXT, 190);
+	int maxc = (NW - 28) / g_fw, y = 10 + g_fh, lines = 0;
 	const char *p = n.text;
 	while (*p && lines < 3)
 	{
@@ -57,7 +62,7 @@ static void draw (const Note &n)
 		for (int i = 0; i < len && k < 79; i++) line[k++] = p[i];
 		if (lines == 2 && p[len] && k > 2) { line[k - 2] = '.'; line[k - 1] = '.'; }
 		line[k] = '\0';
-		g_cv.text (14, y, line, 0x00C8D0DA);
+		g_cv.text (18, y, line, ink);
 		y += g_fh + 2; lines++;
 		p += len;
 		while (*p == ' ' || *p == '\n') p++;
@@ -94,9 +99,10 @@ int main (void)
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
 	unsigned *fb = kapi_create_window_ex (-NW - 50, TOP, NW, NH, "notifyd",
-					      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM);
+					      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA);
 	if (fb == 0) return 1;
 	g_cv.adopt (fb, NW, NH);
+	wtk::init ();					// the theme (the palette) and the font
 	kapi_set_window_alpha (0);
 	kapi_set_pointer_handler (ptr);
 

@@ -355,15 +355,14 @@ static void on_config (void)
 
 int main (void)
 {
-	LisaRoot root;
+	LisaRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
-	root.setBg (0x00303840);
 
 	int logH = H - INPUT_H - STATUS_H - 12;
 	g_log = new Textarea (4, 4, W - 8, logH, LOG_CAP);
 	g_log->readonly = true;
 	root.addChild (g_log);
-	g_status = new Label (8, 4 + logH + 2, W - 16, STATUS_H - 4, "", 0x00A8D8B8, 0x00303840);
+	g_status = new Label (8, 4 + logH + 2, W - 16, STATUS_H - 4, "", C_DIS, C_BG);	// "Lisa is thinking..."
 	root.addChild (g_status);
 	int iy = 4 + logH + STATUS_H;
 	g_input = new InputBox (4, iy, W - 8 - BTN_W - 6, INPUT_H);

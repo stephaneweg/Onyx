@@ -11,6 +11,18 @@ using namespace wtk;
 #define W	52
 #define H	220
 
+// The panel's face (the theme's), a 1-px outline round it (a borderless window: no frame).
+class PanelRoot : public Root
+{
+public:
+	PanelRoot () : Root (4, 80, W, H, "panel", WIN_FLAG_BORDERLESS) {}
+	void onDraw () override
+	{
+		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (bg, 150), wk_tone (bg, 118));
+		wk_rline (canvas, 0, 0, width, height, 0, wk_tone (bg, 70), 220);
+	}
+};
+
 static void launchA (Widget &) { kapi_launch ("demoA"); }
 static void launchB (Widget &) { kapi_launch ("demoB"); }
 static void launchC (Widget &) { kapi_launch ("demoC"); }
@@ -20,8 +32,7 @@ static void launchE (Widget &) { kapi_launch ("demoE"); }
 int main (void)
 {
 	// Borderless, pinned just inside the left edge. No close box => runs forever (a panel).
-	Root root (4, 80, W, H, "panel", WIN_FLAG_BORDERLESS);
-	root.bg = 0x00303848;
+	PanelRoot root;
 	root.addChild (new Button (6,   6, 40, 36, "A", launchA));
 	root.addChild (new Button (6,  48, 40, 36, "B", launchB));
 	root.addChild (new Button (6,  90, 40, 36, "C", launchC));

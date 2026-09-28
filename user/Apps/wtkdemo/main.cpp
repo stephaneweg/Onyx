@@ -14,6 +14,19 @@ static Label    *g_count;
 static Progress *g_prog;
 static int       g_n = 0;
 
+// The nested container: a panel of the theme -- a lighter shade of the face, rounded, an outline.
+class Card : public Panel
+{
+public:
+	Card (int l, int t, int w, int h) : Panel (l, t, w, h, wk_tone (C_FACE, 150)) {}
+	void onDraw () override
+	{
+		canvas.clear (parent ? parent->bgColor () : C_BG);
+		wk_rbox (canvas, 0, 0, width, height, 7, bg, bg);
+		wk_rline (canvas, 0, 0, width, height, 7, wk_tone (C_FACE, 76), 200);
+	}
+};
+
 static void itoa10 (char *b, const char *prefix, int v)
 {
 	int i = 0; for (; prefix[i]; i++) b[i] = prefix[i];
@@ -41,7 +54,7 @@ int main (void)
 
 	root.addChild (new Label (12, 10, 436, 20, "Recursive widget toolkit -- all widgets"));
 
-	g_count = new Label (12, 36, 240, 20, "count: 0", C_ACCENT);
+	g_count = new Label (12, 36, 240, 20, "count: 0", wk_mix (C_ACCENT, C_TEXT, 140));
 	root.addChild (g_count);
 	root.addChild (new Button (260, 34, 90, 26, "Increment", onInc));
 	root.addChild (new Button (358, 34, 70, 26, "Reset", onReset));
@@ -58,8 +71,8 @@ int main (void)
 
 	// Nested container: its children's coords are relative to the panel, so mouse
 	// routing must convert through it, and they blit up through the panel's canvas.
-	Panel *panel = new Panel (12, 168, 436, 168, 0x002A3640);
-	panel->addChild (new Label (10, 10, 200, 18, "nested panel", C_TEXT, 0x002A3640));
+	Panel *panel = new Card (12, 168, 436, 168);
+	panel->addChild (new Label (10, 10, 200, 18, "nested panel", C_TEXT, panel->bg));
 	panel->addChild (new Button (10, 36, 150, 28, "Nested +1", onInc));
 	panel->addChild (new Textarea (10, 74, 416, 84, 4096));
 	root.addChild (panel);

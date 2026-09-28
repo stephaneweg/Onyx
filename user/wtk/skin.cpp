@@ -94,7 +94,7 @@ Skin &wk_button_skin ()
 }
 
 // ---- the window frame (the modernised CDE, kapi v64) ------------------------------------------
-static int s_winFlags;				// WK_WIN_* (Root: resizable, maximised)
+static int s_winFlags;				// WK_WIN_* (Root: the window menu, resizable, maximised)
 void wk_window_state (int flags) { s_winFlags = flags; }
 int  wk_window_flags () { return s_winFlags; }
 
@@ -131,7 +131,10 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 		unsigned gc = ink;
 		switch (b)
 		{
-		case KAPI_FRAME_MENU:     wk_glyph (cv, WKG_MENU, cx, cy, 12, gc); break;
+		case KAPI_FRAME_MENU:
+			if (!(s_winFlags & WK_WIN_MENU)) gc = wk_mix (ink, wk_tone (fc, 150), 150);	// (no menu)
+			wk_glyph (cv, WKG_MENU, cx, cy, 12, gc);
+			break;
 		case KAPI_FRAME_CLOSE:    wk_glyph (cv, WKG_CLOSE, cx, cy, 10, gc); break;
 		case KAPI_FRAME_MINIMISE: wk_glyph (cv, WKG_MIN, cx, cy + 1, 11, gc); break;
 		case KAPI_FRAME_MAXIMISE:

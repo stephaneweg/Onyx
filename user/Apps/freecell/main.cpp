@@ -20,9 +20,36 @@ using namespace wtk;
 #define TOPY	10
 #define TABY	(TOPY + CARD_H + 20)
 #define UP_DY	22
+#define SBH	24			// the status bar (the columns stop above it: dy)
 
 struct Col { int n; signed char c[52]; };
 struct FState { Col col[8]; signed char cell[4]; signed char found[4]; int moves; };	// found = top rank (-1 none)
+
+// The theme's pieces (wtk/paint.h) round the table: a status bar of the face (an etched line on
+// top), a note floating above it (a panel of the face), a message box (a title strip, the face,
+// an outline).
+static void status_bar (Canvas &c, const char *s)
+{
+	wk_rbox (c, 0, H - SBH, W, SBH, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 120));
+	wk_etch_h (c, 0, H - SBH, W, C_FACE);
+	wk_text_l (c, GAP, H - SBH + 1, SBH - 1, s, C_TEXT);
+}
+static void note (Canvas &c, int cx, int cy, const char *s)
+{
+	int w = wk_text_w (s) + 28, h = wk_fh () + 12, x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 7, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
+	wk_rline (c, x, y, w, h, 7, wk_tone (C_FACE, 70), 220);
+	wk_text_c (c, x, y, w, h, s, C_TEXT);
+}
+static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
+{
+	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
+	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+}
 
 // Microsoft's deal: its C runtime rand () seeded with the game number.
 static void ms_deal (unsigned game, Col col[8])
@@ -75,7 +102,7 @@ public:
 	int dy (int c) const
 	{
 		int d = UP_DY, n = s.col[c].n;
-		while (d > 10 && n > 1 && TABY + (n - 1) * d + CARD_H > H - 24) d--;
+		while (d > 10 && n > 1 && TABY + (n - 1) * d + CARD_H > H - SBH) d--;
 		return d;
 	}
 	int cardY (int c, int i) const { return TABY + i * dy (c); }
@@ -258,7 +285,7 @@ public:
 		Canvas &c = canvas;
 		if (animOn)
 		{
-			if (!win_step (anim, c, W, H)) { animOn = false; gtext_c (c, W / 2, H / 2 - 20, "You win! Click for a new game", 0x00FFFF80); }
+			if (!win_step (anim, c, W, H)) { animOn = false; msgbox (c, W / 2, H / 2 - 20, "You win!", "Click for a new game"); }
 			return;
 		}
 		c.fillRect (0, 0, W, H, 0x00207830);
@@ -282,18 +309,18 @@ public:
 				card_face (c, colX (k), cardY (k, i), q.c[i]);
 			}
 		}
-		if (dragging && moved)
-		{
-			int n = srcCount (dSrc, dIdx);
-			for (int i = 0; i < n; i++) card_face (c, mx - dOffX, my - dOffY + i * UP_DY, srcCard (dSrc, dSrc < 8 ? dIdx + i : dIdx));
-		}
 		char t[96]; t[0] = 0;
 		gcat (t, "Game #"); gcatn (t, game);
 		gcat (t, "    Moves: "); gcatn (t, s.moves);
 		gcat (t, "    Free cells: "); gcatn (t, freeCells ());
-		gtext (c, GAP, H - 20, t, 0x00E0F0E0);
-		if (msg[0]) gtext_c (c, W / 2, H - 44, msg, 0x00FFE080, 1, 0);
-		if (won && !animOn) gtext_c (c, W / 2, H / 2 - 20, "You win! Click for a new game", 0x00FFFF80);
+		status_bar (c, t);
+		if (dragging && moved)				// (over everything)
+		{
+			int n = srcCount (dSrc, dIdx);
+			for (int i = 0; i < n; i++) card_face (c, mx - dOffX, my - dOffY + i * UP_DY, srcCard (dSrc, dSrc < 8 ? dIdx + i : dIdx));
+		}
+		if (msg[0]) note (c, W / 2, H - SBH - 22, msg);
+		if (won && !animOn) msgbox (c, W / 2, H / 2 - 20, "You win!", "Click for a new game");
 	}
 };
 
@@ -319,10 +346,9 @@ public:
 		if (k == KEY_ENTER) { close (1); return true; }
 		return false;
 	}
-	void onDraw () override
+	void onDraw () override				// (the theme's dialog box)
 	{
-		canvas.clear (C_FACE_DN); canvas.frameRect (0, 0, width, height, C_ACCENT);
-		canvas.text (10, 6, "Select game", C_TEXT);
+		drawBox ("Select game");
 		canvas.text (14, 44, "Game number:", C_TEXT);
 		canvas.text (14, 70, "(1 to 32000)", C_DIS);
 	}

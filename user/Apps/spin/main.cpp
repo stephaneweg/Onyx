@@ -16,7 +16,7 @@
 #include "kapi.h"
 #include "wtk/wtk.h"		// wtk window decoration
 
-#define W 250
+#define W 272
 #define H 116
 
 int main (void)
@@ -27,16 +27,17 @@ int main (void)
 		return 1;
 	}
 
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	using namespace wtk;
 	for (int i = 0; i < W * H; i++)
 	{
-		fb[i] = 0x00301800;
+		fb[i] = C_BG;
 	}
-	wtk::draw_text (fb, W, H, 12, 16, "CPU hog -- never yields.",        0x00FFC040);
-	wtk::draw_text (fb, W, H, 12, 40, "Cooperative kernel: UI FREEZES.", 0x00FF6060);
-	wtk::draw_text (fb, W, H, 12, 58, "Preemptive (track A): UI alive.", 0x0080FF80);
-	wtk::draw_text (fb, W, H, 12, 88, "Stop me from taskman.",           0x00C0C0C0);
+	draw_text (fb, W, H, 12, 16, "CPU hog -- never yields.",        C_TEXT, 1, 2);
+	draw_text (fb, W, H, 12, 40, "Cooperative kernel: UI FREEZES.", wk_mix (C_TEXT, 0x00E03C3C, 150));
+	draw_text (fb, W, H, 12, 58, "Preemptive (track A): UI alive.", wk_mix (C_TEXT, 0x0030A050, 160));
+	draw_text (fb, W, H, 12, 88, "Stop me from taskman.",           C_DIS);
 	present ();
-	wtk::wk_decorate_window ();
 
 	// Pure busy loop in user VA: NO present/yield/msleep anywhere. The empty
 	// `asm volatile` consumes `acc` each iteration, so -O2 cannot optimise the loop

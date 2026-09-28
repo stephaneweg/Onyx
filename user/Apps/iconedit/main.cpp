@@ -148,7 +148,8 @@ public:
 	{
 		layoutCells ();
 		Canvas &c = canvas;
-		c.clear (0x00283038);
+		c.clear (bgColor ());				// a well of a shade of the face round the icon
+		wk_sunken (c, 0, 0, width, height, 6, wk_tone (C_BG, 112));
 		const unsigned *src = showOver ? over : g_img;
 		for (int y = 0; y < g_h; y++) for (int x = 0; x < g_w; x++)
 		{
@@ -168,7 +169,7 @@ public:
 			for (int y = 0; y <= g_h; y++) c.fillRect (ox, oy + y * cell, g_w * cell, 1, (y % 8) ? 0x00A0A8B0 : 0x00707880);
 		}
 		if (g_hx >= 0) c.frameRect (ox + g_hx * cell - 1, oy + g_hy * cell - 1, cell + 2, cell + 2, 0x00FFE040);
-		c.frameRect (ox - 1, oy - 1, g_w * cell + 2, g_h * cell + 2, 0x00101418);
+		c.frameRect (ox - 1, oy - 1, g_w * cell + 2, g_h * cell + 2, wk_tone (C_FACE, 60));
 	}
 	bool toImg (int mx, int my, int &x, int &y)
 	{
@@ -252,6 +253,10 @@ public:
 	{
 		canvas.clear (C_BG);
 		int s2 = g_w <= 40 ? 2 : 1;
+		unsigned ol = wk_tone (C_FACE, 70);			// (each preview outlined)
+		canvas.frameRect (3, 3, g_w + 2, g_h + 2, ol);
+		canvas.frameRect (3 + g_w + 8, 3, g_w + 2, g_h + 2, ol);
+		canvas.frameRect (3, 3 + g_h + 8, g_w * s2 + 2, g_h * s2 + 2, ol);
 		blit (4, 4, 1, 0x00F0F0F0, false);
 		blit (4 + g_w + 8, 4, 1, 0x00202830, false);
 		blit (4, 4 + g_h + 8, s2, 0x00303D4D, false);
@@ -274,7 +279,7 @@ public:
 			if (i == NPAL)			// transparency
 			{ c.fillRect (x, y, SW - 2, SW - 2, 0x00E8EBEF); c.fillRect (x, y, 8, 8, 0x00C8CCD2); c.fillRect (x + 8, y + 8, SW - 10, SW - 10, 0x00C8CCD2); }
 			else c.fillRect (x, y, SW - 2, SW - 2, PALETTE[i]);
-			c.frameRect (x - 1, y - 1, SW, SW, 0x00101418);
+			c.frameRect (x - 1, y - 1, SW, SW, wk_tone (C_FACE, 60));
 		}
 		// primary over secondary
 		int by = (NPAL / COLS + 1) * SW + 8;
@@ -283,7 +288,7 @@ public:
 			int x = 8 + k * 14, y = by + k * 10;
 			if (g_col[k] == TRANSP) { c.fillRect (x, y, 24, 20, 0x00E8EBEF); c.fillRect (x, y, 12, 10, 0x00C8CCD2); c.fillRect (x + 12, y + 10, 12, 10, 0x00C8CCD2); }
 			else c.fillRect (x, y, 24, 20, g_col[k]);
-			c.frameRect (x, y, 24, 20, k ? 0x00808890 : 0x00FFFFFF);
+			c.frameRect (x, y, 24, 20, k ? wk_tone (C_FACE, 90) : wk_tone (C_FACE, 40));
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
@@ -455,6 +460,11 @@ class IconRoot : public Root
 {
 public:
 	IconRoot () : Root (W, H, "Icon Editor") {}
+	void onDraw () override				// a groove above the status line
+	{
+		Root::onDraw ();
+		wk_etch_h (canvas, 6, H - wk_fh () - 11, W - 12, bg);
+	}
 	bool onKey (long k) override
 	{
 		for (int i = 0; i < NTOOL; i++) if (k == TOOL_KEY[i] || k == TOOL_KEY[i] - 32)

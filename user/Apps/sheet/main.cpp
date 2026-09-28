@@ -7,6 +7,8 @@
 #include "wtk/wtk.h"
 #include "applib.h"
 
+using namespace wtk;
+
 #define COLS	8			// A..H
 #define ROWS	16
 #define CW	62
@@ -184,52 +186,80 @@ static void on_click (unsigned long s, int ev, long val)
 
 // ---- drawing ----------------------------------------------------------------
 
-static void fill_rect (int x, int y, int w, int h, unsigned c)
+// A cell's text, clipped to the cell (a view of the window's pixels over its box).
+static void cell_text (int x, int y, int w, int h, int tx, const char *s, unsigned c)
 {
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
+	Canvas cc; cc.adopt (fb + y * W + x, w, h, W);
+	cc.text (tx, (h - kapi_font_height ()) / 2 + 1, s, c);
 }
 
+// A header cell (a column's letter, a row's number): raised; the selected cell's row and column in
+// the accent's tint.
+static void header_cell (Canvas &cv, int x, int y, int w, int h, const char *s, bool cur, int r, int corners)
+{
+	unsigned f = cur ? wk_mix (C_FACE, C_ACCENT, 72) : C_FACE;
+	wk_rbox (cv, x, y, w, h, r, wk_tone (f, 166), wk_tone (f, 128), 255, corners);
+	wk_text_c (cv, x, y, w, h, s, C_TEXT, cur ? 2 : 0);
+}
+
+// The theme's look: the edit line a field; the table a field, its column and row headers raised,
+// the selected cell in the accent.
 static void redraw (void)
 {
-	fill_rect (0, 0, W, H, 0x00202830);
+	Canvas cv; cv.adopt (fb, W, H);
+	int fw = kapi_font_width (), fh = kapi_font_height ();
+	cv.clear (C_BG);
 
-	// Edit line: cell ref + current edit buffer.
+	// Edit line: cell ref + a field with the current edit buffer.
 	char ref[8]; ref[0] = (char) ('A' + g_sc); int rp = 1 + ax_itoa (g_sr + 1, ref + 1);
 	ref[rp++] = ':'; ref[rp] = '\0';
-	fill_rect (0, 0, W, 20, 0x00303d4d);
-	wtk::draw_text (fb, W, H, 4, 3, ref, 0x00ffd070);
-	wtk::draw_text (fb, W, H, 4 + rp * kapi_font_width () + 4, 3, g_eb, 0x00ffffff);
-	int cx = 4 + rp * kapi_font_width () + 4 + g_eblen * kapi_font_width ();
-	fill_rect (cx, 3, 2, kapi_font_height (), 0x0060ff90);
+	wk_text_l (cv, 4, 1, 20, ref, C_TEXT, 2);
+	int ex = 4 + rp * fw + 4;
+	wk_sunken (cv, ex, 1, W - ex - 3, 20, 4, C_FIELD, true);
+	cv.text (ex + 4, 3, g_eb, C_FIELD_TEXT);
+	cv.fillRect (ex + 4 + g_eblen * fw, 3, 2, fh, C_ACCENT);
 
-	// Column headers.
+	// The table: a field; the headers along its top and its left, the cells' grid.
+	int tx = 2, ty = 23, tw = GX0 + COLS * CW - tx + 1, th = GY0 + ROWS * CH - ty + 1;
+	unsigned grid = wk_mix (C_FIELD, C_FIELD_TEXT, 36), sep = wk_tone (C_FACE, 96);
+	wk_rbox (cv, tx, ty, tw, th, 4, C_FIELD, C_FIELD);
+	header_cell (cv, tx + 1, ty + 1, GX0 - tx - 2, GY0 - ty - 2, "", false, 3, WK_TL);	// the corner
 	for (int c = 0; c < COLS; c++)
 	{
 		char h[2] = { (char) ('A' + c), 0 };
-		wtk::draw_text (fb, W, H, GX0 + c * CW + CW / 2 - 3, 26, h, 0x0090b0d0);
+		int x = GX0 + c * CW, w = c < COLS - 1 ? CW - 1 : tw - (x - tx) - 1;
+		header_cell (cv, x, ty + 1, w, GY0 - ty - 2, h, c == g_sc, 3, c < COLS - 1 ? 0 : WK_TR);
+		if (c < COLS - 1) cv.fillRect (x + CW - 1, ty + 1, 1, GY0 - ty - 2, sep);
 	}
-	// Row headers + cells.
 	for (int r = 0; r < ROWS; r++)
 	{
 		char rh[4]; ax_itoa (r + 1, rh);
-		wtk::draw_text (fb, W, H, 4, GY0 + r * CH + 3, rh, 0x0090b0d0);
+		int y = GY0 + r * CH, h = r < ROWS - 1 ? CH - 1 : th - (y - ty) - 1;
+		header_cell (cv, tx + 1, y, GX0 - tx - 2, h, rh, r == g_sr, 3, r < ROWS - 1 ? 0 : WK_BL);
+		if (r < ROWS - 1) cv.fillRect (tx + 1, y + CH - 1, GX0 - tx - 2, 1, sep);
+	}
+	cv.fillRect (tx + 1, GY0 - 1, tw - 2, 1, wk_tone (C_FACE, 80));	// the headers' edges
+	cv.fillRect (GX0 - 1, ty + 1, 1, th - 2, wk_tone (C_FACE, 80));
+	// Cells.
+	for (int r = 0; r < ROWS; r++)
 		for (int c = 0; c < COLS; c++)
 		{
 			int x = GX0 + c * CW, y = GY0 + r * CH;
-			unsigned bg = (r == g_sr && c == g_sc) ? 0x00355070 : 0x00283440;
-			fill_rect (x, y, CW - 1, CH - 1, bg);
+			bool sel = r == g_sr && c == g_sc;
+			if (c < COLS - 1) cv.fillRect (x + CW - 1, y, 1, CH, grid);
+			if (r < ROWS - 1) cv.fillRect (x, y + CH - 1, CW, 1, grid);
+			if (sel) wk_hilite (cv, x, y, CW - 1, CH - 1, 3, true);
+			unsigned ink = sel ? wk_hilite_ink (true) : C_FIELD_TEXT;
 			char out[24];
 			if (g_kind[r][c] == 1 || g_kind[r][c] == 2)
 			{
 				int n = fmt_val (g_val[r][c], out);
-				wtk::draw_text (fb, W, H, x + CW - 4 - n * kapi_font_width (), y + 3, out, 0x00e8e8e8);
+				cell_text (x, y, CW - 1, CH - 1, CW - 5 - n * fw, out, ink);
 			}
 			else if (g_raw[r][c][0])
-				wtk::draw_text (fb, W, H, x + 3, y + 3, g_raw[r][c], 0x00d0d0c0);
+				cell_text (x, y, CW - 1, CH - 1, 3, g_raw[r][c], ink);
 		}
-	}
+	wk_rline (cv, tx, ty, tw, th, 4, wk_tone (C_FACE, 72), 210);
 }
 
 int main (void)

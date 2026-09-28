@@ -12,17 +12,11 @@
 #define H	380
 #define MAXP	40
 
-static unsigned *fb;
-static int g_fw = 8, g_fh = 16;
+#define USED	0x00D08040	// the usage bar's fill (the data's colour)
 
-static void fill (int x, int y, int w, int h, unsigned c)
-{
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
-}
-static void frame (int x, int y, int w, int h, unsigned c)
-{ fill (x, y, w, 1, c); fill (x, y + h - 1, w, 1, c); fill (x, y, 1, h, c); fill (x + w - 1, y, 1, h, c); }
+static unsigned *fb;
+static wtk::Canvas g_cv;		// the window's canvas (the painter draws on it)
+static int g_fw = 8, g_fh = 16;
 
 // "label" + value + " unit" at (x,y).
 static void kv (int x, int y, const char *label, unsigned long val, const char *unit)
@@ -34,7 +28,7 @@ static void kv (int x, int y, const char *label, unsigned long val, const char *
 	line[p++] = ' ';
 	for (int i = 0; unit[i];  i++) line[p++] = unit[i];
 	line[p] = '\0';
-	wtk::draw_text (fb, W, H, x, y, line, 0x00d0d8e0);
+	g_cv.text (x, y, line, wtk::C_TEXT);
 }
 
 // ---- process table (parsed from kapi_list_procs, sorted by pages) ------------
@@ -95,18 +89,22 @@ static void redraw (void)
 	unsigned long detected = 0, apppool = 0, appfree = 0, above4g = 0; unsigned nsegs = 0;
 	kapi_ram_detail (&detected, &apppool, &appfree, &above4g, &nsegs);
 
-	fill (0, 0, W, H, 0x00181c24);
-	wtk::draw_text (fb, W, H, 8, 8, "Memory monitor", 0x00ffffff);
+	using namespace wtk;
+	g_cv.clear (C_BG);
+	wk_rbox (g_cv, 0, 0, W, 24, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));	// the header
+	wk_etch_h (g_cv, 0, 24, W, C_FACE);
+	wk_text_l (g_cv, 8, 0, 24, "Memory monitor", C_TEXT, 2);
 
-	// usage bar (used / total)
+	// usage bar (used / total): a sunken track, the used part in its own colour
 	int bx = 8, by = 30, bw = W - 16, bh = 22;
-	fill (bx, by, bw, bh, 0x00283040); frame (bx, by, bw, bh, 0x00404a5a);
+	wk_sunken (g_cv, bx, by, bw, bh, 5, C_FIELD);
 	int fillw = total ? (int) ((unsigned long) (bw - 2) * used / total) : 0;
-	fill (bx + 1, by + 1, fillw, bh - 2, 0x00d08040);
+	if (fillw > 0) wk_rbox (g_cv, bx + 1, by + 1, fillw, bh - 2, 4, wk_tone (USED, 160), wk_tone (USED, 112));
 	int pc = total ? (int) (used * 100 / total) : 0;
 	char pct[8]; ax_itoa (pc, pct);
 	char pl[12]; int q = 0; for (int i = 0; pct[i]; i++) pl[q++] = pct[i]; pl[q++] = '%'; pl[q] = '\0';
-	wtk::draw_text (fb, W, H, bx + bw / 2 - 12, by + (bh - g_fh) / 2, pl, 0x00ffffff);
+	int tx = bx + bw / 2 - 12;					// its ink: on the fill, or on the track
+	g_cv.text (tx, by + (bh - g_fh) / 2, pl, fillw > tx + 16 - bx ? wk_ink_on (USED) : C_FIELD_TEXT);
 
 	int y = 62;
 	kv (8, y, "Detected: ", detected / 1024, "MB");  y += g_fh;	// physical board RAM
@@ -118,8 +116,10 @@ static void redraw (void)
 	kv (8, y, "Free:     ", freekb / 1024,   "MB");  y += g_fh;
 	kv (8, y, "Page:     ", pagekb,          "KB");  y += g_fh + 6;
 
-	wtk::draw_text (fb, W, H, 8, y, "By pages owned:", 0x0090a0b0); y += g_fh;
-	for (int i = 0; i < g_np && y < H - g_fh; i++)
+	wk_text_l (g_cv, 8, y, g_fh, "By pages owned:", C_TEXT, 2); y += g_fh + 4;
+	wk_sunken (g_cv, 4, y - 3, W - 8, H - y - 1, 4, C_FIELD);	// the processes: a field
+	unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130);
+	for (int i = 0; i < g_np && y < H - g_fh - 4; i++)
 	{
 		if (g_ppages[i] == 0 && g_pkind[i] == 'k') continue;	// skip 0-page kernel tasks
 		char num[12]; ax_itoa (g_ppages[i], num);
@@ -130,7 +130,7 @@ static void redraw (void)
 		line[p++] = 'p'; line[p++] = ' '; line[p++] = ' ';
 		for (int s = 0; g_pname[i][s] && p < 68; s++) line[p++] = g_pname[i][s];
 		line[p] = '\0';
-		wtk::draw_text (fb, W, H, 8, y, line, g_pkind[i] == 'k' ? 0x00808890 : 0x00c8d0c0);
+		g_cv.text (8, y, line, g_pkind[i] == 'k' ? dim : C_FIELD_TEXT);
 		y += g_fh;
 	}
 }
@@ -139,7 +139,8 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "memmon");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	g_cv.adopt (fb, W, H);
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 

@@ -139,10 +139,11 @@ public:
 	{
 		int fh = kapi_font_height (); if (fh < 1) fh = 16;
 		unsigned *px = canvas.px; int stride = canvas.stride;
+		unsigned back = wk_tone (C_BG, 112);			// round the picture: a shade of the face
 		if (g_im.n == 0)
 		{
-			canvas.fillRect (0, 0, W, VIEW_H, 0x00181C22);
-			canvas.text (16, 16, g_err[0] ? g_err : "Open an image: File > Open... (^O), or drop one here.", 0x00A0A8B4);
+			canvas.fillRect (0, 0, W, VIEW_H, back);
+			canvas.text (16, 16, g_err[0] ? g_err : "Open an image: File > Open... (^O), or drop one here.", C_TEXT);
 		}
 		else
 		{
@@ -159,7 +160,7 @@ public:
 				{
 					int ix = x - g_panX;
 					int sx = ix >= 0 ? (int) (((unsigned long) ix * stepFx) >> 16) : -1;
-					if (sx < 0 || sy < 0 || sx >= g_im.w || sy >= g_im.h) { row[x] = 0x00181C22; continue; }
+					if (sx < 0 || sy < 0 || sx >= g_im.w || sy >= g_im.h) { row[x] = back; continue; }
 					unsigned c = src[(long) sy * g_im.w + sx], a = c >> 24;
 					if (a == 255) { row[x] = c & 0xFFFFFF; continue; }
 					unsigned bg = (((x >> 3) + (y >> 3)) & 1) ? 0x00C8C8C8 : 0x00989898;	// checkerboard
@@ -170,8 +171,10 @@ public:
 				}
 			}
 		}
-		// Status strip: name, size, format, zoom, position in the folder.
-		canvas.fillRect (0, VIEW_H, W, ST_H, 0x00303D4D);
+		// Status strip: name, size, format, zoom, position in the folder (the theme's face
+		// under an etched line).
+		wk_rbox (canvas, 0, VIEW_H, W, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));
+		wk_etch_h (canvas, 0, VIEW_H, W, C_FACE);
 		char st[200]; int p = 0;
 		auto put = [&] (const char *t) { for (int i = 0; t[i] && p < (int) sizeof st - 1; i++) st[p++] = t[i]; };
 		auto num = [&] (int v) { char b[12]; int n = 0; if (v == 0) b[n++] = '0'; while (v > 0) { b[n++] = (char) ('0' + v % 10); v /= 10; } while (n) st[p++] = b[--n]; };
@@ -184,7 +187,7 @@ public:
 		}
 		if (g_nfiles > 1 && g_cur >= 0) { put ("   "); num (g_cur + 1); put ("/"); num (g_nfiles); }
 		st[p] = '\0';
-		canvas.text (8, VIEW_H + (ST_H - fh) / 2, st, 0x00E0E6EE);
+		canvas.text (8, VIEW_H + (ST_H - fh) / 2 + 1, st, C_TEXT);
 	}
 
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override

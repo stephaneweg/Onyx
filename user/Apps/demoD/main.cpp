@@ -8,7 +8,7 @@ using namespace wtk;
 
 #define W 300
 #define H 220
-#define BG 0x00283848
+#define BG C_BG			// (the theme's face: read by Root's constructor)
 
 static Label    *g_label;
 static Textbox  *g_text;

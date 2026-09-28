@@ -20,8 +20,27 @@ using namespace wtk;
 #define TABY	(TOPY + CARD_H + 18)
 #define DOWN_DY	6
 #define UP_DY	20
+#define SBH	24			// the status bar (the columns stop above it: upDy)
 
 enum { STOCK = 0, WASTE = 1, FOUND = 2, TAB = 6, NPILE = 13 };
+
+// The theme's pieces (wtk/paint.h) round the table: a status bar of the face (an etched line on
+// top), a message box (a title strip, the face, an outline).
+static void status_bar (Canvas &c, const char *s)
+{
+	wk_rbox (c, 0, H - SBH, W, SBH, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 120));
+	wk_etch_h (c, 0, H - SBH, W, C_FACE);
+	wk_text_l (c, GAP, H - SBH + 1, SBH - 1, s, C_TEXT);
+}
+static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
+{
+	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int x = cx - w / 2, y = cy - h / 2;
+	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
+	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+}
 
 struct Pile { int n; signed char c[52]; bool up[52]; };
 struct State { Pile p[NPILE]; int score; };
@@ -55,7 +74,7 @@ public:
 		int down = 0, up = 0;
 		for (int i = 0; i < q.n; i++) (q.up[i] ? up : down)++;
 		int dy = UP_DY;
-		while (dy > 8 && TABY + down * DOWN_DY + (up > 0 ? up - 1 : 0) * dy + CARD_H > H - 24) dy--;
+		while (dy > 8 && TABY + down * DOWN_DY + (up > 0 ? up - 1 : 0) * dy + CARD_H > H - SBH) dy--;
 		return dy;
 	}
 	// position of card i of pile p
@@ -265,7 +284,7 @@ public:
 		Canvas &c = canvas;
 		if (animOn)
 		{
-			if (!win_step (anim, c, W, H)) { animOn = false; gtext_c (c, W / 2, H / 2 - 20, "You win! Click to play again", 0x00FFFF80, 1); }
+			if (!win_step (anim, c, W, H)) { animOn = false; msgbox (c, W / 2, H / 2 - 20, "You win!", "Click to play again"); }
 			return;
 		}
 		c.fillRect (0, 0, W, H, 0x00207830);
@@ -288,19 +307,19 @@ public:
 				card_draw (c, x, y, q.c[i], q.up[i]);
 			}
 		}
-		// the dragged run
-		if (dragging && moved)
-		{
-			const Pile &q = s.p[dPile];
-			for (int i = dIdx; i < q.n; i++) card_face (c, mx - dOffX, my - dOffY + (i - dIdx) * UP_DY, q.c[i]);
-		}
 		// status line
 		char t[80]; t[0] = 0;
 		gcat (t, "Score: "); gcatn (t, s.score);
 		gcat (t, "    Time: "); gcatn (t, (long) elapsed);
 		gcat (t, draw3 ? "    Draw three" : "    Draw one");
-		gtext (c, GAP, H - 20, t, 0x00E0F0E0);
-		if (won && !animOn) gtext_c (c, W / 2, H / 2 - 20, "You win! Click to play again", 0x00FFFF80, 1);
+		status_bar (c, t);
+		// the dragged run (over everything)
+		if (dragging && moved)
+		{
+			const Pile &q = s.p[dPile];
+			for (int i = dIdx; i < q.n; i++) card_face (c, mx - dOffX, my - dOffY + (i - dIdx) * UP_DY, q.c[i]);
+		}
+		if (won && !animOn) msgbox (c, W / 2, H / 2 - 20, "You win!", "Click to play again");
 	}
 };
 

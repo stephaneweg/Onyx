@@ -95,15 +95,18 @@ static void render (void)
 			drow[dx] = palette[srow[dx >> 2]];	// x4 wide, x2 tall
 		}
 	}
+}
 
-	// Strip below the fire (where the original placed its "Color" button).
-	for (int y = FIRE_PX; y < H; y++)
-	{
-		for (int x = 0; x < W; x++)
-		{
-			fb[y * W + x] = 0x00202028;
-		}
-	}
+// The strip below the fire (the theme's face), drawn once: a "Colour" button where the original
+// placed its own -- a click anywhere in the window cycles the colour.
+static void paint_strip (void)
+{
+	using namespace wtk;
+	Canvas cv; cv.adopt (fb, W, H);
+	cv.fillRect (0, FIRE_PX, W, H - FIRE_PX, C_BG);
+	int bx, by, bw, bh;
+	wk_framed (cv, (W - 100) / 2, FIRE_PX + 5, 100, H - FIRE_PX - 10, C_FACE, WK_NORMAL, &bx, &by, &bw, &bh);
+	wk_text_c (cv, bx, by, bw, bh, "Colour", C_TEXT);
 }
 
 int main (void)
@@ -114,7 +117,8 @@ int main (void)
 		return 1;
 	}
 
-	wtk::wk_decorate_window ();			// user-side window chrome
+	wtk::wk_decorate_window ();			// user-side window chrome (reads the theme)
+	paint_strip ();
 
 	build_palette (mode);
 

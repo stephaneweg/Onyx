@@ -21,6 +21,7 @@ Root::Root (int x, int y, int w, int h, const char *title, unsigned flags)
 void Root::init (unsigned *fb)
 {
 	canvas.adopt (fb, width, height);		// the root draws straight into the window canvas
+	wk_window_state (WK_WIN_MENU);			// (it answers the window menu: ptrEvent)
 	wk_decorate_window ();				// title bar / borders / close box (no-op if borderless)
 	wtk::init ();					// load the global font family once (SD:/fonts/ns-sans.fnt)
 	bg = C_BG;					// (the theme is read by now: SD:/etc/theme.txt)
@@ -123,7 +124,7 @@ void Root::keyEvent (unsigned long, int ev, long v)
 void Root::setResizable (bool on)
 {
 	m_resizable = on;
-	wk_window_state ((m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
+	wk_window_state (WK_WIN_MENU | (m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
 	wk_decorate_window ();
 }
 
@@ -149,7 +150,7 @@ void Root::maximise (bool on)
 	width = cw; height = ch;
 	layout ();					// (the anchors, the layouts)
 	invalidate (true);
-	wk_window_state ((m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
+	wk_window_state (WK_WIN_MENU | (m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
 	wk_decorate_window ();
 	onResized ();
 }

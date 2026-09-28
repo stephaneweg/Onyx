@@ -47,9 +47,7 @@ static void on_hscroll (Widget &w) { g_grid->offx = ((Scrollbar &) w).value * (C
 int main (void)
 {
 	Root root (W, H, "textarea + scrollview");
-	root.setBg (0x00283848);
-
-	root.addChild (new Label (10, 8, 290, 14, "multi-line editable + scroll view:", C_TEXT, 0x00283848));
+	root.addChild (new Label (10, 8, 290, 14, "multi-line editable + scroll view:"));	// (the theme's face)
 
 	Textarea *ta = new Textarea (10, 26, 290, 52, 1024);
 	ta->setContent ("click to focus, then type.\nmulti-line editing in the\nwtk Textarea.");

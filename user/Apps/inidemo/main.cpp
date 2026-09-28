@@ -14,13 +14,6 @@
 
 static unsigned *fb;
 
-static void fill_rect (int x, int y, int w, int h, unsigned c)
-{
-	for (int yy = y; yy < y + h && yy < H; yy++)
-		for (int xx = x; xx < x + w && xx < W; xx++)
-			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
-}
-
 static int itoa (int v, char *b)
 {
 	int neg = 0, p = 0, n = 0;
@@ -47,8 +40,10 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "inidemo");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
-	for (int i = 0; i < W * H; i++) fb[i] = 0x00202832;
+	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	using namespace wtk;
+	Canvas cv; cv.adopt (fb, W, H);
+	cv.clear (C_BG);
 
 	int n = app_ini_load ("config.ini");
 	int fh = kapi_font_height ();
@@ -56,21 +51,21 @@ int main (void)
 
 	if (n < 0)
 	{
-		wtk::draw_text (fb, W, H, x, y, "config.ini not found in app folder", 0x00ff6060);
+		wtk::draw_text (fb, W, H, x, y, "config.ini not found in app folder", wk_mix (C_TEXT, 0x00E03C3C, 150), 1, 2);
 	}
 	else
 	{
-		wtk::draw_text (fb, W, H, x, y, "config.ini values:", 0x0080d0ff); y += fh + 6;
+		wtk::draw_text (fb, W, H, x, y, "config.ini values:", C_TEXT, 1, 2); y += fh + 6;
 
-		draw_kv (x, y, "greeting = ", app_ini_get (0, "greeting", "(none)"), 0x00e0e0e0); y += fh + 3;
-		draw_kv (x, y, "[app] name = ", app_ini_get ("app", "name", "(none)"), 0x00e0e0e0); y += fh + 3;
-		draw_kv (x, y, "[app] version = ", app_ini_get ("app", "version", "(none)"), 0x00e0e0e0); y += fh + 3;
-		draw_kv (x, y, "[app] author = ", app_ini_get ("app", "author", "(none)"), 0x00e0e0e0); y += fh + 8;
+		draw_kv (x, y, "greeting = ", app_ini_get (0, "greeting", "(none)"), C_TEXT); y += fh + 3;
+		draw_kv (x, y, "[app] name = ", app_ini_get ("app", "name", "(none)"), C_TEXT); y += fh + 3;
+		draw_kv (x, y, "[app] version = ", app_ini_get ("app", "version", "(none)"), C_TEXT); y += fh + 3;
+		draw_kv (x, y, "[app] author = ", app_ini_get ("app", "author", "(none)"), C_TEXT); y += fh + 8;
 
 		int bw = app_ini_get_int ("display", "barwidth", 100);
 		char num[16]; itoa (bw, num);
-		draw_kv (x, y, "[display] barwidth (int) = ", num, 0x00ffd070); y += fh + 4;
-		fill_rect (x, y, bw, 18, 0x0040a0ff);		// visual proof of the int parse
+		draw_kv (x, y, "[display] barwidth (int) = ", num, C_TEXT); y += fh + 4;
+		wk_rbox (cv, x, y, bw, 18, 5, wk_tone (C_ACCENT, 168), wk_tone (C_ACCENT, 104));	// visual proof of the int parse
 	}
 
 	while (!should_exit ())
