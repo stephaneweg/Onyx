@@ -265,6 +265,7 @@ public:
 	u64 jitUntil;					// the JIT's blocks chain until then (0: back to jitRun now)
 	u64 jitScratch;					// (the JIT: a 64-bit value read by a helper)
 	u64 jitEnd;					// (the JIT: jitUntil as its cycle countdown in x26 started, or resynced)
+	u64 jitSpBase, jitSpLimit;			// (the JIT: its calls' stack on the host's -- the sentinel's place, the limit)
 	u64 jitArg[3];					// (the x86-64 JIT: its helpers' arguments)
 	u32 gatherN; u8 gather[64];			// the write-gather pipe (0x0C008000): its bytes, sent 32 at a time
 	Jit *jit;					// the JIT (0: the interpreter runs the CPU)

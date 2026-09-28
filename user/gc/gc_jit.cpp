@@ -14,6 +14,13 @@
 //     code buffer) finds the next block in a direct-mapped table (address + the MSR's IR / DR)
 //     and jumps to it while the cycle count is below jitUntil; else back to jitRun (C), which
 //     takes the interrupts, translates what is missing
+//   * a call (bl, bcctrl) is the host's own bl / blr, after pushing {its landing, the guest's
+//     return address} on the host's stack; a return (blr) pops them and, LR being that address,
+//     is the host's ret (predicted by the core's return stack: no dispatcher); else the stack is
+//     emptied (down to its sentinel) and the dispatcher goes on. Emptied too when the JIT leaves
+//     and past 8 KB (calls that never return: a return through bctr...). A landing is the
+//     caller block's code: it stays in the buffer until everything is dropped (flushAll: only
+//     from jitRun, when the stack is empty) and its exit is a link like the others
 //   * the code is dropped where it is written: icbi, the DVD / ARAM / locked-cache DMAs (by
 //     4 KB page: each page knows its blocks), all of it when a BAT or HID0's ICFI changes
 //
@@ -194,6 +201,13 @@ struct Asm
 	void br (int rn) { put (0xD61F0000u | (u32) rn << 5); }
 	void blr (int rn) { put (0xD63F0000u | (u32) rn << 5); }
 	void ret () { put (0xD65F03C0u); }
+	void retX (int rn) { put (0xD65F0000u | (u32) rn << 5); }
+	void bl (u32 *t) { put (0x94000000u | rel (p, t, 26)); }
+	void adr (int rd, u32 *t) { u32 o = (u32) ((t - p) * 4); put (0x10000000u | (o & 3) << 29 | ((o >> 2) & 0x7FFFF) << 5 | rd); }
+	void stpPre (int rt, int rt2, int off) { put (0xA9800000u | ((u32) (off / 8) & 0x7F) << 15 | (u32) rt2 << 10 | 31u << 5 | rt); }	// stp xt, xt2, [sp, #off]!
+	void stpSp (int rt, int rt2, int off) { put (0xA9000000u | ((u32) (off / 8) & 0x7F) << 15 | (u32) rt2 << 10 | 31u << 5 | rt); }	// stp xt, xt2, [sp, #off]
+	void ldpPost (int rt, int rt2, int off) { put (0xA8C00000u | ((u32) (off / 8) & 0x7F) << 15 | (u32) rt2 << 10 | 31u << 5 | rt); }	// ldp xt, xt2, [sp], #off
+	void cmpSp (int rm) { put (0xEB2063FFu | (u32) rm << 16); }	// cmp sp, xm
 	static void patch (u32 *at, u32 *to)
 	{
 		u32 i = *at;
@@ -239,7 +253,7 @@ struct Jit
 	void linkTo (u32 key, void *code);
 	bool stdMap;					// the BATs map 0x80000000 / 0xC0000000 onto MEM1 as the OS does
 	// the Machine's fields
-	int oPc, oCycles, oUntil, oEnd, oTb, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather, oIdleHit;
+	int oPc, oCycles, oUntil, oEnd, oTb, oCr, oXer, oLr, oCtr, oMsr, oMem1, oScratch, oPs, oFpscr, oFprfVal, oFprfPend, oGqr, oGatherN, oGather, oIdleHit, oSpBase, oSpLimit;
 	// the block being translated
 	u32 bKey, synced; int dmode; bool fpOk;
 	u32 bPa, curIdx;				// (the block's address in MEM1, the instruction being translated)
@@ -450,7 +464,7 @@ struct Jit
 	// the conversions' rare cases, the interpreter leaving...), each with the cache's state and
 	// the cycles as at its branch; they come back to the main code (ret) or leave the block
 	struct St { int gH[NG], fH[32], pH[32]; bool gD[NG], fD[32]; int fprfR, fprfLane; u32 synced; };
-	enum { D_MEM, D_INTERP, D_IEXIT, D_CVTD, D_CVTS, D_FPRF, D_STUB };
+	enum { D_MEM, D_INTERP, D_IEXIT, D_CVTD, D_CVTS, D_FPRF, D_STUB, D_TOPC, D_RETMISS, D_SPRESET };
 	struct Def { int kind; bool store, back; int size, dm, r1, r2; u32 op, pc, idx; u32 *site, *ret, *ret2; St st; };
 	enum { MAX_DEFS = 400 };
 	Def defs[MAX_DEFS]; int nDefs;
@@ -544,6 +558,71 @@ struct Jit
 		Def &st = defer (D_STUB);				// (its stub -- pc = target, out -- with the cold paths)
 		st.site = late; st.ret = site; st.op = target; st.r1 = (int) nLinks; st.back = to != 0;
 		addLink (key, site, site);
+	}
+
+	// ---- calls and returns on the host's bl / ret (the header): the host's stack holds pairs {the
+	// landing after the call's bl, the guest's return address}, above a sentinel {0, 1} at jitSpBase
+	void spEmpty ()							// (the stack down to its sentinel -- written again:
+	{								// an interrupt of core 0 may have used it)
+		a.ldst (LDR_X, 3, 3, XM, oSpBase); a.imm (ADD_WI | X64, SP, 3, 0);
+		a.movz (4, 1, 0); a.stpSp (WZR, 4, 0);
+	}
+	// the pair pushed (x1 = the landing: 3 instructions on), after the room checked
+	void callPush ()
+	{
+		a.ldst (LDR_X, 3, 0, XM, oSpLimit); a.cmpSp (0);
+		Def &rs = defer (D_SPRESET); rs.site = a.p; a.bcond (LO, a.p); rs.ret = a.p;
+		a.adr (1, a.p + 3);
+		a.stpPre (1, SRA_H[0], -16);				// (x24: LR, = the return address)
+	}
+	// bl target: as exitTo, the target's block called; the landing goes on to the instruction after
+	void callTo (u32 target, u32 ret, u32 total)
+	{
+		spill (true);
+		a.imm (SUBS_WI | X64, XDC, XDC, total > synced ? total - synced : 0);
+		synced = total;
+		u32 *late = a.p; a.bcond (LE, a.p);
+		callPush ();
+		u32 key = target | (bKey & 3);
+		u32 *site = a.p; a.bl (a.p);
+		void *to = lookup (key);
+		if (to) Asm::patch (site, (u32 *) to);
+		Def &st = defer (D_STUB);
+		st.site = late; st.ret = site; st.op = target; st.r1 = (int) nLinks; st.back = to != 0;
+		addLink (key, site, site);
+		dropAll ();						// (the landing: the host registers the callee's, its
+		exitTo (ret, total, false);				// cycles counted -- on to the instruction after)
+	}
+	// bcctrl (w6 = the target): its block from the dispatcher's table, called with blr; not there:
+	// out to jitRun (no pair: its return goes through the dispatcher)
+	void callReg (u32 ret, u32 total)
+	{
+		spill (true);
+		a.imm (SUBS_WI | X64, XDC, XDC, total > synced ? total - synced : 0);
+		synced = total;
+		Def &lt = defer (D_TOPC); lt.r1 = 6; lt.site = a.p; a.bcond (LE, a.p);
+		a.movw (2, bKey & 3); a.alu (ORR_W, 4, 6, 2);
+		a.ubfx (5, 6, 2, FAST_BITS);
+		a.alu (ADD_W | X64, 5, XCTX, 5, 0, 4);
+		a.ldst (LDR_W, 2, 7, 5, FAST_OFF);
+		a.cmp (7, 4);
+		Def &ms = defer (D_TOPC); ms.r1 = 6; ms.site = a.p; a.bcond (NE, a.p);
+		a.ldst (LDR_X, 3, 7, 5, FAST_OFF + 8);
+		callPush ();
+		a.blr (7);
+		dropAll ();						// (the landing, as callTo's)
+		exitTo (ret, total, false);
+	}
+	// blr / bclr (w6 = the target, LR & ~3): the top pair's -- ret; else the stack emptied, the dispatcher
+	void retTo (u32 total)
+	{
+		spill (true);
+		a.imm (SUBS_WI | X64, XDC, XDC, total > synced ? total - synced : 0);
+		Def &lt = defer (D_TOPC); lt.r1 = 6; lt.site = a.p; a.bcond (LE, a.p);
+		a.ldpPost (1, 2, 16);
+		a.cmp (2, 6);
+		Def &ms = defer (D_RETMISS); ms.r1 = 6; ms.site = a.p; a.bcond (NE, a.p);
+		a.retX (1);
 	}
 
 	// CR field crf from the flags of a compare (signed / unsigned) + XER's SO
@@ -1159,6 +1238,7 @@ bool Jit::insn (u32 op, u32 pc, u32 idx)
 			idleExit (target, 2);
 			return true;
 		}
+		if ((op & 1) && target != pc + 4) { callTo (target, pc + 4, (idx + 1) * 2); return true; }	// (a call; "bl $+4": the pc read)
 		exitTo (target, (idx + 1) * 2, false);
 		return true;
 	}
@@ -1173,8 +1253,11 @@ bool Jit::insn (u32 op, u32 pc, u32 idx)
 			u32 *nt[2]; int n = bcTests ((u32) d, (u32) ra, toLr, nt);
 			bool fused = pend.on; pend.on = false;
 			if (fused) crFromFlags (pend.crf, pend.sgn);		// (a return, a call: read, maybe)
-			a.mov (0, 6);
-			exitReg ((idx + 1) * 2, false);
+			u32 synced0 = synced;
+			if (toLr && !(op & 1)) retTo ((idx + 1) * 2);		// (a return)
+			else if (!toLr && (op & 1)) callReg (pc + 4, (idx + 1) * 2);	// (an indirect call)
+			else { a.mov (0, 6); exitReg ((idx + 1) * 2, false); }
+			synced = synced0;					// (not taken: the block goes on as before)
 			if (n)							// (not taken: the block goes on)
 			{
 				for (int i = 0; i < n; i++) Asm::patch (nt[i], a.p);
@@ -1905,6 +1988,7 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	oPc = OFF (pc); oCycles = OFF (cycles); oUntil = OFF (jitUntil); oEnd = OFF (jitEnd); oTb = OFF (tbBase); oCr = OFF (cr); oXer = OFF (xer);
 	oLr = OFF (lr); oCtr = OFF (ctr); oMsr = OFF (msr); oMem1 = OFF (mem1); oScratch = OFF (jitScratch);
 	oPs = OFF (ps); oFpscr = OFF (fpscr); oFprfVal = OFF (fprfVal); oFprfPend = OFF (fprfPending); oGqr = OFF (gqr); oGatherN = OFF (gatherN); oGather = OFF (gather); oIdleHit = OFF (idleHit);
+	oSpBase = OFF (jitSpBase); oSpLimit = OFF (jitSpLimit);
 	ctx = new u8[FAST_OFF + (sizeof (Fast) << FAST_BITS)];
 	fast = (Fast *) (ctx + FAST_OFF);
 	u64 *h = (u64 *) ctx;
@@ -1933,10 +2017,14 @@ Jit::Jit (Machine *mm, void *mem, u32 size)
 	for (int i = 0; i < N_SRA; i++) a.ldst (LDR_W, 2, SRA_H[i], XM, SRA_G[i] == G_LR ? oLr : SRA_G[i] == G_CR ? oCr : SRA_G[i] * 4);	// (the kept guest registers)
 	a.ldst (LDR_X, 3, 3, XM, oUntil); a.ldst (LDR_X, 3, 4, XM, oCycles);
 	a.alu (SUB_W | X64, XDC, 3, 4); a.ldst (STR_X, 3, 3, XM, oEnd);	// (the countdown)
+	a.movz (4, 1, 0); a.stpPre (WZR, 4, -16);			// (the calls' stack: its sentinel -- no LR is 1)
+	a.imm (ADD_WI | X64, 4, SP, 0); a.ldst (STR_X, 3, 4, XM, oSpBase);
+	a.imm (SUB_WI | X64, 4, 4, 2, 1); a.ldst (STR_X, 3, 4, XM, oSpLimit);	// (8 KB: 512 pairs)
 	a.br (1);
 	exitStub = a.p;
 	a.ldst (LDR_X, 3, 3, XM, oEnd); a.alu (SUB_W | X64, 3, 3, XDC); a.ldst (STR_X, 3, 3, XM, oCycles);
 	for (int i = 0; i < N_SRA; i++) a.ldst (STR_W, 2, SRA_H[i], XM, SRA_G[i] == G_LR ? oLr : SRA_G[i] == G_CR ? oCr : SRA_G[i] * 4);
+	a.ldst (LDR_X, 3, 3, XM, oSpBase); a.imm (ADD_WI | X64, SP, 3, 16);	// (the calls' stack dropped, its sentinel too)
 	a.put (0xA94153F3);						// ldp x19, x20, [sp, #16]
 	a.put (0xA9425BF5);						// ldp x21, x22, [sp, #32]
 	a.put (0xA94363F7);						// ldp x23, x24, [sp, #48]
@@ -2067,6 +2155,12 @@ void Jit::emitDefsHere ()
 		case D_MEM: memCold (d); break;
 		case D_INTERP: interpCold (d); break;
 		case D_IEXIT: dc (2); a.b (exitStub); break;	// (the interpreter left: pc is set)
+		case D_TOPC: a.mov (0, d.r1); stF (0, oPc); a.b (exitStub); break;	// (out: pc = the register)
+		case D_RETMISS:						// (not the call's return: the stack emptied, the dispatcher)
+			spEmpty ();
+			a.mov (0, d.r1); stF (0, oPc); a.movw (2, bKey & 3); a.b (dispatch);
+			break;
+		case D_SPRESET: spEmpty (); a.b (d.ret); break;		// (the calls' stack past its limit: emptied)
 		case D_CVTD:
 			if (d.r2 != 0) a.mov (0, d.r2);
 			callKeep (H_CVTD);

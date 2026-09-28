@@ -14,6 +14,11 @@
 //       translated again by this JIT: the host instructions of their main code a guest one,
 //       weighted by the runs counted there (the GPRs pointing into MEM1, the GQRs 0);
 //       GC_JITDUMP=pc: that block's main code into jitdump.bin
+//   gctest calltest                           the JIT's calls and returns (the host's bl / ret, a stack
+//       of pairs) against the interpreter: recursion (fib; a chain deeper than the stack of pairs),
+//       calls through a table (bctrl; a tail call), "bl $+4", a return to LR + 4, returns through
+//       bctr (pairs never popped) -- every register and the stack compared, then again with the
+//       JIT's blocks kept
 // GC_JIT=1: the JIT runs the CPU (an AArch64 host -- run_gc_test.sh builds it for qemu-aarch64 --
 // or an x86-64 one)
 #include "gc/gc.h"
@@ -431,6 +436,113 @@ static int jitSize (const char *path)
 	return 0;
 }
 
+// ---- calltest: a program of calls and returns, built here (PowerPC), run by both
+static std::vector<u32> callProg (u32 base, u32 table)
+{
+	std::vector<u32> p; std::vector<std::pair<u32, int> > fix;
+	enum { L_FIB, L_DEEP, L_F0, L_F1, L_F2, L_F3, L_SKIP, L_BCTR, L_LOOP, L_LOOP2, L_NEXT, L_N };
+	u32 lab[L_N] = {};
+	auto at = [&] (int l) { lab[l] = (u32) p.size (); };
+	auto D = [] (u32 op, u32 t, u32 a, u32 imm) { return op << 26 | t << 21 | a << 16 | (imm & 0xFFFF); };
+	auto X = [] (u32 t, u32 a, u32 b, u32 xo) { return 31u << 26 | t << 21 | a << 16 | b << 11 | xo << 1; };
+	auto op = [&] (u32 w) { p.push_back (w); };
+	auto addi = [&] (u32 t, u32 a, int v) { op (D (14, t, a, (u32) v)); };
+	auto li = [&] (u32 t, int v) { addi (t, 0, v); };
+	auto stw = [&] (u32 r, int d, u32 a) { op (D (36, r, a, (u32) d)); };
+	auto stwu = [&] (u32 r, int d, u32 a) { op (D (37, r, a, (u32) d)); };
+	auto lwz = [&] (u32 t, int d, u32 a) { op (D (32, t, a, (u32) d)); };
+	auto cmpwi = [&] (u32 a, int v) { op (D (11, 0, a, (u32) v)); };
+	auto add = [&] (u32 t, u32 a, u32 b) { op (X (t, a, b, 266)); };
+	auto mr = [&] (u32 a, u32 r) { op (X (r, a, r, 444)); };
+	auto mflr = [&] (u32 t) { op (X (t, 8, 0, 339)); };
+	auto mtlr = [&] (u32 r) { op (X (r, 8, 0, 467)); };
+	auto mtctr = [&] (u32 r) { op (X (r, 9, 0, 467)); };
+	auto b = [&] (int l, bool link) { fix.push_back ({ (u32) p.size (), l }); op (18u << 26 | (link ? 1u : 0u)); };
+	auto blt = [&] (int l) { fix.push_back ({ (u32) p.size (), l }); op (16u << 26 | 12u << 21); };
+	auto frameIn = [&] () { mflr (0); stwu (1, -16, 1); stw (0, 20, 1); };
+	auto frameOut = [&] () { lwz (0, 20, 1); mtlr (0); addi (1, 1, 16); };
+	const u32 BLR = 0x4E800020, BCTRL = 0x4E800421, BCTR = 0x4E800420, BLTLR = 0x4D800020, BEQLR = 0x4D820020;
+	// main: r1 the stack, r20 a checksum
+	frameIn ();
+	li (20, 0);
+	li (3, 15); b (L_FIB, true); add (20, 20, 3);				// fib (15): calls 15 deep
+	li (3, 1500); b (L_DEEP, true); add (20, 20, 3);			// 1500 deep: past the pairs' room
+	op (D (15, 5, 0, table >> 16)); op (D (24, 5, 5, table));		// r5 = the table
+	li (6, 0);
+	at (L_LOOP);								// table[i & 3] (i), 40 times
+	op (21u << 26 | 6u << 21 | 7u << 16 | 2u << 11 | 28u << 6 | 29u << 1);	// rlwinm r7, r6, 2, 28, 29
+	op (X (12, 5, 7, 23));							// lwzx r12, r5, r7
+	mtctr (12); mr (3, 6); op (BCTRL); add (20, 20, 3);
+	addi (6, 6, 1); cmpwi (6, 40); blt (L_LOOP);
+	b (L_NEXT, true); at (L_NEXT); mflr (8); add (20, 20, 8);		// bl $+4: the pc
+	b (L_SKIP, true); addi (20, 20, 1000); addi (20, 20, 1);		// returned to LR + 4
+	li (6, 0);
+	at (L_LOOP2);								// returns through bctr, 600 times
+	b (L_BCTR, true); addi (20, 20, 3); addi (6, 6, 1); cmpwi (6, 600); blt (L_LOOP2);
+	li (3, 7); b (L_FIB, true); add (20, 20, 3);				// the pairs again after that
+	frameOut (); op (BLR);
+	at (L_FIB);								// r3 = fib (r3)
+	cmpwi (3, 2); op (BLTLR);
+	frameIn (); stw (31, 12, 1); stw (3, 8, 1);
+	addi (3, 3, -1); b (L_FIB, true); mr (31, 3);
+	lwz (3, 8, 1); addi (3, 3, -2); b (L_FIB, true); add (3, 3, 31);
+	lwz (31, 12, 1); frameOut (); op (BLR);
+	at (L_DEEP);								// r3 = n: n calls deep, back n
+	cmpwi (3, 0); op (BEQLR);
+	frameIn (); addi (3, 3, -1); b (L_DEEP, true); addi (3, 3, 1); frameOut (); op (BLR);
+	at (L_F0); addi (3, 3, 1); op (BLR);
+	at (L_F1); op (D (7, 3, 3, 3)); op (BLR);				// mulli r3, r3, 3
+	at (L_F2); frameIn (); b (L_F0, true); b (L_F0, true); frameOut (); op (BLR);
+	at (L_F3); b (L_F1, false);						// a tail call
+	at (L_SKIP); mflr (12); addi (12, 12, 4); mtlr (12); op (BLR);		// (r12: addi r0 would be li)
+	at (L_BCTR); mflr (0); mtctr (0); op (BCTR);
+	for (auto &f : fix)
+	{
+		u32 o = (lab[f.second] - f.first) * 4;
+		p[f.first] |= (p[f.first] >> 26) == 18 ? (o & 0x03FFFFFC) : (o & 0xFFFC);
+	}
+	p.push_back (base + lab[L_F0] * 4); p.push_back (base + lab[L_F1] * 4);	// (the table: after the code)
+	p.push_back (base + lab[L_F2] * 4); p.push_back (base + lab[L_F3] * 4);
+	return p;
+}
+static void callInit (Machine &m, const std::vector<u32> &p, u32 base, bool again)
+{
+	if (!again) m.reset ();
+	else { m.halted = false; m.srr0 = 0; m.cycles = 0; m.tbBase = 0; }
+	for (int i = 0; i < 32; i++) m.gpr[i] = 0x1000 + (u32) i;
+	m.gpr[1] = 0x80480000; m.cr = 0; m.xer = 0; m.ctr = 0;
+	for (u32 i = 0; i < p.size (); i++) m.write32 (base + i * 4, p[i]);
+	for (u32 i = 0; i < 0x10000; i += 4) m.write32 (0x80470000 + i, 0);
+	m.write32 (0x80001000, 0x48000000);				// b .
+	m.pc = base; m.lr = 0x80001000;
+}
+static int callTest ()
+{
+	static Machine A, B;
+	if (!B.jitEnable ()) { printf ("FAIL: no JIT on this host\n"); return 1; }
+	const u32 base = 0x80010000;
+	std::vector<u32> p = callProg (base, 0);
+	u32 table = base + (u32) (p.size () - 4) * 4;
+	p = callProg (base, table);
+	int bad = 0;
+	for (int pass = 0; pass < 2; pass++)
+	{
+		callInit (A, p, base, pass > 0); callInit (B, p, base, pass > 0);
+		while (A.pc != 0x80001000 && !A.halted && A.cycles < 50000000) A.step ();
+		while (B.pc != 0x80001000 && !B.halted && B.cycles < 50000000) B.run (B.cycles + 200000);
+		char diff[320] = "";
+		for (int i = 0; i < 32 && !diff[0]; i++) if (A.gpr[i] != B.gpr[i]) snprintf (diff, sizeof diff, "r%d: %08X, JIT %08X", i, A.gpr[i], B.gpr[i]);
+		if (!diff[0] && (A.lr != B.lr || A.ctr != B.ctr || A.cr != B.cr || A.xer != B.xer)) snprintf (diff, sizeof diff, "lr %08X ctr %08X cr %08X xer %08X, JIT %08X %08X %08X %08X", A.lr, A.ctr, A.cr, A.xer, B.lr, B.ctr, B.cr, B.xer);
+		for (u32 i = 0; i < 0x10000 && !diff[0]; i += 4) if (A.read32 (0x80470000 + i) != B.read32 (0x80470000 + i))
+			snprintf (diff, sizeof diff, "stack +%X: %08X, JIT %08X", i, A.read32 (0x80470000 + i), B.read32 (0x80470000 + i));
+		if (!diff[0] && (A.pc != 0x80001000 || B.pc != 0x80001000 || A.halted || B.halted)) snprintf (diff, sizeof diff, "not at the end: pc %08X / %08X (%s / %s)", A.pc, B.pc, A.halted ? A.haltMsg : "-", B.halted ? B.haltMsg : "-");
+		printf ("%s: calltest %s: r20 %08X (interpreter %08X), r3 %u%s%s\n", diff[0] ? "FAIL" : "ok  ", pass ? "again, the blocks kept" : "",
+			B.gpr[20], A.gpr[20], B.gpr[3], diff[0] ? " -- " : "", diff);
+		if (diff[0]) bad++;
+	}
+	return bad != 0;
+}
+
 static int dolTest (const char *dol, int frames, const char *out)
 {
 	long n; unsigned char *d = slurp (dol, &n);
@@ -453,6 +565,7 @@ int main (int argc, char **argv)
 	useJit = getenv ("GC_JIT") && atoi (getenv ("GC_JIT"));
 	if (argc >= 4 && !strcmp (argv[1], "dol")) return dolTest (argv[2], atoi (argv[3]), argc > 4 ? argv[4] : 0);
 	if (argc >= 3 && !strcmp (argv[1], "jitsize")) return jitSize (argv[2]);
+	if (argc >= 2 && !strcmp (argv[1], "calltest")) return callTest ();
 	if (argc >= 3 && !strcmp (argv[1], "ps")) return psTest (argv[2]);
 	if (argc >= 3 && !strcmp (argv[1], "bench")) return benchTest (argv[2], argc > 3 ? argv[3] : 0);
 	if (argc >= 2 && !strcmp (argv[1], "fuzz")) return fuzzTest (argc > 2 ? strtoull (argv[2], 0, 10) : 1, argc > 3 ? atoi (argv[3]) : 2000, argc > 4 ? atoi (argv[4]) : 150);

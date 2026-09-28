@@ -22,6 +22,7 @@
 #include "gc/gc.h"
 #include "v3d/gxtev.h"
 #include "v3d/shaders.h"
+#include <kern/v3d_clip.h>
 
 namespace gxv3d
 {
@@ -121,18 +122,20 @@ public:
 	}
 	volatile u64 drawTicks = 0, drawVerts = 0;	// (stats: the time in draw (), the vertices it made)
 	float *tmp = 0;					// (a draw's vertices before its triangles)
+	u8 *oc = 0;					// (theirs: outside the kernel's near plane 1, behind the eye 2)
+	volatile u64 behind = 0;			// (stats: the triangles left out, all behind one of those planes)
 
 	bool init ()
 	{
 		arena = new unsigned long long[ARENA_WORDS]; uniArena = new gxtev::Uni[ARENA_UNI];
-		tmp = new float[0x10000 * 68];
+		tmp = new float[0x10000 * 68]; oc = new u8[0x10000];
 		for (int i = 0; i < 2; i++)
 		{
 			frame[i].v = new float[MAX_FLOATS]; frame[i].b = new Batch[MAX_BATCHES]; frame[i].u = new u32[MAX_UNIS];
 			if (!frame[i].v || !frame[i].b || !frame[i].u) return false;
 			frame[i].reset (); frame[i].clear = 0; frame[i].keep = false;
 		}
-		return arena && uniArena && tmp;
+		return arena && uniArena && tmp && oc;
 	}
 
 	// ---- the program of a configuration (the app core: the shader's generation, cached)
@@ -499,6 +502,7 @@ public:
 			else { X = P0 * eye[0] + P1 * eye[2]; Y = P2 * eye[1] + P3 * eye[2]; Z = P4 * eye[2] + P5; W = -eye[2]; }
 			X *= VP0; Y *= VP1; Z = 2 * Z + W;
 			o[0] = ax * W + bx * (X + W); o[1] = ay * W - by * (Y + W); o[2] = az * W + bz * (Z + W); o[3] = W;
+			oc[i] = (u8) ((V3DClipDistN (o, 0) >= 0 ? 0 : 1) | (V3DClipDistN (o, 1) >= 0 ? 0 : 2));	// (NaN: outside)
 			// the colour channels
 			float raw0[4], raw1[4], v0[4], v1[4], col0[4] = { 0, 0, 0, 0 }, col1[4] = { 0, 0, 0, 0 };
 			for (int k = 0; k < 4; k++) { raw0[k] = v.c0[k]; raw1[k] = v.c1[k]; v0[k] = h0 ? raw0[k] : 255; }
@@ -560,15 +564,31 @@ public:
 		// its triangles
 		u32 need = (u32) ni * (u32) stride;
 		if (F.nf + need > MAX_FLOATS) { skip (SK_LIMIT, s, nv, 1); F.nu = b.uni; return; }
-		b.off = F.nf; b.first = F.nv; b.count = (u32) (ni / 3 * 3);
+		// (a triangle whose three vertices are before the near plane, or behind the eye, is left out:
+		// the kernel's clipping would drop it -- its first two planes, the same expressions -- after
+		// the copies here, in Out::prepare and in the kernel)
+		b.off = F.nf; b.first = F.nv;
+		u32 nt = (u32) ni / 3, kept = 0;
 		float *d = F.v + F.nf;
-		for (int i = 0; i < (int) b.count; i++)
+		for (u32 t = 0; t < nt; t++)
 		{
-			u32 k = idx[i]; if (k >= (u32) nv) k = 0;
-			const float *sv = tmp + (size_t) k * (size_t) stride;
-			for (int j = 0; j < stride; j++) d[j] = sv[j];
-			d += stride;
+			u32 k0 = idx[t * 3], k1 = idx[t * 3 + 1], k2 = idx[t * 3 + 2];
+			if (k0 >= (u32) nv) k0 = 0;
+			if (k1 >= (u32) nv) k1 = 0;
+			if (k2 >= (u32) nv) k2 = 0;
+			if (oc[k0] & oc[k1] & oc[k2]) continue;
+			const u32 k[3] = { k0, k1, k2 };
+			for (int c = 0; c < 3; c++)
+			{
+				const float *sv = tmp + (size_t) k[c] * (size_t) stride;
+				for (int j = 0; j < stride; j++) d[j] = sv[j];
+				d += stride;
+			}
+			kept++;
 		}
+		behind = behind + (nt - kept);
+		b.count = kept * 3;
+		if (!b.count) { F.nu = b.uni; return; }				// (all of it behind the eye)
 		F.nf += b.count * (u32) stride; F.nv += b.count;
 		// (the same program and state right after: one batch)
 		if (F.nb)

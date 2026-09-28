@@ -360,8 +360,8 @@ int main (int argc, char **argv)
 			drawFrame (m, rec.frame[rec.ready], p);
 		}
 	}
-	printf ("%d fields, pc %08X%s%s; %u frames, %d programs, %u draws with a feature not generated, %u not drawn\n", m.frames, m.pc,
-		m.halted ? " HALTED: " : "", m.haltMsg, rec.serial, (int) rec.nProg, rec.unsupported, rec.skipped);
+	printf ("%d fields, pc %08X%s%s; %u frames, %d programs, %u draws with a feature not generated, %u not drawn, %llu triangles behind the eye left out\n", m.frames, m.pc,
+		m.halted ? " HALTED: " : "", m.haltMsg, rec.serial, (int) rec.nProg, rec.unsupported, rec.skipped, (unsigned long long) rec.behind);
 	if (rec.ready < 0) { printf ("FAIL: no frame\n"); return 1; }
 	if (getenv ("GCV3D_SAVE"))						// the last frame as gcemu dumps it (for --replay)
 	{

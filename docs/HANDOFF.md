@@ -197,13 +197,19 @@ answer in French. The docs stay in English.
     at 14.8 each. The hottest loop (~17 %): a linked list searched through two function pointers
     a node (`8024A118..8024A150`: bctrl -> `8024A7E0` -> bctrl -> `80043E1C` -> blr -> blr), 22k
     nodes a field: four trips through the dispatcher a node.
-  Next, by gain: (1) the display's memory traffic -- the recorder rejecting the triangles behind
-  the eye (~17 % of them: the kernel drops them anyway), then `Out::prepare`'s copy and the
-  kernel's (a GPU-visible buffer the app writes, clipped in place; per-batch strides and the XFB
-  rectangle's transform in the shaders); (2) the JIT's calls / returns on the host's own `bl` /
-  `ret` with a stack of return addresses (Dolphin's "BLR optimisation": no dispatcher trip, the
-  return predicted), the indirect calls inline-cached; (3) the recorder on NEON (~470 ns a
-  vertex, the GX's ~15 of its ~22 ms) before the GX caps the speed at ~45 fields/s.
+  Then (same evening): the recorder leaves out the triangles behind the eye (~10 % in the game:
+  85k vertices a frame for 96k, prep 6.8 -> 5.8 ms, the pictures the same), and **the JIT's calls
+  / returns on the host's `bl` / `ret`** (a stack of pairs {landing, return address}: docs/03;
+  `gctest calltest`, the fuzz pass): branch mispredictions 5.6 -> 2.0 a thousand instructions,
+  **~42 fields/s** (21 fps) on Outset. Both app cores are now full: the machine ~23 ms a field,
+  the GX ~22 (the recorder ~15.7 of it); core 0 ~29 ms a frame (prep 5.8, gpu_render2 23).
+  Next, by gain: (1) the recorder on NEON (~500 ns a vertex; four at once, the same arithmetic
+  so the recordings stay bit for bit -- `GCV3D_VHASH`), or its vertex stage in a GPU vertex
+  shader; (2) the display's copies (`Out::prepare`'s and the kernel's: a GPU-visible buffer the
+  app writes, clipped in place, per-batch strides, the XFB rectangle's transform in the shaders)
+  -- they cost the machine ~18 % (`--nodraw`); (3) the JIT: a fifth kept register (r4 / r1:
+  x22 freed by a 32 MB MEM1 test), the FP compares fused with their branch (fcmpo 14.8 host
+  instructions), the L1I (11.4 refills a thousand instructions: smaller code).
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
   - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
     stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then

@@ -563,7 +563,7 @@ static void tev_line (void)
 static void perf_line (unsigned fields, unsigned long long elUs)
 {
 	static unsigned long long pDraw = 0, pVerts = 0, pPrep = 0, pGpu = 0, pGVerts = 0; static unsigned pFrames = 0;
-	static unsigned long long pFifo = 0, pPrim = 0, pTex = 0;
+	static unsigned long long pFifo = 0, pPrim = 0, pTex = 0, pBehind = 0;
 	const gxv3d::Out::Stats &s = g_out.st;
 	unsigned long long rate = gxv3d::clockRate ();
 	unsigned long long dDraw = g_rec.drawTicks - pDraw, dVerts = g_rec.drawVerts - pVerts;
@@ -572,6 +572,7 @@ static void perf_line (unsigned fields, unsigned long long elUs)
 	unsigned long long dFifo = g_m->timeFifo - pFifo, dPrim = g_m->timePrim - pPrim, dTex = g_m->timeTex - pTex;
 	pDraw += dDraw; pVerts += dVerts; pPrep += dPrep; pGpu += dGpu; pGVerts += dGV; pFrames += dF;
 	pFifo += dFifo; pPrim += dPrim; pTex += dTex;
+	unsigned long long dBehind = g_rec.behind - pBehind; pBehind += dBehind;
 	unsigned fl = fields ? fields : 1, fr = dF ? dF : 1;
 	char *d = g_statPerf; int k = 0; d[0] = 0;
 	cat (d, &k, "a field: gx "); fmt_num (d, &k, (unsigned) (dFifo * 10000 / rate / fl), 1);
@@ -587,7 +588,8 @@ static void perf_line (unsigned fields, unsigned long long elUs)
 		pBusy = busy; pWait = wait;
 	}
 	cat (d, &k, "), rec "); fmt_num (d, &k, (unsigned) (dDraw * 10000 / rate / fl), 1);
-	cat (d, &k, " ms, "); fmt_num (d, &k, (unsigned) (dVerts / fl), 0); cat (d, &k, " vertices  a frame: prep ");
+	cat (d, &k, " ms, "); fmt_num (d, &k, (unsigned) (dVerts / fl), 0); cat (d, &k, " vertices, ");
+	fmt_num (d, &k, (unsigned) (dBehind / fl), 0); cat (d, &k, " triangles behind the eye  a frame: prep ");
 	fmt_num (d, &k, (unsigned) (dPrep * 10000 / rate / fr), 1); cat (d, &k, " ms, gpu_render2 ");
 	fmt_num (d, &k, (unsigned) (dGpu * 10000 / rate / fr), 1); cat (d, &k, " ms, ");
 	fmt_num (d, &k, (unsigned) (dGV / fr), 0); cat (d, &k, " vertices");

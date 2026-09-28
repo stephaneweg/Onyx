@@ -344,7 +344,11 @@ Notes / caveats:
 > for bit over a whole run). The recorder's vertex loop and `gxPrimitive`'s decoder work from
 > plans made once a draw (the matrices of the last index, the lit channels' lights, the texgens,
 > the varyings; the attributes present with their formats and arrays, a vertex template) with
-> the same arithmetic as before. The recorder keeps the vertices in the clip
+> the same arithmetic as before. A triangle whose three vertices are before the near plane or
+> behind the eye (the kernel's first two clipping planes, `V3DClipDistN`: the kernel would drop
+> it) is not recorded — ~10 % of The Wind Waker's, copied for nothing by the recorder,
+> `Out::prepare` and the kernel before (the pictures the same: gcv3d; F12's fourth line counts
+> them). The recorder keeps the vertices in the clip
 > space of the whole EFB (640 x 528) and the scissors in its pixels; the frame's XFB copy
 > rectangle, known at its end (`Frame::rect`), is applied when it is drawn (`frameView`,
 > `frameScissor`: `Out::prepare`, gcv3d) -- the copy registers of the draw's time were used
@@ -615,7 +619,22 @@ Notes / caveats:
 > once that block is translated the exit's branch is patched to jump straight to it (back to
 > its stub when that block is dropped), while `cycles < jitUntil` (the next event / the
 > decrementer; `piUpdate` and `decWrite` zero it to come back); an exit to a register (blr,
-> bctr) goes through the table; `jitRun` (C) takes the interrupts, translates what is missing. Blocks are keyed
+> bctr) goes through the table; `jitRun` (C) takes the interrupts, translates what is missing.
+> **Calls and returns are the host's own**: a call (`bl`, `bcctrl`) pushes a pair {its landing,
+> the guest's return address} on the host's stack (`stp x1, x24, [sp, #-16]!`) and calls the
+> target's block with `bl` (linked like an exit) / `blr` (`bcctrl`: the block looked up in the
+> table there); a return (`blr`, `bclr`) pops the pair and, LR being its address, is a `ret` to
+> the landing — which the core's return stack predicts —, else the stack is emptied and the
+> dispatcher goes on (`retTo`, `callTo`, `callReg`); the landing, in the caller's block, is a
+> linked exit to the instruction after the call (the host registers are the callee's there:
+> the cache dropped). The stack holds a sentinel at `jitSpBase` (no LR is 1); it is emptied when
+> the JIT leaves (the exit stub), at a mismatch, and past 8 KB (`jitSpLimit`: calls that never
+> return, a return through `bctr`); a landing stays valid while the JIT runs (a dropped block's
+> code stays in the buffer until `flushAll`, which runs from `jitRun` only). `bl $+4` (the pc
+> read) pushes nothing. The Wind Waker: the branch mispredictions 5.6 -> 2.0 a thousand
+> instructions, 37 -> 42 fields/s (its hottest loop, a list searched through two function
+> pointers, went through the dispatcher four times a node). `gctest calltest` checks it
+> against the interpreter. Blocks are keyed
 > by address + MSR IR / DR; `icbi`, the DVD / ARAM / locked-cache DMAs drop the blocks of the
 > 4 KB pages written; a BAT change, HID0's ICFI or a reset drop everything. `b .` jumps to the
 > next event (idle), and so does a **polling loop** (a block of loads, compares, masks branching
@@ -635,7 +654,10 @@ Notes / caveats:
 > cache bug and an interpreter bug — `srawi` / `sraw` with rA = rS took CA from the result;
 > `GC_FUZZC=1` their data through the uncached mirror, `GC_FUZZSTART=n` from the n-th,
 > `GC_FUZZDUMP=<f>` each one's code, `GC_FUZZPROG=<f>` + `GC_FUZZLEN=n` a failing one cut down,
-> `GC_FUZZG="3 11"` those GPRs, CR and XER printed, `GC_FUZZBLOCK=<pc>` the block there's code,
+> `GC_FUZZG="3 11"` those GPRs, CR and XER printed, `GC_FUZZBLOCK=<pc>` the block there's code;
+> `gctest calltest`: a program of calls built there (fib, a chain of 1500 calls, calls through a
+> table, a tail call, `bl $+4`, a return to LR + 4, returns through `bctr`) run by both, twice
+> (the blocks kept the second time), every register and the stack compared;
 > `GC_FUZZ2=1` each one run a second time with the JIT's blocks kept and the data through the
 > other mirror (the blocks' base pointers meet another value);
 > the CR is not compared after an exception that stopped the run -- see `crDead`), `tools/tests/gc/bench.c` (sort, CRC, copies, calls)
