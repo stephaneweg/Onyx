@@ -164,8 +164,21 @@ void Machine::gxGpuState (u32 vcd)
 // the texture a map reads: an EFB copy's (MEM1 there as the copy left it), or decoded from MEM1
 int Machine::gpuTexture (int map)
 {
+	GcTimed timed (timeTex);
 	u32 img3 = bpRegs[(map < 4 ? 0x94 : 0xB4) + (map & 3)];
 	u32 addr = (img3 & 0x00FFFFFF) << 5;
+	// the same registers as this map's last draw in the field, nothing copied, loaded or flushed
+	// meanwhile: the same texture (its memory is not sampled again -- a game changes a texture
+	// between two fields, or a DMA does)
+	u32 img0 = bpRegs[(map < 4 ? 0x88 : 0xA8) + (map & 3)], tl = bpRegs[(map < 4 ? 0x98 : 0xB8) + (map & 3)];
+	u32 md0 = bpRegs[(map < 4 ? 0x80 : 0xA0) + (map & 3)], md1 = bpRegs[(map < 4 ? 0x84 : 0xA4) + (map & 3)];
+	TexMemo &mo = texMemo[map];
+	if (mo.epoch == texEpoch && mo.img3 == img3 && mo.img0 == img0 && mo.tlut == tl && mo.mode0 == md0 && mo.mode1 == md1
+	    && tex[mo.slot].w && tex[mo.slot].key == mo.key)
+	{
+		tex[mo.slot].lastUse = ++texClock;
+		return mo.slot;
+	}
 	for (int i = 0; i < GX_COPIES; i++)
 	{
 		EfbCopy &c = efbCopies[i];
@@ -173,7 +186,9 @@ int Machine::gpuTexture (int map)
 		if (memHash (mem1, c.addr, c.bytes) == c.hash) return GX_TEX_COPY + i;
 		c.bytes = 0;							// (written since: a texture of the game's)
 	}
-	return gxTexture (map, true);
+	int t = gxTexture (map, true);
+	if (t >= 0) { mo.img0 = img0; mo.img3 = img3; mo.tlut = tl; mo.mode0 = md0; mo.mode1 = md1; mo.epoch = texEpoch; mo.slot = t; mo.key = tex[t].key; }
+	return t;
 }
 
 // ---- a primitive: its indices --------------------------------------------------------------------------------
@@ -246,7 +261,7 @@ void Machine::gxGpuCopy (u32 v)
 		e.addr = c.addr; e.bytes = bytes; e.w = (u16) w; e.h = (u16) h; e.fmt = (u8) c.fmt;
 		e.hash = memHash (mem1, c.addr, bytes); e.use = ++useClock;
 		c.slot = slot;
-		gxsDirty = true;						// (a texture may be this copy now)
+		gxsDirty = true; texEpoch++;					// (a texture may be this copy now)
 		for (int m = 0; m < 8; m++) gxs.tex[m] = -2;
 	}
 	gpu->copy (*this, c);

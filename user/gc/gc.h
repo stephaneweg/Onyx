@@ -84,6 +84,18 @@ enum
 };
 struct GTexture { u32 *px; int w, h, cap, levels; u64 key; u32 lastUse; bool dirty; };	// px: 0xAARRGGBB, its mipmaps after (cap: its room)
 
+// the time spent in a function, added to a counter on leaving it (the ARM's clock: AArch64 hosts
+// only, the others count nothing) -- the front ends' speed lines
+static inline u64 gcClock ()
+{
+#if defined (__aarch64__)
+	u64 t; asm volatile ("mrs %0, cntvct_el0" : "=r" (t)); return t;
+#else
+	return 0;
+#endif
+}
+struct GcTimed { u64 &acc; u64 t0; GcTimed (u64 &a) : acc (a), t0 (gcClock ()) {} ~GcTimed () { acc += gcClock () - t0; } };
+
 // the Zelda microcode's audio (gc_zelda.cpp): its mixing buffers (0x50 samples: a frame), the tables
 // the game gives it, where its voices (VPBs) and its reverbs are
 struct ZeldaMix
@@ -336,6 +348,7 @@ public:
 	u32 bpRegs[0x100];				// the BP registers
 	u32 bpKonst[8];					// the TEV's konst colours (BP 0xE0-0xE7 with bit 23)
 	u32 gxCmds, gxPrims, gxVerts, gxCopies, gxIndirect, texDecodes;	// (the tests: the GPU's draws with indirect texturing, the textures decoded)
+	u64 timeFifo, timePrim, timeTex;		// (gcClock ticks in gxFifoKick, gxPrimitive, gpuTexture: all in)
 	u32 cpRead (u32 off, int size);
 	void cpWrite (u32 off, u32 v, int size);
 	u32 peRead (u32 off, int size);
@@ -357,6 +370,10 @@ public:
 							// machine: it may run where nothing can be allocated -- gcemu's
 							// app core); full, every texture is forgotten (texFlush)
 	void texFlush ();
+	// a map's last answer (gpuTexture): its registers, the texture's key; good until texEpoch
+	// changes -- each field, an EFB copy, a TLUT loaded, a DMA into MEM1, the pool emptied
+	struct TexMemo { u32 img0, img3, tlut, mode0, mode1, epoch; int slot; u64 key; };
+	TexMemo texMemo[8]; u32 texEpoch;
 	u8 *tmem;					// the TMEM (1 MB: the TLUTs)
 	u32 gxClearNext;				// the colour the next frame starts with
 	u32 xfbCopyAddr[2];				// the last two XFBs an EFB copy went to (double buffering)

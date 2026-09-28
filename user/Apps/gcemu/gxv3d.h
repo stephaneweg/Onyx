@@ -27,6 +27,24 @@ namespace gxv3d
 {
 using gc::u8; using gc::u32; using gc::s32; using gc::u64;
 
+// the ARM's clock (no kapi call: the app core may read it), for F12's times; its rate: clockRate ()
+static inline u64 clockTicks ()
+{
+#if defined (__aarch64__)
+	u64 t; asm volatile ("mrs %0, cntvct_el0" : "=r" (t)); return t;
+#else
+	return 0;
+#endif
+}
+static inline u64 clockRate ()
+{
+#if defined (__aarch64__)
+	u64 f; asm volatile ("mrs %0, cntfrq_el0" : "=r" (f)); return f ? f : 1;
+#else
+	return 1;
+#endif
+}
+
 enum { MAX_PROGS = 1024, ARENA_WORDS = 1 << 20, ARENA_UNI = 1 << 18 };
 enum { MAX_FLOATS = 3 << 20, MAX_BATCHES = 4096, MAX_UNIS = 1 << 18 };
 
@@ -71,6 +89,7 @@ public:
 	Frame frame[2]; int build = 0; volatile int ready = -1;
 	u32 serial = 0;					// (frames finished)
 	u32 unsupported = 0, skipped = 0;		// (stats: draws with a feature not generated, not drawn)
+	volatile u64 drawTicks = 0, drawVerts = 0;	// (stats: the time in draw (), the vertices it made)
 	float *tmp = 0;					// (a draw's vertices before its triangles)
 
 	bool init ()
@@ -87,7 +106,15 @@ public:
 	}
 
 	// ---- the program of a configuration (the app core: the shader's generation, cached)
+	gxtev::Config lastCfg; int lastProg = -1;		// (the last draw's configuration, its program)
 	int findProg (const gxtev::Config &c)
+	{
+		if (lastProg >= 0 && !__builtin_memcmp (&lastCfg, &c, sizeof c)) return lastProg;
+		int pi = findProg2 (c);
+		if (pi >= 0) { lastCfg = c; lastProg = pi; }
+		return pi;
+	}
+	int findProg2 (const gxtev::Config &c)
 	{
 		unsigned long long k = gxtev::key (c);
 		int n = nProg;
@@ -116,23 +143,40 @@ public:
 	static void rgba (u32 c, float o[4]) { o[0] = (float) (c >> 24); o[1] = (float) ((c >> 16) & 255); o[2] = (float) ((c >> 8) & 255); o[3] = (float) (c & 255); }
 	static float dot3 (const float *a, const float *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 	static void norm3 (float *v) { float l = __builtin_sqrtf (dot3 (v, v)); if (l > 0) { v[0] /= l; v[1] /= l; v[2] /= l; } }
-	// a colour channel's colour or alpha (0..255): the material x (the ambient + the lights)
-	static void channel (const gc::Machine &m, int ctl, const float regMat[4], const float regAmb[4], const float vcol[4],
-			     const float pos[3], const float n[3], float out[4])
+	// the lights (XF 0x600..), read once a draw: colour, angle / distance attenuations (the latter
+	// normalized too, for the specular with a diffuse function), position, direction
+	struct Light { float col[4], cosA[3], distA[3], daN[3], pos[3], dir[3]; };
+	Light lt[8];
+	static int lightMask (int ctl) { return (ctl & 2) ? (((ctl >> 2) & 15) | ((ctl >> 7) & 0xF0)) : 0; }
+	void readLights (const gc::Machine &m, int mask)
 	{
-		const float *mat = (ctl & 1) ? vcol : regMat;
-		if (!(ctl & 2)) { for (int c = 0; c < 4; c++) out[c] = mat[c]; return; }
-		float lacc[4];
-		for (int c = 0; c < 4; c++) lacc[c] = (ctl & 64) ? vcol[c] : regAmb[c];
-		int mask = ((ctl >> 2) & 15) | ((ctl >> 7) & 0xF0);
-		int dfn = (ctl >> 7) & 3, atn = (ctl >> 9) & 3;
 		for (int L = 0; L < 8; L++)
 		{
 			if (!(mask & (1 << L))) continue;
 			u32 b = 0x600 + (u32) L * 16;
-			float lcol[4]; rgba (m.xfRegs[b + 3], lcol);
-			float cosA[3] = { f (m, b + 4), f (m, b + 5), f (m, b + 6) }, distA[3] = { f (m, b + 7), f (m, b + 8), f (m, b + 9) };
-			float lpos[3] = { f (m, b + 10), f (m, b + 11), f (m, b + 12) }, ldir[3] = { f (m, b + 13), f (m, b + 14), f (m, b + 15) };
+			Light &l = lt[L];
+			rgba (m.xfRegs[b + 3], l.col);
+			for (int k = 0; k < 3; k++) { l.cosA[k] = f (m, b + 4 + k); l.distA[k] = f (m, b + 7 + k); l.pos[k] = f (m, b + 10 + k); l.dir[k] = f (m, b + 13 + k); }
+			for (int k = 0; k < 3; k++) l.daN[k] = l.distA[k];
+			if (dot3 (l.distA, l.distA) != 0) norm3 (l.daN);
+		}
+	}
+	// a colour channel's colour or alpha (0..255), its components c0..c1 - 1: the material x (the
+	// ambient + the lights)
+	void channel (int ctl, const float regMat[4], const float regAmb[4], const float vcol[4],
+		      const float pos[3], const float n[3], float out[4], int c0, int c1) const
+	{
+		const float *mat = (ctl & 1) ? vcol : regMat;
+		if (!(ctl & 2)) { for (int c = c0; c < c1; c++) out[c] = mat[c]; return; }
+		float lacc[4];
+		for (int c = c0; c < c1; c++) lacc[c] = (ctl & 64) ? vcol[c] : regAmb[c];
+		int mask = lightMask (ctl);
+		int dfn = (ctl >> 7) & 3, atn = (ctl >> 9) & 3;
+		for (int L = 0; L < 8; L++)
+		{
+			if (!(mask & (1 << L))) continue;
+			const Light &li = lt[L];
+			const float *lcol = li.col, *cosA = li.cosA, *distA = li.distA, *lpos = li.pos, *ldir = li.dir;
 			float ld[3] = { lpos[0] - pos[0], lpos[1] - pos[1], lpos[2] - pos[2] }, at = 1.0f;
 			if (atn == 3)
 			{
@@ -148,25 +192,30 @@ public:
 				if (dot3 (ld, ld) > 0) norm3 (ld); else { ld[0] = n[0]; ld[1] = n[1]; ld[2] = n[2]; }
 				float cs = 0;
 				if (dot3 (n, ld) >= 0) { cs = dot3 (n, ldir); if (cs < 0) cs = 0; }
-				float da[3] = { distA[0], distA[1], distA[2] };
-				if (!(dfn == 0 || dot3 (distA, distA) == 0)) norm3 (da);
+				const float *da = dfn == 0 ? distA : li.daN;
 				float den = da[0] + da[1] * cs + da[2] * cs * cs;
 				float num = cosA[0] + cosA[1] * cs + cosA[2] * cs * cs; if (num < 0) num = 0;
 				at = den != 0 ? num / den : 0;
 			}
 			else { if (dot3 (ld, ld) > 0) norm3 (ld); else { ld[0] = n[0]; ld[1] = n[1]; ld[2] = n[2]; } }
 			float df = dfn == 0 ? 1.0f : dfn == 1 ? dot3 (ld, n) : (dot3 (ld, n) > 0 ? dot3 (ld, n) : 0);
-			for (int c = 0; c < 4; c++) { float x = at * df * lcol[c]; lacc[c] += __builtin_roundf (x); }
+			for (int c = c0; c < c1; c++) { float x = at * df * lcol[c]; lacc[c] += __builtin_roundf (x); }
 		}
-		for (int c = 0; c < 4; c++)
+		for (int c = c0; c < c1; c++)
 		{
 			float l = lacc[c] < 0 ? 0 : lacc[c] > 255 ? 255 : lacc[c];
 			out[c] = __builtin_floorf (mat[c] * (l + __builtin_floorf (l / 128.0f)) / 256.0f);
 		}
 	}
 
-	// ---- a draw
+	// ---- a draw (its time counted)
 	void draw (gc::Machine &m, const gc::GxState &s, const gc::GxVertex *vx, int nv, const u32 *idx, int ni, int prim) override
+	{
+		u64 t0 = clockTicks ();
+		record (m, s, vx, nv, idx, ni, prim);
+		drawTicks = drawTicks + (clockTicks () - t0);
+	}
+	void record (gc::Machine &m, const gc::GxState &s, const gc::GxVertex *vx, int nv, const u32 *idx, int ni, int prim)
 	{
 		if (prim != gc::GX_TRIANGLES || ni < 3) return;			// (lines, points: not yet)
 		Frame &F = frame[build];
@@ -277,6 +326,30 @@ public:
 		int tMax = -1;							// (the texgens up to the last one a lookup reads:
 		for (int L = 0; L < P.nLook; L++) if (P.look[L].coord > tMax) tMax = P.look[L].coord;	// an emboss one's source is earlier)
 		if (tMax >= s.vtx[2]) tMax = s.vtx[2] - 1;
+		// the colour channels the program reads (its varyings, a texgen from a colour), lit only
+		// then: COLOR0 / 1's RGB, ALPHA0 / 1 (from COLOR's lighting when its control is the same);
+		// the normal only for a lit channel
+		bool u0 = false, u0a = false, u1 = false, u1a = false;
+		for (int k = 0; k < P.nVary; k++)
+		{
+			const gxtev::Vary &vy = P.vary[k];
+			if (vy.kind == gxtev::V_C0) { if (vy.a < 3) u0 = true; else u0a = true; }
+			else if (vy.kind == gxtev::V_C1) { if (vy.a < 3) u1 = true; else u1a = true; }
+		}
+		for (int t = 0; t <= tMax; t++)
+		{
+			int type = (int) ((u32) s.texgen[t][0] >> 4) & 7;
+			if (type == 2) u0 = true; else if (type == 3) u1 = true;
+		}
+		if (s.vtx[1] < 2 && !h1) { u0 = u0 || u1; u0a = u0a || u1a; }	// (COLOR1 from COLOR0)
+		bool lit0 = s.vtx[1] != 0, lit1 = s.vtx[1] >= 2;		// (else the vertex colours as they are)
+		bool same0 = s.chan[2] == s.chan[0], same1 = s.chan[3] == s.chan[1];
+		int c0End = u0 ? (u0a && same0 ? 4 : 3) : 0, c1End = u1 ? (u1a && same1 ? 4 : 3) : 0;
+		bool a0Own = lit0 && u0a && !(u0 && same0), a1Own = lit1 && u1a && !(u1 && same1);
+		int lmask = (lit0 && u0 ? lightMask (s.chan[0]) : 0) | (a0Own ? lightMask (s.chan[2]) : 0)
+			  | (lit1 && u1 ? lightMask (s.chan[1]) : 0) | (a1Own ? lightMask (s.chan[3]) : 0);
+		readLights (m, lmask);
+		bool needN = hasN && lmask != 0;
 		for (int i = 0; i < nv; i++)
 		{
 			const gc::GxVertex &v = vx[i];
@@ -286,7 +359,7 @@ public:
 			float eye[3];
 			for (int r = 0; r < 3; r++) { u32 a = ((pm + (u32) r) & 63) * 4; eye[r] = f (m, a) * p4[0] + f (m, a + 1) * p4[1] + f (m, a + 2) * p4[2] + f (m, a + 3); }
 			float n[3] = { 0, 0, 0 };
-			if (hasN)
+			if (needN)
 			{
 				u32 nb = (pm & 31) * 3;
 				for (int r = 0; r < 3; r++)
@@ -302,13 +375,19 @@ public:
 			X *= s.vp[0]; Y *= s.vp[1]; Z = 2 * Z + W;
 			o[0] = ax * W + bx * (X + W); o[1] = ay * W - by * (Y + W); o[2] = az * W + bz * (Z + W); o[3] = W;
 			// the colour channels
-			float raw0[4], raw1[4], v0[4], v1[4], col0[4], col1[4], t4[4];
+			float raw0[4], raw1[4], v0[4], v1[4], col0[4] = { 0, 0, 0, 0 }, col1[4] = { 0, 0, 0, 0 };
 			for (int k = 0; k < 4; k++) { raw0[k] = v.c0[k]; raw1[k] = v.c1[k]; v0[k] = h0 ? raw0[k] : 255; }
 			for (int k = 0; k < 4; k++) v1[k] = h1 ? raw1[k] : v0[k];
-			channel (m, s.chan[0], m0, a0, v0, eye, n, col0);
-			channel (m, s.chan[2], m0, a0, v0, eye, n, t4); col0[3] = t4[3];
-			channel (m, s.chan[1], m1, a1, v1, eye, n, col1);
-			channel (m, s.chan[3], m1, a1, v1, eye, n, t4); col1[3] = t4[3];
+			if (lit0)
+			{
+				if (c0End) channel (s.chan[0], m0, a0, v0, eye, n, col0, 0, c0End);
+				if (a0Own) channel (s.chan[2], m0, a0, v0, eye, n, col0, 3, 4);
+			}
+			if (lit1)
+			{
+				if (c1End) channel (s.chan[1], m1, a1, v1, eye, n, col1, 0, c1End);
+				if (a1Own) channel (s.chan[3], m1, a1, v1, eye, n, col1, 3, 4);
+			}
 			if (s.vtx[1] == 0) for (int k = 0; k < 4; k++) col0[k] = h0 ? raw0[k] : 255;
 			if (s.vtx[1] < 2) for (int k = 0; k < 4; k++) col1[k] = h1 ? raw1[k] : col0[k];
 			// the texture coordinates of the lookups
@@ -357,6 +436,7 @@ public:
 				o[4 + k] = x;
 			}
 		}
+		drawVerts = drawVerts + (u64) nv;
 		// its triangles
 		u32 need = (u32) ni * (u32) stride;
 		if (F.nf + need > MAX_FLOATS) { skipped++; F.nu = b.uni; return; }
@@ -469,8 +549,10 @@ struct Out
 	// what the last frame gave (F12, --diag): gpu_render2's result (0 ok, -1 no GPU, -2 bad
 	// arguments, -3 the GPU did not finish, -4 no memory; 1 no frame yet), the batches recorded,
 	// given to the GPU, left out (their program refused, a texture missing, nothing visible, over
-	// the vertex limit); the programs and textures the kernel refused so far, the last error
-	struct Stats { int ret; u32 recorded, drawn, noProg, noTex, empty, limit, frames, progFails, texFails; int progErr, texErr; };
+	// the vertex limit); the programs and textures the kernel refused so far, the last error; the
+	// time (clock ticks, summed) making the kernel's arrays and in gpu_render2, the vertices given
+	struct Stats { int ret; u32 recorded, drawn, noProg, noTex, empty, limit, frames, progFails, texFails; int progErr, texErr;
+		       u64 prepTicks, gpuTicks, gpuVerts; };
 	Stats st;
 	bool init ()
 	{
@@ -511,11 +593,20 @@ struct Out
 		p.handle = h >= 0 ? h : -2;
 		return p.handle;
 	}
-	// -> false: no frame (or it failed)
-	bool render (Rec &r, gc::Machine &m, unsigned *px, int w, int h, int stride)
+	// the frame prepared (prepare: the kernel's arrays rv / rb / ru), and the one the last submit drew
+	bool prepOk = false; int prepFrame = -1, prepW = 0, prepH = 0, prepStride = 4; u32 prepSerial = 0;
+	u32 prepNv = 0, prepNb = 0, prepNu = 0, prepClear = 0; bool prepKeep = false;
+	bool shownOk = false; const unsigned *shownPx = 0; int shownW = 0, shownH = 0, shownStride = 0; u32 shownSerial = 0;
+
+	// The machine waiting: its last finished frame into the kernel's arrays for a w x h target (the
+	// new programs and textures given to the kernel first) -- nothing to do when that frame is
+	// already prepared. -> false: no frame.
+	bool prepare (Rec &r, gc::Machine &m, int w, int h)
 	{
 		int fi = r.ready;
-		if (fi < 0) return false;
+		if (fi < 0) { prepOk = false; return false; }
+		if (prepOk && fi == prepFrame && r.serial == prepSerial && w == prepW && h == prepH) return true;
+		u64 t0 = clockTicks ();
 		const Frame &F = r.frame[fi];
 		textures (m);
 		int maxStride = 4;
@@ -568,9 +659,25 @@ struct Out
 			}
 			nv += b.count; nb++;
 		}
-		struct kapi_gpu_frame fr = { px, w, h, stride, F.clear, F.keep ? KAPI_GPU_F_KEEP : 0u };
-		st.drawn = nb; st.frames++;
-		st.ret = kapi_gpu_render2 (&fr, rv, nv, (unsigned) maxStride, rb, nb, ru, 4 + F.nu);
+		prepNv = nv; prepNb = nb; prepNu = 4 + F.nu; prepStride = maxStride; prepClear = F.clear; prepKeep = F.keep;
+		prepFrame = fi; prepSerial = r.serial; prepW = w; prepH = h; prepOk = true;
+		st.drawn = nb;
+		st.prepTicks += clockTicks () - t0;
+		return true;
+	}
+	bool prepared (int w, int h) const { return prepOk && w == prepW && h == prepH; }
+	// Any time (the arrays are ours, the kernel copies them): the prepared frame drawn into px --
+	// not again when px already has it. -> false: gpu_render2 failed.
+	bool submit (unsigned *px, int stride)
+	{
+		if (shownOk && px == shownPx && stride == shownStride && prepW == shownW && prepH == shownH && prepSerial == shownSerial)
+			return true;
+		struct kapi_gpu_frame fr = { px, prepW, prepH, stride, prepClear, prepKeep ? KAPI_GPU_F_KEEP : 0u };
+		st.frames++; st.gpuVerts += prepNv;
+		u64 t1 = clockTicks ();
+		st.ret = kapi_gpu_render2 (&fr, rv, prepNv, (unsigned) prepStride, rb, prepNb, ru, prepNu);
+		st.gpuTicks += clockTicks () - t1;
+		shownOk = st.ret == 0; shownPx = px; shownStride = stride; shownW = prepW; shownH = prepH; shownSerial = prepSerial;
 		return st.ret == 0;
 	}
 };

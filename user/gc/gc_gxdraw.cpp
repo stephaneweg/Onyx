@@ -176,7 +176,7 @@ void Machine::texFlush ()
 {
 	for (int i = 0; i < MAX_TEX; i++) { tex[i].px = 0; tex[i].cap = 0; tex[i].w = tex[i].h = 0; tex[i].levels = 1; tex[i].key = 0; tex[i].lastUse = 0; tex[i].dirty = false; }
 	for (int i = 0; i < 1024; i++) texFind[i] = -1;
-	texPoolTop = 0; texFlushes++;
+	texPoolTop = 0; texFlushes++; texEpoch++;
 }
 
 // the texture of map n (0..7): TEXIMAGE0 (size, format), TEXIMAGE3 (address), TEXTLUT; with its
@@ -261,6 +261,7 @@ void Machine::gxEmit (const GVertex *v3, int t, u32 flags)
 // ---- a primitive -------------------------------------------------------------------------------------------------
 void Machine::gxPrimitive (int prim, int vat, int count, const u8 *data)
 {
+	GcTimed timed (timePrim);
 	if (count <= 0 || (prim >= 5 && !gpu)) return;			// (lines, points: a GPU's only)
 	u32 lo = cpRegs[0x50], hi = cpRegs[0x60];
 	u32 va = cpRegs[0x70 + vat], vb = cpRegs[0x80 + vat], vc = cpRegs[0x90 + vat];

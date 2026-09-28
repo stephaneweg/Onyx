@@ -89,6 +89,7 @@ void Machine::peWrite (u32 off, u32 v, int size)
 // wrap (or not all written yet) waits for the rest.
 void Machine::gxFifoKick ()
 {
+	GcTimed timed (timeFifo);
 	if (!cpFifoEnd || !(cpReg16[0x02 / 2] & 1)) { cpFifoRptr = piFifoWptr & 0x03FFFFE0 & ~0x20000000u; return; }
 	u32 w = piFifoWptr & 0x01FFFFFF, base = cpFifoBase & 0x01FFFFFF, end = cpFifoEnd & 0x01FFFFFF;
 	if (end <= base || end > MEM1_SIZE) return;
@@ -279,6 +280,7 @@ void Machine::gxBp (u32 v)
 	{
 		u32 src = (bpRegs[0x64] & 0x1FFFFF) << 5, dst = (val & 0x3FF) << 9, n = (val & 0x1FFC00) >> 5;
 		for (u32 i = 0; i < n && src + i < MEM1_SIZE && dst + i < 0x100000; i++) tmem[dst + i] = mem1[src + i];
+		texEpoch++;						// (the textures with a palette: looked up again)
 		break;
 	}
 	}

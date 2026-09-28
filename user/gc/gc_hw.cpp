@@ -193,6 +193,7 @@ void Machine::status (char *out, int cap)
 // ---- one field ---------------------------------------------------------------------------------------------------
 void Machine::runFrame ()
 {
+	texEpoch++;						// (gpuTexture's answers: sampled again each field)
 	// (the lines run 1..viLinesFrame: the first field ends halfway, the second at the frame's end)
 	int endLine = viLine >= viLinesFrame / 2 && viLine < viLinesFrame ? viLinesFrame : viLinesFrame / 2;
 	u64 guard = cycles + (u64) CPU_HZ;			// (a second at most)
@@ -433,7 +434,7 @@ bool Machine::readDisc (u32 off, u32 len, u32 dst)
 {
 	u8 *d = ptr (dst & 0x01FFFFFF);
 	if (!d || (dst & 0x01FFFFFF) + len > MEM1_SIZE) return false;
-	jitInvalidate (dst & 0x01FFFFFF, len);
+	jitInvalidate (dst & 0x01FFFFFF, len); texEpoch++;
 	if (!disc && discRead) return discRead (discCtx, off, len, d);
 	for (u32 i = 0; i < len; i++) d[i] = disc && off + i < discSize ? disc[off + i] : 0;
 	return true;
@@ -650,7 +651,7 @@ void Machine::hwWrite (u32 pa, u32 v, int size)
 			u32 cnt = (u32) (dspReg[0x28 / 2] & 0x3FF) << 16 | dspReg[0x2A / 2];
 			bool toMain = dspReg[0x28 / 2] & 0x8000;
 			if (mm + cnt > MEM1_SIZE) cnt = mm < MEM1_SIZE ? MEM1_SIZE - mm : 0;
-			if (toMain) jitInvalidate (mm, cnt);
+			if (toMain) { jitInvalidate (mm, cnt); texEpoch++; }
 			// the ARAM is 16 MB; above, the expansion port (nothing there: reads 0, writes lost)
 			for (u32 i = 0; i < cnt; i++)
 			{

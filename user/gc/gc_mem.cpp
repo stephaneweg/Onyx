@@ -20,6 +20,8 @@ Machine::Machine ()
 	for (int i = 0; i < 2; i++) gfxFrame[i].v = 0, gfxFrame[i].b = 0;
 	for (int i = 0; i < MAX_TEX; i++) tex[i].px = 0;
 	texPool = new u32[TEX_POOL]; texPoolTop = 0; texFlushes = 0;
+	timeFifo = timePrim = timeTex = 0;
+	texEpoch = 1; for (int m = 0; m < 8; m++) texMemo[m].epoch = 0;
 	tmem = 0;
 	for (int i = 0; i < 4; i++) { padBtn[i] = 0; padSX[i] = padSY[i] = padCX[i] = padCY[i] = 0; padL[i] = padR[i] = 0; }
 	for (int s = 0; s < 2; s++) { card[s].flash = 0; card[s].size = 0; }	// (the slots empty until the front end fills them)

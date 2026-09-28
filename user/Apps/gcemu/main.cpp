@@ -22,8 +22,9 @@
 //     recorded, the ones left out and why, the programs / textures the kernel refused); F9 dumps
 //     the frame shown -- what the recorder made and the picture the GPU drew -- into
 //     SD:/gcdump/frame_<n>.gxf (tools/tests/gc/gcv3d.cpp --replay draws it on a PC); --diag writes
-//     F12's lines into SD:/gcdump/diag.txt every second, dumps a frame every 20 s and quits after
-//     200 s (a test run from a remote shell); --diag=<folder> writes there instead (e.g.
+//     F12's lines of every second into SD:/gcdump/diag.txt (saved every 5 s), dumps a frame every
+//     60 s and quits after 200 s (a test run from a remote shell; a dump holds the machine while
+//     it is written); --diag=<folder> writes there instead (e.g.
 //     FTP:<pc>:2121 -- a PC's FTP server, through ftpfs). --tevbuf draws the TEV frames into a
 //     buffer of ours, then copies them (a test: the GPU no longer writes the window's pixels).
 //
@@ -48,6 +49,7 @@ static bool g_stats = false;
 static char g_statText[128] = "";
 static char g_statState[200] = "";				// (F12, 2nd line) where the game is: gc::Machine::status
 static char g_statTev[160] = "";				// (F12, 3rd line) the TEV renderer's diagnostic
+static char g_statPerf[160] = "";				// (F12, 4th line) where the time goes (TEV)
 static volatile bool g_dumpReq = false;				// (F9) the frame shown, dumped
 static char g_note[200] = ""; static unsigned g_noteUntil = 0;	// (a message a few seconds)
 static bool g_diag = false;					// --diag[=<folder>]
@@ -190,31 +192,52 @@ static void fb_frame (unsigned *px, int w, int h, int stride)
 	}
 }
 
+// (the TEV: the machine's last frame is taken -- Out::prepare -- only while the machine waits
+// between two fields, then drawn from our own arrays at any time: the GPU may draw while the next
+// field runs; the old paths read the machine as they draw: only while it waits)
 static void draw_into (unsigned *px, int w, int h, int stride)
 {
-	if (g_m->gpu && g_gfxAge < 30 && g_tevBuf)			// (a test: the GPU not writing the window's pixels itself)
+	if (g_m->gpu && g_gfxAge < 30)
 	{
-		static unsigned *buf = 0; static int cap = 0;
-		if (cap < w * h) { delete [] buf; buf = new unsigned[w * h]; cap = buf ? w * h : 0; }
-		if (buf && g_out.render (g_rec, *g_m, buf, w, h, w))
+		if (ec_pending (&g_ec) == 0) g_out.prepare (g_rec, *g_m, w, h);
+		if (g_out.prepared (w, h))
 		{
-			for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) px[(long) y * stride + x] = buf[y * w + x];
-			return;
+			if (!g_tevBuf) { if (g_out.submit (px, stride)) return; }
+			else								// (a test: the GPU not writing the window's pixels itself)
+			{
+				static unsigned *buf = 0; static int cap = 0;
+				if (cap < w * h) { delete [] buf; buf = new unsigned[w * h]; cap = buf ? w * h : 0; }
+				if (buf && g_out.submit (buf, w))
+				{
+					for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) px[(long) y * stride + x] = buf[y * w + x];
+					return;
+				}
+			}
 		}
 	}
-	else if (g_m->gpu && g_gfxAge < 30 && g_out.render (g_rec, *g_m, px, w, h, stride)) return;
 	if (!g_m->gpu && g_gfxAge < 30 && gpu_frame (px, w, h, stride)) return;
 	fb_frame (px, w, h, stride);
+}
+// the size the frames are drawn at: the window's, or full screen's 4:3 area
+static void target_size (int *w, int *h)
+{
+	if (g_fs)
+	{
+		int ow = g_fsw, oh = g_fsw * 3 / 4;
+		if (oh > g_fsh) { oh = g_fsh; ow = g_fsh * 4 / 3; }
+		*w = ow; *h = oh;
+	}
+	else { *w = g_root->width; *h = g_root->height; }
 }
 
 // F12's lines at the bottom: where the game is, the speed, the TEV renderer's diagnostic
 static void overlay (Canvas &c)
 {
-	int n = g_m->gpu ? 3 : 2, y = c.h - n * 20;
+	int n = g_m->gpu ? 4 : 2, y = c.h - n * 20;
 	c.fillRect (0, y, c.w, n * 20, 0);
 	c.text (4, y + 2, g_statState, 0x00A0FFA0);
 	c.text (4, y + 22, g_statText, 0x00FFFF60);
-	if (n == 3) c.text (4, y + 42, g_statTev, g_out.st.ret == 0 ? 0x00A0C0FF : 0x00FF8080);
+	if (n == 4) { c.text (4, y + 42, g_statTev, g_out.st.ret == 0 ? 0x00A0C0FF : 0x00FF8080); c.text (4, y + 62, g_statPerf, 0x00C0C0C0); }
 }
 static void note (const char *s) { scpy (g_note, s, sizeof g_note); g_noteUntil = kapi_get_ticks () + 300; }
 
@@ -240,7 +263,7 @@ static void dump_frame (const unsigned *px, int w, int h, int stride)
 }
 static void after_draw (const unsigned *px, int w, int h, int stride)
 {
-	if (!g_dumpReq) return;
+	if (!g_dumpReq || ec_pending (&g_ec) != 0) return;		// (the machine running: later)
 	g_dumpReq = false;
 	dump_frame (px, w, h, stride);
 }
@@ -432,7 +455,37 @@ static void tev_line (void)
 	cat (d, &k, " tex "); num (d, &k, (int) s.texFails); if (s.texFails) { cat (d, &k, " ("); num (d, &k, s.texErr); cat (d, &k, ")"); }
 }
 
-// --diag: F12's lines every second into SD:/gcdump/diag.txt, a frame dumped every 20 s, the end after 200 s
+// F12's fourth line: where the time went in the last second -- a field's on the app core: the GX
+// (the FIFO's commands, all in), its primitives (the vertices decoded, the state, the textures
+// looked up, the recorder), the textures, the recorder (the vertex stage: transformed, lit, into
+// the frame) and its vertices; a frame's on the main thread: the kernel's arrays made
+// (Out::prepare), then gpu_render2 (the clipping, the GPU)
+static void perf_line (unsigned fields)
+{
+	static unsigned long long pDraw = 0, pVerts = 0, pPrep = 0, pGpu = 0, pGVerts = 0; static unsigned pFrames = 0;
+	static unsigned long long pFifo = 0, pPrim = 0, pTex = 0;
+	const gxv3d::Out::Stats &s = g_out.st;
+	unsigned long long rate = gxv3d::clockRate ();
+	unsigned long long dDraw = g_rec.drawTicks - pDraw, dVerts = g_rec.drawVerts - pVerts;
+	unsigned long long dPrep = s.prepTicks - pPrep, dGpu = s.gpuTicks - pGpu, dGV = s.gpuVerts - pGVerts;
+	unsigned dF = s.frames - pFrames;
+	unsigned long long dFifo = g_m->timeFifo - pFifo, dPrim = g_m->timePrim - pPrim, dTex = g_m->timeTex - pTex;
+	pDraw += dDraw; pVerts += dVerts; pPrep += dPrep; pGpu += dGpu; pGVerts += dGV; pFrames += dF;
+	pFifo += dFifo; pPrim += dPrim; pTex += dTex;
+	unsigned fl = fields ? fields : 1, fr = dF ? dF : 1;
+	char *d = g_statPerf; int k = 0; d[0] = 0;
+	cat (d, &k, "a field: gx "); fmt_num (d, &k, (unsigned) (dFifo * 10000 / rate / fl), 1);
+	cat (d, &k, " ms (prims "); fmt_num (d, &k, (unsigned) (dPrim * 10000 / rate / fl), 1);
+	cat (d, &k, ", textures "); fmt_num (d, &k, (unsigned) (dTex * 10000 / rate / fl), 1);
+	cat (d, &k, "), rec "); fmt_num (d, &k, (unsigned) (dDraw * 10000 / rate / fl), 1);
+	cat (d, &k, " ms, "); fmt_num (d, &k, (unsigned) (dVerts / fl), 0); cat (d, &k, " vertices  a frame: prep ");
+	fmt_num (d, &k, (unsigned) (dPrep * 10000 / rate / fr), 1); cat (d, &k, " ms, gpu_render2 ");
+	fmt_num (d, &k, (unsigned) (dGpu * 10000 / rate / fr), 1); cat (d, &k, " ms, ");
+	fmt_num (d, &k, (unsigned) (dGV / fr), 0); cat (d, &k, " vertices");
+}
+
+// --diag: F12's lines every second into SD:/gcdump/diag.txt (saved every 5 s: less time taken from the
+// game), a frame dumped every 60 s, the end after 200 s
 static void diag_tick (void)
 {
 	static char *log = 0; static unsigned n = 0, secs = 0;
@@ -441,16 +494,16 @@ static void diag_tick (void)
 	if (!log) { log = new char[CAP]; kapi_mkdir (g_dumpDir); int k = 0; path[0] = 0; cat (path, &k, g_dumpDir); cat (path, &k, "/diag.txt"); }
 	if (!g_m->gpu) tev_line ();
 	secs++;
-	const char *lines[3] = { g_statState, g_statText, g_statTev };
+	const char *lines[4] = { g_statState, g_statText, g_statTev, g_statPerf };
 	char t[16]; int k = 0; t[0] = 0; fmt_num (t, &k, secs, 0); cat (t, &k, " s\n");
-	for (int j = 0; j < 4; j++)
+	for (int j = 0; j < 5; j++)
 	{
 		const char *s = j == 0 ? t : lines[j - 1];
 		for (int i = 0; s[i] && n < CAP - 2; i++) log[n++] = s[i];
 		if (j) log[n++] = '\n';
 	}
-	kapi_save_file (path, log, n);
-	if (secs % 20 == 0) g_dumpReq = true;
+	if (secs % 5 == 0 || secs >= 200) kapi_save_file (path, log, n);
+	if (secs % 60 == 0) g_dumpReq = true;
 	if (secs >= 200) on_quit ();
 }
 
@@ -582,16 +635,20 @@ int main (void)
 		// may read its frame and textures; drawn while it runs, they may change under the kernel)
 		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
 		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
-		// a new image, the machine between two fields: shown before the next field is asked for --
-		// else, slower than real time, the next one was always asked first and nothing was shown
-		bool shown = false;
+		// a new image, the machine between two fields: taken before the next field is asked for --
+		// else, slower than real time, the next one was always asked first and nothing was shown.
+		// The TEV's frame is prepared now and drawn after the request (the GPU then works while the
+		// machine runs); the other pictures, and a frame to dump, are drawn now.
+		bool shown = false, later = false;
 		if (ec_pending (&g_ec) == 0 && ec_take (&g_ec))
 		{
 			g_fbW = g_m->fbW; g_fbH = g_m->fbH;
 			if (g_m->gfxSerial != g_lastSerial) { g_lastSerial = g_m->gfxSerial; g_gfxAge = 0; } else if (g_gfxAge < 1000) g_gfxAge++;
 			unsigned long long d0 = now_us ();
-			show_frame ();
-			drawUs += now_us () - d0; stShown++; shown = true;
+			int tw, th; target_size (&tw, &th);
+			if (g_m->gpu && g_gfxAge < 30 && !g_dumpReq && g_out.prepare (g_rec, *g_m, tw, th)) later = true;
+			else { show_frame (); stShown++; shown = true; }
+			drawUs += now_us () - d0;
 		}
 		// with sound the game's audio paces it (kept ~60 ms ahead), else -- no sound of ours, or
 		// the game makes none yet -- the clock
@@ -619,6 +676,7 @@ int main (void)
 			if (asked < due && ec_pending (&g_ec) == 0) { ec_request (&g_ec, 1); asked++; }
 		}
 		if (kapi_get_ticks () - lastSave > 300 && ec_pending (&g_ec) == 0) { card_save (); lastSave = kapi_get_ticks (); }	// (3 s)
+		if (later) { unsigned long long d0 = now_us (); show_frame (); drawUs += now_us () - d0; stShown++; shown = true; }
 		ec_pump (&g_ec);
 		serve_reads ();
 		if (!shown && g_rdState != 1) kapi_msleep (1);
@@ -639,7 +697,7 @@ int main (void)
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			g_m->status (g_statState, sizeof g_statState);	// (read while it may run: a diagnostic)
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;
-			if (g_m->gpu) tev_line ();
+			if (g_m->gpu) { tev_line (); perf_line (stEmu); }
 			if (g_diag) diag_tick ();
 		}
 	}

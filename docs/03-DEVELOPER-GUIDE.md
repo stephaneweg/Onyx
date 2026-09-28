@@ -337,8 +337,13 @@ Notes / caveats:
 > the TEV renderer did (`gpu_render2`'s result, the batches drawn / recorded, the ones left out:
 > program refused, texture missing, nothing visible, over the vertex limit), F9 dumps the frame
 > shown into `SD:/gcdump/frame_<n>.gxf` (the recorded frame, its programs and textures, and the
-> picture the GPU made), `--diag[=<folder>]` writes F12's lines every second into
-> `<folder>/diag.txt`, dumps a frame every 20 s and quits after 200 s — the folder may be an FTP
+> picture the GPU made), `--diag[=<folder>]` writes F12's lines of every second into
+> `<folder>/diag.txt` (saved every 5 s), dumps a frame every 60 s (the machine waits meanwhile:
+> a few seconds over FTP) and quits after 200 s; F12's fourth line is where a field's time went
+> on the app core — the GX (`Machine::timeFifo`, all in), its primitives (`timePrim`: decoding,
+> state, textures, the recorder), the textures (`timeTex`), the recorder (`Rec::drawTicks`) —
+> and a frame's on the main thread (`Out::prepare`, `gpu_render2`); the counters read the ARM's
+> clock (`gcClock`, nothing on other hosts) — the folder may be an FTP
 > one (`--diag=FTP:<pc>:<port>/<dir>`) so the files land on the PC at once (`--tevbuf`: the
 > frames drawn into a buffer of gcemu's, then copied — the GPU no longer writing the window's
 > pixels itself). `gcv3d --replay
@@ -369,10 +374,14 @@ Notes / caveats:
 > Two rules the app core imposes: **its code allocates nothing** (the heap, `user/umm.h`, is not
 > shared safely between two cores, and `kapi_sbrk` from an app core grows the heap of whatever
 > task core 0 is running — make every buffer before, as gc::Machine's texture pool of
-> `TEX_POOL` texels); and **show the new picture before asking for the next frame** (in the main
-> loop: `if (ec_pending (&ec) == 0 && ec_take (&ec)) show ();` first, then `ec_request`) — the
-> other way round, a machine slower than real time always has its next frame asked first and
-> the window is never drawn again.
+> `TEX_POOL` texels); and **take the new picture before asking for the next frame** (in the main
+> loop: `if (ec_pending (&ec) == 0 && ec_take (&ec)) ...` first, then `ec_request`) — the other
+> way round, a machine slower than real time always has its next frame asked first and the
+> window is never drawn again. What reads the machine (its frame, its textures) runs while it
+> waits; what only reads a copy may run while it works: gcemu copies the TEV frame into the
+> kernel's arrays (`Out::prepare`, the machine waiting), asks for the next field, then draws
+> (`Out::submit` → `gpu_render2`) while the field runs — and not again when the same frame is
+> already in the window (a 30 fps game: every other field).
 > See `gbemu` / `gbaemu` / `nesemu` / `snesemu`; `/bin/coretest` exercises the raw kapi.
 > **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),

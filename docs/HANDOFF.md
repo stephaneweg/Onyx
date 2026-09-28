@@ -115,19 +115,31 @@ answer in French. The docs stay in English.
   Start"), the intro story; frames dumped on the Pi and replayed on the PC give the same picture
   (<= 2 % of the pixels differ, on edges). Diagnostics for the next bugs: F12's third line, F9 /
   `--diag[=FTP:<pc>:<port>]` dumps, `gcv3d --replay` (docs/03).
-- **Next: the speed.** Measured with `--diag` on the flyover (~370 batches, 147 K vertices a
-  frame): emu ~85-95 ms a field (the JIT'd CPU + the recorder's vertex stage in C++, app core) +
-  draw ~50 ms (main thread: `Out::render`'s copy, the kernel's CPU clipping, the GPU), one after
-  the other -> ~7 fields/s; lighter scenes 23-49 fields/s (60 is real time). By gain / effort:
-  1. **Overlap** the drawing with the next field: prepare the frame while the core waits (the
-     vertices / uniforms / batches copied out of `Rec::frame[ready]`, textures and programs
-     uploaded), then let the core run while the kernel clips and the GPU draws (the core may then
-     finish a frame: `Rec` needs a third frame buffer, or the copy done before it resumes).
-  2. **Measure** the recorder's share of a field (a cycle counter on the app core, e.g.
-     `cntvct_el0`, shown on F12), then speed up the vertex stage (per-draw precomputation of the
-     matrices / lights, fast paths for the unlit / untextured, NEON), then the transform and the
-     lighting in the GPU's vertex shader (a generated VS, as the TEV).
-  3. A fast path in the kernel's `V3DClipTriangleN` for the triangles fully inside (most).
+- **The speed (local session, first pass).** F12's fourth line / `--diag` measure it (docs/03).
+  The island flyover (~370 batches, 147 K vertices a frame, ~4800 draws of ~5 vertices a field)
+  went from ~7 to ~12 fields/s, lighter scenes 20-33 (60 is real time):
+  - the drawing overlaps the next field (`Out::prepare` while the machine waits, `Out::submit`
+    after the request), and a frame already in the window is not drawn again (30 fps: half);
+  - the recorder: only the colour channels the program reads, the alpha from the colour's
+    lighting when the controls match, the lights read once a draw, the last TEV configuration
+    matched without its hash -- 366 -> 271 cycles a vertex on the PC, exact (the pictures
+    identical, `gcv3d`);
+  - `gpuTexture` remembers each map's answer within a field (`texMemo`, `texEpoch`: a field, an
+    EFB copy, a TLUT load, a DMA, the pool emptied): 7.7 -> 0.4 ms a field.
+  Where a heavy field's ~75 ms go now (app core): the recorder ~29, the vertices decoded + the GX
+  state ~7.5, the FIFO ~2.5, the textures 0.4, **the CPU (JIT) and the rest ~36**; the main thread
+  (~9 ms copy + ~43 ms `gpu_render2` a frame, the kernel's CPU clipping mostly) now runs beside.
+  Next, by gain / effort:
+  1. **The CPU**: profile the JIT on the Pi (`jitProfile` / `GC_PROFILE` in gctest: the hot
+     blocks; the instructions still interpreted, the FPR loads / stores per instruction, the
+     dispatch) -- 36 ms a field alone is twice real time.
+  2. **The vertex stage on the GPU**: a generated vertex shader (the XF transform, the lighting,
+     the texgens: `Rec::record`'s work) fed with the decoded vertices and the matrices / lights as
+     uniforms -- removes most of the recorder's ~29 ms; the per-draw setup (~22 % of it) could
+     meanwhile be cut by reusing the last draw's program / uniforms when `GxState::serial` has not
+     changed.
+  3. A fast path in the kernel's `V3DClipTriangleN` for the triangles fully inside (most): the
+     main thread's ~43 ms (not on the critical path any more, but it is the display's latency).
   4. Dual-issue scheduling of the generated TEV code.
   Then stage 4: EFB copies to textures (`rec skipped` counts the draws reading one: the heat haze,
   the bloom...), the fog, the indirect textures.
