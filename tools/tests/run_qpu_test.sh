@@ -12,3 +12,5 @@ for f in qpulib ralloc_stub mesa/broadcom/qpu/qpu_instr mesa/broadcom/qpu/qpu_pa
 done
 g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/qpubuild_test.cpp" "$root/user/v3d/qpu.cpp" "$T"/*.o -o "$T/qpubuild"
 "$T/qpubuild"
+g++ -std=c++17 -O1 -w -I"$Q" -I"$Q/mesa" "$here/v3d/qpusim_test.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/qpusim"
+"$T/qpusim"
