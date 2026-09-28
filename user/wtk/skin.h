@@ -53,6 +53,9 @@ void wk_decorate_window ();
 enum { WK_WIN_RESIZABLE = 1, WK_WIN_MAXIMISED = 2 };
 void wk_window_state (int flags);
 int  wk_window_flags ();
+// A frame as wk_decorate_window draws it, into any W x H buffer (T: its title bar's height), in
+// the colour `frame` -- a preview (the Theme app). Its corners' outside: see-through (top byte).
+void wk_draw_frame (unsigned *fb, int W, int H, int T, const char *title, unsigned frame, bool active);
 
 } // namespace wtk
 

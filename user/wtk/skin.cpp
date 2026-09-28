@@ -168,6 +168,11 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 		}
 }
 
+void wk_draw_frame (unsigned *fb, int W, int H, int T, const char *title, unsigned frame, bool active)
+{
+	draw_frame (fb, W, H, T, title, frame, active);
+}
+
 void wk_decorate_window ()
 {
 	static int s_w = -1, s_h = -1;			// what was drawn (redrawn when it changes)

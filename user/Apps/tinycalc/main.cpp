@@ -242,12 +242,13 @@ class Display : public Widget
 {
 public:
 	Display (int l, int t, int w, int h) : Widget (l, t, w, h) {}
-	void onDraw () override
+	void onDraw () override			// an LCD: a dark slate well, light digits
 	{
-		canvas.clear (0x00101820);
+		canvas.clear (bgColor ());
+		wk_sunken (canvas, 0, 0, width, height, 6, 0x005C6478);
 		const char *s = g_entry;
-		int tw = slen (s) * g_fw, tx = width - tw - 8; if (tx < 4) tx = 4;
-		canvas.text (tx, (height - g_fh) / 2, s, g_error ? 0x00ff6060 : 0x0060ff90);
+		int tw = slen (s) * g_fw, tx = width - tw - 10; if (tx < 6) tx = 6;
+		canvas.text (tx, (height - g_fh) / 2, s, g_error ? 0x00FFA0A0 : 0x00F0F4F8);
 	}
 };
 
@@ -302,7 +303,7 @@ static const int g_code[30] = {
 	D7,D8,D9,DIV,CLR, D4,D5,D6,MUL,NEG, D1,D2,D3,SUB,PCT, D0,DOT,F_PI,EQ,ADD
 };
 
-#define CALC_BG	0x00283038
+#define CALC_BG	C_BG			// (the theme's face)
 
 // Build the calculator UI into a 5-column / 7-row UniformGridLayout filling `root`:
 // row 0 = display (colSpan 4) + DEG/RAD toggle; rows 1-6 = the 30 keys (reading order).

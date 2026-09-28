@@ -299,6 +299,12 @@ static unsigned *wallpaper_buffer (int *w, int *h)
 	return buf;
 }
 static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
+static int get_keymap (char *b, unsigned n) { if (b && n) snprintf (b, n, "FR"); return 2; }
+static int s_wheel = 2;
+static void set_wheel (int v) { s_wheel = v; }
+static int get_wheel (void) { return s_wheel; }
+static int h_kill (const char *n) { fprintf (stderr, "sim: kill %s\n", n); return 1; }
+static int set_keymap_data (const char *, const void *, unsigned) { return 1; }
 static int mailbox_send (int, int, const void *, unsigned) { return 0; }
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
 static void *spawn (const char *p, const char *a, void *, void *) { fprintf (stderr, "sim: spawn %s %s\n", p, a ? a : ""); return 0; }
@@ -350,6 +356,8 @@ static void setup (void)
 	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
 	T->wallpaper_buffer = wallpaper_buffer;
+	T->get_keymap = get_keymap; T->set_wheel_speed = set_wheel; T->get_wheel_speed = get_wheel;
+	T->kill = h_kill; T->set_keymap_data = set_keymap_data;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";
