@@ -263,6 +263,124 @@ void FileDialog::getResult (char *out, unsigned cap)
 }
 
 // ---- convenience -------------------------------------------------------------
+// ---- PopupMenu ------------------------------------------------------------------------------------
+enum { PM_PAD = 4, PM_SEP = 9 };
+static int pm_row () { return wk_fh () + 8; }
+
+PopupMenu::PopupMenu (int x, int y) : Modal (120, 2 * PM_PAD), m_n (0), m_hot (-1) { left = x; top = y; }
+
+void PopupMenu::add (const char *label, int id, bool enabled, const char *hint)
+{
+	if (m_n >= MAXI) return;
+	m_label[m_n] = label; m_hint[m_n] = hint; m_id[m_n] = id; m_on[m_n] = enabled; m_sep[m_n] = false;
+	m_n++;
+}
+
+void PopupMenu::separator ()
+{
+	if (m_n >= MAXI) return;
+	m_label[m_n] = 0; m_hint[m_n] = 0; m_id[m_n] = -1; m_on[m_n] = false; m_sep[m_n] = true;
+	m_n++;
+}
+
+int PopupMenu::rowY (int i) const
+{
+	int y = PM_PAD;
+	for (int k = 0; k < i; k++) y += m_sep[k] ? PM_SEP : pm_row ();
+	return y;
+}
+
+int PopupMenu::rowAt (int mx, int my) const
+{
+	if (mx < 0 || mx >= width) return -1;
+	for (int i = 0; i < m_n; i++)
+	{
+		int y = rowY (i), h = m_sep[i] ? PM_SEP : pm_row ();
+		if (my >= y && my < y + h) return m_sep[i] || !m_on[i] ? -1 : i;
+	}
+	return -1;
+}
+
+int PopupMenu::run ()
+{
+	int w = 0, lw = 0, hw = 0;
+	for (int i = 0; i < m_n; i++)
+		if (!m_sep[i])
+		{
+			int a = wk_text_w (m_label[i]), b = m_hint[i] ? wk_text_w (m_hint[i]) : 0;
+			if (a > lw) lw = a;
+			if (b > hw) hw = b;
+		}
+	w = 14 + lw + (hw ? 24 + hw : 0) + 14;
+	if (w < 150) w = 150;
+	int h = rowY (m_n) + PM_PAD;
+	Root *r = Root::current ();
+	if (r)							// (in the window)
+	{
+		if (left + w > r->width) left = r->width - w;
+		if (top + h > r->height) top = r->height - h;
+		if (left < 0) left = 0;
+		if (top < 0) top = 0;
+	}
+	resizeTo (w, h);
+	int res = Modal::run ();
+	return res > 0 ? m_id[res - 1] : -1;
+}
+
+void PopupMenu::onDraw ()
+{
+	int fh = wk_fh ();
+	canvas.clear (WK_TRANSPARENT_KEY);
+	wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+	for (int i = 0; i < m_n; i++)
+	{
+		int y = rowY (i);
+		if (m_sep[i]) { wk_etch_h (canvas, 8, y + PM_SEP / 2 - 1, width - 16, C_FIELD); continue; }
+		bool hot = i == m_hot;
+		if (hot) wk_hilite (canvas, PM_PAD, y, width - 2 * PM_PAD, pm_row (), 5, true);
+		unsigned ink = !m_on[i] ? wk_mix (C_FIELD, C_FIELD_TEXT, 110) : hot ? C_SEL_TEXT : C_FIELD_TEXT;
+		canvas.text (14, y + (pm_row () - fh) / 2, m_label[i], ink);
+		if (m_hint[i])
+			canvas.text (width - 14 - wk_text_w (m_hint[i]), y + (pm_row () - fh) / 2, m_hint[i],
+				     hot ? C_SEL_TEXT : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+	}
+}
+
+bool PopupMenu::onMouse (int mx, int my, int bl, int, int, int)
+{
+	int hot = (mx >= 0 && my >= 0 && mx < width && my < height) ? rowAt (mx, my) : -1;
+	if (hot != m_hot) { m_hot = hot; invalidate (true); }
+	if (bl && !pressed)
+	{
+		pressed = true;
+		if (mx < 0 || my < 0 || mx >= width || my >= height) close (0);	// elsewhere: nothing
+	}
+	else if (!bl && pressed)
+	{
+		pressed = false;
+		if (hot >= 0) close (hot + 1);
+	}
+	return true;
+}
+
+bool PopupMenu::onKey (long k)
+{
+	if (k == 27) { close (0); return true; }
+	if (k == KEY_DOWN || k == KEY_UP)
+	{
+		int i = m_hot;
+		for (int n = 0; n < m_n; n++)
+		{
+			i = k == KEY_DOWN ? (i + 1) % m_n : (i <= 0 ? m_n - 1 : i - 1);
+			if (!m_sep[i] && m_on[i]) break;
+		}
+		m_hot = i; invalidate (true);
+		return true;
+	}
+	if (k == KEY_ENTER && m_hot >= 0) { close (m_hot + 1); return true; }
+	return true;
+}
+
 int wk_messagebox (const char *title, const char *text, int buttons)
 { MessageBox m (title, text, buttons); return m.run (); }
 

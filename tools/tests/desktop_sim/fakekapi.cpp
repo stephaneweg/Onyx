@@ -13,6 +13,7 @@
 //   wait                 nothing (a turn of the app's loop)
 //   down X Y / up X Y / move X Y / wheel X Y N    pointer events (client coordinates)
 //   key CODE             a key (a KEY_* number, or a character)
+//   winctl N             a title button for the app (GUI_EVENT_WINCTL: 0 the window menu, 2 maximise)
 //   dump FILE            the window: "ELSM" w h x y (int32), then w * h pixels 0xTTRRGGBB
 //                        (TT = transparency: 0 opaque) -- its frame (the active copy, or the
 //                        inactive one with SIM_INACTIVE=1) around its client canvas
@@ -160,6 +161,27 @@ static unsigned *resize (int w, int h)
 	return g_canvas;
 }
 static void move_window (int x, int y) { g_x = x; g_y = y; }
+// (v64) the work area: the screen less the menu bar (30) and the dock (84)
+static int win_geometry (struct kapi_win_geom *o)
+{
+	memset (o, 0, sizeof *o);
+	o->x = g_x; o->y = g_y; o->w = g_ow; o->h = g_oh; o->cw = g_lw; o->ch = g_lh;
+	o->ax = 0; o->ay = 30; o->aw = 1024; o->ah = 768 - 30 - 84; o->state = KAPI_WIN_KEYS;
+	return 0;
+}
+static int win_minimise (unsigned id) { fprintf (stderr, "sim: win_minimise %u\n", id); return 0; }
+static unsigned *resize2 (int w, int h, int *stride)
+{
+	if (w > g_cw || h > g_ch)
+	{
+		int nw = w > g_cw ? w : g_cw, nh = h > g_ch ? h : g_ch;
+		unsigned *n = (unsigned *) calloc ((size_t) nw * nh, 4);
+		free (g_canvas); g_canvas = n; g_cw = nw; g_ch = nh;
+	}
+	g_lw = w; g_lh = h; make_chrome ();
+	if (stride) *stride = g_cw;
+	return g_canvas;
+}
 static void set_ptr (gui_handler h) { g_ptr = h; }
 static void set_key (gui_handler h) { g_key = h; }
 static void screen_size (int *w, int *h) { if (w) *w = 1024; if (h) *h = 768; }
@@ -218,6 +240,7 @@ static void step (void)
 	else if (!strcmp (cmd, "move")) { sscanf (st.c_str (), "%*s %d %d", &a, &b); ptrev (GUI_EVENT_PTR_MOVE, a, b, 0, 0, 0); }
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
+	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "exit")) exit (0);
 }
@@ -294,6 +317,7 @@ static void setup (void)
 	T->cursor_pos = cursor_pos; T->set_window_alpha = set_alpha; T->random = random_fill;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
 	T->shell_request = shell_request;
+	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";

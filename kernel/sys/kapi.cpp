@@ -176,9 +176,11 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 			s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
 		}
 		int nXMin   = g_nScreenWidth / 5;			// skip the leftmost fifth
-		int nYMin   = CWindowManager::Get () != 0 ? CWindowManager::Get ()->TopInset () : 0;
+		int ax = 0, ay = 0, aw = g_nScreenWidth, ah = g_nScreenHeight;	// the work area: below
+		if (CWindowManager::Get () != 0) CWindowManager::Get ()->WorkArea (&ax, &ay, &aw, &ah);	// the menu
+		int nYMin   = ay;					// bar, above the dock
 		int nXRange = g_nScreenWidth  - nOuterW - nXMin;
-		int nYRange = g_nScreenHeight - nOuterH - nYMin;	// below the menu bar
+		int nYRange = ay + ah - nOuterH - nYMin;
 		s_nRng = s_nRng * 1103515245u + 12345u;
 		x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
 		s_nRng = s_nRng * 1103515245u + 12345u;
@@ -563,7 +565,7 @@ void kapi_present (void)
 	// the app's canvas changed: its window's area is to be redrawn
 	CAddressSpace *pPresAS = CurrentAS ();
 	CWindow *pPresWin = pPresAS != 0 ? pPresAS->GetWindow () : 0;
-	if (pPresWin != 0) pPresWin->Damage (); else ScreenDirty ();
+	if (pPresWin != 0) pPresWin->PresentDamage (); else ScreenDirty ();
 	// The compositor reads the shared canvas continuously; yield so it and the
 	// other app get the CPU promptly.
 	if (CScheduler::IsActive ())
@@ -2175,7 +2177,7 @@ int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 		I.x = pW->X () + pW->ChromeL (); I.y = pW->Y () + pW->ChromeT ();
 		I.w = pW->ClientWidth (); I.h = pW->ClientHeight ();
 		I.flags = pW->Flags (); I.alpha = pW->Alpha (); I.gen = pW->Gen ();
-		I.state = pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0;
+		I.state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0);
 		if (pW == pFs) { I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN; }
 		I.ow = I.oh = I.il = I.it = 0; I.chromeGen = pW->ChromeGen ();
 		if (pW->HasChrome () && pW != pFs) { I.ow = pW->OuterW (); I.oh = pW->OuterH (); I.il = pW->ChromeL (); I.it = pW->ChromeT (); }
@@ -2249,6 +2251,66 @@ int kapi_win_close (unsigned nId)
 	if (pW == 0) return -1;
 	pW->RequestExit ();
 	return 0;
+}
+
+// ---- v64: the modernised CDE desktop's windows ------------------------------------------
+int kapi_win_minimise (unsigned nId)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0) return -1;
+	CWindow *pW;
+	if (nId == 0) { CAddressSpace *pAS = CurrentAS (); pW = pAS != 0 ? pAS->GetWindow () : 0; }
+	else pW = WinById (pWM, nId);
+	if (pW == 0) return -1;
+	pWM->Minimise (pW);
+	return 0;
+}
+
+int kapi_win_geometry (struct kapi_win_geom *pOut)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pW = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWM == 0 || pW == 0 || pOut == 0) return -1;
+	memset (pOut, 0, sizeof *pOut);
+	pOut->x = pW->X (); pOut->y = pW->Y ();
+	pOut->w = pW->OuterWidth (); pOut->h = pW->OuterHeight ();
+	pOut->cw = pW->ClientWidth (); pOut->ch = pW->ClientHeight ();
+	pWM->WorkArea (&pOut->ax, &pOut->ay, &pOut->aw, &pOut->ah);
+	pOut->state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0);
+	return 0;
+}
+
+// Resize the caller's window, its canvas (and frame copies) growing when needed: new memory
+// mapped at the same addresses (the old kept a few frames for the compositor, then freed).
+unsigned *kapi_resize_window2 (int w, int h, int *pStride)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || w <= 0 || h <= 0)
+	{
+		return 0;
+	}
+	if (w > g_nScreenWidth) w = g_nScreenWidth;		// (no bigger than the screen)
+	if (h > g_nScreenHeight) h = g_nScreenHeight;
+	if (w > pWin->Canvas ()->Width () || h > pWin->Canvas ()->Height ())
+	{
+		if (!pWin->Grow (w, h))
+		{
+			return 0;
+		}
+		TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
+		pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
+		if (pWin->HasChrome ())
+		{
+			pAS->MapContig (USER_WINDOW_CHROME,          pWin->ChromePhys (0), pWin->ChromePages (0), Attr);
+			pAS->MapContig (USER_WINDOW_CHROME_INACTIVE, pWin->ChromePhys (1), pWin->ChromePages (1), Attr);
+		}
+		pAS->FlushTLB ();
+	}
+	pWin->SetLogicalSize (w, h);
+	if (pStride != 0) *pStride = pWin->Canvas ()->Width ();
+	return (unsigned *) USER_WINDOW_CANVAS;
 }
 
 }  // extern "C"

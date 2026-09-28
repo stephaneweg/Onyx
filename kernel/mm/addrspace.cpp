@@ -339,6 +339,12 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 	return TRUE;
 }
 
+void CAddressSpace::FlushTLB (void)
+{
+	u64 ulArg = (u64) m_nASID << TTBR0_ASID_SHIFT;
+	asm volatile ("dsb ishst; tlbi aside1is, %0; dsb ish; isb" :: "r" (ulArg) : "memory");
+}
+
 void CAddressSpace::MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr)
 {
 	for (unsigned i = 0; i < nPages; i++)

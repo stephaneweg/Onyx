@@ -2,17 +2,20 @@
 #include "wtk/menu.h"		// Menu::shortcut (keys go through the menu first)
 #include "wtk/skin.h"		// wk_decorate_window
 #include "wtk/font.h"		// wtk::init (load the global font family at startup)
+#include "wtk/dialog.h"		// PopupMenu (the window menu)
 #include "applib.h"		// should_exit, msleep, pump_events
 
 namespace wtk {
 
 Root::Root (int w, int h, const char *title) : Widget (0, 0, w, h), bg (C_BG),
-  m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true)
+  m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true),
+  m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h)
 { init (kapi_create_window (w, h, title)); }
 
 Root::Root (int x, int y, int w, int h, const char *title, unsigned flags)
   : Widget (0, 0, w, h), bg (C_BG),
-    m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true)
+    m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true),
+    m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h)
 { init (kapi_create_window_ex (x, y, w, h, title, flags)); }
 
 void Root::init (unsigned *fb)
@@ -97,6 +100,10 @@ void Root::ptrEvent (unsigned long, int ev, long v)
 	case GUI_EVENT_DRAG_DONE:
 		r->onDragDone (GUI_DND_PID (v), GUI_DND_FLAGS (v));
 		return;
+	case GUI_EVENT_WINCTL:			// a title button (v64): the window menu, maximise
+		if (v == KAPI_FRAME_MENU) r->windowMenu ();
+		else if (v == KAPI_FRAME_MAXIMISE) r->maximise (!r->maximised ());
+		return;
 	default:
 		break;
 	}
@@ -112,6 +119,60 @@ void Root::keyEvent (unsigned long, int ev, long v)
 }
 
 // ---- tooltips -------------------------------------------------------------------------------
+// ---- the frame's buttons (v64) -------------------------------------------------------------
+void Root::setResizable (bool on)
+{
+	m_resizable = on;
+	wk_window_state ((m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
+	wk_decorate_window ();
+}
+
+void Root::maximise (bool on)
+{
+	if (!m_resizable || on == m_maxed) return;
+	struct kapi_win_geom g;
+	if (kapi_win_geometry (&g) != 0) return;
+	int x, y, cw, ch;
+	if (on)
+	{
+		m_rx = g.x; m_ry = g.y; m_rw = width; m_rh = height;
+		x = g.ax; y = g.ay; cw = g.aw - (g.w - g.cw); ch = g.ah - (g.h - g.ch);
+	}
+	else { x = m_rx; y = m_ry; cw = m_rw; ch = m_rh; }
+	if (cw < 1 || ch < 1) return;
+	int stride = cw;
+	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	if (fb == 0) return;
+	canvas.adopt (fb, cw, ch, stride);
+	kapi_move_window (x, y);
+	m_maxed = on;
+	width = cw; height = ch;
+	layout ();					// (the anchors, the layouts)
+	invalidate (true);
+	wk_window_state ((m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
+	wk_decorate_window ();
+	onResized ();
+}
+
+void Root::windowMenu ()
+{
+	enum { WM_RESTORE = 1, WM_MAXIMISE, WM_MINIMISE, WM_CLOSE };
+	tooltipHide ();
+	PopupMenu m (2, 0);
+	if (m_maxed) m.add ("Restore", WM_RESTORE);
+	else m.add ("Maximise", WM_MAXIMISE, m_resizable);
+	m.add ("Minimise", WM_MINIMISE);
+	m.separator ();
+	m.add ("Close", WM_CLOSE, true, "Ctrl+Q");
+	switch (m.run ())
+	{
+	case WM_RESTORE:  maximise (false); break;
+	case WM_MAXIMISE: maximise (true); break;
+	case WM_MINIMISE: kapi_win_minimise (0); break;
+	case WM_CLOSE:    kapi_menu_command (MENU_QUIT); break;
+	}
+}
+
 class ToolTipBox : public Widget
 {
 public:

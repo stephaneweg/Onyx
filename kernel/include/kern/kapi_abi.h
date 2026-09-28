@@ -71,7 +71,12 @@
 //      its offset and stride), x / y framed by the kernel on the way (no common array to make).
 // v63: + gpu_vbuf -- GPU-visible memory the app writes: gpu_render3 draws vertices there in place
 //      (framed in place, clipped into its free end: nothing copied).
-#define KAPI_ABI_VERSION	63
+// v64: + win_minimise / win_geometry / resize_window2 -- the modernised CDE desktop's windows:
+//      the frame's title buttons (the window menu, minimise, maximise, close: KAPI_FRAME_*,
+//      GUI_EVENT_WINCTL), minimised windows (KAPI_WIN_MINIMISED), maximise (a window grows past
+//      its first size), the work area; the frames' rounded corners (their see-through pixels:
+//      the chrome's top byte); WIN_FLAG_ALPHA (per-pixel see-through windows).
+#define KAPI_ABI_VERSION	64
 
 #ifdef __cplusplus
 extern "C" {
@@ -153,6 +158,36 @@ struct kapi_chrome
 	int       chrome_w, chrome_h;	// outer size of each chrome copy
 	int       inset_l, inset_r, inset_t, inset_b;	// chrome insets (client offset)
 	char      title[48];		// window title (kernel-owned copy)
+};
+
+// The window frame (v64): the kernel's metrics (kern/gui/window.h WIN_TITLEBAR_H, WIN_BORDER)
+// and the title buttons' places -- the kernel hit-tests them, the app draws them into its chrome
+// copies (wtk: user/wtk/skin.cpp). The window menu at the left; from the right: close, maximise,
+// minimise -- each KAPI_FRAME_BTN_W x _H, _Y below the frame's top, the outer ones _EDGE from
+// its side, _STEP from one to the next. The corners are rounded (radius KAPI_FRAME_RADIUS): in
+// the chrome copies a pixel's top byte is its transparency (0 opaque .. 255 see-through), heeded
+// in the four corner squares only (the rest of the frame is opaque).
+#define KAPI_FRAME_TITLE_H	28
+#define KAPI_FRAME_BORDER	4
+#define KAPI_FRAME_RADIUS	8
+#define KAPI_FRAME_BTN_W	22
+#define KAPI_FRAME_BTN_H	19
+#define KAPI_FRAME_BTN_Y	5
+#define KAPI_FRAME_BTN_EDGE	6
+#define KAPI_FRAME_BTN_STEP	25
+#define KAPI_FRAME_MENU		0	// the title buttons (GUI_EVENT_WINCTL's value: MENU, MAXIMISE;
+#define KAPI_FRAME_CLOSE	1	// the kernel closes and minimises by itself)
+#define KAPI_FRAME_MAXIMISE	2
+#define KAPI_FRAME_MINIMISE	3
+// The caller's window (v64 win_geometry): its frame's place and size on the screen, its client
+// area's size, the work area (the screen less the menu bar and the dock: where a maximised window
+// goes), KAPI_WIN_* state.
+struct kapi_win_geom
+{
+	int x, y, w, h;			// the whole window (frame included)
+	int cw, ch;			// its client area
+	int ax, ay, aw, ah;		// the work area
+	unsigned state;
 };
 
 // A USB gamepad's raw state (ABI v50, kapi_pad_state). For a pad Circle knows (props bit 0:
@@ -238,6 +273,7 @@ struct kapi_gpu_batch
 // opacity, a counter that changes whenever it is redrawn / moved / resized, its state.
 #define KAPI_WIN_KEYS		1	// it has the keyboard
 #define KAPI_WIN_FULLSCREEN	2	// the full-screen window (its pixels: the screen's)
+#define KAPI_WIN_MINIMISED	4	// (v64) minimised: not shown until raised (win_raise / raise_app)
 #define KAPI_WIN_DESKTOP	0xFFFFFFFFu	// the id of the desktop (listed first: the wallpaper
 						// + the backmost windows, screen-sized; read whole only)
 struct kapi_win_info
@@ -852,6 +888,16 @@ struct TKApiTable
 	// where they are: their x / y framed IN PLACE (draw them again with view 0), the triangles
 	// that need clipping clipped into the buffer's end past nfloats (keep room there).
 	void *(*gpu_vbuf) (unsigned bytes);
+	// --- v64 ---
+	// win_minimise: window id (0: the caller's) minimised -- not shown, no input -- until win_raise
+	// or raise_app brings it back (KAPI_WIN_MINIMISED in win_list) -> 0, -1 no such window.
+	int (*win_minimise) (unsigned id);
+	// win_geometry: the caller's window and the work area into *out -> 0, -1 no window.
+	int (*win_geometry) (struct kapi_win_geom *out);
+	// resize_window2: as resize_window, but the canvas and the frame's copies grow past their first
+	// size when needed (new memory, at the same addresses: their pixels are lost -- redraw them; the
+	// frame: get_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: size kept).
+	unsigned *(*resize_window2) (int w, int h, int *stride);
 };
 
 #ifdef __cplusplus

@@ -171,7 +171,7 @@ void SyscallEntry (TTrapFrame *pFrame)
 		{
 			CAddressSpace *pPresAS = (CAddressSpace *) CScheduler::Get ()->GetCurrentTask ()->GetUserData (TASK_USER_DATA_USER);
 			CWindow *pPresWin = pPresAS != 0 ? pPresAS->GetWindow () : 0;
-			if (pPresWin != 0) pPresWin->Damage (); else ScreenDirty ();
+			if (pPresWin != 0) pPresWin->PresentDamage (); else ScreenDirty ();
 		}
 		if (CScheduler::IsActive ())
 		{

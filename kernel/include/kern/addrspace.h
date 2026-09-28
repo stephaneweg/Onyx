@@ -60,6 +60,10 @@ public:
 	// Load TTBR0_EL1 = L2-base | (ASID << 48); isb.
 	void Activate (void);
 
+	// Forget this space's cached translations on every core (after remapping pages already
+	// mapped: MapContig over a live range, e.g. a window's canvas that grew).
+	void FlushTLB (void);
+
 	u8 GetASID (void) const			{ return m_nASID; }
 
 	// The TTBR0_EL1 value that selects this space (an app core loads it: kern/appcore.h).

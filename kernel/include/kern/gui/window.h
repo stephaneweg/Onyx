@@ -11,6 +11,7 @@
 #define _kern_gui_window_h
 
 #include <kern/gui/gimage.h>
+#include <kern/kapi_abi.h>		// KAPI_FRAME_* (the frame's metrics, shared with the apps)
 #include <circle/spinlock.h>
 #include <circle/types.h>
 
@@ -48,10 +49,11 @@ void ScreenTakeDamage (TScreenDamage *pOut);	// (the compositor) the damage so f
 // into the window skin (active/inactive); the text colour is the title text.
 extern u32 g_WinTitleTextColor;
 
-// Theme + chrome metrics. Match the window skin (wings.bmp, margins 7/7/32/7):
-// a 32 px title-bar region on top and 7 px borders. Used both skinned and flat.
-#define WIN_TITLEBAR_H		32
-#define WIN_BORDER		7
+// The frame's metrics (the modernised CDE desktop, v64: kapi_abi.h KAPI_FRAME_*): a 28 px title
+// bar on top, 4 px borders, corners rounded (radius KAPI_FRAME_RADIUS). The app draws the frame
+// (wtk: user/wtk/skin.cpp); the kernel hit-tests its title buttons and blends its corners.
+#define WIN_TITLEBAR_H		KAPI_FRAME_TITLE_H
+#define WIN_BORDER		KAPI_FRAME_BORDER
 #define WIN_COLOR_FRAME		0x00202028
 #define WIN_COLOR_TITLE		0x000000AA
 #define WIN_COLOR_TITLE_ACT	0x000000FF
@@ -80,6 +82,11 @@ extern u32 g_WinTitleTextColor;
 #define WIN_FLAG_SYSTEM		(1u << 4)	// a system component (menu bar, notifications,
 						// panel, app list, shelf): left out of the open-app
 						// list (kapi_list_windows -> the panel's taskbar)
+#define WIN_FLAG_ALPHA		(1u << 5)	// (v64; borderless windows) the canvas's top byte is a
+						// transparency (0 = opaque, 255 = see-through): each
+						// pixel blended over what lies below; a click on a
+						// see-through pixel goes to what is below (the dock,
+						// the agenda widget on the wallpaper)
 
 #define WIN_MENU_MAX		2048	// max menu spec length (kapi_set_menu)
 
@@ -105,6 +112,9 @@ extern u32 g_WinTitleTextColor;
 					// client coords; payload via kapi_drag_data
 #define GUI_EVENT_DRAG_OVER	16	// a drag hovers us: same layout (flags DND_F_LEAVE = gone)
 #define GUI_EVENT_DRAG_DONE	17	// to the source: lValue = (flags << 32) | target pid
+#define GUI_EVENT_WINCTL	18	// (v64) a title button for the app: lValue = KAPI_FRAME_MENU
+					// (the window menu) or KAPI_FRAME_MAXIMISE (also a double
+					// click on the title bar)
 #define DND_F_COPY		1	// Ctrl held at the drop (copy instead of move)
 #define DND_F_CANCEL		2	// DRAG_DONE: cancelled (Esc)
 #define DND_F_DESKTOP		4	// DRAG_DONE: dropped on the desktop / no window
@@ -167,6 +177,17 @@ public:
 	boolean Topmost (void) const	{ return (m_nFlags & WIN_FLAG_TOPMOST) != 0; }
 	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
 	boolean System (void) const	{ return (m_nFlags & WIN_FLAG_SYSTEM) != 0; }
+	boolean AlphaCanvas (void) const { return (m_nFlags & WIN_FLAG_ALPHA) != 0 && Borderless (); }
+
+	// Minimised (v64): not drawn, not hit, never the active window or the keys' target, until
+	// raised (CWindowManager::Raise). Its area is damaged as it goes and as it comes back.
+	boolean Minimised (void) const	{ return m_bMinimised; }
+	void SetMinimised (boolean bOn)
+	{
+		if (bOn == m_bMinimised) return;
+		if (bOn) { Damage (); m_bMinimised = TRUE; }
+		else { m_bMinimised = FALSE; Damage (); }
+	}
 
 	// The pid of the process owning this window (0 = kernel), for drag & drop results.
 	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
@@ -219,7 +240,21 @@ public:
 	// (the chrome copy is blitted whole: its allocated size when larger)
 	int OuterWidth (void) const	{ int w = ChromeL () + m_nLogicalW + ChromeR (); return HasChrome () && m_nOuterW > w ? m_nOuterW : w; }
 	int OuterHeight (void) const	{ int h = ChromeT () + m_nLogicalH + ChromeB (); return HasChrome () && m_nOuterH > h ? m_nOuterH : h; }
-	void Damage (void) const	{ m_nGen++; ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
+	void Damage (void) const	{ m_nGen++; if (!m_bMinimised) ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
+	// An app's present: its client area only -- so a window refreshing alone (an emulator)
+	// stays wholly opaque to the compositor (CoversOpaque) whatever its frame's corners -- or
+	// the whole window when its frame was redrawn since (get_chrome, a resize) or it is faded.
+	void PresentDamage (void)
+	{
+		if (m_nChromeGen != m_nChromeGenShown || m_nAlpha < 255 || Borderless ())
+		{
+			m_nChromeGenShown = m_nChromeGen;
+			Damage ();
+			return;
+		}
+		m_nGen++;
+		if (!m_bMinimised) ScreenDirtyRect (m_nX + ChromeL (), m_nY + ChromeT (), m_nLogicalW, m_nLogicalH);
+	}
 	// For the remote desktop (rdpd, kapi v56): a serial never reused, and a counter bumped
 	// whenever the window changes (Damage: drawn, moved, resized...; Touch: full screen).
 	unsigned Id (void) const	{ return m_nId; }
@@ -230,12 +265,16 @@ public:
 	unsigned Flags (void) const	{ return m_nFlags; }
 	// Does the window paint every pixel of [x0, x1) x [y0, y1) opaquely? (Then what lies
 	// below it there need not be drawn.)
+	// (A framed window's rounded corners are see-through: a rectangle reaching one is not.)
 	boolean CoversOpaque (int x0, int y0, int x1, int y1) const
 	{
-		if (m_nAlpha < 255 || Transparent ()) return FALSE;
+		if (m_nAlpha < 255 || Transparent () || AlphaCanvas () || m_bMinimised) return FALSE;
 		if (!Borderless () && !HasChrome ()) return FALSE;
-		return x0 >= m_nX && y0 >= m_nY && x1 <= m_nX + OuterWidth () && y1 <= m_nY + OuterHeight ();
+		if (!(x0 >= m_nX && y0 >= m_nY && x1 <= m_nX + OuterWidth () && y1 <= m_nY + OuterHeight ())) return FALSE;
+		return Borderless () || !CornersIn (x0, y0, x1, y1);
 	}
+	// Does [x0, x1) x [y0, y1) (screen) reach a see-through pixel of the frame's corners?
+	boolean CornersIn (int x0, int y0, int x1, int y1) const;
 	const char *Title (void) const	{ return m_Title; }
 
 	// Blit the (app-drawn) chrome + client canvas onto the screen image.
@@ -287,9 +326,20 @@ public:
 
 	// Close box hit-test (screen coords). True if (sx,sy) is on the [x] box.
 	boolean HitCloseBox (int sx, int sy) const;
+	// The title button at (sx, sy) (screen): KAPI_FRAME_MENU / CLOSE / MAXIMISE / MINIMISE, or -1.
+	int HitTitleButton (int sx, int sy) const;
+	// For a WIN_FLAG_ALPHA window: is its pixel at (sx, sy) (screen) not wholly see-through?
+	boolean OpaqueAt (int sx, int sy) const;
+
+	// (v64 resize_window2) Grow the canvas (and the frame's copies) to hold w x h: new memory
+	// (the old freed a few frames later: the compositor may be reading it), the process's
+	// mappings moved to it by the caller. FALSE: no memory (nothing changed).
+	boolean Grow (int w, int h);
+	void FreeRetired (void);		// (the compositor) free what Grow retired, once safe
 
 private:
 	void CloseBoxRect (int *px0, int *py0, int *px1, int *py1) const;
+	boolean AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhys[2], unsigned nPages[2]);
 
 	unsigned	m_nId;		// (Id)
 	mutable volatile unsigned m_nGen;	// (Gen)
@@ -331,6 +381,10 @@ private:
 	volatile unsigned m_nLastPump;	// ticks of the last PopEvent (diagnostics)
 
 	volatile boolean m_bExitRequested;
+	volatile boolean m_bMinimised;		// (SetMinimised)
+	unsigned	m_nChromeGenShown;	// m_nChromeGen at the last whole-window present
+	void	       *m_pRetired[3];		// memory Grow replaced (canvas, chrome x 2), freed later
+	unsigned	m_nRetireFrame;		// the compositor's frame count when it was retired
 };
 
 #define HELD_KEYS	0x110		// logical key codes tracked as "held" (< KEY_DEL + 8)
@@ -446,6 +500,12 @@ public:
 	// Height reserved at the top of the screen by a topmost window at y=0 (the menu
 	// bar); window auto-placement and title-bar drags keep clear of it.
 	int TopInset (void);
+	// The work area (v64): the screen less the menu bar at the top and the topmost windows
+	// standing on its bottom edge (the dock) -- where a maximised window goes.
+	void WorkArea (int *px, int *py, int *pw, int *ph);
+
+	// Minimise a window (v64): hidden until raised; the keys go to the next one.
+	void Minimise (CWindow *pWindow);
 
 	// ---- full-screen apps (ABI v41) ---------------------------------------
 	// While a window is full-screen, the compositor stops drawing (the app presents
@@ -469,6 +529,8 @@ private:
 	CWindow *ActiveLocked (void);
 	CWindow *KeyTargetLocked (void);
 	int TopInsetLocked (void);
+	int BottomInsetLocked (void);
+	void MinimiseLocked (CWindow *pWindow);
 
 	// Push one GUI_EVENT_PTR_* event (client coords) to a window's pointer handler.
 	// nWheel is the signed wheel delta (only meaningful for GUI_EVENT_PTR_WHEEL).
@@ -499,6 +561,10 @@ private:
 	CWindow	  *m_pDragWindow;	// window being dragged by its title bar, or 0
 	int	   m_nDragDX;		// cursor-to-window offset captured at drag start
 	int	   m_nDragDY;
+	CWindow	  *m_pTitleClick;	// the last title-bar press (a double click: maximise)
+	unsigned   m_nTitleClickTicks;
+	CWindow	  *m_pBtnDown;		// a title button pressed (acted on at its release over it)
+	int	   m_nBtnDown;
 
 	// Pointer-stream state for app-side toolkits (windows with a PointerHandler).
 	CWindow	  *m_pPtrOverWindow;	// window the cursor is currently over (for enter/leave)
