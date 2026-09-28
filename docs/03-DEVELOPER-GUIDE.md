@@ -745,7 +745,8 @@ Notes / caveats:
 > (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
 > it blocks ~3 s. Examples: `user/bin/wifiscan.c`, `wpaconf` (Scan button + Combobox).
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
-> (`#include "shelfmsg.h"`, IPC to the `shelf` service) so the Shelf's references follow.
+> (`#include "shelfmsg.h"`, IPC to the `shelf` service: the dock's switcher) so the shelf's
+> references follow.
 > **WPF-style controls (P5)** — all in `wtk/wtk.h`, see `user/Apps/widgets` for each in use:
 > `RadioButton (l, t, w, h, text, group, checked, cb)` — exclusive per `group` among its
 > siblings (`wk_radio_checked (parent, group)`); `GroupBox (l, t, w, h, title)` — a titled
@@ -787,7 +788,64 @@ Notes / caveats:
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
 > a spawned process or a timer there. **`ask.h`**: `ask_begin (title, msg, yes, no)` opens
 > the system Yes / No window (`apps/ask`) without blocking; `ask_poll (h)` returns -1 while
-> open, then 1 / 0.
+> open, then 1 / 0. `ask_text_begin (title, msg, ok, cancel, text)` asks for a line of text
+> the same way (for an app that never has the keyboard: the dock); `ask_text_poll (out, cap)`
+> returns -1, then 1 (the text in `out`) / 0.
+
+> **The look: the modernised CDE (kapi v64).** Every control, and every window's frame, is
+> drawn by code from a few theme colours — no bitmap (docs/gui-redesign/README.md).
+> - **The palette** (`wtk/theme.h`): `C_BG` (an app's background: the face), `C_FACE`,
+>   `C_FACE_HI`, `C_FACE_DN`, `C_BORDER`, `C_TEXT` (on the face), `C_ACCENT` (focus, selection,
+>   checks), `C_DIS`, `C_FIELD` (a text field's, a list's background), `C_FIELD_TEXT`,
+>   `C_SEL_TEXT` (on the accent), `C_FRAME_ACTIVE` / `C_FRAME_INACTIVE` (the frames), `C_DOCK`,
+>   `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by `wtk::init ()`
+>   (the `Root`'s constructor calls it): use them in drawing code, never copy them into a
+>   `static const` or a global initialised at start-up (that runs before the theme is read). The
+>   file: `theme` = Peach / Steel / Sage / Brick / Slate (the window in front's frame; `active` =
+>   any colour instead), `inactive`, `face`, `accent`, `outline` = none / dark / black, `dock`
+>   (the Theme app writes it). Text: `C_TEXT` on the face, `C_FIELD_TEXT` on a field,
+>   `C_SEL_TEXT` on the accent, `wk_ink_on (bg)` on any colour. Content keeps its own colours
+>   (images, games' boards, a terminal's screen); the chrome around it follows the theme.
+> - **The painter** (`wtk/paint.h`, integer only): `wk_tone (c, level)` (a shade: 128 = `c`,
+>   255 = white, 0 = black), `wk_mix`, `wk_rbox` (a rounded box with a vertical gradient, its
+>   corners anti-aliased: per-radius tables), `wk_rline` (its outline), `wk_framed` (the framed
+>   push button: a raised frame, a sunken well, the button in it — the gradients computed at its
+>   size), `wk_raised`, `wk_sunken` (a field), `wk_etch_h / _v / _box`, `wk_check_mark`,
+>   `wk_radio_mark`, `wk_switch_mark`, `wk_scroll_bar`, `wk_slider_mark`, `wk_progress_bar`,
+>   `wk_popup` (a floating panel, its corners keyed), `wk_hilite` / `wk_hilite_ink` (a selected
+>   row and its text), `wk_title_strip`, `wk_glyph` (`WKG_CHECK`, arrows, chevrons, close,
+>   minimise, maximise, restore, lock, gear, power…), `wk_text_c` / `wk_text_l` (style 2 = bold).
+>   `tools/tests/desktop_sim/gallery/main.cpp` shows every control in every state.
+> - **The frame**: `wk_decorate_window ()` (the `Root` calls it; an app drawing its own window
+>   calls it after `kapi_resize_window`) draws the title bar, the borders, the rounded corners
+>   (their outside see-through in the chrome's top byte), the title buttons — the window menu,
+>   minimise, maximise, close, at the kernel's `KAPI_FRAME_*` places — and the title in bold, in
+>   the active and the inactive frames' colours. Close and minimise are the kernel's; the window
+>   menu and maximise come to the app as `GUI_EVENT_WINCTL`, handled by the `Root` (the frame's
+>   state: `wk_window_state (WK_WIN_MENU | WK_WIN_RESIZABLE | WK_WIN_MAXIMISED)`, kept by the
+>   `Root`; an app drawing its own window without a `Root` gets the window-menu button greyed).
+>   An app with its own pointer handler answers `GUI_EVENT_WINCTL` itself: `KAPI_FRAME_MENU` →
+>   `root.windowMenu ()`, `KAPI_FRAME_MAXIMISE` → `root.maximise (!root.maximised ())` (the
+>   terminal does).
+> - **Resizable windows**: an app whose layout follows its window's size (anchored widgets,
+>   layout containers, or its own `layout ()`) calls **`root.setResizable (true)`**: its maximise
+>   button (and a double click on the title) fills the work area — between the menu bar and the
+>   dock — and restores it (`Root::maximise`: `kapi_resize_window2`, the canvas re-adopted, the
+>   frame redrawn), then **`virtual void onResized ()`**. Otherwise the button is greyed. The
+>   window menu (its button, top left): Restore / Maximise, Minimise, Close (`Root::windowMenu`).
+> - **`PopupMenu (x, y)`** (`wtk/dialog.h`): a pop-up menu — `add (label, id, enabled, hint)`,
+>   `separator ()`, `run ()` → the id picked, −1 (a click elsewhere, Esc). A context menu.
+> - **See-through windows** (`WIN_FLAG_ALPHA`, borderless): the canvas's top byte is each pixel's
+>   transparency (0 opaque .. 255 see-through; a click on a wholly see-through pixel goes below).
+>   Clear to `0xFF000000`, then draw with **`wk_paint_alpha (true)`** so the anti-aliased edges
+>   over see-through pixels keep their colour (`wk_blend_px` for single pixels); `0xFE000000`
+>   (almost clear) still takes the clicks. Examples: `dock`, `menubar`, `agenda`.
+> - **The desktop simulator** (`sh tools/tests/desktop_sim/run.sh`): a wtk app built for the PC
+>   against a stand-in kernel (`fakekapi.cpp`: files read from `sdcard/` — what the app saves
+>   goes to `/tmp/onyx_sim_writes`, never to the card —, a script of pointer / key / menu events,
+>   `dump` writes its window — frame and client — with its transparency), laid over the
+>   wallpaper by `compose.py`; `wmtest.cpp` checks the kernel's window manager on the PC.
+>   `shots.sh` makes the documentation's screenshots with it (below).
 
 > **Menus.** Put commands in the **system menu bar**, not in button rows. After creating
 > the `Root`, build a `wtk::Menu` once and publish it:
@@ -1108,15 +1166,19 @@ barwidth = 40
 
 ### Screenshots and documentation
 
-- **Screenshots (simulated but faithful)**: [`tools/screenshot/render.py`](../tools/screenshot/render.py)
-  loads the **real** skins (`SD:skins/wings/button/closebgs.bmp`), the **real** font
-  `circle/lib/font8x16.cpp` and the icons `SD:apps/<name>.app/icon.bmp`, and reproduces the
-  drawing routine of each app — so the output matches the real OS. Run
-  `python tools/screenshot/render.py` → writes the PNGs into `screenshots/` (`desktop.png` =
-  overview, plus one screenshot per app, window only on a transparent background).
-  **To add an app**: write `app_<name>()` that reproduces the `redraw()` of
-  `user/<name>.c` (same colors/coords), add `("<name>", app_<name>)` to the `APPS` list,
-  and re-run.
+- **Screenshots (the real apps)**: [`tools/tests/desktop_sim/shots.sh`](../tools/tests/desktop_sim/shots.sh)
+  builds each documented app **for the PC** against the desktop simulator's stand-in kernel
+  (`fakekapi.cpp`, wtk with its real image codecs and fonts), plays a short script of events
+  (clicks, keys, menu commands; a canned shell session for the terminal `SIM_PIPE`, an IRC server
+  `SIM_NET`, sample files from `tools/tests/desktop_sim/sd/` `SIM_OVERLAY`), dumps its window —
+  the frame wtk drew and the client area — and writes `screenshots/<name>.png` (`shot.py`: the
+  window alone, its rounded corners transparent) or lays several over the Voronoi wallpaper
+  (`compose.py`: `desktop.png`, `menubar.png`, `volume.png`, `clock.png`, `wifimenu.png`,
+  `dock.png`, `agenda.png`). Run `sh tools/tests/desktop_sim/shots.sh` (all) or
+  `sh tools/tests/desktop_sim/shots.sh paint dock` (some); ~15 s, needs g++ and Pillow + numpy.
+  **To add an app**: add it to `APPS` and a line `sim <app> <name> "<script>" …; png <name>`.
+  (`nintendoemu.png` and `arkanoid.png` — an emulator, a BASIC program — still come from the
+  older, simulated renderer [`tools/screenshot/render.py`](../tools/screenshot/render.py).)
 - **Word/PDF exports**: [`docs/build_docs.py`](build_docs.py) converts each `.md` in
   `docs/` into `.docx` (via `pandoc`) then into `.pdf` (via Word/`docx2pdf`), in
   `docs/exports/`. Run `python docs/build_docs.py` after any modification to the `.md` files.

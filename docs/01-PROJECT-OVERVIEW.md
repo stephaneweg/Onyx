@@ -13,9 +13,9 @@ a file manager, and about thirty applications.
 It **runs on real Raspberry Pi 4 hardware** (not just in emulation).
 
 ![The Onyx desktop](../screenshots/desktop.png)
-*The Onyx desktop: panel/launcher on the edge, composited windows (fractal
-browser, active terminal, calculator), Voronoi wallpaper. (Simulated screenshot, rendered
-from the real skins/font/icons.)*
+*The Onyx desktop, a modernised CDE: the menu bar, the agenda on the Voronoi wallpaper, a
+calculator behind (grey frame), the terminal in front (its frame in the theme's colour), the dock
+with its Internet drawer open. (The real apps, run on a PC by the desktop simulator.)*
 
 ## 2. Philosophy: "own the top, reuse the bottom"
 

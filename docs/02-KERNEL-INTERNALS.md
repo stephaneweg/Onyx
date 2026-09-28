@@ -528,7 +528,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 58`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 64`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -541,7 +541,7 @@ v26 = `kbd_ready`, v27 = `set_keymap_data`, v28 = `get_chrome`/`draw_text_buf`
 consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
-`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`, v54 = `kapi_gpu_vertex3` second (added) colour `r2 g2 b2 a2` in place of `reserved`, `KAPI_GPU_B_ALPHATEST(t)`, v55 = `fullscreen_direct`, v56 = `win_list`/`win_read`/`win_raise`/`win_close`, v57 = `seek`, v58 = `code_alloc`, v59 = `fsize64`, v60 = `sound_volume`/`wlan_reconnect`, v61 = `gpu_program`/`gpu_render2`, v62 = `gpu_render3`, v63 = `gpu_vbuf`).
+`memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`, v54 = `kapi_gpu_vertex3` second (added) colour `r2 g2 b2 a2` in place of `reserved`, `KAPI_GPU_B_ALPHATEST(t)`, v55 = `fullscreen_direct`, v56 = `win_list`/`win_read`/`win_raise`/`win_close`, v57 = `seek`, v58 = `code_alloc`, v59 = `fsize64`, v60 = `sound_volume`/`wlan_reconnect`, v61 = `gpu_program`/`gpu_render2`, v62 = `gpu_render3`, v63 = `gpu_vbuf`, v64 = `win_minimise`/`win_geometry`/`resize_window2` — the modernised CDE desktop's windows: the frame's metrics and title buttons shared with the apps (`KAPI_FRAME_*`), `GUI_EVENT_WINCTL`, `KAPI_WIN_MINIMISED`, the frames' rounded corners, `WIN_FLAG_ALPHA`).
 
 ### Categories of exposed functions
 
@@ -586,6 +586,7 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 | GPU (v61) | `gpu_program(handle, p)`: the app's own shaders — `struct kapi_gpu_program { vs, cs, fs; nvs, ncs, nfs; inputs, csInputs, csOutputs, varyings, flags }`, three V3D 4.2 QPU programs (≤ 4096 instructions each; built at run time by `user/v3d/qpu.h`) copied into GPU memory; a vertex is `inputs` floats (4..64, the clip-space x y z w first; the coordinate shader reads the first `csInputs`, writes `csOutputs` ≥ 6: Xc Yc Zc Wc Xs Ys), the vertex shader writes Xs Ys Zs 1/Wc then `varyings` (≤ 64); flags `KAPI_GPU_P_FS_4WAY` (4 threads, else 2), `P_FS_FINAL` (no thread switch — unreliable on wide targets, see §15), `P_FS_ZWRITE`; `handle` < 0 makes one (≤ 256), ≥ 0 replaces it, `p` = 0 frees it → the handle, −1, −2, −4 as `gpu_texture`; freed when the program ends. `gpu_render2(f, v, nv, stride, b, nb, uni, nuni)`: one frame (as `gpu_render`) of `nv` vertices of `stride` floats in `nb` batches `struct kapi_gpu_batch2 { first, count, program, flags, blend, wmask, scissor[4], vsUni, vsNUni, csUni, csNUni, fsUni, fsNUni, tex[8], texFlags[8], texUni[8] }`: each with its program, its uniforms (three ranges of `uni[nuni]`, ≤ 2^20 words), up to 8 textures — the kernel writes each one's TMU words p0 (texture state, 16-bit float RG / BA) and p1 (a sampler from `texFlags`: `B_LINEAR`, `B_WRAP_S/T`) at `fsUni + texUni[i]` —, depth / cull flags (`B_ZFUNC`, `B_NOZWRITE`, `B_CULL_*`), blending `KAPI_GPU_BLEND2(cSrc, cDst, aSrc, aDst, cEq, aEq)` (the V3D factors and equations), a colour write mask (`wmask`: the channels not written) and a scissor (x y w h in the target, top-left origin; w ≤ 0: none) → 0, −1, −2, −3. The triangles are clipped on the CPU as for `gpu_render` (`V3DClipTriangleN`: every float of the vertex interpolated). See §15. |
 | GPU (v62) | `gpu_render3(f, v, nfloats, b, nb, uni, nuni, view)`: `gpu_render2` with each batch's vertices where the app keeps them — `struct kapi_gpu_batch3 { struct kapi_gpu_batch2 b; unsigned off, stride; }`: `b.count` vertices of `stride` floats (≥ the program's inputs, ≤ 64) from float `off` of `v[nfloats]` (`b.first` unused) — and their x / y framed by the kernel on the way, `x' = view[0] x + view[1] w`, `y' = view[2] y + view[3] w` (`view` 0: as they are): no common array for the app to make first → as `gpu_render2`. gcemu's TEV renderer gives it its recorder's frame as it is. See §15. |
 | GPU (v63) | `gpu_vbuf(bytes)`: memory the GPU reads too — low, physically contiguous, mapped into the program (the surface arena); up to 8 a program, 64 MB each, freed when it ends → its address, 0 none. `gpu_render3` with `v[nfloats]` inside one draws the vertices **where they are**: their x / y framed **in place** (the program draws the same vertices again with `view` 0), the triangles inside every plane drawn as runs of them, the others clipped into the buffer's end past `nfloats` (keep room there) — nothing copied. |
+| Windows (v64) | The modernised CDE desktop's windows. `win_minimise(id)`: window `id` (0: the caller's) minimised — not drawn, not hit, never active nor the keys' target — until `win_raise` / `raise_app` brings it back (`KAPI_WIN_MINIMISED` in `win_list`'s state) → 0 / −1. `win_geometry(out)`: `struct kapi_win_geom { x, y, w, h; cw, ch; ax, ay, aw, ah; state }` — the caller's whole window (frame included), its client size, the **work area** (the screen less the menu bar at the top and the topmost windows standing on the bottom edge: the dock) → 0 / −1. `resize_window2(w, h, &stride)`: as `resize_window`, but the canvas and the frame's copies **grow** past their first size when needed (new memory at the same addresses; their pixels are lost: redraw, `get_chrome` again) → the canvas and its stride, 0 (no memory: the size kept). With it: the frame's metrics `KAPI_FRAME_TITLE_H` 28, `KAPI_FRAME_BORDER` 4, `KAPI_FRAME_RADIUS` 8 (the chrome copies' top byte: a transparency, heeded in the corner squares), the title buttons' places `KAPI_FRAME_BTN_W/H/Y/EDGE/STEP` (the window menu at the left; close, maximise, minimise from the right: `KAPI_FRAME_MENU/CLOSE/MAXIMISE/MINIMISE`); `GUI_EVENT_WINCTL` (18: the window menu, maximise — for the app); `WIN_FLAG_ALPHA` (32: a borderless window's pixels carry their transparency). See §10.2. |
 | Held keys (v48) | `key_held(key)` → 1 while the key is held **and** the caller's window has the keyboard (`KeyTargetLocked`), else 0 — for games, since key events only report presses. Keys: `KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` (the **US position** of the key), `'0'..'9'`. The WM keeps two bitsets over the logical codes: the USB one, rebuilt from every raw report (`KeyRawStub` → `SetUsbHeld`, HID usage → key), and the injected one (`inject_key_held(key, down)`, from vncd's RFB key down / up); `KeyHeld` ORs them. |
 | FM (v47) | `sound_instrument(voice, const struct kapi_fm_instrument *)` — a 2-operator FM instrument (OPL2 style, `struct kapi_fm_op op[2]` = modulator / carrier: `mult`, `level`, `ksl`, `attack`, `decay`, `sustain`, `release`, `wave`, `flags` FM_SUSTAINED / FM_TREMOLO / FM_VIBRATO / FM_KSR; `feedback`, `connection`) for that voice; then `sound_start(voice, milliHz, SOUND_FM, volume)`. Owner only. See §12. |
 | Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
@@ -667,24 +668,65 @@ the author's FreeBASIC `SimpleOS`.
 
 ### 10.2 Windows and compositor
 
-- **`CWindow`**: position, logical size, title, flags (`WIN_FLAG_BORDERLESS`), a
-  `GImage` **canvas allocated 64 KB-aligned and physically contiguous** (so it can be mapped into
-  the app at `USER_WINDOW_CANVAS` = 12 GB — the app draws directly, with no per-pixel call),
-  up to 16 widgets, an event queue (spinlock-protected ring), the app's
-  keyboard/click handlers, and a possible modal dialog.
-- Decoration: title bar (32 px), border (7 px), close box, drawn via the
-  skins (see 10.4). *Borderless* windows (panel) have no decoration.
-- **`CWindowManager`** (singleton): Z-ordered list (the last = on top = active),
-  protected by a `CSpinLock`. `Add`/`Remove`/`Raise`. `Composite(screen)`:
-  1. snapshot the list under the lock, then blit outside the lock;
-  2. clears the desktop, blits the wallpaper;
-  3. draws the windows from back to front (`DrawTo`, `bActive` for the last one);
-  4. draws the cursor last (`mousecur.bin` bitmap or fallback arrow).
+- **`CWindow`**: position, logical size, title, flags (`WIN_FLAG_BORDERLESS`; `BACKMOST`: the
+  desktop's band; `TOPMOST`: the menu bar, the dock — above every window, never active, never the
+  keys; `TRANSPARENT`: the magenta key; `SYSTEM`: not listed as an open app; `ALPHA` (v64): the
+  canvas's top byte is a transparency), a `GImage` **canvas allocated 64 KB-aligned and
+  physically contiguous** (mapped into the app at `USER_WINDOW_CANVAS` = 12 GB — the app draws
+  directly, with no per-pixel call), the frame's two copies (active, inactive: mapped at
+  `USER_WINDOW_CHROME` / `_INACTIVE`, drawn by the app — kapi v28 `get_chrome`; wtk:
+  `wk_decorate_window`), an event queue (spinlock-protected ring), the app's handlers, its menu.
+- **The frame** (v64, the modernised CDE): a 28 px title bar and 4 px borders (`WIN_TITLEBAR_H` /
+  `WIN_BORDER` = `KAPI_FRAME_TITLE_H` / `KAPI_FRAME_BORDER`, shared with the apps in `kapi_abi.h`),
+  rounded corners (radius `KAPI_FRAME_RADIUS` = 8): in the frame's copies a pixel's top byte is
+  its transparency, heeded in the four corner squares only. `DrawTo` blits the frame's **bands**
+  only (the title bar, the bottom border, the two sides beside the client area — never under it)
+  opaque, the corner squares blended by their pixels' transparency (`BlendAlphaRect`), then the
+  client canvas. `CoversOpaque (rect)` — may the compositor skip what lies below? — leaves out only
+  the corners' see-through pixels (`CornersIn`: on a corner's row *k* from the edge, its first
+  `CornerSpan (k)` pixels — those not wholly inside the arc): a rectangle inside the window still
+  covers. *Borderless* windows have no frame.
+- **The present's damage** (`PresentDamage`): an app's present dirties **its client area only**
+  — its whole window when its frame changed since (`get_chrome`, a resize: `ChromeGen`) or it is
+  faded — so a window refreshing alone (an emulator) keeps the compositor's fast path: its client
+  rectangle is covered, nothing below it is drawn.
+- **The title buttons** (v64): the window menu at the left; close, maximise, minimise from the
+  right, at `KAPI_FRAME_BTN_*` (the app draws them, the kernel hit-tests them:
+  `HitTitleButton`). Close and minimise act at their release over them (`RequestExit`,
+  `Minimise`); the window menu (at the press) and maximise (also a double click on the title
+  bar) go to the app as `GUI_EVENT_WINCTL` (18; value `KAPI_FRAME_MENU` / `KAPI_FRAME_MAXIMISE`):
+  wtk's `Root` shows its window menu, maximises and restores (the developer guide).
+- **Minimised windows** (v64, `SetMinimised`): not drawn, not hit, never the active window nor the
+  keys' target (`ActiveLocked`, `KeyTargetLocked`), their area damaged as they go and come back;
+  `Raise` (`win_raise`, `raise_app`: the dock, the menu bar's Open Windows) brings one back.
+- **See-through windows** (`WIN_FLAG_ALPHA`, borderless): each pixel blended by its top byte (0
+  opaque .. 255 see-through, times the window's fade); never `CoversOpaque`; a click on a wholly
+  see-through pixel goes to the window below (`HitTest` → `OpaqueAt`). The dock (its rounded
+  corners, the gap under it — almost clear, top byte 254, while a drawer is open, to catch a click
+  elsewhere), the menu bar (its drop-downs), the agenda widget (its text straight on the wallpaper).
+- **The work area** (`WorkArea`, v64 `win_geometry`): the screen less the top inset (a topmost
+  window at y = 0: the menu bar, its smallest height) and the bottom inset (the topmost windows
+  standing on the bottom edge: the dock, its smallest height). New windows are placed in it; a
+  maximised window fills it.
+- **A window that grows** (v64 `resize_window2`): `CWindow::Grow` allocates a bigger canvas and
+  frame copies; the process's mappings are moved to them at the same addresses (`MapContig`, then
+  `CAddressSpace::FlushTLB`: `tlbi aside1is`); the old memory is retired and freed by the
+  compositor three frames later (`FreeRetired`: a frame begun before may still be reading it).
+- **`CWindowManager`** (singleton): a Z-ordered list (bands: backmost, normal, topmost; the last =
+  on top), protected by a `CSpinLock`. `Add`/`Remove`/`Raise`/`Minimise`. `Composite(screen)`:
+  1. snapshot the list under the lock (the compositor also frees the grown windows' old memory),
+     then blit outside the lock;
+  2. find the topmost window that covers the clip rectangle opaquely: nothing below it is drawn;
+  3. otherwise clear the desktop and blit the wallpaper;
+  4. draw the windows back to front (`DrawTo`, `bActive` for the keys' window);
+  5. the drag badge, then the cursor (`mousecur.bin` bitmap or a fallback arrow).
 
 - **Dirty rectangles**: `Composite` honours the screen image's clip rectangle, so the
   compositor task redraws only the damaged rectangles (see the service tasks above); host
-  test `sh tools/tests/run_gui_test.sh` (clipped drawing = full drawing inside the clip,
-  nothing touched outside).
+  tests `sh tools/tests/run_gui_test.sh` (clipped drawing = full drawing inside the clip,
+  nothing touched outside) and `sh tools/tests/desktop_sim/run.sh` (the v64 windows:
+  `wmtest.cpp` — the corners, `CoversOpaque`, the present's damage, the title buttons, minimise,
+  the see-through windows' clicks, the work area, a canvas growing).
 
 ### 10.3 Widgets (kernel side)
 
@@ -711,20 +753,19 @@ slider/scrollbar), release edge (click/toggle). Focus follows the click
 keys (`KEY_UP`, `KEY_ENTER`, …) and delivered to the modal dialog, otherwise to the focused
 widget, otherwise to the app's keyboard handler.
 
-### 10.4 Skins, theme, wallpaper
+### 10.4 Theme, wallpaper
 
-- **`CSkin`**: "9-slices" BMP skin (fixed corners, repeated edges, center filled with a
-  sampled color). `wings.bmp` (window chrome) is loaded **twice** and
-  **tinted on the fly** (`Colorize`): an *active* version (warm gold) and an *inactive*
-  one (slate) — the compositor chooses according to the focus, without per-pixel tint
-  computation.
-- **Runtime theme**: `kapi_set_window_theme(active, inactive, text)` re-tints the chrome
-  live (used by the theme editor). Persisted by writing `SD:skins/theme.txt` (read at boot).
+- **The theme** is the apps' business: the windows' frames, like every control, are drawn by the
+  apps (wtk: `user/wtk/skin.cpp`, `paint.cpp` — by code, no bitmap) from `SD:/etc/theme.txt`
+  (`theme` = Peach / Steel / Sage / Brick / Slate, or `active`; `inactive`, `face`, `accent`,
+  `outline`, `dock`: read by `wtk/theme.cpp`); the kernel only blits the frames. Of that file the
+  kernel reads only `wheelspeed=N` at boot. (The old 9-slice window skin — `wings.bmp` tinted by
+  `CSkin` — and `kapi_set_window_theme` are no longer used by the desktop.)
 - **Wallpaper**: `set_wallpaper` (BMP), `wallpaper_generate` (toroidal Voronoi generated
   at runtime), or **an app-drawn background**: `wallpaper_buffer` maps the screen-sized
   shared buffer at `USER_WALLPAPER_CANVAS` (13 GB), the app draws, `wallpaper_commit` makes it
   live. The frames are **owned by the kernel** → the background persists after the app exits
-  (the `voronoy` case).
+  (the `voronoy` case). The agenda widget reads it to choose its ink.
 
 ### 10.5 Modal dialogs
 

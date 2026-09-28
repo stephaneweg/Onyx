@@ -32,9 +32,10 @@ of the **Circle** bare-metal framework.
   [`assets/make_reference.py`](assets/make_reference.py), which builds the pandoc
   `reference.docx`.
 
-Screenshots (simulated, faithful to the real skins/font/icons) live in
+Screenshots (the real apps' windows) live in
 [`../screenshots/`](../screenshots/) and are produced by
-[`tools/screenshot/render.py`](../tools/screenshot/render.py).
+[`tools/tests/desktop_sim/shots.sh`](../tools/tests/desktop_sim/shots.sh) (the real apps, run on
+a PC against a stand-in kernel).
 
 ## A note on the legacy docs
 

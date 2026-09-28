@@ -1,18 +1,21 @@
 # The desktop redesign — a modernised CDE
 
-> **Status: designed with the user (2026-09-28), nothing implemented yet.** The branch
-> `Elegant-UI` restarted from `main` for it. It replaces an earlier direction — a phone-like
-> "elegant layout" (a top bar, a navigation bar, a home screen, one app at a time) that was built
-> on that branch, then dropped by the user in favour of this one, which keeps and reuses today's
-> windowed desktop. That work stays on the branch **`archive/elegant-ui-2026-09-28`**, to take
-> pieces back from when they are needed: the per-pixel transparency (`WIN_FLAG_ALPHA`,
-> `kernel/gui/window.cpp`'s `BlendAlphaRect`), the drawing kit `user/elegant.h` (anti-aliased
-> `.aaf` fonts, rounded boxes, glows), `tools/fonts/gen_aafont.py` and `sdcard/fonts/`, the PC
-> simulator `tools/tests/elegant_sim/`; its analysis is that branch's `docs/gui-redesign/README.md`.
+> **Status: designed with the user (2026-09-28), implemented on `Elegant-UI` the same day**
+> (§5: what landed where; the user guide `docs/04` §5, §6, §11 describes it; the screenshots
+> in `screenshots/` are the real apps). The branch `Elegant-UI` restarted from `main` for it.
+> It replaces an earlier direction — a phone-like "elegant layout" (a top bar, a navigation bar,
+> a home screen, one app at a time) that was built on that branch, then dropped by the user in
+> favour of this one, which keeps and reuses today's windowed desktop. That work stays on the
+> branch **`archive/elegant-ui-2026-09-28`**, to take pieces back from when they are needed:
+> the per-pixel transparency (`WIN_FLAG_ALPHA`, `kernel/gui/window.cpp`'s `BlendAlphaRect` —
+> taken back), the drawing kit `user/elegant.h` (anti-aliased `.aaf` fonts, rounded boxes,
+> glows), `tools/fonts/gen_aafont.py` and `sdcard/fonts/`, the PC simulator
+> `tools/tests/elegant_sim/`; its analysis is that branch's `docs/gui-redesign/README.md`.
 
 The mock-ups are made by `python3 tools/screenshot/mockup_cde_modern.py` (the chosen look) and
 `python3 tools/screenshot/mockup_retro.py` (the retro skins it came from), both reusing
-`render.py`'s desktop (the same windows as `screenshots/desktop.png`).
+`render.py`'s desktop (the old windows); the real desktop is in `screenshots/desktop.png`
+(`sh tools/tests/desktop_sim/shots.sh`).
 
 ## 1. How the choice was made
 
@@ -39,7 +42,7 @@ Windows one too, and asked how a modernised CDE would look: that is the chosen d
 | | |
 |---|---|
 | ![](mockups/cde-modern.png) | **The desktop** (the user's favourite): CDE's palette (`Default.dp`, softened); the dock at the bottom, the Games drawer open; the agenda widget top left, part of the wallpaper |
-| ![](mockups/cde-modern-outline.png) | The same with a **1-px dark outline** round the windows (to decide: none, dark, black) |
+| ![](mockups/cde-modern-outline.png) | The same with a **1-px dark outline** round the windows (the theme's `outline`: none, dark — the default — or black) |
 | ![](mockups/cde-modern-win.png) | A variant **with a Windows touch**: grey faces, navy-to-blue title bars, a teal desktop, white fields, a black console |
 | ![](mockups/cde-modern-colours.png) | **One colour per frame**: the same window from the six colour themes — without an outline, with a dark one, with a black one |
 | ![](mockups/cde-modern-buttons.png) | **Stretched buttons**: the framed button from 56 × 24 to 200 × 72, one pressed — the gradients computed at its size |
@@ -62,7 +65,8 @@ The user's decisions:
    wallpaper, white with a soft shadow on a dark one.
 3. **The windows**: CDE's buttons (the window menu, minimise, maximise) and a close button;
    rounded corners; a light gradient; **no drop shadows** (they would cost the compositor: see
-   §4) — a crisp outline instead; a 1-px dark or black outline round them, to decide.
+   §4) — a crisp outline instead: a 1-px outline round them, the theme's choice (none, dark —
+   the default — or black).
 4. **The user's framed button**, for every push button (the windows' and the apps'): the user
    drew it (216 × 92, three greys #E1E1E1, #B9B9B9, #7F7F7F) — a raised 2-px frame, 2 px of
    face, a sunken 2-px well, the button in it raised by 1 px (or 2, "more marked"), flush with
@@ -118,31 +122,45 @@ agenda widget and the dock's corners are blended only where the screen is recomp
 them. (And the emulators' own paths — the V3D, `gpudirect`, `dispdma`, `fullscreen_direct`, the
 app cores — are not touched.)
 
-## 5. Where the work lands — a first plan
+## 5. Where the work landed
 
-1. **wtk's painter**: the shade function and the grey profile, rows of spans with the corner
-   table, the bevel, the framed button, the sunken field, the scroll bar, the glyphs; the theme's
-   colours read from `theme.txt` (`active`, `inactive`, and the apps' face, the dock's...). The
-   `Button` widget draws the framed button instead of `button.bmp`.
-2. **The window frames**: drawn by the painter into the chrome copies (`user/wtk/skin.cpp`), to
-   new metrics (`WIN_TITLEBAR_H` 32 → ~28, `WIN_BORDER` 7 → ~4, `kernel/include/kern/gui/
-   window.h`); the title buttons (window menu, minimise, maximise, close): minimise and maximise
-   are new actions for the window manager.
-3. **The compositor**: `CoversOpaque` less the four corner squares; the corners blended.
-4. **The dock**, a new app replacing the Shelf and the panel: the categories and their drawers,
-   the switcher, the running dots, the lock / gear / power, the Terminal, the File Viewer, the
-   Trash; the Shelf's items and tabs move into it.
-5. **The agenda widget** see-through: the per-pixel transparency brought back from the archive
-   branch (`WIN_FLAG_ALPHA`, a window flag — no new kapi call), the ink from `wallpaper_buffer`.
-6. **The menu bar** restyled; its time opens a calendar (or the Calendar app).
-7. **The fonts**: the anti-aliased ones of the mock-ups (the `.aaf` fonts and their renderer,
-   from the archive branch) — or the 8 × 16 bitmap font kept at first.
+1. **wtk's painter** (`user/wtk/paint.h`, `paint.cpp`): `wk_tone` (a shade of the theme's colour,
+   128 = itself), gradients computed at each size (`wk_rbox`, `wk_rline`: rows of spans, the
+   corners from a table of x offsets), the framed button (`wk_framed`), bevels, sunken fields,
+   etched lines, the check / radio / switch / slider / scroll-bar / progress marks, pop-ups,
+   selection rows, the glyphs; an alpha mode for see-through windows (`wk_paint_alpha`). The
+   theme's colours are variables read from `SD:/etc/theme.txt` (`user/wtk/theme.h`: `theme` or
+   `active`, `inactive`, `face`, `accent`, `outline`, `dock`). Every wtk widget draws with it.
+2. **The window frames**: drawn by wtk into the two chrome copies (`user/wtk/skin.cpp`
+   `draw_frame`), to the new metrics (title 28, border 4, corner radius 8: `KAPI_FRAME_*`,
+   `kapi_abi.h`); the title buttons — the window menu (Restore / Maximise, Minimise, Close),
+   minimise, maximise (greyed for a fixed-size window), close — reported to the app as
+   `GUI_EVENT_WINCTL`; a double-click on the title maximises. Kernel side (`kernel/gui/
+   window.cpp`): minimise (`KAPI_WIN_MINIMISED`, raised again by `raise_app` — the dock, the
+   Onyx menu's Open Windows), the work area (under the menu bar, above the dock), kapi v64
+   `win_minimise`, `win_geometry`, `resize_window2` (a window grows in place).
+3. **The compositor**: `CoversOpaque` less the corners' see-through pixels (`CornerSpan`); the
+   corners blended; an app's present damages its client area only unless its frame changed —
+   the emulators' fast path is intact (checked by `tools/tests/desktop_sim/wmtest.cpp`).
+4. **The dock** (`user/Apps/dock`), replacing the Shelf and the panel in `autostart`: the
+   categories and their drawers, the switcher (the Shelf's tabs and items, `shelf.ini`, its
+   IPC service), the running dots, the lock (`user/Apps/lock`), the gear, the power button, the
+   Terminal, the File Viewer, the Trash.
+5. **The agenda widget** see-through (`WIN_FLAG_ALPHA`, brought back from the archive branch),
+   its ink from `wallpaper_buffer`.
+6. **The menu bar** restyled (light, the theme's face); its time opens a calendar of the month
+   with *Open Calendar*.
+7. **The apps**: their hard-coded dark colours replaced by the theme's (the content — a
+   terminal's screen, a game's board, a document — keeps its own); the **Theme** app rewritten
+   (the five themes, a colour per part, the outline, a live preview).
+8. **The fonts**: the bitmap fonts kept for now (`SD:/fonts/*.fnt`).
 
-## 6. Open questions
+## 6. The open questions, as answered
 
-- The windows' outline: none, dark (the frame's colour, very dark) or black?
-- Minimise: where do minimised windows go — the dock (its launcher's dot, a click brings the app
-  back)?
+- The windows' outline: the theme's choice — none, dark (the default) or black.
+- Minimise: the window leaves the screen; the dock brings it back (its launcher, or its app in
+  a drawer: `raise_app`), as does the Onyx menu's *Open Windows*.
 - The switcher's tabs (Shelf, Documents, Apps, +): each opens a drawer with the tab's items (the
-  Shelf's content)?
-- Anti-aliased text from the start, or the bitmap font first?
+  Shelf's content); right-click a tab to rename or remove it.
+- Anti-aliased text: not yet — the bitmap fonts first (the next step: the `.aaf` fonts and their
+  renderer from the archive branch, `user/elegant.h`).

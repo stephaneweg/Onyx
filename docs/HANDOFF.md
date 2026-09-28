@@ -23,7 +23,8 @@ answer in French. The docs stay in English.
 - Do not modify NetSurf. No model identifiers in code or commits. Commits end with a
   `Co-Authored-By:` line.
 - Docs rule (CLAUDE.md): kapi / app changes → docs 02 / 03 / 04 (+ 05 for Circle patches),
-  screenshots via `tools/screenshot/render.py`; the user runs `python docs/build_docs.py`.
+  screenshots via `sh tools/tests/desktop_sim/shots.sh [name ...]` (the real apps on the PC);
+  the user runs `python docs/build_docs.py`.
 - A rebuild of the Pi apps changes every `sdcard/apps/*/main` a little (build noise): commit only
   the apps that really changed (`git checkout -- sdcard/...` the others).
 
@@ -70,23 +71,32 @@ answer in French. The docs stay in English.
   `pr/dhcp-restart`), based on upstream `develop`; texts, patches and an issue draft (RAM above
   3 GB on the Pi 4) in `docs/circle-upstream/`. The user opens the pull requests.
 
-## Next: the desktop redesign -- a modernised CDE (branch `Elegant-UI`)
+## The desktop redesign -- a modernised CDE (branch `Elegant-UI`): implemented
 
-- **Designed with the user on 2026-09-28, nothing implemented yet: `docs/gui-redesign/README.md`**
-  (the decisions, the mock-ups `docs/gui-redesign/mockups/cde-modern*.png` and `retro-*.png`, how
-  it is drawn, its cost, a first plan, the open questions). Today's windowed desktop kept and
-  restyled: CDE's Front Panel as a dock (the apps' categories and their drawers, the Shelf's tabs
-  as its switcher; it replaces the Shelf and the panel), the user's framed button, one colour per
-  kind of frame (the themes Peach, Steel, Sage, Brick, Slate; Grey), everything drawn by code (no
-  skin bitmap), no drop shadows, the agenda widget part of the wallpaper.
-- The branch `Elegant-UI` restarted from `main` for it (the mock-ups and their scripts
-  `tools/screenshot/mockup_cde_modern.py`, `mockup_retro.py` brought back). The phone-like
-  "elegant layout" it held first (kapi app_frame / app_ring / app_switch, `WIN_FLAG_ALPHA`,
-  `user/elegant.h`, the `.aaf` fonts, the PC simulator) is on **`archive/elegant-ui-2026-09-28`**,
-  to take pieces back from (the per-pixel transparency for the agenda widget and the rounded
-  corners, the anti-aliased fonts).
-- Keep the emulators' optimisations intact (the user's request): the compositor's opaque fast
-  path (`CoversOpaque`), the V3D, `gpudirect`, `dispdma`, `fullscreen_direct`, the app cores.
+- **Designed with the user on 2026-09-28 and implemented the same day** (not merged into `main`
+  yet: the user tests the staged `sdcard/` first). `docs/gui-redesign/README.md` has the
+  decisions, the mock-ups and §5 *where the work landed*; the user guide (`docs/04` §4-§6, §11)
+  describes the result; `screenshots/` are the real apps (`sh tools/tests/desktop_sim/shots.sh`).
+  In short: wtk's procedural painter (`user/wtk/paint.h`) and the theme's colours as variables
+  (`theme.txt`: theme Peach / Steel / Sage / Brick / Slate or a colour, inactive, face, accent,
+  outline, dock), every wtk widget restyled (the user's framed button), the window frames drawn
+  by wtk (title 28, border 4, rounded corners r 8, the window menu / minimise / maximise / close
+  buttons), kapi **v64** (`win_minimise`, `win_geometry`, `resize_window2`), the **dock**
+  (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
+  Terminal, File Viewer, Trash) instead of the Shelf and the panel, the see-through agenda, the
+  menu bar restyled (its time opens a calendar), the **lock** screen, the **Theme** app
+  rewritten, every app's hard-coded dark colours converted.
+- The emulators' fast path is intact: an app's present damages only its client area unless its
+  frame changed, `CoversOpaque` less the corners' see-through pixels only
+  (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,
+  `fullscreen_direct` paths untouched.
+- **Next ideas** (none started): anti-aliased text (the `.aaf` fonts and `user/elegant.h` on
+  **`archive/elegant-ui-2026-09-28`**); resizing a window by dragging its border (today:
+  maximise / restore; a resizable app says so with `Root::setResizable`); a theme change applied
+  to the open apps live (today: at their next start; the shell apps are restarted); the dock's
+  drawers by drag & drop (an app to a tab); the Shelf / panel apps removed once the dock is
+  proven on the Pi.
+- The phone-like "elegant layout" the branch held first is on **`archive/elegant-ui-2026-09-28`**.
 
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
