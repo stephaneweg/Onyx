@@ -18,6 +18,14 @@
 // its last waiter; the ones left at the process's end are freed with it (their waiters,
 // killed tasks, unlinked first).
 //
+// Word waits (ABI v68, a futex): kapi_wait_word sleeps while a 32-bit word holds a value,
+// kapi_wake_word wakes the sleepers on a word. A waiter is keyed by the word's PHYSICAL
+// address (the same word of a shared surface is at another address in each process), and
+// lives on its task's stack, linked in one kernel list. Code on an app core changes words
+// without any kapi call: WordWaitTick, in the 100 Hz timer interrupt, reads every sleeping
+// word (through the kernel's identity map) and wakes those whose value moved. A process
+// that dies unlinks its sleepers first (ThreadsFree).
+//
 // kapi_post queues a call (fn, ctx, value) that the process's event pump runs --
 // kapi_pump_events on the thread that pumps (the main one): a worker thread hands its
 // result to the UI thread that way, and kapi_pump_wait sleeps until a post or a window
@@ -90,6 +98,9 @@ void ThreadsEndProcess (void);
 // Run the calls posted to the current process (kapi_pump_events). Returns how many.
 unsigned ThreadsRunPosts (CAddressSpace *pAS);
 
+// The timer tick (IRQ, core 0): wake the word waiters whose word has changed.
+void WordWaitTick (void);
+
 extern "C" {
 int  kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, const char *pName);
 void kapi_thread_exit (int nCode);
@@ -107,6 +118,9 @@ int  kapi_barrier_wait (int h);
 int  kapi_sync_close (int h);
 int  kapi_post (void (*pFunc) (void *, long), void *pCtx, long lValue);
 int  kapi_pump_wait (unsigned nTimeoutMs);
+int  kapi_wait_word (volatile unsigned *pWord, unsigned nExpected, unsigned nTimeoutMs);
+int  kapi_wake_word (volatile unsigned *pWord);
+int  kapi_thread_priority (int nTid, int nPrio);
 }
 
 #endif

@@ -452,6 +452,20 @@ static int sound_start (int, unsigned, int, int) { return -1; }
 static int sound_stop (int) { return -1; }
 static int sound_write (const short *, unsigned) { return -1; }
 static int sound_status (unsigned *r, unsigned *f, unsigned *o) { if (r) *r = 44100; if (f) *f = 0; if (o) *o = 0; return -1; }
+// (v68) low-latency sound, word waits, priorities, MIDI: no sound, no MIDI, a single thread
+static int sound_config (int, int) { return -1; }
+static struct kapi_sound_ring *sound_map (void) { return 0; }
+static int wait_word (volatile unsigned *a, unsigned v, unsigned ms)
+{
+	if (a == 0) return -1;
+	if (*a != v) return 0;
+	if (ms != 0) h_msleep (ms < 16 ? ms : 16);	// (nobody else could change it: a short nap)
+	return *a != v ? 0 : 1;
+}
+static int wake_word (volatile unsigned *a) { return a != 0 ? 0 : -1; }
+static int thread_priority (int, int) { return -2; }
+static int midi_read (struct kapi_midi_event *, int) { return 0; }
+static int midi_devices (void) { return 0; }
 static int proc_done (void *p) { return p == (void *) 0x5000 ? 0 : 1; }	// (the SIM_PIPE program: running)
 static int h_wait (void *) { return 0; }
 // A canned stream (SIM_PIPE, SIM_NET): its text ("\n" a new line, "\r" a return, "\e" an escape)
@@ -702,6 +716,9 @@ static void setup (void)
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
 	T->desk = desk; T->win_desk = win_desk;
+	T->sound_config = sound_config; T->sound_map = sound_map; T->wait_word = wait_word;
+	T->wake_word = wake_word; T->thread_priority = thread_priority;
+	T->midi_read = midi_read; T->midi_devices = midi_devices;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";

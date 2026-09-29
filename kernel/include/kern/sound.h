@@ -11,6 +11,9 @@
 // The mixing runs in the PWM DMA interrupt (single core), or -- when Circle is built with
 // ARM_ALLOW_MULTI_CORE -- on core 1, which renders chunks ahead into a ring that the
 // interrupt only copies (see sys/sound.cpp).
+//   * Low latency (ABI v68): SoundConfig (chunk frames, chunks ahead) for the owner, and
+//     SoundRing: a PCM ring in a page the owner maps and fills from anywhere (an app core);
+//     both back to the defaults / off when the owner releases the output or dies.
 //
 #ifndef _kern_sound_h
 #define _kern_sound_h
@@ -30,6 +33,10 @@ int  SoundWrite (unsigned nPid, const s16 *pFrames, unsigned nFrames);	// frames
 int  SoundStatus (unsigned *pRate, unsigned *pFreeFrames, unsigned *pOwnerPid);
 void SoundOnProcessGone (unsigned nPid);
 int  SoundVolume (int nVolume, int nMute);		// 0..10, mute 0 / 1 (-1: keep) -> volume | 0x100 if muted
+int  SoundConfig (unsigned nPid, int nChunkFrames, int nAhead);	// -> latency in frames, -1 not the owner
+#define SND_RING_PAGE	0x10000				// the mapped ring's page (one 64 KB app page)
+struct kapi_sound_ring;
+struct kapi_sound_ring *SoundRing (unsigned nPid);	// the ring (kernel address), 0 not the owner
 
 #ifdef ARM_ALLOW_MULTI_CORE
 void SoundCoreMain (void);				// core 1's loop (kernel.cpp starts it)

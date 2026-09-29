@@ -10,6 +10,22 @@
 // used, then keeps SND_AHEAD chunks rendered in a ring; GetChunk only copies the next one
 // (or zeros if core 1 fell behind).
 //
+// Low latency (ABI v68, SoundConfig): the device is made once with the biggest chunk
+// (SND_CHUNK words); Circle's CDMASoundBuffers programs each DMA transfer with the length
+// GetChunk returns, so a shorter chunk is just a shorter return -- nothing re-created, the
+// PWM clock untouched. The sound owner picks the chunk (SND_CHUNK_MIN .. SND_FRAMES frames)
+// and how many chunks core 1 keeps rendered ahead (1 .. SND_AHEAD); the sound heard lags
+// the rendering by about (ahead + 1) chunks (the ahead ring + the DMA buffer queued behind
+// the one playing): 1024 x 4 (the default) ~116 ms, 256 x 2 ~17 ms, 128 x 2 ~9 ms. The
+// defaults come back when the owner releases the output or dies.
+//
+// The mapped ring (ABI v68, SoundRing): one 64 KB page (struct kapi_sound_ring) that the
+// owner maps (kapi_sound_map) and fills from anywhere -- an app core, which makes no kapi
+// call -- and that Render mixes like the PCM stream: the app moves `wr` after the frames,
+// the producer moves `rd` after it has taken them. Allocated on first use and kept for
+// ever (the producer may be reading it when its owner dies); the kernel only ever indexes
+// it masked by its own capacity, whatever the app writes in the header.
+//
 #ifndef SOUND_HOST_TEST				// (tools/tests/sound: the synth on a PC)
 #include <kern/crashlog.h>
 #include <kern/sound.h>
@@ -19,6 +35,7 @@
 #include <circle/synchronize.h>
 #include <circle/logger.h>
 #include <circle/new.h>
+#include <circle/util.h>
 #endif
 #include <kern/kapi_abi.h>				// struct kapi_fm_instrument
 #include "sound_tables.h"
@@ -26,7 +43,12 @@
 #define SND_CHUNK	2048				// words per GetChunk = 1024 stereo frames
 #define SND_FRAMES	(SND_CHUNK / 2)
 #define SND_STREAM	(SND_RATE / 2)			// PCM ring: 0.5 s of stereo frames
-#define SND_AHEAD	4				// (multi-core) chunks rendered ahead
+#define SND_AHEAD	4				// (multi-core) chunks rendered ahead: the most
+#define SND_CHUNK_MIN	64				// the smallest chunk SoundConfig allows (frames)
+
+#ifdef SOUND_HOST_TEST
+#define DataMemBarrier()	do { } while (0)
+#endif
 
 enum { WAVE_SQUARE = 0, WAVE_SINE, WAVE_TRIANGLE, WAVE_SAW, WAVE_NOISE, WAVE_FM };
 
@@ -67,6 +89,14 @@ static CSpinLock s_Lock (IRQ_LEVEL);
 static boolean  s_bTables = FALSE;
 static u32      s_nLfoTrem = 0, s_nLfoVib = 0;	// tremolo 3.7 Hz / vibrato 6.1 Hz phases
 static volatile boolean s_bRunning = FALSE;
+
+// Low latency (v68): the chunk the producer renders now (frames) and how many it keeps ahead.
+static volatile unsigned s_nChunkFrames = SND_FRAMES;
+static volatile unsigned s_nAheadCfg = SND_AHEAD;
+
+// The mapped ring (v68): 0 while no owner uses it (then Render does not look at it).
+static struct kapi_sound_ring * volatile s_pRingOn = 0;
+static boolean s_bRingFlowing = FALSE;			// the ring had frames at the last chunk
 
 static const char From[] = "sound";
 
@@ -190,6 +220,23 @@ static inline s32 WaveSample (TVoice &v)
 // Mix nFrames stereo frames into pOut (s16 L, R). Caller holds s_Lock.
 static void Render (s16 *pOut, unsigned nFrames)
 {
+	// The mapped ring: what the app has written (its index read once, before the frames).
+	struct kapi_sound_ring *pRing = s_pRingOn;
+	unsigned nRingRd = 0, nRingAvail = 0;
+	if (pRing != 0)
+	{
+		unsigned nWr = pRing->wr;
+		DataMemBarrier ();
+		nRingRd = pRing->rd;
+		nRingAvail = nWr - nRingRd;
+		if (nRingAvail > KAPI_SOUND_RING_FRAMES)	// (nonsense from the app: start again)
+		{
+			nRingRd = nWr;
+			nRingAvail = 0;
+		}
+		if (nRingAvail > nFrames) nRingAvail = nFrames;
+	}
+
 	for (unsigned f = 0; f < nFrames; f++)
 	{
 		s32 mix = 0;
@@ -227,9 +274,29 @@ static void Render (s16 *pOut, unsigned nFrames)
 			l += s_Stream[s_nStreamRd * 2]; r += s_Stream[s_nStreamRd * 2 + 1];
 			s_nStreamRd = (s_nStreamRd + 1) % SND_STREAM;
 		}
+		if (f < nRingAvail)					// + the mapped ring
+		{
+			unsigned i = (nRingRd + f) & (KAPI_SOUND_RING_FRAMES - 1);
+			l += pRing->data[i * 2]; r += pRing->data[i * 2 + 1];
+		}
 		if (l > 32767) l = 32767; else if (l < -32768) l = -32768;
 		if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
 		pOut[f * 2] = (s16) l; pOut[f * 2 + 1] = (s16) r;
+	}
+
+	if (pRing != 0)
+	{
+		DataMemBarrier ();				// (the frames read before rd moves)
+		pRing->rd = nRingRd + nRingAvail;
+		if (nRingAvail < nFrames)
+		{
+			if (s_bRingFlowing) pRing->dry++;	// the app did not keep up
+			s_bRingFlowing = FALSE;
+		}
+		else
+		{
+			s_bRingFlowing = TRUE;
+		}
 	}
 }
 
@@ -237,6 +304,7 @@ static void Render (s16 *pOut, unsigned nFrames)
 // ---- the device -------------------------------------------------------------------------------
 #ifdef ARM_ALLOW_MULTI_CORE
 static s16 s_Ahead[SND_AHEAD][SND_FRAMES * 2];
+static unsigned s_nAheadLen[SND_AHEAD];			// each chunk's frames (s_nChunkFrames then)
 static volatile unsigned s_nAheadRd = 0, s_nAheadWr = 0;	// chunk counters
 #endif
 
@@ -260,13 +328,23 @@ protected:
 	unsigned GetChunk (u32 *pBuffer, unsigned nChunkSize) override
 	{
 		static s16 Tmp[SND_FRAMES * 2];
-		unsigned nFrames = nChunkSize / 2;
-		if (nFrames > SND_FRAMES) nFrames = SND_FRAMES;
+		// The chunk is as long as the producer made it (SoundConfig): the DMA transfer is
+		// programmed with the length returned here (<= nChunkSize, the buffer's size).
+		unsigned nFrames = s_nChunkFrames;
+		if (nFrames > nChunkSize / 2) nFrames = nChunkSize / 2;
 		const s16 *pSrc = Tmp;
 #ifdef ARM_ALLOW_MULTI_CORE
-		if (s_nAheadRd != s_nAheadWr) { pSrc = s_Ahead[s_nAheadRd % SND_AHEAD]; DataMemBarrier (); s_nAheadRd++; }
+		boolean bTaken = FALSE;
+		if (s_nAheadRd != s_nAheadWr)
+		{
+			DataMemBarrier ();
+			unsigned nSlot = s_nAheadRd % SND_AHEAD;
+			pSrc = s_Ahead[nSlot];
+			nFrames = s_nAheadLen[nSlot];
+			if (nFrames > nChunkSize / 2) nFrames = nChunkSize / 2;
+			bTaken = TRUE;
+		}
 		else for (unsigned i = 0; i < nFrames * 2; i++) Tmp[i] = 0;	// core 1 is late
-		asm volatile ("sev");
 #else
 		s_Lock.Acquire ();
 		Render (Tmp, nFrames);
@@ -279,8 +357,16 @@ protected:
 			s32 v = (s32) (((s64) pSrc[i] * nGain) >> 16);		// (the master volume)
 			pBuffer[i] = (u32) (((u64) (v + 32768) * nRange) >> 16);
 		}
-		for (unsigned i = nFrames * 2; i < nChunkSize; i++) pBuffer[i] = nRange / 2;
-		return nChunkSize;
+#ifdef ARM_ALLOW_MULTI_CORE
+		if (bTaken)
+		{
+			// Freed only now that it is copied: core 1 may render into this slot next.
+			DataMemBarrier ();
+			s_nAheadRd++;
+		}
+		asm volatile ("sev");
+#endif
+		return nFrames * 2;
 	}
 };
 
@@ -294,9 +380,12 @@ void SoundCoreMain (void)
 	for (;;)
 	{
 		CrashLogCoreCheck ();
-		if (!s_bRunning || s_nAheadWr - s_nAheadRd >= SND_AHEAD) { asm volatile ("wfe"); continue; }
+		if (!s_bRunning || s_nAheadWr - s_nAheadRd >= s_nAheadCfg) { asm volatile ("wfe"); continue; }
 		if (!s_Lock.TryAcquire ()) continue;		// (never stuck behind core 0: the crash watch goes on)
-		Render (s_Ahead[s_nAheadWr % SND_AHEAD], SND_FRAMES);
+		unsigned nSlot = s_nAheadWr % SND_AHEAD;
+		unsigned nFrames = s_nChunkFrames;		// (read under the lock: SoundConfig takes it)
+		Render (s_Ahead[nSlot], nFrames);
+		s_nAheadLen[nSlot] = nFrames;
 		s_Lock.Release ();
 		DataMemBarrier ();
 		s_nAheadWr++;
@@ -362,10 +451,19 @@ int SoundAcquire (unsigned nPid)
 	return r;
 }
 
+// Back to the defaults (the owner left): the full chunks, the mapped ring no longer mixed.
+static void DefaultsLocked (void)
+{
+	s_nChunkFrames = SND_FRAMES;
+	s_nAheadCfg = SND_AHEAD;
+	s_pRingOn = 0;
+	s_bRingFlowing = FALSE;
+}
+
 void SoundRelease (unsigned nPid)
 {
 	s_Lock.Acquire ();
-	if (s_nOwner == nPid && nPid != 0) { SilenceLocked (); s_nOwner = 0; }
+	if (s_nOwner == nPid && nPid != 0) { SilenceLocked (); DefaultsLocked (); s_nOwner = 0; }
 	s_Lock.Release ();
 }
 
@@ -471,3 +569,62 @@ int SoundStatus (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 	s_Lock.Release ();
 	return s_bRunning ? 1 : 0;
 }
+
+// The owner asks for less latency (v68): chunks of nChunkFrames, nAhead of them rendered
+// ahead (0 or less: the default of each). The chunks already rendered play out first, so
+// the new latency is reached within ~(old ahead) chunks. -> the latency now in frames
+// ((ahead + 1) x chunk), -1 not the owner.
+int SoundConfig (unsigned nPid, int nChunkFrames, int nAhead)
+{
+	if (nChunkFrames <= 0) nChunkFrames = SND_FRAMES;
+	if (nChunkFrames < SND_CHUNK_MIN) nChunkFrames = SND_CHUNK_MIN;
+	if (nChunkFrames > SND_FRAMES) nChunkFrames = SND_FRAMES;
+	if (nAhead <= 0) nAhead = SND_AHEAD;
+	if (nAhead > SND_AHEAD) nAhead = SND_AHEAD;
+	s_Lock.Acquire ();
+	if (s_nOwner != nPid || nPid == 0) { s_Lock.Release (); return -1; }
+	s_nChunkFrames = (unsigned) nChunkFrames;
+	s_nAheadCfg = (unsigned) nAhead;
+	struct kapi_sound_ring *pRing = s_pRingOn;
+	if (pRing != 0) { pRing->chunk = (unsigned) nChunkFrames; pRing->ahead = (unsigned) nAhead; }
+	s_Lock.Release ();
+	return (nAhead + 1) * nChunkFrames;
+}
+
+#ifndef SOUND_HOST_TEST
+// The mapped ring for the owner (v68): made on first use (one 64 KB page, kept for ever),
+// emptied, and mixed from now on until the owner releases the output. -> its kernel
+// (identity) address -- the caller maps that page into the app -- or 0 (not the owner, no
+// memory).
+struct kapi_sound_ring *SoundRing (unsigned nPid)
+{
+	static struct kapi_sound_ring *s_pRing = 0;
+	if (s_pRing == 0)
+	{
+		// A page of its own (it is mapped into an app whole): 64 KB-aligned in a heap block.
+		u8 *pRaw = new u8[2 * SND_RING_PAGE];
+		if (pRaw == 0) return 0;
+		uintptr ulPage = ((uintptr) pRaw + SND_RING_PAGE - 1) & ~(uintptr) (SND_RING_PAGE - 1);
+		memset ((void *) ulPage, 0, SND_RING_PAGE);
+		s_pRing = (struct kapi_sound_ring *) ulPage;
+	}
+	s_Lock.Acquire ();
+	if (s_nOwner != nPid || nPid == 0) { s_Lock.Release (); return 0; }
+	struct kapi_sound_ring *pRing = s_pRing;
+	pRing->magic = KAPI_SOUND_RING_MAGIC;
+	pRing->frames = KAPI_SOUND_RING_FRAMES;
+	pRing->rate = SND_RATE;
+	pRing->chunk = s_nChunkFrames;
+	pRing->ahead = s_nAheadCfg;
+	if (s_pRingOn == 0)				// (mapped again by its owner: kept as it is)
+	{
+		pRing->wr = pRing->rd = 0;
+		pRing->dry = 0;
+		s_bRingFlowing = FALSE;
+		DataMemBarrier ();
+		s_pRingOn = pRing;
+	}
+	s_Lock.Release ();
+	return pRing;
+}
+#endif

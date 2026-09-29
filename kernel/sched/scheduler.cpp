@@ -101,6 +101,8 @@ CScheduler::CScheduler (void)
 	m_nSliceTicks (SCHED_SLICE_TICKS),
 	m_bBurst (FALSE),
 	m_nBurstEnd (0),
+	m_nPrioTasks (0),
+	m_bPrioPreempt (FALSE),
 	m_nLastYield (0),
 	m_nLastSample (0),
 	m_nStallIn (0),
@@ -168,6 +170,7 @@ void CScheduler::Yield (void)
 	if (!m_bPreempting && m_pCurNode != 0)	// a voluntary yield: not (or no longer) a hog
 	{
 		m_pCurNode->nPreemptStreak = 0;
+		m_pCurNode->bPrioSpent = FALSE;	// (a "real time" task: its priority back)
 	}
 	m_bPreempting = FALSE;
 
@@ -190,6 +193,7 @@ void CScheduler::Yield (void)
 	// so the kernel's Yield() loops never wait more than ~10 ms behind it.
 	m_nSliceTicks = (m_bHogSched && pNode->nPreemptStreak >= SCHED_HOG_STREAK) ? 1 : m_nSliceCfg;
 	m_bResched = FALSE;
+	m_bPrioPreempt = FALSE;
 
 	if (m_pCurrent != pNext)
 	{
@@ -270,13 +274,27 @@ void CScheduler::Configure (unsigned nSliceTicks, boolean bHogSched)
 
 void CScheduler::OnPreempt (void)
 {
-	if (!m_bHogSched)
+	u64 nFlags = IrqSave ();
+	TSchedNode *pNode = m_pCurNode;
+	if (m_bPrioPreempt)
 	{
+		// Preempted for a "real time" task (OnTimerTick): not the app's slice used up, so
+		// not counted towards a hog -- but not a voluntary yield either.
+		m_bPrioPreempt = FALSE;
+		m_bPreempting = TRUE;
+		IrqRestore (nFlags);
 		return;
 	}
-	u64 nFlags = IrqSave ();
+	if (pNode != 0)
+	{
+		pNode->bPrioSpent = TRUE;	// its whole slice: a "real time" one is normal for now
+	}
+	if (!m_bHogSched)
+	{
+		IrqRestore (nFlags);
+		return;
+	}
 	m_bPreempting = TRUE;			// the Yield that follows is not voluntary
-	TSchedNode *pNode = m_pCurNode;
 	if (pNode != 0)
 	{
 		if (pNode->nPreemptStreak < 255) pNode->nPreemptStreak++;
@@ -321,6 +339,41 @@ void CScheduler::OnTimerTick (void)
 	{
 		m_bResched = TRUE;
 	}
+
+	// A "real time" task is ready (woken by an event, a word, its sleep's end) while an
+	// ordinary one runs: preempt it now rather than at its slice's end (the IRQ exit path
+	// does it only if the app is in its own code; kernel code yields soon anyway).
+	if (   m_nPrioTasks > 0
+	    && !m_bResched
+	    && m_pCurNode != 0
+	    && m_pCurNode->nPrio == SCHED_PRIO_NORMAL
+	    && ScanPrio (CTimer::Get ()->GetClockTicks (), FALSE) != 0)
+	{
+		m_bPrioPreempt = TRUE;
+		m_bResched = TRUE;
+	}
+}
+
+int CScheduler::SetPriority (CTask *pTask, int nPrio)
+{
+	u64 nFlags = IrqSave ();
+	TSchedNode *pNode = FindNode (pTask);
+	if (pNode == 0)
+	{
+		IrqRestore (nFlags);
+		return -1;
+	}
+	int nOld = pNode->nPrio;
+	if (nPrio >= 0)
+	{
+		u8 nNew = nPrio > 0 ? SCHED_PRIO_HIGH : SCHED_PRIO_NORMAL;
+		if (nOld == SCHED_PRIO_NORMAL && nNew != SCHED_PRIO_NORMAL) m_nPrioTasks++;
+		if (nOld != SCHED_PRIO_NORMAL && nNew == SCHED_PRIO_NORMAL) m_nPrioTasks--;
+		pNode->nPrio = nNew;
+		pNode->bPrioSpent = FALSE;
+	}
+	IrqRestore (nFlags);
+	return nOld;
 }
 
 void CScheduler::Sleep (unsigned nSeconds)
@@ -696,6 +749,8 @@ void CScheduler::AddTask (CTask *pTask)
 	pNode->nPreemptStreak = 0;
 	pNode->bKillPending = FALSE;
 	pNode->bKilled = FALSE;
+	pNode->nPrio = SCHED_PRIO_NORMAL;
+	pNode->bPrioSpent = FALSE;
 
 	u64 nFlags = IrqSave ();		// (the IRQ exit path walks the list)
 	if (m_pHead == 0)
@@ -726,6 +781,7 @@ void CScheduler::RemoveTask (CTask *pTask)
 		if (m_pHead == pNode) m_pHead = pNode->pNext;
 		if (m_pTail == pNode) m_pTail = pPrev;
 		if (m_pScan == pNode) m_pScan = pPrev;
+		if (pNode->nPrio != SCHED_PRIO_NORMAL) m_nPrioTasks--;
 		m_nTasks--;
 		delete pNode;
 	}
@@ -826,6 +882,16 @@ TSchedNode *CScheduler::GetNextTask (void)
 {
 	unsigned nTicks = CTimer::Get ()->GetClockTicks ();
 
+	// A "real time" task first, if one is ready (none: not even a scan).
+	if (m_nPrioTasks > 0)
+	{
+		TSchedNode *pNode = ScanPrio (nTicks, TRUE);
+		if (pNode != 0)
+		{
+			return pNode;
+		}
+	}
+
 	// Burst (after an app was preempted): skip the preempted CPU hogs, until it ends or
 	// no other task is ready -- then back to plain round-robin over everyone.
 	if (m_bBurst)
@@ -842,6 +908,62 @@ TSchedNode *CScheduler::GetNextTask (void)
 	}
 
 	return ScanTasks (nTicks, FALSE);
+}
+
+// A ready "real time" task (nPrio > 0, its priority not spent), in round-robin order after
+// m_pScan; the current task is left out (it yields: the others get their turn -- a spin on a
+// lock held by an ordinary thread must not starve that thread). bTake: make it Ready (a
+// timeout or a sleep that has ended), as ScanTasks does; FALSE only asks (OnTimerTick, IRQ).
+TSchedNode *CScheduler::ScanPrio (unsigned nTicks, boolean bTake)
+{
+	TSchedNode *pNode = m_pScan != 0 ? m_pScan : m_pHead;
+	for (unsigned i = 1; i <= m_nTasks; i++)
+	{
+		pNode = pNode->pNext;
+		if (   pNode->nPrio == SCHED_PRIO_NORMAL
+		    || pNode->bPrioSpent
+		    || pNode == m_pCurNode)
+		{
+			continue;
+		}
+		CTask *pTask = pNode->pTask;
+		if (pTask->IsSuspended ())
+		{
+			continue;
+		}
+		switch (pTask->GetState ())
+		{
+		case TaskStateReady:
+			return pNode;
+
+		case TaskStateBlockedWithTimeout:
+			if ((int) (pTask->GetWakeTicks () - nTicks) > 0)
+			{
+				continue;
+			}
+			if (bTake)
+			{
+				pTask->SetState (TaskStateReady);
+				pTask->SetWakeTicks (0);	// flag: timeout expired
+			}
+			return pNode;
+
+		case TaskStateSleeping:
+			if ((int) (pTask->GetWakeTicks () - nTicks) > 0)
+			{
+				continue;
+			}
+			if (bTake)
+			{
+				pTask->SetState (TaskStateReady);
+			}
+			return pNode;
+
+		default:
+			continue;
+		}
+	}
+	return 0;
 }
 
 // One round-robin pass starting after m_pScan. bSkipHogs: skip the preempted tasks and

@@ -64,9 +64,19 @@ struct TSchedNode
 					// (>= SCHED_HOG_STREAK: a CPU hog)
 	boolean	    bKillPending;	// TerminateTask waits for LeaveNoKill
 	boolean	    bKilled;		// terminated from outside (TerminateTask / TerminateGroup)
+	u8	    nPrio;		// 0 normal, SCHED_PRIO_HIGH: picked first when ready (v68)
+	boolean	    bPrioSpent;		// preempted at its slice's end: normal until it yields
 };
 
-/// \note Round-robin policy, no priorities (yet). Preemption-ready: see
+// Task priorities (ABI v68 kapi_thread_priority): a "real time" task (an audio pump) is picked
+// before the round-robin ones whenever it is ready, and a timer tick preempts an app running its
+// own code for it. It keeps that only while it yields by itself: preempted at the end of a slice
+// (a busy loop), it is an ordinary task until its next voluntary yield -- it cannot starve the
+// system. A yield while still ready (a spin on a lock) goes to the others too.
+#define SCHED_PRIO_NORMAL	0
+#define SCHED_PRIO_HIGH		1
+
+/// \note Round-robin policy, plus "real time" tasks (SetPriority). Preemption-ready: see
 ///       OnTimerTick(). The block/wake/sleep protocol is identical to Circle's.
 
 class CScheduler /// Preemptive-ready scheduler controlling which task runs (replaces Circle's)
@@ -168,6 +178,8 @@ public:
 	///	   by the task's next voluntary Yield.
 	void OnPreempt (void);
 
+	/// \brief Priority of pTask (SCHED_PRIO_*; -1 only asks) -> the previous one, -1 no such task.
+	int SetPriority (CTask *pTask, int nPrio);
 	/// \brief Boot-time tuning (cmdline.txt): the app time slice in 10 ms ticks
 	///	   (slice=, default SCHED_SLICE_TICKS) and the hog logic on/off (hogsched=0
 	///	   = plain round-robin, as before OnPreempt existed) -- for A/B testing.
@@ -210,6 +222,7 @@ private:
 	void RemoveTask (CTask *pTask);
 	TSchedNode *GetNextTask (void);	// the next task to run, 0 if none
 	TSchedNode *ScanTasks (unsigned nTicks, boolean bSkipHogs);	// one round-robin pass
+	TSchedNode *ScanPrio (unsigned nTicks, boolean bTake);	// a ready "real time" task
 	TSchedNode *FindNode (CTask *pTask);
 	TSchedNode *FindPrev (TSchedNode *pNode);	// its predecessor in the circle
 	boolean GroupAlive (void *pKey);	// a task of the group pKey is not terminated
@@ -238,6 +251,8 @@ private:
 	boolean m_bHogSched;		// hog detection + bursts enabled (Configure)
 	volatile boolean m_bBurst;	// burst in progress: hogs are skipped (OnPreempt)
 	unsigned m_nBurstEnd;		// its end, in clock ticks (us)
+	unsigned m_nPrioTasks;		// tasks with nPrio > 0 (none: no extra scan at all)
+	volatile boolean m_bPrioPreempt; // the pending resched is for a "real time" task
 
 	// Stall watchdog
 	unsigned m_nLastYield;		// clock ticks (us) of the last Yield() entry

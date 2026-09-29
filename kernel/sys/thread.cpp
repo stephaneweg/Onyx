@@ -6,14 +6,19 @@
 #include <kern/addrspace.h>
 #include <kern/gui/window.h>
 #include <kern/kapi_abi.h>		// KAPI_WAIT_FOREVER
+#include <kern/layout.h>		// KERNEL_IDENTITY_END
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
 #include <circle/string.h>
 #include <circle/util.h>
 #include <circle/new.h>
+#include <circle/spinlock.h>
+#include <circle/synchronize.h>
 
 extern "C" void kapi_exit (int nStatus);
+
+static void WordWaitsFree (CAddressSpace *pAS);
 extern "C" void kapi_pump_events (void);
 
 enum { SYNC_MUTEX = 1, SYNC_EVENT, SYNC_BARRIER };
@@ -83,6 +88,7 @@ static CProcThreads *MyThreads (boolean bCreate)
 
 void ThreadsFree (CAddressSpace *pAS)
 {
+	WordWaitsFree (pAS);				// (its word waiters are on its tasks' stacks)
 	CProcThreads *pT = pAS->GetThreads ();
 	if (pT == 0) return;
 	if (pAS->GetWindow () != 0) pAS->GetWindow ()->SetWake (0);
@@ -546,4 +552,193 @@ int kapi_pump_wait (unsigned nTimeoutMs)
 	}
 	kapi_pump_events ();
 	return (int) nPending;
+}
+
+// ---- word waits (a futex) -----------------------------------------------------
+
+struct TWordWaiter
+{
+	u64		       ulPhys;		// the word's physical address (== its identity address)
+	unsigned	       nExpected;
+	CAddressSpace	      *pAS;		// (unlinked when the process dies)
+	CSynchronizationEvent *pEv;
+	volatile boolean       bWoken;
+	TWordWaiter	      *pNext;
+};
+
+static TWordWaiter *s_pWordWaiters = 0;
+static CSpinLock s_WordLock (IRQ_LEVEL);		// (the tick walks the list in its interrupt)
+
+// The physical address of a word of the calling process (any address it can read: its data,
+// its heap, a surface, its stack), by the MMU itself (AT S1E1R on the current TTBR0). FALSE:
+// unmapped, or out of the kernel's identity map (the tick could not read it there).
+static boolean WordPhys (const volatile unsigned *pWord, u64 *pPhys)
+{
+	u64 nFlags, nPAR;
+	asm volatile ("mrs %0, daif; msr daifset, #3" : "=r" (nFlags) :: "memory");	// (PAR_EL1 kept)
+	asm volatile ("at s1e1r, %1\n\tisb\n\tmrs %0, par_el1" : "=r" (nPAR) : "r" (pWord) : "memory");
+	asm volatile ("msr daif, %0" :: "r" (nFlags) : "memory");
+	if (nPAR & 1)
+	{
+		return FALSE;				// (the translation faulted)
+	}
+	u64 ulPhys = (nPAR & 0x0000FFFFFFFFF000ULL) | ((u64) (uintptr) pWord & 0xFFF);
+	if (ulPhys + sizeof (unsigned) > KERNEL_IDENTITY_END)
+	{
+		return FALSE;
+	}
+	*pPhys = ulPhys;
+	return TRUE;
+}
+
+static void UnlinkWaiter (TWordWaiter *pW)		// (s_WordLock held)
+{
+	for (TWordWaiter **pp = &s_pWordWaiters; *pp != 0; pp = &(*pp)->pNext)
+	{
+		if (*pp == pW)
+		{
+			*pp = pW->pNext;
+			return;
+		}
+	}
+}
+
+int kapi_wait_word (volatile unsigned *pWord, unsigned nExpected, unsigned nTimeoutMs)
+{
+	u64 ulPhys;
+	if (   pWord == 0
+	    || ((uintptr) pWord & 3) != 0
+	    || !CScheduler::IsActive ()
+	    || !WordPhys (pWord, &ulPhys))
+	{
+		return -1;
+	}
+	if (*pWord != nExpected) return 0;
+	if (nTimeoutMs == 0) return 1;
+
+	CSynchronizationEvent Ev;			// (on this task's stack: identity-mapped)
+	TWordWaiter W;
+	W.ulPhys = ulPhys;
+	W.nExpected = nExpected;
+	W.pAS = CurrentAS ();
+	W.pEv = &Ev;
+	W.bWoken = FALSE;
+
+	// Linked first, then the word read again: a change after this is seen by the tick or
+	// wakes us (Set before our Wait leaves the event set: Wait returns at once). The IRQ stays
+	// masked until the task is on the event's list: Circle's Wait tests the state, then blocks
+	// -- a tick's Set in between would be lost. (Yield keeps each task's own DAIF: the others
+	// run with their IRQs; we come back masked and unmask here.)
+	u64 nFlags;
+	asm volatile ("mrs %0, daif; msr daifset, #2" : "=r" (nFlags) :: "memory");
+	s_WordLock.Acquire ();
+	W.pNext = s_pWordWaiters;
+	s_pWordWaiters = &W;
+	DataMemBarrier ();
+	boolean bChanged = *(volatile unsigned *) (uintptr) ulPhys != nExpected;
+	if (bChanged) UnlinkWaiter (&W);
+	s_WordLock.Release ();
+	if (!bChanged)
+	{
+		if (nTimeoutMs == KAPI_WAIT_FOREVER)
+		{
+			Ev.Wait ();
+		}
+		else
+		{
+			if (nTimeoutMs > 1800000) nTimeoutMs = 1800000;	// (30 min: the clock's range)
+			Ev.WaitWithTimeout (nTimeoutMs * 1000);
+		}
+	}
+	asm volatile ("msr daif, %0" :: "r" (nFlags) : "memory");
+	if (bChanged) return 0;
+
+	s_WordLock.Acquire ();
+	if (!W.bWoken) UnlinkWaiter (&W);		// (the timeout: still linked)
+	boolean bWoken = W.bWoken;
+	s_WordLock.Release ();
+	if (bWoken || *(volatile unsigned *) (uintptr) ulPhys != nExpected) return 0;
+	return 1;
+}
+
+// Wake (and unlink) the waiters on ulPhys, or -- ulPhys 0, the tick -- those whose word has
+// changed. -> how many.
+static int WakeWords (u64 ulPhys)
+{
+	int n = 0;
+	s_WordLock.Acquire ();
+	TWordWaiter **pp = &s_pWordWaiters;
+	while (*pp != 0)
+	{
+		TWordWaiter *pW = *pp;
+		if (  ulPhys != 0
+		    ? pW->ulPhys == ulPhys
+		    : *(volatile unsigned *) (uintptr) pW->ulPhys != pW->nExpected)
+		{
+			*pp = pW->pNext;
+			pW->bWoken = TRUE;
+			pW->pEv->Set ();			// (its task made ready; it runs later)
+			n++;
+			continue;
+		}
+		pp = &pW->pNext;
+	}
+	s_WordLock.Release ();
+	return n;
+}
+
+int kapi_wake_word (volatile unsigned *pWord)
+{
+	u64 ulPhys;
+	if (pWord == 0 || ((uintptr) pWord & 3) != 0 || !WordPhys (pWord, &ulPhys)) return -1;
+	return WakeWords (ulPhys);
+}
+
+void WordWaitTick (void)
+{
+	if (s_pWordWaiters == 0) return;		// (nobody sleeps on a word: nothing to read)
+	WakeWords (0);
+}
+
+static void WordWaitsFree (CAddressSpace *pAS)
+{
+	s_WordLock.Acquire ();
+	TWordWaiter **pp = &s_pWordWaiters;
+	while (*pp != 0)
+	{
+		if ((*pp)->pAS == pAS) *pp = (*pp)->pNext;	// (a killed task's: never runs again)
+		else pp = &(*pp)->pNext;
+	}
+	s_WordLock.Release ();
+}
+
+// ---- priority -----------------------------------------------------------------
+
+int kapi_thread_priority (int nTid, int nPrio)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || nPrio > 1) return -1;
+	CTask *pTask = 0;
+	if (nTid == 0)
+	{
+		pTask = CurrentTask ();
+	}
+	else if (nTid == 1)
+	{
+		pTask = pAS->GetMainTask ();
+	}
+	else
+	{
+		CProcThreads *pT = ThreadsOf (pAS, FALSE);
+		for (unsigned i = 0; pT != 0 && i < THREAD_RECS; i++)
+			if (pT->Rec[i].nTid == (unsigned) nTid && !pT->Rec[i].bDone) pTask = pT->Rec[i].pTask;
+	}
+	if (   pTask == 0
+	    || !CScheduler::Get ()->IsValidTask (pTask)
+	    || pTask->GetUserData (TASK_USER_DATA_USER) != pAS)
+	{
+		return -2;
+	}
+	int nOld = CScheduler::Get ()->SetPriority (pTask, nPrio < 0 ? -1 : nPrio);
+	return nOld < 0 ? -2 : nOld;
 }

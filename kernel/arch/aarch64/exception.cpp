@@ -8,6 +8,7 @@
 #include <kern/trapframe.h>
 #include <kern/appcore.h>
 #include <kern/crashlog.h>
+#include <kern/thread.h>		// WordWaitTick (v68)
 #include <circle/multicore.h>
 #include <kern/layout.h>		// IS_USER_VA (preempt-gate classification)
 #include <kern/gui/gimage.h>
@@ -292,6 +293,7 @@ void PeriodicTick (void)
 	// Runs inside the timer IRQ (within InterruptHandler), 100 times per second.
 	if (CScheduler::IsActive ())
 	{
-		CScheduler::Get ()->OnTimerTick ();
+		WordWaitTick ();			// (v68) words changed without a wake (app cores)
+		CScheduler::Get ()->OnTimerTick ();	// (after: a "real time" task it woke preempts)
 	}
 }

@@ -2166,6 +2166,39 @@ int  kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner) { re
 int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
 int  kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns) { return SoundInstrument (CallerPid (), nVoice, pIns); }
 
+// --- v68: low-latency sound ---
+int kapi_sound_config (int nChunkFrames, int nAhead) { return SoundConfig (CallerPid (), nChunkFrames, nAhead); }
+
+// The ring's page mapped into the owner, like a shared surface (its frames are the kernel's:
+// the space's teardown drops the mapping only). Mapped once per process: the surface arena
+// is a bump allocator, so the address is kept for the next call of the same process.
+struct kapi_sound_ring *kapi_sound_map (void)
+{
+	static unsigned s_nMapPid = 0;
+	static void *s_pMapVA = 0;
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0)
+	{
+		return 0;
+	}
+	struct kapi_sound_ring *pRing = SoundRing (pAS->GetPid ());
+	if (pRing == 0)
+	{
+		return 0;
+	}
+	if (s_nMapPid != pAS->GetPid () || s_pMapVA == 0)
+	{
+		void *pVA = pAS->MapSurface ((u64) (uintptr) pRing, SND_RING_PAGE / KPAGE_SIZE);
+		if (pVA == 0)
+		{
+			return 0;			// (its surface arena is full)
+		}
+		s_nMapPid = pAS->GetPid ();
+		s_pMapVA = pVA;
+	}
+	return (struct kapi_sound_ring *) s_pMapVA;
+}
+
 // --- v48: held keys ---
 int kapi_key_held (int nKey)
 {
@@ -2179,6 +2212,10 @@ void kapi_inject_key_held (int nKey, int bDown)
 	CWindowManager *pWM = CWindowManager::Get ();
 	if (pWM != 0) pWM->SetInjectedHeld (nKey, bDown ? TRUE : FALSE);
 }
+
+// --- v68: USB MIDI input (kernel.cpp) ---
+int kapi_midi_read (struct kapi_midi_event *pEv, int nMax) { return KernelMidiRead (pEv, nMax); }
+int kapi_midi_devices (void) { return KernelMidiDevices (); }
 
 // --- v50: USB gamepads ---
 int kapi_pad_state (int nIndex, struct kapi_pad *pOut)

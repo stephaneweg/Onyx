@@ -118,7 +118,8 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      green ACT LED as a headless sign of life: 1 s period while the network is down,
      0.2 s once `NetIsUp()`; a frozen LED means the scheduler stopped.
    - **`CInputTask`** (if USB is present) — pumps keyboard/mouse events to the
-     window manager.
+     window manager; every 100 ms it also looks for new gamepads (`upad1..4`) and USB MIDI
+     devices (`umidi1..4`, v68: §8 *USB MIDI*), also after a hot plug.
    - **`CGuiWatchdogTask`** (skipped with `watchdog=0` in `cmdline.txt`) — once a second, checks the GUI and writes to the kernel
      log (`kmsg`): `compositor STALLED` when `CWindowManager::FrameCount()` has not moved
      for 2 s (with every task's `name:state`), `app '<title>' NOT PUMPING events` when a
@@ -378,6 +379,17 @@ and `hogsched=0` (plain round-robin) → `CScheduler::Configure`.
   the drawing task's 2 ms waits ended) found it Ready, and Circle's assertion halted all four
   cores — the random freeze of `n64emu` with the GPU (found with the crash record,
   `sched/scheduler.cpp(742)`). Such a task is now only unlinked.
+- **"Real time" tasks (v68, `SetPriority`, `kapi_thread_priority`).** A node's `nPrio`
+  (`SCHED_PRIO_HIGH`) makes `GetNextTask` try `ScanPrio` first — only while such tasks exist
+  (`m_nPrioTasks`): the first ready real-time task after `m_pScan` wins, before the burst and the
+  round robin. The current task is left out of that scan, so a real-time thread that yields while
+  still ready (a spin on `kapi_lock` held by an ordinary thread) lets the others run. A tick
+  (`OnTimerTick`, after `WordWaitTick`) that finds one ready while an ordinary task runs sets the
+  resched flag (`m_bPrioPreempt`): the IRQ exit preempts the app at once (in its own code only, as
+  always), and `OnPreempt` does not count that towards the app's hog streak. The priority holds
+  only while the task yields by itself: preempted at the end of its slice (a busy loop), it is
+  marked `bPrioSpent` — an ordinary task — until its next voluntary `Yield` (sleep, wait). So a
+  real-time thread cannot starve the system; an audio pump that renders and sleeps keeps it.
 - `Yield()` performs the context switch **with the IRQ disabled** for atomicity, then
   **restores the full `DAIF`** of the resumed task (each task keeps its own IRQ
   enable state).
@@ -540,6 +552,22 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   `pump_wait` points the window's wake-up (`CWindow::SetWake`: `PushEvent` and `RequestExit`
   pulse it) at `WakeEv`, sleeps if nothing is pending, then pumps; `wait_for_exit` sleeps on it
   too (16 ms at most, as before).
+- **Word waits (v68, a futex)** — `wait_word (addr, expected, ms)` / `wake_word (addr)`. The
+  word's **physical** address is the key (`WordPhys`: `AT S1E1R` on the caller's `TTBR0`, then
+  `PAR_EL1`; below 4 GB, the kernel's identity map): the same word of a shared surface, mapped at
+  another address in each process, wakes across processes. A waiter (`TWordWaiter`: the address,
+  the value, its process, a `CSynchronizationEvent`) lives on its task's stack, linked in one
+  kernel list under an IRQ spin lock; it is linked, then the word read again, then it waits —
+  with the IRQ masked until it is on the event's list (Circle's `Wait` tests then blocks: a
+  tick's `Set` in between would be lost; `Yield` keeps each task's own `DAIF`). `wake_word`
+  sets the events of the waiters on that address. **Code on an app core changes words without
+  any kapi**: `WordWaitTick`, called by `PeriodicTick` in the 100 Hz timer interrupt, reads every
+  sleeping word through the identity map and wakes those whose value moved (nothing to do, and
+  nothing read, while nobody sleeps). Spurious wakes are allowed (callers loop). A dying process
+  unlinks its waiters first (`ThreadsFree` → `WordWaitsFree`: a killed task's record is on its
+  stack, freed after the batch's handlers). Test: `/bin/futextest`.
+- **Priority (v68)**: `thread_priority (tid, 1)` makes a thread "real time" (§5): picked first
+  whenever it is ready, as long as it sleeps before its slice ends — for an audio pump.
 - **The lists show a process once**: `list_windows`, `list_tasks` and `list_procs` skip the tasks
   that are not its main task; a thread's name is `<app>:<name>` (or `<app>:<tid>`), which the
   crash reports' task lists show. `kill` / `kill_pid` refuse the caller's own process.
@@ -597,7 +625,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 67`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 68`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -615,7 +643,10 @@ workspaces (virtual desktops: `KAPI_WIN_OFFDESK`, `KAPI_WIN_DESK`, `KAPI_DESK_MA
 `screen_set` — the resolution changed while running, `GUI_EVENT_DISPLAY_RESIZE`; a window as big as
 the screen (was 1024 × 768 at most), v67 = `thread_create`/`thread_exit`/`thread_join`/`thread_self`,
 `mutex_*`/`event_*`/`barrier_*`/`sync_close`, `post`/`pump_wait` — threads (§7), their
-synchronisation objects, calls posted to the event pump; the scheduler's task list has no limit.
+synchronisation objects, calls posted to the event pump; the scheduler's task list has no limit,
+v68 = `sound_config`/`sound_map` — low-latency sound and the mapped PCM ring (§12),
+`wait_word`/`wake_word` — a futex (§7), `thread_priority` — "real time" threads (§5),
+`midi_read`/`midi_devices` — USB MIDI input (`struct kapi_midi_event`).
 
 ### Categories of exposed functions
 
@@ -625,6 +656,7 @@ synchronisation objects, calls posted to the event pump; the scheduler's task li
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `wtk::Menu`. |
 | Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
+| Word waits, priority (v68) | `wait_word(addr, expected, timeout_ms)` sleeps while the 4-byte word `*addr == expected` → 0 (woken, or the value differs), 1 timeout (0 ms: only check), −1 bad address (unaligned, unmapped); `wake_word(addr)` → the sleepers woken. Keyed by the **physical** address (a word of a shared surface wakes across processes); the 100 Hz tick also reads every sleeping word and wakes those that changed — an app core's write needs no `wake_word` (≤ 10 ms). `thread_priority(tid 0 self / 1 main / ≥ 2, prio 0 / 1 / −1 ask)` → the previous one, −1 bad prio, −2 no such thread: a "real time" task is picked first when ready and a tick preempts an app for it, while it yields by itself (§5). See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
 | Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
@@ -653,8 +685,10 @@ synchronisation objects, calls posted to the event pump; the scheduler's task li
 | Wi-Fi scan (v45) | `wlan_scan(out, max)` → `struct kapi_wlan_ap` (ssid, bssid, security `WLAN_SEC_OPEN`/`WEP`/`WPA`/`WPA2`, channel, freq, level dBm, connected), strongest first, one per BSSID. `NetWlanScan` in `sys/net.cpp` — **no Circle patch**: it drives the BCM4343 firmware's *escan* through `CBcm4343Device::Control ("escan 5")`, collects `ReceiveScanResult` messages for ~3.5 s (the firmware's `brcmf_escan_result_le` layout, as in hostap's `driver_circle.cpp`), then `escan 0`. Security from the capability privacy bit + the RSN (48) / WPA vendor (221) IEs; `connected` = the BSSID `GetBSSID()` reports while `CWPASupplicant::IsConnected()`. wpa_supplicant reads the same result queue for its own scans: while it is still looking for its network, a scan here may take its results (it scans again). Used by `/bin/wifiscan` and `wpaconf`. |
 | Master volume (v60) | `sound_volume(volume 0..10, mute 0/1)` (−1 keeps a value) → the volume `| 0x100` if muted. Applied in `COnyxSoundDevice::GetChunk` to everything played (voices + stream), on a squared curve (`s_Gain`, the ear hears the steps evenly). Not kept by the kernel: the menu bar applies `SD:/etc/sound.ini` at start (`user/volume.h`). |
 | Wi-Fi join (v60) | `wlan_reconnect()` — `NetWlanReconnect` (a core-3 request with `netcore=1`): wpa_supplicant's SIGHUP handler, caught at link time (`--wrap=eloop_register_signal_reconfig`, `kernel/Makefile`; docs/05 §14) and run from its own event loop (a 0 s eloop timeout) — deauthenticate, read `SD:/etc/wpa_supplicant.conf` again, rescan, join the highest priority network in range — then `CDHCPClient::Restart ()` (a new lease: another network). 0 asked, −1 no Wi-Fi running. Used by the Wi-Fi menu (`wifimenu`). |
+| Low-latency sound (v68) | For the sound owner: `sound_config(chunk_frames 64..1024 (0: 1024), ahead 1..4 (0: 4))` → the latency now in frames, (ahead + 1) × chunk (−1 not the owner); `sound_map()` → the **mapped PCM ring** (`struct kapi_sound_ring`: one 64 KB page, 8192 frames, `wr` moved by the app after its frames, `rd` by the kernel, `dry` underruns, the chunk / ahead now), mixed with the voices and the stream until the owner releases the output — plain memory, so an **app core** fills it (`kapi_sound_ring_write`). Both are back to the defaults / off at `sound_release` or the owner's death. See §12. Test: `/bin/ringtest`. |
 | Sound (v46) | `sound_acquire` (1 ok / 0 busy / −1 no audio: the caller becomes the owner; the output starts on first use), `sound_release`, `sound_start(voice 0..15, milliHz, wave SOUND_SQUARE/SINE/TRIANGLE/SAW/NOISE, volume 0..255)` (plays until stopped), `sound_stop(voice or -1)`, `sound_write(s16 stereo frames, n)` → frames taken (PCM ring, non-blocking), `sound_status(&rate, &free, &owner)`. Non-owners get −1; the owner's exit silences it. See §12. |
 | Run as (v49) | `exec_as(path, args, name)` → `ExecPath` with the process named `name` instead of after the path (1 = started). User space runs a format's program this way (`launch.h`: `SD:/bin/basic` for an app's `main.bax` is named after the app). |
+| USB MIDI (v68) | `midi_read(ev, max)` → up to `max` `struct kapi_midi_event` (`time_us` — the kernel's µs clock, `CTimer::GetClockTicks`, which `kapi_clock_us` reads user side, on an app core too —, `cable`, `status`, `data1`, `data2`, `device` (its `umidiN`), `length` 1..3), oldest first, never waits; −1 bad arguments. One queue for the system (256 events, the newest dropped when full). `midi_devices()` → attached. Circle's USB device factory makes a `CUSBMIDIHostDevice` for every class-compliant MIDI interface (`int1-3-0`) and its `CUSBMIDIDevice` names itself `umidiN`; the input task finds `umidi1..4` every 100 ms (a hot plug too), registers its packet handler (`MidiPacket`: at USB-completion time, stamps the packet and queues it under an IRQ spin lock) and a removed handler that frees the slot. No Circle change. Test: `/bin/miditest`. |
 | Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/gamepad.h`, `SD:/etc/gamepad.ini`). |
 | App cores (v51) | `core_acquire()` → 2 or 3 (a free app core, now the caller's) or −1; `core_run(core, fn, arg, stack_top)` → 0, or −1 (not yours / still running / `fn` or the stack not a user address): the core calls `fn (arg)` in the caller's address space on the given stack (16-byte aligned, the caller's memory); `core_state(core)` → `KAPI_CORE_IDLE` (0: `fn` returned), `KAPI_CORE_RUNNING` (1), `KAPI_CORE_FAULT` (−2: `fn` faulted and was stopped, logged to kmsg) or `KAPI_CORE_NOTYOURS` (−1); `core_release(core)` stops `fn` if it runs and frees the core (done at the app's exit anyway). `fn` makes **no kapi call and no allocation**. See §14. |
 | GPU (v52) | `gpu_info(buf, cap)` → 1 (the V3D is up; `buf` = "V3D 4.2 (1 core)") or 0 (`buf` says why); the first call brings the GPU up. `gpu_draw(v, n, clear, pixels, w, h, stride)`: `n` vertices `struct kapi_gpu_vertex { float x, y, z; u8 r, g, b, a; }` (a triangle list; normalized device coordinates, y up, z −1 near … 1 far; depth test *less*, both faces; colours interpolated) rendered by the GPU into `pixels` (0x00RRGGBB, `w` × `h` ≤ 2048, `stride` pixels a row) after clearing it to `clear` (0xRRGGBB) → 0, −1 no GPU, −2 bad arguments / too many vertices (`KAPI_GPU_MAX_VERTS` = 196608), −3 the GPU did not finish (it is then left off). See §15. |
@@ -991,6 +1025,35 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   Tables: `sys/sound_tables.h` (generated). The same file builds on a PC with
   `SOUND_HOST_TEST` (the Circle parts left out): `tools/tests/run_fms_test.sh` renders
   instruments with it, and the Windows FM Song player (`tools/fmsplayer`) plays with it.
+- **Low latency (v68, `sound_config`).** `CPWMSoundBaseDevice`'s chunk size is fixed when it is
+  made — but it is only the size of its two DMA buffers: Circle's `CDMASoundBuffers` programs each
+  transfer with the length `GetChunk` **returns**. So the device is made once, with the biggest
+  chunk (1024 frames), and a smaller chunk is just a shorter return: nothing re-created, the PWM
+  clock untouched, no Circle change. The owner picks the chunk (`s_nChunkFrames`, 64 .. 1024
+  frames) and how many chunks core 1 keeps ahead (`s_nAheadCfg`, 1 .. `SND_AHEAD` 4); each slot
+  of the ahead ring records its own length (a change applies from the next chunk rendered — the
+  ones already rendered play out first). What is heard lags the rendering by about
+  **(ahead + 1) chunks** (the ahead ring + the DMA buffer queued behind the one playing):
+  1024 × 4 (the default, what the emulators use) ≈ 116 ms; 256 × 2 ≈ 17 ms; 128 × 2 ≈ 9 ms;
+  64 × 1 ≈ 3 ms (a DMA interrupt every 1.5 ms; core 1 must never be late: with 1 chunk ahead any
+  hiccup is a click). Add what the app keeps queued in the stream or the ring. `GetChunk` now
+  frees a slot only after copying it (it used to free it first: with 4 slots core 1 could render
+  into the one being copied). `sound_release` / the owner's death restore 1024 × 4.
+- **The mapped ring (v68, `sound_map`).** One 64 KB page (`SoundRing`: a 64 KB-aligned heap
+  block, made on first use and **kept for ever** — core 1 may be reading it when its owner dies)
+  holding `struct kapi_sound_ring`: a header (`wr` the app's, `rd` the kernel's — free-running
+  frame counters —, `dry`, the rate, the chunk / ahead now) and 8192 s16 stereo frames (~186 ms).
+  `kapi_sound_map` maps it into the owner like a shared surface (`CAddressSpace::MapSurface`, the
+  surface arena; the teardown drops the mapping only), once per process. `Render` reads `wr`
+  once per chunk, mixes up to a chunk of frames with the voices and the stream, then moves `rd`
+  (`DMB` in between both sides); `dry` counts the times the ring ran out while playing. The
+  kernel only ever indexes it masked by its own capacity and treats `wr − rd > 8192` as empty,
+  so nothing an app writes there can make it read elsewhere. Since it is plain memory, **an app
+  core fills it** (`kapi_sound_ring_write`), and a core-0 thread can sleep on `rd` with
+  `wait_word` (the tick sees core 1 move it) — the DAW's engine writes straight into the kernel's
+  ring, no pump thread in the audio path. Apps run at EL1 without isolation from the kernel, so a
+  former owner that kept its mapping could still write into the page; the kernel stops mixing it
+  at the release. `ringtest` plays a tone from an app core this way.
 - **Ownership.** One pid owns the output (`sound_acquire`); every other call from another
   pid returns −1. `sound_release`, or the owner's exit (`SoundOnProcessGone`, called from
   `IpcOnProcessGone`), silences the voices, empties the ring and frees the output. The
@@ -998,6 +1061,7 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
 - **kapi v46**: `sound_acquire`, `sound_release`, `sound_start (voice, milliHz, wave,
   volume)`, `sound_stop (voice | -1)`, `sound_write (frames, n)`, `sound_status`.
   Users: `/bin/tone`, BASIC `PLAY` / `SOUND` / `BEEP` / `NOTEON` / `NOTEOFF`.
+- **kapi v68**: `sound_config (chunk_frames, ahead)`, `sound_map ()` (above).
 
 ## 13. Post-mortem debug console
 
@@ -1342,7 +1406,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 58 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 68 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

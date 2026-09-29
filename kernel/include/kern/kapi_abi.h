@@ -88,7 +88,15 @@
 //      + post / pump_wait -- a call queued to the app's event pump (a thread hands its result
 //      to the UI thread), and a pump that sleeps until an event or a post arrives. The
 //      scheduler has no task limit any more (a list; MAX_TASKS gone).
-#define KAPI_ABI_VERSION	67
+// v68: + sound_config / sound_map -- low-latency sound for the owner: the chunk size and the
+//      chunks rendered ahead (1024 x 4 ~116 ms by default, 256 x 2 ~17 ms), and a PCM ring in
+//      a mapped page (struct kapi_sound_ring) that an app core fills without a kapi call;
+//      + wait_word / wake_word -- a futex: sleep while a word holds a value, across processes
+//      on a shared surface, the kernel re-checking the sleeping words at every tick (a word
+//      changed by an app core wakes its waiters within 10 ms); + thread_priority -- a "real
+//      time" thread, picked first when ready; + midi_read / midi_devices -- USB MIDI input
+//      (class-compliant keyboards, hot-plugged), timestamped events.
+#define KAPI_ABI_VERSION	68
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -121,6 +129,28 @@ struct kapi_fm_op { unsigned char mult, level, ksl, attack, decay, sustain, rele
 struct kapi_fm_instrument { struct kapi_fm_op op[2]; unsigned char feedback, connection; };
 #define SOUND_VOICES	16		// voices 0..15
 #define SOUND_RATE	44100		// PCM frames per second (s16 left, s16 right)
+
+// The mapped PCM ring (ABI v68, kapi_sound_map): one 64 KB page shared by the sound owner
+// and the kernel's producer (core 1), mixed with the voices and the sound_write stream. The
+// app writes frames at data[(wr + i) % frames], then (a store barrier: "dmb ish") moves wr;
+// the kernel moves rd once it has taken them. Both are free-running frame counters (they
+// wrap at 2^32): wr - rd = the frames waiting (at most `frames`). Usable from an app core
+// (kapi_core_run code: plain memory, no kapi call); kapi_sound_ring_write (user/kapi.h) does it.
+#define KAPI_SOUND_RING_MAGIC	0x474E5253u	// "SRNG"
+#define KAPI_SOUND_RING_FRAMES	8192		// its capacity (a power of two): ~186 ms
+struct kapi_sound_ring
+{
+	unsigned	  magic;		// KAPI_SOUND_RING_MAGIC
+	unsigned	  frames;		// KAPI_SOUND_RING_FRAMES
+	volatile unsigned wr;			// the app: frames written so far
+	volatile unsigned rd;			// the kernel: frames taken so far
+	volatile unsigned dry;			// the kernel: times it ran dry while playing (underruns)
+	unsigned	  rate;			// SOUND_RATE
+	volatile unsigned chunk;		// the output's chunk now, frames (kapi_sound_config)
+	volatile unsigned ahead;		// ... and the chunks rendered ahead
+	unsigned	  reserved[8];
+	short		  data[KAPI_SOUND_RING_FRAMES * 2];	// s16 left, right (at offset 64)
+};
 
 // One Wi-Fi access point seen by kapi_wlan_scan (ABI v45).
 #define WLAN_SEC_OPEN	0
@@ -213,6 +243,24 @@ struct kapi_win_geom
 #define KAPI_CORE_RUNNING	1
 #define KAPI_CORE_NOTYOURS	(-1)
 #define KAPI_CORE_FAULT		(-2)
+
+// USB MIDI input (ABI v68, kapi_midi_read): one event per USB MIDI packet, in arrival order,
+// from every class-compliant device plugged in (Circle's CUSBMIDIDevice: umidi1..). time_us is
+// the kernel's microsecond clock (CTimer::GetClockTicks, wrapping at 2^32; user/kapi.h's
+// kapi_clock_us reads the same clock, on an app core too) when the packet arrived.
+// length 1..3 bytes are valid in status, data1, data2 (a SysEx comes in pieces of up to 3
+// bytes, each its own event: F0 .. F7 with the bytes between).
+#define KAPI_MIDI_DEVICES	4		// devices read at once (umidi1..4)
+struct kapi_midi_event
+{
+	unsigned      time_us;		// arrival (1 MHz clock)
+	unsigned char cable;		// the device's virtual cable (0..15)
+	unsigned char status;		// the MIDI bytes (running status already expanded by USB MIDI)
+	unsigned char data1, data2;
+	unsigned char device;		// its umidiN number (1..)
+	unsigned char length;		// valid bytes among status, data1, data2
+	unsigned char reserved[2];
+};
 
 #define KAPI_PAD_MAX	4
 #define KAPI_PAD_AXES	16
@@ -967,6 +1015,33 @@ struct TKApiTable
 	// pump_wait: sleep until a window event, a post or the close box (or the timeout), then
 	// pump_events -> what was pending (0: the timeout).
 	int (*pump_wait) (unsigned timeout_ms);
+	// --- v68 --- low-latency sound (kern/sound.h), futex, thread priority, USB MIDI.
+	// sound_config: for the sound owner: chunks of chunk_frames (64 .. 1024; 0 = 1024) and
+	// `ahead` of them rendered ahead (1 .. 4; 0 = 4) -> the latency now in frames ((ahead + 1)
+	// x chunk: ~116 ms by default, 256 x 2 = 768 frames ~17 ms), -1 not the owner. Back to the
+	// defaults when the owner releases the output (or dies).
+	int (*sound_config) (int chunk_frames, int ahead);
+	// sound_map: for the sound owner: the mapped PCM ring (struct kapi_sound_ring, emptied the
+	// first time), mixed from now on until the owner releases the output; 0 not the owner.
+	struct kapi_sound_ring *(*sound_map) (void);
+	// wait_word: sleep while *addr == expected (a 4-byte aligned word of this process: data,
+	// heap, stack, a shared surface) -> 0 woken or the value differs, 1 timeout (0 ms: only
+	// check), -1 a bad address. Waiters are keyed by the word's physical address: a surface's
+	// word wakes across processes. The kernel also reads every sleeping word at each 10 ms tick
+	// and wakes those that changed (an app core's writes need no wake_word). Spurious wakes are
+	// possible: check the word again. wake_word: wake the sleepers on addr -> how many, -1.
+	int (*wait_word) (volatile unsigned *addr, unsigned expected, unsigned timeout_ms);
+	int (*wake_word) (volatile unsigned *addr);
+	// thread_priority: tid (0 the caller, 1 the main thread, >= 2 a thread of this process) to
+	// prio 0 normal / 1 "real time" (picked first when ready; a tick preempts an app for it),
+	// -1 only asks -> the previous priority, -1 bad prio, -2 no such thread. A real-time thread
+	// that uses up its time slice is normal again until it next sleeps / yields by itself.
+	int (*thread_priority) (int tid, int prio);
+	// midi_read: up to max USB MIDI events (struct kapi_midi_event), oldest first, taken out of
+	// the kernel's queue (256 events; one queue for the system: one reader at a time) -> how
+	// many (0: none; never waits), -1 bad arguments. midi_devices: MIDI devices attached now.
+	int (*midi_read) (struct kapi_midi_event *ev, int max);
+	int (*midi_devices) (void);
 };
 
 #ifdef __cplusplus

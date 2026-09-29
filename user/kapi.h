@@ -446,6 +446,9 @@ static inline int kapi_pump_wait (unsigned timeout_ms)
 // and a yield while another thread holds it -- nothing to create, a zeroed int is free. Not
 // recursive. (Threads all run on core 0; the swap is still an exclusive load / store pair,
 // since the timer may preempt a thread anywhere in its own code.)
+// (An app built for the PC -- tools/tests/desktop_sim -- gets the compiler's atomics instead of
+// the AArch64 instructions.)
+#ifdef __aarch64__
 static inline int kapi__xchg (volatile int *p, int v)
 {
 	int old; unsigned fail;
@@ -457,15 +460,87 @@ static inline unsigned kapi__core (void)
 {
 	unsigned long m; __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m)); return (unsigned) (m & 3);
 }
+static inline void kapi__pause (void) { __asm__ volatile ("yield"); }
+static inline void kapi__release (volatile int *l) { __asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory"); }
+static inline void kapi__dmb (void) { __asm__ volatile ("dmb ish" ::: "memory"); }
+#else
+static inline int kapi__xchg (volatile int *p, int v) { return __atomic_exchange_n (p, v, __ATOMIC_ACQUIRE); }
+static inline unsigned kapi__core (void) { return 0; }
+static inline void kapi__pause (void) { }
+static inline void kapi__release (volatile int *l) { __atomic_store_n (l, 0, __ATOMIC_RELEASE); }
+static inline void kapi__dmb (void) { __atomic_thread_fence (__ATOMIC_SEQ_CST); }
+#endif
 // (on an app core -- kapi_core_run's code, which makes no kapi call -- it spins instead)
 static inline void kapi_lock (volatile int *l)
 {
 	while (kapi__xchg (l, 1) != 0)
 	{
-		if (kapi__core () == 0) KT->yield (); else __asm__ volatile ("yield");
+		if (kapi__core () == 0) KT->yield (); else kapi__pause ();
 	}
 }
-static inline void kapi_unlock (volatile int *l) { __asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory"); }
+static inline void kapi_unlock (volatile int *l) { kapi__release (l); }
+
+// (v68) A futex. kapi_wait_word (addr, expected, timeout_ms) sleeps while *addr == expected ->
+// 0 woken / the value differs, 1 timeout (0 ms: only check), -1 a bad address (not 4-byte
+// aligned, unmapped); may wake spuriously: loop on the condition. kapi_wake_word (addr) wakes
+// its sleepers -> how many. Works across processes on a shared surface (keyed by the physical
+// address). A word changed by an app core (no kapi there) is noticed at the next 10 ms tick.
+// kapi_thread_priority (tid 0 self / 1 main / >= 2, prio 0 normal / 1 real time / -1 ask) ->
+// the previous one: a real-time thread (an audio pump) runs first whenever it is ready, as long
+// as it sleeps before its time slice ends. An older kernel: -1 / -2.
+static inline int kapi_wait_word (volatile unsigned *addr, unsigned expected, unsigned timeout_ms)
+	{ return KT->version >= 68 ? KT->wait_word (addr, expected, timeout_ms) : -1; }
+static inline int kapi_wake_word (volatile unsigned *addr) { return KT->version >= 68 ? KT->wake_word (addr) : -1; }
+static inline int kapi_thread_priority (int tid, int prio) { return KT->version >= 68 ? KT->thread_priority (tid, prio) : -2; }
+
+// (v68) USB MIDI input: class-compliant devices (keyboards, interfaces), found when plugged
+// in, even later. kapi_midi_read (ev, max) takes up to max queued events (struct
+// kapi_midi_event: time_us, cable, status, data1, data2, device, length), oldest first, never
+// waits -> how many; one queue for the system (256 events). kapi_midi_devices () -> attached.
+static inline int kapi_midi_read (struct kapi_midi_event *ev, int max) { return KT->version >= 68 ? KT->midi_read (ev, max) : 0; }
+static inline int kapi_midi_devices (void) { return KT->version >= 68 ? KT->midi_devices () : 0; }
+// The kernel's microsecond clock (CTimer::GetClockTicks: the ARM counter, same formula), the
+// time base of kapi_midi_event.time_us. No kapi call: an app core may read it too.
+static inline unsigned kapi_clock_us (void)
+{
+#ifdef __aarch64__
+	unsigned long c, f;
+	__asm__ volatile ("isb\n\tmrs %0, cntpct_el0\n\tmrs %1, cntfrq_el0" : "=r" (c), "=r" (f));
+	return (unsigned) (c * 1000000UL / f);
+#else
+	return KT->get_ticks () * 10000u;		// (the PC's stand-in kernel: its 100 Hz ticks)
+#endif
+}
+
+// (v68) Low-latency sound, for the sound owner (kapi_sound_acquire). kapi_sound_config (chunk
+// frames 64..1024 (0: 1024), chunks ahead 1..4 (0: 4)) -> the latency now in frames ((ahead + 1)
+// x chunk: 1024 x 4 ~116 ms by default, 256 x 2 ~17 ms), -1 not the owner / older kernel. Keep
+// the sound_write stream shallow too (it holds up to 0.5 s): write when kapi_sound_status's free
+// frames show little is queued. The defaults come back when the owner releases the output.
+// kapi_sound_map () -> the mapped PCM ring (struct kapi_sound_ring, kern/kapi_abi.h), mixed
+// until the owner releases the output, or 0. It is plain memory: an app core (kapi_core_run)
+// fills it with kapi_sound_ring_write, which makes no kapi call.
+static inline int kapi_sound_config (int chunk_frames, int ahead)
+	{ return KT->version >= 68 ? KT->sound_config (chunk_frames, ahead) : -1; }
+static inline struct kapi_sound_ring *kapi_sound_map (void)
+	{ return KT->version >= 68 ? KT->sound_map () : 0; }
+// Frames the ring can take now.
+static inline unsigned kapi_sound_ring_free (const struct kapi_sound_ring *r)
+	{ return r->frames - (r->wr - r->rd); }
+// Copy up to n s16 stereo frames into the ring -> the frames taken (no kapi call: app cores too).
+static inline unsigned kapi_sound_ring_write (struct kapi_sound_ring *r, const short *frames, unsigned n)
+{
+	unsigned wr = r->wr, room = r->frames - (wr - r->rd), mask = r->frames - 1;
+	if (n > room) n = room;
+	for (unsigned i = 0; i < n; i++)
+	{
+		unsigned j = ((wr + i) & mask) * 2;
+		r->data[j] = frames[i * 2]; r->data[j + 1] = frames[i * 2 + 1];
+	}
+	kapi__dmb ();					// (the frames before the index)
+	r->wr = wr + n;
+	return n;
+}
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

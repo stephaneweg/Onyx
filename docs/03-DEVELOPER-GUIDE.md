@@ -283,6 +283,27 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
     thread of the process can run meanwhile, even in another kapi call.
 - Example and test: [`user/bin/threadtest.c`](../user/bin/threadtest.c) (`threadtest` in a
   terminal: every check, then PASS / FAIL).
+- **Word waits — a futex (v68)**: `kapi_wait_word (&word, expected, timeout_ms)` sleeps while
+  `word == expected` → 0 (woken, or the value already differs), 1 timeout (0 ms: only check),
+  −1 a bad address (not 4-byte aligned, unmapped). `kapi_wake_word (&word)` wakes its sleepers →
+  how many. Nothing to create: any `unsigned` of your memory, your stack or a **shared surface**
+  — the kernel keys the sleepers by the physical address, so two processes that map the same
+  surface (a plugin and its host) wait / wake on the same word. **Code on an app core** changes
+  words without calling anything (it cannot): the kernel reads every sleeping word at each 10 ms
+  tick and wakes those that changed — so a core-0 thread can sleep until the engine on core 2
+  has written (≤ 10 ms late; call `kapi_wake_word` when you can, it is immediate). Wakes may be
+  spurious: loop on your condition.
+
+  ```c
+  while (ring->ready == 0)                          /* set by another thread / process / core */
+      kapi_wait_word (&ring->ready, 0, 100);
+  ```
+- **Priority (v68)**: `kapi_thread_priority (tid, 1)` (tid 0 = the caller, 1 = the main thread)
+  makes a thread **"real time"**: whenever it is ready it runs before the others, and the next
+  tick preempts an app for it. It keeps that only while it sleeps / waits before its 20 ms slice
+  ends — a thread that computes through its slice is an ordinary one until it next sleeps, so it
+  cannot freeze the system. For an audio pump, a plugin's render loop. `-1` asks → the previous
+  priority; −2 no such thread. Test: [`user/bin/futextest.c`](../user/bin/futextest.c).
 
 ## 6. Writing a graphical application
 
@@ -379,6 +400,20 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
 > returns the frames taken — loop with a short sleep while it returns 0) for audio / MIDI
 > players. Example: `user/bin/tone.c`.
+> **Low-latency sound (ABI v68)**: the output normally lags ~116 ms (1024-frame chunks, 4 rendered
+> ahead). The owner may ask for less: `kapi_sound_config (chunk_frames, ahead)` (64..1024 frames,
+> 1..4 chunks; 0 = the default) → the latency in frames, (ahead + 1) × chunk — 256 × 2 = 768
+> frames ≈ 17 ms, 128 × 2 ≈ 9 ms (smaller means more DMA interrupts and no slack for a late core
+> 1: try 256 × 2 first). Then keep little queued: with `kapi_sound_write`, write only while
+> `kapi_sound_status`'s free frames show less than a chunk or two waiting. **The mapped ring**:
+> `struct kapi_sound_ring *r = kapi_sound_map ();` (0 if you are not the owner) — 8192 frames in
+> shared memory that the kernel mixes (with the voices and the stream) until you release the
+> output. `kapi_sound_ring_write (r, frames, n)` → frames taken (`kapi_sound_ring_free (r)`: the
+> room). It makes no kapi call, so **code on an app core** (`kapi_core_run`) can fill it: the
+> audio needs no pump thread on core 0. `r->dry` counts the underruns; `r->rd` moves as the
+> kernel plays — a thread can sleep on it with `kapi_wait_word (&r->rd, old, ms)` (§5.2). All of
+> this is undone by `kapi_sound_release` or the process's end. Example: `user/bin/ringtest.c`
+> (a tone from an app core at 256 × 2).
 > **FM instruments (ABI v47)**: fill a `struct kapi_fm_instrument` (2 operators, OPL2-style
 > parameters, see `kern/kapi_abi.h`), `kapi_sound_instrument (voice, &ins)`, then
 > `kapi_sound_start (voice, milliHz, SOUND_FM, volume)` / `kapi_sound_stop (voice)`. The FM Song
@@ -398,6 +433,14 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > Gamepad app, `padconf`) or the
 > built-in mapping (pads Circle knows). Used by gbemu, gamelib, BASIC (`PAD`, `STICK`, `STRIG`).
 > Host test: `sh tools/tests/run_gamepad_test.sh`.
+> **USB MIDI input (ABI v68)**: class-compliant USB MIDI devices (keyboards, interfaces) are found
+> when plugged in, at boot or later. `kapi_midi_read (ev, max)` takes up to `max` queued
+> `struct kapi_midi_event` (oldest first; never waits) → how many: `time_us` (arrival, the
+> kernel's µs clock — `kapi_clock_us ()` reads the same clock, also on an app core), `cable`,
+> `status`, `data1`, `data2` (`length` of them valid: 1..3; a SysEx arrives in 3-byte pieces),
+> `device` (its `umidiN`). One queue for the whole system (256 events; the newest are dropped
+> when nobody reads): one reader at a time. `kapi_midi_devices ()` → attached now. Poll it from
+> your pump or a thread (every 1–2 ms for live playing). Example: `user/bin/miditest.c`.
 > **The GPU (ABI v52)**: `kapi_gpu_info (buf, cap)` (1 = the V3D is usable; the first call brings
 > it up) and `kapi_gpu_draw (verts, n, clear, pixels, w, h, stride)`: a triangle list of
 > `struct kapi_gpu_vertex { float x, y, z; unsigned char r, g, b, a; }` in normalized device

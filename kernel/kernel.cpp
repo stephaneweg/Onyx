@@ -13,6 +13,7 @@
 #include <circle/input/keymap.h>		// CKeyMap, PHY_MAX_CODE, K_CTRLTAB (SetKeyMapData)
 #include <circle/input/mouse.h>
 #include <circle/usb/usbgamepad.h>
+#include <circle/usb/usbmidi.h>		// USB MIDI input (ABI v68)
 #include <kern/kapi_abi.h>		// struct kapi_pad (KernelPadState)
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
@@ -799,6 +800,66 @@ boolean KernelPadState (int nIndex, struct kapi_pad *pOut)
 	return FALSE;
 }
 
+// USB MIDI input (ABI v68): Circle's USB MIDI class driver names each device umidiN; its
+// packet handler runs at the USB completion (interrupt time) and queues the packet here with
+// the clock's time; kapi_midi_read takes them out. One queue for the whole system (a DAW reads
+// it); a full queue drops the newest events (counted).
+#define MIDI_QUEUE	256				// a power of two
+static CUSBMIDIDevice * volatile s_pMidi[KAPI_MIDI_DEVICES];
+static struct kapi_midi_event s_MidiQueue[MIDI_QUEUE];
+static unsigned s_nMidiIn = 0, s_nMidiOut = 0;		// event counters (in - out = queued)
+static unsigned s_nMidiLost = 0;
+static CSpinLock s_MidiLock (IRQ_LEVEL);
+
+static void MidiPacket (unsigned nCable, u8 *pPacket, unsigned nLength, unsigned nDevice, void *)
+{
+	if (nLength == 0 || nLength > 3) return;	// (a reserved code index number)
+	unsigned nTime = CTimer::Get ()->GetClockTicks ();
+	s_MidiLock.Acquire ();
+	if (s_nMidiIn - s_nMidiOut >= MIDI_QUEUE)
+	{
+		s_nMidiLost++;				// (nobody reads: the newest are dropped)
+	}
+	else
+	{
+		struct kapi_midi_event &E = s_MidiQueue[s_nMidiIn % MIDI_QUEUE];
+		E.time_us = nTime;
+		E.cable = (unsigned char) nCable;
+		E.status = pPacket[0];
+		E.data1 = nLength > 1 ? pPacket[1] : 0;
+		E.data2 = nLength > 2 ? pPacket[2] : 0;
+		E.device = (unsigned char) nDevice;
+		E.length = (unsigned char) nLength;
+		E.reserved[0] = E.reserved[1] = 0;
+		s_nMidiIn++;
+	}
+	s_MidiLock.Release ();
+}
+
+int KernelMidiRead (struct kapi_midi_event *pEv, int nMax)
+{
+	if (pEv == 0 || nMax < 0) return -1;
+	int n = 0;
+	while (n < nMax)
+	{
+		struct kapi_midi_event E;
+		s_MidiLock.Acquire ();
+		boolean bGot = s_nMidiIn != s_nMidiOut;
+		if (bGot) E = s_MidiQueue[s_nMidiOut++ % MIDI_QUEUE];
+		s_MidiLock.Release ();
+		if (!bGot) break;
+		pEv[n++] = E;				// (the app's memory: written outside the lock)
+	}
+	return n;
+}
+
+int KernelMidiDevices (void)
+{
+	int n = 0;
+	for (unsigned i = 0; i < KAPI_MIDI_DEVICES; i++) if (s_pMidi[i] != 0) n++;
+	return n;
+}
+
 class CInputTask : public CTask
 {
 public:
@@ -860,6 +921,7 @@ public:
 				Detect ();
 			}
 			DetectPads ();
+			DetectMidi ();
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}
@@ -927,6 +989,27 @@ private:
 					  i + 1, Slot.State.vid, Slot.State.pid, Slot.State.nbuttons, Slot.State.naxes,
 					  Slot.State.nhats, (Slot.State.props & GamePadPropertyIsKnown) ? ", known" : "");
 		}
+	}
+
+	// MIDI devices umidi1..umidiN (Circle reuses the numbers after an unplug): a new one gets
+	// our packet handler once (Circle allows one) and a removal handler that frees its slot.
+	void DetectMidi (void)
+	{
+		for (unsigned i = 0; i < KAPI_MIDI_DEVICES; i++)
+		{
+			if (s_pMidi[i] != 0) continue;
+			CUSBMIDIDevice *pMidi = (CUSBMIDIDevice *) m_pDNS->GetDevice ("umidi", i + 1, FALSE);
+			if (pMidi == 0) continue;
+			pMidi->RegisterRemovedHandler (MidiRemoved, (void *) &s_pMidi[i]);
+			pMidi->RegisterPacketHandler (MidiPacket, 0);
+			s_pMidi[i] = pMidi;
+			m_pLogger->Write ("input", LogNotice, "MIDI device %u attached", i + 1);
+		}
+	}
+
+	static void MidiRemoved (CDevice *, void *pContext)
+	{
+		if (pContext != 0) *(CUSBMIDIDevice * volatile *) pContext = 0;
 	}
 
 	static void PadStatus (unsigned nDeviceIndex, const TGamePadState *pState)

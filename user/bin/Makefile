@@ -75,7 +75,7 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  fptest.elf init.elf telnetd.elf notifytest.elf \
 	  ping.elf nslookup.elf netstat.elf whois.elf ftpd.elf ftp.elf wifiscan.elf tone.elf \
 	  coretest.elf fsbench.elf shutdown.elf reboot.elf volume.elf hangtest.elf \
-	  threadtest.elf
+	  threadtest.elf futextest.elf miditest.elf ringtest.elf
 
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.

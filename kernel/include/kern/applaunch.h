@@ -35,6 +35,9 @@ const char *KernelGetKeyMap (void);
 boolean KernelKeyboardReady (void);		// is a USB keyboard attached? (kapi_kbd_ready)
 struct kapi_pad;
 boolean KernelPadState (int nIndex, struct kapi_pad *pOut);	// a USB gamepad's raw state (kapi_pad_state)
+struct kapi_midi_event;
+int KernelMidiRead (struct kapi_midi_event *pEv, int nMax);	// queued USB MIDI events (kapi_midi_read)
+int KernelMidiDevices (void);					// MIDI devices attached
 
 // Verbose-logging flag (defined in kernel.cpp): gates kernel lifecycle logs. The
 // extern lets other TUs gate their own logs with `if (g_bVerbose)`.
