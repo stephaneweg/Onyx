@@ -10,7 +10,8 @@
 #   python tools/manuals/build_manuals.py --html ...				(the HTML only, to look at it)
 #
 # The browser: $CHROME if set, else the first found of Chrome, Chromium, Edge (Windows, macOS, Linux; on
-# Linux also Playwright's /opt/pw-browsers/chromium). Needs Python 3 only.
+# Linux also Playwright's /opt/pw-browsers/chromium). Needs Python 3 only. A manual in another language:
+# <Name>.<lang>.md next to it (Ledger.fr.md, Ledger.nl.md: their PDFs Ledger.fr.pdf, Ledger.nl.pdf).
 #
 # The Markdown subset (CommonMark's and GitHub's usual forms):
 #   # .. #### headings (their anchors as GitHub makes them: "## 6. Sales" -> #6-sales)
@@ -206,8 +207,8 @@ td { padding: 1.4mm 2.2mm; border-bottom: 0.25mm solid #C9D2DC; vertical-align: 
 tbody tr:nth-child(even) td { background: #F6F8FA; }
 th strong { color: #FFFFFF; }
 hr { border: none; border-top: 0.3mm solid #C9D2DC; margin: 5mm 0; }
-#contents + ul { columns: 2; column-gap: 10mm; list-style: none; padding: 0; }
-#contents + ul li { margin-bottom: 2mm; }
+ul.toc { columns: 2; column-gap: 10mm; list-style: none; padding: 0; }
+ul.toc li { margin-bottom: 2mm; }
 """
 
 def page (md_path, title):
@@ -216,12 +217,14 @@ def page (md_path, title):
 	# the cover: what comes before the first chapter
 	k = body.find ("<h2")
 	cover, rest = (body[:k], body[k:]) if k > 0 else ("", body)
+	rest = re.sub (r"^(<h2[^>]*>.*?</h2>\n)<ul>", r'\1<ul class="toc">', rest, count = 1)	# (the contents: the first chapter's list)
 	if cover: cover = '<section class="cover">%s<div class="brand">ONYX</div></section>' % cover
 	fonts = "file:///" + FONTS.replace (os.sep, "/").lstrip ("/")
 	base = "file:///" + os.path.dirname (os.path.abspath (md_path)).replace (os.sep, "/").lstrip ("/") + "/"
 	css = CSS.replace ("FONTS", fonts).replace ("TITLE", title.replace ('"', "'"))
-	return ('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><base href="%s"><title>%s</title><style>%s</style></head>'
-		'<body>%s%s</body></html>' % (base, html.escape (title), css, cover, rest))
+	m = re.search (r"\.(\w\w)\.md$", md_path); lang = m.group (1) if m else "en"	# (Ledger.fr.md: French)
+	return ('<!DOCTYPE html><html lang="%s"><head><meta charset="utf-8"><base href="%s"><title>%s</title><style>%s</style></head>'
+		'<body>%s%s</body></html>' % (lang, base, html.escape (title), css, cover, rest))
 
 # ---- the printing ------------------------------------------------------------------------------------------------
 def browser ():

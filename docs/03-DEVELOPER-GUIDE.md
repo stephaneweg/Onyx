@@ -1590,7 +1590,10 @@ barwidth = 40
   run on what Ledger printed), [`annotate.py`](../tools/manuals/annotate.py) adding numbered callouts in
   margins. The PDF: `python tools/manuals/build_manuals.py [its .md]` — Python only; a headless Chrome,
   Chromium or Edge prints it (`$CHROME` to choose one), A4, the docs' colours, Selawik
-  (`sdcard/res/fonts`), bookmarks from the headings. Ledger's: `sdcard/manuals/ledger/Ledger.md`.
+  (`sdcard/res/fonts`), bookmarks from the headings. Translations: `<Name>.<lang>.md` next to it
+  (`Ledger.fr.md`, `Ledger.nl.md` → `Ledger.fr.pdf`, `Ledger.nl.pdf`), the same pictures (the apps' screens
+  are in English: the manual names their buttons as on the screen, then translates them). Ledger's:
+  `sdcard/manuals/ledger/Ledger.md`, `.fr.md`, `.nl.md`.
 - **Word/PDF exports**: [`docs/build_docs.py`](build_docs.py) converts each `.md` in
   `docs/` into `.docx` (via `pandoc`) then into `.pdf` (via Word/`docx2pdf`), in
   `docs/exports/`. Run `python docs/build_docs.py` after any modification to the `.md` files.
