@@ -13,6 +13,8 @@
 //     image     = SD:/x.jpg    image: the picture (BMP GIF PNG JPEG PCX WebP), painted by
 //     style     = cover        apps/imageview --background: cover (the screen filled, centred)
 //                              or tile (repeated from the top left)
+//     tint      = no           image: yes -- its grey multiplies `color` (a tinted picture:
+//                              painted by voronoy itself), no -- shown as it is
 //     pattern   = SD:/wallpapers/waves.png   pattern: the grey picture (tools/gen_wallpapers.py
 //                              makes the shipped ones, SD:/wallpapers): each pixel's grey
 //                              multiplies the gradient -- white is the colour itself -- as
@@ -40,13 +42,14 @@ struct Wallpaper
 	int points;
 	char image[200];
 	int tile;			// image: 1 tiled, 0 cover
+	int tint;			// image: 1 its grey times c1, 0 as it is
 	char pattern[200];		// pattern: the grey picture
 };
 
 static inline void wp_defaults (Wallpaper &w)
 {
 	w.mode = WP_VORONOI; w.c1 = 0x004878B0; w.c2 = 0x001C2C48; w.vertical = 1; w.points = 28;
-	w.image[0] = 0; w.tile = 0;
+	w.image[0] = 0; w.tile = 0; w.tint = 0;
 	const char *d = WALLPAPER_DIR "/waves.png";
 	int i = 0; for (; d[i] && i < (int) sizeof w.pattern - 1; i++) w.pattern[i] = d[i];
 	w.pattern[i] = 0;
@@ -119,6 +122,7 @@ static inline void wp_key (const char *k, const char *v, void *ctx)
 	else if (wp_eq (k, "points")) { int n = 0; for (const char *p = v; *p >= '0' && *p <= '9'; p++) n = n * 10 + (*p - '0'); if (n > 0) w.points = n > 64 ? 64 : n; }
 	else if (wp_eq (k, "image")) { int i = 0; for (; v[i] && i < (int) sizeof w.image - 1; i++) w.image[i] = v[i]; w.image[i] = 0; }
 	else if (wp_eq (k, "style")) w.tile = wp_eq (v, "tile");
+	else if (wp_eq (k, "tint")) w.tint = wp_eq (v, "yes") || wp_eq (v, "1") || wp_eq (v, "on");
 	else if (wp_eq (k, "pattern")) { int i = 0; for (; v[i] && i < (int) sizeof w.pattern - 1; i++) w.pattern[i] = v[i]; w.pattern[i] = 0; }
 }
 
@@ -153,6 +157,7 @@ static inline bool wp_save (const Wallpaper &w)
 	p = wp_put (o, p, sizeof o, w.points >= 10 ? n : n + 1);
 	p = wp_put (o, p, sizeof o, "\nimage     = "); p = wp_put (o, p, sizeof o, w.image);
 	p = wp_put (o, p, sizeof o, "\nstyle     = "); p = wp_put (o, p, sizeof o, w.tile ? "tile" : "cover");
+	p = wp_put (o, p, sizeof o, "\ntint      = "); p = wp_put (o, p, sizeof o, w.tint ? "yes" : "no");
 	p = wp_put (o, p, sizeof o, "\npattern   = "); p = wp_put (o, p, sizeof o, w.pattern);
 	p = wp_put (o, p, sizeof o, "\n");
 	return kapi_save_file (WALLPAPER_INI, o, (unsigned) p) >= 0;
@@ -330,6 +335,18 @@ static inline void wp_grey_cover (const unsigned *img, int iw, int ih, unsigned 
 				o[x] = (unsigned char) ((top * (256 - (unsigned) ty) + bot * (unsigned) ty) >> 16);
 			}
 		}
+	}
+}
+
+// ... tiled from the top left instead (a tinted picture's "tile" style): the picture at the
+// screen's scale (sw x sh: the screen w x h stands for -- a small preview's).
+static inline void wp_grey_tile (const unsigned *img, int iw, int ih, unsigned char *out, int w, int h, int sw, int sh)
+{
+	if (!img || iw <= 0 || ih <= 0 || w <= 0 || h <= 0) return;
+	for (int y = 0; y < h; y++)
+	{
+		int sy = (int) (((long) y * sh / h) % ih);
+		for (int x = 0; x < w; x++) out[(long) y * w + x] = (unsigned char) wp_lum (img[(long) sy * iw + (int) (((long) x * sw / w) % iw)]);
 	}
 }
 

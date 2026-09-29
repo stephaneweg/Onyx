@@ -201,6 +201,11 @@ static void make_wall (void)
 			}
 			unsigned c = g_pic[(long) sy * g_picW + sx], a = c >> 24;
 			if (a != 255) c = ((((c >> 16) & 255) * a / 255) << 16) | ((((c >> 8) & 255) * a / 255) << 8) | ((c & 255) * a / 255);
+			if (g_wp.tint)					// tinted: its grey times the colour
+			{
+				unsigned k = wp_lum (c) + 1, t = g_wp.c1;
+				c = ((((t >> 16) & 255) * k >> 8) << 16) | ((((t >> 8) & 255) * k >> 8) << 8) | ((t & 255) * k >> 8);
+			}
 			g_wall[y * PVW + x] = c & 0xFFFFFF;
 		}
 }
@@ -366,6 +371,7 @@ static Dropdown  *g_ddItem, *g_ddOutline, *g_ddMode, *g_ddDir, *g_ddStyle;
 static Checkbox  *g_auto;
 static Label     *g_lbPoints, *g_lbC2, *g_lbDir, *g_lbImage, *g_lbStyle, *g_lbC1, *g_lbPattern, *g_status;
 static Dropdown  *g_ddPattern;
+static Checkbox  *g_cbTint;
 static ColorPicker *g_pkC1, *g_pkC2;
 static NumericUpDown *g_nuPoints;
 static Textbox   *g_tbImage;
@@ -462,7 +468,8 @@ static void show_desktop_controls (void)
 	g_lbC2->hidden = g_pkC2->hidden = g_lbDir->hidden = g_ddDir->hidden = !two;
 	g_lbImage->hidden = g_tbImage->hidden = g_btBrowse->hidden = g_lbStyle->hidden = g_ddStyle->hidden = !img;
 	g_lbPattern->hidden = g_ddPattern->hidden = m != WP_PATTERN;
-	g_lbC1->setText (m == WP_VORONOI ? "Colour" : m == WP_IMAGE ? "Around" : two ? "Colour 1" : "Colour");
+	g_cbTint->hidden = !img;
+	g_lbC1->setText (m == WP_VORONOI ? "Colour" : m == WP_IMAGE ? (g_wp.tint ? "Tint" : "Around") : two ? "Colour 1" : "Colour");
 	if (g_root) g_root->invalidate (true);
 }
 
@@ -486,6 +493,7 @@ static void load_current (void)
 	g_nuPoints->value = g_wp.points; g_nuPoints->invalidate (true);
 	g_pkC2->color = g_wp.c2; g_pkC2->invalidate (true);
 	g_tbImage->setText (g_wp.image);
+	g_cbTint->checked = g_wp.tint != 0; g_cbTint->invalidate (true);
 	int pi = pattern_index ();
 	g_ddPattern->sel = pi >= 0 ? pi : 0; g_ddPattern->invalidate (true);
 	show_desktop_controls ();
@@ -535,6 +543,7 @@ static void on_pattern (Widget &w)
 	int n = 0; ax_strcat (g_wp.pattern, sizeof g_wp.pattern, &n, WALLPAPER_DIR "/"); ax_strcat (g_wp.pattern, sizeof g_wp.pattern, &n, g_patFile[i]);
 	refresh (true);
 }
+static void on_tint (Widget &w) { g_wp.tint = ((Checkbox &) w).checked ? 1 : 0; show_desktop_controls (); refresh (true); }
 static void on_image (Widget &)
 {
 	int n = 0; while (g_tbImage->text[n] && n < (int) sizeof g_wp.image - 1) { g_wp.image[n] = g_tbImage->text[n]; n++; }
@@ -544,8 +553,11 @@ static void on_image (Widget &)
 static void on_browse (Widget &)
 {
 	char p[200];
-	if (!wk_file_open (p, sizeof p, g_wp.image[0] ? g_wp.image : "SD:/")) return;
+	if (!wk_file_open (p, sizeof p, g_wp.image[0] ? g_wp.image : WALLPAPER_DIR "/")) return;
 	g_tbImage->setText (p);
+	const char *d = WALLPAPER_DIR "/"; int k = 0;		// one of the patterns: tinted, as the Pattern mode
+	while (d[k] && (p[k] | 32) == (d[k] | 32)) k++;
+	if (!d[k]) { g_wp.tint = 1; g_cbTint->checked = true; g_cbTint->invalidate (true); show_desktop_controls (); }
 	on_image (*g_tbImage);
 }
 static void on_apply (Widget &) { apply (); }
@@ -597,6 +609,8 @@ int main (void)
 	g_btBrowse = new Button (464, y0 + 79, 100, 30, "Browse...", on_browse); desk_add (g_btBrowse);
 	g_lbStyle = new Label (170, y0 + 44, 80, 20, "Style", C_TEXT, gd->bg); desk_add (g_lbStyle);
 	g_lbPattern = new Label (12, y0 + 84, 80, 20, "Pattern", C_TEXT, gd->bg); desk_add (g_lbPattern);
+	g_cbTint = new Checkbox (430, y0 + 42, 140, 24, "Tinted", false, on_tint, gd->bg); desk_add (g_cbTint);
+	g_cbTint->tip = "The picture's grey multiplies the colour (a pattern of SD:/wallpapers: coloured)";
 
 	g_status = new Label (X + 12, H - 38, 400, 24, "", C_DIS, root.bg);
 	root.addChild (g_status);
