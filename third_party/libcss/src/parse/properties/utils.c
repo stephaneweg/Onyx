@@ -467,12 +467,8 @@ static bool parse_rgb(
 				valid = token->type;
 			}
 
-			/* The alpha channel may be a float */
-			if (i < 3) {
-				int_only = (valid == CSS_TOKEN_NUMBER);
-			} else {
-				int_only = false;
-			}
+			/* Onyx: the channels may be decimals too (CSS Color 4) */
+			int_only = false;
 
 			num = css__number_from_lwc_string(token->idata,
 					int_only, &consumed);
@@ -485,8 +481,8 @@ static bool parse_rgb(
 					/* alpha channel */
 					intval = FIXTOINT(FMUL(num, F_255));
 				} else {
-					/* colour channels */
-					intval = FIXTOINT(num);
+					/* colour channels (rounded) */
+					intval = FIXTOINT(num + F_0_5);
 				}
 			} else {
 				intval = FIXTOINT(
@@ -1039,7 +1035,9 @@ css_error css__parse_colour_specifier(css_language *c,
 			if (!parse_hwb(vector, ctx, result)) {
 				goto invalid;
 			}
-		} else {
+		} else if (!css__onyx_parse_colour_fn(c, token->idata, vector, ctx,
+				result)) {
+			/* Onyx: oklab(), oklch(), lab(), lch(), color(), color-mix() */
 			goto invalid;
 		}
 	}

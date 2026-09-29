@@ -270,6 +270,33 @@ enum op_background_size {
 	BACKGROUND_SIZE_H_AUTO		= 0x0020
 };
 
+/* the text properties: SET is followed by the text's string index */
+enum op_onyx_text {
+	ONYX_TEXT_NONE			= 0x0000,
+	ONYX_TEXT_SET			= 0x0080
+};
+
+/* aspect-ratio: SET is followed by the width and height (fixed) */
+enum op_aspect_ratio {
+	ASPECT_RATIO_AUTO		= 0x0000,
+	ASPECT_RATIO_SET		= 0x0080,
+	ASPECT_RATIO_AUTO_FLAG		= 0x0040
+};
+
+enum op_object_fit {
+	OBJECT_FIT_FILL			= 0x0000,
+	OBJECT_FIT_CONTAIN		= 0x0001,
+	OBJECT_FIT_COVER		= 0x0002,
+	OBJECT_FIT_NONE			= 0x0003,
+	OBJECT_FIT_SCALE_DOWN		= 0x0004
+};
+
+enum op_grid_auto_flow {
+	GRID_AUTO_FLOW_ROW		= 0x0000,
+	GRID_AUTO_FLOW_COLUMN		= 0x0001,
+	GRID_AUTO_FLOW_DENSE		= 0x0002
+};
+
 enum op_text_overflow {
 	TEXT_OVERFLOW_CLIP		= 0x0000,
 	TEXT_OVERFLOW_ELLIPSIS		= 0x0001
@@ -406,7 +433,8 @@ enum op_display {
 	DISPLAY_FLEX			= 0x0010,
 	DISPLAY_INLINE_FLEX		= 0x0011,
 	DISPLAY_GRID			= 0x0012,
-	DISPLAY_INLINE_GRID		= 0x0013
+	DISPLAY_INLINE_GRID		= 0x0013,
+	DISPLAY_CONTENTS		= 0x0014	/* Onyx */
 };
 
 enum op_elevation {

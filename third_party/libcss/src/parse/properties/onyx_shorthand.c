@@ -237,6 +237,8 @@ ONYX_PAIR(css__parse_border_inline_style, css__parse_border_left_style,
 		CSS_PROP_BORDER_LEFT_STYLE, CSS_PROP_BORDER_RIGHT_STYLE)
 ONYX_PAIR(css__parse_border_inline_color, css__parse_border_left_color,
 		CSS_PROP_BORDER_LEFT_COLOR, CSS_PROP_BORDER_RIGHT_COLOR)
+ONYX_PAIR(css__onyx_parse_overflow, css__parse_overflow_x, CSS_PROP_OVERFLOW_X,
+		CSS_PROP_OVERFLOW_Y)
 ONYX_PAIR(css__parse_gap, css__parse_row_gap, CSS_PROP_ROW_GAP,
 		CSS_PROP_COLUMN_GAP)
 

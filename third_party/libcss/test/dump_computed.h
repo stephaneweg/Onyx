@@ -3364,6 +3364,79 @@ static void dump_computed_style(const css_computed_style *style, char *buf,
 				ptr += wrote; *len -= wrote;
 			}
 		}
+		{
+			static const char *fit[] = { "inherit", "fill", "contain", "cover",
+					"none", "scale-down" };
+			static const char *flow[] = { "inherit", "row", "column", "row dense",
+					"column dense" };
+			static const struct {
+				const char *name;
+				uint8_t (*get)(const css_computed_style *, lwc_string **);
+			} texts[] = {
+				{ "transform", css_computed_transform },
+				{ "translate", css_computed_translate },
+				{ "scale", css_computed_scale },
+				{ "rotate", css_computed_rotate },
+				{ "grid-template-columns", css_computed_grid_template_columns },
+				{ "grid-template-rows", css_computed_grid_template_rows },
+				{ "grid-template-areas", css_computed_grid_template_areas },
+				{ "grid-auto-columns", css_computed_grid_auto_columns },
+				{ "grid-auto-rows", css_computed_grid_auto_rows },
+				{ "grid-row-start", css_computed_grid_row_start },
+				{ "grid-row-end", css_computed_grid_row_end },
+				{ "grid-column-start", css_computed_grid_column_start },
+				{ "grid-column-end", css_computed_grid_column_end },
+			};
+			css_fixed w, h;
+			size_t k;
+
+			val = css_computed_aspect_ratio(style, &w, &h);
+			if (val == CSS_ASPECT_RATIO_SET || val == CSS_ASPECT_RATIO_AUTO_SET) {
+				wrote = snprintf(ptr, *len, "aspect-ratio: %s%.3f / %.3f\n",
+						val == CSS_ASPECT_RATIO_AUTO_SET ? "auto " : "",
+						FIXTOFLT(w), FIXTOFLT(h));
+				ptr += wrote; *len -= wrote;
+			}
+			val = css_computed_object_fit(style);
+			if (val != CSS_OBJECT_FIT_FILL && val < 6) {
+				wrote = snprintf(ptr, *len, "object-fit: %s\n", fit[val]);
+				ptr += wrote; *len -= wrote;
+			}
+			val = css_computed_object_position(style, &l[0], &u[0], &l[1], &u[1]);
+			if (val == CSS_OBJECT_POSITION_SET && (l[0] != INTTOFIX(50) ||
+					l[1] != INTTOFIX(50) || u[0] != CSS_UNIT_PCT ||
+					u[1] != CSS_UNIT_PCT)) {
+				wrote = snprintf(ptr, *len, "object-position: ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[0], u[0], ptr, *len);
+				ptr += wrote; *len -= wrote;
+				wrote = snprintf(ptr, *len, " ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[1], u[1], ptr, *len);
+				ptr += wrote; *len -= wrote;
+				wrote = snprintf(ptr, *len, "\n");
+				ptr += wrote; *len -= wrote;
+			}
+			for (k = 0; k < sizeof(texts) / sizeof(texts[0]); k++) {
+				lwc_string *text = NULL;
+				val = texts[k].get(style, &text);
+				if (val == CSS_ONYX_TEXT_SET && text != NULL) {
+					wrote = snprintf(ptr, *len, "%s: %.*s\n", texts[k].name,
+							(int) lwc_string_length(text),
+							lwc_string_data(text));
+					ptr += wrote; *len -= wrote;
+				}
+			}
+			val = css_computed_grid_auto_flow(style);
+			if (val != CSS_GRID_AUTO_FLOW_ROW && val < 5) {
+				wrote = snprintf(ptr, *len, "grid-auto-flow: %s\n", flow[val]);
+				ptr += wrote; *len -= wrote;
+			}
+			if (css_computed_display(style, false) == CSS_DISPLAY_CONTENTS) {
+				wrote = snprintf(ptr, *len, "display: contents\n");
+				ptr += wrote; *len -= wrote;
+			}
+		}
 	}
 }
 

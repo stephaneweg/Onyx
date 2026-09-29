@@ -437,6 +437,35 @@ uint8_t css_computed_justify_items(
 		const css_computed_style *style);
 uint8_t css_computed_justify_self(
 		const css_computed_style *style);
+uint8_t css_computed_aspect_ratio(const css_computed_style *style,
+		css_fixed *width, css_fixed *height);
+uint8_t css_computed_object_fit(const css_computed_style *style);
+uint8_t css_computed_object_position(const css_computed_style *style,
+		css_fixed *hlength, css_unit *hunit,
+		css_fixed *vlength, css_unit *vunit);
+/* the text properties (css_onyx_text_e): the canonical text, when SET (see
+ * src/parse/properties/onyx_css3b.c) */
+uint8_t css_computed_transform(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_translate(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_scale(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_rotate(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_grid_template_columns(const css_computed_style *style,
+		lwc_string **text);
+uint8_t css_computed_grid_template_rows(const css_computed_style *style,
+		lwc_string **text);
+uint8_t css_computed_grid_template_areas(const css_computed_style *style,
+		lwc_string **text);
+uint8_t css_computed_grid_auto_columns(const css_computed_style *style,
+		lwc_string **text);
+uint8_t css_computed_grid_auto_rows(const css_computed_style *style,
+		lwc_string **text);
+uint8_t css_computed_grid_auto_flow(const css_computed_style *style);
+uint8_t css_computed_grid_row_start(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_grid_row_end(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_grid_column_start(const css_computed_style *style,
+		lwc_string **text);
+uint8_t css_computed_grid_column_end(const css_computed_style *style,
+		lwc_string **text);
 
 uint8_t css_computed_column_gap(
 		const css_computed_style *style,

@@ -720,3 +720,128 @@ width: auto
 word-spacing: normal
 writing-mode: horizontal-tb
 z-index: 2048
+#reset
+#tree
+| div
+|  p*
+#ua
+div, p { display: block; }
+#user
+div { --gap: 8px; --col: oklch(62.3% 0.214 259.815); }
+p { color: var(--col); background: url(img.png) center/cover no-repeat, linear-gradient(135deg, rgba(217,195,161,0.25), color-mix(in srgb, red 25%, blue)) #123456; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); grid-template-areas: "head head" "side main"; gap: var(--gap) calc(var(--gap) * 2); transform: translateY(18px) scale(1.05) rotate(0.25turn); aspect-ratio: 16 / 9; object-fit: cover; grid-area: main; overflow: hidden auto; text-decoration: underline dotted red; }
+#errors
+#expected
+align-content: stretch
+align-items: stretch
+align-self: auto
+background-attachment: scroll
+background-color: #ff123456
+background-image: url('img.png')
+background-position: 50% 50%
+background-repeat: no-repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ff2b7fff
+border-right-color: #ff2b7fff
+border-bottom-color: #ff2b7fff
+border-left-color: #ff2b7fff
+border-top-style: none
+border-right-style: none
+border-bottom-style: none
+border-left-style: none
+border-top-width: 2px
+border-right-width: 2px
+border-bottom-width: 2px
+border-left-width: 2px
+bottom: auto
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ff2b7fff
+column-count: auto
+column-fill: balance
+column-gap: 16px
+column-rule-color: #ff2b7fff
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: grid
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 16px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: flex-start
+left: auto
+letter-spacing: normal
+line-height: normal
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 0px
+margin-right: 0px
+margin-bottom: 0px
+margin-left: 0px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: hidden
+overflow-y: auto
+padding-top: 0px
+padding-right: 0px
+padding-bottom: 0px
+padding-left: 0px
+position: static
+quotes: none
+right: auto
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: underline
+text-indent: 0px
+text-transform: none
+top: auto
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: auto
+row-gap: 8px
+background-size: cover
+aspect-ratio: 16.000 / 9.000
+object-fit: cover
+transform: translate(0px,18px) scale(1.05,1.05) rotate(90deg)
+grid-template-columns: repeat(auto-fill,minmax(340px,1fr))
+grid-template-areas: head head/side main
+grid-row-start: main
+grid-row-end: main
+grid-column-start: main
+grid-column-end: main

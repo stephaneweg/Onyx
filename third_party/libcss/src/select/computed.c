@@ -196,6 +196,21 @@ css_error css_computed_style_destroy(css_computed_style *style)
 	lwc_string_unref(style->i.list_style_image);
 	lwc_string_unref(style->i.background_image);
 
+	/* Onyx: the text properties */
+	lwc_string_unref(style->i.transform);
+	lwc_string_unref(style->i.translate);
+	lwc_string_unref(style->i.scale);
+	lwc_string_unref(style->i.rotate);
+	lwc_string_unref(style->i.grid_template_columns);
+	lwc_string_unref(style->i.grid_template_rows);
+	lwc_string_unref(style->i.grid_template_areas);
+	lwc_string_unref(style->i.grid_auto_columns);
+	lwc_string_unref(style->i.grid_auto_rows);
+	lwc_string_unref(style->i.grid_row_start);
+	lwc_string_unref(style->i.grid_row_end);
+	lwc_string_unref(style->i.grid_column_start);
+	lwc_string_unref(style->i.grid_column_end);
+
 	if (style->calc != NULL)
 		css_calculator_unref(style->calc);
 
@@ -1035,6 +1050,94 @@ uint8_t css_computed_justify_items(const css_computed_style *style)
 uint8_t css_computed_justify_self(const css_computed_style *style)
 {
 	return get_justify_self(style);
+}
+
+uint8_t css_computed_aspect_ratio(const css_computed_style *style,
+		css_fixed *width, css_fixed *height)
+{
+	return get_aspect_ratio(style, width, height);
+}
+
+uint8_t css_computed_object_fit(const css_computed_style *style)
+{
+	return get_object_fit(style);
+}
+
+uint8_t css_computed_object_position(const css_computed_style *style,
+		css_fixed *hlength, css_unit *hunit,
+		css_fixed *vlength, css_unit *vunit)
+{
+	return get_object_position(style, hlength, hunit, vlength, vunit);
+}
+
+uint8_t css_computed_grid_auto_flow(const css_computed_style *style)
+{
+	return get_grid_auto_flow(style);
+}
+
+uint8_t css_computed_transform(const css_computed_style *style, lwc_string **text)
+{
+	return get_transform(style, text);
+}
+
+uint8_t css_computed_translate(const css_computed_style *style, lwc_string **text)
+{
+	return get_translate(style, text);
+}
+
+uint8_t css_computed_scale(const css_computed_style *style, lwc_string **text)
+{
+	return get_scale(style, text);
+}
+
+uint8_t css_computed_rotate(const css_computed_style *style, lwc_string **text)
+{
+	return get_rotate(style, text);
+}
+
+uint8_t css_computed_grid_template_columns(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_template_columns(style, text);
+}
+
+uint8_t css_computed_grid_template_rows(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_template_rows(style, text);
+}
+
+uint8_t css_computed_grid_template_areas(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_template_areas(style, text);
+}
+
+uint8_t css_computed_grid_auto_columns(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_auto_columns(style, text);
+}
+
+uint8_t css_computed_grid_auto_rows(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_auto_rows(style, text);
+}
+
+uint8_t css_computed_grid_row_start(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_row_start(style, text);
+}
+
+uint8_t css_computed_grid_row_end(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_row_end(style, text);
+}
+
+uint8_t css_computed_grid_column_start(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_column_start(style, text);
+}
+
+uint8_t css_computed_grid_column_end(const css_computed_style *style, lwc_string **text)
+{
+	return get_grid_column_end(style, text);
 }
 
 uint8_t css_computed_column_rule_color(const css_computed_style *style,

@@ -111,6 +111,7 @@ static const box_type box_map[] = {
 	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_FLEX */
 	BOX_BLOCK,           /* CSS_DISPLAY_GRID */
 	BOX_INLINE_BLOCK,    /* CSS_DISPLAY_INLINE_GRID */
+	BOX_BLOCK,           /* CSS_DISPLAY_CONTENTS (Onyx: as a block, for now) */
 };
 
 

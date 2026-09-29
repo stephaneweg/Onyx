@@ -138,6 +138,7 @@ void css__make_style_important(css_style *style)
 					offset++; /* string table entry */
 				break;
 
+			case CSS_PROP_OBJECT_POSITION:	/* Onyx */
 			case CSS_PROP_BACKGROUND_POSITION:
 				if ((value & 0xf0) == BACKGROUND_POSITION_HORZ_SET)
 					offset += 2; /* length + units */
@@ -189,6 +190,29 @@ void css__make_style_important(css_style *style)
 
 				if (value == BOTTOM_SET)
 					offset += 2; /* length + units */
+				break;
+
+			/* Onyx: the text properties, aspect-ratio */
+			case CSS_PROP_TRANSFORM:
+			case CSS_PROP_TRANSLATE:
+			case CSS_PROP_SCALE:
+			case CSS_PROP_ROTATE:
+			case CSS_PROP_GRID_TEMPLATE_COLUMNS:
+			case CSS_PROP_GRID_TEMPLATE_ROWS:
+			case CSS_PROP_GRID_TEMPLATE_AREAS:
+			case CSS_PROP_GRID_AUTO_COLUMNS:
+			case CSS_PROP_GRID_AUTO_ROWS:
+			case CSS_PROP_GRID_ROW_START:
+			case CSS_PROP_GRID_ROW_END:
+			case CSS_PROP_GRID_COLUMN_START:
+			case CSS_PROP_GRID_COLUMN_END:
+				if (value == ONYX_TEXT_SET)
+					offset++; /* string index */
+				break;
+
+			case CSS_PROP_ASPECT_RATIO:
+				if (value & ASPECT_RATIO_SET)
+					offset += 2; /* width, height */
 				break;
 
 			/* Onyx: CSS3 additions */

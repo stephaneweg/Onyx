@@ -9,6 +9,7 @@
 /* set_align_content(style, 0, 0, CSS_UNIT_PX); */
 /* set_align_items(style, 0, 0, CSS_UNIT_PX); */
 /* set_align_self(style, 0, 0, CSS_UNIT_PX); */
+/* set_aspect_ratio(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_attachment(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_color(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_image(style, 0, 0, CSS_UNIT_PX); */
@@ -70,6 +71,16 @@
 /* set_font_style(style, 0, 0, CSS_UNIT_PX); */
 /* set_font_variant(style, 0, 0, CSS_UNIT_PX); */
 /* set_font_weight(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_auto_columns(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_auto_flow(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_auto_rows(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_column_end(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_column_start(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_row_end(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_row_start(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_template_areas(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_template_columns(style, 0, 0, CSS_UNIT_PX); */
+/* set_grid_template_rows(style, 0, 0, CSS_UNIT_PX); */
 /* set_height(style, 0, 0, CSS_UNIT_PX); */
 /* set_justify_content(style, 0, 0, CSS_UNIT_PX); */
 /* set_justify_items(style, 0, 0, CSS_UNIT_PX); */
@@ -88,6 +99,8 @@
 /* set_max_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_min_height(style, 0, 0, CSS_UNIT_PX); */
 /* set_min_width(style, 0, 0, CSS_UNIT_PX); */
+/* set_object_fit(style, 0, 0, CSS_UNIT_PX); */
+/* set_object_position(style, 0, 0, CSS_UNIT_PX); */
 /* set_opacity(style, 0, 0, CSS_UNIT_PX); */
 /* set_order(style, 0, 0, CSS_UNIT_PX); */
 /* set_orphans(style, 0, 0, CSS_UNIT_PX); */
@@ -106,7 +119,9 @@
 /* set_position(style, 0, 0, CSS_UNIT_PX); */
 /* set_quotes(style, 0, 0, CSS_UNIT_PX); */
 /* set_right(style, 0, 0, CSS_UNIT_PX); */
+/* set_rotate(style, 0, 0, CSS_UNIT_PX); */
 /* set_row_gap(style, 0, 0, CSS_UNIT_PX); */
+/* set_scale(style, 0, 0, CSS_UNIT_PX); */
 /* set_stroke_opacity(style, 0, 0, CSS_UNIT_PX); */
 /* set_table_layout(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_align(style, 0, 0, CSS_UNIT_PX); */
@@ -116,6 +131,8 @@
 /* set_text_shadow(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_transform(style, 0, 0, CSS_UNIT_PX); */
 /* set_top(style, 0, 0, CSS_UNIT_PX); */
+/* set_transform(style, 0, 0, CSS_UNIT_PX); */
+/* set_translate(style, 0, 0, CSS_UNIT_PX); */
 /* set_unicode_bidi(style, 0, 0, CSS_UNIT_PX); */
 /* set_vertical_align(style, 0, 0, CSS_UNIT_PX); */
 /* set_visibility(style, 0, 0, CSS_UNIT_PX); */
