@@ -1,7 +1,8 @@
 //
 // eyes -- a desktop gadget: two googly eyes whose pupils follow the mouse pointer
 // (kapi_cursor_pos gives the cursor relative to this window). Drag the title bar to
-// move it like any window.
+// move it like any window. Drawn (and presented) when a pupil moves: the screen, and the
+// remote desktop (rdpd sends a window again when it presents), follow.
 //
 #include "kapi.h"
 #include "wtk/wtk.h"
@@ -33,19 +34,23 @@ static void disc (int cx, int cy, int r, unsigned c)
 			if (x * x + y * y <= r * r) fill_rect (cx + x, cy + y, 1, 1, c);
 }
 
-static void draw_eye (int ex, int ey, int R, int pr, int mx, int my)
+// Where an eye's pupil goes for the pointer at (mx, my).
+static void pupil (int ex, int ey, int R, int pr, int mx, int my, int *px, int *py)
 {
-	disc (ex, ey, R, 0x00ffffff);			// white
 	int dx = mx - ex, dy = my - ey;
 	int maxoff = R - pr - 2;
 	unsigned d = isqrt ((unsigned) (dx * dx + dy * dy));
-	int px = ex, py = ey;
 	if ((int) d > maxoff && d > 0)
 	{
-		px = ex + dx * maxoff / (int) d;
-		py = ey + dy * maxoff / (int) d;
+		*px = ex + dx * maxoff / (int) d;
+		*py = ey + dy * maxoff / (int) d;
 	}
-	else { px = ex + dx; py = ey + dy; }
+	else { *px = ex + dx; *py = ey + dy; }
+}
+
+static void draw_eye (int ex, int ey, int R, int pr, int px, int py)
+{
+	disc (ex, ey, R, 0x00ffffff);			// white
 	disc (px, py, pr, 0x00101018);			// pupil
 }
 
@@ -55,15 +60,23 @@ int main (void)
 	if (fb == 0) return 1;
 	wtk::wk_decorate_window ();			// (reads the theme: the palette)
 
+	int last[4] = { -1, -1, -1, -1 };
 	while (!should_exit ())
 	{
 		pump_events ();
-		int mx, my;
+		int mx, my, p[4];
 		kapi_cursor_pos (&mx, &my);
-		unsigned bg = wtk::C_BG;
-		for (int i = 0; i < W * H; i++) fb[i] = bg;		// the theme's face
-		draw_eye (50, 55, 34, 12, mx, my);
-		draw_eye (130, 55, 34, 12, mx, my);
+		pupil (50, 55, 34, 12, mx, my, &p[0], &p[1]);
+		pupil (130, 55, 34, 12, mx, my, &p[2], &p[3]);
+		if (p[0] != last[0] || p[1] != last[1] || p[2] != last[2] || p[3] != last[3])
+		{
+			unsigned bg = wtk::C_BG;
+			for (int i = 0; i < W * H; i++) fb[i] = bg;		// the theme's face
+			draw_eye (50, 55, 34, 12, p[0], p[1]);
+			draw_eye (130, 55, 34, 12, p[2], p[3]);
+			for (int i = 0; i < 4; i++) last[i] = p[i];
+			kapi_present ();
+		}
 		msleep (16);
 	}
 	return 0;

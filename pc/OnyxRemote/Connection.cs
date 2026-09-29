@@ -18,13 +18,14 @@ namespace OnyxRemote
 		public int OW, OH, IL, IT;			// the whole window with its frame (0 0: none)
 		public uint Flags; public int Alpha; public int State;
 		public string Title = "";
-		public int[] Content = new int[0];		// W x H, 0x00RRGGBB
-		public int[] ChromeA = new int[0], ChromeI = new int[0];	// OW x OH
+		public int[] Content = new int[0];		// W x H, 0xTTRRGGBB (T: a transparency, 0 opaque .. 255
+		public int[] ChromeA = new int[0], ChromeI = new int[0];	// OW x OH    clear: an ALPHA window's, the frame's corners)
 		public bool Dirty = true;			// pixels changed since shown
-		public const uint BORDERLESS = 1, BACKMOST = 2, TOPMOST = 4, TRANSPARENT = 8, SYSTEM = 16;
-		public const int KEYS = 1, FULLSCREEN = 2;
+		public const uint BORDERLESS = 1, BACKMOST = 2, TOPMOST = 4, TRANSPARENT = 8, SYSTEM = 16, ALPHA = 32;
+		public const int KEYS = 1, FULLSCREEN = 2, MINIMISED = 4, OFFDESK = 8;
 		public const uint DESKTOP_ID = 0xFFFFFFFF;		// (the desktop: the wallpaper + the backmost windows)
 		public bool HasFrame { get { return OW > 0 && OH > 0; } }
+		public bool Hidden { get { return (State & (MINIMISED | OFFDESK)) != 0; } }	// (minimised, on another workspace)
 	}
 
 	class Connection
@@ -172,7 +173,7 @@ namespace OnyxRemote
 							int r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
 							c = (r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2);
 						}
-						else c = BitConverter.ToInt32 (src, so + (j * w + i) * 4) & 0xFFFFFF;
+						else c = BitConverter.ToInt32 (src, so + (j * w + i) * 4);	// (the top byte kept)
 						dst[row + x + i] = c;
 					}
 				}

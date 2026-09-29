@@ -6,7 +6,9 @@
 // only (an emulator's window stays opaque), the title buttons (the window menu, minimise,
 // maximise, close; a double click on the title), minimised windows, see-through windows
 // (WIN_FLAG_ALPHA: their clear pixels let the clicks through), the work area (between the menu
-// bar and the dock), a window's canvas growing (maximise) -- and a picture (wm-cde.ppm).
+// bar and the dock), a window's canvas growing (maximise), the workspaces (kapi v65: a window on
+// another desk hidden, raising it shows its desk, the topmost windows on every desk, Ctrl+Alt+
+// arrows) -- and a picture (wm-cde.ppm).
 //
 //   sh tools/tests/desktop_sim/run.sh     (builds it and runs it)
 //
@@ -171,11 +173,14 @@ int main (int argc, char **argv)
 
 	// an app's present: its client area only -- unless its frame changed
 	TScreenDamage d; ScreenTakeDamage (&d);
+	unsigned cg = a->ChromeGen ();
 	a->ChromeTouch ();
 	a->PresentDamage ();
 	CHECK (damage_is (100, 100, 308, 232));					// the frame redrawn: all
+	CHECK (a->ChromeGen () == cg + 2);					// (and read again whole: rdpd)
 	a->PresentDamage ();
 	CHECK (damage_is (104, 128, 300, 200));					// then the client only
+	CHECK (a->ChromeGen () == cg + 2);
 
 	// the window menu (at the press) and maximise (a double click on the title) go to the app
 	events (a, 0);
@@ -248,6 +253,37 @@ int main (int argc, char **argv)
 	wm.Raise (a);
 	for (int i = 0; i < 4; i++) composite (wm);				// (the old memory freed)
 	CHECK (at (512, 300) == 0x00C04040);
+
+	// the workspaces (v65): 4 desks, the windows on the one current when they opened
+	CHECK ((wm.DeskInfo () & 0xFF) == 0 && ((wm.DeskInfo () >> 8) & 0xFF) == 4);
+	CHECK (a->Desk () == 0 && bar->Desk () == -1 && dock->Desk () == -1);	// (topmost: every desk)
+	CWindow *c = new CWindow (600, 120, 200, 150, "edit", 0);
+	draw_frame (c, 0x00F0B07A, 0x00D0C2BA);
+	paint (c, 0x0030A060);
+	c->SetPointerHandler (0x4321);
+	wm.Add (c);
+	CHECK (wm.MoveToDesk (c, 2) == 2 && c->OffDesk () && c->Hidden ());
+	composite (wm);
+	CHECK (at (760, 260) == 0x00C04040);					// (not drawn: a, below it)
+	events (c, 0);
+	click (wm, 700, 200);
+	CHECK (events (c, GUI_EVENT_PTR_DOWN) == 0);				// (not hit)
+	CHECK (!wm.HasKeyFocus (c));
+	int info = wm.SetDesk (2, 0);						// desk 3: c shown, a hidden
+	CHECK ((info & 0xFF) == 2 && !c->OffDesk () && a->OffDesk () && !bar->OffDesk () && !dock->OffDesk ());
+	composite (wm);
+	CHECK (at (760, 260) == 0x0030A060);					// (away from the pointer)
+	CHECK (at (512, 300) == (wall[300 * 1024 + 512] & 0xFFFFFF));		// (a: on desk 1)
+	wm.Raise (a);								// raising a window: its desk shown
+	CHECK ((wm.DeskInfo () & 0xFF) == 0 && !a->OffDesk () && c->OffDesk ());
+	wm.OnKey ("\x1b[1;7C");							// Ctrl+Alt+Right: desk 2
+	CHECK ((wm.DeskInfo () & 0xFF) == 1 && a->OffDesk () && c->OffDesk ());
+	wm.OnKey ("\x1b[1;7D");							// Ctrl+Alt+Left: desk 1 again
+	CHECK ((wm.DeskInfo () & 0xFF) == 0 && !a->OffDesk ());
+	info = wm.SetDesk (-1, 2);						// 2 desks: c (on desk 3) onto desk 2
+	CHECK (((info >> 8) & 0xFF) == 2 && c->Desk () == 1 && c->OffDesk ());
+	CHECK (wm.MoveToDesk (c, -1) == -1 && !c->OffDesk ());			// on every desk
+	CHECK (wm.MoveToDesk (bar, 1) == -1);					// (the topmost stay on all)
 
 	fprintf (stderr, g_fail ? "wmtest: %d FAILED\n" : "wmtest: all passed\n", g_fail);
 	return g_fail ? 1 : 0;

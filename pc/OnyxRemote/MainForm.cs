@@ -1,9 +1,12 @@
 // MainForm.cs -- Onyx Remote: one window (MDI) holding the Onyx session. At the top a tool bar
 // (the Pi's address, the options, Connect / Disconnect, the updates a second), then the Onyx
 // menu bar across the window's width (its menus on the left, the status and the clock on the
-// right; its drop-down menus drawn over the windows); below, the Onyx windows as child windows,
-// placed as on the Pi (the area starts below the menu bar), over the Onyx desktop (the
-// wallpaper and the bubbles) when "Desktop" is on.
+// right); below, the Onyx windows as child windows, placed as on the Pi (the area starts below
+// the menu bar), over the Onyx desktop (the wallpaper and the widgets below the windows) when
+// "Desktop" is on. The borderless windows above them -- the menu bar's drop-down menus, the
+// dock, the notifications, the Wi-Fi menu -- are drawn over the child windows, see-through
+// where they are on the Pi (Overlay.cs: layered windows). A minimised window, or one on another
+// workspace, is not shown (as on the Pi).
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -19,11 +22,11 @@ namespace OnyxRemote
 	class BarView
 	{
 		public Bitmap Bmp; public int W, H, BarH = 32, Split = -1;
-		public uint Id; public bool Present;
+		public uint Id, Flags; public bool Present;
 		int[] px;
 		public void Update (WinModel m)
 		{
-			Id = m.Id; Present = true;
+			Id = m.Id; Flags = m.Flags; Present = true;
 			if (Bmp == null || W != m.W || H != m.H) { Bmp = Pix.Make (Bmp, m.W, m.H); W = m.W; H = m.H; }
 			if (H < BarH) BarH = H;
 			Pix.Fill (Bmp, m.Content, W, H);
@@ -47,8 +50,7 @@ namespace OnyxRemote
 			}
 			if (best >= 24) Split = bestAt + best / 2;
 		}
-		// the bar's rows y0..y1 into a width destW at dy (the middle stretched on the bar's own rows,
-		// the colour key under a drop-down menu)
+		// the bar's rows y0..y1 (the bar itself) into a width destW at dy (the middle stretched)
 		public void Draw (Graphics g, int destW, int y0, int y1, int dy)
 		{
 			if (Bmp == null || y1 <= y0) return;
@@ -56,9 +58,28 @@ namespace OnyxRemote
 			if (Split <= 0 || gap == 0) { g.DrawImage (Bmp, new Rectangle (0, dy, W, y1 - y0), new Rectangle (0, y0, W, y1 - y0), GraphicsUnit.Pixel); return; }
 			g.DrawImage (Bmp, new Rectangle (0, dy, Split, y1 - y0), new Rectangle (0, y0, Split, y1 - y0), GraphicsUnit.Pixel);
 			g.DrawImage (Bmp, new Rectangle (Split + gap, dy, W - Split, y1 - y0), new Rectangle (Split, y0, W - Split, y1 - y0), GraphicsUnit.Pixel);
-			int by1 = Math.Min (y1, BarH);
-			if (by1 > y0) g.DrawImage (Bmp, new Rectangle (Split, dy, gap, by1 - y0), new Rectangle (Split, y0, 1, by1 - y0), GraphicsUnit.Pixel);
-			if (y1 > BarH) using (var key = new SolidBrush (Color.FromArgb (255, 0, 255))) g.FillRectangle (key, Split, dy + Math.Max (0, BarH - y0), gap, y1 - Math.Max (y0, BarH));
+			g.DrawImage (Bmp, new Rectangle (Split, dy, gap, y1 - y0), new Rectangle (Split, y0, 1, y1 - y0), GraphicsUnit.Pixel);
+		}
+		// the rows below the bar (while a menu, the volume or the calendar is open: the drop-down
+		// over the whole screen almost clear -- a click elsewhere closes it), premultiplied for a
+		// layered window, destW wide (the stretched middle's gap: almost clear too) -> their number
+		public int DropPixels (ref int[] dst, int destW)
+		{
+			int dh = H - BarH;
+			if (px == null || dh <= 0 || destW <= 0 || px.Length < W * H) return 0;
+			if (dst.Length < destW * dh) dst = new int[destW * dh];
+			int gap = Math.Max (0, destW - W);
+			bool split = Split > 0 && gap > 0, alpha = (Flags & WinModel.ALPHA) != 0, keyed = (Flags & WinModel.TRANSPARENT) != 0;
+			for (int y = 0; y < dh; y++)
+			{
+				int srow = (BarH + y) * W, drow = y * destW;
+				for (int x = 0; x < destW; x++)
+				{
+					int sx = !split ? x : x < Split ? x : x >= Split + gap ? x - gap : -1;
+					dst[drow + x] = sx >= 0 && sx < W ? Overlay.Premultiply (px[srow + sx], alpha, keyed) : 0x01000000;
+				}
+			}
+			return dh;
 		}
 		public int MapX (int x, int destW)
 		{
@@ -98,38 +119,6 @@ namespace OnyxRemote
 		protected override void OnMouseWheel (MouseEventArgs e) { Send (e, e.Delta > 0 ? 1 : -1); }
 	}
 
-	// the bar's drop-down menus: drawn over the child windows (an owned, colour-keyed window)
-	class DropLayer : Form
-	{
-		readonly MainForm main;
-		public DropLayer (MainForm m)
-		{
-			main = m;
-			FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual;
-			BackColor = Color.FromArgb (255, 0, 255); TransparencyKey = BackColor;
-			SetStyle (ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-		}
-		protected override bool ShowWithoutActivation { get { return true; } }
-		protected override void OnPaint (PaintEventArgs e)
-		{
-			var b = main.Bar;
-			e.Graphics.Clear (BackColor);
-			if (b.Bmp == null || b.H <= b.BarH) return;
-			e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
-			e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
-			b.Draw (e.Graphics, Width, b.BarH, b.H, 0);
-		}
-		void Send (MouseEventArgs e, int wheel)
-		{
-			var b = main.Bar;
-			if (!b.Present || main.Conn == null) return;
-			main.Conn.Pointer (b.Id, b.MapX (e.X, Width), e.Y + b.BarH, RemoteWindow.Buttons (MouseButtons), wheel);
-		}
-		protected override void OnMouseDown (MouseEventArgs e) { Send (e, 0); }
-		protected override void OnMouseUp (MouseEventArgs e) { Send (e, 0); }
-		protected override void OnMouseMove (MouseEventArgs e) { Send (e, 0); }
-	}
-
 	class MainForm : Form
 	{
 		readonly ToolStripTextBox host = new ToolStripTextBox (), port = new ToolStripTextBox ();
@@ -142,12 +131,14 @@ namespace OnyxRemote
 		readonly BarPanel barPanel;
 		readonly ToolStrip ts;
 		Size freeSize;					// (the size before a connection fixed it)
-		readonly DropLayer drop;
 		readonly MdiClient mdi;
 		public Connection Conn;
 		public readonly BarView Bar = new BarView ();
 		readonly Dictionary<uint, RemoteWindow> wins = new Dictionary<uint, RemoteWindow> ();
 		Bitmap deskBmp, backBmp; readonly Dictionary<uint, Bitmap> bubbles = new Dictionary<uint, Bitmap> ();
+		readonly Dictionary<uint, Overlay> overlays = new Dictionary<uint, Overlay> ();	// (over the child windows)
+		Overlay barDrop; int[] dropPx = new int[0]; int dropW;				// (the bar's drop-downs)
+		List<Overlay> stacked = new List<Overlay> ();					// (their order, bottom to top)
 		int rounds; DateTime since = DateTime.Now;
 		static readonly string SettingsPath = Path.Combine (Environment.GetFolderPath (Environment.SpecialFolder.ApplicationData), "OnyxRemote.txt");
 
@@ -166,7 +157,6 @@ namespace OnyxRemote
 			barPanel = new BarPanel (this) { Dock = DockStyle.Top, Height = 32, Visible = false };
 			Controls.Add (barPanel);
 			Controls.Add (ts);
-			drop = new DropLayer (this);
 			go.Click += (s, e) => { if (Conn == null) Connect (); else Disconnect ("Disconnected"); };
 			console.Click += (s, e) => OpenConsole ();
 			desktop.CheckedChanged += (s, e) => { if (Conn != null) { Conn.Desktop (desktop.Checked); Sync (); } };
@@ -176,8 +166,8 @@ namespace OnyxRemote
 			mdi.MouseDown += (s, e) => DeskPointer (e, 0);
 			mdi.MouseUp += (s, e) => DeskPointer (e, 0);
 			mdi.MouseMove += (s, e) => DeskPointer (e, 0);
-			Move += (s, e) => PlaceDrop ();
-			Resize += (s, e) => { PlaceDrop (); barPanel.Invalidate (); Sync (); };	// (Sync: the desktop's picture to the new size)
+			Move += (s, e) => Sync ();					// (the overlays follow)
+			Resize += (s, e) => { barPanel.Invalidate (); Sync (); };	// (the desktop's picture to the new size)
 			try
 			{
 				foreach (var line in File.ReadAllLines (SettingsPath))
@@ -216,10 +206,12 @@ namespace OnyxRemote
 			new TelnetForm (h, p).Show ();
 		}
 
+		// (without the desktop, only the pointer's moves: the Pi's pointer follows -- the eyes...)
 		void DeskPointer (MouseEventArgs e, int wheel)
 		{
-			if (Conn == null || !desktop.Checked) return;
-			Conn.Pointer (WinModel.DESKTOP_ID, e.X, e.Y + Bar.BarH, RemoteWindow.Buttons (MouseButtons), wheel);
+			if (Conn == null) return;
+			bool all = desktop.Checked;
+			Conn.Pointer (WinModel.DESKTOP_ID, e.X, e.Y + Bar.BarH, all ? RemoteWindow.Buttons (MouseButtons) : 0, all ? wheel : 0);
 		}
 
 		void Connect ()
@@ -272,7 +264,10 @@ namespace OnyxRemote
 			Conn?.Close (); Conn = null;
 			foreach (var w in wins.Values) { w.GoneOnPi = true; w.Close (); }
 			wins.Clear ();
-			Bar.Present = false; barPanel.Visible = false; drop.Hide ();
+			foreach (var o in overlays.Values) o.Close ();
+			overlays.Clear (); stacked.Clear ();
+			barDrop?.Close (); barDrop = null;
+			Bar.Present = false; barPanel.Visible = false;
 			mdi.BackgroundImage = null;
 			go.Text = "Connect";
 			if (FormBorderStyle != FormBorderStyle.Sizable)		// (the free size again)
@@ -284,21 +279,29 @@ namespace OnyxRemote
 			status.Text = why;
 		}
 
-		void PlaceDrop ()
+		// An overlay where the Pi has its window (x, y on the Pi's screen, w x h), cut to the MDI area.
+		void PlaceOverlay (Overlay ov, int x, int y, int w, int h, int alpha)
 		{
-			if (!drop.Visible) return;
-			Point p = mdi.PointToScreen (Point.Empty);
-			drop.Bounds = new Rectangle (p.X, p.Y, mdi.ClientSize.Width, Math.Max (1, Bar.H - Bar.BarH));
+			if (WindowState == FormWindowState.Minimized) return;
+			Rectangle area = mdi.RectangleToScreen (mdi.ClientRectangle);
+			Point o = mdi.PointToScreen (new Point (x, y - Bar.BarH));
+			var r = Rectangle.Intersect (new Rectangle (o.X, o.Y, w, h), area);
+			int sx = r.X - o.X, sy = r.Y - o.Y;
+			if (ov != barDrop) ov.Map = p => new Point (p.X + sx, p.Y + sy);
+			ov.Place (r.X, r.Y, sx, sy, r.Width, r.Height, alpha);
 		}
 
-		// The model -> the child windows, the bar, the desktop (the UI thread).
+		// The model -> the child windows, the bar, the overlays, the desktop (the UI thread).
 		void Sync ()
 		{
 			if (Conn == null) return;
 			lock (Conn.Lock)
 			{
 				var keep = new HashSet<uint> ();
-				bool barSeen = false, deskDirty = false;
+				var keepOver = new HashSet<uint> ();
+				var keepBubble = new HashSet<uint> ();
+				var order = new List<Overlay> ();			// the overlays, bottom to top
+				bool barSeen = false, barDirty = false, deskDirty = false, framedBelow = false;
 				var bubbleOrder = new List<WinModel> ();
 				foreach (uint id in Conn.ZOrder)			// (bottom to top: new ones open in that order)
 				{
@@ -309,24 +312,45 @@ namespace OnyxRemote
 						if (desktop.Checked && (m.Dirty || deskBmp == null)) { deskBmp = Pix.Make (deskBmp, m.W, m.H); Pix.Fill (deskBmp, m.Content, m.W, m.H); m.Dirty = false; deskDirty = true; }
 						continue;
 					}
+					if (m.Hidden) continue;					// (minimised, on another workspace)
 					bool borderless = (m.Flags & WinModel.BORDERLESS) != 0 && (m.State & WinModel.FULLSCREEN) == 0;
 					if ((m.Flags & WinModel.TOPMOST) != 0 && m.Y == 0 && borderless)	// the menu bar
 					{
 						barSeen = true;
-						if (m.Dirty || !Bar.Present) { Bar.Update (m); m.Dirty = false; barPanel.Invalidate (); drop.Invalidate (); }
+						if (m.Dirty || !Bar.Present) { Bar.Update (m); m.Dirty = false; barPanel.Invalidate (); barDirty = true; }
+						if (Bar.H > Bar.BarH)				// open: its drop-down over the windows
+						{
+							if (barDrop == null) { barDrop = new Overlay (Conn, id, this); barDirty = true; }
+							order.Add (barDrop);
+						}
 						continue;
 					}
 					if ((m.Flags & WinModel.BACKMOST) != 0) continue;	// (in the desktop's picture)
-					if (borderless)					// a bubble, a widget: on the desktop's picture
+					if (borderless)
 					{
+						// over the child windows: pinned on top (the dock, the notifications), above a
+						// framed window (a popup: the Wi-Fi menu...), or anywhere without the desktop's
+						// picture; else a widget on the desktop's picture, below them
+						if ((m.Flags & WinModel.TOPMOST) != 0 || framedBelow || !desktop.Checked)
+						{
+							if (!overlays.TryGetValue (id, out Overlay ov)) { ov = new Overlay (Conn, id, this); overlays[id] = ov; m.Dirty = true; }
+							if (m.Dirty) { ov.SetPixels (m.Content, m.W, m.H, (m.Flags & WinModel.ALPHA) != 0, (m.Flags & WinModel.TRANSPARENT) != 0); m.Dirty = false; }
+							PlaceOverlay (ov, m.X, m.Y, m.W, m.H, m.Alpha);
+							keepOver.Add (id); order.Add (ov);
+							continue;
+						}
+						keepBubble.Add (id);
 						if (m.Alpha > 0) bubbleOrder.Add (m);
 						if (m.Dirty || !bubbles.ContainsKey (id))
 						{
 							bubbles.TryGetValue (id, out Bitmap bb);
-							bubbles[id] = Pix.Make (bb, m.W, m.H); Pix.Fill (bubbles[id], m.Content, m.W, m.H); m.Dirty = false; deskDirty = true;
+							bubbles[id] = Pix.Make (bb, m.W, m.H, PixelFormat.Format32bppArgb);
+							Pix.FillArgb (bubbles[id], m.Content, m.W, m.H, (m.Flags & WinModel.ALPHA) != 0, (m.Flags & WinModel.TRANSPARENT) != 0);
+							m.Dirty = false; deskDirty = true;
 						}
 						continue;
 					}
+					framedBelow = true;
 					keep.Add (id);
 					if (!wins.TryGetValue (id, out RemoteWindow w))
 					{
@@ -339,16 +363,35 @@ namespace OnyxRemote
 				}
 				foreach (var id in new List<uint> (wins.Keys))
 					if (!keep.Contains (id)) { wins[id].GoneOnPi = true; wins[id].Close (); wins.Remove (id); }
+				foreach (var id in new List<uint> (overlays.Keys))
+					if (!keepOver.Contains (id)) { overlays[id].Close (); overlays.Remove (id); }
 				foreach (var id in new List<uint> (bubbles.Keys))
-					if (!Conn.Windows.ContainsKey (id)) { bubbles[id]?.Dispose (); bubbles.Remove (id); deskDirty = true; }
-				// the bar, its drop-down menus
+					if (!keepBubble.Contains (id)) { bubbles[id]?.Dispose (); bubbles.Remove (id); deskDirty = true; }
+				// the bar, its drop-down
 				if (barSeen != barPanel.Visible) { barPanel.Visible = barSeen; if (!barSeen) Bar.Present = false; }
 				if (barSeen && barPanel.Height != Bar.BarH) barPanel.Height = Bar.BarH;
-				bool open = barSeen && Bar.H > Bar.BarH;
-				if (open && !drop.Visible) { drop.Show (this); PlaceDrop (); }
-				else if (!open && drop.Visible) drop.Hide ();
-				if (open) PlaceDrop ();
-				// the desktop: its picture (below the bar) + the bubbles, as the MDI area's background
+				if (barDrop != null && !order.Contains (barDrop)) { barDrop.Close (); barDrop = null; }
+				if (barDrop != null)
+				{
+					int dw = mdi.ClientSize.Width;
+					if (barDirty || dw != dropW)
+					{
+						int dh = Bar.DropPixels (ref dropPx, dw);
+						barDrop.SetPremultiplied (dropPx, dw, dh);
+						dropW = dw;
+					}
+					barDrop.Map = p => new Point (Bar.MapX (p.X, dw), p.Y + Bar.BarH);
+					PlaceOverlay (barDrop, 0, Bar.BarH, dw, Bar.H - Bar.BarH, 255);
+				}
+				// the overlays stacked as on the Pi (when their order changed)
+				bool same = order.Count == stacked.Count;
+				for (int i = 0; same && i < order.Count; i++) same = order[i] == stacked[i];
+				if (!same)
+				{
+					for (int i = order.Count - 2; i >= 0; i--) order[i].Below (order[i + 1]);
+					stacked = order;
+				}
+				// the desktop: its picture (below the bar) + the widgets, as the MDI area's background
 				// (the MDI area tiles its background image: the picture is made at least the area's
 				// size, the part beyond the Pi's screen a plain colour -- else the desktop repeated)
 				int bw = Math.Max (deskBmp?.Width ?? 1, mdi.ClientSize.Width), bh = Math.Max (Math.Max (1, (deskBmp?.Height ?? 1) - Bar.BarH), mdi.ClientSize.Height);
@@ -356,7 +399,7 @@ namespace OnyxRemote
 				if (desktop.Checked && deskBmp != null && (deskDirty || resized || mdi.BackgroundImage == null))
 				{
 					Bitmap old = null;
-					if (resized) { old = backBmp; backBmp = new Bitmap (bw, bh, System.Drawing.Imaging.PixelFormat.Format32bppRgb); }
+					if (resized) { old = backBmp; backBmp = new Bitmap (bw, bh, PixelFormat.Format32bppRgb); }
 					using (var g = Graphics.FromImage (backBmp))
 					{
 						g.Clear (Color.FromArgb (16, 18, 28));
@@ -366,7 +409,6 @@ namespace OnyxRemote
 							if (!bubbles.TryGetValue (m.Id, out Bitmap bb) || bb == null) continue;
 							using (var ia = new ImageAttributes ())
 							{
-								if ((m.Flags & WinModel.TRANSPARENT) != 0) ia.SetColorKey (Color.FromArgb (255, 0, 255), Color.FromArgb (255, 0, 255));
 								if (m.Alpha < 255) ia.SetColorMatrix (new ColorMatrix { Matrix33 = m.Alpha / 255f });
 								g.DrawImage (bb, new Rectangle (m.X, m.Y - Bar.BarH, m.W, m.H), 0, 0, m.W, m.H, GraphicsUnit.Pixel, ia);
 							}

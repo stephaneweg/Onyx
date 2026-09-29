@@ -463,8 +463,8 @@ static void draw_calendar_box (void)
 	g_cal->draw ();
 	g_cv.putOther (g_cal->canvas, bx + 10, by + 10, false);
 	int x, y, w, h, lx, ly, lw, lh; cal_btn (&x, &y, &w, &h);
-	wk_framed (g_cv, x, y, w, h, C_FACE, g_calBtnDown ? WK_PRESSED : g_calBtnHot ? WK_HOT : WK_NORMAL, &lx, &ly, &lw, &lh);
-	wk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_TEXT);
+	wk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown ? WK_PRESSED : g_calBtnHot ? WK_HOT : WK_NORMAL, &lx, &ly, &lw, &lh);
+	wk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
 }
 
 static void draw (void)

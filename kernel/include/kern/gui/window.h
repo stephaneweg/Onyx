@@ -258,10 +258,13 @@ public:
 	// An app's present: its client area only -- so a window refreshing alone (an emulator)
 	// stays wholly opaque to the compositor (CoversOpaque) whatever its frame's corners -- or
 	// the whole window when its frame was redrawn since (get_chrome, a resize) or it is faded.
+	// (The first present after a frame's redraw bumps ChromeGen once more: the remote desktop,
+	// which may have read the frame while the app was still drawing it, reads it again whole.)
 	void PresentDamage (void)
 	{
 		if (m_nChromeGen != m_nChromeGenShown || m_nAlpha < 255 || Borderless ())
 		{
+			if (m_nChromeGen != m_nChromeGenShown) m_nChromeGen++;
 			m_nChromeGenShown = m_nChromeGen;
 			Damage ();
 			return;

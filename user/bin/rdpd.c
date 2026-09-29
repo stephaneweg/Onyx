@@ -10,7 +10,10 @@
 // win_read), and a window is looked at only when it changed (its counter); then its
 // 64 x 64 tiles are compared with what the client has and the changed ones are sent,
 // compressed with LZ4 (fast: a fraction of zlib's time), in 32 or 16 bits a pixel (the
-// client's choice). A window's frame is sent when the app redraws it. Moving, raising,
+// client's choice; the frames and the see-through windows -- WIN_FLAG_ALPHA: the menu bar and
+// its menus, the dock, the notifications -- always in 32, their top byte a transparency). A
+// window's frame is sent when the app redraws it; a hidden window's pixels (minimised, on
+// another workspace) only when it is shown again. Moving, raising,
 // overlapping windows costs no pixels. The pointer arrives in window coordinates and is put
 // back on the Pi's screen here (the window's place + the point; the window is raised first
 // when clicked), the keys as X11 keysyms (remotekeys.h, as vncd).
@@ -24,17 +27,20 @@
 //     1 WIN     u32 id, s16 x y (client area on the Pi's screen), u16 w h (client area),
 //               u16 ow oh il it (the whole window with its frame, the client area's place
 //               in it; 0 = no frame), u32 flags (WIN_FLAG_*), u8 alpha, u8 state
-//               (1 keyboard, 2 full screen), u8 n, title[n]
+//               (1 keyboard, 2 full screen, 4 minimised, 8 on another workspace: 4 and 8
+//               not shown), u8 n, title[n]
 //     2 GONE    u32 id
 //     3 ZORDER  u16 n, u32 id[n] (bottom to top)
 //     4 PIXELS  u32 id, u8 part (0 content, 1 frame active, 2 frame inactive), u8 bpp
-//               (32: B G R x, 16: RGB565), u8 lz4, u16 x y w h, the pixels (an LZ4 block
-//               when lz4 = 1)
+//               (32: B G R T -- T the transparency, 0 opaque .. 255 see-through, heeded in
+//               a WIN_FLAG_ALPHA window and in a frame's corners --, 16: RGB565), u8 lz4,
+//               u16 x y w h, the pixels (an LZ4 block when lz4 = 1)
 //     5 END     (one round of updates is complete: the client shows it, then asks again)
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
-//     2 PTR     u32 id, s16 x y (in the window's client area), u8 buttons (1 left, 2 right,
-//               4 middle), s8 wheel
+//     2 PTR     u32 id, s16 x y (in the window's client area: negative on its frame, e.g.
+//               a title button), u8 buttons (1 left, 2 right, 4 middle), s8 wheel (the id
+//               KAPI_WIN_DESKTOP: the screen's coordinates, the desktop sent or not)
 //     3 KEY     u8 flags (1 down, 2 held only: a letter / digit / space typed as CHAR, its
 //               down / up only tracked for the games), u32 X11 keysym
 //     6 CHAR    u32 the character typed (Latin-1; the PC's keyboard layout applied)
@@ -160,6 +166,7 @@ struct Win
 	struct kapi_win_info info;
 	unsigned *prev, *cur; int bw, bh;	// the content the client has / as read now
 	int sent;				// its WIN message went out
+	int stale;				// its pixels not sent yet (new, or hidden until now)
 	int alive;
 };
 static struct Win g_win[MAXWIN];
@@ -170,10 +177,11 @@ static int g_packCap;
 static struct Win *find (unsigned id) { for (int i = 0; i < MAXWIN; i++) if (g_win[i].id == id) return &g_win[i]; return 0; }
 static void drop (struct Win *w) { free (w->prev); free (w->cur); memset (w, 0, sizeof *w); }
 
-// Send a rectangle of pixels (src, stride in pixels) of a window's part.
-static void send_rect (unsigned id, int part, const unsigned *src, int stride, int x, int y, int w, int h)
+// Send a rectangle of pixels (src, stride in pixels) of a window's part: in 16 bits when the
+// client asked for it, unless deep (a transparency in the top byte: 32).
+static void send_rect (unsigned id, int part, const unsigned *src, int stride, int x, int y, int w, int h, int deep)
 {
-	int bpp = g_bpp16 ? 2 : 4, n = w * h * bpp;
+	int b16 = g_bpp16 && !deep, bpp = b16 ? 2 : 4, n = w * h * bpp;
 	if (n > g_packCap) return;
 	unsigned char *d = g_pack;
 	for (int j = 0; j < h; j++)
@@ -190,7 +198,7 @@ static void send_rect (unsigned id, int part, const unsigned *src, int stride, i
 	int z = lz4_compress (g_pack, n, g_lz);
 	int useLz = z < n;
 	msg (4, 4 + 3 + 8 + (unsigned) (useLz ? z : n));
-	put32 (id); put8 ((unsigned) part); put8 (g_bpp16 ? 16 : 32); put8 ((unsigned) useLz);
+	put32 (id); put8 ((unsigned) part); put8 (b16 ? 16 : 32); put8 ((unsigned) useLz);
 	put16 ((unsigned) x); put16 ((unsigned) y); put16 ((unsigned) w); put16 ((unsigned) h);
 	put (useLz ? g_lz : g_pack, useLz ? z : n);
 }
@@ -236,7 +244,7 @@ static void send_content (struct Win *w, int full)
 			if (!changed && run >= 0)
 			{
 				int rw = (tx < W ? tx : W) - run;
-				send_rect (w->id, 0, w->cur, W, run, ty, rw, th);
+				send_rect (w->id, 0, w->cur, W, run, ty, rw, th, (w->info.flags & WIN_FLAG_ALPHA) != 0);
 				for (int j = 0; j < th; j++)
 					memcpy (w->prev + (size_t) (ty + j) * W + run, w->cur + (size_t) (ty + j) * W + run, (size_t) rw * 4);
 				run = -1;
@@ -253,7 +261,7 @@ static void send_chrome (struct Win *w)
 	if (!b) return;
 	for (int part = 1; part <= 2; part++)
 		if (kapi_win_read (w->id, part, 0, 0, W, H, b, W) == 0)
-			for (int y = 0; y < H; y += TILE) send_rect (w->id, part, b, W, 0, y, W, H - y < TILE ? H - y : TILE);
+			for (int y = 0; y < H; y += TILE) send_rect (w->id, part, b, W, 0, y, W, H - y < TILE ? H - y : TILE, 1);
 	free (b);
 }
 
@@ -272,7 +280,7 @@ static void round_send (void)
 	for (int i = 0; i < n; i++)
 	{
 		struct Win *w = find (L[i].id);
-		if (!w) { w = find (0); if (!w) continue; memset (w, 0, sizeof *w); w->id = L[i].id; }
+		if (!w) { w = find (0); if (!w) continue; memset (w, 0, sizeof *w); w->id = L[i].id; w->stale = 1; }
 		w->alive = 1;
 		struct kapi_win_info old = w->info;
 		w->info = L[i];
@@ -280,10 +288,12 @@ static void round_send (void)
 			  || old.ow != L[i].ow || old.oh != L[i].oh || old.flags != L[i].flags || old.alpha != L[i].alpha
 			  || old.state != L[i].state || strcmp (old.title, L[i].title) != 0;
 		if (moved) send_win (&L[i]);
-		int newChrome = !w->sent || w->chromeGen != L[i].chromeGen || old.ow != L[i].ow || old.oh != L[i].oh;
+		w->sent = 1;
+		if (L[i].state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)) { w->stale = 1; continue; }	// (not shown)
+		int newChrome = w->stale || w->chromeGen != L[i].chromeGen || old.ow != L[i].ow || old.oh != L[i].oh;
 		if (newChrome && !g_noFrames) send_chrome (w);
-		if (!w->sent || w->gen != L[i].gen) send_content (w, !w->sent);
-		w->gen = L[i].gen; w->chromeGen = L[i].chromeGen; w->sent = 1;
+		if (w->stale || w->gen != L[i].gen) send_content (w, 0);
+		w->gen = L[i].gen; w->chromeGen = L[i].chromeGen; w->stale = 0;
 	}
 	for (int i = 0; i < MAXWIN; i++)
 		if (g_win[i].id && !g_win[i].alive) { msg (2, 4); put32 (g_win[i].id); drop (&g_win[i]); }
@@ -306,10 +316,11 @@ static unsigned g_btn;
 static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 {
 	struct Win *w = find (id);
-	if (!w) return;
-	if (buttons && !g_btn && !(w->info.state & KAPI_WIN_KEYS) && !(w->info.flags & 4))	// (not the menu bar)
+	if (!w && id != KAPI_WIN_DESKTOP) return;		// (the desktop: the screen, sent or not)
+	if (w && id != KAPI_WIN_DESKTOP && buttons && !g_btn && !(w->info.state & KAPI_WIN_KEYS)
+	    && !(w->info.flags & WIN_FLAG_TOPMOST))		// (not the menu bar, the dock)
 		kapi_win_raise (id);				// clicked: on top on the Pi too
-	kapi_inject_pointer (w->info.x + x, w->info.y + y, buttons, wheel);
+	kapi_inject_pointer (w ? w->info.x + x : x, w ? w->info.y + y : y, buttons, wheel);
 	g_btn = buttons;
 }
 

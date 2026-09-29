@@ -77,7 +77,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	}
 }
 
-// The two chrome copies for an nOuterW x nOuterH frame (zeroed). FALSE if [0] failed (then none).
+// The two chrome copies for an nOuterW x nOuterH frame (zeroed): both or none (FALSE).
 boolean CWindow::AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhys[2], unsigned nPages[2])
 {
 	unsigned nCopyBytes = (unsigned) (nOuterW * nOuterH) * sizeof (u32);
@@ -92,14 +92,20 @@ boolean CWindow::AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhy
 		pRaw[i] = new u8[n * KPAGE_SIZE + KPAGE_SIZE];
 		if (pRaw[i] == 0)
 		{
-			break;				// HasChrome() stays false if [0] failed
+			break;
 		}
 		uintptr ulC = ((uintptr) pRaw[i] + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
 		ulPhys[i] = ulC;
 		nPages[i] = n;
 		memset ((void *) ulC, 0, n * KPAGE_SIZE);
 	}
-	return ulPhys[0] != 0;
+	if (ulPhys[1] == 0)				// (the inactive copy is mapped too: never half)
+	{
+		if (pRaw[0] != 0) delete [] (u8 *) pRaw[0];
+		pRaw[0] = 0; ulPhys[0] = 0; nPages[0] = 0;
+		return FALSE;
+	}
+	return TRUE;
 }
 
 CWindow::~CWindow (void)

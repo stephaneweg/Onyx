@@ -11,6 +11,8 @@
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
 //     user/gb, user/gba, user/nes, user/snes) and its screen kept -- made in the background, a little every frame, and
 //     cached in SD:/apps/gamelib.app/thumbs/ (Library > Refresh finds new ROMs).
+//   * The emulators themselves (in no menu of the desktop: they are reached from here): the
+//     Emulators menu opens one without a game (its own window, its File > Open...).
 //
 #include "kapi.h"
 #include "applib.h"
@@ -540,6 +542,12 @@ static void on_rm6 () { remove_folder (6); } static void on_rm7 () { remove_fold
 static const MenuAction ON_RM[MAXF] = { on_rm0, on_rm1, on_rm2, on_rm3, on_rm4, on_rm5, on_rm6, on_rm7 };
 static void on_quit () { kapi_exit (0); }
 static void on_play () { play (g_sel); }
+static void on_gb ()   { lx_launch ("gbemu", ""); }
+static void on_gba ()  { lx_launch ("gbaemu", ""); }
+static void on_nes ()  { lx_launch ("nesemu", ""); }
+static void on_snes () { lx_launch ("snesemu", ""); }
+static void on_n64 ()  { lx_launch ("n64emu", ""); }
+static void on_gc ()   { lx_launch ("gcemu", ""); }
 
 static Menu g_menu;
 static void build_menu ()
@@ -560,6 +568,13 @@ static void build_menu ()
 	}
 	g_menu.menu ("View");
 	g_menu.item ("Play Full Screen On / Off", "", 0, on_full);
+	g_menu.menu ("Emulators");
+	g_menu.item ("Game Boy",          "", 0, on_gb);
+	g_menu.item ("Game Boy Advance",  "", 0, on_gba);
+	g_menu.item ("NES",               "", 0, on_nes);
+	g_menu.item ("Super Nintendo",    "", 0, on_snes);
+	g_menu.item ("Nintendo 64",       "", 0, on_n64);
+	g_menu.item ("GameCube",          "", 0, on_gc);
 	g_menu.publish ();
 }
 

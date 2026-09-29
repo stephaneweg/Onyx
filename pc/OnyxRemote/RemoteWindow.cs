@@ -1,9 +1,11 @@
 // RemoteWindow.cs -- one Onyx window, as a child of the Onyx Remote window (MDI). By default a
 // native child window (its title bar, its close button) showing the Onyx window's content; with
-// "Onyx frames": its frame as the app drew it on the Pi (title bar, borders, close box). The
-// title bar moves the child inside Onyx Remote (not the Pi's window), the close box closes the
-// Onyx app, the rest goes to the app: the pointer in the window's coordinates (rdpd puts it back
-// on the Pi's screen), the keys, the focus (the Onyx window is raised and gets the keyboard).
+// "Onyx frames": its frame as the app drew it on the Pi (title bar, borders, the title buttons,
+// the rounded corners). The title bar moves the child inside Onyx Remote (not the Pi's window),
+// the close button closes the Onyx app, the other title buttons (the window menu, minimise,
+// maximise) are pressed on the Pi; the rest goes to the app: the pointer in the window's
+// coordinates (rdpd puts it back on the Pi's screen), the keys, the focus (the Onyx window is
+// raised and gets the keyboard). Moved on the Pi (dragged there, maximised), it follows.
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -15,7 +17,7 @@ namespace OnyxRemote
 {
 	static class Pix
 	{
-		// a model's pixels (0x00RRGGBB, w x h) into a bitmap of that size
+		// a model's pixels (0xTTRRGGBB, w x h; the top byte ignored) into a bitmap of that size
 		public static void Fill (Bitmap b, int[] px, int w, int h)
 		{
 			if (b == null || w <= 0 || h <= 0 || px.Length < w * h || b.Width < w || b.Height < h) return;
@@ -23,11 +25,30 @@ namespace OnyxRemote
 			for (int y = 0; y < h; y++) Marshal.Copy (px, y * w, d.Scan0 + y * d.Stride, w);
 			b.UnlockBits (d);
 		}
-		public static Bitmap Make (Bitmap old, int w, int h)
+		public static Bitmap Make (Bitmap old, int w, int h, PixelFormat f = PixelFormat.Format32bppRgb)
 		{
-			if (old != null && old.Width == w && old.Height == h) return old;
+			if (old != null && old.Width == w && old.Height == h && old.PixelFormat == f) return old;
 			old?.Dispose ();
-			return w > 0 && h > 0 ? new Bitmap (w, h, PixelFormat.Format32bppRgb) : null;
+			return w > 0 && h > 0 ? new Bitmap (w, h, f) : null;
+		}
+		// ... with each pixel's transparency as the bitmap's alpha (a Format32bppArgb one: a
+		// WIN_FLAG_ALPHA window's top byte, a WIN_FLAG_TRANSPARENT one's magenta; else opaque)
+		public static void FillArgb (Bitmap b, int[] px, int w, int h, bool alpha, bool keyed)
+		{
+			if (b == null || w <= 0 || h <= 0 || px.Length < w * h || b.Width < w || b.Height < h) return;
+			var row = new int[w];
+			var d = b.LockBits (new Rectangle (0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+			for (int y = 0; y < h; y++)
+			{
+				for (int x = 0; x < w; x++)
+				{
+					int c = px[y * w + x];
+					int a = alpha ? 255 - ((c >> 24) & 0xFF) : keyed && (c & 0xFFFFFF) == 0xFF00FF ? 0 : 255;
+					row[x] = a << 24 | (c & 0xFFFFFF);
+				}
+				Marshal.Copy (row, 0, d.Scan0 + y * d.Stride, w);
+			}
+			b.UnlockBits (d);
 		}
 	}
 
@@ -37,7 +58,7 @@ namespace OnyxRemote
 		readonly Connection conn;
 		readonly bool onyxFrames;
 		Bitmap content, chromeA, chromeI;
-		int w, h, ow, oh, il, it;
+		int w, h, ow, oh, il, it, piX, piY;
 		bool frame, native, keys, placed;
 		bool dragging; Point dragFrom;
 		int buttons;
@@ -74,7 +95,12 @@ namespace OnyxRemote
 			{
 				content = Pix.Make (content, w, h); chromeA = Pix.Make (chromeA, ow, oh); chromeI = Pix.Make (chromeI, ow, oh);
 				ClientSize = new Size (Math.Max (frame ? ow : w, 1), Math.Max (frame ? oh : h, 1));
+				var was = Region;
+				Region = frame ? Rounded (ow, oh, KAPI_FRAME_RADIUS) : null;
+				was?.Dispose ();
 			}
+			if (placed && (m.X != piX || m.Y != piY)) placed = false;	// (moved on the Pi: follows)
+			piX = m.X; piY = m.Y;
 			if (!placed)						// where the Pi has it, then where it is put
 			{
 				int bx = native ? (Width - ClientSize.Width) / 2 : 0;
@@ -101,12 +127,33 @@ namespace OnyxRemote
 			if (content != null) g.DrawImageUnscaled (content, frame ? il : 0, frame ? it : 0);
 		}
 
-		// ---- the pointer ----
-		bool InTitle (Point p) { return frame && p.Y < it; }
-		bool InCloseBox (Point p)
+		// the frame's rounded shape (its corners' outside see-through on the Pi)
+		static Region Rounded (int w, int h, int r)
 		{
-			int size = it - 10, x1 = ow - 5, x0 = x1 - size;	// as the kernel's CloseBoxRect
-			return frame && p.X >= x0 && p.X <= x1 && p.Y >= 5 && p.Y <= 5 + size;
+			var p = new GraphicsPath ();
+			int d = 2 * r;
+			p.AddArc (0, 0, d, d, 180, 90); p.AddArc (w - d, 0, d, d, 270, 90);
+			p.AddArc (w - d, h - d, d, d, 0, 90); p.AddArc (0, h - d, d, d, 90, 90);
+			p.CloseFigure ();
+			var g = new Region (p);
+			p.Dispose ();
+			return g;
+		}
+
+		// ---- the pointer ----
+		// the title buttons as the kernel places them (kapi_abi.h KAPI_FRAME_*)
+		const int KAPI_FRAME_RADIUS = 8, BTN_W = 22, BTN_H = 19, BTN_Y = 5, BTN_EDGE = 6, BTN_STEP = 25;
+		const int FRAME_MENU = 0, FRAME_CLOSE = 1, FRAME_MAXIMISE = 2, FRAME_MINIMISE = 3;
+		bool InTitle (Point p) { return frame && p.Y < it; }
+		int TitleButton (Point p)				// -> FRAME_*, -1: none
+		{
+			if (!frame || p.Y < BTN_Y || p.Y >= BTN_Y + BTN_H) return -1;
+			for (int b = 0; b < 4; b++)
+			{
+				int bx = b == FRAME_MENU ? BTN_EDGE : ow - BTN_EDGE - BTN_W - (b == FRAME_CLOSE ? 0 : b == FRAME_MAXIMISE ? 1 : 2) * BTN_STEP;
+				if (p.X >= bx && p.X < bx + BTN_W) return b;
+			}
+			return -1;
 		}
 		public static int Buttons (MouseButtons b) { return ((b & MouseButtons.Left) != 0 ? 1 : 0) | ((b & MouseButtons.Right) != 0 ? 2 : 0) | ((b & MouseButtons.Middle) != 0 ? 4 : 0); }
 		void SendPointer (Point p, int b, int wheel)
@@ -118,7 +165,9 @@ namespace OnyxRemote
 		{
 			if (buttons == 0 && InTitle (e.Location))
 			{
-				if (e.Button == MouseButtons.Left && InCloseBox (e.Location)) conn.CloseWindow (Id);
+				int b = e.Button == MouseButtons.Left ? TitleButton (e.Location) : -1;
+				if (b == FRAME_CLOSE) conn.CloseWindow (Id);
+				else if (b >= 0) { SendPointer (e.Location, Buttons (MouseButtons), 0); return; }	// (pressed on the Pi)
 				else if (e.Button == MouseButtons.Left) { dragging = true; dragFrom = e.Location; }
 				Activate ();
 				return;
@@ -129,6 +178,7 @@ namespace OnyxRemote
 		{
 			if (dragging) { Location = new Point (Location.X + e.X - dragFrom.X, Location.Y + e.Y - dragFrom.Y); return; }
 			if (buttons != 0 || !InTitle (e.Location)) SendPointer (e.Location, Buttons (MouseButtons), 0);
+			else conn.Pointer (Id, e.X - il, e.Y - it, 0, 0);	// (over the title bar: the pointer moves on the Pi too)
 		}
 		protected override void OnMouseUp (MouseEventArgs e)
 		{
