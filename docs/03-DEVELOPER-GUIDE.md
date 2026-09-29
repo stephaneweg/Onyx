@@ -259,7 +259,15 @@ Notes / caveats:
 > codecs are compiled once into `libwtk.a` (`wtk/imgload.cpp`, with FP/SIMD like
 > `wtk/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
 > `fileviewer` (preview), `wtk::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
-> already in memory (Writer's RTF pictures).
+> already in memory (Writer's RTF pictures, Paint's OpenRaster layers); `img_inflate (data, len, zlib,
+> &n)` inflates a deflate stream (stb's: a ZIP entry, a zlib stream).
+> **Writing images** (`user/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
+> `pngsave::deflate` (LZ77 over 32 KB with hash chains, the fixed Huffman codes; zlib's wrapper or
+> raw), `png_encode (px, w, h, alpha)` (RGBA / RGB, each row's best filter), `jpeg_encode (px, w, h,
+> quality)` (baseline 4:2:0, the standard tables, an integer DCT), `gif_encode` (GIF89a: the exact
+> colours up to 256, else a median cut; the clear pixels one transparent index; LZW), `bmp_encode`
+> (24-bit), `on_white` (a pixel laid on white); `ZipOut` (`add` stored or deflated, `finish`) and
+> `zip_find` (an entry's bytes and method). Paint's exports and its OpenRaster files use them.
 > **TrueType text** (`user/ft/`): the apps' FreeType — the upstream sources of
 > `third_party/freetype-2.14.3` built lean by `user/Makefile` into `ft/libft.a`
 > (`ft/onyx_ftoption.h`, `ft/onyx_ftmodule.h`: TrueType fonts only — truetype + sfnt —, anti-aliased
@@ -516,7 +524,18 @@ Notes / caveats:
 > the ruler, the status bar), `icons.h` (`VPath` icons), `fileio.h` (RTF in / out — pictures as
 > `\pict\pngblip` / `\jpegblip`, a PNG made when the image came as something else —, text, HTML),
 > `dialogs.h`. A host test worth keeping in mind: random edits undone then redone must give back
-> the same RTF. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
+> the same RTF.
+> **Paint** (`user/Apps/paint/`, a freestanding integer app) — `pdoc.h` (up to 32 layers of
+> 0xAARRGGBB pixels, straight alpha, bottom first; the composite kept and recomputed by rectangles,
+> a floating selection and a shape's preview composed with the current layer; undo: a stroke keeps
+> the 64 × 64 tiles it touches as they were, a change of size or of layers the whole picture),
+> `raster.h` (stamps, Bresenham lines, Zingl's ellipse in a box, polygons filled by pixel centres,
+> the shapes inscribed in their box's ellipse, flood fill, flips, quarter turns, scaling), `pview.h`
+> (the canvas widget: zoom, grid, checkerboard, the tools, the floating selection), `pui.h` (the
+> ribbon — cells laid out in code, their tips set as the pointer moves —, the layers' panel, the
+> status bar, the `VPath` icons), `pfile.h` (OpenRaster in / out, the pictures, the exports). A host
+> check: random strokes, shapes, fills, layer changes, turns and moved selections undone then
+> redone must give back the same pixels. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
 > **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),

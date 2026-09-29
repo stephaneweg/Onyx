@@ -169,15 +169,24 @@ Writer itself (no RichTextBox). Done:
 - **Next ideas**: tables; headers / footers beyond the page number; spell checking (a
   dictionary); tab stops set on the ruler; ODT / DOCX import (zlib is in `third_party`).
 
-## Queued by the user (in this order)
+## Paint, as Windows 11's, with layers (2026-09-29, same branch, pushed to `main`)
 
-1. **Paint, as Windows 11's** — a grid, pixel-exact drawing, shapes (rectangle, line, point,
-   ellipse, polygons inscribed in a circle...), foreground / background colours, a palette and
-   custom colours, a rectangular selection, flip / rotate (the selection, or the whole image),
-   cut / paste with the pasted piece movable until a click outside fixes it, **transparent
-   layers** (shown / hidden...), a professional wtk UI; *Export* writes what is visible (flat),
-   *Save* a working format with the layers.
-2. **Cardfile** ("a simple Access without SQL"): to be done by an agent — one file = a form and
+Asked by the user right after Writer. `user/Apps/paint/` rewritten (still a freestanding integer
+app): the ribbon (Edit, Image — select, crop, resize / canvas size, rotate / flip —, Tools — pencil,
+fill, eraser, colour picker, magnifier, brush —, fifteen Shapes inscribed in their box's ellipse
+with outline / fill, Size, Colours — 1 and 2, twenty, ten custom, Edit —, View — the pixel **Grid**
+toggle, Fit), transparent **layers** (eye, opacity, add, duplicate, delete, move, merge, flatten),
+a floating selection (moved, nudged, turned, flipped; a click outside puts it down), zoom 12 % –
+3200 %, undo by tiles. **Save** = OpenRaster (`.ora`, the layers; GIMP / Krita read it); **Open**:
+`.ora`, PNG, JPEG, BMP, GIF (WebP, PCX); **Export**: PNG, JPEG, BMP, GIF (flattened) — the writers
+in `user/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
+closed-unsaved picture is recovered. Screenshots `paint.png`, `paint-grid.png`; docs 04 *Paint*,
+03. **Next ideas**: a text tool (it would make Paint a newlib app: `ft/fonts.h`), free-form
+selection, a selection resized by handles, brushes with soft edges, a gradient fill.
+
+## Queued by the user
+
+1. **Cardfile** ("a simple Access without SQL"): to be done by an agent — one file = a form and
    its data; the form's fields (display name, column name, type: one-line text, multi-line text,
    integer, decimal with its precision, date, colour, yes/no, a list of choices); a form view, a
    list (grid) view and an edit view for the form.

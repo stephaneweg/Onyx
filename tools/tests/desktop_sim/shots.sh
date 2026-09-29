@@ -101,9 +101,20 @@ if want terminal; then
 	png terminal
 fi
 if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad; fi
-if want paint; then
-	sim paint paint "wait;menu 14;menu 9;$(ring 120 140 64);menu 15;$(ring 120 140 30);$(ring 120 140 14);menu 12;menu 8;$(stroke 240 60 380 230);menu 13;$(stroke 380 60 240 230);$W" $P
+if want paint; then			# (a picture on three layers: the sky filled, hills and a sun, a house, stars, a heart selected)
+	c () { printf "down %d %d;up %d %d" $1 $2 $1 $2; }
+	r () { printf "rdown %d %d;rup %d %d" $1 $2 $1 $2; }
+	S="wait;$(c 291 25);$(c 824 37);$(c 286 259)"
+	S="$S;menu 23;$(c 422 18);$(c 498 54);$(c 804 17);$(r 804 37);$(stroke 0 475 406 715);$(stroke 286 499 764 727)"
+	S="$S;$(c 764 17);$(r 784 17);$(stroke 549 175 645 271)"
+	S="$S;menu 23;$(c 376 18);$(c 724 37);$(r 784 37);$(stroke 227 403 382 547);$(c 445 18);$(c 724 17);$(r 744 17);$(stroke 209 321 400 407)"
+	S="$S;$(c 376 18);$(r 724 37);$(stroke 286 475 320 547)"
+	S="$S;$(c 376 62);$(c 764 37);$(r 784 17);$(stroke 119 187 167 235);$(stroke 185 241 215 271);$(c 445 62);$(c 744 17);$(r 744 37);$(stroke 465 427 525 487)"
+	sim paint paint "$S;$(c 142 39);$(stroke 451 415 539 499);$W" $P
 	png paint
+	# the pixel grid (the Grid toggle: 400 %, then 800 %), over the heart's edge
+	sim paint paint-grid "$S;$(c 962 22);menu 31;menu 31;$(c 291 57);$(c 465 460);$W" $P
+	png paint-grid
 fi
 if want calendar; then sim calendar calendar "wait;down 196 199;up 196 199;$W" $P; png calendar; fi
 if want mandelbrot; then sim mandelbrot mandelbrot "$W" $P; png mandelbrot; fi

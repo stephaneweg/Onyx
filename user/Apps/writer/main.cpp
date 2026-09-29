@@ -568,7 +568,8 @@ int main (void)
 	g_ruler = new Ruler (0, 2 * TB_H, W, g_view);
 	g_status = new StatusBar (0, H - STATUS_H, W);
 	g_status->zoomBy = zoom_by;
-	root.addChild (g_ruler); root.addChild (g_view); root.addChild (g_status);
+	root.addChild (g_ruler); root.addChild (g_status);
+	root.addChild (g_view);			// (last: on top -- a drag ended over another part still reaches it)
 	g_ruler->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	g_view->anchor = ANCHOR_FILL;
 	g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;

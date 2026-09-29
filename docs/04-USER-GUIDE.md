@@ -276,7 +276,7 @@ does not change it.
 *The menu bar with tinypad active and its File menu open.*
 
 Applications with menus: **tinypad** (File), **Writer** (File, Edit, View, Insert, Format, Tools),
-**paint** (File, Brush, Color) and the **File Viewer** (File, Edit) — see §12.
+**Paint** (File, Edit, Image, Layers, View, Colours) and the **File Viewer** (File, Edit) — see §12.
 
 ### The dock (`dock`)
 
@@ -980,7 +980,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib). A column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel. **Keys**: **C D E F G A B** a note (Shift = sharp; the cursor then goes to the next slice, and you hear it), **0–7** the octave, **Space** a silence, **Delete** `---`, **Backspace** clears the slice above, **#** toggles the sharp, **Ctrl+↑ / Ctrl+↓** move the note a semitone up / down, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; a **click** selects a cell; wheel / scrollbar scroll. The **column header** is a button: it opens the **instrument dialog** (presets from `SD:/apps/fmtracker.app/ins`, Load / Save `.FMI`, the two operators' multiplier, level, attack, decay, sustain, release, wave, sustain / tremolo / vibrato flags, feedback, FM or additive, **Test**); right-click it to mute the channel in this pattern. **Play** (^P) plays from the cursor, follows the position and highlights it; **Stop** / **Esc**. A song is a list of **patterns** (toolbar: ◀ ▶ +, **Rows**, **Speed** = a slice lasts speed / 20 s; Pattern menu: New, Duplicate, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
-| **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
+| **paint** (Paint) | Drawing, in the way of Windows 11's Paint, on **transparent layers**: pencil, brush, eraser, fill, colour picker, magnifier, fifteen shapes (outline and fill), a rectangular selection moved, rotated, flipped, cut and pasted, colour 1 / colour 2, a palette and your own colours, a pixel grid, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX); saves its layers as OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
@@ -1114,6 +1114,75 @@ box, Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offe
 Writer starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste
 within Writer keep the formats (and the images); the other apps get the text. Documents usually
 start in `SD:/docs`; the sample: `SD:/docs/writer-tour.rtf`.
+
+### Paint (`paint`)
+
+![Paint](../screenshots/paint.png)
+*Paint: a picture on three layers — the sky, the hills and the sun, the house — the heart selected.*
+
+Paint draws **to the pixel**, in the way of Windows 11's Paint, on **layers**: transparent sheets
+stacked over the background, each shown or hidden, more or less opaque. The window: the **ribbon**
+at the top, the **canvas** in the middle (the picture on a grey desk, its transparent parts over a
+checkerboard), the **Layers** panel on the right, the **status bar** at the bottom (the pixel under
+the pointer, the selection's size, the picture's size, the zoom).
+
+**The ribbon**, from the left:
+
+- **Edit**: **Paste** (the copied pixels — or a picture file copied in the File Viewer — floating,
+  ready to be moved), **Cut**, **Copy**, **Undo**, **Redo**.
+- **Image**: **Select** (drag a rectangle; drag inside it to move its pixels, the arrows move them
+  a pixel — Shift: ten —; a **click outside puts them down**), **Crop** (to the selection),
+  **Resize** (the picture scaled — sharp pixels or smooth —, or its canvas made bigger or smaller,
+  the picture at the top left or centred; the proportions kept or not), **Rotate** (right or left
+  90°, 180°, flip vertical or horizontal): **the selection if there is one, else the whole picture**
+  — every layer.
+- **Tools**: **Pencil** (square pixels), **Fill** (the area of one colour, 4-connected), **Eraser**
+  (to transparent — on an opaque background: colour 2, as the classic Paint), **Colour picker**
+  (from what is visible: colour 1 with the left button, colour 2 with the right one; back to the
+  tool used before), **Magnifier** (left: zoom in there, right: zoom out), **Brush** (round).
+- **Shapes**: line, rectangle, rounded rectangle, ellipse, triangle, right triangle, diamond,
+  pentagon, hexagon, octagon, four-, five- and six-point stars, arrow, heart — the polygons
+  **inscribed in the ellipse of the box** you drag; **Shift** makes the box a square (a circle, a
+  regular polygon) and a line horizontal, vertical or at 45°. **Outline** (colour 1) and **Fill**
+  (colour 2) are toggles (one at least).
+- **Size**: the width of the pencil, the brush, the eraser, the shapes' outline (1 to 32 px).
+- **Colours**: **colour 1** (the left button's) and **colour 2** (the right button's, the shapes'
+  inside) — click one of them to choose which one the palette sets; the **palette** (twenty
+  colours: left click the chosen colour, right click colour 2); **ten colours of your own** below
+  it, filled by **Edit** (any colour: the colour dialog). **X** swaps the two colours.
+- **View**: **Grid** — the pixel grid, **on or off** (seen from 300 %: turning it on zooms to
+  400 %) —, **Fit** (the whole picture in the window).
+
+![Paint — the pixel grid](../screenshots/paint-grid.png)
+*The pixel grid at 1200 %: every pixel of the roof's edge.*
+
+**Drawing**: the left button draws with colour 1, the right one with colour 2 (a shape: its outline
+colour 1 and its inside colour 2 — the right button swaps them). The **wheel** scrolls (Shift:
+sideways), **Ctrl+wheel** zooms around the pointer; **+ / −** zoom; the status bar's **− / 100 % /
++** too (the percentage: a list, Fit). Keys for the tools: **S** select, **P** pencil, **B** brush,
+**E** eraser, **F** fill, **K** colour picker, **Z** magnifier, **U** shapes; **Delete** clears the
+selection (on the background: colour 2), **Esc** puts a floating selection down.
+
+**The layers**: the panel lists them, the top one first, each with its thumbnail, its name, its
+opacity and its **eye** (a click shows or hides it). A click on a layer makes it the one you draw
+on; a **double click** opens its properties (name, opacity, shown); a **right click** its menu. Its
+buttons: **new layer** (transparent, above the current one), **duplicate**, **delete**, **move up /
+down**, **merge down** (into the one below). The **Opacity** slider under the list sets the current
+layer's. The Layers menu adds **Flatten** (one layer of what is visible) and Layer Properties.
+Selections, pastes, fills and the eraser work on the current layer; the colour picker takes what
+you see.
+
+**Files**: **File ▸ Save** (Ctrl+S) writes the **working format**, OpenRaster (`.ora`: every layer
+kept, with its name, opacity and visibility — GIMP, Krita and MyPaint open it too); **File ▸ Open**
+reads it, or a **PNG, JPEG, BMP, GIF** (its first frame), WebP or PCX picture (one layer: the
+Background). **File ▸ Export as PNG / JPEG / BMP / GIF** writes **what is visible**, flattened: PNG
+keeps the transparency, GIF too (a transparent colour; 256 colours: a picture with more is reduced),
+JPEG (quality 90) and BMP lay the transparent parts on white. **File ▸ New** (Ctrl+N) asks for the
+size (640 × 480 by default) and a white or transparent background. A picture named on the command
+line (`paint <file>`: the Image Viewer's File ▸ Edit in Paint), dropped on the window or
+double-clicked (a `.ora`: `fileassoc.ini`) opens; New, Open and a drop first ask to save unsaved
+changes. **Closed with unsaved changes**, the picture is kept in `SD:/apps/paint.app/recovered.ora`
+and offered back the next time Paint starts. **Undo** keeps the last 60 changes (a stroke is one).
 
 ### Games
 

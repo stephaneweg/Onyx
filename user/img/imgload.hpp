@@ -34,6 +34,9 @@ struct ImgFrames
 void img_free (ImgFrames *im);			// delete [] the frames
 bool img_load (const char *path, ImgFrames *im);	// false: unreadable / unknown format
 bool img_load_mem (const void *data, unsigned len, ImgFrames *im);	// the same, from a file's bytes in memory
+// A deflate stream inflated (zlib: with its zlib header, as PNG's; else raw, as a ZIP entry's): a
+// new unsigned char[] of *outLen bytes (delete []), or 0.
+unsigned char *img_inflate (const void *data, unsigned len, bool zlib, unsigned *outLen);
 bool img_is_image_name (const char *name);	// by extension (bmp gif png jpg jpeg jpe pcx webp)
 
 #ifdef IMGLOAD_IMPLEMENTATION
@@ -293,6 +296,19 @@ static bool img_decode (unsigned char *d, unsigned len, ImgFrames *im)
 	if (px == 0) return false;
 	im->px[0] = px; im->delay[0] = 0; im->n = 1; im->w = w; im->h = h;
 	return true;
+}
+
+unsigned char *img_inflate (const void *data, unsigned len, bool zlib, unsigned *outLen)
+{
+	int n = 0;
+	char *r = zlib ? stbi_zlib_decode_malloc ((const char *) data, (int) len, &n)
+		       : stbi_zlib_decode_noheader_malloc ((const char *) data, (int) len, &n);
+	if (r == 0 || n < 0) { if (r) img_dealloc (r); return 0; }
+	unsigned char *o = new unsigned char[n > 0 ? n : 1];
+	for (int i = 0; i < n; i++) o[i] = (unsigned char) r[i];
+	img_dealloc (r);
+	*outLen = (unsigned) n;
+	return o;
 }
 
 bool img_is_image_name (const char *n)
