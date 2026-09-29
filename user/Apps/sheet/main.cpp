@@ -46,7 +46,7 @@ static void refresh ();
 
 static void now_clock (int *y, int *mo, int *d, int *h, int *mi, int *s) { kapi_get_datetime (y, mo, d, h, mi, s); }
 static const char *base_name (const char *p) { const char *s = strrchr (p, '/'); return s ? s + 1 : p; }
-static void message (const char *text) { wk_messagebox ("Spreadsheet", text, MB_OK); }
+static void message (const char *text) { note ("Spreadsheet", text); }
 
 // ---- the book's state -------------------------------------------------------------------------------------
 static void book_fresh ()
@@ -79,7 +79,7 @@ static bool save_to (const char *p)
 {
 	if (ends_with (p, ".csv") || ends_with (p, ".txt") || ends_with (p, ".tsv"))
 	{
-		if (wk_messagebox ("Save as CSV", "A CSV file keeps only the values of the sheet shown -- no formats, no formulas, no other sheet. Save it anyway?", MB_OKCANCEL) != 1) return false;
+		if (note ("Save as CSV", "A CSV file keeps only the values of the sheet shown -- no formats, no formulas, no other sheet. Save it anyway?", MB_OKCANCEL) != 1) return false;
 	}
 	const char *why = 0;
 	if (!book_save (g_b, p, &why)) { message (why ? why : "The file cannot be written."); return false; }
@@ -514,7 +514,8 @@ static void cmd_find ()
 		}
 	}
 }
-static void cmd_goto () { g_fbar->name->setFocus (); g_fbar->name->caret = (int) strlen (g_fbar->name->text); g_fbar->name->invalidate (true); }
+static void cmd_goto () { g_fbar->name->setFocus (); g_fbar->name->selectAll (); }
+static void name_leave () { g_grid->setFocus (); refresh (); }
 static void go_to (const char *t)
 {
 	// "B7", "C2:F9", "Sheet2!A1", "A:A", "3:3"
@@ -532,7 +533,7 @@ static void go_to (const char *t)
 		}
 	}
 	formula_free (f);
-	if (!ok) message ("Type a cell or a range: B7, C2:F9, Sheet2!A1.");
+	if (!ok) message ("Type a cell or a range to go there: B7, C2:F9, Sheet2!A1.");
 	g_grid->setFocus ();
 	refresh ();
 }
@@ -688,6 +689,7 @@ static void cmd_chart ()
 	if (d.run () != 1) return;
 	undo_sheet (g_b, s);
 	Chart *nc = (Chart *) malloc (sizeof (Chart)); *nc = d.c;
+	chart_anchor (s, nc);
 	s->charts = (Chart **) realloc (s->charts, (s->ncharts + 1) * sizeof (Chart *));
 	s->charts[s->ncharts++] = nc;
 	g_grid->selChart = s->ncharts - 1;
@@ -793,7 +795,7 @@ static void cmd_merge ()
 		// (the other cells' content goes: asked first when there is some)
 		bool more = false;
 		for (int rr = r.r0; rr <= r.r1 && !more; rr++) for (int c = r.c0; c <= r.c1; c++) { if (rr == r.r0 && c == r.c0) continue; Cell *x = s->cells.get (rr, c); if (x && x->kind != K_NONE) { more = true; break; } }
-		if (more && wk_messagebox ("Merge Cells", "Only the top left cell's content is kept. Merge anyway?", MB_OKCANCEL) != 1) { undo_step (g_b, false); ustack_clear (g_redo); return; }
+		if (more && note ("Merge Cells", "Only the top left cell's content is kept. Merge anyway?", MB_OKCANCEL) != 1) { undo_step (g_b, false); ustack_clear (g_redo); return; }
 		merge_range (g_b, s, r);
 		Rect one = { r.r0, r.c0, r.r0, r.c0 };
 		style_range (g_b, s, one, f_ha, (const void *) (long) HA_CENTER);
@@ -1051,7 +1053,7 @@ static void cmd_delete_sheet ()
 	if (g_b.ns <= 1) { message ("A workbook keeps one sheet at least."); return; }
 	char m[160]; snprintf (m, sizeof m, "Delete the sheet \"%s\"? (Undo brings it back.)", S ()->name);
 	char l1[160]; u8_to_latin1 (m, l1, sizeof l1);
-	if (wk_messagebox ("Delete Sheet", l1, MB_OKCANCEL) != 1) return;
+	if (note ("Delete Sheet", l1, MB_OKCANCEL) != 1) return;
 	undo_book (g_b);
 	delete_sheet (g_b, g_b.active);
 	recalc (g_b); touched ();
@@ -1304,7 +1306,7 @@ int main (void)
 	wtk::init ();
 	if (!fnt::init ())
 	{
-		wk_messagebox ("Spreadsheet", "No TrueType fonts in SD:/res/fonts: the spreadsheet cannot draw its cells.", MB_OK);
+		note ("Spreadsheet", "No TrueType fonts in SD:/res/fonts: the spreadsheet cannot draw its cells.");
 		return 1;
 	}
 	g_famSans = fnt::find ("Liberation Sans"); if (g_famSans < 0) g_famSans = 0;
@@ -1389,7 +1391,7 @@ int main (void)
 	g_grid = new GridView (0, gy, W, H - gy - TABS_H - STATUS_H);
 	g_grid->b = &g_b;
 	g_fbar = new FormulaBar (0, 2 * TB_H, W, g_grid, cmd_function, cmd_autosum, fbar_cancel, fbar_accept);
-	g_fbar->name->onGo = go_to;
+	g_fbar->name->onGo = go_to; g_fbar->name->onLeave = name_leave;
 	g_fbar->line->onFocusEdit = fbar_focus;
 	g_tabs = new SheetTabs (0, H - TABS_H - STATUS_H, W, &g_b);
 	g_tabs->onPick = pick_sheet; g_tabs->onAdd = tabs_add; g_tabs->onRename = rename_sheet; g_tabs->onMenu = tab_menu;
@@ -1489,7 +1491,7 @@ int main (void)
 		if (b)
 		{
 			free (b);
-			if (wk_messagebox ("Spreadsheet", "The spreadsheet was closed with unsaved changes. Open the recovered workbook?", MB_YESNO) == 1)
+			if (note ("Spreadsheet", "The spreadsheet was closed with unsaved changes. Open the recovered workbook?", MB_YESNO) == 1)
 			{
 				const char *why = 0;
 				if (book_load (g_b, RECOVER, &why))

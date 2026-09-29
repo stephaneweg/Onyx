@@ -283,6 +283,17 @@ static bool shift_rect (Rect &r, bool rows, int at, int n)
 }
 static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
 {
+	// the charts over the sheet: their anchors move with the cells (placed again as the rows change)
+	for (int i = 0; i < s->ncharts; i++)
+	{
+		Chart *ch = s->charts[i];
+		if (!ch->anchored) chart_anchor (s, ch);
+		int &a = rows ? ch->ar : ch->ac, &d = rows ? ch->ady : ch->adx;
+		if (n > 0 && a >= at) a += n;
+		else if (n < 0 && a >= at - n) a += n;
+		else if (n < 0 && a >= at) { a = at; d = 0; }
+		a = iclamp (a, 0, (rows ? MAXR : MAXC) - 1);
+	}
 	// the cells: out of the map, moved (or freed), back in
 	int cnt = s->cells.n;
 	Cell **all = (Cell **) malloc (imax (1, cnt) * sizeof (Cell *));

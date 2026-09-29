@@ -56,7 +56,7 @@ static void compare (Book &a, Book &b, const char *what, bool strict)
 			Buf ex, ey; cell_edit_text (a, s, x, ex); if (y) cell_edit_text (b, t, y, ey);
 			if (strict && strcmp (ex.str (), ey.str ())) { if (bad < 12) printf ("FAIL %s: %s!%s holds [%s], [%s] expected\n", what, s->name, ref, ey.str (), ex.str ()); bad++; continue; }
 			const Style &p = a.styles.s[x->style], &q = b.styles.s[y->style];
-			if (p.bold != q.bold || p.italic != q.italic || (strict && p.size != q.size) || p.fill != q.fill || p.ha != q.ha || p.wrap != q.wrap || (p.color == AUTO ? 0 : p.color) != (q.color == AUTO ? 0 : q.color))
+			if (p.bold != q.bold || p.italic != q.italic || p.size != q.size || p.fill != q.fill || p.ha != q.ha || p.wrap != q.wrap || (p.color == AUTO ? 0 : p.color) != (q.color == AUTO ? 0 : q.color))
 			{ if (bad < 12) printf ("FAIL %s: %s!%s style differs (b%d/%d i%d/%d sz%d/%d fill%06X/%06X ha%d/%d col%06X/%06X)\n", what, s->name, ref, q.bold, p.bold, q.italic, p.italic, q.size, p.size, q.fill, p.fill, q.ha, p.ha, q.color, p.color); bad++; }
 			for (int sd = 0; sd < 4; sd++) if (p.bs[sd] != q.bs[sd]) { if (bad < 12) printf ("FAIL %s: %s!%s border %d: %d, %d expected\n", what, s->name, ref, sd, q.bs[sd], p.bs[sd]); bad++; break; }
 		}
@@ -67,7 +67,16 @@ static void compare (Book &a, Book &b, const char *what, bool strict)
 		(void) tol;
 		// (LibreOffice without a window drops the view: the panes checked on our own trips only)
 		if (strict && (s->freezeR != t->freezeR || s->freezeC != t->freezeC)) { printf ("FAIL %s: %s frozen %d/%d, %d/%d expected\n", what, s->name, t->freezeR, t->freezeC, s->freezeR, s->freezeC); bad++; }
-		if (strict && s->ncharts != t->ncharts) { printf ("FAIL %s: %s has %d charts, %d expected\n", what, s->name, t->ncharts, s->ncharts); bad++; }
+		if (s->ncharts != t->ncharts) { printf ("FAIL %s: %s has %d charts, %d expected\n", what, s->name, t->ncharts, s->ncharts); bad++; }
+		for (int k = 0; k < s->ncharts && k < t->ncharts; k++)
+		{
+			const Chart &p = *s->charts[k], &q = *t->charts[k];
+			if (p.type != q.type || memcmp (&p.src, &q.src, sizeof p.src) || p.head != q.head || p.side != q.side || strcmp (p.title, q.title) || p.legend != q.legend)
+			{ printf ("FAIL %s: %s chart %d differs (type %d/%d, title [%s]/[%s], legend %d/%d, head %d/%d side %d/%d)\n", what, s->name, k, q.type, p.type, q.title, p.title, q.legend, p.legend, q.head, p.head, q.side, p.side); bad++; }
+			// (LibreOffice sizes the columns by its own font: a chart anchored to cells moves and grows a little)
+			else if (abs (p.x - q.x) > 12 + p.x / 10 || abs (p.y - q.y) > 12 + p.y / 10 || abs (p.w - q.w) > 12 + p.w / 10 || abs (p.h - q.h) > 12 + p.h / 10)
+			{ printf ("FAIL %s: %s chart %d at %d,%d %dx%d, %d,%d %dx%d expected\n", what, s->name, k, q.x, q.y, q.w, q.h, p.x, p.y, p.w, p.h); bad++; }
+		}
 	}
 	if (bad) g_fail++;
 }
@@ -153,6 +162,37 @@ int main (int argc, char **argv)
 			book_clear (e); book_clear (f);
 		}
 		else printf ("(LibreOffice conversion failed)\n");
+	}
+	// the sample workbook (sdcard/docs/cafe-2026.xlsx): read, written, read back the same; LibreOffice's
+	// .ods and .xlsx of it read the same (what is shown, the fonts' sizes, the styles)
+	if (argc > 2)
+	{
+		Book s0; book_init (s0);
+		if (!book_load (s0, argv[2], &why)) { printf ("FAIL sample load: %s\n", why); g_fail++; }
+		else
+		{
+			char q1[256]; snprintf (q1, sizeof q1, "%s/sample.xlsx", dir);
+			book_save (s0, q1, &why);
+			Book s1; book_init (s1); book_load (s1, q1, &why);
+			compare (s0, s1, "sample round trip", true);
+			book_clear (s1);
+			if (system ("which soffice > /dev/null 2>&1") == 0)
+			{
+				snprintf (cmd, sizeof cmd, "cd %s && soffice --headless --convert-to ods sample.xlsx > /dev/null 2>&1 && soffice --headless --convert-to xlsx:\"Calc MS Excel 2007 XML\" --outdir lo2 sample.ods > /dev/null 2>&1", dir);
+				if (system (cmd) == 0)
+				{
+					char po[256], px[256]; snprintf (po, sizeof po, "%s/sample.ods", dir); snprintf (px, sizeof px, "%s/lo2/sample.xlsx", dir);
+					Book e; book_init (e);
+					if (!book_load (e, po, &why)) { printf ("FAIL sample ods load: %s\n", why); g_fail++; }
+					else compare (s0, e, "sample, LibreOffice .ods", false);
+					Book f; book_init (f);
+					if (!book_load (f, px, &why)) { printf ("FAIL sample LibreOffice xlsx load: %s\n", why); g_fail++; }
+					else compare (s0, f, "sample, LibreOffice .xlsx", false);
+					book_clear (e); book_clear (f);
+				}
+			}
+		}
+		book_clear (s0);
 	}
 	book_clear (a); book_clear (b); book_clear (c); book_clear (d);
 	for (int i = 0; i < g_fcacheN; i++) { free (g_fcache[i].code); free (g_fcache[i].f); }

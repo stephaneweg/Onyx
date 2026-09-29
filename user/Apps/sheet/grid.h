@@ -1108,7 +1108,7 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 				m_moved = true;
 				if (onContext) onContext (0, 0, 8);
 			}
-			if (m_drag == D_CHART) { ch->x = imax (0, m_chartX0 + dx); ch->y = imax (0, m_chartY0 + dy); }
+			if (m_drag == D_CHART) { ch->x = imax (0, m_chartX0 + dx); ch->y = imax (0, m_chartY0 + dy); chart_anchor (s, ch); }
 			else
 			{
 				int x0 = m_chartX0, y0 = m_chartY0, x1 = m_chartX0 + m_chartW0, y1 = m_chartY0 + m_chartH0;
@@ -1117,6 +1117,7 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 				if (x1 - x0 < 120) { if (m_corner & 1) x1 = x0 + 120; else x0 = x1 - 120; }
 				if (y1 - y0 < 90) { if (m_corner & 2) y1 = y0 + 90; else y0 = y1 - 90; }
 				ch->x = imax (0, x0); ch->y = imax (0, y0); ch->w = x1 - x0; ch->h = y1 - y0;
+				chart_anchor (s, ch);
 			}
 			invalidate (true);
 			break;

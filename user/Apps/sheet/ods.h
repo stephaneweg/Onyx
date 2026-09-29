@@ -3,7 +3,7 @@
 // percentages, amounts, dates, times, booleans, texts of several paragraphs), the formulas (OpenFormula,
 // "of:=SUM([.A1:.A5])", turned into Excel's syntax), the cell styles (fonts, colours, borders,
 // alignment, wrapping; the number styles made into format codes), the columns' widths, the rows'
-// heights, merged and hidden cells, frozen panes (settings.xml).
+// heights, merged and hidden cells, frozen panes (settings.xml), the charts (their objects: "Object 1/content.xml").
 //
 #ifndef _sheet_ods_h
 #define _sheet_ods_h
@@ -93,7 +93,25 @@ struct OStyle
 	int colW, rowH; bool optimal;
 };
 enum { OP_FONT, OP_SIZE, OP_BOLD, OP_ITALIC, OP_UNDER, OP_STRIKE, OP_COLOR, OP_FILL, OP_HA, OP_VA, OP_WRAP, OP_BORDER, OP_INDENT };
-struct ONum { char name[48]; char code[96]; char mapName[48]; int mapCond; };	// mapCond: 1 >=0, 2 <0, 3 >0
+enum { MC_NONE, MC_GE, MC_LT, MC_GT, MC_EQ };		// a number style's map: value() >= 0, < 0, > 0, = 0
+struct ONum { char name[48]; char code[96]; char mapName[3][48]; int mapCond[3], nmap; };
+// The font faces declared (style:font-face): a face's name -> its family ("Liberation Sans1" -> Liberation Sans).
+struct OFace { char name[64], family[64]; };
+static OFace g_faces[64]; static int g_nfaces;
+static const char *face_family (const char *name)
+{
+	for (int i = 0; i < g_nfaces; i++) if (!strcmp (g_faces[i].name, name)) return g_faces[i].family;
+	return name;
+}
+static void unquote_family (const char *s, char *o, int cap)	// "'Liberation Sans', Arial" -> Liberation Sans
+{
+	while (*s == ' ') s++;
+	char q = *s == '\'' || *s == '"' ? *s++ : 0;
+	int k = 0;
+	while (*s && k < cap - 1 && (q ? *s != q : *s != ',')) o[k++] = *s++;
+	while (k > 0 && o[k - 1] == ' ') k--;
+	o[k] = 0;
+}
 
 static void ods_styles (Book &b, const char *x, int len, OStyle **st, int *nst, ONum **nm, int *nnm)
 {
@@ -105,21 +123,38 @@ static void ods_styles (Book &b, const char *x, int len, OStyle **st, int *nst, 
 	{
 		if (X.ev == X_START)
 		{
-			if (X.isq ("style:style") || X.isq ("style:default-style"))
+			if (X.isq ("style:font-face"))
 			{
+				if (g_nfaces < 64 && X.attr ("style:name", v))
+				{
+					OFace &f = g_faces[g_nfaces];
+					scpy (f.name, v.str (), sizeof f.name);
+					Buf fam;
+					if (X.attr ("svg:font-family", fam)) unquote_family (fam.str (), f.family, sizeof f.family); else scpy (f.family, f.name, sizeof f.family);
+					g_nfaces++;
+				}
+			}
+			else if (X.isq ("style:style") || X.isq ("style:default-style"))
+			{
+				Buf fam; X.attr ("style:family", fam);
+				int family = !strcmp (fam.str (), "table-cell") ? 1 : !strcmp (fam.str (), "table-column") ? 2 : !strcmp (fam.str (), "table-row") ? 3 : 0;
+				if (family == 0) { cur = 0; continue; }			// (the graphics', the paragraphs': not the cells')
 				*st = (OStyle *) realloc (*st, (*nst + 1) * sizeof (OStyle));
 				cur = &(*st)[(*nst)++]; memset (cur, 0, sizeof *cur); cur->st.reset ();
-				if (X.attr ("style:name", v)) scpy (cur->name, v.str (), sizeof cur->name); else scpy (cur->name, "!default", sizeof cur->name);
+				cur->family = family;
+				if (X.attr ("style:name", v)) scpy (cur->name, v.str (), sizeof cur->name);
+				else scpy (cur->name, family == 1 ? "!default" : "!default-other", sizeof cur->name);
 				if (X.attr ("style:parent-style-name", v)) scpy (cur->parent, v.str (), sizeof cur->parent);
-				else if (strcmp (cur->name, "!default") && strcmp (cur->name, "Default")) scpy (cur->parent, "Default", sizeof cur->parent);
+				else if (strncmp (cur->name, "!default", 8) && strcmp (cur->name, "Default") && family == 1) scpy (cur->parent, "Default", sizeof cur->parent);
 				if (X.attr ("style:data-style-name", v)) scpy (cur->data, v.str (), sizeof cur->data);
-				X.attr ("style:family", v);
-				cur->family = !strcmp (v.str (), "table-cell") ? 1 : !strcmp (v.str (), "table-column") ? 2 : !strcmp (v.str (), "table-row") ? 3 : 0;
 				if (X.empty) cur = 0;
 			}
 			else if (cur && X.isq ("style:text-properties"))
 			{
-				if (X.attr ("style:font-name", v) || X.attr ("fo:font-family", v)) { cur->st.font = (unsigned short) book_font (b, v.str ()); cur->has[OP_FONT] = true; }
+				char famName[64] = "";
+				if (X.attr ("fo:font-family", v)) unquote_family (v.str (), famName, sizeof famName);
+				else if (X.attr ("style:font-name", v)) scpy (famName, face_family (v.str ()), sizeof famName);
+				if (famName[0]) { cur->st.font = (unsigned short) book_font (b, famName); cur->has[OP_FONT] = true; }
 				if (X.attr ("fo:font-size", v)) { cur->st.size = (unsigned short) (strtod (v.str (), 0) * 10 + 0.5); cur->has[OP_SIZE] = true; }
 				if (X.attr ("fo:font-weight", v)) { cur->st.bold = !strcmp (v.str (), "bold") || atoi (v.str ()) >= 600; cur->has[OP_BOLD] = true; }
 				if (X.attr ("fo:font-style", v)) { cur->st.italic = !strcmp (v.str (), "italic") || !strcmp (v.str (), "oblique"); cur->has[OP_ITALIC] = true; }
@@ -207,11 +242,12 @@ static void ods_styles (Book &b, const char *x, int len, OStyle **st, int *nst, 
 			else if (inNum && X.isq ("number:am-pm")) code.puts ("AM/PM");
 			else if (inNum && X.isq ("number:text-content")) code.put ('@');
 			else if (inNum && X.isq ("style:text-properties")) { if (X.attr ("fo:color", v)) numColor = ods_color (v.str ()); }
-			else if (inNum && X.isq ("style:map") && num)
+			else if (inNum && X.isq ("style:map") && num && num->nmap < 3)
 			{
 				Buf cnd, an; X.attr ("style:condition", cnd); X.attr ("style:apply-style-name", an);
-				scpy (num->mapName, an.str (), sizeof num->mapName);
-				num->mapCond = strstr (cnd.str (), ">=0") ? 1 : strstr (cnd.str (), "<0") ? 2 : strstr (cnd.str (), ">0") ? 3 : 0;
+				const char *c = cnd.str ();
+				int mc = strstr (c, ">=0") ? MC_GE : strstr (c, "<0") ? MC_LT : strstr (c, ">0") ? MC_GT : strstr (c, "=0") ? MC_EQ : MC_NONE;
+				if (mc != MC_NONE) { scpy (num->mapName[num->nmap], an.str (), sizeof num->mapName[0]); num->mapCond[num->nmap++] = mc; }
 			}
 			else if (inNum && (X.isq ("number:text") || X.isq ("number:currency-symbol")))
 			{
@@ -247,21 +283,28 @@ static void ods_styles (Book &b, const char *x, int len, OStyle **st, int *nst, 
 	}
 }
 static const ONum *find_num (ONum *nm, int n, const char *name) { for (int i = 0; i < n; i++) if (!strcmp (nm[i].name, name)) return &nm[i]; return 0; }
+// A number style and its maps made one Excel code: "positive;negative;zero" (a style shows a negative
+// number with its sign, a map's section as it is written: "-0.0%").
 static void num_code (ONum *nm, int n, const char *name, char *out, int cap)
 {
 	const ONum *x = find_num (nm, n, name);
 	if (!x) { scpy (out, "General", cap); return; }
-	if (x->mapName[0])
+	const char *pos = x->code, *neg = 0, *zero = 0;
+	bool geo = false;						// (the positive section takes 0 too)
+	for (int i = 0; i < x->nmap; i++)
 	{
-		const ONum *y = find_num (nm, n, x->mapName);
-		if (y && (x->mapCond == 1 || x->mapCond == 2))
-		{
-			const ONum *a = x->mapCond == 1 ? y : x, *z = x->mapCond == 1 ? x : y;
-			scpy (out, a->code, cap); scat (out, ";", cap); scat (out, z->code, cap);
-			return;
-		}
+		const ONum *y = find_num (nm, n, x->mapName[i]);
+		if (!y) continue;
+		if (x->mapCond[i] == MC_GT) pos = y->code;
+		else if (x->mapCond[i] == MC_GE) { pos = y->code; geo = true; }
+		else if (x->mapCond[i] == MC_LT) neg = y->code;
+		else if (x->mapCond[i] == MC_EQ) zero = y->code;
 	}
-	scpy (out, x->code, cap);
+	if (pos == x->code && !neg && !zero) { scpy (out, x->code, cap); return; }
+	scpy (out, pos, cap); scat (out, ";", cap);
+	if (neg) scat (out, neg, cap); else { scat (out, "-", cap); scat (out, x->code, cap); }
+	if (zero) { scat (out, ";", cap); scat (out, zero, cap); }
+	else if (!geo && pos != x->code) { scat (out, ";", cap); scat (out, x->code, cap); }
 }
 static const OStyle *find_style (OStyle *st, int n, const char *name) { for (int i = n - 1; i >= 0; i--) if (!strcmp (st[i].name, name)) return &st[i]; return 0; }
 // A cell style resolved (its parents' properties under its own) -> the book's style index.
@@ -296,12 +339,115 @@ static unsigned short resolve_style (Book &b, OStyle *st, int n, ONum *nm, int n
 	return (unsigned short) b.styles.intern (out);
 }
 
+// A range's address in a chart ("Sales.A4:Sales.D16", "$'My sheet'.$B$5:.$B$16"): its sheet and cells.
+static bool ods_range (Book &b, const char *a, int *sheetId, Rect *r)
+{
+	char part[2][160]; int np = 0;
+	const char *p = a; bool q = false; int k = 0;
+	while (*p == ' ') p++;
+	for (; *p && np < 2; p++)
+	{
+		if (*p == '\'') q = !q;
+		if ((*p == ':' || *p == ' ') && !q) { part[np][k] = 0; np++; k = 0; if (*p == ' ') break; continue; }
+		if (k < 159) part[np][k++] = *p;
+	}
+	if (np < 2) { part[np][k] = 0; np++; }
+	int rr[2] = { 0, 0 }, cc[2] = { 0, 0 };
+	*sheetId = 0;
+	for (int i = 0; i < np && i < 2; i++)
+	{
+		char *t = part[i];
+		// the last '.' outside quotes: the sheet before it
+		char *dot = 0; bool q2 = false;
+		for (char *x = t; *x; x++) { if (*x == '\'') q2 = !q2; else if (*x == '.' && !q2) dot = x; }
+		const char *cell = t;
+		if (dot)
+		{
+			*dot = 0; cell = dot + 1;
+			char *nm = t; if (*nm == '$') nm++;
+			int L = (int) strlen (nm);
+			if (L >= 2 && nm[0] == '\'' && nm[L - 1] == '\'') { nm[L - 1] = 0; nm++; }
+			if (nm[0] && !*sheetId) { int k2 = book_sheet_index (b, nm); if (k2 >= 0) *sheetId = b.sh[k2]->id; }
+		}
+		if (!parse_cell_name (cell, &rr[i], &cc[i])) return false;
+	}
+	if (np == 1) { rr[1] = rr[0]; cc[1] = cc[0]; }
+	*r = Rect { imin (rr[0], rr[1]), imin (cc[0], cc[1]), imax (rr[0], rr[1]), imax (cc[0], cc[1]) };
+	return *sheetId != 0;
+}
+// A chart object's content.xml ("Object 1/content.xml") -> the chart (its place set by the caller).
+static bool ods_chart (Book &b, const char *x, int len, Chart &c)
+{
+	XmlReader X (x, len);
+	struct CS { char name[24]; bool vertical, stacked; } cs[32]; int ncs = 0;
+	char plotStyle[24] = "";
+	Buf v, title;
+	bool inTitle = false, haveRange = false, firstSeries = true, inY = false;
+	c.legend = LG_NONE; c.grid = false;
+	while (X.next () != X_EOF)
+	{
+		if (X.ev == X_START)
+		{
+			if (X.isq ("style:style") && ncs < 32) { X.attr ("style:name", v); scpy (cs[ncs].name, v.str (), sizeof cs[ncs].name); cs[ncs].vertical = cs[ncs].stacked = false; ncs++; }
+			else if (X.isq ("style:chart-properties") && ncs)
+			{
+				cs[ncs - 1].vertical = X.attr_bool ("chart:vertical", false);
+				cs[ncs - 1].stacked = X.attr_bool ("chart:stacked", false) || X.attr_bool ("chart:percentage", false);
+			}
+			else if (X.isq ("chart:chart"))
+			{
+				X.attr ("chart:class", v);
+				const char *k = v.str (); if (!strncmp (k, "chart:", 6)) k += 6;
+				c.type = !strcmp (k, "line") ? CH_LINE : !strcmp (k, "area") ? CH_AREA : !strcmp (k, "circle") || !strcmp (k, "ring") ? CH_PIE : !strcmp (k, "scatter") ? CH_SCATTER : CH_COLUMN;
+			}
+			else if (X.isq ("chart:title")) inTitle = true;
+			else if (X.isq ("chart:legend"))
+			{
+				X.attr ("chart:legend-position", v);
+				c.legend = !strcmp (v.str (), "bottom") ? LG_BOTTOM : !strcmp (v.str (), "top") ? LG_TOP : LG_RIGHT;
+			}
+			else if (X.isq ("chart:plot-area"))
+			{
+				if (X.attr ("chart:style-name", v)) scpy (plotStyle, v.str (), sizeof plotStyle);
+				if (X.attr ("table:cell-range-address", v)) haveRange = ods_range (b, v.str (), &c.srcSheet, &c.src);
+				X.attr ("chart:data-source-has-labels", v);
+				c.head = !strcmp (v.str (), "both") || !strcmp (v.str (), "row");
+				c.side = !strcmp (v.str (), "both") || !strcmp (v.str (), "column");
+			}
+			else if (X.isq ("chart:series") && firstSeries)
+			{
+				firstSeries = false;
+				int sid; Rect r;
+				if (X.attr ("chart:values-cell-range-address", v) && ods_range (b, v.str (), &sid, &r)) c.byRows = r.r1 == r.r0 && r.c1 > r.c0;
+			}
+			else if (X.isq ("chart:axis")) { X.attr ("chart:dimension", v); inY = !strcmp (v.str (), "y"); }
+			else if (X.isq ("chart:grid") && inY) c.grid = true;
+		}
+		else if (X.ev == X_TEXT && inTitle) title.putn (X.text.b ? X.text.b : "", X.text.n);
+		else if (X.ev == X_END)
+		{
+			if (X.isq ("chart:title")) inTitle = false;
+			else if (X.isq ("chart:axis")) inY = false;
+		}
+	}
+	for (int i = 0; i < ncs; i++)
+		if (!strcmp (cs[i].name, plotStyle))
+		{
+			if (cs[i].vertical && c.type == CH_COLUMN) c.type = CH_BAR;
+			c.stacked = cs[i].stacked && c.type != CH_PIE && c.type != CH_SCATTER;
+		}
+	scpy (c.title, title.str (), sizeof c.title);
+	return haveRange;
+}
+struct OChart { int sheet, r, c, x, y, w, h; char href[64]; };
+
 static bool ods_read (Book &b, const char *data, int n, const char **why)
 {
 	const unsigned char *z = (const unsigned char *) data;
 	int cl; char *content = zip_get (z, (unsigned) n, "content.xml", &cl);
 	if (!content) { if (why) *why = "This file is not an OpenDocument spreadsheet (.ods)."; return false; }
 	OStyle *st = 0; int nst = 0; ONum *nm = 0; int nnm = 0;
+	g_nfaces = 0;
 	int sl; char *styles = zip_get (z, (unsigned) n, "styles.xml", &sl);
 	if (styles) { ods_styles (b, styles, sl, &st, &nst, &nm, &nnm); free (styles); }
 	ods_styles (b, content, cl, &st, &nst, &nm, &nnm);
@@ -344,6 +490,7 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 	int colDefault[1] = { 0 };
 	(void) colDefault;
 	unsigned short *colCellStyle = 0;
+	OChart och[32]; int nch = 0;
 	while (X.next () != X_EOF)
 	{
 		if (X.ev == X_START)
@@ -386,7 +533,6 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 						if (rs && rs->rowH > 0 && !rs->optimal) { ri->fl |= RF_CUSTOM; ri->h = (unsigned short) iclamp (rs->rowH, 1, 2000); }
 						if (hid) ri->fl |= RF_HIDDEN;
 					}
-				if (X.empty) { row += rowRep; rowRep = 1; }
 			}
 			else if (s && (X.isq ("table:table-cell") || X.isq ("table:covered-table-cell")))
 			{
@@ -412,6 +558,31 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 							else if (X.isq ("text:tab")) text.put ('\t');
 							else if (X.isq ("text:line-break")) text.put ('\n');
 							else if (X.isq ("office:annotation")) { X.skip (); depth--; }
+							else if (X.isq ("draw:frame"))			// (a chart anchored in the cell)
+							{
+								Buf fx, fy, fw, fh;
+								X.attr ("svg:x", fx); X.attr ("svg:y", fy); X.attr ("svg:width", fw); X.attr ("svg:height", fh);
+								int fd = 1;
+								while (fd > 0 && X.next () != X_EOF)
+								{
+									if (X.ev == X_START)
+									{
+										fd++;
+										Buf href;
+										if (X.isq ("draw:object") && X.attr ("xlink:href", href) && nch < 32)
+										{
+											OChart &oc = och[nch++];
+											oc.sheet = tableNo - 1; oc.r = row; oc.c = col;
+											oc.x = (int) ods_len (fx.str ()); oc.y = (int) ods_len (fy.str ());
+											oc.w = (int) ods_len (fw.str ()); oc.h = (int) ods_len (fh.str ());
+											const char *hr = href.str (); if (!strncmp (hr, "./", 2)) hr += 2;
+											scpy (oc.href, hr, sizeof oc.href);
+										}
+									}
+									else if (X.ev == X_END) fd--;
+								}
+								depth--;
+							}
 						}
 						else if (X.ev == X_END) depth--;
 						else if (X.ev == X_TEXT && depth >= 2) text.putn (X.text.b ? X.text.b : "", X.text.n);
@@ -470,6 +641,26 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 	free (colCellStyle);
 	free (cache); free (st); free (nm); free (content);
 	if (b.ns == 0) { if (why) *why = "The spreadsheet holds no sheet."; return false; }
+	// the charts: their objects read
+	for (int i = 0; i < nch; i++)
+	{
+		const OChart &oc = och[i];
+		if (oc.sheet < 0 || oc.sheet >= b.ns || oc.w < 20 || oc.h < 20) continue;
+		char path[96]; snprintf (path, sizeof path, "%s/content.xml", oc.href);
+		int ol; char *ox = zip_get (z, (unsigned) n, path, &ol);
+		if (!ox) continue;
+		Chart c; memset (&c, 0, sizeof c);
+		if (ods_chart (b, ox, ol, c))
+		{
+			Sheet *t = b.sh[oc.sheet];
+			c.x = col_x (t, oc.c) + oc.x; c.y = (int) row_y (t, oc.r) + oc.y; c.w = oc.w; c.h = oc.h;
+			Chart *nc = (Chart *) malloc (sizeof (Chart)); *nc = c;
+			chart_anchor (t, nc);
+			t->charts = (Chart **) realloc (t->charts, (t->ncharts + 1) * sizeof (Chart *));
+			t->charts[t->ncharts++] = nc;
+		}
+		free (ox);
+	}
 	// frozen panes and the sheet shown (settings.xml)
 	int sl2; char *set = zip_get (z, (unsigned) n, "settings.xml", &sl2);
 	if (set)

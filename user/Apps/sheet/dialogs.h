@@ -35,6 +35,42 @@ private:
 	const char *m_title;
 };
 
+// A message or a question, its text wrapped to the box (wtk's message box keeps three short lines).
+class NoteDialog : public Dialog
+{
+public:
+	NoteDialog (const char *title, const char *text, int buttons) : Dialog (440, height_for (text), title)
+	{
+		m_n = wrap (text, m_line);
+		if (buttons == MB_OKCANCEL) okCancel ();
+		else if (buttons == MB_YESNO) { button (width - 184, height - 42, 82, "Yes", 1); button (width - 94, height - 42, 82, "No", 0); }
+		else button (width - 94, height - 42, 82, "OK", 1);
+	}
+	void drawBody () override { for (int i = 0; i < m_n; i++) canvas.text (16, titleH () + 16 + i * 18, m_line[i], C_TEXT); }
+private:
+	enum { MAXL = 12, PER = (440 - 32) / 8 };		// (wtk's font: 8 px a character)
+	char m_line[MAXL][64]; int m_n;
+	// The lines: words wrapped at the box's width.
+	static int wrap (const char *p, char (*line)[64])
+	{
+		int k = 0;
+		while (*p && k < MAXL)
+		{
+			int n = 0, cut = -1;
+			while (p[n] && p[n] != '\n' && n < PER) { if (p[n] == ' ') cut = n; n++; }
+			if (p[n] && p[n] != '\n' && cut > 0) n = cut;
+			if (line) scpy (line[k], p, imin (n + 1, 64));
+			k++;
+			p += n;
+			while (*p == ' ') p++;
+			if (*p == '\n') p++;
+		}
+		return k;
+	}
+	static int height_for (const char *text) { return titleH () + 22 + wrap (text, 0) * 18 + 58; }
+};
+static int note (const char *title, const char *text, int buttons = MB_OK) { NoteDialog d (title, text, buttons); return d.run (); }
+
 // A colour swatch: a click drops a palette.
 class Swatch : public Widget
 {

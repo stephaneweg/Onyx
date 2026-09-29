@@ -89,6 +89,7 @@ static Chart *chart (int sh, int type, Rect src, int x, int y, int w, int h, con
 	Chart *c = (Chart *) calloc (1, sizeof (Chart));
 	c->type = type; c->srcSheet = s->id; c->src = src; c->head = true; c->side = true; c->grid = type != CH_PIE;
 	c->legend = legend; c->x = x; c->y = y; c->w = w; c->h = h; scpy (c->title, t, sizeof c->title);
+	chart_anchor (s, c);
 	s->charts = (Chart **) realloc (s->charts, (s->ncharts + 1) * sizeof (Chart *));
 	s->charts[s->ncharts++] = c;
 	return c;

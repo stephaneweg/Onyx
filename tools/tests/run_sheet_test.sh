@@ -1,6 +1,7 @@
 #!/bin/sh
 # run_sheet_test.sh -- the spreadsheet's engine (user/Apps/sheet/) on the PC: formulas, functions, formats,
-# typed entries, files. ASan + UBSan.
+# typed entries, files (the sample workbook sdcard/docs/cafe-2026.xlsx too; with LibreOffice installed,
+# its .ods and .xlsx). ASan + UBSan.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
@@ -11,4 +12,4 @@ g++ -std=gnu++17 -O1 -g -Wall -Wextra -Wno-unused-function -Wno-unused-parameter
 g++ -std=gnu++17 -O1 -g -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -Wno-sign-compare -fsanitize=address,undefined -I"$ROOT/user" \
     "$HERE/sheet/files_test.cpp" -o "$BIN-files" -lm
 D=${TMPDIR:-/tmp}/onyx_sheet_files; rm -rf "$D"; mkdir -p "$D"
-"$BIN-files" "$D"
+"$BIN-files" "$D" "$ROOT/sdcard/docs/cafe-2026.xlsx"

@@ -109,15 +109,48 @@ private:
 };
 
 // The Name Box: the cell or range; a reference typed (or a sheet's "Sheet2!B4") goes there.
+// A click into it selects its text (what is typed replaces it); Esc goes back to the grid.
 class NameBox : public Textbox
 {
 public:
 	void (*onGo) (const char *);
-	NameBox (int w) : Textbox (0, 0, w, 26, "A1", enter), onGo (0) { tip = "Name Box: the cell chosen; type a reference (B7, C2:F9, Sheet2!A1) and press Enter to go there"; }
+	void (*onLeave) ();
+	NameBox (int w) : Textbox (0, 0, w, 26, "A1", enter), onGo (0), onLeave (0), m_all (false) { tip = "Name Box: the cell chosen; type a reference (B7, C2:F9, Sheet2!A1) and press Enter to go there"; }
 	unsigned bgColor () override { return parent ? parent->bgColor () : C_BG; }
-	void show (const char *s) { if (!hasFocus) setText (s); }
+	void show (const char *s) { if (!hasFocus) { setText (s); m_all = false; } }
+	void selectAll () { m_all = true; caret = (int) strlen (text); invalidate (true); }
+	void onDraw () override
+	{
+		Textbox::onDraw ();
+		if (m_all && hasFocus && text[0])			// (the text selected: tinted)
+		{
+			int fw = wk_fw (), fh = wk_fh (), n = imin ((int) strlen (text), (width - 12) / fw);
+			int y0 = (height - fh) / 2;
+			for (int y = y0; y < y0 + fh; y++)
+				for (int x = 6; x < 6 + n * fw; x++) { unsigned &p = canvas.px[y * canvas.stride + x]; p = wk_mix (p, C_ACCENT, 90); }
+		}
+	}
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
+	{
+		bool had = hasFocus;
+		bool r = Textbox::onMouse (mx, my, bl, br, bm, wheel);
+		if (bl && mx >= 0 && !had) selectAll ();
+		else if (bl && mx >= 0) { m_all = false; invalidate (true); }
+		return r;
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27) { m_all = false; if (onLeave) onLeave (); return true; }
+		if (m_all)
+		{
+			m_all = false;
+			if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF) || k == KEY_BACKSPACE || k == KEY_DEL) { text[0] = 0; caret = 0; if (k == KEY_BACKSPACE || k == KEY_DEL) { invalidate (true); return true; } }
+		}
+		return Textbox::onKey (k);
+	}
 private:
-	static void enter (Widget &w) { NameBox &n = (NameBox &) w; if (n.onGo) n.onGo (n.text); }
+	bool m_all;
+	static void enter (Widget &w) { NameBox &n = (NameBox &) w; n.m_all = false; if (n.onGo) n.onGo (n.text); }
 };
 
 class FormulaBar : public Widget

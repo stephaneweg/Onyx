@@ -205,6 +205,8 @@ struct Chart
 	bool stacked, grid;
 	int legend;
 	char title[96];
+	int ar, ac, adx, ady;				// its anchor: the cell under its top left corner, the offset in it (it moves with the cells)
+	bool anchored;
 };
 
 // ---- a sheet -------------------------------------------------------------------------------------------
@@ -258,7 +260,8 @@ static void sheet_free (Sheet *s)
 
 // -- the columns
 static int col_w (Sheet *s, int c) { return s->colFl[c] & RF_HIDDEN ? 0 : s->colW[c] ? s->colW[c] : s->defColW; }
-static void cols_changed (Sheet *s) { s->colXok = false; }
+static void charts_place (Sheet *s);
+static void cols_changed (Sheet *s) { s->colXok = false; if (s->ncharts) charts_place (s); }
 static int col_x (Sheet *s, int c)			// the column's left edge (px at 100 %)
 {
 	if (!s->colXok)
@@ -312,7 +315,7 @@ static void row_drop_if_plain (Sheet *s, int r)	// forget a row that no longer d
 }
 static int ri_h (Sheet *s, const RowInfo &ri) { return ri.fl & RF_HIDDEN ? 0 : (ri.fl & (RF_CUSTOM | RF_AUTO)) ? ri.h : s->defRowH; }
 static int row_h (Sheet *s, int r) { RowInfo *ri = row_info (s, r); return ri ? ri_h (s, *ri) : s->defRowH; }
-static void rows_changed (Sheet *s) { s->rowDok = false; }
+static void rows_changed (Sheet *s) { s->rowDok = false; if (s->ncharts) charts_place (s); }
 static void row_prefix (Sheet *s)
 {
 	if (s->rowDok) return;
@@ -335,6 +338,25 @@ static int row_at (Sheet *s, long long y)		// the row under y
 	int lo = 0, hi = MAXR - 1;
 	while (lo < hi) { int m = (lo + hi + 1) / 2; if (row_y (s, m) <= y) lo = m; else hi = m - 1; }
 	return lo;
+}
+
+// -- the charts' places: anchored to the cell under their top left corner, as Calc and Excel do (the rows
+// above grown, a column inserted at the left: the chart moves along)
+static void chart_anchor (Sheet *s, Chart *c)		// the anchor from its place
+{
+	c->ac = col_at (s, c->x); c->adx = c->x - col_x (s, c->ac);
+	c->ar = row_at (s, c->y); c->ady = (int) (c->y - row_y (s, c->ar));
+	c->anchored = true;
+}
+static void charts_place (Sheet *s)			// the places from the anchors (the rows, the columns changed)
+{
+	for (int i = 0; i < s->ncharts; i++)
+	{
+		Chart *c = s->charts[i];
+		if (!c->anchored) { chart_anchor (s, c); continue; }
+		c->x = col_x (s, c->ac) + c->adx;
+		c->y = (int) (row_y (s, c->ar) + c->ady);
+	}
 }
 
 // -- the merged cells

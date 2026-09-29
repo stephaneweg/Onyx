@@ -716,6 +716,7 @@ static void read_chart (Book &b, Sheet *s, const unsigned char *z, unsigned zn, 
 	if (c.byRows) { bool t = c.head; c.head = c.side; c.side = t; }	// (head: the first row, side: the first column)
 	s->charts = (Chart **) realloc (s->charts, (s->ncharts + 1) * sizeof (Chart *));
 	Chart *nc = (Chart *) malloc (sizeof (Chart)); *nc = c;
+	chart_anchor (s, nc);
 	s->charts[s->ncharts++] = nc;
 }
 
