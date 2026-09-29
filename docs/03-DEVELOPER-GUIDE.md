@@ -1101,7 +1101,13 @@ Key points:
 - **`kapi_create_window(w, h, title)`** returns a pointer to the **canvas** (pixel buffer of
   `0x00RRGGBB`, width `w`). The app draws directly into it (no per-pixel
   call). The variant `kapi_create_window_ex(x, y, w, h, title, flags)` is for explicit
-  placement and `WIN_FLAG_BORDERLESS`.
+  placement and `WIN_FLAG_BORDERLESS`. The client area is **at most 1024 × 768** (the screen:
+  `width=1024 height=768` in `cmdline.txt`), frame not counted — keep a window within 1000 × 700
+  or so, as Writer and Paint: over the limit (or out of memory) the call returns **0**. **Check
+  it**: an app runs at EL1 with the kernel's identity mapping, so a null canvas is the kernel's
+  own memory at address 0 — drawing into it overwrites the kernel and the whole Pi freezes with
+  nothing in `kmsg` (the Spreadsheet's first 1060-pixel window did exactly that). wtk's `Root`
+  checks it: the app stops with `wtk: the window could not be made` in `kmsg`.
 - **Kernel widgets**: `kapi_add_button/label/checkbox/textbox/progress/slider/textarea/`
   `scrollbar_v/scrollbar_h/icon(...)` return an `unsigned long` handle. Manipulate them
   with `kapi_widget_set_text/get_text`, `get_checked`, `get/set_value`, `set_rect`
@@ -1400,7 +1406,13 @@ barwidth = 40
   The script's steps: `wait`, `down / up / move / wheel X Y`, `rdown / rup`, `key CODE`, `mods N`
   (the modifiers held from then on: 1 Ctrl, 2 Shift, 4 Alt — Shift+arrows select...), `menu N`
   (the app's menu item N: its items counted from 0 in the order the app adds them), `winctl N`,
-  `dump FILE`, `exit`. Writer's and the Spreadsheet's are built with the apps' FreeType (the same
+  `dump FILE`, `quit` (the window closed: the app's loop ends and what it does before leaving
+  `main` runs — `exit` stops the process on the spot). Like the kernel, the simulator makes no
+  window over 1024 × 768 (`kapi_create_window` returns 0).
+  **The Pi's own binary on the PC**: `sh tools/tests/desktop_sim/elfrun.sh <app> [stack bytes]`
+  (the same `SIM` script) runs `user/<app>.elf` — newlib and the code the Pi's compiler made —
+  under `qemu-aarch64` with the simulator's kapi (`elfrun.cpp`: the ELF's segments at their
+  addresses, the stack with a guard page); needs `g++-aarch64-linux-gnu` and `qemu-user`. Writer's and the Spreadsheet's are built with the apps' FreeType (the same
   sources, for the PC).
   (`nintendoemu.png` and `arkanoid.png` — an emulator, a BASIC program — still come from the
   older, simulated renderer [`tools/screenshot/render.py`](../tools/screenshot/render.py).)

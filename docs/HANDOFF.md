@@ -242,6 +242,20 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   names' nor the rules' (rows / columns inserted or deleted move all of them); comments; data
   validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in wtk's
   text boxes.
+- **The freeze at its first start on the Pi (fixed, `73a1eb05`).** Its window was 1060 pixels
+  wide; the kernel makes none over 1024 × 768 (`CreateWindow`, `sys/kapi.cpp`) and returns a
+  null canvas, which wtk drew into: an app runs at EL1 with the kernel's identity mapping, so the
+  first frame overwrote the kernel at address 0 — the Pi froze, nothing in `kmsg`, no
+  `lastcrash.txt` (a Pi without RAM above 3 GB keeps no record, and a panic halts core 1 too), the
+  watchdog restarted it. Now 1000 pixels; wtk's `Root` stops an app the kernel gives no window;
+  the desktop simulator refuses windows over 1024 × 768 as the kernel does. How it was found, and
+  worth reusing: the Pi binary itself run under **qemu-aarch64** with the simulator's kapi (a
+  loader mapping the ELF's segments, the kapi table at `KAPI_TABLE_VA`, a 4 MB stack with a guard
+  page), valgrind and ASan on the simulator build (for ASan, a copy of `kern/kapi_abi.h` with
+  `KAPI_TABLE_VA` moved out of its shadow). **Kernel follow-ups worth doing**: unmap the first
+  pages of the identity map in the apps' address spaces (a null pointer would fault instead of
+  writing over the kernel), and stop a faulting app instead of the kernel panic (any app fault
+  takes the whole Pi down today).
 
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
