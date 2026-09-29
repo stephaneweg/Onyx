@@ -38,7 +38,10 @@ build () {
 APPS="2048 agenda applist calendar control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu"
-for a in $APPS; do build $a & done; wait
+for a in $APPS; do build $a & done
+# the BASIC runtime (SD:/bin/basic: a BASIC program's window)
+$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
+wait
 
 # ---- the running -------------------------------------------------------------------------------
 # sim APP DUMP "SCRIPT" [VAR=value ...]: APP run through the script, then its window -> DUMP.elsm
@@ -117,6 +120,7 @@ if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sam
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want applist; then sim applist applist "$W" $P; png applist; fi
 if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
+if want basicdemo; then sim basic basicdemo "$W;$W;$W" $P SIM_APP=basic SIM_ARGS=SD:/apps/basicdemo.app/main.bas; png basicdemo; fi
 if want gamelib; then
 	python3 $D/gamelib_samples.py "$OUT/writes"
 	sim gamelib gamelib "$W;$W" $P

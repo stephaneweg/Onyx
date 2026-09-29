@@ -116,6 +116,9 @@ void wk_glyph (Canvas &cv, int kind, int cx, int cy, int size, unsigned c);
 // The theme's text in a box: centred, or left-aligned at x (vertically centred).
 void wk_text_c (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int style = 0);
 void wk_text_l (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0);
+// The text colour for a background: C_TEXT on the window's face and on what is as light (or as
+// dark), else black or white (wk_ink_on): a label on a program's own colour stays readable.
+unsigned wk_ink_for (unsigned bg);
 int  wk_text_w (const char *s, int style = 0);
 
 } // namespace wtk

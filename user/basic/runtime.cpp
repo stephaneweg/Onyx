@@ -9,7 +9,9 @@
 //     Viewer): the first PRINT opens the window.
 // The window is a QBasic-like screen (basscreen.h, shared with the PC runtime: 80 x 25 text
 // cells = 640 x 400 by default; SCREEN 12 = 640 x 480, SCREEN 13 = 320 x 200) that text and
-// graphics share, with wtk controls (BUTTON, TEXTBOX, ...) on top. The program's folder becomes the current
+// graphics share, with wtk controls (BUTTON, TEXTBOX, ...) on top. A windowed app (WINDOW) is in
+// the theme's colours -- the windows' face, the text on it --, unless COLOR chose others first;
+// the QBasic screens (text, SCREEN n, the games) keep their own. The program's folder becomes the current
 // directory, so it finds its files by relative names.
 //
 #include "kapi.h"
@@ -190,6 +192,13 @@ public:
 		}
 	}
 	void leaveFullscreen () override { if (fsBuf) fullscreen (false); }
+	// A windowed app (WINDOW) in the theme's colours: the windows' face, the text on it.
+	bool windowColours (unsigned *face, unsigned *text) override
+	{
+		wtk::init ();					// (the theme: read once, SD:/etc/theme.txt)
+		*face = C_BG; *text = C_TEXT;
+		return true;
+	}
 
 	// ---- the console: started from a terminal, before the program opens its window ----------------------
 	bool windowText () { return root != 0 || !console; }
@@ -274,7 +283,7 @@ public:
 		switch (kind)
 		{
 		case bas::CTL_BUTTON:   wd = new Button (x, y, w, h, text, on_control); break;
-		case bas::CTL_LABEL:    wd = new Label (x, y, w, h, text, C_TEXT, rgb (bg, 0)); break;
+		case bas::CTL_LABEL:    wd = new Label (x, y, w, h, text, wk_ink_for (rgb (bg, 0)), rgb (bg, 0)); break;
 		case bas::CTL_TEXTBOX:  wd = new Textbox (x, y, w, h, text, on_control); break;
 		case bas::CTL_CHECKBOX: wd = new Checkbox (x, y, w, h, text, val != 0, on_control, rgb (bg, 0)); break;
 		case bas::CTL_PROGRESS: wd = new Progress (x, y, w, h, 0, 100, val); break;

@@ -397,6 +397,11 @@ static void wallpaper_commit (void)
 	fprintf (stderr, "sim: the wallpaper -> %s\n", f);
 }
 static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
+// (the BASIC runtime: started as an app -- no stdout --, its folder the current one, no GPU)
+static int h_chdir (const char *) { return 0; }
+static void *h_stdout_stream (void) { return 0; }
+static int h_kbd_ready (void) { return 1; }
+static int h_gpu_info (char *b, unsigned n) { if (b && n) snprintf (b, n, "no GPU (the simulator)"); return 0; }
 static int get_keymap (char *b, unsigned n) { if (b && n) snprintf (b, n, "FR"); return 2; }
 // (more of the system, answered simply: enough for the apps to show themselves)
 static int app_dir (char *b, unsigned n)				// SD:apps/<the program's name>.app/
@@ -655,6 +660,7 @@ static void setup (void)
 	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
 	T->wallpaper_buffer = wallpaper_buffer; T->wallpaper_commit = wallpaper_commit;
+	T->chdir = h_chdir; T->stdout_stream = h_stdout_stream; T->kbd_ready = h_kbd_ready; T->gpu_info = h_gpu_info;
 	T->get_keymap = get_keymap; T->set_wheel_speed = set_wheel; T->get_wheel_speed = get_wheel;
 	T->kill = h_kill; T->set_keymap_data = set_keymap_data;
 	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;

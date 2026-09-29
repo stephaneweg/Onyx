@@ -43,6 +43,7 @@ int wk_bright (unsigned c)
 }
 
 unsigned wk_ink_on (unsigned c) { return wk_bright (c) > 140 ? 0x00201C1Au : 0x00FFFFFFu; }
+unsigned wk_ink_for (unsigned bg) { return wk_ink_on (bg) == wk_ink_on (C_BG) ? C_TEXT : wk_ink_on (bg); }
 
 // ---- the corner tables --------------------------------------------------------------------------------
 const WkCorner &wk_corner (int r)
