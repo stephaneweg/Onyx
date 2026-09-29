@@ -618,6 +618,8 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("contents"),
 	SMAP("flow-root"),
 	SMAP("overlay"),
+	SMAP("woff2"),
+	SMAP("unicode-range"),
 	/* (Onyx: end of the CSS3 keywords) */
 
 	/* Named colours */

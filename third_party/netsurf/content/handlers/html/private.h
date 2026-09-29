@@ -210,6 +210,9 @@ typedef struct html_content {
 	 */
 	struct form_control *visible_select_menu;
 
+	/** Onyx: the web fonts (@font-face) fetched for it (onyx_webfont.c) */
+	struct onyx_webfont *webfonts;
+
 } html_content;
 
 /**

@@ -36,6 +36,7 @@ BMP  := $(LIBROOT)/libnsbmp
 NSFB := $(LIBROOT)/libnsfb
 PNG  := $(LIBROOT)/libpng-1.6.44
 JPEG := $(LIBROOT)/jpeg-9f
+BRO  := $(LIBROOT)/brotli-1.1.0
 ZLIB := $(LIBROOT)/zlib-1.3.1
 WEBP := $(LIBROOT)/libwebp-1.4.0
 FT   := $(LIBROOT)/freetype-2.14.3
@@ -161,9 +162,9 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
-          -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) \
+          -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by

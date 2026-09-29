@@ -24,10 +24,10 @@ static void font_faces_srcs_destroy(css_font_face *font_face)
 }
 
 static const css_font_face default_font_face = {
-	NULL,
-	NULL,
-	0,
-	{ (CSS_FONT_WEIGHT_NORMAL << 2) | CSS_FONT_STYLE_NORMAL }
+	.font_family = NULL,
+	.srcs = NULL,
+	.n_srcs = 0,
+	.bits = { (CSS_FONT_WEIGHT_NORMAL << 2) | CSS_FONT_STYLE_NORMAL }
 };
 
 /**
@@ -72,6 +72,7 @@ css_error css__font_face_destroy(css_font_face *font_face)
 	if (font_face->srcs != NULL)
 		font_faces_srcs_destroy(font_face);
 
+	free(font_face->ranges);	/* (Onyx: unicode-range) */
 	free(font_face);
 
 	return CSS_OK;
@@ -222,7 +223,7 @@ css_font_face_location_type css_font_face_src_location_type(
  */
 css_font_face_format css_font_face_src_format(const css_font_face_src *src)
 {
-	return (src->bits[0] >> 2) & 0x1f;
+	return (src->bits[0] >> 2) & 0x3f;	/* (Onyx: and WOFF2) */
 }
 
 /**
@@ -246,3 +247,45 @@ css_error css__font_face_set_srcs(css_font_face *font_face,
 }
 
 
+
+
+/* ---- Onyx: font-weight ranges, unicode-range ---- */
+
+void css_font_face_font_weight_range(const css_font_face *font_face,
+		uint16_t *min, uint16_t *max)
+{
+	static const uint16_t w[] = {
+		[CSS_FONT_WEIGHT_NORMAL] = 400, [CSS_FONT_WEIGHT_BOLD] = 700,
+		[CSS_FONT_WEIGHT_100] = 100, [CSS_FONT_WEIGHT_200] = 200,
+		[CSS_FONT_WEIGHT_300] = 300, [CSS_FONT_WEIGHT_400] = 400,
+		[CSS_FONT_WEIGHT_500] = 500, [CSS_FONT_WEIGHT_600] = 600,
+		[CSS_FONT_WEIGHT_700] = 700, [CSS_FONT_WEIGHT_800] = 800,
+		[CSS_FONT_WEIGHT_900] = 900,
+	};
+	uint8_t e;
+
+	if (font_face->weight_min != 0) {
+		*min = font_face->weight_min;
+		*max = font_face->weight_max;
+		return;
+	}
+	e = css_font_face_font_weight(font_face);
+	*min = *max = (e < sizeof(w) / sizeof(w[0]) && w[e] != 0) ? w[e] : 400;
+}
+
+uint32_t css_font_face_count_unicode_ranges(const css_font_face *font_face)
+{
+	return font_face->n_ranges;
+}
+
+void css_font_face_get_unicode_range(const css_font_face *font_face,
+		uint32_t index, uint32_t *first, uint32_t *last)
+{
+	if (index >= font_face->n_ranges) {
+		*first = 0;
+		*last = 0x10ffff;
+		return;
+	}
+	*first = font_face->ranges[index][0];
+	*last = font_face->ranges[index][1];
+}

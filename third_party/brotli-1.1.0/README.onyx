@@ -1,0 +1,3 @@
+Brotli 1.1.0 (https://github.com/google/brotli, tag v1.1.0): the decoder only
+(c/common, c/dec, c/include) -- for FreeType's WOFF2 fonts (NetSurf's web fonts).
+MIT licence: LICENSE.

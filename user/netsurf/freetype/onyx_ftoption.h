@@ -201,7 +201,7 @@ FT_BEGIN_HEADER
    *   Define this macro if you want to enable this 'feature'.  See also the
    *   macro `FT_CONFIG_OPTION_SYSTEM_ZLIB` below.
    */
-/* #define FT_CONFIG_OPTION_USE_ZLIB */	/* Onyx: off */
+#define FT_CONFIG_OPTION_USE_ZLIB	/* Onyx: on -- WOFF web fonts */
 
 
   /**************************************************************************
@@ -230,7 +230,7 @@ FT_BEGIN_HEADER
    *   `configure` script) and you define this macro, you also have to pass
    *   `SYSTEM_ZLIB=yes` as an argument to make.
    */
-/* #define FT_CONFIG_OPTION_SYSTEM_ZLIB */
+#define FT_CONFIG_OPTION_SYSTEM_ZLIB	/* Onyx: third_party/zlib-1.3.1 (the PC's own) */
 
 
   /**************************************************************************
@@ -337,7 +337,7 @@ FT_BEGIN_HEADER
    *   options set by those programs have precedence, overwriting the value
    *   here with the configured one.
    */
-/* #define FT_CONFIG_OPTION_USE_BROTLI */
+#define FT_CONFIG_OPTION_USE_BROTLI	/* Onyx: WOFF2 web fonts (third_party/brotli-1.1.0) */
 
 
   /**************************************************************************

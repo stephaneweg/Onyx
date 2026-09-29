@@ -18,7 +18,7 @@ struct css_font_face_src {
 	 * Bit allocations:
 	 *
 	 *    76543210
-	 *  1 _fffffll	format | location type
+	 *  1 ffffffll	format | location type (Onyx: 6 format bits, WOFF2)
 	 */
 	uint8_t bits[1];
 };
@@ -27,6 +27,11 @@ struct css_font_face {
 	lwc_string *font_family;
 	css_font_face_src *srcs;
 	uint32_t n_srcs;
+
+	/* Onyx: font-weight as a range (0 0: from bits), unicode-range */
+	uint16_t weight_min, weight_max;
+	uint32_t n_ranges;
+	uint32_t (*ranges)[2];
 
 	/*
 	 * Bit allocations:

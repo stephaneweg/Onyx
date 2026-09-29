@@ -1745,3 +1745,46 @@ size_t _rule_size(const css_rule *r)
 
 	return bytes;
 }
+
+
+/* ---- Onyx: the sheet's @font-face rules ---- */
+
+static void css__rules_font_faces(const css_rule *rule, css_font_face_cb cb,
+		void *pw, int depth)
+{
+	for (; rule != NULL; rule = rule->next) {
+		switch (rule->type) {
+		case CSS_RULE_FONT_FACE: {
+			const css_rule_font_face *ff =
+					(const css_rule_font_face *) rule;
+			if (ff->font_face != NULL)
+				cb(pw, ff->font_face);
+			break;
+		}
+		case CSS_RULE_MEDIA:
+			css__rules_font_faces(
+				((const css_rule_media *) rule)->first_child,
+				cb, pw, depth);
+			break;
+		case CSS_RULE_IMPORT: {
+			const css_rule_import *imp =
+					(const css_rule_import *) rule;
+			if (imp->sheet != NULL && depth < 8)
+				css__rules_font_faces(imp->sheet->rule_list,
+						cb, pw, depth + 1);
+			break;
+		}
+		default:
+			break;
+		}
+	}
+}
+
+css_error css_stylesheet_font_faces(const css_stylesheet *sheet,
+		css_font_face_cb cb, void *pw)
+{
+	if (sheet == NULL || cb == NULL)
+		return CSS_BADPARM;
+	css__rules_font_faces(sheet->rule_list, cb, pw, 0);
+	return CSS_OK;
+}

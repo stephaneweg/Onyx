@@ -59,6 +59,7 @@
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/onyx_paint.h"	/* Onyx: radii, shadows, gradients */
+#include "html/onyx_webfont.h"	/* Onyx: web fonts */
 #include "html/box_manipulate.h"
 #include "html/font.h"
 #include "html/form_internal.h"
@@ -2098,6 +2099,8 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 
 	box = html->layout;
 	assert(box);
+
+	onyx_webfont_scope(html);	/* Onyx: drawn with its web fonts */
 
 	/* The select menu needs special treating because, when opened, it
 	 * reaches beyond its layout box.

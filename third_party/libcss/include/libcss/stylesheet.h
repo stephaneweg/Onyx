@@ -160,6 +160,14 @@ css_error css_stylesheet_set_disabled(css_stylesheet *sheet, bool disabled);
 
 css_error css_stylesheet_size(css_stylesheet *sheet, size_t *size);
 
+/**
+ * Onyx: a sheet's @font-face rules -- its own, those of its @media blocks and of its
+ * imported sheets -- each handed to cb.
+ */
+typedef void (*css_font_face_cb)(void *pw, const css_font_face *face);
+css_error css_stylesheet_font_faces(const css_stylesheet *sheet,
+		css_font_face_cb cb, void *pw);
+
 #ifdef __cplusplus
 }
 #endif

@@ -44,6 +44,7 @@
 #include <ft2build.h>
 #include FT_CACHE_H
 #include FT_ADVANCES_H
+#include FT_MULTIPLE_MASTERS_H
 
 #include "netsurf/inttypes.h"
 #include "utils/filepath.h"
@@ -80,7 +81,11 @@ typedef struct fb_faceid_s {
 	int wmin, wmax;		/* its weights (a range: a variable font) */
 	bool italic;		/* italic (or oblique) */
 	bool slant;		/* a roman face slanted (its family has no italic) */
+	int var_weight;		/* a variable font: its wght axis set to it (0: not) */
 	struct fb_faceid_s *slanted;	/* this roman face's slanted copy, once made */
+	struct fb_faceid_s *variants;	/* a range's instances made (var_weight) */
+	struct fb_faceid_s *variant_next;
+	struct fb_faceid_s *origin;	/* a copy (slanted, instance): its family's face */
 } fb_faceid_t;
 
 /** Onyx: a family -- the card's, or a document's web fonts' */
@@ -223,6 +228,34 @@ ft_face_requester(FTC_FaceID face_id,
 			FT_Matrix m = { 0x10000, FB_SLANT, 0, 0x10000 };
 			FT_Set_Transform(*face, &m, NULL);
 		}
+		if (fb_face->var_weight != 0 && FT_HAS_MULTIPLE_MASTERS(*face)) {
+			/* Onyx: a variable font at its weight */
+			FT_MM_Var *mm;
+
+			if (FT_Get_MM_Var(*face, &mm) == 0) {
+				FT_Fixed coords[16];
+				FT_UInt i, n = mm->num_axis < 16 ?
+						mm->num_axis : 16;
+
+				for (i = 0; i < n; i++) {
+					FT_Var_Axis *a = &mm->axis[i];
+
+					coords[i] = a->def;
+					if (a->tag == FT_MAKE_TAG('w','g','h','t')) {
+						FT_Fixed w = (FT_Fixed)
+							fb_face->var_weight << 16;
+
+						if (w < a->minimum)
+							w = a->minimum;
+						if (w > a->maximum)
+							w = a->maximum;
+						coords[i] = w;
+					}
+				}
+				FT_Set_Var_Design_Coordinates(*face, n, coords);
+				FT_Done_MM_Var(library, mm);
+			}
+		}
         }
         NSLOG(netsurf, INFO, "Loaded face from %s",
 	      fb_face->fontfile != NULL ? fb_face->fontfile : "(web font)");
@@ -343,15 +376,53 @@ static fb_faceid_t *fb_face_slanted(fb_faceid_t *roman)
 	s->italic = true;
 	s->slant = true;
 	s->slanted = NULL;
+	s->variants = s->variant_next = NULL;
+	s->origin = roman->origin != NULL ? roman->origin : roman;
 	roman->slanted = s;
 	return s;
 }
 
+/** a variable face's instance at a weight of its range */
+static fb_faceid_t *fb_face_instance(fb_faceid_t *face, int weight)
+{
+	fb_faceid_t *v;
+
+	for (v = face->variants; v != NULL; v = v->variant_next) {
+		if (v->var_weight == weight)
+			return v;
+	}
+	v = calloc(1, sizeof(*v));
+	if (v == NULL)
+		return face;
+	*v = *face;
+	v->fontfile = face->fontfile != NULL ? strdup(face->fontfile) : NULL;
+	v->wmin = v->wmax = v->var_weight = weight;
+	v->slanted = NULL;
+	v->variants = NULL;
+	v->origin = face;
+	v->variant_next = face->variants;
+	face->variants = v;
+	return v;
+}
+
+/** a family's face as used for a weight and style: its instance, slanted */
+static fb_faceid_t *fb_face_use(fb_faceid_t *face, int weight, bool italic)
+{
+	if (face->wmin < face->wmax) {
+		int w = weight < face->wmin ? face->wmin :
+			weight > face->wmax ? face->wmax : weight;
+		face = fb_face_instance(face, w);
+	}
+	if (italic && !face->italic)
+		face = fb_face_slanted(face);
+	return face;
+}
+
 /**
  * The face of a family for a weight and style: its italics for italic text (else its
- * romans, slanted), the nearest weight. Web font faces of one style and weight may cover
- * different characters (unicode-range): the first is returned, fb_chain_add_family adds
- * the others after it.
+ * romans -- fb_face_use slants them), the nearest weight. Web font faces of one style
+ * and weight may cover different characters (unicode-range): the first is returned,
+ * fb_chain_add_family adds the others after it.
  */
 static fb_faceid_t *fb_family_match(struct fb_family *fam, int weight, bool italic,
 		int *distance)
@@ -379,8 +450,6 @@ static fb_faceid_t *fb_family_match(struct fb_family *fam, int weight, bool ital
 	}
 	if (distance != NULL)
 		*distance = best_d;
-	if (best != NULL && italic && !best->italic)
-		best = fb_face_slanted(best);
 	return best;
 }
 
@@ -418,17 +487,17 @@ static void fb_chain_add_family(struct fb_chain *c, struct fb_family *fam, int w
 	if (fam == NULL)
 		return;
 	best = fb_family_match(fam, weight, italic, &d);
-	fb_chain_add(c, best);
-	if (fam->owner == NULL || best == NULL)
+	if (best == NULL)
+		return;
+	fb_chain_add(c, fb_face_use(best, weight, italic));
+	if (fam->owner == NULL)
 		return;
 	for (i = 0; i < fam->nfaces; i++) {
 		fb_faceid_t *f = fam->face[i];
 
-		if (f != best && f->slanted != best &&
-		    f->italic == (best->italic && !best->slant) &&
+		if (f != best && f->italic == best->italic &&
 		    fb_weight_distance(weight, f->wmin, f->wmax) == d)
-			fb_chain_add(c, italic && !f->italic ?
-					fb_face_slanted(f) : f);
+			fb_chain_add(c, fb_face_use(f, weight, italic));
 	}
 }
 
@@ -735,13 +804,26 @@ bool fb_font_init(void)
         return true;
 }
 
+/** a copy of a face (slanted, an instance) dropped: not its file, the face's */
+static void fb_face_drop(fb_faceid_t *copy)
+{
+	FTC_Manager_RemoveFaceID(ft_cmanager, (FTC_FaceID)copy);
+	free(copy->fontfile);
+	free(copy);
+}
+
 static void fb_face_free(fb_faceid_t *face)
 {
-	if (face->slanted != NULL) {
-		FTC_Manager_RemoveFaceID(ft_cmanager, (FTC_FaceID)face->slanted);
-		free(face->slanted->fontfile);
-		free(face->slanted);
+	fb_faceid_t *v, *next;
+
+	for (v = face->variants; v != NULL; v = next) {
+		next = v->variant_next;
+		if (v->slanted != NULL)
+			fb_face_drop(v->slanted);
+		fb_face_drop(v);
 	}
+	if (face->slanted != NULL)
+		fb_face_drop(face->slanted);
 	FTC_Manager_RemoveFaceID(ft_cmanager, (FTC_FaceID)face);
 	free(face->fontfile);
 	free(face->data);
@@ -808,6 +890,9 @@ nserror fb_font_add_face(const void *owner, const char *family, int weight_min,
 	face->wmin = weight_min;
 	face->wmax = weight_max < weight_min ? weight_min : weight_max;
 	face->italic = italic;
+	/* one weight of a variable font (a face per weight, one file): at it */
+	if (face->wmin == face->wmax)
+		face->var_weight = face->wmin;
 
 	/* a font FreeType reads (TrueType, OpenType; WOFF, WOFF2 when built in) */
 	if (FTC_Manager_LookupFace(ft_cmanager, (FTC_FaceID)face, &aface) != 0) {
@@ -1024,6 +1109,9 @@ static struct gui_layout_table layout_table = {
 	.width = fb_font_width,
 	.position = fb_font_position,
 	.split = fb_font_split,
+	.add_face = fb_font_add_face,		/* Onyx: web fonts */
+	.release_faces = fb_font_release_faces,
+	.set_scope = fb_font_set_scope,
 };
 
 struct gui_layout_table *framebuffer_layout_table = &layout_table;
