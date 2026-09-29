@@ -20,8 +20,10 @@ answer in French. The docs stay in English.
   `sdcard/etc/clock`. Check before each commit:
   `git diff --cached --name-only | grep -i -E "\.sfc$|\.smc$|\.nes$|\.gb|\.sav$|\.z64$|\.n64$|\.v64$|\.wav$|\.iso$|\.gcm$|wpa_supplicant|ftpfs.ini|shelf.ini|lisa.app/config"`
   must print nothing. Do not download commercial ROMs; the user's own ISO/ROMs stay local.
-- Do not modify NetSurf. No model identifiers in code or commits. Commits end with a
-  `Co-Authored-By:` line.
+- NetSurf is ours to change (the user lifted the old "do not modify NetSurf" rule): mark each
+  patch `Onyx:` in the source and list it in `docs/06-NETSURF-CHANGES.md`; check a change on the
+  PC bench (`tools/tests/netsurf/shot.sh` / `chrome.sh`) against Chromium before staging it. No
+  model identifiers in code or commits. Commits end with a `Co-Authored-By:` line.
 - Docs rule (CLAUDE.md): kapi / app changes → docs 02 / 03 / 04 (+ 05 for Circle patches),
   screenshots via `sh tools/tests/desktop_sim/shots.sh [name ...]` (the real apps on the PC);
   the user runs `python docs/build_docs.py`.
