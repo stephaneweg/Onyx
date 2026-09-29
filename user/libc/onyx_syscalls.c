@@ -465,3 +465,80 @@ int _getpid (void)
 {
 	return 1;
 }
+
+// ---- locks (kapi v67 threads) -------------------------------------------------
+//
+// newlib is built with retargetable locking: malloc, stdio's FILEs, atexit, the
+// environment... take these locks, no-ops until now. Defining them all here (the
+// functions and the static locks) keeps newlib's own lock.o out. A lock is a kapi_lock
+// (a swap, a yield while another thread holds it) plus an owner for the recursive ones:
+// the thread's tid on core 0, the core (negated) on an app core, where no kapi call is
+// made. errno and the other reentrancy state (_impure_ptr) stay shared by the threads.
+#include <sys/lock.h>
+
+struct __lock { volatile int lk; int owner; int count; };
+
+struct __lock __lock___sfp_recursive_mutex;
+struct __lock __lock___atexit_recursive_mutex;
+struct __lock __lock___at_quick_exit_mutex;
+struct __lock __lock___malloc_recursive_mutex;
+struct __lock __lock___env_recursive_mutex;
+struct __lock __lock___tz_mutex;
+struct __lock __lock___dd_hash_mutex;
+struct __lock __lock___arc4random_mutex;
+
+static int lock_me (void)
+{
+	unsigned core = kapi__core ();
+	return core == 0 ? kapi_thread_self () : -(int) core;
+}
+
+void __retarget_lock_init (_LOCK_T *lock)
+{
+	*lock = (_LOCK_T) calloc (1, sizeof (struct __lock));
+}
+void __retarget_lock_init_recursive (_LOCK_T *lock) { __retarget_lock_init (lock); }
+void __retarget_lock_close (_LOCK_T lock) { free (lock); }
+void __retarget_lock_close_recursive (_LOCK_T lock) { free (lock); }
+
+void __retarget_lock_acquire (_LOCK_T lock)
+{
+	if (lock != 0) kapi_lock (&lock->lk);
+}
+int __retarget_lock_try_acquire (_LOCK_T lock)
+{
+	return lock == 0 || kapi__xchg (&lock->lk, 1) == 0;
+}
+void __retarget_lock_release (_LOCK_T lock)
+{
+	if (lock != 0) kapi_unlock (&lock->lk);
+}
+
+void __retarget_lock_acquire_recursive (_LOCK_T lock)
+{
+	if (lock == 0) return;
+	int me = lock_me ();
+	if (lock->count > 0 && lock->owner == me) { lock->count++; return; }
+	kapi_lock (&lock->lk);
+	lock->owner = me;
+	lock->count = 1;
+}
+int __retarget_lock_try_acquire_recursive (_LOCK_T lock)
+{
+	if (lock == 0) return 1;
+	int me = lock_me ();
+	if (lock->count > 0 && lock->owner == me) { lock->count++; return 1; }
+	if (kapi__xchg (&lock->lk, 1) != 0) return 0;
+	lock->owner = me;
+	lock->count = 1;
+	return 1;
+}
+void __retarget_lock_release_recursive (_LOCK_T lock)
+{
+	if (lock == 0 || lock->count == 0) return;
+	if (--lock->count == 0)
+	{
+		lock->owner = 0;
+		kapi_unlock (&lock->lk);
+	}
+}

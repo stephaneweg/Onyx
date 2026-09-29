@@ -140,9 +140,9 @@ void Root::initApplet ()
 
 void Root::init (unsigned *fb)
 {
-	if (fb == 0)					// no window from the kernel (bigger than 1024 x 768, or no
+	if (fb == 0)					// no window from the kernel (bigger than the screen, or no
 	{						// memory): stop -- an app runs at EL1, a null canvas is the
-		static const char msg[] = "wtk: the window could not be made (at most 1024 x 768)\n";	// kernel's own memory
+		static const char msg[] = "wtk: the window could not be made (bigger than the screen, or no memory)\n";	// kernel's own memory
 		kapi_stdout_write (msg, sizeof msg - 1);
 		kapi_exit (1);
 		for (;;) kapi_msleep (1000);
@@ -280,6 +280,34 @@ void Root::maximise (bool on)
 	wk_window_state (WK_WIN_MENU | (m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
 	wk_decorate_window ();
 	onResized ();
+}
+
+void Root::fitWorkArea ()
+{
+	if (!m_resizable || m_maxed) return;
+	struct kapi_win_geom g;
+	if (kapi_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
+	int fw = g.w - g.cw, fh = g.h - g.ch;		// the frame: title bar, borders
+	int cw = g.w > g.aw ? g.aw - fw : width, ch = g.h > g.ah ? g.ah - fh : height;
+	int x = g.x, y = g.y;
+	if (x + cw + fw > g.ax + g.aw) x = g.ax + g.aw - cw - fw;
+	if (y + ch + fh > g.ay + g.ah) y = g.ay + g.ah - ch - fh;
+	if (x < g.ax) x = g.ax;
+	if (y < g.ay) y = g.ay;
+	if (cw < 1 || ch < 1) return;
+	if (cw != width || ch != height)
+	{
+		int stride = cw;
+		unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+		if (fb == 0) return;
+		canvas.adopt (fb, cw, ch, stride);
+		width = cw; height = ch;
+		layout ();				// (the anchors, the layouts)
+		invalidate (true);
+		wk_decorate_window ();
+		onResized ();
+	}
+	if (x != g.x || y != g.y) kapi_move_window (x, y);
 }
 
 // The workspaces' names (SD:/etc/dock.ini, "desk = name" lines: the Control Panel's Panel

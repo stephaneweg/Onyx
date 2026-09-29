@@ -16,6 +16,7 @@
 #include <kern/kapi_abi.h>		// struct kapi_pad (KernelPadState)
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
+#include <kern/thread.h>		// ThreadsEndProcess (an app ends with its threads)
 #include <kern/appcore.h>
 #include <fatfs/diskio.h>		// disk_cache_enable (the sector cache: sdcache=)
 #include <kern/applaunch.h>
@@ -260,6 +261,7 @@ public:
 
 		// Become this address space (kernel stays mapped + EL1-accessible).
 		SetUserData (pAS, TASK_USER_DATA_USER);
+		pAS->AddTask (this);				// (its main task: the first)
 		pAS->Activate ();
 
 		m_pLogger->Write (GetName (), LogNotice, "running (EL1) entry %lp ASID %u, stack %u KB",
@@ -269,7 +271,8 @@ public:
 		// Direct EL1 call into the app. It calls kapi_* directly; loops or exits.
 		((void (*) (void)) ulEntry) ();
 
-		// App returned: terminate (frees the address space + window).
+		// App returned: terminate, with its threads (frees the address space + window).
+		ThreadsEndProcess ();
 		CScheduler::Get ()->GetCurrentTask ()->Terminate ();
 	}
 
@@ -325,6 +328,38 @@ public:
 		SetName ("compositor");
 	}
 
+	// A new screen size asked for (ScreenResizeRequest): the frame buffer made again at that size
+	// (the display DMA is idle: each Present waits for its end), the old one back if the firmware
+	// refuses it; then the window manager told (windows kept on the screen, the apps' event).
+	void Resize (int &nW, int &nH)
+	{
+		int w = s_nResizeW, h = s_nResizeH, nResult = 0;
+		if (w != nW || h != nH)
+		{
+			CLogger::Get ()->Write ("screen", LogNotice, "resolution %dx%d -> %dx%d", nW, nH, w, h);
+			if (!m_p2D->Resize ((unsigned) w, (unsigned) h))
+			{
+				nResult = -3;
+				if (!m_p2D->Resize ((unsigned) nW, (unsigned) nH))
+					CLogger::Get ()->Write ("screen", LogError, "the old resolution could not be set again");
+			}
+			nW = (int) m_p2D->GetWidth ();
+			nH = (int) m_p2D->GetHeight ();
+			g_nScreenWidth = nW; g_nScreenHeight = nH;
+			if (nResult != 0)
+				CLogger::Get ()->Write ("screen", LogWarning, "the firmware refused %dx%d: %dx%d", w, h, nW, nH);
+			m_pWM->OnScreenResized (nW, nH);
+			m_bFirst = TRUE;			// (the whole screen at the next frame)
+		}
+		s_nResizeResult = nResult;
+		DataMemBarrier ();
+		s_nResizeDone = s_nResizeSeq;
+	}
+
+public:
+	static volatile int s_nResizeW, s_nResizeH, s_nResizeResult;
+	static volatile unsigned s_nResizeSeq, s_nResizeDone;
+
 	void Run (void) override
 	{
 		int nW = (int) m_p2D->GetWidth ();
@@ -345,6 +380,7 @@ public:
 				CScheduler::Get ()->MsSleep (16);
 				continue;
 			}
+			if (s_nResizeSeq != s_nResizeDone) Resize (nW, nH);
 			// Recomposite only when something changed (g_nScreenGen), and only the damaged
 			// rectangles (ScreenDirtyRect): each is redrawn with the screen clipped to it and
 			// sent to the display alone. The whole screen when ScreenDirty said so, plus a
@@ -385,45 +421,74 @@ private:
 	boolean		m_bFirst;
 };
 
+volatile int CCompositorTask::s_nResizeW = 0, CCompositorTask::s_nResizeH = 0, CCompositorTask::s_nResizeResult = 0;
+volatile unsigned CCompositorTask::s_nResizeSeq = 0, CCompositorTask::s_nResizeDone = 0;
+static boolean s_bCompositor = FALSE;		// (the compositor runs: a resize can be asked for)
+
+int ScreenResizeRequest (int nW, int nH)
+{
+	if (nW < SCREEN_MIN_W || nH < SCREEN_MIN_H || nW > SCREEN_MAX_W || nH > SCREEN_MAX_H || (nW & 1) != 0)
+		return -1;
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (!s_bCompositor || pWM == 0 || pWM->FullscreenWindow () != 0 || DebugConsoleActive ())
+		return -2;
+	static volatile boolean s_bBusy = FALSE;	// (one at a time)
+	if (s_bBusy) return -2;
+	s_bBusy = TRUE;
+	CCompositorTask::s_nResizeW = nW; CCompositorTask::s_nResizeH = nH;
+	DataMemBarrier ();
+	unsigned nSeq = ++CCompositorTask::s_nResizeSeq;
+	int nResult = -2;
+	for (unsigned t = 0; t < 300; t++)		// (3 s: a full-screen app started meanwhile...)
+	{
+		if (CCompositorTask::s_nResizeDone == nSeq) { nResult = CCompositorTask::s_nResizeResult; break; }
+		CScheduler::Get ()->MsSleep (10);
+	}
+	if (nResult == -2) CCompositorTask::s_nResizeDone = nSeq;	// (given up: not done later)
+	s_bBusy = FALSE;
+	return nResult;
+}
+
 
 // Cascade kill: when a process dies, its still-running children must die too (e.g.
 // killing the terminal also kills its shell + whatever the shell spawned). We track
 // each app's parent pid; here we terminate any app whose parent pid is no longer a
 // live task. Run from the reaper (a normal task context), so over a few passes a
 // dead parent's whole subtree is torn down. Parent pid 0 = no parent (never orphaned).
-struct OrphanScan
+// (No table of tasks -- the scheduler has no limit: one orphan per pass, each pass a scan of
+// every app for each app, which is cheap at this size.)
+struct OrphanScan { unsigned nPid; boolean bFound; CTask *pOrphan; unsigned nParent; };
+static boolean PidAliveCb (CTask *pTask, const char *, TTaskState State, TTaskFlags, void *pParam)
 {
-	unsigned pids[MAX_TASKS]; int npids;
-	CTask   *kid[MAX_TASKS]; unsigned kidparent[MAX_TASKS]; int nkid;
-};
+	OrphanScan *s = (OrphanScan *) pParam;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (State != TaskStateTerminated && pAS != 0 && pAS->GetPid () == s->nPid) s->bFound = TRUE;
+	return !s->bFound;
+}
 static boolean OrphanCollect (CTask *pTask, const char *, TTaskState State,
 			      TTaskFlags, void *pParam)
 {
 	if (State == TaskStateTerminated) return TRUE;
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
-	if (pAS == 0) return TRUE;				// kernel task: no pid/parent
+	if (pAS == 0 || pAS->GetParentPid () == 0) return TRUE;	// kernel task / no parent
+	OrphanScan Parent = { pAS->GetParentPid (), FALSE, 0, 0 };
+	CScheduler::Get ()->EnumerateTasks (PidAliveCb, &Parent);
+	if (Parent.bFound) return TRUE;
 	OrphanScan *s = (OrphanScan *) pParam;
-	if (s->npids < MAX_TASKS) s->pids[s->npids++] = pAS->GetPid ();
-	unsigned par = pAS->GetParentPid ();
-	if (par != 0 && s->nkid < MAX_TASKS) { s->kid[s->nkid] = pTask; s->kidparent[s->nkid] = par; s->nkid++; }
-	return TRUE;
+	s->pOrphan = pTask; s->nParent = Parent.nPid;
+	return FALSE;						// (one per pass)
 }
 static void TerminateOrphans (void)
 {
 	if (!CScheduler::IsActive ()) return;
-	static OrphanScan s;					// static: keep it off the stack
-	s.npids = 0; s.nkid = 0;
-	CScheduler::Get ()->EnumerateTasks (OrphanCollect, &s);
-	for (int i = 0; i < s.nkid; i++)
+	for (unsigned n = 0; n < 64; n++)			// (the rest at the next pass)
 	{
-		boolean bAlive = FALSE;
-		for (int j = 0; j < s.npids; j++) if (s.pids[j] == s.kidparent[i]) { bAlive = TRUE; break; }
-		if (!bAlive)
-		{
-			VLOG ("proc", LogNotice, "orphan %s (parent pid %u gone) terminated",
-			      s.kid[i]->GetName (), s.kidparent[i]);
-			CScheduler::Get ()->TerminateTask (s.kid[i]);
-		}
+		OrphanScan s = { 0, FALSE, 0, 0 };
+		CScheduler::Get ()->EnumerateTasks (OrphanCollect, &s);
+		if (s.pOrphan == 0) return;
+		VLOG ("proc", LogNotice, "orphan %s (parent pid %u gone) terminated",
+		      s.pOrphan->GetName (), s.nParent);
+		CScheduler::Get ()->TerminateTask (s.pOrphan);	// (its whole process: terminated now)
 	}
 }
 
@@ -500,7 +565,10 @@ public:
 //     queued / dropped events;
 //   * a WARNING when the compositor has produced no frame for 2 s (+ the state of every
 //     task, to see who holds the CPU or what the compositor waits on), and when an app
-//     stops pumping its window's events for 2 s while some are queued (a frozen app).
+//     stops pumping its window's events for 2 s while some are queued (a frozen app);
+//   * the app watchdog: that frozen app watched (where its task is, the return addresses on
+//     its stack) and a report rewritten every 2 s into SD:/etc/apphang.txt -- the compositor
+//     stalled too -- kept in SD:/etc/lastcrash.txt if the Pi restarts meanwhile (crashlog.h).
 // Each warning fires once per episode, with a matching "recovered" line.
 //
 struct TaskStateScan
@@ -539,6 +607,7 @@ public:
 		unsigned nBeatFrames = nLastFrames, nBeatMouse = m_pWM->MouseCount ();
 		unsigned nBeatKeys = m_pWM->KeyCount (), nSec = 0;
 		boolean bStalled = FALSE;
+		CWindow *pWatched = 0;			// (the app watchdog's: CrashLogWatchPid)
 		boolean bFrozen[WM_MAX_WINDOWS];
 		CWindow *pFrozenWin[WM_MAX_WINDOWS];
 		for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
@@ -551,6 +620,7 @@ public:
 			unsigned nNow = CTimer::Get ()->GetTicks ();
 
 			CrashLogPower ();			// (under-voltage / heat: kmsg + the crash record)
+			CrashLogMemory ();			// (the free memory: the crash record)
 			if (nSec % 600 == 60) CrashLogClockSave ();	// (SD:/etc/clock: the time at the next boot)
 
 			// 1. Compositor liveness.
@@ -565,6 +635,10 @@ public:
 				CLogger::Get ()->Write (From, LogWarning,
 					"compositor STALLED: no frame for %u s; tasks: %s", nStallSec, Tasks);
 			}
+			if (bStalled && nStallSec % 2 == 0 && nStallSec < 12 && !DebugConsoleActive ())
+			{
+				CrashLogAppHang ("the compositor produced no frame", 0, nStallSec, 0);	// (SD:/etc/apphang.txt)
+			}
 			if (nStallSec == 12 && !DebugConsoleActive ())	// (its tasks' states logged at 2 s)
 			{
 				CrashLogRequest ("the compositor produced no frame for 12 s");
@@ -573,6 +647,7 @@ public:
 			{
 				bStalled = FALSE;
 				CLogger::Get ()->Write (From, LogWarning, "compositor recovered");
+				if (pWatched == 0) CrashLogAppRecovered ();
 			}
 
 			// 2. Frozen apps: events queued but not pumped for 2 s.
@@ -584,6 +659,12 @@ public:
 				boolean bStill = FALSE;			// forget windows that went away
 				for (unsigned j = 0; j < nWins; j++) if (pWins[j] == pFrozenWin[i]) bStill = TRUE;
 				if (!bStill) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
+			}
+			if (pWatched != 0)				// the watched app gone (closed, killed)
+			{
+				boolean bStill = FALSE;
+				for (unsigned j = 0; j < nWins; j++) if (pWins[j] == pWatched) bStill = TRUE;
+				if (!bStill) { pWatched = 0; CrashLogAppRecovered (); }
 			}
 			for (unsigned j = 0; j < nWins; j++)
 			{
@@ -597,14 +678,25 @@ public:
 					for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
 						if (!bFrozen[i]) { bFrozen[i] = TRUE; pFrozenWin[i] = pW; break; }
 					CLogger::Get ()->Write (From, LogWarning,
-						"app '%s' NOT PUMPING events for %u s (%u queued, %u dropped)",
+						"app '%s' NOT PUMPING events for %u s (%u queued, %u dropped)%s",
 						pW->Title (), pW->LastPumpTicks () ? nIdle : nSec,
-						pW->QueuedEvents (), pW->DroppedEvents ());
+						pW->QueuedEvents (), pW->DroppedEvents (),
+						pWatched == 0 ? "; watched: a report in SD:/etc/apphang.txt every 2 s" : "");
 				}
 				else if (!bNow && k >= 0)
 				{
 					bFrozen[k] = FALSE; pFrozenWin[k] = 0;
 					CLogger::Get ()->Write (From, LogWarning, "app '%s' pumping again", pW->Title ());
+					if (pW == pWatched) { pWatched = 0; CrashLogAppRecovered (); }
+				}
+				// The app watchdog: the first frozen app watched (where its task is, its
+				// stack), its report rewritten every 2 s (SD:/etc/apphang.txt).
+				if (bNow && (pWatched == 0 || pWatched == pW))
+				{
+					if (pWatched == 0) { pWatched = pW; CrashLogWatchPid (pW->OwnerPid ()); }
+					if (nIdle % 2 == 0)
+						CrashLogAppHang (pW->Title (), pW->OwnerPid (),
+								 pW->LastPumpTicks () ? nIdle : nSec, pW->QueuedEvents ());
 				}
 			}
 
@@ -1688,6 +1780,7 @@ TShutdownMode CKernel::Run (void)
 		// to keep the HDMI boot log readable; starting the compositor late, with a
 		// single GUI app already running, hung the boot -- the old voronoy-masked race.)
 		CCompositorTask *pCompositor = new CCompositorTask (&m_2DGraphics, &m_WindowManager);
+		s_bCompositor = TRUE;
 		m_Logger.Write (FromKernel, LogNotice, "compositor started");
 		m_Scheduler.YieldTo (pCompositor);
 		m_LogSwitch.MuteNormal ();		// the boot console is hidden now (see MuteNormal)

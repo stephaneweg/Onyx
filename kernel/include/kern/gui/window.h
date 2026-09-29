@@ -15,17 +15,30 @@
 #include <circle/spinlock.h>
 #include <circle/types.h>
 
+class CSynchronizationEvent;
+
 // Screen dimensions (the framebuffer we request). Shared by the kernel + kapi.
 // Default framebuffer size; overridable at boot via cmdline.txt (width=/height=).
 // The actual size in use is published in g_nScreenWidth / g_nScreenHeight below.
 #define SCREEN_WIDTH		1024
 #define SCREEN_HEIGHT		768
 
-// Actual framebuffer size in use, set once at boot (from cmdline width=/height= or
-// the defaults above). Runtime code should prefer these over the compile-time
-// defaults so a cmdline override takes effect everywhere.
+// Actual framebuffer size in use, set at boot (from cmdline width=/height= or the
+// defaults above) and changed by ScreenResizeRequest. Runtime code should read these
+// (not the compile-time defaults) each time it needs the size.
 extern int g_nScreenWidth;
 extern int g_nScreenHeight;
+
+// A new screen size, now (kapi_screen_set, v66): done by the compositor between two frames
+// (C2DGraphics::Resize: the firmware gives a frame buffer of that size), then
+// CWindowManager::OnScreenResized. Waits for it -> 0; -1 a size out of bounds; -2 not now (a
+// full-screen app owns the display, the debug console); -3 the firmware refused it (the old
+// size kept). (kernel.cpp)
+#define SCREEN_MIN_W	640
+#define SCREEN_MIN_H	480
+#define SCREEN_MAX_W	2560
+#define SCREEN_MAX_H	1600
+int ScreenResizeRequest (int nW, int nH);
 
 // Screen damage: everything that changes what the compositor would draw (an app's present,
 // a window added / removed / raised / moved / resized / faded, the cursor, the wallpaper)
@@ -115,6 +128,8 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_WINCTL	18	// (v64) a title button for the app: lValue = KAPI_FRAME_MENU
 					// (the window menu) or KAPI_FRAME_MAXIMISE (also a double
 					// click on the title bar)
+#define GUI_EVENT_DISPLAY_RESIZE 19	// (v66) the screen's size changed (kapi_screen_set): lValue =
+					// (width << 16) | height -- to every window's pointer handler
 #define DND_F_COPY		1	// Ctrl held at the drop (copy instead of move)
 #define DND_F_CANCEL		2	// DRAG_DONE: cancelled (Esc)
 #define DND_F_DESKTOP		4	// DRAG_DONE: dropped on the desktop / no window
@@ -338,7 +353,10 @@ public:
 	unsigned LastPumpTicks (void) const	{ return m_nLastPump; }
 
 	// --- lifecycle -------------------------------------------------------
-	void RequestExit (void)		{ m_bExitRequested = TRUE; }
+	void RequestExit (void);
+	// (v67) Pulsed on every event pushed and on RequestExit: the owner's kapi_pump_wait
+	// sleeps on it (kern/thread.h). 0: none.
+	void SetWake (CSynchronizationEvent *pEv)	{ m_pWake = pEv; }
 	boolean ShouldExit (void) const	{ return m_bExitRequested; }
 
 	// Close box hit-test (screen coords). True if (sx,sy) is on the [x] box.
@@ -395,6 +413,7 @@ private:
 	volatile unsigned m_nEvTail;	// next slot to read
 	CSpinLock	m_EvLock;
 	volatile unsigned m_nEvDropped;	// events lost to a full ring (diagnostics)
+	CSynchronizationEvent *m_pWake;	// (SetWake) the owner's pump, woken on a push
 	volatile unsigned m_nLastPump;	// ticks of the last PopEvent (diagnostics)
 
 	volatile boolean m_bExitRequested;
@@ -443,6 +462,11 @@ public:
 	// into the app. The app draws into it; CommitWallpaper makes it the live desktop
 	// background. The frames are kernel-owned, so the wallpaper outlives the app.
 	u32 *EnsureWallpaperBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages);
+
+	// The screen's size changed (the compositor, kapi_screen_set; g_nScreenWidth / Height are
+	// the new one): the cursor and every window kept on the screen, the app-written wallpaper
+	// dropped (its size is the old one), GUI_EVENT_DISPLAY_RESIZE to every window.
+	void OnScreenResized (int nW, int nH);
 	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; m_nWallGen++; ScreenDirty (); }
 
 	// The desktop alone (the wallpaper + the backmost windows, no other window, no cursor),

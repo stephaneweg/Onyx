@@ -606,6 +606,18 @@ low-RAM top from the device tree, or the `[4 GB, RAM end)` chunk of the fallback
 never waits for ever behind core 0. It stays mapped NORMAL (cacheable): the kernel cleans each write to
 the point of coherency. See [docs/02 §13](02-KERNEL-INTERNALS.md).
 
+## 16. TCP: a peer gone before it was accepted
+
+**Why.** A client that connects and closes at once (a port scan, a script checking a port) left
+the listening connection woken without a foreign address: `CTCPConnection::Accept` then called
+`CIPAddress::Set` on it, whose assertion (`rAddress.m_bValid`) is a panic — every core halted,
+the Pi restarted (seen with telnetd: `lastcrash.txt` showed it, in a restart loop while a
+monitor on the PC probed port 23).
+
+**What.** `lib/net/tcpconnection.cpp`, `Accept`: after the wait, an error (`m_nErrno`) or a
+connection without a foreign address returns `-NET_ERROR_CONNECTION_RESET`; `CSocket::Accept`
+then returns 0 (that peer not accepted) and listens again. The same bug is in upstream Circle.
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on

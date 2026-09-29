@@ -49,6 +49,45 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## The screen's resolution, changed while running (2026-09-29, not yet tried on the Pi)
+
+- **Kernel v66 `screen_set`** (`ScreenResizeRequest`, kernel.cpp): the compositor task calls
+  Circle's `C2DGraphics::Resize` between two frames (the firmware makes a frame buffer of the new
+  size), then `CWindowManager::OnScreenResized` keeps the windows on the screen and sends every
+  window **`GUI_EVENT_DISPLAY_RESIZE`** (19). Refused while a full-screen app owns the display.
+  The wallpaper buffer is made again at the new size (the old one leaked on purpose: it may still
+  be mapped). A window may be as big as the screen (was 1024 x 768).
+- **wtk**: `Root::onDisplayResize (w, h)`; ~0.3 s later a maximised window fills the new work
+  area, another is moved / shrunk into it (`displayTick`, `fitWorkArea`); borderless ones place
+  themselves. The menu bar, the dock and notifyd do; vncd (VNC DesktopSize, else the session
+  closed), rdpd (`SCREEN` message) and Onyx Remote (its view of the Pi's screen resized) follow.
+- **The Control Panel's Display applet** (`displayconf`, `15-display.lnk`): a list of sizes,
+  Apply: at once + `SD:/cmdline.txt`; voronoy paints the wallpaper again.
+- **To try on the Pi**: bigger and smaller, with maximised windows, the Spreadsheet, a VNC viewer
+  and Onyx Remote connected. Not handled: an app's own dialogs placed by the old size.
+
+## Threads (2026-09-29, kernel v67, not yet tried on the Pi)
+
+- **The scheduler has no task limit**: a circular linked list of `TSchedNode`s (the per-task
+  scheduler state lives there: `CTask`'s layout is Circle's); `MAX_TASKS` and its `LogPanic` are
+  gone. docs/02 §5.
+- **Threads** (`kernel/sys/thread.cpp`, `kern/thread.h`): `kapi_thread_create / exit / join /
+  self`, mutex / event (manual, auto) / barrier, `kapi_post` (a call run by the process's pump)
+  and `kapi_pump_wait` (a pump that sleeps until an event or a post). A thread is a task sharing
+  the app's `CAddressSpace`; the process ends with its main task, a kill takes them all
+  (`TerminateGroup`), and the reaper frees a killed task only with its whole group (it may be on
+  a wait list of the process). 32 threads per process. docs/02 §7, docs/03 §5.2.
+- **User side**: `umm` and newlib (its retargetable locks, in `libc/onyx_syscalls.c`) are
+  thread-safe; `kapi_lock` / `kapi_unlock`. `errno` is still shared (per-thread would need TLS:
+  `TPIDR_EL0` saved at each switch).
+- **To try on the Pi**: `threadtest` in a terminal (PASS; the prompt comes back although a thread
+  still runs), then kill it from the task manager in the middle; the usual apps (nothing should
+  change for them: one task each). Watch `stall:` lines in `kmsg`.
+- **Next**: an app that uses them — NetSurf's fetches (the network wait) on a worker thread, the
+  UI pumping meanwhile; asynchronous kapi calls (a file read, a connect) with a completion posted
+  to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
+  `docs/BASIC-VM-THREADS.md`).
+
 ## Done recently (all pushed)
 
 - **The random N64 freeze on the Pi — fixed.** Root cause (found with the crash record):
@@ -62,6 +101,18 @@ answer in French. The docs stay in English.
   watchdog (`hangreboot=`, 15 s); core 1 writes a report into `SD:/etc/crashdump.txt` sectors when
   core 0 stops (LED signs); next boot → `SD:/etc/lastcrash.txt`. `hangtest` freezes core 0 on
   purpose. `SD:/etc/clock` keeps the time across boots (files written before NTP get a date).
+- **Crash record, round 2 (2026-09-29, for the Spreadsheet's freeze: a long hang, then a restart,
+  nothing on the card):** a Circle panic (assertion, kernel heap "Out of memory") halted every
+  core, core 1 too — no report; now the logger's panic handler has core 1 write it first. The
+  free memory (heap, kernel pages, app pages) every second in the record; the return addresses
+  on a faulting stack; the **app watchdog**: a frozen app watched (its task's PCs, its stack) and
+  `SD:/etc/apphang.txt` rewritten every 2 s, merged into `lastcrash.txt` if the Pi restarts
+  (docs/02 *The crash record*). **Not yet tried on the Pi**: next, reproduce the Spreadsheet's
+  freeze and read `lastcrash.txt` (addresses → `addr2line -e user/sheet.elf`).
+- **The kernel's size limit:** image + BSS must end below `0x280000` (0x80000 + Circle's
+  `KERNEL_MAX_SIZE`, 2 MB) — past it the BSS runs over the kernel's stacks and the Pi does not
+  boot, without a message (a 32 KB static buffer did it). `make` / `make stage` now check `_end`
+  in the map (`sizecheck`) and delete an image too big. 128 KB left: big buffers go on the heap.
 - **N64 (task done):** OoT pause background (the copy into the z-buffer drawn by the CPU into
   RDRAM, the host's frame written back as the framebuffer: `Machine::fbSnapshot`), the 8-bit
   coverage copy written as full (menu opens in ~1 s instead of ~4), decal z bias (z-fighting),
@@ -243,12 +294,13 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in wtk's
   text boxes.
 - **The freeze at its first start on the Pi (fixed, `73a1eb05`).** Its window was 1060 pixels
-  wide; the kernel makes none over 1024 × 768 (`CreateWindow`, `sys/kapi.cpp`) and returns a
+  wide; the kernel then made none over 1024 × 768 (`CreateWindow`, `sys/kapi.cpp`; since v66, none
+  bigger than the screen) and returns a
   null canvas, which wtk drew into: an app runs at EL1 with the kernel's identity mapping, so the
   first frame overwrote the kernel at address 0 — the Pi froze, nothing in `kmsg`, no
   `lastcrash.txt` (a Pi without RAM above 3 GB keeps no record, and a panic halts core 1 too), the
   watchdog restarted it. Now 1000 pixels; wtk's `Root` stops an app the kernel gives no window;
-  the desktop simulator refuses windows over 1024 × 768 as the kernel does. How it was found, and
+  the desktop simulator refuses windows over 1024 × 768 (its screen) as the kernel does. How it was found, and
   worth reusing: the Pi binary itself run under **qemu-aarch64** with the simulator's kapi (a
   loader mapping the ELF's segments, the kapi table at `KAPI_TABLE_VA`, a 4 MB stack with a guard
   page), valgrind and ASan on the simulator build (for ASan, a copy of `kern/kapi_abi.h` with
@@ -661,4 +713,12 @@ hamburger menus of both sites open and their links work; kotonstudio's scroll re
   not investigated yet.
 - Ideas (IDEAS.md): an ISO9660 driver + `mount` of ISO / disk / partition images as volumes
   `VD0:`, `VD1:`…; an mstsc-compatible RDP server (~3000–4500 lines, TLS without NLA); the AX
-  microcode's audio for the GameCube (Dolphin's `AXUCode`); NintendoEMU keyboard remapping.
+  microcode's audio for the GameCube (Dolphin's `AXUCode`); NintendoEMU keyboard remapping;
+  a task scheduler (as Windows': at boot, every x minutes / hours / days, on given weekdays;
+  runs any executable -- an app, `bin/`, a `.bas`); packages as archives mirroring the card's
+  root (`apps/calc.app/…`, `bin/…`, even `kernel8-rpi4.img`: one format for apps and system
+  updates) with a manifest each, in a public repository with an index; a package manager (an
+  applet of the Settings app: new apps, available updates, manual / automatic per app) and an
+  update daemon run by the scheduler (updates the "automatic" ones) or once from the applet (a
+  checklist of what to update); a `pkg` command (`add` / `delete` / `update [-a]` / `upgrade` /
+  `list [-a]`). Details in IDEAS.md.

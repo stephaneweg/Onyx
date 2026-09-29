@@ -3,15 +3,17 @@
 A multi-process kernel with per-process MMU isolation, built **on top of Circle**
 ([rsta2/circle](https://github.com/rsta2/circle)) as the hardware-abstraction +
 driver layer. Apps are loaded from the SD card and run as EL1 apps in their own
-page tables, calling kernel functions directly (Option C, §11). Scheduling is
-cooperative (§12). **Runs on real Raspberry Pi 4 hardware.**
+page tables, calling kernel functions directly (Option C, §11). Scheduling was
+cooperative at bring-up (§12); it has since become **preemptive for applications**
+(see `docs/02-KERNEL-INTERNALS.md`). **Runs on real Raspberry Pi 4 hardware.**
 
 > Working name only. The `circle/` subdirectory is the upstream Circle clone and is
 > used unmodified where possible. Our code lives in `kernel/`.
 >
 > NOTE: §3–§5 below describe the original *preemptive / EL0* design. The hardware
 > bring-up (§11–§12) changed this to *EL1 apps + cooperative scheduling*; where they
-> conflict, §11–§12 win.
+> conflict, §11–§12 win. (Later still, application code became preemptive again, via
+> a trampoline instead of a switch inside the IRQ: `docs/` is authoritative.)
 
 ---
 

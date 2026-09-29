@@ -37,6 +37,7 @@ OBJS = \
 	sys/appcore.o \
 	sys/v3d.o \
 	sys/crashlog.o \
+	sys/thread.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/exception.o
 
@@ -78,8 +79,21 @@ sys/v3d.o: CPPFLAGS += -std=c++20
 apps:
 	@$(MAKE) --no-print-directory -C ../user
 
+# The image + its BSS must end below 0x80000 + KERNEL_MAX_SIZE (Circle: 2 MB): past it the
+# BSS runs over the kernel's stacks and the Pi does not boot at all, without a word. Checked
+# after every link: an image too big is deleted.
+KERNEL_END_MAX = 0x280000
+.PHONY: sizecheck
+sizecheck: $(TARGET).img
+	@end=$$(grep -E '^ +0x[0-9a-f]+ +_end = \.' $(TARGET).map | awk '{print $$1}'); \
+	if [ -z "$$end" ] || [ $$(( end )) -gt $$(( $(KERNEL_END_MAX) )) ]; then \
+		echo "*** kernel too big: _end = $$end, the limit $(KERNEL_END_MAX) (KERNEL_MAX_SIZE): $(TARGET).img deleted"; \
+		rm -f $(TARGET).img; exit 1; \
+	fi; \
+	echo "kernel: _end = $$end, $$(( ($(KERNEL_END_MAX) - end) / 1024 )) KB below the 2 MB limit"
+
 # `make` builds the kernel, then (for convenience) the apps.
-all: $(TARGET).img apps
+all: $(TARGET).img sizecheck apps
 .DEFAULT_GOAL := all
 
 # Copy kernel + apps to the SD staging dir. The app ELFs are ABI-stable now, so a
@@ -99,7 +113,7 @@ BASC_SRC = ../tools/basc/basc.cpp ../user/basic/bascomp.cpp ../user/basic/basnum
 $(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h ../user/basic/bas3d.h ../user/basic/bas3dscene.h
 	@g++ -std=c++17 -O1 -I../user -o $@ $(BASC_SRC)
 .PHONY: stage
-stage: apps $(BASC)
+stage: sizecheck apps $(BASC)
 	@cp $(TARGET).img $(SDCARD)/
 	@for elf in ../user/*.elf; do \
 		name=$$(basename $$elf .elf); \

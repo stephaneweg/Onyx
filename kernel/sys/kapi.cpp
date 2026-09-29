@@ -23,6 +23,7 @@
 #include <kern/net.h>		// NetTcpConnect/Send/Recv/Close/Status (socket backend)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
+#include <kern/thread.h>		// (v67) threads, posts: ThreadsRunPosts / ThreadsEndProcess
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -151,7 +152,7 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 			       unsigned nFlags)
 {
 	CAddressSpace *pAS = CurrentAS ();
-	if (pAS == 0 || w <= 0 || h <= 0 || w > 1024 || h > 768)
+	if (pAS == 0 || w <= 0 || h <= 0 || w > g_nScreenWidth || h > g_nScreenHeight)	// (no bigger than the screen)
 	{
 		return 0;
 	}
@@ -723,6 +724,7 @@ void kapi_pump_events (void)
 	{
 		return;
 	}
+	ThreadsRunPosts (pAS);				// (v67) the calls its threads posted
 	CWindow *pWin = pAS->GetWindow ();
 	if (pWin == 0)
 	{
@@ -765,7 +767,22 @@ void kapi_wait_for_exit (void)
 		{
 			return;
 		}
-		if (CScheduler::IsActive ())
+		// (v67) until an event, a post or the close box -- 16 ms at most, as before
+		CAddressSpace *pAS = CurrentAS ();
+		CProcThreads *pT = ThreadsOf (pAS, TRUE);
+		CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+		if (pT != 0 && pWin != 0)
+		{
+			pWin->SetWake (&pT->WakeEv);
+			if (   pWin->QueuedEvents () == 0
+			    && pT->nPostHead == pT->nPostTail)
+			{
+				pT->nWakeWaiters++;
+				pT->WakeEv.WaitWithTimeout (16000);
+				pT->nWakeWaiters--;
+			}
+		}
+		else if (CScheduler::IsActive ())
 		{
 			CScheduler::Get ()->MsSleep (16);
 		}
@@ -816,6 +833,8 @@ void kapi_exit (int nStatus)
 			CWindowManager::Get ()->Remove (pWin);	// vanish from the compositor
 		}
 	}
+
+	ThreadsEndProcess ();				// (v67) its other threads end with it
 
 	// Leave the app's page table before terminating (kernel code on the kernel
 	// stack from here on).
@@ -915,6 +934,10 @@ static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState Stat
 	{
 		return TRUE;					// not a windowed app / a system component
 	}
+	if (pTask != pAS->GetMainTask ())
+	{
+		return TRUE;					// (v67) a thread: its app is listed once
+	}
 	if (pAS->GetWindow ()->OffDesk ())
 	{
 		return TRUE;					// (v65) on another workspace
@@ -962,7 +985,12 @@ static boolean TaskListCallback (CTask *pTask, const char *pName, TTaskState Sta
 		: State == TaskStateSleeping ? 'S'
 		: (State == TaskStateBlocked || State == TaskStateBlockedWithTimeout) ? 'B'
 		: State == TaskStateNew ? 'N' : '?';
-	char kc = pTask->GetUserData (TASK_USER_DATA_USER) != 0 ? 'a' : 'k';
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS != 0 && pTask != pAS->GetMainTask ())
+	{
+		return TRUE;					// (v67) a thread: its app is listed once
+	}
+	char kc = pAS != 0 ? 'a' : 'k';
 
 	WinListCtx *pCtx = (WinListCtx *) pParam;
 	if (pCtx->nPos + 4 < pCtx->nSize)
@@ -1012,6 +1040,10 @@ int kapi_kill (const char *pName)
 	{
 		return 0;			// kernel task (compositor/reaper/input): protected
 	}
+	if (pTask->GetUserData (TASK_USER_DATA_USER) == CurrentAS ())
+	{
+		return 0;			// its own process (a thread of it)
+	}
 	CScheduler::Get ()->TerminateTask (pTask);
 	return 1;
 }
@@ -1041,6 +1073,7 @@ static boolean ProcListCallback (CTask *pTask, const char *pName, TTaskState Sta
 	if (State == TaskStateTerminated) return TRUE;
 	WinListCtx *c = (WinListCtx *) pParam;
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS != 0 && pTask != pAS->GetMainTask ()) return TRUE;	// (v67) a thread: listed once
 
 	char st = State == TaskStateReady ? 'R'
 		: State == TaskStateSleeping ? 'S'
@@ -1097,6 +1130,7 @@ int kapi_kill_pid (int nPid, int nForce)
 	if (pTask == CScheduler::Get ()->GetCurrentTask ()) return -1;	// self
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
 	if (pAS == 0) return -1;					// kernel task
+	if (pAS == CurrentAS ()) return -1;				// its own process (a thread)
 	if (!nForce)
 	{
 		CWindow *pWin = pAS->GetWindow ();
@@ -2317,6 +2351,12 @@ int kapi_win_desk (unsigned nId, int n)
 	else pW = WinById (pWM, nId);
 	if (pW == 0) return -3;
 	return n < -1 ? pW->Desk () : pWM->MoveToDesk (pW, n);
+}
+
+// --- v66: the screen's resolution, while running (kernel.cpp: the compositor does it) ---------
+int kapi_screen_set (int w, int h)
+{
+	return ScreenResizeRequest (w, h);
 }
 
 // Resize the caller's window, its canvas (and frame copies) growing when needed: new memory

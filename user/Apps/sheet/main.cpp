@@ -21,7 +21,7 @@
 using namespace ss;
 using namespace wtk;
 
-#define W 1000						// (the kernel makes no window wider than 1024: as Writer)
+#define W 1000						// (fits a 1024 x 768 screen: as Writer)
 #define H 700
 
 static Book g_b;
@@ -1521,6 +1521,7 @@ int main (void)
 	g_grid->anchor = ANCHOR_FILL;
 	g_tabs->anchor = g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	root.setResizable (true);
+	root.fitWorkArea ();			// (between the menu bar and the dock: not under the dock)
 	g_grid->onChange = refresh; g_grid->onEdited = grid_edited; g_grid->onContext = grid_context; g_grid->onChartOpen = chart_open;
 	g_grid->onZoom = zoom_step; g_grid->onCommit = grid_commit; g_grid->onOtherKey = other_key; g_grid->onFilter = filter_drop;
 

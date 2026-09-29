@@ -87,9 +87,12 @@ CScheduler *CScheduler::s_pThis[SCHED_CORES] = { 0, 0, 0, 0 };
 static CSpinLock s_WaitLock;
 
 CScheduler::CScheduler (void)
-:	m_nTasks (0),
+:	m_pHead (0),
+	m_pTail (0),
+	m_nTasks (0),
 	m_pCurrent (0),
-	m_nCurrent (0),
+	m_pCurNode (0),
+	m_pScan (0),
 	m_pIdleTask (0),
 	m_pTaskSwitchHandler (0),
 	m_pTaskTerminationHandler (0),
@@ -109,12 +112,6 @@ CScheduler::CScheduler (void)
 	assert (s_pThis[m_nCore] == 0);
 	s_pThis[m_nCore] = this;
 
-	for (unsigned i = 0; i < MAX_TASKS; i++)
-	{
-		m_nPreemptStreak[i] = 0;
-		m_nNoKill[i] = 0;
-		m_bKillPending[i] = FALSE;
-	}
 	m_bPreempting = FALSE;
 	m_nSliceCfg = SCHED_SLICE_TICKS;
 	m_bHogSched = TRUE;
@@ -122,6 +119,8 @@ CScheduler::CScheduler (void)
 	m_pCurrent = new CTask (0);		// represents the main task currently running
 	assert (m_pCurrent != 0);
 	m_pCurrent->SetName ("main");
+	m_pCurNode = FindNode (m_pCurrent);
+	assert (m_pCurNode != 0);
 
 	m_pIdleTask = new CIdleTask (m_nCore == 0);	// always-ready fallback (deprioritized)
 	assert (m_pIdleTask != 0);
@@ -166,15 +165,14 @@ void CScheduler::Yield (void)
 	m_Stall.nSamples = 0;
 	m_nLastYield = nNow;
 
-	if (!m_bPreempting)			// a voluntary yield: not (or no longer) a hog
+	if (!m_bPreempting && m_pCurNode != 0)	// a voluntary yield: not (or no longer) a hog
 	{
-		unsigned nSlot = CurrentSlot ();
-		if (nSlot < MAX_TASKS) m_nPreemptStreak[nSlot] = 0;
+		m_pCurNode->nPreemptStreak = 0;
 	}
 	m_bPreempting = FALSE;
 
-	unsigned nNext;
-	while ((nNext = GetNextTask ()) == MAX_TASKS)
+	TSchedNode *pNode;
+	while ((pNode = GetNextTask ()) == 0)
 	{
 		// The idle task is always ready, so this should not happen. Defensive:
 		// allow an IRQ in (to make progress), then rescan.
@@ -183,13 +181,14 @@ void CScheduler::Yield (void)
 		IrqDisable ();
 	}
 
-	m_nCurrent = nNext;
-	CTask *pNext = m_pTask[m_nCurrent];
+	m_pScan = pNode;
+	m_pCurNode = pNode;
+	CTask *pNext = pNode->pTask;
 	assert (pNext != 0);
 
 	// Whichever task runs now starts a fresh time slice -- a single tick for a CPU hog,
 	// so the kernel's Yield() loops never wait more than ~10 ms behind it.
-	m_nSliceTicks = (m_bHogSched && m_nPreemptStreak[nNext] >= SCHED_HOG_STREAK) ? 1 : m_nSliceCfg;
+	m_nSliceTicks = (m_bHogSched && pNode->nPreemptStreak >= SCHED_HOG_STREAK) ? 1 : m_nSliceCfg;
 	m_bResched = FALSE;
 
 	if (m_pCurrent != pNext)
@@ -246,19 +245,16 @@ boolean CScheduler::TakeStallReport (TStallReport *pReport, unsigned *pLost)
 
 void CScheduler::YieldTo (CTask *pTask)
 {
-	// GetNextTask() scans round-robin starting AFTER m_nCurrent, so pointing
-	// m_nCurrent just before pTask makes it the first candidate. m_nCurrent is only
-	// the scan start (the switch itself uses m_pCurrent), so this is safe; IRQ is
-	// masked so the timer path cannot interleave. If pTask is not ready, Yield()
-	// simply picks the next ready task from there.
+	// GetNextTask() scans round-robin starting AFTER m_pScan, so pointing m_pScan
+	// just before pTask makes it the first candidate. m_pScan is only the scan start
+	// (the switch itself uses m_pCurrent), so this is safe; IRQ is masked so the timer
+	// path cannot interleave. If pTask is not ready, Yield() simply picks the next
+	// ready task from there.
 	u64 nFlags = IrqSave ();
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *pNode = FindNode (pTask);
+	if (pNode != 0)
 	{
-		if (m_pTask[i] == pTask)
-		{
-			m_nCurrent = (i == 0) ? m_nTasks - 1 : i - 1;
-			break;
-		}
+		m_pScan = FindPrev (pNode);
 	}
 	Yield ();
 	IrqRestore (nFlags);
@@ -280,11 +276,11 @@ void CScheduler::OnPreempt (void)
 	}
 	u64 nFlags = IrqSave ();
 	m_bPreempting = TRUE;			// the Yield that follows is not voluntary
-	unsigned nSlot = CurrentSlot ();
-	if (nSlot < MAX_TASKS)
+	TSchedNode *pNode = m_pCurNode;
+	if (pNode != 0)
 	{
-		if (m_nPreemptStreak[nSlot] < 255) m_nPreemptStreak[nSlot]++;
-		if (m_nPreemptStreak[nSlot] >= SCHED_HOG_STREAK)
+		if (pNode->nPreemptStreak < 255) pNode->nPreemptStreak++;
+		if (pNode->nPreemptStreak >= SCHED_HOG_STREAK)
 		{
 			m_nBurstEnd = CTimer::Get ()->GetClockTicks () + SCHED_BURST_US;
 			m_bBurst = TRUE;
@@ -293,17 +289,21 @@ void CScheduler::OnPreempt (void)
 	IrqRestore (nFlags);
 }
 
-unsigned CScheduler::CurrentSlot (void)
+TSchedNode *CScheduler::FindNode (CTask *pTask)
 {
-	if (m_nCurrent < m_nTasks && m_pTask[m_nCurrent] == m_pCurrent)
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 	{
-		return m_nCurrent;
+		if (p->pTask == pTask) return p;
 	}
-	for (unsigned i = 0; i < m_nTasks; i++)		// (YieldTo moved the scan start)
-	{
-		if (m_pTask[i] == m_pCurrent) return i;
-	}
-	return MAX_TASKS;
+	return 0;
+}
+
+TSchedNode *CScheduler::FindPrev (TSchedNode *pNode)
+{
+	TSchedNode *p = pNode;
+	while (p->pNext != pNode) p = p->pNext;		// (the circle: always found)
+	return p;
 }
 
 void CScheduler::OnTimerTick (void)
@@ -371,14 +371,12 @@ CTask *CScheduler::GetTask (const char *pTaskName)
 {
 	assert (pTaskName != 0);
 
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 	{
-		CTask *pTask = m_pTask[i];
-
-		if (   pTask != 0
-		    && strcmp (pTask->GetName (), pTaskName) == 0)
+		if (strcmp (p->pTask->GetName (), pTaskName) == 0)
 		{
-			return pTask;
+			return p->pTask;
 		}
 	}
 
@@ -389,15 +387,13 @@ CTask *CScheduler::GetRunningTask (const char *pTaskName)
 {
 	assert (pTaskName != 0);
 
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 	{
-		CTask *pTask = m_pTask[i];
-
-		if (   pTask != 0
-		    && pTask->GetState () != TaskStateTerminated
-		    && strcmp (pTask->GetName (), pTaskName) == 0)
+		if (   p->pTask->GetState () != TaskStateTerminated
+		    && strcmp (p->pTask->GetName (), pTaskName) == 0)
 		{
-			return pTask;
+			return p->pTask;
 		}
 	}
 
@@ -410,42 +406,104 @@ void CScheduler::TerminateTask (CTask *pTask)
 	{
 		return;				// can't externally kill the running task
 	}
-	u64 nFlags = IrqSave ();
-	for (unsigned i = 0; i < m_nTasks; i++)
+	void *pKey = pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pKey != 0)
 	{
-		if (m_pTask[i] != pTask || pTask->GetState () == TaskStateTerminated)
+		TerminateGroup (pKey);		// an app: the whole process (its threads)
+		return;
+	}
+	u64 nFlags = IrqSave ();
+	TSchedNode *p = FindNode (pTask);
+	if (p != 0 && pTask->GetState () != TaskStateTerminated)
+	{
+		p->bKilled = TRUE;
+		if (p->nNoKill > 0)
 		{
-			continue;
-		}
-		if (m_nNoKill[i] > 0)
-		{
-			m_bKillPending[i] = TRUE;	// LeaveNoKill ends it, once it holds nothing
+			p->bKillPending = TRUE;	// LeaveNoKill ends it, once it holds nothing
 		}
 		else
 		{
 			pTask->SetState (TaskStateTerminated);	// GetNextTask skips it; reaper frees it
 		}
-		break;
 	}
 	IrqRestore (nFlags);
+}
+
+void CScheduler::TerminateGroup (void *pKey)
+{
+	if (pKey == 0)
+	{
+		return;
+	}
+	u64 nFlags = IrqSave ();
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
+	{
+		CTask *pTask = p->pTask;
+		if (   pTask == m_pCurrent
+		    || pTask->GetUserData (TASK_USER_DATA_USER) != pKey
+		    || pTask->GetState () == TaskStateTerminated)
+		{
+			continue;
+		}
+		p->bKilled = TRUE;
+		if (p->nNoKill > 0)
+		{
+			p->bKillPending = TRUE;
+		}
+		else
+		{
+			pTask->SetState (TaskStateTerminated);
+		}
+	}
+	IrqRestore (nFlags);
+}
+
+unsigned CScheduler::CountGroup (void *pKey)
+{
+	unsigned n = 0;
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
+	{
+		if (   pKey != 0
+		    && p->pTask->GetUserData (TASK_USER_DATA_USER) == pKey
+		    && p->pTask->GetState () != TaskStateTerminated)
+		{
+			n++;
+		}
+	}
+	return n;
+}
+
+boolean CScheduler::GroupAlive (void *pKey)
+{
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
+	{
+		if (   p->pTask->GetUserData (TASK_USER_DATA_USER) == pKey
+		    && (p->pTask->GetState () != TaskStateTerminated || p->bKillPending))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 void CScheduler::EnterNoKill (void)
 {
 	u64 nFlags = IrqSave ();
-	unsigned nSlot = CurrentSlot ();
-	if (nSlot < MAX_TASKS && m_nNoKill[nSlot] < 255) m_nNoKill[nSlot]++;
+	if (m_pCurNode != 0 && m_pCurNode->nNoKill < 255) m_pCurNode->nNoKill++;
 	IrqRestore (nFlags);
 }
 
 void CScheduler::LeaveNoKill (void)
 {
 	u64 nFlags = IrqSave ();
-	unsigned nSlot = CurrentSlot ();
+	TSchedNode *p = m_pCurNode;
 	boolean bEnd = FALSE;
-	if (nSlot < MAX_TASKS && m_nNoKill[nSlot] > 0 && --m_nNoKill[nSlot] == 0 && m_bKillPending[nSlot])
+	if (p != 0 && p->nNoKill > 0 && --p->nNoKill == 0 && p->bKillPending)
 	{
-		m_bKillPending[nSlot] = FALSE;
+		p->bKillPending = FALSE;
 		bEnd = TRUE;
 	}
 	IrqRestore (nFlags);
@@ -459,15 +517,7 @@ void CScheduler::LeaveNoKill (void)
 
 boolean CScheduler::IsValidTask (CTask *pTask)
 {
-	for (unsigned i = 0; i < m_nTasks; i++)
-	{
-		if (m_pTask[i] != 0 && m_pTask[i] == pTask)
-		{
-			return TRUE;
-		}
-	}
-
-	return FALSE;
+	return pTask != 0 && FindNode (pTask) != 0;
 }
 
 void CScheduler::RegisterTaskSwitchHandler (TSchedulerTaskHandler *pHandler)
@@ -495,28 +545,27 @@ void CScheduler::ResumeNewTasks (void)
 	m_iSuspendNewTasks--;
 	if (m_iSuspendNewTasks == 0)
 	{
-		for (unsigned i = 0; i < m_nTasks; i++)
+		TSchedNode *p = m_pHead;
+		for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 		{
-			if (m_pTask[i] != 0 && m_pTask[i]->GetState () == TaskStateNew)
+			if (p->pTask->GetState () == TaskStateNew)
 			{
-				m_pTask[i]->Start ();
+				p->pTask->Start ();
 			}
 		}
 	}
 }
 
+// The callback must not yield: the reaper could free the task being visited meanwhile.
 boolean CScheduler::EnumerateTasks (boolean (*pCallback) (CTask *pTask, const char *pName,
 							  TTaskState State, TTaskFlags Flags,
 							  void *pParam),
 				    void *pParam)
 {
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 	{
-		CTask *pTask = m_pTask[i];
-		if (pTask == 0)
-		{
-			continue;
-		}
+		CTask *pTask = p->pTask;
 
 		TTaskFlags Flags = TaskFlagNone;
 		if (pTask == m_pCurrent)
@@ -544,13 +593,10 @@ void CScheduler::ListTasks (CDevice *pTarget)
 	static const char Header[] = "#  ADDR     STAT  FL NAME\n";
 	pTarget->Write (Header, sizeof Header-1);
 
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 	{
-		CTask *pTask = m_pTask[i];
-		if (pTask == 0)
-		{
-			continue;
-		}
+		CTask *pTask = p->pTask;
 
 		TTaskState State = pTask->GetState ();
 		assert (State < TaskStateUnknown);
@@ -573,31 +619,55 @@ void CScheduler::ListTasks (CDevice *pTarget)
 
 unsigned CScheduler::ReapTerminatedTasks (void)
 {
-	// Reap tasks that have ended (closed apps): run the termination handler (frees
-	// the address space), remove from the list, and free the CTask + its stack.
-	// Called from the dedicated reaper task. A terminated task is quiescent
-	// (GetNextTask skips it, so it never runs again) and is never m_pCurrent here.
+	// Reap tasks that have ended (closed apps, ended threads): run the termination
+	// handler (frees the address space with the process's last task), remove from the
+	// list, and free the CTask + its stack. Called from the dedicated reaper task. A
+	// terminated task is quiescent (GetNextTask skips it, so it never runs again) and
+	// is never m_pCurrent here.
+	//
+	// A task killed from outside may still be on a wait list of its process (a mutex,
+	// an event, a socket): it is freed only once its whole group is dead, and the
+	// handlers of a batch all run before any task is deleted -- the last one frees the
+	// process (its sockets closed, its objects deleted) while the tasks still exist.
 	//
 	// IRQ is masked for the whole teardown so it is atomic against the timer IRQ
 	// (the teardown frees page tables + invalidates the TLB); restored on return.
 	u64 nFlags = IrqSave ();
 
-	unsigned nReaped = 0;
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *pBatch = 0;
+	TSchedNode *p = m_pHead;
+	for (unsigned i = 0; i < m_nTasks; i++, p = p->pNext)
 	{
-		CTask *pTask = m_pTask[i];
-		if (   pTask == 0
-		    || pTask == m_pCurrent
+		CTask *pTask = p->pTask;
+		if (   pTask == m_pCurrent
 		    || pTask->GetState () != TaskStateTerminated)
 		{
 			continue;
 		}
-
-		if (m_pTaskTerminationHandler != 0)
+		void *pKey = pTask->GetUserData (TASK_USER_DATA_USER);
+		if (p->bKilled && pKey != 0 && GroupAlive (pKey))
 		{
-			(*m_pTaskTerminationHandler) (pTask);	// frees the address space
+			continue;			// (later, with the rest of its process)
 		}
-		RemoveTask (pTask);
+		p->pReapNext = pBatch;
+		pBatch = p;
+	}
+
+	if (m_pTaskTerminationHandler != 0)
+	{
+		for (p = pBatch; p != 0; p = p->pReapNext)
+		{
+			(*m_pTaskTerminationHandler) (p->pTask);	// frees the address space
+		}
+	}
+
+	unsigned nReaped = 0;
+	while (pBatch != 0)
+	{
+		p = pBatch;
+		pBatch = p->pReapNext;
+		CTask *pTask = p->pTask;
+		RemoveTask (pTask);		// (frees p)
 		delete pTask;			// frees the CTask + its stack
 		nReaped++;
 	}
@@ -615,48 +685,51 @@ void CScheduler::AddTask (CTask *pTask)
 		pTask->SetState (TaskStateNew);
 	}
 
-	for (unsigned i = 0; i < m_nTasks; i++)
+	TSchedNode *pNode = new TSchedNode;
+	if (pNode == 0)
 	{
-		if (m_pTask[i] == 0)
-		{
-			m_pTask[i] = pTask;
-			m_nPreemptStreak[i] = 0;
-			m_nNoKill[i] = 0;
-			m_bKillPending[i] = FALSE;
-
-			return;
-		}
+		CLogger::Get ()->Write (FromScheduler, LogPanic, "No memory for a task");
 	}
+	pNode->pTask = pTask;
+	pNode->pReapNext = 0;
+	pNode->nNoKill = 0;
+	pNode->nPreemptStreak = 0;
+	pNode->bKillPending = FALSE;
+	pNode->bKilled = FALSE;
 
-	if (m_nTasks >= MAX_TASKS)
+	u64 nFlags = IrqSave ();		// (the IRQ exit path walks the list)
+	if (m_pHead == 0)
 	{
-		CLogger::Get ()->Write (FromScheduler, LogPanic, "System limit of tasks exceeded");
+		pNode->pNext = pNode;
+		m_pHead = m_pTail = m_pScan = pNode;
 	}
-
-	m_nPreemptStreak[m_nTasks] = 0;
-	m_nNoKill[m_nTasks] = 0;
-	m_bKillPending[m_nTasks] = FALSE;
-	m_pTask[m_nTasks++] = pTask;
+	else
+	{
+		pNode->pNext = m_pHead;		// appended: last in round-robin order
+		m_pTail->pNext = pNode;
+		m_pTail = pNode;
+	}
+	m_nTasks++;
+	IrqRestore (nFlags);
 }
 
 void CScheduler::RemoveTask (CTask *pTask)
 {
-	for (unsigned i = 0; i < m_nTasks; i++)
+	u64 nFlags = IrqSave ();
+	TSchedNode *pNode = FindNode (pTask);
+	assert (pNode != 0);
+	assert (pNode != m_pCurNode);
+	if (pNode != 0)
 	{
-		if (m_pTask[i] == pTask)
-		{
-			m_pTask[i] = 0;
-
-			if (i == m_nTasks-1)
-			{
-				m_nTasks--;
-			}
-
-			return;
-		}
+		TSchedNode *pPrev = FindPrev (pNode);
+		pPrev->pNext = pNode->pNext;
+		if (m_pHead == pNode) m_pHead = pNode->pNext;
+		if (m_pTail == pNode) m_pTail = pPrev;
+		if (m_pScan == pNode) m_pScan = pPrev;
+		m_nTasks--;
+		delete pNode;
 	}
-
-	assert (0);
+	IrqRestore (nFlags);
 }
 
 boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds)
@@ -749,7 +822,7 @@ void CScheduler::WakeTasks (CTask **ppWaitListHead)
 	s_WaitLock.Release ();
 }
 
-unsigned CScheduler::GetNextTask (void)
+TSchedNode *CScheduler::GetNextTask (void)
 {
 	unsigned nTicks = CTimer::Get ()->GetClockTicks ();
 
@@ -759,10 +832,10 @@ unsigned CScheduler::GetNextTask (void)
 	{
 		if ((int) (m_nBurstEnd - nTicks) > 0)
 		{
-			unsigned nTask = ScanTasks (nTicks, TRUE);
-			if (nTask != MAX_TASKS)
+			TSchedNode *pNode = ScanTasks (nTicks, TRUE);
+			if (pNode != 0)
 			{
-				return nTask;
+				return pNode;
 			}
 		}
 		m_bBurst = FALSE;
@@ -771,33 +844,26 @@ unsigned CScheduler::GetNextTask (void)
 	return ScanTasks (nTicks, FALSE);
 }
 
-// One round-robin pass starting after m_nCurrent. bSkipHogs: skip the preempted tasks
-// and the idle task -- MAX_TASKS if no other task is ready.
-unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
+// One round-robin pass starting after m_pScan. bSkipHogs: skip the preempted tasks and
+// the idle task -- 0 if no other task is ready.
+TSchedNode *CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 {
-	unsigned nTask = m_nCurrent < MAX_TASKS ? m_nCurrent : 0;
+	TSchedNode *pNode = m_pScan != 0 ? m_pScan : m_pHead;
 
-	unsigned nIdleIndex = MAX_TASKS;	// remember idle; use only if nothing else
+	TSchedNode *pIdle = 0;		// remember idle; use only if nothing else
 
 	for (unsigned i = 1; i <= m_nTasks; i++)
 	{
-		if (++nTask >= m_nTasks)
-		{
-			nTask = 0;
-		}
+		pNode = pNode->pNext;
 
-		CTask *pTask = m_pTask[nTask];
-		if (pTask == 0)
-		{
-			continue;
-		}
+		CTask *pTask = pNode->pTask;
 
 		if (pTask->IsSuspended ())
 		{
 			continue;
 		}
 
-		if (bSkipHogs && (pTask == m_pIdleTask || m_nPreemptStreak[nTask] >= SCHED_HOG_STREAK))
+		if (bSkipHogs && (pTask == m_pIdleTask || pNode->nPreemptStreak >= SCHED_HOG_STREAK))
 		{
 			continue;			// a CPU hog (or idle): not during a burst
 		}
@@ -809,10 +875,10 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 			{
 				// Deprioritize: only fall back to idle if no other task
 				// is runnable this round.
-				nIdleIndex = nTask;
+				pIdle = pNode;
 				continue;
 			}
-			return nTask;
+			return pNode;
 
 		case TaskStateBlocked:
 		case TaskStateNew:
@@ -825,7 +891,7 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 			}
 			pTask->SetState (TaskStateReady);
 			pTask->SetWakeTicks (0);	// flag: timeout expired
-			return nTask;
+			return pNode;
 
 		case TaskStateSleeping:
 			if ((int) (pTask->GetWakeTicks () - nTicks) > 0)
@@ -833,7 +899,7 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 				continue;
 			}
 			pTask->SetState (TaskStateReady);
-			return nTask;
+			return pNode;
 
 		case TaskStateTerminated:
 			// "Ending": no longer schedulable. We do NOT free it here -- doing
@@ -850,7 +916,7 @@ unsigned CScheduler::ScanTasks (unsigned nTicks, boolean bSkipHogs)
 	}
 
 	// No regular task is runnable: fall back to the idle task if it is ready.
-	return nIdleIndex;
+	return pIdle;
 }
 
 CScheduler *CScheduler::Get (void)

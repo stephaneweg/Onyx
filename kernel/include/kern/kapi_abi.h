@@ -79,7 +79,18 @@
 // v65: + desk / win_desk -- workspaces (virtual desktops): a window opens on the current desk and
 //      is shown only there (KAPI_WIN_OFFDESK, KAPI_WIN_DESK in win_list); list_windows and
 //      raise_app see the current desk's windows only; Ctrl+Alt+Left / Right switch desks.
-#define KAPI_ABI_VERSION	65
+// v66: + screen_set -- the screen's resolution changed while running (the Control Panel's Display
+//      applet); every window then gets GUI_EVENT_DISPLAY_RESIZE (19, (w << 16) | h) and is kept
+//      on the screen; an app's window may be as big as the screen (was 1024 x 768 at most).
+// v67: + thread_create / thread_exit / thread_join / thread_self -- threads: tasks of the app's
+//      own process (its address space, window, heap, files), preempted like it, ended with it;
+//      + mutex_* / event_* / barrier_* / sync_close -- their synchronisation objects;
+//      + post / pump_wait -- a call queued to the app's event pump (a thread hands its result
+//      to the UI thread), and a pump that sleeps until an event or a post arrives. The
+//      scheduler has no task limit any more (a list; MAX_TASKS gone).
+#define KAPI_ABI_VERSION	67
+
+#define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
 #ifdef __cplusplus
 extern "C" {
@@ -912,6 +923,50 @@ struct TKApiTable
 	// win_desk: window id (0: the caller's) to desk n (-1: every desk; -2: only asked) -> its desk
 	// (-1: every desk), -3 no such window. (A topmost / backmost window stays on every desk.)
 	int (*win_desk) (unsigned id, int n);
+	// --- v66 ---
+	// screen_set: the screen's resolution now (w x h: 640 x 480 .. 2560 x 1600, w even), between two
+	// frames; every window kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 a size out
+	// of bounds; -2 not now (a full-screen app, the debug console); -3 the firmware refused it (the
+	// old size kept). Not kept across a reboot: cmdline.txt's width= / height= are.
+	int (*screen_set) (int w, int h);
+	// --- v67 --- threads (kern/thread.h). Timeouts in ms: 0 = only try, KAPI_WAIT_FOREVER.
+	// thread_create: run fn (arg) in a new thread of this process, on a stack of stack_size bytes
+	// (0: 256 KB; 16 KB .. 16 MB), named "<app>:<name>" (name 0: "<app>:<tid>") -> its tid (>= 2;
+	// the main thread is 1); -1 no memory, -2 too many threads (32 besides the main one). Its
+	// return value is its exit code. The process ends with its main thread (the others with it).
+	int (*thread_create) (int (*fn) (void *), void *arg, unsigned stack_size, const char *name);
+	// thread_exit: end the calling thread with that code (the main thread: the process, as exit).
+	void (*thread_exit) (int code);
+	// thread_join: wait for thread tid to end -> 0 (*code its exit code; its tid is then free),
+	// -1 timeout, -2 no such thread (or joined already), -3 itself.
+	int (*thread_join) (int tid, unsigned timeout_ms, int *code);
+	// thread_self: the calling thread's tid (1: the main thread).
+	int (*thread_self) (void);
+	// mutex_create -> a handle (> 0), -1 (256 objects per process). mutex_lock -> 0, -1 timeout,
+	// -2 bad handle (or closed while waiting). Recursive; released if its owner thread ends.
+	// mutex_unlock -> 0, -1 not the owner, -2 bad handle.
+	int (*mutex_create) (void);
+	int (*mutex_lock) (int h, unsigned timeout_ms);
+	int (*mutex_unlock) (int h);
+	// event_create: manual_reset (1: stays set until event_reset; 0: event_wait takes it back, one
+	// waiter at a time), initial state -> a handle. event_set / event_reset -> 0; event_wait -> 0
+	// set, -1 timeout, -2 bad handle.
+	int (*event_create) (int manual_reset, int initial);
+	int (*event_set) (int h);
+	int (*event_reset) (int h);
+	int (*event_wait) (int h, unsigned timeout_ms);
+	// barrier_create: for count threads -> a handle. barrier_wait: wait until count threads are
+	// in -> 1 for the last one in, 0 for the others (the barrier is then ready again), -2.
+	int (*barrier_create) (unsigned count);
+	int (*barrier_wait) (int h);
+	// sync_close: free a mutex / event / barrier -> 0, -2 (its waiters get -2).
+	int (*sync_close) (int h);
+	// post: queue fn (ctx, value) for this process's event pump (pump_events / pump_wait /
+	// wait_for_exit run it, on the thread that pumps) -> 0, -1 the queue is full (256).
+	int (*post) (void (*fn) (void *ctx, long value), void *ctx, long value);
+	// pump_wait: sleep until a window event, a post or the close box (or the timeout), then
+	// pump_events -> what was pending (0: the timeout).
+	int (*pump_wait) (unsigned timeout_ms);
 };
 
 #ifdef __cplusplus

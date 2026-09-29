@@ -51,6 +51,21 @@ struct TStallReport
 	u64	 LR[STALL_SAMPLES];
 };
 
+// A task in the scheduler's list, with the scheduler's own state about it (CTask's layout is
+// Circle's, shared with its prebuilt libraries: it cannot grow). The list is circular and has
+// no size limit (Circle's MAX_TASKS table is gone).
+struct TSchedNode
+{
+	CTask	   *pTask;
+	TSchedNode *pNext;		// the next task in round-robin order (circular)
+	TSchedNode *pReapNext;		// (ReapTerminatedTasks: its batch)
+	u8	    nNoKill;		// EnterNoKill depth
+	u8	    nPreemptStreak;	// preemptions since its last voluntary yield
+					// (>= SCHED_HOG_STREAK: a CPU hog)
+	boolean	    bKillPending;	// TerminateTask waits for LeaveNoKill
+	boolean	    bKilled;		// terminated from outside (TerminateTask / TerminateGroup)
+};
+
 /// \note Round-robin policy, no priorities (yet). Preemption-ready: see
 ///       OnTimerTick(). The block/wake/sleep protocol is identical to Circle's.
 
@@ -77,8 +92,19 @@ public:
 
 	// Externally terminate another task (e.g. the task manager killing an app): mark
 	// it Terminated so GetNextTask skips it and the reaper frees it. No-op on the
-	// current task (a task ends itself by returning / kapi_exit).
+	// current task (a task ends itself by returning / kapi_exit). An app's task takes
+	// its whole process with it: every task with the same TASK_USER_DATA_USER pointer
+	// (the address space: the app's threads) -- see TerminateGroup.
 	void TerminateTask (CTask *pTask);
+
+	// Terminate every task whose TASK_USER_DATA_USER is pKey (!= 0), except the current
+	// one: a process's threads, when it is killed or when one of them ends the process.
+	// A killed task is freed only once no task of its group is left alive (it may have
+	// been killed while waiting on an event of the process: the wait lists die with it).
+	void TerminateGroup (void *pKey);
+
+	// Tasks of the group pKey that are not terminated (the process's live threads).
+	unsigned CountGroup (void *pKey);
 
 	// No-kill section of the CURRENT task (nestable): while it holds a kernel resource
 	// across a Yield (the FatFs volume lock, while the SD driver waits), TerminateTask
@@ -182,16 +208,20 @@ private:
 	friend class CSynchronizationEvent;
 
 	void RemoveTask (CTask *pTask);
-	unsigned GetNextTask (void); // returns index into m_pTask or MAX_TASKS if none
-	unsigned ScanTasks (unsigned nTicks, boolean bSkipHogs);	// one round-robin pass
-	unsigned CurrentSlot (void);	// m_pCurrent's index in m_pTask, or MAX_TASKS
+	TSchedNode *GetNextTask (void);	// the next task to run, 0 if none
+	TSchedNode *ScanTasks (unsigned nTicks, boolean bSkipHogs);	// one round-robin pass
+	TSchedNode *FindNode (CTask *pTask);
+	TSchedNode *FindPrev (TSchedNode *pNode);	// its predecessor in the circle
+	boolean GroupAlive (void *pKey);	// a task of the group pKey is not terminated
 
 private:
-	CTask *m_pTask[MAX_TASKS];
+	TSchedNode *m_pHead;	// the list (circular): its first ...
+	TSchedNode *m_pTail;	// ... and its last task (m_pTail->pNext == m_pHead)
 	unsigned m_nTasks;
 
 	CTask *m_pCurrent;
-	unsigned m_nCurrent;	// index into m_pTask
+	TSchedNode *m_pCurNode;	// m_pCurrent's node
+	TSchedNode *m_pScan;	// the round-robin scan starts after this one
 
 	CTask *m_pIdleTask;	// run only when nothing else is ready (deprioritized)
 
@@ -203,10 +233,6 @@ private:
 	// Preemption state (additions)
 	volatile boolean m_bResched;	// set by OnTimerTick when the slice expires
 	unsigned m_nSliceTicks;		// scheduler ticks left in the current slice
-	u8 m_nNoKill[MAX_TASKS];	// per slot: EnterNoKill depth
-	boolean m_bKillPending[MAX_TASKS];	// ... and a TerminateTask that waits for it
-	u8 m_nPreemptStreak[MAX_TASKS];	// per slot: preemptions since its last voluntary
-					// yield (>= SCHED_HOG_STREAK: a CPU hog)
 	boolean m_bPreempting;		// the current Yield comes from OnPreempt
 	unsigned m_nSliceCfg;		// slice length, ticks (Configure)
 	boolean m_bHogSched;		// hog detection + bursts enabled (Configure)

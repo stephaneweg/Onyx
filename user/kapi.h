@@ -48,6 +48,9 @@
 #define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; kapi_drag_data
 #define GUI_EVENT_DRAG_OVER	16	// a drag hovers us (GUI_DND_FLAGS & DND_F_LEAVE: it left)
 #define GUI_EVENT_DRAG_DONE	17	// to the source: GUI_DND_PID (0 = none) + GUI_DND_FLAGS
+#define GUI_EVENT_DISPLAY_RESIZE 19	// (v66) the screen's size changed: GUI_DISPLAY_W / _H (value)
+#define GUI_DISPLAY_W(v)	((int) (((v) >> 16) & 0xFFFF))
+#define GUI_DISPLAY_H(v)	((int) ((v) & 0xFFFF))
 #define GUI_EVENT_WINCTL	18	// (v64) a title button: value KAPI_FRAME_MENU (the window menu)
 					// or KAPI_FRAME_MAXIMISE (also a double click on the title)
 #define GUI_DND_FLAGS(v)	((unsigned) (((unsigned long) (v) >> 32) & 0xFF))
@@ -398,6 +401,71 @@ static inline unsigned *kapi_resize_window2 (int w, int h, int *stride)
 #define KAPI_DESK_GEN(i)	(((unsigned) (i) >> 16) & 0x7FFF)
 static inline int kapi_desk (int set, int count) { return KT->version >= 65 ? KT->desk (set, count) : 1 << 8; }
 static inline int kapi_win_desk (unsigned id, int n) { return KT->version >= 65 ? KT->win_desk (id, n) : -1; }
+// (v66) screen_set: the screen's resolution now (640 x 480 .. 2560 x 1600, w even); every window
+// kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 out of bounds; -2 not now (a
+// full-screen app...); -3 the firmware refused it (old size kept); -4 an older kernel. Not kept
+// across a reboot (SD:/cmdline.txt width= / height= are).
+static inline int kapi_screen_set (int w, int h) { return KT->version >= 66 ? KT->screen_set (w, h) : -4; }
+
+// (v67) Threads: more tasks in this process (its memory, window, files, sockets), preempted like
+// it; the process ends with its main thread (tid 1). Timeouts in ms: 0 = only try,
+// KAPI_WAIT_FOREVER = none. An older kernel: -3 / nothing (a single thread).
+// kapi_thread_create (fn, arg, stack_size (0: 256 KB), name (0: its tid)) -> tid >= 2, -1 no
+// memory, -2 too many (32); fn's return value is its exit code. kapi_thread_join -> 0 (*code),
+// -1 timeout, -2 no such thread, -3 itself.
+// The GUI belongs to the thread that pumps (the main one): a worker hands its result over with
+// kapi_post (fn, ctx, value), which the pump (kapi_pump_events / kapi_pump_wait /
+// kapi_wait_for_exit) runs on its thread. kapi_pump_wait (ms) sleeps until an event / a post /
+// the close box, then pumps.
+static inline int  kapi_thread_create (int (*fn) (void *), void *arg, unsigned stack_size, const char *name)
+	{ return KT->version >= 67 ? KT->thread_create (fn, arg, stack_size, name) : -3; }
+static inline void kapi_thread_exit (int code) { if (KT->version >= 67) KT->thread_exit (code); KT->exit (code); }
+static inline int  kapi_thread_join (int tid, unsigned timeout_ms, int *code)
+	{ return KT->version >= 67 ? KT->thread_join (tid, timeout_ms, code) : -2; }
+static inline int  kapi_thread_self (void) { return KT->version >= 67 ? KT->thread_self () : 1; }
+// Synchronisation objects (handles > 0; 256 per process). mutex: recursive, released if its
+// owner thread ends; lock -> 0, -1 timeout, -2 bad handle. event: manual reset (stays set until
+// reset) or auto (a wait takes it); wait -> 0, -1, -2. barrier: count threads meet; wait -> 1 for
+// the last one in, 0 the others. kapi_sync_close frees any of them.
+static inline int kapi_mutex_create (void) { return KT->version >= 67 ? KT->mutex_create () : -1; }
+static inline int kapi_mutex_lock (int h, unsigned timeout_ms) { return KT->version >= 67 ? KT->mutex_lock (h, timeout_ms) : -2; }
+static inline int kapi_mutex_unlock (int h) { return KT->version >= 67 ? KT->mutex_unlock (h) : -2; }
+static inline int kapi_event_create (int manual_reset, int initial) { return KT->version >= 67 ? KT->event_create (manual_reset, initial) : -1; }
+static inline int kapi_event_set (int h) { return KT->version >= 67 ? KT->event_set (h) : -2; }
+static inline int kapi_event_reset (int h) { return KT->version >= 67 ? KT->event_reset (h) : -2; }
+static inline int kapi_event_wait (int h, unsigned timeout_ms) { return KT->version >= 67 ? KT->event_wait (h, timeout_ms) : -2; }
+static inline int kapi_barrier_create (unsigned count) { return KT->version >= 67 ? KT->barrier_create (count) : -1; }
+static inline int kapi_barrier_wait (int h) { return KT->version >= 67 ? KT->barrier_wait (h) : -2; }
+static inline int kapi_sync_close (int h) { return KT->version >= 67 ? KT->sync_close (h) : -2; }
+static inline int kapi_post (void (*fn) (void *ctx, long value), void *ctx, long value)
+	{ return KT->version >= 67 ? KT->post (fn, ctx, value) : -2; }
+static inline int kapi_pump_wait (unsigned timeout_ms)
+	{ if (KT->version >= 67) return KT->pump_wait (timeout_ms); KT->msleep (timeout_ms > 16 ? 16 : timeout_ms); KT->pump_events (); return 0; }
+
+// A user-space lock between this process's threads (the allocators, newlib): an atomic swap,
+// and a yield while another thread holds it -- nothing to create, a zeroed int is free. Not
+// recursive. (Threads all run on core 0; the swap is still an exclusive load / store pair,
+// since the timer may preempt a thread anywhere in its own code.)
+static inline int kapi__xchg (volatile int *p, int v)
+{
+	int old; unsigned fail;
+	__asm__ volatile ("1: ldaxr %w0, [%2]\n\tstxr %w1, %w3, [%2]\n\tcbnz %w1, 1b"
+			  : "=&r" (old), "=&r" (fail) : "r" (p), "r" (v) : "memory");
+	return old;
+}
+static inline unsigned kapi__core (void)
+{
+	unsigned long m; __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m)); return (unsigned) (m & 3);
+}
+// (on an app core -- kapi_core_run's code, which makes no kapi call -- it spins instead)
+static inline void kapi_lock (volatile int *l)
+{
+	while (kapi__xchg (l, 1) != 0)
+	{
+		if (kapi__core () == 0) KT->yield (); else __asm__ volatile ("yield");
+	}
+}
+static inline void kapi_unlock (volatile int *l) { __asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory"); }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
