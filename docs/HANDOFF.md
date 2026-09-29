@@ -358,6 +358,47 @@ document; all the records → a series of documents). Done (the user guide: docs
   columns (newspaper); footnotes; sections with their own page setups; a mail merge's conditions
   (IF fields) and a filter on the records; printing / PDF.
 
+## Ledger, Belgian accounting (2026-09-29, `claude/happy-wright-wg38ez`, pushed to `main`)
+
+Asked by the user: "un logiciel de comptabilité soigné, professionnel et utilisable, pour une PME ou
+un indépendant, avec le PCMN belge et la déclaration TVA XML (Intervat)" — customers / suppliers,
+purchases / sales, misc. operations, general ledger and journal; GnuCash as the reference for the
+look, BOB 50 for the features; then documents from templates (quotes, orders, delivery notes) and the
+general ledger, income statement and balance sheet in Writer or the Spreadsheet. Done (the user
+guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
+
+- **`user/Apps/ledger/`** (integer only; the engine plain C++, tested on the PC): the PCMN (French /
+  Dutch), parties (VAT numbers and IBANs checked, a VAT situation choosing the codes, a language for
+  the documents), sales / purchase invoices and credit notes (Odoo's Belgian VAT codes, reverse
+  charges, half-deductible cars, the entry shown as typed, a sale's structured communication), bank
+  and cash statements (open items ticked, matched), misc. operations, matching, the fiscal years
+  (closed: the result appropriated), the VAT grids and Intervat's checks, the return's XML, the
+  settlement (451200 / 411200), the customer and intra-Community listings, reports (journals, general
+  ledger, trial balance, balance sheet, income statement, balances, ages, a party's account, VAT
+  detail) to Writer (RTF), the Spreadsheet (.xlsx) or CSV.
+- **Quotes, orders, delivery notes, purchase orders** (`commerce.h`, `commerce_ui.h`): numbered by
+  kind and year, each becomes the next, then the invoice (posted, the document marked invoiced).
+- **Printing from templates** (`print.h`): the data written as Cardfile forms (the document's, its
+  lines'), then `writer --merge`: Writer's merge job has a new key, **`lines`** — the template's table
+  row holding `Line...` fields repeated per line (`merge.h`, `merge_lines`). The templates (French,
+  `nl/`, `en/`, and `fields.card`) by `tools/ledger/gen_templates.py`; Settings ▸ Printing edits them.
+  Writer's RTF reader now tells a table's lines apart (rows only → `TB_ROWS`; test added).
+- **CODA import** (`coda.h`): the bank's statements, their parties and invoices found; the statements
+  shown one after the other to complete (`main.cpp`'s queue, `StatementPage::loadImport`).
+- **SEPA payments** (`sepa.h`, `payui.h`): pain.001.001.09 (hybrid addresses, as Febelfin asks from
+  November 2026), validated against ISO's schema; the invoices flagged `P` (Transfer sent).
+- **Demo** `SD:/docs/demo-company.ledger` + `SD:/docs/demo-bank-statement.cod` (made by
+  `tools/ledger/make_demo.cpp` through the engine: 2025 closed, 2026 to September, quotes and orders);
+  `ledger = ledger` in `fileassoc.ini`; the icon (`tools/gen_assets.py ledger`); screenshots
+  `ledger*.png` (the `ledger` scenario of `shots.sh`, `ledger-print` through Writer); host test
+  `sh tools/tests/run_ledger_test.sh` (194 checks; the XML validated when `xmllint` is installed).
+- **Next ideas**: **e-invoicing** — Belgium requires structured B2B invoices through **Peppol** from
+  2026: a sales invoice as UBL (Peppol BIS Billing 3.0) and a purchase UBL read would be the most
+  useful next step; CAMT.053 statements (the XML successor of CODA); payment reminders from the
+  overdue invoices (a template like the others); an articles catalogue for the quotes' lines (their
+  prices, units); recurring invoices; invoices typed as quantity × price like the quotes; a party's
+  statement printed; analytic codes; foreign currencies; the annual accounts (NBB) not done.
+
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
 - **Done (cloud session), all pushed:** option A of `docs/GC-WINDOWS-REPORT.md` §5 -- the GX on the

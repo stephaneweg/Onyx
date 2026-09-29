@@ -1,0 +1,289 @@
+# Onyx Cardfile -- a form and its records (open it with Cardfile)
+[form]
+version = 1
+title = Ledger's merge fields
+description = The fields a document's template can hold (print.h), with a quote's values: Writer's Tools > Mail Merge lists them.
+
+[field]
+column = Kind
+label = Kind
+type = text
+
+[field]
+column = Number
+label = Number
+type = text
+
+[field]
+column = Date
+label = Date
+type = text
+
+[field]
+column = Until
+label = Until
+type = text
+
+[field]
+column = DueDate
+label = DueDate
+type = text
+
+[field]
+column = UntilLine
+label = UntilLine
+type = text
+
+[field]
+column = Reference
+label = Reference
+type = text
+
+[field]
+column = ReferenceLine
+label = ReferenceLine
+type = text
+
+[field]
+column = Text
+label = Text
+type = text
+
+[field]
+column = Communication
+label = Communication
+type = text
+
+[field]
+column = Terms
+label = Terms
+type = text
+
+[field]
+column = TermsText
+label = TermsText
+type = text
+
+[field]
+column = FromDocument
+label = FromDocument
+type = text
+
+[field]
+column = FromLine
+label = FromLine
+type = text
+
+[field]
+column = FileName
+label = FileName
+type = text
+
+[field]
+column = CompanyName
+label = CompanyName
+type = text
+
+[field]
+column = CompanyLegal
+label = CompanyLegal
+type = text
+
+[field]
+column = CompanyStreet
+label = CompanyStreet
+type = text
+
+[field]
+column = CompanyZip
+label = CompanyZip
+type = text
+
+[field]
+column = CompanyCity
+label = CompanyCity
+type = text
+
+[field]
+column = CompanyCountry
+label = CompanyCountry
+type = text
+
+[field]
+column = CompanyAddress
+label = CompanyAddress
+type = multiline
+
+[field]
+column = CompanyVAT
+label = CompanyVAT
+type = text
+
+[field]
+column = CompanyVATLine
+label = CompanyVATLine
+type = text
+
+[field]
+column = CompanyEmail
+label = CompanyEmail
+type = text
+
+[field]
+column = CompanyPhone
+label = CompanyPhone
+type = text
+
+[field]
+column = CompanyWeb
+label = CompanyWeb
+type = text
+
+[field]
+column = CompanyContact
+label = CompanyContact
+type = multiline
+
+[field]
+column = CompanyIBAN
+label = CompanyIBAN
+type = text
+
+[field]
+column = CompanyBIC
+label = CompanyBIC
+type = text
+
+[field]
+column = CompanyBankLine
+label = CompanyBankLine
+type = text
+
+[field]
+column = CompanyRegister
+label = CompanyRegister
+type = text
+
+[field]
+column = CompanyLegalLine
+label = CompanyLegalLine
+type = text
+
+[field]
+column = PartyName
+label = PartyName
+type = text
+
+[field]
+column = PartyStreet
+label = PartyStreet
+type = text
+
+[field]
+column = PartyZip
+label = PartyZip
+type = text
+
+[field]
+column = PartyCity
+label = PartyCity
+type = text
+
+[field]
+column = PartyCountry
+label = PartyCountry
+type = text
+
+[field]
+column = PartyAddress
+label = PartyAddress
+type = multiline
+
+[field]
+column = PartyVAT
+label = PartyVAT
+type = text
+
+[field]
+column = PartyVATLine
+label = PartyVATLine
+type = text
+
+[field]
+column = PartyEmail
+label = PartyEmail
+type = text
+
+[field]
+column = PartyPhone
+label = PartyPhone
+type = text
+
+[field]
+column = PartyCode
+label = PartyCode
+type = text
+
+[field]
+column = TotalNet
+label = TotalNet
+type = text
+
+[field]
+column = TotalVAT
+label = TotalVAT
+type = text
+
+[field]
+column = Total
+label = Total
+type = text
+
+[field]
+column = VATDetail
+label = VATDetail
+type = text
+
+[field]
+column = LineNo
+label = LineNo
+type = text
+
+[field]
+column = LineText
+label = LineText
+type = text
+
+[field]
+column = LineQty
+label = LineQty
+type = text
+
+[field]
+column = LinePrice
+label = LinePrice
+type = text
+
+[field]
+column = LineVAT
+label = LineVAT
+type = text
+
+[field]
+column = LineTotal
+label = LineTotal
+type = text
+
+[field]
+column = LineTax
+label = LineTax
+type = text
+
+[field]
+column = LineGross
+label = LineGross
+type = text
+
+[records]
+Kind	Number	Date	Until	DueDate	UntilLine	Reference	ReferenceLine	Text	Communication	Terms	TermsText	FromDocument	FromLine	FileName	CompanyName	CompanyLegal	CompanyStreet	CompanyZip	CompanyCity	CompanyCountry	CompanyAddress	CompanyVAT	CompanyVATLine	CompanyEmail	CompanyPhone	CompanyWeb	CompanyContact	CompanyIBAN	CompanyBIC	CompanyBankLine	CompanyRegister	CompanyLegalLine	PartyName	PartyStreet	PartyZip	PartyCity	PartyCountry	PartyAddress	PartyVAT	PartyVATLine	PartyEmail	PartyPhone	PartyCode	TotalNet	TotalVAT	Total	VATDetail	LineNo	LineText	LineQty	LinePrice	LineVAT	LineTotal	LineTax	LineGross
+Devis	2026/0001	28/09/2026	28/10/2026		Valable jusqu'au 28/10/2026	CMD-4411	Votre référence : CMD-4411	La nouvelle carte du restaurant		30	30 jours			Quote 2026-0001 Brasserie du Sablon SRL	Atelier Lumen SRL	SRL	Rue des Tanneurs 58	1000	Bruxelles	Belgique	Rue des Tanneurs 58\n1000 Bruxelles	BE 0721.583.097	TVA BE 0721.583.097	compta@atelier-lumen.be	+32 2 512 44 90	www.atelier-lumen.be	Tél. +32 2 512 44 90\ncompta@atelier-lumen.be\nwww.atelier-lumen.be	BE41 3630 8123 4510	BBRUBEBB	IBAN BE41 3630 8123 4510  ·  BIC BBRUBEBB	RPM Bruxelles	Atelier Lumen SRL  ·  Rue des Tanneurs 58, 1000 Bruxelles  ·  TVA BE 0721.583.097  ·  RPM Bruxelles	Brasserie du Sablon SRL	Place du Grand Sablon 12	1000	Bruxelles		Place du Grand Sablon 12\n1000 Bruxelles	BE 0745.321.175	TVA BE 0745.321.175	info@brasseriedusablon.be	+32 2 511 20 20	BRASSERI	1.495,00	313,95	1.808,95	21 % : 313,95 sur 1.495,00	1	Design of the new menu	2,5	450,00	21 %	1.125,00	236,25	1.361,25

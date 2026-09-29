@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf cardfile
+       eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf cardfile ledger
 
 APP_ELFS = $(APPS:=.elf)
 
@@ -183,6 +183,9 @@ gcemu.elf: CXXFLAGS := $(CXXFLAGS_FP)
 gcemu.elf: Apps/gcemu/gxv3d.h v3d/gxtev.h v3d/shaders.h
 graphcalc.elf: Apps/graphcalc/expr.h
 cardfile.elf: $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h
+# Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
+# the reports' .xlsx: the PNG writer's zip / deflate).
+ledger.elf: $(wildcard Apps/ledger/*.h) $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h img/pngsave.hpp
 basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
 basic/libbasic.a: $(BAS_OBJ)

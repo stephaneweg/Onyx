@@ -982,8 +982,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *calendar — calendar + notes* | *mandelbrot — fractal explorer* | *eyes — gadget* |
 | ![taskman](../screenshots/taskman.png) | ![2048](../screenshots/2048.png) | ![minesweeper](../screenshots/minesweeper.png) |
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
-| ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | |
-| *sheet — spreadsheet* | *irc — IRC client* | |
+| ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
+| *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
 
 ### Productivity and tools
 
@@ -992,6 +992,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
 | **Writer** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Writer, the word processor* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
+| **Ledger** (`ledger`) | **Accounting** for a Belgian company or self-employed person, in the way of BOB 50 and GnuCash: the **PCMN** (French or Dutch), customers and suppliers, sales and purchase **invoices** and credit notes, **bank and cash** statements (a bank's **CODA** file imported: parties and invoices found), miscellaneous operations, **quotes, orders, delivery notes, purchase orders** (each becomes the next, then the invoice), documents **printed by Writer** from templates (French, Dutch, English), the suppliers **paid** by a SEPA file, the **VAT returns** as Intervat XML with the customer and intra-Community listings, **reports** (journals, general ledger, trial balance, balance sheet, income statement, ages) to Writer or the Spreadsheet, the fiscal years closed. Reads / writes `.ledger` files. See *Ledger, the accounts* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
 | **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Writer**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Writer keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
@@ -1174,7 +1175,9 @@ document in another Writer; **Merge to Files...** writes each letter in a file o
 name and the folder chosen give the folder and the format (`.rtf`, `.docx`, `.odt`), the files
 named after a field (**Files**: "Named after: Name" → `Alice Martin.odt`) or numbered
 (`letter-1.odt`...). Cardfile does the same from a form: **Record ▸ Mail Merge...** (see
-*Cardfile*). A multi-line value (an address) keeps its lines; a date shows as in Cardfile
+*Cardfile*); so does **Ledger**, printing its quotes, orders and invoices from templates — a table's
+row holding a document's lines' fields («LineText», «LineQty», «LineTotal»...) is repeated for each
+line (see *Ledger*); one document written opens at once. A multi-line value (an address) keeps its lines; a date shows as in Cardfile
 (29/09/2026), yes / no as Yes / No. Files written: the documents chosen; `SD:/apps/writer.app/
 merge-letter.rtf` and `merge.job` (the request to the other Writer).
 
@@ -1421,6 +1424,249 @@ starting with `#` or `;` is a comment (not in `[records]`). Cardfile reads such 
 keys in any case, the header's columns in any order (a column missing: empty values; unknown:
 ignored), no `[field]` at all (the header's columns become text fields), a value that is not of its
 type (kept as it is — the form asks for a valid one when the record is edited).
+
+### Ledger, the accounts (`ledger`)
+
+![Ledger](../screenshots/ledger.png)
+*Ledger's overview with its demo company (`SD:/docs/demo-company.ledger`): what is to receive and to
+pay, the bank, the year's result, the sales and purchases by month, the next VAT return, the invoices
+overdue.*
+
+Ledger keeps the **double-entry books** of a Belgian company or self-employed person: its chart of
+accounts (the **PCMN**, in French or in Dutch), its customers and suppliers, its **journals** (sales,
+purchases, bank, cash, miscellaneous operations) and their documents, its **fiscal years**, its **VAT
+returns** (Intervat), its **quotes and orders** — in the way of **BOB 50** for what it does, as simply
+as **GnuCash** shows it. You type documents (an invoice, a statement), never entries: Ledger makes
+the entry, shows it as you type, posts it when you save. Everything is **written to the file at once**
+(the file before kept as `.bak`): there is no Save for the books.
+
+**The books.** One file (`.ledger`) holds one company. **File ▸ New Company...** asks for its name,
+VAT number, address, e-mail, phone and bank account, the chart's language (**French** or **Dutch**:
+the documents' language too), its VAT situation (**files VAT returns** — quarterly or monthly —,
+**the small business franchise**, **not subject to VAT**) and its first fiscal year; the chart, the
+journals (VEN / VKP sales, ACH / AKP purchases, BNK bank, CAI / KAS cash, OD / DIV miscellaneous
+operations) are made, all can be changed (**Settings**). **File ▸ Open...** (^O) opens a company; so does a `.ledger`
+double-clicked in the File Viewer (`fileassoc.ini`), dropped on the window or named on the command
+line (`ledger SD:/docs/x.ledger`); started alone, Ledger opens the books it had last
+(`SD:/apps/ledger.app/last.txt`), else it welcomes you — **New company**, **Open**, or the **demo
+company** (`SD:/docs/demo-company.ledger`: *Atelier Lumen SRL*, a Brussels design studio, from January
+2025 to September 2026, 2025 closed). **File ▸ Save a Copy As...** writes a copy elsewhere.
+
+**The window.** At the left, the side bar: the company, the **fiscal year shown** (the lists, reports
+and the VAT follow it), the pages — **Overview**; the journals **Sales**, **Purchases**, **Bank and
+cash**, **Misc. operations**; **Quotes and orders**; **Customers**, **Suppliers**; **Chart of
+accounts**, **Reports**, **VAT**; **Settings** — with red badges: invoices overdue, a VAT return late.
+At the right, the page: its title, a word on it, its buttons (the accent one: its main action). A
+document opens **in place of its list**; **Save** posts it and goes back, **Cancel** (Esc) leaves it
+(asking when something was typed). Keys: **^N** a new document of the page, **^S** save the
+document, **^F** search, **Esc** leave; in a document, **Tab** / **Enter** the next field, in its
+lines' grid the next cell (the last one: a new line), **F4** or **Alt+↓** the list of what can be
+typed there (accounts, parties, VAT codes), **Ctrl+Del** removes a line; **Delete** in a list deletes
+the document chosen. A field for a party, an account or a VAT code finds as you type — a name, a code,
+a VAT number, an account's number or words of its name.
+
+#### Sales and purchases
+
+![Sales](../screenshots/ledger-sales.png)
+*The sales: numbers, customers, totals and their state — paid, due, late, a credit note settled.*
+
+**Sales** and **Purchases** list the journal's invoices and credit notes of the year shown: number,
+date, party, description (a purchase: the supplier's number), total, **state** (**Paid**, **Due**
+15/10, **4 days late**, **Credit open**, **Settled**, **Transfer sent**). **All / Open / Overdue / Paid**
+filter them, the search box finds words of a party, a description, a number or an amount; the foot
+adds them up. A right click: **Open**, **Print** (a sale), **Make a credit note for it**, **Delete...**
+(a sale only when it is its journal's last: make a credit note instead).
+
+![An invoice](../screenshots/ledger-invoice.png)
+*A sales invoice: the customer (its address, its VAT number), the dates, the structured communication,
+its lines, the entry it makes and its totals.*
+
+**New invoice** (or **New purchase**, **Credit note**): the **customer** (or supplier) typed and picked
+— **+** makes a new card —, its address shown; the **date**; the **due date** (the party's payment
+terms: 30 days by default; its number of days shown); a **description**; the kind (**Invoice** /
+**Credit note**); a sale's **structured communication** (+++123/4567/89002+++, made from its number
+when saved) or the supplier's one; a **reference** (a purchase: the supplier's invoice number — the
+same one twice is asked about); the journal when there are several. The **lines**: the **account**
+(a sale: 70..., the party's usual one first; a purchase: 6..., 2... for investments), a
+**description**, the amount **excluding VAT**, the **VAT code** — the party's situation chooses it
+(a Belgian company, a private person, an EU company — its services then reverse-charged —, outside the
+EU, a Belgian co-contractor): **V21**, **V12**, **V6**, **V0**, **VEUS** / **VEUG** / **VEUT**
+(intra-EU services, goods, triangular), **VCC** (co-contractor), **VEX** (export), **VX** (exempt,
+art. 44); purchases **A21** / **A12** / **A6** / **A0**, **A21D50** (a car: half deductible),
+**A21ND**, **AEU21**... (intra-EU acquisitions), **AEUS21** (EU services), **ACC21**... (co-contractor),
+**AWS21**, **AIM21**, and the regularisations **R61** / **R62** —, the **VAT** (computed; typed when the
+invoice says otherwise: shown in blue), the total. Below: **the entry it makes** (the party's account,
+the accounts, the VAT due or deductible — with the reverse charges' both sides —, debit and credit)
+and the totals by VAT code. **Save** posts it (**Save & New**: and the next one); a document whose
+VAT return is filed (or whose year is closed) is **locked**. **Print** makes the invoice in Writer
+(*Printing* below).
+
+#### Bank and cash
+
+![A CODA statement](../screenshots/ledger-coda.png)
+*The bank's CODA file imported: a movement a line, its party found (by its structured communication,
+its account, its name) and the invoice it pays ticked; the bank's charges on 657200; one left to
+complete.*
+
+**Bank and cash** lists the statements (number, date, description, journal, in, out, the new balance).
+**New statement**: the journal, the date, a description (*Statement 43*), the **new balance** the bank
+says (optional: checked against the old balance and the movements); the **old balance** is the
+journal's. A **movement**: a **party** or an **account** (typed: a name, an account's number), a
+description, the **amount** (+ in, − out). A party's **open items** show below — tick those the
+movement pays (its amount follows them); an amount typed ticks the one item as much; a **structured
+communication** typed in the description finds its invoice (party, item, amount). Saved: the items
+ticked are **matched** with the payment (paid).
+
+**Import CODA** (or **Tools ▸ Import CODA...**) reads the **CODA** file your bank gives (Febelfin's
+coded statements, version 2: `.cod`, one statement or several): each statement's journal is found by
+its **IBAN** (a bank journal's, **Settings ▸ Journals** — Ledger says so when none has it), those
+already in the books are skipped, then each statement is shown to be completed: every movement's
+party found by its **structured communication** (the invoice it pays ticked — sales and purchases
+alike), else by the counterparty's **IBAN** (a card's) or its **name**, the item as much ticked (or
+all the party's items when they add up to it); the bank's charges (CODA families 35 and 80) on
+**657200**; a movement not found shows **To complete** in red — type its party or account. The header
+says what is left (*CODA 1 of 3: 2 movements to complete*); **Save** posts it and shows the next one.
+The demo has one: `SD:/docs/demo-bank-statement.cod` (Import CODA ▸ its name ▸ Open).
+
+**Misc. operations**: an entry's lines — account (a party's account asks for its party), description,
+**debit**, **credit** —, saved when it balances; one can be flagged **the opening balances**; the VAT
+settlements are listed there too.
+
+#### Quotes and orders
+
+![Quotes and orders](../screenshots/ledger-quotes.png)
+*The quotes, orders, delivery notes and purchase orders of the year, their state: draft, sent,
+accepted, ordered, delivered, invoiced, expired, refused.*
+
+**Quotes and orders** keeps the **commercial documents** — not posted: a **quote** (its validity), a
+customer's **order** (its delivery date), a **delivery note**, a **purchase order** (to a supplier) —
+each numbered in its kind and year (*Quote 2026/0003*). The list filters them (**All**, **Quotes**,
+**Orders**, **Delivery notes**, **Purchase orders**), finds words, shows their **state**: **Draft**,
+**Sent**, **Accepted**, **Refused**, **Expired** (a quote past its date), then what followed —
+**Ordered**, **Delivered**, **Invoiced**. **New quote**, or **Other...** for an order, a delivery note,
+a purchase order (also **Documents ▸ Quote / Order / Delivery Note / Purchase Order**).
+
+![A quote](../screenshots/ledger-quote.png)
+*A quote: its customer, dates, description and lines — quantity × unit price —, its totals; Print,
+Next step.*
+
+A document: the party, the **date**, **Valid until** (a quote; 30 days by default) or **Delivery**, a
+**description**, the **state**, the party's **reference**; its **lines**: a description, a
+**quantity** (2,5 hours), a **unit price** excluding VAT, the VAT code (the party's), the total; the
+totals below. **Next step**: a quote becomes the **order** (the quote marked accepted), an order (or a
+quote) a **delivery note**, any of them **the invoice** — the invoice's page opens filled (each line
+"2,5 x Design...", the quantity times the price, on the party's usual account), **Save** posts it and
+marks the document **Invoiced**; a quote can be marked **Accepted** or **Refused**. A document made
+from another says so (*From Quote 2026/0001*) and marks it done when saved. **Print** makes it in
+Writer.
+
+#### Printing: documents from templates
+
+![A quote printed](../screenshots/ledger-print.png)
+*A quote printed: Writer fills the template's fields — the company, the customer, the lines (a table
+row repeated for each), the totals, the VAT's detail, the conditions.*
+
+**Print** (a quote, an order, a delivery note, a purchase order, a sales invoice or credit note)
+writes the document's data and asks **Writer** to make it from its **template** — a Writer document
+(`.rtf`, `.docx` or `.odt`) in `SD:/apps/ledger.app/templates/`: `quote`, `order`, `delivery`,
+`porder`, `invoice`, `creditnote`. The templates come in **French** (in that folder), **Dutch**
+(`templates/nl/`) and **English** (`templates/en/`): a party's documents take **its language** (its
+card: **Language**), else the company's (its chart's). The document made is written in
+`SD:/docs/Quotes`, `Orders`, `Delivery notes`, `Purchase orders`, `Invoices` or `Credit notes`
+(named after its number and party: `Quote 2026-0003 Brouwerij De Klok NV.rtf`) and shown in Writer —
+save it again as `.docx` or `.odt` there.
+
+A template is an ordinary Writer document whose **merge fields** Ledger fills: the document's —
+«Kind», «Number», «Date», «Until», «DueDate», «Reference», «Text», «Communication», «Terms», «TotalNet»,
+«TotalVAT», «Total», «VATDetail» (the VAT by rate, with the legal mentions of reverse charges and
+exemptions) —, the company's — «CompanyName», «CompanyAddress», «CompanyVAT», «CompanyIBAN»,
+«CompanyBIC», «CompanyEmail», «CompanyPhone», «CompanyWeb», «CompanyRegister»... —, the party's —
+«PartyName», «PartyAddress», «PartyVAT», «PartyCode»... —, and the ones made to be printed as they are
+(a label and its value, empty without a value): «UntilLine» (*Valable jusqu'au 28/10/2026*),
+«ReferenceLine», «FromLine», «TermsText», «CompanyVATLine», «CompanyContact», «CompanyBankLine»,
+«CompanyLegalLine», «PartyVATLine». A **table row** holding the lines' fields — «LineNo»,
+«LineText», «LineQty», «LinePrice», «LineVAT», «LineTotal», «LineTax», «LineGross» — is **repeated
+for each line**. **Settings ▸ Printing** lists the templates of a language, **Edit in Writer** opens
+one (a language without its own: made from the French one), **Open the folder** shows them; in
+Writer, **Tools ▸ Mail Merge** lists every field with a sample's values
+(`templates/fields.card`) — change the look, the words, add a logo. The files Ledger writes for
+Writer: `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job`.
+
+#### Customers, suppliers, the chart
+
+**Customers** and **Suppliers**: the cards (code, name, VAT number, city, balance, overdue) — **All**,
+**With a balance**, **Overdue**, a search —; below, the chosen party's **account**: its documents and
+payments with the running balance (**Open items only**); tick lines and **Match** them (they add up to
+zero: an invoice and its payment), **Unmatch** undoes it. **New customer** / **Card**: its name, code
+(made from the name), **payment terms** (days), **VAT number** (checked: a Belgian one's check digits,
+an EU one's form), **VAT situation** (Belgian company, private person, EU, outside the EU,
+co-contractor: its VAT codes by default), **language** (its documents'), address and country,
+e-mail, phone, **IBAN** / BIC (checked), its usual **account** and **VAT code**, notes. A party with
+documents cannot be deleted.
+
+**Chart of accounts**: the PCMN's tree (classes, groups, accounts) and the chosen account's
+**register** (its lines, debit, credit, balance); **New account**, **Edit** (its name, its nature for
+the VAT return — goods, services, investments —, hidden: no longer offered).
+
+#### Paying the suppliers (SEPA)
+
+**Purchases ▸ Pay...** (or **Tools ▸ Pay Suppliers (SEPA)...**) lists the suppliers' open invoices —
+those due within a week of the day chosen are ticked, a supplier without an IBAN cannot be (its card);
+choose the **account** paid from (a bank journal's IBAN) and the **day** the bank pays; **Make the
+file** writes a **SEPA credit transfer** file (ISO 20022 `pain.001.001.09`, as Belgian banks take it:
+the supplier's name, address, IBAN and BIC, its structured communication when the invoice has one,
+else its number) in `SD:/docs/Payments/` — upload it on your bank's site. Those invoices show
+**Transfer sent** until the bank's statement pays them (a CODA import finds them by the supplier's
+IBAN).
+
+#### Reports
+
+![Reports](../screenshots/ledger-reports.png)
+*The general ledger: each account's lines of the period, the balance brought forward and the running
+balance (D debit, C credit).*
+
+**Reports**: the **journals**, the **general ledger** (each account's lines with their running
+balance and the balance brought forward), the **trial balance**, the **balance sheet**, the **income
+statement** (the PCMN's headings, the year's result), the **customers' and suppliers' balances**,
+**receivables and payables by age**, **a party's account**, the **VAT detail** — for a period (**Year**,
+**Q1**–**Q4**, **Month**, or dates typed), a range of accounts, with the **zero balances** or not.
+**Writer** opens the report as a document to print (A4, landscape when it is wide, its header and page
+numbers), **Spreadsheet** as a workbook, **Save as...** writes it (`.rtf`, `.xlsx`, `.csv`) — in
+`SD:/docs/Reports` by default.
+
+#### VAT
+
+![VAT](../screenshots/ledger-vat.png)
+*The VAT return of the quarter: its grids as Intervat has them, the checks, the periods' state and due
+dates.*
+
+**VAT**: the year's periods (quarters or months: **Filed**, **Running**, **To come**, their due dates —
+the 20th of the next month), the chosen period's **grids** (00–49 operations, 54–64 VAT due and
+deductible, 71 / 72 the balance), the **checks** Intervat makes, **Ask for the refund**, **Ask for
+payment forms**. **Intervat XML** writes the return's file (to upload on Intervat, the SPF Finances'
+site), **Detail** lists the lines behind each grid, **Mark as filed** locks the period's VAT entries
+and posts its **settlement** (the VAT due and deductible moved to 451200 / 411200: the payment to the
+State then goes on 451200), **Listings** writes the **annual customer listing** and the
+**intra-Community listing** (XML). A late return shows a red badge on **VAT**.
+
+#### Settings, the fiscal years
+
+**Settings**: **Company** (name, legal form, address, country, VAT number, e-mail, phone, IBAN / BIC,
+**register** — *RPM Bruxelles* — and web site: the documents' letterhead; the VAT situation and the
+returns' period); **Fiscal years** (**Add the next year**; **Close the year...**: its result carried
+forward — a profit 693000 / 140000, a loss 141000 / 793000 — by an entry on its last day, its entries
+locked; **Reopen the year**; the balance sheet's accounts go on from year to year: no opening entry is
+needed); **Journals** (code, name, kind, its account — a bank's 55..., cash 57... —, the bank's
+**IBAN**: the CODA import and the payments need it, hidden); **Accounts** (the accounts by role:
+customers, suppliers, VAT due, VAT deductible, profit and loss carried forward, suspense);
+**Printing** (the templates).
+
+**Files**: `.ledger` — text in Latin-1 (easy to read and to mend by hand): a `[company]` head
+(`key = value`), then `[years]`, `[journals]`, `[accounts]`, `[parties]`, `[entries]` (a document,
+then its lines), `[returns]` (the VAT returns filed), `[documents]` (the quotes and orders, then their
+lines), a tab between the cells (`\t`, `\n`, `\\` in a cell); the format is described at the top of
+`user/Apps/ledger/fileio.h`. Reports in `SD:/docs/Reports`, printed documents in `SD:/docs/Quotes`...,
+payments in `SD:/docs/Payments`.
 
 ### The Spreadsheet (`sheet`)
 
