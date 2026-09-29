@@ -856,6 +856,51 @@ layout_minmax_inline_container(struct box *inline_container,
  * \post  block->min_width and block->max_width filled in,
  *        0 <= block->min_width <= block->max_width
  */
+/**
+ * Onyx: a flex item's flex base size, when it is a length (its flex-basis, else -- basis
+ * auto -- its width): in its content box. False when it depends on the content or on the
+ * container (content, auto, a percentage).
+ */
+static bool layout_minmax_flex_base(
+		const struct box *block,
+		const css_unit_ctx *unit_len_ctx,
+		int *base)
+{
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+	int px;
+
+	if (block->style == NULL)
+		return false;
+	switch (css_computed_flex_basis(block->style, &len, &unit)) {
+	case CSS_FLEX_BASIS_SET:
+		if (unit == CSS_UNIT_PCT)
+			return false;
+		px = FIXTOINT(css_unit_len2device_px(block->style,
+				unit_len_ctx, len, unit));
+		break;
+	case CSS_FLEX_BASIS_AUTO:
+		if (css_computed_width_px(block->style, unit_len_ctx, -1,
+				&px) != CSS_WIDTH_SET)
+			return false;
+		break;
+	default:
+		return false;
+	}
+	if (css_computed_box_sizing(block->style) ==
+			CSS_BOX_SIZING_BORDER_BOX) {
+		int pb = 0;
+		float frac = 0;
+		calculate_mbp_width(unit_len_ctx, block->style, LEFT,
+				false, true, true, &pb, &frac);
+		calculate_mbp_width(unit_len_ctx, block->style, RIGHT,
+				false, true, true, &pb, &frac);
+		px -= pb;
+	}
+	*base = px < 0 ? 0 : px;
+	return true;
+}
+
 static void layout_minmax_block(
 		struct box *block,
 		const struct gui_layout_table *font_func,
@@ -1024,22 +1069,73 @@ static void layout_minmax_block(
 		}
 	}
 
+	/* Onyx: a row flex container's gaps between its items (in-flow ones)
+	 * widen it: always its max-content width, its min-content width when it
+	 * does not wrap */
+	if (block->object == NULL && lh__box_is_flex_container(block) &&
+	    lh__flex_main_is_horizontal(block)) {
+		int gap = lh__flex_gap(&content->unit_len_ctx, block, true, -1);
+		int n = 0;
+
+		for (child = block->children; child; child = child->next) {
+			if (child->style == NULL ||
+			    (css_computed_position(child->style) !=
+					CSS_POSITION_ABSOLUTE &&
+			     css_computed_position(child->style) !=
+					CSS_POSITION_FIXED)) {
+				n++;
+			}
+		}
+		if (gap > 0 && n > 1) {
+			max += gap * (n - 1);
+			if (block->style == NULL ||
+			    css_computed_flex_wrap(block->style) ==
+					CSS_FLEX_WRAP_NOWRAP) {
+				min += gap * (n - 1);
+			}
+		}
+	}
+
 	if (max < min) {
 		box_dump(stderr, block, 0, true);
 		assert(0);
 	}
 
-	/* fixed width takes priority */
-	if (block->type != BOX_TABLE_CELL && !lh__box_is_flex_item(block)) {
+	/* fixed width takes priority -- Onyx: a flex item's too. When its width is the
+	 * cross size (a column's item), as for a block; when it is the main size, its
+	 * contributions are its content's, clamped by its flex base size -- as a maximum
+	 * if it does not grow, as a minimum if it does not shrink (CSS Flexbox 9.9.1):
+	 * a width: 64px item holding a 512 px wide image contributes 64 px */
+	if (block->type != BOX_TABLE_CELL && block->style != NULL) {
 		bool border_box = bs == CSS_BOX_SIZING_BORDER_BOX;
+		bool flex_main = lh__box_is_flex_item(block) &&
+				lh__flex_main_is_horizontal(block->parent);
 		enum css_max_width_e max_type;
 		enum css_min_width_e min_type;
 		css_unit unit = CSS_UNIT_PX;
 		css_fixed value = 0;
 		int width;
 
-		if (css_computed_width_px(block->style, &content->unit_len_ctx,
-				-1, &width) == CSS_WIDTH_SET) {
+		if (flex_main) {
+			css_fixed grow = 0, shrink = INTTOFIX(1);
+			int base;
+
+			if (layout_minmax_flex_base(block,
+					&content->unit_len_ctx, &base)) {
+				css_computed_flex_grow(block->style, &grow);
+				css_computed_flex_shrink(block->style, &shrink);
+				if (grow == 0) {
+					min = min(min, base);
+					max = min(max, base);
+				}
+				if (shrink == 0) {
+					min = max(min, base);
+					max = max(max, base);
+				}
+			}
+		} else if (css_computed_width_px(block->style,
+				&content->unit_len_ctx, -1, &width) ==
+				CSS_WIDTH_SET) {
 			min = max = width;
 			using_max_border_box = border_box;
 			using_min_border_box = border_box;

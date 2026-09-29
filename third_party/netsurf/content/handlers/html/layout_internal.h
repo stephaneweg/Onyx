@@ -230,6 +230,37 @@ static inline int lh__delta_outer_main(
 	}
 }
 
+/**
+ * Onyx: a flex container's gap, in px: between its items (main) or its lines (cross) --
+ * column-gap between columns, row-gap between rows; "normal" is 0 in a flex container;
+ * a percentage of `avail` (unknown when -1: 0).
+ */
+static inline int lh__flex_gap(
+		const css_unit_ctx *unit_len_ctx,
+		const struct box *flex,
+		bool main,
+		int avail)
+{
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+	uint8_t type;
+	int px;
+
+	if (flex->style == NULL)
+		return 0;
+	if (main == lh__flex_main_is_horizontal(flex))
+		type = css_computed_column_gap(flex->style, &len, &unit);
+	else
+		type = css_computed_row_gap(flex->style, &len, &unit);
+	if (type != CSS_COLUMN_GAP_SET)		/* (CSS_ROW_GAP_SET too) */
+		return 0;
+	if (unit == CSS_UNIT_PCT)
+		return avail > 0 ? FPCT_OF_INT_TOINT(len, avail) : 0;
+	px = FIXTOINT(css_unit_len2device_px(flex->style, unit_len_ctx,
+			len, unit));
+	return px > 0 ? px : 0;
+}
+
 static inline int lh__delta_outer_cross(
 		const struct box *flex,
 		const struct box *b)
@@ -619,6 +650,11 @@ static inline void layout_find_dimensions(
 			/* Inadmissible */
 			*max_height = -1;
 		}
+
+		/* Onyx: box-sizing (a border-box max-height holds the padding) */
+		if (*max_height > 0)
+			layout_handle_box_sizing(unit_len_ctx, box,
+					available_width, false, max_height);
 	}
 
 	if (min_height) {
@@ -641,6 +677,12 @@ static inline void layout_find_dimensions(
 			/* Inadmissible */
 			*min_height = 0;
 		}
+
+		/* Onyx: box-sizing (a border-box min-height holds the padding: a
+		 * min-height: 48px button with its padding is 48 px tall, no more) */
+		if (*min_height > 0)
+			layout_handle_box_sizing(unit_len_ctx, box,
+					available_width, false, min_height);
 	}
 
 	for (i = 0; i != 4; i++) {

@@ -2302,8 +2302,10 @@ main(int argc, char** argv)
 		fb_scroll_colour = onyx_colour(track);
 	}
 
-	if (fb_font_init() == false)
-		die("Unable to initialise the font system");
+	if (fb_font_init() == false)	/* Onyx: say where the fonts are looked for */
+		die("Unable to initialise the font system: no "
+		    NETSURF_FB_FONT_SANS_SERIF " in " NETSURF_FB_RESPATH " or "
+		    NETSURF_FB_FONTPATH " (copy the card's res/fonts folder)");
 
 	fbtk = fbtk_init(nsfb);
 
