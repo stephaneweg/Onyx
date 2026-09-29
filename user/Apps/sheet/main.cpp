@@ -1419,6 +1419,7 @@ static void tabs_add () { cmd_insert_sheet (); }
 int main (void)
 {
 	SheetRoot root;
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 	wtk::init ();
 	if (!fnt::init ())
 	{

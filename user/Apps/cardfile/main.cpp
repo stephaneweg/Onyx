@@ -166,6 +166,79 @@ public:
 	}
 };
 
+// Mail Merge: Writer's letter (its fields the form's) filled with this record, or each record shown --
+// one document in Writer (each letter on a new page), or each written in a folder (named after a
+// field, or numbered). Writer does it: "writer --merge JOB" (Writer's merge.h), JOB and the records
+// written in SD:/apps/cardfile.app/.
+static const char *MERGE_DATA = "SD:/apps/cardfile.app/merge.card", *MERGE_JOB = "SD:/apps/cardfile.app/merge.job";
+static const char *const MM_FMT[4] = { "As the letter", "RTF (.rtf)", "Word (.docx)", "OpenDocument (.odt)" };
+class MergeBox : public Modal
+{
+public:
+	LineEdit *letter, *folder;
+	RadioButton *one, *all, *open, *files;
+	Dropdown *naming, *format;
+	const char *opts[MAXF + 1]; char optBuf[MAXF][LABEL_MAX + 16];
+	MergeBox (const char *recName, int shown) : Modal (580, titleH () + 350)
+	{
+		Root *r = Root::current ();
+		if (r) { left = (r->width - width) / 2; top = imax (0, (r->height - height) / 2); }
+		int y = titleH () + 18;
+		letter = new LineEdit (120, y, 330); letter->setText (g_doc.merge); letter->placeholder = "Writer's letter (.rtf, .docx, .odt)"; addChild (letter);
+		button (460, y - 1, 104, "Choose...", 2);
+		y += 46;
+		char t[64] = "This record: "; scat (t, recName[0] ? recName : "(empty)", sizeof t);
+		one = new RadioButton (120, y, 440, 24, t, 1, true, 0, C_FACE); addChild (one);
+		char u[64] = "All the records shown ("; scat_num (u, shown, sizeof u); scat (u, ")", sizeof u);
+		all = new RadioButton (120, y + 28, 440, 24, u, 1, false, 0, C_FACE); addChild (all);
+		y += 74;
+		open = new RadioButton (120, y, 440, 24, "One document in Writer, each letter on a new page", 2, true, onKind, C_FACE); addChild (open);
+		files = new RadioButton (120, y + 28, 150, 24, "Files, in:", 2, false, onKind, C_FACE); addChild (files);
+		folder = new LineEdit (270, y + 28, 294); folder->setText ("SD:/docs/Letters"); addChild (folder);
+		y += 66;
+		opts[0] = "Numbered (letter-1, letter-2...)";
+		int n = 1;
+		for (int k = 0; k < g_doc.nf && n <= MAXF; k++) { scpy (optBuf[n - 1], "Named after: ", sizeof optBuf[0]); scat (optBuf[n - 1], g_doc.f[k].label, sizeof optBuf[0]); opts[n] = optBuf[n - 1]; n++; }
+		naming = new Dropdown (270, y, 294, 26, opts, n, n > 1 ? 1 : 0, 0); addChild (naming);
+		format = new Dropdown (270, y + 34, 294, 26, MM_FMT, 4, 0, 0); addChild (format);
+		button (width - 212, height - 44, 104, "Merge", 1);
+		button (width - 102, height - 44, 88, "Cancel", 0);
+		onKind (*open);
+	}
+	void button (int x, int y, int w, const char *s, int tag) { Button *b = new Button (x, y, w, 30, s, act); b->tag = tag; addChild (b); }
+	static void act (Widget &w) { ((Modal *) w.parent)->onButton (w.tag); }
+	static void onKind (Widget &w)
+	{
+		MergeBox *m = (MergeBox *) w.parent;
+		bool f = m->files->checked;
+		m->folder->disabled = !f; m->naming->disabled = !f; m->format->disabled = !f;
+		m->invalidate (true);
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 2)
+		{
+			char path[200];
+			if (wk_file_open (path, sizeof path, "SD:/docs")) letter->setText (path);
+			return;
+		}
+		if (tag == 1 && !letter->text ()[0]) { ask ("Mail Merge", "Choose the letter first: a Writer document whose fields are the form's (Writer: Tools > Mail Merge).", MB_OK, 1); return; }
+		close (tag);
+	}
+	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
+	void onDraw () override
+	{
+		drawBox ("Mail Merge");
+		int y = titleH () + 18;
+		wk_text_l (canvas, 20, y, ED_H, "Letter:", C_TEXT);
+		wk_text_l (canvas, 20, y + 46, 24, "Records:", C_TEXT);
+		wk_text_l (canvas, 20, y + 120, 24, "Documents:", C_TEXT);
+		wk_text_l (canvas, 150, y + 186, 26, "Their names:", files->checked ? C_TEXT : wk_mix (C_FACE, C_TEXT, 120));
+		wk_text_l (canvas, 150, y + 220, 26, "Their format:", files->checked ? C_TEXT : wk_mix (C_FACE, C_TEXT, 120));
+		wk_text_l (canvas, 20, height - 78, 20, "Writer fills the letter's fields with the records' values.", wk_mix (C_FACE, C_TEXT, 170));
+	}
+};
+
 // ---- undo: the whole document kept before each change --------------------------------------------------------------
 struct Snap { char *text; int len; unsigned state; int cur, fsel; };
 enum { MAXUNDO = 100, UNDO_BYTES = 24 << 20 };
@@ -655,6 +728,45 @@ static void cmd_export_csv ()
 	}
 	focus_view ();
 }
+// Mail Merge (MergeBox): the records to merge written in MERGE_DATA, the job in MERGE_JOB, Writer started.
+static void cmd_mail_merge ()
+{
+	if (!commit_edits ()) return;
+	if (g_doc.nf == 0 || g_nord == 0) { ask ("Mail Merge", "The form has no records to merge.", MB_OK, 1); focus_view (); return; }
+	char rn[64] = "";
+	if (g_cur >= 0) value_show (g_doc.f[0], g_doc.r[g_cur][0], rn, sizeof rn, true, ", ");
+	MergeBox m (rn, g_nord);
+	if (m.run () != 1) { focus_view (); return; }
+	// the letter remembered by the form
+	if (!seq (g_doc.merge, m.letter->text ())) { scpy (g_doc.merge, m.letter->text (), sizeof g_doc.merge); g_state = ++g_seq; }
+	// the records to merge: this one, or the ones shown (in the views' order)
+	bool one = m.one->checked && g_cur >= 0;
+	int n = one ? 1 : g_nord;
+	char ***keep = g_doc.r; int keepN = g_doc.nr;
+	char ***sub = new char **[n];
+	if (one) sub[0] = g_doc.r[g_cur]; else for (int i = 0; i < n; i++) sub[i] = g_doc.r[g_ord[i]];
+	g_doc.r = sub; g_doc.nr = n;
+	Out o; doc_write (g_doc, o);
+	g_doc.r = keep; g_doc.nr = keepN;
+	delete [] sub;
+	bool ok = kapi_save_file (MERGE_DATA, o.b ? o.b : "", (unsigned) o.n) >= 0;
+	Out j;
+	j.puts ("template = "); j.puts (m.letter->text ()); j.puts ("\ndata = "); j.puts (MERGE_DATA); j.puts ("\nrecords = all\n");
+	if (m.files->checked)
+	{
+		static const char *const F[4] = { "", "rtf", "docx", "odt" };
+		j.puts ("output = files\nfolder = "); j.puts (m.folder->text ()[0] ? m.folder->text () : "SD:/docs/Letters");
+		j.puts ("\nname = "); if (m.naming->sel > 0) j.puts (g_doc.f[m.naming->sel - 1].column);
+		j.puts ("\nformat = "); j.puts (F[m.format->sel & 3]); j.put ('\n');
+	}
+	else j.puts ("output = open\n");
+	if (ok) ok = kapi_save_file (MERGE_JOB, j.b, (unsigned) j.n) >= 0;
+	char args[240] = "--merge "; scat (args, MERGE_JOB, sizeof args);
+	if (!ok || kapi_exec ("SD:/apps/writer.app/main", args) < 0) ask ("Mail Merge", "Writer could not be started.", MB_OK, 2);
+	else { char s[96] = "Mail merge: "; scat_num (s, n, sizeof s); scat (s, n == 1 ? " record sent to Writer" : " records sent to Writer", sizeof s); status (s); }
+	refresh ();
+	focus_view ();
+}
 
 // ---- the window ---------------------------------------------------------------------------------------------------------
 class CardRoot : public Root
@@ -718,6 +830,7 @@ int main (void)
 {
 	CardRoot root;
 	if (root.canvas.px == 0) return 1;
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 	g_root = &root;
 	doc_init (g_doc);
 	doc_init (s_tmp);
@@ -790,6 +903,8 @@ int main (void)
 	menu.item ("Next Record", "PgDn", 0, cmd_next);
 	menu.item ("Last Record", "^End", 0, cmd_last);
 	menu.item ("Go to Record...", "^G", WK_CTRL ('G'), cmd_goto);
+	menu.separator ();
+	menu.item ("Mail Merge...", "", 0, cmd_mail_merge);
 	menu.separator ();
 	menu.item ("Undo the Record's Changes", "Esc", 0, cmd_revert_record);
 	menu.menu ("View");

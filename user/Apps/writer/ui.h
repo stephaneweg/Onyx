@@ -378,11 +378,12 @@ static void make_palettes ()
 }
 
 // ---- the ruler -------------------------------------------------------------------------------------------
-// The page's width at the view's zoom and place: the margins grey, the text white, a centimetre's
-// numbers; the paragraph's indents: the first line's (a triangle on top), the hanging one's (below;
-// its little box moves both), the right one's. Dragged, they change the selected paragraphs' indents
-// (one edit); the margins' edges drag the page's margins.
-enum { RM_NONE, RM_FIRST, RM_HANG, RM_LEFT, RM_RIGHT, RM_MLEFT, RM_MRIGHT };
+// The page's width at the view's zoom and place: the margins grey, the paragraph's box white (the
+// text's, or a table's cell's), a centimetre's numbers from its left edge; the paragraph's indents:
+// the first line's (a triangle on top), the hanging one's (below; its little box moves both), the
+// right one's; in a table, its columns' edges. Dragged, they change the selected paragraphs' indents
+// (one edit), a column's width; the margins' edges drag the page's margins.
+enum { RM_NONE, RM_FIRST, RM_HANG, RM_LEFT, RM_RIGHT, RM_MLEFT, RM_MRIGHT, RM_COL };
 static bool g_inches;				// the ruler's unit (else centimetres)
 
 class Ruler : public Widget
@@ -390,22 +391,35 @@ class Ruler : public Widget
 public:
 	PageView *view;
 	void (*onDone) ();
-	Ruler (int l, int t, int w, PageView *v) : Widget (l, t, w, RULER_H), view (v), onDone (0), m_drag (RM_NONE), m_hot (RM_NONE)
-	{ tip = "Drag the markers: the first line's indent (top), the hanging and left indents (bottom), the right indent; the grey edges: the margins"; }
+	Ruler (int l, int t, int w, PageView *v) : Widget (l, t, w, RULER_H), view (v), onDone (0), m_drag (RM_NONE), m_hot (RM_NONE), m_col (0), m_colX (0)
+	{ tip = "Drag the markers: the first line's indent (top), the hanging and left indents (bottom), the right indent; a table's column edges; the grey edges: the margins"; }
+	// The paragraph at the caret's box on the ruler, its table (0: none).
+	const Para *box (int *bl, int *br, const Table **t)
+	{
+		view->relayout ();
+		view->placeStory ();
+		const Para *q = L.d->p[sel_a ().p];
+		int ox = view->originX ();
+		*bl = ox + (q->x64 >> 6); *br = *bl + (q->w64 >> 6);
+		*t = L.d->cur == SY_BODY ? para_table (*L.d, q) : 0;
+		return q;
+	}
+	int colEdge (const Table *t, int c) { return view->originX () + ((t->x64 + t->colX64[c]) >> 6); }
 	void onDraw () override
 	{
 		canvas.fillRect (0, 0, width, height, C_BG);
-		view->relayout ();
+		int bl, br; const Table *t;
+		const Para *q = box (&bl, &br, &t);
 		int ox = view->originX ();
 		int x0 = ox, x1 = ox + L.pageW;
 		int tl = ox + (L.ml64 >> 6), tr = ox + L.pageW - (L.mr64 >> 6);
 		int y0 = 5, h = height - 10;
 		unsigned band = wk_mix (C_BG, 0xFFFFFF, 90), white = 0xFFFFFF, ink = wk_mix (0xFFFFFF, 0x000000, 170);
 		clipFill (x0, y0, x1 - x0, h, band);
-		clipFill (tl, y0, tr - tl, h, white);
+		clipFill (t ? bl : tl, y0, (t ? br - bl : tr - tl), h, white);
 		clipFill (x0, y0, x1 - x0, 1, wk_tone (C_BG, 90));
 		clipFill (x0, y0 + h - 1, x1 - x0, 1, wk_tone (C_BG, 110));
-		// the ticks: from the text's left edge both ways (the numbers every 1, 2, 5 or 10 units: apart
+		// the ticks: from the box's left edge both ways (the numbers every 1, 2, 5 or 10 units: apart
 		// enough at the zoom; the small ticks while they are 4 px apart)
 		int unitTw = g_inches ? 1440 : 567, sub = g_inches ? 8 : 4;
 		int unitPx = tw2px64 (unitTw) >> 6;
@@ -416,15 +430,15 @@ public:
 			for (int k = dir < 0 ? 1 : 0; ; k++)
 			{
 				int tw = dir * k * unitTw / sub;
-				int x = tl + (tw2px64 (tw) >> 6);
+				int x = bl + (tw2px64 (tw) >> 6);
 				if (x < x0 || x > x1) break;
 				if (x < 0 || x >= width) continue;
 				int m = k % sub, u = k / sub;
 				if (m == 0 && k && u % every == 0)
 				{
-					char b[6]; int n = 0, v = u; char t[6]; int j = 0;
-					while (v) { t[j++] = (char) ('0' + v % 10); v /= 10; }
-					while (j) b[n++] = t[--j];
+					char b[6]; int n = 0, v = u; char tt[6]; int j = 0;
+					while (v) { tt[j++] = (char) ('0' + v % 10); v /= 10; }
+					while (j) b[n++] = tt[--j];
 					b[n] = 0;
 					if (nf) { int w = fnt::str_w (nf, b); fnt::draw_str (canvas, nf, x * 64 - w / 2, y0 + h / 2 + 4, b, ink); }
 				}
@@ -434,10 +448,19 @@ public:
 					canvas.fillRect (x, y0 + h / 2 - th / 2, 1, th, wk_mix (0xFFFFFF, 0x000000, 120));
 				}
 			}
+		// a table's column edges
+		if (t)
+			for (int c = 0; c <= t->ncols; c++)
+			{
+				int x = colEdge (t, c);
+				bool hot = c > 0 && ((m_hot == RM_COL && m_col == c - 1) || (m_drag == RM_COL && m_col == c - 1));
+				if (m_drag == RM_COL && m_col == c - 1) x = m_colX;
+				clipFill (x - 3, y0 + 1, 7, h - 2, hot ? C_ACCENT : wk_mix (C_BG, 0x000000, 60));
+				clipFill (x - 1, y0 + 3, 3, h - 6, hot ? 0xFFFFFF : wk_mix (C_BG, 0xFFFFFF, 120));
+			}
 		// the markers (the paragraph at the caret)
-		const Para *q = L.d->p[sel_a ().p];
-		int lx = tl + (tw2px64 (q->pf.left) >> 6), fx = tl + (tw2px64 (q->pf.left + q->pf.first) >> 6);
-		int rx = tr - (tw2px64 (q->pf.right) >> 6);
+		int lx = bl + (tw2px64 (q->pf.left) >> 6), fx = bl + (tw2px64 (q->pf.left + q->pf.first) >> 6);
+		int rx = br - (tw2px64 (q->pf.right) >> 6);
 		unsigned mk = wk_mix (C_BG, 0x000000, 110), mkHot = C_ACCENT;
 		triangle (fx, y0 - 1, true, m_hot == RM_FIRST || m_drag == RM_FIRST ? mkHot : mk);
 		triangle (lx, y0 + h - 7, false, m_hot == RM_HANG || m_drag == RM_HANG ? mkHot : mk);
@@ -450,50 +473,67 @@ public:
 			canvas.fillRect (mx - 1, y0, 2, h, C_ACCENT);
 		}
 	}
-	bool onMouse (int mx, int my, int bl, int, int, int) override
+	bool onMouse (int mx, int my, int bl0, int, int, int) override
 	{
 		if (mx < 0 && m_drag == RM_NONE) { if (m_hot) { m_hot = RM_NONE; invalidate (true); } return false; }
+		int bl, br; const Table *t;
+		const Para *q = box (&bl, &br, &t);
 		int ox = view->originX ();
 		int tl = ox + (L.ml64 >> 6), tr = ox + L.pageW - (L.mr64 >> 6);
 		if (m_drag == RM_NONE)
 		{
-			const Para *q = L.d->p[sel_a ().p];
-			int lx = tl + (tw2px64 (q->pf.left) >> 6), fx = tl + (tw2px64 (q->pf.left + q->pf.first) >> 6), rx = tr - (tw2px64 (q->pf.right) >> 6);
+			int lx = bl + (tw2px64 (q->pf.left) >> 6), fx = bl + (tw2px64 (q->pf.left + q->pf.first) >> 6), rx = br - (tw2px64 (q->pf.right) >> 6);
 			int hot = RM_NONE;
 			if (my < RULER_H / 2 && mx >= fx - 5 && mx <= fx + 5) hot = RM_FIRST;
 			else if (my >= RULER_H - 6 && mx >= lx - 5 && mx <= lx + 5) hot = RM_LEFT;
 			else if (my >= RULER_H / 2 && mx >= lx - 5 && mx <= lx + 5) hot = RM_HANG;
 			else if (my >= RULER_H / 2 && mx >= rx - 5 && mx <= rx + 5) hot = RM_RIGHT;
-			else if (mx >= tl - 3 && mx <= tl + 3) hot = RM_MLEFT;
-			else if (mx >= tr - 3 && mx <= tr + 3) hot = RM_MRIGHT;
+			if (!hot && t)
+				for (int c = 1; c <= t->ncols; c++) { int x = colEdge (t, c); if (mx >= x - 3 && mx <= x + 3) { hot = RM_COL; m_col = c - 1; break; } }
+			if (!hot && !t && mx >= tl - 3 && mx <= tl + 3) hot = RM_MLEFT;
+			else if (!hot && !t && mx >= tr - 3 && mx <= tr + 3) hot = RM_MRIGHT;
 			if (hot != m_hot) { m_hot = hot; invalidate (true); }
-			if (bl && hot != RM_NONE)
+			if (bl0 && hot != RM_NONE)
 			{
-				m_drag = hot; catchOutside = true;
+				m_drag = hot; catchOutside = true; m_colX = mx;
 				Pos a = sel_a (), b = sel_b ();
 				if (hot <= RM_RIGHT) ed_begin (a.p, b.p - a.p + 1, ED_OTHER);
 			}
 			return mx >= 0;
 		}
-		// dragging: the new place, in twips from the text's left edge (snapped to a 16th of the unit)
+		// dragging: the new place, in twips from the box's left edge (snapped to a 16th of the unit)
 		int snap = g_inches ? 90 : 71;
-		int tw = px642tw ((mx - tl) << 6);
+		if (m_drag == RM_COL)
+		{
+			m_colX = mx;
+			invalidate (true);
+			if (!bl0)
+			{
+				int xTw = px642tw ((mx - ox) * 64 - t->x64);
+				xTw = (xTw + snap / 2) / snap * snap;
+				m_drag = RM_NONE; catchOutside = false;
+				ed_table_col_edge (sel_a ().p, m_col, xTw);
+				view->invalidate (true);
+				if (onDone) onDone ();
+			}
+			return true;
+		}
+		int tw = px642tw ((mx - bl) << 6);
 		tw = (tw + (tw >= 0 ? snap / 2 : -snap / 2)) / snap * snap;
 		Pos a = sel_a (), b = sel_b ();
-		const PageSetup &ps = L.d->page;
-		int textTw = ps.w - ps.left - ps.right;
+		int textTw = px642tw (q->w64);
 		for (int p = a.p; p <= b.p && m_drag <= RM_RIGHT; p++)
 		{
-			Para *q = L.d->p[p];
-			int first = q->pf.left + q->pf.first;		// (the first line's absolute place)
+			Para *pq = L.d->p[p];
+			int first = pq->pf.left + pq->pf.first;		// (the first line's absolute place)
 			switch (m_drag)
 			{
-			case RM_FIRST: q->pf.first = (short) wclamp (tw - q->pf.left, -q->pf.left, textTw - q->pf.left - q->pf.right - 200); break;
-			case RM_HANG: { int l = wclamp (tw, 0, textTw - q->pf.right - 300); q->pf.left = (short) l; q->pf.first = (short) (first - l); break; }
-			case RM_LEFT: { int l = wclamp (tw, wmax (0, -q->pf.first), textTw - q->pf.right - 300); q->pf.left = (short) l; break; }
-			case RM_RIGHT: q->pf.right = (short) wclamp (textTw - tw, 0, textTw - q->pf.left - 300); break;
+			case RM_FIRST: pq->pf.first = (short) wclamp (tw - pq->pf.left, -pq->pf.left, textTw - pq->pf.left - pq->pf.right - 200); break;
+			case RM_HANG: { int l = wclamp (tw, 0, textTw - pq->pf.right - 300); pq->pf.left = (short) l; pq->pf.first = (short) (first - l); break; }
+			case RM_LEFT: { int l = wclamp (tw, wmax (0, -pq->pf.first), textTw - pq->pf.right - 300); pq->pf.left = (short) l; break; }
+			case RM_RIGHT: pq->pf.right = (short) wclamp (textTw - tw, 0, textTw - pq->pf.left - 300); break;
 			}
-			q->dirty = true;
+			pq->dirty = true;
 		}
 		if (m_drag == RM_MLEFT || m_drag == RM_MRIGHT)
 		{
@@ -506,7 +546,7 @@ public:
 		g_relayout = true;
 		view->invalidate (true);
 		invalidate (true);
-		if (!bl)
+		if (!bl0)
 		{
 			if (m_drag <= RM_RIGHT) { doc_end_edit (*L.d, b.p - a.p + 1, g_caret, g_anchor); }
 			else L.d->changes++;
@@ -517,7 +557,7 @@ public:
 		return true;
 	}
 private:
-	int m_drag, m_hot;
+	int m_drag, m_hot, m_col, m_colX;
 	void clipFill (int x, int y, int w, int h, unsigned c)
 	{
 		int x1 = wmin (x + w, width); x = wmax (x, 0);

@@ -2,9 +2,14 @@
 // dialogs.h -- Writer's dialogs (wtk Modals over the window): Font (the family, the style, the size,
 // the effects, the colours, a preview drawn with the chosen font), Paragraph (the alignment, the
 // indents -- a first line's or a hanging one --, the spacing, the line spacing, a page break before,
-// kept with the next; a preview), Page Setup (the paper, the orientation, the margins, the page
-// numbers), Find and Replace, Special Character (the fonts' characters by block), Date and Time,
-// Word Count. Lengths in centimetres (or inches: the ruler's unit), spacing in points.
+// kept with the next, lines kept together, no widow / orphan; a preview), Tabs (the stops: their
+// places, alignments, leaders), Page Setup (the paper, the orientation, the margins, the header's and
+// footer's distances, a first page of its own, the first page's number), Page Numbers, Insert Table
+// (and the toolbar's grid of cells), Table Properties (the lines, their width and colour, the
+// alignment, the heading row, the columns' width, the rows' height, the cells' shading), Field,
+// Find and Replace, Special Character (the fonts' characters by block), Date and Time (as text, or
+// a field kept up to date), Word Count. Lengths in centimetres (or inches: the ruler's unit),
+// spacing in points.
 //
 #ifndef _writer_dialogs_h
 #define _writer_dialogs_h
@@ -225,7 +230,7 @@ public:
 
 static bool dlg_font ()
 {
-	CharFmt cur = g_doc.fmt[caret_cf ()];
+	CharFmt cur = caret_fmt ();
 	FontDialog d (cur);
 	if (d.run () != 1) return false;
 	FontDialog::onSizeTb (*d.sizeTb);
@@ -248,9 +253,10 @@ public:
 	ParaFmt pf;
 	Dropdown *al, *special, *line;
 	Textbox *tLeft, *tRight, *tBy, *tBefore, *tAfter;
-	Checkbox *cbBreak, *cbKeep;
+	Checkbox *cbBreak, *cbKeep, *cbLines, *cbWidow;
 	Canvasbox *prev;
-	ParaDialog (const ParaFmt &cur) : Dialog (500, 470, "Paragraph"), pf (cur)
+	bool tabsSet;
+	ParaDialog (const ParaFmt &cur) : Dialog (500, 494, "Paragraph"), pf (cur), tabsSet (false)
 	{
 		char b[16];
 		al = new Dropdown (140, 42, 150, 26, ALIGN_NAMES, 4, pf.align & 3, onAny); addChild (al);
@@ -263,19 +269,23 @@ public:
 		fmt_int (b, pf.after / 20); tAfter = field (140, 244, 90, b);
 		int li = 0; for (int i = 0; i < 4; i++) if (LINE_VALS[i] == pf.line) li = i;
 		line = new Dropdown (330, 212, 150, 26, LINE_NAMES, 4, li, onAny); addChild (line);
-		cbBreak = new Checkbox (24, 296, 200, 24, "Page break before", pf.pageBreak, onAny, C_FACE); addChild (cbBreak);
-		cbKeep = new Checkbox (250, 296, 200, 24, "Keep with next", pf.keepNext, onAny, C_FACE); addChild (cbKeep);
-		prev = new Canvasbox (16, 332, 468, 80, paintPreview, this); addChild (prev);
+		cbBreak = new Checkbox (24, 292, 200, 24, "Page break before", pf.pageBreak, onAny, C_FACE); addChild (cbBreak);
+		cbKeep = new Checkbox (250, 292, 220, 24, "Keep with next", pf.keepNext, onAny, C_FACE); addChild (cbKeep);
+		cbLines = new Checkbox (24, 320, 220, 24, "Keep lines together", pf.keepLines, onAny, C_FACE); addChild (cbLines);
+		cbWidow = new Checkbox (250, 320, 230, 24, "Widow / orphan control", pf.widow, onAny, C_FACE); addChild (cbWidow);
+		prev = new Canvasbox (16, 356, 468, 80, paintPreview, this); addChild (prev);
 		tLeft->cb = tRight->cb = tBy->cb = tBefore->cb = tAfter->cb = onAny;
+		button (16, height - 42, 90, "Tabs...", 2);
 		okCancel ();
 	}
+	void onButton (int tag) override;
 	void drawBody () override
 	{
 		const char *u = g_inches ? "in" : "cm";
 		label (24, 48, "Alignment:");
 		groupTitle (16, 82, 468, 90, "Indentation");
 		label (32, 108, "Left:"); label (236, 108, u); label (32, 140, "Right:"); label (236, 140, u);
-		label (266, 108, "Special:"); label (330, 140, "By:"); label (486 - 0, 140, "");
+		label (266, 108, "Special:"); label (330, 140, "By:");
 		groupTitle (16, 192, 468, 90, "Spacing");
 		label (32, 218, "Before:"); label (236, 218, "pt"); label (32, 250, "After:"); label (236, 250, "pt");
 		label (266, 218, "Line:");
@@ -300,6 +310,7 @@ public:
 		if (parse_num (tAfter->text, &h)) pf.after = (short) wclamp ((int) (h * 20 / 100), 0, 20000);
 		pf.line = LINE_VALS[line->sel & 3];
 		pf.pageBreak = cbBreak->checked; pf.keepNext = cbKeep->checked;
+		pf.keepLines = cbLines->checked; pf.widow = cbWidow->checked;
 	}
 	static ParaDialog *me (Widget &w) { Widget *p = w.parent; while (p && !p->modal) p = p->parent; return (ParaDialog *) p; }
 	static void onAny (Widget &w) { ParaDialog *d = me (w); d->read (); d->prev->invalidate (true); }
@@ -330,13 +341,100 @@ public:
 	}
 };
 
+// ---- Tabs ------------------------------------------------------------------------------------------------
+static const char *const TAB_ALIGN_NAMES[4] = { "Left", "Centre", "Right", "Decimal" };
+static const char *const TAB_LEAD_NAMES[4] = { "None", "Dots ......", "Dashes -----", "Line ______" };
+
+class TabsDialog : public Dialog
+{
+public:
+	ParaFmt pf;					// its stops, edited
+	ListBox *list; Textbox *tPos; RadioButton *al[4], *ld[4];
+	TabsDialog (const ParaFmt &cur) : Dialog (470, 340, "Tabs"), pf (cur)
+	{
+		tPos = field (16, 64, 150, "");
+		list = new ListBox (16, 96, 150, 170, onSel); addChild (list);
+		for (int i = 0; i < 4; i++) { al[i] = new RadioButton (196, 64 + i * 28, 110, 24, TAB_ALIGN_NAMES[i], 1, i == 0, 0, C_FACE); addChild (al[i]); }
+		for (int i = 0; i < 4; i++) { ld[i] = new RadioButton (318, 64 + i * 28, 140, 24, TAB_LEAD_NAMES[i], 2, i == 0, 0, C_FACE); addChild (ld[i]); }
+		button (196, 200, 80, "Set", 2);
+		button (282, 200, 80, "Clear", 3);
+		button (368, 200, 90, "Clear All", 4);
+		okCancel ();
+		fill ();
+	}
+	void drawBody () override
+	{
+		label (16, 44, g_inches ? "Position (in):" : "Position (cm):");
+		label (196, 44, "Alignment:"); label (318, 44, "Leader:");
+		canvas.text (196, 244, "Default stops: every 1.25 cm.", wk_mix (C_FACE, C_TEXT, 170));
+	}
+	void fill ()
+	{
+		list->clear ();
+		for (int i = 0; i < pf.ntab; i++)
+		{
+			char b[48]; fmt_len (b, pf.tab[i].pos);
+			int k = slen (b); b[k++] = ' '; b[k++] = ' ';
+			scpy (b + k, TAB_ALIGN_NAMES[pf.tab[i].align & 3], 48 - k);
+			if (pf.tab[i].leader) { k = slen (b); scpy (b + k, pf.tab[i].leader == TL_DOT ? " ..." : pf.tab[i].leader == TL_DASH ? " ---" : " ___", 48 - k); }
+			list->add (b);
+		}
+		list->invalidate (true);
+	}
+	int checkedOf (RadioButton **r) { for (int i = 0; i < 4; i++) if (r[i]->checked) return i; return 0; }
+	bool setTyped ()
+	{
+		int v;
+		if (!tPos->text[0] || !parse_len (tPos->text, &v) || v <= 0 || v > 30000) return false;
+		pf_add_tab (pf, v, checkedOf (al), checkedOf (ld));
+		tPos->setText ("");
+		fill ();
+		return true;
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 2) { setTyped (); return; }
+		if (tag == 3) { if (list->sel >= 0 && list->sel < pf.ntab) { pf_del_tab (pf, list->sel); fill (); } return; }
+		if (tag == 4) { pf.ntab = 0; fill (); return; }
+		if (tag == 1) setTyped ();
+		close (tag);
+	}
+	static void onSel (Widget &w)
+	{
+		TabsDialog *d = (TabsDialog *) w.parent;
+		int i = d->list->sel;
+		if (i < 0 || i >= d->pf.ntab) return;
+		char b[16]; fmt_len (b, d->pf.tab[i].pos); d->tPos->setText (b);
+		for (int k = 0; k < 4; k++) { d->al[k]->checked = k == d->pf.tab[i].align; d->ld[k]->checked = k == d->pf.tab[i].leader; d->al[k]->invalidate (true); d->ld[k]->invalidate (true); }
+	}
+};
+
+void ParaDialog::onButton (int tag)
+{
+	if (tag == 2)
+	{
+		TabsDialog t (pf);
+		if (t.run () == 1) { pf.ntab = t.pf.ntab; for (int i = 0; i < t.pf.ntab; i++) pf.tab[i] = t.pf.tab[i]; tabsSet = true; }
+		return;
+	}
+	close (tag);
+}
+
 static bool dlg_paragraph ()
 {
 	ParaDialog d (g_doc.p[sel_a ().p]->pf);
 	if (d.run () != 1) return false;
 	d.read ();
 	g_pfSet = d.pf;
-	ed_para (pf_set, PF_ALIGN | PF_LEFT | PF_RIGHT | PF_FIRST | PF_BEFORE | PF_AFTER | PF_LINE | PF_BREAK | PF_KEEP);
+	ed_para (pf_set, PF_ALIGN | PF_LEFT | PF_RIGHT | PF_FIRST | PF_BEFORE | PF_AFTER | PF_LINE | PF_BREAK | PF_KEEP | PF_KEEPLINES | PF_WIDOW | (d.tabsSet ? PF_TABS : 0));
+	return true;
+}
+static bool dlg_tabs ()
+{
+	TabsDialog d (g_doc.p[sel_a ().p]->pf);
+	if (d.run () != 1) return false;
+	g_pfSet = d.pf;
+	ed_para (pf_set, PF_TABS);
 	return true;
 }
 
@@ -352,10 +450,10 @@ class PageDialog : public Dialog
 public:
 	PageSetup ps;
 	Dropdown *paper; RadioButton *portrait, *landscape;
-	Textbox *tTop, *tBottom, *tLeft, *tRight;
-	Checkbox *cbNum;
+	Textbox *tTop, *tBottom, *tLeft, *tRight, *tHdr, *tFtr, *tStart;
+	Checkbox *cbFirst;
 	Canvasbox *prev;
-	PageDialog (const PageSetup &cur) : Dialog (500, 400, "Page Setup"), ps (cur)
+	PageDialog (const PageSetup &cur) : Dialog (500, 470, "Page Setup"), ps (cur)
 	{
 		int pw = wmin (ps.w, ps.h), ph = wmax (ps.w, ps.h), sel = 0;
 		for (int i = 0; i < 5; i++) if (PAPERS[i].w == pw && PAPERS[i].h == ph) sel = i;
@@ -367,8 +465,11 @@ public:
 		fmt_len (b, ps.bottom); tBottom = field (110, 174, 80, b);
 		fmt_len (b, ps.left); tLeft = field (110, 206, 80, b);
 		fmt_len (b, ps.right); tRight = field (110, 238, 80, b);
-		tTop->cb = tBottom->cb = tLeft->cb = tRight->cb = onAny;
-		cbNum = new Checkbox (24, 290, 300, 24, "Page numbers at the bottom", ps.numbers, onAny, C_FACE); addChild (cbNum);
+		fmt_len (b, ps.hdr); tHdr = field (110, 314, 80, b);
+		fmt_len (b, ps.ftr); tFtr = field (110, 346, 80, b);
+		cbFirst = new Checkbox (262, 312, 210, 24, "Different first page", ps.titlePg, onAny, C_FACE); addChild (cbFirst);
+		fmt_int (b, ps.start); tStart = field (410, 346, 62, b);
+		tTop->cb = tBottom->cb = tLeft->cb = tRight->cb = tHdr->cb = tFtr->cb = onAny;
 		prev = new Canvasbox (340, 110, 144, 170, paintPreview, this); addChild (prev);
 		okCancel ();
 	}
@@ -380,6 +481,12 @@ public:
 		canvas.fillRect (26, 115, wk_text_w ("Margins") + 8, 14, C_FACE); label (30, 115, "Margins");
 		label (32, 148, "Top:"); label (32, 180, "Bottom:"); label (32, 212, "Left:"); label (32, 244, "Right:");
 		for (int k = 0; k < 4; k++) label (198, 148 + k * 32, u);
+		wk_etch_box (canvas, 16, 294, 468, 90, 6, C_FACE);
+		canvas.fillRect (26, 287, wk_text_w ("Header and footer") + 8, 14, C_FACE); label (30, 287, "Header and footer");
+		label (32, 320, "Header:"); label (32, 352, "Footer:");
+		label (198, 320, u); label (198, 352, u);
+		label (262, 352, "First page number:");
+		canvas.text (32, 392, "(the header from the page's top, the footer from its foot)", wk_mix (C_FACE, C_TEXT, 170));
 	}
 	void read ()
 	{
@@ -391,7 +498,10 @@ public:
 		if (parse_len (tBottom->text, &v)) ps.bottom = wclamp (v, 0, ps.h / 3);
 		if (parse_len (tLeft->text, &v)) ps.left = wclamp (v, 0, ps.w / 3);
 		if (parse_len (tRight->text, &v)) ps.right = wclamp (v, 0, ps.w / 3);
-		ps.numbers = cbNum->checked;
+		if (parse_len (tHdr->text, &v)) ps.hdr = wclamp (v, 0, ps.h / 3);
+		if (parse_len (tFtr->text, &v)) ps.ftr = wclamp (v, 0, ps.h / 3);
+		long h; if (parse_num (tStart->text, &h)) ps.start = (int) wclamp (h / 100, 0L, 9999L);
+		ps.titlePg = cbFirst->checked;
 	}
 	static PageDialog *me (Widget &w) { Widget *p = w.parent; while (p && !p->modal) p = p->parent; return (PageDialog *) p; }
 	static void onAny (Widget &w) { PageDialog *d = me (w); d->read (); d->prev->invalidate (true); }
@@ -410,7 +520,9 @@ public:
 		int l = (int) ((long long) ps.left * pw / ps.w), r = (int) ((long long) ps.right * pw / ps.w);
 		int t = (int) ((long long) ps.top * ph / ps.h), b = (int) ((long long) ps.bottom * ph / ps.h);
 		for (int yy = y + t; yy < y + ph - b - 2; yy += 5) cv.fillRect (x + l, yy, pw - l - r, 2, 0xB8B8B8);
-		if (ps.numbers) cv.fillRect (x + pw / 2 - 2, y + ph - b / 2 - 1, 4, 3, 0x606060);
+		int hy = (int) ((long long) ps.hdr * ph / ps.h), fy = (int) ((long long) ps.ftr * ph / ps.h);
+		cv.fillRect (x + l, y + hy, (pw - l - r) / 2, 2, 0x8FA8D0);
+		cv.fillRect (x + l + (pw - l - r) / 4, y + ph - fy - 2, (pw - l - r) / 2, 2, 0x8FA8D0);
 	}
 };
 
@@ -421,6 +533,7 @@ static bool dlg_page_setup ()
 	d.read ();
 	g_doc.page = d.ps;
 	g_doc.changes++;
+	doc_dirty_all (g_doc);
 	return true;
 }
 
@@ -558,7 +671,7 @@ public:
 	SymbolDialog () : Dialog (COLS * CELL + 150, ROWS * CELL + 124, "Special Character"), n (0), top (0), sel (0), last (0)
 	{
 		for (int i = 0; i < 12; i++) BLOCK_NAMES[i] = BLOCKS[i].name;
-		fam = font_family (g_doc.fmt[caret_cf ()].font);
+		fam = font_family (caret_fmt ().font);
 		blk = new Dropdown (116, 40, 230, 26, BLOCK_NAMES, 12, s_block, onBlock); addChild (blk);
 		button (width - 120, 80, 104, "Insert", 2);
 		button (width - 94, height - 42, 82, "Close", 0);
@@ -642,42 +755,32 @@ public:
 int SymbolDialog::s_block;
 static void dlg_symbol () { SymbolDialog d; d.run (); }
 
-// ---- Date and Time -----------------------------------------------------------------------------------------
+// ---- Date and Time ---------------------------------------------------------------------------------------
+static const char *const DATE_PICS[7] = { "dd/MM/yyyy", "dddd d MMMM yyyy", "d MMMM yyyy", "MMMM d, yyyy", "yyyy-MM-dd", "HH:mm", "dd/MM/yyyy HH:mm" };
+static void now_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
+{
+	*y = 2026; *mo = 1; *d = 1; *h = 0; *mi = 0; *s = 0;
+	kapi_get_datetime (y, mo, d, h, mi, s);
+}
+
 class DateDialog : public Dialog
 {
 public:
-	ListBox *list; char items[8][48]; int n;
-	DateDialog () : Dialog (360, 320, "Date and Time"), n (0)
+	ListBox *list; Checkbox *cbField; char items[7][64];
+	DateDialog () : Dialog (380, 340, "Date and Time")
 	{
-		int y = 2026, mo = 1, d = 1, h = 0, mi = 0, se = 0;
-		kapi_get_datetime (&y, &mo, &d, &h, &mi, &se);
-		static const char *const MONTHS[12] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
-		static const char *const DAYS[7] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
-		// (the day of the week: Sakamoto's)
-		static const int T[12] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
-		int yy = mo < 3 ? y - 1 : y, dow = (yy + yy / 4 - yy / 100 + yy / 400 + T[(mo - 1) % 12] + d) % 7;
-		char dd[4], mm[4], yyyy[8], hh[4], mn[4], dn[4];
-		auto two = [] (char *b, int v) { b[0] = (char) ('0' + v / 10 % 10); b[1] = (char) ('0' + v % 10); b[2] = 0; };
-		two (dd, d); two (mm, mo); fmt_int (yyyy, y); two (hh, h); two (mn, mi); fmt_int (dn, d);
-		const char *M = MONTHS[(mo - 1) % 12];
-		add (dd, "/", mm, "/", yyyy);
-		add (DAYS[dow], " ", dn, " ", M, " ", yyyy);
-		add (dn, " ", M, " ", yyyy);
-		add (M, " ", dn, ", ", yyyy);
-		add (yyyy, "-", mm, "-", dd);
-		add (hh, ":", mn);
-		add (dd, "/", mm, "/", yyyy, " ", hh, ":", mn);
-		list = new ListBox (16, 44, width - 32, height - 104, 0, onPick); addChild (list);
-		for (int i = 0; i < n; i++) list->add (items[i]);
+		int y, mo, d, h, mi, se;
+		now_datetime (&y, &mo, &d, &h, &mi, &se);
+		list = new ListBox (16, 44, width - 32, height - 134, 0, onPick); addChild (list);
+		for (int i = 0; i < 7; i++)
+		{
+			unsigned u[64]; int n = date_text (DATE_PICS[i], y, mo, d, h, mi, se, u, 63);
+			encode_text (u, n, items[i], 64);
+			list->add (items[i]);
+		}
 		list->setSel (0);
+		cbField = new Checkbox (16, height - 84, 300, 24, "Update automatically (a field)", false, 0, C_FACE); addChild (cbField);
 		okCancel ();
-	}
-	void add (const char *a, const char *b = "", const char *c = "", const char *d = "", const char *e = "", const char *f = "", const char *g = "", const char *h = "", const char *i = "")
-	{
-		const char *p[9] = { a, b, c, d, e, f, g, h, i };
-		int k = 0;
-		for (int j = 0; j < 9; j++) for (const char *s = p[j]; *s && k < 47; s++) items[n][k++] = *s;
-		items[n][k] = 0; n++;
 	}
 	static void onPick (Widget &w) { Widget *p = w.parent; ((Modal *) p)->close (1); }
 };
@@ -685,8 +788,221 @@ static void dlg_datetime ()
 {
 	DateDialog d;
 	if (d.run () != 1 || d.list->sel < 0) return;
-	unsigned u[64]; int n = decode_text (d.items[d.list->sel], slen (d.items[d.list->sel]), u, 64);
+	int i = d.list->sel;
+	if (d.cbField->checked) { ed_insert_field (i == 5 ? FK_TIME : FK_DATE, DATE_PICS[i]); return; }
+	unsigned u[64]; int n = decode_text (d.items[i], slen (d.items[i]), u, 64);
 	ed_type (u, n);
+}
+
+// ---- Field ------------------------------------------------------------------------------------------------
+static const char *const FIELD_NAMES[4] = { "Page Number", "Number of Pages", "Date", "Time" };
+class FieldDialog : public Dialog
+{
+public:
+	ListBox *kinds, *pics; int kind;
+	FieldDialog () : Dialog (440, 320, "Field"), kind (0)
+	{
+		kinds = new ListBox (16, 44, 180, 190, onKind, onPickK); addChild (kinds);
+		for (int i = 0; i < 4; i++) kinds->add (FIELD_NAMES[i]);
+		kinds->setSel (0);
+		pics = new ListBox (208, 44, 216, 190, 0, onPickK); addChild (pics);
+		okCancel ();
+		fill ();
+	}
+	void drawBody () override { canvas.text (16, 246, "Its text is kept up to date (a grey background).", wk_mix (C_FACE, C_TEXT, 170)); }
+	void fill ()
+	{
+		pics->clear ();
+		kind = kinds->sel;
+		int y, mo, d, h, mi, se; now_datetime (&y, &mo, &d, &h, &mi, &se);
+		if (kind == 2) for (int i = 0; i < 5; i++) { unsigned u[64]; char b[64]; int n = date_text (DATE_PICS[i], y, mo, d, h, mi, se, u, 63); encode_text (u, n, b, 64); pics->add (b); }
+		if (kind == 3) { static const char *const T[3] = { "HH:mm", "HH:mm:ss", "h:mm AM/PM" }; for (int i = 0; i < 3; i++) { unsigned u[64]; char b[64]; int n = date_text (T[i], y, mo, d, h, mi, se, u, 63); encode_text (u, n, b, 64); pics->add (b); } }
+		if (kind >= 2) pics->setSel (0);
+		pics->invalidate (true);
+	}
+	static void onKind (Widget &w) { ((FieldDialog *) w.parent)->fill (); }
+	static void onPickK (Widget &w) { ((Modal *) w.parent)->close (1); }
+};
+static void dlg_field ()
+{
+	FieldDialog d;
+	if (d.run () != 1) return;
+	static const char *const T[3] = { "HH:mm", "HH:mm:ss", "h:mm AM/PM" };
+	int k = d.kinds->sel, pi = wmax (0, d.pics->sel);
+	if (k == 0) ed_insert_field (FK_PAGE, "");
+	else if (k == 1) ed_insert_field (FK_PAGES, "");
+	else if (k == 2) ed_insert_field (FK_DATE, DATE_PICS[wmin (pi, 4)]);
+	else if (k == 3) ed_insert_field (FK_TIME, T[wmin (pi, 2)]);
+}
+
+// ---- Page Numbers --------------------------------------------------------------------------------------------
+static const char *const PN_POS[2] = { "Bottom of page (footer)", "Top of page (header)" };
+static const char *const PN_ALIGN[3] = { "Left", "Centre", "Right" };
+static const char *const PN_FMT[4] = { "1", "Page 1", "Page 1 of 3", "1 / 3" };
+class PageNumDialog : public Dialog
+{
+public:
+	Dropdown *pos, *al, *fm; Checkbox *first;
+	PageNumDialog () : Dialog (400, 262, "Page Numbers")
+	{
+		pos = new Dropdown (130, 44, 250, 26, PN_POS, 2, 0, 0); addChild (pos);
+		al = new Dropdown (130, 80, 250, 26, PN_ALIGN, 3, 1, 0); addChild (al);
+		fm = new Dropdown (130, 116, 250, 26, PN_FMT, 4, 1, 0); addChild (fm);
+		first = new Checkbox (22, 158, 300, 24, "Show the number on the first page", !g_doc.page.titlePg, 0, C_FACE); addChild (first);
+		okCancel ();
+	}
+	void drawBody () override { label (22, 50, "Position:"); label (22, 86, "Alignment:"); label (22, 122, "Format:"); }
+};
+static bool dlg_page_numbers ()
+{
+	PageNumDialog d;
+	if (d.run () != 1) return false;
+	static const int AL[3] = { AL_LEFT, AL_CENTER, AL_RIGHT };
+	ed_page_numbers (d.pos->sel == 0, AL[d.al->sel % 3], d.fm->sel, d.first->checked);
+	return true;
+}
+
+// ---- Tables -----------------------------------------------------------------------------------------------------
+// The toolbar's grid: the cells up to the pointer lit, a click inserts that table.
+class TableGrid : public Modal
+{
+public:
+	enum { CS = 17, COLS = 10, ROWS = 8, PAD = 8 };
+	int r, c;
+	TableGrid (int x, int y) : Modal (PAD * 2 + COLS * (CS + 3) - 3, PAD * 2 + ROWS * (CS + 3) - 3 + 26), r (-1), c (-1)
+	{
+		left = x; top = y;
+		Root *rt = Root::current ();
+		if (rt) { if (left + width > rt->width) left = rt->width - width; if (top + height > rt->height) top = wmax (0, rt->height - height); }
+	}
+	void onDraw () override
+	{
+		canvas.clear (WK_TRANSPARENT_KEY);
+		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		for (int j = 0; j < ROWS; j++)
+			for (int i = 0; i < COLS; i++)
+			{
+				int x = PAD + i * (CS + 3), y = PAD + j * (CS + 3);
+				bool on = j <= r && i <= c;
+				canvas.fillRect (x, y, CS, CS, on ? wk_mix (0xFFFFFF, C_ACCENT, 110) : 0xFFFFFF);
+				canvas.frameRect (x, y, CS, CS, on ? C_ACCENT : wk_mix (C_FIELD, C_FIELD_TEXT, 90));
+			}
+		char b[40] = "Insert a table";
+		if (r >= 0) { int n = 0; char t[8]; fmt_int (t, c + 1); for (char *s = t; *s; s++) b[n++] = *s; b[n++] = ' '; b[n++] = 'x'; b[n++] = ' '; fmt_int (t, r + 1); for (char *s = t; *s; s++) b[n++] = *s; scpy (b + n, " table", 40 - n); }
+		wk_text_c (canvas, 0, height - PAD - 22, width, 22, b, C_FIELD_TEXT);
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		int nc = (mx - PAD) / (CS + 3), nr = (my - PAD) / (CS + 3);
+		bool in = mx >= PAD && my >= PAD && nc < COLS && nr < ROWS;
+		if (!in) { nc = nr = -1; }
+		if (nc != c || nr != r) { c = nc; r = nr; invalidate (true); }
+		bool inside = mx >= 0 && my >= 0 && mx < width && my < height;
+		if (bl && !pressed) { pressed = true; if (!inside) close (0); }
+		else if (!bl && pressed) { pressed = false; if (in) close (1 + r * 100 + c); }
+		return true;
+	}
+	bool onKey (long k) override { if (k == 27) close (0); return true; }
+	// The table picked: rows, columns (false: none).
+	bool pick (int *rows, int *cols) { int v = run (); if (v <= 0) return false; *rows = (v - 1) / 100 + 1; *cols = (v - 1) % 100 + 1; return true; }
+};
+
+class TableDialog : public Dialog
+{
+public:
+	Textbox *tRows, *tCols; Checkbox *cbHead;
+	TableDialog () : Dialog (400, 222, "Insert Table")
+	{
+		tCols = field (170, 44, 70, "3");
+		tRows = field (170, 78, 70, "2");
+		cbHead = new Checkbox (22, 118, 360, 24, "Repeat the heading row on each page", false, 0, C_FACE); addChild (cbHead);
+		okCancel ();
+	}
+	void drawBody () override { label (22, 50, "Number of columns:"); label (22, 84, "Number of rows:"); }
+};
+static void table_heading (bool on)				// (the table at the caret: its heading row)
+{
+	int ta, tb; Table *t = table_at (sel_a ().p, &ta, &tb);
+	if (!t || t->header == on) return;
+	Table *nt = table_copy (t); nt->header = on;
+	ed_table_set (sel_a ().p, nt);
+}
+static bool dlg_insert_table ()
+{
+	TableDialog d;
+	if (d.run () != 1) return false;
+	long r, c;
+	if (!parse_num (d.tRows->text, &r) || !parse_num (d.tCols->text, &c)) return false;
+	ed_insert_table ((int) wclamp (r / 100, 1L, 500L), (int) wclamp (c / 100, 1L, (long) MAXCOLS));
+	if (d.cbHead->checked) table_heading (true);
+	return true;
+}
+
+static const char *const BORDER_NAMES[4] = { "All lines", "None", "Outline only", "Rows only" };
+static const char *const BW_NAMES[6] = { "1/2 pt", "3/4 pt", "1 pt", "1 1/2 pt", "2 1/4 pt", "3 pt" };
+static const unsigned char BW_VALS[6] = { 4, 6, 8, 12, 18, 24 };
+static const char *const TALIGN_NAMES[3] = { "Left", "Centre", "Right" };
+
+class TablePropsDialog : public Dialog
+{
+public:
+	Table *t; int r0, c0, r1, c1;
+	Dropdown *border, *bw, *al; Swatch *bcol, *fill; Checkbox *cbHead;
+	Textbox *tIndent, *tColW, *tRowH;
+	TablePropsDialog (const Table *src, int ra, int ca, int rb, int cb) : Dialog (470, 400, "Table Properties"), r0 (ra), c0 (ca), r1 (rb), c1 (cb)
+	{
+		t = table_copy (src);
+		border = new Dropdown (150, 44, 160, 26, BORDER_NAMES, 4, t->border & 3, 0); addChild (border);
+		int bsel = 0; for (int i = 0; i < 6; i++) if (BW_VALS[i] <= t->bw) bsel = i;
+		bw = new Dropdown (150, 78, 160, 26, BW_NAMES, 6, bsel, 0); addChild (bw);
+		bcol = new Swatch (390, 78, t->bcolor == 0 ? AUTO : t->bcolor, g_textCols, 60, 10, "Automatic"); addChild (bcol);
+		al = new Dropdown (150, 132, 160, 26, TALIGN_NAMES, 3, t->align == AL_CENTER ? 1 : t->align == AL_RIGHT ? 2 : 0, 0); addChild (al);
+		char b[16]; fmt_len (b, t->indent); tIndent = field (390, 132, 64, b);
+		cbHead = new Checkbox (22, 170, 360, 24, "Repeat the first row on each page", t->header, 0, C_FACE); addChild (cbHead);
+		int w = 0; for (int c = c0; c <= c1; c++) w += t->colW[c];
+		fmt_len (b, w / (c1 - c0 + 1)); tColW = field (240, 226, 80, b);
+		fmt_len (b, t->rowH[r0]); tRowH = field (240, 260, 80, b);
+		fill = new Swatch (240, 294, tcell (t, r0, c0).fill, g_textCols, 60, 10, "No Colour"); addChild (fill);
+		okCancel ();
+	}
+	~TablePropsDialog () { if (t) table_free (t); }
+	void drawBody () override
+	{
+		const char *u = g_inches ? "in" : "cm";
+		label (22, 50, "Lines:"); label (22, 84, "Line width:"); label (330, 84, "Colour:");
+		label (22, 138, "Alignment:"); label (330, 138, "Indent:");
+		wk_etch_box (canvas, 16, 212, 438, 118, 6, C_FACE);
+		const char *sel = "The selected cells";
+		canvas.fillRect (26, 205, wk_text_w (sel) + 8, 14, C_FACE); label (30, 205, sel);
+		label (32, 232, "Columns' width:"); label (328, 232, u);
+		label (32, 266, "Rows' least height:"); label (328, 266, u);
+		label (32, 300, "Shading:");
+	}
+	// The table as the dialog says.
+	Table *result ()
+	{
+		t->border = (unsigned char) border->sel; t->bw = BW_VALS[bw->sel % 6]; t->bcolor = bcol->color == AUTO ? 0 : bcol->color;
+		t->align = (unsigned char) (al->sel == 1 ? AL_CENTER : al->sel == 2 ? AL_RIGHT : AL_LEFT);
+		int v;
+		if (parse_len (tIndent->text, &v)) t->indent = wclamp (v, -5000, 20000);
+		t->header = cbHead->checked;
+		int w0 = 0; for (int c = c0; c <= c1; c++) w0 += t->colW[c];
+		if (parse_len (tColW->text, &v) && v >= 120 && v / 10 != w0 / (c1 - c0 + 1) / 10) for (int c = c0; c <= c1; c++) t->colW[c] = wmin (v, 30000);
+		if (parse_len (tRowH->text, &v)) for (int r = r0; r <= r1; r++) t->rowH[r] = (short) wclamp (v, 0, 20000);
+		for (int r = r0; r <= r1; r++) for (int c = c0; c <= c1; c++) tcell (t, r, c).fill = fill->color;
+		Table *res = t; t = 0;
+		return res;
+	}
+};
+static bool dlg_table_props ()
+{
+	int r0, c0, r1, c1, ta, tb;
+	Table *src = table_at (sel_a ().p, &ta, &tb);
+	if (!src || !sel_cells (&r0, &c0, &r1, &c1)) return false;
+	TablePropsDialog d (src, r0, c0, r1, c1);
+	if (d.run () != 1) return false;
+	ed_table_set (sel_a ().p, d.result ());
+	return true;
 }
 
 } // namespace wr

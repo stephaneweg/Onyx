@@ -283,7 +283,7 @@ does not change it.
 ![Menu bar](../screenshots/menubar.png)
 *The menu bar with tinypad active and its File menu open.*
 
-Applications with menus: **tinypad** (File), **Writer** (File, Edit, View, Insert, Format, Tools),
+Applications with menus: **tinypad** (File), **Writer** (File, Edit, View, Insert, Format, Table, Tools),
 **Paint** (File, Edit, Image, Layers, View, Colours) and the **File Viewer** (File, Edit) — see §12.
 
 ### The dock (`dock`)
@@ -396,7 +396,7 @@ sidebar's places), the dock's launchers (their app opens the files), the Trash, 
 apps (tinypad, Writer, paint, Cardfile open the dropped file; dropped text goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
-per line (`txt = tinypad`, `png = imageview`, `doc = writer`, `card = cardfile`, …): opening the file runs
+per line (`txt = tinypad`, `png = imageview`, `docx = writer`, `card = cardfile`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock (files
 dropped on a launcher). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
 a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
@@ -985,7 +985,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | App | Description and controls |
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
-| **Writer** | The **word processor**, in the way of AbiWord: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents), a ruler (the indents and margins dragged), images, Find and Replace, Special Character, Page Setup, Word Count; RTF (with everything), text, HTML export. See *Writer, the word processor* below. |
+| **Writer** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Writer, the word processor* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
@@ -1032,103 +1032,167 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 ### Writer, the word processor (`writer`)
 
 ![Writer](../screenshots/writer.png)
-*Writer with its sample document (`SD:/docs/writer-tour.rtf`): a word selected, the toolbar showing its font and size.*
+*Writer with its sample document (`SD:/docs/writer-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
 
-Writer is Onyx's word processor, in the way of AbiWord. The document is laid out on **pages** — A4
-by default, 2 cm margins — shown one under the other on a grey desk, and every letter is drawn by
-**FreeType** from the TrueType fonts of the card (`SD:/res/fonts`; a `.ttf` added to `SD:/fonts`
-shows up too): **Liberation Serif** and **Liberation Sans** (the metrics of Times New Roman and
-Arial), **DejaVu Sans / Serif / Sans Mono**, **Gelasio** (Georgia's), **Selawik** (Segoe UI's). A
-font a document names but the card lacks is shown with its twin (Arial → Liberation Sans, Times
-New Roman → Liberation Serif, Courier New → DejaVu Sans Mono, Georgia → Gelasio, Segoe UI →
-Selawik, others by kind) and keeps its name when the document is saved. No printing yet.
+Writer is Onyx's word processor, in the way of AbiWord and Word. The document is laid out on
+**pages** — A4 by default, 2 cm margins — shown one under the other on a grey desk, each with its
+**header** and **footer**, and every letter is drawn by **FreeType** from the TrueType fonts of the
+card (`SD:/res/fonts`; a `.ttf` added to `SD:/fonts` shows up too): **Liberation Serif** and
+**Liberation Sans** (the metrics of Times New Roman and Arial), **DejaVu Sans / Serif / Sans
+Mono**, **Gelasio** (Georgia's), **Selawik** (Segoe UI's). A font a document names but the card
+lacks is shown with its twin (Arial → Liberation Sans, Times New Roman → Liberation Serif, Courier
+New → DejaVu Sans Mono, Georgia → Gelasio, Segoe UI → Selawik, others by kind) and keeps its name
+when the document is saved. It reads and writes **Word (`.docx`)**, **OpenDocument (`.odt`)** and
+**RTF** documents with their tables, headers, fields and lists; it fills letters from **Cardfile**
+forms (the **mail merge**). No printing yet.
 
 **The window**, from the top:
 
 - **The standard toolbar**: New, Open, Save · Undo, Redo · Cut, Copy, Paste · Find and Replace,
   Formatting marks (¶: the spaces, tabs, line breaks and paragraphs' ends shown) · Page break,
-  Special character (Ω), Insert image · the **zoom** (−, the list: Page Width, Whole Page,
-  25 %–400 %, +).
+  **Table** (the button: Insert Table...; its arrow: a grid — the cells under the pointer lit, a
+  click inserts that many columns and rows), Special character (Ω), Insert image · the **zoom**
+  (−, the list: Page Width, Whole Page, 25 %–400 %, +).
 - **The format toolbar**: the paragraph's **style** (Normal, Heading 1–3, Title, Subtitle, Quote,
-  Plain Text — the list shows each in its look), the **font** (the list shows each font in
-  itself), the **size** (type a number then Enter, or pick one), **B I U S**, superscript and
-  subscript, the **text colour** and the **highlight** (a click applies the colour shown under the
-  letter; the arrow opens the palette: Automatic / No Colour, sixty colours, More Colours...), the
-  four **alignments**, **bullets** and **numbering**, **decrease / increase indent**. The buttons
-  show the text at the caret: bold lit on bold text, its font, its size, its alignment.
+  Plain Text, Contents 1–3, Contents Heading, Header, Footer — the list shows each in its look),
+  the **font** (the list shows each font in itself), the **size** (type a number then Enter, or
+  pick one), **B I U S**, superscript and subscript, the **text colour** and the **highlight** (a
+  click applies the colour shown under the letter; the arrow opens the palette: Automatic / No
+  Colour, sixty colours, More Colours...), the four **alignments**, **bullets** and **numbering**,
+  **decrease / increase indent**. The buttons show the text at the caret: bold lit on bold text,
+  its font, its size, its alignment.
 - **The ruler**: the page's width at the zoom, the margins grey, in centimetres (View ▸ Ruler in
   Inches / Centimetres). Its markers are the paragraph's indents — the first line's (the triangle
   on top), the hanging indent (the triangle below), the left indent (the little box: both
   together), the right indent: **drag them** (the selected paragraphs change, one undoable edit).
-  Drag the edge between the grey and the white to move the page's left or right margin.
+  Drag the edge between the grey and the white to move the page's left or right margin. In a
+  **table**, the ruler is the cell's (its numbers from the cell's left edge) and shows the table's
+  **column borders**: drag one to resize the columns on both sides of it.
 - **The pages**: a click places the caret, a **drag** selects (past the edge, the page scrolls),
   a **double click** selects a word, a **triple click** the paragraph, **Shift+click** extends the
   selection; the **wheel** and the scroll bars scroll; a **right click** opens a menu (Cut, Copy,
-  Paste, Paste Unformatted, Font..., Paragraph..., Bullets, Numbering, Select All).
+  Paste, Font..., Paragraph..., then — in a table — Insert Row Below, Insert Column Right, Delete
+  Rows, Delete Columns, Merge Cells, Split Cell, Table Properties...; in a table of contents,
+  Update Table of Contents; in a header or a footer, Close Header and Footer; else Bullets,
+  Numbering —, Select All). A **double click in the top or bottom margin** edits that page's
+  header or footer; a table's **column border** is dragged on the page too.
 - **The status bar**: the file's name ("modified" when it is), the caret's page and the number of
-  pages, the number of words, the zoom (− / +).
+  pages (in a header: "Header - Page 2 of 3"), the number of words, the zoom (− / +).
 
-**Keys**: typing replaces the selection; the arrows (**Ctrl**: by word, by paragraph), **Home /
-End** (the line's; Ctrl: the document's), **Page Up / Down**, with **Shift** to select;
-**Backspace / Delete** (Ctrl: a word); **Enter** a new paragraph (after a heading: a Normal one; in
-an empty list item: the end of the list), **Shift+Enter** a new line in the paragraph; **Tab** a
-tab stop (every 1.25 cm) — at the start of a list item, a level down (**Shift+Tab**: up); **Esc**
-drops the selection. Shortcuts: **Ctrl+N / O / S** New, Open, Save · **Ctrl+Z / Y** Undo, Redo ·
-**Ctrl+X / C / V** Cut, Copy, Paste · **Ctrl+A** Select All · **Ctrl+F** Find and Replace ·
-**Ctrl+B / I / U** bold, italic, underline · **Ctrl+L / E / R / J** left, centred, right,
-justified · **Ctrl+D** Font....
+**Keys**: typing replaces the selection; the arrows (**Ctrl**: by word, by paragraph; in a table,
+Up / Down go from cell to cell), **Home / End** (the line's; Ctrl: the document's), **Page Up /
+Down**, with **Shift** to select; **Backspace / Delete** (Ctrl: a word); **Enter** a new paragraph
+(after a heading: a Normal one; in an empty list item: the end of the list; in a table: a new
+paragraph in the cell), **Shift+Enter** a new line in the paragraph; **Tab** the next tab stop (the
+paragraph's own, else every 1.25 cm) — at the start of a list item, a level down (**Shift+Tab**:
+up); in a table, the **next cell** (in the last one: a new row; **Shift+Tab** the previous cell);
+**Esc** drops the selection, or leaves a header or a footer. Shortcuts: **Ctrl+N / O / S** New,
+Open, Save · **Ctrl+Z / Y** Undo, Redo · **Ctrl+X / C / V** Cut, Copy, Paste · **Ctrl+A** Select
+All · **Ctrl+F** Find and Replace · **Ctrl+B / I / U** bold, italic, underline · **Ctrl+L / E / R
+/ J** left, centred, right, justified · **Ctrl+D** Font....
 
 **The menus**: **File** (New, Open..., Save, Save As..., Export as HTML..., Export as Text...,
 Page Setup...), **Edit** (Undo, Redo, Cut, Copy, Paste, Paste Unformatted, Select All, Find and
-Replace...), **View** (Zoom In / Out, Actual Size, Page Width, Whole Page, Formatting Marks, the
-ruler's unit), **Insert** (Page Break, Image..., Special Character..., Date and Time..., Page
-Numbers), **Format** (Font..., Paragraph..., Bold, Italic, Underline, Strikethrough, Superscript,
-Subscript, Bigger, Smaller, Clear Formatting, the four alignments, Bullets, Numbering, Increase /
-Decrease Indent), **Tools** (Word Count...).
+Replace...), **View** (Actual Size, Page Width, Whole Page, **Header and Footer**, Formatting
+Marks, the ruler's unit), **Insert** (Page Break, **Table...**, Image..., Special Character...,
+**Page Numbers...**, Date and Time..., **Field...**, **Table of Contents**), **Format** (Font...,
+Paragraph..., **Tabs...**, Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Clear
+Formatting, the four alignments, Bullets, Numbering), **Table** (Insert Rows Above / Below,
+Insert Columns Left / Right, Delete Rows, Delete Columns, Delete Table, Merge Cells, Split Cell,
+Distribute Columns Evenly, Select Table, Table Properties...), **Tools** (Word Count..., Update
+Table of Contents, **Mail Merge...**).
 
-**The dialogs**:
+**Tables**
 
-- **Font** (Ctrl+D): the font, its style (Regular, Italic, Bold, Bold Italic), the size, the
-  effects (Underline, Strikethrough, Superscript, Subscript), the colour and the highlight; a
-  preview draws the selection's words in the chosen font.
-- **Paragraph**: the alignment; the indents (left, right, special — a first line's or a hanging
-  one — and by how much), in centimetres; the spacing before and after (points) and between the
-  lines (single, 1.15, 1.5, double); Page break before, Keep with next; a preview.
-- **Page Setup**: the paper (A4, A5, A3, Letter, Legal), portrait or landscape, the four
-  margins, the page numbers at the foot of each page; a preview of the page.
-- **Find and Replace** (Ctrl+F): what to find (the selection's words, if any), what replaces it,
-  Match case; **Find Next** (Enter) selects the next one (round to the start; the dialog moves out
-  of its way), **Replace** replaces it and finds the next one, **Replace All** replaces them all
-  (one undoable edit; the count shown).
-- **Special Character**: the characters of the current font by block — Latin-1, Latin Extended,
-  Greek, Cyrillic, punctuation, currencies, letter-like symbols and numbers, arrows, mathematics,
-  box drawing and shapes, symbols, dingbats —, the chosen one large with its code; **Insert** (or a
-  double click) puts it at the caret, the dialog staying open.
-- **Date and Time**: today's date and the time in several forms (29/09/2026, Tuesday 29 September
-  2026, 2026-09-29, 14:05...).
-- **Word Count**: the pages, words, characters without and with spaces, paragraphs and lines —
-  of the selection when there is one.
+![A table](../screenshots/writer-table.png)
+*The sample's second page: its header, a table with a heading row and shaded rows, the caret in a cell — the ruler shows its columns.*
 
-**Images**: Insert ▸ **Image...** (or the toolbar's picture) puts a PNG, JPEG, BMP (its magenta
-see-through, as Onyx's icons), GIF or WebP picture at the caret, in the line like a large letter,
-at its size (narrowed to the page's width). A **click** on it selects it — a frame and a handle at
-its bottom-right corner: **drag the handle** to resize it (its proportions kept; undoable); Delete
-removes it; Cut / Copy / Paste move it.
+**Insert ▸ Table...** asks the number of columns and rows (and whether the heading row is repeated
+on each page); the toolbar's grid inserts one at once. The table spans the text's width, its columns
+even; each **cell** holds paragraphs of its own (styles, lists, images, fields...). **Tab** goes
+from cell to cell and, in the last one, adds a row. A **drag** across cells selects them, as does
+**Table ▸ Select Table**. The **Table** menu acts on the selected cells: it inserts **rows** above
+or below them (as many as selected) and **columns** left or right, **deletes** the rows, the columns
+or the whole table, **merges** the selected cells into one (their text kept, one paragraph under the
+other) and **splits** a merged cell back, **distributes** the columns evenly. **Table
+Properties...**: the lines (all, none, the outline only, the rows only), their width and colour, the
+table's alignment on the page and its indent, the heading row repeated on each page; for the
+selected cells, the columns' width, the rows' least height and the **shading**. A table breaks
+across pages between its rows — a row, and the rows its merged cells span, kept whole —; its
+**heading row** is drawn again at the top of each page. Each change undoes in one step.
 
-**Files**: **`.rtf`** (Rich Text Format, with everything — the fonts, sizes, colours, highlights,
-styles, alignments, indents, spacing, lists, page breaks, images, the page's size and margins, the
-page numbers; documents from Word, WordPad, LibreOffice or AbiWord open with theirs) and
-**`.txt`** (plain text: UTF-8 when a character needs it, else Latin-1 like the rest of Onyx).
-**Save** writes the format of the file's name (a new document: Save As..., `.rtf` by default;
-saving formats as `.txt` asks first); **File ▸ Export** writes an **HTML** page (its images inside
-it) or a text file, the document staying where it was. A `.rtf` double-clicked in the File Viewer
-opens in Writer (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Writer), as does
-`writer <file>`; **drop** a file on the window to open it, or text to insert it at the caret. New,
-Open and a drop first ask to **save unsaved changes**; **closed with unsaved changes** (the close
-box, Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offered back when
-Writer starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste
-within Writer keep the formats (and the images); the other apps get the text. Documents usually
-start in `SD:/docs`; the sample: `SD:/docs/writer-tour.rtf`.
+**Pages: headers, footers, page numbers, fields**
+
+- **View ▸ Header and Footer** (or a **double click** in a page's top or bottom margin) edits the
+  header or the footer — the body greyed, the header's frame labelled "Header", "First Page
+  Header"...; a double click on the body, **Esc** or the menu again goes back. A header or a footer
+  holds what a page does (styles, tab stops, images, fields), and the page's body starts below
+  it when it grows.
+- **Insert ▸ Page Numbers...**: at the top (the header) or the bottom (the footer), left, centred
+  or right, as "1", "Page 1", "Page 1 of 3" or "1 / 3", and whether the first page shows it (else
+  the first page gets a header and footer of its own).
+- **File ▸ Page Setup...**: the paper (A4, A5, A3, Letter, Legal), portrait or landscape, the four
+  margins, the header's distance from the page's top and the footer's from its foot, **Different
+  first page** (a title page with its own header and footer), the **first page's number**; a
+  preview of the page.
+- **Insert ▸ Field...**: the **page number**, the **number of pages**, the **date** or the
+  **time** (in the form chosen), text kept up to date (shaded grey on the screen, not in the
+  files); **Insert ▸ Date and Time...** types today's date or the time — as a field with **Update
+  automatically**.
+- **Format ▸ Paragraph...** says how the pages break: **Page break before**, **Keep with next**
+  (the headings are), **Keep lines together**, **Widow / orphan control** (no paragraph's first or
+  last line alone at a page's foot or top: on by default).
+
+**Tab stops**: **Format ▸ Tabs...** (or the Paragraph dialog's **Tabs...** button) lists the
+paragraph's tab stops: a **position**, an **alignment** (left, centred, right, **decimal** — the
+numbers' points lined up) and a **leader** (none, dots, dashes, a line), **Set** / **Clear** /
+**Clear All**; past the last one, the default stops every 1.25 cm.
+
+**The table of contents**: **Insert ▸ Table of Contents** puts one at the caret — a "Contents"
+heading, then a line for each **Heading 1, 2 and 3** of the document, indented by level, its page
+number at the right after a line of dots. **Tools ▸ Update Table of Contents** (or its right-click
+menu) makes it again after the document changed — its titles and its pages.
+
+**The mail merge**
+
+![Mail Merge](../screenshots/writer-merge.png)
+*Tools ▸ Mail Merge over the sample letter (`SD:/docs/new-year-letter.rtf`): the Contacts form's fields, the first record's values shown in the letter.*
+
+A **letter** (any Writer document) gets **merge fields** — the columns of a **Cardfile** form —
+that the mail merge fills with the form's **records**: one letter per record. **Tools ▸ Mail
+Merge...** opens the dialog: **Records** — the Cardfile form (`.card`) the letter's fields come
+from (**Choose...**; the letter remembers it); **Its fields** — a double click (or **Insert the
+Field**) puts one at the caret, shown «name» in the letter; **Preview the values** shows a
+record's values instead, **‹ ›** go through the records; **Merge**: **All the records** or **The
+record previewed**; **Merge to a New Document** opens the letters, each on a new page, as a new
+document in another Writer; **Merge to Files...** writes each letter in a file of its own — the
+name and the folder chosen give the folder and the format (`.rtf`, `.docx`, `.odt`), the files
+named after a field (**Files**: "Named after: Name" → `Alice Martin.odt`) or numbered
+(`letter-1.odt`...). Cardfile does the same from a form: **Record ▸ Mail Merge...** (see
+*Cardfile*). A multi-line value (an address) keeps its lines; a date shows as in Cardfile
+(29/09/2026), yes / no as Yes / No. Files written: the documents chosen; `SD:/apps/writer.app/
+merge-letter.rtf` and `merge.job` (the request to the other Writer).
+
+**Files**: **`.rtf`** (Rich Text Format), **`.docx`** (Word 2007 and later) and **`.odt`**
+(OpenDocument Text: LibreOffice, OpenOffice), read and written with **everything** — the fonts,
+sizes, colours, highlights, styles, alignments, indents, spacing, tab stops, lists, page breaks,
+images, tables (merged cells, lines, shading, the heading row), the headers and footers (the first
+page's own), the fields (page, pages, date, time, the merge fields), the table of contents, the
+page's size and margins; documents from Word, WordPad, LibreOffice or AbiWord open with theirs (a
+feature Writer lacks is left out: text boxes and shapes, comments; tracked changes are read
+accepted). **`.txt`**: plain text (UTF-8 when a character needs it, else Latin-1 like
+the rest of Onyx). **Save** writes the format of the file's name (a new document: Save As...,
+`.rtf` by default — type `.docx` or `.odt` for those; saving formats as `.txt` asks first);
+**File ▸ Export** writes an **HTML** page (its images inside it) or a text file, the document
+staying where it was. A `.rtf`, `.doc`, `.docx` or `.odt` double-clicked in the File Viewer opens
+in Writer (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Writer), as does `writer
+<file>`; **drop** a file on the window to open it, or text to insert it at the caret. New, Open
+and a drop first ask to **save unsaved changes**; **closed with unsaved changes** (the close box,
+Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offered back when Writer
+starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste within Writer
+keep the formats (and the images); the other apps get the text. Documents
+usually start in `SD:/docs`; the samples: `SD:/docs/writer-tour.rtf`, `SD:/docs/new-year-letter.rtf`
+(the letter of the Contacts form: `SD:/docs/contacts.card`).
 
 ### Paint (`paint`)
 
@@ -1274,11 +1338,28 @@ they will be emptied. Change the type?*); to a choice list, the values become it
 decimals round the values (said in the status bar). A value that is not among a list's choices
 stays (the form shows it at the end of the list).
 
+![Cardfile's mail merge](../screenshots/cardfile-merge.png)
+*Record ▸ Mail Merge... on the Contacts form: its letter, this record or all of them, one document or a file each.*
+
+**The mail merge** (**Record ▸ Mail Merge...**): a **Writer** letter whose **merge fields** are the
+form's columns (made in Writer: Tools ▸ Mail Merge, see *Writer*) is filled with the records — a
+letter per record. The dialog: the **Letter** (`.rtf`, `.docx` or `.odt`; **Choose...**; the form
+remembers it), the **Records** — **this record** or **all the records shown** (the search and the
+sort applied) —, the **Documents** — **one document in Writer**, each letter on a new page (to read,
+change, save as one file), or **files** in a folder (`SD:/docs/Letters` by default; made if needed)
+named after a field (**Named after: Name** → `Alice Martin.rtf`; two alike: the second numbered)
+or numbered after the letter (`new-year-letter-1.rtf`...), in the letter's format or as RTF, Word
+or OpenDocument. **Merge** hands it to Writer, which opens the document (or, for files, says how
+many it wrote and opens the first one). Cardfile writes the records to merge in
+`SD:/apps/cardfile.app/merge.card` and the request in `merge.job` (Writer's `writer --merge JOB`).
+Try it with the Contacts form (`SD:/docs/contacts.card`) and its letter
+`SD:/docs/new-year-letter.rtf`.
+
 **The menus**: **File** (New Form ^N, Open... ^O, Save ^S, Save As..., Import CSV..., Export as
 CSV...), **Edit** (Undo ^Z, Redo ^Y — record edits, deletions and the form's design, 100 steps —,
 Cut, Copy, Paste, Search... ^F, Clear the Search), **Record** (New Record ^R, Duplicate Record ^D,
-Delete Record..., First / Previous / Next / Last Record, Go to Record... ^G, Undo the Record's
-Changes Esc), **View** (Form F5, List F6, Design F7, In the File's Order), **Design** (Add Field,
+Delete Record..., First / Previous / Next / Last Record, Go to Record... ^G, Mail Merge..., Undo
+the Record's Changes Esc), **View** (Form F5, List F6, Design F7, In the File's Order), **Design** (Add Field,
 Remove Field..., Move Field Up, Move Field Down).
 
 **Files**: the `.card` file (below). **File ▸ Export as CSV...** writes the records shown (the search
@@ -1293,7 +1374,7 @@ changes**; **closed with unsaved changes** (the close box, Quit), the form is ke
 file, and a `.card` double-clicked in the File Viewer opens in Cardfile (`fileassoc.ini`). Started
 without a file, Cardfile opens the form it had last (kept in `SD:/apps/cardfile.app/last.txt`), else
 a new form in the Design view (a Name and a Notes field). Samples: `SD:/docs/books.card` (every type
-of field) and `SD:/docs/contacts.card`.
+of field) and `SD:/docs/contacts.card` (with its mail merge's letter, `SD:/docs/new-year-letter.rtf`).
 
 **The `.card` file** is text (Latin-1, as Onyx writes it), easy to read and to edit by hand:
 
@@ -1323,7 +1404,8 @@ title	author	genre	price
 Dune	Frank Herbert	Science fiction	10.90
 ```
 
-`[form]`: the title, the description, the views' order (`sort` = a column; `order = descending`).
+`[form]`: the title, the description, the views' order (`sort` = a column; `order = descending`),
+the mail merge's letter (`merge = SD:/docs/letter.rtf`).
 A `[field]` section a field, in the form's order: `column`, `label`, `type` (`text`, `multiline`,
 `integer`, `decimal`, `date`, `colour`, `yesno`, `choice`), `decimals` (a decimal number: 0 to 6),
 `choice` (a choice list: a line a choice, in their order). `[records]`: the columns' names on the

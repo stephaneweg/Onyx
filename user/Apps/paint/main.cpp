@@ -646,6 +646,7 @@ public:
 int main (void)
 {
 	PaintRoot root;
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 	wtk::init ();
 	doc_new (640, 480, true);			// (whole at 100 % in the window)
 	compose_all ();
