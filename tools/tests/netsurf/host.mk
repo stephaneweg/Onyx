@@ -220,6 +220,7 @@ res:
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(OUT)/res/
 	@mkdir -p $(OUT)/res/fonts
 	cp $(FONTS)/ttf/*.ttf $(OUT)/res/fonts/
+	cp $(TP)/fonts/*/*.ttf $(OUT)/res/fonts/
 	printf 'foreground_images:1\nbackground_images:1\nenable_javascript:1\n' > $(OUT)/res/Choices
 
 -include $(wildcard $(OUT)/o/*.d)

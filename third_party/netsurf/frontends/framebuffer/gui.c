@@ -625,6 +625,8 @@ static nserror set_defaults(struct nsoption_s *defaults)
 	/* Onyx: the default font size as the other browsers': 12 pt, 16 px at 96 dpi
 	 * (NetSurf's 12.8 pt made every rem / em 7 % larger) */
 	defaults[NSOPTION_font_size].value.i = 120;
+	/* Onyx: and their default font: serif (Times New Roman, here Liberation Serif) */
+	defaults[NSOPTION_font_default].value.i = PLOT_FONT_FAMILY_SERIF;
 	return NSERROR_OK;
 }
 

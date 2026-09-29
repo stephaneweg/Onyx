@@ -205,9 +205,13 @@ stage: link
 	@mkdir -p $(SDCARD)/res/icons
 	for f in arrow-l content directory directory2 hotlist-add hotlist-rmv search; do cp $(NS)/resources/icons/$$f.png $(SDCARD)/res/icons/ 2>/dev/null || true; done
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(NS)/resources/ca-bundle $(SDCARD)/res/
-	# the fonts (FreeType: font_freetype.c looks for them in /res/fonts), DejaVu + its licence
+	# the fonts (FreeType: font_freetype.c looks for them in /res/fonts), DejaVu + its licence;
+	# third_party/fonts: Liberation (Arial's, Times New Roman's metrics), Selawik (Segoe UI's),
+	# Gelasio (Georgia's) -- SIL OFL, each licence as LICENSE-<dir>
 	@mkdir -p $(SDCARD)/res/fonts
 	cp $(FONTS)/ttf/*.ttf $(FONTS)/LICENSE $(SDCARD)/res/fonts/
+	cp $(LIBROOT)/fonts/*/*.ttf $(SDCARD)/res/fonts/
+	for d in $(LIBROOT)/fonts/*/; do cp $$d/LICENSE $(SDCARD)/res/fonts/LICENSE-$$(basename $$d); done
 	# Options (Choices) -- created only if missing so the user's edits survive a re-stage.
 	# Set foreground_images:0 for a fast text + alt-text browse (skips image fetches).
 	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:4\nmax_fetchers_per_host:4\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
