@@ -446,6 +446,7 @@ static inline int kapi_pump_wait (unsigned timeout_ms)
 // and a yield while another thread holds it -- nothing to create, a zeroed int is free. Not
 // recursive. (Threads all run on core 0; the swap is still an exclusive load / store pair,
 // since the timer may preempt a thread anywhere in its own code.)
+#if defined (__aarch64__)
 static inline int kapi__xchg (volatile int *p, int v)
 {
 	int old; unsigned fail;
@@ -466,6 +467,10 @@ static inline void kapi_lock (volatile int *l)
 	}
 }
 static inline void kapi_unlock (volatile int *l) { __asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory"); }
+#else	// (the PC's builds of the apps -- the desktop simulator, the host tests: the compiler's atomics)
+static inline void kapi_lock (volatile int *l) { while (__atomic_exchange_n (l, 1, __ATOMIC_ACQUIRE) != 0) KT->yield (); }
+static inline void kapi_unlock (volatile int *l) { __atomic_store_n (l, 0, __ATOMIC_RELEASE); }
+#endif
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
