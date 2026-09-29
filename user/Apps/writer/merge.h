@@ -18,6 +18,12 @@
 //   folder   = SD:/docs/Letters         (files: where; made if needed)
 //   name     = Name                     (files: named after this field; empty: letter-1, letter-2...)
 //   format   = rtf | docx | odt         (files: theirs; the template's by default)
+//   lines    = SD:/apps/ledger.app/merge-lines.card    (a document's lines: below)
+//
+// A document's LINES (Ledger's quotes, orders, invoices: "lines = ..." a second form, a record a line): a
+// table row of the letter holding merge fields named Line... («LineText», «LineQty», «LineTotal») is
+// repeated for each of those records, its fields filled with that record's values (no record: the row
+// taken out); the other fields take the data's record, as ever.
 //
 #ifndef _writer_merge_h
 #define _writer_merge_h
@@ -79,6 +85,103 @@ static bool merge_open (const char *path, const char **why)
 	if (g_mdataOk) { scpy (g_mdataPath, path, sizeof g_mdataPath); g_mrec = 0; }
 	return g_mdataOk;
 }
+// ---- a document's lines: its table rows repeated -------------------------------------------------------------
+static cf::Doc g_mlines; static bool g_mlinesOk;
+static bool merge_lines_open (const char *path)
+{
+	void *f = kapi_open (path);
+	if (!f) { g_mlinesOk = false; return false; }
+	unsigned n = kapi_fsize (f);
+	char *b = new char[n + 1];
+	int got = kapi_read (f, b, n);
+	kapi_close (f);
+	if (got < 0) got = 0;
+	b[got] = 0;
+	if (!g_mlinesOk) cf::doc_init (g_mlines);
+	const char *why;
+	g_mlinesOk = cf::doc_read (g_mlines, b, got, &why);
+	delete[] b;
+	return g_mlinesOk;
+}
+// A field of a line: its name starts with "Line".
+static bool line_field (const char *name) { return (name[0] == 'L' || name[0] == 'l') && (name[1] == 'i' || name[1] == 'I') && (name[2] == 'n' || name[2] == 'N') && (name[3] == 'e' || name[3] == 'E'); }
+static bool is_line_field (const Doc &d, const Para *q, int k)
+{
+	if (q->ch[k] != FIELD_CHAR) return false;
+	const CharFmt &f = d.fmt[q->cf[k]];
+	return f.fld && d.fld[f.fld - 1].kind == FK_MERGE && line_field (d.fld[f.fld - 1].arg);
+}
+// A paragraph's line fields made the line r's values.
+static void fill_line_fields (Doc &d, Para *q, int r)
+{
+	for (int k = q->len - 1; k >= 0; k--)
+	{
+		if (!is_line_field (d, q, k)) continue;
+		CharFmt f = d.fmt[q->cf[k]];
+		const char *name = d.fld[f.fld - 1].arg;
+		char v[1024]; v[0] = 0;
+		int fk = -1;
+		for (int j = 0; j < g_mlines.nf; j++) if (sicmp (g_mlines.f[j].column, name) == 0 || sicmp (g_mlines.f[j].label, name) == 0) fk = j;
+		if (fk >= 0 && r >= 0 && r < g_mlines.nr) cf::value_show (g_mlines.f[fk], g_mlines.r[r][fk], v, sizeof v, true, "\x0B");
+		unsigned u[1024]; int m = 0;
+		for (const char *t = v; *t && m < 1024; t++) u[m++] = (unsigned char) *t;
+		f.fld = 0;
+		unsigned short cf = doc_fmt (d, f);
+		para_erase (q, k, k + 1);
+		para_insert (q, k, u, m, cf);
+		q->dirty = true;
+	}
+}
+// The body's table rows holding line fields: repeated for each line (their fields filled), or taken out.
+static void merge_lines (Doc &d)
+{
+	if (!g_mlinesOk) return;
+	if (d.cur != SY_BODY) doc_story (d, SY_BODY);
+	int N = g_mlines.nr;
+	for (int i = 0; i < d.n; i++)
+	{
+		Para *q = d.p[i];
+		if (!q->pf.tbl) continue;
+		bool has = false;
+		for (int k = 0; k < q->len && !has; k++) has = is_line_field (d, q, k);
+		if (!has) continue;
+		int t = q->pf.tbl, row = q->pf.row;
+		Table *T = t > 0 && t <= d.ntbl ? d.tbl[t - 1] : 0;
+		if (!T || row < 0 || row >= T->nrows) continue;
+		int a = i; while (a > 0 && d.p[a - 1]->pf.tbl == t && d.p[a - 1]->pf.row == row) a--;
+		int b = i; while (b < d.n && d.p[b]->pf.tbl == t && d.p[b]->pf.row == row) b++;
+		int reps = N > 0 ? N : (T->nrows > 1 ? 0 : 1);		// (a table of that row alone: kept, emptied)
+		// the table: the row repeated `reps` times
+		Table *T2 = table_alloc (T->nrows + reps - 1, T->ncols);
+		for (int c = 0; c < T->ncols; c++) T2->colW[c] = T->colW[c];
+		T2->border = T->border; T2->bw = T->bw; T2->bcolor = T->bcolor; T2->header = T->header; T2->align = T->align; T2->indent = T->indent;
+		for (int r2 = 0; r2 < T2->nrows; r2++)
+		{
+			int src = r2 < row ? r2 : r2 < row + reps ? row : r2 - reps + 1;
+			T2->rowH[r2] = T->rowH[src];
+			for (int c = 0; c < T->ncols; c++) tcell (T2, r2, c) = tcell (T, src, c);
+		}
+		table_free (T); d.tbl[t - 1] = T2;
+		for (int j = b; j < d.n && d.p[j]->pf.tbl == t; j++) d.p[j]->pf.row = (short) (d.p[j]->pf.row + reps - 1);
+		// the row's paragraphs: their copies, a line each
+		int cnt = b - a;
+		Para **tmpl = new Para *[cnt];
+		for (int j = 0; j < cnt; j++) tmpl[j] = doc_take (d, a);
+		int at = a;
+		for (int k = 0; k < reps; k++)
+			for (int j = 0; j < cnt; j++)
+			{
+				Para *c = para_copy (tmpl[j]);
+				c->pf.row = (short) (row + k);
+				fill_line_fields (d, c, N > 0 ? k : -1);
+				doc_put (d, at++, c);
+			}
+		for (int j = 0; j < cnt; j++) para_free (tmpl[j]);
+		delete[] tmpl;
+		i = at - 1;
+	}
+}
+
 // A document loaded: its data opened (quietly), the preview off.
 static void merge_doc_loaded ()
 {
@@ -114,9 +217,10 @@ static bool doc_from_bytes (Doc &d, const char *b, int n)
 	return true;
 }
 
-// A document's merge fields made record r's text (every story).
+// A document's merge fields made record r's text (every story; its lines' rows first).
 static void merge_fill (Doc &d, int r)
 {
+	merge_lines (d);
 	for (int s = 0; s < SY_COUNT; s++)
 	{
 		int n; Para **p = story_p (d, s, &n);
@@ -263,7 +367,7 @@ static int merge_job (const char *job, char *path, int cap)
 	jb = new char[sz + 1]; jn = kapi_read (f, jb, sz); kapi_close (f);
 	if (jn < 0) jn = 0;
 	jb[jn] = 0;
-	char tmpl[200] = "", data[200] = "", records[16] = "all", output[16] = "open", folder[200] = "", name[64] = "", format[8] = "";
+	char tmpl[200] = "", data[200] = "", records[16] = "all", output[16] = "open", folder[200] = "", name[64] = "", format[8] = "", lines[200] = "";
 	for (char *p = jb; *p; )
 	{
 		char *e = p; while (*e && *e != '\n') e++;
@@ -283,12 +387,14 @@ static int merge_job (const char *job, char *path, int cap)
 			else if (!sicmp (k, "folder")) scpy (folder, val, 200);
 			else if (!sicmp (k, "name")) scpy (name, val, 64);
 			else if (!sicmp (k, "format")) scpy (format, val, 8);
+			else if (!sicmp (k, "lines")) scpy (lines, val, 200);
 		}
 		p = *e ? e + 1 : e;
 	}
 	delete[] jb;
 	const char *why;
 	if (!merge_open (data, &why)) { wk_messagebox ("Mail Merge", "The records could not be read.", MB_OK); return 0; }
+	if (lines[0]) merge_lines_open (lines); else g_mlinesOk = false;
 	char *tb; int tn;
 	void *tf = kapi_open (tmpl);
 	if (!tf) { wk_messagebox ("Mail Merge", "The letter could not be read.", MB_OK); return 0; }
@@ -308,7 +414,7 @@ static int merge_job (const char *job, char *path, int cap)
 		scpy (base, bn, sizeof base); { int n = slen (base); while (n > 0 && base[n - 1] != '.') n--; if (n > 1) base[n - 1] = 0; }
 		int done = merge_files (tb, tn, r0, r1, folder[0] ? folder : "SD:/docs", name, base, ext, path, cap);
 		char msg[120]; merge_done_msg (done, folder[0] ? folder : "SD:/docs", msg, sizeof msg);
-		wk_messagebox ("Mail Merge", msg, MB_OK);
+		if (done != 1) wk_messagebox ("Mail Merge", msg, MB_OK);	// (one document: shown at once, its file in the title)
 		res = done ? 2 : 0;
 	}
 	else

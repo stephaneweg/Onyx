@@ -332,7 +332,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 	struct CellDef { int right; bool vmf, vmr, hmr; int fill; };
 	CellDef def[MAXCOLS + 1]; int ndef = 0; CellDef pend = { 0, false, false, false, -1 };
 	int rowLeft = 0, rowAlign = AL_LEFT, rowHeight = 0; bool rowHdr = false;
-	int brdW = 0, brdColor = -1; bool anyBorder = false;
+	int brdW = 0, brdColor = -1, brdSide = 0; bool anyLR = false, anyTB = false;	// (lines at the cells' sides; at their tops, bottoms)
 	struct RawCell { int x0, x1; bool vmr, hmr; int fill; Para **p; int np, cap; };
 	struct RawRow { RawCell *c; int n; bool hdr; int align, left, height; };
 	RawRow *rows = 0; int nrows = 0, rowcap = 0;
@@ -383,7 +383,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		tb.ncols = wmin (ne - 1, (int) MAXCOLS);
 		for (int c = 0; c < tb.ncols; c++) tb.colW[c] = edges[c + 1] - edges[c];
 		tb.indent = ne ? edges[0] : 0; tb.header = rows[0].hdr; tb.align = (unsigned char) rows[0].align;
-		tb.border = anyBorder ? TB_ALL : TB_NONE;
+		tb.border = anyLR ? TB_ALL : anyTB ? TB_ROWS : TB_NONE;
 		tb.bw = (unsigned char) wclamp (brdW > 0 ? brdW * 2 / 5 : 4, 1, 48);
 		tb.bcolor = brdColor > 0 && brdColor < ncolors ? colors[brdColor] : 0;
 		for (int r = 0; r < nrows; r++)
@@ -411,7 +411,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		}
 		nrows = 0;
 		tb.finish (d, SY_BODY);
-		anyBorder = false; brdW = 0; brdColor = -1;
+		anyLR = anyTB = false; brdW = 0; brdColor = -1; brdSide = 0;
 	};
 	auto newPara = [&] (int story) { Para *q = para_new (); qs[story] = q; };
 	// A paragraph ends: into its story, or the table's cell being read (cellEnd: \cell, the next one follows).
@@ -660,10 +660,13 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		else if (is ("clvmrg")) pend.vmr = true;
 		else if (is ("clmrg")) pend.hmr = true;
 		else if (is ("clcbpat")) pend.fill = (int) v;
-		else if (is ("clbrdrt") || is ("clbrdrl") || is ("clbrdrb") || is ("clbrdrr")) anyBorder = true;
+		else if (is ("clbrdrt") || is ("clbrdrb")) brdSide = 1;
+		else if (is ("clbrdrl") || is ("clbrdrr")) brdSide = 2;
 		else if (is ("brdrw")) { if (!brdW) brdW = (int) v; }
 		else if (is ("brdrcf")) { if (brdColor < 0) brdColor = (int) v; }
-		else if (is ("brdrnone") || is ("brdrnil")) {}
+		else if (is ("brdrnone") || is ("brdrnil") || is ("brdrtbl")) brdSide = 0;
+		else if (w[0] == 'b' && w[1] == 'r' && w[2] == 'd' && w[3] == 'r' && w[4] && brdSide)	// (a line's style: \brdrs, \brdrdb...)
+		{ if (brdSide == 1) anyTB = true; else anyLR = true; brdSide = 0; }
 		else if (is ("cellx")) { if (ndef < MAXCOLS) { pend.right = (int) v; def[ndef++] = pend; } pend.vmf = pend.vmr = pend.hmr = false; pend.fill = -1; }
 		// character formats
 		else if (is ("plain")) { s.cf = base; s.cf.font = (short) (fontMap[deff & (MAXF - 1)] >= 0 ? fontMap[deff & (MAXF - 1)] : base.font); s.cfColor = -1; s.cfHilite = -1; s.hidden = false; }

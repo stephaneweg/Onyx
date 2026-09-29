@@ -263,8 +263,31 @@ static bool load (Doc &d, const char *path)
 	return ok;
 }
 
+// RTF tables' lines read as the cells say them: top and bottom only -> the rows' lines; at the sides too
+// -> every edge; none (or \brdrnone) -> none.
+static void borders_test ()
+{
+	const char *what = "RTF lines";
+	static const struct { const char *cell; int border; } T[] = {
+		{ "\\clbrdrt\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10", TB_ROWS },
+		{ "\\clbrdrt\\brdrs\\clbrdrl\\brdrs\\clbrdrb\\brdrs\\clbrdrr\\brdrs", TB_ALL },
+		{ "\\clbrdrt\\brdrnone\\clbrdrl\\brdrnone", TB_NONE },
+		{ "", TB_NONE } };
+	for (unsigned i = 0; i < sizeof T / sizeof T[0]; i++)
+	{
+		char r[600];
+		snprintf (r, sizeof r, "{\\rtf1\\ansi\\trowd%s\\cellx3000%s\\cellx6000\n\\pard\\intbl a\\cell b\\cell\\row\n\\pard after\\par}", T[i].cell, T[i].cell);
+		Doc d; doc_init (d);
+		bool ok = rtf_load (d, r, slen (r));
+		const Table *t = ok && d.n ? para_table (d, d.p[0]) : 0;
+		CHECK (t && t->border == T[i].border, "case %u: %d, not %d", i, t ? t->border : -1, T[i].border);
+		doc_clear (d);
+	}
+}
+
 int main (int argc, char **argv)
 {
+	borders_test ();
 	const char *dir = argc > 1 ? argv[1] : "/tmp";
 	g_now = now_fn;
 	Doc src; make (src);

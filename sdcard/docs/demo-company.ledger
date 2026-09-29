@@ -1,0 +1,2782 @@
+# Onyx Ledger -- a company's books (Belgian PCMN); open it with Ledger
+[company]
+version = 1
+name = Atelier Lumen SRL
+legal = SRL
+street = Rue des Tanneurs 58
+zip = 1000
+city = Bruxelles
+country = BE
+vat = BE0721583097
+email = compta@atelier-lumen.be
+phone = +32 2 512 44 90
+iban = BE41363081234510
+bic = BBRUBEBB
+register = RPM Bruxelles
+web = www.atelier-lumen.be
+vatregime = normal
+vatperiod = quarter
+chart = fr
+customers = 400000
+suppliers = 440000
+vatdue = 451000
+vatdeduct = 411000
+profit = 140000
+loss = 141000
+suspense = 499000
+
+[years]
+2025-01-01	2025-12-31	closed
+2026-01-01	2026-12-31	open
+
+[journals]
+VEN	sales	Ventes			
+ACH	purchases	Achats			
+BNK	bank	Banque	550000	BE41363081234510	
+CAI	cash	Caisse	570000		
+OD	misc	Opérations diverses			
+
+[accounts]
+0	Droits et engagements hors bilan		
+00	Garanties constituées par des tiers pour compte de l'entreprise		
+000	Créanciers de l'entreprise, bénéficiaires de garanties de tiers		
+001	Tiers constituants de garanties pour compte de l'entreprise		
+01	Garanties personnelles constituées pour compte de tiers		
+010	Débiteurs pour engagements sur effets en circulation		
+011	Créanciers d'engagements sur effets en circulation		
+012	Débiteurs pour autres garanties personnelles		
+013	Créanciers d'autres garanties personnelles		
+02	Garanties réelles constituées sur avoirs propres		
+020	Créanciers de l'entreprise, bénéficiaires de garanties réelles		
+021	Garanties réelles constituées pour compte propre		
+022	Créanciers de tiers, bénéficiaires de garanties réelles		
+023	Garanties réelles constituées pour compte de tiers		
+03	Garanties reçues		
+030	Dépôts statutaires		
+031	Déposants statutaires		
+032	Garanties reçues		
+033	Constituant de garanties		
+04	Biens et valeurs détenus par des tiers en leur nom mais aux risques et profits de l'entreprise		
+040	Tiers, détenteurs en leur nom mais aux risques et profits de l'entreprise de biens et de valeurs		
+041	Biens et valeurs détenus par des tiers en leur nom mais aux risques et profits de l'entreprise		
+05	Engagements d'acquisition et de cession d'immobilisations		
+050	Engagements d'acquisition		
+051	Créanciers d'engagements d'acquisition		
+052	Débiteurs pour engagements de cession		
+053	Engagements de cession		
+06	Marchés à terme		
+060	Marchandises achetées à terme - à recevoir		
+061	Créanciers pour marchandises achetées à terme		
+062	Débiteurs pour marchandises vendues à terme		
+063	Marchandises vendues à terme - à livrer		
+064	Devises achetées à terme - à recevoir		
+065	Créanciers pour devises achetées à terme		
+066	Débiteurs pour devises vendues à terme		
+067	Devises vendues à terme - à livrer		
+07	Biens et valeurs de tiers détenus par l'établissement		
+070	Droits d'usage à long terme		
+071	Créanciers de loyers et redevances		
+072	Biens et valeurs de tiers reçus en dépôt, en consignation ou à façon		
+073	Commettants et déposants de biens et de valeurs		
+074	Biens et valeurs détenus pour compte ou aux risques et profits de tiers		
+075	Créanciers de biens et valeurs détenus pour compte de tiers ou à leurs risques et profits		
+09	Droits et engagements divers		
+1	Fonds propres, provisions pour risques et charges et dettes à plus d'un an		
+10	Capital		
+100	Capital souscrit		
+100000	Capital souscrit		
+101	Capital non appelé (-)		
+101000	Capital non appelé (-)		
+11	Apport hors capital		
+110	Apport disponible hors capital		
+110000	Apport disponible hors capital - Prime d'émission		
+110900	Apport disponible hors capital - Autres		
+111	Apport indisponible hors capital		
+111000	Apport indisponible hors capital - Prime d'émission		
+111900	Apport indisponible hors capital - Autres		
+12	Plus-values de réévaluation		
+120	Plus-values de réévaluation sur immobilisations incorporelles		
+120000	Plus-values de réévaluation sur immobilisations incorporelles		
+121	Plus-values de réévaluation sur immobilisations corporelles		
+121000	Plus-values de réévaluation sur immobilisations corporelles		
+122	Plus-values de réévaluation sur immobilisations financières		
+122000	Plus-values de réévaluation sur immobilisations financières		
+123	Plus-values de réévaluation sur stocks		
+123000	Plus-values de réévaluation sur stocks		
+124	Reprises de réductions de valeur sur placements de trésorerie		
+124000	Reprises de réductions de valeur sur placements de trésorerie		
+13	Réserves		
+130	Réserves légales		
+130000	Réserves légales		
+131	Autres réserves indisponibles		
+131100	Réserves statutairement indisponibles		
+131200	Réserve pour actions propres		
+131300	Soutien financier		
+131900	Autres réserves indisponibles		
+132	Réserves immunisées		
+132000	Réserves immunisées		
+133	Réserves disponibles		
+133000	Réserves disponibles		
+14	Bénéfice reporté ou perte reportée (-)		
+140	Bénéfice reporté		
+140000	Bénéfice reporté		
+141	Perte reportée (-)		
+141000	Perte reportée (-)		
+149	Répartition des profits et des pertes		
+149000	Répartition des profits et des pertes		
+15	Subsides en capital		
+150000	Subsides en capital		
+16	Provisions et impôts différés		
+160	Provisions pour pensions et obligations similaires		
+160000	Provisions pour pensions et obligations similaires		
+161	Provisions pour charges fiscales		
+161000	Provisions pour charges fiscales		
+162	Provisions pour grosses réparations et gros entretien		
+162000	Provisions pour grosses réparations et gros entretien		
+163	Provisions pour obligations environnementales		
+163000	Provisions pour obligations environnementales		
+164	Provisions pour autres risques et charges		
+164000	Provisions pour autres risques et charges		
+168	Impôts différés		
+168000	Impôts différés afférents à des subsides en capital		
+168100	Impôts différés afférents à des plus-values réalisées sur immobilisations incorporelles		
+168200	Impôts différés afférents à des plus-values réalisées sur immobilisations corporelles		
+168700	Impôts différés afférents à des plus-values réalisées sur titres émis par le secteur public belge		
+168800	Impôts différés étrangers		
+17	Dettes à plus d'un an		
+170	Emprunts subordonnés		
+170000	Emprunts subordonnés - Convertibles (> 1 an)		
+170100	Emprunts subordonnés - Non convertibles (> 1 an)		
+171	Emprunts obligataires non subordonnés		
+171000	Emprunts obligataires non subordonnés - Convertibles (> 1 an)		
+171100	Emprunts obligataires non subordonnés - Non convertibles (> 1 an)		
+172	Dettes de location-financement et assimilées		
+172000	Dettes de location-financement et assimilées (> 1 an)		
+173	Établissements de crédit		
+173000	Etablissements de crédit - Dettes en compte (> 1 an)		
+173100	Etablissements de crédit - Promesses (> 1 an)		
+173200	Etablissements de crédit - Crédits d'acceptation (> 1 an)		
+174	Autres emprunts		
+174000	Autres emprunts (> 1 an)		
+175	Dettes commerciales		
+175000	Fournisseurs (> 1 an)		
+175100	Effets à payer (> 1 an)		
+176	Acomptes sur commandes		
+176000	Acomptes sur commandes (> 1 an)		
+178	Cautionnements reçus en numéraire		
+178000	Cautionnements reçus en numéraire (> 1 an)		
+179	Dettes diverses		
+179000	Dettes diverses (> 1 an)		
+19	Acompte aux associés sur le partage de l'actif net (-)		
+190000	Acompte aux associés sur le partage de l'actif net (-)		
+2	Frais d'établissement, actifs immobilisés et créances à plus d'un an		
+20	Frais d'établissement		
+200	Frais de constitution, d'augmentation de capital ou d'augmentation de l'apport		
+200000	Frais de constitution, d'augmentation de capital ou d'augmentation de l'apport		
+201	Frais d'émission d'emprunts		
+201000	Frais d'émission d'emprunts		
+202	Autres frais d'établissement		
+202000	Autres frais d'établissement		
+204	Frais de restructuration		
+204000	Frais de restructuration		
+21	Immobilisations incorporelles		
+210	Frais de recherche et de développement		
+210000	Frais de recherche et de développement - Valeur d'acquisition		
+210008	Frais de recherche et de développement - Plus-values		
+210009	Frais de recherche et de développement - Amortissements ou réductions de valeur (-)		
+211	Concessions, brevets, licences, savoir-faire, marques et droits similaires		
+211000	Concessions, brevets, licences, savoir-faire, marques et droits similaires - Valeur d'acquisition		
+211008	Concessions, brevets, licences, savoir-faire, marques et droits similaires - Plus-values		
+211009	Concessions, brevets, licences, savoir-faire, marques et droits similaires - Amortissements ou réductions de valeur (-)		
+212	Goodwill		
+212000	Goodwill - Valeur d'acquisition		
+212008	Goodwill - Plus-values		
+212009	Goodwill - Amortissements ou réductions de valeur (-)		
+213	Acomptes versés		
+213000	Acomptes versés pour immobilisations incorporelles		
+215000	Logiciels - Valeur d'acquisition		
+215008	Logiciels - Plus-values		
+215009	Logiciels - Amortissements ou réductions de valeur (-)		
+22	Terrains et constructions		
+220	Terrains		
+220000	Terrains - Valeur d'acquisition		
+220008	Terrains - Plus-values		
+220009	Terrains - Amortissements ou réductions de valeur (-)		
+221	Constructions		
+221000	Constructions - Valeur d'acquisition		
+221008	Constructions - Plus-values		
+221009	Constructions - Amortissements ou réductions de valeur (-)		
+222	Terrains bâtis		
+222000	Terrains bâtis - Valeur d'acquisition		
+222008	Terrains bâtis - Plus-values		
+222009	Terrains bâtis - Amortissements ou réductions de valeur (-)		
+223	Autres droits réels sur des immeubles		
+223000	Autres droits réels sur des immeubles - Valeur d'acquisition		
+223008	Autres droits réels sur des immeubles - Plus-values		
+223009	Autres droits réels sur des immeubles - Amortissements ou réductions de valeur (-)		
+23	Installations, machines et outillage		
+230000	Installations, machines et outillage - Valeur d'acquisition		
+230008	Installations, machines et outillage - Plus-values		
+230009	Installations, machines et outillage - Amortissements ou réductions de valeur (-)		
+24	Mobilier et matériel roulant		
+240000	Mobilier et matériel de bureau		
+240008	Mobilier et matériel de bureau - Plus-values		
+240009	Mobilier et matériel de bureau - Amortissements ou réductions de valeur (-)		
+241000	Voitures - Valeur d'acquisition		
+241001	Voitures - Accessoires		
+241008	Voitures - Plus-values		
+241009	Voitures - Amortissements ou réductions de valeur (-)		
+241100	Motos - Valeur d'acquisition		
+241101	Motos - Accessoires		
+241108	Motos - Plus-values		
+241109	Motos - Amortissements ou réductions de valeur (-)		
+241200	Vélos - Valeur d'acquisition		
+241201	Vélos - Accessoires		
+241208	Vélos - Plus-values		
+241209	Vélos - Amortissements ou réductions de valeur (-)		
+241300	Vélos électriques - Valeur d'acquisition		
+241301	Vélos électriques - Accessoires		
+241308	Vélos électriques - Plus-values		
+241309	Vélos électriques - Amortissements ou réductions de valeur (-)		
+241400	Véhicules utilitaires - Valeur d'acquisition		
+241401	Véhicules utilitaires - Accessoires		
+241408	Véhicules utilitaires - Plus-values		
+241409	Véhicules utilitaires - Amortissements ou réductions de valeur (-)		
+25	Immobilisations détenues en location-financement et droits similaires		
+250	Terrains et constructions		
+250000	Terrains et constructions en leasing financier - Valeur d'acquisition		
+250008	Terrains et constructions en leasing financier - Plus-values		
+250009	Terrains et constructions en leasing financier - Amortissements ou réductions de valeur (-)		
+251	Installations, machines et outillage		
+251000	Installations, machines et outillage en leasing financier - Valeur d'acquisition		
+251008	Installations, machines et outillage en leasing financier - Plus-values		
+251009	Installations, machines et outillage en leasing financier - Amortissements ou réductions de valeur (-)		
+252	Mobilier et matériel roulant		
+252000	Voitures en leasing financier - Valeur d'acquisition		
+252008	Voitures en leasing financier - Plus-values		
+252009	Voitures en leasing financier - Amortissements ou réductions de valeur (-)		
+252100	Motos en leasing financier - Valeur d'acquisition		
+252108	Motos en leasing financier - Plus-values		
+252109	Motos en leasing financier - Amortissements ou réductions de valeur (-)		
+252200	Vélos en leasing financier - Valeur d'acquisition		
+252208	Vélos en leasing financier - Plus-values		
+252209	Vélos en leasing financier - Amortissements ou réductions de valeur (-)		
+252300	Vélos électriques en leasing financier - Valeur d'acquisition		
+252308	Vélos électriques en leasing financier - Plus-values		
+252309	Vélos électriques en leasing financier - Amortissements ou réductions de valeur (-)		
+252400	Véhicules utilitaires en leasing financier - Valeur d'acquisition		
+252408	Véhicules utilitaires en leasing financier - Plus-values		
+252409	Véhicules utilitaires en leasing financier - Amortissements ou réductions de valeur (-)		
+26	Autres immobilisations corporelles		
+260000	Autres immobilisations corporelles - Valeur d'acquisition		
+260008	Autres immobilisations corporelles - Plus-values		
+260009	Autres immobilisations corporelles - Amortissements ou réductions de valeur (-)		
+27	Immobilisations corporelles en cours et acomptes versés		
+270000	Immobilisations corporelles en cours et acomptes versés - Valeur d'acquisition		
+270008	Immobilisations corporelles en cours et acomptes versés - Plus-values		
+270009	Immobilisations corporelles en cours et acomptes versés - Amortissements ou réductions de valeur (-)		
+28	Immobilisations financières		
+280	Participations dans des entreprises liées		
+280000	Participations dans des entreprises liées - Valeur d'acquisition		
+280100	Participations dans des entreprises liées - Montants non appelés (-)		
+280800	Participations dans des entreprises liées - Plus-values		
+280900	Participations dans des entreprises liées - Réductions de valeur (-)		
+281	Créances sur des entreprises liées		
+281000	Créances sur des entreprises liées - Créances en compte		
+281100	Créances sur des entreprises liées - Effets à recevoir		
+281200	Créances sur des entreprises liées - Titres à revenu fixe		
+281700	Créances sur des entreprises liées - Créances douteuses		
+281900	Créances sur des entreprises liées - Réductions de valeur (-)		
+282	Participations dans des entreprises avec lesquelles il existe un lien de participation		
+282000	Participations dans des entreprises avec lesquelles il existe un lien de participation - Valeur d'acquisition		
+282100	Participations dans des entreprises avec lesquelles il existe un lien de participation - Montants non appelés (-)		
+282800	Participations dans des entreprises avec lesquelles il existe un lien de participation - Plus-values		
+282900	Participations dans des entreprises avec lesquelles il existe un lien de participation - Réductions de valeur (-)		
+283	Créances sur des entreprises avec lesquelles il existe un lien de participation		
+283000	Créances sur des entreprises avec lesquelles il existe un lien de participation - Créances en compte		
+283100	Créances sur des entreprises avec lesquelles il existe un lien de participation - Effets à recevoir		
+283200	Créances sur des entreprises avec lesquelles il existe un lien de participation - Titres à revenu fixe		
+283700	Créances sur des entreprises avec lesquelles il existe un lien de participation - Créances douteuses		
+283900	Créances sur les entreprises avec lesquelles il existe un lien de participation - Réductions de valeur (-)		
+284	Autres actions et parts		
+284000	Autres actions et parts - Valeur d'acquisition		
+284100	Autres actions et parts - Montants non appelés (-)		
+284800	Autres actions et parts - Plus-values		
+284900	Autres actions et parts - Réductions de valeur (-)		
+285	Autres créances		
+285000	Autres créances - Créances en compte		
+285100	Autres créances - Effets à recevoir		
+285200	Autres créances - Titres à revenu fixe		
+285700	Autres créances - Créances douteuses		
+285900	Autres créances - Réductions de valeur (-)		
+288	Cautionnements versés en numéraire		
+288000	Cautionnements versés en numéraire		
+29	Créances à plus d'un an		
+290	Créances commerciales		
+290000	Clients (> 1 an)		
+290100	Créances commerciales - Effets à recevoir (> 1 an)		
+290600	Créances commerciales - Acomptes versés (> 1 an)		
+290700	Créances commerciales - Créances douteuses (> 1 an)		
+290900	Créances commerciales - Réductions de valeur (> 1 an) (-)		
+291	Autres créances		
+291000	Créances en compte (> 1 an)		
+291100	Autres créances - Effets à recevoir (> 1 an)		
+291700	Autres créances - Créances douteuses (> 1 an)		
+291900	Autres créances - Réductions de valeur (> 1 an) (-)		
+3	Stocks et commandes en cours d'exécution		
+30	Matières premières		
+300	Valeur d'acquisition		
+300000	Matières premières - Valeur d'acquisition		
+309	Réductions de valeur actées (-)		
+309000	Matières premières - Réductions de valeur (-)		
+31	Approvisionnements et fournitures		
+310	Valeur d'acquisition		
+310000	Approvisionnements et fournitures - Valeur d'acquisition		
+319	Réductions de valeur actées (-)		
+319000	Approvisionnements et fournitures - Réductions de valeur (-)		
+32	En-cours de fabrication		
+320	Valeur d'acquisition		
+320000	En-cours de fabrication - Valeur d'acquisition		
+329	Réductions de valeur actées (-)		
+329000	En-cours de fabrication - Réductions de valeur (-)		
+33	Produits finis		
+330	Valeur d'acquisition		
+330000	Produits finis - Valeur d'acquisition		
+339	Réductions de valeur actées (-)		
+339000	Produits finis - Réductions de valeur (-)		
+34	Marchandises		
+340	Valeur d'acquisition		
+340000	Marchandises - Valeur d'acquisition		
+349	Réductions de valeur actées (-)		
+349000	Marchandises - Réductions de valeur (-)		
+35	Immeubles destinés à la vente		
+350	Valeur d'acquisition		
+350000	Immeubles destinés à la vente - Valeur d'acquisition		
+359	Réductions de valeur actées (-)		
+359000	Immeubles destinés à la vente - Réductions de valeur (-)		
+36	Acomptes versés sur achats pour stocks		
+360	Acomptes versés		
+360000	Acomptes versés sur achats pour stocks - Acomptes versés		
+369	Réductions de valeur actées (-)		
+369000	Acomptes versés sur achats pour stocks - Réductions de valeur (-)		
+37	Commandes en cours d'exécution		
+370	Valeur d'acquisition		
+370000	Commandes en cours d'exécution - Valeur d'acquisition		
+371	Bénéfice pris en compte		
+371000	Commandes en cours d'exécution - Bénéfice pris en compte		
+379	Réductions de valeur actées (-)		
+379000	Commandes en cours d'exécution - Réductions de valeur (-)		
+4	Créances et dettes à un an au plus		
+40	Créances commerciales		
+400	Clients		
+400000	Clients		
+401	Effets à recevoir		
+401000	Créances commerciales - Effets à recevoir		
+404	Produits à recevoir		
+404000	Créances commerciales - Produits à recevoir		
+406	Acomptes versés		
+406000	Créances commerciales - Acomptes versés		
+407	Créances douteuses		
+407000	Créances commerciales - Créances douteuses		
+409	Réductions de valeur actées (-)		
+409000	Créances commerciales - Réductions de valeur (-)		
+41	Autres créances		
+410	Capital ou apport appelé, non versé		
+410000	Capital ou apport appelé, non versé		
+411	TVA à récupérer		
+411000	TVA à récupérer		
+411200	TVA à récupérer : Compte courant TVA (C/C)		
+411800	Compte de provision TVA		
+412	Impôts et précomptes à récupérer		
+412000	Impôts belges sur le résultat à récupérer		
+412100	Paiement anticipé de l'impôt		
+412500	Autres impôts et taxes belges à récupérer		
+412800	Impôts et taxes étrangers à récupérer		
+414	Produits à recevoir		
+414000	Produits à recevoir		
+416	Créances diverses		
+416000	Créances diverses		
+417	Créances douteuses		
+417000	Créances diverses - Créances douteuses		
+418	Cautionnements versés en numéraire		
+418000	Créances diverses - Cautionnements versés en numéraire		
+419	Réductions de valeur actées (-)		
+419000	Créances diverses - Réductions de valeur (-)		
+42	Dettes à plus d'un an échéant dans l'année (même subdivision que le compte 17)		
+420	Emprunts subordonnés (> 1 an écheant < 1 an)		
+420000	Emprunts subordonnés - Convertibles (> 1 an écheant < 1 an)		
+420100	Emprunts subordonnés - Non convertibles (> 1 an écheant < 1 an)		
+421	Emprunts obligataires non subordonnés (> 1 an écheant < 1 an)		
+421000	Emprunts obligataires non subordonnés - Convertibles (> 1 an écheant < 1 an)		
+421100	Emprunts obligataires non subordonnés - Non convertibles (> 1 an écheant < 1 an)		
+422	Dettes de location-financement et dettes assimilées (> 1 an écheant < 1 an)		
+422000	Dettes de location-financement et dettes assimilées (> 1 an écheant < 1 an)		
+423	Etablissements de crédit (> 1 an écheant < 1 an)		
+423000	Etablissements de crédit - Dettes en compte (> 1 an écheant < 1 an)		
+423100	Etablissements de crédit - Promesses (> 1 an écheant < 1 an)		
+423200	Etablissements de crédit - Crédits d'acceptation (> 1 an écheant < 1 an)		
+424	Autres emprunts (> 1 an écheant < 1 an)		
+424000	Autres emprunts (> 1 an écheant < 1 an)		
+425	Dettes commerciales (> 1 an écheant < 1 an)		
+425000	Fournisseurs (> 1 an écheant < 1 an)		
+425100	Effets à payer (> 1 an écheant < 1 an)		
+426	Acomptes sur commandes (> 1 an écheant < 1 an)		
+426000	Acomptes sur commandes (> 1 an écheant < 1 an)		
+428	Cautionnements reçus en numéraire (> 1 an écheant < 1 an)		
+428000	Cautionnements reçus en numéraire (> 1 an écheant < 1 an)		
+429	Autres dettes (> 1 an écheant < 1 an)		
+429000	Dettes diverses (> 1 an écheant < 1 an)		
+43	Dettes financières		
+430	Établissements de crédit - Emprunts en compte à terme fixe		
+430000	Etablissements de crédit - Emprunts en compte à terme fixe		
+431	Établissements de crédit - Promesses		
+431000	Etablissements de crédit - Promesses		
+432	Établissements de crédit - Crédits d'acceptation		
+432000	Etablissements de crédit - Crédits d'acceptation		
+433	Établissements de crédit - Dettes en compte courant		
+433000	Etablissements de crédit - Dettes en compte courant		
+439	Autres emprunts		
+439000	Autres emprunts		
+44	Dettes commerciales		
+440	Fournisseurs		
+440000	Fournisseurs		
+441	Effets à payer		
+441000	Effets à payer		
+444	Factures à recevoir		
+444000	Factures à recevoir		
+45	Dettes fiscales, salariales et sociales		
+450	Dettes fiscales estimées		
+450000	Dettes fiscales estimées - Impôts belges sur le résultat		
+450500	Dettes fiscales estimées - Autres impôts et taxes belges		
+450800	Dettes fiscales estimées - Impôts et taxes étrangers		
+451	TVA à payer		
+451000	TVA à payer		
+451054	TVA à payer (Grille 54)		
+451055	TVA à payer sur opérations intracommunautaires (Grille 55)		
+451056	TVA à payer sur opérations co-contractant (Grille 56)		
+451057	TVA à payer : Report de paiement sur importations (Grille 57)		
+451063	TVA à payer sur notes de crédit (Grille 63)		
+451200	TVA à payer : Compte courant TVA (C/C)		
+451800	TVA à payer - Taxation insuffisante		
+451820	TVA à payer - Révisions des déductions		
+451830	TVA à payer - Régularisations		
+452	Impôts et taxes à payer		
+452000	Impôts belges à payer sur le résultat		
+452100	Paiement anticipé de l'impôt		
+452500	Autres impôts et taxes belges à payer		
+452800	Impôts et taxes étrangers à payer		
+453	Précomptes retenus		
+453000	Précomptes retenus		
+454	Office national de la Sécurité sociale		
+454000	Office National de Sécurité Sociale (ONSS)		
+455	Rémunérations		
+455000	Rémunérations		
+456	Pécules de vacances		
+456000	Pécules de vacances		
+459	Autres dettes sociales		
+459000	Autres dettes sociales		
+46	Acomptes sur commandes		
+460	Acomptes sur commandes		
+460000	Acomptes sur commandes		
+47	Dettes découlant de l'affectation du résultat		
+470	Dividendes et tantièmes d'exercices antérieurs		
+470000	Dividendes et tantièmes d'exercices antérieurs		
+471	Dividendes de l'exercice		
+471000	Dividendes de l'exercice		
+472	Tantièmes de l'exercice		
+472000	Tantièmes de l'exercice		
+473	Autres allocataires		
+473000	Autres allocataires		
+48	Dettes diverses		
+480	Obligations et coupons échus		
+480000	Obligations et coupons échus		
+488	Cautionnements reçus en numéraire		
+488000	Cautionnements reçus en numéraire		
+489	Autres dettes diverses		
+489000	Autres dettes diverses		
+49	Comptes de régularisation et d'attente		
+490	Charges à reporter		
+490000	Charges à reporter		
+491	Produits acquis		
+491000	Produits acquis		
+492	Charges à imputer		
+492000	Charges à imputer		
+493	Produits à reporter		
+493000	Produits à reporter		
+499	Comptes d'attente		
+499000	Comptes d'attente		
+5	Placements de trésorerie et valeurs disponibles		
+50	Actions propres		
+500000	Actions propres		
+51	Actions, parts et placements de trésorerie autres que placements à revenu fixe		
+510	Valeur d'acquisition		
+510000	Actions et parts - Valeur d'acquisition		
+510100	Placements de trésorerie autres que placements à revenu fixe - Valeur d'acquisition		
+511	Montants non appelés (-)		
+511000	Actions et parts - Montants non appelés (-)		
+519	Réductions de valeur actées (-)		
+519000	Actions et parts - Réductions de valeur actées (-)		
+519100	Placements de trésorerie autres que placements à revenu fixe - Réductions de valeur actées (-)		
+52	Titres à revenu fixe		
+520	Valeur d'acquisition		
+520000	Titres à revenu fixe - Valeur d'acquisition		
+529	Réductions de valeur actées (-)		
+529000	Titres à revenu fixe - Réductions de valeur (-)		
+53	Dépôts à terme		
+530	De plus d'un an		
+530000	Dépôts à terme de plus d'un an		
+531	De plus d'un mois et à un an au plus		
+531000	Dépôts à terme de plus d'un mois et à un an au plus		
+532	D'un mois au plus		
+532000	Dépôts à terme d'un mois au plus		
+539	Réductions de valeur actées (-)		
+539000	Dépôts à terme - Réductions de valeur (-)		
+54	Valeurs échues à l'encaissement		
+540000	Valeurs échues à l'encaissement		
+55	Établissements de crédit		
+550	Etablissements de crédit		
+550000	Etablissements de crédit		
+57	Caisses		
+570	Caisses - Espèces		
+570000	Caisses - Espèces		
+578	Caisses-timbres		
+578000	Caisses - Timbres		
+58	Virements internes		
+580000	Virements internes		
+6	Charges		
+60	Approvisionnements et marchandises		
+600	Achats de matières premières		
+600000	Matières premières		
+601	Achats de fournitures		
+601000	Fournitures		
+602	Achats de services, travaux et études		
+602000	Services, travaux et études		
+603	Sous-traitances générales		
+603000	Sous-traitances générales		
+604	Achats de marchandises		
+604000	Marchandises		
+605	Achats d'immeubles destinés à la vente		
+605000	Achats d'immeubles destinés à la vente		
+608	Remises, ristournes et rabais (-)		
+608000	Remises, ristournes et rabais (-)		
+609	Variations des stocks		
+609000	Variations des stocks de matières premières		
+609100	Variations des stocks de fournitures		
+609400	Variations des stocks de marchandises		
+609500	Variations des stocks d'immeubles achetés destinés à la vente		
+61	Services et biens divers		
+610000	Loyers		
+610100	Location de machines, d'équipements et de matériel		
+610200	Location de voitures		
+610201	Location de motos		
+610202	Location de vélos		
+610203	Location de vélos électriques		
+610210	Leasing financier de voitures		
+610211	Leasing financier de motos		
+610212	Leasing financier de vélos		
+610213	Leasing financier de vélos électriques		
+610220	Leasing opérationnel de voitures		
+610221	Leasing opérationnel de motos		
+610222	Leasing opérationnel de vélos		
+610223	Leasing opérationnel de vélos électriques		
+610300	Location de véhicules utilitaires		
+610310	Leasing financier de véhicules utilitaires		
+610320	Leasing opérationnel de véhicules utilitaires		
+611	Charges d'entretien et de réparation		
+611000	Charges d'entretien et de réparation		
+611201	Entretien des voitures		
+611202	Entretien des motos		
+611203	Entretien des vélos		
+611204	Entretien des vélos électriques		
+611300	Entretien des véhicules utilitaires		
+612000	Fournitures de bureau et impressions		
+612200	Petit matériel		
+612500	Eau, électricité et gaz		
+612901	Carburant pour voitures		
+612902	Carburant pour motos		
+612903	Carburant pour véhicules utilitaires		
+612910	Électricité pour voitures		
+612911	Électricité pour motos		
+612912	Électricité pour véhicules utilitaires		
+613200	Experts-comptables ou conseillers fiscaux		
+613250	Frais juridiques		
+613290	Autres honoraires		
+613310	Logiciels et services informatiques		
+613311	Logiciels de facturation électronique		
+614000	Assurance incendie		
+614200	Assurance revenu garanti		
+614400	Assurance voitures		
+614410	Assurance motos		
+614420	Assurance vélos électriques		
+614430	Assurance vélos		
+614500	Assurance véhicules utilitaires		
+614600	Autres assurances professionnelles		
+616200	Internet et téléphone		
+616500	Vols		
+616501	Hôtels		
+616502	Indemnités journalières et rémunération		
+616503	Transports en commun		
+616505	Autres frais de déplacement		
+616506	Parking pour voitures		
+616507	Parking pour motos		
+616508	Parking pour véhicules utilitaires		
+616510	Taxi		
+616520	Publicité et annonces		
+616530	Salons et conférences		
+616540	Cadeaux d'affaires (<= 50 €)		
+616541	Cadeaux d'affaires (> 50 €)		
+616550	Cotisations professionnelles		
+616580	Restaurants et bars		
+617	Personnel intérimaire et personnes mises à la disposition de l'entreprise		
+617000	Personnel intérimaire et personnes mises à la disposition de l'entreprise		
+618	Rémunérations, primes pour assurances extralégales, pensions de retraite et de survie des administrateurs, gérants et...		
+618000	Rémunérations, primes pour assurances extralégales, pensions de retraite et de survie des administrateurs, gérants et...		
+62	Rémunérations, charges sociales et pensions		
+620	Rémunérations et avantages sociaux directs		
+620000	Rémunérations des administrateurs ou gérants		
+620100	Rémunérations du personnel de direction		
+620200	Rémunérations des employés		
+620300	Rémunérations des ouvriers		
+620400	Rémunérations des autres membres du personnel		
+621	Cotisations patronales pour assurances sociales		
+621000	Cotisations patronales ONSS		
+622	Primes patronales pour assurances extra-légales		
+622000	Primes patronales pour assurances extra-légales		
+623	Autres frais du personnel		
+623000	Autres frais de personnel		
+623401	Nourriture et boissons pour le personnel		
+623600	Frais de formation		
+623610	Frais de formation (nourriture et boissons incluses)		
+623700	Chèques-repas		
+624	Pensions de retraite et de survie		
+624000	Pensions des administrateurs ou gérants		
+624100	Pensions du personnel		
+63	Amortissements, réductions de valeur et provisions pour risques		
+630	Dotations aux amortissements et aux réductions de valeur sur immobilisations		
+630000	Dotations aux amortissements sur frais d'établissement		
+630100	Dotations aux amortissements sur immobilisations incorporelles		
+630200	Dotations aux amortissements sur immobilisations corporelles		
+630800	Dotations aux réductions de valeur sur immobilisations incorporelles		
+630900	Dotations aux réductions de valeur sur immobilisations corporelles		
+631	Réductions de valeur sur stocks		
+631000	Réductions de valeur sur stocks - Dotations		
+631100	Réductions de valeur sur stocks - Reprises (-)		
+632	Réductions de valeur sur commandes en cours d'exécution		
+632000	Réductions de valeur sur commandes en cours d'exécution - Dotations		
+632100	Réductions de valeur sur commandes en cours d'exécution - Reprises (-)		
+633	Réductions de valeur sur créances commerciales à plus d'un an		
+633000	Réductions de valeur sur créances commerciales (> 1 an) - Dotations		
+633100	Réductions de valeur sur créances commerciales (> 1 an) - Reprises (-)		
+634	Réductions de valeur sur créances à un an au plus		
+634000	Réductions de valeur sur créances commerciales - Dotations		
+634100	Réductions de valeur sur créances commerciales - Reprises (-)		
+635	Provisions pour pensions et obligations similaires		
+635000	Provisions pour pensions et obligations similaires - Dotations		
+635100	Provisions pour pensions et obligations similaires - Utilisations et reprises (-)		
+636	Provisions pour grosses réparations et gros entretiens		
+636000	Provisions pour grosses réparations et gros entretien - Dotations		
+636100	Provisions pour grosses réparations et gros entretien - Utilisations et reprises (-)		
+637	Provisions pour obligations environnementales		
+637000	Provisions pour obligations environnementales - Dotations		
+637100	Provisions pour obligations environnementales - Utilisations et reprises (-)		
+638	Provisions pour autres risques et charges		
+638000	Provisions pour autres risques et charges - Dotations		
+638100	Provisions pour autres risques et charges - Utilisations et reprises (-)		
+64	Autres charges d'exploitation		
+640	Charges fiscales d'exploitation		
+640000	Charges fiscales d'exploitation		
+640200	Taxes sur les voitures		
+640201	Taxes sur les motos		
+640202	Taxes sur les véhicules utilitaires		
+640400	Taxes régionales		
+640500	Droits d'enregistrement et publications légales		
+640600	Taxes provinciales et communales		
+640800	Droits de douane et accises		
+641	Moins-values sur réalisations courantes d'immobilisations corporelles		
+641000	Moins-values sur réalisations courantes d'immobilisations corporelles		
+642	Moins-values sur réalisations de créances commerciales		
+642000	Moins-values sur réalisations de créances commerciales		
+643	Charges d'exploitation diverses		
+643000	Charges d'exploitation diverses		
+645000	Amendes		
+649	Charges d'exploitation portées à l'actif au titre de frais de restructuration (-)		
+649000	Charges d'exploitation portées à l'actif au titre de frais de restructuration (-)		
+65	Charges financières		
+650	Charges des dettes		
+650000	Intérêts, commissions et frais afférents aux dettes		
+650100	Amortissement des frais d'émission d'emprunts		
+650200	Intérêts intercalaires portés à l'actif (-)		
+651	Réductions de valeur sur actifs circulants		
+651000	Réductions de valeur sur actifs circulants - Dotations		
+651100	Réductions de valeur sur actifs circulants - Reprises (-)		
+652	Moins-values sur réalisation d'actifs circulants		
+652000	Moins-values sur réalisation d'actifs circulants		
+653	Charges d'escompte de créances		
+653000	Charges d'escompte de créances		
+654	Différences de change		
+654000	Différences de change		
+655	Écarts de conversion des devises		
+655000	Écarts de conversion des devises		
+656	Provisions à caractère financier		
+656000	Provisions à caractère financier - Dotations		
+656100	Provisions à caractère financier - Utilisations et reprises (-)		
+657000	Escomptes financiers accordés		
+657100	Différences de paiement négatives		
+657200	Frais bancaires		
+659	Charges financières portées à l'actif au titre de frais de restructuration (-)		
+659000	Charges financières portées à l'actif au titre de frais de restructuration (-)		
+66	Charges d'exploitation et charges financières non récurrentes		
+660	Amortissements et réductions de valeur non récurrents (dotations)		
+660000	Amortissements et réductions de valeur non récurrents (dotations) sur frais d'établissement		
+660100	Amortissements et réductions de valeur non récurrents (dotations) sur immobilisations incorporelles		
+660200	Amortissements et réductions de valeur non récurrents (dotations) sur immobilisations corporelles		
+661	Réduction de valeur sur immobilisations financières (dotation)		
+661000	Réductions de valeur sur immobilisations financières (dotation)		
+662	Provisions pour risques et charges non récurrents		
+662000	Provisions pour risques et charges d'exploitation non récurrents - Dotations		
+662010	Provisions pour risques et charges d'exploitation non récurrents - Utilisations (-)		
+662100	Provisions pour risques et charges financiers non récurrents - Dotations		
+662110	Provisions pour risques et charges financiers non récurrents - Utilisations (-)		
+663	Moins-values sur réalisation d'actifs immobilisés		
+663000	Moins-values sur réalisation d'immobilisations incorporelles et corporelles		
+663100	Moins-values sur réalisation d'immobilisations financières		
+664	Autres charges d'exploitation non récurrentes		
+664000	Autres charges d'exploitation non récurrentes		
+668	Autres charges financières non récurrentes		
+668000	Autres charges financières non récurrentes		
+669	Charges non récurrentes portées à l'actif au titre de frais de restructuration (-)		
+669000	Charges d'exploitation non récurrentes portées à l'actif au titre de frais de restructuration (-)		
+669100	Charges financières non récurrentes portées à l'actif au titre de frais de restructuration (-)		
+67	Impôts sur le résultat		
+670	Impôts belges sur le résultat de l'exercice		
+670000	Impôts et précomptes dus ou versés sur le résultat de l'exercice		
+670100	Excédent de versements d'impôts et de précomptes porté à l'actif sur le résultat de l'exercice (-)		
+670200	Charges fiscales estimées sur le résultat de l'exercice		
+671	Impôts belges sur le résultat d'exercices antérieurs		
+671000	Suppléments d'impôts dus ou versés sur le résultat d'exercices antérieurs		
+671100	Suppléments d'impôts estimés sur le résultat d'exercices antérieurs		
+671200	Provisions fiscales constituées sur le résultat d'exercices antérieurs		
+672	Impôts étrangers sur le résultat de l'exercice		
+672000	Impôts étrangers sur le résultat de l'exercice		
+673	Impôts étrangers sur le résultat d'exercices antérieurs		
+673000	Impôts étrangers sur le résultat d'exercices antérieurs		
+68	Transferts aux impôts différés et aux réserves immunisées		
+680	Transferts aux impôts différés		
+680000	Transfert aux impôts différés		
+689	Transferts aux réserves immunisées		
+689000	Transfert aux réserves immunisées		
+69	Affectations et prélèvements		
+690	Perte reportée de l'exercice précédent		
+690000	Perte reportée de l'exercice précédent		
+691	Affectations à l'apport		
+691000	Affectations à l'apport		
+692	Dotation aux réserves		
+692000	Dotation à la réserve légale		
+692100	Dotation aux autres réserves		
+693	Bénéfices à reporter		
+693000	Bénéfices à reporter		
+694	Rémunération de l'apport		
+694000	Rémunération de l'apport		
+695	Administrateurs ou gérants		
+695000	Distribution aux administrateurs ou gérants		
+696	Employés		
+696000	Distribution aux employés		
+697	Autres applications		
+697000	Distribution aux autres allocataires		
+7	Produits		
+70	Chiffre d'affaires		
+700000	Ventes de marchandises en Belgique		
+700100	Services en Belgique		
+700500	Ventes co-contractant		
+700600	Ventes livraisons intracommunautaires		
+700610	Ventes services intracommunautaires		
+700700	Ventes hors EU		
+708	Remises, ristournes et rabais accordés (-)		
+708000	Remises, ristournes et rabais accordés (-)		
+709000	Arrondissement des paiements en Euros		
+71	Variation des stocks et des commandes en cours d'exécution		
+712	des en-cours de fabrication		
+712000	Variations des stocks d'en-cours de fabrication		
+713	des produits finis		
+713000	Variations des stocks de produits finis		
+715	des immeubles construits destinés à la vente		
+715000	Variations des stocks des immeubles construits destinés à la vente		
+717	des commandes en cours d'exécution		
+717000	Variations des commandes en cours d'exécution - Valeur d'acquisition		
+717100	Variations des commandes en cours d'exécution - Bénéfice pris en compte		
+72	Production immobilisée		
+720000	Production immobilisée		
+74	Autres produits d'exploitation		
+740	Subsides d'exploitation et montants compensatoires		
+740000	Subsides d'exploitation et montants compensatoires		
+741	Plus-values sur réalisations courantes d'immobilisations corporelles		
+741000	Plus-values sur réalisations courantes d'immobilisations corporelles		
+742	Plus-values sur réalisations de créances commerciales		
+742000	Plus-values sur réalisation de créances commerciales		
+743	Produits d'exploitation divers		
+743000	Produits d'exploitation divers		
+75	Produits financiers		
+750	Produits des immobilisations financières		
+750000	Produits des immobilisations financières		
+751	Produits des actifs circulants		
+751000	Produits des actifs circulants		
+752	Plus-values sur réalisation d'actifs circulants		
+752000	Plus-values sur réalisation d'actifs circulants		
+753	Subsides en capital et en intérêts		
+753000	Subsides en capital et en intérêts		
+754	Différences de change		
+754000	Différences de change		
+755	Écarts de conversion des devises		
+755000	Écarts de conversion des devises		
+756	Produits financiers divers		
+756000	Produits financiers divers		
+757000	Escomptes financiers obtenus		
+757100	Différences de paiement positives		
+76	Produits d'exploitation ou financiers non récurrents		
+760	Reprises d'amortissements et de réductions de valeur		
+760000	Reprises d'amortissements et de réductions de valeur sur immobilisations incorporelles		
+760100	Reprises d'amortissements et de réductions de valeur sur immobilisations corporelles		
+761	Reprises de réductions de valeur sur immobilisations financières		
+761000	Reprises de réductions de valeur sur immobilisations financières		
+762	Reprises de provisions pour risques et charges non récurrents		
+762000	Reprises de provisions pour risques et charges d'exploitation non récurrents		
+762100	Reprises de provisions pour risques et charges financiers non récurrents		
+763	Plus-values sur réalisation d'actifs immobilisés		
+763000	Plus-values sur réalisation d'immobilisations incorporelles et corporelles		
+763100	Plus-values sur réalisation d'immobilisations financières		
+764	Autres bénéfices d'exploitation non récurrents		
+764000	Autres bénéfices d'exploitation non récurrents		
+769	Autres produits financiers non récurrents		
+769000	Autres produits financiers non récurrents		
+77	Régularisations d'impôts et reprises de provisions fiscales		
+771	Impôts belges sur le résultat		
+771000	Régularisations d'impôts dus ou versés		
+771100	Régularisations d'impôts estimés		
+771200	Reprises de provisions fiscales		
+773	Impôts étrangers sur le résultat		
+773000	Régularisations d'impôts étrangers sur le résultat		
+78	Prélèvements sur les réserves immunisées et les impôts différés		
+780	Prélèvements sur les impôts différés		
+780000	Prélèvement sur les impôts différés		
+789	Prélèvement sur les réserves immunisées		
+789000	Prélèvement sur les réserves immunisées		
+79	Affectations et prélèvements		
+790	Bénéfice reporté de l'exercice précédent		
+790000	Bénéfice reporté de l'exercice précédent		
+791	Prélèvements sur l'apport		
+791000	Prélèvements sur l'apport		
+792	Prélèvements sur les réserves		
+792000	Prélèvements sur les réserves		
+793	Perte à reporter		
+793000	Perte à reporter		
+794	Intervention d'associés (ou du propriétaire) dans la perte		
+794000	Intervention des associés (ou du propriétaire) dans la perte		
+
+[parties]
+1	C	BRASSERI	Brasserie du Sablon SRL	Place du Grand Sablon 12	1000	Bruxelles	BE	BE0745321175	be	info@brasseriedusablon.be				30		700100				
+2	C	LIBRAIRI	Librairie Tropiques SA	Rue de Flandre 44	1000	Bruxelles	BE	BE0428137709	be	commandes@tropiques.be				30		700000				
+3	C	CHOCOLAT	Chocolaterie Van Hove SRL	Chaussée de Wavre 210	1050	Ixelles	BE	BE0562019879	be	marketing@vanhove-choco.be				30		700100				
+4	C	STUDIOKA	Studio Kaa SRL	Quai de la Batte 3	4000	Liège	BE	BE0812004519	be	hello@studiokaa.be				45		700100				
+5	C	BROUWERI	Brouwerij De Klok NV	Kaai 7	2000	Antwerpen	BE	BE0439127611	be	boekhouding@deklok.be				30		700100				nl
+6	C	EDITIONS	Editions du Préau SA	Rue du Préau 9	5000	Namur	BE	BE0669023153	be	fabrication@editionsdupreau.be				60		700000				
+7	C	THEATRED	Théâtre du Canal ASBL	Rue Dansaert 70	1000	Bruxelles	BE		private	admin@theatreducanal.be				30		700100				
+8	C	MMECLAIR	Mme Claire Dubois	Avenue Brugmann 301	1180	Uccle	BE		private	claire.dubois@mail.be				15		700100				
+9	C	AGENCELU	Agence Lumière Paris SARL	Rue Oberkampf 88	75011	Paris	FR	FR40303265045	eu	compta@agence-lumiere.fr				30		700610				
+10	C	STUDIONO	Studio Noord BV	Prinsengracht 412	1016	Amsterdam	NL	NL859290236B01	eu	finance@studionoord.nl				30		700610				nl
+11	C	DESIGNZU	Design Zürich AG	Langstrasse 21	8004	Zürich	CH	CHE123456789	world	office@design-zuerich.ch				30		700700				en
+12	C	MUSEEDEL	Musée de la Photographie	Avenue Paul Pastur 11	6032	Charleroi	BE	BE0415002325	be	mediation@museephoto.be				45		700100				
+13	S	IMMOTANN	Immo Tanneurs SA	Rue des Tanneurs 60	1000	Bruxelles	BE	BE0442781244	be	gestion@immotanneurs.be		BE60363010294770		0		610000	A0			
+14	S	LUMINEAE	Luminéa Energie SA	Boulevard Simon Bolivar 36	1000	Bruxelles	BE	BE0403221377	be	clients@luminea.be		BE57363011086635		15		612500	A21			
+15	S	TELENOVA	Telenova SA	Boulevard du Roi Albert II 27	1030	Schaerbeek	BE	BE0202773946	be	factures@telenova.be		BE54363011878597		20		616200	A21			
+16	S	PAPETERI	Papeteries de Genval SA	Rue de la Papeterie 5	1332	Genval	BE	BE0421998894	be	ventes@papgenval.be		BE51363012670462		30		604000	A21			
+17	S	PAPIERFA	Papierfabrik Ahlen GmbH	Industriestraße 14	59229	Ahlen	DE	DE811907980	eu	export@papierfabrik-ahlen.de		BE48363013462327		30		604000	AEU21			en
+18	S	PIXELWOR	Pixelworks Software Ltd	4 Grand Canal Square	D02	Dublin	IE	IE6388047V	eu	billing@pixelworks.ie		BE45363014254289		0		613310	AEUS21			en
+19	S	AUTOLEAS	Autolease Belgium SA	Avenue de Tervueren 270	1150	Woluwe-Saint-Pierre	BE	BE0403561075	be	invoices@autolease.be		BE42363015046154		15		610220	A21D50			
+20	S	FIDUCIAI	Fiduciaire Martin SRL	Rue Royale 150	1000	Bruxelles	BE	BE0651004513	be	cabinet@fidumartin.be		BE39363015838019		30		613200	A21			
+21	S	ASSURANC	Assurances du Midi SA	Rue du Midi 101	1000	Bruxelles	BE	BE0453900414	be	pro@assurancesdumidi.be		BE36363016629981		30		614600	A0			
+22	S	OFFSETBE	Offset Benelux SA	Zoning Nord 8	1400	Nivelles	BE	BE0411892088	be	info@offsetbenelux.be		BE33363017421846		30		230000	A21			
+23	S	IMPRIMER	Imprimerie Snel SRL	Rue de l'Industrie 22	4400	FlÃ©malle	BE	BE0460234514	be	devis@snel.be		BE30363018213711		30		603000	A21			
+
+[entries]
+E	1	OD	1	2025-01-01	2025-01-01	0	O			0.00	0.00	Opening balances
+L	240000	12000.00	0			0.00		0	Opening balances
+L	240009	-4800.00	0			0.00		0	Opening balances
+L	550000	21340.00	0			0.00		0	Opening balances
+L	100000	-18600.00	0			0.00		0	Opening balances
+L	140000	-9940.00	0			0.00		0	Opening balances
+E	2	VEN	1	2025-01-05	2025-02-04	3			202500000165	0.00	0.00	Photo retouching
+L	400000	1320.11	3			0.00	2025-02-04	6	Photo retouching
+L	700100	-785.00	0	V21	B	164.85		0	Photo retouching
+L	700100	-306.00	0	V21	B	64.26		0	Printing proofs
+L	451000	-229.11	0	V21	T	-1091.00		0	VAT V21
+E	3	VEN	2	2025-01-17	2025-03-03	4			202500000266	0.00	0.00	Label design
+L	400000	2401.85	4			0.00	2025-03-03	19	Label design
+L	700100	-1985.00	0	V21	B	416.85		0	Label design
+L	451000	-416.85	0	V21	T	-1985.00		0	VAT V21
+E	4	VEN	3	2025-01-17	2025-02-16	1			202500000367	0.00	0.00	Exhibition graphics
+L	400000	2450.25	1			0.00	2025-02-16	13	Exhibition graphics
+L	700100	-2025.00	0	V21	B	425.25		0	Exhibition graphics
+L	451000	-425.25	0	V21	T	-2025.00		0	VAT V21
+E	5	VEN	4	2025-01-20	2025-02-04	8			202500000468	0.00	0.00	Label design
+L	400000	683.65	8			0.00	2025-02-04	7	Label design
+L	700100	-565.00	0	V21	B	118.65		0	Label design
+L	451000	-118.65	0	V21	T	-565.00		0	VAT V21
+E	6	VEN	5	2025-01-23	2025-02-22	7			202500000569	0.00	0.00	Brochure layout
+L	400000	677.60	7			0.00	2025-02-22	20	Brochure layout
+L	700100	-560.00	0	V21	B	117.60		0	Brochure layout
+L	451000	-117.60	0	V21	T	-560.00		0	VAT V21
+E	7	VEN	6	2025-01-23	2025-03-24	6			202500000670	0.00	0.00	Poetry collection (300 copies)
+L	400000	4482.88	6			0.00	2025-03-24	21	Poetry collection (300 copies)
+L	700000	-3010.00	0	V6	B	180.60		0	Poetry collection (300 copies)
+L	700100	-1068.00	0	V21	B	224.28		0	Cover design
+L	451000	-224.28	0	V21	T	-1068.00		0	VAT V21
+L	451000	-180.60	0	V6	T	-3010.00		0	VAT V6
+E	8	ACH	1	2025-01-01	2025-01-01	13		F2025-1204		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-01-01	1	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	9	ACH	2	2025-01-08	2025-01-23	14		F2025-1734		0.00	0.00	Electricity and gas
+L	440000	-301.29	14			0.00	2025-01-23	3	Electricity and gas
+L	612500	249.00	0	A21	B	52.29		0	Electricity and gas
+L	411000	52.29	0	A21	T	249.00		0	VAT A21
+E	10	ACH	3	2025-01-05	2025-01-25	15		F2025-7751		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-01-25	4	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	11	ACH	4	2025-01-03	2025-01-18	19		F2025-6040		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-01-18	5	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	12	ACH	5	2025-01-02	2025-01-02	18		F2025-4561		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-01-02	2	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	13	ACH	6	2025-01-14	2025-02-13	16		F2025-2118		0.00	0.00	Paper
+L	440000	-1248.72	16			0.00	2025-02-13	8	Paper
+L	604000	1032.00	0	A21	B	216.72		0	Paper
+L	411000	216.72	0	A21	T	1032.00		0	VAT A21
+E	14	ACH	7	2025-01-10	2025-02-09	21		F2025-3606		0.00	0.00	Professional insurance, the year
+L	440000	-1860.00	21			0.00	2025-02-09	9	Professional insurance, the year
+L	614600	1860.00	0	A0	B	0.00		0	Professional insurance, the year
+E	15	BNK	1	2025-01-15	2025-01-15	0				21340.00	19771.00	Statement 1
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-1204
+L	440000	1450.00	13			0.00	2025-01-15	1	Immo Tanneurs SA F2025-1204
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-4561
+L	440000	119.00	18			0.00	2025-01-15	2	Pixelworks Software Ltd F2025-4561
+E	16	BNK	2	2025-01-31	2025-01-31	0				19771.00	14173.90	Statement 2
+L	550000	-301.29	0			0.00		0	Luminéa Energie SA F2025-1734
+L	440000	301.29	14			0.00	2025-01-31	3	Luminéa Energie SA F2025-1734
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-7751
+L	440000	108.78	15			0.00	2025-01-31	4	Telenova SA F2025-7751
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-6040
+L	440000	677.60	19			0.00	2025-01-31	5	Autolease Belgium SA F2025-6040
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-01-31	0	Manager's remuneration
+L	550000	-9.43	0			0.00		0	Bank charges
+L	657200	9.43	0			0.00	2025-01-31	0	Bank charges
+E	17	VEN	7	2025-02-08	2025-02-23	8			202500000771	0.00	0.00	Website design
+L	400000	3424.30	8			0.00	2025-02-23	14	Website design
+L	700100	-2395.00	0	V21	B	502.95		0	Website design
+L	700100	-435.00	0	V21	B	91.35		0	Printing proofs
+L	451000	-594.30	0	V21	T	-2830.00		0	VAT V21
+E	18	VEN	8	2025-02-12	2025-03-14	7			202500000872	0.00	0.00	Catalogue
+L	400000	1984.40	7			0.00	2025-03-14	36	Catalogue
+L	700100	-1640.00	0	V21	B	344.40		0	Catalogue
+L	451000	-344.40	0	V21	T	-1640.00		0	VAT V21
+E	19	VEN	9	2025-02-13	2025-03-15	11			202500000973	0.00	0.00	Exhibition graphics
+L	400000	1819.00	11			0.00	2025-03-15	22	Exhibition graphics
+L	700700	-1490.00	0	VEX	B	0.00		0	Exhibition graphics
+L	700700	-329.00	0	VEX	B	0.00		0	Printing proofs
+E	20	VEN	10	2025-02-15	2025-04-16	6			202500001074	0.00	0.00	Exhibition catalogues
+L	400000	1971.60	6			0.00	2025-04-16	28	Exhibition catalogues
+L	700000	-1860.00	0	V6	B	111.60		0	Exhibition catalogues
+L	451000	-111.60	0	V6	T	-1860.00		0	VAT V6
+E	21	VEN	11	2025-02-16	2025-03-18	7			202500001175	0.00	0.00	Catalogue
+L	400000	1276.55	7			0.00	2025-03-18	37	Catalogue
+L	700100	-1055.00	0	V21	B	221.55		0	Catalogue
+L	451000	-221.55	0	V21	T	-1055.00		0	VAT V21
+E	22	VEN	12	2025-02-20	2025-03-22	1			202500001276	0.00	0.00	Poster series
+L	400000	2420.00	1			0.00	2025-03-22	23	Poster series
+L	700100	-2000.00	0	V21	B	420.00		0	Poster series
+L	451000	-420.00	0	V21	T	-2000.00		0	VAT V21
+E	23	VEN	13	2025-02-22	2025-03-24	3			202500001377	0.00	0.00	Poster series
+L	400000	2746.70	3			0.00	2025-03-24	29	Poster series
+L	700100	-2270.00	0	V21	B	476.70		0	Poster series
+L	451000	-476.70	0	V21	T	-2270.00		0	VAT V21
+E	24	VEN	14	2025-02-24	2025-03-26	11			202500001478	0.00	0.00	Photo retouching
+L	400000	635.00	11			0.00	2025-03-26	30	Photo retouching
+L	700700	-635.00	0	VEX	B	0.00		0	Photo retouching
+E	25	ACH	8	2025-02-01	2025-02-01	13		F2025-6202		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-02-01	10	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	26	ACH	9	2025-02-08	2025-02-23	14		F2025-5171		0.00	0.00	Electricity and gas
+L	440000	-246.84	14			0.00	2025-02-23	15	Electricity and gas
+L	612500	204.00	0	A21	B	42.84		0	Electricity and gas
+L	411000	42.84	0	A21	T	204.00		0	VAT A21
+E	27	ACH	10	2025-02-05	2025-02-25	15		F2025-8154		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-02-25	16	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	28	ACH	11	2025-02-03	2025-02-18	19		F2025-2523		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-02-18	11	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	29	ACH	12	2025-02-02	2025-02-02	18		F2025-7506		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-02-02	12	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	30	ACH	13	2025-02-16	2025-03-18	17		F2025-5655		0.00	0.00	Art paper, 2 pallets
+L	440000	-3635.00	17			0.00	2025-03-18	24	Art paper, 2 pallets
+L	604000	3635.00	0	AEU21	B	763.35		0	Art paper, 2 pallets
+L	411000	763.35	0	AEU21	T	3635.00		0	VAT AEU21
+L	451000	-763.35	0	AEU21	D	3635.00		0	VAT due AEU21
+E	31	BNK	3	2025-02-15	2025-02-15	0				14173.90	10822.34	Statement 3
+L	550000	1320.11	0			0.00		0	Payment 2025/0001
+L	400000	-1320.11	3			0.00	2025-02-15	6	Payment 2025/0001
+L	550000	683.65	0			0.00		0	Payment 2025/0004
+L	400000	-683.65	8			0.00	2025-02-15	7	Payment 2025/0004
+L	550000	-1248.72	0			0.00		0	Papeteries de Genval SA F2025-2118
+L	440000	1248.72	16			0.00	2025-02-15	8	Papeteries de Genval SA F2025-2118
+L	550000	-1860.00	0			0.00		0	Assurances du Midi SA F2025-3606
+L	440000	1860.00	21			0.00	2025-02-15	9	Assurances du Midi SA F2025-3606
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-6202
+L	440000	1450.00	13			0.00	2025-02-15	10	Immo Tanneurs SA F2025-6202
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-2523
+L	440000	677.60	19			0.00	2025-02-15	11	Autolease Belgium SA F2025-2523
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-7506
+L	440000	119.00	18			0.00	2025-02-15	12	Pixelworks Software Ltd F2025-7506
+E	32	BNK	4	2025-02-28	2025-02-28	0				10822.34	11831.57	Statement 4
+L	550000	2450.25	0			0.00		0	Payment 2025/0003
+L	400000	-2450.25	1			0.00	2025-02-28	13	Payment 2025/0003
+L	550000	3424.30	0			0.00		0	Payment 2025/0007
+L	400000	-3424.30	8			0.00	2025-02-28	14	Payment 2025/0007
+L	550000	-246.84	0			0.00		0	Luminéa Energie SA F2025-5171
+L	440000	246.84	14			0.00	2025-02-28	15	Luminéa Energie SA F2025-5171
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-8154
+L	440000	108.78	15			0.00	2025-02-28	16	Telenova SA F2025-8154
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-02-28	0	Manager's remuneration
+L	550000	-9.70	0			0.00		0	Bank charges
+L	657200	9.70	0			0.00	2025-02-28	0	Bank charges
+E	33	VEN	15	2025-03-11	2025-04-10	11			202500001579	0.00	0.00	Brochure layout
+L	400000	1995.00	11			0.00	2025-04-10	38	Brochure layout
+L	700700	-1995.00	0	VEX	B	0.00		0	Brochure layout
+E	34	VEN	16	2025-03-15	2025-05-14	6			202500001680	0.00	0.00	Printed books (500 copies)
+L	400000	2766.60	6			0.00	2025-05-14	50	Printed books (500 copies)
+L	700000	-2610.00	0	V6	B	156.60		0	Printed books (500 copies)
+L	451000	-156.60	0	V6	T	-2610.00		0	VAT V6
+E	35	VEN	17	2025-03-20	2025-05-04	12			202500001781	0.00	0.00	Exhibition graphics
+L	400000	1645.60	12			0.00	2025-05-04	57	Exhibition graphics
+L	700100	-1360.00	0	V21	B	285.60		0	Exhibition graphics
+L	451000	-285.60	0	V21	T	-1360.00		0	VAT V21
+E	36	VEN	18	2025-03-22	2025-04-21	5			202500001882	0.00	0.00	Catalogue
+L	400000	1772.65	5			0.00	2025-04-21	39	Catalogue
+L	700100	-1290.00	0	V21	B	270.90		0	Catalogue
+L	700100	-175.00	0	V21	B	36.75		0	Printing proofs
+L	451000	-307.65	0	V21	T	-1465.00		0	VAT V21
+E	37	VEN	19	2025-03-23	2025-04-22	2			202500001983	0.00	0.00	Exhibition catalogues
+L	400000	2215.40	2			0.00	2025-04-22	40	Exhibition catalogues
+L	700000	-2090.00	0	V6	B	125.40		0	Exhibition catalogues
+L	451000	-125.40	0	V6	T	-2090.00		0	VAT V6
+E	38	VEN	20	2025-03-27	2025-04-11	8			202500002084	0.00	0.00	Annual report layout
+L	400000	986.15	8			0.00	2025-04-11	31	Annual report layout
+L	700100	-815.00	0	V21	B	171.15		0	Annual report layout
+L	451000	-171.15	0	V21	T	-815.00		0	VAT V21
+E	39	ACH	14	2025-03-01	2025-03-01	13		F2025-6517		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-03-01	17	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	40	ACH	15	2025-03-08	2025-03-23	14		F2025-4514		0.00	0.00	Electricity and gas
+L	440000	-243.21	14			0.00	2025-03-23	25	Electricity and gas
+L	612500	201.00	0	A21	B	42.21		0	Electricity and gas
+L	411000	42.21	0	A21	T	201.00		0	VAT A21
+E	41	ACH	16	2025-03-05	2025-03-25	15		F2025-3810		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-03-25	26	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	42	ACH	17	2025-03-03	2025-03-18	19		F2025-5428		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-03-18	27	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	43	ACH	18	2025-03-02	2025-03-02	18		F2025-8004		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-03-02	18	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	44	ACH	19	2025-03-14	2025-04-13	16		F2025-9358		0.00	0.00	Paper
+L	440000	-2277.22	16			0.00	2025-04-13	32	Paper
+L	604000	1882.00	0	A21	B	395.22		0	Paper
+L	411000	395.22	0	A21	T	1882.00		0	VAT A21
+E	45	ACH	20	2025-03-25	2025-04-24	20		F2025-5570		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2025-04-24	41	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	46	ACH	21	2025-03-14	2025-04-13	22		F2025-1169		0.00	0.00	Digital press Heidel XR
+L	440000	-11495.00	22			0.00	2025-04-13	33	Digital press Heidel XR
+L	230000	9500.00	0	A21	B	1995.00		0	Digital press Heidel XR
+L	411000	1995.00	0	A21	T	9500.00		0	VAT A21
+E	47	BNK	5	2025-03-15	2025-03-15	0				11831.57	10262.57	Statement 5
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-6517
+L	440000	1450.00	13			0.00	2025-03-15	17	Immo Tanneurs SA F2025-6517
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-8004
+L	440000	119.00	18			0.00	2025-03-15	18	Pixelworks Software Ltd F2025-8004
+E	48	BNK	6	2025-03-31	2025-03-31	0				10262.57	12889.94	Statement 6
+L	550000	2401.85	0			0.00		0	Payment 2025/0002
+L	400000	-2401.85	4			0.00	2025-03-31	19	Payment 2025/0002
+L	550000	677.60	0			0.00		0	Payment 2025/0005
+L	400000	-677.60	7			0.00	2025-03-31	20	Payment 2025/0005
+L	550000	4482.88	0			0.00		0	Payment 2025/0006
+L	400000	-4482.88	6			0.00	2025-03-31	21	Payment 2025/0006
+L	550000	1819.00	0			0.00		0	Payment 2025/0009
+L	400000	-1819.00	11			0.00	2025-03-31	22	Payment 2025/0009
+L	550000	2420.00	0			0.00		0	Payment 2025/0012
+L	400000	-2420.00	1			0.00	2025-03-31	23	Payment 2025/0012
+L	550000	-3635.00	0			0.00		0	Papierfabrik Ahlen GmbH F2025-5655
+L	440000	3635.00	17			0.00	2025-03-31	24	Papierfabrik Ahlen GmbH F2025-5655
+L	550000	-243.21	0			0.00		0	Luminéa Energie SA F2025-4514
+L	440000	243.21	14			0.00	2025-03-31	25	Luminéa Energie SA F2025-4514
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-3810
+L	440000	108.78	15			0.00	2025-03-31	26	Telenova SA F2025-3810
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-5428
+L	440000	677.60	19			0.00	2025-03-31	27	Autolease Belgium SA F2025-5428
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-03-31	0	Manager's remuneration
+L	550000	-9.37	0			0.00		0	Bank charges
+L	657200	9.37	0			0.00	2025-03-31	0	Bank charges
+E	49	VEN	21	2025-04-04	2025-05-04	5			202500002185	0.00	0.00	Menu design
+L	400000	2450.25	5			0.00	2025-05-04	45	Menu design
+L	700100	-2025.00	0	V21	B	425.25		0	Menu design
+L	451000	-425.25	0	V21	T	-2025.00		0	VAT V21
+E	50	VEN	22	2025-04-04	2025-06-03	6			202500002286	0.00	0.00	Annual report layout
+L	400000	1324.95	6			0.00	2025-06-03	58	Annual report layout
+L	700000	-1015.00	0	V21	B	213.15		0	Annual report layout
+L	700000	-80.00	0	V21	B	16.80		0	Printing proofs
+L	451000	-229.95	0	V21	T	-1095.00		0	VAT V21
+E	51	VEN	23	2025-04-05	2025-05-20	12			202500002387	0.00	0.00	Label design
+L	400000	1161.60	12			0.00	2025-05-20	59	Label design
+L	700100	-960.00	0	V21	B	201.60		0	Label design
+L	451000	-201.60	0	V21	T	-960.00		0	VAT V21
+E	52	VEN	24	2025-04-16	2025-05-01	8			202500002488	0.00	0.00	Catalogue
+L	400000	2728.55	8			0.00	2025-05-01	46	Catalogue
+L	700100	-2255.00	0	V21	B	473.55		0	Catalogue
+L	451000	-473.55	0	V21	T	-2255.00		0	VAT V21
+E	53	VEN	25	2025-04-20	2025-05-20	11			202500002589	0.00	0.00	Annual report layout
+L	400000	1495.00	11			0.00	2025-05-20	51	Annual report layout
+L	700700	-1495.00	0	VEX	B	0.00		0	Annual report layout
+E	54	VEN	26	2025-04-20	2025-05-20	10			202500002690	0.00	0.00	Website design
+L	400000	1025.00	10			0.00	2025-05-20	52	Website design
+L	700610	-1025.00	0	VEUS	B	0.00		0	Website design
+E	55	VEN	27	2025-04-22	2025-05-07	8			202500002791	0.00	0.00	Exhibition graphics
+L	400000	2849.55	8			0.00	2025-05-07	47	Exhibition graphics
+L	700100	-2355.00	0	V21	B	494.55		0	Exhibition graphics
+L	451000	-494.55	0	V21	T	-2355.00		0	VAT V21
+E	56	VEN	28	2025-04-24	2025-05-24	3			202500002892	0.00	0.00	Photo retouching
+L	400000	805.86	3			0.00	2025-05-24	60	Photo retouching
+L	700100	-505.00	0	V21	B	106.05		0	Photo retouching
+L	700100	-161.00	0	V21	B	33.81		0	Printing proofs
+L	451000	-139.86	0	V21	T	-666.00		0	VAT V21
+E	57	ACH	22	2025-04-01	2025-04-01	13		F2025-5780		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-04-01	34	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	58	ACH	23	2025-04-08	2025-04-23	14		F2025-1632		0.00	0.00	Electricity and gas
+L	440000	-249.26	14			0.00	2025-04-23	42	Electricity and gas
+L	612500	206.00	0	A21	B	43.26		0	Electricity and gas
+L	411000	43.26	0	A21	T	206.00		0	VAT A21
+E	59	ACH	24	2025-04-05	2025-04-25	15		F2025-7090		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-04-25	43	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	60	ACH	25	2025-04-03	2025-04-18	19		F2025-1695		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-04-18	44	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	61	ACH	26	2025-04-02	2025-04-02	18		F2025-4546		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-04-02	35	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	62	OD	2	2025-03-31	2025-03-31	0	S			0.00	0.00	VAT settlement Q1 2025
+L	451000	5765.61	0			0.00		0	VAT settlement Q1 2025
+L	411000	-4015.14	0			0.00		0	VAT settlement Q1 2025
+L	451200	-1750.47	0			0.00	2025-04-20	0	VAT settlement Q1 2025
+E	63	BNK	7	2025-04-15	2025-04-15	0				12889.94	2137.70	Statement 7
+L	550000	1971.60	0			0.00		0	Payment 2025/0010
+L	400000	-1971.60	6			0.00	2025-04-15	28	Payment 2025/0010
+L	550000	2746.70	0			0.00		0	Payment 2025/0013
+L	400000	-2746.70	3			0.00	2025-04-15	29	Payment 2025/0013
+L	550000	635.00	0			0.00		0	Payment 2025/0014
+L	400000	-635.00	11			0.00	2025-04-15	30	Payment 2025/0014
+L	550000	986.15	0			0.00		0	Payment 2025/0020
+L	400000	-986.15	8			0.00	2025-04-15	31	Payment 2025/0020
+L	550000	-2277.22	0			0.00		0	Papeteries de Genval SA F2025-9358
+L	440000	2277.22	16			0.00	2025-04-15	32	Papeteries de Genval SA F2025-9358
+L	550000	-11495.00	0			0.00		0	Offset Benelux SA F2025-1169
+L	440000	11495.00	22			0.00	2025-04-15	33	Offset Benelux SA F2025-1169
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-5780
+L	440000	1450.00	13			0.00	2025-04-15	34	Immo Tanneurs SA F2025-5780
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-4546
+L	440000	119.00	18			0.00	2025-04-15	35	Pixelworks Software Ltd F2025-4546
+L	550000	-1750.47	0			0.00		0	VAT return, payment
+L	451200	1750.47	0			0.00	2025-04-15	0	VAT return, payment
+E	64	BNK	8	2025-04-30	2025-04-30	0				2137.70	4685.52	Statement 8
+L	550000	1984.40	0			0.00		0	Payment 2025/0008
+L	400000	-1984.40	7			0.00	2025-04-30	36	Payment 2025/0008
+L	550000	1276.55	0			0.00		0	Payment 2025/0011
+L	400000	-1276.55	7			0.00	2025-04-30	37	Payment 2025/0011
+L	550000	1995.00	0			0.00		0	Payment 2025/0015
+L	400000	-1995.00	11			0.00	2025-04-30	38	Payment 2025/0015
+L	550000	1772.65	0			0.00		0	Payment 2025/0018
+L	400000	-1772.65	5			0.00	2025-04-30	39	Payment 2025/0018
+L	550000	2215.40	0			0.00		0	Payment 2025/0019
+L	400000	-2215.40	2			0.00	2025-04-30	40	Payment 2025/0019
+L	550000	-1149.50	0			0.00		0	Fiduciaire Martin SRL F2025-5570
+L	440000	1149.50	20			0.00	2025-04-30	41	Fiduciaire Martin SRL F2025-5570
+L	550000	-249.26	0			0.00		0	Luminéa Energie SA F2025-1632
+L	440000	249.26	14			0.00	2025-04-30	42	Luminéa Energie SA F2025-1632
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-7090
+L	440000	108.78	15			0.00	2025-04-30	43	Telenova SA F2025-7090
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-1695
+L	440000	677.60	19			0.00	2025-04-30	44	Autolease Belgium SA F2025-1695
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-04-30	0	Manager's remuneration
+L	550000	-11.04	0			0.00		0	Bank charges
+L	657200	11.04	0			0.00	2025-04-30	0	Bank charges
+E	65	VEN	29	2025-05-17	2025-07-16	6			202500002993	0.00	0.00	Visual identity
+L	400000	556.60	6			0.00	2025-07-16	74	Visual identity
+L	700000	-460.00	0	V21	B	96.60		0	Visual identity
+L	451000	-96.60	0	V21	T	-460.00		0	VAT V21
+E	66	VEN	30	2025-05-19	2025-06-18	3			202500003094	0.00	0.00	Packaging design
+L	400000	909.92	3			0.00	2025-06-18	66	Packaging design
+L	700100	-625.00	0	V21	B	131.25		0	Packaging design
+L	700100	-127.00	0	V21	B	26.67		0	Printing proofs
+L	451000	-157.92	0	V21	T	-752.00		0	VAT V21
+E	67	VEN	31	2025-05-21	2025-06-20	7			202500003195	0.00	0.00	Visual identity
+L	400000	2127.18	7			0.00	2025-06-20	75	Visual identity
+L	700100	-1310.00	0	V21	B	275.10		0	Visual identity
+L	700100	-448.00	0	V21	B	94.08		0	Printing proofs
+L	451000	-369.18	0	V21	T	-1758.00		0	VAT V21
+E	68	VEN	32	2025-05-22	2025-06-21	3			202500003296	0.00	0.00	Exhibition graphics
+L	400000	1966.25	3			0.00	2025-06-21	69	Exhibition graphics
+L	700100	-1625.00	0	V21	B	341.25		0	Exhibition graphics
+L	451000	-341.25	0	V21	T	-1625.00		0	VAT V21
+E	69	VEN	33	2025-05-23	2025-07-07	4			202500003397	0.00	0.00	Visual identity
+L	400000	943.80	4			0.00	2025-07-07	76	Visual identity
+L	700100	-780.00	0	V21	B	163.80		0	Visual identity
+L	451000	-163.80	0	V21	T	-780.00		0	VAT V21
+E	70	VEN	34	2025-05-27	2025-06-26	9			202500003401	0.00	0.00	Packaging design
+L	400000	2253.00	9			0.00	2025-06-26	70	Packaging design
+L	700610	-1880.00	0	VEUS	B	0.00		0	Packaging design
+L	700610	-373.00	0	VEUS	B	0.00		0	Printing proofs
+E	71	VEN	35	2025-05-20	2025-05-20	5	C			0.00	0.00	Discount granted on a late delivery
+L	400000	-145.20	5			0.00	2025-05-20	53	Discount granted on a late delivery
+L	700100	120.00	0	V21	B	25.20		0	Discount
+L	451000	25.20	0	V21	T	120.00		0	VAT V21
+E	72	ACH	27	2025-05-01	2025-05-01	13		F2025-4675		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-05-01	48	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	73	ACH	28	2025-05-08	2025-05-23	14		F2025-6713		0.00	0.00	Electricity and gas
+L	440000	-242.00	14			0.00	2025-05-23	54	Electricity and gas
+L	612500	200.00	0	A21	B	42.00		0	Electricity and gas
+L	411000	42.00	0	A21	T	200.00		0	VAT A21
+E	74	ACH	29	2025-05-05	2025-05-25	15		F2025-7051		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-05-25	55	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	75	ACH	30	2025-05-03	2025-05-18	19		F2025-1666		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-05-18	56	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	76	ACH	31	2025-05-02	2025-05-02	18		F2025-3717		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-05-02	49	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	77	ACH	32	2025-05-17	2025-06-16	16		F2025-5707		0.00	0.00	Paper
+L	440000	-1582.68	16			0.00	2025-06-16	61	Paper
+L	604000	1308.00	0	A21	B	274.68		0	Paper
+L	411000	274.68	0	A21	T	1308.00		0	VAT A21
+E	78	ACH	33	2025-05-16	2025-06-15	17		F2025-6135		0.00	0.00	Art paper, 2 pallets
+L	440000	-2525.00	17			0.00	2025-06-15	62	Art paper, 2 pallets
+L	604000	2525.00	0	AEU21	B	530.25		0	Art paper, 2 pallets
+L	411000	530.25	0	AEU21	T	2525.00		0	VAT AEU21
+L	451000	-530.25	0	AEU21	D	2525.00		0	VAT due AEU21
+E	79	BNK	9	2025-05-15	2025-05-15	0				4685.52	11144.87	Statement 9
+L	550000	2450.25	0			0.00		0	Payment 2025/0021
+L	400000	-2450.25	5			0.00	2025-05-15	45	Payment 2025/0021
+L	550000	2728.55	0			0.00		0	Payment 2025/0024
+L	400000	-2728.55	8			0.00	2025-05-15	46	Payment 2025/0024
+L	550000	2849.55	0			0.00		0	Payment 2025/0027
+L	400000	-2849.55	8			0.00	2025-05-15	47	Payment 2025/0027
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-4675
+L	440000	1450.00	13			0.00	2025-05-15	48	Immo Tanneurs SA F2025-4675
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-3717
+L	440000	119.00	18			0.00	2025-05-15	49	Pixelworks Software Ltd F2025-3717
+E	80	BNK	10	2025-05-31	2025-05-31	0				11144.87	10747.18	Statement 10
+L	550000	2766.60	0			0.00		0	Payment 2025/0016
+L	400000	-2766.60	6			0.00	2025-05-31	50	Payment 2025/0016
+L	550000	1495.00	0			0.00		0	Payment 2025/0025
+L	400000	-1495.00	11			0.00	2025-05-31	51	Payment 2025/0025
+L	550000	1025.00	0			0.00		0	Payment 2025/0026
+L	400000	-1025.00	10			0.00	2025-05-31	52	Payment 2025/0026
+L	550000	-145.20	0			0.00		0	Payment 2025/0035
+L	400000	145.20	5			0.00	2025-05-31	53	Payment 2025/0035
+L	550000	-242.00	0			0.00		0	Luminéa Energie SA F2025-6713
+L	440000	242.00	14			0.00	2025-05-31	54	Luminéa Energie SA F2025-6713
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-7051
+L	440000	108.78	15			0.00	2025-05-31	55	Telenova SA F2025-7051
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-1666
+L	440000	677.60	19			0.00	2025-05-31	56	Autolease Belgium SA F2025-1666
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-05-31	0	Manager's remuneration
+L	550000	-10.71	0			0.00		0	Bank charges
+L	657200	10.71	0			0.00	2025-05-31	0	Bank charges
+E	81	VEN	36	2025-06-08	2025-08-07	6			202500003603	0.00	0.00	Poetry collection (300 copies)
+L	400000	2633.27	6			0.00	2025-08-07	84	Poetry collection (300 copies)
+L	700000	-1700.00	0	V6	B	102.00		0	Poetry collection (300 copies)
+L	700100	-687.00	0	V21	B	144.27		0	Cover design
+L	451000	-144.27	0	V21	T	-687.00		0	VAT V21
+L	451000	-102.00	0	V6	T	-1700.00		0	VAT V6
+E	82	VEN	37	2025-06-09	2025-07-09	3			202500003704	0.00	0.00	Website design
+L	400000	3327.50	3			0.00	2025-07-09	77	Website design
+L	700100	-2750.00	0	V21	B	577.50		0	Website design
+L	451000	-577.50	0	V21	T	-2750.00		0	VAT V21
+E	83	VEN	38	2025-06-10	2025-07-10	9			202500003805	0.00	0.00	Exhibition graphics
+L	400000	1550.00	9			0.00	2025-07-10	78	Exhibition graphics
+L	700610	-1550.00	0	VEUS	B	0.00		0	Exhibition graphics
+E	84	VEN	39	2025-06-11	2025-07-11	10			202500003906	0.00	0.00	Exhibition graphics
+L	400000	1960.00	10			0.00	2025-07-11	71	Exhibition graphics
+L	700610	-1960.00	0	VEUS	B	0.00		0	Exhibition graphics
+E	85	VEN	40	2025-06-18	2025-07-18	9			202500004007	0.00	0.00	Illustrations
+L	400000	935.00	9			0.00	2025-07-18	79	Illustrations
+L	700610	-935.00	0	VEUS	B	0.00		0	Illustrations
+E	86	VEN	41	2025-06-23	2025-07-23	11			202500004108	0.00	0.00	Illustrations
+L	400000	2020.00	11			0.00	2025-07-23	85	Illustrations
+L	700700	-2020.00	0	VEX	B	0.00		0	Illustrations
+E	87	VEN	42	2025-06-25	2025-07-25	3			202500004209	0.00	0.00	Annual report layout
+L	400000	3303.30	3			0.00	2025-07-25	86	Annual report layout
+L	700100	-2730.00	0	V21	B	573.30		0	Annual report layout
+L	451000	-573.30	0	V21	T	-2730.00		0	VAT V21
+E	88	ACH	34	2025-06-01	2025-06-01	13		F2025-8477		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-06-01	63	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	89	ACH	35	2025-06-08	2025-06-23	14		F2025-7578		0.00	0.00	Electricity and gas
+L	440000	-245.63	14			0.00	2025-06-23	67	Electricity and gas
+L	612500	203.00	0	A21	B	42.63		0	Electricity and gas
+L	411000	42.63	0	A21	T	203.00		0	VAT A21
+E	90	ACH	36	2025-06-05	2025-06-25	15		F2025-3323		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-06-25	68	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	91	ACH	37	2025-06-03	2025-06-18	19		F2025-2579		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-06-18	64	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	92	ACH	38	2025-06-02	2025-06-02	18		F2025-9702		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-06-02	65	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	93	ACH	39	2025-06-25	2025-07-25	20		F2025-1232		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2025-07-25	80	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	94	BNK	11	2025-06-15	2025-06-15	0				10747.18	9330.91	Statement 11
+L	550000	1645.60	0			0.00		0	Payment 2025/0017
+L	400000	-1645.60	12			0.00	2025-06-15	57	Payment 2025/0017
+L	550000	1324.95	0			0.00		0	Payment 2025/0022
+L	400000	-1324.95	6			0.00	2025-06-15	58	Payment 2025/0022
+L	550000	1161.60	0			0.00		0	Payment 2025/0023
+L	400000	-1161.60	12			0.00	2025-06-15	59	Payment 2025/0023
+L	550000	805.86	0			0.00		0	Payment 2025/0028
+L	400000	-805.86	3			0.00	2025-06-15	60	Payment 2025/0028
+L	550000	-1582.68	0			0.00		0	Papeteries de Genval SA F2025-5707
+L	440000	1582.68	16			0.00	2025-06-15	61	Papeteries de Genval SA F2025-5707
+L	550000	-2525.00	0			0.00		0	Papierfabrik Ahlen GmbH F2025-6135
+L	440000	2525.00	17			0.00	2025-06-15	62	Papierfabrik Ahlen GmbH F2025-6135
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-8477
+L	440000	1450.00	13			0.00	2025-06-15	63	Immo Tanneurs SA F2025-8477
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-2579
+L	440000	677.60	19			0.00	2025-06-15	64	Autolease Belgium SA F2025-2579
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-9702
+L	440000	119.00	18			0.00	2025-06-15	65	Pixelworks Software Ltd F2025-9702
+E	95	BNK	12	2025-06-30	2025-06-30	0				9330.91	5376.62	Statement 12
+L	550000	909.92	0			0.00		0	Payment 2025/0030
+L	400000	-909.92	3			0.00	2025-06-30	66	Payment 2025/0030
+L	550000	-245.63	0			0.00		0	Luminéa Energie SA F2025-7578
+L	440000	245.63	14			0.00	2025-06-30	67	Luminéa Energie SA F2025-7578
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-3323
+L	440000	108.78	15			0.00	2025-06-30	68	Telenova SA F2025-3323
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-06-30	0	Manager's remuneration
+L	550000	-9.80	0			0.00		0	Bank charges
+L	657200	9.80	0			0.00	2025-06-30	0	Bank charges
+E	96	VEN	43	2025-07-05	2025-08-04	5			202500004310	0.00	0.00	Menu design
+L	400000	2801.15	5			0.00	2025-08-04	87	Menu design
+L	700100	-2315.00	0	V21	B	486.15		0	Menu design
+L	451000	-486.15	0	V21	T	-2315.00		0	VAT V21
+E	97	VEN	44	2025-07-09	2025-08-08	5			202500004411	0.00	0.00	Catalogue
+L	400000	1566.95	5			0.00	2025-08-08	88	Catalogue
+L	700100	-1295.00	0	V21	B	271.95		0	Catalogue
+L	451000	-271.95	0	V21	T	-1295.00		0	VAT V21
+E	98	VEN	45	2025-07-10	2025-08-09	2			202500004512	0.00	0.00	Art book reprint
+L	400000	1515.80	2			0.00	2025-08-09	89	Art book reprint
+L	700000	-1430.00	0	V6	B	85.80		0	Art book reprint
+L	451000	-85.80	0	V6	T	-1430.00		0	VAT V6
+E	99	VEN	46	2025-07-12	2025-08-11	5			202500004613	0.00	0.00	Menu design
+L	400000	1280.18	5			0.00	2025-08-11	90	Menu design
+L	700100	-890.00	0	V21	B	186.90		0	Menu design
+L	700100	-168.00	0	V21	B	35.28		0	Printing proofs
+L	451000	-222.18	0	V21	T	-1058.00		0	VAT V21
+E	100	VEN	47	2025-07-15	2025-08-14	2			202500004714	0.00	0.00	Label design
+L	400000	1355.20	2			0.00	2025-08-14	91	Label design
+L	700000	-1120.00	0	V21	B	235.20		0	Label design
+L	451000	-235.20	0	V21	T	-1120.00		0	VAT V21
+E	101	VEN	48	2025-07-18	2025-08-17	1			202500004815	0.00	0.00	Poster series
+L	400000	3345.65	1			0.00	2025-08-17	95	Poster series
+L	700100	-2765.00	0	V21	B	580.65		0	Poster series
+L	451000	-580.65	0	V21	T	-2765.00		0	VAT V21
+E	102	VEN	49	2025-07-26	2025-08-25	9			202500004916	0.00	0.00	Poster series
+L	400000	1730.00	9			0.00	2025-08-25	99	Poster series
+L	700610	-1730.00	0	VEUS	B	0.00		0	Poster series
+E	103	ACH	40	2025-07-01	2025-07-01	13		F2025-9150		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-07-01	72	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	104	ACH	41	2025-07-08	2025-07-23	14		F2025-4139		0.00	0.00	Electricity and gas
+L	440000	-303.71	14			0.00	2025-07-23	81	Electricity and gas
+L	612500	251.00	0	A21	B	52.71		0	Electricity and gas
+L	411000	52.71	0	A21	T	251.00		0	VAT A21
+E	105	ACH	42	2025-07-05	2025-07-25	15		F2025-5395		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-07-25	82	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	106	ACH	43	2025-07-03	2025-07-18	19		F2025-9191		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-07-18	83	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	107	ACH	44	2025-07-02	2025-07-02	18		F2025-6013		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-07-02	73	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	108	ACH	45	2025-07-16	2025-08-15	16		F2025-2657		0.00	0.00	Paper
+L	440000	-1241.46	16			0.00	2025-08-15	92	Paper
+L	604000	1026.00	0	A21	B	215.46		0	Paper
+L	411000	215.46	0	A21	T	1026.00		0	VAT A21
+E	109	OD	3	2025-06-30	2025-06-30	0	S			0.00	0.00	VAT settlement Q2 2025
+L	451000	5070.60	0			0.00		0	VAT settlement Q2 2025
+L	411000	-1440.33	0			0.00		0	VAT settlement Q2 2025
+L	451200	-3630.27	0			0.00	2025-07-20	0	VAT settlement Q2 2025
+E	110	BNK	13	2025-07-15	2025-07-15	0				5376.62	6356.60	Statement 13
+L	550000	1966.25	0			0.00		0	Payment 2025/0032
+L	400000	-1966.25	3			0.00	2025-07-15	69	Payment 2025/0032
+L	550000	2253.00	0			0.00		0	Payment 2025/0034
+L	400000	-2253.00	9			0.00	2025-07-15	70	Payment 2025/0034
+L	550000	1960.00	0			0.00		0	Payment 2025/0039
+L	400000	-1960.00	10			0.00	2025-07-15	71	Payment 2025/0039
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-9150
+L	440000	1450.00	13			0.00	2025-07-15	72	Immo Tanneurs SA F2025-9150
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-6013
+L	440000	119.00	18			0.00	2025-07-15	73	Pixelworks Software Ltd F2025-6013
+L	550000	-3630.27	0			0.00		0	VAT return, payment
+L	451200	3630.27	0			0.00	2025-07-15	0	VAT return, payment
+E	111	BNK	14	2025-07-31	2025-07-31	0				6356.60	9045.34	Statement 14
+L	550000	556.60	0			0.00		0	Payment 2025/0029
+L	400000	-556.60	6			0.00	2025-07-31	74	Payment 2025/0029
+L	550000	2127.18	0			0.00		0	Payment 2025/0031
+L	400000	-2127.18	7			0.00	2025-07-31	75	Payment 2025/0031
+L	550000	943.80	0			0.00		0	Payment 2025/0033
+L	400000	-943.80	4			0.00	2025-07-31	76	Payment 2025/0033
+L	550000	3327.50	0			0.00		0	Payment 2025/0037
+L	400000	-3327.50	3			0.00	2025-07-31	77	Payment 2025/0037
+L	550000	1550.00	0			0.00		0	Payment 2025/0038
+L	400000	-1550.00	9			0.00	2025-07-31	78	Payment 2025/0038
+L	550000	935.00	0			0.00		0	Payment 2025/0040
+L	400000	-935.00	9			0.00	2025-07-31	79	Payment 2025/0040
+L	550000	-1149.50	0			0.00		0	Fiduciaire Martin SRL F2025-1232
+L	440000	1149.50	20			0.00	2025-07-31	80	Fiduciaire Martin SRL F2025-1232
+L	550000	-303.71	0			0.00		0	Luminéa Energie SA F2025-4139
+L	440000	303.71	14			0.00	2025-07-31	81	Luminéa Energie SA F2025-4139
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-5395
+L	440000	108.78	15			0.00	2025-07-31	82	Telenova SA F2025-5395
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-9191
+L	440000	677.60	19			0.00	2025-07-31	83	Autolease Belgium SA F2025-9191
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-07-31	0	Manager's remuneration
+L	550000	-11.75	0			0.00		0	Bank charges
+L	657200	11.75	0			0.00	2025-07-31	0	Bank charges
+E	112	VEN	50	2025-08-05	2025-09-04	7			202500005017	0.00	0.00	Visual identity
+L	400000	2233.66	7			0.00	2025-09-04	111	Visual identity
+L	700100	-1725.00	0	V21	B	362.25		0	Visual identity
+L	700100	-121.00	0	V21	B	25.41		0	Printing proofs
+L	451000	-387.66	0	V21	T	-1846.00		0	VAT V21
+E	113	VEN	51	2025-08-13	2025-09-12	1			202500005118	0.00	0.00	Visual identity
+L	400000	1911.80	1			0.00	2025-09-12	104	Visual identity
+L	700100	-1580.00	0	V21	B	331.80		0	Visual identity
+L	451000	-331.80	0	V21	T	-1580.00		0	VAT V21
+E	114	VEN	52	2025-08-19	2025-09-03	8			202500005219	0.00	0.00	Menu design
+L	400000	586.85	8			0.00	2025-09-03	100	Menu design
+L	700100	-485.00	0	V21	B	101.85		0	Menu design
+L	451000	-101.85	0	V21	T	-485.00		0	VAT V21
+E	115	VEN	53	2025-08-24	2025-09-23	10			202500005320	0.00	0.00	Label design
+L	400000	2510.00	10			0.00	2025-09-23	105	Label design
+L	700610	-2510.00	0	VEUS	B	0.00		0	Label design
+E	116	VEN	54	2025-08-25	2025-09-24	5			202500005421	0.00	0.00	Illustrations
+L	400000	1210.00	5			0.00	2025-09-24	106	Illustrations
+L	700100	-1000.00	0	V21	B	210.00		0	Illustrations
+L	451000	-210.00	0	V21	T	-1000.00		0	VAT V21
+E	117	VEN	55	2025-08-25	2025-09-24	3			202500005522	0.00	0.00	Visual identity
+L	400000	3139.95	3			0.00	2025-09-24	112	Visual identity
+L	700100	-2595.00	0	V21	B	544.95		0	Visual identity
+L	451000	-544.95	0	V21	T	-2595.00		0	VAT V21
+E	118	VEN	56	2025-08-26	2025-09-10	8			202500005623	0.00	0.00	Label design
+L	400000	2468.40	8			0.00	2025-09-10	101	Label design
+L	700100	-2040.00	0	V21	B	428.40		0	Label design
+L	451000	-428.40	0	V21	T	-2040.00		0	VAT V21
+E	119	ACH	46	2025-08-01	2025-08-01	13		F2025-9990		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-08-01	93	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	120	ACH	47	2025-08-08	2025-08-23	14		F2025-2626		0.00	0.00	Electricity and gas
+L	440000	-297.66	14			0.00	2025-08-23	96	Electricity and gas
+L	612500	246.00	0	A21	B	51.66		0	Electricity and gas
+L	411000	51.66	0	A21	T	246.00		0	VAT A21
+E	121	ACH	48	2025-08-05	2025-08-25	15		F2025-7014		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-08-25	97	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	122	ACH	49	2025-08-03	2025-08-18	19		F2025-9169		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-08-18	98	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	123	ACH	50	2025-08-02	2025-08-02	18		F2025-4700		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-08-02	94	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	124	ACH	51	2025-08-16	2025-09-15	17		F2025-1381		0.00	0.00	Art paper, 2 pallets
+L	440000	-3119.00	17			0.00	2025-09-15	107	Art paper, 2 pallets
+L	604000	3119.00	0	AEU21	B	654.99		0	Art paper, 2 pallets
+L	411000	654.99	0	AEU21	T	3119.00		0	VAT AEU21
+L	451000	-654.99	0	AEU21	D	3119.00		0	VAT due AEU21
+E	125	BNK	15	2025-08-15	2025-08-15	0				9045.34	22710.73	Statement 15
+L	550000	2633.27	0			0.00		0	Payment 2025/0036
+L	400000	-2633.27	6			0.00	2025-08-15	84	Payment 2025/0036
+L	550000	2020.00	0			0.00		0	Payment 2025/0041
+L	400000	-2020.00	11			0.00	2025-08-15	85	Payment 2025/0041
+L	550000	3303.30	0			0.00		0	Payment 2025/0042
+L	400000	-3303.30	3			0.00	2025-08-15	86	Payment 2025/0042
+L	550000	2801.15	0			0.00		0	Payment 2025/0043
+L	400000	-2801.15	5			0.00	2025-08-15	87	Payment 2025/0043
+L	550000	1566.95	0			0.00		0	Payment 2025/0044
+L	400000	-1566.95	5			0.00	2025-08-15	88	Payment 2025/0044
+L	550000	1515.80	0			0.00		0	Payment 2025/0045
+L	400000	-1515.80	2			0.00	2025-08-15	89	Payment 2025/0045
+L	550000	1280.18	0			0.00		0	Payment 2025/0046
+L	400000	-1280.18	5			0.00	2025-08-15	90	Payment 2025/0046
+L	550000	1355.20	0			0.00		0	Payment 2025/0047
+L	400000	-1355.20	2			0.00	2025-08-15	91	Payment 2025/0047
+L	550000	-1241.46	0			0.00		0	Papeteries de Genval SA F2025-2657
+L	440000	1241.46	16			0.00	2025-08-15	92	Papeteries de Genval SA F2025-2657
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-9990
+L	440000	1450.00	13			0.00	2025-08-15	93	Immo Tanneurs SA F2025-9990
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-4700
+L	440000	119.00	18			0.00	2025-08-15	94	Pixelworks Software Ltd F2025-4700
+E	126	BNK	16	2025-08-31	2025-08-31	0				22710.73	20461.21	Statement 16
+L	550000	3345.65	0			0.00		0	Payment 2025/0048
+L	400000	-3345.65	1			0.00	2025-08-31	95	Payment 2025/0048
+L	550000	-297.66	0			0.00		0	Luminéa Energie SA F2025-2626
+L	440000	297.66	14			0.00	2025-08-31	96	Luminéa Energie SA F2025-2626
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-7014
+L	440000	108.78	15			0.00	2025-08-31	97	Telenova SA F2025-7014
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-9169
+L	440000	677.60	19			0.00	2025-08-31	98	Autolease Belgium SA F2025-9169
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-08-31	0	Manager's remuneration
+L	550000	-11.13	0			0.00		0	Bank charges
+L	657200	11.13	0			0.00	2025-08-31	0	Bank charges
+E	127	VEN	57	2025-09-06	2025-11-05	6			202500005724	0.00	0.00	Poster series
+L	400000	1978.35	6			0.00	2025-11-05	123	Poster series
+L	700000	-1635.00	0	V21	B	343.35		0	Poster series
+L	451000	-343.35	0	V21	T	-1635.00		0	VAT V21
+E	128	VEN	58	2025-09-11	2025-10-26	12			202500005825	0.00	0.00	Menu design
+L	400000	3381.95	12			0.00	2025-10-26	128	Menu design
+L	700100	-2795.00	0	V21	B	586.95		0	Menu design
+L	451000	-586.95	0	V21	T	-2795.00		0	VAT V21
+E	129	VEN	59	2025-09-20	2025-10-20	9			202500005926	0.00	0.00	Exhibition graphics
+L	400000	1095.00	9			0.00	2025-10-20	117	Exhibition graphics
+L	700610	-1095.00	0	VEUS	B	0.00		0	Exhibition graphics
+E	130	VEN	60	2025-09-22	2025-10-07	8			202500006027	0.00	0.00	Label design
+L	400000	1412.07	8			0.00	2025-10-07	113	Label design
+L	700100	-1080.00	0	V21	B	226.80		0	Label design
+L	700100	-87.00	0	V21	B	18.27		0	Printing proofs
+L	451000	-245.07	0	V21	T	-1167.00		0	VAT V21
+E	131	VEN	61	2025-09-25	2025-10-25	10			202500006128	0.00	0.00	Photo retouching
+L	400000	851.00	10			0.00	2025-10-25	118	Photo retouching
+L	700610	-770.00	0	VEUS	B	0.00		0	Photo retouching
+L	700610	-81.00	0	VEUS	B	0.00		0	Printing proofs
+E	132	VEN	62	2025-09-25	2025-11-24	6			202500006229	0.00	0.00	Visual identity
+L	400000	824.01	6			0.00	2025-11-24	129	Visual identity
+L	700000	-550.00	0	V21	B	115.50		0	Visual identity
+L	700000	-131.00	0	V21	B	27.51		0	Printing proofs
+L	451000	-143.01	0	V21	T	-681.00		0	VAT V21
+E	133	VEN	63	2025-09-27	2025-11-11	12			202500006330	0.00	0.00	Illustrations
+L	400000	1585.10	12			0.00	2025-11-11	136	Illustrations
+L	700100	-1310.00	0	V21	B	275.10		0	Illustrations
+L	451000	-275.10	0	V21	T	-1310.00		0	VAT V21
+E	134	ACH	52	2025-09-01	2025-09-01	13		F2025-9141		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-09-01	102	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	135	ACH	53	2025-09-08	2025-09-23	14		F2025-8507		0.00	0.00	Electricity and gas
+L	440000	-231.11	14			0.00	2025-09-23	108	Electricity and gas
+L	612500	191.00	0	A21	B	40.11		0	Electricity and gas
+L	411000	40.11	0	A21	T	191.00		0	VAT A21
+E	136	ACH	54	2025-09-05	2025-09-25	15		F2025-6459		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-09-25	109	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	137	ACH	55	2025-09-03	2025-09-18	19		F2025-6104		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-09-18	110	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	138	ACH	56	2025-09-02	2025-09-02	18		F2025-8716		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-09-02	103	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	139	ACH	57	2025-09-19	2025-10-19	16		F2025-1769		0.00	0.00	Paper
+L	440000	-1690.37	16			0.00	2025-10-19	119	Paper
+L	604000	1397.00	0	A21	B	293.37		0	Paper
+L	411000	293.37	0	A21	T	1397.00		0	VAT A21
+E	140	ACH	58	2025-09-25	2025-10-25	20		F2025-2110		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2025-10-25	120	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	141	BNK	17	2025-09-15	2025-09-15	0				20461.21	23677.46	Statement 17
+L	550000	1730.00	0			0.00		0	Payment 2025/0049
+L	400000	-1730.00	9			0.00	2025-09-15	99	Payment 2025/0049
+L	550000	586.85	0			0.00		0	Payment 2025/0052
+L	400000	-586.85	8			0.00	2025-09-15	100	Payment 2025/0052
+L	550000	2468.40	0			0.00		0	Payment 2025/0056
+L	400000	-2468.40	8			0.00	2025-09-15	101	Payment 2025/0056
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-9141
+L	440000	1450.00	13			0.00	2025-09-15	102	Immo Tanneurs SA F2025-9141
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-8716
+L	440000	119.00	18			0.00	2025-09-15	103	Pixelworks Software Ltd F2025-8716
+E	142	BNK	18	2025-09-30	2025-09-30	0				23677.46	20662.03	Statement 18
+L	550000	1911.80	0			0.00		0	Payment 2025/0051
+L	400000	-1911.80	1			0.00	2025-09-30	104	Payment 2025/0051
+L	550000	2510.00	0			0.00		0	Payment 2025/0053
+L	400000	-2510.00	10			0.00	2025-09-30	105	Payment 2025/0053
+L	550000	1210.00	0			0.00		0	Payment 2025/0054
+L	400000	-1210.00	5			0.00	2025-09-30	106	Payment 2025/0054
+L	550000	-3119.00	0			0.00		0	Papierfabrik Ahlen GmbH F2025-1381
+L	440000	3119.00	17			0.00	2025-09-30	107	Papierfabrik Ahlen GmbH F2025-1381
+L	550000	-231.11	0			0.00		0	Luminéa Energie SA F2025-8507
+L	440000	231.11	14			0.00	2025-09-30	108	Luminéa Energie SA F2025-8507
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-6459
+L	440000	108.78	15			0.00	2025-09-30	109	Telenova SA F2025-6459
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-6104
+L	440000	677.60	19			0.00	2025-09-30	110	Autolease Belgium SA F2025-6104
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-09-30	0	Manager's remuneration
+L	550000	-10.74	0			0.00		0	Bank charges
+L	657200	10.74	0			0.00	2025-09-30	0	Bank charges
+E	143	VEN	64	2025-10-02	2025-11-01	10			202500006431	0.00	0.00	Brochure layout
+L	400000	645.00	10			0.00	2025-11-01	124	Brochure layout
+L	700610	-645.00	0	VEUS	B	0.00		0	Brochure layout
+E	144	VEN	65	2025-10-03	2025-12-02	6			202500006532	0.00	0.00	Brochure layout
+L	400000	2952.40	6			0.00	2025-12-02	137	Brochure layout
+L	700000	-2440.00	0	V21	B	512.40		0	Brochure layout
+L	451000	-512.40	0	V21	T	-2440.00		0	VAT V21
+E	145	VEN	66	2025-10-08	2025-11-07	7			202500006633	0.00	0.00	Visual identity
+L	400000	2214.30	7			0.00	2025-11-07	138	Visual identity
+L	700100	-1830.00	0	V21	B	384.30		0	Visual identity
+L	451000	-384.30	0	V21	T	-1830.00		0	VAT V21
+E	146	VEN	67	2025-10-08	2025-11-07	5			202500006734	0.00	0.00	Brochure layout
+L	400000	2541.00	5			0.00	2025-11-07	125	Brochure layout
+L	700100	-2100.00	0	V21	B	441.00		0	Brochure layout
+L	451000	-441.00	0	V21	T	-2100.00		0	VAT V21
+E	147	VEN	68	2025-10-16	2025-11-15	1			202500006835	0.00	0.00	Label design
+L	400000	1529.44	1			0.00	2025-11-15	130	Label design
+L	700100	-945.00	0	V21	B	198.45		0	Label design
+L	700100	-319.00	0	V21	B	66.99		0	Printing proofs
+L	451000	-265.44	0	V21	T	-1264.00		0	VAT V21
+E	148	VEN	69	2025-10-22	2025-11-21	3			202500006936	0.00	0.00	Label design
+L	400000	2292.95	3			0.00	2025-11-21	131	Label design
+L	700100	-1895.00	0	V21	B	397.95		0	Label design
+L	451000	-397.95	0	V21	T	-1895.00		0	VAT V21
+E	149	VEN	70	2025-10-26	2025-11-25	11			202500007037	0.00	0.00	Menu design
+L	400000	2335.00	11			0.00	2025-11-25	139	Menu design
+L	700700	-2335.00	0	VEX	B	0.00		0	Menu design
+E	150	ACH	59	2025-10-01	2025-10-01	13		F2025-5297		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-10-01	114	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	151	ACH	60	2025-10-08	2025-10-23	14		F2025-7183		0.00	0.00	Electricity and gas
+L	440000	-296.45	14			0.00	2025-10-23	121	Electricity and gas
+L	612500	245.00	0	A21	B	51.45		0	Electricity and gas
+L	411000	51.45	0	A21	T	245.00		0	VAT A21
+E	152	ACH	61	2025-10-05	2025-10-25	15		F2025-3520		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-10-25	122	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	153	ACH	62	2025-10-03	2025-10-18	19		F2025-7507		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-10-18	115	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	154	ACH	63	2025-10-02	2025-10-02	18		F2025-6707		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-10-02	116	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	155	OD	4	2025-09-30	2025-09-30	0	S			0.00	0.00	VAT settlement Q3 2025
+L	451000	6210.03	0			0.00		0	VAT settlement Q3 2025
+L	411000	-1815.81	0			0.00		0	VAT settlement Q3 2025
+L	451200	-4394.22	0			0.00	2025-10-20	0	VAT settlement Q3 2025
+E	156	BNK	19	2025-10-15	2025-10-15	0				20662.03	20806.89	Statement 19
+L	550000	2233.66	0			0.00		0	Payment 2025/0050
+L	400000	-2233.66	7			0.00	2025-10-15	111	Payment 2025/0050
+L	550000	3139.95	0			0.00		0	Payment 2025/0055
+L	400000	-3139.95	3			0.00	2025-10-15	112	Payment 2025/0055
+L	550000	1412.07	0			0.00		0	Payment 2025/0060
+L	400000	-1412.07	8			0.00	2025-10-15	113	Payment 2025/0060
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-5297
+L	440000	1450.00	13			0.00	2025-10-15	114	Immo Tanneurs SA F2025-5297
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-7507
+L	440000	677.60	19			0.00	2025-10-15	115	Autolease Belgium SA F2025-7507
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-6707
+L	440000	119.00	18			0.00	2025-10-15	116	Pixelworks Software Ltd F2025-6707
+L	550000	-4394.22	0			0.00		0	VAT return, payment
+L	451200	4394.22	0			0.00	2025-10-15	0	VAT return, payment
+E	157	BNK	20	2025-10-31	2025-10-31	0				20806.89	14996.98	Statement 20
+L	550000	1095.00	0			0.00		0	Payment 2025/0059
+L	400000	-1095.00	9			0.00	2025-10-31	117	Payment 2025/0059
+L	550000	851.00	0			0.00		0	Payment 2025/0061
+L	400000	-851.00	10			0.00	2025-10-31	118	Payment 2025/0061
+L	550000	-1690.37	0			0.00		0	Papeteries de Genval SA F2025-1769
+L	440000	1690.37	16			0.00	2025-10-31	119	Papeteries de Genval SA F2025-1769
+L	550000	-1149.50	0			0.00		0	Fiduciaire Martin SRL F2025-2110
+L	440000	1149.50	20			0.00	2025-10-31	120	Fiduciaire Martin SRL F2025-2110
+L	550000	-296.45	0			0.00		0	Luminéa Energie SA F2025-7183
+L	440000	296.45	14			0.00	2025-10-31	121	Luminéa Energie SA F2025-7183
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-3520
+L	440000	108.78	15			0.00	2025-10-31	122	Telenova SA F2025-3520
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-10-31	0	Manager's remuneration
+L	550000	-10.81	0			0.00		0	Bank charges
+L	657200	10.81	0			0.00	2025-10-31	0	Bank charges
+E	158	VEN	71	2025-11-10	2025-12-10	11			202500007138	0.00	0.00	Poster series
+L	400000	1705.00	11			0.00	2025-12-10	144	Poster series
+L	700700	-1705.00	0	VEX	B	0.00		0	Poster series
+E	159	VEN	72	2025-11-19	2025-12-04	8			202500007239	0.00	0.00	Illustrations
+L	400000	2021.91	8			0.00	2025-12-04	140	Illustrations
+L	700100	-1545.00	0	V21	B	324.45		0	Illustrations
+L	700100	-126.00	0	V21	B	26.46		0	Printing proofs
+L	451000	-350.91	0	V21	T	-1671.00		0	VAT V21
+E	160	VEN	73	2025-11-20	2025-12-20	9			202500007340	0.00	0.00	Poster series
+L	400000	1720.00	9			0.00	2025-12-20	145	Poster series
+L	700610	-1720.00	0	VEUS	B	0.00		0	Poster series
+E	161	VEN	74	2025-11-24	2025-12-24	10			202500007441	0.00	0.00	Annual report layout
+L	400000	1180.00	10			0.00	2025-12-24	146	Annual report layout
+L	700610	-1180.00	0	VEUS	B	0.00		0	Annual report layout
+E	162	VEN	75	2025-11-25	2025-12-25	2			202500007542	0.00	0.00	Printed books (500 copies)
+L	400000	2544.00	2			0.00	2025-12-25	147	Printed books (500 copies)
+L	700000	-2400.00	0	V6	B	144.00		0	Printed books (500 copies)
+L	451000	-144.00	0	V6	T	-2400.00		0	VAT V6
+E	163	VEN	76	2025-11-20	2025-11-20	5	C			0.00	0.00	Discount granted on a late delivery
+L	400000	-205.70	5			0.00	2025-11-20	132	Discount granted on a late delivery
+L	700100	170.00	0	V21	B	35.70		0	Discount
+L	451000	35.70	0	V21	T	170.00		0	VAT V21
+E	164	ACH	64	2025-11-01	2025-11-01	13		F2025-6766		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-11-01	126	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	165	ACH	65	2025-11-08	2025-11-23	14		F2025-2458		0.00	0.00	Electricity and gas
+L	440000	-394.46	14			0.00	2025-11-23	133	Electricity and gas
+L	612500	326.00	0	A21	B	68.46		0	Electricity and gas
+L	411000	68.46	0	A21	T	326.00		0	VAT A21
+E	166	ACH	66	2025-11-05	2025-11-25	15		F2025-1490		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-11-25	134	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	167	ACH	67	2025-11-03	2025-11-18	19		F2025-1332		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-11-18	135	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	168	ACH	68	2025-11-02	2025-11-02	18		F2025-2132		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-11-02	127	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	169	ACH	69	2025-11-15	2025-12-15	16		F2025-6436		0.00	0.00	Paper
+L	440000	-2427.26	16			0.00	2025-12-15	148	Paper
+L	604000	2006.00	0	A21	B	421.26		0	Paper
+L	411000	421.26	0	A21	T	2006.00		0	VAT A21
+E	170	ACH	70	2025-11-16	2025-12-16	17		F2025-2415		0.00	0.00	Art paper, 2 pallets
+L	440000	-2544.00	17			0.00	2025-12-16	141	Art paper, 2 pallets
+L	604000	2544.00	0	AEU21	B	534.24		0	Art paper, 2 pallets
+L	411000	534.24	0	AEU21	T	2544.00		0	VAT AEU21
+L	451000	-534.24	0	AEU21	D	2544.00		0	VAT due AEU21
+E	171	BNK	21	2025-11-15	2025-11-15	0				14996.98	18592.33	Statement 21
+L	550000	1978.35	0			0.00		0	Payment 2025/0057
+L	400000	-1978.35	6			0.00	2025-11-15	123	Payment 2025/0057
+L	550000	645.00	0			0.00		0	Payment 2025/0064
+L	400000	-645.00	10			0.00	2025-11-15	124	Payment 2025/0064
+L	550000	2541.00	0			0.00		0	Payment 2025/0067
+L	400000	-2541.00	5			0.00	2025-11-15	125	Payment 2025/0067
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-6766
+L	440000	1450.00	13			0.00	2025-11-15	126	Immo Tanneurs SA F2025-6766
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-2132
+L	440000	119.00	18			0.00	2025-11-15	127	Pixelworks Software Ltd F2025-2132
+E	172	BNK	22	2025-11-30	2025-11-30	0				18592.33	20723.19	Statement 22
+L	550000	3381.95	0			0.00		0	Payment 2025/0058
+L	400000	-3381.95	12			0.00	2025-11-30	128	Payment 2025/0058
+L	550000	824.01	0			0.00		0	Payment 2025/0062
+L	400000	-824.01	6			0.00	2025-11-30	129	Payment 2025/0062
+L	550000	1529.44	0			0.00		0	Payment 2025/0068
+L	400000	-1529.44	1			0.00	2025-11-30	130	Payment 2025/0068
+L	550000	2292.95	0			0.00		0	Payment 2025/0069
+L	400000	-2292.95	3			0.00	2025-11-30	131	Payment 2025/0069
+L	550000	-205.70	0			0.00		0	Payment 2025/0076
+L	400000	205.70	5			0.00	2025-11-30	132	Payment 2025/0076
+L	550000	-394.46	0			0.00		0	Luminéa Energie SA F2025-2458
+L	440000	394.46	14			0.00	2025-11-30	133	Luminéa Energie SA F2025-2458
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-1490
+L	440000	108.78	15			0.00	2025-11-30	134	Telenova SA F2025-1490
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-1332
+L	440000	677.60	19			0.00	2025-11-30	135	Autolease Belgium SA F2025-1332
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-11-30	0	Manager's remuneration
+L	550000	-10.95	0			0.00		0	Bank charges
+L	657200	10.95	0			0.00	2025-11-30	0	Bank charges
+E	173	VEN	77	2025-12-04	2026-01-18	12			202500007744	0.00	0.00	Label design
+L	400000	3242.80	12			0.00	2026-01-18	161	Label design
+L	700100	-2680.00	0	V21	B	562.80		0	Label design
+L	451000	-562.80	0	V21	T	-2680.00		0	VAT V21
+E	174	VEN	78	2025-12-04	2025-12-19	8			202500007845	0.00	0.00	Annual report layout
+L	400000	3297.25	8			0.00	2025-12-19	149	Annual report layout
+L	700100	-2725.00	0	V21	B	572.25		0	Annual report layout
+L	451000	-572.25	0	V21	T	-2725.00		0	VAT V21
+E	175	VEN	79	2025-12-15	2026-01-14	1			202500007946	0.00	0.00	Website design
+L	400000	2994.75	1			0.00	2026-01-14	155	Website design
+L	700100	-2205.00	0	V21	B	463.05		0	Website design
+L	700100	-270.00	0	V21	B	56.70		0	Printing proofs
+L	451000	-519.75	0	V21	T	-2475.00		0	VAT V21
+E	176	VEN	80	2025-12-17	2026-01-16	9			202500008047	0.00	0.00	Exhibition graphics
+L	400000	1795.00	9			0.00	2026-01-16	156	Exhibition graphics
+L	700610	-1795.00	0	VEUS	B	0.00		0	Exhibition graphics
+E	177	VEN	81	2025-12-24	2026-02-22	6			202500008148	0.00	0.00	Brochure layout
+L	400000	635.25	6			0.00	2026-02-22	168	Brochure layout
+L	700000	-525.00	0	V21	B	110.25		0	Brochure layout
+L	451000	-110.25	0	V21	T	-525.00		0	VAT V21
+E	178	ACH	71	2025-12-01	2025-12-01	13		F2025-6572		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2025-12-01	142	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	179	ACH	72	2025-12-08	2025-12-23	14		F2025-4122		0.00	0.00	Electricity and gas
+L	440000	-439.23	14			0.00	2025-12-23	150	Electricity and gas
+L	612500	363.00	0	A21	B	76.23		0	Electricity and gas
+L	411000	76.23	0	A21	T	363.00		0	VAT A21
+E	180	ACH	73	2025-12-05	2025-12-25	15		F2025-4024		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2025-12-25	151	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	181	ACH	74	2025-12-03	2025-12-18	19		F2025-4738		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2025-12-18	152	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	182	ACH	75	2025-12-02	2025-12-02	18		F2025-8677		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2025-12-02	143	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	183	ACH	76	2025-12-25	2026-01-24	20		F2025-1348		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2026-01-24	157	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	184	BNK	23	2025-12-15	2025-12-15	0				20723.19	27718.90	Statement 23
+L	550000	1585.10	0			0.00		0	Payment 2025/0063
+L	400000	-1585.10	12			0.00	2025-12-15	136	Payment 2025/0063
+L	550000	2952.40	0			0.00		0	Payment 2025/0065
+L	400000	-2952.40	6			0.00	2025-12-15	137	Payment 2025/0065
+L	550000	2214.30	0			0.00		0	Payment 2025/0066
+L	400000	-2214.30	7			0.00	2025-12-15	138	Payment 2025/0066
+L	550000	2335.00	0			0.00		0	Payment 2025/0070
+L	400000	-2335.00	11			0.00	2025-12-15	139	Payment 2025/0070
+L	550000	2021.91	0			0.00		0	Payment 2025/0072
+L	400000	-2021.91	8			0.00	2025-12-15	140	Payment 2025/0072
+L	550000	-2544.00	0			0.00		0	Papierfabrik Ahlen GmbH F2025-2415
+L	440000	2544.00	17			0.00	2025-12-15	141	Papierfabrik Ahlen GmbH F2025-2415
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2025-6572
+L	440000	1450.00	13			0.00	2025-12-15	142	Immo Tanneurs SA F2025-6572
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2025-8677
+L	440000	119.00	18			0.00	2025-12-15	143	Pixelworks Software Ltd F2025-8677
+E	185	BNK	24	2025-12-31	2025-12-31	0				27718.90	30000.03	Statement 24
+L	550000	1705.00	0			0.00		0	Payment 2025/0071
+L	400000	-1705.00	11			0.00	2025-12-31	144	Payment 2025/0071
+L	550000	1720.00	0			0.00		0	Payment 2025/0073
+L	400000	-1720.00	9			0.00	2025-12-31	145	Payment 2025/0073
+L	550000	1180.00	0			0.00		0	Payment 2025/0074
+L	400000	-1180.00	10			0.00	2025-12-31	146	Payment 2025/0074
+L	550000	2544.00	0			0.00		0	Payment 2025/0075
+L	400000	-2544.00	2			0.00	2025-12-31	147	Payment 2025/0075
+L	550000	-2427.26	0			0.00		0	Papeteries de Genval SA F2025-6436
+L	440000	2427.26	16			0.00	2025-12-31	148	Papeteries de Genval SA F2025-6436
+L	550000	3297.25	0			0.00		0	Payment 2025/0078
+L	400000	-3297.25	8			0.00	2025-12-31	149	Payment 2025/0078
+L	550000	-439.23	0			0.00		0	Luminéa Energie SA F2025-4122
+L	440000	439.23	14			0.00	2025-12-31	150	Luminéa Energie SA F2025-4122
+L	550000	-108.78	0			0.00		0	Telenova SA F2025-4024
+L	440000	108.78	15			0.00	2025-12-31	151	Telenova SA F2025-4024
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2025-4738
+L	440000	677.60	19			0.00	2025-12-31	152	Autolease Belgium SA F2025-4738
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2025-12-31	0	Manager's remuneration
+L	550000	-12.25	0			0.00		0	Bank charges
+L	657200	12.25	0			0.00	2025-12-31	0	Bank charges
+E	186	OD	5	2025-12-31	2025-12-31	0				0.00	0.00	Depreciation 2025: office furniture and equipment
+L	630200	2400.00	0			0.00		0	Depreciation 2025: office furniture and equipment
+L	240009	-2400.00	0			0.00		0	Depreciation 2025: office furniture and equipment
+E	187	OD	6	2025-12-31	2025-12-31	0				0.00	0.00	Depreciation 2025: digital press (5 years, 9 months)
+L	630200	1425.00	0			0.00		0	Depreciation 2025: digital press (5 years, 9 months)
+L	230009	-1425.00	0			0.00		0	Depreciation 2025: digital press (5 years, 9 months)
+E	188	VEN	1	2026-01-07	2026-02-06	9			202600000192	0.00	0.00	Visual identity
+L	400000	739.00	9			0.00	2026-02-06	162	Visual identity
+L	700610	-630.00	0	VEUS	B	0.00		0	Visual identity
+L	700610	-109.00	0	VEUS	B	0.00		0	Printing proofs
+E	189	VEN	2	2026-01-14	2026-02-13	7			202600000293	0.00	0.00	Catalogue
+L	400000	1294.70	7			0.00	2026-02-13	178	Catalogue
+L	700100	-1070.00	0	V21	B	224.70		0	Catalogue
+L	451000	-224.70	0	V21	T	-1070.00		0	VAT V21
+E	190	VEN	3	2026-01-15	2026-02-14	10			202600000394	0.00	0.00	Brochure layout
+L	400000	2355.00	10			0.00	2026-02-14	163	Brochure layout
+L	700610	-2355.00	0	VEUS	B	0.00		0	Brochure layout
+E	191	VEN	4	2026-01-16	2026-02-15	10			202600000495	0.00	0.00	Photo retouching
+L	400000	2140.00	10			0.00	2026-02-15	169	Photo retouching
+L	700610	-2140.00	0	VEUS	B	0.00		0	Photo retouching
+E	192	VEN	5	2026-01-17	2026-03-18	6			202600000596	0.00	0.00	Art book reprint
+L	400000	2597.00	6			0.00	2026-03-18	179	Art book reprint
+L	700000	-2450.00	0	V6	B	147.00		0	Art book reprint
+L	451000	-147.00	0	V6	T	-2450.00		0	VAT V6
+E	193	VEN	6	2026-01-20	2026-02-19	5			202600000697	0.00	0.00	Brochure layout
+L	400000	1276.55	5			0.00	2026-02-19	170	Brochure layout
+L	700100	-1055.00	0	V21	B	221.55		0	Brochure layout
+L	451000	-221.55	0	V21	T	-1055.00		0	VAT V21
+E	194	VEN	7	2026-01-21	2026-02-20	5			202600000701	0.00	0.00	Website design
+L	400000	1845.25	5			0.00	2026-02-20	171	Website design
+L	700100	-1525.00	0	V21	B	320.25		0	Website design
+L	451000	-320.25	0	V21	T	-1525.00		0	VAT V21
+E	195	VEN	8	2026-01-26	2026-03-12	12			202600000802	0.00	0.00	Website design
+L	400000	1167.65	12			0.00	2026-03-12	185	Website design
+L	700100	-965.00	0	V21	B	202.65		0	Website design
+L	451000	-202.65	0	V21	T	-965.00		0	VAT V21
+E	196	ACH	1	2026-01-01	2026-01-01	13		F2026-1342		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-01-01	153	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	197	ACH	2	2026-01-08	2026-01-23	14		F2026-2356		0.00	0.00	Electricity and gas
+L	440000	-401.72	14			0.00	2026-01-23	158	Electricity and gas
+L	612500	332.00	0	A21	B	69.72		0	Electricity and gas
+L	411000	69.72	0	A21	T	332.00		0	VAT A21
+E	198	ACH	3	2026-01-05	2026-01-25	15		F2026-5427		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-01-25	159	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	199	ACH	4	2026-01-03	2026-01-18	19		F2026-5993		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-01-18	160	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	200	ACH	5	2026-01-02	2026-01-02	18		F2026-5839		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-01-02	154	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	201	ACH	6	2026-01-17	2026-02-16	16		F2026-9281		0.00	0.00	Paper
+L	440000	-1974.72	16			0.00	2026-02-16	164	Paper
+L	604000	1632.00	0	A21	B	342.72		0	Paper
+L	411000	342.72	0	A21	T	1632.00		0	VAT A21
+E	202	ACH	7	2026-01-10	2026-02-09	21		F2026-6688		0.00	0.00	Professional insurance, the year
+L	440000	-1860.00	21			0.00	2026-02-09	165	Professional insurance, the year
+L	614600	1860.00	0	A0	B	0.00		0	Professional insurance, the year
+E	203	OD	7	2025-12-31	2025-12-31	0	S			0.00	0.00	VAT settlement Q4 2025
+L	451000	4834.56	0			0.00		0	VAT settlement Q4 2025
+L	411000	-1659.15	0			0.00		0	VAT settlement Q4 2025
+L	451200	-3175.41	0			0.00	2026-01-20	0	VAT settlement Q4 2025
+E	204	BNK	1	2026-01-15	2026-01-15	0				30000.03	25255.62	Statement 25
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-1342
+L	440000	1450.00	13			0.00	2026-01-15	153	Immo Tanneurs SA F2026-1342
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-5839
+L	440000	119.00	18			0.00	2026-01-15	154	Pixelworks Software Ltd F2026-5839
+L	550000	-3175.41	0			0.00		0	VAT return, payment
+L	451200	3175.41	0			0.00	2026-01-15	0	VAT return, payment
+E	205	BNK	2	2026-01-31	2026-01-31	0				25255.62	23196.35	Statement 26
+L	550000	2994.75	0			0.00		0	Payment 2025/0079
+L	400000	-2994.75	1			0.00	2026-01-31	155	Payment 2025/0079
+L	550000	1795.00	0			0.00		0	Payment 2025/0080
+L	400000	-1795.00	9			0.00	2026-01-31	156	Payment 2025/0080
+L	550000	-1149.50	0			0.00		0	Fiduciaire Martin SRL F2025-1348
+L	440000	1149.50	20			0.00	2026-01-31	157	Fiduciaire Martin SRL F2025-1348
+L	550000	-401.72	0			0.00		0	Luminéa Energie SA F2026-2356
+L	440000	401.72	14			0.00	2026-01-31	158	Luminéa Energie SA F2026-2356
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-5427
+L	440000	108.78	15			0.00	2026-01-31	159	Telenova SA F2026-5427
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-5993
+L	440000	677.60	19			0.00	2026-01-31	160	Autolease Belgium SA F2026-5993
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-01-31	0	Manager's remuneration
+L	550000	-11.42	0			0.00		0	Bank charges
+L	657200	11.42	0			0.00	2026-01-31	0	Bank charges
+E	206	VEN	9	2026-02-07	2026-03-09	5			202600000903	0.00	0.00	Packaging design
+L	400000	998.25	5			0.00	2026-03-09	175	Packaging design
+L	700100	-825.00	0	V21	B	173.25		0	Packaging design
+L	451000	-173.25	0	V21	T	-825.00		0	VAT V21
+E	207	VEN	10	2026-02-11	2026-03-28	4			202600001004	0.00	0.00	Annual report layout
+L	400000	907.50	4			0.00	2026-03-28	191	Annual report layout
+L	700100	-750.00	0	V21	B	157.50		0	Annual report layout
+L	451000	-157.50	0	V21	T	-750.00		0	VAT V21
+E	208	VEN	11	2026-02-18	2026-03-20	7			202600001105	0.00	0.00	Poster series
+L	400000	2728.55	7			0.00	2026-03-20	192	Poster series
+L	700100	-2255.00	0	V21	B	473.55		0	Poster series
+L	451000	-473.55	0	V21	T	-2255.00		0	VAT V21
+E	209	VEN	12	2026-02-20	2026-03-22	10			202600001206	0.00	0.00	Poster series
+L	400000	2385.00	10			0.00	2026-03-22	180	Poster series
+L	700610	-2385.00	0	VEUS	B	0.00		0	Poster series
+E	210	VEN	13	2026-02-20	2026-04-21	6			202600001307	0.00	0.00	Poetry collection (300 copies)
+L	400000	2391.66	6			0.00	2026-04-21	193	Poetry collection (300 copies)
+L	700000	-1770.00	0	V6	B	106.20		0	Poetry collection (300 copies)
+L	700100	-426.00	0	V21	B	89.46		0	Cover design
+L	451000	-89.46	0	V21	T	-426.00		0	VAT V21
+L	451000	-106.20	0	V6	T	-1770.00		0	VAT V6
+E	211	ACH	8	2026-02-01	2026-02-01	13		F2026-2639		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-02-01	166	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	212	ACH	9	2026-02-08	2026-02-23	14		F2026-6700		0.00	0.00	Electricity and gas
+L	440000	-220.22	14			0.00	2026-02-23	172	Electricity and gas
+L	612500	182.00	0	A21	B	38.22		0	Electricity and gas
+L	411000	38.22	0	A21	T	182.00		0	VAT A21
+E	213	ACH	10	2026-02-05	2026-02-25	15		F2026-7711		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-02-25	173	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	214	ACH	11	2026-02-03	2026-02-18	19		F2026-8920		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-02-18	174	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	215	ACH	12	2026-02-02	2026-02-02	18		F2026-9080		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-02-02	167	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	216	ACH	13	2026-02-16	2026-03-18	17		F2026-8109		0.00	0.00	Art paper, 2 pallets
+L	440000	-3044.00	17			0.00	2026-03-18	181	Art paper, 2 pallets
+L	604000	3044.00	0	AEU21	B	639.24		0	Art paper, 2 pallets
+L	411000	639.24	0	AEU21	T	3044.00		0	VAT AEU21
+L	451000	-639.24	0	AEU21	D	3044.00		0	VAT due AEU21
+E	217	BNK	3	2026-02-15	2026-02-15	0				23196.35	24129.43	Statement 27
+L	550000	3242.80	0			0.00		0	Payment 2025/0077
+L	400000	-3242.80	12			0.00	2026-02-15	161	Payment 2025/0077
+L	550000	739.00	0			0.00		0	Payment 2026/0001
+L	400000	-739.00	9			0.00	2026-02-15	162	Payment 2026/0001
+L	550000	2355.00	0			0.00		0	Payment 2026/0003
+L	400000	-2355.00	10			0.00	2026-02-15	163	Payment 2026/0003
+L	550000	-1974.72	0			0.00		0	Papeteries de Genval SA F2026-9281
+L	440000	1974.72	16			0.00	2026-02-15	164	Papeteries de Genval SA F2026-9281
+L	550000	-1860.00	0			0.00		0	Assurances du Midi SA F2026-6688
+L	440000	1860.00	21			0.00	2026-02-15	165	Assurances du Midi SA F2026-6688
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-2639
+L	440000	1450.00	13			0.00	2026-02-15	166	Immo Tanneurs SA F2026-2639
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-9080
+L	440000	119.00	18			0.00	2026-02-15	167	Pixelworks Software Ltd F2026-9080
+E	218	BNK	4	2026-02-28	2026-02-28	0				24129.43	24508.14	Statement 28
+L	550000	635.25	0			0.00		0	Payment 2025/0081
+L	400000	-635.25	6			0.00	2026-02-28	168	Payment 2025/0081
+L	550000	2140.00	0			0.00		0	Payment 2026/0004
+L	400000	-2140.00	10			0.00	2026-02-28	169	Payment 2026/0004
+L	550000	1276.55	0			0.00		0	Payment 2026/0006
+L	400000	-1276.55	5			0.00	2026-02-28	170	Payment 2026/0006
+L	550000	1845.25	0			0.00		0	Payment 2026/0007
+L	400000	-1845.25	5			0.00	2026-02-28	171	Payment 2026/0007
+L	550000	-220.22	0			0.00		0	Luminéa Energie SA F2026-6700
+L	440000	220.22	14			0.00	2026-02-28	172	Luminéa Energie SA F2026-6700
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-7711
+L	440000	108.78	15			0.00	2026-02-28	173	Telenova SA F2026-7711
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-8920
+L	440000	677.60	19			0.00	2026-02-28	174	Autolease Belgium SA F2026-8920
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-02-28	0	Manager's remuneration
+L	550000	-11.74	0			0.00		0	Bank charges
+L	657200	11.74	0			0.00	2026-02-28	0	Bank charges
+E	219	VEN	14	2026-03-08	2026-04-07	10			202600001408	0.00	0.00	Exhibition graphics
+L	400000	925.00	10			0.00	2026-04-07	186	Exhibition graphics
+L	700610	-925.00	0	VEUS	B	0.00		0	Exhibition graphics
+E	220	VEN	15	2026-03-08	2026-04-07	7			202600001509	0.00	0.00	Annual report layout
+L	400000	1401.18	7			0.00	2026-04-07	202	Annual report layout
+L	700100	-960.00	0	V21	B	201.60		0	Annual report layout
+L	700100	-198.00	0	V21	B	41.58		0	Printing proofs
+L	451000	-243.18	0	V21	T	-1158.00		0	VAT V21
+E	221	VEN	16	2026-03-08	2026-04-07	1			202600001610	0.00	0.00	Menu design
+L	400000	759.88	1			0.00	2026-04-07	187	Menu design
+L	700100	-405.00	0	V21	B	85.05		0	Menu design
+L	700100	-223.00	0	V21	B	46.83		0	Printing proofs
+L	451000	-131.88	0	V21	T	-628.00		0	VAT V21
+E	222	VEN	17	2026-03-11	2026-04-10	10			202600001711	0.00	0.00	Poster series
+L	400000	2380.00	10			0.00	2026-04-10	188	Poster series
+L	700610	-2380.00	0	VEUS	B	0.00		0	Poster series
+E	223	VEN	18	2026-03-15	2026-04-14	9			202600001812	0.00	0.00	Brochure layout
+L	400000	620.00	9			0.00	2026-04-14	194	Brochure layout
+L	700610	-620.00	0	VEUS	B	0.00		0	Brochure layout
+E	224	VEN	19	2026-03-15	2026-04-14	3			202600001913	0.00	0.00	Exhibition graphics
+L	400000	1681.90	3			0.00	2026-04-14	195	Exhibition graphics
+L	700100	-1390.00	0	V21	B	291.90		0	Exhibition graphics
+L	451000	-291.90	0	V21	T	-1390.00		0	VAT V21
+E	225	VEN	20	2026-03-16	2026-04-30	4			202600002014	0.00	0.00	Website design
+L	400000	683.65	4			0.00	2026-04-30	205	Website design
+L	700100	-565.00	0	V21	B	118.65		0	Website design
+L	451000	-118.65	0	V21	T	-565.00		0	VAT V21
+E	226	VEN	21	2026-03-20	2026-04-19	11			202600002115	0.00	0.00	Photo retouching
+L	400000	1150.00	11			0.00	2026-04-19	196	Photo retouching
+L	700700	-1150.00	0	VEX	B	0.00		0	Photo retouching
+E	227	ACH	14	2026-03-01	2026-03-01	13		F2026-6869		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-03-01	176	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	228	ACH	15	2026-03-08	2026-03-23	14		F2026-8227		0.00	0.00	Electricity and gas
+L	440000	-244.42	14			0.00	2026-03-23	182	Electricity and gas
+L	612500	202.00	0	A21	B	42.42		0	Electricity and gas
+L	411000	42.42	0	A21	T	202.00		0	VAT A21
+E	229	ACH	16	2026-03-05	2026-03-25	15		F2026-1615		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-03-25	183	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	230	ACH	17	2026-03-03	2026-03-18	19		F2026-9323		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-03-18	184	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	231	ACH	18	2026-03-02	2026-03-02	18		F2026-4370		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-03-02	177	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	232	ACH	19	2026-03-19	2026-04-18	16		F2026-4544		0.00	0.00	Paper
+L	440000	-1951.73	16			0.00	2026-04-18	197	Paper
+L	604000	1613.00	0	A21	B	338.73		0	Paper
+L	411000	338.73	0	A21	T	1613.00		0	VAT A21
+E	233	ACH	20	2026-03-25	2026-04-24	20		F2026-5768		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2026-04-24	198	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	234	BNK	5	2026-03-15	2026-03-15	0				24508.14	23937.39	Statement 29
+L	550000	998.25	0			0.00		0	Payment 2026/0009
+L	400000	-998.25	5			0.00	2026-03-15	175	Payment 2026/0009
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-6869
+L	440000	1450.00	13			0.00	2026-03-15	176	Immo Tanneurs SA F2026-6869
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-4370
+L	440000	119.00	18			0.00	2026-03-15	177	Pixelworks Software Ltd F2026-4370
+E	235	BNK	6	2026-03-31	2026-03-31	0				23937.39	21630.70	Statement 30
+L	550000	1294.70	0			0.00		0	Payment 2026/0002
+L	400000	-1294.70	7			0.00	2026-03-31	178	Payment 2026/0002
+L	550000	2597.00	0			0.00		0	Payment 2026/0005
+L	400000	-2597.00	6			0.00	2026-03-31	179	Payment 2026/0005
+L	550000	2385.00	0			0.00		0	Payment 2026/0012
+L	400000	-2385.00	10			0.00	2026-03-31	180	Payment 2026/0012
+L	550000	-3044.00	0			0.00		0	Papierfabrik Ahlen GmbH F2026-8109
+L	440000	3044.00	17			0.00	2026-03-31	181	Papierfabrik Ahlen GmbH F2026-8109
+L	550000	-244.42	0			0.00		0	Luminéa Energie SA F2026-8227
+L	440000	244.42	14			0.00	2026-03-31	182	Luminéa Energie SA F2026-8227
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-1615
+L	440000	108.78	15			0.00	2026-03-31	183	Telenova SA F2026-1615
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-9323
+L	440000	677.60	19			0.00	2026-03-31	184	Autolease Belgium SA F2026-9323
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-03-31	0	Manager's remuneration
+L	550000	-8.59	0			0.00		0	Bank charges
+L	657200	8.59	0			0.00	2026-03-31	0	Bank charges
+E	236	VEN	22	2026-04-05	2026-05-05	11			202600002216	0.00	0.00	Visual identity
+L	400000	2465.00	11			0.00	2026-05-05	206	Visual identity
+L	700700	-2095.00	0	VEX	B	0.00		0	Visual identity
+L	700700	-370.00	0	VEX	B	0.00		0	Printing proofs
+E	237	VEN	23	2026-04-14	2026-05-29	12			202600002317	0.00	0.00	Brochure layout
+L	400000	719.95	12			0.00	2026-05-29	217	Brochure layout
+L	700100	-595.00	0	V21	B	124.95		0	Brochure layout
+L	451000	-124.95	0	V21	T	-595.00		0	VAT V21
+E	238	VEN	24	2026-04-17	2026-05-17	11			202600002418	0.00	0.00	Photo retouching
+L	400000	2765.00	11			0.00	2026-05-17	207	Photo retouching
+L	700700	-2765.00	0	VEX	B	0.00		0	Photo retouching
+E	239	VEN	25	2026-04-21	2026-05-21	9			202600002519	0.00	0.00	Annual report layout
+L	400000	902.00	9			0.00	2026-05-21	208	Annual report layout
+L	700610	-635.00	0	VEUS	B	0.00		0	Annual report layout
+L	700610	-267.00	0	VEUS	B	0.00		0	Printing proofs
+E	240	VEN	26	2026-04-22	2026-06-06	4			202600002620	0.00	0.00	Annual report layout
+L	400000	2417.58	4			0.00	2026-06-06	218	Annual report layout
+L	700100	-1895.00	0	V21	B	397.95		0	Annual report layout
+L	700100	-103.00	0	V21	B	21.63		0	Printing proofs
+L	451000	-419.58	0	V21	T	-1998.00		0	VAT V21
+E	241	VEN	27	2026-04-23	2026-05-23	1			202600002721	0.00	0.00	Packaging design
+L	400000	1458.05	1			0.00	2026-05-23	209	Packaging design
+L	700100	-1205.00	0	V21	B	253.05		0	Packaging design
+L	451000	-253.05	0	V21	T	-1205.00		0	VAT V21
+E	242	ACH	21	2026-04-01	2026-04-01	13		F2026-9366		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-04-01	189	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	243	ACH	22	2026-04-08	2026-04-23	14		F2026-7818		0.00	0.00	Electricity and gas
+L	440000	-258.94	14			0.00	2026-04-23	199	Electricity and gas
+L	612500	214.00	0	A21	B	44.94		0	Electricity and gas
+L	411000	44.94	0	A21	T	214.00		0	VAT A21
+E	244	ACH	23	2026-04-05	2026-04-25	15		F2026-7203		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-04-25	200	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	245	ACH	24	2026-04-03	2026-04-18	19		F2026-3949		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-04-18	201	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	246	ACH	25	2026-04-02	2026-04-02	18		F2026-2319		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-04-02	190	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	247	OD	1	2026-03-31	2026-03-31	0	S			0.00	0.00	VAT settlement Q1 2026
+L	451000	3615.93	0			0.00		0	VAT settlement Q1 2026
+L	411000	-1978.56	0			0.00		0	VAT settlement Q1 2026
+L	451200	-1637.37	0			0.00	2026-04-20	0	VAT settlement Q1 2026
+E	248	BNK	7	2026-04-15	2026-04-15	0				21630.70	23656.86	Statement 31
+L	550000	1167.65	0			0.00		0	Payment 2026/0008
+L	400000	-1167.65	12			0.00	2026-04-15	185	Payment 2026/0008
+L	550000	925.00	0			0.00		0	Payment 2026/0014
+L	400000	-925.00	10			0.00	2026-04-15	186	Payment 2026/0014
+L	550000	759.88	0			0.00		0	Payment 2026/0016
+L	400000	-759.88	1			0.00	2026-04-15	187	Payment 2026/0016
+L	550000	2380.00	0			0.00		0	Payment 2026/0017
+L	400000	-2380.00	10			0.00	2026-04-15	188	Payment 2026/0017
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-9366
+L	440000	1450.00	13			0.00	2026-04-15	189	Immo Tanneurs SA F2026-9366
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-2319
+L	440000	119.00	18			0.00	2026-04-15	190	Pixelworks Software Ltd F2026-2319
+L	550000	-1637.37	0			0.00		0	VAT return, payment
+L	451200	1637.37	0			0.00	2026-04-15	0	VAT return, payment
+E	249	BNK	8	2026-04-30	2026-04-30	0				23656.86	24478.43	Statement 32
+L	550000	907.50	0			0.00		0	Payment 2026/0010
+L	400000	-907.50	4			0.00	2026-04-30	191	Payment 2026/0010
+L	550000	2728.55	0			0.00		0	Payment 2026/0011
+L	400000	-2728.55	7			0.00	2026-04-30	192	Payment 2026/0011
+L	550000	2391.66	0			0.00		0	Payment 2026/0013
+L	400000	-2391.66	6			0.00	2026-04-30	193	Payment 2026/0013
+L	550000	620.00	0			0.00		0	Payment 2026/0018
+L	400000	-620.00	9			0.00	2026-04-30	194	Payment 2026/0018
+L	550000	1681.90	0			0.00		0	Payment 2026/0019
+L	400000	-1681.90	3			0.00	2026-04-30	195	Payment 2026/0019
+L	550000	1150.00	0			0.00		0	Payment 2026/0021
+L	400000	-1150.00	11			0.00	2026-04-30	196	Payment 2026/0021
+L	550000	-1951.73	0			0.00		0	Papeteries de Genval SA F2026-4544
+L	440000	1951.73	16			0.00	2026-04-30	197	Papeteries de Genval SA F2026-4544
+L	550000	-1149.50	0			0.00		0	Fiduciaire Martin SRL F2026-5768
+L	440000	1149.50	20			0.00	2026-04-30	198	Fiduciaire Martin SRL F2026-5768
+L	550000	-258.94	0			0.00		0	Luminéa Energie SA F2026-7818
+L	440000	258.94	14			0.00	2026-04-30	199	Luminéa Energie SA F2026-7818
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-7203
+L	440000	108.78	15			0.00	2026-04-30	200	Telenova SA F2026-7203
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-3949
+L	440000	677.60	19			0.00	2026-04-30	201	Autolease Belgium SA F2026-3949
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-04-30	0	Manager's remuneration
+L	550000	-11.49	0			0.00		0	Bank charges
+L	657200	11.49	0			0.00	2026-04-30	0	Bank charges
+E	250	VEN	28	2026-05-07	2026-06-21	12			202600002822	0.00	0.00	Website design
+L	400000	1796.85	12			0.00	2026-06-21	231	Website design
+L	700100	-1485.00	0	V21	B	311.85		0	Website design
+L	451000	-311.85	0	V21	T	-1485.00		0	VAT V21
+E	251	VEN	29	2026-05-09	2026-06-08	9			202600002923	0.00	0.00	Menu design
+L	400000	870.00	9			0.00	2026-06-08	213	Menu design
+L	700610	-870.00	0	VEUS	B	0.00		0	Menu design
+E	252	VEN	30	2026-05-11	2026-06-10	3			202600003024	0.00	0.00	Packaging design
+L	400000	1403.60	3			0.00	2026-06-10	219	Packaging design
+L	700100	-870.00	0	V21	B	182.70		0	Packaging design
+L	700100	-290.00	0	V21	B	60.90		0	Printing proofs
+L	451000	-243.60	0	V21	T	-1160.00		0	VAT V21
+E	253	VEN	31	2026-05-12	2026-06-11	1			202600003125	0.00	0.00	Packaging design
+L	400000	1518.55	1			0.00	2026-06-11	220	Packaging design
+L	700100	-1255.00	0	V21	B	263.55		0	Packaging design
+L	451000	-263.55	0	V21	T	-1255.00		0	VAT V21
+E	254	VEN	32	2026-05-22	2026-07-06	12			202600003226	0.00	0.00	Brochure layout
+L	400000	2728.55	12			0.00	2026-07-06	241	Brochure layout
+L	700100	-2255.00	0	V21	B	473.55		0	Brochure layout
+L	451000	-473.55	0	V21	T	-2255.00		0	VAT V21
+E	255	VEN	33	2026-05-23	2026-07-22	6			202600003327	0.00	0.00	Packaging design
+L	400000	568.70	6			0.00	2026-07-22	232	Packaging design
+L	700000	-470.00	0	V21	B	98.70		0	Packaging design
+L	451000	-98.70	0	V21	T	-470.00		0	VAT V21
+E	256	VEN	34	2026-05-26	2026-06-25	9			202600003428	0.00	0.00	Catalogue
+L	400000	1025.00	9			0.00	2026-06-25	227	Catalogue
+L	700610	-1025.00	0	VEUS	B	0.00		0	Catalogue
+E	257	ACH	26	2026-05-01	2026-05-01	13		F2026-7542		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-05-01	203	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	258	ACH	27	2026-05-08	2026-05-23	14		F2026-1836		0.00	0.00	Electricity and gas
+L	440000	-280.72	14			0.00	2026-05-23	210	Electricity and gas
+L	612500	232.00	0	A21	B	48.72		0	Electricity and gas
+L	411000	48.72	0	A21	T	232.00		0	VAT A21
+E	259	ACH	28	2026-05-05	2026-05-25	15		F2026-9479		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-05-25	211	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	260	ACH	29	2026-05-03	2026-05-18	19		F2026-8774		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-05-18	212	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	261	ACH	30	2026-05-02	2026-05-02	18		F2026-8664		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-05-02	204	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	262	ACH	31	2026-05-14	2026-06-13	16		F2026-6312		0.00	0.00	Paper
+L	440000	-762.30	16			0.00	2026-06-13	221	Paper
+L	604000	630.00	0	A21	B	132.30		0	Paper
+L	411000	132.30	0	A21	T	630.00		0	VAT A21
+E	263	ACH	32	2026-05-16	2026-06-15	17		F2026-2574		0.00	0.00	Art paper, 2 pallets
+L	440000	-3512.00	17			0.00	2026-06-15	222	Art paper, 2 pallets
+L	604000	3512.00	0	AEU21	B	737.52		0	Art paper, 2 pallets
+L	411000	737.52	0	AEU21	T	3512.00		0	VAT AEU21
+L	451000	-737.52	0	AEU21	D	3512.00		0	VAT due AEU21
+E	264	BNK	9	2026-05-15	2026-05-15	0				24478.43	24310.61	Statement 33
+L	550000	1401.18	0			0.00		0	Payment 2026/0015
+L	400000	-1401.18	7			0.00	2026-05-15	202	Payment 2026/0015
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-7542
+L	440000	1450.00	13			0.00	2026-05-15	203	Immo Tanneurs SA F2026-7542
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-8664
+L	440000	119.00	18			0.00	2026-05-15	204	Pixelworks Software Ltd F2026-8664
+E	265	BNK	10	2026-05-31	2026-05-31	0				24310.61	27007.07	Statement 34
+L	550000	683.65	0			0.00		0	Payment 2026/0020
+L	400000	-683.65	4			0.00	2026-05-31	205	Payment 2026/0020
+L	550000	2465.00	0			0.00		0	Payment 2026/0022
+L	400000	-2465.00	11			0.00	2026-05-31	206	Payment 2026/0022
+L	550000	2765.00	0			0.00		0	Payment 2026/0024
+L	400000	-2765.00	11			0.00	2026-05-31	207	Payment 2026/0024
+L	550000	902.00	0			0.00		0	Payment 2026/0025
+L	400000	-902.00	9			0.00	2026-05-31	208	Payment 2026/0025
+L	550000	1458.05	0			0.00		0	Payment 2026/0027
+L	400000	-1458.05	1			0.00	2026-05-31	209	Payment 2026/0027
+L	550000	-280.72	0			0.00		0	Luminéa Energie SA F2026-1836
+L	440000	280.72	14			0.00	2026-05-31	210	Luminéa Energie SA F2026-1836
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-9479
+L	440000	108.78	15			0.00	2026-05-31	211	Telenova SA F2026-9479
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-8774
+L	440000	677.60	19			0.00	2026-05-31	212	Autolease Belgium SA F2026-8774
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-05-31	0	Manager's remuneration
+L	550000	-10.14	0			0.00		0	Bank charges
+L	657200	10.14	0			0.00	2026-05-31	0	Bank charges
+E	266	VEN	35	2026-06-09	2026-08-08	6			202600003529	0.00	0.00	Brochure layout
+L	400000	3333.55	6			0.00	2026-08-08	242	Brochure layout
+L	700000	-2755.00	0	V21	B	578.55		0	Brochure layout
+L	451000	-578.55	0	V21	T	-2755.00		0	VAT V21
+E	267	VEN	36	2026-06-11	2026-06-26	8			202600003630	0.00	0.00	Catalogue
+L	400000	484.00	8			0.00	2026-06-26	223	Catalogue
+L	700100	-400.00	0	V21	B	84.00		0	Catalogue
+L	451000	-84.00	0	V21	T	-400.00		0	VAT V21
+E	268	VEN	37	2026-06-11	2026-07-11	1			202600003731	0.00	0.00	Website design
+L	400000	1285.02	1			0.00	2026-07-11	228	Website design
+L	700100	-955.00	0	V21	B	200.55		0	Website design
+L	700100	-107.00	0	V21	B	22.47		0	Printing proofs
+L	451000	-223.02	0	V21	T	-1062.00		0	VAT V21
+E	269	VEN	38	2026-06-13	2026-06-28	8			202600003832	0.00	0.00	Brochure layout
+L	400000	3470.28	8			0.00	2026-06-28	224	Brochure layout
+L	700100	-2505.00	0	V21	B	526.05		0	Brochure layout
+L	700100	-363.00	0	V21	B	76.23		0	Printing proofs
+L	451000	-602.28	0	V21	T	-2868.00		0	VAT V21
+E	270	VEN	39	2026-06-18	2026-07-18	7			202600003933	0.00	0.00	Menu design
+L	400000	1040.60	7			0.00	2026-07-18	248	Menu design
+L	700100	-860.00	0	V21	B	180.60		0	Menu design
+L	451000	-180.60	0	V21	T	-860.00		0	VAT V21
+E	271	VEN	40	2026-06-21	2026-07-21	9			202600004034	0.00	0.00	Visual identity
+L	400000	1660.00	9			0.00	2026-07-21	233	Visual identity
+L	700610	-1210.00	0	VEUS	B	0.00		0	Visual identity
+L	700610	-450.00	0	VEUS	B	0.00		0	Printing proofs
+E	272	VEN	41	2026-06-24	2026-08-08	4			202600004135	0.00	0.00	Website design
+L	400000	3303.30	4			0.00	2026-08-08	249	Website design
+L	700100	-2420.00	0	V21	B	508.20		0	Website design
+L	700100	-310.00	0	V21	B	65.10		0	Printing proofs
+L	451000	-573.30	0	V21	T	-2730.00		0	VAT V21
+E	273	ACH	33	2026-06-01	2026-06-01	13		F2026-4315		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-06-01	214	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	274	ACH	34	2026-06-08	2026-06-23	14		F2026-1112		0.00	0.00	Electricity and gas
+L	440000	-257.73	14			0.00	2026-06-23	225	Electricity and gas
+L	612500	213.00	0	A21	B	44.73		0	Electricity and gas
+L	411000	44.73	0	A21	T	213.00		0	VAT A21
+E	275	ACH	35	2026-06-05	2026-06-25	15		F2026-9188		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-06-25	226	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	276	ACH	36	2026-06-03	2026-06-18	19		F2026-9923		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-06-18	215	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	277	ACH	37	2026-06-02	2026-06-02	18		F2026-9081		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-06-02	216	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	278	ACH	38	2026-06-25	2026-07-25	20		F2026-9197		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2026-07-25	234	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	279	BNK	11	2026-06-15	2026-06-15	0				27007.07	25630.47	Statement 35
+L	550000	870.00	0			0.00		0	Payment 2026/0029
+L	400000	-870.00	9			0.00	2026-06-15	213	Payment 2026/0029
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-4315
+L	440000	1450.00	13			0.00	2026-06-15	214	Immo Tanneurs SA F2026-4315
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-9923
+L	440000	677.60	19			0.00	2026-06-15	215	Autolease Belgium SA F2026-9923
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-9081
+L	440000	119.00	18			0.00	2026-06-15	216	Pixelworks Software Ltd F2026-9081
+E	280	BNK	12	2026-06-30	2026-06-30	0				25630.47	26494.70	Statement 36
+L	550000	719.95	0			0.00		0	Payment 2026/0023
+L	400000	-719.95	12			0.00	2026-06-30	217	Payment 2026/0023
+L	550000	2417.58	0			0.00		0	Payment 2026/0026
+L	400000	-2417.58	4			0.00	2026-06-30	218	Payment 2026/0026
+L	550000	1403.60	0			0.00		0	Payment 2026/0030
+L	400000	-1403.60	3			0.00	2026-06-30	219	Payment 2026/0030
+L	550000	1518.55	0			0.00		0	Payment 2026/0031
+L	400000	-1518.55	1			0.00	2026-06-30	220	Payment 2026/0031
+L	550000	-762.30	0			0.00		0	Papeteries de Genval SA F2026-6312
+L	440000	762.30	16			0.00	2026-06-30	221	Papeteries de Genval SA F2026-6312
+L	550000	-3512.00	0			0.00		0	Papierfabrik Ahlen GmbH F2026-2574
+L	440000	3512.00	17			0.00	2026-06-30	222	Papierfabrik Ahlen GmbH F2026-2574
+L	550000	484.00	0			0.00		0	Payment 2026/0036
+L	400000	-484.00	8			0.00	2026-06-30	223	Payment 2026/0036
+L	550000	3470.28	0			0.00		0	Payment 2026/0038
+L	400000	-3470.28	8			0.00	2026-06-30	224	Payment 2026/0038
+L	550000	-257.73	0			0.00		0	Luminéa Energie SA F2026-1112
+L	440000	257.73	14			0.00	2026-06-30	225	Luminéa Energie SA F2026-1112
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-9188
+L	440000	108.78	15			0.00	2026-06-30	226	Telenova SA F2026-9188
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-06-30	0	Manager's remuneration
+L	550000	-8.92	0			0.00		0	Bank charges
+L	657200	8.92	0			0.00	2026-06-30	0	Bank charges
+E	281	VEN	42	2026-07-08	2026-08-07	10			202600004236	0.00	0.00	Visual identity
+L	400000	695.00	10			0.00	2026-08-07	243	Visual identity
+L	700610	-695.00	0	VEUS	B	0.00		0	Visual identity
+E	282	VEN	43	2026-07-15	2026-08-14	9			202600004337	0.00	0.00	Brochure layout
+L	400000	2491.00	9			0.00	2026-08-14	250	Brochure layout
+L	700610	-2390.00	0	VEUS	B	0.00		0	Brochure layout
+L	700610	-101.00	0	VEUS	B	0.00		0	Printing proofs
+E	283	VEN	44	2026-07-19	2026-09-02	4			202600004438	0.00	0.00	Menu design
+L	400000	2504.70	4			0.00	2026-09-02	235	Menu design
+L	700100	-2070.00	0	V21	B	434.70		0	Menu design
+L	451000	-434.70	0	V21	T	-2070.00		0	VAT V21
+E	284	VEN	45	2026-07-19	2026-08-18	11			202600004539	0.00	0.00	Brochure layout
+L	400000	2115.00	11			0.00	2026-08-18	251	Brochure layout
+L	700700	-2115.00	0	VEX	B	0.00		0	Brochure layout
+E	285	VEN	46	2026-07-23	2026-08-22	7			202600004640	0.00	0.00	Catalogue
+L	400000	1524.60	7			0.00	2026-08-22	236	Catalogue
+L	700100	-1260.00	0	V21	B	264.60		0	Catalogue
+L	451000	-264.60	0	V21	T	-1260.00		0	VAT V21
+E	286	VEN	47	2026-07-26	2026-08-10	8			202600004741	0.00	0.00	Brochure layout
+L	400000	2885.85	8			0.00	2026-08-10	244	Brochure layout
+L	700100	-2085.00	0	V21	B	437.85		0	Brochure layout
+L	700100	-300.00	0	V21	B	63.00		0	Printing proofs
+L	451000	-500.85	0	V21	T	-2385.00		0	VAT V21
+E	287	VEN	48	2026-07-27	2026-08-26	10			202600004842	0.00	0.00	Photo retouching
+L	400000	475.00	10			0.00	2026-08-26	252	Photo retouching
+L	700610	-475.00	0	VEUS	B	0.00		0	Photo retouching
+E	288	VEN	49	2026-07-27	2026-09-10	4			202600004943	0.00	0.00	Catalogue
+L	400000	2335.30	4			0.00	2026-09-10	237	Catalogue
+L	700100	-1670.00	0	V21	B	350.70		0	Catalogue
+L	700100	-260.00	0	V21	B	54.60		0	Printing proofs
+L	451000	-405.30	0	V21	T	-1930.00		0	VAT V21
+E	289	ACH	39	2026-07-01	2026-07-01	13		F2026-3422		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-07-01	229	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	290	ACH	40	2026-07-08	2026-07-23	14		F2026-7827		0.00	0.00	Electricity and gas
+L	440000	-219.01	14			0.00	2026-07-23	238	Electricity and gas
+L	612500	181.00	0	A21	B	38.01		0	Electricity and gas
+L	411000	38.01	0	A21	T	181.00		0	VAT A21
+E	291	ACH	41	2026-07-05	2026-07-25	15		F2026-5580		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-07-25	239	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	292	ACH	42	2026-07-03	2026-07-18	19		F2026-4880		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-07-18	240	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	293	ACH	43	2026-07-02	2026-07-02	18		F2026-5488		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-07-02	230	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	294	ACH	44	2026-07-14	2026-08-13	16		F2026-2906		0.00	0.00	Paper
+L	440000	-2687.41	16			0.00	2026-08-13	245	Paper
+L	604000	2221.00	0	A21	B	466.41		0	Paper
+L	411000	466.41	0	A21	T	2221.00		0	VAT A21
+E	295	OD	2	2026-06-30	2026-06-30	0	S			0.00	0.00	VAT settlement Q2 2026
+L	451000	5243.07	0			0.00		0	VAT settlement Q2 2026
+L	411000	-1515.72	0			0.00		0	VAT settlement Q2 2026
+L	451200	-3727.35	0			0.00	2026-07-20	0	VAT settlement Q2 2026
+E	296	BNK	13	2026-07-15	2026-07-15	0				26494.70	23508.37	Statement 37
+L	550000	1025.00	0			0.00		0	Payment 2026/0034
+L	400000	-1025.00	9			0.00	2026-07-15	227	Payment 2026/0034
+L	550000	1285.02	0			0.00		0	Payment 2026/0037
+L	400000	-1285.02	1			0.00	2026-07-15	228	Payment 2026/0037
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-3422
+L	440000	1450.00	13			0.00	2026-07-15	229	Immo Tanneurs SA F2026-3422
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-5488
+L	440000	119.00	18			0.00	2026-07-15	230	Pixelworks Software Ltd F2026-5488
+L	550000	-3727.35	0			0.00		0	VAT return, payment
+L	451200	3727.35	0			0.00	2026-07-15	0	VAT return, payment
+E	297	BNK	14	2026-07-31	2026-07-31	0				23508.37	27231.98	Statement 38
+L	550000	1796.85	0			0.00		0	Payment 2026/0028
+L	400000	-1796.85	12			0.00	2026-07-31	231	Payment 2026/0028
+L	550000	568.70	0			0.00		0	Payment 2026/0033
+L	400000	-568.70	6			0.00	2026-07-31	232	Payment 2026/0033
+L	550000	1660.00	0			0.00		0	Payment 2026/0040
+L	400000	-1660.00	9			0.00	2026-07-31	233	Payment 2026/0040
+L	550000	-1149.50	0			0.00		0	Fiduciaire Martin SRL F2026-9197
+L	440000	1149.50	20			0.00	2026-07-31	234	Fiduciaire Martin SRL F2026-9197
+L	550000	2504.70	0			0.00		0	Payment 2026/0044
+L	400000	-2504.70	4			0.00	2026-07-31	235	Payment 2026/0044
+L	550000	1524.60	0			0.00		0	Payment 2026/0046
+L	400000	-1524.60	7			0.00	2026-07-31	236	Payment 2026/0046
+L	550000	2335.30	0			0.00		0	Payment 2026/0049
+L	400000	-2335.30	4			0.00	2026-07-31	237	Payment 2026/0049
+L	550000	-219.01	0			0.00		0	Luminéa Energie SA F2026-7827
+L	440000	219.01	14			0.00	2026-07-31	238	Luminéa Energie SA F2026-7827
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-5580
+L	440000	108.78	15			0.00	2026-07-31	239	Telenova SA F2026-5580
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-4880
+L	440000	677.60	19			0.00	2026-07-31	240	Autolease Belgium SA F2026-4880
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-07-31	0	Manager's remuneration
+L	550000	-11.65	0			0.00		0	Bank charges
+L	657200	11.65	0			0.00	2026-07-31	0	Bank charges
+E	298	VEN	50	2026-08-02	2026-09-01	10			202600005044	0.00	0.00	Annual report layout
+L	400000	1683.00	10			0.00	2026-09-01	253	Annual report layout
+L	700610	-1600.00	0	VEUS	B	0.00		0	Annual report layout
+L	700610	-83.00	0	VEUS	B	0.00		0	Printing proofs
+E	299	VEN	51	2026-08-11	2026-09-10	11			202600005145	0.00	0.00	Packaging design
+L	400000	2340.00	11			0.00	2026-09-10	265	Packaging design
+L	700700	-2340.00	0	VEX	B	0.00		0	Packaging design
+E	300	VEN	52	2026-08-12	2026-10-11	6			202600005246	0.00	0.00	Exhibition catalogues
+L	400000	4451.20	6			0.00	2026-10-11	0	Exhibition catalogues
+L	700000	-3560.00	0	V6	B	213.60		0	Exhibition catalogues
+L	700100	-560.00	0	V21	B	117.60		0	Cover design
+L	451000	-117.60	0	V21	T	-560.00		0	VAT V21
+L	451000	-213.60	0	V6	T	-3560.00		0	VAT V6
+E	301	VEN	53	2026-08-23	2026-09-22	7			202600005347	0.00	0.00	Brochure layout
+L	400000	1300.75	7			0.00	2026-09-22	254	Brochure layout
+L	700100	-1075.00	0	V21	B	225.75		0	Brochure layout
+L	451000	-225.75	0	V21	T	-1075.00		0	VAT V21
+E	302	VEN	54	2026-08-25	2026-09-24	5			202600005448	0.00	0.00	Website design
+L	400000	1657.70	5			0.00	2026-09-24	0	Website design
+L	700100	-1370.00	0	V21	B	287.70		0	Website design
+L	451000	-287.70	0	V21	T	-1370.00		0	VAT V21
+E	303	VEN	55	2026-08-20	2026-08-20	1	C			0.00	0.00	Discount granted on a late delivery
+L	400000	-266.20	1			0.00	2026-08-20	255	Discount granted on a late delivery
+L	700100	220.00	0	V21	B	46.20		0	Discount
+L	451000	46.20	0	V21	T	220.00		0	VAT V21
+E	304	ACH	45	2026-08-01	2026-08-01	13		F2026-3301		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-08-01	246	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	305	ACH	46	2026-08-08	2026-08-23	14		F2026-5069		0.00	0.00	Electricity and gas
+L	440000	-221.43	14			0.00	2026-08-23	256	Electricity and gas
+L	612500	183.00	0	A21	B	38.43		0	Electricity and gas
+L	411000	38.43	0	A21	T	183.00		0	VAT A21
+E	306	ACH	47	2026-08-05	2026-08-25	15		F2026-9794		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-08-25	257	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	307	ACH	48	2026-08-03	2026-08-18	19		F2026-7936		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-08-18	258	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	308	ACH	49	2026-08-02	2026-08-02	18		F2026-8222		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-08-02	247	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	309	ACH	50	2026-08-16	2026-09-15	17		F2026-1384		0.00	0.00	Art paper, 2 pallets
+L	440000	-3172.00	17			0.00	2026-09-15	259	Art paper, 2 pallets
+L	604000	3172.00	0	AEU21	B	666.12		0	Art paper, 2 pallets
+L	411000	666.12	0	AEU21	T	3172.00		0	VAT AEU21
+L	451000	-666.12	0	AEU21	D	3172.00		0	VAT due AEU21
+E	310	BNK	15	2026-08-15	2026-08-15	0				27231.98	32618.52	Statement 39
+L	550000	2728.55	0			0.00		0	Payment 2026/0032
+L	400000	-2728.55	12			0.00	2026-08-15	241	Payment 2026/0032
+L	550000	3333.55	0			0.00		0	Payment 2026/0035
+L	400000	-3333.55	6			0.00	2026-08-15	242	Payment 2026/0035
+L	550000	695.00	0			0.00		0	Payment 2026/0042
+L	400000	-695.00	10			0.00	2026-08-15	243	Payment 2026/0042
+L	550000	2885.85	0			0.00		0	Payment 2026/0047
+L	400000	-2885.85	8			0.00	2026-08-15	244	Payment 2026/0047
+L	550000	-2687.41	0			0.00		0	Papeteries de Genval SA F2026-2906
+L	440000	2687.41	16			0.00	2026-08-15	245	Papeteries de Genval SA F2026-2906
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-3301
+L	440000	1450.00	13			0.00	2026-08-15	246	Immo Tanneurs SA F2026-3301
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-8222
+L	440000	119.00	18			0.00	2026-08-15	247	Pixelworks Software Ltd F2026-8222
+E	311	BNK	16	2026-08-31	2026-08-31	0				32618.52	39242.28	Statement 40
+L	550000	1040.60	0			0.00		0	Payment 2026/0039
+L	400000	-1040.60	7			0.00	2026-08-31	248	Payment 2026/0039
+L	550000	3303.30	0			0.00		0	Payment 2026/0041
+L	400000	-3303.30	4			0.00	2026-08-31	249	Payment 2026/0041
+L	550000	2491.00	0			0.00		0	Payment 2026/0043
+L	400000	-2491.00	9			0.00	2026-08-31	250	Payment 2026/0043
+L	550000	2115.00	0			0.00		0	Payment 2026/0045
+L	400000	-2115.00	11			0.00	2026-08-31	251	Payment 2026/0045
+L	550000	475.00	0			0.00		0	Payment 2026/0048
+L	400000	-475.00	10			0.00	2026-08-31	252	Payment 2026/0048
+L	550000	1683.00	0			0.00		0	Payment 2026/0050
+L	400000	-1683.00	10			0.00	2026-08-31	253	Payment 2026/0050
+L	550000	1300.75	0			0.00		0	Payment 2026/0053
+L	400000	-1300.75	7			0.00	2026-08-31	254	Payment 2026/0053
+L	550000	-266.20	0			0.00		0	Payment 2026/0055
+L	400000	266.20	1			0.00	2026-08-31	255	Payment 2026/0055
+L	550000	-221.43	0			0.00		0	Luminéa Energie SA F2026-5069
+L	440000	221.43	14			0.00	2026-08-31	256	Luminéa Energie SA F2026-5069
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-9794
+L	440000	108.78	15			0.00	2026-08-31	257	Telenova SA F2026-9794
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-7936
+L	440000	677.60	19			0.00	2026-08-31	258	Autolease Belgium SA F2026-7936
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-08-31	0	Manager's remuneration
+L	550000	-10.88	0			0.00		0	Bank charges
+L	657200	10.88	0			0.00	2026-08-31	0	Bank charges
+E	312	VEN	56	2026-09-02	2026-10-02	5			202600005650	0.00	0.00	Menu design
+L	400000	1554.85	5			0.00	2026-10-02	260	Menu design
+L	700100	-1285.00	0	V21	B	269.85		0	Menu design
+L	451000	-269.85	0	V21	T	-1285.00		0	VAT V21
+E	313	VEN	57	2026-09-02	2026-10-17	4			202600005751	0.00	0.00	Photo retouching
+L	400000	3305.72	4			0.00	2026-10-17	261	Photo retouching
+L	700100	-2510.00	0	V21	B	527.10		0	Photo retouching
+L	700100	-222.00	0	V21	B	46.62		0	Printing proofs
+L	451000	-573.72	0	V21	T	-2732.00		0	VAT V21
+E	314	VEN	58	2026-09-13	2026-10-13	7			202600005852	0.00	0.00	Exhibition graphics
+L	400000	2571.25	7			0.00	2026-10-13	262	Exhibition graphics
+L	700100	-2125.00	0	V21	B	446.25		0	Exhibition graphics
+L	451000	-446.25	0	V21	T	-2125.00		0	VAT V21
+E	315	VEN	59	2026-09-17	2026-11-01	4			202600005953	0.00	0.00	Label design
+L	400000	2802.36	4			0.00	2026-11-01	266	Label design
+L	700100	-2030.00	0	V21	B	426.30		0	Label design
+L	700100	-286.00	0	V21	B	60.06		0	Printing proofs
+L	451000	-486.36	0	V21	T	-2316.00		0	VAT V21
+E	316	VEN	60	2026-09-20	2026-11-19	6			202600006054	0.00	0.00	Printed books (500 copies)
+L	400000	2692.40	6			0.00	2026-11-19	0	Printed books (500 copies)
+L	700000	-2540.00	0	V6	B	152.40		0	Printed books (500 copies)
+L	451000	-152.40	0	V6	T	-2540.00		0	VAT V6
+E	317	VEN	61	2026-09-26	2026-10-26	3			202600006155	0.00	0.00	Catalogue
+L	400000	1784.75	3			0.00	2026-10-26	0	Catalogue
+L	700100	-1475.00	0	V21	B	309.75		0	Catalogue
+L	451000	-309.75	0	V21	T	-1475.00		0	VAT V21
+E	318	ACH	51	2026-09-01	2026-09-01	13		F2026-9073		0.00	0.00	Rent
+L	440000	-1450.00	13			0.00	2026-09-01	263	Rent
+L	610000	1450.00	0	A0	B	0.00		0	Studio rent
+E	319	ACH	52	2026-09-08	2026-09-23	14		F2026-8681		0.00	0.00	Electricity and gas
+L	440000	-238.37	14			0.00	2026-09-23	267	Electricity and gas
+L	612500	197.00	0	A21	B	41.37		0	Electricity and gas
+L	411000	41.37	0	A21	T	197.00		0	VAT A21
+E	320	ACH	53	2026-09-05	2026-09-25	15		F2026-5251		0.00	0.00	Internet and phones
+L	440000	-108.78	15			0.00	2026-09-25	268	Internet and phones
+L	616200	89.90	0	A21	B	18.88		0	Internet and phones
+L	411000	18.88	0	A21	T	89.90		0	VAT A21
+E	321	ACH	54	2026-09-03	2026-09-18	19		F2026-4569		0.00	0.00	Car lease
+L	440000	-677.60	19			0.00	2026-09-18	269	Car lease
+L	610220	560.00	0	A21D50	B	117.60		0	Car lease
+L	610220	58.80	0	A21D50	N	0.00		0	VAT not deductible
+L	411000	58.80	0	A21D50	T	560.00		0	VAT A21D50
+E	322	ACH	55	2026-09-02	2026-09-02	18		F2026-7694		0.00	0.00	Design software subscription
+L	440000	-119.00	18			0.00	2026-09-02	264	Design software subscription
+L	613310	119.00	0	AEUS21	B	24.99		0	Design software subscription
+L	411000	24.99	0	AEUS21	T	119.00		0	VAT AEUS21
+L	451000	-24.99	0	AEUS21	D	119.00		0	VAT due AEUS21
+E	323	ACH	56	2026-09-15	2026-10-15	16		F2026-7776		0.00	0.00	Paper
+L	440000	-1811.37	16			0.00	2026-10-15	0	Paper
+L	604000	1497.00	0	A21	B	314.37		0	Paper
+L	411000	314.37	0	A21	T	1497.00		0	VAT A21
+E	324	ACH	57	2026-09-25	2026-10-25	20		F2026-6659		0.00	0.00	Accounting, the quarter
+L	440000	-1149.50	20			0.00	2026-10-25	0	Accounting, the quarter
+L	613200	950.00	0	A21	B	199.50		0	Accounting, the quarter
+L	411000	199.50	0	A21	T	950.00		0	VAT A21
+E	325	BNK	17	2026-09-15	2026-09-15	0				39242.28	41933.10	Statement 41
+L	550000	-3172.00	0			0.00		0	Papierfabrik Ahlen GmbH F2026-1384
+L	440000	3172.00	17			0.00	2026-09-15	259	Papierfabrik Ahlen GmbH F2026-1384
+L	550000	1554.85	0			0.00		0	Payment 2026/0056
+L	400000	-1554.85	5			0.00	2026-09-15	260	Payment 2026/0056
+L	550000	3305.72	0			0.00		0	Payment 2026/0057
+L	400000	-3305.72	4			0.00	2026-09-15	261	Payment 2026/0057
+L	550000	2571.25	0			0.00		0	Payment 2026/0058
+L	400000	-2571.25	7			0.00	2026-09-15	262	Payment 2026/0058
+L	550000	-1450.00	0			0.00		0	Immo Tanneurs SA F2026-9073
+L	440000	1450.00	13			0.00	2026-09-15	263	Immo Tanneurs SA F2026-9073
+L	550000	-119.00	0			0.00		0	Pixelworks Software Ltd F2026-7694
+L	440000	119.00	18			0.00	2026-09-15	264	Pixelworks Software Ltd F2026-7694
+E	326	BNK	18	2026-09-28	2026-09-28	0				41933.10	41540.81	Statement 42
+L	550000	2340.00	0			0.00		0	Payment 2026/0051
+L	400000	-2340.00	11			0.00	2026-09-28	265	Payment 2026/0051
+L	550000	2802.36	0			0.00		0	Payment 2026/0059
+L	400000	-2802.36	4			0.00	2026-09-28	266	Payment 2026/0059
+L	550000	-238.37	0			0.00		0	Luminéa Energie SA F2026-8681
+L	440000	238.37	14			0.00	2026-09-28	267	Luminéa Energie SA F2026-8681
+L	550000	-108.78	0			0.00		0	Telenova SA F2026-5251
+L	440000	108.78	15			0.00	2026-09-28	268	Telenova SA F2026-5251
+L	550000	-677.60	0			0.00		0	Autolease Belgium SA F2026-4569
+L	440000	677.60	19			0.00	2026-09-28	269	Autolease Belgium SA F2026-4569
+L	550000	-4500.00	0			0.00		0	Manager's remuneration
+L	618000	4500.00	0			0.00	2026-09-28	0	Manager's remuneration
+L	550000	-9.90	0			0.00		0	Bank charges
+L	657200	9.90	0			0.00	2026-09-28	0	Bank charges
+E	327	OD	8	2025-12-31		0				0.00	0.00	Affectation du résultat
+L	693000	18677.92	0			0.00		0	Bénéfice à reporter
+L	140000	-18677.92	0			0.00		0	Bénéfice reporté
+
+[returns]
+2025	1	Q	2025-04-18	01=9570.00 03=20729.00 47=4449.00 54=4927.29 55=838.32 59=4015.14 71=1750.47 81=6549.00 82=10297.10 83=9500.00 86=3635.00 88=357.00
+2025	2	Q	2025-07-18	01=1700.00 03=20898.00 44=7723.00 47=3515.00 49=120.00 54=4490.58 55=605.22 59=1440.33 64=25.20 71=3630.27 81=3833.00 82=8392.10 86=2525.00 88=357.00
+2025	3	Q	2025-10-18	01=1430.00 03=25687.00 44=6186.00 54=5480.07 55=729.96 59=1815.81 71=4394.22 81=5542.00 82=8471.10 86=3119.00 88=357.00
+2025	4	Q	2026-01-18	01=2400.00 03=19605.00 44=5340.00 47=4040.00 49=170.00 54=4261.05 55=609.21 59=1659.15 64=35.70 71=3175.41 81=4550.00 82=8717.10 86=2544.00 88=357.00
+2026	1	Q	2026-04-18	01=4220.00 03=12612.00 44=11544.00 47=1150.00 54=2901.72 55=714.21 59=1978.56 71=1637.37 81=6289.00 82=10359.10 86=3044.00 88=357.00
+2026	2	Q	2026-07-18	03=21098.00 44=4457.00 47=5230.00 54=4430.58 55=812.49 59=1515.72 71=3727.35 81=4142.00 82=8442.10 86=3512.00 88=357.00
+
+[documents]
+D	1	quote	1	2026-08-20	2026-09-19	1	done	0	0		La nouvelle carte du restaurant
+I	Création graphique de la nouvelle carte (recto verso)	2.500	450.00	V21	
+I	Impression de 200 cartes, A4, papier 300 g	200.000	1.85	V21	
+D	2	order	1	2026-08-25	2026-09-10	1	done	0	1	Bon 2026-118	La nouvelle carte du restaurant
+I	Création graphique de la nouvelle carte (recto verso)	2.500	450.00	V21	
+I	Impression de 200 cartes, A4, papier 300 g	200.000	1.85	V21	
+D	3	delivery	1	2026-09-10		1	draft	0	2	Bon 2026-118	La nouvelle carte du restaurant
+I	Création graphique de la nouvelle carte (recto verso)	2.500	450.00	V21	
+I	Impression de 200 cartes, A4, papier 300 g	200.000	1.85	V21	
+D	4	quote	2	2026-09-15	2026-10-15	3	sent	0	0		Le packaging de Noël
+I	Étude et maquettes de l'emballage de Noël	1.000	1800.00	V21	
+I	Déclinaison en trois formats	3.000	350.00	V21	
+I	Bons à tirer et suivi de fabrication	1.000	420.00	V21	
+D	5	quote	3	2026-09-22	2026-10-22	5	draft	0	0		Etiketten voor het winterbier
+I	Ontwerp van het etiket voor het winterbier	1.000	1200.00	V21	
+I	Drukproeven op etiketpapier	2.000	85.00	V21	
+I	Aanpassing voor de flessen van 75 cl	1.000	300.00	V21	
+D	6	quote	4	2026-07-01	2026-07-31	4	sent	0	0		La refonte du site vitrine
+I	Maquettes des pages du site vitrine	6.000	320.00	V21	
+I	Intégration et mise en ligne	1.000	950.00	V21	
+D	7	quote	5	2026-06-10	2026-07-10	12	refused	0	0		Le catalogue de l'exposition d'automne
+I	Mise en page du catalogue de l'exposition (96 pages)	96.000	38.00	V21	
+I	Couverture et jaquette	1.000	650.00	V21	
+D	8	order	2	2026-09-18	2026-10-05	6	accepted	0	0	BC 2026/311	Réimpression du catalogue d'automne
+I	Réimpression du catalogue d'automne, 500 ex., 48 pages	500.000	3.20	V21	
+I	Façonnage, dos carré collé	500.000	0.65	V21	
+D	9	porder	1	2026-09-24	2026-10-01	16	sent	0	0		Papier pour les commandes d'octobre
+I	Papier couché mat 300 g, SRA3 (ramettes de 125)	20.000	42.50	A21	
+I	Papier offset 120 g, A4 (ramettes de 500)	10.000	18.90	A21	
