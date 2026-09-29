@@ -67,4 +67,11 @@ bool onyx_gradient_resolve(const char *spec, const css_computed_style *style,
 		const css_unit_ctx *unit_len_ctx, float scale,
 		float bx, float by, float bw, float bh, struct onyx_gradient *g);
 
+/**
+ * The box's translation (transform's translate() / matrix(), the translate property), px,
+ * its percentages of the box's border box (w x h). False when it has none.
+ */
+bool onyx_box_translate(const css_computed_style *style, const css_unit_ctx *unit_len_ctx,
+		float w, float h, float *tx, float *ty);
+
 #endif

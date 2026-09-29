@@ -36,6 +36,7 @@
 #include "utils/log.h"
 #include "utils/messages.h"
 #include "netsurf/browser_window.h"
+#include "netsurf/browser.h"	/* Onyx: browser_set_dpi */
 #include "netsurf/keypress.h"
 #include "desktop/browser_history.h"
 #include "netsurf/plotters.h"
@@ -620,6 +621,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
 	for (idx=0; sys_colour_defaults[idx].nsc != NSOPTION_LISTEND; idx++) {
 		defaults[sys_colour_defaults[idx].nsc].value.c = sys_colour_defaults[idx].c;
 	}
+
+	/* Onyx: the default font size as the other browsers': 12 pt, 16 px at 96 dpi
+	 * (NetSurf's 12.8 pt made every rem / em 7 % larger) */
+	defaults[NSOPTION_font_size].value.i = 120;
 	return NSERROR_OK;
 }
 
@@ -2281,6 +2286,11 @@ main(int argc, char** argv)
 	nsoption_read(options, nsoptions);
 	free(options);
 	nsoption_commandline(&argc, argv, nsoptions);
+
+	/* Onyx: 96 dpi, as the other browsers: a CSS px is a pixel (at NetSurf's 90,
+	 * lengths were rounded to whole pixels per unit but calc() and percentages
+	 * were not -- calc(100% - 2rem) came out 7 % too wide) */
+	browser_set_dpi(96);
 
 	/* Onyx: the toolbar is the window's own (user/netsurf/onyx_chrome.cpp): no fbtk
 	 * toolbar -- and so no NetSurf close button, the window's close box closes it

@@ -39,7 +39,9 @@
 /* glyph cache minimum size */
 #define CACHE_MIN_SIZE (100 * 1024)
 
-#define BOLD_WEIGHT 700
+/* Onyx: 600 and up is bold -- CSS's font matching with a normal and a bold face (a
+ * weight over 500 takes the nearest heavier face; 600, semi-bold, was drawn normal) */
+#define BOLD_WEIGHT 600
 
 static FT_Library library; 
 static FTC_Manager ft_cmanager;
