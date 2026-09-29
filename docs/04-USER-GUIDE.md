@@ -1167,7 +1167,8 @@ choices' order, text without regard to case or accents and "Item 9" before "Item
 last; the sort is kept in the file. **Drag** a column's edge to widen it. A **double click** or
 Enter opens the record in the form; **Delete** deletes it (asked first); a **right click**: Open in
 the Form, New Record, Duplicate Record, Delete Record.... The arrows, Page Up / Down, Home / End
-move; Left / Right and Shift + the wheel scroll sideways.
+move; a letter jumps to the next record whose sorted column (else the first) starts with it; Left
+/ Right and Shift + the wheel scroll sideways.
 
 **The search** (Ctrl+F, or a click in the box): only the records holding **every word** typed, in
 any of their fields (case and accents ignored; a date as it is shown) — in the form and in the
@@ -1206,9 +1207,10 @@ choice list; a code with a 0 before it — 007, a telephone number — stays tex
 keeps it as a `.card`. New, Open and a file dropped on the window first ask to **save unsaved
 changes**; **closed with unsaved changes** (the close box, Quit), the form is kept in
 `SD:/apps/cardfile.app/recovered.card` and offered back at the next start. `cardfile <file>` opens a
-file, and a `.card` double-clicked in the File Viewer opens in Cardfile (`fileassoc.ini`). Without
-a file, Cardfile starts with a new form in the Design view (a Name and a Notes field). Samples:
-`SD:/docs/books.card` (every type of field) and `SD:/docs/contacts.card`.
+file, and a `.card` double-clicked in the File Viewer opens in Cardfile (`fileassoc.ini`). Started
+without a file, Cardfile opens the form it had last (kept in `SD:/apps/cardfile.app/last.txt`), else
+a new form in the Design view (a Name and a Notes field). Samples: `SD:/docs/books.card` (every type
+of field) and `SD:/docs/contacts.card`.
 
 **The `.card` file** is text (Latin-1, as Onyx writes it), easy to read and to edit by hand:
 

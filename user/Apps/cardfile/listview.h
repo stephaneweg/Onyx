@@ -2,8 +2,9 @@
 // listview.h -- the List view: the records shown in a grid (wtk's DataGrid), a column per field, the
 // display names on top. A click on a name sorts by it, again the other way, a third time back to the
 // file's order; a column's edge dragged widens it. A double click (or Enter) opens the record in the
-// form; Delete deletes the selected one (after asking); a right click: Open, New Record, Duplicate,
-// Delete. The cells show the values as the form does: numbers on the right, a date 29/09/2026, a
+// form; Delete deletes the selected one (after asking); a letter jumps to the next record whose sorted
+// column (else the first) starts with it; a right click: Open, New Record, Duplicate, Delete. The
+// cells show the values as the form does: numbers on the right, a date 29/09/2026, a
 // colour's swatch and code, a yes / no's check mark, a text of several lines on one.
 //
 #ifndef _cardfile_listview_h
@@ -76,6 +77,20 @@ public:
 	bool onKey (long k) override
 	{
 		if (k == KEY_DEL && grid->sel >= 0) { cmd_del_record (); return true; }
+		// a letter or a digit: the next record whose sorted column (else the first) starts with it
+		if (((k > ' ' && k <= 126) || (k >= 0xC0 && k <= 0xFF)) && g_nord && g_doc.nf)
+		{
+			int col = g_doc.sort >= 0 ? g_doc.sort : 0;
+			unsigned char c = fold ((unsigned char) k);
+			char v[VAL_MAX];
+			for (int n = 1; n <= g_nord; n++)
+			{
+				int row = (grid->sel + n) % g_nord;
+				value_show (g_doc.f[col], g_doc.r[g_ord[row]][col], v, sizeof v, false);
+				if (fold ((unsigned char) v[0]) == c) { grid->setSel (row); select_record (g_ord[row]); break; }
+			}
+			return true;
+		}
 		return false;
 	}
 private:

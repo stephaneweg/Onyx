@@ -502,7 +502,7 @@ public:
 		if (r == 2) edited ();
 		return true;
 	}
-	virtual void edited () { if (onChange) onChange (*this); }
+	virtual void edited () { setError (false); if (onChange) onChange (*this); }	// (edited: no longer marked wrong)
 private:
 	int m_scroll; bool m_drag; unsigned m_lastClick;
 };

@@ -350,6 +350,7 @@ private:
 		undo_mark (3000 + g_fsel);
 		Field &f = g_doc.f[g_fsel];
 		field_free (f);
+		bool full = false;
 		while (*s)
 		{
 			char one[VAL_MAX]; int n = 0;
@@ -357,9 +358,10 @@ private:
 			one[n] = '\0';
 			if (*s) s++;
 			char t[VAL_MAX]; trim_copy (t, one, sizeof t);
-			if (t[0] && f.nch < MAXCH) choice_add (f, t);
+			if (t[0] && !choice_add (f, t)) full = true;
 		}
 		applied (true);
+		if (full) status ("A choice list holds 64 choices at most");
 	}
 	static void on_title (Widget &w)
 	{

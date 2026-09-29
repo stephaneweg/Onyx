@@ -16,6 +16,8 @@
 // CSV: File > Export as CSV... (the records shown, as shown), Import CSV... (a new form: the first line
 // names the fields, each column's type guessed from its values). "cardfile SD:/docs/x.card" opens a file;
 // so does a file dropped on the window, or a double click in the File Viewer (fileassoc.ini: card).
+// Started without one, Cardfile opens the form it had last (SD:/apps/cardfile.app/last.txt), else a
+// new form in the Design view.
 //
 // THE FILE (.card): text in Latin-1 (as Onyx writes), one form and its records --
 //
@@ -59,6 +61,7 @@ namespace cf {
 #define H 600
 static const char *RECOVER = "SD:/apps/cardfile.app/recovered.card";
 static const char *RECOVER_NAME = "SD:/apps/cardfile.app/recovered.txt";
+static const char *LAST = "SD:/apps/cardfile.app/last.txt";		// the form opened or saved last
 
 static Root       *g_root;
 static FormView   *g_form;
@@ -523,10 +526,12 @@ static void doc_fresh (const char *path, bool saved, int view)
 }
 
 static Doc s_tmp;
-static bool load_path (const char *path)
+static void remember (const char *path) { kapi_save_file (LAST, path, (unsigned) slen (path)); }
+// A .card file (or a CSV imported) as the document; quiet: no word when it cannot be read.
+static bool load_path (const char *path, bool quiet = false)
 {
 	char *b; int n;
-	if (!read_all (path, &b, &n)) { ask ("Open", "This file could not be read.", MB_OK, 2); return false; }
+	if (!read_all (path, &b, &n)) { if (!quiet) ask ("Open", "This file could not be read.", MB_OK, 2); return false; }
 	bool csv = has_ext (path, ".csv") || has_ext (path, ".tsv");
 	const char *why = "This file is not a Cardfile document.";
 	bool ok;
@@ -542,13 +547,14 @@ static bool load_path (const char *path)
 	}
 	else ok = doc_read (s_tmp, b, n, &why);
 	delete [] b;
-	if (!ok) { doc_clear (s_tmp); ask ("Open", why, MB_OK, 2); return false; }
+	if (!ok) { doc_clear (s_tmp); if (!quiet) ask ("Open", why, MB_OK, 2); return false; }
 	doc_clear (g_doc);
 	g_doc = s_tmp;				// (the fields and the records handed over)
 	doc_init (s_tmp);
 	int view = g_view == V_DESIGN ? V_FORM : g_view;
 	if (csv) view = V_LIST;
 	doc_fresh (csv ? "" : path, !csv, view);
+	if (!csv) remember (path);
 	if (csv)
 	{
 		char m[96] = "Imported: "; scat_num (m, g_doc.nr, sizeof m); scat (m, " records, ", sizeof m);
@@ -563,7 +569,8 @@ static bool write_path (const char *path)
 	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { ask ("Save", "The file could not be written.", MB_OK, 2); return false; }
 	scpy (g_path, path, sizeof g_path);
 	g_saved = g_state;
-	char m[160] = "Saved as "; scat (m, base_name (path), sizeof m);
+	remember (path);
+	char m[160] = "Saved "; scat (m, base_name (path), sizeof m);
 	status (m);
 	return true;
 }
@@ -798,7 +805,8 @@ int main (void)
 	menu.item ("Move Field Down", "", 0, cmd_field_down);
 	menu.publish ();
 
-	// A file named on the command line; else the one kept at the last close; else a new form.
+	// A file named on the command line; else the form kept at the last close (asked); else the form
+	// opened last time; else a new form.
 	char args[200];
 	int an = kapi_get_args (args, sizeof args);
 	bool opened = an > 0 && args[0] && load_path (args);
@@ -815,11 +823,18 @@ int main (void)
 				char *p; int pn; char was[200] = "";
 				if (read_all (RECOVER_NAME, &p, &pn)) { scpy (was, p, sizeof was); delete [] p; }
 				doc_fresh (was, false, V_FORM);
+				opened = true;
 			}
 			delete [] b;
 			kapi_remove (RECOVER); kapi_remove (RECOVER_NAME);
 		}
-		if (g_view == V_DESIGN) g_design->focusLabel ();
+		if (!opened && read_all (LAST, &b, &n))
+		{
+			char last[200]; trim_copy (last, b, sizeof last);
+			delete [] b;
+			if (last[0]) opened = load_path (last, true);
+		}
+		if (!opened) g_design->focusLabel ();
 	}
 	refresh ();
 	root.run ();
