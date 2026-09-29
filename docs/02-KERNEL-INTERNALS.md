@@ -956,7 +956,19 @@ session, cleaned to RAM as they are written:
 - **breadcrumbs**: the GPU (`idle / clipping / binning / rendering / texture upload`) and the
   compositor's display copy (`composing / display DMA / waiting for the display DMA`);
 - the reaper's **last pass** (uptime), and a **panic**'s registers (`DumpAndHalt`, before the
-  panic screen).
+  panic screen) with the **return addresses found on the faulting context's stack**
+  (`CrashLogStack`);
+- the **free memory**, once a second (`CrashLogMemory`, breadcrumbs 5–7): the kernel heap, the
+  kernel pages (low pager), the app pages (the high zone) — an "Out of memory" shows its approach;
+- the **app the GUI watchdog finds frozen** (below): its pid, the last 16 places its task was
+  interrupted at, and its stack's return addresses.
+
+**Return addresses.** The apps are built `-O2` (no frame pointers to follow): `ScanStack` reads
+16 KB up from the context's SP and keeps the words that point just after a `BL` / `BLR`, in an
+app's code (`[8 GB, 10 GB)`) or the kernel's (`[0x80000, _etext)`) — 24 at most, newest first.
+Each page is probed first with `AT S1E1R` (a wild SP, an unmapped page: no fault). Read them with
+`aarch64-none-elf-addr2line -f -C -e user/<app>.elf <addr>` (or `kernel/kernel8-rpi4.elf`); a
+few are stale words, the first ones are the calls in progress.
 
 The **BCM watchdog** is armed by the reaper (every second, `cmdline.txt hangreboot=` seconds,
 default 15, at most ~15; 0 = off): when the scheduler stops, the Pi restarts by itself (a panic
@@ -983,6 +995,25 @@ watchdog restarts the Pi and the RAM report (the record of an 8 GB Pi sits at th
 above 4 GB) says how far core 1 got. **A stuck GUI with the scheduler alive** (the compositor
 without a frame for 12 s, the GUI watchdog task) asks for the same report
 (`CrashLogRequest`: core 0 masks its IRQs and waits, core 1 writes it, then the restart).
+**A Circle panic** (an assertion, the kernel heap's "Out of memory", ...) used to leave nothing:
+Circle's logger halts **every** core after the panic line (`CMultiCoreSupport::HaltAll`), core 1
+too, so the Pi stayed frozen ~15 s and the hardware watchdog restarted it without a report. The
+logger's panic handler is now `CrashLogPanicHandler`: the log's last line (the panic's) goes into
+the record and core 1 writes the report at once (`CrashLogDumpNow`), before the halt. An
+exception (`DumpAndHalt`) asks for it at once too, after its screen and one SOS (it used to wait
+the 10 s of a stopped reaper).
+
+**The app watchdog** (`SD:/etc/apphang.txt`). When the GUI watchdog finds an app not taking its
+window's events (2 s, some queued), it watches that app (`CrashLogWatchPid`: core 0's IRQs note
+where its task is and, every 8th time, scan its stack) and, every 2 s while it lasts, has the
+`apphang` task (its own: never the GUI watchdog stuck on the card) rewrite `SD:/etc/apphang.txt`:
+the app, its tasks' states (running / ready / blocked / sleeping) and pages, then the whole record
+(the free memory, core 0's samples, the app's samples and stack) and the log's last 12 KB. The
+compositor without a frame does the same (every 2 s, before the 12 s report). Recovered (the app
+takes its events again, or is closed / killed): renamed `SD:/etc/lasthang.txt`; a clean shutdown /
+reboot renames it too. Still there at the next boot (the session never ended cleanly — the
+freeze grew into a restart): appended to `SD:/etc/lastcrash.txt` (`MergeAppHang`), or written as
+it when the kernel kept no record of its own.
 **Power and heat.** Once a second the GUI watchdog task calls `CrashLogPower`: the firmware's
 `GET_THROTTLED` bits (under-voltage, ARM frequency capped, throttled, soft temperature limit —
 now, or since boot) and the SoC temperature. A change (or each 5 °C above 60 °C) is logged

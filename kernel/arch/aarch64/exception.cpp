@@ -138,6 +138,7 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 			     CScheduler::IsActive () && CScheduler::Get ()->GetCurrentTask ()
 			     ? CScheduler::Get ()->GetCurrentTask ()->GetName () : "-");
 		CrashLogPanic (Line);
+		CrashLogStack (pFrame);		// (the return addresses on the faulting context's stack)
 	}
 
 	// Paint a visible red panic (EC/ELR/FAR) on the displayed framebuffer -- the
@@ -153,7 +154,8 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 	CLogger::Get ()->Write ("exc", LogError, "KERNEL PANIC: EC=%#x ELR=%lp FAR=%lp SPSR=%lp LR=%lp",
 				nEC, (void *) pFrame->elr_el1, (void *) Frame.far_el1,
 				(void *) pFrame->spsr_el1, (void *) pFrame->x[30]);
-	PanicBlink (TRUE);
+	CrashLogDumpNow ("an exception (kernel panic)");	// core 1: the report, then a restart
+	PanicBlink (TRUE);				// (hangreboot=0: SOS for ever)
 }
 
 void SyncHandlerEL1 (TTrapFrame *pFrame)

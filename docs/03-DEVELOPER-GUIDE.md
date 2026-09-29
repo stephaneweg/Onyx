@@ -72,6 +72,12 @@ The libraries linked by the kernel (cf. [`kernel/Makefile`](../kernel/Makefile))
 
 ## 3. Building the kernel and applications
 
+> **The kernel's size limit.** The kernel image **and its BSS** must end below `0x280000`
+> (loaded at `0x80000`, Circle's `KERNEL_MAX_SIZE` = 2 MB): past it the BSS runs over the
+> kernel's stacks and the Pi does not boot at all, without a message. `make` checks it after
+> each link (`sizecheck`: `_end` in `kernel8-rpi4.map`) and deletes an image too big. Put big
+> buffers on the heap (`new` at init), not in static arrays.
+
 From `kernel/`:
 
 ```sh

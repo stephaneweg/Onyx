@@ -87,10 +87,12 @@ max_framebuffers=2
 Parameters read at boot:
 
 ```
-width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
+width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 ```
 
-- **`width` / `height`**: framebuffer resolution (default 1024×768).
+- **`width` / `height`**: framebuffer resolution (default 1024×768; the card ships 1920×1080). Any
+  size works (the firmware scales it to the monitor's mode); the monitor's native one is sharpest.
+  An app's window can be as big as the screen (before: at most 1024×768).
 - **`init`**: absolute path of the init program the kernel launches at boot
   (default `SD:bin/init`). init reads `SD:/etc/autostart` and starts the rest
   of the userland, so pointing `init=` at another ELF (e.g. a recovery shell)
@@ -119,8 +121,14 @@ width=1024 height=768 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   sectors of `SD:/etc/crashdump.txt` (prepared at boot) and restarts the Pi (the hardware watchdog
   does it after that time if even that fails — the green LED then blinks fast for 3 s, then stays
   lit 3 s if the report was written, or blinks slowly 3 times if not); the next boot keeps what it was doing (the last kernel log lines, where the processor was stuck, what the
-  GPU and the display were doing, a panic's registers) to **`SD:/etc/lastcrash.txt`**. Send that
-  file along with a freeze report.
+  GPU and the display were doing, the free memory, a panic's registers and the addresses on its
+  stack) to **`SD:/etc/lastcrash.txt`**. A kernel panic (an "Out of memory", a failed assertion)
+  now writes that report at once too. An **app that stops answering** (its window no longer takes
+  the mouse and the keys for 2 s) gets its own report, rewritten every 2 s into
+  `SD:/etc/apphang.txt` (where the app is stuck, the memory, the last log lines); it becomes
+  `SD:/etc/lasthang.txt` when the app answers again or is closed, and joins
+  `SD:/etc/lastcrash.txt` if the Pi restarts meanwhile. Send those files along with a freeze
+  report.
 - **`gpudirect`**: `gpudirect=0`: the GPU renders into its own buffer, then copied, instead of
   writing the window's (or the full screen's) pixels itself — the same kind of test.
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).
@@ -608,7 +616,11 @@ connection waits until the first ends.
 11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
 **Connect**. Connected, the window takes **the size of the Pi's screen** (below the tool bar)
 and cannot be resized, so the Onyx windows (the dock at the bottom) sit where they are on the
-Pi; when the Pi's screen does not fit on the PC's, it stays resizable.
+Pi; when the Pi's screen does not fit on the PC's, it stays resizable. **Full screen** (the tool
+bar's button, or **F11** at any time) takes the whole PC screen without a frame nor the tool bar:
+the Onyx menu bar at the top, the Onyx windows pixel for pixel where they are on the Pi — a Pi
+screen the size of the PC's (e.g. both 1920 × 1080) fills it exactly. F11 again (or a lost
+connection) gives the window back; the choice is kept and applied at the next connection.
 
 - At the top, the **Onyx menu bar** across the window's width (the menus on the left, the
   status and the clock on the right).

@@ -151,7 +151,7 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 			       unsigned nFlags)
 {
 	CAddressSpace *pAS = CurrentAS ();
-	if (pAS == 0 || w <= 0 || h <= 0 || w > 1024 || h > 768)
+	if (pAS == 0 || w <= 0 || h <= 0 || w > g_nScreenWidth || h > g_nScreenHeight)	// (no bigger than the screen)
 	{
 		return 0;
 	}

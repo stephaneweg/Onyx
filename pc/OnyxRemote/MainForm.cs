@@ -127,10 +127,12 @@ namespace OnyxRemote
 		readonly ToolStripButton frames = new ToolStripButton ("Onyx frames") { CheckOnClick = true };
 		readonly ToolStripButton go = new ToolStripButton ("Connect");
 		readonly ToolStripButton console = new ToolStripButton ("Console") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
+		readonly ToolStripButton full = new ToolStripButton ("Full screen") { CheckOnClick = true, ToolTipText = "The Onyx session over the whole screen, without this tool bar (F11 toggles it)" };
 		readonly ToolStripLabel status = new ToolStripLabel ("Not connected");
 		readonly BarPanel barPanel;
 		readonly ToolStrip ts;
 		Size freeSize;					// (the size before a connection fixed it)
+		bool isFull; Rectangle fullRestore; FormBorderStyle fullBorder; bool fullMaxBox; FormWindowState fullState;	// (before the full screen)
 		readonly MdiClient mdi;
 		public Connection Conn;
 		public readonly BarView Bar = new BarView ();
@@ -153,12 +155,13 @@ namespace OnyxRemote
 			ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
 			host.Width = 130; port.Width = 45; port.Text = "3390";
 			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go, console,
-				new ToolStripSeparator (), bits16, desktop, frames, new ToolStripSeparator (), status });
+				new ToolStripSeparator (), bits16, desktop, frames, full, new ToolStripSeparator (), status });
 			barPanel = new BarPanel (this) { Dock = DockStyle.Top, Height = 32, Visible = false };
 			Controls.Add (barPanel);
 			Controls.Add (ts);
 			go.Click += (s, e) => { if (Conn == null) Connect (); else Disconnect ("Disconnected"); };
 			console.Click += (s, e) => OpenConsole ();
+			full.CheckedChanged += (s, e) => { SaveSettings (); if (Conn != null) FullScreen (full.Checked); };
 			desktop.CheckedChanged += (s, e) => { if (Conn != null) { Conn.Desktop (desktop.Checked); Sync (); } };
 			host.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter && Conn == null) { e.SuppressKeyPress = true; Connect (); } };
 			MdiChildActivate += (s, e) => { if (ActiveMdiChild is RemoteWindow rw && Conn != null) Conn.Raise (rw.Id); };
@@ -180,6 +183,7 @@ namespace OnyxRemote
 					else if (k == "bits16") bits16.Checked = v == "1";
 					else if (k == "desktop") desktop.Checked = v == "1";
 					else if (k == "frames") frames.Checked = v == "1";
+					else if (k == "fullscreen") full.Checked = v == "1";
 				}
 			}
 			catch { }
@@ -228,11 +232,48 @@ namespace OnyxRemote
 			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
 			go.Text = "Disconnect";
 			FitToPi (c.ScreenW, c.ScreenH);
+			if (full.Checked) FullScreen (true);
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = false;
 		}
 
 		// Connected: the window exactly the Pi's screen (the tool bar above it), not resizable -- the
 		// Onyx windows (the shelf at the bottom) where they are on the Pi. Not when it does not fit.
+		// F11: the full screen on and off (the keys go to the Pi otherwise)
+		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
+		{
+			if (keyData == Keys.F11) { full.Checked = !full.Checked; if (Conn == null) FullScreen (false); return true; }
+			return base.ProcessCmdKey (ref msg, keyData);
+		}
+
+		// The full screen: no frame, no tool bar, the whole monitor (the taskbar covered) -- the
+		// Onyx menu bar at its top and the Onyx windows where they are on the Pi, pixel for pixel
+		// (a Pi screen the monitor's size fills it exactly; a bigger one is cut on the right and
+		// the bottom). Off: the window as it was.
+		void FullScreen (bool on)
+		{
+			if (on == isFull) return;
+			if (on)
+			{
+				fullBorder = FormBorderStyle; fullMaxBox = MaximizeBox; fullState = WindowState;
+				fullRestore = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+				ts.Visible = false;
+				WindowState = FormWindowState.Normal;
+				FormBorderStyle = FormBorderStyle.None;
+				Bounds = Screen.FromControl (this).Bounds;
+				isFull = true;
+				Activate ();
+			}
+			else
+			{
+				isFull = false;
+				FormBorderStyle = fullBorder; MaximizeBox = fullMaxBox;
+				Bounds = fullRestore;
+				WindowState = fullState;
+				ts.Visible = true;
+			}
+			Sync ();
+		}
+
 		void FitToPi (int w, int h)
 		{
 			if (w <= 0 || h <= 0) return;
@@ -254,13 +295,15 @@ namespace OnyxRemote
 			try
 			{
 				File.WriteAllLines (SettingsPath, new[] { "host=" + host.Text, "port=" + p,
-					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0), "frames=" + (frames.Checked ? 1 : 0) });
+					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0), "frames=" + (frames.Checked ? 1 : 0),
+					"fullscreen=" + (full.Checked ? 1 : 0) });
 			}
 			catch { }
 		}
 
 		void Disconnect (string why)
 		{
+			FullScreen (false);				// (the tool bar back: Connect again)
 			Conn?.Close (); Conn = null;
 			foreach (var w in wins.Values) { w.GoneOnPi = true; w.Close (); }
 			wins.Clear ();

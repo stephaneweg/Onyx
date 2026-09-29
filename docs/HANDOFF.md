@@ -62,6 +62,18 @@ answer in French. The docs stay in English.
   watchdog (`hangreboot=`, 15 s); core 1 writes a report into `SD:/etc/crashdump.txt` sectors when
   core 0 stops (LED signs); next boot → `SD:/etc/lastcrash.txt`. `hangtest` freezes core 0 on
   purpose. `SD:/etc/clock` keeps the time across boots (files written before NTP get a date).
+- **Crash record, round 2 (2026-09-29, for the Spreadsheet's freeze: a long hang, then a restart,
+  nothing on the card):** a Circle panic (assertion, kernel heap "Out of memory") halted every
+  core, core 1 too — no report; now the logger's panic handler has core 1 write it first. The
+  free memory (heap, kernel pages, app pages) every second in the record; the return addresses
+  on a faulting stack; the **app watchdog**: a frozen app watched (its task's PCs, its stack) and
+  `SD:/etc/apphang.txt` rewritten every 2 s, merged into `lastcrash.txt` if the Pi restarts
+  (docs/02 *The crash record*). **Not yet tried on the Pi**: next, reproduce the Spreadsheet's
+  freeze and read `lastcrash.txt` (addresses → `addr2line -e user/sheet.elf`).
+- **The kernel's size limit:** image + BSS must end below `0x280000` (0x80000 + Circle's
+  `KERNEL_MAX_SIZE`, 2 MB) — past it the BSS runs over the kernel's stacks and the Pi does not
+  boot, without a message (a 32 KB static buffer did it). `make` / `make stage` now check `_end`
+  in the map (`sizecheck`) and delete an image too big. 128 KB left: big buffers go on the heap.
 - **N64 (task done):** OoT pause background (the copy into the z-buffer drawn by the CPU into
   RDRAM, the host's frame written back as the framebuffer: `Machine::fbSnapshot`), the 8-bit
   coverage copy written as full (menu opens in ~1 s instead of ~4), decal z bias (z-fighting),

@@ -55,6 +55,9 @@ public:
 	bool resizable () const { return m_resizable; }
 	bool maximised () const { return m_maxed; }
 	void maximise (bool on);
+	// A resizable window taller (or wider) than the work area: shrunk to it and moved into it
+	// (the dock no longer over its bottom) -- at the start, once its children are anchored.
+	void fitWorkArea ();
 	virtual void onResized () {}
 	void windowMenu ();
 
