@@ -1432,6 +1432,10 @@ type (kept as it is — the form asks for a valid one when the record is edited)
 pay, the bank, the year's result, the sales and purchases by month, the next VAT return, the invoices
 overdue.*
 
+> **The manual.** Ledger has a complete user manual, with pictures: `SD:/manuals/ledger/Ledger.pdf`
+> (and `Ledger.md`) — getting started, every page and document step by step, the VAT codes, the
+> printing's fields, questions and answers. What follows is its summary.
+
 Ledger keeps the **double-entry books** of a Belgian company or self-employed person: its chart of
 accounts (the **PCMN**, in French or in Dutch), its customers and suppliers, its **journals** (sales,
 purchases, bank, cash, miscellaneous operations) and their documents, its **fiscal years**, its **VAT
@@ -1509,7 +1513,8 @@ its account, its name) and the invoice it pays ticked; the bank's charges on 657
 complete.*
 
 **Bank and cash** lists the statements (number, date, description, journal, in, out, the new balance).
-**New statement**: the journal, the date, a description (*Statement 43*), the **new balance** the bank
+**New statement**: the journal, the date, a description (*Statement 43* after *Statement 42*: the
+bank's numbering), the **new balance** the bank
 says (optional: checked against the old balance and the movements); the **old balance** is the
 journal's. A **movement**: a **party** or an **account** (typed: a name, an account's number), a
 description, the **amount** (+ in, − out). A party's **open items** show below — tick those the

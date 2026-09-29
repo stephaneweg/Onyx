@@ -88,6 +88,13 @@ int main (int argc, char **argv)
 	CHECK (!ogm_parse ("+++090/9337/55494+++", d12), "ogm's wrong check");
 	ogm_make (2026000012LL, d12); CHECK (!strcmp (d12, "202600001206"), "ogm made: %s", d12);
 	ogm_make (97LL, d12); CHECK (!strcmp (d12, "000000009797"), "ogm check 97: %s", d12);
+	{	// a statement's next description (the bank's numbering)
+		char t[64];
+		number_next ("Statement 42", t, sizeof t); CHECK (!strcmp (t, "Statement 43"), "next statement: %s", t);
+		number_next ("Extrait 099", t, sizeof t); CHECK (!strcmp (t, "Extrait 100"), "next, its zeros: %s", t);
+		number_next ("Uittreksel 9", t, sizeof t); CHECK (!strcmp (t, "Uittreksel 10"), "next, a digit more: %s", t);
+		number_next ("Statement", t, sizeof t); CHECK (!t[0], "no number, no next: %s", t);
+	}
 	ogm_show ("090933755493", t); CHECK (!strcmp (t, "+++090/9337/55493+++"), "ogm shown: %s", t);
 	CHECK (eu_prefix ("FR") && eu_prefix ("EL") && !eu_prefix ("US") && !eu_prefix ("GB"), "EU prefixes");
 
@@ -253,6 +260,23 @@ int main (int argc, char **argv)
 		CHECK (no == 1 && b.e[open[0].e].id == b.e[ecn].id, "one open item: the credit note (%d)", no);
 		Statement r; st_init (r);
 		CHECK (st_from_entry (b, b.e[ei], r) && r.nl == 2 && r.l[0].party == C1 && r.l[1].amount == -250, "the statement read back");
+		// saved again as read back (its description changed): its payment stays matched, so does the invoice
+		{
+			scpy (r.text, "Extrait 1", sizeof r.text);
+			Entry e2; st_to_entry (b, r, e2);
+			int ei2 = entry_save (b, e2); st_apply_matches (b, ei2, r);
+			int inv = entry_index (b, 1);
+			CHECK (inv >= 0 && b.e[inv].l[0].match && b.e[inv].l[0].match == b.e[ei2].l[1].match, "saved again: the invoice still matched with its payment");
+			ei = ei2;
+		}
+		// the invoice saved again as read back: still paid
+		{
+			int inv = entry_index (b, 1);
+			Invoice v; inv_init (v); inv_from_entry (b, b.e[inv], v);
+			Entry e3; inv_to_entry (b, v, e3); entry_save (b, e3); inv_free (v);
+			inv = entry_index (b, 1);
+			CHECK (inv >= 0 && b.e[inv].l[0].match && b.e[inv].l[0].match == b.e[entry_index (b, b.e[ei].id)].l[1].match, "the invoice saved again: still matched");
+		}
 		st_free (r); st_free (s);
 		CHECK (fin_balance_before (b, JB, 20260301) == 173750, "the bank's balance: %s", M (fin_balance_before (b, JB, 20260301)));
 	}

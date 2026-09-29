@@ -391,7 +391,15 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   `tools/ledger/make_demo.cpp` through the engine: 2025 closed, 2026 to September, quotes and orders);
   `ledger = ledger` in `fileassoc.ini`; the icon (`tools/gen_assets.py ledger`); screenshots
   `ledger*.png` (the `ledger` scenario of `shots.sh`, `ledger-print` through Writer); host test
-  `sh tools/tests/run_ledger_test.sh` (194 checks; the XML validated when `xmllint` is installed).
+  `sh tools/tests/run_ledger_test.sh` (200 checks; the XML validated when `xmllint` is installed).
+- **The manual** (asked: "un manuel pour le logiciel de comptabilité, avec captures, en .md et en pdf;
+  tout gros logiciel fera l'objet d'un manuel"): `sdcard/manuals/ledger/Ledger.md` + `Ledger.pdf` (55
+  pages) + `images/` (43 pictures: `sh tools/manuals/ledger_shots.sh`; the PDF:
+  `python tools/manuals/build_manuals.py`) — docs/03 *Manuals*. On the way: an opened statement or
+  invoice saved again kept its matchings no more (`entry_save` now carries them; test added), a saved
+  statement's movements show what they paid, a new statement proposes the bank's next number, the
+  reports' and VAT page's columns fit, the demo's "Flémalle" in Latin-1. **Next**: a manual reader app
+  on Onyx (the same Markdown subset), then a manual for each big app (Writer, the Spreadsheet...).
 - **Next ideas**: **e-invoicing** — Belgium requires structured B2B invoices through **Peppol** from
   2026: a sales invoice as UBL (Peppol BIS Billing 3.0) and a purchase UBL read would be the most
   useful next step; CAMT.053 statements (the XML successor of CODA); payment reminders from the

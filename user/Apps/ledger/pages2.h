@@ -66,7 +66,7 @@ public:
 	}
 	~ReportsPage () { rpt_free (p); }
 	const char *title () override { return "Reports"; }
-	void subtitle (char *out, int cap) override { scpy (out, p.title, cap); if (p.sub[0]) { scat (out, "  \xB7  ", cap); scat (out, p.sub, cap); } }
+	void subtitle (char *out, int cap) override { scpy (out, p.sub[0] ? p.sub : p.title, cap); }	// (its name: in the choice below)
 	bool usesFrom () const { return kind == R_JOURNAL || kind == R_LEDGER || kind == R_INCOME || kind == R_PARTY || kind == R_VAT; }
 	void layoutParams ()
 	{
@@ -138,14 +138,31 @@ public:
 		}
 		case R_VAT: rpt_vat_detail (g_b, p, f, t); break;
 		}
-		// the columns: amounts and dates their width, the texts sharing the rest
+		// the columns: dates and short texts their width, the other texts sharing the rest -- at least their
+		// title's, a name its first letters --, the amounts 116 pixels (fewer when that leaves the texts too little)
 		g->setColumns (p.ncol);
-		int fixed = 0, weight = 0;
-		for (int c = 0; c < p.ncol; c++) { if (p.col[c].money) fixed += 116; else if (p.col[c].width <= 11) fixed += p.col[c].width * wk_fw () + 16; else weight += p.col[c].width; }
-		int rest = imax (100, g->width - WK_SBW - 6 - fixed);
-		for (int c = 0; c < p.ncol; c++)
+		int avail = g->width - WK_SBW - 6, fixed = 0, weight = 0, nm = 0, textMin = 0;
+		int minW[RMAXCOL];
+		for (int c = 0; c < p.ncol && c < RMAXCOL; c++)
 		{
-			int w = p.col[c].money ? 116 : p.col[c].width <= 11 ? p.col[c].width * wk_fw () + 16 : imax (70, (int) ((long long) rest * p.col[c].width / imax (1, weight)));
+			minW[c] = imax (imax (70, wk_text_w (p.col[c].title, 2) + 22), imin (160, p.col[c].width * 5));
+			if (p.col[c].money) nm++;
+			else if (p.col[c].width <= 11) fixed += p.col[c].width * wk_fw () + 16;
+			else { weight += p.col[c].width; textMin += minW[c]; }
+		}
+		int mw = nm ? iclamp ((avail - fixed - textMin) / nm, 92, 116) : 116;
+		int rest = imax (100, avail - fixed - nm * mw);
+		bool atMin[RMAXCOL] = { false };
+		for (int pass = 0; pass < 2; pass++)
+			for (int c = 0; c < p.ncol && c < RMAXCOL; c++)
+			{
+				if (p.col[c].money || p.col[c].width <= 11 || atMin[c]) continue;
+				if (minW[c] > (int) ((long long) rest * p.col[c].width / imax (1, weight))) { atMin[c] = true; rest = imax (0, rest - minW[c]); weight -= p.col[c].width; }
+			}
+		for (int c = 0; c < p.ncol && c < RMAXCOL; c++)
+		{
+			int w = p.col[c].money ? mw : p.col[c].width <= 11 ? p.col[c].width * wk_fw () + 16
+				: atMin[c] ? minW[c] : imax (minW[c], (int) ((long long) rest * p.col[c].width / imax (1, weight)));
 			g->setColumn (c, p.col[c].title, w, p.col[c].align == 1 ? GRID_RIGHT : GRID_LEFT);
 		}
 		g->setRows (p.nr);
@@ -292,8 +309,7 @@ public:
 	{
 		if (g_b.vatRegime == VR_FRANCHISE) { scpy (out, "The small business franchise: no VAT return to file (the customer listing still is)", cap); return; }
 		if (g_b.vatRegime == VR_NONE) { scpy (out, "Not subject to VAT: no return", cap); return; }
-		scpy (out, monthly ? "Monthly returns" : "Quarterly returns", cap);
-		if (g_b.vat[0]) { char v[24]; vat_show (g_b.vat, v, sizeof v); scat (out, "  \xB7  ", cap); scat (out, v, cap); }
+		scpy (out, monthly ? "Monthly returns" : "Quarterly returns", cap);	// (the VAT number: at the top of the side bar)
 	}
 	int periods () const { return monthly ? 12 : 4; }
 	void refresh () override
@@ -423,9 +439,13 @@ public:
 				char gl[4]; grid_label (gnum, gl);
 				unsigned pc = gnum == 71 ? C_BAD : gnum == 72 ? C_GOOD : C_ACCENT;
 				draw_pill (canvas, x + 4, y + 3, rh - 6, gl, pc, grid[gnum] != 0);
+				// its name: what the amount leaves of the row
+				bool am = grid[gnum] || gnum == 71 || gnum == 72; int ast = gnum >= 71 && gnum <= 72 ? 2 : 0;
+				if (am) money_s (grid[gnum], a);
+				int aw = am ? wk_text_w (a, ast) + 12 : 8;
 				Canvas c; c.adopt (canvas.px + y * canvas.stride + x, cw, rh, canvas.stride);
-				text_fit_l (c, 40, 0, cw - 40 - 100, rh, grid_short (gnum), grid[gnum] ? C_FIELD_TEXT : field_dim ());
-				if (grid[gnum] || gnum == 71 || gnum == 72) text_r (canvas, x + cw - 8, y, rh, money_s (grid[gnum], a), grid[gnum] ? C_FIELD_TEXT : field_dim (), gnum >= 71 && gnum <= 72 ? 2 : 0);
+				text_fit_l (c, 38, 0, cw - 38 - aw, rh, grid_short (gnum), grid[gnum] ? C_FIELD_TEXT : field_dim ());
+				if (am) text_r (canvas, x + cw - 8, y, rh, a, grid[gnum] ? C_FIELD_TEXT : field_dim (), ast);
 				if (gnum == 91) { g91->left = x + cw - 128; g91->top = y - 2; }
 				y += rh + 2;
 			}
@@ -648,7 +668,7 @@ public:
 		vat = edit (y, "VAT number", 180, ""); vat->placeholder = "BE 0123.456.789"; y += 34;
 		street = edit (y, "Street", 440, ""); y += 34;
 		zip = edit (y, "Postcode", 80, ""); label (y, "City", 250); city = new LineEdit (300, y, 280); addChild (city); y += 34;
-		email = edit (y, "E-mail", 250, ""); label (y, "Phone", 400); phone = new LineEdit (450, y, 130); addChild (phone); y += 34;
+		email = edit (y, "E-mail", 230, ""); label (y, "Phone", 402); phone = new LineEdit (450, y, 130); addChild (phone); y += 34;
 		iban = edit (y, "Bank account", 260, ""); iban->placeholder = "BE68 5390 0754 7034"; y += 42;
 		static const char *const LANG[2] = { "Fran\xE7" "ais (PCMN)", "Nederlands (MAR)" };
 		label (y, "Chart of accounts"); lang = new ChoiceBox (fieldX, y, 200); lang->setOptions (LANG, 2); addChild (lang); y += 34;
@@ -661,8 +681,9 @@ public:
 		label (y, "to", fieldX + 150); end_ = new DateEdit (fieldX + 176, y, 140); addChild (end_);
 		char d[16]; date_show (ymd (yy, 1, 1), d); start->setText (d); date_show (ymd (yy, 12, 31), d); end_->setText (d);
 		y += 44;
-		label (y, "The chart (PCMN), the journals (sales, purchases, bank, cash, miscellaneous) are made; all can be changed.", -1, true);
-		y += 36;
+		label (y, "The chart (PCMN) and the journals (sales, purchases, bank, cash,", -1, true);
+		label (y + 20, "miscellaneous operations) are made: all can be changed afterwards.", -1, true);
+		y += 56;
 		resizeTo (width, y + 50);
 		Root *r = Root::current ();
 		if (r) { left = (r->width - width) / 2; top = imax (0, (r->height - height) / 2); }
@@ -758,13 +779,14 @@ public:
 		yb ("Reopen the year", s_reopenYear, FB_QUIET, -1);
 		// the journals
 		Widget *jp = pan[2];
-		journals = new DataGrid (16, 12, 560, 300); journals->sortable = false; jp->addChild (journals);
+		journals = new DataGrid (16, 12, 760, 260); journals->sortable = false; jp->addChild (journals);
 		journals->setColumns (5);
-		journals->setColumn (0, "Code", 70); journals->setColumn (1, "Name", 170); journals->setColumn (2, "Kind", 110); journals->setColumn (3, "Account", 80); journals->setColumn (4, "IBAN", 126);
+		journals->setColumn (0, "Code", 70); journals->setColumn (1, "Name", 230); journals->setColumn (2, "Kind", 140); journals->setColumn (3, "Account", 90); journals->setColumn (4, "IBAN", 200);
 		journals->cellText = j_text; journals->onActivate = on_jedit;
-		by = 12;
-		{ FlatButton *f = new FlatButton ("New journal...", s_newJournal, FB_PRIMARY, NI_PLUS); f->left = 592; f->top = by; jp->addChild (f); by += 40; }
-		{ FlatButton *f = new FlatButton ("Edit...", s_editJournal, FB_SECONDARY, NI_EDIT); f->left = 592; f->top = by; jp->addChild (f); }
+		{	// (the buttons below the list: its columns the room they need)
+			FlatButton *f = new FlatButton ("New journal...", s_newJournal, FB_PRIMARY, NI_PLUS); f->left = 16; f->top = 12 + 260 + 12; jp->addChild (f);
+			FlatButton *e = new FlatButton ("Edit...", s_editJournal, FB_SECONDARY, NI_EDIT); e->left = f->left + f->width + 8; e->top = f->top; jp->addChild (e);
+		}
 		// the accounts by role
 		Widget *ap = pan[3];
 		for (int i = 0; i < 7; i++) { role[i] = new PickEdit (250, 12 + i * 34, 330, SK_ACCOUNT, AF_ALL); ap->addChild (role[i]); }

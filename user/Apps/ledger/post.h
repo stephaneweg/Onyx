@@ -346,6 +346,15 @@ static int entry_save (Book &b, Entry &e)
 		const Entry &o = b.e[old];
 		int yo = year_of (b, o.date), yn = year_of (b, e.date);
 		e.no = o.journal == e.journal && yo == yn ? o.no : next_number (b, e.journal, yn);
+		// its lines' matchings kept: a line as it was (its account, party and amount) stays in its group
+		// (an invoice or a statement opened, its description changed, saved: still paid)
+		for (int k = 0; k < o.nl; k++)
+		{
+			if (!o.l[k].match) continue;
+			for (int j = 0; j < e.nl; j++)
+				if (!e.l[j].match && e.l[j].amount == o.l[k].amount && e.l[j].party == o.l[k].party && seq (e.l[j].account, o.l[k].account))
+				{ e.l[j].match = o.l[k].match; break; }
+		}
 		entry_remove (b, old);
 	}
 	else { e.id = 0; e.no = next_number (b, e.journal, year_of (b, e.date)); }
