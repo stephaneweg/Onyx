@@ -870,7 +870,8 @@ check, the dock — drawn in the colours being edited.
 - **Desktop**: the **wallpaper** — **Voronoi cells** (their colour and number), a **Gradient**
   (two colours, top to bottom or left to right), **Bubbles** (a gradient with soft bubbles),
   a **Solid colour**, a **Picture** (a BMP, GIF, PNG, JPEG, PCX or WebP file: **Browse…**;
-  **cover** the screen or **tile** it), or a **Pattern**: one of the abstract grey pictures of
+  **cover** the screen or **tile** it; **Tinted**: its grey multiplies the **Tint** colour —
+  checked by itself for a picture of `SD:/wallpapers`), or a **Pattern**: one of the abstract grey pictures of
   `SD:/wallpapers` (Bokeh, Contours, Dunes, Facets, Hexagons, Low Poly, Silk, Waves) **coloured
   by the two colours** — its grey multiplies the gradient from colour 1 to colour 2 (white is
   the colour itself), so any pattern takes any colours; the preview shows it at once.
@@ -929,6 +930,7 @@ direction = vertical     # the gradient: vertical or horizontal
 points    = 28           # voronoi's cells (1..64)
 image     = SD:/x.jpg    # image: the picture (painted by imageview --background)
 style     = cover        # cover (the screen filled) or tile
+tint      = no           # image: yes -- its grey multiplies `color` (a tinted picture)
 pattern   = SD:/wallpapers/waves.png   # pattern: the grey picture the colours multiply
 ```
 
