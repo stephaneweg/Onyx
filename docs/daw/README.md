@@ -1,13 +1,13 @@
 # Koton Studio for Onyx — a DAW that thinks in harmony (study, plan, first mock-ups)
 
-> **Status: a study and a plan (2026-09-29), no code yet.** Asked by the user: a music app for Onyx
+> **Status: the plan (2026-09-29), decided with the user (§8); being implemented.** Asked by the user: a music app for Onyx
 > "in the manner of Koton Studio" (the user's own C#/WPF DAW, `github.com/stephaneweg/MusicTracker`),
 > **without the score view** at first; the same philosophy (one thinks in harmony, then adds chord,
 > rhythm and polyrhythm generators); sound and effect plugins as **separate processes over IPC**, the
 > way the Control Panel hosts its applets; a careful, "pro" interface made of wtk widgets, with the
 > big areas (the lanes, the grids) **drawn by hand in a canvas the size of the view**; JSON
 > everywhere (the save format, the settings, the exchange with Gemini); the extra core used; and
-> **no memory leaks**. Working name: **Koton Studio** (app folder `koton`, documents `.kson`).
+> **no memory leaks**. Name: **Koton** (app folder `koton`, documents `.kson`; Koton's `.sq` open too).
 
 The mock-ups are made by `python3 tools/screenshot/mockup_daw.py` → `docs/daw/mockups/*.png`
 (1920 × 1080, the Pi's screen; the app maximised in an Onyx frame, Slate theme).
@@ -330,13 +330,17 @@ the difference with the mock-ups; without it, the same layout with the bitmap fo
 
 ---
 
-## 8. Open questions for the user
+## 8. The user's decisions (2026-09-29)
 
-1. **The name**: "Koton Studio" (the same product on Onyx), or an Onyx name?
-2. **The synthesiser**: TinySoundFont first (sound quickly) then MeltySynth, or port MeltySynth
-   straight away (Koton's exact sound)?
-3. **The audio output**: the jack (today), HDMI, or an I2S DAC HAT (which one do you have)?
-4. **`.sq` compatibility**: open Koton's Windows projects (recommended), and even write them back?
-5. **Anti-aliased text** (W2) for this app — worth bringing into wtk now?
-6. **The AI's language**: keep Koton's French prompts as they are (they are tuned), UI in English
-   as the rest of Onyx?
+1. **The name**: **Koton** — "almost the same software, refactored for Onyx" (app `koton`).
+2. **The synthesiser**: **MeltySynth**, ported to C++ straight away (Koton's exact sound);
+   TinySoundFont is not used.
+3. **The audio output**: the **jack** for now (headphones); Circle's HDMI sound
+   (`CHDMISoundBaseDevice`) later, as an option (A2: not now).
+4. **`.sq` files**: Koton's Windows projects open in Onyx; what is not supported is simply
+   dropped (it is JSON).
+5. **Anti-aliased text**: FreeType, and **wtk updated** for it (W2).
+6. **The OS additions**: A1 (low-latency sound) yes; A3 (USB MIDI) with Circle's drivers; B2 / B3
+   (the futex-like wait, thread priorities) if needed; W1 (the new widgets) yes; **C1 (TLS
+   certificate verification) not needed** — the verification stays bypassed.
+7. The user tests on the Pi once everything is done.
