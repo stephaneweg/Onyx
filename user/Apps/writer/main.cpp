@@ -1,28 +1,38 @@
 //
-// writer -- Onyx's word processor, in the way of AbiWord: the document laid out on pages (A4 by
-// default) and drawn by Writer itself with FreeType's glyphs from the TrueType fonts of the card
-// (user/ft/fonts.h), at any zoom; two toolbars (the file, the edits, the zoom -- the style, the font,
-// the size, bold / italic / underline / strike-through, superscript / subscript, the text's colour
-// and its highlight, the alignments, the lists, the indents), a ruler (the margins, the paragraph's
-// indents dragged), a status bar (the file, the page, the words, the zoom). No printing yet.
+// writer -- Onyx's word processor, in the way of AbiWord / Word: the document laid out on pages (A4
+// by default) and drawn by Writer itself with FreeType's glyphs from the TrueType fonts of the card
+// (user/ft/fonts.h), at any zoom; two toolbars (the file, the edits, a table, the zoom -- the style,
+// the font, the size, bold / italic / underline / strike-through, superscript / subscript, the text's
+// colour and its highlight, the alignments, the lists, the indents), a ruler (the margins, the
+// paragraph's indents, a table's columns dragged), a status bar (the file, the page, the words, the
+// zoom). Tables (rows, columns, merged cells, lines, shading, a heading row), headers and footers (the
+// first page's own), page numbers and fields, tab stops with leaders, a table of contents, the pages
+// kept whole (widows, orphans, headings with their text), a mail merge (a Cardfile's records into a
+// letter). No printing yet.
 //
-// The pieces: doc.h (the document, its formats, undo), layout.h (lines, pages), edit.h (the
-// selection, the edits, the clipboard, find), view.h (the pages drawn, the mouse, the keys), ui.h
-// (the toolbar's buttons, the drop-down lists, the palettes, the ruler, the status bar), icons.h,
-// fileio.h (RTF, text, HTML), dialogs.h (Font, Paragraph, Page Setup, Find & Replace, Special
-// Character, Date and Time, Word Count).
+// The pieces: doc.h (the document, its formats, tables, fields, stories, undo), layout.h (lines,
+// tables, pages), edit.h (the selection, the edits, the tables' changes, the clipboard, find), view.h
+// (the pages drawn, the mouse, the keys), ui.h (the toolbar's buttons, the drop-down lists, the
+// palettes, the ruler, the status bar), icons.h, fileio.h (RTF, text, HTML), xml.h, docx.h (Word),
+// odt.h (OpenDocument), dialogs.h (Font, Paragraph, Tabs, Page Setup, Page Numbers, Insert Table,
+// Table Properties, Field, Find & Replace, Special Character, Date and Time, Word Count), merge.h (the
+// mail merge: its data, its fields, its documents).
 //
-// Files: .rtf (read and written with the formats: the default), .txt (plain text), anything else
-// read as text; File > Export writes HTML or text. A file dropped on the window is opened, dropped
-// text inserted; "writer SD:/docs/a.rtf" opens it. Closed with unsaved changes, the document is
-// kept in SD:/apps/writer.app/recovered.rtf and offered back at the next start.
+// Files: .rtf (the default), .docx (Word), .odt (OpenDocument): read and written with the formats;
+// .txt (plain text); anything else read as text; File > Export writes HTML or text. A file dropped on
+// the window is opened, dropped text inserted; "writer SD:/docs/a.odt" opens it; "writer --merge
+// JOB" makes a mail merge's documents (Cardfile asks it: merge.h). Closed with unsaved changes, the
+// document is kept in SD:/apps/writer.app/recovered.rtf and offered back at the next start.
 //
 #include "wtk/wtk.h"
 #include "docguard.h"
 #include "ft/fonts.h"
 #include "ui.h"
 #include "fileio.h"
+#include "docx.h"
+#include "odt.h"
 #include "dialogs.h"
+#include "merge.h"
 
 using namespace wtk;
 using namespace wr;
@@ -62,17 +72,20 @@ static bool has_ext (const char *p, const char *ext)
 	for (int i = 0; i < e; i++) if (lower ((unsigned char) p[n - e + i]) != lower ((unsigned char) ext[i])) return false;
 	return true;
 }
+static bool rich_ext (const char *p) { return has_ext (p, ".rtf") || has_ext (p, ".docx") || has_ext (p, ".odt"); }
 
 // ---- files -----------------------------------------------------------------------------------------------
 static void doc_loaded ()
 {
 	L.d = &g_doc;
 	layout_reset_fonts ();
-	for (int i = 0; i < g_doc.n; i++) g_doc.p[i]->dirty = true;
+	doc_dirty_all (g_doc);
 	g_caret = g_anchor = mkpos (0, 0); g_atEnd = false; g_typeCf = -1; g_goalX = -1;
+	g_bodyCaret = g_bodyAnchor = mkpos (0, 0); L.hfPage = 0;
 	g_relayout = true;
 	g_saved = g_doc.changes;
 	g_countDirty = true;
+	merge_doc_loaded ();
 	if (g_view) { g_view->sx = g_view->sy = 0; g_view->invalidate (true); }
 	refresh ();
 }
@@ -96,22 +109,20 @@ static bool load_path (const char *path)
 {
 	char *b; int n;
 	if (!read_file (path, &b, &n)) { wk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
-	if (rtf_is (b, n)) rtf_load (g_doc, b, n); else txt_load (g_doc, b, n);
-	if (g_doc.n == 0) doc_new (g_doc);
+	bool ok = doc_from_bytes (g_doc, b, n);
 	delete[] b;
-	scpy (g_path, path, sizeof g_path);
+	if (!ok) { doc_new (g_doc); wk_messagebox ("Open", "The document could not be read.", MB_OK); }
+	if (g_doc.n == 0) doc_new (g_doc);
+	scpy (g_path, ok ? path : "", sizeof g_path);
 	doc_loaded ();
-	return true;
+	return ok;
 }
 
 static bool write_path (const char *path, bool asCopy = false)
 {
-	Out o;
-	if (has_ext (path, ".txt")) txt_save (g_doc, o);
-	else if (has_ext (path, ".html") || has_ext (path, ".htm")) html_save (g_doc, o, base_name (path));
-	else rtf_save (g_doc, o);
-	bool ok = kapi_save_file (path, o.b, (unsigned) o.n) >= 0;
-	o.free ();
+	char *b = 0; unsigned n = 0;
+	bool ok = doc_bytes (g_doc, path, &b, &n) && kapi_save_file (path, b, n) >= 0;
+	delete[] b;
 	if (!ok) { wk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
 	if (!asCopy) { scpy (g_path, path, sizeof g_path); g_saved = g_doc.changes; }
 	refresh ();
@@ -121,13 +132,13 @@ static bool write_path (const char *path, bool asCopy = false)
 static void cmd_save_as ();
 static void cmd_save ()
 {
-	if (!g_path[0] || !(has_ext (g_path, ".rtf") || has_ext (g_path, ".txt"))) { cmd_save_as (); return; }
+	if (!g_path[0] || !(rich_ext (g_path) || has_ext (g_path, ".txt"))) { cmd_save_as (); return; }
 	if (has_ext (g_path, ".txt"))					// (formats would be lost: only when plain)
 	{
-		bool plain = true;
+		bool plain = g_doc.ntbl == 0;
 		CharFmt n0 = style_fmt (g_doc, ST_NORMAL);
 		for (int i = 0; i < g_doc.nfmt && plain; i++) { const CharFmt &f = g_doc.fmt[i]; if (f.flags || f.color != AUTO || f.hilite != AUTO || (f.font != n0.font && f.size != n0.size)) plain = false; }
-		if (!plain && wk_messagebox ("Save", "Plain text keeps no formats (bold, fonts, colours...). Save as text anyway?", MB_YESNO) != 1) { cmd_save_as (); return; }
+		if (!plain && wk_messagebox ("Save", "Plain text keeps no formats (bold, fonts, colours, tables...). Save as text anyway?", MB_YESNO) != 1) { cmd_save_as (); return; }
 	}
 	write_path (g_path);
 	focus_view ();
@@ -137,7 +148,7 @@ static void cmd_save_as ()
 	char path[200];
 	char def[80];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled.rtf", sizeof def);
-	if (g_path[0] && !has_ext (def, ".rtf") && !has_ext (def, ".txt"))
+	if (g_path[0] && !rich_ext (def) && !has_ext (def, ".txt"))
 	{
 		int n = slen (def); while (n > 0 && def[n - 1] != '.') n--;
 		if (n > 0) def[n - 1] = 0;
@@ -145,7 +156,7 @@ static void cmd_save_as ()
 	}
 	if (wk_file_save (path, sizeof path, "SD:/docs", def))
 	{
-		if (!has_ext (path, ".rtf") && !has_ext (path, ".txt")) { int k = slen (path); scpy (path + k, ".rtf", (int) sizeof path - k); }
+		if (!rich_ext (path) && !has_ext (path, ".txt")) { int k = slen (path); scpy (path + k, ".rtf", (int) sizeof path - k); }
 		write_path (path);
 	}
 	focus_view ();
@@ -211,8 +222,6 @@ static void cmd_numbers () { ed_para (pf_list, LS_NUMBER); after_edit (); }
 static void cmd_indent () { ed_para (pf_indent, 1); after_edit (); }
 static void cmd_outdent () { ed_para (pf_indent, -1); after_edit (); }
 static void cmd_clear_format () { ed_clear_format (); after_edit (); }
-static void cmd_grow () { CfChange c; c.what = CH_GROW; c.size = 1; ed_format (c); after_edit (); }
-static void cmd_shrink () { CfChange c; c.what = CH_GROW; c.size = -1; ed_format (c); after_edit (); }
 static void apply_color (unsigned c) { CfChange ch; ch.what = CH_COLOR; ch.color = c; ed_format (ch); after_edit (); }
 static void apply_hilite (unsigned c) { CfChange ch; ch.what = CH_HILITE; ch.hilite = c; ed_format (ch); after_edit (); }
 static void cmd_color () { apply_color (g_textColor); }
@@ -237,10 +246,12 @@ static void drop_hilite (ToolButton &b)
 }
 static void cmd_font_dialog () { if (dlg_font ()) after_edit (); else focus_view (); }
 static void cmd_para_dialog () { if (dlg_paragraph ()) after_edit (); else focus_view (); }
+static void cmd_tabs () { if (dlg_tabs ()) after_edit (); else focus_view (); }
 static void cmd_page_setup () { if (dlg_page_setup ()) { g_relayout = true; g_view->invalidate (true); g_ruler->invalidate (true); after_edit (); } else focus_view (); }
 static void cmd_word_count () { dlg_word_count (); focus_view (); }
 static void cmd_symbol () { dlg_symbol (); after_edit (); }
 static void cmd_datetime () { dlg_datetime (); after_edit (); }
+static void cmd_field () { dlg_field (); after_edit (); }
 static void cmd_page_break () { ed_page_break (); after_edit (); }
 static void cmd_image ()
 {
@@ -251,17 +262,59 @@ static void cmd_image ()
 	}
 	after_edit ();
 }
-static void cmd_page_numbers () { g_doc.page.numbers = !g_doc.page.numbers; g_doc.changes++; g_view->invalidate (true); refresh (); focus_view (); }
+static void cmd_page_numbers () { if (dlg_page_numbers ()) { g_doc.changes++; after_edit (); } else focus_view (); }
 static void cmd_marks () { g_showMarks = !g_showMarks; g_btn[IC_PILCROW]->setOn (g_showMarks); g_view->invalidate (true); focus_view (); }
 static void cmd_units () { g_inches = !g_inches; g_ruler->invalidate (true); focus_view (); }
 static void set_style (int st) { ed_para (pf_style, st); after_edit (); }
+// The header / footer of the page at the caret edited (Esc, or a double click on the body: back).
+static void cmd_header_footer ()
+{
+	if (g_doc.cur != SY_BODY) { ed_story (SY_BODY); after_edit (); return; }
+	const Para *q = g_doc.p[g_caret.p];
+	L.hfPage = q->nln ? q->ln[line_of (q, g_caret.o, g_atEnd)].page : 0;
+	ed_story (hf_story (false, L.hfPage));
+	after_edit ();
+}
+static void cmd_toc () { ed_toc (false); after_edit (); }
+static void cmd_mail_merge () { dlg_mail_merge (g_view); after_edit (); }
+static void cmd_toc_update () { ed_toc (true); after_edit (); }
+
+// ---- tables ------------------------------------------------------------------------------------------------
+static bool in_tbl () { return g_doc.cur == SY_BODY && in_table (g_doc.p[sel_a ().p]); }
+static void table_cmd (void (*fn) ()) { if (in_tbl ()) fn (); after_edit (); }
+static void cmd_table () { if (!in_tbl () && dlg_insert_table ()) after_edit (); else focus_view (); }
+static void drop_table (ToolButton &b)
+{
+	int x = 0, y = 0;
+	for (Widget *w = &b; w && w->parent; w = w->parent) { x += w->left; y += w->top; }
+	TableGrid g (x, y + b.height + 2);
+	int r, c;
+	if (g.pick (&r, &c) && !in_tbl ()) { ed_insert_table (r, c); after_edit (); }
+	else focus_view ();
+}
+static void rows_above () { ed_table_rows (false); }
+static void rows_below () { ed_table_rows (true); }
+static void cols_left () { ed_table_cols (false); }
+static void cols_right () { ed_table_cols (true); }
+static void cmd_rows_above () { table_cmd (rows_above); }
+static void cmd_rows_below () { table_cmd (rows_below); }
+static void cmd_cols_left () { table_cmd (cols_left); }
+static void cmd_cols_right () { table_cmd (cols_right); }
+static void cmd_del_rows () { table_cmd (ed_table_del_rows); }
+static void cmd_del_cols () { table_cmd (ed_table_del_cols); }
+static void cmd_del_table () { table_cmd (ed_table_delete); }
+static void cmd_merge () { table_cmd (ed_table_merge); }
+static void cmd_split () { table_cmd (ed_table_split); }
+static void cmd_even () { table_cmd (ed_table_even); }
+static void sel_table () { ed_table_select (SEL_TABLE); }
+static void cmd_sel_table () { table_cmd (sel_table); }
+static void cmd_table_props () { if (in_tbl () && dlg_table_props ()) after_edit (); else focus_view (); }
 
 // ---- the zoom --------------------------------------------------------------------------------------------
 static const int ZOOMS[] = { 25, 50, 75, 100, 125, 150, 200, 300, 400 };
 static void zoom_to (int z)
 {
 	if (z == L.zoom) return;
-	// (the caret's place kept on the screen)
 	set_zoom (z);
 	g_relayout = true;
 	g_view->relayout ();
@@ -290,7 +343,8 @@ static void cmd_zoom_page ()
 }
 
 // ---- the toolbar's boxes ---------------------------------------------------------------------------------
-static const char *const STYLE_NAMES[ST_COUNT] = { "Normal", "Heading 1", "Heading 2", "Heading 3", "Title", "Subtitle", "Quote", "Plain Text" };
+static const char *const STYLE_NAMES[ST_COUNT] = { "Normal", "Heading 1", "Heading 2", "Heading 3", "Title", "Subtitle", "Quote", "Plain Text",
+						   "Contents 1", "Contents 2", "Contents 3", "Contents Heading", "Header", "Footer" };
 
 // A text in a font (a family of the card), vertically centred, clipped to w.
 static void text_in_font (Canvas &cv, int fam, int style, int size64, int x, int y, int w, int h, const char *s, unsigned ink)
@@ -324,7 +378,7 @@ static void pick_style (PickBox &b)
 }
 static void font_value (Canvas &cv, int x, int y, int w, int h, unsigned ink)
 {
-	const CharFmt &f = g_doc.fmt[caret_cf ()];
+	CharFmt f = caret_fmt ();
 	char b[48]; scpy (b, g_doc.fontName[f.font], sizeof b);
 	int maxc = w / wk_fw ();
 	if (slen (b) > maxc && maxc > 3) { b[maxc - 2] = '.'; b[maxc - 1] = '.'; b[maxc] = 0; }
@@ -337,7 +391,7 @@ static void font_row (Canvas &cv, int i, int x, int y, int w, int h, unsigned in
 static void pick_font (PickBox &b)
 {
 	int x, y; b.below (&x, &y);
-	const CharFmt &f = g_doc.fmt[caret_cf ()];
+	CharFmt f = caret_fmt ();
 	ListPopup lp (x, y, 250, fnt::count (), 28, font_family (f.font), font_row);
 	int r = lp.pick ();
 	if (r >= 0)
@@ -373,15 +427,28 @@ static void pick_zoom (PickBox &b)
 static void context_menu (int x, int y)
 {
 	PopupMenu m (x + g_view->left, y + g_view->top);
+	int a, b, head;
+	bool tbl = in_tbl (), toc = g_doc.cur == SY_BODY && toc_find (&a, &b, &head) && sel_a ().p >= (head >= 0 ? head : a) && sel_a ().p < b;
 	m.add ("Cut", 1, has_sel (), "^X");
 	m.add ("Copy", 2, has_sel (), "^C");
 	m.add ("Paste", 3, true, "^V");
-	m.add ("Paste Unformatted", 4, true);
 	m.separator ();
 	m.add ("Font...", 5, true, "^D");
 	m.add ("Paragraph...", 6, true);
-	m.add ("Bullets", 7, true);
-	m.add ("Numbering", 8, true);
+	if (tbl)
+	{
+		m.separator ();
+		m.add ("Insert Row Below", 20, true);
+		m.add ("Insert Column Right", 21, true);
+		m.add ("Delete Rows", 22, true);
+		m.add ("Delete Columns", 23, true);
+		m.add ("Merge Cells", 24, has_sel ());
+		m.add ("Split Cell", 25, true);
+		m.add ("Table Properties...", 26, true);
+	}
+	else if (toc) { m.separator (); m.add ("Update Table of Contents", 30, true); }
+	else if (g_doc.cur != SY_BODY) { m.separator (); m.add ("Close Header and Footer", 31, true, "Esc"); }
+	else { m.add ("Bullets", 7, true); m.add ("Numbering", 8, true); }
 	m.separator ();
 	m.add ("Select All", 9, true, "^A");
 	switch (m.run ())
@@ -389,12 +456,20 @@ static void context_menu (int x, int y)
 	case 1: cmd_cut (); break;
 	case 2: cmd_copy (); break;
 	case 3: cmd_paste (); break;
-	case 4: cmd_paste_plain (); break;
 	case 5: cmd_font_dialog (); break;
 	case 6: cmd_para_dialog (); break;
 	case 7: cmd_bullets (); break;
 	case 8: cmd_numbers (); break;
 	case 9: cmd_select_all (); break;
+	case 20: cmd_rows_below (); break;
+	case 21: cmd_cols_right (); break;
+	case 22: cmd_del_rows (); break;
+	case 23: cmd_del_cols (); break;
+	case 24: cmd_merge (); break;
+	case 25: cmd_split (); break;
+	case 26: cmd_table_props (); break;
+	case 30: cmd_toc_update (); break;
+	case 31: cmd_header_footer (); break;
 	default: focus_view ();
 	}
 }
@@ -404,7 +479,7 @@ static void refresh ()
 {
 	if (!g_view) return;
 	g_view->relayout ();
-	const CharFmt &f = g_doc.fmt[caret_cf ()];
+	CharFmt f = caret_fmt ();
 	const Para *q = g_doc.p[sel_a ().p];
 	g_btn[IC_BOLD]->setOn (f.flags & CF_BOLD);
 	g_btn[IC_ITALIC]->setOn (f.flags & CF_ITALIC);
@@ -422,6 +497,7 @@ static void refresh ()
 	g_btn[IC_REDO]->setDisabled (g_doc.uptr >= g_doc.nundo);
 	g_btn[IC_CUT]->setDisabled (!has_sel ());
 	g_btn[IC_COPY]->setDisabled (!has_sel ());
+	g_btn[IC_TABLE]->setDisabled (in_tbl () || g_doc.cur != SY_BODY);
 	g_sizeBox->setValue (f.size);
 	g_styleBox->invalidate (true); g_fontBox->invalidate (true); g_zoomBox->invalidate (true);
 	g_ruler->invalidate (true);
@@ -432,12 +508,13 @@ static void refresh ()
 	for (const char *s = name; *s && n < 140; s++) l[n++] = *s;
 	if (changed_doc ()) { const char *s = "  (modified)"; while (*s) l[n++] = *s++; }
 	l[n] = 0;
-	const Para *cq = g_doc.p[g_caret.p];
-	int page = cq->nln ? cq->ln[line_of (cq, g_caret.o, g_atEnd)].page + 1 : 1;
+	int page = L.hfPage + 1;
+	if (g_doc.cur == SY_BODY) { const Para *cq = g_doc.p[g_caret.p]; page = cq->nln ? cq->ln[line_of (cq, g_caret.o, g_atEnd)].page + 1 : 1; }
 	auto num = [] (char *b, int &k, int v) { char t[12]; int j = 0; do { t[j++] = (char) ('0' + v % 10); v /= 10; } while (v); while (j) b[k++] = t[--j]; };
 	int k = 0;
+	if (g_doc.cur != SY_BODY) { for (const char *s = STORY_NAMES[g_doc.cur]; *s && k < 30; s++) m[k++] = *s; for (const char *s = " - "; *s; s++) m[k++] = *s; }
 	for (const char *s = "Page "; *s; s++) m[k++] = *s;
-	num (m, k, page);
+	num (m, k, page + g_doc.page.start - 1);
 	for (const char *s = " of "; *s; s++) m[k++] = *s;
 	num (m, k, L.npages);
 	for (const char *s = "     Words: "; *s; s++) m[k++] = *s;
@@ -456,10 +533,11 @@ public:
 	{
 		if (g_view) g_view->tick ();
 		unsigned t = kapi_get_ticks ();
-		if (g_countDirty && t - g_countT > 40)			// (the words counted when typing pauses)
+		if (g_countDirty && t - g_countT > 40)			// (the words counted when typing pauses: the body's)
 		{
 			g_countDirty = false; g_countT = t;
-			Counts c = doc_count (g_doc, mkpos (0, 0), doc_end (g_doc));
+			int n; Para **p = story_p (g_doc, SY_BODY, &n);
+			Counts c = para_count (p, mkpos (0, 0), mkpos (n - 1, p[n - 1]->len));
 			if (c.words != g_words) { g_words = c.words; refresh (); g_countDirty = false; }
 		}
 	}
@@ -492,8 +570,17 @@ static ToolButton *button (ToolBar *tb, int ic, const char *tip, void (*cb) (), 
 	return b;
 }
 
+static void now_hook (int *y, int *mo, int *d, int *h, int *mi, int *s) { now_datetime (y, mo, d, h, mi, s); }
+
 int main (void)
 {
+	char args[200];
+	int an = kapi_get_args (args, sizeof args);
+	if (an < 0) an = 0;
+	args[an < (int) sizeof args ? an : (int) sizeof args - 1] = 0;
+	const char *job = 0;					// "--merge JOB": a mail merge's documents
+	if (an > 8 && args[0] == '-' && args[1] == '-' && args[2] == 'm') { job = args + 7; while (*job == ' ') job++; }
+	g_now = now_hook;
 	WriterRoot root;
 	wtk::init ();
 	if (!fnt::init ())
@@ -502,8 +589,7 @@ int main (void)
 		return 1;
 	}
 	make_palettes ();
-	doc_init (g_doc);
-	doc_new (g_doc);
+	doc_init (g_doc); doc_new (g_doc);
 	L.d = &g_doc; L.zoom = 100;
 
 	// the toolbars
@@ -525,6 +611,8 @@ int main (void)
 	button (tb1, IC_PILCROW, "Formatting marks", cmd_marks);
 	tb1->sep ();
 	button (tb1, IC_PAGEBREAK, "Page break", cmd_page_break);
+	ToolButton *tt = button (tb1, IC_TABLE, "Insert a table (its arrow: a grid)", cmd_table, 1, true);
+	tt->arrow = drop_table;
 	button (tb1, IC_SYMBOL, "Special character...", cmd_symbol);
 	button (tb1, IC_IMAGE, "Insert an image...", cmd_image);
 	tb1->sep ();
@@ -600,23 +688,27 @@ int main (void)
 	menu.item ("Select All", "^A", WK_CTRL ('A'), cmd_select_all);
 	menu.item ("Find and Replace...", "^F", WK_CTRL ('F'), cmd_find);
 	menu.menu ("View");
-	menu.item ("Zoom In", "", 0, cmd_zoom_in);
-	menu.item ("Zoom Out", "", 0, cmd_zoom_out);
 	menu.item ("Actual Size (100%)", "", 0, cmd_zoom_100);
 	menu.item ("Page Width", "", 0, cmd_zoom_width);
 	menu.item ("Whole Page", "", 0, cmd_zoom_page);
 	menu.separator ();
+	menu.item ("Header and Footer", "", 0, cmd_header_footer);
 	menu.item ("Formatting Marks", "", 0, cmd_marks);
 	menu.item ("Ruler in Inches / Centimetres", "", 0, cmd_units);
 	menu.menu ("Insert");
 	menu.item ("Page Break", "", 0, cmd_page_break);
+	menu.item ("Table...", "", 0, cmd_table);
 	menu.item ("Image...", "", 0, cmd_image);
 	menu.item ("Special Character...", "", 0, cmd_symbol);
+	menu.separator ();
+	menu.item ("Page Numbers...", "", 0, cmd_page_numbers);
 	menu.item ("Date and Time...", "", 0, cmd_datetime);
-	menu.item ("Page Numbers", "", 0, cmd_page_numbers);
+	menu.item ("Field...", "", 0, cmd_field);
+	menu.item ("Table of Contents", "", 0, cmd_toc);
 	menu.menu ("Format");
 	menu.item ("Font...", "^D", WK_CTRL ('D'), cmd_font_dialog);
 	menu.item ("Paragraph...", "", 0, cmd_para_dialog);
+	menu.item ("Tabs...", "", 0, cmd_tabs);
 	menu.separator ();
 	menu.item ("Bold", "^B", WK_CTRL ('B'), cmd_bold);
 	menu.item ("Italic", "^I", 0, cmd_italic);
@@ -624,8 +716,6 @@ int main (void)
 	menu.item ("Strikethrough", "", 0, cmd_strike);
 	menu.item ("Superscript", "", 0, cmd_super);
 	menu.item ("Subscript", "", 0, cmd_sub);
-	menu.item ("Bigger", "", 0, cmd_grow);
-	menu.item ("Smaller", "", 0, cmd_shrink);
 	menu.item ("Clear Formatting", "", 0, cmd_clear_format);
 	menu.separator ();
 	menu.item ("Align Left", "^L", WK_CTRL ('L'), cmd_left);
@@ -635,16 +725,35 @@ int main (void)
 	menu.separator ();
 	menu.item ("Bullets", "", 0, cmd_bullets);
 	menu.item ("Numbering", "", 0, cmd_numbers);
-	menu.item ("Increase Indent", "", 0, cmd_indent);
-	menu.item ("Decrease Indent", "", 0, cmd_outdent);
+	menu.menu ("Table");
+	menu.item ("Insert Rows Above", "", 0, cmd_rows_above);
+	menu.item ("Insert Rows Below", "", 0, cmd_rows_below);
+	menu.item ("Insert Columns Left", "", 0, cmd_cols_left);
+	menu.item ("Insert Columns Right", "", 0, cmd_cols_right);
+	menu.separator ();
+	menu.item ("Delete Rows", "", 0, cmd_del_rows);
+	menu.item ("Delete Columns", "", 0, cmd_del_cols);
+	menu.item ("Delete Table", "", 0, cmd_del_table);
+	menu.separator ();
+	menu.item ("Merge Cells", "", 0, cmd_merge);
+	menu.item ("Split Cell", "", 0, cmd_split);
+	menu.item ("Distribute Columns Evenly", "", 0, cmd_even);
+	menu.item ("Select Table", "", 0, cmd_sel_table);
+	menu.item ("Table Properties...", "", 0, cmd_table_props);
 	menu.menu ("Tools");
 	menu.item ("Word Count...", "", 0, cmd_word_count);
+	menu.item ("Update Table of Contents", "", 0, cmd_toc_update);
+	menu.item ("Mail Merge...", "", 0, cmd_mail_merge);
 	menu.publish ();
 
-	// A file named on the command line, else the one kept at the last close.
-	char args[200];
-	int an = kapi_get_args (args, sizeof args);
-	if (an > 0 && args[0]) load_path (args);
+	// A mail merge's documents, a file named on the command line, else the one kept at the last close.
+	if (job)
+	{
+		int r = merge_job (job, g_path, sizeof g_path);
+		if (r == 2) load_path (g_path);
+		else { if (r != 1) doc_new (g_doc); g_path[0] = 0; doc_loaded (); if (r == 1) g_saved = g_doc.changes + 1; }
+	}
+	else if (an > 0 && args[0]) load_path (args);
 	else
 	{
 		bool recovered = false;
@@ -672,6 +781,7 @@ int main (void)
 	root.run ();
 
 	// Closed with unsaved changes: the document kept for the next start.
+	if (g_doc.cur != SY_BODY) doc_story (g_doc, SY_BODY);
 	if (changed_doc () && !(g_doc.n == 1 && g_doc.p[0]->len == 0))
 	{
 		Out o;

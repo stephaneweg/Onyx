@@ -1,12 +1,15 @@
 //
 // view.h -- Writer's page view: the pages laid out on a grey desk, one under the other (the
 // document drawn by Writer itself -- FreeType's glyphs, the highlights, the selection, the lists'
-// markers, the page numbers), the caret blinking, the scroll bars; the mouse (a click places the
-// caret, a drag selects, a double click a word, a triple click the paragraph, Shift+click extends;
-// the wheel scrolls; a right click asks the app for its menu) and the keys (typing, the arrows --
-// Ctrl: by word / paragraph, Shift: selecting --, Home / End -- Ctrl: the document's --, Page Up /
-// Down, Enter -- Shift: a line break --, Tab -- in a list: its level --, Backspace / Delete --
-// Ctrl: a word).
+// markers, the tables' shading and lines, the fields shaded, the tab stops' leaders, each page's
+// header and footer), the caret blinking, the scroll bars; the mouse (a click places the caret, a
+// drag selects, a double click a word, a triple click the paragraph, Shift+click extends; a double
+// click on a header or a footer edits it -- the body greyed --, on the body goes back to it; a
+// table's column border dragged; the wheel scrolls; a right click asks the app for its menu) and the
+// keys (typing, the arrows -- Ctrl: by word / paragraph, Shift: selecting; in a table, Up / Down from
+// cell to cell --, Home / End -- Ctrl: the document's --, Page Up / Down, Enter -- Shift: a line
+// break --, Tab -- in a list: its level; in a table: the next cell --, Backspace / Delete -- Ctrl:
+// a word --, Esc: out of a header / footer).
 //
 #ifndef _writer_view_h
 #define _writer_view_h
@@ -41,6 +44,7 @@ public:
 	int docW () const { return L.pageW + 2 * GAP; }
 	int originX () const { int vw = viewW (); return vw > L.pageW + 2 * GAP ? (vw - L.pageW) / 2 : GAP - sx; }
 	int pageTop (int i) const { return GAP + i * (L.pageH + GAP) - sy; }
+	int pageAt (int y) const { int p = y + sy - GAP < 0 ? 0 : (y + sy - GAP) / (L.pageH + GAP); return wclamp (p, 0, L.npages - 1); }
 
 	void relayout ()
 	{
@@ -52,22 +56,18 @@ public:
 		sy = wclamp (sy, 0, wmax (0, docH () - viewH ()));
 		sx = wclamp (sx, 0, wmax (0, docW () - viewW ()));
 	}
+	// The story edited laid out where it shows (a header / footer: on the page it is edited on).
+	void placeStory () { if (L.d->cur != SY_BODY) hf_place (L.d->cur, L.hfPage); }
 
 	// ---- places <-> the screen ----
-	// A place's line in the pages (global index), its caret box (view coords, px).
-	int globalLine (int p, int l) const
-	{
-		int g = 0;
-		for (int i = 0; i < p; i++) g += L.d->p[i]->nln;
-		return g + l;
-	}
 	void caretBox (Pos c, bool atEnd, int *x, int *y, int *h, int *base = 0)
 	{
+		placeStory ();
 		const Para *q = L.d->p[c.p];
 		int l = line_of (q, c.o, atEnd);
 		const Line &ln = q->ln[l];
-		int top = (pageTop (ln.page) << 6) + L.mt64 + ln.py64;
-		*x = ((originX () << 6) + L.ml64 + x_of (c.p, c.o, atEnd)) >> 6;
+		int top = (pageTop (ln.page) << 6) + ln.py64;
+		*x = ((originX () << 6) + q->x64 + x_of (q, c.o, atEnd)) >> 6;
 		// the caret's font's height, on the baseline
 		int cf = c.o > 0 ? q->cf[c.o - 1] : q->len ? q->cf[0] : q->endCf;
 		if (!has_sel () && g_typeCf >= 0) cf = g_typeCf;
@@ -79,27 +79,13 @@ public:
 		if (*h < 4) *h = 4;
 		if (base) *base = b64 >> 6;
 	}
-	// The place under (x, y) of the view (atEnd: the end of a line).
+	// The place under (x, y) of the view, in the story edited (atEnd: the end of a line).
 	Pos hit (int x, int y, bool *atEnd)
 	{
 		*atEnd = false;
-		int page = (y + sy - GAP) / (L.pageH + GAP);
-		if (y + sy - GAP < 0) page = 0;
-		page = wclamp (page, 0, L.npages - 1);
-		int g0 = L.pageFirst[page], g1 = page + 1 < L.npages ? L.pageFirst[page + 1] : L.nall;
-		if (g0 >= g1) { g0 = wmax (0, g0 - 1); g1 = g0 + 1; }
-		int y64 = ((y - pageTop (page)) << 6) - L.mt64;
-		int g = g0;
-		for (int k = g0; k < g1; k++)
-		{
-			const Line &ln = L.d->p[L.all[k].p]->ln[L.all[k].l];
-			g = k;
-			if (y64 < ln.py64 + ln.h64) break;
-		}
-		int p = L.all[g].p, l = L.all[g].l;
-		int x64 = ((x - originX ()) << 6) - L.ml64;
-		int o = offset_at_x (p, l, x64, atEnd);
-		return mkpos (p, o);
+		int page = pageAt (y);
+		int x64 = (x - originX ()) << 6, y64 = (y - pageTop (page)) << 6;
+		return L.d->cur == SY_BODY ? hitBody (page, x64, y64, atEnd) : hitStory (x64, y64, atEnd);
 	}
 
 	// Scroll the caret into view.
@@ -148,10 +134,12 @@ public:
 	{
 		relayout ();
 		m_caretDrawn = false;
-		int vw = viewW (), vh = viewH ();
+		int vh = viewH ();
 		canvas.fillRect (0, 0, width, height, C_DESK ());
 		int ox = originX ();
 		unsigned shadow = wk_mix (C_DESK (), 0, 60);
+		bool inBody = L.d->cur == SY_BODY;
+		int n; Para **bp = story_p (*L.d, SY_BODY, &n);
 		for (int pg = 0; pg < L.npages; pg++)
 		{
 			int pt = pageTop (pg);
@@ -161,14 +149,36 @@ public:
 			fillClip (ox - 1, pt - 1, L.pageW + 2, L.pageH + 2, wk_mix (C_DESK (), 0, 90));
 			fillClip (ox, pt, L.pageW, L.pageH, 0xFFFFFF);
 			cropMarks (ox, pt);
+			// the header and the footer (greyed while the body is edited)
+			for (int f = 0; f < 2; f++)
+			{
+				int s = hf_story (f != 0, pg);
+				if (story_empty (*L.d, s) && L.d->cur != s) continue;
+				hf_place (s, pg);
+				int sn; Para **sp = story_p (*L.d, s, &sn);
+				bool cur = L.d->cur == s;
+				for (int i = 0; i < sn; i++) for (int l = 0; l < sp[i]->nln; l++) drawLine (sp[i], i, l, ox, pt, vh, 0, !cur, cur && pg == L.hfPage);
+			}
+			// the body: the tables' shading, the lines, the tables' lines (greyed while a header is edited)
+			for (int k = 0; k < L.nruns; k++) drawTable (L.runs[k], pg, ox, pt, true);
 			int g1 = pg + 1 < L.npages ? L.pageFirst[pg + 1] : L.nall;
-			for (int g = L.pageFirst[pg]; g < g1; g++) drawLine (L.all[g].p, L.all[g].l, ox, pt, vh);
-			if (L.d->page.numbers) pageNumber (pg, ox, pt);
+			for (int g = L.pageFirst[pg]; g < g1; g++) drawLine (bp[L.all[g].p], L.all[g].p, L.all[g].l, ox, pt, vh, 0, !inBody, inBody);
+			for (int k = 0; k < L.nruns; k++)
+			{
+				const TRun &run = L.runs[k];
+				int dy;
+				if (repeatAt (run.t, pg, &dy))			// (the heading row again on this page)
+					for (int i = run.p0; i < run.p1; i++)
+						if (bp[i]->pf.row == 0) for (int l = 0; l < bp[i]->nln; l++) drawLine (bp[i], i, l, ox, pt, vh, dy, !inBody, false);
+				drawTable (run, pg, ox, pt, false);
+			}
+			if (!inBody) hfFrame (pg, ox, pt);
 		}
+		placeStory ();
 		if (m_drag == 4) { frame (m_rsX, m_rsY, m_rsW, m_rsH, C_ACCENT); frame (m_rsX + 1, m_rsY + 1, m_rsW - 2, m_rsH - 2, 0xFFFFFF); }
+		if (m_drag == 5) for (int y = 0; y < vh; y += 4) fillClip (m_colX, y, 1, 2, C_ACCENT);
 		drawBars ();
 		if (m_caretOn && hasFocus && !has_sel ()) drawCaret ();
-		(void) vw;
 		fnt::trim ();					// (a safe moment: no font held)
 	}
 
@@ -185,6 +195,19 @@ public:
 		}
 		bool press = bl && !m_bl;
 		m_bl = bl != 0;
+		if (!bl && m_drag == 5)						// a column's border let go
+		{
+			m_drag = 0; catchOutside = false;
+			if (m_colRun < L.nruns)
+			{
+				const TRun &run = L.runs[m_colRun];
+				int xTw = px642tw (((m_colX - originX ()) << 6) - run.t->x64);
+				ed_table_col_edge (run.p0, m_colIdx, xTw);
+				ensureVisible ();
+			}
+			invalidate (true);
+			return true;
+		}
 		if (!bl) { if (m_drag) { m_drag = 0; catchOutside = false; } }
 		int hot = mx >= viewW () && my < viewH () ? 1 : hbar () && my >= viewH () && mx < viewW () ? 2 : 0;
 		if (hot != m_barHot && !m_drag) { m_barHot = hot; invalidate (true); }
@@ -195,6 +218,7 @@ public:
 			clampScroll (); invalidate (true);
 			return true;
 		}
+		if (m_drag == 5) { m_colX = wclamp (mx, 0, viewW () - 1); invalidate (true); return true; }
 		if (press && hot)
 		{
 			m_drag = hot == 1 ? 2 : 3; catchOutside = true;
@@ -239,15 +263,37 @@ public:
 				wake ();
 				return true;
 			}
+			if (L.d->cur == SY_BODY && colBorderAt (mx, my, &m_colRun, &m_colIdx))	// a table's column border
+			{
+				setFocus ();
+				m_drag = 5; catchOutside = true; m_colX = mx;
+				invalidate (true);
+				return true;
+			}
 		}
 		if (press)
 		{
 			setFocus ();
-			bool ae; Pos p = hit (mx, my, &ae);
 			unsigned t = kapi_get_ticks ();
 			bool again = t - m_lastClick < 45 && mx - m_lastX < 5 && m_lastX - mx < 5 && my - m_lastY < 5 && m_lastY - my < 5;
 			m_clicks = again ? m_clicks % 3 + 1 : 1;
 			m_lastClick = t; m_lastX = mx; m_lastY = my;
+			int page = pageAt (my), y64 = (my - pageTop (page)) << 6;
+			int zone = y64 < body_top (page) ? 1 : y64 >= body_bot (page) ? 2 : 0;	// (1 the header's, 2 the footer's)
+			if (L.d->cur == SY_BODY && zone && m_clicks == 2)		// a double click on a header / footer: edited
+			{ L.hfPage = page; ed_story (hf_story (zone == 2, page)); m_clicks = 1; }
+			else if (L.d->cur != SY_BODY)
+			{
+				if (zone)
+				{
+					int s = hf_story (zone == 2, page);
+					L.hfPage = page;
+					if (s != L.d->cur) { ed_story (s); m_clicks = 1; }
+				}
+				else if (m_clicks == 2) { ed_story (SY_BODY); m_clicks = 1; }	// a double click on the body: back to it
+				else { wake (); return true; }					// (a click on the body: nothing)
+			}
+			bool ae; Pos p = hit (mx, my, &ae);
 			bool shift = (kapi_get_modifiers () & MOD_SHIFT) != 0;
 			if (m_clicks == 2) { Pos a, b; word_at (p, a, b); set_caret (a, false); set_caret (b, true); m_selA = a; m_selB = b; }
 			else if (m_clicks == 3) { Pos a = mkpos (p.p, 0), b = mkpos (p.p, L.d->p[p.p]->len); set_caret (a, false); set_caret (b, true); m_selA = a; m_selB = b; }
@@ -308,13 +354,17 @@ public:
 			break;
 		case KEY_TAB:
 			if (ctrl) { ed_toggle (CF_ITALIC); break; }	// (^I is Tab's code: Ctrl held, italic)
+			if (in_table (L.d->p[g_caret.p]) && L.d->cur == SY_BODY) { ed_cell_tab (shift); break; }
 			if (L.d->p[sel_a ().p]->pf.list != LS_NONE && (sel_a ().o == 0 || sel_a ().p != sel_b ().p)) { ed_para (pf_indent, shift ? -1 : 1); break; }
 			if (sel_a ().p != sel_b ().p) { ed_para (pf_indent, shift ? -1 : 1); break; }
 			{ unsigned t = '\t'; ed_type (&t, 1, ED_TYPE); }
 			break;
 		case KEY_BACKSPACE: ed_delete (false, ctrl); break;
 		case KEY_DEL: ed_delete (true, ctrl); break;
-		case 27: if (has_sel ()) set_caret (g_caret, false); break;
+		case 27:
+			if (has_sel ()) set_caret (g_caret, false);
+			else if (L.d->cur != SY_BODY) ed_story (SY_BODY);
+			break;
 		default:
 			if ((k >= 32 && k < 127) || (k >= 0xA0 && k < 0x100) || (k > KEY_F12 && k < 0x110000 && k != 0x7F))
 			{ unsigned ch = (unsigned) k; ed_type (&ch, 1, ED_TYPE); }
@@ -326,12 +376,111 @@ public:
 	}
 
 private:
-	bool m_bl; int m_drag;			// 1 selecting, 2 / 3 a scroll bar's thumb, 4 an image's corner
+	bool m_bl; int m_drag;			// 1 selecting, 2 / 3 a scroll bar's thumb, 4 an image's corner, 5 a column's border
 	int m_clicks; unsigned m_lastClick; int m_lastX, m_lastY, m_mx, m_my;
 	Pos m_selA, m_selB;			// a double / triple click's word / paragraph (the drag extends it)
 	bool m_caretOn, m_caretDrawn; unsigned m_blinkT;
 	int m_cx, m_cy, m_cw, m_ch; unsigned m_under[4 * 512];
 	int m_barHot;
+	int m_colRun, m_colIdx, m_colX;		// a column's border dragged: its table (L.runs), the column it ends, where it is
+
+	// ---- hit-testing ----
+	static long vdist (int y64, const Line &ln) { return y64 < ln.py64 ? ln.py64 - y64 : y64 >= ln.py64 + ln.h64 ? y64 - ln.py64 - ln.h64 + 1 : 0; }
+	// In a header / footer: its nearest line.
+	Pos hitStory (int x64, int y64, bool *atEnd)
+	{
+		placeStory ();
+		int bp = 0, bl = 0; long best = -1;
+		for (int i = 0; i < L.d->n; i++)
+			for (int l = 0; l < L.d->p[i]->nln; l++)
+			{
+				long dd = vdist (y64, L.d->p[i]->ln[l]);
+				if (best < 0 || dd < best) { best = dd; bp = i; bl = l; }
+			}
+		const Para *q = L.d->p[bp];
+		return mkpos (bp, offset_at_x (q, bl, x64 - q->x64, atEnd));
+	}
+	// The line of cell (row, x) of a table (its first line going down, its last going up).
+	bool cellLine (const TRun &run, int row, int x64, int dir, int y64, Pos *np, bool *ae)
+	{
+		const Table *t = run.t;
+		int n; Para **p = story_p (*L.d, SY_BODY, &n);
+		int cx = x64 - t->x64, c = 0;
+		while (c < t->ncols - 1 && cx >= t->colX64[c + 1]) c++;
+		int orow, ocol; cell_owner (t, wclamp (row, 0, t->nrows - 1), c, &orow, &ocol);
+		int best = -1, bl = 0; long bd = 0;
+		for (int i = run.p0; i < run.p1; i++)
+		{
+			if (p[i]->pf.row != orow || p[i]->pf.col != ocol) continue;
+			for (int l = 0; l < p[i]->nln; l++)
+			{
+				bool take;					// (down: its first line; up: its last; else the nearest)
+				if (dir > 0) take = best < 0;
+				else if (dir < 0) take = true;
+				else { long dd = vdist (y64, p[i]->ln[l]); take = best < 0 || dd < bd; if (take) bd = dd; }
+				if (take) { best = i; bl = l; }
+			}
+		}
+		if (best < 0) return false;
+		*np = mkpos (best, offset_at_x (p[best], bl, x64 - p[best]->x64, ae));
+		return true;
+	}
+	int runOf (int pi) const { for (int k = 0; k < L.nruns; k++) if (pi >= L.runs[k].p0 && pi < L.runs[k].p1) return k; return -1; }
+	// In the body: in a table's row, the cell under x (the nearest); else the page's nearest line.
+	Pos hitBody (int page, int x64, int y64, bool *atEnd)
+	{
+		int n; Para **p = story_p (*L.d, SY_BODY, &n);
+		for (int k = 0; k < L.nruns; k++)
+		{
+			const Table *t = L.runs[k].t;
+			for (int r = 0; r < t->nrows; r++)
+			{
+				if (t->rowPage[r] != page || y64 < t->rowY64[r] || y64 >= t->rowY64[r] + t->rowH64[r]) continue;
+				Pos np;
+				if (cellLine (L.runs[k], r, x64, 0, y64, &np, atEnd)) return np;
+			}
+		}
+		int g0 = L.pageFirst[page], g1 = page + 1 < L.npages ? L.pageFirst[page + 1] : L.nall;
+		if (g0 >= g1) { g0 = wclamp (g0 - 1, 0, L.nall - 1); g1 = g0 + 1; }
+		int best = g0; long bd = -1;
+		int padX = tw2px64 (CELL_PAD_X);
+		for (int g = g0; g < g1; g++)
+		{
+			const Para *q = p[L.all[g].p];
+			long dd = vdist (y64, q->ln[L.all[g].l]) * 4;
+			if (in_table (q))
+			{
+				int x0 = q->x64 - padX, x1 = q->x64 + q->w64 + padX;
+				dd += x64 < x0 ? x0 - x64 : x64 > x1 ? x64 - x1 : 0;
+			}
+			if (bd < 0 || dd < bd) { bd = dd; best = g; }
+		}
+		const Para *q = p[L.all[best].p];
+		return mkpos (L.all[best].p, offset_at_x (q, L.all[best].l, x64 - q->x64, atEnd));
+	}
+	// A table's column border under (x, y): its table (L.runs), the column it ends.
+	bool colBorderAt (int x, int y, int *run, int *col)
+	{
+		int page = pageAt (y), ox = originX ();
+		int y64 = (y - pageTop (page)) << 6;
+		for (int k = 0; k < L.nruns; k++)
+		{
+			const Table *t = L.runs[k].t;
+			for (int r = 0; r < t->nrows; r++)
+			{
+				if (t->rowPage[r] != page || y64 < t->rowY64[r] || y64 >= t->rowY64[r] + t->rowH64[r]) continue;
+				for (int c = 1; c <= t->ncols; c++)
+				{
+					int bx = ox + ((t->x64 + t->colX64[c]) >> 6);
+					if (x < bx - 2 || x > bx + 2) continue;
+					if (c < t->ncols) { int orow, ocol; cell_owner (t, r, c, &orow, &ocol); if (ocol < c) continue; }	// (inside a merged cell)
+					*run = k; *col = c - 1;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 
 	void dragTo (int mx, int my)
 	{
@@ -347,20 +496,68 @@ private:
 		invalidate (true);
 	}
 
+	// ---- Up / Down ----
+	// The line after / before (p, l) in the story edited.
+	bool lineStep (int p, int l, int dir, int *tp, int *tl)
+	{
+		if (dir > 0) { if (l + 1 < L.d->p[p]->nln) { *tp = p; *tl = l + 1; return true; } if (p + 1 >= L.d->n) return false; *tp = p + 1; *tl = 0; return true; }
+		if (l > 0) { *tp = p; *tl = l - 1; return true; }
+		if (p == 0) return false;
+		*tp = p - 1; *tl = L.d->p[p - 1]->nln - 1;
+		return true;
+	}
+	// From a cell's first / last line: the cell above / below (the column under the goal), else out of
+	// the table.
+	bool tableStep (int pi, int dir, int gx, Pos *np, bool *ae)
+	{
+		int k = runOf (pi);
+		if (k < 0) return false;
+		const TRun &run = L.runs[k];
+		const Para *q = L.d->p[pi];
+		int r = q->pf.row, nr = dir > 0 ? r + tcell (run.t, r, q->pf.col).rs : r - 1;
+		if (nr >= 0 && nr < run.t->nrows) return cellLine (run, nr, gx, dir, 0, np, ae);
+		int tp = dir > 0 ? run.p1 : run.p0 - 1;
+		if (tp < 0 || tp >= L.d->n) return false;
+		return lineIn (tp, dir, gx, np, ae);
+	}
+	// Paragraph tp's first line (going down) or last (going up) at the goal -- a table's: its cell
+	// under the goal in its first / last row.
+	bool lineIn (int tp, int dir, int gx, Pos *np, bool *ae)
+	{
+		int k = runOf (tp);
+		if (k >= 0 && L.d->cur == SY_BODY) return cellLine (L.runs[k], dir > 0 ? 0 : L.runs[k].t->nrows - 1, gx, dir, 0, np, ae);
+		const Para *q = L.d->p[tp];
+		int l = dir > 0 ? 0 : q->nln - 1;
+		*np = mkpos (tp, offset_at_x (q, l, gx - q->x64, ae));
+		return true;
+	}
 	void verticalMove (int dir, bool shift)
 	{
 		relayout ();
+		placeStory ();
 		Pos c = g_caret;
 		const Para *q = L.d->p[c.p];
 		int l = line_of (q, c.o, g_atEnd);
-		if (g_goalX < 0) g_goalX = x_of (c.p, c.o, g_atEnd);
-		int g = globalLine (c.p, l) + dir;
-		if (g < 0) { set_caret (mkpos (0, 0), shift); return; }
-		if (g >= L.nall) { set_caret (doc_end (*L.d), shift); return; }
+		if (g_goalX < 0) g_goalX = q->x64 + x_of (q, c.o, g_atEnd);
 		int gx = g_goalX;
-		bool ae;
-		int o = offset_at_x (L.all[g].p, L.all[g].l, gx, &ae);
-		set_caret (mkpos (L.all[g].p, o), shift, ae);
+		bool ae = false; Pos np;
+		if (L.d->cur == SY_BODY && in_table (q))
+		{
+			int ca, cb; cell_span (*L.d, c.p, &ca, &cb);
+			bool edge = dir > 0 ? c.p == cb - 1 && l == q->nln - 1 : c.p == ca && l == 0;
+			if (edge)
+			{
+				if (tableStep (c.p, dir, gx, &np, &ae)) set_caret (np, shift, ae);
+				else set_caret (dir < 0 ? mkpos (0, 0) : doc_end (*L.d), shift);
+				g_goalX = gx;
+				return;
+			}
+		}
+		int tp, tl;
+		if (!lineStep (c.p, l, dir, &tp, &tl)) set_caret (dir < 0 ? mkpos (0, 0) : doc_end (*L.d), shift);
+		else if (tp != c.p && in_table (L.d->p[tp]) && L.d->cur == SY_BODY && !(in_table (q) && same_cell (q, L.d->p[tp])))
+		{ if (lineIn (tp, dir, gx, &np, &ae)) set_caret (np, shift, ae); }
+		else { const Para *tq = L.d->p[tp]; int o = offset_at_x (tq, tl, gx - tq->x64, &ae); set_caret (mkpos (tp, o), shift, ae); }
 		g_goalX = gx;
 	}
 	void pageMove (int dir, bool shift)
@@ -369,14 +566,15 @@ private:
 		int x, y, h;
 		caretBox (g_caret, g_atEnd, &x, &y, &h);
 		int d = viewH () - 40;
-		int gx = g_goalX >= 0 ? g_goalX : x_of (g_caret.p, g_caret.o, g_atEnd);
+		const Para *q = L.d->p[g_caret.p];
+		int gx = g_goalX >= 0 ? g_goalX : q->x64 + x_of (q, g_caret.o, g_atEnd);
 		sy += dir * d; clampScroll ();
 		bool ae; Pos p = hit (x, wclamp (y + h / 2, 0, viewH () - 1), &ae);
-		(void) gx;
 		set_caret (p, shift, ae);
 		g_goalX = gx;
 	}
 
+	// ---- drawing ----
 	void fillClip (int x, int y, int w, int h, unsigned c)
 	{
 		int x1 = wmin (x + w, viewW ()), y1 = wmin (y + h, viewH ());
@@ -394,49 +592,125 @@ private:
 		fillClip (x0 - m, y1, m, 1, c); fillClip (x0 - 1, y1, 1, m, c);
 		fillClip (x1, y1, m, 1, c); fillClip (x1, y1, 1, m, c);
 	}
-	void pageNumber (int pg, int ox, int pt)
+	// While a header / footer is edited: the edges of the page's header and footer, their names.
+	void hfFrame (int pg, int ox, int pt)
 	{
-		unsigned buf[12]; int n = 0; int v = pg + 1; char t[12]; int j = 0;
-		while (v) { t[j++] = (char) ('0' + v % 10); v /= 10; }
-		while (j) buf[n++] = (unsigned char) t[--j];
-		fnt::Font *f = cf_font (doc_fmt (*L.d, style_fmt (*L.d, ST_NORMAL)));
-		if (!f) return;
-		int w = 0; for (int i = 0; i < n; i++) w += fnt::advance (f, buf[i]);
-		int x64 = (ox << 6) + L.ml64 + (L.textW64 - w) / 2;
-		int y = pt + L.pageH - (L.mb64 >> 7) + (f->ascent >> 7);
-		for (int i = 0; i < n; i++) { fnt::draw (canvas, f, x64, y, buf[i], 0x404040, 0, 0, viewW (), viewH ()); x64 += fnt::advance (f, buf[i]); }
+		for (int f = 0; f < 2; f++)
+		{
+			int s = hf_story (f != 0, pg);
+			int y = pt + ((f ? body_bot (pg) : body_top (pg)) >> 6);
+			unsigned c = s == L.d->cur ? C_ACCENT : wk_mix (0xFFFFFF, C_ACCENT, 120);
+			for (int x = ox + 2; x < ox + L.pageW - 2; x += 6) fillClip (x, y, 3, 1, c);
+			const char *nm = STORY_NAMES[s];
+			int tw = wk_text_w (nm) + 12, th = 18, tx = ox + (L.ml64 >> 6), ty = f ? y - th : y + 1;
+			if (ty < 0 || ty + th > viewH () || tx + tw > viewW ()) continue;
+			canvas.fillRect (tx, ty, tw, th, wk_mix (0xFFFFFF, C_ACCENT, 50));
+			canvas.text (tx + 6, ty + 2, nm, s == L.d->cur ? C_ACCENT : 0x707070);
+		}
+	}
+	// A table's heading row drawn again on page pg (it runs on from an earlier one): its shift.
+	static bool repeatAt (const Table *t, int pg, int *dy)
+	{
+		if (!t->header || t->nrows < 2 || t->rowPage[0] >= pg) return false;
+		for (int r = 1; r < t->nrows; r++)
+			if (t->rowPage[r] == pg)
+			{
+				if (t->rowY64[r] < body_top (pg) + t->rowH64[0]) return false;
+				*dy = body_top (pg) - t->rowY64[0];
+				return true;
+			}
+		return false;
+	}
+	// A table's rows on page pg: their cells' shading (fills), or their lines.
+	void drawTable (const TRun &run, int pg, int ox, int pt, bool fills)
+	{
+		const Table *t = run.t;
+		int bw = wmax (1, (t->bw * L.zoom + 300) / 600);		// (eighths of a point, at 96 dpi)
+		unsigned bc = t->bcolor == AUTO ? 0 : t->bcolor;
+		if (L.d->cur != SY_BODY) bc = wk_mix (bc, 0xFFFFFF, 150);
+		int dy = 0;
+		bool rep = repeatAt (t, pg, &dy);
+		for (int r = rep ? -1 : 0; r < t->nrows; r++)
+		{
+			int row = r < 0 ? 0 : r, off = r < 0 ? dy : 0;
+			if (r >= 0 && t->rowPage[r] != pg) continue;
+			bool firstOnPage = r < 0 || r == 0 || t->rowPage[r - 1] != pg;
+			for (int c = 0; c < t->ncols; c++)
+			{
+				const TCell &cl = tcell (t, row, c);
+				if (cl.covered) continue;
+				int re = wmin (row + (int) cl.rs, t->nrows) - 1, ce = wmin (c + (int) cl.cs, t->ncols);
+				if (r < 0) re = 0;
+				int x0 = ox + ((t->x64 + t->colX64[c]) >> 6), x1 = ox + ((t->x64 + t->colX64[ce]) >> 6);
+				int y0 = pt + ((t->rowY64[row] + off) >> 6), y1 = pt + ((t->rowY64[re] + t->rowH64[re] + off) >> 6);
+				if (fills) { if (cl.fill != AUTO) fillClip (x0, y0, x1 - x0, y1 - y0, L.d->cur != SY_BODY ? wk_mix (cl.fill, 0xFFFFFF, 150) : cl.fill); continue; }
+				bool lastOnPage = re == t->nrows - 1 || t->rowPage[re + 1] != pg || r < 0;
+				bool top = false, bot = false, lft = false, rgt = false;
+				switch (t->border)
+				{
+				case TB_ALL: top = bot = lft = rgt = true; break;
+				case TB_OUTER: top = firstOnPage; bot = lastOnPage; lft = c == 0; rgt = ce == t->ncols; break;
+				case TB_ROWS: top = bot = true; break;
+				}
+				if (t->border == TB_NONE)				// (the grid shown faintly: not printed)
+				{
+					unsigned g = 0xC9D3E6;
+					for (int x = x0; x < x1; x += 3) { fillClip (x, y0, 1, 1, g); fillClip (x, y1, 1, 1, g); }
+					for (int y = y0; y < y1; y += 3) { fillClip (x0, y, 1, 1, g); fillClip (x1, y, 1, 1, g); }
+					continue;
+				}
+				if (top) fillClip (x0, y0, x1 - x0 + bw, bw, bc);
+				if (bot) fillClip (x0, y1, x1 - x0 + bw, bw, bc);
+				if (lft) fillClip (x0, y0, bw, y1 - y0 + bw, bc);
+				if (rgt) fillClip (x1, y0, bw, y1 - y0 + bw, bc);
+			}
+		}
+	}
+	// A tab's leader (dots, dashes, a line) from x0 to x1 (1/64 px), on a grid of the page's.
+	void leader (int kind, int x0, int x1, int base, fnt::Font *font, unsigned col, int ox, int vh)
+	{
+		if (kind == TL_LINE) { fillClip ((x0 >> 6) + 2, base + 1, ((x1 - x0) >> 6) - 4, 1, col); return; }
+		unsigned g = kind == TL_DOT ? '.' : '-';
+		int a = fnt::advance (font, g);
+		if (a < 64) return;
+		int step = kind == TL_DOT ? a * 3 / 2 : a + a / 3, org = ox << 6;
+		for (int x = org + ((x0 - org) / step + 1) * step; x + a <= x1 - step / 3; x += step)
+			fnt::draw (canvas, font, x, base, g, col, 0, 0, viewW (), vh);
 	}
 
-	// A line: the highlights and the selection behind, the characters, their lines (underline,
-	// strike-through), a list's marker.
-	void drawLine (int pi, int li, int ox, int pt, int vh)
+	// A line: the highlights, the fields' shading and the selection behind, the characters (a field's
+	// text, a tab's leader), their lines (underline, strike-through), a list's marker. dy64: moved
+	// (a table's heading row again); dim: greyed (another story is edited); sel: its selection shown.
+	void drawLine (const Para *q, int pi, int li, int ox, int pt, int vh, int dy64, bool dim, bool sel)
 	{
-		const Para *q = L.d->p[pi];
 		const Line &ln = q->ln[li];
-		int top64 = (pt << 6) + L.mt64 + ln.py64;
+		int top64 = (pt << 6) + ln.py64 + dy64;
 		int top = top64 >> 6, bot = (top64 + ln.h64 + 63) >> 6;
 		if (bot < 0 || top > vh) return;
-		int tx64 = (ox << 6) + L.ml64;
+		int tx64 = (ox << 6) + q->x64;
 		const int *xs = q->xs;
 		auto xAt = [&] (int i) { return i < ln.end ? xs[i] : ln.xEnd64; };
-		// highlights
+		auto ink = [&] (unsigned c) { return dim ? wk_mix (c, 0xFFFFFF, 150) : c; };
+		// highlights, the fields' shading (their font's height, on the baseline)
 		for (int i = ln.start; i < ln.end; )
 		{
-			unsigned hl = L.d->fmt[q->cf[i]].hilite;
+			const CharFmt &f0 = L.d->fmt[q->cf[i]];
+			unsigned hl = f0.hilite;
+			bool field = q->ch[i] == FIELD_CHAR && f0.fld;
 			int j = i + 1;
-			while (j < ln.end && L.d->fmt[q->cf[j]].hilite == hl) j++;
-			if (hl != AUTO)				// (the run's font's height, on the baseline)
+			while (j < ln.end && !field && L.d->fmt[q->cf[j]].hilite == hl && !(q->ch[j] == FIELD_CHAR && L.d->fmt[q->cf[j]].fld)) j++;
+			if (hl != AUTO || field)
 			{
 				int x0 = (tx64 + xAt (i)) >> 6, x1 = (tx64 + xAt (j)) >> 6;
 				int raise = 0; fnt::Font *hf = cf_font (q->cf[i], &raise);
 				int b64 = top64 + ln.base64 + raise;
 				int ht = hf ? (b64 - hf->ascent) >> 6 : top, hb = hf ? (b64 + hf->descent + 63) >> 6 : bot;
-				fillClip (x0, ht, x1 - x0, hb - ht, hl);
+				fillClip (x0, ht, x1 - x0, hb - ht, ink (hl != AUTO ? hl : 0xE3E3E3));
 			}
 			i = j;
 		}
 		// the selection
-		if (has_sel ())
+		if (sel && has_sel ())
 		{
 			Pos a = sel_a (), b = sel_b ();
 			if (pi >= a.p && pi <= b.p)
@@ -465,8 +739,9 @@ private:
 				int base = (top64 + ln.base64 + 32) >> 6;
 				int w = tw2px64 (f.ow) >> 6, h = tw2px64 (f.oh) >> 6;
 				drawImage (L.d->img[f.obj - 1], (tx64 + xs[i]) >> 6, base - h, w, h, vh);
+				if (dim) blendClip ((tx64 + xs[i]) >> 6, base - h, w, h, 0xFFFFFF, 150);
 				Pos a = sel_a (), b = sel_b ();
-				if (has_sel () && !(mkpos (pi, i) < a) && mkpos (pi, i) < b)
+				if (sel && has_sel () && !(mkpos (pi, i) < a) && mkpos (pi, i) < b)
 				{
 					if (b.p == a.p && b.o == a.o + 1)			// (the image alone: its frame, a handle)
 					{
@@ -483,9 +758,16 @@ private:
 			fnt::Font *font = cf_font (q->cf[i], &raise);
 			if (!font) continue;
 			int base = (top64 + ln.base64 + raise + 32) >> 6;
-			unsigned col = f.color == AUTO ? 0x000000 : f.color;
+			unsigned col = ink (f.color == AUTO ? 0x000000 : f.color);
 			int x64 = tx64 + xs[i];
-			if (ch > ' ' && ch != 0xA0) fnt::draw (canvas, font, x64, base, ch, col, 0, 0, viewW (), vh);
+			if (ch == FIELD_CHAR && f.fld)				// a field: its text
+			{
+				unsigned t[80]; int tn = field_chars (q, i, ln.page, t, 80);
+				int x = x64;
+				for (int k = 0; k < tn; k++) { if (t[k] > ' ') fnt::draw (canvas, font, x, base, t[k], col, 0, 0, viewW (), vh); x += fnt::advance (font, t[k]); }
+			}
+			else if (ch == '\t') { if (q->lead[i]) leader (q->lead[i], x64, tx64 + xAt (i + 1), base, font, col, ox, vh); }
+			else if (ch > ' ' && ch != 0xA0) fnt::draw (canvas, font, x64, base, ch, col, 0, 0, viewW (), vh);
 			if (f.flags & (CF_UNDER | CF_STRIKE))
 			{
 				bool trailing = true;
@@ -499,16 +781,19 @@ private:
 				}
 			}
 		}
-		// the formatting marks: a dot a space, an arrow a tab, the line breaks, the paragraph's end
-		if (g_showMarks)
+		// the formatting marks: a dot a space, an arrow a tab, the line breaks, the paragraph's (a
+		// cell's) end
+		if (g_showMarks && !dim)
 		{
 			unsigned mc = 0x4A7FD0;
+			bool cellEnd = false;
+			if (in_table (q)) { int bn; Para **bps = story_p (*L.d, SY_BODY, &bn); cellEnd = pi + 1 >= bn || !same_cell (q, bps[pi + 1]); }
 			for (int i = ln.start; i <= ln.end; i++)
 			{
 				bool end = i == ln.end;
 				if (end && li != q->nln - 1) break;
 				unsigned ch = end ? 0xB6 : q->ch[i];
-				unsigned m = ch == ' ' ? 0xB7 : ch == '\t' ? 0x2192 : ch == 0x0B ? 0x21B5 : ch == 0xA0 ? 0xB0 : ch == 0xB6 && end ? 0xB6 : 0;
+				unsigned m = ch == ' ' ? 0xB7 : ch == '\t' ? 0x2192 : ch == 0x0B ? 0x21B5 : ch == 0xA0 ? 0xB0 : ch == 0xB6 && end ? (cellEnd ? 0xA4 : 0xB6) : 0;
 				if (!m) continue;
 				int cf = end ? (q->len ? q->cf[q->len - 1] : q->endCf) : q->cf[i];
 				int raise = 0;
@@ -528,12 +813,13 @@ private:
 			int cf = marker_font_cf (q);
 			CharFmt mf = L.d->fmt[cf];
 			mf.flags &= (unsigned short) ~(CF_UNDER | CF_STRIKE | CF_SUPER | CF_SUB);
+			mf.obj = 0; mf.ow = mf.oh = 0; mf.fld = 0;
 			fnt::Font *font = cf_font (doc_fmt (*L.d, mf));
 			if (font)
 			{
 				int x64 = tx64 + tw2px64 (q->pf.left + q->pf.first);
 				int base = (top64 + ln.base64 + 32) >> 6;
-				unsigned col = mf.color == AUTO ? 0 : mf.color;
+				unsigned col = ink (mf.color == AUTO ? 0 : mf.color);
 				for (int i = 0; i < n; i++) { fnt::draw (canvas, font, x64, base, mk[i], col, 0, 0, viewW (), vh); x64 += fnt::advance (font, mk[i]); }
 			}
 		}
@@ -599,9 +885,9 @@ public:
 			if (o < 0 || o >= q->len || q->ch[o] != OBJ_CHAR || !L.d->fmt[q->cf[o]].obj) continue;
 			const CharFmt &f = L.d->fmt[q->cf[o]];
 			const Line &ln = q->ln[line_of (q, o)];
-			int top64 = (pageTop (ln.page) << 6) + L.mt64 + ln.py64;
+			int top64 = (pageTop (ln.page) << 6) + ln.py64;
 			int base = (top64 + ln.base64 + 32) >> 6, w = tw2px64 (f.ow) >> 6, h = tw2px64 (f.oh) >> 6;
-			int x0 = ((originX () << 6) + L.ml64 + q->xs[o]) >> 6;
+			int x0 = ((originX () << 6) + q->x64 + q->xs[o]) >> 6;
 			if (x >= x0 && x < x0 + w && y >= base - h && y < base)
 			{ *at = mkpos (p.p, o); *ix = x0; *iy = base - h; *iw = w; *ih = h; return true; }
 		}
@@ -626,7 +912,6 @@ private:
 		int x, y, h;
 		caretBox (g_caret, g_atEnd, &x, &y, &h);
 		int w = L.zoom >= 175 ? 2 : 1;
-		if (g_atEnd || x >= 1) x -= 0;
 		int x1 = wmin (x + w, viewW ()), y1 = wmin (y + h, viewH ()), x0 = wmax (x, 0), y0 = wmax (y, 0);
 		if (x1 <= x0 || y1 <= y0 || (x1 - x0) * (y1 - y0) > (int) (sizeof m_under / sizeof m_under[0])) return;
 		m_cx = x0; m_cy = y0; m_cw = x1 - x0; m_ch = y1 - y0;

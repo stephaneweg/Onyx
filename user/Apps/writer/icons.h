@@ -1,7 +1,8 @@
 //
 // icons.h -- Writer's toolbar icons, drawn from their geometry (wtk/vpaint.h: anti-aliased, 20 x 20
 // px) or from the fonts (the letters B, I, U, S, x², A...): a page, a folder, a floppy, the undo
-// arrows, scissors, pages, a clipboard, a magnifier, the alignments' lines, the lists, the indents.
+// arrows, scissors, pages, a clipboard, a magnifier, the alignments' lines, the lists, the indents,
+// a table.
 // `ink` is the toolbar's text colour (the theme's); the colours of a folder, a floppy... are their own.
 //
 #ifndef _writer_icons_h
@@ -17,7 +18,7 @@ using namespace wtk;
 enum { IC_NEW, IC_OPEN, IC_SAVE, IC_UNDO, IC_REDO, IC_CUT, IC_COPY, IC_PASTE, IC_FIND, IC_BOLD,
        IC_ITALIC, IC_UNDER, IC_STRIKE, IC_SUPER, IC_SUB, IC_COLOR, IC_HILITE, IC_LEFT, IC_CENTER,
        IC_RIGHT, IC_JUSTIFY, IC_BULLETS, IC_NUMBERS, IC_OUTDENT, IC_INDENT, IC_PILCROW, IC_ZOOMIN,
-       IC_ZOOMOUT, IC_SYMBOL, IC_PAGEBREAK, IC_IMAGE, IC_COUNT };
+       IC_ZOOMOUT, IC_SYMBOL, IC_PAGEBREAK, IC_IMAGE, IC_TABLE, IC_COUNT };
 
 static int g_icFam = -1, g_icFamSerif = -1;	// the letters' fonts
 
@@ -193,6 +194,17 @@ static void draw_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off =
 		p.clear (); p.poly (hill, 3); p.fill (cv, 0x4A9A55, A);
 		int hill2[6] = { X + V (8), Y + V (16), X + V (13), Y + V (11), X + V (17), Y + V (16) };
 		p.clear (); p.poly (hill2, 3); p.fill (cv, 0x2F7A3C, A);
+		break;
+	}
+	case IC_TABLE:
+	{
+		p.rect (X + V (2), Y + V (3), V (16), V (4)); p.fill (cv, off ? dim : C_ACCENT, A);
+		p.clear (); p.rect (X + V (2), Y + V (7), V (16), V (10)); p.fill (cv, 0xFFFFFF, A);
+		int fr[8] = { X + V (2), Y + V (3), X + V (18), Y + V (3), X + V (18), Y + V (17), X + V (2), Y + V (17) };
+		p.clear (); p.polyline (fr, 4, 20, true);
+		p.rect (X + V (2), Y + V (7) - 10, V (16), 20); p.rect (X + V (2), Y + V (12) - 10, V (16), 20);
+		p.rect (X + V (7) + 8, Y + V (3), 20, V (14)); p.rect (X + V (12) + 16, Y + V (3), 20, V (14));
+		p.fill (cv, ink);
 		break;
 	}
 	case IC_PAGEBREAK:

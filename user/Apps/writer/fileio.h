@@ -1,19 +1,22 @@
 //
 // fileio.h -- Writer's files: Rich Text Format read and written (the fonts, the colours, the styles
-// -- "Normal", "heading 1"... --, bold / italic / underline / strike-through / superscript /
-// subscript, the sizes, the highlights, the paragraphs' alignment, indents, spacing, lists (Word's
-// \listtext / \pntext), page breaks, the page's size and margins, a footer's page number), plain
-// text (UTF-8, or Latin-1: the system's own), and an HTML export.
+// -- "Normal", "heading 1", "toc 1"... --, bold / italic / underline / strike-through / superscript /
+// subscript, the sizes, the highlights, the paragraphs' alignment, indents, spacing, tab stops, keep
+// options, lists (Word's \listtext / \pntext), page breaks; the tables -- their rows, their cells'
+// widths, merged cells, shading, lines, heading row --; the headers and footers (the first page's
+// own), the fields -- the page, the number of pages, the date, the time, a mail merge's --, the page's
+// size, margins and first number), plain text (UTF-8, or Latin-1: the system's own), and an HTML
+// export. The .docx and .odt files: docx.h, odt.h (their tables built by TableBuild, here).
 //
 // Reading RTF: groups and their state, control words, \'hh (Windows-1252), \uN (and its \ucN
-// fallback skipped), the destinations Writer has no use for skipped (\info, \pict, \*\...,
-// fields' instructions, headers).
+// fallback skipped), the destinations Writer has no use for skipped (\info, \*\...).
 //
 #ifndef _writer_fileio_h
 #define _writer_fileio_h
 
 #include "doc.h"
 #include "img/imgload.hpp"
+#include "img/pngsave.hpp"
 
 namespace wr {
 
@@ -46,73 +49,215 @@ static unsigned cp1252 (unsigned c)
 	return c >= 0x80 && c < 0xA0 ? T[c - 0x80] : c;
 }
 
-// ---- images' bytes -------------------------------------------------------------------------------------
-// An image as PNG: its pixels (RGBA), the deflate stream "stored" (no compression: no zlib here).
-static unsigned g_crc[256];
-static unsigned crc32 (unsigned c, const unsigned char *p, int n)
-{
-	if (!g_crc[1]) for (unsigned i = 0; i < 256; i++) { unsigned v = i; for (int k = 0; k < 8; k++) v = v & 1 ? 0xEDB88320u ^ (v >> 1) : v >> 1; g_crc[i] = v; }
-	c = ~c;
-	for (int i = 0; i < n; i++) c = g_crc[(c ^ p[i]) & 255] ^ (c >> 8);
-	return ~c;
-}
-static void be32 (unsigned char *p, unsigned v) { p[0] = (unsigned char) (v >> 24); p[1] = (unsigned char) (v >> 16); p[2] = (unsigned char) (v >> 8); p[3] = (unsigned char) v; }
-static unsigned char *png_encode (const unsigned *px, int w, int h, unsigned *outLen)
-{
-	unsigned raw = (unsigned) h * (1 + 4 * (unsigned) w);
-	unsigned blocks = raw / 65535 + 1;
-	unsigned idat = 2 + blocks * 5 + raw + 4;
-	unsigned total = 8 + (12 + 13) + (12 + idat) + 12;
-	unsigned char *o = new unsigned char[total], *p = o;
-	static const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 13, 10, 26, 10 };
-	for (int i = 0; i < 8; i++) *p++ = sig[i];
-	// IHDR
-	be32 (p, 13); p += 4;
-	unsigned char *t = p;
-	*p++ = 'I'; *p++ = 'H'; *p++ = 'D'; *p++ = 'R';
-	be32 (p, (unsigned) w); p += 4; be32 (p, (unsigned) h); p += 4;
-	*p++ = 8; *p++ = 6; *p++ = 0; *p++ = 0; *p++ = 0;
-	be32 (p, crc32 (0, t, 17)); p += 4;
-	// IDAT: zlib, stored blocks, Adler-32
-	be32 (p, idat); p += 4;
-	t = p;
-	*p++ = 'I'; *p++ = 'D'; *p++ = 'A'; *p++ = 'T';
-	*p++ = 0x78; *p++ = 0x01;
-	unsigned a1 = 1, a2 = 0, done = 0, row = 0, col = 0;	// (the raw bytes made on the way)
-	while (done < raw)
-	{
-		unsigned n = raw - done < 65535 ? raw - done : 65535;
-		*p++ = (unsigned char) (done + n == raw ? 1 : 0);
-		*p++ = (unsigned char) n; *p++ = (unsigned char) (n >> 8); *p++ = (unsigned char) ~n; *p++ = (unsigned char) (~n >> 8);
-		for (unsigned k = 0; k < n; k++)
-		{
-			unsigned char b;
-			if (col == 0) b = 0;					// (each row's filter: none)
-			else { unsigned v = px[row * (unsigned) w + (col - 1) / 4]; int c = (col - 1) & 3; b = (unsigned char) (c == 0 ? v >> 16 : c == 1 ? v >> 8 : c == 2 ? v : v >> 24); }
-			if (++col == 1 + 4 * (unsigned) w) { col = 0; row++; }
-			*p++ = b;
-			a1 = (a1 + b) % 65521; a2 = (a2 + a1) % 65521;
-		}
-		done += n;
-	}
-	be32 (p, a2 << 16 | a1); p += 4;
-	be32 (p, crc32 (0, t, (int) (p - t))); p += 4;
-	be32 (p, 0); p += 4;
-	t = p; *p++ = 'I'; *p++ = 'E'; *p++ = 'N'; *p++ = 'D';
-	be32 (p, crc32 (0, t, 4)); p += 4;
-	*outLen = (unsigned) (p - o);
-	return o;
-}
 // An image's file bytes (its own PNG / JPEG, else a PNG made): *jpeg says which; delete[] when *made.
 static const unsigned char *image_bytes (const Image &im, unsigned *len, bool *jpeg, bool *made)
 {
 	if (im.data && im.len) { *len = im.len; *jpeg = im.jpeg; *made = false; return im.data; }
 	*jpeg = false; *made = true;
-	return png_encode (im.px, im.w, im.h, len);
+	return pngsave::png_encode (im.px, im.w, im.h, true, len);
+}
+
+// ---- the formats in use ------------------------------------------------------------------------------------
+// Which character formats the document's text uses (every story's -- the tables keep what undone edits
+// added), and the tables its paragraphs point at.
+static bool *formats_used (const Doc &d, bool *tablesUsed = 0)
+{
+	bool *used = new bool[d.nfmt + 1];
+	for (int i = 0; i <= d.nfmt; i++) used[i] = false;
+	if (tablesUsed) for (int i = 0; i < d.ntbl; i++) tablesUsed[i] = false;
+	for (int s = 0; s < SY_COUNT; s++)
+	{
+		int n; Para **p = story_p (d, s, &n);
+		for (int i = 0; i < n; i++)
+		{
+			const Para *q = p[i];
+			used[q->endCf] = true;
+			for (int k = 0; k < q->len; k++) used[q->cf[k]] = true;
+			if (tablesUsed && q->pf.tbl > 0 && q->pf.tbl <= d.ntbl) tablesUsed[q->pf.tbl - 1] = true;
+		}
+	}
+	return used;
+}
+
+// ---- fields' instructions (RTF, Word) --------------------------------------------------------------------------
+// "PAGE", "NUMPAGES", "DATE \@ "dd/MM/yyyy"", "MERGEFIELD Name": its kind (FK_NONE: not one of Writer's)
+// and its argument.
+static int field_parse (const char *s, char *arg, int cap)
+{
+	arg[0] = 0;
+	while (*s == ' ' || *s == '\t') s++;
+	char w[24]; int n = 0;
+	while (*s && *s != ' ' && *s != '\\' && n < 23) { w[n++] = (char) (*s >= 'a' && *s <= 'z' ? *s - 32 : *s); s++; }
+	w[n] = 0;
+	auto is = [&] (const char *k) { int i = 0; while (k[i] && w[i] == k[i]) i++; return !k[i] && !w[i]; };
+	auto word = [&] (const char *p) {				// (the next word, or "quoted words")
+		while (*p == ' ') p++;
+		int k = 0;
+		if (*p == '"') { p++; while (*p && *p != '"' && k < cap - 1) arg[k++] = *p++; }
+		else while (*p && *p != ' ' && *p != '\\' && k < cap - 1) arg[k++] = *p++;
+		arg[k] = 0;
+	};
+	if (is ("PAGE")) return FK_PAGE;
+	if (is ("NUMPAGES") || is ("SECTIONPAGES")) return FK_PAGES;
+	if (is ("MERGEFIELD")) { word (s); return arg[0] ? FK_MERGE : FK_NONE; }
+	bool date = is ("DATE") || is ("CREATEDATE") || is ("SAVEDATE") || is ("PRINTDATE"), time = is ("TIME");
+	if (!date && !time) return FK_NONE;
+	for (const char *p = s; *p; p++) if (p[0] == '\\' && p[1] == '@') { word (p + 2); break; }
+	return date ? FK_DATE : FK_TIME;
+}
+// A field's instruction, as Word writes it.
+static void field_instr (const Field &f, char *out, int cap)
+{
+	int n = 0;
+	auto put = [&] (const char *t) { while (*t && n < cap - 1) out[n++] = *t++; };
+	switch (f.kind)
+	{
+	case FK_PAGE: put ("PAGE"); break;
+	case FK_PAGES: put ("NUMPAGES"); break;
+	case FK_DATE: case FK_TIME:
+		put (f.kind == FK_DATE ? "DATE" : "TIME");
+		if (f.arg[0]) { put (" \\@ \""); put (f.arg); put ("\""); }
+		break;
+	case FK_MERGE:
+	{
+		bool sp = false; for (const char *t = f.arg; *t; t++) if (*t == ' ') sp = true;
+		put ("MERGEFIELD "); if (sp) put ("\""); put (f.arg); if (sp) put ("\"");
+		break;
+	}
+	}
+	out[n] = 0;
+}
+
+// ---- a table read from a file ----------------------------------------------------------------------------
+// Its rows as they come, each cell: its column in the grid, the columns it spans, a vertical merge's
+// continuation (the cell above goes on) or the rows it spans, its shading, its paragraphs. finish ()
+// makes the Table and puts the paragraphs in the story, cell by cell, row by row.
+struct TableBuild
+{
+	struct Cell { int col, cs, rs; bool vcont; unsigned fill; Para **p; int np, cap; };
+	struct Row { Cell *c; int n, cap; int height; };
+	Row *rows; int nr, rcap;
+	int ncols; int colW[MAXCOLS];
+	unsigned char border, bw; unsigned bcolor; bool header; unsigned char align; int indent;
+
+	void init () { rows = 0; nr = rcap = 0; ncols = 0; border = TB_ALL; bw = 4; bcolor = 0; header = false; align = AL_LEFT; indent = 0; }
+	void row (int height = 0)
+	{
+		if (nr == rcap) { int c = rcap * 2 + 8; Row *t = new Row[c]; for (int i = 0; i < nr; i++) t[i] = rows[i]; delete[] rows; rows = t; rcap = c; }
+		Row &r = rows[nr++]; r.c = 0; r.n = r.cap = 0; r.height = height;
+	}
+	Cell *cell (int col, int cs, bool vcont, int rs, unsigned fill)
+	{
+		if (!nr) row ();
+		Row &r = rows[nr - 1];
+		if (r.n == r.cap) { int c = r.cap * 2 + 8; Cell *t = new Cell[c]; for (int i = 0; i < r.n; i++) t[i] = r.c[i]; delete[] r.c; r.c = t; r.cap = c; }
+		Cell &k = r.c[r.n++];
+		k.col = col; k.cs = cs < 1 ? 1 : cs; k.rs = rs < 1 ? 1 : rs; k.vcont = vcont; k.fill = fill; k.p = 0; k.np = k.cap = 0;
+		return &k;
+	}
+	void para (Para *q)				// (into the row's last cell)
+	{
+		if (!nr || !rows[nr - 1].n) cell (0, 1, false, 1, AUTO);
+		Cell &k = rows[nr - 1].c[rows[nr - 1].n - 1];
+		if (k.np == k.cap) { int c = k.cap * 2 + 4; Para **t = new Para *[c]; for (int i = 0; i < k.np; i++) t[i] = k.p[i]; delete[] k.p; k.p = t; k.cap = c; }
+		k.p[k.np++] = q;
+	}
+	void widen (int endCol) { if (nr && rows[nr - 1].n) { Cell &k = rows[nr - 1].c[rows[nr - 1].n - 1]; if (endCol > k.col + k.cs) k.cs = endCol - k.col; } }
+	static bool blank (const Cell &k) { return k.np == 0 || (k.np == 1 && k.p[0]->len == 0); }
+	void finish (Doc &d, int story)
+	{
+		if (nr == 0 || ncols <= 0) { clear (); return; }
+		ncols = wmin (ncols, (int) MAXCOLS);
+		Table *t = table_alloc (nr, ncols);
+		for (int c = 0; c < ncols; c++) t->colW[c] = wmax (colW[c], 60);
+		t->border = border; t->bw = bw; t->bcolor = bcolor; t->header = header; t->align = align; t->indent = indent;
+		for (int r = 0; r < nr; r++) t->rowH[r] = (short) wclamp (rows[r].height, 0, 30000);
+		// each grid cell's paragraphs (an owner's)
+		int N = nr * ncols;
+		Cell **own = new Cell *[N];
+		bool *taken = new bool[N];
+		for (int i = 0; i < N; i++) { own[i] = 0; taken[i] = false; }
+		for (int r = 0; r < nr; r++)
+			for (int k = 0; k < rows[r].n; k++)
+			{
+				Cell &c = rows[r].c[k];
+				int col = c.col;
+				if (col < 0 || col >= ncols) { for (int i = 0; i < c.np; i++) para_free (c.p[i]); c.np = 0; continue; }
+				int cs = wmin (c.cs, ncols - col);
+				if (c.vcont && r > 0)				// (the cell above goes on)
+				{
+					int orow, ocol; cell_owner (t, r - 1, col, &orow, &ocol);
+					TCell &o = tcell (t, orow, ocol);
+					if (!o.covered && own[orow * ncols + ocol] && !taken[r * ncols + col])
+					{
+						o.rs = (unsigned char) wmax ((int) o.rs, r - orow + 1);
+						for (int cc = ocol; cc < ocol + o.cs && cc < ncols; cc++) { tcell (t, r, cc).covered = true; taken[r * ncols + cc] = true; }
+						Cell *oc = own[orow * ncols + ocol];
+						if (!blank (c)) for (int i = 0; i < c.np; i++) push (*oc, c.p[i]);
+						else for (int i = 0; i < c.np; i++) para_free (c.p[i]);
+						c.np = 0;
+						continue;
+					}
+				}
+				if (taken[r * ncols + col]) { for (int i = 0; i < c.np; i++) para_free (c.p[i]); c.np = 0; continue; }
+				TCell &tc = tcell (t, r, col);
+				tc.cs = (unsigned char) cs; tc.rs = (unsigned char) wmin (c.rs, nr - r); tc.covered = false; tc.fill = c.fill;
+				own[r * ncols + col] = &c;
+				for (int rr = r; rr < r + tc.rs; rr++)
+					for (int cc = col; cc < col + cs; cc++)
+					{
+						taken[rr * ncols + cc] = true;
+						if (rr != r || cc != col) tcell (t, rr, cc).covered = true;
+					}
+			}
+		int idx = doc_table (d, t);
+		for (int r = 0; r < nr; r++)
+			for (int c = 0; c < ncols; c++)
+			{
+				TCell &tc = tcell (t, r, c);
+				if (tc.covered && taken[r * ncols + c]) continue;
+				tc.covered = false;
+				Cell *k = own[r * ncols + c];
+				if (!k || k->np == 0)
+				{
+					Para *e = para_styled (d, ST_NORMAL); e->pf.after = 0; e->pf.line = 100;
+					e->pf.tbl = (short) idx; e->pf.row = (short) r; e->pf.col = (short) c;
+					story_append (d, story, e);
+					continue;
+				}
+				for (int i = 0; i < k->np; i++)
+				{
+					Para *q = k->p[i];
+					q->pf.tbl = (short) idx; q->pf.row = (short) r; q->pf.col = (short) c;
+					q->pf.pageBreak = false;
+					story_append (d, story, q);
+				}
+				k->np = 0;
+			}
+		delete[] own; delete[] taken;
+		clear ();
+	}
+	static void push (Cell &k, Para *q)
+	{
+		if (k.np == k.cap) { int c = k.cap * 2 + 4; Para **t = new Para *[c]; for (int i = 0; i < k.np; i++) t[i] = k.p[i]; delete[] k.p; k.p = t; k.cap = c; }
+		k.p[k.np++] = q;
+	}
+	void clear ()
+	{
+		for (int r = 0; r < nr; r++) { for (int k = 0; k < rows[r].n; k++) { Cell &c = rows[r].c[k]; for (int i = 0; i < c.np; i++) para_free (c.p[i]); delete[] c.p; } delete[] rows[r].c; }
+		delete[] rows; rows = 0; nr = rcap = 0; ncols = 0;
+	}
+};
+
+// After a file is read: a paragraph after a table ending the body; the body never empty.
+static void doc_fix (Doc &d)
+{
+	int n; Para **p = story_p (d, SY_BODY, &n);
+	if (n == 0 || in_table (p[n - 1])) story_append (d, SY_BODY, para_styled (d, ST_NORMAL));
 }
 
 // ---- RTF: reading --------------------------------------------------------------------------------------
-enum { DS_TEXT, DS_SKIP, DS_FONTTBL, DS_COLORTBL, DS_STYLESHEET, DS_LISTTEXT, DS_FOOTER, DS_FLDINST, DS_PICT };
+enum { DS_TEXT, DS_SKIP, DS_FONTTBL, DS_COLORTBL, DS_STYLESHEET, DS_LISTTEXT, DS_FLDINST, DS_PICT, DS_DOCVAR };
 
 struct RtfState
 {
@@ -122,18 +267,24 @@ struct RtfState
 	int styleNo;				// \sN of a stylesheet entry being read
 	int fontNo;				// \fN of a font table entry being read
 	bool hidden;				// \v: not shown
+	int story;				// where its paragraphs go (SY_*)
+	bool intbl;				// \intbl: its paragraph in a table's cell
+	int tabAlign, tabLead;			// the next \tx's alignment and leader
 };
 
 static bool rtf_is (const char *b, int n) { return n >= 5 && b[0] == '{' && b[1] == '\\' && b[2] == 'r' && b[3] == 't' && b[4] == 'f'; }
 
 static int rtf_style_by_name (const char *n)
 {
-	static const char *const names[][2] = {
-		{ "normal", "Normal" }, { "heading 1", "Heading 1" }, { "heading 2", "Heading 2" }, { "heading 3", "Heading 3" },
-		{ "title", "Title" }, { "subtitle", "Subtitle" }, { "quote", "Quote" }, { "plain text", "Plain Text" } };
-	for (int i = 0; i < ST_COUNT; i++) if (sicmp (n, names[i][0]) == 0) return i;
+	static const char *const names[ST_COUNT] = { "normal", "heading 1", "heading 2", "heading 3", "title", "subtitle", "quote", "plain text",
+						      "toc 1", "toc 2", "toc 3", "toc heading", "header", "footer" };
+	for (int i = 0; i < ST_COUNT; i++) if (sicmp (n, names[i]) == 0) return i;
 	if (sicmp (n, "block text") == 0 || sicmp (n, "intense quote") == 0) return ST_QUOTE;
 	if (sicmp (n, "heading 4") == 0 || sicmp (n, "heading 5") == 0) return ST_H3;
+	if (sicmp (n, "contents 1") == 0) return ST_TOC1;
+	if (sicmp (n, "contents 2") == 0) return ST_TOC2;
+	if (sicmp (n, "contents 3") == 0) return ST_TOC3;
+	if (sicmp (n, "contents heading") == 0) return ST_TOCHEAD;
 	return -1;
 }
 
@@ -150,21 +301,35 @@ static bool rtf_load (Doc &d, const char *b, int n)
 	CharFmt base; base.font = (short) doc_font (d, "Liberation Serif"); base.size = 24; base.flags = 0; base.color = AUTO; base.hilite = AUTO;
 	RtfState &s0 = st[0];
 	s0.cf = base; s0.cfColor = -1; s0.cfHilite = -1; s0.pf = style_para (ST_NORMAL); s0.pf.after = 0; s0.pf.line = 100;
-	s0.dest = DS_TEXT; s0.uc = 1; s0.styleNo = -1; s0.fontNo = -1; s0.hidden = false;
+	s0.dest = DS_TEXT; s0.uc = 1; s0.styleNo = -1; s0.fontNo = -1; s0.hidden = false; s0.story = SY_BODY; s0.intbl = false;
+	s0.tabAlign = TA_LEFT; s0.tabLead = TL_NONE;
 	int deff = 0;
 	char name[64]; int nameLen = 0;			// a font / style name being read
 	int red = 0, green = 0, blue = 0; bool anyColor = false;
 	unsigned lastCf = 0xFFFF; CharFmt lastFmt = base;
-	Para *q = para_new ();
+	Para *qs[SY_COUNT];				// each story's paragraph being read
+	for (int i = 0; i < SY_COUNT; i++) qs[i] = para_new ();
 	char listBuf[16]; int listLen = 0; int listKind = LS_NONE, listLevel = 0;
 	int skipChars = 0;				// (a \uN's fallback characters to skip)
 	bool pageNext = false;				// a \page: the next paragraph starts a page
-	bool footerHasPage = false;
 	PageSetup &pg = d.page;
 	bool landscape = false;
+	char inst[256]; int instLen = 0;		// a field's instruction
+	char var[400]; int varLen = 0;			// a \docvar's name and value
 	// a picture being read: its kind (1 PNG, 2 JPEG), sizes, bytes
 	int pkind = 0, picw = 0, pich = 0, goalw = 0, goalh = 0, scalex = 100, scaley = 100;
 	unsigned char *pbuf = 0; unsigned plen = 0, pcap = 0; int nib = -1;
+	// a table being read: its row's cells' definitions (\cellx), the paragraphs of the row's cells,
+	// the rows so far
+	struct CellDef { int right; bool vmf, vmr, hmr; int fill; };
+	CellDef def[MAXCOLS + 1]; int ndef = 0; CellDef pend = { 0, false, false, false, -1 };
+	int rowLeft = 0, rowAlign = AL_LEFT, rowHeight = 0; bool rowHdr = false;
+	int brdW = 0, brdColor = -1; bool anyBorder = false;
+	struct RawCell { int x0, x1; bool vmr, hmr; int fill; Para **p; int np, cap; };
+	struct RawRow { RawCell *c; int n; bool hdr; int align, left, height; };
+	RawRow *rows = 0; int nrows = 0, rowcap = 0;
+	RawCell cur[MAXCOLS + 1]; int ncur = 0;		// (the row's cells so far: their paragraphs)
+	for (int i = 0; i <= MAXCOLS; i++) { cur[i].p = 0; cur[i].np = cur[i].cap = 0; }
 
 	auto fmtIndex = [&] (const RtfState &s) -> unsigned short {
 		CharFmt f = s.cf;
@@ -179,6 +344,8 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		RtfState &s = st[sp];
 		if (skipChars > 0) { skipChars--; return; }
 		if (s.dest == DS_LISTTEXT) { if (listLen < 15) listBuf[listLen++] = c < 128 ? (char) c : '*'; return; }
+		if (s.dest == DS_FLDINST) { if (instLen < 255) inst[instLen++] = c < 256 ? (char) c : '?'; return; }
+		if (s.dest == DS_DOCVAR) { if (varLen < 399) var[varLen++] = c < 256 ? (char) c : '?'; return; }
 		if (s.dest == DS_FONTTBL || s.dest == DS_STYLESHEET) { if (c == ';') { name[nameLen] = 0; if (s.dest == DS_FONTTBL && s.fontNo >= 0 && s.fontNo < MAXF) fontMap[s.fontNo] = doc_font (d, name); else if (s.dest == DS_STYLESHEET && s.styleNo >= 0 && s.styleNo < MAXS) { int k = rtf_style_by_name (name); if (k >= 0) styleMap[s.styleNo] = k; } nameLen = 0; } else if (nameLen < 63 && (c >= 32 || nameLen)) name[nameLen++] = c < 256 ? (char) c : '?'; return; }
 		if (s.dest == DS_PICT)
 		{
@@ -192,17 +359,95 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		if (s.dest == DS_COLORTBL) { if (c == ';') { if (ncolors < MAXC) colors[ncolors++] = anyColor ? (unsigned) (red << 16 | green << 8 | blue) : 0x000000; red = green = blue = 0; anyColor = false; } return; }
 		if (s.dest != DS_TEXT || s.hidden) return;
 		unsigned short f = fmtIndex (s);
-		para_insert (q, q->len, &c, 1, f);
+		para_insert (qs[s.story], qs[s.story]->len, &c, 1, f);
 	};
-	auto endPara = [&] (bool last) {
+	// The table read so far put in the body.
+	auto flushTable = [&] () {
+		if (nrows == 0) return;
+		int edges[2 * MAXCOLS + 4]; int ne = 0;
+		auto addEdge = [&] (int x) { for (int i = 0; i < ne; i++) if (edges[i] == x) return; if (ne < 2 * MAXCOLS + 2) edges[ne++] = x; };
+		for (int r = 0; r < nrows; r++) for (int k = 0; k < rows[r].n; k++) { addEdge (rows[r].c[k].x0); addEdge (rows[r].c[k].x1); }
+		for (int i = 1; i < ne; i++) for (int j = i; j > 0 && edges[j - 1] > edges[j]; j--) { int t = edges[j]; edges[j] = edges[j - 1]; edges[j - 1] = t; }
+		// (edges closer than 1/20 of a point: one)
+		int m = 0; for (int i = 0; i < ne; i++) if (m == 0 || edges[i] - edges[m - 1] > 1) edges[m++] = edges[i]; ne = m;
+		auto colOf = [&] (int x) { int best = 0; for (int i = 1; i < ne; i++) if ((x - edges[i] < 0 ? edges[i] - x : x - edges[i]) < (x - edges[best] < 0 ? edges[best] - x : x - edges[best])) best = i; return best; };
+		TableBuild tb; tb.init ();
+		tb.ncols = wmin (ne - 1, (int) MAXCOLS);
+		for (int c = 0; c < tb.ncols; c++) tb.colW[c] = edges[c + 1] - edges[c];
+		tb.indent = ne ? edges[0] : 0; tb.header = rows[0].hdr; tb.align = (unsigned char) rows[0].align;
+		tb.border = anyBorder ? TB_ALL : TB_NONE;
+		tb.bw = (unsigned char) wclamp (brdW > 0 ? brdW * 2 / 5 : 4, 1, 48);
+		tb.bcolor = brdColor > 0 && brdColor < ncolors ? colors[brdColor] : 0;
+		for (int r = 0; r < nrows; r++)
+		{
+			tb.row (rows[r].height);
+			for (int k = 0; k < rows[r].n; k++)
+			{
+				RawCell &c = rows[r].c[k];
+				int c0 = colOf (c.x0), c1 = colOf (c.x1);
+				if (c1 <= c0) c1 = c0 + 1;
+				if (c.hmr && k > 0)				// (joined to the one before)
+				{
+					tb.widen (c1);
+					for (int i = 0; i < c.np; i++) { if (c.p[i]->len) tb.para (c.p[i]); else para_free (c.p[i]); }
+				}
+				else
+				{
+					unsigned fill = c.fill > 0 && c.fill < ncolors ? colors[c.fill] : AUTO;
+					tb.cell (c0, c1 - c0, c.vmr, 1, fill);
+					for (int i = 0; i < c.np; i++) tb.para (c.p[i]);
+				}
+				delete[] c.p;
+			}
+			delete[] rows[r].c;
+		}
+		nrows = 0;
+		tb.finish (d, SY_BODY);
+		anyBorder = false; brdW = 0; brdColor = -1;
+	};
+	auto newPara = [&] (int story) { Para *q = para_new (); qs[story] = q; };
+	// A paragraph ends: into its story, or the table's cell being read (cellEnd: \cell, the next one follows).
+	auto endPara = [&] (bool last, bool cellEnd) {
 		RtfState &s = st[sp];
+		Para *q = qs[s.story];
 		q->pf = s.pf;
 		if (listKind != LS_NONE && q->pf.list == LS_NONE) { q->pf.list = (unsigned char) listKind; q->pf.level = (unsigned char) listLevel; }
 		if (q->pf.list != LS_NONE && q->pf.first >= 0) { if (q->pf.left < 360) q->pf.left = 720; q->pf.first = -360; }
-		if (pageNext) { q->pf.pageBreak = true; pageNext = false; }
 		q->endCf = fmtIndex (s);
-		if (!last || q->len > 0 || d.n == 0) { doc_put (d, d.n, q); q = para_new (); }
 		listKind = LS_NONE; listLevel = 0;
+		if (s.story == SY_BODY && (s.intbl || cellEnd))
+		{
+			RawCell &c = cur[ncur < MAXCOLS ? ncur : MAXCOLS];
+			if (c.np == c.cap) { int k = c.cap * 2 + 4; Para **t = new Para *[k]; for (int i = 0; i < c.np; i++) t[i] = c.p[i]; delete[] c.p; c.p = t; c.cap = k; }
+			c.p[c.np++] = q;
+			if (cellEnd && ncur < MAXCOLS) ncur++;
+			newPara (s.story);
+			return;
+		}
+		if (s.story == SY_BODY) flushTable ();
+		if (pageNext && s.story == SY_BODY) { q->pf.pageBreak = true; pageNext = false; }
+		int sn; story_p (d, s.story, &sn);
+		if (!last || q->len > 0 || sn == 0) { story_append (d, s.story, q); newPara (s.story); }
+	};
+	// A row ends: its cells (their widths from the definitions) kept.
+	auto endRow = [&] () {
+		if (qs[SY_BODY]->len > 0) endPara (false, true);		// (a cell's text without \cell)
+		int nc = wmax (ncur, 1);
+		if (nrows == rowcap) { int c = rowcap * 2 + 8; RawRow *t = new RawRow[c]; for (int i = 0; i < nrows; i++) t[i] = rows[i]; delete[] rows; rows = t; rowcap = c; }
+		RawRow &r = rows[nrows++];
+		r.c = new RawCell[nc]; r.n = nc; r.hdr = rowHdr; r.align = rowAlign; r.left = rowLeft; r.height = rowHeight;
+		int x = rowLeft;
+		for (int k = 0; k < nc; k++)
+		{
+			RawCell &c = r.c[k];
+			c = cur[k];
+			int right = k < ndef ? def[k].right : x + 1440;
+			c.x0 = x; c.x1 = right > x ? right : x + 60; x = c.x1;
+			c.vmr = k < ndef && def[k].vmr; c.hmr = k < ndef && def[k].hmr; c.fill = k < ndef ? def[k].fill : -1;
+			cur[k].p = 0; cur[k].np = cur[k].cap = 0;
+		}
+		for (int k = nc; k <= MAXCOLS; k++) { for (int i = 0; i < cur[k].np; i++) para_free (cur[k].p[i]); delete[] cur[k].p; cur[k].p = 0; cur[k].np = cur[k].cap = 0; }
+		ncur = 0;
 	};
 
 	int i = 0;
@@ -212,19 +457,21 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		if (c == '{')
 		{
 			if (sp + 1 < DEPTH) { st[sp + 1] = st[sp]; sp++; }
+			if (st[sp].dest == DS_DOCVAR && varLen < 399) var[varLen++] = '\x01';
 			i++;
 			continue;
 		}
 		if (c == '}')
 		{
-			if (st[sp].dest == DS_LISTTEXT && (sp == 0 || st[sp - 1].dest != DS_LISTTEXT))
+			RtfState &s = st[sp];
+			if (s.dest == DS_LISTTEXT && (sp == 0 || st[sp - 1].dest != DS_LISTTEXT))
 			{
 				bool digits = false;
 				for (int k = 0; k < listLen; k++) if ((listBuf[k] >= '0' && listBuf[k] <= '9') || ((listBuf[k] | 32) >= 'a' && (listBuf[k] | 32) <= 'z')) digits = true;
 				listKind = digits ? LS_NUMBER : LS_BULLET;
 				listLen = 0;
 			}
-			if (st[sp].dest == DS_PICT && (sp == 0 || st[sp - 1].dest != DS_PICT))
+			if (s.dest == DS_PICT && (sp == 0 || st[sp - 1].dest != DS_PICT))
 			{
 				ImgFrames im;
 				int k = sp - 1;					// (the text it stands in: under any \\*\\shppict)
@@ -235,17 +482,27 @@ static bool rtf_load (Doc &d, const char *b, int n)
 					unsigned char *data = new unsigned char[plen];
 					for (unsigned j = 0; j < plen; j++) data[j] = pbuf[j];
 					int idx = doc_image (d, im.px[0], im.w, im.h, data, plen, pkind == 2);
-					CharFmt cfm = d.fmt[fmtIndex (st[k])];
+					unsigned short fi = fmtIndex (st[k]); CharFmt cfm = d.fmt[fi];
 					cfm.obj = idx + 1;
 					cfm.ow = (goalw > 0 ? goalw : (picw > 0 ? picw : im.w) * 15) * scalex / 100;
 					cfm.oh = (goalh > 0 ? goalh : (pich > 0 ? pich : im.h) * 15) * scaley / 100;
 					if (cfm.ow <= 0 || cfm.oh <= 0) { cfm.ow = im.w * 15; cfm.oh = im.h * 15; }
 					unsigned oc = OBJ_CHAR;
-					para_insert (q, q->len, &oc, 1, doc_fmt (d, cfm));
+					para_insert (qs[st[k].story], qs[st[k].story]->len, &oc, 1, doc_fmt (d, cfm));
 					lastCf = 0xFFFF;
 				}
 				delete[] pbuf; pbuf = 0; plen = pcap = 0; nib = -1; pkind = 0;
 			}
+			if (s.dest == DS_DOCVAR && (sp == 0 || st[sp - 1].dest != DS_DOCVAR))
+			{
+				var[varLen] = 0;
+				const char *parts[4] = { 0, 0, 0, 0 }; int np = 0;
+				for (int k = 0; k < varLen && np < 4; k++) if (var[k] == '\x01') { var[k] = 0; parts[np++] = var + k + 1; }
+				if (np >= 2 && sicmp (parts[0], "OnyxMergeSource") == 0) scpy (d.mergeSrc, parts[1], sizeof d.mergeSrc);
+				varLen = 0;
+			}
+			if (sp > 0 && st[sp - 1].story != s.story && qs[s.story]->len > 0)	// (a header's last paragraph)
+			{ endPara (true, false); }
 			if (sp > 0) sp--;
 			lastCf = 0xFFFF;
 			i++;
@@ -273,7 +530,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 			case '~': emit (0xA0); break;
 			case '_': emit (0x2011); break;
 			case '*': st[sp].dest = DS_SKIP; break;
-			case '\n': case '\r': if (st[sp].dest == DS_TEXT) endPara (false); break;
+			case '\n': case '\r': if (st[sp].dest == DS_TEXT) endPara (false, false); break;
 			case '\t': emit ('\t'); break;
 			}
 			continue;
@@ -304,15 +561,39 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		if (is ("colortbl")) { s.dest = DS_COLORTBL; continue; }
 		if (is ("stylesheet")) { s.dest = DS_STYLESHEET; continue; }
 		if (is ("listtext") || is ("pntext")) { s.dest = DS_LISTTEXT; listLen = 0; continue; }
-		if (is ("footer") || is ("footerr") || is ("footerl") || is ("footerf")) { s.dest = DS_FOOTER; continue; }
-		if (is ("fldinst")) { s.dest = s.dest == DS_FOOTER ? DS_FOOTER : DS_SKIP; continue; }
-		if (is ("info") || is ("pict") || is ("header") || is ("headerr") || is ("headerl") || is ("headerf") || is ("object")
+		if (is ("docvar")) { s.dest = DS_DOCVAR; varLen = 0; continue; }
+		if (is ("header") || is ("headerr") || is ("footer") || is ("footerr") || is ("headerf") || is ("footerf"))
+		{
+			int story = w[0] == 'h' ? (w[6] == 'f' ? SY_HEADER1 : SY_HEADER) : (w[6] == 'f' ? SY_FOOTER1 : SY_FOOTER);
+			int sn; story_p (d, story, &sn);
+			if (sn > 0 || qs[story]->len > 0) { s.dest = DS_SKIP; continue; }	// (a later section's: the first one's kept)
+			s.dest = DS_TEXT; s.story = story; s.intbl = false; s.pf = style_para (ST_NORMAL); s.pf.after = 0; s.pf.line = 100;
+			continue;
+		}
+		if (is ("field")) { instLen = 0; continue; }
+		if (is ("fldinst")) { s.dest = DS_FLDINST; instLen = 0; continue; }
+		if (is ("fldrslt"))
+		{
+			inst[instLen] = 0;
+			char arg[64]; int kind = field_parse (inst, arg, sizeof arg);
+			instLen = 0;
+			if (kind != FK_NONE && s.dest == DS_TEXT && !s.hidden)		// (one of Writer's: its result not kept)
+			{
+				unsigned short fi = fmtIndex (s); CharFmt f = d.fmt[fi];
+				f.fld = doc_field (d, kind, arg);
+				unsigned fc = FIELD_CHAR;
+				para_insert (qs[s.story], qs[s.story]->len, &fc, 1, doc_fmt (d, f));
+				s.dest = DS_SKIP;
+			}
+			continue;
+		}
+		if (is ("info") || is ("headerl") || is ("footerl") || is ("object")
 		    || is ("footnote") || is ("annotation") || is ("xe") || is ("tc") || is ("bkmkstart") || is ("bkmkend") || is ("nonshppict")
 		    || is ("themedata") || is ("colorschememapping") || is ("latentstyles") || is ("datastore") || is ("listtable")
-		    || is ("listoverridetable") || is ("rsidtbl") || is ("generator") || is ("mmathPr") || is ("xmlnstbl") || is ("pgdsctbl"))
+		    || is ("listoverridetable") || is ("rsidtbl") || is ("generator") || is ("mmathPr") || is ("xmlnstbl") || is ("pgdsctbl")
+		    || is ("nonesttables") || is ("nesttableprops") || is ("formfield") || is ("datafield") || is ("fldtype"))
 		{ s.dest = DS_SKIP; continue; }
-		if (s.dest == DS_SKIP) continue;
-		if (s.dest == DS_FOOTER) { if (is ("chpgn")) footerHasPage = true; if (is ("fldrslt")) {} continue; }
+		if (s.dest == DS_SKIP || s.dest == DS_FLDINST || s.dest == DS_DOCVAR) continue;
 		if (s.dest == DS_COLORTBL)
 		{
 			if (is ("red")) { red = (int) v; anyColor = true; } else if (is ("green")) { green = (int) v; anyColor = true; } else if (is ("blue")) { blue = (int) v; anyColor = true; }
@@ -329,14 +610,18 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		else if (is ("margr")) pg.right = (int) v;
 		else if (is ("margt")) pg.top = (int) v;
 		else if (is ("margb")) pg.bottom = (int) v;
+		else if (is ("headery")) pg.hdr = (int) v;
+		else if (is ("footery")) pg.ftr = (int) v;
+		else if (is ("titlepg")) pg.titlePg = true;
+		else if (is ("pgnstarts")) pg.start = (int) wclamp (v, 0L, 9999L);
 		else if (is ("landscape")) landscape = true;
 		else if (is ("uc")) s.uc = (int) v;
 		else if (is ("u")) { long u = v < 0 ? v + 65536 : v; emit ((unsigned) u); skipChars = s.uc; }
 		// characters
-		else if (is ("par") || is ("sect")) endPara (false);
+		else if (is ("par") || is ("sect")) endPara (false, false);
 		else if (is ("line")) emit (0x0B);
 		else if (is ("tab")) emit ('\t');
-		else if (is ("page")) { if (q->len > 0) endPara (false); pageNext = true; }
+		else if (is ("page")) { if (qs[s.story]->len > 0) endPara (false, false); pageNext = true; }
 		else if (is ("emdash")) emit (0x2014);
 		else if (is ("endash")) emit (0x2013);
 		else if (is ("bullet")) emit (0x2022);
@@ -345,8 +630,33 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		else if (is ("ldblquote")) emit (0x201C);
 		else if (is ("rdblquote")) emit (0x201D);
 		else if (is ("emspace") || is ("enspace")) emit (' ');
-		else if (is ("cell") || is ("nestcell")) emit ('\t');
-		else if (is ("row")) endPara (false);
+		else if (is ("chpgn") && s.dest == DS_TEXT)		// (a page number, the old way)
+		{
+			unsigned short fi = fmtIndex (s); CharFmt f = d.fmt[fi]; f.fld = doc_field (d, FK_PAGE, "");
+			unsigned fc = FIELD_CHAR; para_insert (qs[s.story], qs[s.story]->len, &fc, 1, doc_fmt (d, f));
+		}
+		// tables (a nested one: its cells as tabs, its rows as line breaks)
+		else if (is ("cell")) { if (s.story == SY_BODY) endPara (false, true); else emit ('\t'); }
+		else if (is ("nestcell")) emit ('\t');
+		else if (is ("nestrow")) emit (0x0B);
+		else if (is ("row")) { if (s.story == SY_BODY) endRow (); else endPara (false, false); }
+		else if (is ("intbl")) s.intbl = true;
+		else if (is ("trowd")) { ndef = 0; pend.right = 0; pend.vmf = pend.vmr = pend.hmr = false; pend.fill = -1; rowLeft = 0; rowAlign = AL_LEFT; rowHdr = false; rowHeight = 0; }
+		else if (is ("trleft")) rowLeft = (int) v;
+		else if (is ("trqc")) rowAlign = AL_CENTER;
+		else if (is ("trqr")) rowAlign = AL_RIGHT;
+		else if (is ("trql")) rowAlign = AL_LEFT;
+		else if (is ("trhdr")) rowHdr = true;
+		else if (is ("trrh")) rowHeight = (int) (v < 0 ? -v : v);
+		else if (is ("clvmgf")) pend.vmf = true;
+		else if (is ("clvmrg")) pend.vmr = true;
+		else if (is ("clmrg")) pend.hmr = true;
+		else if (is ("clcbpat")) pend.fill = (int) v;
+		else if (is ("clbrdrt") || is ("clbrdrl") || is ("clbrdrb") || is ("clbrdrr")) anyBorder = true;
+		else if (is ("brdrw")) { if (!brdW) brdW = (int) v; }
+		else if (is ("brdrcf")) { if (brdColor < 0) brdColor = (int) v; }
+		else if (is ("brdrnone") || is ("brdrnil")) {}
+		else if (is ("cellx")) { if (ndef < MAXCOLS) { pend.right = (int) v; def[ndef++] = pend; } pend.vmf = pend.vmr = pend.hmr = false; pend.fill = -1; }
 		// character formats
 		else if (is ("plain")) { s.cf = base; s.cf.font = (short) (fontMap[deff & (MAXF - 1)] >= 0 ? fontMap[deff & (MAXF - 1)] : base.font); s.cfColor = -1; s.cfHilite = -1; s.hidden = false; }
 		else if (is ("b")) s.cf.flags = (unsigned short) (on ? s.cf.flags | CF_BOLD : s.cf.flags & ~CF_BOLD);
@@ -368,6 +678,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		else if (is ("pard"))
 		{
 			s.pf = style_para (ST_NORMAL); s.pf.before = 0; s.pf.after = 0; s.pf.line = 100; s.pf.keepNext = false;
+			s.intbl = false; s.tabAlign = TA_LEFT; s.tabLead = TL_NONE;
 		}
 		else if (is ("s"))
 		{
@@ -375,6 +686,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 			if (k < 0) k = ST_NORMAL;
 			ParaFmt keep = s.pf;
 			s.pf = style_para (k);
+			s.pf.ntab = keep.ntab; for (int t = 0; t < keep.ntab; t++) s.pf.tab[t] = keep.tab[t];
 			if (k == ST_NORMAL) { s.pf.before = keep.before; s.pf.after = keep.after; s.pf.line = keep.line; }
 		}
 		else if (is ("ql")) s.pf.align = AL_LEFT;
@@ -389,20 +701,38 @@ static bool rtf_load (Doc &d, const char *b, int n)
 		else if (is ("sl")) { if (v > 0) s.pf.line = (short) wclamp ((int) (v * 100 / 240), 50, 400); else s.pf.line = 100; }
 		else if (is ("pagebb")) s.pf.pageBreak = on != 0;
 		else if (is ("keepn")) s.pf.keepNext = on != 0;
+		else if (is ("keep")) s.pf.keepLines = on != 0;
+		else if (is ("widctlpar")) s.pf.widow = true;
+		else if (is ("nowidctlpar")) s.pf.widow = false;
+		else if (is ("tqr")) s.tabAlign = TA_RIGHT;
+		else if (is ("tqc")) s.tabAlign = TA_CENTER;
+		else if (is ("tqdec")) s.tabAlign = TA_DECIMAL;
+		else if (is ("tldot") || is ("tlmdot")) s.tabLead = TL_DOT;
+		else if (is ("tlhyph")) s.tabLead = TL_DASH;
+		else if (is ("tlul") || is ("tlth") || is ("tleq")) s.tabLead = TL_LINE;
+		else if (is ("tx")) { if (v > 0) pf_add_tab (s.pf, (int) wclamp (v, 1L, 30000L), s.tabAlign, s.tabLead); s.tabAlign = TA_LEFT; s.tabLead = TL_NONE; }
+		else if (is ("tb")) { s.tabAlign = TA_LEFT; s.tabLead = TL_NONE; }
 		else if (is ("ilvl")) listLevel = (int) wclamp (v, 0L, 5L);
 		else if (is ("pnlvlblt")) s.pf.list = LS_BULLET;
 		else if (is ("pnlvlbody") || is ("pndec")) s.pf.list = s.pf.list == LS_BULLET ? LS_BULLET : LS_NUMBER;
 		else if (is ("pnlvl")) { s.pf.list = LS_NUMBER; s.pf.level = (unsigned char) wclamp ((int) v - 1, 0, 5); }
 	}
-	if (q->len > 0 || d.n == 0) endPara (true);
-	else para_free (q);
+	if (ncur > 0 || cur[0].np > 0) endRow ();
+	if (qs[SY_BODY]->len > 0) { flushTable (); story_append (d, SY_BODY, qs[SY_BODY]); qs[SY_BODY] = 0; }
+	flushTable ();
+	for (int k = 0; k < SY_COUNT; k++) if (qs[k]) para_free (qs[k]);
+	for (int k = 0; k <= MAXCOLS; k++) { for (int j = 0; j < cur[k].np; j++) para_free (cur[k].p[j]); delete[] cur[k].p; }
+	delete[] rows;
+	int bn; story_p (d, SY_BODY, &bn);
+	if (bn == 0) story_append (d, SY_BODY, para_styled (d, ST_NORMAL));
+	doc_fix (d);
 	if (landscape && pg.w < pg.h) { int t = pg.w; pg.w = pg.h; pg.h = t; }
 	pg.w = wclamp (pg.w, 2880, 40000); pg.h = wclamp (pg.h, 2880, 40000);
 	pg.left = wclamp (pg.left, 0, pg.w / 3); pg.right = wclamp (pg.right, 0, pg.w / 3);
 	pg.top = wclamp (pg.top, 0, pg.h / 3); pg.bottom = wclamp (pg.bottom, 0, pg.h / 3);
-	pg.numbers = footerHasPage;
+	pg.hdr = wclamp (pg.hdr, 0, pg.h / 3); pg.ftr = wclamp (pg.ftr, 0, pg.h / 3);
 	delete[] fontMap; delete[] colors; delete[] st; delete[] pbuf;
-	return d.n > 0;
+	return true;
 }
 
 // ---- RTF: writing ----------------------------------------------------------------------------------------
@@ -417,56 +747,40 @@ static void rtf_text (Out &o, unsigned c)
 	else { o.puts ("\\u"); o.num (c < 0x8000 ? (long) c : (long) c - 65536); o.put ('?'); }
 }
 
-static int rtf_save (Doc &d, Out &o)
+// (the writer's tables: the fonts' and colours' numbers)
+struct RtfOut
 {
-	o.init ();
-	// the colours used
-	unsigned cols[256]; int ncol = 0;
-	auto colIdx = [&] (unsigned c) -> int {
+	Out &o; Doc &d;
+	int *fmap; unsigned cols[256]; int ncol;
+	int counter[8];
+	RtfOut (Out &o_, Doc &d_) : o (o_), d (d_), fmap (0), ncol (0) { for (int i = 0; i < 8; i++) counter[i] = 0; }
+	int color (unsigned c)
+	{
 		if (c == AUTO) return 0;
 		for (int i = 0; i < ncol; i++) if (cols[i] == c) return i + 1;
 		if (ncol < 255) { cols[ncol++] = c; return ncol; }
 		return 0;
-	};
-	// (only the formats used: their fonts, their colours -- the tables keep what undone edits added)
-	bool *used = new bool[d.nfmt + 1];
-	for (int i = 0; i < d.nfmt; i++) used[i] = false;
-	for (int p = 0; p < d.n; p++) { const Para *q = d.p[p]; used[q->endCf] = true; for (int k = 0; k < q->len; k++) used[q->cf[k]] = true; }
-	int *fmap = new int[d.nfont + 1], nf = 0;
-	for (int i = 0; i < d.nfont; i++) fmap[i] = -1;
-	for (int i = 0; i < d.nfmt; i++) if (used[i]) { colIdx (d.fmt[i].color); colIdx (d.fmt[i].hilite); if (fmap[d.fmt[i].font] < 0) fmap[d.fmt[i].font] = nf++; }
-	o.puts ("{\\rtf1\\ansi\\ansicpg1252\\deff0\\uc1\n{\\fonttbl");
-	for (int r = 0; r < nf; r++)
-	{
-		int i = 0; while (fmap[i] != r) i++;
-		o.puts ("{\\f"); o.num (r);
-		const char *nm = d.fontName[i];
-		bool mono = false, sans = false;
-		for (int k = 0; nm[k]; k++) { if (lower (nm[k]) == 'm' && lower (nm[k + 1]) == 'o' && lower (nm[k + 2]) == 'n') mono = true; if (lower (nm[k]) == 's' && lower (nm[k + 1]) == 'a' && lower (nm[k + 2]) == 'n') sans = true; }
-		o.puts (mono ? "\\fmodern" : sans ? "\\fswiss" : "\\froman");
-		o.puts ("\\fcharset0 ");
-		for (int k = 0; nm[k]; k++) rtf_text (o, (unsigned char) nm[k]);
-		o.puts (";}");
 	}
-	o.puts ("}\n{\\colortbl;");
-	for (int i = 0; i < ncol; i++) { o.puts ("\\red"); o.num (cols[i] >> 16 & 255); o.puts ("\\green"); o.num (cols[i] >> 8 & 255); o.puts ("\\blue"); o.num (cols[i] & 255); o.put (';'); }
-	o.puts ("}\n{\\stylesheet");
-	static const char *const snames[ST_COUNT] = { "Normal", "heading 1", "heading 2", "heading 3", "Title", "Subtitle", "Quote", "Plain Text" };
-	for (int i = 0; i < ST_COUNT; i++) { o.puts ("{\\s"); o.num (i); o.put (' '); o.puts (snames[i]); o.puts (";}"); }
-	o.puts ("}\n{\\*\\generator Onyx Writer;}\n");
-	const PageSetup &pg = d.page;
-	o.puts ("\\paperw"); o.num (pg.w); o.puts ("\\paperh"); o.num (pg.h);
-	o.puts ("\\margl"); o.num (pg.left); o.puts ("\\margr"); o.num (pg.right);
-	o.puts ("\\margt"); o.num (pg.top); o.puts ("\\margb"); o.num (pg.bottom);
-	if (pg.w > pg.h) o.puts ("\\landscape");
-	o.puts ("\\viewkind1\n");
-	if (pg.numbers) o.puts ("{\\footer\\pard\\qc{\\field{\\*\\fldinst PAGE}{\\fldrslt 1}}\\par}\n");
-	int counter[8] = { 0 };
-	for (int p = 0; p < d.n; p++)
+	void runFmt (const CharFmt &f)
 	{
-		const Para *q = d.p[p];
+		o.puts ("\\f"); o.num (fmap[f.font]); o.puts ("\\fs"); o.num (f.size);
+		if (f.flags & CF_BOLD) o.puts ("\\b");
+		if (f.flags & CF_ITALIC) o.puts ("\\i");
+		if (f.flags & CF_UNDER) o.puts ("\\ul");
+		if (f.flags & CF_STRIKE) o.puts ("\\strike");
+		if (f.flags & CF_SUPER) o.puts ("\\super");
+		if (f.flags & CF_SUB) o.puts ("\\sub");
+		if (f.color != AUTO) { o.puts ("\\cf"); o.num (color (f.color)); }
+		if (f.hilite != AUTO) { o.puts ("\\highlight"); o.num (color (f.hilite)); }
+		o.put (' ');
+	}
+	// A paragraph: its format, its runs, its end (\par, or \cell ending a cell).
+	void para (const Para *q, bool intbl, bool cellEnd)
+	{
 		const ParaFmt &pf = q->pf;
-		o.puts ("\\pard\\plain\\s"); o.num (pf.style);
+		o.puts ("\\pard\\plain");
+		if (intbl) o.puts ("\\intbl");
+		o.puts ("\\s"); o.num (pf.style);
 		static const char *const al[4] = { "\\ql", "\\qc", "\\qr", "\\qj" };
 		o.puts (al[pf.align & 3]);
 		if (pf.left) { o.puts ("\\li"); o.num (pf.left); }
@@ -475,8 +789,16 @@ static int rtf_save (Doc &d, Out &o)
 		if (pf.before) { o.puts ("\\sb"); o.num (pf.before); }
 		if (pf.after) { o.puts ("\\sa"); o.num (pf.after); }
 		if (pf.line != 100) { o.puts ("\\sl"); o.num (pf.line * 240 / 100); o.puts ("\\slmult1"); }
-		if (pf.pageBreak) o.puts ("\\pagebb");
+		if (pf.pageBreak && !intbl) o.puts ("\\pagebb");
 		if (pf.keepNext) o.puts ("\\keepn");
+		if (pf.keepLines) o.puts ("\\keep");
+		o.puts (pf.widow ? "\\widctlpar" : "\\nowidctlpar");
+		for (int t = 0; t < pf.ntab; t++)
+		{
+			static const char *const ta[4] = { "", "\\tqc", "\\tqr", "\\tqdec" };
+			static const char *const tl[4] = { "", "\\tldot", "\\tlhyph", "\\tlul" };
+			o.puts (ta[pf.tab[t].align & 3]); o.puts (tl[pf.tab[t].leader & 3]); o.puts ("\\tx"); o.num (pf.tab[t].pos);
+		}
 		const CharFmt &f0 = d.fmt[q->len ? q->cf[0] : q->endCf];
 		if (pf.list != LS_NONE)
 		{
@@ -494,37 +816,191 @@ static int rtf_save (Doc &d, Out &o)
 		{
 			int j = i; while (j < q->len && q->cf[j] == q->cf[i]) j++;
 			const CharFmt &f = d.fmt[q->cf[i]];
-			o.puts ("{\\f"); o.num (fmap[f.font]); o.puts ("\\fs"); o.num (f.size);
-			if (f.flags & CF_BOLD) o.puts ("\\b");
-			if (f.flags & CF_ITALIC) o.puts ("\\i");
-			if (f.flags & CF_UNDER) o.puts ("\\ul");
-			if (f.flags & CF_STRIKE) o.puts ("\\strike");
-			if (f.flags & CF_SUPER) o.puts ("\\super");
-			if (f.flags & CF_SUB) o.puts ("\\sub");
-			if (f.color != AUTO) { o.puts ("\\cf"); o.num (colIdx (f.color)); }
-			if (f.hilite != AUTO) { o.puts ("\\highlight"); o.num (colIdx (f.hilite)); }
-			o.put (' ');
+			if (f.fld && q->ch[i] == FIELD_CHAR)			// a field: its instruction, its text of now
+			{
+				for (int k = i; k < j; k++)
+				{
+					char in[96]; field_instr (d.fld[f.fld - 1], in, sizeof in);
+					o.puts ("{\\field{\\*\\fldinst {");
+					for (const char *t = in; *t; t++) rtf_text (o, (unsigned char) *t);
+					o.puts (" }}{\\fldrslt {"); runFmt (f);
+					unsigned t[80]; int tn = field_text (d, f.fld, 1, 1, t, 80);
+					for (int m = 0; m < tn; m++) rtf_text (o, t[m]);
+					o.puts ("}}}");
+				}
+				i = j;
+				continue;
+			}
+			o.put ('{'); runFmt (f);
 			for (int k = i; k < j; k++)
 			{
 				if (q->ch[k] != OBJ_CHAR || !f.obj) { rtf_text (o, q->ch[k]); continue; }
 				const Image &im = d.img[f.obj - 1];
 				unsigned len; bool jpeg, made;
-				const unsigned char *b = image_bytes (im, &len, &jpeg, &made);
+				const unsigned char *bb = image_bytes (im, &len, &jpeg, &made);
 				o.puts ("{\\pict"); o.puts (jpeg ? "\\jpegblip" : "\\pngblip");
 				o.puts ("\\picw"); o.num (im.w); o.puts ("\\pich"); o.num (im.h);
 				o.puts ("\\picwgoal"); o.num (f.ow); o.puts ("\\pichgoal"); o.num (f.oh); o.put ('\n');
-				for (unsigned x = 0; x < len; x++) { o.hex2 (b[x]); if ((x & 63) == 63) o.put ('\n'); }
+				for (unsigned x = 0; x < len; x++) { o.hex2 (bb[x]); if ((x & 63) == 63) o.put ('\n'); }
 				o.puts ("}");
-				if (made) delete[] b;
+				if (made) delete[] bb;
 			}
 			o.put ('}');
 			i = j;
 		}
 		const CharFmt &e = d.fmt[q->endCf];
-		o.puts ("{\\f"); o.num (fmap[e.font]); o.puts ("\\fs"); o.num (e.size); o.puts ("\\par}\n");
+		o.puts ("{\\f"); o.num (fmap[e.font]); o.puts ("\\fs"); o.num (e.size); o.puts (cellEnd ? "\\cell}\n" : "\\par}\n");
 	}
+	// A table's rows (its paragraphs [a, b)).
+	void table (Para *const *p, int a, int b)
+	{
+		const Table *t = para_table (d, p[a]);
+		int nc = t->ncols;
+		int bw = wclamp (t->bw * 5 / 2, 1, 75);
+		for (int r = 0; r < t->nrows; r++)
+		{
+			o.puts ("\\trowd\\trgaph"); o.num (CELL_PAD_X); o.puts ("\\trleft"); o.num (t->indent);
+			if (t->align == AL_CENTER) o.puts ("\\trqc"); else if (t->align == AL_RIGHT) o.puts ("\\trqr");
+			if (r == 0 && t->header) o.puts ("\\trhdr");
+			if (t->rowH[r]) { o.puts ("\\trrh"); o.num (t->rowH[r]); }
+			int x = t->indent;
+			for (int c = 0; c < nc; )
+			{
+				int orow, ocol; cell_owner (t, r, c, &orow, &ocol);
+				const TCell &k = tcell (t, orow, ocol);
+				if (orow == r && ocol < c) { c++; continue; }	// (inside a cell of this row: its width is the cell's)
+				bool cont = orow < r;
+				int cs = cont ? k.cs - (c - ocol) : k.cs;
+				if (cs < 1) cs = 1;
+				if (!cont && k.rs > 1) o.puts ("\\clvmgf");
+				if (cont) o.puts ("\\clvmrg");
+				bool top = false, bot = false, lft = false, rgt = false;
+				switch (t->border)
+				{
+				case TB_ALL: top = bot = lft = rgt = true; break;
+				case TB_OUTER: top = orow == 0; bot = orow + k.rs >= t->nrows; lft = c == 0; rgt = c + cs >= nc; break;
+				case TB_ROWS: top = bot = true; break;
+				}
+				auto brd = [&] (const char *side, bool on) {
+					if (!on) return;
+					o.puts ("\\clbrdr"); o.puts (side); o.puts ("\\brdrs\\brdrw"); o.num (bw);
+					if (t->bcolor != AUTO && t->bcolor) { o.puts ("\\brdrcf"); o.num (color (t->bcolor)); }
+				};
+				brd ("t", top); brd ("l", lft); brd ("b", bot); brd ("r", rgt);
+				if (k.fill != AUTO) { o.puts ("\\clcbpat"); o.num (color (k.fill)); }
+				for (int cc = c; cc < c + cs && cc < nc; cc++) x += t->colW[cc];
+				o.puts ("\\cellx"); o.num (x);
+				c += cs;
+			}
+			o.put ('\n');
+			// the cells' paragraphs, in the same order
+			for (int c = 0; c < nc; )
+			{
+				int orow, ocol; cell_owner (t, r, c, &orow, &ocol);
+				const TCell &k = tcell (t, orow, ocol);
+				if (orow == r && ocol < c) { c++; continue; }
+				int cs = orow < r ? k.cs - (c - ocol) : k.cs;
+				if (cs < 1) cs = 1;
+				if (orow < r) o.puts ("\\pard\\plain\\intbl\\cell\n");
+				else
+				{
+					int first = -1, last = -1;
+					for (int i = a; i < b; i++) if (p[i]->pf.row == r && p[i]->pf.col == c) { if (first < 0) first = i; last = i; }
+					if (first < 0) o.puts ("\\pard\\plain\\intbl\\cell\n");
+					else for (int i = first; i <= last; i++) para (p[i], true, i == last);
+				}
+				c += cs;
+			}
+			o.puts ("\\row\n");
+		}
+	}
+	// A story's paragraphs (the body's tables as tables; a header's as its text).
+	void story (Para *const *p, int n, bool body)
+	{
+		bool toc = false;
+		for (int i = 0; i < n; )
+		{
+			if (body && in_table (p[i]) && para_table (d, p[i]))
+			{
+				int j = i + 1; while (j < n && p[j]->pf.tbl == p[i]->pf.tbl) j++;
+				table (p, i, j);
+				i = j;
+				continue;
+			}
+			bool isToc = body && style_toc (p[i]->pf.style);
+			if (isToc && !toc) { o.puts ("{\\field{\\*\\fldinst {TOC \\\\o \"1-3\" }}{\\fldrslt\n"); toc = true; }
+			para (p[i], false, false);
+			if (toc && (i + 1 >= n || !style_toc (p[i + 1]->pf.style))) { o.puts ("}}\n"); toc = false; }
+			i++;
+		}
+	}
+};
+
+static int rtf_save (Doc &d, Out &o)
+{
+	o.init ();
+	RtfOut w (o, d);
+	bool *tused = new bool[d.ntbl + 1];
+	bool *used = formats_used (d, tused);
+	int *fmap = new int[d.nfont + 1], nf = 0;
+	for (int i = 0; i < d.nfont; i++) fmap[i] = -1;
+	for (int i = 0; i < d.nfmt; i++) if (used[i]) { w.color (d.fmt[i].color); w.color (d.fmt[i].hilite); if (fmap[d.fmt[i].font] < 0) fmap[d.fmt[i].font] = nf++; }
+	for (int i = 0; i < d.ntbl; i++)
+		if (tused[i])
+		{
+			const Table *t = d.tbl[i];
+			if (t->bcolor != AUTO && t->bcolor) w.color (t->bcolor);
+			for (int k = 0; k < t->nrows * t->ncols; k++) w.color (t->cell[k].fill);
+		}
+	w.fmap = fmap;
+	o.puts ("{\\rtf1\\ansi\\ansicpg1252\\deff0\\uc1\n{\\fonttbl");
+	for (int r = 0; r < nf; r++)
+	{
+		int i = 0; while (fmap[i] != r) i++;
+		o.puts ("{\\f"); o.num (r);
+		const char *nm = d.fontName[i];
+		bool mono = false, sans = false;
+		for (int k = 0; nm[k]; k++) { if (lower (nm[k]) == 'm' && lower (nm[k + 1]) == 'o' && lower (nm[k + 2]) == 'n') mono = true; if (lower (nm[k]) == 's' && lower (nm[k + 1]) == 'a' && lower (nm[k + 2]) == 'n') sans = true; }
+		o.puts (mono ? "\\fmodern" : sans ? "\\fswiss" : "\\froman");
+		o.puts ("\\fcharset0 ");
+		for (int k = 0; nm[k]; k++) rtf_text (o, (unsigned char) nm[k]);
+		o.puts (";}");
+	}
+	o.puts ("}\n{\\colortbl;");
+	for (int i = 0; i < w.ncol; i++) { o.puts ("\\red"); o.num (w.cols[i] >> 16 & 255); o.puts ("\\green"); o.num (w.cols[i] >> 8 & 255); o.puts ("\\blue"); o.num (w.cols[i] & 255); o.put (';'); }
+	o.puts ("}\n{\\stylesheet");
+	static const char *const snames[ST_COUNT] = { "Normal", "heading 1", "heading 2", "heading 3", "Title", "Subtitle", "Quote", "Plain Text",
+						       "toc 1", "toc 2", "toc 3", "TOC Heading", "header", "footer" };
+	for (int i = 0; i < ST_COUNT; i++) { o.puts ("{\\s"); o.num (i); o.put (' '); o.puts (snames[i]); o.puts (";}"); }
+	o.puts ("}\n{\\*\\generator Onyx Writer;}\n");
+	if (d.mergeSrc[0])
+	{
+		o.puts ("{\\*\\docvar {OnyxMergeSource}{");
+		for (const char *t = d.mergeSrc; *t; t++) rtf_text (o, (unsigned char) *t);
+		o.puts ("}}\n");
+	}
+	const PageSetup &pg = d.page;
+	o.puts ("\\paperw"); o.num (pg.w); o.puts ("\\paperh"); o.num (pg.h);
+	o.puts ("\\margl"); o.num (pg.left); o.puts ("\\margr"); o.num (pg.right);
+	o.puts ("\\margt"); o.num (pg.top); o.puts ("\\margb"); o.num (pg.bottom);
+	if (pg.w > pg.h) o.puts ("\\landscape");
+	o.puts ("\\widowctrl\\viewkind1\n\\sectd\\headery"); o.num (pg.hdr); o.puts ("\\footery"); o.num (pg.ftr);
+	if (pg.titlePg) o.puts ("\\titlepg");
+	if (pg.start != 1) { o.puts ("\\pgnstarts"); o.num (pg.start); o.puts ("\\pgnrestart"); }
+	o.put ('\n');
+	static const char *const hname[SY_COUNT] = { "", "header", "footer", "headerf", "footerf" };
+	for (int s = SY_HEADER; s < SY_COUNT; s++)
+	{
+		if (story_empty (d, s)) continue;
+		int n; Para **p = story_p (d, s, &n);
+		o.puts ("{\\"); o.puts (hname[s]); o.put ('\n');
+		w.story (p, n, false);
+		o.puts ("}\n");
+	}
+	int n; Para **p = story_p (d, SY_BODY, &n);
+	w.story (p, n, true);
 	o.puts ("}\n");
-	delete[] used; delete[] fmap;
+	delete[] used; delete[] tused; delete[] fmap;
 	return o.n;
 }
 
@@ -545,9 +1021,11 @@ static void txt_load (Doc &d, const char *b, int n)
 static int txt_save (Doc &d, Out &o)
 {
 	o.init ();
-	int total = doc_text_len (d, mkpos (0, 0), doc_end (d));
+	int n; Para **p = story_p (d, SY_BODY, &n);
+	Doc v = d; v.p = p; v.n = n;				// (the body, whatever story is edited)
+	int total = doc_text_len (v, mkpos (0, 0), mkpos (n - 1, p[n - 1]->len));
 	unsigned *u = new unsigned[total + 1];
-	int m = doc_text (d, mkpos (0, 0), doc_end (d), u, total);
+	int m = doc_text (v, mkpos (0, 0), mkpos (n - 1, p[n - 1]->len), u, total);
 	u[m++] = '\n';
 	o.grow (m * 4 + 1);
 	o.n = encode_text (u, m, o.b, o.cap);
@@ -564,6 +1042,84 @@ static void html_text (Out &o, unsigned c)
 }
 static void html_color (Out &o, unsigned c) { o.put ('#'); o.hex2 (c >> 16 & 255); o.hex2 (c >> 8 & 255); o.hex2 (c & 255); }
 
+static void html_para (Out &o, Doc &d, const Para *q, int &openList, bool inCell)
+{
+	static const char *const tag[ST_COUNT] = { "p", "h1", "h2", "h3", "h1", "h2", "blockquote", "pre", "p", "p", "p", "h2", "p", "p" };
+	const ParaFmt &pf = q->pf;
+	int list = inCell ? LS_NONE : pf.list;
+	if (list != openList)
+	{
+		if (openList != LS_NONE) o.puts (openList == LS_BULLET ? "</ul>\n" : "</ol>\n");
+		if (list != LS_NONE) o.puts (list == LS_BULLET ? "<ul>\n" : "<ol>\n");
+		openList = list;
+	}
+	const char *t = list != LS_NONE ? "li" : tag[pf.style];
+	o.put ('<'); o.puts (t);
+	static const char *const al[4] = { "left", "center", "right", "justify" };
+	bool style = pf.align != STYLES[pf.style].align || pf.left != STYLES[pf.style].left || pf.first || pf.pageBreak;
+	if (style && list == LS_NONE)
+	{
+		o.puts (" style=\"text-align:"); o.puts (al[pf.align & 3]);
+		if (pf.left) { o.puts ("; margin-left:"); o.num (pf.left / 20); o.puts ("pt"); }
+		if (pf.first) { o.puts ("; text-indent:"); o.num (pf.first / 20); o.puts ("pt"); }
+		if (pf.pageBreak) o.puts ("; page-break-before:always");
+		o.put ('"');
+	}
+	o.put ('>');
+	CharFmt sf = style_fmt (d, pf.style);
+	for (int i = 0; i < q->len; )
+	{
+		int j = i; while (j < q->len && q->cf[j] == q->cf[i]) j++;
+		const CharFmt &f = d.fmt[q->cf[i]];
+		bool span = f.font != sf.font || f.size != sf.size || f.color != AUTO || f.hilite != AUTO;
+		bool b = (f.flags & CF_BOLD) && !(sf.flags & CF_BOLD), it = (f.flags & CF_ITALIC) && !(sf.flags & CF_ITALIC);
+		if (span)
+		{
+			o.puts ("<span style=\"");
+			if (f.font != sf.font) { o.puts ("font-family:'"); o.puts (d.fontName[f.font]); o.puts ("'; "); }
+			if (f.size != sf.size) { o.puts ("font-size:"); o.num (f.size / 2); if (f.size & 1) o.puts (".5"); o.puts ("pt; "); }
+			if (f.color != AUTO) { o.puts ("color:"); html_color (o, f.color); o.puts ("; "); }
+			if (f.hilite != AUTO) { o.puts ("background:"); html_color (o, f.hilite); o.puts ("; "); }
+			o.puts ("\">");
+		}
+		if (b) o.puts ("<b>");
+		if (it) o.puts ("<i>");
+		if (f.flags & CF_UNDER) o.puts ("<u>");
+		if (f.flags & CF_STRIKE) o.puts ("<s>");
+		if (f.flags & CF_SUPER) o.puts ("<sup>");
+		if (f.flags & CF_SUB) o.puts ("<sub>");
+		for (int k = i; k < j; k++)
+		{
+			if (q->ch[k] == FIELD_CHAR && f.fld) { unsigned tt[80]; int tn = field_text (d, f.fld, 1, 1, tt, 80); for (int m = 0; m < tn; m++) html_text (o, tt[m]); continue; }
+			if (q->ch[k] != OBJ_CHAR || !f.obj) { html_text (o, q->ch[k]); continue; }
+			const Image &im = d.img[f.obj - 1];
+			unsigned len; bool jpeg, made;
+			const unsigned char *bb = image_bytes (im, &len, &jpeg, &made);
+			o.puts ("<img style=\"width:"); o.num (f.ow / 20); o.puts ("pt; height:"); o.num (f.oh / 20);
+			o.puts ("pt; vertical-align:baseline\" alt=\"\" src=\"data:image/"); o.puts (jpeg ? "jpeg" : "png"); o.puts (";base64,");
+			static const char *B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+			for (unsigned x = 0; x < len; x += 3)
+			{
+				unsigned v = (unsigned) bb[x] << 16 | (x + 1 < len ? (unsigned) bb[x + 1] << 8 : 0) | (x + 2 < len ? bb[x + 2] : 0);
+				o.put (B64[v >> 18 & 63]); o.put (B64[v >> 12 & 63]);
+				o.put (x + 1 < len ? B64[v >> 6 & 63] : '='); o.put (x + 2 < len ? B64[v & 63] : '=');
+			}
+			o.puts ("\">");
+			if (made) delete[] bb;
+		}
+		if (f.flags & CF_SUB) o.puts ("</sub>");
+		if (f.flags & CF_SUPER) o.puts ("</sup>");
+		if (f.flags & CF_STRIKE) o.puts ("</s>");
+		if (f.flags & CF_UNDER) o.puts ("</u>");
+		if (it) o.puts ("</i>");
+		if (b) o.puts ("</b>");
+		if (span) o.puts ("</span>");
+		i = j;
+	}
+	if (q->len == 0 && list == LS_NONE) o.puts ("&nbsp;");
+	o.puts ("</"); o.puts (t); o.puts (">\n");
+}
+
 static int html_save (Doc &d, Out &o, const char *title)
 {
 	o.init ();
@@ -571,83 +1127,41 @@ static int html_save (Doc &d, Out &o, const char *title)
 	for (const char *t = title; *t; t++) html_text (o, (unsigned char) *t);
 	o.puts ("</title>\n<style>\nbody { max-width: 46em; margin: 2em auto; padding: 0 1em; font-family: 'Liberation Serif', 'Times New Roman', serif; font-size: 12pt; line-height: 1.3; }\n"
 		"p, li { margin: 0 0 0.5em 0; } h1, h2, h3 { font-family: 'Liberation Sans', Arial, sans-serif; }\n"
-		"blockquote { font-style: italic; color: #404040; } pre { font-family: 'DejaVu Sans Mono', monospace; }\n</style>\n</head>\n<body>\n");
-	static const char *const tag[ST_COUNT] = { "p", "h1", "h2", "h3", "h1", "h2", "blockquote", "pre" };
+		"blockquote { font-style: italic; color: #404040; } pre { font-family: 'DejaVu Sans Mono', monospace; }\n"
+		"table { border-collapse: collapse; margin: 0.5em 0; } td { padding: 2pt 5pt; vertical-align: top; } td p { margin: 0; }\n</style>\n</head>\n<body>\n");
 	int openList = LS_NONE;
-	for (int p = 0; p < d.n; p++)
+	int n; Para **p = story_p (d, SY_BODY, &n);
+	for (int i = 0; i < n; )
 	{
-		const Para *q = d.p[p];
-		const ParaFmt &pf = q->pf;
-		if (pf.list != openList)
+		const Table *t = in_table (p[i]) ? para_table (d, p[i]) : 0;
+		if (!t) { html_para (o, d, p[i], openList, false); i++; continue; }
+		if (openList != LS_NONE) { o.puts (openList == LS_BULLET ? "</ul>\n" : "</ol>\n"); openList = LS_NONE; }
+		int j = i + 1; while (j < n && p[j]->pf.tbl == p[i]->pf.tbl) j++;
+		o.puts ("<table>\n");
+		for (int r = 0; r < t->nrows; r++)
 		{
-			if (openList != LS_NONE) o.puts (openList == LS_BULLET ? "</ul>\n" : "</ol>\n");
-			if (pf.list != LS_NONE) o.puts (pf.list == LS_BULLET ? "<ul>\n" : "<ol>\n");
-			openList = pf.list;
-		}
-		const char *t = pf.list != LS_NONE ? "li" : tag[pf.style];
-		o.put ('<'); o.puts (t);
-		static const char *const al[4] = { "left", "center", "right", "justify" };
-		bool style = pf.align != STYLES[pf.style].align || pf.left != STYLES[pf.style].left || pf.first || pf.pageBreak;
-		if (style && pf.list == LS_NONE)
-		{
-			o.puts (" style=\"text-align:"); o.puts (al[pf.align & 3]);
-			if (pf.left) { o.puts ("; margin-left:"); o.num (pf.left / 20); o.puts ("pt"); }
-			if (pf.first) { o.puts ("; text-indent:"); o.num (pf.first / 20); o.puts ("pt"); }
-			if (pf.pageBreak) o.puts ("; page-break-before:always");
-			o.put ('"');
-		}
-		o.put ('>');
-		CharFmt sf = style_fmt (d, pf.style);
-		for (int i = 0; i < q->len; )
-		{
-			int j = i; while (j < q->len && q->cf[j] == q->cf[i]) j++;
-			const CharFmt &f = d.fmt[q->cf[i]];
-			bool span = f.font != sf.font || f.size != sf.size || f.color != AUTO || f.hilite != AUTO;
-			bool b = (f.flags & CF_BOLD) && !(sf.flags & CF_BOLD), it = (f.flags & CF_ITALIC) && !(sf.flags & CF_ITALIC);
-			if (span)
+			o.puts ("<tr>");
+			for (int c = 0; c < t->ncols; c++)
 			{
-				o.puts ("<span style=\"");
-				if (f.font != sf.font) { o.puts ("font-family:'"); o.puts (d.fontName[f.font]); o.puts ("'; "); }
-				if (f.size != sf.size) { o.puts ("font-size:"); o.num (f.size / 2); if (f.size & 1) o.puts (".5"); o.puts ("pt; "); }
-				if (f.color != AUTO) { o.puts ("color:"); html_color (o, f.color); o.puts ("; "); }
-				if (f.hilite != AUTO) { o.puts ("background:"); html_color (o, f.hilite); o.puts ("; "); }
-				o.puts ("\">");
+				const TCell &k = tcell (t, r, c);
+				if (k.covered) continue;
+				o.puts (r == 0 && t->header ? "<th" : "<td");
+				int w = 0; for (int cc = c; cc < c + k.cs && cc < t->ncols; cc++) w += t->colW[cc];
+				o.puts (" style=\"width:"); o.num (w / 20); o.puts ("pt");
+				if (t->border != TB_NONE) { o.puts ("; border:"); o.num (wmax (1, t->bw / 8)); o.puts ("pt solid "); html_color (o, t->bcolor == AUTO ? 0 : t->bcolor); }
+				if (k.fill != AUTO) { o.puts ("; background:"); html_color (o, k.fill); }
+				o.put ('"');
+				if (k.cs > 1) { o.puts (" colspan=\""); o.num (k.cs); o.put ('"'); }
+				if (k.rs > 1) { o.puts (" rowspan=\""); o.num (k.rs); o.put ('"'); }
+				o.put ('>');
+				int cl = LS_NONE;
+				for (int m = i; m < j; m++) if (p[m]->pf.row == r && p[m]->pf.col == c) html_para (o, d, p[m], cl, true);
+				o.puts (r == 0 && t->header ? "</th>" : "</td>");
 			}
-			if (b) o.puts ("<b>");
-			if (it) o.puts ("<i>");
-			if (f.flags & CF_UNDER) o.puts ("<u>");
-			if (f.flags & CF_STRIKE) o.puts ("<s>");
-			if (f.flags & CF_SUPER) o.puts ("<sup>");
-			if (f.flags & CF_SUB) o.puts ("<sub>");
-			for (int k = i; k < j; k++)
-			{
-				if (q->ch[k] != OBJ_CHAR || !f.obj) { html_text (o, q->ch[k]); continue; }
-				const Image &im = d.img[f.obj - 1];
-				unsigned len; bool jpeg, made;
-				const unsigned char *b = image_bytes (im, &len, &jpeg, &made);
-				o.puts ("<img style=\"width:"); o.num (f.ow / 20); o.puts ("pt; height:"); o.num (f.oh / 20);
-				o.puts ("pt; vertical-align:baseline\" alt=\"\" src=\"data:image/"); o.puts (jpeg ? "jpeg" : "png"); o.puts (";base64,");
-				static const char *B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-				for (unsigned x = 0; x < len; x += 3)
-				{
-					unsigned v = (unsigned) b[x] << 16 | (x + 1 < len ? (unsigned) b[x + 1] << 8 : 0) | (x + 2 < len ? b[x + 2] : 0);
-					o.put (B64[v >> 18 & 63]); o.put (B64[v >> 12 & 63]);
-					o.put (x + 1 < len ? B64[v >> 6 & 63] : '='); o.put (x + 2 < len ? B64[v & 63] : '=');
-				}
-				o.puts ("\">");
-				if (made) delete[] b;
-			}
-			if (f.flags & CF_SUB) o.puts ("</sub>");
-			if (f.flags & CF_SUPER) o.puts ("</sup>");
-			if (f.flags & CF_STRIKE) o.puts ("</s>");
-			if (f.flags & CF_UNDER) o.puts ("</u>");
-			if (it) o.puts ("</i>");
-			if (b) o.puts ("</b>");
-			if (span) o.puts ("</span>");
-			i = j;
+			o.puts ("</tr>\n");
 		}
-		if (q->len == 0 && pf.list == LS_NONE) o.puts ("&nbsp;");
-		o.puts ("</"); o.puts (t); o.puts (">\n");
+		o.puts ("</table>\n");
+		i = j;
 	}
 	if (openList != LS_NONE) o.puts (openList == LS_BULLET ? "</ul>\n" : "</ol>\n");
 	o.puts ("</body>\n</html>\n");
