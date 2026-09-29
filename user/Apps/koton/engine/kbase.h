@@ -10,7 +10,9 @@
 
 #include <stddef.h>
 #include <string.h>
-#include <new>
+#ifndef ONYX_CPP_HPP
+#include <new>			// (an Onyx app's onyxpp.hpp gives placement new itself)
+#endif
 
 namespace kt {
 

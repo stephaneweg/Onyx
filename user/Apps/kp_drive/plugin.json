@@ -1,0 +1,17 @@
+{
+  "name": "Drive",
+  "kind": "effect",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "Saturation to fuzz, oversampled 4x: Koton's Drive.",
+  "aliases": ["koton.drive"],
+  "params": [
+    {"id": "type", "name": "Character", "min": 0, "max": 5, "default": 1, "unit": "", "step": 1, "choices": ["Soft", "Overdrive", "Tube", "Distortion", "Fuzz", "Wavefolder"]},
+    {"id": "drive", "name": "Drive", "min": 0, "max": 40, "default": 14, "unit": "dB"},
+    {"id": "bass_cut", "name": "Low cut", "min": 20, "max": 600, "default": 90, "unit": "Hz"},
+    {"id": "tone", "name": "Tone", "min": 0, "max": 1, "default": 0.6, "unit": ""},
+    {"id": "bias", "name": "Asymmetry", "min": 0, "max": 1, "default": 0.25, "unit": ""},
+    {"id": "mix", "name": "Mix", "min": 0, "max": 1, "default": 1, "unit": ""},
+    {"id": "level", "name": "Level", "min": -30, "max": 12, "default": 0, "unit": "dB"}
+  ]
+}

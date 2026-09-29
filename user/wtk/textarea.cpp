@@ -7,14 +7,14 @@ namespace wtk {
 
 Textarea::Textarea (int l, int t, int w, int h, int capacity)
   : Widget (l, t, w, h), cap (capacity < 16 ? 16 : capacity),
-    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false), barDrag (false), anchor (-1),
+    len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false), barDrag (false), leftPx (0), anchor (-1),
     ownColors (false), colBg (0), colText (0), colCaret (0), colSel (0)
 { canFocus = true; buf = new char[cap]; buf[0] = '\0'; }
 
 Textarea::~Textarea () { delete [] buf; }
 
 void Textarea::setContent (const char *s)
-{ anchor = -1; len = 0; caret = 0; top = 0; left = 0; if (s) while (s[len] && len < cap - 1) { buf[len] = s[len]; len++; } buf[len] = '\0'; invalidate (true); }
+{ anchor = -1; len = 0; caret = 0; top = 0; left = 0; leftPx = 0; if (s) while (s[len] && len < cap - 1) { buf[len] = s[len]; len++; } buf[len] = '\0'; invalidate (true); }
 
 void Textarea::insertAt (int ch)
 { if (len >= cap - 1) return; for (int i = len; i > caret; i--) buf[i] = buf[i - 1]; buf[caret] = (char) ch; len++; caret++; buf[len] = '\0'; }
@@ -80,14 +80,78 @@ void Textarea::ensureVisible (int vr, int vc)
 	int cc = caret - lineStart (caret);
 	if (cl < top) top = cl;
 	if (cl >= top + vr) top = cl - vr + 1;
+	if (wk_textface ())				// a proportional face: scrolled sideways by px
+	{
+		int view = width - 8 - WK_SBW - 2, x = lineW (lineStart (caret), caret);
+		if (view < 8) view = 8;
+		if (x < leftPx) leftPx = x - view / 4;
+		if (x > leftPx + view) leftPx = x - view + view / 4;
+		if (leftPx < 0) leftPx = 0;
+		if (top < 0) top = 0;
+		return;
+	}
 	if (cc < left) left = cc;
 	if (cc >= left + vc) left = cc - vc + 1;
 	if (top < 0) top = 0;
 	if (left < 0) left = 0;
 }
 
+// ---- with a proportional face (wtk/text.h) ----------------------------------------------------------------
+int Textarea::lineW (int ls, int i) { return i > ls ? wk_tw_n (buf + ls, i - ls) : 0; }
+int Textarea::placeAt (int ls, int x) { return ls + wk_tpos (buf + ls, lineEnd (ls) - ls, x); }
+int Textarea::placeRow (int row, int mx)
+{
+	int want = top + row, i = 0, line = 0;
+	while (line < want && buf[i]) { if (buf[i] == '\n') line++; i++; }
+	return placeAt (i, mx - 4 + leftPx);
+}
+
+void Textarea::drawFace ()
+{
+	const int pad = 4; int fh = wk_fh ();
+	rows = (height - 4) / fh; if (rows < 1) rows = 1;
+	cols = (width - 2 * pad - WK_SBW) / wk_fw (); if (cols < 1) cols = 1; if (cols > 159) cols = 159;
+	unsigned bgc = ownColors ? colBg : C_FIELD, txc = ownColors ? colText : C_FIELD_TEXT, crc = ownColors ? colCaret : C_ACCENT;
+	canvas.clear (bgColor ());
+	wk_sunken (canvas, 0, 0, width, height, 4, disabled && !ownColors ? wk_tone (C_FACE, 150) : bgc, hasFocus && !disabled);
+	int vx0 = pad, vx1 = width - WK_SBW - 3, ox = pad - leftPx;	// the text's box; its origin
+	int i = 0, line = 0; while (line < top && buf[i]) { if (buf[i] == '\n') line++; i++; }
+	int ss = selStart (), se = selEnd (); bool sel = hasSelection ();
+	for (int r = 0; r < rows; r++)
+	{
+		int le = lineEnd (i), y = 2 + r * fh;
+		if (sel && ss <= le && se > i)			// this line's part of the selection
+		{
+			int xa = ox + lineW (i, ss > i ? ss : i), xb = ox + lineW (i, se < le ? se : le);
+			if (se > le) xb += wk_tw (" ");			// (the line break)
+			if (xa < vx0) xa = vx0;
+			if (xb > vx1) xb = vx1;
+			if (xb > xa) canvas.fillRect (xa, y, xb - xa, fh, ownColors ? colSel : wk_mix (C_FIELD, C_ACCENT, hasFocus ? 96 : 52));
+		}
+		if (le > i)
+		{
+			char keep = buf[le]; buf[le] = '\0';		// (the line alone)
+			wk_text_clip (canvas, ox, y, buf + i, disabled ? C_DIS : txc, 0, vx0, 2, vx1 - vx0, height - 4);
+			buf[le] = keep;
+		}
+		if (buf[le] != '\n') break;
+		i = le + 1;
+	}
+	if (hasFocus && !disabled)
+	{
+		int cl = 0; for (int c = 0; c < caret; c++) if (buf[c] == '\n') cl++;
+		int cx = ox + lineW (lineStart (caret), caret), cy = 2 + (cl - top) * fh;
+		if (cy >= 0 && cy < height - 2 && cx >= pad - 1 && cx < width - 1) canvas.fillRect (cx, cy, 2, fh, crc);
+	}
+	int totalLines = 1; for (int c = 0; c < len; c++) if (buf[c] == '\n') totalLines++;
+	int trackH = height - 4;
+	WkThumb th = wk_thumb ((long) totalLines * fh, (long) rows * fh, (long) top * fh, trackH);
+	if (th.show) wk_draw_vscroll (canvas, width - WK_SBW - 2, 2, WK_SBW, trackH, th, bgc, barDrag);
+}
+
 void Textarea::onDraw ()
 {
+	if (wk_textface ()) { drawFace (); return; }
 	const int pad = 4; int fw = wk_fw (), fh = wk_fh ();
 	rows = (height - 4) / fh; if (rows < 1) rows = 1;
 	cols = (width - 2 * pad - WK_SBW) / fw; if (cols < 1) cols = 1; if (cols > 159) cols = 159;
@@ -173,6 +237,7 @@ bool Textarea::onMouse (int mx, int my, int bl, int, int, int wheel)
 		int wantLine = top + row, wantCol = left + col, i = 0, line = 0;
 		while (line < wantLine && buf[i]) { if (buf[i] == '\n') line++; i++; }
 		int le = lineEnd (i), c = i + wantCol; if (c > le) c = le;
+		if (wk_textface ()) c = placeRow (row, mx);			// (by measure)
 		if (kapi_get_modifiers () & MOD_SHIFT) { if (anchor < 0) anchor = caret; }	// Shift+click: extend
 		else anchor = c;						// a drag selects from here
 		caret = c;
@@ -189,6 +254,7 @@ bool Textarea::onMouse (int mx, int my, int bl, int, int, int wheel)
 		int wantLine = top + row, wantCol = left + col, i = 0, line = 0;
 		while (line < wantLine && buf[i]) { if (buf[i] == '\n') line++; i++; }
 		int le = lineEnd (i), c = i + wantCol; if (c > le) c = le;
+		if (wk_textface ()) c = placeRow (row, mx);			// (by measure)
 		if (c != caret) { caret = c; ensureVisible ((height - 4) / fh, (width - 2 * pad - WK_SBW) / fw); invalidate (true); }
 	}
 	else if (!bl) { pressed = false; if (barDrag) { barDrag = false; invalidate (true); } if (anchor == caret) anchor = -1; }
@@ -198,6 +264,33 @@ bool Textarea::onMouse (int mx, int my, int bl, int, int, int wheel)
 void Textarea::moveCaret (long k)
 {
 	int vr = (height - 4) / wk_fh (); if (vr < 1) vr = 1;
+	if (wk_textface ())				// a face: by character (UTF-8), up / down by x
+	{
+		switch (k)
+		{
+		case KEY_LEFT:  caret = wk_u8_prev (buf, caret); break;
+		case KEY_RIGHT: caret = wk_u8_next (buf, caret, len); break;
+		case KEY_HOME:  caret = lineStart (caret); break;
+		case KEY_END:   caret = lineEnd (caret); break;
+		case KEY_UP: case KEY_PGUP:
+			for (int n = k == KEY_UP ? 1 : vr; n > 0; n--)
+			{
+				int ls = lineStart (caret);
+				if (ls == 0) { if (k == KEY_PGUP) caret = 0; break; }
+				caret = placeAt (lineStart (ls - 1), lineW (ls, caret));
+			}
+			break;
+		case KEY_DOWN: case KEY_PGDN:
+			for (int n = k == KEY_DOWN ? 1 : vr; n > 0; n--)
+			{
+				int ls = lineStart (caret), le = lineEnd (caret);
+				if (buf[le] != '\n') { if (k == KEY_PGDN) caret = len; break; }
+				caret = placeAt (le + 1, lineW (ls, caret));
+			}
+			break;
+		}
+		return;
+	}
 	switch (k)
 	{
 	case KEY_LEFT:  if (caret > 0) caret--; break;
@@ -225,6 +318,7 @@ void Textarea::moveCaret (long k)
 
 bool Textarea::onKey (long k)
 {
+	char u[4]; int un = 0;
 	bool nav = k == KEY_LEFT || k == KEY_RIGHT || k == KEY_UP || k == KEY_DOWN || k == KEY_HOME || k == KEY_END
 		   || k == KEY_PGUP || k == KEY_PGDN;
 	if (nav)
@@ -240,6 +334,18 @@ bool Textarea::onKey (long k)
 	else if (k == WK_CTRL ('C')) copy ();
 	else if (k == WK_CTRL ('X')) cut ();
 	else if (k == WK_CTRL ('V')) paste ();
+	else if (wk_textface () && (un = wk_u8_key (k, u)) > 0)	// a face: the character's UTF-8
+	{ if (!readonly) { deleteSelection (); for (int j = 0; j < un; j++) insertAt ((unsigned char) u[j]); } }
+	else if (wk_textface () && k == KEY_BACKSPACE)
+	{
+		if (!readonly)
+		{
+			if (hasSelection ()) deleteSelection ();
+			else for (int p = wk_u8_prev (buf, caret); caret > p; ) { deleteAt (caret - 1); caret--; }
+		}
+	}
+	else if (wk_textface () && k == KEY_DEL)
+	{ if (!readonly) { if (hasSelection ()) deleteSelection (); else for (int n = wk_u8_next (buf, caret, len) - caret; n > 0; n--) deleteAt (caret); } }
 	else if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF)) { if (!readonly) { deleteSelection (); insertAt ((int) k); } }
 	else if (k == KEY_ENTER)     { if (!readonly) { deleteSelection (); insertAt ('\n'); } }
 	else if (k == KEY_TAB)       { if (!readonly) { deleteSelection (); insertAt (' '); insertAt (' '); } }

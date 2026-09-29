@@ -433,7 +433,7 @@ void Root::tooltipTick ()
 	for (Widget *c = firstChild; c; c = c->nextSib) if (c->modal) return;	// not over a dialog
 	Widget *w = tip_at (this, m_mx, m_my);
 	if (w == 0 || w == this) return;
-	int tw = wk_len (w->tip) * wk_fw () + 12, th = wk_fh () + 8;
+	int tw = wk_tw (w->tip) + 12, th = wk_fh () + 8;
 	int x = m_mx + 12, y = m_my + 20;
 	if (x + tw > width) x = width - tw - 2;
 	if (y + th > height) y = m_my - th - 4;

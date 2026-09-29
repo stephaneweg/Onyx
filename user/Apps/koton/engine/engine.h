@@ -25,6 +25,7 @@
 namespace kt {
 
 enum { ENGINE_MAX_TRACKS = 48, ENGINE_BLOCK = 256 };
+enum { PDC_BUCKETS = 4, PDC_MAX = 16384 };	// the delay compensation: latencies at once, frames at most
 
 enum
 {
@@ -39,6 +40,8 @@ enum
 	CMD_ALL_OFF,
 	CMD_METRONOME,		// i = on
 	CMD_EXTERNAL,		// i = track, p = ExternalSource* (0: back to the SoundFont)
+	CMD_EXT_NOTE_ON,	// i = track, j = note, k = velocity: a live note on a plugin track (heard lead () late)
+	CMD_EXT_NOTE_OFF,	// i = track, j = note
 };
 
 struct Command { int type; long long a, b; int i, j, k, l; void *p; };
@@ -51,23 +54,42 @@ struct MixStrip
 	MixStrip () : volume (1), pan (0), mute (0), solo (0), reverb (40) {}
 };
 
-// Another source of a track's audio (an IPC instrument plugin): the engine hands it the notes and
-// takes its stereo blocks. Implemented by the plugin host (plughost.h); it must not allocate either.
+// Another source of a track's audio (an IPC instrument plugin: plug/plugshm.h), RENDERED AHEAD.
+// The engine counts every frame it outputs on a STREAM CLOCK (frames since it was made; a seek or
+// a loop does not move it). A source's notes are stamped on that clock lead () frames ahead of the
+// frame being played -- its process renders them meanwhile -- and the engine reads the audio of a
+// frame when it plays it. For each block of n frames at stream frame t, the engine calls:
+//     noteOn / noteOff / allOff / reset (at, ...)    at >= t + lead ()  (a live note: t + lead ())
+//     flushTo (t + lead () + n)                      every event before it has been given
+//     render (l, r, n, t)                            the audio of the frames [t, t + n)
+// The song's notes are dispatched by a second cursor running lead () frames ahead of the one
+// played; a play or a seek waits lead () frames (a pre-roll) so that both start together. A
+// source must not allocate, lock or call the kernel (the engine may run on an app core).
 struct ExternalSource
 {
 	virtual ~ExternalSource () {}
-	virtual void noteOn (int note, int vel) = 0;
-	virtual void noteOff (int note) = 0;
-	virtual void allOff () = 0;
-	virtual void render (float *l, float *r, int n) = 0;	// adds nothing: writes n frames
+	virtual int lead () const = 0;					// frames; fixed while attached
+	virtual void noteOn (long long at, int note, int vel) = 0;
+	virtual void noteOff (long long at, int note) = 0;
+	virtual void allOff (long long at) = 0;				// every note released
+	virtual void reset (long long at) = 0;				// every voice cut (play, seek, stop)
+	virtual void flushTo (long long upTo) = 0;
+	virtual bool render (float *l, float *r, int n, long long at) = 0;	// writes n frames; false: some
+									// were not rendered in time (silence)
 };
 
-// An insert effect on a track (built in, or an IPC plugin): processes a block in place.
+// An insert effect on a track (built in, or an IPC plugin): processes a block in place. An IPC
+// effect (plug/plugshm.h) hands the block to its process and gives back the block of latency ()
+// frames earlier (processAt knows the stream frame): the engine then delays every other track by
+// as much -- plugin delay compensation -- so that the mix stays aligned. A built-in effect has no
+// latency and is only called through process ().
 struct Effect
 {
 	virtual ~Effect () {}
 	virtual void process (float *l, float *r, int n) = 0;
 	virtual void reset () {}
+	virtual int latency () const { return 0; }
+	virtual bool processAt (float *l, float *r, int n, long long at) { (void) at; process (l, r, n); return true; }	// false: late (silence)
 };
 
 class Engine
@@ -82,7 +104,10 @@ public:
 	bool post (const Command &c);				// false: the ring is full
 	bool post (int type, long long a = 0, long long b = 0, int i = 0, int j = 0, void *p = 0, int k = 0, int l = 0);
 	CompiledSong *retired ();				// a song to delete (0: none)
-	void setInsert (int track, int slot, Effect *e);	// UI side, while the engine is stopped or with care (see .cpp)
+	void setInsert (int track, int slot, Effect *e);	// UI side, while the engine is stopped or with care (see .cpp);
+								// an effect with a latency () makes the compensation's buffers here
+	// An effect or a source taken out (setInsert (t, s, 0), CMD_EXTERNAL 0) may still be in use until
+	// the engine's next block: free it once `renders` moved by 2 since (or the engine is stopped).
 
 	MixStrip mix[ENGINE_MAX_TRACKS];
 	volatile float masterGain;
@@ -94,6 +119,11 @@ public:
 	volatile float masterPeakL, masterPeakR;
 	volatile int activeVoices;
 	volatile unsigned renderUs;		// the last block's cost (set by the host that times it)
+	volatile unsigned renders;		// render () calls so far
+	volatile long long streamClock;		// the stream clock (frames output so far)
+	volatile unsigned pluginUnderruns;	// blocks an external source / an IPC effect did not have in time
+	volatile int extLead;			// the external sources' lead in use (frames), 0: none
+	volatile int pdcFrames;			// the delay compensation in use (the IPC effects' latency)
 
 	// ---- the engine side (never allocates) ----
 	void render (float *left, float *right, int frames);
@@ -113,6 +143,14 @@ private:
 	void allNotesOff ();
 	void renderBlock (float *L, float *R, int n);
 	void previewBlock (float *L, float *R, int n);
+	// the external sources (rendered ahead) and the delay compensation
+	void externalsChanged (int track, ExternalSource *old);
+	void resyncExternals ();			// a play / seek: reset, mute, pre-roll
+	void externalsOff (bool hard);			// every external source: allOff / reset at the ahead point
+	void dispatchAhead (int n);
+	int trackLatency (int track);
+	int pdcBucket (int latency);
+	long long heardPos ();
 
 	const ms::SoundFont *m_sf;
 	int m_rate;
@@ -141,6 +179,24 @@ private:
 	CompiledSong *m_prevSong;
 	int m_prevEvent;
 	long long m_prevPos;
+	// the external sources, rendered ahead; the delay compensation
+	long long m_clock;			// the stream clock
+	int m_lead, m_extCount;			// the lead in use (the sources' biggest), how many are attached
+	long long m_aheadPos;			// the song position of the frame m_clock + m_lead
+	int m_aheadEvent[ENGINE_MAX_TRACKS];	// its next event per track
+	long long m_preroll;			// frames before the played cursor starts (a play / seek)
+	long long m_extMuteUntil[ENGINE_MAX_TRACKS];	// a source's audio muted before this frame (stale after a reset)
+	float m_extGain[ENGINE_MAX_TRACKS];
+	float *m_pdcL[PDC_BUCKETS], *m_pdcR[PDC_BUCKETS];	// a delay ring per latency (PDC_MAX frames)
+	float *m_busL[PDC_BUCKETS], *m_busR[PDC_BUCKETS];	// the block of the tracks with that latency
+	int m_pdcLat[PDC_BUCKETS];		// the latency of each bucket (-1: free; bucket 0: none)
+	int m_pdcD;				// the compensation in use
+	long long m_pdcClock;			// the clock the rings were written up to
+	struct Heard { long long clock, pos; };
+	enum { HEARD = 512 };
+	Heard m_heard[HEARD];			// (clock, song position) at each played block: the position heard
+	int m_heardN;
+	long long m_playFrom;
 };
 
 // the final soft limiter (Koton's AudioFormat.SoftClip), and a float block -> s16 interleaved

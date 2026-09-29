@@ -229,11 +229,13 @@ static unsigned *resize (int w, int h)
 }
 static void move_window (int x, int y) { g_x = x; g_y = y; }
 // (v64) the work area: the screen less the menu bar (30) and the dock (84)
+static void screen_size (int *w, int *h);
 static int win_geometry (struct kapi_win_geom *o)
 {
 	memset (o, 0, sizeof *o);
+	int sw, sh; screen_size (&sw, &sh);
 	o->x = g_x; o->y = g_y; o->w = g_ow; o->h = g_oh; o->cw = g_lw; o->ch = g_lh;
-	o->ax = 0; o->ay = 30; o->aw = 1024; o->ah = 768 - 30 - 84; o->state = KAPI_WIN_KEYS;
+	o->ax = 0; o->ay = 30; o->aw = sw; o->ah = sh - 30 - 84; o->state = KAPI_WIN_KEYS;
 	return 0;
 }
 static int win_minimise (unsigned id) { fprintf (stderr, "sim: win_minimise %u\n", id); return 0; }

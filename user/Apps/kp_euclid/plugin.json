@@ -1,0 +1,22 @@
+{
+  "name": "Euclidean melody",
+  "kind": "generator",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "A euclidean rhythm E(hits, steps) playing the chords' tones along a contour.",
+  "aliases": [],
+  "params": [
+    {"id": "hits", "name": "Hits", "min": 1, "max": 32, "default": 5, "unit": "", "step": 1},
+    {"id": "steps", "name": "Steps", "min": 2, "max": 32, "default": 8, "unit": "", "step": 1},
+    {"id": "rotation", "name": "Rotation", "min": 0, "max": 31, "default": 0, "unit": "", "step": 1},
+    {"id": "notes_per_beat", "name": "Steps / beat", "min": 1, "max": 8, "default": 4, "unit": "", "step": 1},
+    {"id": "contour", "name": "Contour", "min": 0, "max": 4, "default": 2, "unit": "", "step": 1, "choices": ["Up", "Down", "Up-Down", "Random walk", "Random"]},
+    {"id": "tones", "name": "Tones", "min": 0, "max": 2, "default": 0, "unit": "", "step": 1, "choices": ["Chord", "Scale", "Chord + scale"]},
+    {"id": "octave", "name": "Octave", "min": 0, "max": 8, "default": 4, "unit": "", "step": 1},
+    {"id": "range", "name": "Range", "min": 1, "max": 3, "default": 2, "unit": "oct", "step": 1},
+    {"id": "velocity", "name": "Velocity", "min": 1, "max": 127, "default": 96, "unit": "", "step": 1},
+    {"id": "accent", "name": "Accent", "min": 0, "max": 1, "default": 1, "unit": "", "step": 1, "choices": ["Off", "On"]},
+    {"id": "articulation", "name": "Articulation", "min": 0, "max": 3, "default": 1, "unit": "", "step": 1, "choices": ["Legato", "Normal", "Detached", "Staccato"]},
+    {"id": "seed", "name": "Seed", "min": 0, "max": 999, "default": 1, "unit": "", "step": 1}
+  ]
+}

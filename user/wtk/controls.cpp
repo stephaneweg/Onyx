@@ -149,7 +149,7 @@ enum { NUD_BW = 18 };		// the arrow buttons' width
 
 void NumericUpDown::onDraw ()
 {
-	int fh = wk_fh (), fw = wk_fw (), bw = NUD_BW;
+	int fh = wk_fh (), bw = NUD_BW;
 	canvas.clear (bgColor ());
 	wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, hasFocus && !disabled);
 	char b[16]; int p = 0;
@@ -162,7 +162,7 @@ void NumericUpDown::onDraw ()
 		while (n) b[p++] = t[--n];
 	}
 	b[p] = '\0';
-	canvas.text (width - bw - 8 - p * fw, (height - fh) / 2, b, disabled ? C_DIS : C_FIELD_TEXT);	// right-aligned
+	canvas.text (width - bw - 8 - wk_tw (b), (height - fh) / 2, b, disabled ? C_DIS : C_FIELD_TEXT);	// right-aligned
 	if (m_elen >= 0) canvas.fillRect (width - bw - 7, (height - fh) / 2, 2, fh, C_ACCENT);	// caret
 	int bx = width - bw - 2, hh = (height - 4) / 2;			// the arrows: two small buttons
 	int su = disabled ? WK_DISABLED : m_down == 1 ? WK_PRESSED : WK_NORMAL;

@@ -35,7 +35,7 @@ void Calendar::setDate (int y, int m, int d)
 // the accent, today ringed, the weekend in a muted red.
 void Calendar::onDraw ()
 {
-	int fh = wk_fh (), fw = wk_fw ();
+	int fh = wk_fh ();
 	const unsigned WEEKEND = 0x00B0504A;
 	if (transparent)					// (floating: a DatePicker's drop-down)
 	{
@@ -61,7 +61,7 @@ void Calendar::onDraw ()
 	wk_text_c (canvas, 0, 0, width, CAL_HDR, t, C_TEXT, 2);
 	unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 140);
 	for (int i = 0; i < 7; i++)
-		canvas.text (1 + i * CAL_CELL_W + (CAL_CELL_W - 2 * fw) / 2, CAL_HDR + 2, DOWS[i],
+		canvas.text (1 + i * CAL_CELL_W + (CAL_CELL_W - wk_tw (DOWS[i])) / 2, CAL_HDR + 2, DOWS[i],
 			     i >= 5 ? wk_mix (C_FIELD, WEEKEND, 190) : dim);
 	int ty = 0, tm = 0, td = 0;
 	kapi_get_datetime (&ty, &tm, &td, 0, 0, 0);
@@ -75,7 +75,8 @@ void Calendar::onDraw ()
 		if (isToday) wk_rline (canvas, cx + 2, cy, CAL_CELL_W - 4, CAL_CELL_H - 1, 5, isSel ? wk_tone (C_ACCENT, 50) : C_ACCENT, 255);
 		char b[3] = { (char) (d >= 10 ? '0' + d / 10 : ' '), (char) ('0' + d % 10), 0 };
 		unsigned ink = isSel ? C_SEL_TEXT : (cell % 7) >= 5 ? WEEKEND : C_FIELD_TEXT;
-		canvas.text (cx + (CAL_CELL_W - 2 * fw) / 2, cy + (CAL_CELL_H - fh) / 2, b, ink);
+		const char *bs = wk_textface () && b[0] == ' ' ? b + 1 : b;	// (a face: the digits alone, centred)
+		canvas.text (cx + (CAL_CELL_W - wk_tw (bs)) / 2, cy + (CAL_CELL_H - fh) / 2, bs, ink);
 	}
 }
 

@@ -11,13 +11,16 @@
 #include "kapi.h"		// kapi_font_width/height (wk_fw/wk_fh)
 #include "wtk/theme.h"		// the palette
 #include "wtk/paint.h"		// the painter
+#include "wtk/text.h"		// the text face (wk_set_textface): wk_fw / wk_fh follow it
 
 namespace wtk {
 
 // ---- shared helpers + theme palette (ported from uikit's Ui defaults) --------
+// wk_fh: the line height widgets lay text out with; wk_fw: a character's width (a digit's with a
+// proportional face installed -- measure real text with wk_tw / wk_text_w).
 static inline int wk_len (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
-static inline int wk_fw  () { int f = kapi_font_width  (); return f < 1 ? 8  : f; }
-static inline int wk_fh  () { int f = kapi_font_height (); return f < 1 ? 16 : f; }
+static inline int wk_fw  () { if (wk_face_) return wk_face_fw_; int f = kapi_font_width  (); return f < 1 ? 8  : f; }
+static inline int wk_fh  () { if (wk_face_) return wk_face_->height (); int f = kapi_font_height (); return f < 1 ? 16 : f; }
 
 // (the palette -- C_BG, C_FACE, C_TEXT, C_ACCENT, C_FIELD... -- is the theme's: wtk/theme.h)
 

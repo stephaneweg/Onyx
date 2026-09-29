@@ -462,11 +462,15 @@ static int kern (Font *f, unsigned a, unsigned b)
 	if (!f) return 0;
 	FT_Face face = g_face[f->face].face;
 	if (!FT_HAS_KERNING (face)) return 0;
-	Glyph *ga = glyph (f, a), *gb = glyph (f, b);
-	if (ga->src != f || gb->src != f || !ga->gi || !gb->gi) return 0;
+	// (each read at once: fetching b's glyph may grow the cache and move a's)
+	Glyph *ga = glyph (f, a);
+	bool okA = ga->src == f && ga->gi; unsigned giA = ga->gi;
+	Glyph *gb = glyph (f, b);
+	if (!okA || gb->src != f || !gb->gi) return 0;
+	unsigned giB = gb->gi;
 	FT_Vector v;
 	FT_Activate_Size (f->size);
-	if (FT_Get_Kerning (face, (FT_UInt) ga->gi, (FT_UInt) gb->gi, FT_KERNING_UNFITTED, &v)) return 0;
+	if (FT_Get_Kerning (face, (FT_UInt) giA, (FT_UInt) giB, FT_KERNING_UNFITTED, &v)) return 0;
 	return (int) v.x;
 }
 

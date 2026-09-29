@@ -5,6 +5,7 @@
 #include "wtk/font.h"		// wtk::init (load the global font family for app-drawn windows)
 #include "wtk/paint.h"		// the painter (the frame is drawn by code)
 #include "wtk/theme.h"		// the frame's colours
+#include "wtk/text.h"		// (the frame bypasses an app's text face)
 #include "bmp.hpp"		// ui::bmp_decode
 #include "kapi.h"		// kapi_get_chrome, kapi_draw_text_buf, kapi_font_height
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
@@ -102,8 +103,13 @@ int  wk_window_flags () { return s_winFlags; }
 // a gradient (the title bar lighter), the edge and the theme's outline on the rounded shape, a
 // light line along the top, the title buttons (the window menu; minimise, maximise, close), the
 // title in bold; then the corners' outside made see-through (the top byte: kapi_abi.h).
+// The frame keeps the desktop's bitmap font whatever face the app installed (wtk/text.h): every
+// window's title looks the same.
+struct BitmapText { TextFace *keep; BitmapText () : keep (wk_face_) { wk_face_ = 0; } ~BitmapText () { wk_face_ = keep; } };
+
 static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, unsigned fc, bool active)
 {
+	BitmapText bitmap;
 	const int R = KAPI_FRAME_RADIUS;
 	Canvas cv; cv.adopt (fb, W, H);
 	// one continuous gradient: the title bar lighter, the borders going on from it (no line

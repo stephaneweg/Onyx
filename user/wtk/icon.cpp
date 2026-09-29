@@ -47,7 +47,7 @@ void Icon::onDraw ()
 	}
 	if (text[0])
 	{
-		int fw = wk_fw (), tx = (width - wk_len (text) * fw) / 2; if (tx < 0) tx = 0;
+		int tx = (width - wk_tw (text)) / 2; if (tx < 0) tx = 0;
 		canvas.text (tx, height - fh, text, wk_ink_on (bg));
 	}
 	if (badged) for (int r = 0; r < 8; r++) canvas.fillRect (width - 2 - r, 2 + r, r + 1, 1, C_ACCENT);

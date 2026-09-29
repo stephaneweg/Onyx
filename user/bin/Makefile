@@ -42,7 +42,7 @@ KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 MBEDTLS_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/mbedtls-3.6.3)
 TLS_PROGS =
 ifneq ($(strip $(MBEDTLS_DIR)),)
-TLS_PROGS = httpsget.elf ftpfs.elf groq.elf
+TLS_PROGS = httpsget.elf ftpfs.elf groq.elf llm.elf
 endif
 
 # Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../img/README.md).
@@ -118,6 +118,8 @@ $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 	@rm -f crt0libc.o onyx_syscalls.o
+# llm (the AI helper: Gemini / Groq / Mistral / Claude / OpenAI-compatible) also reads ../json.hpp
+llm.elf: ../json.hpp
 endif
 
 # Image apps (newlib C++ + the codecs). Built only when IMG_DIR is set. Same crt0 split

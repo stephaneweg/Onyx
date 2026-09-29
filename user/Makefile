@@ -38,7 +38,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) writer.elf sheet.elf bin bin/basic.elf doom
+all: $(APP_ELFS) writer.elf sheet.elf koton.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -108,6 +108,36 @@ sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/writer/icons.h im
 	   wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
+
+# Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Writer (FreeType text through wtk's
+# text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
+# the audio engine) and MeltySynth are separate objects; the UI is headers included by main.cpp.
+KOTON_SRC = $(wildcard Apps/koton/engine/*.cpp) $(wildcard Apps/koton/synth/*.cpp) $(wildcard Apps/koton/plug/*.cpp)
+KOTON_OBJ = $(patsubst Apps/koton/%.cpp,Apps/koton/obj/%.o,$(KOTON_SRC))
+KOTON_HDR = $(wildcard Apps/koton/engine/*.h) $(wildcard Apps/koton/synth/*.h) $(wildcard Apps/koton/plug/*.h) kplug_proto.h json.hpp kapi.h
+Apps/koton/obj/%.o: Apps/koton/%.cpp $(KOTON_HDR)
+	@mkdir -p $(dir $@)
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -c $< -o $@
+koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) ft/libft.a ft/wtkface.h wtk/libwtk.a \
+	   libc/crt0libc.o libc/onyx_syscalls.o user.ld $(KOTON_HDR)
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       $(KOTON_OBJ) wtk/libwtk.a ft/libft.a -lm -o $@
+
+# Koton's plugins (user/kplug.h, the protocol user/kplug_proto.h; the host: Apps/koton/plug): each
+# Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to
+# its source, NOT as user/*.elf (make stage makes
+# an SD:/apps/<name>.app of each of those: the dock would list them): `make stage` copies them to
+# SD:/koton/plugins/<name>/main with their plugin.json.
+KPLUG_DIRS = $(wildcard Apps/kp_*)
+KPLUG_ELFS = $(foreach d,$(KPLUG_DIRS),$(d)/$(notdir $(d)).elf)
+KPLUG_HDR = kplug.h kplug_proto.h applet_proto.h json.hpp kapi.h Apps/koton/engine/kbase.h
+define KPLUG_RULE
+$(1)/$(notdir $(1)).elf: $(1)/main.cpp $$(KPLUG_HDR) wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld
+	$$(CXX) $$(NL_CXXFLAGS) -fno-math-errno -Wall $$(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $$< wtk/libwtk.a -lm -o $$@
+endef
+$(foreach d,$(KPLUG_DIRS),$(eval $(call KPLUG_RULE,$(d))))
+.PHONY: plugins
+plugins: $(KPLUG_ELFS)
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
@@ -191,6 +221,6 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
 
 clean:
-	rm -f *.elf *.o ft/*.o ft/*.a libc/*.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a bin/basic.elf
+	rm -f *.elf *.o ft/*.o ft/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean

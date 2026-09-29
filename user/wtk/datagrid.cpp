@@ -17,6 +17,17 @@ static void dg_copy (char *d, const char *s, int cap)
 // in (x, y, w, h) by `align`.
 static void dg_text (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned ink, int align, int style)
 {
+	if (wk_textface ())				// a proportional face (wtk/text.h): cut by measure
+	{
+		if (!s || w <= 0) return;
+		char c[256], b[256]; int n = 0;
+		for (; s[n] && n < 255; n++) { unsigned char ch = (unsigned char) s[n]; c[n] = ch < 32 ? ' ' : (char) ch; }
+		c[n] = '\0';
+		int tw = wk_text_fit (c, w, b, sizeof b, style);
+		int tx = align == GRID_RIGHT ? x + w - tw : align == GRID_CENTRE ? x + (w - tw) / 2 : x;
+		wk_text_l (cv, tx, y, h, b, ink, style);
+		return;
+	}
 	int fw = wk_text_w ("M", style); if (fw < 1) fw = 8;
 	int maxc = w / fw; if (maxc <= 0 || !s) return;
 	if (maxc > 255) maxc = 255;

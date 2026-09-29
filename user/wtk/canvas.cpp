@@ -11,6 +11,7 @@
 //
 #include "canvas.h"
 #include "wtk/font.h"		// wtk::font (route text through the global Sans family)
+#include "wtk/text.h"		// the text face an app installed (else the bitmap fonts)
 #include "kapi.h"		// kapi_draw_text_buf (fallback when no font is loaded)
 #ifdef __ARM_NEON
 #include <arm_neon.h>
@@ -154,6 +155,7 @@ void Canvas::frameRect (int x, int y, int rw, int rh, unsigned c)
 // bitmap font, not the kernel's). Falls back to the kernel font if no .fnt was loaded.
 void Canvas::text (int x, int y, const char *s, unsigned c)
 {
+	if (wk_face_) { if (s) wk_face_->draw (*this, x, y, s, c, 0); return; }	// an app's face (wtk/text.h)
 	Font &f = font ();
 	if (f.valid ()) drawFont (x, y, s, f, c, 1, 0);
 	else            kapi_draw_text_buf (px, stride, h, x, y, s, c);	// stride = real row width

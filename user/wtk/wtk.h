@@ -16,6 +16,7 @@
 
 #include "wtk/canvas.h"
 #include "wtk/font.h"
+#include "wtk/text.h"		// the text face an app installs (FreeType's: ft/wtkface.h)
 #include "wtk/widget.h"
 #include "wtk/skin.h"
 #include "wtk/label.h"
@@ -48,5 +49,11 @@
 #include "wtk/calendar.h"
 #include "wtk/imagebox.h"
 #include "wtk/vpaint.h"
+#include "wtk/knob.h"
+#include "wtk/vumeter.h"
+#include "wtk/segmented.h"
+#include "wtk/lcd.h"
+// (wtk/toolbar.h -- ToolBar, ToolButton, the WKT_* icons -- is included by the app itself: Writer,
+//  the Spreadsheet and Cardfile have their own ToolBar / ToolButton next to `using namespace wtk`.)
 
 #endif

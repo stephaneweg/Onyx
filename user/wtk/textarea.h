@@ -5,6 +5,8 @@
 // drag, Shift+click, Ctrl+A. Typing, Enter, Backspace and Delete replace / remove it;
 // Ctrl+C / Ctrl+X / Ctrl+V copy / cut / paste through the system clipboard (unless the
 // app's menu takes those shortcuts first -- then it can call copy () / cut () / paste ()).
+// With a text face installed (wtk/text.h) the text is UTF-8 and the caret, the clicks and the
+// selection follow the glyphs' widths (the horizontal scroll is then leftPx, in pixels).
 //
 #ifndef _wtk_textarea_h
 #define _wtk_textarea_h
@@ -17,6 +19,7 @@ class Textarea : public Widget
 {
 public:
 	char *buf; int cap, len, caret, top, left, rows, cols; bool readonly, barDrag;
+	int leftPx;					// with a text face: the horizontal scroll, px
 	int anchor;					// selection = [anchor, caret) either way; -1 = none
 	// Own colours (0x00RRGGBB) instead of the theme's: e.g. QBasic's grey on blue.
 	bool ownColors; unsigned colBg, colText, colCaret, colSel;
@@ -48,6 +51,11 @@ private:
 	void moveCaret (long k);			// one navigation key (no selection logic)
 	void deleteAt (int i);
 	void ensureVisible (int vr, int vc);
+	// With a proportional face installed (wtk/text.h): UTF-8, the caret and the clicks by measure.
+	int  lineW (int ls, int i);			// px from the line's start ls to byte i
+	int  placeAt (int ls, int x);			// the byte of line ls nearest x px (text coordinates)
+	int  placeRow (int row, int mx);		// the byte at mx on the row shown `row`
+	void drawFace ();
 };
 
 } // namespace wtk

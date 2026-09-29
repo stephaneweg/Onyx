@@ -40,6 +40,12 @@ rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
 	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
+	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
+		K=user/Apps/koton; mkdir -p "$OUT/koton"
+		for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o" || return 1; done
+		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libwtk.a" "$OUT/libft.a"
+		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
+	fi
 	if [ "$1" = writer ] || [ "$1" = sheet ]; then
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp "$OUT/libwtk.a" "$OUT/libft.a"; return
 	fi
@@ -47,7 +53,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet"
+      tinycalc tinypad widgets wifimenu writer sheet koton"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
 $CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
@@ -183,6 +189,15 @@ MENU_TINYPAD='tinypad|MFile/I0~New~^N/I1~Open...~^O/-/I2~Save~^S/I3~Save As...~/
 if want menubar; then
 	sim menubar menubar "wait;wait;down 150 15;up 150 15;wait;wait;move 160 70;$W" SIM_MENU="$MENU_TINYPAD"
 	scene menubar "$OUT/menubar.elsm" --crop=0,0,1024,200
+fi
+if want koton; then			# (the studio, maximised on a 1920 x 1080 screen, its demo song: a chord's editor,
+	KS="SIM_SCREEN=1920x1080 SIM_ARGS=SD:/koton/songs/demo.kson"	# the accompaniment's drawn grid, the drums, the rings, a riff)
+	sim koton.bin koton "wait;wait;down 338 512;up 338 512;$W" $KS; png koton
+	sim koton.bin koton-accomp "wait;wait;down 400 237;up 400 237;wait;down 750 730;up 750 730;$W" $KS; png koton-accomp
+	sim koton.bin koton-drums "wait;wait;down 400 382;up 400 382;$W" $KS; png koton-drums
+	sim koton.bin koton-rings "wait;wait;down 800 462;up 800 462;$W" $KS; png koton-rings
+	sim koton.bin koton-riff "wait;wait;down 400 162;up 400 162;$W" $KS; png koton-riff
+	sim koton.bin koton-ai "wait;wait;down 1600 30;up 1600 30;$W" $KS; png koton-ai
 fi
 if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"

@@ -554,8 +554,9 @@ void wk_glyph (Canvas &cv, int kind, int cx, int cy, int size, unsigned c)
 }
 
 // ---- text -----------------------------------------------------------------------------------------------
-int wk_text_w (const char *s, int)
+int wk_text_w (const char *s, int style)
 {
+	if (wk_face_) return s ? wk_face_->width (s, style) : 0;	// an app's face (wtk/text.h)
 	Font &f = font ();
 	return wk_len (s) * (f.valid () ? f.width () : wk_fw ());
 }
@@ -563,6 +564,7 @@ static int text_h (void) { Font &f = font (); return f.valid () ? f.height () : 
 
 void wk_text_l (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style)
 {
+	if (wk_face_) { if (s) wk_face_->draw (cv, x, y + (h - wk_face_->height ()) / 2, s, c, style); return; }
 	Font &f = font ();
 	int ty = y + (h - text_h ()) / 2;
 	if (f.valid ()) cv.drawFont (x, ty, s, f, c, 1, style);

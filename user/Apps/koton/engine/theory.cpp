@@ -846,9 +846,8 @@ bool transposeProject (Project &p, const Key &to, int direction, int targetMode)
 					}
 				}
 			}
-			else if (m->kind == M_PATTERN) { PatternModule *pg = (PatternModule *) m; if (pg->degree < 0) pg->root = imod (pg->root + interval, 12); }
-			else if (m->kind == M_CADENCE) { CadenceModule *cm = (CadenceModule *) m; for (int j = 0; j < cm->chords.size (); j++) if (cm->chords[j].degree < 0) cm->chords[j].root = imod (cm->chords[j].root + interval, 12); }
-			else if (m->kind == M_POLYCHORD) { PolyChordModule *pc = (PolyChordModule *) m; for (int j = 0; j < pc->chords.size (); j++) if (pc->chords[j].degree < 0) pc->chords[j].root = imod (pc->chords[j].root + interval, 12); }
+			// (the chords -- fixed or degree-locked -- follow in resolveChordDegrees below: moving the fixed ones
+			// here too transposed them twice, as Koton for Windows does)
 		}
 	}
 	p.key = to; p.key.fullMode = targetMode;

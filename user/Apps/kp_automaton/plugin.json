@@ -1,0 +1,22 @@
+{
+  "name": "Cellular automaton",
+  "kind": "generator",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "A one-dimensional cellular automaton (Wolfram's rules) on the scale or the chords.",
+  "aliases": ["koton.cellular"],
+  "params": [
+    {"id": "notes_per_beat", "name": "Notes / beat", "min": 1, "max": 8, "default": 4, "unit": "", "step": 1},
+    {"id": "rule", "name": "Rule", "min": 0, "max": 255, "default": 90, "unit": "", "step": 1},
+    {"id": "width", "name": "Width", "min": 8, "max": 32, "default": 16, "unit": "cells", "step": 1},
+    {"id": "scale", "name": "Scale", "min": 0, "max": 5, "default": 5, "unit": "", "step": 1, "choices": ["Chromatic", "Major", "Minor", "Pentatonic major", "Pentatonic minor", "Key's scale"]},
+    {"id": "base_octave", "name": "Octave", "min": 0, "max": 8, "default": 4, "unit": "", "step": 1},
+    {"id": "oct_range", "name": "Range", "min": 1, "max": 3, "default": 2, "unit": "oct", "step": 1},
+    {"id": "seed", "name": "Seed", "min": 0, "max": 999, "default": 1, "unit": "", "step": 1},
+    {"id": "seed_mode", "name": "First row", "min": 0, "max": 2, "default": 1, "unit": "", "step": 1, "choices": ["Centre cell", "Random density", "All on"]},
+    {"id": "density", "name": "Density", "min": 0, "max": 1, "default": 0.3, "unit": ""},
+    {"id": "velocity", "name": "Velocity", "min": 1, "max": 127, "default": 90, "unit": "", "step": 1},
+    {"id": "articulation", "name": "Articulation", "min": 0, "max": 3, "default": 2, "unit": "", "step": 1, "choices": ["Legato", "Normal", "Detached", "Staccato"]},
+    {"id": "chord_aware", "name": "Chord-aware", "min": 0, "max": 1, "default": 1, "unit": "", "step": 1, "choices": ["Off", "On"]}
+  ]
+}

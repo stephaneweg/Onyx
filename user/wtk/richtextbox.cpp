@@ -10,8 +10,8 @@ namespace wtk {
 
 // Text metrics come from the active face (the global font family) so the layout follows
 // the loaded font's glyph size; they fall back to the kernel font when no .fnt is present.
-static int rt_fw () { return font ().valid () ? font ().width ()  : wk_fw (); }
-static int rt_fh () { return font ().valid () ? font ().height () : wk_fh (); }
+static int rt_fw () { return font ().valid () ? font ().width ()  : wk_bfw (); }	// (the bitmap fonts: a face
+static int rt_fh () { return font ().valid () ? font ().height () : wk_bfh (); }	//  installed is not used here)
 
 // ---- palette + style packing -------------------------------------------------
 
@@ -54,7 +54,7 @@ static int            g_cw, g_ch;
 
 static const unsigned char *rawMask (unsigned char ch)
 {
-	int fw = wk_fw (), fh = wk_fh ();
+	int fw = wk_bfw (), fh = wk_bfh ();			// (the kernel font's cell: no face here)
 	if (fw != g_cw || fh != g_ch)			// font cell changed: drop the cache
 	{
 		for (int i = 0; i < 256; i++) { delete [] g_raw[i]; g_raw[i] = 0; }
@@ -120,7 +120,7 @@ void RichTextBox::drawGlyph (int px, int py, char ch, const RtStyle &st)
 	}
 	else							// fallback: synthesise from the kernel font
 	{
-		int fw = wk_fw (); fh = wk_fh ();
+		int fw = wk_bfw (); fh = wk_bfh ();
 		const unsigned char *m = rawMask ((unsigned char) ch);
 		if (m == 0) return;
 		int shearMax = ital ? (fh - 1) / 3 : 0;
@@ -613,7 +613,7 @@ bool RichTextBox::onKey (long k)
 		else if (k == KEY_DOWN)  moveVert (1);
 		else								// a page: the rows that fit
 		{
-			int page = height / (wk_fh () + 2); if (page < 1) page = 1;
+			int page = height / (wk_bfh () + 2); if (page < 1) page = 1;
 			for (int i = 0; i < page; i++) moveVert (k == KEY_PGUP ? -1 : 1);
 			if (k == KEY_PGUP && rowOfChar (caret) == 0) caret = 0;
 			if (k == KEY_PGDN && rowOfChar (caret) == rowN - 1) caret = len;

@@ -125,11 +125,19 @@ stage: sizecheck apps $(BASC)
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
 	done
+	@# Koton's plugins (../user/Apps/kp_<name>/kp_<name>.elf + plugin.json): SD:/koton/plugins/<name>/,
+	@# out of SD:/apps (not an app of the dock)
+	@for d in ../user/Apps/kp_*; do \
+		k=$$(basename $$d); [ -e "$$d/$$k.elf" ] || continue; \
+		mkdir -p $(SDCARD)/koton/plugins/$${k#kp_}; \
+		cp $$d/$$k.elf $(SDCARD)/koton/plugins/$${k#kp_}/main; \
+		cp $$d/plugin.json $(SDCARD)/koton/plugins/$${k#kp_}/plugin.json; \
+	done
 	@for pair in $(BASIC_APPS); do \
 		name=$${pair%%=*}; src=$${pair#*=}; \
 		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main; \
 		$(BASC) $$src $(SDCARD)/apps/$$name.app/main.bax || exit 1; \
 	done
-	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* -> $(SDCARD)/"
+	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + koton/plugins/* -> $(SDCARD)/"
 
 -include $(DEPS)

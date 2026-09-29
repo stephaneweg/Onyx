@@ -578,6 +578,7 @@ the terminal's **current working directory**.
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
 | `groq` | `groq <question…>`, `groq -j < messages.json`, `-c <config>` | Asks a large language model through the **Groq** chat API (HTTPS) and prints the answer — the engine behind **Lisa**. Reads `SD:/apps/lisa.app/config.ini` (`key` = your Groq API key, `model`, `role` = the system prompt, `temperature`, `max_tokens`). `-j`: stdin is a JSON array of `{"role","content"}` messages (a whole conversation). Non-ASCII text is converted between Latin-1 and UTF-8. |
+| `llm` | `llm [request.json] [-o result.json]` (the request on stdin when no file) | Asks a large language model for ONE answer over HTTPS — the engine behind **Koton**'s "compose with AI". The request is a JSON document: `provider` (`gemini`, `groq`, `mistral`, `claude`, `deepseek`, `grok`, `openai` or `openai-compatible` + `url`), `model`, `key` (your API key), `system`, `user`, `json` (ask for JSON), `temperature`, `thinking` (Gemini's thinking budget, -1 = default); the answer is one line `{"ok":true,"text":"..."}` or `{"ok":false,"error":"..."}`, after progress lines (`llm: connecting…`, `llm: receiving N bytes`). Also downloads a file: `{"fetch":"https://…","out":"SD:/…"}` → `{"ok":true,"bytes":N}` (Koton fetches its SoundFont this way; redirects followed). Answers of 100+ KB and downloads of tens of MB are fine. **Not secure**: the server's certificate is not verified, and the request (with the key) is plain text if you keep it in a file. |
 | `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves one client at a time with its own `cmd` (see §7). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
 | `rdpd` | `rdpd [port]` | **Remote windows** (port **3390**): the Onyx windows shown one by one on a Windows PC by `OnyxRemote.exe` (pc/dist). Started at boot by `SD:/etc/autostart`. **No password, no encryption.** See *Remote windows on a PC* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
@@ -585,7 +586,11 @@ the terminal's **current working directory**.
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
-| `threadtest` | `threadtest` | Self-test of the **threads** (kernel v67): threads created and joined with their exit codes, a counter shared under a mutex, the allocator used by four threads at once, a manual- and an auto-reset event, a barrier, timeouts, the limit of 32 threads per process, and a worker whose results are posted to the main thread while it waits for events. One line per check, then PASS/FAIL. It quits with a thread still running: the prompt must come back anyway (the threads end with the process). Takes a few seconds. || `fptest` | `fptest` | Self-test of hardware floating point under the scheduler (Leibniz π in `double`, yielding mid-computation). Prints PASS/FAIL. |
+| `threadtest` | `threadtest` | Self-test of the **threads** (kernel v67): threads created and joined with their exit codes, a counter shared under a mutex, the allocator used by four threads at once, a manual- and an auto-reset event, a barrier, timeouts, the limit of 32 threads per process, and a worker whose results are posted to the main thread while it waits for events. One line per check, then PASS/FAIL. It quits with a thread still running: the prompt must come back anyway (the threads end with the process). Takes a few seconds. |
+| `futextest` | `futextest` | Self-test of the **word waits** (kernel v68: `kapi_wait_word` / `kapi_wake_word`, futex-like) and of the real-time thread priority: immediate returns, a timeout, a thread woken, the same word through two mappings of a shared surface, a word changed by an app core without a wake (seen within ~10 ms), bad addresses. One line per check, then PASS/FAIL. |
+| `ringtest` | `ringtest [chunk [ahead]]` (default 256 2) | Self-test of the **low-latency sound** (kernel v68): becomes the sound owner, asks for small chunks, maps the PCM ring and plays 3 s of a 440 Hz triangle written by an app core straight into the ring. Prints the latency, the underruns and PASS/FAIL (`ringtest 128 2`, `ringtest 1024 4` try others). Headphones on. |
+| `miditest` | `miditest [seconds]` (default 60) | Prints the **USB MIDI** input (kernel v68): the devices attached, then every event (its time, device, cable, bytes, the note's name). Plug a keyboard in while it runs: it is found within ~0.1 s. Ctrl+C ends it. |
+| `fptest` | `fptest` | Self-test of hardware floating point under the scheduler (Leibniz π in `double`, yielding mid-computation). Prints PASS/FAIL. |
 | `libctest` | `libctest` | Self-test of the newlib C library on Onyx (`printf`/`malloc`/`qsort`/`fopen`+`fseek`/`sin`/`sqrt`). Prints PASS/FAIL. |
 | `imgtest` | `imgtest` | Self-test of the image codecs (zlib + libpng): decodes an embedded PNG and prints its size and top-left pixel. Prints PASS/FAIL. Opt-in build (needs the cross-built codecs — see `user/img/README.md`). |
 | `nsfbdemo` | `nsfbdemo` | Demo of the NetSurf framebuffer library (libnsfb) on Onyx: opens a window and draws shapes with libnsfb's plotters, then follows the cursor (a trail of dots) and drops a marker on left-click. `q` / Esc or the close box to quit. Opt-in build (needs the cross-built libnsfb — see `user/nsfb/README.md`). |
@@ -991,6 +996,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
 | **Writer** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Writer, the word processor* below. |
+| **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
@@ -1601,6 +1607,144 @@ kept: fonts' exotic effects, pictures, pivot tables, macros, comments, validatio
 of an Excel file is read). Sample: **`SD:/docs/cafe-2026.xlsx`** (its three sheets: the sales, a
 summary with lookups and a pie chart, the espresso machine's loan).
 
+### Koton, the studio (`koton`)
+
+![Koton](../screenshots/koton.png)
+*Koton with its demo song (`SD:/koton/songs/demo.kson`): the arrangement, the chord track at the
+bottom (each chord's degree, coloured by its function), a chord selected — its editor below, the
+next-chord co-pilot's cards, the track's sound chain at the right.*
+
+Koton is Onyx's music studio: **Koton Studio** (a DAW for Windows) made again for Onyx. A song is
+thought **in harmony**: a silent **chord track**, pinned at the bottom, holds the chords — by their
+**degree** in the key, so they follow a change of key — and every other part reads it:
+accompaniments that play its chords in a style or a grid you draw, melodic lines whose pitches the
+engine picks from it, riffs drawn over its shaded tones, drums, euclidean rings in polyrhythm.
+Koton for Windows' songs (**`.sq`**) open (what Onyx lacks is dropped); Koton saves **`.kson`** (the
+same JSON: a `.kson` opens in Koton for Windows too). The sound is a **SoundFont** synthesizer
+(MeltySynth, one per track) mixed on the Pi's **third core**, to the headphone jack; a song can be
+exported as a WAV file. The AI (Gemini and others) composes a whole piece, a new part, drums.
+
+**The window**, from the top:
+
+- **The transport bar**: Save, Undo, Redo · back to the start, **Play / Stop** (Space), Stop,
+  **Loop**, the **metronome** · the **position** (bar.beat.sixteenth and the time) · the song's
+  **BPM**, **key**, **meter** and **swing** (a click opens *The song*: the key and its mode — major,
+  minor, harmonic / melodic minor, the church modes —, what a new key does — **transpose the song**
+  or **let the chords follow their degrees** —, the meter, the tempo, the swing, the humanisation,
+  the length) · the **snap** of the arrangement (bar, beat, ½, ¼, off) · where the engine runs
+  (*CORE 2 — DSP*) and its load · **Compose with AI…** · the **master level**.
+- **The arrangement**: the ruler (a click puts the play cursor there; a drag makes the **loop**; a
+  right-click turns it on / off), the **sections** (a double-click on their row names one or adds
+  one), the tempo. Each **track** has a header — its name (a double-click renames it), **M**ute and
+  **S**olo, its sound (a click chooses it), its volume and pan (dragged) — and a lane of **blocks**,
+  each a generator with its name and a thumbnail of the notes it plays. The **chord track** is at the
+  bottom: each chord's name, its roman numeral, its function's colour (tonic blue, subdominant green,
+  dominant orange). The mouse: a click selects a block (its editor opens below); drag it (snapped);
+  drag its right edge (its length); a **double-click** on an empty place puts a block of the track's
+  kind there; a **right-click** on a lane: what to put there (riff, accompaniment, melodic line,
+  melodic rings, poly chords; drums, polyrhythm; a chord, a cadence), *Freeze into a riff*,
+  Duplicate, Delete; a right-click on a header: rename, instrument, collapse, move, duplicate or
+  delete the track, add tracks. The wheel scrolls, **Shift**+wheel scrolls in time, **Ctrl**+wheel
+  zooms. **Del** deletes the block, **^D** duplicates it, ← / → select the neighbours.
+- **The browser** (right): what can be put in the song — on the selected track, at the cursor (or
+  after its last block): **Harmony** (a chord — the one the co-pilot suggests after the last —, a
+  cadence, *Chain 4 bars*, poly chords, an accompaniment), **Rhythm** (a drum pattern, a
+  polyrhythm), **Melody** (a riff, a melodic line, melodic rings), **AI** (compose a piece, add an
+  instrument, add drums, develop the end), the tracks, and the **plugins** (an instrument for the
+  track, an effect on it, a generator block).
+- **The editor** (bottom; drag its top edge to make it taller): the selected block's settings —
+  *Listen* plays the block alone, looping, with its track's sound (edit it while it plays).
+- **The sound chain** (right of the editor): the selected track's **instrument** (a SoundFont
+  instrument or drum kit, or an instrument plugin), its **effects** (plugins: on / off, their knobs,
+  their own editor, removed; *+ Add an effect*), its **reverb** send and its level.
+- **The status bar**: where the engine runs, the latency, the voices, the SoundFont, the last
+  message, the file.
+
+**The editors**:
+
+- **Chord** (a block of the chord track): its **degree** in the key (I … VII, the **secondary
+  dominants** V/ii … V/vi, or *Manual*: a fixed root), its **colour** (triad, sixth, 7th, 9th, add9),
+  its **suspension**, a **forced** quality (major, minor, augmented, diminished, dominant), its length
+  in beats, and the voicing it asks of the accompaniments (open, the voice leading, an inversion). The
+  chord is shown on a keyboard with its roman numeral and function. **Suggest the next chord**: the
+  co-pilot's cards (the chords that follow well, ranked by where the phrase is and a mood — joyful,
+  serene, melancholic, nostalgic, epic, bright, jazzy); **a click adds that chord after this one, a
+  right-click replaces this one**; *Chain 4 bars* appends its best four; *Cadence…* writes a cadence
+  (30 styles: authentic, plagal, ii–V–I, pop, Andalusian, circle of fifths…, from a degree, for some
+  bars) on the chord track.
+- **Accompaniment** (an instrument track's block that plays the chord track's chords, whatever they
+  are — stretch it over as many chords as you want): the **cell** it repeats (beats), its length,
+  the **style** (28 built in: block chords, arpeggios, Alberti, jazz comping, bossa nova, reggae,
+  waltz, tango, funk, harp…, or your own saved styles), the octave, the bass (on every beat), the
+  open voicing, the **voice leading** (auto, close at the top / to the bass, as the chord says) or a
+  fixed inversion. Its **Accompaniment** tab: *Customise this style* turns the style into a **grid of
+  the chord's voices** (bass, 1, 3, 5, 7, 1′, 9, 3′, 5′, 7′, 9′ — a voice the chord lacks takes its
+  nearest tone) that you draw: a click draws a note, a drag its length, a right-click erases;
+  *Resolution*, *Start from* a style, *Save style…* (in the song's style list), *Apply to all* (every
+  accompaniment with that style). Its **Melodic cell** tab: a second voice over the chords, drawn on
+  the key's degrees (1 … 7″), its octave and where degree 1 is.
+- **Riff**: the piano roll — the chords over it, their tones shaded in the rows (the root stronger),
+  the key's scale lighter than the notes outside it. Tools **Draw** / **Select** / **Erase**, the
+  **snap** and the drawn **length** (bar … 1/32, triplets), the riff's length and name; **±1 / ±12**
+  transpose (the selection, else all); **Fit to the chords** moves every note to the nearest tone of
+  the chord under it; **Quantise**; **Step record**: notes played on a **USB MIDI keyboard** are
+  written one after the other (a chord when played together). A click on the keyboard plays the note;
+  Del deletes the selection, arrows move it.
+- **Drums**: a **category** and a **motif** of the catalog (the built-in grooves — rock, pop, funk,
+  disco, swing, shuffle, bossa, hip-hop, reggae, trap… — and the shipped ones, `drums.json`), the
+  density, a fill on the last bar, beats a bar, repeats; **Customise** makes it a grid of the 47
+  General MIDI percussion lanes you draw (a click puts / removes a hit), *Save motif…*. **Euclid**:
+  E(hits, steps) with a rotation on one lane (its pattern and name shown: tresillo, cinquillo…),
+  **<** / **>** shift a lane a step.
+- **Melodic line**: you draw only its **rhythm** (up to three voices); the engine chooses the pitches
+  from the harmony — chord tones on the strong beats, passing tones between — with a **contour**
+  (wave, rising, falling, static, zigzag, random, Thue-Morse, L-system, 1/f), an **anchor**, a
+  variation, the continuity, the tension (the register's slope), the amplitude, the ornaments, the
+  wave's length; the euclidean tool as the drums'; saved motifs, applied to the lines that use them.
+- **Polyrhythm**, **Melodic rings**, **Poly chords**: the rings on a wheel — **click a ring to pick
+  it; on the picked ring, click a step to set or clear a hit** —, the list of rings (M: muted), the
+  picked ring's hits, steps, rotation and its lane (and accent) / voice / chord tone, octave, legato.
+  Poly chords carry their own chords (degree, colour… as the chord editor) and an *emergent melody*
+  (one ring at a time: highest, lowest, auto, random).
+- **Generator** (a generator plugin's block): its length, *Open the plugin's editor*.
+
+**Compose with AI** (the button, the AI menu, the browser): **what** (a whole piece — the song is
+replaced, one Undo brings it back —, a development of the theme after the end, an instrument over
+the song, drums, a polyrhythmic piece), the **style** and the **intention** in words, about how many
+bars, the melody as notes (riffs) or as melodic lines, drums, the AI voicing the chords, poly chords
+/ drums; the **provider** (Gemini — free keys at aistudio.google.com —, Groq, Mistral, Claude,
+DeepSeek, Grok, an OpenAI-compatible server), the model, the **API key**. *Generate* asks it through
+`SD:/bin/llm` (a box shows its progress; Cancel stops it) and places the answer: the chords on the
+chord track (by degree), accompaniments, melodic lines or riffs, drums, the sections as markers,
+the key, meter and tempo. Without a key: *Copy the prompt* (paste it into any chat), then copy the
+chat's whole answer and *Paste a reply*.
+
+**Sound**: the SoundFont is the first `.sf2` of `SD:/koton/soundfonts` (GeneralUser GS is shipped;
+File ▸ *SoundFont…* chooses another, from the next start). The engine runs on the third core (else a
+real-time thread): about 40 ms from a key to the ear. A **USB MIDI keyboard** plays the selected track (or
+writes into the riff editor with *Step record*). **File ▸ Export as WAV…** renders the song off line
+(44.1 kHz, 16-bit stereo).
+
+**Keys**: Space play / stop, Home back to the start, Esc stop, Del delete the block, ^N new song,
+^O open, ^S save, ^Z / ^Y undo / redo (40 steps), ^D duplicate, ^K the song's key / meter / tempo,
+^L loop.
+
+**Files**: songs in `SD:/koton/songs` (`.kson`; Koton's `.sq` open — *Save* then writes a `.kson`);
+`SD:/koton/soundfonts/*.sf2`; `SD:/koton/settings.json` (the SoundFont chosen, the last folder, the
+AI provider, model and **API key — in plain text on the card**); `SD:/apps/koton.app/drums.json`
+(the drum catalog); the plugins in `SD:/koton/plugins/<name>/` (`main` + `plugin.json`). A double
+click on a `.kson` / `.sq` opens it (`fileassoc.ini`).
+
+| | |
+|---|---|
+| ![](../screenshots/koton-accomp.png) | ![](../screenshots/koton-riff.png) |
+| *An accompaniment customised: the grid of the chord's voices.* | *A riff over its chords: their tones shaded.* |
+| ![](../screenshots/koton-drums.png) | ![](../screenshots/koton-rings.png) |
+| *Drums from the catalog, the euclidean tool.* | *A polyrhythm: three rings, E(3,8), E(5,12), E(7,16).* |
+
+![Compose with AI](../screenshots/koton-ai.png)
+*Compose with AI.*
+
 ### Games
 
 | Game | Goal and controls |
@@ -1710,14 +1854,15 @@ disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings 
 | **demoD** | Widget gallery (label, textbox, checkbox, button, slider, progress bar). |
 | **demoE** | Multi-line textarea + scrolling view with scrollbars. |
 | **demoF** | Small borderless launcher (buttons A–E that launch the other demos). |
-| **widgets** (Widget Showcase) | The WPF-style wtk controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The bottom line reports each event. |
+| **widgets** (Widget Showcase) | The WPF-style wtk controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The **Studio** group shows the studio controls: a toolbar of transport buttons (**Play** / pause — a toggle —, **Stop**, **Record**, **Loop**), a time display that runs while playing, a segmented choice (Chords / Melody / Drums), three knobs (**Gain**, **Pan**, **Mix**: drag up or down — Shift for fine steps —, the wheel, a double click resets Gain and Pan) and level meters fed by a made-up signal while playing (the Gain and Pan knobs act on it; a click on a meter clears its red clip light). The bottom line reports each event. Reads the icon `SD:/apps/imageview.app/icon.bmp`; writes nothing. |
 | **basicdemo** (BASIC Demo) | An app written in BASIC (`main.bas`, run by `/bin/basic`): a text box and **Say hello** (a notification), a click counter and a progress bar, and concentric circles whose colour (drop-down), size (slider) and fill (check box) follow the controls. Open it in QBasic to read it. |
 | **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
 | **spin** | Preemption test: a CPU hog that **never yields**. On a purely cooperative kernel it freezes the whole machine; with preemptive scheduling the rest of the UI (cursor, panel, other apps) stays responsive while it spins. It cannot be closed by its window (it never checks for the close) — **stop it from `taskman`**. |
 
 ![Widget Showcase](../screenshots/widgets.png)
 *The Widget Showcase: group box + radio buttons, toggles, numeric up/down, list box, tree
-view (with a tooltip), image box, calendar, date picker and the colour button.*
+view (with a tooltip), image box, calendar, date picker and the colour button; below, the Studio
+group: transport buttons, a time display, a segmented choice, knobs and level meters.*
 
 ## 13. Programming in BASIC
 

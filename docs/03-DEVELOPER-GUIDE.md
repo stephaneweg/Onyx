@@ -1073,7 +1073,9 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > `Textarea`, `RichTextBox`) accept the printable Latin-1 range too (`é è à ç ù`… = 0xA0–0xFF,
 > as the keymaps produce them). The euro sign (AltGr+E, …) arrives as **0x80**, Windows-1252's
 > code for it (Latin-1 has none); wtk's font draws it there (`tools/fonts/gen_nssans.py`, `EXTRA`);
-> the text widgets do not take it yet — the Spreadsheet does (`latin1_cp` → U+20AC).
+> the text widgets do not take it yet — the Spreadsheet does (`latin1_cp` → U+20AC). With a **text
+> face** installed (below) `Textbox` and `Textarea` hold **UTF-8** instead: a typed Latin-1 key is
+> stored as its UTF-8 (0x80 as U+20AC, the euro), the caret moves and deletes whole characters.
 > **Text selection**: `Textarea` and `RichTextBox` select with Shift + navigation keys, a
 > mouse drag, Shift+click and ^A; typing replaces the selection. `Textarea` has
 > `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,
@@ -1087,6 +1089,61 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > open, then 1 / 0. `ask_text_begin (title, msg, ok, cancel, text)` asks for a line of text
 > the same way (for an app that never has the keyboard: the dock); `ask_text_poll (out, cap)`
 > returns -1, then 1 (the text in `out`) / 0.
+
+> **Text faces — anti-aliased, proportional text in every widget** (`wtk/text.h`). By default wtk
+> draws with its bitmap fonts (8 × 16 cells); an app may install a **`TextFace`** instead and every
+> text path of wtk goes through it: `Canvas::text`, `wk_text_l` / `wk_text_c` / `wk_text_w`, the
+> line height widgets lay out with (**`wk_fh ()`** = the face's `height ()`; `wk_fw ()` = a digit's
+> width), and the widths they compute — a `NumericUpDown`'s right alignment, tooltips, `Icon`
+> labels, the `DataGrid`'s cells (cut with "..." by measure), `Calendar`, `PopupMenu`, the text
+> boxes' carets. `Textbox` and `Textarea` place the caret, the clicks and the selection by the
+> glyphs' real widths (a `Textarea` then scrolls sideways by pixels: `leftPx`). Without a face,
+> nothing changes — byte for byte (the screenshots stay identical). Not through the face: the
+> window's **frame** (its title keeps the desktop's bitmap font, the same on every window),
+> `RichTextBox` (its own styled bitmap glyphs), and the explicit bitmap calls `Canvas::drawFont` /
+> `wtk::draw_text`.
+> - The interface: `struct TextFace { virtual int height (); virtual int ascent (); virtual int
+>   width (const char *utf8, int style); virtual void draw (Canvas &cv, int x, int yTop, const char
+>   *utf8, unsigned color, int style); virtual int widthN (utf8, n, style); }` — styles 0 regular,
+>   1 italic, 2 bold, 3 bold italic; text in UTF-8 (a stray byte is read as Latin-1); `draw` blends
+>   over the canvas, the line's top at `yTop`. **`wk_set_textface (f)`** installs it (0: back to
+>   the bitmap fonts), `wk_textface ()` returns it. Install it **before building the widgets**
+>   (some size themselves from `wk_fh ()` when made: a `DataGrid`'s rows, the dialogs).
+> - Measure and draw through it (they fall back to the bitmap fonts): `wk_tw (s, style)`,
+>   `wk_tw_n (s, n, style)` (a prefix: a caret's x), `wk_tpos (s, n, x, style)` (the character
+>   boundary nearest x: a click), `wk_text (cv, x, y, s, c, style)` (top-left),
+>   `wk_text_clip (…, cx, cy, cw, ch)` (clipped to a box), `wk_text_fit (s, w, out, cap)` (cut to w
+>   px with "..."), `wk_bfw` / `wk_bfh` (the bitmap cell whatever the face). UTF-8 helpers:
+>   `wk_u8_len / _get / _next / _prev / _put`, `wk_u8_key (k, out)` (a typed key's UTF-8).
+>   **`WkFaceScope sc (face);`** draws with another face until the end of the scope (a widget's
+>   captions, a display's large digits).
+> - **FreeType's face** (`user/ft/wtkface.h`, header-only, one translation unit; a **newlib** app
+>   linking `ft/libft.a`, as Writer — §5.1): **`ft_wtk_install ("DejaVu Sans", 13)`** at the start
+>   of `main` (before the `Root` and the widgets) makes an `FtTextFace` on `ft/fonts.h` (the card's
+>   TrueType families of `SD:/res/fonts` / `SD:/fonts`, anti-aliased, quarter-pixel positioned,
+>   kerned, a small width cache; bold / italic from the family's files or made) and installs it;
+>   false: no TrueType font (the bitmap fonts stay). DejaVu Sans at 13 px has a 16-px line, as the
+>   bitmap font's, so layouts keep their rows. More faces for large or small text: `FtTextFace *f =
+>   new FtTextFace; f->open ("DejaVu Sans", 24);` (e.g. an `LcdDisplay`'s `face`). `ft_wtk_face ()`:
+>   the installed one. The face holds no `fnt::Font *` between two calls (`fnt::trim` is safe).
+> - On the PC: **`sh tools/tests/desktop_sim/studio.sh [out]`** builds `gallery/studio.cpp` with
+>   the FreeType face and with the bitmap fonts, in the card's theme and in a dark palette, the
+>   Widget Showcase under the face (`gallery/ftwrap.cpp`), writes their pictures (default
+>   `/tmp/onyx_studio`), and runs `facetest.cpp` (the measures, the carets and clicks, UTF-8 editing).
+
+> **Studio controls** (for Koton's DAW, usable anywhere; drawn from the theme's colours — a light
+> theme and a dark one alike —, anti-aliased with `wtk/vpaint.h`). All in `wtk/wtk.h` but the
+> toolbar: **`#include "wtk/toolbar.h"`** yourself (Writer, the Spreadsheet and Cardfile have their
+> own `ToolBar` / `ToolButton` next to `using namespace wtk`, so `wtk.h` leaves it out). See them in
+> the Widget Showcase (`user/Apps/widgets`, its Studio group) and `gallery/studio.cpp`.
+>
+> | Widget | Make it | What it does |
+> |---|---|---|
+> | **`Knob`** (`wtk/knob.h`) | `Knob (l, t, w, h, min, max, value, onChange)`; `setLabel ("Gain")`, `showValue`, `format (v, out, cap)`, `setDefault (v)`, `bipolar`, `arcColor`, `step`, `face` (captions) | A rotary control: a 270° track, the value's arc in the accent (from the start, or from 0 when `bipolar`: a pan), a cap with a pointer, the label and the value under it. Drag up / down (the range in 200 px; Shift: 1000 px), the wheel, a double click → the default; keys Up / Down / Left / Right, Page Up / Down, Home / End, Delete (the default). The dial is the width, less the captions' lines (about 24 … 64 px). `setValue (v, fire)`, `setRange`, `valueText`. |
+> | **`VuMeter`** (`wtk/vumeter.h`) | `VuMeter (l, t, w, h, vertical = true, stereo = true)`; `floorDb` / `topDb` (−48 / +6), `amberDb` / `redDb` (−12 / −3), `segPx` (3; 0 = continuous), `holdTicks`, `fallDb`, `peakFallDb`, `showPeak`, `showClip` | A level meter: segments on a dark well, green → amber → red along a dB scale, the peak held then falling, a clip light (a level over 0 dBFS; a click clears it). **`setQ16 (l, r)`** — linear, 65536 = 0 dBFS —, `setCdb (l, r)` (1/100 dB), `set (float l, float r)` in an FP-enabled unit only (wtk itself is integer-only). Call it at the UI's rate, silence included (the falls are timed by `kapi_get_ticks`); it repaints only when a lit segment or a peak moves. `wk_q16_to_cdb (v)`. |
+> | **`SegmentedControl`** (`wtk/segmented.h`) | `SegmentedControl (l, t, w, h, labels, n, selected, onChange)`; `equalWidths` (false: by the texts), `setLabels`, `setEnabled (i, on)` | Mutually exclusive segments drawn as one pill, the chosen one in the accent (bold). A click, the wheel, Left / Right. `selected`, `select (i, fire)`, `label (i)`, `count ()`. Labels copied (12 × 31 chars). |
+> | **`ToolBar`** + **`ToolButton`** (`wtk/toolbar.h`) | `ToolBar (l, t, w, h = 34)`: `add (w, gap)`, `addRight (w, gap)` (anchored right), `sep ()`, `space (px)`, `line`, `bg`; `ToolButton (w, h, tip, onClick)` then `->setGlyph (WKT_PLAY)`, `->setIcon (fn, id)` (the app's drawer), `->setText ("Loop")`, `->setToggle (true, on)`, `->setSplit (arrowCb)`, `->fitWidth ()`; `filled`, `raised`, `onColor`, `iconColor` | A strip of small buttons: an icon, a label beside it or alone, a toggle (on: the accent's tint, or `filled` — a play button), a split arrow (a palette, a menu), a tooltip. Flat until pointed (`raised`: always a face). The icons: `WKT_NEW OPEN SAVE UNDO REDO CUT COPY PASTE PLAY PAUSE STOP RECORD TO_START TO_END REWIND FORWARD LOOP METRONOME PLUS MINUS SEARCH MIXER SPARK GEAR`, drawn at any size by `wk_tool_glyph (cv, kind, x, y, size, ink)`. Generalised from Writer's (which keeps its own). |
+> | **`LcdDisplay`** (`wtk/lcd.h`) | `LcdDisplay (l, t, w, h, text, caption)`; `setText`, `setCaption`, `setSub` (repainted only on a change), `face` / `smallFace`, `scale`, `ink`, `centred` | A time / position display: a sunken well (dark in a dark theme, the accent's pale tint in a light one), large digits in the accent — the `face` given (an `FtTextFace` at 24 px), else the bitmap font scaled as large as fits —, a small caption over a second line at its right ("BAR.BEAT.16" / "0:14.83"). |
 
 > **The look: the modernised CDE (kapi v64).** Every control, and every window's frame, is
 > drawn by code from a few theme colours — no bitmap (docs/gui-redesign/README.md).
@@ -1119,7 +1176,8 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 >   `wk_popup` (a floating panel, its corners keyed), `wk_hilite` / `wk_hilite_ink` (a selected
 >   row and its text), `wk_title_strip`, `wk_glyph` (`WKG_CHECK`, arrows, chevrons, close,
 >   minimise, maximise, restore, lock, gear, power, reload, home, history — a clock…), `wk_text_c` / `wk_text_l` (style 2 = bold).
->   `tools/tests/desktop_sim/gallery/main.cpp` shows every control in every state.
+>   `tools/tests/desktop_sim/gallery/main.cpp` shows every control in every state;
+>   `gallery/studio.cpp` (`studio.sh`) the studio controls, with a FreeType face and without.
 > - **The frame**: `wk_decorate_window ()` (the `Root` calls it; an app drawing its own window
 >   calls it after `kapi_resize_window`) draws the title bar, the borders, the rounded corners
 >   (their outside see-through in the chrome's top byte), the title buttons — the window menu,
@@ -1285,6 +1343,40 @@ Key points:
 See the demos `demoD.c` (widget gallery), `demoE.c` (textarea + scrollview), and the
 apps `tinypad.c`, `paint.c`, `mandelbrot.c` for complete examples.
 
+### A large app: Koton, the studio (`user/Apps/koton`)
+
+Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app
+(`koton.elf` in [`user/Makefile`](../user/Makefile): the engine, MeltySynth and the plugin host are
+separate objects in `Apps/koton/obj/`, the UI is headers included by `main.cpp`), with FreeType text
+(`ft/wtkface.h`: `ft_wtk_install ("DejaVu Sans", 13)` before the Root). Its parts:
+
+| Folder | What |
+|---|---|
+| `engine/` (namespace `kt`) | `kbase.h` (Vec, Str, .NET's seeded `Random` reproduced bit for bit, banker's rounding); `model.h/.cpp` (the song: tracks of items — a module after a silence, positions relative —, the chord track pinned last; `.sq` / `.kson` read and written with `json.hpp`); `theory` (the modes, 35 qualities, degrees and colours, 30 cadences, voice leading, the next-chord suggestions, key changes); `gen_*.cpp` (every module rendered to notes: the chord styles and grids, the articulation, the drums, the euclidean rings, the melodic line engine); `compile` (the song flattened to events per track, the tempo map); `engine` (the audio engine: one MeltySynth per track, a lock-free command ring, the mix, the preview voice, the metronome — no allocation, no kapi call in `render`); `ai*` (Koton's AI: prompts, replies placed). |
+| `synth/` | MeltySynth (C#) ported to C++: the SoundFont reader and the synthesizer, reverb and chorus. |
+| `plug/` | The plugin host: plugins as processes (`kplug_proto.h`, `kplug.h`), rendered ahead through shared rings, effects with their latency compensated, generators, editors shown as applets. |
+| `ui/` (namespace `kui`) | `palette.h` (the studio's colours as a wtk theme, the drawing helpers); `doc.h` (the song open, undo / redo as JSON snapshots, the timeline's edits); `audio.h` (the SoundFont found and loaded, the engine started on an **app core**, else a real-time thread, else the UI's tick; the song compiled when the document's revision changes); `arrange.h` (the arrangement: ONE widget the size of the view, drawing only what shows); `grid.h` (NoteGrid: every editor's grid — voice rows, drum lanes, the piano roll); `editor.h` + `ed_chord.h`, `ed_rhythm.h`, `ed_riff.h` (the block editors: a form of wtk controls in columns, a grid or a wheel on the right); `ops.h` (the editors' operations: the drum catalog, euclidean rhythms, the degree vocabulary, cadences, the next chord); `dialogs.h`, `ai_dialog.h`, `chain.h` (a track's sound chain, a plugin's editor floating), `chrome.h` (the transport bar, the browser, the editor's host, the status bar). |
+
+Conventions worth keeping:
+
+- **The document's revision**: every edit is `g_doc.checkpoint ()` (the undo step), the change, then
+  `g_doc.changed ()`; the views and the audio host follow `g_doc.revision` (the song is compiled
+  again once the edits pause — a drag recompiles a few times a second).
+- **An editor never deletes itself**: a change that needs other controls sets `g_rebuildEditor`;
+  the Root's tick makes the editor again from the model (the same after an undo: the pointers into
+  the song are stale then).
+- **The audio thread / core** makes no kapi call and allocates nothing; the UI posts commands
+  (`Engine::post`) and frees the songs the engine hands back (`retired ()`).
+- **Memory**: JSON documents are arenas (`json.hpp`), freed as a whole; the song and its modules are
+  owned values (an `Item` owns its module, copies clone it). On the PC the app runs in the desktop
+  simulator (`sh tools/tests/desktop_sim/shots.sh koton`) and under valgrind with the host allocator
+  (`-DONYX_CPP_HPP -include new`: `onyxpp.hpp`'s allocator left out) — the engine's and the AI's own
+  tests run under ASan / UBSan / LSan (`sh tools/tests/koton/engine_run.sh`, `ai_run.sh`,
+  `synth_run.sh`). (ASan cannot run the simulator itself: its shadow memory takes the kapi table's
+  fixed address.)
+- **Static objects** that allocate must not be made before `main` (the kapi table is not there yet
+  on Onyx): Koton makes its document in `main` (`g_doc` is a reference to storage constructed there).
+
 ## 7. Writing a `/bin` tool
 
 A `/bin` tool follows the **same EL1 app model** but reads `stdin`, writes `stdout`, and
@@ -1332,6 +1424,82 @@ implementations in the kapi table; `user/kapi.h` defines them as weak
 alias the C names onto them at link time (`KAPI_ALIASES`:
 `-Wl,--defsym,memset=kapi_memset …`). A new freestanding link rule must add
 `$(KAPI_ALIASES)`; newlib programs must not (they keep newlib's versions).
+
+### The AI helper `/bin/llm` and Koton's AI composition (`engine/ai.h`)
+
+Koton's "compose with AI" is split like Lisa + `/bin/groq`: the app builds the prompts and places the
+reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PROGS`), does the HTTPS.
+
+- **`user/Apps/koton/engine/ai.h`** (namespace `kt`; `ai.cpp` = the prompts, `ai_place.cpp` = the
+  replies) is a port of Koton Studio's `Engine/AI` (`AiArrangement*`, `AiArrangementPlacer`,
+  `AiPolyArrangement`, `AiPolyrhythm`, the clients) and the `ChordModelOps` / `TimelineHelper` parts
+  they call (`AddAiChord`, `ApplyAiDrum`, `ApplyAiRiff`, `ChordsUnder`, `AddSectionMarkers`).
+  The **French prompts are Koton's, byte for byte** (they are tuned; `tools/tests/koton/ai_run.sh`
+  looks every generated line up in Koton's C# sources when they are on the machine).
+  - `AiRequest` — `kind` (`AI_COMPOSE` a new piece, `AI_DEVELOP` develop a theme riff after the end,
+    `AI_ADD_TRACK` one voice over the whole piece, `AI_ADD_DRUMS`, `AI_DRUM_GROOVE` one drum module,
+    `AI_RIFF` one riff (+ a progression when no chord is under it), `AI_POLYRHYTHM` a polyrhythmic
+    piece), `style`, `intention`, `measures`, `fullMelody` (riffs vs rhythm-only melodic lines),
+    `drums`, `chordsVoice`, `polyChords`, `polyDrums`, `english` (the labels the model writes),
+    `track` / `item` (the theme, the drum module, the riff; -1 = a new one / the last riff).
+  - `aiBuildPrompt (project, req, system, user)` — including the whole piece as text for "add a track"
+    (every track's notes in beats, the chords as `[bar,degree,quality]`) and the theme for "develop";
+    `aiFullPrompt` = "Copy the prompt" (works with no key: paste the answer back).
+  - `aiCheckReply (req, text, summary, cap)` — parse only, a one-line summary for the dialog.
+  - `aiApplyReply (project, req, text, err, cap)` — tolerant parsing (a ``` fence, text around the
+    object, trailing commas, notes as `[a,b,c]` or objects, numbers as strings, one object for a list);
+    placement as Koton's placer: the chord track pinned last with one degree-locked chord a bar (colour
+    from `colourForQuality`; a chord that is not its degree's own — V in minor, V/V — stays fixed),
+    one chord articulation a section on an "Accompaniment" track (the AI's one-bar motif, saved as a
+    user chord style, and its melodic cell), melodic lines or riffs (`PlayRiff` + `Riff`, the
+    out-of-harmony notes snapped) grouped by role in 4-bar blocks, drum modules from the motif
+    (`CompressPeriodic`), polychords / polydrums in 1–4-bar modules, the sections as markers, the
+    key / meter / tempo. `AI_COMPOSE` / `AI_POLYRHYTHM` replace the project; on an error the project is
+    unchanged. Deliberate differences with Koton are marked `Onyx:` in the sources (the default track
+    names follow `english`; "Do" / "Ré" and `7♯9` are read right; a develop's accompaniment lies under
+    the development).
+  - `aiBuildRequestJson (provider, model, key, system, user, temperature, thinking, writer[, url])` —
+    the request for `/bin/llm`; `aiParseLlmOutput (out, len, text, error, &lastProgress)` — its answer;
+    `aiBuildFetchJson (url, outPath, writer)` / `aiParseFetchOutput (out, len, &bytes, error, &progress)`
+    — the same for its download mode.
+  - `g_aiProviders`, `aiProviderLabel`, `aiProviderDefaultModel` — Koton's providers.
+- **`/bin/llm [request.json] [-o result.json]`** reads ONE JSON document (stdin, or the file):
+  `{ "provider": "gemini"|"groq"|"mistral"|"claude"|"openai-compatible" (+ "deepseek", "grok",
+  "openai"), "model", "key", "system", "user", "json": true, "temperature": 0.7, "thinking": -1,
+  "url"?, "maxTokens"?, "timeout"? }` and writes ONE JSON line: `{"ok":true,"text":"..."}` or
+  `{"ok":false,"error":"..."}` (exit code 0 / 1). Gemini: `POST …/v1beta/models/{model}:generateContent`,
+  `x-goog-api-key`, `responseMimeType: application/json`, `thinkingConfig.thinkingBudget` when
+  `thinking` ≥ 0; the text = `candidates[0].content.parts[*].text`, `MAX_TOKENS` = an error. Groq,
+  Mistral, DeepSeek, Grok, OpenAI and any OpenAI-compatible `url`: chat/completions with
+  `response_format: json_object`. Claude: the messages API (`max_tokens` 32000, no temperature). A
+  **download** mode: `{ "fetch": "https://…", "out": "SD:/…" }` → the body written to `out` (redirects
+  followed, folders made) and `{"ok":true,"bytes":N}` — Koton fetches its SoundFont with it.
+  Progress lines go to stderr — on Onyx the same stream as stdout — as `llm: connecting to …`,
+  `llm: sending N bytes`, `llm: waiting for the answer (N s)`, `llm: receiving N bytes [of M]`; the
+  result is the last line starting with `{`. The response buffer grows (16 MB for an answer,
+  512 MB for a download; sized from `Content-Length` at once). The TLS certificate is **not verified**
+  (no CA bundle on the card). After the handshake the TLS receive is made non-blocking (onyx_tls's
+  own gives up after 20 s of silence; a thinking model may be silent for a minute).
+- **From the app** (wtk, freestanding): build the prompt and the request, then
+  ```cpp
+  json::Writer rq (false);
+  kt::aiBuildRequestJson ("gemini", model, key, sys, usr, 0.7, -1, rq);
+  void *in = kapi_pipe (), *out = kapi_pipe ();
+  void *proc = kapi_spawn ("SD:/bin/llm", "", in, out);
+  // write rq.data () to `in` in one go (a pipe holds 8 KB, the write yields until llm has read it:
+  // llm reads all of its stdin first, as groq does for Lisa), then kapi_stream_eof (in)
+  // each tick: kapi_stream_read_nb (out, ...) into a growing buffer (the answer can be 100+ KB);
+  //   kt::aiParseLlmOutput (buf, n, text, error, &progress) -> the status bar shows `progress`
+  // when kapi_proc_done (proc): kapi_wait, close the pipes, then
+  //   if (kt::aiParseLlmOutput (buf, n, text, error)) kt::aiApplyReply (project, req, text, err, sizeof err);
+  ```
+  The app keeps the provider, the model and the API key in `SD:/koton/settings.json` (plain text on the
+  card — the key field's tooltip says so); its dialog is `ui/ai_dialog.h`.
+- **Tests on the PC**: `sh tools/tests/koton/ai_run.sh` — every kind of prompt, canned replies shaped
+  like Gemini's (placed, then checked: tracks, chords through `chordAt` and a key change, every module
+  rendered, `compileSong`, a `.kson` round trip), malformed replies, the `/bin/llm` protocol per
+  provider (`#define LLM_PROTO_ONLY` + include `llm.cpp`) and a 60+ KB reply end to end, under
+  ASan / UBSan / LSan; then the AArch64 compile and `make -C user/bin llm.elf`.
 
 ## 8. The `applib.h` library
 
