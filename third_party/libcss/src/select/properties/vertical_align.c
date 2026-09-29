@@ -13,6 +13,7 @@
 
 #include "select/properties/properties.h"
 #include "select/properties/helpers.h"
+#include "select/onyx_calc.h"
 
 css_error css__cascade_vertical_align(uint32_t opv, css_style *style,
 		css_select_state *state)
@@ -56,9 +57,12 @@ css_error css__cascade_vertical_align(uint32_t opv, css_style *style,
 			value = CSS_VERTICAL_ALIGN_TEXT_BOTTOM;
 			break;
 		case VERTICAL_ALIGN_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER)
+				return CSS_OK;
+			value = CSS_VERTICAL_ALIGN_SET;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;

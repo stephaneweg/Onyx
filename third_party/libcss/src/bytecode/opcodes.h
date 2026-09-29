@@ -211,6 +211,70 @@ enum op_column_fill {
 	COLUMN_FILL_AUTO		= 0x0001
 };
 
+/* Onyx: CSS3 additions */
+enum op_row_gap {
+	ROW_GAP_NORMAL			= 0x0000,
+	ROW_GAP_CALC			= VALUE_IS_CALC,
+	ROW_GAP_SET			= 0x0080
+};
+
+/* border-*-radius: length + unit follow */
+enum op_border_radius {
+	BORDER_RADIUS_CALC		= VALUE_IS_CALC,
+	BORDER_RADIUS_SET		= 0x0080
+};
+
+/* justify-items / justify-self: as align-items / align-self */
+enum op_justify_items {
+	JUSTIFY_ITEMS_STRETCH		= ALIGN_ITEMS_STRETCH,
+	JUSTIFY_ITEMS_FLEX_START	= ALIGN_ITEMS_FLEX_START,
+	JUSTIFY_ITEMS_FLEX_END		= ALIGN_ITEMS_FLEX_END,
+	JUSTIFY_ITEMS_CENTER		= ALIGN_ITEMS_CENTER,
+	JUSTIFY_ITEMS_BASELINE		= ALIGN_ITEMS_BASELINE
+};
+
+enum op_justify_self {
+	JUSTIFY_SELF_STRETCH		= ALIGN_SELF_STRETCH,
+	JUSTIFY_SELF_FLEX_START		= ALIGN_SELF_FLEX_START,
+	JUSTIFY_SELF_FLEX_END		= ALIGN_SELF_FLEX_END,
+	JUSTIFY_SELF_CENTER		= ALIGN_SELF_CENTER,
+	JUSTIFY_SELF_BASELINE		= ALIGN_SELF_BASELINE,
+	JUSTIFY_SELF_AUTO		= ALIGN_SELF_AUTO
+};
+
+/* box-shadow: SET is followed by x, y, blur, spread (length + unit each), then the colour if
+ * BOX_SHADOW_COLOR (else currentColor) */
+enum op_box_shadow {
+	BOX_SHADOW_NONE			= 0x0000,
+	BOX_SHADOW_SET			= 0x0080,
+	BOX_SHADOW_INSET		= 0x0040,
+	BOX_SHADOW_COLOR		= 0x0020
+};
+
+/* text-shadow: SET is followed by x, y, blur (length + unit each), then the colour if
+ * TEXT_SHADOW_COLOR (else currentColor) */
+enum op_text_shadow {
+	TEXT_SHADOW_NONE		= 0x0000,
+	TEXT_SHADOW_SET			= 0x0080,
+	TEXT_SHADOW_COLOR		= 0x0020
+};
+
+/* background-size: SET is followed by the width unless BACKGROUND_SIZE_W_AUTO, then the
+ * height unless BACKGROUND_SIZE_H_AUTO (length + unit each) */
+enum op_background_size {
+	BACKGROUND_SIZE_AUTO		= 0x0000,
+	BACKGROUND_SIZE_COVER		= 0x0001,
+	BACKGROUND_SIZE_CONTAIN		= 0x0002,
+	BACKGROUND_SIZE_SET		= 0x0080,
+	BACKGROUND_SIZE_W_AUTO		= 0x0040,
+	BACKGROUND_SIZE_H_AUTO		= 0x0020
+};
+
+enum op_text_overflow {
+	TEXT_OVERFLOW_CLIP		= 0x0000,
+	TEXT_OVERFLOW_ELLIPSIS		= 0x0001
+};
+
 enum op_column_gap {
 	COLUMN_GAP_NORMAL		= 0x0000,
 	COLUMN_GAP_CALC			= VALUE_IS_CALC,

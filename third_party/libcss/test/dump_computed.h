@@ -3253,5 +3253,117 @@ static void dump_computed_style(const css_computed_style *style, char *buf,
 	}
 	ptr += wrote;
 	*len -= wrote;
+
+	/* Onyx: the CSS3 additions, each only when not at its initial value (so that the tests
+	 * which do not use them are unchanged) */
+	{
+		css_fixed l[4];
+		css_unit u[4];
+		css_color c;
+		int i;
+		static const char *corner[4] = { "top-left", "top-right",
+				"bottom-right", "bottom-left" };
+		uint8_t (*radius[4])(const css_computed_style *, css_fixed *, css_unit *) = {
+			css_computed_border_top_left_radius,
+			css_computed_border_top_right_radius,
+			css_computed_border_bottom_right_radius,
+			css_computed_border_bottom_left_radius
+		};
+
+		val = css_computed_row_gap(style, &l[0], &u[0]);
+		if (val == CSS_ROW_GAP_SET) {
+			wrote = snprintf(ptr, *len, "row-gap: ");
+			ptr += wrote; *len -= wrote;
+			wrote = dump_css_unit(l[0], u[0], ptr, *len);
+			ptr += wrote; *len -= wrote;
+			wrote = snprintf(ptr, *len, "\n");
+			ptr += wrote; *len -= wrote;
+		}
+		for (i = 0; i < 4; i++) {
+			val = radius[i](style, &l[0], &u[0]);
+			if (val == CSS_BORDER_RADIUS_SET && l[0] != 0) {
+				wrote = snprintf(ptr, *len, "border-%s-radius: ", corner[i]);
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[0], u[0], ptr, *len);
+				ptr += wrote; *len -= wrote;
+				wrote = snprintf(ptr, *len, "\n");
+				ptr += wrote; *len -= wrote;
+			}
+		}
+		val = css_computed_box_shadow(style, &l[0], &u[0], &l[1], &u[1],
+				&l[2], &u[2], &l[3], &u[3], &c);
+		if (val == CSS_BOX_SHADOW_SET || val == CSS_BOX_SHADOW_SET_INSET) {
+			wrote = snprintf(ptr, *len, "box-shadow:%s",
+					val == CSS_BOX_SHADOW_SET_INSET ? " inset" : "");
+			ptr += wrote; *len -= wrote;
+			for (i = 0; i < 4; i++) {
+				wrote = snprintf(ptr, *len, " ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[i], u[i], ptr, *len);
+				ptr += wrote; *len -= wrote;
+			}
+			wrote = snprintf(ptr, *len, " #%08x\n", c);
+			ptr += wrote; *len -= wrote;
+		}
+		val = css_computed_text_shadow(style, &l[0], &u[0], &l[1], &u[1],
+				&l[2], &u[2], &c);
+		if (val == CSS_TEXT_SHADOW_SET) {
+			wrote = snprintf(ptr, *len, "text-shadow:");
+			ptr += wrote; *len -= wrote;
+			for (i = 0; i < 3; i++) {
+				wrote = snprintf(ptr, *len, " ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[i], u[i], ptr, *len);
+				ptr += wrote; *len -= wrote;
+			}
+			wrote = snprintf(ptr, *len, " #%08x\n", c);
+			ptr += wrote; *len -= wrote;
+		}
+		val = css_computed_background_size(style, &l[0], &u[0], &l[1], &u[1]);
+		if (val == CSS_BACKGROUND_SIZE_COVER) {
+			wrote = snprintf(ptr, *len, "background-size: cover\n");
+			ptr += wrote; *len -= wrote;
+		} else if (val == CSS_BACKGROUND_SIZE_CONTAIN) {
+			wrote = snprintf(ptr, *len, "background-size: contain\n");
+			ptr += wrote; *len -= wrote;
+		} else if (val == CSS_BACKGROUND_SIZE_SET ||
+				val == CSS_BACKGROUND_SIZE_SET_WIDTH ||
+				val == CSS_BACKGROUND_SIZE_SET_HEIGHT) {
+			wrote = snprintf(ptr, *len, "background-size: ");
+			ptr += wrote; *len -= wrote;
+			if (val == CSS_BACKGROUND_SIZE_SET_HEIGHT)
+				wrote = snprintf(ptr, *len, "auto");
+			else
+				wrote = dump_css_unit(l[0], u[0], ptr, *len);
+			ptr += wrote; *len -= wrote;
+			wrote = snprintf(ptr, *len, " ");
+			ptr += wrote; *len -= wrote;
+			if (val == CSS_BACKGROUND_SIZE_SET_WIDTH)
+				wrote = snprintf(ptr, *len, "auto");
+			else
+				wrote = dump_css_unit(l[1], u[1], ptr, *len);
+			ptr += wrote; *len -= wrote;
+			wrote = snprintf(ptr, *len, "\n");
+			ptr += wrote; *len -= wrote;
+		}
+		if (css_computed_text_overflow(style) == CSS_TEXT_OVERFLOW_ELLIPSIS) {
+			wrote = snprintf(ptr, *len, "text-overflow: ellipsis\n");
+			ptr += wrote; *len -= wrote;
+		}
+		{
+			static const char *al[] = { "inherit", "stretch", "start", "end",
+					"center", "baseline", "auto" };
+			val = css_computed_justify_items(style);
+			if (val != CSS_JUSTIFY_ITEMS_STRETCH && val < 7) {
+				wrote = snprintf(ptr, *len, "justify-items: %s\n", al[val]);
+				ptr += wrote; *len -= wrote;
+			}
+			val = css_computed_justify_self(style);
+			if (val != CSS_JUSTIFY_SELF_AUTO && val < 7) {
+				wrote = snprintf(ptr, *len, "justify-self: %s\n", al[val]);
+				ptr += wrote; *len -= wrote;
+			}
+		}
+	}
 }
 

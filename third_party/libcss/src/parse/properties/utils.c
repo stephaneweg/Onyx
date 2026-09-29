@@ -1824,6 +1824,39 @@ css__parse_calc_sum(css_language *c,
 		const parserutils_vector *vector, int *ctx,
 		parserutils_buffer *result);
 
+/* Onyx: min() / max() / clamp() -- the comparison functions of CSS Values 4 */
+static css_error
+css__parse_calc_minmax(css_language *c,
+		enum css_properties_e property,
+		const css_token *fn,
+		const parserutils_vector *vector, int *ctx,
+		parserutils_buffer *result);
+
+/* Onyx: a calc() / min() / max() / clamp() function token */
+bool css__is_calc_function(css_language *c, const css_token *token)
+{
+	bool match;
+	int i;
+	static const int fns[] = { CALC, FN_MIN, FN_MAX, FN_CLAMP };
+
+	if (token == NULL || token->type != CSS_TOKEN_FUNCTION)
+		return false;
+	for (i = 0; i < 4; i++) {
+		if (lwc_string_caseless_isequal(token->idata, c->strings[fns[i]],
+				&match) == lwc_error_ok && match)
+			return true;
+	}
+	return false;
+}
+
+static bool css__is_fn(css_language *c, const css_token *token, int fn)
+{
+	bool match;
+	return token != NULL && token->type == CSS_TOKEN_FUNCTION &&
+			lwc_string_caseless_isequal(token->idata, c->strings[fn],
+				&match) == lwc_error_ok && match;
+}
+
 static css_error
 css__parse_calc_number(
 		const parserutils_vector *vector, int *ctx,
@@ -1880,6 +1913,24 @@ css__parse_calc_value(css_language *c,
 			return CSS_INVALID;
 		}
 		/* Consume the close-paren to complete this value */
+		parserutils_vector_iterate(vector, ctx);
+	} else if (css__is_calc_function(c, token)) {
+		/* Onyx: a nested calc() (as parentheses), min(), max(), clamp() */
+		parserutils_vector_iterate(vector, ctx);
+		consumeWhitespace(vector, ctx);
+		if (css__is_fn(c, token, CALC))
+			error = css__parse_calc_sum(c, property, vector, ctx, result);
+		else
+			error = css__parse_calc_minmax(c, property, token, vector,
+					ctx, result);
+		if (error != CSS_OK) {
+			return error;
+		}
+
+		token = parserutils_vector_peek(vector, *ctx);
+		if (!tokenIsChar(token, ')')) {
+			return CSS_INVALID;
+		}
 		parserutils_vector_iterate(vector, ctx);
 	} else switch (token->type) {
 	case CSS_TOKEN_NUMBER:
@@ -1956,6 +2007,7 @@ css__parse_calc_product(css_language *c,
 			break;
 		} else if (
 				tokenIsChar(token, ')') ||
+				tokenIsChar(token, ',') ||
 				tokenIsChar(token, '+') ||
 				tokenIsChar(token, '-'))
 			break;
@@ -2014,7 +2066,7 @@ css__parse_calc_sum(css_language *c,
 		if (token == NULL) {
 			error = CSS_INVALID;
 			break;
-		} else if (tokenIsChar(token, ')'))
+		} else if (tokenIsChar(token, ')') || tokenIsChar(token, ','))
 			break;
 		else if (tokenIsChar(token, '+'))
 			operator = CALC_ADD;
@@ -2040,6 +2092,56 @@ css__parse_calc_sum(css_language *c,
 	} while (1);
 	/* We've fallen off, either we had an error or we're left with ')' */
 	return error;
+}
+
+/* Onyx: min( <calc-sum> [, <calc-sum>]* ), max( ... ), clamp( <min>, <val>, <max> ).
+ * Emitted as a chain of CALC_MIN / CALC_MAX (clamp(a, b, c) = max(a, min(b, c))). Called
+ * with *ctx past the function token; leaves *ctx at its ')'. */
+static css_error
+css__parse_calc_minmax(css_language *c,
+		enum css_properties_e property,
+		const css_token *fn,
+		const parserutils_vector *vector, int *ctx,
+		parserutils_buffer *result)
+{
+	css_error error;
+	const css_token *token;
+	css_code_t op = css__is_fn(c, fn, FN_MAX) ? CALC_MAX : CALC_MIN;
+	bool clamp = css__is_fn(c, fn, FN_CLAMP);
+	int n = 0;
+
+	for (;;) {
+		consumeWhitespace(vector, ctx);
+		error = css__parse_calc_sum(c, property, vector, ctx, result);
+		if (error != CSS_OK)
+			return error;
+		n++;
+		if (!clamp && n > 1) {
+			error = css_error_from_parserutils_error(
+				parserutils_buffer_append(result,
+					(const uint8_t *)&op, sizeof(op)));
+			if (error != CSS_OK)
+				return error;
+		}
+		token = parserutils_vector_peek(vector, *ctx);
+		if (token == NULL)
+			return CSS_INVALID;
+		if (tokenIsChar(token, ')'))
+			break;
+		if (!tokenIsChar(token, ','))
+			return CSS_INVALID;
+		parserutils_vector_iterate(vector, ctx);
+	}
+
+	if (clamp) {
+		css_code_t ops[2] = { CALC_MIN, CALC_MAX };
+		if (n != 3)
+			return CSS_INVALID;
+		return css_error_from_parserutils_error(
+			parserutils_buffer_append(result,
+				(const uint8_t *)ops, sizeof(ops)));
+	}
+	return CSS_OK;
 }
 
 /* Documented in utils.h */
@@ -2085,7 +2187,17 @@ css_error css__parse_calc(css_language *c,
 	if (error != CSS_OK)
 		goto cleanup;
 
-	error = css__parse_calc_sum(c, property, vector, ctx, calc_buffer);
+	/* Onyx: the function token the caller consumed: calc(), or min() / max() / clamp() */
+	{
+		const css_token *fn = (*ctx > 0) ?
+				parserutils_vector_peek(vector, *ctx - 1) : NULL;
+		if (fn != NULL && css__is_calc_function(c, fn) && !css__is_fn(c, fn, CALC))
+			error = css__parse_calc_minmax(c, property, fn, vector, ctx,
+					calc_buffer);
+		else
+			error = css__parse_calc_sum(c, property, vector, ctx,
+					calc_buffer);
+	}
 	if (error != CSS_OK)
 		goto cleanup;
 

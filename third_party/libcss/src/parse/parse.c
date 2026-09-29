@@ -2238,7 +2238,7 @@ css_error parseMalformedDeclaration(css_parser *parser)
 
 css_error parseMalformedSelector(css_parser *parser)
 {
-	enum { Initial = 0, Go = 1 };
+	enum { Initial = 0, Go = 1, WS = 2 };
 	parser_state *state = parserutils_stack_get_current(parser->states);
 	const css_token *token;
 	css_error error;
@@ -2318,12 +2318,17 @@ css_error parseMalformedSelector(css_parser *parser)
 					parser->open_items) == NULL)
 				break;
 		}
-	}
 
-	/* Consume any trailing whitespace after the ruleset */
-	error = eatWS(parser);
-	if (error != CSS_OK)
-		return error;
+		/* Onyx: past the malformed part; if the whitespace after it needs more
+		 * data, resume here (resuming in Go skipped the next rule) */
+		state->substate = WS;
+		/* Fall through */
+	case WS:
+		/* Consume any trailing whitespace after the ruleset */
+		error = eatWS(parser);
+		if (error != CSS_OK)
+			return error;
+	}
 
 	/* Discard the tokens we've read */
 	discard_tokens(parser);
@@ -2333,7 +2338,7 @@ css_error parseMalformedSelector(css_parser *parser)
 
 css_error parseMalformedAtRule(css_parser *parser)
 {
-	enum { Initial = 0, Go = 1 };
+	enum { Initial = 0, Go = 1, WS = 2 };
 	parser_state *state = parserutils_stack_get_current(parser->states);
 	const css_token *token = NULL;
 	css_error error;
@@ -2426,12 +2431,17 @@ css_error parseMalformedAtRule(css_parser *parser)
 					parser->open_items) == NULL)
 				break;
 		}
-	}
 
-	/* Consume any trailing whitespace after the at-rule */
-	error = eatWS(parser);
-	if (error != CSS_OK)
-		return error;
+		/* Onyx: past the malformed part; if the whitespace after it needs more
+		 * data, resume here (resuming in Go skipped the next rule) */
+		state->substate = WS;
+		/* Fall through */
+	case WS:
+		/* Consume any trailing whitespace after the at-rule */
+		error = eatWS(parser);
+		if (error != CSS_OK)
+			return error;
+	}
 
 	/* Discard the tokens we've read */
 	discard_tokens(parser);

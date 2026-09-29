@@ -22,6 +22,7 @@ static css_error compute_absolute_color(css_computed_style *style,
 		css_error (*set)(css_computed_style *style,
 				uint8_t type, css_color color));
 static css_error compute_border_colors(css_computed_style *style);
+static css_error compute_onyx_shadows(css_computed_style *style);
 
 static css_error compute_absolute_border_width(css_computed_style *style,
 		const css_hint_length *ex_size);
@@ -947,6 +948,95 @@ uint8_t css_computed_column_gap(const css_computed_style *style,
 	return get_column_gap(style, length, unit);
 }
 
+/* Onyx: CSS3 additions */
+uint8_t css_computed_row_gap(const css_computed_style *style,
+		css_fixed *length, css_unit *unit)
+{
+	return get_row_gap(style, length, unit);
+}
+
+uint8_t css_computed_border_top_left_radius(const css_computed_style *style,
+		css_fixed *length, css_unit *unit)
+{
+	return get_border_top_left_radius(style, length, unit);
+}
+
+uint8_t css_computed_border_top_right_radius(const css_computed_style *style,
+		css_fixed *length, css_unit *unit)
+{
+	return get_border_top_right_radius(style, length, unit);
+}
+
+uint8_t css_computed_border_bottom_right_radius(const css_computed_style *style,
+		css_fixed *length, css_unit *unit)
+{
+	return get_border_bottom_right_radius(style, length, unit);
+}
+
+uint8_t css_computed_border_bottom_left_radius(const css_computed_style *style,
+		css_fixed *length, css_unit *unit)
+{
+	return get_border_bottom_left_radius(style, length, unit);
+}
+
+uint8_t css_computed_box_shadow(const css_computed_style *style,
+		css_fixed *x, css_unit *x_unit,
+		css_fixed *y, css_unit *y_unit,
+		css_fixed *blur, css_unit *blur_unit,
+		css_fixed *spread, css_unit *spread_unit,
+		css_color *color)
+{
+	uint8_t type = get_box_shadow(style, x, x_unit, y, y_unit,
+			blur, blur_unit, spread, spread_unit, color);
+
+	/* currentColor: the computed color (normally fixed up already) */
+	if (type == CSS_BOX_SHADOW_SET_CURRENT_COLOR ||
+			type == CSS_BOX_SHADOW_SET_INSET_CURRENT_COLOR) {
+		get_color(style, color);
+		type = (type == CSS_BOX_SHADOW_SET_CURRENT_COLOR) ?
+				CSS_BOX_SHADOW_SET : CSS_BOX_SHADOW_SET_INSET;
+	}
+	return type;
+}
+
+uint8_t css_computed_text_shadow(const css_computed_style *style,
+		css_fixed *x, css_unit *x_unit,
+		css_fixed *y, css_unit *y_unit,
+		css_fixed *blur, css_unit *blur_unit,
+		css_color *color)
+{
+	uint8_t type = get_text_shadow(style, x, x_unit, y, y_unit,
+			blur, blur_unit, color);
+
+	if (type == CSS_TEXT_SHADOW_SET_CURRENT_COLOR) {
+		get_color(style, color);
+		type = CSS_TEXT_SHADOW_SET;
+	}
+	return type;
+}
+
+uint8_t css_computed_background_size(const css_computed_style *style,
+		css_fixed *width, css_unit *width_unit,
+		css_fixed *height, css_unit *height_unit)
+{
+	return get_background_size(style, width, width_unit, height, height_unit);
+}
+
+uint8_t css_computed_text_overflow(const css_computed_style *style)
+{
+	return get_text_overflow(style);
+}
+
+uint8_t css_computed_justify_items(const css_computed_style *style)
+{
+	return get_justify_items(style);
+}
+
+uint8_t css_computed_justify_self(const css_computed_style *style)
+{
+	return get_justify_self(style);
+}
+
 uint8_t css_computed_column_rule_color(const css_computed_style *style,
 		css_color *color)
 {
@@ -1424,6 +1514,69 @@ css_error css__compute_absolute_values(const css_computed_style *parent,
 			set_column_gap);
 	if (error != CSS_OK)
 		return error;
+
+	/* Onyx: fix up row-gap, the border radii, the shadows' currentColor */
+	error = compute_absolute_length(style, &ex_size.data.length,
+			get_row_gap, set_row_gap);
+	if (error != CSS_OK)
+		return error;
+	error = compute_absolute_length(style, &ex_size.data.length,
+			get_border_top_left_radius, set_border_top_left_radius);
+	if (error != CSS_OK)
+		return error;
+	error = compute_absolute_length(style, &ex_size.data.length,
+			get_border_top_right_radius, set_border_top_right_radius);
+	if (error != CSS_OK)
+		return error;
+	error = compute_absolute_length(style, &ex_size.data.length,
+			get_border_bottom_right_radius, set_border_bottom_right_radius);
+	if (error != CSS_OK)
+		return error;
+	error = compute_absolute_length(style, &ex_size.data.length,
+			get_border_bottom_left_radius, set_border_bottom_left_radius);
+	if (error != CSS_OK)
+		return error;
+	error = compute_onyx_shadows(style);
+	if (error != CSS_OK)
+		return error;
+
+	return CSS_OK;
+}
+
+/**
+ * Onyx: resolve box-shadow's and text-shadow's currentColor to the computed color.
+ */
+css_error compute_onyx_shadows(css_computed_style *style)
+{
+	css_fixed l[4];
+	css_unit u[4];
+	css_color color, current;
+	uint8_t type;
+	css_error error;
+
+	type = get_box_shadow(style, &l[0], &u[0], &l[1], &u[1], &l[2], &u[2],
+			&l[3], &u[3], &color);
+	if (type == CSS_BOX_SHADOW_SET_CURRENT_COLOR ||
+			type == CSS_BOX_SHADOW_SET_INSET_CURRENT_COLOR) {
+		get_color(style, &current);
+		error = set_box_shadow(style,
+				(type == CSS_BOX_SHADOW_SET_CURRENT_COLOR) ?
+					CSS_BOX_SHADOW_SET : CSS_BOX_SHADOW_SET_INSET,
+				l[0], u[0], l[1], u[1], l[2], u[2], l[3], u[3],
+				current);
+		if (error != CSS_OK)
+			return error;
+	}
+
+	type = get_text_shadow(style, &l[0], &u[0], &l[1], &u[1], &l[2], &u[2],
+			&color);
+	if (type == CSS_TEXT_SHADOW_SET_CURRENT_COLOR) {
+		get_color(style, &current);
+		error = set_text_shadow(style, CSS_TEXT_SHADOW_SET,
+				l[0], u[0], l[1], u[1], l[2], u[2], current);
+		if (error != CSS_OK)
+			return error;
+	}
 
 	return CSS_OK;
 }

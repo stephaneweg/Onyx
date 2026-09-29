@@ -42,7 +42,9 @@ FONTS := $(TP)/dejavu-fonts-ttf-2.37
 # the resources NetSurf reads at run time (Messages, the UA stylesheets...): staged into $(OUT)/res
 RESPATH := $(OUT)/res/
 
-BASEF = -O2 -g -fcommon -fno-strict-aliasing -w -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L -DNDEBUG
+# -MMD -MP: each object's header dependencies ($(OUT)/o/*.d, included at the end)
+BASEF = -O2 -g -fcommon -fno-strict-aliasing -w -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L -DNDEBUG \
+        -MMD -MP
 CF    = $(BASEF) -std=c99
 
 # -- NetSurf (as netsurf-app.mk; only compat/curl from the Onyx compat headers)
@@ -191,7 +193,8 @@ endef
 $(foreach s,$(NS_ALL),$(eval $(call NS_RULE,$(s))))
 $(call obj,$(FB)/gui.c): NS_CF += -Dmain=netsurf_main
 
-CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM
+CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \
+       -MMD -MP
 define CXX_RULE
 $(call obj,$(1)): $(1)
 	@mkdir -p $(OUT)/o
@@ -218,3 +221,15 @@ res:
 	@mkdir -p $(OUT)/res/fonts
 	cp $(FONTS)/ttf/*.ttf $(OUT)/res/fonts/
 	printf 'foreground_images:1\nbackground_images:1\nenable_javascript:1\n' > $(OUT)/res/Choices
+
+-include $(wildcard $(OUT)/o/*.d)
+
+# ---- libcss's own selection tests (its test/select.c on test/data/select/*.dat): a check of
+# the cascade after changing libcss --  make -f tools/tests/netsurf/host.mk libcss-test
+CSS_TEST_OBJ := $(foreach s,$(CSS_SRC) $(WAP_SRC) $(PU_SRC),$(call obj,$(s)))
+$(OUT)/libcss-select-test: $(CSS)/test/select.c $(CSS)/test/dump_computed.h $(CSS_TEST_OBJ)
+	@$(CC) $(CF) $(I_CSS) -I$(CSS)/test -o $@ $< $(CSS_TEST_OBJ) -lm
+.PHONY: libcss-test
+libcss-test: $(OUT)/libcss-select-test
+	@for t in $(CSS)/test/data/select/*.dat; do \
+		echo "$$(basename $$t): $$($(OUT)/libcss-select-test $$t 2>&1 | tail -1)"; done

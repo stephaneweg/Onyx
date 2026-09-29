@@ -140,8 +140,90 @@ enum css_properties_e {
 	CSS_PROP_ORDER				= 0x07b,
 	CSS_PROP_FILL_OPACITY			= 0x07c,
 	CSS_PROP_STROKE_OPACITY			= 0x07d,
+	/* Onyx: CSS3 additions */
+	CSS_PROP_ROW_GAP			= 0x07e,
+	CSS_PROP_BORDER_TOP_LEFT_RADIUS		= 0x07f,
+	CSS_PROP_BORDER_TOP_RIGHT_RADIUS	= 0x080,
+	CSS_PROP_BORDER_BOTTOM_RIGHT_RADIUS	= 0x081,
+	CSS_PROP_BORDER_BOTTOM_LEFT_RADIUS	= 0x082,
+	CSS_PROP_BOX_SHADOW			= 0x083,
+	CSS_PROP_TEXT_SHADOW			= 0x084,
+	CSS_PROP_BACKGROUND_SIZE		= 0x085,
+	CSS_PROP_TEXT_OVERFLOW			= 0x086,
+	CSS_PROP_JUSTIFY_ITEMS			= 0x087,
+	CSS_PROP_JUSTIFY_SELF			= 0x088,
 
 	CSS_N_PROPERTIES
+};
+
+/* Onyx: CSS3 additions */
+enum css_row_gap_e {
+	CSS_ROW_GAP_INHERIT			= 0x0,
+	CSS_ROW_GAP_SET				= 0x1,
+	CSS_ROW_GAP_NORMAL			= 0x2
+};
+
+/* border-{top-left,top-right,bottom-right,bottom-left}-radius: one radius (circular corners) */
+enum css_border_radius_e {
+	CSS_BORDER_RADIUS_INHERIT		= 0x0,
+	CSS_BORDER_RADIUS_SET			= 0x1
+};
+
+/* box-shadow: the first shadow of the list (offsets, blur, spread, colour) */
+enum css_box_shadow_e {
+	CSS_BOX_SHADOW_INHERIT			= 0x0,
+	CSS_BOX_SHADOW_NONE			= 0x1,
+	CSS_BOX_SHADOW_SET			= 0x2,
+	CSS_BOX_SHADOW_SET_INSET		= 0x3,
+	/* internal: the colour is currentColor (resolved when computed) */
+	CSS_BOX_SHADOW_SET_CURRENT_COLOR	= 0x4,
+	CSS_BOX_SHADOW_SET_INSET_CURRENT_COLOR	= 0x5
+};
+
+/* text-shadow: the first shadow of the list (offsets, blur, colour) */
+enum css_text_shadow_e {
+	CSS_TEXT_SHADOW_INHERIT			= 0x0,
+	CSS_TEXT_SHADOW_NONE			= 0x1,
+	CSS_TEXT_SHADOW_SET			= 0x2,
+	/* internal: the colour is currentColor (resolved when computed) */
+	CSS_TEXT_SHADOW_SET_CURRENT_COLOR	= 0x3
+};
+
+enum css_background_size_e {
+	CSS_BACKGROUND_SIZE_INHERIT		= 0x0,
+	CSS_BACKGROUND_SIZE_AUTO		= 0x1,
+	CSS_BACKGROUND_SIZE_COVER		= 0x2,
+	CSS_BACKGROUND_SIZE_CONTAIN		= 0x3,
+	CSS_BACKGROUND_SIZE_SET			= 0x4,	/* width and height */
+	CSS_BACKGROUND_SIZE_SET_WIDTH		= 0x5,	/* width; height auto */
+	CSS_BACKGROUND_SIZE_SET_HEIGHT		= 0x6	/* height; width auto */
+};
+
+/* justify-items / justify-self: align-items' / align-self's values (start, self-start and
+ * left are FLEX_START; end, self-end and right FLEX_END; normal and legacy STRETCH) */
+enum css_justify_items_e {
+	CSS_JUSTIFY_ITEMS_INHERIT		= 0x0,
+	CSS_JUSTIFY_ITEMS_STRETCH		= 0x1,
+	CSS_JUSTIFY_ITEMS_FLEX_START		= 0x2,
+	CSS_JUSTIFY_ITEMS_FLEX_END		= 0x3,
+	CSS_JUSTIFY_ITEMS_CENTER		= 0x4,
+	CSS_JUSTIFY_ITEMS_BASELINE		= 0x5
+};
+
+enum css_justify_self_e {
+	CSS_JUSTIFY_SELF_INHERIT		= 0x0,
+	CSS_JUSTIFY_SELF_STRETCH		= 0x1,
+	CSS_JUSTIFY_SELF_FLEX_START		= 0x2,
+	CSS_JUSTIFY_SELF_FLEX_END		= 0x3,
+	CSS_JUSTIFY_SELF_CENTER			= 0x4,
+	CSS_JUSTIFY_SELF_BASELINE		= 0x5,
+	CSS_JUSTIFY_SELF_AUTO			= 0x6
+};
+
+enum css_text_overflow_e {
+	CSS_TEXT_OVERFLOW_INHERIT		= 0x0,
+	CSS_TEXT_OVERFLOW_CLIP			= 0x1,
+	CSS_TEXT_OVERFLOW_ELLIPSIS		= 0x2
 };
 
 enum css_align_content_e {

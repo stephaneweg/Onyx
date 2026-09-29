@@ -10,6 +10,7 @@
 #include "bytecode/bytecode.h"
 #include "bytecode/opcodes.h"
 #include "parse/important.h"
+#include "parse/onyx_vars.h"
 
 /**
  * Parse !important
@@ -85,6 +86,16 @@ void css__make_style_important(css_style *style)
 		bytecode[offset] = buildOPV(op, flags, value);
 
 		offset++;
+
+		/* Onyx: custom properties and var() values (parse/onyx_vars.h) */
+		if (op == (opcode_t) CSS_ONYX_OP_CUSTOM) {
+			offset += 2;	/* name, value */
+			continue;
+		}
+		if (op == (opcode_t) CSS_ONYX_OP_VAR) {
+			offset += 2 + value;	/* text, property, longhands */
+			continue;
+		}
 
 		/* Advance past any property-specific data */
 		if (hasFlagValue(opv) == false && value == VALUE_IS_CALC) {
@@ -178,6 +189,45 @@ void css__make_style_important(css_style *style)
 
 				if (value == BOTTOM_SET)
 					offset += 2; /* length + units */
+				break;
+
+			/* Onyx: CSS3 additions */
+			case CSS_PROP_ROW_GAP:
+				if (value == ROW_GAP_SET)
+					offset += 2; /* length + units */
+				break;
+
+			case CSS_PROP_BORDER_TOP_LEFT_RADIUS:
+			case CSS_PROP_BORDER_TOP_RIGHT_RADIUS:
+			case CSS_PROP_BORDER_BOTTOM_RIGHT_RADIUS:
+			case CSS_PROP_BORDER_BOTTOM_LEFT_RADIUS:
+				if (value == BORDER_RADIUS_SET)
+					offset += 2; /* length + units */
+				break;
+
+			case CSS_PROP_BOX_SHADOW:
+				if (value & BOX_SHADOW_SET) {
+					offset += 8; /* 4 lengths + units */
+					if (value & BOX_SHADOW_COLOR)
+						offset++; /* colour */
+				}
+				break;
+
+			case CSS_PROP_TEXT_SHADOW:
+				if (value & TEXT_SHADOW_SET) {
+					offset += 6; /* 3 lengths + units */
+					if (value & TEXT_SHADOW_COLOR)
+						offset++; /* colour */
+				}
+				break;
+
+			case CSS_PROP_BACKGROUND_SIZE:
+				if (value & BACKGROUND_SIZE_SET) {
+					if ((value & BACKGROUND_SIZE_W_AUTO) == 0)
+						offset += 2; /* width */
+					if ((value & BACKGROUND_SIZE_H_AUTO) == 0)
+						offset += 2; /* height */
+				}
 				break;
 
 			case CSS_PROP_CLIP:

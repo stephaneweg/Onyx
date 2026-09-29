@@ -14,7 +14,10 @@
 /* set_background_image(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_position(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_repeat(style, 0, 0, CSS_UNIT_PX); */
+/* set_background_size(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_bottom_color(style, 0, 0, CSS_UNIT_PX); */
+/* set_border_bottom_left_radius(style, 0, 0, CSS_UNIT_PX); */
+/* set_border_bottom_right_radius(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_bottom_style(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_bottom_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_collapse(style, 0, 0, CSS_UNIT_PX); */
@@ -26,9 +29,12 @@
 /* set_border_right_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_spacing(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_top_color(style, 0, 0, CSS_UNIT_PX); */
+/* set_border_top_left_radius(style, 0, 0, CSS_UNIT_PX); */
+/* set_border_top_right_radius(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_top_style(style, 0, 0, CSS_UNIT_PX); */
 /* set_border_top_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_bottom(style, 0, 0, CSS_UNIT_PX); */
+/* set_box_shadow(style, 0, 0, CSS_UNIT_PX); */
 /* set_box_sizing(style, 0, 0, CSS_UNIT_PX); */
 /* set_break_after(style, 0, 0, CSS_UNIT_PX); */
 /* set_break_before(style, 0, 0, CSS_UNIT_PX); */
@@ -66,6 +72,8 @@
 /* set_font_weight(style, 0, 0, CSS_UNIT_PX); */
 /* set_height(style, 0, 0, CSS_UNIT_PX); */
 /* set_justify_content(style, 0, 0, CSS_UNIT_PX); */
+/* set_justify_items(style, 0, 0, CSS_UNIT_PX); */
+/* set_justify_self(style, 0, 0, CSS_UNIT_PX); */
 /* set_left(style, 0, 0, CSS_UNIT_PX); */
 /* set_letter_spacing(style, 0, 0, CSS_UNIT_PX); */
 /* set_line_height(style, 0, 0, CSS_UNIT_PX); */
@@ -98,11 +106,14 @@
 /* set_position(style, 0, 0, CSS_UNIT_PX); */
 /* set_quotes(style, 0, 0, CSS_UNIT_PX); */
 /* set_right(style, 0, 0, CSS_UNIT_PX); */
+/* set_row_gap(style, 0, 0, CSS_UNIT_PX); */
 /* set_stroke_opacity(style, 0, 0, CSS_UNIT_PX); */
 /* set_table_layout(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_align(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_decoration(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_indent(style, 0, 0, CSS_UNIT_PX); */
+/* set_text_overflow(style, 0, 0, CSS_UNIT_PX); */
+/* set_text_shadow(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_transform(style, 0, 0, CSS_UNIT_PX); */
 /* set_top(style, 0, 0, CSS_UNIT_PX); */
 /* set_unicode_bidi(style, 0, 0, CSS_UNIT_PX); */

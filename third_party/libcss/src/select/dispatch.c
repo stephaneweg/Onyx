@@ -522,5 +522,50 @@ struct prop_table prop_dispatch[CSS_N_PROPERTIES] = {
 	{
 		PROPERTY_FUNCS(stroke_opacity),
 		1,
+	/* Onyx: CSS3 additions */
+	},
+	{
+		PROPERTY_FUNCS(row_gap),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(border_top_left_radius),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(border_top_right_radius),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(border_bottom_right_radius),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(border_bottom_left_radius),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(box_shadow),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(text_shadow),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(background_size),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(text_overflow),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(justify_items),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(justify_self),
+		0,
 	}
 };

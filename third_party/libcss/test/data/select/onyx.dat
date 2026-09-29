@@ -1,0 +1,722 @@
+#tree
+| div*
+#ua
+div { display: block; }
+#user
+div { gap: 10px 2em; border-radius: 4px 8px; box-shadow: inset 1px 2px 3px 4px red; text-shadow: 0 1px 2px rgba(0,0,0,0.5); background-size: cover; text-overflow: ellipsis; font-size: clamp(10px, 2rem, 30px); padding-left: calc(1rem + 2px); margin-top: max(3px, 1rem); z-index: calc(2 * 3); line-height: calc(1.5 * 2); border-top-left-radius: calc(24px - 8px); min-height: calc(100% - 10px); }
+#errors
+#expected
+align-content: stretch
+align-items: stretch
+align-self: auto
+background-attachment: scroll
+background-color: #00000000
+background-image: none
+background-position: 0% 0%
+background-repeat: repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ff000000
+border-right-color: #ff000000
+border-bottom-color: #ff000000
+border-left-color: #ff000000
+border-top-style: none
+border-right-style: none
+border-bottom-style: none
+border-left-style: none
+border-top-width: 2px
+border-right-width: 2px
+border-bottom-width: 2px
+border-left-width: 2px
+bottom: auto
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ff000000
+column-count: auto
+column-fill: balance
+column-gap: 2em
+column-rule-color: #ff000000
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: block
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 30px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: flex-start
+left: auto
+letter-spacing: normal
+line-height: 3.000
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 16px
+margin-right: 0px
+margin-bottom: 0px
+margin-left: 0px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: visible
+overflow-y: visible
+padding-top: 0px
+padding-right: 0px
+padding-bottom: 0px
+padding-left: 18px
+position: static
+quotes: none
+right: auto
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: none
+text-indent: 0px
+text-transform: none
+top: auto
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: 6144
+row-gap: 10px
+border-top-left-radius: 16px
+border-top-right-radius: 8px
+border-bottom-right-radius: 4px
+border-bottom-left-radius: 8px
+box-shadow: inset 1px 2px 3px 4px #ffff0000
+text-shadow: 0px 1px 2px #7f000000
+background-size: cover
+text-overflow: ellipsis
+#reset
+#tree
+| div
+|  p*
+#ua
+div { display: block; }
+#user
+div { --c: #ff0000; --pad: 4px; --shadow: 0 18px 45px rgba(43, 43, 43, 0.08); --radius: 24px; --w: calc(var(--pad) * 10); }
+p { color: var(--c); padding: var(--pad) calc(var(--pad) * 2); box-shadow: var(--shadow); margin-left: var(--undefined, 7px); border: 1px solid var(--c); border-radius: calc(var(--radius) - 8px); width: var(--w); --local: 3px; margin-top: var(--local); z-index: var(--nope); }
+#errors
+#expected
+align-content: stretch
+align-items: stretch
+align-self: auto
+background-attachment: scroll
+background-color: #00000000
+background-image: none
+background-position: 0% 0%
+background-repeat: repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ffff0000
+border-right-color: #ffff0000
+border-bottom-color: #ffff0000
+border-left-color: #ffff0000
+border-top-style: solid
+border-right-style: solid
+border-bottom-style: solid
+border-left-style: solid
+border-top-width: 1px
+border-right-width: 1px
+border-bottom-width: 1px
+border-left-width: 1px
+bottom: auto
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ffff0000
+column-count: auto
+column-fill: balance
+column-gap: normal
+column-rule-color: #ffff0000
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: inline
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 16px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: flex-start
+left: auto
+letter-spacing: normal
+line-height: normal
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 3px
+margin-right: 0px
+margin-bottom: 0px
+margin-left: 7px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: visible
+overflow-y: visible
+padding-top: 4px
+padding-right: 8px
+padding-bottom: 4px
+padding-left: 8px
+position: static
+quotes: none
+right: auto
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: none
+text-indent: 0px
+text-transform: none
+top: auto
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: auto
+border-top-left-radius: 16px
+border-top-right-radius: 16px
+border-bottom-right-radius: 16px
+border-bottom-left-radius: 16px
+box-shadow: 0px 18px 45px 0px #142b2b2b
+#reset
+#tree
+| div
+|  p*
+#ua
+div { display: block; }
+#user
+div { --pad: 4px; --radius: 24px; }
+p { padding: var(--pad) calc(var(--pad) * 2); border-radius: calc(var(--radius) - 8px) 3px; margin-inline: 5px auto; margin-block: 1px; inset: 1px 2px; position: relative; place-items: center end; justify-self: start; align-items: start; justify-content: space-between; gap: clamp(30px, 8vw, 96px) 2px; border-block: 2px solid blue; }
+#errors
+#expected
+align-content: stretch
+align-items: flex-start
+align-self: auto
+background-attachment: scroll
+background-color: #00000000
+background-image: none
+background-position: 0% 0%
+background-repeat: repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ff0000ff
+border-right-color: #ff000000
+border-bottom-color: #ff0000ff
+border-left-color: #ff000000
+border-top-style: solid
+border-right-style: none
+border-bottom-style: solid
+border-left-style: none
+border-top-width: 2px
+border-right-width: 2px
+border-bottom-width: 2px
+border-left-width: 2px
+bottom: -1px
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ff000000
+column-count: auto
+column-fill: balance
+column-gap: 2px
+column-rule-color: #ff000000
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: inline
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 16px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: space-between
+left: 2px
+letter-spacing: normal
+line-height: normal
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 1px
+margin-right: auto
+margin-bottom: 1px
+margin-left: 5px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: visible
+overflow-y: visible
+padding-top: 4px
+padding-right: 8px
+padding-bottom: 4px
+padding-left: 8px
+position: relative
+quotes: none
+right: 2px
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: none
+text-indent: 0px
+text-transform: none
+top: 1px
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: auto
+row-gap: 30px
+border-top-left-radius: 16px
+border-top-right-radius: 3px
+border-bottom-right-radius: 16px
+border-bottom-left-radius: 3px
+justify-items: end
+justify-self: start
+#reset
+#tree screen
+| div*
+#ua
+div { display: block; }
+#user
+@supports (display: grid) and (not (display: nonsense)) { div { color: #010203; } }
+@supports (display: nonsense) { div { background-color: #111111; } }
+@layer base { div { margin-left: 3px; } }
+@layer a, b;
+@media screen { @supports (gap: 1px) { div { margin-top: 4px; } } }
+@media print { @layer x { div { margin-bottom: 9px; } } }
+@container sidebar (min-width: 0px) { div { padding-left: 5px; } }
+@supports selector(:has(a)) { div { padding-top: 6px; } }
+@supports (--x: 1) { div { padding-right: 7px; } }
+div { z-index: 2; }
+#errors
+#expected
+align-content: stretch
+align-items: stretch
+align-self: auto
+background-attachment: scroll
+background-color: #00000000
+background-image: none
+background-position: 0% 0%
+background-repeat: repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ff010203
+border-right-color: #ff010203
+border-bottom-color: #ff010203
+border-left-color: #ff010203
+border-top-style: none
+border-right-style: none
+border-bottom-style: none
+border-left-style: none
+border-top-width: 2px
+border-right-width: 2px
+border-bottom-width: 2px
+border-left-width: 2px
+bottom: auto
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ff010203
+column-count: auto
+column-fill: balance
+column-gap: normal
+column-rule-color: #ff010203
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: block
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 16px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: flex-start
+left: auto
+letter-spacing: normal
+line-height: normal
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 4px
+margin-right: 0px
+margin-bottom: 0px
+margin-left: 3px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: visible
+overflow-y: visible
+padding-top: 6px
+padding-right: 7px
+padding-bottom: 0px
+padding-left: 5px
+position: static
+quotes: none
+right: auto
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: none
+text-indent: 0px
+text-transform: none
+top: auto
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: 2048
+#reset
+#tree screen
+| div*
+#ua
+div { display: block; }
+#user
+@keyframes x { from { color: red; } }
+div { z-index: 2; }
+#errors
+#expected
+align-content: stretch
+align-items: stretch
+align-self: auto
+background-attachment: scroll
+background-color: #00000000
+background-image: none
+background-position: 0% 0%
+background-repeat: repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ff000000
+border-right-color: #ff000000
+border-bottom-color: #ff000000
+border-left-color: #ff000000
+border-top-style: none
+border-right-style: none
+border-bottom-style: none
+border-left-style: none
+border-top-width: 2px
+border-right-width: 2px
+border-bottom-width: 2px
+border-left-width: 2px
+bottom: auto
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ff000000
+column-count: auto
+column-fill: balance
+column-gap: normal
+column-rule-color: #ff000000
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: block
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 16px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: flex-start
+left: auto
+letter-spacing: normal
+line-height: normal
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 0px
+margin-right: 0px
+margin-bottom: 0px
+margin-left: 0px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: visible
+overflow-y: visible
+padding-top: 0px
+padding-right: 0px
+padding-bottom: 0px
+padding-left: 0px
+position: static
+quotes: none
+right: auto
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: none
+text-indent: 0px
+text-transform: none
+top: auto
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: 2048
+#reset
+#tree screen
+| div
+|  class=outer
+|  ul
+|   class=nav
+|   li*
+|    class=item
+#ua
+div, ul, li { display: block; }
+#user
+:is(ul, ol) li { margin-left: 1px; }
+:where(.nav) .item { margin-top: 2px; }
+.item:not(.disabled, .hidden) { margin-right: 3px; }
+li:not(.outer li) { margin-bottom: 4px; }
+:is(.outer > ul) > li.item { padding-left: 5px; }
+:is(::before, .item) { padding-top: 6px; }
+li:is() { padding-bottom: 7px; }
+.item:focus-visible { padding-right: 8px; }
+li:where(.item) { z-index: 1; }
+li { z-index: 2; }
+:is(#nope, li) { line-height: 3; }
+li.item { line-height: 2; }
+#errors
+#expected
+align-content: stretch
+align-items: stretch
+align-self: auto
+background-attachment: scroll
+background-color: #00000000
+background-image: none
+background-position: 0% 0%
+background-repeat: repeat
+border-collapse: separate
+border-spacing: 0px 0px
+border-top-color: #ff000000
+border-right-color: #ff000000
+border-bottom-color: #ff000000
+border-left-color: #ff000000
+border-top-style: none
+border-right-style: none
+border-bottom-style: none
+border-left-style: none
+border-top-width: 2px
+border-right-width: 2px
+border-bottom-width: 2px
+border-left-width: 2px
+bottom: auto
+box-sizing: content-box
+break-after: auto
+break-before: auto
+break-inside: auto
+caption-side: top
+clear: none
+clip: auto
+color: #ff000000
+column-count: auto
+column-fill: balance
+column-gap: normal
+column-rule-color: #ff000000
+column-rule-style: none
+column-rule-width: 2px
+column-span: none
+column-width: auto
+content: normal
+counter-increment: none
+counter-reset: none
+cursor: auto
+direction: ltr
+display: block
+empty-cells: show
+fill-opacity: 1.000
+flex-basis: auto
+flex-direction: row
+flex-grow: 0.000
+flex-shrink: 1.000
+flex-wrap: nowrap
+float: none
+font-family: sans-serif
+font-size: 16px
+font-style: normal
+font-variant: normal
+font-weight: normal
+height: auto
+justify-content: flex-start
+left: auto
+letter-spacing: normal
+line-height: 3.000
+list-style-image: none
+list-style-position: outside
+list-style-type: disc
+margin-top: 2px
+margin-right: 3px
+margin-bottom: 0px
+margin-left: 1px
+max-height: none
+max-width: none
+min-height: 0px
+min-width: 0px
+opacity: 1.000
+order: 0
+outline-color: invert
+outline-style: none
+outline-width: 2px
+overflow-x: visible
+overflow-y: visible
+padding-top: 6px
+padding-right: 0px
+padding-bottom: 0px
+padding-left: 5px
+position: static
+quotes: none
+right: auto
+stroke-opacity: 1.000
+table-layout: auto
+text-align: default
+text-decoration: none
+text-indent: 0px
+text-transform: none
+top: auto
+unicode-bidi: normal
+vertical-align: baseline
+visibility: visible
+white-space: normal
+width: auto
+word-spacing: normal
+writing-mode: horizontal-tb
+z-index: 2048

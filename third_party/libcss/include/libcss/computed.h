@@ -398,6 +398,46 @@ uint8_t css_computed_column_count(
 uint8_t css_computed_column_fill(
 		const css_computed_style *style);
 
+/* Onyx: CSS3 additions */
+uint8_t css_computed_row_gap(
+		const css_computed_style *style,
+		css_fixed *length, css_unit *unit);
+uint8_t css_computed_border_top_left_radius(
+		const css_computed_style *style,
+		css_fixed *length, css_unit *unit);
+uint8_t css_computed_border_top_right_radius(
+		const css_computed_style *style,
+		css_fixed *length, css_unit *unit);
+uint8_t css_computed_border_bottom_right_radius(
+		const css_computed_style *style,
+		css_fixed *length, css_unit *unit);
+uint8_t css_computed_border_bottom_left_radius(
+		const css_computed_style *style,
+		css_fixed *length, css_unit *unit);
+uint8_t css_computed_box_shadow(
+		const css_computed_style *style,
+		css_fixed *x, css_unit *x_unit,
+		css_fixed *y, css_unit *y_unit,
+		css_fixed *blur, css_unit *blur_unit,
+		css_fixed *spread, css_unit *spread_unit,
+		css_color *color);
+uint8_t css_computed_text_shadow(
+		const css_computed_style *style,
+		css_fixed *x, css_unit *x_unit,
+		css_fixed *y, css_unit *y_unit,
+		css_fixed *blur, css_unit *blur_unit,
+		css_color *color);
+uint8_t css_computed_background_size(
+		const css_computed_style *style,
+		css_fixed *width, css_unit *width_unit,
+		css_fixed *height, css_unit *height_unit);
+uint8_t css_computed_text_overflow(
+		const css_computed_style *style);
+uint8_t css_computed_justify_items(
+		const css_computed_style *style);
+uint8_t css_computed_justify_self(
+		const css_computed_style *style);
+
 uint8_t css_computed_column_gap(
 		const css_computed_style *style,
 		css_fixed *length, css_unit *unit);

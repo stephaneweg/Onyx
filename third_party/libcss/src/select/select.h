@@ -15,6 +15,10 @@
 
 #include "stylesheet.h"
 
+/* Onyx: custom properties and var() (select/onyx_vars.h) */
+struct css_onyx_state;
+struct css_onyx_vars;
+
 /**
  * Item in the reject cache (only class and id types are valid)
  */
@@ -56,6 +60,7 @@ struct css_node_data {
 	css_select_results partial;
 	css_bloom *bloom;
 	css_node_flags flags;
+	struct css_onyx_vars *onyx_vars;	/* Onyx: the node's custom properties */
 };
 
 struct revert_data {
@@ -97,6 +102,8 @@ typedef struct css_select_state {
 	struct css_node_data *node_data;	/* Data we'll store on node */
 
 	prop_state props[CSS_N_PROPERTIES][CSS_PSEUDO_ELEMENT_COUNT];
+
+	struct css_onyx_state *onyx;	/* Onyx: var() state, made on first use */
 } css_select_state;
 
 static inline void advance_bytecode(css_style *style, uint32_t n_bytes)
@@ -107,6 +114,12 @@ static inline void advance_bytecode(css_style *style, uint32_t n_bytes)
 
 bool css__outranks_existing(uint16_t op, bool important,
 		css_select_state *state, enum flag_value explicit_default);
+
+/* Onyx: the ranking of css__outranks_existing, on any property state (a custom
+ * property's); and cascade_style, for select/onyx_vars.c */
+bool css__outranks_prop_state(prop_state *existing, bool important,
+		css_select_state *state, enum flag_value explicit_default);
+css_error css__select_cascade_style(const css_style *style, css_select_state *state);
 
 #endif
 

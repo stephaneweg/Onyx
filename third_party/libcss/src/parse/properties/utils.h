@@ -252,4 +252,7 @@ css_error css__parse_calc(css_language *c,
 		css_style *result,
 		css_code_t OPV,
 		uint32_t unit);
+
+/* Onyx: is the token a calc() / min() / max() / clamp() function (a calc expression)? */
+bool css__is_calc_function(css_language *c, const css_token *token);
 #endif
