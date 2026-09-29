@@ -411,8 +411,8 @@ remove it); no shadow. Its **title bar** holds:
 
 - at the left, the **window menu** button (a bar): **Restore** / **Maximise**, **Minimise**,
   **Move to** *another workspace* / **On All Workspaces**, **Close** (Ctrl-Q) — greyed in the
-  few apps that draw their whole window themselves (the calendar, the spreadsheet, IRC, most
-  games, the emulators: their other buttons work);
+  few apps that draw their whole window themselves (the calendar, IRC, most games, the
+  emulators: their other buttons work);
 - at the right, **minimise** (a short line): the window disappears — bring it back from the dock
   (its app's launcher or drawer), the menu bar's **Onyx ▸ Open Windows**, or by starting the app
   again;
@@ -813,7 +813,9 @@ folder would leave it unmapped. **Adding a layout never needs a kernel rebuild**
 applet.
 
 Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
-text field and editor.
+text field and editor. The **euro sign** is **AltGr+E** (`FR`, `BE`, `DE`, `ES`, `IT`), AltGr+4
+(`UK`), AltGr+5 (`US`); it is a key of its own (Windows' code 0x80, not Latin-1): the Spreadsheet
+takes it (`12,50 €`), the other apps' text fields do not yet.
 
 ## 11. The Control Panel and the appearance
 
@@ -963,8 +965,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *calendar — calendar + notes* | *mandelbrot — fractal explorer* | *eyes — gadget* |
 | ![taskman](../screenshots/taskman.png) | ![2048](../screenshots/2048.png) | ![minesweeper](../screenshots/minesweeper.png) |
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
-| | ![irc](../screenshots/irc.png) | |
-| | *irc — IRC client* | |
+| ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | |
+| *sheet — spreadsheet* | *irc — IRC client* | |
 
 ### Productivity and tools
 
@@ -977,7 +979,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
 | **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Writer**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Writer keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
-| **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
+| **Spreadsheet** (`sheet`) | A **spreadsheet** in the way of LibreOffice Calc and Gnumeric: workbooks of several sheets (1 048 576 rows × 16 384 columns), **formulas** as Excel writes them (237 functions: mathematics, statistics, logic, text, lookups, dates, finance; references to other sheets, ranges, whole columns; arrays), number formats, fonts, colours, borders, merged cells, frozen panes, the fill handle's series, sort, Find and Replace, **charts** (column, bar, line, area, pie, scatter), **conditional formatting** (rules, colour scales, data bars), the **AutoFilter**, **defined names**, Undo / Redo. Reads and writes Excel's **`.xlsx`** and **CSV**, reads LibreOffice's **`.ods`**. See *The Spreadsheet* below. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib). A column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel. **Keys**: **C D E F G A B** a note (Shift = sharp; the cursor then goes to the next slice, and you hear it), **0–7** the octave, **Space** a silence, **Delete** `---`, **Backspace** clears the slice above, **#** toggles the sharp, **Ctrl+↑ / Ctrl+↓** move the note a semitone up / down, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; a **click** selects a cell; wheel / scrollbar scroll. The **column header** is a button: it opens the **instrument dialog** (presets from `SD:/apps/fmtracker.app/ins`, Load / Save `.FMI`, the two operators' multiplier, level, attack, decay, sustain, release, wave, sustain / tremolo / vibrato flags, feedback, FM or additive, **Test**); right-click it to mute the channel in this pattern. **Play** (^P) plays from the cursor, follows the position and highlights it; **Stop** / **Esc**. A song is a list of **patterns** (toolbar: ◀ ▶ +, **Rows**, **Speed** = a slice lasts speed / 20 s; Pattern menu: New, Duplicate, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
@@ -1320,6 +1322,185 @@ starting with `#` or `;` is a comment (not in `[records]`). Cardfile reads such 
 keys in any case, the header's columns in any order (a column missing: empty values; unknown:
 ignored), no `[field]` at all (the header's columns become text fields), a value that is not of its
 type (kept as it is — the form asks for a valid one when the record is edited).
+
+### The Spreadsheet (`sheet`)
+
+![The Spreadsheet](../screenshots/sheet.png)
+*The sample workbook `SD:/docs/cafe-2026.xlsx`: a café's takings by month — formats, a merged
+title, data bars on the totals, the three best months of coffee in green, a column chart; the Total
+column chosen, its sum in the status bar.*
+
+The Spreadsheet works in the way of **LibreOffice Calc** and **Gnumeric** (and of Excel, whose files
+it writes): a **workbook** of several **sheets** of up to 1 048 576 rows × 16 384 columns (A … XFD),
+**formulas** recomputed at each change, **number formats**, fonts, colours, borders, merged cells,
+**charts**, **conditional formatting**, the **AutoFilter**, **defined names**.
+
+**The window**, from the top:
+
+- **Two toolbars**. The first: New, Open, Save; Undo, Redo; Cut, Copy, Paste; Find and Replace;
+  **Sort** ascending / descending (the table around the cursor, by the cursor's column), the
+  **AutoFilter**; insert rows above / columns before, delete rows / columns; insert a **chart**;
+  **freeze panes**; the zoom (−, the percentage — a list —, +). The second: the **font** (each name
+  drawn in its font) and its **size**; bold, italic, underline, strike-through; the **text colour**
+  and the **fill colour** (the button applies the colour on its bar, its arrow drops the palette);
+  left, centre, right; top, middle, bottom; wrap text; **merge and centre**; the **currency** format
+  (its arrow: € $ £ ¥ CHF), percent, the thousands' separator, a decimal more / less; the
+  **borders** (the button applies the last ones, its arrow lists them: all, outside, thick outside,
+  bottom, top, left, right, double bottom, thick bottom, inside, none); clear the formatting.
+- **The formula bar**: the **Name Box** — the cell or the range chosen (or its name); type `B7`,
+  `C2:F9`, `Loan!B6` or a name and Enter to go there; a new name typed there **names the
+  selection** —, **fx** (Insert Function: the functions by category, each with its arguments and
+  what it does), **Σ** (AutoSum: `=SUM(` of the numbers above the cell, else at its left; a range
+  chosen: a total under each of its columns), **✗ / ✓** while a cell is typed, and the **input
+  line**: the cell's content — its formula — shown and edited there too.
+- **The grid**: a click chooses a cell, a drag a range (Shift+click extends it); a click on a
+  column's letter or a row's number chooses it whole, the corner the whole sheet. Drag a letter's or
+  a number's **edge** to size it, **double-click** it to fit its content. The **fill handle** — the
+  small square at the selection's corner — dragged down or across continues a **series** (`1, 2` →
+  `3, 4`…; `Monday` → `Tuesday`…; `Item 9` → `Item 10`; dates by day or by month) or copies the
+  cells, their formulas' references moved. The **right button**: cut, copy, paste, Paste Special,
+  insert / delete rows or columns, clear, sort, a chart, Format Cells (on a letter / a number:
+  the width / height, optimal width, hide, show; on a chart: its properties, delete, bring to front).
+- **The sheet tabs**: a click shows a sheet, **+** adds one, a double click renames it, the right
+  button: insert, delete, rename, duplicate, move left / right, the tab's colour. The arrows scroll
+  the tabs; Ctrl+Page Up / Down go to the previous / next sheet.
+- **The status bar**: the sheet, the mode (Ready, Enter, Edit, Point) and, for a range chosen,
+  the **Sum**, **Average** and **Count** of its values (in their format when they share one); the
+  zoom (− / +; Ctrl+wheel over the grid).
+
+**Typing.** Choose a cell and type: **Enter** goes down, **Tab** right (after a row typed with Tab,
+Enter goes back to the column it started in), Shift+Enter / Shift+Tab back, an **arrow** finishes
+the cell and moves; **Esc** cancels. **F2** or a double click edits the cell in place (the arrows
+then move the caret; F2 again: they choose cells), **Alt+Enter** starts a new line in the cell.
+**Delete** clears the selection, Backspace empties the cell and edits it. What is typed is read as
+the spreadsheets read it: a number (`1234.5`, `1,234.50`, `1 234`, `3,5`, `-2e3`, `(42)` =
+−42), a **percentage** (`12.5%`), an **amount** (`$1,200`, `12,50 €`), a **date** (`29/09/2026`,
+`29/9` — this year —, `2026-09-29`, `29 Sep 2026`, `Sep 29, 2026`: day first), a **time** (`14:30`,
+`2:30 PM`), both, `TRUE` / `FALSE`, an error value — each keeps the format it was typed in —; anything
+else is **text** (a `'` first: text whatever follows, `'123`). A long text flows over the empty cells
+beside it; a number too wide for its column shows `####`.
+
+**Formulas** start with `=`: `=B5*1.2`, `=SUM(B5:B16)`, `=AVERAGE(Sales!E5:E16)`, `=IF(B5>4000,
+"good","low")`, `=VLOOKUP("Tea",A4:D16,3,FALSE)`. While a formula is typed, the functions whose name
+starts with what you type are offered (Tab or Enter takes one; ↑ / ↓ choose), then the function's
+**arguments** are shown, the current one in bold; each reference is **coloured**, with its cells
+framed in the grid in the same colour. **Pointing**: after `=`, `(`, `,` or an operator, the
+**arrows** (Shift+arrows: a range) or a **click / drag** in the grid write the reference — on another
+sheet too: click its tab —; **F4** turns the reference at the caret `A1` → `$A$1` → `A$1` → `$A1`.
+The operators: `+ - * / ^`, `&` (text joined), `= <> < > <= >=`, `%`, `:` (a range); references
+`B5`, `$B$5` (absolute: kept when copied), `B5:D16`, `B:B` (a column), `3:3` (a row), `Loan!B6`,
+`'My sheet'!A1`; constants `{1,2;3,4}` (arrays), `"text"`, `TRUE`. **237 functions**:
+mathematics (SUM, SUMIF(S), SUMPRODUCT, ROUND, ROUNDUP / DOWN, INT, MOD, ABS, POWER, SQRT, EXP, LN,
+LOG, the trigonometry, RAND, RANDBETWEEN, SUBTOTAL…), statistics (AVERAGE(IF(S)), COUNT, COUNTA,
+COUNTBLANK, COUNTIF(S), MIN, MAX, MINIFS, MAXIFS, MEDIAN, MODE, LARGE, SMALL, RANK, PERCENTILE,
+QUARTILE, STDEV, VAR, CORREL, SLOPE, INTERCEPT, FORECAST…), logic (IF, IFS, IFERROR, IFNA, AND, OR,
+NOT, XOR, SWITCH, CHOOSE), text (LEFT, RIGHT, MID, LEN, FIND, SEARCH, SUBSTITUTE, REPLACE, UPPER,
+LOWER, PROPER, TRIM, CONCAT, TEXTJOIN, TEXT, VALUE, REPT…), lookups (VLOOKUP, HLOOKUP, XLOOKUP,
+INDEX, MATCH, OFFSET, INDIRECT, ROW(S), COLUMN(S)…), dates (TODAY, NOW, DATE, TIME, YEAR, MONTH,
+DAY, WEEKDAY, WEEKNUM, EDATE, EOMONTH, DATEDIF, NETWORKDAYS, WORKDAY…), information (ISNUMBER,
+ISTEXT, ISBLANK, ISERROR, NA…) and finance (PMT, IPMT, PPMT, FV, PV, NPER, RATE, NPV, IRR…) — Insert
+Function lists them all. An array is computed element by element inside a function
+(`=SUMPRODUCT((C5:C16>1000)*B5:B16)`); a cell shows one value (no spilled arrays). A formula that
+cannot be read is refused with the reason, the caret at the fault; errors show as `#DIV/0!`,
+`#VALUE!`, `#REF!`, `#NAME?`, `#N/A`, `#NUM!`, `#CIRC!` (a formula that needs its own value).
+**View ▸ Formulas** (Ctrl+\`) shows the formulas instead of their values; **F9** recomputes (with
+`NOW`, `RAND`).
+
+**Copy, cut, paste.** Copy (Ctrl+C) frames the cells with dashes; Paste (Ctrl+V) writes them at the
+cursor — their formulas' relative references moved, their formats, merges and (whole columns) their
+widths —, over a larger selection in repeats; a **Cut** moves them and the formulas that point at
+them follow. **Paste Special**: all, the values only, the formats only, the formulas only; transposed.
+Text from another app is pasted as a table (tab-separated columns, one row a line). **Fill Down /
+Right** (Ctrl+D / Ctrl+R) copy the selection's first row / column over the rest.
+
+**Formatting.** **Format ▸ Cells...** (Ctrl+1) has five tabs: **Numbers** (General, Number,
+Currency, Percent, Scientific, Fraction, Date, Time, Text, Custom — decimals, thousands' separator,
+negative numbers in red, the currency; a list of formats; the **format code** itself, Excel's:
+`#,##0.00 "€"`, `0.0%`, `dd/mm/yyyy`, `[Red]-0.00`, `0;-0;"zero"`…, with a preview of the cell's
+value), **Font** (family, style, size, underline, strike-through, colour), **Alignment**
+(horizontal, vertical, indent, wrap, merge), **Borders** (the lines of each side and inside, their
+style and colour, presets) and **Fill**. Row heights follow their tallest font and wrapped text
+unless set by hand (**Format ▸ Row Height**; Column Width, Optimal Column Width; Hide / Show Rows and
+Columns). **Merge and Centre** makes a range one cell (only the top left cell's content is kept).
+**View ▸ Freeze Panes** keeps the rows above and the columns left of the cursor in place while the
+rest scrolls; View ▸ Gridlines hides or shows the grid.
+
+![Loan: names, a colour scale, frozen panes](../screenshots/sheet-loan.png)
+*The loan sheet: its inputs named (`Rate`, `Months`, `Amount` — the payment is
+`=PMT(Rate/12,Months,-Amount)`), the interest coloured by a scale, the first nine rows frozen.*
+
+**Conditional formatting** (Format ▸ Conditional Formatting...) gives cells a look by their value:
+the sheet's rules are listed (the first that sets a fill, a colour or bold wins; **Up / Down** order
+them); for each, the **cells** it covers and its kind — **Cell value is** (greater than, less than,
+equal to, between… a number, a text or a formula: `=$B$1`, `=AVERAGE($B$5:$B$16)`), **Text**
+(contains, does not contain, begins with, ends with), **Top / bottom** (the N highest or lowest, or
+N %), **Above / below the average**, **Duplicate / unique values**, **Formula is true** (written for
+the range's top left cell, it moves with each cell: `=$F5<0` colours the whole row of a negative
+change, `=MOD(ROW(),2)=0` every other row) — and its **look** (light red fill with dark red text,
+yellow, green, red text, bold…); or a **colour scale** (two or three colours from the lowest value
+to the highest) or **data bars** (a bar the length of the value). **New** adds the rule, **Change**
+updates the one chosen, **Delete** removes it. Rows and columns inserted or deleted move the rules'
+cells and their formulas.
+
+![The AutoFilter](../screenshots/sheet-filter.png)
+*Data ▸ AutoFilter on the table: a button on each header; the months' list dropped.*
+
+**The AutoFilter** (Data ▸ AutoFilter, or the funnel of the toolbar) puts a **button** on each header
+of a table — the selection, else the block of cells around the cursor, its first row the headers.
+A button drops the column's **values** (as they are shown; "(Empty)" for the empty cells): uncheck
+those to hide, OK; the rows whose value is unchecked are **hidden**, their row numbers turn blue and
+the button shows a funnel; several columns filter together (each list only shows the values the
+other filters leave). The same list **sorts** the table by the column (ascending / descending, the
+headers kept). AutoFilter again takes the buttons off and shows every row.
+
+**Names** (Insert ▸ Names...) name a range or a value for the formulas (`=SUM(Coffee)`,
+`=PMT(Rate/12,Months,-Amount)`): a name, what it refers to (`=Sales!$B$5:$B$16`, `=0.2`), its scope
+(the whole workbook or one sheet); **Add** (or change), **Delete**. Typing a new name in the Name
+Box names the selection at once; choosing a named range shows its name there; typing a name goes
+to its range. Rows and columns inserted or deleted move the names' ranges as they move formulas.
+
+**Charts.** Choose the data (the first row and column as names: the series, the categories — or a
+single cell: the table around it) and **Insert ▸ Chart...**: **column**, **bar**, **line**, **area**,
+**pie** or **scatter**, a title, the legend (right, bottom, top, none), the series in columns or in
+rows, the first row / column holding names, stacked, gridlines — with a preview. The chart lies over
+the sheet, anchored to the cell under its top left corner (it moves when rows or columns are
+inserted or sized); drag it to move it, its corners to size it; double-click it (or the right
+button ▸ Chart Properties) to change it; Delete removes it. It follows its cells' values.
+
+**Sort and find.** **Data ▸ Sort...**: up to three keys (a column each, ascending or descending),
+the first row kept as the headers or not; the toolbar's buttons sort the table around the cursor by
+the cursor's column. Numbers come before texts, empty cells last; the formulas of the rows moved
+keep pointing at their own row. **Find and Replace** (Ctrl+F): in the values shown or in the formulas,
+case, entire cells, this sheet or all; Find Next, Replace, Replace All. **Go To** (Ctrl+G) is the
+Name Box.
+
+**Rows, columns, sheets.** Insert / delete rows and columns (Insert ▸ Rows Above, Columns Before;
+Sheet ▸ Delete Rows / Columns; Ctrl++ / Ctrl+−; the right button): the formulas everywhere follow
+(a reference to a deleted cell becomes `#REF!`). Sheets are inserted, renamed, duplicated, moved,
+deleted and coloured from the Sheet menu or the tabs; a formula names another sheet by its name
+(`Loan!B6`) and follows it when it is renamed or moved.
+
+**Keys**: the arrows move (Shift: extend the selection; Ctrl: to the edge of the data), Home (column
+A), Ctrl+Home (A1), Ctrl+End (the last used cell), Page Up / Down (a screen; Alt: across),
+Ctrl+Page Up / Down (the sheets), Ctrl+Space / Shift+Space (the whole column / row), Ctrl+A (all);
+Ctrl+Z / Ctrl+Y (undo / redo, 100 steps), Ctrl+X / C / V, Ctrl+D / R, Ctrl+B / I / U, Ctrl+1 (Format
+Cells), Ctrl+; (today's date), Ctrl+: (the time), Ctrl+F, Ctrl+G, Ctrl+N / O / S, F2, F4, F9.
+
+**Files.** **File ▸ Save** (Ctrl+S) writes Excel's **`.xlsx`** — the cells, formulas (with their
+last values), styles, number formats, merges, column widths and row heights, hidden rows and
+columns, frozen panes, tab colours, charts, conditional formats, the AutoFilter and the names:
+Excel, LibreOffice and Gnumeric open it. **File ▸ Open** (Ctrl+O) reads **`.xlsx`** (from Excel,
+LibreOffice, Google Sheets…), LibreOffice's **`.ods`** (with its styles, number formats, merges,
+charts, conditional formats, AutoFilter and names; saved again as `.xlsx`) and **CSV** / `.tsv` /
+`.txt` (the separator — comma, semicolon or tab — guessed; UTF-8 or Latin-1; each field read as if
+typed). **File ▸ Export as CSV** (or Save As `name.csv`) writes the sheet shown, its values as
+shown. A double click on an `.xlsx`, `.ods` or `.csv` file in the File Viewer opens it here
+(`fileassoc.ini`); a file dropped on the window too. New, Open and a drop first ask to save unsaved
+changes; **closed with unsaved changes**, the workbook is kept in
+`SD:/apps/sheet.app/recovered.xlsx` and offered back the next time the Spreadsheet starts. Not
+kept: fonts' exotic effects, pictures, pivot tables, macros, comments, validation lists (the rest
+of an Excel file is read). Sample: **`SD:/docs/cafe-2026.xlsx`** (its three sheets: the sales, a
+summary with lookups and a pie chart, the espresso machine's loan).
 
 ### Games
 

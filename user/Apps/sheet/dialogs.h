@@ -3,7 +3,9 @@
 // its decimals, separator, red negatives, symbol, the date and time formats, the code itself and a
 // preview; Font; Alignment; Borders: presets, each edge, the line, the colour; Fill), Insert Function
 // (by category, each one's arguments and purpose), Sort (three keys), Find and Replace, Paste Special,
-// Chart (its type, title, legend, series, a live preview), a size, a name.
+// Names (the defined names), Conditional Formatting (the sheet's rules), the AutoFilter's list (a
+// column's values to show, sort), Chart (its type, title, legend, series, a live preview), a size, a
+// name, a message (wrapped).
 //
 #ifndef _sheet_dialogs_h
 #define _sheet_dialogs_h

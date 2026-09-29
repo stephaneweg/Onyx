@@ -11,7 +11,7 @@
 {'b',		'B',		KeyNone,	KeyNone,	KeyNone},	// 0x05
 {'c',		'C',		KeyNone,	KeyNone,	KeyNone},	// 0x06
 {'d',		'D',		KeyNone,	KeyNone,	KeyNone},	// 0x07
-{'e',		'E',		KeyNone,	KeyNone,	KeyNone},	// 0x08
+{'e',		'E',		C('\x80'),	KeyNone,	KeyNone},	// 0x08
 {'f',		'F',		KeyNone,	KeyNone,	KeyNone},	// 0x09
 {'g',		'G',		KeyNone,	KeyNone,	KeyNone},	// 0x0A
 {'h',		'H',		KeyNone,	KeyNone,	KeyNone},	// 0x0B

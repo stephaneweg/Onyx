@@ -32,7 +32,7 @@
 {'1',		'!',		KeyNone,	KeyNone,	KeyNone},	// 0x1E
 {'2',		'\"',		KeyNone,	KeyNone,	KeyNone},	// 0x1F
 {'3',		C('\xA3'),	KeyNone,	KeyNone,	KeyNone},	// 0x20
-{'4',		'$',		KeyNone,	KeyNone,	KeyNone},	// 0x21
+{'4',		'$',		C('\x80'),	KeyNone,	KeyNone},	// 0x21
 {'5',		'%',		KeyNone,	KeyNone,	KeyNone},	// 0x22
 {'6',		'^',		KeyNone,	KeyNone,	KeyNone},	// 0x23
 {'7',		'&',		KeyNone,	KeyNone,	KeyNone},	// 0x24

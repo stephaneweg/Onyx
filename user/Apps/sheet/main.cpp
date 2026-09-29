@@ -1,16 +1,17 @@
 //
 // sheet -- Onyx's spreadsheet, in the way of LibreOffice Calc and Gnumeric: workbooks of sheets up to
-// 16 384 columns x 1 048 576 rows; formulas as Excel writes them (about 230 functions: mathematics,
+// 16 384 columns x 1 048 576 rows; formulas as Excel writes them (237 functions: mathematics,
 // statistics, logic, text, lookups, dates, finance; references relative and absolute, to other sheets,
 // ranges and whole columns; arrays), recomputed at each change; number formats (Excel's codes), fonts,
 // colours, borders, alignment, wrapping, merged cells; rows and columns inserted, deleted, sized,
 // hidden; frozen panes; copy / cut / paste (the references following), the fill handle's series, sort,
-// find and replace; charts (column, bar, line, area, pie, scatter); undo. Files: Excel's .xlsx (its
-// own format: read and written), LibreOffice's .ods (read), CSV (read and written).
+// find and replace; defined names; conditional formatting (rules, colour scales, data bars); the
+// AutoFilter; charts (column, bar, line, area, pie, scatter); undo. Files: Excel's .xlsx (its own format:
+// read and written), LibreOffice's .ods (read), CSV (read and written).
 //
 //   the engine: core.h book.h formula.h eval.h numfmt.h input.h fn_core.h fn_more.h funcs.h ops.h undo.h
 //   the files:  xml.h xlsx.h ods.h (+ CSV)
-//   the window: ui_base.h render.h chart.h grid.h bars.h dialogs.h main.cpp
+//   the window: condfmt.h ui_base.h render.h chart.h grid.h bars.h dialogs.h main.cpp
 //
 #define SHEET_APP 1
 #include "dialogs.h"
@@ -1347,6 +1348,7 @@ static void refresh ()
 	if (!g_grid->ed.on && !oneCell && (r.r1 > r.r0 || r.c1 > r.c0))
 	{
 		double sum = 0; int cnt = 0, cnta = 0;
+		int fmt = -1; bool mixed = false;				// (the numbers' format, when they share one)
 		long long area = (long long) (r.r1 - r.r0 + 1) * (r.c1 - r.c0 + 1);
 		if (area <= 2000000)
 			for (int k = 0; k < s->cells.cap; k++)
@@ -1354,13 +1356,17 @@ static void refresh ()
 				Cell *x = s->cells.t[k];
 				if (!x || !rect_has (r, x->r, x->c) || x->kind == K_NONE) continue;
 				cnta++;
-				if (x->vt == V_NUM) { sum += x->num; cnt++; }
+				if (x->vt != V_NUM) continue;
+				sum += x->num; cnt++;
+				int f = g_b.styles.s[x->style].fmt;
+				if (fmt < 0) fmt = f; else if (f != fmt) mixed = true;
 			}
 		if (cnta)
 		{
-			// (the figures in the cursor's cell's format, when it has one for numbers: 1,234.50 €)
-			const char *code = book_fmt_code (g_b, st.fmt);
-			if (fmt_kind (code) == FK_TEXT) code = "General";
+			// (the figures in the numbers' format when they all have the same one: 1,234.50 €)
+			const char *code = mixed || fmt < 0 ? "General" : book_fmt_code (g_b, fmt);
+			int fk = fmt_kind (code);
+			if (fk == FK_TEXT || fk == FK_DATE || fk == FK_TIME || fk == FK_DATETIME) code = "General";
 			Buf a, a2;
 			fmt_number (code, sum, a, 0, 16); fmt_number (code, cnt ? sum / cnt : 0, a2, 0, 16);
 			if (cnt) snprintf (m, sizeof m, "Sum: %s    Average: %s    Count: %d", a.str (), a2.str (), cnta);

@@ -281,6 +281,24 @@ static bool shift_rect (Rect &r, bool rows, int at, int n)
 	if (z > d1) z += n; else if (z >= d0) z = d0 - 1;
 	return z >= a;
 }
+// A conditional format's operand ("=$F5<0", "=$G$1"; a CF_FORMULA's with or without its "=") moved as a
+// cell's formula is: rows / columns inserted or deleted in the sheet `target`; the rule lives in `own`.
+static void cf_shift_text (Book &b, int own, char *t, int cap, bool formula, int target, bool rows, int at, int n)
+{
+	const char *p = t;
+	while (*p == ' ') p++;
+	bool eq = *p == '=';
+	if (!eq && (!formula || !*p)) return;
+	if (eq) p++;
+	Formula *f = formula_parse (b, p, (int) strlen (p));
+	if (!f) return;
+	if (formula_shift (f, own, target, rows, at, n))
+	{
+		Buf o; formula_print (b, f, o);				// ("=" first)
+		snprintf (t, cap, "%s", o.str () + (eq ? 0 : 1));
+	}
+	formula_free (f);
+}
 static void af_clear (Sheet *s);
 static void af_set (Sheet *s, int col, const char *list);
 static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
@@ -317,6 +335,13 @@ static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
 	ShiftArg g; g.target = s->id; g.rows = rows; g.at = at; g.n = n;
 	each_formula (b, shift_one, &g);
 	for (int i = 0; i < b.nnames; i++) if (b.names[i].f) formula_shift (b.names[i].f, b.names[i].scope, s->id, rows, at, n);
+	for (int j = 0; j < b.ns; j++)					// (the conditional formats' formulas)
+		for (int i = 0; i < b.sh[j]->ncf; i++)
+		{
+			CondFmt &cf = b.sh[j]->cf[i];
+			cf_shift_text (b, b.sh[j]->id, cf.a, sizeof cf.a, cf.type == CF_FORMULA, s->id, rows, at, n);
+			cf_shift_text (b, b.sh[j]->id, cf.b, sizeof cf.b, false, s->id, rows, at, n);
+		}
 	// the rows' or columns' own sizes and styles
 	if (rows)
 	{

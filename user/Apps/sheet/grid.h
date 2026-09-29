@@ -959,7 +959,7 @@ bool GridView::onKey (long k)
 		if (k == WK_CTRL ('A')) { ed.anchor = 0; ed.caret = ed.t.n; changed (); return true; }
 		if (k >= 32 && k < 256 && k != 127)
 		{
-			ed.insert_char ((unsigned) k);
+			ed.insert_char (latin1_cp ((unsigned) k));
 			updateAutocomplete ();
 			changed ();
 			return true;
@@ -1024,7 +1024,7 @@ bool GridView::onKey (long k)
 	if (onOtherKey && (ctrl || alt || (k >= KEY_F1 && k <= KEY_F12) || k == KEY_DEL) && onOtherKey (k, mods)) return true;
 	if (k >= 32 && k < 256 && k != 127 && !ctrl)
 	{
-		char t[4]; int n = u8_enc ((unsigned) k, t); t[n] = 0;
+		char t[4]; int n = u8_enc (latin1_cp ((unsigned) k), t); t[n] = 0;
 		beginEdit (true, t);
 		updateAutocomplete ();
 		return true;

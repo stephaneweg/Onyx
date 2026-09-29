@@ -207,6 +207,42 @@ small database*; the pieces: docs/03):
   (two columns, a field's width, a memo's height); a default value per field, required fields;
   computed fields; an image field; printing / a report; a lookup into another `.card`.
 
+## The Spreadsheet, as LibreOffice Calc / Gnumeric (2026-09-29, same branch, pushed to `main`)
+
+Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc / Gnumeric). The old
+`sheet` rewritten from scratch (the user guide: docs/04 *The Spreadsheet*; the pieces: docs/03):
+
+- **`user/Apps/sheet/`**, a **newlib** wtk app (`sheet.elf` rule, FreeType), `stack = 4M` in its
+  `app.txt`. The engine (plain C++, the same on the PC): workbooks of sheets of 1 048 576 × 16 384
+  cells in a hash of the used ones; Excel's formula syntax (references relative / absolute, to other
+  sheets, whole rows / columns, arrays, names), **237 functions**, full recalculation at each
+  change (on demand, an explicit stack for deep chains, `#CIRC!`), Excel's number formats, typed
+  entries read as Calc does (numbers, %, amounts, dates day first, times), interned styles, merged
+  cells, frozen panes, rows / columns inserted / deleted with every reference moved, copy / cut /
+  paste (Paste Special), fill series, sort (3 keys), Find and Replace, **defined names**,
+  **conditional formatting** (value, text, top / bottom, average, duplicates, formula; colour
+  scales, data bars), the **AutoFilter**, **charts** (column, bar, line, area, pie, scatter,
+  anchored to a cell), undo / redo (100 steps).
+- **Files**: `.xlsx` read and written (styles, formats, merges, sizes, panes, charts, conditional
+  formats with their dxfs, AutoFilter, names — LibreOffice opens them as written); `.ods` read
+  (LibreOffice's styles, number styles, charts, calcext conditional formats, database-range
+  filters, named ranges); CSV / TSV read and written. `xlsx`, `ods`, `csv`, `tsv` = `sheet` in
+  `fileassoc.ini` (**`.csv` used to open in the text editor**). A workbook closed unsaved is
+  kept as `SD:/apps/sheet.app/recovered.xlsx`.
+- **Sample** `SD:/docs/cafe-2026.xlsx` (made by `tools/tests/sheet/make_sample.cpp`); screenshots
+  `sheet.png`, `sheet-filter.png`, `sheet-loan.png` (the `sheet` scenario of `shots.sh`); host
+  tests `sh tools/tests/run_sheet_test.sh` (328 engine checks, 122 file checks; LibreOffice round
+  trips when `soffice` is installed).
+- **The euro sign**: wtk's font has it in slot 0x80 (Windows-1252's; `gen_nssans.py` `EXTRA`);
+  **AltGr+E** now types it on the FR, BE, DE, ES keymaps (AltGr+4 on UK; IT and US had it) —
+  `tools/keymaps/maps/*.h` → `genkeymaps.py`. The Spreadsheet takes it; wtk's `Textbox` /
+  `Textarea` still ignore 0x80 (they accept 0x20–0x7E, 0xA0–0xFF).
+- **Next ideas**: spilled dynamic arrays (and with them SORT, UNIQUE, FILTER, SEQUENCE); copy /
+  paste does not carry conditional formats, and a cut / paste moves the cells' formulas but not the
+  names' nor the rules' (rows / columns inserted or deleted move all of them); comments; data
+  validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in wtk's
+  text boxes.
+
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
 - **Done (cloud session), all pushed:** option A of `docs/GC-WINDOWS-REPORT.md` §5 -- the GX on the

@@ -194,11 +194,12 @@ add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`
 the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
 tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 
-A **wtk app** can be a newlib app too (Doom, NetSurf, **Writer** — FreeType wants a libc): the
-`writer.elf` rule of [`user/Makefile`](../user/Makefile) is the model — `NL_CFLAGS` /
-`NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`), `libc/crt0libc.o` +
-`libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries (`ft/libft.a`) and `-lm`. Take
-the app out of the generic `APPS` list and add its `.elf` to `all:`; `make stage` stages it as any.
+A **wtk app** can be a newlib app too (Doom, NetSurf, **Writer**, the **Spreadsheet** — FreeType
+wants a libc): the `writer.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
+`NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
+`libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries
+(`ft/libft.a`) and `-lm`. Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
+`make stage` stages it as any.
 
 Notes / caveats:
 - **One allocator** for a plain C newlib app: newlib's `malloc` owns the heap via
@@ -561,6 +562,51 @@ Notes / caveats:
 > step). **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
+> **Spreadsheet** (`user/Apps/sheet/`, a **newlib** wtk app — FreeType and `libm` — built as Writer
+> is; one TU: `main.cpp` includes the rest, a chain of headers each including the one before, all in
+> `namespace ss`; `app.txt` asks for a **4 MB stack**: the formulas are evaluated recursively). **The
+> engine** is plain C++ over libc, the same code on the PC: `core.h` (a growing `Buf`, UTF-8 — the
+> cells' text is UTF-8, wtk's font and the keyboard Latin-1 with the euro at 0x80: `latin1_cp`,
+> `latin1_to_u8`, `u8_to_latin1` —, numbers ↔ text, Excel's serial dates, the `Arena` a formula's
+> temporary values live in, released after each cell), `book.h` (the `Book`: its sheets, the
+> interned `Style`s — a cell keeps an index —, the defined names; a `Sheet`: the used cells in a
+> hash `CellMap` by row and column, the widths / heights / hidden flags, merges, frozen panes,
+> charts anchored to a cell, conditional formats, the AutoFilter; a `Cell`: what was typed — number,
+> text, formula — and its value), `formula.h` (Excel's syntax read into tokens — kept to print the
+> formula back as typed — and a tree over them; each reference its row / column and `$` flags;
+> `formula_copy (dr, dc)` moves the relative parts, the shifts of inserted / deleted rows and
+> columns move every reference, a deleted one becomes `#REF!`; the names' table), `eval.h` (the
+> tree walked: `IF` and its kind lazy, operators over numbers / texts / arrays element by element, a
+> function taking one value lifted over an array; `recalc` recomputes every formula at each change,
+> a formula computing the cells it reads first — the book's `epoch` marks what is done —, a chain
+> deeper than `MAX_DEPTH` pushed on an explicit stack, a cell met again on it `#CIRC!`),
+> `numfmt.h` (Excel's format codes compiled once — `fmt_get` caches them — and applied), `input.h`
+> (what a typed entry is: number, percentage, amount, date, time, boolean, error, text — with the
+> format it implies), `fn_core.h` / `fn_more.h` (the 237 functions, Excel's names, arguments and
+> results), `funcs.h` (the table `FNS`: name, arguments, flags — lifted, lazy, volatile —,
+> category, the argument list and the line the tips and Insert Function show), `ops.h` (what the
+> window does to the book: a cell set, a value shown, styles over a range, rows / columns inserted,
+> deleted, sized, cells moved / copied / filled / sorted / merged, sheets; the AutoFilter),
+> `undo.h` (before a change, the range, sheet or book it touches written in a small binary form;
+> Undo writes the present the same way for Redo; 100 steps, 64 MB). **The files**: `xml.h` (a pull
+> reader, the escaping), `xlsx.h` (Excel's `.xlsx`, read and written — the archive through
+> `img/pngsave.hpp`'s `zip_find` / `ZipOut` and `img_inflate`; under `SHEET_APP` the files go
+> through kapi, on the PC through stdio), `ods.h` (LibreOffice's `.ods`, read: OpenFormula turned
+> into Excel's syntax, the number styles into format codes), CSV in `main.cpp`. **The window**:
+> `condfmt.h` (the rules' look for a cell — their figures over the range computed once a
+> recalculation), `ui_base.h` (Writer's toolbar look, the icons Writer lacks), `render.h` (a cell
+> drawn: FreeType fonts — the Office families mapped to the card's —, the formatted value, wrap and
+> overflow, fill, borders, merges), `chart.h`, `grid.h` (`GridView`: headers, up to four panes, the
+> selection, the fill handle, the charts, the in-place editor with its coloured references,
+> pointing, the functions offered and their tips, the AutoFilter's buttons), `bars.h` (`NameBox`,
+> `FormulaBar`, `SheetTabs`, `StatusBar`), `dialogs.h`, `main.cpp` (the menus, the commands, the
+> clipboard — the cells kept here, their text on the system clipboard: a paste from elsewhere is
+> read as a tab-separated table —, the files, `docguard.h`, the recovered workbook).
+> **Host test**: `sh tools/tests/run_sheet_test.sh` — `tools/tests/sheet/engine_test.cpp` (formulas,
+> functions, formats, typed entries, references moved, names, undo) and `files_test.cpp` (`.xlsx`
+> round trips; with LibreOffice installed, its `.ods` and `.xlsx` of the same workbook read back
+> alike); ASan + UBSan. The sample `sdcard/docs/cafe-2026.xlsx` is made by
+> `tools/tests/sheet/make_sample.cpp` (built with the engine itself: see its header).
 > **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),
@@ -880,8 +926,10 @@ Notes / caveats:
 > handler, `kapi_get_modifiers` returns the modifiers held **when that key was typed** (the
 > kernel stores them in the key event, taken from the xterm `ESC[1;<m>X` form, which `vncd`
 > also sends), not the live state. F1–F12 arrive as `KEY_F1` .. `KEY_F12` (0x110..0x11B). Text widgets (`Textbox`,
-> `Textarea`, `RichTextBox`) accept the printable Latin-1 range too (`é è à ç ù €`… = 0xA0–0xFF,
-> as the keymaps produce them).
+> `Textarea`, `RichTextBox`) accept the printable Latin-1 range too (`é è à ç ù`… = 0xA0–0xFF,
+> as the keymaps produce them). The euro sign (AltGr+E, …) arrives as **0x80**, Windows-1252's
+> code for it (Latin-1 has none); wtk's font draws it there (`tools/fonts/gen_nssans.py`, `EXTRA`);
+> the text widgets do not take it yet — the Spreadsheet does (`latin1_cp` → U+20AC).
 > **Text selection**: `Textarea` and `RichTextBox` select with Shift + navigation keys, a
 > mouse drag, Shift+click and ^A; typing replaces the selection. `Textarea` has
 > `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,
@@ -1352,7 +1400,8 @@ barwidth = 40
   The script's steps: `wait`, `down / up / move / wheel X Y`, `rdown / rup`, `key CODE`, `mods N`
   (the modifiers held from then on: 1 Ctrl, 2 Shift, 4 Alt — Shift+arrows select...), `menu N`
   (the app's menu item N: its items counted from 0 in the order the app adds them), `winctl N`,
-  `dump FILE`, `exit`. Writer's is built with the apps' FreeType (the same sources, for the PC).
+  `dump FILE`, `exit`. Writer's and the Spreadsheet's are built with the apps' FreeType (the same
+  sources, for the PC).
   (`nintendoemu.png` and `arkanoid.png` — an emulator, a BASIC program — still come from the
   older, simulated renderer [`tools/screenshot/render.py`](../tools/screenshot/render.py).)
 - **Word/PDF exports**: [`docs/build_docs.py`](build_docs.py) converts each `.md` in

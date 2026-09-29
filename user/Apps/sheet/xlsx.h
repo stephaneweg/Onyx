@@ -3,7 +3,8 @@
 // the values and formulas (shared formulas unfolded; "_xlfn." taken off), the shared strings (rich text
 // joined), the styles (fonts, fills, borders, number formats -- built-in and custom --, alignment; theme
 // and indexed colours), the columns' widths, the rows' heights, hidden rows / columns, merged cells,
-// frozen panes, tab colours, the charts (bar, column, line, area, pie, scatter: their data ranges).
+// frozen panes, tab colours, the charts (bar, column, line, area, pie, scatter: their data ranges), the
+// conditional formats (their looks: the styles' dxfs), the AutoFilter, the defined names.
 // Written: the same, with each formula's last value (another program shows it before computing).
 //
 #ifndef _sheet_xlsx_h

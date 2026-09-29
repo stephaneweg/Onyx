@@ -3,8 +3,9 @@
 // percentages, amounts, dates, times, booleans, texts of several paragraphs), the formulas (OpenFormula,
 // "of:=SUM([.A1:.A5])", turned into Excel's syntax), the cell styles (fonts, colours, borders,
 // alignment, wrapping; the number styles made into format codes), the columns' widths, the rows'
-// heights, merged and hidden cells, frozen panes (settings.xml), the charts (their objects: "Object 1/content.xml"),
-// the named ranges and expressions.
+// heights, merged and hidden cells, frozen panes (settings.xml), the charts (their objects:
+// "Object 1/content.xml"), the named ranges and expressions, the conditional formats (LibreOffice's
+// calcext ones), the AutoFilter (a database range's filter).
 //
 #ifndef _sheet_ods_h
 #define _sheet_ods_h

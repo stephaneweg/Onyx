@@ -3,7 +3,7 @@
 // in a hash of the used ones), the cells (what was typed -- a number, a text, a formula -- and the value
 // shown), the styles (the font, the colours, the alignment, the borders, the number format: interned,
 // a cell keeps an index), the columns' widths and the rows' heights (in pixels at 100 %), the merged
-// cells, the frozen panes, the charts.
+// cells, the frozen panes, the charts, the conditional formats, the AutoFilter; the book's defined names.
 //
 #ifndef _sheet_book_h
 #define _sheet_book_h

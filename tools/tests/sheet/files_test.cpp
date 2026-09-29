@@ -190,6 +190,43 @@ static void cf_tests (const char *dir)
 	}
 	book_clear (a); book_clear (b);
 }
+// Rows / columns inserted and deleted: the rules' ranges and their formulas move as the cells' do.
+static void cf_shift_tests ()
+{
+	Book a; book_init (a); book_add_sheet (a, "Rules"); book_add_sheet (a, "Other");
+	Sheet *s = a.sh[0];
+	set (a, 0, "B5", "-1"); set (a, 0, "B6", "2"); set (a, 0, "B7", "-3"); set (a, 0, "D1", "0");
+	set (a, 0, "C5", "a"); set (a, 0, "C6", "b"); set (a, 0, "C7", "c");
+	s->cf = (CondFmt *) malloc (4 * sizeof (CondFmt));
+	s->cf[s->ncf++] = cfr ("C5:C7", CF_FORMULA, 0, "=$B5<$D$1", "", 0xFFC7CE, AUTO, -1);
+	s->cf[s->ncf++] = cfr ("B5:B7", CF_CELL, CO_BETWEEN, "=$D$1-5", "=Other!A1", 0xC6EFCE, AUTO, -1);
+	s->cf[s->ncf++] = cfr ("C5:C7", CF_FORMULA, 0, "B5>0", "", 0xDDEBF7, AUTO, -1);	// (no "=": as .xlsx keeps it)
+	recalc (a); cf_changed ();
+	auto texts = [&] (const char *w0, const char *w1a, const char *w1b, const char *w2, const char *what) {
+		const char *want[4] = { w0, w1a, w1b, w2 }, *got[4] = { s->cf[0].a, s->cf[1].a, s->cf[1].b, s->cf[2].a };
+		for (int i = 0; i < 4; i++)
+		{
+			g_checks++;
+			if (strcmp (got[i], want[i])) { printf ("FAIL cf shift, %s: [%s], [%s] expected\n", what, got[i], want[i]); g_fail++; }
+		}
+	};
+	cf_expect (a, s, "C5", "fill FFC7CE color 000000 bold -1 bar -1.00", "cf shift");
+	cf_expect (a, s, "C6", "fill DDEBF7 color 000000 bold -1 bar -1.00", "cf shift");
+	insert_rows (a, s, 1, 2); recalc (a); cf_changed ();			// (above everything: B5 -> B7, D1 stays)
+	texts ("=$B7<$D$1", "=$D$1-5", "=Other!A1", "B7>0", "rows inserted");
+	g_checks++; if (s->cf[0].r.r0 != 6 || s->cf[0].r.r1 != 8) { printf ("FAIL cf shift: the range at rows %d..%d\n", s->cf[0].r.r0 + 1, s->cf[0].r.r1 + 1); g_fail++; }
+	cf_expect (a, s, "C7", "fill FFC7CE color 000000 bold -1 bar -1.00", "cf shift, rows inserted");
+	cf_expect (a, s, "C8", "fill DDEBF7 color 000000 bold -1 bar -1.00", "cf shift, rows inserted");
+	cf_expect (a, s, "C9", "fill FFC7CE color 000000 bold -1 bar -1.00", "cf shift, rows inserted");
+	insert_cols (a, s, 0, 1); recalc (a); cf_changed ();			// (a column before A: every column moves)
+	texts ("=$C7<$E$1", "=$E$1-5", "=Other!A1", "C7>0", "a column inserted");
+	cf_expect (a, s, "D8", "fill DDEBF7 color 000000 bold -1 bar -1.00", "cf shift, a column inserted");
+	delete_rows (a, s, 0, 1); recalc (a); cf_changed ();			// (the row of $E$1 deleted: #REF!)
+	texts ("=$C6<#REF!", "=#REF!-5", "=Other!A1", "C6>0", "a row deleted");
+	insert_rows (a, a.sh[1], 0, 1);						// (another sheet's rows: the reference to it moves)
+	texts ("=$C6<#REF!", "=#REF!-5", "=Other!A2", "C6>0", "the other sheet's rows");
+	book_clear (a);
+}
 
 // ---- the AutoFilter: rows hidden by the values chosen, kept through the files --------------------------------
 static void af_expect (Book &b, const char *hidden, const char *what)
@@ -366,6 +403,7 @@ int main (int argc, char **argv)
 	}
 	book_clear (a); book_clear (b); book_clear (c); book_clear (d);
 	cf_tests (dir);
+	cf_shift_tests ();
 	af_tests (dir);
 	for (int i = 0; i < CF_SLOTS; i++) cfstat_free (g_cfs[i]);
 	for (int i = 0; i < g_fcacheN; i++) { free (g_fcache[i].code); free (g_fcache[i].f); }

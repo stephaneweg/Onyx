@@ -111,11 +111,12 @@ static bool u8_valid (const char *s, int n)
 	return true;
 }
 // Latin-1 (the keyboard's, wtk's text boxes', a CSV's) -> UTF-8; 0x80 is the euro sign, as Windows-1252
-// and wtk's font have it.
+// and wtk's font have it (the keymaps' AltGr+E).
+static unsigned latin1_cp (unsigned c) { return c == 0x80 ? 0x20AC : c; }
 static char *latin1_to_u8 (const char *s, int n)
 {
 	Buf b;
-	for (int i = 0; i < n; i++) { unsigned c = (unsigned char) s[i]; b.putu (c == 0x80 ? 0x20AC : c); }
+	for (int i = 0; i < n; i++) b.putu (latin1_cp ((unsigned char) s[i]));
 	return b.take ();
 }
 // UTF-8 -> Latin-1 for wtk's own font ('?' for a character it lacks; the euro sign: 0x80).
