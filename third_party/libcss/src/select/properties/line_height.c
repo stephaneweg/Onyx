@@ -13,6 +13,7 @@
 
 #include "select/properties/properties.h"
 #include "select/properties/helpers.h"
+#include "select/onyx_calc.h"
 
 css_error css__cascade_line_height(uint32_t opv, css_style *style,
 		css_select_state *state)
@@ -39,9 +40,14 @@ css_error css__cascade_line_height(uint32_t opv, css_style *style,
 			value = CSS_LINE_HEIGHT_NORMAL;
 			break;
 		case LINE_HEIGHT_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &val, &unit) != CSS_OK)
+				return CSS_OK;
+			value = (unit == UNIT_CALC_NUMBER) ? CSS_LINE_HEIGHT_NUMBER :
+					CSS_LINE_HEIGHT_DIMENSION;
+			if (unit == UNIT_CALC_NUMBER)
+				unit = UNIT_PX;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;

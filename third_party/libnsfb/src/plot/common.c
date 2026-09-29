@@ -20,6 +20,26 @@
 
 #define SIGN(x)  ((x<0) ?  -1  :  ((x>0) ? 1 : 0))
 
+/* Onyx: translucent colours. libnsfb's colours are ABGR, the top byte the opacity: 0xff
+ * opaque, and 0 opaque too (the callers that never set it); the others are blended over
+ * what is there. (NetSurf's own colours are (1-A)BGR: its frontend converts them.) */
+static inline uint32_t colour_opacity(nsfb_colour_t c)
+{
+        uint32_t a = c >> 24;
+        return (a == 0) ? 255 : a;
+}
+
+static inline PLOT_TYPE blend_pixel(nsfb_t *nsfb, PLOT_TYPE pixel, nsfb_colour_t c,
+                uint32_t a)
+{
+        nsfb_colour_t d = pixel_to_colour(nsfb, pixel);
+        uint32_t ia = 255 - a;
+        uint32_t r = ((c & 0xff) * a + (d & 0xff) * ia + 127) / 255;
+        uint32_t g = (((c >> 8) & 0xff) * a + ((d >> 8) & 0xff) * ia + 127) / 255;
+        uint32_t b = (((c >> 16) & 0xff) * a + ((d >> 16) & 0xff) * ia + 127) / 255;
+        return colour_to_pixel(nsfb, r | (g << 8) | (b << 16));
+}
+
 static bool
 line(nsfb_t *nsfb, int linec, nsfb_bbox_t *line, nsfb_plot_pen_t *pen)
 {
@@ -30,7 +50,13 @@ line(nsfb_t *nsfb, int linec, nsfb_bbox_t *line, nsfb_plot_pen_t *pen)
         int dx, dy, sdy;
         int dxabs, dyabs;
 
+        uint32_t alpha = colour_opacity(pen->stroke_colour);
+        nsfb_colour_t col = pen->stroke_colour;
+
         ent = colour_to_pixel(nsfb, pen->stroke_colour);
+
+#define PUT(p) do { if (alpha == 255) *(p) = ent; \
+                else *(p) = blend_pixel(nsfb, *(p), col, alpha); } while (0)
 
         for (;linec > 0; linec--) {
 
@@ -47,7 +73,7 @@ line(nsfb_t *nsfb, int linec, nsfb_bbox_t *line, nsfb_plot_pen_t *pen)
 
                         w = line->x1 - line->x0;
                         while (w-- > 0)
-                                *(pvideo + w) = ent;
+                                PUT(pvideo + w);
 
                 } else {
                         /* standard bresenham line */
@@ -79,7 +105,7 @@ line(nsfb_t *nsfb, int linec, nsfb_bbox_t *line, nsfb_plot_pen_t *pen)
                         if (dxabs >= dyabs) {
                                 /* the line is more horizontal than vertical */
                                 for (i = 0; i < dxabs; i++) {
-                                        *pvideo = ent;
+                                        PUT(pvideo);
 
                                         pvideo++;
                                         y += dyabs;
@@ -91,7 +117,7 @@ line(nsfb_t *nsfb, int linec, nsfb_bbox_t *line, nsfb_plot_pen_t *pen)
                         } else {
                                 /* the line is more vertical than horizontal */
                                 for (i = 0; i < dyabs; i++) {
-                                        *pvideo = ent;
+                                        PUT(pvideo);
                                         pvideo += sdy * PLOT_LINELEN(nsfb->linelen);
 
                                         x += dxabs;
@@ -105,6 +131,7 @@ line(nsfb_t *nsfb, int linec, nsfb_bbox_t *line, nsfb_plot_pen_t *pen)
                 }
                 line++;
         }
+#undef PUT
         return true;
 }
 
@@ -191,6 +218,7 @@ glyph8(nsfb_t *nsfb,
         PLOT_TYPE *pvideo;
         nsfb_colour_t fgcol;
         nsfb_colour_t abpixel; /* alphablended pixel */
+        uint32_t copacity;
         int xloop, yloop;
         int xoff, yoff; /* x and y offset into image */
         int x = loc->x0;
@@ -210,10 +238,14 @@ glyph8(nsfb_t *nsfb,
         pvideo = get_xy_loc(nsfb, loc->x0, loc->y0);
 
         fgcol = c & 0xFFFFFF;
+        copacity = colour_opacity(c);   /* Onyx: translucent text */
 
         for (yloop = 0; yloop < height; yloop++) {
                 for (xloop = 0; xloop < width; xloop++) {
-                        abpixel = ((unsigned)pixel[((yoff + yloop) * pitch) + xloop + xoff] << 24) | fgcol;
+                        unsigned cover = pixel[((yoff + yloop) * pitch) + xloop + xoff];
+                        if (copacity != 255)
+                                cover = (cover * copacity + 127) / 255;
+                        abpixel = (cover << 24) | fgcol;
                         if ((abpixel & 0xFF000000) != 0) {
                                 /* pixel is not transparent */
                                 if ((abpixel & 0xFF000000) != 0xFF000000) {

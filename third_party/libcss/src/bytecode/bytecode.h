@@ -43,6 +43,8 @@ enum calc_opcodes {
 	CALC_SUBTRACT    = '-',
 	CALC_MULTIPLY    = '*',
 	CALC_DIVIDE      = '/',
+	CALC_MIN         = 'm',	/* Onyx: min() / max() / clamp() */
+	CALC_MAX         = 'M',
 	CALC_FINISH      = '=',
 };
 

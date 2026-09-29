@@ -140,8 +140,144 @@ enum css_properties_e {
 	CSS_PROP_ORDER				= 0x07b,
 	CSS_PROP_FILL_OPACITY			= 0x07c,
 	CSS_PROP_STROKE_OPACITY			= 0x07d,
+	/* Onyx: CSS3 additions */
+	CSS_PROP_ROW_GAP			= 0x07e,
+	CSS_PROP_BORDER_TOP_LEFT_RADIUS		= 0x07f,
+	CSS_PROP_BORDER_TOP_RIGHT_RADIUS	= 0x080,
+	CSS_PROP_BORDER_BOTTOM_RIGHT_RADIUS	= 0x081,
+	CSS_PROP_BORDER_BOTTOM_LEFT_RADIUS	= 0x082,
+	CSS_PROP_BOX_SHADOW			= 0x083,
+	CSS_PROP_TEXT_SHADOW			= 0x084,
+	CSS_PROP_BACKGROUND_SIZE		= 0x085,
+	CSS_PROP_TEXT_OVERFLOW			= 0x086,
+	CSS_PROP_JUSTIFY_ITEMS			= 0x087,
+	CSS_PROP_JUSTIFY_SELF			= 0x088,
+	CSS_PROP_ASPECT_RATIO			= 0x089,
+	CSS_PROP_OBJECT_FIT			= 0x08a,
+	CSS_PROP_OBJECT_POSITION		= 0x08b,
+	CSS_PROP_TRANSFORM			= 0x08c,
+	CSS_PROP_TRANSLATE			= 0x08d,
+	CSS_PROP_SCALE				= 0x08e,
+	CSS_PROP_ROTATE				= 0x08f,
+	CSS_PROP_GRID_TEMPLATE_COLUMNS		= 0x090,
+	CSS_PROP_GRID_TEMPLATE_ROWS		= 0x091,
+	CSS_PROP_GRID_TEMPLATE_AREAS		= 0x092,
+	CSS_PROP_GRID_AUTO_COLUMNS		= 0x093,
+	CSS_PROP_GRID_AUTO_ROWS			= 0x094,
+	CSS_PROP_GRID_AUTO_FLOW			= 0x095,
+	CSS_PROP_GRID_ROW_START			= 0x096,
+	CSS_PROP_GRID_ROW_END			= 0x097,
+	CSS_PROP_GRID_COLUMN_START		= 0x098,
+	CSS_PROP_GRID_COLUMN_END		= 0x099,
 
 	CSS_N_PROPERTIES
+};
+
+/* Onyx: CSS3 additions */
+enum css_row_gap_e {
+	CSS_ROW_GAP_INHERIT			= 0x0,
+	CSS_ROW_GAP_SET				= 0x1,
+	CSS_ROW_GAP_NORMAL			= 0x2
+};
+
+/* border-{top-left,top-right,bottom-right,bottom-left}-radius: one radius (circular corners) */
+enum css_border_radius_e {
+	CSS_BORDER_RADIUS_INHERIT		= 0x0,
+	CSS_BORDER_RADIUS_SET			= 0x1
+};
+
+/* box-shadow: the first shadow of the list (offsets, blur, spread, colour) */
+enum css_box_shadow_e {
+	CSS_BOX_SHADOW_INHERIT			= 0x0,
+	CSS_BOX_SHADOW_NONE			= 0x1,
+	CSS_BOX_SHADOW_SET			= 0x2,
+	CSS_BOX_SHADOW_SET_INSET		= 0x3,
+	/* internal: the colour is currentColor (resolved when computed) */
+	CSS_BOX_SHADOW_SET_CURRENT_COLOR	= 0x4,
+	CSS_BOX_SHADOW_SET_INSET_CURRENT_COLOR	= 0x5
+};
+
+/* text-shadow: the first shadow of the list (offsets, blur, colour) */
+enum css_text_shadow_e {
+	CSS_TEXT_SHADOW_INHERIT			= 0x0,
+	CSS_TEXT_SHADOW_NONE			= 0x1,
+	CSS_TEXT_SHADOW_SET			= 0x2,
+	/* internal: the colour is currentColor (resolved when computed) */
+	CSS_TEXT_SHADOW_SET_CURRENT_COLOR	= 0x3
+};
+
+enum css_background_size_e {
+	CSS_BACKGROUND_SIZE_INHERIT		= 0x0,
+	CSS_BACKGROUND_SIZE_AUTO		= 0x1,
+	CSS_BACKGROUND_SIZE_COVER		= 0x2,
+	CSS_BACKGROUND_SIZE_CONTAIN		= 0x3,
+	CSS_BACKGROUND_SIZE_SET			= 0x4,	/* width and height */
+	CSS_BACKGROUND_SIZE_SET_WIDTH		= 0x5,	/* width; height auto */
+	CSS_BACKGROUND_SIZE_SET_HEIGHT		= 0x6	/* height; width auto */
+};
+
+/* justify-items / justify-self: align-items' / align-self's values (start, self-start and
+ * left are FLEX_START; end, self-end and right FLEX_END; normal and legacy STRETCH) */
+enum css_justify_items_e {
+	CSS_JUSTIFY_ITEMS_INHERIT		= 0x0,
+	CSS_JUSTIFY_ITEMS_STRETCH		= 0x1,
+	CSS_JUSTIFY_ITEMS_FLEX_START		= 0x2,
+	CSS_JUSTIFY_ITEMS_FLEX_END		= 0x3,
+	CSS_JUSTIFY_ITEMS_CENTER		= 0x4,
+	CSS_JUSTIFY_ITEMS_BASELINE		= 0x5
+};
+
+enum css_justify_self_e {
+	CSS_JUSTIFY_SELF_INHERIT		= 0x0,
+	CSS_JUSTIFY_SELF_STRETCH		= 0x1,
+	CSS_JUSTIFY_SELF_FLEX_START		= 0x2,
+	CSS_JUSTIFY_SELF_FLEX_END		= 0x3,
+	CSS_JUSTIFY_SELF_CENTER			= 0x4,
+	CSS_JUSTIFY_SELF_BASELINE		= 0x5,
+	CSS_JUSTIFY_SELF_AUTO			= 0x6
+};
+
+enum css_aspect_ratio_e {
+	CSS_ASPECT_RATIO_INHERIT		= 0x0,
+	CSS_ASPECT_RATIO_AUTO			= 0x1,
+	CSS_ASPECT_RATIO_SET			= 0x2,	/* width / height */
+	CSS_ASPECT_RATIO_AUTO_SET		= 0x3	/* auto && ratio */
+};
+
+enum css_object_fit_e {
+	CSS_OBJECT_FIT_INHERIT			= 0x0,
+	CSS_OBJECT_FIT_FILL			= 0x1,
+	CSS_OBJECT_FIT_CONTAIN			= 0x2,
+	CSS_OBJECT_FIT_COVER			= 0x3,
+	CSS_OBJECT_FIT_NONE			= 0x4,
+	CSS_OBJECT_FIT_SCALE_DOWN		= 0x5
+};
+
+enum css_object_position_e {
+	CSS_OBJECT_POSITION_INHERIT		= 0x0,
+	CSS_OBJECT_POSITION_SET			= 0x1
+};
+
+/* the properties kept as a canonical text (transform, translate, scale, rotate, the grid
+ * templates, auto tracks and lines): none (for a grid line: auto), or the text */
+enum css_onyx_text_e {
+	CSS_ONYX_TEXT_INHERIT			= 0x0,
+	CSS_ONYX_TEXT_NONE			= 0x1,
+	CSS_ONYX_TEXT_SET			= 0x2
+};
+
+enum css_grid_auto_flow_e {
+	CSS_GRID_AUTO_FLOW_INHERIT		= 0x0,
+	CSS_GRID_AUTO_FLOW_ROW			= 0x1,
+	CSS_GRID_AUTO_FLOW_COLUMN		= 0x2,
+	CSS_GRID_AUTO_FLOW_ROW_DENSE		= 0x3,
+	CSS_GRID_AUTO_FLOW_COLUMN_DENSE		= 0x4
+};
+
+enum css_text_overflow_e {
+	CSS_TEXT_OVERFLOW_INHERIT		= 0x0,
+	CSS_TEXT_OVERFLOW_CLIP			= 0x1,
+	CSS_TEXT_OVERFLOW_ELLIPSIS		= 0x2
 };
 
 enum css_align_content_e {
@@ -444,7 +580,8 @@ enum css_display_e {
 	CSS_DISPLAY_FLEX			= 0x11,
 	CSS_DISPLAY_INLINE_FLEX			= 0x12,
 	CSS_DISPLAY_GRID			= 0x13,
-	CSS_DISPLAY_INLINE_GRID			= 0x14
+	CSS_DISPLAY_INLINE_GRID			= 0x14,
+	CSS_DISPLAY_CONTENTS			= 0x15	/* Onyx */
 };
 
 enum css_empty_cells_e {

@@ -68,6 +68,7 @@
 #include "html/form_internal.h"
 #include "html/layout.h"
 #include "html/layout_internal.h"
+#include "html/onyx_paint.h"	/* Onyx: the transform translation */
 #include "html/table.h"
 
 /** Array of per-side access functions for computed style margins. */
@@ -459,6 +460,31 @@ static inline bool box_has_percentage_max_width(struct box *b)
  * \return  first box in next line, or 0 if no more lines
  * \post  0 <= *line_min <= *line_max
  */
+/**
+ * Onyx: the width of the space after an atomic inline -- an inline-block (flex, grid),
+ * an image, a form control -- when the text after it starts with one
+ * (box_construct_text marks it on the box before: NetSurf used to drop it, "before
+ * <img> after" lost its second space); in the following text's font.
+ */
+static int layout_atomic_space(struct box *b,
+		const struct gui_layout_table *font_func,
+		const html_content *content)
+{
+	plot_font_style_t fstyle;
+	const css_computed_style *style;
+
+	if (b->space == 0 || b->next == NULL)
+		return 0;
+	if (b->space != UNKNOWN_WIDTH)
+		return b->space;
+	style = b->next->style;
+	if (style == NULL)
+		style = b->parent->parent->style;
+	font_plot_style_from_css(&content->unit_len_ctx, style, &fstyle);
+	font_func->width(&fstyle, " ", 1, &b->space);
+	return b->space;
+}
+
 static struct box *
 layout_minmax_line(struct box *first,
 		   int *line_min,
@@ -526,6 +552,7 @@ layout_minmax_line(struct box *first,
 			if (min < b->min_width)
 				min = b->min_width;
 			max += b->max_width;
+			max += layout_atomic_space(b, font_func, content);
 
 			if (b->flags & HAS_HEIGHT)
 				*line_has_height = true;
@@ -773,6 +800,7 @@ layout_minmax_line(struct box *first,
 			min = width;
 		if (width > 0)
 			max += width;
+		max += layout_atomic_space(b, font_func, content);
 
 		*line_has_height = true;
 	}
@@ -856,6 +884,51 @@ layout_minmax_inline_container(struct box *inline_container,
  * \post  block->min_width and block->max_width filled in,
  *        0 <= block->min_width <= block->max_width
  */
+/**
+ * Onyx: a flex item's flex base size, when it is a length (its flex-basis, else -- basis
+ * auto -- its width): in its content box. False when it depends on the content or on the
+ * container (content, auto, a percentage).
+ */
+static bool layout_minmax_flex_base(
+		const struct box *block,
+		const css_unit_ctx *unit_len_ctx,
+		int *base)
+{
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+	int px;
+
+	if (block->style == NULL)
+		return false;
+	switch (css_computed_flex_basis(block->style, &len, &unit)) {
+	case CSS_FLEX_BASIS_SET:
+		if (unit == CSS_UNIT_PCT)
+			return false;
+		px = FIXTOINT(css_unit_len2device_px(block->style,
+				unit_len_ctx, len, unit));
+		break;
+	case CSS_FLEX_BASIS_AUTO:
+		if (css_computed_width_px(block->style, unit_len_ctx, -1,
+				&px) != CSS_WIDTH_SET)
+			return false;
+		break;
+	default:
+		return false;
+	}
+	if (css_computed_box_sizing(block->style) ==
+			CSS_BOX_SIZING_BORDER_BOX) {
+		int pb = 0;
+		float frac = 0;
+		calculate_mbp_width(unit_len_ctx, block->style, LEFT,
+				false, true, true, &pb, &frac);
+		calculate_mbp_width(unit_len_ctx, block->style, RIGHT,
+				false, true, true, &pb, &frac);
+		px -= pb;
+	}
+	*base = px < 0 ? 0 : px;
+	return true;
+}
+
 static void layout_minmax_block(
 		struct box *block,
 		const struct gui_layout_table *font_func,
@@ -1024,22 +1097,96 @@ static void layout_minmax_block(
 		}
 	}
 
+	/* Onyx: a grid container's widths are its tracks' (layout_grid.c) */
+	if (block->object == NULL && lh__box_is_grid(block)) {
+		layout_minmax_grid(block, &content->unit_len_ctx, &min, &max);
+	}
+
+	/* Onyx: a row flex container's gaps between its items (in-flow ones)
+	 * widen it: always its max-content width, its min-content width when it
+	 * does not wrap */
+	if (block->object == NULL && lh__box_is_flex_container(block) &&
+	    lh__flex_main_is_horizontal(block)) {
+		int gap = lh__flex_gap(&content->unit_len_ctx, block, true, -1);
+		int n = 0;
+
+		for (child = block->children; child; child = child->next) {
+			if (child->style == NULL ||
+			    (css_computed_position(child->style) !=
+					CSS_POSITION_ABSOLUTE &&
+			     css_computed_position(child->style) !=
+					CSS_POSITION_FIXED)) {
+				n++;
+			}
+		}
+		if (gap > 0 && n > 1) {
+			max += gap * (n - 1);
+			if (block->style == NULL ||
+			    css_computed_flex_wrap(block->style) ==
+					CSS_FLEX_WRAP_NOWRAP) {
+				min += gap * (n - 1);
+			}
+		}
+	}
+
 	if (max < min) {
 		box_dump(stderr, block, 0, true);
 		assert(0);
 	}
 
-	/* fixed width takes priority */
-	if (block->type != BOX_TABLE_CELL && !lh__box_is_flex_item(block)) {
+	/* fixed width takes priority -- Onyx: a flex item's too. When its width is the
+	 * cross size (a column's item), as for a block; when it is the main size, its
+	 * contributions are the larger of its content's and its width (when definite),
+	 * clamped by its flex base size -- as a maximum if it does not grow, as a
+	 * minimum if it does not shrink (CSS Flexbox 9.9.1): a width: 64px item
+	 * holding a 512 px wide image contributes 64 px, an empty width: 7px one 7 */
+	if (block->type != BOX_TABLE_CELL && block->style != NULL) {
 		bool border_box = bs == CSS_BOX_SIZING_BORDER_BOX;
+		bool flex_main = lh__box_is_flex_item(block) &&
+				lh__flex_main_is_horizontal(block->parent);
 		enum css_max_width_e max_type;
 		enum css_min_width_e min_type;
 		css_unit unit = CSS_UNIT_PX;
 		css_fixed value = 0;
 		int width;
 
-		if (css_computed_width_px(block->style, &content->unit_len_ctx,
-				-1, &width) == CSS_WIDTH_SET) {
+		if (flex_main) {
+			css_fixed grow = 0, shrink = INTTOFIX(1);
+			int base;
+
+			if (css_computed_width_px(block->style,
+					&content->unit_len_ctx, -1, &width) ==
+					CSS_WIDTH_SET && width >= 0) {
+				if (border_box) {
+					int pb = 0;
+					float frac = 0;
+					calculate_mbp_width(&content->unit_len_ctx,
+							block->style, LEFT, false,
+							true, true, &pb, &frac);
+					calculate_mbp_width(&content->unit_len_ctx,
+							block->style, RIGHT, false,
+							true, true, &pb, &frac);
+					width = max(width - pb, 0);
+				}
+				min = max(min, width);
+				max = max(max, width);
+			}
+			if (layout_minmax_flex_base(block,
+					&content->unit_len_ctx, &base)) {
+				css_computed_flex_grow(block->style, &grow);
+				css_computed_flex_shrink(block->style, &shrink);
+				if (grow == 0) {
+					min = min(min, base);
+					max = min(max, base);
+				}
+				if (shrink == 0) {
+					min = max(min, base);
+					max = max(max, base);
+				}
+			}
+		} else if (css_computed_width_px(block->style,
+				&content->unit_len_ctx, -1, &width) ==
+				CSS_WIDTH_SET) {
 			min = max = width;
 			using_max_border_box = border_box;
 			using_min_border_box = border_box;
@@ -2815,7 +2962,8 @@ layout_line(struct box *first,
 					b->padding[RIGHT] +
 					b->border[RIGHT].width +
 					b->margin[RIGHT];
-			space_after = 0;
+			space_after = layout_atomic_space(b, font_func,
+					content);
 			continue;
 		}
 
@@ -2979,6 +3127,7 @@ layout_line(struct box *first,
 			height = b->height;
 
 		x += b->width;
+		space_after = layout_atomic_space(b, font_func, content);
 	}
 
 	/* find new sides using this height */
@@ -3042,8 +3191,11 @@ layout_line(struct box *first,
 
 			space_before = space_after;
 			if (b->object || b->flags & REPLACE_DIM ||
-					b->flags & IFRAME)
-				space_after = 0;
+					b->flags & IFRAME ||
+					b->type == BOX_INLINE_BLOCK ||
+					b->type == BOX_INLINE_FLEX)
+				space_after = layout_atomic_space(b,
+						font_func, content);
 			else if (b->text || b->type == BOX_INLINE_END) {
 				if (b->space == UNKNOWN_WIDTH) {
 					font_plot_style_from_css(
@@ -3341,7 +3493,8 @@ layout_line(struct box *first,
 	for (d = first; d != b; d = d->next) {
 		d->flags &= ~NEW_LINE;
 
-		if (d->type == BOX_INLINE_BLOCK &&
+		if ((d->type == BOX_INLINE_BLOCK ||
+		     d->type == BOX_INLINE_FLEX) &&	/* (Onyx: and flex / grid) */
 				(css_computed_position(d->style) ==
 						CSS_POSITION_ABSOLUTE ||
 				 css_computed_position(d->style) ==
@@ -3366,8 +3519,10 @@ layout_line(struct box *first,
 				used_height = d->height;
 			}
 		} else if ((d->type == BOX_INLINE) ||
-				d->type == BOX_INLINE_BLOCK) {
-			/* replaced inlines and inline-blocks */
+				d->type == BOX_INLINE_BLOCK ||
+				d->type == BOX_INLINE_FLEX) {
+			/* replaced inlines and inline-blocks -- Onyx: and inline-flex
+			 * / inline-grid ones (their height makes the line's too) */
 			d->x += x0;
 			d->y = *y + d->border[TOP].width + d->margin[TOP];
 			h = d->margin[TOP] + d->border[TOP].width +
@@ -5104,6 +5259,7 @@ layout_position_relative(
 	int x, y;	 /* for the offsets resulting from any relative
 			  * positioning on the current block */
 	int fnx, fny;    /* for affsets which apply to flat children of "box" */
+	bool translated;	/* (Onyx: moved by its transform) */
 
 	/**\todo ensure containing box is large enough after moving boxes */
 
@@ -5122,6 +5278,27 @@ layout_position_relative(
 					unit_len_ctx, box, &x, &y);
 		else
 			x = y = 0;
+
+		/* Onyx: a transform's translation moves the box as a relative
+		 * offset does (its neighbours stay where they are); not a
+		 * non-replaced inline's (CSS: they are not transformable) */
+		translated = false;
+		if (box->style && box->type != BOX_INLINE_END &&
+		    (box->type != BOX_INLINE || box->object)) {
+			float tx, ty;
+			int bw = box->border[LEFT].width + box->padding[LEFT] +
+					box->width + box->padding[RIGHT] +
+					box->border[RIGHT].width;
+			int bh = box->border[TOP].width + box->padding[TOP] +
+					box->height + box->padding[BOTTOM] +
+					box->border[BOTTOM].width;
+			if (onyx_box_translate(box->style, unit_len_ctx, bw, bh,
+					&tx, &ty)) {
+				x += (int) (tx < 0 ? tx - 0.5f : tx + 0.5f);
+				y += (int) (ty < 0 ? ty - 0.5f : ty + 0.5f);
+				translated = true;
+			}
+		}
 
 		/* Adjust float coordinates.
 		 * (note float x and y are relative to their block formatting
@@ -5158,9 +5335,9 @@ layout_position_relative(
 		layout_position_relative(unit_len_ctx, box, fn, fnx, fny);
 
 		/* Ignore things we're not interested in. */
-		if (!box->style || (box->style &&
+		if (!translated && (!box->style || (box->style &&
 				css_computed_position(box->style) !=
-				CSS_POSITION_RELATIVE))
+				CSS_POSITION_RELATIVE)))
 			continue;
 
 		box->x += x;

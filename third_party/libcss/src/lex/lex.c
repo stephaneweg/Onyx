@@ -636,6 +636,12 @@ css_error CDCOrIdentOrFunctionOrNPD(css_lexer *lexer, css_token **token)
 			APPEND(lexer, cptr, clen);
 
 			t->type = CSS_TOKEN_CDC;
+		} else if (startNMChar(c)) {
+			/* Onyx: "--" followed by a name character is an IDENT
+			 * (CSS Syntax 3): a custom property's name, --foo */
+			lexer->state = sIDENT;
+			lexer->substate = 0;
+			return IdentOrFunction(lexer, token);
 		} else {
 			/* Remove the '-' we read above */
 			lexer->bytesReadForToken -= 1;

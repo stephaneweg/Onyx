@@ -27,7 +27,8 @@
 // instead of the card's (sample data: tools/tests/desktop_sim/sd); SIM_PIPE: what a spawned
 // program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
-// the pointer for kapi_cursor_pos; SIM_MENU, SIM_RUNNING, SIM_WALL: below.
+// the pointer for kapi_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
+// the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
 // SIM_APPLET=1: the app runs as a Control Panel applet (its arguments "--applet 1 99", the host
 // pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
@@ -240,7 +241,15 @@ static unsigned *resize2 (int w, int h, int *stride)
 }
 static void set_ptr (gui_handler h) { g_ptr = h; }
 static void set_key (gui_handler h) { g_key = h; }
-static void screen_size (int *w, int *h) { if (w) *w = 1024; if (h) *h = 768; }
+/* the screen: 1024x768, or SIM_SCREEN=<w>x<h> (a bigger desktop for a bigger window) */
+static void screen_size (int *w, int *h)
+{
+	int sw = 1024, sh = 768;
+	const char *e = getenv ("SIM_SCREEN");
+	if (e && sscanf (e, "%dx%d", &sw, &sh) != 2) { sw = 1024; sh = 768; }
+	if (w) *w = sw;
+	if (h) *h = sh;
+}
 static int font_w (void) { return 8; }
 static int font_h (void) { return 16; }
 static void h_present (void) {}
@@ -329,7 +338,12 @@ static void step (void)
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "exit")) exit (0);
 }
-static void h_msleep (unsigned ms) { g_ticks += ms / 10 + 1; step (); }
+static void h_msleep (unsigned ms)
+{
+	g_ticks += ms / 10 + 1;
+	if (getenv ("SIM_SLEEP")) usleep (ms * 1000);	// real time (NetSurf's scheduler reads the clock)
+	step ();
+}
 static unsigned h_get_ticks (void) { return g_ticks; }
 static int h_should_exit (void) { return 0; }
 static void yield (void) {}

@@ -45,6 +45,7 @@
 #include "html/box.h"
 #include "html/box_manipulate.h"
 #include "html/box_construct.h"
+#include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
 #include "html/box_normalise.h"
 #include "html/form_internal.h"
@@ -109,8 +110,9 @@ static const box_type box_map[] = {
 	BOX_NONE,            /* CSS_DISPLAY_NONE */
 	BOX_FLEX,            /* CSS_DISPLAY_FLEX */
 	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_FLEX */
-	BOX_BLOCK,           /* CSS_DISPLAY_GRID */
-	BOX_INLINE_BLOCK,    /* CSS_DISPLAY_INLINE_GRID */
+	BOX_FLEX,            /* CSS_DISPLAY_GRID (Onyx: flex-like, layout_grid.c) */
+	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_GRID */
+	BOX_BLOCK,           /* CSS_DISPLAY_CONTENTS (Onyx: as a block, for now) */
 };
 
 
@@ -582,7 +584,8 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 			(css_display == CSS_DISPLAY_INLINE ||
 			 css_display == CSS_DISPLAY_INLINE_BLOCK ||
 			 css_display == CSS_DISPLAY_INLINE_TABLE ||
-			 css_display == CSS_DISPLAY_INLINE_FLEX)) {
+			 css_display == CSS_DISPLAY_INLINE_FLEX ||
+			 css_display == CSS_DISPLAY_INLINE_GRID)) {
 		/* Special case for absolute positioning: make absolute inlines
 		 * into inline block so that the boxes are constructed in an
 		 * inline container as if they were not absolutely positioned.
@@ -599,12 +602,16 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 
 		if (props.containing_block->type == BOX_FLEX ||
 		    props.containing_block->type == BOX_INLINE_FLEX) {
-			/* Blockification */
+			/* Blockification -- Onyx: of an inline element too
+			 * (a link in a flex nav): each child element is a flex
+			 * item of its own; only runs of text share an anonymous
+			 * block (CSS Flexbox 4) */
 			switch (box->type) {
 			case BOX_INLINE_FLEX:
 				box->type = BOX_FLEX;
 				break;
 			case BOX_INLINE_BLOCK:
+			case BOX_INLINE:
 				box->type = BOX_BLOCK;
 				break;
 			default:
@@ -686,6 +693,8 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 	/* Kick off fetch for any background image */
 	if (css_computed_background_image(box->style, &bgimage_uri) ==
 			CSS_BACKGROUND_IMAGE_IMAGE && bgimage_uri != NULL &&
+			/* (Onyx: a gradient is drawn, not fetched) */
+			!onyx_is_gradient_url(lwc_string_data(bgimage_uri)) &&
 			nsoption_bool(background_images) == true) {
 		nsurl *url;
 		nserror error;

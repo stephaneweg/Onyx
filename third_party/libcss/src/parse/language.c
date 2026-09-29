@@ -6,6 +6,7 @@
  */
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <parserutils/utils/stack.h>
@@ -20,6 +21,8 @@
 #include "parse/propstrings.h"
 #include "parse/properties/properties.h"
 #include "parse/properties/utils.h"
+#include "parse/onyx_vars.h"
+#include "parse/onyx_atrules.h"
 
 #include "utils/parserutilserror.h"
 #include "utils/utils.h"
@@ -538,15 +541,50 @@ css_error handleStartAtRule(css_language *c, const parserutils_vector *vector)
 		} else {
 			return CSS_INVALID;
 		}
-	} else if (lwc_string_caseless_isequal(atkeyword->idata, c->strings[MEDIA],
-			&match) == lwc_error_ok && match) {
+	} else if ((lwc_string_caseless_isequal(atkeyword->idata, c->strings[MEDIA],
+			&match) == lwc_error_ok && match) ||
+			(lwc_string_caseless_isequal(atkeyword->idata,
+				c->strings[SUPPORTS], &match) == lwc_error_ok && match) ||
+			(lwc_string_caseless_isequal(atkeyword->idata,
+				c->strings[LAYER], &match) == lwc_error_ok && match) ||
+			(lwc_string_caseless_isequal(atkeyword->idata,
+				c->strings[CONTAINER], &match) == lwc_error_ok && match)) {
 		css_mq_query *media = NULL;
+		css_rule *parent_rule = NULL;
+		context_entry *cur;
 
-		/* any0 = media query */
-		error = css__mq_parse_media_list(
-				c->strings, vector, &ctx, &media);
+		if (lwc_string_caseless_isequal(atkeyword->idata, c->strings[MEDIA],
+				&match) == lwc_error_ok && match) {
+			/* any0 = media query */
+			error = css__mq_parse_media_list(
+					c->strings, vector, &ctx, &media);
+		} else if (lwc_string_caseless_isequal(atkeyword->idata,
+				c->strings[CONTAINER], &match) == lwc_error_ok &&
+				match) {
+			/* Onyx: @container [name] <query>: as a media query */
+			error = css__onyx_container_media(c, vector, &ctx, &media);
+		} else {
+			/* Onyx: @supports <condition> (the rules apply if it holds),
+			 * @layer [names] (the rules apply): as the media "all" */
+			if (lwc_string_caseless_isequal(atkeyword->idata,
+					c->strings[SUPPORTS], &match) == lwc_error_ok &&
+					match && !css__onyx_supports(c, vector, &ctx))
+				return CSS_INVALID;	/* (the block is dropped) */
+			media = calloc(1, sizeof(*media));
+			if (media == NULL)
+				return CSS_NOMEM;
+			media->type = CSS_MEDIA_ALL;
+			error = CSS_OK;
+		}
 		if (error != CSS_OK)
 			return error;
+
+		/* Onyx: nested in a media rule (an @supports in an @media...): its child */
+		cur = parserutils_stack_get_current(c->context);
+		if (cur != NULL && cur->type != CSS_PARSER_START_STYLESHEET &&
+				cur->data != NULL &&
+				((css_rule *) cur->data)->type == CSS_RULE_MEDIA)
+			parent_rule = cur->data;
 
 		error = css__stylesheet_rule_create(c->sheet,
 				CSS_RULE_MEDIA, &rule);
@@ -562,7 +600,7 @@ css_error handleStartAtRule(css_language *c, const parserutils_vector *vector)
 			return error;
 		}
 
-		error = css__stylesheet_add_rule(c->sheet, rule, NULL);
+		error = css__stylesheet_add_rule(c->sheet, rule, parent_rule);
 		if (error != CSS_OK) {
 			css__stylesheet_rule_destroy(c->sheet, rule);
 			return error;
@@ -715,6 +753,9 @@ css_error handleEndBlock(css_language *c, const parserutils_vector *vector)
 	if (rule != NULL && rule->ptype != CSS_RULE_PARENT_STYLESHEET) {
 		if (rule->type == CSS_RULE_SELECTOR)
 			return handleEndRuleset(c, vector);
+		/* Onyx: the end of an at-rule nested in a media rule */
+		if (rule->type == CSS_RULE_MEDIA)
+			return handleEndAtRule(c, vector);
 	}
 
 	return CSS_OK;
@@ -741,6 +782,34 @@ css_error handleBlockContent(css_language *c, const parserutils_vector *vector)
 		return CSS_INVALID;
 
 	if (rule->type == CSS_RULE_MEDIA) {
+		/* Onyx: an at-rule nested in the media rule (@media, @supports,
+		 * @layer, @container): a media rule, child of this one */
+		int32_t k = 0;
+		const css_token *first;
+		consumeWhitespace(vector, &k);
+		first = parserutils_vector_peek(vector, k);
+		if (first != NULL && first->type == CSS_TOKEN_ATKEYWORD) {
+			css_error error;
+			parserutils_vector *at = NULL;
+			const css_token *t;
+			if (k == 0)
+				return handleStartAtRule(c, vector);
+			/* (without the leading whitespace) */
+			if (parserutils_vector_create(sizeof(css_token), 16, &at) !=
+					PARSERUTILS_OK)
+				return CSS_NOMEM;
+			while ((t = parserutils_vector_iterate(vector, &k)) != NULL) {
+				css_token tok = *t;
+				if (parserutils_vector_append(at, &tok) != PARSERUTILS_OK) {
+					parserutils_vector_destroy(at);
+					return CSS_NOMEM;
+				}
+			}
+			error = handleStartAtRule(c, at);
+			parserutils_vector_destroy(at);
+			return error;
+		}
+
 		/* Expect rulesets */
 		return handleStartRuleset(c, vector);
 	} else {
@@ -1272,6 +1341,104 @@ css_error parseNth(css_language *c,
 	return CSS_OK;
 }
 
+/* Onyx: the argument of :is() / :where() / :not(): a list of complex selectors, up to the
+ * closing ')' (left for the caller). Forgiving (:is, :where): a selector that does not parse
+ * is skipped; else it invalidates the list. Pseudo elements are not allowed. */
+static css_error onyx_parse_selector_list_arg(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx, bool where,
+		bool forgiving, css_onyx_selector_list **out)
+{
+	css_selector *sel[64];
+	uint32_t n = 0, i, spec = 0;
+	css_onyx_selector_list *list;
+	const css_token *t;
+	css_error error;
+
+	for (;;) {
+		css_selector *s = NULL;
+		bool ok;
+
+		consumeWhitespace(vector, ctx);
+		error = parseSelector(c, vector, ctx, &s);
+		ok = (error == CSS_OK);
+		if (ok) {
+			/* no pseudo element in there */
+			const css_selector *k;
+			for (k = s; k != NULL && ok; k = k->combinator) {
+				const css_selector_detail *d = &k->data;
+				for (;;) {
+					if (d->type == CSS_SELECTOR_PSEUDO_ELEMENT)
+						ok = false;
+					if (!d->next)
+						break;
+					d++;
+				}
+			}
+			consumeWhitespace(vector, ctx);
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t == NULL || !(tokenIsChar(t, ',') || tokenIsChar(t, ')')))
+				ok = false;
+		} else if (error == CSS_NOMEM) {
+			goto fail;
+		}
+
+		if (ok && n < 64) {
+			sel[n++] = s;
+			if (s->specificity > spec)
+				spec = s->specificity;
+		} else {
+			if (s != NULL)
+				css__stylesheet_selector_destroy(c->sheet, s);
+			if (!forgiving) {
+				error = CSS_INVALID;
+				goto fail;
+			}
+			/* skip this selector: to the next ',' or the ')' (balanced) */
+			{
+				int depth = 0;
+				while ((t = parserutils_vector_peek(vector, *ctx)) != NULL) {
+					if (depth == 0 && (tokenIsChar(t, ',') ||
+							tokenIsChar(t, ')')))
+						break;
+					if (t->type == CSS_TOKEN_FUNCTION ||
+							tokenIsChar(t, '('))
+						depth++;
+					else if (tokenIsChar(t, ')'))
+						depth--;
+					parserutils_vector_iterate(vector, ctx);
+				}
+			}
+		}
+
+		t = parserutils_vector_peek(vector, *ctx);
+		if (t != NULL && tokenIsChar(t, ',')) {
+			parserutils_vector_iterate(vector, ctx);
+			continue;
+		}
+		if (t != NULL && tokenIsChar(t, ')'))
+			break;
+		error = CSS_INVALID;
+		goto fail;
+	}
+
+	list = malloc(sizeof(*list) + n * sizeof(css_selector *));
+	if (list == NULL) {
+		error = CSS_NOMEM;
+		goto fail;
+	}
+	list->n = n;
+	list->specificity = where ? 0 : spec;
+	for (i = 0; i < n; i++)
+		list->sel[i] = sel[i];
+	*out = list;
+	return CSS_OK;
+
+fail:
+	for (i = 0; i < n; i++)
+		css__stylesheet_selector_destroy(c->sheet, sel[i]);
+	return error;
+}
+
 css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 		int32_t *ctx, bool in_not, css_selector_detail *specific)
 {
@@ -1306,6 +1473,15 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 		{ DISABLED, CSS_SELECTOR_PSEUDO_CLASS },
 		{ CHECKED, CSS_SELECTOR_PSEUDO_CLASS },
 		{ NOT, CSS_SELECTOR_PSEUDO_CLASS },
+		/* Onyx: selector lists, and aliases */
+		{ PC_IS, CSS_SELECTOR_PSEUDO_CLASS },
+		{ PC_WHERE, CSS_SELECTOR_PSEUDO_CLASS },
+		{ PC_MATCHES, CSS_SELECTOR_PSEUDO_CLASS },
+		{ PC_WEBKIT_ANY, CSS_SELECTOR_PSEUDO_CLASS },
+		{ PC_MOZ_ANY, CSS_SELECTOR_PSEUDO_CLASS },
+		{ FOCUS_WITHIN, CSS_SELECTOR_PSEUDO_CLASS },
+		{ FOCUS_VISIBLE, CSS_SELECTOR_PSEUDO_CLASS },
+		{ ANY_LINK, CSS_SELECTOR_PSEUDO_CLASS },
 
 		{ FIRST_LINE, CSS_SELECTOR_PSEUDO_ELEMENT },
 		{ FIRST_LETTER, CSS_SELECTOR_PSEUDO_ELEMENT },
@@ -1371,12 +1547,44 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 			pseudo_lut[lut_idx].index == NOT))
 		return CSS_INVALID;
 
+	/* Onyx: :focus-within / :focus-visible match as :focus, :any-link as :link */
+	switch (pseudo_lut[lut_idx].index) {
+	case FOCUS_WITHIN:
+	case FOCUS_VISIBLE:
+		qname.name = c->strings[FOCUS];
+		break;
+	case ANY_LINK:
+		qname.name = c->strings[LINK];
+		break;
+	default:
+		break;
+	}
+	if (token->type == CSS_TOKEN_IDENT) {
+		int idx = pseudo_lut[lut_idx].index;
+		if (idx == PC_IS || idx == PC_WHERE || idx == PC_MATCHES ||
+				idx == PC_WEBKIT_ANY || idx == PC_MOZ_ANY)
+			return CSS_INVALID;	/* (functions only) */
+	}
+
 	if (token->type == CSS_TOKEN_FUNCTION) {
 		int fun_type = pseudo_lut[lut_idx].index;
+		int32_t arg_ctx;
 
 		consumeWhitespace(vector, ctx);
+		arg_ctx = *ctx;
 
-		if (fun_type == LANG) {
+		if (fun_type == PC_IS || fun_type == PC_WHERE ||
+				fun_type == PC_MATCHES || fun_type == PC_WEBKIT_ANY ||
+				fun_type == PC_MOZ_ANY) {
+			/* Onyx: :is(<forgiving selector list>), :where() */
+			error = onyx_parse_selector_list_arg(c, vector, ctx,
+					fun_type == PC_WHERE, true,
+					&detail_value.list);
+			if (error != CSS_OK)
+				return error;
+			qname.name = c->strings[PC_IS];
+			value_type = CSS_SELECTOR_DETAIL_VALUE_LIST;
+		} else if (fun_type == LANG) {
 			/* IDENT */
 			token = parserutils_vector_iterate(vector, ctx);
 			if (token == NULL || token->type != CSS_TOKEN_IDENT)
@@ -1440,11 +1648,29 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 			negate = true;
 
 			consumeWhitespace(vector, ctx);
+
+			/* Onyx: :not(<complex selector list>) -- more than one
+			 * simple selector: as :not(:is(...)) */
+			token = parserutils_vector_peek(vector, *ctx);
+			if (token == NULL || tokenIsChar(token, ')') == false) {
+				*ctx = arg_ctx;
+				error = onyx_parse_selector_list_arg(c, vector, ctx,
+						false, false, &detail_value.list);
+				if (error != CSS_OK)
+					return error;
+				qname.name = c->strings[PC_IS];
+				type = CSS_SELECTOR_PSEUDO_CLASS;
+				value_type = CSS_SELECTOR_DETAIL_VALUE_LIST;
+			}
 		}
 
 		token = parserutils_vector_iterate(vector, ctx);
-		if (token == NULL || tokenIsChar(token, ')') == false)
+		if (token == NULL || tokenIsChar(token, ')') == false) {
+			if (value_type == CSS_SELECTOR_DETAIL_VALUE_LIST)
+				css__onyx_selector_list_destroy(c->sheet,
+						detail_value.list);
 			return CSS_INVALID;
+		}
 	}
 
 	return css__stylesheet_selector_detail_init(c->sheet,
@@ -1535,7 +1761,8 @@ css_error parseSelectorSpecifics(css_language *c,
 			tokenIsChar(token, '+') == false &&
 			tokenIsChar(token, '>') == false &&
 			tokenIsChar(token, '~') == false &&
-			tokenIsChar(token, ',') == false) {
+			tokenIsChar(token, ',') == false &&
+			tokenIsChar(token, ')') == false) {	/* Onyx: :is(...) */
 		error = parseAppendSpecific(c, vector, ctx, parent);
 		if (error != CSS_OK)
 			return error;
@@ -1733,7 +1960,8 @@ css_error parseSelector(css_language *c, const parserutils_vector *vector,
 		return error;
 
 	while ((token = parserutils_vector_peek(vector, *ctx)) != NULL &&
-			tokenIsChar(token, ',') == false) {
+			tokenIsChar(token, ',') == false &&
+			tokenIsChar(token, ')') == false) {	/* Onyx: :is(...) */
 		css_combinator comb = CSS_COMBINATOR_NONE;
 		css_selector *other = NULL;
 
@@ -1752,7 +1980,8 @@ css_error parseSelector(css_language *c, const parserutils_vector *vector,
 		if (comb == CSS_COMBINATOR_ANCESTOR &&
 				((token = parserutils_vector_peek(vector,
 					*ctx)) == NULL ||
-				tokenIsChar(token, ',')))
+				tokenIsChar(token, ',') ||
+				tokenIsChar(token, ')')))	/* Onyx */
 			continue;
 
 		error = parseSimpleSelector(c, vector, ctx, &other);
@@ -1850,6 +2079,10 @@ css_error parseProperty(css_language *c, const css_token *property,
 	css_style *style = NULL;
 	const css_token *token;
 
+	/* Onyx: a custom property, --name: value (src/parse/onyx_vars.c) */
+	if (css__onyx_is_custom_name(property->idata))
+		return css__onyx_parse_custom(c, property, vector, ctx, rule);
+
 	/* Find property index */
 	/** \todo improve on this linear search */
 	for (i = FIRST_PROP; i <= LAST_PROP; i++) {
@@ -1865,6 +2098,11 @@ css_error parseProperty(css_language *c, const css_token *property,
 	/* Get handler */
 	handler = property_handlers[i - FIRST_PROP];
 	assert(handler != NULL);
+
+	/* Onyx: a value using var() is kept as text until the cascade knows the variables */
+	if (css__onyx_value_has_var(c, vector, *ctx))
+		return css__onyx_parse_var_decl(c, i - FIRST_PROP, handler, vector, ctx,
+				rule);
 
 	/* allocate style */
 	error = css__stylesheet_style_create(c->sheet, &style);

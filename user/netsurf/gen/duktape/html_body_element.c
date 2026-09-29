@@ -34,9 +34,9 @@ struct dom_html_collection;
 struct dom_html_br_element;
 
 
-#include "/mnt/c/Temp/Zircon/user/netsurf/gen/duktape/binding.h"
-#include "/mnt/c/Temp/Zircon/user/netsurf/gen/duktape/private.h"
-#include "/mnt/c/Temp/Zircon/user/netsurf/gen/duktape/prototype.h"
+#include "binding.h"
+#include "private.h"
+#include "prototype.h"
 
 #include "javascript/duktape/dukky.h"
 #line 12 "HTMLBodyElement.bnd"

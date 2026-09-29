@@ -3,13 +3,17 @@
  *
  * libnsfb is NetSurf's framebuffer abstraction: its software plotters write pixels into
  * a surface's buffer, and a "surface" backend supplies that buffer + flushes it + feeds
- * input. This backend makes the Onyx window CONTENT CANVAS the libnsfb surface:
+ * input. This backend makes the PAGE AREA of NetSurf's Onyx window the libnsfb surface: the
+ * window is user/netsurf/onyx_chrome.cpp's (a wtk window, the native toolbar in its top band),
+ * the page is its canvas below the band:
  *
- *   - initialise : kapi_create_window() -> the 0x00RRGGBB canvas IS nsfb->ptr.
- *   - update     : kapi_present() flushes the canvas to screen.
- *   - input      : Onyx delivers input via CALLBACKS (kapi_set_pointer/key_handler +
- *                  kapi_pump_events); we translate them into a ring of nsfb_event_t and
- *                  serve libnsfb's poll-style nsfb_event()/input() from it.
+ *   - initialise : onyx_chrome_open() -> the page's first pixel IS nsfb->ptr (the window's
+ *                  stride: linelen).
+ *   - update     : onyx_chrome_present() flushes the window to screen.
+ *   - input      : the chrome owns the kapi pointer / key handlers; it hands the page's events
+ *                  to ours (their y relative to the page), which we translate into a ring of
+ *                  nsfb_event_t served to libnsfb's poll-style nsfb_event()/input(). A resize
+ *                  of the window (maximise) becomes an NSFB_EVENT_RESIZE.
  *
  * Format: NSFB_FMT_XRGB8888. On little-endian the 32bpp-xrgb8888 plotter packs a colour
  * into a 0x00RRGGBB word -- exactly the Onyx canvas layout, so no R/B swap is needed.
@@ -31,6 +35,7 @@
 #include "plot.h"
 
 #include "kapi.h"		/* Onyx app ABI: windows, present, input handlers */
+#include "netsurf/onyx_chrome.h"	/* the window + its native toolbar */
 
 #define UNUSED(x) ((x) = (x))
 
@@ -114,6 +119,27 @@ static void onyx_pointer(unsigned long sender, int event, long value)
 		ring_push(&e);
 		break;
 	}
+	case GUI_EVENT_PTR_WHEEL: {
+		/* the wheel: NetSurf scrolls on buttons 4 (up) and 5 (down), 100 px a notch, by
+		 * moving the pixels already drawn and drawing the band that comes in (fb_pan) */
+		int n = GUI_PTR_WHEEL(value);	/* notches: + forward (up), - back (down) */
+		enum nsfb_key_code_e k = (n > 0) ? NSFB_KEY_MOUSE_4 : NSFB_KEY_MOUSE_5;
+		if (n < 0)
+			n = -n;
+		e.type = NSFB_EVENT_MOVE_ABSOLUTE;	/* (where: the element under it may scroll) */
+		e.value.vector.x = GUI_PTR_X(value);
+		e.value.vector.y = GUI_PTR_Y(value);
+		e.value.vector.z = 0;
+		ring_push(&e);
+		while (n-- > 0) {
+			e.type = NSFB_EVENT_KEY_DOWN;
+			e.value.keycode = k;
+			ring_push(&e);
+			e.type = NSFB_EVENT_KEY_UP;
+			ring_push(&e);
+		}
+		break;
+	}
 	default:
 		break;
 	}
@@ -155,10 +181,17 @@ onyx_set_geometry(nsfb_t *nsfb, int width, int height, enum nsfb_format_e format
 	nsfb->format = format;
 	select_plotters(nsfb);
 
-	if (nsfb->ptr != NULL) {		/* window already up -> resize it */
-		unsigned *c = kapi_resize_window(nsfb->width, nsfb->height);
-		if (c != NULL)
+	if (nsfb->ptr != NULL) {
+		/* the window was resized by the chrome (maximise): take the page as it is now */
+		int stride, w, h;
+		unsigned *c = onyx_chrome_page(&stride, &w, &h);
+		if (c != NULL) {
 			nsfb->ptr = (uint8_t *) c;
+			nsfb->width = w;
+			nsfb->height = h;
+			nsfb->linelen = stride * 4;
+		}
+		return 0;
 	}
 	nsfb->linelen = (nsfb->width * nsfb->bpp) / 8;
 	return 0;
@@ -167,22 +200,22 @@ onyx_set_geometry(nsfb_t *nsfb, int width, int height, enum nsfb_format_e format
 static int onyx_initialise(nsfb_t *nsfb)
 {
 	unsigned *canvas;
+	int stride;
 
 	if (nsfb->width <= 0 || nsfb->height <= 0)
 		return -1;
 
-	canvas = kapi_create_window(nsfb->width, nsfb->height, "NetSurf");
+	canvas = onyx_chrome_open(nsfb->width, nsfb->height, &stride);
 	if (canvas == NULL)
 		return -1;
 
 	nsfb->ptr = (uint8_t *) canvas;
-	nsfb->linelen = (nsfb->width * nsfb->bpp) / 8;	/* bpp set by select_plotters */
+	nsfb->linelen = stride * 4;		/* the window's rows (bpp 32: select_plotters) */
 
 	ring.head = ring.tail = 0;
 	nsfb->surface_priv = &ring;
 
-	kapi_set_pointer_handler(onyx_pointer);
-	kapi_set_key_handler(onyx_key);
+	onyx_chrome_set_page_handlers(onyx_pointer, onyx_key);
 	return 0;
 }
 
@@ -198,7 +231,7 @@ static int onyx_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 {
 	UNUSED(nsfb);
 	UNUSED(box);			/* no dirty-rect kapi yet: present the whole canvas */
-	kapi_present();
+	onyx_chrome_present();
 	return 0;
 }
 
@@ -206,13 +239,28 @@ static bool onyx_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
 {
 	UNUSED(nsfb);
 
-	kapi_pump_events();		/* dispatch pending Onyx events -> our handlers */
+	/* dispatch pending Onyx events: the band's to wtk, the page's -> our handlers */
+	if (onyx_chrome_pump()) {
+		int w, h;
+		onyx_chrome_page(NULL, &w, &h);
+		event->type = NSFB_EVENT_RESIZE;	/* the window was resized */
+		event->value.resize.w = w;
+		event->value.resize.h = h;
+		return true;
+	}
 
 	if (ring.tail == ring.head && timeout != 0) {
 		/* nothing yet: wait a little (capped) and pump again. -1 == forever. */
 		int slice = (timeout < 0 || timeout > 20) ? 20 : timeout;
 		kapi_msleep(slice);
-		kapi_pump_events();
+		if (onyx_chrome_pump()) {
+			int w, h;
+			onyx_chrome_page(NULL, &w, &h);
+			event->type = NSFB_EVENT_RESIZE;
+			event->value.resize.w = w;
+			event->value.resize.h = h;
+			return true;
+		}
 	}
 
 	if (ring.tail == ring.head) {

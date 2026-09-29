@@ -266,11 +266,12 @@ static inline css_fixed css_unit__px_per_unit(
 				viewport_height,
 				viewport_width);
 
+	/* Onyx: vh is a hundredth of the viewport's height, vw of its width (were swapped) */
 	case CSS_UNIT_VH:
-		return FDIV(viewport_width, F_100);
+		return FDIV(viewport_height, F_100);
 
 	case CSS_UNIT_VW:
-		return FDIV(viewport_height, F_100);
+		return FDIV(viewport_width, F_100);
 
 	default:
 		return 0;

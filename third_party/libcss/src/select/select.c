@@ -24,6 +24,8 @@
 #include "select/propset.h"
 #include "select/font_face.h"
 #include "select/select.h"
+#include "select/onyx_vars.h"
+#include "parse/onyx_vars.h"
 #include "select/strings.h"
 #include "select/unit.h"
 #include "utils/parserutilserror.h"
@@ -176,6 +178,8 @@ static void css__destroy_node_data(struct css_node_data *node_data)
 		}
 	}
 
+	css__onyx_vars_unref(node_data->onyx_vars);	/* Onyx */
+
 	free(node_data);
 }
 
@@ -275,6 +279,9 @@ css_error css_select_ctx_create(css_select_ctx **result)
  */
 css_error css_select_ctx_destroy(css_select_ctx *ctx)
 {
+	/* Onyx: the parsed var() values cached for the selections (select/onyx_vars.c) */
+	css__onyx_parsed_flush();
+
 	if (ctx == NULL)
 		return CSS_BADPARM;
 
@@ -1017,6 +1024,8 @@ printf("      \t%s\tno share: inline style\n");
 static void css_select__finalise_selection_state(
 		css_select_state *state)
 {
+	css__onyx_state_destroy(state);		/* Onyx: var() */
+
 	if (state->results != NULL) {
 		css_select_results_destroy(state->results);
 	}
@@ -1301,6 +1310,8 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 			state.results->styles[i] =
 					css__computed_style_ref(styles[i]);
 		}
+		/* Onyx: a sibling's style: its custom properties too */
+		state.node_data->onyx_vars = css__onyx_vars_ref(share->onyx_vars);
 #ifdef DEBUG_STYLE_SHARING
 		printf("style:\t%s\tSHARED!\n",
 				lwc_string_data(state.element.name));
@@ -1404,6 +1415,11 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 				goto cleanup;
 		}
 	}
+
+	/* Onyx: the element's custom properties; its values with var() completed */
+	error = css__onyx_resolve(&state, parent);
+	if (error != CSS_OK)
+		goto cleanup;
 
 	/* Fix up any remaining unset properties. */
 
@@ -2490,6 +2506,69 @@ static inline bool match_nth(int32_t a, int32_t b, int32_t count)
 	}
 }
 
+/* Onyx: does the node match the complex selector (its whole chain)? */
+static css_error onyx_match_complex(css_select_ctx *ctx, const css_selector *selector,
+		css_select_state *state, void *node, bool *match)
+{
+	const css_selector *s = selector;
+	css_error error;
+	bool m = false;
+
+	*match = false;
+
+	/* the subject's element name (the hash only looked at the outer selector) */
+	if (s->data.qname.name != ctx->str.universal) {
+		error = state->handler->node_has_name(state->pw, node,
+				&s->data.qname, &m);
+		if (error != CSS_OK || m == false)
+			return error;
+	}
+	error = match_details(ctx, node, &s->data, state, &m, NULL);
+	if (error != CSS_OK || m == false)
+		return error;
+
+	while (s->data.comb != CSS_COMBINATOR_NONE) {
+		void *next_node = NULL;
+		bool rejected_by_cache = false;
+
+		if (s->combinator->data.qname.name != ctx->str.universal) {
+			error = match_named_combinator(ctx, s->data.comb,
+					s->combinator, state, node, &next_node);
+		} else {
+			error = match_universal_combinator(ctx, s->data.comb,
+					s->combinator, state, node, false,
+					&rejected_by_cache, &next_node);
+		}
+		if (error != CSS_OK)
+			return error;
+		if (next_node == NULL)
+			return CSS_OK;
+
+		s = s->combinator;
+		node = next_node;
+	}
+
+	*match = true;
+	return CSS_OK;
+}
+
+/* Onyx: does the node match one of the list's selectors? */
+static css_error onyx_match_list(css_select_ctx *ctx, void *node,
+		const css_onyx_selector_list *list, css_select_state *state,
+		bool *match)
+{
+	css_error error;
+	uint32_t i;
+
+	*match = false;
+	for (i = 0; i < list->n; i++) {
+		error = onyx_match_complex(ctx, list->sel[i], state, node, match);
+		if (error != CSS_OK || *match)
+			return error;
+	}
+	return CSS_OK;
+}
+
 css_error match_detail(css_select_ctx *ctx, void *node,
 		const css_selector_detail *detail, css_select_state *state,
 		bool *match, css_pseudo_element *pseudo_element)
@@ -2517,6 +2596,13 @@ css_error match_detail(css_select_ctx *ctx, void *node,
 				detail->qname.name, match);
 		break;
 	case CSS_SELECTOR_PSEUDO_CLASS:
+		/* Onyx: :is() / :where() / :not() of a selector list */
+		if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_LIST) {
+			error = onyx_match_list(ctx, node, detail->value.list,
+					state, match);
+			break;
+		}
+
 		error = state->handler->node_is_root(state->pw, node, &is_root);
 		if (error != CSS_OK)
 			return error;
@@ -2751,7 +2837,12 @@ css_error cascade_style(const css_style *style, css_select_state *state)
 
 		op = getOpcode(opv);
 
-		error = prop_dispatch[op].cascade(opv, &s, state);
+		if (op >= CSS_N_PROPERTIES) {
+			/* Onyx: a custom property, a value with var() */
+			error = css__onyx_cascade(opv, &s, state);
+		} else {
+			error = prop_dispatch[op].cascade(opv, &s, state);
+		}
 		if (error != CSS_OK)
 			return error;
 	}
@@ -2759,10 +2850,37 @@ css_error cascade_style(const css_style *style, css_select_state *state)
 	return CSS_OK;
 }
 
+/* Onyx: cascade_style for select/onyx_vars.c */
+css_error css__select_cascade_style(const css_style *style, css_select_state *state)
+{
+	return cascade_style(style, state);
+}
+
 bool css__outranks_existing(uint16_t op, bool important, css_select_state *state,
 		enum flag_value explicit_default)
 {
-	prop_state *existing = &state->props[op][state->current_pseudo];
+	struct css_onyx_state *onyx = state->onyx;
+
+	/* Onyx: while a var() value is completed, only its own pending longhands take it */
+	if (onyx != NULL && onyx->filter != 0 &&
+			onyx->pending_of[op][state->current_pseudo] != onyx->filter)
+		return false;
+
+	if (css__outranks_prop_state(&state->props[op][state->current_pseudo],
+			important, state, explicit_default) == false)
+		return false;
+
+	/* Onyx: this declaration wins the property: a var() value it replaces is no longer
+	 * pending (css__onyx_cascade marks it again when it is one) */
+	if (onyx != NULL)
+		onyx->pending_of[op][state->current_pseudo] = 0;
+
+	return true;
+}
+
+bool css__outranks_prop_state(prop_state *existing, bool important,
+		css_select_state *state, enum flag_value explicit_default)
+{
 	bool outranks = false;
 
 	/* Sorting on origin & importance gives the following:

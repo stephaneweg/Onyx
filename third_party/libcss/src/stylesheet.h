@@ -58,8 +58,16 @@ typedef enum css_combinator {
 
 typedef enum css_selector_detail_value_type {
 	CSS_SELECTOR_DETAIL_VALUE_STRING,
-	CSS_SELECTOR_DETAIL_VALUE_NTH
+	CSS_SELECTOR_DETAIL_VALUE_NTH,
+	CSS_SELECTOR_DETAIL_VALUE_LIST		/* Onyx: a selector list */
 } css_selector_detail_value_type;
+
+/** Onyx: the argument of :is() / :where() / :not(): a list of complex selectors */
+typedef struct css_onyx_selector_list {
+	uint32_t n;
+	uint32_t specificity;		/**< its most specific selector's; 0 for :where() */
+	css_selector *sel[];
+} css_onyx_selector_list;
 
 typedef union css_selector_detail_value {
 	lwc_string *string;		/**< Interned string, or NULL */
@@ -67,6 +75,7 @@ typedef union css_selector_detail_value {
 		int32_t a;
 		int32_t b;
 	} nth;				/**< Data for x = an + b */
+	css_onyx_selector_list *list;	/**< Onyx: :is() / :where() / :not() list */
 } css_selector_detail_value;
 
 typedef struct css_selector_detail {
@@ -77,7 +86,7 @@ typedef struct css_selector_detail {
 		     comb       : 3,		/**< Type of combinator */
 		     next       : 1,		/**< Another selector detail
 						 * follows */
-		     value_type : 1,		/**< Type of value field */
+		     value_type : 2,		/**< Type of value field */
 		     negate     : 1;		/**< Detail match is inverted */
 } css_selector_detail;
 
@@ -284,6 +293,8 @@ css_error css__stylesheet_selector_create(css_stylesheet *sheet,
 		css_qname *qname, css_selector **selector);
 css_error css__stylesheet_selector_destroy(css_stylesheet *sheet,
 		css_selector *selector);
+void css__onyx_selector_list_destroy(css_stylesheet *sheet,
+		css_onyx_selector_list *list);
 
 css_error css__stylesheet_selector_detail_init(css_stylesheet *sheet,
 		css_selector_type type, css_qname *qname,

@@ -63,6 +63,10 @@ NSOPTION_STRING(fb_face_monospace_bold, NULL)
 NSOPTION_STRING(fb_face_cursive, NULL)
 NSOPTION_STRING(fb_face_fantasy, NULL)
 
+/* Onyx: the file of the pages visited (the global history, the History dialog), as the
+ * other frontends' url_file */
+NSOPTION_STRING(url_file, NULL)
+
 /*
  * Local Variables:
  * c-basic-offset:8

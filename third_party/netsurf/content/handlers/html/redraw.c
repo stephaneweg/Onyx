@@ -58,6 +58,7 @@
 
 #include "html/box.h"
 #include "html/box_inspect.h"
+#include "html/onyx_paint.h"	/* Onyx: radii, shadows, gradients */
 #include "html/box_manipulate.h"
 #include "html/font.h"
 #include "html/form_internal.h"
@@ -84,6 +85,10 @@ static bool html_redraw_box_has_background(struct box *box)
 		css_computed_background_color(box->style, &colour);
 
 		if (nscss_color_is_transparent(colour) == false)
+			return true;
+
+		/* Onyx: a gradient (not fetched: box->background is NULL) */
+		if (onyx_background_gradient(box->style) != NULL)
 			return true;
 	}
 
@@ -1248,6 +1253,10 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	enum css_overflow_e overflow_y = CSS_OVERFLOW_VISIBLE;
 	dom_exception exc;
 	dom_html_element_type tag_type;
+	/* Onyx: CSS3 painting -- the border box, rounded; the box-shadow */
+	struct onyx_rrect orr;
+	bool rounded = false, has_shadow = false, round_clipped = false;
+	struct onyx_box_shadow shadow;
 
 
 	if (html_redraw_printing && (box->flags & PRINTED))
@@ -1362,10 +1371,38 @@ bool html_redraw_box(const html_content *html, struct box *box,
 		}
 	}
 
-	/* return if the rectangle is completely outside the clip rectangle */
-	if (clip->y1 < r.y0 || r.y1 < clip->y0 ||
-			clip->x1 < r.x0 || r.x1 < clip->x0)
-		return true;
+	/* Onyx: the border box, its corners' radii, its shadow (block-level boxes and
+	 * replaced ones: not an inline's pieces) */
+	if (box->style != NULL && ctx->plot->onyx_shape != NULL &&
+	    box->type != BOX_TEXT && box->type != BOX_INLINE_END &&
+	    box->type != BOX_BR &&
+	    (box->type != BOX_INLINE || box->object)) {
+		orr.x0 = x - border_left;
+		orr.y0 = y - border_top;
+		orr.x1 = x + padding_width + border_right;
+		orr.y1 = y + padding_height + border_bottom;
+		rounded = onyx_box_radii(box->style, &html->unit_len_ctx, scale, &orr);
+		has_shadow = onyx_box_shadow(box->style, &html->unit_len_ctx, scale,
+				&shadow) && !shadow.inset;
+	}
+
+	/* return if the rectangle is completely outside the clip rectangle --
+	 * Onyx: its shadow included */
+	{
+		struct rect rc = r;
+		if (has_shadow) {
+			int e = (int) ceilf(fabsf(shadow.x) + fabsf(shadow.y) +
+					shadow.blur * 1.5f +
+					(shadow.spread > 0 ? shadow.spread : 0) + 2);
+			rc.x0 -= e;
+			rc.y0 -= e;
+			rc.x1 += e;
+			rc.y1 += e;
+		}
+		if (clip->y1 < rc.y0 || rc.y1 < clip->y0 ||
+				clip->x1 < rc.x0 || rc.x1 < clip->x0)
+			return true;
+	}
 
 	/*if the rectangle is under the page bottom but it can fit in a page,
 	don't print it now*/
@@ -1400,6 +1437,26 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	if ((ctx->plot->group_start) &&
 	    (ctx->plot->group_start(ctx,"vis box") != NSERROR_OK)) {
 		return false;
+	}
+
+	/* Onyx: the box-shadow, under the box (and not where the box is), in the
+	 * parent's clip */
+	if (has_shadow) {
+		struct onyx_shape sh;
+
+		memset(&sh, 0, sizeof sh);
+		onyx_rrect_outset(&orr, shadow.spread, &sh.outer);
+		sh.outer.x0 += shadow.x;
+		sh.outer.x1 += shadow.x;
+		sh.outer.y0 += shadow.y;
+		sh.outer.y1 += shadow.y;
+		sh.blur = shadow.blur;
+		sh.hole = true;
+		sh.hole_rect = orr;
+		sh.paint.colour = shadow.colour;
+		if (ctx->plot->clip(ctx, clip) != NSERROR_OK ||
+		    ctx->plot->onyx_shape(ctx, &sh) != NSERROR_OK)
+			return false;
 	}
 
 	if (box->style != NULL &&
@@ -1443,8 +1500,10 @@ bool html_redraw_box(const html_content *html, struct box *box,
 			return false;
 
 	} else if (box->type == BOX_BLOCK || box->type == BOX_INLINE_BLOCK ||
+			box->type == BOX_FLEX || box->type == BOX_INLINE_FLEX ||
 			box->type == BOX_TABLE_CELL || box->object) {
-		/* find intersection of clip rectangle and box */
+		/* find intersection of clip rectangle and box (Onyx: and a flex /
+		 * grid container's) */
 		if (r.x0 < clip->x0) r.x0 = clip->x0;
 		if (r.y0 < clip->y0) r.y0 = clip->y0;
 		if (clip->x1 < r.x1) r.x1 = clip->x1;
@@ -1512,10 +1571,54 @@ bool html_redraw_box(const html_content *html, struct box *box,
 		}
 		/* valid clipping rectangles only */
 		if ((p.x0 < p.x1) && (p.y0 < p.y1)) {
+			/* Onyx: a rounded box's background is clipped to its
+			 * corners; a gradient is painted over its colour */
+			bool rclip = rounded && box->parent != NULL &&
+					ctx->plot->onyx_round_clip != NULL;
+			const char *grad = ctx->plot->onyx_shape != NULL ?
+					onyx_background_gradient(bg_box->style) : NULL;
+
+			if (rclip && (ctx->plot->clip(ctx, &p) != NSERROR_OK ||
+			    ctx->plot->onyx_round_clip(ctx, &orr) != NSERROR_OK))
+				return false;
 			/* plot background */
 			if (!html_redraw_background(x, y, box, scale, &p,
 					&current_background_color, bg_box,
 					&html->unit_len_ctx, ctx))
+				return false;
+			if (grad != NULL) {
+				/* its box: the padding box (the root's: its margin
+				 * box, the canvas) */
+				struct onyx_gradient g;
+				float gx = x, gy = y, gw = padding_width,
+					gh = padding_height;
+				if (!box->parent) {
+					gx = p.x0 < x ? p.x0 : x;
+					gy = y - (box->margin[TOP] + border_top) * scale;
+					gw = (box->margin[LEFT] + box->margin[RIGHT]) *
+						scale + padding_width;
+					gh = (box->margin[TOP] + box->margin[BOTTOM]) *
+						scale + padding_height;
+					if (gh < p.y1 - gy)
+						gh = p.y1 - gy;
+				}
+				if (onyx_gradient_resolve(grad, bg_box->style,
+						&html->unit_len_ctx, scale,
+						gx, gy, gw, gh, &g)) {
+					struct onyx_shape sh;
+					memset(&sh, 0, sizeof sh);
+					sh.outer.x0 = p.x0;
+					sh.outer.y0 = p.y0;
+					sh.outer.x1 = p.x1;
+					sh.outer.y1 = p.y1;
+					sh.paint.gradient = &g;
+					if (ctx->plot->clip(ctx, &p) != NSERROR_OK ||
+					    ctx->plot->onyx_shape(ctx, &sh) != NSERROR_OK)
+						return false;
+				}
+			}
+			if (rclip && (ctx->plot->clip(ctx, &p) != NSERROR_OK ||
+			    ctx->plot->onyx_round_clip(ctx, NULL) != NSERROR_OK))
 				return false;
 			/* restore previous graphics window */
 			if (ctx->plot->clip(ctx, &r) != NSERROR_OK)
@@ -1534,7 +1637,28 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	       box->gadget->type == GADGET_TEXTBOX ||
 	       box->gadget->type == GADGET_PASSWORD))) &&
 	    (border_top || border_right || border_bottom || border_left)) {
-		if (!html_redraw_borders(box, x_parent, y_parent,
+		if (rounded) {
+			/* Onyx: a rounded box's borders: its ring, each side in
+			 * its colour (every style drawn solid) */
+			struct onyx_shape sh;
+			memset(&sh, 0, sizeof sh);
+			sh.outer = orr;
+			sh.ring = true;
+			onyx_rrect_inset(&orr, border_left, border_top,
+					border_right, border_bottom, &sh.inner);
+			sh.per_side = true;
+			for (int k = 0; k < 4; k++) {
+				enum css_border_style_e bs = box->border[k].style;
+				/* (nscss_color_to_ns is a macro: a plain value) */
+				css_color bc = (box->border[k].width == 0 ||
+						bs == CSS_BORDER_STYLE_NONE ||
+						bs == CSS_BORDER_STYLE_HIDDEN) ?
+						0 : box->border[k].c;
+				sh.side_colour[k] = nscss_color_to_ns(bc);
+			}
+			if (ctx->plot->onyx_shape(ctx, &sh) != NSERROR_OK)
+				return false;
+		} else if (!html_redraw_borders(box, x_parent, y_parent,
 				padding_width, padding_height, &r,
 				scale, ctx))
 			return false;
@@ -1731,9 +1855,20 @@ bool html_redraw_box(const html_content *html, struct box *box,
 		if (need_clip &&
 		    (box->type == BOX_BLOCK ||
 		     box->type == BOX_INLINE_BLOCK ||
+		     box->type == BOX_FLEX || box->type == BOX_INLINE_FLEX ||
 		     box->type == BOX_TABLE_CELL || box->object)) {
 			if (ctx->plot->clip(ctx, &r) != NSERROR_OK)
 				return false;
+			/* Onyx: and to its padding box's rounded corners */
+			if (rounded && ctx->plot->onyx_round_clip != NULL) {
+				struct onyx_rrect pr;
+				onyx_rrect_inset(&orr, border_left, border_top,
+						border_right, border_bottom, &pr);
+				if (ctx->plot->onyx_round_clip(ctx, &pr) !=
+						NSERROR_OK)
+					return false;
+				round_clipped = true;
+			}
 		}
 	}
 
@@ -1864,7 +1999,15 @@ bool html_redraw_box(const html_content *html, struct box *box,
 			return false;
 	}
 
+	/* Onyx: the content's rounded clip ends (in the clip it began in) */
+	if (round_clipped) {
+		if (ctx->plot->clip(ctx, &r) != NSERROR_OK ||
+		    ctx->plot->onyx_round_clip(ctx, NULL) != NSERROR_OK)
+			return false;
+	}
+
 	if (box->type == BOX_BLOCK || box->type == BOX_INLINE_BLOCK ||
+			box->type == BOX_FLEX || box->type == BOX_INLINE_FLEX ||
 			box->type == BOX_TABLE_CELL || box->type == BOX_INLINE)
 		if (ctx->plot->clip(ctx, clip) != NSERROR_OK)
 			return false;
