@@ -220,7 +220,15 @@ static unsigned *resize2 (int w, int h, int *stride)
 }
 static void set_ptr (gui_handler h) { g_ptr = h; }
 static void set_key (gui_handler h) { g_key = h; }
-static void screen_size (int *w, int *h) { if (w) *w = 1024; if (h) *h = 768; }
+/* the screen: 1024x768, or SIM_SCREEN=<w>x<h> (a bigger desktop for a bigger window) */
+static void screen_size (int *w, int *h)
+{
+	int sw = 1024, sh = 768;
+	const char *e = getenv ("SIM_SCREEN");
+	if (e && sscanf (e, "%dx%d", &sw, &sh) != 2) { sw = 1024; sh = 768; }
+	if (w) *w = sw;
+	if (h) *h = sh;
+}
 static int font_w (void) { return 8; }
 static int font_h (void) { return 16; }
 static void h_present (void) {}

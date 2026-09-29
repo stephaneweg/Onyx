@@ -70,6 +70,21 @@ framebuffer_plot_clip(const struct redraw_context *ctx, const struct rect *clip)
 
 
 /**
+ * Onyx: a NetSurf colour, (1-A)BGR (its top byte the transparency), as a libnsfb one, ABGR
+ * (the opacity): libnsfb blends the translucent ones.
+ */
+static inline nsfb_colour_t fb_col(colour c)
+{
+	return ((0xffu - (c >> 24)) << 24) | (c & 0xffffff);
+}
+
+/** Onyx: a colour nothing shows of */
+static inline bool fb_invisible(colour c)
+{
+	return (c >> 24) == 0xff;
+}
+
+/**
  * Plots an arc
  *
  * plot an arc segment around (x,y), anticlockwise from angle1
@@ -90,7 +105,9 @@ framebuffer_plot_arc(const struct redraw_context *ctx,
 	       const plot_style_t *style,
 	       int x, int y, int radius, int angle1, int angle2)
 {
-	if (!nsfb_plot_arc(nsfb, x, y, radius, angle1, angle2, style->fill_colour)) {
+	if (fb_invisible(style->fill_colour))
+		return NSERROR_OK;
+	if (!nsfb_plot_arc(nsfb, x, y, radius, angle1, angle2, fb_col(style->fill_colour))) {
 		return NSERROR_INVALID;
 	}
 	return NSERROR_OK;
@@ -120,12 +137,13 @@ framebuffer_plot_disc(const struct redraw_context *ctx,
 	ellipse.x1 = x + radius;
 	ellipse.y1 = y + radius;
 
-	if (style->fill_type != PLOT_OP_TYPE_NONE) {
-		nsfb_plot_ellipse_fill(nsfb, &ellipse, style->fill_colour);
+	if (style->fill_type != PLOT_OP_TYPE_NONE && !fb_invisible(style->fill_colour)) {
+		nsfb_plot_ellipse_fill(nsfb, &ellipse, fb_col(style->fill_colour));
 	}
 
-	if (style->stroke_type != PLOT_OP_TYPE_NONE) {
-		nsfb_plot_ellipse(nsfb, &ellipse, style->stroke_colour);
+	if (style->stroke_type != PLOT_OP_TYPE_NONE &&
+			!fb_invisible(style->stroke_colour)) {
+		nsfb_plot_ellipse(nsfb, &ellipse, fb_col(style->stroke_colour));
 	}
 	return NSERROR_OK;
 }
@@ -155,7 +173,8 @@ framebuffer_plot_line(const struct redraw_context *ctx,
 	rect.x1 = line->x1;
 	rect.y1 = line->y1;
 
-	if (style->stroke_type != PLOT_OP_TYPE_NONE) {
+	if (style->stroke_type != PLOT_OP_TYPE_NONE &&
+			!fb_invisible(style->stroke_colour)) {
 
 		if (style->stroke_type == PLOT_OP_TYPE_DOT) {
 			pen.stroke_type = NFSB_PLOT_OPTYPE_PATTERN;
@@ -167,7 +186,7 @@ framebuffer_plot_line(const struct redraw_context *ctx,
 			pen.stroke_type = NFSB_PLOT_OPTYPE_SOLID;
 		}
 
-		pen.stroke_colour = style->stroke_colour;
+		pen.stroke_colour = fb_col(style->stroke_colour);
 		pen.stroke_width = plot_style_fixed_to_int(style->stroke_width);
 		nsfb_plot_line(nsfb, &rect, &pen);
 	}
@@ -203,11 +222,12 @@ framebuffer_plot_rectangle(const struct redraw_context *ctx,
 	rect.x1 = nsrect->x1;
 	rect.y1 = nsrect->y1;
 
-	if (style->fill_type != PLOT_OP_TYPE_NONE) {
-		nsfb_plot_rectangle_fill(nsfb, &rect, style->fill_colour);
+	if (style->fill_type != PLOT_OP_TYPE_NONE && !fb_invisible(style->fill_colour)) {
+		nsfb_plot_rectangle_fill(nsfb, &rect, fb_col(style->fill_colour));
 	}
 
-	if (style->stroke_type != PLOT_OP_TYPE_NONE) {
+	if (style->stroke_type != PLOT_OP_TYPE_NONE &&
+			!fb_invisible(style->stroke_colour)) {
 		if (style->stroke_type == PLOT_OP_TYPE_DOT) {
 			dotted = true;
 		}
@@ -218,7 +238,7 @@ framebuffer_plot_rectangle(const struct redraw_context *ctx,
 
 		nsfb_plot_rectangle(nsfb, &rect,
 				plot_style_fixed_to_int(style->stroke_width),
-				style->stroke_colour, dotted, dashed);
+				fb_col(style->stroke_colour), dotted, dashed);
 	}
 	return NSERROR_OK;
 }
@@ -244,7 +264,9 @@ framebuffer_plot_polygon(const struct redraw_context *ctx,
 		   const int *p,
 		   unsigned int n)
 {
-	if (!nsfb_plot_polygon(nsfb, p, n, style->fill_colour)) {
+	if (fb_invisible(style->fill_colour))
+		return NSERROR_OK;
+	if (!nsfb_plot_polygon(nsfb, p, n, fb_col(style->fill_colour))) {
 		return NSERROR_INVALID;
 	}
 	return NSERROR_OK;
@@ -445,13 +467,13 @@ framebuffer_plot_text(const struct redraw_context *ctx,
 					     &loc,
 					     bglyph->bitmap.buffer,
 					     bglyph->bitmap.pitch,
-					     fstyle->foreground);
+					     fb_col(fstyle->foreground));
 			} else {
 			    nsfb_plot_glyph8(nsfb,
 					     &loc,
 					     bglyph->bitmap.buffer,
 					     bglyph->bitmap.pitch,
-					     fstyle->foreground);
+					     fb_col(fstyle->foreground));
 			}
 		}
 		x += glyph->advance.x >> 16;
@@ -510,7 +532,7 @@ framebuffer_plot_text(const struct redraw_context *ctx,
 	loc.y1 = loc.y0 + h;
 
 	chrp = fb_get_glyph(ucs4, style, size);
-	nsfb_plot_glyph1(nsfb, &loc, chrp, p, fstyle->foreground);
+	nsfb_plot_glyph1(nsfb, &loc, chrp, p, fb_col(fstyle->foreground));
 
 	x += w;
 

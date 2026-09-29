@@ -543,8 +543,12 @@ knockout_plot_rectangle(const struct redraw_context *ctx,
 			return NSERROR_OK;
 		}
 
-		/* fills both knock out and get knocked out */
-		knockout_calculate(ctx, kx0, ky0, kx1, ky1, NULL);
+		/* fills both knock out and get knocked out -- Onyx: but a translucent
+		 * one (rgba: the colour's top byte, its transparency, not 0) shows what
+		 * is under it, so it knocks nothing out (else the page's background under
+		 * it is never drawn, and it is blended over the screen's old pixels) */
+		if ((pstyle->fill_colour & 0xff000000) == 0)
+			knockout_calculate(ctx, kx0, ky0, kx1, ky1, NULL);
 		knockout_boxes[knockout_box_cur].bbox = *rect;
 		knockout_boxes[knockout_box_cur].deleted = false;
 		knockout_boxes[knockout_box_cur].child = NULL;
