@@ -50,7 +50,7 @@ CF    = $(BASEF) -std=c99
 # -- NetSurf (as netsurf-app.mk; only compat/curl from the Onyx compat headers)
 NS_CF = $(CF) -Dnsframebuffer -DWITH_PNG -DWITH_GIF -DWITH_BMP -DDUK_OPT_HAVE_CUSTOM_H \
         -DNETSURF_FB_RESPATH=\"$(RESPATH)\" -DNETSURF_FB_FONTPATH=\"$(RESPATH)fonts\" \
-        -DONYX_HOST_SIM -include $(UN)/compat/onyx_nsconfig.h
+        -DONYX_NS_DATAPATH=\"$(OUT)/data/\" -DONYX_HOST_SIM -include $(UN)/compat/onyx_nsconfig.h
 NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
          -I$(OUT)/hostinc -I$(UN) -I$(UN)/gen -I$(UN)/gen/duktape -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
          -I$(NS)/content/handlers/javascript/duktape \
@@ -210,7 +210,7 @@ $(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ)
 # ---- the resources (as netsurf-app.mk's stage, into $(OUT)/res) ------------------
 .PHONY: res
 res:
-	@mkdir -p $(OUT)/res/en
+	@mkdir -p $(OUT)/res/en $(OUT)/data
 	grep -E '^en\.(all|framebuffer)\.' $(NS)/resources/FatMessages | sed -E 's/^en\.(all|framebuffer)\.//' > $(OUT)/res/Messages
 	for f in default.css quirks.css adblock.css internal.css; do cp $(NS)/resources/$$f $(OUT)/res/; done
 	: > $(OUT)/res/user.css

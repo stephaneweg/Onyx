@@ -38,6 +38,13 @@
 #define NETSURF_FB_FONTPATH "/res/fonts"
 #endif
 
+/* the user's own files -- the pages visited (History, the History dialog) and the cookies
+ * (Cookies) -- on the card beside the app: SD:/apps/netsurf.app/ (never committed: see
+ * .gitignore). The PC bench (tools/tests/netsurf/host.mk) sets its own. */
+#ifndef ONYX_NS_DATAPATH
+#define ONYX_NS_DATAPATH "/apps/netsurf.app/"
+#endif
+
 /* the fonts (FreeType, frontends/framebuffer/font_freetype.c): DejaVu, in /res/fonts
  * (third_party/dejavu-fonts-ttf-2.37, staged by netsurf-app.mk). Cursive / fantasy: none
  * shipped, they fall back to the sans-serif face. */

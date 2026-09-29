@@ -814,7 +814,7 @@ Notes / caveats:
 >   `wk_radio_mark`, `wk_switch_mark`, `wk_scroll_bar`, `wk_slider_mark`, `wk_progress_bar`,
 >   `wk_popup` (a floating panel, its corners keyed), `wk_hilite` / `wk_hilite_ink` (a selected
 >   row and its text), `wk_title_strip`, `wk_glyph` (`WKG_CHECK`, arrows, chevrons, close,
->   minimise, maximise, restore, lock, gear, power…), `wk_text_c` / `wk_text_l` (style 2 = bold).
+>   minimise, maximise, restore, lock, gear, power, reload, home, history — a clock…), `wk_text_c` / `wk_text_l` (style 2 = bold).
 >   `tools/tests/desktop_sim/gallery/main.cpp` shows every control in every state.
 > - **The frame**: `wk_decorate_window ()` (the `Root` calls it; an app drawing its own window
 >   calls it after `kapi_resize_window`) draws the title bar, the borders, the rounded corners

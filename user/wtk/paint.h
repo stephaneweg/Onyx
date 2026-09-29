@@ -109,7 +109,8 @@ void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int 
 enum { WKG_CHECK, WKG_UP, WKG_DOWN, WKG_LEFT, WKG_RIGHT, WKG_CLOSE, WKG_MIN, WKG_MAX, WKG_MENU,
        WKG_DOT, WKG_PLUS, WKG_MINUS, WKG_RESTORE, WKG_CHEV_UP, WKG_CHEV_DOWN, WKG_CHEV_LEFT,
        WKG_CHEV_RIGHT, WKG_RING, WKG_LOCK, WKG_GEAR, WKG_POWER,
-       WKG_RELOAD, WKG_HOME };	// (a circular arrow, a house: a browser's toolbar)
+       WKG_RELOAD, WKG_HOME,	// (a circular arrow, a house: a browser's toolbar)
+       WKG_HISTORY };		// (a clock: a browser's history)
 // A glyph centred on (cx, cy), about `size` px across, in colour c.
 void wk_glyph (Canvas &cv, int kind, int cx, int cy, int size, unsigned c);
 

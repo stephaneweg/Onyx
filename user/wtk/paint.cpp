@@ -525,6 +525,14 @@ static bool glyph_in (int kind, long px, long py, long s)	// s: the glyph's size
 		bool door = px > -s * 10 / 100 && px < s * 10 / 100 && py > s * 12 / 100;
 		return body && !door;
 	}
+	case WKG_HISTORY:
+	{
+		// a clock: its face a ring, the hands at three o'clock (the minute hand up, the hour
+		// hand to the right)
+		long R = s * 42 / 100, d2 = px * px + py * py, lo = R - t / 2, hi = R + t / 2;
+		if (d2 >= lo * lo && d2 <= hi * hi) return true;
+		return seg_d2 (px, py, 0, 0, 0, -R * 68 / 100) <= t2 || seg_d2 (px, py, 0, 0, R * 52 / 100, 0) <= t2;
+	}
 	}
 	return false;
 }

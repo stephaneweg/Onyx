@@ -8,8 +8,12 @@
 // tree, the page's to the surface's handlers (their y less the band's height); a press keeps
 // its side until the button is released (a drag out of a button, a text selection out of the
 // page). Keys go to the address field while it has the focus, else to the page -- but for the
-// shortcuts (the menu's, F5, Esc, Alt+Left / Right, F6).
+// shortcuts (the menu's, F5, Esc, Alt+Left / Right, F6, Ctrl+H).
 //
+// The history is a native dialog (Navigate > History..., Ctrl+H, the clock button): the pages
+// visited, the most recent first, from NetSurf's global history (gui.c keeps it on the card).
+//
+#include <time.h>
 #include "wtk/wtk.h"
 #include "onyx_chrome.h"
 
@@ -168,13 +172,397 @@ public:
 	}
 };
 
+// ---- the history dialog --------------------------------------------------------------------
+// A page visited: its address, its title and its time, as the dialog shows them (the wtk font
+// is Latin-1: the UTF-8 title converted).
+struct Visit
+{
+	char *url;		// the address (to go back to it)
+	char  title[160];	// Latin-1
+	char  when[24];		// "14:05", "Mon 14:05", "12 Sep", "12 Sep 2025"
+	char  low[160];		// the title, lower case (the filter)
+};
+
+// UTF-8 -> Latin-1 (the wtk font's): a few typographic marks folded to ASCII, the rest '?'.
+void to_latin1 (const char *s, char *out, int cap)
+{
+	const unsigned char *p = (const unsigned char *) s;
+	int n = 0;
+	while (p && *p && n < cap - 1)
+	{
+		unsigned c = *p++;
+		if (c >= 0x80)
+		{
+			int extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+			if (extra == 0) c = '?';
+			else c &= extra == 3 ? 0x07 : extra == 2 ? 0x0F : 0x1F;
+			for (; extra > 0 && (*p & 0xC0) == 0x80; extra--) c = (c << 6) | (*p++ & 0x3F);
+			if (c == 0x2018 || c == 0x2019) c = '\'';
+			else if (c == 0x201C || c == 0x201D) c = '"';
+			else if (c == 0x2013 || c == 0x2014 || c == 0x2022) c = '-';
+			else if (c == 0x2026 && n < cap - 3) { out[n++] = '.'; out[n++] = '.'; c = '.'; }
+			else if (c == 0xA0) c = ' ';
+			else if (c > 0xFF) c = '?';
+		}
+		if (c < 32) c = ' ';
+		if (c == ' ' && (n == 0 || out[n - 1] == ' ')) continue;	// (spaces squashed)
+		out[n++] = (char) c;
+	}
+	while (n > 0 && out[n - 1] == ' ') n--;
+	out[n] = '\0';
+}
+
+char lower_l1 (char ch)
+{
+	unsigned c = (unsigned char) ch;
+	if ((c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xDE && c != 0xD7)) c += 32;
+	return (char) c;
+}
+
+// Does `hay` (lower case) contain `needle` (as typed)?
+bool contains (const char *hay, const char *needle)
+{
+	if (needle[0] == '\0') return true;
+	for (; *hay; hay++)
+	{
+		int i = 0;
+		while (needle[i] && hay[i] && hay[i] == lower_l1 (needle[i])) i++;
+		if (needle[i] == '\0') return true;
+	}
+	return false;
+}
+
+// `s` in at most `max` characters (an ellipsis at the end when cut).
+void fit (char *out, const char *s, int max)
+{
+	int n = wk_len (s);
+	if (max < 4) max = 4;
+	if (n <= max) { for (int i = 0; i <= n; i++) out[i] = s[i]; return; }
+	int k = 0;
+	for (; k < max - 3; k++) out[k] = s[k];
+	out[k++] = '.'; out[k++] = '.'; out[k++] = '.'; out[k] = '\0';
+}
+
+// When a page was visited, told the way a person would: the time today, the day this week,
+// else the date.
+void tell_time (long long when, char *out)
+{
+	static const char *const MON[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+					   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	static const char *const DAY[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+	time_t t = (time_t) when, now = time (0);
+	struct tm a, b;
+	gmtime_r (&t, &a);		// (Onyx's clock is the local time, counted as UTC)
+	gmtime_r (&now, &b);
+	long days = (long) (now / 86400) - (long) (t / 86400);
+	char *o = out;
+	if (days == 0 || days < 0) { }
+	else if (days < 7) { for (const char *d = DAY[a.tm_wday]; *d; ) *o++ = *d++; *o++ = ' '; }
+	else
+	{
+		if (a.tm_mday >= 10) *o++ = (char) ('0' + a.tm_mday / 10);
+		*o++ = (char) ('0' + a.tm_mday % 10); *o++ = ' ';
+		for (const char *m = MON[a.tm_mon % 12]; *m; ) *o++ = *m++;
+		if (a.tm_year != b.tm_year)
+		{
+			int y = a.tm_year + 1900;
+			*o++ = ' '; *o++ = (char) ('0' + y / 1000 % 10); *o++ = (char) ('0' + y / 100 % 10);
+			*o++ = (char) ('0' + y / 10 % 10); *o++ = (char) ('0' + y % 10);
+		}
+		*o = '\0';
+		return;
+	}
+	*o++ = (char) ('0' + a.tm_hour / 10); *o++ = (char) ('0' + a.tm_hour % 10); *o++ = ':';
+	*o++ = (char) ('0' + a.tm_min / 10);  *o++ = (char) ('0' + a.tm_min % 10);
+	*o = '\0';
+}
+
+class HistoryDialog;
+
+// The list: a page a row -- its title, its address under it (dimmer), its time at the right.
+// Click selects, double-click / Enter opens; the wheel, the scroll bar and the keys scroll.
+class HistoryList : public Widget
+{
+public:
+	HistoryDialog *dlg;
+	int sel, top;
+	bool thumb;
+	unsigned lastClick; int lastRow;
+	HistoryList (int l, int t, int w, int h, HistoryDialog *d)
+	  : Widget (l, t, w, h), dlg (d), sel (-1), top (0), thumb (false), lastClick (0), lastRow (-1)
+	{ canFocus = true; }
+	static int rowH () { return 2 * wk_fh () + 10; }
+	int rows () const { int r = (height - 4) / rowH (); return r < 1 ? 1 : r; }
+	int count () const;
+	void scrollTo (int t)
+	{
+		int mx = count () - rows (); if (mx < 0) mx = 0;
+		if (t > mx) t = mx;
+		if (t < 0) t = 0;
+		if (t != top) { top = t; invalidate (true); }
+	}
+	void select (int i)
+	{
+		int n = count ();
+		if (n == 0) { sel = -1; invalidate (true); return; }
+		if (i < 0) i = 0;
+		if (i >= n) i = n - 1;
+		sel = i;
+		if (sel < top) scrollTo (sel);
+		if (sel >= top + rows ()) scrollTo (sel - rows () + 1);
+		invalidate (true);
+	}
+	void onDraw () override;
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	bool onKey (long k) override;
+};
+
+// The filter: a Textbox that tells the dialog when its text changed.
+class FilterBox : public Textbox
+{
+public:
+	HistoryDialog *dlg;
+	FilterBox (int l, int t, int w, int h, HistoryDialog *d) : Textbox (l, t, w, h, ""), dlg (d) {}
+	bool onKey (long k) override;
+};
+
+void hd_button (Widget &w) { if (w.parent) ((Modal *) w.parent)->onButton (w.tag); }
+
+class HistoryDialog : public Modal
+{
+public:
+	enum { OPEN = 1, DELETE = 2, CLEAR = 3 };
+	Visit *all; int n, cap;			// every page, the most recent first
+	int *vis; int nvis;			// the ones the filter lets through
+	HistoryList *list;
+	FilterBox *filter;
+	char *chosen;				// the address to go to (Open), or 0
+	HistoryDialog (int W, int H) : Modal (W < 760 + 40 ? W - 40 : 760, H < 540 + 40 ? H - 40 : 540),
+		all (0), n (0), cap (0), vis (0), nvis (0), chosen (0)
+	{
+		left = (W - width) / 2; top = (H - height) / 2;
+		int fh = wk_fh (), y = titleH () + 10;
+		filter = new FilterBox (70, y, width - 80, fh + 10, this);
+		addChild (filter);
+		y += fh + 18;
+		list = new HistoryList (10, y, width - 20, height - y - 50, this);
+		addChild (list);
+		int by = height - 38;
+		Button *b;
+		b = new Button (10, by, 82, 28, "Open", hd_button);        b->tag = OPEN;   addChild (b);
+		b = new Button (100, by, 82, 28, "Delete", hd_button);     b->tag = DELETE; addChild (b);
+		b = new Button (190, by, 96, 28, "Clear all", hd_button);  b->tag = CLEAR;  addChild (b);
+		b = new Button (width - 92, by, 82, 28, "Close", hd_button); b->tag = 0;    addChild (b);
+		load ();
+	}
+	~HistoryDialog ()
+	{
+		for (int i = 0; i < n; i++) delete [] all[i].url;
+		delete [] all; delete [] vis; delete [] chosen;
+	}
+	static void add (void *ctx, const char *url, const char *title, long long when)
+	{
+		HistoryDialog *d = (HistoryDialog *) ctx;
+		if (d->n == d->cap)
+		{
+			int nc = d->cap ? d->cap * 2 : 128;
+			Visit *nv = new Visit[nc];
+			for (int i = 0; i < d->n; i++) nv[i] = d->all[i];
+			delete [] d->all; d->all = nv; d->cap = nc;
+		}
+		Visit &v = d->all[d->n++];
+		int len = wk_len (url);
+		v.url = new char[len + 1];
+		for (int i = 0; i <= len; i++) v.url[i] = url[i];
+		to_latin1 (title, v.title, sizeof v.title);
+		if (v.title[0] == '\0') to_latin1 (url, v.title, sizeof v.title);	// (no title: its address)
+		int i = 0;
+		for (; v.title[i]; i++) v.low[i] = lower_l1 (v.title[i]);
+		v.low[i] = '\0';
+		tell_time (when, v.when);
+	}
+	void load ()
+	{
+		for (int i = 0; i < n; i++) delete [] all[i].url;
+		n = 0;
+		onyx_browser_history (add, this);
+		delete [] vis;
+		vis = new int[n > 0 ? n : 1];
+		refilter ();
+	}
+	void refilter ()
+	{
+		const char *f = filter->text;
+		nvis = 0;
+		for (int i = 0; i < n; i++)
+			if (contains (all[i].low, f) || contains (all[i].url, f)) vis[nvis++] = i;
+		list->top = 0;
+		list->select (0);
+		invalidate (true);
+	}
+	Visit *at (int row) { return row >= 0 && row < nvis ? &all[vis[row]] : 0; }
+	void open (int row)
+	{
+		Visit *v = at (row);
+		if (v == 0) return;
+		int len = wk_len (v->url);
+		chosen = new char[len + 1];
+		for (int i = 0; i <= len; i++) chosen[i] = v->url[i];
+		close (OPEN);
+	}
+	void forget (int row)
+	{
+		Visit *v = at (row);
+		if (v == 0) return;
+		onyx_browser_history_forget (v->url);
+		int keep = list->sel;
+		load ();
+		list->select (keep);
+	}
+	void onButton (int tag) override
+	{
+		if (tag == OPEN) open (list->sel);
+		else if (tag == DELETE) forget (list->sel);
+		else if (tag == CLEAR)
+		{
+			if (n > 0 && wk_messagebox ("Clear history", "Forget every page visited?", MB_YESNO) == 1)
+			{ onyx_browser_history_clear (); load (); }
+			filter->setFocus ();
+		}
+		else close (0);
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27) { close (0); return true; }
+		if (k == KEY_ENTER) { open (list->sel); return true; }
+		return list->onKey (k);			// (the filter has the focus: the list's keys)
+	}
+	bool onMouse (int, int, int, int, int, int) override { return true; }	// (modal: all of it)
+	void onDraw () override
+	{
+		drawBox ("History");
+		int fh = wk_fh ();
+		wk_text_l (canvas, 12, filter->top, filter->height, "Find:", C_TEXT);
+		char buf[64];
+		int k = 0, v = nvis;
+		char num[12]; int m = 0;
+		do { num[m++] = (char) ('0' + v % 10); v /= 10; } while (v && m < 11);
+		while (m > 0) buf[k++] = num[--m];
+		const char *tail = nvis == 1 ? " page" : " pages";
+		for (int i = 0; tail[i]; i++) buf[k++] = tail[i];
+		buf[k] = '\0';
+		wk_text_l (canvas, width - 102 - wk_text_w (buf), height - 38, 28, buf, C_DIS);
+		(void) fh;
+	}
+};
+
+int HistoryList::count () const { return dlg->nvis; }
+
+void HistoryList::onDraw ()
+{
+	int fw = wk_fw (), fh = wk_fh (), rh = rowH (), R = rows ();
+	WkThumb t = wk_thumb (count (), R, top, height - 4);
+	int tw = width - (t.show ? WK_SBW + 2 : 0);
+	canvas.clear (bgColor ());
+	wk_sunken (canvas, 0, 0, width, height, 4, C_FIELD, hasFocus);
+	if (count () == 0)
+	{
+		const char *e = dlg->n == 0 ? "No page visited yet." : "No page matches.";
+		wk_text_c (canvas, 0, 0, width, height, e, C_DIS);
+		return;
+	}
+	for (int r = 0; r < R && top + r < count (); r++)
+	{
+		int i = top + r, y = 2 + r * rh;
+		Visit *v = dlg->at (i);
+		bool s = i == sel;
+		if (s) wk_hilite (canvas, 3, y + 1, tw - 6, rh - 2, 4, true);
+		unsigned ink = s ? wk_hilite_ink (true) : C_FIELD_TEXT;
+		unsigned dim = s ? wk_hilite_ink (true) : wk_mix (C_FIELD_TEXT, C_FIELD, 110);
+		int tcols = (tw - 16) / fw - wk_len (v->when) - 2;
+		char line[200];
+		fit (line, v->title, tcols);
+		wk_text_l (canvas, 10, y + 4, fh, line, ink, 2);			// the title, bold
+		wk_text_l (canvas, tw - 8 - wk_text_w (v->when), y + 4, fh, v->when, dim);
+		fit (line, v->url, (tw - 16) / fw);
+		wk_text_l (canvas, 10, y + 5 + fh, fh, line, dim);		// its address
+		if (!s && top + r + 1 < count ())
+			canvas.fillRect (8, y + rh - 1, tw - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 28));
+	}
+	if (t.show) wk_draw_vscroll (canvas, width - WK_SBW - 2, 2, WK_SBW, height - 4, t, C_FIELD, thumb);
+}
+
+bool HistoryList::onMouse (int mx, int my, int bl, int, int, int wheel)
+{
+	if (mx < 0) { pressed = false; thumb = false; return false; }
+	if (wheel) { scrollTo (top - wheel); return true; }
+	WkThumb t = wk_thumb (count (), rows (), top, height - 4);
+	if (thumb)
+	{
+		if (!bl) { thumb = false; invalidate (true); }
+		else scrollTo ((int) wk_thumb_pos (my - 2, height - 4, count (), rows (), t.h));
+		return true;
+	}
+	if (bl && !pressed)
+	{
+		pressed = true; setFocus ();
+		if (t.show && mx >= width - WK_SBW - 2)
+		{ thumb = true; invalidate (true); scrollTo ((int) wk_thumb_pos (my - 2, height - 4, count (), rows (), t.h)); return true; }
+		int i = top + (my - 2) / rowH ();
+		if (i >= count ()) return true;
+		unsigned now = kapi_get_ticks ();
+		bool dbl = i == lastRow && now - lastClick < 70;
+		select (i);
+		if (dbl) { dlg->open (i); lastRow = -1; }
+		else { lastRow = i; lastClick = now; }
+	}
+	else if (!bl) pressed = false;
+	return true;
+}
+
+bool HistoryList::onKey (long k)
+{
+	int R = rows ();
+	switch (k)
+	{
+	case KEY_UP:   select (sel - 1); return true;
+	case KEY_DOWN: select (sel + 1); return true;
+	case KEY_PGUP: select (sel - R); return true;
+	case KEY_PGDN: select (sel + R); return true;
+	case KEY_HOME: select (0); return true;
+	case KEY_END:  select (count () - 1); return true;
+	case KEY_ENTER: dlg->open (sel); return true;
+	case KEY_DEL:  if (hasFocus) dlg->forget (sel); return true;	// (the filter's Del edits it)
+	}
+	if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF) || k == KEY_BACKSPACE)
+	{	// typing in the list: into the filter
+		dlg->filter->setFocus ();
+		return dlg->filter->onKey (k);
+	}
+	return false;
+}
+
+bool FilterBox::onKey (long k)
+{
+	char was[64];
+	for (int i = 0; i < 64; i++) was[i] = text[i];
+	if (k == KEY_ENTER) return false;			// (the dialog's: open the page)
+	bool r = Textbox::onKey (k);
+	for (int i = 0; i < 64; i++)
+		if (was[i] != text[i]) { dlg->refilter (); break; }
+		else if (was[i] == '\0') break;
+	return r;
+}
+
+void open_history ();
+
 // ---- the window ----------------------------------------------------------------------------
 bool g_resized;
 
 class NsWindow : public Root
 {
 public:
-	ToolButton *back, *fwd, *reload, *home;
+	ToolButton *back, *fwd, *reload, *home, *hist;
 	UrlField   *url;
 	bool        busy;
 	NsWindow (int w, int h) : Root (w, h + TB, "NetSurf"), busy (false)
@@ -183,12 +571,15 @@ public:
 		back   = new ToolButton (x, BTN_Y, WKG_CHEV_LEFT, onyx_browser_back);     x += BTN_W + GAP;
 		fwd    = new ToolButton (x, BTN_Y, WKG_CHEV_RIGHT, onyx_browser_forward); x += BTN_W + GAP;
 		reload = new ToolButton (x, BTN_Y, WKG_RELOAD, reload_or_stop);           x += BTN_W + GAP;
-		home   = new ToolButton (x, BTN_Y, WKG_HOME, onyx_browser_home);          x += BTN_W + GAP + 2;
+		home   = new ToolButton (x, BTN_Y, WKG_HOME, onyx_browser_home);          x += BTN_W + GAP;
+		hist   = new ToolButton (x, BTN_Y, WKG_HISTORY, open_history);             x += BTN_W + GAP + 2;
 		url    = new UrlField (x, BTN_Y, width - x - PAD, BTN_H);
 		url->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_TOP;
 		back->setDisabled (true);
 		fwd->setDisabled (true);
-		addChild (back); addChild (fwd); addChild (reload); addChild (home); addChild (url);
+		back->tip = "Back (Alt+Left)"; fwd->tip = "Forward (Alt+Right)"; reload->tip = "Reload (F5)";
+		home->tip = "Home"; hist->tip = "History (Ctrl+H)";
+		addChild (back); addChild (fwd); addChild (reload); addChild (home); addChild (hist); addChild (url);
 		setResizable (true);
 	}
 	// Only the band is the window's own: the rest is the page's (NetSurf draws it).
@@ -276,8 +667,9 @@ void key_event (unsigned long sender, int ev, long k)
 {
 	if (g_win == 0 || ev != GUI_EVENT_KEY) return;
 	if (has_modal ()) { g_win->handleKey (k); return; }
-	if (Menu::current () && Menu::current ()->shortcut (k)) return;
 	unsigned mods = kapi_get_modifiers ();
+	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
+	if (Menu::current () && Menu::current ()->shortcut (k)) return;
 	if ((mods & MOD_ALT) && k == KEY_LEFT)  { onyx_browser_back (); return; }
 	if ((mods & MOD_ALT) && k == KEY_RIGHT) { onyx_browser_forward (); return; }
 	if (k == KEY_F1 + 4) { onyx_browser_reload (); return; }		// F5
@@ -294,6 +686,21 @@ void m_forward ()  { onyx_browser_forward (); }
 void m_reload ()   { onyx_browser_reload (); }
 void m_stop ()     { onyx_browser_stop (); }
 void m_home ()     { onyx_browser_home (); }
+
+// The History dialog: shown over the page (NetSurf waits meanwhile); a page chosen is opened.
+void open_history ()
+{
+	if (g_win == 0 || has_modal ()) return;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	HistoryDialog *d = new HistoryDialog (g_win->width, g_win->height);
+	d->filter->setFocus ();
+	int r = d->run ();
+	char *go = r == HistoryDialog::OPEN ? d->chosen : 0;
+	d->chosen = 0;
+	delete d;
+	onyx_browser_redraw ();			// (the page under the dialog)
+	if (go) { onyx_browser_go (go); delete [] go; }
+}
 
 Menu g_menu;
 
@@ -316,6 +723,7 @@ unsigned *onyx_chrome_open (int w, int h, int *stride)
 	g_menu.item ("Stop", "Esc", 0, m_stop);
 	g_menu.separator ();
 	g_menu.item ("Home", "", 0, m_home);
+	g_menu.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
 	g_menu.publish ();
 	kapi_set_pointer_handler (ptr_event);
 	kapi_set_key_handler (key_event);
