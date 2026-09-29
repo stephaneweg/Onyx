@@ -364,7 +364,7 @@ public:
 	}
 	void drawBody () override
 	{
-		label (16, 44, g_inches ? "Tab stop position (in):" : "Tab stop position (cm):");
+		label (16, 44, g_inches ? "Position (in):" : "Position (cm):");
 		label (196, 44, "Alignment:"); label (318, 44, "Leader:");
 		canvas.text (196, 244, "Default stops: every 1.25 cm.", wk_mix (C_FACE, C_TEXT, 170));
 	}
@@ -486,7 +486,7 @@ public:
 		label (32, 320, "Header:"); label (32, 352, "Footer:");
 		label (198, 320, u); label (198, 352, u);
 		label (262, 352, "First page number:");
-		canvas.text (32, 392, "(the header's distance from the page's top, the footer's from its foot)", wk_mix (C_FACE, C_TEXT, 170));
+		canvas.text (32, 392, "(the header from the page's top, the footer from its foot)", wk_mix (C_FACE, C_TEXT, 170));
 	}
 	void read ()
 	{
@@ -800,7 +800,7 @@ class FieldDialog : public Dialog
 {
 public:
 	ListBox *kinds, *pics; int kind;
-	FieldDialog () : Dialog (440, 300, "Field"), kind (0)
+	FieldDialog () : Dialog (440, 320, "Field"), kind (0)
 	{
 		kinds = new ListBox (16, 44, 180, 190, onKind, onPickK); addChild (kinds);
 		for (int i = 0; i < 4; i++) kinds->add (FIELD_NAMES[i]);
@@ -809,7 +809,7 @@ public:
 		okCancel ();
 		fill ();
 	}
-	void drawBody () override { canvas.text (16, 250, "Its text is kept up to date (a grey background).", wk_mix (C_FACE, C_TEXT, 170)); }
+	void drawBody () override { canvas.text (16, 246, "Its text is kept up to date (a grey background).", wk_mix (C_FACE, C_TEXT, 170)); }
 	void fill ()
 	{
 		pics->clear ();
@@ -911,11 +911,11 @@ class TableDialog : public Dialog
 {
 public:
 	Textbox *tRows, *tCols; Checkbox *cbHead;
-	TableDialog () : Dialog (330, 222, "Insert Table")
+	TableDialog () : Dialog (400, 222, "Insert Table")
 	{
 		tCols = field (170, 44, 70, "3");
 		tRows = field (170, 78, 70, "2");
-		cbHead = new Checkbox (22, 118, 290, 24, "Repeat the heading row on each page", false, 0, C_FACE); addChild (cbHead);
+		cbHead = new Checkbox (22, 118, 360, 24, "Repeat the heading row on each page", false, 0, C_FACE); addChild (cbHead);
 		okCancel ();
 	}
 	void drawBody () override { label (22, 50, "Number of columns:"); label (22, 84, "Number of rows:"); }
@@ -958,7 +958,7 @@ public:
 		bcol = new Swatch (390, 78, t->bcolor == 0 ? AUTO : t->bcolor, g_textCols, 60, 10, "Automatic"); addChild (bcol);
 		al = new Dropdown (150, 132, 160, 26, TALIGN_NAMES, 3, t->align == AL_CENTER ? 1 : t->align == AL_RIGHT ? 2 : 0, 0); addChild (al);
 		char b[16]; fmt_len (b, t->indent); tIndent = field (390, 132, 64, b);
-		cbHead = new Checkbox (22, 170, 360, 24, "Repeat the first row on each page (heading)", t->header, 0, C_FACE); addChild (cbHead);
+		cbHead = new Checkbox (22, 170, 360, 24, "Repeat the first row on each page", t->header, 0, C_FACE); addChild (cbHead);
 		int w = 0; for (int c = c0; c <= c1; c++) w += t->colW[c];
 		fmt_len (b, w / (c1 - c0 + 1)); tColW = field (240, 226, 80, b);
 		fmt_len (b, t->rowH[r0]); tRowH = field (240, 260, 80, b);

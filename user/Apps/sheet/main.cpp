@@ -1600,6 +1600,7 @@ int main (void)
 	menu.item ("AutoFilter", "", 0, cmd_autofilter);
 	menu.item ("Recalculate", "F9", 0, cmd_recalc);
 	menu.publish ();
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 
 	// a file named on the command line, else the one kept at the last close
 	char args[240];

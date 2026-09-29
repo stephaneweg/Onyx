@@ -718,6 +718,7 @@ int main (void)
 	menu.item ("Edit Colours...", "", 0, cmd_edit_colours);
 	menu.item ("Swap Colours", "X", 0, cmd_swap_colours);
 	menu.publish ();
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 
 	// A picture named on the command line, else the one kept at the last close.
 	char args[200];

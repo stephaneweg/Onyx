@@ -745,6 +745,7 @@ int main (void)
 	menu.item ("Update Table of Contents", "", 0, cmd_toc_update);
 	menu.item ("Mail Merge...", "", 0, cmd_mail_merge);
 	menu.publish ();
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 
 	// A mail merge's documents, a file named on the command line, else the one kept at the last close.
 	if (job)

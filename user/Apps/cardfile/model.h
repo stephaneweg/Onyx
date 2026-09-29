@@ -509,6 +509,7 @@ static void make_column (const char *label, char *out, int cap)
 struct Doc
 {
 	char title[TITLE_MAX], info[INFO_MAX];	// the form's title, its description
+	char merge[160];			// its mail merge's letter (Writer's document), "" none
 	Field f[MAXF]; int nf;
 	char ***r; int nr, rcap;		// the records: r[i][k] = field k's value (never 0)
 	int  sort; bool sortDesc;		// the views' order: by a field (-1: the file's), descending
@@ -525,7 +526,7 @@ static bool rec_empty (const Doc &d, int i) { for (int k = 0; k < d.nf; k++) if 
 
 static void doc_init (Doc &d)
 {
-	d.title[0] = d.info[0] = '\0'; d.nf = 0; d.r = 0; d.nr = d.rcap = 0; d.sort = -1; d.sortDesc = false;
+	d.title[0] = d.info[0] = d.merge[0] = '\0'; d.nf = 0; d.r = 0; d.nr = d.rcap = 0; d.sort = -1; d.sortDesc = false;
 	for (int i = 0; i < MAXF; i++) field_init (d.f[i], "", "", FT_TEXT);
 }
 static void doc_clear (Doc &d)
@@ -708,6 +709,7 @@ static void doc_write (const Doc &d, Out &o)
 	put_kv (o, "title", d.title);
 	if (d.info[0]) put_kv (o, "description", d.info);
 	if (d.sort >= 0 && d.sort < d.nf) { put_kv (o, "sort", d.f[d.sort].column); if (d.sortDesc) put_kv (o, "order", "descending"); }
+	if (d.merge[0]) put_kv (o, "merge", d.merge);
 	for (int k = 0; k < d.nf; k++)
 	{
 		const Field &f = d.f[k];
@@ -816,6 +818,7 @@ static bool doc_read (Doc &d, const char *text, int len, const char **why)
 			else if (seq (key, "description")) scpy (d.info, v, sizeof d.info);
 			else if (seq (key, "sort")) scpy (sortCol, v, sizeof sortCol);
 			else if (seq (key, "order")) desc = ci_eq (v, "descending") || ci_eq (v, "desc");
+			else if (seq (key, "merge")) scpy (d.merge, v, sizeof d.merge);
 		}
 		else if (sec == S_FIELD && cur)
 		{

@@ -200,11 +200,13 @@ static void safe_name (const char *v, char *out, int cap)
 	out[n] = 0;
 }
 // Records [r0, r1] each a file in folder (named after field `name`, else "base-N"; ext: ".rtf"...): how
-// many written; the first one's path in first.
+// many written; the first one's path in first. A file of an earlier merge is replaced; two records
+// named alike: the second one's name numbered.
 static int merge_files (const char *tb, int tn, int r0, int r1, const char *folder, const char *name, const char *base, const char *ext, char *first, int fcap)
 {
 	kapi_mkdir (folder);
 	int done = 0;
+	char **made = new char *[r1 >= r0 ? r1 - r0 + 1 : 1];	// (the paths written by this merge)
 	for (int r = r0; r <= r1; r++)
 	{
 		Doc t; doc_init (t);
@@ -218,15 +220,35 @@ static int merge_files (const char *tb, int tn, int r0, int r1, const char *fold
 		int k = slen (path);
 		if (k && path[k - 1] != '/' && path[k - 1] != ':') path[k++] = '/';
 		scpy (path + k, nm, 300 - k); k = slen (path); scpy (path + k, ext, 300 - k);
-		// (two records named alike: numbered)
-		void *e = kapi_open (path);
-		if (e) { kapi_close (e); k = slen (path) - slen (ext); path[k++] = '-'; char d[12]; int j = 0, x = r + 1; do { d[j++] = (char) ('0' + x % 10); x /= 10; } while (x); while (j) path[k++] = d[--j]; scpy (path + k, ext, 300 - k); }
+		bool twin = false;
+		for (int i = 0; i < done && !twin; i++) twin = !sicmp (made[i], path);
+		if (twin) { k = slen (path) - slen (ext); path[k++] = '-'; char d[12]; int j = 0, x = r + 1; do { d[j++] = (char) ('0' + x % 10); x /= 10; } while (x); while (j) path[k++] = d[--j]; scpy (path + k, ext, 300 - k); }
 		char *b = 0; unsigned n = 0;
-		if (doc_bytes (t, path, &b, &n) && kapi_save_file (path, b, n) >= 0) { if (!done) scpy (first, path, fcap); done++; }
+		if (doc_bytes (t, path, &b, &n) && kapi_save_file (path, b, n) >= 0)
+		{
+			if (!done) scpy (first, path, fcap);
+			int pn = slen (path) + 1; made[done] = new char[pn]; scpy (made[done], path, pn);
+			done++;
+		}
 		delete[] b;
 		doc_clear (t);
 	}
+	for (int i = 0; i < done; i++) delete[] made[i];
+	delete[] made;
 	return done;
+}
+
+// "7 documents written in:" and the folder below (its end when it is long: the message box is narrow).
+static void merge_done_msg (int done, const char *folder, char *msg, int cap)
+{
+	char d[12]; int j = 0, x = done, m = 0;
+	do { d[j++] = (char) ('0' + x % 10); x /= 10; } while (x);
+	while (j) msg[m++] = d[--j];
+	msg[m] = 0;
+	scpy (msg + m, done == 1 ? " document written in:\n" : " documents written in:\n", cap - m); m = slen (msg);
+	int n = slen (folder);
+	if (n > 36) { scpy (msg + m, "...", cap - m); m = slen (msg); folder += n - 33; }
+	scpy (msg + m, folder, cap - m);
 }
 
 // ---- Cardfile's request: "--merge JOB" ------------------------------------------------------------------------
@@ -285,10 +307,7 @@ static int merge_job (const char *job, char *path, int cap)
 		char base[80]; const char *bn = tmpl; for (const char *t = tmpl; *t; t++) if (*t == '/' || *t == ':') bn = t + 1;
 		scpy (base, bn, sizeof base); { int n = slen (base); while (n > 0 && base[n - 1] != '.') n--; if (n > 1) base[n - 1] = 0; }
 		int done = merge_files (tb, tn, r0, r1, folder[0] ? folder : "SD:/docs", name, base, ext, path, cap);
-		char msg[300]; char num[12]; int j = 0, x = done; char d[12]; do { d[j++] = (char) ('0' + x % 10); x /= 10; } while (x); int k = 0; while (j) num[k++] = d[--j]; num[k] = 0;
-		scpy (msg, num, sizeof msg); int m = slen (msg);
-		scpy (msg + m, done == 1 ? " document written in " : " documents written in ", (int) sizeof msg - m); m = slen (msg);
-		scpy (msg + m, folder[0] ? folder : "SD:/docs", (int) sizeof msg - m);
+		char msg[120]; merge_done_msg (done, folder[0] ? folder : "SD:/docs", msg, sizeof msg);
 		wk_messagebox ("Mail Merge", msg, MB_OK);
 		res = done ? 2 : 0;
 	}
@@ -343,8 +362,9 @@ public:
 	void drawBody () override
 	{
 		label (16, 46, "Records:");
-		const char *src = g_mdataOk ? g_mdataPath : "(none: choose a Cardfile form, a .card file)";
-		char b[64]; scpy (b, src, sizeof b);
+		const char *src = g_mdataOk ? g_mdataPath : "(none: choose a .card file)";
+		char b[64]; int sl = slen (src);
+		if (sl > 46) { scpy (b, "...", sizeof b); scpy (b + 3, src + sl - 43, sizeof b - 3); } else scpy (b, src, sizeof b);
 		canvas.text (90, 46, b, g_mdataOk ? C_TEXT : wk_mix (C_FACE, C_TEXT, 150));
 		if (g_mdataOk)
 		{
@@ -430,8 +450,7 @@ public:
 				const char *field = naming->sel > 0 ? g_mdata.f[naming->sel - 1].column : "";
 				char first[200];
 				int done = merge_files (o.b, o.n, r0, r1, folder, field, base, ext, first, sizeof first);
-				char msg[120]; int m = 0; char d[12]; int j = 0, x = done; do { d[j++] = (char) ('0' + x % 10); x /= 10; } while (x); while (j) msg[m++] = d[--j];
-				scpy (msg + m, done == 1 ? " document written." : " documents written.", 120 - m);
+				char msg[120]; merge_done_msg (done, folder, msg, sizeof msg);
 				wk_messagebox ("Mail Merge", msg, MB_OK);
 			}
 			o.free ();

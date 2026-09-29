@@ -71,6 +71,7 @@ int main ()
 	// ---- a document written, read back, written again: the same bytes
 	Doc d; doc_init (d); doc_new (d);
 	scpy (d.title, "Test", sizeof d.title);
+	scpy (d.merge, "SD:/docs/letter.rtf", sizeof d.merge);
 	Field f;
 	field_init (f, "Price", "price", FT_DEC); f.prec = 2; doc_insert_field (d, -1, f);
 	field_init (f, "Kind", "kind", FT_CHOICE); choice_add (f, "Small"); choice_add (f, "Large"); doc_insert_field (d, -1, f);
@@ -90,6 +91,7 @@ int main ()
 	Out o2; doc_write (e, o2);
 	ok (o1.n == o2.n && !memcmp (o1.b, o2.b, o1.n), "the same bytes after a round trip");
 	ok (e.nr == 2 && seq (e.r[0][0], "[draft] a \\ c") && seq (e.r[0][1], "line 1\nline 2"), "escapes");
+	ok (seq (e.merge, "SD:/docs/letter.rtf") && strstr (o1.b, "\nmerge") != 0, "the mail merge's letter");
 	ok (strstr (o1.b, "\n\\[draft] a \\\\ c\tline 1\\nline 2\t") != 0, "escaped in the file");
 	const char *tab = "[field]\nlabel = A\n[records]\na\nx\\ty\n";
 	ok (doc_read (e, tab, (int) strlen (tab), &why) && seq (e.r[0][0], "x y"), "a tab read in a text: a space");
