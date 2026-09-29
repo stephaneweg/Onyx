@@ -628,8 +628,27 @@ low-level cache (which now takes a request's own headers and keeps the HTTP stat
 headers); POST / any method and the request's headers in the Onyx fetcher; **`localStorage`
 kept** (a file per origin); the **hover events** (`mouseover` / `mouseenter`... from
 `onyx:hover`), **CSS `:hover`** (the styles made again when the node under the pointer changes,
-if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons). The PC bench builds in WSL again (`build-essential`, `libpng-dev`,
-`zlib1g-dev`); `jstest.sh` covers them all (js-fetch, js-hover, js-hovercss, js-storage).
+if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons), and a **back buffer**
+(`user/nsfb/onyx_surface.c`: NetSurf draws off screen, `update` copies the rectangle redrawn into
+the window's canvas -- the compositor showed half-drawn redraws: the page flickered at each
+restyle; deployed on the Pi, the flicker not yet confirmed gone by the user). The PC bench builds
+in WSL again (`build-essential`, `libpng-dev`, `zlib1g-dev`); `jstest.sh` covers them all
+(js-fetch, js-hover, js-hovercss, js-storage).
+
+**Open bug (2026-09-30, start here):** on the Pi, kotonviolins' header line turned **opaque
+brown** (90, 62, 43) where it was light grey (225, 219, 211) -- seen after the back-buffer build
+was deployed (the capture just before it, CSS `:hover` build, was right). The rule:
+`.site-header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px);
+background: rgba(247, 244, 238, 0.82); border-bottom: 1px solid var(--line) }` with
+`--line: rgba(90, 62, 43, 0.14)` -- a translucent colour drawn again and again over itself
+(no background repainted under it) tends to the opaque colour: suspect a redraw of the sticky
+header's layer (`html_redraw_layer_z` / the sticky code in `redraw.c`) painting over pixels
+already there, which the back buffer now keeps (the canvas was maybe cleared before). Not
+reproduced on the PC bench (`pages/alpha-hover.html`: a sticky translucent header, repeated
+hovers -- stays right). To do: the Pi's `SD:/apps/netsurf.app/main.old` is the build before
+threads (compare); make the bench page closer (backdrop-filter, scrolled, a web font arriving
+late); log the redraw rectangles; check `onyx_paint.c`'s effects (they read the buffer:
+`nsfb_get_buffer`). This is NOT `opacity` (unsupported, a separate item).
 
 ### Where the code is
 - CSS: `third_party/libcss`. A new property touches `src/parse/propstrings.*`,
@@ -661,8 +680,15 @@ if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons). The PC 
   (Microsoft's fonts: never in the repo); without them Chromium uses the same stand-ins as
   NetSurf (Liberation, Selawik, Gelasio).
 - `sh tools/tests/netsurf/jstest.sh` -- the JavaScript regression test (26 DOM checks, 12
-  event checks through simulated clicks and keys, a runaway recursion): run it after any
-  change to the JS, the events, the layout or the painting order.
+  event checks through simulated clicks and keys, a runaway recursion, 19 fetch / XHR checks,
+  the hover events, CSS `:hover`, `localStorage` kept over two runs): run it after any change
+  to the JS, the events, the layout or the painting order.
+- **On this PC (WSL)**: WSL's `/tmp` is wiped when the distribution stops (the bench was built
+  again from nothing each time): `export OUT=$HOME/nsbench` first. WSL's python has no numpy /
+  PIL: convert a dump with Windows' python (`python tools/tests/desktop_sim/shot.py f.elsm f.png`,
+  the `.elsm` copied to a Windows folder). Run NetSurf itself for a custom script:
+  `SIM_SCREEN=800x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_ARGS=file://... SIM="wait;...;dump f.elsm;exit"
+  $HOME/nsbench/build/netsurf`.
 - The simulator's script (`SIM=` in run.sh / jstest.sh): `wait`, `move x y`, `down x y`,
   `up x y` (a `move` first), `wheel x y d` (negative: down), `key k` (a character or a code:
   13 Enter, 27 Esc, 276 F5), `dump f.elsm` (`python3 tools/tests/desktop_sim/shot.py f.elsm
@@ -672,7 +698,14 @@ if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons). The PC 
   F5 (`key 276`): the box tree (positions, sizes, styles) written to the file.
 
 ### Building for the Pi
-- NetSurf and its libraries: GCC 10.3 (`gcc-arm-10.3-2021.07`, aarch64-none-elf; the cloud
+- **On this PC (2026-09-30)**: the Arm GNU toolchain 14.2 in WSL builds it all (see the memory /
+  docs/03; GCC 14's new errors are kept warnings in `netsurf-app.mk`). From the repo, in WSL, with
+  the toolchain on the PATH: `make -C user/nsfb NSFB=$PWD/third_party/libnsfb` (only after
+  `onyx_surface.c` changes: the default NSFB path is wrong), then
+  `make -f user/netsurf/netsurf-app.mk OUT=$HOME/nsbuild -j8 link` and `... OUT=$HOME/nsbuild
+  stage` (OUT outside `/tmp`, as above). The rules do not track headers, but `qjs_dom_js.h` is
+  made again from `dom.js` (check with `grep -c <a new name> $HOME/nsbuild/qjsgen/qjs_dom_js.h`).
+- NetSurf and its libraries (the cloud container): GCC 10.3 (`gcc-arm-10.3-2021.07`, aarch64-none-elf; the cloud
   container had it in `/home/user/toolchain`). `make -C user/netsurf` (the `.a` are
   committed; after a libcss / libdom header change delete their `.o`), then
   `rm -rf /tmp/nsbuild && make -f user/netsurf/netsurf-app.mk -j$(nproc) link` and
@@ -684,30 +717,59 @@ if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons). The PC 
   `make -C kernel kernel8-rpi4.img`, copied to `sdcard/`. NetSurf's `app.txt` (`stack = 8M`)
   needs this kernel (the default stack is 256 KB; QuickJS may use 4 MB).
 
+### Trying it on the Pi (from this PC)
+- The Pi answers at 192.168.0.10 (telnet 23, VNC 5900; telnetd serves several sessions now).
+  Deploy: an FTP server on the PC (`pyftpdlib`, port 2121, the repo's `sdcard/` as its root,
+  allowing only the Pi), then in a telnet session `cat FTP:192.168.0.9:2121/apps/netsurf.app/main
+  > SD:/apps/netsurf.app/main.new` (7 MB: wait ~45 s before the next command, or the transfer is
+  cut), `wc -c < SD:/apps/netsurf.app/main.new` (the size), `cp` it over `main`. No reboot
+  needed for an app.
+- **Its messages**: an app's stdout without a terminal goes to the kernel log as `app:` lines --
+  NetSurf's `ONYX-FETCH FAIL <url> err=...`, `ONYX-CSS-ERR ...`, `ONYX-HLC type=... url=...`.
+  One telnet session runs `kmsg` (it streams for ever: stop it with Ctrl-C, `\x03`; never pipe
+  it into `grep`: that never ends and freezes the session), a second one runs
+  `run netsurf https://kotonviolins.com` (`run` passes the URL; a NetSurf already open is kept:
+  close it first for a new build). Screenshots: `python -m vncdotool.command -s 192.168.0.10
+  capture x.png`; at 1024 x 768 (the user's setting now) `move x y` lands where asked (hover
+  tests: compare pixels before / after).
+
 ### Next, with where to start
-1. **`opacity`** -- kotonstudio's scroll reveal (`.feature-card { opacity: 0 }` until the
+0. **The open bug above** (the opaque header line), then commit nothing more on top of it until
+   it is understood.
+1. **Hover without the whole page** -- CSS `:hover` makes the document's boxes again
+   (`html_script_dom_changed` -> a full rebox + layout + redraw) at each change of the node
+   under the pointer. As the big engines do: (a) restyle only the nodes whose hover state
+   changed (the old and new hover chains: their subtrees) -- `box_get_style` again for their
+   boxes, the text / anonymous boxes that point at the old style updated too; (b) compare the old
+   and new computed styles (libcss interns them: the same pointer = no change) and if only paint
+   properties differ (colours, backgrounds, border colours, outline, shadows, visibility)
+   swap the styles and redraw the boxes' rectangles only (`html__redraw_a_box`), no layout;
+   else the rebox as now. Same for `:active` / `:focus` (`node_is_active` / `node_is_focus`
+   in `css/select.c` answer no).
+2. **`opacity`** -- kotonstudio's scroll reveal (`.feature-card { opacity: 0 }` until the
    IntersectionObserver adds `.is-visible`: the JS part works) and the hamburger's middle bar.
    `redraw.c`: paint the box's subtree into an off-screen bitmap and blend it with its alpha
    (a new plotter operation, framebuffer side in `onyx_paint.c`); a cheaper first step for a
    subtree with no overlap: multiply its colours' and images' alpha.
-2. **`fetch` / XMLHttpRequest** (dom.js makes them fail as offline): natives over llcache
-   (`llcache_handle_retrieve`; POST with `llcache_post_data`), the request keeping its
-   promise's functions (`JS_NewPromiseCapability`) until `LLCACHE_EVENT_DONE`; released when
-   the thread closes.
-3. **`localStorage` kept** (in memory now: dom.js' `Storage`): natives reading / writing a
-   file per origin under `ONYX_NS_DATAPATH` (as History, Cookies: never committed).
-4. **Cookies in `user/netsurf/onyx_fetch.c`** (logins): send `urldb_get_cookie`, give each
-   `Set-Cookie` to NetSurf's cookie handling.
-5. **Hover**: `mouseover` / `mouseout` / `mouseenter` / `mouseleave` when the element under
-   the pointer changes (the `BROWSER_MOUSE_HOVER` path of `html_mouse_action`); CSS `:hover`
-   needs a restyle (libcss asks NetSurf `node_is_hover`, which says no): the rebox, only when
-   a sheet has `:hover` rules.
+3. **Cookies in `user/netsurf/onyx_fetch.c`** (logins): send `urldb_get_cookie`, give each
+   `Set-Cookie` to NetSurf's cookie handling (the fetcher leaves `Set-Cookie` out of the
+   headers it hands the core today). Mind the worker threads: urldb is not thread-safe -- read
+   the cookie on the UI thread (at `fetch_onyx_setup` / job start) and hand the `Set-Cookie`
+   lines back with the response.
+4. **The fetch / XHR gaps** (docs/06 §7): streams (`Response.body`), synchronous XHR (runs
+   async), multipart bodies (FormData with files), `responseXML`, CORS checks (none: every
+   origin answers), cookies on script requests (with 3).
+5. **The UI thread's wait**: `onyx_input` (`user/nsfb/onyx_surface.c`) still sleeps
+   `kapi_msleep(<=20)`; `kapi_pump_wait` would wake it at once on an event (and on a post, if
+   the fetch workers `kapi_post` their completion instead of the 10 ms poll).
 6. **Media queries on a resize** (responsive): a new window size -> `html_rebox` (the boxes'
    styles are selected again) -- check which width the selection's media sees.
-7. Form controls outside any form are made again at each rebox (the old one leaks):
+7. **CSS transitions / animations, SVG (libsvgtiny, not vendored), `canvas`** -- the larger
+   gaps to Ladybird / Chrome.
+8. Form controls outside any form are made again at each rebox (the old one leaks):
    `html_forms_get_control_for_node` only searches the forms -- keep them in a list per
-   document. Inline SVG and `.svg` images (libsvgtiny, not vendored). NetSurf's
-   `default.css` gives inputs and buttons `margin: 1px` (Chrome: 0): compare before changing.
+   document. NetSurf's `default.css` gives inputs and buttons `margin: 1px` (Chrome: 0):
+   compare before changing.
 
 ### Pitfalls met (keep them in mind)
 - An app's stack must stay in kernel memory: `Yield` activates the next task's address space
@@ -723,6 +785,15 @@ if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons). The PC 
   for a rectangle outside an event.
 - A rebox takes the old boxes' objects over by URL (`html_fetch_object`); objects that arrive
   after the page is done cause a reformat (object.c).
+- **The connects one at a time** (`onyx_connect` in `onyx_fetch.c`): several threads connecting
+  at once (DNS + TCP on the network core) all failed ("Connection failed"), and a page was laid
+  out without its style sheet -- a failed style sheet does not hold the layout back.
+- The fetch threads touch plain copies only (the URL as a string, the response bytes); every
+  NetSurf call (nsurl, llcache, `fetch_send_callback`) stays on the UI thread.
+- Script requests go through `llcache_handle_retrieve_ex` with `LLCACHE_RETRIEVE_FORCE_FETCH`
+  (a cached object would not be fetched again with the request's headers); the Onyx fetcher
+  leaves the cache-control response headers out (the cache behaves as when only Content-Type
+  came) and drops `If-None-Match` / `If-Modified-Since` (a 304 would need FETCH_NOTMODIFIED).
 
 ## Other open items
 

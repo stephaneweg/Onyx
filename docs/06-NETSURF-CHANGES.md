@@ -50,6 +50,11 @@ headers in order (`llcache_handle_get_header_at`).
   forward, reload/stop, home, History, the address field), the frame's close box closes
   NetSurf; no fbtk toolbar (`frontends/framebuffer/gui.c`). Keys: F5, Esc, Alt+Left/Right,
   F6 / Ctrl+L, Ctrl+H.
+- **A back buffer** (`user/nsfb/onyx_surface.c`, the libnsfb surface): NetSurf draws into an
+  off-screen buffer of the page's size, and `update` copies the rectangle it redrew into the
+  window's canvas -- the compositor, the apps being preempted, showed half-drawn redraws (a
+  background cleared, then painted: the page flickered at each restyle). Made again at a resize,
+  from what the canvas shows.
 - **History** — a native dialog (most recent first, Find, Delete, Clear all); the pages
   visited kept in `SD:/apps/netsurf.app/History`, the cookies in `.../Cookies`
   (`ONYX_NS_DATAPATH`, written a few seconds after each page and on exit; never committed).
