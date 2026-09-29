@@ -46,5 +46,6 @@
 #include "wtk/treeview.h"
 #include "wtk/calendar.h"
 #include "wtk/imagebox.h"
+#include "wtk/vpaint.h"
 
 #endif

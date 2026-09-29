@@ -15,6 +15,7 @@
 //                        press is also a canvas click, a move with a button held a drag)
 //   rdown X Y / rup X Y  the right button
 //   key CODE             a key (a KEY_* number, or a character)
+//   mods N               the modifier keys held from now on (kapi_get_modifiers: 1 Ctrl, 2 Shift, 4 Alt)
 //   winctl N             a title button for the app (GUI_EVENT_WINCTL: 0 the window menu, 2 maximise)
 //   menu N               the app's menu item N chosen in the menu bar (GUI_EVENT_MENU)
 //   dump FILE            the window: "ELSM" w h x y (int32), then w * h pixels 0xTTRRGGBB
@@ -63,6 +64,7 @@ static char g_title[48];
 static gui_handler g_ptr, g_key, g_click, g_menuFn; static int g_btn;	// (the buttons held)
 static unsigned g_ticks = 1000;
 static std::vector<std::string> g_script; static size_t g_step;
+static unsigned g_mods;					// (the script's "mods")
 
 // The card is only READ: what an app writes (a saved file, a folder) goes to SIM_WRITES (default
 // /tmp/onyx_sim_writes), read back from there first -- never into sdcard/ nor the samples.
@@ -334,6 +336,7 @@ static void step (void)
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
+	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "exit")) exit (0);
@@ -356,7 +359,7 @@ static int sound_volume (int, int) { return 7; }
 static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1, n, stderr); }
 static void *h_sbrk (long n) { static char *arena = (char *) malloc (512u << 20), *top = arena; char *p = top; top += n; return p; }
 static int pad_state (int, struct kapi_pad *) { return 0; }
-static unsigned get_mods (void) { return 0; }
+static unsigned get_mods (void) { return g_mods; }
 static int launch (const char *n) { fprintf (stderr, "sim: launch %s\n", n); return 1; }
 static int raise_app (const char *n) { fprintf (stderr, "sim: raise_app %s\n", n); return 0; }
 static int exec (const char *p, const char *a) { fprintf (stderr, "sim: exec %s %s\n", p, a); return 1; }

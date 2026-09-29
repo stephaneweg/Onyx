@@ -275,7 +275,7 @@ does not change it.
 ![Menu bar](../screenshots/menubar.png)
 *The menu bar with tinypad active and its File menu open.*
 
-Applications with menus: **tinypad** (File), **Writer** (File, Format, Color, Style),
+Applications with menus: **tinypad** (File), **Writer** (File, Edit, View, Insert, Format, Tools),
 **paint** (File, Brush, Color) and the **File Viewer** (File, Edit) — see §12.
 
 ### The dock (`dock`)
@@ -971,10 +971,10 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | App | Description and controls |
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
-| **Writer** | Rich-text editor (bold/italic/underline/strike/highlight, colours, sizes, heading levels) on a word-wrapping document. Select text with the mouse (or **Shift** + arrows / Home / End / Page Up / Down), then use the menus: **File** (New ^N, Open... ^O, Save ^S, Save As...), **Format** (Bold ^B, Italic, Underline ^U, Strikethrough, Highlight, Smaller, Bigger), **Color** (Black/Red/Green/Blue), **Style** (Normal, Title 1-3). **`.rtf` files keep their styles** (read and written as Rich Text Format); other files load and save as plain text (`.doc` files open in Writer). **Drop** a file to open it (asks to save unsaved changes first), or text to insert it. |
+| **Writer** | The **word processor**, in the way of AbiWord: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents), a ruler (the indents and margins dragged), images, Find and Replace, Special Character, Page Setup, Word Count; RTF (with everything), text, HTML export. See *Writer, the word processor* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
-| **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. Double-click a `.rtf` in the File Viewer (`fileassoc.ini`), File ▸ Open... (^O) or drop it on the window; Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept. Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
+| **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Writer**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Writer keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
@@ -1013,6 +1013,107 @@ from the same code (the `.FMS` reader and the FM synthesizer of the Onyx kernel)
 drop `.fms` files on it; the folder's songs make the playlist (double-click one); Play /
 Pause, Stop, Previous / Next, Loop song; it shows the title, author, comment, position and
 each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
+
+### Writer, the word processor (`writer`)
+
+![Writer](../screenshots/writer.png)
+*Writer with its sample document (`SD:/docs/writer-tour.rtf`): a word selected, the toolbar showing its font and size.*
+
+Writer is Onyx's word processor, in the way of AbiWord. The document is laid out on **pages** — A4
+by default, 2 cm margins — shown one under the other on a grey desk, and every letter is drawn by
+**FreeType** from the TrueType fonts of the card (`SD:/res/fonts`; a `.ttf` added to `SD:/fonts`
+shows up too): **Liberation Serif** and **Liberation Sans** (the metrics of Times New Roman and
+Arial), **DejaVu Sans / Serif / Sans Mono**, **Gelasio** (Georgia's), **Selawik** (Segoe UI's). A
+font a document names but the card lacks is shown with its twin (Arial → Liberation Sans, Times
+New Roman → Liberation Serif, Courier New → DejaVu Sans Mono, Georgia → Gelasio, Segoe UI →
+Selawik, others by kind) and keeps its name when the document is saved. No printing yet.
+
+**The window**, from the top:
+
+- **The standard toolbar**: New, Open, Save · Undo, Redo · Cut, Copy, Paste · Find and Replace,
+  Formatting marks (¶: the spaces, tabs, line breaks and paragraphs' ends shown) · Page break,
+  Special character (Ω), Insert image · the **zoom** (−, the list: Page Width, Whole Page,
+  25 %–400 %, +).
+- **The format toolbar**: the paragraph's **style** (Normal, Heading 1–3, Title, Subtitle, Quote,
+  Plain Text — the list shows each in its look), the **font** (the list shows each font in
+  itself), the **size** (type a number then Enter, or pick one), **B I U S**, superscript and
+  subscript, the **text colour** and the **highlight** (a click applies the colour shown under the
+  letter; the arrow opens the palette: Automatic / No Colour, sixty colours, More Colours...), the
+  four **alignments**, **bullets** and **numbering**, **decrease / increase indent**. The buttons
+  show the text at the caret: bold lit on bold text, its font, its size, its alignment.
+- **The ruler**: the page's width at the zoom, the margins grey, in centimetres (View ▸ Ruler in
+  Inches / Centimetres). Its markers are the paragraph's indents — the first line's (the triangle
+  on top), the hanging indent (the triangle below), the left indent (the little box: both
+  together), the right indent: **drag them** (the selected paragraphs change, one undoable edit).
+  Drag the edge between the grey and the white to move the page's left or right margin.
+- **The pages**: a click places the caret, a **drag** selects (past the edge, the page scrolls),
+  a **double click** selects a word, a **triple click** the paragraph, **Shift+click** extends the
+  selection; the **wheel** and the scroll bars scroll; a **right click** opens a menu (Cut, Copy,
+  Paste, Paste Unformatted, Font..., Paragraph..., Bullets, Numbering, Select All).
+- **The status bar**: the file's name ("modified" when it is), the caret's page and the number of
+  pages, the number of words, the zoom (− / +).
+
+**Keys**: typing replaces the selection; the arrows (**Ctrl**: by word, by paragraph), **Home /
+End** (the line's; Ctrl: the document's), **Page Up / Down**, with **Shift** to select;
+**Backspace / Delete** (Ctrl: a word); **Enter** a new paragraph (after a heading: a Normal one; in
+an empty list item: the end of the list), **Shift+Enter** a new line in the paragraph; **Tab** a
+tab stop (every 1.25 cm) — at the start of a list item, a level down (**Shift+Tab**: up); **Esc**
+drops the selection. Shortcuts: **Ctrl+N / O / S** New, Open, Save · **Ctrl+Z / Y** Undo, Redo ·
+**Ctrl+X / C / V** Cut, Copy, Paste · **Ctrl+A** Select All · **Ctrl+F** Find and Replace ·
+**Ctrl+B / I / U** bold, italic, underline · **Ctrl+L / E / R / J** left, centred, right,
+justified · **Ctrl+D** Font....
+
+**The menus**: **File** (New, Open..., Save, Save As..., Export as HTML..., Export as Text...,
+Page Setup...), **Edit** (Undo, Redo, Cut, Copy, Paste, Paste Unformatted, Select All, Find and
+Replace...), **View** (Zoom In / Out, Actual Size, Page Width, Whole Page, Formatting Marks, the
+ruler's unit), **Insert** (Page Break, Image..., Special Character..., Date and Time..., Page
+Numbers), **Format** (Font..., Paragraph..., Bold, Italic, Underline, Strikethrough, Superscript,
+Subscript, Bigger, Smaller, Clear Formatting, the four alignments, Bullets, Numbering, Increase /
+Decrease Indent), **Tools** (Word Count...).
+
+**The dialogs**:
+
+- **Font** (Ctrl+D): the font, its style (Regular, Italic, Bold, Bold Italic), the size, the
+  effects (Underline, Strikethrough, Superscript, Subscript), the colour and the highlight; a
+  preview draws the selection's words in the chosen font.
+- **Paragraph**: the alignment; the indents (left, right, special — a first line's or a hanging
+  one — and by how much), in centimetres; the spacing before and after (points) and between the
+  lines (single, 1.15, 1.5, double); Page break before, Keep with next; a preview.
+- **Page Setup**: the paper (A4, A5, A3, Letter, Legal), portrait or landscape, the four
+  margins, the page numbers at the foot of each page; a preview of the page.
+- **Find and Replace** (Ctrl+F): what to find (the selection's words, if any), what replaces it,
+  Match case; **Find Next** (Enter) selects the next one (round to the start; the dialog moves out
+  of its way), **Replace** replaces it and finds the next one, **Replace All** replaces them all
+  (one undoable edit; the count shown).
+- **Special Character**: the characters of the current font by block — Latin-1, Latin Extended,
+  Greek, Cyrillic, punctuation, currencies, letter-like symbols and numbers, arrows, mathematics,
+  box drawing and shapes, symbols, dingbats —, the chosen one large with its code; **Insert** (or a
+  double click) puts it at the caret, the dialog staying open.
+- **Date and Time**: today's date and the time in several forms (29/09/2026, Tuesday 29 September
+  2026, 2026-09-29, 14:05...).
+- **Word Count**: the pages, words, characters without and with spaces, paragraphs and lines —
+  of the selection when there is one.
+
+**Images**: Insert ▸ **Image...** (or the toolbar's picture) puts a PNG, JPEG, BMP (its magenta
+see-through, as Onyx's icons), GIF or WebP picture at the caret, in the line like a large letter,
+at its size (narrowed to the page's width). A **click** on it selects it — a frame and a handle at
+its bottom-right corner: **drag the handle** to resize it (its proportions kept; undoable); Delete
+removes it; Cut / Copy / Paste move it.
+
+**Files**: **`.rtf`** (Rich Text Format, with everything — the fonts, sizes, colours, highlights,
+styles, alignments, indents, spacing, lists, page breaks, images, the page's size and margins, the
+page numbers; documents from Word, WordPad, LibreOffice or AbiWord open with theirs) and
+**`.txt`** (plain text: UTF-8 when a character needs it, else Latin-1 like the rest of Onyx).
+**Save** writes the format of the file's name (a new document: Save As..., `.rtf` by default;
+saving formats as `.txt` asks first); **File ▸ Export** writes an **HTML** page (its images inside
+it) or a text file, the document staying where it was. A `.rtf` double-clicked in the File Viewer
+opens in Writer (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Writer), as does
+`writer <file>`; **drop** a file on the window to open it, or text to insert it at the caret. New,
+Open and a drop first ask to **save unsaved changes**; **closed with unsaved changes** (the close
+box, Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offered back when
+Writer starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste
+within Writer keep the formats (and the images); the other apps get the text. Documents usually
+start in `SD:/docs`; the sample: `SD:/docs/writer-tour.rtf`.
 
 ### Games
 

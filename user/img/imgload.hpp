@@ -33,6 +33,7 @@ struct ImgFrames
 
 void img_free (ImgFrames *im);			// delete [] the frames
 bool img_load (const char *path, ImgFrames *im);	// false: unreadable / unknown format
+bool img_load_mem (const void *data, unsigned len, ImgFrames *im);	// the same, from a file's bytes in memory
 bool img_is_image_name (const char *name);	// by extension (bmp gif png jpg jpeg jpe pcx webp)
 
 #ifdef IMGLOAD_IMPLEMENTATION
@@ -226,12 +227,29 @@ static unsigned *img_webp (unsigned char *d, unsigned len, int *pw, int *ph)
 	return px;
 }
 
+static bool img_decode (unsigned char *d, unsigned len, ImgFrames *im);	// (frees d)
 bool img_load (const char *path, ImgFrames *im)
 {
 	im->n = 0; im->w = im->h = 0; im->format = "?";
 	unsigned len = 0;
 	unsigned char *d = img_read_file (path, &len);
 	if (d == 0) return false;
+	return img_decode (d, len, im);
+}
+
+bool img_load_mem (const void *data, unsigned len, ImgFrames *im)
+{
+	im->n = 0; im->w = im->h = 0; im->format = "?";
+	if (len == 0 || len > IMG_MAX_BYTES) return false;
+	unsigned char *d = (unsigned char *) img_alloc (len);
+	if (d == 0) return false;
+	for (unsigned i = 0; i < len; i++) d[i] = ((const unsigned char *) data)[i];
+	return img_decode (d, len, im);
+}
+
+// A file's bytes (an img_alloc buffer, freed here) decoded.
+static bool img_decode (unsigned char *d, unsigned len, ImgFrames *im)
+{
 	int w = 0, h = 0;
 	unsigned *px = 0;
 	if (len >= 12 && d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F' && d[8] == 'W' && d[9] == 'E' && d[10] == 'B' && d[11] == 'P')

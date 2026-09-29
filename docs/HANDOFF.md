@@ -147,6 +147,41 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **Next ideas**: drag an app onto a drawer to add it; the applets' own help; a wallpaper
   slideshow; the workspaces' windows moved by drag & drop onto the pager.
 
+## Writer, a word processor (2026-09-29, same branch, pushed to `main`)
+
+Asked by the user: Writer "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
+Writer itself (no RichTextBox). Done:
+
+- **The apps' FreeType** (`user/ft/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
+  `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `ft/fonts.h`: the card's families
+  (`SD:/res/fonts`, `SD:/fonts`), sized fonts, a glyph cache at quarter pixels, the drawing.
+- **Writer** (`user/Apps/writer/`, a newlib app now: `writer.elf` rule): pages (A4, margins,
+  page numbers), styles, fonts, sizes, B/I/U/S, super/subscript, colours, highlights,
+  alignments, indents (the ruler's markers dragged), spacing, lists, page breaks, images (PNG /
+  JPEG / BMP / GIF / WebP, resized with a handle), undo / redo, rich copy / paste, Find and
+  Replace, Special Character, Date and Time, Word Count, Page Setup, zoom, formatting marks;
+  RTF read / written with all of it, text, HTML export; a recovered document after a close with
+  unsaved changes. `.rtf` files now open in Writer (`sdcard/etc/fileassoc.ini`). The docs:
+  `docs/04` *Writer, the word processor*, `docs/03` (TrueType text, `VPath`, Writer's pieces).
+- **wtk**: `wtk/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
+- **Sample**: `sdcard/docs/writer-tour.rtf` (`tools/gen_writer_sample.py`); the screenshot
+  `screenshots/writer.png`. The desktop simulator's script has `mods N` (modifier keys).
+- **Next ideas**: tables; headers / footers beyond the page number; spell checking (a
+  dictionary); tab stops set on the ruler; ODT / DOCX import (zlib is in `third_party`).
+
+## Queued by the user (in this order)
+
+1. **Paint, as Windows 11's** — a grid, pixel-exact drawing, shapes (rectangle, line, point,
+   ellipse, polygons inscribed in a circle...), foreground / background colours, a palette and
+   custom colours, a rectangular selection, flip / rotate (the selection, or the whole image),
+   cut / paste with the pasted piece movable until a click outside fixes it, **transparent
+   layers** (shown / hidden...), a professional wtk UI; *Export* writes what is visible (flat),
+   *Save* a working format with the layers.
+2. **Cardfile** ("a simple Access without SQL"): to be done by an agent — one file = a form and
+   its data; the form's fields (display name, column name, type: one-line text, multi-line text,
+   integer, decimal with its precision, date, colour, yes/no, a list of choices); a form view, a
+   list (grid) view and an edit view for the form.
+
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
 - **Done (cloud session), all pushed:** option A of `docs/GC-WINDOWS-REPORT.md` §5 -- the GX on the

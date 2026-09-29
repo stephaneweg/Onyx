@@ -194,9 +194,17 @@ add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`
 the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
 tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 
+A **wtk app** can be a newlib app too (Doom, NetSurf, **Writer** — FreeType wants a libc): the
+`writer.elf` rule of [`user/Makefile`](../user/Makefile) is the model — `NL_CFLAGS` /
+`NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`), `libc/crt0libc.o` +
+`libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries (`ft/libft.a`) and `-lm`. Take
+the app out of the generic `APPS` list and add its `.elf` to `all:`; `make stage` stages it as any.
+
 Notes / caveats:
-- **One allocator.** newlib's `malloc` owns the heap via `_sbrk`→`kapi_sbrk`. Do **not**
-  also link `umm.h` in a newlib app.
+- **One allocator** for a plain C newlib app: newlib's `malloc` owns the heap via
+  `_sbrk`→`kapi_sbrk`; do **not** also link `umm.h`. (A wtk app on newlib has two, side by side:
+  wtk's C++ objects on umm — `onyxpp.hpp`'s `operator new` — and the C libraries on `malloc`; each
+  grows its own arena with `kapi_sbrk`.)
 - **Files are buffered in RAM.** The kapi file API is sequential (no seek), so `_open`
   slurps the whole file into memory to give `fseek`/`ftell` full semantics, and a
   writable file is written back with `kapi_save_file()` on `close`. Fine for resource
@@ -250,7 +258,32 @@ Notes / caveats:
 > heap (`new unsigned[]` frames); `img_free (&frames)`; `img_is_image_name (name)`. The
 > codecs are compiled once into `libwtk.a` (`wtk/imgload.cpp`, with FP/SIMD like
 > `wtk/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
-> `fileviewer` (preview), `wtk::ImageBox`.
+> `fileviewer` (preview), `wtk::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
+> already in memory (Writer's RTF pictures).
+> **TrueType text** (`user/ft/`): the apps' FreeType — the upstream sources of
+> `third_party/freetype-2.14.3` built lean by `user/Makefile` into `ft/libft.a`
+> (`ft/onyx_ftoption.h`, `ft/onyx_ftmodule.h`: TrueType fonts only — truetype + sfnt —, anti-aliased
+> — smooth —, hinted by the auto-hinter only — autofit, no bytecode interpreter —, their kerning read
+> — GPOS too —; no compressed, web, bitmap, colour or variable fonts, no PostScript names; NetSurf
+> keeps its own fuller build). FreeType wants a C library: an app using it is a **newlib** app (§5.1;
+> Writer's rule in `user/Makefile` is the model). `#include "ft/fonts.h"` (header-only, one TU):
+> `fnt::init ()` finds the families of `SD:/res/fonts` and `SD:/fonts` (each file's family name and
+> style read from its own `name` / `head` / `OS/2` tables — no FreeType, three small reads), sorted;
+> `fnt::count / name / find / styles`; `fnt::get (family, fnt::BOLD | fnt::ITALIC, size in 1/64 px)`
+> a sized font (a style the family lacks is made: thickened, slanted) with its `ascent`, `descent`,
+> `height`, underline place and thickness; `fnt::advance (f, cp)` — the design's advance, 1/64 px:
+> exact at any size, so a line breaks at the same word at every zoom —, `fnt::kern`, `fnt::draw (cv,
+> f, x64, baseline, cp, colour, clip)` — the glyph rendered once per quarter-pixel position, cached,
+> blended with a slight gamma —, `draw_str / str_w` for Latin-1 labels. A character a font lacks
+> comes from DejaVu Sans. `fnt::trim ()` drops the least used sizes when the cache is big — only at
+> a moment no `Font *` is held (after a redraw); `fnt::g_onTrim` lets the app forget its own. The
+> screenshots' build compiles the same sources for the PC (`shots.sh`).
+> **Vector shapes** (`wtk/vpaint.h`, in `libwtk.a`, integer only): a `VPath` gathers outlines —
+> `poly`, `rect`, `rrect`, `circle`, `ellipse`, `hole` (a disc cut out), strokes `line`, `polyline`,
+> `arc` (round ends and joins), `arrowHead` — in 1/16 px (`V (px)`), then `fill (cv, colour, alpha)`
+> paints their union (the non-zero rule: every outline turned the same way, a hole the other way),
+> anti-aliased (four sub-rows a pixel, the spans' ends to 1/16 px). Writer's toolbar icons are drawn
+> with it (`user/Apps/writer/icons.h`). `wk_sin / wk_cos (degrees)` × 16384.
 > **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
 > app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
 > request (`req.op` = `VFS_OP_OPEN` / `READ` / `CLOSE` / `LIST` / `SAVE` / `MKDIR` / `REMOVE`
@@ -468,7 +501,22 @@ Notes / caveats:
 > **Rich Text Format** (`user/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
 > a `RichTextBox` (styles, colour table → the 16-colour palette, `\'hh` / `\uN` → Latin-1,
 > skipped destinations), `rtf::save (box, out, cap)` writes it back; `rtf::is_rtf`. Used by
-> `rtfview` and Writer. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
+> `rtfview` (Writer reads and writes RTF itself, with everything: `Apps/writer/fileio.h`).
+> **Writer** (`user/Apps/writer/`, one TU: `main.cpp` includes the rest) — `doc.h` the document
+> (paragraphs of code points, each with an index into the table of character formats — font of the
+> font table, size in half-points, flags, colour, highlight; an image: the character U+FFFC whose
+> format names the image and its size —, each paragraph its `ParaFmt` — style, alignment, indents
+> and spacing in twips, line spacing, list, page break; the tables only grow, so an edit's undo just
+> puts the paragraphs it copied back: `doc_begin` / `doc_end_edit`, typing coalesced), `layout.h`
+> (lines at the zoom in 1/64 px from the fonts' design advances, each character's x kept —
+> `Para::xs` — for drawing, hit-testing and the caret alike; lists' numbers; pages), `edit.h` (the
+> selection, the edits, the clipboard — the system's text plus the piece of document kept here —,
+> find), `view.h` (the page view widget: drawing, caret blink without a redraw, mouse, keys, images'
+> resizing), `ui.h` (tool buttons, pick boxes dropping a `ListPopup`, the size box, colour popups,
+> the ruler, the status bar), `icons.h` (`VPath` icons), `fileio.h` (RTF in / out — pictures as
+> `\pict\pngblip` / `\jpegblip`, a PNG made when the image came as something else —, text, HTML),
+> `dialogs.h`. A host test worth keeping in mind: random edits undone then redone must give back
+> the same RTF. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
 > **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),
@@ -1237,6 +1285,10 @@ barwidth = 40
   `dock.png`, `agenda.png`). Run `sh tools/tests/desktop_sim/shots.sh` (all) or
   `sh tools/tests/desktop_sim/shots.sh paint dock` (some); ~15 s, needs g++ and Pillow + numpy.
   **To add an app**: add it to `APPS` and a line `sim <app> <name> "<script>" …; png <name>`.
+  The script's steps: `wait`, `down / up / move / wheel X Y`, `rdown / rup`, `key CODE`, `mods N`
+  (the modifiers held from then on: 1 Ctrl, 2 Shift, 4 Alt — Shift+arrows select...), `menu N`
+  (the app's menu item N: its items counted from 0 in the order the app adds them), `winctl N`,
+  `dump FILE`, `exit`. Writer's is built with the apps' FreeType (the same sources, for the PC).
   (`nintendoemu.png` and `arkanoid.png` — an emulator, a BASIC program — still come from the
   older, simulated renderer [`tools/screenshot/render.py`](../tools/screenshot/render.py).)
 - **Word/PDF exports**: [`docs/build_docs.py`](build_docs.py) converts each `.md` in

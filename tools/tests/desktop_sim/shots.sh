@@ -30,14 +30,24 @@ want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 
 for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
+# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Writer's
+FT=third_party/freetype-2.14.3
+FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
+mkdir -p "$OUT/ft"
+for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
+	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
+rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
 	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
+	if [ "$1" = writer ]; then
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp "$OUT/libwtk.a" "$OUT/libft.a"; return
+	fi
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
 }
 APPS="2048 agenda applist calendar control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu"
+      tinycalc tinypad widgets wifimenu writer"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
 $CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
@@ -117,6 +127,10 @@ if want invaders; then sim invaders invaders "$W;$W;$W;key 32;$W;$W;$W;$W" $P; p
 if want graphcalc; then sim graphcalc graphcalc "$W" $P; png graphcalc; fi
 if want iconedit; then sim iconedit iconedit "$W" $P SIM_ARGS=SD:/apps/invaders.app/icon.bmp; png iconedit; fi
 if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sample.rtf; png rtfview; fi
+if want writer; then			# (the sample document; a double click selects a word: the toolbar follows it)
+	sim writer writer "wait;down 585 572;up 585 572;down 585 572;up 585 572;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf
+	png writer
+fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want applist; then sim applist applist "$W" $P; png applist; fi
 if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi

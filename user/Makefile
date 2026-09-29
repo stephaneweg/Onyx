@@ -34,11 +34,11 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo writer shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf
+       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) bin bin/basic.elf doom
+all: $(APP_ELFS) writer.elf bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -72,6 +72,34 @@ wtk/libwtk.a: $(WTK_OBJ)
 
 $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
 	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+
+# ---- Writer: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
+# as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
+# interpreter, no compressed / web / bitmap fonts --, the upstream sources of third_party).
+NL_CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
+	     -ffunction-sections -fdata-sections -I. -I../kernel/include
+NL_CXXFLAGS = $(NL_CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
+NL_LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections
+FT_SRC = ../third_party/freetype-2.14.3
+vpath ft%.c $(FT_SRC)/src/base
+vpath autofit.c $(FT_SRC)/src/autofit
+vpath truetype.c $(FT_SRC)/src/truetype
+vpath sfnt.c $(FT_SRC)/src/sfnt
+vpath smooth.c $(FT_SRC)/src/smooth
+FT_OBJ = $(addprefix ft/,ftsystem.o ftinit.o ftdebug.o ftbase.o ftbitmap.o ftsynth.o autofit.o truetype.o sfnt.o smooth.o)
+ft/%.o: %.c ft/onyx_ftoption.h ft/onyx_ftmodule.h
+	$(CC) $(NL_CFLAGS) -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
+	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -Ift -I$(FT_SRC)/include -c $< -o $@
+ft/libft.a: $(FT_OBJ)
+	$(AR) rcs $@ $^
+libc/crt0libc.o: libc/crt0libc.S
+	$(CC) $(NL_CFLAGS) -c $< -o $@
+libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
+	$(CC) $(NL_CFLAGS) -c $< -o $@
+writer.elf: Apps/writer/main.cpp $(wildcard Apps/writer/*.h) ft/fonts.h ft/libft.a wtk/libwtk.a \
+	    libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a ft/libft.a -lm -o $@
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
@@ -154,6 +182,6 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
 
 clean:
-	rm -f *.elf *.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a bin/basic.elf
+	rm -f *.elf *.o ft/*.o ft/*.a libc/*.o basic/*.o basic/*.a gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean
