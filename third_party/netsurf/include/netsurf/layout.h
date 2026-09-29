@@ -32,6 +32,10 @@
 #ifndef _NETSURF_LAYOUT_H_
 #define _NETSURF_LAYOUT_H_
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+
 struct plot_font_style;
 
 struct gui_layout_table
@@ -86,6 +90,33 @@ struct gui_layout_table
 	 * Returning char_offset == length means no split possible
 	 */
 	nserror (*split)(const struct plot_font_style *fstyle, const char *string, size_t length, int x, size_t *char_offset, int *actual_x);
+
+	/* Onyx: web fonts (@font-face) -- optional, NULL: none */
+
+	/**
+	 * A web font of a document, for its family, weights and style (the file --
+	 * TrueType / OpenType, WOFF / WOFF2 -- is copied).
+	 *
+	 * \return NSERROR_OK, NSERROR_INVALID for a file the frontend does not read
+	 */
+	nserror (*add_face)(const void *owner, const char *family, int weight_min, int weight_max, bool italic, const uint8_t *data, size_t size);
+
+	/** A document's web fonts forgotten (it is gone). */
+	void (*release_faces)(const void *owner);
+
+	/**
+	 * The document whose web fonts the text measured and drawn next may use.
+	 *
+	 * \return the previous one
+	 */
+	const void *(*set_scope)(const void *owner);
+
+	/**
+	 * Onyx: the vertical metrics of the style's first font, whole pixels: its
+	 * ascent, descent and line gap (line-height: normal is their sum) --
+	 * optional, NULL: NetSurf's own approximations.
+	 */
+	nserror (*metrics)(const struct plot_font_style *fstyle, int *ascent, int *descent, int *line_gap);
 };
 
 #endif

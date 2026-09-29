@@ -59,6 +59,7 @@
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/onyx_paint.h"	/* Onyx: radii, shadows, gradients */
+#include "html/onyx_webfont.h"	/* Onyx: web fonts */
 #include "html/box_manipulate.h"
 #include "html/font.h"
 #include "html/form_internal.h"
@@ -67,6 +68,13 @@
 
 
 bool html_redraw_debug = false;
+
+/**
+ * Onyx: background-clip: text -- the paint of the box being drawn whose background paints
+ * its text (its descendants'), or NULL; set by html_redraw_box_inner, restored by
+ * html_redraw_box.
+ */
+static const struct onyx_paint *onyx_text_fill;
 
 /**
  * Determine if a box has a background that needs drawing
@@ -178,6 +186,9 @@ text_redraw(const char *utf8_text,
 	bool highlighted = false;
 	plot_font_style_t plot_fstyle = *fstyle;
 	nserror res;
+	/* Onyx: the baseline where the layout put it (its font's ascent below the half
+	 * leading), not three quarters down */
+	int baseline = (int) (font_baseline(fstyle, height) * scale);
 
 	/* Need scaled text size to pass to plotters */
 	plot_fstyle.size *= scale;
@@ -255,7 +266,7 @@ text_redraw(const char *utf8_text,
 			    (ctx->plot->text(ctx,
 					     &plot_fstyle,
 					     x,
-					     y + (int)(height * 0.75 * scale),
+					     y + baseline,
 					     utf8_text,
 					     start_idx) != NSERROR_OK))
 				return false;
@@ -301,7 +312,7 @@ text_redraw(const char *utf8_text,
 			    (ctx->plot->text(ctx,
 					     &fstyle_hback,
 					     x,
-					     y + (int)(height * 0.75 * scale),
+					     y + baseline,
 					     utf8_text,
 					     endtxt_idx) != NSERROR_OK)) {
 				return false;
@@ -326,7 +337,7 @@ text_redraw(const char *utf8_text,
 					res = ctx->plot->text(ctx,
 							      &plot_fstyle,
 							      x,
-							      y + (int)(height * 0.75 * scale),
+							      y + baseline,
 							      utf8_text,
 							      utf8_len);
 					if (res != NSERROR_OK) {
@@ -343,10 +354,16 @@ text_redraw(const char *utf8_text,
 	}
 
 	if (!highlighted) {
-		res = ctx->plot->text(ctx,
+		if (onyx_text_fill != NULL && ctx->plot->onyx_text_paint != NULL)
+			/* Onyx: background-clip: text */
+			res = ctx->plot->onyx_text_paint(ctx, &plot_fstyle, x,
+					y + baseline,
+					utf8_text, utf8_len, onyx_text_fill);
+		else
+			res = ctx->plot->text(ctx,
 				      &plot_fstyle,
 				      x,
-				      y + (int) (height * 0.75 * scale),
+				      y + baseline,
 				      utf8_text,
 				      utf8_len);
 		if (res != NSERROR_OK) {
@@ -1233,13 +1250,36 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
  * x, y, clip_[xy][01] are in target coordinates.
  */
 
+static bool html_redraw_box_inner(const html_content *html, struct box *box,
+		int x_parent, int y_parent,
+		const struct rect *clip, const float scale,
+		colour current_background_color,
+		const struct redraw_context *ctx);
+
 bool html_redraw_box(const html_content *html, struct box *box,
 		int x_parent, int y_parent,
 		const struct rect *clip, const float scale,
 		colour current_background_color,
 		const struct redraw_context *ctx)
 {
+	/* Onyx: a background-clip: text paint lasts for the box's descendants */
+	const struct onyx_paint *fill = onyx_text_fill;
+	bool ok = html_redraw_box_inner(html, box, x_parent, y_parent, clip,
+			scale, current_background_color, ctx);
+
+	onyx_text_fill = fill;
+	return ok;
+}
+
+static bool html_redraw_box_inner(const html_content *html, struct box *box,
+		int x_parent, int y_parent,
+		const struct rect *clip, const float scale,
+		colour current_background_color,
+		const struct redraw_context *ctx)
+{
 	const struct plotter_table *plot = ctx->plot;
+	struct onyx_gradient tf_grad;	/* (Onyx: background-clip: text) */
+	struct onyx_paint tf_paint;
 	int x, y;
 	int width, height;
 	int padding_left, padding_top, padding_width, padding_height;
@@ -1527,6 +1567,30 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	 * inlines */
 
 	bg_box = html_redraw_find_bg_box(box);
+
+	/* Onyx: background-clip: text -- this box's background paints its text (its
+	 * descendants'), not the box */
+	if (box->style != NULL && ctx->plot->onyx_text_paint != NULL &&
+	    box->type != BOX_TEXT && box->type != BOX_INLINE_END &&
+	    css_computed_background_clip(box->style) ==
+			CSS_BACKGROUND_CLIP_TEXT) {
+		const char *grad = onyx_background_gradient(box->style);
+
+		memset(&tf_paint, 0, sizeof tf_paint);
+		if (grad != NULL && onyx_gradient_resolve(grad, box->style,
+				&html->unit_len_ctx, scale, x, y,
+				padding_width, padding_height, &tf_grad)) {
+			tf_paint.gradient = &tf_grad;
+		} else {
+			css_color bgc;
+
+			css_computed_background_color(box->style, &bgc);
+			tf_paint.colour = nscss_color_to_ns(bgc);
+		}
+		onyx_text_fill = &tf_paint;
+		if (bg_box == box)
+			bg_box = NULL;	/* no box background */
+	}
 
 	/* bg_box == NULL implies that this box should not have
 	* its background rendered. Otherwise filter out linebreaks,
@@ -2098,6 +2162,8 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 
 	box = html->layout;
 	assert(box);
+
+	onyx_webfont_scope(html);	/* Onyx: drawn with its web fonts */
 
 	/* The select menu needs special treating because, when opened, it
 	 * reaches beyond its layout box.

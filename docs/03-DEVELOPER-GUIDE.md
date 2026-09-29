@@ -1115,6 +1115,12 @@ as the `NetSurf` desktop app. **It runs on Onyx** — the window opens and real 
 through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
 `-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
 tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
+NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
+metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
+CSS3 painting, the native window: [`06-NETSURF-CHANGES.md`](06-NETSURF-CHANGES.md) lists the
+changes. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
+<out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
+`sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:

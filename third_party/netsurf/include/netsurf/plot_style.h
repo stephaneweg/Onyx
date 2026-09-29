@@ -121,6 +121,10 @@ typedef struct plot_font_style {
 	plot_font_flags_t flags; /**< Font flags */
 	colour background; /**< Background colour to blend to, if appropriate */
 	colour foreground; /**< Colour of text */
+	/** Onyx: added after each character, in px (CSS letter-spacing; 0: none) */
+	plot_style_fixed letter_spacing;
+	/** Onyx: added after each space, in px (CSS word-spacing; 0: none) */
+	plot_style_fixed word_spacing;
 } plot_font_style_t;
 
 

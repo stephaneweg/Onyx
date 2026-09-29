@@ -440,6 +440,7 @@ uint8_t css_computed_justify_self(
 uint8_t css_computed_aspect_ratio(const css_computed_style *style,
 		css_fixed *width, css_fixed *height);
 uint8_t css_computed_object_fit(const css_computed_style *style);
+uint8_t css_computed_background_clip(const css_computed_style *style);	/* Onyx */
 uint8_t css_computed_object_position(const css_computed_style *style,
 		css_fixed *hlength, css_unit *hunit,
 		css_fixed *vlength, css_unit *vunit);

@@ -59,6 +59,7 @@
 #include "html/private.h"
 #include "html/imagemap.h"
 #include "html/interaction.h"
+#include "html/onyx_webfont.h"
 
 /**
  * Get pointer shape for given box
@@ -1478,6 +1479,8 @@ html_mouse_action(struct content *c,
 	html_content *html = (html_content *)c;
 	nserror res = NSERROR_OK;
 
+	onyx_webfont_scope(html);	/* Onyx: text positions in its fonts */
+
 	/* handle open select menu */
 	if (html->visible_select_menu != NULL) {
 		return mouse_action_select_menu(html, bw, mouse, x, y);
@@ -1531,6 +1534,8 @@ bool html_keypress(struct content *c, uint32_t key)
 {
 	html_content *html = (html_content *) c;
 	struct selection *sel = html->sel;
+
+	onyx_webfont_scope(html);	/* Onyx: text positions in its fonts */
 
 	/** \todo
 	 * At the moment, the front end interface for keypress only gives

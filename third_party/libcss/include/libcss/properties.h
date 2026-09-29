@@ -169,6 +169,7 @@ enum css_properties_e {
 	CSS_PROP_GRID_ROW_END			= 0x097,
 	CSS_PROP_GRID_COLUMN_START		= 0x098,
 	CSS_PROP_GRID_COLUMN_END		= 0x099,
+	CSS_PROP_BACKGROUND_CLIP		= 0x09a,
 
 	CSS_N_PROPERTIES
 };
@@ -242,6 +243,14 @@ enum css_aspect_ratio_e {
 	CSS_ASPECT_RATIO_AUTO			= 0x1,
 	CSS_ASPECT_RATIO_SET			= 0x2,	/* width / height */
 	CSS_ASPECT_RATIO_AUTO_SET		= 0x3	/* auto && ratio */
+};
+
+enum css_background_clip_e {
+	CSS_BACKGROUND_CLIP_INHERIT		= 0x0,
+	CSS_BACKGROUND_CLIP_BORDER_BOX		= 0x1,
+	CSS_BACKGROUND_CLIP_PADDING_BOX		= 0x2,
+	CSS_BACKGROUND_CLIP_CONTENT_BOX		= 0x3,
+	CSS_BACKGROUND_CLIP_TEXT		= 0x4
 };
 
 enum css_object_fit_e {

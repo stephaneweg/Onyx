@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include <parserutils/utils/stack.h>
 
@@ -2069,6 +2070,39 @@ css_error parseSelectorList(css_language *c, const parserutils_vector *vector,
  * Property parsing functions						      *
  ******************************************************************************/
 
+/**
+ * Onyx: a property with a vendor's prefix (-webkit-, -moz-, -ms-, -o-) whose standard
+ * name libcss knows -- -webkit-background-clip, -webkit-box-shadow, -ms-flex... -- is
+ * that property (a value in the old syntax is dropped, as any invalid one); and
+ * -webkit-text-fill-color, the text's colour, is color. Its index, else -1.
+ */
+static int onyx_unprefixed_property(css_language *c, lwc_string *name)
+{
+	static const char *const prefixes[] = { "-webkit-", "-moz-", "-ms-", "-o-" };
+	const char *s = lwc_string_data(name);
+	size_t len = lwc_string_length(name), i, p;
+
+	if (len == SLEN("-webkit-text-fill-color") &&
+			strncasecmp(s, "-webkit-text-fill-color", len) == 0)
+		return COLOR;
+	for (p = 0; p < sizeof(prefixes) / sizeof(prefixes[0]); p++) {
+		size_t pl = strlen(prefixes[p]);
+
+		if (len <= pl || strncasecmp(s, prefixes[p], pl) != 0)
+			continue;
+		for (i = FIRST_PROP; i <= LAST_PROP; i++) {
+			lwc_string *std = c->strings[i];
+
+			if (lwc_string_length(std) == len - pl &&
+			    strncasecmp(lwc_string_data(std), s + pl,
+					len - pl) == 0)
+				return (int) i;
+		}
+		return -1;
+	}
+	return -1;
+}
+
 css_error parseProperty(css_language *c, const css_token *property,
 		const parserutils_vector *vector, int32_t *ctx, css_rule *rule)
 {
@@ -2092,8 +2126,12 @@ css_error parseProperty(css_language *c, const css_token *property,
 				&match) == lwc_error_ok && match)
 			break;
 	}
-	if (i == LAST_PROP + 1)
-		return CSS_INVALID;
+	if (i == LAST_PROP + 1) {
+		/* Onyx: a vendor's prefixed property as the standard one */
+		i = onyx_unprefixed_property(c, property->idata);
+		if (i < 0)
+			return CSS_INVALID;
+	}
 
 	/* Get handler */
 	handler = property_handlers[i - FIRST_PROP];

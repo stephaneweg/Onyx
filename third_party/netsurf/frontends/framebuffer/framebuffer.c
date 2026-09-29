@@ -433,6 +433,37 @@ framebuffer_plot_bitmap(const struct redraw_context *ctx,
  * \param length length of string, in bytes
  * \return NSERROR_OK on success else error code.
  */
+/* Onyx: a glyph drawn in a colour (fb_font_glyphs' callback) */
+struct fb_text_pen {
+	int x, y;
+	nsfb_colour_t colour;
+};
+
+static void framebuffer_plot_glyph(void *pw, FT_Glyph glyph, int x)
+{
+	struct fb_text_pen *pen = pw;
+	FT_BitmapGlyph bglyph;
+	nsfb_bbox_t loc;
+
+	if (glyph->format != FT_GLYPH_FORMAT_BITMAP)
+		return;
+	bglyph = (FT_BitmapGlyph)glyph;
+
+	loc.x0 = pen->x + x + bglyph->left;
+	loc.y0 = pen->y - bglyph->top;
+	loc.x1 = loc.x0 + bglyph->bitmap.width;
+	loc.y1 = loc.y0 + bglyph->bitmap.rows;
+
+	/* now, draw to our target surface */
+	if (bglyph->bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
+		nsfb_plot_glyph1(nsfb, &loc, bglyph->bitmap.buffer,
+				bglyph->bitmap.pitch, pen->colour);
+	} else {
+		nsfb_plot_glyph8(nsfb, &loc, bglyph->bitmap.buffer,
+				bglyph->bitmap.pitch, pen->colour);
+	}
+}
+
 static nserror
 framebuffer_plot_text(const struct redraw_context *ctx,
 		const struct plot_font_style *fstyle,
@@ -441,51 +472,19 @@ framebuffer_plot_text(const struct redraw_context *ctx,
 		const char *text,
 		size_t length)
 {
-	uint32_t ucs4;
-	size_t nxtchr = 0;
-	FT_Glyph glyph;
-	FT_BitmapGlyph bglyph;
-	nsfb_bbox_t loc;
+	struct fb_text_pen pen;
 
 	/* Onyx: a transparent colour (color: transparent) draws nothing -- libnsfb
 	 * takes an opacity of 0 for opaque */
 	if (fb_invisible(fstyle->foreground))
 		return NSERROR_OK;
 
-	while (nxtchr < length) {
-		ucs4 = utf8_to_ucs4(text + nxtchr, length - nxtchr);
-		nxtchr = utf8_next(text, length, nxtchr);
-
-		glyph = fb_getglyph(fstyle, ucs4);
-		if (glyph == NULL)
-			continue;
-
-		if (glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-			bglyph = (FT_BitmapGlyph)glyph;
-
-			loc.x0 = x + bglyph->left;
-			loc.y0 = y - bglyph->top;
-			loc.x1 = loc.x0 + bglyph->bitmap.width;
-			loc.y1 = loc.y0 + bglyph->bitmap.rows;
-
-			/* now, draw to our target surface */
-			if (bglyph->bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
-			    nsfb_plot_glyph1(nsfb,
-					     &loc,
-					     bglyph->bitmap.buffer,
-					     bglyph->bitmap.pitch,
-					     fb_col(fstyle->foreground));
-			} else {
-			    nsfb_plot_glyph8(nsfb,
-					     &loc,
-					     bglyph->bitmap.buffer,
-					     bglyph->bitmap.pitch,
-					     fb_col(fstyle->foreground));
-			}
-		}
-		x += glyph->advance.x >> 16;
-
-	}
+	/* Onyx: the glyphs where the font code lays them out (fractional advances,
+	 * letter-spacing, each character in a face having it) */
+	pen.x = x;
+	pen.y = y;
+	pen.colour = fb_col(fstyle->foreground);
+	fb_font_glyphs(fstyle, text, length, framebuffer_plot_glyph, &pen);
 	return NSERROR_OK;
 
 }
@@ -572,38 +571,38 @@ framebuffer_onyx_round_clip(const struct redraw_context *ctx,
 }
 
 #ifdef FB_USE_FREETYPE
+struct fb_text_brush {
+	int x, y;
+	const struct onyx_paint *paint;
+};
+
+static void framebuffer_paint_glyph(void *pw, FT_Glyph glyph, int x)
+{
+	struct fb_text_brush *brush = pw;
+	FT_BitmapGlyph bglyph;
+	nsfb_bbox_t loc;
+
+	if (glyph->format != FT_GLYPH_FORMAT_BITMAP)
+		return;
+	bglyph = (FT_BitmapGlyph)glyph;
+	loc.x0 = brush->x + x + bglyph->left;
+	loc.y0 = brush->y - bglyph->top;
+	loc.x1 = loc.x0 + bglyph->bitmap.width;
+	loc.y1 = loc.y0 + bglyph->bitmap.rows;
+	onyx_fb_glyph(nsfb, &loc, bglyph->bitmap.buffer, bglyph->bitmap.pitch,
+			bglyph->bitmap.pixel_mode == FT_PIXEL_MODE_MONO,
+			brush->paint);
+}
+
 static nserror
 framebuffer_onyx_text_paint(const struct redraw_context *ctx,
 		const struct plot_font_style *fstyle,
 		int x, int y, const char *text, size_t length,
 		const struct onyx_paint *paint)
 {
-	uint32_t ucs4;
-	size_t nxtchr = 0;
-	FT_Glyph glyph;
-	FT_BitmapGlyph bglyph;
-	nsfb_bbox_t loc;
+	struct fb_text_brush brush = { x, y, paint };
 
-	while (nxtchr < length) {
-		ucs4 = utf8_to_ucs4(text + nxtchr, length - nxtchr);
-		nxtchr = utf8_next(text, length, nxtchr);
-
-		glyph = fb_getglyph(fstyle, ucs4);
-		if (glyph == NULL)
-			continue;
-		if (glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-			bglyph = (FT_BitmapGlyph)glyph;
-			loc.x0 = x + bglyph->left;
-			loc.y0 = y - bglyph->top;
-			loc.x1 = loc.x0 + bglyph->bitmap.width;
-			loc.y1 = loc.y0 + bglyph->bitmap.rows;
-			onyx_fb_glyph(nsfb, &loc, bglyph->bitmap.buffer,
-					bglyph->bitmap.pitch,
-					bglyph->bitmap.pixel_mode ==
-						FT_PIXEL_MODE_MONO, paint);
-		}
-		x += glyph->advance.x >> 16;
-	}
+	fb_font_glyphs(fstyle, text, length, framebuffer_paint_glyph, &brush);
 	return NSERROR_OK;
 }
 #endif

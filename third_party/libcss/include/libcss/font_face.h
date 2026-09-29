@@ -35,6 +35,8 @@ typedef enum css_font_face_format {
 
 	CSS_FONT_FACE_FORMAT_UNKNOWN 		= 0x10,
 		/* Format specified, but not recognised */
+	CSS_FONT_FACE_FORMAT_WOFF2		= 0x20,
+		/* Onyx: WOFF 2.0; .woff2 */
 
 	/* We don't define CSS_FONT_FACE_SRC_FORMAT_TRUETYPE as might be
 	 * expected, because the CSS3 specification
@@ -71,6 +73,21 @@ css_font_face_format css_font_face_src_format(const css_font_face_src *src);
 
 uint8_t css_font_face_font_style(const css_font_face *font_face);
 uint8_t css_font_face_font_weight(const css_font_face *font_face);
+
+/**
+ * Onyx: a face's weights, 1 to 1000 -- a range (font-weight: 100 900, a variable
+ * font) or one weight (min == max); 400 400 when it gives none.
+ */
+void css_font_face_font_weight_range(const css_font_face *font_face,
+		uint16_t *min, uint16_t *max);
+
+/**
+ * Onyx: the characters a face covers (unicode-range): count ranges, each [first, last];
+ * none: all.
+ */
+uint32_t css_font_face_count_unicode_ranges(const css_font_face *font_face);
+void css_font_face_get_unicode_range(const css_font_face *font_face,
+		uint32_t index, uint32_t *first, uint32_t *last);
 
 #ifdef __cplusplus
 }

@@ -45,9 +45,11 @@
 #define ONYX_NS_DATAPATH "/apps/netsurf.app/"
 #endif
 
-/* the fonts (FreeType, frontends/framebuffer/font_freetype.c): DejaVu, in /res/fonts
- * (third_party/dejavu-fonts-ttf-2.37, staged by netsurf-app.mk). Cursive / fantasy: none
- * shipped, they fall back to the sans-serif face. */
+/* the fonts (FreeType, frontends/framebuffer/font_freetype.c), in /res/fonts, staged by
+ * netsurf-app.mk: DejaVu (third_party/dejavu-fonts-ttf-2.37) -- the fallback, the only
+ * one required -- and third_party/fonts' Liberation, Selawik and Gelasio, which stand in
+ * for Arial / Times New Roman, Segoe UI and Georgia (font_freetype.c's fb_card_faces).
+ * These names are DejaVu's files. */
 #define NETSURF_FB_FONT_SANS_SERIF "DejaVuSans.ttf"
 #define NETSURF_FB_FONT_SANS_SERIF_BOLD "DejaVuSans-Bold.ttf"
 #define NETSURF_FB_FONT_SANS_SERIF_ITALIC "DejaVuSans-Oblique.ttf"

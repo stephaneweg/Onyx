@@ -9,6 +9,7 @@
 #include "parse/font_face.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "parse/propstrings.h"
@@ -77,10 +78,16 @@ static css_error font_face_src_parse_format(css_language *c,
 		consumeWhitespace(vector, ctx);
 
 		token = parserutils_vector_iterate(vector, ctx);
-		if (token == NULL || token->type != CSS_TOKEN_STRING)
+		/* (Onyx: CSS Fonts 4's keywords too: format(woff2)) */
+		if (token == NULL || (token->type != CSS_TOKEN_STRING &&
+				token->type != CSS_TOKEN_IDENT))
 			return CSS_INVALID;
 
-		if (lwc_string_isequal(token->idata,
+		if (lwc_string_caseless_isequal(token->idata,
+				c->strings[WOFF2], &match) == lwc_error_ok &&
+				match) {
+			*format |= CSS_FONT_FACE_FORMAT_WOFF2;	/* Onyx */
+		} else if (lwc_string_isequal(token->idata,
 				c->strings[WOFF], &match) == lwc_error_ok &&
 				match) {
 		    	*format |= CSS_FONT_FACE_FORMAT_WOFF;
@@ -298,65 +305,190 @@ static css_error font_face_parse_font_style(css_language *c,
 	return error;
 }
 
+/** Onyx: a font-weight value: a number 1..1000, normal (400) or bold (700) */
+static bool font_face_weight_value(css_language *c, const css_token *token,
+		int *w)
+{
+	bool match;
+
+	if (token == NULL)
+		return false;
+	if (token->type == CSS_TOKEN_NUMBER) {
+		size_t consumed = 0;
+		css_fixed num = css__number_from_lwc_string(token->idata,
+				false, &consumed);
+
+		/* Invalid if there are trailing characters */
+		if (consumed != lwc_string_length(token->idata))
+			return false;
+		*w = FIXTOINT(num);
+		return *w >= 1 && *w <= 1000;
+	}
+	if (token->type != CSS_TOKEN_IDENT)
+		return false;
+	if (lwc_string_caseless_isequal(token->idata, c->strings[NORMAL],
+			&match) == lwc_error_ok && match) {
+		*w = 400;
+		return true;
+	}
+	if (lwc_string_caseless_isequal(token->idata, c->strings[BOLD],
+			&match) == lwc_error_ok && match) {
+		*w = 700;
+		return true;
+	}
+	return false;
+}
+
+/**
+ * font-weight: one weight, or a range (a variable font: 100 900) -- Onyx: any number
+ * from 1 to 1000 (upstream: only the hundreds).
+ */
 static css_error font_face_parse_font_weight(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_font_face *font_face)
 {
 	int32_t orig_ctx = *ctx;
-	css_error error = CSS_OK;
 	const css_token *token;
 	enum css_font_weight_e weight = 0;
-	bool match;
+	int w1, w2;
 
-	/* NUMBER (100, 200, 300, 400, 500, 600, 700, 800, 900) |
-	 * IDENT (normal, bold) */
 	token = parserutils_vector_iterate(vector, ctx);
-	if (token == NULL || (token->type != CSS_TOKEN_IDENT &&
-			token->type != CSS_TOKEN_NUMBER)) {
+	if (!font_face_weight_value(c, token, &w1)) {
 		*ctx = orig_ctx;
 		return CSS_INVALID;
 	}
-
-	if (token->type == CSS_TOKEN_NUMBER) {
-		size_t consumed = 0;
-		css_fixed num = css__number_from_lwc_string(token->idata,
-				true, &consumed);
-		/* Invalid if there are trailing characters */
-		if (consumed != lwc_string_length(token->idata)) {
+	w2 = w1;
+	consumeWhitespace(vector, ctx);
+	token = parserutils_vector_peek(vector, *ctx);
+	if (token != NULL) {
+		if (!font_face_weight_value(c, token, &w2)) {
 			*ctx = orig_ctx;
 			return CSS_INVALID;
 		}
-
-		switch (FIXTOINT(num)) {
-		case 100: weight = CSS_FONT_WEIGHT_100; break;
-		case 200: weight = CSS_FONT_WEIGHT_200; break;
-		case 300: weight = CSS_FONT_WEIGHT_300; break;
-		case 400: weight = CSS_FONT_WEIGHT_400; break;
-		case 500: weight = CSS_FONT_WEIGHT_500; break;
-		case 600: weight = CSS_FONT_WEIGHT_600; break;
-		case 700: weight = CSS_FONT_WEIGHT_700; break;
-		case 800: weight = CSS_FONT_WEIGHT_800; break;
-		case 900: weight = CSS_FONT_WEIGHT_900; break;
-		default: error = CSS_INVALID;
+		parserutils_vector_iterate(vector, ctx);
+		if (w2 < w1) {
+			int t = w1;
+			w1 = w2;
+			w2 = t;
 		}
-	} else if ((lwc_string_caseless_isequal(token->idata,
-			c->strings[NORMAL], &match) == lwc_error_ok && match)) {
-		weight = CSS_FONT_WEIGHT_NORMAL;
-	} else if ((lwc_string_caseless_isequal(token->idata,
-			c->strings[BOLD], &match) == lwc_error_ok && match)) {
-		weight = CSS_FONT_WEIGHT_BOLD;
-	} else {
-		error = CSS_INVALID;
 	}
 
-	if (error == CSS_OK) {
-		font_face->bits[0] = (font_face->bits[0] & 0xc3) |
-				(weight << 2);
-	} else {
-		*ctx = orig_ctx;
-	}
+	font_face->weight_min = w1;
+	font_face->weight_max = w2;
 
-	return error;
+	/* the nearest of the keywords, for css_font_face_font_weight */
+	switch ((w1 + 50) / 100) {
+	case 0: case 1: weight = CSS_FONT_WEIGHT_100; break;
+	case 2: weight = CSS_FONT_WEIGHT_200; break;
+	case 3: weight = CSS_FONT_WEIGHT_300; break;
+	case 4: weight = CSS_FONT_WEIGHT_400; break;
+	case 5: weight = CSS_FONT_WEIGHT_500; break;
+	case 6: weight = CSS_FONT_WEIGHT_600; break;
+	case 7: weight = CSS_FONT_WEIGHT_700; break;
+	case 8: weight = CSS_FONT_WEIGHT_800; break;
+	default: weight = CSS_FONT_WEIGHT_900; break;
+	}
+	font_face->bits[0] = (font_face->bits[0] & 0xc3) | (weight << 2);
+
+	return CSS_OK;
+}
+
+/** Onyx: a hexadecimal code point of a unicode-range ('?': any digit, lo 0 / hi F) */
+static bool font_face_hex(const char *s, size_t len, bool hi, uint32_t *v)
+{
+	size_t i;
+
+	if (len == 0 || len > 6)
+		return false;
+	*v = 0;
+	for (i = 0; i < len; i++) {
+		char ch = s[i];
+		uint32_t d;
+
+		if (ch >= '0' && ch <= '9')
+			d = ch - '0';
+		else if (ch >= 'a' && ch <= 'f')
+			d = ch - 'a' + 10;
+		else if (ch >= 'A' && ch <= 'F')
+			d = ch - 'A' + 10;
+		else if (ch == '?')
+			d = hi ? 15 : 0;
+		else
+			return false;
+		*v = *v * 16 + d;
+	}
+	return true;
+}
+
+/**
+ * Onyx: unicode-range -- U+0000-00FF, U+0131, U+4?? ...: the characters a face
+ * covers (a font split in subsets: the page fetches those it needs).
+ */
+static css_error font_face_parse_unicode_range(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_font_face *font_face)
+{
+	int32_t orig_ctx = *ctx;
+	const css_token *token;
+	uint32_t (*ranges)[2] = NULL;
+	uint32_t n = 0;
+
+	do {
+		const char *s;
+		size_t len, dash;
+		uint32_t first, last;
+		uint32_t (*nr)[2];
+
+		consumeWhitespace(vector, ctx);
+		token = parserutils_vector_iterate(vector, ctx);
+		if (token == NULL || token->type != CSS_TOKEN_UNICODE_RANGE ||
+				token->idata == NULL)
+			goto invalid;
+		s = lwc_string_data(token->idata);
+		len = lwc_string_length(token->idata);
+		for (dash = 0; dash < len && s[dash] != '-'; dash++)
+			;
+		if (dash < len) {
+			if (!font_face_hex(s, dash, false, &first) ||
+			    !font_face_hex(s + dash + 1, len - dash - 1, true,
+					&last))
+				goto invalid;
+		} else if (!font_face_hex(s, len, false, &first) ||
+			   !font_face_hex(s, len, true, &last)) {
+			goto invalid;
+		}
+		if (last > 0x10ffff)
+			last = 0x10ffff;
+		if (first > last)
+			goto invalid;
+
+		nr = realloc(ranges, (n + 1) * sizeof(*ranges));
+		if (nr == NULL) {
+			free(ranges);
+			*ctx = orig_ctx;
+			return CSS_NOMEM;
+		}
+		ranges = nr;
+		ranges[n][0] = first;
+		ranges[n][1] = last;
+		n++;
+
+		consumeWhitespace(vector, ctx);
+		token = parserutils_vector_iterate(vector, ctx);
+	} while (token != NULL && tokenIsChar(token, ','));
+
+	if (token != NULL)
+		goto invalid;
+
+	free(font_face->ranges);
+	font_face->ranges = ranges;
+	font_face->n_ranges = n;
+	return CSS_OK;
+
+invalid:
+	free(ranges);
+	*ctx = orig_ctx;
+	return CSS_INVALID;
 }
 
 /**
@@ -404,6 +536,11 @@ css_error css__parse_font_descriptor(css_language *c,
 			c->strings[FONT_WEIGHT], &match) == lwc_error_ok &&
 			match) {
 		return font_face_parse_font_weight(c, vector, ctx, font_face);
+	} else if (lwc_string_caseless_isequal(descriptor->idata,
+			c->strings[UNICODE_RANGE], &match) == lwc_error_ok &&
+			match) {
+		/* Onyx */
+		return font_face_parse_unicode_range(c, vector, ctx, font_face);
 	}
 
 	return CSS_INVALID;

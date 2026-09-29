@@ -24,6 +24,8 @@
 
 #include "utils/nsoption.h"
 #include "netsurf/plot_style.h"
+#include "netsurf/layout.h"
+#include "desktop/gui_internal.h"
 #include "css/utils.h"
 
 #include "html/font.h"
@@ -162,4 +164,43 @@ void font_plot_style_from_css(
 	css_computed_color(css, &col);
 	fstyle->foreground = nscss_color_to_ns(col);
 	fstyle->background = 0;
+
+	/* Onyx: letter-spacing and word-spacing (a length; em: of this font) */
+	fstyle->letter_spacing = 0;
+	fstyle->word_spacing = 0;
+	if (css_computed_letter_spacing(css, &length, &unit) ==
+			CSS_LETTER_SPACING_SET && unit != CSS_UNIT_PCT) {
+		fstyle->letter_spacing = FIXTOINT(FMUL(css_unit_len2device_px(
+				css, unit_len_ctx, length, unit),
+				INTTOFIX(PLOT_STYLE_SCALE)));
+	}
+	length = 0;
+	unit = CSS_UNIT_PX;
+	if (css_computed_word_spacing(css, &length, &unit) ==
+			CSS_WORD_SPACING_SET && unit != CSS_UNIT_PCT) {
+		fstyle->word_spacing = FIXTOINT(FMUL(css_unit_len2device_px(
+				css, unit_len_ctx, length, unit),
+				INTTOFIX(PLOT_STYLE_SCALE)));
+	}
+}
+
+
+/* exported function documented in html/font.h */
+bool font_metrics(const plot_font_style_t *fstyle, int *ascent, int *descent,
+		int *line_gap)
+{
+	return guit->layout->metrics != NULL &&
+		guit->layout->metrics(fstyle, ascent, descent, line_gap) ==
+				NSERROR_OK;
+}
+
+/* exported function documented in html/font.h */
+int font_baseline(const plot_font_style_t *fstyle, int line_height)
+{
+	int a, d, g, leading;
+
+	if (!font_metrics(fstyle, &a, &d, &g))
+		return line_height * 3 / 4;
+	leading = line_height - (a + d);
+	return a + (leading >= 0 ? leading / 2 : -((1 - leading) / 2));
 }

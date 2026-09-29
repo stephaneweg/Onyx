@@ -70,6 +70,9 @@ fb_text_font_style(fbtk_widget_t *widget, int *font_height, int *padding,
 	*padding = (widget->height - *padding - *font_height) / 2;
 #endif
 
+	font_style->families = NULL;	/* (Onyx: the font code reads them now) */
+	font_style->letter_spacing = 0;
+	font_style->word_spacing = 0;
 	font_style->family = PLOT_FONT_FAMILY_SANS_SERIF;
 	font_style->size = px_to_pt(*font_height * PLOT_STYLE_SCALE);
 	font_style->weight = 400;

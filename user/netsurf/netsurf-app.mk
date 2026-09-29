@@ -36,6 +36,7 @@ BMP  := $(LIBROOT)/libnsbmp
 NSFB := $(LIBROOT)/libnsfb
 PNG  := $(LIBROOT)/libpng-1.6.44
 JPEG := $(LIBROOT)/jpeg-9f
+BRO  := $(LIBROOT)/brotli-1.1.0
 ZLIB := $(LIBROOT)/zlib-1.3.1
 WEBP := $(LIBROOT)/libwebp-1.4.0
 FT   := $(LIBROOT)/freetype-2.14.3
@@ -161,9 +162,9 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
-          -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) \
+          -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by
@@ -205,9 +206,13 @@ stage: link
 	@mkdir -p $(SDCARD)/res/icons
 	for f in arrow-l content directory directory2 hotlist-add hotlist-rmv search; do cp $(NS)/resources/icons/$$f.png $(SDCARD)/res/icons/ 2>/dev/null || true; done
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(NS)/resources/ca-bundle $(SDCARD)/res/
-	# the fonts (FreeType: font_freetype.c looks for them in /res/fonts), DejaVu + its licence
+	# the fonts (FreeType: font_freetype.c looks for them in /res/fonts), DejaVu + its licence;
+	# third_party/fonts: Liberation (Arial's, Times New Roman's metrics), Selawik (Segoe UI's),
+	# Gelasio (Georgia's) -- SIL OFL, each licence as LICENSE-<dir>
 	@mkdir -p $(SDCARD)/res/fonts
 	cp $(FONTS)/ttf/*.ttf $(FONTS)/LICENSE $(SDCARD)/res/fonts/
+	cp $(LIBROOT)/fonts/*/*.ttf $(SDCARD)/res/fonts/
+	for d in $(LIBROOT)/fonts/*/; do cp $$d/LICENSE $(SDCARD)/res/fonts/LICENSE-$$(basename $$d); done
 	# Options (Choices) -- created only if missing so the user's edits survive a re-stage.
 	# Set foreground_images:0 for a fast text + alt-text browse (skips image fetches).
 	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:4\nmax_fetchers_per_host:4\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices

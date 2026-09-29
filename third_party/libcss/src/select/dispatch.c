@@ -635,5 +635,9 @@ struct prop_table prop_dispatch[CSS_N_PROPERTIES] = {
 	{
 		PROPERTY_FUNCS(grid_column_end),
 		0,
+	},
+	{
+		PROPERTY_FUNCS(background_clip),
+		0,
 	}
 };

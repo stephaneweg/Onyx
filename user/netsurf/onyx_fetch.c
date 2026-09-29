@@ -270,10 +270,17 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
 	}
 
+	/* Google Fonts' style sheets as a current browser gets them: WOFF2 fonts split by
+	 * unicode-range (onyx_webfont.c fetches the Latin subset: ~50 KB a weight, where
+	 * NetSurf's own user agent gets a 300 KB TrueType file) */
+	const char *ua = strcasecmp(host, "fonts.googleapis.com") == 0 ?
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+		"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" : "NetSurf (Onyx)";
+
 	len = snprintf(req, sizeof req,
-		"GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: NetSurf (Onyx)\r\n"
+		"GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\n"
 		"Accept: */*\r\nAccept-Encoding: gzip, deflate\r\nConnection: close\r\n\r\n",
-		path, host);
+		path, host, ua);
 	if (len <= 0 || len >= (int)sizeof req) {
 		onyx_conn_close(c);
 		fetch_onyx_error(c, "Request too large");

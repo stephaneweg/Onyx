@@ -380,3 +380,61 @@ css_error css__compose_grid_auto_flow(const css_computed_style *parent,
 			type == CSS_GRID_AUTO_FLOW_INHERIT ? parent : child,
 			result);
 }
+
+
+/* ---- background-clip (and -webkit-background-clip: text) ------------------------------------ */
+
+css_error css__cascade_background_clip(uint32_t opv, css_style *style,
+		css_select_state *state)
+{
+	uint16_t value = CSS_BACKGROUND_CLIP_INHERIT;
+
+	UNUSED(style);
+
+	if (hasFlagValue(opv) == false) {
+		/* BACKGROUND_CLIP_x + 1 == CSS_BACKGROUND_CLIP_x */
+		value = getValue(opv) + 1;
+		if (value > CSS_BACKGROUND_CLIP_TEXT)
+			value = CSS_BACKGROUND_CLIP_BORDER_BOX;
+	}
+
+	if (css__outranks_existing(getOpcode(opv), isImportant(opv), state,
+			getFlagValue(opv))) {
+		return set_background_clip(state->computed, value);
+	}
+
+	return CSS_OK;
+}
+
+css_error css__set_background_clip_from_hint(const css_hint *hint,
+		css_computed_style *style)
+{
+	return set_background_clip(style, hint->status);
+}
+
+css_error css__initial_background_clip(css_select_state *state)
+{
+	return set_background_clip(state->computed, CSS_BACKGROUND_CLIP_BORDER_BOX);
+}
+
+css_error css__copy_background_clip(
+		const css_computed_style *from,
+		css_computed_style *to)
+{
+	if (from == to) {
+		return CSS_OK;
+	}
+
+	return set_background_clip(to, get_background_clip(from));
+}
+
+css_error css__compose_background_clip(const css_computed_style *parent,
+		const css_computed_style *child,
+		css_computed_style *result)
+{
+	uint8_t type = get_background_clip(child);
+
+	return css__copy_background_clip(
+			type == CSS_BACKGROUND_CLIP_INHERIT ? parent : child,
+			result);
+}

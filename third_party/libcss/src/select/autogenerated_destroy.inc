@@ -11,6 +11,7 @@
 /* set_align_self(style, 0, 0, CSS_UNIT_PX); */
 /* set_aspect_ratio(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_attachment(style, 0, 0, CSS_UNIT_PX); */
+/* set_background_clip(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_color(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_image(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_position(style, 0, 0, CSS_UNIT_PX); */

@@ -2171,3 +2171,9 @@ css_error compute_absolute_length_pair(css_computed_style *style,
 	return set(style, type, length1, unit1, length2, unit2);
 }
 
+
+/* Onyx */
+uint8_t css_computed_background_clip(const css_computed_style *style)
+{
+	return get_background_clip(style);
+}

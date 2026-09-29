@@ -106,11 +106,16 @@ IMG_C  := $(foreach p,$(FB_IMG),$(OUT)/image-$(word 1,$(subst :, ,$(p))).c)
 # FreeType: the modules of the Pi build (user/netsurf/Makefile's FT_FILES)
 FT_SRC := $(addprefix $(FT)/src/,base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c \
           base/ftbbox.c base/ftbitmap.c base/ftglyph.c base/ftsynth.c base/ftmm.c autofit/autofit.c \
-          truetype/truetype.c sfnt/sfnt.c smooth/smooth.c psnames/psnames.c cache/ftcache.c)
+          truetype/truetype.c sfnt/sfnt.c smooth/smooth.c psnames/psnames.c cache/ftcache.c \
+          cff/cff.c psaux/psaux.c pshinter/pshinter.c gzip/ftgzip.c)
+BRO := $(TP)/brotli-1.1.0
+BRO_SRC := $(wildcard $(BRO)/c/common/*.c $(BRO)/c/dec/*.c)
+I_BRO := -I$(BRO)/c/include
+# (zlib: the PC's own, as the link's -lz)
 I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
-        '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include
+        '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include $(I_BRO)
 
-LIB_ALL := $(FT_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+LIB_ALL := $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -169,6 +174,7 @@ $(call obj,$(1)): $(1)
 	$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
 $(foreach s,$(FT_SRC),$(eval $(call LIB_RULE,$(s),$(I_FT))))
+$(foreach s,$(BRO_SRC),$(eval $(call LIB_RULE,$(s),$(I_BRO))))
 $(foreach s,$(WAP_SRC),$(eval $(call LIB_RULE,$(s),$(I_WAP))))
 $(foreach s,$(PU_SRC),$(eval $(call LIB_RULE,$(s),$(I_PU))))
 $(foreach s,$(NSU_SRC),$(eval $(call LIB_RULE,$(s),$(I_NSU))))
@@ -220,6 +226,7 @@ res:
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(OUT)/res/
 	@mkdir -p $(OUT)/res/fonts
 	cp $(FONTS)/ttf/*.ttf $(OUT)/res/fonts/
+	cp $(TP)/fonts/*/*.ttf $(OUT)/res/fonts/
 	printf 'foreground_images:1\nbackground_images:1\nenable_javascript:1\n' > $(OUT)/res/Choices
 
 -include $(wildcard $(OUT)/o/*.d)

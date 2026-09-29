@@ -71,6 +71,7 @@
 #include "html/imagemap.h"
 #include "html/layout.h"
 #include "html/textselection.h"
+#include "html/onyx_webfont.h"
 
 #define CHUNK 4096
 
@@ -375,6 +376,9 @@ void html_finish_conversion(html_content *htmlc)
 		content_set_error(&htmlc->base);
 		return;
 	}
+
+	/* Onyx: its web fonts (@font-face) fetched */
+	onyx_webfont_scan(htmlc);
 
 
 	/* fire a simple event named load at the Document's Window
@@ -1060,6 +1064,8 @@ static void html_reformat(struct content *c, int width, int height)
 
 	nsu_getmonotonic_ms(&ms_before);
 
+	onyx_webfont_scope(htmlc);	/* Onyx: measured with its web fonts */
+
 	htmlc->reflowing = true;
 
 	htmlc->unit_len_ctx.viewport_width = css_unit_device2css_px(
@@ -1205,6 +1211,8 @@ static void html_destroy(struct content *c)
 	struct form *f, *g;
 
 	NSLOG(netsurf, INFO, "content %p", c);
+
+	onyx_webfont_release(html);	/* Onyx: its web fonts */
 
 	/* If we're still converting a layout, cancel it */
 	if (html->box_conversion_context != NULL) {
