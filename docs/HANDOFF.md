@@ -95,9 +95,49 @@ answer in French. The docs stay in English.
   **`archive/elegant-ui-2026-09-28`**); resizing a window by dragging its border (today:
   maximise / restore; a resizable app says so with `Root::setResizable`); a theme change applied
   to the open apps live (today: at their next start; the shell apps are restarted); the dock's
-  drawers by drag & drop (an app to a tab); the Shelf / panel apps removed once the dock is
-  proven on the Pi.
+  drawers by drag & drop (an app to a drawer); the Shelf / panel apps removed once the dock is
+  proven on the Pi. (The second round below did the workspaces, the Control Panel and the
+  dock's drawers.)
 - The phone-like "elegant layout" the branch held first is on **`archive/elegant-ui-2026-09-28`**.
+
+## The desktop's second round (2026-09-29, branch `claude/happy-wright-wg38ez`)
+
+Asked by the user after trying the modernised CDE (not merged into `main` yet: the user tests
+the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
+
+- **Workspaces** (kapi **v65** `desk` / `win_desk`, `kernel/gui/window.cpp`: `SetDeskLocked`,
+  `Hidden ()` = minimised or off-desk everywhere the compositor / hit-testing / focus look,
+  Ctrl+Alt+Left / Right in `OnKey`); the dock's pager (4 squares by default, the windows drawn
+  small), the window menu's Move to / On All Workspaces. `wmtest.cpp` checks them.
+- **The dock** rewritten (`user/Apps/dock`): drawers = a group + its main app (the icon starts
+  the app, the strip above opens the drawer, as Xfce), launchers, the pager, lock / gear
+  (Control Panel) / power, the Trash (a click opens it in the File Viewer: `fileviewer trash`;
+  a drop trashes). The Shelf's switcher is gone. `SD:/etc/dock.ini` (`user/dockconf.h`).
+- **The Control Panel** (`user/Apps/control`): applets drawn inside its window through a shared
+  surface (`user/applet_proto.h`; wtk's `Root` has an applet mode: `wk_applet ()`, `wk_pump`,
+  `wk_present`, `wk_quit`), listed by link files (`sdcard/apps/control.app/applets/*.lnk`).
+  Applets: Theme (rewritten: a Windows-98-like desktop preview, a colour per part — frames,
+  content, buttons, fields, selection, menu bar, dock — the wallpaper's modes, `user/wallpaper.h`
+  painted by `voronoy`), Panel (`dockconf`), Sound (`soundconf`), Keyboard & Mouse (`keyconf`),
+  Gamepad, Wi-Fi, App Settings (`config`). Kernel surfaces are now counted per user (an applet's
+  surface outlives its host or itself safely).
+- **The categories**: the System group gone (its apps in Productivity / Graphics / Settings),
+  `Settings` and `Emulators` left out of the menus (the emulators through the Game Library).
+- **The File Viewer**: a sidebar (Personal: pinned folders under a name, the Trash; Computer:
+  the partitions; Network: the FTP servers connected once, under a name — a click reconnects),
+  an elementary-style path bar, padded columns. `SD:/etc/places.ini`.
+- **Onyx Remote**: the borderless windows above the framed ones (the menu bar's drop-downs,
+  the dock, the notifications, the Wi-Fi menu) are layered windows with per-pixel alpha
+  (`pc/OnyxRemote/Overlay.cs`) — no more black under a popup; hidden windows not shown; the
+  Onyx frames' title buttons pressed on the Pi. rdpd sends the ALPHA windows and the frames in 32
+  bits. The kernel bumps a window's ChromeGen again at its first present after a frame redraw
+  (rdpd could read a half-drawn frame: a title bar without buttons). `eyes` presents now.
+- **Open question for the user**: *Gamelib without its title buttons* — not reproduced (its
+  frame is drawn like every Root app's, in the simulator too); the ChromeGen fix above covers
+  the Onyx Remote case (a frame read while being drawn). Ask where it showed (the Pi's screen
+  or Onyx Remote, with or without Onyx frames) if it comes back.
+- **Next ideas**: drag an app onto a drawer to add it; the applets' own help; a wallpaper
+  slideshow; the workspaces' windows moved by drag & drop onto the pager.
 
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 

@@ -5,6 +5,8 @@
 # (the frame wtk drew + the client area), then made a PNG of its own (shot.py: the rounded corners
 # see-through) or laid over the wallpaper with others (compose.py: the desktop, the menu bar, the
 # dock...). Sample files (a note, appointments) come from sd/ (SIM_OVERLAY), not from the card.
+# A Control Panel applet is run as one (SIM_APPLET: its surface dumped), then shown in the Control
+# Panel's window (SIM_MAIL: its hello, SIM_SURFACE: those pixels).
 #
 #   sh tools/tests/desktop_sim/shots.sh [name ...]	(default: all of them)
 #
@@ -30,11 +32,12 @@ rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
+	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
 }
-APPS="2048 agenda applist calendar dock eyes fileviewer freecell graphcalc iconedit invaders irc
-      mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme tinycalc
-      tinypad widgets wifimenu"
+APPS="2048 agenda applist calendar control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
+      invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
+      tinycalc tinypad widgets wifimenu"
 for a in $APPS; do build $a & done; wait
 
 # ---- the running -------------------------------------------------------------------------------
@@ -70,6 +73,13 @@ ring () {
 }
 W="wait;wait;wait"
 P=SIM_POS=100,100
+# the windows the dock's workspaces draw small (x,y,w,h,desk,keys)
+WINS="100,80,500,400,0,1;560,200,400,300,0,0;150,120,600,450,1,0;50,60,300,200,2,0"
+# applet APP DUMP "SCRIPT": APP as a Control Panel applet, shown in the Control Panel's window
+applet () {
+	sim $1 ${2}_ap "$3" SIM_APPLET=1
+	sim control $2 "$W" $P SIM_ARGS=$1 SIM_MAIL=40:7 SIM_SURFACE="$OUT/${2}_ap.elsm"
+}
 
 # ---- the apps, a window each -------------------------------------------------------------------
 if want tinycalc; then sim tinycalc tinycalc "wait;$(typ '12*3.5=');$W" $P; png tinycalc; fi
@@ -96,7 +106,7 @@ if want irc; then
 	SIM_NET=':irc.libera.chat NOTICE * :*** Looking up your hostname...\r\n:irc.libera.chat 001 onyx-user :Welcome to Libera.Chat, onyx-user\r\n:onyx-user!~onyx@192.168.1.42 JOIN #onyx\r\n:irc.libera.chat 332 onyx-user #onyx :Onyx -- a homemade OS for the Raspberry Pi 4\r\n:alice!~alice@host JOIN #onyx\r\n:alice!~alice@host PRIVMSG #onyx :hey, is this the bare-metal Pi channel?\r\n:bob!~bob@host PRIVMSG #onyx :yep -- Onyx, a hobby OS on Circle\r\n'
 	png irc
 fi
-if want fileviewer; then sim fileviewer fileviewer "wait;down 16 133;up 16 133;wait;down 236 173;up 236 173;$W" $P; png fileviewer; fi
+if want fileviewer; then sim fileviewer fileviewer "wait;down 300 181;up 300 181;wait;down 480 85;up 480 85;$W" $P; png fileviewer; fi
 if want solitaire; then sim solitaire solitaire "$W" $P; png solitaire; fi
 if want freecell; then sim freecell freecell "$W" $P; png freecell; fi
 if want pipes; then sim pipes pipes "$W" $P; png pipes; fi
@@ -106,7 +116,14 @@ if want iconedit; then sim iconedit iconedit "$W" $P SIM_ARGS=SD:/apps/invaders.
 if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sample.rtf; png rtfview; fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want applist; then sim applist applist "$W" $P; png applist; fi
-if want theme; then sim theme theme "$W" $P; png theme; fi
+if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
+if want gamelib; then
+	python3 $D/gamelib_samples.py "$OUT/writes"
+	sim gamelib gamelib "$W;$W" $P
+	png gamelib
+fi
+if want theme; then applet theme theme "$W"; png theme; fi
+if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 
 # ---- the desktop's parts, over the wallpaper ------------------------------------------------------
 MENU_TINYPAD='tinypad|MFile/I0~New~^N/I1~Open...~^O/-/I2~Save~^S/I3~Save As...~/MEdit/I4~Cut~^X/I5~Copy~^C/I6~Paste~^V/-/I7~Select All~^A/I8~Copy All~'
@@ -127,9 +144,9 @@ if want wifimenu; then
 	sim wifimenu wifimenu "$W"
 	scene wifimenu "$OUT/bar.elsm" "$OUT/wifimenu.elsm" --crop=0,0,1024,300
 fi
-if want dock; then
-	sim dock dock "wait;wait;down 222 40;up 222 40;$W" SIM_RUNNING=terminal,tetris,tinycalc
-	scene dock "$OUT/dock.elsm" --crop=100,180,924,768
+if want dock; then			# (the pointer on the Games launcher's strip: its name grows the dock up)
+	sim dock dock "wait;wait;move 222 8;wait;down 222 38;up 222 38;$W" SIM_RUNNING=terminal,tetris,tinycalc SIM_WINS="$WINS"
+	scene dock "$OUT/dock.elsm" --crop=60,176,964,768
 fi
 if want agenda; then
 	sim agenda agenda "$W"
@@ -139,7 +156,7 @@ if want desktop; then
 	sim agenda d_agenda "$W"
 	sim tinycalc d_calc "wait;$(typ '12*3.5=');$W" SIM_POS=52,250 SIM_INACTIVE=1
 	sim terminal d_term "$W" SIM_POS=388,128 SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n 22 a S  tinycalc\n/ $ echo onyx | wc -c\n5\n/ $ '
-	sim dock d_dock "wait;wait;down 102 40;up 102 40;$W" SIM_RUNNING=terminal,tinycalc
+	sim dock d_dock "wait;wait;$W" SIM_RUNNING=terminal,tinycalc SIM_WINS="52,250,316,412,0,0;388,128,568,408,0,1;150,120,600,450,1,0"
 	sim menubar d_bar "$W" SIM_MENU='terminal|'
 	scene desktop "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm"
 fi

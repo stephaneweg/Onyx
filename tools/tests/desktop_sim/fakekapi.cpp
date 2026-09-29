@@ -32,7 +32,7 @@
 // pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
-// SIM_DESKS="cur,count": the workspaces (kapi v65).
+// SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below).
 //
 #include <sys/mman.h>
 #include <stdio.h>
@@ -137,7 +137,22 @@ static int save_file (const char *p, const void *b, unsigned n) { FILE *f = fope
 static unsigned f_fsize (void *h) { FILE *f = (FILE *) h; long c = ftell (f); fseek (f, 0, SEEK_END); long n = ftell (f); fseek (f, c, SEEK_SET); return (unsigned) n; }
 static void f_close (void *h) { fclose ((FILE *) h); }
 struct SimDir { DIR *d; std::string path; };
-static void *f_opendir (const char *p) { DIR *d = opendir (sdpath (p).c_str ()); if (!d) return 0; return new SimDir { d, sdpath (p) }; }
+// SIM_VOLS="SD1,VD0": the other volumes there (the card's partitions 2..4, the disk images) -- none
+// by default, as on a card with one partition ("SD:" and "SD0:" are the card).
+static bool volume_there (const char *p)
+{
+	const char *c = p ? strchr (p, ':') : 0;
+	if (!c || c - p > 4) return true;
+	std::string v (p, (size_t) (c - p));
+	if (v == "SD" || v == "SD0" || (v != "VD0" && v != "VD1" && v != "VD2" && v != "VD3" && v != "SD1" && v != "SD2" && v != "SD3")) return true;
+	std::string list = std::string (",") + (getenv ("SIM_VOLS") ? getenv ("SIM_VOLS") : "") + ",";
+	return list.find ("," + v + ",") != std::string::npos;
+}
+static void *f_opendir (const char *p)
+{
+	if (!volume_there (p)) return 0;
+	DIR *d = opendir (sdpath (p).c_str ()); if (!d) return 0; return new SimDir { d, sdpath (p) };
+}
 static int f_readdir (void *h, struct kapi_dirent *e)
 {
 	SimDir *sd = (SimDir *) h;

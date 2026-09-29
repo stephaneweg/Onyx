@@ -1,17 +1,20 @@
 //
 // dock -- the dock: the modernised CDE's Front Panel, along the bottom of the screen (it replaces
-// the Shelf and the panel). From the left:
+// the Shelf and the panel). In its middle the workspaces and the system buttons; its buttons --
+// the drawers, the launchers, the Trash, in this order -- shared evenly on the two sides (the odd
+// one out at the left):
 //   * the DRAWERS (SD:/etc/dock.ini, dockconf.h -- the Control Panel's Panel applet sets them): a
 //     launcher each, the icon of its group's main app -- a click starts that app (or brings it
 //     back); the strip on its top edge opens the group's drawer above it (its apps and their
 //     icons; a click starts one, or brings it back, minimised too), as Xfce's launchers. A dot
 //     under a launcher when one of its apps has a window on this workspace, and in the drawer
 //     beside the app. Files dropped on a launcher are opened by its app;
-//   * the WORKSPACES (virtual desktops, kernel v65): a small square each, the current one lit,
-//     its windows drawn small in it; a click shows it (Ctrl+Alt+Left / Right too). Beside them the
-//     lock (apps/lock), the gear (the Control Panel: apps/control) and the power (apps/shutdown);
 //   * the launchers (the Terminal, the File Viewer... dock.ini) and the Trash (files dropped on it
-//     go there; a click opens it in the File Viewer).
+//     go there; a click opens it in the File Viewer);
+//   * in the middle, the WORKSPACES (virtual desktops, kernel v65): a small square each, the
+//     current one lit, its windows drawn small in it; a click shows it (Ctrl+Alt+Left / Right
+//     too). Beside them the lock (apps/lock), the gear (the Control Panel: apps/control) and the
+//     power (apps/shutdown).
 // A click outside an open drawer closes it; the pointer on a launcher names it. A right click on
 // the dock: Panel Settings... (the Control Panel's Panel applet).
 //
@@ -267,27 +270,32 @@ static int g_sw = 1024, g_sh = 768, g_top = 30;			// the screen, the menu bar's 
 
 enum { SL_DRAWER, SL_APP, SL_TRASH };
 struct Slot { int kind, x, index; App *app; };
-static Slot g_slot[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot;
+static Slot g_slot[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
 static int  g_DX, g_DY, g_DW;					// the dock on the screen
 static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel (dock coordinates)
 
+// The buttons in their order -- the drawers, the launchers, the Trash --, half of them on each side
+// of the middle (the workspaces, the lock, the gear, the power; the odd one out at the left).
 static void layout (void)
 {
-	int x = 12; g_nslot = 0;
-	for (int d = 0; d < g_ndr; d++) { g_slot[g_nslot++] = { SL_DRAWER, x, d, g_dr[d].main }; x += CW; }
-	g_ndesk = g_conf.ndesks < 1 ? 1 : g_conf.ndesks;
-	g_pgRows = g_ndesk <= 3 ? 1 : 2;
-	g_pgCols = (g_ndesk + g_pgRows - 1) / g_pgRows;
-	g_pgX = x + (g_ndr ? 8 : 0);
-	g_pgW = 30 + g_pgCols * (SQW + SQGAP) - SQGAP + 6 + 30;
-	x = g_pgX + g_pgW + 8;
+	Slot all[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
+	for (int d = 0; d < g_ndr; d++) all[n++] = { SL_DRAWER, 0, d, g_dr[d].main };
 	for (int i = 0; i < g_conf.nlaunchers; i++)
 	{
 		App *a = find_app (g_conf.launcher[i]);
-		if (a == 0) continue;
-		g_slot[g_nslot++] = { SL_APP, x, i, a }; x += CW;
+		if (a != 0) all[n++] = { SL_APP, 0, i, a };
 	}
-	g_slot[g_nslot++] = { SL_TRASH, x, -1, 0 }; x += CW;
+	all[n++] = { SL_TRASH, 0, -1, 0 };
+	g_nleft = (n + 1) / 2;
+	int x = 12; g_nslot = 0;
+	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
+	g_ndesk = g_conf.ndesks < 1 ? 1 : g_conf.ndesks;
+	g_pgRows = g_ndesk <= 3 ? 1 : 2;
+	g_pgCols = (g_ndesk + g_pgRows - 1) / g_pgRows;
+	g_pgX = x + (g_nleft ? 8 : 0);
+	g_pgW = 30 + g_pgCols * (SQW + SQGAP) - SQGAP + 6 + 30;
+	x = g_pgX + g_pgW + (n > g_nleft ? 8 : 0);
+	for (int i = g_nleft; i < n; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_DW = x + 12;
 	g_DX = (g_sw - g_DW) / 2;
 	g_DY = g_sh - DH - GAP;
@@ -558,8 +566,8 @@ public:
 			else trash_glyph (canvas, cx, oy + 24, trashFull, d);
 			if (i + 1 < g_nslot && g_slot[i + 1].x == s.x + CW) groove (x + CW - 1, oy);	// between launchers
 		}
-		if (g_ndr) groove (ox + g_pgX - 5, oy);					// round the workspaces
-		groove (ox + g_pgX + g_pgW + 3, oy);
+		if (g_nleft) groove (ox + g_pgX - 5, oy);				// round the middle
+		if (g_nslot > g_nleft) groove (ox + g_pgX + g_pgW + 3, oy);
 		drawDesks (ox, oy);
 	}
 

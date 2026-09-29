@@ -12,7 +12,8 @@
 // Computer -- the SD card's partitions (SD:, SD1: .. SD3:, and the VD0: .. disk images to come);
 // Network -- the servers connected once (Go > Connect to Server..., under a name: a click
 // connects again, the login kept by /bin/ftpfs) and Connect to Server... A right click on a
-// place: Rename..., Unpin / Forget. They are kept in SD:/etc/places.ini ("pin = name|path",
+// place: Rename..., Unpin / Forget; files dropped on a pinned folder, the Trash or a volume go
+// there. They are kept in SD:/etc/places.ini ("pin = name|path",
 // "net = name|FTP:host/folder", "folded = ..."). Above the columns the path bar: the current
 // folder's path, each folder a link (its name underlined under the pointer), the one shown in
 // the accent.
@@ -1086,6 +1087,7 @@ static int g_vdrag = -1;			// column whose scrollbar is being dragged
 static int g_armSlot = -1, g_armRow = -1, g_armX = 0, g_armY = 0;
 static bool g_dragging = false;
 static int g_dropSlot = -1, g_dropRow = -1;
+static int g_dropSide = -1;			// ... in the sidebar (a g_srow index)
 
 // The drop target folder at (mx,my): its path in out, the slot / row to highlight.
 static bool drop_target_at (int mx, int my, char *out, int cap, int *pSlot, int *pRow)
@@ -1130,6 +1132,15 @@ static int side_at (int mx, int my)
 	if (mx < 0 || mx >= SIDE_W - 4 || my < SIDE_Y || my >= H - ST_H) return -1;
 	int r = (my - SIDE_Y) / SIDE_RH;
 	return r >= 0 && r < g_nsrow ? r : -1;
+}
+// The sidebar's place files dropped at (mx, my) go to -- a pinned folder, the Trash, a volume (a
+// g_srow index) --, -1 none.
+static int side_drop_at (int mx, int my)
+{
+	int r = side_at (mx, my);
+	if (r < 0 || g_srow[r].place < 0) return -1;
+	int k = g_pl[g_srow[r].place].kind;
+	return k == PL_PIN || k == PL_TRASH || k == PL_VOL ? r : -1;
 }
 // The path bar's segment at (mx, my), -1 none.
 static int crumb_at (int mx, int my)
@@ -1257,6 +1268,7 @@ public:
 			char lab[40]; scopy (lab, p.label, sizeof lab);
 			if (slen (lab) > maxc && maxc > 2) { lab[maxc - 2] = '.'; lab[maxc - 1] = '.'; lab[maxc] = 0; }
 			canvas.text (40, y + (SIDE_RH - g_fh) / 2, lab, p.kind == PL_CONNECT && !on ? dim : ink);
+			if (r == g_dropSide) wk_rline (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, C_ACCENT);	// (a drop target)
 		}
 	}
 
@@ -1601,14 +1613,20 @@ public:
 		int s = -1, r = -1; char dir[300];
 		if (!leave) drop_target_at (x, y, dir, sizeof dir, &s, &r);
 		if (s != g_dropSlot || r != g_dropRow) { g_dropSlot = s; g_dropRow = r; invalidate (true); }
+		int sd = leave ? -1 : side_drop_at (x, y);
+		if (sd != g_dropSide) { g_dropSide = sd; invalidate (true); }
 	}
 
 	void onDrop (int x, int y, int type, const char *data, int, unsigned flags) override
 	{
 		g_dropSlot = g_dropRow = -1;
-		char dir[300]; int s, r;
-		if (type != DND_FILES || !drop_target_at (x, y, dir, sizeof dir, &s, &r)) { invalidate (true); return; }
-		bool copy = (flags & DND_F_COPY) != 0, toTrash = in_trash () && s >= 0 && ci_cmp (dir, TRASH_FILES) == 0;
+		int sd = side_drop_at (x, y);			// onto a place of the sidebar
+		g_dropSide = -1;
+		char dir[300]; int s = -1, r;
+		if (sd >= 0) scopy (dir, g_pl[g_srow[sd].place].path, sizeof dir);
+		if (type != DND_FILES || (sd < 0 && !drop_target_at (x, y, dir, sizeof dir, &s, &r))) { invalidate (true); return; }
+		bool copy = (flags & DND_F_COPY) != 0;
+		bool toTrash = sd >= 0 ? g_pl[g_srow[sd].place].kind == PL_TRASH : in_trash () && s >= 0 && ci_cmp (dir, TRASH_FILES) == 0;
 		int done = 0, failed = 0;
 		for (const char *p = data; *p; )
 		{

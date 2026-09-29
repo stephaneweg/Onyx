@@ -798,14 +798,22 @@ Notes / caveats:
 >   `C_FACE_HI`, `C_FACE_DN`, `C_BORDER`, `C_TEXT` (on the face), `C_ACCENT` (focus, selection,
 >   checks), `C_DIS`, `C_FIELD` (a text field's, a list's background), `C_FIELD_TEXT`,
 >   `C_SEL_TEXT` (on the accent), `C_FRAME_ACTIVE` / `C_FRAME_INACTIVE` (the frames), `C_DOCK`,
->   `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by `wtk::init ()`
->   (the `Root`'s constructor calls it): use them in drawing code, never copy them into a
->   `static const` or a global initialised at start-up (that runs before the theme is read). The
->   file: `theme` = Peach / Steel / Sage / Brick / Slate (the window in front's frame; `active` =
->   any colour instead), `inactive`, `face`, `accent`, `outline` = none / dark / black, `dock`
->   (the Theme app writes it). Text: `C_TEXT` on the face, `C_FIELD_TEXT` on a field,
->   `C_SEL_TEXT` on the accent, `wk_ink_on (bg)` on any colour. Content keeps its own colours
->   (images, games' boards, a terminal's screen); the chrome around it follows the theme.
+>   `C_BUTTON` / `C_BUTTON_TEXT` (a push button's, a drop-down's face: draw buttons with them),
+>   `C_MENUBAR`, `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by
+>   `wtk::init ()` (the `Root`'s constructor calls it): use them in drawing code, never copy them
+>   into a `static const` or a global initialised at start-up (that runs before the theme is
+>   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate (the window in front's frame;
+>   `active` = any colour instead), `inactive`, `window` (the content: the face; `face` still
+>   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
+>   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes
+>   it. As values: `WkTheme` (`WK_AUTO`: derived from the window's), `wk_theme_defaults`,
+>   `wk_theme_parse (text, t)`, `wk_theme_get (t)` (the palette in use), `wk_theme_set (t)` (the
+>   palette made from it: a preview), `wk_theme_write (t, out, cap)` (theme.txt's text),
+>   `wk_theme_reload ()` (a new theme
+>   applied: the dock, the menu bar). Text: `C_TEXT` on the face, `C_FIELD_TEXT` on a field,
+>   `C_SEL_TEXT` on the accent, `C_BUTTON_TEXT` on a button, `wk_ink_on (bg)` on any colour.
+>   Content keeps its own colours (images, games' boards, a terminal's screen); the chrome
+>   around it follows the theme.
 > - **The painter** (`wtk/paint.h`, integer only): `wk_tone (c, level)` (a shade: 128 = `c`,
 >   255 = white, 0 = black), `wk_mix`, `wk_rbox` (a rounded box with a vertical gradient, its
 >   corners anti-aliased: per-radius tables), `wk_rline` (its outline), `wk_framed` (the framed
@@ -832,14 +840,47 @@ Notes / caveats:
 >   button (and a double click on the title) fills the work area — between the menu bar and the
 >   dock — and restores it (`Root::maximise`: `kapi_resize_window2`, the canvas re-adopted, the
 >   frame redrawn), then **`virtual void onResized ()`**. Otherwise the button is greyed. The
->   window menu (its button, top left): Restore / Maximise, Minimise, Close (`Root::windowMenu`).
+>   window menu (its button, top left): Restore / Maximise, Minimise, Move to *workspace* / On
+>   All Workspaces (the names: `SD:/etc/dock.ini`'s `desk =` lines), Close (`Root::windowMenu`).
 > - **`PopupMenu (x, y)`** (`wtk/dialog.h`): a pop-up menu — `add (label, id, enabled, hint)`,
 >   `separator ()`, `run ()` → the id picked, −1 (a click elsewhere, Esc). A context menu.
 > - **See-through windows** (`WIN_FLAG_ALPHA`, borderless): the canvas's top byte is each pixel's
 >   transparency (0 opaque .. 255 see-through; a click on a wholly see-through pixel goes below).
 >   Clear to `0xFF000000`, then draw with **`wk_paint_alpha (true)`** so the anti-aliased edges
 >   over see-through pixels keep their colour (`wk_blend_px` for single pixels); `0xFE000000`
->   (almost clear) still takes the clicks. Examples: `dock`, `menubar`, `agenda`.
+>   (almost clear) still takes the clicks. Examples: `dock`, `menubar`, `agenda`. (Onyx Remote
+>   draws them over the other windows with the same transparency: rdpd sends them in 32 bits.)
+> - **Present what you draw**: the compositor and the remote desktop (`rdpd`: a window is sent
+>   again when its counter changes) see a canvas change at `kapi_present ()` — an app drawing
+>   in its own loop presents after drawing, and only when something changed (`eyes`: when a
+>   pupil moves).
+> - **Workspaces** (kapi v65): a window opens on the current desk; `kapi_desk (set, count)` shows
+>   desk `set` and/or sets how many there are (−1 / 0 keep them) → `KAPI_DESK_CUR (r)`,
+>   `KAPI_DESK_COUNT (r)`, `KAPI_DESK_GEN (r)` (bumped at every change: poll it to redraw a
+>   pager); `kapi_win_desk (id, n)` moves window `id` (0: yours) to desk `n` (−1: all; −2: ask).
+>   `kapi_list_windows` and `kapi_raise_app` see the current desk only; `kapi_win_list` sees all,
+>   `KAPI_WIN_OFFDESK` and `KAPI_WIN_DESK (state)` in their state. The dock is the pager
+>   (`dockconf.h`: the desks' number and names).
+> - **Control Panel applets** (`user/applet_proto.h`): any wtk app can be shown **inside** the
+>   Control Panel (`apps/control`) instead of in a window of its own. Started with `--applet
+>   <surface> <host pid>`, `wtk::Root`'s constructor sees it (**`wk_applet ()`**) and adopts the
+>   host's shared surface as its canvas (the pane's size, 700 × 470: lay out for it, or centre
+>   on `root.width`); the host copies it into its window at each present and sends the pointer
+>   and the keys over the mailboxes. `Root::run ()` does it all; an app with its own loop calls
+>   **`wk_pump ()`**, **`wk_present ()`** and **`wk_quit ()`** instead of `pump_events` /
+>   `kapi_present` / `should_exit` (they fall back to those alone). `wk_applet_send (AP_THEME)`:
+>   the host restarts the applet (a new theme applied). An applet needs no menu (the host has
+>   one) and never calls `kapi_create_window`. To list it, add a link file to
+>   `SD:/apps/control.app/applets/` (`name`, `icon`, `target`, `text`: the user guide §11) and
+>   give its `app.txt` `category = Settings` (the menu bar leaves those out). Examples: `theme`,
+>   `dockconf`, `soundconf`, `keyconf`, `config`, `padconf`, `wpaconf`.
+> - **Shared settings headers**: `dockconf.h` (the dock's drawers, launchers and workspaces:
+>   `SD:/etc/dock.ini`, read / written by the dock and the Panel applet; `DOCK_MSG_RELOAD` to the
+>   IPC service `"dock"`), `wallpaper.h` (the wallpaper's modes and their painter:
+>   `SD:/etc/wallpaper.ini`, used by `voronoy` and the Theme applet's preview), `volume.h` (the
+>   master volume, `SD:/etc/sound.ini`).
+> - **Dialogs**: `wk_file_open` / `wk_file_save` / `wk_folder_open` (a double-click on a file
+>   picks it and confirms), `wk_color_dialog` (R / G / B sliders, a palette), `wk_messagebox`.
 > - **The desktop simulator** (`sh tools/tests/desktop_sim/run.sh`): a wtk app built for the PC
 >   against a stand-in kernel (`fakekapi.cpp`: files read from `sdcard/` — what the app saves
 >   goes to `/tmp/onyx_sim_writes`, never to the card —, a script of pointer / key / menu events,
@@ -1122,7 +1163,7 @@ An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) i
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,
-`run`, `fileassoc.h` (File Viewer, Shelf), the panel / app list. A new format = one line in
+`run`, `fileassoc.h` (File Viewer, the dock), the dock, the Game Library. A new format = one line in
 `runners.ini`. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
 `kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
 compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
@@ -1135,15 +1176,17 @@ you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` r
 
 ```ini
 name     = Text Editor          ; display name shown under the icon
-category = Productivity          ; Games, Graphics, Productivity, Internet, System, Demos, Shell
+category = Productivity          ; Productivity, Internet, Graphics, Games, Demos, Settings, Emulators, Shell
 ```
 
-The current app-drawer (`applist`) still labels icons by folder name; `app.txt` is the
-groundwork for a **category-grouping launcher** (groups icons by `category`, shows
-`name`). The shell components (`panel`, `applist`, `shell`, `menubar`, `notifyd`) carry
-`category = Shell`: `applist` does not offer them. A shell component also creates its
-window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the positioned `wtk::Root`
-constructor), so it is left out of `kapi_list_windows` — the panel's taskbar.
+The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show
+their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
+`menubar`, `dock`, `notifyd`, `agenda`, `lock`, `ask`, `shell`… and the retired `panel`,
+`applist`, `shelf`), `Settings` (the Control Panel's applets: reached through it) and
+`Emulators` (reached through the Game Library, which starts the right one for a game). A shell
+component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
+positioned `wtk::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
+Open Windows, the dock's running dots) and shown on every workspace.
 
 **Icons** — [`tools/gen_assets.py`](../tools/gen_assets.py) procedurally generates the
 40×40 BMPs (BGR bottom-up, 4-byte padding) for all the apps (a document for `tinypad`,

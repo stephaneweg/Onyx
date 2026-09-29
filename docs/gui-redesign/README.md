@@ -154,13 +154,23 @@ app cores — are not touched.)
    terminal's screen, a game's board, a document — keeps its own); the **Theme** app rewritten
    (the five themes, a colour per part, the outline, a live preview).
 8. **The fonts**: the bitmap fonts kept for now (`SD:/fonts/*.fnt`).
+9. **The second round** (after the user tried it, 2026-09-29): **workspaces** (kapi v65 `desk` /
+   `win_desk`; the dock's pager of small squares replaces the switcher — the Shelf's tabs left
+   the dock); the dock's **drawers** as Xfce's launchers (the icon starts the group's main app,
+   the strip above opens the drawer; `SD:/etc/dock.ini`); the **Control Panel** (`apps/control`)
+   whose applets are drawn inside its window (`user/applet_proto.h`: Theme, Panel, Sound,
+   Keyboard & Mouse, Gamepad, Wi-Fi, App Settings); the **Theme** applet as Windows 98's Display
+   Properties (a desktop preview, a colour per part — the buttons, the fields, the menu bar too —,
+   the wallpaper's modes: Voronoi, gradient, bubbles, a colour, a picture); the **File Viewer**'s
+   sidebar (Personal / Computer / Network) and elementary-style path bar; **Onyx Remote**'s
+   see-through popups (layered windows).
 
 ## 6. The open questions, as answered
 
 - The windows' outline: the theme's choice — none, dark (the default) or black.
 - Minimise: the window leaves the screen; the dock brings it back (its launcher, or its app in
   a drawer: `raise_app`), as does the Onyx menu's *Open Windows*.
-- The switcher's tabs (Shelf, Documents, Apps, +): each opens a drawer with the tab's items (the
-  Shelf's content); right-click a tab to rename or remove it.
+- The switcher's tabs (Shelf, Documents, Apps, +): each opened a drawer with the tab's items (the
+  Shelf's content) — replaced in the second round by the workspaces' pager.
 - Anti-aliased text: not yet — the bitmap fonts first (the next step: the `.aaf` fonts and their
   renderer from the archive branch, `user/elegant.h`).

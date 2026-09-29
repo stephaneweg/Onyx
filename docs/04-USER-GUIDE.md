@@ -16,7 +16,7 @@ application catalog.
 8. [The `/bin` tools](#8-the-bin-tools)
 9. [The file manager](#9-the-file-manager)
 10. [Keyboard and layouts](#10-keyboard-and-layouts)
-11. [Customizing the appearance](#11-customizing-the-appearance)
+11. [The Control Panel and the appearance](#11-the-control-panel-and-the-appearance)
 12. [Application catalog](#12-application-catalog)
 13. [Programming in BASIC](#13-programming-in-basic)
 14. [Troubleshooting](#14-troubleshooting)
@@ -208,9 +208,10 @@ theme's colour, the others grey), the dock with the Internet drawer open, the me
 ## 5. The Onyx desktop
 
 The "Onyx" desktop is made of the **menu bar** (`menubar`: the active app's menus, the Onyx
-menu, the time, the sound, the Wi-Fi), the **dock** (`dock`: the apps by category, the shelf's
-tabs, the Terminal, the File Viewer, the Trash, lock / settings / power) and the **agenda
-widget** (`agenda`). Everything is drawn in the theme's colours (§11).
+menu, the time, the sound, the Wi-Fi), the **dock** (`dock`: the apps' drawers, the
+**workspaces**, lock / Control Panel / power, the Terminal, the File Viewer, the Trash) and the
+**agenda widget** (`agenda`). Everything is drawn in the theme's colours; the settings are in
+the **Control Panel** (§11).
 
 ### The menu bar (`menubar`)
 
@@ -247,16 +248,19 @@ does not change it.
   drop-down a light rounded panel); slide to another title to switch; click an item to run it
   (or press on a title and release on an item). Click the title again or anywhere else to close
   the menu.
-- The first menu, **Onyx**, is always there: Terminal, File Viewer, Task Manager; then
-  **the apps by category** — Productivity, Internet, Graphics, Games, BASIC, Demos, System
+- The first menu, **Onyx**, is always there: Terminal, **Control Panel**, File Viewer, Task
+  Manager; then **the apps by category** — Productivity, Internet, Graphics, Games, Demos
   (and any other category an app declares; the `category` of its `app.txt`, "Other"
   without one) — each opening a sub-menu of its apps, by their friendly name (the `name`
   of `app.txt`), where a click launches the app, or brings it to the front if it is already
-  running; then **Open Windows** (a sub-menu of the open apps: a click brings one to the
-  front — minimised ones too); then **Shut Down…** (a dialog: **Restart**, **Shut Down** — the SD card is
-  unmounted, then "It is now safe to turn off the Raspberry Pi" — or **Cancel**). The list
-  follows the card: an app added meanwhile (QBasic's **Make App**) is there the next time
-  the menu opens. The desktop's own parts (`category = Shell`) are not listed.
+  running; then **Open Windows** (a sub-menu of the open apps of this workspace: a click brings
+  one to the front — minimised ones too); then **Shut Down…** (a dialog:
+  **Restart**, **Shut Down** — the SD card is unmounted, then "It is now safe to turn off the
+  Raspberry Pi" — or **Cancel**). The list follows the card: an app added meanwhile (QBasic's
+  **Make App**) is there the next time the menu opens. Not listed: the desktop's own parts
+  (`category = Shell`), the settings (`Settings`: they are the Control Panel's applets) and the
+  emulators (`Emulators`: reached through the **Game Library**, which starts the right one for
+  a game).
 - The next menu (the app's name) always has **Quit** (**Ctrl-Q**), like the close box.
 - Items show their **keyboard shortcut** on the right (e.g. `^O` = Ctrl-O); the shortcuts
   work whether the menu is open or not.
@@ -277,46 +281,53 @@ Applications with menus: **tinypad** (File), **Writer** (File, Format, Color, St
 ### The dock (`dock`)
 
 The **dock** — CDE's Front Panel, modernised — stands at the bottom of the screen, centred
-(started by `autostart`); it stays above the windows, and a maximised window ends above it.
-From the left:
+(started by `autostart`); it stays above the windows, on every workspace, and a maximised window
+ends above it. In its middle, the workspaces and the lock / gear / power buttons; its other
+buttons — the drawers, the launchers, the Trash, in this order — are shared **evenly on the two
+sides** (the odd one out at the left): with the five drawers, the Terminal, the File Viewer and
+the Trash, four on each side.
 
-- **The categories' launchers**: **Productivity**, **Internet**, **Graphics**, **Games** (and
-  **System** on the right side) — the categories of the apps' `app.txt`. Click one (or the
-  small tab hanging from the dock's top edge above it) to open its **drawer** above the dock:
-  its apps with their icons, by name (in columns when there are many). Click an app to start
-  it — or, if it is already running, to bring it back to the front (a **minimised** one too).
-  Click the launcher again, or anywhere else, to close the drawer. A **dot** under a launcher
-  says one of its apps is running; in the drawer, a dot beside each running app.
-- **The switcher** (in the middle): the **shelf's tabs** — Shelf, Documents, Apps… each in its
-  own colour — keeping **references** to files, folders and apps (the files themselves stay
-  where they are). Click a tab to open its drawer:
-  - **Open**: click an item — it opens in a **new instance** of its app (see *File
-    associations* below; folders open in the File Viewer, apps run).
-  - **Add**: drop files, folders or apps (e.g. from the File Viewer) on a tab or on its open
-    drawer.
-  - **Drag an item out** onto a File Viewer folder to **move** the file there (hold **Ctrl** to
-    **copy**) — the item stays and follows the file (the File Viewer reports every move and
-    rename) —, onto an app window to **open it in that app**, or onto the **desktop** to
-    **remove** it from the shelf. **Esc** cancels a drag.
-  - **+** adds a tab (a small window asks its name); **double-click** a tab to rename it;
-    **right-click** a tab: **Rename…**, **Remove tab** (with a confirmation if it holds items —
-    the files themselves are kept; the last tab stays).
-  - Items are checked only when used (click or drag): if a file is gone, a notification says
-    so and the item leaves the shelf. Saved in `SD:/etc/shelf.ini` (`tab = Name`, then
-    `item = path` lines; a remote folder ends with `/`).
-- Beside the tabs: the **lock** (the screen is locked: `lock` below), the **gear** (the
-  **Settings**: `config`) and the red **power** button (**Shut Down…**).
-- **Terminal** and **File Viewer**: a click starts it, or brings it back if it runs (dot).
-- **The Trash** (right end): drop items on it to move them to the Trash (`SD:/.Trash`); click
-  it to open the Trash in the File Viewer. A sheet of paper sticks out when it holds something.
+- **The drawers** — by default **Productivity**, **Internet**, **Graphics**, **Games** and
+  **Demos**: each shows the icon of its group's **main app** (the Text Editor, NetSurf, Paint,
+  the Game Library, the Widget Showcase). **Click the icon** to start that app — or, if it runs,
+  to bring it back to the front (a **minimised** one too). **Click the strip** on the dock's top
+  edge above it to open the group's **drawer**: its apps with their icons, by name (in columns
+  when there are many); click one to start it, or bring it back. Click the strip again, or
+  anywhere else, to close the drawer. A **dot** under a launcher says one of its apps has a
+  window on this workspace; in the drawer, a dot beside each running app. Files dropped on a
+  launcher are opened by its app. (As Xfce's launchers.)
+- **Terminal** and **File Viewer** (the launchers after the drawers): a click starts it, or
+  brings it back if it runs (dot).
+- **The Trash** (right end): drop items on it (from the File Viewer) to move them to the Trash
+  (`SD:/.Trash`); **click it to open the Trash in the File Viewer**. A sheet of paper sticks out
+  when it holds something.
+- **The workspaces** (in the middle): a small square each (4 by default), the current one lit,
+  its windows drawn small in it. Click one to show that workspace (see *Workspaces* below).
+  Beside them: the **lock** (the screen is locked: `lock` below), the **gear** (the **Control
+  Panel**, §11) and the red **power** button (**Shut Down…**).
 
-Rest the pointer on a launcher to see its name. The dock's colour is the theme's (`dock` in
-`theme.txt`).
+Rest the pointer on a launcher to see its name. **Right-click the dock**: **Panel Settings…** —
+the Control Panel's **Panel** applet, where the drawers (their group and main app: add, remove,
+reorder), the launchers after them and the workspaces (how many, their names) are set; kept in
+`SD:/etc/dock.ini`. The dock's colour is the theme's.
 
 ![Dock](../screenshots/dock.png)
-*The dock: the categories (a dot: an app of it runs), the switcher with the shelf's tabs, the
-lock, the gear and the power button, the System drawer's launcher, the Terminal, the File
-Viewer, the Trash — and the Games drawer open.*
+*The dock: four drawers, the middle (the four workspaces with their windows drawn small, the lock,
+the gear, the power button), the Demos drawer, the Terminal, the File Viewer, the Trash — and the
+Games drawer open (a dot: an app of it runs).*
+
+### Workspaces (virtual desktops)
+
+The desktop has **workspaces** (4 by default, 1 to 6: the Panel applet): each window belongs to
+one, and only the current workspace's windows are shown and handled — listed in **Open
+Windows**, brought back by the dock (an app whose window is on another workspace, started from
+the dock, opens a new window here). A window opens on the current workspace.
+
+- **Switch**: click a workspace's square in the dock, or **Ctrl+Alt+←** / **Ctrl+Alt+→** (the
+  previous / next one). **Ctrl+Alt+Shift+←/→** takes the window in front along.
+- **Move a window**: its **window menu** (the title bar's left button) ▸ **Move to** *workspace*,
+  or **On All Workspaces** (then shown on every one; **On This Workspace Only** undoes it).
+- The menu bar, the dock, the notifications and the desktop's widgets are on every workspace.
 
 **The lock screen** (`lock`, the dock's padlock): the whole screen shows the time, the date and
 the darkened wallpaper; a **click or a key** unlocks it — or, if `SD:/etc/lock.ini` sets a PIN
@@ -351,9 +362,9 @@ scrollbar (or the wheel) if the grid overflows.
 
 ### The Shelf (`shelf`, no longer started)
 
-The former strip along the bottom of the screen, whose tabs and items are now the dock's
-switcher (the same `SD:/etc/shelf.ini`). `run shelf` brings it back (without the dock: both
-answer the File Viewer's move reports).
+The former strip along the bottom of the screen: tabs of references to files, folders and apps
+(`SD:/etc/shelf.ini`). The dock no longer shows them (its middle holds the workspaces);
+`run shelf` brings the strip back.
 
 ### The agenda widget (`agenda`)
 
@@ -372,23 +383,23 @@ the title** to move it (its place is kept in `SD:/apps/agenda.app/config.ini`).
 
 Files are dragged with the **left button**: press on an item, move a few pixels — a label
 follows the cursor. Hold **Ctrl** while dropping to **copy** instead of move (the label
-shows a **+**); **Esc** cancels. Drop targets: File Viewer columns and folders, the dock's
-tabs and their drawers, the Trash, and document apps (tinypad, Writer, paint open the dropped
-file; dropped text goes in at the caret).
+shows a **+**); **Esc** cancels. Drop targets: File Viewer columns and folders (and its
+sidebar's places), the dock's launchers (their app opens the files), the Trash, and document
+apps (tinypad, Writer, paint open the dropped file; dropped text goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
 per line (`txt = tinypad`, `png = imageview`, `doc = writer`, …): opening the file runs
-`SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock's shelf
-(click). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
+`SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock (files
+dropped on a launcher). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
 a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
 run in the BASIC runtime, `.gb` / `.gbc` in the Game Boy emulator.
 
 ### Launching, closing, switching
 
-- **Launch**: from the dock (a category's drawer, the Terminal, the File Viewer, the shelf's
-  items), the menu bar's **Onyx** menu, the terminal (`run <name>`) or the file manager.
+- **Launch**: from the dock (a drawer's main app or one of its apps, the Terminal, the File
+  Viewer), the menu bar's **Onyx** menu, the terminal (`run <name>`) or the file manager.
 - **Switch**: click a window; or the dock (a running app's launcher brings it back) or the
-  menu bar's **Onyx ▸ Open Windows**.
+  menu bar's **Onyx ▸ Open Windows**; another workspace: the dock's squares, Ctrl+Alt+←/→.
 - **Close**: the **×** button of the title bar, **Ctrl-Q**, the window menu's **Close**, or
   the task manager (`taskman`) / `kill`.
 
@@ -399,10 +410,12 @@ behind; rounded corners, a light gradient, a thin dark outline (the theme can ma
 remove it); no shadow. Its **title bar** holds:
 
 - at the left, the **window menu** button (a bar): **Restore** / **Maximise**, **Minimise**,
-  **Close** (Ctrl-Q) — greyed in the few apps that draw their whole window themselves (the
-  calendar, the spreadsheet, IRC, most games, the emulators: their other buttons work);
+  **Move to** *another workspace* / **On All Workspaces**, **Close** (Ctrl-Q) — greyed in the
+  few apps that draw their whole window themselves (the calendar, the spreadsheet, IRC, most
+  games, the emulators: their other buttons work);
 - at the right, **minimise** (a short line): the window disappears — bring it back from the dock
-  (its app's launcher), the menu bar's **Onyx ▸ Open Windows**, or by starting the app again;
+  (its app's launcher or drawer), the menu bar's **Onyx ▸ Open Windows**, or by starting the app
+  again;
 - **maximise** (a square): the window fills the screen between the menu bar and the dock; the
   button then shows two squares (**restore**: back to its size and place). A **double click**
   on the title bar does the same. For the apps whose content flows to any size — **tinypad**,
@@ -594,23 +607,31 @@ connection waits until the first ends.
 **Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
 11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
 **Connect**. Connected, the window takes **the size of the Pi's screen** (below the tool bar)
-and cannot be resized, so the Onyx windows (the shelf at the bottom) sit where they are on the
+and cannot be resized, so the Onyx windows (the dock at the bottom) sit where they are on the
 Pi; when the Pi's screen does not fit on the PC's, it stays resizable.
 
 - At the top, the **Onyx menu bar** across the window's width (the menus on the left, the
-  status and the clock on the right); its menus open over the windows.
+  status and the clock on the right).
 - Below, each Onyx window is a **child window** inside Onyx Remote, where it is on the Pi: a
   normal window (its title, its close button) showing the Onyx window's content — or, with
-  **Onyx frames**, with the frame drawn by Onyx. Move it by its title bar inside Onyx Remote
-  (the Pi's window stays where it is); its close button (or Alt+F4) closes the Onyx app;
-  clicking a window brings it to the front on the Pi too, so it gets the keyboard. The keys are
-  typed with the PC's layout.
-- **Desktop** shows the Onyx desktop (the wallpaper, the notification bubbles) behind the
-  windows; a click there goes to the desktop.
+  **Onyx frames**, with the frame drawn by Onyx (its rounded corners; its title buttons: close
+  closes the app, the window menu, minimise and maximise are pressed on the Pi). Move it by its
+  title bar inside Onyx Remote (the Pi's window stays where it is; moved or maximised on the Pi,
+  it follows); its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
+  the front on the Pi too, so it gets the keyboard. The keys are typed with the PC's layout.
+  A minimised window, or one on another workspace, is not shown (as on the Pi).
+- **Over the windows, see-through as on the Pi**: the menu bar's menus (and its volume box and
+  calendar), the **dock** and its drawers, the **notifications**, the Wi-Fi menu — the parts
+  of them that are clear on the Pi are clear here too (the windows below show), and a click on a
+  clear part goes to what is below.
+- **Desktop** shows the Onyx desktop (the wallpaper, the widgets under the windows) behind the
+  windows; a click there goes to the desktop. Without it, the pointer's moves still reach the
+  Pi (the **eyes** follow it).
 - Faster than VNC: only the windows that change are sent, only their changed parts,
   compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
-  halves the data (a game in a big window). The tool bar shows the updates a second; it says
-  when the Pi's kernel is too old for rdpd (copy the new `kernel8-rpi4.img`).
+  halves the data (a game in a big window; the see-through windows and the frames stay in 32
+  bits). The tool bar shows the updates a second; it says when the Pi's kernel is too old for
+  rdpd (copy the new `kernel8-rpi4.img`).
 - **Console** opens a **telnet console** on the Pi in a window of its own (the Onyx shell served
   by `telnetd`, port 23 — type `address:port` in the address box for another port; it works
   without Connect): the output in a text box you can **scroll, select and copy** (right click:
@@ -682,8 +703,8 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
   `ftpfs login <host> <user> <password> [save]`; otherwise `anonymous`. A login is kept in
   memory by the running ftpfs (one per server); with **Remember password** (or `save`) it is
   also written to **`SD:/etc/ftpfs.ini`** (one line per server: host, user, password, port,
-  FTPS, folder) and reloaded at every start, so FTP and FTPS folders (and the
-  the shelf's remote items) work again after a reboot. `ftpfs forget <host>` removes it.
+  FTPS, folder) and reloaded at every start, so FTP and FTPS folders (and the File Viewer's
+  Network places) work again after a reboot. `ftpfs forget <host>` removes it.
   The file can also be written by hand, one section per server:
   `[ftp.example.com]` then `user = me`, `password = secret` (plain), `port = 21`,
   `tls = 1`, `folder = /www` (ftpfs rewrites it in its own format when a login changes).
@@ -698,19 +719,35 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
 
 ### File Viewer (column browser)
 
-**`fileviewer`** (the File Viewer, pinned on the panel by default and in the **Onyx** menu)
-is a NeXTSTEP-style **column browser**: each column lists one folder, and
-selecting a folder opens its content in the next column — the whole path stays visible, so
-going back is one click on an earlier column. Launch it from the app list (category
-*System*), or `run fileviewer SD:/some/folder` to open a given folder.
+**`fileviewer`** (the File Viewer: the dock's launcher, the **Onyx** menu) is a
+NeXTSTEP-style **column browser**: each column lists one folder, and selecting a folder opens
+its content in the next column — the whole path stays visible, so going back is one click on an
+earlier column. `run fileviewer SD:/some/folder` opens a given folder (`run fileviewer trash`:
+the Trash — the dock's Trash does so).
 
+- **The sidebar** (the places, on the left, in the window's colour), in three groups — click a
+  group's title to fold or unfold it (kept):
+  - **Personal**: the folders **pinned** there, each under a **name of its own** — a folder's
+    right-click menu ▸ **Pin to Sidebar…**, or **Go ▸ Pin This Folder…** (**Ctrl-D**), asks the
+    name —, and the **Trash**;
+  - **Computer**: the SD card's partitions (`SD:`, and `SD1:` … `SD3:` when present; the disk
+    images `VD0:` … to come);
+  - **Network**: the servers connected once (**Go ▸ Connect to Server…**, under the name given
+    in its **Name** field — the address when empty): a click **connects again** (the login kept
+    by `ftpfs`, "Remember password") and opens its folder; and **Add a Server…**.
+  Right-click a place: **Open** / **Connect**, **Rename…**, **Unpin** / **Forget** (the Trash:
+  **Empty Trash…**). Files dropped on a pinned folder, the Trash or a volume go there (the
+  place outlined). Kept in `SD:/etc/places.ini`
+  (`pin = name|path`, `net = name|FTP:host/folder`, `folded = …`).
 - **Columns**: plain folders first (blue, with a ▸ arrow), then app bundles (`.app`, green,
   shown by their **friendly name** — the `name =` line of their `app.txt`, e.g. `demoB.app`
   shows as *Colour Field*; the folder name without `.app` if there is none) and files,
-  sorted alphabetically by what is shown. When there are more columns than fit (4), the
-  view follows the deepest one; the scrollbar below the columns scrolls back.
-- **Path bar** (above the columns): click a segment (`SD:` ▸ `etc` ▸ …) to jump straight
-  back to that folder.
+  sorted alphabetically by what is shown, with room round the names. When there are more
+  columns than fit (3), the view follows the deepest one; the scrollbar below the columns
+  scrolls back.
+- **Path bar** (above the columns, as elementary OS's): the folders of the path as links —
+  underlined under the pointer, the current one in the accent colour; click one to jump
+  straight back to that folder.
 - **Preview column**: selecting a file shows its size and type, the first lines of a text
   file, a scaled-down **image** (BMP, GIF, PNG, JPEG, PCX, WebP — with its format and
   dimensions), or — for an app bundle — its icon, its friendly name and its folder name (`demoB.app`).
@@ -724,8 +761,8 @@ going back is one click on an earlier column. Launch it from the app list (categ
   (`SD:/.Trash`, hidden) — nothing is lost. **Go ▸ Trash** shows it (the path bar reads
   "Trash"): select an item, **Go ▸ Restore from Trash** puts it back where it was (its
   folder is recreated if needed; a clash gets a "(restored)" name), **Del** there deletes it
-  for good; **Go ▸ Empty Trash…** deletes everything; **Go ▸ SD Card** returns to the card,
-  **Go ▸ SD1: (partition 2)** … to the card's other FAT / exFAT partitions (listed when present;
+  for good; **Go ▸ Empty Trash…** deletes everything; **Go ▸ SD Card** (or the sidebar)
+  returns to the card, **Go ▸ SD1: (partition 2)** … to the card's other FAT / exFAT partitions (listed when present;
   a move between two volumes is a copy then a delete; the Trash is on `SD:`, so an item of
   another volume is deleted with File ▸ Delete Permanently…).
   **File ▸ Delete Permanently…** skips the Trash (with confirmation). Names starting with
@@ -736,13 +773,14 @@ going back is one click on an earlier column. Launch it from the app list (categ
   (Ctrl-L). The status bar shows the item count and the selection.
 - **Drag & drop**: drag an item (press, move a few pixels) onto a folder — a folder row, or
   anywhere in a column for that column's folder (the target is outlined) — to **move** it
-  there; hold **Ctrl** to **copy**. Works between File Viewer windows, from/to the dock's shelf,
-  and in the Trash view (a drop there moves to the Trash). Dropping a file on an app window
-  (tinypad, Writer, paint) opens it there.
+  there; hold **Ctrl** to **copy**. Works between File Viewer windows, onto the sidebar's
+  places, onto the dock's Trash, and in the Trash view (a drop there moves to the Trash).
+  Dropping a file on an app window (tinypad, Writer, paint) opens it there, on a dock launcher
+  its app opens it.
 
 ![File Viewer](../screenshots/fileviewer.png)
-*The File Viewer: `SD:` ▸ `etc` in the path bar, one folder per column, and the preview of
-the selected `autostart` file.*
+*The File Viewer: the sidebar (Personal, Computer, Network), `SD:` ▸ `etc` in the path bar, one
+folder per column, and the preview of the selected `autostart` file.*
 
 ## 10. Keyboard and layouts
 
@@ -756,9 +794,10 @@ change it **on the fly**:
 
 - **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `BE`, `ES`, `IT`, `DV`). `keyb` alone
   shows the current layout and the list.
-- **Graphically**: the **theme editor** (`theme`) offers a dropdown — populated from the
-  `.kmap` files actually present in `SD:/etc/keymaps/` — applied live.
-- **Permanently**: edit the `keyb` line in `SD:/etc/autostart`.
+- **Graphically**: the Control Panel's **Keyboard & Mouse** applet (`keyconf`) lists the
+  `.kmap` files actually present in `SD:/etc/keymaps/`; a click takes one at once **and keeps
+  it** (it rewrites the `keyb` line of `SD:/etc/autostart`); a field to try it.
+- **Permanently**: edit the `keyb` line in `SD:/etc/autostart` (or use the applet).
 
 The layouts themselves live as files in **`SD:/etc/keymaps/`** — `BE.kmap`, `DE.kmap`,
 `DV.kmap`, `ES.kmap`, `FR.kmap`, `IT.kmap`, `UK.kmap`, `US.kmap` (small binary tables). The
@@ -770,39 +809,77 @@ kernel itself ships no keyboard map** — layouts are *only* these files, so the
 no mapping until `keyb` has run (a second or two into boot), and deleting the `keymaps`
 folder would leave it unmapped. **Adding a layout never needs a kernel rebuild**: drop a new
 `<NAME>.kmap` in that folder (regenerate them, or seed a custom one, with
-`tools/keymaps/genkeymaps.py`) and use `keyb <NAME>` — it also shows up in the theme dropdown.
+`tools/keymaps/genkeymaps.py`) and use `keyb <NAME>` — it also shows up in the Keyboard & Mouse
+applet.
 
 Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
 text field and editor.
 
-## 11. Customizing the appearance
+## 11. The Control Panel and the appearance
 
-### The theme editor (`theme`)
+### The Control Panel (`control`)
 
-The desktop's look is a **modernised CDE**; the **Theme** app (menu bar ▸ Onyx ▸ System ▸
-Theme, or the dock's System drawer) sets its colours — a **preview** shows a window in front
-and one behind as they will be:
+The system's settings are gathered in one window, as Windows' Control Panel: the **Control
+Panel** (the menu bar's **Onyx ▸ Control Panel**, just below Terminal, or the dock's **gear**).
+Its home lists the **applets**, an icon, a name and a line of help each; **click one** to open it
+**inside the Control Panel's window**. The path bar at the top reads *Control Panel ▸ Theme*…:
+click **Control Panel** (or the menu's **All Settings**) to go back to the list. One Control
+Panel at a time (started again, it brings the open one to the front).
 
-- **In front**: the colour of the frame of the window in front — one of the five **themes**
-  (**Peach**, the default, **Steel**, **Sage**, **Brick**, **Slate**) or any colour (the swatch
-  at the right); every shade of the frame (its gradient, its buttons, its edge) is computed
-  from that one colour, and the title's ink (dark or white) from its brightness;
-- **Behind**: the frames of the other windows (grey by default);
-- **Outline**: the frames' 1-px outline — **None**, **Dark** (the default: the frame's colour,
-  very dark) or **Black**;
-- **Colours**: the **apps**' face (their background and buttons: CDE's beige by default), the
-  **accent** (focus, selection, checks, the open menu), the **dock**;
-- **Desktop**: the **wallpaper**'s colour, the **keyboard** layout, the **wheel**'s speed
-  (lines a notch; applied at once).
+| Applet | What it sets |
+|---|---|
+| **Theme** (`theme`) | The desktop's colours and wallpaper, with a preview (below). |
+| **Panel** (`dockconf`) | The dock: its **drawers** (left to right: each a **group** of apps — the `category` of their `app.txt` — and its **main app**, whose icon the drawer shows; **Add** / **Remove** / move them, pick the group and the main app in the lists beside), the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini`; the dock takes it at once. |
+| **Sound** (`soundconf`) | The master **volume** (0–10) and **Mute**, applied at once to everything played and kept in `SD:/etc/sound.ini` (the menu bar's speaker changes the same volume); **Play a test sound**. |
+| **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
+| **Gamepad** (`padconf`) | The USB gamepads (§12). |
+| **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
+| **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
 
-**Apply** writes `SD:/etc/theme.txt`, draws the wallpaper again, switches the layout and
-restarts the menu bar, the dock and the agenda in the new colours; the apps opened from then
-on take them (the ones already open keep theirs until they are opened again). **Discard**
-reloads what is saved.
+Each applet also runs **alone**, in a window of its own (`run theme`, `run keyconf`…). The list
+is made of **link files** in `SD:/apps/control.app/applets/` (sorted by their names:
+`10-theme.lnk`, `20-dockconf.lnk`…), four lines each — add one to add an applet:
 
-![The theme editor](../screenshots/theme.png)
-*The theme editor: the five themes (Peach chosen), the frames behind and their outline, the
-colours, the desktop's settings, and the preview.*
+```
+name   = Theme                          # the title shown
+icon   = SD:/apps/theme.app/icon.bmp    # a 40 x 40 BMP (magenta: see-through)
+target = theme                          # the applet: an app (SD:/apps/<name>.app)
+text   = Colours of the windows, the menu bar, the dock; the wallpaper
+```
+
+![The Control Panel](../screenshots/control.png)
+*The Control Panel's home: the applets.*
+
+### The Theme applet (`theme`)
+
+The desktop's look is a **modernised CDE**; the **Theme** applet sets its colours, as Windows
+98's Display Properties. On the left a **preview** of a desktop (320 × 240): the wallpaper, the
+menu bar, a window behind, a window in front with a button, a text field, a selection and a
+check, the dock — drawn in the colours being edited.
+
+- **Click a part of the preview** (or pick it in **Item**) and give it a colour: one of the
+  **palette**'s, or any colour (**Custom…**: red, green, blue sliders and the colour). The parts:
+  the **frame of the window in front** and of the **windows behind**, the **windows' content**
+  (the apps' face, their background), the **buttons**, the **text fields and lists**, the
+  **selection** (focus, checks, the open menu), the **menu bar**, the **dock**, the **desktop**.
+  The buttons, the fields and the menu bar may follow the window's colour (**Automatic**).
+- **Scheme**: the named colours of the window in front — **Peach** (the default), **Steel**,
+  **Sage**, **Brick**, **Slate**; every shade of a frame (its gradient, its buttons, its edge)
+  is computed from its one colour, and the title's ink (dark or white) from its brightness.
+- **Outline**: the frames' 1-px outline — **None**, **Dark** (the default) or **Black**.
+- **Desktop**: the **wallpaper** — **Voronoi cells** (their colour and number), a **Gradient**
+  (two colours, top to bottom or left to right), **Bubbles** (a gradient with soft bubbles),
+  a **Solid colour**, or a **Picture** (a BMP, GIF, PNG, JPEG, PCX or WebP file: **Browse…**;
+  **cover** the screen or **tile** it).
+
+**Apply** writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`, paints the wallpaper again and
+gives the menu bar, the dock and the agenda the new colours at once; the apps opened from then on
+take them (the ones already open keep theirs until they are opened again). **Discard** reloads
+what is saved.
+
+![The Theme applet](../screenshots/theme.png)
+*The Theme applet: the preview (click a part to pick it), its colour from the palette, the scheme
+and the outline, the wallpaper.*
 
 ### Manual theme editing
 
@@ -812,9 +889,12 @@ colours, the desktop's settings, and the preview.*
 theme    = Peach       # the frame in front: Peach, Steel, Sage, Brick, Slate
 active   = 0xF0B07A    # ... or any colour instead (overrides theme)
 inactive = 0xACACB0    # the frames behind
-face     = 0xD0C2BA    # the apps' face
+window   = 0xD0C2BA    # the windows' content: the apps' face ("face" is still read)
+button   = 0xD0C2BA    # the buttons (default: the window's)
+field    = 0xF6F3F1    # the text fields and lists (default: from the window's)
 accent   = 0x4992A7    # focus, selection, checks
 outline  = dark        # the frames' outline: none, dark, black
+menubar  = 0xD0C2BA    # the menu bar (default: the window's)
 dock     = 0xA4BACE    # the dock's face
 wheelspeed=2           # lines a wheel notch (read by the kernel at boot)
 ```
@@ -835,9 +915,21 @@ Nothing is a bitmap: the frames, buttons and controls are drawn by code from the
 
 ### Wallpaper
 
-At boot, **`voronoy`** draws a Voronoi pattern in the shared background buffer. Its
-color/density are set in `SD:apps/voronoy.app/config.ini` (and via the theme editor).
-The wallpaper persists after `voronoy` exits.
+At boot, **`voronoy`** paints the wallpaper in the shared background buffer, as
+**`SD:/etc/wallpaper.ini`** says (the Theme applet writes it):
+
+```
+mode      = voronoi      # voronoi, gradient, bubbles, solid or image
+color     = 0x4878B0     # voronoi's colour, the solid one, the gradient's first
+color2    = 0x1C2C48     # the gradient's second (gradient, bubbles)
+direction = vertical     # the gradient: vertical or horizontal
+points    = 28           # voronoi's cells (1..64)
+image     = SD:/x.jpg    # image: the picture (painted by imageview --background)
+style     = cover        # cover (the screen filled) or tile
+```
+
+Without the file, `SD:apps/voronoy.app/config.ini`'s colour and cells. The wallpaper persists
+after `voronoy` exits.
 
 ## 12. Application catalog
 
@@ -871,29 +963,34 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **sheet** | Mini spreadsheet 8×16. Click a cell, type a value or a **formula** (`=A1+B2*2`, refs `A1`…`H16`, `+ - * / ( )`); Enter/arrows confirm and move. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib). A column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel. **Keys**: **C D E F G A B** a note (Shift = sharp; the cursor then goes to the next slice, and you hear it), **0–7** the octave, **Space** a silence, **Delete** `---`, **Backspace** clears the slice above, **#** toggles the sharp, **Ctrl+↑ / Ctrl+↓** move the note a semitone up / down, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; a **click** selects a cell; wheel / scrollbar scroll. The **column header** is a button: it opens the **instrument dialog** (presets from `SD:/apps/fmtracker.app/ins`, Load / Save `.FMI`, the two operators' multiplier, level, attack, decay, sustain, release, wave, sustain / tremolo / vibrato flags, feedback, FM or additive, **Test**); right-click it to mute the channel in this pattern. **Play** (^P) plays from the cursor, follows the position and highlights it; **Stop** / **Esc**. A song is a list of **patterns** (toolbar: ◀ ▶ +, **Rows**, **Speed** = a slice lasts speed / 20 s; Pattern menu: New, Duplicate, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
-| **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), click it on the dock's shelf, drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
+| **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
 | **paint** | Drawing. **Drag** to paint, **right-click-drag** to erase; the strip at the bottom shows the colour and brush size. Menus: **File** (New ^N clears, Open... ^O loads a 24-bit BMP, Save ^S saves to the open file, Save As... to a new BMP), **Brush** (Smaller `[`, Larger `]`, Fine/Normal/Thick/Huge), **Color** (8 colours). Opens `.bmp` files (double-click in the File Viewer, `fileassoc.ini`); **drop** a BMP on the window to open it — New / Open / a drop ask to save unsaved changes first. |
 | **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
-| **dock** (Dock) | The desktop's dock at the bottom: the apps by category in drawers, the shelf's tabs (file / folder / app references), lock / settings / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads/writes `SD:/etc/shelf.ini`. |
+| **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
-| **shelf** (Shelf) | The former bottom strip of references in tabs (no longer started: the dock's switcher holds its tabs). Reads/writes `SD:/etc/shelf.ini`. |
+| **shelf** (Shelf) | The former bottom strip of references in tabs (no longer started). Reads/writes `SD:/etc/shelf.ini`. |
 | **ask** (Confirm) | A small system window used by apps that cannot host a dialog (the dock): `run ask "Title|Message|Yes|No"` asks Yes / No and exits with 1 (Yes / Enter) or 0 (No / Esc / close box); a fifth field `=text` asks for a line of text instead (written to its output on OK: the dock's tab names). |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
 | **terminal** | Terminal/shell (see §7). |
-| **Gamepad** (`padconf`) | The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
+| **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
 | **taskman** | Task manager. Arrows to select; Enter brings the window to the foreground; `k`/Delete kills the app (except kernel tasks); `r` refreshes. |
 | **memmon** | Memory monitor. Shows total / used / free RAM, the memory owned by apps, a usage bar, and the processes ranked by 64 KB pages owned. Refreshes ~1×/s. |
-| **theme** (Theme) | The desktop's colours: the frame in front (Peach, Steel, Sage, Brick, Slate or any colour), behind, the outline, the apps' face, the accent, the dock, the wallpaper, the keyboard layout, the wheel's speed, with a live preview (see §11). Writes `SD:/etc/theme.txt`. |
+| **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the scheme, the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
+| **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
+| **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
+| **soundconf** (Sound) | The Control Panel's Sound applet: the master volume, mute, a test sound (see §11). Writes `SD:/etc/sound.ini`. |
+| **keyconf** (Keyboard & Mouse) | The Control Panel's Keyboard & Mouse applet: the layout (kept in `SD:/etc/autostart`), the wheel's speed (kept in `SD:/etc/theme.txt`) (see §11). |
+| **config** (App Settings) | The Control Panel's App Settings applet: an app's `config.ini`, key by key (see §11). |
 | **eyes** | Gadget: two eyes whose pupils follow the mouse. |
 | **mandelbrot** | Fractal explorer (Mandelbrot, Julia, Burning Ship, Tricorn via the dropdown). **Click** = zoom in (re-centers); `o` = zoom out; `r` = reset. |
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
 | **irc** | IRC client over Wi-Fi. Connects to the server/channel from `config.ini`, shows the conversation, type to chat. Commands: `/join #chan`, `/msg nick text`, `/nick name`, `/me action`, `/raw …`, `/quit`. Needs the network up (see §3). |
 | **httpc** | A mouse-driven **text web browser** (`http://` and `https://`). Renders the page text with **hyperlinks in blue** (click to follow), and handles simple **forms** (text fields, checkboxes, dropdowns, buttons → GET/POST). Navbar: **<** back, **>** forward, an **address bar** (click to type, Enter or **Go** to load); the right-hand scrollbar (or PgUp/PgDn/arrows) scrolls. Needs the network up (see §3). |
 | **NetSurf** | The **NetSurf** web browser — a full graphical HTML/CSS rendering engine ported to Onyx (no JavaScript). Opens a window and lays out real pages with images. Plain `http://` for now (currently slow). A heavyweight alternative to `httpc`; opt-in build, see `user/netsurf/README.md`. Needs the network up (see §3). |
-| **wpaconf** (Wi-Fi Settings) | Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
+| **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
-| **voronoy** | Wallpaper generator (launched at boot; no window). |
+| **voronoy** | The wallpaper's painter (launched at boot, and by the Theme applet's Apply; no window): Voronoi cells, a gradient, bubbles, a colour or a picture, as `SD:/etc/wallpaper.ini` says (§11). |
 
 **On a PC**: `tools/fmsplayer/fmsplayer.exe` is an **FM Song player for Windows** built
 from the same code (the `.FMS` reader and the FM synthesizer of the Onyx kernel): Open... or
@@ -922,13 +1019,13 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 | **Teapot (GPU)** (`teapot`) | The demo of the Raspberry Pi 4's **GPU** (V3D): the Utah teapot turning, lit (6400 triangles), drawn by the GPU with a depth buffer. The top line shows the renderer (`V3D 4.2 (1 core)`), the triangles, the frames a second and the time of one frame. **Space** pause, **G** GPU / software (the same picture drawn by the CPU, to compare), **Up / Down** tilt. Without a usable GPU it draws in software and the top line says why (the details are in `kmsg`). Reads and writes no file. |
 | **GPU demo** (`gpudemo`) | The GPU's full pipeline: six **textured cubes** turning (each moved by the GPU with its own matrix), a **glass pane** in front (transparency) and **glowing sparks** (additive light). Each cube's texture has a size that the GPU stores differently (its label: `4x4 LT`, `8x8 UB1`, `16x16 UB2`, `64x64 UIF`, `256 UIF/XOR`, `100x60 UIF`); every face should show a white border, a yellow dot in a corner and a dark arrow — a scrambled face means that layout is wrong. **F** nearest / linear filtering, **C** culling (back / none / front: with *back* only the outer faces show), **B** blending on / off, **T** textures on / off, **Space** pause. The top line: the GPU, the settings, frames a second, time of a frame (and the error, if the GPU refused a frame). Reads and writes no file. |
 | **Doom** (`doom`) | id Software's Doom (the GPL source, through doomgeneric). Onyx ships **Freedoom Phase 1** (`SD:/doom/freedoom1.wad`, free content); copy your own `doom.wad`, `doom2.wad`, `doom1.wad` (shareware), `plutonia.wad` or `tnt.wad` into **`SD:/doom`** to play the original — the first found is used. Opening a `.wad` in the File Viewer starts Doom with it (a mod — a PWAD — is loaded over the game). **Arrows** move, **Ctrl** fires, **Space** opens / uses, **Alt** + arrows or **,** / **.** strafe, **Shift** runs, **1–7** weapons, **Tab** the map, **Esc** the menu, **F1–F10** as in DOS Doom (F2 save, F3 load…). **USB gamepad**: d-pad, **A** fire, **B** use, **X** run, **L / R** strafe, **Start** menu, **Select** map. The picture is Doom's 320 × 200 doubled in a 640 × 400 window; **F11** / Game ▸ **Full Screen** stretches it to the display at 4:3. Sound effects and **music** (MUS or MIDI) on the Onyx synthesizer's FM voices with the WAD's own OPL instruments (GENMIDI), like the DOS version on an AdLib / Sound Blaster. Settings in `SD:/doom/default.cfg`, saved games in `SD:/doom/savegame/<iwad>/`. Loading a 28 MB WAD takes a couple of seconds. The game runs on an **app core** (core 2 or 3) when one is free: steadier, and the rest of Onyx stays fluid. |
-| **Game Library** (`gamelib`) | A "Netflix for ROMs": every Game Boy (`.gb`), Game Boy Color (`.gbc`), Game Boy Advance (`.gba`), NES (`.nes`) and Super Nintendo (`.sfc` / `.smc`) and Nintendo 64 (`.z64` / `.n64` / `.v64`) ROM of the **watched folders** (**`SD:/roms`** by default) and their sub-folders, one tile each — a picture of its title screen and its name (a Nintendo 64 game: a label with the name from its header) — as cards on the theme's face (the window can be maximised), one section per system (Nintendo 64, Super Nintendo, Advance, Color, Game Boy, NES). **Click** a tile to select it, **double-click** it (or **Enter**) to play; arrows move the selection. With a **gamepad**: the d-pad moves, **Start** (or A) plays, L / R turn a page. The pictures are made in the background the first time (each game runs a few seconds unseen) and cached in `SD:/apps/gamelib.app/thumbs/`. Library ▸ **Refresh** (^R) finds new ROMs. **Several folders** are watched, on any volume (e.g. `SD1:/roms` on an exFAT partition): Folders ▸ **Add Folder...** (the folder dialog) and Folders ▸ **Remove <folder>** — kept in `SD:/apps/gamelib.app/config.ini`, one `folder = <path>` line each (63 characters at most); View ▸ **Play Full Screen On / Off**. |
+| **Game Library** (`gamelib`) | A "Netflix for ROMs", laid out as the File Viewer: every GameCube (`.iso` / `.gcm`), Nintendo 64 (`.z64` / `.n64` / `.v64`), Super Nintendo (`.sfc` / `.smc`), Game Boy Advance (`.gba`), Game Boy Color (`.gbc`), Game Boy (`.gb`) and NES (`.nes`) game of the **watched folders** (**`SD:/roms`** by default) and their sub-folders, one card each — a picture of its title screen and its name (a Nintendo 64 game: a label with the name from its header; a GameCube disc: its banner). **On the left, the sidebar** (click a group's title to fold it): **Library ▸ All Games**, **Systems** — the emulators, each with its icon and its number of games: **click one to see its games only** — and **Folders** (the watched folders and their games; **Add Folder…**; right-click one: Show, Show in File Viewer, **Remove Folder**). Above, the path bar (*Game Library ▸ Super Nintendo*, the number of games; click *Game Library* for all of them); below, the status bar (the game chosen, the picture being made). The cards: one section per system; **click** one to select it, **double-click** it (or **Enter**) to play; right-click: **Play**, **Play Full Screen**, **Show in File Viewer**. Keys: arrows, Enter, Page Up / Down, **Tab** = the next system. With a **gamepad**: the d-pad moves, **Start** (or A) plays, **L / R** the previous / next system, **L2 / R2** turn a page. The pictures are made in the background the first time (each game runs a few seconds unseen; the games shown first) and cached in `SD:/apps/gamelib.app/thumbs/`. Library ▸ **Refresh** (^R) finds new ROMs. **Several folders** are watched, on any volume (e.g. `SD1:/roms` on an exFAT partition): the sidebar's Add Folder… / Folders ▸ **Add Folder...** (the folder dialog), Folders ▸ **Remove <folder>** — kept in `SD:/apps/gamelib.app/config.ini`, one `folder = <path>` line each (63 characters at most); View ▸ All Games / a system, **Play Full Screen On / Off**. The **emulators** are in no menu of the desktop (their `category` is `Emulators`): the Game Library starts the right one for a game (and an emulator started without a ROM opens the Game Library). |
 | **Super Nintendo** (`snesemu`) | The Super Nintendo / Super Famicom emulator. Opening a `.sfc` / `.smc` file starts it (`SD:/etc/runners.ini`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **S** = X, **A** = Y, **Q** = L, **W** = R, **Enter** = Start, **Backspace** = Select (held), **P** pause; or a **USB gamepad** (the buttons by place, as on a Super Nintendo pad: right = A, bottom = B, top = X, left = Y, the shoulders L / R). View ▸ **Full Screen** (**F11**; **Esc** back), **Zoom 1x/2x/3x**, **Region: NTSC (60 Hz) / PAL (50 Hz)** (read from the ROM's header: a European game runs at 50 Hz), **Show Speed** (**F12**); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery RAM (e.g. Zelda: A Link to the Past's three files) is **`<rom>.sav`** beside the ROM (written every 5 s after a change and on exit). Games with an **enhancement chip** in the cartridge (Super FX: Star Fox, Yoshi's Island; SA-1: Super Mario RPG; DSP-1: Super Mario Kart, Pilotwings…) are not supported: a message says so. Runs on an **app core** when one is free, like the other emulators. |
 | **GameCube** (`gcemu`) | The Nintendo GameCube emulator — **just started**: the console's CPU (checked instruction by instruction against a reference) and chips, the graphics by the GPU, the start of a disc through its own loader; the **sound** (the game's audio stream and the Zelda games' music; Sound ▸ **Sound On / Off** — AX games are still silent) and a **memory card** in slot A, kept as **`<game>.sav`** beside the disc image (the same file as NintendoEMU's on the PC: a save moves between them), and its CPU is **recompiled** to the Pi's own code as it runs (a JIT: the integer, floating point and paired-single code; the rarer instructions still go through the interpreter — the speed on real games is being worked on: The Wind Waker, a PAL disc, runs at ~46-49 fields a second of its 50 on Outset (~23-24 frames a second of its 25: smooth on a TV), 50 in the lighter scenes; a sound that stutters is the game running below real time; a Pi 4 without a fan slows down above ~80 °C). Opening a `.iso` / `.gcm` disc image or a `.dol` program starts it (the disc is read from the file as the game asks, not loaded); the Game Library shows the discs with their banner. **Arrows** the stick, **X** = A, **C** = B, **S** = X, **A** = Y, **Z** = Z, **Enter** = Start, **Q / W** = L / R, **I J K L** the C stick, **T F G H** the D-pad, **P** pause; or a **USB gamepad**. The pictures are drawn by the GPU with the console's **TEV** turned into GPU shaders (every stage of its colour combiner computed as the console does, the textures, the alpha test — the fog, the indirect textures and the render-to-texture effects not yet); View ▸ **TEV Shaders On / Off** goes back to the older, simpler drawing (one texture, the colours computed per vertex). View ▸ **Full Screen** (**F11**), **Size 640 × 480 / 960 × 720**, **Show FPS** (**F10**: the game's frames a second and its speed against real time, in a corner), **Show Speed** (**F12**: fields/s, JIT or interpreter, `TEV` and the number of shaders made, or `GPU`; with the TEV shaders a third line tells what the graphics card did with the frame — useful in a problem report — and a fourth where the time goes: the graphics commands, the textures, the vertices, the second core's share, and the frame's drawing), **Dump the Frame (TEV)** (**F9**: the frame shown saved into `SD:/gcdump/frame_<n>.gxf`, for the developers; `gcemu <disc> --diag` does it by itself: the speed lines every second into `SD:/gcdump/diag.txt`, a frame every 60 s, and it quits after 200 s). Game ▸ **Interpreter (no JIT)** (or `--interp`) runs the plain interpreter, to compare. Runs on an **app core** when one is free, its graphics commands on a **second** one when there is one (`netcore=0` in `SD:/cmdline.txt` leaves both cores to the apps; `--gxone` keeps them on one); `--pmu`, `--jitprof` (with `--diag`), `--statlog` (the speed lines every second into `SD:/gcdump/statlog.txt`, for as long as it runs) and `--nodraw` are measures for the developers. |
 | **Nintendo 64** (`n64emu`) | The Nintendo 64 emulator — **in progress**: the CPU and the console's chips are emulated, the graphics are drawn by the **GPU** (at the window's size, sharper than the console), the **sound** of Zelda Ocarina of Time / Majora's Mask is played (other games run silent for now; Sound ▸ **Sound On / Off**) and some effects are still approximate (the title screen of Ocarina of Time shows; the rest is being worked on). Opening a `.z64` / `.n64` / `.v64` file starts it; without a ROM it opens the Game Library. **Arrows** the stick, **X** = A, **C** = B, **Z** = Z, **Enter** = Start, **Q / W** = L / R, **I J K L** the C buttons, **T F G H** the D-pad, **P** pause; or a **USB gamepad** (left stick, A = A, X = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons, the D-pad). View ▸ **Full Screen** (**F11**; **Esc** back, 4:3 centred, drawn by the GPU straight on the screen at its resolution), **Zoom 1x/2x/3x** (the window's frame follows), **Show Speed** (**F12**: frames a second, the time of a frame, GPU, software or framebuffer, the sound queued, the core), **Draw with the GPU On / Off** (off: the 3D is drawn by the processor, slowly — to tell a graphics-card problem from another one); Game ▸ Reset. The cartridge's save (SRAM / EEPROM) is **`<rom>.sav`** beside the ROM. Runs on an **app core** when one is free. |
 | **NES** (`nesemu`) | The NES / Famicom emulator. Opening a `.nes` file starts it (`SD:/etc/runners.ini`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **Enter** = Start, **Backspace** = Select (held), **P** pause; or a **USB gamepad** (right / top face button = A, bottom / left = B, Start, Select). View ▸ **Full Screen** (**F11**; **Esc** back), **Zoom 1x/2x/3x**, **Region: NTSC (60 Hz) / PAL (50 Hz)** — guessed from the ROM's header, or its name (`(Europe)`, `(E)`, `(PAL)`, `(France)`…): a European game runs at its real speed; **Show Speed** (**F12**); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery save (e.g. Zelda's three files) is **`<rom>.sav`** beside the ROM (8 KB, written every 5 s after a change and on exit). Cartridges supported: mappers 0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 66 (GxROM) — most of the library (Super Mario Bros. 1-3, Zelda, Metroid, Mega Man, Castlevania, Punch-Out!!…); another one says which mapper it needs. Runs on an **app core** when one is free, like the other emulators. |
 | **Game Boy Advance** (`gbaemu`) | The Game Boy Advance emulator. Opening a `.gba` file starts it (`SD:/etc/runners.ini`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **A** = L, **S** = R, **Enter** = Start, **Backspace** = Select, **P** pause; or a **USB gamepad** (right / top face button = A, bottom / left = B, the shoulders L / R). View ▸ **Full Screen** (**F11**), **Zoom 1x/2x/3x/4x**, **Show Speed** (**F12**); Sound ▸ On / Off; Game ▸ Reset. The cartridge's save (SRAM, Flash or EEPROM, recognised from the ROM) is **`<rom>.sav`** beside the ROM. No BIOS file is needed (its functions are built in). A 16 MB ROM takes a few seconds to load: the window opens at once with a loading screen (the ROM's name and a progress bar). The console runs on an **app core** (core 2 or 3) when one is free, so the rest of Onyx stays fluid and a slow picture does not slow the game; Show Speed then ends with `core N`. |
-| **Game Boy** (`gbemu`) | The Game Boy / Game Boy Color emulator. Opening a `.gb` / `.gbc` file (File Viewer, the dock's shelf, `run SD:/roms/x.gbc`) starts it (`SD:/etc/runners.ini`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **Enter** = Start, **Backspace** = Select (held), **P** pause; or a **USB gamepad** (right / top face button = A, bottom / left = B, Start, Select). View ▸ **Show Speed** (**F12**): frames emulated and shown per second, the time of one emulated / shown frame, the sound queued, and `core N` when the console runs on an **app core** (core 2 or 3, when one is free: the game is then never slowed by the picture or the rest of Onyx). View ▸ **Full Screen** (**F11**; **Esc** back): stretched to the whole display with the proportions kept, centred; **Zoom 1x/2x/3x/4x** in a window; **Palette** Green / Grey / Pocket (Game Boy games); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery save is **`<rom>.sav`** beside the ROM (read at start, written every 5 s after a change and on exit). `gbemu <rom> --fullscreen` starts full screen. The window opens at once with a loading screen (the ROM's name and a progress bar) while the ROM is read. No ROM ships with Onyx: copy your own dumps to `SD:/roms`. |
+| **Game Boy** (`gbemu`) | The Game Boy / Game Boy Color emulator. Opening a `.gb` / `.gbc` file (the Game Library, the File Viewer, `run SD:/roms/x.gbc`) starts it (`SD:/etc/runners.ini`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **Enter** = Start, **Backspace** = Select (held), **P** pause; or a **USB gamepad** (right / top face button = A, bottom / left = B, Start, Select). View ▸ **Show Speed** (**F12**): frames emulated and shown per second, the time of one emulated / shown frame, the sound queued, and `core N` when the console runs on an **app core** (core 2 or 3, when one is free: the game is then never slowed by the picture or the rest of Onyx). View ▸ **Full Screen** (**F11**; **Esc** back): stretched to the whole display with the proportions kept, centred; **Zoom 1x/2x/3x/4x** in a window; **Palette** Green / Grey / Pocket (Game Boy games); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery save is **`<rom>.sav`** beside the ROM (read at start, written every 5 s after a change and on exit). `gbemu <rom> --fullscreen` starts full screen. The window opens at once with a loading screen (the ROM's name and a progress bar) while the ROM is read. No ROM ships with Onyx: copy your own dumps to `SD:/roms`. |
 
 The new games, rendered by their real drawing code on a PC (`tools/tests/run_games_test.sh`):
 
@@ -945,6 +1042,10 @@ And the new tools (their graph / canvas / document areas, rendered the same way)
 |:---:|:---:|:---:|
 | ![Graphing Calculator](../screenshots/graphcalc.png) | ![Icon Editor](../screenshots/iconedit.png) | ![RTF Reader](../screenshots/rtfview.png) |
 | *Graphing Calculator — trace* | *Icon Editor* | *RTF Reader* |
+
+![Game Library](../screenshots/gamelib.png)
+*The Game Library: the systems in the sidebar (their number of games), All Games shown by system
+(sample games, made up for the picture).*
 
 ### The emulators on a Windows PC (NintendoEMU)
 
@@ -1202,8 +1303,8 @@ game is written in BASIC).
   faulted): the **debug console** took over and shows the log. Note the message; in case of
   a fault, the `ELR` address helps locate the problem
   (cf. [developer guide](03-DEVELOPER-GUIDE.md#12-débogage-sur-matériel)).
-- **Keyboard in the wrong layout.** Set `keymap=` in `cmdline.txt`, or use `keyb XX` /
-  the theme editor on the fly.
+- **Keyboard in the wrong layout.** Use `keyb XX`, or the Control Panel's **Keyboard & Mouse**
+  applet (it also keeps it in `SD:/etc/autostart`).
 - **Wrong resolution.** Adjust `width=`/`height=` in `cmdline.txt`.
 - **An app stops responding / the desktop freezes.** Connect with the remote shell
   (`python tools/onyx-telnet.py <pi-ip>`) and run `kmsg`: the GUI watchdog logs
