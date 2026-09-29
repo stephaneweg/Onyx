@@ -155,6 +155,9 @@ css_error css__parse_column_fill(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);
 /* Onyx: CSS3 additions */
+css_error css__parse_background_clip(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
 css_error css__onyx_parse_overflow(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);

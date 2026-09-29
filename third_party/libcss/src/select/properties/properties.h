@@ -160,6 +160,7 @@ PROPERTY_FUNCS(grid_row_start);
 PROPERTY_FUNCS(grid_row_end);
 PROPERTY_FUNCS(grid_column_start);
 PROPERTY_FUNCS(grid_column_end);
+PROPERTY_FUNCS(background_clip);
 
 PROPERTY_FUNCS(table_layout);
 PROPERTY_FUNCS(text_align);

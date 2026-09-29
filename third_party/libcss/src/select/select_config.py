@@ -184,6 +184,7 @@ style = {
     ('grid_column_start', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     ('grid_column_end', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     ('grid_auto_flow', 3, None, None, 'CSS_GRID_AUTO_FLOW_ROW'),
+    ('background_clip', 3, None, None, 'CSS_BACKGROUND_CLIP_BORDER_BOX'),
     ('writing_mode', 2, None, None, 'CSS_WRITING_MODE_HORIZONTAL_TB'),
     # Uncommon group, arrays
     ('counter_increment', 1, 'counter_arr', None, 'CSS_COUNTER_INCREMENT_NONE',

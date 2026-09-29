@@ -249,7 +249,8 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_grid_row,
 	css__parse_grid_column,
 	css__parse_grid_area,
-	css__parse_grid
+	css__parse_grid,
+	css__parse_background_clip
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */

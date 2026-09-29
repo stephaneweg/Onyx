@@ -324,6 +324,7 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("grid-column"),
 	SMAP("grid-area"),
 	SMAP("grid"),
+	SMAP("background-clip"),
 
 	SMAP("inherit"),
 	SMAP("unset"),
@@ -620,6 +621,7 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("overlay"),
 	SMAP("woff2"),
 	SMAP("unicode-range"),
+	SMAP("padding-box"),
 	/* (Onyx: end of the CSS3 keywords) */
 
 	/* Named colours */

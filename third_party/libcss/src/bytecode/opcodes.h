@@ -283,6 +283,13 @@ enum op_aspect_ratio {
 	ASPECT_RATIO_AUTO_FLAG		= 0x0040
 };
 
+enum op_background_clip {
+	BACKGROUND_CLIP_BORDER_BOX	= 0x0000,
+	BACKGROUND_CLIP_PADDING_BOX	= 0x0001,
+	BACKGROUND_CLIP_CONTENT_BOX	= 0x0002,
+	BACKGROUND_CLIP_TEXT		= 0x0003	/* Onyx: -webkit-background-clip: text */
+};
+
 enum op_object_fit {
 	OBJECT_FIT_FILL			= 0x0000,
 	OBJECT_FIT_CONTAIN		= 0x0001,
