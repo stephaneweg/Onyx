@@ -6,9 +6,20 @@
 // on the path bar above them). Selecting a file shows a preview column: size, type, the
 // first lines of a text file, a scaled-down BMP, or an app bundle's icon + name.
 //
+// On the left the PLACES, in three groups a click on their title folds or unfolds (as
+// elementary OS's Files): Personal -- the folders pinned there (each under a name of its own:
+// a folder's right-click menu, Pin to Sidebar..., or Go > Pin This Folder...) and the Trash;
+// Computer -- the SD card's partitions (SD:, SD1: .. SD3:, and the VD0: .. disk images to come);
+// Network -- the servers connected once (Go > Connect to Server..., under a name: a click
+// connects again, the login kept by /bin/ftpfs) and Connect to Server... A right click on a
+// place: Rename..., Unpin / Forget. They are kept in SD:/etc/places.ini ("pin = name|path",
+// "net = name|FTP:host/folder", "folded = ..."). Above the columns the path bar: the current
+// folder's path, each folder a link (its name underlined under the pointer), the one shown in
+// the accent.
+//
 // Mouse: click = select (a folder opens in the next column), double-click = open (a
 // file in tinypad / run a program / launch a .app), wheel = scroll the column under the
-// cursor, click a path segment = jump back to that folder.
+// cursor, click a path segment = jump back to that folder, right click = the item's menu.
 // Keys: Up/Down/PgUp/PgDn/Home/End move, Right enters a folder, Left/Backspace goes back,
 // Enter opens, a letter jumps to the next name starting with it, Del deletes,
 // Ctrl-C/X/V copy/cut/paste, Ctrl-N new folder, Ctrl-R rename, Ctrl-L refresh.
@@ -33,16 +44,20 @@
 
 using namespace wtk;
 
-#define W	800
-#define H	520
-#define VIS	4			// columns visible at once
-#define COLW	(W / VIS)
+#define W	880
+#define H	540
+#define SIDE_W	188			// the places (left)
+#define VIS	3			// columns visible at once
+#define COLX	SIDE_W			// the columns' left edge
+#define COLW	((W - SIDE_W) / VIS)
 #define TB_H	0			// (no toolbar: commands are in the menu bar)
-#define BC_H	24			// path bar
+#define BC_H	46			// path bar
 #define SB_H	12			// horizontal scrollbar
-#define ST_H	20			// status bar
+#define ST_H	22			// status bar
 #define COL_Y	(TB_H + BC_H)
 #define COL_H	(H - COL_Y - SB_H - ST_H)
+#define ROW_PAD	4			// above the first row of a column
+#define TXT_PAD	12			// a row's text from the column's left edge
 #define MAXCOL	16
 #define MAXE	256
 #define NAMEL	72
@@ -563,28 +578,232 @@ static void op_show_sd1 ()   { show_volume ("SD1:/"); }
 static void op_show_sd2 ()   { show_volume ("SD2:/"); }
 static void op_show_sd3 ()   { show_volume ("SD3:/"); }
 
+// A path shown as columns from its volume's root: "SD1:/roms/gb" -> SD1: | roms | gb.
+static void open_path (const char *path)
+{
+	if (is_remote (path)) { show_root (path); return; }
+	char root[8]; volume_of (path, root, sizeof root - 1);
+	int rn = 0; while (root[rn]) rn++; root[rn++] = '/'; root[rn] = '\0';
+	show_root (root);
+	const char *p = path + sd_volume (path); if (*p == '/') p++;
+	while (*p)
+	{
+		char seg[NAMEL]; int n = 0;
+		while (*p && *p != '/' && n < NAMEL - 1) seg[n++] = *p++;
+		seg[n] = '\0';
+		if (*p == '/') p++;
+		if (!n) continue;
+		int idx = -1;
+		for (int i = 0; i < g_col[g_ncol - 1].count; i++) if (ci_cmp (g_col[g_ncol - 1].e[i].name, seg) == 0) { idx = i; break; }
+		if (idx < 0) break;
+		select (g_ncol - 1, idx);
+	}
+	update_status ();
+}
+
+// ---- the places (the sidebar) ------------------------------------------------------------------
+// Three groups: Personal (the pinned folders, the Trash), Computer (the card's partitions, the
+// disk images to come), Network (the servers connected once, Connect to Server...). The pins and
+// the servers, each under a name, are kept in SD:/etc/places.ini: "pin = name|path",
+// "net = name|FTP[S]:host[:port]/folder", "folded = personal,network" (the groups closed).
+#define PLACES_INI	"SD:/etc/places.ini"
+#define MAXPIN		16
+enum { G_PERSONAL, G_COMPUTER, G_NETWORK, NGROUPS };
+static const char *const GROUP_NAME[NGROUPS] = { "Personal", "Computer", "Network" };
+static const char *const GROUP_KEY[NGROUPS] = { "personal", "computer", "network" };
+enum { PL_PIN, PL_TRASH, PL_VOL, PL_NET, PL_CONNECT };
+struct Place { int kind, group, index; char label[40]; char path[200]; };
+static Place g_pl[MAXPIN * 2 + 12];
+static int   g_npl;
+static bool  g_folded[NGROUPS];
+static char  g_pinName[MAXPIN][40], g_pinPath[MAXPIN][200]; static int g_npin;
+static char  g_netName[MAXPIN][40], g_netPath[MAXPIN][200]; static int g_nnet;
+
+static void places_save (void)
+{
+	static char o[8192];
+	int p = 0;
+	auto put = [&] (const char *t) { while (*t && p < (int) sizeof o - 2) o[p++] = *t++; };
+	put ("; The File Viewer's places (its sidebar): pin = name|folder (Personal), net = name|server\n");
+	put ("; (Network: FTP:host[:port]/folder, the login kept in ftpfs.ini), folded = the groups closed\n");
+	for (int i = 0; i < g_npin; i++) { put ("pin = "); put (g_pinName[i]); put ("|"); put (g_pinPath[i]); put ("\n"); }
+	for (int i = 0; i < g_nnet; i++) { put ("net = "); put (g_netName[i]); put ("|"); put (g_netPath[i]); put ("\n"); }
+	bool any = false;
+	for (int g = 0; g < NGROUPS; g++) if (g_folded[g]) { put (any ? "," : "folded = "); put (GROUP_KEY[g]); any = true; }
+	if (any) put ("\n");
+	o[p] = 0;
+	kapi_save_file (PLACES_INI, o, (unsigned) p);
+}
+
+static void places_load (void)
+{
+	g_npin = g_nnet = 0;
+	for (int g = 0; g < NGROUPS; g++) g_folded[g] = false;
+	void *f = kapi_open (PLACES_INI);
+	if (f == 0) return;
+	static char buf[8192];
+	int n = kapi_read (f, buf, sizeof buf - 1);
+	kapi_close (f);
+	if (n <= 0) return;
+	buf[n] = 0;
+	for (char *p = buf; *p; )
+	{
+		char *l = p; while (*p && *p != '\n') p++;
+		if (*p) *p++ = 0;
+		while (*l == ' ' || *l == '\t') l++;
+		if (*l == ';' || *l == '#') continue;
+		char *eq = l; while (*eq && *eq != '=') eq++;
+		if (*eq != '=') continue;
+		char *ke = eq; while (ke > l && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
+		*ke = 0;
+		char *v = eq + 1; while (*v == ' ' || *v == '\t') v++;
+		char *ve = v; while (*ve) ve++;
+		while (ve > v && (ve[-1] == ' ' || ve[-1] == '\t' || ve[-1] == '\r')) *--ve = 0;
+		char *bar = v; while (*bar && *bar != '|') bar++;
+		bool pin = ci_cmp (l, "pin") == 0, net = ci_cmp (l, "net") == 0;
+		if ((pin || net) && *bar == '|')
+		{
+			*bar = 0;
+			if (pin && g_npin < MAXPIN) { scopy (g_pinName[g_npin], v, 40); scopy (g_pinPath[g_npin], bar + 1, 200); g_npin++; }
+			if (net && g_nnet < MAXPIN) { scopy (g_netName[g_nnet], v, 40); scopy (g_netPath[g_nnet], bar + 1, 200); g_nnet++; }
+		}
+		else if (ci_cmp (l, "folded") == 0)
+			for (int g = 0; g < NGROUPS; g++)
+			{
+				int k = slen (GROUP_KEY[g]);
+				for (char *q = v; *q; q++)
+				{
+					bool m = true;
+					for (int i = 0; i < k && m; i++) m = lower (q[i]) == GROUP_KEY[g][i];
+					if (m) g_folded[g] = true;
+				}
+			}
+	}
+}
+
+static void add_place (int kind, int group, int index, const char *label, const char *path)
+{
+	if (g_npl >= (int) (sizeof g_pl / sizeof g_pl[0])) return;
+	Place &p = g_pl[g_npl++];
+	p.kind = kind; p.group = group; p.index = index;
+	scopy (p.label, label, sizeof p.label); scopy (p.path, path, sizeof p.path);
+}
+
+static void places_build (void)
+{
+	g_npl = 0;
+	for (int i = 0; i < g_npin; i++) add_place (PL_PIN, G_PERSONAL, i, g_pinName[i], g_pinPath[i]);
+	add_place (PL_TRASH, G_PERSONAL, -1, "Trash", TRASH_FILES);
+	add_place (PL_VOL, G_COMPUTER, -1, "SD Card", "SD:/");
+	static const char *const VOLS[][2] = { { "SD1:/", "SD1: partition 2" }, { "SD2:/", "SD2: partition 3" },
+		{ "SD3:/", "SD3: partition 4" }, { "VD0:/", "VD0: disk image" }, { "VD1:/", "VD1: disk image" },
+		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" } };
+	for (unsigned i = 0; i < sizeof VOLS / sizeof VOLS[0]; i++)
+		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, VOLS[i][1], VOLS[i][0]);
+	for (int i = 0; i < g_nnet; i++) add_place (PL_NET, G_NETWORK, i, g_netName[i], g_netPath[i]);
+	add_place (PL_CONNECT, G_NETWORK, -1, "Add a Server...", "");
+}
+
+// The sidebar's rows: a group's title (place -1), then its places unless it is folded.
+struct SideRow { int group, place; };
+static SideRow g_srow[sizeof g_pl / sizeof g_pl[0] + NGROUPS];
+static int     g_nsrow;
+static void side_rows (void)
+{
+	g_nsrow = 0;
+	for (int g = 0; g < NGROUPS; g++)
+	{
+		g_srow[g_nsrow++] = { g, -1 };
+		if (g_folded[g]) continue;
+		for (int i = 0; i < g_npl; i++) if (g_pl[i].group == g) g_srow[g_nsrow++] = { g, i };
+	}
+}
+
+// The place the folder shown is in (the longest path it starts with), -1 none.
+static int current_place (void)
+{
+	if (in_trash ()) { for (int i = 0; i < g_npl; i++) if (g_pl[i].kind == PL_TRASH) return i; return -1; }
+	const char *cur = g_col[g_active].path;
+	int best = -1, bestLen = -1;
+	for (int i = 0; i < g_npl; i++)
+	{
+		if (g_pl[i].kind == PL_TRASH || g_pl[i].kind == PL_CONNECT) continue;
+		const char *pp = g_pl[i].path;
+		int n = slen (pp);
+		while (n > 0 && pp[n - 1] == '/') n--;
+		bool pre = true;
+		for (int k = 0; k < n && pre; k++) pre = lower (pp[k]) == lower (cur[k]);
+		if (pre && (cur[n] == 0 || cur[n] == '/') && n > bestLen) { best = i; bestLen = n; }
+	}
+	return best;
+}
+
+static void connect_place (const char *addr);
+static void op_connect ();
+
+static void open_place (int i)
+{
+	if (i < 0 || i >= g_npl) return;
+	const Place &p = g_pl[i];
+	switch (p.kind)
+	{
+	case PL_PIN:
+		if (!is_remote (p.path) && !fs_is_dir (p.path)) { status ("This folder is not there any more: ", p.path); return; }
+		open_path (p.path); break;
+	case PL_TRASH:   op_open_trash (); break;
+	case PL_VOL:     show_volume (p.path); break;
+	case PL_NET:     connect_place (p.path); break;
+	case PL_CONNECT: op_connect (); break;
+	}
+}
+
+// Pin a folder to the Personal group, under a name asked for.
+static bool ask_name (const char *title, const char *init, char *out, int cap);
+static void pin_folder (const char *path)
+{
+	if (g_npin >= MAXPIN) { status ("16 pinned folders at most"); return; }
+	for (int i = 0; i < g_npin; i++) if (ci_cmp (g_pinPath[i], path) == 0) { status ("Already pinned: ", g_pinName[i]); return; }
+	const char *base = fs_basename (path);
+	char name[40];
+	if (!ask_name ("Pin to the sidebar as", base[0] ? base : path, name, sizeof name)) return;
+	scopy (g_pinName[g_npin], name, 40); scopy (g_pinPath[g_npin], path, 200); g_npin++;
+	places_save (); places_build (); side_rows ();
+	status ("Pinned: ", name);
+}
+
+// A network place: add it (or rename it if its server is there already).
+static void net_place (const char *name, const char *addr)
+{
+	for (int i = 0; i < g_nnet; i++)
+		if (ci_cmp (g_netPath[i], addr) == 0) { scopy (g_netName[i], name, 40); places_save (); places_build (); side_rows (); return; }
+	if (g_nnet >= MAXPIN) return;
+	scopy (g_netName[g_nnet], name, 40); scopy (g_netPath[g_nnet], addr, 200); g_nnet++;
+	places_save (); places_build (); side_rows ();
+}
+
 // Go > Connect to Server...: protocol (FTP / FTPS), server, port, user, password and
 // folder. The login goes to /bin/ftpfs over IPC ("ftpfs" service, like `ftpfs login`) --
 // never into the path, which the Shelf and the path bar may show or store -- then the
-// folder opens as FTP[S]:host[:port]/folder (ABI v44 file-system provider).
+// folder opens as FTP[S]:host[:port]/folder (ABI v44 file-system provider), and the server
+// joins the sidebar's Network group under the name given (a click there connects again).
 static void connect_picked (Widget &w);
 class ConnectDialog : public Modal
 {
 public:
 	RadioButton *ftp, *ftps;
 	Combobox *host;
-	Textbox *port, *user, *pass, *folder;
+	Textbox *port, *user, *pass, *folder, *name;
 	Checkbox *remember;
 	Button *forget;
 	ftpfs_site sites[FTPFS_MAXSITES]; int nsites;
 	char hint[96];
-	ConnectDialog () : Modal (400, 314)
+	ConnectDialog () : Modal (400, 346)
 	{
 		Root *r = Root::current ();
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
 		int y = wk_fh () + 18, lx = 12, fx = 100, rh = 32;
-		const char *labels[5] = { "Protocol", "Server", "User", "Password", "Folder" };
-		for (int i = 0; i < 5; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE));
+		const char *labels[6] = { "Protocol", "Server", "User", "Password", "Folder", "Name" };
+		for (int i = 0; i < 6; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE));
 		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE); addChild (ftp);
 		ftps = new RadioButton (fx + 90, y, 180, 24, "FTPS (TLS)", 1, false, 0, C_FACE); addChild (ftps);
 		host   = new Combobox (fx, y + rh, 190, 26, "", 0, connect_picked);
@@ -594,8 +813,10 @@ public:
 		pass   = new Textbox (fx, y + 3 * rh, width - fx - 12, 26, "", dlg_enter);
 		pass->password = true;
 		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
-		addChild (port); addChild (user); addChild (pass); addChild (folder);
-		remember = new Checkbox (fx, y + 5 * rh + 18, width - fx - 12, 24, "Remember password", true, 0, C_FACE);
+		name   = new Textbox (fx, y + 5 * rh, width - fx - 12, 26, "", dlg_enter);
+		name->tip = "The server's name in the sidebar (Network): empty = its address";
+		addChild (port); addChild (user); addChild (pass); addChild (folder); addChild (name);
+		remember = new Checkbox (fx, y + 6 * rh + 18, width - fx - 12, 24, "Remember password", true, 0, C_FACE);
 		remember->tip = "Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots";
 		addChild (remember);
 		host->tip = "A name (ftp.example.com) or an IP address; the arrow lists the remembered servers";
@@ -665,10 +886,10 @@ public:
 		if (k == 27) { close (0); return true; }
 		if (k == '\t')						// Tab: next field
 		{
-			Textbox *order[5] = { host, port, user, pass, folder };
+			Textbox *order[6] = { host, port, user, pass, folder, name };
 			int cur = -1;
-			for (int i = 0; i < 5; i++) if (order[i]->hasFocus) cur = i;
-			order[(cur + 1) % 5]->setFocus ();
+			for (int i = 0; i < 6; i++) if (order[i]->hasFocus) cur = i;
+			order[(cur + 1) % 6]->setFocus ();
 			invalidate (true);
 			return true;
 		}
@@ -677,7 +898,7 @@ public:
 	void onDraw () override
 	{
 		drawBox ("Connect to Server");
-		canvas.text (100, wk_fh () + 18 + 5 * 32 - 2, hint, C_DIS);
+		canvas.text (100, wk_fh () + 18 + 6 * 32 - 2, hint, C_DIS);
 	}
 };
 static void connect_picked (Widget &w)
@@ -686,20 +907,23 @@ static void connect_picked (Widget &w)
 	((ConnectDialog *) w.parent)->fill (cb.picked);
 }
 
+static char s_lastHost[64] = "", s_lastUser[64] = "", s_lastPort[8] = "21", s_lastFolder[64] = "/", s_lastName[40] = "";
+static bool s_lastTls = false;
 static void op_connect ()
 {
-	static char lastHost[64] = "", lastUser[64] = "", lastPort[8] = "21", lastFolder[64] = "/";
-	static bool lastTls = false;
+	char *lastHost = s_lastHost, *lastUser = s_lastUser, *lastPort = s_lastPort, *lastFolder = s_lastFolder;
+	bool &lastTls = s_lastTls;
 	ConnectDialog dlg;
 	dlg.host->setText (lastHost); dlg.user->setText (lastUser); dlg.port->setText (lastPort);
-	dlg.folder->setText (lastFolder);
+	dlg.folder->setText (lastFolder); dlg.name->setText (s_lastName);
 	if (lastTls) dlg.ftps->select (); else dlg.ftp->select ();
 	if (lastHost[0] == '\0' && dlg.nsites > 0) dlg.host->pick (0);	// first time: the first remembered server
 	else { int i = dlg.saved (lastHost); if (i >= 0) dlg.pass->setText (dlg.sites[i].pass); }
 	dlg.host->setFocus ();
 	if (!dlg.run () || dlg.host->text[0] == '\0') return;
-	scopy (lastHost, dlg.host->text, sizeof lastHost); scopy (lastUser, dlg.user->text, sizeof lastUser);
-	scopy (lastPort, dlg.port->text, sizeof lastPort); scopy (lastFolder, dlg.folder->text, sizeof lastFolder);
+	scopy (lastHost, dlg.host->text, sizeof s_lastHost); scopy (lastUser, dlg.user->text, sizeof s_lastUser);
+	scopy (lastPort, dlg.port->text, sizeof s_lastPort); scopy (lastFolder, dlg.folder->text, sizeof s_lastFolder);
+	scopy (s_lastName, dlg.name->text, sizeof s_lastName);
 	lastTls = dlg.ftps->checked;
 
 	// Hand the login to ftpfs. Remember = saved with the port / FTPS / folder (the list
@@ -727,7 +951,39 @@ static void op_connect ()
 	if (d == 0) { status ("Cannot connect to ", addr); notify ("File Viewer", "Connection failed (address, login or network?)."); return; }
 	kapi_closedir (d);
 	show_root (addr);
+	net_place (s_lastName[0] ? s_lastName : dlg.host->text, addr);		// (the sidebar's Network)
 	status ("Connected: ", addr);
+}
+
+// A network place clicked: the saved login of its server handed to ftpfs again (ftpfs.ini), then
+// its folder opened -- or, no answer, the Connect dialog filled with it.
+static void connect_place (const char *addr)
+{
+	bool tls = lower (addr[3]) == 's';
+	const char *h = addr; while (*h && *h != ':') h++;
+	if (*h) h++;
+	char host[128], port[8] = ""; int n = 0;
+	while (h[n] && h[n] != ':' && h[n] != '/' && n < 127) { host[n] = h[n]; n++; }
+	host[n] = 0;
+	const char *q = h + n;
+	if (*q == ':') { q++; int k = 0; while (*q >= '0' && *q <= '9' && k < 7) port[k++] = *q++; port[k] = 0; }
+	ftpfs_site sites[FTPFS_MAXSITES];
+	int ns = ftpfs_load_sites (sites, FTPFS_MAXSITES), found = -1;
+	for (int i = 0; i < ns && found < 0; i++)
+		if (ci_cmp (sites[i].host, host) == 0 && (!port[0] || ci_cmp (sites[i].port, port) == 0)) found = i;
+	if (found >= 0) ftpfs_login_site (&sites[found], 0);
+	else ftpfs__pid ();					// (anonymous: ftpfs running is enough)
+	status ("Connecting to ", addr);
+	if (g_root) { g_root->draw (); kapi_present (); }
+	void *d = kapi_opendir (addr);
+	if (d != 0) { kapi_closedir (d); show_root (addr); status ("Connected: ", addr); return; }
+	status ("Cannot connect to ", addr);
+	scopy (s_lastHost, host, sizeof s_lastHost); scopy (s_lastPort, port[0] ? port : "21", sizeof s_lastPort);
+	s_lastTls = tls;
+	const char *fo = q; scopy (s_lastFolder, *fo ? fo : "/", sizeof s_lastFolder);
+	for (int i = 0; i < g_nnet; i++) if (ci_cmp (g_netPath[i], addr) == 0) scopy (s_lastName, g_netName[i], sizeof s_lastName);
+	if (found >= 0) scopy (s_lastUser, sites[found].user, sizeof s_lastUser);
+	op_connect ();
 }
 static void op_restore ()
 {
@@ -835,13 +1091,13 @@ static int g_dropSlot = -1, g_dropRow = -1;
 static bool drop_target_at (int mx, int my, char *out, int cap, int *pSlot, int *pRow)
 {
 	*pSlot = -1; *pRow = -1;
-	if (my < COL_Y || my >= COL_Y + COL_H || mx < 0 || mx >= W) return false;
-	int slot = g_first + mx / COLW;
+	if (my < COL_Y || my >= COL_Y + COL_H || mx < COLX || mx >= W) return false;
+	int slot = g_first + (mx - COLX) / COLW;
 	if (slot >= g_ncol) slot = g_ncol - 1;		// the preview / empty slots: deepest folder
 	if (slot < 0) return false;
 	const Column &k = g_col[slot];
-	int row = k.top + (my - COL_Y) / g_rowH;
-	if (slot == g_first + mx / COLW && row < k.count && k.e[row].isdir && !k.e[row].isapp)
+	int row = my >= COL_Y + ROW_PAD ? k.top + (my - COL_Y - ROW_PAD) / g_rowH : k.count;
+	if (slot == g_first + (mx - COLX) / COLW && row < k.count && k.e[row].isdir && !k.e[row].isapp)
 	{
 		join (out, cap, k.path, k.e[row].name);	// onto a folder row: into that folder
 		*pSlot = slot; *pRow = row;
@@ -866,16 +1122,70 @@ static void vscroll_to (int slot, int my)
 }
 static unsigned g_lastTick = 0; static int g_lastSlot = -1, g_lastRow = -1;
 
+// The sidebar's row at (mx, my) (an index in g_srow), -1 none.
+#define SIDE_RH	(g_fh + 10)
+#define SIDE_Y	(BC_H + 6)
+static int side_at (int mx, int my)
+{
+	if (mx < 0 || mx >= SIDE_W - 4 || my < SIDE_Y || my >= H - ST_H) return -1;
+	int r = (my - SIDE_Y) / SIDE_RH;
+	return r >= 0 && r < g_nsrow ? r : -1;
+}
+// The path bar's segment at (mx, my), -1 none.
+static int crumb_at (int mx, int my)
+{
+	if (my < 7 || my >= BC_H - 7 || mx < 20) return -1;
+	for (int c = 0; c < g_ncol; c++) if (mx < g_crumbX[c]) return c;
+	return -1;
+}
+static int g_crumbHot = -1, g_sideHot = -1;
+
+// A place's small icon (16 x 16 at x, y).
+static void place_glyph (Canvas &cv, int x, int y, int kind, unsigned ink)
+{
+	switch (kind)
+	{
+	case PL_PIN:						// a folder
+		wk_rbox (cv, x + 1, y + 3, 7, 4, 1, 0x00D8AA52, 0x00C89A48);
+		wk_rbox (cv, x + 1, y + 5, 14, 10, 2, 0x00EEC46C, 0x00D8A850);
+		wk_rline (cv, x + 1, y + 5, 14, 10, 2, 0x00906A28, 190);
+		break;
+	case PL_TRASH:						// a can
+		wk_rbox (cv, x + 2, y + 2, 12, 2, 1, ink, ink);
+		wk_rbox (cv, x + 3, y + 5, 10, 10, 2, wk_mix (ink, 0x00FFFFFF, 60), ink);
+		break;
+	case PL_VOL:						// a drive, its light
+		wk_rbox (cv, x + 1, y + 4, 14, 9, 2, wk_mix (ink, 0x00FFFFFF, 150), wk_mix (ink, 0x00FFFFFF, 90));
+		wk_rline (cv, x + 1, y + 4, 14, 9, 2, ink, 170);
+		cv.fillRect (x + 11, y + 9, 2, 2, 0x0040C060);
+		break;
+	case PL_NET:						// a server: two boxes, their lights
+		for (int k = 0; k < 2; k++)
+		{
+			wk_rbox (cv, x + 2, y + 2 + k * 6, 12, 5, 1, wk_mix (ink, 0x00FFFFFF, 120), wk_mix (ink, 0x00FFFFFF, 80));
+			cv.fillRect (x + 4, y + 4 + k * 6, 2, 1, 0x0040C060);
+		}
+		cv.fillRect (x + 7, y + 13, 2, 2, ink);
+		break;
+	case PL_CONNECT: wk_glyph (cv, WKG_PLUS, x + 8, y + 8, 10, ink); break;
+	}
+}
+
 class ViewerRoot : public Root
 {
 public:
 	ViewerRoot () : Root (W, H, "File Viewer") {}
 
-	void drawPathBar ()				// a strip of the face; the active column's folder in the accent
+	// The path bar (elementary OS's): an entry-like field across the window, the path's folders
+	// in it as links -- the one shown in the accent, underlined; the one pointed at underlined.
+	void drawPathBar ()
 	{
-		wk_rbox (canvas, 0, TB_H, W, BC_H - 2, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		wk_etch_h (canvas, 0, TB_H + BC_H - 2, W, C_FACE);
-		int x = 8, y = TB_H + (BC_H - 2 - g_fh) / 2;
+		canvas.fillRect (0, 0, W, BC_H, C_BG);
+		int fx = 10, fy = 7, fw = W - 20, fh = BC_H - 14;
+		unsigned field = wk_mix (C_BG, C_FIELD, 170), ink = wk_ink_on (field), dim = wk_mix (field, ink, 120);
+		wk_rbox (canvas, fx, fy, fw, fh, 8, wk_tone (field, 136), field);
+		wk_rline (canvas, fx, fy, fw, fh, 8, wk_tone (C_BG, 88), 190);
+		int x = fx + 14, y = fy + (fh - g_fh) / 2;
 		for (int c = 0; c < g_ncol; c++)
 		{
 			const char *seg;
@@ -883,7 +1193,13 @@ public:
 			if (c == 0)
 			{
 				if (in_trash ()) seg = "Trash";
-				else if (!is_remote (g_col[0].path)) { volume_of (g_col[0].path, buf, sizeof buf); seg = buf; }
+				else if (!is_remote (g_col[0].path))
+				{
+					volume_of (g_col[0].path, buf, sizeof buf);
+					for (int i = 0; i < g_npl; i++)			// (a volume: its place's name)
+						if (g_pl[i].kind == PL_VOL && ci_cmp (g_pl[i].path, g_col[0].path) == 0) scopy (buf, g_pl[i].label, sizeof buf);
+					seg = buf;
+				}
 				else					// "FTP:host/dir", without user:password@
 				{
 					const char *r = g_col[0].path, *colon = r;
@@ -894,16 +1210,53 @@ public:
 					for (const char *q = at ? at + 1 : colon + 1; *q && n < NAMEL - 1; q++) buf[n++] = *q;
 					while (n > 1 && buf[n - 1] == '/') n--;
 					buf[n] = '\0';
+					for (int i = 0; i < g_npl; i++)			// (a server of the sidebar: its name)
+						if (g_pl[i].kind == PL_NET && ci_cmp (g_pl[i].path, g_col[0].path) == 0) { scopy (buf, g_pl[i].label, sizeof buf); break; }
 					seg = buf;
 				}
 			}
 			else { const Entry &e = g_col[c - 1].e[g_col[c - 1].sel]; scopy (buf, e.name, sizeof buf); seg = buf; }
-			if (c > 0) { wk_glyph (canvas, WKG_CHEV_RIGHT, x + 4, y + g_fh / 2, 8, C_DIS); x += 14; }
-			if (c == g_active) wk_hilite (canvas, x - 4, TB_H + 2, slen (seg) * g_fw + 8, BC_H - 6, 5, true);
-			canvas.text (x, y, seg, c == g_active ? C_SEL_TEXT : C_TEXT);
-			x += slen (seg) * g_fw + 6;
+			if (c > 0) { wk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, fy + fh / 2, 9, dim); x += 18; }
+			bool cur = c == g_active, hot = c == g_crumbHot;
+			int tw = wk_text_w (seg, cur ? 2 : 0);
+			if (x + tw > fx + fw - 20) { for (int k = c; k < g_ncol; k++) g_crumbX[k] = fx + fw; break; }
+			canvas.drawFont (x, y, seg, font (), cur ? wk_tone (C_ACCENT, 84) : ink, 1, cur ? 2 : 0);
+			if (cur) canvas.fillRect (x, y + g_fh + 1, tw, 2, C_ACCENT);
+			else if (hot) canvas.fillRect (x, y + g_fh + 1, tw, 1, ink);
+			x += tw + 10;
 			g_crumbX[c] = x;
-			if (x > W - 40) { for (int k = c + 1; k < g_ncol; k++) g_crumbX[k] = x; break; }
+		}
+	}
+
+	// The places: the window's face, three groups (their titles fold them), the place of the
+	// folder shown lit.
+	void drawSidebar ()
+	{
+		canvas.fillRect (0, BC_H, SIDE_W, H - BC_H - ST_H, C_BG);
+		wk_etch_v (canvas, SIDE_W - 2, BC_H + 4, H - BC_H - ST_H - 8, C_BG);
+		int cur = current_place (), maxc = (SIDE_W - 48) / g_fw;
+		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+		for (int r = 0; r < g_nsrow; r++)
+		{
+			int y = SIDE_Y + r * SIDE_RH;
+			if (y + SIDE_RH > H - ST_H) break;
+			const SideRow &sr = g_srow[r];
+			bool hot = r == g_sideHot;
+			if (sr.place < 0)
+			{
+				wk_glyph (canvas, g_folded[sr.group] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
+				canvas.drawFont (24, y + (SIDE_RH - g_fh) / 2, GROUP_NAME[sr.group], font (), hot ? C_TEXT : dim, 1, 2);
+				continue;
+			}
+			const Place &p = g_pl[sr.place];
+			bool on = sr.place == cur;
+			if (on) wk_hilite (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, true);
+			else if (hot) wk_rbox (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, wk_tone (C_BG, 160), wk_tone (C_BG, 148));
+			unsigned ink = on ? C_SEL_TEXT : C_TEXT;
+			place_glyph (canvas, 18, y + (SIDE_RH - 16) / 2, p.kind, ink);
+			char lab[40]; scopy (lab, p.label, sizeof lab);
+			if (slen (lab) > maxc && maxc > 2) { lab[maxc - 2] = '.'; lab[maxc - 1] = '.'; lab[maxc] = 0; }
+			canvas.text (40, y + (SIDE_RH - g_fh) / 2, lab, p.kind == PL_CONNECT && !on ? dim : ink);
 		}
 	}
 
@@ -912,32 +1265,34 @@ public:
 		const Column &k = g_col[slot];
 		canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL);
 		canvas.fillRect (x + COLW - 1, COL_Y, 1, COL_H, C_COLSEP);
-		int maxChars = (COLW - 30) / g_fw;
 		WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
-		int rw = COLW - 7 - (t.show ? WK_SBW + 1 : 0);	// a row's highlight (clear of the scroll bar)
+		int sbw = t.show ? WK_SBW + 4 : 0;
+		int rw = COLW - 10 - sbw;			// a row's highlight (clear of the scroll bar)
+		int chevX = x + COLW - 16 - sbw;		// a folder's arrow: well inside, left of the bar
+		int maxChars = (chevX - 8 - (x + TXT_PAD)) / g_fw;
 		for (int r = 0; r < g_rows; r++)
 		{
 			int idx = k.top + r;
 			if (idx >= k.count) break;
 			const Entry &e = k.e[idx];
-			int y = COL_Y + r * g_rowH;
+			int y = COL_Y + ROW_PAD + r * g_rowH;
 			bool sel = idx == k.sel, hot = sel && slot == g_active;
-			if (sel) wk_hilite (canvas, x + 3, y, rw, g_rowH, 4, hot);
+			if (sel) wk_hilite (canvas, x + 4, y + 1, rw, g_rowH - 2, 5, hot);
 			char name[NAMEL]; scopy (name, e.label, sizeof name);
-			if (slen (name) > maxChars) { name[maxChars - 2] = '.'; name[maxChars - 1] = '.'; name[maxChars] = '\0'; }
+			if (slen (name) > maxChars && maxChars > 2) { name[maxChars - 2] = '.'; name[maxChars - 1] = '.'; name[maxChars] = '\0'; }
 			unsigned col = hot ? C_SEL_TEXT : e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
-			canvas.text (x + 8, y + 2, name, col);
-			if (e.isdir && !e.isapp) wk_glyph (canvas, WKG_CHEV_RIGHT, x + COLW - 13, y + g_rowH / 2, 8, hot ? C_SEL_TEXT : C_DIMTXT);
+			canvas.text (x + TXT_PAD, y + (g_rowH - g_fh) / 2, name, col);
+			if (e.isdir && !e.isapp) wk_glyph (canvas, WKG_CHEV_RIGHT, chevX, y + g_rowH / 2, 8, hot ? C_SEL_TEXT : C_DIMTXT);
 		}
 		if (g_dropSlot == slot)				// drop target highlight
 		{
 			if (g_dropRow >= k.top && g_dropRow < k.top + g_rows)
-				wk_rline (canvas, x + 2, COL_Y + (g_dropRow - k.top) * g_rowH, COLW - 5, g_rowH, 4, C_ACCENT);
+				wk_rline (canvas, x + 3, COL_Y + ROW_PAD + (g_dropRow - k.top) * g_rowH, rw + 2, g_rowH, 5, C_ACCENT);
 			else if (g_dropRow < 0)
 				wk_rline (canvas, x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 4, C_ACCENT);
 		}
-		if (t.show) wk_draw_vscroll (canvas, x + COLW - 1 - WK_SBW, COL_Y, WK_SBW, COL_H, t, C_COL, g_vdrag == slot);
-		if (k.count == 0) canvas.text (x + 8, COL_Y + 4, "(empty)", C_DIMTXT);
+		if (t.show) wk_draw_vscroll (canvas, x + COLW - 3 - WK_SBW, COL_Y + 2, WK_SBW, COL_H - 4, t, C_COL, g_vdrag == slot);
+		if (k.count == 0) canvas.text (x + TXT_PAD, COL_Y + ROW_PAD + (g_rowH - g_fh) / 2, "(empty)", C_DIMTXT);
 	}
 
 	void drawPreview (int x)
@@ -1042,24 +1397,98 @@ public:
 	{
 		sync_hsb ();
 		canvas.clear (C_BG);
-			drawPathBar ();
-		int t = total_slots ();
+		drawPathBar ();
+		drawSidebar ();
 		for (int s = 0; s < VIS; s++)
 		{
-			int slot = g_first + s, x = s * COLW;
+			int slot = g_first + s, x = COLX + s * COLW;
 			if (slot < g_ncol) drawColumn (slot, x);
 			else if (slot == g_ncol && preview_on ()) drawPreview (x);
 			else { canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL); canvas.fillRect (x + COLW - 1, COL_Y, 1, COL_H, C_COLSEP); }
 		}
-		(void) t;
 		wk_rbox (canvas, 0, H - ST_H, W, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));	// status bar
 		wk_etch_h (canvas, 0, H - ST_H, W, C_FACE);
-		canvas.text (8, H - ST_H + (ST_H - g_fh) / 2 + 1, g_status, C_TEXT);
+		canvas.text (10, H - ST_H + (ST_H - g_fh) / 2 + 1, g_status, C_TEXT);
 	}
 
-	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
+	// ---- the right button's menus ---------------------------------------------------------------
+	void placeMenu (int r, int mx, int my)
 	{
-		if (mx < 0) { pressed = false; g_vdrag = -1; return false; }	// left the window
+		const SideRow &sr = g_srow[r];
+		if (sr.place < 0) return;
+		int i = sr.place;
+		const Place p = g_pl[i];
+		enum { M_OPEN = 1, M_RENAME, M_REMOVE, M_EMPTY };
+		PopupMenu m (mx, my);
+		m.add (p.kind == PL_NET ? "Connect" : "Open", M_OPEN);
+		if (p.kind == PL_PIN || p.kind == PL_NET) { m.add ("Rename...", M_RENAME); m.add (p.kind == PL_PIN ? "Unpin" : "Forget", M_REMOVE); }
+		if (p.kind == PL_TRASH) { m.separator (); m.add ("Empty Trash...", M_EMPTY, trash_count () > 0); }
+		if (p.kind == PL_CONNECT) return (void) (op_connect ());
+		int c = m.run ();
+		if (c == M_OPEN) open_place (i);
+		else if (c == M_EMPTY) op_empty_trash ();
+		else if (c == M_RENAME)
+		{
+			char name[40];
+			if (!ask_name ("Rename the place", p.label, name, sizeof name)) return;
+			if (p.kind == PL_PIN) scopy (g_pinName[p.index], name, 40); else scopy (g_netName[p.index], name, 40);
+			places_save (); places_build (); side_rows ();
+		}
+		else if (c == M_REMOVE)
+		{
+			if (p.kind == PL_PIN)
+			{
+				for (int k = p.index; k + 1 < g_npin; k++) { scopy (g_pinName[k], g_pinName[k + 1], 40); scopy (g_pinPath[k], g_pinPath[k + 1], 200); }
+				g_npin--;
+			}
+			else
+			{
+				for (int k = p.index; k + 1 < g_nnet; k++) { scopy (g_netName[k], g_netName[k + 1], 40); scopy (g_netPath[k], g_netPath[k + 1], 200); }
+				g_nnet--;
+			}
+			places_save (); places_build (); side_rows ();
+		}
+		invalidate (true);
+	}
+
+	void rowMenu (int slot, int row, int mx, int my)
+	{
+		if (!(g_col[slot].sel == row && slot + 1 == g_ncol - (g_col[slot].e[row].isdir && !g_col[slot].e[row].isapp ? 1 : 0)))
+			select (slot, row);
+		g_active = slot;
+		invalidate (true); draw (); wk_present ();
+		const Entry &e = g_col[slot].e[row];
+		bool folder = e.isdir && !e.isapp;
+		enum { M_OPEN = 1, M_PIN, M_RENAME, M_TRASH, M_COPY, M_CUT };
+		PopupMenu m (mx, my);
+		m.add ("Open", M_OPEN, true, "Enter");
+		if (folder) m.add ("Pin to Sidebar...", M_PIN);
+		m.separator ();
+		m.add ("Copy", M_COPY, true, "Ctrl+C");
+		m.add ("Cut", M_CUT, true, "Ctrl+X");
+		m.add ("Rename...", M_RENAME, true, "Ctrl+R");
+		m.add (in_trash () ? "Delete Permanently..." : "Move to Trash", M_TRASH, true, "Del");
+		switch (m.run ())
+		{
+		case M_OPEN:   open_entry (slot); break;
+		case M_PIN:    { char p[300]; join (p, sizeof p, g_col[slot].path, e.name); pin_folder (p); break; }
+		case M_COPY:   op_copy (); break;
+		case M_CUT:    op_cut (); break;
+		case M_RENAME: op_rename (); break;
+		case M_TRASH:  op_delete (); break;
+		}
+		invalidate (true);
+	}
+
+	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
+	{
+		static bool rdown = false;
+		if (mx < 0)						// left the window
+		{
+			pressed = false; g_vdrag = -1; rdown = false;
+			if (g_crumbHot >= 0 || g_sideHot >= 0) { g_crumbHot = g_sideHot = -1; invalidate (true); }
+			return false;
+		}
 		if (g_vdrag >= 0)					// dragging a column's scrollbar
 		{
 			if (!bl) { g_vdrag = -1; pressed = false; }
@@ -1067,9 +1496,11 @@ public:
 			invalidate (true);
 			return true;
 		}
-		if (wheel && my >= COL_Y && my < COL_Y + COL_H)
+		int ch = crumb_at (mx, my), sh = side_at (mx, my);
+		if (ch != g_crumbHot || sh != g_sideHot) { g_crumbHot = ch; g_sideHot = sh; invalidate (true); }
+		if (wheel && my >= COL_Y && my < COL_Y + COL_H && mx >= COLX)
 		{
-			int slot = g_first + mx / COLW;
+			int slot = g_first + (mx - COLX) / COLW;
 			if (slot < g_ncol)
 			{
 				Column &k = g_col[slot];
@@ -1081,6 +1512,23 @@ public:
 			}
 			return true;
 		}
+		// the right button: the menu of a place, of an item
+		if (br && !rdown && !bl)
+		{
+			rdown = true;
+			if (sh >= 0) { placeMenu (sh, mx, my); return true; }
+			if (mx >= COLX && my >= COL_Y + ROW_PAD && my < COL_Y + COL_H)
+			{
+				int slot = g_first + (mx - COLX) / COLW;
+				if (slot < g_ncol)
+				{
+					int row = g_col[slot].top + (my - COL_Y - ROW_PAD) / g_rowH;
+					if (row < g_col[slot].count) rowMenu (slot, row, mx, my);
+				}
+			}
+			return true;
+		}
+		if (!br) rdown = false;
 		if (!bl) { pressed = false; g_armSlot = -1; return true; }
 		if (pressed)
 		{
@@ -1099,15 +1547,26 @@ public:
 		}
 		pressed = true;
 
-		if (my >= TB_H && my < TB_H + BC_H)			// path bar
+		if (my < BC_H)						// the path bar
 		{
-			for (int c = 0; c < g_ncol; c++) if (mx < g_crumbX[c]) { jump_to (c); break; }
+			if (ch >= 0) jump_to (ch);
+			invalidate (true);
+			return true;
+		}
+		if (mx < COLX)						// the places
+		{
+			if (sh >= 0)
+			{
+				const SideRow &sr = g_srow[sh];
+				if (sr.place < 0) { g_folded[sr.group] = !g_folded[sr.group]; places_save (); side_rows (); }
+				else open_place (sr.place);
+			}
 			invalidate (true);
 			return true;
 		}
 		if (my < COL_Y || my >= COL_Y + COL_H) return true;
 
-		int slot = g_first + mx / COLW;
+		int slot = g_first + (mx - COLX) / COLW;
 		unsigned now = kapi_get_ticks ();
 		if (slot == g_ncol && preview_on ())		// preview: double-click opens
 		{
@@ -1117,13 +1576,13 @@ public:
 			return true;
 		}
 		if (slot >= g_ncol) return true;
-		if (col_overflows (slot) && mx % COLW >= COLW - 1 - WK_SBW)	// the column's scrollbar
+		if (col_overflows (slot) && (mx - COLX) % COLW >= COLW - 4 - WK_SBW)	// the column's scrollbar
 		{
 			g_vdrag = slot; vscroll_to (slot, my);
 			invalidate (true);
 			return true;
 		}
-		int row = g_col[slot].top + (my - COL_Y) / g_rowH;
+		int row = my >= COL_Y + ROW_PAD ? g_col[slot].top + (my - COL_Y - ROW_PAD) / g_rowH : g_col[slot].count;
 		if (row >= g_col[slot].count) { jump_to (slot); invalidate (true); return true; }
 
 		g_armSlot = slot; g_armRow = row; g_armX = mx; g_armY = my;	// a drag may start here
@@ -1208,14 +1667,29 @@ public:
 	}
 };
 
+// Go > Pin This Folder...: the folder selected in the active column, else that column's folder.
+static void op_pin ()
+{
+	const Entry *e = sel_entry (g_active);
+	char p[300];
+	if (e && e->isdir && !e->isapp) join (p, sizeof p, g_col[g_active].path, e->name);
+	else scopy (p, g_col[g_active].path, sizeof p);
+	if (in_trash ()) { status ("The Trash has its own place"); return; }
+	pin_folder (p);
+	if (g_root) g_root->invalidate (true);
+}
+
 int main (void)
 {
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
-	g_rowH = g_fh + 4;
-	g_rows = COL_H / g_rowH; if (g_rows < 1) g_rows = 1;
+	g_rowH = g_fh + 8;					// (rows with room: a padding above and below)
+	g_rows = (COL_H - 2 * ROW_PAD) / g_rowH; if (g_rows < 1) g_rows = 1;
 
 	for (int c = 0; c < MAXCOL; c++) { g_col[c].e = new Entry[MAXE]; g_col[c].count = 0; g_col[c].sel = -1; }
+	places_load ();
+	places_build ();
+	side_rows ();
 
 	ViewerRoot root;
 	if (root.canvas.px == 0) return 1;
@@ -1241,6 +1715,8 @@ int main (void)
 	menu.item ("Trash",      "",      0,             op_open_trash);
 	menu.item ("Connect to Server...", "", 0,       op_connect);
 	menu.separator ();
+	menu.item ("Pin This Folder...", "^D", WK_CTRL ('D'), op_pin);
+	menu.separator ();
 	menu.item ("Restore from Trash", "", 0,          op_restore);
 	menu.item ("Empty Trash...",     "", 0,          op_empty_trash);
 	menu.menu ("Edit");
@@ -1248,7 +1724,7 @@ int main (void)
 	menu.item ("Cut",        "^X",    WK_CTRL ('X'), op_cut);
 	menu.item ("Paste",      "^V",    WK_CTRL ('V'), op_paste);
 	menu.publish ();
-	g_hsb = new Scrollbar (0, COL_Y + COL_H, W, SB_H, false, 1, 0, on_hscroll);
+	g_hsb = new Scrollbar (COLX, COL_Y + COL_H, W - COLX, SB_H, false, 1, 0, on_hscroll);
 	root.addChild (g_hsb);
 
 	// Start at the root; an argument (e.g. `run fileviewer SD:/apps`) opens that path.
@@ -1261,23 +1737,7 @@ int main (void)
 	else if (args[0] && is_remote (args))			// FTP:host/path (ftpfs)
 		show_root (args);
 	else if (sd_volume (args))					// SD:/..., SD1:/...
-	{
-		char root[8]; volume_of (args, root, sizeof root - 1);
-		int rn = 0; while (root[rn]) rn++; root[rn++] = '/'; root[rn] = '\0';
-		if (ci_cmp (root, "SD:/") != 0) show_root (root);
-		const char *p = args + sd_volume (args); if (*p == '/') p++;
-		while (*p)
-		{
-			char seg[NAMEL]; int n = 0;
-			while (*p && *p != '/' && n < NAMEL - 1) seg[n++] = *p++;
-			seg[n] = '\0';
-			if (*p == '/') p++;
-			int idx = -1;
-			for (int i = 0; i < g_col[g_ncol - 1].count; i++) if (ci_cmp (g_col[g_ncol - 1].e[i].name, seg) == 0) { idx = i; break; }
-			if (idx < 0) break;
-			select (g_ncol - 1, idx);
-		}
-	}
+		open_path (args);
 	update_status ();
 	root.run ();
 	return 0;

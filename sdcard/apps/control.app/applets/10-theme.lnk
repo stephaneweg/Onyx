@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Theme
+icon   = SD:/apps/theme.app/icon.bmp
+target = theme
+text   = Colours of the windows, the dock and the menu bar; the wallpaper

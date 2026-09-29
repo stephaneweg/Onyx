@@ -58,11 +58,12 @@ void Dropdown::onDraw ()
 	canvas.fillRect (0, 0, width, rowH, bgColor ());
 	int st = disabled ? WK_DISABLED : open ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
 	if (hasFocus && !disabled && !open) st |= WK_FOCUS;
-	wk_raised (canvas, 0, 0, width, rowH, 5, C_FACE, st);
+	wk_raised (canvas, 0, 0, width, rowH, 5, C_BUTTON, st);
 	int d = open ? 1 : 0;
-	if (sel >= 0 && sel < nopts) canvas.text (9 + d, (rowH - fh) / 2 + d, opts[sel], disabled ? C_DIS : C_TEXT);
+	unsigned dis = wk_mix (C_BUTTON, C_BUTTON_TEXT, 110);
+	if (sel >= 0 && sel < nopts) canvas.text (9 + d, (rowH - fh) / 2 + d, opts[sel], disabled ? dis : C_BUTTON_TEXT);
 	wk_glyph (canvas, open ? WKG_CHEV_UP : WKG_CHEV_DOWN, width - 13 + d, rowH / 2 + d, 9,
-		  (nopts && !disabled) ? C_TEXT : C_DIS);
+		  (nopts && !disabled) ? C_BUTTON_TEXT : dis);
 	if (open) wk_draw_option_list (canvas, rowH + DD_GAP, width, rowH, opts, nopts, sel, m_hot);
 }
 

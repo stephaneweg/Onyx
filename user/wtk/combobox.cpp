@@ -56,10 +56,10 @@ void Combobox::onDraw ()
 	height = h;
 	int ax = width - ARROW_W, bh = rowH - 6;
 	int st = !nopts || disabled ? WK_DISABLED : open ? WK_PRESSED : m_arrowHot ? WK_HOT : WK_NORMAL;
-	wk_raised (canvas, ax, 3, ARROW_W - 3, bh, 3, C_FACE, st);
+	wk_raised (canvas, ax, 3, ARROW_W - 3, bh, 3, C_BUTTON, st);
 	int d = open ? 1 : 0;
 	wk_glyph (canvas, open ? WKG_CHEV_UP : WKG_CHEV_DOWN, ax + (ARROW_W - 3) / 2 + d, 3 + bh / 2 + d, 8,
-		  nopts && !disabled ? C_TEXT : C_DIS);
+		  nopts && !disabled ? C_BUTTON_TEXT : wk_mix (C_BUTTON, C_BUTTON_TEXT, 110));
 	if (open)
 	{
 		canvas.fillRect (0, rowH, width, height - rowH, WK_TRANSPARENT_KEY);

@@ -1,272 +1,167 @@
 //
-// config -- a configuration editor. Left pane: the list of apps (scrollable, click
-// or Up/Down to select). Selecting one loads SD:apps/<name>.app/config.ini into the
-// right pane as editable key=value rows: click a key or value cell to edit it, type
-// to change it, Enter to commit. The blank row at the bottom adds a new key. Apply
-// saves the file; Discard reloads it. Fully app-drawn (canvas + click/key handlers).
+// config -- the Control Panel's App Settings applet (applet_proto.h; alone, a window of its own):
+// an app's own settings, SD:/apps/<name>.app/config.ini, as key = value lines. On the left the
+// apps (those with a config.ini first); on the right the chosen app's settings: pick a line, change
+// its key or its value in the fields below, Set (Enter) -- a new key adds a line --, Delete removes
+// the line. Save writes the file; Reload reads it again. (The apps read their config.ini when they
+// start.)
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
 #include "applib.h"
+#include "fsutil.h"
+#include "wtk/wtk.h"
 
-#define W	560
-#define H	400
-#define LW	150			// left pane width
-#define LISTY	28			// list/rows top
-#define KEYX	158			// right pane left
-#define VALX	332			// value column left
-#define BTN_Y	368
-#define MAXAPPS	48
-#define MAXKV	32
-#define SBW	12			// app-list scrollbar width
+using namespace wtk;
 
-static unsigned *fb;
-static wtk::Canvas g_cv;		// the window's canvas (the painter draws on it)
-static int g_fw = 8, g_fh = 18, g_vis = 1;
+#define W	700
+#define H	470
+#define MAXAPPS	96
+#define MAXKV	48
 
-static char g_app[MAXAPPS][24]; static int g_napps = 0, g_appsel = -1, g_apptop = 0;
-static char g_cur[24] = "";
+static char g_app[MAXAPPS][32];
+static bool g_has[MAXAPPS];
+static int  g_napps;
+static char g_key[MAXKV][32], g_val[MAXKV][64];
+static int  g_nkv;
+static int  g_cur = -1;
+static bool g_dirty;
 
-static char g_key[MAXKV][32], g_val[MAXKV][64]; static int g_nkv = 0, g_kvtop = 0;
-static int  g_focus = -1;		// -1 none; else row*2 + (0=key / 1=value)
-static char g_msg[32] = "";
+static ListBox *g_lbApps, *g_lbKv;
+static Textbox *g_tbKey, *g_tbVal;
+static Label   *g_title, *g_status;
 
-static void scopy (char *d, const char *s, int cap)
-{ int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
-static int in_rect (int x, int y, int rx, int ry, int rw, int rh)
-{ return x >= rx && x < rx + rw && y >= ry && y < ry + rh; }
-
-static void load_apps (void)
-{
-	g_napps = 0;
-	void *d = kapi_opendir ("SD:apps");
-	if (d == 0) return;
-	struct kapi_dirent e;
-	while (g_napps < MAXAPPS && kapi_readdir (d, &e))
-	{
-		int n = ax_strlen (e.name);
-		if (!e.is_dir || n <= 4) continue;
-		if (e.name[n-4] != '.' || e.name[n-3] != 'a' || e.name[n-2] != 'p' || e.name[n-1] != 'p')
-			continue;
-		char nm[24]; int k = 0;
-		for (; k < n - 4 && k < 23; k++) nm[k] = e.name[k];
-		nm[k] = '\0';
-		scopy (g_app[g_napps++], nm, 24);
-	}
-	kapi_closedir (d);
-}
-
-static void make_path (const char *name, char *out, int cap)
+static void ini_path (int a, char *out, int cap)
 {
 	int p = 0;
-	ax_strcat (out, cap, &p, "SD:apps/");
-	ax_strcat (out, cap, &p, name);
-	ax_strcat (out, cap, &p, ".app/config.ini");
+	ax_strcat (out, cap, &p, "SD:/apps/"); ax_strcat (out, cap, &p, g_app[a]); ax_strcat (out, cap, &p, ".app/config.ini");
 }
 
-static void load_config (const char *name)	// also the Discard action
+static void scan_apps (void)
 {
-	scopy (g_cur, name, sizeof g_cur);
-	g_nkv = 0; g_kvtop = 0; g_focus = -1; g_msg[0] = '\0';
-	char path[96]; path[0] = '\0'; make_path (name, path, sizeof path);
-	if (app_ini_load_path (path) > 0)
-		for (int i = 0; i < g_ini_n && g_nkv < MAXKV; i++)
+	static char list[4096];
+	kapi_list_apps (list, sizeof list);
+	g_napps = 0;
+	for (char *p = list; *p && g_napps < MAXAPPS; )
+	{
+		char *e = p; while (*e && *e != '\n') e++;
+		char c = *e; *e = 0;
+		fs_copy (g_app[g_napps], p, 32);
+		char q[160]; ini_path (g_napps, q, sizeof q);
+		g_has[g_napps] = fs_exists (q);
+		g_napps++;
+		*e = c;
+		p = *e ? e + 1 : e;
+	}
+	for (int i = 1; i < g_napps; i++)				// the ones with settings first, by name
+		for (int j = i; j > 0; j--)
 		{
-			scopy (g_key[g_nkv], g_ini_key[i], 32);
-			scopy (g_val[g_nkv], g_ini_val[i], 64);
-			g_nkv++;
+			bool before = g_has[j] && !g_has[j - 1];
+			if (!before && (g_has[j] != g_has[j - 1] || fs_ci_cmp (g_app[j - 1], g_app[j]) <= 0)) break;
+			char t[32]; fs_copy (t, g_app[j], 32); fs_copy (g_app[j], g_app[j - 1], 32); fs_copy (g_app[j - 1], t, 32);
+			bool h = g_has[j]; g_has[j] = g_has[j - 1]; g_has[j - 1] = h;
 		}
 }
 
-static void save_config (void)
+static void fill_kv (int sel)
 {
-	if (g_cur[0] == '\0') return;
-	char path[96]; path[0] = '\0'; make_path (g_cur, path, sizeof path);
-	static char buf[2048]; int b = 0;
+	g_lbKv->clear ();
 	for (int i = 0; i < g_nkv; i++)
 	{
-		if (g_key[i][0] == '\0') continue;
-		for (int k = 0; g_key[i][k] && b < (int) sizeof buf - 2; k++) buf[b++] = g_key[i][k];
-		if (b < (int) sizeof buf - 2) buf[b++] = '=';
-		for (int k = 0; g_val[i][k] && b < (int) sizeof buf - 2; k++) buf[b++] = g_val[i][k];
-		if (b < (int) sizeof buf - 1) buf[b++] = '\n';
+		char s[64]; int n = 0;
+		ax_strcat (s, sizeof s, &n, g_key[i]); ax_strcat (s, sizeof s, &n, " = "); ax_strcat (s, sizeof s, &n, g_val[i]);
+		g_lbKv->add (s);
 	}
-	scopy (g_msg, kapi_save_file (path, buf, b) >= 0 ? "saved" : "save failed", sizeof g_msg);
+	g_lbKv->setSel (sel < g_nkv ? sel : g_nkv - 1);
 }
 
-// App-list scrollbar geometry (x0/track-top/track-h/thumb-y/thumb-h). 0 if not needed.
-static int sb_geom (int *px0, int *pty0, int *pth, int *pthy, int *pthh)
+static void load (int a)
 {
-	if (g_napps <= g_vis) return 0;
-	int ty0 = LISTY, th = g_vis * g_fh, maxtop = g_napps - g_vis;
-	int thh = th * g_vis / g_napps; if (thh < 16) thh = 16;
-	*px0 = LW - SBW; *pty0 = ty0; *pth = th;
-	*pthy = ty0 + (th - thh) * g_apptop / maxtop; *pthh = thh;
-	return 1;
-}
-static void draw_app_scrollbar (void)
-{
-	int x0, ty0, th, thy, thh;
-	if (!sb_geom (&x0, &ty0, &th, &thy, &thh)) return;
-	wtk::wk_scroll_bar (g_cv, x0, ty0, SBW - 3, th, true, thy - ty0, thh, wtk::C_FIELD);
-}
-// Keep app `idx` within the visible window (called when the selection changes).
-static void scroll_to_show (int idx)
-{
-	if (idx < g_apptop) g_apptop = idx;
-	if (idx >= g_apptop + g_vis) g_apptop = idx - g_vis + 1;
-}
-
-// A push button drawn by hand: the theme's framed button (the clicks: on_click).
-static void button (int x, int y, int w, int h, const char *s)
-{
-	int bx, by, bw, bh;
-	wtk::wk_framed (g_cv, x, y, w, h, wtk::C_FACE, wtk::WK_NORMAL, &bx, &by, &bw, &bh);
-	wtk::wk_text_c (g_cv, bx, by, bw, bh, s, wtk::C_TEXT);
-}
-
-// The theme's look (wtk/paint.h): a header strip of the face, the app list and the key =
-// value table in sunken fields, the selection in the accent. The rows stay at LISTY + r *
-// g_fh (the clicks' mapping).
-static void redraw (void)
-{
-	using namespace wtk;
-	g_cv.clear (C_BG);
-	wk_rbox (g_cv, 0, 0, W, LISTY - 4, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-	wk_etch_h (g_cv, 0, LISTY - 4, W, C_FACE);
-	wk_text_l (g_cv, 8, 0, LISTY - 4, "Apps", C_TEXT, 2);
-	int maxtop = g_napps - g_vis; if (maxtop < 0) maxtop = 0;	// clamp the scroll offset
-	if (g_apptop > maxtop) g_apptop = maxtop;
-	if (g_apptop < 0) g_apptop = 0;
-	int listw = (g_napps > g_vis) ? LW - SBW : LW;			// room for the scrollbar
-	wk_sunken (g_cv, 3, LISTY - 2, LW - 2, g_vis * g_fh + 4, 4, C_FIELD);	// left pane
-	for (int r = 0; r < g_vis; r++)
-	{
-		int idx = g_apptop + r;
-		if (idx >= g_napps) break;
-		int y = LISTY + r * g_fh;
-		if (idx == g_appsel) wk_hilite (g_cv, 6, y, listw - 8, g_fh, 4, true);
-		g_cv.text (10, y + 1, g_app[idx], idx == g_appsel ? wk_hilite_ink (true) : C_FIELD_TEXT);
-	}
-	draw_app_scrollbar ();
-
-	// Right pane header.
-	if (g_cur[0]) wk_text_l (g_cv, KEYX, 0, LISTY - 4, g_cur, C_TEXT, 2);
-	else wk_text_l (g_cv, KEYX, 0, LISTY - 4, "(select an app)", C_DIS);
-
-	// Editable key=value rows + one trailing blank row to add a new key: a table in a
-	// field (a line under each row, the columns divided), the cell being edited outlined.
-	int ty = LISTY - 2, th = g_vis * g_fh + 4;
-	wk_sunken (g_cv, KEYX - 3, ty, W - KEYX, th, 4, C_FIELD);
-	unsigned grid = wk_mix (C_FIELD, C_FIELD_TEXT, 36);
-	g_cv.fillRect (VALX - 3, ty + 2, 1, th - 4, grid);
-	int shown = g_nkv + 1; if (shown > MAXKV) shown = MAXKV;
-	for (int r = 0; r < g_vis; r++)
-	{
-		int idx = g_kvtop + r;
-		if (idx >= shown) break;
-		int y = LISTY + r * g_fh;
-		const char *kk = (idx < g_nkv) ? g_key[idx] : "";
-		const char *vv = (idx < g_nkv) ? g_val[idx] : "";
-		g_cv.fillRect (KEYX, y + g_fh - 1, W - KEYX - 6, 1, grid);
-		g_cv.text (KEYX + 4, y + 1, kk, wk_tone (C_ACCENT, 84));
-		g_cv.text (VALX + 4, y + 1, vv, C_FIELD_TEXT);
-		if (g_focus >= 0 && g_focus / 2 == idx)
+	g_cur = a; g_nkv = 0; g_dirty = false;
+	if (a < 0) return;
+	char p[160]; ini_path (a, p, sizeof p);
+	if (app_ini_load_path (p) > 0)
+		for (int i = 0; i < g_ini_n && g_nkv < MAXKV; i++)
 		{
-			int col = g_focus % 2;
-			const char *t = col ? vv : kk;
-			int cx = (col ? VALX : KEYX) + 4 + ax_strlen (t) * g_fw;
-			if (col) wk_rline (g_cv, VALX - 2, y - 1, W - VALX - 4, g_fh, 3, C_ACCENT);
-			else wk_rline (g_cv, KEYX - 1, y - 1, VALX - KEYX - 3, g_fh, 3, C_ACCENT);
-			g_cv.fillRect (cx, y + 1, 2, g_fh - 3, C_ACCENT);
+			fs_copy (g_key[g_nkv], g_ini_key[i], 32); fs_copy (g_val[g_nkv], g_ini_val[i], 64);
+			g_nkv++;
 		}
-	}
-
-	// Buttons + status.
-	button (380, BTN_Y, 80, 24, "Apply");
-	button (470, BTN_Y, 80, 24, "Discard");
-	if (g_msg[0]) g_cv.text (KEYX, BTN_Y + 4, g_msg, C_TEXT);
+	static char t[64]; int n = 0;
+	ax_strcat (t, sizeof t, &n, g_app[a]); ax_strcat (t, sizeof t, &n, g_nkv ? "  (config.ini)" : "  (no settings yet)");
+	g_title->setText (t);
+	fill_kv (0);
+	g_tbKey->setText (g_nkv ? g_key[0] : ""); g_tbVal->setText (g_nkv ? g_val[0] : "");
+	g_status->setText ("");
 }
 
-static void on_click (unsigned long s, int ev, long val)
+static void on_app (Widget &) { load (g_lbApps->sel); }
+static void on_kv (Widget &)
 {
-	(void) s;
-	if (ev != GUI_EVENT_CANVAS_CLICK) return;
-	int x = (int) ((val >> 16) & 0xFFFF), y = (int) (val & 0xFFFF);
-
-	if (in_rect (x, y, 380, BTN_Y, 80, 24)) { save_config (); return; }
-	if (in_rect (x, y, 470, BTN_Y, 80, 24)) { if (g_cur[0]) load_config (g_cur); return; }
-
-	int row = (y - LISTY) / g_fh;
-	if (y < LISTY || row < 0) { g_focus = -1; return; }
-
-	if (x < LW)						// left pane
-	{
-		int x0, ty0, th, thy, thh;			// scrollbar: jump (thumb-centered)
-		if (sb_geom (&x0, &ty0, &th, &thy, &thh) && x >= x0 && y >= ty0 && y < ty0 + th)
-		{
-			int maxtop = g_napps - g_vis;
-			int t = (y - ty0 - thh / 2) * maxtop / (th - thh);
-			if (t < 0) t = 0;
-			if (t > maxtop) t = maxtop;
-			g_apptop = t;
-			return;
-		}
-		int idx = g_apptop + row;			// else pick an app
-		if (idx < g_napps) { g_appsel = idx; scroll_to_show (idx); load_config (g_app[idx]); }
-		return;
-	}
-	if (g_cur[0] == '\0') return;				// right: edit a cell
-	int idx = g_kvtop + row;
-	if (idx > g_nkv || idx >= MAXKV) { g_focus = -1; return; }
-	if (idx == g_nkv) { g_key[g_nkv][0] = '\0'; g_val[g_nkv][0] = '\0'; g_nkv++; g_focus = idx * 2; return; }
-	g_focus = idx * 2 + (x >= VALX ? 1 : 0);
+	int i = g_lbKv->sel;
+	if (i < 0 || i >= g_nkv) return;
+	g_tbKey->setText (g_key[i]); g_tbVal->setText (g_val[i]);
 }
-
-static void on_key (unsigned long s, int ev, long key)
+static void on_set (Widget &)
 {
-	(void) s;
-	if (ev != GUI_EVENT_KEY) return;
-
-	if (g_focus >= 0)					// editing a cell
-	{
-		int row = g_focus / 2, col = g_focus % 2;
-		char *t = col ? g_val[row] : g_key[row];
-		int cap = col ? 64 : 32, n = ax_strlen (t);
-		if (key == KEY_ENTER || key == 27) g_focus = -1;
-		else if (key == KEY_BACKSPACE) { if (n > 0) t[n - 1] = '\0'; }
-		else if (key >= ' ' && key < 0x7f && n < cap - 1) { t[n] = (char) key; t[n + 1] = '\0'; }
-		return;
-	}
-	switch (key)						// navigating
-	{
-	case KEY_UP:   if (g_appsel > 0) { g_appsel--; scroll_to_show (g_appsel); load_config (g_app[g_appsel]); } break;
-	case KEY_DOWN: if (g_appsel < g_napps - 1) { g_appsel++; scroll_to_show (g_appsel); load_config (g_app[g_appsel]); } break;
-	case KEY_PGUP: g_kvtop -= g_vis - 1; if (g_kvtop < 0) g_kvtop = 0; break;
-	case KEY_PGDN: g_kvtop += g_vis - 1; if (g_kvtop > g_nkv) g_kvtop = g_nkv; break;
-	}
+	if (g_cur < 0) { g_status->setText ("Pick an app on the left first."); return; }
+	if (!g_tbKey->text[0]) { g_status->setText ("A key is needed."); return; }
+	int i = 0;
+	while (i < g_nkv && fs_ci_cmp (g_key[i], g_tbKey->text) != 0) i++;
+	if (i == g_nkv) { if (g_nkv >= MAXKV) return; g_nkv++; }
+	fs_copy (g_key[i], g_tbKey->text, 32); fs_copy (g_val[i], g_tbVal->text, 64);
+	g_dirty = true;
+	fill_kv (i);
+	g_status->setText ("Changed: Save writes it.");
 }
+static void on_delete (Widget &)
+{
+	int i = g_lbKv->sel;
+	if (i < 0 || i >= g_nkv) return;
+	for (int k = i; k + 1 < g_nkv; k++) { fs_copy (g_key[k], g_key[k + 1], 32); fs_copy (g_val[k], g_val[k + 1], 64); }
+	g_nkv--; g_dirty = true;
+	fill_kv (i);
+	g_status->setText ("Deleted: Save writes it.");
+}
+static void on_save (Widget &)
+{
+	if (g_cur < 0) return;
+	static char buf[4096]; int b = 0;
+	for (int i = 0; i < g_nkv; i++)
+	{
+		ax_strcat (buf, sizeof buf, &b, g_key[i]); ax_strcat (buf, sizeof buf, &b, " = ");
+		ax_strcat (buf, sizeof buf, &b, g_val[i]); ax_strcat (buf, sizeof buf, &b, "\n");
+	}
+	char p[160]; ini_path (g_cur, p, sizeof p);
+	bool ok = kapi_save_file (p, buf, (unsigned) b) >= 0;
+	g_dirty = !ok;
+	g_status->setText (ok ? "Saved: the app takes it when it starts again." : "Could not write the file.");
+}
+static void on_reload (Widget &) { load (g_cur); }
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "config");
-	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
-	g_cv.adopt (fb, W, H);
-	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
-	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
-	g_fh += 2;					// row pitch
-	g_vis = (BTN_Y - LISTY) / g_fh; if (g_vis < 1) g_vis = 1;
-
-	load_apps ();
-	kapi_set_click_handler (on_click);
-	kapi_set_key_handler (on_key);
-
-	while (!should_exit ())
+	Root root (W, H, "App Settings");
+	if (root.canvas.px == 0) return 1;
+	int X = root.width > W ? (root.width - W) / 2 : 0;
+	scan_apps ();
+	root.addChild (new Label (X + 12, 8, 200, 20, "Apps", C_TEXT, root.bg));
+	g_lbApps = new ListBox (X + 12, 30, 190, H - 44, on_app); root.addChild (g_lbApps);
+	for (int i = 0; i < g_napps; i++)
 	{
-		pump_events ();
-		redraw ();
-		msleep (16);
+		char s[40]; int n = 0;
+		ax_strcat (s, sizeof s, &n, g_app[i]); if (g_has[i]) ax_strcat (s, sizeof s, &n, " *");
+		g_lbApps->add (s);
 	}
+	g_title = new Label (X + 216, 8, 470, 20, "Pick an app (* : it has settings)", C_TEXT, root.bg); root.addChild (g_title);
+	g_lbKv = new ListBox (X + 216, 30, 472, 270, on_kv, 0); root.addChild (g_lbKv);
+	root.addChild (new Label (X + 216, 312, 60, 24, "Key", C_TEXT, root.bg));
+	g_tbKey = new Textbox (X + 280, 308, 180, 28, "", on_set); root.addChild (g_tbKey);
+	root.addChild (new Label (X + 216, 346, 60, 24, "Value", C_TEXT, root.bg));
+	g_tbVal = new Textbox (X + 280, 342, 408, 28, "", on_set); root.addChild (g_tbVal);
+	root.addChild (new Button (X + 470, 306, 100, 30, "Set", on_set));
+	root.addChild (new Button (X + 578, 306, 110, 30, "Delete", on_delete));
+	g_status = new Label (X + 216, 380, 472, 22, "", C_DIS, root.bg); root.addChild (g_status);
+	root.addChild (new Button (X + 216 + 472 - 196, H - 42, 90, 32, "Save", on_save));
+	root.addChild (new Button (X + 216 + 472 - 100, H - 42, 100, 32, "Reload", on_reload));
+	root.run ();
 	return 0;
 }

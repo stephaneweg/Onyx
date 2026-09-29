@@ -28,6 +28,11 @@
 // program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
 // the pointer for kapi_cursor_pos; SIM_MENU, SIM_RUNNING, SIM_WALL: below.
+// SIM_APPLET=1: the app runs as a Control Panel applet (its arguments "--applet 1 99", the host
+// pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
+// pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
+// message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
+// SIM_DESKS="cur,count": the workspaces (kapi v65).
 //
 #include <sys/mman.h>
 #include <stdio.h>
@@ -234,8 +239,21 @@ static int get_chrome (struct kapi_chrome *out)
 	return 1;
 }
 
+static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets)
 static void dump (const char *file)
 {
+	if (g_canvas == 0 && g_surf)					// an applet: its surface
+	{
+		FILE *f = fopen (file, "wb");
+		int hdr[5] = { 0x4D534C45, g_surfW, g_surfH, 0, 0 };
+		fwrite (hdr, 4, 5, f);
+		std::vector<unsigned> px ((size_t) g_surfW * g_surfH);
+		for (size_t i = 0; i < px.size (); i++) px[i] = g_surf[i] & 0x00FFFFFFu;
+		fwrite (px.data (), 4, px.size (), f);
+		fclose (f);
+		fprintf (stderr, "sim: dumped the applet's surface %dx%d -> %s\n", g_surfW, g_surfH, file);
+		return;
+	}
 	FILE *f = fopen (file, "wb");
 	int hdr[5] = { 0x4D534C45, g_ow, g_oh, g_x, g_y };		// "ELSM"
 	fwrite (hdr, 4, 5, f);
@@ -428,7 +446,25 @@ static int wlan_scan (struct kapi_wlan_ap *o, int max)
 	return n;
 }
 static int wlan_reconnect (void) { return 0; }
-static int win_list (struct kapi_win_info *, int) { return 0; }
+// SIM_WINS="x,y,w,h,desk,keys;...": the windows (the dock's workspaces draw them small)
+static int win_list (struct kapi_win_info *o, int max)
+{
+	const char *e = getenv ("SIM_WINS");
+	int n = 0;
+	for (const char *p = e; p && *p && n < max; )
+	{
+		int x, y, w, h, d, k;
+		if (sscanf (p, "%d,%d,%d,%d,%d,%d", &x, &y, &w, &h, &d, &k) != 6) break;
+		memset (&o[n], 0, sizeof o[n]);
+		o[n].id = (unsigned) n + 1; o[n].x = x + 4; o[n].y = y + 28; o[n].w = w - 8; o[n].h = h - 32;
+		o[n].ow = w; o[n].oh = h; o[n].il = 4; o[n].it = 28; o[n].alpha = 255;
+		o[n].state = (k ? KAPI_WIN_KEYS : 0) | (unsigned) ((d + 1) & 0xFF) << 8;
+		n++;
+		while (*p && *p != ';') p++;
+		if (*p == ';') p++;
+	}
+	return n;
+}
 // the kernel's text straight into the window (mandelbrot's status line)
 static void draw_text (int x, int y, const char *s, unsigned c) { draw_text_buf (g_canvas, g_stride, g_lh, x, y, s, c); }
 static int stream_read (void *h, void *b, unsigned n) { return pipe_read (h, b, n); }
@@ -458,7 +494,12 @@ static void *spawn (const char *p, const char *a, void *, void *)
 static unsigned long g_pipes;
 static void *h_pipe (void) { return getenv ("SIM_PIPE") && g_pipes < 64 ? (void *) ++g_pipes : 0; }
 static void stream_close (void *) {}
-static int get_args (char *b, unsigned n) { const char *a = getenv ("SIM_ARGS"); snprintf (b, n, "%s", a ? a : ""); return (int) strlen (b); }
+static int get_args (char *b, unsigned n)
+{
+	const char *a = getenv ("SIM_APPLET") ? "--applet 1 99" : getenv ("SIM_ARGS");
+	snprintf (b, n, "%s", a ? a : "");
+	return (int) strlen (b);
+}
 static int clipboard_set (int, const void *, unsigned) { return 1; }
 static int clipboard_get (int *t, void *, unsigned, unsigned *serial) { if (t) *t = 0; if (serial) *serial = 0; return 0; }
 static void set_click (gui_handler h) { g_click = h; }
@@ -471,8 +512,37 @@ static void cursor_pos (int *x, int *y)
 	if (x) *x = cx; if (y) *y = cy;
 }
 static void set_alpha (int) {}
-static int ipc_register (const char *) { return 0; }
-static int ipc_lookup (const char *) { return 0; }
+static int ipc_register (const char *n) { return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
+static int ipc_lookup (const char *n)
+{
+	if (getenv ("SIM_APPLET") && !strcmp (n, "control")) return 99;	// (the applet's host: there)
+	if (getenv ("SIM_MAIL") && !strcmp (n, "control")) return 5;		// (the Control Panel: us)
+	return 0;
+}
+// (v35) the surfaces: one, made or mapped, SIM_SURFACE's pixels poured into it on AP_HELLO
+static void surface_fill (void)
+{
+	const char *f = getenv ("SIM_SURFACE");
+	FILE *fp = f ? fopen (f, "rb") : 0;
+	if (!fp) return;
+	int hdr[5]; if (fread (hdr, 4, 5, fp) == 5 && hdr[1] == g_surfW && hdr[2] == g_surfH)
+		if (fread (g_surf, 4, (size_t) g_surfW * g_surfH, fp) != (size_t) g_surfW * g_surfH) fprintf (stderr, "sim: short surface\n");
+	fclose (fp);
+}
+static int surface_create (int w, int h) { g_surfW = w; g_surfH = h; if (!g_surf) g_surf = (unsigned *) calloc ((size_t) w * h, 4); return 1; }
+static unsigned *surface_map (int) { if (!g_surf) g_surf = (unsigned *) calloc ((size_t) g_surfW * g_surfH, 4); return g_surf; }
+static int surface_size (int, int *w, int *h) { if (w) *w = g_surfW; if (h) *h = g_surfH; return 1; }
+// (v65) the workspaces
+static int s_desk = 0, s_desks = 4;
+static int desk (int set, int count)
+{
+	static bool init = false;
+	if (!init) { init = true; const char *e = getenv ("SIM_DESKS"); if (e) sscanf (e, "%d,%d", &s_desk, &s_desks); }
+	if (count > 0) s_desks = count;
+	if (set >= 0 && set < s_desks) s_desk = set;
+	return s_desk | (s_desks << 8);
+}
+static int win_desk (unsigned, int n) { return n < -1 ? s_desk : n; }
 static int shell_request (int, const void *, unsigned) { return -1; }	// (not in the activity shell)
 static int random_fill (void *b, unsigned n) { for (unsigned i = 0; i < n; i++) ((unsigned char *) b)[i] = (unsigned char) rand (); return (int) n; }
 
@@ -484,6 +554,19 @@ static int meminfo (unsigned long *t, unsigned long *f, unsigned long *a, unsign
 { if (t) *t = 3145728; if (f) *f = 2097152; if (a) *a = 409600; if (pk) *pk = 64; return 1; }
 static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int)
 {
+	static bool mailed = false;
+	const char *mail = getenv ("SIM_MAIL");
+	if (mail && !mailed)						// one message (an applet's hello)
+	{
+		mailed = true;
+		int t = 0, pid = 0; sscanf (mail, "%d:%d", &t, &pid);
+		if (from) *from = pid; if (type) *type = t;
+		if (t == 40) surface_fill ();
+		int wh[2] = { g_surfW, g_surfH };
+		unsigned n = cap < sizeof wh ? cap : (unsigned) sizeof wh;
+		memcpy (buf, wh, n);
+		return (int) n;
+	}
 	static bool done = false;
 	const char *e = getenv ("SIM_NOTE");
 	if (done || !e) return -1;
@@ -556,6 +639,8 @@ static void setup (void)
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect;
+	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
+	T->desk = desk; T->win_desk = win_desk;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";

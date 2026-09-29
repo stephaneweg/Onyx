@@ -389,6 +389,15 @@ static inline int kapi_win_minimise (unsigned id) { return KT->version >= 64 ? K
 static inline int kapi_win_geometry (struct kapi_win_geom *out) { return KT->version >= 64 ? KT->win_geometry (out) : -1; }
 static inline unsigned *kapi_resize_window2 (int w, int h, int *stride)
 { return KT->version >= 64 ? KT->resize_window2 (w, h, stride) : 0; }
+// (v65) the workspaces (virtual desktops): kapi_desk (set, count) shows desk `set` (-1 keeps it) and
+// sets how many there are (0 keeps it) -> the current desk | the count << 8 | a change counter << 16
+// (KAPI_DESK_CUR / _COUNT / _GEN); an older kernel: one desk. kapi_win_desk: window id (0: mine) to
+// desk n (-1: every desk; -2: only asked) -> its desk, -3 none.
+#define KAPI_DESK_CUR(i)	((i) & 0xFF)
+#define KAPI_DESK_COUNT(i)	(((i) >> 8) & 0xFF)
+#define KAPI_DESK_GEN(i)	(((unsigned) (i) >> 16) & 0x7FFF)
+static inline int kapi_desk (int set, int count) { return KT->version >= 65 ? KT->desk (set, count) : 1 << 8; }
+static inline int kapi_win_desk (unsigned id, int n) { return KT->version >= 65 ? KT->win_desk (id, n) : -1; }
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.

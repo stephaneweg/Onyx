@@ -94,6 +94,8 @@ void *kapi_gpu_vbuf (unsigned);
 int  kapi_win_minimise (unsigned);
 int  kapi_win_geometry (struct kapi_win_geom *);
 unsigned *kapi_resize_window2 (int, int, int *);
+int  kapi_desk (int, int);
+int  kapi_win_desk (unsigned, int);
 int  kapi_sound_acquire (void);
 void kapi_sound_release (void);
 int  kapi_sound_start (int, unsigned, int, int);
@@ -375,4 +377,6 @@ void KApiTableInit (void)
 	t->win_minimise      = kapi_win_minimise;
 	t->win_geometry      = kapi_win_geometry;
 	t->resize_window2    = kapi_resize_window2;
+	t->desk              = kapi_desk;
+	t->win_desk          = kapi_win_desk;
 }

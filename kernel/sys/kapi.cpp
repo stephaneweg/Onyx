@@ -537,6 +537,21 @@ int kapi_toggle_app (const char *pName)
 	return LaunchAppByName (pName) ? 1 : -1;	// toggled ON
 }
 
+// The first window of a running task named pName that is not on another workspace.
+struct RaiseCtx { const char *pName; CWindow *pWin; };
+static boolean RaiseCallback (CTask *pTask, const char *pTaskName, TTaskState State, TTaskFlags, void *pParam)
+{
+	RaiseCtx *pCtx = (RaiseCtx *) pParam;
+	if (State == TaskStateTerminated || pCtx->pWin != 0 || pTaskName == 0) return TRUE;
+	unsigned i = 0;
+	for (; pCtx->pName[i] != '\0' && pTaskName[i] == pCtx->pName[i]; i++) {}
+	if (pCtx->pName[i] != '\0' || pTaskName[i] != '\0') return TRUE;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin != 0 && !pWin->OffDesk ()) pCtx->pWin = pWin;
+	return TRUE;
+}
+
 // Raise the named running app's window to the front (taskbar / quicklaunch click on
 // an already-open app). Returns 1 if raised, 0 if not running / no window.
 int kapi_raise_app (const char *pName)
@@ -545,18 +560,15 @@ int kapi_raise_app (const char *pName)
 	{
 		return 0;
 	}
-	CTask *pTask = CScheduler::Get ()->GetRunningTask (pName);
-	if (pTask == 0)
+	// (v65) an instance with a window on the current workspace (or on every one): one on
+	// another workspace is not raised -- the caller starts another one here (the dock)
+	RaiseCtx Ctx = { pName, 0 };
+	CScheduler::Get ()->EnumerateTasks (RaiseCallback, &Ctx);
+	if (Ctx.pWin == 0)
 	{
 		return 0;
 	}
-	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0)
-	{
-		return 0;
-	}
-	CWindowManager::Get ()->Raise (pWin);
+	CWindowManager::Get ()->Raise (Ctx.pWin);
 	return 1;
 }
 
@@ -601,6 +613,7 @@ unsigned *kapi_surface_map (int id)
 	{
 		return 0;
 	}
+	pS->AddUser (pAS->GetPid ());		// (its frames kept while this process lives: v65)
 	return (unsigned *) pAS->MapSurface (pS->Phys (), pS->Pages ());
 }
 
@@ -901,6 +914,10 @@ static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState Stat
 	if (pAS == 0 || pAS->GetWindow () == 0 || pAS->GetWindow ()->System ())
 	{
 		return TRUE;					// not a windowed app / a system component
+	}
+	if (pAS->GetWindow ()->OffDesk ())
+	{
+		return TRUE;					// (v65) on another workspace
 	}
 
 	WinListCtx *pCtx = (WinListCtx *) pParam;
@@ -2177,7 +2194,8 @@ int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 		I.x = pW->X () + pW->ChromeL (); I.y = pW->Y () + pW->ChromeT ();
 		I.w = pW->ClientWidth (); I.h = pW->ClientHeight ();
 		I.flags = pW->Flags (); I.alpha = pW->Alpha (); I.gen = pW->Gen ();
-		I.state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0);
+		I.state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
+			| (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
 		if (pW == pFs) { I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN; }
 		I.ow = I.oh = I.il = I.it = 0; I.chromeGen = pW->ChromeGen ();
 		if (pW->HasChrome () && pW != pFs) { I.ow = pW->OuterW (); I.oh = pW->OuterH (); I.il = pW->ChromeL (); I.it = pW->ChromeT (); }
@@ -2277,8 +2295,28 @@ int kapi_win_geometry (struct kapi_win_geom *pOut)
 	pOut->w = pW->OuterWidth (); pOut->h = pW->OuterHeight ();
 	pOut->cw = pW->ClientWidth (); pOut->ch = pW->ClientHeight ();
 	pWM->WorkArea (&pOut->ax, &pOut->ay, &pOut->aw, &pOut->ah);
-	pOut->state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0);
+	pOut->state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
+		| (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
 	return 0;
+}
+
+// ---- v65: the workspaces (virtual desktops) -------------------------------------------------
+int kapi_desk (int nSet, int nCount)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0) return 1 << 8;
+	return nSet < 0 && nCount <= 0 ? pWM->DeskInfo () : pWM->SetDesk (nSet, nCount);
+}
+
+int kapi_win_desk (unsigned nId, int n)
+{
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM == 0) return -3;
+	CWindow *pW;
+	if (nId == 0) { CAddressSpace *pAS = CurrentAS (); pW = pAS != 0 ? pAS->GetWindow () : 0; }
+	else pW = WinById (pWM, nId);
+	if (pW == 0) return -3;
+	return n < -1 ? pW->Desk () : pWM->MoveToDesk (pW, n);
 }
 
 // Resize the caller's window, its canvas (and frame copies) growing when needed: new memory

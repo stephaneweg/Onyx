@@ -4,8 +4,9 @@
 // It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
 // wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
 // back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu:
-// Terminal / File Viewer / Task Manager, then one entry per app CATEGORY (the "category"
-// of each SD:/apps/<name>.app/app.txt; "Shell" components are left out) opening a sub-menu
+// Terminal / Control Panel / File Viewer / Task Manager, then one entry per app CATEGORY (the
+// "category" of each SD:/apps/<name>.app/app.txt; the "Shell" components, the Control Panel's
+// "Settings" applets and the "Emulators" -- reached from the Game Library -- are left out) opening a sub-menu
 // of its apps, then "Open Windows" (a sub-menu: raise one), then Shut Down... -- it replaces
 // the old left panel and app list. Then the app's name with "Quit" (MENU_QUIT), then its
 // menus. Apps start through launch.h (their main, or main.bas / main.bax by a runner). The clock sits on the right, with the Wi-Fi state left of it (arcs = connected,
@@ -17,7 +18,7 @@
 //
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app).
 //
-// The look: the modernised CDE (wtk/paint.h) -- a light bar in the theme's face, the open title
+// The look: the modernised CDE (wtk/paint.h) -- a light bar in the theme's menu bar colour, the open title
 // in the accent, rounded drop-downs, anti-aliased on what lies below.
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
@@ -119,7 +120,7 @@ static void scan_apps (void)
 			scopy (a.label, app_ini_get (0, "name", name), sizeof a.label);
 			scopy (a.cat, app_ini_get (0, "category", "Other"), sizeof a.cat);
 		}
-		if (eq (a.cat, "Shell")) continue;			// the desktop's own parts
+		if (eq (a.cat, "Shell") || eq (a.cat, "Settings") || eq (a.cat, "Emulators")) continue;	// (see above)
 		g_napps++;
 	}
 }
@@ -161,7 +162,7 @@ static void fill_windows (SubDef &sd)
 
 // ---- menus ------------------------------------------------------------------------------
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
-enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB };
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL };
 
 static void add_quit_menu (const char *app)
 {
@@ -183,11 +184,12 @@ static void build_onyx_menu (MenuDef &m)
 		x.id = id; x.sep = id == -2; x.key[0] = '\0'; x.sub = sub;
 		scopy (x.label, l ? l : "", sizeof x.label);
 	};
-	add (ONYX_TERMINAL, "Terminal", -1); add (ONYX_FILES, "File Viewer", -1); add (ONYX_TASKS, "Task Manager", -1);
+	add (ONYX_TERMINAL, "Terminal", -1); add (ONYX_CONTROL, "Control Panel", -1);
+	add (ONYX_FILES, "File Viewer", -1); add (ONYX_TASKS, "Task Manager", -1);
 	add (-2, 0, -1);
 	// the categories: the usual ones first, then any other, "Other" last
 	g_nsubs = 0;
-	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Games", "BASIC", "Demos", "System", 0 };
+	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Games", "BASIC", "Demos", 0 };
 	char cats[MAXSUBS][20]; int nc = 0;
 	for (int i = 0; order[i]; i++) scopy (cats[nc++], order[i], 20);
 	for (int a = 0; a < g_napps && nc < MAXSUBS - 2; a++)
@@ -472,7 +474,7 @@ static void draw (void)
 	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
 	wk_paint_alpha (true);
 	// the bar: a light gradient of the face, a light line on top, a darker one below
-	wk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, wk_tone (C_FACE, 196), wk_tone (C_FACE, 150));
+	wk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, wk_tone (C_MENUBAR, 196), wk_tone (C_MENUBAR, 150));
 	for (int x = 0; x < g_sw; x++) { wk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
 	for (int i = 0; i < g_nmenus; i++)
 	{
@@ -544,6 +546,7 @@ static void run_item (const Item &it)
 	switch (it.id)
 	{
 	case ONYX_TERMINAL: kapi_launch ("terminal"); return;
+	case ONYX_CONTROL:  if (!kapi_raise_app ("control")) kapi_launch ("control"); return;
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
@@ -711,9 +714,9 @@ int main (void)
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
 	wtk::init ();					// the fonts, the theme: the palette
-	C_BARTXT = wk_ink_on (wk_tone (C_FACE, 176));
-	C_BARDIM = wk_mix (wk_tone (C_FACE, 176), C_BARTXT, 110);
-	C_DROP = C_FIELD; C_DIM = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = wk_tone (C_FACE, 70);
+	C_BARTXT = wk_ink_on (wk_tone (C_MENUBAR, 176));
+	C_BARDIM = wk_mix (wk_tone (C_MENUBAR, 176), C_BARTXT, 110);
+	C_DROP = C_FIELD; C_DIM = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = wk_tone (C_MENUBAR, 70);
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
 	kapi_set_pointer_handler (ptr);
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)

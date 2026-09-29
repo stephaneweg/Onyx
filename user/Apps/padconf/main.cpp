@@ -4,8 +4,10 @@
 // buttons of user/gamepad.h, on a drawn pad), and "Map Buttons..." -- press each button when
 // asked -- which writes the pad model's section of SD:/etc/gamepad.ini.
 //
-//   * Pads 1-4: click the tabs or keys 1-4. Pad > Map Buttons... (M), Forget Mapping (the
-//     pad's section removed: back to the built-in / [default] mapping), Reload gamepad.ini.
+//   * Pads 1-4: click the tabs or keys 1-4. Map Buttons... (M), Forget Mapping (the pad's
+//     section removed: back to the built-in / [default] mapping), Reload gamepad.ini: the
+//     buttons at the bottom (and the Pad menu when it is a window of its own).
+//   * The Control Panel's Gamepad applet (applet_proto.h), or a window of its own when run alone.
 //   * While mapping: press the button asked for; Esc = this pad has no such button (skip),
 //     Backspace = cancel.
 //
@@ -252,7 +254,7 @@ public:
 		{
 			canvas.text (14, y, "No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,", C_TEXT);
 			canvas.text (14, y + 18, "PlayStation 3 / 4, Switch Pro, or any USB HID gamepad).", C_TEXT);
-			if (g_msg[0]) canvas.text (14, H - 26, g_msg, msg);
+			if (g_msg[0]) canvas.text (14, height - 70, g_msg, msg);
 			return;
 		}
 		struct pad_map m; int src = pad_map_for (&g_raw, &m);
@@ -312,8 +314,8 @@ public:
 			wk_text_l (canvas, 14, y, 16, s, C_FIELD_TEXT, 2);
 			canvas.text (14, y + 18, "Esc: the pad has none (skip)   Backspace: cancel", wk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		}
-		else canvas.text (14, y, "Pad > Map Buttons... (M) if the buttons above are not in their places.", C_DIS);
-		if (g_msg[0]) canvas.text (14, H - 26, g_msg, msg);
+		else canvas.text (14, y, "Map Buttons... (M) if the buttons above are not in their places.", C_DIS);
+		if (g_msg[0]) canvas.text (14, height - 70, g_msg, msg);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -346,6 +348,9 @@ static void on_forget ()
 }
 static void on_reload () { pad_config_reload (); int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, "gamepad.ini read again."); g_root->invalidate (true); }
 static void on_quit () { kapi_exit (0); }
+static void bt_map (Widget &) { on_map (); }
+static void bt_forget (Widget &) { on_forget (); }
+static void bt_reload (Widget &) { on_reload (); }
 
 int main (void)
 {
@@ -360,11 +365,15 @@ int main (void)
 	menu.separator ();
 	menu.item ("Quit",                "^Q", WK_CTRL ('Q'), on_quit);
 	menu.publish ();
+	int by = root.height - 40;			// (the commands, also as buttons: an applet has no menu)
+	root.addChild (new Button (root.width - 440, by, 150, 30, "Map Buttons...", bt_map));
+	root.addChild (new Button (root.width - 282, by, 150, 30, "Forget Mapping", bt_forget));
+	root.addChild (new Button (root.width - 124, by, 112, 30, "Reload", bt_reload));
 	root.attach ();
 	unsigned lastSeq = 0; bool lastThere = false; int lastPad = -1;
-	while (!should_exit ())
+	while (!wk_quit ())
 	{
-		pump_events ();
+		wk_pump ();
 		g_there = kapi_pad_state (g_pad, &g_raw) != 0;
 		map_poll ();
 		if (g_there != lastThere || g_pad != lastPad || (g_there && g_raw.seq != lastSeq))
@@ -372,7 +381,7 @@ int main (void)
 			lastThere = g_there; lastPad = g_pad; lastSeq = g_raw.seq;
 			root.invalidate (true);
 		}
-		if (!root.valid) { root.draw (); kapi_present (); }
+		if (!root.valid) { root.draw (); wk_present (); }
 		kapi_msleep (16);
 	}
 	return 0;

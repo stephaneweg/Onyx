@@ -194,7 +194,7 @@ void DatePicker::onDraw ()
 	char t[12]; format (t);
 	canvas.text (7, (rowH - fh) / 2, t, disabled ? C_DIS : C_FIELD_TEXT);
 	int bw = 20, bx = width - bw - 2, bh = rowH - 6;			// the button: a small calendar
-	wk_raised (canvas, bx, 3, bw - 1, bh, 3, C_FACE, disabled ? WK_DISABLED : open ? WK_PRESSED : WK_NORMAL);
+	wk_raised (canvas, bx, 3, bw - 1, bh, 3, C_BUTTON, disabled ? WK_DISABLED : open ? WK_PRESSED : WK_NORMAL);
 	int gx = bx + (bw - 1 - 11) / 2, gy = 3 + (bh - 10) / 2;
 	wk_rbox (canvas, gx, gy, 11, 10, 2, 0x00FFFFFF, wk_tone (C_FIELD, 120));
 	wk_rbox (canvas, gx, gy, 11, 3, 1, 0x00D05048, 0x00B8403A, 255, WK_TL | WK_TR);

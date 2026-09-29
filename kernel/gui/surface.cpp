@@ -8,9 +8,10 @@
 #include <circle/new.h>
 
 CSurface::CSurface (int nId, int nW, int nH, unsigned nOwnerPid)
-:	m_nId (nId), m_nW (nW), m_nH (nH), m_nOwnerPid (nOwnerPid),
+:	m_nId (nId), m_nW (nW), m_nH (nH), m_nOwnerPid (nOwnerPid), m_bOwnerGone (FALSE),
 	m_pRaw (0), m_ulPhys (0), m_nPages (0)
 {
+	for (int i = 0; i < MAX_USERS; i++) m_Users[i] = 0;
 	// Same page-aligned, contiguous allocation as a window canvas: over-allocate from
 	// the identity-mapped heap and align the start up to 64 KB so PA == the aligned VA
 	// and the region can be mapped into a process address space.
@@ -37,6 +38,30 @@ CSurface::~CSurface (void)
 		delete [] (u8 *) m_pRaw;
 		m_pRaw = 0;
 	}
+}
+
+void CSurface::AddUser (unsigned nPid)
+{
+	if (nPid == m_nOwnerPid || nPid == 0) return;
+	for (int i = 0; i < MAX_USERS; i++) if (m_Users[i] == nPid) return;
+	for (int i = 0; i < MAX_USERS; i++) if (m_Users[i] == 0) { m_Users[i] = nPid; return; }
+	// (more users than slots: the oldest is forgotten -- it keeps its mapping at its own risk)
+	for (int i = 0; i + 1 < MAX_USERS; i++) m_Users[i] = m_Users[i + 1];
+	m_Users[MAX_USERS - 1] = nPid;
+}
+
+boolean CSurface::DropUser (unsigned nPid)
+{
+	boolean bWas = FALSE;
+	for (int i = 0; i < MAX_USERS; i++) if (m_Users[i] == nPid && nPid != 0) { m_Users[i] = 0; bWas = TRUE; }
+	return bWas;
+}
+
+boolean CSurface::Unused (void) const
+{
+	if (!m_bOwnerGone) return FALSE;
+	for (int i = 0; i < MAX_USERS; i++) if (m_Users[i] != 0) return FALSE;
+	return TRUE;
 }
 
 CSurfaceManager *CSurfaceManager::s_pThis = 0;
@@ -115,6 +140,8 @@ void CSurfaceManager::Destroy (int nId)
 		if (m_pSurfaces[i] != 0 && m_pSurfaces[i]->Id () == nId)
 		{
 			CSurface *pS = m_pSurfaces[i];
+			pS->OwnerGone ();
+			if (!pS->Unused ()) break;		// (a user still maps it: freed at its end)
 			m_pSurfaces[i] = 0;
 			m_Lock.Release ();
 			delete pS;
@@ -132,9 +159,13 @@ void CSurfaceManager::DestroyByOwner (unsigned nPid)
 		CSurface *pVictim = 0;
 		for (int i = 0; i < MAX_SURFACES; i++)
 		{
-			if (m_pSurfaces[i] != 0 && m_pSurfaces[i]->OwnerPid () == nPid)
+			CSurface *pS = m_pSurfaces[i];
+			if (pS == 0) continue;
+			if (pS->OwnerPid () == nPid) pS->OwnerGone ();
+			pS->DropUser (nPid);
+			if (pS->Unused ())
 			{
-				pVictim = m_pSurfaces[i];
+				pVictim = pS;
 				m_pSurfaces[i] = 0;
 				break;
 			}

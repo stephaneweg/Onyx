@@ -12,8 +12,8 @@ void Button::onDraw ()
 	int st = disabled ? WK_DISABLED : pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
 	if (hasFocus && !disabled) st |= WK_FOCUS;
 	int bx, by, bw, bh;
-	wk_framed (canvas, 0, 0, width, height, C_FACE, st, &bx, &by, &bw, &bh);
-	wk_text_c (canvas, bx, by, bw, bh, text, disabled ? C_DIS : C_TEXT);
+	wk_framed (canvas, 0, 0, width, height, C_BUTTON, st, &bx, &by, &bw, &bh);
+	wk_text_c (canvas, bx, by, bw, bh, text, disabled ? wk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT);
 }
 
 bool Button::onMouse (int mx, int /*my*/, int bl, int, int, int)

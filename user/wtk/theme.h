@@ -9,12 +9,17 @@
 //                             of the window in front; the ones behind: Grey)
 //     active   = 0xF0B07A     or the colours themselves (they override the theme's)
 //     inactive = 0xACACB0
-//     face     = 0xD0C2BA     the apps' face: their background, the buttons
+//     window   = 0xD0C2BA     the windows' content: the apps' face, their background ("face"
+//                             before: still read)
+//     button   = 0xD0C2BA     the push buttons, the drop-downs' faces (default: the window's)
+//     field    = 0xF6F3F1     the text fields and the lists (default: the window's, nearly white)
 //     accent   = 0x4992A7     focus, selection, checks
 //     outline  = dark         the frames' 1-px outline: none, dark or black
+//     menubar  = 0xD0C2BA     the menu bar (default: the window's)
 //     dock     = 0xA4BACE     the dock's face
 //
-// Without the file (or a key), the defaults below: Peach over CDE's beige, a teal accent.
+// Without the file (or a key), the defaults below: Peach over CDE's beige, a teal accent. Each
+// text colour is black or white by the brightness of what it is written on.
 //
 #ifndef _wtk_theme_h
 #define _wtk_theme_h
@@ -37,6 +42,9 @@ extern unsigned C_FRAME_ACTIVE;		// the window in front's frame
 extern unsigned C_FRAME_INACTIVE;	// the other windows' frames
 extern int	WK_OUTLINE;		// the frames' 1-px outline: 0 none, 1 dark, 2 black
 extern unsigned C_DOCK;			// the dock's face (and the drawers' frame)
+extern unsigned C_BUTTON;		// a push button's / a drop-down's face (the window's by default)
+extern unsigned C_BUTTON_TEXT;		// ... its text
+extern unsigned C_MENUBAR;		// the menu bar's face (the window's by default)
 
 // The named colour themes (the active frame's colour).
 struct WkNamedTheme { const char *name; unsigned frame; };
@@ -44,7 +52,23 @@ extern const WkNamedTheme wk_themes[];	// ..., { 0, 0 }
 static const unsigned WK_GREY = 0x00ACACB0;	// the inactive frames
 
 void wk_theme_load ();			// (wtk::init () calls it; idempotent)
+void wk_theme_reload ();		// read SD:/etc/theme.txt again (a new theme applied: the dock)
 void wk_theme_face (unsigned face);	// the palette's shades from a face colour (a preview)
+
+// The whole theme as values (the Theme applet edits one, previews it, writes it). WK_AUTO: a
+// colour derived from the window's (button, field, menubar).
+static const unsigned WK_AUTO = 0xFF000000u;
+struct WkTheme
+{
+	int theme;				// wk_themes[] index of the active frame's colour, -1: `active`
+	unsigned active, inactive, window, button, field, accent, menubar, dock;
+	int outline;				// 0 none, 1 dark, 2 black
+};
+void wk_theme_defaults (WkTheme &t);
+void wk_theme_parse (const char *text, WkTheme &t);	// theme.txt's keys over t
+void wk_theme_get (WkTheme &t);			// the palette in use
+void wk_theme_set (const WkTheme &t);		// ... made this one (every shade computed)
+int  wk_theme_write (const WkTheme &t, char *out, int cap);	// theme.txt's text -> its length
 
 } // namespace wtk
 

@@ -18,7 +18,8 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
-	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nChromeGenShown (0), m_nRetireFrame (0)
+	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE),
+	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
 	m_pRetired[0] = m_pRetired[1] = m_pRetired[2] = 0;
 	static unsigned s_nNextId = 0;
@@ -281,9 +282,9 @@ static void ChromeRows (GImage *pScreen, const GImage *pChrome, int x0, int y0, 
 void CWindow::DrawTo (GImage *pScreen, boolean bActive)
 {
 	int nAlpha = m_nAlpha;
-	if (nAlpha <= 0 || m_bMinimised)
+	if (nAlpha <= 0 || Hidden ())
 	{
-		return;					// fully faded out / minimised: invisible
+		return;					// fully faded out / minimised / off-desk: invisible
 	}
 	if (AlphaCanvas ())				// per-pixel transparency (the dock, the agenda)
 	{
@@ -375,7 +376,7 @@ boolean CWindow::HitCloseBox (int sx, int sy) const
 // minimise from the right.
 int CWindow::HitTitleButton (int sx, int sy) const
 {
-	if (Borderless () || m_bMinimised)
+	if (Borderless () || Hidden ())
 	{
 		return -1;
 	}
@@ -596,7 +597,8 @@ CWindowManager::CWindowManager (void)
 	m_nFrames (0), m_nMouseEvents (0), m_nKeyEvents (0),
 	m_pFullscreen (0), m_pFsRaw (0), m_ulFsPhys (0), m_nFsPages (0),
 	m_pMenuLast (0), m_nMenuLastGen (0), m_nMenuSerial (1),
-	m_bDnd (FALSE), m_pDndSrc (0), m_pDndOver (0), m_nModifiers (0)
+	m_bDnd (FALSE), m_pDndSrc (0), m_pDndOver (0), m_nModifiers (0),
+	m_nDesk (0), m_nDesks (4), m_nDeskGen (0)
 {
 	m_DndLabel[0] = '\0';
 	for (unsigned i = 0; i < HELD_WORDS; i++) m_UsbHeld[i] = m_VncHeld[i] = 0;
@@ -612,6 +614,11 @@ CWindowManager::CWindowManager (void)
 void CWindowManager::Add (CWindow *pWindow)
 {
 	assert (pWindow != 0);
+	m_SpinLock.Acquire ();
+	// (v65) a new window opens on the current desk; the shell's parts are on every one
+	pWindow->SetDesk (pWindow->Topmost () || pWindow->Backmost () || pWindow->System () ? -1 : m_nDesk);
+	pWindow->SetOffDesk (FALSE);
+	m_SpinLock.Release ();
 	pWindow->Damage ();
 	m_SpinLock.Acquire ();
 	if (m_nWindows < WM_MAX_WINDOWS)
@@ -673,6 +680,7 @@ void CWindowManager::Remove (CWindow *pWindow)
 // Caller holds m_SpinLock.
 void CWindowManager::RaiseLocked (CWindow *pWindow)
 {
+	if (pWindow != 0 && pWindow->OffDesk ()) SetDeskLocked (pWindow->Desk ());	// (its desk shown)
 	if (pWindow != 0 && pWindow->Minimised ()) pWindow->SetMinimised (FALSE);	// (back from the dock)
 	if (pWindow != 0) pWindow->Damage ();
 	if (pWindow != 0 && pWindow->Backmost ())
@@ -706,7 +714,7 @@ CWindow *CWindowManager::ActiveLocked (void)
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
 		CWindow *p = m_pWindows[i];
-		if (p != 0 && !p->Topmost () && !p->Backmost () && !p->Borderless () && !p->Minimised ())
+		if (p != 0 && !p->Topmost () && !p->Backmost () && !p->Borderless () && !p->Hidden ())
 		{
 			return p;
 		}
@@ -750,7 +758,7 @@ CWindow *CWindowManager::KeyTargetLocked (void)
 	}
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
-		if (m_pWindows[i] != 0 && !m_pWindows[i]->Topmost () && !m_pWindows[i]->Minimised ())
+		if (m_pWindows[i] != 0 && !m_pWindows[i]->Topmost () && !m_pWindows[i]->Hidden ())
 		{
 			return m_pWindows[i];
 		}
@@ -788,7 +796,7 @@ int CWindowManager::BottomInsetLocked (void)
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		CWindow *p = m_pWindows[i];
-		if (p != 0 && p->Topmost () && p->Y () > 0 && !p->Minimised ()
+		if (p != 0 && p->Topmost () && p->Y () > 0 && !p->Hidden ()
 		    && p->Y () + p->OuterHeight () >= g_nScreenHeight && p->MinLogicalHeight () > nInset)
 		{
 			nInset = p->MinLogicalHeight ();
@@ -829,6 +837,87 @@ void CWindowManager::Minimise (CWindow *pWindow)
 	m_SpinLock.Acquire ();
 	MinimiseLocked (pWindow);
 	m_SpinLock.Release ();
+}
+
+// ---- workspaces (v65) ------------------------------------------------------------------------
+// Caller holds m_SpinLock: the pointer's state no longer names a window that went hidden.
+void CWindowManager::ForgetHiddenLocked (void)
+{
+	if (m_pPtrOverWindow != 0 && m_pPtrOverWindow->Hidden ())
+	{
+		EmitPointer (m_pPtrOverWindow, GUI_EVENT_PTR_LEAVE, -1, -1, 0, 0);
+		m_pPtrOverWindow = 0;
+	}
+	if (m_pPtrCaptureWindow != 0 && m_pPtrCaptureWindow->Hidden ())	{ m_pPtrCaptureWindow = 0; }
+	if (m_pDragWindow != 0 && m_pDragWindow->Hidden ())		{ m_pDragWindow = 0; }
+	if (m_pBtnDown != 0 && m_pBtnDown->Hidden ())			{ m_pBtnDown = 0; }
+	if (m_pTitleClick != 0 && m_pTitleClick->Hidden ())		{ m_pTitleClick = 0; }
+}
+
+// Caller holds m_SpinLock.
+void CWindowManager::SetDeskLocked (int n)
+{
+	if (n < 0 || n >= m_nDesks)
+	{
+		return;
+	}
+	if (n != m_nDesk)
+	{
+		m_nDesk = n;
+		m_nDeskGen++;
+	}
+	for (unsigned i = 0; i < m_nWindows; i++)
+	{
+		CWindow *p = m_pWindows[i];
+		if (p != 0) p->SetOffDesk (p->Desk () >= 0 && p->Desk () != n);
+	}
+	ForgetHiddenLocked ();
+}
+
+int CWindowManager::SetDesk (int n, int nCount)
+{
+	m_SpinLock.Acquire ();
+	if (nCount > 0)
+	{
+		if (nCount > KAPI_DESK_MAX) nCount = KAPI_DESK_MAX;
+		if (nCount != m_nDesks)
+		{
+			m_nDesks = nCount;
+			m_nDeskGen++;
+			for (unsigned i = 0; i < m_nWindows; i++)		// (the desks dropped: onto the last)
+				if (m_pWindows[i] != 0 && m_pWindows[i]->Desk () >= nCount) m_pWindows[i]->SetDesk (nCount - 1);
+			if (m_nDesk >= nCount) m_nDesk = nCount - 1;
+		}
+	}
+	unsigned nGen = m_nDeskGen;
+	SetDeskLocked (n >= 0 ? n : m_nDesk);
+	boolean bChanged = nGen != m_nDeskGen || nCount > 0;
+	int nInfo = m_nDesk | (m_nDesks << 8) | (int) ((m_nDeskGen & 0x7FFF) << 16);
+	m_SpinLock.Release ();
+	if (bChanged) ScreenDirty ();
+	return nInfo;
+}
+
+int CWindowManager::DeskInfo (void)
+{
+	return m_nDesk | (m_nDesks << 8) | (int) ((m_nDeskGen & 0x7FFF) << 16);
+}
+
+int CWindowManager::MoveToDesk (CWindow *pWindow, int n)
+{
+	if (pWindow == 0) return -3;
+	m_SpinLock.Acquire ();
+	if (n >= m_nDesks) n = m_nDesks - 1;
+	if (n >= -1 && n != pWindow->Desk () && !pWindow->Topmost () && !pWindow->Backmost ())
+	{
+		pWindow->SetDesk (n);
+		pWindow->SetOffDesk (n >= 0 && n != m_nDesk);
+		ForgetHiddenLocked ();
+		m_nDeskGen++;
+	}
+	int nDesk = pWindow->Desk ();
+	m_SpinLock.Release ();
+	return nDesk;
 }
 
 unsigned CWindowManager::GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
@@ -1192,7 +1281,7 @@ unsigned CWindowManager::HitTest (int x, int y, boolean *pbOnTitleBar)
 	for (int i = (int) m_nWindows - 1; i >= 0; i--)
 	{
 		CWindow *pWin = m_pWindows[i];
-		if (pWin == 0 || pWin->Minimised () || pWin->Alpha () <= 0)
+		if (pWin == 0 || pWin->Hidden () || pWin->Alpha () <= 0)
 		{
 			continue;
 		}
@@ -1719,23 +1808,40 @@ void CWindowManager::OnKey (const char *pString)
 	}
 	// Deliver keys to the topmost window's app-level key handler. Apps own their text
 	// input via the user-side uikit toolkit -- no kernel widgets or dialogs any more.
-	CWindow *pTop = KeyTargetLocked ();		// topmost window except the menu bar
-	u64 ulKeyHandler = pTop != 0 ? pTop->KeyHandler () : 0;
-	if (pTop != 0 && ulKeyHandler != 0)
+	boolean bSwitched = FALSE;
+	const char *p = pString; int code;
+	unsigned nMods;
+	while (nMods = 0, (code = NextKey (&p, &nMods)) != 0)
 	{
-		const char *p = pString; int code;
-		unsigned nMods;
-		while (nMods = 0, (code = NextKey (&p, &nMods)) != 0)
+		// (v65) Ctrl+Alt+Left / Right: the previous / next desk; with Shift the active window
+		// goes along (not for a full-screen app: every key is its own)
+		unsigned m = m_nModifiers | nMods;
+		if ((m & (MOD_CTRL | MOD_ALT)) == (MOD_CTRL | MOD_ALT) && (code == KEY_LEFT || code == KEY_RIGHT)
+		    && m_pFullscreen == 0 && m_nDesks > 1)
 		{
-			GUIEvent Ev;
-			Ev.nMods     = m_nModifiers | nMods;
-			Ev.ulHandler = ulKeyHandler;
-			Ev.ulSender  = 0;
-			Ev.nEvent    = GUI_EVENT_KEY;
-			Ev.lValue    = code;
-			pTop->PushEvent (Ev);
+			int n = (m_nDesk + (code == KEY_RIGHT ? 1 : m_nDesks - 1)) % m_nDesks;
+			CWindow *pMove = (m & MOD_SHIFT) ? ActiveLocked () : 0;
+			if (pMove != 0 && pMove->Desk () >= 0) pMove->SetDesk (n);
+			SetDeskLocked (n);
+			if (pMove != 0) RaiseLocked (pMove);
+			bSwitched = TRUE;
+			continue;
 		}
+		CWindow *pTop = KeyTargetLocked ();		// topmost window except the menu bar
+		u64 ulKeyHandler = pTop != 0 ? pTop->KeyHandler () : 0;
+		if (pTop == 0 || ulKeyHandler == 0)
+		{
+			continue;
+		}
+		GUIEvent Ev;
+		Ev.nMods     = m;
+		Ev.ulHandler = ulKeyHandler;
+		Ev.ulSender  = 0;
+		Ev.nEvent    = GUI_EVENT_KEY;
+		Ev.lValue    = code;
+		pTop->PushEvent (Ev);
 	}
 	m_SpinLock.Release ();
+	if (bSwitched) ScreenDirty ();
 }
 

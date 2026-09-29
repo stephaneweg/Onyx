@@ -48,6 +48,7 @@ class FileDialog : public Modal
 	enum { MAXENT = 128 };
 	char  m_dir[256], m_ent[MAXENT][96], m_isdir[MAXENT];
 	int   m_count, m_sel, m_top, m_rows, m_rowH;
+	int   m_lastRow; unsigned m_lastTick;	// a double click on a file: confirmed
 	int   m_lx, m_ly, m_lw, m_lh;		// file-list rect (box-local)
 	bool  m_save, m_folder;		// m_folder: pick a directory (no filename box)
 	Textbox   *m_nameBox;

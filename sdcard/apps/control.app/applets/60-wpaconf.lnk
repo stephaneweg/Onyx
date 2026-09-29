@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Wi-Fi
+icon   = SD:/apps/wpaconf.app/icon.bmp
+target = wpaconf
+text   = The Wi-Fi network: its name, its password, the country

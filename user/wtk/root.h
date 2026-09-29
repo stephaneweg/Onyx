@@ -10,6 +10,16 @@
 
 namespace wtk {
 
+// The loop's three steps, the same for a window and for an applet (a Control Panel applet:
+// applet_proto.h -- the app started with "--applet <surface> <host>" draws into the host's pane
+// instead of a window of its own; a Root made then adopts that surface). Root::run and the
+// modal dialogs go through them; an app with its own loop should too.
+bool wk_applet ();				// running as an applet? (its arguments said so)
+void wk_pump ();				// the events: the window's (pump_events), an applet's host's
+void wk_present ();			// what was drawn shown: kapi_present, or told to the host
+bool wk_quit ();				// time to end: the close box, or the host's AP_CLOSE / its end
+bool wk_applet_send (int type, const void *data = 0, unsigned len = 0);	// a message to the host
+
 class Root : public Widget
 {
 public:
@@ -61,9 +71,11 @@ private:
 	bool     m_resizable, m_maxed;		// (setResizable, maximise)
 	int      m_rx, m_ry, m_rw, m_rh;	// the window's place and size before it was maximised
 	void init (unsigned *fb);		// shared ctor tail (adopt canvas + decorate + register)
+	void initApplet ();			// ... an applet's: the host's surface, no window
 	static Root *&active ();		// single active window per app (reachable from C callbacks)
-	static void ptrEvent (unsigned long, int ev, long v);
-	static void keyEvent (unsigned long, int ev, long v);
+public:
+	static void ptrEvent (unsigned long, int ev, long v);	// (the kernel's event streams; an
+	static void keyEvent (unsigned long, int ev, long v);	// applet's host's, re-packed alike)
 };
 
 } // namespace wtk

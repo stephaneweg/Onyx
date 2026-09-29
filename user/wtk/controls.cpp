@@ -167,9 +167,9 @@ void NumericUpDown::onDraw ()
 	int bx = width - bw - 2, hh = (height - 4) / 2;			// the arrows: two small buttons
 	int su = disabled ? WK_DISABLED : m_down == 1 ? WK_PRESSED : WK_NORMAL;
 	int sd = disabled ? WK_DISABLED : m_down == 2 ? WK_PRESSED : WK_NORMAL;
-	wk_raised (canvas, bx, 2, bw, hh, 3, C_FACE, su);
-	wk_raised (canvas, bx, 2 + hh, bw, height - 4 - hh, 3, C_FACE, sd);
-	unsigned gc = disabled ? C_DIS : C_TEXT;
+	wk_raised (canvas, bx, 2, bw, hh, 3, C_BUTTON, su);
+	wk_raised (canvas, bx, 2 + hh, bw, height - 4 - hh, 3, C_BUTTON, sd);
+	unsigned gc = disabled ? wk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT;
 	wk_glyph (canvas, WKG_UP, bx + bw / 2, 2 + hh / 2, 8, gc);
 	wk_glyph (canvas, WKG_DOWN, bx + bw / 2, 2 + hh + (height - 4 - hh) / 2, 8, gc);
 }

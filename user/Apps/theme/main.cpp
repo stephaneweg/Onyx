@@ -1,127 +1,141 @@
 //
-// theme -- the desktop's look (the modernised CDE, wtk/theme.h): the colour of the window in
-// front's frame (a named theme -- Peach, Steel, Sage, Brick, Slate -- or any colour), the frames
-// behind, their 1-px outline (none, dark, black), the apps' face, the accent (focus, selection),
-// the dock's face; and the desktop: the wallpaper's colour, the keyboard layout, the wheel's
-// speed. A preview shows a window in front and one behind as they will be.
+// theme -- the Control Panel's Theme applet (applet_proto.h; alone, a window of its own): the
+// desktop's look, as Windows 98's Display Properties. On the left a PREVIEW of a desktop (the
+// wallpaper, the menu bar, a window behind, a window in front with a button, a text field, a
+// selection and a check, the dock) drawn in the colours being edited; click a part of it -- or pick
+// it in Item -- and give it a colour: one of the palette's, or any colour (Custom...: red, green,
+// blue). The parts (wtk/theme.h): the frame of the window in front and of the ones behind, the
+// windows' content, the buttons, the text fields and lists, the selection, the menu bar, the dock,
+// the desktop. The buttons, the fields and the menu bar may follow the window's colour
+// (Automatic). The scheme: the named colours of the window in front (Peach, Steel, Sage, Brick,
+// Slate); the frames' outline. Below, the DESKTOP: its wallpaper (wallpaper.h) -- Voronoi cells, a
+// gradient, bubbles, a colour or a picture -- its colours, the gradient's direction, the cells'
+// number, the picture's file and how it fills the screen.
 //
-// Apply writes SD:/etc/theme.txt (every app reads it when it starts), the wallpaper's colour
-// (apps/voronoy's config.ini, then the wallpaper is drawn again), switches the keymap and the
-// wheel speed live, and restarts the menu bar, the dock and the agenda so they take the new
-// colours at once; the apps already open keep theirs until they are opened again. Discard reloads
-// what is saved.
+// Apply writes SD:/etc/theme.txt and SD:/etc/wallpaper.ini, paints the wallpaper again
+// (apps/voronoy), gives the dock (DOCK_MSG_RELOAD), the menu bar and the agenda the new colours at
+// once, and the Control Panel too (AP_THEME: it starts the applet again); the other apps take them
+// when they are opened again. Discard reloads what is saved.
 //
 #include "kapi.h"
 #include "applib.h"
+#include "dockconf.h"
+#include "wallpaper.h"
+#include "applet_proto.h"
+#include "img/imgload.hpp"
 #include "wtk/wtk.h"
 
 using namespace wtk;
 
-#define W	520
-#define H	452
+#define W	700
+#define H	470
+#define PVW	320			// the preview (a 1024 x 768 desktop, small)
+#define PVH	240
 
-static const unsigned DEF_FACE = 0x00D0C2BA, DEF_ACCENT = 0x004992A7, DEF_DOCK = 0x00A4BACE,
-		      DEF_WALL = 0x004878B0;
+enum { IT_ACTIVE, IT_INACTIVE, IT_WINDOW, IT_BUTTON, IT_FIELD, IT_ACCENT, IT_MENUBAR, IT_DOCK, IT_DESKTOP, IT_N };
+static const char *const ITEM_NAME[IT_N] = { "Window in front: frame", "Windows behind: frame", "Windows: content",
+	"Buttons", "Text fields and lists", "Selection and focus", "Menu bar", "Dock", "Desktop" };
 static const char *const OUTLINES[3] = { "None", "Dark", "Black" };
+static const char *const MODES[WP_NMODES] = { "Voronoi cells", "Gradient", "Bubbles", "Solid colour", "Picture" };
+static const char *const DIRS[2] = { "Top to bottom", "Left to right" };
+static const char *const STYLES[2] = { "Fill the screen", "Tile" };
 
-// The values being edited (-1 theme: a custom colour).
-static int      g_theme = 0;
-static unsigned g_active = 0x00F0B07A, g_inactive = WK_GREY, g_face = DEF_FACE, g_accent = DEF_ACCENT,
-		g_dock = DEF_DOCK, g_wall = DEF_WALL;
-static int      g_outline = 1, g_wheel = 2;
+// The palette: the colour themes', CDE's, greys, then deeper tones.
+static const unsigned PAL[24] = {
+	0x00F0B07A, 0x007A98C0, 0x0080AA76, 0x00C45450, 0x003A4458, 0x00ACACB0, 0x00D0C2BA, 0x00ECE6DE,
+	0x00FFFFFF, 0x00C8C8C8, 0x00808080, 0x00303030,
+	0x004992A7, 0x00A4BACE, 0x004878B0, 0x001C2C48, 0x00E0A030, 0x00D06A30, 0x0098B040, 0x003E9A6A,
+	0x007E62B0, 0x00C0607E, 0x006A4A3A, 0x00000000 };
 
-#define MAXKM	24
-static char        g_kmname[MAXKM][12];
-static const char *g_kmopt[MAXKM];
-static int         g_nkm;
+static WkTheme   g_t, g_saved;			// being edited / the app's own
+static Wallpaper g_wp;
+static int       g_item = IT_ACTIVE;
+static Root     *g_root;
 
-// ---- the widgets ------------------------------------------------------------------------------------
-// A named theme: its colour in a rounded swatch, its name below; the chosen one ringed.
-class Swatch : public Widget
+static unsigned item_colour (int it)
 {
-public:
-	int idx;
-	Swatch (int l, int t, int i) : Widget (l, t, 64, 50), idx (i) { canFocus = true; }
-	void onDraw () override;
-	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
-};
+	switch (it)
+	{
+	case IT_ACTIVE:   return g_t.active;
+	case IT_INACTIVE: return g_t.inactive;
+	case IT_WINDOW:   return g_t.window;
+	case IT_BUTTON:   return g_t.button;
+	case IT_FIELD:    return g_t.field;
+	case IT_ACCENT:   return g_t.accent;
+	case IT_MENUBAR:  return g_t.menubar;
+	case IT_DOCK:     return g_t.dock;
+	default:          return g_wp.c1;
+	}
+}
+static bool can_auto (int it) { return it == IT_BUTTON || it == IT_FIELD || it == IT_MENUBAR; }
 
-// The preview: a window behind, a window in front (their frames, the face, a button, a field
-// with a selection) in the colours being edited.
-class Preview : public Widget
+// What an automatic colour is, the palette of the edited theme applied (a swatch shows it).
+static unsigned shown_colour (int it)
 {
-public:
-	Preview (int l, int t, int w, int h) : Widget (l, t, w, h) {}
-	void onDraw () override;
-};
-
-static Swatch      *g_sw[5];
-static ColorPicker *g_pkActive, *g_pkInactive, *g_pkFace, *g_pkAccent, *g_pkDock, *g_pkWall;
-static Dropdown    *g_ddOutline, *g_ddKeymap;
-static NumericUpDown *g_nuWheel;
-static Preview     *g_preview;
-static Label       *g_status;
-
-static void changed (void)
-{
-	for (int i = 0; i < 5; i++) g_sw[i]->invalidate (true);
-	g_preview->invalidate (true);
+	unsigned c = item_colour (it);
+	if (c != WK_AUTO) return c;
+	WkTheme keep; wk_theme_get (keep);
+	wk_theme_set (g_t);
+	unsigned r = it == IT_BUTTON ? C_BUTTON : it == IT_FIELD ? C_FIELD : C_MENUBAR;
+	wk_theme_set (keep);
+	return r;
 }
 
-void Swatch::onDraw ()
+// ---- the preview ------------------------------------------------------------------------------------
+struct Hot { int x, y, w, h, item; };
+static Hot  g_hot[16];
+static int  g_nhot;
+static unsigned g_wall[PVW * PVH];		// the wallpaper, small (made again when it changes)
+static bool g_wallOk;
+static unsigned *g_pic; static int g_picW, g_picH; static char g_picPath[200];
+
+static void add_hot (int x, int y, int w, int h, int it) { if (g_nhot < 16) g_hot[g_nhot++] = { x, y, w, h, it }; }
+
+static void make_wall (void)
 {
-	canvas.clear (bgColor ());
-	unsigned c = wk_themes[idx].frame;
-	bool on = g_theme == idx;
-	if (on) wk_rline (canvas, 8, 0, 48, 32, 9, C_ACCENT, 255);
-	if (on) wk_rline (canvas, 9, 1, 46, 30, 8, C_ACCENT, 160);
-	wk_rbox (canvas, 11, 3, 42, 26, 6, wk_tone (c, 166), wk_tone (c, 112));
-	wk_rline (canvas, 11, 3, 42, 26, 6, wk_tone (c, 64), 190);
-	if (hasFocus) wk_rline (canvas, 11, 3, 42, 26, 6, C_ACCENT, 255);
-	wk_text_c (canvas, 0, 32, width, 18, wk_themes[idx].name, C_TEXT, on ? 2 : 0);
+	g_wallOk = true;
+	if (g_wp.mode != WP_IMAGE) { wp_paint (g_wall, PVW, PVH, PVW, g_wp, 12345, 1, 0); return; }
+	for (int i = 0; i < PVW * PVH; i++) g_wall[i] = g_wp.c1;
+	bool same = true;
+	for (int i = 0; same && (g_picPath[i] || g_wp.image[i]); i++) same = g_picPath[i] == g_wp.image[i];
+	if (!same)
+	{
+		delete [] g_pic; g_pic = 0; g_picW = g_picH = 0;
+		int n = 0; for (; g_wp.image[n] && n < (int) sizeof g_picPath - 1; n++) g_picPath[n] = g_wp.image[n];
+		g_picPath[n] = 0;
+		ImgFrames im;
+		if (g_wp.image[0] && img_load (g_wp.image, &im))
+		{
+			g_pic = im.px[0]; g_picW = im.w; g_picH = im.h;
+			for (int f = 1; f < im.n; f++) delete [] im.px[f];
+		}
+	}
+	if (g_pic == 0 || g_picW <= 0 || g_picH <= 0) return;
+	for (int y = 0; y < PVH; y++)
+		for (int x = 0; x < PVW; x++)
+		{
+			int sx, sy;
+			if (g_wp.tile) { sx = (x * 1024 / PVW) % g_picW; sy = (y * 768 / PVH) % g_picH; }	// (as the screen's)
+			else
+			{
+				long kx = (long) g_picW * 65536 / PVW, ky = (long) g_picH * 65536 / PVH, k = kx < ky ? kx : ky;
+				long ox = ((long) g_picW * 65536 - k * PVW) / 2, oy = ((long) g_picH * 65536 - k * PVH) / 2;
+				sx = (int) ((ox + k * x) >> 16); sy = (int) ((oy + k * y) >> 16);
+				if (sx >= g_picW) sx = g_picW - 1;
+				if (sy >= g_picH) sy = g_picH - 1;
+			}
+			unsigned c = g_pic[(long) sy * g_picW + sx], a = c >> 24;
+			if (a != 255) c = ((((c >> 16) & 255) * a / 255) << 16) | ((((c >> 8) & 255) * a / 255) << 8) | ((c & 255) * a / 255);
+			g_wall[y * PVW + x] = c & 0xFFFFFF;
+		}
 }
 
-bool Swatch::onMouse (int mx, int, int bl, int, int, int)
+// One small window at (x, y): its frame (its corners blended over what is below), its content.
+static void mini_frame (Canvas &cv, int x, int y, int w, int h, const char *title, bool active)
 {
-	if (mx < 0) { pressed = false; return false; }
-	if (bl && !pressed)
-	{
-		pressed = true; setFocus ();
-		g_theme = idx; g_active = wk_themes[idx].frame;
-		g_pkActive->color = g_active; g_pkActive->invalidate (true);
-		changed ();
-	}
-	else if (!bl) pressed = false;
-	return true;
-}
-
-// Draw with the edited palette (the app's own is put back after).
-struct PaletteSwap
-{
-	unsigned bg, face, hi, dn, border, text, accent, dis, field, ftext, sel, fa, fi; int ol;
-	PaletteSwap ()
-	{
-		bg = C_BG; face = C_FACE; hi = C_FACE_HI; dn = C_FACE_DN; border = C_BORDER; text = C_TEXT;
-		accent = C_ACCENT; dis = C_DIS; field = C_FIELD; ftext = C_FIELD_TEXT; sel = C_SEL_TEXT;
-		fa = C_FRAME_ACTIVE; fi = C_FRAME_INACTIVE; ol = WK_OUTLINE;
-		C_ACCENT = g_accent; C_FRAME_ACTIVE = g_active; C_FRAME_INACTIVE = g_inactive; WK_OUTLINE = g_outline;
-		wk_theme_face (g_face);
-	}
-	~PaletteSwap ()
-	{
-		C_BG = bg; C_FACE = face; C_FACE_HI = hi; C_FACE_DN = dn; C_BORDER = border; C_TEXT = text;
-		C_ACCENT = accent; C_DIS = dis; C_FIELD = field; C_FIELD_TEXT = ftext; C_SEL_TEXT = sel;
-		C_FRAME_ACTIVE = fa; C_FRAME_INACTIVE = fi; WK_OUTLINE = ol;
-	}
-};
-
-// One small window at (x, y): its frame (the corners blended over the preview's back), its face,
-// a framed button, a field with a selection.
-static void mini_window (Canvas &cv, int x, int y, int w, int h, const char *title, bool active)
-{
-	static unsigned buf[260 * 180];
+	static unsigned buf[240 * 150];
 	if (w * h > (int) (sizeof buf / sizeof buf[0])) return;
-	wk_draw_frame (buf, w, h, KAPI_FRAME_TITLE_H, title, active ? g_active : g_inactive, active);
+	wk_draw_frame (buf, w, h, KAPI_FRAME_TITLE_H, title, active ? C_FRAME_ACTIVE : C_FRAME_INACTIVE, active);
 	for (int j = 0; j < h; j++)
 		for (int i = 0; i < w; i++)
 		{
@@ -130,165 +144,324 @@ static void mini_window (Canvas &cv, int x, int y, int w, int h, const char *tit
 			if (t == 0) cv.pixel (x + i, y + j, c & 0xFFFFFF);
 			else wk_blend_px (cv, x + i, y + j, c & 0xFFFFFF, 255 - (int) t);
 		}
-	int cx = x + KAPI_FRAME_BORDER, cy = y + KAPI_FRAME_TITLE_H, cw = w - 2 * KAPI_FRAME_BORDER, ch = h - KAPI_FRAME_TITLE_H - KAPI_FRAME_BORDER;
-	cv.fillRect (cx, cy, cw, ch, C_BG);
-	int bx, by, bw, bh;
-	wk_framed (cv, cx + 10, cy + 10, 76, 28, C_FACE, active ? WK_NORMAL : WK_NORMAL, &bx, &by, &bw, &bh);
-	wk_text_c (cv, bx, by, bw, bh, "OK", C_TEXT);
-	wk_sunken (cv, cx + 96, cy + 12, cw - 106, 24, 4, C_FIELD, active);
-	wk_hilite (cv, cx + 100, cy + 16, 36, 16, 3, true);
-	cv.text (cx + 102, cy + 16, "Text", C_SEL_TEXT);
-	cv.text (cx + 140, cy + 16, "field", C_FIELD_TEXT);
-	wk_check_mark (cv, cx + 10, cy + 48, 14, true, WK_NORMAL);
-	cv.text (cx + 30, cy + 47, "Check", C_TEXT);
-	wk_radio_mark (cv, cx + 96, cy + 48, 14, true, WK_NORMAL);
-	cv.text (cx + 116, cy + 47, "Radio", C_TEXT);
+	cv.fillRect (x + KAPI_FRAME_BORDER, y + KAPI_FRAME_TITLE_H, w - 2 * KAPI_FRAME_BORDER, h - KAPI_FRAME_TITLE_H - KAPI_FRAME_BORDER, C_BG);
 }
 
-void Preview::onDraw ()
+class Preview : public Widget
 {
-	unsigned back = wk_tone (g_wall, 150);				// (the wallpaper, lighter)
-	wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (g_wall, 176), back);
+public:
+	Preview (int l, int t) : Widget (l, t, PVW + 2, PVH + 2) {}
+	void onDraw () override
 	{
-		PaletteSwap swap;
-		mini_window (canvas, 10, 8, 250, 110, "Behind", false);
-		mini_window (canvas, width - 262, height - 118, 252, 110, "In front", true);
+		canvas.clear (wk_tone (C_FACE, 70));
+		if (!g_wallOk) make_wall ();
+		for (int y = 0; y < PVH; y++)
+			for (int x = 0; x < PVW; x++) canvas.px[(long) (y + 1) * canvas.stride + x + 1] = g_wall[y * PVW + x];
+		g_nhot = 0;
+		add_hot (0, 0, PVW, PVH, IT_DESKTOP);
+		WkTheme keep; wk_theme_get (keep);
+		wk_theme_set (g_t);					// (the edited colours, for this drawing)
+		int fh = wk_fh ();
+		// the menu bar
+		int bh = fh + 4;
+		wk_rbox (canvas, 1, 1, PVW, bh, 0, wk_tone (C_MENUBAR, 150), C_MENUBAR);
+		canvas.fillRect (1, 1 + bh, PVW, 1, wk_tone (C_MENUBAR, 90));
+		unsigned mink = wk_ink_on (C_MENUBAR);
+		canvas.drawFont (8, 3, "Onyx", font (), mink, 1, 2);
+		canvas.text (50, 3, "File  Edit  View", mink);
+		canvas.text (PVW - 44, 3, "12:34", mink);
+		add_hot (0, 0, PVW, bh + 1, IT_MENUBAR);
+		// the window behind
+		int ix = 12, iy = 28, iw = 196, ih = 112;
+		mini_frame (canvas, 1 + ix, 1 + iy, iw, ih, "Behind", false);
+		add_hot (ix, iy, iw, ih, IT_INACTIVE);
+		add_hot (ix + KAPI_FRAME_BORDER, iy + KAPI_FRAME_TITLE_H, iw - 2 * KAPI_FRAME_BORDER, ih - KAPI_FRAME_TITLE_H - KAPI_FRAME_BORDER, IT_WINDOW);
+		canvas.text (1 + ix + 12, 1 + iy + KAPI_FRAME_TITLE_H + 8, "Some text", C_TEXT);
+		canvas.text (1 + ix + 12, 1 + iy + KAPI_FRAME_TITLE_H + 8 + fh + 2, "Dimmed", C_DIS);
+		// the window in front: a button, a field with a selection, a check
+		int ax = 100, ay = 72, aw = 212, ah = 128;
+		mini_frame (canvas, 1 + ax, 1 + ay, aw, ah, "In front", true);
+		add_hot (ax, ay, aw, ah, IT_ACTIVE);
+		int cx = ax + KAPI_FRAME_BORDER, cy = ay + KAPI_FRAME_TITLE_H, cw = aw - 2 * KAPI_FRAME_BORDER, ch = ah - KAPI_FRAME_TITLE_H - KAPI_FRAME_BORDER;
+		add_hot (cx, cy, cw, ch, IT_WINDOW);
+		int bx, by, bw, bbh;
+		wk_framed (canvas, 1 + cx + 10, 1 + cy + 10, 64, 28, C_BUTTON, WK_NORMAL, &bx, &by, &bw, &bbh);
+		wk_text_c (canvas, bx, by, bw, bbh, "OK", C_BUTTON_TEXT);
+		add_hot (cx + 10, cy + 10, 64, 28, IT_BUTTON);
+		wk_sunken (canvas, 1 + cx + 84, 1 + cy + 12, cw - 94, 24, 4, C_FIELD, true);
+		add_hot (cx + 84, cy + 12, cw - 94, 24, IT_FIELD);
+		wk_hilite (canvas, 1 + cx + 88, 1 + cy + 16, 36, fh, 3, true);
+		canvas.text (1 + cx + 90, 1 + cy + 16, "Text", C_SEL_TEXT);
+		canvas.text (1 + cx + 128, 1 + cy + 16, "field", C_FIELD_TEXT);
+		add_hot (cx + 88, cy + 16, 36, fh, IT_ACCENT);
+		wk_check_mark (canvas, 1 + cx + 10, 1 + cy + 50, 14, true, WK_NORMAL);
+		canvas.text (1 + cx + 30, 1 + cy + 49, "Check", C_TEXT);
+		add_hot (cx + 10, cy + 50, 14, 14, IT_ACCENT);
+		wk_radio_mark (canvas, 1 + cx + 100, 1 + cy + 50, 14, true, WK_NORMAL);
+		canvas.text (1 + cx + 120, 1 + cy + 49, "Radio", C_TEXT);
+		// the dock
+		int dx = 70, dy = PVH - 30, dw = 180, dh = 26;
+		wk_rbox (canvas, 1 + dx, 1 + dy, dw, dh, 7, wk_tone (C_DOCK, 172), wk_tone (C_DOCK, 120));
+		wk_rline (canvas, 1 + dx, 1 + dy, dw, dh, 7, wk_tone (C_DOCK, 70), 170);
+		static const unsigned ICONS[5] = { 0x00F0F0F0, 0x004878B0, 0x00E0A030, 0x0060A060, 0x00C05050 };
+		for (int i = 0; i < 5; i++) wk_rbox (canvas, 1 + dx + 8 + i * 20, 1 + dy + 5, 16, 16, 3, wk_tone (ICONS[i], 150), ICONS[i]);
+		for (int i = 0; i < 2; i++)
+		{
+			unsigned f = i == 0 ? wk_mix (C_ACCENT, 0x00FFFFFF, 60) : wk_tone (C_DOCK, 128);
+			wk_rbox (canvas, 1 + dx + 112 + i * 16, 1 + dy + 7, 13, 11, 2, f, f);
+			wk_rline (canvas, 1 + dx + 112 + i * 16, 1 + dy + 7, 13, 11, 2, i == 0 ? C_ACCENT : wk_tone (C_DOCK, 70), 200);
+		}
+		wk_rbox (canvas, 1 + dx + dw - 26, 1 + dy + 6, 12, 15, 2, wk_tone (C_DOCK, 76), wk_tone (C_DOCK, 60));
+		add_hot (dx, dy, dw, dh, IT_DOCK);
+		wk_theme_set (keep);
+		// the part chosen: outlined
+		for (int i = g_nhot - 1; i >= 0; i--)
+			if (g_hot[i].item == g_item)
+			{
+				const Hot &h = g_hot[i];
+				for (int k = 0; k < h.w; k += 2) { canvas.pixel (1 + h.x + k, 1 + h.y, 0x00FFFFFF); canvas.pixel (1 + h.x + k, h.y + h.h, 0x00FFFFFF); }
+				for (int k = 0; k < h.h; k += 2) { canvas.pixel (1 + h.x, 1 + h.y + k, 0x00FFFFFF); canvas.pixel (h.x + h.w, 1 + h.y + k, 0x00FFFFFF); }
+				for (int k = 1; k < h.w; k += 2) { canvas.pixel (1 + h.x + k, 1 + h.y, 0); canvas.pixel (1 + h.x + k, h.y + h.h, 0); }
+				for (int k = 1; k < h.h; k += 2) { canvas.pixel (1 + h.x, 1 + h.y + k, 0); canvas.pixel (h.x + h.w, 1 + h.y + k, 0); }
+				break;
+			}
 	}
-	for (int y = 0; y < height; y++)					// (a frame round the preview)
-		for (int x = 0; x < width; x++)
-			if (x == 0 || y == 0 || x == width - 1 || y == height - 1) canvas.pixel (x, y, wk_tone (C_FACE, 80));
+	bool onMouse (int mx, int my, int bl, int, int, int) override;
+};
+
+// ---- the controls ---------------------------------------------------------------------------------
+class Swatch : public Widget
+{
+public:
+	int idx;
+	Swatch (int l, int t, int i) : Widget (l, t, 62, 48), idx (i) { canFocus = true; }
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		unsigned c = wk_themes[idx].frame;
+		bool on = g_t.theme == idx;
+		if (on) { wk_rline (canvas, 7, 0, 48, 32, 9, C_ACCENT, 255); wk_rline (canvas, 8, 1, 46, 30, 8, C_ACCENT, 160); }
+		wk_rbox (canvas, 10, 3, 42, 26, 6, wk_tone (c, 166), wk_tone (c, 112));
+		wk_rline (canvas, 10, 3, 42, 26, 6, wk_tone (c, 64), 190);
+		wk_text_c (canvas, 0, 31, width, 17, wk_themes[idx].name, C_TEXT, on ? 2 : 0);
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override;
+};
+
+class Palette : public Widget
+{
+public:
+	Palette (int l, int t) : Widget (l, t, 12 * 24, 2 * 23) {}
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		unsigned cur = item_colour (g_item);
+		for (int i = 0; i < 24; i++)
+		{
+			int x = (i % 12) * 24, y = (i / 12) * 23;
+			wk_rbox (canvas, x + 1, y + 1, 20, 19, 4, PAL[i], PAL[i]);
+			bool on = PAL[i] == cur;
+			wk_rline (canvas, x + 1, y + 1, 20, 19, 4, on ? C_ACCENT : wk_tone (C_FACE, 70), on ? 255 : 150);
+			if (on) wk_rline (canvas, x, y, 22, 21, 5, C_ACCENT, 160);
+		}
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override;
+};
+
+class Current : public Widget				// the chosen part's colour
+{
+public:
+	Current (int l, int t) : Widget (l, t, 58, 30) {}
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		unsigned c = shown_colour (g_item);
+		wk_rbox (canvas, 0, 0, width, height, 5, c, c);
+		wk_rline (canvas, 1, 1, width - 2, height - 2, 4, 0x00FFFFFF, 140);
+		wk_rline (canvas, 0, 0, width, height, 5, wk_tone (C_FACE, 60), 230);
+		if (item_colour (g_item) == WK_AUTO) wk_text_c (canvas, 0, 0, width, height, "auto", wk_ink_on (c));
+	}
+};
+
+static Preview   *g_preview;
+static Swatch    *g_sw[5];
+static Palette   *g_pal;
+static Current   *g_curbox;
+static Dropdown  *g_ddItem, *g_ddOutline, *g_ddMode, *g_ddDir, *g_ddStyle;
+static Checkbox  *g_auto;
+static Label     *g_lbPoints, *g_lbC2, *g_lbDir, *g_lbImage, *g_lbStyle, *g_lbC1, *g_status;
+static ColorPicker *g_pkC1, *g_pkC2;
+static NumericUpDown *g_nuPoints;
+static Textbox   *g_tbImage;
+static Button    *g_btBrowse;
+
+static void refresh (bool wall = false)
+{
+	if (wall) g_wallOk = false;
+	g_preview->invalidate (true);
+	for (int i = 0; i < 5; i++) g_sw[i]->invalidate (true);
+	g_pal->invalidate (true);
+	g_curbox->invalidate (true);
+	bool a = can_auto (g_item);
+	g_auto->hidden = !a;
+	g_auto->checked = a && item_colour (g_item) == WK_AUTO;
+	g_auto->invalidate (true);
+	g_pkC1->color = g_wp.c1; g_pkC1->invalidate (true);
+	if (g_root) g_root->invalidate (true);
 }
 
-// ---- load / apply --------------------------------------------------------------------------------------
-static unsigned parse_color (const char *s, unsigned def)
+static void set_item_colour (unsigned c)
 {
-	if (s == 0) return def;
-	while (*s == ' ' || *s == '\t') s++;
-	if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
-	else if (s[0] == '#') s++;
-	unsigned v = 0; int any = 0;
-	for (; *s; s++)
+	switch (g_item)
 	{
-		char c = *s; int d;
-		if (c >= '0' && c <= '9') d = c - '0';
-		else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
-		else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
-		else break;
-		v = v * 16 + (unsigned) d; any = 1;
+	case IT_ACTIVE:
+		g_t.active = c; g_t.theme = -1;
+		for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].frame == c) g_t.theme = i;
+		break;
+	case IT_INACTIVE: g_t.inactive = c; break;
+	case IT_WINDOW:   g_t.window = c; break;
+	case IT_BUTTON:   g_t.button = c; break;
+	case IT_FIELD:    g_t.field = c; break;
+	case IT_ACCENT:   g_t.accent = c; break;
+	case IT_MENUBAR:  g_t.menubar = c; break;
+	case IT_DOCK:     g_t.dock = c; break;
+	default:          g_wp.c1 = c; refresh (true); return;
 	}
-	return any ? v & 0xFFFFFF : def;
-}
-static int put_color (char *b, unsigned c)
-{
-	const char *hx = "0123456789ABCDEF";
-	b[0] = '0'; b[1] = 'x';
-	for (int i = 0; i < 6; i++) b[2 + i] = hx[(c >> ((5 - i) * 4)) & 0xF];
-	return 8;
-}
-static bool ieq (const char *a, const char *b)
-{
-	for (;; a++, b++)
-	{
-		char x = *a, y = *b;
-		if (x >= 'A' && x <= 'Z') x += 32;
-		if (y >= 'A' && y <= 'Z') y += 32;
-		if (x != y) return false;
-		if (!x) return true;
-	}
+	refresh ();
 }
 
-static void scan_keymaps (void)
+static void pick_item (int it)
 {
-	g_nkm = 0;
-	void *dir = kapi_opendir ("SD:/etc/keymaps");
-	if (dir == 0) return;
-	struct kapi_dirent e;
-	while (g_nkm < MAXKM && kapi_readdir (dir, &e))
-	{
-		if (e.is_dir) continue;
-		int n = 0; while (e.name[n]) n++;
-		if (n < 6 || !ieq (e.name + n - 5, ".kmap")) continue;
-		int b = n - 5; if (b > 11) b = 11;
-		for (int i = 0; i < b; i++) g_kmname[g_nkm][i] = e.name[i];
-		g_kmname[g_nkm][b] = '\0';
-		g_kmopt[g_nkm] = g_kmname[g_nkm];
-		g_nkm++;
-	}
-	kapi_closedir (dir);
+	g_item = it;
+	g_ddItem->sel = it; g_ddItem->invalidate (true);
+	refresh ();
 }
 
+bool Preview::onMouse (int mx, int my, int bl, int, int, int)
+{
+	if (mx < 0) { pressed = false; return false; }
+	if (bl && !pressed)
+	{
+		pressed = true;
+		int x = mx - 1, y = my - 1;
+		for (int i = g_nhot - 1; i >= 0; i--)
+			if (x >= g_hot[i].x && y >= g_hot[i].y && x < g_hot[i].x + g_hot[i].w && y < g_hot[i].y + g_hot[i].h)
+			{ pick_item (g_hot[i].item); break; }
+	}
+	else if (!bl) pressed = false;
+	return true;
+}
+
+bool Swatch::onMouse (int mx, int, int bl, int, int, int)
+{
+	if (mx < 0) { pressed = false; return false; }
+	if (bl && !pressed)
+	{
+		pressed = true;
+		g_t.theme = idx; g_t.active = wk_themes[idx].frame;
+		pick_item (IT_ACTIVE);
+	}
+	else if (!bl) pressed = false;
+	return true;
+}
+
+bool Palette::onMouse (int mx, int my, int bl, int, int, int)
+{
+	if (mx < 0) { pressed = false; return false; }
+	if (bl && !pressed)
+	{
+		pressed = true;
+		int i = (my / 23) * 12 + mx / 24;
+		if (i >= 0 && i < 24 && mx < 12 * 24) set_item_colour (PAL[i]);
+	}
+	else if (!bl) pressed = false;
+	return true;
+}
+
+static void show_desktop_controls (void)
+{
+	int m = g_wp.mode;
+	bool pts = m == WP_VORONOI, two = m == WP_GRADIENT || m == WP_BUBBLES, img = m == WP_IMAGE;
+	g_lbPoints->hidden = g_nuPoints->hidden = !pts;
+	g_lbC2->hidden = g_pkC2->hidden = g_lbDir->hidden = g_ddDir->hidden = !two;
+	g_lbImage->hidden = g_tbImage->hidden = g_btBrowse->hidden = g_lbStyle->hidden = g_ddStyle->hidden = !img;
+	g_lbC1->setText (m == WP_VORONOI ? "Colour" : m == WP_IMAGE ? "Around" : two ? "Colour 1" : "Colour");
+	if (g_root) g_root->invalidate (true);
+}
+
+// ---- load / apply ------------------------------------------------------------------------------------
 static void load_current (void)
 {
-	g_theme = 0; g_active = wk_themes[0].frame; g_inactive = WK_GREY; g_face = DEF_FACE;
-	g_accent = DEF_ACCENT; g_dock = DEF_DOCK; g_outline = 1; g_wall = DEF_WALL;
-	g_wheel = kapi_get_wheel_speed ();
-	if (app_ini_load_path ("SD:/etc/theme.txt") > 0)
+	wk_theme_defaults (g_t);
+	void *f = kapi_open ("SD:/etc/theme.txt");
+	if (f)
 	{
-		const char *t = app_ini_get (0, "theme", 0);
-		if (t) for (int i = 0; wk_themes[i].name; i++) if (ieq (t, wk_themes[i].name)) { g_theme = i; g_active = wk_themes[i].frame; }
-		const char *a = app_ini_get (0, "active", 0);
-		if (a) { g_active = parse_color (a, g_active); g_theme = -1; for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].frame == g_active) g_theme = i; }
-		g_inactive = parse_color (app_ini_get (0, "inactive", 0), g_inactive);
-		g_face = parse_color (app_ini_get (0, "face", 0), g_face);
-		g_accent = parse_color (app_ini_get (0, "accent", 0), g_accent);
-		g_dock = parse_color (app_ini_get (0, "dock", 0), g_dock);
-		const char *o = app_ini_get (0, "outline", 0);
-		if (o) g_outline = ieq (o, "none") ? 0 : ieq (o, "black") ? 2 : 1;
+		static char buf[4097];
+		int n = kapi_read (f, buf, sizeof buf - 1);
+		kapi_close (f);
+		if (n > 0) { buf[n] = 0; wk_theme_parse (buf, g_t); }
 	}
-	if (app_ini_load_path ("SD:/apps/voronoy.app/config.ini") > 0) g_wall = parse_color (app_ini_get (0, "base", 0), g_wall);
-	g_pkActive->color = g_active; g_pkInactive->color = g_inactive; g_pkFace->color = g_face;
-	g_pkAccent->color = g_accent; g_pkDock->color = g_dock; g_pkWall->color = g_wall;
-	g_ddOutline->sel = g_outline;
-	char km[16]; kapi_get_keymap (km, sizeof km);
-	g_ddKeymap->sel = 0;
-	for (int i = 0; i < g_nkm; i++) if (ieq (km, g_kmopt[i])) g_ddKeymap->sel = i;
-	g_nuWheel->value = g_wheel;
-	Widget *all[] = { g_pkActive, g_pkInactive, g_pkFace, g_pkAccent, g_pkDock, g_pkWall, g_ddOutline, g_ddKeymap, g_nuWheel };
-	for (unsigned i = 0; i < sizeof all / sizeof all[0]; i++) all[i]->invalidate (true);
-	changed ();
+	wp_load (g_wp);
+	g_ddOutline->sel = g_t.outline; g_ddOutline->invalidate (true);
+	g_ddMode->sel = g_wp.mode; g_ddMode->invalidate (true);
+	g_ddDir->sel = g_wp.vertical ? 0 : 1; g_ddDir->invalidate (true);
+	g_ddStyle->sel = g_wp.tile ? 1 : 0; g_ddStyle->invalidate (true);
+	g_nuPoints->value = g_wp.points; g_nuPoints->invalidate (true);
+	g_pkC2->color = g_wp.c2; g_pkC2->invalidate (true);
+	g_tbImage->setText (g_wp.image);
+	show_desktop_controls ();
+	refresh (true);
 }
 
 static void apply (void)
 {
-	static char buf[1024]; int p = 0;
-	ax_strcat (buf, sizeof buf, &p,
-		"# The desktop's look (the modernised CDE), read by every app when it starts (wtk/theme.h);\n"
-		"# written by the Theme app. theme: Peach, Steel, Sage, Brick, Slate (the window in front's frame;\n"
-		"# active = a colour instead); inactive: the frames behind; face: the apps'; accent: focus and\n"
-		"# selection; outline: none, dark or black; dock: the dock's face. wheelspeed: lines a notch.\n");
-	if (g_theme >= 0) { ax_strcat (buf, sizeof buf, &p, "theme    = "); ax_strcat (buf, sizeof buf, &p, wk_themes[g_theme].name); buf[p++] = '\n'; }
-	else { ax_strcat (buf, sizeof buf, &p, "active   = "); p += put_color (buf + p, g_active); buf[p++] = '\n'; }
-	ax_strcat (buf, sizeof buf, &p, "inactive = "); p += put_color (buf + p, g_inactive); buf[p++] = '\n';
-	ax_strcat (buf, sizeof buf, &p, "face     = "); p += put_color (buf + p, g_face); buf[p++] = '\n';
-	ax_strcat (buf, sizeof buf, &p, "accent   = "); p += put_color (buf + p, g_accent); buf[p++] = '\n';
-	ax_strcat (buf, sizeof buf, &p, "outline  = "); ax_strcat (buf, sizeof buf, &p, g_outline == 0 ? "none" : g_outline == 2 ? "black" : "dark"); buf[p++] = '\n';
-	ax_strcat (buf, sizeof buf, &p, "dock     = "); p += put_color (buf + p, g_dock); buf[p++] = '\n';
-	ax_strcat (buf, sizeof buf, &p, "wheelspeed="); p += ax_itoa (g_wheel, buf + p); buf[p++] = '\n';
+	static char buf[1400];
+	int p = wk_theme_write (g_t, buf, sizeof buf - 40);
+	ax_strcat (buf, sizeof buf, &p, "wheelspeed=");			// (the Keyboard & Mouse applet's)
+	p += ax_itoa (kapi_get_wheel_speed (), buf + p);
+	buf[p++] = '\n'; buf[p] = 0;
 	kapi_save_file ("SD:/etc/theme.txt", buf, (unsigned) p);
-	kapi_set_wheel_speed (g_wheel);
-
-	p = 0;								// the wallpaper
-	ax_strcat (buf, sizeof buf, &p, "base="); p += put_color (buf + p, g_wall); buf[p++] = '\n';
-	ax_strcat (buf, sizeof buf, &p, "points=28\n");
-	kapi_save_file ("SD:/apps/voronoy.app/config.ini", buf, (unsigned) p);
-	if (g_ddKeymap->sel >= 0 && g_ddKeymap->sel < g_nkm) ax_load_keymap (g_kmopt[g_ddKeymap->sel]);
-	kapi_exec ("SD:apps/voronoy.app/main", "");
-
-	static const char *const shell[] = { "menubar", "dock", "agenda" };	// the new colours at once
-	for (int i = 0; i < 3; i++) { kapi_kill (shell[i]); kapi_launch (shell[i]); }
-	g_status->setText ("Applied: the apps opened from now on take it.");
+	int n = 0; while (g_tbImage->text[n] && n < (int) sizeof g_wp.image - 1) { g_wp.image[n] = g_tbImage->text[n]; n++; }
+	g_wp.image[n] = 0;
+	wp_save (g_wp);
+	kapi_exec ("SD:apps/voronoy.app/main", "");				// the wallpaper
+	dock_reload ();								// the shell's parts: the new colours
+	static const char *const shell[] = { "menubar", "agenda" };
+	for (int i = 0; i < 2; i++) { kapi_kill (shell[i]); kapi_launch (shell[i]); }
+	if (!wk_applet_send (AP_THEME)) g_status->setText ("Applied: the apps opened from now on take it.");
 }
 
-static void on_pick (Widget &)
+static void on_item (Widget &w) { g_item = ((Dropdown &) w).sel; refresh (); }
+static void on_auto (Widget &w)
 {
-	g_active = g_pkActive->color; g_inactive = g_pkInactive->color; g_face = g_pkFace->color;
-	g_accent = g_pkAccent->color; g_dock = g_pkDock->color; g_wall = g_pkWall->color;
-	g_theme = -1;
-	for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].frame == g_active) g_theme = i;
-	changed ();
+	if (!can_auto (g_item)) return;
+	set_item_colour (((Checkbox &) w).checked ? WK_AUTO : shown_colour (g_item));
 }
-static void on_outline (Widget &w) { g_outline = ((Dropdown &) w).sel; changed (); }
-static void on_wheel (Widget &w) { g_wheel = ((NumericUpDown &) w).value; kapi_set_wheel_speed (g_wheel); }
+static void on_custom (Widget &)
+{
+	unsigned c = shown_colour (g_item);
+	if (wk_color_dialog (&c, ITEM_NAME[g_item])) set_item_colour (c);
+}
+static void on_outline (Widget &w) { g_t.outline = ((Dropdown &) w).sel; refresh (); }
+static void on_mode (Widget &w) { g_wp.mode = ((Dropdown &) w).sel; show_desktop_controls (); refresh (true); }
+static void on_dir (Widget &w) { g_wp.vertical = ((Dropdown &) w).sel == 0; refresh (true); }
+static void on_style (Widget &w) { g_wp.tile = ((Dropdown &) w).sel == 1; refresh (true); }
+static void on_points (Widget &w) { g_wp.points = ((NumericUpDown &) w).value; refresh (true); }
+static void on_c1 (Widget &w) { g_wp.c1 = ((ColorPicker &) w).color; if (g_item == IT_DESKTOP) g_curbox->invalidate (true); refresh (true); }
+static void on_c2 (Widget &w) { g_wp.c2 = ((ColorPicker &) w).color; refresh (true); }
+static void on_image (Widget &)
+{
+	int n = 0; while (g_tbImage->text[n] && n < (int) sizeof g_wp.image - 1) { g_wp.image[n] = g_tbImage->text[n]; n++; }
+	g_wp.image[n] = 0;
+	refresh (true);
+}
+static void on_browse (Widget &)
+{
+	char p[200];
+	if (!wk_file_open (p, sizeof p, g_wp.image[0] ? g_wp.image : "SD:/")) return;
+	g_tbImage->setText (p);
+	on_image (*g_tbImage);
+}
 static void on_apply (Widget &) { apply (); }
 static void on_discard (Widget &) { load_current (); g_status->setText (""); }
 
@@ -296,43 +469,54 @@ int main (void)
 {
 	Root root (W, H, "Theme");
 	if (root.canvas.px == 0) return 1;
-	scan_keymaps ();
+	g_root = &root;
+	wk_theme_get (g_saved);
+	int X = root.width > W ? (root.width - W) / 2 : 0;		// (an applet's pane may be wider)
 
-	GroupBox *gw = new GroupBox (10, 6, W - 20, 138, "Windows");
-	root.addChild (gw);
-	gw->addChild (new Label (12, 26, 120, 20, "In front", C_TEXT, gw->bg));
-	for (int i = 0; i < 5; i++) { g_sw[i] = new Swatch (120 + i * 66, 22, i); gw->addChild (g_sw[i]); }
-	g_pkActive = new ColorPicker (455, 25, 26, 24, g_active, on_pick); g_pkActive->tip = "Any colour"; gw->addChild (g_pkActive);
-	gw->addChild (new Label (12, 84, 110, 20, "Behind", C_TEXT, gw->bg));
-	g_pkInactive = new ColorPicker (120, 82, 40, 24, g_inactive, on_pick); gw->addChild (g_pkInactive);
-	gw->addChild (new Label (200, 84, 70, 20, "Outline", C_TEXT, gw->bg));
-	g_ddOutline = new Dropdown (272, 80, 120, 28, OUTLINES, 3, 1, on_outline); gw->addChild (g_ddOutline);
-
-	GroupBox *ga = new GroupBox (10, 150, 190, 128, "Colours");
-	root.addChild (ga);
-	ga->addChild (new Label (12, 28, 90, 20, "Apps", C_TEXT, ga->bg));
-	g_pkFace = new ColorPicker (110, 26, 60, 24, g_face, on_pick); ga->addChild (g_pkFace);
-	ga->addChild (new Label (12, 60, 90, 20, "Accent", C_TEXT, ga->bg));
-	g_pkAccent = new ColorPicker (110, 58, 60, 24, g_accent, on_pick); ga->addChild (g_pkAccent);
-	ga->addChild (new Label (12, 92, 90, 20, "Dock", C_TEXT, ga->bg));
-	g_pkDock = new ColorPicker (110, 90, 60, 24, g_dock, on_pick); ga->addChild (g_pkDock);
-
-	g_preview = new Preview (210, 158, W - 220, 244);
+	g_preview = new Preview (X + 10, 10);
 	root.addChild (g_preview);
 
-	GroupBox *gd = new GroupBox (10, 284, 190, 118, "Desktop");
-	root.addChild (gd);
-	gd->addChild (new Label (12, 28, 90, 20, "Wallpaper", C_TEXT, gd->bg));
-	g_pkWall = new ColorPicker (110, 26, 60, 24, g_wall, on_pick); gd->addChild (g_pkWall);
-	gd->addChild (new Label (12, 58, 90, 20, "Keyboard", C_TEXT, gd->bg));
-	g_ddKeymap = new Dropdown (100, 54, 78, 28, g_kmopt, g_nkm, 0, 0); gd->addChild (g_ddKeymap);
-	gd->addChild (new Label (12, 90, 90, 20, "Wheel", C_TEXT, gd->bg));
-	g_nuWheel = new NumericUpDown (100, 86, 78, 26, 1, 16, 2, 1, on_wheel); g_nuWheel->tip = "Lines a notch"; gd->addChild (g_nuWheel);
+	int rx = X + 346;
+	root.addChild (new Label (rx, 8, 120, 20, "Scheme", C_TEXT, root.bg));
+	for (int i = 0; i < 5; i++) { g_sw[i] = new Swatch (rx - 6 + i * 68, 28, i); root.addChild (g_sw[i]); }
+	root.addChild (new Label (rx, 86, 60, 24, "Item", C_TEXT, root.bg));
+	root.addChild (new Label (rx, 124, 60, 24, "Colour", C_TEXT, root.bg));
+	g_curbox = new Current (rx + 64, 122); root.addChild (g_curbox);
+	root.addChild (new Button (rx + 132, 121, 100, 32, "Custom...", on_custom));
+	g_auto = new Checkbox (rx + 64, 158, 250, 22, "Automatic (the window's)", false, on_auto, root.bg);
+	root.addChild (g_auto);
+	g_pal = new Palette (rx + 4, 184); root.addChild (g_pal);
+	root.addChild (new Label (rx, 240, 70, 24, "Outline", C_TEXT, root.bg));
 
-	g_status = new Label (12, H - 38, 250, 24, "", C_DIS, root.bg);
+	GroupBox *gd = new GroupBox (X + 10, 272, W - 20, 150, "Desktop");
+	root.addChild (gd);
+	int y0 = gd->contentTop () + 4;
+	gd->addChild (new Label (12, y0 + 4, 84, 20, "Wallpaper", C_TEXT, gd->bg));
+	g_lbC1 = new Label (12, y0 + 44, 80, 20, "Colour", C_TEXT, gd->bg); gd->addChild (g_lbC1);
+	g_pkC1 = new ColorPicker (96, y0 + 42, 50, 24, g_wp.c1, on_c1); g_pkC1->tip = "The palette; Item: Desktop, Custom... for any colour";
+	g_lbC2 = new Label (170, y0 + 44, 80, 20, "Colour 2", C_TEXT, gd->bg); gd->addChild (g_lbC2);
+	g_pkC2 = new ColorPicker (250, y0 + 42, 50, 24, g_wp.c2, on_c2);
+	g_lbDir = new Label (330, y0 + 44, 80, 20, "Direction", C_TEXT, gd->bg); gd->addChild (g_lbDir);
+	g_lbPoints = new Label (170, y0 + 44, 80, 20, "Cells", C_TEXT, gd->bg); gd->addChild (g_lbPoints);
+	g_nuPoints = new NumericUpDown (250, y0 + 40, 70, 28, 4, 64, 28, 1, on_points); gd->addChild (g_nuPoints);
+	g_lbImage = new Label (12, y0 + 84, 80, 20, "Picture", C_TEXT, gd->bg); gd->addChild (g_lbImage);
+	g_tbImage = new Textbox (96, y0 + 80, 360, 28, "", on_image); gd->addChild (g_tbImage);
+	g_btBrowse = new Button (464, y0 + 79, 100, 30, "Browse...", on_browse); gd->addChild (g_btBrowse);
+	g_lbStyle = new Label (170, y0 + 44, 80, 20, "Style", C_TEXT, gd->bg); gd->addChild (g_lbStyle);
+
+	g_status = new Label (X + 12, H - 38, 400, 24, "", C_DIS, root.bg);
 	root.addChild (g_status);
-	root.addChild (new Button (W - 196, H - 42, 90, 32, "Apply", on_apply));
-	root.addChild (new Button (W - 100, H - 42, 90, 32, "Discard", on_discard));
+	root.addChild (new Button (X + W - 196, H - 42, 90, 32, "Apply", on_apply));
+	root.addChild (new Button (X + W - 100, H - 42, 90, 32, "Discard", on_discard));
+
+	// the drop-downs and the pickers last: their lists open over what is below them
+	g_ddOutline = new Dropdown (rx + 64, 236, 130, 28, OUTLINES, 3, 1, on_outline); root.addChild (g_ddOutline);
+	g_ddItem = new Dropdown (rx + 64, 82, 268, 28, ITEM_NAME, IT_N, 0, on_item); root.addChild (g_ddItem);
+	g_ddStyle = new Dropdown (250, y0 + 40, 160, 28, STYLES, 2, 0, on_style); gd->addChild (g_ddStyle);
+	g_ddDir = new Dropdown (410, y0 + 40, 150, 28, DIRS, 2, 0, on_dir); gd->addChild (g_ddDir);
+	gd->addChild (g_pkC2);
+	gd->addChild (g_pkC1);
+	g_ddMode = new Dropdown (96, y0, 200, 28, MODES, WP_NMODES, 0, on_mode); gd->addChild (g_ddMode);
 
 	load_current ();
 	root.run ();

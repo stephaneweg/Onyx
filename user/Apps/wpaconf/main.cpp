@@ -17,6 +17,8 @@
 // fork); "Save & Reboot" is still there (a modal, then kapi_reboot). Save writes ONE network: the
 // other known ones (added by the Wi-Fi menu of the menu bar) are dropped.
 //
+// The Control Panel's Wi-Fi applet (applet_proto.h), or a window of its own when run alone.
+//
 #include "kapi.h"
 #include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
 
@@ -84,7 +86,7 @@ static Root *g_root = 0;
 static void on_scan (Widget &)
 {
 	set_status ("Scanning (3 s)...");
-	if (g_root) { g_root->draw (); kapi_present (); }
+	if (g_root) { g_root->draw (); wk_present (); }
 	g_nap = kapi_wlan_scan (g_ap, 32);
 	g_ssid->clearOptions ();
 	int n = 0;
@@ -213,9 +215,16 @@ public:
 	void onDraw () override
 	{
 		Root::onDraw ();
-		wk_rbox (canvas, 0, 0, W, 32, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		wk_etch_h (canvas, 0, 32, W, C_FACE);
+		wk_rbox (canvas, 0, 0, width, 32, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
+		wk_etch_h (canvas, 0, 32, width, C_FACE);
 		wk_text_l (canvas, 14, 0, 32, "Wi-Fi Settings", C_TEXT, 2);
+		if (width > W + 40)		// (the Control Panel's pane: a word about the menu bar's Wi-Fi menu)
+		{
+			canvas.text (W + 30, 50, "The Wi-Fi menu of the menu bar", C_DIS);
+			canvas.text (W + 30, 70, "(its icon, near the clock) lists", C_DIS);
+			canvas.text (W + 30, 90, "the networks around and joins", C_DIS);
+			canvas.text (W + 30, 110, "one in a click.", C_DIS);
+		}
 	}
 };
 

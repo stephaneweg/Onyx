@@ -41,10 +41,10 @@ int Modal::run ()
 	if (r == 0) return 0;
 	r->addChild (this);			// becomes the topmost (modal) child of the window
 	done = false; hasFocus = true; invalidate (true);
-	while (!done && !should_exit ())
+	while (!done && !wk_quit ())
 	{
-		pump_events ();
-		if (!r->valid) { r->draw (); kapi_present (); }
+		wk_pump ();
+		if (!r->valid) { r->draw (); wk_present (); }
 		msleep (16);
 	}
 	r->removeChild (this);
@@ -132,6 +132,7 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 	m_lw = width - 20 - 14; m_lh = height - m_ly - 78;
 	m_rows = (m_lh - 4) / m_rowH; if (m_rows < 1) m_rows = 1;
 	m_count = 0; m_sel = -1; m_top = 0;
+	m_lastRow = -1; m_lastTick = 0;
 
 	m_sb = new Scrollbar (m_lx + m_lw + 2, m_ly, 12, m_lh, true, 1, 0, dlg_scr); addChild (m_sb);
 	m_nameBox = 0;
@@ -199,8 +200,15 @@ void FileDialog::syncSb ()
 void FileDialog::click (int row)
 {
 	if (row < 0 || row >= m_count) return;
-	if (m_isdir[row]) { if (fd_dotdot (m_ent[row])) goUp (); else enter (m_ent[row]); read (); }
-	else { m_sel = row; if (m_nameBox) m_nameBox->setText (m_ent[row]); }
+	unsigned now = kapi_get_ticks ();
+	bool dbl = row == m_lastRow && now - m_lastTick < 40;		// (0.4 s)
+	m_lastRow = row; m_lastTick = now;
+	if (m_isdir[row]) { if (fd_dotdot (m_ent[row])) goUp (); else enter (m_ent[row]); read (); m_lastRow = -1; }
+	else
+	{
+		m_sel = row; if (m_nameBox) m_nameBox->setText (m_ent[row]);
+		if (dbl) { m_lastRow = -1; onButton (1); }		// a double click: as Open / Save
+	}
 	invalidate (true);
 }
 

@@ -655,6 +655,60 @@ def icon_padconf():		# a gamepad: d-pad and four face buttons
     pdisc(px, 29, 16, 1, (240, 200, 60)); pdisc(px, 29, 24, 1, (80, 200, 90)); pdisc(px, 25, 20, 1, (80, 140, 240)); pdisc(px, 33, 20, 1, (230, 70, 70))
     return px
 
+def icon_control():		# the Control Panel: a window of four small applets (colours, sound, keys, pad)
+    px = blank()
+    prect(px, 3, 4, 36, 35, (228, 232, 238)); pframe(px, 3, 4, 36, 35, (70, 84, 104))
+    prect(px, 4, 5, 35, 9, (122, 152, 192))
+    for i, c in enumerate(((240, 176, 122), (122, 152, 192), (128, 170, 118), (196, 84, 80))):	# a palette
+        prect(px, 7 + (i % 2) * 5, 13 + (i // 2) * 5, 10 + (i % 2) * 5, 16 + (i // 2) * 5, c)
+    prect(px, 23, 14, 25, 18, (60, 60, 70))					# a speaker
+    for k in range(4): prect(px, 26 + k // 2, 13 - k // 2 + k, 26 + k // 2, 19 + k // 2 - k, (60, 60, 70))
+    pset(px, 31, 14, (60, 60, 70)); pset(px, 32, 16, (60, 60, 70)); pset(px, 31, 18, (60, 60, 70))
+    prect(px, 6, 25, 17, 31, (90, 94, 104))					# a keyboard
+    for y in (26, 28): 
+        for x in range(7, 17, 2): pset(px, x, y, (230, 230, 235))
+    prect(px, 9, 30, 14, 30, (230, 230, 235))
+    prect(px, 22, 25, 34, 31, (60, 64, 76)); pdisc(px, 24, 30, 2, (60, 64, 76)); pdisc(px, 32, 30, 2, (60, 64, 76))	# a pad
+    prect(px, 24, 27, 26, 27, (230, 230, 235)); prect(px, 25, 26, 25, 28, (230, 230, 235))
+    pset(px, 31, 27, (240, 200, 60)); pset(px, 33, 28, (230, 70, 70))
+    return px
+
+def icon_dockconf():		# the dock's settings: a screen, the dock at its bottom, the workspaces
+    px = blank()
+    prect(px, 3, 5, 36, 30, (72, 120, 176)); pframe(px, 3, 5, 36, 30, (40, 52, 70))
+    prect(px, 4, 6, 35, 8, (208, 194, 186))
+    prect(px, 8, 23, 31, 29, (164, 186, 206)); pframe(px, 8, 23, 31, 29, (80, 96, 116))
+    for i, c in enumerate(((240, 240, 240), (240, 176, 122), (128, 170, 118))):
+        prect(px, 10 + i * 5, 25, 13 + i * 5, 28, c)
+    for i in range(2):
+        pframe(px, 25 + i * 3, 25, 26 + i * 3, 27, (73, 146, 167) if i == 0 else (96, 110, 128))
+    prect(px, 15, 31, 24, 33, (60, 60, 70)); prect(px, 12, 34, 27, 35, (60, 60, 70))	# its stand
+    return px
+
+def icon_soundconf():		# a speaker and its waves
+    px = blank()
+    dark = (52, 60, 76)
+    prect(px, 6, 15, 12, 24, dark)
+    for k in range(9): prect(px, 13 + k, 15 - k, 13 + k, 24 + k, dark)
+    import math
+    for r, c in ((7, (73, 146, 167)), (11, (73, 146, 167)), (15, (73, 146, 167))):
+        for a in range(-50, 51, 4):
+            x = 22 + round(r * math.cos(math.radians(a))); y = 19 - round(r * math.sin(math.radians(a)))
+            prect(px, x, y, x + 1, y + 1, c)
+    return px
+
+def icon_keyconf():		# a keyboard and a mouse
+    px = blank()
+    prect(px, 2, 12, 29, 28, (86, 92, 104)); pframe(px, 2, 12, 29, 28, (40, 44, 52))
+    for r in range(3):
+        for k in range(6):
+            prect(px, 4 + k * 4 + (r % 2), 14 + r * 4, 6 + k * 4 + (r % 2), 16 + r * 4, (228, 230, 236))
+    prect(px, 8, 26, 22, 27, (228, 230, 236))
+    pdisc(px, 33, 24, 5, (236, 236, 240)); prect(px, 28, 24, 38, 31, (236, 236, 240)); pdisc(px, 33, 31, 5, (236, 236, 240))
+    prect(px, 33, 19, 33, 25, (120, 124, 134)); prect(px, 28, 25, 38, 25, (120, 124, 134))
+    prect(px, 33, 8, 33, 18, (120, 124, 134)); prect(px, 29, 8, 33, 8, (120, 124, 134))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -671,6 +725,7 @@ ICONS = {
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
+    "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
 }
 
 
@@ -708,6 +763,12 @@ def gen_menubar_skin(path):
 
 
 def main():
+    import sys
+    only = sys.argv[1:]
+    if only:					# `gen_assets.py control dockconf`: those icons only
+        for name in only:
+            write_bmp(os.path.join(APPS, name + ".app", "icon.bmp"), SZ, SZ, ICONS[name]())
+        return
     print("Generating desktop assets under sdcard/apps/ ...")
     gen_menubar_skin(os.path.join(ROOT, "sdcard", "skins", "menubar.bmp"))
     # (The wallpaper is now generated at runtime by the kernel -- see

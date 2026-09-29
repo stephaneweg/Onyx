@@ -188,6 +188,20 @@ public:
 		if (bOn) { Damage (); m_bMinimised = TRUE; }
 		else { m_bMinimised = FALSE; Damage (); }
 	}
+	// Workspaces (v65): the window's desk (0 .. KAPI_DESK_MAX - 1), or -1: on every desk (the menu
+	// bar, the dock, the desktop, a system component). A window of another desk than the current
+	// one is off-desk: hidden as a minimised one (not drawn, not hit, never active nor the keys'
+	// target) until its desk comes back.
+	int Desk (void) const		{ return m_nDesk; }
+	void SetDesk (int n)		{ m_nDesk = n; }
+	boolean OffDesk (void) const	{ return m_bOffDesk; }
+	void SetOffDesk (boolean bOn)
+	{
+		if (bOn == m_bOffDesk) return;
+		if (bOn) { Damage (); m_bOffDesk = TRUE; }
+		else { m_bOffDesk = FALSE; Damage (); }
+	}
+	boolean Hidden (void) const	{ return m_bMinimised || m_bOffDesk; }	// (minimised or off-desk)
 
 	// The pid of the process owning this window (0 = kernel), for drag & drop results.
 	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
@@ -240,7 +254,7 @@ public:
 	// (the chrome copy is blitted whole: its allocated size when larger)
 	int OuterWidth (void) const	{ int w = ChromeL () + m_nLogicalW + ChromeR (); return HasChrome () && m_nOuterW > w ? m_nOuterW : w; }
 	int OuterHeight (void) const	{ int h = ChromeT () + m_nLogicalH + ChromeB (); return HasChrome () && m_nOuterH > h ? m_nOuterH : h; }
-	void Damage (void) const	{ m_nGen++; if (!m_bMinimised) ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
+	void Damage (void) const	{ m_nGen++; if (!Hidden ()) ScreenDirtyRect (m_nX, m_nY, OuterWidth (), OuterHeight ()); }
 	// An app's present: its client area only -- so a window refreshing alone (an emulator)
 	// stays wholly opaque to the compositor (CoversOpaque) whatever its frame's corners -- or
 	// the whole window when its frame was redrawn since (get_chrome, a resize) or it is faded.
@@ -253,7 +267,7 @@ public:
 			return;
 		}
 		m_nGen++;
-		if (!m_bMinimised) ScreenDirtyRect (m_nX + ChromeL (), m_nY + ChromeT (), m_nLogicalW, m_nLogicalH);
+		if (!Hidden ()) ScreenDirtyRect (m_nX + ChromeL (), m_nY + ChromeT (), m_nLogicalW, m_nLogicalH);
 	}
 	// For the remote desktop (rdpd, kapi v56): a serial never reused, and a counter bumped
 	// whenever the window changes (Damage: drawn, moved, resized...; Touch: full screen).
@@ -268,7 +282,7 @@ public:
 	// (A framed window's rounded corners are see-through: a rectangle reaching one is not.)
 	boolean CoversOpaque (int x0, int y0, int x1, int y1) const
 	{
-		if (m_nAlpha < 255 || Transparent () || AlphaCanvas () || m_bMinimised) return FALSE;
+		if (m_nAlpha < 255 || Transparent () || AlphaCanvas () || Hidden ()) return FALSE;
 		if (!Borderless () && !HasChrome ()) return FALSE;
 		if (!(x0 >= m_nX && y0 >= m_nY && x1 <= m_nX + OuterWidth () && y1 <= m_nY + OuterHeight ())) return FALSE;
 		return Borderless () || !CornersIn (x0, y0, x1, y1);
@@ -382,6 +396,8 @@ private:
 
 	volatile boolean m_bExitRequested;
 	volatile boolean m_bMinimised;		// (SetMinimised)
+	int		m_nDesk;		// (v65) its workspace, -1 = every one (SetDesk)
+	volatile boolean m_bOffDesk;		// on another workspace than the current one (SetOffDesk)
 	unsigned	m_nChromeGenShown;	// m_nChromeGen at the last whole-window present
 	void	       *m_pRetired[3];		// memory Grow replaced (canvas, chrome x 2), freed later
 	unsigned	m_nRetireFrame;		// the compositor's frame count when it was retired
@@ -507,6 +523,18 @@ public:
 	// Minimise a window (v64): hidden until raised; the keys go to the next one.
 	void Minimise (CWindow *pWindow);
 
+	// ---- workspaces (v65: virtual desktops) -------------------------------------------------
+	// nCount desks (1 .. KAPI_DESK_MAX), one shown at a time: a new window opens on the current
+	// one (a topmost, backmost or system window is on every desk); the others' windows are
+	// hidden (CWindow::OffDesk). SetDesk shows desk n (-1 keeps it) and sets the count (0 keeps
+	// it: the windows of the desks dropped go to the last one) -> DeskInfo: the current desk |
+	// the count << 8 | a counter of the changes << 16. MoveToDesk: a window to desk n (-1: every
+	// desk). Raising a window of another desk shows its desk (Raise). Ctrl+Alt+Left / Right: the
+	// previous / next desk (with Shift: the active window goes along).
+	int SetDesk (int n, int nCount);
+	int DeskInfo (void);
+	int MoveToDesk (CWindow *pWindow, int n);
+
 	// ---- full-screen apps (ABI v41) ---------------------------------------
 	// While a window is full-screen, the compositor stops drawing (the app presents
 	// its own buffer) and ALL pointer / key input goes to that window (screen
@@ -531,6 +559,8 @@ private:
 	int TopInsetLocked (void);
 	int BottomInsetLocked (void);
 	void MinimiseLocked (CWindow *pWindow);
+	void SetDeskLocked (int n);		// show desk n (caller holds m_SpinLock)
+	void ForgetHiddenLocked (void);		// the pointer's references to hidden windows dropped
 
 	// Push one GUI_EVENT_PTR_* event (client coords) to a window's pointer handler.
 	// nWheel is the signed wheel delta (only meaningful for GUI_EVENT_PTR_WHEEL).
@@ -593,6 +623,10 @@ private:
 	char	   m_DndLabel[DND_LABEL_MAX];
 	volatile unsigned m_nModifiers;	// MOD_*
 	void DndFinishLocked (int x, int y, boolean bCancel);	// drop / cancel
+
+	int	   m_nDesk;			// (v65) the current desk
+	int	   m_nDesks;			// how many
+	volatile unsigned m_nDeskGen;		// bumped at every change of either
 
 	// Protects the window list against concurrent Add (app threads) / Remove
 	// (process teardown, in scheduler context) / Composite (compositor thread).

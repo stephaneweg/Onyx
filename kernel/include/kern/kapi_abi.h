@@ -76,7 +76,10 @@
 //      GUI_EVENT_WINCTL), minimised windows (KAPI_WIN_MINIMISED), maximise (a window grows past
 //      its first size), the work area; the frames' rounded corners (their see-through pixels:
 //      the chrome's top byte); WIN_FLAG_ALPHA (per-pixel see-through windows).
-#define KAPI_ABI_VERSION	64
+// v65: + desk / win_desk -- workspaces (virtual desktops): a window opens on the current desk and
+//      is shown only there (KAPI_WIN_OFFDESK, KAPI_WIN_DESK in win_list); list_windows and
+//      raise_app see the current desk's windows only; Ctrl+Alt+Left / Right switch desks.
+#define KAPI_ABI_VERSION	65
 
 #ifdef __cplusplus
 extern "C" {
@@ -274,6 +277,9 @@ struct kapi_gpu_batch
 #define KAPI_WIN_KEYS		1	// it has the keyboard
 #define KAPI_WIN_FULLSCREEN	2	// the full-screen window (its pixels: the screen's)
 #define KAPI_WIN_MINIMISED	4	// (v64) minimised: not shown until raised (win_raise / raise_app)
+#define KAPI_WIN_OFFDESK	8	// (v65) on another workspace than the current one: not shown
+#define KAPI_WIN_DESK(state)	((int) (((state) >> 8) & 0xFF) - 1)	// (v65) its workspace (-1: all)
+#define KAPI_DESK_MAX		8	// (v65) workspaces at most (kapi desk)
 #define KAPI_WIN_DESKTOP	0xFFFFFFFFu	// the id of the desktop (listed first: the wallpaper
 						// + the backmost windows, screen-sized; read whole only)
 struct kapi_win_info
@@ -284,7 +290,7 @@ struct kapi_win_info
 	unsigned flags;			// WIN_FLAG_BORDERLESS 1, BACKMOST 2, TOPMOST 4, TRANSPARENT 8, SYSTEM 16
 	int alpha;			// 0..255
 	unsigned gen;
-	unsigned state;			// KAPI_WIN_*
+	unsigned state;			// KAPI_WIN_* | (v65) its desk + 1 << 8 (KAPI_WIN_DESK: 0 = all)
 	char title[48];
 	int ow, oh;			// the whole window with its frame (0 0: no frame)
 	int il, it;			// the client area's place in it (frame left, top)
@@ -898,6 +904,14 @@ struct TKApiTable
 	// size when needed (new memory, at the same addresses: their pixels are lost -- redraw them; the
 	// frame: get_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: size kept).
 	unsigned *(*resize_window2) (int w, int h, int *stride);
+	// --- v65 ---
+	// desk: the workspaces (virtual desktops). set >= 0 shows desk `set`, count > 0 sets how many
+	// there are (1 .. KAPI_DESK_MAX; the windows of the desks dropped go to the last one); -1 / 0
+	// keep them -> the current desk | the count << 8 | a counter bumped at every change << 16.
+	int (*desk) (int set, int count);
+	// win_desk: window id (0: the caller's) to desk n (-1: every desk; -2: only asked) -> its desk
+	// (-1: every desk), -3 no such window. (A topmost / backmost window stays on every desk.)
+	int (*win_desk) (unsigned id, int n);
 };
 
 #ifdef __cplusplus
