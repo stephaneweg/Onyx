@@ -166,8 +166,8 @@ Writer itself (no RichTextBox). Done:
 - **wtk**: `wtk/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
 - **Sample**: `sdcard/docs/writer-tour.rtf` (`tools/gen_writer_sample.py`); the screenshot
   `screenshots/writer.png`. The desktop simulator's script has `mods N` (modifier keys).
-- **Next ideas**: tables; headers / footers beyond the page number; spell checking (a
-  dictionary); tab stops set on the ruler; ODT / DOCX import (zlib is in `third_party`).
+- **Next ideas**: done since — tables, headers / footers, fields, tab stops, a table of contents,
+  `.docx` / `.odt`, the mail merge: see *Writer as Word* below.
 
 ## Paint, as Windows 11's, with layers (2026-09-29, same branch, pushed to `main`)
 
@@ -256,6 +256,50 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   pages of the identity map in the apps' address spaces (a null pointer would fault instead of
   writing over the kernel), and stop a faulting app instead of the kernel panic (any app fault
   takes the whole Pi down today).
+
+## Writer as Word: tables, pages, fields, .docx / .odt; Cardfile's mail merge (2026-09-29, `claude/happy-wright-wg38ez`, pushed to `main`)
+
+Asked by the user: Writer pushed further (".odt, .docx, tables, a table of contents, headers and
+footers, pagination") and, in Cardfile, a mail merge with a Writer letter (one record → one
+document; all the records → a series of documents). Done (the user guide: docs/04 *Writer* —
+*Tables*, *Pages*, *The mail merge* — and *Cardfile*; the pieces: docs/03):
+
+- **The model** (`doc.h`): stories (the body, the header, the footer, the first page's own; one
+  edited at a time), tables (a run of paragraphs saying their cell; the `Table` — widths, heights,
+  spans, shading, lines, heading row — a value replaced whole by an edit, so undo covers it), fields
+  (`FIELD_CHAR` + a `Field`: page, pages, date / time with a picture, merge field), tab stops with
+  alignments and leaders, keep with next / lines together / widow control, TOC and header / footer
+  styles. **The layout** (`layout.h`): boxes (the text's width or a cell's), the headers and
+  footers first (the body's top follows the header's height), a `Pager` (headings kept with their
+  next line, widows / orphans, a table broken between its rows with its heading row repeated).
+  **Editing** (`edit.h`, `view.h`): the table commands (rows, columns, merge, split, even widths,
+  properties), Tab from cell to cell, a column border dragged (page or ruler), a double click on a
+  header / footer (the body greyed), Insert ▸ Page Numbers / Field / Table of Contents, Tools ▸
+  Update Table of Contents, Format ▸ Tabs.
+- **Files**: RTF extended (tables, headers, fields, tabs, the TOC's field); **`docx.h`**
+  (WordprocessingML) and **`odt.h`** (ODF) read and written, over `xml.h` (a pull reader on a zip
+  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_writer_test.sh`
+  (14936 checks: a document with all of it through RTF, .docx and .odt, and LibreOffice's
+  conversions of ours when `soffice` is installed — `apt install libreoffice-writer` in the cloud
+  container; valgrind clean with `VG=1`). `tools/tests/writer/conv.cpp` converts a file.
+- **The mail merge**: Writer's `merge.h` (the data read with Cardfile's own `model.h`; Tools ▸ Mail
+  Merge: fields inserted, values previewed, merged to a new document or to files named after a
+  field) and `writer --merge JOB` for Cardfile's **Record ▸ Mail Merge** (`MergeBox`: this record or
+  all those shown; one document or files; the form's `merge` key remembers the letter).
+- **Fixed on the way**: a question asked at an app's start (the recovered document of Writer,
+  Cardfile, Paint, the Spreadsheet; a merge's end) got no click nor key — `Root::run` hooked the
+  pointer and the keys; they are hooked (`root.attach ()`) right after the `Root` now. **Keep it
+  so in a new app that asks something before `run ()`**: the kernel drops a window's events while
+  it has no handler. `xml.h`: `XBuf::str ()` of an empty value was not ended (valgrind).
+- **Samples**: `SD:/docs/writer-tour.rtf` (two pages: a TOC, a header / footer — the title page's
+  own —, a table) and `SD:/docs/new-year-letter.rtf` (the Contacts form's letter; `contacts.card`
+  names it), both by `tools/gen_writer_sample.py`; `.docx` / `.odt` open in Writer
+  (`fileassoc.ini`). Screenshots `writer.png`, `writer-table.png`, `writer-merge.png`,
+  `cardfile-merge.png`.
+- **Next ideas**: a table's rows split across pages (a row taller than a page runs over its foot
+  today); text boxes and shapes (dropped when read); comments, tracked changes (read accepted);
+  columns (newspaper); footnotes; sections with their own page setups; a mail merge's conditions
+  (IF fields) and a filter on the records; printing / PDF.
 
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 

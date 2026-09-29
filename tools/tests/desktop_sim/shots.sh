@@ -138,9 +138,15 @@ if want invaders; then sim invaders invaders "$W;$W;$W;key 32;$W;$W;$W;$W" $P; p
 if want graphcalc; then sim graphcalc graphcalc "$W" $P; png graphcalc; fi
 if want iconedit; then sim iconedit iconedit "$W" $P SIM_ARGS=SD:/apps/invaders.app/icon.bmp; png iconedit; fi
 if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sample.rtf; png rtfview; fi
-if want writer; then			# (the sample document; a double click selects a word: the toolbar follows it)
-	sim writer writer "wait;down 585 572;up 585 572;down 585 572;up 585 572;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf
+if want writer; then			# (the sample document, a word of its contents chosen: the toolbar follows it; its second
+					#  page: the header, the table, the caret in a cell; the mail merge: the letter's fields shown
+					#  with a record of the Contacts)
+	sim writer writer "wait;down 232 550;up 232 550;down 232 550;up 232 550;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf
 	png writer
+	sim writer writer-table "wait;wheel 500 400 -10;wait;wheel 500 400 -10;wait;wheel 500 400 -9;wait;down 479 481;up 479 481;$W" $P \
+		SIM_ARGS=SD:/docs/writer-tour.rtf
+	png writer-table
+	sim writer writer-merge "wait;menu 59;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png writer-merge
 fi
 if want sheet; then			# (the sample workbook: the Total column chosen -- its sum below --; a filter's drop-down; the loan's names)
 	sim sheet sheet "wait;down 450 405;move 450 300;move 450 218;up 450 218;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet
@@ -153,6 +159,7 @@ if want cardfile; then			# (the sample: a record; the list sorted by title, a ro
 	sim cardfile cardfile-list "wait;key 0x115;wait;down 60 62;up 60 62;wait;down 300 161;up 300 161;$W" $P SIM_ARGS=SD:/docs/books.card
 	png cardfile-list
 	sim cardfile cardfile-design "wait;key 0x116;wait;down 100 157;up 100 157;$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile-design
+	sim cardfile cardfile-merge "wait;menu 21;$W" $P SIM_ARGS=SD:/docs/contacts.card; png cardfile-merge	# (Record > Mail Merge)
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want applist; then sim applist applist "$W" $P; png applist; fi

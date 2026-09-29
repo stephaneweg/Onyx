@@ -513,19 +513,47 @@ Notes / caveats:
 > `rtfview` (Writer reads and writes RTF itself, with everything: `Apps/writer/fileio.h`).
 > **Writer** (`user/Apps/writer/`, one TU: `main.cpp` includes the rest) — `doc.h` the document
 > (paragraphs of code points, each with an index into the table of character formats — font of the
-> font table, size in half-points, flags, colour, highlight; an image: the character U+FFFC whose
-> format names the image and its size —, each paragraph its `ParaFmt` — style, alignment, indents
-> and spacing in twips, line spacing, list, page break; the tables only grow, so an edit's undo just
-> puts the paragraphs it copied back: `doc_begin` / `doc_end_edit`, typing coalesced), `layout.h`
-> (lines at the zoom in 1/64 px from the fonts' design advances, each character's x kept —
-> `Para::xs` — for drawing, hit-testing and the caret alike; lists' numbers; pages), `edit.h` (the
-> selection, the edits, the clipboard — the system's text plus the piece of document kept here —,
-> find), `view.h` (the page view widget: drawing, caret blink without a redraw, mouse, keys, images'
-> resizing), `ui.h` (tool buttons, pick boxes dropping a `ListPopup`, the size box, colour popups,
-> the ruler, the status bar), `icons.h` (`VPath` icons), `fileio.h` (RTF in / out — pictures as
-> `\pict\pngblip` / `\jpegblip`, a PNG made when the image came as something else —, text, HTML),
-> `dialogs.h`. A host test worth keeping in mind: random edits undone then redone must give back
-> the same RTF. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
+> font table, size in half-points, flags, colour, highlight, a field (`FIELD_CHAR` U+FFF9 whose
+> format names a `Field`: page, pages, date / time with its picture, a merge field) or an image (the
+> character U+FFFC whose format names the image and its size) —, each paragraph its `ParaFmt` —
+> style, alignment, indents and spacing in twips, line spacing, list, page break, keep with next /
+> lines together / widow control, tab stops (position, alignment, leader) and, in a **table**, the
+> table's index and the cell's row and column); the **stories** — the body, the header, the footer,
+> the first page's own — one of which is edited at a time (`d.p`, `doc_story` swaps them); a
+> **table** is a run of paragraphs saying their cell, the `Table` itself (columns' widths, rows'
+> heights, the cells' spans, shading, lines, the heading row) a value in `d.tbl` replaced whole by
+> an edit; the tables only grow, so an edit's undo just puts the paragraphs it copied back:
+> `doc_begin` / `doc_end_edit`, typing coalesced), `layout.h` (lines at the zoom in 1/64 px from the
+> fonts' design advances in boxes — the text's width or a cell's —, each character's x kept —
+> `Para::xs` — for drawing, hit-testing and the caret alike; tab stops, fields' texts, lists'
+> numbers; the headers and footers placed first — the body's top and foot follow them —, then the
+> **pages**: a `Pager` keeps a heading with its next line, widows and orphans off, a table broken
+> between its rows — the rows its cells span together — with its heading row repeated), `edit.h` (the
+> selection, the edits — the tables' rows, columns, merges and splits as one undoable edit of the
+> table's paragraphs and its `Table` —, the stories, the fields, the page numbers, the **table of
+> contents** (laid out twice: its own place moves the pages), the clipboard — the system's text plus
+> the piece of document kept here —, find), `view.h` (the page view widget: drawing — the tables'
+> shading and lines, the fields shaded, the leaders, each page's header and footer, the body greyed
+> while one is edited —, caret blink without a redraw, mouse, keys, images' resizing, a table's
+> column border dragged), `ui.h` (tool buttons, pick boxes dropping a `ListPopup`, the size box,
+> colour popups, the ruler — a table's columns —, the status bar), `icons.h` (`VPath` icons),
+> `fileio.h` (RTF in / out — tables `\trowd`..., headers and footers, fields `{\field}`, tab stops,
+> the TOC's field, pictures as `\pict\pngblip` / `\jpegblip`, a PNG made when the image came as
+> something else —, text, HTML), `xml.h` (a pull reader over a zip entry — wtk's `img_inflate` —, the
+> units; the zip written with the PNG writer's deflate), `docx.h` (WordprocessingML: styles with their
+> inheritance and the theme's fonts, numbering, tables — grid, spans, vertical merges —, simple and
+> complex fields, the headers and footers, the section, images, `w:docVars` for the mail merge's
+> data), `odt.h` (ODF: named and automatic styles, lists, tables — spanned and covered cells —,
+> frames, fields with their data styles, the TOC, the master page), `merge.h` (the **mail merge**:
+> the data is a Cardfile form read with Cardfile's own `model.h`; the fields filled per record into a
+> copy of the letter read back from its bytes; `writer --merge JOB` — the job file's keys at the top
+> of `merge.h` — makes a merge's documents for Cardfile), `dialogs.h`. **Host test**:
+> `sh tools/tests/run_writer_test.sh` (`tools/tests/writer/files_test.cpp`: a document with all of it
+> written as RTF, `.docx` and `.odt` and read back the same — each through the others too —, and with
+> LibreOffice installed — `soffice` — our `.docx` and `.odt` converted by it and read back; UBSan,
+> `VG=1` valgrind); `tools/tests/writer/conv.cpp` converts a file by the names' extensions (`conv
+> a.docx b.odt`). The samples (`SD:/docs/writer-tour.rtf`, `new-year-letter.rtf`) are made by
+> `tools/gen_writer_sample.py`.
 > **Paint** (`user/Apps/paint/`, a freestanding integer app) — `pdoc.h` (up to 32 layers of
 > 0xAARRGGBB pixels, straight alpha, bottom first; the composite kept and recomputed by rectangles,
 > a floating selection and a shape's preview composed with the current layer; undo: a stroke keeps
@@ -559,7 +587,9 @@ Notes / caveats:
 > editor a field, the commit and its validation, Tab order, scrolling), `listview.h` (a
 > `DataGrid`), `designview.h`, `app.h` (the state the views share). Undo keeps the whole document
 > written before each change (100 steps, 24 MB at most; one control's edits coalesced into one
-> step). **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
+> step). **Record ▸ Mail Merge** (`MergeBox`, `cmd_mail_merge`): the records to merge written as a
+> `.card` (`SD:/apps/cardfile.app/merge.card`), a job file beside it, then `kapi_exec` of
+> `writer --merge JOB` — Writer's `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
 > **Spreadsheet** (`user/Apps/sheet/`, a **newlib** wtk app — FreeType and `libm` — built as Writer
