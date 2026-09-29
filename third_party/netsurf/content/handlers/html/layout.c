@@ -1069,6 +1069,11 @@ static void layout_minmax_block(
 		}
 	}
 
+	/* Onyx: a grid container's widths are its tracks' (layout_grid.c) */
+	if (block->object == NULL && lh__box_is_grid(block)) {
+		layout_minmax_grid(block, &content->unit_len_ctx, &min, &max);
+	}
+
 	/* Onyx: a row flex container's gaps between its items (in-flow ones)
 	 * widen it: always its max-content width, its min-content width when it
 	 * does not wrap */
@@ -3437,7 +3442,8 @@ layout_line(struct box *first,
 	for (d = first; d != b; d = d->next) {
 		d->flags &= ~NEW_LINE;
 
-		if (d->type == BOX_INLINE_BLOCK &&
+		if ((d->type == BOX_INLINE_BLOCK ||
+		     d->type == BOX_INLINE_FLEX) &&	/* (Onyx: and flex / grid) */
 				(css_computed_position(d->style) ==
 						CSS_POSITION_ABSOLUTE ||
 				 css_computed_position(d->style) ==
@@ -3462,8 +3468,10 @@ layout_line(struct box *first,
 				used_height = d->height;
 			}
 		} else if ((d->type == BOX_INLINE) ||
-				d->type == BOX_INLINE_BLOCK) {
-			/* replaced inlines and inline-blocks */
+				d->type == BOX_INLINE_BLOCK ||
+				d->type == BOX_INLINE_FLEX) {
+			/* replaced inlines and inline-blocks -- Onyx: and inline-flex
+			 * / inline-grid ones (their height makes the line's too) */
 			d->x += x0;
 			d->y = *y + d->border[TOP].width + d->margin[TOP];
 			h = d->margin[TOP] + d->border[TOP].width +

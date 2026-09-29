@@ -68,6 +68,30 @@ bool layout_flex(
 		int available_width,
 		html_content *content);
 
+/**
+ * Onyx: layout a grid container (a BOX_FLEX / BOX_INLINE_FLEX whose display is grid or
+ * inline-grid; layout_flex() hands it over). See layout_grid.c.
+ *
+ * \param[in] grid             grid container to layout
+ * \param[in] available_width  width of containing block
+ * \param[in] content          memory pool for any new boxes
+ * eturn  true on success, false on memory exhaustion
+ */
+bool layout_grid(
+		struct box *grid,
+		int available_width,
+		html_content *content);
+
+/**
+ * Onyx: a grid container's min-content / max-content widths (its content box), from its
+ * items' (already computed) min / max widths.
+ */
+void layout_minmax_grid(
+		struct box *grid,
+		const css_unit_ctx *unit_len_ctx,
+		int *min_width,
+		int *max_width);
+
 typedef uint8_t (*css_len_func)(
 		const css_computed_style *style,
 		css_fixed *length, css_unit *unit);
@@ -110,10 +134,24 @@ static inline bool lh__box_is_inline_flow(const struct box *b)
 }
 
 /** Layout helper: Check whether box takes part in inline flow. */
+/** Onyx: a grid container is a flex-like box whose display is grid / inline-grid. */
+static inline bool lh__box_is_grid(const struct box *b)
+{
+	uint8_t d;
+
+	if (b->style == NULL ||
+	    (b->type != BOX_FLEX && b->type != BOX_INLINE_FLEX))
+		return false;
+	d = css_computed_display_static(b->style);
+	return d == CSS_DISPLAY_GRID || d == CSS_DISPLAY_INLINE_GRID;
+}
+
+/** (Onyx: a grid container is not a flex container) */
 static inline bool lh__box_is_flex_container(const struct box *b)
 {
-	return b->type == BOX_FLEX ||
-	       b->type == BOX_INLINE_FLEX;
+	return (b->type == BOX_FLEX ||
+	        b->type == BOX_INLINE_FLEX) &&
+	       !lh__box_is_grid(b);
 }
 
 /** Layout helper: Check whether box takes part in inline flow. */

@@ -1242,6 +1242,11 @@ bool layout_flex(struct box *flex, int available_width,
 	struct flex_ctx *ctx;
 	bool success = false;
 
+	/* Onyx: a grid container is a flex-like box; its layout is layout_grid.c's */
+	if (lh__box_is_grid(flex)) {
+		return layout_grid(flex, available_width, content);
+	}
+
 	ctx = layout_flex_ctx__create(content, flex);
 	if (ctx == NULL) {
 		return false;

@@ -109,8 +109,8 @@ static const box_type box_map[] = {
 	BOX_NONE,            /* CSS_DISPLAY_NONE */
 	BOX_FLEX,            /* CSS_DISPLAY_FLEX */
 	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_FLEX */
-	BOX_BLOCK,           /* CSS_DISPLAY_GRID */
-	BOX_INLINE_BLOCK,    /* CSS_DISPLAY_INLINE_GRID */
+	BOX_FLEX,            /* CSS_DISPLAY_GRID (Onyx: flex-like, layout_grid.c) */
+	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_GRID */
 	BOX_BLOCK,           /* CSS_DISPLAY_CONTENTS (Onyx: as a block, for now) */
 };
 
@@ -583,7 +583,8 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 			(css_display == CSS_DISPLAY_INLINE ||
 			 css_display == CSS_DISPLAY_INLINE_BLOCK ||
 			 css_display == CSS_DISPLAY_INLINE_TABLE ||
-			 css_display == CSS_DISPLAY_INLINE_FLEX)) {
+			 css_display == CSS_DISPLAY_INLINE_FLEX ||
+			 css_display == CSS_DISPLAY_INLINE_GRID)) {
 		/* Special case for absolute positioning: make absolute inlines
 		 * into inline block so that the boxes are constructed in an
 		 * inline container as if they were not absolutely positioned.
