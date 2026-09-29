@@ -53,6 +53,10 @@ static void new_document (int journal, bool credit = false, int back = -1);	// (
 static int  ask (const char *title, const char *text, int buttons, int icon = 1);
 static void open_party (int id);		// its page, its card
 static void open_account (const char *code);	// the chart, that account's register
+static void cmd_import_coda ();			// a bank's CODA file: its statements shown one after the other
+static bool coda_saved ();			// (an imported statement saved: the next one shown -- false: none left)
+static void coda_stop ();			// (the import given up)
+static void cmd_pay ();				// the suppliers paid: a SEPA file (payui.h)
 
 // ---- colours ---------------------------------------------------------------------------------------------------------------
 static const unsigned C_GOOD = 0x00248A45, C_BAD = 0x00C8402E, C_WARN = 0x00C7801A, C_BLUE = 0x002F6FC0, C_PURPLE = 0x007A4DB0;
@@ -61,7 +65,7 @@ static unsigned field_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 140); }
 
 // ---- the icons (20 x 20 at x, y) ----------------------------------------------------------------------------------------------
 enum { NI_OVERVIEW, NI_SALES, NI_PURCH, NI_BANK, NI_MISC, NI_CUST, NI_SUPP, NI_CHART, NI_REPORT, NI_VAT, NI_SETTINGS,
-       NI_PLUS, NI_TRASH, NI_EDIT, NI_EXPORT, NI_BACK, NI_LINK, NI_CHECK, NI_DOC, NI_LOCK, NI_ORDERS, NI_PRINT, NI_NEXT, NI_COUNT };
+       NI_PLUS, NI_TRASH, NI_EDIT, NI_EXPORT, NI_BACK, NI_LINK, NI_CHECK, NI_DOC, NI_LOCK, NI_ORDERS, NI_PRINT, NI_NEXT, NI_IMPORT, NI_COUNT };
 static const int PAGE_ICON[NPAGES] = { NI_OVERVIEW, NI_SALES, NI_PURCH, NI_BANK, NI_MISC, NI_CUST, NI_SUPP, NI_CHART, NI_REPORT,
 				       NI_VAT, NI_SETTINGS, NI_ORDERS, NI_DOC, NI_BANK, NI_MISC, NI_ORDERS };
 
@@ -186,6 +190,13 @@ static void draw_ni (Canvas &cv, int k, int x, int y, unsigned ink, unsigned acc
 		p.rect (X + V (5), Y + V (12), 20, V (7)); p.rect (X + V (15) - 20, Y + V (12), 20, V (7)); p.rect (X + V (5), Y + V (19) - 20, V (10), 20); p.fill (cv, ink);
 		p.clear (); p.rect (X + V (7), Y + V (14), V (6), 20); p.rect (X + V (7), Y + V (16), V (4), 20); p.fill (cv, accent);
 		break;
+	case NI_IMPORT:							// a tray and an arrow into it
+	{
+		int tray[8] = { X + V (2), Y + V (11), X + V (2), Y + V (18), X + V (18), Y + V (18), X + V (18), Y + V (11) };
+		p.polyline (tray, 4, 32); p.fill (cv, ink);
+		p.clear (); p.line (X + V (10), Y + V (1), X + V (10), Y + V (10), 36); p.arrowHead (X + V (10), Y + V (14), 270, V (6), V (5)); p.fill (cv, accent);
+		break;
+	}
 	case NI_NEXT:							// an arrow going on
 		p.line (X + V (3), Y + V (10), X + V (13), Y + V (10), 40); p.arrowHead (X + V (17), Y + V (10), 0, V (7), V (6)); p.fill (cv, accent);
 		break;
@@ -241,7 +252,7 @@ public:
 		canvas.clear (C_BG);
 		// (the text stops before the header's buttons)
 		int lim = width - 16;
-		for (Widget *c = firstChild; c; c = c->nextSib) if (!c->hidden && c->top < HEAD_H - 12 && c->left > width / 3) lim = imin (lim, c->left - 14);
+		for (Widget *c = firstChild; c; c = c->nextSib) if (!c->hidden && c->top < HEAD_H - 12 && c->left > 160) lim = imin (lim, c->left - 14);
 		draw_ni (canvas, PAGE_ICON[id], 18, 12, wk_ink_for (C_BG), C_ACCENT);
 		text_fit_l (canvas, 48, 9, lim - 48, 24, title (), C_TEXT, 2);
 		char s[200]; subtitle (s, sizeof s);

@@ -2,7 +2,7 @@
 # run_ledger_test.sh -- Ledger's books (user/Apps/ledger/) on the PC: money, dates, the Belgian checks, invoices
 # and statements posted, the VAT grids, matching, the file's round trip, the reports, the year's end; then the
 # Intervat XML files it wrote checked against the official schemas (tools/tests/ledger/xsd/, SPF Finances
-# v0.9) by xmllint, when installed.
+# v0.9) by xmllint, when installed; so is its SEPA credit transfer file (ISO 20022 pain.001.001.09).
 #
 #   sh tools/tests/run_ledger_test.sh
 #
@@ -20,6 +20,7 @@ if command -v xmllint >/dev/null 2>&1; then
 	xmllint --noout --schema "$X/NewTVA-in_v0_9.xsd" "$D/vat_return.xml" "$D/vat_return_month.xml"
 	xmllint --noout --schema "$X/NewLK-in_v0_9.xsd" "$D/client_listing.xml"
 	xmllint --noout --schema "$X/NewICO-in_v0_9.xsd" "$D/intra_listing.xml"
+	xmllint --noout --schema "$X/pain.001.001.09.xsd" "$D/payments.xml"
 else
 	echo "(xmllint not installed: the XML files not checked against the schemas)"
 fi

@@ -60,7 +60,7 @@ static void short_number (const Entry &e, bool withJournal, char *out, int cap)
 	scat (out, t, cap);
 }
 // A document's payment state: its party's lines (on the collective accounts) matched or not, when due.
-enum { ST_NONE, ST_PAID, ST_OPEN, ST_OVERDUE, ST_CREDIT, ST_SETTLED };
+enum { ST_NONE, ST_PAID, ST_OPEN, ST_OVERDUE, ST_CREDIT, ST_SETTLED, ST_PAYING };
 static int doc_state (const Entry &e, money *open, int *due)
 {
 	*open = 0; *due = 0;
@@ -76,6 +76,7 @@ static int doc_state (const Entry &e, money *open, int *due)
 	bool credit = (e.flags & EF_CREDIT) != 0;
 	if (allMatched) return credit ? ST_SETTLED : ST_PAID;
 	if (credit) return ST_CREDIT;
+	if (e.flags & EF_PAYING) return ST_PAYING;			// (its transfer in a SEPA file)
 	return *due < today_ymd () ? ST_OVERDUE : ST_OPEN;
 }
 static void state_pill (int st, int due, char *text, unsigned *col)
@@ -86,6 +87,7 @@ static void state_pill (int st, int due, char *text, unsigned *col)
 	case ST_PAID: scpy (text, "Paid", 32); *col = C_GOOD; return;
 	case ST_SETTLED: scpy (text, "Settled", 32); *col = C_GOOD; return;
 	case ST_CREDIT: scpy (text, "Credit open", 32); *col = C_PURPLE; return;
+	case ST_PAYING: scpy (text, "Transfer sent", 32); *col = C_PURPLE; return;
 	case ST_OPEN: date_show (due, d); d[5] = '\0'; scpy (text, "Due ", 32); scat (text, d, 32); *col = C_BLUE; return;
 	case ST_OVERDUE: { int n = days_between (due, today_ymd ()); text[0] = '\0'; scat_num (text, n, 32); scat (text, n == 1 ? " day late" : " days late", 32); *col = C_BAD; return; }
 	}
@@ -375,8 +377,10 @@ public:
 		{
 			bNew = h.add (id == P_SALES ? "New invoice" : "New purchase", s_new, FB_PRIMARY, NI_PLUS, "A new invoice (Ctrl+N)");
 			bCredit = h.add ("Credit note", s_credit, FB_SECONDARY, NI_PLUS, "A new credit note");
+			if (id == P_PURCH) h.add ("Pay...", s_pay, FB_SECONDARY, NI_BANK, "The suppliers' invoices paid: a SEPA transfers file for the bank");
 		}
 		else bNew = h.add (id == P_FIN ? "New statement" : "New operation", s_new, FB_PRIMARY, NI_PLUS, id == P_FIN ? "A new bank or cash statement (Ctrl+N)" : "A new miscellaneous operation (Ctrl+N)");
+		if (id == P_FIN) h.add ("Import CODA", s_coda, FB_SECONDARY, NI_IMPORT, "The bank's statements file (CODA): its movements, their parties and invoices found");
 		int y = 70;
 		if (id == P_SALES || id == P_PURCH)
 		{
@@ -473,10 +477,10 @@ public:
 					else if (l.party && acc_party (g_b, l.account)) r.c += sale ? l.amount : -l.amount;
 				}
 				money open; r.st = (unsigned char) doc_state (e, &open, &r.due);
-				if (r.st == ST_OPEN || r.st == ST_OVERDUE || r.st == ST_CREDIT) nOpen++;
+				if (r.st == ST_OPEN || r.st == ST_OVERDUE || r.st == ST_CREDIT || r.st == ST_PAYING) nOpen++;
 				if (r.st == ST_OVERDUE) nLate++;
 				int f = filter ? filter->cur : 0;
-				if (f == 1 && !(r.st == ST_OPEN || r.st == ST_OVERDUE || r.st == ST_CREDIT)) continue;
+				if (f == 1 && !(r.st == ST_OPEN || r.st == ST_OVERDUE || r.st == ST_CREDIT || r.st == ST_PAYING)) continue;
 				if (f == 2 && r.st != ST_OVERDUE) continue;
 				if (f == 3 && !(r.st == ST_PAID || r.st == ST_SETTLED)) continue;
 			}
@@ -557,7 +561,7 @@ public:
 			if (p->id == P_PURCH) return e.ref;
 			if (p->id == P_FIN) return g_b.jr[e.journal].code;
 			buf[0] = '\0'; scat_num (buf, e.nl, cap_); return buf;
-		case 5: if (p->id == P_MISC) return e.flags & EF_OPENING ? "Opening" : entry_has_vat (e) ? "With VAT" : ""; break;
+		case 5: if (p->id == P_MISC) return e.flags & EF_OPENING ? "Opening" : e.flags & EF_SETTLE ? "VAT settlement" : entry_has_vat (e) ? "With VAT" : ""; break;
 		}
 		return "";
 	}
@@ -672,6 +676,8 @@ public:
 	}
 	static JournalPage *cur ();
 	static void s_new () { JournalPage *p = cur (); if (p) p->cmdNew (); }
+	static void s_coda () { cmd_import_coda (); }
+	static void s_pay () { cmd_pay (); }
 	static void s_credit () { JournalPage *p = cur (); if (!p) return; int j = p->journalFilter (); if (j < 0) j = p->jc.n ? p->jc.idx[0] : jrn_first (g_b, p->t1); if (j >= 0) new_document (j, true); }
 };
 inline JournalPage *JournalPage::cur () { for (int i = 0; i < 4; i++) if (g_jp[i] && !g_jp[i]->hidden) return g_jp[i]; return 0; }

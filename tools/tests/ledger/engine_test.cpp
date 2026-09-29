@@ -13,6 +13,8 @@
 #include "Apps/ledger/setup.h"
 #include "Apps/ledger/fileio.h"
 #include "Apps/ledger/commerce.h"
+#include "Apps/ledger/coda.h"
+#include "Apps/ledger/sepa.h"
 using namespace lg;
 
 static int g_fail, g_checks;
@@ -253,6 +255,106 @@ int main (int argc, char **argv)
 		CHECK (st_from_entry (b, b.e[ei], r) && r.nl == 2 && r.l[0].party == C1 && r.l[1].amount == -250, "the statement read back");
 		st_free (r); st_free (s);
 		CHECK (fin_balance_before (b, JB, 20260301) == 173750, "the bank's balance: %s", M (fin_balance_before (b, JB, 20260301)));
+	}
+	// ---- a CODA statement: written, read back, made a statement (its parties and invoices found), posted --------------------------
+	{
+		scpy (b.jr[JB].iban, "BE68539007547034", sizeof b.jr[JB].iban);
+		scpy (b.pty[party_index (b, S1)].iban, "BE71096123456769", sizeof b.pty[0].iban);
+		int e3 = -1; for (int i = 0; i < b.ne; i++) if (b.e[i].party == C3) e3 = i;
+		char o3[16], was3[16]; ogm_make (2026000003LL, o3); scpy (was3, b.e[e3].comm, sizeof was3); scpy (b.e[e3].comm, o3, sizeof b.e[e3].comm);
+		money s1due = 0; for (int i = 0; i < b.ne; i++) for (int k = 0; k < b.e[i].nl; k++) if (b.e[i].l[k].party == S1 && !b.e[i].l[k].match && b.e[i].l[k].amount < 0) { s1due = b.e[i].l[k].amount; break; }
+		CodaStmt c; coda_init (c);
+		scpy (c.iban, "BE68539007547034", sizeof c.iban); scpy (c.cur, "EUR", 4); scpy (c.holder, "LUMEN SRL", sizeof c.holder);
+		c.paper = 5; c.seq = 5; c.oldDate = 20260301; c.newDate = 20260305; c.oldBal = fin_balance_before (b, JB, 20260305);
+		{ CodaMove &m = coda_add (c); m.amount = 12100; m.date = 20260303; scpy (m.ogm, o3, 13); scpy (m.cpName, "LEROY MARIE", 36); scpy (m.cpIban, "BE62510007547061", 36); scpy (m.ref, "REF0001", 22); }
+		{ CodaMove &m = coda_add (c); m.amount = 200000; m.date = 20260303; scpy (m.comm, "Rechnung 2026/0002, Danke! Ein langer Text, der auf den zweiten Satz geht, ja.", 160); scpy (m.cpName, "STUDIO NORD GMBH", 36); scpy (m.cpBic, "DEUTDEFF", 12); }
+		{ CodaMove &m = coda_add (c); m.amount = s1due; m.date = 20260304; scpy (m.comm, "F-2026-117", 160); scpy (m.cpName, "GARAGE M.", 36); scpy (m.cpIban, "BE71096123456769", 36); }
+		{ CodaMove &m = coda_add (c); m.amount = -850; m.date = 20260305; scpy (m.code, "08037000", 9); scpy (m.comm, "Frais de tenue de compte", 160); }
+		{ CodaMove &m = coda_add (c); m.amount = 5000; m.date = 20260305; scpy (m.comm, "Cadeau", 160); scpy (m.cpName, "X", 36); }
+		c.newBal = c.oldBal; for (int i = 0; i < c.nm; i++) c.newBal += c.m[i].amount;
+		Out o; coda_write (c, "GEBABEBB", "00417497106", 20260305, true, true, o);
+		save (dir, "statement.cod", o);
+		bool w128 = true; for (const char *q = o.b; q < o.b + o.n; ) { const char *e = q; while (*e != '\r') e++; if (e - q != 128) w128 = false; q = e + 2; }
+		CHECK (w128, "CODA lines of 128 characters");
+		static CodaStmt st[CODA_MAXST]; const char *why = "";
+		int ns = coda_read (o.b, o.n, st, &why);
+		CHECK (ns == 1 && st[0].nm == 5 && st[0].paper == 5 && seq (st[0].iban, "BE68539007547034") && st[0].oldBal == c.oldBal && st[0].newBal == c.newBal && st[0].newDate == 20260305,
+		       "the CODA read back: %d statements (%s), %d moves", ns, why, ns ? st[0].nm : 0);
+		if (ns == 1 && st[0].nm == 5)
+		{
+			const CodaStmt &r = st[0];
+			CHECK (r.m[0].amount == 12100 && seq (r.m[0].ogm, o3) && seq (r.m[0].cpName, "LEROY MARIE") && seq (r.m[0].cpIban, "BE62510007547061") && r.m[0].date == 20260303,
+			       "a structured communication read: %s %s", r.m[0].ogm, r.m[0].cpName);
+			CHECK (seq (r.m[1].comm, "Rechnung 2026/0002, Danke! Ein langer Text, der auf den zweiten Satz geht, ja.") && seq (r.m[1].cpBic, "DEUTDEFF"), "a free one on two records: [%s]", r.m[1].comm);
+			CHECK (r.m[2].amount == s1due && r.m[3].amount == -850 && seq (r.m[3].code, "08037000"), "the amounts out, a code");
+			CHECK (coda_journal (b, r.iban) == JB && !coda_known (b, r, JB), "its journal found by the IBAN");
+			Statement sm; st_init (sm);
+			int left = coda_statement (b, r, JB, sm);
+			CHECK (left == 1 && sm.nl == 5, "one movement left to complete (%d)", left);
+			CHECK (sm.l[0].party == C3 && sm.l[0].npay == 1 && sm.l[0].pay[0].entry == b.e[e3].id, "the structured communication pays its invoice");
+			CHECK (sm.l[1].party == C2 && sm.l[1].npay == 1, "a party found by its name, the item as much ticked");
+			CHECK (sm.l[2].party == S1 && sm.l[2].npay == 1, "a supplier found by its IBAN, its invoice ticked");
+			CHECK (seq (sm.l[3].account, "657200") && !sm.l[4].party && !sm.l[4].account[0], "the bank's charges on 657200");
+			scpy (sm.l[4].account, "499000", CODE_MAX);
+			sm.now = sm.old + st_sum (sm);
+			CHECK (sm.now == r.newBal, "the statement ends on the bank's balance");
+			const char *w = st_check (b, sm); CHECK (!w[0], "the CODA statement refused: %s", w);
+			Entry e; st_to_entry (b, sm, e);
+			int ei = entry_save (b, e); st_apply_matches (b, ei, sm);
+			CHECK (b.e[e3].l[0].match != 0, "the invoice paid by the structured communication matched");
+			CHECK (coda_known (b, r, JB), "the statement known once posted");
+			st_free (sm);
+			entry_delete (b, entry_index (b, b.e[ei].id));			// (the books as they were, for what follows)
+			CHECK (!b.e[e3].l[0].match, "deleted: its matchings undone");
+		}
+		for (int i = 0; i < ns; i++) coda_free (st[i]);
+		scpy (b.e[e3].comm, was3, sizeof b.e[e3].comm);
+		// a globalised amount (its details skipped), an old Belgian account number
+		char g[5][130];
+		for (int i = 0; i < 5; i++) { for (int k = 0; k < 128; k++) g[i][k] = ' '; g[i][128] = '\0'; }
+		cput (g[0], 1, "10001", 5); cput (g[0], 6, "539007547034", 12); cput (g[0], 19, "EUR", 3); cput_amount (g[0], 43, 100000); cput_date (g[0], 59, 20260301);
+		for (int k = 1; k <= 3; k++)
+		{
+			cput (g[k], 1, "21", 2); cputn (g[k], 3, 1, 4); cputn (g[k], 7, k - 1, 4); cput (g[k], 11, "REF", 3);
+			cput_amount (g[k], 32, k == 1 ? 300 : k == 2 ? 100 : 200); cput_date (g[k], 48, 20260301); cput (g[k], 54, k == 1 ? "10150000" : "50150000", 8);
+			g[k][61] = '0'; cput (g[k], 63, "Batch", 5); cput_date (g[k], 116, 20260301);
+		}
+		cput (g[4], 1, "8001", 4); cput (g[4], 5, "539007547034", 12); cput (g[4], 18, "EUR", 3); cput_amount (g[4], 42, 100300); cput_date (g[4], 58, 20260304);
+		Out go; for (int i = 0; i < 5; i++) { go.puts (g[i]); go.puts ("\n"); }
+		ns = coda_read (go.b, go.n, st, &why);
+		CHECK (ns == 1 && st[0].nm == 1 && st[0].m[0].amount == 300 && seq (st[0].iban, "BE68539007547034") && st[0].oldBal == 100000 && st[0].newBal == 100300,
+		       "a globalisation's details skipped; an old account number made an IBAN (%d, %s, %s)", ns, why, ns ? st[0].iban : "");
+		for (int i = 0; i < ns; i++) coda_free (st[i]);
+		CHECK (!coda_read ("hello\n", 6, st, &why), "not a CODA file");
+		coda_free (c);
+	}
+	// ---- the suppliers paid: a SEPA credit transfer file (pain.001.001.09, checked by xmllint) ----------------------------------------
+	{
+		static Pay pay[64];
+		int np = sepa_open (b, pay, 64);
+		CHECK (np >= 2, "the suppliers' open invoices: %d", np);
+		Party &gm = b.pty[party_index (b, S1)];
+		bban_iban ("096123456769", gm.iban, sizeof gm.iban); scpy (gm.bic, "GKCCBEBB", sizeof gm.bic);
+		scpy (gm.street, "Chauss\xE9" "e de Louvain 12", NAME_MAX); scpy (gm.zip, "1210", 12); scpy (gm.city, "Saint-Josse", 48);
+		int ok = 0, noIban = 0; Pay sel[8]; int ns = 0;
+		for (int i = 0; i < np; i++)
+		{
+			const char *w = sepa_check (b, pay[i]);
+			if (!w[0]) { ok++; if (ns < 8) sel[ns++] = pay[i]; }
+			else if (b.e[pay[i].entry].l[pay[i].line].party == S2) noIban++;
+		}
+		CHECK (ok >= 1 && noIban >= 1, "paid: the supplier with an IBAN (%d); refused: the one without (%d)", ok, noIban);
+		char o12[16]; ogm_make (1234567890LL, o12); char wasC[16]; scpy (wasC, b.e[sel[0].entry].comm, sizeof wasC); scpy (b.e[sel[0].entry].comm, o12, 13);
+		char tx[64]; sepa_text ("Soci\xE9t\xE9 & Fils <Li\xE8ge>", tx, 70);
+		CHECK (seq (tx, "Societe Fils Liege"), "the EPC's Latin set: [%s]", tx);
+		scpy (b.vat, "BE0417497106", sizeof b.vat);
+		Out o;
+		CHECK (sepa_write (b, sel, ns, 20260310, 20260305, 143015, "BE68539007547034", "GEBABEBB", "LEDGER-20260305-143015", o), "the file written");
+		save (dir, "payments.xml", o);
+		o.put ('\0');
+		CHECK (strstr (o.b, "<Ref>123456789002</Ref>") || strstr (o.b, "<Ref>"), "a structured communication as a creditor's reference");
+		CHECK (strstr (o.b, "<IBAN>BE68539007547034</IBAN>") && strstr (o.b, "<ReqdExctnDt><Dt>2026-03-10</Dt></ReqdExctnDt>") && strstr (o.b, "<TwnNm>Saint-Josse</TwnNm>"), "the debtor's account, the day, an address");
+		scpy (b.e[sel[0].entry].comm, wasC, 13);
 	}
 	// ---- a miscellaneous operation that does not balance is refused -------------------------------------------------------------
 	{

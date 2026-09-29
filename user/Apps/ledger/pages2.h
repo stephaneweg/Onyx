@@ -529,8 +529,17 @@ public:
 		VatReturn &r = return_add (g_b);
 		r.year = year; r.period = sel; r.monthly = monthly; r.filed = today_ymd ();
 		for (int i = 0; i < 100; i++) r.grid[i] = grid[i];
+		// its settlement: the VAT due and deductible moved to the VAT current account (vat.h)
+		Entry e; bool settled = false;
+		if (vat_settlement (g_b, year, sel, monthly, e))
+		{
+			if (ask ("VAT", "Post the period's settlement too? Its VAT due (451000) and deductible (411000) moved to the VAT current account "
+				 "-- 451200 what is paid to the State, 411200 what it refunds -- by a miscellaneous operation on the period's last day.", MB_YESNO, 1) == 1)
+			{ entry_save (g_b, e); settled = true; }
+			else entry_free (e);
+		}
 		changed ();
-		status ("Period marked filed: its VAT entries are locked");
+		status (settled ? "Period marked filed, its settlement posted: its VAT entries are locked" : "Period marked filed: its VAT entries are locked");
 	}
 	void lists ()
 	{

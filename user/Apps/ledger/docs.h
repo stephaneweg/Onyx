@@ -19,6 +19,7 @@
 
 #include "editgrid.h"
 #include "print.h"
+#include "coda.h"
 
 namespace lg {
 
@@ -626,7 +627,9 @@ public:
 	TickGrid *items;				// the open items of the active movement's party
 	LineRef open[400]; int nopen; int itemsFor;	// (their lines; the movement they are listed for)
 	money oldBal;
-	StatementPage () : DocPage (E_STATEMENT), jbox (0), date (0), text (0), newBal (0), g (0), items (0), nopen (0), itemsFor (-1), oldBal (0)
+	bool imported; int importK, importN; bool importOff;	// (a CODA file's statement k of n shown to be completed; its old balance not the books')
+	StatementPage () : DocPage (E_STATEMENT), jbox (0), date (0), text (0), newBal (0), g (0), items (0), nopen (0), itemsFor (-1), oldBal (0),
+		imported (false), importK (0), importN (0), importOff (false)
 	{
 		st_init (s);
 		resizeTo (800, 660);
@@ -697,7 +700,23 @@ public:
 		computeOld ();
 		fields ();
 		bDelete->hidden = true;
+		imported = false;
 		dirty = false;
+	}
+	// A CODA file's statement k of n (coda.h: its movements' parties and the invoices they pay found), the
+	// bank's new balance typed: to be completed, then saved.
+	void loadImport (const CodaStmt &c, int journal, int k, int n)
+	{
+		st_free (s); st_init (s);
+		coda_statement (g_b, c, journal, s);
+		setup (journal);
+		oldBal = s.old;
+		fields ();
+		char b[32]; fmt_money (c.newBal, b); newBal->setText (b);
+		bDelete->hidden = true;
+		imported = true; dirty = true; importK = k; importN = n; importOff = s.old != c.oldBal;
+		titleFor ();
+		listItems (0, true);
 	}
 	bool load (const Entry &e)
 	{
@@ -708,12 +727,23 @@ public:
 		oldBal = s.old;
 		fields ();
 		bDelete->hidden = false;
+		imported = false;
 		dirty = false;
 		return true;
 	}
 	void subtitle (char *out, int cap) override
 	{
 		char a[32], b[32];
+		if (imported)						// "CODA 1 of 3: 2 movements to complete"
+		{
+			scpy (out, "CODA", cap);
+			if (importN > 1) { scat (out, " ", cap); scat_num (out, importK, cap); scat (out, " of ", cap); scat_num (out, importN, cap); }
+			int left = 0; for (int i = 0; i < s.nl; i++) if (s.l[i].amount && !s.l[i].party && !s.l[i].account[0]) left++;
+			if (importOff) scat (out, ": the bank's old balance is not the books' (a statement missing?)", cap);
+			else if (left) { scat (out, ": ", cap); scat_num (out, left, cap); scat (out, left == 1 ? " movement to complete" : " movements to complete", cap); }
+			else scat (out, ": every movement has its party or account; Save posts it", cap);
+			return;
+		}
 		scpy (out, "Old balance ", cap); scat (out, money_s (s.old, a), cap);
 		scat (out, "  \xB7  movements ", cap); money m = st_sum (s); if (m > 0) scat (out, "+", cap); scat (out, money_s (m, b), cap);
 	}
@@ -729,6 +759,7 @@ public:
 		case 0:
 			if (l.party) { const Party *p = party_of (g_b, l.party); if (p) scpy (out, p->name, cap); }
 			else if (l.account[0]) { scpy (out, l.account, cap); if (!edit) { scat (out, "  ", cap); scat (out, acc_name (g_b, l.account), cap); } }
+			else if (!edit && l.amount) scpy (out, "To complete: a party or an account", cap);
 			break;
 		case 1: scpy (out, l.text, cap); break;
 		case 2: if (edit) edit_money (l.amount, out); else if (l.amount) { fmt_money (l.amount, out); if (l.amount > 0) { char t[40] = "+"; scat (t, out, sizeof t); scpy (out, t, cap); } } break;
@@ -746,6 +777,7 @@ public:
 	{
 		if (c == 2 && r < s.nl) return s.l[r].amount < 0 ? C_BAD : s.l[r].amount > 0 ? C_GOOD : 0;
 		if (c == 0 && r < s.nl && s.l[r].party) return C_FIELD_TEXT;
+		if (c == 0 && r < s.nl && !s.l[r].party && !s.l[r].account[0] && s.l[r].amount) return C_BAD;
 		return 0;
 	}
 	const char *put (int r, int c, const char *t) override
@@ -1040,9 +1072,9 @@ public:
 	static void on_journal (Widget &) { StatementPage *p = g_st; p->s.journal = p->jc.n ? p->jc.idx[iclamp (p->jbox->sel, 0, p->jc.n - 1)] : p->s.journal; p->computeOld (); p->titleFor (); p->dirty = true; }
 	static void on_date (Widget &) { StatementPage *p = g_st; int d = date_parse (p->date->text ()); if (d) { p->s.date = d; p->computeOld (); } p->dirty = true; p->invalidate (true); }
 	static void on_newbal (Widget &) { g_st->dirty = true; g_st->invalidate (true); }
-	static void s_save () { if (g_st->save ()) g_st->close (); }
-	static void s_saveNew () { if (g_st->save ()) { int j = g_st->s.journal; g_st->startNew (j); g_st->sync (); g_st->g->focusIn (); } }
-	static void s_cancel () { g_st->cancel (); }
+	static void s_save () { bool imp = g_st->imported; if (g_st->save ()) { g_st->imported = false; if (imp && coda_saved ()) return; g_st->close (); } }
+	static void s_saveNew () { if (g_st->imported) { s_save (); return; } if (g_st->save ()) { int j = g_st->s.journal; g_st->startNew (j); g_st->sync (); g_st->g->focusIn (); } }
+	static void s_cancel () { bool imp = g_st->imported; g_st->cancel (); if (imp && !g_st->dirty) { g_st->imported = false; coda_stop (); } }
 	static void s_del () { g_st->del (); }
 };
 

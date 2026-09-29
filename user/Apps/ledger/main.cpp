@@ -32,6 +32,7 @@
 #include "export.h"
 #include "pages2.h"
 #include "commerce_ui.h"
+#include "payui.h"
 
 using namespace wtk;
 
@@ -472,6 +473,65 @@ static void cmd_quote () { if (books ()) new_cdoc (CD_QUOTE); }
 static void cmd_order () { if (books ()) new_cdoc (CD_ORDER); }
 static void cmd_delivery () { if (books ()) new_cdoc (CD_DELIVERY); }
 static void cmd_porder () { if (books ()) new_cdoc (CD_PORDER); }
+// ---- a bank's CODA file: its statements shown one after the other, completed, saved ---------------------------------------
+static CodaStmt g_coda[CODA_MAXST]; static int g_codaJr[CODA_MAXST], g_codaN, g_codaAt;
+static void coda_stop () { for (int i = 0; i < g_codaN; i++) coda_free (g_coda[i]); g_codaN = g_codaAt = 0; }
+// The next statement not in the books yet shown -> false: none left (the import done).
+static bool coda_next ()
+{
+	while (g_codaAt < g_codaN)
+	{
+		int i = g_codaAt++;
+		if (coda_known (g_b, g_coda[i], g_codaJr[i])) continue;
+		StatementPage *p = (StatementPage *) page (E_STATEMENT);
+		p->loadImport (g_coda[i], g_codaJr[i], i + 1, g_codaN);
+		p->back = P_FIN;
+		p->seen = g_b.changes; p->seenYear = g_yearVer;
+		if (g_cur == E_STATEMENT) { g_side->set (P_FIN); p->invalidate (true); p->enter (); }
+		else show_page (E_STATEMENT, false);
+		return true;
+	}
+	coda_stop ();
+	return false;
+}
+static bool coda_saved () { if (coda_next ()) return true; status ("The CODA file's statements are in the books"); return false; }
+static void cmd_import_coda ()
+{
+	if (!books () || !leave_current ()) return;
+	char path[200];
+	if (!wk_file_open (path, sizeof path, "SD:/docs")) return;
+	char *b; int n;
+	if (!file_read (path, &b, &n)) { warn ("Import CODA", "The file could not be read."); return; }
+	coda_stop ();
+	const char *why = "";
+	int ns = coda_read (b, n, g_coda, &why);
+	delete [] b;
+	if (!ns) { warn ("Import CODA", why); return; }
+	g_codaN = ns;
+	int fresh = 0;
+	for (int i = 0; i < ns; i++)
+	{
+		int j = coda_journal (g_b, g_coda[i].iban);
+		if (j < 0)
+		{
+			char ib[48], m[240]; iban_show (g_coda[i].iban, ib, sizeof ib);
+			scpy (m, "No bank journal has the account ", sizeof m); scat (m, ib, sizeof m);
+			scat (m, ": type its IBAN in its journal (Settings > Journals), then import the file again.", sizeof m);
+			warn ("Import CODA", m); coda_stop (); return;
+		}
+		g_codaJr[i] = j;
+		if (year_of (g_b, g_coda[i].newDate) < 0)
+		{
+			char d[16], m[200]; date_show (g_coda[i].newDate, d);
+			scpy (m, "A statement is dated ", sizeof m); scat (m, d, sizeof m); scat (m, ": in no fiscal year of the books (Settings > Fiscal years).", sizeof m);
+			warn ("Import CODA", m); coda_stop (); return;
+		}
+		if (!coda_known (g_b, g_coda[i], j)) fresh++;
+	}
+	if (!fresh) { warn ("Import CODA", ns == 1 ? "This statement is in the books already." : "These statements are in the books already."); coda_stop (); return; }
+	coda_next ();
+}
+static void cmd_pay () { if (books ()) pay_suppliers (); }
 static void cmd_close_year () { if (!books ()) return; go (P_SETTINGS); if (g_sp) { g_sp->show (1); g_sp->years->setSel (g_year); g_sp->closeYear (); } }
 static void cmd_listings () { if (!books ()) return; go (P_VAT); if (g_vp) g_vp->lists (); }
 
@@ -561,6 +621,9 @@ int main (void)
 	menu.item ("VAT", "", 0, cmd_go_vat);
 	menu.item ("Settings", "", 0, cmd_go_settings);
 	menu.menu ("Tools");
+	menu.item ("Import CODA...", "", 0, cmd_import_coda);
+	menu.item ("Pay Suppliers (SEPA)...", "", 0, cmd_pay);
+	menu.separator ();
 	menu.item ("VAT Listings...", "", 0, cmd_listings);
 	menu.item ("Close the Fiscal Year...", "", 0, cmd_close_year);
 	menu.publish ();

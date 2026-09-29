@@ -7,10 +7,13 @@
 // some customers late, a few invoices still open), the quarters' VAT returns filed, settled and paid, the
 // manager's remuneration, 2025's depreciation, its result appropriated and the year closed; its quotes,
 // orders, a delivery note and a purchase order of the summer 2026 (commerce.h: one ordered, then
-// delivered -- to be invoiced --, one sent, one in Dutch for a Flemish brewery, one expired, one refused).
+// delivered -- to be invoiced --, one sent, one in Dutch for a Flemish brewery, one expired, one refused);
+// and the bank's next statement, of October 2nd, as a CODA file to import (demo-bank-statement.cod: an
+// invoice paid with its structured communication, others by their customers' names, a supplier's direct
+// debit found by its IBAN, the bank's charges, a transfer from an unknown party left to complete).
 //
 //   g++ -std=gnu++17 -O1 -I user -I kernel/include tools/ledger/make_demo.cpp -o /tmp/make_demo
-//   /tmp/make_demo sdcard/docs/demo-company.ledger
+//   /tmp/make_demo sdcard/docs/demo-company.ledger sdcard/docs/demo-bank-statement.cod
 //
 // (Every name, number and amount is made up; the VAT numbers and IBANs have valid check digits.)
 //
@@ -19,6 +22,7 @@
 #include <string.h>
 #include "Apps/ledger/setup.h"
 #include "Apps/ledger/fileio.h"
+#include "Apps/ledger/coda.h"
 using namespace lg;
 
 static Book b;
@@ -73,6 +77,14 @@ static int cdoc_make (int kind, int partyId, int date, int until, int status, co
 	}
 	int i = cdoc_save (b, d);
 	return b.cd[i].id;
+}
+// A name in capitals, as banks write them (Latin-1's accented letters too).
+static void upper_name (const char *s, char *out)
+{
+	int u = 0;
+	for (const unsigned char *z = (const unsigned char *) s; *z && u < 35; z++)
+		out[u++] = (char) ((*z >= 'a' && *z <= 'z') || (*z >= 0xE0 && *z <= 0xFE && *z != 0xF7) ? *z - 32 : *z);
+	out[u] = '\0';
 }
 static void set_lang (int partyId, const char *lang) { int i = party_index (b, partyId); if (i >= 0) scpy (b.pty[i].lang, lang, sizeof b.pty[i].lang); }
 
@@ -374,6 +386,62 @@ int main (int argc, char **argv)
 		cdoc_make (CD_ORDER, cust[5], 20260918, 20261005, CS_ACCEPTED, "R\xE9impression du catalogue d'automne", "BC 2026/311", 0, o2, 2);
 		static const CL p1[] = { { "Papier couch\xE9 mat 300 g, SRA3 (ramettes de 125)", 20000, 4250 }, { "Papier offset 120 g, A4 (ramettes de 500)", 10000, 1890 } };
 		cdoc_make (CD_PORDER, sPaper, 20260924, 20261001, CS_SENT, "Papier pour les commandes d'octobre", "", 0, p1, 2);
+	}
+	// ---- the bank's next statement, as a CODA file ------------------------------------------------------------------------------
+	if (argc > 2)
+	{
+		CodaStmt c; coda_init (c);
+		scpy (c.iban, b.jr[JB].iban, sizeof c.iban); scpy (c.cur, "EUR", 4); scpy (c.holder, "ATELIER LUMEN SRL", sizeof c.holder);
+		int nst = 1, last = 0; for (int i = 0; i < b.ne; i++) if (b.e[i].journal == JB) { nst++; if (b.e[i].date > last) last = b.e[i].date; }
+		c.paper = nst; c.seq = nst % 1000; c.oldDate = last; c.newDate = 20261002;
+		c.oldBal = fin_balance_before (b, JB, 20261002);
+		// the open items: a customer's with a structured communication, customers' by name, a supplier's
+		struct O { int e, l; } cs[16]; int ncs = 0; O sp = { -1, -1 };
+		for (int i = 0; i < b.ne; i++) for (int k = 0; k < b.e[i].nl; k++)
+		{
+			const Line &x = b.e[i].l[k];
+			if (!x.party || x.match || !acc_party (b, x.account)) continue;
+			if (x.amount > 0 && ncs < 16) { cs[ncs].e = i; cs[ncs].l = k; ncs++; }
+			else if (x.amount < 0 && sp.e < 0) { sp.e = i; sp.l = k; }
+		}
+		int nm = 0;
+		for (int q = 0; q < ncs && nm < 3; q++)
+		{
+			const Entry &e = b.e[cs[q].e]; const Line &x = e.l[cs[q].l];
+			const Party *p = party_of (b, x.party);
+			CodaMove &m = coda_add (c);
+			m.amount = x.amount; m.date = m.value = 20261001 + nm / 2;
+			char r[24]; snprintf (r, sizeof r, "OL%08d%04d", 26100100 + nm, 1000 + nm); scpy (m.ref, r, sizeof m.ref);
+			char up_[40]; upper_name (p->name, up_);
+			scpy (m.cpName, up_, sizeof m.cpName);
+			if (nm == 0 && e.comm[0]) scpy (m.ogm, e.comm, sizeof m.ogm);
+			else { char n[32]; entry_number (b, e, n, sizeof n); snprintf (m.comm, sizeof m.comm, "Facture %s", n); }
+			scpy (m.code, "00150000", sizeof m.code);
+			nm++;
+		}
+		if (sp.e >= 0)								// a supplier's direct debit
+		{
+			const Entry &e = b.e[sp.e]; const Line &x = e.l[sp.l];
+			const Party *p = party_of (b, x.party);
+			CodaMove &m = coda_add (c);
+			m.amount = x.amount; m.date = m.value = 20261002;
+			scpy (m.ref, "DD26100200017", sizeof m.ref); scpy (m.cpIban, p->iban, sizeof m.cpIban); scpy (m.cpBic, "GKCCBEBB", sizeof m.cpBic);
+			char up_[40]; upper_name (p->name, up_);
+			scpy (m.cpName, up_, sizeof m.cpName);
+			snprintf (m.comm, sizeof m.comm, "Domiciliation europeenne %s", e.ref[0] ? e.ref : "facture");
+			scpy (m.code, "00501000", sizeof m.code);
+		}
+		{ CodaMove &m = coda_add (c); m.amount = -1240; m.date = m.value = 20261002; scpy (m.ref, "FR26100200001", sizeof m.ref);
+		  scpy (m.comm, "Frais de gestion du compte, septembre", sizeof m.comm); scpy (m.code, "08037000", sizeof m.code); }
+		{ CodaMove &m = coda_add (c); m.amount = 25000; m.date = m.value = 20261002; scpy (m.ref, "OL261002001999", sizeof m.ref);
+		  scpy (m.cpName, "JANSSENS PIETER", sizeof m.cpName); scpy (m.cpIban, "BE43068999999501", sizeof m.cpIban);
+		  scpy (m.comm, "Acompte stage de reliure", sizeof m.comm); scpy (m.code, "00150000", sizeof m.code); }
+		c.newBal = c.oldBal; for (int i = 0; i < c.nm; i++) c.newBal += c.m[i].amount;
+		Out co; coda_write (c, "BBRUBEBB", "00721583097", 20261002, true, true, co);
+		FILE *cf = fopen (argv[2], "wb"); if (!cf) { perror (argv[2]); return 1; }
+		fwrite (co.b, 1, co.n, cf); fclose (cf);
+		printf ("%s: statement %d, %d movements\n", argv[2], c.paper, c.nm);
+		coda_free (c);
 	}
 	Out o; book_write (b, o);
 	FILE *f = fopen (out, "wb"); if (!f) { perror (out); return 1; }

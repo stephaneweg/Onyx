@@ -15,7 +15,7 @@
 //                terms  account  defaccount  defvat  hidden  notes  lang   (kind: C / S; regime: be,
 //                private, eu, world, cocontractor; lang: its documents' -- fr, nl, en)
 //   [entries]    E  id  journal  no  date  due  party  flags  ref  comm  old  new  text   (flags: C a credit
-//                note, O an opening entry, S a VAT return's settlement)
+//                note, O an opening entry, S a VAT return's settlement, P a purchase whose transfer is made)
 //                L  account  amount  party  vat  role  aux  due  match  text               (its lines after
 //                it; role: B base, T tax, D due, N not deductible)
 //   [returns]    year  period  M|Q  filed  grid=amount ...                                  (the VAT returns filed)
@@ -96,7 +96,12 @@ static void book_write (const Book &b, Out &o)
 		const Entry &e = b.e[i];
 		o.puts ("E"); put_n (o, e.id); put_c (o, e.journal >= 0 && e.journal < b.njr ? b.jr[e.journal].code : "?"); put_n (o, e.no);
 		put_d (o, e.date); put_d (o, e.due); put_n (o, e.party);
-		char f[4]; int k = 0; if (e.flags & EF_CREDIT) f[k++] = 'C'; if (e.flags & EF_OPENING) f[k++] = 'O'; if (e.flags & EF_SETTLE) f[k++] = 'S'; f[k] = '\0';
+		char f[6]; int k = 0;
+		if (e.flags & EF_CREDIT) f[k++] = 'C';
+		if (e.flags & EF_OPENING) f[k++] = 'O';
+		if (e.flags & EF_SETTLE) f[k++] = 'S';
+		if (e.flags & EF_PAYING) f[k++] = 'P';
+		f[k] = '\0';
 		put_c (o, f); put_c (o, e.ref); put_c (o, e.comm); put_m (o, e.stmtOld); put_m (o, e.stmtNew); put_c (o, e.text);
 		o.put ('\n');
 		for (int j = 0; j < e.nl; j++)
@@ -260,7 +265,7 @@ static bool book_read (Book &b, const char *text, int len, const char **why)
 				cur.journal = jrn_find (b, c[2]);
 				if (cur.journal < 0) { jrn_add (b, c[2][0] ? c[2] : "?", c[2], JT_MISC); cur.journal = b.njr - 1; }
 				cur.no = cell_int (c[3]); cur.date = cell_date (c[4]); cur.due = cell_date (c[5]); cur.party = cell_int (c[6]);
-				for (const char *f = c[7]; *f; f++) { if (*f == 'C') cur.flags |= EF_CREDIT; if (*f == 'O') cur.flags |= EF_OPENING; if (*f == 'S') cur.flags |= EF_SETTLE; }
+				for (const char *f = c[7]; *f; f++) { if (*f == 'C') cur.flags |= EF_CREDIT; if (*f == 'O') cur.flags |= EF_OPENING; if (*f == 'S') cur.flags |= EF_SETTLE; if (*f == 'P') cur.flags |= EF_PAYING; }
 				scpy (cur.ref, c[8], sizeof cur.ref); scpy (cur.comm, c[9], sizeof cur.comm);
 				cur.stmtOld = cell_money (c[10]); cur.stmtNew = cell_money (c[11]); sset (cur.text, c[12]);
 				if (cur.id <= 0 || entry_index (b, cur.id) >= 0) cur.id = 0;	// (no id, or twice: a new one)

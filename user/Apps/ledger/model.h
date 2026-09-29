@@ -128,7 +128,8 @@ struct Line
 	int match;					// its matching group (0: open)
 	char *text;
 };
-enum { EF_CREDIT = 1, EF_OPENING = 2, EF_SETTLE = 4 };	// a credit note / the opening balances / a VAT return's settlement
+enum { EF_CREDIT = 1, EF_OPENING = 2, EF_SETTLE = 4, EF_PAYING = 8 };	// a credit note / the opening balances / a VAT return's settlement /
+								// (a purchase) its transfer in a SEPA file made
 struct Entry
 {
 	int id, journal, no, date, due, party;		// (the invoice's party and due date)

@@ -724,6 +724,26 @@ def icon_cardfile():		# Cardfile: an index card on a stack -- a teal band, names
     prect(px, 14, 31, 16, 32, (73, 146, 167))                                       # a check box, ticked
     return px
 
+def icon_ledger():		# Ledger: an open account book (its columns, debit and credit), a euro coin
+    px = blank()
+    cover, ink, paper, rule = (30, 84, 74), (60, 70, 84), (250, 248, 240), (178, 206, 214)
+    prect(px, 1, 7, 38, 32, cover); pframe(px, 1, 7, 38, 32, (18, 56, 50))           # the cover
+    prect(px, 3, 5, 19, 30, paper); prect(px, 20, 5, 36, 30, paper)                   # the two pages
+    pframe(px, 3, 5, 19, 30, (150, 150, 140)); pframe(px, 20, 5, 36, 30, (150, 150, 140))
+    prect(px, 19, 5, 20, 30, (120, 120, 112))                                         # the fold
+    for y in range(9, 29, 3):                                                         # the rules
+        prect(px, 5, y, 17, y, rule); prect(px, 22, y, 34, y, rule)
+    prect(px, 27, 7, 27, 29, (220, 120, 110)); prect(px, 31, 7, 31, 29, (220, 120, 110))   # the columns
+    for y, w in ((11, 8), (14, 6), (17, 9), (20, 5)):                                # entries written
+        prect(px, 5, y - 1, 5 + w, y - 1, ink)
+    for y in (11, 17): prect(px, 28, y - 1, 30, y - 1, (36, 138, 69))                # a debit, a credit
+    for y in (14, 20): prect(px, 32, y - 1, 34, y - 1, (200, 64, 46))
+    pdisc(px, 31, 31, 7, (170, 128, 30)); pdisc(px, 31, 31, 6, (236, 190, 70))        # the coin
+    for (x, y) in ((33, 27), (32, 27), (31, 27), (30, 28), (29, 29), (29, 30), (29, 31), (29, 32), (29, 33), (30, 34), (31, 35), (32, 35), (33, 35)):
+        pset(px, x, y, (120, 84, 10))                                                 # its euro sign
+    prect(px, 27, 30, 32, 30, (120, 84, 10)); prect(px, 27, 32, 32, 32, (120, 84, 10))
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -741,7 +761,7 @@ ICONS = {
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
     "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
-    "cardfile": icon_cardfile,
+    "cardfile": icon_cardfile, "ledger": icon_ledger,
 }
 
 
