@@ -43,6 +43,7 @@
 #include "wtk/toggle.h"
 #include "wtk/numeric.h"
 #include "wtk/listbox.h"
+#include "wtk/datagrid.h"
 #include "wtk/treeview.h"
 #include "wtk/calendar.h"
 #include "wtk/imagebox.h"

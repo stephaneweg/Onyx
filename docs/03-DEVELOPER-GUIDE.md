@@ -524,7 +524,7 @@ Notes / caveats:
 > the ruler, the status bar), `icons.h` (`VPath` icons), `fileio.h` (RTF in / out — pictures as
 > `\pict\pngblip` / `\jpegblip`, a PNG made when the image came as something else —, text, HTML),
 > `dialogs.h`. A host test worth keeping in mind: random edits undone then redone must give back
-> the same RTF.
+> the same RTF. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
 > **Paint** (`user/Apps/paint/`, a freestanding integer app) — `pdoc.h` (up to 32 layers of
 > 0xAARRGGBB pixels, straight alpha, bottom first; the composite kept and recomputed by rectangles,
 > a floating selection and a shape's preview composed with the current layer; undo: a stroke keeps
@@ -535,7 +535,32 @@ Notes / caveats:
 > ribbon — cells laid out in code, their tips set as the pointer moves —, the layers' panel, the
 > status bar, the `VPath` icons), `pfile.h` (OpenRaster in / out, the pictures, the exports). A host
 > check: random strokes, shapes, fills, layer changes, turns and moved selections undone then
-> redone must give back the same pixels. Host test: `run_games_test.sh RTF` (render + save / reload round trip).
+> redone must give back the same pixels.
+> **Cardfile** (`user/Apps/cardfile/`, one TU: `main.cpp` includes the rest; integer only, no
+> libc) — `model.h` the document: a form (`Field`: display name, column name, type `FT_*`,
+> decimals, choices) and its records (an array of heap strings a record, the empty value shared),
+> each value kept in one canonical text a type (integer `-12`, decimal `12.50` at the field's
+> decimals — a `long long` scaled by 10^decimals when computed —, date ISO `2026-09-29`, colour
+> `#3366CC`, yes / no `yes` or empty); the values read as typed (`parse_num`: `.` or `,` as the
+> point, group separators; `parse_date`: D/M/Y, D.M.YY, D/M, DDMMYYYY, ISO), shown (`value_show`),
+> made (`value_new`), compared (`value_cmp`: numbers, dates, a choice by its list's order, text
+> folded — Latin-1 case and accents — with its runs of digits compared as numbers); the file
+> (`doc_write` / `doc_read`: an INI-like head, the records tab-separated with `\t \n \\` escapes,
+> read leniently — the format is described at the top of `main.cpp` and in docs/04); a type
+> changed (`convert_count` / `convert_field`: through the value's shown text); the fields
+> inserted, removed, moved (`doc_remap`: every record laid out again); CSV (`csv_write`,
+> `csv_read` with each column's type guessed); the order (`build_order`: the search's words, a
+> stable merge sort, empty values last). `widgets.h`: the editors — `LineEdit` (any length,
+> selection, clipboard, a filter of the characters; over a `TextCore` it shares with `MemoEdit`,
+> wrapped at the words), `DateEdit` + `CalPopup` (wtk's `Calendar`), `ColorEdit` + `ColorPopup`,
+> `ChoiceBox` + `PickList` (a scrolling list over the window), `YesNoBox` —, the toolbar, the view
+> switch, the search box, the navigator (`NavBar`), `VPath` icons. `formview.h` (the card: an
+> editor a field, the commit and its validation, Tab order, scrolling), `listview.h` (a
+> `DataGrid`), `designview.h`, `app.h` (the state the views share). Undo keeps the whole document
+> written before each change (100 steps, 24 MB at most; one control's edits coalesced into one
+> step). **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
+> byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
+> UBSan).
 > **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),
@@ -820,6 +845,18 @@ Notes / caveats:
 > frame, add controls as its children; `ToggleSwitch (…, text, on, cb)`;
 > `NumericUpDown (…, min, max, value, step, cb)` — arrows, wheel, Up/Down, typed digits;
 > `ListBox (…, onSelect, onActivate)` — `add`, `clear`, `item (i)`, `sel`, `setSel`;
+> **`DataGrid (l, t, w, h)`** (`wtk/datagrid.h`) — a read-only table of rows and columns,
+> virtual (a grid of any length costs what it shows): `setColumns (n)`, `setColumn (c, title,
+> width, GRID_LEFT / GRID_RIGHT / GRID_CENTRE)`, `column (c)`, `autoSize (c, minW, maxW)` (the
+> title's and the first rows' texts), `setRows (n)`, `sel`, `setSel (r)`, `ensureVisible`, `rowAt`;
+> the app gives each cell's text (`cellText (grid, row, col, buf, cap)`) or draws it itself
+> (`cellDraw (grid, cv, row, col, x, y, w, h, ink, selected)`: `cv` clipped to the cell; false →
+> the text is drawn); a click on a title fires `onSort` (`clickedCol`: the app orders its rows and
+> sets `sortCol` / `sortDesc`, the grid shows the arrow; `sortable = false`: plain titles), a
+> title's right edge drags the column's width; `onSelect`, `onActivate` (a double click, Enter),
+> `onContext` (a right click: `ctxRow` — -1 below the rows —, `ctxX`, `ctxY`); stripes, the row
+> under the pointer tinted, both scroll bars (Shift + the wheel, Left / Right: sideways),
+> `emptyText`, `user` (the app's). Used by Cardfile (its list, its design's fields);
 > `TreeView (…, onSelect, onActivate)` — `add (parent, label)` → id, `expand`, `sel`,
 > `label (id)`, `setUserData`; `Calendar (l, t, y, m, d, cb)` (size `CAL_W`×`CAL_H`) and
 > `DatePicker (…, y, m, d, cb)` (`format (buf)` → `YYYY-MM-DD`); `ImageBox (…, IMG_FIT /

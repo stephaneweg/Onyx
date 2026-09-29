@@ -1,0 +1,77 @@
+# Onyx Cardfile -- a form and its records (open it with Cardfile)
+[form]
+version = 1
+title = My Books
+description = The books on my shelves, read or waiting
+
+[field]
+column = title
+label = Title
+type = text
+
+[field]
+column = author
+label = Author
+type = text
+
+[field]
+column = genre
+label = Genre
+type = choice
+choice = Novel
+choice = Science fiction
+choice = Crime
+choice = History
+choice = Science
+choice = Comics
+
+[field]
+column = read
+label = Read
+type = yesno
+
+[field]
+column = cover
+label = Cover
+type = colour
+
+[field]
+column = year
+label = Published
+type = integer
+
+[field]
+column = pages
+label = Pages
+type = integer
+
+[field]
+column = price
+label = Price
+type = decimal
+decimals = 2
+
+[field]
+column = bought
+label = Bought on
+type = date
+
+[field]
+column = notes
+label = Notes
+type = multiline
+
+[records]
+title	author	genre	read	cover	year	pages	price	bought	notes
+Le Petit Prince	Antoine de Saint-Exupéry	Novel	yes	#F2C94C	1943	96	7.50	2019-03-12	A gift from my sister.\nRead again every winter.
+Dune	Frank Herbert	Science fiction	yes	#D98E3F	1965	612	10.90	2021-08-02	The desert planet Arrakis, and its spice.
+Les Misérables	Victor Hugo	Novel		#2E4A7D	1862	1900	14.00	2018-11-23	Both volumes in one.
+The Hound of the Baskervilles	Arthur Conan Doyle	Crime	yes	#6B8E23	1902	256	6.20	2020-06-05	
+A Brief History of Time	Stephen Hawking	Science		#1C2833	1988	212	12.50	2022-01-14	Chapter 7 is hard going.
+Astérix le Gaulois	Goscinny and Uderzo	Comics	yes	#E74C3C	1961	48	9.95	2017-07-30	
+Foundation	Isaac Asimov	Science fiction	yes	#3498DB	1951	255	8.40	2023-09-19	The first of the trilogy.
+The Guns of August	Barbara Tuchman	History		#7F8C8D	1962	511	16.00	2024-02-02	Lent to Marc in March.
+Murder on the Orient Express	Agatha Christie	Crime	yes	#8E44AD	1934	256	7.90	2020-12-11	
+Cosmos	Carl Sagan	Science	yes	#0B3D91	1980	396	13.20	2016-05-08	Beautiful pictures.
+Notre-Dame de Paris	Victor Hugo	Novel		#A04000	1831	940	11.00	2025-04-21	
+The Left Hand of Darkness	Ursula K. Le Guin	Science fiction		#85C1E9	1969	304	9.30	2026-09-27	The next one to read.

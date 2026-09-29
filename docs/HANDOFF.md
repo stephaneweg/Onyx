@@ -184,12 +184,28 @@ closed-unsaved picture is recovered. Screenshots `paint.png`, `paint-grid.png`; 
 03. **Next ideas**: a text tool (it would make Paint a newlib app: `ft/fonts.h`), free-form
 selection, a selection resized by handles, brushes with soft edges, a gradient fill.
 
-## Queued by the user
+## Cardfile, a small database (2026-09-29, same branch, pushed to `main`)
 
-1. **Cardfile** ("a simple Access without SQL"): to be done by an agent — one file = a form and
-   its data; the form's fields (display name, column name, type: one-line text, multi-line text,
-   integer, decimal with its precision, date, colour, yes/no, a list of choices); a form view, a
-   list (grid) view and an edit view for the form.
+Asked by the user ("a simple Access without SQL"). Done (the user guide: docs/04 *Cardfile, a
+small database*; the pieces: docs/03):
+
+- **Cardfile** (`user/Apps/cardfile/`, integer only): one `.card` file = a **form** (a title, a
+  description, fields: display name, column name, type — one-line text, multi-line text, integer,
+  decimal with its decimals, date, colour, yes / no, a choice list with its choices) and its
+  **records**; the format (text, INI-like head, the records tab-separated) is at the top of
+  `main.cpp`. Three views: **Form** (an index card, an editor a field, the navigator, validation
+  when a record is left), **List** (a grid: sort by a title, again the other way; columns widened
+  by their edge; double-click → the form), **Design** (fields added / removed / moved / named /
+  typed; a new type converts the values, asked first when some would be emptied). Search (every
+  word, any field), Undo / Redo (the whole document kept before each change), CSV export and import
+  (the types guessed), a document kept at a close with unsaved changes (`recovered.card`).
+- **wtk**: `wtk/datagrid.h` — `DataGrid`, a virtual table (docs/03).
+- Samples `SD:/docs/books.card` (every type) and `contacts.card`; `card = cardfile` in
+  `fileassoc.ini`; the icon by `tools/gen_assets.py cardfile`; screenshots `cardfile.png`,
+  `cardfile-list.png`, `cardfile-design.png`; host test `sh tools/tests/run_cardfile_test.sh`.
+- **Next ideas**: a cell edited in place in the grid (Access's datasheet); the form's layout
+  (two columns, a field's width, a memo's height); a default value per field, required fields;
+  computed fields; an image field; printing / a report; a lookup into another `.card`.
 
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 

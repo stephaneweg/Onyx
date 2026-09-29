@@ -709,6 +709,21 @@ def icon_keyconf():		# a keyboard and a mouse
     prect(px, 33, 8, 33, 18, (120, 124, 134)); prect(px, 29, 8, 33, 8, (120, 124, 134))
     return px
 
+def icon_cardfile():		# Cardfile: an index card on a stack -- a teal band, names and their fields
+    px = blank()
+    ink, paper, back = (70, 80, 96), (248, 247, 243), (196, 208, 222)
+    prect(px, 11, 4, 36, 26, back); pframe(px, 11, 4, 36, 26, (96, 108, 124))       # the card behind
+    prect(px, 13, 6, 34, 8, (150, 178, 204))
+    prect(px, 3, 11, 30, 35, paper); pframe(px, 3, 11, 30, 35, ink)                # the card in front
+    prect(px, 4, 12, 29, 16, (73, 146, 167))                                        # its band
+    prect(px, 6, 13, 16, 14, (228, 240, 244))
+    for y in (20, 25, 30):                                                          # a name, its field
+        prect(px, 6, y + 1, 10, y + 2, (120, 128, 140))
+        prect(px, 13, y, 27, y + 3, (255, 255, 255)); pframe(px, 13, y, 27, y + 3, (150, 160, 172))
+    prect(px, 15, 21, 22, 22, ink); prect(px, 15, 26, 19, 27, ink)                  # values typed
+    prect(px, 14, 31, 16, 32, (73, 146, 167))                                       # a check box, ticked
+    return px
+
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -726,6 +741,7 @@ ICONS = {
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
     "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
+    "cardfile": icon_cardfile,
 }
 
 

@@ -45,7 +45,7 @@ build () {
 	fi
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
 }
-APPS="2048 agenda applist calendar control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
+APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu writer"
 for a in $APPS; do build $a & done
@@ -141,6 +141,12 @@ if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sam
 if want writer; then			# (the sample document; a double click selects a word: the toolbar follows it)
 	sim writer writer "wait;down 585 572;up 585 572;down 585 572;up 585 572;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf
 	png writer
+fi
+if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
+	sim cardfile cardfile "$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile
+	sim cardfile cardfile-list "wait;key 0x115;wait;down 60 62;up 60 62;wait;down 300 161;up 300 161;$W" $P SIM_ARGS=SD:/docs/books.card
+	png cardfile-list
+	sim cardfile cardfile-design "wait;key 0x116;wait;down 100 157;up 100 157;$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile-design
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want applist; then sim applist applist "$W" $P; png applist; fi
