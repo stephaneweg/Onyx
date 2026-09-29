@@ -17,8 +17,22 @@
  * -- is the next step; for now we keep the proven HTTP/1.0 read-to-close framing.)
  *
  * Scope: http:// and https:// (the latter over user/tls/onyx_tls.hpp = mbedTLS on the TCP
- * kapis, via the C-callable onyx_nstls wrapper); GET only; gzip/deflate decoding. Builds as
+ * kapis, via the C-callable onyx_nstls wrapper); GET, POST (a url-encoded / text body) and
+ * any method a script asks for (the pseudo-header "X-Onyx-Method: PUT", from JS fetch /
+ * XMLHttpRequest, taken off the request); the request's own headers; gzip/deflate decoding.
+ * The response goes to the core with its status line and headers (the cache-control ones
+ * and those the inflate makes wrong left out: the cache behaves as before). Builds as
  * part of the NetSurf core (brick 9). See user/netsurf/README.md.
+ *
+ * Threads (kernel v67): each download runs in a THREAD of its own (fetch_onyx_worker) --
+ * the DNS, the connect, the TLS handshake, the request and every read, all blocking there
+ * while the UI thread goes on. The worker only touches its struct onyx_job (plain copies:
+ * the URL as a string; the response bytes); everything NetSurf -- parsing the head, the
+ * redirects, the inflate, fetch_send_callback, nsurl, the fetch queues -- stays on the UI
+ * thread, which picks the finished jobs up in fetch_onyx_poll (every 10 ms). An aborted
+ * fetch whose worker still runs is orphaned: the worker frees its job when it ends. Without
+ * threads (an older kernel, the PC bench's fake kapi, a thread refused) a fetch takes the
+ * state-machine path above.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -63,9 +77,64 @@ struct fetch_onyx_context {
 	uint8_t *buf;			/* growable response accumulator (head + body) */
 	size_t cap, len;
 	unsigned t_last;		/* kapi_get_ticks at the last byte received (idle timeout) */
+
+	struct onyx_job *job;		/* the download's thread, while it runs (or 0) */
+	bool nothread;			/* no thread for this one: the state machine */
+
+	/* --- the request --- */
+	char *method;			/* "GET", "POST", or a script's (X-Onyx-Method) */
+	char *hdrs;			/* its own header lines ("Name: value\r\n"...), or 0 */
+	char *body;			/* the body (url-encoded / text), or 0 */
 };
 
 static struct fetch_onyx_context *ring = NULL;
+
+/* Idle timeout of a download: no byte for 30 s (kapi_get_ticks counts at 100 Hz). */
+#define ONYX_IDLE_TICKS	3000
+
+/* ---- a download in a thread of its own (kernel v67) ----------------------- */
+#if defined(__aarch64__)
+#define ONYX_THREADS	1
+#else
+#define ONYX_THREADS	0	/* (the PC bench: no threads) */
+#endif
+
+#define ONYX_MAX_WORKERS	8	/* downloads at once (the kernel has 16 sockets in all) */
+
+enum { JOB_RUNNING = 0, JOB_DONE };
+
+struct onyx_job {
+	char *url;			/* a copy: the worker never touches an nsurl */
+	char *method, *hdrs, *body;	/* copies of the request's (see the context) */
+	volatile int lk;		/* kapi_lock: state / orphan handoff */
+	volatile int state;		/* JOB_RUNNING, JOB_DONE */
+	volatile int cancel;		/* the fetch was aborted: stop soon */
+	volatile int orphan;		/* ... and its context is gone: the worker frees the job */
+	uint8_t *buf;			/* the response (head + body) */
+	size_t cap, len;
+	const char *err;		/* a failure before any byte (a static string), or 0 */
+};
+
+static int onyx_workers;		/* jobs running (UI thread's count) */
+
+static void onyx_job_free(struct onyx_job *j)
+{
+	free(j->url);
+	free(j->method);
+	free(j->hdrs);
+	free(j->body);
+	free(j->buf);
+	free(j);
+}
+
+#if ONYX_THREADS
+static bool onyx_threads_ok(void)
+{
+	/* (a kernel >= 67 whose table has them: the PC bench's fake kapi says 67 but has none) */
+	return KT->version >= 67 && KT->thread_create != 0;
+}
+#endif
+
 
 /* ---- tiny URL split (host / port / path) over nsurl_access() ---------- */
 static bool onyx_split_url(const char *url, char *host, size_t hcap,
@@ -166,18 +235,106 @@ static bool fetch_onyx_can_fetch(const nsurl *url)
 	return true;
 }
 
+/* A case-insensitive "Name:" at the start of a header line. */
+static bool hdr_is(const char *line, const char *name)
+{
+	size_t n = strlen(name);
+	return strncasecmp(line, name, n) == 0 && line[n] == ':';
+}
+
+/* The request: "METHOD path HTTP/1.0", our headers, the caller's, the body. malloc'd;
+ * *len its length (the body may hold any byte but NUL). */
+static char *onyx_request(const char *method, const char *path, const char *host,
+		const char *hdrs, const char *body, int *len)
+{
+	/* (Google Fonts' style sheets as a current browser gets them: WOFF2 fonts split by
+	 * unicode-range -- onyx_webfont.c fetches the Latin subset) */
+	const char *ua = strcasecmp(host, "fonts.googleapis.com") == 0 ?
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+		"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" : "NetSurf (Onyx)";
+	size_t blen = body != NULL ? strlen(body) : 0;
+	bool has_ctype = false, has_accept = false;
+	char extra[160];
+	size_t cap;
+	char *r;
+	int n;
+
+	if (hdrs != NULL) {
+		const char *l = hdrs;
+		while (*l != '\0') {
+			if (hdr_is(l, "Content-Type")) has_ctype = true;
+			if (hdr_is(l, "Accept")) has_accept = true;
+			l = strchr(l, '\n');
+			if (l == NULL) break;
+			l++;
+		}
+	}
+	extra[0] = '\0';
+	if (body != NULL)
+		snprintf(extra, sizeof extra, "%sContent-Length: %u\r\n",
+			has_ctype ? "" : "Content-Type: application/x-www-form-urlencoded\r\n",
+			(unsigned) blen);
+
+	cap = 512 + strlen(method) + strlen(path) + strlen(host) + strlen(ua) +
+		(hdrs != NULL ? strlen(hdrs) : 0) + strlen(extra) + blen;
+	r = malloc(cap);
+	if (r == NULL)
+		return NULL;
+	n = snprintf(r, cap,
+		"%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\n%s"
+		"Accept-Encoding: gzip, deflate\r\nConnection: close\r\n%s%s\r\n",
+		method, path, host, ua, has_accept ? "" : "Accept: */*\r\n",
+		hdrs != NULL ? hdrs : "", extra);
+	if (n <= 0 || (size_t) n + blen >= cap) {
+		free(r);
+		return NULL;
+	}
+	if (blen > 0)
+		memcpy(r + n, body, blen);
+	*len = n + (int) blen;
+	return r;
+}
+
 static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		bool only_2xx, bool downgrade_tls, const char *post_urlenc,
 		const struct fetch_multipart_data *post_multipart,
 		const char **headers)
 {
 	struct fetch_onyx_context *ctx = calloc(1, sizeof(*ctx));
-	(void)only_2xx; (void)downgrade_tls; (void)post_urlenc;
-	(void)post_multipart; (void)headers;
+	size_t hlen = 0;
+	int i;
+	(void)only_2xx; (void)downgrade_tls; (void)post_multipart;	/* (multipart: not yet) */
 	if (ctx == NULL)
 		return NULL;
 	ctx->parent_fetch = parent_fetch;
 	ctx->url = nsurl_ref(url);
+
+	/* the request: its method, its headers (not the conditional ones: a 304 would need
+	 * FETCH_NOTMODIFIED, which this fetcher does not send), its body */
+	for (i = 0; headers != NULL && headers[i] != NULL; i++)
+		hlen += strlen(headers[i]) + 2;
+	if (hlen > 0)
+		ctx->hdrs = calloc(1, hlen + 1);
+	for (i = 0; headers != NULL && headers[i] != NULL; i++) {
+		const char *h = headers[i];
+		if (hdr_is(h, "X-Onyx-Method")) {
+			const char *v = h + 14;
+			while (*v == ' ') v++;
+			free(ctx->method);
+			ctx->method = strdup(v);
+			continue;
+		}
+		if (hdr_is(h, "If-None-Match") || hdr_is(h, "If-Modified-Since"))
+			continue;
+		if (ctx->hdrs != NULL) {
+			strcat(ctx->hdrs, h);
+			strcat(ctx->hdrs, "\r\n");
+		}
+	}
+	if (post_urlenc != NULL)
+		ctx->body = strdup(post_urlenc);
+	if (ctx->method == NULL)
+		ctx->method = strdup(post_urlenc != NULL ? "POST" : "GET");
 	ctx->phase = PH_INIT;
 	ctx->sock = -1;
 	RING_INSERT(ring, ctx);
@@ -190,11 +347,21 @@ static bool fetch_onyx_start(void *ctx)
 	return true;
 }
 
+#if ONYX_THREADS
+static void onyx_job_drop(struct fetch_onyx_context *c);
+#endif
+
 static void fetch_onyx_free(void *ctx)
 {
 	struct fetch_onyx_context *c = ctx;
+#if ONYX_THREADS
+	onyx_job_drop(c);		/* a download still in its thread: orphaned */
+#endif
 	onyx_conn_close(c);
 	free(c->buf);
+	free(c->method);
+	free(c->hdrs);
+	free(c->body);
 	nsurl_unref(c->url);
 	free(c);
 }
@@ -250,7 +417,7 @@ static bool header_value(const char *head, size_t headlen, const char *name,
  * PH_RECV, false on a fatal error (an FETCH_ERROR has been delivered). */
 static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 {
-	char host[256], path[1024], req[1024];
+	char host[256], path[1024], *req;
 	unsigned port;
 	int len;
 	const char *url = nsurl_access(c->url);
@@ -270,24 +437,15 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
 	}
 
-	/* Google Fonts' style sheets as a current browser gets them: WOFF2 fonts split by
-	 * unicode-range (onyx_webfont.c fetches the Latin subset: ~50 KB a weight, where
-	 * NetSurf's own user agent gets a 300 KB TrueType file) */
-	const char *ua = strcasecmp(host, "fonts.googleapis.com") == 0 ?
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-		"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" : "NetSurf (Onyx)";
-
-	len = snprintf(req, sizeof req,
-		"GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\n"
-		"Accept: */*\r\nAccept-Encoding: gzip, deflate\r\nConnection: close\r\n\r\n",
-		path, host, ua);
-	if (len <= 0 || len >= (int)sizeof req) {
+	req = onyx_request(c->method, path, host, c->hdrs, c->body, &len);
+	if (req == NULL) {
 		onyx_conn_close(c);
 		fetch_onyx_error(c, "Request too large");
 		return false;
 	}
 	if (c->tls) onyx_nstls_send(c->ts, req, len);
 	else        kapi_tcp_send(c->sock, req, len);
+	free(req);
 
 	c->cap = 16384;
 	c->len = 0;
@@ -365,14 +523,36 @@ static void fetch_onyx_deliver(struct fetch_onyx_context *c)
 
 	fetch_set_http_code(c->parent_fetch, code);
 
-	if (!c->aborted && header_value((const char *)resp, headlen, "Content-Type", ctype, sizeof ctype)) {
-		char line[160];
-		int n = snprintf(line, sizeof line, "Content-Type: %s", ctype);
-		if (n > 0 && n < (int)sizeof line) {
-			msg.type = FETCH_HEADER;
-			msg.data.header_or_data.buf = (const uint8_t *)line;
-			msg.data.header_or_data.len = (size_t)n;
-			fetch_onyx_send(&msg, c);
+	/* The status line, then the headers, one FETCH_HEADER each (the core keeps them:
+	 * scripts read them, llcache_handle_get_header_at). Left out: the cache-control ones
+	 * (the cache behaves as when only Content-Type came) and those the inflate made wrong. */
+	(void)ctype;
+	{
+		static const char *const skip[] = { "Content-Encoding", "Content-Length",
+			"Transfer-Encoding", "Cache-Control", "Expires", "ETag", "Last-Modified",
+			"Age", "Pragma", "Date", "Vary", "Set-Cookie", "Location", NULL };
+		const char *p = (const char *)resp, *end = (const char *)resp + headlen;
+		bool first = true;
+		while (p < end && !c->aborted) {
+			const char *eol = memchr(p, '\n', (size_t)(end - p));
+			size_t ll = eol ? (size_t)(eol - p) : (size_t)(end - p);
+			size_t k;
+			bool keep = ll > 0;
+			if (ll > 0 && p[ll - 1] == '\r') ll--;
+			for (k = 0; keep && !first && skip[k] != NULL; k++)
+				if (ll > strlen(skip[k]) && hdr_is(p, skip[k])) keep = false;
+			if (keep && ll > 0 && ll < 4000) {
+				char line[4001];		/* NUL-terminated: the core splits with strchr */
+				memcpy(line, p, ll);
+				line[ll] = '\0';
+				msg.type = FETCH_HEADER;
+				msg.data.header_or_data.buf = (const uint8_t *)line;
+				msg.data.header_or_data.len = ll;
+				fetch_onyx_send(&msg, c);
+			}
+			first = false;
+			if (eol == NULL) break;
+			p = eol + 1;
 		}
 	}
 	if (!c->aborted) {
@@ -419,7 +599,7 @@ static bool fetch_onyx_step(struct fetch_onyx_context *c)
 		return false;			/* more may follow; keep reading next poll */
 	}
 	if (r == 0) {				/* nothing yet -> yield to other fetches */
-		if (kapi_get_ticks() - c->t_last > 30000) {	/* idle too long */
+		if (kapi_get_ticks() - c->t_last > ONYX_IDLE_TICKS) {	/* idle too long */
 			onyx_conn_close(c);
 			if (c->len > 0) { fetch_onyx_deliver(c); }	/* deliver what we have */
 			else            { fetch_onyx_error(c, "Timeout"); }
@@ -433,6 +613,151 @@ static bool fetch_onyx_step(struct fetch_onyx_context *c)
 	fetch_onyx_deliver(c);
 	return true;
 }
+
+#if ONYX_THREADS
+/* The connects, one at a time: several at once (the DNS lookups, the TCP handshakes on the
+ * network core) failed together ("Connection failed" for a page's style sheet and images,
+ * the page then laid out without them). Short (the TLS handshakes and the downloads still
+ * overlap); a failed one is tried again once. */
+static volatile int onyx_connect_lk;
+
+static int onyx_connect(const char *host, unsigned port)
+{
+	int sock, tries;
+	for (tries = 0; tries < 2; tries++) {
+		kapi_lock(&onyx_connect_lk);
+		sock = kapi_tcp_connect(host, port);
+		kapi_unlock(&onyx_connect_lk);
+		if (sock >= 0)
+			return sock;
+		kapi_msleep(200);
+	}
+	return sock;
+}
+
+/* The download thread: connect, request, read to the end -- blocking, in its own thread.
+ * It touches its job only; the UI thread delivers the response (fetch_onyx_poll). */
+static int fetch_onyx_worker(void *arg)
+{
+	struct onyx_job *j = arg;
+	char host[256], path[1024], *req;
+	unsigned port;
+	bool tls = strncasecmp(j->url, "https:", 6) == 0;
+	int sock = -1, len, orphan;
+	onyx_tls_sess *ts = NULL;
+	unsigned t_last;
+
+	if (!onyx_split_url(j->url, host, sizeof host, &port, path, sizeof path, tls ? 443 : 80)) {
+		j->err = "Malformed URL";
+		goto done;
+	}
+	sock = onyx_connect(host, port);			/* DNS + connect (one at a time) */
+	if (sock >= 0 && tls) {
+		ts = onyx_nstls_start(sock, host);		/* (resumed) handshake: in parallel */
+		if (ts == NULL) sock = -1;			/* (closed by onyx_nstls_start) */
+	}
+	if (tls ? ts == NULL : sock < 0) { j->err = "Connection failed"; goto done; }
+
+	req = onyx_request(j->method, path, host, j->hdrs, j->body, &len);
+	if (req == NULL) { j->err = "Request too large"; goto close; }
+	if (tls) onyx_nstls_send(ts, req, len);
+	else     kapi_tcp_send(sock, req, len);
+	free(req);
+
+	j->cap = 16384;
+	j->buf = malloc(j->cap);
+	if (j->buf == NULL) { j->err = "Out of memory"; goto close; }
+
+	t_last = kapi_get_ticks();
+	while (!j->cancel) {
+		int r;
+		if (j->len + 4096 > j->cap) {
+			uint8_t *nb = realloc(j->buf, j->cap * 2);
+			if (nb == NULL) { j->err = "Out of memory"; break; }
+			j->buf = nb; j->cap *= 2;
+		}
+		/* (a TLS read waits for its segment itself; a plain one says 0: nothing yet) */
+		r = tls ? onyx_nstls_recv(ts, j->buf + j->len, (int)(j->cap - j->len))
+			: kapi_tcp_recv(sock, j->buf + j->len, (int)(j->cap - j->len));
+		if (r > 0) { j->len += (size_t)r; t_last = kapi_get_ticks(); continue; }
+		if (r < 0) break;				/* closed: the end of the response */
+		if (kapi_get_ticks() - t_last > ONYX_IDLE_TICKS) {
+			if (j->len == 0) j->err = "Timeout";
+			break;					/* (what came is delivered) */
+		}
+		kapi_msleep(2);
+	}
+close:
+	if (tls) onyx_nstls_close(ts);
+	else     kapi_tcp_close(sock);
+done:
+	kapi_lock(&j->lk);
+	j->state = JOB_DONE;
+	orphan = j->orphan;
+	kapi_unlock(&j->lk);
+	if (orphan) onyx_job_free(j);			/* its fetch was aborted and freed */
+	return 0;
+}
+
+/* The UI thread: start a download's thread. false: none (the state machine takes it). */
+static bool onyx_job_start(struct fetch_onyx_context *c)
+{
+	struct onyx_job *j = calloc(1, sizeof *j);
+	if (j == NULL) return false;
+	j->url = strdup(nsurl_access(c->url));
+	j->method = strdup(c->method);
+	j->hdrs = c->hdrs != NULL ? strdup(c->hdrs) : NULL;
+	j->body = c->body != NULL ? strdup(c->body) : NULL;
+	if (j->url == NULL || j->method == NULL) { onyx_job_free(j); return false; }
+	if (kapi_thread_create(fetch_onyx_worker, j, 0, "fetch") < 0) {
+		onyx_job_free(j);
+		return false;
+	}
+	c->job = j;
+	onyx_workers++;
+	return true;
+}
+
+/* The UI thread: the fetch goes (aborted, freed) while its job may still run. */
+static void onyx_job_drop(struct fetch_onyx_context *c)
+{
+	struct onyx_job *j = c->job;
+	bool done;
+	if (j == NULL) return;
+	c->job = NULL;
+	onyx_workers--;
+	kapi_lock(&j->lk);
+	done = j->state == JOB_DONE;
+	if (!done) { j->cancel = 1; j->orphan = 1; }	/* the worker frees it when it ends */
+	kapi_unlock(&j->lk);
+	if (done) onyx_job_free(j);
+}
+
+/* The UI thread, every poll: a threaded fetch. Returns true when it is finished. */
+static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
+{
+	struct onyx_job *j = c->job;
+	if (j == NULL) {
+		if (onyx_workers >= ONYX_MAX_WORKERS) return false;	/* (a later poll) */
+		if (!onyx_job_start(c)) c->nothread = true;		/* the state machine */
+		return false;
+	}
+	if (j->state != JOB_DONE) return false;
+	__asm__ volatile ("dmb ish" ::: "memory");		/* (the worker's writes, then) */
+
+	c->job = NULL;
+	onyx_workers--;
+	if (j->err != NULL && j->len == 0) {
+		fetch_onyx_error(c, j->err);
+	} else {
+		c->buf = j->buf; c->len = j->len; c->cap = j->cap;	/* the response, taken over */
+		j->buf = NULL;
+		fetch_onyx_deliver(c);
+	}
+	onyx_job_free(j);
+	return true;
+}
+#endif
 
 static void fetch_onyx_poll(lwc_string *scheme)
 {
@@ -458,6 +783,17 @@ static void fetch_onyx_poll(lwc_string *scheme)
 			fetch_free(c->parent_fetch);	/* -> fetch_onyx_free: closes conn, frees ctx */
 			continue;
 		}
+#if ONYX_THREADS
+		if (!c->nothread && c->phase == PH_INIT && onyx_threads_ok()) {
+			if (fetch_onyx_step_threaded(c)) {	/* delivered (or errored) */
+				fetch_remove_from_queues(c->parent_fetch);
+				fetch_free(c->parent_fetch);
+				continue;
+			}
+			RING_INSERT(active, c);		/* its thread still downloads */
+			continue;
+		}
+#endif
 		if (c->phase == PH_INIT && did_connect) {	/* defer this connect to a later poll */
 			RING_INSERT(active, c);
 			continue;

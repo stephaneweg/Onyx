@@ -83,8 +83,13 @@ answer in French. The docs stay in English.
 - **To try on the Pi**: `threadtest` in a terminal (PASS; the prompt comes back although a thread
   still runs), then kill it from the task manager in the middle; the usual apps (nothing should
   change for them: one task each). Watch `stall:` lines in `kmsg`.
-- **Next**: an app that uses them — NetSurf's fetches (the network wait) on a worker thread, the
-  UI pumping meanwhile; asynchronous kapi calls (a file read, a connect) with a completion posted
+- **Tried on the Pi (2026-09-30)**: `threadtest` PASS, killed mid-run cleanly (after the
+  `task.cpp` FIQ fix: a thread first run after a preemption halted on Circle's EnterCritical).
+- **Users**: NetSurf's downloads (a thread each: `user/netsurf/onyx_fetch.c`, docs/06 §1 --
+  the connects one at a time: several at once all failed, a page's style sheet among them);
+  `telnetd` (a session per thread, 8 at once); SuperTuxKart's `stkpoc` (`std::thread` on them:
+  `user/stk`, docs/SUPERTUXKART-PORT.md -- PASS on the Pi).
+- **Next**: asynchronous kapi calls (a file read, a connect) with a completion posted
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
@@ -565,6 +570,16 @@ script's changes; clicks / keys / typing / submit / scroll / load to the scripts
 **painting order of positioned boxes** (z-index layers) and a hit test in that order. The
 hamburger menus of both sites open and their links work; kotonstudio's scroll reveals run
 (IntersectionObserver).
+
+**Done 2026-09-30 (tried on the Pi, kotonviolins.com drawn as before, no failed fetch):** each
+download in a **thread** of its own (kernel v67; the connects one at a time -- several at once
+all failed and the page was laid out without its style sheet); **`fetch`** (`Response`,
+`Headers`, `Request`, `AbortSignal`) and **`XMLHttpRequest`** on a native `request()` over the
+low-level cache (which now takes a request's own headers and keeps the HTTP status and the
+headers); POST / any method and the request's headers in the Onyx fetcher; **`localStorage`
+kept** (a file per origin); the **hover events** (`mouseover` / `mouseenter`... from
+`onyx:hover`). The PC bench builds in WSL again (`build-essential`, `libpng-dev`,
+`zlib1g-dev`); `jstest.sh` covers them all (js-fetch, js-hover, js-storage).
 
 ### Where the code is
 - CSS: `third_party/libcss`. A new property touches `src/parse/propstrings.*`,

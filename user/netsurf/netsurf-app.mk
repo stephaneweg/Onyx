@@ -47,7 +47,10 @@ MBEDTLS ?= $(LIBROOT)/mbedtls-3.6.3
 CF = -mcpu=cortex-a72 -O2 -std=c99 -fno-pic -fno-pie -fno-stack-protector -fcommon \
      -Dnsframebuffer -DNDEBUG -DWITH_PNG -DWITH_JPEG -DWITH_GIF -DWITH_BMP -DWITH_WEBP \
      -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L \
+     -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types \
+     -Wno-error=int-conversion \
      -include $(HERE)compat/onyx_nsconfig.h
+# (the three -Wno-error: GCC 14 made those warnings errors; NetSurf was built with GCC 10)
 INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
       -I$(HERE)compat -I$(HERE)gen -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
       -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \

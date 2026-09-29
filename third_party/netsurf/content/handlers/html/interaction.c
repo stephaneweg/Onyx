@@ -1571,6 +1571,17 @@ mouse_action_drag_none(html_content *html,
 		content_broadcast(c, CONTENT_MSG_POINTER, &msg_data);
 	}
 
+	/* Onyx: the pointer's moves -- dom.js makes mouseover / mouseout, mouseenter /
+	 * mouseleave and mousemove of them (the element under the pointer, every move) */
+	{
+		struct js_event_init hinit;
+
+		memset(&hinit, 0, sizeof(hinit));
+		hinit.x = x;
+		hinit.y = y;
+		html_script_event(html, "onyx:hover", mas.node, &hinit);
+	}
+
 	/* Onyx: the page's scripts see the main button -- mousedown, then mouseup and
 	 * click (then a checkbox's, a radio's input and change); a click they prevent
 	 * (event.preventDefault()) neither follows its link nor sends its form */
