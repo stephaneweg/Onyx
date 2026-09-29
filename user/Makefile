@@ -34,11 +34,11 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes sheet taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf cardfile
+       eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf cardfile
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) writer.elf bin bin/basic.elf doom
+all: $(APP_ELFS) writer.elf sheet.elf bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -98,6 +98,12 @@ libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 writer.elf: Apps/writer/main.cpp $(wildcard Apps/writer/*.h) ft/fonts.h ft/libft.a wtk/libwtk.a \
 	    libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a ft/libft.a -lm -o $@
+# The spreadsheet: a newlib app as Writer (FreeType, stdio, doubles) -- its engine and files in
+# Apps/sheet/*.h, Writer's icons, the PNG writer's zip / deflate for the .xlsx.
+sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/writer/icons.h img/pngsave.hpp ft/fonts.h ft/libft.a \
+	   wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 

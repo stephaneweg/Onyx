@@ -19,7 +19,8 @@
 #                                        index = (bold?2:0)|(italic?1:0):
 #                                        0=regular 1=italic 2=bold 3=bold+italic
 #     28  style blocks: each glyphs * height bytes, 1 byte/row, bit 0x80 = leftmost px.
-# Missing codepoints are emitted blank.
+# Missing codepoints are emitted blank. Slot 0x80 (a C1 control, never drawn) holds the euro sign
+# U+20AC, where Windows-1252 has it: the apps' UTF-8 <-> 8-bit conversions map it there.
 #
 import os, re, struct
 
@@ -31,6 +32,7 @@ OUT    = os.path.join(OUTDIR, 'ns-sans.fnt')
 
 W, H    = 8, 16
 NGLYPH  = 256					# Latin-1 range U+0000..U+00FF
+EXTRA   = { 0x80: 0x20AC }			# slot <- codepoint beyond Latin-1 (the euro sign)
 NSTYLE  = 4					# regular, italic, bold, bold+italic
 HDRSZ   = 12 + 4 * NSTYLE			# 28
 # Fixed column offsets of the four style glyphs within a row line (Reg, Ital, Bold, B+I).
@@ -79,7 +81,7 @@ def main():
     body = bytearray()
     for s in range(NSTYLE):
         for cp in range(NGLYPH):
-            g = glyphs.get(cp)
+            g = glyphs.get(EXTRA.get(cp, cp))
             body += bytes(g[s] if g else [0] * H)
     with open(OUT, 'wb') as f:
         f.write(hdr + body)
