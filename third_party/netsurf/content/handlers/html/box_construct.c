@@ -45,6 +45,7 @@
 #include "html/box.h"
 #include "html/box_manipulate.h"
 #include "html/box_construct.h"
+#include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
 #include "html/box_normalise.h"
 #include "html/form_internal.h"
@@ -692,6 +693,8 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 	/* Kick off fetch for any background image */
 	if (css_computed_background_image(box->style, &bgimage_uri) ==
 			CSS_BACKGROUND_IMAGE_IMAGE && bgimage_uri != NULL &&
+			/* (Onyx: a gradient is drawn, not fetched) */
+			!onyx_is_gradient_url(lwc_string_data(bgimage_uri)) &&
 			nsoption_bool(background_images) == true) {
 		nsurl *url;
 		nserror error;

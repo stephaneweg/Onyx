@@ -39,6 +39,8 @@
 #include "framebuffer/fbtk.h"
 #include "framebuffer/framebuffer.h"
 #include "framebuffer/font.h"
+#include "netsurf/onyx_paint.h"	/* Onyx: CSS3 painting */
+#include "framebuffer/onyx_paint.h"
 #include "framebuffer/bitmap.h"
 
 /* netsurf framebuffer library handle */
@@ -445,6 +447,11 @@ framebuffer_plot_text(const struct redraw_context *ctx,
 	FT_BitmapGlyph bglyph;
 	nsfb_bbox_t loc;
 
+	/* Onyx: a transparent colour (color: transparent) draws nothing -- libnsfb
+	 * takes an opacity of 0 for opaque */
+	if (fb_invisible(fstyle->foreground))
+		return NSERROR_OK;
+
 	while (nxtchr < length) {
 		ucs4 = utf8_to_ucs4(text + nxtchr, length - nxtchr);
 		nxtchr = utf8_next(text, length, nxtchr);
@@ -514,6 +521,9 @@ framebuffer_plot_text(const struct redraw_context *ctx,
     int w = FB_FONT_WIDTH * size;
     int h = FB_FONT_HEIGHT * size;
 
+    if (fb_invisible(fstyle->foreground))	/* (Onyx: color: transparent) */
+	    return NSERROR_OK;
+
     y -= ((h * 3) / 4);
     /* the coord is the bottom-left of the pixels offset by 1 to make
      * it work since fb coords are the top-left of pixels */
@@ -543,6 +553,61 @@ framebuffer_plot_text(const struct redraw_context *ctx,
 #endif
 
 
+/* ---- Onyx: CSS3's rounded, graded and shadowed boxes (framebuffer/onyx_paint.c) ---- */
+
+static nserror
+framebuffer_onyx_shape(const struct redraw_context *ctx,
+		const struct onyx_shape *shape)
+{
+	onyx_fb_shape(nsfb, shape);
+	return NSERROR_OK;
+}
+
+static nserror
+framebuffer_onyx_round_clip(const struct redraw_context *ctx,
+		const struct onyx_rrect *r)
+{
+	onyx_fb_round_clip(nsfb, r);
+	return NSERROR_OK;
+}
+
+#ifdef FB_USE_FREETYPE
+static nserror
+framebuffer_onyx_text_paint(const struct redraw_context *ctx,
+		const struct plot_font_style *fstyle,
+		int x, int y, const char *text, size_t length,
+		const struct onyx_paint *paint)
+{
+	uint32_t ucs4;
+	size_t nxtchr = 0;
+	FT_Glyph glyph;
+	FT_BitmapGlyph bglyph;
+	nsfb_bbox_t loc;
+
+	while (nxtchr < length) {
+		ucs4 = utf8_to_ucs4(text + nxtchr, length - nxtchr);
+		nxtchr = utf8_next(text, length, nxtchr);
+
+		glyph = fb_getglyph(fstyle, ucs4);
+		if (glyph == NULL)
+			continue;
+		if (glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+			bglyph = (FT_BitmapGlyph)glyph;
+			loc.x0 = x + bglyph->left;
+			loc.y0 = y - bglyph->top;
+			loc.x1 = loc.x0 + bglyph->bitmap.width;
+			loc.y1 = loc.y0 + bglyph->bitmap.rows;
+			onyx_fb_glyph(nsfb, &loc, bglyph->bitmap.buffer,
+					bglyph->bitmap.pitch,
+					bglyph->bitmap.pixel_mode ==
+						FT_PIXEL_MODE_MONO, paint);
+		}
+		x += glyph->advance.x >> 16;
+	}
+	return NSERROR_OK;
+}
+#endif
+
 /** framebuffer plot operation table */
 const struct plotter_table fb_plotters = {
 	.clip = framebuffer_plot_clip,
@@ -554,6 +619,11 @@ const struct plotter_table fb_plotters = {
 	.path = framebuffer_plot_path,
 	.bitmap = framebuffer_plot_bitmap,
 	.text = framebuffer_plot_text,
+	.onyx_shape = framebuffer_onyx_shape,		/* Onyx */
+	.onyx_round_clip = framebuffer_onyx_round_clip,
+#ifdef FB_USE_FREETYPE
+	.onyx_text_paint = framebuffer_onyx_text_paint,
+#endif
 	.option_knockout = true,
 };
 

@@ -32,6 +32,9 @@
 struct bitmap;
 struct rect;
 struct plotter_table;
+struct onyx_shape;	/* Onyx: netsurf/onyx_paint.h */
+struct onyx_rrect;
+struct onyx_paint;
 
 typedef unsigned long bitmap_flags_t;
 #define BITMAPF_NONE 0
@@ -328,6 +331,37 @@ struct plotter_table {
 	 */
 	nserror (*flush)(
 			const struct redraw_context *ctx);
+
+	/* Onyx: CSS3's rounded, graded and shadowed boxes (netsurf/onyx_paint.h). A
+	 * plotter without them leaves them NULL: the core draws plain rectangles. */
+
+	/**
+	 * Fill a shape (a rounded box, a ring, a shadow) with a colour or a gradient,
+	 * anti-aliased, within the clip rectangle.
+	 */
+	nserror (*onyx_shape)(
+			const struct redraw_context *ctx,
+			const struct onyx_shape *shape);
+
+	/**
+	 * Clip what is drawn next to a rounded box's corners (r), until the matching
+	 * call with r NULL; nested ones stack.
+	 */
+	nserror (*onyx_round_clip)(
+			const struct redraw_context *ctx,
+			const struct onyx_rrect *r);
+
+	/**
+	 * Text painted with a colour or a gradient (background-clip: text).
+	 */
+	nserror (*onyx_text_paint)(
+			const struct redraw_context *ctx,
+			const struct plot_font_style *fstyle,
+			int x,
+			int y,
+			const char *text,
+			size_t length,
+			const struct onyx_paint *paint);
 
 	/* flags */
 	/**
