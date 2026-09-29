@@ -22,7 +22,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript) |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree. `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, `localStorage` kept |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree. `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -210,7 +210,11 @@ optional chaining...) with the DOM written in JavaScript:
   `click` at the element under the pointer — a click a script prevents neither follows its
   link nor sends its form —; the pointer's moves (`onyx:hover` from `interaction.c`, every
   move: dom.js makes `mouseover` / `mouseout` with their `relatedTarget`, `mouseenter` /
-  `mouseleave` for each ancestor entered or left, and `mousemove`); `keydown`/`keypress`/`keyup` at the focused control or the
+  `mouseleave` for each ancestor entered or left, and `mousemove`); **CSS `:hover`** -- the
+  node under the pointer is kept (`html_content.hover_node`); libcss asks `node_is_hover`
+  (`css/select.c`: that node and its ancestors), and when it changes the styles are made again
+  (`html_script_dom_changed`) -- only when the style sheets have `:hover` rules (a `:hover`
+  selector was tried: `uses_hover`); `keydown`/`keypress`/`keyup` at the focused control or the
   document (a key prevented is not typed); `input` (typing; deferred a turn: the text area
   is not changed under its feet), `change` (checkboxes, radios, a select's menu), `submit`
   (a submit button, Enter; prevented: not sent); the window's `scroll` (the frontend tells
@@ -228,7 +232,7 @@ optional chaining...) with the DOM written in JavaScript:
 ## 8. Known gaps
 
 - JavaScript: no `canvas`; no streams (`fetch`'s `body`), synchronous XHR (runs async),
-  multipart request bodies, `responseXML`; CSS `:hover` does not restyle; a form control
+  multipart request bodies, `responseXML`; CSS `:active` / `:focus`; a form control
   outside a form is made again at each layout the scripts cause (its old one leaks).
 - SVG (inline `<svg>` and `.svg` images), `opacity`, filters, animations and transitions.
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.

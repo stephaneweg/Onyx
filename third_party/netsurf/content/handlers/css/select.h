@@ -59,4 +59,9 @@ css_error named_ancestor_node(void *pw, void *node,
 
 css_error node_is_visited(void *pw, void *node, bool *match);
 
+/* Onyx: the node under the pointer while a document's styles are selected (CSS :hover),
+ * and whether a :hover selector was tried (the document then has :hover rules). */
+extern struct dom_node *nscss_hover_node;
+extern bool nscss_hover_used;
+
 #endif
