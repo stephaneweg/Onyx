@@ -7,7 +7,8 @@ paths like `Zircon/circle` as-is; no relation to Google/Fuchsia's Zircon).
 
 **Continuing the work? Read `docs/HANDOFF.md` first** (where things stand, the conventions, the
 next tasks: after the desktop redesign — a modernised CDE, `docs/gui-redesign/README.md`, done
-and in `main` — its next ideas, and the GameCube emulator).
+and in `main` — its next ideas, the GameCube emulator, and NetSurf "as in Chrome": its section
+says where the code is, how to test on the PC, how to build, what is next).
 
 The reference documentation is in **`docs/`** and is written in **English**:
 
