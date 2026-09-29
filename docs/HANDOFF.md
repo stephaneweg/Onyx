@@ -398,7 +398,8 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   `python tools/manuals/build_manuals.py`) — docs/03 *Manuals*. On the way: an opened statement or
   invoice saved again kept its matchings no more (`entry_save` now carries them; test added), a saved
   statement's movements show what they paid, a new statement proposes the bank's next number, the
-  reports' and VAT page's columns fit, the demo's "Flémalle" in Latin-1. **Next**: a manual reader app
+  reports' and VAT page's columns fit, the demo's "Flémalle" in Latin-1. Then (asked) the manual in
+  French and Dutch too: `Ledger.fr.md` / `.pdf` (59 pages), `Ledger.nl.md` / `.pdf` (60). **Next**: a manual reader app
   on Onyx (the same Markdown subset), then a manual for each big app (Writer, the Spreadsheet...).
 - **Next ideas**: **e-invoicing** — Belgium requires structured B2B invoices through **Peppol** from
   2026: a sales invoice as UBL (Peppol BIS Billing 3.0) and a purchase UBL read would be the most

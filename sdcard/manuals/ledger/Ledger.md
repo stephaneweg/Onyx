@@ -87,7 +87,7 @@ section 1.5 recalls them.
 - Keys are written `Ctrl+N`, `Tab`, `Enter`, `Esc`, `F4`.
 - Amounts are written the Belgian way: `1.234,56` — a dot groups the thousands, a comma separates the
   cents. Dates are written `28/09/2026`.
-- The examples use the **demo company**, *Atelier Lumen SRL* (section 2.3). You can try everything on
+- The examples use the **demo company**, *Atelier Lumen SRL* (section 2.2). You can try everything on
   it: it is an ordinary file of its own, separate from your books.
 
 ### 1.5 Bookkeeping in a nutshell
@@ -253,7 +253,7 @@ window.
 A document cannot be changed or deleted once:
 
 - its **fiscal year is closed** (section 15), or
-- it holds VAT and the **VAT return of its period is marked filed** (section 14.5).
+- it holds VAT and the **VAT return of its period is marked filed** (section 14.3).
 
 Its page then says **Locked** and why. To correct it, reopen the period or the year — or, better, post
 a correcting document (a credit note, a miscellaneous operation) in the current period.
@@ -690,7 +690,7 @@ is typed like a bank statement: cash sales in, small purchases out, the day's or
 
 **Misc. operations** keeps the entries that are neither invoices nor statements: depreciation,
 salaries booked from your social secretariat's summary, accruals, corrections, opening balances, and
-the VAT settlements Ledger posts itself (section 14.5).
+the VAT settlements Ledger posts itself (section 14.3).
 
 ![The miscellaneous operations](images/misc.png)
 *The miscellaneous operations of 2026: the VAT settlements of Q1 and Q2.*

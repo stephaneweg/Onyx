@@ -1432,8 +1432,8 @@ type (kept as it is — the form asks for a valid one when the record is edited)
 pay, the bank, the year's result, the sales and purchases by month, the next VAT return, the invoices
 overdue.*
 
-> **The manual.** Ledger has a complete user manual, with pictures: `SD:/manuals/ledger/Ledger.pdf`
-> (and `Ledger.md`) — getting started, every page and document step by step, the VAT codes, the
+> **The manual.** Ledger has a complete user manual, with pictures, in English, French and Dutch:
+> `SD:/manuals/ledger/Ledger.pdf`, `Ledger.fr.pdf`, `Ledger.nl.pdf` (and their `.md`) — getting started, every page and document step by step, the VAT codes, the
 > printing's fields, questions and answers. What follows is its summary.
 
 Ledger keeps the **double-entry books** of a Belgian company or self-employed person: its chart of
