@@ -830,6 +830,7 @@ int main (void)
 {
 	CardRoot root;
 	if (root.canvas.px == 0) return 1;
+	root.attach ();				// (a question asked before run (): its clicks and keys)
 	g_root = &root;
 	doc_init (g_doc);
 	doc_init (s_tmp);
@@ -918,7 +919,6 @@ int main (void)
 	menu.item ("Move Field Up", "", 0, cmd_field_up);
 	menu.item ("Move Field Down", "", 0, cmd_field_down);
 	menu.publish ();
-	root.attach ();				// (a question asked before run (): its clicks and keys)
 
 	// A file named on the command line; else the form kept at the last close (asked); else the form
 	// opened last time; else a new form.

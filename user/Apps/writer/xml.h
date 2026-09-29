@@ -34,8 +34,8 @@ struct XBuf
 	}
 	void num (long v) { char t[24]; int j = 0; bool ng = v < 0; unsigned long u = ng ? (unsigned long) -v : (unsigned long) v; do { t[j++] = (char) ('0' + u % 10); u /= 10; } while (u); if (ng) put ('-'); while (j) put (t[--j]); }
 	void clear () { n = 0; if (b) b[0] = 0; }
-	const char *str () { reserve (0); return b; }
-	char *take () { reserve (0); char *r = b; b = 0; n = cap = 0; return r; }
+	const char *str () { reserve (0); b[n] = 0; return b; }	// (an empty one: its buffer made, ended)
+	char *take () { reserve (0); b[n] = 0; char *r = b; b = 0; n = cap = 0; return r; }
 };
 
 // UTF-8 -> code points (a byte not UTF-8: as Latin-1).
