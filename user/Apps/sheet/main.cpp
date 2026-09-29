@@ -21,7 +21,7 @@
 using namespace ss;
 using namespace wtk;
 
-#define W 1060
+#define W 1000						// (the kernel makes no window wider than 1024: as Writer)
 #define H 700
 
 static Book g_b;

@@ -39,7 +39,7 @@ struct Buf
 	void puti (long long v) { char t[24]; snprintf (t, sizeof t, "%lld", v); puts (t); }
 	void clear () { n = 0; if (b) b[0] = 0; }
 	const char *str () { reserve (n); b[n] = 0; return b; }
-	char *take () { reserve (n); char *r = b; b = 0; n = cap = 0; return r; }	// (the caller frees)
+	char *take () { reserve (n); b[n] = 0; char *r = b; b = 0; n = cap = 0; return r; }	// (the caller frees; "" when empty)
 private:
 	Buf (const Buf &);
 	Buf &operator= (const Buf &);

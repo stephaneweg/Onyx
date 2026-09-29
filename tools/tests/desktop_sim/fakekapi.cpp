@@ -21,7 +21,9 @@
 //   dump FILE            the window: "ELSM" w h x y (int32), then w * h pixels 0xTTRRGGBB
 //                        (TT = transparency: 0 opaque) -- its frame (the active copy, or the
 //                        inactive one with SIM_INACTIVE=1) around its client canvas
-//   exit
+//   quit                 the window closed (kapi_should_exit () from now on: the app's loop ends
+//                        and what it does before returning from main runs)
+//   exit                 the process ends here (what follows the app's loop never runs)
 // SIM_POS="x,y": the window's outer top-left (else centred); SIM_ARGS: the app's arguments;
 // SIM_SD: the SD card's directory (default sdcard), only read; SIM_WRITES: where what the apps
 // save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: a directory whose files are read
@@ -65,6 +67,7 @@ static gui_handler g_ptr, g_key, g_click, g_menuFn; static int g_btn;	// (the bu
 static unsigned g_ticks = 1000;
 static std::vector<std::string> g_script; static size_t g_step;
 static unsigned g_mods;					// (the script's "mods")
+static bool g_quit;					// (the script's "quit": the window closed)
 
 // The card is only READ: what an app writes (a saved file, a folder) goes to SIM_WRITES (default
 // /tmp/onyx_sim_writes), read back from there first -- never into sdcard/ nor the samples.
@@ -198,6 +201,11 @@ static void make_chrome (void)
 }
 static unsigned *create_ex (int x, int y, int w, int h, const char *t, unsigned f)
 {
+	if (w <= 0 || h <= 0 || w > 1024 || h > 768)		// (the kernel's limits: no window)
+	{
+		fprintf (stderr, "sim: no window for %d x %d (the kernel makes none over 1024 x 768)\n", w, h);
+		return 0;
+	}
 	g_canvas = (unsigned *) calloc ((size_t) w * h, 4); g_cw = w; g_ch = h; g_stride = w; g_lw = w; g_lh = h; g_flags = f;
 	snprintf (g_title, sizeof g_title, "%s", t ? t : "");
 	make_chrome ();
@@ -207,7 +215,7 @@ static unsigned *create_ex (int x, int y, int w, int h, const char *t, unsigned 
 static unsigned *create (int w, int h, const char *t)
 {
 	unsigned *p = create_ex (0, 0, w, h, t, 0);
-	place (g_ow, g_oh);
+	if (p) place (g_ow, g_oh);
 	return p;
 }
 static unsigned *resize (int w, int h)
@@ -339,6 +347,7 @@ static void step (void)
 	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
+	else if (!strcmp (cmd, "quit")) g_quit = true;
 	else if (!strcmp (cmd, "exit")) exit (0);
 }
 static void h_msleep (unsigned ms)
@@ -348,7 +357,7 @@ static void h_msleep (unsigned ms)
 	step ();
 }
 static unsigned h_get_ticks (void) { return g_ticks; }
-static int h_should_exit (void) { return 0; }
+static int h_should_exit (void) { return g_quit; }
 static void yield (void) {}
 
 // ---- the system --------------------------------------------------------------------------------------

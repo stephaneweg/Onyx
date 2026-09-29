@@ -143,7 +143,7 @@ int main (int argc, char **argv)
 	set (0, "C19", "=MAX(E5:E16)");
 	{ Look l = none (); l.ha = HA_LEFT; apply (0, R ("B19"), l); }
 	width (0, 0, 98); width (0, 1, 90); width (0, 2, 84); width (0, 3, 90); width (0, 4, 96); width (0, 5, 66);
-	chart (0, CH_COLUMN, R ("A4", "D16"), col_x (B.sh[0], 6) + 16, (int) row_y (B.sh[0], 3), 452, 316, "Takings by month", LG_BOTTOM);
+	chart (0, CH_COLUMN, R ("A4", "D16"), col_x (B.sh[0], 6) + 12, (int) row_y (B.sh[0], 3), 396, 300, "Takings by month", LG_BOTTOM);
 	// conditional formats: the totals' data bars, the three best months of coffee in green
 	{
 		CondFmt c; memset (&c, 0, sizeof c); c.fill = c.color = AUTO; c.bold = c.italic = -1;

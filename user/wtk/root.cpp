@@ -140,6 +140,13 @@ void Root::initApplet ()
 
 void Root::init (unsigned *fb)
 {
+	if (fb == 0)					// no window from the kernel (bigger than 1024 x 768, or no
+	{						// memory): stop -- an app runs at EL1, a null canvas is the
+		static const char msg[] = "wtk: the window could not be made (at most 1024 x 768)\n";	// kernel's own memory
+		kapi_stdout_write (msg, sizeof msg - 1);
+		kapi_exit (1);
+		for (;;) kapi_msleep (1000);
+	}
 	canvas.adopt (fb, width, height);		// the root draws straight into the window canvas
 	wk_window_state (WK_WIN_MENU);			// (it answers the window menu: ptrEvent)
 	wk_decorate_window ();				// title bar / borders / close box (no-op if borderless)
