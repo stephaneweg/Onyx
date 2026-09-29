@@ -628,8 +628,9 @@ all failed and the page was laid out without its style sheet); **`fetch`** (`Res
 low-level cache (which now takes a request's own headers and keeps the HTTP status and the
 headers); POST / any method and the request's headers in the Onyx fetcher; **`localStorage`
 kept** (a file per origin); the **hover events** (`mouseover` / `mouseenter`... from
-`onyx:hover`). The PC bench builds in WSL again (`build-essential`, `libpng-dev`,
-`zlib1g-dev`); `jstest.sh` covers them all (js-fetch, js-hover, js-storage).
+`onyx:hover`), **CSS `:hover`** (the styles made again when the node under the pointer changes,
+if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons). The PC bench builds in WSL again (`build-essential`, `libpng-dev`,
+`zlib1g-dev`); `jstest.sh` covers them all (js-fetch, js-hover, js-hovercss, js-storage).
 
 ### Where the code is
 - CSS: `third_party/libcss`. A new property touches `src/parse/propstrings.*`,

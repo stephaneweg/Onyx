@@ -290,9 +290,14 @@ box_get_style(html_content *c,
 	ctx.root_style = root_style;
 	ctx.parent_style = parent_style;
 
-	/* Select style for element */
+	/* Select style for element (Onyx: with the node under the pointer, CSS :hover) */
+	nscss_hover_node = c->hover_node;
+	nscss_hover_used = false;
 	styles = nscss_get_style(&ctx, n, &c->media, &c->unit_len_ctx,
 			inline_style);
+	if (nscss_hover_used)
+		c->uses_hover = true;
+	nscss_hover_node = NULL;
 
 	/* No longer need inline style */
 	if (inline_style != NULL)

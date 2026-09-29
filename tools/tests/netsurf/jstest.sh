@@ -73,6 +73,13 @@ expect "$L" "hover mouseenter other"
 expect "$L" "hover mousemove"
 refuse "$L" "hover mouseleave outer.*inner"
 
+echo "js-hovercss.html (CSS :hover, the styles made again)"
+L=$OUT/js-hovercss.log
+run js-hovercss.html "$(waits 40)move 100 130;$(waits 30)move 100 390;$(waits 30)" "$L"
+expect "$L" "hovercss before none"
+expect "$L" "hovercss over block"
+expect "$L" "hovercss after none"
+
 echo "js-storage.html (localStorage kept across two runs)"
 L=$OUT/js-storage.log
 run js-storage.html "$(waits 40)" "$L"

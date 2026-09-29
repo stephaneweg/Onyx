@@ -1580,6 +1580,16 @@ mouse_action_drag_none(html_content *html,
 		hinit.x = x;
 		hinit.y = y;
 		html_script_event(html, "onyx:hover", mas.node, &hinit);
+
+		/* CSS :hover -- the styles made again when the node under the pointer changes,
+		 * if the style sheets have :hover rules (a :hover selector was tried) */
+		if (mas.node != html->hover_node) {
+			if (html->hover_node != NULL)
+				dom_node_unref(html->hover_node);
+			html->hover_node = mas.node != NULL ? dom_node_ref(mas.node) : NULL;
+			if (html->uses_hover)
+				html_script_dom_changed(html);
+		}
 	}
 
 	/* Onyx: the page's scripts see the main button -- mousedown, then mouseup and
