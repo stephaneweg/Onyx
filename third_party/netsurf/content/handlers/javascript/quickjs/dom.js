@@ -2599,17 +2599,46 @@ const COMPUTED_DEFAULTS = { 'transition-duration': '0s', 'animation-duration': '
 	'box-sizing': 'content-box', 'float': 'none', 'direction': 'ltr' };
 
 /* storage: per document, in memory */
+/* localStorage is kept (N.storage: a file per origin, written a turn after a change);
+ * sessionStorage lives as long as the page */
 class Storage {
-	constructor() { Object.defineProperty(this, '_m', { value: new Map() }); }
+	constructor(origin) {
+		Object.defineProperty(this, '_m', { value: new Map() });
+		Object.defineProperty(this, '_o', { value: origin || null });
+		Object.defineProperty(this, '_q', { value: false, writable: true });
+		if (this._o) {
+			const j = N.storage(this._o);
+			if (j) try {
+				const o = JSON.parse(j);
+				for (const k of Object.keys(o)) this._m.set(k, String(o[k]));
+			} catch (e) { /* (a damaged file: start empty) */ }
+		}
+	}
+	_save() {
+		if (!this._o || this._q) return;
+		this._q = true;
+		N.timer(() => {
+			this._q = false;
+			const o = {};
+			for (const [k, v] of this._m) o[k] = v;
+			N.storage(this._o, JSON.stringify(o));
+		}, 0, false);
+	}
 	get length() { return this._m.size; }
 	key(i) { return [...this._m.keys()][i] ?? null; }
 	getItem(k) { const v = this._m.get(String(k)); return v === undefined ? null : v; }
-	setItem(k, v) { this._m.set(String(k), String(v)); }
-	removeItem(k) { this._m.delete(String(k)); }
-	clear() { this._m.clear(); }
+	setItem(k, v) { this._m.set(String(k), String(v)); this._save(); }
+	removeItem(k) { if (this._m.delete(String(k))) this._save(); }
+	clear() { if (this._m.size) { this._m.clear(); this._save(); } }
 }
-function storageProxy() {
-	return new Proxy(new Storage(), {
+function storageOrigin() {
+	try {
+		const u = new URL(N.url());
+		return u.protocol === 'file:' ? 'file' : u.origin;
+	} catch (e) { return null; }
+}
+function storageProxy(origin) {
+	return new Proxy(new Storage(origin), {
 		get(t, p) {
 			if (p in t || typeof p !== 'string') { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; }
 			return t.getItem(p) ?? undefined;
@@ -2832,6 +2861,7 @@ class TextDecoder {
 	constructor(enc = 'utf-8') { this.encoding = lower(enc); }
 	decode(buf) {
 		if (!buf) return '';
+		if (this.encoding === 'utf-8' || this.encoding === 'utf8') return N.utf8(buf);
 		const a = buf instanceof Uint8Array ? buf : new Uint8Array(buf.buffer || buf);
 		let s = '';
 		for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]);
@@ -2941,41 +2971,262 @@ function checkObservers() {
 	for (const o of [...resizeObservers]) o._check();
 }
 
-/* fetch and XMLHttpRequest: not yet (their requests fail, as offline) */
-function fetch(input) {
-	return Promise.reject(new TypeError('Failed to fetch'));
+/* ---- the network: fetch, Headers, Request, Response, XMLHttpRequest ---------------------
+ * On N.request(method, url, body, headerLines, binary, cb (error, { status, statusText, url,
+ * headers: [[name, value]...], body })): NetSurf's low-level cache and the Onyx fetcher (in a
+ * thread of its own), the callback on the page's thread. The body goes as text (no NUL). */
+const hkey = n => String(n).trim().toLowerCase();
+class Headers {
+	constructor(init) {
+		this._m = new Map();
+		if (init == null) return;
+		if (init instanceof Headers || Array.isArray(init) || typeof init[Symbol.iterator] === 'function')
+			for (const [k, v] of init) this.append(k, v);
+		else if (typeof init === 'object')
+			for (const k of Object.keys(init)) this.append(k, init[k]);
+	}
+	append(n, v) {
+		const k = hkey(n), o = this._m.get(k);
+		v = String(v).trim();
+		this._m.set(k, o === undefined ? v : o + (k === 'set-cookie' ? '\n' : ', ') + v);
+	}
+	set(n, v) { this._m.set(hkey(n), String(v).trim()); }
+	get(n) { const v = this._m.get(hkey(n)); return v === undefined ? null : v; }
+	has(n) { return this._m.has(hkey(n)); }
+	delete(n) { this._m.delete(hkey(n)); }
+	getSetCookie() { const v = this._m.get('set-cookie'); return v ? v.split('\n') : []; }
+	forEach(cb, self) { for (const [k, v] of this) cb.call(self, v, k, this); }
+	*entries() { yield* [...this._m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)); }
+	*keys() { for (const [k] of this.entries()) yield k; }
+	*values() { for (const [, v] of this.entries()) yield v; }
+	[Symbol.iterator]() { return this.entries(); }
 }
+const headerLines = h => [...h].map(([k, v]) => k + ': ' + v);
+
+/* a request's body as the text sent, its Content-Type set when the caller gave none */
+function encodeBody(b, h) {
+	if (b == null) return null;
+	const type = t => { if (!h.has('content-type')) h.set('content-type', t); };
+	if (typeof b === 'string') { type('text/plain;charset=UTF-8'); return b; }
+	if (b instanceof URLSearchParams) { type('application/x-www-form-urlencoded;charset=UTF-8'); return b.toString(); }
+	if (b instanceof FormData) {
+		type('application/x-www-form-urlencoded;charset=UTF-8');	/* (multipart: not yet) */
+		const u = new URLSearchParams();
+		for (const [k, v] of b._e) u.append(k, v instanceof Blob ? v._s : v);
+		return u.toString();
+	}
+	if (b instanceof Blob) { if (b.type) type(b.type); return b._s; }
+	if (b instanceof ArrayBuffer || ArrayBuffer.isView(b)) return N.utf8(b);
+	type('text/plain;charset=UTF-8');
+	return String(b);
+}
+
+const absURL = u => { try { return new URL(String(u), G.location.href).href; } catch (e) { return String(u); } };
+
+class Request {
+	constructor(input, init = {}) {
+		const src = input instanceof Request ? input : null;
+		this.url = src ? src.url : absURL(input);
+		this.method = String(init.method || (src ? src.method : 'GET')).toUpperCase();
+		this.headers = new Headers(init.headers || (src ? src.headers : undefined));
+		this.signal = init.signal || (src ? src.signal : null) || new AbortSignal();
+		this.credentials = init.credentials || (src ? src.credentials : 'same-origin');
+		this.mode = init.mode || (src ? src.mode : 'cors');
+		this.cache = init.cache || (src ? src.cache : 'default');
+		this.redirect = init.redirect || (src ? src.redirect : 'follow');
+		this.referrer = 'about:client';
+		const body = init.body !== undefined ? init.body : (src ? src._body : null);
+		this._body = this.method === 'GET' || this.method === 'HEAD' ? null : encodeBody(body, this.headers);
+		this.bodyUsed = false;
+	}
+	clone() { return new Request(this); }
+	text() { this.bodyUsed = true; return Promise.resolve(this._body || ''); }
+	json() { return this.text().then(JSON.parse); }
+}
+
+const STATUS_TEXT = { 200: 'OK', 201: 'Created', 204: 'No Content', 301: 'Moved Permanently',
+	302: 'Found', 304: 'Not Modified', 400: 'Bad Request', 401: 'Unauthorized',
+	403: 'Forbidden', 404: 'Not Found', 500: 'Internal Server Error', 503: 'Service Unavailable' };
+
+class Response {
+	constructor(body = null, init = {}) {
+		this._body = body == null ? '' : body;	/* a string or an ArrayBuffer */
+		this.status = init.status === undefined ? 200 : init.status;
+		this.statusText = init.statusText !== undefined ? String(init.statusText) : '';
+		this.headers = new Headers(init.headers);
+		this.url = '';
+		this.redirected = false;
+		this.type = 'basic';
+		this.bodyUsed = false;
+	}
+	get ok() { return this.status >= 200 && this.status < 300; }
+	get body() { return null; }		/* (no streams) */
+	_take() {
+		if (this.bodyUsed) return Promise.reject(new TypeError('Body has already been consumed'));
+		this.bodyUsed = true;
+		return Promise.resolve(this._body);
+	}
+	text() { return this._take().then(b => (typeof b === 'string' ? b : N.utf8(b))); }
+	json() { return this.text().then(JSON.parse); }
+	arrayBuffer() { return this._take().then(b => (typeof b === 'string' ? new TextEncoder().encode(b).buffer : b)); }
+	bytes() { return this.arrayBuffer().then(b => new Uint8Array(b)); }
+	blob() { return this.text().then(t => new Blob([t], { type: this.headers.get('content-type') || '' })); }
+	formData() {
+		return this.text().then(t => { const f = new FormData(); for (const [k, v] of new URLSearchParams(t)) f.append(k, v); return f; });
+	}
+	clone() {
+		if (this.bodyUsed) throw new TypeError('Body has already been consumed');
+		const r = new Response(this._body, this);
+		r.headers = new Headers(this.headers);
+		r.url = this.url; r.redirected = this.redirected; r.type = this.type;
+		return r;
+	}
+	static json(d, init = {}) {
+		const r = new Response(JSON.stringify(d), init);
+		if (!r.headers.has('content-type')) r.headers.set('content-type', 'application/json');
+		return r;
+	}
+	static error() { const r = new Response(null, { status: 0 }); r.type = 'error'; return r; }
+	static redirect(u, st = 302) { const r = new Response(null, { status: st }); r.headers.set('location', absURL(u)); return r; }
+}
+
+function fetch(input, init = {}) {
+	let req;
+	try { req = new Request(input, init); } catch (e) { return Promise.reject(e); }
+	return new Promise((resolve, reject) => {
+		const sig = req.signal;
+		const aborted = () => sig.reason !== undefined ? sig.reason : new DOMException('The operation was aborted.', 'AbortError');
+		if (sig.aborted) { reject(aborted()); return; }
+		let id = 0;
+		const onAbort = () => { if (id > 0) N.abortRequest(id); id = 0; reject(aborted()); };
+		id = N.request(req.method, req.url, req._body, headerLines(req.headers), true, (err, r) => {
+			sig.removeEventListener('abort', onAbort);
+			if (id === 0) return;			/* (aborted) */
+			id = 0;
+			if (err != null) { reject(new TypeError('Failed to fetch')); return; }
+			const res = new Response(r.body, { status: r.status,
+				statusText: r.statusText || STATUS_TEXT[r.status] || '', headers: r.headers });
+			res.url = r.url;
+			res.redirected = r.url !== req.url;
+			resolve(res);
+		});
+		if (id < 0) { id = 0; reject(new TypeError('Failed to fetch')); return; }
+		sig.addEventListener('abort', onAbort);
+	});
+}
+
 class XMLHttpRequest extends EventTarget {
 	constructor() {
 		super();
 		this.readyState = 0;
 		this.status = 0;
 		this.statusText = '';
-		this.responseText = '';
-		this.response = '';
 		this.responseType = '';
 		this.responseURL = '';
 		this.timeout = 0;
 		this.withCredentials = false;
 		this.upload = new EventTarget();
+		for (const t of ['readystatechange', 'loadstart', 'progress', 'load', 'error',
+				 'abort', 'timeout', 'loadend'])
+			this['on' + t] = null;
+		this._id = 0; this._rh = []; this._h = null; this._res = null; this._sent = false;
 	}
-	open(method, url) { this._url = url; this.readyState = 1; }
-	setRequestHeader() {}
-	getResponseHeader() { return null; }
-	getAllResponseHeaders() { return ''; }
-	overrideMimeType() {}
-	send() {
-		setTimeout(() => {
-			this.readyState = 4;
-			for (const t of ['readystatechange', 'error', 'loadend']) {
-				const ev = new ProgressEvent(t);
-				dispatch(this, ev);
-				const h = this['on' + t];
-				if (typeof h === 'function') try { h.call(this, ev); } catch (e) { report(e); }
-			}
-		}, 0);
+	_fire(t, loaded = 0, total = 0) {
+		const ev = t === 'readystatechange' ? new Event(t)
+			: new ProgressEvent(t, { lengthComputable: total > 0, loaded, total });
+		dispatch(this, ev);
+		const h = this['on' + t];
+		if (typeof h === 'function') try { h.call(this, ev); } catch (e) { report(e); }
 	}
-	abort() {}
+	_state(s) { this.readyState = s; this._fire('readystatechange'); }
+	open(method, url) {
+		if (this._id > 0) N.abortRequest(this._id);
+		this._id = 0;
+		this._m = String(method).toUpperCase();
+		this._u = String(url);
+		this._rh = []; this._h = null; this._res = null; this._sent = false;
+		this.status = 0; this.statusText = ''; this.responseURL = '';
+		this._state(1);
+	}
+	setRequestHeader(n, v) {
+		if (this.readyState !== 1 || this._sent) throw new DOMException('The object is in an invalid state.', 'InvalidStateError');
+		this._rh.push([String(n), String(v)]);
+	}
+	send(body = null) {
+		if (this.readyState !== 1 || this._sent) throw new DOMException('The object is in an invalid state.', 'InvalidStateError');
+		this._sent = true;
+		const h = new Headers();
+		for (const [k, v] of this._rh) h.append(k, v);
+		const b = this._m === 'GET' || this._m === 'HEAD' ? null : encodeBody(body, h);
+		const bin = this.responseType === 'arraybuffer' || this.responseType === 'blob';
+		this._fire('loadstart');
+		const id = N.request(this._m, absURL(this._u), b, headerLines(h), bin, (err, r) => this._done(id, err, r));
+		this._id = id;
+		if (id < 0) { this._id = 0; setTimeout(() => this._fail('error'), 0); return; }
+		if (this.timeout > 0)
+			this._to = setTimeout(() => {
+				if (this._id !== id) return;
+				N.abortRequest(id); this._id = 0; this._fail('timeout');
+			}, this.timeout);
+	}
+	_done(id, err, r) {
+		if (this._id !== id) return;			/* (aborted, or open() again) */
+		this._id = 0;
+		if (this._to) { clearTimeout(this._to); this._to = 0; }
+		if (err != null) { this._fail('error'); return; }
+		this.status = r.status;
+		this.statusText = r.statusText || STATUS_TEXT[r.status] || '';
+		this.responseURL = r.url;
+		this._h = r.headers;
+		this._res = r.body;
+		const n = typeof r.body === 'string' ? r.body.length : r.body.byteLength;
+		this._state(2);
+		this._state(3);
+		this._fire('progress', n, n);
+		this._state(4);
+		this._fire('load', n, n);
+		this._fire('loadend', n, n);
+	}
+	_fail(t) {
+		this.status = 0; this.statusText = ''; this._res = null; this._h = null;
+		this._state(4);
+		this._fire(t);
+		this._fire('loadend');
+	}
+	abort() {
+		if (this._id > 0) {
+			N.abortRequest(this._id);
+			this._id = 0;
+			this._fail('abort');
+		}
+		this.readyState = 0;
+	}
+	getResponseHeader(n) {
+		if (!this._h) return null;
+		const k = hkey(n), v = this._h.filter(([a]) => hkey(a) === k).map(x => x[1]);
+		return v.length ? v.join(', ') : null;
+	}
+	getAllResponseHeaders() {
+		return this._h ? this._h.map(([a, b]) => hkey(a) + ': ' + b + '\r\n').join('') : '';
+	}
+	overrideMimeType(m) { this._mime = m; }
+	get responseText() {
+		if (this.responseType !== '' && this.responseType !== 'text')
+			throw new DOMException('The object is in an invalid state.', 'InvalidStateError');
+		return this.readyState >= 3 && typeof this._res === 'string' ? this._res : '';
+	}
+	get response() {
+		if (this.readyState < 4 || this._res == null)
+			return this.responseType === '' || this.responseType === 'text' ? this.responseText : null;
+		switch (this.responseType) {
+		case '': case 'text': return this._res;
+		case 'json': try { return JSON.parse(this._res); } catch (e) { return null; }
+		case 'arraybuffer': return this._res;
+		case 'blob': return new Blob([N.utf8(this._res)], { type: this.getResponseHeader('content-type') || '' });
+		default: return null;			/* ('document': not yet) */
+		}
+	}
+	get responseXML() { return null; }
 }
 def(XMLHttpRequest, { UNSENT: 0, OPENED: 1, HEADERS_RECEIVED: 2, LOADING: 3, DONE: 4 });
 
@@ -3036,10 +3287,10 @@ Object.assign(G, {
 	cancelIdleCallback: clearTimeout,
 	queueMicrotask: fn => { Promise.resolve().then(fn).catch(report); },
 	matchMedia, getComputedStyle, atob, btoa,
-	URL, URLSearchParams, TextEncoder, TextDecoder, fetch, XMLHttpRequest,
+	URL, URLSearchParams, TextEncoder, TextDecoder, fetch, XMLHttpRequest, Headers, Request, Response,
 	AbortController, AbortSignal, Blob, File,
 	Location, Storage,
-	localStorage: storageProxy(),
+	localStorage: storageProxy(storageOrigin()),
 	sessionStorage: storageProxy(),
 	name: '',
 	status: '',
@@ -3159,6 +3410,30 @@ function browserEvent(target, type, init) {
 	return ev;
 }
 
+/* The pointer's moves (Onyx: "onyx:hover" at every move, with the element under it): the
+ * element left gets mouseout (bubbling) and mouseleave (it and each ancestor the new one is
+ * not in, not bubbling), the one entered mouseover and mouseenter, then mousemove. */
+let hovered = null;
+function hoverTo(el, init) {
+	const old = hovered;
+	if (el !== old) {
+		hovered = el;
+		const path = n => { const a = []; for (; n; n = n.parentNode) if (n instanceof Element) a.push(n); return a; };
+		const oldPath = old && old.isConnected ? path(old) : [], newPath = path(el);
+		const mev = (type, rel, bubbles) =>
+			new MouseEvent(type, Object.assign({ bubbles, cancelable: bubbles, view: G }, init, { relatedTarget: rel }));
+		if (oldPath.length) {
+			dispatch(old, mev('mouseout', el, true));
+			for (const n of oldPath) if (!newPath.includes(n)) dispatch(n, mev('mouseleave', el, false));
+		}
+		if (el) {
+			dispatch(el, mev('mouseover', old, true));
+			for (const n of newPath.slice().reverse()) if (!oldPath.includes(n)) dispatch(n, mev('mouseenter', old, false));
+		}
+	}
+	if (el) dispatch(el, browserEvent(el, 'mousemove', init));
+}
+
 function browserDispatch(target, type, init) {
 	if (type === 'onyx:interactive') {
 		/* the document parsed */
@@ -3179,6 +3454,10 @@ function browserDispatch(target, type, init) {
 	let t = target === null ? G : target;
 	if (t instanceof CharacterData)		/* (a text's element is the target) */
 		t = N.parent(t) || G;
+	if (type === 'onyx:hover') {
+		hoverTo(t instanceof Element ? t : null, init || {});
+		return true;
+	}
 	if (type === 'mousedown' && t instanceof HTMLElement) {
 		const f = t.closest('a,button,input,select,textarea,[tabindex]');
 		if (f && f !== activeElement) f.focus();

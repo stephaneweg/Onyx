@@ -278,6 +278,28 @@ const uint8_t *llcache_handle_get_source_data(const llcache_handle *handle,
  *       key-value pairs for any additional parameters.
  * \todo Deal with multiple headers of the same key (e.g. Set-Cookie)
  */
+/**
+ * Onyx: the HTTP status code of the response (0: none yet, or not HTTP).
+ */
+long llcache_handle_get_http_code(const llcache_handle *handle);
+
+/**
+ * Onyx: the i-th response header (in the order received) -> false past the last.
+ */
+bool llcache_handle_get_header_at(const llcache_handle *handle, size_t i,
+		const char **name, const char **value);
+
+/**
+ * Onyx: llcache_handle_retrieve with the request's own headers ("Name: value",
+ * NULL-terminated; copied) -- for JS fetch / XMLHttpRequest. Use with
+ * LLCACHE_RETRIEVE_FORCE_FETCH (a cached object would not be fetched again).
+ */
+nserror llcache_handle_retrieve_ex(nsurl *url, uint32_t flags,
+		nsurl *referer, const llcache_post_data *post,
+		const char *const *headers,
+		llcache_handle_callback cb, void *pw,
+		llcache_handle **result);
+
 const char *llcache_handle_get_header(const llcache_handle *handle,
 		const char *key);
 

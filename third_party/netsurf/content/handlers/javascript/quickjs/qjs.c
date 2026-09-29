@@ -48,9 +48,13 @@
 #include "netsurf/misc.h"
 #include "netsurf/window.h"
 #include "content/content.h"
+#include "content/llcache.h"	/* Onyx: fetch / XMLHttpRequest (n_request) */
+#include "utils/messages.h"	/* messages_get_errorcode (a request's error) */
 #include "content/urldb.h"
 #include "desktop/gui_internal.h"
 #include "desktop/browser_private.h"
+#include "desktop/browser_history.h"	/* browser_window_history_back / _forward */
+#include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
 #include "html/private.h"
 #include "html/box.h"
@@ -90,6 +94,16 @@ struct qjs_timer {
 	JSValue fn;
 };
 
+/* A request of fetch / XMLHttpRequest (dom.js), through the low-level cache. */
+struct qjs_req {
+	struct qjs_req *next;
+	struct jsthread *t;
+	int id;
+	bool binary;			/* the body as an ArrayBuffer (else a string) */
+	llcache_handle *handle;
+	JSValue cb;			/* cb(error, { status, statusText, url, headers, body }) */
+};
+
 struct jsthread {
 	jsheap *heap;
 	JSContext *ctx;
@@ -108,6 +122,8 @@ struct jsthread {
 	struct qjs_timer *timers;
 	int next_timer;
 	int load_waits;			/* the window's load: turns waited */
+	struct qjs_req *reqs;		/* fetch / XMLHttpRequest in flight */
+	int next_req;
 };
 
 static JSClassID qjs_node_class;
@@ -1483,6 +1499,336 @@ static void qjs_timers_stop(jsthread *t)
 }
 
 
+/* ---- natives: network requests (fetch, XMLHttpRequest) ----------------------------------- */
+
+static void qjs_req_unlink(jsthread *t, struct qjs_req *r)
+{
+	struct qjs_req **pp;
+	for (pp = &t->reqs; *pp != NULL; pp = &(*pp)->next) {
+		if (*pp == r) {
+			*pp = r->next;
+			break;
+		}
+	}
+}
+
+static void qjs_req_free(struct qjs_req *r, bool abort)
+{
+	if (r->handle != NULL) {
+		if (abort)
+			llcache_handle_abort(r->handle);
+		llcache_handle_release(r->handle);
+	}
+	JS_FreeValue(r->t->ctx, r->cb);
+	free(r);
+}
+
+/** The response of a finished request, for dom.js. */
+static JSValue qjs_req_result(JSContext *ctx, struct qjs_req *r)
+{
+	JSValue o = JS_NewObject(ctx), hs = JS_NewArray(ctx);
+	const char *name, *value;
+	const uint8_t *data;
+	size_t size = 0, i;
+	uint32_t n = 0;
+	long code = llcache_handle_get_http_code(r->handle);
+	const char *text = "";
+	nsurl *u = llcache_handle_get_url(r->handle);
+
+	for (i = 0; llcache_handle_get_header_at(r->handle, i, &name, &value); i++) {
+		if (strncmp(name, "HTTP/", 5) == 0) {	/* the status line: its reason phrase */
+			const char *sp = strchr(name, ' ');
+			if (sp != NULL) sp = strchr(sp + 1, ' ');
+			if (sp != NULL) text = sp + 1;
+			continue;
+		}
+		JSValue pair = JS_NewArray(ctx);
+		JS_SetPropertyUint32(ctx, pair, 0, JS_NewString(ctx, name));
+		JS_SetPropertyUint32(ctx, pair, 1, JS_NewString(ctx, value));
+		JS_SetPropertyUint32(ctx, hs, n++, pair);
+	}
+	data = llcache_handle_get_source_data(r->handle, &size);
+	JS_SetPropertyStr(ctx, o, "status", JS_NewInt32(ctx, (int32_t) (code != 0 ? code : 200)));
+	JS_SetPropertyStr(ctx, o, "statusText", JS_NewString(ctx, text));
+	JS_SetPropertyStr(ctx, o, "url", JS_NewString(ctx, u != NULL ? nsurl_access(u) : ""));
+	JS_SetPropertyStr(ctx, o, "headers", hs);
+	if (r->binary)
+		JS_SetPropertyStr(ctx, o, "body", JS_NewArrayBufferCopy(ctx, data, size));
+	else
+		JS_SetPropertyStr(ctx, o, "body", JS_NewStringLen(ctx, (const char *) data, size));
+	return o;
+}
+
+static nserror qjs_req_cb(llcache_handle *handle, const llcache_event *event, void *pw)
+{
+	struct qjs_req *r = pw;
+	jsthread *t = r->t;
+	JSValue args[2];
+
+	(void) handle;
+	if (event->type != LLCACHE_EVENT_DONE && event->type != LLCACHE_EVENT_ERROR)
+		return NSERROR_OK;		/* (headers, data, progress, redirects: the end only) */
+
+	qjs_req_unlink(t, r);
+	if (t->closed) {			/* (the document went meanwhile) */
+		qjs_req_free(r, false);
+		return NSERROR_OK;
+	}
+	if (event->type == LLCACHE_EVENT_DONE) {
+		args[0] = JS_NULL;
+		args[1] = qjs_req_result(t->ctx, r);
+	} else {
+		const char *m = event->data.error.msg;
+		args[0] = JS_NewString(t->ctx, m != NULL ? m : messages_get_errorcode(event->data.error.code));
+		args[1] = JS_NULL;
+	}
+	{
+		/* (everything freed before qjs_leave: it frees a thread destroyed meanwhile) */
+		JSContext *ctx = t->ctx;
+		JSValue cb = JS_DupValue(ctx, r->cb), res;
+		qjs_req_free(r, false);		/* (the handle released: the response copied) */
+		qjs_enter(t);
+		res = JS_Call(ctx, cb, JS_UNDEFINED, 2, args);
+		if (JS_IsException(res))
+			qjs_report(ctx, "request");
+		JS_FreeValue(ctx, res);
+		JS_FreeValue(ctx, cb);
+		JS_FreeValue(ctx, args[0]);
+		JS_FreeValue(ctx, args[1]);
+		qjs_leave(t);
+	}
+	return NSERROR_OK;
+}
+
+/** request(method, url, body | null, [ "Name: value", ... ], binary, cb(error, response)) -> id,
+ *  or -1: a bad URL (the caller reports a network error). */
+static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *method, *urls, *body = NULL;
+	nsurl *base, *url = NULL;
+	llcache_post_data post;
+	char **hv = NULL;
+	uint32_t nh = 0, i, k = 0;
+	struct qjs_req *r;
+	nserror err;
+	bool get;
+
+	(void) this_val;
+	if (argc < 6 || t->closed || t->htmlc == NULL || !JS_IsFunction(ctx, argv[5]))
+		return JS_NewInt32(ctx, -1);
+	method = JS_ToCString(ctx, argv[0]);
+	urls = JS_ToCString(ctx, argv[1]);
+	if (method == NULL || urls == NULL) {
+		JS_FreeCString(ctx, method);
+		JS_FreeCString(ctx, urls);
+		return JS_NewInt32(ctx, -1);
+	}
+	base = t->htmlc->base_url != NULL ? t->htmlc->base_url : content_get_url(&t->htmlc->base);
+	err = nsurl_join(base, urls, &url);
+	JS_FreeCString(ctx, urls);
+	if (err != NSERROR_OK) {
+		JS_FreeCString(ctx, method);
+		return JS_NewInt32(ctx, -1);
+	}
+	if (!JS_IsNull(argv[2]) && !JS_IsUndefined(argv[2]))
+		body = JS_ToCString(ctx, argv[2]);
+
+	/* the headers: the caller's, and the method when it is neither GET nor POST (the Onyx
+	 * fetcher takes "X-Onyx-Method" off the request and uses it) */
+	{
+		JSValue len = JS_GetPropertyStr(ctx, argv[3], "length");
+		int32_t l = 0;
+		JS_ToInt32(ctx, &l, len);
+		JS_FreeValue(ctx, len);
+		nh = l > 0 && l < 200 ? (uint32_t) l : 0;
+	}
+	hv = calloc(nh + 2, sizeof(char *));
+	get = strcasecmp(method, "GET") == 0 || strcasecmp(method, "HEAD") == 0;
+	if (hv != NULL && !get && strcasecmp(method, "POST") != 0) {
+		size_t ml = strlen(method) + 16;
+		hv[k] = malloc(ml);
+		if (hv[k] != NULL) { snprintf(hv[k], ml, "X-Onyx-Method: %s", method); k++; }
+	}
+	for (i = 0; hv != NULL && i < nh; i++) {
+		JSValue v = JS_GetPropertyUint32(ctx, argv[3], i);
+		const char *h = JS_ToCString(ctx, v);
+		if (h != NULL) { hv[k++] = strdup(h); JS_FreeCString(ctx, h); }
+		JS_FreeValue(ctx, v);
+	}
+	JS_FreeCString(ctx, method);
+
+	r = calloc(1, sizeof *r);
+	if (r == NULL) {
+		nsurl_unref(url);
+		if (body) JS_FreeCString(ctx, body);
+		for (i = 0; hv != NULL && hv[i] != NULL; i++) free(hv[i]);
+		free(hv);
+		return JS_NewInt32(ctx, -1);
+	}
+	r->t = t;
+	r->id = ++t->next_req;
+	r->binary = JS_ToBool(ctx, argv[4]);
+	r->cb = JS_DupValue(ctx, argv[5]);
+
+	/* a body (or a method with one): as a POST's url-encoded data -- any text (not NUL) */
+	post.type = LLCACHE_POST_URL_ENCODED;
+	post.data.urlenc = (char *) (body != NULL ? body : "");
+	err = llcache_handle_retrieve_ex(url,
+		LLCACHE_RETRIEVE_FORCE_FETCH | LLCACHE_RETRIEVE_NO_ERROR_PAGES,
+		content_get_url(&t->htmlc->base), (!get || body != NULL) ? &post : NULL,
+		(const char *const *) hv, qjs_req_cb, r, &r->handle);
+	nsurl_unref(url);
+	if (body) JS_FreeCString(ctx, body);
+	for (i = 0; hv != NULL && hv[i] != NULL; i++) free(hv[i]);
+	free(hv);
+	if (err != NSERROR_OK) {
+		r->handle = NULL;
+		qjs_req_free(r, false);
+		return JS_NewInt32(ctx, -1);
+	}
+	r->next = t->reqs;
+	t->reqs = r;
+	return JS_NewInt32(ctx, r->id);
+}
+
+/** abortRequest(id) */
+static JSValue n_abort_request(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	int32_t id = 0;
+	struct qjs_req *r;
+
+	(void) this_val;
+	if (argc < 1 || JS_ToInt32(ctx, &id, argv[0]) < 0)
+		return JS_UNDEFINED;
+	for (r = t->reqs; r != NULL; r = r->next) {
+		if (r->id == id) {
+			qjs_req_unlink(t, r);
+			qjs_req_free(r, true);
+			break;
+		}
+	}
+	return JS_UNDEFINED;
+}
+
+/** utf8(ArrayBuffer | typed array | string) -> the string its UTF-8 bytes make (TextDecoder,
+ *  Response.text) */
+static JSValue n_utf8(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	size_t size = 0, off = 0, len = 0, bpe = 0;
+	uint8_t *p;
+
+	(void) this_val;
+	if (argc < 1)
+		return JS_NewString(ctx, "");
+	if (JS_IsString(argv[0]))
+		return JS_DupValue(ctx, argv[0]);
+	p = JS_GetArrayBuffer(ctx, &size, argv[0]);
+	if (p != NULL)
+		return JS_NewStringLen(ctx, (const char *) p, size);
+	JS_FreeValue(ctx, JS_GetException(ctx));	/* (not an ArrayBuffer: a view?) */
+	{
+		JSValue buf = JS_GetTypedArrayBuffer(ctx, argv[0], &off, &len, &bpe);
+		if (JS_IsException(buf)) {
+			JS_FreeValue(ctx, JS_GetException(ctx));
+			return JS_NewString(ctx, "");
+		}
+		p = JS_GetArrayBuffer(ctx, &size, buf);
+		JS_FreeValue(ctx, buf);
+		if (p == NULL || off + len > size) {
+			JS_FreeValue(ctx, JS_GetException(ctx));
+			return JS_NewString(ctx, "");
+		}
+		return JS_NewStringLen(ctx, (const char *) p + off, len);
+	}
+}
+
+/* ---- natives: localStorage kept (a file per origin, next to the cookie file) ------------- */
+
+/** the file of an origin's localStorage: <the cookie file's folder>/ls-<origin, cleaned>.json */
+static bool qjs_storage_path(const char *origin, char *path, size_t cap)
+{
+	const char *cf = nsoption_charp(cookie_file);
+	size_t n, i;
+
+	if (cf == NULL || origin == NULL || origin[0] == '\0')
+		return false;
+	n = strlen(cf);
+	while (n > 0 && cf[n - 1] != '/' && cf[n - 1] != ':')
+		n--;				/* (its folder: up to the last '/' or the volume's ':') */
+	if (n + 16 + strlen(origin) >= cap)
+		return false;
+	memcpy(path, cf, n);
+	memcpy(path + n, "ls-", 3);
+	n += 3;
+	for (i = 0; origin[i] != '\0' && i < 120; i++) {
+		char c = origin[i];
+		path[n++] = ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			     (c >= '0' && c <= '9') || c == '.' || c == '-') ? c : '_';
+	}
+	memcpy(path + n, ".json", 6);
+	return true;
+}
+
+/** storage(origin) -> the JSON kept for it, or null; storage(origin, json): keep it */
+static JSValue n_storage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	char path[512];
+	const char *origin;
+	bool ok;
+	FILE *f;
+
+	(void) this_val;
+	if (argc < 1)
+		return JS_NULL;
+	origin = JS_ToCString(ctx, argv[0]);
+	ok = qjs_storage_path(origin, path, sizeof path);
+	JS_FreeCString(ctx, origin);
+	if (!ok)
+		return JS_NULL;
+	if (argc < 2 || JS_IsUndefined(argv[1])) {
+		JSValue v = JS_NULL;
+		long len;
+		char *b;
+		f = fopen(path, "rb");
+		if (f == NULL)
+			return JS_NULL;
+		fseek(f, 0, SEEK_END);
+		len = ftell(f);
+		fseek(f, 0, SEEK_SET);
+		if (len > 0 && len <= 5 * 1024 * 1024 && (b = malloc((size_t) len)) != NULL) {
+			if (fread(b, 1, (size_t) len, f) == (size_t) len)
+				v = JS_NewStringLen(ctx, b, (size_t) len);
+			free(b);
+		}
+		fclose(f);
+		return v;
+	} else {
+		size_t len;
+		const char *s = JS_ToCStringLen(ctx, &len, argv[1]);
+		if (s == NULL)
+			return JS_FALSE;
+		ok = false;
+		if (len <= 5 * 1024 * 1024 && (f = fopen(path, "wb")) != NULL) {
+			ok = fwrite(s, 1, len, f) == len;
+			ok = fclose(f) == 0 && ok;
+		}
+		JS_FreeCString(ctx, s);
+		return JS_NewBool(ctx, ok);
+	}
+}
+
+static void qjs_reqs_stop(jsthread *t)
+{
+	while (t->reqs != NULL) {
+		struct qjs_req *r = t->reqs;
+		t->reqs = r->next;
+		qjs_req_free(r, true);
+	}
+}
+
+
 /* ---- natives: the prelude's hooks -------------------------------------------------------- */
 
 /** setup({ node, element, text, comment, document, fragment, doctype, tags, dispatch }) */
@@ -1556,6 +1902,10 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("userAgent", 0, n_user_agent),
 	JS_CFUNC_DEF("timer", 3, n_timer),
 	JS_CFUNC_DEF("clearTimer", 1, n_clear_timer),
+	JS_CFUNC_DEF("request", 6, n_request),
+	JS_CFUNC_DEF("abortRequest", 1, n_abort_request),
+	JS_CFUNC_DEF("utf8", 1, n_utf8),
+	JS_CFUNC_DEF("storage", 2, n_storage),
 	JS_CFUNC_DEF("setup", 1, n_setup),
 };
 
@@ -1677,6 +2027,7 @@ nserror js_closethread(jsthread *thread)
 		return NSERROR_OK;
 	thread->closed = true;
 	qjs_timers_stop(thread);
+	qjs_reqs_stop(thread);
 	guit->misc->schedule(-1, qjs_load_later, thread);
 	return NSERROR_OK;
 }
@@ -1688,6 +2039,7 @@ static void qjs_thread_free(jsthread *t)
 	int k;
 
 	qjs_timers_stop(t);
+	qjs_reqs_stop(t);
 	guit->misc->schedule(-1, qjs_load_later, t);
 	for (i = 0; i < t->capwraps; i++) {
 		if (t->wraps[i].node != NULL)

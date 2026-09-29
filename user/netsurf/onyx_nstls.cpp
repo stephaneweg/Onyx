@@ -16,12 +16,8 @@ struct onyx_tls_sess {
 	onyx_tls::Session s;
 };
 
-extern "C" onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port)
+extern "C" onyx_tls_sess *onyx_nstls_start(int sock, const char *host)
 {
-	int sock = kapi_tcp_connect(host, port);
-	if (sock < 0)
-		return 0;
-
 	onyx_tls_sess *h = (onyx_tls_sess *) malloc(sizeof *h);
 	if (h == 0) {
 		kapi_tcp_close(sock);
@@ -35,6 +31,14 @@ extern "C" onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port)
 		return 0;
 	}
 	return h;
+}
+
+extern "C" onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port)
+{
+	int sock = kapi_tcp_connect(host, port);
+	if (sock < 0)
+		return 0;
+	return onyx_nstls_start(sock, host);
 }
 
 extern "C" int onyx_nstls_send(onyx_tls_sess *h, const void *buf, int len)

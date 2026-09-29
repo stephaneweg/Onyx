@@ -446,31 +446,46 @@ static inline int kapi_pump_wait (unsigned timeout_ms)
 // and a yield while another thread holds it -- nothing to create, a zeroed int is free. Not
 // recursive. (Threads all run on core 0; the swap is still an exclusive load / store pair,
 // since the timer may preempt a thread anywhere in its own code.)
-#if defined (__aarch64__)
+// (The PC builds of the apps -- the desktop simulator, the NetSurf bench -- get the compiler's
+// atomics and no cores.)
 static inline int kapi__xchg (volatile int *p, int v)
 {
+#if defined(__aarch64__)
 	int old; unsigned fail;
 	__asm__ volatile ("1: ldaxr %w0, [%2]\n\tstxr %w1, %w3, [%2]\n\tcbnz %w1, 1b"
 			  : "=&r" (old), "=&r" (fail) : "r" (p), "r" (v) : "memory");
 	return old;
+#else
+	return __atomic_exchange_n (p, v, __ATOMIC_ACQUIRE);
+#endif
 }
 static inline unsigned kapi__core (void)
 {
+#if defined(__aarch64__)
 	unsigned long m; __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m)); return (unsigned) (m & 3);
+#else
+	return 0;
+#endif
 }
 // (on an app core -- kapi_core_run's code, which makes no kapi call -- it spins instead)
 static inline void kapi_lock (volatile int *l)
 {
 	while (kapi__xchg (l, 1) != 0)
 	{
-		if (kapi__core () == 0) KT->yield (); else __asm__ volatile ("yield");
+		if (kapi__core () == 0) KT->yield ();
+#if defined(__aarch64__)
+		else __asm__ volatile ("yield");
+#endif
 	}
 }
-static inline void kapi_unlock (volatile int *l) { __asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory"); }
-#else	// (the PC's builds of the apps -- the desktop simulator, the host tests: the compiler's atomics)
-static inline void kapi_lock (volatile int *l) { while (__atomic_exchange_n (l, 1, __ATOMIC_ACQUIRE) != 0) KT->yield (); }
-static inline void kapi_unlock (volatile int *l) { __atomic_store_n (l, 0, __ATOMIC_RELEASE); }
+static inline void kapi_unlock (volatile int *l)
+{
+#if defined(__aarch64__)
+	__asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory");
+#else
+	__atomic_store_n (l, 0, __ATOMIC_RELEASE);
 #endif
+}
 
 // Reboot the machine (ABI v25). Does not return. Use to apply settings the kernel
 // only reads at boot -- e.g. after wpaconf rewrites SD:/etc/wpa_supplicant.conf.
