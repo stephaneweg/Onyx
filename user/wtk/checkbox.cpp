@@ -13,7 +13,8 @@ void Checkbox::onDraw ()
 	int st = disabled ? WK_DISABLED : pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
 	if (hasFocus && !disabled) st |= WK_FOCUS;
 	wk_check_mark (canvas, 0, by, bs, checked, st);
-	canvas.text (bs + 7, (height - fh) / 2, text, disabled ? C_DIS : C_TEXT);
+	unsigned ink = wk_ink_for (bg);			// (readable on the program's own colour too)
+	canvas.text (bs + 7, (height - fh) / 2, text, disabled ? wk_mix (bg, ink, 110) : ink);
 }
 
 bool Checkbox::onMouse (int mx, int /*my*/, int bl, int, int, int)

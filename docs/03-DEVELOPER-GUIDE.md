@@ -887,6 +887,9 @@ Notes / caveats:
 >   there — every parent clips its children, so a drop-down near a window's bottom (or in a
 >   group box) keeps its list visible. Put the controls whose lists must pass a group box's
 >   edge in the window (the Theme applet's Desktop box does: `desk_add`).
+> - **Text on any background**: `wk_ink_for (bg)` is `C_TEXT` on the window's face (and on what
+>   is as light, or as dark), else black or white — the ink `Label`s and `Checkbox`es need on a
+>   program's own colour (the BASIC runtime's controls; a `Checkbox` picks it by itself).
 > - **Dialogs**: `wk_file_open` / `wk_file_save` / `wk_folder_open` (a double-click on a file
 >   picks it and confirms), `wk_color_dialog` (R / G / B sliders, a palette), `wk_messagebox`.
 > - **The desktop simulator** (`sh tools/tests/desktop_sim/run.sh`): a wtk app built for the PC
@@ -1260,7 +1263,9 @@ barwidth = 40
   `basic/libbasic.a` with FP/SIMD (`-fno-math-errno`), and on a PC for the tests.
 - **Runtime** `/bin/basic` (`basic/runtime.cpp`): the Onyx `bas::Host` — console (stdio)
   or a `wtk::Root` window (a text/graphics framebuffer + wtk controls, pumped by the VM through
-  `Host::poll`, `Root::attach ()`). Options `-d <dir>`, `-i` (report errors to the editor:
+  `Host::poll`, `Root::attach ()`). A windowed app (`WINDOW`) asks the platform its colours
+  (`ScreenHost::windowColours`: Onyx = the theme's `C_BG` / `C_TEXT`, the PC none) and takes
+  them as its background, text and drawing colours unless the program set `COLOR` first. Options `-d <dir>`, `-i` (report errors to the editor:
   mailbox to the IPC service `qbasic`, payload `line\0message\0`).
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
 - **Adding a function**: an entry in `BFNS[]` (bascomp.cpp: name, id, result type, argument

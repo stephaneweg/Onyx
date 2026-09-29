@@ -71,6 +71,9 @@ public:
 	virtual bool soundReady () { return true; }	// the sound output can be used (PLAY "MB")
 	virtual void endSound () {}			// the program ended: release the output
 	virtual void leaveFullscreen () {}
+	// The platform's colours for a windowed app (WINDOW): its windows' face and the text on it
+	// (Onyx: the theme's) -> false: none (the QBasic colours stay).
+	virtual bool windowColours (unsigned *face, unsigned *text) { (void) face; (void) text; return false; }
 	// 3D on a GPU (the platform's; else the software renderer draws): a texture -> the
 	// platform's handle (< 0: none); a frame into w x h pixels (stride = w) whose batches name
 	// the platform's handles -> 0 ok, < 0 failed (then drawn in software).
@@ -716,6 +719,12 @@ public:
 	void window (const char *t, int w, int h) override
 	{
 		windowCmd = true;
+		unsigned face, ink;					// a windowed app: in the platform's colours, unless
+		if (fg == 7 && bg == 0 && windowColours (&face, &ink))	// COLOR chose some
+		{
+			bg = (face & 0xFFFFFF) | 0x1000000u;
+			fg = gfg = (ink & 0xFFFFFF) | 0x1000000u;
+		}
 		if (!win)
 		{
 			int i = 0; for (; t[i] && i < (int) sizeof title - 1; i++) title[i] = t[i];

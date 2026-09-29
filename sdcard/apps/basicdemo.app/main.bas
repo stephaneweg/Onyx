@@ -4,9 +4,8 @@
 
 DIM SHARED colorBox, sizeBar, fillBox, bar
 
-WINDOW "BASIC Demo", 480, 360
-COLOR 15, 1: CLS
-DRAWTEXT 16, 12, "Hello from Onyx BASIC!", 14
+WINDOW "BASIC Demo", 480, 360        ' (a window: in the theme's colours -- COLOR would change them)
+DRAWTEXT 16, 12, "Hello from Onyx BASIC!"
 
 r = LABEL(16, 46, 90, 22, "Your name:")
 nameBox = TEXTBOX(110, 44, 200, 24, "")

@@ -1297,6 +1297,17 @@ Controls: `BUTTON`, `LABEL`, `TEXTBOX`, `CHECKBOX`, `LISTBOX`, `DROPDOWN` (items
 System: `NOTIFY`, `MSGBOX`, `CLIPBOARD$` / `SETCLIPBOARD`, `OPENFILE$` / `SAVEFILE$` (the file
 dialogs), `EXEC`, `LAUNCH`, `DRAWTEXT`, `MOUSEX` / `MOUSEY` / `MOUSEB`, `PAUSE ms`.
 
+A windowed app is **in the theme's colours**, as the other Onyx apps: its background is the
+windows' colour, its text (`PRINT`, `DRAWTEXT`) and its default drawing colour the theme's ink,
+the controls drawn as everywhere else — unless the program chose its colours with `COLOR`
+before `WINDOW` (a `COLOR` after it changes them as usual; labels and check boxes then pick a
+readable ink on them). The QBasic screens — text programs, `SCREEN` modes, the games — keep
+their classic colours.
+
+![BASIC Demo](../screenshots/basicdemo.png)
+*The BASIC Demo, a windowed app written in BASIC, in the theme's colours (its picture keeps its
+own).*
+
 ### Apps written in BASIC
 
 An app bundle may contain **`main.bas` or `main.bax` instead of `main`**:
