@@ -51,6 +51,8 @@
 #include "content/content_factory.h"
 #include "content/textsearch.h"
 #include "desktop/selection.h"
+#include "desktop/frames.h"
+#include "desktop/browser_private.h"
 #include "desktop/scrollbar.h"
 #include "desktop/textarea.h"
 #include "netsurf/bitmap.h"
@@ -280,6 +282,312 @@ static void html_box_convert_done(html_content *c, bool success)
 
 	dom_node_unref(html);
 }
+
+/* ---- Onyx: a DOM changed by a script, its boxes built again ---- */
+
+static void html_destroy_iframe(struct content_html_iframe *iframe);
+
+static bool html_rebox_success;
+
+static void html_rebox_converted(html_content *c, bool success)
+{
+	(void) c;
+	html_rebox_success = success;
+}
+
+/** the nodes' links to their boxes cleared (a node the new tree does not box has none) */
+static void html_rebox_unlink(dom_node *n)
+{
+	dom_node *c = NULL, *next;
+	void *old = NULL;
+	dom_node_type type;
+
+	if (dom_node_get_node_type(n, &type) != DOM_NO_ERR ||
+	    type != DOM_ELEMENT_NODE)
+		return;
+	dom_node_set_user_data(n, corestring_dom___ns_key_box_node_data, NULL,
+			NULL, &old);
+	if (dom_node_get_first_child(n, &c) != DOM_NO_ERR)
+		return;
+	while (c != NULL) {
+		html_rebox_unlink(c);
+		next = NULL;
+		dom_node_get_next_sibling(c, &next);
+		dom_node_unref(c);
+		c = next;
+	}
+}
+
+/** the nodes linked to their boxes again (the old tree kept) */
+static void html_rebox_relink(struct box *b)
+{
+	void *old = NULL;
+
+	for (; b != NULL; b = b->next) {
+		if (b->node != NULL && b->type != BOX_TEXT)
+			dom_node_set_user_data(b->node,
+					corestring_dom___ns_key_box_node_data,
+					b, NULL, &old);
+		html_rebox_relink(b->children);
+	}
+}
+
+/**
+ * The form controls' links to their boxes: cut before the new tree is built (a control
+ * it does not show has none), made again when the old tree is kept.
+ */
+static void html_rebox_gadgets(struct box *b, bool attach)
+{
+	for (; b != NULL; b = b->next) {
+		if (b->gadget != NULL)
+			b->gadget->box = attach ? b : NULL;
+		html_rebox_gadgets(b->children, attach);
+	}
+}
+
+/**
+ * The box tree built again from the DOM, then laid out: a script changed it (a class,
+ * an attribute, nodes). The old tree's objects are released once the new one has
+ * fetched its own (the same images, from the cache); form controls are kept by node.
+ */
+static void html_rebox(html_content *c)
+{
+	int *old_bctx = c->bctx;
+	struct box *old_layout = c->layout;
+	struct content_html_object *old_objects = c->object_list;
+	unsigned int old_num = c->num_objects;
+	struct content_html_iframe *old_iframes = c->iframe;
+	struct form_control *focus_gadget = NULL, *sel_gadget = NULL;
+	dom_node *html = NULL;
+
+	if (c->layout == NULL || c->box_conversion_context != NULL ||
+	    c->aborted || c->base.locked ||
+	    (c->base.status != CONTENT_STATUS_READY &&
+	     c->base.status != CONTENT_STATUS_DONE))
+		return;
+	if (dom_document_get_document_element(c->document, (void *) &html) !=
+			DOM_NO_ERR || html == NULL)
+		return;
+
+	/* the focus and the selection a box holds: its control's new box after */
+	if (c->focus_type == HTML_FOCUS_TEXTAREA && c->focus_owner.textarea != NULL)
+		focus_gadget = c->focus_owner.textarea->gadget;
+	if (c->selection_type == HTML_SELECTION_TEXTAREA &&
+	    c->selection_owner.textarea != NULL)
+		sel_gadget = c->selection_owner.textarea->gadget;
+	if (c->visible_select_menu != NULL) {
+		form_free_select_menu(c->visible_select_menu);
+		c->visible_select_menu = NULL;
+	}
+	selection_clear(c->sel, false);
+
+	c->bctx = NULL;
+	c->object_list = NULL;
+	c->num_objects = 0;
+	c->iframe = NULL;
+	html_rebox_gadgets(old_layout, false);
+	html_rebox_unlink(html);
+	html_rebox_success = false;
+	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
+	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
+		html_rebox_success = false;
+	dom_node_unref(html);
+	old_objects = c->rebox_objects;	/* the ones left */
+	c->rebox_objects = NULL;
+
+	if (!html_rebox_success || c->layout == old_layout) {
+		struct content_html_object **prev = &c->object_list, *o;
+
+		NSLOG(netsurf, INFO, "rebox failed: the old boxes kept");
+		/* the objects taken over given back to the old boxes */
+		while ((o = *prev) != NULL) {
+			if (o->rebox_old_box != NULL) {
+				*prev = o->next;
+				o->box = o->rebox_old_box;
+				o->rebox_old_box = NULL;
+				o->next = old_objects;
+				old_objects = o;
+				c->num_objects--;
+			} else {
+				prev = &o->next;
+			}
+		}
+		html_object_free_list(c, c->object_list);
+		if (c->bctx != NULL)
+			talloc_free(c->bctx);
+		c->bctx = old_bctx;
+		c->layout = old_layout;
+		c->object_list = old_objects;
+		c->num_objects = old_num;
+		if (c->iframe != NULL)
+			html_destroy_iframe(c->iframe);
+		c->iframe = old_iframes;
+		html_rebox_relink(old_layout);
+		html_rebox_gadgets(old_layout, true);
+		return;
+	}
+
+	/* the iframes' windows were on the old boxes: made again on the new ones */
+	if ((old_iframes != NULL || c->iframe != NULL) && c->bw != NULL &&
+	    c->bw->current_content != NULL &&
+	    hlcache_handle_get_content(c->bw->current_content) == &c->base) {
+		browser_window_destroy_iframes(c->bw);
+		if (old_iframes != NULL)
+			html_destroy_iframe(old_iframes);
+		old_iframes = NULL;
+		browser_window_create_iframes(c->bw);
+	} else if (old_iframes != NULL) {
+		html_destroy_iframe(old_iframes);
+	}
+
+	html_object_free_list(c, old_objects);	/* (the ones not taken over) */
+	if (old_bctx != NULL)
+		talloc_free(old_bctx);
+	{
+		struct content_html_object *o;
+
+		for (o = c->object_list; o != NULL; o = o->next)
+			o->rebox_old_box = NULL;
+	}
+
+	if (c->focus_type == HTML_FOCUS_TEXTAREA) {
+		if (focus_gadget != NULL && focus_gadget->box != NULL) {
+			c->focus_owner.textarea = focus_gadget->box;
+		} else {
+			c->focus_type = HTML_FOCUS_SELF;
+			c->focus_owner.self = true;
+		}
+	} else if (c->focus_type == HTML_FOCUS_CONTENT) {
+		c->focus_type = HTML_FOCUS_SELF;
+		c->focus_owner.self = true;
+	}
+	if (c->selection_type == HTML_SELECTION_TEXTAREA &&
+	    sel_gadget != NULL && sel_gadget->box != NULL) {
+		c->selection_owner.textarea = sel_gadget->box;
+	} else if (c->selection_type != HTML_SELECTION_NONE &&
+		   c->selection_type != HTML_SELECTION_SELF) {
+		c->selection_type = HTML_SELECTION_NONE;
+		c->selection_owner.none = true;
+	}
+
+	content__reformat(&c->base, false, c->base.available_width,
+			c->base.available_height);
+}
+
+/**
+ * whether the boxes can be built again now: not while they are built, nor drawn, nor
+ * while an event's caller holds some
+ */
+static bool html_rebox_possible(html_content *c)
+{
+	return c->box_conversion_context == NULL && !c->base.locked &&
+		c->script_hold == 0;
+}
+
+static void html_rebox_scheduled(void *p)
+{
+	html_content *c = p;
+
+	if (!c->rebox_pending)
+		return;
+	if (!html_rebox_possible(c)) {
+		guit->misc->schedule(10, html_rebox_scheduled, c);
+		return;
+	}
+	c->rebox_pending = false;
+	html_rebox(c);
+}
+
+/* exported interface documented in html/private.h */
+void html_script_dom_changed(html_content *c)
+{
+	if (c->layout == NULL && c->box_conversion_context == NULL)
+		return;	/* not boxed yet: the boxes will see the change */
+	c->rebox_pending = true;
+	guit->misc->schedule(10, html_rebox_scheduled, c);
+}
+
+/* exported interface documented in html/private.h */
+void html_script_layout_now(html_content *c)
+{
+	if (c->rebox_pending && html_rebox_possible(c)) {
+		guit->misc->schedule(-1, html_rebox_scheduled, c);
+		c->rebox_pending = false;
+		html_rebox(c);
+	}
+}
+
+/* exported interface documented in html/private.h */
+bool html_script_event(html_content *c, const char *type, dom_node *node,
+		const struct js_event_init *init)
+{
+	bool ok;
+
+	if (c->jsthread == NULL)
+		return true;
+	c->script_hold++;
+	ok = js_dispatch_event(c->jsthread, type, node, init);
+	c->script_hold--;
+	return ok;
+}
+
+static void html_scroll_event(void *p)
+{
+	html_content *c = p;
+
+	/* at the document, bubbling to the window */
+	html_script_event(c, "scroll", (dom_node *) c->document, NULL);
+}
+
+static void html_resize_event(void *p)
+{
+	html_content *c = p;
+
+	html_script_event(c, "resize", NULL, NULL);
+}
+
+static void html_changed_event(void *p)
+{
+	html_content *c = p;
+	dom_node *n = c->script_changed;
+	unsigned int events = c->script_changed_events;
+
+	if (n == NULL)
+		return;
+	c->script_changed = NULL;
+	c->script_changed_events = 0;
+	if (events & HTML_SCRIPT_INPUT)
+		html_script_event(c, "input", n, NULL);
+	if (events & HTML_SCRIPT_CHANGE)
+		html_script_event(c, "change", n, NULL);
+	dom_node_unref(n);
+}
+
+/* exported interface documented in html/private.h */
+void html_script_changed(html_content *c, dom_node *node, unsigned int events)
+{
+	if (c->jsthread == NULL || node == NULL)
+		return;
+	if (c->script_changed != node) {
+		/* (another control's, not yet dispatched: this one's instead) */
+		if (c->script_changed != NULL)
+			dom_node_unref(c->script_changed);
+		c->script_changed = dom_node_ref(node);
+		c->script_changed_events = 0;
+	}
+	c->script_changed_events |= events;
+	guit->misc->schedule(0, html_changed_event, c);
+}
+
+/* exported interface documented in html/html.h */
+void html_scrolled(struct hlcache_handle *h)
+{
+	html_content *c = (html_content *) hlcache_handle_get_content(h);
+
+	if (c != NULL && c->jsthread != NULL)
+		guit->misc->schedule(0, html_scroll_event, c);
+}
+
 
 /* Documented in html_internal.h */
 nserror
@@ -1096,6 +1404,13 @@ static void html_reformat(struct content *c, int width, int height)
 	htmlc->reflowing = false;
 	htmlc->had_initial_layout = true;
 
+	/* Onyx: a new viewport size (the window resized): the scripts' resize event */
+	if (htmlc->jsthread != NULL && htmlc->script_width != 0 &&
+	    (width != htmlc->script_width || height != htmlc->script_height))
+		guit->misc->schedule(0, html_resize_event, htmlc);
+	htmlc->script_width = width;
+	htmlc->script_height = height;
+
 	/* calculate next reflow time at three times what it took to reflow */
 	nsu_getmonotonic_ms(&ms_after);
 
@@ -1137,6 +1452,8 @@ void html__redraw_a_box(struct html_content *html, struct box *box)
 {
 	int x, y;
 
+	if (box == NULL)
+		return;	/* Onyx: a control no longer shown (boxes built again) */
 	box_coords(box, &x, &y);
 
 	content__request_redraw((struct content *)html, x, y,
@@ -1213,6 +1530,15 @@ static void html_destroy(struct content *c)
 	NSLOG(netsurf, INFO, "content %p", c);
 
 	onyx_webfont_release(html);	/* Onyx: its web fonts */
+	guit->misc->schedule(-1, html_rebox_scheduled, html);	/* (Onyx) */
+	guit->misc->schedule(-1, html_scroll_event, html);
+	guit->misc->schedule(-1, html_resize_event, html);
+	guit->misc->schedule(-1, html_changed_event, html);
+	if (html->script_changed != NULL) {
+		dom_node_unref(html->script_changed);
+		html->script_changed = NULL;
+	}
+	html->rebox_pending = false;
 
 	/* If we're still converting a layout, cancel it */
 	if (html->box_conversion_context != NULL) {

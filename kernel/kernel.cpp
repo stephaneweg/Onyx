@@ -64,6 +64,80 @@ boolean g_bVerbose = FALSE;
 #define VLOG(...)	do { if (g_bVerbose) CLogger::Get ()->Write (__VA_ARGS__); } while (0)
 
 //
+// An app's stack: its kernel task's (the app runs on it at EL1, with the kernel functions
+// it calls). 256 KB, or what its folder's app.txt asks for -- "stack = 8M" (a number of
+// bytes, K or M) -- rounded up to 64 KB, at most 64 MB: NetSurf's JavaScript engine
+// recurses deep. The kernel heap reuses the block when the app ends (Circle patch 2: the
+// large free lists). Read from the launcher's context, before the task exists (CTask
+// allocates its stack in its constructor): one small file, only for an x.app/main.
+//
+#define APP_STACK_DEFAULT	0x40000			// 256 KB
+#define APP_STACK_MAX		0x4000000		// 64 MB
+
+static unsigned AppStackSize (const char *pPath)
+{
+	if (pPath == 0)
+		return APP_STACK_DEFAULT;
+
+	// "...<name>.app/main[.ext]": the folder's app.txt
+	unsigned nLen = 0, nSlash = 0;
+	boolean bSlash = FALSE;
+	while (pPath[nLen] != '\0')
+	{
+		if (pPath[nLen] == '/') { nSlash = nLen; bSlash = TRUE; }
+		nLen++;
+	}
+	if (!bSlash || nSlash < 4 || nSlash + 1 + 9 > 256
+	    || pPath[nSlash - 4] != '.' || pPath[nSlash - 3] != 'a'
+	    || pPath[nSlash - 2] != 'p' || pPath[nSlash - 1] != 'p')
+		return APP_STACK_DEFAULT;
+	char Txt[256];
+	unsigned i;
+	for (i = 0; i <= nSlash; i++) Txt[i] = pPath[i];
+	const char *pName = "app.txt";
+	for (unsigned k = 0; pName[k] != '\0'; k++) Txt[i++] = pName[k];
+	Txt[i] = '\0';
+
+	FIL File;
+	if (f_open (&File, Txt, FA_READ) != FR_OK)
+		return APP_STACK_DEFAULT;
+	char Buf[1024];
+	UINT nRead = 0;
+	if (f_read (&File, Buf, sizeof Buf - 1, &nRead) != FR_OK)
+		nRead = 0;
+	f_close (&File);
+	Buf[nRead] = '\0';
+
+	// a line "stack = <n>[K|M]" (spaces, '=' or ':'; the key in any case)
+	u64 nStack = 0;
+	for (const char *p = Buf; *p != '\0'; )
+	{
+		while (*p == ' ' || *p == '\t') p++;
+		if (   (p[0] == 's' || p[0] == 'S') && (p[1] == 't' || p[1] == 'T')
+		    && (p[2] == 'a' || p[2] == 'A') && (p[3] == 'c' || p[3] == 'C')
+		    && (p[4] == 'k' || p[4] == 'K')
+		    && (p[5] == ' ' || p[5] == '\t' || p[5] == '=' || p[5] == ':'))
+		{
+			p += 5;
+			while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+			u64 n = 0;
+			while (*p >= '0' && *p <= '9' && n < APP_STACK_MAX)
+				n = n * 10 + (u64) (*p++ - '0');
+			if (*p == 'k' || *p == 'K') n <<= 10;
+			else if (*p == 'm' || *p == 'M') n <<= 20;
+			nStack = n;
+		}
+		while (*p != '\0' && *p != '\n') p++;	// next line
+		if (*p == '\n') p++;
+	}
+	if (nStack <= APP_STACK_DEFAULT)
+		return APP_STACK_DEFAULT;
+	if (nStack > APP_STACK_MAX)
+		nStack = APP_STACK_MAX;
+	return (unsigned) ((nStack + 0xFFFF) & ~(u64) 0xFFFF);
+}
+
+//
 // CUserProcessTask (Option C): launch an ELF as an EL1 app in its own address
 // space. The thread builds a private address space, loads the ELF segments
 // (EL1-executable), activates the space, and CALLS the entry point directly --
@@ -84,7 +158,7 @@ public:
 	CUserProcessTask (const char *pPath, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
 			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
-	:	CTask (0x40000),	// 256 KB
+	:	CTask (AppStackSize (pPath)),	// 256 KB, or its app.txt's "stack"
 		m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
 		m_nParentPid (nParentPid)
@@ -188,8 +262,9 @@ public:
 		SetUserData (pAS, TASK_USER_DATA_USER);
 		pAS->Activate ();
 
-		m_pLogger->Write (GetName (), LogNotice, "running (EL1) entry %lp ASID %u",
-				  (void *) ulEntry, (unsigned) pAS->GetASID ());
+		m_pLogger->Write (GetName (), LogNotice, "running (EL1) entry %lp ASID %u, stack %u KB",
+				  (void *) ulEntry, (unsigned) pAS->GetASID (),
+				  (unsigned) (GetStack ().Size >> 10));
 
 		// Direct EL1 call into the app. It calls kapi_* directly; loops or exits.
 		((void (*) (void)) ulEntry) ();

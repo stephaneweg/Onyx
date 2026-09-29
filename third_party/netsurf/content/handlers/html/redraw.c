@@ -1187,6 +1187,118 @@ bool html_redraw_box(const html_content *html, struct box *box,
 		colour current_background_color,
 		const struct redraw_context *ctx);
 
+
+/* ---- Onyx: the painting order of positioned boxes (CSS 2.1 appendix E, simplified) -----
+ * NetSurf painted the boxes in the tree's order: a menu positioned over the page (a
+ * header's absolute panel, a sticky bar with a z-index) under what follows it. Now a
+ * positioned box (and a flex / grid item with a z-index) is put off while its layer is
+ * painted -- the page, or the positioned box it is in -- and painted after that layer's
+ * other content, the layer's put-off boxes sorted by z-index (auto: 0), each with its own
+ * layer inside it. A negative z-index is painted in place.
+ */
+
+/** a box put off: painted after its layer's in-flow content */
+struct onyx_layer_box {
+	struct box *box;
+	int x_parent, y_parent;
+	struct rect clip;
+	colour background;
+	int32_t z;		/* its z-index (libcss' fixed point) */
+	int order;		/* (the tree's order, for equal z-indexes) */
+};
+
+static struct onyx_layer_box *onyx_layer_boxes;
+static int onyx_layer_count, onyx_layer_cap;
+static bool onyx_layering;	/* a redraw that paints by layers is going on */
+
+/* exported interface documented in html/private.h */
+bool html_redraw_layer_z(const struct box *box, int32_t *z)
+{
+	int32_t zi = 0;
+	uint8_t zt, pos;
+
+	if (box->style == NULL)
+		return false;
+	switch (box->type) {
+	case BOX_BLOCK: case BOX_INLINE_BLOCK: case BOX_TABLE:
+	case BOX_FLEX: case BOX_INLINE_FLEX:
+		break;
+	default:
+		return false;	/* (an inline's pieces are its line's) */
+	}
+	pos = css_computed_position(box->style);
+	zt = css_computed_z_index(box->style, &zi);
+	if (pos == CSS_POSITION_STATIC &&
+	    (zt != CSS_Z_INDEX_SET || box->parent == NULL ||
+	     (box->parent->type != BOX_FLEX &&
+	      box->parent->type != BOX_INLINE_FLEX)))
+		return false;
+	*z = zt == CSS_Z_INDEX_SET ? zi : 0;
+	return *z >= 0;
+}
+
+/** a child put off (true), or to paint now */
+static bool onyx_layer_defer(struct box *c, int x_parent, int y_parent,
+		const struct rect *clip, colour background)
+{
+	struct onyx_layer_box *e;
+	int32_t z;
+
+	if (!onyx_layering || !html_redraw_layer_z(c, &z))
+		return false;
+	if (onyx_layer_count == onyx_layer_cap) {
+		int cap = onyx_layer_cap ? onyx_layer_cap * 2 : 64;
+		e = realloc(onyx_layer_boxes, cap * sizeof(*e));
+		if (e == NULL)
+			return false;	/* (painted in place) */
+		onyx_layer_boxes = e;
+		onyx_layer_cap = cap;
+	}
+	e = &onyx_layer_boxes[onyx_layer_count];
+	e->box = c;
+	e->x_parent = x_parent;
+	e->y_parent = y_parent;
+	e->clip = *clip;
+	e->background = background;
+	e->z = z;
+	e->order = onyx_layer_count;
+	onyx_layer_count++;
+	return true;
+}
+
+static int onyx_layer_cmp(const void *a, const void *b)
+{
+	const struct onyx_layer_box *x = a, *y = b;
+
+	if (x->z != y->z)
+		return x->z < y->z ? -1 : 1;
+	return x->order - y->order;
+}
+
+/** the boxes a layer put off (from start on), painted in their order; each a layer */
+static bool onyx_layer_paint(const html_content *html, int start, float scale,
+		const struct redraw_context *ctx)
+{
+	int end = onyx_layer_count, i;
+	bool ok = true;
+
+	if (end - start > 1)
+		qsort(onyx_layer_boxes + start, end - start,
+				sizeof(*onyx_layer_boxes), onyx_layer_cmp);
+	for (i = start; i < end && ok; i++) {
+		/* (a copy: the array grows with the boxes this one puts off) */
+		struct onyx_layer_box e = onyx_layer_boxes[i];
+
+		ok = html_redraw_box(html, e.box, e.x_parent, e.y_parent, &e.clip,
+				scale, e.background, ctx);
+		if (ok && onyx_layer_count > end)
+			ok = onyx_layer_paint(html, end, scale, ctx);
+		onyx_layer_count = end;
+	}
+	onyx_layer_count = start;
+	return ok;
+}
+
 /**
  * Draw the various children of a box.
  *
@@ -1211,7 +1323,14 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
 
 	for (c = box->children; c; c = c->next) {
 
-		if (c->type != BOX_FLOAT_LEFT && c->type != BOX_FLOAT_RIGHT)
+		if (c->type != BOX_FLOAT_LEFT && c->type != BOX_FLOAT_RIGHT) {
+			/* Onyx: a positioned child after its layer's content */
+			if (onyx_layer_defer(c, x_parent + box->x -
+					scrollbar_get_offset(box->scroll_x),
+					y_parent + box->y -
+					scrollbar_get_offset(box->scroll_y),
+					clip, current_background_color))
+				continue;
 			if (!html_redraw_box(html, c,
 					x_parent + box->x -
 					scrollbar_get_offset(box->scroll_x),
@@ -1220,6 +1339,7 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
 					clip, scale, current_background_color,
 					ctx))
 				return false;
+		}
 	}
 	for (c = box->float_children; c; c = c->next_float)
 		if (!html_redraw_box(html, c,
@@ -2188,8 +2308,21 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 
 		result &= (ctx->plot->rectangle(ctx, &pstyle_fill_bg, clip) == NSERROR_OK);
 
-		result &= html_redraw_box(html, box, data->x, data->y, clip,
-				data->scale, pstyle_fill_bg.fill_colour, ctx);
+		/* Onyx: painted by layers (the positioned boxes after the rest) --
+		 * not when printing (its pages' logic goes box by box) */
+		{
+			bool was = onyx_layering;
+			int start = onyx_layer_count;
+
+			onyx_layering = !html_redraw_printing;
+			result &= html_redraw_box(html, box, data->x, data->y, clip,
+					data->scale, pstyle_fill_bg.fill_colour, ctx);
+			if (onyx_layering)
+				result &= onyx_layer_paint(html, start, data->scale,
+						ctx);
+			onyx_layer_count = start;
+			onyx_layering = was;
+		}
 	}
 
 	if (select) {

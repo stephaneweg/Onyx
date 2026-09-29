@@ -69,6 +69,14 @@ void box_bounds(struct box *box, struct rect *r);
  */
 struct box *box_at_point(const css_unit_ctx *unit_len_ctx, struct box *box, const int x, const int y, int *box_x, int *box_y);
 
+/**
+ * Onyx: whether a point (relative to the box) is in the box or where its descendants
+ * are (*physically: in the box itself) -- box_at_point's test, for the hit test that
+ * follows the painting order (interaction.c).
+ */
+bool box_contains_point(const css_unit_ctx *unit_len_ctx, const struct box *box,
+		int x, int y, bool *physically);
+
 
 /**
  * Find a box based upon its id attribute.

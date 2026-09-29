@@ -46,6 +46,15 @@ struct nsurl;
 bool html_fetch_object(struct html_content *c, struct nsurl *url, struct box *box, content_type permitted_types, bool background);
 
 /**
+ * Onyx: a list of objects released -- the old box tree's, the DOM changed by a script.
+ *
+ * \param html The containing HTML content
+ * \param list The objects (freed)
+ */
+void html_object_free_list(struct html_content *html,
+		struct content_html_object *list);
+
+/**
  * release memory of content objects associated with a HTML content
  *
  * The content objects contents should have been previously closed

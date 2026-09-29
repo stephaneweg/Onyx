@@ -431,6 +431,7 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 
 	if (bwidget->pan_required) {
 		fb_pan(widget, bwidget, gw->bw);
+		browser_window_scrolled(gw->bw);	/* Onyx: the page's scripts told */
 	}
 
 	if (bwidget->redraw_required) {
@@ -2411,6 +2412,20 @@ void onyx_browser_forward(void)
 
 void onyx_browser_reload(void)
 {
+#ifdef ONYX_HOST_SIM
+	/* Onyx (the PC bench only): NS_BOXDUMP=<file> -- F5 writes the page's box tree
+	 * there (positions, sizes, styles) instead of reloading */
+	if (window_list != NULL && getenv("NS_BOXDUMP") != NULL) {
+		FILE *f = fopen(getenv("NS_BOXDUMP"), "w");
+
+		if (f != NULL) {
+			browser_window_debug_dump(window_list->bw, f,
+					CONTENT_DEBUG_RENDER);
+			fclose(f);
+		}
+		return;
+	}
+#endif
 	if (window_list != NULL)
 		browser_window_reload(window_list->bw, true);
 }

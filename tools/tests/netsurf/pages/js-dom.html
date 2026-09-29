@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>JS test 1</title>
+<!-- tools/tests/netsurf/jstest.sh: the DOM API (each check logs "OK name" or "FAIL name"; the
+     results are also shown in the page, green / red). -->
+<style>
+body { font-family: Arial, sans-serif; font-size: 16px; }
+.box { padding: 6px; margin: 4px 0; border: 1px solid #888; }
+.ok { background: #cfc; }
+.bad { background: #fcc; }
+.hidden { display: none; }
+#menu { background: #ddf; }
+#menu.is-open { background: #fd8; font-weight: bold; }
+</style>
+</head><body>
+<h1 id="title">Test QuickJS</h1>
+<div id="menu" class="box">menu fermé</div>
+<div id="later" class="box hidden">affiché par un timer</div>
+<ul id="list"></ul>
+<div id="results"></div>
+<form id="f" action="/search"><input id="q" name="q" value="initial"><input type="checkbox" id="cb" name="cb"><select id="s" name="s"><option value="a">A</option><option value="b">B</option></select></form>
+<script>
+const out = [];
+function check(name, cond) { out.push([name, !!cond]); console.log((cond ? 'OK ' : 'FAIL ') + name); }
+try {
+  check('document', typeof document === 'object' && document.nodeType === 9);
+  check('title', document.title === 'JS test 1');
+  const t = document.getElementById('title');
+  check('getElementById', t && t.tagName === 'H1');
+  check('textContent', t.textContent === 'Test QuickJS');
+  check('querySelector', document.querySelector('#menu.box') !== null);
+  check('querySelectorAll', document.querySelectorAll('.box').length === 2);
+  const m = document.getElementById('menu');
+  m.classList.add('is-open');
+  m.textContent = 'menu ouvert (classList)';
+  check('classList', m.className === 'box is-open');
+  const ul = document.getElementById('list');
+  for (let i = 1; i <= 3; i++) { const li = document.createElement('li'); li.textContent = 'élément ' + i; ul.appendChild(li); }
+  check('appendChild', ul.children.length === 3);
+  ul.insertAdjacentHTML('beforeend', '<li><b>innerHTML</b> ok</li>');
+  check('insertAdjacentHTML', ul.lastElementChild.firstChild.tagName === 'B');
+  check('closest', ul.firstElementChild.closest('ul') === ul);
+  check('matches', m.matches('div.is-open'));
+  check('dataset', (m.dataset.foo = 'bar', m.getAttribute('data-foo') === 'bar'));
+  m.style.borderColor = 'red';
+  check('style', m.getAttribute('style').includes('border-color: red'));
+  check('input value', document.getElementById('q').value === 'initial');
+  check('select value', document.getElementById('s').value === 'a');
+  check('form elements', document.getElementById('f').elements.length === 3);
+  check('ES2020', (() => { const o = { a: { b: 1 } }; return o?.a?.b === 1 && (null ?? 5) === 5; })());
+  check('class fields', (() => { class A { #x = 2; get x() { return this.#x; } } return new A().x === 2; })());
+  check('async', typeof (async () => 1)().then === 'function');
+  check('Map/Set', new Map([[1,2]]).get(1) === 2 && new Set([1,1]).size === 1);
+  check('JSON', JSON.stringify({a:[1,'x']}) === '{"a":[1,"x"]}');
+  check('URL', new URL('../x?y=1#z', 'https://a.b/c/d/e').href === 'https://a.b/c/x?y=1#z');
+  check('location', location.protocol === 'file:');
+  let clicked = 0;
+  m.addEventListener('click', e => { clicked++; e.preventDefault(); });
+  m.click();
+  check('click listener', clicked === 1);
+  let ready = false;
+  document.addEventListener('DOMContentLoaded', () => { ready = true; });
+  setTimeout(() => {
+    document.getElementById('later').classList.remove('hidden');
+    check('DOMContentLoaded', ready);
+    report();
+  }, 50);
+  Promise.resolve().then(() => check('promise', true));
+} catch (e) {
+  console.log('EXCEPTION ' + e + '\n' + e.stack);
+}
+function report() {
+  const r = document.getElementById('results');
+  for (const [n, ok] of out) {
+    const d = document.createElement('div');
+    d.className = 'box ' + (ok ? 'ok' : 'bad');
+    d.textContent = (ok ? '✔ ' : '✘ ') + n;
+    r.appendChild(d);
+  }
+}
+</script>
+</body></html>

@@ -161,4 +161,30 @@ void js_handle_new_element(jsthread *thread, struct dom_element *node);
  */
 void js_event_cleanup(jsthread *thread, struct dom_event *evt);
 
+/**
+ * Onyx: what an event dispatched by the browser carries (a mouse's, a key's).
+ */
+struct js_event_init {
+	int x, y;		/**< the pointer, in the page (scripts get it in the viewport) */
+	int button;		/**< the mouse button (0: the main one) */
+	const char *key;	/**< a key's name ("a", "Enter", "ArrowLeft"...) */
+	int key_code;		/**< its legacy keyCode */
+	bool shift, ctrl, alt;
+};
+
+/**
+ * Onyx: an event the browser dispatches to the page's scripts -- a click, a key, the
+ * window's scroll -- through their listeners (capture, target, bubble) and on*
+ * attributes / properties.
+ *
+ * \param thread the document's thread
+ * \param type the event's type ("click")
+ * \param target its node; NULL: the window
+ * \param init the mouse's / key's data, or NULL
+ * 
+eturn false when a listener cancelled it (preventDefault): no default action
+ */
+bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *target,
+		const struct js_event_init *init);
+
 #endif /* NETSURF_JAVASCRIPT_JS_H_ */

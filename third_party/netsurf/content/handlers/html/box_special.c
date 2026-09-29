@@ -1679,6 +1679,26 @@ box_select(dom_node *n,
 		return false;
 
 	gadget->html = content;
+
+	/* Onyx: the boxes built again (a script changed the DOM): the options read
+	 * again from it (their states are the DOM's), not added twice */
+	if (gadget->type == GADGET_SELECT && gadget->data.select.items != NULL) {
+		struct form_option *o, *o_next;
+
+		if (gadget->data.select.menu != NULL)
+			form_free_select_menu(gadget);
+		for (o = gadget->data.select.items; o != NULL; o = o_next) {
+			o_next = o->next;
+			free(o->text);
+			free(o->value);
+			free(o);
+		}
+		gadget->data.select.items = gadget->data.select.last_item = NULL;
+		gadget->data.select.current = NULL;
+		gadget->data.select.num_items = 0;
+		gadget->data.select.num_selected = 0;
+	}
+
 	err = dom_node_get_first_child(n, &c);
 	if (err != DOM_NO_ERR) {
 		form_free_control(gadget);

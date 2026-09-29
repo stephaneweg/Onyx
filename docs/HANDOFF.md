@@ -379,6 +379,115 @@ Writer itself (no RichTextBox). Done:
   - the picture: `OnyxRemote.exe` (`pc/dist/`, rdpd port 3390); or VNC (vncd, no password):
     `python -m vncdotool.command -s <pi-ip> capture x.png`, `... key p` (a key).
 
+## NetSurf -- "as in Chrome" (kotonviolins.com, kotonstudio.com)
+
+The goal, in the user's words: the two sites (theirs) drawn "comme sur Chrome" -- Chrome on
+Windows, which they compare with on the Pi (portrait and landscape screens) -- and JavaScript
+for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
+`docs/06-NETSURF-CHANGES.md` (read it first: it is the map of what changed and why).
+
+**Done, in `main`, staged on the card:** CSS3 (calc / var / grid / flex / gradients /
+shadows / radii / background-clip: text / vendor prefixes), Chrome's Windows fonts
+(metric-compatible stand-ins, web fonts with WOFF2 and variable fonts, baseline alignment),
+**JavaScript on QuickJS** (ES2023; the DOM in JavaScript; the page laid out again after a
+script's changes; clicks / keys / typing / submit / scroll / load to the scripts), the
+**painting order of positioned boxes** (z-index layers) and a hit test in that order. The
+hamburger menus of both sites open and their links work; kotonstudio's scroll reveals run
+(IntersectionObserver).
+
+### Where the code is
+- CSS: `third_party/libcss`. A new property touches `src/parse/propstrings.*`,
+  `src/parse/properties/properties.gen` (+ its parser), `src/bytecode/opcodes.h`,
+  `include/libcss/properties.h`, `src/select/select_config.py` + `select_generator.py` (the
+  computed style's layout), `src/select/dispatch.c`, `src/select/properties/<name>.c` (its
+  cascade) and `src/select/computed.c` -- the ones Onyx added are parsed in
+  `src/parse/properties/onyx_*.c` and cascaded in `src/select/properties/onyx_css3.c`;
+  `make -f tools/tests/netsurf/host.mk libcss-test` must still pass.
+- Layout `content/handlers/html/layout*.c` (`layout_grid.c`); painting `redraw.c` (+ the
+  framebuffer's `frontends/framebuffer/onyx_paint.c`; the layers: `onyx_layer_*`,
+  `html_redraw_layer_z`); fonts `frontends/framebuffer/font_freetype.c`, web fonts
+  `html/onyx_webfont.c`.
+- JavaScript: `content/handlers/javascript/quickjs/qjs.c` -- a native is an `n_*` function
+  plus a line in the `qjs_natives` table, called from dom.js as `N.name(...)`;
+  `quickjs/dom.js` -- events, collections, Node, the selector engine, Element / HTMLElement,
+  the element classes (`TAGS`), Document, the window's objects, `browserDispatch` (the
+  browser's events). Re-layout: `html.c` (`html_script_dom_changed`, `html_rebox`,
+  `html_script_layout_now`); events: `html_script_event` (html.c), called from
+  `interaction.c` (mouse, keys), `box_textarea.c` (typing, Enter), `form.c` (a select's menu).
+
+### The PC bench (`tools/tests/netsurf/`, no Pi needed)
+- `sh tools/tests/netsurf/getsites.sh` -- copies of the two sites in `/tmp/nssites` (the
+  bench's NetSurf has no https): `kotonviolins.com/index.html`, `kotonstudio.com/fr/index.html`.
+- `sh tools/tests/netsurf/shot.sh <file|url> <png> [WxH] [waits]` builds (host.mk, OUT
+  `/tmp/nsbench`) and screenshots a page: portrait `700x1200` (a 618 px page), landscape
+  `1600x1000` (1262 px). `chrome.sh <file> <png> <w> <h>` draws it in Chromium. For Windows'
+  look, give it `FONTCONFIG_FILE=` a fonts.conf whose `<dir>` holds Georgia and Segoe UI
+  (Microsoft's fonts: never in the repo); without them Chromium uses the same stand-ins as
+  NetSurf (Liberation, Selawik, Gelasio).
+- `sh tools/tests/netsurf/jstest.sh` -- the JavaScript regression test (26 DOM checks, 12
+  event checks through simulated clicks and keys, a runaway recursion): run it after any
+  change to the JS, the events, the layout or the painting order.
+- The simulator's script (`SIM=` in run.sh / jstest.sh): `wait`, `move x y`, `down x y`,
+  `up x y` (a `move` first), `wheel x y d` (negative: down), `key k` (a character or a code:
+  13 Enter, 27 Esc, 276 F5), `dump f.elsm` (`python3 tools/tests/desktop_sim/shot.py f.elsm
+  f.png`), `exit`. Coordinates are the window's client area: the page's y + 40 (the toolbar).
+  kotonviolins' hamburger at 700x1200: `(578, 82)`.
+- `NS_JSDEBUG=1`: the scripts' errors and `console.log` on stderr. `NS_BOXDUMP=<file>` then
+  F5 (`key 276`): the box tree (positions, sizes, styles) written to the file.
+
+### Building for the Pi
+- NetSurf and its libraries: GCC 10.3 (`gcc-arm-10.3-2021.07`, aarch64-none-elf; the cloud
+  container had it in `/home/user/toolchain`). `make -C user/netsurf` (the `.a` are
+  committed; after a libcss / libdom header change delete their `.o`), then
+  `rm -rf /tmp/nsbuild && make -f user/netsurf/netsurf-app.mk -j$(nproc) link` and
+  `make -f user/netsurf/netsurf-app.mk stage` (the ELF, its app.txt, `SD:/res`).
+- The kernel (only when `kernel/` changes): the Arm GNU toolchain 13.3.rel1
+  (`https://developer.arm.com/-/media/Files/downloads/gnu/13.3.rel1/binrel/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-elf.tar.xz`;
+  GCC 10 cannot build `sys/v3d.cpp`), `git submodule update --init circle` then
+  `git -C circle submodule update --init addon/wlan/hostap`, Circle built as docs/03 §2 says,
+  `make -C kernel kernel8-rpi4.img`, copied to `sdcard/`. NetSurf's `app.txt` (`stack = 8M`)
+  needs this kernel (the default stack is 256 KB; QuickJS may use 4 MB).
+
+### Next, with where to start
+1. **`opacity`** -- kotonstudio's scroll reveal (`.feature-card { opacity: 0 }` until the
+   IntersectionObserver adds `.is-visible`: the JS part works) and the hamburger's middle bar.
+   `redraw.c`: paint the box's subtree into an off-screen bitmap and blend it with its alpha
+   (a new plotter operation, framebuffer side in `onyx_paint.c`); a cheaper first step for a
+   subtree with no overlap: multiply its colours' and images' alpha.
+2. **`fetch` / XMLHttpRequest** (dom.js makes them fail as offline): natives over llcache
+   (`llcache_handle_retrieve`; POST with `llcache_post_data`), the request keeping its
+   promise's functions (`JS_NewPromiseCapability`) until `LLCACHE_EVENT_DONE`; released when
+   the thread closes.
+3. **`localStorage` kept** (in memory now: dom.js' `Storage`): natives reading / writing a
+   file per origin under `ONYX_NS_DATAPATH` (as History, Cookies: never committed).
+4. **Cookies in `user/netsurf/onyx_fetch.c`** (logins): send `urldb_get_cookie`, give each
+   `Set-Cookie` to NetSurf's cookie handling.
+5. **Hover**: `mouseover` / `mouseout` / `mouseenter` / `mouseleave` when the element under
+   the pointer changes (the `BROWSER_MOUSE_HOVER` path of `html_mouse_action`); CSS `:hover`
+   needs a restyle (libcss asks NetSurf `node_is_hover`, which says no): the rebox, only when
+   a sheet has `:hover` rules.
+6. **Media queries on a resize** (responsive): a new window size -> `html_rebox` (the boxes'
+   styles are selected again) -- check which width the selection's media sees.
+7. Form controls outside any form are made again at each rebox (the old one leaks):
+   `html_forms_get_control_for_node` only searches the forms -- keep them in a list per
+   document. Inline SVG and `.svg` images (libsvgtiny, not vendored). NetSurf's
+   `default.css` gives inputs and buttons `margin: 1px` (Chrome: 0): compare before changing.
+
+### Pitfalls met (keep them in mind)
+- An app's stack must stay in kernel memory: `Yield` activates the next task's address space
+  before it leaves the old stack. A bigger stack only through `app.txt` (`stack =`).
+- libdom caches an element's classes: now updated by `setAttribute` (element.c); a path that
+  changes an `Attr` directly would still miss it.
+- hubbub's fragment parser (innerHTML) sets its document's quirks mode: qjs.c saves and
+  restores it.
+- `textarea_set_text` reports `TEXTAREA_MSG_TEXT_MODIFIED`: the control's `syncing` flag keeps
+  a script's value from becoming an `input` event (a loop otherwise).
+- Events are dispatched with the boxes held (`script_hold`): their callers keep box pointers
+  (`mouse_action_state`). A changed DOM is laid out 10 ms later, or at once when a script asks
+  for a rectangle outside an event.
+- A rebox takes the old boxes' objects over by URL (`html_fetch_object`); objects that arrive
+  after the page is done cause a reformat (object.c).
+
 ## Other open items
 
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at

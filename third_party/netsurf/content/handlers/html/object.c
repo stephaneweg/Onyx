@@ -482,6 +482,15 @@ html_object_callback(hlcache_handle *object,
 		content__reformat(&c->base, false, c->base.available_width,
 				c->base.available_height);
 		content_set_done(&c->base);
+	} else if (c->base.status == CONTENT_STATUS_DONE &&
+		   c->base.active == 0 && c->layout != NULL &&
+		   (event->type == CONTENT_MSG_DONE ||
+		    event->type == CONTENT_MSG_ERROR)) {
+		/* Onyx: objects fetched once the page was done (its boxes built
+		 * again for a script's changes: a new image) all in: the page
+		 * laid out with them */
+		content__reformat(&c->base, false, c->base.available_width,
+				c->base.available_height);
 	} else if (nsoption_bool(incremental_reflow) &&
 		   event->type == CONTENT_MSG_DONE &&
 		   box != NULL &&
@@ -684,6 +693,35 @@ nserror html_object_close_objects(html_content *html)
 
 
 /* exported interface documented in html/object.h */
+void html_object_free_list(html_content *html,
+		struct content_html_object *list)
+{
+	/* Onyx: the objects of a box tree thrown away (html_script_dom_changed):
+	 * the new tree fetched its own -- the same contents, still in the cache */
+	while (list != NULL) {
+		struct content_html_object *victim = list;
+
+		list = victim->next;
+		if (victim->content != NULL) {
+			content_status st = content_get_status(victim->content);
+
+			if (content_get_type(victim->content) == CONTENT_HTML)
+				guit->misc->schedule(-1, html_object_refresh, victim);
+			if (st != CONTENT_STATUS_DONE && st != CONTENT_STATUS_ERROR &&
+			    victim->box != NULL) {
+				/* it was still counted among the fetches */
+				html->base.active--;
+			}
+			if ((st == CONTENT_STATUS_READY || st == CONTENT_STATUS_DONE) &&
+			    content_get_type(victim->content) != CONTENT_NONE)
+				content_close(victim->content);
+			hlcache_handle_release(victim->content);
+		}
+		free(victim);
+	}
+}
+
+/* exported interface documented in html/object.h */
 nserror html_object_free_objects(html_content *html)
 {
 	while (html->object_list != NULL) {
@@ -721,6 +759,34 @@ html_fetch_object(html_content *c,
 	/* If we've already been aborted, don't bother attempting the fetch */
 	if (c->aborted)
 		return true;
+
+	/* Onyx: boxes built again (a script changed the DOM): the object the old
+	 * boxes had for this URL taken over -- no fetch, the image there at once */
+	if (box != NULL && c->rebox_objects != NULL) {
+		struct content_html_object **prev;
+
+		for (prev = &c->rebox_objects; (object = *prev) != NULL;
+		     prev = &object->next) {
+			content_status st;
+
+			if (object->content == NULL || object->box == NULL ||
+			    object->background != background ||
+			    object->permitted_types != permitted_types ||
+			    !nsurl_compare(hlcache_handle_get_url(object->content),
+					url, NSURL_COMPLETE))
+				continue;
+			*prev = object->next;
+			object->rebox_old_box = object->box;
+			object->box = box;
+			object->next = c->object_list;
+			c->object_list = object;
+			c->num_objects++;
+			st = content_get_status(object->content);
+			if (st == CONTENT_STATUS_READY || st == CONTENT_STATUS_DONE)
+				html_object_done(box, object->content, background);
+			return true;
+		}
+	}
 
 	child.charset = c->encoding;
 	child.quirks = c->base.quirks;

@@ -1,0 +1,10 @@
+<!DOCTYPE html><html><head><title>rec</title><!-- tools/tests/netsurf/jstest.sh: a runaway recursion is a RangeError (QuickJS stops it at 4 MB of stack), not a crash --></head><body><p id="r">...</p>
+<script>
+function f(n) { return f(n + 1) + 1; }
+let msg;
+try { f(0); msg = 'no error?'; } catch (e) { msg = e.name + ': ' + e.message; }
+console.log('recursion: ' + msg);
+function depth() { let d = 0; function g() { d++; g(); } try { g(); } catch (e) {} return d; }
+console.log('depth reached: ' + depth());
+document.getElementById('r').textContent = msg;
+</script></body></html>

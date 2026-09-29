@@ -26,6 +26,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <dom/dom.h>
@@ -35,6 +36,7 @@
 #include "utils/utils.h"
 #include "utils/log.h"
 #include "utils/nsoption.h"
+#include "utils/utf8.h"
 #include "netsurf/content.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/mouse.h"
@@ -637,6 +639,166 @@ struct mouse_action_state {
 
 
 /**
+ * Onyx: the inline element a text box is in -- the innermost one open before it in its
+ * inline container (INLINE ... INLINE_END around it) -- or NULL (the block's text).
+ */
+static dom_node *html_text_box_element(struct box *text)
+{
+	struct box *b, *open[32];
+	int depth = 0;
+
+	if (text->parent == NULL)
+		return NULL;
+	for (b = text->parent->children; b != NULL && b != text; b = b->next) {
+		if (b->type == BOX_INLINE && b->inline_end != NULL) {
+			if (depth < 32)
+				open[depth] = b;
+			depth++;
+		} else if (b->type == BOX_INLINE_END && depth > 0) {
+			depth--;
+		}
+	}
+	if (depth == 0)
+		return NULL;
+	return open[(depth < 32 ? depth : 32) - 1]->node;
+}
+
+/* ---- Onyx: the box under the pointer as painted ----------------------------------------
+ * html_redraw paints a positioned box after the rest of its layer (redraw.c): the box
+ * under the pointer is the last one painted there, which the same walk finds -- not the
+ * last in the tree's order (a menu open over the page: its links, not the page's).
+ */
+
+/** a box put off, as html_redraw does */
+struct onyx_hit_off {
+	struct box *box;
+	int x, y;		/* its parent's origin */
+	int32_t z;
+	int order;
+};
+
+struct onyx_hit {
+	const html_content *html;
+	int px, py;			/* the point */
+	struct box *box;		/* the last box painted under it */
+	struct onyx_hit_off *off;
+	int n, cap;
+};
+
+static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy);
+
+/** a box, its parent's origin at (ox, oy) (html_redraw_box) */
+static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
+{
+	int bx = ox + box->x, by = oy + box->y;
+	bool physically = false;
+
+	if (!box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
+			h->py - by, &physically))
+		return;
+	if (physically && (box->style == NULL || css_computed_visibility(
+			box->style) != CSS_VISIBILITY_HIDDEN))
+		h->box = box;
+	onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
+			by - scrollbar_get_offset(box->scroll_y));
+}
+
+/** a box's children (html_redraw_box_children): the positioned ones put off */
+static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy)
+{
+	struct box *c;
+	int32_t z;
+
+	for (c = box->children; c != NULL; c = c->next) {
+		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT)
+			continue;
+		if (html_redraw_layer_z(c, &z)) {
+			if (h->n == h->cap) {
+				int cap = h->cap ? h->cap * 2 : 32;
+				struct onyx_hit_off *off = realloc(h->off,
+						cap * sizeof(*off));
+				if (off == NULL) {
+					onyx_hit_box(h, c, ox, oy);
+					continue;
+				}
+				h->off = off;
+				h->cap = cap;
+			}
+			h->off[h->n].box = c;
+			h->off[h->n].x = ox;
+			h->off[h->n].y = oy;
+			h->off[h->n].z = z;
+			h->off[h->n].order = h->n;
+			h->n++;
+			continue;
+		}
+		onyx_hit_box(h, c, ox, oy);
+	}
+	for (c = box->float_children; c != NULL; c = c->next_float)
+		onyx_hit_box(h, c, ox, oy);
+}
+
+static int onyx_hit_cmp(const void *a, const void *b)
+{
+	const struct onyx_hit_off *x = a, *y = b;
+
+	if (x->z != y->z)
+		return x->z < y->z ? -1 : 1;
+	return x->order - y->order;
+}
+
+/** the boxes a layer put off (from start on), in their painting order */
+static void onyx_hit_layer(struct onyx_hit *h, int start)
+{
+	int end = h->n, i;
+
+	if (end - start > 1)
+		qsort(h->off + start, end - start, sizeof(*h->off), onyx_hit_cmp);
+	for (i = start; i < end; i++) {
+		struct onyx_hit_off e = h->off[i];
+
+		onyx_hit_box(h, e.box, e.x, e.y);
+		if (h->n > end)
+			onyx_hit_layer(h, end);
+		h->n = end;
+	}
+	h->n = start;
+}
+
+/**
+ * The boxes from the root down to the one painted last under the point (its path in the
+ * tree, root first; the root alone if none): a malloc'd array, its length in *n.
+ */
+static struct box **onyx_hit_path(html_content *html, int x, int y, int *n)
+{
+	struct onyx_hit h;
+	struct box **path, *b;
+	int depth = 0, i;
+
+	memset(&h, 0, sizeof(h));
+	h.html = html;
+	h.px = x;
+	h.py = y;
+	onyx_hit_box(&h, html->layout, 0, 0);
+	onyx_hit_layer(&h, 0);
+	free(h.off);
+	if (h.box == NULL)
+		h.box = html->layout;
+
+	for (b = h.box; b != NULL; b = b->parent)
+		depth++;
+	path = malloc(depth * sizeof(*path));
+	if (path == NULL) {
+		*n = 0;
+		return NULL;
+	}
+	for (b = h.box, i = depth; b != NULL; b = b->parent)
+		path[--i] = b;
+	*n = depth;
+	return path;
+}
+
+/**
  * iterate the box tree for deepest node at coordinates
  *
  * extracts mouse action node information by descending through
@@ -677,6 +839,8 @@ get_mouse_action_node(html_content *html,
 		      struct mouse_action_state *man)
 {
 	struct box *box;
+	struct box **path;
+	int path_n = 0, path_i;
 	int box_x = 0;
 	int box_y = 0;
 
@@ -686,15 +850,16 @@ get_mouse_action_node(html_content *html,
 	man->result.pointer = BROWSER_POINTER_DEFAULT;
 
 	/* search the box tree for a link, imagemap, form control, or
-	 * box with scrollbars
+	 * box with scrollbars -- Onyx: along the path to the box painted last
+	 * under the pointer (onyx_hit_path), from the root down
 	 */
-	box = html->layout;
+	path = onyx_hit_path(html, x, y, &path_n);
+	for (path_i = 0; path_i < path_n; path_i++) {
+		box = path[path_i];
+		box_coords(box, &box_x, &box_y);
+		box_x -= scrollbar_get_offset(box->scroll_x);
+		box_y -= scrollbar_get_offset(box->scroll_y);
 
-	/* Consider the margins of the html page now */
-	box_x = box->margin[LEFT];
-	box_y = box->margin[TOP];
-
-	do {
 		/* skip hidden boxes */
 		if ((box->style != NULL) &&
 		    (css_computed_visibility(box->style) ==
@@ -704,6 +869,12 @@ get_mouse_action_node(html_content *html,
 
 		if (box->node != NULL) {
 			man->node = box->node;
+		} else if (box->type == BOX_TEXT) {
+			/* Onyx: a text's element: the inline one it is in (a link's
+			 * text: the <a>), which the page's scripts get the click at */
+			dom_node *element = html_text_box_element(box);
+			if (element != NULL)
+				man->node = element;
 		}
 
 		if (box->object) {
@@ -808,12 +979,12 @@ get_mouse_action_node(html_content *html,
 		}
 
 	next_box:
-		/* iterate to next box */
-		box = box_at_point(&html->unit_len_ctx, box, x, y, &box_x, &box_y);
-	} while (box != NULL);
+		;
+	}
+	free(path);
 
 	/* use of box_x, box_y, or content below this point is probably a
-	 * mistake; they will refer to the last box returned by box_at_point */
+	 * mistake; they will refer to the last box of the path */
 
 	assert(man->node != NULL);
 
@@ -1400,9 +1571,41 @@ mouse_action_drag_none(html_content *html,
 		content_broadcast(c, CONTENT_MSG_POINTER, &msg_data);
 	}
 
-	/* fire dom click event */
-	if (mouse & BROWSER_MOUSE_CLICK_1) {
-		fire_generic_dom_event(corestring_dom_click, mas.node, true, true);
+	/* Onyx: the page's scripts see the main button -- mousedown, then mouseup and
+	 * click (then a checkbox's, a radio's input and change); a click they prevent
+	 * (event.preventDefault()) neither follows its link nor sends its form */
+	if (mouse & (BROWSER_MOUSE_PRESS_1 | BROWSER_MOUSE_CLICK_1)) {
+		struct js_event_init init;
+
+		memset(&init, 0, sizeof(init));
+		init.x = x;
+		init.y = y;
+		init.shift = (mouse & BROWSER_MOUSE_MOD_1) != 0;
+		init.ctrl = (mouse & BROWSER_MOUSE_MOD_2) != 0;
+		init.alt = (mouse & BROWSER_MOUSE_MOD_3) != 0;
+		if (mouse & BROWSER_MOUSE_PRESS_1) {
+			html_script_event(html, "mousedown", mas.node, &init);
+		} else {
+			html_script_event(html, "mouseup", mas.node, &init);
+			if (!html_script_event(html, "click", mas.node, &init) &&
+			    (mas.result.action == ACTION_NAVIGATE ||
+			     mas.result.action == ACTION_SUBMIT ||
+			     mas.result.action == ACTION_JS))
+				mas.result.action = ACTION_NONE;
+			if (mas.result.action == ACTION_SUBMIT &&
+			    mas.gadget.control->form != NULL &&
+			    !html_script_event(html, "submit",
+					mas.gadget.control->form->node, NULL))
+				mas.result.action = ACTION_NONE;
+			if (mas.gadget.control != NULL &&
+			    (mas.gadget.control->type == GADGET_CHECKBOX ||
+			     mas.gadget.control->type == GADGET_RADIO)) {
+				html_script_event(html, "input",
+						mas.gadget.control->node, NULL);
+				html_script_event(html, "change",
+						mas.gadget.control->node, NULL);
+			}
+		}
 	}
 
 	/* deferred actions that can cause this browser_window to be destroyed
@@ -1524,6 +1727,34 @@ html_mouse_action(struct content *c,
 
 
 /**
+ * Onyx: a key's name for the scripts (KeyboardEvent.key): the character, or the name of
+ * a key NetSurf's keypress codes tell (NULL: one that is not a key, as copy).
+ */
+static const char *html_script_key_name(uint32_t key, char buf[8])
+{
+	switch (key) {
+	case NS_KEY_ESCAPE: return "Escape";
+	case NS_KEY_LEFT: return "ArrowLeft";
+	case NS_KEY_RIGHT: return "ArrowRight";
+	case NS_KEY_UP: return "ArrowUp";
+	case NS_KEY_DOWN: return "ArrowDown";
+	case NS_KEY_PAGE_UP: return "PageUp";
+	case NS_KEY_PAGE_DOWN: return "PageDown";
+	case NS_KEY_TEXT_START: case NS_KEY_LINE_START: return "Home";
+	case NS_KEY_TEXT_END: case NS_KEY_LINE_END: return "End";
+	case NS_KEY_DELETE_LEFT: return "Backspace";
+	case NS_KEY_DELETE_RIGHT: return "Delete";
+	case NS_KEY_TAB: return "Tab";
+	case NS_KEY_NL: case NS_KEY_CR: return "Enter";
+	default: break;
+	}
+	if (key < 0x20 || (key >= 0x7f && key <= 0x9f) || key >= 0x110000)
+		return NULL;	/* (0x80-0x9f: NetSurf's editing keys) */
+	buf[utf8_from_ucs4(key, buf)] = '\0';
+	return buf;
+}
+
+/**
  * Handle keypresses.
  *
  * \param  c	content of type HTML
@@ -1568,9 +1799,30 @@ bool html_keypress(struct content *c, uint32_t key)
 	 * `event.preventDefault()` then we won't handle the event when
 	 * we're not supposed to.
 	 */
-	if (html->layout != NULL && html->layout->node != NULL) {
-		fire_dom_keyboard_event(corestring_dom_keydown,
-				html->layout->node, true, true, key);
+	/* Onyx: the page's scripts see the key first (keydown, keypress for a character),
+	 * at the element with the focus; one they prevent is not typed */
+	if (html->jsthread != NULL && html->layout != NULL) {
+		dom_node *target = html->layout->node;
+		struct js_event_init init;
+		char name[8];
+
+		if (html->focus_type == HTML_FOCUS_TEXTAREA &&
+		    html->focus_owner.textarea != NULL &&
+		    html->focus_owner.textarea->node != NULL)
+			target = html->focus_owner.textarea->node;
+		memset(&init, 0, sizeof(init));
+		init.key = html_script_key_name(key, name);
+		if (init.key != NULL) {
+			bool ok = html_script_event(html, "keydown", target, &init);
+
+			if (ok && ((key >= 0x20 && key < 0x7f) ||
+				   (key >= 0xa0 && key < 0x110000)))
+				ok = html_script_event(html, "keypress", target,
+						&init);
+			html_script_event(html, "keyup", target, &init);
+			if (!ok)
+				return true;
+		}
 	}
 
 	switch (html->focus_type) {

@@ -48,12 +48,11 @@ BASEF = -O2 -g -fcommon -fno-strict-aliasing -w -D_DEFAULT_SOURCE -D_POSIX_C_SOU
 CF    = $(BASEF) -std=c99
 
 # -- NetSurf (as netsurf-app.mk; only compat/curl from the Onyx compat headers)
-NS_CF = $(CF) -Dnsframebuffer -DWITH_PNG -DWITH_GIF -DWITH_BMP -DDUK_OPT_HAVE_CUSTOM_H \
+NS_CF = $(CF) -Dnsframebuffer -DWITH_PNG -DWITH_GIF -DWITH_BMP \
         -DNETSURF_FB_RESPATH=\"$(RESPATH)\" -DNETSURF_FB_FONTPATH=\"$(RESPATH)fonts\" \
         -DONYX_NS_DATAPATH=\"$(OUT)/data/\" -DONYX_HOST_SIM -include $(UN)/compat/onyx_nsconfig.h
 NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
-         -I$(OUT)/hostinc -I$(UN) -I$(UN)/gen -I$(UN)/gen/duktape -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
-         -I$(NS)/content/handlers/javascript/duktape \
+         -I$(OUT)/hostinc -I$(UN) -I$(UN)/gen -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
          -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \
          -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
          -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF)
@@ -77,9 +76,11 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
             plot/api.c plot/generic.c plot/util.c plot/8bpp.c plot/16bpp.c \
             plot/32bpp-xrgb8888.c plot/32bpp-xbgr8888.c) $(ROOT)/user/nsfb/onyx_surface.c
 
-include $(UN)/gen/duktape/Makefile
-JSDUK := $(NS)/content/handlers/javascript/duktape
-JS_SRC := $(JSDUK)/dukky.c $(JSDUK)/duktape.c $(addprefix $(UN)/gen/duktape/,$(NSGENBIND_SOURCES))
+# JavaScript: QuickJS and the DOM on it (as netsurf-app.mk; the engine compiled here)
+QJS := $(TP)/quickjs-ng-0.17.0
+JSQ := $(NS)/content/handlers/javascript/quickjs
+QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
+JS_SRC := $(JSQ)/qjs.c
 
 CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) $(wildcard $(NS)/utils/nsurl/*.c) \
@@ -115,7 +116,7 @@ I_BRO := -I$(BRO)/c/include
 I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
         '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include $(I_BRO)
 
-LIB_ALL := $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+LIB_ALL := $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -173,6 +174,7 @@ $(call obj,$(1)): $(1)
 	@mkdir -p $(OUT)/o
 	$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
+$(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
 $(foreach s,$(FT_SRC),$(eval $(call LIB_RULE,$(s),$(I_FT))))
 $(foreach s,$(BRO_SRC),$(eval $(call LIB_RULE,$(s),$(I_BRO))))
 $(foreach s,$(WAP_SRC),$(eval $(call LIB_RULE,$(s),$(I_WAP))))
@@ -198,6 +200,14 @@ $(call obj,$(1)): $(1) $(OUT)/font-ns-sans.h $(OUT)/hostinc/curl/curl.h
 endef
 $(foreach s,$(NS_ALL),$(eval $(call NS_RULE,$(s))))
 $(call obj,$(FB)/gui.c): NS_CF += -Dmain=netsurf_main
+
+# dom.js as a C string for qjs.c (as netsurf-app.mk)
+$(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from dom.js by host.mk */'; echo 'static const char qjs_dom_js[] ='; \
+	  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs.c): $(OUT)/qjsgen/qjs_dom_js.h
+$(call obj,$(JSQ)/qjs.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
 
 CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \
        -MMD -MP

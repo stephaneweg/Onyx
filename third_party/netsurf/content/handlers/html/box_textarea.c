@@ -62,7 +62,8 @@ nserror box_textarea_keypress(html_content *html, struct box *box, uint32_t key)
 	switch (key) {
 	case NS_KEY_NL:
 	case NS_KEY_CR:
-		if (form) {
+		/* Onyx: unless the page's scripts prevent the form's submit event */
+		if (form && html_script_event(html, "submit", form->node, NULL)) {
 			res = form_submit(content_get_url(c),
 					  html->bw,
 					  form,
@@ -248,6 +249,12 @@ static void box_textarea_callback(void *data, struct textarea_msg *msg)
 		form_gadget_update_value(gadget,
 					 strndup(msg->data.modified.text,
 						 msg->data.modified.len));
+		/* Onyx: the page's scripts see the text typed (not the text a
+		 * script or the DOM set: syncing) */
+		if (!gadget->syncing && box != NULL &&
+		    html->focus_type == HTML_FOCUS_TEXTAREA &&
+		    html->focus_owner.textarea == box)
+			html_script_changed(html, gadget->node, HTML_SCRIPT_INPUT);
 		break;
 	}
 }
@@ -278,6 +285,11 @@ bool box_textarea_create_textarea(html_content *html,
 	assert(gadget->type == GADGET_TEXTAREA ||
 			gadget->type == GADGET_TEXTBOX ||
 			gadget->type == GADGET_PASSWORD);
+
+	/* Onyx: the boxes built again (a script changed the DOM): the control's
+	 * text area kept, its text and caret with it */
+	if (gadget->data.text.ta != NULL)
+		return true;
 
 	if (gadget->type == GADGET_TEXTAREA) {
 		dom_html_text_area_element *textarea =
