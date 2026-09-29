@@ -141,13 +141,14 @@ public:
 	void (*onEdited) ();					// a cell was put in (the book changed)
 	void (*onContext) (int x, int y, int where);		// right click: 0 cells, 1 column headers, 2 row headers, 3 a chart
 	void (*onChartOpen) (int i);
+	void (*onFilter) (int col, int x, int y);		// an AutoFilter's button clicked (x, y: below it, in the window)
 	void (*onZoom) (int dir);
 	bool (*onCommit) (int r, int c, const char *text);	// the app puts the entry in (undo, format...)
 	bool (*onOtherKey) (long k, int mods);			// a key the grid does not take (Ctrl+1, F9...)
 	char acWord[40]; int acStart, acSel, acN; int acList[12];	// the functions offered while typing
 
 	GridView (int l, int t, int w, int h) : Widget (l, t, w, h), b (0), z (100), copyMarquee (false), copySheet (0), selChart (-1),
-		onChange (0), onEdited (0), onContext (0), onChartOpen (0), onZoom (0), onCommit (0), onOtherKey (0), acStart (-1), acSel (0), acN (0),
+		onChange (0), onEdited (0), onContext (0), onChartOpen (0), onFilter (0), onZoom (0), onCommit (0), onOtherKey (0), acStart (-1), acSel (0), acN (0),
 		m_drag (D_NONE), m_dragI (0), m_dragV (0), m_lastClick (0), m_lastR (-1), m_lastC (-1), m_blink (true), m_blinkT (0)
 	{ canFocus = true; fillTo = Rect { 0, 0, -1, -1 }; }
 
@@ -228,6 +229,17 @@ public:
 		*x = pane_col_x (s, z, v, m.c0); *w = pane_col_x (s, z, v, m.c1 + 1) - *x;
 		*y = pane_row_y (s, z, v, m.r0); *h = pane_row_y (s, z, v, m.r1 + 1) - *y;
 		return *x < v.x1 && *x + *w > v.x0 && *y < v.y1 && *y + *h > v.y0;
+	}
+	// An AutoFilter's button in its header cell (false: not in view).
+	bool filterButton (int c, int *bx, int *by, int *bs)
+	{
+		Sheet *s = S ();
+		if (!s->af.on || c < s->af.r.c0 || c > s->af.r.c1) return false;
+		int x, y, w, h;
+		if (!cellBox (s->af.r.r0, c, &x, &y, &w, &h) || w < 12 || h < 10) return false;
+		*bs = imin (16 * z / 100 + 1, h - 3); if (*bs < 9) *bs = 9;
+		*bx = x + w - *bs - 2; *by = y + h - *bs - 2;
+		return true;
 	}
 	// ---- scrolling
 	int visRows () { PaneView pv[4]; panes (pv); return imax (1, pv[3].nr - 1); }
@@ -550,6 +562,7 @@ void GridView::drawHeaders (const PaneView *pv)
 			hline (canvas, 3, RW - 4, y + h - 1, line, BS_THIN, clip);
 			char t[12]; snprintf (t, sizeof t, "%d", r + 1);
 			unsigned ink = all ? 0xFFFFFF : in ? wk_mix (C_TEXT, C_ACCENT, 120) : C_TEXT;
+			if (!all && !in && s->af.on && s->af.n && r > s->af.r.r0 && r <= s->af.r.r1) ink = 0x1F5FBF;	// (a filtered table's rows: blue, as Excel shows them)
 			text_at (canvas, in ? fb : f, RW / 2, y + h / 2 + 5, t, ink, 1, clip);
 		}
 	}
@@ -792,6 +805,22 @@ void GridView::onDraw ()
 		drawSelection (pv[p], p);
 	}
 	for (int p = 0; p < 4; p++) if (pv[p].x1 > pv[p].x0 && pv[p].y1 > pv[p].y0) drawCharts (pv[p], p);
+	// the AutoFilter's buttons (a column filtered: the accent's, a funnel)
+	if (s->af.on)
+		for (int c = s->af.r.c0; c <= s->af.r.c1; c++)
+		{
+			int bx, by, bs;
+			if (!filterButton (c, &bx, &by, &bs)) continue;
+			bool on = af_index (s, c) >= 0;
+			wk_raised (canvas, bx, by, bs, bs, 3, on ? wk_mix (C_FACE, C_ACCENT, 150) : wk_tone (C_FACE, 150));
+			if (on)
+			{
+				int cx = bx + bs / 2, t = by + bs / 4, w2 = bs * 3 / 8;
+				for (int k = 0; k < bs / 3; k++) canvas.fillRect (cx - w2 + k, t + k, 2 * (w2 - k) + 1, 1, 0xFFFFFF);
+				canvas.fillRect (cx - 1, t + bs / 3, 2, bs / 4, 0xFFFFFF);
+			}
+			else wk_glyph (canvas, WKG_DOWN, bx + bs / 2, by + bs / 2, bs * 2 / 3, 0x404040);
+		}
 	// the frozen panes' edges
 	Rect all = { 0, 0, height - 1, width - 1 };
 	if (s->freezeC) vline (canvas, pv[1].x0 - 1, HEAD_H, height - SB - 1, 0x9AA0A6, BS_THIN, all);
@@ -1156,6 +1185,18 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	if (my >= height - SB && mx >= RW) { m_drag = D_HBAR; catchOutside = true; return onMouse (mx, my, bl, 0, 0, 0); }
 	// the corner: all
 	if (mx < RW && my < HEAD_H) { if (ed.on && !commit (0, 0)) return true; selectAll (); return true; }
+	// an AutoFilter's button
+	if (!ed.on && s->af.on && onFilter)
+		for (int c = s->af.r.c0; c <= s->af.r.c1; c++)
+		{
+			int bx, by, bs;
+			if (filterButton (c, &bx, &by, &bs) && mx >= bx && mx < bx + bs && my >= by && my < by + bs)
+			{
+				pressed = false;
+				onFilter (c, left + bx, top + by + bs + 1);
+				return true;
+			}
+		}
 	// a chart (its handles size it)
 	if (!ed.on)
 	{

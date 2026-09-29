@@ -913,6 +913,107 @@ private:
 	}
 };
 
+// ---- the AutoFilter's drop-down: sort the table by the column; the values shown, checked --------------------
+// run (): 0 cancelled, 1 OK (checked () then), 2 sort ascending, 3 descending.
+class FilterPopup : public Modal
+{
+public:
+	enum { W = 270, RH = 22, MAXR = 10 };
+	FilterPopup (int x, int y, AfVal *vals, int n, const char *shown)
+		: Modal (W, 4 + 2 * RH + 9 + imin (n + 1, (int) MAXR) * RH + 8 + 30 + 8), m_v (vals), m_n (n), m_top (0), m_hot (-1)
+	{
+		left = x - W + 18; top = y;
+		Root *r = Root::current ();
+		if (r)
+		{
+			if (top + height > r->height) top = imax (0, r->height - height);
+			if (left + width > r->width) left = imax (0, r->width - width);
+			if (left < 0) left = 0;
+		}
+		m_on = (bool *) malloc (imax (1, n) * sizeof (bool));
+		for (int i = 0; i < n; i++) m_on[i] = !shown || af_has (shown, vals[i].t);
+		m_rows = imin (n + 1, (int) MAXR);
+	}
+	~FilterPopup () { free (m_on); }
+	bool checked (int i) const { return m_on[i]; }
+	bool allChecked () const { for (int i = 0; i < m_n; i++) if (!m_on[i]) return false; return true; }
+	void onDraw () override
+	{
+		canvas.clear (WK_TRANSPARENT_KEY);
+		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		fnt::Font *f = ui_font (12);
+		Rect all = { 0, 0, height - 1, width - 1 };
+		static const char *const SORTS[2] = { "Sort ascending (A to Z, 1 to 9)", "Sort descending (Z to A, 9 to 1)" };
+		for (int i = 0; i < 2; i++)
+		{
+			int y = 4 + i * RH;
+			if (m_hot == -2 - i) wk_hilite (canvas, 4, y, width - 8, RH, 5, true);
+			wk_glyph (canvas, i ? WKG_DOWN : WKG_UP, 18, y + RH / 2, 10, m_hot == -2 - i ? C_SEL_TEXT : 0x404040);
+			text_at (canvas, f, 32, y + 15, SORTS[i], m_hot == -2 - i ? C_SEL_TEXT : C_FIELD_TEXT, 0, all);
+		}
+		int ly = listY ();
+		canvas.fillRect (8, ly - 5, width - 16, 1, wk_tone (C_FIELD, 110));
+		int sbw = m_n + 1 > m_rows ? WK_SBW + 2 : 0;
+		Rect lc = { ly, 4, ly + m_rows * RH - 1, width - 6 - sbw };
+		for (int r = 0; r < m_rows; r++)
+		{
+			int i = m_top + r, y = ly + r * RH;			// (0: "Select all", then the values)
+			if (i > m_n) break;
+			if (m_hot == i) wk_hilite (canvas, 4, y, width - 8 - sbw, RH, 5, false);
+			bool on = i == 0 ? allChecked () : m_on[i - 1];
+			wk_check_mark (canvas, 10, y + 4, 14, on, WK_NORMAL);
+			const char *t = i == 0 ? "(Select all)" : m_v[i - 1].blank ? "(Empty)" : m_v[i - 1].t;
+			text_at (canvas, f, 32, y + 15, t, i == 0 || m_v[i - 1].blank ? 0x505050 : C_FIELD_TEXT, 0, lc);
+		}
+		if (sbw) { WkThumb t = wk_thumb (m_n + 1, m_rows, m_top, m_rows * RH); wk_draw_vscroll (canvas, width - WK_SBW - 4, ly, WK_SBW, m_rows * RH, t, C_FIELD); }
+		// OK, Cancel
+		int by = height - 38;
+		for (int k = 0; k < 2; k++)
+		{
+			int bx = width - 180 + k * 90;
+			wk_framed (canvas, bx, by, 82, 28, C_FACE, m_hot == -10 - k ? WK_HOT : WK_NORMAL);
+			wk_text_c (canvas, bx, by, 82, 28, k ? "Cancel" : "OK", C_TEXT);
+		}
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
+	{
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		int ly = listY ();
+		if (wheel && in) { m_top = iclamp (m_top - wheel, 0, imax (0, m_n + 1 - m_rows)); invalidate (true); return true; }
+		int hot = -1;
+		if (in && my >= 4 && my < 4 + 2 * RH) hot = -2 - (my - 4) / RH;
+		else if (in && my >= ly && my < ly + m_rows * RH && !(m_n + 1 > m_rows && mx >= width - WK_SBW - 6)) { hot = m_top + (my - ly) / RH; if (hot > m_n) hot = -1; }
+		else if (in && my >= height - 38 && my < height - 10) { if (mx >= width - 180 && mx < width - 98) hot = -10; else if (mx >= width - 90 && mx < width - 8) hot = -11; }
+		if (hot != m_hot) { m_hot = hot; invalidate (true); }
+		if (m_n + 1 > m_rows && in && bl && mx >= width - WK_SBW - 6 && my >= ly && my < ly + m_rows * RH)
+		{
+			m_top = (int) wk_thumb_pos (my - ly, m_rows * RH, m_n + 1, m_rows, wk_thumb (m_n + 1, m_rows, m_top, m_rows * RH).h);
+			invalidate (true);
+			return true;
+		}
+		if (bl && !pressed) { pressed = true; if (!in) close (0); return true; }
+		if (!bl && pressed)
+		{
+			pressed = false;
+			if (hot == -2 || hot == -3) close (hot == -2 ? 2 : 3);
+			else if (hot == -10) close (1);
+			else if (hot == -11) close (0);
+			else if (hot == 0) { bool all = allChecked (); for (int i = 0; i < m_n; i++) m_on[i] = !all; invalidate (true); }
+			else if (hot > 0) { m_on[hot - 1] = !m_on[hot - 1]; invalidate (true); }
+		}
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27) { close (0); return true; }
+		if (k == KEY_ENTER) { close (1); return true; }
+		return true;
+	}
+private:
+	AfVal *m_v; int m_n, m_top, m_hot, m_rows; bool *m_on;
+	int listY () const { return 4 + 2 * RH + 9; }
+};
+
 // ---- Chart ------------------------------------------------------------------------------------------------
 static const char *const LEGEND_NAMES[4] = { "None", "Right", "Bottom", "Top" };
 // A chart type's button: a little picture of it and its name; the chosen one framed.

@@ -468,11 +468,20 @@ static void read_sheet (Book &b, Sheet *s, const unsigned char *z, unsigned zn, 
 	// the conditional formats being read
 	Rect cfR[8]; int ncfR = 0; CondFmt cfc; bool inRule = false, inCfF = false; int cfPrio = 0, nForm = 0, ncol = 0, ncfvo = 0;
 	unsigned cfCol[3] = { 0, 0, 0 }; Buf cfText; int *prios = 0;
+	int afCol = -1; Buf afList; bool afAny = false;			// (a filter's column being read)
 	while (X.next () != X_EOF)
 	{
 		if (X.ev == X_START)
 		{
 			if (X.is ("conditionalFormatting")) { Buf q; X.attr ("sqref", q); ncfR = parse_sqref (q.str (), cfR, 8); }
+			else if (X.is ("autoFilter"))
+			{
+				Buf q; X.attr ("ref", q); Rect ar;
+				if (parse_sqref (q.str (), &ar, 1) == 1) { s->af.on = true; s->af.r = ar; }
+			}
+			else if (s->af.on && X.is ("filterColumn")) { afCol = s->af.r.c0 + X.attr_int ("colId", 0); afList.clear (); afAny = false; }
+			else if (afCol >= 0 && X.is ("filters")) { afAny = true; if (X.attr_bool ("blank", false)) afList.put ('\x1F'); }
+			else if (afCol >= 0 && X.is ("filter")) { Buf fv; X.attr ("val", fv); afList.puts (fv.str ()); afList.put ('\x1F'); }
 			else if (X.is ("cfRule") && ncfR)
 			{
 				memset (&cfc, 0, sizeof cfc); cfc.fill = cfc.color = AUTO; cfc.bold = cfc.italic = -1;
@@ -636,6 +645,7 @@ static void read_sheet (Book &b, Sheet *s, const unsigned char *z, unsigned zn, 
 				continue;
 			}
 			if (X.is ("conditionalFormatting")) { ncfR = 0; continue; }
+			if (afCol >= 0 && X.is ("filterColumn")) { if (afAny) af_set (s, afCol, afList.str ()); afCol = -1; continue; }
 			if (X.is ("v")) inV = false;
 			else if (X.is ("t")) inIsT = false;
 			else if (X.is ("f"))
@@ -690,6 +700,8 @@ endcell:
 	for (int i = 0; i < nsh; i++) formula_free (sh[i].f);
 	free (sh); free (prios);
 	free (x);
+	// the rows hidden under a filter's headers: its own (shown again when the filter goes)
+	if (s->af.on) for (int i = 0; i < s->nrows; i++) if ((s->rows[i].fl & RF_HIDDEN) && s->rows[i].r > s->af.r.r0 && s->rows[i].r <= s->af.r.r1) s->rows[i].fl |= RF_FILTER;
 	sheet_touched (s);
 	// its charts: the drawing's anchors, each chart's part
 	if (drawingId[0])
@@ -1231,6 +1243,31 @@ static char *xlsx_write (Book &b, int *outLen)
 			free (list);
 		}
 		o.puts ("</sheetData>");
+		if (s->af.on)							// the AutoFilter: its range, its columns' values shown
+		{
+			const AutoFilter &f = s->af;
+			char a1[24], a2[24]; cell_name (f.r.r0, f.r.c0, a1); cell_name (f.r.r1, f.r.c1, a2);
+			o.puts ("<autoFilter ref=\""); o.puts (a1); o.put (':'); o.puts (a2); o.put ('"');
+			if (!f.n) o.puts ("/>");
+			else
+			{
+				o.put ('>');
+				for (int i = 0; i < f.n; i++)
+				{
+					o.puts ("<filterColumn colId=\""); o.puti (f.col[i] - f.r.c0); o.puts ("\"><filters");
+					if (af_has (f.shown[i], "")) o.puts (" blank=\"1\"");
+					o.put ('>');
+					for (const char *p = f.shown[i]; *p; )
+					{
+						const char *e = strchr (p, '\x1F'); if (!e) break;
+						if (e > p) { o.puts ("<filter val=\""); xml_esc (o, p, (int) (e - p)); o.puts ("\"/>"); }
+						p = e + 1;
+					}
+					o.puts ("</filters></filterColumn>");
+				}
+				o.puts ("</autoFilter>");
+			}
+		}
 		if (s->nmerge)
 		{
 			o.puts ("<mergeCells count=\""); o.puti (s->nmerge); o.puts ("\">");
@@ -1313,9 +1350,21 @@ static char *xlsx_write (Book &b, int *outLen)
 	o.puts ("<workbookPr/><bookViews><workbookView activeTab=\""); o.puti (b.active); o.puts ("\"/></bookViews><sheets>");
 	for (int si = 0; si < b.ns; si++) { o.puts ("<sheet name=\""); xml_esc (o, b.sh[si]->name); o.puts ("\" sheetId=\""); o.puti (si + 1); o.puts ("\" r:id=\"rId"); o.puti (si + 1); o.puts ("\"/>"); }
 	o.puts ("</sheets>");
-	if (b.nnames)							// the defined names
+	bool anyAf = false; for (int si = 0; si < b.ns; si++) if (b.sh[si]->af.on) anyAf = true;
+	if (b.nnames || anyAf)						// the defined names (the filters' ranges: Excel's own)
 	{
 		o.puts ("<definedNames>");
+		for (int si = 0; si < b.ns; si++)
+		{
+			const AutoFilter &f = b.sh[si]->af;
+			if (!f.on) continue;
+			o.puts ("<definedName name=\"_xlnm._FilterDatabase\" localSheetId=\""); o.puti (si); o.puts ("\" hidden=\"1\">");
+			Buf rf; put_sheet_name (rf, b.sh[si]->name); rf.put ('!');
+			char a[24]; col_name (f.r.c0, a); rf.put ('$'); rf.puts (a); rf.put ('$'); rf.puti (f.r.r0 + 1);
+			col_name (f.r.c1, a); rf.puts (":$"); rf.puts (a); rf.put ('$'); rf.puti (f.r.r1 + 1);
+			xml_esc (o, rf.str (), rf.n);
+			o.puts ("</definedName>");
+		}
 		for (int i = 0; i < b.nnames; i++)
 		{
 			const DefName &d = b.names[i];

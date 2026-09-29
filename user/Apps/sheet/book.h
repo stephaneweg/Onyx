@@ -186,7 +186,7 @@ struct CellMap
 };
 
 // ---- rows, columns, merged cells, charts -------------------------------------------------------------------
-enum { RF_HIDDEN = 1, RF_CUSTOM = 2, RF_AUTO = 4 };
+enum { RF_HIDDEN = 1, RF_CUSTOM = 2, RF_AUTO = 4, RF_FILTER = 8 };	// (RF_FILTER: hidden by the AutoFilter)
 struct RowInfo { int r; unsigned short h, style; unsigned char fl, pad[3]; };
 struct Rect { int r0, c0, r1, c1; };
 static bool rect_has (const Rect &a, int r, int c) { return r >= a.r0 && r <= a.r1 && c >= a.c0 && c <= a.c1; }
@@ -225,6 +225,17 @@ struct CondFmt						// (plain: kept raw by Undo)
 	unsigned c0, c1, c2;				// CF_SCALE: the lowest's, the middle's, the highest's colours; CF_BAR: c0
 };
 
+// ---- the AutoFilter (Data > AutoFilter): a range whose first row holds the headers and their buttons; for
+// each column filtered, the values shown (as they are shown: "1,234.50", "January"; "" the empty cells) --
+// the other rows hidden
+enum { AF_MAXCOLS = 32 };
+struct AutoFilter
+{
+	bool on;
+	Rect r;
+	int n; int col[AF_MAXCOLS]; char *shown[AF_MAXCOLS];	// shown: the values, each ended by \x1F
+};
+
 // ---- a sheet -------------------------------------------------------------------------------------------
 struct Sheet
 {
@@ -245,6 +256,7 @@ struct Sheet
 	int curR, curC, ancR, ancC, topR, leftC;	// the view: the cursor, the selection's anchor, the scroll
 	Chart **charts; int ncharts;
 	CondFmt *cf; int ncf;				// the conditional formats (the first that sets a look wins)
+	AutoFilter af;
 	int maxR, maxC; bool boundsOk;			// the used area (the cells with content)
 	Cell **forms; int nforms, cforms; bool formsOk;	// the formula cells, in order (rebuilt when needed)
 };
@@ -273,6 +285,7 @@ static void sheet_free (Sheet *s)
 	for (int i = 0; i < s->ncharts; i++) chart_free (s->charts[i]);
 	free (s->charts);
 	free (s->cf);
+	for (int i = 0; i < s->af.n; i++) free (s->af.shown[i]);
 	free (s);
 }
 

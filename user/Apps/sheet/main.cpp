@@ -1207,6 +1207,53 @@ static void cmd_sort ()
 	after_change ();
 }
 static void cmd_recalc () { recalc (g_b); g_grid->invalidate (true); refresh (); }
+// Data > AutoFilter: the buttons put on the table's headers (the selection, else the table around the
+// cursor), or taken off with the filters.
+static void cmd_autofilter ()
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	Sheet *s = S ();
+	undo_sheet (g_b, s);
+	if (s->af.on) af_clear (s);
+	else
+	{
+		Rect r = used_sel ();
+		if (r.r0 == r.r1 && r.c0 == r.c1) r = current_region (s, r.r0, r.c0);
+		if (r.r1 <= r.r0) { undo_drop_last (); message ("Choose a table first: its first row holds the headers, the rows under it the data."); return; }
+		s->af.on = true; s->af.r = r;
+	}
+	touched (); g_grid->invalidate (true); refresh ();
+}
+// A filter button clicked: its drop-down (sort; the values shown).
+static void filter_drop (int col, int x, int y)
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	Sheet *s = S ();
+	AfVal *vals = 0; int n = af_values (g_b, s, col, &vals);
+	int k = af_index (s, col);
+	FilterPopup p (x, y, vals, n, k >= 0 ? s->af.shown[k] : 0);
+	int r = p.run ();
+	if (r == 2 || r == 3)
+	{
+		undo_sheet (g_b, s);
+		SortKey key = { col, r == 3 };
+		sort_range (g_b, s, s->af.r, &key, 1, true);
+		recalc (g_b);
+		af_apply (g_b, s);
+		touched (); g_grid->invalidate (true); refresh ();
+	}
+	else if (r == 1)
+	{
+		undo_sheet (g_b, s);
+		if (p.allChecked ()) af_set (s, col, 0);
+		else { Buf l; for (int i = 0; i < n; i++) if (p.checked (i)) { l.puts (vals[i].t); l.put ('\x1F'); } af_set (s, col, l.str ()); }
+		af_apply (g_b, s);
+		touched (); g_grid->invalidate (true); refresh ();
+	}
+	for (int i = 0; i < n; i++) free (vals[i].t);
+	free (vals);
+	g_grid->setFocus ();
+}
 
 static bool other_key (long k, int mods)
 {
@@ -1283,6 +1330,7 @@ static void refresh ()
 	on (wr::IC_LEFT, st.ha == HA_LEFT); on (wr::IC_CENTER, st.ha == HA_CENTER); on (wr::IC_RIGHT, st.ha == HA_RIGHT);
 	on (SI_VTOP, st.va == VA_TOP); on (SI_VMID, st.va == VA_CENTER); on (SI_VBOT, st.va == VA_BOTTOM);
 	on (SI_WRAP, st.wrap); on (SI_MERGE, merge_at (s, s->curR, s->curC) >= 0); on (SI_FREEZE, s->freezeR || s->freezeC);
+	on (SI_FILTER, s->af.on);
 	if (g_btn[wr::IC_UNDO]) g_btn[wr::IC_UNDO]->setDisabled (g_undo.n == 0 && !g_grid->ed.on);
 	if (g_btn[wr::IC_REDO]) g_btn[wr::IC_REDO]->setDisabled (g_redo.n == 0);
 	g_fontBox->invalidate (true); g_sizeBox->invalidate (true); g_zoomBox->invalidate (true);
@@ -1398,6 +1446,7 @@ int main (void)
 	button (tb1, wr::IC_FIND, "Find and Replace (Ctrl+F)", cmd_find);
 	button (tb1, SI_SORTASC, "Sort ascending (by the cursor's column)", cmd_sort_asc);
 	button (tb1, SI_SORTDESC, "Sort descending", cmd_sort_desc);
+	button (tb1, SI_FILTER, "AutoFilter: buttons on the table's headers to show some rows only", cmd_autofilter);
 	tb1->sep ();
 	button (tb1, SI_INSROW, "Insert rows above", cmd_ins_rows);
 	button (tb1, SI_INSCOL, "Insert columns before", cmd_ins_cols);
@@ -1466,7 +1515,7 @@ int main (void)
 	g_tabs->anchor = g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	root.setResizable (true);
 	g_grid->onChange = refresh; g_grid->onEdited = grid_edited; g_grid->onContext = grid_context; g_grid->onChartOpen = chart_open;
-	g_grid->onZoom = zoom_step; g_grid->onCommit = grid_commit; g_grid->onOtherKey = other_key;
+	g_grid->onZoom = zoom_step; g_grid->onCommit = grid_commit; g_grid->onOtherKey = other_key; g_grid->onFilter = filter_drop;
 
 	static Menu menu;
 	menu.menu ("File");
@@ -1542,6 +1591,7 @@ int main (void)
 	menu.item ("Sort Ascending", "", 0, cmd_sort_asc);
 	menu.item ("Sort Descending", "", 0, cmd_sort_desc);
 	menu.item ("Sort...", "", 0, cmd_sort);
+	menu.item ("AutoFilter", "", 0, cmd_autofilter);
 	menu.item ("Recalculate", "F9", 0, cmd_recalc);
 	menu.publish ();
 

@@ -85,6 +85,8 @@ static void put_sheet (Wr &w, Sheet *s)
 	w.i32 (s->nmerge); w.raw (s->merges, s->nmerge * (int) sizeof (Rect));
 	w.i32 (s->ncharts); for (int i = 0; i < s->ncharts; i++) w.raw (s->charts[i], sizeof (Chart));
 	w.i32 (s->ncf); w.raw (s->cf, s->ncf * (int) sizeof (CondFmt));
+	w.u8 (s->af.on); w.raw (&s->af.r, sizeof (Rect)); w.i32 (s->af.n);
+	for (int i = 0; i < s->af.n; i++) { w.i32 (s->af.col[i]); w.str (s->af.shown[i]); }
 	w.i32 (s->cells.n);
 	for (int i = 0; i < s->cells.cap; i++) if (s->cells.t[i]) put_cell (w, s->cells.t[i]);
 }
@@ -101,6 +103,8 @@ static Sheet *get_sheet (Rd &r, Sheet *into)
 		for (int i = 0; i < s->ncharts; i++) chart_free (s->charts[i]);
 		s->ncharts = 0;
 		free (s->cf); s->cf = 0; s->ncf = 0;
+		for (int i = 0; i < s->af.n; i++) free (s->af.shown[i]);
+		memset (&s->af, 0, sizeof s->af);
 		s->id = id; if (nm) scpy (s->name, nm, sizeof s->name);
 	}
 	free (nm);
@@ -124,6 +128,10 @@ static Sheet *get_sheet (Rd &r, Sheet *into)
 	int ncf = r.i32 ();
 	if (ncf < 0 || ncf > 100000) { r.ok = false; ncf = 0; }
 	if (ncf) { s->cf = (CondFmt *) malloc (ncf * sizeof (CondFmt)); if (r.raw (s->cf, ncf * (int) sizeof (CondFmt))) s->ncf = ncf; }
+	s->af.on = r.u8 (); r.raw (&s->af.r, sizeof (Rect));
+	int naf = r.i32 ();
+	if (naf < 0 || naf > AF_MAXCOLS) { r.ok = false; naf = 0; }
+	for (int i = 0; i < naf && r.ok; i++) { s->af.col[i] = r.i32 (); s->af.shown[i] = r.str (); if (!s->af.shown[i]) s->af.shown[i] = sdup (""); s->af.n = i + 1; }
 	int n = r.i32 ();
 	for (int i = 0; i < n && r.ok; i++) { Cell *x = get_cell (r); if (x) { Cell *old = s->cells.take (x->r, x->c); cell_free (old); s->cells.put (x); } }
 	cols_changed (s); rows_changed (s); sheet_touched (s);

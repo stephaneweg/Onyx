@@ -544,6 +544,7 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 	unsigned short *colCellStyle = 0;
 	OChart och[32]; int nch = 0;
 	Rect cfRange = { -1, 0, 0, 0 };
+	Sheet *afSheet = 0; int afN = 0, afC[AF_MAXCOLS]; Buf afV[AF_MAXCOLS];	// (an AutoFilter being read)
 	while (X.next () != X_EOF)
 	{
 		if (X.ev == X_START)
@@ -598,6 +599,32 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 				}
 				s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 1) * sizeof (CondFmt)); s->cf[s->ncf++] = c;
 			}
+			else if (X.isq ("table:database-range") && X.attr_bool ("table:display-filter-buttons", false))	// an AutoFilter
+			{
+				Buf ad; X.attr ("table:target-range-address", ad);
+				int sid; Rect ar;
+				afSheet = ods_range (b, ad.str (), &sid, &ar) ? book_sheet_by_id (b, sid) : 0;
+				if (afSheet && !afSheet->af.on) { afSheet->af.on = true; afSheet->af.r = ar; afN = 0; }
+				else afSheet = 0;
+			}
+			else if (afSheet && X.isq ("table:filter-condition"))
+			{
+				Buf op, val; X.attr ("table:operator", op); X.attr ("table:value", val);
+				int fc = afSheet->af.r.c0 + X.attr_int ("table:field-number", 0);
+				bool empty = !strcmp (op.str (), "empty");		// (the empty cells shown)
+				if ((!strcmp (op.str (), "=") || empty) && afN < AF_MAXCOLS)
+				{
+					int k = -1; for (int i = 0; i < afN; i++) if (afC[i] == fc) k = i;
+					if (k < 0) { k = afN++; afC[k] = fc; afV[k].clear (); }
+					if (empty) afV[k].put ('\x1F');
+					else if (val.n || X.empty) { afV[k].puts (val.str ()); afV[k].put ('\x1F'); }
+				}
+			}
+			else if (afSheet && X.isq ("table:filter-set-item") && afN)
+			{
+				Buf val; X.attr ("table:value", val);
+				afV[afN - 1].puts (val.str ()); afV[afN - 1].put ('\x1F');
+			}
 			else if (X.isq ("table:named-range") || X.isq ("table:named-expression"))	// a name (in a table: that sheet's own)
 			{
 				Buf nm, addr, of, ef;
@@ -629,13 +656,13 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 				rowRep = iclamp (X.attr_int ("table:number-rows-repeated", 1), 1, MAXR);
 				X.attr ("table:style-name", v);
 				const OStyle *rs = v.n ? find_style (st, nst, v.str ()) : 0;
-				bool hid = X.attr ("table:visibility", v) && strcmp (v.str (), "visible");
+				bool hid = X.attr ("table:visibility", v) && strcmp (v.str (), "visible"), filt = hid && !strcmp (v.str (), "filter");
 				if (rowRep <= 1000 && ((rs && rs->rowH > 0 && !rs->optimal) || hid))
 					for (int k = 0; k < rowRep && row + k < MAXR; k++)
 					{
 						RowInfo *ri = row_add (s, row + k);
 						if (rs && rs->rowH > 0 && !rs->optimal) { ri->fl |= RF_CUSTOM; ri->h = (unsigned short) iclamp (rs->rowH, 1, 2000); }
-						if (hid) ri->fl |= RF_HIDDEN;
+						if (hid) ri->fl |= RF_HIDDEN | (filt ? RF_FILTER : 0);
 					}
 			}
 			else if (s && (X.isq ("table:table-cell") || X.isq ("table:covered-table-cell")))
@@ -738,6 +765,7 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 		}
 		else if (X.ev == X_END)
 		{
+			if (afSheet && X.isq ("table:database-range")) { for (int i = 0; i < afN; i++) af_set (afSheet, afC[i], afV[i].str ()); afSheet = 0; }
 			if (s && X.isq ("table:table-row")) { row += rowRep; rowRep = 1; }
 			else if (X.isq ("table:table")) { if (s) { sheet_touched (s); rows_changed (s); } s = 0; }
 		}

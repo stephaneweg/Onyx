@@ -281,6 +281,8 @@ static bool shift_rect (Rect &r, bool rows, int at, int n)
 	if (z > d1) z += n; else if (z >= d0) z = d0 - 1;
 	return z >= a;
 }
+static void af_clear (Sheet *s);
+static void af_set (Sheet *s, int col, const char *list);
 static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
 {
 	// the charts over the sheet: their anchors move with the cells (placed again as the rows change)
@@ -352,6 +354,18 @@ static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
 	// merges, conditional formats, charts' data
 	for (int i = 0; i < s->nmerge; ) { if (!shift_rect (s->merges[i], rows, at, n) || (s->merges[i].r0 == s->merges[i].r1 && s->merges[i].c0 == s->merges[i].c1)) merge_del (s, i); else i++; }
 	for (int i = 0; i < s->ncf; ) { if (!shift_rect (s->cf[i].r, rows, at, n)) { memmove (s->cf + i, s->cf + i + 1, (s->ncf - i - 1) * sizeof (CondFmt)); s->ncf--; } else i++; }
+	if (s->af.on)
+	{
+		if (!shift_rect (s->af.r, rows, at, n) || (rows && n < 0 && at <= s->af.r.r0 && at - n > s->af.r.r0)) af_clear (s);	// (its headers gone: the filter too)
+		else if (!rows)
+			for (int i = 0; i < s->af.n; )
+			{
+				int &c = s->af.col[i];
+				if (n < 0 && c >= at && c < at - n) { af_set (s, c, 0); continue; }
+				if (c >= at) c += n;
+				i++;
+			}
+	}
 	for (int j = 0; j < b.ns; j++)
 		for (int i = 0; i < b.sh[j]->ncharts; i++)
 		{
@@ -809,6 +823,135 @@ static void merge_range (Book &b, Sheet *s, Rect r)
 }
 static void unmerge_range (Sheet *s, Rect r) { for (int i = 0; i < s->nmerge; ) { if (rect_meets (s->merges[i], r)) merge_del (s, i); else i++; } }
 
+// ---- the AutoFilter ------------------------------------------------------------------------------------------
+// A cell's value as the filter sees it: its text, else what is shown ("1,234.50 €"); "" empty.
+static void af_text (Book &b, Sheet *s, int r, int c, char *out, int cap)
+{
+	Cell *x = s->cells.get (r, c);
+	if (!x || x->kind == K_NONE) { out[0] = 0; return; }
+	if (x->vt == V_STR && x->str) { scpy (out, x->str, cap); return; }
+	Shown sh; cell_shown (b, s, x, sh, 255);
+	scpy (out, sh.text, cap);
+}
+static int af_index (Sheet *s, int col) { for (int i = 0; i < s->af.n; i++) if (s->af.col[i] == col) return i; return -1; }
+// Is v among the values of the list ("a\x1Fb\x1F\x1F": a, b and the empty cells)? (case ignored)
+static bool af_has (const char *list, const char *v)
+{
+	int n = (int) strlen (v);
+	for (const char *p = list; *p; )
+	{
+		const char *e = strchr (p, '\x1F'); if (!e) break;
+		if (e - p == n && !ci_cmp (p, n, v, n)) return true;
+		p = e + 1;
+	}
+	return false;
+}
+// Does the row pass the filters (the column skip's aside)?
+static bool af_row_shown (Book &b, Sheet *s, int r, int skip)
+{
+	char t[256];
+	for (int i = 0; i < s->af.n; i++)
+	{
+		if (s->af.col[i] == skip) continue;
+		af_text (b, s, r, s->af.col[i], t, sizeof t);
+		if (!af_has (s->af.shown[i], t)) return false;
+	}
+	return true;
+}
+// The range grown over the rows filled just below it (typed after the filter was set).
+static void af_grow (Sheet *s)
+{
+	AutoFilter &f = s->af;
+	if (!f.on) return;
+	sheet_bounds (s);
+	for (int r = f.r.r1 + 1; r <= s->maxR; r++)
+	{
+		bool any = false;
+		for (int c = f.r.c0; c <= f.r.c1 && !any; c++) { Cell *x = s->cells.get (r, c); any = x && x->kind != K_NONE; }
+		if (!any) break;
+		f.r.r1 = r;
+	}
+}
+// The range's rows hidden or shown as the filters say.
+static void af_apply (Book &b, Sheet *s)
+{
+	AutoFilter &f = s->af;
+	if (!f.on) return;
+	af_grow (s);
+	for (int r = f.r.r0 + 1; r <= f.r.r1; r++)
+	{
+		bool show = af_row_shown (b, s, r, -1);
+		RowInfo *ri = row_info (s, r);
+		if (show) { if (ri && (ri->fl & RF_FILTER)) { ri->fl &= ~(RF_FILTER | RF_HIDDEN); row_drop_if_plain (s, r); } }
+		else { ri = row_add (s, r); ri->fl |= RF_FILTER | RF_HIDDEN; }
+	}
+	rows_changed (s);
+}
+static void af_clear (Sheet *s)					// the filter taken off: its rows shown
+{
+	for (int i = 0; i < s->nrows; )
+	{
+		RowInfo &ri = s->rows[i];
+		if (!(ri.fl & RF_FILTER)) { i++; continue; }
+		int r = ri.r;
+		ri.fl &= ~(RF_FILTER | RF_HIDDEN);
+		row_drop_if_plain (s, r);
+		if (i < s->nrows && s->rows[i].r == r) i++;
+	}
+	for (int i = 0; i < s->af.n; i++) free (s->af.shown[i]);
+	memset (&s->af, 0, sizeof s->af);
+	rows_changed (s);
+}
+// A column's values shown (list 0: all of them, the column no longer filtered).
+static void af_set (Sheet *s, int col, const char *list)
+{
+	AutoFilter &f = s->af;
+	int i = af_index (s, col);
+	if (!list)
+	{
+		if (i < 0) return;
+		free (f.shown[i]);
+		memmove (f.col + i, f.col + i + 1, (f.n - i - 1) * sizeof (int)); memmove (f.shown + i, f.shown + i + 1, (f.n - i - 1) * sizeof (char *));
+		f.n--;
+		return;
+	}
+	if (i < 0) { if (f.n >= AF_MAXCOLS) return; i = f.n++; f.col[i] = col; f.shown[i] = 0; }
+	free (f.shown[i]); f.shown[i] = sdup (list);
+}
+// The column's values met in the rows the other filters show, each once: numbers first (in order), then the
+// texts, the empty cells last ("" -- the drop-down's "(Empty)").
+struct AfVal { char *t; bool num, blank; double d; };
+static int afval_cmp (const void *pa, const void *pb)
+{
+	const AfVal *a = (const AfVal *) pa, *b = (const AfVal *) pb;
+	if (a->blank != b->blank) return a->blank ? 1 : -1;
+	if (a->num != b->num) return a->num ? -1 : 1;
+	if (a->num) return a->d < b->d ? -1 : a->d > b->d ? 1 : 0;
+	return ci_cmp (a->t, (int) strlen (a->t), b->t, (int) strlen (b->t));
+}
+static int af_values (Book &b, Sheet *s, int col, AfVal **out)
+{
+	af_grow (s);
+	AfVal *v = 0; int n = 0, cap = 0;
+	char t[256];
+	for (int r = s->af.r.r0 + 1; r <= s->af.r.r1; r++)
+	{
+		if (!af_row_shown (b, s, r, col)) continue;
+		af_text (b, s, r, col, t, sizeof t);
+		bool dup = false;
+		for (int i = 0; i < n && !dup; i++) dup = !ci_cmp (v[i].t, (int) strlen (v[i].t), t, (int) strlen (t)) && strlen (v[i].t) == strlen (t);
+		if (dup) continue;
+		if (n == cap) { cap = cap ? cap * 2 : 64; v = (AfVal *) realloc (v, cap * sizeof (AfVal)); }
+		Cell *x = s->cells.get (r, col);
+		v[n].t = sdup (t); v[n].blank = !t[0]; v[n].num = x && x->vt == V_NUM && x->kind != K_NONE; v[n].d = v[n].num ? x->num : 0;
+		n++;
+		if (n >= 5000) break;
+	}
+	if (n > 1) qsort (v, n, sizeof (AfVal), afval_cmp);
+	*out = v;
+	return n;
+}
+
 // ---- sheets -------------------------------------------------------------------------------------------
 struct DropArg { int id; };
 static void drop_one (Sheet *s, Cell *x, void *a) { formula_drop_sheet (x->f, s->id, ((DropArg *) a)->id); x->epoch = 0; }
@@ -867,6 +1010,7 @@ static Sheet *duplicate_sheet (Book &b, int i)
 		d->charts[d->ncharts++] = c;
 	}
 	if (s->ncf) { d->cf = (CondFmt *) malloc (s->ncf * sizeof (CondFmt)); memcpy (d->cf, s->cf, s->ncf * sizeof (CondFmt)); d->ncf = s->ncf; }
+	d->af = s->af; for (int k = 0; k < d->af.n; k++) d->af.shown[k] = sdup (s->af.shown[k]);
 	cols_changed (d); rows_changed (d); sheet_touched (d);
 	return d;
 }

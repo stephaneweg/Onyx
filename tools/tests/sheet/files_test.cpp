@@ -191,6 +191,64 @@ static void cf_tests (const char *dir)
 	book_clear (a); book_clear (b);
 }
 
+// ---- the AutoFilter: rows hidden by the values chosen, kept through the files --------------------------------
+static void af_expect (Book &b, const char *hidden, const char *what)
+{
+	Sheet *s = b.sh[0];
+	char got[64] = "";
+	for (int r = 1; r <= 7; r++) { RowInfo *ri = row_info (s, r); if (ri && (ri->fl & RF_HIDDEN)) { char t[16]; snprintf (t, sizeof t, "%d ", r + 1); strcat (got, t); } }
+	g_checks++;
+	if (strcmp (got, hidden)) { printf ("FAIL %s: rows hidden [%s], [%s] expected\n", what, got, hidden); g_fail++; }
+	g_checks++;
+	if (!s->af.on || s->af.r.r0 != 0 || s->af.r.c0 != 0 || s->af.r.c1 != 1 || s->af.r.r1 != 6) { printf ("FAIL %s: the filter's range %d %d:%d %d (on %d)\n", what, s->af.r.r0, s->af.r.c0, s->af.r.r1, s->af.r.c1, s->af.on); g_fail++; }
+}
+static void af_tests (const char *dir)
+{
+	Book a; book_init (a); book_add_sheet (a, "Fruit");
+	const char *F[6] = { "apple", "pear", "Apple", "fig", "", "kiwi" };
+	set (a, 0, "A1", "Fruit"); set (a, 0, "B1", "Qty");
+	for (int i = 0; i < 6; i++) { char r[16], v[16]; snprintf (r, sizeof r, "A%d", i + 2); if (F[i][0]) set (a, 0, r, F[i]); snprintf (r, sizeof r, "B%d", i + 2); snprintf (v, sizeof v, "%d", i + 1); set (a, 0, r, v); }
+	recalc (a);
+	Sheet *s = a.sh[0];
+	s->af.on = true; s->af.r = Rect { 0, 0, 5, 1 };		// (one row short: grown over the kiwi when applied)
+	AfVal *vals; int nv = af_values (a, s, 0, &vals);
+	{
+		Buf l; for (int i = 0; i < nv; i++) { l.puts (vals[i].t[0] ? vals[i].t : "()"); l.put (' '); free (vals[i].t); }
+		free (vals);
+		g_checks++; if (strcmp (l.str (), "apple fig kiwi pear () ")) { printf ("FAIL filter values: [%s]\n", l.str ()); g_fail++; }
+	}
+	af_set (s, 0, "apple\x1F\x1F");					// apples (any case) and the empty cells
+	af_set (s, 1, "1\x1F" "3\x1F" "5\x1F" "7\x1F");			// odd quantities
+	af_apply (a, s);
+	af_expect (a, "3 5 7 ", "filter");
+	const char *why = 0;
+	char p1[256]; snprintf (p1, sizeof p1, "%s/af.xlsx", dir);
+	if (!book_save (a, p1, &why)) { printf ("FAIL af save: %s\n", why); g_fail++; return; }
+	Book b; book_init (b);
+	if (!book_load (b, p1, &why)) { printf ("FAIL af load: %s\n", why); g_fail++; return; }
+	af_expect (b, "3 5 7 ", "filter, .xlsx");
+	g_checks++; if (b.sh[0]->af.n != 2) { printf ("FAIL filter, .xlsx: %d columns filtered\n", b.sh[0]->af.n); g_fail++; }
+	recalc (b); af_apply (b, b.sh[0]); af_expect (b, "3 5 7 ", "filter, .xlsx, applied again");
+	af_clear (b.sh[0]);
+	g_checks++; if (b.sh[0]->af.on || b.sh[0]->nrows) { printf ("FAIL filter cleared: on %d, %d rows kept\n", b.sh[0]->af.on, b.sh[0]->nrows); g_fail++; }
+	if (system ("which soffice > /dev/null 2>&1") == 0)
+	{
+		char cmd[512]; snprintf (cmd, sizeof cmd, "cd %s && soffice --headless --convert-to ods --outdir lo4 af.xlsx > /dev/null 2>&1 && soffice --headless --convert-to xlsx:\"Calc MS Excel 2007 XML\" --outdir lo4 lo4/af.ods > /dev/null 2>&1", dir);
+		if (system (cmd) == 0)
+		{
+			char po[256], px[256]; snprintf (po, sizeof po, "%s/lo4/af.ods", dir); snprintf (px, sizeof px, "%s/lo4/af.xlsx", dir);
+			Book c; book_init (c);
+			if (!book_load (c, po, &why)) { printf ("FAIL af LibreOffice ods load: %s\n", why); g_fail++; }
+			else { af_expect (c, "3 5 7 ", "filter, LibreOffice's .ods"); recalc (c); af_apply (c, c.sh[0]); af_expect (c, "3 5 7 ", "filter, LibreOffice's .ods, applied again"); }
+			Book d; book_init (d);
+			if (!book_load (d, px, &why)) { printf ("FAIL af LibreOffice xlsx load: %s\n", why); g_fail++; }
+			else { af_expect (d, "3 5 7 ", "filter, LibreOffice's .xlsx"); recalc (d); af_apply (d, d.sh[0]); af_expect (d, "3 5 7 ", "filter, LibreOffice's .xlsx, applied again"); }
+			book_clear (c); book_clear (d);
+		}
+	}
+	book_clear (a); book_clear (b);
+}
+
 int main (int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : "/tmp";
@@ -308,6 +366,7 @@ int main (int argc, char **argv)
 	}
 	book_clear (a); book_clear (b); book_clear (c); book_clear (d);
 	cf_tests (dir);
+	af_tests (dir);
 	for (int i = 0; i < CF_SLOTS; i++) cfstat_free (g_cfs[i]);
 	for (int i = 0; i < g_fcacheN; i++) { free (g_fcache[i].code); free (g_fcache[i].f); }
 	printf ("%d checks, %d failed\n", g_checks, g_fail);
