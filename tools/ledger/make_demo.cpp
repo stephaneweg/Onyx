@@ -240,7 +240,7 @@ int main (int argc, char **argv)
 	be_vat (6510045L, v); int sAcct = party (PK_SUPPLIER, "Fiduciaire Martin SRL", "Rue Royale 150", "1000", "Bruxelles", "BE", v, PR_BE, 30, "cabinet@fidumartin.be", "", "613200", "A21");
 	be_vat (4539004L, v); int sIns = party (PK_SUPPLIER, "Assurances du Midi SA", "Rue du Midi 101", "1000", "Bruxelles", "BE", v, PR_BE, 30, "pro@assurancesdumidi.be", "", "614600", "A0");
 	be_vat (4118920L, v); int sPress = party (PK_SUPPLIER, "Offset Benelux SA", "Zoning Nord 8", "1400", "Nivelles", "BE", v, PR_BE, 30, "info@offsetbenelux.be", "", "230000", "A21");
-	be_vat (4602345L, v); int sPrint = party (PK_SUPPLIER, "Imprimerie Snel SRL", "Rue de l'Industrie 22", "4400", "Flémalle", "BE", v, PR_BE, 30, "devis@snel.be", "", "603000", "A21");
+	be_vat (4602345L, v); int sPrint = party (PK_SUPPLIER, "Imprimerie Snel SRL", "Rue de l'Industrie 22", "4400", "Fl\xE9" "malle", "BE", v, PR_BE, 30, "devis@snel.be", "", "603000", "A21");
 	(void) sPrint;
 
 	// ---- the opening balances (1 January 2025) --------------------------------------------------------------------------------------

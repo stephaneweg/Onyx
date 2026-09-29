@@ -125,13 +125,14 @@ public:
 	void subtitle (char *out, int cap) override
 	{
 		if (!g_b.nacc) { scpy (out, "The accounts of a Belgian company or self-employed person: invoices, VAT, bank, reports.", cap); return; }
-		scpy (out, g_b.name[0] ? g_b.name : "(the company)", cap);
+		// (the company's name: at the top of the side bar)
 		if (g_year >= 0 && g_year < g_b.nyr)
 		{
 			char a[16], b[16]; date_show (yfrom (), a); date_show (yto (), b);
-			scat (out, "  \xB7  fiscal year ", cap); scat (out, a, cap); scat (out, " - ", cap); scat (out, b, cap);
+			scpy (out, "Fiscal year ", cap); scat (out, a, cap); scat (out, " - ", cap); scat (out, b, cap);
 			if (g_b.yr[g_year].closed) scat (out, " (closed)", cap);
 		}
+		else scpy (out, g_b.name[0] ? g_b.name : "(the company)", cap);
 	}
 	void layoutWelcome ()
 	{
@@ -411,7 +412,7 @@ public:
 		{
 			g->setColumns (6);
 			g->setColumn (0, "No.", 78); g->setColumn (1, "Date", 98); g->setColumn (2, "Description", 200); g->setColumn (3, "Lines", 60, GRID_RIGHT);
-			g->setColumn (4, "Amount", 120, GRID_RIGHT); g->setColumn (5, "Kind", 110);
+			g->setColumn (4, "Amount", 120, GRID_RIGHT); g->setColumn (5, "Kind", 140);
 		}
 		g->sortCol = 0; g->sortDesc = true;
 		g->cellText = cell_text_cb; g->cellDraw = cell_draw_cb; g->onActivate = on_open; g->onSort = on_sort; g->onContext = on_context;
@@ -435,9 +436,8 @@ public:
 	{
 		out[0] = '\0'; scat_num (out, nrows, cap_); scat (out, nrows == 1 ? " document" : " documents", cap_);
 		char a[32];
-		if (id == P_SALES || id == P_PURCH)
+		if (id == P_SALES || id == P_PURCH)		// (their totals: at the foot)
 		{
-			scat (out, "  \xB7  total ", cap_); scat (out, money_s (tC, a), cap_);
 			if (nOpen) { scat (out, "  \xB7  ", cap_); scat_num (out, nOpen, cap_); scat (out, " open", cap_); }
 			if (nLate) { scat (out, ", ", cap_); scat_num (out, nLate, cap_); scat (out, " overdue", cap_); }
 		}

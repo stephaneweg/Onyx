@@ -169,9 +169,9 @@ static const char *grid_short (int g)
 	case 48: return "Credit notes 44/46"; case 49: return "Other credit notes";
 	case 81: return "Goods, materials"; case 82: return "Services"; case 83: return "Investments"; case 84: return "Credit notes 86/88";
 	case 85: return "Other credit notes"; case 86: return "EU acquisitions"; case 87: return "VAT due by you"; case 88: return "EU services";
-	case 54: return "VAT on 01, 02, 03"; case 55: return "VAT on 86, 88"; case 56: return "VAT on 87"; case 57: return "Import VAT";
+	case 54: return "VAT on 01-03"; case 55: return "VAT on 86, 88"; case 56: return "VAT on 87"; case 57: return "Import VAT";
 	case 61: return "For the State"; case 63: return "On credit notes"; case 59: return "Deductible VAT"; case 62: return "For you";
-	case 64: return "On credit notes"; case 71: return "Due to the State"; case 72: return "Due by the State"; case 91: return "December advance";
+	case 64: return "On credit notes"; case 71: return "Due to State"; case 72: return "Due by State"; case 91: return "December advance";
 	}
 	return grid_name (g);
 }

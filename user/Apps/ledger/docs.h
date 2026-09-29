@@ -207,9 +207,9 @@ public:
 		g = new EditGrid (16, 238, W - 32, height - 238 - 150, this);
 		g->anchor = ANCHOR_FILL;
 		g->addCol ("Account", 200, EK_ACCOUNT, false, AF_NOPARTY, "7");
-		g->addCol ("Description", 190, EK_TEXT);
+		g->addCol ("Description", 160, EK_TEXT);
 		g->addCol ("Excl. VAT", 104, EK_MONEY, true);
-		g->addCol ("VAT code", 84, EK_VAT, false, VS_SALES);
+		g->addCol ("VAT code", 116, EK_VAT, false, VS_SALES);
 		g->addCol ("VAT", 90, EK_MONEY, true);
 		g->addCol ("Total", 104, EK_READ, true);
 		g->flex = 0;
@@ -693,9 +693,21 @@ public:
 		st_free (s); st_init (s);
 		s.journal = journal; s.date = default_date ();
 		setup (journal);
-		// its description: the next statement's number
-		int n = 1; for (int i = 0; i < g_b.ne; i++) if (g_b.e[i].journal == journal && year_of (g_b, g_b.e[i].date) == year_of (g_b, s.date)) n++;
-		char t[48] = "Statement "; scat_num (t, n, sizeof t); scpy (s.text, t, sizeof s.text);
+		// its description: the journal's last statement's, its number one more ("Statement 42" -> "Statement 43":
+		// the bank's numbering), else the year's next one
+		char t[96] = "";
+		{
+			int last = -1;
+			for (int i = 0; i < g_b.ne; i++)
+				if (g_b.e[i].journal == journal && (last < 0 || g_b.e[i].date > g_b.e[last].date || (g_b.e[i].date == g_b.e[last].date && g_b.e[i].no > g_b.e[last].no))) last = i;
+			if (last >= 0) number_next (g_b.e[last].text, t, sizeof t);
+		}
+		if (!t[0])
+		{
+			int n = 1; for (int i = 0; i < g_b.ne; i++) if (g_b.e[i].journal == journal && year_of (g_b, g_b.e[i].date) == year_of (g_b, s.date)) n++;
+			scpy (t, "Statement ", sizeof t); scat_num (t, n, sizeof t);
+		}
+		scpy (s.text, t, sizeof s.text);
 		st_add (s);
 		computeOld ();
 		fields ();
@@ -769,7 +781,12 @@ public:
 				doc_ref (l.pay[0].entry, out, cap);
 				if (l.npay > 1) { scat (out, " +", cap); scat_num (out, l.npay - 1, cap); }
 			}
-			else if (l.match) scpy (out, "(matched)", cap);
+			else if (l.match)					// (saved: what it is matched with)
+			{
+				int first = 0, n = grouped (l, &first);
+				if (n) { doc_ref (first, out, cap); if (n > 1) { scat (out, " +", cap); scat_num (out, n - 1, cap); } }
+				else scpy (out, "(matched)", cap);
+			}
 			break;
 		}
 	}
@@ -857,6 +874,20 @@ public:
 		return "";
 	}
 	bool payHas (const StLine &l, int entryId, int line) { for (int i = 0; i < l.npay; i++) if (l.pay[i].entry == entryId && l.pay[i].line == line) return true; return false; }
+	// A saved movement's matching: the lines of other documents in its group (their count, the first's entry id).
+	int grouped (const StLine &l, int *first)
+	{
+		int n = 0; *first = 0;
+		if (!l.match) return 0;
+		for (int i = 0; i < g_b.ne; i++)
+		{
+			if (g_b.e[i].id == s.id) continue;
+			for (int k = 0; k < g_b.e[i].nl; k++) if (g_b.e[i].l[k].match == l.match) { if (!n) *first = g_b.e[i].id; n++; }
+		}
+		return n;
+	}
+	// Is an item in the (saved) movement's matching group?
+	bool inGroup (const StLine &l, const LineRef &r) { return l.match && g_b.e[r.e].l[r.l].match == l.match; }
 	// Is that item already paid by another movement of this statement?
 	bool paidElsewhere (const LineRef &r, int except)
 	{
@@ -891,12 +922,13 @@ public:
 				{
 					const Line &x = e.l[k];
 					if (x.party != l.party || !acc_party (g_b, x.account) || !x.amount) continue;
-					bool mine = payHas (l, e.id, k);
+					bool mine = payHas (l, e.id, k) || (l.match && x.match == l.match);	// (a saved movement's: what it is matched with)
 					if (x.match && !mine) continue;
 					open[nopen].e = i; open[nopen].l = k; nopen++;
 				}
 			}
 		}
+		items->emptyText = r >= 0 && r < s.nl && s.l[r].party ? "Nothing open for this party: its documents are paid." : "Choose a movement's party: its open invoices show here.";
 		items->setRows (nopen);
 		invalidate (true);
 	}
@@ -923,8 +955,8 @@ public:
 		if (col == 0)
 		{
 			bool on = r >= 0 && r < p->s.nl && p->payHas (p->s.l[r], g_b.e[p->open[row].e].id, p->open[row].l);
-			bool else_ = p->paidElsewhere (p->open[row], r);
-			wk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, on || else_, else_ ? WK_DISABLED : WK_NORMAL);
+			bool else_ = p->paidElsewhere (p->open[row], r), grp = r >= 0 && r < p->s.nl && p->inGroup (p->s.l[r], p->open[row]);
+			wk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, on || else_ || grp, else_ || grp ? WK_DISABLED : WK_NORMAL);
 			return true;
 		}
 		if (col == 5)
@@ -952,6 +984,7 @@ public:
 		if (g->editing ()) g->commit ();
 		StLine &l = s.l[r];
 		if (paidElsewhere (open[row], r)) { status ("Another movement of this statement pays it"); return; }
+		if (inGroup (l, open[row])) { status ("Matched with this movement: to undo it, Unmatch in the party's account"); return; }
 		money before = 0; for (int i = 0; i < l.npay; i++) { int x = entry_index (g_b, l.pay[i].entry); if (x >= 0) before += g_b.e[x].l[l.pay[i].line].amount; }
 		int id = g_b.e[open[row].e].id, ln = open[row].l;
 		bool had = false;

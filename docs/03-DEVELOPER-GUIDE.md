@@ -705,7 +705,7 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > CODA import's queue, the menus). **Host test**: `sh tools/tests/run_ledger_test.sh`
 > (`tools/tests/ledger/engine_test.cpp`: money, dates, the checks, invoices and credit notes, a
 > statement, the VAT grids, matching, the file byte for byte, the reports, the year's end, the
-> commercial documents, CODA read and made a statement, a SEPA file — 194 checks, ASan + UBSan —; the
+> commercial documents, CODA read and made a statement, a SEPA file — 200 checks, ASan + UBSan —; the
 > XML files validated by `xmllint` against the official schemas in `tools/tests/ledger/xsd/`: Intervat
 > v0.9, ISO 20022 `pain.001.001.09`). **Generators**: `tools/ledger/make_demo.cpp` (the demo company
 > through the engine itself — `sdcard/docs/demo-company.ledger` — and its next CODA statement,
@@ -1579,6 +1579,18 @@ barwidth = 40
   sources, for the PC).
   (`nintendoemu.png` and `arkanoid.png` — an emulator, a BASIC program — still come from the
   older, simulated renderer [`tools/screenshot/render.py`](../tools/screenshot/render.py).)
+- **Manuals** (a big app's user manual, for its users): `sdcard/manuals/<app>/<Name>.md`, its pictures
+  in `images/` and its PDF `<Name>.pdf` next to it (the folder is `manuals`, not `Docs`: it would be the
+  same folder as `docs/` on Windows' and FAT's case-insensitive disks). Written in English, in a small
+  Markdown subset (headings, paragraphs, bold / italic / code, links, lists, quotes, tables, figures — a
+  picture alone in its paragraph, an italic line after it its caption), the one
+  [`tools/manuals/build_manuals.py`](../tools/manuals/build_manuals.py) documents at its top. Its
+  pictures: a script per manual, [`tools/manuals/ledger_shots.sh`](../tools/manuals/ledger_shots.sh)
+  (as `shots.sh`, the demo's data, the stand-in kernel's fixed day: the same pictures every time; Writer
+  run on what Ledger printed), [`annotate.py`](../tools/manuals/annotate.py) adding numbered callouts in
+  margins. The PDF: `python tools/manuals/build_manuals.py [its .md]` — Python only; a headless Chrome,
+  Chromium or Edge prints it (`$CHROME` to choose one), A4, the docs' colours, Selawik
+  (`sdcard/res/fonts`), bookmarks from the headings. Ledger's: `sdcard/manuals/ledger/Ledger.md`.
 - **Word/PDF exports**: [`docs/build_docs.py`](build_docs.py) converts each `.md` in
   `docs/` into `.docx` (via `pandoc`) then into `.pdf` (via Word/`docx2pdf`), in
   `docs/exports/`. Run `python docs/build_docs.py` after any modification to the `.md` files.

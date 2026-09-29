@@ -152,6 +152,22 @@ static void vat_prefix_of (const char *country, char *out) { if (country[0] == '
 static char up (char c) { return c >= 'a' && c <= 'z' ? (char) (c - 32) : c; }
 static bool digit (char c) { return c >= '0' && c <= '9'; }
 static bool alnum (char c) { return digit (c) || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
+// A text ending in a number, that number one more ("Extrait 042" -> "Extrait 043") -> out ("" when it has none).
+static void number_next (const char *s, char *out, int cap)
+{
+	out[0] = '\0';
+	int n = slen (s), k = n;
+	while (k > 0 && digit (s[k - 1])) k--;
+	if (k == n || n - k > 9) return;
+	long long v = 0; for (int i = k; i < n; i++) v = v * 10 + (s[i] - '0');
+	char d[24]; itoa10 (v + 1, d);
+	int w = n - k, dl = slen (d);
+	if (k + (w > dl ? w : dl) >= cap) return;
+	int o = 0; for (int i = 0; i < k; i++) out[o++] = s[i];
+	for (int i = dl; i < w; i++) out[o++] = '0';				// (its leading zeros kept)
+	for (int i = 0; i < dl; i++) out[o++] = d[i];
+	out[o] = '\0';
+}
 // A VAT number as written by anyone ("be 0123.456.789", "0123 456 789") -> "BE0123456789": capitals,
 // no separators; ten digits alone taken as Belgian (nine: an old one, a 0 before).
 static void vat_normalize (const char *in, char *out, int cap)
