@@ -132,6 +132,12 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   Onyx frames' title buttons pressed on the Pi. rdpd sends the ALPHA windows and the frames in 32
   bits. The kernel bumps a window's ChromeGen again at its first present after a frame redraw
   (rdpd could read a half-drawn frame: a title bar without buttons). `eyes` presents now.
+- **The Game Library** redone as the File Viewer (a sidebar: All Games, the systems with their
+  icons and counts, the folders; a path bar; the cards filtered on the system chosen).
+- **Wallpaper patterns**: eight abstract grey pictures (`sdcard/wallpapers/*.png`, 1024 x 768,
+  made by `tools/gen_wallpapers.py`) that the Theme applet colours (`mode = pattern`: the grey
+  multiplies the gradient of the two colours; `wallpaper.h` `wp_grey_cover` / `wp_multiply`,
+  painted by `voronoy`). wtk's `Dropdown` opens upward when it must.
 - **Open question for the user**: *Gamelib without its title buttons* — not reproduced (its
   frame is drawn like every Root app's, in the simulator too); the ChromeGen fix above covers
   the Onyx Remote case (a frame read while being drawn). Ask where it showed (the Pi's screen

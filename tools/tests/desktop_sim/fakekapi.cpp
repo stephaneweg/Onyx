@@ -32,7 +32,8 @@
 // pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
-// SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below).
+// SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
+// SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
 //
 #include <sys/mman.h>
 #include <stdio.h>
@@ -382,6 +383,19 @@ static unsigned *wallpaper_buffer (int *w, int *h)
 	if (w) *w = 1024; if (h) *h = 768;
 	return buf;
 }
+// the wallpaper made live (voronoy): SIM_WALLDUMP=FILE.elsm -- the buffer written there (a dump)
+static void wallpaper_commit (void)
+{
+	const char *f = getenv ("SIM_WALLDUMP");
+	int w, h; unsigned *b = wallpaper_buffer (&w, &h);
+	FILE *fp = f ? fopen (f, "wb") : 0;
+	if (!fp) return;
+	int hdr[5] = { 0x4D534C45, w, h, 0, 0 };			// "ELSM" w h x y
+	fwrite (hdr, 4, 5, fp);
+	for (int i = 0; i < w * h; i++) { unsigned c = b[i] & 0x00FFFFFFu; fwrite (&c, 4, 1, fp); }
+	fclose (fp);
+	fprintf (stderr, "sim: the wallpaper -> %s\n", f);
+}
 static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
 static int get_keymap (char *b, unsigned n) { if (b && n) snprintf (b, n, "FR"); return 2; }
 // (more of the system, answered simply: enough for the apps to show themselves)
@@ -640,7 +654,7 @@ static void setup (void)
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
 	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
-	T->wallpaper_buffer = wallpaper_buffer;
+	T->wallpaper_buffer = wallpaper_buffer; T->wallpaper_commit = wallpaper_commit;
 	T->get_keymap = get_keymap; T->set_wheel_speed = set_wheel; T->get_wheel_speed = get_wheel;
 	T->kill = h_kill; T->set_keymap_data = set_keymap_data;
 	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;

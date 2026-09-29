@@ -9,8 +9,9 @@
 // the desktop. The buttons, the fields and the menu bar may follow the window's colour
 // (Automatic). The scheme: the named colours of the window in front (Peach, Steel, Sage, Brick,
 // Slate); the frames' outline. Below, the DESKTOP: its wallpaper (wallpaper.h) -- Voronoi cells, a
-// gradient, bubbles, a colour or a picture -- its colours, the gradient's direction, the cells'
-// number, the picture's file and how it fills the screen.
+// gradient, bubbles, a colour, a picture, or a pattern (one of SD:/wallpapers' grey pictures,
+// coloured by the two colours: multiplied) -- its colours, the gradient's direction, the cells'
+// number, the picture's file and how it fills the screen, the pattern.
 //
 // Apply writes SD:/etc/theme.txt and SD:/etc/wallpaper.ini, paints the wallpaper again
 // (apps/voronoy), gives the dock (DOCK_MSG_RELOAD), the menu bar and the agenda the new colours at
@@ -36,7 +37,7 @@ enum { IT_ACTIVE, IT_INACTIVE, IT_WINDOW, IT_BUTTON, IT_FIELD, IT_ACCENT, IT_MEN
 static const char *const ITEM_NAME[IT_N] = { "Window in front: frame", "Windows behind: frame", "Windows: content",
 	"Buttons", "Text fields and lists", "Selection and focus", "Menu bar", "Dock", "Desktop" };
 static const char *const OUTLINES[3] = { "None", "Dark", "Black" };
-static const char *const MODES[WP_NMODES] = { "Voronoi cells", "Gradient", "Bubbles", "Solid colour", "Picture" };
+static const char *const MODES[WP_NMODES] = { "Voronoi cells", "Gradient", "Bubbles", "Solid colour", "Picture", "Pattern" };
 static const char *const DIRS[2] = { "Top to bottom", "Left to right" };
 static const char *const STYLES[2] = { "Fill the screen", "Tile" };
 
@@ -88,12 +89,86 @@ static int  g_nhot;
 static unsigned g_wall[PVW * PVH];		// the wallpaper, small (made again when it changes)
 static bool g_wallOk;
 static unsigned *g_pic; static int g_picW, g_picH; static char g_picPath[200];
+// the patterns (SD:/wallpapers: their files, their names), the one shown's grey at the preview's size
+#define MAXPAT	16
+static char g_patFile[MAXPAT][48], g_patName[MAXPAT][24];
+static const char *g_patItems[MAXPAT];
+static int g_npat;
+static unsigned char g_patGrey[PVW * PVH]; static char g_patPath[200]; static bool g_patOk;
+
+static void scan_patterns (void)
+{
+	g_npat = 0;
+	void *d = kapi_opendir (WALLPAPER_DIR);
+	struct kapi_dirent e;
+	while (d && g_npat < MAXPAT && kapi_readdir (d, &e))
+	{
+		if (e.is_dir || e.name[0] == '.' || !img_is_image_name (e.name)) continue;
+		int n = 0; for (; e.name[n] && n < 47; n++) g_patFile[g_npat][n] = e.name[n];
+		g_patFile[g_npat][n] = 0;
+		int k = 0;					// "low-poly.png" -> "Low Poly"
+		for (; e.name[k] && e.name[k] != '.' && k < 23; k++)
+		{
+			char c = e.name[k] == '-' || e.name[k] == '_' ? ' ' : e.name[k];
+			if ((k == 0 || g_patName[g_npat][k - 1] == ' ') && c >= 'a' && c <= 'z') c = (char) (c - 32);
+			g_patName[g_npat][k] = c;
+		}
+		g_patName[g_npat][k] = 0;
+		g_npat++;
+	}
+	if (d) kapi_closedir (d);
+	for (int i = 1; i < g_npat; i++)				// by name
+		for (int j = i; j > 0; j--)
+		{
+			const char *a = g_patName[j - 1], *b = g_patName[j]; int c = 0;
+			while (*a && *a == *b) a++, b++;
+			c = (unsigned char) *a - (unsigned char) *b;
+			if (c <= 0) break;
+			char t[48]; for (int q = 0; q < 48; q++) t[q] = g_patFile[j][q];
+			for (int q = 0; q < 48; q++) g_patFile[j][q] = g_patFile[j - 1][q];
+			for (int q = 0; q < 48; q++) g_patFile[j - 1][q] = t[q];
+			char u[24]; for (int q = 0; q < 24; q++) u[q] = g_patName[j][q];
+			for (int q = 0; q < 24; q++) g_patName[j][q] = g_patName[j - 1][q];
+			for (int q = 0; q < 24; q++) g_patName[j - 1][q] = u[q];
+		}
+	for (int i = 0; i < g_npat; i++) g_patItems[i] = g_patName[i];
+	if (g_npat == 0) { g_patItems[0] = "(none in SD:/wallpapers)"; }
+}
+// Which pattern the wallpaper names (its file in SD:/wallpapers), -1 none of them.
+static int pattern_index (void)
+{
+	const char *p = g_wp.pattern, *f = p;
+	for (const char *q = p; *q; q++) if (*q == '/') f = q + 1;
+	for (int i = 0; i < g_npat; i++)
+	{
+		const char *a = g_patFile[i], *b = f;
+		while (*a && (*a | 32) == (*b | 32)) a++, b++;
+		if (!*a && !*b) return i;
+	}
+	return -1;
+}
 
 static void add_hot (int x, int y, int w, int h, int it) { if (g_nhot < 16) g_hot[g_nhot++] = { x, y, w, h, it }; }
 
 static void make_wall (void)
 {
 	g_wallOk = true;
+	if (g_wp.mode == WP_PATTERN)				// the gradient times the pattern's grey
+	{
+		wp_paint (g_wall, PVW, PVH, PVW, g_wp, 12345, 1, 0);
+		bool same = true;
+		for (int i = 0; same && (g_patPath[i] || g_wp.pattern[i]); i++) same = g_patPath[i] == g_wp.pattern[i];
+		if (!same)
+		{
+			int n = 0; for (; g_wp.pattern[n] && n < (int) sizeof g_patPath - 1; n++) g_patPath[n] = g_wp.pattern[n];
+			g_patPath[n] = 0;
+			ImgFrames im;
+			g_patOk = g_wp.pattern[0] && img_load (g_wp.pattern, &im) && im.w > 0 && im.h > 0;
+			if (g_patOk) { wp_grey_cover (im.px[0], im.w, im.h, g_patGrey, PVW, PVH); img_free (&im); }
+		}
+		if (g_patOk) wp_multiply (g_wall, PVW, PVH, PVW, g_patGrey);
+		return;
+	}
 	if (g_wp.mode != WP_IMAGE) { wp_paint (g_wall, PVW, PVH, PVW, g_wp, 12345, 1, 0); return; }
 	for (int i = 0; i < PVW * PVH; i++) g_wall[i] = g_wp.c1;
 	bool same = true;
@@ -289,7 +364,8 @@ static Palette   *g_pal;
 static Current   *g_curbox;
 static Dropdown  *g_ddItem, *g_ddOutline, *g_ddMode, *g_ddDir, *g_ddStyle;
 static Checkbox  *g_auto;
-static Label     *g_lbPoints, *g_lbC2, *g_lbDir, *g_lbImage, *g_lbStyle, *g_lbC1, *g_status;
+static Label     *g_lbPoints, *g_lbC2, *g_lbDir, *g_lbImage, *g_lbStyle, *g_lbC1, *g_lbPattern, *g_status;
+static Dropdown  *g_ddPattern;
 static ColorPicker *g_pkC1, *g_pkC2;
 static NumericUpDown *g_nuPoints;
 static Textbox   *g_tbImage;
@@ -381,10 +457,11 @@ bool Palette::onMouse (int mx, int my, int bl, int, int, int)
 static void show_desktop_controls (void)
 {
 	int m = g_wp.mode;
-	bool pts = m == WP_VORONOI, two = m == WP_GRADIENT || m == WP_BUBBLES, img = m == WP_IMAGE;
+	bool pts = m == WP_VORONOI, two = m == WP_GRADIENT || m == WP_BUBBLES || m == WP_PATTERN, img = m == WP_IMAGE;
 	g_lbPoints->hidden = g_nuPoints->hidden = !pts;
 	g_lbC2->hidden = g_pkC2->hidden = g_lbDir->hidden = g_ddDir->hidden = !two;
 	g_lbImage->hidden = g_tbImage->hidden = g_btBrowse->hidden = g_lbStyle->hidden = g_ddStyle->hidden = !img;
+	g_lbPattern->hidden = g_ddPattern->hidden = m != WP_PATTERN;
 	g_lbC1->setText (m == WP_VORONOI ? "Colour" : m == WP_IMAGE ? "Around" : two ? "Colour 1" : "Colour");
 	if (g_root) g_root->invalidate (true);
 }
@@ -409,6 +486,8 @@ static void load_current (void)
 	g_nuPoints->value = g_wp.points; g_nuPoints->invalidate (true);
 	g_pkC2->color = g_wp.c2; g_pkC2->invalidate (true);
 	g_tbImage->setText (g_wp.image);
+	int pi = pattern_index ();
+	g_ddPattern->sel = pi >= 0 ? pi : 0; g_ddPattern->invalidate (true);
 	show_desktop_controls ();
 	refresh (true);
 }
@@ -449,6 +528,13 @@ static void on_style (Widget &w) { g_wp.tile = ((Dropdown &) w).sel == 1; refres
 static void on_points (Widget &w) { g_wp.points = ((NumericUpDown &) w).value; refresh (true); }
 static void on_c1 (Widget &w) { g_wp.c1 = ((ColorPicker &) w).color; if (g_item == IT_DESKTOP) g_curbox->invalidate (true); refresh (true); }
 static void on_c2 (Widget &w) { g_wp.c2 = ((ColorPicker &) w).color; refresh (true); }
+static void on_pattern (Widget &w)
+{
+	int i = ((Dropdown &) w).sel;
+	if (i < 0 || i >= g_npat) return;
+	int n = 0; ax_strcat (g_wp.pattern, sizeof g_wp.pattern, &n, WALLPAPER_DIR "/"); ax_strcat (g_wp.pattern, sizeof g_wp.pattern, &n, g_patFile[i]);
+	refresh (true);
+}
 static void on_image (Widget &)
 {
 	int n = 0; while (g_tbImage->text[n] && n < (int) sizeof g_wp.image - 1) { g_wp.image[n] = g_tbImage->text[n]; n++; }
@@ -465,9 +551,15 @@ static void on_browse (Widget &)
 static void on_apply (Widget &) { apply (); }
 static void on_discard (Widget &) { load_current (); g_status->setText (""); }
 
+// The Desktop box's controls are the window's children, placed over the box (a child is clipped to
+// its parent: the drop-downs' lists open past the box, upward when they must).
+static Root *g_root_; static GroupBox *g_gd;
+static void desk_add (Widget *w) { w->left += g_gd->left; w->top += g_gd->top; g_root_->addChild (w); }
+
 int main (void)
 {
 	Root root (W, H, "Theme");
+	scan_patterns ();
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	wk_theme_get (g_saved);
@@ -490,19 +582,21 @@ int main (void)
 
 	GroupBox *gd = new GroupBox (X + 10, 272, W - 20, 150, "Desktop");
 	root.addChild (gd);
+	g_root_ = &root; g_gd = gd;			// (its controls: the window's, over the box -- desk_add)
 	int y0 = gd->contentTop () + 4;
-	gd->addChild (new Label (12, y0 + 4, 84, 20, "Wallpaper", C_TEXT, gd->bg));
-	g_lbC1 = new Label (12, y0 + 44, 80, 20, "Colour", C_TEXT, gd->bg); gd->addChild (g_lbC1);
+	desk_add (new Label (12, y0 + 4, 84, 20, "Wallpaper", C_TEXT, gd->bg));
+	g_lbC1 = new Label (12, y0 + 44, 80, 20, "Colour", C_TEXT, gd->bg); desk_add (g_lbC1);
 	g_pkC1 = new ColorPicker (96, y0 + 42, 50, 24, g_wp.c1, on_c1); g_pkC1->tip = "The palette; Item: Desktop, Custom... for any colour";
-	g_lbC2 = new Label (170, y0 + 44, 80, 20, "Colour 2", C_TEXT, gd->bg); gd->addChild (g_lbC2);
+	g_lbC2 = new Label (170, y0 + 44, 80, 20, "Colour 2", C_TEXT, gd->bg); desk_add (g_lbC2);
 	g_pkC2 = new ColorPicker (250, y0 + 42, 50, 24, g_wp.c2, on_c2);
-	g_lbDir = new Label (330, y0 + 44, 80, 20, "Direction", C_TEXT, gd->bg); gd->addChild (g_lbDir);
-	g_lbPoints = new Label (170, y0 + 44, 80, 20, "Cells", C_TEXT, gd->bg); gd->addChild (g_lbPoints);
-	g_nuPoints = new NumericUpDown (250, y0 + 40, 70, 28, 4, 64, 28, 1, on_points); gd->addChild (g_nuPoints);
-	g_lbImage = new Label (12, y0 + 84, 80, 20, "Picture", C_TEXT, gd->bg); gd->addChild (g_lbImage);
-	g_tbImage = new Textbox (96, y0 + 80, 360, 28, "", on_image); gd->addChild (g_tbImage);
-	g_btBrowse = new Button (464, y0 + 79, 100, 30, "Browse...", on_browse); gd->addChild (g_btBrowse);
-	g_lbStyle = new Label (170, y0 + 44, 80, 20, "Style", C_TEXT, gd->bg); gd->addChild (g_lbStyle);
+	g_lbDir = new Label (330, y0 + 44, 80, 20, "Direction", C_TEXT, gd->bg); desk_add (g_lbDir);
+	g_lbPoints = new Label (170, y0 + 44, 80, 20, "Cells", C_TEXT, gd->bg); desk_add (g_lbPoints);
+	g_nuPoints = new NumericUpDown (250, y0 + 40, 70, 28, 4, 64, 28, 1, on_points); desk_add (g_nuPoints);
+	g_lbImage = new Label (12, y0 + 84, 80, 20, "Picture", C_TEXT, gd->bg); desk_add (g_lbImage);
+	g_tbImage = new Textbox (96, y0 + 80, 360, 28, "", on_image); desk_add (g_tbImage);
+	g_btBrowse = new Button (464, y0 + 79, 100, 30, "Browse...", on_browse); desk_add (g_btBrowse);
+	g_lbStyle = new Label (170, y0 + 44, 80, 20, "Style", C_TEXT, gd->bg); desk_add (g_lbStyle);
+	g_lbPattern = new Label (12, y0 + 84, 80, 20, "Pattern", C_TEXT, gd->bg); desk_add (g_lbPattern);
 
 	g_status = new Label (X + 12, H - 38, 400, 24, "", C_DIS, root.bg);
 	root.addChild (g_status);
@@ -512,11 +606,12 @@ int main (void)
 	// the drop-downs and the pickers last: their lists open over what is below them
 	g_ddOutline = new Dropdown (rx + 64, 236, 130, 28, OUTLINES, 3, 1, on_outline); root.addChild (g_ddOutline);
 	g_ddItem = new Dropdown (rx + 64, 82, 268, 28, ITEM_NAME, IT_N, 0, on_item); root.addChild (g_ddItem);
-	g_ddStyle = new Dropdown (250, y0 + 40, 160, 28, STYLES, 2, 0, on_style); gd->addChild (g_ddStyle);
-	g_ddDir = new Dropdown (410, y0 + 40, 150, 28, DIRS, 2, 0, on_dir); gd->addChild (g_ddDir);
-	gd->addChild (g_pkC2);
-	gd->addChild (g_pkC1);
-	g_ddMode = new Dropdown (96, y0, 200, 28, MODES, WP_NMODES, 0, on_mode); gd->addChild (g_ddMode);
+	g_ddStyle = new Dropdown (250, y0 + 40, 160, 28, STYLES, 2, 0, on_style); desk_add (g_ddStyle);
+	g_ddDir = new Dropdown (410, y0 + 40, 150, 28, DIRS, 2, 0, on_dir); desk_add (g_ddDir);
+	g_ddPattern = new Dropdown (96, y0 + 80, 200, 28, g_patItems, g_npat > 0 ? g_npat : 1, 0, on_pattern); desk_add (g_ddPattern);
+	desk_add (g_pkC2);
+	desk_add (g_pkC1);
+	g_ddMode = new Dropdown (96, y0, 200, 28, MODES, WP_NMODES, 0, on_mode); desk_add (g_ddMode);
 
 	load_current ();
 	root.run ();

@@ -869,8 +869,11 @@ check, the dock — drawn in the colours being edited.
 - **Outline**: the frames' 1-px outline — **None**, **Dark** (the default) or **Black**.
 - **Desktop**: the **wallpaper** — **Voronoi cells** (their colour and number), a **Gradient**
   (two colours, top to bottom or left to right), **Bubbles** (a gradient with soft bubbles),
-  a **Solid colour**, or a **Picture** (a BMP, GIF, PNG, JPEG, PCX or WebP file: **Browse…**;
-  **cover** the screen or **tile** it).
+  a **Solid colour**, a **Picture** (a BMP, GIF, PNG, JPEG, PCX or WebP file: **Browse…**;
+  **cover** the screen or **tile** it), or a **Pattern**: one of the abstract grey pictures of
+  `SD:/wallpapers` (Bokeh, Contours, Dunes, Facets, Hexagons, Low Poly, Silk, Waves) **coloured
+  by the two colours** — its grey multiplies the gradient from colour 1 to colour 2 (white is
+  the colour itself), so any pattern takes any colours; the preview shows it at once.
 
 **Apply** writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`, paints the wallpaper again and
 gives the menu bar, the dock and the agenda the new colours at once; the apps opened from then on
@@ -879,7 +882,7 @@ what is saved.
 
 ![The Theme applet](../screenshots/theme.png)
 *The Theme applet: the preview (click a part to pick it), its colour from the palette, the scheme
-and the outline, the wallpaper.*
+and the outline, the wallpaper (here the Hexagons pattern in two blues).*
 
 ### Manual theme editing
 
@@ -919,17 +922,28 @@ At boot, **`voronoy`** paints the wallpaper in the shared background buffer, as
 **`SD:/etc/wallpaper.ini`** says (the Theme applet writes it):
 
 ```
-mode      = voronoi      # voronoi, gradient, bubbles, solid or image
+mode      = voronoi      # voronoi, gradient, bubbles, solid, image or pattern
 color     = 0x4878B0     # voronoi's colour, the solid one, the gradient's first
 color2    = 0x1C2C48     # the gradient's second (gradient, bubbles)
 direction = vertical     # the gradient: vertical or horizontal
 points    = 28           # voronoi's cells (1..64)
 image     = SD:/x.jpg    # image: the picture (painted by imageview --background)
 style     = cover        # cover (the screen filled) or tile
+pattern   = SD:/wallpapers/waves.png   # pattern: the grey picture the colours multiply
 ```
 
 Without the file, `SD:apps/voronoy.app/config.ini`'s colour and cells. The wallpaper persists
 after `voronoy` exits.
+
+**The patterns** (`mode = pattern`, `pattern = SD:/wallpapers/<name>.png`): grey pictures of
+1024 × 768, light for the most part, that `voronoy` colours — each pixel's grey multiplies the
+gradient of `color` and `color2` (in `direction`); a screen of another size gets the picture
+scaled to cover it. Eight ship with Onyx, made by code (`tools/gen_wallpapers.py`); **any grey
+picture put in `SD:/wallpapers`** (PNG, JPEG, BMP…) appears in the Theme applet's list.
+
+![The patterns](../screenshots/wallpapers.png)
+*The eight patterns, each in a pair of the theme's colours: Bokeh, Contours, Dunes, Facets
+(top), Hexagons, Low Poly, Silk, Waves (bottom).*
 
 ## 12. Application catalog
 
@@ -976,7 +990,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
 | **taskman** | Task manager. Arrows to select; Enter brings the window to the foreground; `k`/Delete kills the app (except kernel tasks); `r` refreshes. |
 | **memmon** | Memory monitor. Shows total / used / free RAM, the memory owned by apps, a usage bar, and the processes ranked by 64 KB pages owned. Refreshes ~1×/s. |
-| **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the scheme, the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
+| **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the scheme, the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
 | **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the master volume, mute, a test sound (see §11). Writes `SD:/etc/sound.ini`. |
@@ -990,7 +1004,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **NetSurf** | The **NetSurf** web browser — a full graphical HTML/CSS rendering engine ported to Onyx (no JavaScript). Opens a window and lays out real pages with images. Plain `http://` for now (currently slow). A heavyweight alternative to `httpc`; opt-in build, see `user/netsurf/README.md`. Needs the network up (see §3). |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
-| **voronoy** | The wallpaper's painter (launched at boot, and by the Theme applet's Apply; no window): Voronoi cells, a gradient, bubbles, a colour or a picture, as `SD:/etc/wallpaper.ini` says (§11). |
+| **voronoy** | The wallpaper's painter (launched at boot, and by the Theme applet's Apply; no window): Voronoi cells, a gradient, bubbles, a colour, a picture, or a grey pattern of `SD:/wallpapers` coloured by the gradient, as `SD:/etc/wallpaper.ini` says (§11). |
 
 **On a PC**: `tools/fmsplayer/fmsplayer.exe` is an **FM Song player for Windows** built
 from the same code (the `.FMS` reader and the FM synthesizer of the Onyx kernel): Open... or

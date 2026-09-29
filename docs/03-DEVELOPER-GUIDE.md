@@ -877,8 +877,16 @@ Notes / caveats:
 > - **Shared settings headers**: `dockconf.h` (the dock's drawers, launchers and workspaces:
 >   `SD:/etc/dock.ini`, read / written by the dock and the Panel applet; `DOCK_MSG_RELOAD` to the
 >   IPC service `"dock"`), `wallpaper.h` (the wallpaper's modes and their painter:
->   `SD:/etc/wallpaper.ini`, used by `voronoy` and the Theme applet's preview), `volume.h` (the
->   master volume, `SD:/etc/sound.ini`).
+>   `SD:/etc/wallpaper.ini`, used by `voronoy` and the Theme applet's preview; a pattern:
+>   `wp_paint` paints its gradient, `wp_grey_cover` lays the grey picture over the area as
+>   "cover" does — box-averaged when it shrinks, bilinear when it grows — and `wp_multiply`
+>   multiplies the colours by it; the shipped patterns are made by `tools/gen_wallpapers.py`,
+>   `--preview` draws `screenshots/wallpapers.png`), `volume.h` (the master volume,
+>   `SD:/etc/sound.ini`).
+> - **`Dropdown`**'s list opens **above** its box when it does not fit below and fits better
+>   there — every parent clips its children, so a drop-down near a window's bottom (or in a
+>   group box) keeps its list visible. Put the controls whose lists must pass a group box's
+>   edge in the window (the Theme applet's Desktop box does: `desk_add`).
 > - **Dialogs**: `wk_file_open` / `wk_file_save` / `wk_folder_open` (a double-click on a file
 >   picks it and confirms), `wk_color_dialog` (R / G / B sliders, a palette), `wk_messagebox`.
 > - **The desktop simulator** (`sh tools/tests/desktop_sim/run.sh`): a wtk app built for the PC

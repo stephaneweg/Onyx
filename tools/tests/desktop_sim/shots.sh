@@ -122,7 +122,12 @@ if want gamelib; then
 	sim gamelib gamelib "$W;$W" $P
 	png gamelib
 fi
-if want theme; then applet theme theme "$W"; png theme; fi
+if want theme; then			# (the wallpaper a pattern: SD:/wallpapers' hexagons, coloured)
+	mkdir -p "$OUT/writes/etc"
+	printf 'mode = pattern\ncolor = 0x4878B0\ncolor2 = 0x1C2C48\ndirection = vertical\npattern = SD:/wallpapers/hexagons.png\n' > "$OUT/writes/etc/wallpaper.ini"
+	applet theme theme "$W"; png theme
+	rm -f "$OUT/writes/etc/wallpaper.ini"
+fi
 if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 
 # ---- the desktop's parts, over the wallpaper ------------------------------------------------------

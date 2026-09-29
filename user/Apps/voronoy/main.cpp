@@ -2,9 +2,10 @@
 // voronoy -- the desktop's wallpaper painter, a userland app. It asks the kernel for the shared
 // wallpaper buffer (kapi_wallpaper_buffer), paints the wallpaper SD:/etc/wallpaper.ini asks for
 // (wallpaper.h: a toroidal Voronoi field -- ported from the old kernel GenerateWallpaper --, a
-// gradient, bubbles over a gradient, a plain colour; a picture file: apps/imageview --background
-// paints it), commits it as the live background, then exits. The buffer's frames are
-// kernel-owned, so the wallpaper persists after this app is gone.
+// gradient, bubbles over a gradient, a plain colour, a grey pattern -- SD:/wallpapers -- coloured
+// by the gradient (multiplied); a picture file: apps/imageview --background paints it), commits
+// it as the live background, then exits. The buffer's frames are kernel-owned, so the wallpaper
+// persists after this app is gone.
 //
 // It runs from autostart, and again when the Control Panel's Theme applet applies a wallpaper;
 // run it from the terminal to reshuffle the cells. Without wallpaper.ini: its own config.ini's
@@ -12,7 +13,9 @@
 //
 #include "kapi.h"
 #include "applib.h"
+#include "onyxpp.hpp"			// operator new / delete (the picture's decoder)
 #include "wallpaper.h"
+#include "img/imgload.hpp"
 
 static void yield (void) { kapi_yield (); }
 
@@ -36,6 +39,16 @@ int main (void)
 	unsigned *bg = kapi_wallpaper_buffer (&w, &h);
 	if (bg == 0 || w <= 0 || h <= 0) return 1;
 	wp_paint (bg, w, h, w, wp, kapi_get_ticks () | 1u, 2, yield);
+	if (wp.mode == WP_PATTERN && wp.pattern[0])	// the pattern's grey multiplies the gradient
+	{
+		ImgFrames im;
+		if (img_load (wp.pattern, &im) && im.w > 0 && im.h > 0)
+		{
+			unsigned char *g = new unsigned char[(long) w * h];
+			if (g) { wp_grey_cover (im.px[0], im.w, im.h, g, w, h); wp_multiply (bg, w, h, w, g); delete [] g; }
+			img_free (&im);
+		}
+	}
 	kapi_wallpaper_commit ();		// make it the live desktop background
 	return 0;				// exit; the wallpaper persists
 }

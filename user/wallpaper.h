@@ -4,14 +4,19 @@
 // and the Theme applet (its preview, and the file it writes). Integer only (the apps' default).
 //
 //     mode      = voronoi      voronoi (cells), gradient (two colours), bubbles (a gradient with
-//                              soft bubbles over it), solid (one colour), image (a picture file)
+//                              soft bubbles over it), solid (one colour), image (a picture file),
+//                              pattern (a grey picture coloured by the gradient: multiplied)
 //     color     = 0x4878B0     voronoi's base colour, the solid colour, the gradient's first
-//     color2    = 0x1C2C48     the gradient's second (gradient, bubbles)
+//     color2    = 0x1C2C48     the gradient's second (gradient, bubbles, pattern)
 //     direction = vertical     the gradient: vertical (top to bottom) or horizontal (left to right)
 //     points    = 28           voronoi's cells (1..64)
 //     image     = SD:/x.jpg    image: the picture (BMP GIF PNG JPEG PCX WebP), painted by
 //     style     = cover        apps/imageview --background: cover (the screen filled, centred)
 //                              or tile (repeated from the top left)
+//     pattern   = SD:/wallpapers/waves.png   pattern: the grey picture (tools/gen_wallpapers.py
+//                              makes the shipped ones, SD:/wallpapers): each pixel's grey
+//                              multiplies the gradient -- white is the colour itself -- as
+//                              "cover" fills the screen (wp_grey_cover, wp_multiply)
 //
 // No file: SD:/apps/voronoy.app/config.ini's base / points (before the Theme applet had it).
 //
@@ -22,8 +27,10 @@
 
 #define WALLPAPER_INI	"SD:/etc/wallpaper.ini"
 
-enum { WP_VORONOI, WP_GRADIENT, WP_BUBBLES, WP_SOLID, WP_IMAGE, WP_NMODES };
-static const char *const WP_MODE_KEY[WP_NMODES] = { "voronoi", "gradient", "bubbles", "solid", "image" };
+#define WALLPAPER_DIR	"SD:/wallpapers"		// the patterns
+
+enum { WP_VORONOI, WP_GRADIENT, WP_BUBBLES, WP_SOLID, WP_IMAGE, WP_PATTERN, WP_NMODES };
+static const char *const WP_MODE_KEY[WP_NMODES] = { "voronoi", "gradient", "bubbles", "solid", "image", "pattern" };
 
 struct Wallpaper
 {
@@ -33,12 +40,16 @@ struct Wallpaper
 	int points;
 	char image[200];
 	int tile;			// image: 1 tiled, 0 cover
+	char pattern[200];		// pattern: the grey picture
 };
 
 static inline void wp_defaults (Wallpaper &w)
 {
 	w.mode = WP_VORONOI; w.c1 = 0x004878B0; w.c2 = 0x001C2C48; w.vertical = 1; w.points = 28;
 	w.image[0] = 0; w.tile = 0;
+	const char *d = WALLPAPER_DIR "/waves.png";
+	int i = 0; for (; d[i] && i < (int) sizeof w.pattern - 1; i++) w.pattern[i] = d[i];
+	w.pattern[i] = 0;
 }
 
 static inline bool wp_eq (const char *a, const char *b)
@@ -108,6 +119,7 @@ static inline void wp_key (const char *k, const char *v, void *ctx)
 	else if (wp_eq (k, "points")) { int n = 0; for (const char *p = v; *p >= '0' && *p <= '9'; p++) n = n * 10 + (*p - '0'); if (n > 0) w.points = n > 64 ? 64 : n; }
 	else if (wp_eq (k, "image")) { int i = 0; for (; v[i] && i < (int) sizeof w.image - 1; i++) w.image[i] = v[i]; w.image[i] = 0; }
 	else if (wp_eq (k, "style")) w.tile = wp_eq (v, "tile");
+	else if (wp_eq (k, "pattern")) { int i = 0; for (; v[i] && i < (int) sizeof w.pattern - 1; i++) w.pattern[i] = v[i]; w.pattern[i] = 0; }
 }
 
 static inline void wp_load (Wallpaper &w)
@@ -131,7 +143,7 @@ static inline bool wp_save (const Wallpaper &w)
 	static char o[1024];
 	int p = 0;
 	p = wp_put (o, p, sizeof o, "; The desktop's wallpaper (wallpaper.h): painted by apps/voronoy, written by the\n"
-		"; Control Panel's Theme applet. mode: voronoi, gradient, bubbles, solid or image.\nmode      = ");
+		"; Control Panel's Theme applet. mode: voronoi, gradient, bubbles, solid, image or pattern.\nmode      = ");
 	p = wp_put (o, p, sizeof o, WP_MODE_KEY[w.mode]);
 	p = wp_put (o, p, sizeof o, "\ncolor     = "); p = wp_put_colour (o, p, sizeof o, w.c1);
 	p = wp_put (o, p, sizeof o, "\ncolor2    = "); p = wp_put_colour (o, p, sizeof o, w.c2);
@@ -141,6 +153,7 @@ static inline bool wp_save (const Wallpaper &w)
 	p = wp_put (o, p, sizeof o, w.points >= 10 ? n : n + 1);
 	p = wp_put (o, p, sizeof o, "\nimage     = "); p = wp_put (o, p, sizeof o, w.image);
 	p = wp_put (o, p, sizeof o, "\nstyle     = "); p = wp_put (o, p, sizeof o, w.tile ? "tile" : "cover");
+	p = wp_put (o, p, sizeof o, "\npattern   = "); p = wp_put (o, p, sizeof o, w.pattern);
 	p = wp_put (o, p, sizeof o, "\n");
 	return kapi_save_file (WALLPAPER_INI, o, (unsigned) p) >= 0;
 }
@@ -171,9 +184,10 @@ static inline unsigned wp_tint (unsigned base, unsigned dist)
 	return ((((base >> 16) & 0xFF) * cc) >> 8) << 16 | ((((base >> 8) & 0xFF) * cc) >> 8) << 8 | (((base & 0xFF) * cc) >> 8);
 }
 
-// Paint w x h pixels (stride: a row) -- not an image (apps/imageview does those). div: the cells
-// computed at 1 / div of the resolution (voronoi: 2 for the screen, 1 for a small preview).
-// yield: called now and then (a long job: kapi_yield), or 0.
+// Paint w x h pixels (stride: a row) -- not an image (apps/imageview does those); a pattern: its
+// gradient (then wp_multiply by the pattern's grey). div: the cells computed at 1 / div of the
+// resolution (voronoi: 2 for the screen, 1 for a small preview). yield: called now and then (a
+// long job: kapi_yield), or 0.
 static inline void wp_paint (unsigned *dst, int w, int h, int stride, const Wallpaper &wp, unsigned seed, int div, void (*yield) (void))
 {
 	if (w <= 0 || h <= 0) return;
@@ -182,7 +196,7 @@ static inline void wp_paint (unsigned *dst, int w, int h, int stride, const Wall
 		for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) dst[(long) y * stride + x] = wp.c1;
 		return;
 	}
-	if (wp.mode == WP_GRADIENT || wp.mode == WP_BUBBLES)
+	if (wp.mode == WP_GRADIENT || wp.mode == WP_BUBBLES || wp.mode == WP_PATTERN)
 	{
 		for (int y = 0; y < h; y++)
 		{
@@ -190,7 +204,7 @@ static inline void wp_paint (unsigned *dst, int w, int h, int stride, const Wall
 			if (wp.vertical) { unsigned c = wp_mix (wp.c1, wp.c2, h > 1 ? y * 255 / (h - 1) : 0); for (int x = 0; x < w; x++) d[x] = c; }
 			else for (int x = 0; x < w; x++) d[x] = wp_mix (wp.c1, wp.c2, w > 1 ? x * 255 / (w - 1) : 0);
 		}
-		if (wp.mode == WP_GRADIENT) return;
+		if (wp.mode != WP_BUBBLES) return;
 		// the bubbles: soft discs of a light tint, more or less see-through, of every size
 		unsigned rng = seed | 1u;
 		int nb = 26;
@@ -262,6 +276,75 @@ static inline void wp_paint (unsigned *dst, int w, int h, int stride, const Wall
 				}
 		}
 		if (yield && (y & 15) == 0) yield ();
+	}
+}
+
+// ---- a pattern: a grey picture multiplying the colours ---------------------------------------------
+static inline unsigned wp_lum (unsigned c)
+{
+	return (((c >> 16) & 255) * 77 + ((c >> 8) & 255) * 150 + (c & 255) * 29) >> 8;
+}
+
+// The grey of a picture (0xAARRGGBB, iw x ih: its luminance) over w x h as "cover" lays it (the
+// area filled, centred, the rest cut off): the average of the pixels under each one where it
+// shrinks (a small preview), bilinear where it grows (a bigger screen).
+static inline void wp_grey_cover (const unsigned *img, int iw, int ih, unsigned char *out, int w, int h)
+{
+	if (!img || iw <= 0 || ih <= 0 || w <= 0 || h <= 0) return;
+	long kx = (long) iw * 65536 / w, ky = (long) ih * 65536 / h, k = kx < ky ? kx : ky;	// (16.16)
+	long ox = ((long) iw * 65536 - k * w) / 2, oy = ((long) ih * 65536 - k * h) / 2;
+	for (int y = 0; y < h; y++)
+	{
+		unsigned char *o = out + (long) y * w;
+		if (k >= 65536)
+		{
+			int sy0 = (int) ((oy + k * y) >> 16), sy1 = (int) ((oy + k * (y + 1)) >> 16);
+			if (sy1 <= sy0) sy1 = sy0 + 1;
+			if (sy1 > ih) sy1 = ih;
+			for (int x = 0; x < w; x++)
+			{
+				int sx0 = (int) ((ox + k * x) >> 16), sx1 = (int) ((ox + k * (x + 1)) >> 16);
+				if (sx1 <= sx0) sx1 = sx0 + 1;
+				if (sx1 > iw) sx1 = iw;
+				unsigned sum = 0, n = 0;
+				for (int sy = sy0; sy < sy1; sy++)
+					for (int sx = sx0; sx < sx1; sx++) { sum += wp_lum (img[(long) sy * iw + sx]); n++; }
+				o[x] = (unsigned char) (n ? sum / n : 255);
+			}
+		}
+		else
+		{
+			long fy = oy + k * y + k / 2 - 32768; if (fy < 0) fy = 0;
+			int sy = (int) (fy >> 16), ty = (int) ((fy >> 8) & 255);
+			if (sy >= ih) sy = ih - 1;
+			int sy2 = sy + 1 < ih ? sy + 1 : ih - 1;
+			for (int x = 0; x < w; x++)
+			{
+				long fx = ox + k * x + k / 2 - 32768; if (fx < 0) fx = 0;
+				int sx = (int) (fx >> 16), tx = (int) ((fx >> 8) & 255);
+				if (sx >= iw) sx = iw - 1;
+				int sx2 = sx + 1 < iw ? sx + 1 : iw - 1;
+				unsigned a = wp_lum (img[(long) sy * iw + sx]), b = wp_lum (img[(long) sy * iw + sx2]);
+				unsigned c = wp_lum (img[(long) sy2 * iw + sx]), d = wp_lum (img[(long) sy2 * iw + sx2]);
+				unsigned top = a * (256 - (unsigned) tx) + b * (unsigned) tx, bot = c * (256 - (unsigned) tx) + d * (unsigned) tx;
+				o[x] = (unsigned char) ((top * (256 - (unsigned) ty) + bot * (unsigned) ty) >> 16);
+			}
+		}
+	}
+}
+
+// The colours multiplied by the grey (w x h): white keeps them, black makes them black.
+static inline void wp_multiply (unsigned *dst, int w, int h, int stride, const unsigned char *grey)
+{
+	for (int y = 0; y < h; y++)
+	{
+		unsigned *d = dst + (long) y * stride;
+		const unsigned char *g = grey + (long) y * w;
+		for (int x = 0; x < w; x++)
+		{
+			unsigned c = d[x], k = (unsigned) g[x] + 1;
+			d[x] = ((((c >> 16) & 255) * k >> 8) << 16) | ((((c >> 8) & 255) * k >> 8) << 8) | ((c & 255) * k >> 8);
+		}
 	}
 }
 
