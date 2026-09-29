@@ -471,7 +471,10 @@ task model in `kernel.cpp`.
 
 ### `CUserProcessTask` — one application = one task
 
-`CUserProcessTask` (subclass of `CTask`, **256 KB** stack):
+`CUserProcessTask` (subclass of `CTask`, **256 KB** stack — or what the app's folder's
+`app.txt` asks for, `stack = 8M`: `AppStackSize` reads it in the launcher's context before
+the task exists, since `CTask` allocates its stack in its constructor; rounded up to 64 KB,
+at most 64 MB; NetSurf asks for 8 MB):
 1. Creates a fresh `CAddressSpace`.
 2. Installs stdin/stdout, the process handle, argv, cwd.
 3. `LoadELF` into the address space.

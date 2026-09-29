@@ -1194,7 +1194,15 @@ you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` r
 ```ini
 name     = Text Editor          ; display name shown under the icon
 category = Productivity          ; Productivity, Internet, Graphics, Games, Demos, Settings, Emulators, Shell
+stack    = 8M                    ; optional: the app's stack (bytes, K or M), read by the KERNEL
 ```
+
+**`stack`** is the one key the kernel reads (`AppStackSize`, `kernel/kernel.cpp`, when it
+creates the app's task): an app runs on its kernel task's stack, **256 KB** by default; a
+bigger one is asked for here — rounded up to 64 KB, at most 64 MB (smaller: ignored). The
+stack is kernel memory (it must stay mapped when the address space switches), taken from
+the kernel heap and reused after the app ends. NetSurf asks for 8 MB (its JavaScript
+engine may use 4).
 
 The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show
 their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
