@@ -2,7 +2,7 @@
 # build_docs.py -- generate the Word (.docx) and PDF (.pdf) exports of the Onyx
 # documentation from the Markdown files in docs/.
 #
-#   .md --(pandoc + themed reference.docx)--> .docx --(docx2pdf / Word)--> .pdf
+#   .md --(pandoc + themed reference.docx)--> .docx --(Word, else LibreOffice)--> .pdf
 #
 # The first "# Title" line of each file becomes the document title (rendered on a
 # styled title block); a constant subtitle gives the project signature. Images are
@@ -10,7 +10,8 @@
 #
 # Prerequisites (once):  pip install python-docx docx2pdf pypandoc_binary
 # Theme:  python docs/assets/make_reference.py   (builds docs/assets/reference.docx)
-# The PDF step uses Microsoft Word (docx2pdf, Windows COM): Word must be installed.
+# The PDF step uses Microsoft Word (docx2pdf, Windows COM) when it is installed, else
+# LibreOffice (soffice --headless --convert-to pdf).
 #
 # Usage:  python docs/build_docs.py
 #
@@ -74,21 +75,66 @@ def build_docx():
     return made
 
 
+def find_soffice():
+    """LibreOffice's soffice, on the PATH or at its usual install places (None: absent)."""
+    import shutil
+    p = shutil.which("soffice")
+    if p:
+        return p
+    for base in (os.environ.get("ProgramFiles", r"C:\Program Files"),
+                 os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                 "/usr/bin", "/Applications/LibreOffice.app/Contents/MacOS"):
+        for name in ("soffice.exe", "soffice"):
+            for p in (os.path.join(base, "LibreOffice", "program", name), os.path.join(base, name)):
+                if os.path.exists(p):
+                    return p
+    return None
+
+
+def pdf_libreoffice(soffice, docx, pdf):
+    """docx -> pdf with LibreOffice, headless. A private profile, so a LibreOffice already
+    open does not swallow the conversion."""
+    import subprocess, tempfile, pathlib
+    with tempfile.TemporaryDirectory() as prof:
+        subprocess.run([soffice, f"-env:UserInstallation={pathlib.Path(prof).as_uri()}",
+                        "--headless", "--convert-to", "pdf", "--outdir", os.path.dirname(pdf), docx],
+                       check=True, capture_output=True, timeout=600)
+    if not os.path.exists(pdf):
+        raise RuntimeError("LibreOffice produced no PDF")
+
+
 def build_pdf(docx_files):
+    # Microsoft Word first (docx2pdf); LibreOffice when Word is absent or fails.
     try:
         from docx2pdf import convert
-    except Exception as e:
-        print(f"  PDF skipped (docx2pdf unavailable: {e})")
+    except Exception:
+        convert = None
+    soffice = find_soffice()
+    if convert is None and soffice is None:
+        print("  PDF skipped (neither Word/docx2pdf nor LibreOffice found)")
         return []
     made = []
     for docx in docx_files:
         pdf = os.path.splitext(docx)[0] + ".pdf"
-        try:
-            convert(docx, pdf)
-            print(f"  PDF     {os.path.relpath(pdf, HERE)}")
-            made.append(pdf)
-        except Exception as e:
-            print(f"  PDF FAILED {os.path.basename(docx)}: {e}")
+        err = None
+        if convert is not None:
+            try:
+                convert(docx, pdf)
+                print(f"  PDF     {os.path.relpath(pdf, HERE)}")
+                made.append(pdf)
+                continue
+            except Exception as e:
+                err = e
+                convert = None      # (Word missing: do not try it for each file)
+        if soffice is not None:
+            try:
+                pdf_libreoffice(soffice, docx, pdf)
+                print(f"  PDF     {os.path.relpath(pdf, HERE)} (LibreOffice)")
+                made.append(pdf)
+                continue
+            except Exception as e:
+                err = e
+        print(f"  PDF FAILED {os.path.basename(docx)}: {err}")
     return made
 
 

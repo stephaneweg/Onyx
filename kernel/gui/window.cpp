@@ -7,6 +7,7 @@
 #include <circle/util.h>		// memset
 #include <circle/timer.h>		// GetTicks (last-pump stamp for the watchdog)
 #include <circle/new.h>
+#include <circle/sched/synchronizationevent.h>	// m_pWake (the owner's pump)
 #include <assert.h>
 
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
@@ -17,7 +18,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_nOuterW (0), m_nOuterH (0),
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
-	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_nLastPump (0),
+	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_pWake (0), m_nLastPump (0),
 	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE),
 	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
@@ -503,6 +504,13 @@ void CWindow::PushEvent (const GUIEvent &Event)
 		m_nEvDropped++;
 	}
 	m_EvLock.Release ();
+	if (m_pWake != 0) { m_pWake->Set (); m_pWake->Clear (); }	// (wakes the owner's kapi_pump_wait)
+}
+
+void CWindow::RequestExit (void)
+{
+	m_bExitRequested = TRUE;
+	if (m_pWake != 0) { m_pWake->Set (); m_pWake->Clear (); }
 }
 
 boolean CWindow::PopEvent (GUIEvent *pEvent)
@@ -1163,6 +1171,14 @@ void CWindowManager::SetWallpaper (GImage *pImage)
 // Returns the buffer's physical (== kernel VA) address + page count.
 u32 *CWindowManager::EnsureWallpaperBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages)
 {
+	if (m_pWallRaw != 0 && (m_WallImage.Width () != nW || m_WallImage.Height () != nH))
+	{
+		// The screen's size changed (kapi_screen_set): a new buffer of the new size. The old
+		// one is left allocated -- an app may still have it mapped (it writes there, not over
+		// memory given back to the heap); a few MB at each change of the resolution.
+		m_bLiveWall = FALSE;
+		m_pWallRaw = 0; m_ulWallPhys = 0; m_nWallPages = 0;
+	}
 	if (m_pWallRaw == 0)
 	{
 		unsigned nBytes = (unsigned) (nW * nH) * sizeof (u32);
@@ -1325,6 +1341,49 @@ static void EmitDnd (CWindow *pWin, int nEvent, int cx, int cy, unsigned nFlags,
 	Ev.nEvent    = nEvent;
 	Ev.lValue    = lRaw >= 0 ? lRaw : ((long) nFlags << 32) | ((long) cx << 16) | (long) cy;
 	pWin->PushEvent (Ev);
+}
+
+// The screen's size changed (see window.h). Every window stays on the screen (moved in, not
+// resized: its app does that, on GUI_EVENT_DISPLAY_RESIZE -- wtk re-maximises a maximised
+// window, shrinks one too big for the work area); the cursor too.
+void CWindowManager::OnScreenResized (int nW, int nH)
+{
+	CWindow *pSnapshot[WM_MAX_WINDOWS];
+	m_SpinLock.Acquire ();
+	unsigned nCount = m_nWindows;
+	for (unsigned i = 0; i < nCount; i++) pSnapshot[i] = m_pWindows[i];
+	if (m_nCursorX >= nW) m_nCursorX = nW - 1;
+	if (m_nCursorY >= nH) m_nCursorY = nH - 1;
+	m_bLiveWall = FALSE;				// (the old size: the wallpaper's app paints it again)
+	m_nWallGen++;
+	m_SpinLock.Release ();
+	for (unsigned i = 0; i < nCount; i++)
+	{
+		CWindow *p = pSnapshot[i];
+		if (p == 0 || p->Backmost ()) continue;
+		int x = p->X (), y = p->Y ();		// (past the right / bottom edge: moved in; a
+		if (x > 0 && x + p->OuterWidth () > nW)		// window parked off the screen, at a
+		{						// negative place, is left there)
+			x = nW - p->OuterWidth (); if (x < 0) x = 0;
+		}
+		if (y > 0 && y + p->OuterHeight () > nH)
+		{
+			y = nH - p->OuterHeight (); if (y < 0) y = 0;
+		}
+		if (x != p->X () || y != p->Y ()) p->Move (x, y);
+	}
+	for (unsigned i = 0; i < nCount; i++)
+	{
+		CWindow *p = pSnapshot[i];
+		if (p == 0 || p->PointerHandler () == 0) continue;
+		GUIEvent Ev;
+		Ev.ulHandler = p->PointerHandler ();
+		Ev.ulSender  = 0;
+		Ev.nEvent    = GUI_EVENT_DISPLAY_RESIZE;
+		Ev.lValue    = ((long) nW << 16) | (long) nH;
+		p->PushEvent (Ev);
+	}
+	ScreenDirty ();
 }
 
 // A title button for the app (GUI_EVENT_WINCTL, v64): the window menu, maximise.

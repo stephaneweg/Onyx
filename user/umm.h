@@ -8,6 +8,9 @@
 // free-back-to-the-OS (sbrk only grows here), which is fine: a process's whole heap
 // is reclaimed on teardown.
 //
+// Thread-safe (v67 threads): each call takes umm__lk, a kapi_lock (a swap, a yield while
+// another thread holds it).
+//
 // Pure C (no libc), header-only, static -- one private heap per app (one TU). C apps
 // call umm_malloc/umm_free/...; the C++ support layer (crt0c++ / new) wires
 // operator new/delete onto these. Freed heap pages show up in the app's page count
@@ -31,6 +34,7 @@ static void *umm__large;		// large-block free list (first-fit by stored size)
 static char *umm__brk;			// arena bump pointer
 static char *umm__end;			// end of the sbrk'd arena
 static int   umm__started;
+static volatile int umm__lk;		// (kapi_lock) between the process's threads
 
 static inline unsigned long umm__round (unsigned long n)
 { return (n + (UMM_ALIGN - 1)) & ~(unsigned long) (UMM_ALIGN - 1); }
@@ -56,7 +60,7 @@ static inline void *umm__bump (unsigned long total)
 	void *p = umm__brk; umm__brk += total; return p;
 }
 
-static inline void *umm_malloc (unsigned long n)
+static inline void *umm__malloc (unsigned long n)
 {
 	if (n == 0) n = 1;
 	int ci = umm__classidx (n);
@@ -86,15 +90,30 @@ static inline void *umm_malloc (unsigned long n)
 	return (char *) raw + sizeof (umm_hdr);
 }
 
-static inline void umm_free (void *p)
+static inline void *umm_malloc (unsigned long n)
 {
-	if (p == 0) return;
+	kapi_lock (&umm__lk);
+	void *p = umm__malloc (n);
+	kapi_unlock (&umm__lk);
+	return p;
+}
+
+static inline void umm__free_ (void *p)
+{
 	umm_hdr *h = (umm_hdr *) ((char *) p - sizeof (umm_hdr));
 	if (h->magic != UMM_MAGIC) return;		// not ours / double-free guard
 	h->magic = 0;
 	int ci = umm__classidx (h->size);
 	if (ci >= 0) { *(void **) p = umm__free[ci]; umm__free[ci] = p; }
 	else         { *(void **) p = umm__large;    umm__large    = p; }
+}
+
+static inline void umm_free (void *p)
+{
+	if (p == 0) return;
+	kapi_lock (&umm__lk);
+	umm__free_ (p);
+	kapi_unlock (&umm__lk);
 }
 
 static inline void *umm_calloc (unsigned long n, unsigned long sz)

@@ -64,7 +64,13 @@ sources.
   layout switching (US, UK, DE, FR, ES, IT, Dvorak).
 - **Networking (WLAN).** TCP/IP stack + on-board Wi-Fi (BCM4343 / `wpa_supplicant`)
   brought up on the primary core, TCP sockets exposed to apps through the ABI, an
-  **IRC client**, and NTP clock synchronisation. (A dedicated network core is a
+  **IRC client**, and NTP clock synchronisation.
+- **A modern web browser.** NetSurf, ported to Onyx: `http://` and `https://`,
+  **CSS3** (`calc()`, `var()`, flexbox, grid, gradients, shadows, rounded corners,
+  gradient text, vendor prefixes), web fonts (WOFF/WOFF2, variable fonts) with Chrome's
+  Windows fonts stood in by metric-compatible ones, and **JavaScript** on QuickJS
+  (ES2023, the DOM, the page laid out again after a script's changes). Details in
+  [the NetSurf changes](06-NETSURF-CHANGES.md). (A dedicated network core is a
   planned next step.)
 
 ## 4. The architecture at a glance
@@ -79,7 +85,7 @@ sources.
 ├──────────────────────────────────────────────────────────────────┤
 │  ONYX KERNEL (EL1)                                             │
 │   • mm/      per-process address spaces, MMU, ASID               │
-│   • sched/   cooperative scheduler (replaces Circle's)           │
+│   • sched/   preemptive scheduler (replaces Circle's)            │
 │   • arch/    VBAR_EL1 exception vectors, trap frame              │
 │   • proc/    ELF64 loader                                        │
 │   • sys/     kapi impl., stream/stdio, debug console             │
@@ -110,19 +116,31 @@ EL0 processes + system calls (`SVC`), the project switched to **Option C**:
   inert**; it could be reused if one wanted true EL0 applications isolated from the
   kernel.
 
-## 6. Scheduling: cooperative (on hardware)
+## 6. Scheduling: preemptive applications, non-preemptive kernel
 
-Although the kernel was initially designed to be **preemptive** (100 Hz tick), the
-port to hardware showed that **preemption from the IRQ does not work** in
-Circle's model: threads run in **EL1t** (with `SP_EL0`), while the
-IRQ handler runs in **EL1h** (with `SP_EL1`). A context switch from
-the IRQ would swap `SP_EL1`, not the thread's stack.
+A **100 Hz timer tick** gives each task a time slice (20 ms); when it expires, the
+kernel **preempts the application** and runs the next task. An application stuck in
+a loop that never yields no longer freezes the system: the cursor, the desktop and
+the other apps stay responsive, and `taskman` can stop it (the `spin` app tests this).
 
-→ **Scheduling is therefore cooperative.** Tasks switch when they call
-`yield`, `msleep`, `present`, `wait`, etc. — exactly like Circle's original
-scheduler. Graphical applications naturally yield on each frame (via
-`present`/`msleep`), which gives the illusion of parallelism. Details in
-[Kernel internals](02-KERNEL-INTERNALS.md).
+Preemption from the IRQ is not straightforward in Circle's model: threads run in
+**EL1t** (with `SP_EL0`), while the IRQ handler runs in **EL1h** (with `SP_EL1`), so
+a context switch inside the IRQ would swap the wrong stack. The kernel therefore
+**redirects the IRQ's return** into a small trampoline that runs on the app's own
+stack, saves its full register and FP state, and yields like a voluntary switch.
+
+Only **application code** is preempted: an app inside a `kapi_*` call, and the
+kernel's own threads, are not (the **kernel is non-preemptive**, the classic Unix
+model); its long operations (file reads and writes, SD-card waits) yield between
+pieces. Tasks still also switch **voluntarily** (`yield`, `msleep`, `present`,
+`wait`, …), and a dynamic priority keeps CPU hogs from starving the tasks that
+yield (the network, the sound). Details in
+[Kernel internals](02-KERNEL-INTERNALS.md) (§ "Preemptive scheduling").
+
+An application may run **threads** (kapi v67): more tasks in its own address space, with
+mutexes, events and barriers, and calls posted to its event pump — a thread waits on the
+network while the window stays responsive. The process ends with its main thread; killing it
+kills them all. The scheduler's task list has no fixed limit.
 
 ## 7. Target hardware
 
@@ -152,7 +170,8 @@ circle/           upstream Circle clone (not committed; cloned separately)
 > preemptive scheduling, 640×480, "two demos"). Where they contradict this
 > documentation, **these documents here (`docs/`) are authoritative** for the current state.
 > `ARCHITECTURE.md` §11–§12 nevertheless remains the best reference for *why* Option C
-> and cooperative scheduling were chosen.
+> was chosen (its "cooperative scheduling" has since been replaced by the preemption of
+> §6).
 
 ## 9. Further reading
 

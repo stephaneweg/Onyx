@@ -218,6 +218,71 @@ Notes / caveats:
   files; a future `kapi_lseek` would remove the whole-file buffering.
 - **Size.** Static newlib pulls a fair amount of code (`printf` float support etc.).
   Acceptable for big apps; a `nano` variant can be revisited later for small tools.
+- **Threads** (§5.2): newlib's locks are defined in `onyx_syscalls.c` (newlib is built with
+  retargetable locking), so `malloc`, the `FILE`s, `atexit`… are safe between threads. `errno`
+  and newlib's other reentrancy state (`_impure_ptr`) are **shared** by the threads.
+
+### 5.2. Threads (kapi v67)
+
+A process may run **threads**: more tasks in its own address space — the same memory, window,
+files and sockets —, preempted like the main one, all on core 0. What they are for is
+**concurrency**: a thread blocks (a socket, a file, a long computation) while the main thread
+keeps pumping the window's events. (For parallel computing on another core, see the app cores,
+§6.)
+
+```c
+static int worker (void *arg)             /* runs in the new thread */
+{
+    long n = fetch_something (arg);       /* blocks: the UI goes on meanwhile */
+    kapi_post (on_done, arg, n);          /* on_done (arg, n) runs on the main thread */
+    return 0;                             /* its exit code */
+}
+
+int tid = kapi_thread_create (worker, ctx, 0, "fetch");   /* 0: a 256 KB stack */
+...
+while (!kapi_should_exit ())
+    kapi_pump_wait (100);                 /* sleeps until an event, a post or the close box */
+kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
+```
+
+- **Threads**: `kapi_thread_create (fn, arg, stack_size, name)` → a tid ≥ 2 (the main thread is
+  1), −1 no memory, −2 too many (**32** besides the main one). The stack is 256 KB by default,
+  16 KB .. 16 MB. The name is `<app>:<name>` (in the crash reports; `ps`, the task manager and
+  the taskbar show the app once). `fn`'s return value — or `kapi_thread_exit (code)` — is the
+  exit code, which `kapi_thread_join (tid, timeout_ms, &code)` collects (−1 timeout, −2 no such
+  thread or joined already, −3 itself); a thread never joined is forgotten once its record is
+  needed again. `kapi_thread_self ()` → the caller's tid.
+- **The process ends with its main thread** (returning from `main`, `kapi_exit`), or when any
+  thread calls `kapi_exit`: the other threads end with it, wherever they are. Killing the app
+  (the task manager, `kill`) kills them all.
+- **Synchronisation objects** — handles, 256 per process, freed with it or by
+  `kapi_sync_close (h)` (its waiters get −2). Timeouts are in ms: 0 only tries,
+  `KAPI_WAIT_FOREVER` waits.
+  - **mutex**: `kapi_mutex_create ()`, `kapi_mutex_lock (h, timeout)` (0, −1 timeout),
+    `kapi_mutex_unlock (h)`. Recursive; released if its owner thread ends.
+  - **event**: `kapi_event_create (manual_reset, initial)`, `kapi_event_set`, `kapi_event_reset`,
+    `kapi_event_wait (h, timeout)`. A manual-reset event stays set (it releases every waiter);
+    an auto-reset one is taken back by the wait that gets it (one waiter per set).
+  - **barrier**: `kapi_barrier_create (count)`, `kapi_barrier_wait (h)` — returns once `count`
+    threads are in: 1 for the last one in, 0 for the others; the barrier is then ready for the
+    next round.
+- **Calls posted to the pump**: `kapi_post (fn, ctx, value)` queues `fn (ctx, value)` (256 at
+  most: −1 when full); the pump runs it — `kapi_pump_events`, `kapi_pump_wait`,
+  `kapi_wait_for_exit` — on the thread that pumps. That is how a worker hands its result to
+  the UI: no lock needed on the UI's data. `kapi_pump_wait (ms)` sleeps until a window event, a
+  post or the close box (or the timeout), then pumps → what was pending (0: the timeout).
+  `kapi_wait_for_exit` wakes on a post too.
+- **Rules**:
+  - **The GUI belongs to the thread that pumps** (the main one): draw, present, open dialogs and
+    change the window from it; other threads post to it.
+  - **Memory is shared**: protect what several threads write (a mutex, or post the work to one
+    thread). `umm_malloc` / `umm_free` and newlib's `malloc` take a lock; `errno` is shared.
+  - For a small lock of your own there is `kapi_lock (&int)` / `kapi_unlock (&int)` (a swap and a
+    yield: no handle, a zeroed `int` is a free lock; not recursive).
+  - A kapi call is not preempted, but it may wait (a file read in pieces, a socket): another
+    thread of the process can run meanwhile, even in another kapi call.
+- Example and test: [`user/bin/threadtest.c`](../user/bin/threadtest.c) (`threadtest` in a
+  terminal: every check, then PASS / FAIL).
 
 ## 6. Writing a graphical application
 
@@ -1030,6 +1095,17 @@ Notes / caveats:
 >   frame redrawn), then **`virtual void onResized ()`**. Otherwise the button is greyed. The
 >   window menu (its button, top left): Restore / Maximise, Minimise, Move to *workspace* / On
 >   All Workspaces (the names: `SD:/etc/dock.ini`'s `desk =` lines), Close (`Root::windowMenu`).
+>   **`root.fitWorkArea ()`** (after the children are anchored): a window taller or wider than
+>   the work area is shrunk to it (a resizable one; else moved only) and moved into it — the
+>   Spreadsheet calls it at its start, so the dock does not cover its bottom.
+> - **The screen's size changing** (kernel v66, the Control Panel's Display applet): every window
+>   gets `GUI_EVENT_DISPLAY_RESIZE`; wtk calls **`virtual void onDisplayResize (int w, int h)`**
+>   at once (an app placed by the screen's size — a borderless one: the dock — places itself
+>   again there), then ~0.3 s later fits a framed window by itself: maximised, to the new work
+>   area again (its restore size kept inside it); else moved into the work area, shrunk if it is
+>   resizable and too big. A borderless window is left to `onDisplayResize`. Outside wtk: handle
+>   `GUI_EVENT_DISPLAY_RESIZE` (`GUI_DISPLAY_W/H (value)`) in the pointer handler — the menu bar
+>   grows its canvas (`kapi_resize_window2`), the notifications move to the new top right.
 > - **`PopupMenu (x, y)`** (`wtk/dialog.h`): a pop-up menu — `add (label, id, enabled, hint)`,
 >   `separator ()`, `run ()` → the id picked, −1 (a click elsewhere, Esc). A context menu.
 > - **See-through windows** (`WIN_FLAG_ALPHA`, borderless): the canvas's top byte is each pixel's
@@ -1137,9 +1213,10 @@ Key points:
 - **`kapi_create_window(w, h, title)`** returns a pointer to the **canvas** (pixel buffer of
   `0x00RRGGBB`, width `w`). The app draws directly into it (no per-pixel
   call). The variant `kapi_create_window_ex(x, y, w, h, title, flags)` is for explicit
-  placement and `WIN_FLAG_BORDERLESS`. The client area is **at most 1024 × 768** (the screen:
-  `width=1024 height=768` in `cmdline.txt`), frame not counted — keep a window within 1000 × 700
-  or so, as Writer and Paint: over the limit (or out of memory) the call returns **0**. **Check
+  placement and `WIN_FLAG_BORDERLESS`. The client area is **at most the screen's size** (frame
+  not counted; 1024 × 768 by default, `width=` / `height=` in `cmdline.txt`; before kernel v66,
+  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so, as Writer and Paint,
+  so that it fits the default screen: over the limit (or out of memory) the call returns **0**. **Check
   it**: an app runs at EL1 with the kernel's identity mapping, so a null canvas is the kernel's
   own memory at address 0 — drawing into it overwrites the kernel and the whole Pi freezes with
   nothing in `kmsg` (the Spreadsheet's first 1060-pixel window did exactly that). wtk's `Root`
@@ -1157,8 +1234,10 @@ Key points:
   "outside-widget" clicks with `kapi_set_click_handler(fn)` (`GUI_EVENT_CANVAS_CLICK` /
   `..._MOTION`, coordinates encoded in `value`). Cursor position relative to the
   window: `kapi_cursor_pos(&x, &y)`.
-- **Cooperative**: your app **must yield** regularly (`present`/`msleep`/
-  `pump_events`/`wait_for_exit`), otherwise it freezes the whole system.
+- **Yield anyway**: the scheduler preempts a busy app, so a loop that never yields no
+  longer freezes the system, but it is treated as a CPU hog (short slices, served after
+  the others) and its own window stops being redrawn and answering. Keep calling
+  `present`/`msleep`/`pump_events`/`wait_for_exit` regularly.
 
 See the demos `demoD.c` (widget gallery), `demoE.c` (textarea + scrollview), and the
 apps `tinypad.c`, `paint.c`, `mandelbrot.c` for complete examples.
@@ -1724,9 +1803,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Hardware float is opt-in.** Apps are integer-only by default
   (`-mgeneral-regs-only`); the kernel now saves the full FP/SIMD state on every trap,
   so an app may opt into `float`/`double` by building without `-mgeneral-regs-only`
-  and with `-mcpu=cortex-a72` (see §5). Caveat: if **preemptive** scheduling is ever
-  enabled (today the scheduler is purely cooperative), it **must** switch via the
-  full trap frame — the FP save lives there, not in the cooperative `TaskSwitch`.
+  and with `-mcpu=cortex-a72` (see §5). Preemption saves the full FP state too (the
+  preemption trampoline stores it before yielding); keep it that way if the preemption
+  path changes — the cooperative `TaskSwitch` only keeps `d8–d15`.
 - **L3 tables shared with the kernel.** On the kernel side, never free an L3 table from the
   user area without checking that it is not shared with the kernel's L2 (cf.
   [Kernel internals §4](02-KERNEL-INTERNALS.md#4-memory-management-caddressspace)). Otherwise: global corruption.
@@ -1734,8 +1813,15 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   of an address space already skips it.
 - **`DEPTH=32` for Circle.** `GImage` renders 32-bit; forgetting `-d DEPTH=32` (or changing
   `DEPTH` without `make clean` in `circle/lib`) gives wrong colors/breakage.
-- **Cooperative.** Any app loop without `present`/`msleep`/`yield` freezes the system (no
-  preemption).
-- **Circle LF renormalization.** On Windows, Circle is checked out in CRLF; renormalize
+- **The kernel is not preemptive.** Apps are preempted, but kernel code (a `kapi_*` call,
+  a kernel task) is not: a long kernel loop that never yields still stops every other
+  task. Put `if (IsReschedPending ()) Yield ();` in any such loop (the stall watchdog's
+  `stall:` log lines point at them).
+- **Threads and the kernel** (v67): a kapi that waits (`Yield`, an event) may now find another
+  task of the **same** process inside the kernel when it resumes — per-process state touched
+  across a wait (the window's event queue, a dialog, a file handle) is no longer the caller's
+  alone. And `CScheduler::EnumerateTasks`'s callback must not yield (the task list is a linked
+  list the reaper frees nodes from). An app's tasks are one group (`TerminateTask` on one ends
+  them all; `TerminateGroup`); list the process once (`pAS->GetMainTask ()`).- **Circle LF renormalization.** On Windows, Circle is checked out in CRLF; renormalize
   once (cf. §2) otherwise the build breaks.
 - **The right Circle.** Patch `Zircon/circle`, not another clone.

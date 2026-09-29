@@ -92,7 +92,8 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 
 - **`width` / `height`**: framebuffer resolution (default 1024×768; the card ships 1920×1080). Any
   size works (the firmware scales it to the monitor's mode); the monitor's native one is sharpest.
-  An app's window can be as big as the screen (before: at most 1024×768).
+  An app's window can be as big as the screen. The Control Panel's **Display** applet changes it
+  at once, and writes these two options for the next start.
 - **`init`**: absolute path of the init program the kernel launches at boot
   (default `SD:bin/init`). init reads `SD:/etc/autostart` and starts the rest
   of the userland, so pointing `init=` at another ELF (e.g. a recovery shell)
@@ -584,7 +585,7 @@ the terminal's **current working directory**.
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
-| `fptest` | `fptest` | Self-test of hardware floating point under the scheduler (Leibniz π in `double`, yielding mid-computation). Prints PASS/FAIL. |
+| `threadtest` | `threadtest` | Self-test of the **threads** (kernel v67): threads created and joined with their exit codes, a counter shared under a mutex, the allocator used by four threads at once, a manual- and an auto-reset event, a barrier, timeouts, the limit of 32 threads per process, and a worker whose results are posted to the main thread while it waits for events. One line per check, then PASS/FAIL. It quits with a thread still running: the prompt must come back anyway (the threads end with the process). Takes a few seconds. || `fptest` | `fptest` | Self-test of hardware floating point under the scheduler (Leibniz π in `double`, yielding mid-computation). Prints PASS/FAIL. |
 | `libctest` | `libctest` | Self-test of the newlib C library on Onyx (`printf`/`malloc`/`qsort`/`fopen`+`fseek`/`sin`/`sqrt`). Prints PASS/FAIL. |
 | `imgtest` | `imgtest` | Self-test of the image codecs (zlib + libpng): decodes an embedded PNG and prints its size and top-left pixel. Prints PASS/FAIL. Opt-in build (needs the cross-built codecs — see `user/img/README.md`). |
 | `nsfbdemo` | `nsfbdemo` | Demo of the NetSurf framebuffer library (libnsfb) on Onyx: opens a window and draws shapes with libnsfb's plotters, then follows the cursor (a trail of dots) and drops a marker on left-click. `q` / Esc or the close box to quit. Opt-in build (needs the cross-built libnsfb — see `user/nsfb/README.md`). |
@@ -614,17 +615,20 @@ connection waits until the first ends.
 `rdpd` (started by `SD:/etc/autostart`, port **3390**) serves the Onyx windows one by one to
 **Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
 11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
-**Connect**. Connected, the window takes **the size of the Pi's screen** (below the tool bar)
-and cannot be resized, so the Onyx windows (the dock at the bottom) sit where they are on the
-Pi; when the Pi's screen does not fit on the PC's, it stays resizable. **Full screen** (the tool
+**Connect**. Below the tool bar, the **Pi's screen at its size**, pixel for pixel (the Onyx
+windows, the dock at the bottom, where they are on the Pi), in a scrolling area: connected, the
+window takes that size as far as the PC's screen allows; smaller (or made smaller), **scroll
+bars** show the rest; bigger, the Pi's screen sits in its middle, black around it. **Full screen** (the tool
 bar's button, or **F11** at any time) takes the whole PC screen without a frame nor the tool bar:
 the Onyx menu bar at the top, the Onyx windows pixel for pixel where they are on the Pi — a Pi
-screen the size of the PC's (e.g. both 1920 × 1080) fills it exactly. F11 again (or a lost
-connection) gives the window back; the choice is kept and applied at the next connection.
+screen the size of the PC's (e.g. both 1920 × 1080) fills it exactly (a smaller one sits in the
+middle, black around it; a bigger one scrolls). The pointer on the screen's **top edge** shows a
+bar there, as Windows' Remote Desktop: the Pi's name, **Pin** (the bar stays), **Minimise**,
+**Leave full screen**, **Disconnect**. F11 again (or a lost connection) gives the window back;
+the choice is kept and applied at the next connection.
 
-- At the top, the **Onyx menu bar** across the window's width (the menus on the left, the
-  status and the clock on the right).
-- Below, each Onyx window is a **child window** inside Onyx Remote, where it is on the Pi: a
+- At the top of the Pi's screen, the **Onyx menu bar**.
+- Each Onyx window is a **child window** of the Pi's screen in Onyx Remote, where it is on the Pi: a
   normal window (its title, its close button) showing the Onyx window's content — or, with
   **Onyx frames**, with the frame drawn by Onyx (its rounded corners; its title buttons: close
   closes the app, the window menu, minimise and maximise are pressed on the Pi). Move it by its
@@ -843,6 +847,7 @@ Panel at a time (started again, it brings the open one to the front).
 | Applet | What it sets |
 |---|---|
 | **Theme** (`theme`) | The desktop's colours and wallpaper, with a preview (below). |
+| **Display** (`displayconf`) | The screen's **resolution**: pick a size in the list (1024 × 768 … 2560 × 1440, 4:3, 16:9, 16:10…), **Apply** (or a double click): the screen changes **at once** — the menu bar, the dock and the notifications follow it, a maximised window fills the new screen, a window too big for it is shrunk into it, the wallpaper is painted again — and it is kept in `SD:/cmdline.txt` (`width=` / `height=`) for the next start. Not while an app has the full screen. The monitor shows any size (the Pi scales the picture to it); its own resolution is the sharpest. |
 | **Panel** (`dockconf`) | The dock: its **drawers** (left to right: each a **group** of apps — the `category` of their `app.txt` — and its **main app**, whose icon the drawer shows; **Add** / **Remove** / move them, pick the group and the main app in the lists beside), the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini`; the dock takes it at once. |
 | **Sound** (`soundconf`) | The master **volume** (0–10) and **Mute**, applied at once to everything played and kept in `SD:/etc/sound.ini` (the menu bar's speaker changes the same volume); **Play a test sound**. |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |

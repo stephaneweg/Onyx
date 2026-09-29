@@ -44,4 +44,5 @@ At the repository root, `ARCHITECTURE.md`, `README.md`, `kernel/README.md`, and
 scheduling, 640×480, "two demos") and still use the legacy name *Zircon*. Where they
 conflict, **this documentation (`docs/`) is authoritative** for the current state.
 `ARCHITECTURE.md` §11–§12 remains the best historical reference for *why* the "Option C"
-model (EL1 apps) and cooperative scheduling were chosen.
+model (EL1 apps) was chosen (its cooperative scheduling has since become preemptive for
+applications, see `02-KERNEL-INTERNALS.md`).

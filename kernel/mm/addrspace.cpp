@@ -12,6 +12,7 @@
 #include <kern/applaunch.h>		// g_bVerbose (gated lifecycle logging)
 #include <kern/net.h>			// NetCloseByPid (reclaim a dead process's sockets)
 #include <kern/v3d.h>			// V3DReleaseAS (free a dead process's GPU textures)
+#include <kern/thread.h>		// ThreadsFree (its threads' objects)
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -75,7 +76,10 @@ CAddressSpace::CAddressSpace (void)
 	m_ulHeapBrk (USER_HEAP_BASE),
 	m_ulHeapEnd (USER_HEAP_BASE),
 	m_ulSurfaceNext (USER_SURFACE_BASE),
-	m_ulCodeNext (USER_CODE_BASE)
+	m_ulCodeNext (USER_CODE_BASE),
+	m_pMainTask (0),
+	m_nTasks (0),
+	m_pThreads (0)
 {
 	m_Args[0] = '\0';
 	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
@@ -139,6 +143,10 @@ void CAddressSpace::SetCwd (const char *pCwd)
 
 CAddressSpace::~CAddressSpace (void)
 {
+	// Its threads' objects first (their waiters -- killed tasks -- unlinked), and the
+	// window's wake-up pointer to them cleared.
+	ThreadsFree (this);
+
 	// stdio teardown: signal EOF to whoever reads our stdout, drop our stream refs,
 	// and mark the spawn handle done (so a waiter unblocks). Done first so the
 	// terminal sees the child finish promptly.
@@ -489,6 +497,12 @@ void AddressSpaceTaskTerminate (CTask *pTask)
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
 	if (pAS != 0)
 	{
+		pTask->SetUserData (0, TASK_USER_DATA_USER);
+		if (pAS->DropTask () > 0)
+		{
+			return;			// a thread: the process goes on (or its other
+						// tasks are reaped in this same batch)
+		}
 		if (g_bVerbose)
 			CLogger::Get ()->Write ("proc", LogNotice, "exit: %s (pid %u)",
 						pTask->GetName (), pAS->GetPid ());

@@ -19,6 +19,8 @@ class CWindow;
 class CStream;
 class CMailbox;
 struct CProcess;
+class CTask;
+class CProcThreads;
 
 class CAddressSpace
 {
@@ -107,6 +109,18 @@ public:
 	void SetCwd (const char *pCwd);
 	const char *GetCwd (void)		{ return m_Cwd; }
 
+	// The tasks running in this space: the app's main task (the first one) and its threads
+	// (kapi_thread_create). AddressSpaceTaskTerminate frees the space with the last one.
+	void AddTask (CTask *pTask)		{ if (m_pMainTask == 0) m_pMainTask = pTask; m_nTasks++; }
+	unsigned DropTask (void)		{ return m_nTasks > 0 ? --m_nTasks : 0; }
+	// (only compared: once the main task has ended the pointer may be stale)
+	CTask *GetMainTask (void) const		{ return m_pMainTask; }
+
+	// The process's threads, synchronisation objects and posted calls (kern/thread.h):
+	// made on first use, freed with the space.
+	CProcThreads *GetThreads (void)		{ return m_pThreads; }
+	void SetThreads (CProcThreads *p)	{ m_pThreads = p; }
+
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
 
@@ -129,6 +143,9 @@ private:
 	u64			     m_ulHeapEnd; // page-aligned top of the mapped heap region
 	u64			     m_ulSurfaceNext; // next free VA in the surface arena (bump)
 	u64			     m_ulCodeNext; // next free VA in the code arena (bump)
+	CTask			    *m_pMainTask; // the app's first task (see AddTask)
+	unsigned		     m_nTasks;	// tasks running in this space (main + threads)
+	CProcThreads		    *m_pThreads; // threads / sync objects / posts (lazy)
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

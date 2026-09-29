@@ -356,6 +356,22 @@ and `hogsched=0` (plain round-robin) → `CScheduler::Configure`.
 - Circle's public + friend API is preserved (`Yield`, `Sleep/MsSleep`,
   `GetCurrentTask`, `AddTask`, `BlockTask`, `WakeTasks`…) → Circle drivers that block
   (USB, etc.) work without modification.
+- **The task list has no limit.** Circle's table of `MAX_TASKS` (40) pointers — and its
+  `LogPanic` ("System limit of tasks exceeded") when full — is gone: the tasks are a
+  **circular linked list** of `TSchedNode`s (`scheduler.h`), each with the scheduler's own state
+  about its task (the no-kill depth, a pending kill, the preemption streak, killed from outside).
+  `CTask` itself cannot grow (its layout is Circle's, shared with the prebuilt libraries), hence
+  the separate node; `AddTask` allocates it, the reaper frees it. The round robin scans the
+  circle from the node after `m_pScan` (the last one chosen; `YieldTo` points it just before its
+  task); `m_pCurNode` is the running task's node, so the current task's state is reached without
+  a search. `EnumerateTasks`'s callback must not yield.
+- **A process's tasks are one group** — the tasks whose `TASK_USER_DATA_USER` is the same address
+  space (the app's threads, §7). `TerminateTask` on an app's task terminates the whole group
+  (`TerminateGroup`: all but the caller); `CountGroup` counts its live ones. A task **killed**
+  from outside may still be on a wait list of its process (a mutex, an event, a socket): the
+  reaper frees it only once no task of its group is alive, and runs the termination handlers of a
+  batch **before** deleting any of its tasks — the last handler frees the process (its sockets
+  closed, its objects' wait lists emptied) while the tasks still exist.
 - `WakeTasks` **tolerates a task that is no longer blocked**: a `BlockTask` with a timeout that
   expired is made Ready by `GetNextTask` but stays on the event's list until it runs again and
   unlinks itself; an event set in that window (the V3D's frame-done interrupt right after one of
@@ -382,10 +398,12 @@ and `hogsched=0` (plain round-robin) → `CScheduler::Configure`.
 ### Per-task data
 
 `CTask`'s `TASK_USER_DATA_USER` slot holds the task's `CAddressSpace*` pointer
-(0 for kernel tasks). The PID, the state (R/S/B/N), the name and the ASID are accessible via
-the address space and the enumeration API (see [§8](#8-the-kapi-abi-table)). The
-reaping (`reaper`) calls the termination handler (which frees the address
-space) then destroys the `CTask`.
+(0 for kernel tasks) — the same one for all the tasks of a process (its threads). The PID, the
+state (R/S/B/N), the name and the ASID are accessible via the address space and the
+enumeration API (see [§8](#8-the-kapi-abi-table)). The address space counts its tasks
+(`AddTask` / `DropTask`; the first is its **main task**, `GetMainTask`); the reaping (`reaper`)
+calls the termination handler — which drops the task, and frees the address space with the last
+one — then destroys the `CTask`.
 
 ---
 
@@ -435,10 +453,10 @@ assembler macro `SAVE_TRAP` onto the stack on exception entry, restored by
 The FP/SIMD block is saved on **every** trap so floating-point user code keeps its
 registers across a context switch. The cooperative `TaskSwitch` (Circle) only
 preserves the callee-saved `d8–d15` mandated by the AArch64 PCS — enough for a
-voluntary `Yield()`, but **not** enough should a trap ever preempt a thread
-mid-computation. Saving the whole register file here makes hardware float correct
-under both the current cooperative scheduling and a future preemptive switch from
-the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`CPACR_EL1`,
+voluntary `Yield()`, but **not** enough when the timer preempts a thread
+mid-computation. Saving the whole register file here (and in `PreemptTrampoline`, see
+§ "Preemptive scheduling") keeps hardware float correct under both voluntary switches
+and preemption from the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`CPACR_EL1`,
 `circle/lib/startup64.S`), so the `stp`/`ldp` `q`-register forms never trap.
 
 ### System calls (dormant)
@@ -478,10 +496,58 @@ at most 64 MB; NetSurf asks for 8 MB):
 1. Creates a fresh `CAddressSpace`.
 2. Installs stdin/stdout, the process handle, argv, cwd.
 3. `LoadELF` into the address space.
-4. `SetUserData(AS, TASK_USER_DATA_USER)` + `Activate()` (switches `TTBR0`/ASID).
+4. `SetUserData(AS, TASK_USER_DATA_USER)` + `AS->AddTask(this)` (its main task) +
+   `Activate()` (switches `TTBR0`/ASID).
 5. **Calls the entry point directly**: `((void(*)())entry)()` — in EL1, in the
    app's page table + stack. No trap.
-6. On return, `Terminate()`; the reaper reaps the task and frees the address space.
+6. On return, `ThreadsEndProcess()` (its other threads end with it) and `Terminate()`; the
+   reaper reaps the tasks and frees the address space with the last one.
+
+### Threads (v67)
+
+Source: [`kernel/sys/thread.cpp`](../kernel/sys/thread.cpp),
+[`kernel/include/kern/thread.h`](../kernel/include/kern/thread.h).
+
+A thread is a `CUserThreadTask`: one more `CTask` whose `TASK_USER_DATA_USER` is the app's
+`CAddressSpace` (set in its constructor, before it is first scheduled: no `Yield` in between), so
+the task switch activates the app's page table and every kapi sees the same process — window,
+heap, files, sockets, cwd. It calls `fn (arg)` at EL1 on its own stack (kernel heap: the identity
+region, mapped in every space — like the main task's; 256 KB by default, 16 KB .. 16 MB), and
+the timer preempts it in its own code like any app (§5). `fn`'s return, or `kapi_thread_exit`,
+records its exit code and ends the task; the reaper frees it while the process goes on. A process
+runs at most `THREADS_MAX` (32) threads besides its main one.
+
+- **The process ends with its main task** (return from `main`, `kapi_exit`), or when any thread
+  calls `kapi_exit`: `ThreadsEndProcess` → `TerminateGroup` (all but the caller). A kill (task
+  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault anywhere still halts
+  the machine (the post-mortem console, §13), as before.
+- **The per-process state** — `CProcThreads`, made on first use, freed by `~CAddressSpace`
+  (`ThreadsFree`, first): the thread records (tid → task, done, exit code; 64: the ended ones are
+  kept until joined, the oldest reused first), the synchronisation objects (256 handles), the
+  posted-call ring (256) and two events: `DoneEv` (a thread ended: its joiners) and `WakeEv` (a
+  post, a window event, the close box: `pump_wait`).
+- **The objects** — mutex (recursive, an owner; released when its owner thread ends), event
+  (manual or auto reset), barrier (a count, a round number). A kapi runs on core 0 and is not
+  preempted, so an object's check-then-wait is atomic: the objects need no lock. A waiter blocks
+  on the object's `CSynchronizationEvent`, only ever set-then-cleared (Circle's `Pulse` is
+  private) — a condition variable's broadcast; it counts itself in `nWaiters` across the wait and
+  checks its condition again when woken. An object closed while waited on (`sync_close`) is freed
+  by its last waiter (they return −2); those left at the process's end are pulsed — unlinking the
+  killed tasks still on their wait list, which `~CSynchronizationEvent` asserts is empty — and
+  deleted.
+- **Posts**: `post (fn, ctx, value)` appends to the ring and pulses `WakeEv`; `pump_events` runs
+  the pending posts (at most one ring's worth) before the window's events, on the calling thread.
+  `pump_wait` points the window's wake-up (`CWindow::SetWake`: `PushEvent` and `RequestExit`
+  pulse it) at `WakeEv`, sleeps if nothing is pending, then pumps; `wait_for_exit` sleeps on it
+  too (16 ms at most, as before).
+- **The lists show a process once**: `list_windows`, `list_tasks` and `list_procs` skip the tasks
+  that are not its main task; a thread's name is `<app>:<name>` (or `<app>:<tid>`), which the
+  crash reports' task lists show. `kill` / `kill_pid` refuse the caller's own process.
+- **User side**: `umm_malloc` / `umm_free` take a lock (`kapi_lock`: an exclusive swap, a
+  `yield` while it is held — a spin on an app core, which makes no kapi call), and
+  `user/libc/onyx_syscalls.c` defines newlib's retargetable locks (the 8 static ones and the 10
+  `__retarget_lock_*` functions, which keeps newlib's `lock.o` out); a recursive lock's owner is
+  the tid on core 0, the core on an app core. `errno` stays shared.
 
 ### Launch entry points
 
@@ -531,7 +597,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 65`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 67`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -545,15 +611,20 @@ consolidated), v30 = `random` (hardware RNG), v33 = `ram_detail`, v34 =
 `set_wheel_speed`/`get_wheel_speed`, v35 = shared surfaces (`surface_*`) + shell IPC
 (`register_shell`, `shell_request`, `mailbox_send`/`mailbox_recv`), v36 =
 `memset`/`memcpy`/`memmove`, v37 = `tcp_listen`/`tcp_accept`, v38 = `screen_grab`/`inject_pointer`/`inject_key`, v39 = `set_menu`/`get_menu`/`menu_command`, v40 = `ipc_register`/`ipc_lookup`, `clipboard_set`/`clipboard_get`, `set_window_alpha`, `shutdown`, v41 = `fullscreen_begin`/`present_fb`/`fullscreen_end`, v42 = `drag_begin`/`drag_data`, `get_modifiers`/`inject_modifiers`, v43 = `net_ping`/`net_resolve`/`net_info`, v44 = `vfs_register`/`vfs_next`/`vfs_req_data`/`vfs_reply`, v45 = `wlan_scan`, v46 = `sound_acquire`/`sound_release`/`sound_start`/`sound_stop`/`sound_write`/`sound_status`, v47 = `sound_instrument`, v48 = `key_held`/`inject_key_held`, v49 = `exec_as`, v50 = `pad_state`, v51 = `core_acquire`/`core_run`/`core_state`/`core_release`, v52 = `gpu_info`/`gpu_draw`, v53 = `gpu_texture`/`gpu_render`, v54 = `kapi_gpu_vertex3` second (added) colour `r2 g2 b2 a2` in place of `reserved`, `KAPI_GPU_B_ALPHATEST(t)`, v55 = `fullscreen_direct`, v56 = `win_list`/`win_read`/`win_raise`/`win_close`, v57 = `seek`, v58 = `code_alloc`, v59 = `fsize64`, v60 = `sound_volume`/`wlan_reconnect`, v61 = `gpu_program`/`gpu_render2`, v62 = `gpu_render3`, v63 = `gpu_vbuf`, v64 = `win_minimise`/`win_geometry`/`resize_window2` — the modernised CDE desktop's windows: the frame's metrics and title buttons shared with the apps (`KAPI_FRAME_*`), `GUI_EVENT_WINCTL`, `KAPI_WIN_MINIMISED`, the frames' rounded corners, `WIN_FLAG_ALPHA`), v65 = `desk`/`win_desk` — the
-workspaces (virtual desktops: `KAPI_WIN_OFFDESK`, `KAPI_WIN_DESK`, `KAPI_DESK_MAX`).
+workspaces (virtual desktops: `KAPI_WIN_OFFDESK`, `KAPI_WIN_DESK`, `KAPI_DESK_MAX`), v66 =
+`screen_set` — the resolution changed while running, `GUI_EVENT_DISPLAY_RESIZE`; a window as big as
+the screen (was 1024 × 768 at most), v67 = `thread_create`/`thread_exit`/`thread_join`/`thread_self`,
+`mutex_*`/`event_*`/`barrier_*`/`sync_close`, `post`/`pump_wait` — threads (§7), their
+synchronisation objects, calls posted to the event pump; the scheduler's task list has no limit.
 
 ### Categories of exposed functions
 
 | Category | Examples |
 |---|---|
-| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is over 1024 × 768 or memory is short — an app must check it: at EL1, a null canvas drawn into is the kernel's memory at address 0), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `wk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
+| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: at EL1, a null canvas drawn into is the kernel's memory at address 0), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `wk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `wtk::Menu`. |
 | Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
+| Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
 | Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
@@ -592,6 +663,7 @@ workspaces (virtual desktops: `KAPI_WIN_OFFDESK`, `KAPI_WIN_DESK`, `KAPI_DESK_MA
 | GPU (v62) | `gpu_render3(f, v, nfloats, b, nb, uni, nuni, view)`: `gpu_render2` with each batch's vertices where the app keeps them — `struct kapi_gpu_batch3 { struct kapi_gpu_batch2 b; unsigned off, stride; }`: `b.count` vertices of `stride` floats (≥ the program's inputs, ≤ 64) from float `off` of `v[nfloats]` (`b.first` unused) — and their x / y framed by the kernel on the way, `x' = view[0] x + view[1] w`, `y' = view[2] y + view[3] w` (`view` 0: as they are): no common array for the app to make first → as `gpu_render2`. gcemu's TEV renderer gives it its recorder's frame as it is. See §15. |
 | GPU (v63) | `gpu_vbuf(bytes)`: memory the GPU reads too — low, physically contiguous, mapped into the program (the surface arena); up to 8 a program, 64 MB each, freed when it ends → its address, 0 none. `gpu_render3` with `v[nfloats]` inside one draws the vertices **where they are**: their x / y framed **in place** (the program draws the same vertices again with `view` 0), the triangles inside every plane drawn as runs of them, the others clipped into the buffer's end past `nfloats` (keep room there) — nothing copied. |
 | Windows (v64) | The modernised CDE desktop's windows. `win_minimise(id)`: window `id` (0: the caller's) minimised — not drawn, not hit, never active nor the keys' target — until `win_raise` / `raise_app` brings it back (`KAPI_WIN_MINIMISED` in `win_list`'s state) → 0 / −1. `win_geometry(out)`: `struct kapi_win_geom { x, y, w, h; cw, ch; ax, ay, aw, ah; state }` — the caller's whole window (frame included), its client size, the **work area** (the screen less the menu bar at the top and the topmost windows standing on the bottom edge: the dock) → 0 / −1. `resize_window2(w, h, &stride)`: as `resize_window`, but the canvas and the frame's copies **grow** past their first size when needed (new memory at the same addresses; their pixels are lost: redraw, `get_chrome` again) → the canvas and its stride, 0 (no memory: the size kept). With it: the frame's metrics `KAPI_FRAME_TITLE_H` 28, `KAPI_FRAME_BORDER` 4, `KAPI_FRAME_RADIUS` 8 (the chrome copies' top byte: a transparency, heeded in the corner squares), the title buttons' places `KAPI_FRAME_BTN_W/H/Y/EDGE/STEP` (the window menu at the left; close, maximise, minimise from the right: `KAPI_FRAME_MENU/CLOSE/MAXIMISE/MINIMISE`); `GUI_EVENT_WINCTL` (18: the window menu, maximise — for the app); `WIN_FLAG_ALPHA` (32: a borderless window's pixels carry their transparency). See §10.2. |
+| Screen size (v66) | `screen_set(w, h)`: the screen's resolution **now** (640 × 480 .. 2560 × 1600, `w` even; `ScreenResizeRequest`, kernel.cpp). The compositor does it between two frames (the display DMA is idle — each present waits for its end): `C2DGraphics::Resize` (Circle's: the frame buffer asked of the firmware again at that size, the drawing buffer made again), the old size back if the firmware refuses; then `CWindowManager::OnScreenResized`: the cursor and every window kept on the screen (moved in when past the right / bottom edge; a window parked at a negative place is left there), the app-written wallpaper dropped (the next `wallpaper_buffer` is a new buffer of the new size — the old one is left allocated: an app may still have it mapped), and **`GUI_EVENT_DISPLAY_RESIZE`** (19, `lValue = w << 16 \| h`, `GUI_DISPLAY_W/H`) to every window's pointer handler. The caller waits for it → 0; −1 out of bounds; −2 not now (a full-screen app owns the display — its mapping of the frame buffer would be stale —, the debug console, another change under way); −3 the firmware refused it (the old size kept). `screen_grab` refuses the old size (vncd / rdpd see it and take the new one). Not kept across a reboot: `cmdline.txt`'s `width=` / `height=` are (the Display applet writes both). See §10.2. |
 | Workspaces (v65) | The virtual desktops. `desk(set, count)`: `set` ≥ 0 shows desk `set`, `count` > 0 sets how many there are (1 .. `KAPI_DESK_MAX` = 8; the dock keeps 1–6; the windows of the desks dropped go onto the last one); −1 / 0 keep them → the current desk `| count << 8 | gen << 16` (`gen`: bumped at every change — a window moved, a desk shown; `KAPI_DESK_CUR/COUNT/GEN` in `user/kapi.h`, where an older kernel answers `1 << 8`: one desk). `win_desk(id, n)`: window `id` (0: the caller's) to desk `n` (−1: every desk; −2: only asked) → its desk (−1: every desk), −3 no such window; a topmost or backmost window stays on every desk. A window opens on the current desk (the topmost, backmost and system ones on all: desk −1); the others are hidden (`OffDesk`: not drawn, not hit, never active nor the keys' target, as minimised) and flagged `KAPI_WIN_OFFDESK` in `win_list`'s state, with the desk + 1 in its bits 8–15 (`KAPI_WIN_DESK(state)`: −1 all). `list_windows` and `raise_app` see the current desk's windows only (an app on another desk: `raise_app` fails, its launcher starts a new one here); `win_raise` of a window on another desk shows that desk. **Ctrl+Alt+Left / Right** show the previous / next desk (with **Shift** the active window goes along); not while an app has the full screen. See §10.2. |
 | Held keys (v48) | `key_held(key)` → 1 while the key is held **and** the caller's window has the keyboard (`KeyTargetLocked`), else 0 — for games, since key events only report presses. Keys: `KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` (the **US position** of the key), `'0'..'9'`. The WM keeps two bitsets over the logical codes: the USB one, rebuilt from every raw report (`KeyRawStub` → `SetUsbHeld`, HID usage → key), and the injected one (`inject_key_held(key, down)`, from vncd's RFB key down / up); `KeyHeld` ORs them. |
 | FM (v47) | `sound_instrument(voice, const struct kapi_fm_instrument *)` — a 2-operator FM instrument (OPL2 style, `struct kapi_fm_op op[2]` = modulator / carrier: `mult`, `level`, `ksl`, `attack`, `decay`, `sustain`, `release`, `wave`, `flags` FM_SUSTAINED / FM_TREMOLO / FM_VIBRATO / FM_KSR; `feedback`, `connection`) for that voice; then `sound_start(voice, milliHz, SOUND_FM, volume)`. Owner only. See §12. |
@@ -734,6 +806,16 @@ the author's FreeBASIC `SimpleOS`.
   frame copies; the process's mappings are moved to them at the same addresses (`MapContig`, then
   `CAddressSpace::FlushTLB`: `tlbi aside1is`); the old memory is retired and freed by the
   compositor three frames later (`FreeRetired`: a frame begun before may still be reading it).
+- **The screen's size, while running** (v66 `screen_set`, the Control Panel's Display applet): the
+  compositor task makes the frame buffer again (`C2DGraphics::Resize`) between two frames, then
+  `OnScreenResized` keeps the windows on the screen and sends them `GUI_EVENT_DISPLAY_RESIZE`. The
+  apps placed by the screen's size place themselves again on it: the menu bar (its canvas grown to
+  the screen: `resize_window2`), the dock (`onDisplayResize`: laid out for the new width, along the
+  bottom), the notifications (the top right corner); wtk re-maximises a maximised window and
+  shrinks / moves one past the work area ~0.3 s later (`Root::displayTick`: the dock has moved,
+  the work area is the new one). vncd sends the VNC `DesktopSize` pseudo-rectangle (−223) to a
+  client that takes it (else it closes the session: the client connects again at the new size);
+  rdpd sends `SCREEN` (8: u16 w h) and Onyx Remote resizes its view of the Pi's screen.
 - **`CWindowManager`** (singleton): a Z-ordered list (bands: backmost, normal, topmost; the last =
   on top), protected by a `CSpinLock`. `Add`/`Remove`/`Raise`/`Minimise`. `Composite(screen)`:
   1. snapshot the list under the lock (the compositor also frees the grown windows' old memory),
@@ -791,8 +873,8 @@ widget, otherwise to the app's keyboard handler.
 
 ### 10.5 Modal dialogs
 
-`CDialog` (types: `DLG_MSGBOX`, `DLG_FOPEN`, `DLG_FSAVE`). In a cooperative system,
-the calling app **yields in a loop** in the kernel as long as the dialog is not
+`CDialog` (types: `DLG_MSGBOX`, `DLG_FOPEN`, `DLG_FSAVE`). The call runs in the kernel
+(not preempted), so the calling app **yields in a loop** in the kernel as long as the dialog is not
 resolved; meanwhile **the compositor runs** and draws the dialog **on top of** the
 owner window (blocked), and the other apps stay usable. The file dialog lists a
 FatFs directory (folders first, `..` to go up), with keyboard selection and, for `FSAVE`,
@@ -1265,5 +1347,5 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |
 | Kernel stack of an app task | 256 KB | kernel.cpp |
-| Screen resolution | 1024×768 (configurable) | kernel.h / cmdline.txt |
+| Screen resolution | 1024×768 by default (`cmdline.txt` `width=` / `height=`; changed while running: `screen_set`, v66) | window.h / cmdline.txt |
 | `GIMAGE_TRANSPARENT` | `0xFF00FF` | gimage.h |

@@ -21,7 +21,8 @@ The reference documentation is in **`docs/`** and is written in **English**:
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by
 **`docs/build_docs.py`** (`python docs/build_docs.py` → `.docx` via pandoc using the themed
-**`docs/assets/reference.docx`** = the Onyx visual signature; `.pdf` via Word). Screenshots
+**`docs/assets/reference.docx`** = the Onyx visual signature; `.pdf` via Word, else
+LibreOffice headless). Screenshots
 (the real apps, run on the PC) are in `screenshots/`, produced by
 **`sh tools/tests/desktop_sim/shots.sh`**; the `.md` reference them as `../screenshots/<x>.png`.
 
