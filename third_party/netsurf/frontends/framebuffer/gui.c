@@ -174,13 +174,14 @@ widget_scroll_y(struct gui_window *gw, int y, bool abs)
 
 	height = fbtk_get_height(gw->browser);
 
+	/* do not pan off the bottom of the content -- Onyx: then off the top, so a
+	 * page shorter than the window (a new one, still loading) is at 0, never above */
+	if ((bwidget->scrolly + bwidget->pany) > (content_height - height))
+		bwidget->pany = (content_height - height) - bwidget->scrolly;
+
 	/* dont pan off the top */
 	if ((bwidget->scrolly + bwidget->pany) < 0)
 		bwidget->pany = -bwidget->scrolly;
-
-	/* do not pan off the bottom of the content */
-	if ((bwidget->scrolly + bwidget->pany) > (content_height - height))
-		bwidget->pany = (content_height - height) - bwidget->scrolly;
 
 	if (bwidget->pany == 0)
 		return;
@@ -211,13 +212,13 @@ widget_scroll_x(struct gui_window *gw, int x, bool abs)
 
 	width = fbtk_get_width(gw->browser);
 
+	/* do not pan off the right of the content -- Onyx: then off the left */
+	if ((bwidget->scrollx + bwidget->panx) > (content_width - width))
+		bwidget->panx = (content_width - width) - bwidget->scrollx;
+
 	/* dont pan off the left */
 	if ((bwidget->scrollx + bwidget->panx) < 0)
 		bwidget->panx = - bwidget->scrollx;
-
-	/* do not pan off the right of the content */
-	if ((bwidget->scrollx + bwidget->panx) > (content_width - width))
-		bwidget->panx = (content_width - width) - bwidget->scrollx;
 
 	if (bwidget->panx == 0)
 		return;
@@ -1920,8 +1921,10 @@ gui_window_get_scroll(struct gui_window *g, int *sx, int *sy)
 {
 	struct browser_widget_s *bwidget = fbtk_get_userpw(g->browser);
 
-	*sx = bwidget->scrollx;
-	*sy = bwidget->scrolly;
+	/* Onyx: where the view is going -- with the pan not drawn yet (else the history
+	 * keeps, for a page just opened, the scroll offset of the page before) */
+	*sx = bwidget->scrollx + bwidget->panx;
+	*sy = bwidget->scrolly + bwidget->pany;
 
 	return true;
 }
@@ -2171,6 +2174,21 @@ static nserror
 gui_window_event(struct gui_window *gw, enum gui_window_event event)
 {
 	switch (event) {
+	case GW_EVENT_NEW_CONTENT: {
+		/* Onyx: a new page opens at its top left (a fragment, or the place kept in
+		 * the history, is scrolled to after this) -- whatever the page before was
+		 * scrolled to, and however short the new one still is */
+		struct browser_widget_s *bwidget = fbtk_get_userpw(gw->browser);
+		bwidget->scrollx = bwidget->scrolly = 0;
+		bwidget->panx = bwidget->pany = 0;
+		bwidget->pan_required = false;
+		fbtk_set_scroll_position(gw->vscroll, 0);
+		fbtk_set_scroll_position(gw->hscroll, 0);
+		fb_queue_redraw(gw->browser, 0, 0, fbtk_get_width(gw->browser),
+				fbtk_get_height(gw->browser));
+		break;
+	}
+
 	case GW_EVENT_UPDATE_EXTENT:
 		gui_window_update_extent(gw);
 		break;
