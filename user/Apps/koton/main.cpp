@@ -238,8 +238,9 @@ static void cmdExport ()
 }
 
 // ---- edits ---------------------------------------------------------------------------------------------------------
-static void cmdUndo () { if (g_doc.undo ()) { g_rebuildEditor = true; setStatus ("Undone."); refreshAll (); } }
-static void cmdRedo () { if (g_doc.redo ()) { g_rebuildEditor = true; setStatus ("Redone."); refreshAll (); } }
+static void pushPluginStates ();
+static void cmdUndo () { savePluginStates (); if (g_doc.undo ()) { pushPluginStates (); g_rebuildEditor = true; setStatus ("Undone."); refreshAll (); } }
+static void cmdRedo () { savePluginStates (); if (g_doc.redo ()) { pushPluginStates (); g_rebuildEditor = true; setStatus ("Redone."); refreshAll (); } }
 static void cmdDuplicate () { if (g_arrange) g_arrange->duplicateSelected (); }
 static void cmdDelete () { if (g_arrange) g_arrange->deleteSelected (); }
 
@@ -371,8 +372,30 @@ static void browseInsert (int kind)
 // ---- the plugins -------------------------------------------------------------------------------------------------
 static Vec<int> g_browser_pending;			// (the catalogue, for the browser)
 static void onPluginCrash (PlugInstance *p, void *ctx) { (void) ctx; char m[160]; snprintf (m, sizeof m, "The plugin %s stopped (%s): its track is silent.", p->info ().name.c (), p->error ()); setStatus ("%s", m); if (g_chain) g_chain->invalidate (true); }
-static void onPluginDirty (PlugInstance *p, void *ctx) { (void) p; (void) ctx; g_doc.dirty = true; }
-static void onPluginParam (PlugInstance *p, int index, float value, void *ctx) { (void) p; (void) index; (void) value; (void) ctx; g_doc.dirty = true; }
+// a plugin's editor changed it: a generator's state goes back into its modules (the song recompiled)
+static void onPluginDirty (PlugInstance *p, void *ctx)
+{
+	(void) ctx;
+	if (p->isGenerator () && g_plug->pullGeneratorState (p, g_doc.p)) g_doc.changed (); else g_doc.dirty = true;
+}
+static void onPluginParam (PlugInstance *p, int index, float value, void *ctx) { (void) index; (void) value; onPluginDirty (p, ctx); }
+// after an undo / redo: the running plugins take the states the song holds again
+static void pushPluginStates ()
+{
+	if (!g_plug || !g_plug->available ()) return;
+	syncPlugins ();
+	for (int t = 0; t < g_doc.p.tracks.size () && t < ENGINE_MAX_TRACKS; t++)
+	{
+		const Track &tr = g_doc.p.tracks[t];
+		PlugInstance *pi = g_plug->trackInstrument (t);
+		if (pi && pi->ready () && !tr.instrumentPlugin.state.empty ()) g_plug->setState (pi, tr.instrumentPlugin.state, 300);
+		for (int s = 0; s < tr.inserts.size () && s < 4; s++)
+		{
+			PlugInstance *fx = g_plug->trackInsert (t, s);
+			if (fx && fx->ready () && !tr.inserts[s].state.empty ()) g_plug->setState (fx, tr.inserts[s].state, 300);
+		}
+	}
+}
 static void pluginInstruments (Vec<Str> &ids, Vec<Str> &names)
 {
 	if (!g_plug || !g_plug->available ()) return;

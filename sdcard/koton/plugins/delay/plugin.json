@@ -1,0 +1,16 @@
+{
+  "name": "Delay",
+  "kind": "effect",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "An echo in milliseconds: feedback through a low-pass, ping-pong, width.",
+  "aliases": [],
+  "params": [
+    {"id": "time", "name": "Time", "min": 1, "max": 2000, "default": 350, "unit": "ms"},
+    {"id": "feedback", "name": "Feedback", "min": 0, "max": 0.95, "default": 0.4, "unit": ""},
+    {"id": "tone", "name": "Tone", "min": 500, "max": 18000, "default": 6000, "unit": "Hz"},
+    {"id": "ping_pong", "name": "Ping-pong", "min": 0, "max": 1, "default": 1, "unit": "", "step": 1, "choices": ["Off", "On"]},
+    {"id": "width", "name": "Width", "min": 0, "max": 1, "default": 1, "unit": ""},
+    {"id": "mix", "name": "Mix", "min": 0, "max": 1, "default": 0.3, "unit": ""}
+  ]
+}

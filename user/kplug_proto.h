@@ -159,7 +159,12 @@ enum
 typedef struct KpHello { unsigned version, kind, nparams; int shm; } KpHello;
 typedef struct KpParamMsg { int index; float value; } KpParamMsg;
 typedef struct KpReq { unsigned seq; } KpReq;
-typedef struct KpEditor { int surface, w, h; } KpEditor;
+typedef struct KpEditor
+{
+	int surface, w, h;
+	unsigned themed;			/* 1: draw with the host's colours below (its wtk theme), 0: the system's */
+	unsigned window, button, field, accent;
+} KpEditor;
 
 /* ---- the rings: single producer, single consumer, no lock ------------------------------------------ */
 static inline unsigned long long kp_ld64 (volatile unsigned long long *p) { return __atomic_load_n (p, __ATOMIC_ACQUIRE); }

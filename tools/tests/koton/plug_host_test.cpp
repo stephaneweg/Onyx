@@ -228,6 +228,25 @@ static int g_crashes, g_params, g_lastParam = -1;
 static void onCrash (PlugInstance *p, void *) { g_crashes++; printf ("  onCrash: %s -- %s\n", p->info ().id.c (), p->error ()); }
 static void onParam (PlugInstance *, int i, float, void *) { g_params++; g_lastParam = i; }
 
+// KPLUG_SHOT=prefix: an editor as drawn -> prefix-<name>.ppm (the user guide's picture)
+static void shot (wtk::Widget &w, int x0, int y0, int ew, int eh, const char *name)
+{
+	const char *pre = getenv ("KPLUG_SHOT");
+	if (!pre) return;
+	char path[256]; snprintf (path, sizeof path, "%s-%s.ppm", pre, name);
+	FILE *f = fopen (path, "wb");
+	if (!f) return;
+	fprintf (f, "P6\n%d %d\n255\n", ew, eh);
+	for (int y = y0; y < y0 + eh; y++)
+		for (int x = x0; x < x0 + ew; x++)
+		{
+			unsigned c = w.canvas.px[y * w.canvas.stride + x];
+			unsigned char rgb[3] = { (unsigned char) (c >> 16), (unsigned char) (c >> 8), (unsigned char) c };
+			fwrite (rgb, 1, 3, f);
+		}
+	fclose (f);
+}
+
 static void pollFor (PlugHost &h, double sec) { double end = now () + sec; while (now () < end) { h.poll (); usleep (16000); } }
 
 static void addChord (Project &p, int deg, int beats)
@@ -290,7 +309,9 @@ int main ()
 	h.saveTrack (0, tr);
 	CHECK (strstr (tr.inserts[0].state.c (), "\"time\":120") && strstr (tr.instrumentPlugin.state.c (), "\"volume\":-12"));
 	printf ("host: parameters and states through the plugin: %s\n", tr.instrumentPlugin.state.c ());
-	// the editor in a panel: the plugin draws its knobs; a drag on the first one reaches the host
+	// the editor in a panel: the plugin draws its knobs (in the host's colours: Koton's dark ones
+	// here); a drag on the first one reaches the host
+	{ wtk::WkTheme th; wtk::wk_theme_get (th); th.window = 0x21252D; th.button = 0x363C48; th.field = 0x14171C; th.accent = 0x49B0C4; wtk::wk_theme_set (th); }
 	wtk::Panel panel (0, 0, 640, 400, 0x00123456);
 	int ew = 0, eh = 0; h.editorSize (fm, &ew, &eh);
 	PlugEditorView *v = h.openEditor (fm, panel, 10, 10, ew, eh);
@@ -300,6 +321,7 @@ int main ()
 	int inked = 0;
 	for (int y = 10; y < 10 + eh; y++) for (int x = 10; x < 10 + ew; x++) if ((panel.canvas.px[y * panel.canvas.stride + x] & 0xFFFFFF) != (wtk::C_BG & 0xFFFFFF)) inked++;
 	CHECK (inked > 2000);
+	shot (panel, 10, 10, ew, eh, "fm2");
 	float r0 = fm->param (0);
 	int kx = 10 + 10 + 40, ky = 10 + wtk::wk_fh () + 18 + 40;		// the first knob's dial
 	panel.handleMouse (kx, ky, 0, 0, 0, 0); pollFor (h, 0.05);
@@ -333,6 +355,22 @@ int main ()
 	for (int i = 0; i < r.notes.size () && i < r2.notes.size (); i++) CHECK (r.notes[i].note == r2.notes[i].note && r.notes[i].start == r2.notes[i].start);
 	printf ("host: a generator block rendered by kp_arp: %d notes in %.1f ms (its process started), %.2f ms again (the cache)\n",
 		r.notes.size (), (t2 - t1) * 1000, (t3 - t2) * 1000);
+	// its editor: a parameter moved there goes back into the module (found by its id in the project)
+	wtk::Panel gp (0, 0, 640, 400, 0x00123456);
+	int gw = 0, gh = 0; h.editorSize (gi, &gw, &gh);
+	PlugEditorView *gv = h.openGeneratorEditor (*g, gp, 0, 0, gw, gh);
+	CHECK (gv && gi->isGenerator () && !strcmp (gi->editedModule (), "g1"));
+	pollFor (h, 0.2);
+	gp.draw (); shot (gp, 0, 0, gw, gh, "arp");
+	h.setParam (gi, gi->paramIndex ("notes_per_beat"), 2);		// (as its editor would)
+	pollFor (h, 0.1);
+	CHECK (h.pullGeneratorState (gi, p));
+	Str gs; moduleStateJson (*g, gs);
+	CHECK (strstr (gs.c (), "\"notes_per_beat\":2") && strstr (gs.c (), "\"pattern\":2"));
+	Riff r3 = renderModule (*g, p, 0, carry);
+	CHECK (r3.notes.size () == 16);
+	h.closeEditor (gv);
+	CHECK (!gi->editedModule ()[0]);
 	// a plugin killed: noticed, its track silent, started again
 	unsigned u0 = e.pluginUnderruns;
 	kapi_kill_pid (dl->pid (), 1);

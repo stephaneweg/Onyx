@@ -587,13 +587,28 @@ PlugEditorView *PlugHost::openGeneratorEditor (const GeneratorModule &m, wtk::Wi
 	if (!g) return 0;
 	Str st; moduleStateJson (m, st);
 	setState (g, st.empty () ? "{}" : st.c ());
+	g->m_editModule = m.id;
 	return openEditor (g, parent, x, y, w, h);
+}
+
+bool PlugHost::pullGeneratorState (PlugInstance *p, Project &pr)
+{
+	if (!p || !p->m_generator || p->m_editModule.empty ()) return false;
+	for (int t = 0; t < pr.tracks.size (); t++)
+		for (int i = 0; i < pr.tracks[t].items.size (); i++)
+		{
+			Module *m = pr.tracks[t].items[i].module;
+			if (m && m->kind == M_GENERATOR && m->id == p->m_editModule) return pullGeneratorState (p, *(GeneratorModule *) m);
+		}
+	return false;
 }
 
 bool PlugHost::pullGeneratorState (PlugInstance *p, GeneratorModule &m)
 {
-	Str st;
+	Str st, old;
 	if (!getState (p, st)) return false;
+	moduleStateJson (m, old);
+	if (old == st) return false;
 	setModuleStateJson (m, st.c ());
 	return true;
 }
@@ -605,13 +620,13 @@ void PlugHost::editorSize (const PlugInstance *p, int *w, int *h) const
 	if (p && p->m_info.editorW > 0 && p->m_info.editorH > 0) { W = p->m_info.editorW; H = p->m_info.editorH; }
 	else if (p)
 	{
-		// (as kplug.h lays its knobs out: 84 px a knob, 170 a drop-down, 150 a check box, rows of 560 px)
-		int fh = wtk::wk_fh (), x = 10, rows = 1, rowW = 560;
+		// (as kplug.h lays its knobs out: 96 px a knob, 170 a drop-down, 150 a check box, rows of 600 px)
+		int fh = wtk::wk_fh (), x = 10, rows = 1, rowW = 600;
 		for (int i = 0; i < p->m_info.params.size (); i++)
 		{
 			const PlugParam &q = p->m_info.params[i];
 			bool tog = q.choices.size () == 2 && q.choices[0] == "Off" && q.choices[1] == "On";
-			int cw = q.choices.size () && !tog ? 170 : tog ? 150 : 84;
+			int cw = q.choices.size () && !tog ? 170 : tog ? 150 : 96;
 			if (x + cw > rowW - 6 && x > 10) { x = 10; rows++; }
 			x += cw;
 		}
@@ -640,7 +655,8 @@ PlugEditorView *PlugHost::openEditor (PlugInstance *p, wtk::Widget &parent, int 
 	PlugEditorView *v = new PlugEditorView (this, p, x, y, w, h);
 	p->m_editor = v;
 	parent.addChild (v);
-	KpEditor e = { p->m_edSid, w, h };
+	// the app's colours now (its palette: what it applied, not the theme file's) -- the plugin draws with them
+	KpEditor e = { p->m_edSid, w, h, 1, wtk::C_BG, wtk::C_BUTTON, wtk::C_FIELD, wtk::C_ACCENT };
 	kapi_mailbox_send (p->m_pid, KP_EDITOR, &e, sizeof e);
 	return v;
 }
@@ -657,6 +673,7 @@ void PlugHost::editorGone (PlugEditorView *v)
 	PlugInstance *p = v->m_inst;
 	if (!p || p->m_editor != v) return;
 	p->m_editor = 0;
+	p->m_editModule = "";
 	if (p->m_pid > 0 && (p->m_state == PLUG_READY)) kapi_mailbox_send (p->m_pid, AP_CLOSE, 0, 0);
 }
 

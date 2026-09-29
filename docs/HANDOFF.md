@@ -659,14 +659,17 @@ hamburger menus of both sites open and their links work; kotonstudio's scroll re
 - A rebox takes the old boxes' objects over by URL (`html_fetch_object`); objects that arrive
   after the page is done cause a reformat (object.c).
 
-## Koton Studio for Onyx -- a DAW (2026-09-29: a study, a plan, mock-ups; no code yet)
+## Koton, the studio -- a DAW (2026-09-29: implemented, not yet run on the Pi)
 
-The user asked for a DAW in the manner of their C# Koton Studio (`github.com/stephaneweg/MusicTracker`),
-no score view at first: **`docs/daw/README.md`** (Koton studied, what Onyx has and lacks, the
-architecture -- the DSP engine on core 2, plugins as processes over IPC, JSON with an arena
-library, the AI through a `bin/llm` helper --, the OS additions, the milestones M0..M6, the open
-questions) and its mock-ups (`python3 tools/screenshot/mockup_daw.py` -> `docs/daw/mockups/`).
-Waiting on the user's answers to §8 before M0.
+Koton Studio (the user's C# DAW, `github.com/stephaneweg/MusicTracker`) made again for Onyx, no
+score view: **`docs/daw/README.md`** (the study, the plan, the user's decisions in §8, **where it
+stands and what to test on the Pi in §9**). Code: `user/Apps/koton` (engine/, synth/, plug/, ui/,
+main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/bin/llm.cpp` (the AI's HTTPS
+helper), wtk's text face (`user/ft/wtkface.h`) and studio widgets. Docs: docs/04 *Koton, the
+studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section. Tests:
+`sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
+`sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont
+(`sdcard/koton/soundfonts`, licence beside it).
 
 ## Other open items
 

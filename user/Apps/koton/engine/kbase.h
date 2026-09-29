@@ -183,13 +183,15 @@ public:
 // bit for bit makes a .sq sound the same here as on Windows. ----------------------------------------------
 class NetRandom
 {
+	// C#'s int arithmetic wraps: done on unsigned (signed overflow is undefined in C++)
+	static int wsub (int a, int b) { return (int) ((unsigned) a - (unsigned) b); }
 	int m_seedArray[56];
 	int m_inext, m_inextp;
 public:
 	explicit NetRandom (int seed)
 	{
 		int subtraction = (seed == (-2147483647 - 1)) ? 2147483647 : (seed < 0 ? -seed : seed);
-		int mj = 161803398 - subtraction;
+		int mj = wsub (161803398, subtraction);
 		m_seedArray[55] = mj;
 		int mk = 1;
 		int ii = 0;
@@ -197,7 +199,7 @@ public:
 		{
 			if ((ii += 21) >= 55) ii -= 55;
 			m_seedArray[ii] = mk;
-			mk = mj - mk;
+			mk = wsub (mj, mk);
 			if (mk < 0) mk += 2147483647;
 			mj = m_seedArray[ii];
 		}
@@ -206,7 +208,7 @@ public:
 			{
 				int n = i + 30;
 				if (n >= 55) n -= 55;
-				m_seedArray[i] -= m_seedArray[1 + n];
+				m_seedArray[i] = wsub (m_seedArray[i], m_seedArray[1 + n]);
 				if (m_seedArray[i] < 0) m_seedArray[i] += 2147483647;
 			}
 		m_inext = 0;
@@ -218,7 +220,7 @@ public:
 		int locINext = m_inext, locINextp = m_inextp;
 		if (++locINext >= 56) locINext = 1;
 		if (++locINextp >= 56) locINextp = 1;
-		int retVal = m_seedArray[locINext] - m_seedArray[locINextp];
+		int retVal = wsub (m_seedArray[locINext], m_seedArray[locINextp]);
 		if (retVal == 2147483647) retVal--;
 		if (retVal < 0) retVal += 2147483647;
 		m_seedArray[locINext] = retVal;

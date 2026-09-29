@@ -1,6 +1,6 @@
 # Koton Studio for Onyx — a DAW that thinks in harmony (study, plan, first mock-ups)
 
-> **Status: the plan (2026-09-29), decided with the user (§8); being implemented.** Asked by the user: a music app for Onyx
+> **Status (2026-09-29): implemented — §9 says what is there and what to test on the Pi.** The plan below, decided with the user (§8). Asked by the user: a music app for Onyx
 > "in the manner of Koton Studio" (the user's own C#/WPF DAW, `github.com/stephaneweg/MusicTracker`),
 > **without the score view** at first; the same philosophy (one thinks in harmony, then adds chord,
 > rhythm and polyrhythm generators); sound and effect plugins as **separate processes over IPC**, the
@@ -168,8 +168,8 @@ simple, bounded, leak-free).
 
 ### 3.4 Plugins over IPC (the applets' way)
 
-A plugin is an app in `SD:/apps/koton.app/plugins/<name>.kpl/` (`main` + `plugin.json`: kind,
-name, parameters). Three kinds, in the order we build them:
+A plugin is a program in `SD:/koton/plugins/<name>/` (`main` + `plugin.json`: kind, name,
+parameters) — *as built: see §9 and docs/03, "Koton's plugins"*. Three kinds, in the order we build them:
 
 1. **Generators** (arpeggiator, euclid, cellular automaton, 1/f…) — *not real time*: the compile
    thread asks "notes for beats a..b, with this context (key, chords, meter, the module's state)"
@@ -177,14 +177,15 @@ name, parameters). Three kinds, in the order we build them:
    and it covers Koton's `IKotonGenerator` exactly.
 2. **Instruments and effects** — *real time, rendered ahead*: a song is known in advance, so each
    plugin instance gets a shared memory region (header, an event ring of timed notes / parameter
-   changes, and an audio ring of float blocks). The engine writes the events 8 blocks (~46 ms)
+   changes, and an audio ring of float blocks). The engine writes the events 4096 frames (~93 ms, as built)
    ahead; the plugin process renders them into its ring; the engine mixes the blocks when due.
    Effects work the same on a track's dry stem (engine → ring → plugin → ring → engine). The plugin
    process sleeps on a word of the shared region (OS addition B2) instead of polling. Live playing
    through a plugin instrument has this window's latency; the built-in sounds stay the low-latency
    path.
-3. **Editors** — the plugin started with `--editor <surface> <hostpid>` is a plain wtk applet
-   (`applet_proto.h`, unchanged): the host shows it in the chain panel or a floating window.
+3. **Editors** — the plugin draws its editor into a surface of the host when asked (`KP_EDITOR`)
+   and speaks the applets' messages (`applet_proto.h`, unchanged); the host shows it in a
+   floating panel. (As built: not `--applet`, whose watchdog expects the Control Panel as host.)
 
 The protocol (`user/kplug_proto.h`, append-only like the kapi ABI): `KP_HELLO {kind, name,
 nparams}`, `KP_PARAMS` (JSON), `KP_PREPARE {rate, block, shm}`, `KP_SET {param, value}`,
@@ -344,3 +345,32 @@ the difference with the mock-ups; without it, the same layout with the bitmap fo
    (the futex-like wait, thread priorities) if needed; W1 (the new widgets) yes; **C1 (TLS
    certificate verification) not needed** — the verification stays bypassed.
 7. The user tests on the Pi once everything is done.
+
+## 9. Where it stands (2026-09-29)
+
+Everything of M0–M5 is in: the engine (`user/Apps/koton/engine`, MeltySynth in `synth/`), the app
+(`user/Apps/koton/main.cpp` + `ui/`), the AI (`engine/ai*`, `user/bin/llm`), the plugins
+(`user/kplug*.h`, `plug/`, eleven plugins `user/Apps/kp_*`), wtk's text face and studio widgets,
+kapi v68 (the sound ring, word waits, real-time threads, USB MIDI). The user's guide: docs/04,
+*Koton, the studio*; the code: docs/03, *A large app: Koton* and *Koton's plugins*. Screenshots
+`screenshots/koton*.png` (the real app in the desktop simulator).
+
+Tested on the PC only: the engine, the synth, the AI, the plugins (rings, DSP, host) under
+ASan / UBSan / LSan; the app in the desktop simulator (and a scripted session under valgrind: no
+error, no leak). **Never run on the Pi yet**. To try there, in order:
+
+1. `futextest`, `ringtest`, `ringtest 128 2`, `ringtest 1024 4` (headphones), `threadtest`,
+   `miditest 60` with a USB keyboard; an emulator's sound (unchanged).
+2. Koton opens its demo song (`SD:/koton/songs/demo.kson`), the status bar says *Engine on core 2*;
+   Play: the sound in time, no crackle (the status bar counts the underruns), the load shown.
+3. Every editor with *Listen*; a chord changed, the accompaniment follows; undo / redo; save,
+   reopen; a Koton `.sq`.
+4. Plugins: an instrument plugin on a track (+~0.1 s at Play), Delay / Reverb inserts (the mix
+   delayed as much, aligned), their editors, an Arpeggiator block, a plugin killed from the task
+   manager (the track goes on dry), Koton closed (no `kp.*` left).
+5. *Compose with AI* with a Gemini key (the network up); *Copy the prompt* / *Paste a reply*.
+6. A USB MIDI keyboard on a track, and *Step record* in a riff.
+
+Left for later: the score view (by choice), automation lanes' editing (they play, they are not
+edited), the tempo lane's editing (the song dialog sets the main tempo), HDMI audio (the user's
+option), a mixer window.

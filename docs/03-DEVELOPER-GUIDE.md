@@ -1377,6 +1377,195 @@ Conventions worth keeping:
 - **Static objects** that allocate must not be made before `main` (the kapi table is not there yet
   on Onyx): Koton makes its document in `main` (`g_doc` is a reference to storage constructed there).
 
+### Koton's plugins: processes over IPC (`kplug.h`, `kplug_proto.h`, `Apps/koton/plug`)
+
+Koton's instruments, effects and generators beyond the SoundFont are **plugins**, each a process of
+its own — the way the Control Panel hosts its applets: a crash in one never takes Koton down.
+
+| File | What |
+|---|---|
+| [`user/kplug_proto.h`](../user/kplug_proto.h) | The protocol (plain C, **append-only** like the kapi ABI: a message number or a field never moves; `KP_PROTO_VERSION` grows): the shared region (`KpShm`), the rings, the mailbox messages. |
+| [`user/kplug.h`](../user/kplug.h) | The plugin's side: a plugin is its parameters, a few callbacks and `KPLUG_MAIN (desc)`; the runtime does the rest (the region, the handshake, the render thread, the parameters, the state, a generator's requests, the editor). Small DSP helpers (`KpAdsr`, `KpSvf`, `KpBiquad`, `KpNoise`, `kp_sin`, `kp_mtof`, `kp_db`). |
+| `user/Apps/kp_<name>/` | A plugin: `main.cpp` + `plugin.json` (fm2, subsynth, pluck; delay, reverb, chorus, eq3, drive; arp, euclid, automaton — the catalogue: [docs/04](04-USER-GUIDE.md), *Koton's plugins*). |
+| [`Apps/koton/plug/plughost.h`](../user/Apps/koton/plug/plughost.h) | The host: the catalogue, the processes, the engine's side of each, parameters, states, generators, editors, crashes. |
+| `Apps/koton/plug/plugshm.h` | The engine's side of a plugin — `ShmSource` (a `kt::ExternalSource`), `ShmEffect` (a `kt::Effect`) — pure memory (they run on the app core). |
+| `Apps/koton/plug/plugctx.h` | A generator's request (the context JSON) and reply (notes → a riff); a module's state (base64 of the plugin's JSON, as Koton's files). |
+
+**Packaging.** `SD:/koton/plugins/<name>/main` (the program, a newlib app with the FPU) and
+`plugin.json`: `{ "name", "kind": "instrument" | "effect" | "generator", "text", "vendor",
+"aliases": [other ids: Koton's "koton.arpeggiator"...], "editor": { "w", "h" } (optional), "params":
+[{ "id", "name", "min", "max", "default", "unit", "step" (1: whole numbers), "choices": [names] }] }`
+— the host lists the plugins from the manifests without starting them; a project stores a plugin by
+its folder's name (`PluginSlot::id`) or an alias. `user/Makefile` builds each
+`Apps/kp_<name>/main.cpp` into `Apps/kp_<name>/kp_<name>.elf` (`make plugins`; not a `user/*.elf`,
+which `make stage` would make an app of) and `make stage` copies it with its manifest to
+`sdcard/koton/plugins/<name>/`. The manifest must say what the program says: `sh
+tools/tests/koton/plug_run.sh --manifest <name>` prints the program's own list (the tests compare
+them).
+
+**Starting.** The host makes the plugin's **shared region** — a surface (`kapi_surface_create`) of
+512 × 224 "pixels" used as 448 KB of bytes, `KpShm` — fills its identity (kind, sample rate, lead,
+latency, the initial state as JSON), and runs `kapi_exec_as (".../main", "--kplug <surface>
+<host pid>", "kp.<name>.<n>")`. The plugin maps the region, loads the state, calls `prepare`, writes
+its parameter list into it, sets `ready` and sends `KP_HELLO`. The host is the IPC service
+`kotonplug` (one Koton hosts plugins at a time): a plugin whose host is gone ends by itself.
+
+**Real time without a round trip per block.** The engine runs on an app core: no kernel call — it
+cannot wake anybody. But it is also the sequencer and knows the notes in advance, so it **renders
+ahead**:
+
+- It counts every frame it outputs on a **stream clock** (never reset: a seek or a loop does not
+  move it). For a track played by a plugin, a second cursor dispatches the song's notes **`lead`
+  frames ahead** of the frame being played (4096 by default: 92.9 ms at 44.1 kHz), stamped on that
+  clock, into the region's **event ring** (1024 events), and moves `want` (every event before it is
+  in the ring) and `kick`.
+- The plugin's **render thread** (`kapi_thread_priority`: real time) sleeps on `kick`
+  (`kapi_wait_word`: the kernel re-reads sleeping words at each 10 ms tick, so the app core's write
+  wakes it within 10 ms) and renders the frames `[done, want)` into the **output ring** (16384
+  frames), cutting its blocks at the events' frames (sample-accurate). The engine reads frame `P` of
+  the ring when it plays `P`. The lead covers the worst wake (a tick) and the rendering many times.
+- A **play** or a **seek** starts a new pre-roll: the plugins' voices are reset at the new ahead
+  point, what they had rendered before is muted (a 3 ms fade), the played cursor waits `lead`
+  frames, and both start together. A **loop** needs none (the ahead cursor wraps as the played one
+  will). A **live note** (`CMD_EXT_NOTE_ON`, a MIDI keyboard on a plugin track) is stamped at the
+  ahead point: heard `lead` late.
+- An **effect**: the engine writes the track's dry block of frames `[t, t + n)` into the region's
+  **input ring** (`want = t + n`), the plugin processes it into the output ring, and the engine takes
+  back the frames `[t - latency, ...)` (4096 by default). While an IPC effect is connected, the
+  engine **delays every other track by the same latency** (plugin delay compensation: a delay ring
+  per latency, up to 4; two IPC effects in series on a track: twice as much) — the song stays
+  aligned and is heard that much later; the playhead (`Engine::position`) is the song's frame heard
+  now, the metronome clicks with it.
+- A frame not rendered in time is **silence and a count** (`KpShm::underruns`,
+  `Engine::pluginUnderruns`): the engine never waits. A plugin late behind the engine skips to where
+  the engine reads (`lateFrames`).
+
+**The engine's side** ([`engine.h`](../user/Apps/koton/engine/engine.h)): `ExternalSource` —
+`lead ()`, `noteOn / noteOff / allOff / reset (at, ...)` stamped on the stream clock, `flushTo
+(upTo)`, `render (l, r, n, at)` → false when not all was rendered in time; `Effect` — `latency ()`
+and `processAt (l, r, n, at)` besides `process` (a built-in effect keeps no latency);
+`CMD_EXT_NOTE_ON / OFF` (a live note on a plugin track); read by the UI: `renders` (the blocks
+rendered: a source or an effect taken out is free once it moved by 2), `streamClock`,
+`pluginUnderruns`, `extLead`, `pdcFrames`. With no plugin connected the engine renders exactly as
+before (the same samples: `tools/tests/koton/engine_run.sh`).
+
+**The messages** (mailboxes; the requests' payloads and replies in the region's `data[]`, 128 KB of
+JSON, a request posted with `kp_req_post` and answered when `repSeq` = its number — the mailbox
+message is only a doorbell):
+
+| Message | Direction | What |
+|---|---|---|
+| `KP_HELLO` (100) | plugin → host | `KpHello {version, kind, nparams, shm}`: it is up. |
+| `KP_SET_PARAM` (101) | host → plugin | `KpParamMsg {index, value}`. |
+| `KP_PARAM_CHANGED` (102) | plugin → host | Its editor moved a parameter. |
+| `KP_STATE_GET` / `KP_STATE_SET` (103 / 104) | host → plugin | Its state, JSON: `{"v":1, "params": {id: value...}, ...its own keys}` (a flat `{id: value}`, Koton's, is read too). |
+| `KP_GENERATE` (105) | host → plugin | A generator: the context → `{"notes": [[start, len, MIDI note, velocity]...]}`. |
+| `KP_PARAMS` (106) | host → plugin | Its parameter list (the `plugin.json` shape). |
+| `KP_EDITOR` (107) | host → plugin | `KpEditor {surface, w, h, themed, window, button, field, accent}`: draw your editor into that surface (the host's colours), as an applet — then the **applet protocol unchanged** (`applet_proto.h`: `AP_HELLO`, `AP_PRESENT`, `AP_EXIT` back; `AP_PTR`, `AP_KEY`, `AP_CLOSE` in). |
+| `KP_DIRTY` (108) | plugin → host | Its state changed otherwise than by a parameter. |
+| `KP_BYE` (109) | both | Please end / it is ending. |
+
+(The plugin's editor is drawn by the plugin's runtime itself into the surface — wtk widgets under a
+panel that adopts the surface — rather than by wtk's applet mode, whose `Root` checks the Control
+Panel's service.)
+
+**Writing a plugin** (`user/Apps/kp_<name>/main.cpp`):
+
+```cpp
+#include "kplug.h"
+enum { P_CUT, P_RES, NP };
+static const KpParamDef P[NP] = {
+	{ "cutoff", "Cutoff", 20, 18000, 1200, "Hz", 0, 0 },     // id, name, min, max, default, unit, step, choices
+	{ "res", "Resonance", 0.5f, 12, 1, "", 0, 0 },
+};
+static KpSvf s_f[2]; static int s_rate;
+static void prepare (int rate) { s_rate = rate; }
+static void setParam (int, float) { for (int c = 0; c < 2; c++) s_f[c].set (kp_param (P_CUT), kp_param (P_RES), s_rate); }
+static void process (float *l, float *r, int n)                  // an effect: in place
+{ for (int k = 0; k < n; k++) { l[k] = s_f[0].tick (l[k], 0); r[k] = s_f[1].tick (r[k], 0); } }
+static const KpDesc desc = { .name = "Filter", .kind = KP_EFFECT, .params = P, .nparams = NP,
+                             .prepare = prepare, .process = process, .setParam = setParam };
+KPLUG_MAIN (desc)
+```
+
+- An **instrument** gives `noteOn (note, velocity)`, `noteOff`, `allOff (hard)` (hard: a seek, cut
+  every voice) and `render (l, r, n)` (it writes `n` frames); an **effect** `process (l, r, n)`; a
+  **generator** `generate (const KpContext &, const float *params, KpNotes &out)` — the context:
+  the block's length and absolute position, the key (tonic, mode, its scale), the meter
+  (`ternary`), the tempo, the chords under the block (each its root, Koton's quality, its intervals
+  `iv`, Koton's plugin contract `basic` / `biv`, its bass: `chordAt (beat)`), a seed and the
+  module's whole state; the parameters of *that module* are in `params` (the process serves every
+  block using the plugin); `out.add (start, length, MIDI note, velocity)` in beats from the block's
+  start.
+- **Threads**: `prepare`, `setParam`, the notes and `render` / `process` run on the **render
+  thread** — no allocation, no lock, no wait, no kernel call (a NaN or a blow-up is zeroed before
+  the mix anyway); `kp_param (i)` reads a parameter there (changes arrive between blocks,
+  `setParam` tells). `generate`, `saveState` / `loadState` (its own keys beyond `params`) and the
+  editor run on the main thread.
+- **The editor**: made from the parameters when the plugin gives none — a knob per parameter, a
+  drop-down for `choices`, a check box for `{"Off", "On"}` —, laid out in the size the host asks
+  (`PlugHost::editorSize` guesses it; `editorW / editorH` or the manifest's `editor` say better).
+  An own editor (`desc.editor (root, w, h)`) builds wtk widgets under `root` and binds parameters
+  with `kp_knob / kp_choice / kp_toggle` (they follow a change from the host); `kp_set_param (i, v)`
+  moves one (the host is told), `kp_dirty ()` says the state changed otherwise.
+- **Tests on the PC**: define `KPLUG_DSP_ONLY` and `KPLUG_TEST_SYM=<name>`: no kernel, no wtk;
+  `KPLUG_MAIN` exports a `KpTestApi` (attach to a region, one render pass, a request, a parameter) —
+  see `tools/tests/koton/plug_test.cpp`.
+
+**The host, for an app** (the UI thread — the one that posts the engine's commands; the generator
+hook may run on another):
+
+```cpp
+PlugHost host;
+bool PlugHost::init (int sampleRate);                // false: no plugins here (the service taken, an old kernel, the simulator)
+int  PlugHost::scan (const char *dir = KP_DIR);      // the catalogue: count (), info (i), find (id or alias), countKind (kind)
+void PlugHost::attach (Engine *e);                   // (0: the engine was deleted)
+void PlugHost::installGeneratorHook ();              // kt::g_generatorHook -> generate (): one process per generator plugin,
+                                                     //   its replies cached by request; ended when unused for a minute
+bool PlugHost::syncTrack (int track, const Track &t);   // its instrumentPlugin and inserts (slots 0..3) made, kept, replaced,
+                                                        //   connected (a disabled one: kept, disconnected); a running one keeps
+                                                        //   its live state (after an undo: setState)
+void PlugHost::releaseTracks (int from = 0);         // the tracks' instances from `from` on, ended
+void PlugHost::poll ();                              // every UI tick: the mailbox (handleMessage (from, type, data, len) for an
+                                                     //   app that reads it itself -- the rest to `foreign`) and tick ()
+PlugEditorView *PlugHost::openEditor (PlugInstance *p, wtk::Widget &parent, int x, int y, int w, int h);
+PlugEditorView *PlugHost::openGeneratorEditor (const GeneratorModule &m, wtk::Widget &parent, int x, int y, int w, int h);
+bool PlugHost::pullGeneratorState (PlugInstance *p, Project &song);   // at its onParam / onDirty: the module's state from it
+void PlugHost::closeEditor (PlugEditorView *v);      // (deleting its parent does too)
+void PlugHost::saveTrack (int track, Track &t);      // before saving the song: the live states into its PluginSlots
+void PlugHost::shutdown ();                          // the engine stopped (or deleted: attach (0) first)
+```
+
+and, lower down: `create (id, stateJson, wait)`, `destroy`, `restart` (a crashed one, its last
+state, reconnected), `connectInstrument (p, track)`, `connectEffect (p, track, slot)`,
+`disconnect`, `setParam`, `getState`, `setState`, `generator (id)`, `setLead` / `setLatency` (1024
+.. 8192 frames, for the instances made after); a `PlugInstance` says its `info ()` (the manifest),
+`state ()` (`PLUG_STARTING / READY / FAILED / CRASHED / ENDING`), `error ()`, `param (i)` (its value
+now), `underruns ()`, `dspUs ()`, `track ()` / `slot ()`. The callbacks `onCrash` (a plugin died or
+hung 3 s: an effect is taken out of its track, which goes on dry; an instrument's track is silent),
+`onParam` (its editor moved a parameter), `onDirty`. A plugin process is ended (`KP_BYE`, killed a
+second later) when its slot is emptied, when a generator is unused for a minute, and at shutdown.
+
+**Limits**: the kernel's 64 surfaces for the whole system (a plugin takes one, two with its editor
+open); 128 instances a host; 64 parameters a plugin; 1024 events in flight; 128 KB of JSON a
+request; the delay compensation up to 16128 frames (366 ms: three IPC effects in series on a track
+at the default latency) and four different latencies at once; a plugin's fault halts the Pi like any
+app's (§12). The editors' *Listen* (the engine's preview voice) plays a plugin track's block with
+the SoundFont.
+
+**Tests**: `sh tools/tests/koton/plug_run.sh` — under ASan / UBSan / LSan: the rings with a producer
+and a consumer thread; the engine rendering ahead with fake sources (the pre-roll, a note heard
+exactly when played, a loop, a seek while playing, a live note, an underrun, the delay compensation
+and the position heard); every plugin's DSP to `/tmp/koton_plug_<name>.wav` (no NaN, no silence, the
+parameters' extremes); the generators from a project's context (the arpeggiator's notes are the
+chords' tones; Koton's states; twice the same); the states' round trips and the manifests; a
+real-time run (the engine paced like the audio pump, kp_fm2 and kp_delay on threads that sleep
+between 10 ms ticks: no underrun). Then `plug_host_run.sh`: the host itself and the plugins' kernel
+side (`kplug_main`, the render thread, the editor) over the desktop simulator's stand-in kernel with
+a small multi-process layer (processes are threads): syncTrack, a song played through them, a
+parameter, the states, the editor drawn and a knob dragged, a generator block and its cache, a
+plugin killed and started again, the shutdown (`KPLUG_SHOT=prefix` writes the editors' pictures).
+
 ## 7. Writing a `/bin` tool
 
 A `/bin` tool follows the **same EL1 app model** but reads `stdin`, writes `stdout`, and

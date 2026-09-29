@@ -621,6 +621,10 @@ static bool kp__edPresent;
 static int kp__bl, kp__br, kp__bm;
 static void kp__edSync ();
 
+// (the classes below read this plugin's g_kp: kept to this translation unit -- two plugins linked into
+// one program, as the PC tests do, must not share their code)
+namespace {
+
 // A knob: a 270-degree dial (the parameter's name above, its value under it). Drag up / down (the
 // range in 200 px, Shift: 1000), the wheel (a step), a double click: the default.
 class KpKnob : public wtk::Widget
@@ -634,21 +638,34 @@ public:
 		const KpParamDef &p = g_kp.desc->params[index];
 		unsigned bg = parent ? parent->bgColor () : C_BG;
 		canvas.clear (bg);
-		wk_text_c (canvas, 0, 0, width, wk_fh () + 2, p.name, C_TEXT);
+		char nm[40]; int k = 0;
+		while (p.name[k] && k < 39) { nm[k] = p.name[k]; k++; }
+		nm[k] = 0;
+		while (k > 2 && wk_text_w (nm) > width - 2) { nm[--k] = 0; nm[k - 1] = '.'; }	// (a long name: elided)
+		wk_text_c (canvas, 0, 0, width, wk_fh () + 2, nm, C_TEXT);
 		int top = wk_fh () + 4, bottom = height - wk_fh () - 4;
 		int d = bottom - top; if (d > width - 8) d = width - 8;
 		if (d < 16) d = 16;
 		int cx = width / 2, cy = top + d / 2, r = d / 2 - 3;
 		float f = p.max > p.min ? (value - p.min) / (p.max - p.min) : 0;
 		f = kp_clampf (f, 0, 1);
-		int a1 = 225, a0 = 225 - (int) (f * 270.0f + 0.5f);
+		int a0 = 225 - (int) (f * 270.0f + 0.5f), a1 = 225;
+		if (p.min < 0 && p.max > 0)			// (a bipolar one: the arc from its zero)
+		{
+			int az = 225 - (int) (-p.min / (p.max - p.min) * 270.0f + 0.5f);
+			if (a0 < az) a1 = az; else { a1 = a0; a0 = az; }
+		}
+		bool dark = wk_bright (bg) < 110;			// (a dark face: the track and the cap lighter than it)
+		unsigned cap = (C_BUTTON & 0xFFFFFF) != (bg & 0xFFFFFF) ? C_BUTTON : wk_tone (bg, dark ? 165 : 150);
+		if (hover || m_drag) cap = wk_tone (cap, dark ? 150 : 170);
 		VPath path;
-		path.arc (V (cx), V (cy), V (r), -45, 225, V (3)); path.fill (canvas, wk_tone (bg, 96));
+		path.arc (V (cx), V (cy), V (r), -45, 225, V (3)); path.fill (canvas, wk_tone (bg, dark ? 185 : 96));
 		if (a0 < a1) { path.clear (); path.arc (V (cx), V (cy), V (r), a0, a1, V (3)); path.fill (canvas, disabled ? C_DIS : C_ACCENT); }
-		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.fill (canvas, hover || m_drag ? C_FACE_HI : C_FACE);
-		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.hole (V (cx), V (cy), V (r - 7)); path.fill (canvas, C_BORDER, 140);
-		int px = cx + ((r - 9) * wk_cos (a0)) / 16384, py = cy - ((r - 9) * wk_sin (a0)) / 16384;
-		path.clear (); path.line (V (cx), V (cy), V (px), V (py), V (2)); path.fill (canvas, wk_ink_on (C_FACE));
+		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.fill (canvas, cap);
+		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.hole (V (cx), V (cy), V (r - 7)); path.fill (canvas, dark ? wk_tone (cap, 180) : C_BORDER, 140);
+		int av = 225 - (int) (f * 270.0f + 0.5f);
+		int px = cx + ((r - 9) * wk_cos (av)) / 16384, py = cy - ((r - 9) * wk_sin (av)) / 16384;
+		path.clear (); path.line (V (cx), V (cy), V (px), V (py), V (2)); path.fill (canvas, wk_ink_on (cap));
 		char t[48]; kp_format (index, value, t, sizeof t);
 		wk_text_c (canvas, 0, height - wk_fh () - 2, width, wk_fh () + 2, t, hasFocus ? C_ACCENT : C_TEXT);
 	}
@@ -694,6 +711,8 @@ public:
 private:
 	bool m_drag; int m_y0; float m_v0; unsigned m_last;
 };
+
+} // namespace
 
 // The controls bound to parameters (the editor follows a change from the host, a state). A plugin's
 // own editor makes them with kp_knob / kp_choice / kp_toggle, and any other widget it likes.
@@ -759,7 +778,7 @@ static inline void kp__autoEditor (wtk::Widget &root, int w, int h)
 	Label *title = new Label (10, 6, w - 20, fh + 6, d->name ? d->name : "", C_TEXT, C_BG);
 	title->tag = -1;
 	root.addChild (title);
-	int x = 10, y = fh + 18, rowH = 0, KW = 84, KH = 2 * fh + 58;
+	int x = 10, y = fh + 18, rowH = 0, KW = 96, KH = 2 * fh + 58;
 	for (int i = 0; i < kp_nparams (); i++)
 	{
 		const KpParamDef &p = d->params[i];
@@ -791,11 +810,13 @@ static void kp__edSync ()
 	}
 }
 
+namespace {
 class KpEditorRoot : public wtk::Panel
 {
 public:
 	KpEditorRoot (int w, int h) : Panel (0, 0, w, h, wtk::C_BG) { hasFocus = true; tag = -1; }
 };
+} // namespace
 
 static void kp__edClose (bool tell)
 {
@@ -817,6 +838,12 @@ static void kp__edOpen (const KpEditor &e)
 	}
 	int w = e.w > 0 && e.w <= kp__edW ? e.w : kp__edW, h = e.h > 0 && e.h <= kp__edH ? e.h : kp__edH;
 	wtk::init ();
+	if (e.themed)					// (the host's colours: the editor looks like a part of it)
+	{
+		wtk::WkTheme t; wtk::wk_theme_get (t);
+		t.window = e.window; t.button = e.button; t.field = e.field; t.accent = e.accent;
+		wtk::wk_theme_set (t);
+	}
 	KpEditorRoot *root = new KpEditorRoot (w, h);
 	root->canvas.adopt (kp__edPx, w, h, kp__edW);
 	kp__edRoot = root;
@@ -927,7 +954,7 @@ static inline int kplug_main (int argc, char **argv, const KpDesc *d)
 			switch (type)
 			{
 			case KP_SET_PARAM: if (n >= (int) sizeof (KpParamMsg)) { KpParamMsg m; memcpy (&m, buf, sizeof m); kp__set (m.index, m.value, true); } break;
-			case KP_EDITOR: if (n >= (int) sizeof (KpEditor)) { KpEditor e; memcpy (&e, buf, sizeof e); kp__edOpen (e); } break;
+			case KP_EDITOR: if (n >= 12) { KpEditor e; memset (&e, 0, sizeof e); memcpy (&e, buf, n < (int) sizeof e ? n : sizeof e); kp__edOpen (e); } break;
 			case AP_PTR: if (n >= (int) sizeof (ApPtr)) { ApPtr e; memcpy (&e, buf, sizeof e); kp__edPtr (e); } break;
 			case AP_KEY: if (n >= (int) sizeof (ApKey) && kp__edRoot) { ApKey k; memcpy (&k, buf, sizeof k); kp__edRoot->handleKey (k.key); } break;
 			case AP_CLOSE: kp__edClose (true); break;

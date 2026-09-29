@@ -79,6 +79,8 @@ public:
 	float param (int i) const;				// its value now (the plugin's)
 	unsigned underruns () const { return m_shm ? m_shm->underruns : 0; }	// blocks the engine played silent
 	unsigned dspUs () const { return m_shm ? m_shm->dspMaxUs : 0; }	// its render thread's longest pass lately
+	bool isGenerator () const { return m_generator; }	// a generator's process (PlugHost::generator)
+	const char *editedModule () const { return m_editModule.c (); }	// its editor's module (its id), "" none
 	int track () const { return m_track; }			// where it is connected (-1 none)
 	int slot () const { return m_slot; }			// an effect's insert slot (-1: the instrument)
 	void *user;						// the app's
@@ -98,6 +100,7 @@ private:
 	volatile int m_xlock;					// the request channel
 	unsigned long long m_pending; float m_pendingVal[KP_MAX_PARAMS];	// parameters to send
 	Str m_lastState;					// the last state known (a restart after a crash)
+	Str m_editModule;					// a generator: the module its editor shows (its id)
 	PlugEditorView *m_editor;
 	int m_edSid, m_edW, m_edH; unsigned *m_edPx;
 	bool m_dying, m_generator;
@@ -182,8 +185,10 @@ public:
 	bool generate (const GeneratorModule &m, const Project &p, double startBeat, Riff &out, int timeoutMs = 2000);
 	PlugInstance *generator (const char *id);	// its process (started if needed)
 	// a module's editor: the process takes the module's state, then its editor opens; when it
-	// reports a change (onParam / onDirty) the app calls pullGeneratorState to keep it in the module
+	// reports a change (onParam / onDirty) the app calls pullGeneratorState: the state goes back into
+	// the module the editor shows (found by its id in the project: an undo's copy too) -> true: changed
 	PlugEditorView *openGeneratorEditor (const GeneratorModule &m, wtk::Widget &parent, int x, int y, int w, int h);
+	bool pullGeneratorState (PlugInstance *p, Project &project);
 	bool pullGeneratorState (PlugInstance *p, GeneratorModule &m);
 
 	// ---- editors

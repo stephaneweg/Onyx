@@ -1745,6 +1745,58 @@ click on a `.kson` / `.sq` opens it (`fileassoc.ini`).
 ![Compose with AI](../screenshots/koton-ai.png)
 *Compose with AI.*
 
+#### Koton's plugins (`SD:/koton/plugins`)
+
+Koton's **instruments**, **effects** and **generators** beyond the SoundFont are **plugins**: each a
+small program of its own that Koton starts when a song uses it (the task manager shows them as
+`kp.<name>.<n>`) and ends when it is no longer used or Koton quits. They live in
+`SD:/koton/plugins/<name>/` (`main` + `plugin.json`), not in `SD:/apps`: the dock does not list them.
+A plugin that stops (it crashed, or was ended from the task manager) does not take Koton down: the
+status bar says so and the song plays on — an instrument's track silent, an effect left out of its
+track.
+
+- **An instrument plugin** plays a track instead of the SoundFont: the browser's plugins, or the
+  sound chain's *Change*; *Edit* opens its editor.
+- **An effect plugin** (four a track at most): *+ Add an effect* in the sound chain (or the
+  browser); each effect is **on / off**, shows its first knobs, opens its **editor** (*Edit*), is
+  removed (**x**).
+- **A generator plugin** is a **block** of a track (the browser's plugins put one at the cursor):
+  its notes are made from the chord track under it, like Koton's own generators; its editor (the
+  block's *Open the plugin's editor*) changes that block only.
+- **The editor** of a plugin opens in a panel over the window — the plugin draws it itself (as a
+  Control Panel applet), in Koton's colours: a **knob** per setting (drag up / down — Shift for fine
+  steps —, the wheel, a double click back to its default), a list for a choice, a box for on / off.
+  What you change is saved with the song.
+- **Timing**: an instrument plugin plays the song **in time** — it prepares its notes about 0.1 s
+  ahead, so *Play* and a jump of the cursor start about 0.1 s later than without it; a note played
+  on a **USB MIDI keyboard** into a plugin track is heard about 0.1 s late (the SoundFont tracks stay
+  immediate). While an **effect plugin** is on, the whole song comes out about 0.1 s later (every
+  track is held back as much, so all stays together; the play cursor follows what you hear).
+
+| | |
+|---|---|
+| ![](../screenshots/koton-plugin-fm2.png) | ![](../screenshots/koton-plugin-arp.png) |
+| *FM 2-op's editor: a knob per setting.* | *The arpeggiator's editor: lists, knobs, a check box.* |
+
+| Plugin | Kind | What it does, its settings |
+|---|---|---|
+| **FM 2-op** (`fm2`) | instrument | Two-operator FM (16 voices): a modulator bends a sine carrier. **Ratio** (the modulator's pitch to the note's), **Index** (the brightness), **Feedback**, the amplitude envelope (**Attack, Decay, Sustain, Release**), the index's own (**Mod decay, Mod sustain**), **Detune**, **Velocity** (how much it changes the tone), **Volume**. |
+| **Subtractive** (`subsynth`) | instrument | Two oscillators (**Osc 1 / Osc 2**: saw, square, triangle, sine; osc 2's **pitch** in semitones and **fine** tune), their **mix**, **Noise**, the square's **Pulse width**, a **Filter** (low-, band-, high-pass: **Cutoff, Resonance**, the envelope's **amount** in octaves, **Key track**), the amplitude envelope and the filter's (**F attack … F release**), **Volume**. 8 voices. |
+| **Plucked strings** (`pluck`) | instrument | Karplus-Strong strings (a kora, a harp, a guitar): **Decay** (how long a string rings), **Damping** (darker as it rings), **Brightness** (of the pluck), **Pick point**, **Release** (when the key is let go), **Width** (low strings left, high right), **Velocity**, **Volume**. 12 voices. |
+| **Delay** (`delay`) | effect | An echo: **Time** (ms), **Feedback**, **Tone** (each repeat darker), **Ping-pong** (the repeats bounce left / right), **Width**, **Mix**. |
+| **Reverb** (`reverb`) | effect | Freeverb: **Room size**, **Damping**, **Width**, **Pre-delay**, **Wet**, **Dry**. |
+| **Chorus** (`chorus`) | effect | 1 to 3 **Voices**: **Rate**, **Depth**, **Delay**, **Feedback** (a flanger), **Spread** (stereo), **Mix**. |
+| **EQ 3-band** (`eq3`) | effect | **Low** (a shelf at **Low freq**), **Mid** (at **Mid freq**, its **width**), **High** (a shelf at **High freq**), **Output** (dB). |
+| **Drive** (`drive`) | effect | Koton's Drive: the **Character** (soft, overdrive, tube, distortion, fuzz, wavefolder), **Drive** (dB), **Low cut** (before the drive), **Tone**, **Asymmetry**, **Mix**, **Level**. |
+| **Arpeggiator** (`arp`) | generator | Koton's arpeggiator: the chord under each step played **Up, Down, Up-Down, Down-Up, Random** or as a **Chord**, **Notes/beat**, **Extend** (octaves), **Articulation** (legato … staccato), **Velocity**, **Octave**, **Voice leading**, **Spread** (close, drop-2, wide, one per octave), a regular or custom **Rhythm**. |
+| **Euclidean melody** (`euclid`) | generator | E(**Hits**, **Steps**) — the hits spread evenly, **Rotation** —, **Steps/beat**; each hit plays the next tone of the chord (or the key's **scale**, or both) along a **Contour** (up, down, up-down, a random walk, random) over a **Range** of octaves from **Octave**; an **Accent** on each cycle's first hit, the **Articulation**, a **Seed**. |
+| **Cellular automaton** (`automaton`) | generator | A row of **Width** cells evolves by a Wolfram **Rule** (30, 90, 110…) from its **First row** (one cell, at random with a **Density** and a **Seed**, all); each live cell plays a note of the **Scale** (Koton's, or the song's key) or, **Chord-aware**, of the chord under it, over a **Range** of octaves; **Notes/beat**, **Velocity**, **Articulation**. |
+
+**Koton for Windows**: a `.sq`'s blocks of Koton's **arpeggiator** (`koton.arpeggiator`) and
+**cellular automata** (`koton.cellular`) are played by `arp` and `automaton`, with their settings —
+the same notes. **Files**: the plugins' settings are saved in the song (`.kson`: each track's
+`OnyxInstrument` / `OnyxInserts`, a generator block's `GeneratorState`).
+
 ### Games
 
 | Game | Goal and controls |

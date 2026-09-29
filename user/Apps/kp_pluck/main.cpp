@@ -12,7 +12,7 @@ static const KpParamDef P[NP] = {
 	{ "decay", "Decay", 0.1f, 20, 4, "s", 0, 0 },
 	{ "damping", "Damping", 0, 1, 0.35f, "", 0, 0 },
 	{ "brightness", "Brightness", 0, 1, 0.7f, "", 0, 0 },
-	{ "pick", "Pick position", 0.02f, 0.5f, 0.13f, "", 0, 0 },
+	{ "pick", "Pick point", 0.02f, 0.5f, 0.13f, "", 0, 0 },
 	{ "release", "Release", 0.02f, 2, 0.25f, "s", 0, 0 },
 	{ "width", "Width", 0, 1, 0.6f, "", 0, 0 },
 	{ "vel_sens", "Velocity", 0, 1, 0.6f, "", 0, 0 },

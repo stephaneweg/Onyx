@@ -17,7 +17,7 @@ static const KpParamDef P[NP] = {
 	{ "hits", "Hits", 1, 32, 5, "", 1, 0 },
 	{ "steps", "Steps", 2, 32, 8, "", 1, 0 },
 	{ "rotation", "Rotation", 0, 31, 0, "", 1, 0 },
-	{ "notes_per_beat", "Steps / beat", 1, 8, 4, "", 1, 0 },
+	{ "notes_per_beat", "Steps/beat", 1, 8, 4, "", 1, 0 },
 	{ "contour", "Contour", 0, 4, 2, "", 1, CONTOURS },
 	{ "tones", "Tones", 0, 2, 0, "", 1, TONES },
 	{ "octave", "Octave", 0, 8, 4, "", 1, 0 },

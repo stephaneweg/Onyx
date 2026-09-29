@@ -16,7 +16,7 @@ static const char *const ARTIC[] = { "Legato", "Normal", "Detached", "Staccato",
 static const char *const ONOFF[] = { "Off", "On", 0 };
 enum { P_NPB, P_RULE, P_WIDTH, P_SCALE, P_BASEOCT, P_RANGE, P_SEED, P_SEEDMODE, P_DENSITY, P_VEL, P_ARTIC, P_CHORD, NP };
 static const KpParamDef P[NP] = {
-	{ "notes_per_beat", "Notes / beat", 1, 8, 4, "", 1, 0 },
+	{ "notes_per_beat", "Notes/beat", 1, 8, 4, "", 1, 0 },
 	{ "rule", "Rule", 0, 255, 90, "", 1, 0 },
 	{ "width", "Width", 8, 32, 16, "cells", 1, 0 },
 	{ "scale", "Scale", 0, 5, 5, "", 1, SCALES },

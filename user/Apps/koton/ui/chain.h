@@ -72,7 +72,9 @@ public:
 				const PluginSlot &ps = tr.inserts[s];
 				int base = T_FX + s * 10;
 				Checkbox *c = new Checkbox (16, y + 5, 22, 22, "", ps.enabled, cb, PANEL2); c->tag = base; c->tip = "On / off"; addChild (c);
-				btn (width - 50 - 86, y + 4, 44, "Edit", base + 1);
+				PlugInstance *pi0 = g_plug ? g_plug->trackInsert (track, s) : 0;
+				bool dead = pi0 && (pi0->state () == PLUG_CRASHED || pi0->state () == PLUG_FAILED);
+				btn (width - 50 - (dead ? 104 : 86), y + 4, dead ? 62 : 44, dead ? "Restart" : "Edit", base + 1);
 				btn (width - 50 - 38, y + 4, 30, "x", base + 2, "Remove it");
 				PlugInstance *pi = g_plug ? g_plug->trackInsert (track, s) : 0;
 				if (s == open && pi && pi->ready ())
@@ -150,7 +152,7 @@ public:
 		if (track < 0) return;
 		Track &tr = g_doc.p.tracks[track];
 		if (tag == T_INSTR) { if (g_arrange_chooseSound) g_arrange_chooseSound (track); return; }
-		if (tag == T_INSTR_EDIT) { PlugInstance *pi = g_plug ? g_plug->trackInstrument (track) : 0; if (pi && g_openPluginEditor) g_openPluginEditor (pi, tr.instrumentPlugin.id); return; }
+		if (tag == T_INSTR_EDIT) { PlugInstance *pi = g_plug ? g_plug->trackInstrument (track) : 0; if (pi && pi->state () == PLUG_CRASHED) { g_plug->restart (pi); rebuild (); return; } if (pi && g_openPluginEditor) g_openPluginEditor (pi, tr.instrumentPlugin.id); return; }
 		if (tag == T_REVERB) { tr.reverbOffset = ((Knob &) w).value - DEFAULT_REVERB; g_doc.dirty = true; return; }
 		if (tag == T_ADD) { addEffect (); return; }
 		if (tag >= T_FX)
@@ -161,7 +163,10 @@ public:
 			switch (k)
 			{
 			case 0: g_doc.checkpoint (); tr.inserts[s].enabled = ((Checkbox &) w).checked; g_doc.changed (); syncPlugins (); rebuild (); break;
-			case 1: if (open != s) { open = s; rebuild (); } else if (pi && g_openPluginEditor) g_openPluginEditor (pi, tr.inserts[s].id); break;
+			case 1:
+				if (pi && (pi->state () == PLUG_CRASHED || pi->state () == PLUG_FAILED)) { g_plug->restart (pi); rebuild (); break; }	// (its Edit: Restart)
+				if (open != s) { open = s; rebuild (); } else if (pi && g_openPluginEditor) g_openPluginEditor (pi, tr.inserts[s].id);
+				break;
 			case 2: savePluginStates (); g_doc.checkpoint (); tr.inserts.removeAt (s); g_doc.changed (); syncPlugins (); open = 0; rebuild (); break;
 			default:
 				if (pi && pi->ready () && k - 4 < pi->paramCount ())

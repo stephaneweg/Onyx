@@ -21,7 +21,7 @@ static const char *const ONOFF[] = { "Off", "On", 0 };
 enum { P_PATTERN, P_NPB, P_EXTEND, P_ARTIC, P_VEL, P_OCTAVE, P_VL, P_SPREAD, P_RHYTHM, NP };
 static const KpParamDef P[NP] = {
 	{ "pattern", "Pattern", 0, 5, 0, "", 1, PATTERNS },
-	{ "notes_per_beat", "Notes / beat", 1, 8, 2, "", 1, 0 },
+	{ "notes_per_beat", "Notes/beat", 1, 8, 2, "", 1, 0 },
 	{ "extend", "Extend", 0, 4, 0, "oct", 1, 0 },
 	{ "articulation", "Articulation", 0, 3, 1, "", 1, ARTIC },
 	{ "velocity", "Velocity", 1, 127, 100, "", 1, 0 },
