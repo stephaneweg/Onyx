@@ -385,10 +385,10 @@ Files are dragged with the **left button**: press on an item, move a few pixels 
 follows the cursor. Hold **Ctrl** while dropping to **copy** instead of move (the label
 shows a **+**); **Esc** cancels. Drop targets: File Viewer columns and folders (and its
 sidebar's places), the dock's launchers (their app opens the files), the Trash, and document
-apps (tinypad, Writer, paint open the dropped file; dropped text goes in at the caret).
+apps (tinypad, Writer, paint, Cardfile open the dropped file; dropped text goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
-per line (`txt = tinypad`, `png = imageview`, `doc = writer`, …): opening the file runs
+per line (`txt = tinypad`, `png = imageview`, `doc = writer`, `card = cardfile`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock (files
 dropped on a launcher). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
 a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
@@ -972,6 +972,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
 | **Writer** | The **word processor**, in the way of AbiWord: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents), a ruler (the indents and margins dragged), images, Find and Replace, Special Character, Page Setup, Word Count; RTF (with everything), text, HTML export. See *Writer, the word processor* below. |
+| **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
 | **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Writer**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Writer keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
@@ -1114,6 +1115,140 @@ box, Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offe
 Writer starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste
 within Writer keep the formats (and the images); the other apps get the text. Documents usually
 start in `SD:/docs`; the sample: `SD:/docs/writer-tour.rtf`.
+
+### Cardfile, a small database (`cardfile`)
+
+![Cardfile](../screenshots/cardfile.png)
+*Cardfile's Form view with its sample (`SD:/docs/books.card`): a record on its index card.*
+
+Cardfile keeps **records** — books, contacts, a collection, recipes... — in the way of Microsoft
+Access, without SQL. One file (`.card`) holds one **form** — its title, a description and its
+**fields** — and its records. A field has a **display name** (on the form and in the list), a
+**column name** (the file's) and a **type**:
+
+| Type | On the form | Kept as |
+|---|---|---|
+| Text | a line, of any length | as typed |
+| Multi-line text | a box of several lines, wrapped at the words | as typed |
+| Integer | a line, on the right: 42, -7, 1 000 000 | `42` |
+| Decimal number | the same, with its **decimals** (0 to 6): 12,5 → 12.50 (`.` or `,`) | `12.50` |
+| Date | typed as DD/MM/YYYY (or 29.9.26, 29/9 — this year —, 29092026, 2026-09-29), or picked on the calendar its button drops (Today, Clear) | `2026-09-29` |
+| Colour | a swatch and its code; its button drops a palette (40 colours, No colour, More Colours...: the colour dialog) | `#3366CC` |
+| Yes / No | a check box | `yes`, or empty |
+| Choice list | a list of the form's **choices**, and "(none)" | the choice |
+
+**The toolbar**: New form, Open, Save · Undo, Redo · the **view switch** — Form, List, Design (F5,
+F6, F7) · New record, Duplicate record, Delete record · the **search** box. **At the foot**: the
+record navigator — first, previous, *Record 3 of 12* (a click: Go to Record...), next, last, a new
+record (+) —, then what is shown (the records, the search's matches, the sort), and the file's
+name (a dot before it: unsaved changes; a dot before *Record*: the record shown has changes not kept
+yet).
+
+**The Form view**: the record on an index card — the form's title and description, its place
+(3 / 12, or *New*), a line a field. **Tab** / Shift+Tab, **Enter**, **Up / Down** move between the
+fields (a click on a field's name too — on a check box's name it ticks it); **Page Up / Page
+Down** show the previous / next record, **Ctrl+Home / Ctrl+End** the first / last one; **Esc**
+puts the record's values back. The values go into the record when it is left (another record,
+another view, Save...): a value that is not one of its type (31/02/2026, letters in a number) is
+said, outlined in red, and its field keeps the keyboard. A new record left without a value is
+dropped. In a line: the selection (Shift + the arrows, a drag, a double click on a word, Ctrl+A),
+Ctrl+X / C / V, Ctrl + the arrows by words; in a choice: Up / Down, a letter jumps to the next choice
+starting with it, Delete = (none), Enter or a click drops the list; a date or a colour: a click on
+its button (or Alt+Down) drops the calendar or the palette, Delete empties a colour.
+
+![Cardfile's list](../screenshots/cardfile-list.png)
+*The List view: sorted by title (the arrow), a record chosen.*
+
+**The List view**: the records in a grid, a column per field — the numbers on the right, a date as
+the form shows it, a colour's swatch and code, a check mark, a text of several lines on one line. A
+click on a column's name **sorts** by it, again the other way, a third time back to the file's order
+(also View ▸ In the File's Order): each type in its order — numbers, dates, a choice list in its
+choices' order, text without regard to case or accents and "Item 9" before "Item 10" —, empty values
+last; the sort is kept in the file. **Drag** a column's edge to widen it. A **double click** or
+Enter opens the record in the form; **Delete** deletes it (asked first); a **right click**: Open in
+the Form, New Record, Duplicate Record, Delete Record.... The arrows, Page Up / Down, Home / End
+move; Left / Right and Shift + the wheel scroll sideways.
+
+**The search** (Ctrl+F, or a click in the box): only the records holding **every word** typed, in
+any of their fields (case and accents ignored; a date as it is shown) — in the form and in the
+list; Esc or its cross empties it. A record made meanwhile stays shown.
+
+![Cardfile's design](../screenshots/cardfile-design.png)
+*The Design view: the genre's choices.*
+
+**The Design view**: the form's fields in their order — **Add Field** (after the one chosen),
+**Remove** (asked first, with the number of values it holds; Delete in the list too), **Move Up**,
+**Move Down** — and the field chosen: its **display name**, its **column name** (letters, digits,
+`_` and `-`; made from the display name as long as it was not changed: "Date of birth" →
+`date_of_birth`; two fields cannot share one), its **type**, the type's option (a decimal number's
+**decimals**; a choice list's **choices**, one a line, in their order), what the records hold in it;
+then the form's **title** and **description**. **A change applies at once** (Undo takes it back).
+A new **type converts** the values through their text as shown: what reads as the new type stays
+(text → integer: "42" stays; a date → text: "29/09/2026"; a yes / no → text: "Yes" / "No"...), the
+rest is emptied — Cardfile asks first when some would be (*3 values of "Year" are not a whole number:
+they will be emptied. Change the type?*); to a choice list, the values become its choices. Fewer
+decimals round the values (said in the status bar). A value that is not among a list's choices
+stays (the form shows it at the end of the list).
+
+**The menus**: **File** (New Form ^N, Open... ^O, Save ^S, Save As..., Import CSV..., Export as
+CSV...), **Edit** (Undo ^Z, Redo ^Y — record edits, deletions and the form's design, 100 steps —,
+Cut, Copy, Paste, Search... ^F, Clear the Search), **Record** (New Record ^R, Duplicate Record ^D,
+Delete Record..., First / Previous / Next / Last Record, Go to Record... ^G, Undo the Record's
+Changes Esc), **View** (Form F5, List F6, Design F7, In the File's Order), **Design** (Add Field,
+Remove Field..., Move Field Up, Move Field Down).
+
+**Files**: the `.card` file (below). **File ▸ Export as CSV...** writes the records shown (the search
+and the sort applied), their values as shown, the display names on the first line. **Import
+CSV...** (or opening a `.csv`) makes a new form of a CSV file (`,` `;` or a tab between the values,
+quotes): its first line names the fields, each column's type is guessed from its values (whole
+numbers, decimals, dates, yes / no words, `#RRGGBB` colours, several lines, a few values repeated: a
+choice list; a code with a 0 before it — 007, a telephone number — stays text); File ▸ Save As...
+keeps it as a `.card`. New, Open and a file dropped on the window first ask to **save unsaved
+changes**; **closed with unsaved changes** (the close box, Quit), the form is kept in
+`SD:/apps/cardfile.app/recovered.card` and offered back at the next start. `cardfile <file>` opens a
+file, and a `.card` double-clicked in the File Viewer opens in Cardfile (`fileassoc.ini`). Without
+a file, Cardfile starts with a new form in the Design view (a Name and a Notes field). Samples:
+`SD:/docs/books.card` (every type of field) and `SD:/docs/contacts.card`.
+
+**The `.card` file** is text (Latin-1, as Onyx writes it), easy to read and to edit by hand:
+
+```
+# Onyx Cardfile -- a form and its records (open it with Cardfile)
+[form]
+version = 1
+title = My Books
+description = The books on my shelves, read or waiting
+sort = title
+
+[field]
+column = genre
+label = Genre
+type = choice
+choice = Novel
+choice = Science fiction
+
+[field]
+column = price
+label = Price
+type = decimal
+decimals = 2
+
+[records]
+title	author	genre	price
+Dune	Frank Herbert	Science fiction	10.90
+```
+
+`[form]`: the title, the description, the views' order (`sort` = a column; `order = descending`).
+A `[field]` section a field, in the form's order: `column`, `label`, `type` (`text`, `multiline`,
+`integer`, `decimal`, `date`, `colour`, `yesno`, `choice`), `decimals` (a decimal number: 0 to 6),
+`choice` (a choice list: a line a choice, in their order). `[records]`: the columns' names on the
+first line, then a record a line, a **tab** between its values; in a value, `\n` is a line break,
+`\t` a tab, `\\` a backslash. The values as kept: text as typed, integer `42`, decimal `12.50`, date
+`2026-09-29` (shown 29/09/2026), colour `#3366CC`, yes / no `yes` or empty, a choice's text. A line
+starting with `#` or `;` is a comment (not in `[records]`). Cardfile reads such a file leniently:
+keys in any case, the header's columns in any order (a column missing: empty values; unknown:
+ignored), no `[field]` at all (the header's columns become text fields), a value that is not of its
+type (kept as it is — the form asks for a valid one when the record is edited).
 
 ### Games
 

@@ -169,6 +169,29 @@ Writer itself (no RichTextBox). Done:
 - **Next ideas**: tables; headers / footers beyond the page number; spell checking (a
   dictionary); tab stops set on the ruler; ODT / DOCX import (zlib is in `third_party`).
 
+## Cardfile, a small database (2026-09-29, agent branch `worktree-agent-a6c9c5cf5d10a3cf7`)
+
+Asked by the user ("a simple Access without SQL"). Done (the user guide: docs/04 *Cardfile, a
+small database*; the pieces: docs/03):
+
+- **Cardfile** (`user/Apps/cardfile/`, integer only): one `.card` file = a **form** (a title, a
+  description, fields: display name, column name, type — one-line text, multi-line text, integer,
+  decimal with its decimals, date, colour, yes / no, a choice list with its choices) and its
+  **records**; the format (text, INI-like head, the records tab-separated) is at the top of
+  `main.cpp`. Three views: **Form** (an index card, an editor a field, the navigator, validation
+  when a record is left), **List** (a grid: sort by a title, again the other way; columns widened
+  by their edge; double-click → the form), **Design** (fields added / removed / moved / named /
+  typed; a new type converts the values, asked first when some would be emptied). Search (every
+  word, any field), Undo / Redo (the whole document kept before each change), CSV export and import
+  (the types guessed), a document kept at a close with unsaved changes (`recovered.card`).
+- **wtk**: `wtk/datagrid.h` — `DataGrid`, a virtual table (docs/03).
+- Samples `SD:/docs/books.card` (every type) and `contacts.card`; `card = cardfile` in
+  `fileassoc.ini`; the icon by `tools/gen_assets.py cardfile`; screenshots `cardfile.png`,
+  `cardfile-list.png`, `cardfile-design.png`; host test `sh tools/tests/run_cardfile_test.sh`.
+- **Next ideas**: a cell edited in place in the grid (Access's datasheet); the form's layout
+  (two columns, a field's width, a memo's height); a default value per field, required fields;
+  computed fields; an image field; printing / a report; a lookup into another `.card`.
+
 ## Queued by the user (in this order)
 
 1. **Paint, as Windows 11's** — a grid, pixel-exact drawing, shapes (rectangle, line, point,
@@ -177,10 +200,6 @@ Writer itself (no RichTextBox). Done:
    cut / paste with the pasted piece movable until a click outside fixes it, **transparent
    layers** (shown / hidden...), a professional wtk UI; *Export* writes what is visible (flat),
    *Save* a working format with the layers.
-2. **Cardfile** ("a simple Access without SQL"): to be done by an agent — one file = a form and
-   its data; the form's fields (display name, column name, type: one-line text, multi-line text,
-   integer, decimal with its precision, date, colour, yes/no, a list of choices); a form view, a
-   list (grid) view and an edit view for the form.
 
 ## The GameCube on the Pi -- the TEV renderer (the black screen: fixed; next: the speed)
 
