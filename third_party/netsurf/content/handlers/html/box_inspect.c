@@ -71,7 +71,7 @@ enum box_walk_dir {
  *
  * This is a helper function for box_at_point().
  */
-static bool
+bool
 box_contains_point(const css_unit_ctx *unit_len_ctx,
 		   const struct box *box,
 		   int x,

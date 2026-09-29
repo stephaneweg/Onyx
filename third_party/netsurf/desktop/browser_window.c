@@ -3014,6 +3014,16 @@ browser_window_get_features(struct browser_window *bw,
 
 
 /* exported interface, documented in netsurf/browser_window.h */
+/* exported interface documented in netsurf/browser_window.h */
+void browser_window_scrolled(struct browser_window *bw)
+{
+	/* Onyx: the page's scripts told (html_scrolled: a scroll event soon) */
+	if (bw != NULL && bw->current_content != NULL &&
+	    content_get_type(bw->current_content) == CONTENT_HTML)
+		html_scrolled(bw->current_content);
+}
+
+
 bool
 browser_window_scroll_at_point(struct browser_window *bw,
 			       int x, int y,

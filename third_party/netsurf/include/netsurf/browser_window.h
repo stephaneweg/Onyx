@@ -407,6 +407,15 @@ bool browser_window_scroll_at_point(struct browser_window *bw,
 
 
 /**
+ * Onyx: the frontend scrolled the window's view (the wheel, its scroll bars, a script's
+ * scrollTo): the page's scripts get a scroll event.
+ *
+ * \param bw	the browser window
+ */
+void browser_window_scrolled(struct browser_window *bw);
+
+
+/**
  * Drop a file onto a browser window at a particular point, or determine if a
  * file may be dropped onto the content at given point.
  *

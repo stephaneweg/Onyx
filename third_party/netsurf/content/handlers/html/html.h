@@ -99,6 +99,8 @@ struct content_html_object {
 	/** Bitmap of acceptable content types */
 	content_type permitted_types;
 	bool background;  /**< This object is a background image. */
+	/** Onyx: taken over from the boxes before (html_rebox): its box there */
+	struct box *rebox_old_box;
 };
 
 
@@ -219,5 +221,11 @@ struct content_html_object *html_get_objects(struct hlcache_handle *h,
  */
 bool html_get_id_offset(struct hlcache_handle *h, lwc_string *frag_id,
 		int *x, int *y);
+
+/**
+ * Onyx: the window's view of the document scrolled: its scripts get a scroll event (on
+ * the next turn of the loop: one for several steps).
+ */
+void html_scrolled(struct hlcache_handle *h);
 
 #endif

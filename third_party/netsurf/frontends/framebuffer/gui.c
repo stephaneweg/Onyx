@@ -431,6 +431,7 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 
 	if (bwidget->pan_required) {
 		fb_pan(widget, bwidget, gw->bw);
+		browser_window_scrolled(gw->bw);	/* Onyx: the page's scripts told */
 	}
 
 	if (bwidget->redraw_required) {

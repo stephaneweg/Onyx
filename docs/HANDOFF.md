@@ -344,6 +344,25 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   - the picture: `OnyxRemote.exe` (`pc/dist/`, rdpd port 3390); or VNC (vncd, no password):
     `python -m vncdotool.command -s <pi-ip> capture x.png`, `... key p` (a key).
 
+## NetSurf -- "as in Chrome" (kotonviolins.com, kotonstudio.com)
+
+- Done and staged: CSS3 (calc/var/grid/flex/gradients/shadows/radii/background-clip text),
+  Chrome's Windows fonts (metric-compatible stand-ins, web fonts, baseline alignment),
+  **JavaScript on QuickJS** (ES2023, the DOM in `javascript/quickjs/dom.js`, the page laid out
+  again after a script's changes, clicks / keys / typing / scroll to the scripts), the
+  **painting order of positioned boxes** and a hit test in that order. All listed in
+  `docs/06-NETSURF-CHANGES.md` (§6, §7).
+- NetSurf's app gets an **8 MB stack** (`stack = 8M` in its `app.txt`, read by the kernel:
+  `AppStackSize`); QuickJS stops a script's recursion at 4 MB. The kernel image must come with
+  it (a NetSurf with QuickJS on an older kernel has 256 KB).
+- The kernel is now built with the Arm GNU toolchain 13.3 (GCC 10 lacks `__builtin_bit_cast`,
+  `sys/v3d.cpp`); NetSurf and its libraries still build with GCC 10.3 (either works).
+- PC bench: `NS_JSDEBUG=1` prints the scripts' errors and `console.log`; the sim's clicks are
+  window-client coordinates (page y = sim y - 40: the toolbar), `move` before `down`/`up`.
+- Next: `opacity`, inline SVG, `fetch` / XMLHttpRequest over `onyx_fetch`, `localStorage` kept
+  on the card, cookies in `onyx_fetch` (logins), hover events, form controls outside a form
+  kept across a layout.
+
 ## Other open items
 
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at

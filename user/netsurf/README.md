@@ -22,6 +22,8 @@ whole-archive linking all eight `.a` together.
 | libhubbub | HTML5 parser | libparserutils | perl (entities) + element-type table |
 | libcss | CSS parser + selection | libwapcaplet, libparserutils | host `gen_parser` |
 | libdom | DOM | libwapcaplet, libparserutils, libhubbub | — |
+| FreeType (+ Brotli's decoder) | fonts: TrueType, OpenType, WOFF, WOFF2 | zlib | — |
+| QuickJS-ng (`libquickjs.a`) | the JavaScript engine (ES2023) | — | — (gnu11, `-D__ONYX__`) |
 
 `libnslog` is **not** built here (it needs flex/bison for its filter-config parser and is
 not on the rendering path).

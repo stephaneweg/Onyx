@@ -63,6 +63,8 @@ struct box_construct_ctx {
 	box_construct_complete_cb cb;	/**< Callback to invoke on completion */
 
 	int *bctx;			/**< talloc context */
+
+	bool now;			/**< Onyx: converted at once (dom_to_box_now) */
 };
 
 /**
@@ -1317,7 +1319,7 @@ static void convert_xml_to_box(struct box_construct_ctx *ctx)
 			free(ctx);
 			return;
 		}
-	} while (++num_processed < max_processed_before_yield);
+	} while (ctx->now || ++num_processed < max_processed_before_yield);
 
 	/* More work to do: schedule a continuation */
 	guit->misc->schedule(0, (void *)convert_xml_to_box, ctx);
@@ -1353,10 +1355,41 @@ dom_to_box(dom_node *n,
 	ctx->root_box = NULL;
 	ctx->cb = cb;
 	ctx->bctx = c->bctx;
+	ctx->now = false;
 
 	*box_conversion_context = ctx;
 
 	return guit->misc->schedule(0, (void *)convert_xml_to_box, ctx);
+}
+
+
+/* exported function documented in html/box_construct.h */
+nserror dom_to_box_now(dom_node *n, html_content *c, box_construct_complete_cb cb)
+{
+	struct box_construct_ctx *ctx;
+
+	if (c->bctx == NULL) {
+		c->bctx = talloc_zero(0, int);
+		if (c->bctx == NULL) {
+			return NSERROR_NOMEM;
+		}
+	}
+
+	ctx = malloc(sizeof(*ctx));
+	if (ctx == NULL) {
+		return NSERROR_NOMEM;
+	}
+
+	ctx->content = c;
+	ctx->n = dom_node_ref(n);
+	ctx->root_box = NULL;
+	ctx->cb = cb;
+	ctx->bctx = c->bctx;
+	ctx->now = true;
+
+	/* the whole tree now: ctx is freed and cb called on the way out */
+	convert_xml_to_box(ctx);
+	return NSERROR_OK;
 }
 
 

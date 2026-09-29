@@ -1423,6 +1423,9 @@ static void form_select_menu_clicked(struct form_control *control, int x, int y)
 
 	if (option != NULL) {
 		form__select_process_selection(html, control, i);
+		/* Onyx: the page's scripts told */
+		html_script_changed(html, control->node,
+				HTML_SCRIPT_INPUT | HTML_SCRIPT_CHANGE);
 	}
 
 	menu->callback(menu->client_data, 0, 0, menu->width, menu->height);

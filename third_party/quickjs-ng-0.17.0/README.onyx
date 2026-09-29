@@ -1,0 +1,10 @@
+QuickJS-ng v0.17.0 (https://github.com/quickjs-ng/quickjs, tag v0.17.0): the engine only
+(no quickjs-libc, no tools). MIT: LICENSE. NetSurf's JavaScript engine on Onyx
+(third_party/netsurf/content/handlers/javascript/quickjs/).
+
+Onyx patches (marked Onyx):
+- cutils.h: __ONYX__ has no threads (JS_HAVE_THREADS 0), its clock is gettimeofday.
+- quickjs.c: __ONYX__ has no Atomics (CONFIG_ATOMICS off).
+
+Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
+libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.

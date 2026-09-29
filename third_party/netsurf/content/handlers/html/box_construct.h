@@ -89,6 +89,12 @@ nserror dom_to_box(struct dom_node *n, struct html_content *c, box_construct_com
  */
 nserror cancel_dom_to_box(void *box_conversion_context);
 
+/**
+ * Onyx: dom_to_box at once -- the box tree built before it returns, cb called (a
+ * document's DOM changed by a script: html_script_dom_changed).
+ */
+nserror dom_to_box_now(struct dom_node *n, struct html_content *c, box_construct_complete_cb cb);
+
 
 /**
  * Retrieve the box for a dom node, if there is one

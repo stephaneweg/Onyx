@@ -1676,6 +1676,16 @@ dom_exception _dom_element_set_attr(struct dom_element *element,
 		if (err != DOM_NO_ERR)
 			return err;
 
+		/* Onyx: a class attribute changed, its classes cached again
+		 * (the selection engine reads them: a script's classList) */
+		if (namespace == NULL &&
+				dom_string_isequal(name, doc->class_string)) {
+			err = _dom_element_create_classes(element,
+					dom_string_data(value));
+			if (err != DOM_NO_ERR)
+				return err;
+		}
+
 		success = true;
 		err = _dom_dispatch_subtree_modified_event(doc,
 				(dom_event_target *) e, &success);

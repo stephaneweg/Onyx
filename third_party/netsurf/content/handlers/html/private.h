@@ -213,6 +213,22 @@ typedef struct html_content {
 	/** Onyx: the web fonts (@font-face) fetched for it (onyx_webfont.c) */
 	struct onyx_webfont *webfonts;
 
+	/** Onyx: a script changed the DOM: its boxes to build again (html_rebox) */
+	bool rebox_pending;
+
+	/** Onyx: while the boxes are built again, the old boxes' objects to take over */
+	struct content_html_object *rebox_objects;
+
+	/** Onyx: events dispatched to the scripts whose callers hold boxes: no rebox now */
+	int script_hold;
+
+	/** Onyx: the viewport's size the scripts last saw (a change: 'resize') */
+	int script_width, script_height;
+
+	/** Onyx: a control the user changed: its input / change events due (soon) */
+	struct dom_node *script_changed;
+	unsigned int script_changed_events;
+
 } html_content;
 
 /**
@@ -296,10 +312,50 @@ bool html_saw_insecure_scripts(html_content *htmlc);
  */
 nserror html_proceed_to_done(html_content *html);
 
+/**
+ * Onyx: a script changed the document's DOM -- its boxes are built again and it is laid
+ * out again (soon: the changes of one script run together).
+ */
+void html_script_dom_changed(html_content *htmlc);
+
+/**
+ * Onyx: a script asks for the layout (a box's rectangle): a pending new layout is made now.
+ */
+void html_script_layout_now(html_content *htmlc);
+
+struct js_event_init;
+
+/**
+ * Onyx: an event for the page's scripts at a node (javascript/js.h: js_dispatch_event);
+ * the boxes are not built again meanwhile (the caller may hold some).
+ *
+ * 
+eturn false when a script prevented its default action
+ */
+bool html_script_event(html_content *htmlc, const char *type, struct dom_node *node,
+		const struct js_event_init *init);
+
+#define HTML_SCRIPT_INPUT 1	/**< html_script_changed: an input event */
+#define HTML_SCRIPT_CHANGE 2	/**< html_script_changed: a change event */
+
+/**
+ * Onyx: the user changed a form control (typed in it, chose an option): its input and / or
+ * change events for the page's scripts, dispatched on the next turn of the loop (the
+ * text area, the menu that tells it is not left under a script's changes).
+ */
+void html_script_changed(html_content *htmlc, struct dom_node *node, unsigned int events);
+
 
 /* in html/redraw.c */
 bool html_redraw(struct content *c, struct content_redraw_data *data,
 		const struct rect *clip, const struct redraw_context *ctx);
+
+/**
+ * Onyx: whether a box is painted in a layer of its own, after its layer's in-flow
+ * content (a positioned box; a flex / grid item with a z-index), and its z-index (auto:
+ * 0; negative: false, painted in place).
+ */
+bool html_redraw_layer_z(const struct box *box, int32_t *z);
 
 
 /* in html/redraw_border.c */
