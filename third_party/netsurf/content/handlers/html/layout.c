@@ -2798,7 +2798,7 @@ place_float_below(struct box *c, int width, int cx, int y, struct box *cont)
 /**
  * Calculate line height from a style.
  */
-static int line_height(
+static css_fixed line_height_fixed(
 		const css_unit_ctx *unit_len_ctx,
 		const css_computed_style *style)
 {
@@ -2811,6 +2811,14 @@ static int line_height(
 
 	lhtype = css_computed_line_height(style, &lhvalue, &lhunit);
 	if (lhtype == CSS_LINE_HEIGHT_NORMAL) {
+		/* Onyx: the font's own line spacing, as the other browsers */
+		plot_font_style_t fs;
+		int a, d, g;
+
+		font_plot_style_from_css(unit_len_ctx, style, &fs);
+		if (font_metrics(&fs, &a, &d, &g))
+			return INTTOFIX(a + d + g);
+
 		/* Normal => use a constant of 1.3 * font-size */
 		lhvalue = FLTTOFIX(1.3);
 		lhtype = CSS_LINE_HEIGHT_NUMBER;
@@ -2830,9 +2838,118 @@ static int line_height(
 				lhvalue, lhunit);
 	}
 
-	return FIXTOINT(line_height);
+	return line_height;
 }
 
+/**
+ * Onyx: the line height in whole pixels (line_height_fixed's, truncated -- a run of
+ * lines keeps the fractions: layout_line's carry).
+ */
+static int line_height(
+		const css_unit_ctx *unit_len_ctx,
+		const css_computed_style *style)
+{
+	return FIXTOINT(line_height_fixed(unit_len_ctx, style));
+}
+
+
+/**
+ * Onyx: a text's height above its baseline and below, in a box its line-height tall (lh):
+ * its font's ascent and descent spread by the half leading (font_baseline).
+ */
+static void layout_text_ab(const css_unit_ctx *unit_len_ctx,
+		const css_computed_style *style, int lh, int *above, int *below)
+{
+	plot_font_style_t fs;
+
+	font_plot_style_from_css(unit_len_ctx, style, &fs);
+	*above = font_baseline(&fs, lh);
+	*below = lh - *above;
+}
+
+/**
+ * Onyx: where a box's baseline is, px below its padding box's top: its first line's (a
+ * flex / grid container, first) or its last (an inline-block), found as the baseline of
+ * that line's text -- false when it has no text in flow.
+ */
+static bool layout_box_baseline(const struct box *box,
+		const css_unit_ctx *unit_len_ctx, bool first, int *baseline)
+{
+	const struct box *c;
+	bool found = false;
+
+	for (c = box->children; c != NULL; c = c->next) {
+		int b;
+
+		if (c->style != NULL &&
+		    (css_computed_position(c->style) == CSS_POSITION_ABSOLUTE ||
+		     css_computed_position(c->style) == CSS_POSITION_FIXED))
+			continue;
+		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT)
+			continue;
+		if (c->type == BOX_TEXT && c->text != NULL && c->length > 0 &&
+		    c->style != NULL) {
+			int above, below;
+
+			layout_text_ab(unit_len_ctx, c->style, c->height,
+					&above, &below);
+			b = c->y + above;
+		} else if (c->type == BOX_INLINE_BLOCK ||
+			   c->type == BOX_INLINE_FLEX || c->children == NULL ||
+			   !layout_box_baseline(c, unit_len_ctx, first, &b)) {
+			continue;
+		} else {
+			b += c->y;
+		}
+		*baseline = b;
+		found = true;
+		if (first)
+			return true;
+	}
+	return found;
+}
+
+/**
+ * Onyx: a box's height above the line's baseline and below as it sits on it (CSS 2.1
+ * 10.8.1), from its top margin edge (text, inlines: from its line-height box's top) --
+ * *top: the offset of its y from that edge.
+ */
+static void layout_line_box_ab(struct box *d, const css_unit_ctx *unit_len_ctx,
+		int *above, int *below, int *top)
+{
+	if (d->type == BOX_TEXT || d->type == BOX_BR ||
+	    d->type == BOX_INLINE_END ||
+	    (d->type == BOX_INLINE && lh__box_is_replace(d) == false)) {
+		const struct box *b = d->type == BOX_INLINE_END &&
+				d->inline_end != NULL ? d->inline_end : d;
+		const css_computed_style *style = b->style != NULL ? b->style :
+				d->parent->parent->style;
+
+		layout_text_ab(unit_len_ctx, style,
+				line_height(unit_len_ctx, style), above, below);
+		*top = -d->padding[TOP];
+	} else {
+		/* an atomic inline: an inline-block's baseline is its last line's
+		 * (an inline-flex / grid's: its first; a form control's, its
+		 * label's), a replaced box's -- an image -- its bottom margin edge */
+		int h = d->margin[TOP] + d->border[TOP].width + d->padding[TOP] +
+				d->height + d->padding[BOTTOM] +
+				d->border[BOTTOM].width + d->margin[BOTTOM];
+		int base;
+
+		*above = h;
+		if (d->object == NULL && !(d->flags & IFRAME) &&
+		    d->style != NULL && (d->gadget != NULL ||
+		    css_computed_overflow_y(d->style) == CSS_OVERFLOW_VISIBLE) &&
+		    layout_box_baseline(d, unit_len_ctx,
+				d->type == BOX_INLINE_FLEX, &base))
+			*above = d->margin[TOP] + d->border[TOP].width + base;
+		if (*above > h)
+			*above = h;
+		*below = h - *above;
+		*top = d->margin[TOP] + d->border[TOP].width;
+	}
+}
 
 /**
  * Position a line of boxes in inline formatting context.
@@ -2860,7 +2977,8 @@ layout_line(struct box *first,
 	    bool indent,
 	    bool has_text_children,
 	    html_content *content,
-	    struct box **next_box)
+	    struct box **next_box,
+	    css_fixed *carry)
 {
 	int height, used_height;
 	int x0 = 0;
@@ -3539,31 +3657,122 @@ layout_line(struct box *first,
 
 	assert(b != first || (move_y && 0 < used_height && (left || right)));
 
-	/* handle vertical-align by adjusting box y values */
-	/** \todo  proper vertical alignment handling */
-	for (d = first; d != b; d = d->next) {
-		if ((d->type == BOX_INLINE && d->inline_end) ||
-				d->type == BOX_BR ||
-				d->type == BOX_TEXT ||
-				d->type == BOX_INLINE_END) {
-			css_fixed value = 0;
-			css_unit unit = CSS_UNIT_PX;
-			switch (css_computed_vertical_align(d->style, &value,
-					&unit)) {
-			case CSS_VERTICAL_ALIGN_SUPER:
-			case CSS_VERTICAL_ALIGN_TOP:
-			case CSS_VERTICAL_ALIGN_TEXT_TOP:
-				/* already at top */
-				break;
-			case CSS_VERTICAL_ALIGN_SUB:
-			case CSS_VERTICAL_ALIGN_BOTTOM:
-			case CSS_VERTICAL_ALIGN_TEXT_BOTTOM:
-				d->y += used_height - d->height;
-				break;
-			default:
-			case CSS_VERTICAL_ALIGN_BASELINE:
-				d->y += 0.75 * (used_height - d->height);
-				break;
+	/* Onyx: the boxes on the line's baseline (CSS 2.1 10.8, as Blink does): the
+	 * block's strut -- its font and line-height, when it holds text (or always, in
+	 * standards mode) -- and each box's height above its baseline and below,
+	 * shifted by its vertical-align; the line as tall as the most above plus the
+	 * most below; top / bottom boxes against its edges then. (NetSurf put every
+	 * box at the top of the line, a text's baseline three quarters down.) */
+	if (b != first) {
+		const css_unit_ctx *ulc = &content->unit_len_ctx;
+		const css_computed_style *bs = first->parent->parent->style;
+		plot_font_style_t pfs;
+		int pa, pd, pg, psize, pass;
+		int above = 0, below = 0, tall = 0;
+
+		font_plot_style_from_css(ulc, bs, &pfs);
+		psize = FIXTOINT(css_unit_len2device_px(bs, ulc, INTTOFIX(1),
+				CSS_UNIT_EM));
+		if (!font_metrics(&pfs, &pa, &pd, &pg)) {
+			pa = psize * 3 / 4;
+			pd = psize - pa;
+		}
+		bool strut = has_text_children ||
+				first->parent->parent->gadget ||
+				content->quirks == DOM_DOCUMENT_QUIRKS_MODE_NONE;
+		css_fixed strut_exact = line_height_fixed(ulc, bs);
+
+		if (strut)
+			layout_text_ab(ulc, bs, FIXTOINT(strut_exact),
+					&above, &below);
+
+		/* pass 0: the line's height; pass 1: the boxes placed on it */
+		for (pass = 0; pass < 2; pass++) {
+			if (pass == 1) {
+				used_height = max(above + below, tall);
+				/* a line as tall as the strut: its fraction of a
+				 * pixel carried, the lines' tops rounded (as a
+				 * browser paints a run of 26.4 px lines) */
+				if (strut && used_height == FIXTOINT(strut_exact)) {
+					css_fixed exact = strut_exact + *carry;
+
+					used_height = FIXTOINT(exact + F_0_5);
+					*carry = exact - INTTOFIX(used_height);
+				}
+			}
+			for (d = first; d != b; d = d->next) {
+				css_fixed value = 0;
+				css_unit unit = CSS_UNIT_PX;
+				int ab, bl, top, shift = 0;
+				enum css_vertical_align_e va;
+
+				if (d->style == NULL ||
+				    lh__box_is_float_box(d) ||
+				    ((d->type == BOX_INLINE_BLOCK ||
+				      d->type == BOX_INLINE_FLEX) &&
+				     (css_computed_position(d->style) ==
+						CSS_POSITION_ABSOLUTE ||
+				      css_computed_position(d->style) ==
+						CSS_POSITION_FIXED)))
+					continue;
+				if (!(d->type == BOX_INLINE ||
+				      d->type == BOX_INLINE_BLOCK ||
+				      d->type == BOX_INLINE_FLEX ||
+				      d->type == BOX_BR ||
+				      d->type == BOX_TEXT ||
+				      d->type == BOX_INLINE_END))
+					continue;
+				layout_line_box_ab(d, ulc, &ab, &bl, &top);
+				va = css_computed_vertical_align(d->style,
+						&value, &unit);
+				switch (va) {
+				case CSS_VERTICAL_ALIGN_SUB:
+					shift = psize / 5 + 1;
+					break;
+				case CSS_VERTICAL_ALIGN_SUPER:
+					shift = -(psize / 3 + 1);
+					break;
+				case CSS_VERTICAL_ALIGN_TEXT_TOP:
+					shift = ab - pa;
+					break;
+				case CSS_VERTICAL_ALIGN_TEXT_BOTTOM:
+					shift = pd - bl;
+					break;
+				case CSS_VERTICAL_ALIGN_MIDDLE:
+					/* its middle half the parent's x-height
+					 * above the baseline */
+					shift = (ab - bl - psize * 52 / 100) / 2;
+					break;
+				case CSS_VERTICAL_ALIGN_SET:
+					if (unit == CSS_UNIT_PCT)
+						shift = -FPCT_OF_INT_TOINT(value,
+							line_height(ulc,
+								d->style));
+					else
+						shift = -FIXTOINT(
+							css_unit_len2device_px(
+								d->style, ulc,
+								value, unit));
+					break;
+				default:
+					break;
+				}
+				if (pass == 0) {
+					if (va == CSS_VERTICAL_ALIGN_TOP ||
+					    va == CSS_VERTICAL_ALIGN_BOTTOM) {
+						tall = max(tall, ab + bl);
+					} else {
+						above = max(above, ab - shift);
+						below = max(below, bl + shift);
+					}
+					continue;
+				}
+				if (va == CSS_VERTICAL_ALIGN_TOP)
+					d->y = *y + top;
+				else if (va == CSS_VERTICAL_ALIGN_BOTTOM)
+					d->y = *y + used_height - (ab + bl) + top;
+				else
+					d->y = *y + above + shift - ab + top;
 			}
 		}
 	}
@@ -3602,6 +3811,7 @@ static bool layout_inline_container(struct box *inline_container, int width,
 	bool has_text_children;
 	struct box *c, *next;
 	int y = 0;
+	css_fixed carry = 0;	/* (Onyx: the lines' fractions of a pixel) */
 	int curwidth,maxwidth = width;
 
 	assert(inline_container->type == BOX_INLINE_CONTAINER);
@@ -3645,7 +3855,7 @@ static bool layout_inline_container(struct box *inline_container, int width,
 
 		curwidth = inline_container->width;
 		if (!layout_line(c, &curwidth, &y, cx, cy + y, cont, first_line,
-				has_text_children, content, &next))
+				has_text_children, content, &next, &carry))
 			return false;
 		maxwidth = max(maxwidth,curwidth);
 		c = next;

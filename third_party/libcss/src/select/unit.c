@@ -351,12 +351,10 @@ css_fixed css_unit_len2device_px(
 
 	px_per_unit = css_unit_css2device_px(px_per_unit, ctx->device_dpi);
 
-	/* Ensure we round px_per_unit to the nearest whole number of pixels:
-	 * the use of FIXTOINT() below will truncate. */
-	px_per_unit += F_0_5;
-
-	/* Calculate total number of pixels */
-	return FMUL(length, TRUNCATEFIX(px_per_unit));
+	/* Calculate total number of pixels -- Onyx: with the unit's exact size
+	 * (upstream rounded it to whole pixels first: 1em of a 12.48px font was
+	 * 12px, 1.65em 19.8px not 20.6; 1pt 1px not 1.33px) */
+	return FMUL(length, px_per_unit);
 }
 
 /**

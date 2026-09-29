@@ -186,6 +186,9 @@ text_redraw(const char *utf8_text,
 	bool highlighted = false;
 	plot_font_style_t plot_fstyle = *fstyle;
 	nserror res;
+	/* Onyx: the baseline where the layout put it (its font's ascent below the half
+	 * leading), not three quarters down */
+	int baseline = (int) (font_baseline(fstyle, height) * scale);
 
 	/* Need scaled text size to pass to plotters */
 	plot_fstyle.size *= scale;
@@ -263,7 +266,7 @@ text_redraw(const char *utf8_text,
 			    (ctx->plot->text(ctx,
 					     &plot_fstyle,
 					     x,
-					     y + (int)(height * 0.75 * scale),
+					     y + baseline,
 					     utf8_text,
 					     start_idx) != NSERROR_OK))
 				return false;
@@ -309,7 +312,7 @@ text_redraw(const char *utf8_text,
 			    (ctx->plot->text(ctx,
 					     &fstyle_hback,
 					     x,
-					     y + (int)(height * 0.75 * scale),
+					     y + baseline,
 					     utf8_text,
 					     endtxt_idx) != NSERROR_OK)) {
 				return false;
@@ -334,7 +337,7 @@ text_redraw(const char *utf8_text,
 					res = ctx->plot->text(ctx,
 							      &plot_fstyle,
 							      x,
-							      y + (int)(height * 0.75 * scale),
+							      y + baseline,
 							      utf8_text,
 							      utf8_len);
 					if (res != NSERROR_OK) {
@@ -354,13 +357,13 @@ text_redraw(const char *utf8_text,
 		if (onyx_text_fill != NULL && ctx->plot->onyx_text_paint != NULL)
 			/* Onyx: background-clip: text */
 			res = ctx->plot->onyx_text_paint(ctx, &plot_fstyle, x,
-					y + (int) (height * 0.75 * scale),
+					y + baseline,
 					utf8_text, utf8_len, onyx_text_fill);
 		else
 			res = ctx->plot->text(ctx,
 				      &plot_fstyle,
 				      x,
-				      y + (int) (height * 0.75 * scale),
+				      y + baseline,
 				      utf8_text,
 				      utf8_len);
 		if (res != NSERROR_OK) {

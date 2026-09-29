@@ -110,6 +110,13 @@ struct gui_layout_table
 	 * \return the previous one
 	 */
 	const void *(*set_scope)(const void *owner);
+
+	/**
+	 * Onyx: the vertical metrics of the style's first font, whole pixels: its
+	 * ascent, descent and line gap (line-height: normal is their sum) --
+	 * optional, NULL: NetSurf's own approximations.
+	 */
+	nserror (*metrics)(const struct plot_font_style *fstyle, int *ascent, int *descent, int *line_gap);
 };
 
 #endif

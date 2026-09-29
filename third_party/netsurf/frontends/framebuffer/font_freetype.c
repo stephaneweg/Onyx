@@ -45,6 +45,7 @@
 #include FT_CACHE_H
 #include FT_ADVANCES_H
 #include FT_MULTIPLE_MASTERS_H
+#include FT_TRUETYPE_TABLES_H
 
 #include "netsurf/inttypes.h"
 #include "utils/filepath.h"
@@ -86,6 +87,8 @@ typedef struct fb_faceid_s {
 	struct fb_faceid_s *variants;	/* a range's instances made (var_weight) */
 	struct fb_faceid_s *variant_next;
 	struct fb_faceid_s *origin;	/* a copy (slanted, instance): its family's face */
+	int v_asc, v_desc, v_gap;	/* its vertical metrics, design units (v_upm: 0 */
+	int v_upm;			/* until read, fb_face_vmetrics) */
 } fb_faceid_t;
 
 /** Onyx: a family -- the card's, or a document's web fonts' */
@@ -107,6 +110,7 @@ static const struct fb_card_face {
 	const char *file;
 	int weight;
 	bool italic;
+	int asc, desc, upm;	/* vertical metrics of the font it stands in for (0: its own) */
 } fb_card_faces[] = {
 	/* Liberation 2 (SIL OFL): Arial's and Times New Roman's metrics */
 	{ "liberation sans", "LiberationSans-Regular.ttf", 400, false },
@@ -123,11 +127,11 @@ static const struct fb_card_face {
 	{ "selawik", "selawk.ttf", 400, false },
 	{ "selawik", "selawksb.ttf", 600, false },
 	{ "selawik", "selawkb.ttf", 700, false },
-	/* Gelasio (SIL OFL): Georgia's */
-	{ "gelasio", "Gelasio-Regular.ttf", 400, false },
-	{ "gelasio", "Gelasio-Bold.ttf", 700, false },
-	{ "gelasio", "Gelasio-Italic.ttf", 400, true },
-	{ "gelasio", "Gelasio-BoldItalic.ttf", 700, true },
+	/* Gelasio (SIL OFL): Georgia's widths -- and, here, its heights (Gelasio's are taller) */
+	{ "gelasio", "Gelasio-Regular.ttf", 400, false, 1878, 449, 2048 },
+	{ "gelasio", "Gelasio-Bold.ttf", 700, false, 1878, 449, 2048 },
+	{ "gelasio", "Gelasio-Italic.ttf", 400, true, 1878, 449, 2048 },
+	{ "gelasio", "Gelasio-BoldItalic.ttf", 700, true, 1878, 449, 2048 },
 	/* DejaVu: the fallback, for its many characters */
 	{ "dejavu sans", NETSURF_FB_FONT_SANS_SERIF, 400, false },
 	{ "dejavu sans", NETSURF_FB_FONT_SANS_SERIF_BOLD, 700, false },
@@ -722,6 +726,12 @@ static void fb_card_fonts(void)
 		face->fontfile = strdup(buf);
 		face->wmin = face->wmax = cf->weight;
 		face->italic = cf->italic;
+		if (cf->upm != 0) {
+			face->v_asc = cf->asc;
+			face->v_desc = cf->desc;
+			face->v_gap = 0;
+			face->v_upm = cf->upm;
+		}
 		fam = fb_family_named(cf->family);
 		if (fam == NULL)
 			fam = fb_family_new(cf->family, NULL);
@@ -1105,6 +1115,72 @@ fb_font_split(const plot_font_style_t *fstyle,
 	return NSERROR_OK;
 }
 
+/**
+ * Onyx: a face's vertical metrics, as Chrome reads them on Windows (DirectWrite): OS/2's
+ * typographic ones when the font asks for them (USE_TYPO_METRICS), else its Windows
+ * ascent and descent and the line gap making up hhea's line spacing.
+ */
+static bool fb_face_vmetrics(fb_faceid_t *f)
+{
+	FT_Face face;
+	TT_OS2 *os2;
+	TT_HoriHeader *hhea;
+
+	if (f->v_upm != 0)
+		return true;
+	if (FTC_Manager_LookupFace(ft_cmanager, (FTC_FaceID)f, &face) != 0)
+		return false;
+	os2 = FT_Get_Sfnt_Table(face, FT_SFNT_OS2);
+	hhea = FT_Get_Sfnt_Table(face, FT_SFNT_HHEA);
+	if (os2 != NULL && os2->version != 0xFFFF && (os2->fsSelection & (1 << 7))) {
+		f->v_asc = os2->sTypoAscender;
+		f->v_desc = -os2->sTypoDescender;
+		f->v_gap = os2->sTypoLineGap;
+	} else if (os2 != NULL && os2->version != 0xFFFF &&
+		   os2->usWinAscent + os2->usWinDescent > 0) {
+		int spacing = hhea != NULL ? hhea->Ascender - hhea->Descender +
+				hhea->Line_Gap : 0;
+
+		f->v_asc = os2->usWinAscent;
+		f->v_desc = os2->usWinDescent;
+		f->v_gap = spacing - f->v_asc - f->v_desc;
+	} else {
+		f->v_asc = face->ascender;
+		f->v_desc = -face->descender;
+		f->v_gap = face->height - face->ascender + face->descender;
+	}
+	if (f->v_gap < 0)
+		f->v_gap = 0;
+	f->v_upm = face->units_per_EM > 0 ? face->units_per_EM : 1000;
+	return true;
+}
+
+/**
+ * Onyx: the vertical metrics of the style's first face, in whole pixels (rounded one by
+ * one, as Blink does): its ascent, descent and line gap -- line-height: normal is their
+ * sum, a line's baseline half the leading below its ascent.
+ */
+static nserror fb_font_metrics(const plot_font_style_t *fstyle, int *ascent,
+		int *descent, int *line_gap)
+{
+	struct fb_chain c;
+	fb_faceid_t *f;
+	double px;
+
+	fb_chain_make(fstyle, &c);
+	if (c.n == 0)
+		return NSERROR_INVALID;
+	f = c.face[0]->origin != NULL ? c.face[0]->origin : c.face[0];
+	if (!fb_face_vmetrics(f))
+		return NSERROR_INVALID;
+	px = (double)fstyle->size / PLOT_STYLE_SCALE * browser_get_dpi() / 72.0 /
+			f->v_upm;
+	*ascent = (int)(f->v_asc * px + 0.5);
+	*descent = (int)(f->v_desc * px + 0.5);
+	*line_gap = (int)(f->v_gap * px + 0.5);
+	return NSERROR_OK;
+}
+
 static struct gui_layout_table layout_table = {
 	.width = fb_font_width,
 	.position = fb_font_position,
@@ -1112,6 +1188,7 @@ static struct gui_layout_table layout_table = {
 	.add_face = fb_font_add_face,		/* Onyx: web fonts */
 	.release_faces = fb_font_release_faces,
 	.set_scope = fb_font_set_scope,
+	.metrics = fb_font_metrics,
 };
 
 struct gui_layout_table *framebuffer_layout_table = &layout_table;

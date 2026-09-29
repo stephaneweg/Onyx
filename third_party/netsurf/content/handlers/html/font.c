@@ -24,6 +24,8 @@
 
 #include "utils/nsoption.h"
 #include "netsurf/plot_style.h"
+#include "netsurf/layout.h"
+#include "desktop/gui_internal.h"
 #include "css/utils.h"
 
 #include "html/font.h"
@@ -180,4 +182,25 @@ void font_plot_style_from_css(
 				css, unit_len_ctx, length, unit),
 				INTTOFIX(PLOT_STYLE_SCALE)));
 	}
+}
+
+
+/* exported function documented in html/font.h */
+bool font_metrics(const plot_font_style_t *fstyle, int *ascent, int *descent,
+		int *line_gap)
+{
+	return guit->layout->metrics != NULL &&
+		guit->layout->metrics(fstyle, ascent, descent, line_gap) ==
+				NSERROR_OK;
+}
+
+/* exported function documented in html/font.h */
+int font_baseline(const plot_font_style_t *fstyle, int line_height)
+{
+	int a, d, g, leading;
+
+	if (!font_metrics(fstyle, &a, &d, &g))
+		return line_height * 3 / 4;
+	leading = line_height - (a + d);
+	return a + (leading >= 0 ? leading / 2 : -((1 - leading) / 2));
 }
