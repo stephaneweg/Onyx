@@ -4,6 +4,7 @@ version = 1
 title = Contacts
 description = Family, friends and work
 sort = name
+merge = SD:/docs/new-year-letter.rtf
 
 [field]
 column = name

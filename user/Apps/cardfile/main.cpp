@@ -167,7 +167,7 @@ public:
 };
 
 // Mail Merge: Writer's letter (its fields the form's) filled with this record, or each record shown --
-// the documents opened in Writer (one after the other), or each written in a folder (named after a
+// one document in Writer (each letter on a new page), or each written in a folder (named after a
 // field, or numbered). Writer does it: "writer --merge JOB" (Writer's merge.h), JOB and the records
 // written in SD:/apps/cardfile.app/.
 static const char *MERGE_DATA = "SD:/apps/cardfile.app/merge.card", *MERGE_JOB = "SD:/apps/cardfile.app/merge.job";
@@ -192,7 +192,7 @@ public:
 		char u[64] = "All the records shown ("; scat_num (u, shown, sizeof u); scat (u, ")", sizeof u);
 		all = new RadioButton (120, y + 28, 440, 24, u, 1, false, 0, C_FACE); addChild (all);
 		y += 74;
-		open = new RadioButton (120, y, 440, 24, "Opened in Writer, one after the other", 2, true, onKind, C_FACE); addChild (open);
+		open = new RadioButton (120, y, 440, 24, "One document in Writer, each letter on a new page", 2, true, onKind, C_FACE); addChild (open);
 		files = new RadioButton (120, y + 28, 150, 24, "Files, in:", 2, false, onKind, C_FACE); addChild (files);
 		folder = new LineEdit (270, y + 28, 294); folder->setText ("SD:/docs/Letters"); addChild (folder);
 		y += 66;

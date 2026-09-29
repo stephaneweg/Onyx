@@ -96,8 +96,10 @@ libc/crt0libc.o: libc/crt0libc.S
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
-writer.elf: Apps/writer/main.cpp $(wildcard Apps/writer/*.h) ft/fonts.h ft/libft.a wtk/libwtk.a \
-	    libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
+# Writer: its model, layout and files in Apps/writer/*.h (the mail merge reads Cardfile's forms: its model.h;
+# .docx / .odt: the PNG writer's zip / deflate).
+writer.elf: Apps/writer/main.cpp $(wildcard Apps/writer/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h ft/libft.a \
+	    wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 # The spreadsheet: a newlib app as Writer (FreeType, stdio, doubles) -- its engine and files in

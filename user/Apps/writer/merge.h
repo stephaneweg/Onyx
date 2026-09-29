@@ -13,7 +13,7 @@
 //   template = SD:/docs/letter.odt      the letter
 //   data     = SD:/apps/cardfile.app/merge.card
 //   records  = all | N                  (N: the record's number, from 1)
-//   output   = open | files             (open: the documents made shown, one after the other; files: written,
+//   output   = open | files             (open: one document shown, each letter on a new page; files: written,
 //                                        then the first one shown)
 //   folder   = SD:/docs/Letters         (files: where; made if needed)
 //   name     = Name                     (files: named after this field; empty: letter-1, letter-2...)
