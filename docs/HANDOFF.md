@@ -659,6 +659,15 @@ hamburger menus of both sites open and their links work; kotonstudio's scroll re
 - A rebox takes the old boxes' objects over by URL (`html_fetch_object`); objects that arrive
   after the page is done cause a reformat (object.c).
 
+## Koton Studio for Onyx -- a DAW (2026-09-29: a study, a plan, mock-ups; no code yet)
+
+The user asked for a DAW in the manner of their C# Koton Studio (`github.com/stephaneweg/MusicTracker`),
+no score view at first: **`docs/daw/README.md`** (Koton studied, what Onyx has and lacks, the
+architecture -- the DSP engine on core 2, plugins as processes over IPC, JSON with an arena
+library, the AI through a `bin/llm` helper --, the OS additions, the milestones M0..M6, the open
+questions) and its mock-ups (`python3 tools/screenshot/mockup_daw.py` -> `docs/daw/mockups/`).
+Waiting on the user's answers to §8 before M0.
+
 ## Other open items
 
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
