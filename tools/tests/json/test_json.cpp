@@ -51,6 +51,7 @@ static void units ()
 	CHECK (!d.parse ("[1,2", 4));
 	CHECK (!d.parse ("\"abc", 4));
 	CHECK (d.parse ("{\"n\":\"120\"}") && d.root ()["n"].asInt () == 120);
+	CHECK (d.parse ("{\"m\":18446744073709551615}") && d.root ()["m"].asU64 () == 18446744073709551615ull);
 	// the writer
 	json::Writer w (true);
 	w.beginObj (); w.key ("bpm"); w.num (120.0); w.key ("pi"); w.num (3.25);

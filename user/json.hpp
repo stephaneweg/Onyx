@@ -113,7 +113,7 @@ struct Value
 	unsigned char type;
 	bool b;
 	num_t n;
-	const char *s; unsigned slen_;		// STR: the text (NUL-terminated), its length in bytes
+	const char *s; unsigned slen_;		// STR: the text (NUL-terminated), its length in bytes; NUM: its token
 	const char *key;			// a member of an object: its name (else 0)
 	Value *first_, *last_, *next;		// ARR / OBJ: the children; next: the following sibling
 	unsigned count;				// ARR / OBJ: how many children
@@ -175,6 +175,17 @@ struct Value
 		return def;
 	}
 	const char *asStr (const char *def = "") const { return type == STR ? s : def; }
+	// an exact unsigned 64-bit integer (a bit mask written by .NET's UInt64): from the number's own
+	// text, not through the double (which keeps only 53 bits)
+	unsigned long long asU64 (unsigned long long def = 0) const
+	{
+		if ((type != NUM && type != STR) || !s) return type == NUM ? (unsigned long long) n : def;
+		const char *p = s; unsigned long long v = 0; bool any = false;
+		while (*p == ' ') p++;
+		if (*p == '-') return def;
+		while (*p >= '0' && *p <= '9') { v = v * 10 + (unsigned long long) (*p - '0'); p++; any = true; }
+		return any ? v : def;
+	}
 	// copy the string into buf (cap bytes, always terminated); the length copied
 	unsigned copyStr (char *buf, unsigned cap, const char *def = "") const
 	{
@@ -386,7 +397,9 @@ private:
 		tok[n] = 0;
 		if (!Value::parseNumber (tok, &v, &e) || e == tok) return failv ("bad number");
 		m_p += e - tok;
-		return newNum (v);
+		Value *nv = newNum (v);
+		if (nv) { nv->s = m_arena.strdup (tok, (unsigned) (e - tok)); nv->slen_ = (unsigned) (e - tok); }	// the token: exact 64-bit reads
+		return nv;
 	}
 	static int hex4 (const char *p)
 	{
@@ -602,6 +615,13 @@ public:
 		digits (v, prec);
 	}
 #endif
+	void u64 (unsigned long long u)
+	{
+		sep ();
+		char t[24]; int i = 0;
+		do { t[i++] = (char) ('0' + u % 10); u /= 10; } while (u);
+		while (i) ch (t[--i]);
+	}
 	void num (long long v) { integer (v); }
 	void num (int v) { integer (v); }
 	void num (unsigned v) { integer (v); }
