@@ -241,9 +241,13 @@ static const char *border_name (int s)
 }
 
 // The styles: xf index -> the book's style index (*map, malloc'd; *nmap entries).
+// The differential formats (styles.xml's dxfs): the looks the conditional formats give.
+struct XDxf { unsigned fill, color; signed char bold, italic; };
+static XDxf *g_dxf; static int g_ndxf;
 static void read_styles (Book &b, const unsigned char *z, unsigned zn, const char *path, unsigned short **map, int *nmap)
 {
 	*map = 0; *nmap = 0;
+	free (g_dxf); g_dxf = 0; g_ndxf = 0;
 	int len; char *x = zip_get (z, zn, path, &len);
 	if (!x) return;
 	XmlReader X (x, len);
@@ -255,12 +259,14 @@ static void read_styles (Book &b, const unsigned char *z, unsigned zn, const cha
 	XFont *cf = 0; int side = -1; XBorder *cb = 0;
 	unsigned short *m = 0; int nm = 0;
 	Style *xf = 0; bool inXf = false;
+	bool dxfFont = false;
 	Style cur;
 	while (X.next () != X_EOF)
 	{
 		if (X.ev == X_END)
 		{
-			if (X.is ("fonts") || X.is ("fills") || X.is ("borders") || X.is ("cellXfs") || X.is ("cellStyleXfs")) where = 0;
+			if (X.is ("fonts") || X.is ("fills") || X.is ("borders") || X.is ("cellXfs") || X.is ("cellStyleXfs") || X.is ("dxfs")) where = 0;
+			if (X.is ("font")) dxfFont = false;
 			if (X.is ("left") || X.is ("right") || X.is ("top") || X.is ("bottom")) side = -1;
 			if (X.is ("xf") && inXf)
 			{
@@ -280,6 +286,18 @@ static void read_styles (Book &b, const unsigned char *z, unsigned zn, const cha
 		else if (X.is ("borders")) where = 3;
 		else if (X.is ("cellXfs")) where = 4;
 		else if (X.is ("cellStyleXfs")) where = 5;
+		else if (X.is ("dxfs")) where = 6;
+		else if (where == 6 && X.is ("dxf")) { g_dxf = (XDxf *) realloc (g_dxf, (g_ndxf + 1) * sizeof (XDxf)); XDxf &d = g_dxf[g_ndxf++]; d.fill = d.color = AUTO; d.bold = d.italic = -1; dxfFont = false; }
+		else if (where == 6 && X.is ("font")) dxfFont = !X.empty;
+		else if (where == 6 && g_ndxf)
+		{
+			XDxf &d = g_dxf[g_ndxf - 1];
+			if (X.is ("b")) d.bold = X.attr_bool ("val", true);
+			else if (X.is ("i")) d.italic = X.attr_bool ("val", true);
+			else if (X.is ("color") && dxfFont) d.color = xml_color (X, AUTO);
+			else if (X.is ("bgColor")) d.fill = xml_color (X, AUTO);		// (a dxf's solid fill: its bgColor)
+			else if (X.is ("fgColor") && d.fill == AUTO) d.fill = xml_color (X, AUTO);
+		}
 		else if (where == 1 && X.is ("font"))
 		{
 			fonts = (XFont *) realloc (fonts, (nfont + 1) * sizeof (XFont));
@@ -402,6 +420,38 @@ struct Shared { int si; int r, c; Formula *f; };
 
 static void read_chart (Book &b, Sheet *s, const unsigned char *z, unsigned zn, const char *path, int x, int y, int w, int h);
 
+// A conditional format's rule added (the sheet's list kept in the rules' priority order).
+static void cf_add (Sheet *s, const CondFmt &c, int prio, int **prios)
+{
+	int i = s->ncf;
+	while (i > 0 && (*prios)[i - 1] > prio) i--;
+	s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 1) * sizeof (CondFmt));
+	*prios = (int *) realloc (*prios, (s->ncf + 1) * sizeof (int));
+	memmove (s->cf + i + 1, s->cf + i, (s->ncf - i) * sizeof (CondFmt));
+	memmove (*prios + i + 1, *prios + i, (s->ncf - i) * sizeof (int));
+	s->cf[i] = c; (*prios)[i] = prio; s->ncf++;
+}
+// A range list ("B5:D16 F5 H1:H9") -> up to n ranges.
+static int parse_sqref (const char *p, Rect *out, int n)
+{
+	int k = 0;
+	while (*p && k < n)
+	{
+		while (*p == ' ') p++;
+		char t[40]; int l = 0;
+		while (*p && *p != ' ' && l < 39) t[l++] = *p++;
+		t[l] = 0;
+		if (!l) break;
+		char *colon = strchr (t, ':');
+		Rect r;
+		if (colon) { *colon = 0; if (!parse_cell_name (t, &r.r0, &r.c0) || !parse_cell_name (colon + 1, &r.r1, &r.c1)) continue; }
+		else { if (!parse_cell_name (t, &r.r0, &r.c0)) continue; r.r1 = r.r0; r.c1 = r.c0; }
+		if (r.r1 < r.r0) { int q = r.r0; r.r0 = r.r1; r.r1 = q; }
+		if (r.c1 < r.c0) { int q = r.c0; r.c0 = r.c1; r.c1 = q; }
+		out[k++] = r;
+	}
+	return k;
+}
 static void read_sheet (Book &b, Sheet *s, const unsigned char *z, unsigned zn, const char *path, char **sst, int nsst,
 			unsigned short *xmap, int nxmap)
 {
@@ -415,11 +465,48 @@ static void read_sheet (Book &b, Sheet *s, const unsigned char *z, unsigned zn, 
 	Shared *sh = 0; int nsh = 0;
 	char drawingId[32] = "";
 	auto xfstyle = [&] (int i) -> unsigned short { return i >= 0 && i < nxmap ? xmap[i] : 0; };
+	// the conditional formats being read
+	Rect cfR[8]; int ncfR = 0; CondFmt cfc; bool inRule = false, inCfF = false; int cfPrio = 0, nForm = 0, ncol = 0, ncfvo = 0;
+	unsigned cfCol[3] = { 0, 0, 0 }; Buf cfText; int *prios = 0;
 	while (X.next () != X_EOF)
 	{
 		if (X.ev == X_START)
 		{
-			if (X.is ("c"))
+			if (X.is ("conditionalFormatting")) { Buf q; X.attr ("sqref", q); ncfR = parse_sqref (q.str (), cfR, 8); }
+			else if (X.is ("cfRule") && ncfR)
+			{
+				memset (&cfc, 0, sizeof cfc); cfc.fill = cfc.color = AUTO; cfc.bold = cfc.italic = -1;
+				Buf t, o; X.attr ("type", t); X.attr ("operator", o);
+				const char *ty = t.str (), *op = o.str ();
+				cfc.type = -1;
+				if (!strcmp (ty, "cellIs"))
+				{
+					cfc.type = CF_CELL;
+					cfc.op = !strcmp (op, "greaterThan") ? CO_GT : !strcmp (op, "greaterThanOrEqual") ? CO_GE : !strcmp (op, "lessThan") ? CO_LT : !strcmp (op, "lessThanOrEqual") ? CO_LE :
+						 !strcmp (op, "equal") ? CO_EQ : !strcmp (op, "notEqual") ? CO_NE : !strcmp (op, "notBetween") ? CO_NOTBETWEEN : CO_BETWEEN;
+				}
+				else if (!strcmp (ty, "containsText") || !strcmp (ty, "notContainsText") || !strcmp (ty, "beginsWith") || !strcmp (ty, "endsWith"))
+				{
+					cfc.type = CF_TEXT;
+					cfc.op = !strcmp (ty, "notContainsText") ? CT_NOTCONTAINS : !strcmp (ty, "beginsWith") ? CT_BEGINS : !strcmp (ty, "endsWith") ? CT_ENDS : CT_CONTAINS;
+					Buf tx; X.attr ("text", tx); scpy (cfc.a, tx.str (), sizeof cfc.a);
+				}
+				else if (!strcmp (ty, "top10")) { cfc.type = CF_TOP; cfc.op = X.attr_bool ("bottom", false) ? 1 : 0; cfc.pct = X.attr_bool ("percent", false); snprintf (cfc.a, sizeof cfc.a, "%d", X.attr_int ("rank", 10)); }
+				else if (!strcmp (ty, "aboveAverage")) { cfc.type = CF_AVERAGE; cfc.op = X.attr_bool ("aboveAverage", true) ? 0 : 1; }
+				else if (!strcmp (ty, "duplicateValues") || !strcmp (ty, "uniqueValues")) { cfc.type = CF_DUP; cfc.op = !strcmp (ty, "uniqueValues") ? 1 : 0; }
+				else if (!strcmp (ty, "expression")) cfc.type = CF_FORMULA;
+				else if (!strcmp (ty, "colorScale")) cfc.type = CF_SCALE;
+				else if (!strcmp (ty, "dataBar")) cfc.type = CF_BAR;
+				int dx = X.attr_int ("dxfId", -1);
+				if (dx >= 0 && dx < g_ndxf) { cfc.fill = g_dxf[dx].fill; cfc.color = g_dxf[dx].color; cfc.bold = g_dxf[dx].bold; cfc.italic = g_dxf[dx].italic; }
+				cfPrio = X.attr_int ("priority", 1000);
+				inRule = !X.empty; nForm = ncol = ncfvo = 0;
+				if (X.empty && cfc.type >= 0) for (int k = 0; k < ncfR; k++) { cfc.r = cfR[k]; cf_add (s, cfc, cfPrio, &prios); }
+			}
+			else if (inRule && X.is ("formula")) { inCfF = true; cfText.clear (); }
+			else if (inRule && X.is ("cfvo")) ncfvo++;
+			else if (inRule && X.is ("color") && ncol < 3) cfCol[ncol++] = xml_color (X, 0);
+			else if (X.is ("c"))
 			{
 				Buf r;
 				if (X.attr ("r", r)) { int rr, cc; if (parse_cell_name (r.str (), &rr, &cc)) { row = rr; col = cc; } else col++; }
@@ -522,12 +609,33 @@ static void read_sheet (Book &b, Sheet *s, const unsigned char *z, unsigned zn, 
 		}
 		else if (X.ev == X_TEXT)
 		{
-			if (inV) val.putn (X.text.b ? X.text.b : "", X.text.n);
+			if (inCfF) cfText.putn (X.text.b ? X.text.b : "", X.text.n);
+			else if (inV) val.putn (X.text.b ? X.text.b : "", X.text.n);
 			else if (inF) ftext.putn (X.text.b ? X.text.b : "", X.text.n);
 			else if (inIsT) val.putn (X.text.b ? X.text.b : "", X.text.n);
 		}
 		else if (X.ev == X_END)
 		{
+			if (inCfF && X.is ("formula"))
+			{
+				inCfF = false;
+				char *dst = nForm == 0 ? cfc.a : nForm == 1 ? cfc.b : 0;
+				nForm++;
+				const char *t = cfText.str ();
+				double d;
+				if (dst && cfc.type == CF_CELL && (input_number (t, cfText.n, &d) || (t[0] == '"' && cfText.n >= 2))) scpy (dst, t, sizeof cfc.a);
+				else if (dst && (cfc.type == CF_CELL || cfc.type == CF_FORMULA)) { dst[0] = '='; scpy (dst + 1, t, sizeof cfc.a - 1); }
+				continue;
+			}
+			if (inRule && X.is ("cfRule"))
+			{
+				inRule = false;
+				if (cfc.type == CF_SCALE) { cfc.op = ncfvo >= 3 ? 3 : 2; cfc.c0 = cfCol[0]; if (cfc.op == 3) { cfc.c1 = cfCol[1]; cfc.c2 = cfCol[2]; } else cfc.c2 = cfCol[1]; }
+				if (cfc.type == CF_BAR) cfc.c0 = ncol ? cfCol[0] : 0x638EC6;
+				if (cfc.type >= 0) for (int k = 0; k < ncfR; k++) { cfc.r = cfR[k]; cf_add (s, cfc, cfPrio, &prios); }
+				continue;
+			}
+			if (X.is ("conditionalFormatting")) { ncfR = 0; continue; }
 			if (X.is ("v")) inV = false;
 			else if (X.is ("t")) inIsT = false;
 			else if (X.is ("f"))
@@ -580,7 +688,7 @@ endcell:
 		}
 	}
 	for (int i = 0; i < nsh; i++) formula_free (sh[i].f);
-	free (sh);
+	free (sh); free (prios);
 	free (x);
 	sheet_touched (s);
 	// its charts: the drawing's anchors, each chart's part
@@ -756,6 +864,15 @@ static bool xlsx_read (Book &b, const char *data, int n, const char **why)
 			if (X.attr_bool ("hidden", false)) {}
 			refs[nref].s = s; scpy (refs[nref].path, p, sizeof refs[nref].path); nref++;
 		}
+		else if (X.is ("definedName"))				// a name ("_xlnm.Print_Area" and the like: Excel's own, left)
+		{
+			Buf nm, txt; X.attr ("name", nm);
+			int local = X.attr_int ("localSheetId", -1);
+			if (!X.empty) while (X.next () != X_EOF && X.ev != X_END) if (X.ev == X_TEXT) txt.putn (X.text.b ? X.text.b : "", X.text.n);
+			if (!nm.n || !strncmp (nm.str (), "_xlnm.", 6) || !txt.n) continue;
+			int scope = local >= 0 && local < nref ? refs[local].s->id : 0;
+			name_set (b, nm.str (), scope, txt.str ());
+		}
 	}
 	free (wb);
 	for (int i = 0; i < nref; i++) read_sheet (b, refs[i].s, z, (unsigned) n, refs[i].path, sst, nsst, xmap, nxmap);
@@ -799,6 +916,87 @@ static int sst_add (SStr &t, const char *s)
 }
 
 static void write_chart_xml (Book &b, Chart *c, Buf &o);
+// ---- conditional formats written --------------------------------------------------------------------------
+static bool cf_has_look (const CondFmt &c) { return c.type != CF_SCALE && c.type != CF_BAR; }
+static void put_dxf (Buf &o, const CondFmt &c)
+{
+	o.puts ("<dxf>");
+	if (c.bold >= 0 || c.italic >= 0 || c.color != AUTO)
+	{
+		o.puts ("<font>");
+		if (c.bold >= 0) { o.puts ("<b val=\""); o.puti (c.bold ? 1 : 0); o.puts ("\"/>"); }
+		if (c.italic >= 0) { o.puts ("<i val=\""); o.puti (c.italic ? 1 : 0); o.puts ("\"/>"); }
+		if (c.color != AUTO) { o.puts ("<color rgb=\""); hexcol (o, c.color); o.puts ("\"/>"); }
+		o.puts ("</font>");
+	}
+	if (c.fill != AUTO) { o.puts ("<fill><patternFill patternType=\"solid\"><fgColor rgb=\""); hexcol (o, c.fill); o.puts ("\"/><bgColor rgb=\""); hexcol (o, c.fill); o.puts ("\"/></patternFill></fill>"); }
+	o.puts ("</dxf>");
+}
+// An operand as a cfRule's formula: "=B5*2" -> B5*2; 100 -> 100; a text -> "text".
+static void put_cf_formula (Buf &o, const char *a)
+{
+	while (*a == ' ') a++;
+	o.puts ("<formula>");
+	double d;
+	if (*a == '=') xml_esc (o, a + 1);
+	else if (input_number (a, (int) strlen (a), &d) || (a[0] == '"' && strlen (a) >= 2)) xml_esc (o, a);
+	else { Buf q; q.put ('"'); for (const char *p = a; *p; p++) { if (*p == '"') q.put ('"'); q.put (*p); } q.put ('"'); xml_esc (o, q.str ()); }
+	o.puts ("</formula>");
+}
+static void put_cf (Buf &o, const CondFmt &c, int dxf, int prio)
+{
+	char a1[24], a2[24]; cell_name (c.r.r0, c.r.c0, a1); cell_name (c.r.r1, c.r.c1, a2);
+	o.puts ("<conditionalFormatting sqref=\""); o.puts (a1); if (c.r.r1 != c.r.r0 || c.r.c1 != c.r.c0) { o.put (':'); o.puts (a2); } o.puts ("\">");
+	o.puts ("<cfRule type=\"");
+	static const char *const OPS[8] = { "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual", "equal", "notEqual", "between", "notBetween" };
+	static const char *const TXT[4] = { "containsText", "notContainsText", "beginsWith", "endsWith" };
+	static const char *const TOPS[4] = { "containsText", "notContains", "beginsWith", "endsWith" };
+	switch (c.type)
+	{
+	case CF_CELL: o.puts ("cellIs"); break;
+	case CF_TEXT: o.puts (TXT[iclamp (c.op, 0, 3)]); break;
+	case CF_TOP: o.puts ("top10"); break;
+	case CF_AVERAGE: o.puts ("aboveAverage"); break;
+	case CF_DUP: o.puts (c.op ? "uniqueValues" : "duplicateValues"); break;
+	case CF_FORMULA: o.puts ("expression"); break;
+	case CF_SCALE: o.puts ("colorScale"); break;
+	case CF_BAR: o.puts ("dataBar"); break;
+	}
+	o.put ('"');
+	if (dxf >= 0) { o.puts (" dxfId=\""); o.puti (dxf); o.put ('"'); }
+	o.puts (" priority=\""); o.puti (prio); o.put ('"');
+	if (c.type == CF_CELL) { o.puts (" operator=\""); o.puts (OPS[iclamp (c.op, 0, 7)]); o.put ('"'); }
+	if (c.type == CF_TEXT) { o.puts (" operator=\""); o.puts (TOPS[iclamp (c.op, 0, 3)]); o.puts ("\" text=\""); xml_esc (o, c.a); o.put ('"'); }
+	if (c.type == CF_TOP) { o.puts (" rank=\""); o.puti (imax (1, atoi (c.a))); o.put ('"'); if (c.pct) o.puts (" percent=\"1\""); if (c.op) o.puts (" bottom=\"1\""); }
+	if (c.type == CF_AVERAGE && c.op) o.puts (" aboveAverage=\"0\"");
+	o.put ('>');
+	switch (c.type)
+	{
+	case CF_CELL: put_cf_formula (o, c.a); if (c.op == CO_BETWEEN || c.op == CO_NOTBETWEEN) put_cf_formula (o, c.b); break;
+	case CF_FORMULA: { char t[130]; t[0] = '='; scpy (t + 1, c.a[0] == '=' ? c.a + 1 : c.a, sizeof t - 1); put_cf_formula (o, t); break; }
+	case CF_TEXT:
+	{
+		Buf q; q.put ('"'); for (const char *p = c.a; *p; p++) { if (*p == '"') q.put ('"'); q.put (*p); } q.put ('"');
+		Buf f;
+		if (c.op == CT_CONTAINS) { f.puts ("NOT(ISERROR(SEARCH("); f.puts (q.str ()); f.put (','); f.puts (a1); f.puts (")))"); }
+		else if (c.op == CT_NOTCONTAINS) { f.puts ("ISERROR(SEARCH("); f.puts (q.str ()); f.put (','); f.puts (a1); f.puts ("))"); }
+		else { f.puts (c.op == CT_BEGINS ? "LEFT(" : "RIGHT("); f.puts (a1); f.puts (",LEN("); f.puts (q.str ()); f.puts ("))="); f.puts (q.str ()); }
+		o.puts ("<formula>"); xml_esc (o, f.str ()); o.puts ("</formula>");
+		break;
+	}
+	case CF_SCALE:
+		o.puts ("<colorScale><cfvo type=\"min\"/>");
+		if (c.op == 3) o.puts ("<cfvo type=\"percentile\" val=\"50\"/>");
+		o.puts ("<cfvo type=\"max\"/><color rgb=\""); hexcol (o, c.c0); o.puts ("\"/>");
+		if (c.op == 3) { o.puts ("<color rgb=\""); hexcol (o, c.c1); o.puts ("\"/>"); }
+		o.puts ("<color rgb=\""); hexcol (o, c.c2); o.puts ("\"/></colorScale>");
+		break;
+	case CF_BAR:
+		o.puts ("<dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\""); hexcol (o, c.c0); o.puts ("\"/></dataBar>");
+		break;
+	}
+	o.puts ("</cfRule></conditionalFormatting>");
+}
 
 // The workbook's bytes (malloc'd) and their count.
 static char *xlsx_write (Book &b, int *outLen)
@@ -910,12 +1108,24 @@ static char *xlsx_write (Book &b, int *outLen)
 		}
 		else o.puts ("/>");
 	}
-	o.puts ("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>");
+	o.puts ("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
+	// the looks of the conditional formats (dxfs), in the sheets' order
+	{
+		int nd = 0;
+		for (int si = 0; si < b.ns; si++) for (int k = 0; k < b.sh[si]->ncf; k++) if (cf_has_look (b.sh[si]->cf[k])) nd++;
+		if (nd)
+		{
+			o.puts ("<dxfs count=\""); o.puti (nd); o.puts ("\">");
+			for (int si = 0; si < b.ns; si++) for (int k = 0; k < b.sh[si]->ncf; k++) if (cf_has_look (b.sh[si]->cf[k])) put_dxf (o, b.sh[si]->cf[k]);
+			o.puts ("</dxfs>");
+		}
+	}
+	o.puts ("</styleSheet>");
 	zip.add ("xl/styles.xml", o.b, (unsigned) o.n, true);
 
 	// ---- the sheets
 	SStr sst; memset (&sst, 0, sizeof sst);
-	int nchartsAll = 0;
+	int nchartsAll = 0, dxfNo = 0;
 	for (int si = 0; si < b.ns; si++)
 	{
 		Sheet *s = b.sh[si];
@@ -1031,6 +1241,8 @@ static char *xlsx_write (Book &b, int *outLen)
 			}
 			o.puts ("</mergeCells>");
 		}
+		// the conditional formats (their looks: the dxfs, numbered through the sheets)
+		for (int k = 0; k < s->ncf; k++) { put_cf (o, s->cf[k], cf_has_look (s->cf[k]) ? dxfNo++ : -1, k + 1); }
 		o.puts ("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
 		if (s->ncharts) o.puts ("<drawing r:id=\"rId1\"/>");
 		o.puts ("</worksheet>");
@@ -1100,7 +1312,23 @@ static char *xlsx_write (Book &b, int *outLen)
 	o.puts ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
 	o.puts ("<workbookPr/><bookViews><workbookView activeTab=\""); o.puti (b.active); o.puts ("\"/></bookViews><sheets>");
 	for (int si = 0; si < b.ns; si++) { o.puts ("<sheet name=\""); xml_esc (o, b.sh[si]->name); o.puts ("\" sheetId=\""); o.puti (si + 1); o.puts ("\" r:id=\"rId"); o.puti (si + 1); o.puts ("\"/>"); }
-	o.puts ("</sheets><calcPr calcId=\"191029\" fullCalcOnLoad=\"1\"/></workbook>");
+	o.puts ("</sheets>");
+	if (b.nnames)							// the defined names
+	{
+		o.puts ("<definedNames>");
+		for (int i = 0; i < b.nnames; i++)
+		{
+			const DefName &d = b.names[i];
+			if (!d.f) continue;
+			o.puts ("<definedName name=\""); xml_esc (o, d.name); o.put ('"');
+			if (d.scope) for (int si = 0; si < b.ns; si++) if (b.sh[si]->id == d.scope) { o.puts (" localSheetId=\""); o.puti (si); o.put ('"'); }
+			o.put ('>');
+			Buf fb; formula_print (b, d.f, fb, true); xml_esc (o, fb.str (), fb.n);
+			o.puts ("</definedName>");
+		}
+		o.puts ("</definedNames>");
+	}
+	o.puts ("<calcPr calcId=\"191029\" fullCalcOnLoad=\"1\"/></workbook>");
 	zip.add ("xl/workbook.xml", o.b, (unsigned) o.n, true);
 	o.clear ();
 	o.puts ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");

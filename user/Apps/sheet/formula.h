@@ -702,6 +702,79 @@ static bool formula_move (Formula *f, int own, int srcId, Rect src, int dr, int 
 }
 
 // A sheet deleted: the references naming it become #REF!.
+// ---- the defined names ---------------------------------------------------------------------------------------
+static void names_clear (Book &b)
+{
+	for (int i = 0; i < b.nnames; i++) formula_free (b.names[i].f);
+	free (b.names); b.names = 0; b.nnames = 0;
+}
+// The name as a formula sees it: its sheet's own first, else the book's.
+static const DefName *name_find (Book &b, const char *s, int n, int sheetId)
+{
+	const DefName *wb = 0;
+	for (int i = 0; i < b.nnames; i++)
+	{
+		const DefName &d = b.names[i];
+		if ((int) strlen (d.name) != n || !ascii_ieq (d.name, s, n)) continue;
+		if (d.scope && d.scope == sheetId) return &d;
+		if (!d.scope) wb = &d;
+	}
+	return wb;
+}
+static int name_index (Book &b, const char *s, int scope)
+{
+	int n = (int) strlen (s);
+	for (int i = 0; i < b.nnames; i++) if (b.names[i].scope == scope && (int) strlen (b.names[i].name) == n && ascii_ieq (b.names[i].name, s, n)) return i;
+	return -1;
+}
+// A name one may define: a letter, '_' or '\' first, then letters, digits, '_', '.'; not a cell's name
+// ("AB12", "R1C1"), not TRUE / FALSE.
+static bool name_valid (const char *s)
+{
+	int n = (int) strlen (s);
+	if (n < 1 || n > 63) return false;
+	unsigned char c0 = (unsigned char) s[0];
+	if (!((c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z') || c0 == '_' || c0 == '\\' || c0 >= 0x80)) return false;
+	for (int i = 1; i < n; i++)
+	{
+		unsigned char c = (unsigned char) s[i];
+		if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '\\' || c >= 0x80)) return false;
+	}
+	int r, c; if (parse_cell_name (s, &r, &c)) return false;
+	if ((s[0] == 'R' || s[0] == 'r' || s[0] == 'C' || s[0] == 'c') && (n == 1 || (s[1] >= '0' && s[1] <= '9'))) return false;
+	if (ascii_ieq (s, "TRUE", 4) && n == 4) return false;
+	if (ascii_ieq (s, "FALSE", 5) && n == 5) return false;
+	return true;
+}
+// Defined (or defined again): "=Sheet1!$B$4", "Sheet1!$A$1:$C$9", "=0.2". false: a bad name or formula.
+static bool name_set (Book &b, const char *name, int scope, const char *text, const char **why = 0)
+{
+	if (!name_valid (name)) { if (why) *why = "A name starts with a letter and holds letters, digits, '_' and '.' -- and is not a cell's name."; return false; }
+	const char *t = text; while (*t == ' ') t++;
+	if (*t == '=') t++;
+	Formula *f = formula_parse (b, t, (int) strlen (t), why);
+	if (!f) return false;
+	int i = name_index (b, name, scope);
+	if (i < 0)
+	{
+		b.names = (DefName *) realloc (b.names, (b.nnames + 1) * sizeof (DefName));
+		i = b.nnames++;
+		memset (&b.names[i], 0, sizeof (DefName));
+		scpy (b.names[i].name, name, sizeof b.names[i].name);
+		b.names[i].scope = scope;
+	}
+	else formula_free (b.names[i].f);
+	b.names[i].f = f;
+	return true;
+}
+static void name_del (Book &b, int i)
+{
+	if (i < 0 || i >= b.nnames) return;
+	formula_free (b.names[i].f);
+	memmove (b.names + i, b.names + i + 1, (b.nnames - i - 1) * sizeof (DefName));
+	b.nnames--;
+}
+
 static bool formula_drop_sheet (Formula *f, int own, int id)
 {
 	bool changed = false;

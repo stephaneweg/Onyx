@@ -84,6 +84,7 @@ static void put_sheet (Wr &w, Sheet *s)
 	w.i32 (s->nrows); w.raw (s->rows, s->nrows * (int) sizeof (RowInfo));
 	w.i32 (s->nmerge); w.raw (s->merges, s->nmerge * (int) sizeof (Rect));
 	w.i32 (s->ncharts); for (int i = 0; i < s->ncharts; i++) w.raw (s->charts[i], sizeof (Chart));
+	w.i32 (s->ncf); w.raw (s->cf, s->ncf * (int) sizeof (CondFmt));
 	w.i32 (s->cells.n);
 	for (int i = 0; i < s->cells.cap; i++) if (s->cells.t[i]) put_cell (w, s->cells.t[i]);
 }
@@ -99,6 +100,7 @@ static Sheet *get_sheet (Rd &r, Sheet *into)
 		s->nrows = 0; s->nmerge = 0;
 		for (int i = 0; i < s->ncharts; i++) chart_free (s->charts[i]);
 		s->ncharts = 0;
+		free (s->cf); s->cf = 0; s->ncf = 0;
 		s->id = id; if (nm) scpy (s->name, nm, sizeof s->name);
 	}
 	free (nm);
@@ -119,6 +121,9 @@ static Sheet *get_sheet (Rd &r, Sheet *into)
 		Chart *c = (Chart *) malloc (sizeof (Chart)); r.raw (c, sizeof (Chart));
 		s->charts = (Chart **) realloc (s->charts, (s->ncharts + 1) * sizeof (Chart *)); s->charts[s->ncharts++] = c;
 	}
+	int ncf = r.i32 ();
+	if (ncf < 0 || ncf > 100000) { r.ok = false; ncf = 0; }
+	if (ncf) { s->cf = (CondFmt *) malloc (ncf * sizeof (CondFmt)); if (r.raw (s->cf, ncf * (int) sizeof (CondFmt))) s->ncf = ncf; }
 	int n = r.i32 ();
 	for (int i = 0; i < n && r.ok; i++) { Cell *x = get_cell (r); if (x) { Cell *old = s->cells.take (x->r, x->c); cell_free (old); s->cells.put (x); } }
 	cols_changed (s); rows_changed (s); sheet_touched (s);
@@ -160,6 +165,8 @@ static UStep snapshot (Book &b, int kind, Sheet *s, Rect r)
 	{
 		w.i32 (b.ns); w.i32 (b.nextId); w.i32 (b.active);
 		for (int i = 0; i < b.ns; i++) put_sheet (w, b.sh[i]);
+		w.i32 (b.nnames);
+		for (int i = 0; i < b.nnames; i++) { w.str (b.names[i].name); w.i32 (b.names[i].scope); w.u8 (b.names[i].f != 0); if (b.names[i].f) put_formula (w, b.names[i].f); }
 	}
 	st.len = w.b.n; st.data = w.b.take ();
 	return st;
@@ -186,6 +193,19 @@ static bool restore (Book &b, UStep &st)
 		b.ns = 0;
 		for (int i = 0; i < ns && r.ok; i++) { Sheet *s = get_sheet (r, 0); b.sh[b.ns++] = s; }
 		b.nextId = next; b.active = iclamp (act, 0, b.ns - 1);
+		names_clear (b);
+		int nn = r.i32 ();
+		if (nn < 0 || nn > 100000) { r.ok = false; nn = 0; }
+		for (int i = 0; i < nn && r.ok; i++)
+		{
+			char *nm = r.str (); int scope = r.i32 (); bool hasF = r.u8 ();
+			Formula *f = hasF ? get_formula (r) : 0;
+			if (!r.ok || !nm) { free (nm); formula_free (f); break; }
+			b.names = (DefName *) realloc (b.names, (b.nnames + 1) * sizeof (DefName));
+			DefName &d = b.names[b.nnames++]; memset (&d, 0, sizeof d);
+			scpy (d.name, nm, sizeof d.name); d.scope = scope; d.f = f;
+			free (nm);
+		}
 		return r.ok;
 	}
 	Sheet *s = book_sheet_by_id (b, st.sheet);
@@ -222,6 +242,11 @@ static Sheet *undo_step (Book &b, bool redo, Rect *rect = 0)
 	return s ? s : b.sh[b.active];
 }
 static void undo_clear () { ustack_clear (g_undo); ustack_clear (g_redo); }
+static void undo_drop_last ()				// (a step taken for a change that did not come)
+{
+	if (!g_undo.n) return;
+	g_undo.n--; g_undo.bytes -= g_undo.s[g_undo.n].len; free (g_undo.s[g_undo.n].data);
+}
 
 } // namespace ss
 

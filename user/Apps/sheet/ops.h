@@ -314,6 +314,7 @@ static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
 	// the formulas that point at the sheet
 	ShiftArg g; g.target = s->id; g.rows = rows; g.at = at; g.n = n;
 	each_formula (b, shift_one, &g);
+	for (int i = 0; i < b.nnames; i++) if (b.names[i].f) formula_shift (b.names[i].f, b.names[i].scope, s->id, rows, at, n);
 	// the rows' or columns' own sizes and styles
 	if (rows)
 	{
@@ -348,8 +349,9 @@ static void shift_cells (Book &b, Sheet *s, bool rows, int at, int n)
 		}
 		cols_changed (s);
 	}
-	// merges, charts' data
+	// merges, conditional formats, charts' data
 	for (int i = 0; i < s->nmerge; ) { if (!shift_rect (s->merges[i], rows, at, n) || (s->merges[i].r0 == s->merges[i].r1 && s->merges[i].c0 == s->merges[i].c1)) merge_del (s, i); else i++; }
+	for (int i = 0; i < s->ncf; ) { if (!shift_rect (s->cf[i].r, rows, at, n)) { memmove (s->cf + i, s->cf + i + 1, (s->ncf - i - 1) * sizeof (CondFmt)); s->ncf--; } else i++; }
 	for (int j = 0; j < b.ns; j++)
 		for (int i = 0; i < b.sh[j]->ncharts; i++)
 		{
@@ -818,6 +820,7 @@ static void delete_sheet (Book &b, int i)
 	b.ns--;
 	DropArg g; g.id = s->id;
 	each_formula (b, drop_one, &g);
+	for (int k = 0; k < b.nnames; ) { if (b.names[k].scope == s->id) name_del (b, k); else { if (b.names[k].f) formula_drop_sheet (b.names[k].f, b.names[k].scope, s->id); k++; } }
 	for (int j = 0; j < b.ns; j++)
 		for (int k = 0; k < b.sh[j]->ncharts; k++) if (b.sh[j]->charts[k]->srcSheet == s->id) b.sh[j]->charts[k]->srcSheet = 0;
 	sheet_free (s);
@@ -863,6 +866,7 @@ static Sheet *duplicate_sheet (Book &b, int i)
 		if (c->srcSheet == s->id) c->srcSheet = d->id;
 		d->charts[d->ncharts++] = c;
 	}
+	if (s->ncf) { d->cf = (CondFmt *) malloc (s->ncf * sizeof (CondFmt)); memcpy (d->cf, s->cf, s->ncf * sizeof (CondFmt)); d->ncf = s->ncf; }
 	cols_changed (d); rows_changed (d); sheet_touched (d);
 	return d;
 }

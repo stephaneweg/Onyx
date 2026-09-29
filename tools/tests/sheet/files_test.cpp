@@ -3,7 +3,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #include "img/stb_image.h"
-#include "Apps/sheet/ods.h"
+#include "Apps/sheet/condfmt.h"
 #include <stdio.h>
 #include <stdlib.h>
 unsigned char *img_inflate (const void *data, unsigned len, bool zlib, unsigned *outLen)
@@ -78,7 +78,117 @@ static void compare (Book &a, Book &b, const char *what, bool strict)
 			{ printf ("FAIL %s: %s chart %d at %d,%d %dx%d, %d,%d %dx%d expected\n", what, s->name, k, q.x, q.y, q.w, q.h, p.x, p.y, p.w, p.h); bad++; }
 		}
 	}
+	// the defined names
+	for (int i = 0; i < a.nnames; i++)
+	{
+		int k = name_index (b, a.names[i].name, a.names[i].scope ? -1 : 0);
+		if (a.names[i].scope) for (int j = 0; j < b.nnames; j++) if (!strcmp (b.names[j].name, a.names[i].name)) k = j;
+		if (k < 0) { printf ("FAIL %s: the name %s is lost\n", what, a.names[i].name); bad++; continue; }
+		Buf x, y; formula_print (a, a.names[i].f, x); formula_print (b, b.names[k].f, y);
+		if (strcmp (x.str (), y.str ())) { printf ("FAIL %s: the name %s is [%s], [%s] expected\n", what, a.names[i].name, y.str (), x.str ()); bad++; }
+	}
 	if (bad) g_fail++;
+}
+
+// ---- conditional formats: the looks the rules give, kept through the files ------------------------------------
+static CondFmt cfr (const char *range, int type, int op, const char *a, const char *b, unsigned fill, unsigned color, int bold)
+{
+	CondFmt c; memset (&c, 0, sizeof c);
+	Rect r; parse_sqref (range, &r, 1); c.r = r;
+	c.type = type; c.op = op; scpy (c.a, a, sizeof c.a); scpy (c.b, b, sizeof c.b);
+	c.fill = fill; c.color = color; c.bold = (signed char) bold; c.italic = -1;
+	return c;
+}
+static const char *cf_look_text (Book &b, Sheet *s, const char *ref, char *out)
+{
+	int r, c; parse_cell_name (ref, &r, &c);
+	CfLook L; cf_cell (b, s, s->cells.get (r, c), r, c, L);
+	snprintf (out, 80, "fill %06X color %06X bold %d bar %.2f", L.fill == AUTO ? 0xFFFFFF : L.fill, L.color == AUTO ? 0 : L.color, L.bold, L.bar);
+	return out;
+}
+static void cf_expect (Book &b, Sheet *s, const char *ref, const char *want, const char *what)
+{
+	char t[80]; cf_look_text (b, s, ref, t);
+	g_checks++;
+	if (strcmp (t, want)) { printf ("FAIL %s: %s looks [%s], [%s] expected\n", what, ref, t, want); g_fail++; }
+}
+static void cf_tests (const char *dir)
+{
+	Book a; book_init (a); book_add_sheet (a, "Rules");
+	Sheet *s = a.sh[0];
+	char ref[16], v[16];
+	for (int i = 1; i <= 10; i++) { snprintf (ref, sizeof ref, "A%d", i); snprintf (v, sizeof v, "%d", i); set (a, 0, ref, v); }
+	set (a, 0, "B1", "0"); set (a, 0, "B2", "50"); set (a, 0, "B3", "100");
+	set (a, 0, "C1", "5"); set (a, 0, "C2", "10");
+	set (a, 0, "D1", "a"); set (a, 0, "D2", "b"); set (a, 0, "D3", "A"); set (a, 0, "D4", "c");
+	set (a, 0, "E1", "Apple"); set (a, 0, "E2", "pear"); set (a, 0, "E3", "grape");
+	set (a, 0, "G1", "3"); set (a, 0, "G2", "4");
+	CondFmt rules[] = {
+		cfr ("A1:A10", CF_CELL, CO_GT, "7", "", 0xFFC7CE, 0x9C0006, -1),
+		cfr ("A1:A10", CF_TOP, 0, "2", "", AUTO, AUTO, 1),
+		cfr ("A1:A10", CF_CELL, CO_BETWEEN, "=$G$1", "=$G$2", 0xFFEB9C, AUTO, -1),
+		cfr ("D1:D4", CF_DUP, 0, "", "", 0xC6EFCE, AUTO, -1),
+		cfr ("E1:E3", CF_TEXT, CT_CONTAINS, "ap", "", 0xDDEBF7, AUTO, -1),
+		cfr ("F1:F4", CF_FORMULA, 0, "=MOD(ROW(),2)=0", "", 0xEEEEEE, AUTO, -1),
+	};
+	int nr = (int) (sizeof rules / sizeof rules[0]);
+	s->cf = (CondFmt *) malloc ((nr + 2) * sizeof (CondFmt));
+	for (int i = 0; i < nr; i++) s->cf[s->ncf++] = rules[i];
+	CondFmt sc = cfr ("B1:B3", CF_SCALE, 2, "", "", AUTO, AUTO, -1); sc.c0 = 0xFFFFFF; sc.c2 = 0x00FF00; s->cf[s->ncf++] = sc;
+	CondFmt br = cfr ("C1:C2", CF_BAR, 0, "", "", AUTO, AUTO, -1); br.c0 = 0x638EC6; s->cf[s->ncf++] = br;
+	recalc (a); cf_changed ();
+	auto checks = [&] (Book &b, const char *what) {
+		Sheet *t = b.sh[0];
+		cf_expect (b, t, "A7", "fill FFFFFF color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "A8", "fill FFC7CE color 9C0006 bold -1 bar -1.00", what);
+		cf_expect (b, t, "A9", "fill FFC7CE color 9C0006 bold 1 bar -1.00", what);
+		cf_expect (b, t, "A3", "fill FFEB9C color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "A4", "fill FFEB9C color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "D1", "fill C6EFCE color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "D2", "fill FFFFFF color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "D3", "fill C6EFCE color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "E1", "fill DDEBF7 color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "E2", "fill FFFFFF color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "E3", "fill DDEBF7 color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "F2", "fill EEEEEE color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "F3", "fill FFFFFF color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "B1", "fill FFFFFF color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "B2", "fill 80FF80 color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "B3", "fill 00FF00 color 000000 bold -1 bar -1.00", what);
+		cf_expect (b, t, "C1", "fill FFFFFF color 000000 bold -1 bar 0.10", what);
+		cf_expect (b, t, "C2", "fill FFFFFF color 000000 bold -1 bar 1.00", what);
+	};
+	checks (a, "conditional formats");
+	const char *why = 0;
+	char p1[256]; snprintf (p1, sizeof p1, "%s/cf.xlsx", dir);
+	if (!book_save (a, p1, &why)) { printf ("FAIL cf save: %s\n", why); g_fail++; return; }
+	Book b; book_init (b);
+	if (!book_load (b, p1, &why)) { printf ("FAIL cf load: %s\n", why); g_fail++; return; }
+	recalc (b); cf_changed ();
+	g_checks++; if (b.sh[0]->ncf != a.sh[0]->ncf) { printf ("FAIL cf: %d rules read, %d written\n", b.sh[0]->ncf, a.sh[0]->ncf); g_fail++; }
+	checks (b, "conditional formats, .xlsx");
+	if (system ("which soffice > /dev/null 2>&1") == 0)
+	{
+		char cmd[512]; snprintf (cmd, sizeof cmd, "cd %s && soffice --headless --convert-to xlsx:\"Calc MS Excel 2007 XML\" --outdir lo3 cf.xlsx > /dev/null 2>&1", dir);
+		if (system (cmd) == 0)
+		{
+			char px[256]; snprintf (px, sizeof px, "%s/lo3/cf.xlsx", dir);
+			Book c; book_init (c);
+			if (!book_load (c, px, &why)) { printf ("FAIL cf LibreOffice load: %s\n", why); g_fail++; }
+			else { recalc (c); cf_changed (); checks (c, "conditional formats, LibreOffice's .xlsx"); }
+			book_clear (c);
+		}
+		snprintf (cmd, sizeof cmd, "cd %s && soffice --headless --convert-to ods --outdir lo3 cf.xlsx > /dev/null 2>&1", dir);
+		if (system (cmd) == 0)
+		{
+			char po[256]; snprintf (po, sizeof po, "%s/lo3/cf.ods", dir);
+			Book c; book_init (c);
+			if (!book_load (c, po, &why)) { printf ("FAIL cf LibreOffice ods load: %s\n", why); g_fail++; }
+			else { recalc (c); cf_changed (); checks (c, "conditional formats, LibreOffice's .ods"); }
+			book_clear (c);
+		}
+	}
+	book_clear (a); book_clear (b);
 }
 
 int main (int argc, char **argv)
@@ -102,6 +212,8 @@ int main (int argc, char **argv)
 	set (a, 0, "F1", "='Données 2026'!B2*2"); set (a, 0, "F2", "=AVERAGE('Données 2026'!B1:B3)"); set (a, 0, "F3", "12%"); set (a, 0, "F4", "  spaced  ");
 	set (a, 0, "G1", "=VLOOKUP(\"Transport\",A2:B6,2,FALSE)"); set (a, 0, "G2", "=TEXT(D2,\"dddd\")"); set (a, 0, "G3", "=ROUND(PMT(0.05/12,120,10000),2)");
 	set (a, 1, "A1", "x"); set (a, 1, "B1", "1"); set (a, 1, "B2", "2"); set (a, 1, "B3", "3.5");
+	name_set (a, "Total", 0, "=Budget!$B$7"); name_set (a, "Items", 0, "=Budget!$A$2:$A$6");
+	set (a, 0, "G4", "=Total*2"); set (a, 0, "G5", "=COUNTA(Items)");
 	int fmtMoney = book_fmt (a, "#,##0.00 \"€\"");
 	int pct = book_fmt (a, "0.0%");
 	int lib = book_font (a, "Liberation Serif");
@@ -195,6 +307,8 @@ int main (int argc, char **argv)
 		book_clear (s0);
 	}
 	book_clear (a); book_clear (b); book_clear (c); book_clear (d);
+	cf_tests (dir);
+	for (int i = 0; i < CF_SLOTS; i++) cfstat_free (g_cfs[i]);
 	for (int i = 0; i < g_fcacheN; i++) { free (g_fcache[i].code); free (g_fcache[i].f); }
 	printf ("%d checks, %d failed\n", g_checks, g_fail);
 	return g_fail ? 1 : 0;

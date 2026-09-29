@@ -179,6 +179,20 @@ static void grid_edited () { refresh (); }
 static void cmd_cut (); static void cmd_copy (); static void cmd_paste (); static void cmd_paste_special ();
 static void cmd_ins_rows (); static void cmd_ins_cols (); static void cmd_del_rows (); static void cmd_del_cols ();
 static void cmd_clear_contents (); static void cmd_format_cells (); static void cmd_chart (); static void cmd_col_width ();
+static void cmd_cond_format ()
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	Sheet *s = S (); Rect r = used_sel ();
+	char a1[24], a2[24], t[64]; cell_name (r.r0, r.c0, a1); cell_name (r.r1, r.c1, a2);
+	if (r.r0 == r.r1 && r.c0 == r.c1) scpy (t, a1, sizeof t); else snprintf (t, sizeof t, "%s:%s", a1, a2);
+	undo_sheet (g_b, s);
+	CondDialog d (&g_b, s, t);
+	d.run ();
+	if (!d.changed) undo_drop_last (); else touched ();
+	cf_changed ();
+	g_grid->invalidate (true); g_grid->setFocus ();
+	refresh ();
+}
 static void cmd_row_height (); static void cmd_opt_width (); static void cmd_hide_rows (); static void cmd_hide_cols (); static void cmd_show_all ();
 static void cmd_sort_asc (); static void cmd_sort_desc ();
 static void chart_open (int i);
@@ -514,6 +528,27 @@ static void cmd_find ()
 		}
 	}
 }
+// The selection as an absolute reference: "Sales!$B$5:$D$16".
+static void sel_abs_ref (Buf &o)
+{
+	Sheet *s = S (); Rect r = g_grid->sel ();
+	o.put ('='); put_sheet_name (o, s->name); o.put ('!');
+	char a[24];
+	col_name (r.c0, a); o.put ('$'); o.puts (a); o.put ('$'); o.puti (r.r0 + 1);
+	if (r.r1 != r.r0 || r.c1 != r.c0) { col_name (r.c1, a); o.puts (":$"); o.puts (a); o.put ('$'); o.puti (r.r1 + 1); }
+}
+static void cmd_names ()
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	Buf ref; sel_abs_ref (ref);
+	undo_book (g_b);
+	NamesDialog d (&g_b, ref.str ());
+	d.run ();
+	if (!d.changed) undo_drop_last ();
+	else { recalc (g_b); touched (); g_grid->invalidate (true); }
+	g_grid->setFocus ();
+	refresh ();
+}
 static void cmd_goto () { g_fbar->name->setFocus (); g_fbar->name->selectAll (); }
 static void name_leave () { g_grid->setFocus (); refresh (); }
 static void go_to (const char *t)
@@ -531,9 +566,36 @@ static void go_to (const char *t)
 			else { g_grid->selectRange (Rect { k.r0, k.c0, k.r1, k.c1 }); g_grid->ensureVisible (k.r0, k.c0); }
 			ok = true;
 		}
+		else if (k.t == TK_NAME)
+		{
+			char nm[64]; scpy (nm, f->pool + k.s, imin (k.sn + 1, (int) sizeof nm));
+			Sheet *s = S ();
+			const DefName *d = name_find (g_b, nm, (int) strlen (nm), s->id);
+			if (d && d->f)						// a name: its range shown
+			{
+				Buf e; e.put ('='); e.puts (nm);
+				Val v = eval_text (g_b, s, s->curR, s->curC, e.str ());
+				if (v.t == V_REF && v.sh)
+				{
+					for (int i = 0; i < g_b.ns; i++) if (g_b.sh[i] == v.sh) pick_sheet (i);
+					if (v.r0 == v.r1 && v.c0 == v.c1) g_grid->selectCell (v.r0, v.c0, false);
+					else { g_grid->selectRange (Rect { v.r0, v.c0, v.r1, v.c1 }); g_grid->ensureVisible (v.r0, v.c0); }
+					ok = true;
+				}
+				else { message ("This name holds a value, not a range."); ok = true; }
+			}
+			else if (name_valid (nm))				// a new name: the selection's (as Excel does)
+			{
+				Buf ref; sel_abs_ref (ref);
+				undo_book (g_b);
+				if (name_set (g_b, nm, 0, ref.str ())) { recalc (g_b); touched (); g_grid->invalidate (true); }
+				else undo_drop_last ();
+				ok = true;
+			}
+		}
 	}
 	formula_free (f);
-	if (!ok) message ("Type a cell or a range to go there: B7, C2:F9, Sheet2!A1.");
+	if (!ok) message ("Type a cell or a range to go there (B7, C2:F9, Sheet2!A1), or a name for the selection.");
 	g_grid->setFocus ();
 	refresh ();
 }
@@ -1441,6 +1503,7 @@ int main (void)
 	menu.item ("Columns Before", "", 0, cmd_ins_cols);
 	menu.separator ();
 	menu.item ("Function...", "", 0, cmd_function);
+	menu.item ("Names...", "", 0, cmd_names);
 	menu.item ("AutoSum", "", 0, cmd_autosum);
 	menu.item ("Chart...", "", 0, cmd_chart);
 	menu.item ("Sheet", "", 0, cmd_insert_sheet);
@@ -1449,6 +1512,7 @@ int main (void)
 	menu.item ("Current Time", "", 0, cmd_time);
 	menu.menu ("Format");
 	menu.item ("Cells...", "^1", 0, cmd_format_cells);
+	menu.item ("Conditional Formatting...", "", 0, cmd_cond_format);
 	menu.separator ();
 	menu.item ("Bold", "^B", WK_CTRL ('B'), cmd_bold);
 	menu.item ("Italic", "^I", 0, cmd_italic);

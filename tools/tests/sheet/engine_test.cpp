@@ -225,6 +225,25 @@ int main ()
 		// undo / redo of typing
 		undo_rect (B, s, R ("AH1", "AH1")); set ("AH1", "hello"); check ("AH1", "hello");
 		undo_step (B, false); check ("AH1", ""); undo_step (B, true); check ("AH1", "hello");
+		// defined names: a range, a value; a sheet's own wins over the book's; rows inserted above: the name's
+		// range follows; the book's undo brings the names back
+		set ("AJ1", "10"); set ("AJ2", "20"); set ("AJ3", "30");
+		g_checks++; if (!name_set (B, "Qty", 0, "=Sheet1!$AJ$1:$AJ$3") || !name_set (B, "Rate", 0, "0.5")) { printf ("FAIL names: not set\n"); g_fail++; }
+		set ("AK1", "=SUM(Qty)*Rate"); check ("AK1", "30");
+		set ("AK2", "=Nope+1"); check ("AK2", "#NAME?");
+		set ("AK3", "=INDEX(Qty,2)"); check ("AK3", "20");
+		set ("AK4", "=Qty"); check ("AK4", "#VALUE!");			// (implicit intersection: row 4 is not in the range, as in Excel)
+		name_set (B, "Rate", s->id, "2"); check ("AK1", "120");
+		name_set (B, "Loop", 0, "=Loop+1"); set ("AK5", "=Loop"); check ("AK5", "#REF!");
+		g_checks++; if (name_set (B, "A1", 0, "1") || name_set (B, "TRUE", 0, "1") || name_set (B, "1x", 0, "1") || !name_set (B, "Tax.Rate_2", 0, "=0.2")) { printf ("FAIL names: validity\n"); g_fail++; }
+		undo_book (B);
+		insert_rows (B, s, 0, 2);
+		check ("AK3", "120"); check ("AK5", "20");			// (AK1 -> AK3, AK3 -> AK5; Qty now AJ3:AJ5)
+		{ Buf o; formula_print (B, B.names[name_index (B, "Qty", 0)].f, o); g_checks++; if (strcmp (o.str (), "=Sheet1!$AJ$3:$AJ$5")) { printf ("FAIL name shifted: [%s]\n", o.str ()); g_fail++; } }
+		undo_step (B, false); recalc (B);
+		s = B.sh[0];						// (the book's undo made its sheets anew)
+		check ("AK3", "20"); check ("AK1", "120");
+		{ Buf o; formula_print (B, B.names[name_index (B, "Qty", 0)].f, o); g_checks++; if (strcmp (o.str (), "=Sheet1!$AJ$1:$AJ$3")) { printf ("FAIL name undone: [%s]\n", o.str ()); g_fail++; } }
 		// sheets: renamed (formulas keep them), deleted (their references: #REF!)
 		scpy (B.sh[1]->name, "Stock", 64); form ("Q3", "=Stock!A1+P2");
 		delete_sheet (B, 1); form ("Q3", "=#REF!+P2"); check ("Q3", "#REF!");

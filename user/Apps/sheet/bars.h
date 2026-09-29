@@ -188,6 +188,16 @@ public:
 		else if (g->wholeRows () && !g->wholeCols ()) snprintf (t, sizeof t, "%d:%d", r.r0 + 1, r.r1 + 1);
 		else if (g->wholeRows () && g->wholeCols ()) scpy (t, "A1:XFD1048576", sizeof t);
 		else { char a[20], c2[20]; cell_name (r.r0, r.c0, a); cell_name (r.r1, r.c1, c2); snprintf (t, sizeof t, "%s:%s", a, c2); }
+		// a defined name for exactly this range: its name shown instead (as Excel does)
+		if (!g->ed.on)
+			for (int i = 0; i < g->b->nnames; i++)
+			{
+				const DefName &d = g->b->names[i];
+				if (!d.f || d.f->nd[d.f->root].k != N_TOK) continue;
+				const Tok &k = d.f->tok[d.f->nd[d.f->root].tok];
+				if ((k.t != TK_REF && k.t != TK_AREA) || (k.fl & TF_BAD) || (k.sheet ? k.sheet : d.scope) != s->id) continue;
+				if (k.r0 == r.r0 && k.c0 == r.c0 && k.r1 == r.r1 && k.c1 == r.c1 && (!d.scope || d.scope == s->id)) { u8_to_latin1 (d.name, t, sizeof t); break; }
+			}
 		name->show (t);
 		line->invalidate (true);
 	}

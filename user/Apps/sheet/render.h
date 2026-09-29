@@ -9,7 +9,7 @@
 #ifndef _sheet_render_h
 #define _sheet_render_h
 
-#include "ods.h"
+#include "condfmt.h"
 #include "ui_base.h"
 
 namespace ss {
@@ -111,11 +111,15 @@ struct Look
 	int ha, va;						// HA_LEFT / CENTER / RIGHT (General resolved), VA_*
 	bool wrap, number, spill;				// spill: may flow over the empty cells beside
 	const Style *st;
+	Style own;						// (the style under a conditional format's look)
 };
 static bool g_showFormulas;				// View > Formulas: a formula cell shows its formula
 static void cell_look (Book &b, Sheet *s, Cell *x, int r, int c, int cellW, int z, Look &L)
 {
-	const Style &st = cell_style (b, s, x, r, c);
+	const Style *sp = &cell_style (b, s, x, r, c);
+	CfLook cl; cflook_init (cl);
+	if (s->ncf) { cf_cell (b, s, x, r, c, cl); if (cf_style (*sp, cl, L.own)) sp = &L.own; }
+	const Style &st = *sp;
 	L.st = &st;
 	L.f = style_font (b, st, z);
 	L.n = 0; L.text[0] = 0; L.ink = st.color == AUTO ? 0x000000 : st.color;
@@ -126,6 +130,7 @@ static void cell_look (Book &b, Sheet *s, Cell *x, int r, int c, int cellW, int 
 	scpy (L.text, sh.text, sizeof L.text);
 	L.n = (int) strlen (L.text);
 	if (sh.color != AUTO) L.ink = sh.color;
+	if (cl.color != AUTO) L.ink = cl.color;				// (a rule's colour over the format's)
 	L.number = sh.number;
 	int ha = st.ha;
 	if (ha == HA_GENERAL) ha = sh.number ? HA_RIGHT : (sh.err || sh.boolean) ? HA_CENTER : HA_LEFT;
@@ -325,18 +330,36 @@ static void paint_pane (Canvas &cv, Book &b, Sheet *s, int z, const PaneView &pv
 		if (m.r1 >= rr0 && m.r0 <= rr1 && m.c1 >= rc0 && m.c0 <= rc1) mi[nm++] = i;
 	}
 	auto merged = [&] (int r, int c) -> int { for (int i = 0; i < nm; i++) if (rect_has (s->merges[mi[i]], r, c)) return mi[i]; return -1; };
-	// 1. the fills
+	// 1. the fills (the conditional formats' over the cells'; their data bars)
 	for (int ri = 0; ri < pv.nr; ri++)
 		for (int ci = 0; ci < pv.nc; ci++)
 		{
 			int r = pv.row[ri].i, c = pv.col[ci].i;
 			Cell *x = s->cells.get (r, c);
 			const Style &st = cell_style (b, s, x, r, c);
-			if (st.fill == AUTO) continue;
+			unsigned fill = st.fill;
+			CfLook cl; cflook_init (cl);
+			if (s->ncf) { cf_cell (b, s, x, r, c, cl); if (cl.fill != AUTO) fill = cl.fill; }
+			if (fill == AUTO && cl.bar < 0) continue;
 			if (nm && merged (r, c) >= 0) continue;
 			int X0 = imax (pv.col[ci].at, clip.c0), Y0 = imax (pv.row[ri].at, clip.r0);
 			int X1 = imin (pv.col[ci].at + pv.col[ci].len, clip.c1 + 1), Y1 = imin (pv.row[ri].at + pv.row[ri].len, clip.r1 + 1);
-			if (X1 > X0 && Y1 > Y0) cv.fillRect (X0, Y0, X1 - X0, Y1 - Y0, st.fill);
+			if (fill != AUTO && X1 > X0 && Y1 > Y0) cv.fillRect (X0, Y0, X1 - X0, Y1 - Y0, fill);
+			if (cl.bar >= 0)					// a data bar: a gradient fading to the right, its edge
+			{
+				int bx = pv.col[ci].at + 2, by = pv.row[ri].at + 2, bh = pv.row[ri].len - 5;
+				int bw = (int) ((pv.col[ci].len - 5) * cl.bar + 0.5);
+				for (int xx = imax (bx, clip.c0); xx < imin (bx + bw, clip.c1 + 1); xx++)
+				{
+					unsigned col = mix_rgb (cl.barColor, 0xFFFFFF, bw > 1 ? 0.85 * (xx - bx) / (bw - 1) : 0);
+					for (int yy = imax (by, clip.r0); yy < imin (by + bh, clip.r1 + 1); yy++) cv.px[yy * cv.stride + xx] = col;
+				}
+				if (bw > 0)
+				{
+					hline (cv, bx, bx + bw - 1, by, cl.barColor, BS_THIN, clip); hline (cv, bx, bx + bw - 1, by + bh - 1, cl.barColor, BS_THIN, clip);
+					vline (cv, bx, by, by + bh - 1, cl.barColor, BS_THIN, clip); vline (cv, bx + bw - 1, by, by + bh - 1, cl.barColor, BS_THIN, clip);
+				}
+			}
 		}
 	// 2. the grid's lines
 	if (gridlines)
@@ -352,8 +375,10 @@ static void paint_pane (Canvas &cv, Book &b, Sheet *s, int z, const PaneView &pv
 		int y0 = pane_row_y (s, z, pv, m.r0), y1 = pane_row_y (s, z, pv, m.r1 + 1);
 		Cell *x = s->cells.get (m.r0, m.c0);
 		const Style &st = cell_style (b, s, x, m.r0, m.c0);
+		unsigned fill = st.fill;
+		if (s->ncf) { CfLook cl; cf_cell (b, s, x, m.r0, m.c0, cl); if (cl.fill != AUTO) fill = cl.fill; }
 		int X0 = imax (x0, clip.c0), Y0 = imax (y0, clip.r0), X1 = imin (x1 - 1, clip.c1 + 1), Y1 = imin (y1 - 1, clip.r1 + 1);
-		if (X1 > X0 && Y1 > Y0) cv.fillRect (X0, Y0, X1 - X0, Y1 - Y0, st.fill == AUTO ? 0xFFFFFF : st.fill);
+		if (X1 > X0 && Y1 > Y0) cv.fillRect (X0, Y0, X1 - X0, Y1 - Y0, fill == AUTO ? 0xFFFFFF : fill);
 		if (x && x->kind != K_NONE)
 		{
 			Look L; cell_look (b, s, x, m.r0, m.c0, x1 - x0, z, L);

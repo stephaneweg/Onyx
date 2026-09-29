@@ -349,7 +349,19 @@ static Val eval (Ctx &cx, int node)
 		case TK_STR: return vstr (cx.f->pool + k.s, k.sn);
 		case TK_BOOL: return vbool (k.num != 0);
 		case TK_ERR: return verr ((int) k.num);
-		case TK_NAME: return verr (E_NAME);
+		case TK_NAME:						// a defined name: its formula, computed here
+		{
+			static int depth;
+			const DefName *d = name_find (*cx.b, cx.f->pool + k.s, k.sn, cx.sh ? cx.sh->id : 0);
+			if (!d || !d->f) return verr (E_NAME);
+			if (depth > 16) return verr (E_REF);			// (a name that names itself)
+			Ctx c2 = cx; c2.f = d->f;
+			if (d->scope) { Sheet *hs = book_sheet_by_id (*cx.b, d->scope); if (hs) c2.sh = hs; }
+			depth++;
+			Val v = eval (c2, d->f->root);
+			depth--;
+			return v;
+		}
 		case TK_REF: case TK_AREA:
 		{
 			if (k.fl & TF_BAD) return verr (E_REF);

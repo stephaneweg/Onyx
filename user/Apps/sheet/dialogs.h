@@ -627,6 +627,292 @@ private:
 	const char *m_prompt;
 };
 
+// ---- Names (Insert > Names): the book's defined names -- added, changed, deleted -------------------------------
+class NamesDialog : public Dialog
+{
+public:
+	Book *b; bool changed;
+	NamesDialog (Book *b_, const char *selRef) : Dialog (580, 390, "Names"), b (b_), changed (false)
+	{
+		m_msg[0] = 0;
+		int y = titleH () + 14;
+		list = new ListBox (16, y, width - 32, 150, picked); addChild (list);
+		int y2 = y + 166;
+		name = field (130, y2, 220, "");
+		char l1[64]; u8_to_latin1 (selRef, l1, sizeof l1);
+		ref = field (130, y2 + 36, width - 146, l1);
+		// the scopes: the book, each sheet
+		m_nsc = 0; m_scope[m_nsc] = 0; scpy (m_scName[m_nsc], "The whole workbook", sizeof m_scName[0]); m_scPtr[m_nsc] = m_scName[m_nsc]; m_nsc++;
+		for (int i = 0; i < b->ns && m_nsc < 33; i++) { m_scope[m_nsc] = b->sh[i]->id; char t[64]; u8_to_latin1 (b->sh[i]->name, t, sizeof t); snprintf (m_scName[m_nsc], sizeof m_scName[0], "Sheet %s", t); m_scPtr[m_nsc] = m_scName[m_nsc]; m_nsc++; }
+		scope = new Dropdown (130, y2 + 72, 220, 26, m_scPtr, m_nsc, 0, 0); addChild (scope);
+		button (16, height - 42, 90, "Add", 10);
+		button (112, height - 42, 90, "Delete", 11);
+		button (width - 94, height - 42, 82, "Close", 0);
+		fill ();
+		name->setFocus ();
+	}
+	void drawBody () override
+	{
+		int y2 = titleH () + 14 + 166;
+		canvas.text (16, y2 + 6, "Name", C_TEXT); canvas.text (16, y2 + 42, "Refers to", C_TEXT); canvas.text (16, y2 + 78, "Scope", C_TEXT);
+		if (m_msg[0]) canvas.text (16, y2 + 112, m_msg, 0xB00000);
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 0) { close (0); return; }
+		m_msg[0] = 0;
+		if (tag == 1 || tag == 10)				// Add (or change)
+		{
+			char *nm = latin1_to_u8 (name->text, (int) strlen (name->text)), *rf = latin1_to_u8 (ref->text, (int) strlen (ref->text));
+			const char *why = 0;
+			if (!name_set (*b, nm, m_scope[iclamp (scope->sel, 0, m_nsc - 1)], rf, &why)) scpy (m_msg, why ? why : "This formula cannot be read.", sizeof m_msg);
+			else { changed = true; fill (); for (int i = 0; i < m_nidx; i++) if (!strcmp (b->names[m_idx[i]].name, nm)) list->setSel (i); }
+			free (nm); free (rf);
+		}
+		else if (tag == 11 && list->sel >= 0 && list->sel < m_nidx)	// Delete
+		{
+			name_del (*b, m_idx[list->sel]); changed = true;
+			fill (); name->setText (""); 
+		}
+		invalidate (true);
+	}
+	ListBox *list; Textbox *name, *ref; Dropdown *scope;
+private:
+	int m_idx[256], m_nidx;
+	int m_scope[34], m_nsc; char m_scName[34][72]; const char *m_scPtr[34];
+	char m_msg[120];
+	void fill ()
+	{
+		list->clear (); m_nidx = 0;
+		for (int i = 0; i < b->nnames && m_nidx < 256; i++)
+		{
+			const DefName &d = b->names[i];
+			Buf f; if (d.f) formula_print (*b, d.f, f);
+			char row[200], l1[160];
+			snprintf (row, sizeof row, "%-18s %s", d.name, f.str ());
+			u8_to_latin1 (row, l1, sizeof l1);
+			if (d.scope) { Sheet *hs = book_sheet_by_id (*b, d.scope); if (hs) { int n = (int) strlen (l1); snprintf (l1 + n, sizeof l1 - n, "  (%s)", hs->name); } }
+			list->add (l1);
+			m_idx[m_nidx++] = i;
+		}
+	}
+	static void picked (Widget &w)
+	{
+		NamesDialog *d = (NamesDialog *) w.parent;
+		if (d->list->sel < 0 || d->list->sel >= d->m_nidx) return;
+		const DefName &n = d->b->names[d->m_idx[d->list->sel]];
+		char l1[64]; u8_to_latin1 (n.name, l1, sizeof l1); d->name->setText (l1);
+		Buf f; if (n.f) formula_print (*d->b, n.f, f);
+		u8_to_latin1 (f.str (), l1, sizeof l1); d->ref->setText (l1);
+		for (int i = 0; i < d->m_nsc; i++) if (d->m_scope[i] == n.scope) { d->scope->sel = i; d->scope->invalidate (true); }
+		d->m_msg[0] = 0; d->invalidate (true);
+	}
+};
+
+// ---- Conditional formatting (Format > Conditional Formatting): the sheet's rules ---------------------------------
+static const char *const CF_TYPE_NAMES[CF_TYPES] = { "Cell value is", "Text", "Top / bottom", "Above / below average", "Duplicate / unique values", "Formula is true", "Colour scale", "Data bar" };
+static const char *const CF_CELL_OPS[8] = { "greater than", "greater than or equal to", "less than", "less than or equal to", "equal to", "not equal to", "between", "not between" };
+static const char *const CF_TEXT_OPS[4] = { "contains", "does not contain", "begins with", "ends with" };
+static const char *const CF_TOP_OPS[4] = { "the top ... values", "the bottom ... values", "the top ... %", "the bottom ... %" };
+static const char *const CF_AVG_OPS[2] = { "above the average", "below the average" };
+static const char *const CF_DUP_OPS[2] = { "met more than once", "met once only" };
+static const char *const CF_NO_OPS[1] = { "-" };
+static void cf_describe (const CondFmt &c, char *o, int cap)
+{
+	char a1[24], a2[24], r[56]; cell_name (c.r.r0, c.r.c0, a1); cell_name (c.r.r1, c.r.c1, a2);
+	if (c.r.r0 == c.r.r1 && c.r.c0 == c.r.c1) scpy (r, a1, sizeof r); else snprintf (r, sizeof r, "%s:%s", a1, a2);
+	static const char *const SYM[8] = { ">", ">=", "<", "<=", "=", "<>", "between", "not between" };
+	char w[160];
+	switch (c.type)
+	{
+	case CF_CELL: if (c.op >= CO_BETWEEN) snprintf (w, sizeof w, "Value %s %.60s and %.60s", SYM[iclamp (c.op, 0, 7)], c.a, c.b); else snprintf (w, sizeof w, "Value %s %.100s", SYM[iclamp (c.op, 0, 7)], c.a); break;
+	case CF_TEXT: snprintf (w, sizeof w, "Text %s \"%s\"", CF_TEXT_OPS[iclamp (c.op, 0, 3)], c.a); break;
+	case CF_TOP: snprintf (w, sizeof w, "%s %s%s", c.op ? "Bottom" : "Top", c.a, c.pct ? " %" : ""); break;
+	case CF_AVERAGE: scpy (w, c.op ? "Below the average" : "Above the average", sizeof w); break;
+	case CF_DUP: scpy (w, c.op ? "Unique values" : "Duplicate values", sizeof w); break;
+	case CF_FORMULA: snprintf (w, sizeof w, "Formula %s%s", c.a[0] == '=' ? "" : "=", c.a); break;
+	case CF_SCALE: snprintf (w, sizeof w, "Colour scale (%d colours)", c.op == 3 ? 3 : 2); break;
+	default: scpy (w, "Data bars", sizeof w); break;
+	}
+	const char *look = "";
+	if (c.type != CF_SCALE && c.type != CF_BAR)
+	{
+		look = "its own look";
+		for (int i = 0; i < NCF_LOOKS; i++) if (CF_LOOKS[i].fill == c.fill && CF_LOOKS[i].color == c.color && CF_LOOKS[i].bold == c.bold) look = CF_LOOKS[i].name;
+	}
+	snprintf (o, cap, "%-10s %s%s%s", r, w, look[0] ? " -- " : "", look);
+}
+class CondDialog : public Dialog
+{
+public:
+	Book *b; Sheet *s; bool changed;
+	CondDialog (Book *b_, Sheet *s_, const char *rangeText) : Dialog (660, 470, "Conditional Formatting"), b (b_), s (s_), changed (false)
+	{
+		m_msg[0] = 0; m_hasOwn = false;
+		int y = titleH () + 14;
+		list = new ListBox (16, y, width - 32, 150, picked); addChild (list);
+		int y2 = y + 166;
+		range = field (130, y2, 200, rangeText);
+		type = new Dropdown (130, y2 + 36, 250, 26, CF_TYPE_NAMES, CF_TYPES, 0, typeChanged); addChild (type);
+		cond = new Dropdown (130, y2 + 72, 250, 26, CF_CELL_OPS, 8, 0, condChanged); addChild (cond);
+		va = field (130, y2 + 108, 200, "");
+		vb = field (380, y2 + 108, 200, "");
+		for (int i = 0; i < NCF_LOOKS; i++) m_lookNames[i] = CF_LOOKS[i].name;
+		m_lookNames[NCF_LOOKS] = "Its own look (as read)";
+		look = new Dropdown (130, y2 + 144, 330, 26, m_lookNames, NCF_LOOKS, 0, 0); addChild (look);
+		button (16, height - 42, 84, "New", 10);
+		button (106, height - 42, 84, "Change", 11);
+		button (196, height - 42, 84, "Delete", 12);
+		button (300, height - 42, 60, "Up", 13);
+		button (366, height - 42, 70, "Down", 14);
+		button (width - 94, height - 42, 82, "Close", 0);
+		fill ();
+		sync ();
+	}
+	void drawBody () override
+	{
+		int y2 = titleH () + 14 + 166;
+		canvas.text (16, y2 + 6, "Cells", C_TEXT); canvas.text (16, y2 + 42, "Rule", C_TEXT); canvas.text (16, y2 + 78, "Condition", C_TEXT);
+		if (!va->hidden) canvas.text (16, y2 + 114, type->sel == CF_FORMULA ? "Formula" : "Value", C_TEXT);
+		if (!vb->hidden) canvas.text (346, y2 + 114, "and", C_TEXT);
+		canvas.text (16, y2 + 150, type->sel == CF_SCALE ? "Colours" : type->sel == CF_BAR ? "Bars" : "Look", C_TEXT);
+		if (m_msg[0]) canvas.text (16, height - 64, m_msg, 0xB00000);
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 0) { close (0); return; }
+		m_msg[0] = 0;
+		int sel = list->sel;
+		if (tag == 1 || tag == 10 || tag == 11)			// New / Change
+		{
+			CondFmt c;
+			if (build (c))
+			{
+				if (tag == 11 && sel >= 0 && sel < s->ncf) s->cf[sel] = c;
+				else { s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 1) * sizeof (CondFmt)); s->cf[s->ncf++] = c; sel = s->ncf - 1; }
+				done_change (sel);
+			}
+		}
+		else if (tag == 12 && sel >= 0 && sel < s->ncf)		// Delete
+		{
+			memmove (s->cf + sel, s->cf + sel + 1, (s->ncf - sel - 1) * sizeof (CondFmt)); s->ncf--;
+			done_change (imin (sel, s->ncf - 1));
+		}
+		else if ((tag == 13 || tag == 14) && sel >= 0 && sel < s->ncf)	// Up / Down: which rule comes first
+		{
+			int to = tag == 13 ? sel - 1 : sel + 1;
+			if (to >= 0 && to < s->ncf) { CondFmt t = s->cf[sel]; s->cf[sel] = s->cf[to]; s->cf[to] = t; done_change (to); }
+		}
+		invalidate (true);
+	}
+	ListBox *list; Textbox *range, *va, *vb; Dropdown *type, *cond, *look;
+private:
+	const char *m_lookNames[NCF_LOOKS + 1]; const char *m_opt[8];
+	CondFmt m_own; bool m_hasOwn;
+	char m_msg[120];
+	void done_change (int sel)
+	{
+		changed = true; cf_changed ();
+		fill ();
+		if (sel >= 0) list->setSel (sel);
+		if (parent) parent->invalidate (true);
+	}
+	void fill ()
+	{
+		list->clear ();
+		for (int i = 0; i < s->ncf; i++) { char t[200], l1[120]; cf_describe (s->cf[i], t, sizeof t); u8_to_latin1 (t, l1, sizeof l1); list->add (l1); }
+	}
+	// The fields as the rule's type wants them.
+	void sync ()
+	{
+		int t = type->sel;
+		const char *const *ops = CF_NO_OPS; int nops = 1;
+		switch (t)
+		{
+		case CF_CELL: ops = CF_CELL_OPS; nops = 8; break;
+		case CF_TEXT: ops = CF_TEXT_OPS; nops = 4; break;
+		case CF_TOP: ops = CF_TOP_OPS; nops = 4; break;
+		case CF_AVERAGE: ops = CF_AVG_OPS; nops = 2; break;
+		case CF_DUP: ops = CF_DUP_OPS; nops = 2; break;
+		}
+		if (cond->opts != ops) cond->setOptions (ops, nops, 0);
+		cond->disabled = nops == 1;
+		va->hidden = !(t == CF_CELL || t == CF_TEXT || t == CF_TOP || t == CF_FORMULA);
+		vb->hidden = !(t == CF_CELL && cond->sel >= CO_BETWEEN);
+		if (t == CF_FORMULA) { va->width = width - 146; } else va->width = 200;
+		if (t == CF_SCALE) { for (int i = 0; i < NCF_SCALES; i++) m_opt[i] = CF_SCALES[i].name; look->setOptions (m_opt, NCF_SCALES, 0); }
+		else if (t == CF_BAR) { for (int i = 0; i < NCF_BARS; i++) m_opt[i] = CF_BARS[i].name; look->setOptions (m_opt, NCF_BARS, 0); }
+		else if (look->opts != m_lookNames) look->setOptions (m_lookNames, NCF_LOOKS + (m_hasOwn ? 1 : 0), 0);
+		invalidate (true);
+	}
+	bool build (CondFmt &c)
+	{
+		memset (&c, 0, sizeof c); c.fill = c.color = AUTO; c.bold = c.italic = -1;
+		Rect r;
+		if (parse_sqref (range->text, &r, 1) != 1) { scpy (m_msg, "Type the cells the rule covers: B5:D16.", sizeof m_msg); return false; }
+		c.r = r; c.type = type->sel;
+		char *ua = latin1_to_u8 (va->text, (int) strlen (va->text)), *ub = latin1_to_u8 (vb->text, (int) strlen (vb->text));
+		scpy (c.a, ua, sizeof c.a); scpy (c.b, ub, sizeof c.b); free (ua); free (ub);
+		switch (c.type)
+		{
+		case CF_CELL: c.op = cond->sel; if (c.op < CO_BETWEEN) c.b[0] = 0; break;
+		case CF_TEXT: c.op = cond->sel; c.b[0] = 0; break;
+		case CF_TOP: c.op = cond->sel & 1; c.pct = cond->sel >= 2; if (atoi (c.a) < 1) scpy (c.a, "10", sizeof c.a); c.b[0] = 0; break;
+		case CF_AVERAGE: case CF_DUP: c.op = cond->sel; c.a[0] = c.b[0] = 0; break;
+		case CF_FORMULA: c.b[0] = 0; if (c.a[0] != '=') { char t[120]; t[0] = '='; scpy (t + 1, c.a, sizeof t - 1); scpy (c.a, t, sizeof c.a); } break;
+		default: c.a[0] = c.b[0] = 0; break;
+		}
+		if ((c.type == CF_CELL || c.type == CF_TEXT || c.type == CF_FORMULA) && !c.a[0]) { scpy (m_msg, "Type the value the cells are compared with.", sizeof m_msg); return false; }
+		if (c.type == CF_CELL && c.op >= CO_BETWEEN && !c.b[0]) { scpy (m_msg, "Type the second value (between ... and ...).", sizeof m_msg); return false; }
+		for (int i = 0; i < 2; i++)				// (the formulas read)
+		{
+			const char *t = i ? c.b : c.a;
+			if (t[0] != '=') continue;
+			const char *why = 0;
+			Formula *f = formula_parse (*b, t + 1, (int) strlen (t + 1), &why);
+			if (!f) { snprintf (m_msg, sizeof m_msg, "This formula cannot be read: %s", why ? why : "?"); return false; }
+			formula_free (f);
+		}
+		if (c.type == CF_SCALE) { const CfScale &p = CF_SCALES[iclamp (look->sel, 0, NCF_SCALES - 1)]; c.op = p.n; c.c0 = p.c0; c.c1 = p.c1; c.c2 = p.c2; }
+		else if (c.type == CF_BAR) c.c0 = CF_BARS[iclamp (look->sel, 0, NCF_BARS - 1)].c;
+		else if (look->sel >= NCF_LOOKS && m_hasOwn) { c.fill = m_own.fill; c.color = m_own.color; c.bold = m_own.bold; c.italic = m_own.italic; }
+		else { const CfPreset &p = CF_LOOKS[iclamp (look->sel, 0, NCF_LOOKS - 1)]; c.fill = p.fill; c.color = p.color; c.bold = p.bold; }
+		return true;
+	}
+	static CondDialog *me (Widget &w) { Widget *p = &w; while (p && !p->modal) p = p->parent; return (CondDialog *) p; }
+	static void typeChanged (Widget &w) { me (w)->sync (); }
+	static void condChanged (Widget &w) { CondDialog *d = me (w); d->vb->hidden = !(d->type->sel == CF_CELL && d->cond->sel >= CO_BETWEEN); d->invalidate (true); }
+	static void picked (Widget &w)
+	{
+		CondDialog *d = me (w);
+		int i = d->list->sel;
+		if (i < 0 || i >= d->s->ncf) return;
+		const CondFmt &c = d->s->cf[i];
+		char a1[24], a2[24], t[64]; cell_name (c.r.r0, c.r.c0, a1); cell_name (c.r.r1, c.r.c1, a2);
+		if (c.r.r0 == c.r.r1 && c.r.c0 == c.r.c1) scpy (t, a1, sizeof t); else snprintf (t, sizeof t, "%s:%s", a1, a2);
+		d->range->setText (t);
+		d->m_hasOwn = false;
+		int li = -1;
+		if (c.type != CF_SCALE && c.type != CF_BAR)
+		{
+			for (int k = 0; k < NCF_LOOKS; k++) if (CF_LOOKS[k].fill == c.fill && CF_LOOKS[k].color == c.color && CF_LOOKS[k].bold == c.bold) li = k;
+			if (li < 0) { d->m_hasOwn = true; d->m_own = c; li = NCF_LOOKS; }
+		}
+		d->type->sel = c.type; d->look->opts = 0;			// (the options made again)
+		d->sync ();
+		int op = c.type == CF_TOP ? c.op + (c.pct ? 2 : 0) : c.type == CF_FORMULA || c.type >= CF_SCALE ? 0 : c.op;
+		d->cond->sel = iclamp (op, 0, d->cond->nopts - 1);
+		char l1[128]; u8_to_latin1 (c.a, l1, sizeof l1); d->va->setText (l1);
+		u8_to_latin1 (c.b, l1, sizeof l1); d->vb->setText (l1);
+		d->vb->hidden = !(c.type == CF_CELL && c.op >= CO_BETWEEN);
+		if (c.type == CF_SCALE) { for (int k = 0; k < NCF_SCALES; k++) if (CF_SCALES[k].c0 == c.c0 && CF_SCALES[k].c2 == c.c2 && CF_SCALES[k].n == (c.op == 3 ? 3 : 2)) li = k; }
+		else if (c.type == CF_BAR) { for (int k = 0; k < NCF_BARS; k++) if (CF_BARS[k].c == c.c0) li = k; }
+		d->look->sel = iclamp (li, 0, d->look->nopts - 1);
+		d->m_msg[0] = 0;
+		d->invalidate (true);
+	}
+};
+
 // ---- Chart ------------------------------------------------------------------------------------------------
 static const char *const LEGEND_NAMES[4] = { "None", "Right", "Bottom", "Top" };
 // A chart type's button: a little picture of it and its name; the chosen one framed.

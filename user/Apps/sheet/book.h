@@ -209,6 +209,22 @@ struct Chart
 	bool anchored;
 };
 
+// ---- conditional formats: a range's rules (Format > Conditional Formatting) -----------------------------------
+enum { CF_CELL, CF_TEXT, CF_TOP, CF_AVERAGE, CF_DUP, CF_FORMULA, CF_SCALE, CF_BAR, CF_TYPES };
+enum { CO_GT, CO_GE, CO_LT, CO_LE, CO_EQ, CO_NE, CO_BETWEEN, CO_NOTBETWEEN };
+enum { CT_CONTAINS, CT_NOTCONTAINS, CT_BEGINS, CT_ENDS };
+struct CondFmt						// (plain: kept raw by Undo)
+{
+	Rect r;						// the cells it covers
+	int type, op;					// CF_*; CF_CELL: CO_*; CF_TEXT: CT_*; CF_TOP: 0 top, 1 bottom; CF_AVERAGE: 0 above,
+							// 1 below; CF_DUP: 0 duplicates, 1 unique; CF_SCALE: 2 or 3 colours
+	char a[120], b[120];				// the values ("100", "=$B$1", a text); CF_TOP: how many; CF_FORMULA: the formula
+	bool pct;					// CF_TOP: a percentage of the cells
+	signed char bold, italic;			// the look when the rule holds (-1: left as it is)
+	unsigned fill, color;				// ... (AUTO: left as it is)
+	unsigned c0, c1, c2;				// CF_SCALE: the lowest's, the middle's, the highest's colours; CF_BAR: c0
+};
+
 // ---- a sheet -------------------------------------------------------------------------------------------
 struct Sheet
 {
@@ -228,6 +244,7 @@ struct Sheet
 	unsigned tab;					// the tab's colour (AUTO: none)
 	int curR, curC, ancR, ancC, topR, leftC;	// the view: the cursor, the selection's anchor, the scroll
 	Chart **charts; int ncharts;
+	CondFmt *cf; int ncf;				// the conditional formats (the first that sets a look wins)
 	int maxR, maxC; bool boundsOk;			// the used area (the cells with content)
 	Cell **forms; int nforms, cforms; bool formsOk;	// the formula cells, in order (rebuilt when needed)
 };
@@ -255,6 +272,7 @@ static void sheet_free (Sheet *s)
 	free (s->rows); free (s->rowD); free (s->merges); free (s->forms);
 	for (int i = 0; i < s->ncharts; i++) chart_free (s->charts[i]);
 	free (s->charts);
+	free (s->cf);
 	free (s);
 }
 
@@ -388,8 +406,12 @@ static void sheet_bounds (Sheet *s)
 }
 
 // ---- the workbook -------------------------------------------------------------------------------------
+// A defined name ("Rate", "Sales"): a formula -- a range, a value -- that other formulas name (Insert > Names).
+struct Formula;
+struct DefName { char name[64]; int scope; Formula *f; };	// scope: its sheet's id (0: the whole book)
 struct Book
 {
+	DefName *names; int nnames;
 	Sheet *sh[MAXSHEETS]; int ns;
 	int nextId;
 	int active;					// the sheet shown
@@ -419,8 +441,10 @@ static int book_fmt (Book &b, const char *code)	// a format's index (added)
 static const char *book_fmt_code (Book &b, int i) { return i > 0 && i < b.nfmts ? b.fmts[i] : "General"; }
 
 static const char *DEFAULT_FONT = "Liberation Sans";
+static void names_clear (Book &b);			// (formula.h)
 static void book_init (Book &b)
 {
+	b.names = 0; b.nnames = 0;
 	memset (&b.sh, 0, sizeof b.sh);
 	b.ns = 0; b.nextId = 1; b.active = 0; b.epoch = 1; b.dateSystem1904 = false;
 	b.nfonts = 0; b.nfmts = 0; b.cfmts = 32;
@@ -433,6 +457,7 @@ static void book_init (Book &b)
 }
 static void book_clear (Book &b)
 {
+	names_clear (b);
 	for (int i = 0; i < b.ns; i++) sheet_free (b.sh[i]);
 	b.ns = 0;
 	for (int i = 0; i < b.nfonts; i++) free (b.fonts[i]);

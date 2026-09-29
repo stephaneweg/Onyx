@@ -1,7 +1,8 @@
 // make_sample.cpp -- the spreadsheet's sample workbook (sdcard/docs/cafe-2026.xlsx): a café's sales by
-// month and product (formats, colours, borders, merged titles, a column chart), their summary (lookups,
-// shares, a pie chart) and the loan of its espresso machine (PMT, IPMT, PPMT; an area chart; frozen
-// panes). Built by the spreadsheet's own engine -- what the screenshots and the user guide show.
+// month and product (formats, colours, borders, merged titles, a column chart, data bars, the best months
+// highlighted), their summary (lookups, shares, a pie chart) and the loan of its espresso machine (named
+// inputs, PMT, IPMT, PPMT; a colour scale; an area chart; frozen panes). Built by the spreadsheet's own
+// engine -- what the screenshots and the user guide show.
 //
 //   g++ -std=gnu++17 -I user tools/tests/sheet/make_sample.cpp -lm -o /tmp/make_sample
 //   /tmp/make_sample sdcard/docs/cafe-2026.xlsx
@@ -143,6 +144,15 @@ int main (int argc, char **argv)
 	{ Look l = none (); l.ha = HA_LEFT; apply (0, R ("B19"), l); }
 	width (0, 0, 98); width (0, 1, 90); width (0, 2, 84); width (0, 3, 90); width (0, 4, 96); width (0, 5, 66);
 	chart (0, CH_COLUMN, R ("A4", "D16"), col_x (B.sh[0], 6) + 16, (int) row_y (B.sh[0], 3), 452, 316, "Takings by month", LG_BOTTOM);
+	// conditional formats: the totals' data bars, the three best months of coffee in green
+	{
+		CondFmt c; memset (&c, 0, sizeof c); c.fill = c.color = AUTO; c.bold = c.italic = -1;
+		c.r = R ("E5", "E16"); c.type = CF_BAR; c.c0 = 0x6FA8DC;
+		Sheet *s = B.sh[0]; s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 2) * sizeof (CondFmt)); s->cf[s->ncf++] = c;
+		CondFmt t; memset (&t, 0, sizeof t); t.fill = 0xC6EFCE; t.color = 0x006100; t.bold = t.italic = -1;
+		t.r = R ("B5", "B16"); t.type = CF_TOP; t.op = 0; scpy (t.a, "3", sizeof t.a);
+		s->cf[s->ncf++] = t;
+	}
 
 	// ---- Summary: the products' shares, the months' figures -----------------------------------------
 	title (1, R ("A1", "C1"), "Summary of the year", 140, INK);
@@ -177,8 +187,10 @@ int main (int argc, char **argv)
 	set (2, "A3", "Amount"); set (2, "B3", "12000");
 	set (2, "A4", "Yearly rate"); set (2, "B4", "4.5%");
 	set (2, "A5", "Months"); set (2, "B5", "36");
-	set (2, "A6", "Monthly payment"); set (2, "B6", "=PMT(B4/12,B5,-B3)");
-	set (2, "A7", "Total interest"); set (2, "B7", "=B6*B5-B3");
+	// (the inputs named: the formulas read as words)
+	name_set (B, "Amount", 0, "=Loan!$B$3"); name_set (B, "Rate", 0, "=Loan!$B$4"); name_set (B, "Months", 0, "=Loan!$B$5");
+	set (2, "A6", "Monthly payment"); set (2, "B6", "=PMT(Rate/12,Months,-Amount)");
+	set (2, "A7", "Total interest"); set (2, "B7", "=B6*Months-Amount");
 	fmt (2, R ("B3"), MONEY); fmt (2, R ("B4"), "0.00%"); fmt (2, R ("B6", "B7"), MONEY);
 	bold (2, R ("A6", "B6"));
 	fill (2, R ("B3", "B5"), 0xFFF2CC);				// (the inputs: yellow, as the custom goes)
@@ -191,15 +203,20 @@ int main (int argc, char **argv)
 		int r = 9 + k; char a[16];
 		snprintf (a, sizeof a, "A%d", r); setf (2, a, "%d", k);
 		snprintf (a, sizeof a, "B%d", r); set (2, a, "=$B$6");
-		snprintf (a, sizeof a, "C%d", r); setf (2, a, "=IPMT($B$4/12,A%d,$B$5,-$B$3)", r);
-		snprintf (a, sizeof a, "D%d", r); setf (2, a, "=PPMT($B$4/12,A%d,$B$5,-$B$3)", r);
-		snprintf (a, sizeof a, "E%d", r); if (k == 1) setf (2, a, "=$B$3-D%d", r); else setf (2, a, "=E%d-D%d", r - 1, r);
+		snprintf (a, sizeof a, "C%d", r); setf (2, a, "=IPMT(Rate/12,A%d,Months,-Amount)", r);
+		snprintf (a, sizeof a, "D%d", r); setf (2, a, "=PPMT(Rate/12,A%d,Months,-Amount)", r);
+		snprintf (a, sizeof a, "E%d", r); if (k == 1) setf (2, a, "=Amount-D%d", r); else setf (2, a, "=E%d-D%d", r - 1, r);
 		if (!(k & 1)) { char z[16]; snprintf (a, sizeof a, "A%d", r); snprintf (z, sizeof z, "E%d", r); fill (2, R (a, z), ZEBRA); }
 	}
 	fmt (2, R ("B10", "E45"), MONEY);
 	{ Look l = none (); l.ha = HA_CENTER; apply (2, R ("A10", "A45"), l); }
 	width (2, 0, 120); width (2, 1, 96); width (2, 2, 90); width (2, 3, 90); width (2, 4, 100);
 	B.sh[2]->freezeR = 9; B.sh[2]->topR = 9;
+	{									// (the interest: a colour scale, the dearest months red)
+		CondFmt c; memset (&c, 0, sizeof c); c.fill = c.color = AUTO; c.bold = c.italic = -1;
+		c.r = R ("C10", "C45"); c.type = CF_SCALE; c.op = 2; c.c0 = 0xFCFCFF; c.c2 = 0xF8696B;
+		Sheet *s = B.sh[2]; s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 1) * sizeof (CondFmt)); s->cf[s->ncf++] = c;
+	}
 	{
 		Chart *c = chart (2, CH_AREA, R ("E9", "E45"), col_x (B.sh[2], 5) + 20, (int) row_y (B.sh[2], 2), 400, 250, "What is left to pay", LG_NONE);
 		c->side = false;

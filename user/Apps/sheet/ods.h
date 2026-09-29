@@ -3,7 +3,8 @@
 // percentages, amounts, dates, times, booleans, texts of several paragraphs), the formulas (OpenFormula,
 // "of:=SUM([.A1:.A5])", turned into Excel's syntax), the cell styles (fonts, colours, borders,
 // alignment, wrapping; the number styles made into format codes), the columns' widths, the rows'
-// heights, merged and hidden cells, frozen panes (settings.xml), the charts (their objects: "Object 1/content.xml").
+// heights, merged and hidden cells, frozen panes (settings.xml), the charts (their objects: "Object 1/content.xml"),
+// the named ranges and expressions.
 //
 #ifndef _sheet_ods_h
 #define _sheet_ods_h
@@ -86,7 +87,7 @@ static void ods_formula (const char *f, Buf &o)
 
 struct OStyle
 {
-	char name[48], parent[48], data[48];
+	char name[48], parent[48], data[48], dname[48];	// (dname: its display name, as the conditions name it)
 	int family;					// 1 cell, 2 column, 3 row
 	bool has[16];					// which of the properties below it sets
 	Style st;
@@ -144,6 +145,7 @@ static void ods_styles (Book &b, const char *x, int len, OStyle **st, int *nst, 
 				cur->family = family;
 				if (X.attr ("style:name", v)) scpy (cur->name, v.str (), sizeof cur->name);
 				else scpy (cur->name, family == 1 ? "!default" : "!default-other", sizeof cur->name);
+				if (X.attr ("style:display-name", v)) scpy (cur->dname, v.str (), sizeof cur->dname);
 				if (X.attr ("style:parent-style-name", v)) scpy (cur->parent, v.str (), sizeof cur->parent);
 				else if (strncmp (cur->name, "!default", 8) && strcmp (cur->name, "Default") && family == 1) scpy (cur->parent, "Default", sizeof cur->parent);
 				if (X.attr ("style:data-style-name", v)) scpy (cur->data, v.str (), sizeof cur->data);
@@ -440,6 +442,56 @@ static bool ods_chart (Book &b, const char *x, int len, Chart &c)
 	return haveRange;
 }
 struct OChart { int sheet, r, c, x, y, w, h; char href[64]; };
+// A condition of LibreOffice's ("top-elements(3)", ">4000", "between(1;5)", "contains-text(\"ap\")",
+// "formula-is(MOD(ROW();2)=0)") -> a rule (its look set by the caller).
+static bool ods_condition (Book &b, const char *v, CondFmt &c)
+{
+	memset (&c, 0, sizeof c); c.fill = c.color = AUTO; c.bold = c.italic = -1;
+	while (*v == ' ') v++;
+	auto arg = [&] (const char *p, char *out, int cap) {		// the text between the parentheses (an OpenFormula made Excel's)
+		const char *o = strchr (p, '('); if (!o) { out[0] = 0; return; }
+		const char *e = strrchr (o, ')'); if (!e) e = o + strlen (o);
+		Buf in; in.puts ("of:="); in.putn (o + 1, (int) (e - o - 1));
+		Buf ex; ods_formula (in.str (), ex);
+		scpy (out, ex.str (), cap);
+	};
+	auto unq = [] (char *t) { int l = (int) strlen (t); if (l >= 2 && t[0] == '"' && t[l - 1] == '"') { memmove (t, t + 1, l - 2); t[l - 2] = 0; } };
+	char a[120];
+	if (!strncmp (v, "top-elements", 12) || !strncmp (v, "bottom-elements", 15) || !strncmp (v, "top-percent", 11) || !strncmp (v, "bottom-percent", 14))
+	{ c.type = CF_TOP; c.op = v[0] == 'b'; c.pct = strstr (v, "percent") != 0; arg (v, a, sizeof a); scpy (c.a, a, sizeof c.a); return true; }
+	if (!strncmp (v, "above", 5) || !strncmp (v, "below", 5)) { c.type = CF_AVERAGE; c.op = v[1] == 'e'; return true; }
+	if (!strcmp (v, "duplicate") || !strcmp (v, "unique")) { c.type = CF_DUP; c.op = v[0] == 'u'; return true; }
+	static const char *const TX[4] = { "contains-text", "not-contains-text", "begins-with", "ends-with" };
+	for (int k = 0; k < 4; k++) if (!strncmp (v, TX[k], strlen (TX[k]))) { c.type = CF_TEXT; c.op = k; arg (v, a, sizeof a); unq (a); scpy (c.a, a, sizeof c.a); return true; }
+	if (!strncmp (v, "formula-is", 10)) { c.type = CF_FORMULA; arg (v, a, sizeof a); c.a[0] = '='; scpy (c.a + 1, a, sizeof c.a - 1); return true; }
+	if (!strncmp (v, "between", 7) || !strncmp (v, "not-between", 11))
+	{
+		c.type = CF_CELL; c.op = v[0] == 'n' ? CO_NOTBETWEEN : CO_BETWEEN;
+		arg (v, a, sizeof a);					// "1,5" (the separator made a comma)
+		char *comma = 0; int depth = 0; bool q = false;
+		for (char *p = a; *p; p++) { if (*p == '"') q = !q; else if (!q && *p == '(') depth++; else if (!q && *p == ')') depth--; else if (!q && !depth && *p == ',') { comma = p; break; } }
+		if (!comma) return false;
+		*comma = 0;
+		auto operand = [&] (const char *t, char *o, int cap) { double d; if (input_number (t, (int) strlen (t), &d) || t[0] == '"') scpy (o, t, cap); else { o[0] = '='; scpy (o + 1, t, cap - 1); } };
+		operand (a, c.a, sizeof c.a); operand (comma + 1, c.b, sizeof c.b);
+		return true;
+	}
+	static const char *const OPS[6] = { ">=", "<=", "!=", ">", "<", "=" };
+	static const int OPC[6] = { CO_GE, CO_LE, CO_NE, CO_GT, CO_LT, CO_EQ };
+	for (int k = 0; k < 6; k++)
+		if (!strncmp (v, OPS[k], strlen (OPS[k])))
+		{
+			c.type = CF_CELL; c.op = OPC[k];
+			const char *t = v + strlen (OPS[k]); while (*t == ' ') t++;
+			Buf in; in.puts ("of:="); in.puts (t);
+			Buf ex; ods_formula (in.str (), ex);
+			double d;
+			if (input_number (ex.str (), ex.n, &d) || ex.str ()[0] == '"') scpy (c.a, ex.str (), sizeof c.a);
+			else { c.a[0] = '='; scpy (c.a + 1, ex.str (), sizeof c.a - 1); }
+			return true;
+		}
+	return false;
+}
 
 static bool ods_read (Book &b, const char *data, int n, const char **why)
 {
@@ -491,6 +543,7 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 	(void) colDefault;
 	unsigned short *colCellStyle = 0;
 	OChart och[32]; int nch = 0;
+	Rect cfRange = { -1, 0, 0, 0 };
 	while (X.next () != X_EOF)
 	{
 		if (X.ev == X_START)
@@ -502,6 +555,57 @@ static bool ods_read (Book &b, const char *data, int n, const char **why)
 				row = 0; col = 0;
 				free (colCellStyle); colCellStyle = (unsigned short *) calloc (MAXC, sizeof (unsigned short));
 				if (!s) break;
+			}
+			else if (s && X.isq ("calcext:conditional-format"))		// LibreOffice's conditional formats
+			{
+				Buf ad; X.attr ("calcext:target-range-address", ad);
+				int sid; cfRange.r0 = -1;
+				if (!ods_range (b, ad.str (), &sid, &cfRange)) cfRange.r0 = -1;
+			}
+			else if (s && cfRange.r0 >= 0 && X.isq ("calcext:condition"))
+			{
+				Buf val, sty; X.attr ("calcext:value", val); X.attr ("calcext:apply-style-name", sty);
+				CondFmt c;
+				if (ods_condition (b, val.str (), c))
+				{
+					c.r = cfRange;
+					const OStyle *os = find_style (st, nst, sty.str ());
+					if (!os) for (int i = nst - 1; i >= 0; i--) if (!strcmp (st[i].dname, sty.str ())) { os = &st[i]; break; }
+					for (int k = 0; os && k < 8; k++)			// (its own properties only, then its parents' but the default's)
+					{
+						if (os->has[OP_FILL] && c.fill == AUTO) c.fill = os->st.fill;
+						if (os->has[OP_COLOR] && c.color == AUTO) c.color = os->st.color;
+						if (os->has[OP_BOLD] && c.bold < 0) c.bold = os->st.bold;
+						if (os->has[OP_ITALIC] && c.italic < 0) c.italic = os->st.italic;
+						if (!os->parent[0] || !strcmp (os->parent, "Default")) break;
+						os = find_style (st, nst, os->parent);
+					}
+					s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 1) * sizeof (CondFmt)); s->cf[s->ncf++] = c;
+				}
+			}
+			else if (s && cfRange.r0 >= 0 && (X.isq ("calcext:color-scale") || X.isq ("calcext:data-bar")))
+			{
+				CondFmt c; memset (&c, 0, sizeof c); c.fill = c.color = AUTO; c.bold = c.italic = -1; c.r = cfRange;
+				if (X.isq ("calcext:data-bar")) { Buf pc; c.type = CF_BAR; c.c0 = X.attr ("calcext:positive-color", pc) ? ods_color (pc.str ()) : 0x638EC6; }
+				else
+				{
+					c.type = CF_SCALE;
+					unsigned col[3] = { 0, 0, 0 }; int nc2 = 0;
+					while (X.next () != X_EOF && !(X.ev == X_END && X.isq ("calcext:color-scale")))
+						if (X.ev == X_START && X.isq ("calcext:color-scale-entry") && nc2 < 3) { Buf cc; X.attr ("calcext:color", cc); col[nc2++] = ods_color (cc.str ()); }
+					c.op = nc2 >= 3 ? 3 : 2; c.c0 = col[0];
+					if (c.op == 3) { c.c1 = col[1]; c.c2 = col[2]; } else c.c2 = col[1];
+				}
+				s->cf = (CondFmt *) realloc (s->cf, (s->ncf + 1) * sizeof (CondFmt)); s->cf[s->ncf++] = c;
+			}
+			else if (X.isq ("table:named-range") || X.isq ("table:named-expression"))	// a name (in a table: that sheet's own)
+			{
+				Buf nm, addr, of, ef;
+				X.attr ("table:name", nm);
+				if (X.isq ("table:named-range")) { X.attr ("table:cell-range-address", addr); of.puts ("of:=["); of.puts (addr.str ()); of.put (']'); }
+				else X.attr ("table:expression", of);
+				ods_formula (of.str (), ef);
+				if (nm.n && ef.n) name_set (b, nm.str (), s ? s->id : 0, ef.str ());
 			}
 			else if (s && X.isq ("table:table-column"))
 			{
