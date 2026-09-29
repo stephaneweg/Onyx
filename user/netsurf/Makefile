@@ -126,6 +126,7 @@ $(NS)/libdom/libdom.a: $(DOM_OBJ); $(AR) rcs $@ $^
 # "one file per module" sources upstream builds. The same list is compiled for the PC by
 # tools/tests/netsurf/host.mk (FT_SRC there).
 FT := $(NS)/freetype-2.14.3
+BRO := $(NS)/brotli-1.1.0
 FT_FILES := base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbbox.c \
             base/ftbitmap.c base/ftglyph.c base/ftsynth.c base/ftmm.c autofit/autofit.c \
             truetype/truetype.c sfnt/sfnt.c smooth/smooth.c psnames/psnames.c cache/ftcache.c \
@@ -136,8 +137,7 @@ $(FT_OBJ): CINC := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>'
                    -I$(NS)/zlib-1.3.1 -I$(BRO)/c/include
 $(FT)/libfreetype.a: $(FT_OBJ); $(AR) rcs $@ $^
 
-# ---- Brotli's decoder (FreeType's WOFF2) --------------------------------------
-BRO := $(NS)/brotli-1.1.0
+# ---- Brotli's decoder (FreeType's WOFF2; BRO: above, FreeType's includes use it) --
 BRO_OBJ := $(patsubst %.c,%.o,$(wildcard $(BRO)/c/common/*.c $(BRO)/c/dec/*.c))
 $(BRO_OBJ): CINC := -I$(BRO)/c/include
 $(BRO)/libbrotlidec.a: $(BRO_OBJ); $(AR) rcs $@ $^
