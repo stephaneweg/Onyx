@@ -248,6 +248,18 @@ static void table_free (Table *t)
 	delete t;
 }
 static int table_width (const Table *t) { int w = 0; for (int c = 0; c < t->ncols; c++) w += t->colW[c]; return w; }
+// The owner of cell (r, c): the cell whose span covers it (itself when not covered).
+static void cell_owner (const Table *t, int r, int c, int *orow, int *ocol)
+{
+	*orow = r; *ocol = c;
+	if (!tcell (t, r, c).covered) return;
+	for (int rr = r; rr >= 0; rr--)
+		for (int cc = c; cc >= 0; cc--)
+		{
+			const TCell &k = tcell (t, rr, cc);
+			if (!k.covered && rr + k.rs > r && cc + k.cs > c) { *orow = rr; *ocol = cc; return; }
+		}
+}
 
 // ---- positions -----------------------------------------------------------------------------------------
 struct Pos
@@ -341,6 +353,7 @@ static inline bool same_cell (const Para *a, const Para *b) { return a->pf.tbl =
 enum { SY_BODY, SY_HEADER, SY_FOOTER, SY_HEADER1, SY_FOOTER1, SY_COUNT };
 static const char *const STORY_NAMES[SY_COUNT] = { "Body", "Header", "Footer", "First Page Header", "First Page Footer" };
 struct Story { Para **p; int n, cap; };
+static inline bool is_footer (int s) { return s == SY_FOOTER || s == SY_FOOTER1; }
 
 struct Undo
 {
@@ -985,7 +998,7 @@ static const char *const MONTH_NAMES[12] = { "January", "February", "March", "Ap
 static const char *const DAY_NAMES[7] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 
 // A date / time as its picture says (Word's: d dd ddd dddd M MM MMM MMMM yy yyyy H HH h hh m mm s ss
-// AM/PM; the rest as it is, '...' quoted).
+// AM/PM; the rest as it is, '...' quoted, \x a character as it is).
 static int date_text (const char *pic, int y, int mo, int d, int h, int mi, int s, unsigned *out, int cap)
 {
 	int n = 0;
@@ -999,6 +1012,7 @@ static int date_text (const char *pic, int y, int mo, int d, int h, int mi, int 
 		char c = *p; int k = 1;
 		while (p[k] == c) k++;
 		if (c == '\'') { p++; while (*p && *p != '\'') put ((unsigned char) *p++); if (*p) p++; continue; }
+		if (c == '\\') { p++; if (*p) put ((unsigned char) *p++); continue; }	// (a character as it is)
 		if (c == 'd') { if (k == 1) num (d, 1); else if (k == 2) num (d, 2); else if (k == 3) puts (DAY_NAMES[dow], 3); else puts (DAY_NAMES[dow]); }
 		else if (c == 'M') { if (k == 1) num (mo, 1); else if (k == 2) num (mo, 2); else if (k == 3) puts (MONTH_NAMES[(mo + 11) % 12], 3); else puts (MONTH_NAMES[(mo + 11) % 12]); }
 		else if (c == 'y') { if (k <= 2) num (y % 100, 2); else num (y, 4); }

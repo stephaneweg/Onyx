@@ -103,6 +103,14 @@ static int field_parse (const char *s, char *arg, int cap)
 	bool date = is ("DATE") || is ("CREATEDATE") || is ("SAVEDATE") || is ("PRINTDATE"), time = is ("TIME");
 	if (!date && !time) return FK_NONE;
 	for (const char *p = s; *p; p++) if (p[0] == '\\' && p[1] == '@') { word (p + 2); break; }
+	int k = 0;							// ("dd\ MM": a character not a picture's letter needs no \)
+	for (int i = 0; arg[i]; i++)
+	{
+		char c = arg[i + 1];
+		if (arg[i] == '\\' && c && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '\'' || c == '\\')) continue;
+		arg[k++] = arg[i];
+	}
+	arg[k] = 0;
 	return date ? FK_DATE : FK_TIME;
 }
 // A field's instruction, as Word writes it.
@@ -821,12 +829,13 @@ struct RtfOut
 				for (int k = i; k < j; k++)
 				{
 					char in[96]; field_instr (d.fld[f.fld - 1], in, sizeof in);
+					o.put ('{'); runFmt (f);				// (the field in its format's group: its result's)
 					o.puts ("{\\field{\\*\\fldinst {");
 					for (const char *t = in; *t; t++) rtf_text (o, (unsigned char) *t);
 					o.puts (" }}{\\fldrslt {"); runFmt (f);
 					unsigned t[80]; int tn = field_text (d, f.fld, 1, 1, t, 80);
 					for (int m = 0; m < tn; m++) rtf_text (o, t[m]);
-					o.puts ("}}}");
+					o.puts ("}}}}");
 				}
 				i = j;
 				continue;

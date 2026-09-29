@@ -53,7 +53,6 @@ static inline int first_own (int pg) { return pg == 0 && L.d->page.titlePg ? 1 :
 static inline int body_top (int pg) { return L.bodyTop64[first_own (pg)]; }
 static inline int body_bot (int pg) { return L.bodyBot64[first_own (pg)]; }
 static inline int hf_story (bool footer, int pg) { return first_own (pg) ? (footer ? SY_FOOTER1 : SY_HEADER1) : (footer ? SY_FOOTER : SY_HEADER); }
-static inline bool is_footer (int s) { return s == SY_FOOTER || s == SY_FOOTER1; }
 
 // A font name -> a family on the card: itself, a metric twin (Arial: Liberation Sans...), or by kind.
 static int resolve_font (const char *name)
@@ -479,19 +478,6 @@ struct Pager
 		L.all[L.nall].p = pi; L.all[L.nall].l = l; L.nall++;
 	}
 };
-
-// The owner of cell (r, c): the cell whose span covers it.
-static void cell_owner (const Table *t, int r, int c, int *orow, int *ocol)
-{
-	*orow = r; *ocol = c;
-	if (!tcell (t, r, c).covered) return;
-	for (int rr = r; rr >= 0; rr--)
-		for (int cc = c; cc >= 0; cc--)
-		{
-			const TCell &k = tcell (t, rr, cc);
-			if (!k.covered && rr + k.rs > r && cc + k.cs > c) { *orow = rr; *ocol = cc; return; }
-		}
-}
 
 // A table (its paragraphs from p[i]): its columns, its cells' paragraphs laid out in them, its rows'
 // heights, its rows put on pages; the paragraph after it returned.
