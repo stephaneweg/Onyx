@@ -3253,5 +3253,190 @@ static void dump_computed_style(const css_computed_style *style, char *buf,
 	}
 	ptr += wrote;
 	*len -= wrote;
+
+	/* Onyx: the CSS3 additions, each only when not at its initial value (so that the tests
+	 * which do not use them are unchanged) */
+	{
+		css_fixed l[4];
+		css_unit u[4];
+		css_color c;
+		int i;
+		static const char *corner[4] = { "top-left", "top-right",
+				"bottom-right", "bottom-left" };
+		uint8_t (*radius[4])(const css_computed_style *, css_fixed *, css_unit *) = {
+			css_computed_border_top_left_radius,
+			css_computed_border_top_right_radius,
+			css_computed_border_bottom_right_radius,
+			css_computed_border_bottom_left_radius
+		};
+
+		val = css_computed_row_gap(style, &l[0], &u[0]);
+		if (val == CSS_ROW_GAP_SET) {
+			wrote = snprintf(ptr, *len, "row-gap: ");
+			ptr += wrote; *len -= wrote;
+			wrote = dump_css_unit(l[0], u[0], ptr, *len);
+			ptr += wrote; *len -= wrote;
+			wrote = snprintf(ptr, *len, "\n");
+			ptr += wrote; *len -= wrote;
+		}
+		for (i = 0; i < 4; i++) {
+			val = radius[i](style, &l[0], &u[0]);
+			if (val == CSS_BORDER_RADIUS_SET && l[0] != 0) {
+				wrote = snprintf(ptr, *len, "border-%s-radius: ", corner[i]);
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[0], u[0], ptr, *len);
+				ptr += wrote; *len -= wrote;
+				wrote = snprintf(ptr, *len, "\n");
+				ptr += wrote; *len -= wrote;
+			}
+		}
+		val = css_computed_box_shadow(style, &l[0], &u[0], &l[1], &u[1],
+				&l[2], &u[2], &l[3], &u[3], &c);
+		if (val == CSS_BOX_SHADOW_SET || val == CSS_BOX_SHADOW_SET_INSET) {
+			wrote = snprintf(ptr, *len, "box-shadow:%s",
+					val == CSS_BOX_SHADOW_SET_INSET ? " inset" : "");
+			ptr += wrote; *len -= wrote;
+			for (i = 0; i < 4; i++) {
+				wrote = snprintf(ptr, *len, " ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[i], u[i], ptr, *len);
+				ptr += wrote; *len -= wrote;
+			}
+			wrote = snprintf(ptr, *len, " #%08x\n", c);
+			ptr += wrote; *len -= wrote;
+		}
+		val = css_computed_text_shadow(style, &l[0], &u[0], &l[1], &u[1],
+				&l[2], &u[2], &c);
+		if (val == CSS_TEXT_SHADOW_SET) {
+			wrote = snprintf(ptr, *len, "text-shadow:");
+			ptr += wrote; *len -= wrote;
+			for (i = 0; i < 3; i++) {
+				wrote = snprintf(ptr, *len, " ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[i], u[i], ptr, *len);
+				ptr += wrote; *len -= wrote;
+			}
+			wrote = snprintf(ptr, *len, " #%08x\n", c);
+			ptr += wrote; *len -= wrote;
+		}
+		val = css_computed_background_size(style, &l[0], &u[0], &l[1], &u[1]);
+		if (val == CSS_BACKGROUND_SIZE_COVER) {
+			wrote = snprintf(ptr, *len, "background-size: cover\n");
+			ptr += wrote; *len -= wrote;
+		} else if (val == CSS_BACKGROUND_SIZE_CONTAIN) {
+			wrote = snprintf(ptr, *len, "background-size: contain\n");
+			ptr += wrote; *len -= wrote;
+		} else if (val == CSS_BACKGROUND_SIZE_SET ||
+				val == CSS_BACKGROUND_SIZE_SET_WIDTH ||
+				val == CSS_BACKGROUND_SIZE_SET_HEIGHT) {
+			wrote = snprintf(ptr, *len, "background-size: ");
+			ptr += wrote; *len -= wrote;
+			if (val == CSS_BACKGROUND_SIZE_SET_HEIGHT)
+				wrote = snprintf(ptr, *len, "auto");
+			else
+				wrote = dump_css_unit(l[0], u[0], ptr, *len);
+			ptr += wrote; *len -= wrote;
+			wrote = snprintf(ptr, *len, " ");
+			ptr += wrote; *len -= wrote;
+			if (val == CSS_BACKGROUND_SIZE_SET_WIDTH)
+				wrote = snprintf(ptr, *len, "auto");
+			else
+				wrote = dump_css_unit(l[1], u[1], ptr, *len);
+			ptr += wrote; *len -= wrote;
+			wrote = snprintf(ptr, *len, "\n");
+			ptr += wrote; *len -= wrote;
+		}
+		if (css_computed_text_overflow(style) == CSS_TEXT_OVERFLOW_ELLIPSIS) {
+			wrote = snprintf(ptr, *len, "text-overflow: ellipsis\n");
+			ptr += wrote; *len -= wrote;
+		}
+		{
+			static const char *al[] = { "inherit", "stretch", "start", "end",
+					"center", "baseline", "auto" };
+			val = css_computed_justify_items(style);
+			if (val != CSS_JUSTIFY_ITEMS_STRETCH && val < 7) {
+				wrote = snprintf(ptr, *len, "justify-items: %s\n", al[val]);
+				ptr += wrote; *len -= wrote;
+			}
+			val = css_computed_justify_self(style);
+			if (val != CSS_JUSTIFY_SELF_AUTO && val < 7) {
+				wrote = snprintf(ptr, *len, "justify-self: %s\n", al[val]);
+				ptr += wrote; *len -= wrote;
+			}
+		}
+		{
+			static const char *fit[] = { "inherit", "fill", "contain", "cover",
+					"none", "scale-down" };
+			static const char *flow[] = { "inherit", "row", "column", "row dense",
+					"column dense" };
+			static const struct {
+				const char *name;
+				uint8_t (*get)(const css_computed_style *, lwc_string **);
+			} texts[] = {
+				{ "transform", css_computed_transform },
+				{ "translate", css_computed_translate },
+				{ "scale", css_computed_scale },
+				{ "rotate", css_computed_rotate },
+				{ "grid-template-columns", css_computed_grid_template_columns },
+				{ "grid-template-rows", css_computed_grid_template_rows },
+				{ "grid-template-areas", css_computed_grid_template_areas },
+				{ "grid-auto-columns", css_computed_grid_auto_columns },
+				{ "grid-auto-rows", css_computed_grid_auto_rows },
+				{ "grid-row-start", css_computed_grid_row_start },
+				{ "grid-row-end", css_computed_grid_row_end },
+				{ "grid-column-start", css_computed_grid_column_start },
+				{ "grid-column-end", css_computed_grid_column_end },
+			};
+			css_fixed w, h;
+			size_t k;
+
+			val = css_computed_aspect_ratio(style, &w, &h);
+			if (val == CSS_ASPECT_RATIO_SET || val == CSS_ASPECT_RATIO_AUTO_SET) {
+				wrote = snprintf(ptr, *len, "aspect-ratio: %s%.3f / %.3f\n",
+						val == CSS_ASPECT_RATIO_AUTO_SET ? "auto " : "",
+						FIXTOFLT(w), FIXTOFLT(h));
+				ptr += wrote; *len -= wrote;
+			}
+			val = css_computed_object_fit(style);
+			if (val != CSS_OBJECT_FIT_FILL && val < 6) {
+				wrote = snprintf(ptr, *len, "object-fit: %s\n", fit[val]);
+				ptr += wrote; *len -= wrote;
+			}
+			val = css_computed_object_position(style, &l[0], &u[0], &l[1], &u[1]);
+			if (val == CSS_OBJECT_POSITION_SET && (l[0] != INTTOFIX(50) ||
+					l[1] != INTTOFIX(50) || u[0] != CSS_UNIT_PCT ||
+					u[1] != CSS_UNIT_PCT)) {
+				wrote = snprintf(ptr, *len, "object-position: ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[0], u[0], ptr, *len);
+				ptr += wrote; *len -= wrote;
+				wrote = snprintf(ptr, *len, " ");
+				ptr += wrote; *len -= wrote;
+				wrote = dump_css_unit(l[1], u[1], ptr, *len);
+				ptr += wrote; *len -= wrote;
+				wrote = snprintf(ptr, *len, "\n");
+				ptr += wrote; *len -= wrote;
+			}
+			for (k = 0; k < sizeof(texts) / sizeof(texts[0]); k++) {
+				lwc_string *text = NULL;
+				val = texts[k].get(style, &text);
+				if (val == CSS_ONYX_TEXT_SET && text != NULL) {
+					wrote = snprintf(ptr, *len, "%s: %.*s\n", texts[k].name,
+							(int) lwc_string_length(text),
+							lwc_string_data(text));
+					ptr += wrote; *len -= wrote;
+				}
+			}
+			val = css_computed_grid_auto_flow(style);
+			if (val != CSS_GRID_AUTO_FLOW_ROW && val < 5) {
+				wrote = snprintf(ptr, *len, "grid-auto-flow: %s\n", flow[val]);
+				ptr += wrote; *len -= wrote;
+			}
+			if (css_computed_display(style, false) == CSS_DISPLAY_CONTENTS) {
+				wrote = snprintf(ptr, *len, "display: contents\n");
+				ptr += wrote; *len -= wrote;
+			}
+		}
+	}
 }
 

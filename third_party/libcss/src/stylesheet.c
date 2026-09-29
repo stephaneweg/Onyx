@@ -837,6 +837,18 @@ css_error css__stylesheet_selector_create(css_stylesheet *sheet,
  * \param selector  The selector to destroy
  * \return CSS_OK on success, appropriate error otherwise
  */
+/* Onyx: destroy a :is() / :where() / :not() selector list */
+void css__onyx_selector_list_destroy(css_stylesheet *sheet, css_onyx_selector_list *list)
+{
+	uint32_t i;
+
+	if (list == NULL)
+		return;
+	for (i = 0; i < list->n; i++)
+		css__stylesheet_selector_destroy(sheet, list->sel[i]);
+	free(list);
+}
+
 css_error css__stylesheet_selector_destroy(css_stylesheet *sheet,
 		css_selector *selector)
 {
@@ -862,6 +874,9 @@ css_error css__stylesheet_selector_destroy(css_stylesheet *sheet,
 					detail->value.string != NULL) {
 				lwc_string_unref(detail->value.string);
 			}
+			if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_LIST)
+				css__onyx_selector_list_destroy(sheet,
+						detail->value.list);
 
 			if (detail->next)
 				detail++;
@@ -880,6 +895,8 @@ css_error css__stylesheet_selector_destroy(css_stylesheet *sheet,
 				detail->value.string != NULL) {
 			lwc_string_unref(detail->value.string);
 		}
+		if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_LIST)
+			css__onyx_selector_list_destroy(sheet, detail->value.list);
 
 		if (detail->next)
 			detail++;
@@ -981,8 +998,15 @@ css_error css__stylesheet_selector_append_specific(css_stylesheet *sheet,
 
 	/* Update parent's specificity */
 	switch (detail->type) {
-	case CSS_SELECTOR_CLASS:
 	case CSS_SELECTOR_PSEUDO_CLASS:
+		/* Onyx: :is() / :not() count as their most specific selector,
+		 * :where() as nothing */
+		if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_LIST) {
+			(*parent)->specificity += detail->value.list->specificity;
+			break;
+		}
+		/* Fall through */
+	case CSS_SELECTOR_CLASS:
 	case CSS_SELECTOR_ATTRIBUTE:
 	case CSS_SELECTOR_ATTRIBUTE_EQUAL:
 	case CSS_SELECTOR_ATTRIBUTE_DASHMATCH:

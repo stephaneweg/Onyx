@@ -73,6 +73,7 @@
 #include "netsurf/bitmap.h"
 #include "content/content.h"
 #include "netsurf/plotters.h"
+#include "netsurf/onyx_paint.h"	/* Onyx */
 
 #include "desktop/gui_internal.h"
 #include "desktop/knockout.h"
@@ -543,8 +544,12 @@ knockout_plot_rectangle(const struct redraw_context *ctx,
 			return NSERROR_OK;
 		}
 
-		/* fills both knock out and get knocked out */
-		knockout_calculate(ctx, kx0, ky0, kx1, ky1, NULL);
+		/* fills both knock out and get knocked out -- Onyx: but a translucent
+		 * one (rgba: the colour's top byte, its transparency, not 0) shows what
+		 * is under it, so it knocks nothing out (else the page's background under
+		 * it is never drawn, and it is blended over the screen's old pixels) */
+		if ((pstyle->fill_colour & 0xff000000) == 0)
+			knockout_calculate(ctx, kx0, ky0, kx1, ky1, NULL);
 		knockout_boxes[knockout_box_cur].bbox = *rect;
 		knockout_boxes[knockout_box_cur].deleted = false;
 		knockout_boxes[knockout_box_cur].child = NULL;
@@ -1009,6 +1014,49 @@ bool knockout_plot_end(const struct redraw_context *ctx)
 /**
  * knockout plotter operation table
  */
+/* Onyx: the CSS3 painting (netsurf/onyx_paint.h): what is queued is drawn first, then
+ * these, straight away, in the current clip -- they blend over what is under them, so they
+ * neither knock out nor are knocked out */
+
+static nserror knockout_plot_onyx_shape(const struct redraw_context *ctx,
+		const struct onyx_shape *shape)
+{
+	nserror res = knockout_plot_flush(ctx);
+	if (res != NSERROR_OK || real_plot.onyx_shape == NULL)
+		return res;
+	res = real_plot.clip(ctx, &clip_cur);
+	if (res != NSERROR_OK)
+		return res;
+	return real_plot.onyx_shape(ctx, shape);
+}
+
+static nserror knockout_plot_onyx_round_clip(const struct redraw_context *ctx,
+		const struct onyx_rrect *r)
+{
+	nserror res = knockout_plot_flush(ctx);
+	if (res != NSERROR_OK || real_plot.onyx_round_clip == NULL)
+		return res;
+	res = real_plot.clip(ctx, &clip_cur);
+	if (res != NSERROR_OK)
+		return res;
+	return real_plot.onyx_round_clip(ctx, r);
+}
+
+static nserror knockout_plot_onyx_text_paint(const struct redraw_context *ctx,
+		const struct plot_font_style *fstyle, int x, int y,
+		const char *text, size_t length, const struct onyx_paint *paint)
+{
+	nserror res = knockout_plot_flush(ctx);
+	if (res != NSERROR_OK)
+		return res;
+	res = real_plot.clip(ctx, &clip_cur);
+	if (res != NSERROR_OK)
+		return res;
+	if (real_plot.onyx_text_paint == NULL)
+		return real_plot.text(ctx, fstyle, x, y, text, length);
+	return real_plot.onyx_text_paint(ctx, fstyle, x, y, text, length, paint);
+}
+
 const struct plotter_table knockout_plotters = {
 	.rectangle = knockout_plot_rectangle,
 	.line = knockout_plot_line,
@@ -1022,5 +1070,8 @@ const struct plotter_table knockout_plotters = {
 	.group_end = knockout_plot_group_end,
 	.flush = knockout_plot_flush,
 	.path = knockout_plot_path,
+	.onyx_shape = knockout_plot_onyx_shape,		/* Onyx */
+	.onyx_round_clip = knockout_plot_onyx_round_clip,
+	.onyx_text_paint = knockout_plot_onyx_text_paint,
 	.option_knockout = true,
 };

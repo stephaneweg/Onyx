@@ -68,6 +68,30 @@ bool layout_flex(
 		int available_width,
 		html_content *content);
 
+/**
+ * Onyx: layout a grid container (a BOX_FLEX / BOX_INLINE_FLEX whose display is grid or
+ * inline-grid; layout_flex() hands it over). See layout_grid.c.
+ *
+ * \param[in] grid             grid container to layout
+ * \param[in] available_width  width of containing block
+ * \param[in] content          memory pool for any new boxes
+ * eturn  true on success, false on memory exhaustion
+ */
+bool layout_grid(
+		struct box *grid,
+		int available_width,
+		html_content *content);
+
+/**
+ * Onyx: a grid container's min-content / max-content widths (its content box), from its
+ * items' (already computed) min / max widths.
+ */
+void layout_minmax_grid(
+		struct box *grid,
+		const css_unit_ctx *unit_len_ctx,
+		int *min_width,
+		int *max_width);
+
 typedef uint8_t (*css_len_func)(
 		const css_computed_style *style,
 		css_fixed *length, css_unit *unit);
@@ -110,10 +134,24 @@ static inline bool lh__box_is_inline_flow(const struct box *b)
 }
 
 /** Layout helper: Check whether box takes part in inline flow. */
+/** Onyx: a grid container is a flex-like box whose display is grid / inline-grid. */
+static inline bool lh__box_is_grid(const struct box *b)
+{
+	uint8_t d;
+
+	if (b->style == NULL ||
+	    (b->type != BOX_FLEX && b->type != BOX_INLINE_FLEX))
+		return false;
+	d = css_computed_display_static(b->style);
+	return d == CSS_DISPLAY_GRID || d == CSS_DISPLAY_INLINE_GRID;
+}
+
+/** (Onyx: a grid container is not a flex container) */
 static inline bool lh__box_is_flex_container(const struct box *b)
 {
-	return b->type == BOX_FLEX ||
-	       b->type == BOX_INLINE_FLEX;
+	return (b->type == BOX_FLEX ||
+	        b->type == BOX_INLINE_FLEX) &&
+	       !lh__box_is_grid(b);
 }
 
 /** Layout helper: Check whether box takes part in inline flow. */
@@ -228,6 +266,37 @@ static inline int lh__delta_outer_main(
 	} else {
 		return lh__delta_outer_height(b);
 	}
+}
+
+/**
+ * Onyx: a flex container's gap, in px: between its items (main) or its lines (cross) --
+ * column-gap between columns, row-gap between rows; "normal" is 0 in a flex container;
+ * a percentage of `avail` (unknown when -1: 0).
+ */
+static inline int lh__flex_gap(
+		const css_unit_ctx *unit_len_ctx,
+		const struct box *flex,
+		bool main,
+		int avail)
+{
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+	uint8_t type;
+	int px;
+
+	if (flex->style == NULL)
+		return 0;
+	if (main == lh__flex_main_is_horizontal(flex))
+		type = css_computed_column_gap(flex->style, &len, &unit);
+	else
+		type = css_computed_row_gap(flex->style, &len, &unit);
+	if (type != CSS_COLUMN_GAP_SET)		/* (CSS_ROW_GAP_SET too) */
+		return 0;
+	if (unit == CSS_UNIT_PCT)
+		return avail > 0 ? FPCT_OF_INT_TOINT(len, avail) : 0;
+	px = FIXTOINT(css_unit_len2device_px(flex->style, unit_len_ctx,
+			len, unit));
+	return px > 0 ? px : 0;
 }
 
 static inline int lh__delta_outer_cross(
@@ -619,6 +688,11 @@ static inline void layout_find_dimensions(
 			/* Inadmissible */
 			*max_height = -1;
 		}
+
+		/* Onyx: box-sizing (a border-box max-height holds the padding) */
+		if (*max_height > 0)
+			layout_handle_box_sizing(unit_len_ctx, box,
+					available_width, false, max_height);
 	}
 
 	if (min_height) {
@@ -641,6 +715,12 @@ static inline void layout_find_dimensions(
 			/* Inadmissible */
 			*min_height = 0;
 		}
+
+		/* Onyx: box-sizing (a border-box min-height holds the padding: a
+		 * min-height: 48px button with its padding is 48 px tall, no more) */
+		if (*min_height > 0)
+			layout_handle_box_sizing(unit_len_ctx, box,
+					available_width, false, min_height);
 	}
 
 	for (i = 0; i != 4; i++) {

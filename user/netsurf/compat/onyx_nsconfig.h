@@ -38,6 +38,27 @@
 #define NETSURF_FB_FONTPATH "/res/fonts"
 #endif
 
+/* the user's own files -- the pages visited (History, the History dialog) and the cookies
+ * (Cookies) -- on the card beside the app: SD:/apps/netsurf.app/ (never committed: see
+ * .gitignore). The PC bench (tools/tests/netsurf/host.mk) sets its own. */
+#ifndef ONYX_NS_DATAPATH
+#define ONYX_NS_DATAPATH "/apps/netsurf.app/"
+#endif
+
+/* the fonts (FreeType, frontends/framebuffer/font_freetype.c): DejaVu, in /res/fonts
+ * (third_party/dejavu-fonts-ttf-2.37, staged by netsurf-app.mk). Cursive / fantasy: none
+ * shipped, they fall back to the sans-serif face. */
+#define NETSURF_FB_FONT_SANS_SERIF "DejaVuSans.ttf"
+#define NETSURF_FB_FONT_SANS_SERIF_BOLD "DejaVuSans-Bold.ttf"
+#define NETSURF_FB_FONT_SANS_SERIF_ITALIC "DejaVuSans-Oblique.ttf"
+#define NETSURF_FB_FONT_SANS_SERIF_ITALIC_BOLD "DejaVuSans-BoldOblique.ttf"
+#define NETSURF_FB_FONT_SERIF "DejaVuSerif.ttf"
+#define NETSURF_FB_FONT_SERIF_BOLD "DejaVuSerif-Bold.ttf"
+#define NETSURF_FB_FONT_MONOSPACE "DejaVuSansMono.ttf"
+#define NETSURF_FB_FONT_MONOSPACE_BOLD "DejaVuSansMono-Bold.ttf"
+#define NETSURF_FB_FONT_CURSIVE "DejaVuSerif-Italic.ttf"
+#define NETSURF_FB_FONT_FANTASY "DejaVuSans-Bold.ttf"
+
 /* build-user identity the buildsystem -D's into about:testament (privacy: keep blank) */
 #ifndef GECOS
 #define GECOS "Onyx"

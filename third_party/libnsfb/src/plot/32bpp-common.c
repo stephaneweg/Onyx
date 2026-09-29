@@ -28,6 +28,24 @@ static bool fill(nsfb_t *nsfb, nsfb_bbox_t *rect, nsfb_colour_t c)
 
         pvid = get_xy_loc(nsfb, rect->x0, rect->y0);
 
+        /* Onyx: a translucent colour is blended */
+        if (colour_opacity(c) != 255) {
+                uint32_t a = colour_opacity(c), ia = 255 - a;
+                uint32_t sr = (c & 0xff) * a, sg = ((c >> 8) & 0xff) * a;
+                uint32_t sb = ((c >> 16) & 0xff) * a;
+                while (height-- > 0) {
+                        for (w = width; w > 0; w--, pvid++) {
+                                nsfb_colour_t d = pixel_to_colour(nsfb, *pvid);
+                                uint32_t r = (sr + (d & 0xff) * ia + 127) / 255;
+                                uint32_t g = (sg + ((d >> 8) & 0xff) * ia + 127) / 255;
+                                uint32_t b = (sb + ((d >> 16) & 0xff) * ia + 127) / 255;
+                                *pvid = colour_to_pixel(nsfb, r | (g << 8) | (b << 16));
+                        }
+                        pvid += llen;
+                }
+                return true;
+        }
+
         while (height-- > 0) {
                 w = width;
                 while (w >= 16) {

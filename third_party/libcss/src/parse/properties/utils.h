@@ -252,4 +252,12 @@ css_error css__parse_calc(css_language *c,
 		css_style *result,
 		css_code_t OPV,
 		uint32_t unit);
+
+/* Onyx: the CSS Color 4 / 5 functions (oklab, oklch, lab, lch, color, color-mix): parse
+ * the arguments of function `fn` (its token consumed) into *result (0xAARRGGBB). */
+bool css__onyx_parse_colour_fn(css_language *c, lwc_string *fn,
+		const parserutils_vector *vector, int32_t *ctx, uint32_t *result);
+
+/* Onyx: is the token a calc() / min() / max() / clamp() function (a calc expression)? */
+bool css__is_calc_function(css_language *c, const css_token *token);
 #endif

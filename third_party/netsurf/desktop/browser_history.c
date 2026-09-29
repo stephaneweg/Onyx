@@ -378,20 +378,11 @@ browser_window_history_add(struct browser_window *bw,
 	entry->page.scroll_x = 0.0f;
 	entry->page.scroll_y = 0.0f;
 
-	/* create thumbnail for localhistory view */
-	NSLOG(netsurf, DEBUG,
-	      "Creating thumbnail for %s", nsurl_access(entry->page.url));
-
-	entry->page.bitmap = guit->bitmap->create(
-			LOCAL_HISTORY_WIDTH, LOCAL_HISTORY_HEIGHT,
-			BITMAP_CLEAR | BITMAP_OPAQUE);
-	if (entry->page.bitmap != NULL) {
-		ret = guit->bitmap->render(entry->page.bitmap, content);
-		if (ret != NSERROR_OK) {
-			/* Thumbnail render failed */
-			NSLOG(netsurf, WARNING, "Thumbnail render failed");
-		}
-	}
+	/* Onyx: no thumbnail for the local history view -- the history is a native
+	 * list (user/netsurf/onyx_chrome.cpp) and a thumbnail costs a whole render of
+	 * the page each time one is visited (and again when it is left) */
+	entry->page.bitmap = NULL;
+	(void) ret;
 
 	/* insert into tree */
 	entry->back = history->current;

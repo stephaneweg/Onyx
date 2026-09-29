@@ -810,7 +810,11 @@ box_button(dom_node *n,
 	box->flags |= IS_REPLACED;
 	gadget->box = box;
 
-	box->type = BOX_INLINE_BLOCK;
+	/* Onyx: a flex / grid button keeps its box (its children are its items), a
+	 * blockified one (a flex / grid item) stays a block; else an inline-block */
+	if (box->type != BOX_FLEX && box->type != BOX_INLINE_FLEX &&
+	    box->type != BOX_BLOCK)
+		box->type = BOX_INLINE_BLOCK;
 
 	/* Just render the contents */
 

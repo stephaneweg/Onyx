@@ -100,6 +100,9 @@ struct flex_ctx {
 	int available_main;
 	int available_cross;
 
+	int main_gap;		/* Onyx: the gap between items, and between lines */
+	int cross_gap;
+
 	bool horizontal;
 	bool main_reversed;
 	enum css_flex_wrap_e wrap;
@@ -250,6 +253,30 @@ static bool layout_flex_item(
 }
 
 /**
+ * Onyx: whether a flex item's minimum main size is automatic (CSS Flexbox 4.5): its
+ * min-width (min-height in a column) is auto and it is not a scroll container.
+ */
+static bool layout_flex__min_main_is_auto(
+		const struct flex_ctx *ctx,
+		const struct box *b)
+{
+	css_fixed value = 0;
+	css_unit unit = CSS_UNIT_PX;
+
+	if (b->style == NULL)
+		return true;
+	if (ctx->horizontal) {
+		return css_computed_min_width(b->style, &value, &unit) ==
+				CSS_MIN_WIDTH_AUTO &&
+		       css_computed_overflow_x(b->style) ==
+				CSS_OVERFLOW_VISIBLE;
+	}
+	return css_computed_min_height(b->style, &value, &unit) ==
+			CSS_MIN_HEIGHT_AUTO &&
+	       css_computed_overflow_y(b->style) == CSS_OVERFLOW_VISIBLE;
+}
+
+/**
  * Calculate an item's base and target main sizes.
  *
  * \param[in] ctx              Flex layout context
@@ -312,7 +339,33 @@ static inline bool layout_flex__base_and_main_sizes(
 
 	if (ctx->horizontal) {
 		item->base_size = min(item->base_size, available_width);
-		item->base_size = max(item->base_size, content_min_width);
+	}
+
+	/* Onyx: the automatic minimum size (CSS Flexbox 4.5) floors the item's main size
+	 * (min_main), not its flex base size. In a row: its min-content width, but no more
+	 * than its specified width (a width: 64px item holding a 512 px image stays 64 px
+	 * wide) nor its max-width; in a column: its content's height (when its height is
+	 * auto). */
+	if (layout_flex__min_main_is_auto(ctx, b)) {
+		int auto_min = -1;
+
+		if (ctx->horizontal) {
+			auto_min = content_min_width - delta_outer_main;
+			if (b->width != AUTO && b->width < auto_min)
+				auto_min = b->width;
+		} else if (b->height != AUTO && b->style != NULL) {
+			css_fixed h = 0;
+			css_unit hu = CSS_UNIT_PX;
+			if (css_computed_height(b->style, &h, &hu) ==
+					CSS_HEIGHT_AUTO)
+				auto_min = b->height;	/* (laid out above) */
+		}
+		if (auto_min >= 0) {
+			if (item->max_main > 0 && item->max_main < auto_min)
+				auto_min = item->max_main;
+			if (auto_min > item->min_main)
+				item->min_main = auto_min;
+		}
 	}
 
 	item->target_main_size = item->base_size;
@@ -404,6 +457,24 @@ static bool layout_flex_ctx__ensure_line(struct flex_ctx *ctx)
 }
 
 /**
+ * Onyx: the gaps on a line: between its in-flow items.
+ */
+static int layout_flex__line_gaps(
+		const struct flex_ctx *ctx,
+		const struct flex_line_data *line)
+{
+	size_t item_count = line->first + line->count;
+	int n = 0;
+
+	for (size_t i = line->first; i < item_count; i++) {
+		if (!lh__box_is_absolute(ctx->item.data[i].box)) {
+			n++;
+		}
+	}
+	return n > 1 ? (n - 1) * ctx->main_gap : 0;
+}
+
+/**
  * Assigns flex items to the line and returns the line
  *
  * \param[in] ctx         Flex layout context
@@ -432,20 +503,21 @@ static struct flex_line_data *layout_flex__build_line(struct flex_ctx *ctx,
 		struct flex_item_data *item = &ctx->item.data[item_index];
 		struct box *b = item->box;
 		int pos_main;
+		int gap = used_main > 0 ? ctx->main_gap : 0;	/* Onyx */
 
 		pos_main = ctx->horizontal ?
 				item->main_size :
 				b->height + lh__delta_outer_main(ctx->flex, b);
 
 		if (ctx->wrap == CSS_FLEX_WRAP_NOWRAP ||
-		    pos_main + used_main <= ctx->available_main ||
+		    gap + pos_main + used_main <= ctx->available_main ||
 		    lh__box_is_absolute(item->box) ||
 		    ctx->available_main == AUTO ||
 		    line->count == 0 ||
 		    pos_main == 0) {
 			if (lh__box_is_absolute(item->box) == false) {
-				line->main_size += item->main_size;
-				used_main += pos_main;
+				line->main_size += gap + item->main_size;
+				used_main += gap + pos_main;
 
 				if (b->margin[start_side] == AUTO) {
 					line->main_auto_margin_count++;
@@ -571,26 +643,25 @@ static inline int layout_flex__get_min_max_violations(
 			continue;
 		}
 
+		/* Onyx: the target is an outer size, min_main / max_main content
+		 * box ones; and min_main holds the automatic minimum size (see
+		 * layout_flex__base_and_main_sizes), so no more floor at the box's
+		 * min-content width here */
+		int delta = lh__delta_outer_main(ctx->flex, item->box);
+
 		if (item->max_main > 0 &&
-		    target_main_size > item->max_main) {
-			target_main_size = item->max_main;
+		    target_main_size > item->max_main + delta) {
+			target_main_size = item->max_main + delta;
 			item->max_violation = true;
 			NSLOG(flex, DEEPDEBUG, "Violation: max_main: %i",
 					item->max_main);
 		}
 
-		if (target_main_size < item->min_main) {
-			target_main_size = item->min_main;
+		if (target_main_size < item->min_main + delta) {
+			target_main_size = item->min_main + delta;
 			item->min_violation = true;
 			NSLOG(flex, DEEPDEBUG, "Violation: min_main: %i",
 					item->min_main);
-		}
-
-		if (target_main_size < item->box->min_width) {
-			target_main_size = item->box->min_width;
-			item->min_violation = true;
-			NSLOG(flex, DEEPDEBUG, "Violation: box min_width: %i",
-					item->box->min_width);
 		}
 
 		if (target_main_size < 0) {
@@ -709,14 +780,17 @@ static bool layout_flex__resolve_line(
 {
 	size_t item_count = line->first + line->count;
 	int available_main = ctx->available_main;
+	int gaps = layout_flex__line_gaps(ctx, line);	/* Onyx */
 	int initial_free_main;
 	bool grow;
 
 	if (available_main == AUTO) {
 		available_main = INT_MAX;
+	} else {
+		available_main -= gaps;
 	}
 
-	grow = (line->main_size < available_main);
+	grow = (line->main_size - gaps < available_main);
 	initial_free_main = available_main;
 
 	NSLOG(flex, DEEPDEBUG, "box %p: line %zu: first: %zu, count: %zu",
@@ -809,9 +883,19 @@ static bool layout_flex__place_line_items_main(
 	int main_pos = ctx->flex->padding[layout_flex__main_start_side(ctx)];
 	int post_multiplier = ctx->main_reversed ? 0 : 1;
 	int pre_multiplier = ctx->main_reversed ? -1 : 0;
+	int dir = ctx->main_reversed ? -1 : 1;
 	size_t item_count = line->first + line->count;
 	int extra_remainder = 0;
 	int extra = 0;
+	int gaps = layout_flex__line_gaps(ctx, line);
+	int in_flow = 0, placed = 0;
+	int lead = 0, between = 0, between_rem = 0;
+
+	for (size_t i = line->first; i < item_count; i++) {
+		if (!lh__box_is_absolute(ctx->item.data[i].box)) {
+			in_flow++;
+		}
+	}
 
 	if (ctx->main_reversed) {
 		main_pos = lh__box_size_main(ctx->horizontal, ctx->flex) -
@@ -820,13 +904,57 @@ static bool layout_flex__place_line_items_main(
 
 	if (ctx->available_main != AUTO &&
 	    ctx->available_main != UNKNOWN_WIDTH &&
-	    ctx->available_main > line->used_main_size) {
+	    ctx->available_main > line->used_main_size + gaps) {
 		if (line->main_auto_margin_count > 0) {
-			extra = ctx->available_main - line->used_main_size;
+			extra = ctx->available_main - line->used_main_size -
+					gaps;
 
 			extra_remainder = extra % line->main_auto_margin_count;
 			extra /= line->main_auto_margin_count;
 		}
+	}
+
+	/* Onyx: justify-content -- the free space not taken by auto margins,
+	 * before the items (flex-end, center) or between them (space-*) */
+	if (line->main_auto_margin_count == 0 &&
+	    ctx->available_main != AUTO &&
+	    ctx->available_main != UNKNOWN_WIDTH &&
+	    ctx->flex->style != NULL && in_flow > 0) {
+		int free = ctx->available_main - line->used_main_size - gaps;
+
+		switch (css_computed_justify_content(ctx->flex->style)) {
+		case CSS_JUSTIFY_CONTENT_FLEX_END:
+			lead = free;
+			break;
+		case CSS_JUSTIFY_CONTENT_CENTER:
+			lead = free / 2;
+			break;
+		case CSS_JUSTIFY_CONTENT_SPACE_BETWEEN:
+			if (free > 0 && in_flow > 1) {
+				between = free / (in_flow - 1);
+				between_rem = free % (in_flow - 1);
+			}
+			break;
+		case CSS_JUSTIFY_CONTENT_SPACE_AROUND:
+			if (free > 0) {
+				between = free / in_flow;
+				lead = between / 2;
+			} else {
+				lead = free / 2;
+			}
+			break;
+		case CSS_JUSTIFY_CONTENT_SPACE_EVENLY:
+			if (free > 0) {
+				between = free / (in_flow + 1);
+				lead = between;
+			} else {
+				lead = free / 2;
+			}
+			break;
+		default:
+			break;
+		}
+		main_pos += dir * lead;
 	}
 
 	for (size_t i = line->first; i < item_count; i++) {
@@ -878,6 +1006,16 @@ static bool layout_flex__place_line_items_main(
 					(extra_total + box_size_main +
 					 lh__delta_outer_main(ctx->flex, b));
 
+			/* Onyx: the gap (and the space-* share) to the next */
+			if (++placed < in_flow) {
+				int step = ctx->main_gap + between;
+				if (between_rem > 0) {
+					step++;
+					between_rem--;
+				}
+				main_pos += dir * step;
+			}
+
 			cross_size = box_size_cross + lh__delta_outer_cross(
 					ctx->flex, b);
 			if (line->cross_size < cross_size) {
@@ -927,6 +1065,11 @@ static bool layout_flex__collect_items_into_lines(
 		if (ctx->main_size < line->main_size) {
 			ctx->main_size = line->main_size;
 		}
+	}
+
+	/* Onyx: the gaps between the lines */
+	if (ctx->line.count > 1) {
+		ctx->cross_size += (int) (ctx->line.count - 1) * ctx->cross_gap;
 	}
 
 	return true;
@@ -1003,34 +1146,83 @@ static void layout_flex__place_line_items_cross(struct flex_ctx *ctx,
 static void layout_flex__place_lines(struct flex_ctx *ctx)
 {
 	bool reversed = ctx->wrap == CSS_FLEX_WRAP_WRAP_REVERSE;
-	int line_pos = reversed ? ctx->cross_size : 0;
 	int post_multiplier = reversed ? 0 : 1;
 	int pre_multiplier = reversed ? -1 : 0;
+	int dir = reversed ? -1 : 1;
+	size_t n = ctx->line.count;
 	int extra_remainder = 0;
 	int extra = 0;
+	int free = 0;
+	int lead = 0, between = 0, between_rem = 0;
+	int line_pos;
 
 	if (ctx->available_cross != AUTO &&
 	    ctx->available_cross > ctx->cross_size &&
-	    ctx->line.count > 0) {
-		extra = ctx->available_cross - ctx->cross_size;
+	    n > 0) {
+		free = ctx->available_cross - ctx->cross_size;
+	}
+	line_pos = reversed ? ctx->cross_size + free : 0;
 
-		extra_remainder = extra % ctx->line.count;
-		extra /= ctx->line.count;
+	/* Onyx: align-content -- the free cross space shared by the lines
+	 * (stretch, the default), or before / between them; a single line
+	 * takes it all (and aligns its items in it: align-items) */
+	if (free > 0) {
+		uint8_t ac = CSS_ALIGN_CONTENT_STRETCH;
+
+		if (n > 1 && ctx->flex->style != NULL) {
+			ac = css_computed_align_content(ctx->flex->style);
+		}
+		switch (ac) {
+		case CSS_ALIGN_CONTENT_FLEX_START:
+			break;
+		case CSS_ALIGN_CONTENT_FLEX_END:
+			lead = free;
+			break;
+		case CSS_ALIGN_CONTENT_CENTER:
+			lead = free / 2;
+			break;
+		case CSS_ALIGN_CONTENT_SPACE_BETWEEN:
+			between = free / (int) (n - 1);
+			between_rem = free % (int) (n - 1);
+			break;
+		case CSS_ALIGN_CONTENT_SPACE_AROUND:
+			between = free / (int) n;
+			lead = between / 2;
+			break;
+		case CSS_ALIGN_CONTENT_SPACE_EVENLY:
+			between = free / (int) (n + 1);
+			lead = between;
+			break;
+		default:
+			extra = free / (int) n;
+			extra_remainder = free % (int) n;
+			break;
+		}
 	}
 
-	for (size_t i = 0; i < ctx->line.count; i++) {
+	line_pos += dir * lead;
+	for (size_t i = 0; i < n; i++) {
 		struct flex_line_data *line = &ctx->line.data[i];
-
-		line_pos += pre_multiplier * line->cross_size;
-		line->pos = line_pos;
-		line_pos += post_multiplier * line->cross_size +
-				extra + extra_remainder;
-
-		layout_flex__place_line_items_cross(ctx, line,
-				extra + extra_remainder);
+		int share = extra;
 
 		if (extra_remainder > 0) {
+			share++;
 			extra_remainder--;
+		}
+
+		line_pos += pre_multiplier * (line->cross_size + share);
+		line->pos = line_pos;
+		line_pos += post_multiplier * (line->cross_size + share);
+
+		layout_flex__place_line_items_cross(ctx, line, share);
+
+		if (i + 1 < n) {
+			int step = ctx->cross_gap + between;
+			if (between_rem > 0) {
+				step++;
+				between_rem--;
+			}
+			line_pos += dir * step;
 		}
 	}
 }
@@ -1049,6 +1241,11 @@ bool layout_flex(struct box *flex, int available_width,
 	int max_height, min_height;
 	struct flex_ctx *ctx;
 	bool success = false;
+
+	/* Onyx: a grid container is a flex-like box; its layout is layout_grid.c's */
+	if (lh__box_is_grid(flex)) {
+		return layout_grid(flex, available_width, content);
+	}
 
 	ctx = layout_flex_ctx__create(content, flex);
 	if (ctx == NULL) {
@@ -1080,12 +1277,50 @@ bool layout_flex(struct box *flex, int available_width,
 	NSLOG(flex, DEEPDEBUG, "box %p: available_cross: %i",
 			flex, ctx->available_cross);
 
+	/* Onyx: the gaps (gap, row-gap, column-gap) */
+	ctx->main_gap = lh__flex_gap(ctx->unit_len_ctx, flex, true,
+			ctx->horizontal ? available_width : -1);
+	ctx->cross_gap = lh__flex_gap(ctx->unit_len_ctx, flex, false,
+			ctx->horizontal ? -1 : available_width);
+
 	layout_flex_ctx__populate_item_data(ctx, flex, available_width);
 
 	/* Place items onto lines. */
 	success = layout_flex__collect_items_into_lines(ctx);
 	if (!success) {
 		goto cleanup;
+	}
+
+	/* Onyx: an auto height is the content's, but within min-height and
+	 * max-height -- and the items are aligned in that height: a row's lines
+	 * share its cross size (a min-height: 48px button centres its text); a
+	 * column's items are justified in it (a min-height: 100vh hero centres its
+	 * content) */
+	if (flex->height == AUTO) {
+		int used = ctx->horizontal ? ctx->cross_size : ctx->main_size;
+		int content = used;
+
+		if (max_height >= 0 && used > max_height) {
+			used = max_height;
+		}
+		if (min_height > 0 && used < min_height) {
+			used = min_height;
+		}
+		if (used != content) {
+			if (ctx->horizontal) {
+				ctx->available_cross = used;
+			} else {
+				ctx->available_main = used;
+				for (size_t i = 0; i < ctx->line.count; i++) {
+					if (!layout_flex__place_line_items_main(
+							ctx, &ctx->line.data[i])) {
+						success = false;
+						goto cleanup;
+					}
+				}
+				ctx->main_size = used;
+			}
+		}
 	}
 
 	layout_flex__place_lines(ctx);

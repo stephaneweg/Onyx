@@ -13,6 +13,7 @@
 
 #include "select/properties/properties.h"
 #include "select/properties/helpers.h"
+#include "select/onyx_calc.h"
 
 css_error css__cascade_font_size(uint32_t opv, css_style *style,
 		css_select_state *state)
@@ -60,9 +61,13 @@ css_error css__cascade_font_size(uint32_t opv, css_style *style,
 			value = CSS_FONT_SIZE_SMALLER;
 			break;
 		case FONT_SIZE_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() / clamp() folded now (select/onyx_calc.c), else ignored:
+			 * em and % stay relative to the parent's size */
+			if (css__onyx_calc_fold(style, state, &size, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER || size < 0)
+				return CSS_OK;
+			value = CSS_FONT_SIZE_DIMENSION;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;

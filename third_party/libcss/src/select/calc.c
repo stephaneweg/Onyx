@@ -268,6 +268,22 @@ css_error css_calculator_calculate(css_calculator *calc,
 			CALC_PUSH(u_left, v_left);
 			break;
 		}
+		case CALC_MIN: /* fallthrough */
+		case CALC_MAX: {
+			/* Onyx: min() / max() (clamp() is a max of a min) */
+			unit u_left, u_right;
+			css_fixed v_left, v_right;
+			CALC_POP(u_right, v_right);
+			CALC_POP(u_left, v_left);
+			if (u_left != u_right) {
+				return CSS_INVALID;
+			}
+			if ((op == CALC_MIN) ? (v_right < v_left) : (v_right > v_left)) {
+				v_left = v_right;
+			}
+			CALC_PUSH(u_left, v_left);
+			break;
+		}
 		case CALC_FINISH: /* Should not happen */
 		default:
 			return CSS_INVALID;

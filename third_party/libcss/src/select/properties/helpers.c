@@ -15,6 +15,7 @@
 #include "utils/utils.h"
 
 #include "select/properties/helpers.h"
+#include "select/onyx_calc.h"
 
 /******************************************************************************
  * Utilities below here							      *
@@ -166,9 +167,12 @@ css_error css__cascade_border_width(uint32_t opv, css_style *style,
 			value = CSS_BORDER_WIDTH_THICK;
 			break;
 		case BORDER_WIDTH_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER)
+				return CSS_OK;
+			value = CSS_BORDER_WIDTH_WIDTH;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;
@@ -207,9 +211,12 @@ css_error css__cascade_length_auto(uint32_t opv, css_style *style,
 			value = CSS_BOTTOM_AUTO;
 			break;
 		case BOTTOM_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER)
+				return CSS_OK;
+			value = CSS_BOTTOM_SET;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;
@@ -292,9 +299,12 @@ css_error css__cascade_length_normal(uint32_t opv, css_style *style,
 			value = CSS_LETTER_SPACING_NORMAL;
 			break;
 		case LETTER_SPACING_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER)
+				return CSS_OK;
+			value = CSS_LETTER_SPACING_SET;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;
@@ -333,9 +343,12 @@ css_error css__cascade_length_none(uint32_t opv, css_style *style,
 			value = CSS_MAX_HEIGHT_NONE;
 			break;
 		case MAX_HEIGHT_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER)
+				return CSS_OK;
+			value = CSS_MAX_HEIGHT_SET;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;
@@ -371,9 +384,12 @@ css_error css__cascade_length(uint32_t opv, css_style *style,
 			advance_bytecode(style, sizeof(unit));
 			break;
 		case MIN_HEIGHT_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+					unit == UNIT_CALC_NUMBER)
+				return CSS_OK;
+			value = CSS_MIN_HEIGHT_SET;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;
@@ -408,9 +424,15 @@ css_error css__cascade_number(uint32_t opv, css_style *style,
 			advance_bytecode(style, sizeof(length));
 			break;
 		case ORPHANS_CALC:
-			advance_bytecode(style, sizeof(unit));
-			advance_bytecode(style, sizeof(unit)); // TODO
-			return CSS_OK;
+			/* Onyx: calc() folded now (select/onyx_calc.c), else ignored */
+			{
+				uint32_t unit;
+				if (css__onyx_calc_fold(style, state, &length, &unit) != CSS_OK ||
+						unit != UNIT_CALC_NUMBER)
+					return CSS_OK;
+			}
+			value = 0;
+			break;
 		default:
 			assert(0 && "Invalid value");
 			break;
