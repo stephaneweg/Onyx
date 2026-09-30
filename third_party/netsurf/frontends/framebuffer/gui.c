@@ -32,6 +32,7 @@
 
 #include "utils/utils.h"
 #include "utils/nsoption.h"
+#include "utils/useragent.h"	/* (Onyx: "Desktop Site") */
 #include "utils/filepath.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -2452,6 +2453,30 @@ void onyx_browser_reload(void)
 #endif
 	if (window_list != NULL)
 		browser_window_reload(window_list->bw, true);
+}
+
+/* Onyx: the page's site in its desktop version or back to the mobile one (the menu's
+ * "Desktop Site / Mobile Site"; the list is kept on the card: utils/useragent.c), then the
+ * page loaded again with the other User-Agent */
+void onyx_browser_toggle_desktop(void)
+{
+	struct browser_window *bw;
+	nsurl *url;
+	lwc_string *host;
+
+	if (window_list == NULL)
+		return;
+	bw = window_list->bw;
+	url = browser_window_access_url(bw);
+	if (url == NULL)
+		return;
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host == NULL)
+		return;
+	user_agent_set_desktop(lwc_string_data(host),
+			!user_agent_is_desktop(lwc_string_data(host)));
+	lwc_string_unref(host);
+	browser_window_reload(bw, true);
 }
 
 void onyx_browser_stop(void)

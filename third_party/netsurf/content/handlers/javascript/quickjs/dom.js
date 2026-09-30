@@ -3607,7 +3607,7 @@ const navigator = {
 	productSub: '20030107',
 	vendor: 'Google Inc.',
 	vendorSub: '',
-	platform: 'Linux armv8l',
+	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux armv8l'; },	/* (Onyx: "Desktop site") */
 	language: 'fr-FR',
 	languages: ['fr-FR', 'fr', 'en-US', 'en'],
 	cookieEnabled: true,

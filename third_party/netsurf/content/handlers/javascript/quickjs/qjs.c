@@ -2641,7 +2641,15 @@ static JSValue n_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 
 static JSValue n_user_agent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-	return JS_NewString(ctx, user_agent_string());	/* (the HTTP requests' too) */
+	/* (the HTTP requests' too -- Onyx: the page's site's, desktop or mobile) */
+	jsthread *t = QJS_T(ctx);
+	nsurl *url = t != NULL && t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+	lwc_string *h = url != NULL ? nsurl_get_component(url, NSURL_HOST) : NULL;
+	JSValue r = JS_NewString(ctx, user_agent_for_host(h != NULL ? lwc_string_data(h) : NULL));
+
+	if (h != NULL)
+		lwc_string_unref(h);
+	return r;
 }
 
 

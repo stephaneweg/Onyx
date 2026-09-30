@@ -1112,6 +1112,13 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
   -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
   SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
+- **"Desktop Site / Mobile Site"** (the Navigate menu): the User-Agent is a mobile Chrome's
+  by default (the light pages of the big sites); a site the user switches gets a desktop
+  Chrome's (Windows) -- in its requests, its client hints (`sec-ch-ua-mobile`,
+  `sec-ch-ua-platform`) and its scripts' `navigator.userAgent` / `platform` -- and the page is
+  loaded again. The sites are kept on the card (`SD:/apps/netsurf.app/desktop-sites`, one
+  registrable domain a line: m.facebook.com and www.facebook.com are one site;
+  `user_agent_for_host`, utils/useragent.c).
 - **Media queries' range syntax** (libcss `src/parse/mq.c`, an upstream bug): with the name
   first (`(width >= 1012px)`) the stored value was the name itself and the operator was negated
   instead of having its sides swapped -- the query never matched: GitHub's Primer showed its

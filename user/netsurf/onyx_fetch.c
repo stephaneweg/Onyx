@@ -429,7 +429,14 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 	if (us != NULL && strcasecmp(lwc_string_data(us), "https") == 0) {
 		/* the client hints a Chrome sends everywhere on https (its version and whether
 		 * mobile from the User-Agent) */
-		const char *ua = user_agent_string(), *cv = strstr(ua, "Chrome/");
+		const char *ua, *cv;
+		{	/* (Onyx: the site's -- desktop or mobile: the toolbar's "Desktop site") */
+			lwc_string *hh = nsurl_get_component(url, NSURL_HOST);
+			ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
+			if (hh != NULL)
+				lwc_string_unref(hh);
+		}
+		cv = strstr(ua, "Chrome/");
 		char v[16] = "126", b[160];
 		int k;
 		if (cv != NULL) {
@@ -723,7 +730,7 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
 	}
 
-	req = onyx_request(c->method, path, host, port, c->tls, user_agent_string(),
+	req = onyx_request(c->method, path, host, port, c->tls, user_agent_for_host(host),
 			nsoption_charp(accept_language) != NULL ? nsoption_charp(accept_language) :
 			"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7", c->hdrs, c->body, false, &len);
 	if (req == NULL) {
@@ -1397,7 +1404,12 @@ static bool onyx_job_start(struct fetch_onyx_context *c)
 	j->method = strdup(c->method);
 	j->hdrs = c->hdrs != NULL ? strdup(c->hdrs) : NULL;
 	j->body = c->body != NULL ? strdup(c->body) : NULL;
-	j->ua = user_agent_string();
+	{	/* (Onyx: the host's -- "Desktop site") */
+		lwc_string *hh = nsurl_get_component(c->url, NSURL_HOST);
+		j->ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
+		if (hh != NULL)
+			lwc_string_unref(hh);
+	}
 	/* Onyx: a script's request may wait long for its answer (a long poll: a chat's server
 	 * holds it till something happens, a streamed response between its events) */
 	j->idle = c->script ? ONYX_SCRIPT_IDLE_TICKS : ONYX_IDLE_TICKS;
