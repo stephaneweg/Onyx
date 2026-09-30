@@ -821,12 +821,76 @@ pseudo-classes it does not know.
   tree (`attachShadow` returns the host, whose children are drawn), `<input type="image">`'s
   sizes, and what is out of this work: canvas, SVG, audio and video, WebRTC, WebGL.
 
+## 18. The big sites: memory, requests, events, early layout (bbc.co.uk, google.com, m.facebook.com)
+
+Found on the live sites with the PC bench, which now reaches the network (https through the
+PC's OpenSSL, an HTTPS proxy's CONNECT, JPEG and WebP decoded: `site.sh` draws a live site in
+NetSurf and in Chromium, `layoutdiff.sh` compares their boxes, `sitesweep.sh` loads a list of
+sites and counts crashes and script errors, `NS_MEMSTAT` prints the heap in use, `NS_JSDUMP`
+writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
+
+- **bbc.co.uk's "out of memory"**: its consent script bundles core-js, which replaced the
+  engine's `Promise` because `PromiseRejectionEvent` was missing, and its polyfill queued
+  microtasks for ever -- 1.5 GB in a minute on the PC. `PromiseRejectionEvent` exists; the
+  promises' jobs run 200 ms at most per turn and the rest a turn later (a runaway chain no longer
+  holds the window, `qjs_leave`); the scripts' heap is limited to 384 MB (an allocation past it
+  throws in the script instead of stopping the app). bbc.com now takes ~170 MB on the PC,
+  steady.
+- **The requests' Fetch Metadata** (`onyx_fetch.c`, `onyx_add_fetch_metadata`): Chrome's
+  `Sec-Fetch-Site` / `-Mode` / `-Dest` / `-User`, `Upgrade-Insecure-Requests`, an `Accept` by
+  destination and, on https, the User-Agent client hints (`sec-ch-ua`, `-mobile`,
+  `-platform`). m.facebook.com answered a navigation without `Sec-Fetch-Mode` with a 400 ("Sorry,
+  something went wrong"). The destination comes from what the caller accepts (`hlcache.c`: an
+  `X-Onyx-Dest` header the fetcher takes off; web fonts and script requests say theirs).
+- **Load and error events** of `<script src>` (run or failed, inserted ones too), `<link>` /
+  `<style>` sheets and `<img>` (NetSurf's picture); the window's `load` waits for the fetches
+  still going (an inserted script delays it) and an element's `load` does not reach the window
+  (duckduckgo.com's capturing window listener re-added itself at each image: a loop).
+  `<img>.complete` / `naturalWidth` from NetSurf's picture (`N.image`); a script's own images
+  (`new Image()`) are canvas.js's (fetched, decoded, `load` / `error`). Facebook's bootloader
+  waits for its modules' load events.
+- **A script inserted by a script** runs outside libdom's mutation-event guard (libdom refused
+  every change it made: yahoo.com's loaders' "bad attribute"; `dom_document_onyx_mutation_guard`).
+  `innerHTML` of a raw text element (`script`, `style`...) is its text, of `textarea` / `title`
+  its decoded text (a consent stub inserted as `script.innerHTML` lost every `<...>`).
+- **Form controls outside any form** are kept for the document's life (`orphan_controls`): a
+  rebox found them no more -- what the user typed in a React app's input (Facebook's login)
+  was lost at each script change.
+- **Early layout** (`html_early_layout`): a script that asks for a geometry while the document
+  is still parsed gets boxes built and laid out from the nodes parsed so far (no object
+  fetched), made again when the DOM changed, given up at the conversion. google.com's footer
+  script set `#gb-main`'s min-height from its `scrollHeight` (0 without boxes): the footer
+  covered the search box. **Script-blocking style sheets**: a parser-inserted inline script
+  waits (the parser paused) while a style sheet -- a `<style>` still to be converted too -- is
+  fetched, as a browser's do (`html_script_sheets_arrived`).
+- **A style attribute** is the author's with the specificity (1,0,0,0) (libcss `select.c`): it
+  kept the last sheet's origin and selector's specificity, and lost to an `<img width>`'s
+  presentational hint after the user sheet (bbc's images kept their attribute size).
+- **URL / URLSearchParams** after the WHATWG URL Standard (dom.js: the basic URL parser's state
+  machine, IPv4 / IPv6 / IDN hosts, the percent-encode sets, every setter; the WPT's
+  urltestdata 896/896, setters 278/278, toascii 72/87 -- `urltest.sh`).
+- **Dynamic `import()`** of a URL computed at run time: rewritten at compile time to
+  `__onyxImport(base, x)` (`qjs_rewrite_import`: strings, comments and methods named import
+  skipped), which fetches the module graph then calls the engine's import (QuickJS's loader
+  cannot wait for the network: developer.mozilla.org's chunks).
+- **SVG made by scripts** (React): `createElementNS` creates the element in its namespace, the
+  prototypes are chosen by namespace, the names keep their case (`N.name`).
+- **Web fonts** of the sheets added after the conversion (Facebook's bootloader adds its sheets:
+  Optimistic 95 was never fetched), `format("woff2-variations")` read as WOFF2 (libcss), and the
+  **CSS Font Loading API**: `FontFace` (a URL or bytes) and `document.fonts` (a `FontFaceSet`:
+  `add`, `ready`, `load`, `loading` / `loadingdone`), a script's faces given to NetSurf's font
+  code (`N.addFontFace` -> `onyx_webfont_add_script_face`) and the page laid out again.
+- Smaller: `DOMStringMap`; `addEventListener` & co called unbound are the window's;
+  `localStorage`'s Proxy keeps the Proxy invariants (`Object.keys(localStorage)` threw);
+  inline scripts are named by their first characters in errors and timings.
+- Tests: `jstest.sh` gained js-microloop, js-rawtext, js-loadevents, js-url, js-dynimport,
+  js-svgns, js-fontface.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies; no Workers,
   EventSource, WebSocket, IndexedDB, editing APIs, shadow trees (§17); CSS `:active` /
-  `:focus`; a form control
-  outside a form is made again at each layout the scripts cause (its old one leaks).
+  `:focus`.
 - `opacity`, filters, animations and transitions.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
@@ -842,9 +906,7 @@ pseudo-classes it does not know.
   per-corner `roundRect` radii; `drawImage` scales with the nearest pixel (PlutoVG's
   textures), and a canvas shown at another CSS size too (the framebuffer's bitmap plot);
   no `getContext('webgl')`, `captureStream`, video frames; the page's web fonts are not used
-  (the card's fonts by family); an `<img>` of the page is drawn once NetSurf has fetched it,
-  but it gets no `load` event (dom.js fires none for the page's images; an `Image` a script
-  makes and keeps out of the page does get one).
+  (the card's fonts by family).
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.
 - Intl (§15): no `Intl.DurationFormat`, no Temporal; the Gregorian calendar only (another
   `calendar` falls back to it, no `relatedYear` / `yearName`); a date range's CLDR interval
