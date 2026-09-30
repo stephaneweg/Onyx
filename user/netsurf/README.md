@@ -24,6 +24,8 @@ whole-archive linking all eight `.a` together.
 | libdom | DOM | libwapcaplet, libparserutils, libhubbub | — |
 | FreeType (+ Brotli's decoder) | fonts: TrueType, OpenType, WOFF, WOFF2 | zlib | — |
 | QuickJS-ng (`libquickjs.a`) | the JavaScript engine (ES2023) | — | — (gnu11, `-D__ONYX__`) |
+| PlutoVG 1.3.3 (`libplutovg.a`) | the vector rasteriser: `<canvas>` 2D, SVG | — | — (gnu11, no font directory scan, stb_image PNG / JPEG only) |
+| PlutoSVG 0.0.8 (`libplutosvg.a`) | SVG images and inline `<svg>` (Onyx patches: `README.onyx`) | PlutoVG | — |
 
 `libnslog` is **not** built here (it needs flex/bison for its filter-config parser and is
 not on the rendering path).

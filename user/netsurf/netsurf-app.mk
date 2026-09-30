@@ -82,7 +82,7 @@ CORE_SRC := \
   $(wildcard $(NS)/content/handlers/css/*.c) \
   $(wildcard $(NS)/content/handlers/html/*.c) \
   $(wildcard $(NS)/content/handlers/text/*.c) \
-  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c jpeg.c png.c webp.c onyx_svg.c) \
+  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c jpeg.c png.c webp.c onyx_svg.c onyx_vgfont.c) \
   $(wildcard $(NS)/content/handlers/javascript/*.c) \
   $(JS_SRC)
 

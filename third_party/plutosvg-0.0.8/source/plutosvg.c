@@ -22,6 +22,9 @@ enum {
     TAG_A,          /* Onyx: <a>, <switch> drawn as groups, <style> read */
     TAG_STYLE,
     TAG_SWITCH,
+    TAG_TEXT,       /* Onyx: <text>, <tspan> and their characters (TAG_CHARS) */
+    TAG_TSPAN,
+    TAG_CHARS,
     TAG_CIRCLE,
     TAG_CLIP_PATH, // TODO
     TAG_DEFS,
@@ -52,6 +55,13 @@ enum {
     ATTR_CY,
     ATTR_D,
     ATTR_DISPLAY,
+    ATTR_DX,        /* Onyx: text */
+    ATTR_DY,
+    ATTR_FONT_FAMILY,
+    ATTR_FONT_SIZE,
+    ATTR_FONT_STYLE,
+    ATTR_FONT_WEIGHT,
+    ATTR_TEXT_ANCHOR,
     ATTR_FILL,
     ATTR_FILL_OPACITY,
     ATTR_FILL_RULE,
@@ -144,6 +154,8 @@ static int elementid(const char* data, size_t length)
         {"svg", TAG_SVG},
         {"switch", TAG_SWITCH},
         {"symbol", TAG_SYMBOL},
+        {"text", TAG_TEXT},
+        {"tspan", TAG_TSPAN},
         {"use", TAG_USE}
     };
 
@@ -162,9 +174,15 @@ static int attributeid(const char* data, size_t length)
         {"cy", ATTR_CY},
         {"d", ATTR_D},
         {"display", ATTR_DISPLAY},
+        {"dx", ATTR_DX},
+        {"dy", ATTR_DY},
         {"fill", ATTR_FILL},
         {"fill-opacity", ATTR_FILL_OPACITY},
         {"fill-rule", ATTR_FILL_RULE},
+        {"font-family", ATTR_FONT_FAMILY},
+        {"font-size", ATTR_FONT_SIZE},
+        {"font-style", ATTR_FONT_STYLE},
+        {"font-weight", ATTR_FONT_WEIGHT},
         {"fx", ATTR_FX},
         {"fy", ATTR_FY},
         {"gradientTransform", ATTR_GRADIENT_TRANSFORM},
@@ -191,6 +209,7 @@ static int attributeid(const char* data, size_t length)
         {"stroke-opacity", ATTR_STROKE_OPACITY},
         {"stroke-width", ATTR_STROKE_WIDTH},
         {"style", ATTR_STYLE},
+        {"text-anchor", ATTR_TEXT_ANCHOR},
         {"transform", ATTR_TRANSFORM},
         {"viewBox", ATTR_VIEW_BOX},
         {"visibility", ATTR_VISIBILITY},
@@ -217,6 +236,10 @@ static int cssattributeid(const char* data, size_t length)
         {"fill", ATTR_FILL},
         {"fill-opacity", ATTR_FILL_OPACITY},
         {"fill-rule", ATTR_FILL_RULE},
+        {"font-family", ATTR_FONT_FAMILY},
+        {"font-size", ATTR_FONT_SIZE},
+        {"font-style", ATTR_FONT_STYLE},
+        {"font-weight", ATTR_FONT_WEIGHT},
         {"opacity", ATTR_OPACITY},
         {"stop-color", ATTR_STOP_COLOR},
         {"stop-opacity", ATTR_STOP_OPACITY},
@@ -228,6 +251,7 @@ static int cssattributeid(const char* data, size_t length)
         {"stroke-miterlimit", ATTR_STROKE_MITERLIMIT},
         {"stroke-opacity", ATTR_STROKE_OPACITY},
         {"stroke-width", ATTR_STROKE_WIDTH},
+        {"text-anchor", ATTR_TEXT_ANCHOR},
         {"visibility", ATTR_VISIBILITY}
     };
 
@@ -253,6 +277,8 @@ typedef struct element {
     struct element* next_sibling;
     struct attribute* attributes;
     int nstyle;     /* Onyx: the first nstyle attributes came from its style="" */
+    const char* text;   /* Onyx: a TAG_CHARS' characters (in the document's data) */
+    size_t text_length;
 } element_t;
 
 typedef struct heap_chunk {
@@ -1174,6 +1200,14 @@ static bool parse_units_type(const element_t* element, int id, units_type_t* uni
     return !skip_ws(&it, end);
 }
 
+/* Onyx: the fonts of <text> (plutosvg_set_font_func) */
+static plutosvg_font_func_t font_func;
+
+void plutosvg_set_font_func(plutosvg_font_func_t func)
+{
+    font_func = func;
+}
+
 struct plutosvg_document {
     heap_t* heap;
     plutovg_path_t* path;
@@ -1650,8 +1684,25 @@ plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int leng
                 break;
             }
         } else {
+            const char* chars = it;
             while(it < end && *it != '<') {
                 ++it;
+            }
+            if(ignoring == 0 && it > chars && (current->id == TAG_TEXT || current->id == TAG_TSPAN)) {
+                /* Onyx: a <text>'s characters, as a child (between its <tspan>s) */
+                element_t* e = heap_alloc(document->heap, sizeof(element_t));
+                memset(e, 0, sizeof(element_t));
+                e->id = TAG_CHARS;
+                e->parent = current;
+                e->text = chars;
+                e->text_length = it - chars;
+                if(current->last_child) {
+                    current->last_child->next_sibling = e;
+                    current->last_child = e;
+                } else {
+                    current->first_child = e;
+                    current->last_child = e;
+                }
             }
         }
 
@@ -1763,6 +1814,8 @@ plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int leng
                 element->last_child = NULL;
                 element->attributes = NULL;
                 element->nstyle = 0;
+                element->text = NULL;
+                element->text_length = 0;
                 if(document->root_element == NULL) {
                     if(element->id != TAG_SVG)
                         goto error;
@@ -2755,6 +2808,212 @@ static void render_path(const element_t* element, render_context_t* context, ren
     render_state_end(&new_state);
 }
 
+
+/*
+ * Onyx: <text> and <tspan> -- their characters' glyphs (the font from the font function:
+ * font-family, font-weight, font-style), at font-size, from x / y (and dx / dy; a tspan's
+ * own x / y start again there), text-anchor on the whole <text>; filled and stroked as a
+ * shape. White space collapsed (xml:space default); &amp; &lt; &gt; &quot; &apos; and
+ * &#...; decoded.
+ */
+typedef struct {
+    float x, y;         /* the pen */
+    bool first;         /* no character yet (a leading space dropped) */
+    bool space;         /* the last one written was a space */
+    bool measure;       /* only advance the pen */
+} text_pen_t;
+
+static plutovg_font_face_t* text_face(const element_t* element, float* size)
+{
+    length_t fs = {16, length_type_fixed};
+    parse_length(element, ATTR_FONT_SIZE, &fs, false, true);
+    *size = fs.type == length_type_percent ? fs.value * 16.f / 100.f : fs.value;
+    if(font_func == NULL || *size <= 0.f)
+        return NULL;
+    const string_t* family = find_attribute(element, ATTR_FONT_FAMILY, true);
+    const string_t* weight = find_attribute(element, ATTR_FONT_WEIGHT, true);
+    const string_t* style = find_attribute(element, ATTR_FONT_STYLE, true);
+    bool bold = false, italic = false;
+    if(weight) {
+        float w = 0;
+        const char* it = weight->data;
+        if(skip_string(&it, weight->data + weight->length, "bold"))
+            bold = true;
+        else if(parse_float(&it, weight->data + weight->length, &w))
+            bold = w >= 600;
+    }
+    if(style)
+        italic = style->length >= 6 && (strncmp(style->data, "italic", 6) == 0 || strncmp(style->data, "oblique", 6) == 0);
+    return font_func(family ? family->data : "serif", family ? (int)family->length : 5, bold, italic);
+}
+
+/* the next code point of the characters, entities decoded (0: the end) */
+static uint32_t text_next(const char** begin, const char* end)
+{
+    const unsigned char* it = (const unsigned char*)*begin;
+    const unsigned char* e = (const unsigned char*)end;
+    uint32_t c;
+    if(it >= e)
+        return 0;
+    if(*it == '&') {
+        static const struct { const char* name; uint32_t c; } ents[] = {
+            {"amp;", '&'}, {"lt;", '<'}, {"gt;", '>'}, {"quot;", '"'}, {"apos;", '\'' }, {"nbsp;", 0xA0}
+        };
+        for(size_t i = 0; i < sizeof(ents) / sizeof(ents[0]); i++) {
+            size_t n = strlen(ents[i].name);
+            if(it + 1 + n <= e && strncmp((const char*)it + 1, ents[i].name, n) == 0) {
+                *begin = (const char*)(it + 1 + n);
+                return ents[i].c;
+            }
+        }
+        if(it + 2 < e && it[1] == '#') {
+            const unsigned char* p = it + 2;
+            int base = 10;
+            c = 0;
+            if(*p == 'x' || *p == 'X') {
+                base = 16;
+                ++p;
+            }
+            while(p < e && *p != ';') {
+                int d = (*p >= '0' && *p <= '9') ? *p - '0' : (*p >= 'a' && *p <= 'f') ? *p - 'a' + 10 : (*p >= 'A' && *p <= 'F') ? *p - 'A' + 10 : 99;
+                if(d >= base)
+                    break;
+                c = c * base + d;
+                ++p;
+            }
+            if(p < e && *p == ';') {
+                *begin = (const char*)(p + 1);
+                return c ? c : 0xFFFD;
+            }
+        }
+    }
+    /* UTF-8 */
+    c = *it++;
+    if(c >= 0xC0) {
+        int n = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : 1;
+        c &= 0x3F >> n;
+        while(n-- > 0 && it < e && (*it & 0xC0) == 0x80)
+            c = (c << 6) | (*it++ & 0x3F);
+    }
+    *begin = (const char*)it;
+    return c;
+}
+
+static void text_run(const element_t* element, const element_t* chars, render_context_t* context, render_state_t* state, text_pen_t* pen, bool last)
+{
+    float size = 0;
+    plutovg_font_face_t* face = text_face(element, &size);
+    if(face == NULL)
+        return;
+    plutovg_path_t* path = context->document->path;
+    if(!pen->measure)
+        plutovg_path_reset(path);
+    const char* it = chars->text;
+    const char* end = it + chars->text_length;
+    uint32_t c;
+    while((c = text_next(&it, end)) != 0) {
+        if(c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            if(pen->first || pen->space)
+                continue;
+            /* (a trailing space of the last run dropped) */
+            const char* rest = it;
+            bool only_ws = true;
+            while(rest < end) {
+                if(!IS_WS(*rest)) {
+                    only_ws = false;
+                    break;
+                }
+                ++rest;
+            }
+            if(only_ws && last)
+                break;
+            c = ' ';
+            pen->space = true;
+        } else {
+            pen->space = false;
+        }
+        pen->first = false;
+        float advance = 0;
+        if(pen->measure)
+            plutovg_font_face_get_glyph_metrics(face, size, c, &advance, NULL, NULL);
+        else
+            advance = plutovg_font_face_get_glyph_path(face, size, pen->x, pen->y, c, path);
+        pen->x += advance;
+    }
+
+    if(pen->measure)
+        return;
+    /* (the <text>'s state: its transform and opacity already in it) */
+    render_state_t new_state = *state;
+    new_state.parent = state;
+    new_state.element = element;
+    plutovg_path_extents(path, &new_state.extents, false);
+    draw_shape(element, context, &new_state);
+}
+
+static float text_coord(const element_t* element, int id, bool* given)
+{
+    length_t l = {0, length_type_fixed};
+    *given = parse_length(element, id, &l, true, false);
+    return l.value;
+}
+
+static void text_children(const element_t* element, render_context_t* context, render_state_t* state, text_pen_t* pen)
+{
+    bool given;
+    float v = text_coord(element, ATTR_X, &given);
+    if(given)
+        pen->x = v;
+    v = text_coord(element, ATTR_Y, &given);
+    if(given)
+        pen->y = v;
+    pen->x += text_coord(element, ATTR_DX, &given);
+    pen->y += text_coord(element, ATTR_DY, &given);
+    for(const element_t* child = element->first_child; child; child = child->next_sibling) {
+        bool last = child->next_sibling == NULL && (element->id == TAG_TEXT || element->next_sibling == NULL);
+        if(child->id == TAG_CHARS) {
+            text_run(element, child, context, state, pen, last);
+        } else if(child->id == TAG_TSPAN && !is_display_none(child)) {
+            if(pen->measure || is_visibility_hidden(child)) {
+                bool m = pen->measure;
+                pen->measure = true;
+                text_children(child, context, state, pen);
+                pen->measure = m;
+            } else {
+                text_children(child, context, state, pen);
+            }
+        }
+    }
+}
+
+static void render_text(const element_t* element, render_context_t* context, render_state_t* state)
+{
+    if(is_display_none(element) || is_visibility_hidden(element) || font_func == NULL)
+        return;
+    render_state_t new_state;
+    render_state_begin(element, &new_state, state);
+
+    /* text-anchor: the whole text measured first */
+    const string_t* anchor = find_attribute(element, ATTR_TEXT_ANCHOR, true);
+    float shift = 0;
+    if(anchor && (strncmp(anchor->data, "middle", anchor->length) == 0 || strncmp(anchor->data, "end", anchor->length) == 0)) {
+        text_pen_t m = {0, 0, true, false, true};
+        text_children(element, context, &new_state, &m);
+        bool given;
+        float x0 = text_coord(element, ATTR_X, &given) + text_coord(element, ATTR_DX, &given);
+        float w = m.x - x0;
+        shift = anchor->data[0] == 'm' ? -w / 2 : -w;
+    }
+
+    /* (the anchor's shift as a translation: text_children puts the pen at x) */
+    text_pen_t pen = {0, 0, true, false, false};
+    if(shift != 0)
+        plutovg_matrix_translate(&new_state.matrix, shift, 0);
+    if(new_state.mode == render_mode_painting || new_state.mode == render_mode_clipping)
+        text_children(element, context, &new_state, &pen);
+    render_state_end(&new_state);
+}
+
 static void transform_view_rect(const view_position_t* position, plutovg_rect_t* dst_rect, plutovg_rect_t* src_rect)
 {
     if(position->align == view_align_none)
@@ -3011,6 +3270,9 @@ static void render_element_clipped(const element_t* element, render_context_t* c
     switch(element->id) {
     case TAG_A:     /* Onyx: a link, drawn as a group */
         render_g(element, context, state);
+        break;
+    case TAG_TEXT:  /* Onyx */
+        render_text(element, context, state);
         break;
     case TAG_SWITCH:    /* Onyx: its first child (no conditions read) */
         if(!is_display_none(element) && element->first_child) {

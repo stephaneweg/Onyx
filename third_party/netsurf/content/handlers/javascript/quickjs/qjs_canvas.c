@@ -37,8 +37,8 @@
  * drawImage takes a canvas, an <img> NetSurf has fetched (its content's bitmap), an SVG
  * image, or an Image a script made and never put in the page (loaded here through the
  * high-level cache: cvLoadImage). Text is drawn with the card's fonts (Liberation,
- * DejaVu, Gelasio, Selawik: the families of font_freetype.c), read by PlutoVG's
- * stb_truetype on first use.
+ * DejaVu, Gelasio, Selawik: the families of font_freetype.c; image/onyx_vgfont.c), read
+ * by PlutoVG's stb_truetype on first use.
  */
 
 #include <stdbool.h>
@@ -68,12 +68,9 @@
 #include "html/private.h"
 #include "html/box.h"
 
+#include "image/onyx_vgfont.h"
 #include "javascript/quickjs/qjs_canvas.h"
 #include "qjs_canvas_js.h"	/* canvas.js, as a C string (the build makes it) */
-
-#ifndef NETSURF_FB_FONTPATH
-#define NETSURF_FB_FONTPATH "/res/fonts"
-#endif
 
 /** the largest canvas (pixels): bigger ones are refused (a script's mistake, memory) */
 #define QCV_MAX_PIXELS (4096 * 4096)
@@ -1760,120 +1757,22 @@ static JSValue n_cv_load_image(JSContext *ctx, JSValueConst this_val, int argc, 
 
 /* ---- text ------------------------------------------------------------------------------------ */
 
-/* the card's faces, loaded once (PlutoVG reads the whole file) */
-#define QCV_FACES 16
-static struct {
-	char file[40];
-	plutovg_font_face_t *face;
-	bool failed;
-} qcv_faces[QCV_FACES];
-
-static plutovg_font_face_t *qcv_face_file(const char *file)
-{
-	char path[256];
-	int i;
-
-	for (i = 0; i < QCV_FACES; i++) {
-		if (qcv_faces[i].file[0] == '\0')
-			break;
-		if (strcmp(qcv_faces[i].file, file) == 0)
-			return qcv_faces[i].failed ? NULL : qcv_faces[i].face;
-	}
-	if (i == QCV_FACES)
-		return NULL;
-	snprintf(qcv_faces[i].file, sizeof(qcv_faces[i].file), "%s", file);
-	snprintf(path, sizeof path, "%s/%s", NETSURF_FB_FONTPATH, file);
-	qcv_faces[i].face = plutovg_font_face_load_from_file(path, 0);
-	qcv_faces[i].failed = qcv_faces[i].face == NULL;
-	if (qcv_faces[i].failed)
-		NSLOG(netsurf, INFO, "canvas: no font %s", path);
-	return qcv_faces[i].face;
-}
-
-/** a CSS family (lower case) to one of the card's font files (as font_freetype.c maps
- * them: Chrome's fonts on Windows and their metric stand-ins) */
-static const char *qcv_family_file(const char *f, bool bold, bool italic)
-{
-	static const struct { const char *family; const char *file[4]; } map[] = {
-		{ "serif", { "LiberationSerif-Regular.ttf", "LiberationSerif-Bold.ttf",
-			"LiberationSerif-Italic.ttf", "LiberationSerif-BoldItalic.ttf" } },
-		{ "times new roman", { "LiberationSerif-Regular.ttf", "LiberationSerif-Bold.ttf",
-			"LiberationSerif-Italic.ttf", "LiberationSerif-BoldItalic.ttf" } },
-		{ "times", { "LiberationSerif-Regular.ttf", "LiberationSerif-Bold.ttf",
-			"LiberationSerif-Italic.ttf", "LiberationSerif-BoldItalic.ttf" } },
-		{ "georgia", { "Gelasio-Regular.ttf", "Gelasio-Bold.ttf",
-			"Gelasio-Italic.ttf", "Gelasio-BoldItalic.ttf" } },
-		{ "monospace", { "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
-			"DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf" } },
-		{ "courier new", { "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
-			"DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf" } },
-		{ "courier", { "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
-			"DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf" } },
-		{ "consolas", { "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
-			"DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf" } },
-		{ "verdana", { "DejaVuSans.ttf", "DejaVuSans-Bold.ttf",
-			"DejaVuSans-Oblique.ttf", "DejaVuSans-BoldOblique.ttf" } },
-		{ "dejavu sans", { "DejaVuSans.ttf", "DejaVuSans-Bold.ttf",
-			"DejaVuSans-Oblique.ttf", "DejaVuSans-BoldOblique.ttf" } },
-		{ "segoe ui", { "selawk.ttf", "selawkb.ttf", "selawk.ttf", "selawkb.ttf" } },
-		{ "system-ui", { "selawk.ttf", "selawkb.ttf", "selawk.ttf", "selawkb.ttf" } },
-	};
-	static const char *const sans[4] = { "LiberationSans-Regular.ttf",
-		"LiberationSans-Bold.ttf", "LiberationSans-Italic.ttf",
-		"LiberationSans-BoldItalic.ttf" };
-	int k = (bold ? 1 : 0) + (italic ? 2 : 0);
-	size_t i;
-
-	for (i = 0; i < sizeof(map) / sizeof(map[0]); i++) {
-		if (strcmp(map[i].family, f) == 0)
-			return map[i].file[k];
-	}
-	/* sans-serif, Arial, Helvetica, and the rest */
-	return sans[k];
-}
-
-/* cvFont(c, "family1,family2", bold, italic, size): the first family the card has */
+/* cvFont(c, "family1, family2", bold, italic, size): the first family the card has
+ * (image/onyx_vgfont.c, shared with the SVG images' <text>) */
 static JSValue n_cv_font(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	const char *fam;
-	char one[64];
 	bool bold, italic;
-	plutovg_font_face_t *face = NULL;
 	QCV_ARG(c);
 	(void) this_val;
 	fam = argc > 1 ? JS_ToCString(ctx, argv[1]) : NULL;
 	bold = argc > 2 && JS_ToBool(ctx, argv[2]);
 	italic = argc > 3 && JS_ToBool(ctx, argv[3]);
-	if (fam != NULL) {
-		const char *p = fam;
-
-		while (*p != '\0' && face == NULL) {
-			size_t n = 0;
-
-			while (*p == ' ' || *p == ',' || *p == '"' || *p == '\'')
-				p++;
-			while (*p != '\0' && *p != ',' && n + 1 < sizeof one) {
-				char ch = *p++;
-
-				if (ch == '"' || ch == '\'')
-					continue;
-				one[n++] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
-			}
-			while (n > 0 && one[n - 1] == ' ')
-				n--;
-			one[n] = '\0';
-			if (n > 0)
-				face = qcv_face_file(qcv_family_file(one, bold, italic));
-		}
+	c->face = onyx_vg_font(fam != NULL ? fam : "sans-serif", -1, bold, italic);
+	if (fam != NULL)
 		JS_FreeCString(ctx, fam);
-	}
-	if (face == NULL)
-		face = qcv_face_file(qcv_family_file("sans-serif", bold, italic));
-	if (face == NULL)
-		face = qcv_face_file("DejaVuSans.ttf");
-	c->face = face;
 	c->font_size = qf(ctx, argc, argv, 4);
-	return JS_NewBool(ctx, face != NULL);
+	return JS_NewBool(ctx, c->face != NULL);
 }
 
 /** the text's advance (its width) at the canvas' font */

@@ -100,7 +100,7 @@ CORE_SRC := \
   $(wildcard $(NS)/desktop/*.c) \
   $(wildcard $(NS)/content/handlers/css/*.c) $(wildcard $(NS)/content/handlers/html/*.c) \
   $(wildcard $(NS)/content/handlers/text/*.c) \
-  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c png.c jpeg.c webp.c onyx_svg.c) \
+  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c png.c jpeg.c webp.c onyx_svg.c onyx_vgfont.c) \
   $(wildcard $(NS)/content/handlers/javascript/*.c) $(JS_SRC)
 
 FB := $(NS)/frontends/framebuffer

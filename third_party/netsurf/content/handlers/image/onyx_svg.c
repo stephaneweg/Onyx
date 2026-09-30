@@ -50,6 +50,7 @@
 #include "desktop/bitmap.h"
 
 #include "image/onyx_svg.h"
+#include "image/onyx_vgfont.h"
 
 /** the sizes kept rasterised per image */
 #define ONYX_SVG_KEEP 6
@@ -104,6 +105,7 @@ static bool onyx_svg_convert(struct content *c)
 		content_broadcast_error(c, NSERROR_SVG_ERROR, NULL);
 		return false;
 	}
+	plutosvg_set_font_func(onyx_vg_font);	/* <text>: the card's fonts */
 	/* (the document points into the source data: it lives as long as the content) */
 	svg->doc = plutosvg_document_load_from_data((const char *) data, (int) size,
 			-1, -1, NULL, NULL);

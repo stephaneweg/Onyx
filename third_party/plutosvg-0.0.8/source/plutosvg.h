@@ -141,6 +141,11 @@ PLUTOSVG_API bool plutosvg_document_render(const plutosvg_document_t* document, 
 PLUTOSVG_API plutovg_surface_t* plutosvg_document_render_to_surface(const plutosvg_document_t* document, const char* id, int width, int height,
     const plutovg_color_t* current_color, plutosvg_palette_func_t palette_func, void* closure);
 
+/* Onyx: the font of a <text> -- family (a CSS list, not NUL-terminated), weight, style --
+ * or NULL (the text is not drawn); set once for all the documents */
+typedef plutovg_font_face_t* (*plutosvg_font_func_t)(const char* family, int length, bool bold, bool italic);
+PLUTOSVG_API void plutosvg_set_font_func(plutosvg_font_func_t func);
+
 /* Onyx: the root viewport's size (as the size given at load); whether the root has a viewBox */
 PLUTOSVG_API void plutosvg_document_set_size(plutosvg_document_t* document, float width, float height);
 PLUTOSVG_API bool plutosvg_document_has_view_box(const plutosvg_document_t* document);

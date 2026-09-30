@@ -19,6 +19,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/freetype-2.14.3/` | FreeType (options and modules: `user/netsurf/freetype/`) |
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
+| `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
 | `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript) |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
@@ -178,6 +179,10 @@ headers in order (`llcache_handle_get_header_at`).
   the blur's coverage from a table (`blur_lut`: no `expf` a pixel), a gradient's colours from a
   table of 1025 made once per gradient and kept (`glut_get`, keyed by its stops), a linear
   gradient's position stepped along the row, the blend without a division (`div255`).
+- **`background-size`** (`contain`, `cover`, lengths, percentages, one side `auto` from the
+  image's ratio; `onyx_background_size` in `redraw.c`): libcss parsed it, the redraw drew
+  every background image at its own size -- the SVG backgrounds of the big sites (icons sized
+  by CSS) came out wrong.
 - `border-radius`, `box-shadow` (outer and inset), gradient backgrounds, rounded clips of
   a box's content; `background-clip: text` paints the descendants' text with the box's
   background.
@@ -357,10 +362,130 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
   graph, `import.meta.url`, `import()`, an inline module, the order, `CSS.supports`,
   `element.style`.
 
+## 12. SVG (images and inline `<svg>`, on PlutoSVG)
+
+NetSurf's own SVG handler (`image/svg.c`) needs libsvgtiny, never vendored: SVG images were
+not drawn, inline `<svg>` neither (the logos and icons of google.com, bbc.co.uk, Facebook).
+
+- **The image handler** (`content/handlers/image/onyx_svg.c`, registered in `image.c` for
+  `image/svg+xml` and `image/svg`; the file fetcher types `.svg`): the document is parsed once
+  by PlutoSVG; its intrinsic size is its `width` / `height`, else its viewBox's, else 300 x 150
+  (a width alone: 150 high, as Chrome). It is rasterised -- anti-aliased, into a NetSurf bitmap --
+  at the size a redraw asks for and kept for the next redraws (six sizes per image, the least
+  recently used replaced): a redraw is a bitmap plot, never a rasterisation. An SVG with a
+  viewBox is drawn in a viewport of the drawn size (its `preserveAspectRatio` applies), one
+  without is scaled, as browsers do for images; a drawing over 2048 x 2048 pixels is rasterised
+  smaller and scaled up. `currentColor` is black in an image. `<img>`, backgrounds (tiled too),
+  `list-style-image`, `<object>` and `<embed>` use it; a canvas' `drawImage` and favicons get
+  its last size (`get_internal`). A bitmap replaced during a redraw is destroyed once the main
+  loop turns: the knockout (`desktop/knockout.c`) may still have its plot queued.
+- **Inline `<svg>`** (`content/handlers/html/onyx_svg_inline.c`, one call in `box_special.c`'s
+  `convert_special_elements`): hubbub builds an `<svg>` and its descendants in the SVG namespace
+  (their camelCase names); an outer `<svg>` becomes a replaced box -- its children are not
+  converted -- whose object is the subtree written out as SVG text: the elements (their names
+  lower-cased: libdom upper-cases an HTML document's; the camelCase ones restored), their
+  attributes, a `<style>`'s text, the element's CSS `color` as the root's `color` (its
+  `currentColor`), a `var(--x[, fallback])` in a value replaced by the `<svg>`'s custom property
+  (libcss: `css_onyx_node_var` reads it from the node data its selection keeps -- google.com's
+  menu icon is `fill: var(--IXoxUe)`), the root's `width` / `height` in `em` / `rem` / `ex`
+  written in px with the element's font size (bbc.co.uk's logo is `width="7em"`). The elements
+  it names by `href="#id"` / `url(#id)` that are elsewhere in the page (an icon sprite's
+  `<symbol>`s, a shared gradient) are copied into a `<defs>` at its end. The text is the box's
+  object as a `data:image/svg+xml;base64,...` URL through the usual `html_fetch_object`: the
+  low-level cache shares one content between identical icons, and the SVG image handler draws
+  it at the box's size (CSS `width` / `height` size it as an image). A script's change builds
+  the boxes again (`html_script_dom_changed`): a new text, a new URL. Costs, kept low for the
+  reboxes the scripts cause: an element named by id is looked up (libdom walks the tree) and
+  written once per main-loop turn, the URLs are kept by their text (256, 512 KB) -- a page of 300
+  sprite icons: its rebox 4.4-6.9 ms -> 3.0-5.0 ms on the PC (2.2 ms without the icons).
+  `NS_SVGDEBUG=1` prints each SVG text on stderr (the PC bench).
+- **PlutoSVG's Onyx patches** (`third_party/plutosvg-0.0.8/README.onyx`): the `<style>` sheets
+  (type, class, id selectors, descendant and child combinators, specificity; below `style=""`,
+  above the attributes), `clip-path` (`clipPathUnits`, transforms), `<a>` and `<switch>`,
+  quoted `url('#id')`, `em` / `ex` / `rem` lengths, `set_size` / `has_view_box`, and
+  **`<text>` / `<tspan>`** (a chart's labels): glyph outlines of the card's fonts
+  (`image/onyx_vgfont.c`: a CSS family list to Liberation, Gelasio, Selawik or DejaVu, as
+  `font_freetype.c` maps Chrome's; shared with the canvas' text), `font-size`, `font-weight`,
+  `font-style`, `x` / `y` / `dx` / `dy`, `text-anchor`, filled and stroked as shapes.
+- Built for the Pi by `user/netsurf/Makefile` (`libplutovg.a`, `libplutosvg.a`, committed:
+  PlutoVG without the font directory scan, stb_image for PNG / JPEG only) and on the PC by
+  `host.mk`. Pages: `tools/tests/netsurf/pages/svg-img.html` (`<img>` at three sizes, a
+  viewBox-only icon, tiled and sized backgrounds, a `data:` SVG, list markers, `<object>`,
+  `<embed>`), `svg-chart.svg` (`<text>`: anchors, a tspan,
+  entities), `svg-inline.html` (a sprite's symbols through `<use>`, `currentColor` from the
+  link's colour, a gradient from the sprite, a `<style>`, `clip-path`, `var()`, an `<svg>` made
+  by `innerHTML`), each against Chromium (`chrome.sh`).
+
+## 13. Canvas 2D (on PlutoVG)
+
+`<canvas>` was a replaced box drawing nothing and `getContext` answered null.
+
+- **`quickjs/canvas.js`** (compiled in as `qjs_canvas_js.h` by both makefiles, as dom.js; run by
+  `qjs_canvas_setup` right after dom.js) is the API and keeps its state (the styles, the font,
+  the save stack): `HTMLCanvasElement.getContext('2d')`, `width` / `height` (a change clears the
+  canvas and its state), `toDataURL` / `toBlob` (PNG); `CanvasRenderingContext2D` --
+  `fillRect` / `strokeRect` / `clearRect`, paths (`moveTo`, `lineTo`, `quadraticCurveTo`,
+  `bezierCurveTo`, `arc`, `arcTo`, `ellipse`, `rect`, `roundRect` (one radius), `closePath`),
+  `fill` (non-zero, even-odd), `stroke`, `clip`, `isPointInPath` / `isPointInStroke`,
+  `fillStyle` / `strokeStyle` (CSS colours given back as Chrome does: `#rrggbb` or `rgba()`),
+  `createLinearGradient` / `createRadialGradient` / `createConicGradient` (its middle colour:
+  PlutoVG has no conic gradient), `createPattern`, `lineWidth`, `lineCap`, `lineJoin`,
+  `miterLimit`, `setLineDash` / `getLineDash` / `lineDashOffset`, `globalAlpha`,
+  `globalCompositeOperation` (the Porter-Duff ones and `copy`; the blend modes are kept but
+  drawn source-over), `save` / `restore`, `translate` / `rotate` / `scale` / `transform` /
+  `setTransform` / `resetTransform` / `getTransform` (a 2D `DOMMatrix`, defined if the page has
+  none), `drawImage` (3, 5 and 9 arguments), `createImageData` / `getImageData` / `putImageData`,
+  `fillText` / `strokeText` (`textAlign`, `textBaseline`, `maxWidth`) and `measureText` (a
+  `TextMetrics` with its bounding boxes); shadows, filters and `imageSmoothing*` are kept, not
+  drawn. `Path2D` (the path methods, `addPath`, SVG path data), `ImageData`, `OffscreenCanvas`
+  (`getContext`, `convertToBlob`, `transferToImageBitmap`), `createImageBitmap`.
+- **`quickjs/qjs_canvas.c`**, the natives (`N.cv*`, added to dom.js' natives): each draws on the
+  canvas' PlutoVG surface (premultiplied ARGB, anti-aliased) -- thin, one native per call. The
+  path is kept in device space, each point through the transform of the moment it is added
+  (the HTML canvas' rule); a fill draws it with the identity (the paint in the current user
+  space), a stroke maps it back through the current transform (the line width and dashes scale
+  with it). Fonts: the card's (`SD:/res/fonts`: a CSS family to Liberation, DejaVu, Gelasio or
+  Selawik, as `font_freetype.c` maps them: `image/onyx_vgfont.c`, shared with SVG `<text>`), read
+  once by PlutoVG's stb_truetype. `drawImage` /
+  `createPattern` take a canvas (its surface), an `<img>` NetSurf fetched (its content's bitmap,
+  converted once and kept: 8 images), an SVG image, or an `Image` a script made and never put in
+  the page: `canvas.js` completes `HTMLImageElement` -- its `src` fetches it through the
+  high-level cache (`cvLoadImage`), then `load` / `error`, `complete`, `naturalWidth`, `width`.
+- **The picture**: the element's node carries a NetSurf bitmap as its user data
+  (`__ns_key_canvas_node_data`, which `redraw.c` already plots into the canvas' box, scaled to
+  its CSS size); after drawing, the surface is copied into it (straight alpha, the client's
+  layout) once a main-loop turn -- a scheduled flush -- and the box redrawn
+  (`html__redraw_a_box`): a script drawing a thousand shapes costs one copy and one redraw.
+- `qjs.c` (Onyx blocks): the setup call, `qjs_node_of` / `qjs_html_of` / `qjs_invoke` for
+  `qjs_canvas.c`, and `qjs_canvas_context_gone` before a document's context is freed (its
+  canvases stop flushing, its image loads are released). A canvas is at most 4096 x 4096.
+- `tools/tests/netsurf/jstest.sh` runs `pages/canvas-api.html` (40 checks: the state, the
+  colours' text, pixels after fills / clears / alpha / transforms / gradients, paths, Path2D,
+  image data, text metrics, `toDataURL`, an OffscreenCanvas, a pattern, the reset on `width`,
+  `drawImage` of the page's SVG `<img>` and of an `Image` loaded by the script);
+  `pages/canvas-draw.html` is drawn against Chromium.
+
 ## 8. Known gaps
 
-- JavaScript: no `canvas`; no streams (`fetch`'s `body`), synchronous XHR (runs async),
+- JavaScript: no streams (`fetch`'s `body`), synchronous XHR (runs async),
   multipart request bodies, `responseXML`; CSS `:active` / `:focus`; a form control
   outside a form is made again at each layout the scripts cause (its old one leaks).
-- SVG (inline `<svg>` and `.svg` images), `opacity`, filters, animations and transitions.
+- `opacity`, filters, animations and transitions.
+- SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
+  position lists, the page's web fonts in `<text>`; the page's
+  CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss
+  has no `fill` / `stroke` properties (only `fill-opacity` / `stroke-opacity`): with them
+  (inherited, as text), `onyx_svg_inline.c` would write the `<svg>`'s computed ones on its
+  root; its `color`, its custom properties and the SVG's own attributes and `<style>` do. An
+  `<svg>` / SVG `<img>` with only a viewBox and no CSS size takes the viewBox's size (Chrome:
+  the containing block's width); a `list-style-image` SVG without a size is drawn at its
+  viewBox's size (Chrome: small). The scripts' SVG DOM is dom.js' generic one (`namespaceURI`,
+  `getBBox` from the box).
+- Canvas: no shadows, filters, blend modes (source-over), conic gradients (a solid colour),
+  per-corner `roundRect` radii; `drawImage` scales with the nearest pixel (PlutoVG's
+  textures), and a canvas shown at another CSS size too (the framebuffer's bitmap plot);
+  no `getContext('webgl')`, `captureStream`, video frames; the page's web fonts are not used
+  (the card's fonts by family); an `<img>` of the page is drawn once NetSurf has fetched it,
+  but it gets no `load` event (dom.js fires none for the page's images; an `Image` a script
+  makes and keeps out of the page does get one).
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.
