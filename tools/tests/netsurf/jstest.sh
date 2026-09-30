@@ -77,7 +77,7 @@ echo "  $n_ok checks passed"
 echo "js-dynimport.html (import() by a URL computed when it runs)"
 L=$OUT/js-dynimport.log
 run js-dynimport.html "$(waits 60)" "$L"
-for s in "dynimport string kept true" "dynimport module 2" "dynimport classic c-loaded"; do
+for s in "dynimport string kept true" "dynimport method 1" "dynimport module 2" "dynimport classic c-loaded"; do
 	expect "$L" "$s"
 done
 

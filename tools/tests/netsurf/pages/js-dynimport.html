@@ -8,6 +8,8 @@ import('./' + name).then(function (m) { console.log('dynimport classic ' + m.c);
 	function (e) { console.log('dynimport classic failed ' + e); });
 var s = "import('not rewritten in a string')";
 console.log('dynimport string kept ' + (s.indexOf("import(") === 0));
+var o = { import(x) { return 'method ' + x; } };
+console.log('dynimport ' + o.import(1));
 </script>
 <script type="module">
 const n = 'js-mod-' + 'b.js';

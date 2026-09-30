@@ -864,6 +864,29 @@ static char *qjs_rewrite_import(const char *src, size_t len, bool module, size_t
 			while (j < len && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r'))
 				j++;
 			if (j < len && src[j] == '(') {
+				/* not a method named import: import(a) { ... } */
+				size_t k = j + 1;
+				int depth = 1;
+				char kq = 0;
+				for (; k < len && depth > 0; k++) {
+					char d = src[k];
+					if (kq != 0) {
+						if (d == '\\') k++;
+						else if (d == kq) kq = 0;
+						continue;
+					}
+					if (d == '"' || d == '\'' || d == '`') kq = d;
+					else if (d == '(') depth++;
+					else if (d == ')') depth--;
+				}
+				while (k < len && (src[k] == ' ' || src[k] == '\t' || src[k] == '\n' || src[k] == '\r'))
+					k++;
+				if (k < len && src[k] == '{') {
+					i = j;
+					continue;
+				}
+			}
+			if (j < len && src[j] == '(') {
 				size_t need = o + (i - from) + 12 + (j + 1 - (i + 6)) + insl + (len - j) + 1;
 				if (need > cap) {
 					char *n;
