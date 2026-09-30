@@ -105,6 +105,10 @@ ONYX_TEXT_PROP(mask_image)	/* Onyx: mask */
 ONYX_TEXT_PROP(mask_size)
 ONYX_TEXT_PROP(mask_position)
 ONYX_TEXT_PROP(mask_repeat)
+ONYX_TEXT_PROP(filter)		/* Onyx: compositing */
+ONYX_TEXT_PROP(backdrop_filter)
+ONYX_TEXT_PROP(transform_origin)
+ONYX_TEXT_PROP(mix_blend_mode)
 ONYX_TEXT_PROP(transition_property)	/* Onyx: transitions, animations */
 ONYX_TEXT_PROP(transition_duration)
 ONYX_TEXT_PROP(transition_timing_function)

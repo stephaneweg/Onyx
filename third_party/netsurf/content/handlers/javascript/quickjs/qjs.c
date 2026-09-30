@@ -75,6 +75,7 @@
 
 #include "javascript/js.h"
 #include "html/onyx_webfont.h"
+#include "html/onyx_fx.h"		/* Onyx: transformed rectangles */
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
@@ -1381,7 +1382,8 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
 	}
 }
 
-/** rect(n): [x, y, width, height] of its border box in the viewport (0s: no box) */
+/** rect(n[, painted]): [x, y, width, height] of its border box in the viewport (0s: no box)
+ * -- Onyx: painted, where transforms put it (getBoundingClientRect) */
 /* Onyx: a layout asked for (a rectangle, a style): the changes of this script turn laid out
  * first (they used to wait for the turn's end: offsetHeight after details.open = true) */
 static void qjs_layout_now(jsthread *t)
@@ -1547,6 +1549,21 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 		qjs_scroll(t, &sx, &sy);
 		x -= sx;
 		y -= sy;
+		/* Onyx: a box transformed (or in a transformed box): the bounding box of
+		 * where it is painted (html/onyx_fx.c), in fractions of a px as Chrome's */
+		{
+			float r[4] = { x + sx, y + sy, x + sx + w, y + sy + h };
+			if (argc > 1 && JS_ToBool(ctx, argv[1]) &&
+			    onyx_fx_page_rect(t->htmlc, box, true, false, r)) {
+				JS_SetPropertyUint32(ctx, arr, 0, JS_NewFloat64(ctx, r[0] - sx));
+				JS_SetPropertyUint32(ctx, arr, 1, JS_NewFloat64(ctx, r[1] - sy));
+				JS_SetPropertyUint32(ctx, arr, 2,
+						JS_NewFloat64(ctx, r[2] - r[0]));
+				JS_SetPropertyUint32(ctx, arr, 3,
+						JS_NewFloat64(ctx, r[3] - r[1]));
+				return arr;
+			}
+		}
 	}
 	JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, x));
 	JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, y));

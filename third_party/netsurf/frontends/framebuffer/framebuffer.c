@@ -615,6 +615,21 @@ framebuffer_onyx_text_paint(const struct redraw_context *ctx,
 }
 #endif
 
+/* Onyx: compositing groups (framebuffer/onyx_layer.c) -- the surface drawn to may change */
+static nserror
+framebuffer_onyx_layer_begin(const struct redraw_context *ctx,
+		const struct onyx_layer *layer, int pass)
+{
+	return onyx_fb_layer_begin(nsfb, layer, pass) ? NSERROR_OK : NSERROR_NOMEM;
+}
+
+static nserror
+framebuffer_onyx_layer_end(const struct redraw_context *ctx,
+		const struct onyx_layer *layer, int pass)
+{
+	return onyx_fb_layer_end(nsfb, layer, pass) ? NSERROR_OK : NSERROR_NOMEM;
+}
+
 /** framebuffer plot operation table */
 const struct plotter_table fb_plotters = {
 	.clip = framebuffer_plot_clip,
@@ -631,6 +646,8 @@ const struct plotter_table fb_plotters = {
 #ifdef FB_USE_FREETYPE
 	.onyx_text_paint = framebuffer_onyx_text_paint,
 #endif
+	.onyx_layer_begin = framebuffer_onyx_layer_begin,
+	.onyx_layer_end = framebuffer_onyx_layer_end,
 	.option_knockout = true,
 };
 

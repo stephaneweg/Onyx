@@ -32,6 +32,7 @@ struct css_computed_style_i {
  * animation_play_state             2             sizeof(ptr)
  * animation_timing_function        2             sizeof(ptr)
  * aspect_ratio                     2               8
+ * backdrop_filter                  2             sizeof(ptr)
  * background_attachment            2             
  * background_clip                  3             
  * background_color                 2               4
@@ -81,6 +82,7 @@ struct css_computed_style_i {
  * fill                             4               4 + sizeof(ptr)
  * fill_opacity                     1               4
  * fill_rule                        2             
+ * filter                           2             sizeof(ptr)
  * flex_basis                       2 + 5           4
  * flex_direction                   3             
  * flex_grow                        1               4
@@ -123,6 +125,7 @@ struct css_computed_style_i {
  * max_width                        2 + 5           4
  * min_height                       2 + 5           4
  * min_width                        2 + 5           4
+ * mix_blend_mode                   2             sizeof(ptr)
  * object_fit                       3             
  * object_position                  1 + 10          8
  * opacity                          1               4
@@ -164,6 +167,7 @@ struct css_computed_style_i {
  * text_transform                   3             
  * top                              2 + 5           4
  * transform                        2             sizeof(ptr)
+ * transform_origin                 2             sizeof(ptr)
  * transition_delay                 2             sizeof(ptr)
  * transition_duration              2             sizeof(ptr)
  * transition_property              2             sizeof(ptr)
@@ -208,9 +212,9 @@ struct css_computed_style_i {
  * quotes                           1             sizeof(ptr)
  * 
  * ---                            ---             ---
- *                                669 bits        344 + 40sizeof(ptr) bytes
+ *                                677 bits        344 + 44sizeof(ptr) bytes
  *                                ===================
- *                                428 + 40sizeof(ptr) bytes
+ *                                429 + 44sizeof(ptr) bytes
  * 
  * Bit allocations:
  * 
@@ -262,23 +266,23 @@ struct css_computed_style_i {
  * overflow_x; object_fit; justify_self; justify_items; justify_content;
  * translate
  * 
- * 14 ttrraaeebbssooppccRRgguummkkiiMM
- * transition_duration; transition_delay; transform; text_overflow;
- * table_layout; stroke_linecap; stroke_dasharray; stop_color; scale; rotate;
- * page_break_inside; outline_color; mask_size; mask_repeat; mask_position;
- * mask_image
+ * 14 ttrraanneebbssooppccRRgguummkkMM
+ * transition_duration; transition_delay; transform_origin; transform;
+ * text_overflow; table_layout; stroke_linecap; stroke_dasharray; stop_color;
+ * scale; rotate; page_break_inside; outline_color; mix_blend_mode; mask_size;
+ * mask_repeat
  * 
- * 15 llggrriiddooccuuaattffnnFFeeIImm
- * list_style_position; grid_template_rows; grid_template_columns;
- * grid_template_areas; grid_row_start; grid_row_end; grid_column_start;
- * grid_column_end; grid_auto_rows; grid_auto_columns; font_variant;
- * font_style; float; flex_wrap; fill_rule; empty_cells
+ * 15 mmaallggrriiddooccuuttnnffssFFee
+ * mask_position; mask_image; list_style_position; grid_template_rows;
+ * grid_template_columns; grid_template_areas; grid_row_start; grid_row_end;
+ * grid_column_start; grid_column_end; grid_auto_rows; grid_auto_columns;
+ * font_variant; font_style; float; flex_wrap
  * 
- * 16 ddccoolluummaabbrreeffppttkkggss
- * direction; content; column_span; column_rule_color; column_fill;
- * column_count; caption_side; box_sizing; border_top_color;
- * border_right_color; border_left_color; border_collapse; border_bottom_color;
- * background_color; background_attachment; aspect_ratio
+ * 16 ffiieeddccoolluummaabbrrggttppBB
+ * filter; fill_rule; empty_cells; direction; content; column_span;
+ * column_rule_color; column_fill; column_count; caption_side; box_sizing;
+ * border_top_color; border_right_color; border_left_color; border_collapse;
+ * border_bottom_color
  * 
  * 17 ooooooooooobbbbbbbbbbbfffffffffw
  * object_position; border_spacing; font_size; widows
@@ -292,14 +296,17 @@ struct css_computed_style_i {
  * background_clip; align_self; align_items; align_content;
  * transition_timing_function; transition_property; stroke_miterlimit
  * 
- * 20 aanniimmttooddeesqrOplfxcuCLb...
+ * 20 bbaaccssnniimmttooddrreepqhOylfx
+ * background_color; background_attachment; backdrop_filter; aspect_ratio;
  * animation_timing_function; animation_play_state; animation_name;
  * animation_iteration_count; animation_fill_mode; animation_duration;
  * animation_direction; animation_delay; stop_opacity; quotes; orphans; order;
- * opacity; list_style_image; flex_shrink; flex_grow; fill_opacity;
- * counter_reset; counter_increment; color; background_image
+ * opacity; list_style_image; flex_shrink; flex_grow
+ * 
+ * 21 fcolb...........................
+ * fill_opacity; counter_reset; counter_increment; color; background_image
  */
-	uint32_t bits[21];
+	uint32_t bits[22];
 	
 	lwc_string *animation_delay;
 	lwc_string *animation_direction;
@@ -311,6 +318,7 @@ struct css_computed_style_i {
 	lwc_string *animation_timing_function;
 	css_fixed aspect_ratio_a;
 	css_fixed aspect_ratio_b;
+	lwc_string *backdrop_filter;
 	css_color background_color;
 	lwc_string *background_image;
 	css_fixed background_position_a;
@@ -350,6 +358,7 @@ struct css_computed_style_i {
 	css_color fill_a;
 	lwc_string *fill_b;
 	css_fixed fill_opacity;
+	lwc_string *filter;
 	css_fixed flex_basis;
 	css_fixed flex_grow;
 	css_fixed flex_shrink;
@@ -380,6 +389,7 @@ struct css_computed_style_i {
 	css_fixed max_width;
 	css_fixed min_height;
 	css_fixed min_width;
+	lwc_string *mix_blend_mode;
 	css_fixed object_position_a;
 	css_fixed object_position_b;
 	css_fixed opacity;
@@ -411,6 +421,7 @@ struct css_computed_style_i {
 	css_color text_shadow_d;
 	css_fixed top;
 	lwc_string *transform;
+	lwc_string *transform_origin;
 	lwc_string *transition_delay;
 	lwc_string *transition_duration;
 	lwc_string *transition_property;

@@ -16,6 +16,7 @@ PAINT = ['color', 'background_color', 'background_image', 'background_attachment
          'fill', 'stroke', 'stroke_width', 'stroke_dasharray', 'stroke_dashoffset',
          'stroke_linecap', 'stroke_linejoin', 'stroke_miterlimit', 'fill_rule',
          'stop_color', 'stop_opacity',
+         'filter', 'backdrop_filter', 'transform_origin', 'mix_blend_mode',
          'transition_property',
          'transition_duration',
          'transition_timing_function',

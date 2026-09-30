@@ -69,6 +69,7 @@
 #include "html/layout.h"
 #include "html/layout_internal.h"
 #include "html/onyx_paint.h"	/* Onyx: the transform translation */
+#include "html/onyx_fx.h"	/* Onyx: transformed and filtered bounds */
 #include "html/table.h"
 
 /** Array of per-side access functions for computed style margins. */
@@ -6291,6 +6292,26 @@ layout_update_descendant_bbox(
 	if (child->style != NULL) {
 		overflow_x = css_computed_overflow_x(child->style);
 		overflow_y = css_computed_overflow_y(child->style);
+	}
+
+	/* Onyx: a child transformed or filtered (html/onyx_fx.c) paints where its
+	 * matrix and its filters take it */
+	if (!html_object && onyx_fx_box(child) && onyx_fx_style(child->style)) {
+		onyx_fx_child_bounds(unit_len_ctx, child, &child_desc_x0,
+				&child_desc_y0, &child_desc_x1, &child_desc_y1);
+		child_desc_x0 -= off_x;
+		child_desc_y0 -= off_y;
+		child_desc_x1 -= off_x;
+		child_desc_y1 -= off_y;
+		if (child_desc_x0 < box->descendant_x0)
+			box->descendant_x0 = child_desc_x0;
+		if (child_desc_y0 < box->descendant_y0)
+			box->descendant_y0 = child_desc_y0;
+		if (box->descendant_x1 < child_desc_x1)
+			box->descendant_x1 = child_desc_x1;
+		if (box->descendant_y1 < child_desc_y1)
+			box->descendant_y1 = child_desc_y1;
+		return;
 	}
 
 	/* Get child's border edge */

@@ -91,6 +91,7 @@ int  kapi_gpu_program (int, const struct kapi_gpu_program *);
 int  kapi_gpu_render2 (const struct kapi_gpu_frame *, const float *, unsigned, unsigned, const struct kapi_gpu_batch2 *, unsigned, const unsigned *, unsigned);
 int  kapi_gpu_render3 (const struct kapi_gpu_frame *, const float *, unsigned, const struct kapi_gpu_batch3 *, unsigned, const unsigned *, unsigned, const float *);
 void *kapi_gpu_vbuf (unsigned);
+int  kapi_gpu_texture_rect (int, int, int, int, int, const unsigned *, int);
 int  kapi_win_minimise (unsigned);
 int  kapi_win_geometry (struct kapi_win_geom *);
 unsigned *kapi_resize_window2 (int, int, int *);
@@ -431,4 +432,5 @@ void KApiTableInit (void)
 	t->midi_devices      = kapi_midi_devices;
 	t->screen_native     = kapi_screen_native;
 	t->set_timezone      = kapi_set_timezone;
+	t->gpu_texture_rect  = kapi_gpu_texture_rect;
 }

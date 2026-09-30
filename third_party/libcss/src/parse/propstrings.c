@@ -341,7 +341,11 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("mask-position"),
 	SMAP("mask-repeat"),
 	SMAP("mask"),
-	SMAP("transition-property"),	/* Onyx */
+	SMAP("filter"),		/* Onyx: compositing */
+	SMAP("backdrop-filter"),
+	SMAP("transform-origin"),
+	SMAP("mix-blend-mode"),
+	SMAP("transition-property"),	/* Onyx: transitions, animations */
 	SMAP("transition-duration"),
 	SMAP("transition-timing-function"),
 	SMAP("transition-delay"),

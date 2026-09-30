@@ -490,6 +490,14 @@ uint8_t css_computed_mask_image(const css_computed_style *style, lwc_string **te
 uint8_t css_computed_mask_size(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text);
+/* Onyx: the compositing properties, as text (CSS_ONYX_TEXT_NONE: none / the initial value;
+ * see src/parse/properties/onyx_css3b.c): filter and backdrop-filter their functions
+ * ("blur(4px) drop-shadow(2px,2px,3px,#ff000000)"), transform-origin "<x> <y>" (lengths,
+ * percentages), mix-blend-mode its keyword (normal: none) */
+uint8_t css_computed_filter(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_backdrop_filter(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_transform_origin(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mix_blend_mode(const css_computed_style *style, lwc_string **text);
 /* Onyx: transitions and animations -- each list as a canonical text, the items separated by
  * commas (CSS_ONYX_TEXT_NONE: the initial value): the properties' names (lowercase), the
  * times in seconds ("0.3s,1s"), the timing functions ("ease", "cubic-bezier(0,0,1,1)",

@@ -18,6 +18,7 @@
 /* set_animation_play_state(style, 0, 0, CSS_UNIT_PX); */
 /* set_animation_timing_function(style, 0, 0, CSS_UNIT_PX); */
 /* set_aspect_ratio(style, 0, 0, CSS_UNIT_PX); */
+/* set_backdrop_filter(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_attachment(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_clip(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_color(style, 0, 0, CSS_UNIT_PX); */
@@ -71,6 +72,7 @@
 /* set_fill(style, 0, 0, CSS_UNIT_PX); */
 /* set_fill_opacity(style, 0, 0, CSS_UNIT_PX); */
 /* set_fill_rule(style, 0, 0, CSS_UNIT_PX); */
+/* set_filter(style, 0, 0, CSS_UNIT_PX); */
 /* set_flex_basis(style, 0, 0, CSS_UNIT_PX); */
 /* set_flex_direction(style, 0, 0, CSS_UNIT_PX); */
 /* set_flex_grow(style, 0, 0, CSS_UNIT_PX); */
@@ -114,6 +116,7 @@
 /* set_max_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_min_height(style, 0, 0, CSS_UNIT_PX); */
 /* set_min_width(style, 0, 0, CSS_UNIT_PX); */
+/* set_mix_blend_mode(style, 0, 0, CSS_UNIT_PX); */
 /* set_object_fit(style, 0, 0, CSS_UNIT_PX); */
 /* set_object_position(style, 0, 0, CSS_UNIT_PX); */
 /* set_opacity(style, 0, 0, CSS_UNIT_PX); */
@@ -156,6 +159,7 @@
 /* set_text_transform(style, 0, 0, CSS_UNIT_PX); */
 /* set_top(style, 0, 0, CSS_UNIT_PX); */
 /* set_transform(style, 0, 0, CSS_UNIT_PX); */
+/* set_transform_origin(style, 0, 0, CSS_UNIT_PX); */
 /* set_transition_delay(style, 0, 0, CSS_UNIT_PX); */
 /* set_transition_duration(style, 0, 0, CSS_UNIT_PX); */
 /* set_transition_property(style, 0, 0, CSS_UNIT_PX); */

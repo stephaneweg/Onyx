@@ -701,6 +701,23 @@ struct prop_table prop_dispatch[CSS_N_PROPERTIES] = {
 		PROPERTY_FUNCS(mask_repeat),
 		0,
 	},
+	/* Onyx: compositing */
+	{
+		PROPERTY_FUNCS(filter),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(backdrop_filter),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(transform_origin),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(mix_blend_mode),
+		0,
+	},
 	/* Onyx: transitions and animations */
 	{
 		PROPERTY_FUNCS(transition_property),

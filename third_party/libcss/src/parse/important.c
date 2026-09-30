@@ -249,7 +249,11 @@ void css__make_style_important(css_style *style)
 			case CSS_PROP_MASK_SIZE:
 			case CSS_PROP_MASK_POSITION:
 			case CSS_PROP_MASK_REPEAT:
-			case CSS_PROP_TRANSITION_PROPERTY:	/* Onyx */
+			case CSS_PROP_FILTER:	/* Onyx: compositing */
+			case CSS_PROP_BACKDROP_FILTER:
+			case CSS_PROP_TRANSFORM_ORIGIN:
+			case CSS_PROP_MIX_BLEND_MODE:
+			case CSS_PROP_TRANSITION_PROPERTY:	/* Onyx: transitions, animations */
 			case CSS_PROP_TRANSITION_DURATION:
 			case CSS_PROP_TRANSITION_TIMING_FUNCTION:
 			case CSS_PROP_TRANSITION_DELAY:

@@ -712,6 +712,19 @@ css_error css__parse_mask_repeat(css_language *c,
 css_error css__parse_mask(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);
+/* Onyx: compositing */
+css_error css__parse_filter(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_backdrop_filter(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_transform_origin(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mix_blend_mode(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
 /* Onyx: transitions and animations */
 css_error css__parse_transition_property(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,

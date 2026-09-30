@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <strings.h>
+#include <string.h>
 #include <assert.h>
 typedef uint32_t u32;
 #include "kern/v3d_tiling.h"
@@ -143,5 +144,43 @@ int main (void)
 				}
 		}
 	printf ("v3d tiling: %ld texels checked, %ld wrong\n", n, bad);
-	return bad != 0;
+
+	// (v70) StoreRect (gpu_texture_rect): rectangles stored a utile row at a time against every texel
+	// put at its TexelOffset, the rest of the texture untouched, the span it reports covering the writes
+	long nr = 0, rbad = 0;
+	unsigned seed = 12345;
+	auto rnd = [&seed] (u32 n) { seed = seed * 1103515245u + 12345u; return (u32) ((seed >> 8) % n); };
+	static unsigned char A[2100 * 2100 * 4 + 4096], B[sizeof A];
+	static unsigned Px[2100 * 2100];
+	const u32 Sizes[][2] = { { 3, 7 }, { 7, 9 }, { 13, 40 }, { 17, 5 }, { 33, 33 }, { 100, 300 }, { 257, 129 }, { 1024, 768 }, { 2048, 2048 }, { 2046, 1100 } };
+	for (auto &S : Sizes)
+	{
+		u32 w = S[0], h = S[1];
+		TLayout L; Layout (w, h, L);
+		u32 nBytes = L.nPadW * L.nPadH * 4;
+		for (int k = 0; k < 40; k++)
+		{
+			u32 x0 = rnd (w), y0 = rnd (h), rw = 1 + rnd (w - x0), rh = 1 + rnd (h - y0);
+			long stride = rw + rnd (5);
+			for (u32 i = 0; i < rh * stride; i++) Px[i] = seed = seed * 1664525u + 1013904223u;
+			memset (A, 0xAB, nBytes); memset (B, 0xAB, nBytes);
+			u32 lo, hi;
+			StoreRect (L, A, x0, y0, rw, rh, Px, stride, &lo, &hi);
+			u32 mlo = ~0u, mhi = 0;
+			for (u32 y = 0; y < rh; y++)
+				for (u32 x = 0; x < rw; x++)
+				{
+					u32 c = Px[y * stride + x], o = TexelOffset (L, x0 + x, y0 + y);
+					c = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
+					memcpy (B + o, &c, 4);
+					if (o < mlo) mlo = o;
+					if (o + 4 > mhi) mhi = o + 4;
+				}
+			nr++;
+			if (memcmp (A, B, nBytes) != 0 || lo > mlo || hi < mhi || hi > nBytes)
+			{ if (rbad < 5) printf ("StoreRect %ux%u, rect %u,%u %ux%u: wrong\n", w, h, x0, y0, rw, rh); rbad++; }
+		}
+	}
+	printf ("v3d StoreRect: %ld rectangles checked, %ld wrong\n", nr, rbad);
+	return bad != 0 || rbad != 0;
 }

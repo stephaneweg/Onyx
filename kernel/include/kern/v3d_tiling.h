@@ -56,4 +56,32 @@ static inline u32 TexelOffset (const TLayout &L, u32 x, u32 y)	// bytes
 	}
 }
 
+// (v70 gpu_texture_rect) The pixels (0xAARRGGBB, nStride pixels a row) of the rectangle x0, y0,
+// w x h stored into the texels pT of a texture of layout L (R G B A in memory): a utile row -- 4
+// texels, 16 contiguous bytes in every layout -- per offset computed. *pLo / *pHi: the lowest byte
+// written and the highest + 1 (the span to clean from the CPU caches).
+static void StoreRect (const TLayout &L, unsigned char *pT, u32 x0, u32 y0, u32 w, u32 h,
+		       const unsigned *pPx, long nStride, u32 *pLo, u32 *pHi)
+{
+	u32 nLo = ~0u, nHi = 0;
+	for (u32 y = 0; y < h; y++)
+	{
+		const unsigned *src = pPx + (long) y * nStride;
+		for (u32 x = 0; x < w; )
+		{
+			u32 tx = x0 + x;
+			u32 nOff = TexelOffset (L, tx & ~3u, y0 + y);		// (the utile row's first texel)
+			u32 *d = (u32 *) (pT + nOff);
+			if (nOff < nLo) nLo = nOff;
+			if (nOff + 16 > nHi) nHi = nOff + 16;
+			for (u32 k = tx & 3; k < 4 && x < w; k++, x++)
+			{
+				u32 c = src[x];
+				d[k] = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
+			}
+		}
+	}
+	*pLo = nLo; *pHi = nHi;
+}
+
 #endif
