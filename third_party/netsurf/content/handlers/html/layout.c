@@ -3478,6 +3478,57 @@ layout_line(struct box *first,
 			 * line */
 			b = split_box;
 
+			/* Onyx: only at a break opportunity -- a space before
+			 * the box, else the last box on the line followed by a
+			 * space or an atomic inline: "(<a>example.com</a>)" is
+			 * one word; NetSurf broke between "(" and the link */
+			if (space_before == 0 && split_box->type != BOX_INLINE_BLOCK &&
+			    split_box->type != BOX_INLINE_FLEX &&
+			    !lh__box_is_replace(split_box)) {
+				struct box *p;
+
+				for (p = split_box->prev; p != NULL; p = p->prev) {
+					if ((p->type == BOX_TEXT ||
+					     p->type == BOX_INLINE_END ||
+					     (p->type == BOX_INLINE &&
+					      !lh__box_is_replace(p))) &&
+					    p->space != 0)	/* (a space after
+							 * it: measured or not) */
+						break;
+					if (p->type == BOX_INLINE_BLOCK ||
+					    p->type == BOX_INLINE_FLEX ||
+					    (p->type == BOX_INLINE &&
+					     lh__box_is_replace(p)))
+						break;
+					if (p == first)
+						p = NULL;
+					if (p == NULL)
+						break;
+				}
+				if (p != NULL && p->next != split_box) {
+					b = p->next;
+					x = p->x + p->width;
+					if (p->type != BOX_TEXT)
+						x += p->padding[LEFT] +
+							p->padding[RIGHT] +
+							p->border[RIGHT].width +
+							p->margin[RIGHT];
+				} else if (p == NULL) {
+					/* no break opportunity on the line:
+					 * the run goes on, overflowing (its
+					 * first word) */
+					if (split != 0 &&
+					    split != split_box->length) {
+						if (!layout_text_box_split(content,
+							&fstyle, split_box,
+							split, w))
+							return false;
+					}
+					b = split_box->next;
+					x += space_before + w;
+				}
+			}
+
 			NSLOG(layout, DEBUG,  "leaving for next line");
 
 		} else {

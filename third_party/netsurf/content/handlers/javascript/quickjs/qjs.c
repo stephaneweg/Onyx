@@ -1193,12 +1193,53 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 		h = box->padding[TOP] + box->height + box->padding[BOTTOM] +
 			box->border[TOP].width + box->border[BOTTOM].width;
 		if (box->type == BOX_INLINE && box->inline_end != NULL) {
-			/* an inline: from its start to its end on the line */
-			int ex, ey;
+			/* an inline: from its start to its end on the line --
+			 * Onyx: on several lines, the union of its lines (its
+			 * content's extent across, its first line's top to its
+			 * last's bottom), as Chrome's getBoundingClientRect */
+			int ex, ey, x0 = INT_MAX, x1 = INT_MIN, y0 = INT_MAX, y1;
+			struct box *d, *e = box->inline_end;
 
-			box_coords(box->inline_end, &ex, &ey);
-			if (ey == y + box->border[TOP].width && ex > x)
+			box_coords(e, &ex, &ey);
+			ex += e->padding[RIGHT] + e->border[RIGHT].width;
+			if (ey == y + box->border[TOP].width && ex > x) {
 				w = ex - x;
+			} else if (ey > y + box->border[TOP].width &&
+					e->parent == box->parent) {
+				/* (its content's boxes: an empty start left at
+				 * the end of the line before is not a line of it) */
+				for (d = box->next; d != NULL && d != e; d = d->next) {
+					int dx, dy;
+					if ((d->type != BOX_TEXT || d->length == 0) &&
+					    d->type != BOX_INLINE_BLOCK &&
+					    d->type != BOX_INLINE_FLEX)
+						continue;
+					box_coords(d, &dx, &dy);
+					if (dx < x0)
+						x0 = dx;
+					if (dy < y0)
+						y0 = dy;
+					if (dx + d->width + d->padding[LEFT] +
+						d->padding[RIGHT] > x1)
+						x1 = dx + d->width +
+							d->padding[LEFT] +
+							d->padding[RIGHT];
+				}
+				if (x0 != INT_MAX) {
+					if (ex > x1)
+						x1 = ex;
+					if (y0 > y && y0 - box->padding[TOP] -
+						box->border[TOP].width > y)
+						y = y0 - box->padding[TOP] -
+							box->border[TOP].width;
+					y1 = ey + e->height + e->padding[BOTTOM] +
+						e->border[BOTTOM].width;
+					x = x0 - box->padding[LEFT] -
+						box->border[LEFT].width;
+					w = x1 - x;
+					h = y1 - y;
+				}
+			}
 		}
 		qjs_scroll(t, &sx, &sy);
 		x -= sx;
