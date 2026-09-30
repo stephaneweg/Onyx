@@ -72,5 +72,9 @@ This is a **functional** TLS bring-up, **not yet secure**:
 
 The library is built from mbedTLS's default config with the platform couplings removed
 (`scripts/config.py`, see the `Makefile`): no `NET_C`/`FS_IO`/`TIMING_C`, no platform
-entropy, and TLS 1.3 disabled (it would pull the PSA RNG plumbing). TLS 1.2 client with
-the usual ECDHE/AES-GCM/SHA-2 suites and X.509 parsing remains enabled.
+entropy. TLS 1.2 and TLS 1.3 client: 1.3 runs on PSA crypto, built with
+`MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG` -- its random bytes come from
+`mbedtls_psa_external_get_random`, defined (weak) in `onyx_tls.hpp` over `kapi_random`, and
+`start()` calls `psa_crypto_init` once per app. The usual ECDHE/AES-GCM/ChaCha20/SHA-2
+suites and X.509 parsing remain enabled. Regenerating the library needs Python's
+`jsonschema` and `jinja2` (the PSA driver wrappers are generated).

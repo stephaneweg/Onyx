@@ -1788,6 +1788,24 @@ code instead). `tools/tests/netsurf/tlstest.sh`: badssl.com's expired, wrong.hos
 self-signed and untrusted-root refused with their reasons, badssl.com, en.wikipedia.org and
 github.com trusted, "Proceed" and the viewer -- with both TLS stacks.
 
+**TLS 1.3.** mbedTLS is built with TLS 1.3 besides 1.2 (`MBEDTLS_SSL_PROTO_TLS1_3`): 1.3
+runs on mbedTLS' PSA crypto, whose random generator is the app's
+(`MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG`: `mbedtls_psa_external_get_random` in
+`user/tls/onyx_tls.hpp`, over `kapi_random`; `psa_crypto_init` once per app). The client
+offers the cipher suites, signature algorithms and groups in Chrome's order (X25519,
+P-256, P-384 -- not Chrome's post-quantum hybrid, which mbedTLS lacks; the TLS 1.3 key
+share for X25519); a TLS 1.3 server's tickets are taken after the handshake (`recv`) and
+kept like the 1.2 sessions (in memory and in `TLSSessions`): a known host's next connection
+is a PSK resumption. A handshake is one round trip shorter (en.wikipedia.org on the bench:
+~70 ms instead of ~105). `net:conn` ends with the version (`TLSv1.3`); `NS_TLSDEBUG=1`
+prints each handshake's version and whether a session was offered. The Pi's NetSurf grows
+by about 170 KB (`libmbedtls.a` 380 -> 550 KB); every app built on `onyx_tls.hpp` (the
+courier, `httpsget`, `ftpfs`) gets 1.3 at its next link. Without `MBEDTLS_HAVE_TIME` the
+ticket's obfuscated age is sent as 0 (the servers use it for 0-RTT only, which is not
+offered). Google's "unusual traffic" page (`/sorry/`) comes to this bench's address for
+every client (curl included, with TLS 1.3 and HTTP/2): what TLS 1.3 changes for it cannot
+be measured from here.
+
 **Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
 comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
 1.5.7's decompressor vendored in `third_party/zstd-1.5.7`, `libzstddec.a`, ~70 KB).
@@ -1896,8 +1914,8 @@ times are dominated by the scripts and the layout (QuickJS, one core), not the n
 Pi's gain is in the connections (a TLS handshake costs ~100-150 ms of the Pi's CPU) and in
 what is not downloaded again.
 
-**Not done.** TLS 1.3 (mbedTLS' TLS 1.3 needs its PSA crypto: a TLS 1.2-only client is
-told apart by some CDNs -- the reason of Fastly's 403 over HTTP/2); OCSP / CRL revocation,
+**Not done.** GREASE and the other extensions of Chrome's ClientHello (mbedTLS writes its
+own set); OCSP / CRL revocation,
 Certificate Transparency, HSTS preload; HTTP/3; CSP; CORS for EventSource, `<img
 crossorigin>`, fonts and module scripts (their loads are the core's, not `net.js`'); the cache
 partitioned by top-level site; `Vary` beyond NetSurf's; a back-forward cache; preload hints
@@ -2035,7 +2053,7 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
   worker, no `OffscreenCanvas`, `SharedArrayBuffer` / `Atomics` between workers; the
   WebSocket client sends its messages uncompressed (permessage-deflate inflates only) and
   never pings; CORS is not checked for EventSource either.
-- The network (§24): TLS 1.2 only, no revocation checks, no CSP, no SameSite cookies, no
+- The network (§24): no revocation checks, no CSP, no SameSite cookies, no
   CORS for the core's loads (EventSource, fonts, `<img crossorigin>`, module scripts), no
   HTTP/3, no back-forward cache.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's

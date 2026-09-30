@@ -79,7 +79,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
 | ~~TLS certificate verification~~ (done, 06 §24) | all | the chain against `SD:/res/ca-bundle`, the host name, the dates against the Onyx clock; NetSurf's "Privacy error" page with "Proceed", `about:certificate`; WebSocket the same | left: OCSP / CRL revocation, Certificate Transparency | S | P3 |
-| **TLS 1.3** | all | TLS 1.2 only (mbedTLS' TLS 1.3 needs its PSA crypto): some CDNs tell the client apart (Fastly answers HTTP/2 with 403: the fetcher falls back to HTTP/1.1) | mbedTLS with `MBEDTLS_USE_PSA_CRYPTO` + `MBEDTLS_SSL_PROTO_TLS1_3` (a bigger library, `psa_crypto_init` at start) | M | P2 |
+| ~~TLS 1.3~~ (done, 06 §24) | all | TLS 1.2 and 1.3 (mbedTLS on PSA crypto, the app's random generator), Chrome's suites / groups / signature algorithms, 1.3 tickets resumed | left: GREASE and Chrome's other ClientHello extensions, the post-quantum X25519MLKEM768 key share | S | P3 |
 | ~~HTTP/2~~ (done, 06 §24) / HTTP/3 (QUIC) | all | nghttp2: one connection per origin by ALPN, streams, Chrome's settings, fallback to HTTP/1.1 | HTTP/3 needs QUIC (ngtcp2 + a TLS 1.3 QUIC stack) | L | P4 |
 | ~~Brotli / zstd~~ (done, 06 §24) | all | `gzip, deflate, br, zstd` decoded as they come | -- | -- | -- |
 | **Same-origin policy, CSP, cookies' SameSite / partitioning, mixed content** | all | CORS done for fetch / XHR (06 §24: preflight, the Allow-Origin / -Credentials / -Headers / -Methods checks, modes, credentials, opaque responses); no CSP, no SameSite, no CORS for EventSource / fonts / `<img crossorigin>` | CSP parsing and enforcement for scripts / frames; SameSite in the cookie jar; CORS in the core's loads | M | P2 (security of logins) |
@@ -187,7 +187,7 @@ with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layou
 3. WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS.
 4. TLS certificate verification, HTTP/2 (nghttp2), `br` announced, CORS / CSP basics, a disk
    cache with validators -- done but CSP (06 §24: also zstd, TLS sessions kept across
-   launches, preconnect, per-connection timings); left: CSP, TLS 1.3, SameSite.
+   launches, preconnect, per-connection timings, TLS 1.3); left: CSP, SameSite.
 
 Wave 2 -- P1 / P2 depending on wave 1:
 5. Incremental restyle and relayout (after the layers, since both touch the redraw).
