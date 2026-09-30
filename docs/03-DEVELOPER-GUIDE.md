@@ -1882,7 +1882,11 @@ metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, 
 CSS3 painting, the native window: [`06-NETSURF-CHANGES.md`](06-NETSURF-CHANGES.md) lists the
 changes. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
 <out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
-`sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium.
+`sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium. The
+scripts' engine is QuickJS (`third_party/quickjs-ng-0.17.0`, `libquickjs.a`), with
+WebAssembly on wasm3 (`third_party/wasm3-0.9.2`, `libm3.a`: both made by `make -C
+user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (docs/06 §21);
+`sh tools/tests/netsurf/jstest.sh` runs their regression pages on the PC.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:

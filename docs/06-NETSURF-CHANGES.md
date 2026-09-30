@@ -19,14 +19,15 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/freetype-2.14.3/` | FreeType (options and modules: `user/netsurf/freetype/`) |
 | `third_party/webref-css-8.7.5/` | the CSS specifications' value grammars (W3C webref, MIT): libcss's grammar tables are made from them (§14) |
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
+| `third_party/wasm3-0.9.2/` | wasm3, the WebAssembly interpreter (MIT): the engine alone, its Onyx settings and patches in `README.onyx` (§21) |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19), `wasm.js` + `qjs_wasm.c` (WebAssembly on wasm3) and `crypto.js` + `qjs_crypto.c` (Web Crypto on mbedTLS: §21) |
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§21: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -273,6 +274,7 @@ optional chaining...) with the DOM written in JavaScript:
   (a submit button, Enter; prevented: not sent); the window's `scroll` (the frontend tells
   the core: `browser_window_scrolled`), `resize`, `DOMContentLoaded` (the document parsed),
   `load` (laid out, its images in; `<body onload>`).
+- **WebAssembly** (wasm3) and **Web Crypto** (mbedTLS): §21.
 - A script runs at most `script_timeout` seconds (NetSurf's option); its recursion is
   stopped past **4 MB** of stack (a `RangeError`). The Onyx app has an 8 MB stack for it:
   `stack = 8M` in `SD:/apps/netsurf.app/app.txt`, read by the kernel (`AppStackSize`,
@@ -1166,6 +1168,134 @@ the styles scoped to each tree.
   `:host` in `querySelector` / `matches`; the focus navigation order of shadow trees;
   `::before` / `::after` of a `display: contents` element.
 
+## 21. WebAssembly (wasm3) and Web Crypto (mbedTLS)
+
+Two P1 gaps of docs/07 §2-§3: pages that need WebAssembly stopped (QuickJS has none), and
+`crypto.getRandomValues` / `randomUUID` used `Math.random` (predictable session tokens and
+nonces) with an empty `crypto.subtle` (logins and SPAs call `subtle.digest`). Both work in a
+page's context and in a worker's (`js_newthread`, `qjs_worker_create`: set up after net.js).
+
+### WebAssembly
+
+- **The engine**: wasm3 (`third_party/wasm3-0.9.2`, MIT; `main` at 28ecb9a, which says
+  0.9.2) -- an interpreter in portable C99 whose operations are threaded by tail calls, ~200 KB
+  of AArch64 code, nothing to port (WAMR's fast interpreter needs its OS layer -- mmap,
+  threads, stack guards -- and is several times larger; its AOT / JIT is the step after, docs/07
+  §2). Its Onyx settings (`src/m3_onyx_config.h`, read by its `m3_config.h`: no stack
+  switching, snapshots, typed function references or gas metering, no guarded memories, 1.5
+  MB of native stack for a module's recursion, memories of 1 GiB at most) and one patch (the
+  validator refuses an opcode the compiler lacks -- SIMD's 0xFD --, so `WebAssembly.validate`
+  answers for the whole module: pages detect features that way) are in its `README.onyx`.
+  Its spec suite (wg-3.0: 27878 tests) passes with these settings. The Pi links `libm3.a`
+  (committed; `user/netsurf/Makefile`, -O3), the bench compiles the sources (`host.mk`).
+- **The API** (`quickjs/qjs_wasm.c`, the classes in C; `quickjs/wasm.js`, compiled in as
+  `qjs_wasm_js.h`): `WebAssembly.validate`, `compile`, `instantiate` (bytes or a Module; the
+  import object read a microtask after the call, as a browser does once it has compiled),
+  `compileStreaming` / `instantiateStreaming` (a Response or a promise of one: `ok`,
+  `application/wasm` over http(s) -- a file: / data: URL has no type), `Module` (the bytes
+  copied and every function body validated at once; `Module.exports`, `imports`,
+  `customSections`), `Instance` (`exports`: frozen, null prototype, the same function object
+  each time), `Memory` (`buffer`, `grow`), `Table` (`get`, `set`, `grow`, `length`; funcref
+  and externref), `Global` (`value`, `valueOf`; the seven value types), `CompileError`,
+  `LinkError`, `RuntimeError`.
+- **Values**: i32 (ToInt32), i64 as BigInt (a Number is a TypeError, as in browsers), f32 /
+  f64, funcref (null or a function WebAssembly exported), externref (any value), several
+  results as an array (and from an import, an iterable). A JavaScript import is a raw function
+  of wasm3 (`qw_host_call`) that calls it; a function exported by the same store is linked
+  directly (a Wasm-to-Wasm call). Re-entrancy works both ways (Wasm calls JavaScript which
+  calls Wasm...).
+- **Errors**: a trap is a `RuntimeError` ("unreachable executed", "integer divide by zero",
+  "out of bounds memory access"...), Wasm's stack overflow a `RangeError` (Chromium's), a
+  JavaScript exception thrown by an import crosses the Wasm frames and reaches the caller as
+  the same object; link failures (a missing import, a wrong type, a memory too small) are
+  `LinkError`s, bad bytes `CompileError`s. A module past the page's `script_timeout` traps
+  (m3_Yield, which wasm3 calls at each call, asks qjs.c: `qjs_ctx_timed_out`).
+- **Stores**: an instance is a module loaded into a wasm3 runtime -- a store -- under a
+  name of its own. wasm3 links a module's imported memory, table and global to another
+  module's export in the same runtime, so an instance goes into the store of the Memory /
+  Table / Global objects it imports (the imports are renamed to their owner module and export:
+  `qw_rename`), else into a store of its own. `new WebAssembly.Memory / Table / Global` make a
+  small module exporting the one thing (`qw_make_holder`), in the context's shared store (the
+  Emscripten pattern: `env.memory`, `env.table`, `__stack_pointer` made by JavaScript, then
+  imported). A function of another store put in a table or passed as a funcref gets a
+  trampoline -- a tiny module of this store importing it (Emscripten's `addFunction` puts a
+  small instance's export in the main table so). Every JavaScript object of a store references
+  a hidden store object, which owns the JavaScript values Wasm holds (the imported functions,
+  the externref values) and shows them to the garbage collector (its `gc_mark`): cycles
+  through imports are collected, and when nothing of a store is left its runtime -- linear
+  memories, compiled code -- is freed (on the bench: 300 instances of 2 MB made and dropped, at
+  most 9 stores alive at once). Linear memories are outside QuickJS's heap: past 64 MB more
+  of them since the last collection, one is run (`qw_pressure`). A store's memories together
+  are capped at 512 MB (the app has 2 GB of heap).
+- **Memory buffers**: `Memory.buffer` is an ArrayBuffer over the linear memory itself (no
+  copy); it holds the store (so a view outliving the Instance stays valid) and is detached when
+  the memory grows or moves -- checked each time Wasm returns to JavaScript (after a call,
+  before an import runs) and by `grow`. A Memory made by JavaScript and imported keeps its
+  buffer (the module uses its bytes).
+- **Speed** (the PC bench, `js-wasm.html`'s C program, `wasm/build.sh`): SHA-256 x 20000:
+  wasm3 104 ms, V8 (Node 22) 12 ms, native gcc -O2 7 ms; a sieve to 2e6: 53 / 11-28 / 10.5
+  ms; fib(27): 9 / 1-1.5 / 0.4 ms; a Mandelbrot 320x240x256: 64 / 19-28 / 15.6 ms -- 3.5 to 9
+  times V8, as an interpreter. Not measured on the Pi yet (a Cortex-A72 at 1.5-1.8 GHz: expect 3-4
+  times the PC's times).
+- **Not done**: SIMD (wasm3 has none: `validate` says false, pages fall back to their scalar
+  build), threads and shared memories (`shared: true` is a TypeError; `crossOriginIsolated` is
+  false anyway), `WebAssembly.Tag` / `Exception` (a Wasm exception reaching JavaScript is a
+  RuntimeError; tags are not exported), JSPI, the JS string builtins, ESM integration
+  (`import` of a .wasm), `Memory.toResizableBuffer`, the i64 `address` of memory64 descriptors.
+  `Module.imports` lists functions, tables, memories, globals, tags in that order (wasm3's),
+  not the import section's. Imports from two different instances' stores (a memory of one, a
+  table of the other) are a LinkError. externref values stay referenced while their store
+  lives. A loop without calls is not interrupted by `script_timeout`. A buffer
+  `transfer()`red keeps pointing at the memory (not detached on grow).
+- Tests: `tools/tests/netsurf/pages/js-wasm.html` in `jstest.sh` (100 checks: modules written
+  byte by byte by a small assembler in the page -- add, memory with a data segment and grows
+  from both sides, a Memory imported, imports and re-entrancy, a JS exception through Wasm,
+  traps, a stack overflow, a start function's trap, tables with call_indirect and an imported
+  Table, the addFunction pattern, i64 / BigInt, globals, f32 rounding, multi-value, externref;
+  the promises and the streaming forms; `wasm/bench.c` compiled by clang to
+  `js-wasm-bench.wasm` (SHA-256, sieve, qsort, recursion, Mandelbrot, an import, memory grown
+  by its allocator); a worker; 300 stores made and dropped). The same page in V8 (Node) passes
+  all checks but "SIMD is false" (V8 has SIMD). `NS_WASMDEBUG=1` logs the stores made and
+  freed.
+
+### Web Crypto
+
+- **Random**: `crypto.getRandomValues` (an integer typed array, 65536 bytes at most:
+  `TypeMismatchError` / `QuotaExceededError`) and `randomUUID` take their bytes from mbedTLS's
+  CTR-DRBG (AES-256), seeded by the best entropy there is -- on the Pi the hardware RNG
+  (`kapi_random`, Circle's `CBcmRandomNumberGenerator`, as `user/tls/onyx_tls.hpp`), on the
+  PC bench `getrandom` -- and reseeded by mbedTLS every 10000 requests (`qjs_crypto.c`).
+- **crypto.subtle** (`quickjs/crypto.js`, the natives in `quickjs/qjs_crypto.c` on
+  `third_party/mbedtls-3.6.3`, which the app links for TLS): `digest` (SHA-1 / 256 / 384 /
+  512), `generateKey`, `importKey` / `exportKey` (raw, jwk, spki, pkcs8), `sign` / `verify`
+  (HMAC, ECDSA on P-256 / P-384 / P-521 with IEEE P1363 signatures, RSASSA-PKCS1-v1_5,
+  RSA-PSS), `encrypt` / `decrypt` (AES-GCM with its tag lengths and additional data, AES-CBC
+  with PKCS#7 padding, AES-CTR counting in the counter's low `length` bits, RSA-OAEP with a
+  label), `deriveBits` / `deriveKey` (ECDH, PBKDF2, HKDF), `wrapKey` / `unwrapKey` (AES-KW and
+  the ciphers above; raw, pkcs8, spki or a JWK as JSON). Each method returns a promise; the
+  algorithm is normalized as the standard says (case-insensitive names, `hash` normalized) and
+  its arguments copied when called; failures reject with the standard's `DOMException`s
+  (`NotSupportedError`, `SyntaxError` for usages, `InvalidAccessError` for a key's type /
+  usage / extractability, `DataError` for key data, `OperationError`), parameter types with
+  `TypeError`. `CryptoKey` (`type`, `extractable`, `algorithm`, `usages`) keeps its material in
+  a WeakMap: a secret key's bytes, an asymmetric key's DER -- PKCS#8 (written here around
+  mbedTLS's SEC1 / PKCS#1) or SPKI --, parsed by mbedTLS at each use. JWK: `kty` oct / EC /
+  RSA with `alg`, `key_ops`, `ext`, `use` checked; EC private keys checked against their point.
+- **Speed** (PC bench; Chromium's in brackets): SHA-256 of 1 MB 5-7 ms (8), AES-GCM of 1 MB
+  14 ms (7), an ECDSA P-256 signature 1 ms (0.2), RSA-2048 4 ms (1). RSA key generation is
+  synchronous: seconds for 2048 bits on the Pi (the promise resolves after).
+- **Not done**: Ed25519 / X25519 (mbedTLS 3.6 has neither), AES-KW with PKCS#8 of odd
+  lengths (the standard's), a `CryptoKey` sent to a worker (the structured clone does not know
+  it), `SubtleCrypto` on the workers' own thread (there is none: §19). ECDSA signatures are
+  deterministic (RFC 6979: mbedTLS's; valid everywhere, Chromium's are random).
+- Tests: `tools/tests/netsurf/pages/js-crypto.html` in `jstest.sh` (88 checks): the standards'
+  answers (FIPS 180 digests, RFC 4231 HMAC, RFC 6070 PBKDF2), and against Chromium's API --
+  `tools/tests/netsurf/crypto/mkvectors.js` runs Node's WebCrypto (the same API) and writes
+  `pages/js-crypto-vectors.js`: its keys (every format, the three curves, RSA-2048) imported,
+  its signatures verified, its ciphertexts decrypted, its derived bits (ECDH, PBKDF2, HKDF) and
+  its deterministic outputs (AES, HMAC, AES-KW, RSASSA-PKCS1-v1_5) made the same; generated
+  keys, round trips, the error names, a worker. The page passes in Chromium too.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -1181,6 +1311,8 @@ the styles scoped to each tree.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
+- WebAssembly and Web Crypto (§21): no Wasm SIMD, threads, `WebAssembly.Tag` / `Exception`,
+  JSPI; no Ed25519 / X25519; RSA key generation blocks the window.
 - `opacity`, filters, animations and transitions.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
