@@ -5,6 +5,9 @@
 // few seconds, so a note typed in the calendar shows up by itself.
 //   * Click an appointment: the calendar opens on that day.
 //   * Drag the title: move the widget; its place is kept in its config.ini.
+// It also sends the calendar's reminders (SD:/apps/calendar.app/reminders.txt, "YYYYMMDDHHMM|text"
+// lines the calendar writes) as notifications when their minute comes, the calendar open or not;
+// it is the "agenda" IPC service, so the calendar knows it need not send them itself.
 // It is part of the wallpaper (the modernised CDE): no card, no shadow -- its text and an etched
 // line straight on the desktop (a see-through window, WIN_FLAG_ALPHA), the ink chosen from the
 // wallpaper's brightness under it (kapi_wallpaper_buffer): engraved (dark, a light line below) on
@@ -13,11 +16,13 @@
 #include "kapi.h"
 #include "applib.h"
 #include "wtk/wtk.h"
+#include "notify.h"
 
 using namespace wtk;
 
 #define AGENDA		"SD:/apps/calendar.app/agenda.txt"
 #define CONFIG		"SD:/apps/agenda.app/config.ini"
+#define REMINDERS	"SD:/apps/calendar.app/reminders.txt"
 #define W		344
 #define HDR		34			// the title, its etched line
 #define ROW		21
@@ -54,7 +59,7 @@ static bool reload (void)
 	int y = 0, mo = 0, d = 0;
 	kapi_get_datetime (&y, &mo, &d, 0, 0, 0);
 	int today = y * 10000 + mo * 100 + d;
-	static char buf[4096];
+	static char buf[16384];
 	int n = 0;
 	void *f = kapi_open (AGENDA);
 	if (f) { n = kapi_read (f, buf, sizeof buf - 1); kapi_close (f); }
@@ -87,6 +92,55 @@ static bool reload (void)
 		g_ev[j + 1] = t;
 	}
 	return true;
+}
+
+// ---- reminders ---------------------------------------------------------------------------------------
+
+// A date and time as minutes since 1970 (days_from_civil: Howard Hinnant's).
+static long minutes_of (int y, int m, int d, int h, int mi)
+{
+	y -= m <= 2;
+	long era = (y >= 0 ? y : y - 399) / 400;
+	long yoe = y - era * 400;
+	long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+	long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	return (era * 146097 + doe - 719468) * 1440 + h * 60 + mi;
+}
+static long now_minutes (void)
+{
+	int y = 0, mo = 0, d = 0, h = 0, mi = 0;
+	kapi_get_datetime (&y, &mo, &d, &h, &mi, 0);
+	return minutes_of (y, mo, d, h, mi);
+}
+
+// Every few seconds: the reminders whose minute has come since the last look are notified.
+static void reminders (void)
+{
+	static long last = -1;
+	long now = now_minutes ();
+	if (last < 0) { last = now; return; }		// (started now: what is past stays past)
+	if (now == last) return;
+	static char buf[16384];
+	int n = 0;
+	void *f = kapi_open (REMINDERS);
+	if (f) { n = kapi_read (f, buf, sizeof buf - 1); kapi_close (f); }
+	if (n < 0) n = 0;
+	buf[n] = '\0';
+	for (int i = 0; i < n; )
+	{
+		int ls = i; while (i < n && buf[i] != '\n') i++;
+		int le = i++;
+		if (le - ls < 14 || buf[ls + 12] != '|') continue;
+		int v[5] = { 0, 0, 0, 0, 0 }, w[5] = { 4, 2, 2, 2, 2 }, k = ls;
+		for (int j = 0; j < 5; j++) for (int c = 0; c < w[j]; c++) v[j] = v[j] * 10 + (buf[k++] - '0');
+		long at = minutes_of (v[0], v[1], v[2], v[3], v[4]);
+		if (at <= last || at > now) continue;
+		char text[200]; int p = 0;
+		for (int c = ls + 13; c < le && buf[c] != '\r' && p < 199; c++) text[p++] = buf[c];
+		text[p] = '\0';
+		notify ("Calendar", text);
+	}
+	last = now;
 }
 
 // The wallpaper under the widget (a sample every 4 px): its mean colour -> the ink. False: the
@@ -262,6 +316,7 @@ public:
 		lastPoll = now;
 		bool b = read_back (winX, winY);		// (a new wallpaper)
 		if (reload () || b) invalidate (true);
+		reminders ();
 	}
 };
 
@@ -269,7 +324,9 @@ int main (void)
 {
 	int x = 12, y = 40;				// below the menu bar, top-left
 	if (app_ini_load_path (CONFIG) >= 0) { x = app_ini_get_int (0, "x", x); y = app_ini_get_int (0, "y", y); }
+	kapi_ipc_register ("agenda");
 	reload ();
+	reminders ();
 	read_back (x, y);
 	AgendaRoot root (x, y);
 	if (root.canvas.px == 0) return 1;

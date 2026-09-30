@@ -125,7 +125,14 @@ if want paint; then			# (a picture on three layers: the sky filled, hills and a 
 	sim paint paint-grid "$S;$(c 962 22);menu 31;menu 31;$(c 291 57);$(c 465 460);$W" $P
 	png paint-grid
 fi
-if want calendar; then sim calendar calendar "wait;down 196 199;up 196 199;$W" $P; png calendar; fi
+if want calendar; then			# (the sample calendar.ics of sd/: the week of Monday 28 September 2026, the
+					#  simulator's today; the month, the day; a weekly event opened -- the wheel down to
+					#  19:00, a double click on Tuesday's badminton)
+	sim calendar calendar "$W" $P; png calendar
+	sim calendar calendar-month "$W;down 941 23;up 941 23;$W" $P; png calendar-month
+	sim calendar calendar-day "$W;down 781 23;up 781 23;$W" $P; png calendar-day
+	sim calendar calendar-event "$W;wheel 600 400 -3;wait;down 471 515;up 471 515;down 471 515;up 471 515;$W;$W" $P; png calendar-event
+fi
 if want mandelbrot; then sim mandelbrot mandelbrot "$W" $P; png mandelbrot; fi
 if want eyes; then sim eyes eyes "$W" $P SIM_CURSOR=260,-40; png eyes; fi
 if want taskman; then sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;$W" $P; png taskman; fi

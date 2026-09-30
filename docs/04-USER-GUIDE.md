@@ -380,9 +380,10 @@ The former strip along the bottom of the screen: tabs of references to files, fo
 The **next appointments**, straight on the wallpaper at the top left (started by `autostart`,
 under every window) — no card: its text and an etched line are part of the desktop, the ink
 chosen from the wallpaper under it (dark and engraved on a light wallpaper, white with a soft
-shadow on a dark one). The notes come from the **calendar** app (`agenda.txt`): today first (a
+shadow on a dark one). The appointments come from the **calendar** app (`agenda.txt`): today first (a
 **Today** mark in the accent colour), then by date. It re-reads them every few seconds, so a
-new note appears by itself. **Click** an appointment to open the calendar on that day; **drag
+new appointment appears by itself. It also sends the calendar's **reminders** as notifications
+when their time comes (`reminders.txt`), the calendar open or not. **Click** an appointment to open the calendar on that day; **drag
 the title** to move it (its place is kept in `SD:/apps/agenda.app/config.ini`).
 
 ![Agenda widget](../screenshots/agenda.png)
@@ -420,7 +421,7 @@ remove it); no shadow. Its **title bar** holds:
 
 - at the left, the **window menu** button (a bar): **Restore** / **Maximise**, **Minimise**,
   **Move to** *another workspace* / **On All Workspaces**, **Close** (Ctrl-Q) — greyed in the
-  few apps that draw their whole window themselves (the calendar, IRC, most games, the
+  few apps that draw their whole window themselves (most games, the
   emulators: their other buttons work);
 - at the right, **minimise** (a short line): the window disappears — bring it back from the dock
   (its app's launcher or drawer), the menu bar's **Onyx ▸ Open Windows**, or by starting the app
@@ -984,7 +985,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | ![tinypad](../screenshots/tinypad.png) | ![tinycalc](../screenshots/tinycalc.png) | ![paint](../screenshots/paint.png) |
 | *tinypad — text editor* | *tinycalc — calculator* | *paint — drawing* |
 | ![calendar](../screenshots/calendar.png) | ![mandelbrot](../screenshots/mandelbrot.png) | ![eyes](../screenshots/eyes.png) |
-| *calendar — calendar + notes* | *mandelbrot — fractal explorer* | *eyes — gadget* |
+| *calendar — the planner* | *mandelbrot — fractal explorer* | *eyes — gadget* |
 | ![taskman](../screenshots/taskman.png) | ![2048](../screenshots/2048.png) | ![minesweeper](../screenshots/minesweeper.png) |
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
 | ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
@@ -1009,7 +1010,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib). A column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel. **Keys**: **C D E F G A B** a note (Shift = sharp; the cursor then goes to the next slice, and you hear it), **0–7** the octave, **Space** a silence, **Delete** `---`, **Backspace** clears the slice above, **#** toggles the sharp, **Ctrl+↑ / Ctrl+↓** move the note a semitone up / down, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; a **click** selects a cell; wheel / scrollbar scroll. The **column header** is a button: it opens the **instrument dialog** (presets from `SD:/apps/fmtracker.app/ins`, Load / Save `.FMI`, the two operators' multiplier, level, attack, decay, sustain, release, wave, sustain / tremolo / vibrato flags, feedback, FM or additive, **Test**); right-click it to mute the channel in this pattern. **Play** (^P) plays from the cursor, follows the position and highlights it; **Stop** / **Esc**. A song is a list of **patterns** (toolbar: ◀ ▶ +, **Rows**, **Speed** = a slice lasts speed / 20 s; Pattern menu: New, Duplicate, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
 | **paint** (Paint) | Drawing, in the way of Windows 11's Paint, on **transparent layers**: pencil, brush, eraser, fill, colour picker, magnifier, fifteen shapes (outline and fill), a rectangular selection moved, rotated, flipped, cut and pasted, colour 1 / colour 2, a palette and your own colours, a pixel grid, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX); saves its layers as OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
-| **calendar** | Calendar + notes. Left/right arrows = month, up/down = year; click a day, type a note, Enter to save (`agenda.txt` in the app's folder). An argument `YYYYMMDD` opens that day (used by the agenda widget). |
+| **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
@@ -1431,6 +1432,73 @@ starting with `#` or `;` is a comment (not in `[records]`). Cardfile reads such 
 keys in any case, the header's columns in any order (a column missing: empty values; unknown:
 ignored), no `[field]` at all (the header's columns become text fields), a value that is not of its
 type (kept as it is — the form asks for a valid one when the record is edited).
+
+### Calendar, the planner (`calendar`)
+
+![Calendar](../screenshots/calendar.png)
+*The week: the appointments in their calendars' colours (the ones before now paler), two at the
+same time side by side, a weekend away in the all-day row, now as a red line; on the left the
+month, the calendars and the tasks (one late, in red).*
+
+The **Calendar** keeps your **appointments** and your **tasks**. On top: **New event**, **Today**,
+**<** and **>** (the previous / next day, week or month), the period shown, and **Day / Week /
+Month**.
+
+**Day and Week** show the hours down the side (the evening and the night a shade darker), the
+week number in the corner, today's date in a circle and **now as a red line**. Each appointment
+is a block in its calendar's colour — its title, its times, its place, as much as fits; those
+that overlap sit side by side; those already over are paler. The **all-day** ones (and those over
+several days) are bars in the row on top. With the mouse:
+
+- **double-click an empty slot** (or **drag down** one) — a new appointment there; double-click
+  the all-day row — a new all-day one;
+- **click** an appointment to select it, **double-click** it to open it (or Enter; **Event ▸
+  Open**, **Event ▸ Delete**);
+- **drag** it to another time or day, **drag its bottom edge** to change its end (by quarters of
+  an hour);
+- a click on a day's name opens that day; the wheel scrolls the hours.
+
+![Calendar month](../screenshots/calendar-month.png)
+*The month: the all-day appointments as bars, the others after a dot of their colour.*
+
+**Month** shows six weeks: in each day its appointments (the all-day ones as bars, the others a
+dot of their colour then the title — the time too when the column is wide), **+N more** when they
+do not fit. Click a day to select it, double-click it to open it in the Day view; the wheel goes
+from month to month. The **little month** on the left jumps to any day.
+
+![Editing an event](../screenshots/calendar-event.png)
+*Editing a weekly appointment: on Tuesdays and Thursdays, a reminder half an hour before.*
+
+**An appointment** (**New event**, or a double click): its **title**; **All day** or its start
+and end (a date — its button drops a calendar — and a time: `9:30`, `930`, `9h30`); **Repeat**:
+does not repeat, every day, every weekday (Monday to Friday), every week or every two weeks (on
+the days you tick: **M T W T F S S**), every month, every year — **Until** a date or for ever;
+a **Reminder** (at the start, 5 / 10 / 15 / 30 minutes, 1 / 2 hours, 1 / 2 days before); its
+**category**; a **place**; **notes**. **Save**, **Cancel**, **Delete**. A repeating appointment
+opens on the occurrence clicked: saving, moving or deleting it asks **Only this one** (it leaves
+the series and becomes an appointment of its own) or **All of them**.
+
+**Calendars** (on the left): Work, Personal, Family, Sport, Birthdays — each with its colour;
+a click on one **hides or shows** its appointments. **Tasks** (below): the round box ticks one
+off (it goes to the end, struck through); the date on the right is when it is due — **Today** in
+the accent, in **red** when it is late; a double-click edits it (its title, its due date, done,
+its category, Delete); the field at the bottom adds one (Enter). **File ▸ New Task...** asks for
+all of it.
+
+**Reminders** are notifications (the bubble at the top right: "Dentist at 17:30, Dr. Peeters"),
+sent by the **agenda widget** (always running), the Calendar open or not — or by the Calendar
+itself when the widget is not there.
+
+**Files.** Everything is kept in **`SD:/apps/calendar.app/calendar.ics`** — **iCalendar**, the
+format of Google Calendar, Outlook, Thunderbird and Apple's Calendar. **File ▸ Import
+iCalendar...** adds the events and tasks of an `.ics` file (the ones already there, by their
+UID, are skipped; its categories added); **File ▸ Export iCalendar...** writes yours to a file
+(`SD:/docs/calendar.ics` by default). Times in UTC (Google's `Z`) are brought to local time by
+`config.ini` (`[calendar]`: `utc_offset` = minutes east of UTC, 60 in Belgium; `eu_dst` = 1:
+European summer time; `view` = day, week or month at the start). For the desktop the Calendar
+also writes `agenda.txt` (the month's appointments, for the agenda widget) and `reminders.txt`
+(the month's reminders). The notes of the former calendar (in `agenda.txt`) become appointments
+the first time. An argument `YYYYMMDD` opens that day (the agenda widget's clicks).
 
 ### IRC, the chat client (`irc`)
 
