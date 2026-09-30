@@ -93,6 +93,18 @@ for s in "fontface status unloaded true" "fontface ready loaded 1" "fontface wid
 	expect "$L" "$s"
 done
 
+echo "js-latesheets.html (style sheets added and taken out after the layout)"
+L=$OUT/js-latesheets.log
+run js-latesheets.html "$(waits 80)" "$L"
+for s in "late added flex" "late removed block block" "late back flex"; do
+	expect "$L" "$s"
+done
+
+echo "css-bodyoverflow.html (the body's overflow is the viewport's)"
+L=$OUT/css-bodyoverflow.log
+run css-bodyoverflow.html "$(waits 40)" "$L"
+expect "$L" "bodyoverflow page true"
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"

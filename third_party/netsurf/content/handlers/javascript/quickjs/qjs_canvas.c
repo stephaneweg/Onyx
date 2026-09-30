@@ -1938,6 +1938,12 @@ static const JSCFunctionListEntry qcv_natives[] = {
 };
 
 /* exported interface documented in qjs_canvas.h */
+/* compiled once per process (qjs.c) */
+JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char *name,
+		uint8_t **bc, size_t *bclen);
+static uint8_t *qjs_canvas_bc;
+static size_t qjs_canvas_bc_len;
+
 void qjs_canvas_setup(JSContext *ctx, JSValueConst natives)
 {
 	JSRuntime *rt = JS_GetRuntime(ctx);
@@ -1955,8 +1961,8 @@ void qjs_canvas_setup(JSContext *ctx, JSValueConst natives)
 	}
 	JS_SetPropertyFunctionList(ctx, natives, qcv_natives,
 			sizeof(qcv_natives) / sizeof(qcv_natives[0]));
-	fn = JS_Eval(ctx, qjs_canvas_js, sizeof(qjs_canvas_js) - 1, "canvas.js",
-			JS_EVAL_TYPE_GLOBAL);
+	fn = qjs_eval_cached(ctx, qjs_canvas_js, sizeof(qjs_canvas_js) - 1, "canvas.js",
+			&qjs_canvas_bc, &qjs_canvas_bc_len);	/* (Onyx: qjs.c) */
 	if (JS_IsException(fn)) {
 		JSValue e = JS_GetException(ctx);
 		const char *msg = JS_ToCString(ctx, e);
