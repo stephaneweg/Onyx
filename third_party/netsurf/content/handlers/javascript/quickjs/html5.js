@@ -2692,7 +2692,9 @@ class ShadowRoot extends G.DocumentFragment {
 	setHTMLUnsafe(html) { setRootHTML(this, String(html)); }
 	getHTML(opts) { return getHTMLOf(this, opts); }
 	get activeElement() {
-		for (let a = rawActive(); a;) {
+		const f = rawActive();
+		if (!f || !f.isConnected) return null;
+		for (let a = f; a;) {
 			const r = treeRoot(a);
 			if (r === this) return a;
 			const h = N.shadowHost(r);
@@ -2825,6 +2827,27 @@ def(Element.prototype, {
 	set part(v) { this.setAttribute('part', v); },
 	getHTML(opts) { return getHTMLOf(this, opts); },
 });
+/* a shadow root is not cloned, imported nor adopted */
+{
+	const clone = Node.prototype.cloneNode, imp = G.Document.prototype.importNode,
+		adopt = G.Document.prototype.adoptNode;
+	def(Node.prototype, {
+		cloneNode(deep) {
+			if (isShadowRoot(this)) throw domError('cloneNode: a shadow root', 'NotSupportedError');
+			return clone.call(this, deep);
+		},
+	});
+	def(G.Document.prototype, {
+		importNode(n, deep) {
+			if (isShadowRoot(n)) throw domError('importNode: a shadow root', 'NotSupportedError');
+			return imp.call(this, n, deep);
+		},
+		adoptNode(n) {
+			if (isShadowRoot(n)) throw domError('adoptNode: a shadow root', 'HierarchyRequestError');
+			return adopt.call(this, n);
+		},
+	});
+}
 /* assignedSlot: null for a slot in a closed shadow tree */
 function openSlot(s) {
 	return s !== null && !(N.shadowFlags(treeRoot(s)) & SR_CLOSED) ? s : null;

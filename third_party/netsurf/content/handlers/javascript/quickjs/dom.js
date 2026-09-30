@@ -37,10 +37,33 @@ function isElement(v) { return v instanceof Element; }
 
 /* ---- errors -------------------------------------------------------------------------- */
 
+/* Onyx: the legacy codes (testharness.js' assert_throws_dom checks them) */
+const DOM_EXCEPTION_CODES = { IndexSizeError: 1, HierarchyRequestError: 3,
+	WrongDocumentError: 4, InvalidCharacterError: 5, NoModificationAllowedError: 7,
+	NotFoundError: 8, NotSupportedError: 9, InUseAttributeError: 10, InvalidStateError: 11,
+	SyntaxError: 12, InvalidModificationError: 13, NamespaceError: 14, InvalidAccessError: 15,
+	TypeMismatchError: 17, SecurityError: 18, NetworkError: 19, AbortError: 20,
+	URLMismatchError: 21, QuotaExceededError: 22, TimeoutError: 23, InvalidNodeTypeError: 24,
+	DataCloneError: 25 };
 class DOMException extends Error {
 	constructor(message = '', name = 'Error') {
 		super(message);
 		this.name = name;
+	}
+	get code() { return DOM_EXCEPTION_CODES[this.name] || 0; }
+}
+{
+	const k = { INDEX_SIZE_ERR: 1, DOMSTRING_SIZE_ERR: 2, HIERARCHY_REQUEST_ERR: 3,
+		WRONG_DOCUMENT_ERR: 4, INVALID_CHARACTER_ERR: 5, NO_DATA_ALLOWED_ERR: 6,
+		NO_MODIFICATION_ALLOWED_ERR: 7, NOT_FOUND_ERR: 8, NOT_SUPPORTED_ERR: 9,
+		INUSE_ATTRIBUTE_ERR: 10, INVALID_STATE_ERR: 11, SYNTAX_ERR: 12,
+		INVALID_MODIFICATION_ERR: 13, NAMESPACE_ERR: 14, INVALID_ACCESS_ERR: 15,
+		VALIDATION_ERR: 16, TYPE_MISMATCH_ERR: 17, SECURITY_ERR: 18, NETWORK_ERR: 19,
+		ABORT_ERR: 20, URL_MISMATCH_ERR: 21, QUOTA_EXCEEDED_ERR: 22, TIMEOUT_ERR: 23,
+		INVALID_NODE_TYPE_ERR: 24, DATA_CLONE_ERR: 25 };
+	for (const n of Object.keys(k)) {
+		Object.defineProperty(DOMException, n, { value: k[n], enumerable: true });
+		Object.defineProperty(DOMException.prototype, n, { value: k[n], enumerable: true });
 	}
 }
 G.DOMException = DOMException;
@@ -70,7 +93,8 @@ class Event {
 	preventDefault() { if (this.cancelable) this.defaultPrevented = true; }
 	stopPropagation() { this._stop = true; }
 	stopImmediatePropagation() { this._stop = true; this._stopNow = true; }
-	composedPath() { return this._path ? this._path.slice() : []; }
+	/* (Onyx: empty once dispatched, as the DOM says) */
+	composedPath() { return this._path && this.eventPhase !== 0 ? this._path.slice() : []; }
 	initEvent(type, bubbles, cancelable) {
 		this.type = String(type);
 		this.bubbles = !!bubbles;
@@ -3261,7 +3285,7 @@ class Document extends Node {
 	}
 	createRange() { return new Range(); }
 	createTreeWalker(root, what = 0xffffffff, filter = null) { return new TreeWalker(root, what, filter); }
-	createNodeIterator(root, what = 0xffffffff, filter = null) { return new TreeWalker(root, what, filter); }
+	createNodeIterator(root, what = 0xffffffff, filter = null) { return new NodeIterator(root, what, filter); }
 	importNode(n, deep) { return N.clone(n, !!deep); }
 	adoptNode(n) { const p = N.parent(n); if (p) p.removeChild(n); return n; }
 	elementFromPoint(x, y) {
@@ -3290,45 +3314,203 @@ G.HTMLDocument = Document;
 
 let readyState = 'loading';
 
+/* Onyx: TreeWalker and NodeIterator as the DOM standard walks them -- live, from the current
+ * node (a snapshot of the root's nodes was taken: Lit sets currentNode to a template's
+ * contents, outside its document root, and walked the document instead: its components'
+ * slots kept their "name$lit$" marker names) */
+function traversalFilter(w, n) {
+	if (!(w.whatToShow & (1 << (N.type(n) - 1)))) return 3;	/* FILTER_SKIP */
+	const f = w.filter;
+	if (f === null || f === undefined) return 1;
+	const r = typeof f === 'function' ? f(n) : f.acceptNode(n);
+	return +r;
+}
 class TreeWalker {
 	constructor(root, what, filter) {
 		this.root = root;
-		this.whatToShow = what;
-		this.filter = filter;
+		this.whatToShow = what >>> 0;
+		this.filter = filter === undefined ? null : filter;
 		this.currentNode = root;
-		this._list = null;
 	}
-	_nodes() {
-		if (!this._list) {
-			this._list = allNodes(this.root).filter(n => {
-				if (!(this.whatToShow & (1 << (N.type(n) - 1)))) return false;
-				if (!this.filter) return true;
-				const f = typeof this.filter === 'function' ? this.filter : this.filter.acceptNode.bind(this.filter);
-				return f(n) === 1;
-			});
+	parentNode() {
+		let node = this.currentNode;
+		while (node !== null && node !== this.root) {
+			node = N.parent(node);
+			if (node !== null && traversalFilter(this, node) === 1) {
+				this.currentNode = node;
+				return node;
+			}
 		}
-		return this._list;
+		return null;
+	}
+	_children(first) {
+		let node = first ? N.first(this.currentNode) : N.last(this.currentNode);
+		while (node !== null) {
+			const r = traversalFilter(this, node);
+			if (r === 1) {
+				this.currentNode = node;
+				return node;
+			}
+			if (r === 3) {
+				const child = first ? N.first(node) : N.last(node);
+				if (child !== null) {
+					node = child;
+					continue;
+				}
+			}
+			for (;;) {
+				const sib = first ? N.next(node) : N.prev(node);
+				if (sib !== null) {
+					node = sib;
+					break;
+				}
+				const parent = N.parent(node);
+				if (parent === null || parent === this.root || parent === this.currentNode)
+					return null;
+				node = parent;
+			}
+		}
+		return null;
+	}
+	firstChild() { return this._children(true); }
+	lastChild() { return this._children(false); }
+	_siblings(next) {
+		let node = this.currentNode;
+		if (node === this.root) return null;
+		for (;;) {
+			let sib = next ? N.next(node) : N.prev(node);
+			while (sib !== null) {
+				node = sib;
+				const r = traversalFilter(this, node);
+				if (r === 1) {
+					this.currentNode = node;
+					return node;
+				}
+				sib = next ? N.first(node) : N.last(node);
+				if (r === 2 || sib === null) sib = next ? N.next(node) : N.prev(node);
+			}
+			node = N.parent(node);
+			if (node === null || node === this.root) return null;
+			if (traversalFilter(this, node) === 1) return null;
+		}
+	}
+	nextSibling() { return this._siblings(true); }
+	previousSibling() { return this._siblings(false); }
+	previousNode() {
+		let node = this.currentNode;
+		while (node !== this.root) {
+			let sib = N.prev(node);
+			while (sib !== null) {
+				node = sib;
+				let r = traversalFilter(this, node);
+				while (r !== 2 && N.first(node) !== null) {
+					node = N.last(node);
+					r = traversalFilter(this, node);
+				}
+				if (r === 1) {
+					this.currentNode = node;
+					return node;
+				}
+				sib = N.prev(node);
+			}
+			const parent = N.parent(node);
+			if (parent === null) return null;
+			node = parent;
+			if (traversalFilter(this, node) === 1) {
+				this.currentNode = node;
+				return node;
+			}
+		}
+		return null;
 	}
 	nextNode() {
-		const l = this._nodes(), i = l.indexOf(this.currentNode);
-		const n = l[i + 1];
-		if (n) this.currentNode = n;
-		return n || null;
+		let node = this.currentNode, r = 1;
+		for (;;) {
+			while (r !== 2 && N.first(node) !== null) {
+				node = N.first(node);
+				r = traversalFilter(this, node);
+				if (r === 1) {
+					this.currentNode = node;
+					return node;
+				}
+			}
+			let temp = node, found = false;
+			while (temp !== null) {
+				if (temp === this.root) return null;
+				const sib = N.next(temp);
+				if (sib !== null) {
+					node = sib;
+					found = true;
+					break;
+				}
+				temp = N.parent(temp);
+			}
+			if (!found) return null;	/* (the end of a tree the root is not in) */
+			r = traversalFilter(this, node);
+			if (r === 1) {
+				this.currentNode = node;
+				return node;
+			}
+		}
 	}
-	previousNode() {
-		const l = this._nodes(), i = l.indexOf(this.currentNode);
-		const n = i > 0 ? l[i - 1] : null;
-		if (n) this.currentNode = n;
-		return n;
+}
+/* the node after n in root's subtree in tree order, and the one before (NodeIterator) */
+function traversalFollowing(n, root) {
+	const c = N.first(n);
+	if (c !== null) return c;
+	for (let t = n; t !== null && t !== root; t = N.parent(t)) {
+		const s = N.next(t);
+		if (s !== null) return s;
 	}
-	firstChild() { const c = N.first(this.currentNode); if (c) this.currentNode = c; return c; }
-	nextSibling() { const c = N.next(this.currentNode); if (c) this.currentNode = c; return c; }
-	parentNode() { const c = N.parent(this.currentNode); if (c) this.currentNode = c; return c; }
+	return null;
+}
+function traversalPreceding(n, root) {
+	if (n === root) return null;
+	let s = N.prev(n);
+	if (s === null) return N.parent(n);
+	for (let c; (c = N.last(s)) !== null;) s = c;
+	return s;
+}
+class NodeIterator {
+	constructor(root, what, filter) {
+		this.root = root;
+		this.whatToShow = what >>> 0;
+		this.filter = filter === undefined ? null : filter;
+		this.referenceNode = root;
+		this.pointerBeforeReferenceNode = true;
+	}
+	_traverse(next) {
+		let node = this.referenceNode, before = this.pointerBeforeReferenceNode;
+		for (;;) {
+			if (next) {
+				if (!before) {
+					node = traversalFollowing(node, this.root);
+					if (node === null) return null;
+				} else {
+					before = false;
+				}
+			} else if (before) {
+				node = traversalPreceding(node, this.root);
+				if (node === null) return null;
+			} else {
+				before = true;
+			}
+			if (traversalFilter(this, node) === 1) break;
+		}
+		this.referenceNode = node;
+		this.pointerBeforeReferenceNode = before;
+		return node;
+	}
+	nextNode() { return this._traverse(true); }
+	previousNode() { return this._traverse(false); }
+	detach() {}
 }
 G.TreeWalker = TreeWalker;
-G.NodeIterator = TreeWalker;
+G.NodeIterator = NodeIterator;
 G.NodeFilter = { FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3, SHOW_ALL: 0xffffffff,
-	SHOW_ELEMENT: 1, SHOW_TEXT: 4, SHOW_COMMENT: 128 };
+	SHOW_ELEMENT: 1, SHOW_ATTRIBUTE: 2, SHOW_TEXT: 4, SHOW_CDATA_SECTION: 8,
+	SHOW_PROCESSING_INSTRUCTION: 64, SHOW_COMMENT: 128, SHOW_DOCUMENT: 256,
+	SHOW_DOCUMENT_TYPE: 512, SHOW_DOCUMENT_FRAGMENT: 1024 };
 
 class Range {
 	constructor() { this.startContainer = this.endContainer = G.document; this.startOffset = this.endOffset = 0; this.collapsed = true; }
