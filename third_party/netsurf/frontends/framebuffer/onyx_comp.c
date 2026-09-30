@@ -152,6 +152,8 @@ struct clayer {
 	bool conflict;			/* something was painted over it in the band */
 	bool fresh;			/* offered for the first time in this update */
 	bool in_piece;			/* offered in the piece being painted */
+	unsigned repaint_gen;		/* the updates its pixels were last painted in, and */
+	int churn;			/* how often lately (painted each frame: demoted) */
 };
 
 #define OPEN (INT_MAX / 2)
@@ -967,14 +969,25 @@ static void present(const struct onyx_comp_view *v)
  * dropped */
 static void paint_damage(const struct onyx_comp_view *v)
 {
+	/* (damage far from the view waits: painted when the view comes near it -- an
+	 * animation out of view costs nothing, as when the CPU paints the view only) */
+	struct crect near = { v->sx, v->sy - v->h / 2, v->sx + v->w, v->sy + v->h + v->h / 2 };
+	struct crect later[DAMAGE_MAX];
+	int nlater = 0;
+
 	for (int loop = 0; loop < UPDATE_LOOPS && C.ndmg > 0; loop++) {
 		struct crect d[DAMAGE_MAX];
 		int n = C.ndmg;
 
 		memcpy(d, C.dmg, sizeof(d[0]) * n);
 		C.ndmg = 0;
-		for (int i = 0; i < n; i++)
+		for (int i = 0; i < n; i++) {
+			if (!cr_meet(&d[i], &near) && nlater < DAMAGE_MAX) {
+				later[nlater++] = d[i];
+				continue;
+			}
 			paint_rect(v, d[i]);
+		}
 		/* layers not offered where they were painted over: gone (their
 		 * box has no effect now, or no box) -- dropped when the band was
 		 * painted over all they cover, else that painted first */
@@ -1019,6 +1032,8 @@ static void paint_damage(const struct onyx_comp_view *v)
 			}
 		}
 	}
+	for (int i = 0; i < nlater; i++)
+		damage_add(later[i]);
 }
 
 /** reset: the band's run collapses to the view (painted now; the rest ahead, later); the
@@ -1252,7 +1267,7 @@ bool onyx_comp_offer(struct onyx_layer *l)
 	i = layer_find(l->key);
 	if (i >= 0 && C.layers[i]->demoted)
 		return false;
-	if (l->transformed && i < 0 && gpc_backend(C.g) != GPC_BACKEND_GPU) {
+	if (i < 0 && gpc_backend(C.g) != GPC_BACKEND_GPU) {
 		bool anim = false;
 		for (int k = 0; k < C.nanimated && k < ANIMATED_MAX; k++)
 			if (C.animated[k] == l->key)
@@ -1330,7 +1345,18 @@ bool onyx_comp_offer(struct onyx_layer *l)
 	/* the part of its pixels to paint */
 	d = cr_and(e->dmg, &e->b);
 	e->dmg.x0 = e->dmg.x1 = 0;
+	if (!cr_empty(&d) && !fresh && e->repaint_gen != C.gen) {
+		/* (its pixels painted again frame after frame -- a transition of
+		 * what it holds, a translation: painted in place, one pass, as ever) */
+		e->churn = C.gen - e->repaint_gen <= 3 ? e->churn + 1 : 0;
+		if (e->churn >= 4) {
+			layer_demote(l->key, i);
+			damage_add(e->fp);
+			return false;
+		}
+	}
 	if (!cr_empty(&d)) {
+		e->repaint_gen = C.gen;
 		l->rx0 = d.x0 - C.org_x;
 		l->ry0 = d.y0 - C.org_y;
 		l->rx1 = d.x1 - C.org_x;
