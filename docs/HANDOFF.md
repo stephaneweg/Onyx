@@ -126,7 +126,7 @@ answer in French. The docs stay in English.
 - **To try on the Pi**: the EDID size (an HDMI monitor, a TV), Try it / Revert / the 15-s timeout
   and the window re-centred, joining a network (and a wrong password: 30 s), the host name seen by
   the router after a restart, the services started / stopped at Start Onyx.
-- **Next (asked)**: redesign every app icon; games and emulators with 1- or 2-stick pads.
+- **Next (asked), in this order**: **PRIORITY -- apps in EL0** (protected mode: a faulting app killed, not the OS; plan in docs/EL0-PROTECTED-MODE.md; trigger: a panic closing Ledger, not reproduced -- the exception report now names EC/ELR/FAR/task); then redesign every app icon; then games and emulators with 1- or 2-stick pads.
 
 ## Done recently (all pushed)
 
@@ -858,6 +858,38 @@ break): **`docs/daw/PERFORMANCE.md`**. Its TODO (none started): the arrangement'
 over a cached canvas instead of the whole view redrawn at each tick while playing, redraw only
 when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel, a 512-frame ring
 ≈ 20 ms) for live MIDI.
+
+## End-user apps roadmap (decided with the user, 2026-09-30; none started)
+
+Every new app: FreeType text through wtk's face, polished, its catalog entry in docs/04 and a
+`shots.sh` scenario. In the user's priority order:
+
+**Priority 1**
+- **Music library** (audio player as a polished library app, in the way of iTunes / Rhythmbox):
+  MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
+  is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
+  tags and cover art, a now-playing view, file associations.
+- **Mail client**, as user-friendly as possible: IMAP / SMTP over TLS, an account wizard
+  (well-known providers pre-filled), threads, attachments, drafts. **Contacts** = a Cardfile
+  form: the mail client creates the `.card` structure, reads / writes it (address completion,
+  "add sender"), and the file opens in Cardfile too.
+- **PDF viewer** (MuPDF-like, FreeType) + **PDF export** in Writer and the Spreadsheet.
+- **Screenshot** tool (screen / window / area; Print Screen key).
+- **Clock**: alarms, timer, stopwatch, world clocks (notifications through notifyd).
+
+**Priority 2**
+- **Localisation** screen: the Keyboard applet becomes *Region & Keyboard* -- the country /
+  time zone next to the layout (the time itself stays set by NTP automatically).
+- **About / System**: a fuller successor to memmon (version, kernel, CPU, temperature, RAM,
+  uptime, network, processes).
+- **Presentations** (as Impress), to complete Writer / Sheet / Cardfile.
+- **Quick notes** with a desktop widget that can be shown or hidden.
+- (Storage applet: not for now. Updates: part of the future package manager / app store.)
+
+**Priority 3–4**: **video player**; the **app store / package manager** (see IDEAS.md below).
+
+**Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
+the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).
 
 ## Other open items
 
