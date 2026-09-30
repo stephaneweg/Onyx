@@ -650,6 +650,16 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		return false;
 	}
 
+	/* Onyx: a replaced element (an image, an object; not a form control) is
+	 * not a flex / grid container: a display: flex <img> is a block
+	 * (Facebook's icons were flex boxes with no content: 0 px high) */
+	if ((box->flags & IS_REPLACED) && box->gadget == NULL) {
+		if (box->type == BOX_FLEX)
+			box->type = BOX_BLOCK;
+		else if (box->type == BOX_INLINE_FLEX)
+			box->type = BOX_INLINE_BLOCK;
+	}
+
 	/* Onyx: display: contents -- the element has no box of its own: its
 	 * box is kept off the tree (its style, which its children inherit), an
 	 * inline's type so that its children find its parent's box as theirs

@@ -1058,6 +1058,17 @@ static void layout_minmax_block(
 						block->style,
 						&content->unit_len_ctx, v, u));
 				min = max = h * iw / ih;
+			} else if (block->style != NULL && iw > 0 && ih > 0 &&
+			    css_computed_width(block->style, &v, &u) ==
+					CSS_WIDTH_AUTO &&
+			    css_computed_max_height(block->style, &v, &u) ==
+					CSS_MAX_HEIGHT_SET && u != CSS_UNIT_PCT) {
+				/* Onyx: a max-height, through the ratio */
+				int h = FIXTOINT(css_unit_len2device_px(
+						block->style,
+						&content->unit_len_ctx, v, u));
+				if (h < ih)
+					min = max = h * iw / ih;
 			}
 			/* Onyx: a compressible replaced element -- a
 			 * percentage width or max-width -- contributes

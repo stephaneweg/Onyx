@@ -299,7 +299,11 @@ static float fx_content_width(const struct fx_item *it, bool min)
 		if (it->spec_cross != AUTO)
 			return it->spec_cross * it->ratio;
 		if (b->object != NULL && !(b->flags & REPLACE_DIM))
-			return content_get_width(b->object);
+			/* (its min / max height through its ratio: an
+			 * image with max-height: 60px is 60 px wide) */
+			return fx_clamp(content_get_width(b->object),
+					it->min_cross * it->ratio,
+					it->max_cross * it->ratio);
 	}
 	w = (min ? b->min_width : b->max_width) - (it->mbp_main - it->bp_main) -
 			it->bp_main;
@@ -413,6 +417,9 @@ static bool fx_measure_column_item(struct fx *fx, struct fx_item *it)
 	} else if (b->object != NULL && !(b->flags & REPLACE_DIM) &&
 			content_get_type(b->object) != CONTENT_HTML) {
 		cross = content_get_width(b->object);
+		if (it->ratio > 0)	/* (its min / max height, through its ratio) */
+			cross = fx_clamp(cross, it->min_main * it->ratio,
+					it->max_main * it->ratio);
 	} else {
 		/* fit-content: min(max-content, max(min-content, available)) */
 		float avail = fx->cross_size - it->mbp_cross;
