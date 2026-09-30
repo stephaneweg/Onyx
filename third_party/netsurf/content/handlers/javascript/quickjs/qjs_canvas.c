@@ -417,7 +417,11 @@ static void qimg_finalizer(JSRuntime *rt, JSValue val)
 		}
 	}
 	qimg_release(im);
-	JS_FreeValueRT(rt, im->cb);
+	{
+		JSValue cb = im->cb;	/* (taken off first: the same reason) */
+		im->cb = JS_UNDEFINED;
+		JS_FreeValueRT(rt, cb);
+	}
 	free(im);
 }
 
@@ -2003,12 +2007,22 @@ void qjs_canvas_context_gone(JSContext *ctx)
 		c->scheduled = false;
 		c->ctx = NULL;
 	}
-	for (im = qimg_all; im != NULL; im = im->next) {
-		if (im->ctx != ctx)
+	/* Onyx: the callback taken off before it is freed, and the list walked again after
+	 * each: freeing a callback (a closure holding its image) can finalize that image or
+	 * another -- the finalizer freed the callback a second time (yahoo.com's teardown) and
+	 * unlinked entries under the walk */
+	for (im = qimg_all; im != NULL; ) {
+		JSValue cb;
+
+		if (im->ctx != ctx) {
+			im = im->next;
 			continue;
+		}
 		qimg_release(im);
-		JS_FreeValue(ctx, im->cb);
+		cb = im->cb;
 		im->cb = JS_UNDEFINED;
 		im->ctx = NULL;
+		JS_FreeValue(ctx, cb);
+		im = qimg_all;
 	}
 }

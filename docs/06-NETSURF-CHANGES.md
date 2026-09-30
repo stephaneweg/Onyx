@@ -900,6 +900,12 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
   -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
   SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
+- **Two crashes of the sweep fixed**: a subtree a script takes out of the document forgets its
+  boxes (`html_box_unlink_subtree` from `DOMNodeRemoved`) -- the rebox unlinked only the nodes
+  in the document, and `getBoundingClientRect` on a removed element walked a freed box
+  (lemonde.fr); a canvas `Image`'s callback is taken off before it is freed at the page's
+  teardown (qjs_canvas.c) -- the closure held its image, whose finalizer freed it again
+  (yahoo.com). `performance.measure` takes PerformanceTiming names (`"navigationStart"`: bbc).
 - **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
   first context of the process, their bytecode kept and read back in the next ones
   (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms

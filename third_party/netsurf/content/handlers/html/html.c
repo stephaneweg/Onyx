@@ -302,6 +302,14 @@ static void html_rebox_converted(html_content *c, bool success)
 }
 
 /** the nodes' links to their boxes cleared (a node the new tree does not box has none) */
+static void html_rebox_unlink(dom_node *n);
+
+/* exported interface documented in html/private.h (Onyx) */
+void html_box_unlink_subtree(dom_node *n)
+{
+	html_rebox_unlink(n);
+}
+
 static void html_rebox_unlink(dom_node *n)
 {
 	dom_node *c = NULL, *next;
