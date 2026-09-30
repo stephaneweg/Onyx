@@ -288,6 +288,7 @@ static void html_box_convert_done(html_content *c, bool success)
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_hover.h"
 #include "html/onyx_shadow.h"
+#include "html/onyx_anim.h"
 
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
@@ -433,6 +434,7 @@ static void html_rebox(html_content *c)
 	c->object_list = NULL;
 	c->num_objects = 0;
 	c->iframe = NULL;
+	onyx_anim_rebox_begin(c, old_layout);	/* (Onyx: the styles transitions start from) */
 	html_rebox_gadgets(old_layout, false);
 	html_rebox_unlink_boxes(old_layout);
 	html_rebox_unlink(html);
@@ -443,6 +445,7 @@ static void html_rebox(html_content *c)
 	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
 		html_rebox_success = false;
 	onyx_perf_log("rebox:boxes", t0);
+	onyx_anim_rebox_end(c, html_rebox_success && c->layout != old_layout);
 	dom_node_unref(html);
 	old_objects = c->rebox_objects;	/* the ones left */
 	c->rebox_objects = NULL;
@@ -1788,6 +1791,7 @@ static void html_destroy(struct content *c)
 		html->script_changed = NULL;
 	}
 	html->rebox_pending = false;
+	onyx_anim_fini(html);		/* (Onyx: transitions, animations) */
 	onyx_hover_fini(html);		/* (Onyx) */
 	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
 	if (html->focus_pending != NULL) {	/* (Onyx) */

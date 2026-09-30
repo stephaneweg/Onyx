@@ -435,6 +435,8 @@ const HANDLER_TYPES = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove',
 	'change', 'submit', 'reset', 'load', 'error', 'abort', 'scroll', 'resize',
 	'select', 'pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend',
 	'touchmove', 'animationend', 'transitionend', 'beforeunload', 'unload',
+	'animationstart', 'animationiteration', 'animationcancel', 'transitionrun',
+	'transitionstart', 'transitioncancel',
 	'hashchange', 'popstate', 'message', 'toggle', 'play', 'pause', 'ended'];
 function defineHandlers(proto) {
 	for (const t of HANDLER_TYPES) {
@@ -2496,13 +2498,8 @@ class Element extends Node {
 	requestFullscreen() { return Promise.reject(new DOMException('no', 'NotAllowedError')); }
 	attachShadow() { return this; }
 	get shadowRoot() { return null; }
-	animate() {
-		const a = { finished: Promise.resolve(), onfinish: null, cancel() {}, play() {},
-			pause() {}, finish() {}, reverse() {}, playState: 'finished' };
-		setTimeout(() => { if (a.onfinish) a.onfinish(); }, 0);
-		return a;
-	}
-	getAnimations() { return []; }
+	animate(keyframes, options) { return elementAnimate(this, keyframes, options); }
+	getAnimations() { return animationsOf(this); }
 	releasePointerCapture() {}
 	setPointerCapture() {}
 	hasPointerCapture() { return false; }
@@ -3200,6 +3197,9 @@ G.SVGSVGElement = class SVGSVGElement extends SVGElement {};
 
 class Document extends Node {
 	constructor() { super(); }
+	/* (Onyx: the Web Animations API) */
+	get timeline() { return documentTimeline; }
+	getAnimations() { return animationsOf(null); }
 	get documentElement() {
 		for (const c of N.children(this))
 			if (N.type(c) === ELEMENT_NODE) return c;
@@ -3665,14 +3665,483 @@ const performance = {
 	getEntries() { return []; }, getEntriesByType() { return []; }, getEntriesByName() { return []; },
 };
 const startTime = N.now();
+
+/* ---- animations (Onyx: html/onyx_anim.c) --------------------------------------------------
+ * requestAnimationFrame paced by the content's frames (N.frame asks for one, "onyx:frame"
+ * runs the callbacks with the frame's time); the CSS transitions' and animations' events
+ * ("onyx:anim"); the Web Animations API on the same engine: element.animate() makes a
+ * script's animation there (N.animate), an Animation reads its state (N.animInfo) and
+ * controls it (N.animCtl); getAnimations() lists the transitions and CSS animations too. */
 let rafId = 0;
 const rafs = new Map();
 function requestAnimationFrame(cb) {
 	const id = ++rafId;
-	rafs.set(id, N.timer(() => { rafs.delete(id); cb(performance.now()); }, 16, false));
+	rafs.set(id, cb);
+	N.frame();
 	return id;
 }
-function cancelAnimationFrame(id) { const t = rafs.get(id); if (t) { N.clearTimer(t); rafs.delete(id); } }
+function cancelAnimationFrame(id) { rafs.delete(id); }
+function runFrames(time) {
+	if (!rafs.size)
+		return;
+	const ts = time - startTime;
+	const list = [...rafs.values()];
+	rafs.clear();
+	for (const cb of list) {
+		try { cb(ts); } catch (e) { report(e); }
+	}
+}
+
+class TransitionEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.propertyName = init.propertyName || '';
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = init.pseudoElement || '';
+	}
+}
+class AnimationEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.animationName = init.animationName || '';
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = init.pseudoElement || '';
+	}
+}
+class AnimationPlaybackEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.currentTime = init.currentTime === undefined ? null : init.currentTime;
+		this.timelineTime = init.timelineTime === undefined ? null : init.timelineTime;
+	}
+}
+
+class AnimationTimeline {
+	get currentTime() { return performance.now(); }
+	get duration() { return null; }
+}
+class DocumentTimeline extends AnimationTimeline {
+	constructor(opts) {
+		super();
+		Object.defineProperty(this, '_origin', { value: (opts && +opts.originTime) || 0 });
+	}
+	get currentTime() { return performance.now() - this._origin; }
+}
+const documentTimeline = new DocumentTimeline();
+
+const ANIM_DIRS = ['normal', 'reverse', 'alternate', 'alternate-reverse'];
+const ANIM_FILLS = ['none', 'forwards', 'backwards', 'both'];
+const ANIMS = new Map();		/* id -> its Animation (those the scripts have) */
+
+/* an easing as the engine reads it (libcss's canonical spelling) */
+function easingText(e) {
+	let s = String(e === undefined ? 'linear' : e).trim().toLowerCase();
+	s = s.replace(/\s*,\s*/g, ',').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ');
+	s = s.replace(/^steps\((\d+),(start|end)\)$/, (m, n, p) => 'steps(' + n + ',jump-' + p + ')');
+	if (!/^(linear|ease|ease-in|ease-out|ease-in-out|step-start|step-end|cubic-bezier\([^)]*\)|steps\([^)]*\)|linear\([^)]*\))$/.test(s))
+		throw new TypeError("Failed to parse easing '" + e + "'");
+	return s;
+}
+
+function cssName(p) {
+	if (p === 'cssFloat') return 'float';
+	if (p === 'cssOffset') return 'offset';
+	return p.startsWith('--') ? p : kebab(p);
+}
+
+/* keyframes (the array or the property-indexed form) into [{offset, easing, obj, css}] */
+function normalizeKeyframes(k) {
+	let frames = [];
+	if (k == null)
+		return frames;
+	if (Array.isArray(k) || (typeof k[Symbol.iterator] === 'function' && typeof k !== 'string')) {
+		for (const f of k) {
+			const obj = {};
+			for (const p of Object.keys(f))
+				if (p !== 'offset' && p !== 'easing' && p !== 'composite')
+					obj[p] = f[p];
+			frames.push({ offset: f.offset == null ? null : +f.offset,
+				easing: f.easing === undefined ? 'linear' : easingText(f.easing), obj });
+		}
+	} else {
+		/* { opacity: [0, 1], transform: [...] }: the values spread evenly */
+		const props = Object.keys(k).filter(p => p !== 'offset' && p !== 'easing' && p !== 'composite');
+		let n = 0;
+		for (const p of props)
+			n = Math.max(n, Array.isArray(k[p]) ? k[p].length : 1);
+		for (let i = 0; i < n; i++)
+			frames.push({ offset: null, easing: 'linear', obj: {} });
+		for (const p of props) {
+			const vals = Array.isArray(k[p]) ? k[p] : [k[p]];
+			vals.forEach((v, i) => {
+				const at = vals.length === 1 ? n - 1 : Math.round(i * (n - 1) / (vals.length - 1));
+				frames[at].obj[p] = v;
+			});
+		}
+		const offs = Array.isArray(k.offset) ? k.offset : k.offset != null ? [k.offset] : [];
+		offs.forEach((o, i) => { if (frames[i] && o != null) frames[i].offset = +o; });
+		const eas = Array.isArray(k.easing) ? k.easing : k.easing != null ? [k.easing] : [];
+		frames.forEach((f, i) => { if (eas.length) f.easing = easingText(eas[i % eas.length]); });
+	}
+	/* the missing offsets: 0, 1 at the ends, evenly between (a single one: 1) */
+	if (frames.length === 1 && frames[0].offset == null)
+		frames[0].offset = 1;
+	else if (frames.length > 1) {
+		if (frames[0].offset == null) frames[0].offset = 0;
+		if (frames[frames.length - 1].offset == null) frames[frames.length - 1].offset = 1;
+		for (let i = 1; i < frames.length - 1; i++) {
+			if (frames[i].offset != null)
+				continue;
+			let j = i;
+			while (frames[j].offset == null) j++;
+			const a = frames[i - 1].offset, b = frames[j].offset;
+			for (let m = i; m < j; m++)
+				frames[m].offset = a + (b - a) * (m - i + 1) / (j - i + 1);
+			i = j;
+		}
+	}
+	for (let i = 0; i < frames.length; i++) {
+		const f = frames[i];
+		if (f.offset < 0 || f.offset > 1 || (i > 0 && f.offset < frames[i - 1].offset))
+			throw new TypeError('Offsets must be monotonically non-decreasing and in [0, 1]');
+		f.css = Object.keys(f.obj).map(p => cssName(p) + ':' + String(f.obj[p])).join(';');
+	}
+	return frames;
+}
+
+function normalizeTiming(o) {
+	const t = { delay: 0, endDelay: 0, duration: 0, durationRaw: 'auto', iterations: 1,
+		iterationStart: 0, direction: 0, fill: 0, fillName: 'auto', easing: 'linear',
+		playbackRate: 1, id: '' };
+	if (typeof o === 'number' || (o != null && typeof o !== 'object')) {
+		t.duration = +o || 0;
+		t.durationRaw = t.duration;
+	} else if (o) {
+		if (o.duration !== undefined && o.duration !== 'auto') {
+			t.duration = +o.duration;
+			t.durationRaw = t.duration;
+			if (!(t.duration >= 0))
+				throw new TypeError('Invalid duration');
+		}
+		if (o.delay !== undefined) t.delay = +o.delay || 0;
+		if (o.endDelay !== undefined) t.endDelay = +o.endDelay || 0;
+		if (o.iterations !== undefined) {
+			t.iterations = +o.iterations;
+			if (!(t.iterations >= 0))
+				throw new TypeError('Invalid iterations');
+		}
+		if (o.iterationStart !== undefined) t.iterationStart = +o.iterationStart || 0;
+		if (o.direction !== undefined) t.direction = Math.max(0, ANIM_DIRS.indexOf(o.direction));
+		if (o.fill !== undefined) {
+			t.fillName = String(o.fill);
+			t.fill = Math.max(0, ANIM_FILLS.indexOf(t.fillName));
+		}
+		if (o.easing !== undefined) t.easing = easingText(o.easing);
+		if (o.playbackRate !== undefined) t.playbackRate = +o.playbackRate;
+		if (o.id !== undefined) t.id = String(o.id);
+	}
+	return t;
+}
+
+class AnimationEffect {
+	getTiming() {
+		const t = this._timing;
+		return { delay: t.delay, endDelay: t.endDelay, fill: t.fillName,
+			iterationStart: t.iterationStart, iterations: t.iterations,
+			duration: t.durationRaw, direction: ANIM_DIRS[t.direction], easing: t.easing };
+	}
+	getComputedTiming() {
+		const t = this._timing, a = this._anim;
+		const i = a && a._id ? N.animInfo(a._id) : null;
+		const active = t.duration * t.iterations;
+		return Object.assign(this.getTiming(), {
+			fill: ANIM_FILLS[t.fill], duration: t.duration,
+			activeDuration: active, endTime: Math.max(0, t.delay + active + t.endDelay),
+			localTime: i && !isNaN(i[0]) ? i[0] : null,
+			progress: i && !isNaN(i[4]) ? i[4] : null,
+			currentIteration: i && !isNaN(i[5]) ? i[5] : null });
+	}
+	updateTiming(o) {
+		const cur = this.getTiming();
+		this._timing = normalizeTiming(Object.assign(cur, o || {}));
+		if (this._anim)
+			this._anim._remake();
+	}
+}
+class KeyframeEffect extends AnimationEffect {
+	constructor(target, keyframes, options) {
+		super();
+		if (target instanceof KeyframeEffect) {
+			const src = target;
+			this.target = src.target;
+			this._frames = src._frames.slice();
+			this._timing = Object.assign({}, src._timing);
+		} else {
+			this.target = target || null;
+			this._frames = normalizeKeyframes(keyframes);
+			this._timing = normalizeTiming(options);
+		}
+		this._anim = null;
+		this.composite = 'replace';
+		this.iterationComposite = 'replace';
+		this.pseudoElement = null;
+	}
+	getKeyframes() {
+		return this._frames.map(f => Object.assign({}, f.obj, { offset: f.offset,
+			computedOffset: f.offset, easing: f.easing, composite: 'auto' }));
+	}
+	setKeyframes(k) {
+		this._frames = normalizeKeyframes(k);
+		if (this._anim)
+			this._anim._remake();
+	}
+}
+
+class Animation extends EventTarget {
+	constructor(effect = null, timeline) {
+		super();
+		Object.defineProperty(this, '_id', { value: 0, writable: true });
+		this._effect = effect;
+		if (effect) effect._anim = this;
+		this.timeline = timeline === undefined ? documentTimeline : timeline;
+		this.id = effect && effect._timing ? effect._timing.id : '';
+		this.onfinish = null;
+		this.oncancel = null;
+		this.onremove = null;
+		this._rate = effect && effect._timing ? effect._timing.playbackRate : 1;
+		this._newPromises();
+	}
+	_newPromises() {
+		this._finished = new Promise((ok, no) => { this._fok = ok; this._fno = no; });
+		this._finished.catch(() => {});	/* (a cancel: not an unhandled rejection) */
+		this._ready = Promise.resolve(this);
+	}
+	_make(hold) {
+		const e = this._effect;
+		if (!e || !e.target || !e._frames.length)
+			return false;
+		const t = e._timing;
+		const id = N.animate(e.target, e._frames.map(f => f.css), e._frames.map(f => f.offset),
+			e._frames.map(f => f.easing), { delay: t.delay, endDelay: t.endDelay,
+			duration: t.duration, iterations: t.iterations, iterationStart: t.iterationStart,
+			direction: t.direction, fill: t.fill, easing: t.easing, playbackRate: this._rate });
+		if (!id)
+			return false;
+		this._id = id;
+		ANIMS.set(id, this);
+		if (hold !== undefined)
+			N.animCtl(id, 5, hold);
+		return true;
+	}
+	_remake() {
+		/* (new keyframes or timing: made again at the same time) */
+		if (!this._id)
+			return;
+		const i = N.animInfo(this._id);
+		const t = i ? i[0] : 0, state = i ? i[7] : 'idle';
+		if (state === 'idle')
+			return;
+		N.animCtl(this._id, 2);
+		ANIMS.delete(this._id);
+		this._id = 0;
+		this._make(isNaN(t) ? 0 : t);
+		if (state === 'paused')
+			N.animCtl(this._id, 1);
+	}
+	_info() {
+		/* (a finished animation without a fill is gone from the engine: its state kept
+		 * here, play() makes it again) */
+		const i = this._id ? N.animInfo(this._id) : null;
+		if (!i && this._id) {
+			ANIMS.delete(this._id);
+			this._id = 0;
+		}
+		return i;
+	}
+	get effect() { return this._effect; }
+	set effect(e) { this._effect = e; if (e) e._anim = this; this._remake(); }
+	get playState() { const i = this._info(); return i ? i[7] : (this._state || 'idle'); }
+	get pending() { return false; }
+	get replaceState() { return this._removed ? 'removed' : 'active'; }
+	get currentTime() {
+		const i = this._info();
+		if (i) return !isNaN(i[0]) ? i[0] : null;
+		return this._state === 'finished' ? this._held : null;
+	}
+	set currentTime(v) {
+		if (v === null)
+			return;
+		if (!this._id && !this._make())
+			return;
+		N.animCtl(this._id, 5, +v);
+		N.animCtl(this._id, 1);
+	}
+	get startTime() { const i = this._info(); return i && !isNaN(i[1]) ? i[1] - startTime : null; }
+	set startTime(v) {
+		if (v === null)
+			return;
+		if (!this._id && !this._make())
+			return;
+		N.animCtl(this._id, 7, +v + startTime);
+	}
+	get playbackRate() { const i = this._info(); return i ? i[2] : this._rate; }
+	set playbackRate(v) { this._rate = +v; if (this._id) N.animCtl(this._id, 6, +v); }
+	updatePlaybackRate(v) { this.playbackRate = v; }
+	get finished() { return this._finished; }
+	get ready() { return this._ready; }
+	play() {
+		if (!this._id || !this._info()) {
+			if (this._state === 'finished')
+				this._newPromises();
+			this._state = '';
+			this._make();
+			return;
+		}
+		if (this.playState === 'finished' || this.playState === 'idle')
+			this._newPromises();
+		N.animCtl(this._id, 0);
+	}
+	pause() {
+		if (!this._id && !this._make())
+			return;
+		N.animCtl(this._id, 1);
+	}
+	cancel() {
+		if (this._id && this._info() && this.playState !== 'idle')
+			N.animCtl(this._id, 2);
+		else if (this._state === 'finished') {
+			this._state = 'idle';
+			this._onCancel();
+		}
+	}
+	finish() {
+		if (!this._id && !this._make())
+			return;
+		if (!N.animCtl(this._id, 3) || this.effect && this.effect._timing &&
+		    this.effect._timing.iterations === Infinity && this.playbackRate > 0)
+			throw new DOMException('Cannot finish an infinite animation', 'InvalidStateError');
+	}
+	reverse() {
+		if (!this._info() && this._state === 'finished') {
+			/* (gone at its end: made again, playing backwards from there) */
+			this._rate = -this._rate;
+			this._state = '';
+			this._newPromises();
+			this._make();
+			return;
+		}
+		if (!this._id && !this._make())
+			return;
+		if (this.playState === 'finished')
+			this._newPromises();
+		N.animCtl(this._id, 4);
+	}
+	persist() {}
+	commitStyles() {
+		const e = this._effect;
+		if (!e || !e.target || !e.target.style)
+			return;
+		const cs = getComputedStyle(e.target);
+		const props = new Set();
+		for (const f of e._frames)
+			for (const p of Object.keys(f.obj))
+				props.add(cssName(p));
+		for (const p of props)
+			e.target.style.setProperty(p, cs.getPropertyValue(p));
+	}
+	_onFinish(held) {
+		this._state = 'finished';
+		this._held = held;
+		const ok = this._fok;
+		ok(this);
+		const ev = new AnimationPlaybackEvent('finish', { currentTime: this.currentTime,
+			timelineTime: documentTimeline.currentTime });
+		if (typeof this.onfinish === 'function')
+			try { this.onfinish.call(this, ev); } catch (e) { report(e); }
+		dispatch(this, ev);
+	}
+	_onCancel() {
+		const no = this._fno;
+		const err = new DOMException('The user aborted a request.', 'AbortError');
+		this._newPromises();
+		no(err);
+		const ev = new AnimationPlaybackEvent('cancel', { timelineTime: documentTimeline.currentTime });
+		if (typeof this.oncancel === 'function')
+			try { this.oncancel.call(this, ev); } catch (e) { report(e); }
+		dispatch(this, ev);
+		ANIMS.delete(this._id);
+	}
+}
+class CSSAnimation extends Animation {
+	get animationName() { const i = this._info(); return i ? i[8] : this._name; }
+}
+class CSSTransition extends Animation {
+	get transitionProperty() { const i = this._info(); return i ? i[8] : this._name; }
+}
+
+/* the Animation of an engine's id: the one the scripts have, else one made for it */
+function animationFor(id) {
+	let a = ANIMS.get(id);
+	if (a)
+		return a;
+	const i = N.animInfo(id);
+	if (!i)
+		return null;
+	const effect = new KeyframeEffect(i[9], [], { delay: i[10], duration: i[11],
+		iterations: i[12], endDelay: i[13], direction: ANIM_DIRS[i[14]] || 'normal',
+		fill: ANIM_FILLS[i[15]] || 'none' });
+	a = new (i[6] === 0 ? CSSTransition : i[6] === 1 ? CSSAnimation : Animation)(effect);
+	a._id = id;
+	a._name = i[8];
+	ANIMS.set(id, a);
+	return a;
+}
+
+function animationsOf(target) {
+	return N.animList(target).map(animationFor).filter(a => a && (a.playState !== 'finished' ||
+		(a.effect && a.effect._timing && (a.effect._timing.fill & 1))));
+}
+
+function elementAnimate(el, keyframes, options) {
+	const effect = new KeyframeEffect(el, keyframes, options);
+	const a = new Animation(effect);
+	a._make();
+	return a;
+}
+
+/* the engine's news: an event on an element, or an Animation's finish / cancel */
+function animEvent(target, init) {
+	const t = init.type;
+	if (t === 'finish' || t === 'cancel') {
+		const a = ANIMS.get(init.id);
+		if (a)
+			t === 'finish' ? a._onFinish(init.elapsed) : a._onCancel();
+		return;
+	}
+	if (t === 'remove') {
+		const a = ANIMS.get(init.id);
+		if (a) {
+			a._removed = true;
+			ANIMS.delete(init.id);
+			a._id = 0;
+			a._state = 'finished';
+			const ev = new AnimationPlaybackEvent('remove', { timelineTime: documentTimeline.currentTime });
+			if (typeof a.onremove === 'function')
+				try { a.onremove.call(a, ev); } catch (e) { report(e); }
+			dispatch(a, ev);
+		}
+		return;
+	}
+	if (!(target instanceof Element))
+		return;
+	const ev = t.startsWith('transition') ?
+		new TransitionEvent(t, { bubbles: true, cancelable: t === 'transitionend',
+			propertyName: init.name, elapsedTime: init.elapsed }) :
+		new AnimationEvent(t, { bubbles: true, animationName: init.name,
+			elapsedTime: init.elapsed });
+	ev.isTrusted = true;
+	dispatch(target, ev);
+}
 
 /* media queries: the viewport's width and height, a screen, no motion preference */
 function mediaMatches(q) {
@@ -5195,6 +5664,9 @@ Object.assign(G, {
 	setTimeout, setInterval, clearTimeout, clearInterval: clearTimeout,
 	requestAnimationFrame, cancelAnimationFrame,
 	webkitRequestAnimationFrame: requestAnimationFrame,
+	webkitCancelAnimationFrame: cancelAnimationFrame,
+	TransitionEvent, AnimationEvent, AnimationPlaybackEvent, Animation, CSSAnimation,
+	CSSTransition, AnimationEffect, KeyframeEffect, AnimationTimeline, DocumentTimeline,
 	requestIdleCallback: cb => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 10 }), 1),
 	cancelIdleCallback: clearTimeout,
 	queueMicrotask: fn => { NativePromise.resolve().then(fn).catch(report); },
@@ -5501,6 +5973,14 @@ function browserDispatch(target, type, init) {
 		t = N.parent(t) || G;
 	if (type === 'onyx:hover') {
 		hoverTo(t instanceof Element ? t : null, init || {});
+		return true;
+	}
+	if (type === 'onyx:frame') {		/* (Onyx: requestAnimationFrame) */
+		runFrames(init.time);
+		return true;
+	}
+	if (type === 'onyx:anim') {		/* (Onyx: transitions, animations) */
+		animEvent(target, init);
 		return true;
 	}
 	if (type === 'mousedown' && t instanceof HTMLElement) {

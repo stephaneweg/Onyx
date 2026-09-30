@@ -46,6 +46,7 @@
 #include "html/box_manipulate.h"
 #include "html/box_construct.h"
 #include "html/onyx_hover.h"
+#include "html/onyx_anim.h"
 #include <sys/time.h>
 #include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
@@ -369,6 +370,10 @@ box_get_style(html_content *c,
 	nscss_hover_node = NULL;
 	nscss_hover_note = NULL;
 	nscss_styled_node = NULL;
+
+	/* Onyx: transitions and animations (their styles in place of the cascade's) */
+	if (styles != NULL)
+		onyx_anim_styled(c, n, styles, parent_style);
 
 	/* No longer need inline style */
 	if (inline_style != NULL)

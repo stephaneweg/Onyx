@@ -3535,3 +3535,20 @@ void dump_chain(const css_selector *selector)
 }
 #endif
 
+
+/* Onyx: the keyframes of the last @keyframes <name> of the context's sheets (select.h) */
+css_error css_select_ctx_onyx_keyframes(const css_select_ctx *ctx, lwc_string *name,
+		css_onyx_keyframe **out, uint32_t *n)
+{
+	const void *found = NULL;
+	uint32_t i;
+
+	if (ctx == NULL || name == NULL || out == NULL || n == NULL)
+		return CSS_BADPARM;
+	*out = NULL;
+	*n = 0;
+	for (i = 0; i < ctx->n_sheets; i++)
+		if (!ctx->sheets[i].sheet->disabled)
+			css__onyx_keyframes_in_sheet(ctx->sheets[i].sheet, name, &found);
+	return css__onyx_keyframes_list(found, out, n);
+}

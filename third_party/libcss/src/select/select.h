@@ -132,5 +132,11 @@ bool css__outranks_prop_state(prop_state *existing, bool important,
 		css_select_state *state, enum flag_value explicit_default);
 css_error css__select_cascade_style(const css_style *style, css_select_state *state);
 
+/* Onyx: animations (select/onyx_anim.c) -- the last @keyframes <name> of a sheet (and its
+ * imports) into *found (unchanged if none); a @keyframes rule's keyframes, sorted */
+void css__onyx_keyframes_in_sheet(const css_stylesheet *sheet, lwc_string *name,
+		const void **found);
+css_error css__onyx_keyframes_list(const void *rule, css_onyx_keyframe **out, uint32_t *n);
+
 #endif
 

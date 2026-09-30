@@ -2730,7 +2730,7 @@ class ShadowRoot extends G.DocumentFragment {
 	get fullscreenElement() { return null; }
 	get pictureInPictureElement() { return null; }
 	get pointerLockElement() { return null; }
-	getAnimations() { return []; }
+	getAnimations() { return G.document.getAnimations().filter(a => a.effect && a.effect.target && a.effect.target.getRootNode && a.effect.target.getRootNode() === this); }
 	elementFromPoint(x, y) { const e = G.document.elementFromPoint(x, y); return e ? retarget(e, this) : null; }
 	elementsFromPoint(x, y) { const e = this.elementFromPoint(x, y); return e ? [e] : []; }
 	getSelection() { return G.getSelection ? G.getSelection() : null; }

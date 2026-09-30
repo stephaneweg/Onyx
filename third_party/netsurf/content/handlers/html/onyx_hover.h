@@ -50,4 +50,28 @@ void onyx_hover_fini(struct html_content *c);
  */
 bool onyx_hover_restyle(struct html_content *c, struct dom_node *old_node);
 
+/**
+ * Onyx: an animation's frame (html/onyx_anim.c) -- each element's boxes given its style
+ * (its pseudo-elements' styles kept) without a selection; deep: its subtree styled again
+ * too (an inherited property changed: the selection gives the element its animated
+ * style). When the changes are only in how boxes are painted (or translated), they are
+ * redrawn; layout: any change is taken, nothing redrawn -- the caller lays the boxes out
+ * again. False: nothing done (a layout property without layout, a pseudo-element appears,
+ * an image to fetch, an element without a box, a case this does not handle).
+ */
+struct css_computed_style;
+struct onyx_restyle_item {
+	struct dom_node *node;
+	const struct css_computed_style *style;
+	bool deep;
+};
+bool onyx_hover_restyle_elements(struct html_content *c,
+		const struct onyx_restyle_item *items, int n, bool layout);
+
+/**
+ * The style results replaced (by hovers, by animations' frames) that no box points at any
+ * more freed; the others kept until the next rebox.
+ */
+void onyx_hover_collect(struct html_content *c);
+
 #endif

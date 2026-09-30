@@ -71,6 +71,7 @@
 #include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
 #include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
 #include "html/onyx_shadow.h"	/* Onyx: shadow DOM (adopted sheets) */
+#include "html/onyx_anim.h"	/* Onyx: animations, requestAnimationFrame */
 
 #include "javascript/js.h"
 #include "html/onyx_webfont.h"
@@ -1395,6 +1396,7 @@ static void qjs_layout_now(jsthread *t)
 		html_script_dom_changed(t->htmlc);
 	}
 	html_script_layout_now(t->htmlc);
+	onyx_anim_flush(t->htmlc);	/* (Onyx: an animation a script changed) */
 }
 
 /* Onyx: an element's scroll position and extent, its scroller's (overflow: auto / scroll):
@@ -1762,6 +1764,7 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 		c->unit_len_ctx.font_size_default = fdef;
 		c->unit_len_ctx.font_size_minimum = fmin;
 	}
+	c->onyx_anim_probe++;	/* (Onyx: not the elements' styles: no animation) */
 	if (c->select_ctx != NULL) {
 		for (i = depth - 1; i >= 0; i--) {
 			css_select_results *r = box_style_select(c, parent,
@@ -1778,6 +1781,7 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 				root_style = parent;
 		}
 	}
+	c->onyx_anim_probe--;
 	if (dpi != 0) {
 		c->unit_len_ctx.device_dpi = 0;
 		c->unit_len_ctx.font_size_default = 0;
@@ -1792,12 +1796,202 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 	return parent;
 }
 
+/* Onyx: a length of a computed style as CSS text ("auto" for its other types) */
+static void qjs_len_text(uint8_t type, uint8_t set_type, css_fixed len, css_unit unit,
+		char *buf, size_t size)
+{
+	if (type != set_type) {
+		snprintf(buf, size, "auto");
+		return;
+	}
+	snprintf(buf, size, "%g%s", FIXTOFLT(len), unit == CSS_UNIT_PCT ? "%" :
+			unit == CSS_UNIT_EM ? "em" : "px");
+}
+
+static void qjs_color_text(css_color c, char *buf, size_t size)
+{
+	if ((c >> 24) == 0xff)
+		snprintf(buf, size, "rgb(%u, %u, %u)", (c >> 16) & 0xff, (c >> 8) & 0xff,
+				c & 0xff);
+	else
+		snprintf(buf, size, "rgba(%u, %u, %u, %g)", (c >> 16) & 0xff, (c >> 8) & 0xff,
+				c & 0xff, ((c >> 24) & 0xff) / 255.0);
+}
+
+/* Onyx: a list text of the transition / animation properties as CSS writes it */
+static void qjs_list_text(uint8_t type, lwc_string *text, const char *dflt, char *buf,
+		size_t size)
+{
+	const char *p;
+	size_t n = 0;
+
+	if (type != CSS_ONYX_TEXT_SET || text == NULL) {
+		snprintf(buf, size, "%s", dflt);
+		return;
+	}
+	for (p = lwc_string_data(text); *p != '\0' && n + 3 < size; p++) {
+		buf[n++] = *p;
+		if (*p == ',')
+			buf[n++] = ' ';
+	}
+	buf[n] = '\0';
+}
+
+/* Onyx: getComputedStyle's other properties (html/onyx_anim.c animates them) */
+static void qjs_cstyle_more(jsthread *t, const css_computed_style *style, struct box *box,
+		const char *prop, char *buf, size_t size)
+{
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+	css_color c = 0;
+	lwc_string *text = NULL;
+	uint8_t ty;
+
+	if (strcmp(prop, "transform") == 0) {
+		float w = 0, h = 0;
+		if (box != NULL) {
+			w = box->padding[LEFT] + box->width + box->padding[RIGHT] +
+				box->border[LEFT].width + box->border[RIGHT].width;
+			h = box->padding[TOP] + box->height + box->padding[BOTTOM] +
+				box->border[TOP].width + box->border[BOTTOM].width;
+		}
+		if (t->htmlc != NULL)
+			onyx_anim_transform_text(style, t->htmlc, w, h, buf, (int) size);
+	} else if (strcmp(prop, "translate") == 0 || strcmp(prop, "scale") == 0 ||
+		   strcmp(prop, "rotate") == 0) {
+		ty = prop[0] == 't' ? css_computed_translate(style, &text) :
+			prop[0] == 's' ? css_computed_scale(style, &text) :
+			css_computed_rotate(style, &text);
+		snprintf(buf, size, "%s", ty == CSS_ONYX_TEXT_SET && text != NULL ?
+				lwc_string_data(text) : "none");
+	} else if (strcmp(prop, "filter") == 0 || strcmp(prop, "backdrop-filter") == 0) {
+		/* (their canonical texts: "blur(4px) brightness(1.2)") */
+		ty = prop[0] == 'f' ? css_computed_filter(style, &text) :
+			css_computed_backdrop_filter(style, &text);
+		snprintf(buf, size, "%s", ty == CSS_ONYX_TEXT_SET && text != NULL ?
+				lwc_string_data(text) : "none");
+	} else if (strcmp(prop, "left") == 0) {
+		ty = css_computed_left(style, &len, &unit);
+		qjs_len_text(ty, CSS_LEFT_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "top") == 0) {
+		ty = css_computed_top(style, &len, &unit);
+		qjs_len_text(ty, CSS_TOP_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "right") == 0) {
+		ty = css_computed_right(style, &len, &unit);
+		qjs_len_text(ty, CSS_RIGHT_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "bottom") == 0) {
+		ty = css_computed_bottom(style, &len, &unit);
+		qjs_len_text(ty, CSS_BOTTOM_SET, len, unit, buf, size);
+	} else if (strncmp(prop, "margin-", 7) == 0) {
+		const char *side = prop + 7;
+		ty = side[0] == 't' ? css_computed_margin_top(style, &len, &unit) :
+			side[0] == 'r' ? css_computed_margin_right(style, &len, &unit) :
+			side[0] == 'b' ? css_computed_margin_bottom(style, &len, &unit) :
+			css_computed_margin_left(style, &len, &unit);
+		qjs_len_text(ty, CSS_MARGIN_SET, len, unit, buf, size);
+	} else if (strncmp(prop, "padding-", 8) == 0) {
+		const char *side = prop + 8;
+		ty = side[0] == 't' ? css_computed_padding_top(style, &len, &unit) :
+			side[0] == 'r' ? css_computed_padding_right(style, &len, &unit) :
+			side[0] == 'b' ? css_computed_padding_bottom(style, &len, &unit) :
+			css_computed_padding_left(style, &len, &unit);
+		qjs_len_text(ty, CSS_PADDING_SET, len, unit, buf, size);
+	} else if (strncmp(prop, "border-", 7) == 0 && strstr(prop, "-color") != NULL) {
+		const char *side = prop + 7;
+		if (side[0] == 'r') css_computed_border_right_color(style, &c);
+		else if (side[0] == 'b') css_computed_border_bottom_color(style, &c);
+		else if (side[0] == 'l') css_computed_border_left_color(style, &c);
+		else css_computed_border_top_color(style, &c);
+		qjs_color_text(c, buf, size);
+	} else if (strncmp(prop, "border-", 7) == 0 && strstr(prop, "-width") != NULL) {
+		const char *side = prop + 7;
+		if (side[0] == 'r') css_computed_border_right_width(style, &len, &unit);
+		else if (side[0] == 'b') css_computed_border_bottom_width(style, &len, &unit);
+		else if (side[0] == 'l') css_computed_border_left_width(style, &len, &unit);
+		else css_computed_border_top_width(style, &len, &unit);
+		snprintf(buf, size, "%gpx", FIXTOFLT(len));
+	} else if (strcmp(prop, "outline-color") == 0) {
+		css_computed_outline_color(style, &c);
+		qjs_color_text(c, buf, size);
+	} else if (strcmp(prop, "letter-spacing") == 0) {
+		ty = css_computed_letter_spacing(style, &len, &unit);
+		if (ty == CSS_LETTER_SPACING_SET)
+			qjs_len_text(ty, CSS_LETTER_SPACING_SET, len, unit, buf, size);
+		else
+			snprintf(buf, size, "normal");
+	} else if (strcmp(prop, "z-index") == 0) {
+		int32_t z = 0;
+		if (css_computed_z_index(style, &z) == CSS_Z_INDEX_SET)
+			snprintf(buf, size, "%d", (int) z);
+		else
+			snprintf(buf, size, "auto");
+	} else if (strcmp(prop, "box-shadow") == 0) {
+		snprintf(buf, size, "none");
+		{
+			css_fixed x = 0, y = 0, b = 0, sp = 0;
+			css_unit ux, uy, ub, us;
+			ty = css_computed_box_shadow(style, &x, &ux, &y, &uy, &b, &ub, &sp, &us, &c);
+			if (ty != CSS_BOX_SHADOW_NONE && ty != 0) {
+				char col[48];
+				qjs_color_text(c, col, sizeof(col));
+				snprintf(buf, size, "%s %gpx %gpx %gpx %gpx%s", col, FIXTOFLT(x),
+						FIXTOFLT(y), FIXTOFLT(b), FIXTOFLT(sp),
+						ty == CSS_BOX_SHADOW_SET_INSET ||
+						ty == CSS_BOX_SHADOW_SET_INSET_CURRENT_COLOR ?
+						" inset" : "");
+			}
+		}
+	} else if (strcmp(prop, "transition-property") == 0) {
+		ty = css_computed_transition_property(style, &text);
+		qjs_list_text(ty, text, "all", buf, size);
+	} else if (strcmp(prop, "transition-duration") == 0) {
+		ty = css_computed_transition_duration(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "transition-timing-function") == 0) {
+		ty = css_computed_transition_timing_function(style, &text);
+		qjs_list_text(ty, text, "ease",
+				buf, size);
+	} else if (strcmp(prop, "transition-delay") == 0) {
+		ty = css_computed_transition_delay(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "animation-name") == 0) {
+		ty = css_computed_animation_name(style, &text);
+		qjs_list_text(ty, text, "none", buf, size);
+	} else if (strcmp(prop, "animation-duration") == 0) {
+		ty = css_computed_animation_duration(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "animation-timing-function") == 0) {
+		ty = css_computed_animation_timing_function(style, &text);
+		qjs_list_text(ty, text, "ease",
+				buf, size);
+	} else if (strcmp(prop, "animation-delay") == 0) {
+		ty = css_computed_animation_delay(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "animation-iteration-count") == 0) {
+		ty = css_computed_animation_iteration_count(style, &text);
+		qjs_list_text(ty, text, "1",
+				buf, size);
+	} else if (strcmp(prop, "animation-direction") == 0) {
+		ty = css_computed_animation_direction(style, &text);
+		qjs_list_text(ty, text, "normal",
+				buf, size);
+	} else if (strcmp(prop, "animation-fill-mode") == 0) {
+		ty = css_computed_animation_fill_mode(style, &text);
+		qjs_list_text(ty, text, "none",
+				buf, size);
+	} else if (strcmp(prop, "animation-play-state") == 0) {
+		ty = css_computed_animation_play_state(style, &text);
+		qjs_list_text(ty, text, "running",
+				buf, size);
+	}
+}
+
 static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
 	const char *prop;
 	struct box *box;
-	char buf[64];
+	char buf[512];	/* (Onyx: the transition / animation lists) */
 	JSValue v = JS_NewString(ctx, "");
 	/* Onyx: without a box, the style selected for it (qjs_unboxed_style) */
 	css_select_results *ures[QJS_UNBOXED_DEPTH];
@@ -1901,12 +2095,176 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		css_unit unit = CSS_UNIT_PX;
 		css_computed_font_size(style, &len, &unit);
 		snprintf(buf, sizeof(buf), "%gpx", FIXTOFLT(len));
+	} else {
+		/* Onyx: the properties animations change (their animated values) */
+		qjs_cstyle_more(t, style, box != NULL && box->style == style ? box : NULL,
+				prop, buf, sizeof(buf));
 	}
 	JS_FreeCString(ctx, prop);
 	JS_FreeValue(ctx, v);
 	while (nures > 0)
 		css_select_results_destroy(ures[--nures]);
 	return JS_NewString(ctx, buf);
+}
+
+
+/* ---- natives: animations (Onyx: html/onyx_anim.c) ----------------------------------------- */
+
+/** frame(): an animation frame wanted (requestAnimationFrame) */
+static JSValue n_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+
+	if (t->htmlc != NULL)
+		onyx_anim_request_frame(t->htmlc);
+	return JS_UNDEFINED;
+}
+
+static double qjs_num_prop(JSContext *ctx, JSValueConst o, const char *name, double dflt)
+{
+	JSValue v = JS_GetPropertyStr(ctx, o, name);
+	double d = dflt;
+
+	if (!JS_IsUndefined(v) && !JS_IsNull(v))
+		JS_ToFloat64(ctx, &d, v);
+	JS_FreeValue(ctx, v);
+	return d;
+}
+
+/** animate(el, css[], offsets[], easings[], timing): a script's animation's id (0: none) */
+static JSValue n_animate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct onyx_anim_timing tm;
+	const char **css = NULL, **eas = NULL;
+	double *off = NULL;
+	const char *easing = NULL;
+	int64_t n = 0;
+	int k, id = 0;
+	JSValue v;
+	QJS_NODE_ARG(el, 0);
+
+	if (t->htmlc == NULL || argc < 5)
+		return JS_NewInt32(ctx, 0);
+	qjs_layout_now(t);
+	if (JS_GetLength(ctx, argv[1], &n) < 0 || n < 1 || n > 256)
+		return JS_NewInt32(ctx, 0);
+	css = calloc(n, sizeof(*css));
+	eas = calloc(n, sizeof(*eas));
+	off = calloc(n, sizeof(*off));
+	if (css == NULL || eas == NULL || off == NULL)
+		goto done;
+	for (k = 0; k < n; k++) {
+		v = JS_GetPropertyUint32(ctx, argv[1], k);
+		css[k] = JS_ToCString(ctx, v);
+		JS_FreeValue(ctx, v);
+		v = JS_GetPropertyUint32(ctx, argv[2], k);
+		JS_ToFloat64(ctx, &off[k], v);
+		JS_FreeValue(ctx, v);
+		v = JS_GetPropertyUint32(ctx, argv[3], k);
+		if (JS_IsString(v))
+			eas[k] = JS_ToCString(ctx, v);
+		JS_FreeValue(ctx, v);
+	}
+	memset(&tm, 0, sizeof(tm));
+	tm.delay = qjs_num_prop(ctx, argv[4], "delay", 0);
+	tm.end_delay = qjs_num_prop(ctx, argv[4], "endDelay", 0);
+	tm.duration = qjs_num_prop(ctx, argv[4], "duration", 0);
+	tm.iterations = qjs_num_prop(ctx, argv[4], "iterations", 1);
+	tm.iteration_start = qjs_num_prop(ctx, argv[4], "iterationStart", 0);
+	tm.rate = qjs_num_prop(ctx, argv[4], "playbackRate", 1);
+	tm.direction = (int) qjs_num_prop(ctx, argv[4], "direction", 0);
+	tm.fill = (int) qjs_num_prop(ctx, argv[4], "fill", 0);
+	v = JS_GetPropertyStr(ctx, argv[4], "easing");
+	if (JS_IsString(v))
+		easing = JS_ToCString(ctx, v);
+	JS_FreeValue(ctx, v);
+	tm.easing = easing;
+	id = onyx_anim_create(t->htmlc, el, css, off, eas, (int) n, &tm);
+done:
+	for (k = 0; k < n && css != NULL; k++) {
+		if (css[k] != NULL)
+			JS_FreeCString(ctx, css[k]);
+		if (eas != NULL && eas[k] != NULL)
+			JS_FreeCString(ctx, eas[k]);
+	}
+	if (easing != NULL)
+		JS_FreeCString(ctx, easing);
+	free(css);
+	free(eas);
+	free(off);
+	return JS_NewInt32(ctx, id);
+}
+
+/** animCtl(id, op, arg): play 0, pause 1, cancel 2, finish 3, reverse 4, currentTime 5,
+ * playbackRate 6, startTime 7; false if the animation is gone */
+static JSValue n_anim_ctl(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	int id = 0, op = 0;
+	double arg = 0;
+
+	if (t->htmlc == NULL || argc < 2)
+		return JS_FALSE;
+	JS_ToInt32(ctx, &id, argv[0]);
+	JS_ToInt32(ctx, &op, argv[1]);
+	if (argc > 2)
+		JS_ToFloat64(ctx, &arg, argv[2]);
+	return JS_NewBool(ctx, onyx_anim_control(t->htmlc, id, (enum onyx_anim_op) op, arg));
+}
+
+/** animInfo(id): [currentTime, startTime, rate, endTime, progress, iteration, kind,
+ * playState, name, node, delay, duration, iterations, endDelay, direction, fill] (times in
+ * ms, NaN unresolved, the start time on performance.now()'s clock), null if gone */
+static JSValue n_anim_info(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct onyx_anim_info in;
+	int id = 0, k = 0;
+	JSValue a;
+
+	if (t->htmlc == NULL || argc < 1)
+		return JS_NULL;
+	JS_ToInt32(ctx, &id, argv[0]);
+	if (!onyx_anim_info(t->htmlc, id, &in))
+		return JS_NULL;
+	a = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.current_time));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.start_time));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.rate));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.end_time));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.progress));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.iteration));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewInt32(ctx, in.kind));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewString(ctx, in.play_state));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewString(ctx, in.name != NULL ? in.name : ""));
+	JS_SetPropertyUint32(ctx, a, k++, in.node != NULL ? qjs_wrap(t, in.node) : JS_NULL);
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.delay));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.duration));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.iterations));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.end_delay));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewInt32(ctx, in.direction));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewInt32(ctx, in.fill));
+	return a;
+}
+
+/** animList(el | null): the ids of the element's (the document's) animations */
+static JSValue n_anim_list(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_node *el = argc > 0 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0]) ?
+			qjs_node(argv[0]) : NULL;
+	int ids[512], n, k;
+	JSValue a = JS_NewArray(ctx);
+
+	if (t->htmlc == NULL)
+		return a;
+	if (argc > 0 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0]) && el == NULL)
+		return a;
+	n = onyx_anim_list(t->htmlc, el, ids, 512);
+	for (k = 0; k < n; k++)
+		JS_SetPropertyUint32(ctx, a, k, JS_NewInt32(ctx, ids[k]));
+	return a;
 }
 
 
@@ -3488,6 +3846,11 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("scroll", 0, n_scroll),
 	JS_CFUNC_DEF("scrollTo", 2, n_scroll_to),
 	JS_CFUNC_DEF("cstyle", 2, n_cstyle),
+	JS_CFUNC_DEF("frame", 0, n_frame),
+	JS_CFUNC_DEF("animate", 5, n_animate),
+	JS_CFUNC_DEF("animCtl", 3, n_anim_ctl),
+	JS_CFUNC_DEF("animInfo", 1, n_anim_info),
+	JS_CFUNC_DEF("animList", 1, n_anim_list),
 	JS_CFUNC_DEF("url", 0, n_url),
 	JS_CFUNC_DEF("navigate", 1, n_navigate),
 	JS_CFUNC_DEF("reload", 0, n_reload),
@@ -3857,6 +4220,52 @@ bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *targ
 	JS_FreeValue(ctx, args[1]);
 	JS_FreeValue(ctx, args[2]);
 	return ok;
+}
+
+/* exported interface documented in js.h (Onyx) */
+void js_dispatch_anim_event(jsthread *thread, const char *type, struct dom_node *target,
+		const char *name, double elapsed, int id)
+{
+	JSContext *ctx;
+	JSValue args[3], r, o;
+
+	if (thread == NULL || thread->closed || !JS_IsFunction(thread->ctx, thread->dispatch))
+		return;
+	ctx = thread->ctx;
+	o = JS_NewObject(ctx);
+	JS_SetPropertyStr(ctx, o, "type", JS_NewString(ctx, type));
+	JS_SetPropertyStr(ctx, o, "name", JS_NewString(ctx, name != NULL ? name : ""));
+	JS_SetPropertyStr(ctx, o, "elapsed", JS_NewFloat64(ctx, elapsed));
+	JS_SetPropertyStr(ctx, o, "id", JS_NewInt32(ctx, id));
+	args[0] = target != NULL ? qjs_wrap(thread, target) : JS_NULL;
+	args[1] = JS_NewString(ctx, "onyx:anim");
+	args[2] = o;
+	r = qjs_call(thread, thread->dispatch, JS_UNDEFINED, 3, (JSValueConst *) args, type);
+	JS_FreeValue(ctx, r);
+	JS_FreeValue(ctx, args[0]);
+	JS_FreeValue(ctx, args[1]);
+	JS_FreeValue(ctx, args[2]);
+}
+
+/* exported interface documented in js.h (Onyx) */
+void js_animation_frame(jsthread *thread, double now)
+{
+	JSContext *ctx;
+	JSValue args[3], r, o;
+
+	if (thread == NULL || thread->closed || !JS_IsFunction(thread->ctx, thread->dispatch))
+		return;
+	ctx = thread->ctx;
+	o = JS_NewObject(ctx);
+	JS_SetPropertyStr(ctx, o, "time", JS_NewFloat64(ctx, now));
+	args[0] = JS_NULL;
+	args[1] = JS_NewString(ctx, "onyx:frame");
+	args[2] = o;
+	r = qjs_call(thread, thread->dispatch, JS_UNDEFINED, 3, (JSValueConst *) args,
+			"requestAnimationFrame");
+	JS_FreeValue(ctx, r);
+	JS_FreeValue(ctx, args[1]);
+	JS_FreeValue(ctx, args[2]);
 }
 
 /**

@@ -199,4 +199,20 @@ eturn false when a listener cancelled it (preventDefault): no default action
 bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *target,
 		const struct js_event_init *init);
 
+/**
+ * Onyx: an animation's event (html/onyx_anim.c): on a node, a TransitionEvent
+ * ("transitionrun", "transitionstart", "transitionend", "transitioncancel": name the
+ * property) or an AnimationEvent ("animationstart", "animationiteration", "animationend",
+ * "animationcancel": name the animation's), elapsed in seconds; without a node, an
+ * animation's state ("finish", "cancel") for its Animation object. id: the animation's.
+ */
+void js_dispatch_anim_event(jsthread *thread, const char *type, struct dom_node *target,
+		const char *name, double elapsed, int id);
+
+/**
+ * Onyx: an animation frame -- the requestAnimationFrame callbacks run (now: the monotonic
+ * clock's ms, performance.now()'s).
+ */
+void js_animation_frame(jsthread *thread, double now);
+
 #endif /* NETSURF_JAVASCRIPT_JS_H_ */
