@@ -647,6 +647,40 @@ Windows, which they compare with on the Pi (portrait and landscape screens) -- a
 for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
 `docs/06-NETSURF-CHANGES.md` (read it first: it is the map of what changed and why).
 
+**START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
+far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more
+out of memory on bbc.co.uk, HTML5).** Built and tried on the PC bench only; the Pi binaries
+staged at the end of the session (`sdcard/apps/netsurf.app/main`, NOT yet tried on the Pi).
+docs/06 §12-§19 describe each piece; read them first. Where it stands:
+- **css3test.com 23 % -> 81 %** (Chromium 71 % on the same copy): libcss parses by the specs'
+  grammars, a real CSSOM, SVG's properties (§14). **html5test 252 -> 369 / 588**. The HTML
+  parser passes html5lib's tree construction 100 %, its tokenizer 99.9 % (§16); the HTML5 DOM
+  (§17), Intl on ECMA-402 (§15, 92.6 % of test262's intl402 subset), SVG images and inline SVG
+  and canvas 2D on PlutoSVG / PlutoVG (§12, §13), a real shadow DOM with style scoping,
+  WebSocket, EventSource, streamed fetch / XHR, Workers (§19).
+- **bbc.co.uk's out of memory**: fixed (§18: its root cause and the JS heap limit); bbc.com
+  ~170 MB steady on the PC. **google.com**: the logo, the footer (early layout, script-blocking
+  sheets) -- the results page is untested (Google answers a captcha to this container's IP: try
+  it on the Pi). **m.facebook.com**: the login form as in Chrome (Fetch Metadata headers, late
+  style sheets restyle, mask-image icons, aspect-ratio); typing kept; not logged in yet.
+- **Speed**: the JS preludes compiled once per process (a page's context 37 -> 5 ms), the box
+  tree built in 15 ms slices, the fetch workers sleep instead of spinning (60 % of the CPU on
+  bbc.com), job slicing of the microtasks. React hydration is still the big cost (bbc.com: a
+  1.4 s script on the PC -- on the Pi several seconds).
+- **The bench** (`tools/tests/netsurf/`): `jstest.sh` (all the JS / DOM / CSS regression
+  pages), `nettest.sh` (WebSocket / SSE / workers), `sitesweep.sh` (15 live sites: crashes and
+  script errors -- run it after any core change), `site.sh <url> <name>` (NetSurf and Chromium
+  side by side), `layoutdiff.sh` (box by box against Chromium), `prof.sh` (a sampling profiler:
+  `NS_PROF=<file>`), `NS_BOXDUMP=<file>` / `NS_INJECT=<file.js>` then F5 (`key 276`),
+  `html5lib.sh`, `css3test.sh`, `html5test.sh`, `urltest.sh`, `wpt.sh`. The container reaches the
+  web through a proxy (`fakekapi.cpp` tunnels with CONNECT); OpenSSL gives the bench https.
+- **To try on the Pi first**: kotonviolins.com / kotonstudio.com (regressions), bbc.co.uk (the
+  memory), google.com (search, results), m.facebook.com (log in), en.wikipedia.org, a
+  WebSocket echo. Watch `kmsg` for `app:` lines and `SD:/etc/apphang.txt`.
+- **Next**: incremental relayout for React (a restyle of the changed subtree instead of a full
+  rebox), `opacity` groups and filters, transitions / animations, a worker thread for Workers,
+  CORS, Google's results on the user's network.
+
 **Done, in `main`, staged on the card:** CSS3 (calc / var / grid / flex / gradients /
 shadows / radii / background-clip: text / vendor prefixes), Chrome's Windows fonts
 (metric-compatible stand-ins, web fonts with WOFF2 and variable fonts, baseline alignment),
@@ -671,7 +705,7 @@ restyle; deployed on the Pi, the flicker not yet confirmed gone by the user). Th
 in WSL again (`build-essential`, `libpng-dev`, `zlib1g-dev`); `jstest.sh` covers them all
 (js-fetch, js-hover, js-hovercss, js-storage).
 
-**START HERE -- the state at the end of 2026-09-30 (all in `main`, pushed; the Pi binaries
+**The state before that session (2026-09-30; all in `main`, pushed; the Pi binaries
 staged: `sdcard/kernel8-rpi4.img`, `sdcard/apps/netsurf.app/main`).** Tried by the user on the
 Pi: much faster (kotonstudio with all its images almost at once), hovers fine. Since then (the
 last build, NOT yet tried on the Pi): the Android Chrome User-Agent by default, the yahoo.com
