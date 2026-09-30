@@ -1274,6 +1274,11 @@ struct onyx_layer_box {
 	int order;		/* (the tree's order, for equal z-indexes) */
 };
 
+/* Onyx: the redraw's own clip (the document's): a fixed box is not clipped by
+ * its ancestors' overflow (its containing block is the viewport) */
+static struct rect onyx_redraw_root_clip;
+static bool onyx_redraw_root_clip_set;
+
 static struct onyx_layer_box *onyx_layer_boxes;
 static int onyx_layer_count, onyx_layer_cap;
 static bool onyx_layering;	/* a redraw that paints by layers is going on */
@@ -1326,6 +1331,9 @@ static bool onyx_layer_defer(struct box *c, int x_parent, int y_parent,
 	e->x_parent = x_parent;
 	e->y_parent = y_parent;
 	e->clip = *clip;
+	if (onyx_redraw_root_clip_set && c->style != NULL &&
+	    css_computed_position(c->style) == CSS_POSITION_FIXED)
+		e->clip = onyx_redraw_root_clip;
 	e->background = background;
 	e->z = z;
 	e->order = onyx_layer_count;
@@ -1700,8 +1708,10 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			rc.x1 += e;
 			rc.y1 += e;
 		}
-		if (clip->y1 < rc.y0 || rc.y1 < clip->y0 ||
-				clip->x1 < rc.x0 || rc.x1 < clip->x0)
+		/* (Onyx: not a box holding a fixed box: the viewport's) */
+		if (!(box->flags & HAS_FIXED) &&
+				(clip->y1 < rc.y0 || rc.y1 < clip->y0 ||
+				clip->x1 < rc.x0 || rc.x1 < clip->x0))
 			return true;
 	}
 
@@ -1809,8 +1819,13 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		if (r.y0 < clip->y0) r.y0 = clip->y0;
 		if (clip->x1 < r.x1) r.x1 = clip->x1;
 		if (clip->y1 < r.y1) r.y1 = clip->y1;
-		/* no point trying to draw 0-width/height boxes */
-		if (r.x0 == r.x1 || r.y0 == r.y1)
+		/* no point trying to draw 0-width/height boxes (Onyx: unless
+		 * they hold a fixed box) */
+		if ((r.x0 >= r.x1 || r.y0 >= r.y1) && (box->flags & HAS_FIXED)) {
+			r.x0 = r.x1 = clip->x0;	/* (an empty clip, valid) */
+			r.y0 = r.y1 = clip->y0;
+		}
+		if ((r.x0 == r.x1 || r.y0 == r.y1) && !(box->flags & HAS_FIXED))
 			/* not an error */
 			return ((!ctx->plot->group_end) ||
 				(ctx->plot->group_end(ctx) == NSERROR_OK));
@@ -2163,8 +2178,14 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			if (clip->x1 < r.x1) r.x1 = clip->x1;
 			if (clip->y1 < r.y1) r.y1 = clip->y1;
 			if (r.x1 <= r.x0 || r.y1 <= r.y0) {
-				return (!ctx->plot->group_end ||
-					(ctx->plot->group_end(ctx) == NSERROR_OK));
+				/* Onyx: a fixed descendant is not clipped:
+				 * the children painted in an empty clip */
+				if (!(box->flags & HAS_FIXED))
+					return (!ctx->plot->group_end ||
+						(ctx->plot->group_end(ctx) ==
+						 NSERROR_OK));
+				r.x0 = r.x1 = clip->x0;
+				r.y0 = r.y1 = clip->y0;
 			}
 			need_clip = true;
 
@@ -2176,8 +2197,14 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			if (r.x0 < clip->x0) r.x0 = clip->x0;
 			if (clip->x1 < r.x1) r.x1 = clip->x1;
 			if (r.x1 <= r.x0) {
-				return (!ctx->plot->group_end ||
-					(ctx->plot->group_end(ctx) == NSERROR_OK));
+				/* Onyx: a fixed descendant is not clipped:
+				 * the children painted in an empty clip */
+				if (!(box->flags & HAS_FIXED))
+					return (!ctx->plot->group_end ||
+						(ctx->plot->group_end(ctx) ==
+						 NSERROR_OK));
+				r.x0 = r.x1 = clip->x0;
+				r.y0 = r.y1 = clip->y0;
 			}
 			need_clip = true;
 
@@ -2189,8 +2216,14 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			if (r.y0 < clip->y0) r.y0 = clip->y0;
 			if (clip->y1 < r.y1) r.y1 = clip->y1;
 			if (r.y1 <= r.y0) {
-				return (!ctx->plot->group_end ||
-					(ctx->plot->group_end(ctx) == NSERROR_OK));
+				/* Onyx: a fixed descendant is not clipped:
+				 * the children painted in an empty clip */
+				if (!(box->flags & HAS_FIXED))
+					return (!ctx->plot->group_end ||
+						(ctx->plot->group_end(ctx) ==
+						 NSERROR_OK));
+				r.x0 = r.x1 = clip->x0;
+				r.y0 = r.y1 = clip->y0;
 			}
 			need_clip = true;
 		}
@@ -2472,7 +2505,11 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 		{
 			bool was = onyx_layering;
 			int start = onyx_layer_count;
+			struct rect was_clip = onyx_redraw_root_clip;
+			bool was_set = onyx_redraw_root_clip_set;
 
+			onyx_redraw_root_clip = *clip;
+			onyx_redraw_root_clip_set = true;
 			onyx_layering = !html_redraw_printing;
 			result &= html_redraw_box(html, box, data->x, data->y, clip,
 					data->scale, pstyle_fill_bg.fill_colour, ctx);
@@ -2481,6 +2518,8 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 						ctx);
 			onyx_layer_count = start;
 			onyx_layering = was;
+			onyx_redraw_root_clip = was_clip;
+			onyx_redraw_root_clip_set = was_set;
 		}
 	}
 

@@ -60,6 +60,7 @@
 #include "desktop/browser_history.h"	/* browser_window_history_back / _forward */
 #include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
+#include "desktop/scrollbar.h"	/* Onyx: an element's scroll position (n_box_scroll) */
 #include "html/private.h"
 #include "html/html.h"		/* Onyx: struct html_stylesheet (n_sheet_text) */
 #include "netsurf/content.h"	/* Onyx: content_get_source_data, hlcache_handle_get_url */
@@ -1392,6 +1393,85 @@ static void qjs_layout_now(jsthread *t)
 		html_script_dom_changed(t->htmlc);
 	}
 	html_script_layout_now(t->htmlc);
+}
+
+/* Onyx: an element's scroll position and extent, its scroller's (overflow: auto / scroll):
+ * [scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight] */
+static JSValue n_box_scroll(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	JSValue arr = JS_NewArray(ctx);
+	int v[6] = { 0, 0, 0, 0, 0, 0 }, i;
+	struct box *box;
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc != NULL)
+		qjs_layout_now(t);
+	box = qjs_box(n);
+	if (box != NULL && t->htmlc != NULL && t->htmlc->layout != NULL) {
+		int w = box->padding[LEFT] + box->width + box->padding[RIGHT];
+		int h = box->padding[TOP] + box->height + box->padding[BOTTOM];
+
+		v[0] = scrollbar_get_offset(box->scroll_x);
+		v[1] = scrollbar_get_offset(box->scroll_y);
+		v[2] = box->descendant_x1 > w ? box->descendant_x1 : w;
+		v[3] = box->descendant_y1 > h ? box->descendant_y1 : h;
+		if (box->style != NULL &&
+		    css_computed_overflow_x(box->style) == CSS_OVERFLOW_VISIBLE)
+			v[2] = w;	/* (not a scroller: its own size) */
+		if (box->style != NULL &&
+		    css_computed_overflow_y(box->style) == CSS_OVERFLOW_VISIBLE)
+			v[3] = h;
+		v[4] = w - (box->scroll_y != NULL ? SCROLLBAR_WIDTH : 0);
+		v[5] = h - (box->scroll_x != NULL ? SCROLLBAR_WIDTH : 0);
+	}
+	for (i = 0; i < 6; i++)
+		JS_SetPropertyUint32(ctx, arr, i, JS_NewInt32(ctx, v[i]));
+	return arr;
+}
+
+/* Onyx: an element's scroller scrolled to (x, y) (its scroll event follows) */
+static JSValue n_box_scroll_to(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct box *box;
+	int32_t x = 0, y = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (argc > 1)
+		JS_ToInt32(ctx, &x, argv[1]);
+	if (argc > 2)
+		JS_ToInt32(ctx, &y, argv[2]);
+	if (t->htmlc == NULL)
+		return JS_UNDEFINED;
+	qjs_layout_now(t);
+	box = qjs_box(n);
+	if (box == NULL || t->htmlc->layout == NULL)
+		return JS_UNDEFINED;
+	if (box->scroll_x != NULL && x != scrollbar_get_offset(box->scroll_x))
+		scrollbar_set(box->scroll_x, x < 0 ? 0 : x, false);
+	if (box->scroll_y != NULL && y != scrollbar_get_offset(box->scroll_y))
+		scrollbar_set(box->scroll_y, y < 0 ? 0 : y, false);
+	return JS_UNDEFINED;
+}
+
+/* Onyx: element.focus() on a text field or a textarea: the browser's caret in it, at the
+ * end of its text (what the user types goes there, as after a click) */
+static JSValue n_focus_control(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc == NULL || t->closed)
+		return JS_FALSE;
+	/* (the DOM's changes of this turn: a rebox due, the caret put after it) */
+	if (t->dirty) {
+		t->dirty = false;
+		html_script_dom_changed(t->htmlc);
+	}
+	return JS_NewBool(ctx, html_script_focus_control(t->htmlc, n));
 }
 
 static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -3384,6 +3464,9 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("setFormChecked", 2, n_set_form_checked),
 	JS_CFUNC_DEF("submit", 2, n_submit),
 	JS_CFUNC_DEF("rect", 1, n_rect),
+	JS_CFUNC_DEF("focusControl", 1, n_focus_control),
+	JS_CFUNC_DEF("boxScroll", 1, n_box_scroll),
+	JS_CFUNC_DEF("boxScrollTo", 3, n_box_scroll_to),
 	JS_CFUNC_DEF("boxed", 1, n_boxed),
 	JS_CFUNC_DEF("scroll", 0, n_scroll),
 	JS_CFUNC_DEF("scrollTo", 2, n_scroll_to),

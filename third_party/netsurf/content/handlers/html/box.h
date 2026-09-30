@@ -96,7 +96,11 @@ typedef enum {
 	/* Onyx: a table's caption (display: table-caption): one of the table's
 	 * first (caption-side: top) or last (bottom) children, outside its grid
 	 * and its border box (box_normalise_table, layout_table) */
-	TABLE_CAPTION = 1 << 14
+	TABLE_CAPTION = 1 << 14,
+	/* Onyx: a descendant is position: fixed -- its containing block is the
+	 * viewport: neither this box's overflow nor its size hides it (the
+	 * redraw does not skip this box's children) */
+	HAS_FIXED   = 1 << 15
 } box_flags;
 
 
