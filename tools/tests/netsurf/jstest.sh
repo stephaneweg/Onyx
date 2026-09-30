@@ -273,6 +273,27 @@ expect "$L" "math e 31px"
 expect "$L" "math g 40px"
 expect "$L" "math h 50px"
 if grep -q "^console: math f 81px" "$L" && grep -q "^console: math i 40px" "$L"; then echo "  ok    10dvw, 5cqi"; else echo "  FAIL  10dvw, 5cqi: $(grep '^console: math [fi]' "$L" | tr '\n' ' ')"; fail=1; fi
+# Onyx: transitions, animations, the Web Animations API, requestAnimationFrame (html/onyx_anim.c):
+# the pages sample getComputedStyle at known times and log "OK <area> name" / "FAIL <area> name",
+# then "<area> done N"
+animpage() {	# animpage <page> <area> <sim script> <what>
+	echo "$1 ($4)"
+	L=$OUT/${1%.html}.log
+	run "$1" "$3" "$L"
+	grep "^console: FAIL $2 \|^JS " "$L" | sed 's/^console: /  /'
+	if grep -q "^console: FAIL $2 \|^JS " "$L" || ! grep -q "^console: $2 done" "$L"; then
+		echo "  FAIL  ($2: not all run: $L)"; fail=1
+	else
+		echo "  ok: $(grep -c "^console: OK $2 " "$L") checks"
+	fi
+}
+animpage css-transition.html trans "$(waits 90)move 100 380;$(waits 100)" \
+	"CSS transitions: opacity, colours, transform, width, delays, all, a reversal, :hover, the events"
+animpage css-animation.html anim "$(waits 150)" \
+	"CSS animations: @keyframes, iterations, direction, fill, play-state, steps(), the events, getAnimations()"
+animpage js-animate.html waapi "$(waits 120)" \
+	"the Web Animations API (element.animate, Animation) and requestAnimationFrame"
+
 echo "js-intl.html (Intl and the locale built-ins, against Chrome's answers: intl/mkpage.js)"
 L=$OUT/js-intl.log
 run js-intl.html "$(waits 40)" "$L"

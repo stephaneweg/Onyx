@@ -256,6 +256,23 @@ css_error css_select_ctx_insert_sheet(css_select_ctx *ctx,
 css_error css_select_ctx_remove_sheet(css_select_ctx *ctx,
 		const css_stylesheet *sheet);
 
+/*
+ * Onyx: a @keyframes' keyframes (NetSurf's animations): the last @keyframes <name> of the
+ * context's sheets (their imports, @media / @supports / @layer groups too), one entry per
+ * keyframe selector, sorted by offset (0..1; equal offsets in source order); decls the
+ * keyframe's declarations (css_computed_style_onyx_apply), alive as long as the sheet. The
+ * array is malloc'd (the caller frees it); *n 0 when there is no such @keyframes.
+ */
+typedef struct css_onyx_keyframe {
+	float offset;
+	uint32_t order;
+	const void *decls;
+} css_onyx_keyframe;
+css_error css_select_ctx_onyx_keyframes(const css_select_ctx *ctx, lwc_string *name,
+		css_onyx_keyframe **out, uint32_t *n);
+/* Onyx: an inline sheet's declarations (element.animate()'s keyframes), or NULL */
+const void *css_stylesheet_onyx_inline_decls(const css_stylesheet *sheet);
+
 css_error css_select_ctx_count_sheets(css_select_ctx *ctx, uint32_t *count);
 css_error css_select_ctx_get_sheet(css_select_ctx *ctx, uint32_t index,
 		const css_stylesheet **sheet);

@@ -97,6 +97,11 @@
 S+ @keyframes foo { from { color: blue } to { color: red } }
 S+ @keyframes "foo" { 50% { color: green } }
 S- @keyframes none { from { color: blue } }
+S+ @-webkit-keyframes fade { from { opacity: 0 } to { opacity: 1 } }
++ animation: slide 1s steps(4, end) infinite alternate both paused
++ transition-timing-function: cubic-bezier(0.1, 0.7, 1, 0.1), linear(0, 0.25 75%, 1)
+- transition-duration: -1s
++ animation-iteration-count: infinite, 2.5
 S+ @counter-style foo { system: numeric; symbols: '0' '1' '2'; }
 S- @counter-style none { system: numeric; }
 S+ @property --cool-color { syntax: '<color>'; inherits: true; initial-value: red; }

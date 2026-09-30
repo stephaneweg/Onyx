@@ -109,6 +109,18 @@ ONYX_TEXT_PROP(filter)		/* Onyx: compositing */
 ONYX_TEXT_PROP(backdrop_filter)
 ONYX_TEXT_PROP(transform_origin)
 ONYX_TEXT_PROP(mix_blend_mode)
+ONYX_TEXT_PROP(transition_property)	/* Onyx: transitions, animations */
+ONYX_TEXT_PROP(transition_duration)
+ONYX_TEXT_PROP(transition_timing_function)
+ONYX_TEXT_PROP(transition_delay)
+ONYX_TEXT_PROP(animation_name)
+ONYX_TEXT_PROP(animation_duration)
+ONYX_TEXT_PROP(animation_timing_function)
+ONYX_TEXT_PROP(animation_delay)
+ONYX_TEXT_PROP(animation_iteration_count)
+ONYX_TEXT_PROP(animation_direction)
+ONYX_TEXT_PROP(animation_fill_mode)
+ONYX_TEXT_PROP(animation_play_state)
 
 /* ---- aspect-ratio ---------------------------------------------------------------------------- */
 

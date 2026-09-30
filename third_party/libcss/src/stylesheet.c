@@ -1214,6 +1214,12 @@ css_error css__stylesheet_rule_destroy(css_stylesheet *sheet, css_rule *rule)
 		if (media->media != NULL) {
 			css__mq_query_destroy(media->media);
 		}
+		/* Onyx: a @keyframes' name, a keyframe's offsets and declarations */
+		if (media->onyx_name != NULL)
+			lwc_string_unref(media->onyx_name);
+		free(media->onyx_offsets);
+		if (media->onyx_style != NULL)
+			css__stylesheet_style_destroy(media->onyx_style);
 
 		for (c = media->first_child; c != NULL; c = d) {
 			d = c->next;
@@ -1310,10 +1316,13 @@ css_error css__stylesheet_rule_append_style(css_stylesheet *sheet,
 	if (sheet == NULL || rule == NULL || style == NULL)
 		return CSS_BADPARM;
 
-	assert(rule->type == CSS_RULE_SELECTOR || rule->type == CSS_RULE_PAGE);
+	assert(rule->type == CSS_RULE_SELECTOR || rule->type == CSS_RULE_PAGE ||
+			rule->type == CSS_RULE_MEDIA);
 
 	if (rule->type == CSS_RULE_SELECTOR)
 		current_style = ((css_rule_selector *) rule)->style;
+	else if (rule->type == CSS_RULE_MEDIA)	/* Onyx: a keyframe's declarations */
+		current_style = ((css_rule_media *) rule)->onyx_style;
 	else
 		current_style = ((css_rule_page *) rule)->style;
 
@@ -1335,6 +1344,8 @@ css_error css__stylesheet_rule_append_style(css_stylesheet *sheet,
 
 	if (rule->type == CSS_RULE_SELECTOR)
 		((css_rule_selector *) rule)->style = current_style;
+	else if (rule->type == CSS_RULE_MEDIA)
+		((css_rule_media *) rule)->onyx_style = current_style;
 	else
 		((css_rule_page *) rule)->style = current_style;
 

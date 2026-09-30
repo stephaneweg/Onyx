@@ -604,7 +604,9 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > Tests: `sh tools/tests/run_gpucomp_test.sh` on the PC — the CPU path and the GPU path (on a
 > software V3D, `tools/tests/gpucomp/hostkapi.cpp`: the kernel's `FS_TEX` run in `tools/qpu/qpusim`)
 > against a reference in doubles, then partial updates across tiles, a refused texture, the GPU
-> lost, `gpcdemo test` / `bench` built for the PC; with `aarch64-none-elf-gcc` on the PATH (or
+> lost, `gpcdemo test` / `bench` built for the PC (first `tools/tests/run_v3d_cl_test.sh`: the
+> control-list packets' fields against Mesa's positions — the software V3D decodes the kernel's
+> own target load / store packets); with `aarch64-none-elf-gcc` on the PATH (or
 > `A64_GCC=`) and `qemu-aarch64`, the CPU path built for the Pi (NEON loops) must give the PC's
 > pixels bit for bit. On the Pi: `/bin/gpcdemo test` (the GPU's pictures against the CPU's),
 > `/bin/gpcdemo bench` (ms a frame at 1920 × 1080, GPU then CPU), `/bin/gpcdemo` (a window).

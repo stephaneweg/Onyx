@@ -470,14 +470,11 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	u32 nGeneric = Ind.Bus ();					// each tile: its list, store, clear
 	Ind << OP_TILE_COORDINATES_IMPLICIT;
 	if (bLoad)							// the target's pixels first
-		Ind << LoadTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DECIMATE_MODE_SAMPLE_0,
-					      V3D_OUTPUT_IMAGE_FORMAT_RGBA8, !T.bDirect && !T.bAlpha, false, T.bDirect, T.nStrideBytes, 0, T.nBus);
+		Ind << V3dLoadTarget (T.bDirect, T.bAlpha, T.nStrideBytes, T.nBus);
 	Ind << OP_END_OF_LOADS;
 	Ind << PrimListFormat (LIST_TRIANGLES, false);
 	Ind << BranchToImplicitTileList (0);
-	Ind << StoreTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DITHER_MODE_NONE,
-				       V3D_DECIMATE_MODE_SAMPLE_0, V3D_OUTPUT_IMAGE_FORMAT_RGBA8, false, false, T.bDirect,
-				       T.nStrideBytes, 0, T.nBus);
+	Ind << V3dStoreTarget (T.bDirect, T.nStrideBytes, T.nBus);
 	Ind << ClearTileBuffers (true, true);
 	Ind << OP_END_OF_TILE_MARKER;
 	Ind << OP_RETURN_FROM_SUB_LIST;

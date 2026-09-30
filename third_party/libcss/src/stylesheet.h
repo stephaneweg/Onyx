@@ -164,6 +164,14 @@ typedef struct css_rule_media {
 	 * rule stands for -- @keyframes, @counter-style, @property, @scope... -- kept (their
 	 * media never matches: their content does not apply) */
 	uint8_t onyx_kind;
+
+	/* Onyx: @keyframes (onyx_kind ONYX_AT_KEYFRAMES): its name; a keyframe in it
+	 * (ONYX_AT_KEYFRAME): its offsets (0..1, the selectors' order) and declarations
+	 * (css_select_ctx_onyx_keyframes: NetSurf's animations) */
+	lwc_string *onyx_name;
+	float *onyx_offsets;
+	uint32_t onyx_n_offsets;
+	css_style *onyx_style;
 } css_rule_media;
 
 typedef struct css_rule_font_face {

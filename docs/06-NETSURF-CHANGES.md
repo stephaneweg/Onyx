@@ -449,7 +449,8 @@ optional chaining...) with the DOM written in JavaScript:
   `getComputedStyle`, `localStorage` (kept: a file per origin next to the cookie file,
   `ls-<origin>.json`, written a turn after a change; `sessionStorage` in memory), `URL`,
   `URLSearchParams`, `FormData`, `TextEncoder` / `TextDecoder` (UTF-8 in C: `N.utf8`), timers,
-  `requestAnimationFrame`, `location`, `history`, `navigator`.
+  `requestAnimationFrame` (paced by the content's frames: §22), `location`, `history`,
+  `navigator`.
 - **`fetch` and `XMLHttpRequest`**: `fetch` (a promise of a `Response`: `ok`, `status`,
   `statusText`, `url`, `redirected`, `headers`; `text()`, `json()`, `arrayBuffer()`,
   `bytes()`, `blob()`, `formData()`, `clone()`; an `AbortSignal` cancels it), `Headers`,
@@ -730,7 +731,7 @@ an invalid value is still dropped.
   `element.style` and `@supports` answer as a browser does -- a page's feature detection now
   takes its modern branch where the property exists in the specifications (NetSurf may not
   draw it: that is the price of an honest "recognized").
-- **At-rules kept without effect** (`onyx_atrules.c`): `@keyframes`, `@counter-style`,
+- **At-rules kept without effect** (`onyx_atrules.c`; `@keyframes` now animates: §22): `@keyframes`, `@counter-style`,
   `@property`, `@font-feature-values` (and its `@styleset`...), `@font-palette-values`,
   `@position-try`, `@view-transition`, `@scope`, `@starting-style`: their prelude checked,
   kept as a media rule that never matches (`css_rule_media.onyx_kind`), their descriptors
@@ -1494,6 +1495,158 @@ context, with all it holds -- through a layer of the framebuffer.
   group (its black / white passes then differ non-linearly); the text caret and a form
   field's click position inside a transformed box; `will-change`.
 
+## 22. Transitions, animations, the Web Animations API, animation frames
+
+CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a paced
+`requestAnimationFrame`, on one timeline per HTML content (`content/handlers/html/onyx_anim.c`).
+
+- **libcss computes the lists** (`select_config.py`, `parse/properties/onyx_css3b.c`): the
+  `transition-*` and `animation-*` longhands -- property, duration, timing function, delay;
+  name, duration, timing function, delay, iteration count, direction, fill mode, play state --
+  and the `transition` / `animation` shorthands (one item per layer, the omitted ones at their
+  initial values, a keyword taken by the first slot it fits, `none` by the name first) are kept
+  as canonical texts, comma separated: times in seconds (`0.3s,1s`), timing functions spelled
+  `ease`, `cubic-bezier(a,b,c,d)`, `steps(n,jump-end)`, `linear(0,0.5 50%,1)`, the
+  properties' names lowercase, the animations' names as written.
+  `css_computed_transition_duration()`... read them; they count as paint properties
+  (`onyx_propbits.py`: a hover changing only a transition is still a restyle). `var()` in them
+  works (`transition: opacity .6s var(--ease)`).
+- **@keyframes kept** (`language.c`, `stylesheet.h`): the at-rule was already kept without
+  effect (§14); now its name, each keyframe's selectors (`from`, `to`, percentages: offsets
+  0..1) and its declarations (parsed by the properties' own parsers, `!important` ones dropped
+  as the spec says) are stored in the rule (`css_rule_media.onyx_name / onyx_offsets /
+  onyx_style`). `css_select_ctx_onyx_keyframes()` gives the last `@keyframes <name>` of a
+  selection context's sheets (their `@import`s, `@media` / `@supports` / `@layer` groups),
+  sorted by offset. The lexer takes an at-keyword starting with `-` (`@-webkit-keyframes`: it
+  was a stray `@` and the rule was lost).
+- **The animation API of libcss** (`src/select/onyx_anim.c`): `css_computed_style_onyx_apply`
+  cascades a keyframe's declarations over a copy of an element's style (as a selection would:
+  `inherit` from the parent, `initial`, the values made absolute), noting which properties it
+  sets; `css_computed_style_onyx_clone` / `_blend` / `_intern` make an animated style -- a copy
+  of the base with each animated property set between two styles' values at a progress:
+  colours in premultiplied RGBA, lengths of one unit (px with px, % with %), numbers (opacity,
+  flex factors), `z-index` rounded, `visibility` (visible while either end is), `box-shadow`
+  (a `none` end a transparent shadow of no size), the SVG paints and opacities, and the
+  transform texts (`transform`, `translate`, `scale`, `rotate`): function by function when
+  both lists have the same kinds (the shorter completed with identity functions, a `none` end
+  too), else through their 2D matrices (decomposed and recomposed as CSS Transforms 1 says),
+  and the filters' lists (`filter`, `backdrop-filter`: the same functions, a `none` end their
+  identities -- `blur(0px)`, `brightness(1)`...); any other value flips at the middle
+  (discrete). `css_computed_style_onyx_same` compares one
+  property of two styles. `css_stylesheet_onyx_inline_decls` gives an inline sheet's
+  declarations (a script's keyframes).
+- **The timeline** (`onyx_anim.c`): the style selection (`box_get_style`: the construction's, a
+  `:hover` restyle's) hands every element's new style to `onyx_anim_styled`. A page with no
+  transition nor animation never creates the timeline (one check of two computed values per
+  element). An element with one gets a record: its base style (the cascade's) and its current
+  one (what its boxes show). When the base changes, each animatable property the
+  `transition-property` list names (a longhand, a shorthand -- `border`, `margin`, `inset`,
+  `border-radius`... -- `all`, a `-webkit-` name) whose value changed starts a transition from
+  the current value (the before-change style: the record's, else the element's box's, else --
+  the boxes built again -- the style the old boxes had, noted by `onyx_anim_rebox_begin`) to the
+  new one, unless the values cannot be interpolated (then the change is immediate) or the
+  combined duration is not positive; a transition still going to the same value goes on; one
+  going elsewhere is cancelled. A new name in `animation-name` starts a CSS animation (its
+  keyframes applied over the base; a keyframe's own `animation-timing-function` eases its
+  interval), a name gone cancels it, the others take the new durations, counts, directions,
+  fills and play states (`paused` holds its time). An element no longer rendered (`display:
+  none`, removed: the rebox's sweep) has its animations cancelled. Each animation is an effect
+  with the Web Animations model's timing (delay, duration, iterations, iteration start,
+  direction, fill, end delay, an easing) and player (start time, hold time, playback rate), and
+  its keyframes per property; the implicit 0% / 100% keyframes are the base's values. The
+  composite order: transitions, then CSS animations in the list's order, then the scripts'.
+- **Easing functions** (CSS Easing 2): the keywords, `cubic-bezier()` (Newton then bisection,
+  the tangent lines beyond the ends), `steps()` with the four jump positions (the before flag),
+  `linear()` with its stops (the missing inputs spread evenly).
+- **The frames**: a frame is scheduled only while an effect runs or a script asked for one
+  (`requestAnimationFrame`), 16 ms after the last (~60 Hz), longer when a frame's work took
+  more than 10 ms (1.5 times it: the events and timers keep a third of the time); nothing runs
+  on a page whose animations are over. A frame makes each record's animated style again (a copy
+  of the base, each animated property blended, interned) and, when it changed, gives it to the
+  element's boxes through the `:hover` restyle's machinery (`onyx_hover_restyle_elements`,
+  `onyx_hover.c`): all the animated elements at once, their pseudo-elements' styles kept, their
+  subtrees styled again only when an inherited property changed (`color`, `font-size`,
+  `visibility`...). When only painting changed (colours, opacity, shadows, radii, a translation
+  -- the box moved as the layout would) the boxes' rectangles are redrawn; else the styles are
+  swapped and the page laid out again (no box tree built); an element this cannot restyle (the
+  root, a pseudo-element appearing) has the boxes built again, 5 times a second at most. The
+  replaced style results no box points at any more are freed every 120 frames
+  (`onyx_hover_collect`, which the hovers' limit of kept results uses too). An element out of
+  the window's view whose animations change only painting (not a transform) is updated 4 times
+  a second, and the frames slow to that when only such ones run. Then the queued events go to
+  the scripts, then the `requestAnimationFrame` callbacks run with the frame's time.
+- **The events**: `transitionrun` (when it is made), `transitionstart` (its delay over),
+  `transitionend`, `transitioncancel`; `animationstart`, `animationiteration`, `animationend`,
+  `animationcancel` (`TransitionEvent` / `AnimationEvent`: `propertyName` / `animationName`,
+  `elapsedTime`), bubbling, with their `on*` properties; an `Animation`'s `finish` and `cancel`
+  (`AnimationPlaybackEvent`, `onfinish`, `oncancel`, its `finished` promise resolved / rejected
+  with an `AbortError`). They are dispatched after the frame's styles are given
+  (`js_dispatch_anim_event`, "onyx:anim" in dom.js), never while the records are walked.
+- **The Web Animations API** (dom.js; the natives `N.animate`, `N.animCtl`, `N.animInfo`,
+  `N.animList`): `element.animate(keyframes, options)` -- keyframes as an array or
+  property-indexed (`{ opacity: [0, 1] }`), their offsets spread as the spec says, each
+  keyframe's `easing`; options as a duration or an object (`duration`, `delay`, `endDelay`,
+  `iterations` including `Infinity`, `iterationStart`, `direction`, `fill`, `easing`, `id`,
+  `playbackRate`) -- makes a script's animation on the same engine (its keyframes parsed as an
+  inline style, applied as a CSS animation's). `Animation`: `play`, `pause`, `cancel`,
+  `finish`, `reverse`, `updatePlaybackRate`, `currentTime`, `startTime`, `playbackRate`,
+  `playState`, `pending`, `finished`, `ready`, `onfinish` / `oncancel`, `commitStyles` (the
+  computed values written into the style attribute), `persist`, `effect` (`KeyframeEffect`:
+  `getKeyframes`, `setKeyframes`, `getTiming`, `getComputedTiming`, `updateTiming`, `target`),
+  `timeline` (`document.timeline`, a `DocumentTimeline`). `document.getAnimations()`,
+  `element.getAnimations()` and a shadow root's list the transitions and CSS animations too, as
+  `CSSTransition` / `CSSAnimation` (`transitionProperty`, `animationName`), controllable the
+  same way. A script's change is shown before its next read of a style or a geometry
+  (`onyx_anim_flush` in `qjs_layout_now`): `finish()` then `getComputedStyle()` sees the end
+  value. A script's animation that has finished without filling leaves the engine (its
+  `Animation` keeps its state; `play()` makes it again); one that fills forwards replaces the
+  earlier finished filling ones whose properties it covers (their `remove` event,
+  `replaceState` "removed"): a page calling `animate()` at each hover does not pile them up.
+- **`requestAnimationFrame`** (dom.js): the callbacks run at the content's frame
+  (`js_animation_frame`, "onyx:frame"), with the frame's time on `performance.now()`'s clock,
+  all those asked for before the frame, once; `cancelAnimationFrame`,
+  `webkitRequestAnimationFrame`. It was a 16 ms timer: now the animations' frames and the
+  scripts' are the same, and none run when nothing asks.
+- **`getComputedStyle`** answers the animated values (the boxes' styles) and more properties:
+  `transform` as a `matrix(...)` (the lengths against the box), `translate` / `scale` /
+  `rotate`, `filter` / `backdrop-filter`, `left` / `top` / `right` / `bottom`, the margins, paddings, border colours and
+  widths, `outline-color`, `letter-spacing`, `z-index`, `box-shadow`, and the transition /
+  animation lists (`transitionDuration: "0.4s, 0.4s"`).
+- **Measured** (the PC bench, `NS_PERF=1`: `ONYX-PERF anim:frames 120 in <ms>, <n> elements:
+  <us> a frame on average, <us> at most; <n> laid out again, <n> reboxed` every 120 frames;
+  `NS_NO_ANIM=1` switches the engine off, to compare): `pages/anim-perf.html` (a spinner, a
+  pulse, a colour cycle, a sliding bar: paint only) runs at 62 frames a second, the animations'
+  work 55 us a frame, the whole frame (with the redraw of the ~600 x 180 rectangle they cover,
+  the spinner's rotation drawn through its layer (§21), and the window's update) ~1.1 ms of CPU
+  (0.72 s of CPU over 9.6 s, 0.07 s without the animations); with a width animation too (`?layout`: the page laid out at each frame) 95 us +
+  ~1.9 ms a frame. kotonstudio.com (its local copy: 32 animated elements after the scroll
+  reveals, a pulsing dot running forever): 60-90 us of animation work a frame, ~5 % of a PC
+  core while idle (the dot's redraws); the scroll reveals' transitions are paint-only. On the
+  Pi 4 (Cortex-A72, 5 to 8 times slower on this work): ~0.5 ms of animation work and 5 to 8 ms
+  a frame with its redraw -- 60 frames a second for paint-only animations of a few elements, the
+  adaptive pacing lowering it (to ~40-50) when a layout per frame is needed on a bigger page.
+  `sitesweep.sh`: no crash, the same script errors as before.
+- **Tests** (`jstest.sh`): `pages/css-transition.html` (30 checks: opacity, colours, transform,
+  a width laid out, a delay, `all`, a filter, `rotate`, a reversal cancelled, a `:hover` rule's
+  transition, the four events), `pages/css-animation.html` (27: iterations and `alternate`, `forwards`, `paused` then
+  resumed, a negative delay, two animations on one element, `steps()`, a keyframe's own timing
+  function, a missing `@keyframes`, the four events, `getAnimations()`), `pages/js-animate.html`
+  (`element.animate`, the promises and handlers, pause / play / `currentTime` / `reverse` /
+  `cancel` / `finish()`, fills, `playbackRate`, iterations and direction, `commitStyles`,
+  `requestAnimationFrame`'s pace and times, the replacement of finished filling animations:
+  31). They sample `getComputedStyle` at known times (real time: `SIM_SLEEP=1`), with margins
+  for the bench's timing. `pages/anim-perf.html` is the frames' measure (above).
+- **With the compositing layers** (§21): the animated `opacity`, `transform` (rotations,
+  scales), `filter` values are what the layers draw at each redraw -- the frames give the
+  boxes their styles, the layers paint them.
+- **Not done**: animations of pseudo-elements (`::before`...), of `display` and of the other properties that change the box
+  tree; a transition's "reversing shortening" (a transition reversed midway takes its full
+  duration back); `transition-behavior: allow-discrete`; the keyframes of a running CSS
+  animation made again when the base style changes (its implicit ends follow the base, its
+  explicit keyframes keep the values they had); `composite` / `iterationComposite` (replace
+  only); `@keyframes` in shadow trees' sheets; scroll-driven animations
+  (`animation-timeline`); `var()` inside keyframes.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -1509,8 +1662,8 @@ context, with all it holds -- through a layer of the framebuffer.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
-- Animations and transitions; the compositing layers' gaps (§21: a real perspective, a layer
-  kept between redraws, `clip-path` / `mask` on it, the non-separable blend modes).
+- The compositing layers' gaps (§21: a real perspective, a layer kept between redraws,
+  `clip-path` / `mask` on it, the non-separable blend modes); animations: §22's "Not done".
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
   CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss
