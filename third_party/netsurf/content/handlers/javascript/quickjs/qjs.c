@@ -212,6 +212,37 @@ static void qjs_load_later(void *p);
 static void qjs_ce_flush(jsthread *t);
 static void qjs_ce_later(void *p);
 
+/* Onyx (the PC bench): NS_JSPROF=<file> -- the scripts sampled: at most once a millisecond,
+ * from the interrupt handler, the running script's stack written as a line (its frames
+ * separated by '|'); tools/tests/netsurf/jsprof.py sums them up */
+static FILE *qjs_prof_f;
+static JSContext *qjs_prof_ctx;
+static uint64_t qjs_prof_last;
+
+static void qjs_prof_sample(void)
+{
+	JSValue e, st;
+	const char *s, *p;
+	uint64_t now = qjs_now_ms();
+
+	if (now == qjs_prof_last || qjs_prof_ctx == NULL)
+		return;
+	qjs_prof_last = now;
+	e = JS_NewError(qjs_prof_ctx);
+	if (JS_IsException(e))
+		return;
+	st = JS_GetPropertyStr(qjs_prof_ctx, e, "stack");
+	s = JS_ToCString(qjs_prof_ctx, st);
+	if (s != NULL) {
+		for (p = s; *p != '\0'; p++)
+			fputc(*p == '\n' ? '|' : *p, qjs_prof_f);
+		fputc('\n', qjs_prof_f);
+		JS_FreeCString(qjs_prof_ctx, s);
+	}
+	JS_FreeValue(qjs_prof_ctx, st);
+	JS_FreeValue(qjs_prof_ctx, e);
+}
+
 static void qjs_enter(jsthread *t)
 {
 	/* Onyx: the custom elements the parser inserted since, upgraded before any script */
@@ -219,6 +250,7 @@ static void qjs_enter(jsthread *t)
 		qjs_ce_flush(t);
 	if (t->in_use++ == 0 && t->heap != NULL)
 		t->heap->start = qjs_now_ms();
+	qjs_prof_ctx = t->ctx;
 }
 
 static void qjs_jobs_later(void *p);
@@ -239,9 +271,16 @@ static void qjs_leave(jsthread *t)
 		 * Promise polyfill) held the loop for ever -- each job "interrupted" at once once
 		 * the script's time was out, the next one queued again -- and took memory till
 		 * none was left. Each turn gives the jobs their own time. */
+		uint64_t tj = onyx_perf_now();
+
 		while ((r = JS_ExecutePendingJob(rt, &jctx)) != 0) {
 			if (r < 0)
 				qjs_report(jctx, "job");
+			if (onyx_perf_on()) {	/* (NS_PERF: the long jobs) */
+				if (onyx_perf_now() - tj > 50000)
+					onyx_perf_log("js:job", tj);
+				tj = onyx_perf_now();
+			}
 			if ((++n & 63) == 0 && qjs_now_ms() - t0 > 200 &&
 					JS_IsJobPending(rt)) {
 				guit->misc->schedule(10, qjs_jobs_later, t);
@@ -300,6 +339,8 @@ static int qjs_interrupt(JSRuntime *rt, void *opaque)
 	jsheap *heap = opaque;
 
 	(void) rt;
+	if (qjs_prof_f != NULL)
+		qjs_prof_sample();
 	return heap->timeout > 0 &&
 		qjs_now_ms() - heap->start > (uint64_t) heap->timeout * 1000;
 }
@@ -1337,6 +1378,31 @@ static dom_node *qjs_following(dom_node *n, dom_node *root)
 	return NULL;
 }
 
+/** Onyx: nextElement(n, root): the element after n in document order under root, or null --
+ * querySelector walks with it and stops at the first match (descendants() wrapped every
+ * element of the tree first) */
+static JSValue n_next_element(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_node *d;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+	QJS_NODE_ARG(root, 1);
+
+	dom_node_ref(n);
+	for (d = qjs_following(n, root); d != NULL; d = qjs_following(d, root)) {
+		dom_node_type type = 0;
+
+		if (dom_node_get_node_type(d, &type) == DOM_NO_ERR &&
+		    type == DOM_ELEMENT_NODE) {
+			v = qjs_wrap(t, d);
+			dom_node_unref(d);
+			return v;
+		}
+	}
+	return JS_NULL;
+}
+
 /** descendants(n): its descendant elements, in document order */
 static JSValue n_descendants(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -2177,6 +2243,15 @@ static JSValue n_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 		JS_FreeCString(ctx, s);
 	}
 	return JS_UNDEFINED;
+}
+
+/* Onyx: logOn(): whether console output goes anywhere (NS_JSDEBUG / jsdebug, or NetSurf's
+ * verbose log) -- console.* formats its arguments only then: Vue's development build passes
+ * whole component trees to console.warn, and making text of them took browserscore.dev
+ * minutes on the Pi, for a log nobody reads */
+static JSValue n_log_on(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	return JS_NewBool(ctx, qjs_debug || verbose_log);
 }
 
 static JSValue n_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -3378,6 +3453,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
 	JS_CFUNC_DEF("descendants", 1, n_descendants),
+	JS_CFUNC_DEF("nextElement", 2, n_next_element),
 	JS_CFUNC_DEF("formValue", 1, n_form_value),
 	JS_CFUNC_DEF("setFormValue", 2, n_set_form_value),
 	JS_CFUNC_DEF("formChecked", 1, n_form_checked),
@@ -3396,6 +3472,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("cookie", 0, n_cookie),
 	JS_CFUNC_DEF("setCookie", 1, n_set_cookie),
 	JS_CFUNC_DEF("log", 1, n_log),
+	JS_CFUNC_DEF("logOn", 0, n_log_on),
 	JS_CFUNC_DEF("now", 0, n_now),
 	JS_CFUNC_DEF("userAgent", 0, n_user_agent),
 	JS_CFUNC_DEF("timer", 3, n_timer),
@@ -3416,6 +3493,8 @@ static const JSCFunctionListEntry qjs_natives[] = {
 void js_initialise(void)
 {
 	qjs_debug = getenv("NS_JSDEBUG") != NULL;
+	if (getenv("NS_JSPROF") != NULL)
+		qjs_prof_f = fopen(getenv("NS_JSPROF"), "w");
 #ifdef ONYX_NS_DATAPATH
 	{	/* Onyx: or the file SD:/apps/netsurf.app/jsdebug (no environment on the Pi) */
 		FILE *f = fopen(ONYX_NS_DATAPATH "jsdebug", "r");

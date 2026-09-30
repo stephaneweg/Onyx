@@ -717,8 +717,18 @@ const ParentNode = {
 		this.append(...nodes);
 	},
 	querySelector(sel) {
+		/* Onyx: "#id" from libdom's getElementById (bliss's $('#x'): css3test.com asks
+		 * it thousands of times, each a walk of the whole tree in JS) */
+		const id = typeof sel === 'string' && /^#[a-zA-Z_][-\w]*$/.test(sel) ? sel.slice(1) : null;
+		if (id !== null && (this === G.document || this.getRootNode() === G.document)) {
+			const e = G.document.getElementById(id);
+			if (e && e !== this && (this === G.document || this.contains(e)))
+				return e;
+			if (!e || this === G.document)
+				return null;
+		}
 		const list = parseSelector(sel);
-		for (const e of N.descendants(this))
+		for (let e = N.nextElement(this, this); e; e = N.nextElement(e, this))
 			if (matchList(e, list, this))
 				return e;
 		return null;
@@ -3814,35 +3824,49 @@ function storageProxy(origin) {
 }
 G.Storage = Storage;
 
-/* console */
+/* console (Onyx: its arguments made text only when the log is read -- N.logOn -- and an
+ * object's text bounded: 2000 values at most, Vue's development build hands console.warn
+ * whole component trees) */
+const FMT_CUT = {};
 function fmt(args) {
 	return args.map(a => {
 		if (typeof a === 'string') return a;
 		if (a instanceof Error) return a + (a.stack ? '\n' + a.stack : '');
 		if (a instanceof Node) return '<' + (a.nodeName || 'node') + '>';
-		try { return JSON.stringify(a); } catch (e) { return String(a); }
+		let n = 0;
+		try {
+			return JSON.stringify(a, (k, v) => {
+				if (++n > 2000) throw FMT_CUT;
+				return v;
+			});
+		} catch (e) {
+			if (e === FMT_CUT)
+				return '[' + ((a && a.constructor && a.constructor.name) || 'object') + ' ...]';
+			return String(a);
+		}
 	}).join(' ');
 }
 const counts = new Map(), times = new Map();
+const clog = (pre, a) => { if (N.logOn()) N.log(pre + fmt(a)); };
 const console = {
-	log: (...a) => N.log(fmt(a)),
-	info: (...a) => N.log(fmt(a)),
-	debug: (...a) => N.log(fmt(a)),
-	warn: (...a) => N.log('warning: ' + fmt(a)),
-	error: (...a) => N.log('error: ' + fmt(a)),
-	trace: (...a) => N.log('trace: ' + fmt(a)),
-	dir: (...a) => N.log(fmt(a)),
-	dirxml: (...a) => N.log(fmt(a)),
-	table: (...a) => N.log(fmt(a)),
-	group: (...a) => N.log(fmt(a)),
-	groupCollapsed: (...a) => N.log(fmt(a)),
+	log: (...a) => clog('', a),
+	info: (...a) => clog('', a),
+	debug: (...a) => clog('', a),
+	warn: (...a) => clog('warning: ', a),
+	error: (...a) => clog('error: ', a),
+	trace: (...a) => clog('trace: ', a),
+	dir: (...a) => clog('', a),
+	dirxml: (...a) => clog('', a),
+	table: (...a) => clog('', a),
+	group: (...a) => clog('', a),
+	groupCollapsed: (...a) => clog('', a),
 	groupEnd() {},
-	assert: (c, ...a) => { if (!c) N.log('assertion failed: ' + fmt(a)); },
-	count: (l = 'default') => { counts.set(l, (counts.get(l) || 0) + 1); N.log(l + ': ' + counts.get(l)); },
+	assert: (c, ...a) => { if (!c) clog('assertion failed: ', a); },
+	count: (l = 'default') => { counts.set(l, (counts.get(l) || 0) + 1); clog(l + ': ' + counts.get(l), []); },
 	countReset: (l = 'default') => counts.delete(l),
 	time: (l = 'default') => times.set(l, N.now()),
-	timeEnd: (l = 'default') => { N.log(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms'); times.delete(l); },
-	timeLog: (l = 'default') => N.log(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms'),
+	timeEnd: (l = 'default') => { clog(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms', []); times.delete(l); },
+	timeLog: (l = 'default') => clog(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms', []),
 	clear() {},
 };
 
@@ -4540,16 +4564,39 @@ function stripTrailingSpaces(u) {
 	u.path = u.path.replace(/ +$/, '');
 }
 
-class URL {
-	constructor(url, base) {
+/* Onyx: new URL(url, base)'s parses kept (a copy handed out each time): the spec's parser in
+ * JS is slow, and pages make the same URLs again and again (browserscore.dev: a quarter of
+ * its time in new URL, its features' links made at each render) */
+const URL_PARSED = new Map();
+function urlParseCached(url, base) {
+	const key = base === undefined ? url : url + '\u0000' + base;
+	let u = URL_PARSED.get(key);
+	if (u === undefined) {
 		let b = null;
 		if (base !== undefined) {
-			b = basicParse(toUSV(base), null);
+			b = URL_PARSED.get(base);
+			if (b === undefined) {
+				b = basicParse(base, null);
+				URL_PARSED.set(base, b);
+			}
 			if (!b) throw new TypeError("Failed to construct 'URL': Invalid base URL");
 		}
-		const u = basicParse(toUSV(url), b);
-		if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
-		this._u = u;
+		/* "#fragment" of a base (no code point to percent-encode): the base, that fragment */
+		if (b && /^#[\x21\x23-\x3b\x3d\x3f-\x5f\x61-\x7e]*$/.test(url))
+			u = { ...b, path: Array.isArray(b.path) ? b.path.slice() : b.path, fragment: url.slice(1) };
+		else
+			u = basicParse(url, b);
+		if (URL_PARSED.size >= 1024)
+			URL_PARSED.clear();
+		URL_PARSED.set(key, u);
+	}
+	if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
+	return { ...u, path: Array.isArray(u.path) ? u.path.slice() : u.path };
+}
+
+class URL {
+	constructor(url, base) {
+		this._u = urlParseCached(toUSV(url), base === undefined ? undefined : toUSV(base));
 		this._q = null;
 	}
 	static parse(url, base) { try { return new URL(url, base); } catch (e) { return null; } }
