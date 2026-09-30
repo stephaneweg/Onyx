@@ -58,10 +58,12 @@
 #include "utils/corestrings.h"
 #include "utils/ring.h"
 #include "utils/log.h"
+#include "utils/messages.h"
 
 #include "content/fetch.h"
 #include "content/fetchers.h"
 #include "content/urldb.h"
+#include "netsurf/ssl_certs.h"
 
 #include "kapi.h"		/* Onyx TCP transport */
 #include "onyx_nstls.h"		/* C-callable TLS transport (https) */
@@ -105,6 +107,7 @@ struct fetch_onyx_context {
 	bool zs_on, zs_end;
 	size_t delivered;		/* body bytes handed to the core */
 	bool script;			/* Onyx: a script's request (fetch / XHR: X-Onyx-Dest: empty) */
+	bool insecure;			/* Onyx: the user accepted this host's bad certificate */
 };
 
 static struct fetch_onyx_context *ring = NULL;
@@ -339,7 +342,22 @@ static void onyx_conn_close(struct fetch_onyx_context *c)
 /* ---- fetcher operations ----------------------------------------------- */
 static bool fetch_onyx_initialise(lwc_string *scheme)
 {
+	static bool ca_read;
+
 	NSLOG(netsurf, INFO, "onyx fetcher init: %s", lwc_string_data(scheme));
+	/* Onyx: the trusted roots for the certificate check (Choices' ca_bundle, else the card's
+	 * SD:/res/ca-bundle) -- read here, on the UI thread, once */
+	if (!ca_read) {
+		char path[512];
+		const char *rp = NETSURF_FB_RESPATH;
+		ca_read = true;
+		if (nsoption_charp(ca_bundle) != NULL && nsoption_charp(ca_bundle)[0] != '\0')
+			snprintf(path, sizeof path, "%s", nsoption_charp(ca_bundle));
+		else
+			snprintf(path, sizeof path, "%s%sca-bundle", rp,
+					rp[0] != '\0' && rp[strlen(rp) - 1] == '/' ? "" : "/");
+		onyx_nstls_ca_bundle(path);
+	}
 	return true;
 }
 
@@ -459,6 +477,39 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 		lwc_string_unref(us);
 }
 
+/* Onyx: the hosts whose bad certificate the user accepted, as the threads see them (urldb is
+ * the UI thread's): onyx_ws.c's connections to them go on as the fetches do */
+#define ONYX_INSECURE_MAX 16
+static char onyx_insecure[ONYX_INSECURE_MAX][128];
+static volatile int onyx_insecure_lk;
+
+static void onyx_insecure_add(const char *host)
+{
+	int i, free_at = -1;
+
+	kapi_lock(&onyx_insecure_lk);
+	for (i = 0; i < ONYX_INSECURE_MAX; i++) {
+		if (strcasecmp(onyx_insecure[i], host) == 0)
+			break;
+		if (onyx_insecure[i][0] == '\0' && free_at < 0)
+			free_at = i;
+	}
+	if (i == ONYX_INSECURE_MAX && free_at >= 0)
+		snprintf(onyx_insecure[free_at], sizeof onyx_insecure[0], "%s", host);
+	kapi_unlock(&onyx_insecure_lk);
+}
+
+int onyx_fetch_insecure_host(const char *host)
+{
+	int i, r = 0;
+
+	kapi_lock(&onyx_insecure_lk);
+	for (i = 0; i < ONYX_INSECURE_MAX && !r; i++)
+		r = onyx_insecure[i][0] != '\0' && strcasecmp(onyx_insecure[i], host) == 0;
+	kapi_unlock(&onyx_insecure_lk);
+	return r;
+}
+
 static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		bool only_2xx, bool downgrade_tls, const char *post_urlenc,
 		const struct fetch_multipart_data *post_multipart,
@@ -520,6 +571,18 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 	onyx_add_fetch_metadata(&ctx->hdrs, url, fetch_get_referer(parent_fetch), dest,
 			fetch_is_verifiable(parent_fetch));
 
+	/* Onyx: a host whose bad certificate the user accepted ("proceed" on the certificate
+	 * error page: urldb, the UI thread's) is fetched without failing the check */
+	ctx->insecure = strncasecmp(nsurl_access(url), "https:", 6) == 0 &&
+		urldb_get_cert_permissions(url);
+	if (ctx->insecure) {
+		lwc_string *h = nsurl_get_component(url, NSURL_HOST);
+		if (h != NULL) {
+			onyx_insecure_add(lwc_string_data(h));
+			lwc_string_unref(h);
+		}
+	}
+
 	ctx->phase = PH_INIT;
 	ctx->sock = -1;
 	RING_INSERT(ring, ctx);
@@ -568,6 +631,42 @@ static void fetch_onyx_error(struct fetch_onyx_context *c, const char *err)
 	msg.type = FETCH_ERROR;
 	msg.data.error = err;
 	fetch_onyx_send(&msg, c);
+}
+
+/* Onyx: the server's certificate refused -- the chain the check built to the core
+ * (FETCH_CERTS: the certificate error page lists it, about:certificate shows each), then
+ * FETCH_CERT_ERR: a page's own fetch becomes that error page, with its "proceed anyway" (which
+ * sets urldb's cert permission for the host: fetch_onyx_setup's insecure) */
+static void onyx_cert_error(struct fetch_onyx_context *c, const struct onyx_tls_chain *oc)
+{
+	struct cert_chain chain;
+	fetch_msg msg;
+	unsigned i;
+
+	memset(&chain, 0, sizeof chain);
+	chain.depth = oc->depth < MAX_CERT_DEPTH ? oc->depth : MAX_CERT_DEPTH;
+	for (i = 0; i < chain.depth; i++) {
+		int e = oc->cert[i].err;
+		chain.certs[i].err = e >= ONYX_CERT_OK && e <= ONYX_CERT_HOSTNAME_MISMATCH ?
+			(ssl_cert_err) e : SSL_CERT_ERR_UNKNOWN;	/* (the same values) */
+		chain.certs[i].der = oc->cert[i].der;
+		chain.certs[i].der_length = oc->cert[i].len;
+		if (chain.certs[i].der == NULL)
+			chain.certs[i].err = SSL_CERT_ERR_CERT_MISSING;
+		printf("ONYX-TLS refused %s: certificate %u/%u: %s\n", nsurl_access(c->url),
+				i, (unsigned) chain.depth, chain.certs[i].err == SSL_CERT_ERR_OK ?
+				"ok" : messages_get_sslcode(chain.certs[i].err));
+	}
+	fflush(stdout);
+	if (chain.depth > 0 && !c->aborted) {
+		msg.type = FETCH_CERTS;
+		msg.data.chain = &chain;
+		fetch_onyx_send(&msg, c);
+	}
+	if (!c->aborted) {
+		msg.type = FETCH_CERT_ERR;
+		fetch_onyx_send(&msg, c);
+	}
 }
 
 /* Locate a header value (case-insensitive) within the response head. Writes a
@@ -716,8 +815,20 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 	}
 
 	if (c->tls) {
-		c->ts = onyx_nstls_open(host, port);		/* connect + (resumed) handshake */
-		if (c->ts == NULL) { fetch_onyx_error(c, "Connection failed"); return false; }
+		/* connect + (resumed) handshake, the certificate checked (Onyx) */
+		struct onyx_tls_chain ch;
+		int sock = kapi_tcp_connect(host, port);
+		if (sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
+		c->ts = onyx_nstls_connect(sock, host, ONYX_TLS_VERIFY |
+				(c->insecure ? ONYX_TLS_INSECURE : 0), &ch);
+		if (c->ts == NULL) {
+			if (ch.failed)
+				onyx_cert_error(c, &ch);
+			else
+				fetch_onyx_error(c, "Connection failed");
+			onyx_nstls_chain_free(&ch);
+			return false;
+		}
 	} else {
 		c->sock = kapi_tcp_connect(host, port);
 		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
@@ -895,6 +1006,8 @@ struct onyx_job {
 	size_t total;			/* body bytes in all */
 	const char *err;		/* a failure (a static string), or 0 */
 	unsigned idle;			/* Onyx: ticks without a byte before it fails */
+	bool insecure;			/* Onyx: the host's bad certificate accepted */
+	struct onyx_tls_chain *chain;	/* Onyx: the certificate refused (its chain), or 0 */
 };
 
 static int onyx_workers;		/* jobs running (UI thread's count) */
@@ -907,6 +1020,10 @@ static void onyx_job_free(struct onyx_job *j)
 	free(j->body);
 	free(j->head);
 	free(j->buf);
+	if (j->chain != NULL) {
+		onyx_nstls_chain_free(j->chain);
+		free(j->chain);
+	}
 	free(j);
 }
 
@@ -938,6 +1055,7 @@ struct onyx_conn {
 	unsigned port;
 	unsigned idle_at;		/* kapi_get_ticks when it went back to the pool */
 	unsigned uses;			/* requests it carried */
+	bool insecure;			/* Onyx: its certificate not trusted (the user went on) */
 };
 
 #define ONYX_POOL		8
@@ -959,7 +1077,8 @@ static void conn_close(struct onyx_conn *k)
 }
 
 /* A connection kept for host / port / scheme -> true and *out (it is the caller's now). */
-static bool pool_take(const char *host, unsigned port, bool tls, struct onyx_conn *out)
+static bool pool_take(const char *host, unsigned port, bool tls, bool insecure,
+		struct onyx_conn *out)
 {
 	struct onyx_conn stale[ONYX_POOL];
 	int nstale = 0, i;
@@ -977,6 +1096,7 @@ static bool pool_take(const char *host, unsigned port, bool tls, struct onyx_con
 	}
 	for (i = onyx_pool_n - 1; i >= 0; i--) {	/* (the most recent: the likeliest alive) */
 		if (onyx_pool[i].tls == tls && onyx_pool[i].port == port &&
+		    (insecure || !onyx_pool[i].insecure) &&
 		    strcasecmp(onyx_pool[i].host, host) == 0) {
 			*out = onyx_pool[i];
 			onyx_pool[i] = onyx_pool[--onyx_pool_n];
@@ -1054,7 +1174,9 @@ int onyx_fetch_connect(const char *host, unsigned port)
 	return onyx_connect(host, port);
 }
 
-static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool tls)
+/* A new connection (TLS: the certificate checked -- *chain set when it is refused). */
+static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool tls,
+		bool insecure, struct onyx_tls_chain **chain)
 {
 	memset(k, 0, sizeof *k);
 	k->tls = tls;
@@ -1065,10 +1187,22 @@ static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool
 	if (k->sock < 0)
 		return false;
 	if (tls) {
-		k->ts = onyx_nstls_start(k->sock, host);	/* (resumed) handshake */
+		struct onyx_tls_chain ch;
+		k->ts = onyx_nstls_connect(k->sock, host, ONYX_TLS_VERIFY |	/* (resumed) handshake */
+				(insecure ? ONYX_TLS_INSECURE : 0), &ch);
 		k->sock = -1;				/* (the session's, closed with it) */
-		if (k->ts == NULL)
+		k->insecure = insecure;
+		if (k->ts == NULL) {
+			if (ch.failed && chain != NULL && *chain == NULL) {
+				*chain = malloc(sizeof ch);
+				if (*chain != NULL) {
+					**chain = ch;	/* (its DER copies with it) */
+					return false;
+				}
+			}
+			onyx_nstls_chain_free(&ch);
 			return false;
+		}
 	}
 	return true;
 }
@@ -1356,10 +1490,10 @@ static int fetch_onyx_worker(void *arg)
 		goto done;
 	}
 	for (attempt = 0; attempt < 3 && !j->cancel; attempt++) {
-		bool pooled = attempt < 2 && pool_take(host, port, tls, &k);
-		if (!pooled && !conn_open(&k, host, port, tls)) {
+		bool pooled = attempt < 2 && pool_take(host, port, tls, j->insecure, &k);
+		if (!pooled && !conn_open(&k, host, port, tls, j->insecure, &j->chain)) {
 			conn_close(&k);
-			j->err = "Connection failed";
+			j->err = j->chain != NULL ? "Certificate not trusted" : "Connection failed";
 			r = -1;
 			break;
 		}
@@ -1401,6 +1535,7 @@ static bool onyx_job_start(struct fetch_onyx_context *c)
 	/* Onyx: a script's request may wait long for its answer (a long poll: a chat's server
 	 * holds it till something happens, a streamed response between its events) */
 	j->idle = c->script ? ONYX_SCRIPT_IDLE_TICKS : ONYX_IDLE_TICKS;
+	j->insecure = c->insecure;
 	j->lang = nsoption_charp(accept_language) != NULL ? nsoption_charp(accept_language) :
 		"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7";
 	if (j->url == NULL || j->method == NULL) { onyx_job_free(j); return false; }
@@ -1526,7 +1661,9 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 		return false;
 
 	kapi__dmb();
-	if (!c->head_done) {
+	if (!c->head_done && j->chain != NULL) {
+		onyx_cert_error(c, j->chain);		/* (Onyx) */
+	} else if (!c->head_done) {
 		fetch_onyx_error(c, j->err != NULL ? j->err : "Empty response");
 	} else if (!c->aborted) {
 		if (c->zs_on)

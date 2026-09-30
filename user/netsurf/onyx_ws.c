@@ -249,7 +249,10 @@ static bool oc_open(struct ows_conn *c, const struct ows_url *u)
 	if (c->sock < 0)
 		return false;
 	if (u->tls) {
-		c->ts = onyx_nstls_start(c->sock, u->host);	/* (the socket is the session's) */
+		/* (the socket is the session's) -- Onyx: the certificate checked as the fetches
+		 * check it, a host the user accepted let through (onyx_fetch_insecure_host) */
+		c->ts = onyx_nstls_connect(c->sock, u->host, ONYX_TLS_VERIFY |
+			(onyx_fetch_insecure_host(u->host) ? ONYX_TLS_INSECURE : 0), NULL);
 		c->sock = -1;
 		if (c->ts == NULL)
 			return false;

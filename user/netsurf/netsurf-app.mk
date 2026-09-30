@@ -175,6 +175,8 @@ $(QNET_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(HERE)
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
+# Onyx: the certificate viewer (about:certificate) on mbedTLS
+$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(NS)/content/fetchers/about/certificate.c)): CF += -DWITH_MBEDTLS -I$(MBEDTLS)/include
 
 # C++ TLS glue (https): onyx_nstls.cpp wraps user/tls/onyx_tls.hpp (mbedTLS). No STL /
 # exceptions / RTTI / static ctors, so it links next to the C objects (link driver = g++).

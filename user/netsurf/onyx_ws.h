@@ -78,6 +78,9 @@ char *onyx_http_get_sync(const char *url, const char *hdrs, size_t *len, int *st
 /* onyx_fetch.c: a connect in the downloads' turn (one at a time) */
 int onyx_fetch_connect(const char *host, unsigned port);
 
+/* onyx_fetch.c (Onyx): whether the user accepted this host's bad certificate (any thread) */
+int onyx_fetch_insecure_host(const char *host);
+
 #ifdef __cplusplus
 }
 #endif

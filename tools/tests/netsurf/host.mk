@@ -136,7 +136,11 @@ I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
 PVG_SRC := $(wildcard $(PVG)/source/plutovg-*.c)
 PSVG_SRC := $(PSVG)/source/plutosvg.c
 
-LIB_ALL := $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+# Onyx: mbedTLS (the Pi's TLS) for NS_MBEDTLS=1 (host_stubs.c) and the certificate viewer
+MBED := $(TP)/mbedtls-3.6.3
+MBED_SRC := $(wildcard $(MBED)/library/*.c)
+
+LIB_ALL := $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -195,6 +199,7 @@ $(call obj,$(1)): $(1)
 	$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
 $(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
+$(foreach s,$(MBED_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(MBED)/include -I$(MBED)/library)))
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
 $(foreach s,$(PVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF))))
 $(foreach s,$(PSVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source)))
@@ -224,6 +229,8 @@ $(call obj,$(1)): $(1) $(OUT)/font-ns-sans.h $(OUT)/hostinc/curl/curl.h
 endef
 $(foreach s,$(NS_ALL),$(eval $(call NS_RULE,$(s))))
 $(call obj,$(FB)/gui.c): NS_CF += -Dmain=netsurf_main
+# Onyx: the certificate viewer (about:certificate) on mbedTLS, as on the Pi
+$(call obj,$(NS)/content/fetchers/about/certificate.c): NS_CF += -DWITH_MBEDTLS -I$(MBED)/include
 
 # dom.js as a C string for qjs.c (as netsurf-app.mk)
 $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
@@ -271,7 +278,19 @@ endef
 $(foreach s,$(ONYX_CXX) $(WTK_SRC),$(eval $(call CXX_RULE,$(s))))
 
 # ---- link --------------------------------------------------------------------
-$(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ)
+# Onyx: the Pi's TLS glue (onyx_nstls.cpp: mbedTLS over the simulator's sockets), its calls
+# renamed onyx_mb_* -- host_stubs.c uses it with NS_MBEDTLS=1
+MB_REN := -Donyx_tls_sess=onyx_mb_sess -Donyx_nstls_connect=onyx_mb_connect \
+	-Donyx_nstls_ca_bundle=onyx_mb_ca_bundle -Donyx_nstls_send=onyx_mb_send \
+	-Donyx_nstls_recv=onyx_mb_recv -Donyx_nstls_close=onyx_mb_close -Donyx_nstls_alpn=onyx_mb_alpn \
+	-Donyx_nstls_chain_free=onyx_mb_chain_free -Donyx_nstls_start=onyx_mb_start \
+	-Donyx_nstls_open=onyx_mb_open
+MB_OBJ := $(OUT)/o/onyx_nstls_mb.o
+$(MB_OBJ): $(UN)/onyx_nstls.cpp $(UN)/onyx_nstls.h $(ZUSER)/tls/onyx_tls.hpp
+	@mkdir -p $(OUT)/o
+	$(CXX) $(CXXF) $(MB_REN) -I$(UN) -I$(ZUSER)/tls -I$(MBED)/include -c $< -o $@
+
+$(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ) $(MB_OBJ)
 	$(CXX) -o $@ $^ -lpng -lz -lm -lssl -lcrypto
 	@echo "host netsurf: $@"
 
@@ -286,6 +305,10 @@ res:
 	@mkdir -p $(OUT)/res/icons
 	for f in arrow-l content directory directory2 hotlist-add hotlist-rmv search; do cp $(NS)/resources/icons/$$f.png $(OUT)/res/icons/ 2>/dev/null || true; done
 	-cp $(NS)/resources/favicon.png $(NS)/resources/netsurf.png $(OUT)/res/
+	# Onyx: the trusted roots -- the card's bundle, and this machine's proxy CA when it has one
+	# (an HTTPS proxy that re-terminates TLS: /root/.ccr/agent-proxy-ca.crt, or CA_EXTRA=<pem>)
+	cat $(NS)/resources/ca-bundle > $(OUT)/res/ca-bundle
+	-for f in $(CA_EXTRA) /root/.ccr/agent-proxy-ca.crt; do [ -f "$$f" ] && cat "$$f" >> $(OUT)/res/ca-bundle; done; true
 	@mkdir -p $(OUT)/res/fonts
 	cp $(FONTS)/ttf/*.ttf $(OUT)/res/fonts/
 	cp $(TP)/fonts/*/*.ttf $(OUT)/res/fonts/

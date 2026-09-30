@@ -17,11 +17,59 @@ extern "C" {
 
 typedef struct onyx_tls_sess onyx_tls_sess;
 
-/* TCP connect to host:port, then run the TLS handshake. NULL on any failure. */
+/* Onyx: the certificate check. ONYX_TLS_VERIFY: the server's chain against the trusted roots
+ * (onyx_nstls_ca_bundle), its name (SNI + the certificate's SAN / CN), the validity dates
+ * against the clock (skipped while the clock is unset: a year < 2025); ONYX_TLS_INSECURE:
+ * checked, but the connection goes on when it fails (the user accepted the certificate);
+ * ONYX_TLS_H2: HTTP/2 offered by ALPN ("h2", then "http/1.1"). */
+#define ONYX_TLS_VERIFY		1
+#define ONYX_TLS_INSECURE	2
+#define ONYX_TLS_H2		4
+
+/* What is wrong with a certificate: the values of NetSurf's ssl_cert_err. */
+enum onyx_tls_certerr {
+	ONYX_CERT_OK = 0, ONYX_CERT_UNKNOWN, ONYX_CERT_BAD_ISSUER, ONYX_CERT_BAD_SIG,
+	ONYX_CERT_TOO_YOUNG, ONYX_CERT_TOO_OLD, ONYX_CERT_SELF_SIGNED, ONYX_CERT_CHAIN_SELF_SIGNED,
+	ONYX_CERT_REVOKED, ONYX_CERT_HOSTNAME_MISMATCH
+};
+
+#define ONYX_TLS_CHAIN_MAX 8
+
+/* The check's result: failed, and the chain the check built -- [0] the server's certificate,
+ * the root last -- each with its DER (malloc'd: onyx_nstls_chain_free) and its fault. */
+struct onyx_tls_chain {
+	int failed;
+	unsigned depth;
+	struct {
+		int err;		/* enum onyx_tls_certerr */
+		unsigned char *der;
+		unsigned long len;
+	} cert[ONYX_TLS_CHAIN_MAX];
+};
+
+/* The trusted roots: a PEM bundle's path (SD:/res/ca-bundle), read now, parsed at the first
+ * check. Call it once, on the app's main thread, before any ONYX_TLS_VERIFY connection. */
+void onyx_nstls_ca_bundle(const char *path);
+
+/* The handshake over a socket already connected (the socket is the session's from then on,
+ * closed with it or here on a failure) -- flags ONYX_TLS_*. NULL on a failure: then
+ * chain->failed says whether the certificate was refused (chain may be NULL). */
+onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
+		struct onyx_tls_chain *chain);
+
+/* The chain's DER copies freed. */
+void onyx_nstls_chain_free(struct onyx_tls_chain *chain);
+
+/* The protocol ALPN chose ("h2", "http/1.1"), or NULL. */
+const char *onyx_nstls_alpn(onyx_tls_sess *s);
+
+/* TCP connect to host:port, then run the TLS handshake (the certificate checked). NULL on any
+ * failure. */
 onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port);
 
 /* The same over a socket already connected (the fetcher connects itself: one connect at a
- * time); the socket is the session's from then on (closed with it, or here on a failure). */
+ * time); the socket is the session's from then on (closed with it, or here on a failure).
+ * Onyx: the certificate checked (onyx_nstls_connect's ONYX_TLS_VERIFY). */
 onyx_tls_sess *onyx_nstls_start(int sock, const char *host);
 
 /* Write all `len` bytes (encrypted). Returns len, or <0 on error. */

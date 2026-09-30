@@ -437,7 +437,15 @@ static void yield (void) {}
 
 // ---- the system --------------------------------------------------------------------------------------
 static int get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
-{ if (y) *y = 2026; if (mo) *mo = 9; if (d) *d = 28; if (h) *h = 12; if (mi) *mi = 34; if (s) *s = 0; return 1; }
+{
+	if (getenv ("SIM_REALNET")) {		// the real network: the real clock (TLS checks the dates)
+		time_t t = time (0); struct tm tm; localtime_r (&t, &tm);
+		if (y) *y = tm.tm_year + 1900; if (mo) *mo = tm.tm_mon + 1; if (d) *d = tm.tm_mday;
+		if (h) *h = tm.tm_hour; if (mi) *mi = tm.tm_min; if (s) *s = tm.tm_sec;
+		return 1;
+	}
+	if (y) *y = 2026; if (mo) *mo = 9; if (d) *d = 28; if (h) *h = 12; if (mi) *mi = 34; if (s) *s = 0; return 1;
+}
 static int net_status (char *ip, unsigned n) { if (ip && n) snprintf (ip, n, "192.168.1.42"); return 1; }
 static int sound_volume (int, int) { return 7; }
 static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1, n, stderr); }
