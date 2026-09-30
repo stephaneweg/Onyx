@@ -5122,6 +5122,56 @@ layout_compute_offsets(const css_unit_ctx *unit_len_ctx,
 
 
 /**
+ * Onyx: the offset of an absolutely positioned child's static position in its flex
+ * container (CSS Flexbox 4.1: as if it were its sole item), across (horizontal) or down,
+ * for a content size `size`: justify-content along the main axis, align-self across.
+ */
+static int layout_abs_flex_static(const struct box *box, bool horizontal, int size)
+{
+	const struct box *flex = box->parent;
+	bool row = lh__flex_main_is_horizontal(flex);
+	int outer, free, off = 0;
+	uint8_t v;
+
+	if (horizontal)
+		outer = lh__non_auto_margin(box, LEFT) + box->border[LEFT].width +
+				box->padding[LEFT] + size + box->padding[RIGHT] +
+				box->border[RIGHT].width +
+				lh__non_auto_margin(box, RIGHT);
+	else
+		outer = lh__non_auto_margin(box, TOP) + box->border[TOP].width +
+				box->padding[TOP] + size + box->padding[BOTTOM] +
+				box->border[BOTTOM].width +
+				lh__non_auto_margin(box, BOTTOM);
+	free = (horizontal ? flex->width : flex->height) - outer;
+	if (flex->height == AUTO && !horizontal)
+		return 0;
+
+	if (horizontal == row) {
+		v = css_computed_justify_content(flex->style);
+		if (v == CSS_JUSTIFY_CONTENT_FLEX_END)
+			off = free;
+		else if (v == CSS_JUSTIFY_CONTENT_CENTER ||
+			 v == CSS_JUSTIFY_CONTENT_SPACE_AROUND ||
+			 v == CSS_JUSTIFY_CONTENT_SPACE_EVENLY)
+			off = free / 2;
+		if (lh__flex_direction_reversed(flex))
+			off = free - off;
+	} else {
+		v = lh__box_align_self(flex, box);
+		if (v == CSS_ALIGN_SELF_FLEX_END)
+			off = free;
+		else if (v == CSS_ALIGN_SELF_CENTER)
+			off = free / 2;
+		if (css_computed_flex_wrap(flex->style) ==
+				CSS_FLEX_WRAP_WRAP_REVERSE)
+			off = free - off;
+	}
+	return off;
+}
+
+
+/**
  * Layout and position an absolutely positioned box.
  *
  * \param  box               absolute box to layout and position
@@ -5143,8 +5193,20 @@ layout_absolute(struct box *box,
 	int *margin = box->margin;
 	int *padding = box->padding;
 	struct box_border *border = box->border;
-	int available_width = containing_block->width;
+	int available_width;
 	int space;
+	/* Onyx: a flex / grid container's padding box too; the percentages
+	 * of the width against it (they were against its content box) */
+	bool pad_cb = containing_block->type == BOX_BLOCK ||
+			containing_block->type == BOX_INLINE_BLOCK ||
+			containing_block->type == BOX_TABLE_CELL ||
+			containing_block->type == BOX_FLEX ||
+			containing_block->type == BOX_INLINE_FLEX;
+	/* Onyx: the static position in a flex container: as its sole item,
+	 * aligned by its justify-content and align-items (align-self) */
+	bool flex_static = box->parent != NULL &&
+			lh__box_is_flex_container(box->parent) &&
+			box->parent->style != NULL;
 
 	assert(box->type == BOX_BLOCK || box->type == BOX_TABLE ||
 			box->type == BOX_INLINE_BLOCK ||
@@ -5157,9 +5219,7 @@ layout_absolute(struct box *box,
 	static_left = cx + box->x;
 	static_top = cy + box->y;
 
-	if (containing_block->type == BOX_BLOCK ||
-			containing_block->type == BOX_INLINE_BLOCK ||
-			containing_block->type == BOX_TABLE_CELL) {
+	if (pad_cb) {
 		/* Block level container => temporarily increase containing
 		 * block dimensions to include padding (we restore this
 		 * again at the end) */
@@ -5168,6 +5228,7 @@ layout_absolute(struct box *box,
 		containing_block->height += containing_block->padding[TOP] +
 				containing_block->padding[BOTTOM];
 	}
+	available_width = containing_block->width;
 
 	layout_compute_offsets(&content->unit_len_ctx, box, containing_block,
 			&top, &right, &bottom, &left);
@@ -5357,10 +5418,14 @@ layout_absolute(struct box *box,
 	      padding[RIGHT], border[RIGHT].width, margin[RIGHT], right,
 	      containing_block->width);
 
+	if (flex_static && css_computed_left(box->style, &(css_fixed){0},
+			&(css_unit){CSS_UNIT_PX}) == CSS_LEFT_AUTO &&
+	    css_computed_right(box->style, &(css_fixed){0},
+			&(css_unit){CSS_UNIT_PX}) == CSS_RIGHT_AUTO) {
+		left += layout_abs_flex_static(box, true, width);
+	}
 	box->x = left + margin[LEFT] + border[LEFT].width - cx;
-	if (containing_block->type == BOX_BLOCK ||
-			containing_block->type == BOX_INLINE_BLOCK ||
-			containing_block->type == BOX_TABLE_CELL) {
+	if (pad_cb) {
 		/* Block-level ancestor => reset container's width */
 		containing_block->width -= containing_block->padding[LEFT] +
 				containing_block->padding[RIGHT];
@@ -5490,10 +5555,14 @@ layout_absolute(struct box *box,
 	      padding[BOTTOM], border[BOTTOM].width, margin[BOTTOM], bottom,
 	      containing_block->height);
 
+	if (flex_static && css_computed_top(box->style, &(css_fixed){0},
+			&(css_unit){CSS_UNIT_PX}) == CSS_TOP_AUTO &&
+	    css_computed_bottom(box->style, &(css_fixed){0},
+			&(css_unit){CSS_UNIT_PX}) == CSS_BOTTOM_AUTO) {
+		top += layout_abs_flex_static(box, false, height);
+	}
 	box->y = top + margin[TOP] + border[TOP].width - cy;
-	if (containing_block->type == BOX_BLOCK ||
-			containing_block->type == BOX_INLINE_BLOCK ||
-			containing_block->type == BOX_TABLE_CELL) {
+	if (pad_cb) {
 		/* Block-level ancestor => reset container's height */
 		containing_block->height -= containing_block->padding[TOP] +
 				containing_block->padding[BOTTOM];
