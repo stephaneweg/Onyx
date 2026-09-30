@@ -1730,7 +1730,8 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PR
   // when kapi_proc_done (proc): kapi_wait, close the pipes, then
   //   if (kt::aiParseLlmOutput (buf, n, text, error)) kt::aiApplyReply (project, req, text, err, sizeof err);
   ```
-  The app keeps the provider, the model and the API key in `SD:/koton/settings.json` (plain text on the
+  The app keeps the provider, the model, the API key and the dialog's last request (`aiLast`: kind,
+  style, intention, bars, the options) in `SD:/koton/settings.json` (plain text on the
   card — the key field's tooltip says so); its dialog is `ui/ai_dialog.h`.
 - **Tests on the PC**: `sh tools/tests/koton/ai_run.sh` — every kind of prompt, canned replies shaped
   like Gemini's (placed, then checked: tracks, chords through `chordAt` and a key change, every module

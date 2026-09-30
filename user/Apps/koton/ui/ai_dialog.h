@@ -16,7 +16,15 @@
 
 namespace kui {
 
-struct AiSettings { char *provider; int provCap; char *model; int modelCap; char *key; int keyCap; void (*save) (); };
+// the dialog's last request (what, style, intention, bars, the options): the next opening starts from it
+// (kept in SD:/koton/settings.json with the provider)
+struct AiLast
+{
+	int kind; Str style, intention; int bars; bool full, drums, voice, pchords, pdrums;
+	AiLast () : kind (AI_COMPOSE), style ("bossa nova, warm, acoustic"), intention ("A calm intro, a verse, a brighter chorus, an ending."),
+		bars (32), full (false), drums (true), voice (false), pchords (false), pdrums (false) {}
+};
+struct AiSettings { char *provider; int provCap; char *model; int modelCap; char *key; int keyCap; AiLast *last; void (*save) (); };
 
 static const int s_aiKinds[5] = { AI_COMPOSE, AI_DEVELOP, AI_ADD_TRACK, AI_ADD_DRUMS, AI_POLYRHYTHM };
 static const char *const s_aiKindNames[5] = { "Compose a piece", "Develop the theme (after the end)", "Add an instrument over the song",
@@ -37,26 +45,29 @@ public:
 	{
 		int y = top0 (), x = 150, w = width - x - 16;
 		lab (16, y + 1, 130, "What");
+		static const AiLast s_def;
+		const AiLast &L = s.last ? *s.last : s_def;
+		if (initialKind < 0) initialKind = L.kind;	// (the menu: the last kind; the browser's entries: theirs)
 		int ks = 0; for (int i = 0; i < 5; i++) if (s_aiKinds[i] == initialKind) ks = i;
 		kind = new Dropdown (x, y, w, 24, s_aiKindNames, 5, ks, 0); addChild (kind);
 		y += 32;
 		lab (16, y + 1, 130, "Style");
-		style = new Textbox (x, y, w, 26, "bossa nova, warm, acoustic"); addChild (style);
+		style = new Textbox (x, y, w, 26, L.style.c ()); addChild (style);
 		y += 34;
 		lab (16, y + 1, 130, "Intention");
 		intent = new Textarea (x, y, w, 70, 1000); addChild (intent);
-		intent->setContent ("A calm intro, a verse, a brighter chorus, an ending.");
+		intent->setContent (L.intention.c ());
 		y += 78;
 		lab (16, y + 1, 130, "Bars (about)");
-		bars = new NumericUpDown (x, y, 90, 24, 4, 128, 32, 4, 0); addChild (bars);
+		bars = new NumericUpDown (x, y, 90, 24, 4, 128, iclamp (L.bars, 4, 128), 4, 0); addChild (bars);
 		y += 34;
-		full = new Checkbox (x, y, 230, 22, "The melody as notes (riffs)", false, 0, C_FACE); addChild (full);
-		drums = new Checkbox (x + 240, y, 200, 22, "Drums", true, 0, C_FACE); addChild (drums);
+		full = new Checkbox (x, y, 230, 22, "The melody as notes (riffs)", L.full, 0, C_FACE); addChild (full);
+		drums = new Checkbox (x + 240, y, 200, 22, "Drums", L.drums, 0, C_FACE); addChild (drums);
 		y += 26;
-		voice = new Checkbox (x, y, 230, 22, "The AI voices the chords", false, 0, C_FACE); addChild (voice);
-		pchords = new Checkbox (x + 240, y, 200, 22, "Poly chords", false, 0, C_FACE); addChild (pchords);
+		voice = new Checkbox (x, y, 230, 22, "The AI voices the chords", L.voice, 0, C_FACE); addChild (voice);
+		pchords = new Checkbox (x + 240, y, 200, 22, "Poly chords", L.pchords, 0, C_FACE); addChild (pchords);
 		y += 26;
-		pdrums = new Checkbox (x + 240, y, 200, 22, "Poly drums", false, 0, C_FACE); addChild (pdrums);
+		pdrums = new Checkbox (x + 240, y, 200, 22, "Poly drums", L.pdrums, 0, C_FACE); addChild (pdrums);
 		y += 36;
 		lab (16, y + 1, 130, "Provider");
 		int ps = 0;
@@ -163,6 +174,12 @@ static bool aiCompose (AiSettings &s, int initialKind)
 	snprintf (s.provider, s.provCap, "%s", g_aiProviders[iclamp (d->prov->sel, 0, AI_PROVIDER_COUNT - 1)]);
 	snprintf (s.model, s.modelCap, "%s", d->model->text);
 	snprintf (s.key, s.keyCap, "%s", d->key->text);
+	if (s.last)
+	{
+		AiLast &L = *s.last;
+		L.kind = r.kind; L.style = r.style; L.intention = r.intention; L.bars = r.measures;
+		L.full = r.fullMelody; L.drums = r.drums; L.voice = r.chordsVoice; L.pchords = r.polyChords; L.pdrums = r.polyDrums;
+	}
 	int action = d->action;
 	delete d;
 	if (s.save) s.save ();

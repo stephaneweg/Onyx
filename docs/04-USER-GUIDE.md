@@ -1988,7 +1988,8 @@ writes into the riff editor with *Step record*). **File ▸ Export as WAV…** r
 
 **Files**: songs in `SD:/koton/songs` (`.kson`; Koton's `.sq` open — *Save* then writes a `.kson`);
 `SD:/koton/soundfonts/*.sf2`; `SD:/koton/settings.json` (the SoundFont chosen, the last folder, the
-AI provider, model and **API key — in plain text on the card**); `SD:/apps/koton.app/drums.json`
+AI provider, model and **API key — in plain text on the card**, and *Compose with AI*'s last request:
+what, style, intention, bars and options, offered again the next time); `SD:/apps/koton.app/drums.json`
 (the drum catalog); the plugins in `SD:/koton/plugins/<name>/` (`main` + `plugin.json`). A double
 click on a `.kson` / `.sq` opens it (`fileassoc.ini`).
 

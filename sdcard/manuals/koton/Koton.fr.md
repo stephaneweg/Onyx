@@ -667,6 +667,10 @@ placé.
 quelle conversation avec une IA (sur un autre ordinateur, par exemple), copiez sa **réponse entière**, et
 revenez à **Paste a reply** (coller une réponse) : Koton la place de la même façon.
 
+La boîte **se souvient de votre dernière demande** : elle se rouvre avec le même style, la même intention, le
+même nombre de mesures et les mêmes options (depuis la barre de transport ou le menu **AI**, avec le même type de demande aussi),
+même après la fermeture de Koton.
+
 > **Confidentialité.** Le fournisseur, le modèle et la **clé d'API** sont conservés dans
 > `SD:/koton/settings.json`, en clair sur la carte. Votre morceau (ses accords et ses parties) est envoyé au
 > fournisseur quand vous le demandez.
@@ -688,7 +692,7 @@ revenez à **Paste a reply** (coller une réponse) : Koton la place de la même 
 | `SD:/koton/songs` | vos morceaux ; `demo.kson` est la démonstration |
 | `SD:/koton/soundfonts` | les SoundFonts (`.sf2`) |
 | `SD:/koton/plugins` | les plugins, un dossier chacun |
-| `SD:/koton/settings.json` | la SoundFont choisie, le dernier dossier, le fournisseur, le modèle et la clé de l'IA |
+| `SD:/koton/settings.json` | la SoundFont choisie, le dernier dossier, le fournisseur, le modèle et la clé de l'IA, votre dernière demande à l'IA |
 | `SD:/apps/koton.app/drums.json` | le catalogue de batterie |
 
 ## 18. Questions et réponses

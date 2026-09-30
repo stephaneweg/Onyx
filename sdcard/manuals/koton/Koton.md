@@ -602,6 +602,9 @@ takes from a few seconds to a minute. The status bar then sums up what was place
 (on another computer, say), copy its **whole answer**, and come back to **Paste a reply**: Koton places it
 just the same.
 
+The dialog **remembers your last request**: it opens again with the same style, intention, number of bars
+and options (from the transport bar or the **AI** menu, with the same kind of request too), even after Koton was closed.
+
 > **Privacy.** The provider, the model and the **API key** are kept in `SD:/koton/settings.json`, in plain
 > text on the card. Your song (its chords and parts) is sent to the provider when you ask.
 
@@ -621,7 +624,7 @@ just the same.
 | `SD:/koton/songs` | your songs; `demo.kson` is the demo |
 | `SD:/koton/soundfonts` | the SoundFonts (`.sf2`) |
 | `SD:/koton/plugins` | the plugins, a folder each |
-| `SD:/koton/settings.json` | the SoundFont chosen, the last folder, the AI's provider, model and key |
+| `SD:/koton/settings.json` | the SoundFont chosen, the last folder, the AI's provider, model and key, your last AI request |
 | `SD:/apps/koton.app/drums.json` | the drum catalog |
 
 ## 18. Questions and answers

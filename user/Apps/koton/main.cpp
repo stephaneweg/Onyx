@@ -83,6 +83,7 @@ static void onSplit (int dy)
 struct Settings
 {
 	char soundfont[256], lastDir[256], aiProvider[32], aiModel[64], aiKey[160];
+	AiLast aiLast;			// Compose with AI's last request
 	Settings () { soundfont[0] = 0; snprintf (lastDir, sizeof lastDir, "SD:/koton/songs"); snprintf (aiProvider, sizeof aiProvider, "gemini"); snprintf (aiModel, sizeof aiModel, "gemini-2.5-flash"); aiKey[0] = 0; }
 	void load ()
 	{
@@ -102,6 +103,14 @@ struct Settings
 			snprintf (aiProvider, sizeof aiProvider, "%s", r["aiProvider"].asStr ("gemini"));
 			snprintf (aiModel, sizeof aiModel, "%s", r["aiModel"].asStr ("gemini-2.5-flash"));
 			snprintf (aiKey, sizeof aiKey, "%s", r["aiKey"].asStr (""));
+			const json::Value &a = r["aiLast"];
+			AiLast &L = aiLast;
+			L.kind = a["kind"].asInt (L.kind);
+			L.style = a["style"].asStr (L.style.c ());
+			L.intention = a["intention"].asStr (L.intention.c ());
+			L.bars = a["bars"].asInt (L.bars);
+			L.full = a["fullMelody"].asBool (L.full); L.drums = a["drums"].asBool (L.drums); L.voice = a["chordsVoice"].asBool (L.voice);
+			L.pchords = a["polyChords"].asBool (L.pchords); L.pdrums = a["polyDrums"].asBool (L.pdrums);
 		}
 		free (b);
 	}
@@ -114,6 +123,14 @@ struct Settings
 		w.key ("aiProvider"); w.str (aiProvider);
 		w.key ("aiModel"); w.str (aiModel);
 		w.key ("aiKey"); w.str (aiKey);
+		w.key ("aiLast"); w.beginObj ();
+		w.key ("kind"); w.num (aiLast.kind);
+		w.key ("style"); w.str (aiLast.style.c ());
+		w.key ("intention"); w.str (aiLast.intention.c ());
+		w.key ("bars"); w.num (aiLast.bars);
+		w.key ("fullMelody"); w.boolean (aiLast.full); w.key ("drums"); w.boolean (aiLast.drums); w.key ("chordsVoice"); w.boolean (aiLast.voice);
+		w.key ("polyChords"); w.boolean (aiLast.pchords); w.key ("polyDrums"); w.boolean (aiLast.pdrums);
+		w.endObj ();
 		w.endObj ();
 		kapi_mkdir ("SD:/koton");
 		if (w.ok ()) kapi_save_file ("SD:/koton/settings.json", w.data (), (unsigned) w.size ());
@@ -504,12 +521,12 @@ static void saveSettings () { g_settings.save (); }
 static void composeKind (int kind)
 {
 	AiSettings s = { g_settings.aiProvider, (int) sizeof g_settings.aiProvider, g_settings.aiModel, (int) sizeof g_settings.aiModel,
-		g_settings.aiKey, (int) sizeof g_settings.aiKey, saveSettings };
+		g_settings.aiKey, (int) sizeof g_settings.aiKey, &g_settings.aiLast, saveSettings };
 	g_audio.stopPlay ();
 	if (aiCompose (s, kind)) { g_host->stopListening (); afterLoadKeep (); }
 	refreshAll ();
 }
-static void cmdCompose () { composeKind (AI_COMPOSE); }
+static void cmdCompose () { composeKind (-1); }		// (the kind last asked)
 
 // ---- MIDI input: a USB keyboard plays the selected track (or writes into the riff editor) ----------------------------------
 static void pollMidi ()
