@@ -36,6 +36,8 @@
 //               a WIN_FLAG_ALPHA window and in a frame's corners --, 16: RGB565), u8 lz4,
 //               u16 x y w h, the pixels (an LZ4 block when lz4 = 1)
 //     5 END     (one round of updates is complete: the client shows it, then asks again)
+//     8 SCREEN  u16 w h (the screen's new size: kapi_screen_set, kernel v66; an older client
+//               skips it)
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
 //     2 PTR     u32 id, s16 x y (in the window's client area: negative on its frame, e.g.
@@ -268,6 +270,11 @@ static void send_chrome (struct Win *w)
 // One round: what changed in the windows since the last one.
 static void round_send (void)
 {
+	{								// the screen's new size (v66)
+		int w = g_W, h = g_H;
+		kapi_screen_size (&w, &h);
+		if (w != g_W || h != g_H) { g_W = w; g_H = h; msg (8, 4); put16 ((unsigned) w); put16 ((unsigned) h); }
+	}
 	struct kapi_win_info L[MAXWIN];
 	int n = kapi_win_list (L, MAXWIN);
 	if (!g_desktop)							// (only when asked for)
@@ -400,7 +407,7 @@ int main (void)
 		}
 		return 0;
 	}
-	g_packCap = (g_W > 2048 ? g_W : 2048) * TILE * 4;
+	g_packCap = (g_W > 2560 ? g_W : 2560) * TILE * 4;	// (a strip of the widest screen: kapi_screen_set)
 	g_pack = (unsigned char *) malloc ((size_t) g_packCap);
 	g_lz = (unsigned char *) malloc ((size_t) g_packCap + g_packCap / 255 + 64);
 	if (!g_pack || !g_lz) { kapi_stdout_write ("rdpd: out of memory\n", 20); return 1; }

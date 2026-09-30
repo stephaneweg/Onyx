@@ -131,6 +131,20 @@ static unsigned char *conv (unsigned char *p, unsigned c)
 // ---- framebuffer updates -----------------------------------------------------------
 
 static int g_use_zlib;
+static int g_desksize;			// the client takes the DesktopSize pseudo-encoding (-223)
+
+// The screen's size changed (kernel v66, kapi_screen_set: kapi_screen_grab refuses the old size):
+// the buffers made again at the new one -> 1, 0 no memory.
+static int screen_realloc (void)
+{
+	kapi_screen_size (&g_W, &g_H);
+	free (g_cur); free (g_prev);
+	g_cur  = (unsigned *) malloc ((size_t) g_W * g_H * 4);
+	g_prev = (unsigned *) malloc ((size_t) g_W * g_H * 4);
+	if (!g_cur || !g_prev) return 0;
+	memset (g_prev, 0, (size_t) g_W * g_H * 4);
+	return 1;
+}
 static z_stream g_z;
 static unsigned char g_pix[TILE * TILE * 4];
 static unsigned char g_zbuf[TILE * TILE * 4 + 1024];
@@ -252,7 +266,8 @@ static int handshake (void)
 static void session (void)
 {
 	g_inlen = 0; g_outlen = 0; g_dead = 0; g_ctrl = 0; g_btn = 0; g_px = g_py = 0;
-	g_use_zlib = 0;
+	g_use_zlib = 0; g_desksize = 0;
+	{ int w = 0, h = 0; kapi_screen_size (&w, &h); if ((w != g_W || h != g_H) && !screen_realloc ()) return; }
 	pf_default ();
 	memset (&g_z, 0, sizeof g_z);
 	if (deflateInit (&g_z, 1) != Z_OK) return;
@@ -308,9 +323,12 @@ static void session (void)
 			}
 			else if (t == 2)
 			{
-				g_use_zlib = 0;
+				g_use_zlib = 0; g_desksize = 0;
 				for (int i = 0; i < (int) get16 (m + 2); i++)
+				{
 					if ((int) get32 (m + 4 + 4 * i) == 6) g_use_zlib = 1;
+					if ((int) get32 (m + 4 + 4 * i) == -223) g_desksize = 1;
+				}
 			}
 			else if (t == 3)
 			{
@@ -337,6 +355,16 @@ static void session (void)
 			// 2 = the screen has not changed since the previous grab: an incremental
 			// request just stays pending (no diff / encode); a full one is answered.
 			int g = kapi_screen_grab (g_cur, g_W, g_H);
+			if (g == 0)				// the screen's size changed: the new one
+			{
+				if (!g_desksize || !screen_realloc ()) break;	// (the client reconnects)
+				put8 (0); put8 (0); put16 (1);			// FramebufferUpdate: one rectangle,
+				put16 (0); put16 (0); put16 ((unsigned) g_W); put16 ((unsigned) g_H);
+				put32 ((unsigned) -223);			// DesktopSize: the new size
+				flush_out ();
+				req = 0; req_full = 1;				// (then the whole screen, when asked)
+				continue;
+			}
 			if ((g != 2 || req_full) && send_update (req_full, rx, ry, rw, rh)) { req = 0; req_full = 0; }
 			unsigned took = kapi_get_ticks () - now;
 			if (took * BUSY_FACTOR > MIN_FRAME_TICKS) last_grab = now + took * BUSY_FACTOR - MIN_FRAME_TICKS;

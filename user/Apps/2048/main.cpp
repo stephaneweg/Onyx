@@ -183,6 +183,6 @@ int main (void)
 	g_rng = kapi_get_ticks () | 1u;
 	kapi_set_key_handler (on_key);
 	restart ();
-	while (!should_exit ()) { pump_events (); redraw (); msleep (16); }
+	while (!should_exit ()) { pump_events (); redraw (); present (); msleep (16); }
 	return 0;
 }

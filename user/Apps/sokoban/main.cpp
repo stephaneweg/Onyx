@@ -172,6 +172,6 @@ int main (void)
 	load_level (0);
 
 	kapi_set_key_handler (on_key);
-	while (!should_exit ()) { pump_events (); redraw (); msleep (16); }
+	while (!should_exit ()) { pump_events (); redraw (); present (); msleep (16); }
 	return 0;
 }

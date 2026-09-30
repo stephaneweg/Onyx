@@ -161,6 +161,7 @@ int main (void)
 			if (g_frames - g_lastmove >= speed) { step (); g_lastmove = g_frames; }
 		}
 		redraw ();
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

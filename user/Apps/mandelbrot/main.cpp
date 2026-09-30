@@ -195,6 +195,7 @@ int main (void)
 	{
 		pump_events ();
 		if (g_dirty) { render (); dd_draw (&g_dd); }	// the drop-down over it (once: its edges blend)
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (30);
 	}
 	return 0;

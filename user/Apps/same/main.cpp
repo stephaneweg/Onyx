@@ -203,6 +203,7 @@ int main (void)
 	{
 		pump_events ();
 		redraw ();
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

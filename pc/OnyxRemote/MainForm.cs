@@ -1,9 +1,9 @@
-// MainForm.cs -- Onyx Remote: one window (MDI) holding the Onyx session. At the top a tool bar
-// (the Pi's address, the options, Connect / Disconnect, the updates a second), then the Onyx
-// menu bar across the window's width (its menus on the left, the status and the clock on the
-// right); below, the Onyx windows as child windows, placed as on the Pi (the area starts below
-// the menu bar), over the Onyx desktop (the wallpaper and the widgets below the windows) when
-// "Desktop" is on. The borderless windows above them -- the menu bar's drop-down menus, the
+// MainForm.cs -- Onyx Remote: one window holding the Onyx session. At the top a tool bar (the
+// Pi's address, the options, Connect / Disconnect, Full screen, the updates a second); below, a
+// scrolling area holding the Pi's screen at its size (DeskView: scroll bars when the window is
+// smaller): the Onyx menu bar at its top, the Onyx windows as its child windows where they are on
+// the Pi, over the Onyx desktop (the wallpaper and the widgets below the windows) when "Desktop"
+// is on. The borderless windows above them -- the menu bar's drop-down menus, the
 // dock, the notifications, the Wi-Fi menu -- are drawn over the child windows, see-through
 // where they are on the Pi (Overlay.cs: layered windows). A minimised window, or one on another
 // workspace, is not shown (as on the Pi).
@@ -89,34 +89,51 @@ namespace OnyxRemote
 		}
 	}
 
-	// the bar's strip at the top of the window
-	class BarPanel : Panel
+	// The Pi's screen at its size (a child of the scrolling area: scroll bars when Onyx Remote's
+	// window is smaller): the Onyx desktop's picture (the wallpaper, the widgets) and the menu bar
+	// at its top, pixel for pixel; the Onyx windows are its child windows, where the Pi has them.
+	class DeskView : Control
 	{
 		readonly MainForm main;
-		public BarPanel (MainForm m)
+		public Bitmap Back;					// (the desktop's picture + the widgets; null: none)
+		public DeskView (MainForm m)
 		{
 			main = m;
 			SetStyle (ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-			BackColor = Color.FromArgb (24, 26, 40);
+			BackColor = Color.FromArgb (16, 18, 28);
 		}
 		protected override void OnPaint (PaintEventArgs e)
 		{
+			var g = e.Graphics;
+			g.InterpolationMode = InterpolationMode.NearestNeighbor;
+			g.PixelOffsetMode = PixelOffsetMode.Half;
+			if (Back != null) g.DrawImageUnscaled (Back, 0, 0);
+			else g.Clear (BackColor);
 			var b = main.Bar;
-			if (!b.Present || b.Bmp == null) { base.OnPaint (e); return; }
-			e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
-			e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
-			b.Draw (e.Graphics, Width, 0, Math.Min (b.BarH, b.H), 0);
+			if (b.Present && b.Bmp != null) b.Draw (g, b.W, 0, Math.Min (b.BarH, b.H), 0);
 		}
+		// the pointer: on the menu bar to it, elsewhere to the desktop (without "Desktop", only
+		// its moves: the Pi's pointer follows -- the eyes...)
 		void Send (MouseEventArgs e, int wheel)
 		{
+			var c = main.Conn;
+			if (c == null) return;
 			var b = main.Bar;
-			if (!b.Present || main.Conn == null) return;
-			main.Conn.Pointer (b.Id, b.MapX (e.X, Width), e.Y, RemoteWindow.Buttons (MouseButtons), wheel);
+			if (b.Present && e.Y < b.BarH) { c.Pointer (b.Id, e.X, e.Y, RemoteWindow.Buttons (MouseButtons), wheel); return; }
+			bool all = main.DesktopShown;
+			c.Pointer (WinModel.DESKTOP_ID, e.X, e.Y, all ? RemoteWindow.Buttons (MouseButtons) : 0, all ? wheel : 0);
 		}
 		protected override void OnMouseDown (MouseEventArgs e) { Send (e, 0); }
 		protected override void OnMouseUp (MouseEventArgs e) { Send (e, 0); }
 		protected override void OnMouseMove (MouseEventArgs e) { Send (e, 0); }
-		protected override void OnMouseWheel (MouseEventArgs e) { Send (e, e.Delta > 0 ? 1 : -1); }
+	}
+
+	// The scrolling area: stays where it is scrolled when a child takes the focus (a click on the
+	// desktop, a window raised) -- a Panel scrolls the focused control into view, and the desktop
+	// view being bigger than the area, that meant back to its top left.
+	class ScrollArea : Panel
+	{
+		protected override Point ScrollToControl (Control activeControl) { return DisplayRectangle.Location; }
 	}
 
 	class MainForm : Form
@@ -129,17 +146,19 @@ namespace OnyxRemote
 		readonly ToolStripButton console = new ToolStripButton ("Console") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
 		readonly ToolStripButton full = new ToolStripButton ("Full screen") { CheckOnClick = true, ToolTipText = "The Onyx session over the whole screen, without this tool bar (F11 toggles it)" };
 		readonly ToolStripLabel status = new ToolStripLabel ("Not connected");
-		readonly BarPanel barPanel;
 		readonly ToolStrip ts;
-		Size freeSize;					// (the size before a connection fixed it)
+		readonly ScrollArea scroller;			// (the scrolling area)
+		readonly DeskView desk;					// (the Pi's screen in it)
 		bool isFull; Rectangle fullRestore; FormBorderStyle fullBorder; bool fullMaxBox; FormWindowState fullState;	// (before the full screen)
-		readonly MdiClient mdi;
+		FullBar fullBar; readonly Timer fullTimer = new Timer { Interval = 100 }; DateTime fullAway;	// (the full screen's bar)
 		public Connection Conn;
 		public readonly BarView Bar = new BarView ();
+		public bool DesktopShown { get { return desktop.Checked; } }
 		readonly Dictionary<uint, RemoteWindow> wins = new Dictionary<uint, RemoteWindow> ();
+		List<RemoteWindow> winOrder = new List<RemoteWindow> ();	// (their order, bottom to top)
 		Bitmap deskBmp, backBmp; readonly Dictionary<uint, Bitmap> bubbles = new Dictionary<uint, Bitmap> ();
 		readonly Dictionary<uint, Overlay> overlays = new Dictionary<uint, Overlay> ();	// (over the child windows)
-		Overlay barDrop; int[] dropPx = new int[0]; int dropW;				// (the bar's drop-downs)
+		Overlay barDrop; int[] dropPx = new int[0];			// (the bar's drop-downs)
 		List<Overlay> stacked = new List<Overlay> ();					// (their order, bottom to top)
 		int rounds; DateTime since = DateTime.Now;
 		static readonly string SettingsPath = Path.Combine (Environment.GetFolderPath (Environment.SpecialFolder.ApplicationData), "OnyxRemote.txt");
@@ -147,30 +166,29 @@ namespace OnyxRemote
 		public MainForm ()
 		{
 			Text = "Onyx Remote";
-			IsMdiContainer = true;
 			Font = new Font ("Segoe UI", 9f);
 			ClientSize = new Size (1040, 830);
-			foreach (Control c in Controls) if (c is MdiClient mc) mdi = mc;
-			mdi.BackColor = Color.FromArgb (32, 64, 96);
 			ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
 			host.Width = 130; port.Width = 45; port.Text = "3390";
 			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go, console,
 				new ToolStripSeparator (), bits16, desktop, frames, full, new ToolStripSeparator (), status });
-			barPanel = new BarPanel (this) { Dock = DockStyle.Top, Height = 32, Visible = false };
-			Controls.Add (barPanel);
+			scroller = new ScrollArea { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.Black };
+			desk = new DeskView (this) { Location = Point.Empty, Size = new Size (1024, 768), Visible = false };
+			scroller.Controls.Add (desk);
+			Controls.Add (scroller);
 			Controls.Add (ts);
 			go.Click += (s, e) => { if (Conn == null) Connect (); else Disconnect ("Disconnected"); };
 			console.Click += (s, e) => OpenConsole ();
 			full.CheckedChanged += (s, e) => { SaveSettings (); if (Conn != null) FullScreen (full.Checked); };
 			desktop.CheckedChanged += (s, e) => { if (Conn != null) { Conn.Desktop (desktop.Checked); Sync (); } };
 			host.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter && Conn == null) { e.SuppressKeyPress = true; Connect (); } };
-			MdiChildActivate += (s, e) => { if (ActiveMdiChild is RemoteWindow rw && Conn != null) Conn.Raise (rw.Id); };
-			// the desktop's pointer: the MDI area's background
-			mdi.MouseDown += (s, e) => DeskPointer (e, 0);
-			mdi.MouseUp += (s, e) => DeskPointer (e, 0);
-			mdi.MouseMove += (s, e) => DeskPointer (e, 0);
 			Move += (s, e) => Sync ();					// (the overlays follow)
-			Resize += (s, e) => { barPanel.Invalidate (); Sync (); };	// (the desktop's picture to the new size)
+			Resize += (s, e) => Sync ();
+			scroller.Scroll += (s, e) => Sync ();
+			desk.Move += (s, e) => Sync ();				// (scrolled: by the wheel too)
+			scroller.Layout += (s, e) => CenterDesk ();
+			desk.Resize += (s, e) => CenterDesk ();
+			fullTimer.Tick += (s, e) => FullBarTick ();
 			try
 			{
 				foreach (var line in File.ReadAllLines (SettingsPath))
@@ -210,14 +228,6 @@ namespace OnyxRemote
 			new TelnetForm (h, p).Show ();
 		}
 
-		// (without the desktop, only the pointer's moves: the Pi's pointer follows -- the eyes...)
-		void DeskPointer (MouseEventArgs e, int wheel)
-		{
-			if (Conn == null) return;
-			bool all = desktop.Checked;
-			Conn.Pointer (WinModel.DESKTOP_ID, e.X, e.Y + Bar.BarH, all ? RemoteWindow.Buttons (MouseButtons) : 0, all ? wheel : 0);
-		}
-
 		void Connect ()
 		{
 			int p; if (!int.TryParse (port.Text, out p) || p <= 0 || p > 65535) p = 3390;
@@ -231,13 +241,44 @@ namespace OnyxRemote
 			c.RoundDone += () => BeginInvoke ((Action) (() => { if (Conn != c) return; Sync (); rounds++; c.Ready (); }));
 			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
 			go.Text = "Disconnect";
+			scroller.AutoScrollPosition = Point.Empty;
+			desk.Location = Point.Empty;
+			desk.Size = new Size (Math.Max (1, c.ScreenW), Math.Max (1, c.ScreenH));
+			desk.Visible = true;
 			FitToPi (c.ScreenW, c.ScreenH);
 			if (full.Checked) FullScreen (true);
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = false;
 		}
 
-		// Connected: the window exactly the Pi's screen (the tool bar above it), not resizable -- the
-		// Onyx windows (the shelf at the bottom) where they are on the Pi. Not when it does not fit.
+		// The Pi's screen in the middle of the area when the area is bigger (black around it: the full
+		// screen on a bigger monitor, a window made bigger); else at the scroll bars' place.
+		void CenterDesk ()
+		{
+			var c = scroller.ClientSize;
+			int x = desk.Width < c.Width ? (c.Width - desk.Width) / 2 : scroller.AutoScrollPosition.X;
+			int y = desk.Height < c.Height ? (c.Height - desk.Height) / 2 : scroller.AutoScrollPosition.Y;
+			if (desk.Left != x || desk.Top != y) desk.Location = new Point (x, y);
+		}
+
+		// The full screen's bar (FullBar, as mstsc's): shown when the pointer touches the top edge of
+		// the screen, hidden ~1 s after it left the bar (unless pinned).
+		void FullBarTick ()
+		{
+			if (!isFull || fullBar == null) return;
+			if (WindowState == FormWindowState.Minimized || Form.ActiveForm == null)
+			{
+				if (fullBar.Visible) fullBar.Hide ();	// (minimised, or another app in front: none of
+				return;					// ours active -- the bar itself or an overlay is fine)
+			}
+			var scr = Screen.FromControl (this).Bounds;
+			Point p = Cursor.Position;
+			bool onEdge = p.Y <= scr.Top && p.X >= scr.Left && p.X < scr.Right;
+			bool onBar = fullBar.Visible && fullBar.Bounds.Contains (p);
+			if (onEdge || onBar || fullBar.Pinned) fullAway = DateTime.Now;
+			if (onEdge && !fullBar.Visible) fullBar.ShowOn (scr, host.Text.Trim ());
+			else if (fullBar.Visible && (DateTime.Now - fullAway).TotalMilliseconds > 1000) fullBar.Hide ();
+		}
+
 		// F11: the full screen on and off (the keys go to the Pi otherwise)
 		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
 		{
@@ -246,9 +287,8 @@ namespace OnyxRemote
 		}
 
 		// The full screen: no frame, no tool bar, the whole monitor (the taskbar covered) -- the
-		// Onyx menu bar at its top and the Onyx windows where they are on the Pi, pixel for pixel
-		// (a Pi screen the monitor's size fills it exactly; a bigger one is cut on the right and
-		// the bottom). Off: the window as it was.
+		// Pi's screen pixel for pixel (one the monitor's size fills it exactly; a bigger one
+		// scrolls). Off: the window as it was.
 		void FullScreen (bool on)
 		{
 			if (on == isFull) return;
@@ -261,11 +301,18 @@ namespace OnyxRemote
 				FormBorderStyle = FormBorderStyle.None;
 				Bounds = Screen.FromControl (this).Bounds;
 				isFull = true;
+				if (fullBar == null)
+					fullBar = new FullBar (this, () => WindowState = FormWindowState.Minimized,
+							       () => full.Checked = false, () => Disconnect ("Disconnected"));
+				fullAway = DateTime.Now;
+				fullTimer.Start ();
 				Activate ();
 			}
 			else
 			{
 				isFull = false;
+				fullTimer.Stop ();
+				fullBar?.Hide ();
 				FormBorderStyle = fullBorder; MaximizeBox = fullMaxBox;
 				Bounds = fullRestore;
 				WindowState = fullState;
@@ -274,17 +321,19 @@ namespace OnyxRemote
 			Sync ();
 		}
 
+		// Connected: the window the size of the Pi's screen (the tool bar above it) as far as the
+		// PC's screen allows -- smaller, the scroll bars show the rest. It stays resizable.
 		void FitToPi (int w, int h)
 		{
-			if (w <= 0 || h <= 0) return;
+			if (w <= 0 || h <= 0 || isFull) return;
 			var area = Screen.FromControl (this).WorkingArea;
-			var want = new Size (w, ts.Height + h);
-			Size frame = Size - ClientSize;
-			if (want.Width + frame.Width > area.Width || want.Height + frame.Height > area.Height) return;
 			if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
-			freeSize = ClientSize;
-			FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
-			ClientSize = want;
+			Size frame = Size - ClientSize;
+			int maxW = area.Width - frame.Width, maxH = area.Height - frame.Height;
+			int cw = w, ch = ts.Height + h;
+			if (ch > maxH) cw += SystemInformation.VerticalScrollBarWidth;		// (room for the scroll bars)
+			if (cw > maxW) ch += SystemInformation.HorizontalScrollBarHeight;
+			ClientSize = new Size (Math.Min (cw, maxW), Math.Min (ch, maxH));
 			if (Right > area.Right) Left = Math.Max (area.Left, area.Right - Width);
 			if (Bottom > area.Bottom) Top = Math.Max (area.Top, area.Bottom - Height);
 		}
@@ -306,31 +355,28 @@ namespace OnyxRemote
 			FullScreen (false);				// (the tool bar back: Connect again)
 			Conn?.Close (); Conn = null;
 			foreach (var w in wins.Values) { w.GoneOnPi = true; w.Close (); }
-			wins.Clear ();
+			wins.Clear (); winOrder.Clear ();
 			foreach (var o in overlays.Values) o.Close ();
 			overlays.Clear (); stacked.Clear ();
 			barDrop?.Close (); barDrop = null;
-			Bar.Present = false; barPanel.Visible = false;
-			mdi.BackgroundImage = null;
+			Bar.Present = false;
+			desk.Back = null; desk.Visible = false;
 			go.Text = "Connect";
-			if (FormBorderStyle != FormBorderStyle.Sizable)		// (the free size again)
-			{
-				FormBorderStyle = FormBorderStyle.Sizable; MaximizeBox = true;
-				if (!freeSize.IsEmpty) ClientSize = freeSize;
-			}
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = true;
 			status.Text = why;
 		}
 
-		// An overlay where the Pi has its window (x, y on the Pi's screen, w x h), cut to the MDI area.
-		void PlaceOverlay (Overlay ov, int x, int y, int w, int h, int alpha)
+		// An overlay where the Pi has its window (x, y on the Pi's screen, w x h), cut to the part of
+		// the desktop view that shows (scrolled, or the window smaller than it). top: added to the
+		// pointer's y (the bar's drop-down: its pixels start below the bar).
+		void PlaceOverlay (Overlay ov, int x, int y, int w, int h, int alpha, int top = 0)
 		{
-			if (WindowState == FormWindowState.Minimized) return;
-			Rectangle area = mdi.RectangleToScreen (mdi.ClientRectangle);
-			Point o = mdi.PointToScreen (new Point (x, y - Bar.BarH));
+			if (WindowState == FormWindowState.Minimized || !desk.Visible) { ov.Place (0, 0, 0, 0, 0, 0, 0); return; }
+			Rectangle area = Rectangle.Intersect (scroller.RectangleToScreen (scroller.ClientRectangle), desk.RectangleToScreen (desk.ClientRectangle));
+			Point o = desk.PointToScreen (new Point (x, y));
 			var r = Rectangle.Intersect (new Rectangle (o.X, o.Y, w, h), area);
 			int sx = r.X - o.X, sy = r.Y - o.Y;
-			if (ov != barDrop) ov.Map = p => new Point (p.X + sx, p.Y + sy);
+			ov.Map = p => new Point (p.X + sx, p.Y + sy + top);
 			ov.Place (r.X, r.Y, sx, sy, r.Width, r.Height, alpha);
 		}
 
@@ -340,10 +386,13 @@ namespace OnyxRemote
 			if (Conn == null) return;
 			lock (Conn.Lock)
 			{
+				if (Conn.ScreenW > 0 && Conn.ScreenH > 0 && (desk.Width != Conn.ScreenW || desk.Height != Conn.ScreenH))
+					desk.Size = new Size (Conn.ScreenW, Conn.ScreenH);	// (the Pi's resolution changed)
 				var keep = new HashSet<uint> ();
 				var keepOver = new HashSet<uint> ();
 				var keepBubble = new HashSet<uint> ();
 				var order = new List<Overlay> ();			// the overlays, bottom to top
+				var framed = new List<RemoteWindow> ();			// the child windows, bottom to top
 				bool barSeen = false, barDirty = false, deskDirty = false, framedBelow = false;
 				var bubbleOrder = new List<WinModel> ();
 				foreach (uint id in Conn.ZOrder)			// (bottom to top: new ones open in that order)
@@ -360,7 +409,7 @@ namespace OnyxRemote
 					if ((m.Flags & WinModel.TOPMOST) != 0 && m.Y == 0 && borderless)	// the menu bar
 					{
 						barSeen = true;
-						if (m.Dirty || !Bar.Present) { Bar.Update (m); m.Dirty = false; barPanel.Invalidate (); barDirty = true; }
+						if (m.Dirty || !Bar.Present) { Bar.Update (m); m.Dirty = false; barDirty = true; }
 						if (Bar.H > Bar.BarH)				// open: its drop-down over the windows
 						{
 							if (barDrop == null) { barDrop = new Overlay (Conn, id, this); barDirty = true; }
@@ -397,12 +446,13 @@ namespace OnyxRemote
 					keep.Add (id);
 					if (!wins.TryGetValue (id, out RemoteWindow w))
 					{
-						w = new RemoteWindow (Conn, id, frames.Checked, this);
+						w = new RemoteWindow (Conn, id, frames.Checked, desk);
 						wins[id] = w;
-						w.Apply (m, Bar.BarH);
+						w.Apply (m, 0);
 						w.Show ();
 					}
-					else w.Apply (m, Bar.BarH);
+					else w.Apply (m, 0);
+					framed.Add (w);
 				}
 				foreach (var id in new List<uint> (wins.Keys))
 					if (!keep.Contains (id)) { wins[id].GoneOnPi = true; wins[id].Close (); wins.Remove (id); }
@@ -410,21 +460,22 @@ namespace OnyxRemote
 					if (!keepOver.Contains (id)) { overlays[id].Close (); overlays.Remove (id); }
 				foreach (var id in new List<uint> (bubbles.Keys))
 					if (!keepBubble.Contains (id)) { bubbles[id]?.Dispose (); bubbles.Remove (id); deskDirty = true; }
-				// the bar, its drop-down
-				if (barSeen != barPanel.Visible) { barPanel.Visible = barSeen; if (!barSeen) Bar.Present = false; }
-				if (barSeen && barPanel.Height != Bar.BarH) barPanel.Height = Bar.BarH;
+				// the child windows stacked as on the Pi (when their order changed)
+				bool sameWins = framed.Count == winOrder.Count;
+				for (int i = 0; sameWins && i < framed.Count; i++) sameWins = framed[i] == winOrder[i];
+				if (!sameWins) { foreach (var w in framed) w.BringToFront (); winOrder = framed; }
+				// the bar (drawn by the desktop view), its drop-down
+				if (!barSeen && Bar.Present) { Bar.Present = false; barDirty = true; }
+				if (barDirty) desk.Invalidate (new Rectangle (0, 0, desk.Width, Bar.BarH));
 				if (barDrop != null && !order.Contains (barDrop)) { barDrop.Close (); barDrop = null; }
 				if (barDrop != null)
 				{
-					int dw = mdi.ClientSize.Width;
-					if (barDirty || dw != dropW)
+					if (barDirty)
 					{
-						int dh = Bar.DropPixels (ref dropPx, dw);
-						barDrop.SetPremultiplied (dropPx, dw, dh);
-						dropW = dw;
+						int dh = Bar.DropPixels (ref dropPx, Bar.W);
+						barDrop.SetPremultiplied (dropPx, Bar.W, dh);
 					}
-					barDrop.Map = p => new Point (Bar.MapX (p.X, dw), p.Y + Bar.BarH);
-					PlaceOverlay (barDrop, 0, Bar.BarH, dw, Bar.H - Bar.BarH, 255);
+					PlaceOverlay (barDrop, 0, Bar.BarH, Bar.W, Bar.H - Bar.BarH, 255, Bar.BarH);
 				}
 				// the overlays stacked as on the Pi (when their order changed)
 				bool same = order.Count == stacked.Count;
@@ -434,35 +485,31 @@ namespace OnyxRemote
 					for (int i = order.Count - 2; i >= 0; i--) order[i].Below (order[i + 1]);
 					stacked = order;
 				}
-				// the desktop: its picture (below the bar) + the widgets, as the MDI area's background
-				// (the MDI area tiles its background image: the picture is made at least the area's
-				// size, the part beyond the Pi's screen a plain colour -- else the desktop repeated)
-				int bw = Math.Max (deskBmp?.Width ?? 1, mdi.ClientSize.Width), bh = Math.Max (Math.Max (1, (deskBmp?.Height ?? 1) - Bar.BarH), mdi.ClientSize.Height);
-				bool resized = backBmp == null || backBmp.Width != bw || backBmp.Height != bh;
-				if (desktop.Checked && deskBmp != null && (deskDirty || resized || mdi.BackgroundImage == null))
+				// the desktop: its picture + the widgets, drawn by the desktop view (the bar over it)
+				if (desktop.Checked && deskBmp != null && (deskDirty || desk.Back == null))
 				{
-					Bitmap old = null;
-					if (resized) { old = backBmp; backBmp = new Bitmap (bw, bh, PixelFormat.Format32bppRgb); }
+					if (backBmp == null || backBmp.Width != deskBmp.Width || backBmp.Height != deskBmp.Height)
+					{
+						backBmp?.Dispose ();
+						backBmp = new Bitmap (deskBmp.Width, deskBmp.Height, PixelFormat.Format32bppRgb);
+					}
 					using (var g = Graphics.FromImage (backBmp))
 					{
-						g.Clear (Color.FromArgb (16, 18, 28));
-						g.DrawImageUnscaled (deskBmp, 0, -Bar.BarH);
+						g.DrawImageUnscaled (deskBmp, 0, 0);
 						foreach (var m in bubbleOrder)
 						{
 							if (!bubbles.TryGetValue (m.Id, out Bitmap bb) || bb == null) continue;
 							using (var ia = new ImageAttributes ())
 							{
 								if (m.Alpha < 255) ia.SetColorMatrix (new ColorMatrix { Matrix33 = m.Alpha / 255f });
-								g.DrawImage (bb, new Rectangle (m.X, m.Y - Bar.BarH, m.W, m.H), 0, 0, m.W, m.H, GraphicsUnit.Pixel, ia);
+								g.DrawImage (bb, new Rectangle (m.X, m.Y, m.W, m.H), 0, 0, m.W, m.H, GraphicsUnit.Pixel, ia);
 							}
 						}
 					}
-					mdi.BackgroundImageLayout = ImageLayout.None;
-					mdi.BackgroundImage = backBmp;
-					old?.Dispose ();
-					mdi.Invalidate ();
+					desk.Back = backBmp;
+					desk.Invalidate ();
 				}
-				else if (!desktop.Checked && mdi.BackgroundImage != null) mdi.BackgroundImage = null;
+				else if (!desktop.Checked && desk.Back != null) { desk.Back = null; desk.Invalidate (); }
 			}
 		}
 

@@ -59,6 +59,12 @@ public:
 	// (the dock no longer over its bottom) -- at the start, once its children are anchored.
 	void fitWorkArea ();
 	virtual void onResized () {}
+	// The screen's size changed (GUI_EVENT_DISPLAY_RESIZE, kernel v66: the Control Panel's Display
+	// applet): an app placed by the screen's size (the menu bar, the dock...) places itself again
+	// here. Then, ~0.3 s later (the dock moved: the work area is the new one), run () fits the
+	// window: maximised, to the whole work area again (the size it goes back to kept inside it);
+	// else a window past the work area is moved into it, shrunk if it is resizable.
+	virtual void onDisplayResize (int w, int h) { (void) w; (void) h; }
 	void windowMenu ();
 
 	// Tooltips (Widget::tip): after the pointer rests ~0.6 s over a widget with a tip,
@@ -73,6 +79,10 @@ private:
 	bool     m_tipDone;			// already shown for this rest
 	bool     m_resizable, m_maxed;		// (setResizable, maximise)
 	int      m_rx, m_ry, m_rw, m_rh;	// the window's place and size before it was maximised
+	bool     m_dispPending;			// (GUI_EVENT_DISPLAY_RESIZE: displayTick fits the window)
+	unsigned m_winFlags;			// (its WIN_FLAG_*: a borderless one places itself)
+	unsigned m_dispT;
+	void displayTick ();
 	void init (unsigned *fb);		// shared ctor tail (adopt canvas + decorate + register)
 	void initApplet ();			// ... an applet's: the host's surface, no window
 	static Root *&active ();		// single active window per app (reachable from C callbacks)

@@ -119,6 +119,7 @@ int main (void)
 		pump_events ();
 		if (++g_frames >= 25) { refresh (); g_frames = 0; }	// ~every 400 ms
 		redraw ();
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

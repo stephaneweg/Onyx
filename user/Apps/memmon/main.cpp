@@ -150,6 +150,7 @@ int main (void)
 		pump_events ();
 		if (tick % 10 == 0) { parse_procs (); redraw (); }	// ~1 s (10 x 100 ms)
 		tick++;
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (100);
 	}
 	return 0;

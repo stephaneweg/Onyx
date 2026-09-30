@@ -112,6 +112,6 @@ int main (void)
 	paint_frame ();
 	kapi_set_key_handler (on_key);
 	reset ();
-	while (!should_exit ()) { pump_events (); step (); redraw (); msleep (16); }
+	while (!should_exit ()) { pump_events (); step (); redraw (); present (); msleep (16); }
 	return 0;
 }

@@ -110,7 +110,8 @@ bool wk_quit ()
 
 Root::Root (int w, int h, const char *title) : Widget (0, 0, w, h), bg (C_BG),
   m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true),
-  m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h)
+  m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h),
+  m_dispPending (false), m_winFlags (0), m_dispT (0)
 {
 	if (wk_applet ()) initApplet ();
 	else init (kapi_create_window (w, h, title));
@@ -119,7 +120,8 @@ Root::Root (int w, int h, const char *title) : Widget (0, 0, w, h), bg (C_BG),
 Root::Root (int x, int y, int w, int h, const char *title, unsigned flags)
   : Widget (0, 0, w, h), bg (C_BG),
     m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true),
-    m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h)
+    m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h),
+  m_dispPending (false), m_winFlags (flags), m_dispT (0)
 {
 	if (wk_applet ()) initApplet ();
 	else init (kapi_create_window_ex (x, y, w, h, title, flags));
@@ -171,6 +173,7 @@ void Root::run ()
 	{
 		wk_pump ();
 		onTick ();
+		displayTick ();
 		tooltipTick ();
 		if (!valid) { draw (); wk_present (); }
 		msleep (16);
@@ -228,6 +231,10 @@ void Root::ptrEvent (unsigned long, int ev, long v)
 	case GUI_EVENT_DRAG_DONE:
 		r->onDragDone (GUI_DND_PID (v), GUI_DND_FLAGS (v));
 		return;
+	case GUI_EVENT_DISPLAY_RESIZE:		// the screen's size changed (v66)
+		r->m_dispPending = true; r->m_dispT = kapi_get_ticks ();
+		r->onDisplayResize (GUI_DISPLAY_W (v), GUI_DISPLAY_H (v));
+		return;
 	case GUI_EVENT_WINCTL:			// a title button (v64): the window menu, maximise
 		if (v == KAPI_FRAME_MENU) r->windowMenu ();
 		else if (v == KAPI_FRAME_MAXIMISE) r->maximise (!r->maximised ());
@@ -284,11 +291,11 @@ void Root::maximise (bool on)
 
 void Root::fitWorkArea ()
 {
-	if (!m_resizable || m_maxed) return;
+	if (m_maxed) return;
 	struct kapi_win_geom g;
 	if (kapi_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
 	int fw = g.w - g.cw, fh = g.h - g.ch;		// the frame: title bar, borders
-	int cw = g.w > g.aw ? g.aw - fw : width, ch = g.h > g.ah ? g.ah - fh : height;
+	int cw = m_resizable && g.w > g.aw ? g.aw - fw : width, ch = m_resizable && g.h > g.ah ? g.ah - fh : height;	// (not resizable: moved only)
 	int x = g.x, y = g.y;
 	if (x + cw + fw > g.ax + g.aw) x = g.ax + g.aw - cw - fw;
 	if (y + ch + fh > g.ay + g.ah) y = g.ay + g.ah - ch - fh;
@@ -308,6 +315,41 @@ void Root::fitWorkArea ()
 		onResized ();
 	}
 	if (x != g.x || y != g.y) kapi_move_window (x, y);
+}
+
+// GUI_EVENT_DISPLAY_RESIZE, ~0.3 s later (the menu bar and the dock placed again: the work area
+// is the new screen's): a maximised window fills it again -- the place and size it goes back to
+// kept inside it -- any other is moved into it (shrunk if resizable and too big).
+void Root::displayTick ()
+{
+	if (!m_dispPending || kapi_get_ticks () - m_dispT < 30) return;
+	m_dispPending = false;
+	if (m_winFlags & WIN_FLAG_BORDERLESS) return;	// (the menu bar, the dock...: onDisplayResize)
+	if (!m_maxed) { fitWorkArea (); return; }
+	struct kapi_win_geom g;
+	if (kapi_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
+	int fw = g.w - g.cw, fh = g.h - g.ch;
+	if (m_rw > g.aw - fw) m_rw = g.aw - fw;		// (Restore: inside the new work area too)
+	if (m_rh > g.ah - fh) m_rh = g.ah - fh;
+	if (m_rx + m_rw + fw > g.ax + g.aw) m_rx = g.ax + g.aw - m_rw - fw;
+	if (m_ry + m_rh + fh > g.ay + g.ah) m_ry = g.ay + g.ah - m_rh - fh;
+	if (m_rx < g.ax) m_rx = g.ax;
+	if (m_ry < g.ay) m_ry = g.ay;
+	int cw = g.aw - fw, ch = g.ah - fh;
+	if (cw < 1 || ch < 1) return;
+	if (cw != width || ch != height)
+	{
+		int stride = cw;
+		unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+		if (fb == 0) return;
+		canvas.adopt (fb, cw, ch, stride);
+		width = cw; height = ch;
+		layout ();
+		invalidate (true);
+		wk_decorate_window ();
+		onResized ();
+	}
+	if (g.x != g.ax || g.y != g.ay) kapi_move_window (g.ax, g.ay);
 }
 
 // The workspaces' names (SD:/etc/dock.ini, "desk = name" lines: the Control Panel's Panel

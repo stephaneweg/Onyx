@@ -1,4 +1,5 @@
-// RemoteWindow.cs -- one Onyx window, as a child of the Onyx Remote window (MDI). By default a
+// RemoteWindow.cs -- one Onyx window, a child window of Onyx Remote's desktop view (the Pi's screen
+// at its size, in a scrolling area), where the Pi has it. By default a
 // native child window (its title bar, its close button) showing the Onyx window's content; with
 // "Onyx frames": its frame as the app drew it on the Pi (title bar, borders, the title buttons,
 // the rounded corners). The title bar moves the child inside Onyx Remote (not the Pi's window),
@@ -64,10 +65,11 @@ namespace OnyxRemote
 		int buttons;
 		public bool GoneOnPi;					// (the Onyx window is gone: really close)
 
-		public RemoteWindow (Connection c, uint id, bool withOnyxFrames, Form parent)
+		public RemoteWindow (Connection c, uint id, bool withOnyxFrames, Control desk)
 		{
 			conn = c; Id = id; onyxFrames = withOnyxFrames;
-			MdiParent = parent;
+			TopLevel = false;					// (a child window of the desktop view)
+			desk.Controls.Add (this);
 			FormBorderStyle = FormBorderStyle.None;
 			StartPosition = FormStartPosition.Manual;
 			MaximizeBox = false;
@@ -77,7 +79,7 @@ namespace OnyxRemote
 		}
 
 		// From the model (UI thread, under the connection's lock). top: the Pi's line at the top of
-		// the MDI area (the menu bar's height: the bar is drawn above the area).
+		// the desktop view (0: the view is the whole Pi screen).
 		public void Apply (WinModel m, int top)
 		{
 			bool sizeChanged = m.W != w || m.H != h || m.OW != ow || m.OH != oh;
@@ -169,9 +171,10 @@ namespace OnyxRemote
 				if (b == FRAME_CLOSE) conn.CloseWindow (Id);
 				else if (b >= 0) { SendPointer (e.Location, Buttons (MouseButtons), 0); return; }	// (pressed on the Pi)
 				else if (e.Button == MouseButtons.Left) { dragging = true; dragFrom = e.Location; }
-				Activate ();
+				ToFront ();
 				return;
 			}
+			ToFront ();
 			SendPointer (e.Location, Buttons (MouseButtons), 0);
 		}
 		protected override void OnMouseMove (MouseEventArgs e)
@@ -191,6 +194,7 @@ namespace OnyxRemote
 		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
 		{
 			const int WM_KEYDOWN = 0x100, WM_SYSKEYDOWN = 0x104;
+			if (keyData == Keys.F11) return base.ProcessCmdKey (ref msg, keyData);	// (Onyx Remote's: the full screen)
 			if (msg.Msg == WM_KEYDOWN || msg.Msg == WM_SYSKEYDOWN)
 			{
 				Keys k = keyData & Keys.KeyCode;
@@ -222,7 +226,14 @@ namespace OnyxRemote
 		}
 
 		// ---- focus, closing ----
-		protected override void OnActivated (EventArgs e) { base.OnActivated (e); conn.Raise (Id); }
+		// clicked (or given the keys): in front here, raised on the Pi -- it gets the keyboard there
+		public void ToFront ()
+		{
+			if (!ContainsFocus) Focus ();
+			BringToFront ();
+			conn.Raise (Id);
+		}
+		protected override void OnEnter (EventArgs e) { base.OnEnter (e); BringToFront (); conn.Raise (Id); }
 		protected override void OnFormClosing (FormClosingEventArgs e)
 		{
 			if (!GoneOnPi && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; conn.CloseWindow (Id); }	// (its close button: the app closes)

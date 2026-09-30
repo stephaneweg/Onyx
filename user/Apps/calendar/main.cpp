@@ -249,6 +249,6 @@ int main (void)
 	}
 	kapi_set_key_handler (on_key);
 	kapi_set_click_handler (on_click);
-	while (!should_exit ()) { pump_events (); redraw (); msleep (16); }
+	while (!should_exit ()) { pump_events (); redraw (); present (); msleep (16); }
 	return 0;
 }

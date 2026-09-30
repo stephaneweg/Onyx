@@ -71,6 +71,7 @@ int main (void)
 	while (!should_exit ())
 	{
 		pump_events ();
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (50);
 	}
 	return 0;

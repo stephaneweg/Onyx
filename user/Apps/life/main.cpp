@@ -115,6 +115,7 @@ int main (void)
 		pump_events ();
 		if (g_run && ++g_frames >= 6) { step (); g_frames = 0; }
 		redraw ();
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

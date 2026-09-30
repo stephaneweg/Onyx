@@ -133,6 +133,7 @@ namespace OnyxRemote
 				break;
 			}
 			case 2: Windows.Remove (U32 (p, 0)); break;	// GONE
+			case 8: ScreenW = U16 (p, 0); ScreenH = U16 (p, 2); break;	// SCREEN: the Pi's screen's new size
 			case 3:		// ZORDER
 			{
 				int n = U16 (p, 0);

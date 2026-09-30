@@ -444,6 +444,16 @@ public:
 	}
 	void closeDrawer () { if (g_open >= 0) openDrawer (-1); }
 
+	// The screen's new size (kernel v66): along its bottom again, laid out for its width.
+	void onDisplayResize (int w, int h) override
+	{
+		g_sw = w; g_sh = h;
+		g_open = -1; tip = 0;
+		::layout ();
+		placeWindow ();
+		invalidate (true);
+	}
+
 	void reload ()
 	{
 		wk_theme_reload ();

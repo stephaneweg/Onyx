@@ -34,7 +34,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        calendar mandelbrot minesweeper paint \
-       eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf keyconf cardfile ledger
+       eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf displayconf keyconf cardfile ledger
 
 APP_ELFS = $(APPS:=.elf)
 

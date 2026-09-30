@@ -589,8 +589,11 @@ static void vol_set_at (int x)
 	g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; g_dirty = true;
 }
 
+static int g_newW = 0, g_newH = 0;		// (GUI_EVENT_DISPLAY_RESIZE: the main loop applies it)
+
 static void ptr (unsigned long, int ev, long v)
 {
+	if (ev == GUI_EVENT_DISPLAY_RESIZE) { g_newW = GUI_DISPLAY_W (v); g_newH = GUI_DISPLAY_H (v); return; }
 	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v), c = GUI_PTR_CHANGED (v);
 	int t = title_at (x, y);
 	switch (ev)
@@ -728,6 +731,17 @@ int main (void)
 	for (;;)
 	{
 		pump_events ();
+		if (g_newW > 0)					// the screen's new size: the bar across it
+		{
+			int w = g_newW, h = g_newH, stride = w;
+			g_newW = 0;
+			g_volOpen = false; g_calOpen = false; close_menu ();
+			unsigned *fb = kapi_resize_window2 (w, h, &stride);	// (the canvas: the whole screen, for the drop-downs)
+			if (fb != 0) { g_fb = fb; g_sw = w; g_sh = h; g_cv.adopt (fb, w, h, stride); }
+			kapi_resize_window (g_sw, BAR_H);
+			layout_titles ();
+			g_dirty = true;
+		}
 		unsigned s = kapi_get_menu (spec, sizeof spec, title, sizeof title);
 		if (s != serial)
 		{

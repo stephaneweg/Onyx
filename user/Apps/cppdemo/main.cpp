@@ -62,6 +62,7 @@ int main (void)
 		for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) fb[y * W + x] = bg;
 		wtk::draw_text (fb, W, H, 8, 8, g_banner.text, wtk::C_TEXT);	// proves the ctor ran
 		for (int i = 0; i < N; i++) g_shapes[i]->draw ();	// virtual dispatch
+		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 

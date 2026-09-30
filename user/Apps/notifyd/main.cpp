@@ -88,6 +88,11 @@ static void show_next (void)
 static void ptr (unsigned long, int ev, long v)
 {
 	if (ev == GUI_EVENT_PTR_DOWN && (GUI_PTR_CHANGED (v) & 1)) g_click = true;
+	if (ev == GUI_EVENT_DISPLAY_RESIZE)			// the screen's new size: its top right corner
+	{
+		g_sw = GUI_DISPLAY_W (v);
+		if (g_state != IDLE) kapi_move_window (g_sw - NW - MARGIN, TOP);
+	}
 }
 
 int main (void)
