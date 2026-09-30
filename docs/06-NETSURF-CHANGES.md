@@ -880,6 +880,13 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   **CSS Font Loading API**: `FontFace` (a URL or bytes) and `document.fonts` (a `FontFaceSet`:
   `add`, `ready`, `load`, `loading` / `loadingdone`), a script's faces given to NetSurf's font
   code (`N.addFontFace` -> `onyx_webfont_add_script_face`) and the page laid out again.
+- **Style sheets after the layout**: a `<style>` or `<link>` a script adds, changes or takes
+  out once the page is laid out now restyles it -- NetSurf ignored them ("NS layout is
+  static"): the selection context is made again from the sheets there now and the boxes built
+  again (`html_css_restyle`, css.c; `html_css_node_removed` from `DOMNodeRemoved`,
+  dom_event.c). Facebook's Bloks screens (`.wbloks_1 { display: flex }`, a `<style>` added by
+  the script) were laid out as blocks. The UA sheet hides `link`, `meta`, `base`, `area`,
+  `param` too (a `<link>` in the body made a line). Test: js-latesheets.
 - **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
   first context of the process, their bytecode kept and read back in the next ones
   (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms

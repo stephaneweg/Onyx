@@ -104,6 +104,11 @@ bool html_css_process_style(struct html_content *htmlc, dom_node *node);
  */
 bool html_css_update_style(struct html_content *htmlc, dom_node *node);
 
+/**
+ * Onyx: a node taken out of the document -- a <style> or <link>'s sheet no longer applies.
+ */
+void html_css_node_removed(struct html_content *htmlc, dom_node *node);
+
 
 
 #endif
