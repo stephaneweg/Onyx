@@ -362,8 +362,11 @@ static int selftest (int W, int H)
 	// over what the target holds (KEEP), and into an ARGB target (the alpha kept)
 	{
 		gpc_target TG = { pg, W, H, stride, 0 }, TC = { pc, W, H, W, 0 };
-		for (int i = 0; i < W * H; i++) pc[i] = 0x00336699;
-		for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) pg[y * stride + x] = 0x00336699;
+		// (a pattern, not one colour: a target loaded from the wrong rows must show -- the load
+		// packet's stride was 8 times too small, kern/v3d_cl.h)
+		for (int y = 0; y < H; y++)
+			for (int x = 0; x < W; x++)
+				pc[y * W + x] = pg[y * stride + x] = ((unsigned) (x * 3) & 0xFF) << 16 | ((unsigned) (y * 5) & 0xFF) << 8 | (((x ^ y) & 16) ? 0xE0 : 0x30);
 		int n = scene_layers (&SG, 2500, W, H, LG); scene_layers (&SC, 2500, W, H, LC);
 		gpc_composite (G, &TG, LG + 1, n - 1, 0, 0); gpc_composite (C, &TC, LC + 1, n - 1, 0, 0);
 		compare ("over the target's pixels (no clear)", pg, pc, W, H, 0, allow);

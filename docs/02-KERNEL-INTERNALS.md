@@ -1323,6 +1323,16 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   `DST_COLOR / ZERO`, premultiplied `ONE / INV_SRC_ALPHA`) and one `VERTEX_ARRAY_PRIMS` over its
   range of the vertex buffer. `KAPI_GPU_F_KEEP` loads each tile from the target first
   (`LOAD_TILE_BUFFER_GENERAL`, raster RGBA8, alpha forced to 1) instead of clearing it.
+  The target's load and store packets are built in one place (`V3dLoadTarget` /
+  `V3dStoreTarget`, `kern/v3d_cl.h`). **Fixed (2026-09-30):** the load packet's packed
+  bit-fields lacked 3 bits of padding after `r_b_swap`, so its stride landed at bit 25 instead
+  of 28 and the V3D read it divided by 8 — every frame drawn over the target's pixels (the
+  compositing service without a clear; `gpcdemo test`'s "over the target's pixels" failed on
+  the Pi) loaded the wrong rows. `tools/tests/run_v3d_cl_test.sh` now checks each field of the
+  load / store packets against Mesa's `v3d_packet.xml` positions, and the PC's software V3D
+  (`tools/tests/gpucomp/hostkapi.cpp`) decodes the kernel's own packets for the target's stride
+  (it re-implemented the frame and could not see the packets; `gpcdemo test` also drew over a
+  single colour, which hid wrong rows — it draws over a pattern now).
 - **Shaders of v53** (hand-written: [`sys/v3d_shaders.qasm`](../kernel/sys/v3d_shaders.qasm) →
   `v3d_shaders.inc`, assembled by `tools/qpu/qpuasm`, see below): `VS_CLIP` — the 10 inputs,
   the matrix product (16 `ldunif`), 1/w on the SFU (`recip`, r4), Xs Ys in 24.8 fixed point,

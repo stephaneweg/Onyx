@@ -20,10 +20,11 @@
 #include <pthread.h>
 #include <vector>
 #include <map>
+#include <assert.h>
 #include <kern/kapi_abi.h>
+#include <kern/v3d_cl.h>		// (the kernel's packets: its target's load and store, decoded below)
 #include "qpusim.h"
 
-typedef unsigned long long u64;
 #include "../../../kernel/sys/v3d_shaders.inc"
 
 static TKApiTable *T;
@@ -97,6 +98,19 @@ static int h_gpu_texture_rect (int handle, int x, int y, int w, int h, const uns
 }
 static void *h_gpu_vbuf (unsigned n) { return g_soft ? calloc (1, n) : 0; }
 
+// a packet's field at the bits the V3D reads it from (Mesa's v3d_packet.xml: the bits after the opcode)
+template <class P> static unsigned long long pk_field (const P &p, int start, int size)
+{
+	unsigned char b[sizeof p]; memcpy (b, &p, sizeof p);
+	unsigned long long v = 0;
+	for (int i = 0; i < size; i++)
+	{
+		int k = start + i;
+		if (1 + k / 8 < (int) sizeof p && ((b[1 + k / 8] >> (k % 8)) & 1)) v |= 1ull << i;
+	}
+	return v;
+}
+
 // the edge a -> b (1/256 pixel units), the point p: > 0 inside for a counter-clockwise triangle in y down
 static long long edge (long long ax, long long ay, long long bx, long long by, long long px, long long py)
 { return (bx - ax) * (py - ay) - (by - ay) * (px - ax); }
@@ -108,13 +122,24 @@ static int h_gpu_render (const kapi_gpu_frame *f, const kapi_gpu_vertex3 *v, uns
 	int W = f->w, H = f->h;
 	if (!f->pixels || W <= 0 || H <= 0 || W > 2048 || H > 2048 || f->stride < W) return -2;
 	bool alpha = (f->flags & KAPI_GPU_F_ALPHA) != 0, keep = (f->flags & KAPI_GPU_F_KEEP) != 0;
+	// the target's load and store: the kernel's own packets (kern/v3d_cl.h V3dLoadTarget / V3dStoreTarget,
+	// as sys/v3d.cpp BuildRCL emits them for a canvas), their stride and format read where the V3D reads
+	// them -- a packet laid out wrong loads / stores the wrong rows here too
+	LoadTileBufferGeneral ldp = V3dLoadTarget (true, alpha, (u32) f->stride * 4, 0);
+	StoreTileBufferGeneral stp = V3dStoreTarget (true, (u32) f->stride * 4, 0);
+	long ldStride = (long) pk_field (ldp, 28, 20) / 4, stStride = (long) pk_field (stp, 28, 20) / 4;
+	if (pk_field (ldp, 12, 6) != V3D_OUTPUT_IMAGE_FORMAT_RGBA8 || pk_field (stp, 12, 6) != V3D_OUTPUT_IMAGE_FORMAT_RGBA8 ||
+	    pk_field (ldp, 4, 3) != V3D_TILING_RASTER || pk_field (stp, 4, 3) != V3D_TILING_RASTER ||
+	    pk_field (ldp, 20, 1) != 1 || pk_field (stp, 20, 1) != 1)
+	{ fprintf (stderr, "hostkapi: the kernel's target packets are not raster RGBA8, R / B swapped\n"); return -2; }
+	if (stStride < W) { fprintf (stderr, "hostkapi: the kernel's store packet: a stride of %ld pixels\n", stStride); return -2; }
 	// the tile buffer: RGBA floats 0..1
 	std::vector<float> tb ((size_t) W * H * 4);
 	std::vector<unsigned char> top ((size_t) W * H);		// (the stored top byte when alpha is not written)
 	for (int y = 0; y < H; y++)
 		for (int x = 0; x < W; x++)
 		{
-			unsigned c = keep ? f->pixels[(long) y * f->stride + x] : (alpha ? f->clear : f->clear & 0xFFFFFF);
+			unsigned c = keep ? f->pixels[(long) y * ldStride + x] : (alpha ? f->clear : f->clear & 0xFFFFFF);
 			float *p = &tb[((size_t) y * W + x) * 4];
 			p[0] = ((c >> 16) & 255) / 255.0f; p[1] = ((c >> 8) & 255) / 255.0f; p[2] = (c & 255) / 255.0f; p[3] = (c >> 24) / 255.0f;
 			top[(size_t) y * W + x] = (unsigned char) (c >> 24);
@@ -207,7 +232,7 @@ static int h_gpu_render (const kapi_gpu_frame *f, const kapi_gpu_vertex3 *v, uns
 			const float *p = &tb[((size_t) y * W + x) * 4];
 			unsigned c = (unsigned) lrintf (p[0] * 255) << 16 | (unsigned) lrintf (p[1] * 255) << 8 | (unsigned) lrintf (p[2] * 255);
 			c |= (alpha ? (unsigned) lrintf (p[3] * 255) : top[(size_t) y * W + x]) << 24;
-			f->pixels[(long) y * f->stride + x] = c;
+			f->pixels[(long) y * stStride + x] = c;
 		}
 	return 0;
 }
