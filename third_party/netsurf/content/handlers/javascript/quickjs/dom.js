@@ -255,7 +255,7 @@ function inlineHandler(node, type) {
 	if (typeof h === 'function')
 		return h;
 	if (node === G && WINDOW_EVENTS.has(type)) {
-		const b = G.document.body;
+		const b = G.document && G.document.body;	/* (Onyx: a worker has no document) */
 		return b ? inlineHandler(b, type) : null;
 	}
 	if (node instanceof Element) {

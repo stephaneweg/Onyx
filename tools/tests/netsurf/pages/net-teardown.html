@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Teardown</title></head>
+<body><p>Sockets, streams and workers left open when the page goes (nettest.sh)</p>
+<script>
+const log = s => console.log(s);
+if (location.search === '?2') {
+	log('teardown second page');
+} else {
+	const ws = new WebSocket('ws://' + location.host + '/ws/echo');
+	ws.onopen = () => setInterval(() => ws.send('tick'), 20);
+	const es = new EventSource('/sse');
+	const w = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(1), 5); onmessage = () => {};'])));
+	let n = 0;
+	w.onmessage = () => n++;
+	fetch('/chunks').then(r => r.body.getReader().read());
+	const x = new XMLHttpRequest();
+	x.open('GET', '/chunks');
+	x.onprogress = () => {};
+	x.send();
+	setTimeout(() => { log('teardown leaving ' + (n > 0)); location.href = '?2'; }, 800);
+}
+</script></body></html>
