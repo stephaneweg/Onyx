@@ -1,0 +1,26 @@
+<!DOCTYPE html><html><head><title>late style sheets</title><style id="s0">.y0{display:flex}</style></head><body>
+<!-- the style sheets added, emptied and taken out after the page is laid out (Onyx: they
+     were ignored after the conversion: Facebook's Bloks) -->
+<div id="w"><style>.y1{display:flex}</style></div>
+<div id="a" class="y0">A</div><div id="b" class="y1">B</div><div id="c" class="y2">C</div>
+<script>
+function d(i) { return getComputedStyle(document.getElementById(i)).display; }
+window.addEventListener('load', function () {
+	setTimeout(function () {
+		var s = document.createElement('style');
+		document.head.appendChild(s);
+		s.textContent = '.y2{display:flex}';
+		setTimeout(function () {
+			console.log('late added ' + d('c'));
+			var s0 = document.getElementById('s0');
+			s0.remove();
+			document.getElementById('w').remove();
+			setTimeout(function () {
+				console.log('late removed ' + d('a') + ' ' + d('b'));
+				document.head.appendChild(s0);
+				setTimeout(function () { console.log('late back ' + d('a')); }, 200);
+			}, 200);
+		}, 200);
+	}, 100);
+});
+</script></body></html>

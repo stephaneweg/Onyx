@@ -255,12 +255,14 @@ parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 		input->leftover = false;
 	}
 
-	/* Onyx: go on while the read codec holds characters it decoded but the pivot had no
-	 * room for -- even when the input is all read (they were lost: the last character of
-	 * a 65-byte inline style, a stylesheet's last bytes...) */
-	for (bool more = *len > 0; more; ) {
+	/* Onyx: go round once more after the decoder said "no room" (NOMEM): it may hold
+	 * characters it decoded but could not write into the pivot although the source is
+	 * all read -- a decode with no source flushes them. Without it, the last character of
+	 * a 65-byte (UTF-8) input was lost: nothing more came to flush it at the end. */
+	parserutils_error last_read = PARSERUTILS_OK;
+	while (*len > 0 || last_read == PARSERUTILS_NOMEM) {
 		parserutils_error read_error, write_error;
-		size_t pivot_len = sizeof(input->pivot_buf);
+		size_t pivot_len = sizeof(input->pivot_buf), produced;
 		uint8_t *pivot = (uint8_t *) input->pivot_buf;
 
 		read_error = parserutils_charset_codec_decode(input->read_codec,
@@ -269,6 +271,7 @@ parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 
 		pivot = (uint8_t *) input->pivot_buf;
 		pivot_len = sizeof(input->pivot_buf) - pivot_len;
+		produced = pivot_len;
 
 		if (pivot_len > 0) {
 			write_error = parserutils_charset_codec_encode(
@@ -286,18 +289,20 @@ parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 			}
 		}
 
-		if (read_error != PARSERUTILS_OK && 
+		if (read_error != PARSERUTILS_OK &&
 				read_error != PARSERUTILS_NOMEM)
 			return read_error;
-
-		more = *len > 0 || read_error == PARSERUTILS_NOMEM;
+		/* (no progress with nothing left to read: stop) */
+		if (read_error == PARSERUTILS_NOMEM && *len == 0 && produced == 0)
+			break;
+		last_read = read_error;
 	}
 
 	return PARSERUTILS_OK;
 #endif
 }
 
-/* Onyx: documented in filter.h */
+/* Onyx: does the filter hold converted data it could not write yet? */
 bool parserutils__filter_pending(parserutils_filter *input)
 {
 #ifndef WITHOUT_ICONV_FILTER

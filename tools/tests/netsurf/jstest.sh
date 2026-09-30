@@ -74,6 +74,32 @@ grep "^console: FAIL \|^JS " "$L" | sed 's/^/  FAIL  /'
 if grep -q "^console: FAIL " "$L" || [ "$n_ok" -lt 9 ]; then fail=1; fi
 echo "  $n_ok checks passed"
 
+echo "js-dynimport.html (import() by a URL computed when it runs)"
+L=$OUT/js-dynimport.log
+run js-dynimport.html "$(waits 60)" "$L"
+for s in "dynimport string kept true" "dynimport method 1" "dynimport module 2" "dynimport classic c-loaded"; do
+	expect "$L" "$s"
+done
+
+echo "js-svgns.html (createElementNS: SVG elements made by a script)"
+L=$OUT/js-svgns.log
+run js-svgns.html "$(waits 40)" "$L"
+expect "$L" "ns http://www.w3.org/2000/svg true linearGradient 0 0 10 10 0 0 10 10 true"
+
+echo "js-fontface.html (the CSS Font Loading API: FontFace, document.fonts)"
+L=$OUT/js-fontface.log
+run js-fontface.html "$(waits 80)" "$L"
+for s in "fontface status unloaded true" "fontface ready loaded 1" "fontface wider true"; do
+	expect "$L" "$s"
+done
+
+echo "js-latesheets.html (style sheets added and taken out after the layout)"
+L=$OUT/js-latesheets.log
+run js-latesheets.html "$(waits 80)" "$L"
+for s in "late added flex" "late removed block block" "late back flex"; do
+	expect "$L" "$s"
+done
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"
@@ -138,6 +164,23 @@ expect "$L" "reveal content true"
 expect "$L" "reveal fallback gone true"
 expect "$L" "reveal after kept true"
 
+# Onyx: the HTML5 checks -- each page logs "OK <area> name" / "FAIL <area> name" and ends
+# with "<area> done N" (N checks)
+html5page() {	# html5page <page> <area> <what>
+	echo "$1 ($3)"
+	L=$OUT/${1%.html}.log
+	run "$1" "$(waits 150)" "$L"
+	grep "^console: FAIL $2 " "$L" | sed 's/^console: /  /'
+	if grep -q "^console: FAIL $2 " "$L" || ! grep -q "^console: $2 done" "$L"; then
+		echo "  FAIL  ($2: not all run: $L)"; fail=1
+	else
+		echo "  ok: $(grep -c "^console: OK $2 " "$L") checks"
+	fi
+}
+html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, templates, DOMParser; messaging"
+html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
+html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs, microdata, performance marks, XHR documents"
+html5page js-ce.html ce "custom elements: define, upgrades (the parser's too), lifecycle callbacks"
 echo "canvas-api.html (<canvas> 2D: state, paths, pixels, text, images, OffscreenCanvas)"
 L=$OUT/canvas-api.log
 run canvas-api.html "$(waits 80)" "$L"
@@ -193,6 +236,15 @@ expect "$L" "math e 31px"
 expect "$L" "math g 40px"
 expect "$L" "math h 50px"
 if grep -q "^console: math f 81px" "$L" && grep -q "^console: math i 40px" "$L"; then echo "  ok    10dvw, 5cqi"; else echo "  FAIL  10dvw, 5cqi: $(grep '^console: math [fi]' "$L" | tr '\n' ' ')"; fail=1; fi
+echo "js-intl.html (Intl and the locale built-ins, against Chrome's answers: intl/mkpage.js)"
+L=$OUT/js-intl.log
+run js-intl.html "$(waits 40)" "$L"
+grep "^console: FAIL \|^intl.js: \|^JS " "$L" | head -10 | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL \|^intl.js: " "$L"; then fail=1; fi
+sed -n 's/^console: \(intl [0-9]* \/ [0-9]* as Chrome\)$/  \1/p' "$L"
+expect "$L" "intl default fr-FR string"
+expect "$L" "intl zone agrees true"
+expect "$L" "intl done"
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

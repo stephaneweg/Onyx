@@ -165,7 +165,9 @@ fieldset { display: block; border: 2px groove #efefef; margin: 0 2px;
 	padding: .35em .75em .625em; }
 legend { display: block; padding: 0 2px; }
 
-noembed { display: none; }
+/* (Onyx: the other hidden elements are with [hidden] at the top: a <link> in the
+ * body made a line) */
+noembed, noframes { display: none; }
 
 /* HTML5 elements */
 article, aside, figcaption, footer, header, main, nav, section, hgroup,
@@ -178,3 +180,21 @@ mark {
 	background: yellow;
 	color: black;
 }
+
+/* Onyx: the HTML standard's rendering of the HTML5 elements (the HTML5 DOM work: a block of
+ * its own) */
+[hidden] { display: none; }
+template, datalist, rp { display: none; }
+dialog, details, summary, search, hgroup, menu, dir, legend, listing, plaintext, xmp {
+	display: block; }
+menu, dir { padding-left: 40px; margin: 1.12em 0; list-style-type: disc; }
+listing, plaintext, xmp { font-family: monospace; white-space: pre; margin: 1em 0; }
+details > summary:first-of-type { display: list-item; list-style-type: disc; cursor: pointer; }
+details:not([open]) > :not(summary) { display: none; }
+dialog:not([open]) { display: none; }
+dialog { position: absolute; left: 0; right: 0; width: fit-content; height: fit-content;
+	margin: auto; border: solid 2px; padding: 1em; background: white; color: black; }
+rt { font-size: 50%; }
+meter, progress { display: inline-block; vertical-align: -0.2em; width: 10em; height: 1em;
+	background-color: #e6e6e6; border: 1px solid #b5b5b5; box-sizing: border-box; }
+selectedcontent { display: contents; }

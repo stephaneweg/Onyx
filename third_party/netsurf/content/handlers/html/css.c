@@ -43,6 +43,7 @@
 #include "html/html.h"
 #include "javascript/js.h"
 #include "html/private.h"
+#include "html/onyx_webfont.h"
 #include "html/css.h"
 
 static nsurl *html_default_stylesheet_url;
@@ -84,6 +85,25 @@ static nserror css_error_to_nserror(css_error error)
 		break;
 	}
 	return NSERROR_CSS;
+}
+
+
+/* Onyx: the style sheets changed after the conversion (a sheet come, replaced or gone):
+ * the selection context is made again from the sheets there now and the boxes built
+ * again (html_script_dom_changed). Before the conversion the context is made then. */
+static void html_css_restyle(html_content *c)
+{
+	css_select_ctx *ctx = NULL;
+
+	if (!c->conversion_begun && c->early_layout)
+		c->early_stale = true;	/* (the early boxes made again when asked) */
+	if (!c->conversion_begun || c->select_ctx == NULL || c->aborted)
+		return;
+	if (html_css_new_selection_context(c, &ctx) != NSERROR_OK)
+		return;
+	css_select_ctx_destroy(c->select_ctx);
+	c->select_ctx = ctx;
+	html_script_dom_changed(c);
 }
 
 
@@ -149,6 +169,14 @@ html_convert_css_callback(hlcache_handle *css,
 	/* Onyx: a script waiting for the sheets runs now they are in */
 	if (event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR)
 		html_script_sheets_arrived(parent);
+	/* Onyx: a sheet come after the conversion (a script's <style> or <link>: Facebook's
+	 * Bloks, the single-page apps) restyles the page -- it was ignored */
+	if (event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR)
+		html_css_restyle(parent);
+	/* Onyx: a sheet come after the conversion (a script's <link>): its web fonts
+	 * (@font-face) too -- the conversion's scan saw only the sheets before it */
+	if (event->type == CONTENT_MSG_DONE && parent->conversion_begun)
+		onyx_webfont_scan(parent);
 
 	if (html_can_begin_conversion(parent)) {
 		html_begin_conversion(parent);
@@ -265,6 +293,7 @@ html_create_style_element(html_content *c, dom_node *style)
 	c->stylesheets[c->stylesheet_count].node = dom_node_ref(style);
 	c->stylesheets[c->stylesheet_count].sheet = NULL;
 	c->stylesheets[c->stylesheet_count].modified = false;
+	c->stylesheets[c->stylesheet_count].removed = false;
 	c->stylesheets[c->stylesheet_count].unused = false;
 	c->stylesheet_count++;
 
@@ -289,19 +318,24 @@ html_css_process_modified_style(html_content *c, struct html_stylesheet *s)
 		NSLOG(netsurf, INFO, "Updating sheet %p with %p", s->sheet,
 		      sheet);
 
-		if (s->sheet != NULL) {
-			switch (content_get_status(s->sheet)) {
+		hlcache_handle *old = s->sheet;
+
+		s->sheet = sheet;
+		/* Onyx: the laid out page's selection context made again without the
+		 * old sheet before it goes (the new one joins when it is done) */
+		html_css_restyle(c);
+		if (old != NULL) {
+			switch (content_get_status(old)) {
 			case CONTENT_STATUS_DONE:
 				break;
 			default:
-				hlcache_handle_abort(s->sheet);
+				hlcache_handle_abort(old);
 				c->base.active--;
 				NSLOG(netsurf, INFO, "%d fetches active",
 				      c->base.active);
 			}
-			hlcache_handle_release(s->sheet);
+			hlcache_handle_release(old);
 		}
-		s->sheet = sheet;
 	}
 
 	s->modified = false;
@@ -381,6 +415,15 @@ bool html_css_process_style(html_content *c, dom_node *node)
 		return false;
 	}
 
+	/* Onyx: a <style> put back (html_css_node_removed): its rules again */
+	if (s->removed) {
+		s->removed = false;
+		s->unused = false;
+		if (s->sheet == NULL)
+			return html_css_update_style(c, node);
+		html_css_restyle(c);
+	}
+
 	exc = dom_element_get_attribute(node, corestring_dom_media, &val);
 	if (exc == DOM_NO_ERR && val != NULL) {
 		if (strcasestr(dom_string_data(val), "screen") == NULL &&
@@ -392,6 +435,40 @@ bool html_css_process_style(html_content *c, dom_node *node)
 	}
 
 	return true;
+}
+
+
+/* exported function documented in html/css.h (Onyx) */
+void html_css_node_removed(html_content *c, dom_node *node)
+{
+	unsigned int i;
+
+	bool changed = false;
+
+	/* the <style>s and <link>s in the subtree taken out of the document: their rules no
+	 * longer apply (a theme switched, a single-page app's view gone) */
+	for (i = STYLESHEET_START; i < c->stylesheet_count; i++) {
+		struct html_stylesheet *s = &c->stylesheets[i];
+		dom_node *n, *p;
+
+		if (s->node == NULL || s->removed)
+			continue;
+		n = dom_node_ref(s->node);
+		while (n != NULL && n != node) {
+			if (dom_node_get_parent_node(n, &p) != DOM_NO_ERR)
+				p = NULL;
+			dom_node_unref(n);
+			n = p;
+		}
+		if (n != NULL) {
+			dom_node_unref(n);
+			s->removed = true;
+			s->unused = true;
+			changed = true;
+		}
+	}
+	if (changed)
+		html_css_restyle(c);
 }
 
 
@@ -480,6 +557,7 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	 * rules) -- a ref, released with the sheets */
 	htmlc->stylesheets[htmlc->stylesheet_count].node = dom_node_ref(node);
 	htmlc->stylesheets[htmlc->stylesheet_count].modified = false;
+	htmlc->stylesheets[htmlc->stylesheet_count].removed = false;
 	htmlc->stylesheets[htmlc->stylesheet_count].unused = false;
 
 	/* start fetch */
@@ -676,6 +754,10 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 
 	/* check that the base stylesheet loaded; layout fails without it */
 	if (c->stylesheets[STYLESHEET_BASE].sheet == NULL) {
+		return NSERROR_CSS_BASE;
+	}
+	/* Onyx: (nor before it is fetched: a script's getComputedStyle during the parse) */
+	if (hlcache_handle_get_content(c->stylesheets[STYLESHEET_BASE].sheet) == NULL) {
 		return NSERROR_CSS_BASE;
 	}
 

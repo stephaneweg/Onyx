@@ -1635,6 +1635,9 @@ dom_exception _dom_element_get_attr(struct dom_element *element,
  * \param value      The value of the new attribute
  * \return DOM_NO_ERR on success, appropriate dom_exception on failure.
  */
+/* Onyx: set by the HTML parser's binding while it adds a token's attributes */
+bool _dom_element_parser_attrs;
+
 dom_exception _dom_element_set_attr(struct dom_element *element,
 		dom_string *namespace, dom_string *name, dom_string *value)
 {
@@ -1642,7 +1645,9 @@ dom_exception _dom_element_set_attr(struct dom_element *element,
 	dom_node_internal *e = (dom_node_internal *) element;
 	dom_exception err;
 
-	if (_dom_validate_name(name) == false)
+	/* Onyx: the HTML parser's attribute names are what the tokeniser made (any
+	 * character but whitespace, '/', '>', '=' first): no XML name check for them */
+	if (!_dom_element_parser_attrs && _dom_validate_name(name) == false)
 		return DOM_INVALID_CHARACTER_ERR;
 
 	/* Ensure element can be written */

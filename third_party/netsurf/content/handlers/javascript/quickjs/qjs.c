@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <strings.h>
 #include <stdint.h>
 
@@ -65,12 +66,18 @@
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/form_internal.h"
+#include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
+#include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
+#include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
 
 #include "javascript/js.h"
+#include "html/onyx_webfont.h"
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
+#include "qjs_html5_js.h"	/* Onyx: html5.js, the same way */
 #include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
+#include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -120,6 +127,13 @@ struct jsthread {
 	bool pending_destroy;
 	int in_use;			/* calls into JS nested */
 	bool dirty;			/* the DOM changed: a new layout due */
+	int forced_layouts;		/* Onyx: layouts a script's reads forced this turn */
+	nsurl *url_override;		/* Onyx: history.pushState's URL (the document's now) */
+	JSValue ce_hook;		/* Onyx: html5.js' custom elements check of an element
+					 * the parser inserted (undefined: none defined) */
+	dom_node **ce_pending;		/* Onyx: the elements inserted, for ce_hook (later: the
+					 * DOM is read-only in a mutation event) */
+	int ce_npending, ce_cappending;
 	struct qjs_wrap *wraps;		/* dom_node -> its wrapper (open addressing) */
 	size_t nwraps, capwraps;
 	JSValue protos[QP_COUNT];
@@ -180,8 +194,14 @@ static void qjs_report(JSContext *ctx, const char *where)
 static void qjs_thread_free(jsthread *t);
 static void qjs_load_later(void *p);
 
+static void qjs_ce_flush(jsthread *t);
+static void qjs_ce_later(void *p);
+
 static void qjs_enter(jsthread *t)
 {
+	/* Onyx: the custom elements the parser inserted since, upgraded before any script */
+	if (t->in_use == 0 && t->ce_npending > 0)
+		qjs_ce_flush(t);
 	if (t->in_use++ == 0 && t->heap != NULL)
 		t->heap->start = qjs_now_ms();
 }
@@ -216,6 +236,7 @@ static void qjs_leave(jsthread *t)
 				t->heap->start = qjs_now_ms();
 		}
 	}
+	t->forced_layouts = 0;
 	if (t->dirty) {
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
@@ -319,22 +340,49 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 	dom_node_get_node_type(n, &type);
 	switch (type) {
 	case DOM_ELEMENT_NODE: {
-		dom_string *name = NULL;
+		dom_string *name = NULL, *ns = NULL;
 		JSValue p = JS_UNDEFINED;
+		/* Onyx: the element's namespace picks its class: "svg:<name>" / "svg:*",
+		 * "math:*" in dom.js's TAGS; an HTML name of no class and without a '-' (not
+		 * a custom element's) is an HTMLUnknownElement ("*unknown") */
+		const char *pfx = "";
+		bool unknown_ok = true;
 
+		dom_node_get_namespace(n, &ns);
+		if (ns != NULL) {
+			if (dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_SVG]))
+				pfx = "svg:";
+			else if (dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_MATHML]))
+				pfx = "math:";
+			dom_string_unref(ns);
+		}
 		if (dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
-			char tag[32];
-			size_t len = dom_string_byte_length(name), i;
+			char tag[48];
+			size_t len = dom_string_byte_length(name), i, o = strlen(pfx);
 
-			if (len < sizeof(tag)) {
+			if (len + o < sizeof(tag)) {
+				memcpy(tag, pfx, o);
 				for (i = 0; i < len; i++) {
 					char ch = dom_string_data(name)[i];
-					tag[i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
+					tag[o + i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
+					if (ch == '-')
+						unknown_ok = false;
 				}
-				tag[len] = '\0';
+				tag[o + len] = '\0';
 				p = JS_GetPropertyStr(t->ctx, t->tag_protos, tag);
 			}
 			dom_string_unref(name);
+		}
+		if (!JS_IsObject(p) && pfx[0] != '\0') {
+			char any[8];
+			JS_FreeValue(t->ctx, p);
+			snprintf(any, sizeof(any), "%s*", pfx);
+			p = JS_GetPropertyStr(t->ctx, t->tag_protos, any);
+		} else if (!JS_IsObject(p)) {
+			/* ("*custom": a name with a '-', HTMLElement until it is upgraded) */
+			JS_FreeValue(t->ctx, p);
+			p = JS_GetPropertyStr(t->ctx, t->tag_protos,
+					unknown_ok ? "*unknown" : "*custom");
 		}
 		if (JS_IsObject(p))
 			return p;
@@ -473,8 +521,19 @@ static JSValue n_type(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 
 static JSValue n_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-	dom_string *s = NULL;
+	dom_string *s = NULL, *ns = NULL;
+	dom_node_type type = DOM_ELEMENT_NODE;
 	QJS_NODE_ARG(n, 0);
+	/* Onyx: an element outside the HTML namespace keeps its name's case (libdom's
+	 * nodeName upper-cases every element of an HTML document: an SVG's linearGradient) */
+	dom_node_get_node_type(n, &type);
+	if (type == DOM_ELEMENT_NODE && dom_node_get_namespace(n, &ns) == DOM_NO_ERR &&
+	    ns != NULL) {
+		bool html = dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_HTML]);
+		dom_string_unref(ns);
+		if (!html && dom_node_get_local_name(n, &s) == DOM_NO_ERR && s != NULL)
+			return qjs_str(ctx, s);
+	}
 	dom_node_get_node_name(n, &s);
 	return qjs_str(ctx, s);
 }
@@ -668,6 +727,19 @@ static JSValue n_create(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 
 	if (tag == NULL)
 		return JS_NULL;
+	if (argc > 1 && JS_IsString(argv[1])) {
+		/* Onyx: create(qname, namespace): an element in its namespace (SVG, MathML) */
+		dom_string *ns = qjs_dstr(ctx, argv[1]);
+		dom_exception err = dom_document_create_element_ns(t->doc, ns, tag, &e);
+		if (ns != NULL)
+			dom_string_unref(ns);
+		dom_string_unref(tag);
+		if (err != DOM_NO_ERR || e == NULL)
+			return JS_ThrowTypeError(ctx, "bad element name");
+		v = qjs_wrap(t, (dom_node *) e);
+		dom_node_unref(e);
+		return v;
+	}
 	if (dom_document_create_element(t->doc, tag, &e) != DOM_NO_ERR || e == NULL) {
 		dom_string_unref(tag);
 		return JS_ThrowTypeError(ctx, "bad element name");
@@ -823,6 +895,98 @@ static void qjs_mod_meta(JSContext *ctx, JSValueConst func, const char *url)
 }
 
 /** a module compiled from its source in t->modsrc, else named in t->modmissing */
+/* Onyx: a script's dynamic imports -- import(x) becomes __onyxImport(<base>, x) (dom.js): it
+ * fetches the module graph, then imports it (QuickJS's loader cannot wait for the network:
+ * developer.mozilla.org's chunks, import()ed by URL, were "not loaded yet"). <base>: the
+ * module's import.meta.url, null in a classic script (the document's URL). Strings and
+ * comments are skipped. NULL: nothing to change. */
+static char *qjs_rewrite_import(const char *src, size_t len, bool module, size_t *outlen)
+{
+	const char *ins = module ? "import.meta.url, " : "null, ";
+	size_t insl = strlen(ins), cap = 0, o = 0, i, from = 0;
+	char *out = NULL;
+	char q = 0;
+
+	if (len < 8)
+		return NULL;
+	for (i = 0; i + 6 < len; i++) {
+		char c = src[i];
+		if (q != 0) {
+			if (c == '\\') { i++; continue; }
+			if (c == q) q = 0;
+			continue;
+		}
+		if (c == '"' || c == '\'' || c == '`') { q = c; continue; }
+		if (c == '/' && src[i + 1] == '/') {
+			while (i < len && src[i] != '\n') i++;
+			continue;
+		}
+		if (c == '/' && src[i + 1] == '*') {
+			i += 2;
+			while (i + 1 < len && !(src[i] == '*' && src[i + 1] == '/')) i++;
+			i++;
+			continue;
+		}
+		if (c == 'i' && memcmp(src + i, "import", 6) == 0 &&
+		    (i == 0 || !(isalnum((unsigned char) src[i - 1]) || src[i - 1] == '_' ||
+				 src[i - 1] == '$' || src[i - 1] == '.'))) {
+			size_t j = i + 6;
+			while (j < len && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r'))
+				j++;
+			if (j < len && src[j] == '(') {
+				/* not a method named import: import(a) { ... } */
+				size_t k = j + 1;
+				int depth = 1;
+				char kq = 0;
+				for (; k < len && depth > 0; k++) {
+					char d = src[k];
+					if (kq != 0) {
+						if (d == '\\') k++;
+						else if (d == kq) kq = 0;
+						continue;
+					}
+					if (d == '"' || d == '\'' || d == '`') kq = d;
+					else if (d == '(') depth++;
+					else if (d == ')') depth--;
+				}
+				while (k < len && (src[k] == ' ' || src[k] == '\t' || src[k] == '\n' || src[k] == '\r'))
+					k++;
+				if (k < len && src[k] == '{') {
+					i = j;
+					continue;
+				}
+			}
+			if (j < len && src[j] == '(') {
+				size_t need = o + (i - from) + 12 + (j + 1 - (i + 6)) + insl + (len - j) + 1;
+				if (need > cap) {
+					char *n;
+					cap = need + len / 4 + 64;
+					n = realloc(out, cap);
+					if (n == NULL) { free(out); return NULL; }
+					out = n;
+				}
+				memcpy(out + o, src + from, i - from); o += i - from;
+				memcpy(out + o, "__onyxImport", 12); o += 12;
+				memcpy(out + o, src + i + 6, j + 1 - (i + 6)); o += j + 1 - (i + 6);
+				memcpy(out + o, ins, insl); o += insl;
+				from = j + 1;
+				i = j;
+			}
+		}
+	}
+	if (out == NULL)
+		return NULL;
+	if (o + (len - from) + 1 > cap) {
+		char *n = realloc(out, o + (len - from) + 1);
+		if (n == NULL) { free(out); return NULL; }
+		out = n;
+	}
+	memcpy(out + o, src + from, len - from); o += len - from;
+	out[o] = '\0';
+	*outlen = o;
+	return out;
+}
+
 static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaque)
 {
 	jsthread *t = QJS_T(ctx);
@@ -847,7 +1011,13 @@ static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaqu
 	JS_FreeValue(ctx, src);
 	if (text == NULL)
 		return NULL;
-	func = JS_Eval(ctx, text, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(text, len, true, &rl);	/* (Onyx) */
+		func = JS_Eval(ctx, rw ? rw : text, rw ? rl : len, name,
+				JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+		free(rw);
+	}
 	JS_FreeCString(ctx, text);
 	if (JS_IsException(func))
 		return NULL;
@@ -898,7 +1068,13 @@ static JSValue n_module_run(JSContext *ctx, JSValueConst this_val, int argc,
 	}
 	JS_FreeValue(ctx, t->modmissing);
 	t->modmissing = JS_NewArray(ctx);
-	func = JS_Eval(ctx, text, len, url, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(text, len, true, &rl);	/* (Onyx) */
+		func = JS_Eval(ctx, rw ? rw : text, rw ? rl : len, url,
+				JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+		free(rw);
+	}
 	JS_FreeCString(ctx, text);
 	if (!JS_IsException(func)) {
 		qjs_mod_meta(ctx, func, url);
@@ -1035,8 +1211,11 @@ static JSValue n_by_id(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 }
 
 /**
- * setHTML(n, html): n's children replaced by the fragment parsed (innerHTML); on a
- * fragment of the document, not attached.
+ * setHTML(n, html [, context]): n's children replaced by html parsed as a fragment (innerHTML).
+ * Onyx: the HTML standard's fragment parsing algorithm -- in the context of n (or of the
+ * given element: outerHTML, insertAdjacentHTML), so "<td>" in a <tr>, "<col>" in a <table>,
+ * script / style / textarea / title text all parse as in a browser; a template's contents
+ * receive its innerHTML. Scripts in the fragment do not run.
  */
 static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -1044,8 +1223,8 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	dom_hubbub_parser_params params;
 	dom_hubbub_parser *parser = NULL;
 	dom_document_fragment *fragment = NULL;
-	dom_node *child = NULL, *html = NULL, *body = NULL, *res = NULL;
-	dom_document_quirks_mode quirks = DOM_DOCUMENT_QUIRKS_MODE_NONE;
+	dom_node *child = NULL, *res = NULL, *target, *context = NULL;
+	dom_node_type type = DOM_ELEMENT_NODE;
 	size_t len;
 	const char *s;
 	QJS_NODE_ARG(n, 0);
@@ -1053,12 +1232,25 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	s = JS_ToCStringLen(ctx, &len, argc > 1 ? argv[1] : JS_UNDEFINED);
 	if (s == NULL)
 		return JS_EXCEPTION;
-	/* (a fragment parser sets its document's quirks mode: the page's kept) */
-	dom_document_get_quirks_mode(t->doc, &quirks);
+	if (argc > 2 && qjs_node(argv[2]) != NULL)
+		context = qjs_node(argv[2]);
+	dom_node_get_node_type(n, &type);
+	if (context == NULL && type == DOM_ELEMENT_NODE)
+		context = n;
+	target = dom_node_ref(n);
+	if (type == DOM_ELEMENT_NODE && context == n) {
+		/* a template: its contents take the nodes */
+		dom_document_fragment *c = NULL;
+		if (dom_hubbub_template_content((dom_element *) n, &c) == DOM_NO_ERR &&
+				c != NULL) {
+			dom_node_unref(target);
+			target = (dom_node *) c;
+		}
+	}
 
 	/* the old children out */
-	while (dom_node_get_first_child(n, &child) == DOM_NO_ERR && child != NULL) {
-		dom_node_remove_child(n, child, &res);
+	while (dom_node_get_first_child(target, &child) == DOM_NO_ERR && child != NULL) {
+		dom_node_remove_child(target, child, &res);
 		if (res != NULL)
 			dom_node_unref(res);
 		dom_node_unref(child);
@@ -1068,38 +1260,31 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	memset(&params, 0, sizeof(params));
 	params.enc = "UTF-8";
 	params.fix_enc = true;
-	params.enable_script = false;
-	if (dom_hubbub_fragment_parser_create(&params, t->doc, &parser,
-			&fragment) != DOM_HUBBUB_OK) {
+	params.enable_script = true;	/* (<noscript> as raw text, as a browser) */
+	if (dom_hubbub_fragment_parser_create_ctx(&params, t->doc, (dom_element *) context,
+			&parser, &fragment) != DOM_HUBBUB_OK) {
 		JS_FreeCString(ctx, s);
-		dom_document_set_quirks_mode(t->doc, quirks);
+		dom_node_unref(target);
 		return JS_UNDEFINED;
 	}
 	dom_hubbub_parser_parse_chunk(parser, (const uint8_t *) s, len);
 	dom_hubbub_parser_completed(parser);
+	dom_hubbub_parser_destroy(parser);
 	JS_FreeCString(ctx, s);
 
-	/* the fragment parser builds <html><body>...: its body's children moved in */
-	if (dom_node_get_first_child(fragment, &html) == DOM_NO_ERR && html != NULL) {
-		if (dom_node_get_last_child(html, &body) == DOM_NO_ERR && body != NULL) {
-			while (dom_node_get_first_child(body, &child) == DOM_NO_ERR &&
-			       child != NULL) {
-				dom_node_remove_child(body, child, &res);
-				if (res != NULL)
-					dom_node_unref(res);
-				dom_node_append_child(n, child, &res);
-				if (res != NULL)
-					dom_node_unref(res);
-				dom_node_unref(child);
-				child = NULL;
-			}
-			dom_node_unref(body);
-		}
-		dom_node_unref(html);
+	/* the fragment's nodes into the target */
+	while (dom_node_get_first_child(fragment, &child) == DOM_NO_ERR && child != NULL) {
+		dom_node_remove_child(fragment, child, &res);
+		if (res != NULL)
+			dom_node_unref(res);
+		dom_node_append_child(target, child, &res);
+		if (res != NULL)
+			dom_node_unref(res);
+		dom_node_unref(child);
+		child = NULL;
 	}
-	dom_hubbub_parser_destroy(parser);
 	dom_node_unref(fragment);
-	dom_document_set_quirks_mode(t->doc, quirks);
+	dom_node_unref(target);
 	t->dirty = true;
 	return JS_UNDEFINED;
 }
@@ -1173,6 +1358,20 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
 }
 
 /** rect(n): [x, y, width, height] of its border box in the viewport (0s: no box) */
+/* Onyx: a layout asked for (a rectangle, a style): the changes of this script turn laid out
+ * first (they used to wait for the turn's end: offsetHeight after details.open = true) */
+static void qjs_layout_now(jsthread *t)
+{
+	/* (at most 16 a turn: a script alternating writes and reads would rebuild the whole
+	 * layout at each read -- past that, the reads see the layout before the turn) */
+	if (t->dirty && !t->closed && t->forced_layouts < 16) {
+		t->forced_layouts++;
+		t->dirty = false;
+		html_script_dom_changed(t->htmlc);
+	}
+	html_script_layout_now(t->htmlc);
+}
+
 static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
@@ -1182,7 +1381,7 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
-		html_script_layout_now(t->htmlc);	/* a pending layout done */
+		qjs_layout_now(t);	/* a pending layout done */
 	box = qjs_box(n);
 	if (box != NULL && t->htmlc != NULL && t->htmlc->layout != NULL) {
 		box_coords(box, &x, &y);
@@ -1283,6 +1482,47 @@ static JSValue n_image(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	return arr;
 }
 
+/** addFontFace(family, wmin, wmax, italic, bytes): a font a script loaded (the CSS Font
+ * Loading API) given to the document's font code -> whether it was read (Onyx) */
+static JSValue n_add_font_face(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *family;
+	int32_t wmin = 400, wmax = 400;
+	size_t size = 0;
+	uint8_t *data;
+	bool ok = false;
+
+	(void) this_val;
+	if (argc < 5 || t->htmlc == NULL || (family = JS_ToCString(ctx, argv[0])) == NULL)
+		return JS_FALSE;
+	JS_ToInt32(ctx, &wmin, argv[1]);
+	JS_ToInt32(ctx, &wmax, argv[2]);
+	data = JS_GetArrayBuffer(ctx, &size, argv[4]);
+	if (data == NULL) {
+		size_t off = 0, len = 0, bpe = 0;
+		JSValue ab;
+		JS_FreeValue(ctx, JS_GetException(ctx));
+		ab = JS_GetTypedArrayBuffer(ctx, argv[4], &off, &len, &bpe);
+		if (!JS_IsException(ab)) {
+			uint8_t *d = JS_GetArrayBuffer(ctx, &size, ab);
+			if (d != NULL && off + len <= size) {
+				data = d + off;
+				size = len;
+			}
+			JS_FreeValue(ctx, ab);
+		} else {
+			JS_FreeValue(ctx, JS_GetException(ctx));
+		}
+	}
+	if (data != NULL)
+		ok = onyx_webfont_add_script_face(t->htmlc, family, wmin, wmax,
+				JS_ToBool(ctx, argv[3]), data, size);
+	JS_FreeCString(ctx, family);
+	return JS_NewBool(ctx, ok);
+}
+
 /** boxed(n): whether the node has a box (it is displayed) */
 static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -1290,7 +1530,7 @@ static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
-		html_script_layout_now(t->htmlc);
+		qjs_layout_now(t);
 	return JS_NewBool(ctx, qjs_box(n) != NULL);
 }
 
@@ -1336,6 +1576,98 @@ static JSValue n_scroll_to(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 }
 
 /** cstyle(n, property): a few computed properties of its box, as CSS text */
+/* Onyx: the computed style of an element without a box (display: none, in a hidden subtree,
+ * or before the first layout: a script of the page's parse) -- selected as the box tree's
+ * construction would, from the root down. The results are pushed on res[] (the caller
+ * destroys them); NULL: not in the document, or no styles yet. */
+#define QJS_UNBOXED_DEPTH 64
+static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
+		css_select_results **res, int *nres)
+{
+	html_content *c = t->htmlc;
+	dom_node *chain[QJS_UNBOXED_DEPTH], *root = NULL, *cur, *next;
+	const css_computed_style *parent = NULL, *root_style = NULL;
+	css_select_ctx *temp = NULL;
+	css_fixed dpi = 0, fdef = 0, fmin = 0;
+	int depth = 0, i;
+
+	*nres = 0;
+	if (c == NULL || c->document == NULL)
+		return NULL;
+	if (dom_document_get_document_element(c->document, &root) != DOM_NO_ERR ||
+	    root == NULL)
+		return NULL;
+	/* the element and its ancestors, up to the root element */
+	cur = n;
+	dom_node_ref(cur);
+	while (cur != NULL && cur != root) {
+		dom_node_type type;
+		if (dom_node_get_node_type(cur, &type) != DOM_NO_ERR ||
+		    type != DOM_ELEMENT_NODE || depth == QJS_UNBOXED_DEPTH - 1) {
+			dom_node_unref(cur);
+			cur = NULL;
+			break;
+		}
+		chain[depth++] = cur;
+		if (dom_node_get_parent_node(cur, &next) != DOM_NO_ERR)
+			next = NULL;
+		cur = next;
+	}
+	if (cur == NULL) {
+		/* detached (or too deep) */
+		for (i = 0; i < depth; i++)
+			dom_node_unref(chain[i]);
+		dom_node_unref(root);
+		return NULL;
+	}
+	dom_node_unref(cur);
+	chain[depth++] = root;	/* (the root's reference taken above) */
+
+	if (c->select_ctx == NULL) {
+		/* still parsing: the style sheets loaded so far */
+		if (html_css_new_selection_context(c, &temp) != NSERROR_OK)
+			temp = NULL;
+		c->select_ctx = temp;
+	}
+	if (c->unit_len_ctx.device_dpi == 0) {
+		/* (the viewport not measured yet: the default font sizes) */
+		dpi = nscss_screen_dpi;
+		fdef = FDIV(FMUL(F_96, FDIV(INTTOFIX(nsoption_int(font_size)), F_10)), F_72);
+		fmin = FDIV(FMUL(F_96, FDIV(INTTOFIX(nsoption_int(font_min_size)), F_10)), F_72);
+		c->unit_len_ctx.device_dpi = dpi;
+		c->unit_len_ctx.font_size_default = fdef;
+		c->unit_len_ctx.font_size_minimum = fmin;
+	}
+	if (c->select_ctx != NULL) {
+		for (i = depth - 1; i >= 0; i--) {
+			css_select_results *r = box_style_select(c, parent,
+					root_style, chain[i]);
+			if (r == NULL || r->styles[CSS_PSEUDO_ELEMENT_NONE] == NULL) {
+				if (r != NULL)
+					css_select_results_destroy(r);
+				parent = NULL;
+				break;
+			}
+			res[(*nres)++] = r;
+			parent = r->styles[CSS_PSEUDO_ELEMENT_NONE];
+			if (i == depth - 1)
+				root_style = parent;
+		}
+	}
+	if (dpi != 0) {
+		c->unit_len_ctx.device_dpi = 0;
+		c->unit_len_ctx.font_size_default = 0;
+		c->unit_len_ctx.font_size_minimum = 0;
+	}
+	if (temp != NULL) {
+		c->select_ctx = NULL;
+		css_select_ctx_destroy(temp);
+	}
+	for (i = 0; i < depth; i++)
+		dom_node_unref(chain[i]);
+	return parent;
+}
+
 static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
@@ -1343,15 +1675,25 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	struct box *box;
 	char buf[64];
 	JSValue v = JS_NewString(ctx, "");
+	/* Onyx: without a box, the style selected for it (qjs_unboxed_style) */
+	css_select_results *ures[QJS_UNBOXED_DEPTH];
+	int nures = 0;
+	const css_computed_style *style = NULL;
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
-		html_script_layout_now(t->htmlc);
+		qjs_layout_now(t);
 	box = qjs_box(n);
 	prop = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
 	if (prop == NULL)
 		return v;
-	if (box == NULL || box->style == NULL) {
+	if (box != NULL && box->style != NULL)
+		style = box->style;
+	else
+		style = qjs_unboxed_style(t, n, ures, &nures);
+	if (style == NULL) {
+		while (nures > 0)
+			css_select_results_destroy(ures[--nures]);
 		if (strcmp(prop, "display") == 0) {
 			JS_FreeValue(ctx, v);
 			v = JS_NewString(ctx, "none");
@@ -1367,21 +1709,21 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 			"table-footer-group", "table-row", "table-column-group",
 			"table-column", "table-cell", "table-caption", "none",
 			"flex", "inline-flex", "grid", "inline-grid" };
-		uint8_t dv = css_computed_display(box->style, false);
+		uint8_t dv = css_computed_display(style, false);
 		snprintf(buf, sizeof(buf), "%s", dv < sizeof(d) / sizeof(d[0]) ?
 				d[dv] : "block");
 	} else if (strcmp(prop, "visibility") == 0) {
 		snprintf(buf, sizeof(buf), "%s", css_computed_visibility(
-				box->style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
+				style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
 				"visible");
 	} else if (strcmp(prop, "position") == 0) {
 		static const char *p[] = { "static", "static", "relative",
 			"absolute", "fixed", "sticky" };
-		uint8_t pv = css_computed_position(box->style);
+		uint8_t pv = css_computed_position(style);
 		snprintf(buf, sizeof(buf), "%s", pv < 6 ? p[pv] : "static");
 	} else if (strcmp(prop, "opacity") == 0) {
 		css_fixed o = INTTOFIX(1);
-		css_computed_opacity(box->style, &o);
+		css_computed_opacity(style, &o);
 		snprintf(buf, sizeof(buf), "%g", FIXTOFLT(o));
 	} else if (strcmp(prop, "fill") == 0 || strcmp(prop, "stroke") == 0) {
 		/* Onyx: SVG's paints (libcss computes them) */
@@ -1407,16 +1749,22 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		snprintf(buf, sizeof(buf), "%g%s", FIXTOFLT(len),
 				unit == CSS_UNIT_PCT ? "%" : unit == CSS_UNIT_EM ? "em" : "px");
 	} else if (strcmp(prop, "width") == 0) {
-		snprintf(buf, sizeof(buf), "%dpx", box->width);
+		if (box != NULL && box->style == style)
+			snprintf(buf, sizeof(buf), "%dpx", box->width);
+		else
+			snprintf(buf, sizeof(buf), "auto");
 	} else if (strcmp(prop, "height") == 0) {
-		snprintf(buf, sizeof(buf), "%dpx", box->height);
+		if (box != NULL && box->style == style)
+			snprintf(buf, sizeof(buf), "%dpx", box->height);
+		else
+			snprintf(buf, sizeof(buf), "auto");
 	} else if (strcmp(prop, "color") == 0 ||
 		   strcmp(prop, "background-color") == 0) {
 		css_color c = 0;
 		if (prop[0] == 'c')
-			css_computed_color(box->style, &c);
+			css_computed_color(style, &c);
 		else
-			css_computed_background_color(box->style, &c);
+			css_computed_background_color(style, &c);
 		if ((c >> 24) == 0xff)
 			snprintf(buf, sizeof(buf), "rgb(%u, %u, %u)",
 				 (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
@@ -1427,11 +1775,13 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	} else if (strcmp(prop, "font-size") == 0) {
 		css_fixed len = 0;
 		css_unit unit = CSS_UNIT_PX;
-		css_computed_font_size(box->style, &len, &unit);
+		css_computed_font_size(style, &len, &unit);
 		snprintf(buf, sizeof(buf), "%gpx", FIXTOFLT(len));
 	}
 	JS_FreeCString(ctx, prop);
 	JS_FreeValue(ctx, v);
+	while (nures > 0)
+		css_select_results_destroy(ures[--nures]);
 	return JS_NewString(ctx, buf);
 }
 
@@ -1695,6 +2045,8 @@ static JSValue n_url(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 	jsthread *t = QJS_T(ctx);
 	nsurl *url = t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
 
+	if (t->url_override != NULL)	/* Onyx: history.pushState / replaceState */
+		url = t->url_override;
 	return JS_NewString(ctx, url != NULL ? nsurl_access(url) : "about:blank");
 }
 
@@ -2261,6 +2613,444 @@ static JSValue n_setup(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	return JS_UNDEFINED;
 }
 
+/* ---- Onyx: HTML5 natives (namespaces, templates, documents parsed) ----------------------
+ *
+ * nsURI(n): an element's namespace URI; lname(n): its local name (lower case for HTML);
+ * qname(n): its qualified name as the DOM's tagName wants it (upper case for HTML);
+ * attrsNS(n): [[qualified name, value, namespace, local name]...]; createNS(ns, qname);
+ * attrNS(n, ns, local); setAttrNS(n, ns, qname, value); removeAttrNS(n, ns, local);
+ * templateContent(n): a template's contents; parseDocument(html): a new document
+ * (DOMParser), parsed by the same parser. */
+
+static bool qjs_is_html_ns(dom_node *n)
+{
+	dom_string *ns = NULL;
+	bool r;
+	dom_node_get_namespace(n, &ns);
+	r = ns == NULL || dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_HTML]);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	return r;
+}
+
+static JSValue n_ns_uri(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns = NULL;
+	dom_node_type type = DOM_ELEMENT_NODE;
+	QJS_NODE_ARG(n, 0);
+	dom_node_get_node_type(n, &type);
+	if (type != DOM_ELEMENT_NODE)
+		return JS_NULL;
+	dom_node_get_namespace(n, &ns);
+	if (ns == NULL)	/* createElement in an HTML document: the HTML namespace */
+		return JS_NewString(ctx, "http://www.w3.org/1999/xhtml");
+	return qjs_str(ctx, ns);
+}
+
+static JSValue qjs_name_case(JSContext *ctx, dom_node *n, bool upper)
+{
+	dom_string *s = NULL;
+	char buf[128], *b = buf;
+	size_t len, i;
+	JSValue v;
+	bool html = qjs_is_html_ns(n);
+
+	dom_node_get_node_name(n, &s);
+	if (s == NULL)
+		return JS_NewString(ctx, "");
+	len = dom_string_byte_length(s);
+	if (!html) {
+		v = JS_NewStringLen(ctx, dom_string_data(s), len);
+		dom_string_unref(s);
+		return v;
+	}
+	if (len >= sizeof(buf) && (b = malloc(len + 1)) == NULL) {
+		dom_string_unref(s);
+		return JS_NewString(ctx, "");
+	}
+	for (i = 0; i < len; i++) {
+		char c = dom_string_data(s)[i];
+		b[i] = upper ? ((c >= 'a' && c <= 'z') ? c - 32 : c) :
+				((c >= 'A' && c <= 'Z') ? c + 32 : c);
+	}
+	v = JS_NewStringLen(ctx, b, len);
+	if (b != buf)
+		free(b);
+	dom_string_unref(s);
+	return v;
+}
+
+static JSValue n_lname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return qjs_name_case(ctx, n, false);
+}
+
+static JSValue n_qname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return qjs_name_case(ctx, n, true);
+}
+
+static JSValue n_attrs_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	JSValue arr = JS_NewArray(ctx);
+	dom_namednodemap *map = NULL;
+	uint32_t len = 0, i, k = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (dom_node_get_attributes(n, &map) != DOM_NO_ERR || map == NULL)
+		return arr;
+	dom_namednodemap_get_length(map, &len);
+	for (i = 0; i < len; i++) {
+		dom_node *a = NULL;
+		dom_string *name = NULL, *value = NULL, *ns = NULL, *local = NULL;
+		JSValue e;
+
+		if (dom_namednodemap_item(map, i, &a) != DOM_NO_ERR || a == NULL)
+			continue;
+		dom_attr_get_name((dom_attr *) a, &name);
+		dom_attr_get_value((dom_attr *) a, &value);
+		dom_node_get_namespace(a, &ns);
+		dom_node_get_local_name(a, &local);
+		e = JS_NewArray(ctx);
+		JS_SetPropertyUint32(ctx, e, 0, name ? qjs_str(ctx, name) : JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, e, 1, value ? qjs_str(ctx, value) : JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, e, 2, ns ? qjs_str(ctx, ns) : JS_NULL);
+		JS_SetPropertyUint32(ctx, e, 3, local ? qjs_str(ctx, local) : JS_NULL);
+		JS_SetPropertyUint32(ctx, arr, k++, e);
+		dom_node_unref(a);
+	}
+	dom_namednodemap_unref(map);
+	return arr;
+}
+
+/* a JS value as a dom_string, NULL for null / undefined / "" (a namespace) */
+static dom_string *qjs_ns_arg(JSContext *ctx, JSValueConst v)
+{
+	dom_string *s;
+	if (JS_IsNull(v) || JS_IsUndefined(v))
+		return NULL;
+	s = qjs_dstr(ctx, v);
+	if (s != NULL && dom_string_byte_length(s) == 0) {
+		dom_string_unref(s);
+		return NULL;
+	}
+	return s;
+}
+
+static JSValue n_create_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_string *ns = qjs_ns_arg(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+	dom_string *qn = qjs_dstr(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	dom_element *e = NULL;
+	dom_exception err;
+	JSValue v;
+
+	if (qn == NULL) {
+		if (ns != NULL)
+			dom_string_unref(ns);
+		return JS_NULL;
+	}
+	err = dom_document_create_element_ns(t->doc, ns, qn, &e);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	dom_string_unref(qn);
+	if (err != DOM_NO_ERR || e == NULL)
+		return JS_ThrowTypeError(ctx, err == DOM_NAMESPACE_ERR ? "NamespaceError" :
+				"InvalidCharacterError");
+	v = qjs_wrap(t, (dom_node *) e);
+	dom_node_unref(e);
+	return v;
+}
+
+static JSValue n_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns, *local, *v = NULL;
+	QJS_NODE_ARG(n, 0);
+	ns = qjs_ns_arg(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	local = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	if (local != NULL)
+		dom_element_get_attribute_ns((dom_element *) n, ns, local, &v);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	if (local != NULL)
+		dom_string_unref(local);
+	return qjs_str(ctx, v);
+}
+
+static JSValue n_set_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns, *qn, *v;
+	dom_exception err = DOM_NO_ERR;
+	QJS_NODE_ARG(n, 0);
+	ns = qjs_ns_arg(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	qn = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	v = qjs_dstr(ctx, argc > 3 ? argv[3] : JS_UNDEFINED);
+	if (qn != NULL && v != NULL) {
+		if (ns == NULL)
+			err = dom_element_set_attribute((dom_element *) n, qn, v);
+		else
+			err = dom_element_set_attribute_ns((dom_element *) n, ns, qn, v);
+		QJS_T(ctx)->dirty = true;
+	}
+	if (ns != NULL)
+		dom_string_unref(ns);
+	if (qn != NULL)
+		dom_string_unref(qn);
+	if (v != NULL)
+		dom_string_unref(v);
+	if (err != DOM_NO_ERR)
+		return JS_ThrowTypeError(ctx, err == DOM_NAMESPACE_ERR ? "NamespaceError" :
+				"InvalidCharacterError");
+	return JS_UNDEFINED;
+}
+
+static JSValue n_remove_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns, *local;
+	QJS_NODE_ARG(n, 0);
+	ns = qjs_ns_arg(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	local = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	if (local != NULL) {
+		dom_element_remove_attribute_ns((dom_element *) n, ns, local);
+		QJS_T(ctx)->dirty = true;
+		dom_string_unref(local);
+	}
+	if (ns != NULL)
+		dom_string_unref(ns);
+	return JS_UNDEFINED;
+}
+
+static JSValue n_template_content(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_document_fragment *f = NULL;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+	if (dom_hubbub_template_content((dom_element *) n, &f) != DOM_NO_ERR || f == NULL)
+		return JS_NULL;
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) f);
+	dom_node_unref(f);
+	return v;
+}
+
+/* parseDocument(html): a new HTML document (DOMParser, createHTMLDocument), no scripts run */
+static JSValue n_parse_document(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_hubbub_parser_params params;
+	dom_hubbub_parser *parser = NULL;
+	dom_document *doc = NULL;
+	size_t len;
+	const char *s = JS_ToCStringLen(ctx, &len, argc > 0 ? argv[0] : JS_UNDEFINED);
+	JSValue v;
+
+	if (s == NULL)
+		return JS_EXCEPTION;
+	memset(&params, 0, sizeof(params));
+	params.enc = "UTF-8";
+	params.fix_enc = true;
+	params.enable_script = false;	/* (DOMParser: scripting disabled, <noscript> parsed) */
+	if (dom_hubbub_parser_create(&params, &parser, &doc) != DOM_HUBBUB_OK) {
+		JS_FreeCString(ctx, s);
+		return JS_NULL;
+	}
+	dom_hubbub_parser_parse_chunk(parser, (const uint8_t *) s, len);
+	dom_hubbub_parser_completed(parser);
+	dom_hubbub_parser_destroy(parser);
+	JS_FreeCString(ctx, s);
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) doc);
+	dom_node_unref(doc);
+	return v;
+}
+
+/* createDocument(): a new empty HTML document (no html element: DOMParser's XML documents) */
+static JSValue n_create_document(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_document *doc = NULL;
+	JSValue v;
+	if (dom_implementation_create_document(DOM_IMPLEMENTATION_HTML, NULL, NULL, NULL,
+			NULL, NULL, &doc) != DOM_NO_ERR || doc == NULL)
+		return JS_NULL;
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) doc);
+	dom_node_unref(doc);
+	return v;
+}
+
+/* createIn(doc, kind, a, b): a node of another document -- kind "element" (name a),
+ * "elementNS" (namespace a, qualified name b), "text" / "comment" (data a), "fragment" */
+static JSValue n_create_in(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_node *r = NULL;
+	dom_exception err = DOM_NO_ERR;
+	const char *kind;
+	JSValue v;
+	QJS_NODE_ARG(d, 0);
+
+	kind = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	if (kind == NULL)
+		return JS_EXCEPTION;
+	if (strcmp(kind, "fragment") == 0) {
+		err = dom_document_create_document_fragment((dom_document *) d,
+				(dom_document_fragment **) &r);
+	} else {
+		dom_string *a = qjs_ns_arg(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+		if (strcmp(kind, "elementNS") == 0) {
+			dom_string *b = qjs_dstr(ctx, argc > 3 ? argv[3] : JS_UNDEFINED);
+			if (b != NULL) {
+				err = dom_document_create_element_ns((dom_document *) d, a, b,
+						(dom_element **) &r);
+				dom_string_unref(b);
+			}
+		} else {
+			if (a == NULL)
+				dom_string_create((const uint8_t *) "", 0, &a);
+			if (strcmp(kind, "element") == 0)
+				err = dom_document_create_element((dom_document *) d, a,
+						(dom_element **) &r);
+			else if (strcmp(kind, "text") == 0)
+				err = dom_document_create_text_node((dom_document *) d, a,
+						(dom_text **) &r);
+			else if (strcmp(kind, "comment") == 0)
+				err = dom_document_create_comment((dom_document *) d, a,
+						(dom_comment **) &r);
+		}
+		if (a != NULL)
+			dom_string_unref(a);
+	}
+	JS_FreeCString(ctx, kind);
+	if (err != DOM_NO_ERR || r == NULL)
+		return JS_ThrowTypeError(ctx, "InvalidCharacterError");
+	v = qjs_wrap(QJS_T(ctx), r);
+	dom_node_unref(r);
+	return v;
+}
+
+/* importTo(doc, node, deep): a copy of node owned by doc */
+static JSValue n_import_to(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_node *r = NULL;
+	JSValue v;
+	QJS_NODE_ARG(d, 0);
+	QJS_NODE_ARG(n, 1);
+	if (dom_document_import_node((dom_document *) d, n,
+			argc > 2 && JS_ToBool(ctx, argv[2]), &r) != DOM_NO_ERR || r == NULL)
+		return JS_ThrowTypeError(ctx, "NotSupportedError");
+	v = qjs_wrap(QJS_T(ctx), r);
+	dom_node_unref(r);
+	return v;
+}
+
+/* ownerDoc(n): the document a node belongs to */
+static JSValue n_owner_doc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_document *d = NULL;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+	if (dom_node_get_owner_document(n, &d) != DOM_NO_ERR || d == NULL)
+		return JS_NULL;
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) d);
+	dom_node_unref(d);
+	return v;
+}
+
+/* setURL(url): the document's URL becomes url (history.pushState / replaceState: same origin,
+ * checked by html5.js) -- location and the address bar show it; no navigation */
+static JSValue n_set_url(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	nsurl *base, *url = NULL;
+	const char *s = JS_ToCString(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+
+	if (s == NULL)
+		return JS_EXCEPTION;
+	base = t->url_override != NULL ? t->url_override :
+		t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+	if (base != NULL)
+		nsurl_join(base, s, &url);
+	else
+		nsurl_create(s, &url);
+	JS_FreeCString(ctx, s);
+	if (url == NULL)
+		return JS_FALSE;
+	if (t->url_override != NULL)
+		nsurl_unref(t->url_override);
+	t->url_override = url;
+	if (t->bw != NULL && !t->closed && t->bw->parent == NULL && t->bw->window != NULL)
+		guit->window->set_url(t->bw->window, url);
+	return JS_TRUE;
+}
+
+/* ceHook(fn): fn(element) is called for each element inserted outside the scripts (the
+ * parser): html5.js upgrades the custom elements there (Onyx) */
+static JSValue n_ce_hook(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+
+	JS_FreeValue(ctx, t->ce_hook);
+	t->ce_hook = argc > 0 && JS_IsFunction(ctx, argv[0]) ?
+		JS_DupValue(ctx, argv[0]) : JS_UNDEFINED;
+	return JS_UNDEFINED;
+}
+
+/* the elements js_handle_new_element kept, shown to html5.js' hook (in tree order) */
+static void qjs_ce_flush(jsthread *t)
+{
+	dom_node **list = t->ce_pending;
+	int n = t->ce_npending, i;
+
+	t->ce_pending = NULL;
+	t->ce_npending = t->ce_cappending = 0;
+	guit->misc->schedule(-1, qjs_ce_later, t);
+	for (i = 0; i < n; i++) {
+		if (!t->closed && JS_IsFunction(t->ctx, t->ce_hook)) {
+			JSValue fn = JS_DupValue(t->ctx, t->ce_hook);
+			JSValue w = qjs_wrap(t, list[i]);
+			JSValue r;
+
+			t->in_use++;	/* (the jobs run when the caller leaves) */
+			r = JS_Call(t->ctx, fn, JS_UNDEFINED, 1, (JSValueConst *) &w);
+			if (JS_IsException(r))
+				qjs_report(t->ctx, "customElements");
+			t->in_use--;
+			JS_FreeValue(t->ctx, r);
+			JS_FreeValue(t->ctx, w);
+			JS_FreeValue(t->ctx, fn);
+		}
+		dom_node_unref(list[i]);
+	}
+	free(list);
+}
+
+static void qjs_ce_later(void *p)
+{
+	jsthread *t = p;
+
+	if (t->ce_npending > 0 && t->in_use == 0) {
+		qjs_enter(t);	/* (flushes) */
+		qjs_leave(t);
+	}
+}
+
+static const JSCFunctionListEntry qjs_natives_html5[] = {
+	JS_CFUNC_DEF("ceHook", 1, n_ce_hook),
+	JS_CFUNC_DEF("setURL", 1, n_set_url),
+	JS_CFUNC_DEF("createDocument", 0, n_create_document),
+	JS_CFUNC_DEF("createIn", 4, n_create_in),
+	JS_CFUNC_DEF("importTo", 3, n_import_to),
+	JS_CFUNC_DEF("ownerDoc", 1, n_owner_doc),
+	JS_CFUNC_DEF("nsURI", 1, n_ns_uri),
+	JS_CFUNC_DEF("lname", 1, n_lname),
+	JS_CFUNC_DEF("qname", 1, n_qname),
+	JS_CFUNC_DEF("attrsNS", 1, n_attrs_ns),
+	JS_CFUNC_DEF("createNS", 2, n_create_ns),
+	JS_CFUNC_DEF("attrNS", 3, n_attr_ns),
+	JS_CFUNC_DEF("setAttrNS", 4, n_set_attr_ns),
+	JS_CFUNC_DEF("removeAttrNS", 3, n_remove_attr_ns),
+	JS_CFUNC_DEF("templateContent", 1, n_template_content),
+	JS_CFUNC_DEF("parseDocument", 1, n_parse_document),
+};
+
 static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("type", 1, n_type),
 	JS_CFUNC_DEF("name", 1, n_name),
@@ -2289,6 +3079,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("byId", 1, n_by_id),
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
 	JS_CFUNC_DEF("image", 1, n_image),
+	JS_CFUNC_DEF("addFontFace", 5, n_add_font_face),
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
 	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
@@ -2394,6 +3185,37 @@ void js_destroyheap(jsheap *heap)
 	qjs_heap_free(heap);
 }
 
+/* Onyx: a prelude (dom.js, html5.js, canvas.js) is compiled once per process; its bytecode
+ * is kept (in the process's heap) and read back in the next contexts -- several times faster
+ * than parsing it again (the same as Intl, qjs_intl.h). Returns the prelude's value. */
+JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char *name,
+		uint8_t **bc, size_t *bclen)
+{
+	JSValue obj;
+
+	if (*bc == NULL) {
+		obj = JS_Eval(ctx, src, len, name, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+		if (JS_IsException(obj))
+			return obj;
+		uint8_t *b = JS_WriteObject(ctx, bclen, obj,
+				JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_STRIP_SOURCE);
+		if (b != NULL) {
+			*bc = malloc(*bclen);
+			if (*bc != NULL)
+				memcpy(*bc, b, *bclen);
+			js_free(ctx, b);
+		}
+	} else {
+		obj = JS_ReadObject(ctx, *bc, *bclen, JS_READ_OBJ_BYTECODE);
+		if (JS_IsException(obj))
+			return obj;
+	}
+	return JS_EvalFunction(ctx, obj);
+}
+
+static uint8_t *qjs_dom_bc, *qjs_html5_bc;
+static size_t qjs_dom_bc_len, qjs_html5_bc_len;
+
 /* exported interface documented in js.h */
 nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **thread)
 {
@@ -2424,15 +3246,20 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetContextOpaque(t->ctx, t);
 	t->modsrc = JS_NewObject(t->ctx);	/* (Onyx: ES modules) */
 	t->modmissing = JS_NewArray(t->ctx);
+	t->ce_hook = JS_UNDEFINED;	/* (Onyx: custom elements) */
 	heap->threads++;
 
 	/* the prelude: a function of the natives, run once */
 	natives = JS_NewObject(t->ctx);
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives,
 			sizeof(qjs_natives) / sizeof(qjs_natives[0]));
+	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_html5,	/* Onyx: HTML5 */
+			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
 	qjs_enter(t);
-	prelude = JS_Eval(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
-			JS_EVAL_TYPE_GLOBAL);
+	uint64_t t_prelude = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
+	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
+	prelude = qjs_eval_cached(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
+			&qjs_dom_bc, &qjs_dom_bc_len);
 	if (JS_IsException(prelude)) {
 		qjs_report(t->ctx, "dom.js");
 	} else {
@@ -2442,8 +3269,22 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 		JS_FreeValue(t->ctx, r);
 	}
 	JS_FreeValue(t->ctx, prelude);
+	/* Onyx: html5.js, a function of the natives and dom.js's element classes (TAGS) */
+	prelude = qjs_eval_cached(t->ctx, qjs_html5_js, sizeof(qjs_html5_js) - 1, "html5.js",
+			&qjs_html5_bc, &qjs_html5_bc_len);
+	if (JS_IsException(prelude)) {
+		qjs_report(t->ctx, "html5.js");
+	} else {
+		JSValue args[2] = { natives, t->tag_protos };
+		r = JS_Call(t->ctx, prelude, JS_UNDEFINED, 2, (JSValueConst *) args);
+		if (JS_IsException(r))
+			qjs_report(t->ctx, "html5.js setup");
+		JS_FreeValue(t->ctx, r);
+	}
+	JS_FreeValue(t->ctx, prelude);
 	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
 	JS_FreeValue(t->ctx, natives);
+	onyx_perf_log("js:prelude", t_prelude);	/* (a context's dom.js, html5.js, canvas.js, Intl) */
 	t->dirty = false;	/* (nothing laid out yet) */
 	qjs_leave(t);
 
@@ -2473,6 +3314,10 @@ static void qjs_thread_free(jsthread *t)
 	qjs_timers_stop(t);
 	qjs_reqs_stop(t);
 	guit->misc->schedule(-1, qjs_load_later, t);
+	guit->misc->schedule(-1, qjs_ce_later, t);	/* (Onyx: custom elements) */
+	while (t->ce_npending > 0)
+		dom_node_unref(t->ce_pending[--t->ce_npending]);
+	free(t->ce_pending);
 	for (i = 0; i < t->capwraps; i++) {
 		if (t->wraps[i].node != NULL)
 			JS_FreeValue(t->ctx, t->wraps[i].obj);
@@ -2484,10 +3329,13 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->dispatch);
 	JS_FreeValue(t->ctx, t->modsrc);
 	JS_FreeValue(t->ctx, t->modmissing);
+	JS_FreeValue(t->ctx, t->ce_hook);
 	qjs_canvas_context_gone(t->ctx);	/* Onyx: its canvases, images */
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
+	if (t->url_override != NULL)
+		nsurl_unref(t->url_override);
 	free(t);
 	heap->threads--;
 	if (heap->pending_destroy && heap->threads == 0)
@@ -2528,6 +3376,15 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	uint64_t t0 = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 
 	qjs_enter(thread);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(src, txtlen, false, &rl);	/* (Onyx) */
+		if (rw != NULL) {
+			free(src);
+			src = rw;
+			txtlen = rl;
+		}
+	}
 	r = JS_Eval(thread->ctx, src, txtlen, name != NULL ? name : "script",
 			JS_EVAL_TYPE_GLOBAL);
 	if (JS_IsException(r)) {
@@ -2655,8 +3512,25 @@ bool js_dom_event_add_listener(jsthread *thread, struct dom_document *document,
 void js_handle_new_element(jsthread *thread, struct dom_element *node)
 {
 	/* (the on* attributes are read when an event is dispatched: dom.js) */
-	(void) thread;
-	(void) node;
+	/* Onyx: once a custom element is defined, the elements inserted are shown to html5.js
+	 * -- not now: in a mutation event the DOM is read-only (libdom); before the next
+	 * script runs, else from the scheduler (qjs_ce_flush) */
+	jsthread *t = thread;
+
+	if (t == NULL || t->closed || !JS_IsFunction(t->ctx, t->ce_hook))
+		return;
+	if (t->ce_npending == t->ce_cappending) {
+		int cap = t->ce_cappending ? t->ce_cappending * 2 : 64;
+		dom_node **p = realloc(t->ce_pending, cap * sizeof(*p));
+		if (p == NULL)
+			return;
+		t->ce_pending = p;
+		t->ce_cappending = cap;
+	}
+	dom_node_ref((dom_node *) node);
+	t->ce_pending[t->ce_npending++] = (dom_node *) node;
+	if (t->ce_npending == 1)
+		guit->misc->schedule(0, qjs_ce_later, t);
 }
 
 /* exported interface documented in js.h */

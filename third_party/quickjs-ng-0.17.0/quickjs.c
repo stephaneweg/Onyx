@@ -49127,8 +49127,16 @@ static const JSCFunctionListEntry js_math_obj[] = {
 
 /* OS dependent. d = argv[0] is in ms from 1970. Return the difference
    between UTC time and local time 'd' in minutes */
+#if defined(__ONYX__)
+/* Onyx: the clock (gettimeofday) gives the local time, not UTC; the embedder sets the local
+   time's offset from UTC in minutes (NetSurf: SD:/etc/system.ini's timezone=, qjs_intl.h). */
+int js_onyx_utc_offset_min;
+#endif
 static int getTimezoneOffset(int64_t time) {
-#if defined(_WIN32)
+#if defined(__ONYX__)
+    (void)time;
+    return -js_onyx_utc_offset_min;
+#elif defined(_WIN32)
     DWORD r;
     TIME_ZONE_INFORMATION t;
     r = GetTimeZoneInformation(&t);
@@ -57662,7 +57670,12 @@ static JSValue get_date_string(JSContext *ctx, JSValueConst this_val,
 
 /* OS dependent: return the UTC time in ms since 1970. */
 static int64_t date_now(void) {
+#if defined(__ONYX__)
+    /* Onyx: the clock is the local time (see getTimezoneOffset) */
+    return js__gettimeofday_us() / 1000 - (int64_t)js_onyx_utc_offset_min * 60000;
+#else
     return js__gettimeofday_us() / 1000;
+#endif
 }
 
 static JSValue js_date_constructor(JSContext *ctx, JSValueConst new_target,

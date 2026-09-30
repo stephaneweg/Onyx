@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include <hubbub/errors.h>
 #include <hubbub/hubbub.h>
@@ -22,6 +23,7 @@
 #include "core/document.h"
 #include "core/string.h"
 #include "core/node.h"
+#include "core/element.h"
 
 #include "html/html_document.h"
 #include "html/html_button_element.h"
@@ -55,8 +57,9 @@ struct dom_hubbub_parser {
 };
 
 /* Forward declaration to break reference loop */
-static hubbub_error add_attributes(void *parser, void *node,
-		const hubbub_attribute *attributes, uint32_t n_attributes);
+static hubbub_error add_attributes_impl(void *parser, void *node,
+		const hubbub_attribute *attributes, uint32_t n_attributes,
+		bool only_missing);
 
 
 
@@ -210,7 +213,8 @@ static hubbub_error create_element(void *parser, const hubbub_tag *tag,
 			goto clean1;
 		}
 	} else {
-		err = dom_document_create_element_ns(dom_parser->doc,
+		/* Onyx: the token's name is the local name ("xyz:abc" is one) */
+		err = _dom_html_document_create_element_parser(dom_parser->doc,
 				dom_namespaces[tag->ns], name, &element);
 		if (err != DOM_NO_ERR) {
 			dom_parser->msg(DOM_MSG_CRITICAL, dom_parser->mctx,
@@ -223,8 +227,8 @@ static hubbub_error create_element(void *parser, const hubbub_tag *tag,
 	assert(element != NULL);
 
 	if (tag->n_attributes > 0) {
-		herr = add_attributes(parser, element, tag->attributes,
-				tag->n_attributes);
+		herr = add_attributes_impl(parser, element, tag->attributes,
+				tag->n_attributes, false);
 		if (herr != HUBBUB_OK)
 			goto clean1;
 	}
@@ -558,8 +562,9 @@ static hubbub_error form_associate(void *parser, void *form, void *node)
 	return HUBBUB_OK;
 }
 
-static hubbub_error add_attributes(void *parser, void *node,
-		const hubbub_attribute *attributes, uint32_t n_attributes)
+static hubbub_error add_attributes_impl(void *parser, void *node,
+		const hubbub_attribute *attributes, uint32_t n_attributes,
+		bool only_missing)
 {
 	dom_hubbub_parser *dom_parser = (dom_hubbub_parser *) parser;
 	dom_exception err;
@@ -576,6 +581,16 @@ static hubbub_error add_attributes(void *parser, void *node,
 			goto fail;
 		}
 
+		/* Onyx: <html> / <body> again: their attributes are added only if missing */
+		if (only_missing && attributes[i].ns == HUBBUB_NS_NULL) {
+			bool has = false;
+			if (dom_element_has_attribute((struct dom_element *) node,
+					name, &has) == DOM_NO_ERR && has) {
+				dom_string_unref(name);
+				continue;
+			}
+		}
+
 		err = dom_string_create(attributes[i].value.ptr,
 				attributes[i].value.len, &value);
 		if (err != DOM_NO_ERR) {
@@ -586,9 +601,11 @@ static hubbub_error add_attributes(void *parser, void *node,
 		}
 
 		if (attributes[i].ns == HUBBUB_NS_NULL) {
+			_dom_element_parser_attrs = true;	/* Onyx */
 			err = dom_element_set_attribute(
 					(struct dom_element *) node, name,
 					value);
+			_dom_element_parser_attrs = false;
 			dom_string_unref(name);
 			dom_string_unref(value);
 			if (err != DOM_NO_ERR) {
@@ -615,6 +632,139 @@ static hubbub_error add_attributes(void *parser, void *node,
 
 fail:
 	return HUBBUB_UNKNOWN;
+}
+
+static hubbub_error add_attributes(void *parser, void *node,
+		const hubbub_attribute *attributes, uint32_t n_attributes)
+{
+	return add_attributes_impl(parser, node, attributes, n_attributes, true);
+}
+
+/* Onyx: a template's contents -- a document fragment kept on the element (user data) */
+static dom_string *template_content_key;
+
+static void template_content_handler(dom_node_operation operation,
+		dom_string *key, void *data, struct dom_node *src,
+		struct dom_node *dst)
+{
+	UNUSED(key);
+	UNUSED(src);
+	UNUSED(dst);
+	if (operation == DOM_NODE_DELETED && data != NULL) {
+		/* the template goes (maybe with its whole document): the fragment's end
+		 * must not destroy the document from inside the document's own
+		 * destruction (its pending nodes' list emptied) -- held for the call */
+		struct dom_document *doc = ((dom_node_internal *) data)->owner;
+		if (doc != NULL)
+			doc->base.base.refcnt++;
+		dom_node_unref((struct dom_node *) data);
+		if (doc != NULL)
+			doc->base.base.refcnt--;
+	}
+}
+
+dom_exception dom_hubbub_template_content(dom_element *template_element,
+		dom_document_fragment **result)
+{
+	void *data = NULL, *prev = NULL;
+	dom_document *doc = NULL;
+	dom_document_fragment *f = NULL;
+	dom_exception err;
+
+	*result = NULL;
+	{
+		dom_html_element_type type;
+		if (dom_html_element_get_tag_type(template_element, &type) != DOM_NO_ERR ||
+				type != DOM_HTML_ELEMENT_TYPE_TEMPLATE)
+			return DOM_NOT_SUPPORTED_ERR;
+	}
+	if (template_content_key == NULL) {
+		err = dom_string_create_interned((const uint8_t *)
+				"__onyx_template_content", 23, &template_content_key);
+		if (err != DOM_NO_ERR)
+			return err;
+	}
+	err = dom_node_get_user_data(template_element, template_content_key, &data);
+	if (err == DOM_NO_ERR && data != NULL) {
+		*result = (dom_document_fragment *) dom_node_ref((struct dom_node *) data);
+		return DOM_NO_ERR;
+	}
+	err = dom_node_get_owner_document(template_element, &doc);
+	if (err != DOM_NO_ERR || doc == NULL)
+		return err != DOM_NO_ERR ? err : DOM_NOT_SUPPORTED_ERR;
+	err = dom_document_create_document_fragment(doc, &f);
+	dom_node_unref(doc);
+	if (err != DOM_NO_ERR)
+		return err;
+	/* the user data holds the creation reference */
+	err = dom_node_set_user_data(template_element, template_content_key, f,
+			template_content_handler, &prev);
+	if (err != DOM_NO_ERR) {
+		dom_node_unref(f);
+		return err;
+	}
+	*result = (dom_document_fragment *) dom_node_ref((struct dom_node *) f);
+	return DOM_NO_ERR;
+}
+
+static hubbub_error template_content(void *parser, void *node, void **result)
+{
+	UNUSED(parser);
+	if (dom_hubbub_template_content((dom_element *) node,
+			(dom_document_fragment **) result) != DOM_NO_ERR)
+		return HUBBUB_UNKNOWN;
+	return HUBBUB_OK;
+}
+
+/* Onyx: the standard's "insert a character": onto the text node before the place, if any */
+static hubbub_error insert_text(void *parser, void *parent, void *ref_child,
+		const hubbub_string *data)
+{
+	dom_hubbub_parser *dom_parser = (dom_hubbub_parser *) parser;
+	struct dom_node *prev = NULL, *res = NULL;
+	struct dom_text *text = NULL;
+	dom_node_type type;
+	dom_string *str;
+	dom_exception err;
+
+	if (ref_child != NULL)
+		err = dom_node_get_previous_sibling((struct dom_node *) ref_child, &prev);
+	else
+		err = dom_node_get_last_child((struct dom_node *) parent, &prev);
+	if (err != DOM_NO_ERR)
+		prev = NULL;
+
+	err = dom_string_create(data->ptr, data->len, &str);
+	if (err != DOM_NO_ERR) {
+		if (prev != NULL)
+			dom_node_unref(prev);
+		return HUBBUB_NOMEM;
+	}
+
+	if (prev != NULL && dom_node_get_node_type(prev, &type) == DOM_NO_ERR &&
+			type == DOM_TEXT_NODE) {
+		err = dom_characterdata_append_data(prev, str);
+		dom_node_unref(prev);
+		dom_string_unref(str);
+		return err == DOM_NO_ERR ? HUBBUB_OK : HUBBUB_UNKNOWN;
+	}
+	if (prev != NULL)
+		dom_node_unref(prev);
+
+	err = dom_document_create_text_node(dom_parser->doc, str, &text);
+	dom_string_unref(str);
+	if (err != DOM_NO_ERR)
+		return HUBBUB_UNKNOWN;
+	if (ref_child != NULL)
+		err = dom_node_insert_before((struct dom_node *) parent,
+				(struct dom_node *) text, (struct dom_node *) ref_child, &res);
+	else
+		err = dom_node_append_child((struct dom_node *) parent,
+				(struct dom_node *) text, &res);
+	if (res != NULL)
+		dom_node_unref(res);
+	dom_node_unref(text);
+	return err == DOM_NO_ERR ? HUBBUB_OK : HUBBUB_UNKNOWN;
 }
 
 static hubbub_error set_quirks_mode(void *parser, hubbub_quirks_mode mode)
@@ -695,25 +845,28 @@ static hubbub_error complete_script(void *parser, void *script)
 }
 
 static hubbub_tree_handler tree_handler = {
-	create_comment,
-	create_doctype,
-	create_element,
-	create_text,
-	ref_node,
-	unref_node,
-	append_child,
-	insert_before,
-	remove_child,
-	clone_node,
-	reparent_children,
-	get_parent,
-	has_children,
-	form_associate,
-	add_attributes,
-	set_quirks_mode,
-	change_encoding,
-	complete_script,
-	NULL
+	.create_comment = create_comment,
+	.create_doctype = create_doctype,
+	.create_element = create_element,
+	.create_text = create_text,
+	.ref_node = ref_node,
+	.unref_node = unref_node,
+	.append_child = append_child,
+	.insert_before = insert_before,
+	.remove_child = remove_child,
+	.clone_node = clone_node,
+	.reparent_children = reparent_children,
+	.get_parent = get_parent,
+	.has_children = has_children,
+	.form_associate = form_associate,
+	.add_attributes = add_attributes,
+	.set_quirks_mode = set_quirks_mode,
+	.encoding_change = change_encoding,
+	.complete_script = complete_script,
+	.ctx = NULL,
+	/* Onyx */
+	.template_content = template_content,
+	.insert_text = insert_text,
 };
 
 /**
@@ -977,6 +1130,107 @@ dom_hubbub_fragment_parser_create(dom_hubbub_parser_params *params,
 	return DOM_HUBBUB_OK;
 }
 
+
+/**
+ * Onyx: create a parser for a fragment parsed in the context of an element (innerHTML,
+ * insertAdjacentHTML, createContextualFragment...: the HTML standard's fragment parsing
+ * algorithm). The nodes go into *fragment (not under an html / body element). context may
+ * be NULL (a <body> then).
+ */
+dom_hubbub_error
+dom_hubbub_fragment_parser_create_ctx(dom_hubbub_parser_params *params,
+		dom_document *document, dom_element *context,
+		dom_hubbub_parser **parser, dom_document_fragment **fragment)
+{
+	dom_hubbub_error herr;
+	hubbub_parser_optparams o;
+	char name[64] = "body";
+	dom_string *ns = NULL, *local = NULL;
+	struct dom_node *n = NULL;
+	dom_document_quirks_mode quirks = DOM_DOCUMENT_QUIRKS_MODE_NONE;
+
+	herr = dom_hubbub_fragment_parser_create(params, document, parser, fragment);
+	if (herr != DOM_HUBBUB_OK)
+		return herr;
+
+	memset(&o, 0, sizeof(o));
+	o.fragment_context.ns = HUBBUB_NS_HTML;
+	o.fragment_context.name = name;
+	if (context != NULL) {
+		dom_node_get_namespace(context, &ns);
+		dom_node_get_local_name(context, &local);
+		if (ns != NULL && dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_SVG]))
+			o.fragment_context.ns = HUBBUB_NS_SVG;
+		else if (ns != NULL && dom_string_isequal(ns,
+				dom_namespaces[DOM_NAMESPACE_MATHML]))
+			o.fragment_context.ns = HUBBUB_NS_MATHML;
+		if (local != NULL) {
+			size_t l = dom_string_byte_length(local), i;
+			if (l > sizeof(name) - 1)
+				l = sizeof(name) - 1;
+			memcpy(name, dom_string_data(local), l);
+			name[l] = 0;
+			/* libdom keeps an HTML element's name in upper case */
+			if (o.fragment_context.ns == HUBBUB_NS_HTML)
+				for (i = 0; i < l; i++)
+					if (name[i] >= 'A' && name[i] <= 'Z')
+						name[i] += 32;
+		}
+		if (o.fragment_context.ns == HUBBUB_NS_MATHML &&
+				strcasecmp(name, "annotation-xml") == 0) {
+			dom_string *enc = NULL, *attr = NULL;
+			dom_string_create((const uint8_t *) "encoding", 8, &attr);
+			if (attr != NULL && dom_element_get_attribute(context, attr, &enc) ==
+					DOM_NO_ERR && enc != NULL) {
+				const char *e = dom_string_data(enc);
+				size_t el = dom_string_byte_length(enc);
+				if ((el == 9 && strncasecmp(e, "text/html", 9) == 0) ||
+						(el == 21 && strncasecmp(e,
+						"application/xhtml+xml", 21) == 0))
+					o.fragment_context.html_integration_point = true;
+				dom_string_unref(enc);
+			}
+			if (attr != NULL)
+				dom_string_unref(attr);
+		}
+		o.fragment_context.node = context;
+
+		/* the form element pointer: the nearest form, the context included */
+		n = dom_node_ref((struct dom_node *) context);
+		while (n != NULL) {
+			struct dom_node *p = NULL;
+			dom_node_type t;
+			dom_string *nn = NULL;
+			if (dom_node_get_node_type(n, &t) == DOM_NO_ERR &&
+					t == DOM_ELEMENT_NODE &&
+					dom_node_get_local_name(n, &nn) == DOM_NO_ERR &&
+					nn != NULL) {
+				bool form = dom_string_byte_length(nn) == 4 &&
+					strncasecmp(dom_string_data(nn), "form", 4) == 0;
+				dom_string_unref(nn);
+				if (form) {
+					o.fragment_context.form = n;
+					break;
+				}
+			}
+			dom_node_get_parent_node(n, &p);
+			dom_node_unref(n);
+			n = p;
+		}
+	}
+	dom_document_get_quirks_mode(document, &quirks);
+	o.fragment_context.quirks = quirks == DOM_DOCUMENT_QUIRKS_MODE_FULL;
+
+	hubbub_parser_setopt((*parser)->parser, HUBBUB_PARSER_FRAGMENT_CONTEXT, &o);
+
+	if (n != NULL)
+		dom_node_unref(n);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	if (local != NULL)
+		dom_string_unref(local);
+	return DOM_HUBBUB_OK;
+}
 
 dom_hubbub_error
 dom_hubbub_parser_insert_chunk(dom_hubbub_parser *parser,

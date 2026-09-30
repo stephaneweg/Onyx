@@ -76,6 +76,19 @@ dom_hubbub_error dom_hubbub_fragment_parser_create(dom_hubbub_parser_params *par
 		dom_hubbub_parser **parser,
 		dom_document_fragment **fragment);
 
+/* Onyx: a fragment parsed in the context of an element (the HTML standard's fragment
+ * parsing algorithm: innerHTML...); context NULL: a <body> */
+#define DOM_HUBBUB_HAVE_FRAGMENT_CONTEXT 1
+dom_hubbub_error dom_hubbub_fragment_parser_create_ctx(dom_hubbub_parser_params *params,
+		dom_document *document, dom_element *context,
+		dom_hubbub_parser **parser, dom_document_fragment **fragment);
+
+/* Onyx: a template element's contents (the fragment the parser fills: made at the first
+ * call; a reference is returned) */
+#define DOM_HUBBUB_HAVE_TEMPLATE_CONTENT 1
+dom_exception dom_hubbub_template_content(dom_element *template_element,
+		dom_document_fragment **result);
+
 /* Destroy a Hubbub parser instance */
 void dom_hubbub_parser_destroy(dom_hubbub_parser *parser);
 

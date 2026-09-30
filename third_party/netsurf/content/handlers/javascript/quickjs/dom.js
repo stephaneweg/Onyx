@@ -328,8 +328,14 @@ function invoke(node, ev, capture) {
 
 function dispatch(target, ev) {
 	const path = [];
-	for (let n = target; n; n = eventParent(n))
+	for (let n = target; n; n = eventParent(n)) {
+		/* (Onyx: an element's load event stops at the document -- the window is not in
+		 * its path (HTML): duckduckgo.com's capturing window load listener added itself
+		 * again at each image's load) */
+		if (n === G && ev.type === 'load' && target !== G)
+			break;
 		path.push(n);
+	}
 	ev.target = target;
 	ev._path = path;
 	ev._stop = ev._stopNow = false;
@@ -2189,8 +2195,7 @@ function matchPseudo(e, p, scope) {
 		N.attr(e, 'disabled') === null;
 	case 'required': return N.attr(e, 'required') !== null;
 	case 'optional': return ['input', 'select', 'textarea'].includes(e.localName) && N.attr(e, 'required') === null;
-	case 'read-only': return N.attr(e, 'readonly') !== null;
-	case 'read-write': return ['input', 'textarea'].includes(e.localName) && N.attr(e, 'readonly') === null;
+	/* (Onyx: read-only, read-write, defined: html5.js, N.internals.pseudo) */
 	case 'placeholder-shown': return N.attr(e, 'placeholder') !== null && !e.value;
 	case 'link': case 'any-link': return ['a', 'area', 'link'].includes(e.localName) && N.attr(e, 'href') !== null;
 	case 'visited': case 'hover': case 'active': case 'focus-visible': case 'target-within':
@@ -2198,7 +2203,6 @@ function matchPseudo(e, p, scope) {
 	case 'focus': return G.document.activeElement === e;
 	case 'focus-within': { const a = G.document.activeElement; return !!a && e.contains(a); }
 	case 'target': { const h = decodeURIComponent((G.location.hash || '').slice(1)); return !!h && N.attr(e, 'id') === h; }
-	case 'defined': return true;
 	case 'lang': {
 		for (let n = e; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
 			const l = N.attr(n, 'lang');
@@ -2207,7 +2211,8 @@ function matchPseudo(e, p, scope) {
 		return false;
 	}
 	case 'dir': return lower(p.arg) === 'ltr';
-	default: return false;
+	/* Onyx: the pseudo-classes html5.js knows (:valid, :invalid, :in-range, :open...) */
+	default: return !!(N.internals && N.internals.pseudo && N.internals.pseudo(e, p.name, p.arg));
 	}
 }
 
@@ -2299,10 +2304,13 @@ class Element extends Node {
 	}
 	set classList(v) { this.setAttribute('class', v); }
 	get slot() { return N.attr(this, 'slot') || ''; }
-	getAttribute(name) { return N.attr(this, lower(name)); }
-	getAttributeNS(ns, name) { return N.attr(this, lower(name)); }
+	/* (Onyx: an attribute's name as given: lower case for an HTML element, as is for an SVG
+	 * one -- viewBox, preserveAspectRatio) */
+	_an(name) { return lower(name); }
+	getAttribute(name) { return N.attr(this, this._an(name)); }
+	getAttributeNS(ns, name) { return N.attr(this, this._an(name)); }
 	setAttribute(name, value) {
-		const k = lower(name);
+		const k = this._an(name);
 		const old = observers.size ? N.attr(this, k) : null;
 		N.setAttr(this, k, String(value));
 		if (observers.size)
@@ -2311,7 +2319,7 @@ class Element extends Node {
 	}
 	setAttributeNS(ns, name, value) { this.setAttribute(name.replace(/^.*:/, ''), value); }
 	removeAttribute(name) {
-		const k = lower(name);
+		const k = this._an(name);
 		const old = N.attr(this, k);
 		if (old === null) return;
 		N.removeAttr(this, k);
@@ -2320,7 +2328,7 @@ class Element extends Node {
 				addedNodes: nodeList([]), removedNodes: nodeList([]) });
 	}
 	removeAttributeNS(ns, name) { this.removeAttribute(name); }
-	hasAttribute(name) { return N.attr(this, lower(name)) !== null; }
+	hasAttribute(name) { return N.attr(this, this._an(name)) !== null; }
 	hasAttributeNS(ns, name) { return this.hasAttribute(name); }
 	hasAttributes() { return N.attrs(this).length > 0; }
 	toggleAttribute(name, force) {
@@ -2338,8 +2346,8 @@ class Element extends Node {
 		return m;
 	}
 	getAttributeNode(name) {
-		const v = N.attr(this, lower(name));
-		return v === null ? null : new Attr(this, lower(name), v);
+		const v = N.attr(this, this._an(name));
+		return v === null ? null : new Attr(this, this._an(name), v);
 	}
 	get innerHTML() { return innerHTML(this); }
 	set innerHTML(v) {
@@ -3125,6 +3133,10 @@ G.Audio = function Audio(src) { const a = N.create('audio'); if (src) a.src = sr
 
 /* SVG elements: their own classes (no rendering yet) */
 class SVGElement extends Element {
+	_an(name) { return String(name); }
+	get tagName() { return N.name(this); }
+	get localName() { return N.name(this); }
+	get namespaceURI() { return 'http://www.w3.org/2000/svg'; }
 	get dataset() { return HTMLElement.prototype.__lookupGetter__('dataset').call(this); }
 	get style() { return HTMLElement.prototype.__lookupGetter__('style').call(this); }
 	get className() { return { baseVal: N.attr(this, 'class') || '', animVal: N.attr(this, 'class') || '' }; }
@@ -3136,10 +3148,7 @@ class SVGElement extends Element {
 defineHandlers(SVGElement.prototype);
 G.SVGElement = SVGElement;
 G.SVGSVGElement = class SVGSVGElement extends SVGElement {};
-for (const t of ['svg'])
-	TAGS[t] = G.SVGSVGElement.prototype;
-for (const t of ['path', 'g', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'use', 'defs', 'symbol', 'text', 'tspan', 'lineargradient', 'radialgradient', 'stop', 'clippath', 'mask', 'pattern', 'image', 'foreignobject'])
-	TAGS[t] = SVGElement.prototype;
+/* (the SVG namespace's classes: html5.js's TAGS['svg:*'], TAGS['svg:svg']) */
 
 /* ---- Document ------------------------------------------------------------------------ */
 
@@ -3227,7 +3236,12 @@ class Document extends Node {
 	getElementById(id) { return N.byId(String(id)); }
 	getElementsByName(name) { return nodeList(N.descendants(this).filter(e => N.attr(e, 'name') === name)); }
 	createElement(tag) { return N.create(lower(tag)); }
-	createElementNS(ns, tag) { return N.create(tag.replace(/^.*:/, '').toLowerCase()); }
+	createElementNS(ns, tag) {
+		tag = String(tag);
+		if (ns == null || ns === '' || ns === 'http://www.w3.org/1999/xhtml')
+			return N.create(tag.replace(/^.*:/, '').toLowerCase());
+		return N.create(tag, String(ns));	/* (Onyx: in its namespace: React's <svg>) */
+	}
 	createTextNode(s) { return N.createText(String(s)); }
 	createComment(s) { return N.createComment(String(s)); }
 	createDocumentFragment() { return N.createFragment(); }
@@ -4849,21 +4863,125 @@ class File extends Blob {
 	constructor(parts, name, opts = {}) { super(parts, opts); this.name = name; this.lastModified = Date.now(); }
 }
 
-/* the fonts a document loads: always ready (NetSurf loads them itself) */
-const fontFaces = {
-	ready: Promise.resolve(),
-	status: 'loaded',
-	check() { return true; },
-	load() { return Promise.resolve([]); },
-	add() {}, delete() {}, clear() {},
-	forEach() {},
-	addEventListener() {}, removeEventListener() {},
-	[Symbol.iterator]() { return [][Symbol.iterator](); },
-};
-G.FontFace = class FontFace {
-	constructor(family, source) { this.family = family; this.status = 'loaded'; this.loaded = Promise.resolve(this); }
-	load() { return Promise.resolve(this); }
-};
+/* Onyx: the CSS Font Loading API -- FontFace (a font from a URL or bytes), document.fonts
+ * (the faces a script adds: fetched, given to NetSurf's font code, the page laid out again;
+ * the @font-face rules are NetSurf's own) */
+function fontWeights(w) {
+	const t = String(w == null ? '400' : w).trim().split(/\s+/).map(x =>
+		x === 'normal' ? 400 : x === 'bold' ? 700 : parseInt(x, 10)).filter(x => x > 0);
+	return t.length ? [t[0], t[t.length - 1]] : [400, 400];
+}
+class FontFace {
+	constructor(family, source, desc = {}) {
+		this.family = String(family).replace(/^["']|["']$/g, '');
+		this.style = desc.style || 'normal';
+		this.weight = String(desc.weight || 'normal');
+		this.stretch = desc.stretch || 'normal';
+		this.unicodeRange = desc.unicodeRange || 'U+0-10FFFF';
+		this.display = desc.display || 'auto';
+		this.featureSettings = desc.featureSettings || 'normal';
+		this.variant = desc.variant || 'normal';
+		this.status = 'unloaded';
+		this._src = source;
+		this._bytes = null;
+		let ok, ko;
+		this.loaded = new NativePromise((a, b) => { ok = a; ko = b; });
+		this.loaded.catch(() => {});
+		this._ok = ok; this._ko = ko;
+		if (typeof source !== 'string') {
+			const u8 = source instanceof ArrayBuffer ? new Uint8Array(source) :
+				ArrayBuffer.isView(source) ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength) : null;
+			if (u8) { this._bytes = u8; this.status = 'loaded'; ok(this); }
+			else { this.status = 'error'; ko(new DOMException('bad font source', 'SyntaxError')); }
+		}
+	}
+	load() {
+		if (this.status !== 'unloaded') return this.loaded;
+		this.status = 'loading';
+		/* the first url() of the source whose format NetSurf reads */
+		const urls = [...String(this._src).matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)(?:\s*format\(\s*['"]?([\w-]+)['"]?\s*\))?/g)]
+			.filter(m => !m[3] || /^(woff2?|truetype|opentype)(-variations)?$/i.test(m[3]) ||
+				/^(collection)$/i.test(m[3]) === false && !/embedded|svg/i.test(m[3]))
+			.map(m => m[2]);
+		const fail = () => { this.status = 'error'; this._ko(new DOMException('A network error occurred.', 'NetworkError')); };
+		if (!urls.length) { fail(); return this.loaded; }
+		let url;
+		try { url = new URL(urls[0], document.baseURI || location.href).href; } catch (e) { fail(); return this.loaded; }
+		const id = N.request('GET', url, null, ['X-Onyx-Dest: font'], true, (err, r) => {
+			if (err != null || !r || r.status >= 400 || !r.body) { fail(); return; }
+			const b = r.body;
+			this._bytes = b instanceof Uint8Array ? b : b instanceof ArrayBuffer ? new Uint8Array(b) :
+				Uint8Array.from(String(b), c => c.charCodeAt(0) & 255);
+			this.status = 'loaded';
+			this._ok(this);
+		});
+		if (id < 0) fail();
+		return this.loaded;
+	}
+	_register() {
+		if (this._given || !this._bytes) return;
+		this._given = true;
+		const [w1, w2] = fontWeights(this.weight);
+		N.addFontFace(this.family, w1, w2, /italic|oblique/.test(this.style), this._bytes);
+	}
+}
+class FontFaceSet extends EventTarget {
+	constructor() {
+		super();
+		this._set = new Set();
+		this._pending = 0;
+		this.status = 'loaded';
+		this._ready = NativePromise.resolve(this);
+	}
+	get ready() { return this._ready; }
+	get size() { return this._set.size; }
+	add(face) {
+		if (!(face instanceof FontFace)) throw new TypeError('not a FontFace');
+		if (this._set.has(face)) return this;
+		this._set.add(face);
+		if (face.status === 'loaded') face._register();
+		else this._track(face);
+		return this;
+	}
+	_track(face) {
+		if (face.status === 'unloaded') face.load();
+		if (face.status !== 'loading') { face._register(); return; }
+		if (this._pending++ === 0) {
+			this.status = 'loading';
+			let done;
+			this._ready = new NativePromise(r => { done = r; });
+			this._done = done;
+			dispatch(this, new Event('loading'));
+		}
+		const end = () => {
+			face._register();
+			if (--this._pending === 0) {
+				this.status = 'loaded';
+				dispatch(this, new Event('loadingdone'));
+				this._done(this);
+			}
+		};
+		face.loaded.then(end, end);
+	}
+	delete(face) { return this._set.delete(face); }
+	clear() { this._set.clear(); }
+	has(face) { return this._set.has(face); }
+	check() { return true; }
+	load(font) {
+		const fams = String(font || '').split(',').map(f => f.trim().split(/\s+/).pop().replace(/^["']|["']$/g, '').toLowerCase());
+		const faces = [...this._set].filter(f => fams.some(x => f.family.toLowerCase() === x || String(font).toLowerCase().includes(f.family.toLowerCase())));
+		for (const f of faces) if (f.status === 'unloaded') this._track(f);
+		return NativePromise.all(faces.map(f => f.loaded.catch(() => f))).then(() => faces);
+	}
+	forEach(fn, t) { for (const f of this._set) fn.call(t, f, f, this); }
+	entries() { return [...this._set].map(f => [f, f])[Symbol.iterator](); }
+	values() { return this._set.values(); }
+	keys() { return this._set.values(); }
+	[Symbol.iterator]() { return this._set.values(); }
+}
+const fontFaces = new FontFaceSet();
+G.FontFace = FontFace;
+G.FontFaceSet = FontFaceSet;
 
 /* ---- the global object ------------------------------------------------------------------- */
 
@@ -5066,6 +5184,20 @@ function modGraph(url, text, seen) {
 	return NativePromise.all(deps);
 }
 
+/* Onyx: a dynamic import() (qjs.c rewrites it): the module graph fetched first, then the
+ * engine's own import (a classic Function's: not rewritten) finds every source */
+const nativeImport = new Function('u', 'return import(u)');
+G.__onyxImport = (base, spec) => {
+	let url;
+	try { url = new URL(String(spec), base || document.baseURI || location.href).href; }
+	catch (e) { return NativePromise.reject(new TypeError('Failed to resolve module specifier ' + spec)); }
+	return modFetch(url).then(t => {
+		if (t === null)
+			throw new TypeError('Failed to fetch dynamically imported module: ' + url);
+		return modGraph(url, t, new Set([url]));
+	}).then(() => nativeImport(url));
+};
+
 async function modRun(url, text) {
 	await modGraph(url, text, new Set([url]));
 	for (let i = 0; i < 20; i++) {
@@ -5177,6 +5309,9 @@ function browserDispatch(target, type, init) {
 }
 
 /* ---- the natives' setup ------------------------------------------------------------------- */
+
+/* Onyx: dom.js's internals html5.js builds on (MutationObserver records, dispatch...) */
+N.internals = { queueMutation, observers, childListRecord, dispatch, report, activate };
 
 N.setup({
 	node: Node.prototype,

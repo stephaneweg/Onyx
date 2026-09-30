@@ -38,4 +38,11 @@ void onyx_webfont_release(struct html_content *c);
 /** The document is the one whose web fonts text is measured and drawn with next. */
 void onyx_webfont_scope(struct html_content *c);
 
+/**
+ * A face a script loaded (the CSS Font Loading API: new FontFace + document.fonts.add): given
+ * to the font code for the document, which is laid out again. `data` is the font file's bytes.
+ */
+bool onyx_webfont_add_script_face(struct html_content *c, const char *family, int wmin,
+		int wmax, bool italic, const uint8_t *data, size_t size);
+
 #endif

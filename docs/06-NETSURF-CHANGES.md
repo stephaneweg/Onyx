@@ -21,10 +21,12 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17) |
+| `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
+| `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -243,8 +245,8 @@ optional chaining...) with the DOM written in JavaScript:
   (`qjs.c`): NetSurf's low-level cache with `LLCACHE_RETRIEVE_FORCE_FETCH`, the callback on the
   page's thread (the promises' jobs run after it, a changed DOM laid out again); the requests
   in flight are cancelled when the document goes. Not yet: synchronous XHR (it runs async),
-  streams (`body` is null), multipart bodies, `responseXML`, CORS checks (every origin
-  answers).
+  multipart bodies, CORS checks (every origin answers); streams, `responseXML` and
+  `responseType = 'document'`: html5.js (§17).
 - **A changed DOM is laid out again** (`html.c`, `html_script_dom_changed`): once a script
   is done, NetSurf builds the document's boxes again (`dom_to_box_now`, synchronously) and
   lays it out — a menu a script opens, a class toggled, nodes added. The old boxes' objects
@@ -588,12 +590,318 @@ an invalid value is still dropped.
   CSSOM View's interfaces; `:has()` matching (libcss's handler has no child walk);
   `@container` against a real container; the pseudo-elements' drawing (`::marker`,
   `::placeholder`...); a math function over relative lengths (`round(1em, 3px)`) computed.
+## 15. Intl (ECMA-402) and the locale built-ins
+
+QuickJS-ng is built without `Intl`: bbc.co.uk's and bbc.com's Next.js applications stopped on
+"Intl is not defined" (their React tree crashed, the page went blank), youtube.com too. NetSurf
+now has its own implementation, in JavaScript:
+
+- **`quickjs/intl.js`**: `Intl.DateTimeFormat` (`dateStyle` / `timeStyle`, every component option,
+  `hour12` / `hourCycle`, `timeZoneName` in its six forms, `format`, `formatToParts`,
+  `formatRange`, `formatRangeToParts`, `resolvedOptions`), `Intl.NumberFormat` (decimal, percent,
+  currency with symbol / narrow symbol / code / name and accounting, unit with the simple units
+  and their `-per-` compounds; integer, fraction and significant digits, the nine rounding modes,
+  rounding increments and priorities, `trailingZeroDisplay`; grouping; standard, scientific,
+  engineering, compact short and long notations; `signDisplay`; strings and BigInts exactly;
+  `formatRange` with CLDR's collapsing), `Intl.PluralRules` (cardinal and ordinal, `selectRange`),
+  `Intl.RelativeTimeFormat`, `Intl.ListFormat`, `Intl.Collator` (a simplified Unicode collation:
+  base letters with accents folded at the primary level, accents, case; `numeric`, `caseFirst`,
+  `sensitivity`, `ignorePunctuation`; Spanish ñ and the Nordic letters after z), `Intl.Segmenter`
+  (graphemes with the Unicode properties of QuickJS's regular expressions; words and sentences
+  approximated, Chinese / Japanese / Thai a character at a time), `Intl.DisplayNames` (languages,
+  regions, scripts, currencies, calendars, date fields), `Intl.Locale` (with `maximize` /
+  `minimize` from CLDR's likely subtags), `Intl.getCanonicalLocales`, `Intl.supportedValuesOf`.
+  Language tags are parsed and canonicalised as UTS 35 says (aliases, extensions); the legacy
+  constructor behaviour (`Intl.NumberFormat.call (obj)`) is there.
+- **The built-ins** take their ECMA-402 versions: `Number.prototype.toLocaleString`,
+  `BigInt.prototype.toLocaleString`, `Date.prototype.toLocaleString` / `toLocaleDateString` /
+  `toLocaleTimeString`, `Array.prototype.toLocaleString` and the typed arrays', `String.prototype.
+  localeCompare`, `toLocaleLowerCase` / `toLocaleUpperCase` (Turkish, Azeri, Lithuanian). The
+  formatter of the calls without arguments is kept (a table of numbers formats fast).
+- **The locales**: English (US, GB, AU, CA, IN, IE, NZ, ZA; the other English regions as GB),
+  French (FR, CA, BE, CH), German (DE, AT, CH), Spanish (ES, MX, US, 419, AR; the other
+  Latin-American regions as 419), Italian, Dutch (NL, BE), Portuguese (BR, PT; the other regions as
+  PT), and, for formatting only (their units, display names and time zone names are English's):
+  Japanese, Chinese (simplified, traditional), Korean, Russian, Polish, Swedish, Danish, Norwegian
+  Bokmål, Finnish, Turkish, Czech. Any region of these languages is accepted (`fr-LU`).
+  Another language resolves to the default locale, as the specification says.
+- **The default locale is `navigator.language`** (dom.js: `fr-FR`), as in Chrome for a French
+  user. A page that formats without a locale gets French, as it would in Chrome in France.
+- **The data** (`third_party/cldr-48/intl-data.txt`, 450 KB, Unicode License v3) is CLDR 48 as
+  ICU 78 has it: `tools/tests/netsurf/intl/gendata.js` reads every pattern and name back from
+  Node.js's own `Intl` (full ICU, Chrome's data) by formatting probe values -- the date patterns
+  of ~160 option combinations per locale, the number templates, the compact and unit patterns
+  per plural category, the relative-time and list patterns, the display names, the time zone
+  names; a regional locale keeps only what differs from its language. CLDR's narrow no-break
+  space in times is a plain space, as Chrome shows it. The plural rules are code (`PLURAL`).
+- **Time zones**: every IANA zone (418, and the common links) with its standard offset and its
+  current daylight-saving rule (EU, US, Australian, New Zealand, Chilean, or the zone's own:
+  Cairo, Jerusalem, Havana...) found by the generator from the 2026-2028 transitions --
+  historical changes are not kept (a 1990 date gets today's rule). Offset time zones (`+05:30`),
+  `Etc/GMT±N`; a zone name is kept as written (case-normalised). **The default time zone**: the
+  host's name (the PC: `TZ`, `/etc/localtime`) when the `Date` agrees with it, else the zone of
+  the locale's region whose offset matches `Date`'s (`fr-FR`: Europe/Paris), else a popular one,
+  else `Etc/GMT±N`: `resolvedOptions ().timeZone` always agrees with `getTimezoneOffset ()`.
+- **Onyx's clock**: `gettimeofday` gives the local time (the kernel's clock is UTC + the
+  `timezone=` of `SD:/etc/system.ini`), so `Date.now ()` was off by that offset and
+  `getTimezoneOffset ()` was 0. `quickjs.c` (under `__ONYX__`, README.onyx) now takes
+  `js_onyx_utc_offset_min` off `Date.now` and answers it in `getTimezoneOffset`; `qjs_intl.h`
+  reads `timezone=` once. Onyx has no daylight-saving rule of its own: the offset is the one the
+  Setup wrote (a date in the other season is still shown at today's offset by `Date`; `Intl`
+  shows it with the zone's rule).
+- **Lazily loaded, compiled once**: `intl.js` has two parts, split at the line `//@@INTL-IMPL@@`
+  by `qjs_intl.h` (included by `qjs.c`; `qjs_intl_init (ctx)` before dom.js). The boot part runs
+  in every document's context: the `Intl` object, whose members are accessors that load the
+  implementation at their first use and then become ordinary data properties, and the
+  built-ins. Both parts are compiled once per process and kept as bytecode (`JS_WriteObject`,
+  the process's heap), read back in each context. The locale data stays a C string in the
+  binary: a record (`"en-GB/d"`) is found and `JSON.parse`d when a formatter first needs it.
+  Cost on the PC (`tools/tests/netsurf/intl/qjsintl -m`): a context 0.12 ms, + 0.09 ms for the
+  boot; the first `Intl` use in a context 2 ms (12 ms the very first time: compiling). The binary
+  grows by ~575 KB (the data and intl.js as strings).
+- **Tests**: `tools/tests/netsurf/pages/js-intl.html` (made by `intl/mkpage.js` from
+  `intl/cases.js`: 233 expressions with Node's answers as the expected values; in `jstest.sh`),
+  `intl/compare.sh` (the same cases in Node and in `qjsintl`, QuickJS with the Intl on the PC:
+  `intl/build.sh`), `intl/test262.js` (test262's intl402 in `qjsintl`: 1061 of the 1146 tests
+  run pass, 92.6%; Temporal, DurationFormat and a few features are skipped). Live: bbc.co.uk,
+  bbc.com and youtube.com no longer stop on `Intl`.
+
+## 16. The HTML parser (libhubbub, libdom's binding, libparserutils)
+
+NetSurf's parser, hubbub, followed the HTML5 drafts of about 2008: no `<template>`, a
+different `<select>` and `<table>` handling, the character references of that time, no
+fragment parsing in a context element. It now follows the current standard (the WHATWG
+tokenizer and tree construction), measured by the **html5lib-tests** (the test suite the
+browsers' parsers share; `tools/tests/netsurf/html5lib.sh`):
+
+| | Before | After |
+|---|---|---|
+| Tokenizer (`tokenizer/*.test`) | 6739 / 7032 (95.8%) | 7024 / 7028 (99.9%) |
+| Tree construction (`tree-construction/*.dat`, documents and fragments, scripting on and off) | 930 / 1716 (54.2%) | 1792 / 1792 (100%) |
+
+(The old count missed the tests with a NUL in them: 1716 of the 1792. The 4 tokenizer tests
+left start with a U+FEFF that libparserutils' decoder takes off as a byte order mark, as a
+browser does for a document; `xmlViolation.test` is for XML-style parsers and is skipped. The
+tree tests also pass fed in chunks of 1, 2, 3, 7 and 64 bytes, and under valgrind.)
+
+- **The tokenizer** (`libhubbub/src/tokeniser/tokeniser.c`) is written again from the
+  standard's state machine: every state, the character reference states with the standard's
+  **2231 named references** (`onyx_entities.inc`, generated by `build/make-onyx-entities.py`
+  from the standard's `entities.json`; searched by bisection -- the old trie, `entities.c`,
+  and its Perl generator are gone), the numeric references' replacement table, CR / CRLF
+  made LF, the script data escape states, CDATA sections in foreign content. The text runs
+  between markup are handed on without a copy (a table of the bytes that stop each text
+  state). New options: `HUBBUB_TOKENISER_LAST_START_TAG` (an appropriate end tag in RCDATA /
+  RAWTEXT / script data when a fragment starts in such an element) and the content models
+  `SCRIPTDATA` and `CDATA_SECTION` (`include/hubbub/types.h`).
+- **The tree builder** (`src/treebuilder/treebuilder.c`, one file: the old per-mode files,
+  `element-type.*`, `internal.h`, `modes.h` are gone) has every insertion mode of the
+  standard: the stack of open elements and the list of active formatting elements (with the
+  Noah's ark clause), the adoption agency algorithm, foster parenting, `<template>` (its own
+  insertion modes; its children go to the template's contents fragment), foreign content
+  (SVG and MathML, their attribute and tag name adjustments, the integration points), the
+  "in select" handling of the current standard (the relaxed `<select>` parser: other
+  elements allowed in a select) with **`<selectedcontent>`** (a copy of the selected
+  option's contents), frameset, quirks mode from the doctype, and **fragment parsing** in
+  a context element (innerHTML, `createContextualFragment`...). Consecutive characters are
+  gathered and inserted as one text node (`insert_text`, not one call per character).
+- **The API** (`include/hubbub/tree.h`, `parser.h`; appended, the old fields kept): the tree
+  handler's `template_content` (a template's contents fragment) and `insert_text` (append to
+  the preceding text node); the parser options `HUBBUB_PARSER_LAST_START_TAG` and
+  `HUBBUB_PARSER_FRAGMENT_CONTEXT` (the context element: namespace, name, node, form
+  element, whether it is an HTML integration point, the quirks mode);
+  `hubbub_treebuilder_flush` (the text gathered so far inserted -- `parser.c` calls it at the
+  end of each chunk and when a script pauses the parser).
+- **libdom's binding** (`libdom/bindings/hubbub/parser.c`, its copy in
+  `libdom/include/dom/bindings/hubbub/`): `add_attributes` adds only the missing ones (the
+  standard's `<html>` / `<body>` merge); the templates' contents are a document fragment held
+  as the element's user data (`dom_hubbub_template_content`); `insert_text`;
+  `dom_hubbub_fragment_parser_create_ctx` (a fragment parser in a context element: qjs.c's
+  `setHTML`); the elements made as the parser names them (`_dom_html_document_create_element_parser`:
+  no prefix split of `xlink:href`-like names; attribute names that are not XML names -- the
+  standard allows them -- are kept, `_dom_element_parser_attrs`).
+- **libdom**: an element in another namespace than HTML keeps its name's case (`viewBox`,
+  `foreignObject`: they were made upper case) and has no HTML type (only `<style>` keeps
+  its type: its sheet); attribute names are lower-cased on HTML elements only; the document
+  element and the doctype can be removed (`node.c`).
+- **libparserutils**: the input filter emptied its decoder after a full output buffer (the
+  last character of a 65-byte input was lost: `filter.c`, `inputstream.c`); U+FFFE / U+FFFF
+  are valid UTF-8 (`utf8impl.h`).
+- **Speed** (the PC, `html5lib.sh time <page>`, best of 20, fed in 32 KB chunks as the
+  fetcher gives them): bbc.co.uk (668 KB) 15.7 -> 10.7 ms, bbc.com/news 8.1 -> 6.2 ms,
+  a Wikipedia article 24.1 -> 17.5 ms, google.com 3.0 -> 2.2 ms.
+- `html/box_construct.c`: the text of a closed `<details>` other than its `<summary>` makes
+  no boxes (`onyx_in_closed_details`).
+- The PC tests (`tools/tests/netsurf/`): `html5lib.sh [tree|tok|time <page>] [-v] [files]`
+  (the tests are cloned once, at the last html5lib-tests commit that has the
+  tree-construction tests); the drivers `html5lib_tree.c` (`-c N`: fed N bytes at a time),
+  `html5lib_tok.c` + `html5lib_tok.py`, `html5lib_time.c`; `html5lib.mk` builds them.
+
+## 17. The HTML5 DOM (`quickjs/html5.js`)
+
+**`html5.js`** is a second prelude, run after dom.js (compiled in the same way:
+`qjs_html5_js.h`); qjs.c calls it with the natives and dom.js's table of element classes
+(`TAGS`). It extends and corrects dom.js's classes, and lists what it does in its header.
+Measured by **html5test.co** (Niels Leenheer's test, `tools/tests/netsurf/html5test.sh`: its
+engine run in the PC NetSurf, the score and every missing feature printed): **252 -> 314 of
+588** (Chrome about 530). Every feature it counts works; nothing answers "supported" without
+doing it. dom.js changed in two places only: `N.internals` (its mutation queue, observers,
+dispatch, for html5.js) and its selector engine asking `N.internals.pseudo` for the
+pseudo-classes it does not know.
+
+- **Namespaces**: `namespaceURI`, `localName`, `tagName`, `prefix`, the `*NS` methods; SVG
+  and MathML elements get their own classes (qjs.c's `qjs_proto_for` looks up `svg:<name>`,
+  `svg:*`, `math:*`), an unknown HTML name is an `HTMLUnknownElement`, a valid custom
+  element name an `HTMLElement` (`*custom`); attribute names lower-cased on HTML elements only.
+- **Fragments on the new parser**: `innerHTML` (qjs.c's `setHTML`: parsed in its context
+  element -- a `<tr>` into a `<tbody>`, text into a `<textarea>` or `<title>` decoded, a
+  `<script>` or `<style>` raw), `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`,
+  `getHTML`, `Range.createContextualFragment`; the standard's serialization (escaping,
+  void elements, raw text); `<template>`'s `content` (cloned and imported with the
+  template); `DOMParser` (HTML, and XML with a small parser: `parsererror` on bad XML),
+  `XMLSerializer`, `Document.parseHTMLUnsafe`, `document.implementation.createHTMLDocument`
+  / `createDocument`; `ownerDocument`, `importNode`, `adoptNode`, `cloneNode` across
+  documents (qjs.c: `createDocument`, `createIn`, `importTo`, `parseDocument`).
+- **Messaging**: `MessageChannel` / `MessagePort` (`port1` / `port2`, `postMessage`,
+  `onmessage`, `start`, `close`), `window.postMessage` with a `MessageEvent` (`origin`,
+  `source`), `BroadcastChannel` -- delivered in a task, not a microtask -- and
+  `structuredClone` (the structured clone algorithm: cycles, `Map`, `Set`, `Date`, `RegExp`,
+  typed arrays, errors; a `DataCloneError` for functions and nodes).
+- **Forms**: the input types (email, url, tel, search, number, range, date, month, week,
+  time, datetime-local, color) with the standard's value sanitization, `valueAsNumber`,
+  `valueAsDate`, `stepUp` / `stepDown`; the constraint validation API (`validity` with every
+  flag, `willValidate`, `checkValidity`, `reportValidity`, `setCustomValidity`,
+  `validationMessage`, the `invalid` event); an invalid form is not sent (a capture listener
+  on `submit`; `novalidate`, `formnovalidate`); the `form` attribute; `<output>`,
+  `<fieldset>` `elements`, `<datalist>`, `<meter>`, `<progress>`; the pseudo-classes
+  `:valid`, `:invalid`, `:in-range`, `:out-of-range`, `:read-write`, `:read-only`,
+  `:indeterminate`, `:default`, `:open`, `:modal`, `:defined`.
+- **`<dialog>`, `<details>`, `hidden`**: `show`, `showModal`, `close`, `returnValue`, a
+  `<form method="dialog">` closing its dialog, the `close` / `cancel` / `toggle` events;
+  `<details>` `open` with its `toggle` event; the global attributes (`hidden`, `translate`,
+  `accessKey`, `contentEditable`, `isContentEditable`, `draggable`, `spellcheck`; the
+  `popover` attribute reflected, no popover behaviour). The drawing: `default.css`'s block marked "Onyx HTML5" (`[hidden]`,
+  `<template>`, `<datalist>` not drawn; a closed `<dialog>` not drawn, an open one centred;
+  a closed `<details>` shows its summary only); `getComputedStyle` of an element without a
+  box (display: none, a hidden subtree, a script's reading before the first layout) is its
+  selected style (qjs.c: `qjs_unboxed_style`, with the style sheets already loaded --
+  `html_css_new_selection_context` skips those still coming); a script's reading of a size
+  lays out its changes first (`qjs_layout_now`, 16 times a turn at most).
+- **Custom elements**: `customElements.define` / `get` / `getName` / `whenDefined` /
+  `upgrade`; the element's constructor runs on `createElement` and `new`, and on the elements
+  already there once they are in the document (an upgrade); `connectedCallback` /
+  `disconnectedCallback` on insertion and removal, `attributeChangedCallback` for the
+  `observedAttributes`; `attachInternals` (`ElementInternals`: a value, a validity). The
+  parser's elements: libdom's `DOMNodeInserted` calls `js_handle_new_element`, which keeps
+  the element (the DOM is read-only during a mutation event) for html5.js' hook
+  (`N.ceHook`), run before the next script or from the scheduler; the scripts' insertions are
+  seen by html5.js itself (it wraps the natives `insert`, `remove`, `setHTML`, `setText`).
+  Customized built-in elements (`{ extends }`) are recorded but not upgraded, as in Safari.
+- **The session history**: `history.pushState` / `replaceState` change the document's URL
+  (qjs.c's `setURL`: `location` and the address bar show it; no navigation), `back` /
+  `forward` / `go` between the entries the page made fire `popstate` (and `hashchange`),
+  past them NetSurf's own history; `location.hash` set makes an entry and scrolls.
+- **Streams**: `ReadableStream` (its reader, a BYOB reader -- a byte stream reads as a
+  default one and the BYOB reader copies --, `tee`,
+  `pipeTo`, `pipeThrough`, async iteration, `ReadableStream.from`), `WritableStream`,
+  `TransformStream`, the queuing strategies, `TextEncoderStream` / `TextDecoderStream`,
+  `Response.body` and `Blob.stream()`.
+- **Files**: `Blob` holds bytes (`size`, `type`, `slice`, `text`, `arrayBuffer`, `bytes`,
+  `stream`), `File`, `FileReader` (text, data URL, array buffer, binary string, its events),
+  `FileList`, `URL.createObjectURL` / `revokeObjectURL` (`fetch` reads `blob:` URLs).
+- **Smaller APIs**: microdata (`itemScope`, `itemProp`, `itemValue`, `properties`,
+  `document.getItems`), `<ol reversed>` (NetSurf's layout already numbers it backwards),
+  `performance.mark` / `measure` / `getEntries*` and `PerformanceObserver`,
+  `XMLHttpRequest`'s `responseType = 'document'` and `responseXML`.
+- `tools/tests/netsurf/pages/js-html5.html`, `js-forms.html`, `js-apis.html`, `js-ce.html`
+  (in `jstest.sh`): 44 + 45 + 26 + 17 checks. `html5test.sh` starts the run at the load, as
+  html5test.co does (it waits for its browser detection script).
+- Not done (html5test counts them): Web Workers, EventSource and WebSocket (the requests are
+  delivered whole), IndexedDB, the editing APIs (`designMode`, `execCommand`), a real shadow
+  tree (`attachShadow` returns the host, whose children are drawn), `<input type="image">`'s
+  sizes, and what is out of this work: canvas, SVG, audio and video, WebRTC, WebGL.
+
+## 18. The big sites: memory, requests, events, early layout (bbc.co.uk, google.com, m.facebook.com)
+
+Found on the live sites with the PC bench, which now reaches the network (https through the
+PC's OpenSSL, an HTTPS proxy's CONNECT, JPEG and WebP decoded: `site.sh` draws a live site in
+NetSurf and in Chromium, `layoutdiff.sh` compares their boxes, `sitesweep.sh` loads a list of
+sites and counts crashes and script errors, `NS_MEMSTAT` prints the heap in use, `NS_JSDUMP`
+writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
+
+- **bbc.co.uk's "out of memory"**: its consent script bundles core-js, which replaced the
+  engine's `Promise` because `PromiseRejectionEvent` was missing, and its polyfill queued
+  microtasks for ever -- 1.5 GB in a minute on the PC. `PromiseRejectionEvent` exists; the
+  promises' jobs run 200 ms at most per turn and the rest a turn later (a runaway chain no longer
+  holds the window, `qjs_leave`); the scripts' heap is limited to 384 MB (an allocation past it
+  throws in the script instead of stopping the app). bbc.com now takes ~170 MB on the PC,
+  steady.
+- **The requests' Fetch Metadata** (`onyx_fetch.c`, `onyx_add_fetch_metadata`): Chrome's
+  `Sec-Fetch-Site` / `-Mode` / `-Dest` / `-User`, `Upgrade-Insecure-Requests`, an `Accept` by
+  destination and, on https, the User-Agent client hints (`sec-ch-ua`, `-mobile`,
+  `-platform`). m.facebook.com answered a navigation without `Sec-Fetch-Mode` with a 400 ("Sorry,
+  something went wrong"). The destination comes from what the caller accepts (`hlcache.c`: an
+  `X-Onyx-Dest` header the fetcher takes off; web fonts and script requests say theirs).
+- **Load and error events** of `<script src>` (run or failed, inserted ones too), `<link>` /
+  `<style>` sheets and `<img>` (NetSurf's picture); the window's `load` waits for the fetches
+  still going (an inserted script delays it) and an element's `load` does not reach the window
+  (duckduckgo.com's capturing window listener re-added itself at each image: a loop).
+  `<img>.complete` / `naturalWidth` from NetSurf's picture (`N.image`); a script's own images
+  (`new Image()`) are canvas.js's (fetched, decoded, `load` / `error`). Facebook's bootloader
+  waits for its modules' load events.
+- **A script inserted by a script** runs outside libdom's mutation-event guard (libdom refused
+  every change it made: yahoo.com's loaders' "bad attribute"; `dom_document_onyx_mutation_guard`).
+  `innerHTML` of a raw text element (`script`, `style`...) is its text, of `textarea` / `title`
+  its decoded text (a consent stub inserted as `script.innerHTML` lost every `<...>`).
+- **Form controls outside any form** are kept for the document's life (`orphan_controls`): a
+  rebox found them no more -- what the user typed in a React app's input (Facebook's login)
+  was lost at each script change.
+- **Early layout** (`html_early_layout`): a script that asks for a geometry while the document
+  is still parsed gets boxes built and laid out from the nodes parsed so far (no object
+  fetched), made again when the DOM changed, given up at the conversion. google.com's footer
+  script set `#gb-main`'s min-height from its `scrollHeight` (0 without boxes): the footer
+  covered the search box. **Script-blocking style sheets**: a parser-inserted inline script
+  waits (the parser paused) while a style sheet -- a `<style>` still to be converted too -- is
+  fetched, as a browser's do (`html_script_sheets_arrived`).
+- **A style attribute** is the author's with the specificity (1,0,0,0) (libcss `select.c`): it
+  kept the last sheet's origin and selector's specificity, and lost to an `<img width>`'s
+  presentational hint after the user sheet (bbc's images kept their attribute size).
+- **URL / URLSearchParams** after the WHATWG URL Standard (dom.js: the basic URL parser's state
+  machine, IPv4 / IPv6 / IDN hosts, the percent-encode sets, every setter; the WPT's
+  urltestdata 896/896, setters 278/278, toascii 72/87 -- `urltest.sh`).
+- **Dynamic `import()`** of a URL computed at run time: rewritten at compile time to
+  `__onyxImport(base, x)` (`qjs_rewrite_import`: strings, comments and methods named import
+  skipped), which fetches the module graph then calls the engine's import (QuickJS's loader
+  cannot wait for the network: developer.mozilla.org's chunks).
+- **SVG made by scripts** (React): `createElementNS` creates the element in its namespace, the
+  prototypes are chosen by namespace, the names keep their case (`N.name`).
+- **Web fonts** of the sheets added after the conversion (Facebook's bootloader adds its sheets:
+  Optimistic 95 was never fetched), `format("woff2-variations")` read as WOFF2 (libcss), and the
+  **CSS Font Loading API**: `FontFace` (a URL or bytes) and `document.fonts` (a `FontFaceSet`:
+  `add`, `ready`, `load`, `loading` / `loadingdone`), a script's faces given to NetSurf's font
+  code (`N.addFontFace` -> `onyx_webfont_add_script_face`) and the page laid out again.
+- **Style sheets after the layout**: a `<style>` or `<link>` a script adds, changes or takes
+  out once the page is laid out now restyles it -- NetSurf ignored them ("NS layout is
+  static"): the selection context is made again from the sheets there now and the boxes built
+  again (`html_css_restyle`, css.c; `html_css_node_removed` from `DOMNodeRemoved`,
+  dom_event.c). Facebook's Bloks screens (`.wbloks_1 { display: flex }`, a `<style>` added by
+  the script) were laid out as blocks. The UA sheet hides `link`, `meta`, `base`, `area`,
+  `param` too (a `<link>` in the body made a line). Test: js-latesheets.
+- **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
+  first context of the process, their bytecode kept and read back in the next ones
+  (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms
+  (a page's iframes, each navigation). Timed as `js:prelude` (NS_PERF).
+- Smaller: `DOMStringMap`; `addEventListener` & co called unbound are the window's;
+  `localStorage`'s Proxy keeps the Proxy invariants (`Object.keys(localStorage)` threw);
+  inline scripts are named by their first characters in errors and timings.
+- Tests: `jstest.sh` gained js-microloop, js-rawtext, js-loadevents, js-url, js-dynimport,
+  js-svgns, js-fontface.
 
 ## 8. Known gaps
 
-- JavaScript: no streams (`fetch`'s `body`), synchronous XHR (runs async),
-  multipart request bodies, `responseXML`; CSS `:active` / `:focus`; a form control
-  outside a form is made again at each layout the scripts cause (its old one leaks).
+- JavaScript: synchronous XHR (runs async), multipart request bodies; no Workers,
+  EventSource, WebSocket, IndexedDB, editing APIs, shadow trees (§17); CSS `:active` /
+  `:focus`.
 - `opacity`, filters, animations and transitions.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
@@ -609,7 +917,12 @@ an invalid value is still dropped.
   per-corner `roundRect` radii; `drawImage` scales with the nearest pixel (PlutoVG's
   textures), and a canvas shown at another CSS size too (the framebuffer's bitmap plot);
   no `getContext('webgl')`, `captureStream`, video frames; the page's web fonts are not used
-  (the card's fonts by family); an `<img>` of the page is drawn once NetSurf has fetched it,
-  but it gets no `load` event (dom.js fires none for the page's images; an `Image` a script
-  makes and keeps out of the page does get one).
+  (the card's fonts by family).
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.
+- Intl (§15): no `Intl.DurationFormat`, no Temporal; the Gregorian calendar only (another
+  `calendar` falls back to it, no `relatedYear` / `yearName`); a date range's CLDR interval
+  patterns are approximated (the shared fields, the locale's dash); no collation tailorings
+  but Spanish and Nordic, no `co` types (phonebook, pinyin...); word and sentence segmentation
+  without dictionaries; time zones with their current rules only (no history), four zones with
+  irregular rules (Casablanca, El Aaiun, Gaza, Hebron) at a fixed offset; the lean languages
+  (ja, zh, ko, ru, pl, sv, da, nb, fi, tr, cs) have English units, display names and zone names.

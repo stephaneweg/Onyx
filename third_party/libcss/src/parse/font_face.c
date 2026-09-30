@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "parse/propstrings.h"
 #include "parse/properties/utils.h"
@@ -83,7 +84,23 @@ static css_error font_face_src_parse_format(css_language *c,
 				token->type != CSS_TOKEN_IDENT))
 			return CSS_INVALID;
 
-		if (lwc_string_caseless_isequal(token->idata,
+		if (lwc_string_length(token->idata) > 11 && strncasecmp(
+				lwc_string_data(token->idata) +
+				lwc_string_length(token->idata) - 11,
+				"-variations", 11) == 0) {
+			/* Onyx: a variable font's format ("woff2-variations",
+			 * Facebook's Optimistic 95): its container's */
+			const char *f = lwc_string_data(token->idata);
+			if (strncasecmp(f, "woff2", 5) == 0)
+				*format |= CSS_FONT_FACE_FORMAT_WOFF2;
+			else if (strncasecmp(f, "woff", 4) == 0)
+				*format |= CSS_FONT_FACE_FORMAT_WOFF;
+			else if (strncasecmp(f, "truetype", 8) == 0 ||
+				 strncasecmp(f, "opentype", 8) == 0)
+				*format |= CSS_FONT_FACE_FORMAT_OPENTYPE;
+			else
+				*format |= CSS_FONT_FACE_FORMAT_UNKNOWN;
+		} else if (lwc_string_caseless_isequal(token->idata,
 				c->strings[WOFF2], &match) == lwc_error_ok &&
 				match) {
 			*format |= CSS_FONT_FACE_FORMAT_WOFF2;	/* Onyx */

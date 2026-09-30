@@ -36,6 +36,7 @@
 #include "netsurf/layout.h"
 #include "netsurf/misc.h"
 #include "content/llcache.h"
+#include "content/hlcache.h"
 #include "content/content_protected.h"
 #include "css/css.h"
 #include "desktop/gui_internal.h"
@@ -259,6 +260,10 @@ void onyx_webfont_scan(html_content *c)
 
 		if (hsheet->unused || hsheet->sheet == NULL)
 			continue;
+		/* (only a sheet come: the scan runs again as later ones arrive) */
+		if (hlcache_handle_get_content(hsheet->sheet) == NULL ||
+		    content_get_status(hsheet->sheet) != CONTENT_STATUS_DONE)
+			continue;
 		sheet = nscss_get_stylesheet(hsheet->sheet);
 		if (sheet != NULL)
 			css_stylesheet_font_faces(sheet, onyx_webfont_face, c);
@@ -291,4 +296,16 @@ void onyx_webfont_scope(html_content *c)
 {
 	if (guit->layout->set_scope != NULL)
 		guit->layout->set_scope(c);
+}
+
+/* exported interface documented in html/onyx_webfont.h */
+bool onyx_webfont_add_script_face(html_content *c, const char *family, int wmin, int wmax,
+		bool italic, const uint8_t *data, size_t size)
+{
+	if (guit->layout->add_face == NULL || data == NULL || size == 0)
+		return false;
+	if (guit->layout->add_face(c, family, wmin, wmax, italic, data, size) != NSERROR_OK)
+		return false;
+	guit->misc->schedule(100, onyx_webfont_reflow, c);
+	return true;
 }

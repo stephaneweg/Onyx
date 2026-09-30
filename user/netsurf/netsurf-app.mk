@@ -139,8 +139,22 @@ $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
 	@mkdir -p $(dir $@)
 	{ echo '/* generated from dom.js by netsurf-app.mk */'; echo 'static const char qjs_dom_js[] ='; \
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+# Onyx: html5.js too (the HTML5 DOM: namespaces, fragments, forms, messaging...)
+$(OUT)/qjsgen/qjs_html5_js.h: $(JSQ)/html5.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from html5.js by netsurf-app.mk */'; echo 'static const char qjs_html5_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 QJS_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs.c))
+$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h $(OUT)/qjsgen/qjs_html5_js.h
 $(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h
+$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_intl_js.h
+# Onyx: intl.js (Intl) and its locale data (CLDR) as C strings for qjs_intl.h
+$(OUT)/qjsgen/qjs_intl_js.h: $(JSQ)/intl.js $(LIBROOT)/cldr-48/intl-data.txt
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from intl.js and intl-data.txt by netsurf-app.mk */'; echo 'static const char qjs_intl_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; \
+	  echo 'static const char qjs_intl_data[] ='; \
+	  sed -e 's/\r$$//' -e '/^#/d' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $(LIBROOT)/cldr-48/intl-data.txt; echo ';'; } > $@
 $(QJS_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
 # Onyx: <canvas> 2D -- canvas.js as a C string for qjs_canvas.c (as dom.js)
 $(OUT)/qjsgen/qjs_canvas_js.h: $(JSQ)/canvas.js

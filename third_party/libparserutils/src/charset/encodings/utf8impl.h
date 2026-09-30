@@ -97,9 +97,9 @@ do {									\
 	}								\
 									\
 	if (error == PARSERUTILS_OK) {					\
-		/* Detect overlong sequences, surrogates and fffe/ffff */ \
-		if (c < min || (c >= 0xD800 && c <= 0xDFFF) ||		\
-				c == 0xFFFE || c == 0xFFFF) {		\
+		/* Detect overlong sequences, surrogates (Onyx: U+FFFE / \
+		 * U+FFFF are characters, as the Encoding standard says) */ \
+		if (c < min || (c >= 0xD800 && c <= 0xDFFF)) {		\
 			error = PARSERUTILS_INVALID;			\
 			break;						\
 		}							\
