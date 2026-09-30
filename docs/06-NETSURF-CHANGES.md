@@ -1021,6 +1021,14 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   dom_event.c). Facebook's Bloks screens (`.wbloks_1 { display: flex }`, a `<style>` added by
   the script) were laid out as blocks. The UA sheet hides `link`, `meta`, `base`, `area`,
   `param` too (a `<link>` in the body made a line). Test: js-latesheets.
+- **The body's overflow is the viewport's** (CSS Overflow 3, 3.3; libcss `select.c`): when
+  the root's overflow is visible, the body's computed overflow is made visible (NetSurf's
+  window scrolls) -- `body { height: 100%; overflow-y: scroll }` (en.wikipedia.org's Minerva)
+  was a scroller of the window's height inside the window, `body { overflow: hidden }` cut the
+  page. (getComputedStyle shows the used value, visible.) Test: css-bodyoverflow.
+- **The box tree is built in slices of 15 ms**, not of 10 elements (box_construct.c): the
+  scheduler runs the next slice at the main loop's next turn only, and a 5000-element page
+  (Wikipedia) took hundreds of turns -- the throbber turned for seconds, the early boxes shown.
 - **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
   first context of the process, their bytecode kept and read back in the next ones
   (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms
