@@ -251,6 +251,11 @@ typedef struct html_content {
 
 	/** Onyx: while the boxes are built again, the old boxes' objects to take over */
 	struct content_html_object *rebox_objects;
+	/** Onyx: rebox_objects indexed by their URL's hash (html_fetch_object: a page of
+	 * thousands of images searched the whole list for each new box) -- rebox_all: the
+	 * objects, rebox_index: rebox_mask + 1 buckets chained by rebox_hnext */
+	struct content_html_object **rebox_all, **rebox_index;
+	unsigned int rebox_count, rebox_mask;
 
 	/** Onyx: events dispatched to the scripts whose callers hold boxes: no rebox now */
 	int script_hold;

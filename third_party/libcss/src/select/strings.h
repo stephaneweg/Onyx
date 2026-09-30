@@ -44,6 +44,8 @@ enum {
 	ONYX_STR_SLOTTED,		/* ::slotted() */
 	ONYX_STR_PART,			/* ::part() */
 	ONYX_STR_FEATURELESS,		/* the name a featureless shadow host is looked up by */
+	ONYX_STR_POPOVER_OPEN,		/* the states the client answers (onyx_node_state) */
+	ONYX_STR_MODAL,
 	ONYX_STR_N
 };
 
