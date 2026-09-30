@@ -880,6 +880,10 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   **CSS Font Loading API**: `FontFace` (a URL or bytes) and `document.fonts` (a `FontFaceSet`:
   `add`, `ready`, `load`, `loading` / `loadingdone`), a script's faces given to NetSurf's font
   code (`N.addFontFace` -> `onyx_webfont_add_script_face`) and the page laid out again.
+- **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
+  first context of the process, their bytecode kept and read back in the next ones
+  (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms
+  (a page's iframes, each navigation). Timed as `js:prelude` (NS_PERF).
 - Smaller: `DOMStringMap`; `addEventListener` & co called unbound are the window's;
   `localStorage`'s Proxy keeps the Proxy invariants (`Object.keys(localStorage)` threw);
   inline scripts are named by their first characters in errors and timings.

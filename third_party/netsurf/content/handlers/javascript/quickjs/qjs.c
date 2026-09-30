@@ -3144,6 +3144,37 @@ void js_destroyheap(jsheap *heap)
 	qjs_heap_free(heap);
 }
 
+/* Onyx: a prelude (dom.js, html5.js, canvas.js) is compiled once per process; its bytecode
+ * is kept (in the process's heap) and read back in the next contexts -- several times faster
+ * than parsing it again (the same as Intl, qjs_intl.h). Returns the prelude's value. */
+JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char *name,
+		uint8_t **bc, size_t *bclen)
+{
+	JSValue obj;
+
+	if (*bc == NULL) {
+		obj = JS_Eval(ctx, src, len, name, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+		if (JS_IsException(obj))
+			return obj;
+		uint8_t *b = JS_WriteObject(ctx, bclen, obj,
+				JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_STRIP_SOURCE);
+		if (b != NULL) {
+			*bc = malloc(*bclen);
+			if (*bc != NULL)
+				memcpy(*bc, b, *bclen);
+			js_free(ctx, b);
+		}
+	} else {
+		obj = JS_ReadObject(ctx, *bc, *bclen, JS_READ_OBJ_BYTECODE);
+		if (JS_IsException(obj))
+			return obj;
+	}
+	return JS_EvalFunction(ctx, obj);
+}
+
+static uint8_t *qjs_dom_bc, *qjs_html5_bc;
+static size_t qjs_dom_bc_len, qjs_html5_bc_len;
+
 /* exported interface documented in js.h */
 nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **thread)
 {
@@ -3184,9 +3215,10 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_html5,	/* Onyx: HTML5 */
 			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
 	qjs_enter(t);
+	uint64_t t_prelude = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
-	prelude = JS_Eval(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
-			JS_EVAL_TYPE_GLOBAL);
+	prelude = qjs_eval_cached(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
+			&qjs_dom_bc, &qjs_dom_bc_len);
 	if (JS_IsException(prelude)) {
 		qjs_report(t->ctx, "dom.js");
 	} else {
@@ -3197,8 +3229,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	}
 	JS_FreeValue(t->ctx, prelude);
 	/* Onyx: html5.js, a function of the natives and dom.js's element classes (TAGS) */
-	prelude = JS_Eval(t->ctx, qjs_html5_js, sizeof(qjs_html5_js) - 1, "html5.js",
-			JS_EVAL_TYPE_GLOBAL);
+	prelude = qjs_eval_cached(t->ctx, qjs_html5_js, sizeof(qjs_html5_js) - 1, "html5.js",
+			&qjs_html5_bc, &qjs_html5_bc_len);
 	if (JS_IsException(prelude)) {
 		qjs_report(t->ctx, "html5.js");
 	} else {
@@ -3211,6 +3243,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_FreeValue(t->ctx, prelude);
 	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
 	JS_FreeValue(t->ctx, natives);
+	onyx_perf_log("js:prelude", t_prelude);	/* (a context's dom.js, html5.js, canvas.js, Intl) */
 	t->dirty = false;	/* (nothing laid out yet) */
 	qjs_leave(t);
 
