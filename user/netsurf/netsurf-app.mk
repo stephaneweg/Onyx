@@ -68,7 +68,9 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c
+# Onyx: WebAssembly on wasm3 (libm3.a, user/netsurf/Makefile)
+W3     := $(LIBROOT)/wasm3-0.9.2
 
 # ---- source lists (excludes documented in README.md) -------------------
 CORE_SRC := \
@@ -172,6 +174,14 @@ $(OUT)/qjsgen/qjs_net_js.h: $(JSQ)/net.js
 QNET_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_net.c))
 $(QNET_OBJ_NS): $(OUT)/qjsgen/qjs_net_js.h
 $(QNET_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(HERE)
+# Onyx: WebAssembly -- wasm.js as a C string for qjs_wasm.c (on wasm3's headers)
+$(OUT)/qjsgen/qjs_wasm_js.h: $(JSQ)/wasm.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from wasm.js by netsurf-app.mk */'; echo 'static const char qjs_wasm_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+QWASM_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_wasm.c))
+$(QWASM_OBJ_NS): $(OUT)/qjsgen/qjs_wasm_js.h
+$(QWASM_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(W3)/src
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
@@ -207,9 +217,9 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
           -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) -L$(QJS) \
-          -L$(PSVG) -L$(PVG) \
+          -L$(PSVG) -L$(PVG) -L$(W3) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg -lm3 -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by

@@ -1,0 +1,38 @@
+wasm3 for Onyx
+==============
+
+The WebAssembly interpreter of NetSurf's JavaScript (content/handlers/javascript/quickjs/
+qjs_wasm.c: the WebAssembly namespace; docs/06-NETSURF-CHANGES.md section 21).
+
+Upstream: https://github.com/wasm3/wasm3 (MIT, LICENSE here), the `main` branch at commit
+28ecb9a (2026-09-29, "Implement Atomics"), which says it is version 0.9.2 (after the
+0.9.1-beta.1 tag): per-module memories and the linking of a module's memory / table /
+global / function imports to another module's exports in the same runtime, resource caps
+(a runtime's memory), the exception handling API. Its spec suite (wg-3.0: 27878 tests) passes
+with the settings below (run on the PC with upstream's test/run-spec-test.py).
+
+Kept: the engine only -- source/ as src/ (without the WASI, libc and tracer host modules,
+m3_api_*, nor m3_wasi.h), LICENSE. Not kept: the CLI, the platforms, the tests, the docs.
+
+Why wasm3 (and not WAMR's fast interpreter): portable C99 with no platform layer to write
+(WAMR needs its OS adaptation -- mmap, threads, a native stack guard -- and is several times
+larger), fast for an interpreter (its operations are threaded by tail calls: -O3), small
+(~200 KB of AArch64 code), and its API gives what the JavaScript API needs (raw host
+functions, several modules in one runtime linked to one another, memories one can grow).
+WAMR's AOT / JIT would be the next step for speed.
+
+Onyx changes (marked "Onyx:"):
+
+- src/m3_onyx_config.h (new), included first by src/m3_config.h: the build's settings --
+  no stack switching, snapshots, typed function references, gas metering (the page's
+  scripts do not use them; they are the largest parts), no guarded memories (the Pi has no
+  mmap; the bench the same), 1.5 MB of native stack for a module's recursion, linear
+  memories of at most 1 GiB (a store's are capped at 512 MB by qjs_wasm.c).
+- src/m3_validate.c: an opcode the compiler has no operation for (the 0xFD SIMD prefix)
+  is refused by the validator instead of skipped: WebAssembly.validate() answers for the
+  whole module before anything is compiled (pages detect SIMD that way).
+- m3_Yield (weak in src/m3_core.c) is defined by qjs_wasm.c: a module that runs past the
+  page's script time traps.
+
+Build: user/netsurf/Makefile makes libm3.a (committed) with the Pi's toolchain, -O3;
+tools/tests/netsurf/host.mk compiles the same sources for the PC bench.

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>WebAssembly</title></head>
+<body>
+<p>WebAssembly: modules written byte by byte below (add, memory, imports, exports, traps,
+tables, i64, globals, multi-value, externref), the promises, a real compiled C program
+(js-wasm-bench.wasm, tools/tests/netsurf/wasm/bench.c) and a worker.</p>
+<script>
+'use strict';
+let n = 0, pending = 0;
+function ok(name, cond, extra) {
+	n++;
+	console.log((cond ? 'OK wasm ' : 'FAIL wasm ') + name + (cond || extra === undefined ? '' : ' -- ' + extra));
+}
+function throwsKind(fn, C) {
+	try { fn(); } catch (e) { return e instanceof C ? true : String(e); }
+	return 'no exception';
+}
+function done() { if (--pending === 0) console.log('wasm done ' + n); }
+function later(name, p) {
+	pending++;
+	p.then(() => done(), e => { ok(name, false, String(e) + (e && e.stack ? ' ' + e.stack : '')); done(); });
+}
+
+/* ---- a tiny assembler: sections, vectors, LEB128 ---- */
+const T = { i32: 0x7f, i64: 0x7e, f32: 0x7d, f64: 0x7c, funcref: 0x70, externref: 0x6f };
+function uleb(v) { const o = []; do { let b = v & 0x7f; v >>>= 7; if (v) b |= 0x80; o.push(b); } while (v); return o; }
+function sleb(v) { const o = []; for (;;) { const b = v & 0x7f; v >>= 7; if ((v === 0 && !(b & 0x40)) || (v === -1 && (b & 0x40))) { o.push(b); return o; } o.push(b | 0x80); } }
+function sleb64(v) { v = BigInt(v); const o = []; for (;;) { const b = Number(v & 0x7fn); v >>= 7n; if ((v === 0n && !(b & 0x40)) || (v === -1n && (b & 0x40))) { o.push(b); return o; } o.push(b | 0x80); } }
+function str(s) { const b = [...new TextEncoder().encode(s)]; return [...uleb(b.length), ...b]; }
+function vec(items) { return [...uleb(items.length), ...items.flat()]; }
+function sec(id, body) { return [id, ...uleb(body.length), ...body]; }
+function functype(params, results) { return [0x60, ...vec(params.map(p => [T[p]])), ...vec(results.map(r => [T[r]]))]; }
+function code(locals, body) { const b = [...vec(locals), ...body, 0x0b]; return [...uleb(b.length), ...b]; }
+function exp(name, kind, idx) { return [...str(name), kind, ...uleb(idx)]; }
+function mod(o) {
+	const out = [0, 0x61, 0x73, 0x6d, 1, 0, 0, 0];
+	if (o.types) out.push(...sec(1, vec(o.types)));
+	if (o.imports) out.push(...sec(2, vec(o.imports)));
+	if (o.funcs) out.push(...sec(3, vec(o.funcs.map(f => uleb(f)))));
+	if (o.tables) out.push(...sec(4, vec(o.tables)));
+	if (o.memories) out.push(...sec(5, vec(o.memories)));
+	if (o.globals) out.push(...sec(6, vec(o.globals)));
+	if (o.exports) out.push(...sec(7, vec(o.exports)));
+	if (o.start !== undefined) out.push(...sec(8, uleb(o.start)));
+	if (o.elems) out.push(...sec(9, vec(o.elems)));
+	if (o.codes) out.push(...sec(10, vec(o.codes)));
+	if (o.datas) out.push(...sec(11, vec(o.datas)));
+	for (const [name, bytes] of o.customs || []) out.push(...sec(0, [...str(name), ...bytes]));
+	return new Uint8Array(out);
+}
+const I = {	/* instructions */
+	get: i => [0x20, ...uleb(i)], set: i => [0x21, ...uleb(i)], call: i => [0x10, ...uleb(i)],
+	i32: v => [0x41, ...sleb(v)], i64: v => [0x42, ...sleb64(v)],
+	gget: i => [0x23, ...uleb(i)], gset: i => [0x24, ...uleb(i)],
+	load: o => [0x28, 2, ...uleb(o)], store: o => [0x36, 2, ...uleb(o)],
+	add: [0x6a], sub: [0x6b], mul: [0x6c], divs: [0x6d], lts: [0x48], eqz: [0x45],
+	add64: [0x7c], mul64: [0x7e], addf32: [0x92], addf64: [0xa0],
+	grow: [0x40, 0], size: [0x3f, 0], unreachable: [0x00], drop: [0x1a], ret: [0x0f],
+	callind: t => [0x11, ...uleb(t), 0],
+};
+
+/* ---- 1. add: the smallest module with an export ---- */
+const addBytes = mod({
+	types: [functype(['i32', 'i32'], ['i32'])],
+	funcs: [0],
+	exports: [exp('add', 0, 0)],
+	codes: [code([], [...I.get(0), ...I.get(1), ...I.add])],
+	customs: [['onyx.note', [...new TextEncoder().encode('hello')]]],
+});
+ok('validate add', WebAssembly.validate(addBytes) === true);
+ok('validate garbage', WebAssembly.validate(new Uint8Array([1, 2, 3, 4])) === false);
+ok('validate empty module', WebAssembly.validate(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0])) === true);
+{
+	/* a body that does not type-check: i32.add on nothing */
+	const bad = mod({ types: [functype([], ['i32'])], funcs: [0], codes: [code([], [...I.add])] });
+	ok('validate a bad body', WebAssembly.validate(bad) === false);
+	ok('Module of a bad body: CompileError', throwsKind(() => new WebAssembly.Module(bad), WebAssembly.CompileError) === true);
+	/* SIMD (v128.const): wasm3 has no fixed-width SIMD -- feature detection must say so */
+	const simd = mod({ types: [functype([], [])], funcs: [0], codes: [code([], [0xfd, 0x0c, ...new Array(16).fill(0), ...I.drop])] });
+	ok('validate SIMD is false', WebAssembly.validate(simd) === false);
+}
+const addMod = new WebAssembly.Module(addBytes);
+const addInst = new WebAssembly.Instance(addMod);
+ok('add 2 + 40', addInst.exports.add(2, 40) === 42);
+ok('add wraps i32', addInst.exports.add(0x7fffffff, 1) === -0x80000000);
+ok('add ToInt32 of args', addInst.exports.add('3', 4.9) === 7 && addInst.exports.add() === 0);
+ok('export is a function', typeof addInst.exports.add === 'function' && addInst.exports.add.length === 2 && addInst.exports.add.name === '0');
+ok('exports frozen, null prototype', Object.isFrozen(addInst.exports) && Object.getPrototypeOf(addInst.exports) === null);
+ok('toStringTag', String(addMod) === '[object WebAssembly.Module]' && String(addInst) === '[object WebAssembly.Instance]' && String(WebAssembly) === '[object WebAssembly]');
+ok('Module.exports', JSON.stringify(WebAssembly.Module.exports(addMod)) === '[{"name":"add","kind":"function"}]');
+ok('Module.imports empty', WebAssembly.Module.imports(addMod).length === 0);
+{
+	const cs = WebAssembly.Module.customSections(addMod, 'onyx.note');
+	ok('Module.customSections', cs.length === 1 && new TextDecoder().decode(cs[0]) === 'hello' && WebAssembly.Module.customSections(addMod, 'x').length === 0);
+}
+ok('new required', throwsKind(() => WebAssembly.Module(addBytes), TypeError) === true);
+ok('CompileError on garbage', throwsKind(() => new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 2, 0, 0, 0])), WebAssembly.CompileError) === true);
+ok('error classes', new WebAssembly.LinkError('x') instanceof Error && new WebAssembly.RuntimeError('y').name === 'RuntimeError' && WebAssembly.CompileError.name === 'CompileError');
+ok('bytes from an ArrayBuffer and a DataView', new WebAssembly.Instance(new WebAssembly.Module(addBytes.buffer)).exports.add(1, 1) === 2 &&
+	new WebAssembly.Instance(new WebAssembly.Module(new DataView(addBytes.buffer))).exports.add(2, 2) === 4);
+
+/* ---- 2. memory: exported, a data segment, load / store, grow from both sides ---- */
+const memBytes = mod({
+	types: [functype(['i32'], ['i32']), functype(['i32', 'i32'], [])],
+	funcs: [0, 1, 0, 0],
+	memories: [[1, 1, 4]],	/* min 1, max 4 pages */
+	exports: [exp('mem', 2, 0), exp('load', 0, 0), exp('store', 0, 1), exp('grow', 0, 2), exp('size', 0, 3)],
+	codes: [
+		code([], [...I.get(0), ...I.load(0)]),
+		code([], [...I.get(0), ...I.get(1), ...I.store(0)]),
+		code([], [...I.get(0), ...I.grow]),
+		code([], [...I.size]),
+	],
+	datas: [[0, ...I.i32(16), 0x0b, ...str('hello')]],
+});
+{
+	const e = new WebAssembly.Instance(new WebAssembly.Module(memBytes)).exports;
+	ok('memory export', e.mem instanceof WebAssembly.Memory && String(e.mem) === '[object WebAssembly.Memory]');
+	const b1 = e.mem.buffer;
+	ok('buffer is one page', b1 instanceof ArrayBuffer && b1.byteLength === 65536 && e.mem.buffer === b1);
+	ok('data segment', new TextDecoder().decode(new Uint8Array(b1, 16, 5)) === 'hello');
+	e.store(100, 0x12345678);
+	ok('wasm store seen by JS', new DataView(b1).getUint32(100, true) === 0x12345678);
+	new DataView(b1).setUint32(200, 0xcafe, true);
+	ok('JS store seen by wasm', e.load(200) === 0xcafe);
+	ok('grow from wasm', e.grow(1) === 1 && e.size() === 2);
+	ok('grow detaches the old buffer', b1.byteLength === 0 && e.mem.buffer.byteLength === 131072);
+	ok('contents kept after grow', e.load(200) === 0xcafe && new DataView(e.mem.buffer).getUint32(100, true) === 0x12345678);
+	const b2 = e.mem.buffer;
+	ok('grow from JS', e.mem.grow(1) === 2 && b2.byteLength === 0 && e.mem.buffer.byteLength === 196608 && e.size() === 3);
+	ok('grow past the maximum', throwsKind(() => e.mem.grow(2), RangeError) === true && e.grow(5) === -1);
+	ok('out of bounds load: RuntimeError', throwsKind(() => e.load(196608), WebAssembly.RuntimeError) === true);
+	ok('memory usable after a trap', e.load(200) === 0xcafe);
+}
+{
+	/* a Memory made by JavaScript, imported: the same buffer before and after */
+	const m = new WebAssembly.Memory({ initial: 1, maximum: 2 });
+	const u8 = new Uint8Array(m.buffer);
+	u8[8] = 7;
+	const bytes = mod({
+		types: [functype(['i32'], ['i32'])],
+		imports: [[...str('env'), ...str('mem'), 2, 1, 1, 2]],
+		funcs: [0],
+		exports: [exp('load8', 0, 0), exp('mem', 2, 0)],
+		codes: [code([], [...I.get(0), 0x2d, 0, 0])],	/* i32.load8_u */
+	});
+	const inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: { mem: m } });
+	ok('imported Memory', inst.exports.load8(8) === 7 && m.buffer === u8.buffer && u8.length === 65536);
+	u8[9] = 9;
+	ok('imported Memory shared', inst.exports.load8(9) === 9 && inst.exports.mem === m);
+	ok('Memory descriptor checks', throwsKind(() => new WebAssembly.Memory({}), TypeError) === true &&
+		throwsKind(() => new WebAssembly.Memory({ initial: 2, maximum: 1 }), RangeError) === true);
+	ok('LinkError: memory too small', throwsKind(() => new WebAssembly.Instance(new WebAssembly.Module(mod({
+		imports: [[...str('env'), ...str('mem'), 2, 0, 3]] })), { env: { mem: m } }), WebAssembly.LinkError) === true);
+}
+
+/* ---- 3. imports and exports: JS called from wasm, re-entrancy, exceptions ---- */
+{
+	const log = [];
+	let inst;
+	const bytes = mod({
+		types: [functype(['i32'], []), functype(['i32'], ['i32']), functype([], [])],
+		imports: [[...str('env'), ...str('log'), 0, 0], [...str('env'), ...str('twice'), 0, 1], [...str('env'), ...str('boom'), 0, 2]],
+		funcs: [1, 1, 2],
+		exports: [exp('run', 0, 3), exp('inc', 0, 4), exp('boom', 0, 5), exp('log', 0, 0)],
+		codes: [
+			code([], [...I.get(0), ...I.call(1), ...I.call(0), ...I.get(0), ...I.i32(1), ...I.add]),	/* run: log(twice(x)); x + 1 */
+			code([], [...I.get(0), ...I.i32(1), ...I.add]),	/* inc */
+			code([], [...I.call(2)]),	/* boom */
+		],
+	});
+	const m = new WebAssembly.Module(bytes);
+	ok('Module.imports', JSON.stringify(WebAssembly.Module.imports(m)) ===
+		'[{"module":"env","name":"log","kind":"function"},{"module":"env","name":"twice","kind":"function"},{"module":"env","name":"boom","kind":"function"}]');
+	const err = new Error('from JS');
+	inst = new WebAssembly.Instance(m, { env: {
+		log: v => log.push(v),
+		twice: v => inst.exports.inc(v) * 2 - 2,	/* back into wasm from an import */
+		boom: () => { throw err; },
+	} });
+	ok('import called with its argument', inst.exports.run(20) === 21 && log.join() === '40');
+	ok('re-entrant call', inst.exports.run(5) === 6 && log.join() === '40,10');
+	let caught;
+	try { inst.exports.boom(); } catch (e) { caught = e; }
+	ok('JS exception through wasm is the same object', caught === err);
+	ok('re-exported import callable', (inst.exports.log(77), log[log.length - 1] === 77));
+	ok('missing import: LinkError', throwsKind(() => new WebAssembly.Instance(m, { env: {} }), WebAssembly.LinkError) === true);
+	ok('no import object: TypeError', throwsKind(() => new WebAssembly.Instance(m), TypeError) === true);
+	ok('import module not an object: TypeError', throwsKind(() => new WebAssembly.Instance(m, {}), TypeError) === true);
+	/* a wasm export given as another instance's import: linked directly */
+	const m2 = mod({
+		types: [functype(['i32'], ['i32'])],
+		imports: [[...str('x'), ...str('inc'), 0, 0]],
+		funcs: [0],
+		exports: [exp('inc2', 0, 1)],
+		codes: [code([], [...I.get(0), ...I.call(0), ...I.call(0)])],
+	});
+	const i2 = new WebAssembly.Instance(new WebAssembly.Module(m2), { x: { inc: inst.exports.inc } });
+	ok('wasm export as an import', i2.exports.inc2(1) === 3);
+	ok('import of the wrong type: LinkError', throwsKind(() => new WebAssembly.Instance(new WebAssembly.Module(m2), { x: { inc: inst.exports.boom } }), WebAssembly.LinkError) === true);
+}
+
+/* ---- 4. traps ---- */
+{
+	const bytes = mod({
+		types: [functype([], []), functype(['i32', 'i32'], ['i32']), functype(['i32'], ['i32'])],
+		funcs: [0, 1, 2],
+		exports: [exp('unreachable', 0, 0), exp('div', 0, 1), exp('rec', 0, 2)],
+		codes: [
+			code([], [...I.unreachable]),
+			code([], [...I.get(0), ...I.get(1), ...I.divs]),
+			code([], [...I.get(0), ...I.i32(1), ...I.add, ...I.call(2)]),	/* endless recursion */
+		],
+	});
+	const e = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+	let msg = '';
+	try { e.unreachable(); } catch (x) { msg = x instanceof WebAssembly.RuntimeError ? 'RuntimeError: ' + x.message : String(x); }
+	ok('unreachable: RuntimeError', /^RuntimeError: unreachable/.test(msg), msg);
+	ok('divide by zero: RuntimeError', throwsKind(() => e.div(1, 0), WebAssembly.RuntimeError) === true);
+	ok('overflow: RuntimeError', throwsKind(() => e.div(-0x80000000, -1), WebAssembly.RuntimeError) === true);
+	ok('division works', e.div(-7, 2) === -3);
+	ok('stack overflow: RangeError', throwsKind(() => e.rec(0), RangeError) === true);
+	ok('usable after traps', e.div(9, 3) === 3);
+	/* a trap in the start function */
+	const start = mod({ types: [functype([], [])], funcs: [0], start: 0, codes: [code([], [...I.unreachable])] });
+	ok('start function trap: RuntimeError', throwsKind(() => new WebAssembly.Instance(new WebAssembly.Module(start)), WebAssembly.RuntimeError) === true);
+}
+
+/* ---- 5. tables: call_indirect, Table.get / set / grow, an imported Table ---- */
+{
+	const bytes = mod({
+		types: [functype([], ['i32']), functype(['i32'], ['i32'])],
+		funcs: [0, 0, 1],
+		tables: [[0x70, 0, 2]],
+		exports: [exp('tbl', 1, 0), exp('f0', 0, 0), exp('f1', 0, 1), exp('call', 0, 2)],
+		elems: [[0, ...I.i32(0), 0x0b, ...vec([[0], [1]])]],
+		codes: [
+			code([], [...I.i32(10)]),
+			code([], [...I.i32(11)]),
+			code([], [...I.get(0), ...I.callind(0)]),
+		],
+	});
+	const e = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+	ok('call_indirect', e.call(0) === 10 && e.call(1) === 11);
+	ok('Table export', e.tbl instanceof WebAssembly.Table && e.tbl.length === 2);
+	ok('Table.get is the export', e.tbl.get(0) === e.f0 && e.tbl.get(1)() === 11);
+	e.tbl.set(0, e.f1);
+	ok('Table.set', e.call(0) === 11);
+	ok('Table.grow', e.tbl.grow(2) === 2 && e.tbl.length === 4 && e.tbl.get(3) === null);
+	ok('call of a null element: RuntimeError', throwsKind(() => e.call(3), WebAssembly.RuntimeError) === true);
+	ok('call past the table: RuntimeError', throwsKind(() => e.call(9), WebAssembly.RuntimeError) === true);
+	ok('Table.get out of bounds: RangeError', throwsKind(() => e.tbl.get(9), RangeError) === true);
+	ok('Table.set of a JS function: TypeError', throwsKind(() => e.tbl.set(0, () => 1), TypeError) === true);
+	/* Emscripten's addFunction: a small instance wraps a JS function, its export goes
+	 * into the main instance's table (another instance's store: a trampoline) */
+	const wrapBytes = mod({ types: [functype([], ['i32'])], imports: [[...str('e'), ...str('f'), 0, 0]], exports: [exp('f', 0, 0)] });
+	const w = new WebAssembly.Instance(new WebAssembly.Module(wrapBytes), { e: { f: () => 77 } }).exports.f;
+	e.tbl.grow(1, w);
+	ok('addFunction pattern', e.call(e.tbl.length - 1) === 77 && e.tbl.get(e.tbl.length - 1) === w);
+	/* a Table made by JavaScript, imported, filled by the module's element segment */
+	const t = new WebAssembly.Table({ element: 'anyfunc', initial: 3 });
+	const bytes2 = mod({
+		types: [functype([], ['i32']), functype(['i32'], ['i32'])],
+		imports: [[...str('env'), ...str('t'), 1, 0x70, 0, 2]],
+		funcs: [0, 1],
+		exports: [exp('call', 0, 1)],
+		elems: [[0, ...I.i32(2), 0x0b, ...vec([[0]])]],
+		codes: [code([], [...I.i32(33)]), code([], [...I.get(0), ...I.callind(0)])],
+	});
+	const e2 = new WebAssembly.Instance(new WebAssembly.Module(bytes2), { env: { t } }).exports;
+	ok('imported Table filled', typeof t.get(2) === 'function' && t.get(2)() === 33 && e2.call(2) === 33);
+	t.set(0, e.f0);
+	ok('imported Table set from JS', e2.call(0) === 10);
+	ok('externref Table', (() => { const x = new WebAssembly.Table({ element: 'externref', initial: 1 }, 'v'); const o = {}; x.set(0, o); return x.get(0) === o && x.grow(1, 5) === 1 && x.get(1) === 5; })());
+}
+
+/* ---- 6. i64 as BigInt ---- */
+{
+	let seen;
+	const bytes = mod({
+		types: [functype(['i64', 'i64'], ['i64']), functype(['i64'], [])],
+		imports: [[...str('env'), ...str('see'), 0, 1]],
+		funcs: [0, 0],
+		exports: [exp('add64', 0, 1), exp('mul64', 0, 2)],
+		codes: [
+			code([], [...I.get(0), ...I.get(1), ...I.add64]),
+			code([], [...I.get(0), ...I.get(1), ...I.mul64]),
+		],
+	});
+	/* see() gets a value from another module: an i64 parameter from wasm to JS */
+	const bytes3 = mod({
+		types: [functype(['i64'], []), functype([], [])],
+		imports: [[...str('env'), ...str('see'), 0, 0]],
+		funcs: [1],
+		exports: [exp('go', 0, 1)],
+		codes: [code([], [...I.i64(-(2n ** 62n)), ...I.call(0)])],
+	});
+	const e = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: { see: v => { seen = v; } } }).exports;
+	ok('i64 add', e.add64(2n ** 40n, 5n) === 2n ** 40n + 5n);
+	ok('i64 wraps', e.add64(2n ** 63n - 1n, 1n) === -(2n ** 63n));
+	ok('i64 mul', e.mul64(-3n, 1000000000000n) === -3000000000000n);
+	ok('i64 from a Number: TypeError', throwsKind(() => e.add64(1, 2), TypeError) === true);
+	new WebAssembly.Instance(new WebAssembly.Module(bytes3), { env: { see: v => { seen = v; } } }).exports.go();
+	ok('i64 to JS is a BigInt', seen === -(2n ** 62n));
+	ok('i64 import from a Number: LinkError', throwsKind(() => new WebAssembly.Instance(new WebAssembly.Module(mod({
+		imports: [[...str('env'), ...str('g'), 3, T.i64, 0]] })), { env: { g: 1 } }), WebAssembly.LinkError) === true);
+}
+
+/* ---- 7. globals, f32 / f64, multi-value, externref ---- */
+{
+	const g = new WebAssembly.Global({ value: 'i32', mutable: true }, 5);
+	const bytes = mod({
+		types: [functype([], ['i32']), functype(['f32', 'f32'], ['f32']), functype(['f64', 'f64'], ['f64']),
+			functype(['i32', 'i32'], ['i32', 'i32']), functype(['externref'], ['externref'])],
+		imports: [[...str('env'), ...str('g'), 3, T.i32, 1], [...str('env'), ...str('k'), 3, T.f64, 0]],
+		funcs: [0, 1, 2, 3, 4, 0],
+		globals: [[T.i32, 1, ...I.i32(100), 0x0b]],
+		exports: [exp('bump', 0, 0), exp('addf', 0, 1), exp('addd', 0, 2), exp('swap', 0, 3), exp('id', 0, 4),
+			exp('own', 3, 2), exp('g', 3, 0), exp('k', 0, 5)],
+		codes: [
+			code([], [...I.gget(0), ...I.i32(1), ...I.add, ...I.gset(0), ...I.gget(0)]),
+			code([], [...I.get(0), ...I.get(1), ...I.addf32]),
+			code([], [...I.get(0), ...I.get(1), ...I.addf64]),
+			code([], [...I.get(1), ...I.get(0)]),
+			code([], [...I.get(0)]),
+			code([], [...I.gget(1), 0xaa]),	/* i32.trunc_f64_s */
+		],
+	});
+	const e = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: { g, k: 7.9 } }).exports;
+	ok('imported mutable Global', e.bump() === 6 && g.value === 6);
+	g.value = 41;
+	ok('Global set from JS seen by wasm', e.bump() === 42);
+	ok('Global re-exported is the same', e.g === g && String(g) === '[object WebAssembly.Global]');
+	ok('own global', e.own.value === 100 && (e.own.value = 3, e.own.value === 3) && e.own.valueOf() === 3);
+	ok('immutable Global: TypeError', throwsKind(() => { new WebAssembly.Global({ value: 'f64' }, 1.5).value = 2; }, TypeError) === true &&
+		new WebAssembly.Global({ value: 'f64' }, 1.5).value === 1.5 && new WebAssembly.Global({ value: 'i64' }, 7n).value === 7n);
+	ok('immutable number import', e.k() === 7);
+	ok('f32 rounding', e.addf(0.1, 0.2) === Math.fround(Math.fround(0.1) + Math.fround(0.2)));
+	ok('f64', e.addd(0.1, 0.2) === 0.1 + 0.2 && Number.isNaN(e.addd(NaN, 1)));
+	const sw = e.swap(1, 2);
+	ok('multi-value result', Array.isArray(sw) && sw.join() === '2,1');
+	const o = { x: 1 };
+	ok('externref round trip', e.id(o) === o && e.id(null) === null && e.id('s') === 's' && e.id(undefined) === undefined);
+	ok('mutable Global import from a number: LinkError', throwsKind(() => new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: { g: 1, k: 1 } }), WebAssembly.LinkError) === true);
+}
+
+/* ---- 8. the promises, a real program, a worker ---- */
+later('compile / instantiate', (async () => {
+	const m = await WebAssembly.compile(addBytes);
+	ok('compile resolves a Module', m instanceof WebAssembly.Module);
+	const r = await WebAssembly.instantiate(addBytes);
+	ok('instantiate(bytes)', r.module instanceof WebAssembly.Module && r.instance.exports.add(3, 4) === 7);
+	const i = await WebAssembly.instantiate(m);
+	ok('instantiate(module)', i instanceof WebAssembly.Instance && i.exports.add(5, 6) === 11);
+	let rej = null;
+	await WebAssembly.compile(new Uint8Array(8)).catch(e => { rej = e; });
+	ok('compile rejects with CompileError', rej instanceof WebAssembly.CompileError);
+	rej = null;
+	await WebAssembly.instantiate(mod({ imports: [[...str('a'), ...str('b'), 0, 0]], types: [functype([], [])] }), { a: {} }).catch(e => { rej = e; });
+	ok('instantiate rejects with LinkError', rej instanceof WebAssembly.LinkError);
+	/* the imports are read after the call returns */
+	const imp = { env: {} };
+	const p = WebAssembly.instantiate(mod({ types: [functype([], ['i32'])], imports: [[...str('env'), ...str('f'), 0, 0]],
+		exports: [exp('f', 0, 0)] }), imp);
+	imp.env.f = () => 99;
+	ok('imports read later', (await p).instance.exports.f() === 99);
+})());
+
+later('instantiateStreaming a compiled C program', (async () => {
+	const { module, instance } = await WebAssembly.instantiateStreaming(fetch('js-wasm-bench.wasm'), {
+		env: { report: (a, b) => { ok('C program reports ' + a, b === a * 2); } } });
+	const e = instance.exports;
+	ok('C: exports', WebAssembly.Module.exports(module).some(x => x.name === 'sha256' && x.kind === 'function') && e.memory instanceof WebAssembly.Memory);
+	/* SHA-256 of "abc" computed by the C code */
+	const p = e.buffer_in();
+	new Uint8Array(e.memory.buffer).set(new TextEncoder().encode('abc'), p);
+	e.sha256(p, 3, 1);
+	const out = new Uint8Array(e.memory.buffer, e.buffer_out(), 32);
+	ok('C: sha256("abc")', [...out].map(b => b.toString(16).padStart(2, '0')).join('') ===
+		'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+	ok('C: sieve', e.sieve(100000) === 9592);
+	ok('C: qsort', e.sort_check(20000) === 1);
+	ok('C: fib (recursion)', e.fib(25) === 75025);
+	ok('C: mandelbrot', e.mandel(64, 48, 200) > 0);
+	e.call_report(21);
+	ok('C: malloc grows memory', e.grow_test(8) === 8 && e.memory.buffer.byteLength >= 8 * 65536);
+	const r = await WebAssembly.compileStreaming(fetch('js-wasm-bench.wasm'));
+	ok('compileStreaming', r instanceof WebAssembly.Module);
+	let rej = null;
+	await WebAssembly.compileStreaming(fetch('no-such-file.wasm')).catch(x => { rej = x; });
+	ok('streaming a failed response: TypeError', rej instanceof TypeError);
+	/* speed: the timings logged for the bench (not checked) */
+	let t = performance.now();
+	e.sha256(p, 3, 20000);
+	const tsha = performance.now() - t;
+	t = performance.now();
+	const pr = e.sieve(2000000);
+	const tsieve = performance.now() - t;
+	t = performance.now();
+	e.fib(27);
+	const tfib = performance.now() - t;
+	t = performance.now();
+	e.mandel(320, 240, 256);
+	const tmandel = performance.now() - t;
+	console.log('wasm timing sha256x20000 ' + tsha.toFixed(1) + ' ms, sieve(2e6) ' + tsieve.toFixed(1) +
+		' ms (' + pr + '), fib(27) ' + tfib.toFixed(1) + ' ms, mandel 320x240x256 ' + tmandel.toFixed(1) + ' ms');
+})());
+
+later('a worker', new Promise((resolve, reject) => {
+	const src = 'const b = new Uint8Array(' + JSON.stringify([...addBytes]) + ');' +
+		'WebAssembly.instantiate(b).then(r => postMessage("worker add " + r.instance.exports.add(20, 22) + " " + (typeof WebAssembly.Memory)), e => postMessage("worker error " + e));';
+	const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+	w.onmessage = ev => { ok('in a worker', ev.data === 'worker add 42 function', ev.data); w.terminate(); resolve(); };
+	w.onerror = ev => { reject(new Error('worker: ' + ev.message)); };
+}));
+
+/* ---- 9. memory is freed: many stores come and go (the bench's peak RSS shows it) ---- */
+later('garbage', (async () => {
+	/* 300 stores of 2 MB each: 600 MB if they were kept (qw_pressure collects them) */
+	const big = mod({ types: [functype([], [])], memories: [[0, 32]], exports: [exp('mem', 2, 0)] });
+	for (let i = 0; i < 300; i++) {
+		const e = new WebAssembly.Instance(new WebAssembly.Module(big)).exports;
+		new Uint8Array(e.mem.buffer)[i * 1000] = 1;
+	}
+	ok('300 instances of 2 MB', true);
+})());
+</script>
+</body></html>

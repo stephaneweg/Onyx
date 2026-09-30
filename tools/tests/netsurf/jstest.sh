@@ -273,5 +273,8 @@ for s in "worker types function function function" "clone function DataCloneErro
 done
 refuse "$L" "worker says after close (not delivered)"
 
+html5page js-wasm.html wasm "WebAssembly on wasm3: modules, memory, imports, traps, tables, i64, globals, a compiled C program, a worker"
+sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"
