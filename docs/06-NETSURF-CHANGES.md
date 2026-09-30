@@ -389,6 +389,30 @@ centred; the headings', paragraphs', lists', `dl` / `dd`, `figure`, `blockquote`
   last box painted there, then its ancestors' links, controls and titles, root first — a
   click on an open menu reaches its link, not the page under it. A click on a link's text
   is the `<a>`'s (NetSurf gave the block's node: a text box has none).
+- **Fixed boxes** (google.com's search: a click on its box opens a full-viewport overlay,
+  `position: fixed; width: 100%; height: 100%`, inside a fixed `<body>` and zero-height
+  `overflow: hidden` blocks — on the Pi the box "took no focus": the overlay holding the
+  focused textarea was invisible):
+  - their containing block is the viewport (`layout_position_absolute`): they were laid out
+    against their positioned ancestor (the overlay was the fixed body's shrunk width);
+    `height: 100%` is the viewport's height;
+  - their ancestors get `HAS_FIXED` (a new box flag): the descendant boxes' extents keep
+    them through an `overflow: hidden` ancestor, the redraw does not skip such an ancestor
+    (outside the clip, empty, clipped to nothing: its children painted in an empty clip),
+    a fixed box put off to its layer gets the redraw's own clip, and the hit test
+    (`box_contains_point`) reaches them.
+- **Scrolling inner scrollers** (a consent screen: a fixed overlay, its panel
+  `overflow: auto`, the accept button at its end): the wheel follows the box a click
+  reaches (`html_hit_path`, the deepest first; a scroller at its end hands the rest to its
+  ancestors) — it was the first box in the tree's order, which missed overlays; the keys
+  (arrows, Page Up / Down, space, Home / End) scroll the scroller under the pointer before
+  the window; an element's scroller fires its `scroll` event, and `scrollTop` /
+  `scrollLeft` / `scrollHeight` / `scrollWidth` / `scrollTo()` / `scrollBy()` are its
+  (`N.boxScroll`, `N.boxScrollTo`; they were 0 / no-ops). Also in an iframe. Tests:
+  `pages/js-scrollers.html`, `js-scrollframe.html` (jstest.sh).
+- **`element.focus()`** on a text field or a textarea puts the browser's caret in it
+  (what is typed goes there, as after a click); in a handler that has just shown it (no box
+  yet), after the next rebox (`html_script_focus_control`). Test: `pages/js-focus.html`.
 
 ## 7. JavaScript (QuickJS)
 
@@ -1083,6 +1107,16 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
   -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
   SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
+- **Media queries' range syntax** (libcss `src/parse/mq.c`, an upstream bug): with the name
+  first (`(width >= 1012px)`) the stored value was the name itself and the operator was negated
+  instead of having its sides swapped -- the query never matched: GitHub's Primer showed its
+  mobile header (a hamburger and the menu open, with a scroll bar) on a 1080p screen; a ratio
+  after the operator was read from the operator's token. Test: css-mqrange.
+- **`content_broadcast` told each user once per broadcast with the list of users told
+  kept by that broadcast** (content.c): the shadow DOM work's mark in each user was a global
+  generation, overwritten by a broadcast a callback makes (DONE -> a reformat -> ...): the
+  outer broadcast told everyone again, for ever -- an `<iframe src="about:blank">` hung the
+  page. Test: js-iframeblank.
 - **Two crashes of the sweep fixed**: a subtree a script takes out of the document forgets its
   boxes (`html_box_unlink_subtree` from `DOMNodeRemoved`) -- the rebox unlinked only the nodes
   in the document, and `getBoundingClientRect` on a removed element walked a freed box

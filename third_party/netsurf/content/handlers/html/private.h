@@ -229,6 +229,14 @@ typedef struct html_content {
 
 	/** Onyx: the node under the pointer (CSS :hover: it and its ancestors), a ref */
 	struct dom_node *hover_node;
+
+	/** Onyx: a text field a script focused before it had a box (element.focus() in
+	 * the handler that shows it): the caret put in it after the next rebox */
+	struct dom_node *focus_pending;
+
+	/** Onyx: the pointer's last position in the page (the keys scroll the scroller
+	 * under it) */
+	int pointer_x, pointer_y;
 	/** Onyx: the style sheets have :hover rules (the styles made again when it moves) */
 	bool uses_hover;
 	/** Onyx: the nodes a :hover selector was tried on (a set: html/onyx_hover.c) */
@@ -392,6 +400,26 @@ bool html_script_event(html_content *htmlc, const char *type, struct dom_node *n
  * text area, the menu that tells it is not left under a script's changes).
  */
 void html_script_changed(html_content *htmlc, struct dom_node *node, unsigned int events);
+
+/**
+ * Onyx: element.focus() on a text field or a textarea: the browser's caret in it, at the
+ * end of its text (typing goes there, as after a click) -- now if it has a box, else
+ * after the next rebox.
+ *
+ * 
+eturn whether the node is (or will be tried as) a text control
+ */
+bool html_script_focus_control(html_content *htmlc, struct dom_node *node);
+
+/**
+ * Onyx: the boxes from the root down to the one painted last under a point (the box a
+ * click reaches: positioned layers, fixed boxes): a malloc'd array, root first, its
+ * length in *n (NULL: no memory).
+ */
+struct box **html_hit_path(html_content *html, int x, int y, int *n);
+
+/** Onyx: scroll what is under a point (html.c; the scrolling keys) */
+bool html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry);
 
 
 /* in html/redraw.c */
