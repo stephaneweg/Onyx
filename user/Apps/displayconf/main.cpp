@@ -11,6 +11,7 @@
 #include "kapi.h"
 #include "applib.h"
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace wtk;
 
@@ -75,7 +76,7 @@ static bool save_cmdline (int w, int h)
 		for (int k = s; k < i; k++) out[o++] = in[k];
 	}
 	out[o++] = '\n';
-	return kapi_save_file (CMDLINE, out, (unsigned) o) != 0;
+	return kapi_save_file (CMDLINE, out, (unsigned) o) >= 0;	// (-1: not written)
 }
 
 static void on_apply (Widget &)
@@ -106,6 +107,7 @@ public:
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	DisplayRoot root;
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;

@@ -21,6 +21,7 @@
 //
 #include "kapi.h"
 #include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
+#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace wtk;
 
@@ -230,6 +231,7 @@ public:
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	WpaRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.setBg (BGCOL);

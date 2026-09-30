@@ -29,16 +29,21 @@ KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 # <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf; it stages
 # each one as apps/<name>.app/main, without extension). Every graphical
 # app is C++ on the wtk toolkit now; the /bin console tools stay C in bin/.
-APPS = tinycalc wpaconf tinypad applist panel cppdemo \
+APPS = tinycalc tinypad applist panel cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        mandelbrot minesweeper paint \
-       eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf displayconf keyconf cardfile ledger
+       eyes taskman voronoy irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile ledger
+
+# The apps whose text is FreeType's (DejaVu Sans through wtk's face, ft/wtkface.h): newlib apps as
+# the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
+FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup
+FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -227,6 +232,12 @@ calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h appl
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 agenda.elf: notify.h
+setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
+# The FreeType apps (FT_APPS): newlib + ft/libft.a, as the Calendar. The Game Library also links the
+# emulators it takes the covers and the save states' pictures from.
+FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
+$(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) wtk/libwtk.a ft/libft.a -lm -o $@
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
 # the reports' .xlsx: the PNG writer's zip / deflate).
 ledger.elf: $(wildcard Apps/ledger/*.h) $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h img/pngsave.hpp

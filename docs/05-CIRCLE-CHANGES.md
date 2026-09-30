@@ -44,6 +44,7 @@ git -C circle diff Step51..onyx
 | 11 | **FatFs fast seek** on (`FF_USE_FASTSEEK 1`: `kapi_seek` in a GameCube disc image) | `addon/fatfs/ffconf.h` | `libfatfs` + the kernel (the `FIL` layout: clean rebuild) |
 | 14 | **DHCP restart** (joining another Wi-Fi network while running; the reconfiguration itself: the kernel's link-time wrap, no hostap change) | `include/circle/net/dhcpclient.h`, `lib/net/dhcpclient.cpp` | `libnet` (+ the kernel) |
 | 13 | **The SD card's partitions as volumes** `SD:` `SD1:` … `SD3:` + **exFAT** on | `addon/fatfs/ffconf.h`, `addon/fatfs/diskio.cpp`, `addon/fatfs/ff.c` | `libfatfs` + the kernel (`FSIZE_t` is 64-bit: clean rebuild) |
+| 17 | **The host name set after the constructor** (`CNetSubSystem::SetHostname`: `system.ini`'s `hostname=`) | `include/circle/net/netsubsystem.h` | none (inline) — the kernel |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -617,6 +618,16 @@ monitor on the PC probed port 23).
 **What.** `lib/net/tcpconnection.cpp`, `Accept`: after the wait, an error (`m_nErrno`) or a
 connection without a foreign address returns `-NET_ERROR_CONNECTION_RESET`; `CSocket::Accept`
 then returns 0 (that peer not accepted) and listens again. The same bug is in upstream Circle.
+
+## 17. The host name set after the constructor
+
+**Why.** The name DHCP announces is given to `CNetSubSystem`'s constructor, and Onyx builds it as
+a member of `CKernel` — before the SD card is mounted, so before `SD:/etc/system.ini` (its
+`hostname=`, written by Setup, the first-run wizard) can be read.
+
+**What.** `include/circle/net/netsubsystem.h`: `void SetHostname (const char *pHostname)` (inline:
+`m_Hostname` replaced), called by the kernel before the network's bring-up task starts
+(`Initialize` makes the DHCP client with the name). Header only: no library to rebuild.
 
 ## Contributions to upstream Circle
 

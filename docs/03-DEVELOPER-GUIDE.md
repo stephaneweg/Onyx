@@ -1176,6 +1176,13 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 >   bitmap font's, so layouts keep their rows. More faces for large or small text: `FtTextFace *f =
 >   new FtTextFace; f->open ("DejaVu Sans", 24);` (e.g. an `LcdDisplay`'s `face`). `ft_wtk_face ()`:
 >   the installed one. The face holds no `fnt::Font *` between two calls (`fnt::trim` is safe).
+> - **Every new app uses the FreeType face** (unless told otherwise): add it to **`FT_APPS`** in
+>   `user/Makefile` — the newlib + `ft/libft.a` rule the Control Panel, its applets (Theme, Panel,
+>   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library and Setup
+>   share (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
+>   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`wk_tw`, `wk_text_fit`),
+>   never in characters, and draw it through the face (`wk_text`, `canvas.text`), not `drawFont`
+>   (the bitmap fonts only).
 > - On the PC: **`sh tools/tests/desktop_sim/studio.sh [out]`** builds `gallery/studio.cpp` with
 >   the FreeType face and with the bitmap fonts, in the card's theme and in a dark palette, the
 >   Widget Showcase under the face (`gallery/ftwrap.cpp`), writes their pictures (default
@@ -1265,6 +1272,11 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 >   over see-through pixels keep their colour (`wk_blend_px` for single pixels); `0xFE000000`
 >   (almost clear) still takes the clicks. Examples: `dock`, `menubar`, `agenda`. (Onyx Remote
 >   draws them over the other windows with the same transparency: rdpd sends them in 32 bits.)
+> - **A fixed window** (`WIN_FLAG_FIXED`, kapi v69): `Root (x, y, w, h, title, WIN_FLAG_FIXED)`
+>   — the user cannot move it, its frame has no buttons (wtk's `WK_WIN_FIXED`), and the kernel
+>   centres it again when the resolution changes (wtk does not fit it to the work area then).
+>   Setup's (`user/Apps/setup`: its pages in `main.cpp`, what it writes in `system.h`); with
+>   `kapi_screen_native` (the monitor's EDID size) and `kapi_set_timezone` (v69 too).
 > - **Present what you draw**: the compositor and the remote desktop (`rdpd`: a window is sent
 >   again when its counter changes) see a canvas change at `kapi_present ()` — an app drawing
 >   in its own loop presents after drawing, and only when something changed (`eyes`: when a

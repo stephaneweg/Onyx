@@ -37,6 +37,7 @@
 #include <circle/actled.h>		// kapi_shutdown: LED off
 #include <circle/2dgraphics.h>		// kapi_present_fb
 #include <circle/bcmframebuffer.h>		// kapi_fullscreen_direct
+#include <circle/bcmpropertytags.h>	// (v69) kapi_screen_native: the EDID
 #include <fatfs/ff.h>
 #include <circle/types.h>
 
@@ -2394,6 +2395,33 @@ int kapi_win_desk (unsigned nId, int n)
 int kapi_screen_set (int w, int h)
 {
 	return ScreenResizeRequest (w, h);
+}
+
+// --- v69: the monitor's own resolution (its EDID), the time zone while running ---------------------
+// The preferred timing is the EDID's first detailed timing descriptor (bytes 54..71): the active
+// pixels, 8 low bits and the 4 high ones of a shared byte, horizontally then vertically.
+int kapi_screen_native (int *pw, int *ph)
+{
+	if (pw == 0 || ph == 0) return 0;
+	CBcmPropertyTags Tags;
+	TPropertyTagEDIDBlock Edid;
+	Edid.nBlockNumber = EDID_FIRST_BLOCK;
+	if (!Tags.GetTag (PROPTAG_GET_EDID_BLOCK, &Edid, sizeof Edid, 4) || Edid.nStatus != EDID_STATUS_SUCCESS) return 0;
+	const u8 *b = Edid.Block;
+	static const u8 Magic[8] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
+	for (int i = 0; i < 8; i++) if (b[i] != Magic[i]) return 0;
+	const u8 *d = b + 54;
+	if (d[0] == 0 && d[1] == 0) return 0;			// (not a timing: a display descriptor)
+	int w = d[2] | ((d[4] & 0xF0) << 4), h = d[5] | ((d[7] & 0xF0) << 4);
+	if (w < 320 || h < 200) return 0;
+	*pw = w; *ph = h;
+	return 1;
+}
+
+int kapi_set_timezone (int nMinutes)
+{
+	if (nMinutes < -720 || nMinutes > 840) return 0;
+	return CTimer::Get ()->SetTimeZone (nMinutes) ? 1 : 0;
 }
 
 // Resize the caller's window, its canvas (and frame copies) growing when needed: new memory

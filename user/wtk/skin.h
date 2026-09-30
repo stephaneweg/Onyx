@@ -52,7 +52,7 @@ void wk_decorate_window ();
 // (its maximise button active), it is maximised (the button shows "restore"), the app answers
 // the window menu (GUI_EVENT_WINCTL, as a Root does: else its button is greyed -- an app
 // drawing its own window without a Root).
-enum { WK_WIN_RESIZABLE = 1, WK_WIN_MAXIMISED = 2, WK_WIN_MENU = 4 };
+enum { WK_WIN_RESIZABLE = 1, WK_WIN_MAXIMISED = 2, WK_WIN_MENU = 4, WK_WIN_FIXED = 8 };	// (FIXED: no buttons)
 void wk_window_state (int flags);
 int  wk_window_flags ();
 // A frame as wk_decorate_window draws it, into any W x H buffer (T: its title bar's height), in

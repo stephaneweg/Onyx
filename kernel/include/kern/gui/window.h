@@ -100,6 +100,9 @@ extern u32 g_WinTitleTextColor;
 						// pixel blended over what lies below; a click on a
 						// see-through pixel goes to what is below (the dock,
 						// the agenda widget on the wallpaper)
+#define WIN_FLAG_FIXED		(1u << 6)	// (v69) not movable by its title bar, no minimise /
+						// maximise / close / menu buttons, centred again when
+						// the screen's resolution changes (the first-run wizard)
 
 #define WIN_MENU_MAX		2048	// max menu spec length (kapi_set_menu)
 
@@ -193,6 +196,7 @@ public:
 	boolean Transparent (void) const { return (m_nFlags & WIN_FLAG_TRANSPARENT) != 0; }
 	boolean System (void) const	{ return (m_nFlags & WIN_FLAG_SYSTEM) != 0; }
 	boolean AlphaCanvas (void) const { return (m_nFlags & WIN_FLAG_ALPHA) != 0 && Borderless (); }
+	boolean Fixed (void) const	{ return (m_nFlags & WIN_FLAG_FIXED) != 0; }
 
 	// Minimised (v64): not drawn, not hit, never the active window or the keys' target, until
 	// raised (CWindowManager::Raise). Its area is damaged as it goes and as it comes back.

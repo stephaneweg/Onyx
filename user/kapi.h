@@ -23,6 +23,7 @@
 #define WIN_FLAG_SYSTEM		(1u << 4)	// system component: not listed as an open app (panel taskbar)
 #define WIN_FLAG_ALPHA		(1u << 5)	// (v64, borderless) the pixels' top byte is a transparency
 						// (0 opaque .. 255 see-through; clicks there go below)
+#define WIN_FLAG_FIXED		(1u << 6)	// (v69) not movable, no title buttons, kept centred
 
 // Event kinds (must match kern/gui/window.h).
 #define GUI_EVENT_CLICK		1
@@ -505,6 +506,12 @@ static inline int kapi_thread_priority (int tid, int prio) { return KT->version 
 // waits -> how many; one queue for the system (256 events). kapi_midi_devices () -> attached.
 static inline int kapi_midi_read (struct kapi_midi_event *ev, int max) { return KT->version >= 68 ? KT->midi_read (ev, max) : 0; }
 static inline int kapi_midi_devices (void) { return KT->version >= 68 ? KT->midi_devices () : 0; }
+
+// (v69) kapi_screen_native (&w, &h): the monitor's own resolution, from its EDID -> 1, 0 unknown.
+// kapi_set_timezone (minutes): the local time's offset from UTC at once (-720 .. 840) -> 1 ok.
+// WIN_FLAG_FIXED (a window's flags): not movable, no minimise / maximise / close, kept centred.
+static inline int kapi_screen_native (int *w, int *h) { return KT->version >= 69 ? KT->screen_native (w, h) : 0; }
+static inline int kapi_set_timezone (int minutes) { return KT->version >= 69 ? KT->set_timezone (minutes) : 0; }
 // The kernel's microsecond clock (CTimer::GetClockTicks: the ARM counter, same formula), the
 // time base of kapi_midi_event.time_us. No kapi call: an app core may read it too.
 static inline unsigned kapi_clock_us (void)

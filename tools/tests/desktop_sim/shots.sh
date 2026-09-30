@@ -49,14 +49,16 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	if [ "$1" = writer ] || [ "$1" = sheet ] || [ "$1" = calendar ]; then
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp "$OUT/libwtk.a" "$OUT/libft.a"; return
-	fi
+	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup " in
+	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
+	esac
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier"
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier setup
+      config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
 $CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
@@ -229,6 +231,14 @@ if want theme; then			# (the wallpaper a pattern: SD:/wallpapers' hexagons, colo
 	rm -f "$OUT/writes/etc/wallpaper.ini"
 fi
 if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
+# (the other Control Panel applets, each in the Control Panel's window)
+for a in displayconf soundconf keyconf wpaconf config; do
+	if want $a; then applet $a $a "$W"; png $a; fi
+done
+if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)
+	sim padconf padconf_ap "$W" SIM_APPLET=1 SIM_PAD=1
+	sim control padconf "$W" $P SIM_ARGS=padconf SIM_MAIL=40:7 SIM_SURFACE="$OUT/padconf_ap.elsm"; png padconf
+fi
 
 # ---- the desktop's parts, over the wallpaper ------------------------------------------------------
 MENU_TINYPAD='tinypad|MFile/I0~New~^N/I1~Open...~^O/-/I2~Save~^S/I3~Save As...~/MEdit/I4~Cut~^X/I5~Copy~^C/I6~Paste~^V/-/I7~Select All~^A/I8~Copy All~'
@@ -273,5 +283,12 @@ if want desktop; then
 	sim dock d_dock "wait;wait;$W" SIM_RUNNING=terminal,tinycalc SIM_WINS="52,250,316,412,0,0;388,128,568,408,0,1;150,120,600,450,1,0"
 	sim menubar d_bar "$W" SIM_MENU='terminal|'
 	scene desktop "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm"
+fi
+if want setup; then			# (Setup, the first-run wizard: its pages over the wallpaper -- "--demo <page>[b|c]"
+					#  opens a page in a given state, writing nothing; a Full HD monitor, SIM_NATIVE)
+	for d in 0 1 2 2b 2c 3 3b 4 5 6; do
+		sim setup fb_$d "$W" SIM_ARGS="--demo $d"
+		scene setup-$d "$OUT/fb_$d.elsm"
+	done
 fi
 echo "shots: done"

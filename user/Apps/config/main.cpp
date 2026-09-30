@@ -10,6 +10,7 @@
 #include "applib.h"
 #include "fsutil.h"
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace wtk;
 
@@ -139,6 +140,7 @@ static void on_reload (Widget &) { load (g_cur); }
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	Root root (W, H, "App Settings");
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;

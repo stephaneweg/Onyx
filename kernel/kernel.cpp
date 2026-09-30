@@ -49,10 +49,12 @@ volatile boolean  g_bNetUp = FALSE;
 
 // Clock: timezone offset from UTC in minutes (system.ini "timezone="; default CET
 // +60, set "120" for CEST summer time) + the NTP server to sync against once the
-// link is up (system.ini "ntp="). The NTP daemon updates CTimer's wall clock.
+// link is up (system.ini "ntp="; "off" or "none": no sync). The NTP daemon updates CTimer's
+// wall clock. The name DHCP announces: system.ini "hostname=" (default Circle's "raspberrypi").
 static int  g_nTimeZoneMin = 60;
 static unsigned g_nHeartbeatSec = 5;	// cmdline.txt heartbeat= (0 = off): watchdog summary period
 static char g_szNtpServer[64] = "pool.ntp.org";
+static char g_szHostname[64] = "";
 
 // Defined in arch/aarch64/exception.cpp: route kernel panics to this displayed
 // framebuffer so an exception is visible after the compositor takes the screen.
@@ -1215,8 +1217,11 @@ public:
 
 		// Sync the wall clock over NTP (its own background task; updates CTimer so
 		// kapi_get_datetime / the agenda / log timestamps show real local time).
-		new CNTPDaemon (g_szNtpServer, m_pNet);
-		m_pLogger->Write (FromKernel, LogNotice, "net: NTP started (%s)", g_szNtpServer);
+		if (g_szNtpServer[0])
+		{
+			new CNTPDaemon (g_szNtpServer, m_pNet);
+			m_pLogger->Write (FromKernel, LogNotice, "net: NTP started (%s)", g_szNtpServer);
+		}
 	}
 
 private:
@@ -1389,6 +1394,19 @@ static void ReadSystemConfig (void)
 				g_szNtpServer[i++] = *q;
 			}
 			if (i > 0) g_szNtpServer[i] = '\0';
+			if ((i == 3 && KeyEq (g_szNtpServer, g_szNtpServer + 3, "off")) || (i == 4 && KeyEq (g_szNtpServer, g_szNtpServer + 4, "none")))
+				g_szNtpServer[0] = '\0';		// (no clock sync)
+		}
+		else if (KeyEq (ls, ke, "hostname"))
+		{
+			unsigned i = 0;					// (letters, digits, '-': a DNS label)
+			for (const char *q = vs; q < le && i < sizeof (g_szHostname) - 1; q++)
+			{
+				char c = *q;
+				if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-')) break;
+				g_szHostname[i++] = c;
+			}
+			g_szHostname[i] = '\0';
 		}
 	}
 	delete [] pData;
@@ -1908,6 +1926,7 @@ TShutdownMode CKernel::Run (void)
 	// whether or not WiFi associates; apps test NetIsUp() before using sockets.
 	if (m_bSDMounted)
 	{
+		if (g_szHostname[0]) m_Net.SetHostname (g_szHostname);	// (system.ini: before DHCP starts)
 		if (g_bNetCore)
 		{
 			s_pNetWLAN = &m_WLAN; s_pNetNet = &m_Net; s_pNetWPA = &m_WPASupplicant; s_pNetLogger = &m_Logger;

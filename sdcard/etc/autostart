@@ -13,15 +13,20 @@
 # blue desktop). It no longer masks the old single-GUI-app boot hang, fixed in the
 # kernel (the compositor now runs as soon as it is created: CScheduler::YieldTo).
 run voronoy
+#setup# FIRST BOOT: Setup, the first-run wizard (apps/setup), runs alone over the wallpaper. The
+#setup# lines it holds back meanwhile are written "#setup: <line>"; when it ends ("Start Onyx") it
+#setup# gives them back (and starts them), removes its own "run setup" line and these "#setup#"
+#setup# lines, sets the keyb line and turns the remote services below on or off ("#telnetd": off).
+run setup
 # System menu bar across the top of the screen: the active app's menus + the clock.
-run menubar
+#setup: run menubar
 # Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
 run notifyd
 # The dock along the bottom (the drawers of apps, the workspaces, the Terminal, the File Viewer,
 # the Trash, lock / Control Panel / power: SD:/etc/dock.ini). It replaces the Shelf ("run shelf" brings
 # the old strip back) and the panel.
-run dock
-run agenda
+#setup: run dock
+#setup: run agenda
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,
 # NO encryption: remove this line on an untrusted network.

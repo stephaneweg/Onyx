@@ -128,6 +128,8 @@ int  kapi_sound_volume (int, int);
 int  kapi_sound_instrument (int, const struct kapi_fm_instrument *);
 int  kapi_sound_config (int, int);
 struct kapi_sound_ring *kapi_sound_map (void);
+int  kapi_screen_native (int *, int *);
+int  kapi_set_timezone (int);
 int  kapi_key_held (int);
 void kapi_inject_key_held (int, int);
 int kapi_wallpaper_generate (unsigned, int, unsigned);
@@ -427,4 +429,6 @@ void KApiTableInit (void)
 	t->thread_priority   = kapi_thread_priority;
 	t->midi_read         = kapi_midi_read;
 	t->midi_devices      = kapi_midi_devices;
+	t->screen_native     = kapi_screen_native;
+	t->set_timezone      = kapi_set_timezone;
 }

@@ -16,6 +16,7 @@
 #include "launch.h"
 #include "dockconf.h"
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace wtk;
 
@@ -265,6 +266,7 @@ static void on_discard (Widget &) { dockconf_load (g_c); fill_all (); g_status->
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	Root root (W, H, "Panel");
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;

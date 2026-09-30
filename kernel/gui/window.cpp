@@ -383,7 +383,7 @@ boolean CWindow::HitCloseBox (int sx, int sy) const
 // minimise from the right.
 int CWindow::HitTitleButton (int sx, int sy) const
 {
-	if (Borderless () || Hidden ())
+	if (Borderless () || Hidden () || Fixed ())		// (a fixed window has no buttons)
 	{
 		return -1;
 	}
@@ -1361,6 +1361,12 @@ void CWindowManager::OnScreenResized (int nW, int nH)
 	{
 		CWindow *p = pSnapshot[i];
 		if (p == 0 || p->Backmost ()) continue;
+		if (p->Fixed ())				// (centred again)
+		{
+			int cx = (nW - p->OuterWidth ()) / 2, cy = (nH - p->OuterHeight ()) / 2;
+			p->Move (cx < 0 ? 0 : cx, cy < 0 ? 0 : cy);
+			continue;
+		}
 		int x = p->X (), y = p->Y ();		// (past the right / bottom edge: moved in; a
 		if (x > 0 && x + p->OuterWidth () > nW)		// window parked off the screen, at a
 		{						// negative place, is left there)
@@ -1657,7 +1663,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 				m_pBtnDown = pWin;			// acted on at the release, over it
 				m_nBtnDown = nBtn;
 			}
-			else if (bOnTitle)
+			else if (bOnTitle && !pWin->Fixed ())		// (a fixed window stays put)
 			{
 				unsigned nNow = CTimer::Get ()->GetTicks ();
 				if (m_pTitleClick == pWin && nNow - m_nTitleClickTicks < HZ * 4 / 10)

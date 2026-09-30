@@ -108,6 +108,26 @@ answer in French. The docs stay in English.
 - **To try on the Pi**: the examples collection (https, a thread doing TLS: its 512 KB stack), a
   big response, Cancel during a slow request, the window maximised, import of a real Postman export.
 
+## Setup, the first-run wizard; the settings in FreeType (2026-09-30, kernel v69, not yet tried on the Pi)
+
+- **The rule now**: every new or redesigned app draws its text with **FreeType** (DejaVu Sans
+  through wtk's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
+  list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
+  its 8 applets and the Game Library (text measured in pixels, `drawFont` gone).
+- **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
+  `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
+  with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
+  summary. `system.h`: what it writes (system.ini, wpa_supplicant.conf, cmdline.txt, theme.txt,
+  wallpaper.ini, the autostart). The card's autostart starts it (`run setup`) and holds back the
+  menu bar, the dock and the agenda (`#setup: ` lines, given back and started at the end).
+- **Kernel v69**: `WIN_FLAG_FIXED` (not movable, no title buttons, re-centred on a resolution
+  change), `screen_native` (EDID), `set_timezone`; `system.ini` `hostname=` (Circle patch 17:
+  `CNetSubSystem::SetHostname`) and `ntp=off`. `/bin/verbose` no longer erases system.ini.
+- **To try on the Pi**: the EDID size (an HDMI monitor, a TV), Try it / Revert / the 15-s timeout
+  and the window re-centred, joining a network (and a wrong password: 30 s), the host name seen by
+  the router after a restart, the services started / stopped at Start Onyx.
+- **Next (asked)**: redesign every app icon; games and emulators with 1- or 2-stick pads.
+
 ## Done recently (all pushed)
 
 - **The random N64 freeze on the Pi — fixed.** Root cause (found with the crash record):

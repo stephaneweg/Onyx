@@ -157,8 +157,12 @@ General settings read at boot (`SD:system.ini`):
 ```
 verbose=0          # 1 = log app start/stop/kill to the kernel log (see kmsg)
 timezone=120       # minutes offset from UTC (60 = CET, 120 = CEST summer time)
-ntp=pool.ntp.org   # time server to sync against once the WLAN link is up
+ntp=pool.ntp.org   # time server to sync against once the WLAN link is up ("off": none)
+hostname=onyx      # the name the Pi gives the network (DHCP); default "raspberrypi"
 ```
+
+Setup, the first-run wizard (§4), writes `timezone`, `ntp` and `hostname`; `verbose on|off`
+changes only its own line.
 
 ### Wi-Fi (WLAN)
 
@@ -200,9 +204,66 @@ On power-on:
    `init=` in `cmdline.txt` points at), which runs each line of `SD:/etc/autostart` as
    a shell command. By default:
    - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
+   - **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below);
    - **`run menubar`** starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`**
      the **agenda widget**, **`run notifyd`** the notifications;
    - **`keyb FR`** sets the keyboard layout.
+
+### Setup, the first-run wizard
+
+On a new card Onyx starts with **Setup** alone over the wallpaper: the menu bar, the dock and the
+agenda are held back until it is done (their autostart lines read `#setup: run menubar`...). Its
+window stays in the middle of the screen — it cannot be moved, and it is centred again when the
+resolution changes. The steps are on the left (a green tick once done); **Back** and **Continue**
+at the bottom; everything can be changed later in the Control Panel.
+
+1. **Welcome.**
+2. **Region & keyboard.** The **country** (type its first letter, or the arrows) proposes the
+   keyboard layout and the time zone and gives the Wi-Fi its country code (the radio's channels:
+   `country=` of `SD:/etc/wpa_supplicant.conf`). The **layout** is taken at once (type in *Try it*;
+   the small keyboard shows its keys); the **time zone** too — its summer time from the date
+   (the European and the North American rules) —; **Set the clock from the Internet** (NTP).
+3. **Wi-Fi.** The networks around, the strongest first, with their signal, security and a lock;
+   the one you are on marked *Connected*, one saved before *Saved*. Click one: its password
+   (8 to 63 characters; empty for a saved one), **Connect** (Enter) — a spinner while it joins,
+   then *You are online* and the address; *Could not connect: check the password* after 30 s.
+   **Rescan**; **Other network (hidden name)...**: its name and password typed. **Skip for now**:
+   the Wi-Fi icon of the menu bar joins one later. Written as the Wi-Fi menu does.
+4. **Display.** The sizes; **Best** marks the monitor's own (asked of it: its EDID), *now* the
+   screen's. **Try it** changes the resolution at once and asks **Keep this resolution?** —
+   **Keep** writes it to `SD:/cmdline.txt` (Onyx starts at that size from then on), **Revert** or
+   15 seconds without an answer goes back (a picture that does not come back fixes itself).
+5. **Appearance.** The colour of the window in front (Peach, Steel, Sage, Brick, Slate), the
+   wallpaper (generated Voronoi cells or one of the patterns of `SD:/wallpapers`) and its **tint**
+   (32: sixteen colours and the same lighter); the preview shows the desktop you will get, and the
+   real one — the wallpaper, Setup's own frame — follows a moment after each click
+   (`SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini`, as the Theme applet writes them).
+6. **Name & privacy.** The **computer's name** on the network (letters, digits, `-`; from the
+   next start: `system.ini`'s `hostname=`) and the **remote services** — the remote shell
+   (telnet, port 23), the remote desktop (VNC, 5900), the remote windows (Onyx Remote, 3390),
+   file sharing (FTP, 21, user `onyx` password `onyx`): only FTP asks for a password, so turn on
+   only what you use, on a network you trust.
+7. **Ready.** A summary, a **Change** link on each line. **Start Onyx** writes `system.ini`
+   (`timezone`, `ntp`, `hostname`) and the autostart — its own `run setup` line and its comments
+   removed, the held-back lines given back, the `keyb` line set, each service's line on or
+   commented out (`#telnetd`) — starts the menu bar, the dock and the agenda and the services
+   turned on (stops those turned off), and ends: it does not come back. To see it again, put
+   `run setup` back in the autostart (`run setup` in a terminal works too).
+
+![Setup: the country and the keyboard](../screenshots/setup-1.png)
+*Setup: the country proposes the layout and the time zone; the layout is taken at once.*
+
+![Setup: the Wi-Fi](../screenshots/setup-2.png)
+*A network picked: its password, Connect.*
+
+![Setup: Keep this resolution?](../screenshots/setup-3b.png)
+*The monitor's own size marked Best; tried: back by itself after 15 seconds.*
+
+![Setup: the appearance](../screenshots/setup-4.png)
+*The colour of the window in front, the wallpaper and its tint, a preview of the desktop.*
+
+![Setup: ready](../screenshots/setup-6.png)
+*The summary; Start Onyx.*
 
 You then get the desktop — a **modernised CDE** (the look of the classic Unix desktop, redrawn
 with rounded corners, soft gradients and the user's framed buttons): the wallpaper, the menu
@@ -875,6 +936,18 @@ text   = Colours of the windows, the menu bar, the dock; the wallpaper
 ![The Control Panel](../screenshots/control.png)
 *The Control Panel's home: the applets.*
 
+The Control Panel and its applets draw their text with FreeType (DejaVu Sans, anti-aliased), as
+the Game Library and Setup do.
+
+![The Display applet](../screenshots/displayconf.png)
+*Display: the sizes, applied at once.*
+
+![The Gamepad applet](../screenshots/padconf.png)
+*Gamepad: an Xbox 360 pad plugged in — its buttons (two held), its axes, what the apps see.*
+
+![The Wi-Fi applet](../screenshots/wpaconf.png)
+*Wi-Fi: the network's name (scanned), its password, the country.*
+
 ### The Theme applet (`theme`)
 
 The desktop's look is a **modernised CDE**; the **Theme** applet sets its colours, as Windows
@@ -1011,6 +1084,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
 | **paint** (Paint) | Drawing, in the way of Windows 11's Paint, on **transparent layers**: pencil, brush, eraser, fill, colour picker, magnifier, fifteen shapes (outline and fill), a rectangular selection moved, rotated, flipped, cut and pasted, colour 1 / colour 2, a palette and your own colours, a pixel grid, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX); saves its layers as OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
+| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |

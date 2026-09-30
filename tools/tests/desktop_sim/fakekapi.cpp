@@ -536,6 +536,14 @@ static int wake_word (volatile unsigned *a) { return a != 0 ? 0 : -1; }
 static int thread_priority (int, int) { return -2; }
 static int midi_read (struct kapi_midi_event *, int) { return 0; }
 static int midi_devices (void) { return 0; }
+// the monitor (SIM_NATIVE="<w>x<h>", else a Full HD one), the time zone
+static int screen_native (int *w, int *h)
+{
+	const char *e = getenv ("SIM_NATIVE");
+	if (!e || sscanf (e, "%dx%d", w, h) != 2) { *w = 1920; *h = 1080; }
+	return 1;
+}
+static int set_timezone (int m) { return m >= -720 && m <= 840; }
 static int proc_done (void *p) { return p == (void *) 0x5000 ? 0 : 1; }	// (the SIM_PIPE program: running)
 static int h_wait (void *) { return 0; }
 // A canned stream (SIM_PIPE, SIM_NET): its text ("\n" a new line, "\r" a return, "\e" an escape)
@@ -834,6 +842,7 @@ static void setup (void)
 	T->sound_config = sound_config; T->sound_map = sound_map; T->wait_word = wait_word;
 	T->wake_word = wake_word; T->thread_priority = thread_priority;
 	T->midi_read = midi_read; T->midi_devices = midi_devices;
+	T->screen_native = screen_native; T->set_timezone = set_timezone;
 	T->thread_create = h_thread_create; T->thread_exit = h_thread_exit; T->thread_join = h_thread_join; T->thread_self = h_thread_self;
 	T->post = h_post; T->pump_wait = h_pump_wait;
 	g_mainThread = pthread_self (); g_mainSet = true;

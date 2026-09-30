@@ -23,6 +23,7 @@
 #include "notify.h"
 #include "applet_proto.h"
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace wtk;
 
@@ -185,7 +186,7 @@ public:
 		int rw = wk_text_w (root, 2);
 		bool link = g_cur >= 0;
 		unsigned ink = link ? (crumbHot ? C_ACCENT : C_FIELD_TEXT) : wk_tone (C_ACCENT, 84);
-		canvas.drawFont (x, y, root, font (), ink, 1, 2);
+		wk_text (canvas, x, y, root, ink, 2);
 		if (link && crumbHot) canvas.fillRect (x, y + fh, rw, 1, C_ACCENT);
 		if (!link) canvas.fillRect (x, y + fh + 1, rw, 2, C_ACCENT);
 		x += rw + 10;
@@ -194,7 +195,7 @@ public:
 			wk_glyph (canvas, WKG_CHEV_RIGHT, x + 2, HDR / 2, 9, wk_mix (C_FIELD, C_FIELD_TEXT, 120));
 			x += 16;
 			const char *nm = g_link[g_cur].name;
-			canvas.drawFont (x, y, nm, font (), wk_tone (C_ACCENT, 84), 1, 2);
+			wk_text (canvas, x, y, nm, wk_tone (C_ACCENT, 84), 2);
 			canvas.fillRect (x, y + fh + 1, wk_text_w (nm, 2), 2, C_ACCENT);
 		}
 		wk_etch_h (canvas, 0, HDR - 2, W, C_BG);
@@ -224,15 +225,16 @@ public:
 						if (c != 0xFF00FF) canvas.pixel (x + 12 + k, y + (h - 40) / 2 + j, c);
 					}
 			unsigned ink = on ? wk_hilite_ink (down == i) : C_TEXT;
-			canvas.drawFont (x + 64, y + 10, l.name, font (), ink, 1, 2);
+			wk_text (canvas, x + 64, y + 10, l.name, ink, 2);
 			// the help, over two lines at most
-			int maxc = (w - 76) / wk_fw (), line = 0;
+			int maxw = w - 76, line = 0;				// (measured in pixels: the face is proportional)
 			const char *p = l.text;
 			while (*p && line < 2)
 			{
 				int len = 0, cut = -1;
-				while (p[len] && len < maxc) { if (p[len] == ' ') cut = len; len++; }
+				while (p[len] && wk_tw_n (p, len + 1) <= maxw) { if (p[len] == ' ') cut = len; len++; }
 				if (p[len] && cut > 0) len = cut;
+				if (len == 0) len = 1;
 				char t[80]; int k = 0;
 				for (int q = 0; q < len && k < 79; q++) t[k++] = p[q];
 				t[k] = 0;
@@ -409,6 +411,7 @@ static void raise_other (void)
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	if (!kapi_ipc_register (AP_SERVICE)) { raise_other (); return 0; }
 	g_self = kapi_ipc_lookup (AP_SERVICE);
 	char args[64]; kapi_get_args (args, sizeof args);

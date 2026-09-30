@@ -96,7 +96,13 @@
 //      changed by an app core wakes its waiters within 10 ms); + thread_priority -- a "real
 //      time" thread, picked first when ready; + midi_read / midi_devices -- USB MIDI input
 //      (class-compliant keyboards, hot-plugged), timestamped events.
-#define KAPI_ABI_VERSION	68
+// v69: + screen_native -- the monitor's own resolution (its EDID's preferred timing: the first
+//      detailed timing descriptor), for Setup and Display; + set_timezone -- the local time's
+//      offset from UTC changed while running (the clock, kapi_get_datetime), as system.ini's
+//      timezone= does at boot. Also WIN_FLAG_FIXED (kern/gui/window.h): a window the user
+//      cannot move, without minimise / maximise / close buttons, kept centred when the screen's
+//      resolution changes (the first-run wizard's).
+#define KAPI_ABI_VERSION	69
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1049,6 +1055,12 @@ struct TKApiTable
 	// many (0: none; never waits), -1 bad arguments. midi_devices: MIDI devices attached now.
 	int (*midi_read) (struct kapi_midi_event *ev, int max);
 	int (*midi_devices) (void);
+	// screen_native: the monitor's own resolution, from its EDID (the preferred timing) -> 1 and
+	// *w / *h, 0 unknown (no monitor, no EDID, an analog adapter). (v69)
+	int (*screen_native) (int *w, int *h);
+	// set_timezone: the local time's offset from UTC, minutes (-720 .. 840), at once (the clock,
+	// kapi_get_datetime); system.ini's timezone= sets it at boot -> 1 ok, 0 out of range. (v69)
+	int (*set_timezone) (int minutes);
 };
 
 #ifdef __cplusplus

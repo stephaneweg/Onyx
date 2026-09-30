@@ -125,7 +125,7 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 	if (!active) ink = wk_mix (ink, tbg, 70);
 	// the title buttons: the window menu at the left, close / maximise / minimise from the right
 	int by = KAPI_FRAME_BTN_Y, bw = KAPI_FRAME_BTN_W, bh = KAPI_FRAME_BTN_H;
-	for (int b = 0; b < 4; b++)
+	for (int b = 0; b < 4 && !(s_winFlags & WK_WIN_FIXED); b++)	// (a fixed window: none, kapi v69)
 	{
 		int bx = b == KAPI_FRAME_MENU ? KAPI_FRAME_BTN_EDGE
 		       : W - KAPI_FRAME_BTN_EDGE - bw - (b == KAPI_FRAME_CLOSE ? 0 : b == KAPI_FRAME_MAXIMISE ? 1 : 2) * KAPI_FRAME_BTN_STEP;

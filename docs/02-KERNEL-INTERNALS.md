@@ -625,7 +625,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 68`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 69`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -646,7 +646,9 @@ the screen (was 1024 × 768 at most), v67 = `thread_create`/`thread_exit`/`threa
 synchronisation objects, calls posted to the event pump; the scheduler's task list has no limit,
 v68 = `sound_config`/`sound_map` — low-latency sound and the mapped PCM ring (§12),
 `wait_word`/`wake_word` — a futex (§7), `thread_priority` — "real time" threads (§5),
-`midi_read`/`midi_devices` — USB MIDI input (`struct kapi_midi_event`).
+`midi_read`/`midi_devices` — USB MIDI input (`struct kapi_midi_event`),
+v69 = `screen_native` — the monitor's own resolution (its EDID), `set_timezone` — the time zone
+while running, and the window flag `WIN_FLAG_FIXED` (§10.2) — for Setup, the first-run wizard.
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -693,6 +695,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Low-latency sound (v68) | For the sound owner: `sound_config(chunk_frames 64..1024 (0: 1024), ahead 1..4 (0: 4))` → the latency now in frames, (ahead + 1) × chunk (−1 not the owner); `sound_map()` → the **mapped PCM ring** (`struct kapi_sound_ring`: one 64 KB page, 8192 frames, `wr` moved by the app after its frames, `rd` by the kernel, `dry` underruns, the chunk / ahead now), mixed with the voices and the stream until the owner releases the output — plain memory, so an **app core** fills it (`kapi_sound_ring_write`). Both are back to the defaults / off at `sound_release` or the owner's death. See §12. Test: `/bin/ringtest`. |
 | Sound (v46) | `sound_acquire` (1 ok / 0 busy / −1 no audio: the caller becomes the owner; the output starts on first use), `sound_release`, `sound_start(voice 0..15, milliHz, wave SOUND_SQUARE/SINE/TRIANGLE/SAW/NOISE, volume 0..255)` (plays until stopped), `sound_stop(voice or -1)`, `sound_write(s16 stereo frames, n)` → frames taken (PCM ring, non-blocking), `sound_status(&rate, &free, &owner)`. Non-owners get −1; the owner's exit silences it. See §12. |
 | Run as (v49) | `exec_as(path, args, name)` → `ExecPath` with the process named `name` instead of after the path (1 = started). User space runs a format's program this way (`launch.h`: `SD:/bin/basic` for an app's `main.bax` is named after the app). |
+| Monitor, time zone (v69) | `screen_native(&w, &h)` → 1 and the monitor's own resolution, 0 unknown: the EDID's first block (the firmware's `PROPTAG_GET_EDID_BLOCK`, Circle's `CBcmPropertyTags`), its header checked, the **first detailed timing descriptor** (bytes 54..71, the preferred timing) read — the active pixels, 8 low bits and 4 high ones of a shared byte, horizontally (bytes 2, 4) then vertically (5, 7); 0 when it is a display descriptor or too small (no monitor, an analog adapter). `set_timezone(minutes)` → 1: the local time's offset from UTC now (−720 .. 840, `CTimer::SetTimeZone`: `get_datetime`, the menu bar's clock), 0 out of range — `system.ini`'s `timezone=` sets it at boot. Setup (the first-run wizard) marks the monitor's size "Best" and changes the zone as it is picked. |
 | USB MIDI (v68) | `midi_read(ev, max)` → up to `max` `struct kapi_midi_event` (`time_us` — the kernel's µs clock, `CTimer::GetClockTicks`, which `kapi_clock_us` reads user side, on an app core too —, `cable`, `status`, `data1`, `data2`, `device` (its `umidiN`), `length` 1..3), oldest first, never waits; −1 bad arguments. One queue for the system (256 events, the newest dropped when full). `midi_devices()` → attached. Circle's USB device factory makes a `CUSBMIDIHostDevice` for every class-compliant MIDI interface (`int1-3-0`) and its `CUSBMIDIDevice` names itself `umidiN`; the input task finds `umidi1..4` every 100 ms (a hot plug too), registers its packet handler (`MidiPacket`: at USB-completion time, stamps the packet and queues it under an IRQ spin lock) and a removed handler that frees the slot. No Circle change. Test: `/bin/miditest`. |
 | Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/gamepad.h`, `SD:/etc/gamepad.ini`). |
 | App cores (v51) | `core_acquire()` → 2 or 3 (a free app core, now the caller's) or −1; `core_run(core, fn, arg, stack_top)` → 0, or −1 (not yours / still running / `fn` or the stack not a user address): the core calls `fn (arg)` in the caller's address space on the given stack (16-byte aligned, the caller's memory); `core_state(core)` → `KAPI_CORE_IDLE` (0: `fn` returned), `KAPI_CORE_RUNNING` (1), `KAPI_CORE_FAULT` (−2: `fn` faulted and was stopped, logged to kmsg) or `KAPI_CORE_NOTYOURS` (−1); `core_release(core)` stops `fn` if it runs and frees the core (done at the app's exit anyway). `fn` makes **no kapi call and no allocation**. See §14. |
@@ -788,7 +791,9 @@ the author's FreeBASIC `SimpleOS`.
 - **`CWindow`**: position, logical size, title, flags (`WIN_FLAG_BORDERLESS`; `BACKMOST`: the
   desktop's band; `TOPMOST`: the menu bar, the dock — above every window, never active, never the
   keys; `TRANSPARENT`: the magenta key; `SYSTEM`: not listed as an open app; `ALPHA` (v64): the
-  canvas's top byte is a transparency), a `GImage` **canvas allocated 64 KB-aligned and
+  canvas's top byte is a transparency; `FIXED` (v69): the user cannot move it — no drag, no
+  double-click maximise, `HitTitleButton` finds no button (wtk draws none: `WK_WIN_FIXED`) — and
+  `OnScreenResized` centres it again at a new resolution instead of only moving it in: Setup's), a `GImage` **canvas allocated 64 KB-aligned and
   physically contiguous** (mapped into the app at `USER_WINDOW_CANVAS` = 12 GB — the app draws
   directly, with no per-pixel call), the frame's two copies (active, inactive: mapped at
   `USER_WINDOW_CHROME` / `_INACTIVE`, drawn by the app — kapi v28 `get_chrome`; wtk:
@@ -981,9 +986,13 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   `NetCloseByPid` so a process that dies without closing does not leak its
   connections or table slots.
 - **Clock.** Once the link is up the bring-up task starts a `CNTPDaemon`
-  (`system.ini ntp=`), which updates `CTimer`'s wall clock; the boot reads
-  `system.ini timezone=` (minutes from UTC) and calls `CTimer::SetTimeZone` so
-  `get_datetime`, the agenda and the log timestamps show local time.
+  (`system.ini ntp=`; `off` or `none`: no daemon, the clock is not set), which updates
+  `CTimer`'s wall clock; the boot reads `system.ini timezone=` (minutes from UTC) and calls
+  `CTimer::SetTimeZone` so `get_datetime`, the agenda and the log timestamps show local time
+  (`kapi_set_timezone`, v69, changes it while running).
+- **Host name.** `system.ini hostname=` (letters, digits, `-`) is handed to `CNetSubSystem` before
+  the bring-up task starts (`SetHostname`, an Onyx addition to Circle: docs/05) — the name DHCP
+  announces; default Circle's `raspberrypi`. Setup writes it; it takes effect at the next start.
 - **Caveats.** Plain-text only (no TLS); `MAX_TASKS` was raised to 40 to fit the net
   workers; the firmware load uses FatFs and is not locked against concurrent app
   file I/O (low risk, one-shot at boot) — with `netcore=1` it is (the atomic volume lock).
@@ -1411,7 +1420,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 68 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 69 | kapi_abi.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

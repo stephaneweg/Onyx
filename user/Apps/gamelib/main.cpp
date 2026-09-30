@@ -31,6 +31,7 @@
 #include "gamepad.h"
 #include "bmp.hpp"
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
 #include "gb/gb.h"
 #include "gba/gba.h"
 #include "nes/nes.h"
@@ -623,7 +624,7 @@ public:
 			if (g_ng == 0)
 			{
 				canvas.text (gx + 24, y, "No game found in", ink);
-				for (int f = 0; f < g_nf; f++) canvas.drawFont (gx + 24, y + 22 + f * 20, g_folder[f], font (), ink, 1, 2);
+				for (int f = 0; f < g_nf; f++) wk_text (canvas, gx + 24, y + 22 + f * 20, g_folder[f], ink, 2);
 				y += 34 + g_nf * 20;
 				canvas.text (gx + 24, y, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there", dim);
 				canvas.text (gx + 24, y + 20, "(sub-folders too), or Folders > Add Folder...", dim);
@@ -632,7 +633,7 @@ public:
 			{
 				int k = g_filter - F_SYS;
 				char t[64]; int n = 0; lx_cat (t, sizeof t, &n, "No "); lx_cat (t, sizeof t, &n, SYS_NAME[k]); lx_cat (t, sizeof t, &n, " game yet.");
-				canvas.drawFont (gx + 24, y, t, font (), ink, 1, 2);
+				wk_text (canvas, gx + 24, y, t, ink, 2);
 				char h[96]; n = 0; lx_cat (h, sizeof h, &n, "Put "); lx_cat (h, sizeof h, &n, SYS_EXT[k]); lx_cat (h, sizeof h, &n, " files in a watched folder");
 				canvas.text (gx + 24, y + 26, h, dim);
 				canvas.text (gx + 24, y + 46, "(sub-folders too), then Library > Refresh.", dim);
@@ -648,7 +649,7 @@ public:
 			if (!n) continue;
 			if (yy + HEAD_H > BAR_H && yy < gb)
 			{
-				canvas.drawFont (gx + 12, yy + 6, SYS_NAME[sec], font (), ink, 1, 2);
+				wk_text (canvas, gx + 12, yy + 6, SYS_NAME[sec], ink, 2);
 				char num[12]; int m = ax_itoa (n, num); num[m] = 0;
 				canvas.text (gx + 12 + wk_text_w (SYS_NAME[sec], 2) + 10, yy + 6, num, dim);
 				wk_etch_h (canvas, gx + 10, yy + 26, gw - 20, C_FIELD);
@@ -682,8 +683,7 @@ public:
 				wk_sunken (canvas, px, py, TW, TH, 4, wk_tone (C_FACE, 112));
 				canvas.text (px + 44, py + TH / 2 - 8, g_tgame == g_vis[i] ? "(loading)" : "", C_TEXT);
 			}
-			char nm[24]; scpy (nm, g.name, sizeof nm);
-			if (slen (g.name) > 20) { nm[19] = '.'; nm[20] = '.'; nm[21] = 0; }
+			char nm[80]; wk_text_fit (g.name, TW, nm, sizeof nm);	// (the picture's width; cut at a character)
 			canvas.text (px, py + TH + 7, nm, sel ? wk_hilite_ink (true) : C_TEXT);
 		}
 	}
@@ -694,8 +694,7 @@ public:
 		canvas.fillRect (0, BAR_H, SIDE_W, gb - BAR_H, C_BG);
 		wk_etch_v (canvas, SIDE_W - 2, BAR_H + 4, gb - BAR_H - 8, C_BG);
 		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
-		int fh = wk_fh (), fw = wk_text_w ("M");
-		if (fw < 1) fw = 8;
+		int fh = wk_fh ();
 		for (int r = 0; r < g_nsrow; r++)
 		{
 			int y = SIDE_Y + r * SIDE_RH;
@@ -705,7 +704,7 @@ public:
 			if (sr.kind == SR_GROUP)
 			{
 				wk_glyph (canvas, g_folded[sr.index] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
-				canvas.drawFont (24, y + (SIDE_RH - fh) / 2, GROUP_NAME[sr.index], font (), hot ? C_TEXT : dim, 1, 2);
+				wk_text (canvas, 24, y + (SIDE_RH - fh) / 2, GROUP_NAME[sr.index], hot ? C_TEXT : dim, 2);
 				continue;
 			}
 			int f = row_filter (sr);
@@ -730,9 +729,8 @@ public:
 			scpy (lab, sr.kind == SR_ALL ? "All Games" : sr.kind == SR_SYS ? SYS_NAME[sr.index] : sr.kind == SR_FOLDER ? g_folder[sr.index] : "Add Folder...", sizeof lab);
 			char num[12] = ""; int nw = 0;
 			if (n >= 0) { int m = ax_itoa (n, num); num[m] = 0; nw = wk_text_w (num) + 8; }
-			int maxc = (SIDE_W - 20 - 44 - nw - 6) / fw;
-			if (slen (lab) > maxc && maxc > 2) { lab[maxc - 2] = '.'; lab[maxc - 1] = '.'; lab[maxc] = 0; }
-			canvas.text (44, y + (SIDE_RH - fh) / 2, lab, ink);
+			char fit[48]; wk_text_fit (lab, SIDE_W - 20 - 44 - nw - 6, fit, sizeof fit);	// (cut at a character, "...")
+			canvas.text (44, y + (SIDE_RH - fh) / 2, fit, ink);
 			if (n >= 0) canvas.text (SIDE_W - 20 - nw, y + (SIDE_RH - fh) / 2, num, on ? C_SEL_TEXT : dim);
 		}
 	}
@@ -750,7 +748,7 @@ public:
 		bool top = g_filter == F_ALL;
 		const char *root = "Game Library";
 		int tw = wk_text_w (root, top ? 2 : 0);
-		canvas.drawFont (x, y, root, font (), top ? wk_tone (C_ACCENT, 84) : ink, 1, top ? 2 : 0);
+		wk_text (canvas, x, y, root, top ? wk_tone (C_ACCENT, 84) : ink, top ? 2 : 0);
 		if (top) canvas.fillRect (x, y + wk_fh () + 1, tw, 2, C_ACCENT);
 		else if (g_crumbHot == 0) canvas.fillRect (x, y + wk_fh () + 1, tw, 1, ink);
 		g_crumbX = x + tw;
@@ -760,7 +758,7 @@ public:
 			wk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, fy + fh / 2, 9, dim);
 			x += 18;
 			const char *nm = filter_name ();
-			canvas.drawFont (x, y, nm, font (), wk_tone (C_ACCENT, 84), 1, 2);
+			wk_text (canvas, x, y, nm, wk_tone (C_ACCENT, 84), 2);
 			canvas.fillRect (x, y + wk_fh () + 1, wk_text_w (nm, 2), 2, C_ACCENT);
 		}
 		char cnt[24]; int n = ax_itoa (g_nvis, cnt); cnt[n] = 0;
@@ -940,6 +938,7 @@ static void build_menu ()
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	if (app_ini_load_path ("SD:/apps/gamelib.app/config.ini") >= 0)
 	{
 		// one `folder = <path>` line per watched folder (an .ini value: 63 characters at most)

@@ -150,7 +150,7 @@ void Root::init (unsigned *fb)
 		for (;;) kapi_msleep (1000);
 	}
 	canvas.adopt (fb, width, height);		// the root draws straight into the window canvas
-	wk_window_state (WK_WIN_MENU);			// (it answers the window menu: ptrEvent)
+	wk_window_state ((m_winFlags & WIN_FLAG_FIXED) ? WK_WIN_FIXED : WK_WIN_MENU);	// (it answers the window menu: ptrEvent)
 	wk_decorate_window ();				// title bar / borders / close box (no-op if borderless)
 	wtk::init ();					// load the global font family once (SD:/fonts/ns-sans.fnt)
 	bg = C_BG;					// (the theme is read by now: SD:/etc/theme.txt)
@@ -258,6 +258,7 @@ void Root::keyEvent (unsigned long, int ev, gui_value v)
 void Root::setResizable (bool on)
 {
 	m_resizable = on;
+	if (m_winFlags & WIN_FLAG_FIXED) return;		// (a fixed window: no buttons, never resized)
 	wk_window_state (WK_WIN_MENU | (m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
 	wk_decorate_window ();
 }
@@ -324,7 +325,8 @@ void Root::displayTick ()
 {
 	if (!m_dispPending || kapi_get_ticks () - m_dispT < 30) return;
 	m_dispPending = false;
-	if (m_winFlags & WIN_FLAG_BORDERLESS) return;	// (the menu bar, the dock...: onDisplayResize)
+	if (m_winFlags & (WIN_FLAG_BORDERLESS | WIN_FLAG_FIXED)) return;	// (the menu bar, the dock...: onDisplayResize;
+							//  a fixed window: the kernel centred it)
 	if (!m_maxed) { fitWorkArea (); return; }
 	struct kapi_win_geom g;
 	if (kapi_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
