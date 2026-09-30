@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- URL and URLSearchParams after the WHATWG URL Standard (the WPT's cases: urltest.sh) -->
+<html><head><meta charset="utf-8"></head><body><script>
+function check(name, got, want) { console.log((got === want ? 'OK ' : 'FAIL ') + name + (got === want ? '' : ' got ' + JSON.stringify(got) + ' want ' + JSON.stringify(want))); }
+var u = new URL('https://user:pa ss@EXAMPLE.com:443/a/./b/../c?x=1 2#frag');
+check('url href', u.href, 'https://user:pa%20ss@example.com/a/c?x=1%202#frag');
+u.username = ''; u.password = ''; u.hash = '';
+check('url setters', u.href, 'https://example.com/a/c?x=1%202');
+check('url idn', new URL('http://bücher.de/').host, 'xn--bcher-kva.de');
+check('url ipv4', new URL('http://0x7f.1/').host, '127.0.0.1');
+check('url ipv6', new URL('http://[0:0:0:0:0:0:0:1]/').host, '[::1]');
+check('url relative', new URL('../x?y#z', 'http://a/b/c/d').href, 'http://a/b/x?y#z');
+check('url invalid', URL.canParse('http://a b/'), false);
+var p = new URL('http://a/?q=%C3%A9&r=a+b').searchParams;
+check('params', p.get('q') + '|' + p.get('r'), 'é|a b');
+p.append('s', 'x y&');
+check('params write', u = p.toString(), 'q=%C3%A9&r=a+b&s=x+y%26');
+</script></body></html>
