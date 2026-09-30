@@ -124,6 +124,7 @@ html5page() {	# html5page <page> <area> <what>
 }
 html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, templates, DOMParser; messaging"
 html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
+html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs"
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

@@ -119,6 +119,7 @@ struct jsthread {
 	int in_use;			/* calls into JS nested */
 	bool dirty;			/* the DOM changed: a new layout due */
 	int forced_layouts;		/* Onyx: layouts a script's reads forced this turn */
+	nsurl *url_override;		/* Onyx: history.pushState's URL (the document's now) */
 	struct qjs_wrap *wraps;		/* dom_node -> its wrapper (open addressing) */
 	size_t nwraps, capwraps;
 	JSValue protos[QP_COUNT];
@@ -1560,6 +1561,8 @@ static JSValue n_url(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 	jsthread *t = QJS_T(ctx);
 	nsurl *url = t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
 
+	if (t->url_override != NULL)	/* Onyx: history.pushState / replaceState */
+		url = t->url_override;
 	return JS_NewString(ctx, url != NULL ? nsurl_access(url) : "about:blank");
 }
 
@@ -2465,7 +2468,35 @@ static JSValue n_owner_doc(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	return v;
 }
 
+/* setURL(url): the document's URL becomes url (history.pushState / replaceState: same origin,
+ * checked by html5.js) -- location and the address bar show it; no navigation */
+static JSValue n_set_url(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	nsurl *base, *url = NULL;
+	const char *s = JS_ToCString(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+
+	if (s == NULL)
+		return JS_EXCEPTION;
+	base = t->url_override != NULL ? t->url_override :
+		t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+	if (base != NULL)
+		nsurl_join(base, s, &url);
+	else
+		nsurl_create(s, &url);
+	JS_FreeCString(ctx, s);
+	if (url == NULL)
+		return JS_FALSE;
+	if (t->url_override != NULL)
+		nsurl_unref(t->url_override);
+	t->url_override = url;
+	if (t->bw != NULL && !t->closed && t->bw->parent == NULL && t->bw->window != NULL)
+		guit->window->set_url(t->bw->window, url);
+	return JS_TRUE;
+}
+
 static const JSCFunctionListEntry qjs_natives_html5[] = {
+	JS_CFUNC_DEF("setURL", 1, n_set_url),
 	JS_CFUNC_DEF("createDocument", 0, n_create_document),
 	JS_CFUNC_DEF("createIn", 4, n_create_in),
 	JS_CFUNC_DEF("importTo", 3, n_import_to),
@@ -2716,6 +2747,8 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
+	if (t->url_override != NULL)
+		nsurl_unref(t->url_override);
 	free(t);
 	heap->threads--;
 	if (heap->pending_destroy && heap->threads == 0)
