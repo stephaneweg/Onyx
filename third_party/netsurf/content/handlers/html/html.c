@@ -289,6 +289,7 @@ static void html_box_convert_done(html_content *c, bool success)
 #include "html/onyx_hover.h"
 #include "html/onyx_shadow.h"
 #include "html/onyx_anim.h"
+#include "html/onyx_restyle.h"
 
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
@@ -712,6 +713,7 @@ bool html_early_layout(html_content *c)
 		dom_node_unref(html);
 		return false;
 	}
+	onyx_restyle_invalidate_all(c);	/* (Onyx) */
 	html_get_dimensions(c);
 	c->early_layout = true;
 	c->early_stale = false;
@@ -917,6 +919,7 @@ void html_finish_conversion(html_content *htmlc)
 
 	/* create new css selection context */
 	error = html_css_new_selection_context(htmlc, &htmlc->select_ctx);
+	onyx_restyle_invalidate_all(htmlc);	/* (Onyx) */
 	if (error != NSERROR_OK) {
 		content_broadcast_error(&htmlc->base, error, NULL);
 		content_set_error(&htmlc->base);

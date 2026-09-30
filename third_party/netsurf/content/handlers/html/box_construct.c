@@ -51,6 +51,7 @@
 #include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
 #include "html/onyx_shadow.h"	/* Onyx: shadow DOM, display: contents */
+#include "html/onyx_restyle.h"	/* Onyx: the selections kept */
 #include "html/box_normalise.h"
 #include "html/form_internal.h"
 
@@ -308,18 +309,29 @@ box_extract_properties(html_content *c, dom_node *n,
  * \param  parent_style    style at this point in xml tree, or NULL for root
  * \param  root_style      root node's style, or NULL for root
  * \param  n               node in xml tree
+ * \param  memo            Onyx: a box tree's selection (onyx_restyle.c keeps it)
  * \return  the new style, or NULL on memory exhaustion
  */
 static css_select_results *
 box_get_style(html_content *c,
 	      const css_computed_style *parent_style,
 	      const css_computed_style *root_style,
-	      dom_node *n)
+	      dom_node *n, bool memo)
 {
 	dom_string *s = NULL;
 	css_stylesheet *inline_style = NULL;
 	css_select_results *styles;
 	nscss_select_ctx ctx;
+
+	/* Onyx: the selection of the last box tree, when no DOM change can have altered
+	 * it (html/onyx_restyle.c) */
+	if (memo) {
+		styles = onyx_restyle_lookup(c, n, parent_style, root_style);
+		if (styles != NULL) {
+			onyx_anim_styled(c, n, styles, parent_style);
+			return styles;
+		}
+	}
 
 	/* Firstly, construct inline stylesheet, if any */
 	if (nsoption_bool(author_level_css)) {
@@ -357,7 +369,10 @@ box_get_style(html_content *c,
 	/* Select style for element (Onyx: with the node under the pointer, CSS :hover) */
 	nscss_hover_node = c->hover_node;
 	nscss_hover_used = false;
-	nscss_hover_note = onyx_hover_note;	/* (the nodes :hover is tried on) */
+	nscss_struct_used = 0;	/* (Onyx: onyx_restyle.c) */
+	nscss_hover_note = memo ? onyx_restyle_hover_note : onyx_hover_note;
+			/* (the nodes :hover is tried on) */
+	onyx_restyle_select_begin();
 	nscss_hover_note_ctx = c;
 	nscss_styled_node = n;
 	if (c->onyx_shadow)	/* Onyx: the style scoped to its tree */
@@ -370,6 +385,11 @@ box_get_style(html_content *c,
 	nscss_hover_node = NULL;
 	nscss_hover_note = NULL;
 	nscss_styled_node = NULL;
+
+	/* Onyx: the selection kept for the next box tree (not one that tried :hover) */
+	if (memo && styles != NULL)
+		onyx_restyle_store(c, n, styles, parent_style, root_style,
+				true, nscss_struct_used);
 
 	/* Onyx: transitions and animations (their styles in place of the cascade's) */
 	if (styles != NULL)
@@ -388,7 +408,7 @@ css_select_results *box_style_select(html_content *c,
 		const css_computed_style *parent_style,
 		const css_computed_style *root_style, dom_node *n)
 {
-	return box_get_style(c, parent_style, root_style, n);
+	return box_get_style(c, parent_style, root_style, n, false);
 }
 
 
@@ -591,7 +611,7 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 	}
 
 	styles = box_get_style(ctx->content, props.parent_style, root_style,
-			ctx->n);
+			ctx->n, true);
 	if (styles == NULL)
 		return false;
 
@@ -1541,6 +1561,7 @@ dom_to_box(dom_node *n,
 	ctx->bctx = c->bctx;
 	ctx->now = false;
 	onyx_shadow_begin(c);	/* (Onyx: the flat tree's caches of the last tree emptied) */
+	onyx_restyle_begin(c);	/* (Onyx) */
 
 	*box_conversion_context = ctx;
 
@@ -1572,9 +1593,11 @@ nserror dom_to_box_now(dom_node *n, html_content *c, box_construct_complete_cb c
 	ctx->bctx = c->bctx;
 	ctx->now = true;
 	onyx_shadow_begin(c);	/* (Onyx) */
+	onyx_restyle_begin(c);	/* (Onyx) */
 
 	/* the whole tree now: ctx is freed and cb called on the way out */
 	convert_xml_to_box(ctx);
+	onyx_restyle_end(c);
 	return NSERROR_OK;
 }
 

@@ -263,6 +263,14 @@ typedef struct html_content {
 	bool onyx_shadow;
 	struct onyx_shadow *onyx_sh;
 
+	/** Onyx: the style selections kept from one box tree to the next
+	 * (html/onyx_restyle.c): the box trees' serial, the epoch a change of the sheets
+	 * or the media moves, and the media the last tree was selected with */
+	unsigned int restyle_serial, restyle_epoch;
+	css_fixed restyle_media_w, restyle_media_h, restyle_vw, restyle_vh;
+	bool restyle_shadow;
+	struct nsurl *restyle_base;
+
 	/** Onyx: transitions, animations, animation frames (html/onyx_anim.c: NULL until
 	 * the page has one); while set, a selection's style is not an element's (the scripts'
 	 * getComputedStyle of an element without a box) */

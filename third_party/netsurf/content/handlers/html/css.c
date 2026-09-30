@@ -46,6 +46,7 @@
 #include "html/onyx_webfont.h"
 #include "html/css.h"
 #include "html/onyx_shadow.h"
+#include "html/onyx_restyle.h"	/* Onyx */
 
 static nsurl *html_default_stylesheet_url;
 static nsurl *html_adblock_stylesheet_url;
@@ -104,6 +105,7 @@ static void html_css_restyle(html_content *c)
 		return;
 	css_select_ctx_destroy(c->select_ctx);
 	c->select_ctx = ctx;
+	onyx_restyle_invalidate_all(c);	/* (Onyx: the kept selections were the old's) */
 	html_script_dom_changed(c);
 }
 

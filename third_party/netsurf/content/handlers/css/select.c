@@ -34,6 +34,12 @@
 
 #include <dom/bindings/hubbub/parser.h>	/* Onyx: dom_onyx_shadow_host */
 
+/* Onyx: the selection looked at node's structure */
+static const css_qname *nscss_state_qname;	/* the selected node's name in libcss's state */
+#define NSCSS_STRUCT(node) (nscss_struct_used |= \
+		(void *) (node) == (void *) nscss_styled_node ? \
+		NSCSS_STRUCT_SELF : NSCSS_STRUCT_ANC)
+
 static css_error node_name(void *pw, void *node, css_qname *qname);
 static css_error node_classes(void *pw, void *node,
 		lwc_string ***classes, uint32_t *n_classes);
@@ -437,6 +443,9 @@ css_error node_name(void *pw, void *node, css_qname *qname)
 	dom_string *name;
 	dom_exception err;
 
+	if (node == (void *) nscss_styled_node)
+		nscss_state_qname = qname;	/* (Onyx: libcss's state) */
+
 	err = dom_node_get_node_name(n, &name);
 	if (err != DOM_NO_ERR)
 		return CSS_NOMEM;
@@ -574,6 +583,7 @@ css_error named_parent_node(void *pw, void *node,
 css_error named_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	NSCSS_STRUCT(node);	/* (Onyx) */
 	dom_node *n = node;
 	dom_node *prev;
 	dom_exception err;
@@ -642,6 +652,10 @@ css_error named_sibling_node(void *pw, void *node,
 css_error named_generic_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	/* (Onyx: not libcss's search of a sibling whose style to share -- the node's
+	 * own name, the selection state's: no dependence) */
+	if (qname != nscss_state_qname)
+		NSCSS_STRUCT(node);
 	dom_node *n = node;
 	dom_node *prev;
 	dom_exception err;
@@ -722,6 +736,7 @@ css_error parent_node(void *pw, void *node, void **parent)
  */
 css_error sibling_node(void *pw, void *node, void **sibling)
 {
+	NSCSS_STRUCT(node);	/* (Onyx) */
 	dom_node *n = node;
 	dom_node *prev;
 	dom_exception err;
@@ -1380,6 +1395,7 @@ node_count_siblings_check(dom_node *node,
 css_error node_count_siblings(void *pw, void *n, bool same_name,
 		bool after, int32_t *count)
 {
+	NSCSS_STRUCT(n);	/* (Onyx) */
 	int32_t cnt = 0;
 	dom_exception exc;
 	dom_string *node_name = NULL;
@@ -1443,6 +1459,7 @@ css_error node_count_siblings(void *pw, void *n, bool same_name,
  */
 css_error node_is_empty(void *pw, void *node, bool *match)
 {
+	NSCSS_STRUCT(node);	/* (Onyx) */
 	dom_node *n = node, *next;
 	dom_exception err;
 
@@ -1603,6 +1620,7 @@ bool nscss_hover_used = false;
 void (*nscss_hover_note)(void *ctx, struct dom_node *tested, struct dom_node *styled);
 void *nscss_hover_note_ctx;
 struct dom_node *nscss_styled_node;
+unsigned int nscss_struct_used;	/* (Onyx: see select.h) */
 
 css_error node_is_hover(void *pw, void *node, bool *match)
 {
@@ -1933,6 +1951,7 @@ static css_error s_named_parent_node(void *pw, void *node,
 static css_error s_named_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	NSCSS_STRUCT(node);	/* (Onyx) */
 	*sibling = NULL;
 	if (ONYX_FL(pw, node))
 		return CSS_OK;
@@ -1942,6 +1961,8 @@ static css_error s_named_sibling_node(void *pw, void *node,
 static css_error s_named_generic_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	if (qname != nscss_state_qname)
+		NSCSS_STRUCT(node);	/* (Onyx) */
 	*sibling = NULL;
 	if (ONYX_FL(pw, node))
 		return CSS_OK;
@@ -1950,6 +1971,7 @@ static css_error s_named_generic_sibling_node(void *pw, void *node,
 
 static css_error s_sibling_node(void *pw, void *node, void **sibling)
 {
+	NSCSS_STRUCT(node);	/* (Onyx) */
 	*sibling = NULL;
 	if (ONYX_FL(pw, node))
 		return CSS_OK;
@@ -2008,6 +2030,7 @@ S_MATCH_S(node_is_lang)
 static css_error s_node_count_siblings(void *pw, void *n, bool same_name,
 		bool after, int32_t *count)
 {
+	NSCSS_STRUCT(n);	/* (Onyx) */
 	*count = 0;
 	if (ONYX_FL(pw, n))
 		return CSS_OK;

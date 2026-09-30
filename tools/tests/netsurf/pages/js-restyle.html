@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>restyle</title>
+<!-- Onyx: the style selections a rebox keeps (html/onyx_restyle.c): each DOM change below is
+     read back through offsetWidth (a rebox now) and must give what a full selection gives. -->
+<style>
+div, span, li, p { display: block; height: 4px; width: 10px; margin: 0; padding: 0 }
+ul { margin: 0; padding: 0 }
+.p .c { width: 20px }
+.p > .d { width: 25px }
+.a + .s { width: 30px }
+.a ~ .g { width: 35px }
+#list li:first-child { width: 40px }
+#list li:last-child { width: 45px }
+#list li:nth-child(2) { width: 50px }
+.e:empty { width: 55px }
+.e:empty + .t { width: 80px }
+.x:nth-child(odd) span { width: 60px }
+[data-on] { width: 65px }
+#mv .inside { width: 70px }
+.big { font-size: 20px }
+.em { width: 2em }
+.gp .kid { width: 95px }
+.hide { display: none }
+#nl li:nth-last-child(1) { width: 33px }
+</style></head>
+<body>
+<div id="P"><div id="C" class="c"></div><div id="D" class="d"></div></div>
+<div id="A"></div><div id="S" class="s"></div><div id="X1"></div><div id="G" class="g"></div>
+<ul id="list"><li id="L1"></li><li id="L2"></li><li id="L3"></li></ul>
+<div id="E" class="e"></div><div id="T" class="t"></div>
+<div id="rows"><div class="x"><span id="R1"></span></div><div class="x"><span id="R2"></span></div></div>
+<div id="DA"></div>
+<div id="mv"></div><div id="IN" class="inside"></div>
+<div id="EMP" style="font-size: 16px"><div id="EM" class="em"></div></div>
+<div id="GP"><div id="HP"><div id="KID" class="kid"></div></div></div>
+<div id="ST"></div>
+<ul id="nl"><li id="N1"></li><li id="N2"></li></ul>
+<script>
+const $ = id => document.getElementById(id);
+const tick = () => new Promise(r => setTimeout(r, 20));
+let n = 0;
+function check(name, el, want) {
+	const got = el.offsetWidth;
+	if (got === want) { console.log('OK ' + name); n++; }
+	else console.log('FAIL ' + name + ' got ' + got + ' want ' + want);
+}
+async function run() {
+	await tick();
+	check('initial', $('C'), 10);
+	$('P').className = 'p'; await tick();
+	check('descendant on', $('C'), 20); check('child on', $('D'), 25);
+	$('P').className = ''; await tick();
+	check('descendant off', $('C'), 10); check('child off', $('D'), 10);
+
+	$('A').className = 'a'; await tick();
+	check('adjacent on', $('S'), 30); check('general on', $('G'), 35);
+	$('A').className = ''; await tick();
+	check('adjacent off', $('S'), 10); check('general off', $('G'), 10);
+
+	check('li first', $('L1'), 40); check('li second', $('L2'), 50); check('li last', $('L3'), 45);
+	const l0 = document.createElement('li'); l0.id = 'L0';
+	$('list').insertBefore(l0, $('L1')); await tick();
+	check('li first after insert', $('L0'), 40); check('li old first', $('L1'), 50);
+	check('li old second', $('L2'), 10);
+	$('L3').remove(); await tick();
+	check('li new last', $('L2'), 45);
+
+	check('empty', $('E'), 55); check('empty sibling', $('T'), 80);
+	$('E').appendChild(document.createTextNode('x')); await tick();
+	check('not empty', $('E'), 10); check('not empty sibling', $('T'), 10);
+	$('E').firstChild.remove(); await tick();
+	check('empty again', $('E'), 55);
+
+	check('odd row', $('R1'), 60); check('even row', $('R2'), 10);
+	const r0 = document.createElement('div'); r0.className = 'x';
+	r0.appendChild(document.createElement('span'));
+	$('rows').insertBefore(r0, $('rows').firstChild); await tick();
+	check('odd row now even', $('R1'), 10); check('even row now odd', $('R2'), 60);
+
+	$('DA').setAttribute('data-on', ''); await tick();
+	check('attribute on', $('DA'), 65);
+	$('DA').removeAttribute('data-on'); await tick();
+	check('attribute off', $('DA'), 10);
+
+	check('outside', $('IN'), 10);
+	$('mv').appendChild($('IN')); await tick();
+	check('moved in', $('IN'), 70);
+	document.body.appendChild($('IN')); await tick();
+	check('moved out', $('IN'), 10);
+
+	$('ST').style.width = '77px'; await tick();
+	check('style attribute', $('ST'), 77);
+	$('ST').removeAttribute('style'); await tick();
+	check('style attribute gone', $('ST'), 10);
+
+	check('em', $('EM'), 32);
+	$('EMP').style.fontSize = '20px'; await tick();
+	check('em inherited', $('EM'), 40);
+
+	$('HP').className = 'hide'; await tick();
+	$('GP').className = 'gp'; await tick();
+	$('HP').className = ''; await tick();
+	check('changed while hidden', $('KID'), 95);
+
+	check('nth-last', $('N2'), 33);
+	$('nl').appendChild(document.createElement('li')); await tick();
+	check('nth-last after append', $('N2'), 10);
+
+	const s = document.createElement('style');
+	s.textContent = '#ST { width: 90px }';
+	document.head.appendChild(s); await tick(); await tick();
+	check('late sheet', $('ST'), 90);
+	console.log('restyle checks ' + n);
+}
+run();
+</script>
+</body></html>

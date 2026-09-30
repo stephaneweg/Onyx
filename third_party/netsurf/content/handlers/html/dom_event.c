@@ -44,6 +44,7 @@
 #include "html/box_construct.h"
 #include "html/form_internal.h"
 #include "html/dom_event.h"
+#include "html/onyx_restyle.h"	/* Onyx */
 
 
 /**
@@ -604,6 +605,8 @@ dom_default_action_DOMNodeInserted_cb(struct dom_event *evt, void *pw)
 		return;
 	}
 
+	onyx_restyle_child_changed(htmlc, (dom_node *) node, true);	/* (Onyx) */
+
 	exc = dom_node_get_node_type(node, &type);
 	if ((exc == DOM_NO_ERR) && (type == DOM_ELEMENT_NODE)) {
 		/* an element node has been inserted */
@@ -772,11 +775,40 @@ dom_default_action_DOMNodeRemoved_cb(struct dom_event *evt, void *pw)
 
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
+	onyx_restyle_child_changed(htmlc, (dom_node *) node, false);
 	if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
 	    type == DOM_ELEMENT_NODE) {
 		html_css_node_removed(htmlc, (dom_node *) node);
 		html_box_unlink_subtree((dom_node *) node);
 	}
+	dom_node_unref(node);
+}
+
+
+/* Onyx: an element's attribute set or removed: its selection and its subtree's made
+ * again at the next box tree (onyx_restyle.c) */
+static void
+dom_default_action_DOMAttrModified_cb(struct dom_event *evt, void *pw)
+{
+	html_content *htmlc = pw;
+	dom_event_target *node = NULL;
+
+	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
+		return;
+	onyx_restyle_attr_changed(htmlc, (dom_node *) node);
+	dom_node_unref(node);
+}
+
+/* Onyx: a text node's data changed (its parent's :empty) */
+static void
+dom_default_action_DOMCharacterDataModified_cb(struct dom_event *evt, void *pw)
+{
+	html_content *htmlc = pw;
+	dom_event_target *node = NULL;
+
+	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
+		return;
+	onyx_restyle_text_changed(htmlc, (dom_node *) node);
 	dom_node_unref(node);
 }
 
@@ -812,6 +844,11 @@ html_dom_event_fetcher(dom_string *type,
 			return dom_default_action_DOMSubtreeModified_cb;
 		} else if (dom_string_isequal(type, corestring_dom_DOMNodeRemoved)) {
 			return dom_default_action_DOMNodeRemoved_cb;	/* (Onyx) */
+		} else if (dom_string_isequal(type, corestring_dom_DOMAttrModified)) {
+			return dom_default_action_DOMAttrModified_cb;	/* (Onyx) */
+		} else if (dom_string_isequal(type,
+				corestring_dom_DOMCharacterDataModified)) {
+			return dom_default_action_DOMCharacterDataModified_cb;
 		}
 	} else if (phase == DOM_DEFAULT_ACTION_FINISHED) {
 		return dom_default_action_finished_cb;

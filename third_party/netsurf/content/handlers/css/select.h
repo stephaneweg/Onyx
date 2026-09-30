@@ -91,5 +91,12 @@ extern bool nscss_hover_used;
 extern void (*nscss_hover_note)(void *ctx, struct dom_node *tested, struct dom_node *styled);
 extern void *nscss_hover_note_ctx;
 extern struct dom_node *nscss_styled_node;
+/* Onyx: how the selection of nscss_styled_node depended on the tree's structure (the
+ * siblings of a node, a node's emptiness): NSCSS_STRUCT_SELF -- its own siblings or
+ * children, NSCSS_STRUCT_ANC -- another node's (an ancestor's, a sibling's); set by the
+ * selection callbacks, cleared by the caller (html/onyx_restyle.c keeps it) */
+#define NSCSS_STRUCT_SELF 1u
+#define NSCSS_STRUCT_ANC 2u
+extern unsigned int nscss_struct_used;
 
 #endif
