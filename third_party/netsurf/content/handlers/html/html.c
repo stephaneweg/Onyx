@@ -2136,9 +2136,9 @@ html_get_contextual_content(struct content *c, int x, int y,
  * \param scry	number of px try to scroll something in y direction
  * \return true iff scroll was consumed by something in the content
  */
-/* (Onyx: exported, html/private.h: the scrolling keys) */
+/* (Onyx: exported, html/private.h: the scrolling keys -- no wheel event) */
 bool
-html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
+html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry)
 {
 	html_content *html = (html_content *) c;
 
@@ -2243,6 +2243,47 @@ html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 	}
 
 	return false;
+}
+
+/**
+ * Onyx: the wheel: its event to the page's scripts first, at the element under the
+ * pointer (a script's own scroller: event.preventDefault() keeps the page still), then
+ * what is under the point scrolled.
+ */
+static bool
+html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
+{
+	html_content *html = (html_content *) c;
+
+	if (html->jsthread != NULL && html->layout != NULL &&
+	    (scrx != 0 || scry != 0)) {
+		int n = 0, i;
+		struct box **path = html_hit_path(html, x, y, &n);
+		dom_node *node = NULL;
+
+		if (path != NULL) {
+			for (i = n - 1; i >= 0 && node == NULL; i--)
+				if (path[i]->node != NULL)
+					node = dom_node_ref(path[i]->node);
+			free(path);
+		}
+		if (node != NULL) {
+			struct js_event_init init;
+			bool ok;
+
+			memset(&init, 0, sizeof(init));
+			init.x = x;
+			init.y = y;
+			init.button = -1;
+			init.delta_x = scrx;
+			init.delta_y = scry;
+			ok = html_script_event(html, "wheel", node, &init);
+			dom_node_unref(node);
+			if (!ok)
+				return true;	/* (prevented: the script scrolls) */
+		}
+	}
+	return html_scroll_boxes_at_point(c, x, y, scrx, scry);
 }
 
 /** Helper for file gadgets to store their filename unencoded on the

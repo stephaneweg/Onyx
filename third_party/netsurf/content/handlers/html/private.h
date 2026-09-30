@@ -418,8 +418,8 @@ bool html_script_focus_control(html_content *htmlc, struct dom_node *node);
  */
 struct box **html_hit_path(html_content *html, int x, int y, int *n);
 
-/** Onyx: scroll what is under a point (html.c; the scrolling keys) */
-bool html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry);
+/** Onyx: scroll what is under a point, no wheel event (html.c; the scrolling keys) */
+bool html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry);
 
 
 /* in html/redraw.c */
