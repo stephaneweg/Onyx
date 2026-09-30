@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>CSS transitions</title>
+<!-- tools/tests/netsurf/jstest.sh: CSS transitions (html/onyx_anim.c) -- a class change starts
+     transitions of opacity, colours, transform, a length (laid out again), with a delay;
+     a transition reversed midway is cancelled; a :hover rule's (the simulator moves the
+     pointer onto #h after ~1 s). Samples getComputedStyle at known times; each check logs
+     "OK trans name" / "FAIL trans name", the last line is "trans done N". -->
+<style>
+body { margin: 0; font: 14px sans-serif; }
+#a { position: absolute; left: 10px; top: 10px; width: 100px; height: 40px;
+     background-color: rgb(255, 0, 0); opacity: 1;
+     transition: opacity 400ms linear, background-color 400ms linear; }
+#a.go { opacity: 0; background-color: rgb(0, 0, 255); }
+#b { position: absolute; left: 10px; top: 60px; width: 40px; height: 40px; background: green;
+     transition: transform 400ms linear; }
+#b.go { transform: translateX(100px); }
+#c { position: absolute; left: 10px; top: 110px; width: 100px; height: 20px; background: orange;
+     transition: width 400ms linear; }
+#c.go { width: 300px; }
+#d { position: absolute; left: 10px; top: 140px; width: 40px; height: 20px; background: #888;
+     opacity: 1; transition: opacity 600ms linear 300ms; }
+#d.go { opacity: 0.2; }
+#e { position: absolute; left: 10px; top: 170px; width: 40px; height: 20px; background: #444;
+     opacity: 1; transition: opacity 600ms linear; }
+#e.go { opacity: 0; }
+#f { position: absolute; left: 10px; top: 200px; width: 40px; height: 20px; background: #444;
+     color: rgb(0, 0, 0); transition: all 400ms ease-in-out; }
+#f.go { color: rgb(200, 100, 0); margin-left: 100px; }
+#h { position: absolute; left: 0px; top: 300px; width: 400px; height: 100px;
+     background-color: rgb(0, 0, 0); transition: background-color 500ms linear; }
+#h:hover { background-color: rgb(250, 250, 250); }
+</style></head><body>
+<div id="a">a</div><div id="b">b</div><div id="c">c</div><div id="d">d</div>
+<div id="e">e</div><div id="f">f</div><div id="h">hover me</div>
+<script>
+let n = 0;
+function check(name, cond, extra) {
+  n++;
+  console.log((cond ? 'OK ' : 'FAIL ') + 'trans ' + name + (cond || extra === undefined ? '' : ' (' + extra + ')'));
+}
+const $ = id => document.getElementById(id);
+const cs = (id, p) => getComputedStyle($(id)).getPropertyValue(p);
+const num = v => parseFloat(v);
+const rgb = v => (v.match(/[\d.]+/g) || []).map(Number);
+const tx = v => { const m = /matrix\(([^)]*)\)/.exec(v); return m ? +m[1].split(',')[4] : (v === 'none' ? 0 : NaN); };
+const events = [];
+for (const t of ['transitionrun', 'transitionstart', 'transitionend', 'transitioncancel'])
+  document.addEventListener(t, ev => events.push(t + ':' + ev.target.id + ':' + ev.propertyName));
+let hoverSeen = false;
+
+check('computed transition-duration', cs('a', 'transition-duration') === '0.4s, 0.4s', cs('a', 'transition-duration'));
+check('computed transition-property', cs('a', 'transition-property') === 'opacity, background-color', cs('a', 'transition-property'));
+check('instanceof TransitionEvent', typeof TransitionEvent === 'function');
+
+let t0;
+setTimeout(() => {
+  /* the before-change styles are laid out: change them all at once */
+  cs('a', 'opacity');
+  t0 = performance.now();
+  for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) $(id).classList.add('go');
+  setTimeout(() => {
+    const o = num(cs('a', 'opacity')), c = rgb(cs('a', 'background-color'));
+    check('opacity midway', o > 0.15 && o < 0.85, o);
+    check('colour midway', c[0] > 30 && c[0] < 225 && c[2] > 30 && c[2] < 225, c);
+    const x = tx(cs('b', 'transform'));
+    check('transform midway', x > 15 && x < 85, cs('b', 'transform'));
+    const w = $('c').offsetWidth;
+    check('width midway (layout)', w > 130 && w < 270, w);
+    check('delay holds', Math.abs(num(cs('d', 'opacity')) - 1) < 0.01, cs('d', 'opacity'));
+    const fc = rgb(cs('f', 'color'));
+    check('all: colour midway', fc[0] > 10 && fc[0] < 190, fc);
+    const ml = num(cs('f', 'margin-left'));
+    check('all: margin midway', ml > 5 && ml < 95, ml);
+    /* reversed midway: cancelled, a new one back */
+    $('e').classList.remove('go');
+  }, 200);
+  setTimeout(() => {
+    check('opacity end', num(cs('a', 'opacity')) === 0, cs('a', 'opacity'));
+    check('colour end', cs('a', 'background-color') === 'rgb(0, 0, 255)', cs('a', 'background-color'));
+    check('transform end', tx(cs('b', 'transform')) === 100, cs('b', 'transform'));
+    check('width end', $('c').offsetWidth === 300, $('c').offsetWidth);
+    const d = num(cs('d', 'opacity'));
+    check('delayed midway', d > 0.25 && d < 0.95, d);
+    check('reversed back', Math.abs(num(cs('e', 'opacity')) - 1) < 0.01 || num(cs('e', 'opacity')) > 0.5, cs('e', 'opacity'));
+  }, 700);
+  setTimeout(() => {
+    check('delayed end', Math.abs(num(cs('d', 'opacity')) - 0.2) < 0.01, cs('d', 'opacity'));
+    check('all end', cs('f', 'color') === 'rgb(200, 100, 0)' && num(cs('f', 'margin-left')) === 100,
+      cs('f', 'color') + ' ' + cs('f', 'margin-left'));
+    const has = s => events.includes(s);
+    check('event run', has('transitionrun:a:opacity') && has('transitionrun:a:background-color'), events.join(' '));
+    check('event start', has('transitionstart:a:opacity'), events.join(' '));
+    check('event end', has('transitionend:a:opacity') && has('transitionend:b:transform') && has('transitionend:c:width'), events.join(' '));
+    check('event cancel', has('transitioncancel:e:opacity'), events.join(' '));
+    check('event delayed start after run', events.indexOf('transitionrun:d:opacity') < events.indexOf('transitionstart:d:opacity'), events.join(' '));
+    check('no end for the cancelled', events.filter(e => e === 'transitionend:e:opacity').length === 1, events.join(' '));
+    check('ontransitionend property', typeof $('a').ontransitionend !== 'undefined');
+  }, 1000);
+}, 300);
+
+/* the pointer comes onto #h (the simulator: after ~1.4 s): its background transitions */
+$('h').addEventListener('mouseenter', () => {
+  if (hoverSeen) return;
+  hoverSeen = true;
+  setTimeout(() => {
+    const c = rgb(cs('h', 'background-color'));
+    check('hover midway', c[0] > 20 && c[0] < 230, c);
+  }, 250);
+  setTimeout(() => {
+    check('hover end', cs('h', 'background-color') === 'rgb(250, 250, 250)', cs('h', 'background-color'));
+    console.log('trans done ' + n);
+  }, 800);
+});
+</script>
+</body></html>

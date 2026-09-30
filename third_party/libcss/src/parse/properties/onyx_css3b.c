@@ -1695,3 +1695,560 @@ fail:
 		*ctx = orig_ctx;
 	return error;
 }
+
+
+/* ---- transitions and animations (Onyx) ------------------------------------------------------ */
+
+/*
+ * The transition-* and animation-* longhands are kept as text, the list's items separated by
+ * commas (NetSurf's html/onyx_anim.c reads them):
+ *   times            seconds: "0.3s,1s" (ms converted; a delay may be negative)
+ *   timing functions "ease" | "linear" | "ease-in" | "ease-out" | "ease-in-out" | "step-start"
+ *                    | "step-end" | "cubic-bezier(x1,y1,x2,y2)" | "steps(n,jump-end)" (the
+ *                    position spelled jump-*) | "linear(v p% p%,v...)" (its stops)
+ *   properties       the names, lowercase ("all", "none", "opacity"...)
+ *   names            the @keyframes' names as written ("none": no animation)
+ *   counts           a number or "infinite"
+ *   the keywords     directions, fill modes, play states
+ * The shorthands transition and animation set every longhand, one item each per layer.
+ */
+
+enum { OA_TIME, OA_NNTIME, OA_EASING, OA_PROPERTY, OA_NAME, OA_COUNT, OA_DIRECTION, OA_FILL,
+	OA_PLAY };
+
+static bool oa_word_in(const css_token *t, const char *const *words)
+{
+	for (; *words != NULL; words++)
+		if (onyx_word(t, *words))
+			return true;
+	return false;
+}
+
+static const char *const oa_easings[] = { "ease", "linear", "ease-in", "ease-out",
+		"ease-in-out", "step-start", "step-end", NULL };
+static const char *const oa_directions[] = { "normal", "reverse", "alternate",
+		"alternate-reverse", NULL };
+static const char *const oa_fills[] = { "none", "forwards", "backwards", "both", NULL };
+static const char *const oa_plays[] = { "running", "paused", NULL };
+static const char *const oa_wide[] = { "initial", "inherit", "unset", "revert",
+		"revert-layer", "default", NULL };
+
+static void oa_lower(onyx_buf *out, const css_token *t)
+{
+	size_t i, n = lwc_string_length(t->idata);
+	const char *d = lwc_string_data(t->idata);
+	for (i = 0; i < n; i++) {
+		char ch = d[i];
+		if (ch >= 'A' && ch <= 'Z')
+			ch += 'a' - 'A';
+		ob_putn(out, &ch, 1);
+	}
+}
+
+/* a number token (a percentage's too): its value, false if not one */
+static bool oa_number(const css_token *t, bool integer, float *v)
+{
+	size_t consumed;
+	if (t == NULL || (t->type != CSS_TOKEN_NUMBER && t->type != CSS_TOKEN_PERCENTAGE))
+		return false;
+	*v = FIXTOFLT(css__number_from_lwc_string(t->idata, integer, &consumed));
+	return consumed == lwc_string_length(t->idata);
+}
+
+/* a <time>: seconds appended */
+static bool oa_time(const parserutils_vector *vector, int32_t *ctx, bool nonneg, onyx_buf *out)
+{
+	const css_token *t = parserutils_vector_peek(vector, *ctx);
+	size_t consumed, ul;
+	const char *d;
+	float v;
+
+	if (t == NULL)
+		return false;
+	if (t->type == CSS_TOKEN_NUMBER) {
+		/* (a unitless 0, as the engines take it) */
+		if (!oa_number(t, false, &v) || v != 0)
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		ob_puts(out, "0s");
+		return true;
+	}
+	if (t->type != CSS_TOKEN_DIMENSION)
+		return false;
+	d = lwc_string_data(t->idata);
+	v = FIXTOFLT(css__number_from_lwc_string(t->idata, false, &consumed));
+	ul = lwc_string_length(t->idata) - consumed;
+	if (ul == 1 && (d[consumed] == 's' || d[consumed] == 'S'))
+		;
+	else if (ul == 2 && strncasecmp(d + consumed, "ms", 2) == 0)
+		v /= 1000;
+	else
+		return false;
+	if (nonneg && v < 0)
+		return false;
+	parserutils_vector_iterate(vector, ctx);
+	ob_num(out, v);
+	ob_puts(out, "s");
+	return true;
+}
+
+/* a function's arguments: numbers (and percentages for linear()), commas between (a linear()
+ * stop's parts separated by spaces); up to the ')' */
+static bool oa_args(const parserutils_vector *vector, int32_t *ctx, onyx_buf *out, int min,
+		int max, bool linear)
+{
+	int n = 0;
+	bool part = false;
+
+	for (;;) {
+		const css_token *t;
+		float v;
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_iterate(vector, ctx);
+		if (t == NULL)
+			return false;
+		if (tokenIsChar(t, ')'))
+			break;
+		if (tokenIsChar(t, ',')) {
+			if (!part)
+				return false;
+			ob_puts(out, ",");
+			part = false;
+			continue;
+		}
+		if (!oa_number(t, false, &v))
+			return false;
+		if (t->type == CSS_TOKEN_PERCENTAGE && !linear)
+			return false;
+		if (part) {
+			if (!linear)
+				return false;
+			ob_puts(out, " ");
+		} else {
+			n++;
+		}
+		ob_num(out, v);
+		if (t->type == CSS_TOKEN_PERCENTAGE)
+			ob_puts(out, "%");
+		part = true;
+	}
+	return part && n >= min && n <= max;
+}
+
+/* an <easing-function> appended */
+static bool oa_easing(const parserutils_vector *vector, int32_t *ctx, onyx_buf *out)
+{
+	const css_token *t = parserutils_vector_peek(vector, *ctx);
+	int32_t save = *ctx;
+	size_t mark = out->n;
+
+	if (t == NULL)
+		return false;
+	if (oa_word_in(t, oa_easings)) {
+		parserutils_vector_iterate(vector, ctx);
+		oa_lower(out, t);
+		return true;
+	}
+	if (onyx_fn(t, "cubic-bezier")) {
+		parserutils_vector_iterate(vector, ctx);
+		ob_puts(out, "cubic-bezier(");
+		if (!oa_args(vector, ctx, out, 4, 4, false))
+			goto fail;
+		ob_puts(out, ")");
+		return true;
+	}
+	if (onyx_fn(t, "linear")) {
+		parserutils_vector_iterate(vector, ctx);
+		ob_puts(out, "linear(");
+		if (!oa_args(vector, ctx, out, 1, 256, true))
+			goto fail;
+		ob_puts(out, ")");
+		return true;
+	}
+	if (onyx_fn(t, "steps")) {
+		static const char *const pos[] = { "jump-start", "jump-end", "jump-none",
+				"jump-both", "start", "end", NULL };
+		float v;
+		parserutils_vector_iterate(vector, ctx);
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_iterate(vector, ctx);
+		if (!oa_number(t, true, &v) || t->type != CSS_TOKEN_NUMBER || v < 1)
+			goto fail;
+		ob_puts(out, "steps(");
+		ob_num(out, v);
+		ob_puts(out, ",");
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_iterate(vector, ctx);
+		if (t != NULL && tokenIsChar(t, ',')) {
+			consumeWhitespace(vector, ctx);
+			t = parserutils_vector_iterate(vector, ctx);
+			if (!oa_word_in(t, pos))
+				goto fail;
+			if (onyx_word(t, "start"))
+				ob_puts(out, "jump-start");
+			else if (onyx_word(t, "end"))
+				ob_puts(out, "jump-end");
+			else
+				oa_lower(out, t);
+			consumeWhitespace(vector, ctx);
+			t = parserutils_vector_iterate(vector, ctx);
+		} else {
+			ob_puts(out, "jump-end");
+		}
+		if (t == NULL || !tokenIsChar(t, ')'))
+			goto fail;
+		ob_puts(out, ")");
+		return true;
+	}
+	return false;
+fail:
+	*ctx = save;
+	if (!out->oom && out->p != NULL) {
+		out->n = mark;
+		out->p[mark] = '\0';
+	}
+	return false;
+}
+
+/* one item of a longhand's list appended */
+static bool oa_item(const parserutils_vector *vector, int32_t *ctx, int kind, onyx_buf *out)
+{
+	const css_token *t = parserutils_vector_peek(vector, *ctx);
+	float v;
+
+	if (t == NULL)
+		return false;
+	switch (kind) {
+	case OA_TIME:
+	case OA_NNTIME:
+		if (kind == OA_NNTIME && onyx_word(t, "auto")) {	/* (animation-duration) */
+			parserutils_vector_iterate(vector, ctx);
+			ob_puts(out, "0s");
+			return true;
+		}
+		return oa_time(vector, ctx, kind == OA_NNTIME, out);
+	case OA_EASING:
+		return oa_easing(vector, ctx, out);
+	case OA_PROPERTY:
+		if (t->type != CSS_TOKEN_IDENT || oa_word_in(t, oa_wide))
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		oa_lower(out, t);
+		return true;
+	case OA_NAME:
+		if ((t->type != CSS_TOKEN_IDENT && t->type != CSS_TOKEN_STRING) ||
+				(t->type == CSS_TOKEN_IDENT && oa_word_in(t, oa_wide)))
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		if (t->type == CSS_TOKEN_IDENT && onyx_word(t, "none"))
+			ob_puts(out, "none");
+		else
+			ob_putn(out, lwc_string_data(t->idata), lwc_string_length(t->idata));
+		return true;
+	case OA_COUNT:
+		if (onyx_word(t, "infinite")) {
+			parserutils_vector_iterate(vector, ctx);
+			ob_puts(out, "infinite");
+			return true;
+		}
+		if (t->type != CSS_TOKEN_NUMBER || !oa_number(t, false, &v) || v < 0)
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		ob_num(out, v);
+		return true;
+	case OA_DIRECTION:
+	case OA_FILL:
+	case OA_PLAY:
+		if (!oa_word_in(t, kind == OA_DIRECTION ? oa_directions :
+				kind == OA_FILL ? oa_fills : oa_plays))
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		oa_lower(out, t);
+		return true;
+	default:
+		return false;
+	}
+}
+
+/* a longhand: its items, comma separated */
+static css_error oa_longhand(css_language *c, const parserutils_vector *vector, int32_t *ctx,
+		css_style *result, opcode_t op, int kind)
+{
+	int32_t orig_ctx = *ctx;
+	onyx_buf b = { NULL, 0, 0, false };
+	css_error error;
+
+	if (onyx_text_start(c, vector, ctx, result, op, false, &error))
+		return error;
+	for (;;) {
+		const css_token *t;
+		consumeWhitespace(vector, ctx);
+		if (!oa_item(vector, ctx, kind, &b))
+			goto invalid;
+		if (onyx_at_end(vector, ctx))
+			break;
+		t = parserutils_vector_iterate(vector, ctx);
+		if (t == NULL || !tokenIsChar(t, ','))
+			goto invalid;
+		ob_puts(&b, ",");
+	}
+	error = onyx_emit_text(c, result, op, &b);
+	free(b.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+invalid:
+	free(b.p);
+	*ctx = orig_ctx;
+	return CSS_INVALID;
+}
+
+css_error css__parse_transition_property(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_TRANSITION_PROPERTY, OA_PROPERTY);
+}
+
+css_error css__parse_transition_duration(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_TRANSITION_DURATION, OA_NNTIME);
+}
+
+css_error css__parse_transition_timing_function(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_TRANSITION_TIMING_FUNCTION,
+			OA_EASING);
+}
+
+css_error css__parse_transition_delay(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_TRANSITION_DELAY, OA_TIME);
+}
+
+css_error css__parse_animation_name(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_NAME, OA_NAME);
+}
+
+css_error css__parse_animation_duration(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_DURATION, OA_NNTIME);
+}
+
+css_error css__parse_animation_timing_function(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_TIMING_FUNCTION,
+			OA_EASING);
+}
+
+css_error css__parse_animation_delay(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_DELAY, OA_TIME);
+}
+
+css_error css__parse_animation_iteration_count(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_ITERATION_COUNT,
+			OA_COUNT);
+}
+
+css_error css__parse_animation_direction(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_DIRECTION, OA_DIRECTION);
+}
+
+css_error css__parse_animation_fill_mode(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_FILL_MODE, OA_FILL);
+}
+
+css_error css__parse_animation_play_state(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return oa_longhand(c, vector, ctx, result, CSS_PROP_ANIMATION_PLAY_STATE, OA_PLAY);
+}
+
+/* a shorthand's CSS-wide keyword: set on each longhand */
+static bool oa_flags(css_language *c, const parserutils_vector *vector, int32_t *ctx,
+		css_style *result, const opcode_t *ops, int n, css_error *error)
+{
+	const css_token *t = parserutils_vector_peek(vector, *ctx);
+	enum flag_value flag;
+	int i;
+
+	if (t == NULL) {
+		*error = CSS_INVALID;
+		return true;
+	}
+	flag = get_css_flag_value(c, t);
+	if (flag == FLAG_VALUE__NONE)
+		return false;
+	parserutils_vector_iterate(vector, ctx);
+	*error = CSS_OK;
+	for (i = 0; i < n && *error == CSS_OK; i++)
+		*error = css_stylesheet_style_flag_value(result, flag, ops[i]);
+	return true;
+}
+
+/* transition: [ <property> || <time> || <easing> || <time> || <behavior> ]# */
+css_error css__parse_transition(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	static const opcode_t ops[4] = { CSS_PROP_TRANSITION_PROPERTY,
+			CSS_PROP_TRANSITION_DURATION, CSS_PROP_TRANSITION_TIMING_FUNCTION,
+			CSS_PROP_TRANSITION_DELAY };
+	static const char *const behaviors[] = { "normal", "allow-discrete", NULL };
+	int32_t orig_ctx = *ctx;
+	onyx_buf b[4];
+	css_error error = CSS_OK;
+	int i;
+
+	if (oa_flags(c, vector, ctx, result, ops, 4, &error))
+		return error;
+	memset(b, 0, sizeof(b));
+	for (;;) {
+		onyx_buf item[4];
+		int ntimes = 0;
+		bool prop = false, easing = false, behavior = false;
+		memset(item, 0, sizeof(item));
+		for (;;) {
+			const css_token *t;
+			consumeWhitespace(vector, ctx);
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t == NULL || tokenIsChar(t, '!') || tokenIsChar(t, ','))
+				break;
+			if (ntimes < 2 && oa_time(vector, ctx, ntimes == 0,
+					&item[ntimes == 0 ? 1 : 3])) {
+				ntimes++;
+			} else if (!easing && oa_easing(vector, ctx, &item[2])) {
+				easing = true;
+			} else if (!behavior && oa_word_in(t, behaviors)) {
+				parserutils_vector_iterate(vector, ctx);
+				behavior = true;
+			} else if (!prop && oa_item(vector, ctx, OA_PROPERTY, &item[0])) {
+				prop = true;
+			} else {
+				for (i = 0; i < 4; i++)
+					free(item[i].p);
+				goto invalid;
+			}
+		}
+		if (!prop) ob_puts(&item[0], "all");
+		if (ntimes < 1) ob_puts(&item[1], "0s");
+		if (!easing) ob_puts(&item[2], "ease");
+		if (ntimes < 2) ob_puts(&item[3], "0s");
+		for (i = 0; i < 4; i++) {
+			if (b[i].n > 0)
+				ob_puts(&b[i], ",");
+			ob_puts(&b[i], item[i].p != NULL ? item[i].p : "");
+			free(item[i].p);
+		}
+		if (onyx_at_end(vector, ctx))
+			break;
+		parserutils_vector_iterate(vector, ctx);	/* (the ',') */
+	}
+	for (i = 0; i < 4 && error == CSS_OK; i++)
+		error = onyx_emit_text(c, result, ops[i], &b[i]);
+	for (i = 0; i < 4; i++)
+		free(b[i].p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+invalid:
+	for (i = 0; i < 4; i++)
+		free(b[i].p);
+	*ctx = orig_ctx;
+	return CSS_INVALID;
+}
+
+/* animation: [ <time> || <easing> || <time> || <count> || <direction> || <fill-mode> ||
+ * <play-state> || [ none | <name> ] ]# -- a keyword is taken by the first slot it fits,
+ * "none" by the name first */
+css_error css__parse_animation(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	enum { NAME, DUR, EASE, DELAY, COUNT, DIR, FILL, PLAY, N };
+	static const opcode_t ops[N] = { CSS_PROP_ANIMATION_NAME, CSS_PROP_ANIMATION_DURATION,
+			CSS_PROP_ANIMATION_TIMING_FUNCTION, CSS_PROP_ANIMATION_DELAY,
+			CSS_PROP_ANIMATION_ITERATION_COUNT, CSS_PROP_ANIMATION_DIRECTION,
+			CSS_PROP_ANIMATION_FILL_MODE, CSS_PROP_ANIMATION_PLAY_STATE };
+	static const char *const defaults[N] = { "none", "0s", "ease", "0s", "1", "normal",
+			"none", "running" };
+	int32_t orig_ctx = *ctx;
+	onyx_buf b[N];
+	css_error error = CSS_OK;
+	int i;
+
+	if (oa_flags(c, vector, ctx, result, ops, N, &error))
+		return error;
+	memset(b, 0, sizeof(b));
+	for (;;) {
+		onyx_buf item[N];
+		bool set[N];
+		int ntimes = 0;
+		memset(item, 0, sizeof(item));
+		memset(set, 0, sizeof(set));
+		for (;;) {
+			const css_token *t;
+			bool none;
+			consumeWhitespace(vector, ctx);
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t == NULL || tokenIsChar(t, '!') || tokenIsChar(t, ','))
+				break;
+			none = onyx_word(t, "none");
+			if (ntimes < 2 && oa_time(vector, ctx, ntimes == 0,
+					&item[ntimes == 0 ? DUR : DELAY])) {
+				set[ntimes == 0 ? DUR : DELAY] = true;
+				ntimes++;
+			} else if (!set[EASE] && oa_easing(vector, ctx, &item[EASE])) {
+				set[EASE] = true;
+			} else if (!set[COUNT] && oa_item(vector, ctx, OA_COUNT, &item[COUNT])) {
+				set[COUNT] = true;
+			} else if (!set[DIR] && oa_item(vector, ctx, OA_DIRECTION, &item[DIR])) {
+				set[DIR] = true;
+			} else if (!set[FILL] && !(none && !set[NAME]) &&
+					oa_item(vector, ctx, OA_FILL, &item[FILL])) {
+				set[FILL] = true;
+			} else if (!set[PLAY] && oa_item(vector, ctx, OA_PLAY, &item[PLAY])) {
+				set[PLAY] = true;
+			} else if (!set[NAME] && oa_item(vector, ctx, OA_NAME, &item[NAME])) {
+				set[NAME] = true;
+			} else {
+				for (i = 0; i < N; i++)
+					free(item[i].p);
+				goto invalid;
+			}
+		}
+		for (i = 0; i < N; i++) {
+			if (b[i].n > 0)
+				ob_puts(&b[i], ",");
+			ob_puts(&b[i], set[i] && item[i].p != NULL ? item[i].p : defaults[i]);
+			free(item[i].p);
+		}
+		if (onyx_at_end(vector, ctx))
+			break;
+		parserutils_vector_iterate(vector, ctx);	/* (the ',') */
+	}
+	for (i = 0; i < N && error == CSS_OK; i++)
+		error = onyx_emit_text(c, result, ops[i], &b[i]);
+	for (i = 0; i < N; i++)
+		free(b[i].p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+invalid:
+	for (i = 0; i < N; i++)
+		free(b[i].p);
+	*ctx = orig_ctx;
+	return CSS_INVALID;
+}

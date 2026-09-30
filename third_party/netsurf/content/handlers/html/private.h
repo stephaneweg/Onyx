@@ -255,6 +255,12 @@ typedef struct html_content {
 	bool onyx_shadow;
 	struct onyx_shadow *onyx_sh;
 
+	/** Onyx: transitions, animations, animation frames (html/onyx_anim.c: NULL until
+	 * the page has one); while set, a selection's style is not an element's (the scripts'
+	 * getComputedStyle of an element without a box) */
+	struct onyx_anim *onyx_anim;
+	int onyx_anim_probe;
+
 	/** Onyx: a control the user changed: its input / change events due (soon) */
 	struct dom_node *script_changed;
 	unsigned int script_changed_events;

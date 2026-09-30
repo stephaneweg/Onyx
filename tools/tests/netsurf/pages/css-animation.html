@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>CSS animations</title>
+<!-- tools/tests/netsurf/jstest.sh: CSS animations from @keyframes (html/onyx_anim.c) --
+     iterations and alternate direction, fill-mode forwards, a paused one, a negative delay,
+     several animations on one element, keyframes with their own timing function, steps(),
+     a percentage keyframe, animationstart / iteration / end / cancel, getAnimations().
+     Each check logs "OK anim name" / "FAIL anim name"; the last line is "anim done N". -->
+<style>
+body { margin: 0; font: 14px sans-serif; }
+@keyframes slide { from { transform: translateX(0px); } to { transform: translateX(200px); } }
+@keyframes fade { from { opacity: 1; } to { opacity: 0; } }
+@keyframes tint { 0% { background-color: rgb(0, 0, 0); } 50% { background-color: rgb(200, 0, 0); }
+                  100% { background-color: rgb(0, 0, 0); } }
+@-webkit-keyframes grow { from { width: 50px; } to { width: 250px; } }
+@keyframes jump { from { margin-left: 0px; } to { margin-left: 100px; } }
+@keyframes easedkf { from { opacity: 0; animation-timing-function: steps(2, end); } to { opacity: 1; } }
+.box { position: absolute; left: 10px; width: 50px; height: 30px; background: #6a6; }
+#a { top: 10px; animation: slide 600ms linear 2 alternate; }
+#b { top: 50px; animation: fade 300ms linear forwards; }
+#c { top: 90px; animation: slide 1s linear paused; }
+#d { top: 130px; animation: slide 1000ms linear -500ms; }
+#e { top: 170px; animation: tint 800ms linear, grow 800ms linear; }
+#f { top: 210px; animation-name: jump; animation-duration: 800ms;
+     animation-timing-function: steps(4, end); }
+#g { top: 250px; animation: easedkf 800ms linear; }
+#h { top: 290px; animation: fade 2s linear infinite; }
+#i { top: 330px; animation: nosuchkeyframes 1s; }
+</style></head><body>
+<div class="box" id="a"></div><div class="box" id="b"></div><div class="box" id="c"></div>
+<div class="box" id="d"></div><div class="box" id="e"></div><div class="box" id="f"></div>
+<div class="box" id="g"></div><div class="box" id="h"></div><div class="box" id="i"></div>
+<script>
+let n = 0;
+function check(name, cond, extra) {
+  n++;
+  console.log((cond ? 'OK ' : 'FAIL ') + 'anim ' + name + (cond || extra === undefined ? '' : ' (' + extra + ')'));
+}
+const $ = id => document.getElementById(id);
+const cs = (id, p) => getComputedStyle($(id)).getPropertyValue(p);
+const num = v => parseFloat(v);
+const tx = v => { const m = /matrix\(([^)]*)\)/.exec(v); return m ? +m[1].split(',')[4] : (v === 'none' ? 0 : NaN); };
+const events = [];
+for (const t of ['animationstart', 'animationiteration', 'animationend', 'animationcancel'])
+  document.addEventListener(t, ev => events.push(t + ':' + ev.target.id + ':' + ev.animationName));
+const t0 = performance.now();
+
+check('computed animation-name', cs('e', 'animation-name') === 'tint, grow', cs('e', 'animation-name'));
+check('computed animation-duration', cs('a', 'animation-duration') === '0.6s', cs('a', 'animation-duration'));
+check('AnimationEvent', typeof AnimationEvent === 'function');
+check('CSSKeyframesRule kept', [...document.styleSheets[0].cssRules].some(r => r.type === 7 && r.name === 'slide'));
+
+setTimeout(() => {
+  const x = tx(cs('a', 'transform'));
+  check('iteration 1 forwards', x > 30 && x < 170, cs('a', 'transform'));
+  const o = num(cs('b', 'opacity'));
+  check('fade midway', o > 0.2 && o < 0.8, o);
+  check('paused holds', tx(cs('c', 'transform')) === 0, cs('c', 'transform'));
+  const d = tx(cs('d', 'transform'));
+  check('negative delay starts midway', d > 110 && d < 190, cs('d', 'transform'));
+  const bg = (cs('e', 'background-color').match(/\d+/g) || []).map(Number);
+  check('two animations: colour', bg[0] > 60 && bg[0] < 200, bg);
+  const w = $('e').offsetWidth;
+  check('two animations: width (layout)', w > 70 && w < 200, w);
+  const ml = num(cs('f', 'margin-left'));
+  check('steps', ml === 25 || ml === 0, ml);
+  check('keyframe timing function', num(cs('g', 'opacity')) === 0, cs('g', 'opacity'));
+  check('no such @keyframes: nothing', $('i').getAnimations().length === 0);
+  const all = document.getAnimations();
+  check('getAnimations', all.length >= 8 && all.some(a => a.animationName === 'slide'), all.length);
+  check('CSSAnimation', $('a').getAnimations()[0] instanceof CSSAnimation && $('a').getAnimations()[0].playState === 'running');
+}, 150);
+setTimeout(() => {
+  const x = tx(cs('a', 'transform'));
+  check('iteration 2 alternate (back)', x > 30 && x < 170, cs('a', 'transform'));
+  check('fill forwards', num(cs('b', 'opacity')) === 0, cs('b', 'opacity'));
+  const ml = num(cs('f', 'margin-left'));
+  check('steps later', ml === 50 || ml === 75, ml);
+  check('keyframe timing function later', num(cs('g', 'opacity')) === 0.5, cs('g', 'opacity'));
+  /* resumed: running from where it was held */
+  $('c').style.animationPlayState = 'running';
+  /* taken away: cancelled */
+  $('h').style.animation = 'none';
+}, 800);
+setTimeout(() => {
+  check('resumed', tx(cs('c', 'transform')) > 10, cs('c', 'transform'));
+  check('after the end: base value', tx(cs('a', 'transform')) === 0, cs('a', 'transform'));
+  check('after the end: width', $('e').offsetWidth === 50, $('e').offsetWidth);
+  const has = s => events.includes(s);
+  check('animationstart', has('animationstart:a:slide') && has('animationstart:e:tint') && has('animationstart:e:grow'), events.join(' '));
+  check('animationiteration', has('animationiteration:a:slide'), events.join(' '));
+  check('animationend', has('animationend:a:slide') && has('animationend:b:fade'), events.join(' '));
+  check('animationcancel', has('animationcancel:h:fade'), events.join(' '));
+  check('no events for the missing', !events.some(e => e.includes(':i:')), events.join(' '));
+  console.log('anim done ' + n);
+}, 1500);
+</script>
+</body></html>

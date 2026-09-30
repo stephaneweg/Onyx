@@ -308,6 +308,19 @@ bool css_computed_style_paint_only_change(const css_computed_style *a,
 	PAINT_BITS(STOP_COLOR);			t.stop_color = bi->stop_color;
 	PAINT_BITS(STOP_OPACITY);		t.stop_opacity = bi->stop_opacity;
 	PAINT_BITS(Z_INDEX);			t.z_index = bi->z_index;
+	/* Onyx: transitions and animations (they change no box) */
+	PAINT_BITS(TRANSITION_PROPERTY);	t.transition_property = bi->transition_property;
+	PAINT_BITS(TRANSITION_DURATION);	t.transition_duration = bi->transition_duration;
+	PAINT_BITS(TRANSITION_TIMING_FUNCTION);	t.transition_timing_function = bi->transition_timing_function;
+	PAINT_BITS(TRANSITION_DELAY);	t.transition_delay = bi->transition_delay;
+	PAINT_BITS(ANIMATION_NAME);	t.animation_name = bi->animation_name;
+	PAINT_BITS(ANIMATION_DURATION);	t.animation_duration = bi->animation_duration;
+	PAINT_BITS(ANIMATION_TIMING_FUNCTION);	t.animation_timing_function = bi->animation_timing_function;
+	PAINT_BITS(ANIMATION_DELAY);	t.animation_delay = bi->animation_delay;
+	PAINT_BITS(ANIMATION_ITERATION_COUNT);	t.animation_iteration_count = bi->animation_iteration_count;
+	PAINT_BITS(ANIMATION_DIRECTION);	t.animation_direction = bi->animation_direction;
+	PAINT_BITS(ANIMATION_FILL_MODE);	t.animation_fill_mode = bi->animation_fill_mode;
+	PAINT_BITS(ANIMATION_PLAY_STATE);	t.animation_play_state = bi->animation_play_state;
 	PAINT_BITS(CURSOR);
 
 	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;	/* (not drawn) */

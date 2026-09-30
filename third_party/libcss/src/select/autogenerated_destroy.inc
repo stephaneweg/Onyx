@@ -9,6 +9,14 @@
 /* set_align_content(style, 0, 0, CSS_UNIT_PX); */
 /* set_align_items(style, 0, 0, CSS_UNIT_PX); */
 /* set_align_self(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_delay(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_direction(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_duration(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_fill_mode(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_iteration_count(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_name(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_play_state(style, 0, 0, CSS_UNIT_PX); */
+/* set_animation_timing_function(style, 0, 0, CSS_UNIT_PX); */
 /* set_aspect_ratio(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_attachment(style, 0, 0, CSS_UNIT_PX); */
 /* set_background_clip(style, 0, 0, CSS_UNIT_PX); */
@@ -148,6 +156,10 @@
 /* set_text_transform(style, 0, 0, CSS_UNIT_PX); */
 /* set_top(style, 0, 0, CSS_UNIT_PX); */
 /* set_transform(style, 0, 0, CSS_UNIT_PX); */
+/* set_transition_delay(style, 0, 0, CSS_UNIT_PX); */
+/* set_transition_duration(style, 0, 0, CSS_UNIT_PX); */
+/* set_transition_property(style, 0, 0, CSS_UNIT_PX); */
+/* set_transition_timing_function(style, 0, 0, CSS_UNIT_PX); */
 /* set_translate(style, 0, 0, CSS_UNIT_PX); */
 /* set_unicode_bidi(style, 0, 0, CSS_UNIT_PX); */
 /* set_vertical_align(style, 0, 0, CSS_UNIT_PX); */

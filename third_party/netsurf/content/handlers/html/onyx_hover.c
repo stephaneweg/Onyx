@@ -213,6 +213,12 @@ struct hv_job {
 struct hv {
 	const char *why;	/* (the first reason it fails: NS_PERF logs it) */
 	html_content *c;
+	/* Onyx: animations (onyx_hover_restyle_elements) -- the elements given their
+	 * styles without a selection (their subtrees left when not deep), a layout
+	 * property taken (layout_ok: the caller lays out again) */
+	const struct onyx_restyle_item *force;
+	int nforce;
+	bool layout_ok;
 	struct hv_map *map;
 	int nmap, capmap;
 	struct hv_job *job;
@@ -354,6 +360,7 @@ static void hv_restyle(struct hv *h, struct dom_node *n,
 	css_select_results *res;
 	const css_computed_style *child_style;
 	struct dom_node *ch = NULL, *next;
+	const struct onyx_restyle_item *force;
 	bool changed = false;
 
 	if (h->fail)
@@ -363,7 +370,23 @@ static void hv_restyle(struct hv *h, struct dom_node *n,
 		return;
 	}
 	b = hv_box_of(n);
-	res = box_style_select(c, parent_style, root ? NULL : c->layout->style, n);
+	force = NULL;
+	for (int k = 0; depth == 0 && k < h->nforce; k++)
+		if (h->force[k].node == n)
+			force = &h->force[k];
+	if (force != NULL && !force->deep && b != NULL && b->styles != NULL) {
+		/* (an animation's frame: the element's new style known, its pseudo-elements'
+		 * kept) */
+		res = calloc(1, sizeof(*res));
+		if (res != NULL) {
+			for (int p = 0; p < CSS_PSEUDO_ELEMENT_COUNT; p++)
+				res->styles[p] = css_computed_style_onyx_ref(
+						p == CSS_PSEUDO_ELEMENT_NONE ? force->style :
+						b->styles->styles[p]);
+		}
+	} else {
+		res = box_style_select(c, parent_style, root ? NULL : c->layout->style, n);
+	}
 	if (res == NULL || res->styles[CSS_PSEUDO_ELEMENT_NONE] == NULL) {
 		if (res != NULL)
 			css_select_results_destroy(res);
@@ -399,7 +422,7 @@ static void hv_restyle(struct hv *h, struct dom_node *n,
 			return;
 		}
 		if (o == NULL || nw == NULL ||
-		    !css_computed_style_paint_only_change(o, nw, &moved) ||
+		    (!h->layout_ok && !css_computed_style_paint_only_change(o, nw, &moved)) ||
 		    hv_new_image(o, nw) ||
 		    ((b->type == BOX_TABLE || b->type == BOX_TABLE_CELL ||
 		      b->type == BOX_TABLE_ROW || b->type == BOX_TABLE_ROW_GROUP) &&
@@ -430,6 +453,8 @@ static void hv_restyle(struct hv *h, struct dom_node *n,
 	}
 	if (h->fail || b->gadget != NULL || b->object != NULL)
 		return;	/* (a form control's or an object's insides are not boxes) */
+	if (force != NULL && !force->deep)
+		return;	/* (an animation's frame: no inherited property changed) */
 
 	if (dom_node_get_first_child(n, &ch) != DOM_NO_ERR)
 		ch = NULL;
@@ -614,7 +639,16 @@ static bool hv_box(struct hv *h, struct box *b, struct dom_node *own, bool pchan
 		if (ca != cb)
 			HV_FAIL(h, "inline svg colour");
 	}
-	if (apply) {
+	if (apply && h->layout_ok) {
+		/* (the caller lays the boxes out again and redraws them) */
+		b->style = (css_computed_style *) nw;
+		if (b->type != BOX_TABLE_CELL) {
+			css_computed_border_top_color(nw, &b->border[TOP].c);
+			css_computed_border_right_color(nw, &b->border[RIGHT].c);
+			css_computed_border_bottom_color(nw, &b->border[BOTTOM].c);
+			css_computed_border_left_color(nw, &b->border[LEFT].c);
+		}
+	} else if (apply) {
 		int e = hv_reach(h->c, b->style), e2 = hv_reach(h->c, nw);
 		/* moved as the layout moves it: not text, not a non-replaced inline */
 		bool moves = m->moved && b->type != BOX_TEXT && b->type != BOX_INLINE_END &&
@@ -702,6 +736,37 @@ static const css_computed_style *hv_parent_style(struct dom_node *n)
 	return pb != NULL ? pb->style : NULL;
 }
 
+/** The walk (check, then apply) and the jobs: the boxes' results swapped. */
+static bool hv_finish(html_content *c, struct hv *hp, const char *what)
+{
+	struct hv h = *hp;
+
+	if (!h.fail && h.nmap > 0) {
+		hv_walk(&h, c->layout, NULL, false, false, 0);		/* check */
+		if (!h.fail)
+			hv_walk(&h, c->layout, NULL, false, true, 0);	/* apply */
+	}
+	for (int k = 0; k < h.njob; k++) {
+		if (h.fail) {
+			css_select_results_destroy(h.job[k].res);
+		} else {
+			/* the box's own style was set by the walk; its results swapped (the
+			 * old ones kept: a box the walk missed may still point at them --
+			 * onyx_hover_collect frees those no box sees) */
+			css_select_results *old = h.job[k].box->styles;
+			h.job[k].box->styles = h.job[k].res;
+			h.job[k].box->style = h.job[k].res->styles[CSS_PSEUDO_ELEMENT_NONE];
+			if (!hv_keep_old(c, old))
+				css_select_results_destroy(old);
+		}
+	}
+	free(h.map);
+	free(h.job);
+	if (h.fail && onyx_perf_on())
+		fprintf(stderr, "ONYX-PERF %s:rebox (%s)\n", what, h.why ? h.why : "memory");
+	return !h.fail;
+}
+
 /* exported function documented in html/onyx_hover.h */
 bool onyx_hover_restyle(struct html_content *c, struct dom_node *old_node)
 {
@@ -715,6 +780,8 @@ bool onyx_hover_restyle(struct html_content *c, struct dom_node *old_node)
 		full = getenv("NS_HOVER_FULL") != NULL;
 	if (full)
 		return false;
+	if (c->hover_old_n > HV_KEEP_MAX)
+		onyx_hover_collect(c);	/* (Onyx: those no box sees freed) */
 	if (c->layout == NULL || c->box_conversion_context != NULL || c->base.locked ||
 	    c->rebox_pending || c->hover_other || c->aborted ||
 	    c->hover_old_n > HV_KEEP_MAX) {
@@ -758,27 +825,129 @@ bool onyx_hover_restyle(struct html_content *c, struct dom_node *old_node)
 				hv_restyle(&h, roots[r], ps, false, 0);
 		}
 	}
-	if (!h.fail && h.nmap > 0) {
-		hv_walk(&h, c->layout, NULL, false, false, 0);		/* check */
-		if (!h.fail)
-			hv_walk(&h, c->layout, NULL, false, true, 0);	/* apply */
-	}
-	for (int k = 0; k < h.njob; k++) {
-		if (h.fail) {
-			css_select_results_destroy(h.job[k].res);
-		} else {
-			/* the box's own style was set by the walk; its results swapped (the
-			 * old ones kept: a box the walk missed may still point at them) */
-			css_select_results *old = h.job[k].box->styles;
-			h.job[k].box->styles = h.job[k].res;
-			h.job[k].box->style = h.job[k].res->styles[CSS_PSEUDO_ELEMENT_NONE];
-			if (!hv_keep_old(c, old))
-				css_select_results_destroy(old);
+	return hv_finish(c, &h, "hover");
+}
+
+/* exported function documented in html/onyx_hover.h */
+bool onyx_hover_restyle_elements(struct html_content *c,
+		const struct onyx_restyle_item *items, int n, bool layout)
+{
+	struct hv h;
+
+	if (c->layout == NULL || c->box_conversion_context != NULL || c->base.locked ||
+	    c->rebox_pending || c->aborted)
+		return false;
+	if (c->hover_old_n > HV_KEEP_MAX / 2)
+		onyx_hover_collect(c);
+	if (c->hover_old_n > HV_KEEP_MAX)
+		return false;
+	memset(&h, 0, sizeof(h));
+	h.c = c;
+	h.force = items;
+	h.nforce = n;
+	h.layout_ok = layout;
+	for (int k = 0; k < n && !h.fail; k++) {
+		struct box *rb = hv_box_of(items[k].node);
+		const css_computed_style *ps;
+		if (rb == NULL || rb == c->layout ||
+		    (ps = hv_parent_style(items[k].node)) == NULL) {
+			HV_FAIL(&h, "no parent style");
+			break;
 		}
+		hv_restyle(&h, items[k].node, ps, false, 0);
 	}
-	free(h.map);
-	free(h.job);
-	if (h.fail && onyx_perf_on())
-		fprintf(stderr, "ONYX-PERF hover:rebox (%s)\n", h.why ? h.why : "memory");
-	return !h.fail;
+	return hv_finish(c, &h, "anim");
+}
+
+/* ---- the replaced results freed once no box sees them ---------------------------------- */
+
+struct hv_ptrset {
+	const void **slot;
+	unsigned int cap, n;
+	bool oom;
+};
+
+static void hv_ptr_add(struct hv_ptrset *s, const void *p)
+{
+	unsigned int i;
+
+	if (p == NULL || s->oom)
+		return;
+	if ((s->n + 1) * 2 > s->cap) {
+		unsigned int cap = s->cap ? s->cap * 2 : 1024, k;
+		const void **t = calloc(cap, sizeof(*t));
+		if (t == NULL) {
+			s->oom = true;
+			return;
+		}
+		for (k = 0; k < s->cap; k++) {
+			if (s->slot[k] == NULL)
+				continue;
+			for (i = hv_slot(s->slot[k], cap); t[i] != NULL; i = (i + 1) & (cap - 1))
+				;
+			t[i] = s->slot[k];
+		}
+		free(s->slot);
+		s->slot = t;
+		s->cap = cap;
+	}
+	for (i = hv_slot(p, s->cap); s->slot[i] != NULL; i = (i + 1) & (s->cap - 1))
+		if (s->slot[i] == p)
+			return;
+	s->slot[i] = p;
+	s->n++;
+}
+
+static bool hv_ptr_has(const struct hv_ptrset *s, const void *p)
+{
+	unsigned int i;
+
+	if (p == NULL || s->cap == 0)
+		return false;
+	for (i = hv_slot(p, s->cap); s->slot[i] != NULL; i = (i + 1) & (s->cap - 1))
+		if (s->slot[i] == p)
+			return true;
+	return false;
+}
+
+static bool hv_ptr_boxes(struct hv_ptrset *s, struct box *b, int depth)
+{
+	if (depth > 4 * HV_DEPTH)
+		return false;
+	for (; b != NULL && !s->oom; b = b->next) {
+		hv_ptr_add(s, b->style);
+		hv_ptr_add(s, b->styles);
+		if (b->list_marker != NULL && !hv_ptr_boxes(s, b->list_marker, depth + 1))
+			return false;
+		if (b->children != NULL && !hv_ptr_boxes(s, b->children, depth + 1))
+			return false;
+	}
+	return !s->oom;
+}
+
+/* exported function documented in html/onyx_hover.h */
+void onyx_hover_collect(struct html_content *c)
+{
+	struct hv_ptrset s;
+	unsigned int k, kept = 0;
+
+	if (c->hover_old_n == 0 || c->layout == NULL)
+		return;
+	memset(&s, 0, sizeof(s));
+	if (!hv_ptr_boxes(&s, c->layout, 0)) {
+		free(s.slot);
+		return;		/* (then all are kept) */
+	}
+	for (k = 0; k < c->hover_old_n; k++) {
+		css_select_results *r = c->hover_old[k];
+		bool live = hv_ptr_has(&s, r);
+		for (int p = 0; p < CSS_PSEUDO_ELEMENT_COUNT && !live; p++)
+			live = hv_ptr_has(&s, r->styles[p]);
+		if (live)
+			c->hover_old[kept++] = r;
+		else
+			css_select_results_destroy(r);
+	}
+	c->hover_old_n = kept;
+	free(s.slot);
 }

@@ -701,4 +701,53 @@ struct prop_table prop_dispatch[CSS_N_PROPERTIES] = {
 		PROPERTY_FUNCS(mask_repeat),
 		0,
 	},
+	/* Onyx: transitions and animations */
+	{
+		PROPERTY_FUNCS(transition_property),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(transition_duration),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(transition_timing_function),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(transition_delay),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_name),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_duration),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_timing_function),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_delay),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_iteration_count),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_direction),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_fill_mode),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(animation_play_state),
+		0,
+	},
 };

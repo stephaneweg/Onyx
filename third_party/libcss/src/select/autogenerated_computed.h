@@ -23,6 +23,14 @@ struct css_computed_style_i {
  * align_content                    3             
  * align_items                      3             
  * align_self                       3             
+ * animation_delay                  2             sizeof(ptr)
+ * animation_direction              2             sizeof(ptr)
+ * animation_duration               2             sizeof(ptr)
+ * animation_fill_mode              2             sizeof(ptr)
+ * animation_iteration_count        2             sizeof(ptr)
+ * animation_name                   2             sizeof(ptr)
+ * animation_play_state             2             sizeof(ptr)
+ * animation_timing_function        2             sizeof(ptr)
  * aspect_ratio                     2               8
  * background_attachment            2             
  * background_clip                  3             
@@ -156,6 +164,10 @@ struct css_computed_style_i {
  * text_transform                   3             
  * top                              2 + 5           4
  * transform                        2             sizeof(ptr)
+ * transition_delay                 2             sizeof(ptr)
+ * transition_duration              2             sizeof(ptr)
+ * transition_property              2             sizeof(ptr)
+ * transition_timing_function       2             sizeof(ptr)
  * translate                        2             sizeof(ptr)
  * unicode_bidi                     2             
  * vertical_align                   4 + 5           4
@@ -196,9 +208,9 @@ struct css_computed_style_i {
  * quotes                           1             sizeof(ptr)
  * 
  * ---                            ---             ---
- *                                645 bits        344 + 28sizeof(ptr) bytes
+ *                                669 bits        344 + 40sizeof(ptr) bytes
  *                                ===================
- *                                425 + 28sizeof(ptr) bytes
+ *                                428 + 40sizeof(ptr) bytes
  * 
  * Bit allocations:
  * 
@@ -250,41 +262,53 @@ struct css_computed_style_i {
  * overflow_x; object_fit; justify_self; justify_items; justify_content;
  * translate
  * 
- * 14 ttssrrooccaappuummkkiiggllddeeGG
+ * 14 ttrraaeebbssooppccRRgguummkkiiMM
+ * transition_duration; transition_delay; transform; text_overflow;
  * table_layout; stroke_linecap; stroke_dasharray; stop_color; scale; rotate;
  * page_break_inside; outline_color; mask_size; mask_repeat; mask_position;
- * mask_image; list_style_position; grid_template_rows; grid_template_columns;
- * grid_template_areas
+ * mask_image
  * 
- * 15 ggrriiddaauuffoolleeFFmmccnnssCC
- * grid_row_start; grid_row_end; grid_column_start; grid_column_end;
- * grid_auto_rows; grid_auto_columns; font_variant; font_style; float;
- * flex_wrap; fill_rule; empty_cells; direction; content; column_span;
- * column_rule_color
+ * 15 llggrriiddooccuuaattffnnFFeeIImm
+ * list_style_position; grid_template_rows; grid_template_columns;
+ * grid_template_areas; grid_row_start; grid_row_end; grid_column_start;
+ * grid_column_end; grid_auto_rows; grid_auto_columns; font_variant;
+ * font_style; float; flex_wrap; fill_rule; empty_cells
  * 
- * 16 ooooooooooobbbbbbbbbbbfffffffffw
+ * 16 ddccoolluummaabbrreeffppttkkggss
+ * direction; content; column_span; column_rule_color; column_fill;
+ * column_count; caption_side; box_sizing; border_top_color;
+ * border_right_color; border_left_color; border_collapse; border_bottom_color;
+ * background_color; background_attachment; aspect_ratio
+ * 
+ * 17 ooooooooooobbbbbbbbbbbfffffffffw
  * object_position; border_spacing; font_size; widows
  * 
- * 17 bbbbbbbssssssttttttppppppaaaaaar
+ * 18 bbbbbbbssssssttttttppppppaaaaaar
  * bottom; stroke_width; stroke_dashoffset; padding_top; padding_right;
  * stroke_opacity
  * 
- * 18 gggffflllcccbbbaaaiiinnnooottees
+ * 19 gggffflllcccbbbaaaiiinnnooottrrs
  * grid_auto_flow; font_family; flex_direction; clear; background_repeat;
- * background_clip; align_self; align_items; align_content; transform;
- * text_overflow; stroke_miterlimit
+ * background_clip; align_self; align_items; align_content;
+ * transition_timing_function; transition_property; stroke_miterlimit
  * 
- * 19 ccooaabbrrddeellttkkggsspqhOiyfx
- * column_fill; column_count; caption_side; box_sizing; border_top_color;
- * border_right_color; border_left_color; border_collapse; border_bottom_color;
- * background_color; background_attachment; aspect_ratio; stop_opacity; quotes;
- * orphans; order; opacity; list_style_image; flex_shrink; flex_grow
- * 
- * 20 fcolb...........................
- * fill_opacity; counter_reset; counter_increment; color; background_image
+ * 20 aanniimmttooddeesqrOplfxcuCLb...
+ * animation_timing_function; animation_play_state; animation_name;
+ * animation_iteration_count; animation_fill_mode; animation_duration;
+ * animation_direction; animation_delay; stop_opacity; quotes; orphans; order;
+ * opacity; list_style_image; flex_shrink; flex_grow; fill_opacity;
+ * counter_reset; counter_increment; color; background_image
  */
 	uint32_t bits[21];
 	
+	lwc_string *animation_delay;
+	lwc_string *animation_direction;
+	lwc_string *animation_duration;
+	lwc_string *animation_fill_mode;
+	lwc_string *animation_iteration_count;
+	lwc_string *animation_name;
+	lwc_string *animation_play_state;
+	lwc_string *animation_timing_function;
 	css_fixed aspect_ratio_a;
 	css_fixed aspect_ratio_b;
 	css_color background_color;
@@ -387,6 +411,10 @@ struct css_computed_style_i {
 	css_color text_shadow_d;
 	css_fixed top;
 	lwc_string *transform;
+	lwc_string *transition_delay;
+	lwc_string *transition_duration;
+	lwc_string *transition_property;
+	lwc_string *transition_timing_function;
 	lwc_string *translate;
 	css_fixed vertical_align;
 	int32_t widows;

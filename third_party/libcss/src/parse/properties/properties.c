@@ -267,7 +267,21 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_mask_size,
 	css__parse_mask_position,
 	css__parse_mask_repeat,
-	css__parse_mask
+	css__parse_mask,
+	css__parse_transition_property	/* Onyx */,
+	css__parse_transition_duration,
+	css__parse_transition_timing_function,
+	css__parse_transition_delay,
+	css__parse_animation_name,
+	css__parse_animation_duration,
+	css__parse_animation_timing_function,
+	css__parse_animation_delay,
+	css__parse_animation_iteration_count,
+	css__parse_animation_direction,
+	css__parse_animation_fill_mode,
+	css__parse_animation_play_state,
+	css__parse_transition,
+	css__parse_animation
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */

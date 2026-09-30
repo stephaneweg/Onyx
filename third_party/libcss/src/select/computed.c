@@ -205,6 +205,18 @@ css_error css_computed_style_destroy(css_computed_style *style)
 	lwc_string_unref(style->i.mask_size);
 	lwc_string_unref(style->i.mask_position);
 	lwc_string_unref(style->i.mask_repeat);
+	lwc_string_unref(style->i.transition_property);	/* Onyx: transitions... */
+	lwc_string_unref(style->i.transition_duration);
+	lwc_string_unref(style->i.transition_timing_function);
+	lwc_string_unref(style->i.transition_delay);
+	lwc_string_unref(style->i.animation_name);
+	lwc_string_unref(style->i.animation_duration);
+	lwc_string_unref(style->i.animation_timing_function);
+	lwc_string_unref(style->i.animation_delay);
+	lwc_string_unref(style->i.animation_iteration_count);
+	lwc_string_unref(style->i.animation_direction);
+	lwc_string_unref(style->i.animation_fill_mode);
+	lwc_string_unref(style->i.animation_play_state);
 	lwc_string_unref(style->i.grid_template_columns);
 	lwc_string_unref(style->i.grid_template_rows);
 	lwc_string_unref(style->i.grid_template_areas);
@@ -2241,4 +2253,54 @@ uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string *
 uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text)
 {
 	return get_mask_repeat(style, text);
+}
+
+/* Onyx: transitions and animations (their lists as text: src/parse/properties/onyx_css3b.c) */
+uint8_t css_computed_transition_property(const css_computed_style *style, lwc_string **text)
+{
+	return get_transition_property(style, text);
+}
+uint8_t css_computed_transition_duration(const css_computed_style *style, lwc_string **text)
+{
+	return get_transition_duration(style, text);
+}
+uint8_t css_computed_transition_timing_function(const css_computed_style *style, lwc_string **text)
+{
+	return get_transition_timing_function(style, text);
+}
+uint8_t css_computed_transition_delay(const css_computed_style *style, lwc_string **text)
+{
+	return get_transition_delay(style, text);
+}
+uint8_t css_computed_animation_name(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_name(style, text);
+}
+uint8_t css_computed_animation_duration(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_duration(style, text);
+}
+uint8_t css_computed_animation_timing_function(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_timing_function(style, text);
+}
+uint8_t css_computed_animation_delay(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_delay(style, text);
+}
+uint8_t css_computed_animation_iteration_count(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_iteration_count(style, text);
+}
+uint8_t css_computed_animation_direction(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_direction(style, text);
+}
+uint8_t css_computed_animation_fill_mode(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_fill_mode(style, text);
+}
+uint8_t css_computed_animation_play_state(const css_computed_style *style, lwc_string **text)
+{
+	return get_animation_play_state(style, text);
 }
