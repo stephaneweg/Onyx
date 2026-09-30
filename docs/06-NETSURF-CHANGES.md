@@ -1481,7 +1481,10 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   `CSSTransition` / `CSSAnimation` (`transitionProperty`, `animationName`), controllable the
   same way. A script's change is shown before its next read of a style or a geometry
   (`onyx_anim_flush` in `qjs_layout_now`): `finish()` then `getComputedStyle()` sees the end
-  value.
+  value. A script's animation that has finished without filling leaves the engine (its
+  `Animation` keeps its state; `play()` makes it again); one that fills forwards replaces the
+  earlier finished filling ones whose properties it covers (their `remove` event,
+  `replaceState` "removed"): a page calling `animate()` at each hover does not pile them up.
 - **`requestAnimationFrame`** (dom.js): the callbacks run at the content's frame
   (`js_animation_frame`, "onyx:frame"), with the frame's time on `performance.now()`'s clock,
   all those asked for before the frame, once; `cancelAnimationFrame`,
@@ -1511,10 +1514,11 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   events), `pages/css-animation.html` (27: iterations and `alternate`, `forwards`, `paused` then
   resumed, a negative delay, two animations on one element, `steps()`, a keyframe's own timing
   function, a missing `@keyframes`, the four events, `getAnimations()`), `pages/js-animate.html`
-  (29: `element.animate`, the promises and handlers, pause / play / `currentTime` / `reverse` /
+  (`element.animate`, the promises and handlers, pause / play / `currentTime` / `reverse` /
   `cancel` / `finish()`, fills, `playbackRate`, iterations and direction, `commitStyles`,
-  `requestAnimationFrame`'s pace and times). They sample `getComputedStyle` at known times (real
-  time: `SIM_SLEEP=1`), with margins for the bench's timing.
+  `requestAnimationFrame`'s pace and times, the replacement of finished filling animations:
+  31). They sample `getComputedStyle` at known times (real time: `SIM_SLEEP=1`), with margins
+  for the bench's timing. `pages/anim-perf.html` is the frames' measure (above).
 - **Not done**: the painting of `rotate` / `scale` / `skew` and of a subtree's `opacity` (the
   compositing layers' work: the values are interpolated, the translation drawn); animations of
   pseudo-elements (`::before`...), of `display` and of the other properties that change the box

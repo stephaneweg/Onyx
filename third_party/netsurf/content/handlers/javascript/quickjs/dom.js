@@ -3948,13 +3948,26 @@ class Animation extends EventTarget {
 		if (state === 'paused')
 			N.animCtl(this._id, 1);
 	}
-	_info() { return this._id ? N.animInfo(this._id) : null; }
+	_info() {
+		/* (a finished animation without a fill is gone from the engine: its state kept
+		 * here, play() makes it again) */
+		const i = this._id ? N.animInfo(this._id) : null;
+		if (!i && this._id) {
+			ANIMS.delete(this._id);
+			this._id = 0;
+		}
+		return i;
+	}
 	get effect() { return this._effect; }
 	set effect(e) { this._effect = e; if (e) e._anim = this; this._remake(); }
-	get playState() { const i = this._info(); return i ? i[7] : 'idle'; }
+	get playState() { const i = this._info(); return i ? i[7] : (this._state || 'idle'); }
 	get pending() { return false; }
-	get replaceState() { return 'active'; }
-	get currentTime() { const i = this._info(); return i && !isNaN(i[0]) ? i[0] : null; }
+	get replaceState() { return this._removed ? 'removed' : 'active'; }
+	get currentTime() {
+		const i = this._info();
+		if (i) return !isNaN(i[0]) ? i[0] : null;
+		return this._state === 'finished' ? this._held : null;
+	}
 	set currentTime(v) {
 		if (v === null)
 			return;
@@ -3977,7 +3990,10 @@ class Animation extends EventTarget {
 	get finished() { return this._finished; }
 	get ready() { return this._ready; }
 	play() {
-		if (!this._id) {
+		if (!this._id || !this._info()) {
+			if (this._state === 'finished')
+				this._newPromises();
+			this._state = '';
 			this._make();
 			return;
 		}
@@ -3991,8 +4007,12 @@ class Animation extends EventTarget {
 		N.animCtl(this._id, 1);
 	}
 	cancel() {
-		if (this._id && this.playState !== 'idle')
+		if (this._id && this._info() && this.playState !== 'idle')
 			N.animCtl(this._id, 2);
+		else if (this._state === 'finished') {
+			this._state = 'idle';
+			this._onCancel();
+		}
 	}
 	finish() {
 		if (!this._id && !this._make())
@@ -4002,6 +4022,14 @@ class Animation extends EventTarget {
 			throw new DOMException('Cannot finish an infinite animation', 'InvalidStateError');
 	}
 	reverse() {
+		if (!this._info() && this._state === 'finished') {
+			/* (gone at its end: made again, playing backwards from there) */
+			this._rate = -this._rate;
+			this._state = '';
+			this._newPromises();
+			this._make();
+			return;
+		}
 		if (!this._id && !this._make())
 			return;
 		if (this.playState === 'finished')
@@ -4021,7 +4049,9 @@ class Animation extends EventTarget {
 		for (const p of props)
 			e.target.style.setProperty(p, cs.getPropertyValue(p));
 	}
-	_onFinish() {
+	_onFinish(held) {
+		this._state = 'finished';
+		this._held = held;
 		const ok = this._fok;
 		ok(this);
 		const ev = new AnimationPlaybackEvent('finish', { currentTime: this.currentTime,
@@ -4085,7 +4115,21 @@ function animEvent(target, init) {
 	if (t === 'finish' || t === 'cancel') {
 		const a = ANIMS.get(init.id);
 		if (a)
-			t === 'finish' ? a._onFinish() : a._onCancel();
+			t === 'finish' ? a._onFinish(init.elapsed) : a._onCancel();
+		return;
+	}
+	if (t === 'remove') {
+		const a = ANIMS.get(init.id);
+		if (a) {
+			a._removed = true;
+			ANIMS.delete(init.id);
+			a._id = 0;
+			a._state = 'finished';
+			const ev = new AnimationPlaybackEvent('remove', { timelineTime: documentTimeline.currentTime });
+			if (typeof a.onremove === 'function')
+				try { a.onremove.call(a, ev); } catch (e) { report(e); }
+			dispatch(a, ev);
+		}
 		return;
 	}
 	if (!(target instanceof Element))

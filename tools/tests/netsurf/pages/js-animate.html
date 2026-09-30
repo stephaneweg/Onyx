@@ -15,6 +15,7 @@ body { margin: 0; font: 14px sans-serif; }
 <div class="box" id="c" style="top: 70px"></div><div class="box" id="d" style="top: 100px"></div>
 <div class="box" id="e" style="top: 130px"></div><div class="box" id="f" style="top: 160px"></div>
 <div class="box" id="g" style="top: 190px"></div><div class="box" id="h" style="top: 220px"></div>
+<div class="box" id="i" style="top: 250px"></div>
 <script>
 let n = 0, pending = 0;
 function check(name, cond, extra) {
@@ -66,6 +67,12 @@ const f = $('f').animate([{ transform: 'translateX(0px)' }, { transform: 'transl
 const g = $('g').animate([{ opacity: 1 }, { opacity: 0 }], { duration: 800 });
 g.playbackRate = 2;
 
+/* i: animations filling forwards, one after the other: the earlier ones replaced */
+const i1 = $('i').animate([{ opacity: 1 }, { opacity: 0.5 }], { duration: 100, fill: 'forwards' });
+const i2 = $('i').animate([{ opacity: 1 }, { opacity: 0.4 }], { duration: 150, fill: 'forwards' });
+let removed = 0;
+i1.onremove = () => removed++;
+
 /* h: reverse midway */
 const h = $('h').animate([{ transform: 'translateX(0px)' }, { transform: 'translateX(200px)' }], 600);
 
@@ -98,6 +105,9 @@ at(700, () => {
   const ff = tx(cs('f', 'transform'));
   check('iterations alternate', ff >= 0 && ff <= 100 && f.playState === 'running', ff + ' ' + f.playState);
   check('fill both after finish', Math.abs(num(cs('e', 'opacity')) - 0.7) < 0.01, cs('e', 'opacity'));
+  check('replaced', removed === 1 && i1.replaceState === 'removed' && $('i').getAnimations().length === 1 &&
+    Math.abs(num(cs('i', 'opacity')) - 0.4) < 0.01, removed + ' ' + i1.replaceState + ' ' + $('i').getAnimations().length + ' ' + cs('i', 'opacity'));
+  check('finished without fill: gone, state kept', a.currentTime === 400 && a.effect.getComputedTiming().progress === null, a.currentTime);
   /* commitStyles: the value kept in the style attribute */
   b.commitStyles();
   b.cancel();

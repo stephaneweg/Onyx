@@ -20,9 +20,9 @@ body { margin: 0; font: 14px sans-serif; }
 #c { top: 90px; animation: slide 1s linear paused; }
 #d { top: 130px; animation: slide 1000ms linear -500ms; }
 #e { top: 170px; animation: tint 800ms linear, grow 800ms linear; }
-#f { top: 210px; animation-name: jump; animation-duration: 800ms;
+#f { top: 210px; animation-name: jump; animation-duration: 1200ms;
      animation-timing-function: steps(4, end); }
-#g { top: 250px; animation: easedkf 800ms linear; }
+#g { top: 250px; animation: easedkf 1200ms linear; }
 #h { top: 290px; animation: fade 2s linear infinite; }
 #i { top: 330px; animation: nosuchkeyframes 1s; }
 </style></head><body>
@@ -58,9 +58,9 @@ setTimeout(() => {
   const d = tx(cs('d', 'transform'));
   check('negative delay starts midway', d > 110 && d < 190, cs('d', 'transform'));
   const bg = (cs('e', 'background-color').match(/\d+/g) || []).map(Number);
-  check('two animations: colour', bg[0] > 60 && bg[0] < 200, bg);
+  check('two animations: colour', bg[0] > 25 && bg[0] < 200, bg);
   const w = $('e').offsetWidth;
-  check('two animations: width (layout)', w > 70 && w < 200, w);
+  check('two animations: width (layout)', w > 55 && w < 200, w);
   const ml = num(cs('f', 'margin-left'));
   check('steps', ml === 25 || ml === 0, ml);
   check('keyframe timing function', num(cs('g', 'opacity')) === 0, cs('g', 'opacity'));

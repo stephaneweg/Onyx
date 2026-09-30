@@ -591,6 +591,7 @@ struct onyx_anim {
 	bool applying;		/* (a frame's styles given to the boxes: records stay) */
 	bool dirty;		/* (a script changed an animation: its style before a read) */
 	bool slow;		/* (only off-screen animations run: a few frames a second) */
+	bool flushing;		/* (a script reads: every element's style now) */
 	struct oa_event *ev;
 	int nev, capev;
 	unsigned int frames;
@@ -1063,6 +1064,9 @@ static css_computed_style *oa_compose(struct oa_rec *r, double now)
 
 /* the events an effect's progress calls for (transitions, CSS animations), and whether it is
  * done (a transition over: removed) */
+static void oa_replace(struct onyx_anim *a, struct oa_effect *e);
+static void oa_unlink(struct oa_rec *r, struct oa_effect *e);
+
 static bool oa_effect_events(struct onyx_anim *a, struct oa_effect *e, double now)
 {
 	struct oa_timing tm;
@@ -1078,10 +1082,16 @@ static bool oa_effect_events(struct onyx_anim *a, struct oa_effect *e, double no
 	if (e->kind == OA_SCRIPT || tm.phase == OA_PHASE_NONE) {
 		if (e->kind == OA_SCRIPT && !e->finish_sent && !isnan(t) && !e->paused &&
 		    ((e->rate > 0 && t >= oa_end_time(e)) || (e->rate < 0 && t <= 0))) {
-			/* finished: its time held at the end */
+			/* finished: its time held at the end (told to its Animation) */
+			bool fills = e->rate > 0 ? (e->fill == OA_FILL_FORWARDS ||
+					e->fill == OA_FILL_BOTH) : (e->fill == OA_FILL_BACKWARDS ||
+					e->fill == OA_FILL_BOTH);
 			e->finish_sent = true;
 			e->hold_time = e->rate > 0 ? oa_end_time(e) : 0;
-			oa_queue(a, NULL, "finish", NULL, 0, e->id);
+			oa_queue(a, NULL, "finish", NULL, e->hold_time, e->id);
+			if (!fills)
+				return true;	/* (no effect now: gone -- play() makes it again) */
+			oa_replace(a, e);
 		}
 		return false;
 	}
@@ -1122,6 +1132,33 @@ static bool oa_effect_events(struct onyx_anim *a, struct oa_effect *e, double no
 	}
 	e->phase = tm.phase;
 	return false;
+}
+
+/* the animation replacement (Web Animations 1, 5.5): a finished script's animation that
+ * fills forwards removes the earlier finished filling ones whose properties it all covers
+ * ("remove" to their Animations) -- a page calling animate() at each hover does not pile
+ * them up */
+static void oa_replace(struct onyx_anim *a, struct oa_effect *e)
+{
+	struct oa_effect *o, *nx;
+
+	for (o = e->rec->effects; o != NULL && o != e; o = nx) {
+		bool covered = true;
+		nx = o->next;
+		if (o->kind != OA_SCRIPT || !o->finish_sent || o->paused || o->idle)
+			continue;
+		for (int i = 0; i < o->ntracks && covered; i++) {
+			covered = false;
+			for (int j = 0; j < e->ntracks; j++)
+				if (e->tracks[j].prop == o->tracks[i].prop)
+					covered = true;
+		}
+		if (!covered)
+			continue;
+		oa_queue(a, NULL, "remove", NULL, 0, o->id);
+		oa_unlink(e->rec, o);
+		oa_effect_free(o);
+	}
 }
 
 /* an effect cancelled (its events), unlinked by the caller */
@@ -1723,7 +1760,7 @@ static void oa_update(html_content *c, struct onyx_anim *a, double now)
 				for (e = r->effects; e != NULL && a->slow; e = e->next)
 					if (oa_effect_running(e, now))
 						a->slow = false;
-			} else if (a->in_tick && now - r->last_apply < 240) {
+			} else if (a->in_tick && !a->flushing && now - r->last_apply < 240) {
 				continue;
 			}
 			r->last_apply = now;
@@ -1860,8 +1897,10 @@ void onyx_anim_flush(struct html_content *c)
 		return;
 	a->dirty = false;
 	a->in_tick = true;
+	a->flushing = true;
 	a->now = oa_clock();
 	oa_update(c, a, a->now);
+	a->flushing = false;
 	a->in_tick = false;
 	if (a->nev > 0)
 		oa_schedule(a);
