@@ -161,6 +161,14 @@ css_error css_stylesheet_set_disabled(css_stylesheet *sheet, bool disabled);
 css_error css_stylesheet_size(css_stylesheet *sheet, size_t *size);
 
 /**
+ * Onyx: what the parse kept -- its rules, and the bytecode words of its rules' declarations
+ * (0: every declaration was dropped, as an unknown property or an invalid value is). The
+ * browser's CSS.supports and element.style answer from it.
+ */
+css_error css_stylesheet_onyx_kept(const css_stylesheet *sheet, uint32_t *rules,
+		uint32_t *decl_words);
+
+/**
  * Onyx: a sheet's @font-face rules -- its own, those of its @media blocks and of its
  * imported sheets -- each handed to cb.
  */

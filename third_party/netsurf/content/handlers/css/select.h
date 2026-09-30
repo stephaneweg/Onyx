@@ -41,6 +41,14 @@ typedef struct nscss_select_ctx
 	const css_computed_style *parent_style;
 } nscss_select_ctx;
 
+/**
+ * Onyx: whether libcss keeps something of the text: a declaration list parsed as an inline
+ * style (inline true: "prop: value") or a whole style sheet ("selector { ... }") -- *rules,
+ * *decl_words as css_stylesheet_onyx_kept says. false: the text could not be parsed at all.
+ */
+bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *rules,
+		uint32_t *decl_words);
+
 css_stylesheet *nscss_create_inline_style(const uint8_t *data, size_t len,
 		const char *charset, const char *url, bool allow_quirks);
 

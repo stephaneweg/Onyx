@@ -593,6 +593,27 @@ css_error css_stylesheet_set_disabled(css_stylesheet *sheet, bool disabled)
  * \note The returned size will not include the size of interned strings
  *	 or imported stylesheets.
  */
+/* exported function documented in include/libcss/stylesheet.h (Onyx) */
+css_error css_stylesheet_onyx_kept(const css_stylesheet *sheet, uint32_t *rules,
+		uint32_t *decl_words)
+{
+	const css_rule *r;
+	uint32_t words = 0;
+
+	if (sheet == NULL || rules == NULL || decl_words == NULL)
+		return CSS_BADPARM;
+	for (r = sheet->rule_list; r != NULL; r = r->next) {
+		if (r->type == CSS_RULE_SELECTOR) {
+			const css_rule_selector *s = (const css_rule_selector *) r;
+			if (s->style != NULL)
+				words += s->style->used;
+		}
+	}
+	*rules = sheet->rule_count;
+	*decl_words = words;
+	return CSS_OK;
+}
+
 css_error css_stylesheet_size(css_stylesheet *sheet, size_t *size)
 {
 	size_t bytes = 0;

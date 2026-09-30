@@ -135,6 +135,12 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 void js_set_current_script(jsthread *thread, struct dom_node *node);
 
 /**
+ * Onyx: a <script type="module"> met by the parser: the scripts (dom.js) fetch it and its
+ * imports and run it once the document is parsed (a module is deferred).
+ */
+void js_module_script(jsthread *thread, struct dom_node *node);
+
+/**
  * fire an event at a dom node
  */
 bool js_fire_event(jsthread *thread, const char *type, struct dom_document *doc, struct dom_node *target);

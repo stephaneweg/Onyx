@@ -90,5 +90,24 @@ expect "$L" "storage proxy proxy"
 expect "$L" "storage keys ok"
 if [ -n "$a" ] && [ "$b" = "$((a + 1))" ]; then echo "  ok    kept: $a -> $b"; else echo "  FAIL  kept: '$a' -> '$b'"; fail=1; fi
 
+echo "js-module.html (ES modules; CSS.supports and element.style from libcss)"
+L=$OUT/js-module.log
+run js-module.html "$(waits 60)" "$L"
+expect "$L" "module a 4 b meta true"
+expect "$L" "module dynamic c-loaded"
+expect "$L" "module inline 42"
+expect "$L" "module order before DOMContentLoaded"
+expect "$L" "css supports color true bad false unknown false"
+expect "$L" "css supports cond true selector true badsel false"
+expect "$L" "style in true false"
+expect "$L" "style invalid 0 valid 1 red"
+
+echo "js-reactreveal.html (React 18's streaming reveal: comments, insertBefore null)"
+L=$OUT/js-reactreveal.log
+run js-reactreveal.html "$(waits 60)" "$L"
+expect "$L" "reveal content true"
+expect "$L" "reveal fallback gone true"
+expect "$L" "reveal after kept true"
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

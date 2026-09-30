@@ -616,6 +616,14 @@ html_process_script(void *ctx, dom_node *node)
 		mimetype = dom_string_ref(corestring_dom_text_javascript);
 	}
 
+	/* Onyx: an ES module -- the scripts fetch it and its imports, and run it (deferred) */
+	if (dom_string_byte_length(mimetype) == 6 &&
+	    strncasecmp(dom_string_data(mimetype), "module", 6) == 0) {
+		dom_string_unref(mimetype);
+		js_module_script(c->jsthread, node);
+		return DOM_HUBBUB_OK;
+	}
+
 	exc = dom_element_get_attribute(node, corestring_dom_src, &src);
 	if (exc != DOM_NO_ERR || src == NULL) {
 		err = exec_inline_script(c, node, mimetype);

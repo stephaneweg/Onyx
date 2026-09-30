@@ -43,6 +43,7 @@
 #include "utils/log.h"
 #include "utils/nsurl.h"
 #include "utils/useragent.h"
+#include "css/select.h"
 #include "netsurf/onyx_perf.h"
 #include "utils/corestrings.h"
 #include "utils/nsoption.h"
@@ -126,6 +127,8 @@ struct jsthread {
 	int load_waits;			/* the window's load: turns waited */
 	struct qjs_req *reqs;		/* fetch / XMLHttpRequest in flight */
 	int next_req;
+	JSValue modsrc;			/* ES modules' sources: { url: text } (dom.js fills it) */
+	JSValue modmissing;		/* the modules a moduleRun lacked: [url...] */
 };
 
 static JSClassID qjs_node_class;
@@ -712,6 +715,197 @@ static JSValue n_clone(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	if (res != NULL)
 		dom_node_unref(res);
 	return v;
+}
+
+/* ---- ES modules (Onyx) -------------------------------------------------------------------
+ *
+ * <script type="module"> goes to dom.js (the event "onyx:module", html/script.c): it fetches
+ * the module and every module its imports name, in parallel, and gives their sources to
+ * moduleSource (t->modsrc) -- a loader cannot wait for the network. moduleRun then compiles
+ * the root module, the loader below compiles its imports from the sources, and the module
+ * runs; a source not there yet (an import dom.js did not see) is named in the array
+ * moduleRun returns, and dom.js fetches it and tries again. */
+
+/** an import's specifier resolved against the importing module's URL (js_malloc'd) */
+static char *qjs_mod_normalize(JSContext *ctx, const char *base, const char *name,
+		void *opaque)
+{
+	nsurl *b = NULL, *u = NULL;
+	char *r = NULL;
+
+	(void) opaque;
+	if (nsurl_create(base, &b) == NSERROR_OK && nsurl_join(b, name, &u) == NSERROR_OK) {
+		const char *s = nsurl_access(u);
+		size_t n = strlen(s);
+		r = js_malloc(ctx, n + 1);
+		if (r != NULL)
+			memcpy(r, s, n + 1);
+	} else {
+		size_t n = strlen(name);
+		r = js_malloc(ctx, n + 1);	/* (a bare specifier: it will not load) */
+		if (r != NULL)
+			memcpy(r, name, n + 1);
+	}
+	if (u != NULL) nsurl_unref(u);
+	if (b != NULL) nsurl_unref(b);
+	return r;
+}
+
+/** import.meta.url of a compiled module */
+static void qjs_mod_meta(JSContext *ctx, JSValueConst func, const char *url)
+{
+	JSModuleDef *m = JS_VALUE_GET_PTR(func);
+	JSValue meta = JS_GetImportMeta(ctx, m);
+
+	if (!JS_IsException(meta)) {
+		JS_DefinePropertyValueStr(ctx, meta, "url", JS_NewString(ctx, url),
+				JS_PROP_C_W_E);
+		JS_FreeValue(ctx, meta);
+	}
+}
+
+/** a module compiled from its source in t->modsrc, else named in t->modmissing */
+static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaque)
+{
+	jsthread *t = QJS_T(ctx);
+	JSValue src, func;
+	const char *text;
+	size_t len;
+	JSModuleDef *m;
+
+	(void) opaque;
+	src = JS_GetPropertyStr(ctx, t->modsrc, name);
+	if (!JS_IsString(src)) {
+		JSValue len_v = JS_GetPropertyStr(ctx, t->modmissing, "length");
+		uint32_t n = 0;
+		JS_ToUint32(ctx, &n, len_v);
+		JS_FreeValue(ctx, len_v);
+		JS_SetPropertyUint32(ctx, t->modmissing, n, JS_NewString(ctx, name));
+		JS_FreeValue(ctx, src);
+		JS_ThrowReferenceError(ctx, "module not loaded yet: %s", name);
+		return NULL;
+	}
+	text = JS_ToCStringLen(ctx, &len, src);
+	JS_FreeValue(ctx, src);
+	if (text == NULL)
+		return NULL;
+	func = JS_Eval(ctx, text, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	JS_FreeCString(ctx, text);
+	if (JS_IsException(func))
+		return NULL;
+	qjs_mod_meta(ctx, func, name);
+	m = JS_VALUE_GET_PTR(func);
+	JS_FreeValue(ctx, func);
+	return m;
+}
+
+/** moduleSource(url, text): a module's source, for the loader */
+static JSValue n_module_source(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *url;
+
+	(void) this_val;
+	if (argc < 2 || (url = JS_ToCString(ctx, argv[0])) == NULL)
+		return JS_UNDEFINED;
+	JS_SetPropertyStr(ctx, t->modsrc, url, JS_DupValue(ctx, argv[1]));
+	JS_FreeCString(ctx, url);
+	return JS_UNDEFINED;
+}
+
+/**
+ * moduleRun(url, text): the module compiled, its imports loaded and it run -> true; an array
+ * of the modules' URLs whose source is missing (fetch them, then again); false: an error
+ * (reported).
+ */
+static JSValue n_module_run(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *url, *text;
+	size_t len;
+	JSValue func, r;
+	uint32_t nmiss = 0;
+
+	(void) this_val;
+	if (argc < 2)
+		return JS_FALSE;
+	url = JS_ToCString(ctx, argv[0]);
+	text = JS_ToCStringLen(ctx, &len, argv[1]);
+	if (url == NULL || text == NULL) {
+		if (url) JS_FreeCString(ctx, url);
+		if (text) JS_FreeCString(ctx, text);
+		return JS_EXCEPTION;
+	}
+	JS_FreeValue(ctx, t->modmissing);
+	t->modmissing = JS_NewArray(ctx);
+	func = JS_Eval(ctx, text, len, url, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	JS_FreeCString(ctx, text);
+	if (!JS_IsException(func)) {
+		qjs_mod_meta(ctx, func, url);
+		if (JS_ResolveModule(ctx, func) < 0) {
+			JS_FreeValue(ctx, func);
+			func = JS_EXCEPTION;
+		}
+	}
+	if (JS_IsException(func)) {
+		JSValue len_v = JS_GetPropertyStr(ctx, t->modmissing, "length");
+		JS_ToUint32(ctx, &nmiss, len_v);
+		JS_FreeValue(ctx, len_v);
+		if (nmiss > 0) {
+			JS_FreeValue(ctx, JS_GetException(ctx));
+			JS_FreeCString(ctx, url);
+			return JS_DupValue(ctx, t->modmissing);
+		}
+		qjs_report(ctx, url);
+		JS_FreeCString(ctx, url);
+		return JS_FALSE;
+	}
+	r = JS_EvalFunction(ctx, func);		/* (func consumed; a promise: top-level await) */
+	if (JS_IsException(r)) {
+		qjs_report(ctx, url);
+		JS_FreeCString(ctx, url);
+		return JS_FALSE;
+	}
+	JS_FreeValue(ctx, r);
+	JS_FreeCString(ctx, url);
+	return JS_TRUE;
+}
+
+/* exported interface documented in js.h (Onyx) */
+void js_module_script(jsthread *thread, struct dom_node *node)
+{
+	js_dispatch_event(thread, "onyx:module", node, NULL);
+}
+
+/**
+ * cssKept(text, inline): what libcss keeps of the text -- [rules, declaration words] -- parsed
+ * as an inline style (inline true: "prop: value") or a style sheet; null if unparsable.
+ * CSS.supports and element.style (dom.js) answer from it.
+ */
+static JSValue n_css_kept(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	size_t len;
+	const char *text;
+	uint32_t rules = 0, words = 0;
+	bool ok;
+	JSValue a;
+
+	(void) this_val;
+	if (argc < 1)
+		return JS_NULL;
+	text = JS_ToCStringLen(ctx, &len, argv[0]);
+	if (text == NULL)
+		return JS_EXCEPTION;
+	ok = nscss_text_kept(text, len, argc > 1 && JS_ToBool(ctx, argv[1]), &rules, &words);
+	JS_FreeCString(ctx, text);
+	if (!ok)
+		return JS_NULL;
+	a = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, a, 0, JS_NewUint32(ctx, rules));
+	JS_SetPropertyUint32(ctx, a, 1, JS_NewUint32(ctx, words));
+	return a;
 }
 
 /* Onyx: the <script> element running (document.currentScript), set around js_exec */
@@ -1906,6 +2100,9 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("clone", 2, n_clone),
 	JS_CFUNC_DEF("byId", 1, n_by_id),
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
+	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
+	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
+	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
 	JS_CFUNC_DEF("descendants", 1, n_descendants),
 	JS_CFUNC_DEF("formValue", 1, n_form_value),
@@ -1979,6 +2176,7 @@ nserror js_newheap(int timeout, jsheap **heap)
 	 * 8 MB (its app.txt: stack = 8M), NetSurf's own frames below the JS */
 	JS_SetMaxStackSize(h->rt, 4 * 1024 * 1024);
 	JS_SetInterruptHandler(h->rt, qjs_interrupt, h);
+	JS_SetModuleLoaderFunc(h->rt, qjs_mod_normalize, qjs_mod_loader, NULL);	/* (Onyx) */
 	JS_NewClassID(h->rt, &qjs_node_class);
 	JS_NewClass(h->rt, qjs_node_class, &qjs_node_classdef);
 	*heap = h;
@@ -2031,6 +2229,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	t->tag_protos = JS_UNDEFINED;
 	t->dispatch = JS_UNDEFINED;
 	JS_SetContextOpaque(t->ctx, t);
+	t->modsrc = JS_NewObject(t->ctx);	/* (Onyx: ES modules) */
+	t->modmissing = JS_NewArray(t->ctx);
 	heap->threads++;
 
 	/* the prelude: a function of the natives, run once */
@@ -2087,6 +2287,8 @@ static void qjs_thread_free(jsthread *t)
 		JS_FreeValue(t->ctx, t->protos[k]);
 	JS_FreeValue(t->ctx, t->tag_protos);
 	JS_FreeValue(t->ctx, t->dispatch);
+	JS_FreeValue(t->ctx, t->modsrc);
+	JS_FreeValue(t->ctx, t->modmissing);
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);

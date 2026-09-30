@@ -145,6 +145,35 @@ static css_select_handler selection_handler = {
  * \param allow_quirks  True to permit CSS parsing quirks
  * \return Pointer to stylesheet, or NULL on failure.
  */
+/* exported function documented in css/select.h (Onyx) */
+bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *rules,
+		uint32_t *decl_words)
+{
+	css_stylesheet_params params;
+	css_stylesheet *sheet;
+	css_error error;
+	bool ok = false;
+
+	memset(&params, 0, sizeof params);
+	params.params_version = CSS_STYLESHEET_PARAMS_VERSION_1;
+	params.level = CSS_LEVEL_DEFAULT;
+	params.charset = "UTF-8";
+	params.url = "about:blank";
+	params.inline_style = inline_style;
+	params.resolve = nscss_resolve_url;
+	params.color = ns_system_colour;
+
+	if (css_stylesheet_create(&params, &sheet) != CSS_OK)
+		return false;
+	error = css_stylesheet_append_data(sheet, (const uint8_t *) text, len);
+	if ((error == CSS_OK || error == CSS_NEEDDATA) &&
+	    css_stylesheet_data_done(sheet) == CSS_OK &&
+	    css_stylesheet_onyx_kept(sheet, rules, decl_words) == CSS_OK)
+		ok = true;
+	css_stylesheet_destroy(sheet);
+	return ok;
+}
+
 css_stylesheet *nscss_create_inline_style(const uint8_t *data, size_t len,
 		const char *charset, const char *url, bool allow_quirks)
 {

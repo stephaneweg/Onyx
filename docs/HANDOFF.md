@@ -671,7 +671,58 @@ restyle; deployed on the Pi, the flicker not yet confirmed gone by the user). Th
 in WSL again (`build-essential`, `libpng-dev`, `zlib1g-dev`); `jstest.sh` covers them all
 (js-fetch, js-hover, js-hovercss, js-storage).
 
-**Performance and the network (2026-09-30, built for the Pi, NOT yet tried there -- the Pi did
+**START HERE -- the state at the end of 2026-09-30 (all in `main`, pushed; the Pi binaries
+staged: `sdcard/kernel8-rpi4.img`, `sdcard/apps/netsurf.app/main`).** Tried by the user on the
+Pi: much faster (kotonstudio with all its images almost at once), hovers fine. Since then (the
+last build, NOT yet tried on the Pi): the Android Chrome User-Agent by default, the yahoo.com
+freeze fixed, ES modules, honest `CSS.supports` / `element.style`, a CSSOM. The docs: docs/06
+§9-§11 (performance, the big sites' scripts, modules / CSS detection), docs/05 §18-19 (DNS,
+TCP window), docs/02 (the kernel's sockets).
+
+The next session's goals, in the user's words and order:
+1. **DOM levels**: check which DOM Level (1/2/3, and the WHATWG DOM) features NetSurf supports
+   -- `dom.js` + `qjs.c` natives over libdom -- write the table down (docs/06 §7), and fill
+   the gaps (Range / Selection, TreeWalker / NodeIterator, `DOMParser`, `XMLSerializer`,
+   Shadow DOM, `customElements` upgrades, `MutationObserver` details, events' fine points...).
+   A regression page per area in `tools/tests/netsurf/pages/` (see `jstest.sh`).
+2. **An HTML5-compliant parser**: hubbub (`third_party/libhubbub`) is an old HTML5 tokenizer /
+   tree builder: check it against the html5lib-tests (tree construction, tokenizer), fix what
+   fails (`<template>`, foster parenting, the adoption agency, `<svg>` / `<math>` foreign
+   content, the insertion modes of tables and `<select>`, entity names), and innerHTML's
+   fragment parsing (qjs.c saves/restores the quirks mode around it).
+3. **css3test.com: aim at 50%** (23% now, 1154 of 6419 tests; the page copy: `wget -p -k -E -H
+   -D css3test.com https://css3test.com/`, its 156 test modules fetched by following the
+   imports, `bliss.js` from cdnjs put beside it -- run it with `NS_JSDEBUG=1 NS_PERF=1`). The
+   score is what libcss parses (docs/06 §11): each new property / value / selector / at-rule
+   parsed by libcss counts -- the cheap wins are the properties NetSurf already draws or can
+   ignore (`opacity`, `transform` functions, `filter`, `mask-*`, `inset`, `aspect-ratio`
+   variants, logical properties `margin-inline` ..., `place-*`, `gap` forms, `color-mix()`,
+   `oklch()` / `lab()` / `lch()` / `hwb()`, `@layer`, `@container`, `@property`, `:is()` /
+   `:where()` / `:has()` / `:not(list)`, `::marker`...). A property parsed but not drawn is
+   still a win for pages (their other declarations are kept). browserscore.dev (the site's new
+   version) is the same idea and worth running too.
+4. **bbc.co.uk: "out of memory"** (the user, on the Pi): find why -- `SD:/apps/netsurf.app/perf`
+   and `.../jsdebug` on, `kmsg` (the `app:` lines), `SD:/etc/apphang.txt` / `lastcrash.txt`;
+   suspects: a huge image decoded whole (a `srcset` / `<picture>` choosing the largest), the
+   whole-response buffers (a big JSON / script), QuickJS's heap (no GC threshold set: qjs.c
+   `js_newheap`), the hover's kept style results (`HV_KEEP_MAX`), a loop allocating. The app's
+   memory limit: the kernel's app pages (`ps` shows PAGES / MEM).
+5. Then Facebook (m.facebook.com with the mobile UA: the consent loop is gone; it showed "Sorry,
+   something went wrong" with the desktop UA -- look at `jsdebug`), SVG (logos and icons:
+   libsvgtiny is not vendored), `opacity`, `position: fixed` on the viewport, the rest of the
+   "Facebook" list below.
+
+Checking on the Pi from the PC (the user's rule: ask before scanning the network -- never scan
+it; they give the address): telnet (`kmsg`, `ps`, `cat SD:/etc/apphang.txt`), VNC captures
+(`python -m vncdotool.command -s <ip> capture x.png`). The PC bench: `tools/tests/netsurf/`
+(`jstest.sh`, `httptest.sh`, `shot.sh`; `SITES=$HOME/nssites`, `OUT=$HOME/nsbench` on this PC).
+**Build traps met** (see the memory): after `make kernel8-rpi4.img` run `make sizecheck` (a
+kernel past 2 MB does not boot); before `make -C user/netsurf`, delete the objects of a library
+you changed (`find third_party/libcss -name '*.o' -delete`: old objects were mixed in and the Pi
+build crashed); the NetSurf app build does not track headers (`rm -rf $HOME/nsbuild` after a
+header change).
+
+**Performance and the network (2026-09-30, tried on the Pi since: faster; at the time the Pi did
 not answer; deploy `sdcard/kernel8-rpi4.img` (kernel + Circle changed) and
 `sdcard/apps/netsurf.app/main`, update the card's `SD:/res/Choices` to `max_fetchers:8` /
 `max_fetchers_per_host:6` -- staging keeps the card's own file):** measured first (docs/06 §9:

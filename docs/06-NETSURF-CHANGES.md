@@ -322,6 +322,41 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
 - `tools/tests/netsurf/pages/js-reactreveal.html`: React 18's streaming reveal (`$RC` / `$RV`),
   its comments, `insertBefore (x, null)`.
 
+## 11. ES modules, CSS feature detection, a CSSOM (css3test.com: 0% -> 23%)
+
+- **ES modules** (`<script type="module">`, inline or `src`): `html/script.c` hands the element
+  to the scripts (`js_module_script` -> the event `onyx:module`). dom.js fetches the module and,
+  in parallel, every module its imports name (`import` / `export ... from` / `import(...)` found
+  in the source: `modGraph`), gives the sources to qjs.c (`moduleSource`), then `moduleRun`
+  compiles the root module; QuickJS's loader (`qjs_mod_loader`, `qjs_mod_normalize`: the
+  specifier resolved against the importing module's URL) compiles the imports from the sources
+  -- a loader cannot wait for the network -- and a source still missing (an import dom.js did
+  not see) comes back in moduleRun's result: fetched, then again. `import.meta.url` is set.
+  Deferred as in a browser: after parsing, in the document's order, before `DOMContentLoaded`
+  (which waits for them), `load` after them; an `async` module as soon as it is ready. No
+  import maps (a bare specifier does not load).
+- **`CSS.supports` and `element.style` answer from libcss** (they said yes to everything):
+  `cssKept (text, inline)` (qjs.c) -> `nscss_text_kept` (`css/select.c`) parses the text as an
+  inline style or a sheet and `css_stylesheet_onyx_kept` (libcss, `src/stylesheet.c`) says what
+  was kept (rules, declaration bytecode). A property is known when `prop: inherit` is kept; a
+  value valid when `prop: value` is; a selector when `sel { color: red }` keeps a rule.
+  `'prop' in element.style` is true for the known properties only; an invalid value is not set
+  (the old one stays); `CSS.supports (prop, value)` and `CSS.supports ("(a: b) and (not (c: d))",
+  "selector(...)")` are real.
+- **A read-only CSSOM**: `<style>.sheet` (`cssRules`: the style rules with their valid
+  declarations, `@font-face` with the descriptors libcss reads -- font-family, src, font-style,
+  font-weight, unicode-range --, `@page`, `@media` / `@supports` with their rules, `@import`,
+  `@namespace`; what libcss drops is not there), `document.styleSheets` (the `<style>`s'). No
+  `insertRule`, no linked sheets yet.
+- css3test.com (Lea Verou's) now runs -- its engine is a module graph of 156 modules -- and
+  scores **23%** (1154 of 6419 tests), honestly (what libcss parses; Chrome ~ 75%). It found a
+  double free in libcss's Onyx gradient parser (a prefixed legacy `radial-gradient` such as
+  `-webkit-radial-gradient(center, circle, ...)`: its buffers freed, then used and freed again --
+  `src/parse/properties/onyx_background.c`), which could crash on real pages too.
+- `tools/tests/netsurf/pages/js-module.html` (+ `js-mod-a/b/c.js`), in `jstest.sh`: a module
+  graph, `import.meta.url`, `import()`, an inline module, the order, `CSS.supports`,
+  `element.style`.
+
 ## 8. Known gaps
 
 - JavaScript: no `canvas`; no streams (`fetch`'s `body`), synchronous XHR (runs async),

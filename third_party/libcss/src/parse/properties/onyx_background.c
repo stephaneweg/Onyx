@@ -444,6 +444,11 @@ static bool onyx_gradient(css_language *c, const parserutils_vector *vector, int
 				free(geo.p); free(rad[0].p); free(rad[1].p);
 				if (!prefixed)
 					return false;
+				/* Onyx: forgotten, not freed again below (a double free crashed) */
+				geo.p = rad[0].p = rad[1].p = NULL;
+				nrad = 0;
+				circle = ellipse = false;
+				size = "fc";
 				*ctx = save;	/* (legacy: "center, circle, ..." -- as stops) */
 			} else {
 				parserutils_vector_iterate(vector, ctx);

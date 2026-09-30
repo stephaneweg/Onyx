@@ -873,6 +873,168 @@ function kebab(p) {
 	return s;
 }
 
+/* What libcss understands (N.cssKept): a property it knows, a value it accepts for it, a
+ * selector it parses -- element.style and CSS.supports answer from it, as a browser does
+ * (an unknown property is not in element.style; an invalid value is not set). */
+const CSS_KNOWN = new Map();
+function cssValid(k, v) {
+	if (k.startsWith('--'))
+		return true;
+	v = String(v);
+	if (/[;{}]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
+		return false;
+	const r = N.cssKept(k + ': ' + v, true);
+	return r !== null && r[1] > 0;
+}
+function cssKnown(k) {
+	if (k.startsWith('--'))
+		return true;
+	let known = CSS_KNOWN.get(k);
+	if (known === undefined) {
+		known = cssValid(k, 'inherit');
+		CSS_KNOWN.set(k, known);
+	}
+	return known;
+}
+function cssSelectorValid(sel) {
+	const r = N.cssKept(String(sel) + ' { color: red }', false);
+	return r !== null && r[0] > 0;
+}
+/* CSS.supports (conditionText): "(prop: value)", "selector(...)", "not", "and", "or" */
+function cssSupports(text) {
+	const s = String(text).trim();
+	let i = 0;
+	const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+	const group = () => {		/* s[i] is '(': its inside, i past the ')' */
+		let depth = 0, start = i + 1;
+		for (; i < s.length; i++) {
+			if (s[i] === '(') depth++;
+			else if (s[i] === ')' && --depth === 0) { i++; return s.slice(start, i - 1); }
+		}
+		return null;
+	};
+	const cond = () => {
+		ws();
+		if (/^not\b/i.test(s.slice(i))) { i += 3; return !cond(); }
+		let r = term();
+		for (;;) {
+			ws();
+			const m = /^(and|or)\b/i.exec(s.slice(i));
+			if (!m) return r;
+			i += m[1].length;
+			const t = term();
+			r = m[1].toLowerCase() === 'and' ? r && t : r || t;
+		}
+	};
+	const term = () => {
+		ws();
+		if (/^selector\(/i.test(s.slice(i))) {
+			i += 8;
+			const g = group();
+			return g !== null && cssSelectorValid(g);
+		}
+		if (s[i] !== '(') return false;
+		const g = group();
+		if (g === null) return false;
+		const inner = g.trim();
+		if (/^(not\b|\(|selector\()/i.test(inner))
+			return cssSupports(inner);
+		const c = inner.indexOf(':');
+		if (c < 0) return false;
+		return cssValid(inner.slice(0, c).trim().toLowerCase(), inner.slice(c + 1).trim());
+	};
+	try {
+		const r = cond();
+		ws();
+		return i >= s.length && r;
+	} catch (e) {
+		return false;
+	}
+}
+
+/* ---- a minimal CSSOM (read-only, from a <style>'s text): what libcss keeps ----------------- */
+const FONT_FACE_DESC = new Set(['font-family', 'src', 'font-style', 'font-weight', 'unicode-range']);
+
+function cssSplit(text) {	/* the top-level rules: [{ prelude, body (null: a statement) }] */
+	const out = [];
+	text = String(text).replace(/\/\*[\s\S]*?\*\//g, '');
+	let i = 0, start = 0, quote = null, depth = 0, bodyStart = -1, prelude = '';
+	for (; i < text.length; i++) {
+		const c = text[i];
+		if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+		if (c === '"' || c === "'") { quote = c; continue; }
+		if (c === '{') {
+			if (depth++ === 0) { prelude = text.slice(start, i).trim(); bodyStart = i + 1; }
+		} else if (c === '}') {
+			if (depth > 0 && --depth === 0) {
+				out.push({ prelude, body: text.slice(bodyStart, i) });
+				start = i + 1;
+			}
+		} else if (c === ';' && depth === 0) {
+			const st = text.slice(start, i).trim();
+			if (st) out.push({ prelude: st, body: null });
+			start = i + 1;
+		}
+	}
+	return out;
+}
+
+function cssDeclObject(body, ok) {	/* a rule's declarations kept (ok (name, value)) */
+	const o = { length: 0, cssText: '' };
+	const vals = new Map();
+	for (const [k, d] of parseDecls(body)) {
+		if (!ok(k, d.v)) continue;
+		vals.set(k, d.v);
+		o[o.length++] = k;
+		o[k.replace(/-([a-z])/g, (m, c) => c.toUpperCase())] = d.v;
+	}
+	o.cssText = [...vals].map(([k, v]) => k + ': ' + v + ';').join(' ');
+	o.getPropertyValue = k => vals.get(String(k).toLowerCase()) || '';
+	o.item = i => o[i] || '';
+	return o;
+}
+
+function cssRuleList(text) {
+	const rules = [];
+	for (const r of cssSplit(text)) {
+		const whole = r.prelude + (r.body === null ? ';' : ' {' + r.body + '}');
+		const kept = N.cssKept(whole, false);
+		if (kept === null || kept[0] === 0)
+			continue;		/* (libcss dropped it: an unknown rule, a bad selector) */
+		const at = /^@([\w-]+)\s*(.*)$/s.exec(r.prelude);
+		let rule;
+		if (!at) {
+			rule = { type: 1, selectorText: r.prelude, style: cssDeclObject(r.body || '', cssValid) };
+		} else {
+			const name = at[1].toLowerCase();
+			if (name === 'font-face')
+				rule = { type: 5, style: cssDeclObject(r.body || '', k => FONT_FACE_DESC.has(k)) };
+			else if (name === 'page')
+				rule = { type: 6, selectorText: at[2], style: cssDeclObject(r.body || '', cssValid) };
+			else if (name === 'media')
+				rule = { type: 4, media: { mediaText: at[2] }, conditionText: at[2], cssRules: cssRuleList(r.body || '') };
+			else if (name === 'supports')
+				rule = { type: 12, conditionText: at[2], cssRules: cssRuleList(r.body || '') };
+			else if (name === 'import')
+				rule = { type: 3, href: at[2].replace(/^url\(|\)$|["']/g, '') };
+			else if (name === 'namespace')
+				rule = { type: 10 };
+			else
+				continue;
+		}
+		rule.cssText = whole;
+		rules.push(rule);
+	}
+	return rules;
+}
+
+function cssSheetOf(el) {
+	const rules = cssRuleList(el.textContent || '');
+	return { type: 'text/css', disabled: false, ownerNode: el, href: null, title: null,
+		cssRules: rules, rules, media: { mediaText: N.attr(el, 'media') || '' },
+		insertRule() { return 0; }, deleteRule() {} };
+}
+
 function parseDecls(text) {
 	const out = new Map();
 	if (!text)
@@ -936,8 +1098,10 @@ class CSSStyleDeclaration {
 		const map = this._map();
 		if (v === null || v === undefined || v === '')
 			map.delete(k);
-		else
+		else if (cssValid(k, v))
 			map.set(k, { v: String(v), pri: pri ? 'important' : '' });
+		else
+			return;		/* (an invalid value is not set: the old one stays) */
 		this._write(map);
 	}
 	removeProperty(p) {
@@ -970,7 +1134,11 @@ function styleProxy(el) {
 			t.setProperty(kebab(p), v);
 			return true;
 		},
-		has(t, p) { return typeof p === 'string'; },
+		has(t, p) {
+			if (typeof p !== 'string')
+				return p in t;
+			return STYLE_OWN.has(p) || p in t || /^\d+$/.test(p) || cssKnown(kebab(p));
+		},
 	});
 }
 
@@ -2081,7 +2249,12 @@ htmlClass('HTMLLinkElement', ['link'], class extends HTMLElement {
 	get relList() { return new DOMTokenList(this, 'rel'); }
 	get sheet() { return null; }
 });
-for (const [name, tags] of [['HTMLStyleElement', ['style']], ['HTMLMetaElement', ['meta']],
+htmlClass('HTMLStyleElement', ['style'], class extends HTMLElement {
+	get sheet() { return cssSheetOf(this); }
+	get media() { return N.attr(this, 'media') || ''; }
+	set media(v) { this.setAttribute('media', v); }
+});
+for (const [name, tags] of [['HTMLMetaElement', ['meta']],
 		['HTMLHeadElement', ['head']], ['HTMLHtmlElement', ['html']],
 		['HTMLBodyElement', ['body']], ['HTMLDivElement', ['div']],
 		['HTMLSpanElement', ['span']], ['HTMLParagraphElement', ['p']],
@@ -2259,7 +2432,7 @@ class Document extends Node {
 	get images() { return this.getElementsByTagName('img'); }
 	get links() { return htmlCollection(this.querySelectorAll('a[href],area[href]')); }
 	get scripts() { return this.getElementsByTagName('script'); }
-	get styleSheets() { return []; }
+	get styleSheets() { return [...this.querySelectorAll('style')].map(cssSheetOf); }
 	get fonts() { return fontFaces; }
 	get currentScript() { return N.currentScript(); }
 	get fullscreenElement() { return null; }
@@ -3305,7 +3478,8 @@ Object.assign(G, {
 		randomUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }); },
 		subtle: {},
 	},
-	CSS: { supports: () => true, escape: s => String(s).replace(/([^a-zA-Z0-9_ -￿-])/g, '\\$1') },
+	CSS: { supports: (a, b) => b === undefined ? cssSupports(a) :
+		cssValid(String(a).trim().toLowerCase(), b), escape: s => String(s).replace(/([^a-zA-Z0-9_ -￿-])/g, '\\$1') },
 	customElements: {
 		_d: new Map(),
 		define(name, cls) { this._d.set(name, cls); },
@@ -3435,21 +3609,135 @@ function hoverTo(el, init) {
 	if (el) dispatch(el, browserEvent(el, 'mousemove', init));
 }
 
+/* ---- ES modules: <script type="module"> (qjs.c: moduleSource, moduleRun) -------------------
+ * A module and every module its imports name are fetched in parallel (the loader in qjs.c
+ * compiles them from their sources: it cannot wait for the network), then it runs. Deferred:
+ * after the document is parsed, in the document's order, before DOMContentLoaded; an async
+ * one as soon as it is ready. */
+const MOD_FETCHED = new Map();		/* url -> Promise<text | null> */
+let modInline = 0, modBusy = 0, modParsed = false;
+const MOD_QUEUE = [];
+let modChain = NativePromise.resolve();
+const MOD_IMPORT = /(?:^|[;\n\r}])\s*(?:import|export)\s*(?:[\w*{}\s,$]+?\s*from\s*)?(['"])([^'"\n]+)\1|\bimport\s*\(\s*(['"])([^'"\n]+)\3\s*\)/g;
+
+function modFetch(url) {
+	let p = MOD_FETCHED.get(url);
+	if (!p) {
+		p = fetch(url).then(r => (r.ok || r.status === 0) ? r.text() : null).then(t => {
+			if (t !== null)
+				N.moduleSource(url, t);
+			return t;
+		}, () => null);
+		MOD_FETCHED.set(url, p);
+	}
+	return p;
+}
+
+/* the module's imports, and theirs, fetched (in parallel) */
+function modGraph(url, text, seen) {
+	const deps = [];
+	for (const m of text.matchAll(MOD_IMPORT)) {
+		const spec = m[2] || m[4];
+		if (!/^(\.{0,2}\/|[a-z][a-z0-9+.-]*:)/i.test(spec))
+			continue;		/* (a bare specifier: no import map) */
+		let u;
+		try { u = new URL(spec, url).href; } catch (e) { continue; }
+		if (seen.has(u))
+			continue;
+		seen.add(u);
+		deps.push(modFetch(u).then(t => t !== null ? modGraph(u, t, seen) : null));
+	}
+	return NativePromise.all(deps);
+}
+
+async function modRun(url, text) {
+	await modGraph(url, text, new Set([url]));
+	for (let i = 0; i < 20; i++) {
+		const r = N.moduleRun(url, text);
+		if (!Array.isArray(r))
+			return r;
+		const got = await NativePromise.all(r.map(u => modFetch(u).then(t =>
+			t !== null ? modGraph(u, t, new Set([u])).then(() => true) : false)));
+		if (!got.some(x => x))
+			break;			/* (they cannot be fetched) */
+	}
+	return false;
+}
+
+function moduleScript(node) {
+	const src = N.attr(node, 'src');
+	let url;
+	try {
+		url = src ? new URL(src, location.href).href :
+			location.href.split('#')[0] + '#module-' + (++modInline);
+	} catch (e) { return; }
+	const text = src ? modFetch(url) : NativePromise.resolve(node.textContent || '');
+	const job = async () => {
+		const t = await text;
+		if (t === null) {
+			dispatch(node, browserEvent(node, 'error', {}));
+			return;
+		}
+		const ok = await modRun(url, t);
+		if (src)
+			dispatch(node, browserEvent(node, ok ? 'load' : 'error', {}));
+	};
+	if (src && node.hasAttribute('async')) {
+		modBusy++;
+		job().catch(report).finally(() => modBusy--);
+		return;
+	}
+	MOD_QUEUE.push(job);
+	if (modParsed)
+		modFlush();
+}
+
+function modFlush() {
+	const jobs = MOD_QUEUE.splice(0);
+	if (!jobs.length)
+		return modChain;
+	modBusy++;
+	modChain = modChain.then(async () => {
+		for (const j of jobs) {
+			try { await j(); } catch (e) { report(e); }
+		}
+	}).finally(() => modBusy--);
+	return modChain;
+}
+
 function browserDispatch(target, type, init) {
+	if (type === 'onyx:module') {
+		if (target instanceof Element)
+			moduleScript(target);
+		return true;
+	}
 	if (type === 'onyx:interactive') {
-		/* the document parsed */
+		/* the document parsed: its modules run, then DOMContentLoaded */
 		readyState = 'interactive';
-		dispatch(G.document, browserEvent(G.document, 'readystatechange', {}));
-		dispatch(G.document, browserEvent(G.document, 'DOMContentLoaded', {}));
+		modParsed = true;
+		const fire = () => {
+			dispatch(G.document, browserEvent(G.document, 'readystatechange', {}));
+			dispatch(G.document, browserEvent(G.document, 'DOMContentLoaded', {}));
+		};
+		if (MOD_QUEUE.length || modBusy)
+			modFlush().then(fire);
+		else
+			fire();
 		return true;
 	}
 	if (type === 'onyx:complete') {
-		/* laid out, its images in: the window's load */
-		readyState = 'complete';
-		dispatch(G.document, browserEvent(G.document, 'readystatechange', {}));
-		dispatch(G, browserEvent(null, 'load', {}));
-		dispatch(G, browserEvent(null, 'pageshow', {}));
-		scheduleObservers();
+		/* laid out, its images in: the window's load (after the modules) */
+		const fire = () => {
+			readyState = 'complete';
+			dispatch(G.document, browserEvent(G.document, 'readystatechange', {}));
+			dispatch(G, browserEvent(null, 'load', {}));
+			dispatch(G, browserEvent(null, 'pageshow', {}));
+			scheduleObservers();
+		};
+		if (modBusy)
+			modChain.then(fire);
+		else
+			fire();
 		return true;
 	}
 	let t = target === null ? G : target;
