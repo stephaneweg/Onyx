@@ -12,7 +12,9 @@ namespace wtk {
 class Textbox : public Widget
 {
 public:
-	char	 text[64]; int caret; bool password; Action cb;
+	enum { TEXT_CAP = 512 };		// the buffer; how much of it is used: maxLen
+	char	 text[TEXT_CAP]; int caret; bool password; Action cb;
+	int	 maxLen;			// the most bytes typed or set (63; up to TEXT_CAP - 1: a chat line)
 	int	 padR;				// px kept free at the right (a Combobox's arrow)
 	int	 vstart;			// the first character shown (set by onDraw)
 	Textbox (int l, int t, int w, int h, const char *s = "", Action cb_ = 0);

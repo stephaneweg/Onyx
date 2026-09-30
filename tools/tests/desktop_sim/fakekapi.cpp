@@ -36,7 +36,8 @@
 // pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
-// SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
+// SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows), any
+// service looked up is pid 7; SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
 // SIM_REALNET=1: the TCP sockets are the PC's (a real connection: an HTTP client against a local
 // server); with SIM_SLEEP=1 the script's steps take real time, for the answers to come.
@@ -687,6 +688,7 @@ static int ipc_lookup (const char *n)
 {
 	if (getenv ("SIM_APPLET") && !strcmp (n, "control")) return 99;	// (the applet's host: there)
 	if (getenv ("SIM_MAIL") && !strcmp (n, "control")) return 5;		// (the Control Panel: us)
+	if (getenv ("SIM_MBOX")) return 7;					// (SIM_MBOX's sender: any service)
 	return 0;
 }
 // (v35) the surfaces: one, made or mapped, SIM_SURFACE's pixels poured into it on AP_HELLO
@@ -735,6 +737,23 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		int wh[2] = { g_surfW, g_surfH };
 		unsigned n = cap < sizeof wh ? cap : (unsigned) sizeof wh;
 		memcpy (buf, wh, n);
+		return (int) n;
+	}
+	// SIM_MBOX: canned messages, "type:pid:payload" a line ("\n" between them, "\t" a tab), one a call
+	static Canned mbox = { "SIM_MBOX" };
+	if (getenv ("SIM_MBOX"))
+	{
+		if (!mbox.init) { char c; canned_read (mbox, &c, 0); }
+		if (mbox.pos >= mbox.s.size ()) return -1;
+		size_t eol = mbox.s.find ('\n', mbox.pos); if (eol == std::string::npos) eol = mbox.s.size ();
+		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos); mbox.pos = eol + 1;
+		int t = 0, pid = 0, at = 0; sscanf (l.c_str (), "%d:%d:%n", &t, &pid, &at);
+		std::string m = l.substr (at), d;
+		for (size_t i = 0; i < m.size (); i++)
+			if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == 't') { d += '\t'; i++; } else d += m[i];
+		unsigned n = (unsigned) d.size () < cap ? (unsigned) d.size () : cap;
+		memcpy (buf, d.data (), n);
+		if (from) *from = pid; if (type) *type = t;
 		return (int) n;
 	}
 	static bool done = false;

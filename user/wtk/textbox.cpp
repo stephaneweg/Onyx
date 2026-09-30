@@ -3,11 +3,11 @@
 namespace wtk {
 
 Textbox::Textbox (int l, int t, int w, int h, const char *s, Action cb_)
-  : Widget (l, t, w, h), caret (0), password (false), cb (cb_), padR (0), vstart (0)
-{ int i = 0; if (s) for (; s[i] && i < 63; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); }
+  : Widget (l, t, w, h), caret (0), password (false), cb (cb_), padR (0), vstart (0), maxLen (63)
+{ int i = 0; if (s) for (; s[i] && i < maxLen; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); }
 
 void Textbox::setText (const char *s)
-{ int i = 0; if (s) for (; s[i] && i < 63; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); invalidate (true); }
+{ int i = 0; if (s) for (; s[i] && i < maxLen; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); invalidate (true); }
 
 // ---- with a proportional face (wtk/text.h): UTF-8, measured -------------------------------------------
 // What is shown (a password: a '*' a character) and where byte i of the text is in it.
@@ -39,7 +39,7 @@ void Textbox::drawFace ()
 	const int pad = 6; int fh = wk_fh ();
 	canvas.clear (bgColor ());
 	wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, hasFocus && !disabled);
-	char d[64]; int dn = shown (d), len = wk_len (text);
+	char d[TEXT_CAP]; int dn = shown (d), len = wk_len (text);
 	int avail = width - padR - 2 * pad - 2; if (avail < 1) avail = 1;
 	if (caret < 0) caret = 0;
 	if (caret > len) caret = len;
@@ -69,12 +69,12 @@ void Textbox::onDraw ()
 	const int pad = 6; int fw = wk_fw (), fh = wk_fh ();
 	canvas.clear (bgColor ());
 	wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, hasFocus && !disabled);
-	int maxvis = (width - padR - 2 * pad) / fw; if (maxvis < 1) maxvis = 1; if (maxvis > 63) maxvis = 63;
+	int maxvis = (width - padR - 2 * pad) / fw; if (maxvis < 1) maxvis = 1; if (maxvis > TEXT_CAP - 1) maxvis = TEXT_CAP - 1;
 	int len = wk_len (text), start = 0;
 	if (caret > maxvis - 1) start = caret - (maxvis - 1);
 	if (start < 0) start = 0;
 	vstart = start;
-	char vis[64]; int j = 0;
+	char vis[TEXT_CAP]; int j = 0;
 	for (int c = start; c < len && j < maxvis; c++) vis[j++] = password ? '*' : text[c];
 	vis[j] = '\0';
 	int ty = (height - fh) / 2;
@@ -95,7 +95,7 @@ bool Textbox::onMouse (int mx, int /*my*/, int bl, int, int, int)
 		pressed = true; setFocus ();
 		if (wk_textface ())
 		{
-			char d[64]; int dn = shown (d), ds = shownAt (vstart);
+			char d[TEXT_CAP]; int dn = shown (d), ds = shownAt (vstart);
 			caret = textAt (ds + wk_tpos (d + ds, dn - ds, mx - 6));
 		}
 		else
@@ -117,7 +117,7 @@ bool Textbox::keyFace (long k)
 	char u[4]; int n = wk_u8_key (k, u);
 	if (n > 0)
 	{
-		if (len + n <= 63)
+		if (len + n <= maxLen)
 		{
 			for (int i = len; i >= caret; i--) text[i + n] = text[i];
 			for (int i = 0; i < n; i++) text[caret + i] = u[i];
@@ -156,7 +156,7 @@ bool Textbox::onKey (long k)
 	int len = wk_len (text);
 	if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF))	// ASCII + Latin-1 (é è à ç ...)
 	{
-		if (len < 63)
+		if (len < maxLen)
 		{
 			if (caret < 0) caret = 0;
 			if (caret > len) caret = len;

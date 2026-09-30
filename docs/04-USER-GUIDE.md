@@ -1029,7 +1029,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **eyes** | Gadget: two eyes whose pupils follow the mouse. |
 | **mandelbrot** | Fractal explorer (Mandelbrot, Julia, Burning Ship, Tricorn via the dropdown). **Click** = zoom in (re-centers); `o` = zoom out; `r` = reset. |
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
-| **irc** | IRC client over Wi-Fi. Connects to the server/channel from `config.ini`, shows the conversation, type to chat. Commands: `/join #chan`, `/msg nick text`, `/nick name`, `/me action`, `/raw …`, `/quit`. Needs the network up (see §3). |
+| **irc** | The **IRC client**, a messaging app's look: the server (a combo box of the servers used) and your **nickname** on top — sent at once on connecting, `nickname_` tried when it is taken —, your conversations on the left (unread counts), a channel's messages grouped by author under coloured avatars, its users on the right; **Rooms** lists the server's channels (search, minimum of users, sort; double-click to join). A private conversation opens in a **window of its own**, with bubbles, as a messenger's. Files: `config.ini`, `servers.txt`, `nick.txt` in `SD:/apps/irc.app`. See *IRC, the chat client* below. Needs the network up (see §3). |
 | **httpc** | A mouse-driven **text web browser** (`http://` and `https://`). Renders the page text with **hyperlinks in blue** (click to follow), and handles simple **forms** (text fields, checkboxes, dropdowns, buttons → GET/POST). Navbar: **<** back, **>** forward, an **address bar** (click to type, Enter or **Go** to load); the right-hand scrollbar (or PgUp/PgDn/arrows) scrolls. Needs the network up (see §3). |
 | **NetSurf** | The **NetSurf** web browser — a full graphical HTML/CSS rendering engine ported to Onyx: `http://` and `https://`, images, modern CSS (custom properties `var()`, `calc()`, flexbox, grid, rounded corners, gradients, shadows, gradient text, translucent `rgba` colours…) and **JavaScript** (QuickJS, ES2023: a page's menus, tabs and forms work — a script's changes are laid out again; clicks, keys, typing, scrolling and the pointer's moves (hover) reach the page's scripts; `fetch` and `XMLHttpRequest` load data, `localStorage` is kept between visits). Each download runs in its own thread: the window stays responsive while a page loads. **Fonts** as Chrome's on Windows: a page's web fonts (`@font-face`: TrueType, OpenType, WOFF, WOFF2) are downloaded; Arial, Times New Roman, Segoe UI and Georgia are drawn with metric-compatible free fonts (Liberation, Selawik, Gelasio — in `SD:/res/fonts`, with DejaVu for the other characters). **Toolbar**: **<** back (Alt+Left), **>** forward (Alt+Right), reload — a **×** stop while a page loads — (F5 / Ctrl+R, Esc), home, the **clock** (the history), the **address field** (click it, F6 or Ctrl+L; an address, a host, a path on the card or words to search the web; Enter). The mouse wheel scrolls the page; a file dropped on the window is opened. **Navigate ▸ History...** (Ctrl+H, the clock): the pages visited, **the most recent at the top** — their title, their address, when (the time today, the day this week, else the date); type in **Find** to filter them; a double-click or Enter opens one; **Delete** (or Del in the list) forgets it, **Clear all** forgets them all. Files: the options in `SD:/res/Choices` (`enable_javascript:0` turns the scripts off); its `app.txt` asks the kernel for an 8 MB stack (`stack = 8M`: the JavaScript engine's); the pages visited in `SD:/apps/netsurf.app/History` and the cookies in `SD:/apps/netsurf.app/Cookies` (written a few seconds after each page and when NetSurf closes — private: never committed). Build: `user/netsurf/README.md`. Needs the network up (see §3). |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
@@ -1431,6 +1431,64 @@ starting with `#` or `;` is a comment (not in `[records]`). Cardfile reads such 
 keys in any case, the header's columns in any order (a column missing: empty values; unknown:
 ignored), no `[field]` at all (the header's columns become text fields), a value that is not of its
 type (kept as it is — the form asks for a valid one when the record is edited).
+
+### IRC, the chat client (`irc`)
+
+![IRC](../screenshots/irc.png)
+*IRC connected to Libera.Chat: `#onyx` shown, `#raspberrypi` with 3 unread lines (`@`: one names
+you), a private message from alice waiting; dave_'s line names you: it is tinted.*
+
+**Connecting.** On top: **Server** (host, or `host:port`; the arrow lists the servers used before,
+kept in `servers.txt`), **Nickname** and **Connect** (then **Disconnect**). The first time, IRC
+connects by itself as soon as the network is up, to the server of `config.ini`. On connecting it
+sends at once `NICK` (the nickname of the field, kept in `nick.txt`) and `USER`; a nickname already
+in use is tried again with a `_` appended. Enter in the Nickname field while connected changes
+your nickname (`NICK`). With `password = …` in `config.ini`, IRC identifies you to **NickServ**
+after the welcome. `channel = #a,#b` in `config.ini`: joined on connecting.
+
+**The window.** On the left, your **conversations**: the server (its messages: the welcome, the
+MOTD, the errors), the channels you are in (`(left)` after you leave or lose the connection), and
+**Private messages**. A number in brackets counts the lines you have not read, `@` when one of them
+names you. Click one to show it. In the middle, the channel: its **name and topic** on top
+(**Leave** on the right), its messages **grouped by author** — a coloured avatar with their
+initial, their name in the same colour, the time; the next lines from them (within five minutes)
+follow under it —, joins, parts and mode changes in grey, `/me` actions in italics, notices in
+amber, a line that names you **tinted**. The wheel (or the bar on the right) scrolls back. At the
+bottom, the line you type (up to 400 characters; **Enter** or **Send**). On the right, the
+channel's **users** (operators `@`, then voiced `+`, then the others); **double-click** someone
+(or select them and **Message**) to talk to them privately. The status bar: connected as whom,
+the server, how many channels.
+
+![IRC rooms](../screenshots/irc-rooms.png)
+*Rooms: the server's channels, the busiest first.*
+
+**Rooms** (the toolbar, or `/list`) asks the server for its list of channels (`LIST`; Libera.Chat
+has thousands: they come in over a few seconds — "Receiving the list..."). **Search** keeps the
+rooms whose name or topic has the text; **Min. users** hides the small ones (5 at first). A click
+on a column's title sorts by it (again: the other way). **Double-click** a room (or select it and
+**Join**) to join it: its conversation opens. **Refresh** asks for the list again. Rooms again
+(or joining) goes back to the conversation.
+
+![IRC private conversation](../screenshots/irc-pm.png)
+*A private conversation, in its own window.*
+
+**Private conversations** open in a **window of their own**, a messenger's: their avatar, name
+and whether they are online on top; their messages in grey bubbles on the left (their avatar
+beside the last of a run), yours in the theme's accent on the right; the time centred over the
+messages after a pause of a quarter of an hour; `/me` actions and events (a quit, a new nickname)
+in grey in the middle. A message someone sends you **opens their window** (and it gets the
+conversation so far). Closing it keeps the conversation: it comes back when it opens again (the
+main window's list, or their next message). The main window keeps the connection: closing it
+closes the conversation windows too.
+
+**Commands** (in the line you type): `/join #chan`, `/part` (or **Leave**; `/close`),
+`/nick name`, `/msg nick text` (a person: their window opens), `/query nick`, `/me action`,
+`/topic text`, `/list`, `/server host[:port]`, `/clear`, `/raw line`, `/quit`; any other
+`/COMMAND args` goes to the server as it is; `//text` sends a line starting with `/`.
+
+Plain-text IRC only (port 6667: there is no TLS in IRC yet). The text is UTF-8 on the network and
+Latin-1 on the screen (the font's: a character beyond it shows as `?`); colours and bold of
+mIRC are removed.
 
 ### Ledger, the accounts (`ledger`)
 

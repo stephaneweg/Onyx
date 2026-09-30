@@ -1105,6 +1105,8 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB:`…). Paths may start with any
 > volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
 > gives an exFAT file's real size; `kapi_rename` fails across volumes (copy + remove instead).
+> A `Textbox` holds **63 bytes** unless you raise its **`maxLen`** (up to `Textbox::TEXT_CAP - 1`,
+> 511): IRC's chat line takes 400.
 > `Combobox (l, t, w, h, text, onEnter, onPick)` — an editable `Textbox` with a drop-down
 > list of suggestions (`addOption`, `clearOptions`, `pick (i)`; arrow click or Down / Up;
 > `onPick` fires with `picked` = the index). Used by the File Viewer's Connect dialog.
@@ -1977,7 +1979,7 @@ barwidth = 40
   builds each documented app **for the PC** against the desktop simulator's stand-in kernel
   (`fakekapi.cpp`, wtk with its real image codecs and fonts), plays a short script of events
   (clicks, keys, menu commands; a canned shell session for the terminal `SIM_PIPE`, an IRC server
-  `SIM_NET`, sample files from `tools/tests/desktop_sim/sd/` `SIM_OVERLAY`), dumps its window —
+  `SIM_NET`, the mailbox messages a process would send `SIM_MBOX` — IRC's conversation window —, sample files from `tools/tests/desktop_sim/sd/` `SIM_OVERLAY`), dumps its window —
   the frame wtk drew and the client area — and writes `screenshots/<name>.png` (`shot.py`: the
   window alone, its rounded corners transparent) or lays several over the Voronoi wallpaper
   (`compose.py`: `desktop.png`, `menubar.png`, `volume.png`, `clock.png`, `wifimenu.png`,
