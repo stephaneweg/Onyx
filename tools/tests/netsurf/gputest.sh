@@ -1,5 +1,5 @@
 #!/bin/sh
-# tools/tests/netsurf/gputest.sh -- GPU compositing (docs/06 §22): the composited frames against the CPU
+# tools/tests/netsurf/gputest.sh -- GPU compositing (docs/06 §23): the composited frames against the CPU
 # painting of the same NetSurf (gpu_compositing off: NS_GPU=0), pixel by pixel, on the PC bench:
 #
 #   1. pages with layers (opacity, transforms, filters, blend modes, hovers, transitions and animations

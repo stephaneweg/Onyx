@@ -142,7 +142,11 @@ answer in French. The docs stay in English.
 - **On the Pi, first**: `gpcdemo test` (must end `ALL PASS`), `gpcdemo bench` (write the numbers
   into docs/07 §6), `gpcdemo` (the window) -- also while gcemu runs (the sharing), and `v3dprog`
   (must still pass: the kernel's GPU paths were touched for F_ALPHA). kmsg after a failure.
-- Next: stage 2 (docs/07 §6), after the compositing-layers work in NetSurf is merged.
+- Stage 2 done (docs/06 §23, docs/07 §6: the page in a band, retained layers, composite-only
+  animations, `gpu_compositing` in Choices; `tools/tests/netsurf/gputest.sh`). The V3D's target
+  load packet was wrong (stride / 8: frames drawn over the target) -- fixed, `run_v3d_cl_test.sh`.
+  Next: the Pi's numbers (`gpcdemo test` / `bench`, NetSurf's `ONYX-SCROLL` with
+  `gpu_compositing` 0 and 1), overflow scrollers and fixed boxes as layers, groups holding layers.
 
 ## Done recently (all pushed)
 

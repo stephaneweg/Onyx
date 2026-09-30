@@ -111,7 +111,22 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
   other program using the V3D (frames are served one at a time). Measured on the Pi by
   `gpcdemo bench` (1920 x 1080, GPU vs CPU) -- to be filled in from the first run.
 
-  **Stage 2 -- plugging NetSurf's layers in** (after the compositing-layers work in
+  **Stage 2 -- done** (docs/06 §23; `gpu_compositing` in Choices, default on): the page is
+  kept in a band three views high (a ring of rows), repainted where damaged, uploaded where
+  painted; opacity / transform groups are retained layers (`gpc_tex`, damage-driven uploads,
+  demoted to in-place painting when something painted after them covers them or when their
+  pixels change frame after frame); a frame is one `gpc_composite` into the canvas; **a scroll
+  paints nothing** already in the band (rows ahead painted in idle turns); animated / hovered
+  `transform` and `opacity` are composite-only frames (`html_redraw_layer_update`); a startup
+  self-test (the band, the layers, and drawing over the target -- the no-clear path, wrong on
+  the Pi until the load packet was fixed) falls back to the CPU path; the CPU painting stays
+  (`gpu_compositing:0`). Checked by `tools/tests/netsurf/gputest.sh` (composited = CPU painting
+  on the PC, gpucomp's CPU path and the software V3D). Of the plan below, not done: steps 1's
+  fixed / sticky boxes and overflow scrollers as layers (fixed boxes scroll with the page in
+  NetSurf: they are in the band; a scroller's scroll repaints its box), `will-change`, step 5's
+  `GPC_F_ASYNC`, step 6 (groups holding layers: the CPU paints what such a group holds).
+
+  **Stage 2 -- the plan** (after the compositing-layers work in
   `content/handlers/html/redraw.c` / `frontends/framebuffer/onyx_paint.c` is merged; nothing of
   it is touched by stage 1):
   1. *A layer = a `gpc_tex`.* Each stacking context the redraw promotes to a layer (opacity < 1, a
@@ -154,9 +169,10 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
   8. *Checks.* `gpcdemo test` first on each Pi; then NetSurf's `NS_PERF` / `NS_PROF` before /
      after on the sweep's sites, and the layoutdiff pages (the composited frame must match the
      CPU one: `gpc_create` with `GPC_F_CPU` gives the reference on the same machine).
-  The compositing layers themselves (docs/06 §21) are CPU today: an effect costs its layer's
-  pixels at each redraw (a large blur is done at a reduced size; a page without effects pays
-  nothing) -- stage 2 below moves their assembly to the GPU.
+  The compositing layers themselves (docs/06 §21) are painted by the CPU: an effect costs its
+  layer's pixels when it is painted (a large blur is done at a reduced size; a page without
+  effects pays nothing) -- with stage 2 once, not at each scroll; opacity and transforms are then
+  assembled by the GPU.
 
 ## 7. Order of work (what will be done, in parallel where independent)
 

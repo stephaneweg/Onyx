@@ -16,7 +16,7 @@
 
 /**
  * \file
- * Onyx: the browser's view composited (GPU compositing, stage 2 -- onyx_comp.c; docs/06 §22).
+ * Onyx: the browser's view composited (GPU compositing, stage 2 -- onyx_comp.c; docs/06 §23).
  *
  * The page is painted into a band taller than the view (a ring of document rows) and the
  * compositing layers the redraw promotes (opacity, transforms: netsurf/onyx_paint.h's retained

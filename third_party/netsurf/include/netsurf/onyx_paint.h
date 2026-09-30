@@ -170,7 +170,7 @@ struct onyx_layer {
 	 * gives the colours */
 	bool single;
 	struct onyx_rrect opaque;
-	/* Onyx -- GPU compositing (docs/06 §22): a retained layer. The core offers a group the
+	/* Onyx -- GPU compositing (docs/06 §23): a retained layer. The core offers a group the
 	 * frontend can composite itself (an opacity and / or a transform: no filter, no blend
 	 * mode, no backdrop) with onyx_layer_begin (ctx, l, ONYX_LAYER_OFFER): x0..y1 its whole
 	 * rectangle (untransformed), m its matrix, lm the same about its box's origin (ox, oy),

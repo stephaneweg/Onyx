@@ -6,7 +6,7 @@
 #   sh tools/tests/netsurf/sitesweep.sh [url ...]      (default: a list of big sites)
 #
 # WAITS (default 400) ~20 ms turns per site, then SCROLLS (default 12) wheel notches down and 4 up
-# (the composited band, docs/06 §22); logs in $OUT/sweep/<site>.log.
+# (the composited band, docs/06 §23); logs in $OUT/sweep/<site>.log.
 cd "$(dirname "$0")/../../.."
 T=tools/tests/netsurf
 OUT=${OUT:-/tmp/nsbench}

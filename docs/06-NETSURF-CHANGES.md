@@ -1479,8 +1479,8 @@ context, with all it holds -- through a layer of the framebuffer.
   kotonstudio.com ~8 -> ~15 ms (the hero glow's blur 7 ms, the app mock-up's flattened
   `perspective() rotateY() rotateX()` with a shadow 5 ms, two small backdrops 1-2 ms). A page
   without effects pays nothing (a few style reads a box). On the Pi count ~5x.
-- **Not done**: a real perspective (the 3D functions flattened); a layer kept between
-  redraws (each redraw paints its groups again); `clip-path` and `mask` on the layer; the
+- **Not done**: a real perspective (the 3D functions flattened); (a layer kept between
+  redraws: §23, GPU compositing -- opacity and transforms); `clip-path` and `mask` on the layer; the
   non-separable blend modes (`hue`, `saturation`, `color`, `luminosity`: drawn normal);
   `isolation`; `filter: url()`; `backdrop-filter` of a transformed box (not drawn) or its
   fade with the group's opacity when the group is apart; a blend mode inside an isolated
@@ -1639,6 +1639,126 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   only); `@keyframes` in shadow trees' sheets; scroll-driven animations
   (`animation-timeline`); `var()` inside keyframes.
 
+## 23. GPU compositing: the page in a band, retained layers, one composite a frame
+
+Stage 2 of docs/07 §6: the frames of the browser's view are assembled by the compositing service
+`user/gpucomp` (the V3D on the Pi, its CPU path elsewhere or when the GPU fails), from pixels kept
+between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GPU=0 / 1 / cpu`);
+`gpu_compositing:0` is the painting as before (the back buffer copied into the canvas). The code:
+`frontends/framebuffer/onyx_comp.c` (+ `.h`), the core's offer in `html/redraw.c`
+(`onyx_fx_retain`), the plotters' hooks (`framebuffer.c`, `onyx_layer.c`), `gui.c`'s redraw,
+`user/nsfb/onyx_surface.c` (the canvas's part the compositor writes: `onyx_surface_hole`).
+
+- **The band.** The page is painted by the core (the CPU plotters, as ever) into a RAM surface as
+  wide as the view and three views high (at most 8 M pixels), a **ring** of document rows: row y
+  is the band's row y mod its height. Its valid rows are one run that always holds the view's. A
+  **scroll paints nothing** already there: the view moves over the band (one or two pieces of the
+  ring, whole texels, `GPC_L_OPAQUE | GPC_L_NEAREST`); the rows that come into view are painted; in
+  idle turns (30 ms after the last redraw) the rows around the view are painted ahead, a third of
+  a view a turn, more of them in the direction of the last scroll. A sideways scroll, a resize or
+  a new page start a new band. The band is a gpucomp texture updated **only where it was
+  painted** (`gpc_tex_update` of the painted rectangle).
+- **Damage.** The core's rectangles (`fb_window_invalidate_area`) are kept in document px and
+  painted where the band holds them, in view or not -- but damage farther than half a view from
+  the view waits until the view comes near (an animation out of view costs nothing, as when only
+  the view was painted). A whole-document invalidation (a reformat) paints the view now, the rest
+  of the band ahead later.
+- **Retained layers.** A group the frontend can composite itself -- an opacity and / or a
+  transform, no filter, no blend mode, no backdrop (§21) -- is **offered** by the core
+  (`onyx_layer_begin (ctx, l, ONYX_LAYER_OFFER)`, `struct onyx_layer`'s `retain`, `key` = the box,
+  `lm` / `ox, oy` = its matrix about its origin; netsurf/onyx_paint.h). Accepted, it is left out of
+  the band; its pixels -- its whole rectangle, untransformed -- are painted apart as an isolated
+  group's (over black then white: premultiplied ARGB; one pass when it is known opaque) into a
+  buffer of its own, uploaded, and each frame composites it over the band through its matrix, in
+  its clip, at its opacity (bilinear when transformed, whole pixels else). Its pixels are painted
+  again only where damage reaches them (the rectangle in its own px, and through its inverse
+  matrix). Refused: painted as ever -- inside a group the CPU paints (in place or apart), under a
+  rounded clip, larger than 4 M pixels, past the budget.
+  - *Painting order.* A plot operation painted into the band **after** a retained layer and over
+    it would come out under it: every operation's rectangle is noted while the band is painted
+    (`onyx_comp_note`, from the plotters); one over a layer offered earlier in the same piece
+    **demotes** it (painted in place from then on; its area painted again). The layers keep the
+    order they were offered in.
+  - *The clip.* The core gives a layer its clip within the piece being painted; a side on the
+    piece's edge is not known (open) until a piece shows it.
+  - *Stale layers.* A layer not offered again where the band was painted over all it covers is
+    dropped (its box lost its effect, or its box is gone); a new one's area is painted again (it
+    may be there in place).
+  - *Churn.* A layer whose pixels are painted again frame after frame (what it holds animates, it
+    moves by a translation) is demoted: its passes would cost more than the in-place painting.
+  - *The CPU path* retains a layer only once it was animated (below): there a transformed layer
+    would be resampled at each frame, where painted into the band it costs nothing more.
+- **Composite-only animations and hovers.** When a box's style changes only in its opacity or
+  transform (`css_computed_style_effects_only_change`, libcss -- an animation's frame through
+  `onyx_hover_restyle_elements`, a `:hover`), `onyx_hover.c` gives the box its new style and asks
+  `html_redraw_layer_update` (html/private.h): the frontend's hook (`onyx_layer_props`,
+  netsurf/onyx_paint.h = `onyx_comp_layer_update`) updates the retained layer's matrix / opacity
+  and asks for a frame -- **nothing is painted** (the element's other boxes, its text, are not
+  redrawn either: a transform or an opacity paints the group, not them). Refused (no layer, or
+  its new footprint would reach what was painted after it -- a turned layer may use the square its
+  rectangle sweeps about its centre, when nothing painted later lies there), the rectangles are
+  redrawn as before. `pages/anim-layers.html` (a spin and a pulse): 133 frames of 150 a
+  composite, 17 painted.
+- **The frame.** The band's pieces in view, then the layers that reach the view, **one
+  `gpc_composite` straight into the window's canvas** (its page area; `GPC_C_CLEAR` on the GPU:
+  the band covers it, the canvas need not be loaded); the back buffer's copies leave that part
+  alone (`onyx_surface_hole`); the caret is drawn into the band.
+- **Safety.** At start, a **self-test** composes a small scene by the GPU and by gpucomp's CPU path
+  -- the band alone (texels copied: at most 1 apart), the layers (the GPU filtering's allowance),
+  and the layers **over what the target holds** (no clear: the V3D loads the target first --
+  the path that was wrong on the Pi, kern/v3d_cl.h); a mismatch, or the GPU lost, and the CPU path
+  is used for the session. The kernel log (stderr) says `netsurf: compositing on: GPU: V3D 4.2 ...`
+  (or `... the GPU failed its self-test (<why>): the CPU`, `compositing off`). A GPU lost later
+  (`GPC_LOST`): every texture uploaded again, the CPU from then on. No memory for the band:
+  compositing off, painting as before. **Budget**: the band (at most 8 M pixels) and the layers
+  (24 M pixels, ~96 MB of textures) -- the layers out of the band's rows dropped first.
+- **Fixed boxes** scroll with the page here as before (NetSurf lays `position: fixed` out in the
+  document), so they are part of the band and repaint nothing on a scroll either; a fixed box
+  that stays in the view would be a layer without the scroll's translation (with the hit test
+  and the scripts' rectangles following) -- not done.
+- **Two bugs of the CPU painting found on the way** (both modes): a box whose **shadow** reached
+  the redraw's clip but not its border box set an upside-down clip, which the knockout refused --
+  **the rest of that redraw was dropped** (cards cut or missing after a scroll: kotonstudio.com's,
+  github.com's lists; `html_redraw_box_inner`); a redraw queued before a scroll kept its window
+  coordinates (`fb_pan`: now moved with the pixels).
+- **Tests** (`tools/tests/netsurf/gputest.sh`): the composited frames against the CPU painting
+  (`NS_GPU=0`), pixel by pixel (at most 0.1 % of pixels off by more than 16), for the layer pages
+  (opacity, transforms, filters, hovers, transitions, animations stopped), loaded and scrolled;
+  hovers of a layer's transform / opacity (`pages/css-fxlayer.html`); composite-only animation
+  frames (`pages/anim-layers.html`); a long page scrolled notch by notch against one jump
+  (`pages/gpu-scroll.html`: a 720 x 740 `mix-blend-mode` group, a blur, rotated and faded cards);
+  the **software V3D** (host.mk `SOFTGPU=1`, `GPC_SOFTGPU=1`: gpucomp's GPU path, the kernel's
+  fragment shader in the QPU simulator and its own target packets) and the self-test's fallback
+  when the GPU hangs (`GPC_SOFTGPU=hang`); the scroll frames' cost. All pass; `fxtest.sh` (against
+  Chromium) and `jstest.sh` pass composited (the default); `sitesweep.sh` (which now scrolls 12
+  notches down and 4 up): no crash.
+- **Timings** (`NS_PERF`): `ONYX-SCROLL <us>` for each frame of a scroll (both modes),
+  `frame painted / composite`, `present WxH gpu|cpu N layers`, `band ahead`, `layer WxH
+  retained`, and every 50 frames `ONYX-COMP n frames: painted, composite only, present`.
+  The PC bench (1280 x 800 window, gpucomp's **CPU** path; 20 wheel notches after loading):
+
+  | page | CPU painting, a scroll frame | composited |
+  |---|---|---|
+  | kotonviolins.com (copy) | mean 5.9 ms, max 70 ms | mean 0.8 ms, max 1.1 ms |
+  | kotonstudio.com (copy) | mean 2.6 ms, max 14.7 ms | mean 2.1 ms, max 5.7 ms (its scroll handler and header repaint each frame) |
+  | github.com/stephaneweg/Onyx | mean 2.4 ms, max 6.9 ms | mean 1.0 ms, max 2.9 ms |
+  | bbc.com | mean 3.5 ms, max 33 ms | mean 2.2 ms, max 7.3 ms |
+  | pages/gpu-scroll.html | mean 3.0 ms, max 7.9 ms | mean 0.9 ms, max 1.3 ms |
+
+  A composited scroll frame is the present (a copy of the view on the CPU path: ~0.5-1 ms on the
+  PC); the rows ahead are painted in idle turns (5-8 ms a piece on the PC). On the Pi (5-8 times
+  slower at painting, the V3D composing a 1920 x 1080 frame in a few ms: `gpcdemo bench`), a scroll
+  frame over rows already in the band goes from the redraw of a strip -- 5 to 25 ms, 50 to 350 ms
+  when a blurred or blended group is in it (github.com's hero: 11-20 ms a redraw on the PC) -- to
+  one composite, and animated transforms and fades from a redraw of their rectangles to a
+  composite.
+- **Not done**: overflow scrollers as layers (an inner scroller's scroll paints its box again,
+  in the band); groups with retained layers inside (a filter or opacity group holding layers: the
+  CPU paints what it holds, into the band or the parent layer -- docs/07 §6 step 6's ARGB target
+  and re-upload are not used); `will-change` (not parsed); fixed boxes that stay in view (above);
+  `GPC_F_ASYNC` (the composite waits); a translation animated as a composite (it moves the box as
+  the layout does: its rectangles are redrawn).
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -1654,8 +1774,9 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
-- The compositing layers' gaps (§21: a real perspective, a layer kept between redraws,
-  `clip-path` / `mask` on it, the non-separable blend modes); animations: §22's "Not done".
+- The compositing layers' gaps (§21: a real perspective, `clip-path` / `mask` on a layer, the
+  non-separable blend modes); animations: §22's "Not done"; GPU compositing: §23's (scrollers
+  and groups as layers, fixed boxes that stay in view).
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
   CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss

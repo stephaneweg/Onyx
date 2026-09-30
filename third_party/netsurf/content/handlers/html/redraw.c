@@ -1754,7 +1754,7 @@ static bool onyx_fx_redraw(const html_content *html, struct box *box,
 }
 
 /**
- * Onyx -- GPU compositing (docs/06 §22): a group the frontend can composite itself (an opacity
+ * Onyx -- GPU compositing (docs/06 §23): a group the frontend can composite itself (an opacity
  * and / or a transform, nothing else) offered as a retained layer (netsurf/onyx_paint.h,
  * ONYX_LAYER_OFFER): accepted, its pixels are kept by the plotter between redraws and
  * composited over what is painted under it; only the part of them it asks for is painted,

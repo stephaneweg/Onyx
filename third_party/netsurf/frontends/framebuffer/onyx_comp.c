@@ -16,7 +16,7 @@
 
 /**
  * \file
- * Onyx: the browser's view composited -- GPU compositing, stage 2 (docs/06 §22, docs/07 §6).
+ * Onyx: the browser's view composited -- GPU compositing, stage 2 (docs/06 §23, docs/07 §6).
  *
  * The band: the page painted by the core (the CPU plotters, as ever) into a RAM surface as wide
  * as the view and a few views high, a ring of document rows -- document row y is the band's row

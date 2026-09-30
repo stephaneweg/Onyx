@@ -610,6 +610,15 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > `A64_GCC=`) and `qemu-aarch64`, the CPU path built for the Pi (NEON loops) must give the PC's
 > pixels bit for bit. On the Pi: `/bin/gpcdemo test` (the GPU's pictures against the CPU's),
 > `/bin/gpcdemo bench` (ms a frame at 1920 × 1080, GPU then CPU), `/bin/gpcdemo` (a window).
+> **NetSurf** composites its view with it (docs/06 §23: the page in a band, opacity / transform
+> groups as retained layers, one composite a frame; Choices' `gpu_compositing`): `netsurf-app.mk`
+> links `$(ZUSER)/gpucomp/libgpucomp.a` (made by `make -C user gpucomp/libgpucomp.a` when
+> missing), and the `"onyx"` libnsfb surface (`user/nsfb/onyx_surface.c`, inside `libnsfb.a`:
+> `make -C user/nsfb NSFB=../../third_party/libnsfb` after changing it) leaves the composited
+> part of the canvas alone (`onyx_surface_hole`). On the PC: `sh tools/tests/netsurf/gputest.sh`
+> (the composited frames against the CPU painting, composite-only frames, the software V3D:
+> `host.mk SOFTGPU=1` links `hostkapi.cpp`'s V3D into the desktop simulator, `GPC_SOFTGPU=1`
+> uses it; `NS_GPU=0 / 1 / cpu` chooses the mode).
 > **App cores (ABI v51)**: an app may take a whole core (2 or 3) for a function of its own —
 > `int c = kapi_core_acquire ();` (−1: none free), `kapi_core_run (c, fn, arg, stack_top)` (the
 > stack is the app's memory, 16-byte aligned), poll `kapi_core_state (c)` (`KAPI_CORE_IDLE` once
