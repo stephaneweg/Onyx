@@ -689,7 +689,11 @@ static bool html_sheets_pending(html_content *c)
 
 	for (i = 0; i < c->stylesheet_count; i++) {	/* (the browser's own too) */
 		struct html_stylesheet *s = &c->stylesheets[i];
-		if (s->unused || s->sheet == NULL)
+		if (s->unused)
+			continue;
+		if (s->modified)
+			return true;	/* (a <style> whose sheet is still to be made) */
+		if (s->sheet == NULL)
 			continue;
 		if (hlcache_handle_get_content(s->sheet) == NULL)
 			return true;
