@@ -14,6 +14,9 @@
  *   - update     : the rectangle NetSurf redrew is copied from the back buffer into the
  *                  canvas; the main loop presents the window once an iteration, after its
  *                  redraws (onyx_chrome_flush: a scroll's copy and its new band together).
+ *                  Composited frames (gpu_compositing, frontends/framebuffer/onyx_comp.c): the
+ *                  browser's view is written into the canvas by the compositor (the GPU, or
+ *                  gpucomp's CPU path); that "hole" is left out of the copies.
  *   - input      : the chrome owns the kapi pointer / key handlers; it hands the page's events
  *                  to ours (their y relative to the page), which we translate into a ring of
  *                  nsfb_event_t served to libnsfb's poll-style nsfb_event()/input(). A resize
@@ -265,9 +268,44 @@ static int onyx_finalise(nsfb_t *nsfb)
 	return 0;
 }
 
+/* The page's part NetSurf's compositor writes itself (frontends/framebuffer/onyx_comp.c: the
+ * browser's view, composited by the GPU straight into the canvas): not copied from the back
+ * buffer, which does not hold it. Empty (x1 <= x0): none -- every pixel is the back buffer's. */
+static int s_hx0, s_hy0, s_hx1, s_hy1;
+
+void onyx_surface_hole(int x0, int y0, int x1, int y1)
+{
+	s_hx0 = x0;
+	s_hy0 = y0;
+	s_hx1 = x1;
+	s_hy1 = y1;
+}
+
+unsigned *onyx_surface_canvas(int *stride, int *w, int *h)
+{
+	if (stride != NULL)
+		*stride = s_pstride;
+	if (w != NULL)
+		*w = s_bw;
+	if (h != NULL)
+		*h = s_bh;
+	return s_page;
+}
+
+static void onyx_copy(int x0, int y0, int x1, int y1)
+{
+	int y;
+
+	if (x1 <= x0 || y1 <= y0)
+		return;
+	for (y = y0; y < y1; y++)
+		memcpy(s_page + (size_t) y * s_pstride + x0,
+		       s_back + (size_t) y * s_bw + x0, (size_t) (x1 - x0) * 4);
+}
+
 static int onyx_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 {
-	int x0 = 0, y0 = 0, x1 = s_bw, y1 = s_bh, y;
+	int x0 = 0, y0 = 0, x1 = s_bw, y1 = s_bh;
 
 	UNUSED(nsfb);
 	if (s_back == NULL || s_page == NULL)
@@ -278,10 +316,16 @@ static int onyx_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 		x1 = box->x1 > s_bw ? s_bw : box->x1;
 		y1 = box->y1 > s_bh ? s_bh : box->y1;
 	}
-	if (x1 > x0 && y1 > y0) {
-		for (y = y0; y < y1; y++)
-			memcpy(s_page + (size_t) y * s_pstride + x0,
-			       s_back + (size_t) y * s_bw + x0, (size_t) (x1 - x0) * 4);
+	if (s_hx1 > s_hx0 && s_hy1 > s_hy0 && x0 < s_hx1 && s_hx0 < x1 &&
+	    y0 < s_hy1 && s_hy0 < y1) {
+		/* around the compositor's part: above, below, left, right of it */
+		int my0 = y0 > s_hy0 ? y0 : s_hy0, my1 = y1 < s_hy1 ? y1 : s_hy1;
+		onyx_copy(x0, y0, x1, my0);
+		onyx_copy(x0, my1, x1, y1);
+		onyx_copy(x0, my0, x1 < s_hx0 ? x1 : s_hx0, my1);
+		onyx_copy(x0 > s_hx1 ? x0 : s_hx1, my0, x1, my1);
+	} else {
+		onyx_copy(x0, y0, x1, y1);
 	}
 	onyx_chrome_present_later();	/* (the loop presents: onyx_chrome_flush) */
 	return 0;

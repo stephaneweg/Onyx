@@ -214,7 +214,13 @@ LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=n
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by
 # gcc first (g++ would treat the .c/.S as C++), then all objects are linked with g++.
-link: objs $(NSTLS_OBJ)
+# Onyx: the GPU compositing service (user/gpucomp, frontends/framebuffer/onyx_comp.c): its
+# library as user/Makefile builds it (FP/SIMD, -O3: the CPU path's NEON loops)
+GPUCOMP_LIB := $(ZUSER)/gpucomp/libgpucomp.a
+$(GPUCOMP_LIB): $(ZUSER)/gpucomp/gpucomp.c $(ZUSER)/gpucomp/gpucomp.h
+	$(MAKE) -C $(ZUSER) gpucomp/libgpucomp.a
+
+link: objs $(NSTLS_OBJ) $(GPUCOMP_LIB)
 	$(CC) -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector -I$(ZUSER) -I$(ZKINC) \
 	  -c $(ZUSER)/libc/crt0libc.S -o $(OUT)/o/crt0libc.o
 	$(CC) -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector -I$(ZUSER) -I$(ZKINC) \
@@ -222,7 +228,7 @@ link: objs $(NSTLS_OBJ)
 	$(CXX) -mcpu=cortex-a72 -O2 -nostartfiles -fno-pic -fno-pie -fno-exceptions -fno-rtti \
 	  $(OUT)/o/crt0libc.o $(OUT)/o/onyx_syscalls.o \
 	  $(ALL_OBJ) $(CXX_OBJ) $(NSTLS_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
-	  $(OUT)/libwtk-ns.a \
+	  $(OUT)/libwtk-ns.a $(GPUCOMP_LIB) \
 	  $(LDLIBS) -L$(MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto \
 	  $(LDFLAGS) -o $(OUT)/netsurf.elf
 	@echo "netsurf.elf: $$(stat -c %s $(OUT)/netsurf.elf 2>/dev/null) bytes"

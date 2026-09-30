@@ -1753,6 +1753,134 @@ static bool onyx_fx_redraw(const html_content *html, struct box *box,
 	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
 }
 
+/**
+ * Onyx -- GPU compositing (docs/06 §22): a group the frontend can composite itself (an opacity
+ * and / or a transform, nothing else) offered as a retained layer (netsurf/onyx_paint.h,
+ * ONYX_LAYER_OFFER): accepted, its pixels are kept by the plotter between redraws and
+ * composited over what is painted under it; only the part of them it asks for is painted,
+ * apart (over black and white, as an isolated group's), and nothing is painted in place.
+ * -1: not offered, or refused (the group is then painted as ever); else whether it went well.
+ */
+static int onyx_fx_retain(const html_content *html, struct box *box,
+		int x_parent, int y_parent, const struct rect *clip, float scale,
+		colour background, const struct redraw_context *ctx, struct onyx_fx *fx)
+{
+	struct onyx_layer *l, *p;
+	float x = (x_parent + box->x) * scale, y = (y_parent + box->y) * scale;
+	float b[4];
+	struct rect lc, root_clip;
+	bool ok = true;
+	int pass;
+	uint64_t t0;
+
+	if (fx->nfilter > 0 || fx->nbackdrop > 0 || fx->blend != ONYX_BLEND_NORMAL ||
+	    scale != 1.0f || onyx_fx_nest > 0 || html_redraw_printing || !ctx->interactive)
+		return -1;
+	onyx_fx_bounds(html, box, x, y, scale, b);
+	{
+		/* (not where this redraw paints: nothing to do) */
+		float d[4];
+		struct rect cr;
+		if (fx->matrix) {
+			float m[6];
+			memcpy(m, fx->m, sizeof(m));
+			m[4] += x - (m[0] * x + m[2] * y);
+			m[5] += y - (m[1] * x + m[3] * y);
+			onyx_matrix_bbox(m, b[0], b[1], b[2], b[3], &d[0], &d[1],
+					&d[2], &d[3]);
+		} else {
+			memcpy(d, b, sizeof(d));
+		}
+		if (!onyx_fx_clip(d, clip, &cr))
+			return 1;
+	}
+	l = calloc(2, sizeof(*l));
+	if (l == NULL)
+		return -1;
+	p = l + 1;
+	l->x0 = (int) floorf(b[0]);
+	l->y0 = (int) floorf(b[1]);
+	l->x1 = (int) ceilf(b[2]);
+	l->y1 = (int) ceilf(b[3]);
+	l->cx0 = clip->x0;
+	l->cy0 = clip->y0;
+	l->cx1 = clip->x1;
+	l->cy1 = clip->y1;
+	l->opacity = fx->opacity;
+	l->m[0] = l->m[3] = 1;
+	l->lm[0] = l->lm[3] = 1;
+	if (fx->matrix) {
+		memcpy(l->lm, fx->m, sizeof(l->lm));
+		memcpy(l->m, fx->m, sizeof(l->m));
+		l->m[4] += x - (l->m[0] * x + l->m[2] * y);
+		l->m[5] += y - (l->m[1] * x + l->m[3] * y);
+		l->transformed = true;
+	}
+	l->ox = x;
+	l->oy = y;
+	l->retain = true;
+	l->key = box;
+	l->tree = html->layout;
+	if (ctx->plot->onyx_layer_begin(ctx, l, ONYX_LAYER_OFFER) != NSERROR_OK) {
+		free(l);
+		return -1;
+	}
+
+	/* the part of its pixels asked for, painted as an isolated group's passes */
+	if (l->rx1 > l->rx0 && l->ry1 > l->ry0) {
+		*p = *l;
+		p->x0 = l->rx0;
+		p->y0 = l->ry0;
+		p->x1 = l->rx1;
+		p->y1 = l->ry1;
+		p->isolated = true;
+		p->transformed = false;
+		p->opacity = 1;
+		p->m[0] = p->m[3] = 1;
+		p->m[1] = p->m[2] = p->m[4] = p->m[5] = 0;
+		if (onyx_fx_opaque(html, box)) {
+			/* known opaque in its border box: one pass */
+			struct onyx_rrect *r = &p->opaque;
+			r->x0 = x - box->border[LEFT].width - p->x0;
+			r->y0 = y - box->border[TOP].width - p->y0;
+			r->x1 = x + box->padding[LEFT] + box->width + box->padding[RIGHT] +
+					box->border[RIGHT].width - p->x0;
+			r->y1 = y + box->padding[TOP] + box->height + box->padding[BOTTOM] +
+					box->border[BOTTOM].width - p->y0;
+			onyx_box_radii(box->style, &html->unit_len_ctx, 1, r);
+			p->single = true;
+		}
+		lc.x0 = lc.y0 = 0;
+		lc.x1 = p->x1 - p->x0;
+		lc.y1 = p->y1 - p->y0;
+		t0 = onyx_perf_now();
+		onyx_fx_nest++;
+		for (pass = 0; pass < (p->single ? 1 : 2) && ok; pass++) {
+			if (ctx->plot->onyx_layer_begin(ctx, p, pass) != NSERROR_OK) {
+				ok = false;
+				break;
+			}
+			root_clip = onyx_redraw_root_clip;
+			onyx_redraw_root_clip = lc;
+			ok = ctx->plot->clip(ctx, &lc) == NSERROR_OK &&
+					onyx_fx_paint_context(html, box, x_parent - p->x0,
+					y_parent - p->y0, &lc, scale, background, ctx);
+			onyx_redraw_root_clip = root_clip;
+			ctx->plot->onyx_layer_end(ctx, p, pass);
+		}
+		onyx_fx_nest--;
+		if (t0 != 0) {
+			char what[80];
+			snprintf(what, sizeof(what), "layer %dx%d retained%s", lc.x1, lc.y1,
+					p->single ? " (one pass)" : "");
+			onyx_perf_log(what, t0);
+		}
+	}
+	ctx->plot->onyx_layer_end(ctx, l, ONYX_LAYER_OFFER);
+	free(l);
+	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
+}
+
 /** an inline's opacity (its pieces are its line's siblings: grouped from it to its end) */
 static bool onyx_inline_opacity(const struct box *c, float *a)
 {
@@ -1957,9 +2085,14 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	if (onyx_box_fx(html, box, scale, &fx)) {
 		if (fx.opacity <= 0)
 			ok = true;	/* (opacity 0: nothing painted) */
-		else if (ctx->plot->onyx_layer_begin != NULL)
-			ok = onyx_fx_redraw(html, box, x_parent, y_parent, clip,
+		else if (ctx->plot->onyx_layer_begin != NULL) {
+			/* (Onyx: a retained layer when the plotter composites) */
+			int r = onyx_fx_retain(html, box, x_parent, y_parent, clip,
 					scale, current_background_color, ctx, &fx);
+			ok = r >= 0 ? r != 0 : onyx_fx_redraw(html, box, x_parent,
+					y_parent, clip, scale,
+					current_background_color, ctx, &fx);
+		}
 		else
 			ok = onyx_fx_paint_context(html, box, x_parent, y_parent,
 					clip, scale, current_background_color, ctx);

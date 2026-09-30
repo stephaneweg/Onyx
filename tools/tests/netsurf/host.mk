@@ -136,7 +136,10 @@ I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
 PVG_SRC := $(wildcard $(PVG)/source/plutovg-*.c)
 PSVG_SRC := $(PSVG)/source/plutosvg.c
 
-LIB_ALL := $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+# Onyx: the GPU compositing service (user/gpucomp: its CPU path here -- fakekapi has no GPU)
+GPC_SRC := $(ZUSER)/gpucomp/gpucomp.c
+
+LIB_ALL := $(GPC_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -195,6 +198,7 @@ $(call obj,$(1)): $(1)
 	$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
 $(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
+$(foreach s,$(GPC_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -ffp-contract=off -I$(ZUSER) -I$(ZKINC))))
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
 $(foreach s,$(PVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF))))
 $(foreach s,$(PSVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source)))

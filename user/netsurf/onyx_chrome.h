@@ -39,6 +39,13 @@ void onyx_chrome_set_page_handlers(onyx_chrome_handler ptr, onyx_chrome_handler 
 int onyx_chrome_pump(void);
 int onyx_chrome_pump_wait(int ms);	/* the same, waiting up to ms for an event / a post */
 
+/* The part of the page the compositor writes itself (NetSurf's view, composited: its
+ * pixels are not in the back buffer): left out of the back buffer's copies to the canvas.
+ * x1 <= x0: none. (user/nsfb/onyx_surface.c; frontends/framebuffer/onyx_comp.c) */
+void onyx_surface_hole(int x0, int y0, int x1, int y1);
+/* The canvas's page area now: its first pixel, stride (pixels), size. */
+unsigned *onyx_surface_canvas(int *stride, int *w, int *h);
+
 /* Show the window's pixels. */
 void onyx_chrome_present(void);
 /* the page redrawn: presented by onyx_chrome_flush(), once a main-loop iteration */

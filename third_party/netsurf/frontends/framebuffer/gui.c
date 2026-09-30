@@ -61,6 +61,7 @@
 #include "framebuffer/bitmap.h"
 #include "framebuffer/local_history.h"
 #include "framebuffer/corewindow.h"
+#include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing */
 
 /* Onyx: the window, its native toolbar (user/netsurf/onyx_chrome.cpp) */
 #include "desktop/searchweb.h"
@@ -91,6 +92,8 @@ struct browser_widget_s {
 			    * needs to pan the window.
 			    */
 	int panx, pany; /**< Panning required. */
+	int comp_dy;	/**< Onyx: the last scroll's direction (onyx_comp.c) */
+	bool comp_prepaint; /**< Onyx: an idle turn: the band painted ahead */
 };
 
 static struct gui_drag {
@@ -139,6 +142,16 @@ static void
 fb_queue_redraw(struct fbtk_widget_s *widget, int x0, int y0, int x1, int y1)
 {
 	struct browser_widget_s *bwidget = fbtk_get_userpw(widget);
+
+	if (onyx_comp_on()) {
+		/* Onyx: composited -- the document's rectangle, painted again where
+		 * the band holds it, in view or not (onyx_comp.c) */
+		onyx_comp_damage(x0 + bwidget->scrollx, y0 + bwidget->scrolly,
+				x1 + bwidget->scrollx, y1 + bwidget->scrolly);
+		bwidget->redraw_required = true;
+		fbtk_request_redraw(widget);
+		return;
+	}
 
 	bwidget->redraw_box.x0 = min(bwidget->redraw_box.x0, x0);
 	bwidget->redraw_box.y0 = min(bwidget->redraw_box.y0, y0);
@@ -425,6 +438,55 @@ fb_redraw(fbtk_widget_t *widget,
 	bwidget->redraw_required = false;
 }
 
+/* Onyx: an idle turn -- the band's rows around the view painted ahead (onyx_comp.c) */
+static void fb_comp_prepaint(void *p)
+{
+	struct gui_window *gw = p;
+	struct browser_widget_s *bwidget = fbtk_get_userpw(gw->browser);
+
+	if (bwidget == NULL)
+		return;
+	bwidget->comp_prepaint = true;
+	fbtk_request_redraw(gw->browser);
+}
+
+/* Onyx: the view composited -- a scroll moves it over the band (nothing painted), the damage
+ * and the rows that come into view are painted into the band, one composite into the canvas.
+ * False: compositing is off (the view is then painted as ever). */
+static bool fb_comp_redraw(fbtk_widget_t *widget, struct browser_widget_s *bwidget,
+		struct gui_window *gw)
+{
+	struct onyx_comp_view v;
+	bool prepaint = bwidget->comp_prepaint;
+
+	bwidget->comp_prepaint = false;
+	if (bwidget->pan_required) {
+		if (bwidget->pany != 0)
+			bwidget->comp_dy = bwidget->pany > 0 ? 1 : -1;
+		bwidget->scrollx += bwidget->panx;
+		bwidget->scrolly += bwidget->pany;
+		bwidget->panx = bwidget->pany = 0;
+		bwidget->pan_required = false;
+		browser_window_scrolled(gw->bw);
+	}
+	memset(&v, 0, sizeof v);
+	v.bw = gw->bw;
+	v.x = fbtk_get_absx(widget);
+	v.y = fbtk_get_absy(widget);
+	v.w = fbtk_get_width(widget);
+	v.h = fbtk_get_height(widget);
+	v.sx = bwidget->scrollx;
+	v.sy = bwidget->scrolly;
+	v.dy = bwidget->comp_dy;
+	v.caret = fbtk_get_caret(widget, &v.cx, &v.cy, &v.ch);
+	if (onyx_comp_redraw(&v, prepaint))
+		framebuffer_schedule(30, fb_comp_prepaint, gw);
+	bwidget->redraw_box.y0 = bwidget->redraw_box.x0 = INT_MAX;
+	bwidget->redraw_box.y1 = bwidget->redraw_box.x1 = INT_MIN;
+	bwidget->redraw_required = false;
+	return onyx_comp_on();
+}
+
 static int
 fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 {
@@ -437,6 +499,9 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 		      "browser widget from widget %p was null", widget);
 		return -1;
 	}
+
+	if (onyx_comp_on() && fb_comp_redraw(widget, bwidget, gw))
+		return 0;	/* (Onyx: composited) */
 
 	if (bwidget->pan_required) {
 		fb_pan(widget, bwidget, gw->bw);
@@ -686,6 +751,7 @@ static void gui_quit(void)
 
 	urldb_save(nsoption_charp(url_file));	/* Onyx: the global history */
 	urldb_save_cookies(nsoption_charp(cookie_jar));
+	onyx_comp_finalise();	/* Onyx */
 
 	framebuffer_finalise();
 }
@@ -1899,6 +1965,7 @@ static void
 gui_window_destroy(struct gui_window *gw)
 {
 	gui_window_remove_from_window_list(gw);
+	framebuffer_schedule(-1, fb_comp_prepaint, gw);	/* (Onyx) */
 
 	fbtk_destroy_widget(gw->window);
 
@@ -1918,6 +1985,13 @@ fb_window_invalidate_area(struct gui_window *g, const struct rect *rect)
 {
 	struct browser_widget_s *bwidget = fbtk_get_userpw(g->browser);
 
+	if (rect == NULL && onyx_comp_on()) {
+		/* Onyx: the whole document (the view now, the band's rest later) */
+		onyx_comp_damage_all();
+		bwidget->redraw_required = true;
+		fbtk_request_redraw(g->browser);
+		return NSERROR_OK;
+	}
 	if (rect != NULL) {
 		fb_queue_redraw(g->browser,
 				rect->x0 - bwidget->scrollx,
@@ -2349,6 +2423,8 @@ main(int argc, char** argv)
 		    NETSURF_FB_FONTPATH " (copy the card's res/fonts folder)");
 
 	fbtk = fbtk_init(nsfb);
+
+	onyx_comp_init();	/* Onyx: GPU compositing (Choices: gpu_compositing) */
 
 	fbtk_enable_oskb(fbtk);
 

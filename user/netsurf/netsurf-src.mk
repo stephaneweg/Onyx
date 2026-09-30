@@ -5,7 +5,7 @@
 #
 NS_FB_FILES := gui.c framebuffer.c schedule.c bitmap.c fetch.c findfile.c \
                corewindow.c local_history.c clipboard.c font_freetype.c onyx_paint.c \
-               onyx_layer.c
+               onyx_layer.c onyx_comp.c
 
 # frontend toolbar/pointer/throbber bitmaps: res PNG -> image-NAME.c (name:respath pairs)
 NS_FB_IMAGES := \
