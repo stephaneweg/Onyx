@@ -2425,6 +2425,20 @@ void onyx_browser_reload(void)
 #ifdef ONYX_HOST_SIM
 	/* Onyx (the PC bench only): NS_BOXDUMP=<file> -- F5 writes the page's box tree
 	 * there (positions, sizes, styles) instead of reloading */
+	if (window_list != NULL && getenv("NS_INJECT") != NULL) {
+		/* NS_INJECT=<file.js> -- F5 runs that script in the page instead */
+		extern void onyx_debug_exec(struct hlcache_handle *h, const char *src, size_t len);
+		FILE *f = fopen(getenv("NS_INJECT"), "rb");
+
+		if (f != NULL) {
+			static char buf[1 << 20];
+			size_t n = fread(buf, 1, sizeof buf - 1, f);
+			fclose(f);
+			buf[n] = '\0';
+			onyx_debug_exec(browser_window_get_content(window_list->bw), buf, n);
+		}
+		return;
+	}
 	if (window_list != NULL && getenv("NS_BOXDUMP") != NULL) {
 		FILE *f = fopen(getenv("NS_BOXDUMP"), "w");
 

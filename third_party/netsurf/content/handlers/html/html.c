@@ -2755,3 +2755,20 @@ error:
 
 	return error;
 }
+
+#ifdef ONYX_HOST_SIM
+/* Onyx (the PC bench only): a script run in the page's context (NS_INJECT: F5 runs that
+ * file there -- tools/tests/netsurf/layoutdiff.sh measures the elements in NetSurf and in
+ * Chromium with the same script) */
+void onyx_debug_exec(struct hlcache_handle *h, const char *src, size_t len)
+{
+	struct content *c = h != NULL ? hlcache_handle_get_content(h) : NULL;
+	html_content *htmlc;
+
+	if (c == NULL || content_get_type(h) != CONTENT_HTML)
+		return;
+	htmlc = (html_content *) c;
+	if (htmlc->jsthread != NULL)
+		js_exec(htmlc->jsthread, (const uint8_t *) src, len, "inject");
+}
+#endif
