@@ -25,6 +25,11 @@ SIM_REALNET=1 NS_JSDEBUG=1 NS_INJECT=$T/layoutdiff.js SIM_SCREEN=$((pw + 82))x10
 	SIM_ARGS="$url" SIM="${W}key 276;wait;wait;exit" timeout "${TMO:-300}" "$OUT/build/netsurf" 2>&1 |
 	sed 's/^console: //' | grep '^LB ' > "$OUT/ld-ns.txt"
 UA=$(sed -n '/return "Mozilla/,/;/p' third_party/netsurf/utils/useragent.c | grep -o '"[^"]*"' | tr -d '"' | tr -d '\n')
+# Chromium with NetSurf's fonts and font substitutions (nsfonts-conf.sh; NSFONTS=0: its own)
+if [ "${NSFONTS:-1}" = 1 ]; then
+	sh $T/nsfonts-conf.sh "$OUT/build/res/fonts" > "$OUT/nsfonts.conf"
+	export FONTCONFIG_FILE="$OUT/nsfonts.conf"
+fi
 NODE_PATH=$(npm root -g) UA="$UA" URL="$url" PW="$pw" JS="$T/layoutdiff.js" node -e '
 const { chromium } = require("playwright");
 (async () => {

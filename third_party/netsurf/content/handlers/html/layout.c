@@ -4023,9 +4023,12 @@ bool layout_block_context(
 		if (box->type == BOX_FLEX ||
 		    box->type == BOX_BLOCK ||
 		    box->flags & IFRAME) {
+			/* Onyx: a flex / grid container too (a formatting
+			 * context root, beside the floats) */
 			if (lh__box_is_object(box) == false &&
 					box->style &&
-					(overflow_x != CSS_OVERFLOW_VISIBLE ||
+					(box->type == BOX_FLEX ||
+					 overflow_x != CSS_OVERFLOW_VISIBLE ||
 					 overflow_y != CSS_OVERFLOW_VISIBLE)) {
 				/* box establishes new block formatting context
 				 * so available width may be diminished due to
