@@ -67,6 +67,54 @@ async function run() {
   let failed = false;
   try { await fetch(url); } catch (e) { failed = true; }
   check('revokeObjectURL', failed);
+  /* microdata */
+  const md = document.createElement('div');
+  md.innerHTML = '<div itemscope itemtype="http://example.net/user" id="it"><p>I am <span itemprop="name">Liz</span>' +
+    '<a itemprop="url" href="/me">me</a><meta itemprop="age" content="30"></p><div itemprop="pet" itemscope><span itemprop="name">Rex</span></div></div>';
+  document.body.appendChild(md);
+  const item = document.getElementById('it');
+  check('microdata itemValue', item.properties.name[0].itemValue === 'Liz' && item.properties.age[0].itemValue === '30' &&
+    item.properties.url[0].itemValue.endsWith('/me'));
+  check('microdata nested item', item.properties.length === 4 && item.properties.pet[0].properties.name[0].itemValue === 'Rex' &&
+    item.properties.names.join() === 'name,url,age,pet');
+  check('getItems', document.getItems('http://example.net/user')[0] === item && document.getItems().length === 1);
+  md.remove();
+  /* <ol reversed>, :read-write */
+  const ol = document.createElement('ol');
+  ol.innerHTML = '<li>a<li>b<li>c';
+  ol.reversed = true;
+  check('ol reversed', ol.hasAttribute('reversed') && ol.start === 3);
+  const ed = document.createElement('div');
+  ed.contentEditable = 'true';
+  ed.innerHTML = '<span id="rw">x</span><b contenteditable="false">y</b>';
+  document.body.appendChild(ed);
+  check(':read-write', ed.matches(':read-write') && document.querySelector('#rw:read-write') !== null &&
+    ed.lastChild.matches(':read-only') && document.body.matches(':read-only'));
+  ed.remove();
+  /* performance marks, PerformanceObserver */
+  const seen = [];
+  const po = new PerformanceObserver(list => seen.push(...list.getEntries().map(e => e.entryType + ':' + e.name)));
+  po.observe({ entryTypes: ['mark', 'measure'] });
+  performance.mark('a');
+  performance.mark('b', { detail: { k: 1 } });
+  const m = performance.measure('ab', 'a', 'b');
+  check('performance.mark / measure', performance.getEntriesByName('b')[0].detail.k === 1 && m.duration >= 0 &&
+    performance.getEntriesByType('mark').length === 2);
+  await new Promise(r => setTimeout(r, 10));
+  check('PerformanceObserver', seen.join() === 'mark:a,mark:b,measure:ab');
+  po.disconnect();
+  performance.clearMarks();
+  check('clearMarks', performance.getEntriesByType('mark').length === 0);
+  /* XMLHttpRequest documents */
+  const xd = await new Promise(r => {
+    const x = new XMLHttpRequest();
+    x.open('GET', location.href);
+    x.responseType = 'document';
+    x.onload = () => r(x.response);
+    x.onerror = () => r(null);
+    x.send();
+  });
+  check('XHR document', !!xd && xd.title === 'HTML5 APIs' && xd.getElementById('p').textContent === 'apis');
   for (const s of steps) await s();
   console.log('apis done ' + n);
 }

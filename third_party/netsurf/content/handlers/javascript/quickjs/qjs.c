@@ -63,6 +63,9 @@
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/form_internal.h"
+#include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
+#include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
+#include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
 
 #include "javascript/js.h"
 #include "javascript/content.h"
@@ -120,6 +123,11 @@ struct jsthread {
 	bool dirty;			/* the DOM changed: a new layout due */
 	int forced_layouts;		/* Onyx: layouts a script's reads forced this turn */
 	nsurl *url_override;		/* Onyx: history.pushState's URL (the document's now) */
+	JSValue ce_hook;		/* Onyx: html5.js' custom elements check of an element
+					 * the parser inserted (undefined: none defined) */
+	dom_node **ce_pending;		/* Onyx: the elements inserted, for ce_hook (later: the
+					 * DOM is read-only in a mutation event) */
+	int ce_npending, ce_cappending;
 	struct qjs_wrap *wraps;		/* dom_node -> its wrapper (open addressing) */
 	size_t nwraps, capwraps;
 	JSValue protos[QP_COUNT];
@@ -180,8 +188,14 @@ static void qjs_report(JSContext *ctx, const char *where)
 static void qjs_thread_free(jsthread *t);
 static void qjs_load_later(void *p);
 
+static void qjs_ce_flush(jsthread *t);
+static void qjs_ce_later(void *p);
+
 static void qjs_enter(jsthread *t)
 {
+	/* Onyx: the custom elements the parser inserted since, upgraded before any script */
+	if (t->in_use == 0 && t->ce_npending > 0)
+		qjs_ce_flush(t);
 	if (t->in_use++ == 0 && t->heap != NULL)
 		t->heap->start = qjs_now_ms();
 }
@@ -331,9 +345,11 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 			JS_FreeValue(t->ctx, p);
 			snprintf(any, sizeof(any), "%s*", pfx);
 			p = JS_GetPropertyStr(t->ctx, t->tag_protos, any);
-		} else if (!JS_IsObject(p) && unknown_ok) {
+		} else if (!JS_IsObject(p)) {
+			/* ("*custom": a name with a '-', HTMLElement until it is upgraded) */
 			JS_FreeValue(t->ctx, p);
-			p = JS_GetPropertyStr(t->ctx, t->tag_protos, "*unknown");
+			p = JS_GetPropertyStr(t->ctx, t->tag_protos,
+					unknown_ok ? "*unknown" : "*custom");
 		}
 		if (JS_IsObject(p))
 			return p;
@@ -1225,6 +1241,98 @@ static JSValue n_scroll_to(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 }
 
 /** cstyle(n, property): a few computed properties of its box, as CSS text */
+/* Onyx: the computed style of an element without a box (display: none, in a hidden subtree,
+ * or before the first layout: a script of the page's parse) -- selected as the box tree's
+ * construction would, from the root down. The results are pushed on res[] (the caller
+ * destroys them); NULL: not in the document, or no styles yet. */
+#define QJS_UNBOXED_DEPTH 64
+static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
+		css_select_results **res, int *nres)
+{
+	html_content *c = t->htmlc;
+	dom_node *chain[QJS_UNBOXED_DEPTH], *root = NULL, *cur, *next;
+	const css_computed_style *parent = NULL, *root_style = NULL;
+	css_select_ctx *temp = NULL;
+	css_fixed dpi = 0, fdef = 0, fmin = 0;
+	int depth = 0, i;
+
+	*nres = 0;
+	if (c == NULL || c->document == NULL)
+		return NULL;
+	if (dom_document_get_document_element(c->document, &root) != DOM_NO_ERR ||
+	    root == NULL)
+		return NULL;
+	/* the element and its ancestors, up to the root element */
+	cur = n;
+	dom_node_ref(cur);
+	while (cur != NULL && cur != root) {
+		dom_node_type type;
+		if (dom_node_get_node_type(cur, &type) != DOM_NO_ERR ||
+		    type != DOM_ELEMENT_NODE || depth == QJS_UNBOXED_DEPTH - 1) {
+			dom_node_unref(cur);
+			cur = NULL;
+			break;
+		}
+		chain[depth++] = cur;
+		if (dom_node_get_parent_node(cur, &next) != DOM_NO_ERR)
+			next = NULL;
+		cur = next;
+	}
+	if (cur == NULL) {
+		/* detached (or too deep) */
+		for (i = 0; i < depth; i++)
+			dom_node_unref(chain[i]);
+		dom_node_unref(root);
+		return NULL;
+	}
+	dom_node_unref(cur);
+	chain[depth++] = root;	/* (the root's reference taken above) */
+
+	if (c->select_ctx == NULL) {
+		/* still parsing: the style sheets loaded so far */
+		if (html_css_new_selection_context(c, &temp) != NSERROR_OK)
+			temp = NULL;
+		c->select_ctx = temp;
+	}
+	if (c->unit_len_ctx.device_dpi == 0) {
+		/* (the viewport not measured yet: the default font sizes) */
+		dpi = nscss_screen_dpi;
+		fdef = FDIV(FMUL(F_96, FDIV(INTTOFIX(nsoption_int(font_size)), F_10)), F_72);
+		fmin = FDIV(FMUL(F_96, FDIV(INTTOFIX(nsoption_int(font_min_size)), F_10)), F_72);
+		c->unit_len_ctx.device_dpi = dpi;
+		c->unit_len_ctx.font_size_default = fdef;
+		c->unit_len_ctx.font_size_minimum = fmin;
+	}
+	if (c->select_ctx != NULL) {
+		for (i = depth - 1; i >= 0; i--) {
+			css_select_results *r = box_style_select(c, parent,
+					root_style, chain[i]);
+			if (r == NULL || r->styles[CSS_PSEUDO_ELEMENT_NONE] == NULL) {
+				if (r != NULL)
+					css_select_results_destroy(r);
+				parent = NULL;
+				break;
+			}
+			res[(*nres)++] = r;
+			parent = r->styles[CSS_PSEUDO_ELEMENT_NONE];
+			if (i == depth - 1)
+				root_style = parent;
+		}
+	}
+	if (dpi != 0) {
+		c->unit_len_ctx.device_dpi = 0;
+		c->unit_len_ctx.font_size_default = 0;
+		c->unit_len_ctx.font_size_minimum = 0;
+	}
+	if (temp != NULL) {
+		c->select_ctx = NULL;
+		css_select_ctx_destroy(temp);
+	}
+	for (i = 0; i < depth; i++)
+		dom_node_unref(chain[i]);
+	return parent;
+}
+
 static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
@@ -1232,6 +1340,10 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	struct box *box;
 	char buf[64];
 	JSValue v = JS_NewString(ctx, "");
+	/* Onyx: without a box, the style selected for it (qjs_unboxed_style) */
+	css_select_results *ures[QJS_UNBOXED_DEPTH];
+	int nures = 0;
+	const css_computed_style *style = NULL;
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
@@ -1240,7 +1352,13 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	prop = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
 	if (prop == NULL)
 		return v;
-	if (box == NULL || box->style == NULL) {
+	if (box != NULL && box->style != NULL)
+		style = box->style;
+	else
+		style = qjs_unboxed_style(t, n, ures, &nures);
+	if (style == NULL) {
+		while (nures > 0)
+			css_select_results_destroy(ures[--nures]);
 		if (strcmp(prop, "display") == 0) {
 			JS_FreeValue(ctx, v);
 			v = JS_NewString(ctx, "none");
@@ -1256,33 +1374,39 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 			"table-footer-group", "table-row", "table-column-group",
 			"table-column", "table-cell", "table-caption", "none",
 			"flex", "inline-flex", "grid", "inline-grid" };
-		uint8_t dv = css_computed_display(box->style, false);
+		uint8_t dv = css_computed_display(style, false);
 		snprintf(buf, sizeof(buf), "%s", dv < sizeof(d) / sizeof(d[0]) ?
 				d[dv] : "block");
 	} else if (strcmp(prop, "visibility") == 0) {
 		snprintf(buf, sizeof(buf), "%s", css_computed_visibility(
-				box->style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
+				style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
 				"visible");
 	} else if (strcmp(prop, "position") == 0) {
 		static const char *p[] = { "static", "static", "relative",
 			"absolute", "fixed", "sticky" };
-		uint8_t pv = css_computed_position(box->style);
+		uint8_t pv = css_computed_position(style);
 		snprintf(buf, sizeof(buf), "%s", pv < 6 ? p[pv] : "static");
 	} else if (strcmp(prop, "opacity") == 0) {
 		css_fixed o = INTTOFIX(1);
-		css_computed_opacity(box->style, &o);
+		css_computed_opacity(style, &o);
 		snprintf(buf, sizeof(buf), "%g", FIXTOFLT(o));
 	} else if (strcmp(prop, "width") == 0) {
-		snprintf(buf, sizeof(buf), "%dpx", box->width);
+		if (box != NULL && box->style == style)
+			snprintf(buf, sizeof(buf), "%dpx", box->width);
+		else
+			snprintf(buf, sizeof(buf), "auto");
 	} else if (strcmp(prop, "height") == 0) {
-		snprintf(buf, sizeof(buf), "%dpx", box->height);
+		if (box != NULL && box->style == style)
+			snprintf(buf, sizeof(buf), "%dpx", box->height);
+		else
+			snprintf(buf, sizeof(buf), "auto");
 	} else if (strcmp(prop, "color") == 0 ||
 		   strcmp(prop, "background-color") == 0) {
 		css_color c = 0;
 		if (prop[0] == 'c')
-			css_computed_color(box->style, &c);
+			css_computed_color(style, &c);
 		else
-			css_computed_background_color(box->style, &c);
+			css_computed_background_color(style, &c);
 		if ((c >> 24) == 0xff)
 			snprintf(buf, sizeof(buf), "rgb(%u, %u, %u)",
 				 (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
@@ -1293,11 +1417,13 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	} else if (strcmp(prop, "font-size") == 0) {
 		css_fixed len = 0;
 		css_unit unit = CSS_UNIT_PX;
-		css_computed_font_size(box->style, &len, &unit);
+		css_computed_font_size(style, &len, &unit);
 		snprintf(buf, sizeof(buf), "%gpx", FIXTOFLT(len));
 	}
 	JS_FreeCString(ctx, prop);
 	JS_FreeValue(ctx, v);
+	while (nures > 0)
+		css_select_results_destroy(ures[--nures]);
 	return JS_NewString(ctx, buf);
 }
 
@@ -2495,7 +2621,59 @@ static JSValue n_set_url(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 	return JS_TRUE;
 }
 
+/* ceHook(fn): fn(element) is called for each element inserted outside the scripts (the
+ * parser): html5.js upgrades the custom elements there (Onyx) */
+static JSValue n_ce_hook(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+
+	JS_FreeValue(ctx, t->ce_hook);
+	t->ce_hook = argc > 0 && JS_IsFunction(ctx, argv[0]) ?
+		JS_DupValue(ctx, argv[0]) : JS_UNDEFINED;
+	return JS_UNDEFINED;
+}
+
+/* the elements js_handle_new_element kept, shown to html5.js' hook (in tree order) */
+static void qjs_ce_flush(jsthread *t)
+{
+	dom_node **list = t->ce_pending;
+	int n = t->ce_npending, i;
+
+	t->ce_pending = NULL;
+	t->ce_npending = t->ce_cappending = 0;
+	guit->misc->schedule(-1, qjs_ce_later, t);
+	for (i = 0; i < n; i++) {
+		if (!t->closed && JS_IsFunction(t->ctx, t->ce_hook)) {
+			JSValue fn = JS_DupValue(t->ctx, t->ce_hook);
+			JSValue w = qjs_wrap(t, list[i]);
+			JSValue r;
+
+			t->in_use++;	/* (the jobs run when the caller leaves) */
+			r = JS_Call(t->ctx, fn, JS_UNDEFINED, 1, (JSValueConst *) &w);
+			if (JS_IsException(r))
+				qjs_report(t->ctx, "customElements");
+			t->in_use--;
+			JS_FreeValue(t->ctx, r);
+			JS_FreeValue(t->ctx, w);
+			JS_FreeValue(t->ctx, fn);
+		}
+		dom_node_unref(list[i]);
+	}
+	free(list);
+}
+
+static void qjs_ce_later(void *p)
+{
+	jsthread *t = p;
+
+	if (t->ce_npending > 0 && t->in_use == 0) {
+		qjs_enter(t);	/* (flushes) */
+		qjs_leave(t);
+	}
+}
+
 static const JSCFunctionListEntry qjs_natives_html5[] = {
+	JS_CFUNC_DEF("ceHook", 1, n_ce_hook),
 	JS_CFUNC_DEF("setURL", 1, n_set_url),
 	JS_CFUNC_DEF("createDocument", 0, n_create_document),
 	JS_CFUNC_DEF("createIn", 4, n_create_in),
@@ -2671,6 +2849,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetContextOpaque(t->ctx, t);
 	t->modsrc = JS_NewObject(t->ctx);	/* (Onyx: ES modules) */
 	t->modmissing = JS_NewArray(t->ctx);
+	t->ce_hook = JS_UNDEFINED;	/* (Onyx: custom elements) */
 	heap->threads++;
 
 	/* the prelude: a function of the natives, run once */
@@ -2733,6 +2912,10 @@ static void qjs_thread_free(jsthread *t)
 	qjs_timers_stop(t);
 	qjs_reqs_stop(t);
 	guit->misc->schedule(-1, qjs_load_later, t);
+	guit->misc->schedule(-1, qjs_ce_later, t);	/* (Onyx: custom elements) */
+	while (t->ce_npending > 0)
+		dom_node_unref(t->ce_pending[--t->ce_npending]);
+	free(t->ce_pending);
 	for (i = 0; i < t->capwraps; i++) {
 		if (t->wraps[i].node != NULL)
 			JS_FreeValue(t->ctx, t->wraps[i].obj);
@@ -2744,6 +2927,7 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->dispatch);
 	JS_FreeValue(t->ctx, t->modsrc);
 	JS_FreeValue(t->ctx, t->modmissing);
+	JS_FreeValue(t->ctx, t->ce_hook);
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
@@ -2899,8 +3083,25 @@ bool js_dom_event_add_listener(jsthread *thread, struct dom_document *document,
 void js_handle_new_element(jsthread *thread, struct dom_element *node)
 {
 	/* (the on* attributes are read when an event is dispatched: dom.js) */
-	(void) thread;
-	(void) node;
+	/* Onyx: once a custom element is defined, the elements inserted are shown to html5.js
+	 * -- not now: in a mutation event the DOM is read-only (libdom); before the next
+	 * script runs, else from the scheduler (qjs_ce_flush) */
+	jsthread *t = thread;
+
+	if (t == NULL || t->closed || !JS_IsFunction(t->ctx, t->ce_hook))
+		return;
+	if (t->ce_npending == t->ce_cappending) {
+		int cap = t->ce_cappending ? t->ce_cappending * 2 : 64;
+		dom_node **p = realloc(t->ce_pending, cap * sizeof(*p));
+		if (p == NULL)
+			return;
+		t->ce_pending = p;
+		t->ce_cappending = cap;
+	}
+	dom_node_ref((dom_node *) node);
+	t->ce_pending[t->ce_npending++] = (dom_node *) node;
+	if (t->ce_npending == 1)
+		guit->misc->schedule(0, qjs_ce_later, t);
 }
 
 /* exported interface documented in js.h */

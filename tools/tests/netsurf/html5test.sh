@@ -52,6 +52,9 @@ function report(r) {
 	document.getElementById('out').textContent = c.score + ' / ' + c.maximum;
 }
 var done = false, runner = null;
+/* html5test.co starts its run once WhichBrowser (a script it loads) is there: after the
+ * parse, the style sheets loaded -- here, at the load */
+window.addEventListener('load', function () {
 try {
 	runner = new Test(function (r) { done = true; report(r); },
 		function (e) { console.log('HTML5TEST error ' + (e && e.message)); });
@@ -69,6 +72,7 @@ try {
 } catch (e) {
 	console.log('HTML5TEST error ' + e.message + ' ' + e.stack);
 }
+});
 </script></body></html>
 EOF
 make -f $T/host.mk OUT="$OUT/build" -j4 >"$OUT/build.log" 2>&1 || { echo "build failed: $OUT/build.log"; exit 1; }

@@ -664,6 +664,10 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 	if (c->stylesheets[STYLESHEET_BASE].sheet == NULL) {
 		return NSERROR_CSS_BASE;
 	}
+	/* Onyx: (nor before it is fetched: a script's getComputedStyle during the parse) */
+	if (hlcache_handle_get_content(c->stylesheets[STYLESHEET_BASE].sheet) == NULL) {
+		return NSERROR_CSS_BASE;
+	}
 
 	/* Create selection context */
 	css_ret = css_select_ctx_create(&select_ctx);
@@ -691,7 +695,12 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 			origin = CSS_ORIGIN_USER;
 		}
 
-		if (hsheet->sheet != NULL) {
+		/* Onyx: only the sheets loaded (a script's getComputedStyle during the parse
+		 * makes a selection context while other sheets are still fetched) */
+		if (hsheet->sheet != NULL &&
+		    hlcache_handle_get_content(hsheet->sheet) != NULL &&
+		    (content_get_status(hsheet->sheet) == CONTENT_STATUS_READY ||
+		     content_get_status(hsheet->sheet) == CONTENT_STATUS_DONE)) {
 			sheet = nscss_get_stylesheet(hsheet->sheet);
 		}
 

@@ -17,10 +17,10 @@
  *    sanitization, valueAsNumber / valueAsDate, stepUp / stepDown, the constraint
  *    validation API (validity, checkValidity, reportValidity, setCustomValidity) and the
  *    submission it blocks, <output>, <datalist>, <meter>, <progress>;
- *  - custom elements (define, upgrades, the lifecycle callbacks) and a shadow root tree;
- *  - smaller APIs: Blob / File / FileReader / FileList, URL.createObjectURL, crypto,
- *    performance marks, EventSource, Workers on a second QuickJS context, history's
- *    pushState changing the URL shown...
+ *  - custom elements (define, upgrades, the lifecycle callbacks, ElementInternals);
+ *  - smaller APIs: the session history (pushState changing the URL shown), streams,
+ *    Blob / File / FileReader / FileList, URL.createObjectURL, microdata, performance
+ *    marks and PerformanceObserver, XMLHttpRequest's documents...
  *
  * Every feature said to be there works: nothing answers "supported" without doing it.
  */
@@ -90,7 +90,7 @@ const attrProto = {
 	hasAttribute(name) { return N.attr(this, attrKey(this, name)) !== null; },
 	setAttribute(name, value) {
 		const k = attrKey(this, name);
-		const old = I.observers && I.observers.size ? N.attr(this, k) : null;
+		const old = (I.observers && I.observers.size) || ceDefs.size ? N.attr(this, k) : null;
 		N.setAttr(this, k, String(value));
 		attrRecord(this, k, old);
 		ceAttributeChanged(this, k, old, String(value));
@@ -216,6 +216,7 @@ elementClass('HTMLDirectoryElement', ['dir']);
 elementClass('HTMLFrameElement', ['frame']);
 elementClass('HTMLSelectedContentElement', ['selectedcontent']);
 if (G.HTMLUnknownElement) TAGS['*unknown'] = G.HTMLUnknownElement.prototype;
+TAGS['*custom'] = HTMLElement.prototype;	/* (a valid custom element name: HTMLElement) */
 
 /* SVG: the classes dom.js gave plain names get their namespaced name; MathML */
 if (G.SVGElement) {
@@ -2178,8 +2179,587 @@ let streamOfBytes = null;	/* (a stream of the bytes a promise gives: Blob.stream
 	};
 }
 
-/* attribute changes: <details> / <dialog> open (custom elements add theirs below) */
-ceAttributeChanged = (el, k, old, now) => { if (k === 'open') openChanged(el, old, now); };
+
+/* ---- custom elements: customElements.define, the upgrades, the lifecycle callbacks ----------
+ * A defined name's elements get the class's prototype (TAGS: the wrappers qjs.c makes), its
+ * constructor runs on createElement / new, and on the elements already there (an upgrade)
+ * once they are in the document; connectedCallback / disconnectedCallback on insertion and
+ * removal (the scripts' DOM calls here, the parser's through qjs.c's ceHook);
+ * attributeChangedCallback for observedAttributes. Customized built-in elements
+ * ({ extends }) are recorded but not upgraded, as in Safari. */
+const ceDefs = new Map();		/* name -> definition */
+const ceByCtor = new Map();		/* constructor -> definition */
+const ceState = new WeakMap();		/* element -> { def, connected } (upgraded ones) */
+const ceWaiting = new Map();		/* name -> [resolve, promise] of whenDefined */
+let ceDefining = false;
+const RESERVED_CE = ['annotation-xml', 'color-profile', 'font-face', 'font-face-src',
+	'font-face-uri', 'font-face-format', 'font-face-name', 'missing-glyph'];
+function validCEName(n) {
+	return /^[a-z][.0-9_a-z·À-ÖØ-öø-ͽͿ-῿‌‍‿⁀⁰-↏Ⰰ-⿯、-퟿豈-﷏ﷰ-�-]*-[.0-9_a-z·À-ÖØ-öø-ͽͿ-῿‌‍‿⁀⁰-↏Ⰰ-⿯、-퟿豈-﷏ﷰ-�\u{10000}-\u{effff}-]*$/u.test(n) &&
+		!RESERVED_CE.includes(n);
+}
+function ceCall(el, def, cb, args) {
+	const f = def.callbacks[cb];
+	if (typeof f === 'function') {
+		try { f.apply(el, args); } catch (e) { report(e); }
+	}
+}
+function ceIsConnected(el) {
+	for (let n = el; n; n = N.parent(n))
+		if (N.type(n) === DOCUMENT_NODE)
+			return n === G.document;
+	return false;
+}
+/* the constructor run on an element already there */
+function ceUpgrade(el, def) {
+	if (ceState.has(el) || def.failed.has(el)) return;
+	Object.setPrototypeOf(el, def.ctor.prototype);
+	def.building.push(el);	/* (the element being upgraded: its constructor runs) */
+	try {
+		const r = Reflect.construct(def.ctor, []);
+		if (r !== el) throw domError('custom element constructor returned another object', 'InvalidStateError');
+	} catch (e) {
+		def.failed.add(el);
+		report(e);
+		return;
+	} finally {
+		def.building.pop();
+	}
+	ceState.set(el, { def, connected: false });
+	if (def.observed.size)
+		for (const k of def.observed) {
+			const v = N.attr(el, k);
+			if (v !== null) ceCall(el, def, 'attributeChangedCallback', [k, null, v, null]);
+		}
+	ceCheckOne(el);
+}
+/* connected / disconnected as the element is now */
+function ceCheckOne(el) {
+	const s = ceState.get(el);
+	if (!s) {
+		const def = N.nsURI(el) === NS_HTML ? ceDefs.get(N.lname(el)) : undefined;
+		if (def && !def.builtin && ceIsConnected(el)) ceUpgrade(el, def);
+		return;
+	}
+	const now = ceIsConnected(el);
+	if (now !== s.connected) {
+		s.connected = now;
+		ceCall(el, s.def, now ? 'connectedCallback' : 'disconnectedCallback', []);
+	}
+}
+/* the element and its descendants (in tree order) */
+function ceCheck(n) {
+	if (!ceDefs.size || !n) return;
+	const t = N.type(n);
+	if (t === ELEMENT_NODE) ceCheckOne(n);
+	if (t === ELEMENT_NODE || t === DOCUMENT_FRAGMENT_NODE || t === DOCUMENT_NODE)
+		for (const e of Element.prototype.querySelectorAll.call(n, '*'))
+			ceCheckOne(e);
+}
+/* the elements a removal took out of the document: their disconnectedCallback */
+function ceRemoved(n) {
+	if (!ceDefs.size || N.type(n) !== ELEMENT_NODE) return;
+	const all = [n, ...Element.prototype.querySelectorAll.call(n, '*')];
+	for (const e of all) if (ceState.has(e)) ceCheckOne(e);
+}
+
+/* the natives the DOM calls go through: insertion and removal seen */
+{
+	const insert = N.insert, remove = N.remove, setHTML = N.setHTML, setText = N.setText;
+	N.insert = function (p, c, ref) {
+		if (!ceDefs.size) return insert(p, c, ref);
+		const frag = N.type(c) === DOCUMENT_FRAGMENT_NODE ? N.children(c) : null;
+		let r;
+		ceInScript++;	/* (qjs.c's hook sees this insertion too: skipped) */
+		try { r = insert(p, c, ref); } finally { ceInScript--; }
+		if (frag) for (const k of frag) ceCheck(k); else ceCheck(c);
+		return r;
+	};
+	N.remove = function (p, c) {
+		const r = remove(p, c);
+		if (ceDefs.size) ceRemoved(c);
+		return r;
+	};
+	const replacing = (fn) => function (el, ...args) {
+		if (!ceDefs.size) return fn(el, ...args);
+		const old = N.children(el);
+		ceInScript++;
+		let r;
+		try { r = fn(el, ...args); } finally { ceInScript--; }
+		for (const k of old) ceRemoved(k);
+		ceCheck(el);
+		return r;
+	};
+	N.setHTML = replacing(setHTML);
+	N.setText = replacing(setText);
+}
+let ceInScript = 0;
+/* the parser's insertions (qjs.c: js_handle_new_element) */
+function ceParserHook(el) {
+	if (ceInScript || !ceDefs.size) return;
+	ceCheck(el);
+}
+
+/* new MyElement(), createElement('my-element'), and the upgrades: the HTMLElement
+ * constructor makes (or hands back) the element */
+{
+	const OldHTMLElement = HTMLElement;
+	const HTMLElementCE = function HTMLElement() {
+		const nt = new.target;
+		if (!nt) throw new TypeError("Failed to construct 'HTMLElement': use 'new'");
+		const def = ceByCtor.get(nt);
+		if (!def) throw new TypeError('Illegal constructor');
+		if (def.building.length) {
+			const el = def.building[def.building.length - 1];
+			if (el !== null) {
+				def.building[def.building.length - 1] = null;	/* (the constructor ran once) */
+				Object.setPrototypeOf(el, nt.prototype);
+				return el;
+			}
+		}
+		const el = mainCreate.createElement.call(G.document, def.name);
+		Object.setPrototypeOf(el, nt.prototype);
+		ceState.set(el, { def, connected: false });
+		return el;
+	};
+	HTMLElementCE.prototype = OldHTMLElement.prototype;
+	Object.defineProperty(OldHTMLElement.prototype, 'constructor', { value: HTMLElementCE,
+		writable: true, configurable: true });
+	Object.setPrototypeOf(HTMLElementCE, Object.getPrototypeOf(OldHTMLElement));
+	G.HTMLElement = HTMLElementCE;
+}
+
+class CustomElementRegistry {
+	define(name, ctor, options) {
+		name = String(name);
+		if (typeof ctor !== 'function' || !ctor.prototype)
+			throw new TypeError('customElements.define: not a constructor');
+		if (!validCEName(name))
+			throw domError('"' + name + '" is not a valid custom element name', 'SyntaxError');
+		if (ceDefs.has(name))
+			throw domError('"' + name + '" has already been defined', 'NotSupportedError');
+		if (ceByCtor.has(ctor))
+			throw domError('this constructor has already been defined', 'NotSupportedError');
+		if (ceDefining)
+			throw domError('customElements.define: already defining', 'NotSupportedError');
+		const ext = options && options.extends !== undefined ? String(options.extends) : null;
+		ceDefining = true;
+		let def;
+		try {
+			const proto = ctor.prototype;
+			if (proto === null || typeof proto !== 'object') throw new TypeError('prototype is not an object');
+			const callbacks = {};
+			for (const k of ['connectedCallback', 'disconnectedCallback', 'adoptedCallback',
+					'attributeChangedCallback', 'connectedMoveCallback'])
+				callbacks[k] = proto[k];
+			let observed = [];
+			if (typeof callbacks.attributeChangedCallback === 'function' && ctor.observedAttributes !== undefined)
+				observed = [...ctor.observedAttributes].map(String);
+			def = { name, ctor, callbacks, observed: new Set(observed), builtin: ext,
+				failed: new WeakSet(), building: [], formAssociated: !!ctor.formAssociated };
+		} finally {
+			ceDefining = false;
+		}
+		ceDefs.set(name, def);
+		ceByCtor.set(ctor, def);
+		if (!ext) {
+			if (!ceHooked) { N.ceHook(ceParserHook); ceHooked = true; }
+			/* the elements already in the document, in tree order */
+			for (const e of [...G.document.getElementsByTagName(name)])
+				if (N.nsURI(e) === NS_HTML) ceCheckOne(e);
+		}
+		const w = ceWaiting.get(name);
+		if (w) { ceWaiting.delete(name); w[0](ctor); }
+	}
+	get(name) { const d = ceDefs.get(String(name)); return d ? d.ctor : undefined; }
+	getName(ctor) { const d = ceByCtor.get(ctor); return d ? d.name : null; }
+	whenDefined(name) {
+		name = String(name);
+		if (!validCEName(name))
+			return Promise.reject(domError('"' + name + '" is not a valid custom element name', 'SyntaxError'));
+		const d = ceDefs.get(name);
+		if (d) return Promise.resolve(d.ctor);
+		let w = ceWaiting.get(name);
+		if (!w) {
+			let res;
+			const p = new Promise(r => { res = r; });
+			w = [res, p];
+			ceWaiting.set(name, w);
+		}
+		return w[1];
+	}
+	upgrade(root) {
+		const all = N.type(root) === ELEMENT_NODE ? [root] : [];
+		all.push(...Element.prototype.querySelectorAll.call(root, '*'));
+		for (const e of all) {
+			const def = N.nsURI(e) === NS_HTML ? ceDefs.get(N.lname(e)) : undefined;
+			if (def && !def.builtin) ceUpgrade(e, def);
+		}
+	}
+}
+let ceHooked = false;
+const customElements = new CustomElementRegistry();
+G.CustomElementRegistry = CustomElementRegistry;
+Object.defineProperty(G, 'customElements', { value: customElements, writable: true, configurable: true });
+/* createElement of a defined name: its constructor runs */
+{
+	const create = G.Document.prototype.createElement;
+	def(G.Document.prototype, {
+		createElement(name, options) {
+			if (ceDefs.size && isMainDoc(this)) {
+				const d = ceDefs.get(String(name).toLowerCase());
+				if (d && !d.builtin) {
+					const el = new d.ctor();
+					return el;
+				}
+			}
+			return create.call(this, name, options);
+		},
+	});
+}
+/* ElementInternals: the form-associated custom elements' value and validity */
+class ElementInternals {
+	constructor(el) { Object.defineProperty(this, '_el', { value: el }); this._value = null; this._msg = ''; this._flags = {}; }
+	setFormValue(v) { this._value = v; }
+	get form() { return this._el.closest ? this._el.closest('form') : null; }
+	setValidity(flags = {}, message = '') { this._flags = Object.assign({}, flags); this._msg = String(message); }
+	get willValidate() { return true; }
+	get validity() {
+		const f = this._flags, v = {};
+		for (const k of ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooLong', 'tooShort',
+				'rangeUnderflow', 'rangeOverflow', 'stepMismatch', 'badInput', 'customError'])
+			v[k] = !!f[k];
+		v.valid = !Object.values(v).some(Boolean);
+		return v;
+	}
+	get validationMessage() { return this.validity.valid ? '' : this._msg; }
+	checkValidity() {
+		if (this.validity.valid) return true;
+		this._el.dispatchEvent(new G.Event('invalid', { cancelable: true }));
+		return false;
+	}
+	reportValidity() { return this.checkValidity(); }
+	get labels() { return []; }
+	get states() { return this._states || (this._states = new Set()); }
+	get shadowRoot() { return null; }
+}
+G.ElementInternals = ElementInternals;
+def(HTMLElement.prototype, {
+	attachInternals() {
+		const s = ceState.get(this);
+		if (!s) throw domError('attachInternals: not a custom element', 'NotSupportedError');
+		if (s.internals) throw domError('attachInternals: already attached', 'NotSupportedError');
+		return (s.internals = new ElementInternals(this));
+	},
+});
+
+/* ---- microdata: itemScope / itemProp / itemValue, properties, document.getItems ------------ */
+{
+	const proto = HTMLElement.prototype;
+	Object.defineProperty(proto, 'itemScope', { configurable: true,
+		get() { return N.attr(this, 'itemscope') !== null; },
+		set(v) { this.toggleAttribute('itemscope', !!v); } });
+	for (const [p, a] of [['itemType', 'itemtype'], ['itemProp', 'itemprop'], ['itemRef', 'itemref']])
+		Object.defineProperty(proto, p, { configurable: true,
+			get() { return new G.DOMTokenList(this, a); },
+			set(v) { this.setAttribute(a, v); } });
+	Object.defineProperty(proto, 'itemId', { configurable: true,
+		get() {
+			const v = N.attr(this, 'itemid');
+			if (v === null) return '';
+			try { return new URL(v, N.url()).href; } catch (e) { return v; }
+		},
+		set(v) { this.setAttribute('itemid', v); } });
+	const URL_ATTR = { audio: 'src', embed: 'src', iframe: 'src', img: 'src', source: 'src',
+		track: 'src', video: 'src', a: 'href', area: 'href', link: 'href', object: 'data' };
+	const abs = v => { try { return new URL(v, N.url()).href; } catch (e) { return v; } };
+	Object.defineProperty(proto, 'itemValue', { configurable: true,
+		get() {
+			if (N.attr(this, 'itemprop') === null) return null;
+			if (N.attr(this, 'itemscope') !== null) return this;
+			const t = N.lname(this);
+			if (t === 'meta') return N.attr(this, 'content') || '';
+			if (URL_ATTR[t]) { const v = N.attr(this, URL_ATTR[t]); return v === null ? '' : abs(v); }
+			if (t === 'data' || t === 'meter') return N.attr(this, 'value') || '';
+			if (t === 'time') { const d = N.attr(this, 'datetime'); return d !== null ? d : this.textContent; }
+			return this.textContent;
+		},
+		set(v) {
+			if (N.attr(this, 'itemprop') === null) throw domError('itemValue: no itemprop', 'InvalidAccessError');
+			if (N.attr(this, 'itemscope') !== null) throw domError('itemValue: an item', 'InvalidAccessError');
+			const t = N.lname(this), s = String(v);
+			if (t === 'meta') this.setAttribute('content', s);
+			else if (URL_ATTR[t]) this.setAttribute(URL_ATTR[t], s);
+			else if (t === 'data' || t === 'meter') this.setAttribute('value', s);
+			else if (t === 'time') this.setAttribute('datetime', s);
+			else this.textContent = s;
+		} });
+	/* the item's properties: its descendants (and itemref's elements) with itemprop, not
+	 * inside a nested item */
+	function propertiesOf(item) {
+		const root = item.getRootNode(), out = [], seen = new Set();
+		const pending = [...N.children(item)];
+		for (const id of (N.attr(item, 'itemref') || '').split(/\s+/).filter(Boolean)) {
+			const e = root.getElementById ? root.getElementById(id) :
+				Element.prototype.querySelector.call(root, '#' + G.CSS.escape(id));
+			if (e) pending.push(e);
+		}
+		while (pending.length) {
+			const e = pending.shift();
+			if (N.type(e) !== ELEMENT_NODE || seen.has(e) || e === item) continue;
+			seen.add(e);
+			if (N.attr(e, 'itemprop') !== null && (N.attr(e, 'itemprop') || '').trim()) out.push(e);
+			if (N.attr(e, 'itemscope') === null) pending.unshift(...N.children(e));
+		}
+		const pos = (a, b) => a.compareDocumentPosition ? (a.compareDocumentPosition(b) & 4 ? -1 : 1) : 0;
+		return out.sort(pos);
+	}
+	class HTMLPropertiesCollection {
+		constructor(els) {
+			Object.defineProperty(this, '_e', { value: els });
+			els.forEach((e, i) => { this[i] = e; });
+			for (const e of els)
+				for (const n of (N.attr(e, 'itemprop') || '').split(/\s+/).filter(Boolean))
+					if (!(n in this)) Object.defineProperty(this, n, { value: this.namedItem(n),
+						configurable: true });
+		}
+		get length() { return this._e.length; }
+		item(i) { return this._e[i] || null; }
+		namedItem(n) {
+			const list = this._e.filter(e => (N.attr(e, 'itemprop') || '').split(/\s+/).includes(n));
+			list.getValues = () => list.map(e => e.itemValue);
+			return list;
+		}
+		get names() {
+			const s = [];
+			for (const e of this._e)
+				for (const n of (N.attr(e, 'itemprop') || '').split(/\s+/).filter(Boolean))
+					if (!s.includes(n)) s.push(n);
+			return s;
+		}
+		[Symbol.iterator]() { return this._e[Symbol.iterator](); }
+	}
+	G.HTMLPropertiesCollection = HTMLPropertiesCollection;
+	Object.defineProperty(proto, 'properties', { configurable: true,
+		get() { return new HTMLPropertiesCollection(N.attr(this, 'itemscope') !== null ? propertiesOf(this) : []); } });
+	def(G.Document.prototype, {
+		getItems(types) {
+			const want = (types === undefined ? '' : String(types)).split(/\s+/).filter(Boolean);
+			return [...Element.prototype.querySelectorAll.call(this, '[itemscope]')].filter(e =>
+				N.attr(e, 'itemprop') === null && (!want.length ||
+					want.every(t => (N.attr(e, 'itemtype') || '').split(/\s+/).includes(t))));
+		},
+	});
+}
+
+/* ---- <ol reversed> (NetSurf's layout numbers it backwards), start, type ------------------ */
+if (G.HTMLOListElement) {
+	const P = G.HTMLOListElement.prototype;
+	Object.defineProperty(P, 'reversed', { configurable: true,
+		get() { return N.attr(this, 'reversed') !== null; },
+		set(v) { this.toggleAttribute('reversed', !!v); } });
+	Object.defineProperty(P, 'start', { configurable: true,
+		get() {
+			const v = parseInt(N.attr(this, 'start'), 10);
+			if (!isNaN(v)) return v;
+			return N.attr(this, 'reversed') !== null ?
+				N.children(this).filter(c => N.type(c) === ELEMENT_NODE && N.lname(c) === 'li').length : 1;
+		},
+		set(v) { this.setAttribute('start', String(Math.trunc(+v) || 0)); } });
+	if (!('type' in P))
+		Object.defineProperty(P, 'type', { configurable: true,
+			get() { return N.attr(this, 'type') || ''; },
+			set(v) { this.setAttribute('type', v); } });
+}
+
+/* ---- :read-write / :read-only, :defined ----------------------------------------------------- */
+{
+	const TEXTISH = ['text', 'search', 'url', 'tel', 'email', 'password', 'date', 'month', 'week',
+		'time', 'datetime-local', 'number'];
+	const readWrite = e => {
+		const t = N.lname(e);
+		if (N.nsURI(e) !== NS_HTML) return false;
+		if (t === 'input')
+			return TEXTISH.includes(inputType(e)) && N.attr(e, 'readonly') === null && !e.disabled;
+		if (t === 'textarea')
+			return N.attr(e, 'readonly') === null && !e.disabled;
+		return !!e.isContentEditable;
+	};
+	const prev = N.internals && N.internals.pseudo;
+	if (N.internals) N.internals.pseudo = (e, name, arg) => {
+		switch (name) {
+		case 'read-write': return readWrite(e);
+		case 'read-only': return !readWrite(e);
+		case 'defined': return N.nsURI(e) !== NS_HTML || !N.lname(e).includes('-') || ceState.has(e);
+		}
+		return prev ? prev(e, name, arg) : false;
+	};
+}
+
+/* ---- performance: marks, measures, PerformanceObserver ------------------------------------ */
+{
+	const perf = G.performance;
+	const entries = [];
+	const perfObservers = new Set();
+	class PerformanceEntry {
+		constructor(name, type, start, duration) {
+			Object.defineProperty(this, 'name', { value: name, enumerable: true });
+			Object.defineProperty(this, 'entryType', { value: type, enumerable: true });
+			Object.defineProperty(this, 'startTime', { value: start, enumerable: true });
+			Object.defineProperty(this, 'duration', { value: duration, enumerable: true });
+		}
+		toJSON() { return { name: this.name, entryType: this.entryType, startTime: this.startTime, duration: this.duration, detail: this.detail }; }
+	}
+	class PerformanceMark extends PerformanceEntry {
+		constructor(name, opts = {}) {
+			if (name === undefined) throw new TypeError('PerformanceMark: a name is needed');
+			const t = opts && opts.startTime !== undefined ? +opts.startTime : perf.now();
+			if (t < 0) throw new TypeError('PerformanceMark: negative startTime');
+			super(String(name), 'mark', t, 0);
+			Object.defineProperty(this, 'detail', { value: opts && opts.detail !== undefined ? structuredClone(opts.detail) : null, enumerable: true });
+		}
+	}
+	class PerformanceMeasure extends PerformanceEntry {}
+	/* an observer's entries: its callback in a task */
+	const deliver = (o, e) => {
+		o._queue.push(e);
+		if (o._pending) return;
+		o._pending = true;
+		task(() => {
+			o._pending = false;
+			if (!o._queue.length) return;
+			const list = new PerformanceObserverEntryList(o._queue.splice(0));
+			o._cb.call(o, list, o, { droppedEntriesCount: 0 });
+		});
+	};
+	const record = e => {
+		entries.push(e);
+		for (const o of perfObservers)
+			if (o._types.has(e.entryType)) deliver(o, e);
+	};
+	const markTime = (v, what) => {
+		if (v === undefined) return undefined;
+		if (typeof v === 'number') return v;
+		const m = entries.filter(e => e.entryType === 'mark' && e.name === String(v)).pop();
+		if (!m) throw domError('performance.' + what + ': no mark "' + v + '"', 'SyntaxError');
+		return m.startTime;
+	};
+	const byType = t => entries.filter(e => e.entryType === t);
+	def(perf, {
+		mark(name, opts) { const m = new PerformanceMark(name, opts); record(m); return m; },
+		measure(name, a, b) {
+			let start = 0, end = perf.now(), detail = null;
+			if (a !== null && typeof a === 'object') {
+				if (a.start !== undefined) start = markTime(a.start, 'measure');
+				if (a.end !== undefined) end = markTime(a.end, 'measure');
+				if (a.duration !== undefined) {
+					if (a.start !== undefined) end = start + +a.duration;
+					else start = end - +a.duration;
+				}
+				detail = a.detail !== undefined ? structuredClone(a.detail) : null;
+			} else {
+				if (a !== undefined) start = markTime(a, 'measure');
+				if (b !== undefined) end = markTime(b, 'measure');
+			}
+			const m = new PerformanceMeasure(String(name), 'measure', start, end - start);
+			Object.defineProperty(m, 'detail', { value: detail, enumerable: true });
+			record(m);
+			return m;
+		},
+		clearMarks(name) {
+			for (let i = entries.length - 1; i >= 0; i--)
+				if (entries[i].entryType === 'mark' && (name === undefined || entries[i].name === String(name)))
+					entries.splice(i, 1);
+		},
+		clearMeasures(name) {
+			for (let i = entries.length - 1; i >= 0; i--)
+				if (entries[i].entryType === 'measure' && (name === undefined || entries[i].name === String(name)))
+					entries.splice(i, 1);
+		},
+		getEntries() { return entries.slice().sort((a, b) => a.startTime - b.startTime); },
+		getEntriesByType(t) { return byType(String(t)).sort((a, b) => a.startTime - b.startTime); },
+		getEntriesByName(n, t) {
+			return entries.filter(e => e.name === String(n) && (t === undefined || e.entryType === String(t)))
+				.sort((a, b) => a.startTime - b.startTime);
+		},
+		toJSON() { return { timeOrigin: perf.timeOrigin }; },
+	});
+	class PerformanceObserverEntryList {
+		constructor(list) { Object.defineProperty(this, '_l', { value: list }); }
+		getEntries() { return this._l.slice(); }
+		getEntriesByType(t) { return this._l.filter(e => e.entryType === String(t)); }
+		getEntriesByName(n, t) { return this._l.filter(e => e.name === String(n) && (t === undefined || e.entryType === String(t))); }
+	}
+	const SUPPORTED = Object.freeze(['mark', 'measure']);
+	class PerformanceObserver {
+		constructor(cb) {
+			if (typeof cb !== 'function') throw new TypeError('PerformanceObserver: a callback is needed');
+			this._cb = cb; this._types = new Set(); this._queue = []; this._pending = false;
+		}
+		observe(opts = {}) {
+			const types = opts.entryTypes ? [...opts.entryTypes].map(String) : opts.type !== undefined ? [String(opts.type)] : null;
+			if (!types) throw new TypeError('PerformanceObserver.observe: entryTypes or type');
+			if (opts.entryTypes && opts.type !== undefined) throw new TypeError('PerformanceObserver.observe: entryTypes and type');
+			if (!opts.entryTypes) this._types.clear();
+			for (const t of types) if (SUPPORTED.includes(t)) this._types.add(t);
+			if (!this._types.size) return;
+			perfObservers.add(this);
+			if (opts.buffered && opts.type !== undefined)
+				for (const e of byType(String(opts.type))) deliver(this, e);
+		}
+		disconnect() { perfObservers.delete(this); this._queue = []; }
+		takeRecords() { return this._queue.splice(0); }
+		static get supportedEntryTypes() { return SUPPORTED; }
+	}
+	Object.assign(G, { PerformanceEntry, PerformanceMark, PerformanceMeasure, PerformanceObserver,
+		PerformanceObserverEntryList });
+}
+
+/* ---- XMLHttpRequest: responseType 'document', responseXML (DOMParser on the text) ---------- */
+if (G.XMLHttpRequest) {
+	const P = G.XMLHttpRequest.prototype;
+	const resp = Object.getOwnPropertyDescriptor(P, 'response');
+	const docOf = xhr => {
+		if (xhr.readyState < 4 || typeof xhr._res !== 'string') return null;
+		if (xhr._doc !== undefined) return xhr._doc;
+		const ct = (xhr._mime || xhr.getResponseHeader('content-type') || '').toLowerCase();
+		let type = null;
+		if (/text\/html/.test(ct)) type = xhr.responseType === 'document' ? 'text/html' : null;
+		else if (/[+/]xml\b|^\s*$/.test(ct) || /xml/.test(ct)) type = ct.includes('svg') ? 'image/svg+xml' : 'application/xml';
+		let d = null;
+		if (type) {
+			try {
+				d = new G.DOMParser().parseFromString(xhr._res, type);
+				if (type !== 'text/html' && d.querySelector && d.querySelector('parsererror')) d = null;
+			} catch (e) { d = null; }
+		}
+		Object.defineProperty(xhr, '_doc', { value: d, configurable: true });
+		return d;
+	};
+	def(P, {
+		get response() {
+			if (this.responseType === 'document') return docOf(this);
+			return resp.get.call(this);
+		},
+		get responseXML() {
+			if (this.responseType !== '' && this.responseType !== 'document')
+				throw domError('responseXML: responseType is ' + this.responseType, 'InvalidStateError');
+			return docOf(this);
+		},
+	});
+	const open = P.open;
+	P.open = function () { delete this._doc; return open.apply(this, arguments); };
+}
+
+/* attribute changes: <details> / <dialog> open, the custom elements' observedAttributes */
+ceAttributeChanged = (el, k, old, now) => {
+	if (k === 'open') openChanged(el, old, now);
+	if (ceDefs.size) {
+		const s = ceState.get(el);
+		if (s && s.def.observed.has(k))
+			ceCall(el, s.def, 'attributeChangedCallback', [k, old, now, null]);
+	}
+};
 
 return { serialize: outerHTMLOf, parseFragment, structuredClone };
 })

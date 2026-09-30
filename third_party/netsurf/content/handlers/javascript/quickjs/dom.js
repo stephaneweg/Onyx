@@ -1463,8 +1463,7 @@ function matchPseudo(e, p, scope) {
 		N.attr(e, 'disabled') === null;
 	case 'required': return N.attr(e, 'required') !== null;
 	case 'optional': return ['input', 'select', 'textarea'].includes(e.localName) && N.attr(e, 'required') === null;
-	case 'read-only': return N.attr(e, 'readonly') !== null;
-	case 'read-write': return ['input', 'textarea'].includes(e.localName) && N.attr(e, 'readonly') === null;
+	/* (Onyx: read-only, read-write, defined: html5.js, N.internals.pseudo) */
 	case 'placeholder-shown': return N.attr(e, 'placeholder') !== null && !e.value;
 	case 'link': case 'any-link': return ['a', 'area', 'link'].includes(e.localName) && N.attr(e, 'href') !== null;
 	case 'visited': case 'hover': case 'active': case 'focus-visible': case 'target-within':
@@ -1472,7 +1471,6 @@ function matchPseudo(e, p, scope) {
 	case 'focus': return G.document.activeElement === e;
 	case 'focus-within': { const a = G.document.activeElement; return !!a && e.contains(a); }
 	case 'target': { const h = decodeURIComponent((G.location.hash || '').slice(1)); return !!h && N.attr(e, 'id') === h; }
-	case 'defined': return true;
 	case 'lang': {
 		for (let n = e; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
 			const l = N.attr(n, 'lang');
