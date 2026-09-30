@@ -111,3 +111,83 @@ __attribute__((constructor)) static void memstat_start(void)
 	if (e != NULL && atoi(e) > 0)
 		pthread_create(&t, NULL, memstat_run, (void *) (unsigned long) atoi(e));
 }
+
+/* NS_PROF=<file>: a sampling profiler (no perf here) -- every 1 ms of CPU the native stack
+ * (backtrace) is kept; at exit each sample's addresses, as offsets in the executable, go to
+ * <file>, one line per sample, for tools/tests/netsurf/prof.sh (addr2line) to name */
+#include <execinfo.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/time.h>
+#define PROF_MAX 200000
+#define PROF_DEPTH 24
+static void *prof_buf[PROF_MAX][PROF_DEPTH];
+static unsigned char prof_n[PROF_MAX];
+static volatile int prof_count;
+static char prof_path[512];
+static unsigned long prof_base;	/* the executable's load address */	/* (NS_PROF, kept: the environment may be gone at exit) */
+static void prof_sig(int sig)
+{
+	int i = prof_count;
+	(void) sig;
+	if (i >= PROF_MAX) return;
+	prof_n[i] = (unsigned char) backtrace(prof_buf[i], PROF_DEPTH);
+	prof_count = i + 1;
+}
+static void prof_write(void)
+{
+	FILE *f = fopen(prof_path, "w");
+	unsigned long base = prof_base;
+	int i, k;
+	fprintf(stderr, "prof: %d samples to %s (%s)\n", prof_count, prof_path, f ? "ok" : "cannot write");
+	if (f == NULL) return;
+	for (i = 0; i < prof_count && i < PROF_MAX; i++) {
+		for (k = 2; k < prof_n[i]; k++)	/* (the handler and the signal frame skipped) */
+			fprintf(f, "%lx ", (unsigned long) prof_buf[i][k] - base);
+		fputc('\n', f);
+	}
+	fclose(f);
+}
+void onyx_host_exit_hook(void)	/* (fakekapi.cpp: a SIM exit -- atexit comes too late) */
+{
+	struct itimerval off = { { 0, 0 }, { 0, 0 } };
+	if (prof_path[0] == 0) return;
+	setitimer(ITIMER_PROF, &off, NULL);
+	prof_write();
+	prof_path[0] = 0;
+}
+static void prof_term(int sig)
+{
+	struct itimerval off = { { 0, 0 }, { 0, 0 } };
+	(void) sig;
+	setitimer(ITIMER_PROF, &off, NULL);
+	prof_write();
+	_exit(143);
+}
+__attribute__((constructor)) static void prof_start(void)
+{
+	struct itimerval it = { { 0, 1000 }, { 0, 1000 } };
+	void *warm[2];
+	if (getenv("NS_PROF") == NULL) return;
+	snprintf(prof_path, sizeof prof_path, "%s", getenv("NS_PROF"));
+	{
+		FILE *m = fopen("/proc/self/maps", "r");	/* its first mapping */
+		char line[512];
+		if (m != NULL) {
+			if (fgets(line, sizeof line, m) != NULL)
+				prof_base = strtoul(line, NULL, 16);
+			fclose(m);
+		}
+	}
+	struct sigaction sa;
+	backtrace(warm, 2);	/* (libgcc loaded now, not in the handler) */
+	memset(&sa, 0, sizeof sa);
+	sa.sa_handler = prof_sig;
+	sa.sa_flags = SA_RESTART;	/* (the loop's poll and reads not cut short) */
+	sigaction(SIGPROF, &sa, NULL);
+	sa.sa_handler = prof_term;	/* (a run stopped by timeout writes its samples too) */
+	sa.sa_flags = 0;
+	sigaction(SIGTERM, &sa, NULL);
+	setitimer(ITIMER_PROF, &it, NULL);
+	atexit(onyx_host_exit_hook);
+}

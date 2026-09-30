@@ -1029,7 +1029,10 @@ static int onyx_connect(const char *host, unsigned port)
 {
 	int sock, tries;
 	for (tries = 0; tries < 2; tries++) {
-		kapi_lock(&onyx_connect_lk);
+		/* (a connect takes 100 ms and more: the others wait asleep -- kapi_lock spun,
+		 * seven workers burning the cores the page needs) */
+		while (kapi__xchg(&onyx_connect_lk, 1) != 0)
+			kapi_msleep(5);
 		sock = kapi_tcp_connect(host, port);
 		kapi_unlock(&onyx_connect_lk);
 		if (sock >= 0)
