@@ -68,6 +68,8 @@ const G = globalThis;
 const OP = Object.prototype;
 const hasOwn = (o, k) => OP.hasOwnProperty.call(o, k);
 const isObj = (v) => (typeof v === 'object' && v !== null) || typeof v === 'function';
+/* a[a.length] = v, as CreateDataProperty (a page's Array.prototype setters or push not called) */
+function append(a, v) { Object.defineProperty(a, a.length, { value: v, writable: true, enumerable: true, configurable: true }); }
 function def(obj, props) {
 	for (const k of Reflect.ownKeys(props)) {
 		const d = Object.getOwnPropertyDescriptor(props, k);
@@ -494,7 +496,7 @@ function CanonicalizeLocaleList(locales) {
 		if (typeof v !== 'string' && !isObj(v)) throw new TypeError('Locale must be a string or an object');
 		const tagS = LOCALE.has(v) ? LOCALE.get(v).locale : ToString(v);
 		const c = canonTag(tagS);
-		if (!seen.includes(c)) seen.push(c);
+		if (!seen.includes(c)) append(seen, c);
 	}
 	return seen;
 }
@@ -574,7 +576,7 @@ function LookupMatcher(requested) {
 		const noExt = removeUnicodeExt(locale);
 		const a = BestAvailableLocale(noExt);
 		if (a !== undefined) {
-			const r = { locale: a };
+			const r = { __proto__: null, locale: a };
 			if (locale !== noExt) {
 				const p = parseTag(locale);
 				if (p && p.u) r.ext = p.u;
@@ -582,13 +584,13 @@ function LookupMatcher(requested) {
 			return r;
 		}
 	}
-	return { locale: DefaultLocale() };
+	return { __proto__: null, locale: DefaultLocale() };
 }
 /* ResolveLocale: the locale, the relevant extension keys' values */
 function ResolveLocale(requested, opt, keys, keyData) {
 	const r = LookupMatcher(requested);
 	const found = r.locale;
-	const result = { dataLocale: found };
+	const result = { __proto__: null, dataLocale: found };
 	let add = '';
 	for (const key of keys) {
 		const list = keyData(key, found);
@@ -624,7 +626,7 @@ function SupportedLocales(requested, options) {
 	options = CoerceOptionsToObject(options);
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const out = [];
-	for (const l of requested) if (BestAvailableLocale(removeUnicodeExt(l)) !== undefined) out.push(l);
+	for (const l of requested) if (BestAvailableLocale(removeUnicodeExt(l)) !== undefined) append(out, l);
 	return out;
 }
 function supportedLocalesOf(locales, options) {
@@ -1077,13 +1079,13 @@ function NumberFormat(locales, options) {
 function InitializeNumberFormat(nf, locales, options) {
 	const requested = CanonicalizeLocaleList(locales);
 	options = CoerceOptionsToObject(options);
-	const opt = {};
+	const opt = { __proto__: null };
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const nuOpt = GetOption(options, 'numberingSystem', 'string', undefined, undefined);
 	checkType(nuOpt, 'numberingSystem');
 	opt.nu = nuOpt;
 	const r = ResolveLocale(requested, opt, ['nu'], nuKeyData);
-	const s = { locale: r.locale, dataLocale: dataKey(r.dataLocale), numberingSystem: r.nu };
+	const s = { __proto__: null, locale: r.locale, dataLocale: dataKey(r.dataLocale), numberingSystem: r.nu };
 	/* SetNumberFormatUnitOptions */
 	const style = GetOption(options, 'style', 'string', ['decimal', 'percent', 'currency', 'unit'], 'decimal');
 	s.style = style;
@@ -1450,7 +1452,7 @@ function PluralRules(locales, options) {
 	options = CoerceOptionsToObject(options);
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const r = ResolveLocale(requested, {}, [], null);
-	const s = { locale: r.locale, dataLocale: dataKey(r.dataLocale) };
+	const s = { __proto__: null, locale: r.locale, dataLocale: dataKey(r.dataLocale) };
 	s.type = GetOption(options, 'type', 'string', ['cardinal', 'ordinal'], 'cardinal');
 	const notation = GetOption(options, 'notation', 'string', ['standard', 'scientific', 'engineering', 'compact'], 'standard');
 	s.notation = notation;
@@ -1513,10 +1515,16 @@ function tzData() {
 }
 const UTC_NAMES = new Set(['utc', 'etc/utc', 'etc/gmt', 'gmt', 'etc/uct', 'uct', 'etc/universal', 'universal', 'etc/zulu', 'zulu',
 	'etc/greenwich', 'greenwich', 'etc/gmt0', 'gmt0', 'etc/gmt+0', 'etc/gmt-0', 'gmt+0', 'gmt-0']);
-/* the zone's name as written in the data (case-normalised), or undefined */
+const UTC_CASE = { utc: 'UTC', 'etc/utc': 'Etc/UTC', 'etc/gmt': 'Etc/GMT', gmt: 'GMT', 'etc/uct': 'Etc/UCT', uct: 'UCT',
+	'etc/universal': 'Etc/Universal', universal: 'Universal', 'etc/zulu': 'Etc/Zulu', zulu: 'Zulu', 'etc/greenwich': 'Etc/Greenwich',
+	greenwich: 'Greenwich', 'etc/gmt0': 'Etc/GMT0', gmt0: 'GMT0', 'etc/gmt+0': 'Etc/GMT+0', 'etc/gmt-0': 'Etc/GMT-0', 'gmt+0': 'GMT+0', 'gmt-0': 'GMT-0' };
+const isUTC = (z) => typeof z === 'string' && UTC_NAMES.has(z.toLowerCase());
+/* the zone's name, case-normalised as in the IANA data (a link keeps its own name), or undefined */
 function namedZone(name) {
 	const l = name.toLowerCase();
-	if (UTC_NAMES.has(l)) return 'UTC';
+	if (UTC_CASE[l]) return UTC_CASE[l];
+	const g = /^etc\/gmt([+-])(\d{1,2})$/.exec(l);
+	if (g && !(g[2].length === 2 && g[2][0] === '0') && Number(g[2]) <= (g[1] === '+' ? 12 : 14)) return 'Etc/GMT' + g[1] + Number(g[2]);
 	const T = tzData();
 	return T.lower.get(l);
 }
@@ -1524,15 +1532,19 @@ function zoneRule(name) {
 	const T = tzData();
 	let z = T.zones[name];
 	if (!z && T.links[name]) z = T.zones[T.links[name]];
+	if (!z) {
+		const g = /^Etc\/GMT([+-])(\d+)$/.exec(name);
+		if (g) z = [(g[1] === '+' ? -60 : 60) * Number(g[2])];
+	}
 	return z || [0];
 }
 /* "+01:00", "-0530", "+05": an offset time zone -> minutes, or null */
 function parseOffsetZone(s) {
-	const m = /^([+\-\u2212])([01][0-9]|2[0-3])(?::?([0-5][0-9]))?$/.exec(s);
+	const m = /^([+\-])([01][0-9]|2[0-3])(?::?([0-5][0-9]))?$/.exec(s);
 	if (!m) return null;
 	if (s.length === 5 && s[3] !== ':' && false) return null;
 	/* \u00b1HH:MM or \u00b1HHMM or \u00b1HH, not \u00b1HH:M */
-	if (!/^[+\-\u2212]\d\d(:\d\d|\d\d)?$/.test(s)) return null;
+	if (!/^[+\-]\d\d(:\d\d|\d\d)?$/.test(s)) return null;
 	const v = Number(m[2]) * 60 + (m[3] ? Number(m[3]) : 0);
 	return m[1] === '+' ? v : -v;
 }
@@ -1560,7 +1572,7 @@ function ruleInstant(r, year, std, save, isStart) {
 /* the offset (minutes east of UTC) of a zone at an instant */
 function zoneOffset(zone, t) {
 	if (typeof zone === 'number') return zone;
-	if (zone === 'UTC') return 0;
+	if (isUTC(zone)) return 0;
 	const z = zoneRule(zone);
 	if (z.length === 1) return z[0];
 	const std = z[0];
@@ -1578,7 +1590,7 @@ function zoneOffset(zone, t) {
 	return std + (dst ? save : 0);
 }
 function zoneIsDst(zone, t) {
-	if (typeof zone === 'number' || zone === 'UTC') return false;
+	if (typeof zone === 'number' || isUTC(zone)) return false;
 	const z = zoneRule(zone);
 	if (z.length === 1) return false;
 	return zoneOffset(zone, t) !== z[0];
@@ -1663,7 +1675,7 @@ function CreateDateTimeFormat(newTarget, locales, options, required, defaults) {
 	const dtf = OrdinaryCreateFromConstructor(newTarget, DateTimeFormat.prototype);
 	const requested = CanonicalizeLocaleList(locales);
 	options = CoerceOptionsToObject(options);
-	const opt = {};
+	const opt = { __proto__: null };
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const calendar = GetOption(options, 'calendar', 'string', undefined, undefined);
 	checkType(calendar, 'calendar');
@@ -1678,7 +1690,7 @@ function CreateDateTimeFormat(newTarget, locales, options, required, defaults) {
 	const r = ResolveLocale(requested, opt, ['ca', 'hc', 'nu'], dtfKeyData);
 	const dk = dataKey(r.dataLocale);
 	const D = sec(dk, 'd');
-	const s = { locale: r.locale, calendar: r.ca, numberingSystem: r.nu, dataLocale: dk };
+	const s = { __proto__: null, locale: r.locale, calendar: r.ca, numberingSystem: r.nu, dataLocale: dk };
 	let hc;
 	if (hour12 === true) hc = D.hc12;
 	else if (hour12 === false) hc = D.hc === 'h24' ? 'h24' : 'h23';
@@ -1697,7 +1709,7 @@ function CreateDateTimeFormat(newTarget, locales, options, required, defaults) {
 	}
 	s.timeZone = tz;
 	s.zone = parseOffsetZone(tz) !== null ? parseOffsetZone(tz) : tz;
-	const fo = {};
+	const fo = { __proto__: null };
 	let explicit = false;
 	for (const [prop, values] of DT_COMPONENTS) {
 		let v;
@@ -1925,7 +1937,7 @@ function zoneName(s, f, width, isLong) {
 		if (link) names = T.z[link];
 		if (!names) for (const k of Object.keys(TT.links)) if (TT.links[k] === zone && T.z[k]) { names = T.z[k]; break; }
 	}
-	if (zone === 'UTC') names = names || T.z.UTC;
+	if (isUTC(zone)) names = names || T.z.UTC;
 	const dst = zoneIsDst(zone, f.t);
 	let v = 0;
 	if (names) {
@@ -2011,7 +2023,8 @@ function partitionDateRange(s, x, y) {
 	a.forEach((p, i) => {
 		if (p.type === 'literal') return;
 		const rk = FIELD_RANK[p.type];
-		const varies = p.value !== b[i].value || (rk !== undefined && rk <= top && !(p.type === 'dayPeriod' && p.value === b[i].value) && (top <= 3 ? rk <= 3 : rk >= 4 && rk <= top));
+		/* the time's numbers vary together (10:00 \u2013 11:00 AM); a date's fields up to the top one */
+		const varies = p.value !== b[i].value || (rk !== undefined && (top <= 3 ? rk <= 2 : rk >= 4 && rk <= top));
 		if (varies) { if (i0 < 0) i0 = i; i1 = i; }
 	});
 	if (i0 < 0) return full();
@@ -2099,13 +2112,13 @@ function RelativeTimeFormat(locales, options) {
 	const o = OrdinaryCreateFromConstructor(new.target, RelativeTimeFormat.prototype);
 	const requested = CanonicalizeLocaleList(locales);
 	options = CoerceOptionsToObject(options);
-	const opt = {};
+	const opt = { __proto__: null };
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const nu = GetOption(options, 'numberingSystem', 'string', undefined, undefined);
 	checkType(nu, 'numberingSystem');
 	opt.nu = nu;
 	const r = ResolveLocale(requested, opt, ['nu'], nuKeyData);
-	const s = { locale: r.locale, dataLocale: dataKey(r.dataLocale), numberingSystem: r.nu };
+	const s = { __proto__: null, locale: r.locale, dataLocale: dataKey(r.dataLocale), numberingSystem: r.nu };
 	s.style = GetOption(options, 'style', 'string', ['long', 'short', 'narrow'], 'long');
 	s.numeric = GetOption(options, 'numeric', 'string', ['always', 'auto'], 'always');
 	s.nf = NF.get(new NumberFormat(r.locale.replace(/-u-.*$/, '') + (r.nu !== 'latn' ? '-u-nu-' + r.nu : '')));
@@ -2158,7 +2171,7 @@ function ListFormat(locales, options) {
 	options = GetOptionsObject(options);
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const r = ResolveLocale(requested, {}, [], null);
-	const s = { locale: r.locale, dataLocale: dataKey(r.dataLocale) };
+	const s = { __proto__: null, locale: r.locale, dataLocale: dataKey(r.dataLocale) };
 	s.type = GetOption(options, 'type', 'string', ['conjunction', 'disjunction', 'unit'], 'conjunction');
 	s.style = GetOption(options, 'style', 'string', ['long', 'short', 'narrow'], 'long');
 	LF.set(o, s);
@@ -2228,7 +2241,7 @@ function Collator(locales, options) {
 	const requested = CanonicalizeLocaleList(locales);
 	options = CoerceOptionsToObject(options);
 	const usage = GetOption(options, 'usage', 'string', ['sort', 'search'], 'sort');
-	const opt = {};
+	const opt = { __proto__: null };
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const collation = GetOption(options, 'collation', 'string', undefined, undefined);
 	checkType(collation, 'collation');
@@ -2238,7 +2251,7 @@ function Collator(locales, options) {
 	const caseFirst = GetOption(options, 'caseFirst', 'string', ['upper', 'lower', 'false'], undefined);
 	opt.kf = caseFirst;
 	const r = ResolveLocale(requested, opt, ['co', 'kf', 'kn'], (k) => (k === 'co' ? [null] : k === 'kf' ? ['false', 'lower', 'upper'] : ['false', 'true']));
-	const s = { locale: r.locale, usage, collation: 'default', numeric: r.kn === 'true', caseFirst: r.kf || 'false' };
+	const s = { __proto__: null, locale: r.locale, usage, collation: 'default', numeric: r.kn === 'true', caseFirst: r.kf || 'false' };
 	s.lang = dataKey(r.dataLocale).split('-')[0];
 	let sens = GetOption(options, 'sensitivity', 'string', ['base', 'accent', 'case', 'variant'], undefined);
 	if (sens === undefined) sens = 'variant';
@@ -2364,7 +2377,7 @@ function Segmenter(locales, options) {
 	GetOption(options, 'localeMatcher', 'string', ['lookup', 'best fit'], 'best fit');
 	const r = ResolveLocale(requested, {}, [], null);
 	const granularity = GetOption(options, 'granularity', 'string', ['grapheme', 'word', 'sentence'], 'grapheme');
-	SG.set(o, { locale: r.locale, granularity });
+	SG.set(o, { __proto__: null, locale: r.locale, granularity });
 	return o;
 }
 /* the boundaries of a string: [0, ..., length], and for words whether each segment is word-like */
@@ -2480,7 +2493,7 @@ function DisplayNames(locales, options) {
 	if (type === undefined) throw new TypeError('Required option \'type\' is missing');
 	const fallback = GetOption(options, 'fallback', 'string', ['code', 'none'], 'code');
 	const languageDisplay = GetOption(options, 'languageDisplay', 'string', ['dialect', 'standard'], 'dialect');
-	const s = { locale: r.locale, dataLocale: dataKey(r.dataLocale), style, type, fallback };
+	const s = { __proto__: null, locale: r.locale, dataLocale: dataKey(r.dataLocale), style, type, fallback };
 	if (type === 'language') s.languageDisplay = languageDisplay;
 	DN.set(o, s);
 	return o;
@@ -2607,7 +2620,7 @@ function Locale(tagArg, options) {
 	let fwv;
 	if (fw !== undefined) {
 		const W = { 0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' };
-		fwv = W[fw] || fw;
+		fwv = W[fw] || fw.toLowerCase();
 		if (!TYPE_RE.test(fwv)) throw new RangeError('Invalid firstDayOfWeek');
 	}
 	kw.fw = fwv;
@@ -2628,7 +2641,7 @@ function Locale(tagArg, options) {
 	}
 	if (u.attrs.length || u.kw.length) p.u = u;
 	t = canonicalize(p);
-	LOCALE.set(o, { locale: t, r: parseTag(t) });
+	LOCALE.set(o, { __proto__: null, locale: t, r: parseTag(t) });
 	return o;
 }
 function GRAPHEMELESS() { return false; }
@@ -2741,6 +2754,8 @@ const IntlFns = {
 			const T = tzData();
 			v = Object.keys(T.zones).filter((z) => !z.startsWith('Etc/') || /^Etc\/GMT[+-]\d+$/.test(z) || z === 'Etc/UTC');
 			if (!v.includes('UTC')) v.push('UTC');
+			for (let h = 1; h <= 14; h++) { if (h <= 12) v.push('Etc/GMT+' + h); v.push('Etc/GMT-' + h); }
+			v = [...new Set(v)];
 			v = v.filter((z) => z !== 'Etc/UTC');
 			break;
 		}

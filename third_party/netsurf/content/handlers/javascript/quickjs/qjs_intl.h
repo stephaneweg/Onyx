@@ -81,9 +81,33 @@ static JSValue qjs_intl_zone_fn(JSContext *ctx, JSValueConst this_val, int argc,
 	return JS_NULL;
 }
 
-/* the implementation's bytecode, made once per process */
-static uint8_t *qjs_intl_bc;
-static size_t qjs_intl_bc_len;
+/* a part of intl.js evaluated: compiled the first time (src NUL-terminated at len), its bytecode
+   kept in the process's heap (not the runtime's: a runtime goes with its window) and read back
+   in the next contexts -- several times faster than parsing */
+static JSValue qjs_intl_eval(JSContext *ctx, const char *src, size_t len, uint8_t **bc, size_t *bclen)
+{
+	JSValue obj;
+	if (*bc == NULL) {
+		obj = JS_Eval(ctx, src, len, "intl.js", JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+		if (JS_IsException(obj))
+			return obj;
+		uint8_t *b = JS_WriteObject(ctx, bclen, obj, JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_STRIP_SOURCE);
+		if (b != NULL) {
+			*bc = malloc(*bclen);
+			if (*bc != NULL)
+				memcpy(*bc, b, *bclen);
+			js_free(ctx, b);
+		}
+	} else {
+		obj = JS_ReadObject(ctx, *bc, *bclen, JS_READ_OBJ_BYTECODE);
+		if (JS_IsException(obj))
+			return obj;
+	}
+	return JS_EvalFunction(ctx, obj);
+}
+
+static uint8_t *qjs_intl_bc, *qjs_intl_boot_bc;
+static size_t qjs_intl_bc_len, qjs_intl_boot_bc_len;
 
 /* load (): the implementation, evaluated in this context -> its members */
 static JSValue qjs_intl_load(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -93,26 +117,7 @@ static JSValue qjs_intl_load(JSContext *ctx, JSValueConst this_val, int argc, JS
 	(void) this_val; (void) argc; (void) argv;
 	if (impl == NULL)
 		return JS_ThrowInternalError(ctx, "intl.js: no implementation");
-	if (qjs_intl_bc == NULL) {
-		JSValue obj = JS_Eval(ctx, impl, strlen(impl), "intl.js",
-				JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
-		if (JS_IsException(obj))
-			return obj;
-		uint8_t *bc = JS_WriteObject(ctx, &qjs_intl_bc_len, obj, JS_WRITE_OBJ_BYTECODE);
-		if (bc != NULL) {
-			/* kept in the process's heap: the runtime that made it goes with its window */
-			qjs_intl_bc = malloc(qjs_intl_bc_len);
-			if (qjs_intl_bc != NULL)
-				memcpy(qjs_intl_bc, bc, qjs_intl_bc_len);
-			js_free(ctx, bc);
-		}
-		fn = JS_EvalFunction(ctx, obj);
-	} else {
-		JSValue obj = JS_ReadObject(ctx, qjs_intl_bc, qjs_intl_bc_len, JS_READ_OBJ_BYTECODE);
-		if (JS_IsException(obj))
-			return obj;
-		fn = JS_EvalFunction(ctx, obj);
-	}
+	fn = qjs_intl_eval(ctx, impl, strlen(impl), &qjs_intl_bc, &qjs_intl_bc_len);
 	if (JS_IsException(fn))
 		return fn;
 	natives = JS_NewObject(ctx);
@@ -174,19 +179,20 @@ static void qjs_intl_init(JSContext *ctx)
 #if !defined(__linux__)
 	qjs_intl_onyx_tz();
 #endif
-	static char *bootsrc;	/* the boot part, NUL-terminated (JS_Eval wants it) */
-	static size_t bootlen;
 	if (impl == NULL)
 		return;
-	if (bootsrc == NULL) {
-		bootlen = (size_t) (impl - qjs_intl_js);
-		bootsrc = malloc(bootlen + 1);
-		if (bootsrc == NULL)
+	if (qjs_intl_boot_bc == NULL) {
+		/* the boot part, NUL-terminated (JS_Eval wants it) */
+		size_t len = (size_t) (impl - qjs_intl_js);
+		char *src = malloc(len + 1);
+		if (src == NULL)
 			return;
-		memcpy(bootsrc, qjs_intl_js, bootlen);
-		bootsrc[bootlen] = '\0';
-	}
-	boot = JS_Eval(ctx, bootsrc, bootlen, "intl.js", JS_EVAL_TYPE_GLOBAL);
+		memcpy(src, qjs_intl_js, len);
+		src[len] = '\0';
+		boot = qjs_intl_eval(ctx, src, len, &qjs_intl_boot_bc, &qjs_intl_boot_bc_len);
+		free(src);
+	} else
+		boot = qjs_intl_eval(ctx, NULL, 0, &qjs_intl_boot_bc, &qjs_intl_boot_bc_len);
 	if (JS_IsException(boot)) {
 		qjs_intl_error(ctx);
 		return;

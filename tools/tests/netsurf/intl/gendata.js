@@ -111,7 +111,7 @@ function toPattern(l, opts, N) {
 			if (opts.dayPeriod) s += opts.dayPeriod === 'narrow' ? 'BBBBB' : opts.dayPeriod === 'long' ? 'BBBB' : 'B';
 			else s += 'a';
 			break;
-		case 'timeZoneName': s += 'z'; break;
+		case 'timeZoneName': s += opts.timeStyle === 'full' ? 'zzzz' : 'z'; break;
 		default: throw new Error('part ' + a.type);
 		}
 	}
