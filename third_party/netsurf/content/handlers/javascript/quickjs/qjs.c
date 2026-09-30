@@ -68,6 +68,7 @@
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
+#include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -369,6 +370,32 @@ static dom_node *qjs_node(JSValueConst v)
 }
 
 #define QJS_T(ctx) ((jsthread *) JS_GetContextOpaque(ctx))
+
+/* Onyx: for qjs_canvas.c (declared in qjs_canvas.h) */
+struct dom_node *qjs_node_of(JSValueConst v)
+{
+	return qjs_node(v);
+}
+
+struct html_content *qjs_html_of(JSContext *ctx)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return (t == NULL || t->closed) ? NULL : t->htmlc;
+}
+
+static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int argc,
+		JSValueConst *argv, const char *where);
+
+void qjs_invoke(JSContext *ctx, JSValueConst fn, int argc, JSValueConst *argv,
+		const char *where)
+{
+	jsthread *t = QJS_T(ctx);
+
+	if (t == NULL || t->closed)
+		return;
+	JS_FreeValue(ctx, qjs_call(t, fn, JS_UNDEFINED, argc, argv, where));
+}
 
 
 /* ---- strings ------------------------------------------------------------------------ */
@@ -2249,6 +2276,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 		JS_FreeValue(t->ctx, r);
 	}
 	JS_FreeValue(t->ctx, prelude);
+	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
 	JS_FreeValue(t->ctx, natives);
 	t->dirty = false;	/* (nothing laid out yet) */
 	qjs_leave(t);
@@ -2289,6 +2317,7 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->dispatch);
 	JS_FreeValue(t->ctx, t->modsrc);
 	JS_FreeValue(t->ctx, t->modmissing);
+	qjs_canvas_context_gone(t->ctx);	/* Onyx: its canvases, images */
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
