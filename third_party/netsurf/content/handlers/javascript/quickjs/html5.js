@@ -737,5 +737,784 @@ handlerProperty(BroadcastChannel.prototype, 'message');
 handlerProperty(BroadcastChannel.prototype, 'messageerror');
 G.BroadcastChannel = BroadcastChannel;
 
+/* ---- forms: input types, values, the constraint validation API ------------------------------ */
+
+const INPUT_TYPES = ['hidden', 'text', 'search', 'tel', 'url', 'email', 'password', 'date',
+	'month', 'week', 'time', 'datetime-local', 'number', 'range', 'color', 'checkbox', 'radio',
+	'file', 'submit', 'image', 'reset', 'button'];
+const TEXTLIKE = new Set(['text', 'search', 'tel', 'url', 'email', 'password']);
+const DATELIKE = new Set(['date', 'month', 'week', 'time', 'datetime-local']);
+const NUMERIC = new Set(['number', 'range', ...DATELIKE]);
+const VALUE_MODE = new Set([...TEXTLIKE, ...NUMERIC, 'color']);
+function inputType(el) {
+	const t = (N.attr(el, 'type') || 'text').toLowerCase();
+	return INPUT_TYPES.includes(t) ? t : 'text';
+}
+
+/* dates and times (the "valid ... string" microsyntaxes), all in UTC */
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+function daysIn(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate() || 31; }
+function mkDate(y, m, d) { const t = new Date(0); t.setUTCFullYear(y, m - 1, d); return t.getTime(); }
+function parseDateStr(s) {
+	const m = /^(\d{4,})-(\d\d)-(\d\d)$/.exec(s);
+	if (!m) return null;
+	const y = +m[1], mo = +m[2], d = +m[3];
+	if (y < 1 || mo < 1 || mo > 12 || d < 1 || d > daysIn(y, mo)) return null;
+	return mkDate(y, mo, d);
+}
+function parseMonthStr(s) {
+	const m = /^(\d{4,})-(\d\d)$/.exec(s);
+	if (!m || +m[1] < 1 || +m[2] < 1 || +m[2] > 12) return null;
+	return (+m[1] - 1970) * 12 + (+m[2] - 1);
+}
+function weeksIn(y) {
+	const jan1 = new Date(mkDate(y, 1, 1)).getUTCDay();
+	const leap = daysIn(y, 2) === 29;
+	return jan1 === 4 || (leap && jan1 === 3) ? 53 : 52;
+}
+function weekStart(y, w) {
+	/* the Monday of ISO week w of year y */
+	const jan4 = mkDate(y, 1, 4), dow = (new Date(jan4).getUTCDay() + 6) % 7;
+	return jan4 - dow * 86400000 + (w - 1) * 604800000;
+}
+function parseWeekStr(s) {
+	const m = /^(\d{4,})-W(\d\d)$/.exec(s);
+	if (!m || +m[1] < 1 || +m[2] < 1 || +m[2] > weeksIn(+m[1])) return null;
+	return weekStart(+m[1], +m[2]);
+}
+function parseTimeStr(s) {
+	const m = /^(\d\d):(\d\d)(?::(\d\d)(?:\.(\d{1,3}))?)?$/.exec(s);
+	if (!m || +m[1] > 23 || +m[2] > 59 || (m[3] && +m[3] > 59)) return null;
+	return ((+m[1] * 60 + +m[2]) * 60 + +(m[3] || 0)) * 1000 + +((m[4] || '0') + '00').slice(0, 3);
+}
+function parseLocalStr(s) {
+	const m = /^(\d{4,}-\d\d-\d\d)[T ](.+)$/.exec(s);
+	if (!m) return null;
+	const d = parseDateStr(m[1]), t = parseTimeStr(m[2]);
+	return d === null || t === null ? null : d + t;
+}
+function timeStr(ms) {
+	ms = ((ms % 86400000) + 86400000) % 86400000;
+	const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60;
+	const f = ms % 1000;
+	let s = pad(h) + ':' + pad(mi);
+	if (sec || f) s += ':' + pad(sec);
+	if (f) s += '.' + pad(f, 3).replace(/0+$/, '');
+	return s;
+}
+function yearStr(y) { return pad(y, 4); }
+function dateStr(ms) {
+	const d = new Date(ms);
+	return yearStr(d.getUTCFullYear()) + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+}
+const TYPE_NUM = {
+	date: { parse: parseDateStr, str: dateStr, scale: 86400000, step: 1, base: 0 },
+	month: { parse: parseMonthStr, str: n => { const y = Math.floor(n / 12) + 1970, m = ((n % 12) + 12) % 12; return yearStr(y) + '-' + pad(m + 1); }, scale: 1, step: 1, base: 0 },
+	week: { parse: parseWeekStr, str: ms => {
+		/* the ISO week of the day */
+		const d = new Date(ms), dow = (d.getUTCDay() + 6) % 7;
+		const thu = new Date(ms - dow * 86400000 + 3 * 86400000);
+		const y = thu.getUTCFullYear();
+		const w = Math.floor((thu.getTime() - weekStart(y, 1)) / 604800000) + 1;
+		return yearStr(y) + '-W' + pad(w);
+	}, scale: 604800000, step: 1, base: -259200000 },
+	time: { parse: parseTimeStr, str: timeStr, scale: 1000, step: 60, base: 0 },
+	'datetime-local': { parse: parseLocalStr, str: ms => dateStr(Math.floor(ms / 86400000) * 86400000) + 'T' + timeStr(ms), scale: 1000, step: 60, base: 0 },
+	number: { parse: s => /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(s) ? +s : null, str: n => String(n), scale: 1, step: 1, base: 0 },
+	range: { parse: s => /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(s) ? +s : null, str: n => String(n), scale: 1, step: 1, base: 0 },
+};
+function numAttr(el, name, t) {
+	const v = N.attr(el, name);
+	if (v === null) return null;
+	const n = TYPE_NUM[t].parse(v);
+	return n === null ? null : n;
+}
+function rangeBounds(el) {
+	let min = numAttr(el, 'min', 'range'), max = numAttr(el, 'max', 'range');
+	if (min === null) min = 0;
+	if (max === null) max = 100;
+	if (max < min) max = min;
+	return [min, max];
+}
+/* the allowed value step (in the type's unit), or null for "any" */
+function allowedStep(el, t) {
+	const d = TYPE_NUM[t];
+	const s = N.attr(el, 'step');
+	if (s !== null && s.trim().toLowerCase() === 'any') return null;
+	let st = s === null ? NaN : parseFloat(s);
+	if (!(st > 0)) st = d.step;
+	if (t === 'month' || t === 'week' || t === 'date') st = Math.max(1, Math.round(st));
+	return st * d.scale;
+}
+function stepBase(el, t) {
+	const min = numAttr(el, 'min', t);
+	if (min !== null) return min;
+	const v = numAttr(el, 'value', t);
+	if (v !== null) return v;
+	return TYPE_NUM[t].base;
+}
+function aligned(v, base, step) {
+	const q = (v - base) / step;
+	return Math.abs(q - Math.round(q)) < 1e-9;
+}
+
+/* the value sanitization algorithm of each type */
+function sanitize(el, t, v) {
+	switch (t) {
+	case 'text': case 'search': case 'tel': case 'password':
+		return v.replace(/[\r\n]/g, '');
+	case 'url':
+		return v.replace(/[\r\n]/g, '').trim();
+	case 'email':
+		v = v.replace(/[\r\n]/g, '');
+		return N.attr(el, 'multiple') !== null ?
+			v.split(',').map(x => x.trim()).join(',') : v.trim();
+	case 'number':
+		return TYPE_NUM.number.parse(v) === null ? '' : v;
+	case 'range': {
+		let n = TYPE_NUM.range.parse(v);
+		const [min, max] = rangeBounds(el);
+		if (n === null) n = min + (max - min) / 2;
+		if (n < min) n = min;
+		if (n > max) n = max;
+		const st = allowedStep(el, 'range');
+		if (st !== null) {
+			const base = stepBase(el, 'range');
+			if (!aligned(n, base, st)) {
+				let a = base + Math.round((n - base) / st) * st;
+				if (a > max) a -= st;
+				if (a < min) a += st;
+				n = +a.toFixed(10);
+			}
+		}
+		return n === TYPE_NUM.range.parse(v) ? v : String(n);
+	}
+	case 'color':
+		return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '#000000';
+	case 'date': return parseDateStr(v) === null ? '' : v;
+	case 'month': return parseMonthStr(v) === null ? '' : v;
+	case 'week': return parseWeekStr(v) === null ? '' : v;
+	case 'time': return parseTimeStr(v) === null ? '' : v;
+	case 'datetime-local': {
+		const n = parseLocalStr(v);
+		return n === null ? '' : TYPE_NUM['datetime-local'].str(n);
+	}
+	}
+	return v;
+}
+
+const inputProto = G.HTMLInputElement.prototype;
+const rawValue = Object.getOwnPropertyDescriptor(inputProto, 'value');
+const customValidity = new WeakMap();
+const indeterminate = new WeakMap();
+def(inputProto, {
+	get type() { return inputType(this); },
+	set type(v) { this.setAttribute('type', v); },
+	get value() {
+		const t = inputType(this);
+		const v = rawValue.get.call(this);
+		if (t === 'file') return '';
+		return VALUE_MODE.has(t) ? sanitize(this, t, v) : v;
+	},
+	set value(v) {
+		const t = inputType(this);
+		if (t === 'file') {
+			if (v === '' || v === null) return;
+			throw domError('a file input\'s value can only be emptied', 'InvalidStateError');
+		}
+		v = v === null ? '' : String(v);
+		rawValue.set.call(this, VALUE_MODE.has(t) ? sanitize(this, t, v) : v);
+	},
+	get valueAsNumber() {
+		const t = inputType(this);
+		if (!TYPE_NUM[t]) return NaN;
+		const n = TYPE_NUM[t].parse(this.value);
+		return n === null ? NaN : n;
+	},
+	set valueAsNumber(n) {
+		const t = inputType(this);
+		if (!TYPE_NUM[t]) throw domError('no numbers for type ' + t, 'InvalidStateError');
+		n = +n;
+		if (!isFinite(n)) {
+			if (isNaN(n)) { this.value = ''; return; }
+			throw new TypeError('not a finite number');
+		}
+		this.value = TYPE_NUM[t].str(n);
+	},
+	get valueAsDate() {
+		const t = inputType(this);
+		if (!['date', 'month', 'week', 'time'].includes(t)) return null;
+		const n = TYPE_NUM[t].parse(this.value);
+		if (n === null) return null;
+		if (t === 'month') {
+			const y = Math.floor(n / 12) + 1970, m = ((n % 12) + 12) % 12;
+			return new Date(mkDate(y, m + 1, 1));
+		}
+		return new Date(n);
+	},
+	set valueAsDate(d) {
+		const t = inputType(this);
+		if (!['date', 'month', 'week', 'time'].includes(t))
+			throw domError('no dates for type ' + t, 'InvalidStateError');
+		if (d === null) { this.value = ''; return; }
+		if (!(d instanceof Date)) throw new TypeError('not a Date');
+		const ms = d.getTime();
+		if (isNaN(ms)) { this.value = ''; return; }
+		if (t === 'month') {
+			const dd = new Date(ms);
+			this.value = TYPE_NUM.month.str((dd.getUTCFullYear() - 1970) * 12 + dd.getUTCMonth());
+		} else {
+			this.value = TYPE_NUM[t].str(ms);
+		}
+	},
+	stepUp(n = 1) { stepBy(this, n); },
+	stepDown(n = 1) { stepBy(this, -n); },
+	get indeterminate() { return !!indeterminate.get(this); },
+	set indeterminate(v) { indeterminate.set(this, !!v); },
+	get files() {
+		if (inputType(this) !== 'file') return null;
+		if (!this._files) Object.defineProperty(this, '_files', { value: new FileList([]) });
+		return this._files;
+	},
+	set files(v) { if (v instanceof FileList) Object.defineProperty(this, '_files', { value: v, configurable: true }); },
+	get list() {
+		const id = N.attr(this, 'list');
+		const e = id ? G.document.getElementById(id) : null;
+		return e && e.localName === 'datalist' ? e : null;
+	},
+	get width() {
+		if (inputType(this) !== 'image') return 0;
+		const r = N.rect(this);
+		return r ? r[2] : parseInt(N.attr(this, 'width'), 10) || 0;
+	},
+	set width(v) { this.setAttribute('width', String(v >>> 0)); },
+	get height() {
+		if (inputType(this) !== 'image') return 0;
+		const r = N.rect(this);
+		return r ? r[3] : parseInt(N.attr(this, 'height'), 10) || 0;
+	},
+	set height(v) { this.setAttribute('height', String(v >>> 0)); },
+	get selectionDirection() { return TEXTLIKE.has(inputType(this)) ? 'none' : null; },
+	set selectionDirection(v) {},
+	setRangeText(text) { this.value = String(text); },
+});
+for (const p of ['formEnctype', 'formTarget', 'alt', 'src'])
+	if (!(p in inputProto)) Object.defineProperty(inputProto, p, { configurable: true,
+		get() { return N.attr(this, p.toLowerCase()) || ''; },
+		set(v) { this.setAttribute(p.toLowerCase(), v); } });
+
+function stepBy(el, n) {
+	const t = inputType(el);
+	if (!TYPE_NUM[t]) throw domError('stepUp / stepDown: not for type ' + t, 'InvalidStateError');
+	const st = allowedStep(el, t);
+	if (st === null) throw domError('step is "any"', 'InvalidStateError');
+	const min = t === 'range' ? rangeBounds(el)[0] : numAttr(el, 'min', t);
+	const max = t === 'range' ? rangeBounds(el)[1] : numAttr(el, 'max', t);
+	if (min !== null && max !== null && min > max) return;
+	const base = stepBase(el, t);
+	let v = TYPE_NUM[t].parse(el.value);
+	if (v === null) v = 0;
+	n = Math.trunc(+n) || 0;
+	if (!aligned(v, base, st)) {
+		v = n > 0 ? base + Math.floor((v - base) / st + 1) * st : base + Math.ceil((v - base) / st - 1) * st;
+	} else {
+		v += st * n;
+	}
+	if (min !== null && v < min) v = base + Math.ceil((min - base) / st) * st;
+	if (max !== null && v > max) v = base + Math.floor((max - base) / st) * st;
+	el.value = TYPE_NUM[t].str(+v.toFixed(10));
+}
+
+/* FileList (the input's files: none chosen -- no file picker on Onyx yet) */
+class FileList {
+	constructor(files) {
+		if (!Array.isArray(files)) throw new TypeError('Illegal constructor');
+		files.forEach((f, i) => { this[i] = f; });
+		Object.defineProperty(this, 'length', { value: files.length });
+	}
+	item(i) { return this[i] || null; }
+	*[Symbol.iterator]() { for (let i = 0; i < this.length; i++) yield this[i]; }
+}
+G.FileList = FileList;
+
+/* ValidityState */
+class ValidityState {
+	constructor(flags) { Object.assign(this, flags); }
+}
+for (const k of ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooLong', 'tooShort',
+		'rangeUnderflow', 'rangeOverflow', 'stepMismatch', 'badInput', 'customError'])
+	ValidityState.prototype[k] = false;
+Object.defineProperty(ValidityState.prototype, 'valid', { configurable: true,
+	get() {
+		return !(this.valueMissing || this.typeMismatch || this.patternMismatch || this.tooLong ||
+			this.tooShort || this.rangeUnderflow || this.rangeOverflow || this.stepMismatch ||
+			this.badInput || this.customError);
+	} });
+G.ValidityState = ValidityState;
+
+const EMAIL = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+function patternMatches(pattern, v) {
+	let re;
+	try { re = new RegExp('^(?:' + pattern + ')$', 'v'); } catch (e) {
+		try { re = new RegExp('^(?:' + pattern + ')$', 'u'); } catch (e2) { return true; }
+	}
+	return re.test(v);
+}
+function disabledByFieldset(el) {
+	for (let p = N.parent(el); p && N.type(p) === ELEMENT_NODE; p = N.parent(p)) {
+		if (N.lname(p) === 'fieldset' && N.attr(p, 'disabled') !== null) {
+			/* not inside that fieldset's first legend */
+			const legend = [...N.children(p)].find(c => N.type(c) === ELEMENT_NODE && N.lname(c) === 'legend');
+			if (!legend || !legend.contains(el)) return true;
+		}
+	}
+	return false;
+}
+function isDisabled(el) {
+	return N.attr(el, 'disabled') !== null || disabledByFieldset(el);
+}
+/* a candidate for constraint validation? */
+function willValidate(el) {
+	const tag = N.lname(el);
+	if (isDisabled(el) || el.closest('datalist')) return false;
+	if (tag === 'input') {
+		const t = inputType(el);
+		if (t === 'hidden' || t === 'reset' || t === 'button') return false;
+		if (N.attr(el, 'readonly') !== null && !['checkbox', 'radio', 'file', 'submit', 'image', 'color', 'range'].includes(t)) return false;
+		return true;
+	}
+	if (tag === 'textarea') return N.attr(el, 'readonly') === null;
+	if (tag === 'select') return true;
+	if (tag === 'button') return (N.attr(el, 'type') || 'submit').toLowerCase() === 'submit';
+	return false;
+}
+function validityOf(el) {
+	const f = {};
+	const tag = N.lname(el);
+	const custom = customValidity.get(el) || '';
+	if (custom) f.customError = true;
+	if (!willValidate(el)) return new ValidityState(f);
+	const required = N.attr(el, 'required') !== null;
+	if (tag === 'input') {
+		const t = inputType(el);
+		const v = el.value;
+		if (required) {
+			if (t === 'checkbox') f.valueMissing = !el.checked;
+			else if (t === 'radio') {
+				const name = N.attr(el, 'name');
+				const group = name ? [...(el.form || G.document).querySelectorAll('input[type=radio]')]
+					.filter(r => N.attr(r, 'name') === name && r.form === el.form) : [el];
+				f.valueMissing = !group.some(r => r.checked);
+			} else if (t === 'file') f.valueMissing = el.files.length === 0;
+			else if (VALUE_MODE.has(t) && t !== 'range' && t !== 'color') f.valueMissing = v === '';
+		}
+		if (v !== '') {
+			if (t === 'email')
+				f.typeMismatch = !(N.attr(el, 'multiple') !== null ? v.split(',') : [v]).every(x => EMAIL.test(x));
+			if (t === 'url') {
+				try { new URL(v); } catch (e) { f.typeMismatch = true; }
+			}
+			const pattern = N.attr(el, 'pattern');
+			if (pattern !== null && TEXTLIKE.has(t))
+				f.patternMismatch = !(N.attr(el, 'multiple') !== null && t === 'email' ? v.split(',') : [v])
+					.every(x => patternMatches(pattern, x));
+			if (TYPE_NUM[t]) {
+				const n = TYPE_NUM[t].parse(v);
+				if (n !== null) {
+					const min = numAttr(el, 'min', t), max = numAttr(el, 'max', t);
+					if (min !== null && n < min) f.rangeUnderflow = true;
+					if (max !== null && n > max) f.rangeOverflow = true;
+					const st = allowedStep(el, t);
+					if (st !== null && !aligned(n, stepBase(el, t), st)) f.stepMismatch = true;
+				}
+			}
+			/* tooLong / tooShort: only a value the user typed */
+			if (TEXTLIKE.has(t) && N.formValue(el) !== null) {
+				const max = parseInt(N.attr(el, 'maxlength'), 10), min = parseInt(N.attr(el, 'minlength'), 10);
+				if (max >= 0 && v.length > max) f.tooLong = true;
+				if (min >= 0 && v.length < min) f.tooShort = true;
+			}
+		}
+	} else if (tag === 'textarea') {
+		const v = el.value;
+		if (required && v === '') f.valueMissing = true;
+		if (v !== '' && N.formValue(el) !== null) {
+			const max = parseInt(N.attr(el, 'maxlength'), 10), min = parseInt(N.attr(el, 'minlength'), 10);
+			if (max >= 0 && v.length > max) f.tooLong = true;
+			if (min >= 0 && v.length < min) f.tooShort = true;
+		}
+	} else if (tag === 'select') {
+		if (required) {
+			const opts = [...el.options];
+			const sel = opts.filter(o => o.selected);
+			/* a placeholder label option (the first, value "", no multiple, size 1) does not count */
+			const ph = N.attr(el, 'multiple') === null && (parseInt(N.attr(el, 'size'), 10) || 1) === 1 &&
+				opts[0] && opts[0].value === '' && N.parent(opts[0]) === el ? opts[0] : null;
+			f.valueMissing = sel.length === 0 || (sel.length === 1 && sel[0] === ph);
+		}
+	}
+	return new ValidityState(f);
+}
+function validationMessage(el) {
+	if (!willValidate(el)) return '';
+	const v = validityOf(el);
+	if (v.customError) return customValidity.get(el);
+	if (v.valueMissing) return 'Please fill in this field.';
+	if (v.typeMismatch) return inputType(el) === 'email' ? 'Please enter an email address.' : 'Please enter a URL.';
+	if (v.patternMismatch) return 'Please match the requested format.';
+	if (v.tooLong) return 'Please shorten this text.';
+	if (v.tooShort) return 'Please lengthen this text.';
+	if (v.rangeUnderflow) return 'Value must be greater than or equal to ' + N.attr(el, 'min') + '.';
+	if (v.rangeOverflow) return 'Value must be less than or equal to ' + N.attr(el, 'max') + '.';
+	if (v.stepMismatch) return 'Please enter a valid value.';
+	return '';
+}
+/* checkValidity: false and an "invalid" event when the control is not valid */
+function checkOne(el) {
+	if (!willValidate(el) || validityOf(el).valid) return true;
+	fire(el, 'invalid', { cancelable: true });
+	return false;
+}
+function reportOne(el) {
+	if (!willValidate(el) || validityOf(el).valid) return true;
+	if (fire(el, 'invalid', { cancelable: true })) {
+		N.log('form: ' + validationMessage(el));
+		try { el.focus(); } catch (e) {}
+	}
+	return false;
+}
+const validationMethods = {
+	get validity() { return validityOf(this); },
+	get willValidate() { return willValidate(this); },
+	get validationMessage() { return validationMessage(this); },
+	checkValidity() { return checkOne(this); },
+	reportValidity() { return reportOne(this); },
+	setCustomValidity(m) { customValidity.set(this, m === undefined || m === null ? '' : String(m)); },
+};
+const LISTED = ['HTMLInputElement', 'HTMLTextAreaElement', 'HTMLSelectElement', 'HTMLButtonElement',
+	'HTMLFieldSetElement', 'HTMLOutputElement', 'HTMLObjectElement'];
+function formOwner(el) {
+	const id = N.attr(el, 'form');
+	if (id !== null) {
+		const f = G.document.getElementById(id);
+		return f && N.lname(f) === 'form' ? f : null;
+	}
+	return el.closest('form');
+}
+for (const name of LISTED) {
+	const C = G[name];
+	if (!C) continue;
+	def(C.prototype, validationMethods);
+	def(C.prototype, { get form() { return formOwner(this); } });
+	if (!('labels' in C.prototype) && name !== 'HTMLFieldSetElement' && name !== 'HTMLObjectElement')
+		def(C.prototype, { get labels() { return G.document.querySelectorAll('label').length ?
+			[...G.document.querySelectorAll('label')].filter(l => l.control === this) : []; } });
+}
+/* the submitter's form* attributes */
+for (const name of ['HTMLInputElement', 'HTMLButtonElement']) {
+	const C = G[name];
+	if (!C) continue;
+	def(C.prototype, {
+		get formAction() {
+			const v = N.attr(this, 'formaction');
+			if (v === null || v === '') { const f = this.form; return f ? f.action : N.url(); }
+			try { return new URL(v, N.url()).href; } catch (e) { return v; }
+		},
+		set formAction(v) { this.setAttribute('formaction', v); },
+		get formMethod() { const m = (N.attr(this, 'formmethod') || '').toLowerCase(); return ['get', 'post', 'dialog'].includes(m) ? m : m ? 'get' : ''; },
+		set formMethod(v) { this.setAttribute('formmethod', v); },
+		get formEnctype() { const e = (N.attr(this, 'formenctype') || '').toLowerCase(); return ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'].includes(e) ? e : e ? 'application/x-www-form-urlencoded' : ''; },
+		set formEnctype(v) { this.setAttribute('formenctype', v); },
+		get formTarget() { return N.attr(this, 'formtarget') || ''; },
+		set formTarget(v) { this.setAttribute('formtarget', v); },
+		get formNoValidate() { return N.attr(this, 'formnovalidate') !== null; },
+		set formNoValidate(v) { this.toggleAttribute('formnovalidate', !!v); },
+	});
+}
+if (G.HTMLTextAreaElement) def(G.HTMLTextAreaElement.prototype, {
+	get minLength() { const v = parseInt(N.attr(this, 'minlength'), 10); return isNaN(v) ? -1 : v; },
+	set minLength(v) { this.setAttribute('minlength', String(v)); },
+	get selectionDirection() { return 'none'; },
+	set selectionDirection(v) {},
+	get dirName() { return N.attr(this, 'dirname') || ''; },
+	set dirName(v) { this.setAttribute('dirname', v); },
+});
+if (G.HTMLSelectElement) def(G.HTMLSelectElement.prototype, {
+	get required() { return N.attr(this, 'required') !== null; },
+	set required(v) { this.toggleAttribute('required', !!v); },
+});
+if (G.HTMLFieldSetElement) def(G.HTMLFieldSetElement.prototype, {
+	get disabled() { return N.attr(this, 'disabled') !== null; },
+	set disabled(v) { this.toggleAttribute('disabled', !!v); },
+	get type() { return 'fieldset'; },
+	get name() { return N.attr(this, 'name') || ''; },
+	set name(v) { this.setAttribute('name', v); },
+});
+if (G.HTMLOutputElement) def(G.HTMLOutputElement.prototype, {
+	get value() { return this.textContent; },
+	set value(v) {
+		if (!Object.prototype.hasOwnProperty.call(this, '_dflt'))
+			Object.defineProperty(this, '_dflt', { value: this.textContent, writable: true });
+		this.textContent = v;
+	},
+	get defaultValue() { return Object.prototype.hasOwnProperty.call(this, '_dflt') ? this._dflt : this.textContent; },
+	set defaultValue(v) {
+		if (Object.prototype.hasOwnProperty.call(this, '_dflt')) this._dflt = String(v);
+		else this.textContent = v;
+	},
+	get type() { return 'output'; },
+	get htmlFor() { return new G.DOMTokenList(this, 'for'); },
+	get name() { return N.attr(this, 'name') || ''; },
+	set name(v) { this.setAttribute('name', v); },
+});
+
+/* the form: its listed elements (the form attribute's too), validation, submission blocked
+ * while a control is invalid */
+if (G.HTMLFormElement) {
+	const formProto = G.HTMLFormElement.prototype;
+	const elementsGet = Object.getOwnPropertyDescriptor(formProto, 'elements').get;
+	def(formProto, {
+		get elements() {
+			const own = elementsGet.call(this);
+			const id = N.attr(this, 'id');
+			if (!id) return own;
+			const extra = [...G.document.querySelectorAll('[form]')].filter(e =>
+				N.attr(e, 'form') === id && LISTED.includes(e.constructor.name));
+			if (!extra.length) return own;
+			const all = [...own, ...extra.filter(e => ![...own].includes(e))];
+			all.sort((a, b) => a.compareDocumentPosition(b) & 4 ? -1 : 1);
+			return G.HTMLCollection && own instanceof G.HTMLCollection ? Object.setPrototypeOf(
+				Object.assign(all, { item: i => all[i] || null, namedItem: n => all.find(e => N.attr(e, 'name') === n || N.attr(e, 'id') === n) || null }),
+				Object.getPrototypeOf(own)) : all;
+		},
+		checkValidity() {
+			let ok = true;
+			for (const e of this.elements) if (!checkOne(e)) ok = false;
+			return ok;
+		},
+		reportValidity() {
+			let ok = true, first = null;
+			for (const e of this.elements)
+				if (willValidate(e) && !validityOf(e).valid) {
+					if (fire(e, 'invalid', { cancelable: true }) && !first) first = e;
+					ok = false;
+				}
+			if (first) { N.log('form: ' + validationMessage(first)); try { first.focus(); } catch (e) {} }
+			return ok;
+		},
+	});
+	/* interactive validation: before a submit event (the browser's or requestSubmit's) */
+	G.addEventListener('submit', ev => {
+		const form = ev.target;
+		if (!(form instanceof G.HTMLFormElement) || N.attr(form, 'novalidate') !== null) return;
+		const s = ev.submitter;
+		if (s && N.attr(s, 'formnovalidate') !== null) return;
+		if (!form.reportValidity()) {
+			ev.preventDefault();
+			ev.stopImmediatePropagation();
+		}
+	}, true);
+}
+
+/* on* handlers the elements lacked */
+for (const t of ['invalid', 'close', 'cancel', 'beforetoggle', 'formdata', 'beforeinput',
+		'search', 'selectionchange', 'selectstart', 'slotchange', 'drag', 'dragstart', 'dragend',
+		'dragenter', 'dragleave', 'dragover', 'drop'])
+	if (!('on' + t in HTMLElement.prototype)) handlerProperty(HTMLElement.prototype, t);
+
+/* the pseudo-classes of forms, dialogs, details (dom.js's selector engine asks) */
+const pseudo = (e, name) => {
+	const tag = N.lname(e);
+	switch (name) {
+	case 'valid': return (willValidate(e) && validityOf(e).valid) ||
+		(tag === 'form' && [...e.elements].every(c => !willValidate(c) || validityOf(c).valid)) ||
+		(tag === 'fieldset' && [...e.elements].every(c => !willValidate(c) || validityOf(c).valid));
+	case 'invalid': return (willValidate(e) && !validityOf(e).valid) ||
+		((tag === 'form' || tag === 'fieldset') && [...e.elements].some(c => willValidate(c) && !validityOf(c).valid));
+	case 'user-valid': case 'user-invalid':
+		return N.formValue(e) !== null && willValidate(e) && validityOf(e).valid === (name === 'user-valid');
+	case 'in-range': case 'out-of-range': {
+		if (tag !== 'input' || !TYPE_NUM[inputType(e)]) return false;
+		const t = inputType(e);
+		if (numAttr(e, 'min', t) === null && numAttr(e, 'max', t) === null && t !== 'range') return false;
+		const v = validityOf(e);
+		const out = v.rangeUnderflow || v.rangeOverflow;
+		return name === 'out-of-range' ? out : !out;
+	}
+	case 'indeterminate': return (tag === 'input' && inputType(e) === 'checkbox' && !!indeterminate.get(e)) ||
+		(tag === 'progress' && N.attr(e, 'value') === null);
+	case 'default': return (tag === 'input' && ['checkbox', 'radio'].includes(inputType(e)) && N.attr(e, 'checked') !== null) ||
+		(tag === 'option' && N.attr(e, 'selected') !== null);
+	case 'open': return (tag === 'details' || tag === 'dialog') && N.attr(e, 'open') !== null;
+	case 'modal': return tag === 'dialog' && !!modalDialogs && modalDialogs.includes(e);
+	case 'autofill': case 'popover-open': return false;
+	}
+	return false;
+};
+let modalDialogs = [];
+if (N.internals) N.internals.pseudo = pseudo;
+
+/* ---- <dialog>, <details>, hidden ---------------------------------------------------------- */
+
+if (G.HTMLDialogElement) {
+	const returnValues = new WeakMap();
+	def(G.HTMLDialogElement.prototype, {
+		get open() { return N.attr(this, 'open') !== null; },
+		set open(v) { this.toggleAttribute('open', !!v); },
+		get returnValue() { return returnValues.get(this) || ''; },
+		set returnValue(v) { returnValues.set(this, String(v)); },
+		get closedBy() { return (N.attr(this, 'closedby') || 'auto').toLowerCase(); },
+		set closedBy(v) { this.setAttribute('closedby', v); },
+		show() {
+			if (this.open) {
+				if (modalDialogs.includes(this)) throw domError('a modal dialog', 'InvalidStateError');
+				return;
+			}
+			this.setAttribute('open', '');
+			focusDialog(this);
+		},
+		showModal() {
+			if (this.open) {
+				if (modalDialogs.includes(this)) return;
+				throw domError('already open', 'InvalidStateError');
+			}
+			if (!this.isConnected) throw domError('not connected', 'InvalidStateError');
+			this.setAttribute('open', '');
+			modalDialogs.push(this);
+			focusDialog(this);
+		},
+		close(result) {
+			if (!this.open) return;
+			this.removeAttribute('open');
+			if (result !== undefined) returnValues.set(this, String(result));
+			modalDialogs = modalDialogs.filter(d => d !== this);
+			task(() => fire(this, 'close'));
+		},
+		requestClose(result) {
+			if (!this.open) return;
+			if (fire(this, 'cancel', { cancelable: true })) this.close(result);
+		},
+	});
+	const focusDialog = d => {
+		const f = d.querySelector('[autofocus]') || d.querySelector('button,input,select,textarea,a[href],[tabindex]');
+		try { if (f) f.focus(); } catch (e) {}
+	};
+	/* Escape: the topmost modal dialog asks to close */
+	G.document.addEventListener('keydown', ev => {
+		if (ev.key !== 'Escape' || !modalDialogs.length || ev.defaultPrevented) return;
+		const d = modalDialogs[modalDialogs.length - 1];
+		if (d.closedBy !== 'none') d.requestClose();
+	});
+	/* a form method=dialog closes its dialog with the submitter's value */
+	G.addEventListener('submit', ev => {
+		const form = ev.target;
+		if (ev.defaultPrevented || !(form instanceof G.HTMLFormElement)) return;
+		const s = ev.submitter;
+		const method = (s && N.attr(s, 'formmethod')) || N.attr(form, 'method') || '';
+		if (method.toLowerCase() !== 'dialog') return;
+		ev.preventDefault();
+		const d = form.closest('dialog');
+		if (d) d.close(s && N.attr(s, 'value') !== null ? N.attr(s, 'value') : undefined);
+	});
+}
+
+/* <details>: "toggle" after the open attribute changes (a task; coalesced); a click on its
+ * summary toggles it (dom.js's activation) */
+const toggles = new WeakMap();
+function openChanged(el, old, now) {
+	const tag = N.lname(el);
+	if (tag !== 'details' && tag !== 'dialog') return;
+	if ((old !== null) === (now !== null)) return;
+	const pending = toggles.get(el);
+	const oldState = pending ? pending.oldState : old !== null ? 'open' : 'closed';
+	const newState = now !== null ? 'open' : 'closed';
+	if (pending) { pending.newState = newState; return; }
+	const rec = { oldState, newState };
+	toggles.set(el, rec);
+	task(() => {
+		toggles.delete(el);
+		if (rec.oldState === rec.newState) return;
+		const ev = new G.Event('toggle');
+		ev.oldState = rec.oldState;
+		ev.newState = rec.newState;
+		el.dispatchEvent(ev);
+	});
+}
+if (G.HTMLDetailsElement) def(G.HTMLDetailsElement.prototype, {
+	get open() { return N.attr(this, 'open') !== null; },
+	set open(v) { this.toggleAttribute('open', !!v); },
+	get name() { return N.attr(this, 'name') || ''; },
+	set name(v) { this.setAttribute('name', v); },
+});
+
+/* the hidden attribute: true, false or "until-found" */
+def(HTMLElement.prototype, {
+	get hidden() {
+		const v = N.attr(this, 'hidden');
+		if (v === null) return false;
+		return v.toLowerCase() === 'until-found' ? 'until-found' : true;
+	},
+	set hidden(v) {
+		if (v === 'until-found') this.setAttribute('hidden', 'until-found');
+		else this.toggleAttribute('hidden', !!v);
+	},
+	get translate() {
+		for (let n = this; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
+			const v = N.attr(n, 'translate');
+			if (v !== null) return v.toLowerCase() !== 'no';
+		}
+		return true;
+	},
+	set translate(v) { this.setAttribute('translate', v ? 'yes' : 'no'); },
+	get accessKey() { return N.attr(this, 'accesskey') || ''; },
+	set accessKey(v) { this.setAttribute('accesskey', v); },
+	get accessKeyLabel() { const k = N.attr(this, 'accesskey'); return k ? 'Alt+' + k.toUpperCase() : ''; },
+	get inert() { return N.attr(this, 'inert') !== null; },
+	set inert(v) { this.toggleAttribute('inert', !!v); },
+	get contentEditable() {
+		const v = N.attr(this, 'contenteditable');
+		if (v === null) return 'inherit';
+		const l = v.toLowerCase();
+		return l === '' || l === 'true' ? 'true' : l === 'false' ? 'false' : l === 'plaintext-only' ? 'plaintext-only' : 'inherit';
+	},
+	set contentEditable(v) {
+		const l = String(v).toLowerCase();
+		if (l === 'inherit') this.removeAttribute('contenteditable');
+		else if (['true', 'false', 'plaintext-only'].includes(l)) this.setAttribute('contenteditable', l);
+		else throw domError('bad value', 'SyntaxError');
+	},
+	get isContentEditable() {
+		for (let n = this; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
+			const v = N.attr(n, 'contenteditable');
+			if (v !== null) return v.toLowerCase() !== 'false';
+		}
+		return G.document.designMode === 'on';
+	},
+	get draggable() {
+		const v = N.attr(this, 'draggable');
+		if (v !== null) return v.toLowerCase() === 'true';
+		const t = N.lname(this);
+		return (t === 'img') || (t === 'a' && N.attr(this, 'href') !== null);
+	},
+	set draggable(v) { this.setAttribute('draggable', v ? 'true' : 'false'); },
+	get spellcheck() {
+		for (let n = this; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
+			const v = N.attr(n, 'spellcheck');
+			if (v !== null) return v.toLowerCase() !== 'false';
+		}
+		return true;
+	},
+	set spellcheck(v) { this.setAttribute('spellcheck', v ? 'true' : 'false'); },
+	get enterKeyHint() { return N.attr(this, 'enterkeyhint') || ''; },
+	set enterKeyHint(v) { this.setAttribute('enterkeyhint', v); },
+	get autocapitalize() { return N.attr(this, 'autocapitalize') || ''; },
+	set autocapitalize(v) { this.setAttribute('autocapitalize', v); },
+	get popover() { const v = N.attr(this, 'popover'); return v === null ? null : v === 'manual' ? 'manual' : v === 'hint' ? 'hint' : 'auto'; },
+	set popover(v) { if (v === null) this.removeAttribute('popover'); else this.setAttribute('popover', v); },
+});
+
+/* attribute changes: <details> / <dialog> open (custom elements add theirs below) */
+ceAttributeChanged = (el, k, old, now) => { if (k === 'open') openChanged(el, old, now); };
+
 return { serialize: outerHTMLOf, parseFragment, structuredClone };
 })

@@ -1481,7 +1481,8 @@ function matchPseudo(e, p, scope) {
 		return false;
 	}
 	case 'dir': return lower(p.arg) === 'ltr';
-	default: return false;
+	/* Onyx: the pseudo-classes html5.js knows (:valid, :invalid, :in-range, :open...) */
+	default: return !!(N.internals && N.internals.pseudo && N.internals.pseudo(e, p.name, p.arg));
 	}
 }
 

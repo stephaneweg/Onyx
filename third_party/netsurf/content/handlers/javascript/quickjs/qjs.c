@@ -118,6 +118,7 @@ struct jsthread {
 	bool pending_destroy;
 	int in_use;			/* calls into JS nested */
 	bool dirty;			/* the DOM changed: a new layout due */
+	int forced_layouts;		/* Onyx: layouts a script's reads forced this turn */
 	struct qjs_wrap *wraps;		/* dom_node -> its wrapper (open addressing) */
 	size_t nwraps, capwraps;
 	JSValue protos[QP_COUNT];
@@ -198,6 +199,7 @@ static void qjs_leave(jsthread *t)
 				qjs_report(jctx, "job");
 		}
 	}
+	t->forced_layouts = 0;
 	if (t->dirty) {
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
@@ -1117,6 +1119,20 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
 }
 
 /** rect(n): [x, y, width, height] of its border box in the viewport (0s: no box) */
+/* Onyx: a layout asked for (a rectangle, a style): the changes of this script turn laid out
+ * first (they used to wait for the turn's end: offsetHeight after details.open = true) */
+static void qjs_layout_now(jsthread *t)
+{
+	/* (at most 16 a turn: a script alternating writes and reads would rebuild the whole
+	 * layout at each read -- past that, the reads see the layout before the turn) */
+	if (t->dirty && !t->closed && t->forced_layouts < 16) {
+		t->forced_layouts++;
+		t->dirty = false;
+		html_script_dom_changed(t->htmlc);
+	}
+	html_script_layout_now(t->htmlc);
+}
+
 static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
@@ -1126,7 +1142,7 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
-		html_script_layout_now(t->htmlc);	/* a pending layout done */
+		qjs_layout_now(t);	/* a pending layout done */
 	box = qjs_box(n);
 	if (box != NULL && t->htmlc != NULL && t->htmlc->layout != NULL) {
 		box_coords(box, &x, &y);
@@ -1162,7 +1178,7 @@ static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
-		html_script_layout_now(t->htmlc);
+		qjs_layout_now(t);
 	return JS_NewBool(ctx, qjs_box(n) != NULL);
 }
 
@@ -1218,7 +1234,7 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	QJS_NODE_ARG(n, 0);
 
 	if (t->htmlc != NULL)
-		html_script_layout_now(t->htmlc);
+		qjs_layout_now(t);
 	box = qjs_box(n);
 	prop = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
 	if (prop == NULL)
