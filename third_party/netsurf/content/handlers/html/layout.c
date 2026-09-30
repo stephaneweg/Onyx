@@ -1841,9 +1841,15 @@ bool layout_table(
 	/* find specified table width, or available width if auto-width */
 	if (css_computed_width_px(style, &content->unit_len_ctx,
 			available_width, &table_width) == CSS_WIDTH_SET) {
-		/* specified width includes border */
+		/* specified width includes border -- Onyx: and padding
+		 * with box-sizing: border-box (Chrome's UA sheet sets it on
+		 * tables) */
 		table_width -= table->border[LEFT].width +
 				table->border[RIGHT].width;
+		if (css_computed_box_sizing(style) ==
+				CSS_BOX_SIZING_BORDER_BOX)
+			table_width -= table->padding[LEFT] +
+					table->padding[RIGHT];
 		table_width = table_width < 0 ? 0 : table_width;
 
 		auto_width = table_width;
@@ -2060,19 +2066,27 @@ bool layout_table(
 				}
 
 			} else {
-				int extra = (table_width - max_width) /
-						flexible_columns;
-				remainder = (table_width - max_width) -
-						(extra * flexible_columns);
+				/* Onyx: in proportion to their max-content
+				 * widths (Chrome's auto layout), equally when
+				 * they have none */
+				int spare = table_width - max_width;
+				int flex_max = 0, given = 0, last = -1;
 				for (i = 0; i != columns; i++)
 					if (col[i].type != COLUMN_WIDTH_FIXED) {
-						col[i].width = col[i].max +
-								extra;
-						count -= remainder;
-						if (count < 0) {
-							col[i].width++;
-							count += flexible_columns;
-						}
+						flex_max += col[i].max;
+						last = i;
+					}
+				for (i = 0; i != columns; i++)
+					if (col[i].type != COLUMN_WIDTH_FIXED) {
+						int e = flex_max > 0 ?
+							(int) ((int64_t) spare *
+							col[i].max / flex_max) :
+							spare / (int)
+							flexible_columns;
+						if ((int) i == last)
+							e = spare - given;
+						given += e;
+						col[i].width = col[i].max + e;
 					}
 			}
 		}
@@ -2086,6 +2100,73 @@ bool layout_table(
 					(col[i].max - col[i].min) * scale);
 		}
 		table_width = auto_width;
+	}
+
+	/* Onyx: table-layout: fixed (with a width): the columns' widths from
+	 * the first row's cells (their width, padding and border), the rest
+	 * shared equally by the others -- the content does not count */
+	if (css_computed_table_layout(style) == CSS_TABLE_LAYOUT_FIXED &&
+	    css_computed_width_px(style, &content->unit_len_ctx,
+			available_width, &x) == CSS_WIDTH_SET &&
+	    table->children != NULL && table->children->children != NULL) {
+		int avail = table_width - (int) (columns + 1) * border_spacing_h;
+		int used = 0, unknown = 0, given = 0, last = -1;
+		int *fw = calloc(columns, sizeof(int));
+
+		if (fw != NULL) {
+			for (i = 0; i != columns; i++)
+				fw[i] = -1;
+			for (c = table->children->children->children; c;
+					c = c->next) {
+				int w;
+				if (c->start_column + c->columns > columns)
+					continue;
+				if (css_computed_width_px(c->style,
+						&content->unit_len_ctx, avail,
+						&w) != CSS_WIDTH_SET)
+					continue;
+				if (css_computed_box_sizing(c->style) !=
+						CSS_BOX_SIZING_BORDER_BOX)
+					w += c->padding[LEFT] + c->padding[RIGHT] +
+						c->border[LEFT].width +
+						c->border[RIGHT].width;
+				for (i = 0; i != c->columns; i++)
+					fw[c->start_column + i] = w / c->columns;
+			}
+			for (i = 0; i != columns; i++) {
+				if (fw[i] >= 0)
+					used += fw[i];
+				else {
+					unknown++;
+					last = i;
+				}
+			}
+			for (i = 0; i != columns; i++) {
+				if (fw[i] >= 0) {
+					col[i].width = fw[i];
+				} else {
+					int e = avail > used ?
+						(avail - used) / unknown : 0;
+					if ((int) i == last && avail > used)
+						e = avail - used - given;
+					given += e;
+					col[i].width = e;
+				}
+			}
+			if (unknown == 0 && avail > used && used > 0) {
+				/* all given: the spare in proportion */
+				int spare = avail - used, g = 0;
+				for (i = 0; i != columns; i++) {
+					int e = (int) ((int64_t) spare * fw[i] /
+							used);
+					if (i + 1 == columns)
+						e = spare - g;
+					g += e;
+					col[i].width += e;
+				}
+			}
+			free(fw);
+		}
 	}
 
 	xs[0] = x = border_spacing_h;
@@ -2159,7 +2240,9 @@ bool layout_table(
 				 */
 				if (c->height < row_height)
 					c->height = row_height;
-				c->x = xs[c->start_column] +
+				/* (Onyx: the row group starts after the
+				 * border spacing) */
+				c->x = xs[c->start_column] - border_spacing_h +
 						c->border[LEFT].width;
 				c->y = c->border[TOP].width;
 				for (i = 0; i != c->columns; i++) {
@@ -2210,14 +2293,17 @@ bool layout_table(
 
 			row->x = 0;
 			row->y = row_group_height;
-			row->width = table_width;
+			row->width = table_width - 2 * border_spacing_h;
 			row->height = row_height;
 			row_group_height += row_height + border_spacing_v;
 		}
-		row_group->x = 0;
+		/* Onyx: a row group (its rows) spans the cells, not the
+		 * border spacing around them: its box as Chrome's */
+		row_group->x = border_spacing_h;
 		row_group->y = table_height;
-		row_group->width = table_width;
-		row_group->height = row_group_height;
+		row_group->width = table_width - 2 * border_spacing_h;
+		row_group->height = row_group_height > border_spacing_v ?
+				row_group_height - border_spacing_v : 0;
 		table_height += row_group_height;
 	}
 	/* Table height is either the height of the contents, or specified
@@ -3751,6 +3837,11 @@ layout_line(struct box *first,
 				layout_line_box_ab(d, ulc, &ab, &bl, &top);
 				va = css_computed_vertical_align(d->style,
 						&value, &unit);
+				/* Onyx: a text directly in the block has the
+				 * block's style: the block's vertical-align (a
+				 * table cell's middle) is not the text's */
+				if (d->type == BOX_TEXT && d->style == bs)
+					va = CSS_VERTICAL_ALIGN_BASELINE;
 				switch (va) {
 				case CSS_VERTICAL_ALIGN_SUB:
 					shift = psize / 5 + 1;

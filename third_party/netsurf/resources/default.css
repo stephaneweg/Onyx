@@ -80,7 +80,8 @@ dd { display: block; margin-left: 40px; }
 dir { display: block; padding-left: 40px; margin: 1em 0; }
 menu { display: block; padding-left: 40px; margin: 1em 0; }
 
-table { display: table; border-spacing: 2px; }
+table { display: table; border-spacing: 2px; box-sizing: border-box;
+	border-collapse: separate; text-indent: 0; }
 
 table[border], table[border] td, table[border] tr { border-color: grey; }
 
