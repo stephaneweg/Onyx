@@ -29,6 +29,7 @@
 #include "utils/errors.h"
 #include "utils/log.h"
 #include "utils/nsurl.h"
+#include "utils/useragent.h"	/* (the "Desktop Site" key) */
 #include "content/backing_store.h"
 #include "netsurf/onyx_perf.h"
 
@@ -108,11 +109,28 @@ static uint8_t *oc_read(const char *path, size_t *len)
 	return b;
 }
 
+/* Onyx: the entry's key -- its URL, "D|" before it when the URL's site is shown in its
+ * desktop version ("Desktop Site", utils/useragent.c): the two versions of a page are
+ * different responses (a Vary: User-Agent), a site switched back found the other's copy */
+static const char *oc_key(nsurl *url, char *buf, size_t cap)
+{
+	lwc_string *h = nsurl_get_component(url, NSURL_HOST);
+	bool d = h != NULL && user_agent_is_desktop(lwc_string_data(h));
+
+	if (h != NULL)
+		lwc_string_unref(h);
+	if (!d)
+		return nsurl_access(url);
+	snprintf(buf, cap, "D|%s", nsurl_access(url));
+	return buf;
+}
+
 static struct oc_entry *oc_find(nsurl *url)
 {
 	uint32_t h = nsurl_hash(url);
 	struct oc_entry *e;
-	const char *s = nsurl_access(url);
+	char kb[4096];
+	const char *s = oc_key(url, kb, sizeof kb);
 
 	for (e = oc.hash[h % OC_HASH]; e != NULL; e = e->next)
 		if (e->hash == h && !e->dead && strcmp(e->url, s) == 0)
@@ -314,9 +332,10 @@ static void oc_load_index(void)
 			break;
 		*nl = '\0';
 		if (sscanf(p, "%x %lu %lu %u %n", &id, &dl, &ml, &used, &off) == 4 && off > 0 &&
-		    nsurl_create(p + off, &u) == NSERROR_OK) {
+		    nsurl_create(p + off + (strncmp(p + off, "D|", 2) == 0 ? 2 : 0), &u) ==
+				NSERROR_OK) {
 			struct oc_entry *e = calloc(1, sizeof *e);
-			url = strdup(nsurl_access(u));
+			url = strdup(p + off);	/* (its key: "D|" kept -- oc_key) */
 			if (e != NULL && url != NULL) {
 				e->url = url;
 				e->hash = nsurl_hash(u);
@@ -421,7 +440,8 @@ static nserror oc_store(nsurl *url, enum backing_store_flags flags, uint8_t *dat
 	e = oc_find(url);
 	if (e == NULL) {
 		e = calloc(1, sizeof *e);
-		if (e == NULL || (e->url = strdup(nsurl_access(url))) == NULL) {
+		char kb[4096];
+		if (e == NULL || (e->url = strdup(oc_key(url, kb, sizeof kb))) == NULL) {
 			free(e);
 			kapi_unlock(&oc.lk);
 			return NSERROR_NOMEM;
@@ -534,7 +554,8 @@ static nserror oc_fetch(nsurl *url, enum backing_store_flags flags, uint8_t **da
 static nserror oc_release(nsurl *url, enum backing_store_flags flags)
 {
 	int elem = (flags & BACKING_STORE_META) ? OC_ELEM_META : OC_ELEM_DATA;
-	const char *s = nsurl_access(url);
+	char kb[4096];
+	const char *s = oc_key(url, kb, sizeof kb);
 	uint32_t h = nsurl_hash(url);
 	struct oc_entry *e;
 

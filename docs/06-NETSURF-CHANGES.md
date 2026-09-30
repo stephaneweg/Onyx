@@ -1135,7 +1135,8 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   `sec-ch-ua-platform`) and its scripts' `navigator.userAgent` / `platform` -- and the page is
   loaded again. The sites are kept on the card (`SD:/apps/netsurf.app/desktop-sites`, one
   registrable domain a line: m.facebook.com and www.facebook.com are one site;
-  `user_agent_for_host`, utils/useragent.c).
+  `user_agent_for_host`, utils/useragent.c). The disk cache keys a desktop site's objects apart
+  (`D|<url>`, `onyx_cache.c`): a site switched back to mobile found its desktop copies.
 - **Media queries' range syntax** (libcss `src/parse/mq.c`, an upstream bug): with the name
   first (`(width >= 1012px)`) the stored value was the name itself and the operator was negated
   instead of having its sides swapped -- the query never matched: GitHub's Primer showed its
