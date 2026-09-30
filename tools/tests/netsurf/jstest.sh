@@ -143,5 +143,17 @@ expect "$L" "sel k2 rgb(128, 0, 128)"
 expect "$L" "sel d rgb(1, 2, 3)"
 expect "$L" "sel w rgb(4, 5, 6)"
 
+echo "css-math.html (CSS Values 4: round(), mod(), sin(), pow(), pi, hypot(); the dv* / cq* units)"
+L=$OUT/css-math.log
+run css-math.html "$(waits 60)" "$L"
+expect "$L" "math a 50px"
+expect "$L" "math b 50px"
+expect "$L" "math c 18px"
+expect "$L" "math d 80px"
+expect "$L" "math e 31px"
+expect "$L" "math g 40px"
+expect "$L" "math h 50px"
+if grep -q "^console: math f 81px" "$L" && grep -q "^console: math i 40px" "$L"; then echo "  ok    10dvw, 5cqi"; else echo "  FAIL  10dvw, 5cqi: $(grep '^console: math [fi]' "$L" | tr '\n' ' ')"; fail=1; fi
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

@@ -171,3 +171,13 @@ S+ [att$=val i] { color: red }
 S+ .x::-webkit-scrollbar { display: none }
 S- ::-webkit-unknown-pseudo { color: red }
 S- :hover::marker2 { color: red }
+
+# ---- the newer units and math functions, computed by libcss (a value libcss folds)
++ height: 100dvh
++ width: calc(100cqi - 2rex)
++ margin: 1cap 2ic 3rlh 4ric
++ width: round(down, 57.5px, 10px)
++ width: calc(100px * sin(30deg))
++ width: calc(1px * pow(2, pi))
+- width: calc(1px * sin(30px))
+- width: mod(10px, 3)
