@@ -151,6 +151,46 @@ extern "C" onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigne
 	return h;
 }
 
+extern "C" int onyx_nstls_resumed(onyx_tls_sess *h)
+{
+	return h != 0 && h->s.resumed;
+}
+
+extern "C" void onyx_nstls_sessions_load(const char *path)
+{
+	FILE *f = fopen(path, "rb");
+	unsigned char *b;
+	long n;
+
+	if (f == 0)
+		return;
+	fseek(f, 0, SEEK_END);
+	n = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	b = n > 0 && n < (1 << 20) ? (unsigned char *) malloc((size_t) n) : 0;
+	if (b != 0 && fread(b, 1, (size_t) n, f) == (size_t) n)
+		onyx_tls::sess_import(b, (size_t) n);
+	free(b);
+	fclose(f);
+}
+
+extern "C" void onyx_nstls_sessions_save(const char *path)
+{
+	size_t n = onyx_tls::sess_export(0, 0);
+	unsigned char *b = (unsigned char *) malloc(n);
+	FILE *f;
+
+	if (b == 0)
+		return;
+	n = onyx_tls::sess_export(b, n);
+	f = fopen(path, "wb");
+	if (f != 0) {
+		fwrite(b, 1, n, f);
+		fclose(f);
+	}
+	free(b);
+}
+
 extern "C" void onyx_nstls_cancel_flag(volatile int *flag)
 {
 	onyx_tls::cancel_flag() = flag;

@@ -61,6 +61,15 @@ onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
  * end: their sockets given back at once) */
 void onyx_nstls_cancel_flag(volatile int *flag);
 
+/* Onyx: whether the handshake resumed a session (no certificate exchanged: one round trip
+ * less) -- the perf log's "resumed" */
+int onyx_nstls_resumed(onyx_tls_sess *s);
+
+/* Onyx: the TLS sessions kept across launches -- read at the start (the next connections to
+ * those hosts resume), written at the end (and after a page's load): a file on the card */
+void onyx_nstls_sessions_load(const char *path);
+void onyx_nstls_sessions_save(const char *path);
+
 /* The chain's DER copies freed. */
 void onyx_nstls_chain_free(struct onyx_tls_chain *chain);
 

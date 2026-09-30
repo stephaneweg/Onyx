@@ -70,6 +70,8 @@ namespace onyx_tls
 		Verify                   *vr;		// (Onyx) the check's record, or 0
 		long                      now;		// (Onyx) the clock in seconds since 1970, 0 unset
 		volatile int             *cancel;	// (Onyx) set by another thread: stop waiting, fail
+		int                       vrfy_calls;	// (Onyx) certificates the check looked at
+		bool                      resumed;	// (Onyx) the handshake resumed a cached session
 	};
 
 	// (Onyx) an app-wide "stop now" for the handshakes and writes in progress (NetSurf's end:
@@ -154,6 +156,7 @@ namespace onyx_tls
 	static int verify_cb (void *ctx, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
 	{
 		Session *s = (Session *) ctx;
+		s->vrfy_calls++;
 		if (s->now != 0) {
 			if (s->now - 86400L > x509_secs (crt->valid_to)) *flags |= MBEDTLS_X509_BADCERT_EXPIRED;
 			if (s->now + 86400L < x509_secs (crt->valid_from)) *flags |= MBEDTLS_X509_BADCERT_FUTURE;
@@ -219,8 +222,8 @@ namespace onyx_tls
 	// RESUME -- skipping the full ECDHE + signature -- which is a big win for pages
 	// that fetch many resources from the same host over separate connections (the
 	// current per-resource-connection model). Per-app (one cache per linked app).
-	enum { TLS_SESS_CACHE_N = 16 };
-	struct SessCacheEntry { char host[128]; mbedtls_ssl_session sess; bool valid; };
+	enum { TLS_SESS_CACHE_N = 32 };
+	struct SessCacheEntry { char host[128]; mbedtls_ssl_session sess; bool valid; bool trusted; };
 
 	inline bool sess_streq (const char *a, const char *b)
 	{
@@ -279,6 +282,9 @@ namespace onyx_tls
 		s.vr = vr;
 		s.now = 0;
 		s.cancel = cancel_flag ();
+		s.vrfy_calls = 0;
+		s.resumed = false;
+		bool offered = false;
 		mbedtls_ssl_init (&s.ssl);
 		mbedtls_ssl_config_init (&s.conf);
 		mbedtls_ctr_drbg_init (&s.drbg);
@@ -347,7 +353,7 @@ namespace onyx_tls
 		{
 			kapi_lock (sess_lock ());
 			SessCacheEntry *resume = sess_find (host);
-			if (resume != 0) mbedtls_ssl_set_session (&s.ssl, &resume->sess);
+			if (resume != 0) offered = mbedtls_ssl_set_session (&s.ssl, &resume->sess) == 0;
 			kapi_unlock (sess_lock ());
 		}
 
@@ -376,11 +382,78 @@ namespace onyx_tls
 				}
 			}
 			if (f != 0 && !(opts & START_INSECURE)) return -2;
+			// (Onyx) resumed: a cached session offered and no certificate to check (the
+			// server took it: an abbreviated handshake)
+			s.resumed = offered && s.vrfy_calls == 0;
 		}
 		kapi_lock (sess_lock ());
 		sess_save (host, &s.ssl);		// cache the (resumable) session for next time
+		{
+			SessCacheEntry *e = sess_find (host);	// (Onyx) kept on the card only if trusted
+			if (e != 0) e->trusted = (opts & START_VERIFY) && mbedtls_ssl_get_verify_result (&s.ssl) == 0;
+		}
 		kapi_unlock (sess_lock ());
 		return 0;
+	}
+
+	// ---- (Onyx) the session cache kept across launches ---------------------------------
+	// The trusted sessions written as bytes (the app saves them on the card and gives them back
+	// at its next launch: a first connection to a known host resumes -- one round trip less,
+	// no certificate chain to check): "OTLS1", then per session its host's length (1 byte), the
+	// host, its data's length (4 bytes, little-endian), mbedtls_ssl_session_save's bytes.
+	// sess_export (0, 0) -> the size needed; sess_export (buf, cap) -> the bytes written.
+	inline size_t sess_export (unsigned char *buf, size_t cap)
+	{
+		size_t n = 5;
+		kapi_lock (sess_lock ());
+		SessCacheEntry *c = sess_cache ();
+		if (buf != 0 && cap >= 5) memcpy (buf, "OTLS1", 5);
+		for (int i = 0; i < TLS_SESS_CACHE_N; i++) {
+			if (!c[i].valid || !c[i].trusted) continue;
+			size_t hl = strlen (c[i].host), dl = 0;
+			mbedtls_ssl_session_save (&c[i].sess, 0, 0, &dl);	// (the size)
+			if (dl == 0 || hl > 127) continue;
+			if (buf != 0) {
+				if (n + 1 + hl + 4 + dl > cap) break;
+				buf[n] = (unsigned char) hl;
+				memcpy (buf + n + 1, c[i].host, hl);
+				buf[n + 1 + hl] = (unsigned char) dl; buf[n + 2 + hl] = (unsigned char) (dl >> 8);
+				buf[n + 3 + hl] = (unsigned char) (dl >> 16); buf[n + 4 + hl] = (unsigned char) (dl >> 24);
+				size_t out = 0;
+				if (mbedtls_ssl_session_save (&c[i].sess, buf + n + 5 + hl, dl, &out) != 0 || out != dl)
+					continue;
+			}
+			n += 1 + hl + 4 + dl;
+		}
+		kapi_unlock (sess_lock ());
+		return n;
+	}
+	inline void sess_import (const unsigned char *buf, size_t len)
+	{
+		if (len < 5 || memcmp (buf, "OTLS1", 5) != 0) return;
+		size_t n = 5;
+		kapi_lock (sess_lock ());
+		SessCacheEntry *c = sess_cache ();
+		for (int i = 0; i < TLS_SESS_CACHE_N && n < len; ) {
+			size_t hl = buf[n];
+			if (n + 1 + hl + 4 > len) break;
+			size_t dl = buf[n + 1 + hl] | (size_t) buf[n + 2 + hl] << 8 |
+				(size_t) buf[n + 3 + hl] << 16 | (size_t) buf[n + 4 + hl] << 24;
+			if (n + 5 + hl + dl > len) break;
+			if (!c[i].valid) {
+				mbedtls_ssl_session_init (&c[i].sess);
+				if (mbedtls_ssl_session_load (&c[i].sess, buf + n + 5 + hl, dl) == 0) {
+					memcpy (c[i].host, buf + n + 1, hl);
+					c[i].host[hl] = '\0';
+					c[i].valid = c[i].trusted = true;
+				} else {
+					mbedtls_ssl_session_free (&c[i].sess);
+				}
+			}
+			n += 5 + hl + dl;
+			i++;
+		}
+		kapi_unlock (sess_lock ());
 	}
 	inline int start (Session &s, int sock, const char *host)
 	{

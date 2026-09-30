@@ -2118,13 +2118,16 @@ gui_window_start_throbber(struct gui_window *g)
 		framebuffer_schedule(100, throbber_advance, g);
 }
 
-/* Onyx: the pages visited and the cookies, written to the card a few seconds after a
- * page is loaded (not only at the end: a Pi is often switched off rather than quit) */
+/* Onyx: the pages visited, the cookies and the fetcher's state, written to the card a few
+ * seconds after a page is loaded (not only at the end: a Pi is often switched off rather than quit) */
+void onyx_fetch_save_state(void);	/* user/netsurf/onyx_fetch.c */
+
 static void onyx_save_user_data(void *p)
 {
 	(void) p;
 	urldb_save(nsoption_charp(url_file));
 	urldb_save_cookies(nsoption_charp(cookie_jar));
+	onyx_fetch_save_state();	/* (the TLS sessions, the HTTP/1.1-only origins) */
 }
 
 static void

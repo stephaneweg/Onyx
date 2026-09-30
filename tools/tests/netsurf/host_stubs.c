@@ -24,6 +24,9 @@
 onyx_tls_sess *onyx_mb_connect(int sock, const char *host, unsigned flags, struct onyx_tls_chain *chain);
 void onyx_mb_ca_bundle(const char *path);
 void onyx_mb_cancel_flag(volatile int *flag);
+int onyx_mb_resumed(onyx_tls_sess *s);
+void onyx_mb_sessions_load(const char *path);
+void onyx_mb_sessions_save(const char *path);
 int onyx_mb_send(onyx_tls_sess *s, const void *buf, int len);
 int onyx_mb_recv(onyx_tls_sess *s, void *buf, int len);
 void onyx_mb_close(onyx_tls_sess *s);
@@ -105,6 +108,16 @@ static SSL_CTX *ctx(void)
 	}
 	return c;
 }
+
+int onyx_nstls_resumed(onyx_tls_sess *s)
+{
+	if (s == NULL) return 0;
+	return s->mb != NULL ? onyx_mb_resumed(s->mb) : SSL_session_reused(s->ssl);
+}
+
+/* (the sessions kept across launches: the Pi's code's, NS_MBEDTLS=1) */
+void onyx_nstls_sessions_load(const char *path) { if (use_mb()) onyx_mb_sessions_load(path); }
+void onyx_nstls_sessions_save(const char *path) { if (use_mb()) onyx_mb_sessions_save(path); }
 
 void onyx_nstls_cancel_flag(volatile int *flag)
 {
