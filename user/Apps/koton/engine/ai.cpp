@@ -23,7 +23,7 @@ const char *const g_aiKindNames[AI_KINDS] = {
 const char *const g_aiProviders[AI_PROVIDER_COUNT] = { "gemini", "groq", "mistral", "claude", "deepseek", "grok", "openai-compatible" };
 static const char *const s_providerLabels[AI_PROVIDER_COUNT] = { "Gemini", "Groq", "Mistral", "Claude", "DeepSeek", "Grok", "OpenAI-compatible" };
 static const char *const s_providerModels[AI_PROVIDER_COUNT] = {
-	"gemini-2.0-flash", "llama-3.3-70b-versatile", "mistral-small-latest", "claude-opus-4-8", "deepseek-chat", "grok-4", "" };
+	"gemini-flash-latest", "llama-3.3-70b-versatile", "mistral-small-latest", "claude-opus-4-8", "deepseek-chat", "grok-4", "" };
 static int providerIndex (const char *p)
 {
 	for (int i = 0; i < AI_PROVIDER_COUNT; i++) if (json::seqi (p, g_aiProviders[i])) return i;

@@ -657,13 +657,17 @@ ensuite modifier comme les autres.
 *La boîte de dialogue Compose with AI.*
 
 - **What** (quoi) :
-  - **Compose a piece** (composer un morceau) — un morceau entièrement nouveau : il **remplace** le
-    morceau actuel (**Undo** le ramène).
+  - **Compose a piece** (composer un morceau) — un morceau entièrement nouveau.
   - **Develop the theme (after the end)** (développer le thème) — les mesures suivantes, à partir du
     dernier riff du morceau.
   - **Add an instrument over the song** (ajouter un instrument) — une nouvelle piste qui joue avec le reste.
   - **Add drums over the song** (ajouter une batterie).
-  - **A polyrhythmic piece** (un morceau polyrythmique) — lui aussi remplace le morceau.
+  - **A polyrhythmic piece** (un morceau polyrythmique).
+
+  Quelle que soit la demande, le résultat devient un **nouveau morceau** (sans titre, pas encore
+  enregistré) : le morceau actuel reste tel quel — Koton propose d'abord de l'enregistrer s'il a des
+  modifications. Un ajout (développement, instrument, batterie) est une copie du morceau actuel avec la
+  nouvelle musique.
 - **Style** et **Intention** : avec vos mots (*« une bossa mélancolique, un refrain plus lumineux, une fin
   qui ralentit »*).
 - **Bars (about)** : le nombre approximatif de mesures.
@@ -672,13 +676,17 @@ ensuite modifier comme les autres.
 - **Provider** (fournisseur) : *Gemini*, *Groq*, *Mistral*, *Claude*, *DeepSeek*, *Grok*, ou un serveur
   compatible OpenAI ; son **modèle** (le modèle habituel est pré-rempli) ; votre **clé d'API**.
 
-**Generate** envoie la demande (par `SD:/bin/llm`) ; une fenêtre montre la progression, **Cancel**
-l'interrompt. Cela prend de quelques secondes à une minute. La barre d'état résume ensuite ce qui a été
-placé.
+**Generate** envoie la demande (par `SD:/bin/llm`). La boîte **reste ouverte** : la progression s'affiche
+en bas, **Cancel** interrompt la demande. Cela prend de quelques secondes à une minute (un modèle surchargé —
+*503, high demand* — est redemandé tout seul, jusqu'à quatre fois). Quand la réponse est là, la boîte la
+résume (*4 sections, 32 accords, …*) et affiche **Apply as a new song** (appliquer dans un nouveau
+morceau) ; ou modifiez la demande et relancez **Generate**. Une erreur (pas de clé, réponse inutilisable,
+réseau) s'affiche au même endroit, et la boîte reste ouverte pour réessayer.
 
 **Sans clé** : **Copy the prompt** met toute la demande dans le presse-papiers — collez-la dans n'importe
 quelle conversation avec une IA (sur un autre ordinateur, par exemple), copiez sa **réponse entière**, et
-revenez à **Paste a reply** (coller une réponse) : Koton la place de la même façon.
+revenez à **Paste a reply** (coller une réponse) : la boîte la vérifie et propose **Apply as a new song** de
+la même façon. Les deux laissent la boîte ouverte.
 
 La boîte **se souvient de votre dernière demande** : elle se rouvre avec le même style, la même intention, le
 même nombre de mesures et les mêmes options (depuis la barre de transport ou le menu **AI**, avec le même type de demande aussi),

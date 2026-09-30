@@ -1,4 +1,6 @@
 #include "wtk/textbox.h"
+#include "wtk/menu.h"		// WK_CTRL
+#include "clipboard.h"
 
 namespace wtk {
 
@@ -150,8 +152,55 @@ bool Textbox::keyFace (long k)
 	invalidate (true); return true;
 }
 
+// ---- the clipboard: Ctrl+C / Ctrl+X the whole field (not a password's), Ctrl+V at the caret -----------
+bool Textbox::clipKey (long k)
+{
+	if (k == WK_CTRL ('C') || k == WK_CTRL ('X'))
+	{
+		if (password || !text[0]) return true;
+		clip_set_text (text);
+		if (k == WK_CTRL ('X')) { text[0] = '\0'; caret = 0; invalidate (true); }
+		return true;
+	}
+	if (k != WK_CTRL ('V')) return false;
+	static char b[TEXT_CAP * 4];
+	if (!clip_get_text (b, sizeof b)) return true;
+	// One line: tabs and line breaks become spaces, those around the text are dropped. Without a
+	// face the field is Latin-1: the clipboard's UTF-8 is brought to it (other characters dropped).
+	bool face = wk_textface () != 0;
+	char in[TEXT_CAP]; int n = 0;
+	const unsigned char *p = (const unsigned char *) b;
+	while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+	for (; *p && n < TEXT_CAP - 1; p++)
+	{
+		unsigned c = *p;
+		if (c == '\r') continue;
+		if (c == '\t' || c == '\n') c = ' ';
+		else if (c < 32 || c == 127) continue;
+		else if (!face && c >= 0x80)
+		{
+			if ((c & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80)
+			{ c = ((c & 0x1F) << 6) | (p[1] & 0x3F); p++; if (c < 0xA0) continue; }
+			else { while ((p[1] & 0xC0) == 0x80) p++; continue; }
+		}
+		in[n++] = (char) c;
+	}
+	while (n > 0 && in[n - 1] == ' ') n--;
+	int len = wk_len (text);
+	if (caret < 0) caret = 0;
+	if (caret > len) caret = len;
+	if (n > maxLen - len)		// what fits, not cutting a character in two
+	{ n = maxLen - len; if (n < 0) n = 0; if (face) while (n > 0 && (in[n] & 0xC0) == 0x80) n--; }
+	if (n <= 0) return true;
+	for (int i = len; i >= caret; i--) text[i + n] = text[i];
+	for (int i = 0; i < n; i++) text[caret + i] = in[i];
+	caret += n;
+	invalidate (true); return true;
+}
+
 bool Textbox::onKey (long k)
 {
+	if (clipKey (k)) return true;
 	if (wk_textface ()) return keyFace (k);
 	int len = wk_len (text);
 	if ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF))	// ASCII + Latin-1 (é è à ç ...)

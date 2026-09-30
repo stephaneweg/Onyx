@@ -174,6 +174,9 @@ public:
 		p = np; path[0] = 0; dirty = false; sel = Selection (); selTrack = 0; clearHistory (); revision++;
 	}
 
+	// a new song made elsewhere (the AI's): untitled and not saved yet, no history
+	void adopt (const Project &np) { p = np; path[0] = 0; dirty = true; sel = Selection (); selTrack = 0; clearHistory (); revision++; }
+
 	// ---- geometry ----
 	double itemStart (int t, int i) const { return p.itemStart (p.tracks[t], i); }
 	double itemLen (int t, int i) const { return p.itemLength (p.tracks[t].items[i]); }

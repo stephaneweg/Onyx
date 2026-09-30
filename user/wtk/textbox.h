@@ -1,5 +1,6 @@
 //
-// wtk/textbox.h -- single-line editable field; click to position caret, type to edit. (With a text
+// wtk/textbox.h -- single-line editable field; click to position caret, type to edit; Ctrl+V pastes
+// the clipboard at the caret, Ctrl+C / Ctrl+X copy / cut the whole field (not a password). (With a text
 // face installed -- wtk/text.h -- its text is UTF-8 and the caret follows the glyphs' widths.)
 //
 #ifndef _wtk_textbox_h
@@ -30,6 +31,7 @@ private:
 	int  textAt (int d) const;		// ... and back
 	void drawFace ();
 	bool keyFace (long k);
+	bool clipKey (long k);			// Ctrl+C / X / V -> true if taken
 };
 
 } // namespace wtk

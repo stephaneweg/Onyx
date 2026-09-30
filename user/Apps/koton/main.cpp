@@ -84,7 +84,7 @@ struct Settings
 {
 	char soundfont[256], lastDir[256], aiProvider[32], aiModel[64], aiKey[160];
 	AiLast aiLast;			// Compose with AI's last request
-	Settings () { soundfont[0] = 0; snprintf (lastDir, sizeof lastDir, "SD:/koton/songs"); snprintf (aiProvider, sizeof aiProvider, "gemini"); snprintf (aiModel, sizeof aiModel, "gemini-2.5-flash"); aiKey[0] = 0; }
+	Settings () { soundfont[0] = 0; snprintf (lastDir, sizeof lastDir, "SD:/koton/songs"); snprintf (aiProvider, sizeof aiProvider, "gemini"); snprintf (aiModel, sizeof aiModel, "gemini-flash-latest"); aiKey[0] = 0; }
 	void load ()
 	{
 		void *f = kapi_open ("SD:/koton/settings.json");
@@ -101,7 +101,7 @@ struct Settings
 			snprintf (soundfont, sizeof soundfont, "%s", r["soundfont"].asStr (""));
 			snprintf (lastDir, sizeof lastDir, "%s", r["lastDir"].asStr ("SD:/koton/songs"));
 			snprintf (aiProvider, sizeof aiProvider, "%s", r["aiProvider"].asStr ("gemini"));
-			snprintf (aiModel, sizeof aiModel, "%s", r["aiModel"].asStr ("gemini-2.5-flash"));
+			snprintf (aiModel, sizeof aiModel, "%s", r["aiModel"].asStr ("gemini-flash-latest"));
 			snprintf (aiKey, sizeof aiKey, "%s", r["aiKey"].asStr (""));
 			const json::Value &a = r["aiLast"];
 			AiLast &L = aiLast;
@@ -184,13 +184,6 @@ static void afterLoad ()
 	g_audio.stopPlay ();
 	g_host->stopListening ();
 	if (g_arrange) { g_arrange->scrollBeat = 0; g_arrange->scrollY = 0; g_arrange->cursorBeat = 0; g_arrange->loopOn = false; }
-	g_rebuildEditor = true;
-	refreshAll ();
-}
-// the song replaced in place (the AI): the views start over, the file stays
-static void afterLoadKeep ()
-{
-	if (g_arrange) { g_arrange->scrollBeat = 0; g_arrange->scrollY = 0; }
 	g_rebuildEditor = true;
 	refreshAll ();
 }
@@ -522,9 +515,9 @@ static void saveSettings () { g_settings.save (); }
 static void composeKind (int kind)
 {
 	AiSettings s = { g_settings.aiProvider, (int) sizeof g_settings.aiProvider, g_settings.aiModel, (int) sizeof g_settings.aiModel,
-		g_settings.aiKey, (int) sizeof g_settings.aiKey, &g_settings.aiLast, saveSettings };
+		g_settings.aiKey, (int) sizeof g_settings.aiKey, &g_settings.aiLast, saveSettings, askSave };
 	g_audio.stopPlay ();
-	if (aiCompose (s, kind)) { g_host->stopListening (); afterLoadKeep (); }
+	if (aiCompose (s, kind)) afterLoad ();
 	refreshAll ();
 }
 static void cmdCompose () { composeKind (-1); }		// (the kind last asked)

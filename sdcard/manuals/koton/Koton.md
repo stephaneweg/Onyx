@@ -592,11 +592,15 @@ degree, accompaniments, melodic lines or riffs, drums —, which you can then ed
 *The Compose with AI dialog.*
 
 - **What**:
-  - **Compose a piece** — a whole new song: it **replaces** the current one (**Undo** brings it back).
+  - **Compose a piece** — a whole new song.
   - **Develop the theme (after the end)** — the next bars, from the song's last riff.
   - **Add an instrument over the song** — a new track playing along.
   - **Add drums over the song**.
   - **A polyrhythmic piece**.
+
+  Whatever you ask, the result becomes a **new song** (untitled, not saved yet): the current one is left
+  as it is — Koton offers to save it first if it has unsaved changes. An addition (a development, an
+  instrument, drums) is a copy of the current song with the new music.
 - **Style** and **Intention**: in your own words (*"a melancholic bossa, a brighter chorus, an ending that
   slows down"*).
 - **Bars (about)**.
@@ -605,12 +609,16 @@ degree, accompaniments, melodic lines or riffs, drums —, which you can then ed
 - **Provider**: *Gemini*, *Groq*, *Mistral*, *Claude*, *DeepSeek*, *Grok*, or an OpenAI-compatible server;
   its **model** (the usual one is filled in); your **API key**.
 
-**Generate** sends the request (through `SD:/bin/llm`); a box shows its progress, **Cancel** stops it. It
-takes from a few seconds to a minute. The status bar then sums up what was placed.
+**Generate** sends the request (through `SD:/bin/llm`). The dialog **stays open**: its progress shows at the
+bottom, **Cancel** stops the request. It takes from a few seconds to a minute (a busy model — *503, high
+demand* — is asked again by itself, up to four times). When the answer is in, the dialog sums it up (*4
+sections, 32 chords, …*) and shows **Apply as a new song**; or change the request and **Generate** again. An
+error (no key, a reply that cannot be used, the network) is written in the same place, and the dialog
+stays open to try again.
 
 **Without a key**: **Copy the prompt** puts the whole request on the clipboard — paste it into any AI chat
-(on another computer, say), copy its **whole answer**, and come back to **Paste a reply**: Koton places it
-just the same.
+(on another computer, say), copy its **whole answer**, and come back to **Paste a reply**: the dialog checks
+it and offers **Apply as a new song** just the same. Both leave the dialog open.
 
 The dialog **remembers your last request**: it opens again with the same style, intention, number of bars
 and options (from the transport bar or the **AI** menu, with the same kind of request too), even after Koton was closed.

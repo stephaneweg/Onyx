@@ -657,9 +657,21 @@ int main (void)
 	if (!llm::parseRequest (rd, req, rlen, r, err, sizeof err) || !llm::buildCall (r, call, err, sizeof err)) { free (req); return fail (err); }
 	free (req); req = 0;			// (the strings of r point into rd, not into req)
 
+	// A busy model answers 503 ("high demand") or 429 / 500 / 502 / 504 for a moment: asked again after
+	// 5, 10, 20, 40 s before its error is given (Gemini's free models do so often, even with a short prompt).
 	Resp resp;
-	const char *e = request ("POST", call.url, call.headers, call.body.data (), call.body.size (), r.timeoutSec, 16L * 1024 * 1024, false, resp, err, sizeof err);
-	if (e) return fail (e);
+	for (int attempt = 0;; attempt++)
+	{
+		const char *e = request ("POST", call.url, call.headers, call.body.data (), call.body.size (), r.timeoutSec, 16L * 1024 * 1024, false, resp, err, sizeof err);
+		if (e) return fail (e);
+		int st = resp.status;
+		bool busy = st == 429 || st == 500 || st == 502 || st == 503 || st == 504;
+		if (!busy || attempt == 4) break;
+		free (resp.buf); resp = Resp ();
+		unsigned wait = 5u << attempt;
+		progress ("%s answered %d (busy): asking again in %u s (%d/4)", call.label, st, wait, attempt + 1);
+		kapi_msleep (wait * 1000);
+	}
 	json::Writer text (false);
 	bool ok = llm::extractText (call.api, call.label, resp.status, resp.body, (unsigned long) resp.bodyLen, text, err, sizeof err);
 	free (resp.buf);

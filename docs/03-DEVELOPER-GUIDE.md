@@ -1718,7 +1718,10 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PR
   result is the last line starting with `{`. The response buffer grows (16 MB for an answer,
   512 MB for a download; sized from `Content-Length` at once). The TLS certificate is **not verified**
   (no CA bundle on the card). After the handshake the TLS receive is made non-blocking (onyx_tls's
-  own gives up after 20 s of silence; a thinking model may be silent for a minute).
+  own gives up after 20 s of silence; a thinking model may be silent for a minute). A busy model's
+  answer (429, 500, 502, 503, 504 -- Gemini's free models say 503 "high demand" often, even for a short
+  prompt) is asked again after 5, 10, 20 and 40 s (`llm: Gemini answered 503 (busy): asking again in 5 s
+  (1/4)`) before its error is given.
 - **From the app** (wtk, freestanding): build the prompt and the request, then
   ```cpp
   json::Writer rq (false);
@@ -1732,6 +1735,10 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PR
   // when kapi_proc_done (proc): kapi_wait, close the pipes, then
   //   if (kt::aiParseLlmOutput (buf, n, text, error)) kt::aiApplyReply (project, req, text, err, sizeof err);
   ```
+  In Koton (`ui/ai_dialog.h`) this runs inside the open dialog (`runLlmIn`: a nested pump, the
+  dialog redrawn, Cancel sets the flag that kills `llm`); `aiCheckReply` sums the reply up there, and
+  *Apply as a new song* places it on a fresh `Project` (COMPOSE / POLYRHYTHM) or a copy of the song
+  (the additions), taken by `Doc::adopt` -- untitled, dirty, no undo history -- after `askSave`.
   The app keeps the provider, the model, the API key and the dialog's last request (`aiLast`: kind,
   style, intention, bars, the options) in `SD:/koton/settings.json` (plain text on the
   card — the key field's tooltip says so); its dialog is `ui/ai_dialog.h`.

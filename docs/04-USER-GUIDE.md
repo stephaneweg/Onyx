@@ -579,7 +579,7 @@ the terminal's **current working directory**.
 | `httpget` | `httpget <url>` | HTTP/1.1 client demo built on the reusable `HttpClient` class (`user/http.hpp`): prints the status line, `Content-Type`, and body. Handles chunked responses. Plain HTTP only (`https://` → "not supported"). |
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
 | `groq` | `groq <question…>`, `groq -j < messages.json`, `-c <config>` | Asks a large language model through the **Groq** chat API (HTTPS) and prints the answer — the engine behind **Lisa**. Reads `SD:/apps/lisa.app/config.ini` (`key` = your Groq API key, `model`, `role` = the system prompt, `temperature`, `max_tokens`). `-j`: stdin is a JSON array of `{"role","content"}` messages (a whole conversation). Non-ASCII text is converted between Latin-1 and UTF-8. |
-| `llm` | `llm [request.json] [-o result.json]` (the request on stdin when no file) | Asks a large language model for ONE answer over HTTPS — the engine behind **Koton**'s "compose with AI". The request is a JSON document: `provider` (`gemini`, `groq`, `mistral`, `claude`, `deepseek`, `grok`, `openai` or `openai-compatible` + `url`), `model`, `key` (your API key), `system`, `user`, `json` (ask for JSON), `temperature`, `thinking` (Gemini's thinking budget, -1 = default); the answer is one line `{"ok":true,"text":"..."}` or `{"ok":false,"error":"..."}`, after progress lines (`llm: connecting…`, `llm: receiving N bytes`). Also downloads a file: `{"fetch":"https://…","out":"SD:/…"}` → `{"ok":true,"bytes":N}` (Koton fetches its SoundFont this way; redirects followed). Answers of 100+ KB and downloads of tens of MB are fine. **Not secure**: the server's certificate is not verified, and the request (with the key) is plain text if you keep it in a file. |
+| `llm` | `llm [request.json] [-o result.json]` (the request on stdin when no file) | Asks a large language model for ONE answer over HTTPS — the engine behind **Koton**'s "compose with AI". The request is a JSON document: `provider` (`gemini`, `groq`, `mistral`, `claude`, `deepseek`, `grok`, `openai` or `openai-compatible` + `url`), `model`, `key` (your API key), `system`, `user`, `json` (ask for JSON), `temperature`, `thinking` (Gemini's thinking budget, -1 = default); the answer is one line `{"ok":true,"text":"..."}` or `{"ok":false,"error":"..."}`, after progress lines (`llm: connecting…`, `llm: receiving N bytes`). A busy model (503 "high demand", 429…) is asked again up to 4 times, after 5, 10, 20 and 40 s. Also downloads a file: `{"fetch":"https://…","out":"SD:/…"}` → `{"ok":true,"bytes":N}` (Koton fetches its SoundFont this way; redirects followed). Answers of 100+ KB and downloads of tens of MB are fine. **Not secure**: the server's certificate is not verified, and the request (with the key) is plain text if you keep it in a file. |
 | `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves up to **8 clients at once**, each in a thread of its own with its own `cmd` (see §7) — a session stuck on a command does not hold the others up (one at a time on a kernel older than v67). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
 | `rdpd` | `rdpd [port]` | **Remote windows** (port **3390**): the Onyx windows shown one by one on a Windows PC by `OnyxRemote.exe` (pc/dist). Started at boot by `SD:/etc/autostart`. **No password, no encryption.** See *Remote windows on a PC* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
@@ -2197,16 +2197,18 @@ exported as a WAV file. The AI (Gemini and others) composes a whole piece, a new
   (one ring at a time: highest, lowest, auto, random).
 - **Generator** (a generator plugin's block): its length, *Open the plugin's editor*.
 
-**Compose with AI** (the button, the AI menu, the browser): **what** (a whole piece — the song is
-replaced, one Undo brings it back —, a development of the theme after the end, an instrument over
+**Compose with AI** (the button, the AI menu, the browser): **what** (a whole piece, a development of the theme after the end, an instrument over
 the song, drums, a polyrhythmic piece), the **style** and the **intention** in words, about how many
 bars, the melody as notes (riffs) or as melodic lines, drums, the AI voicing the chords, poly chords
 / drums; the **provider** (Gemini — free keys at aistudio.google.com —, Groq, Mistral, Claude,
 DeepSeek, Grok, an OpenAI-compatible server), the model, the **API key**. *Generate* asks it through
-`SD:/bin/llm` (a box shows its progress; Cancel stops it) and places the answer: the chords on the
-chord track (by degree), accompaniments, melodic lines or riffs, drums, the sections as markers,
-the key, meter and tempo. Without a key: *Copy the prompt* (paste it into any chat), then copy the
-chat's whole answer and *Paste a reply*.
+`SD:/bin/llm` with the dialog left open (its progress at the bottom; Cancel stops the request; a busy
+model is asked again by itself). The answer is checked and summed up in the dialog; **Apply as a new
+song** places it on a **new, untitled song** (the current one is left alone — saved first if you say so;
+an addition is a copy of it with the new music): the chords on the chord track (by degree),
+accompaniments, melodic lines or riffs, drums, the sections as markers, the key, meter and tempo. Or
+change the request and Generate again. Without a key: *Copy the prompt* (paste it into any chat), then
+copy the chat's whole answer and *Paste a reply* — checked and applied the same way.
 
 **Sound**: the SoundFont is the first `.sf2` of `SD:/koton/soundfonts` (GeneralUser GS is shipped;
 File ▸ *SoundFont…* chooses another, from the next start). The engine runs on the third core (else a

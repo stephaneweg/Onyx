@@ -80,7 +80,7 @@ if want line; then raw line "$(c 700 312)"; cut line 0,600,1360,940; fi
 if want poly; then raw poly "$(c 800 462)"; cut poly 0,600,1360,940; fi
 if want polychord; then raw polychord "wheel 800 400 -3;wait;wait;$(c 1280 404)"; cut polychord 0,600,1360,940; fi
 if want rings; then raw rings "wheel 800 400 -3;wait;wait;$(c 760 464)"; cut rings 0,600,1360,940; fi
-if want ai; then raw ai "$(c 1600 30)"; cut ai 560,150,1360,760; fi
+if want ai; then raw ai "$(c 1600 30)"; cut ai 560,150,1360,810; fi
 # the plugins' own editors (tools/tests/koton/plug_host_run.sh draws them: the PC has no plugin processes)
 if want plugins; then cp screenshots/koton-plugin-fm2.png $IMG/plugin-fm2.png; cp screenshots/koton-plugin-arp.png $IMG/plugin-arp.png; echo "  $IMG/plugin-*.png"; fi
 echo "koton_shots: done"
