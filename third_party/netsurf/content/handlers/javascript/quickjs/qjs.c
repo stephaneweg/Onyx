@@ -321,9 +321,35 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 	dom_node_get_node_type(n, &type);
 	switch (type) {
 	case DOM_ELEMENT_NODE: {
-		dom_string *name = NULL;
+		dom_string *name = NULL, *ns = NULL;
 		JSValue p = JS_UNDEFINED;
 
+		/* Onyx: an element in the SVG namespace: SVG's prototypes ("#svg:<name>",
+		 * "#svg"), not the HTML element of the same name (<a>, <image>, <title>...) */
+		if (dom_node_get_namespace(n, &ns) == DOM_NO_ERR && ns != NULL) {
+			bool svg = dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_SVG]);
+			dom_string_unref(ns);
+			if (svg) {
+				if (dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
+					char key[48];
+					size_t k;
+					snprintf(key, sizeof key, "#svg:%.*s",
+						(int) dom_string_byte_length(name), dom_string_data(name));
+					dom_string_unref(name);
+					for (k = 5; key[k] != '\0'; k++)
+						if (key[k] >= 'A' && key[k] <= 'Z') key[k] += 32;
+					p = JS_GetPropertyStr(t->ctx, t->tag_protos, key);
+					if (JS_IsObject(p))
+						return p;
+					JS_FreeValue(t->ctx, p);
+				}
+				p = JS_GetPropertyStr(t->ctx, t->tag_protos, "#svg");
+				if (JS_IsObject(p))
+					return p;
+				JS_FreeValue(t->ctx, p);
+				return JS_DupValue(t->ctx, t->protos[QP_ELEMENT]);
+			}
+		}
 		if (dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
 			char tag[32];
 			size_t len = dom_string_byte_length(name), i;
@@ -475,8 +501,19 @@ static JSValue n_type(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 
 static JSValue n_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-	dom_string *s = NULL;
+	dom_string *s = NULL, *ns = NULL;
+	dom_node_type type = DOM_ELEMENT_NODE;
 	QJS_NODE_ARG(n, 0);
+	/* Onyx: an element outside the HTML namespace keeps its name's case (libdom's
+	 * nodeName upper-cases every element of an HTML document: an SVG's linearGradient) */
+	dom_node_get_node_type(n, &type);
+	if (type == DOM_ELEMENT_NODE && dom_node_get_namespace(n, &ns) == DOM_NO_ERR &&
+	    ns != NULL) {
+		bool html = dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_HTML]);
+		dom_string_unref(ns);
+		if (!html && dom_node_get_local_name(n, &s) == DOM_NO_ERR && s != NULL)
+			return qjs_str(ctx, s);
+	}
 	dom_node_get_node_name(n, &s);
 	return qjs_str(ctx, s);
 }
@@ -670,6 +707,19 @@ static JSValue n_create(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 
 	if (tag == NULL)
 		return JS_NULL;
+	if (argc > 1 && JS_IsString(argv[1])) {
+		/* Onyx: create(qname, namespace): an element in its namespace (SVG, MathML) */
+		dom_string *ns = qjs_dstr(ctx, argv[1]);
+		dom_exception err = dom_document_create_element_ns(t->doc, ns, tag, &e);
+		if (ns != NULL)
+			dom_string_unref(ns);
+		dom_string_unref(tag);
+		if (err != DOM_NO_ERR || e == NULL)
+			return JS_ThrowTypeError(ctx, "bad element name");
+		v = qjs_wrap(t, (dom_node *) e);
+		dom_node_unref(e);
+		return v;
+	}
 	if (dom_document_create_element(t->doc, tag, &e) != DOM_NO_ERR || e == NULL) {
 		dom_string_unref(tag);
 		return JS_ThrowTypeError(ctx, "bad element name");

@@ -70,6 +70,7 @@
 #include "core/attr.h"
 #include "core/string.h"
 #include "utils/namespace.h"
+#include <dom/dom.h>	/* (Onyx: dom_namespaces) */
 #include "utils/utils.h"
 
 static const struct dom_html_document_vtable html_document_vtable = {
@@ -557,11 +558,19 @@ _dom_html_document_create_element_internal(
 	if (dom_string_length(in_tag_name) == 0)
 		return DOM_INVALID_CHARACTER_ERR;
 
-	exc = dom_string_toupper(in_tag_name, true, &params.name);
-	if (exc != DOM_NO_ERR)
-		return exc;
+	/* Onyx: an element outside the HTML namespace (SVG, MathML) keeps its name as
+	 * given -- linearGradient, foreignObject -- and is of no HTML type */
+	if (namespace != NULL && !dom_string_isequal(namespace,
+			dom_namespaces[DOM_NAMESPACE_HTML])) {
+		params.name = dom_string_ref(in_tag_name);
+		params.type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
+	} else {
+		exc = dom_string_toupper(in_tag_name, true, &params.name);
+		if (exc != DOM_NO_ERR)
+			return exc;
 
-	params.type = _dom_html_document_get_element_type(html, params.name);
+		params.type = _dom_html_document_get_element_type(html, params.name);
+	}
 	params.doc = html;
 	params.namespace = namespace;
 	params.prefix = prefix;

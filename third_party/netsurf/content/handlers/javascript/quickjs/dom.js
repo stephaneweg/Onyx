@@ -2305,10 +2305,13 @@ class Element extends Node {
 	}
 	set classList(v) { this.setAttribute('class', v); }
 	get slot() { return N.attr(this, 'slot') || ''; }
-	getAttribute(name) { return N.attr(this, lower(name)); }
-	getAttributeNS(ns, name) { return N.attr(this, lower(name)); }
+	/* (Onyx: an attribute's name as given: lower case for an HTML element, as is for an SVG
+	 * one -- viewBox, preserveAspectRatio) */
+	_an(name) { return lower(name); }
+	getAttribute(name) { return N.attr(this, this._an(name)); }
+	getAttributeNS(ns, name) { return N.attr(this, this._an(name)); }
 	setAttribute(name, value) {
-		const k = lower(name);
+		const k = this._an(name);
 		const old = observers.size ? N.attr(this, k) : null;
 		N.setAttr(this, k, String(value));
 		if (observers.size)
@@ -2317,7 +2320,7 @@ class Element extends Node {
 	}
 	setAttributeNS(ns, name, value) { this.setAttribute(name.replace(/^.*:/, ''), value); }
 	removeAttribute(name) {
-		const k = lower(name);
+		const k = this._an(name);
 		const old = N.attr(this, k);
 		if (old === null) return;
 		N.removeAttr(this, k);
@@ -2326,7 +2329,7 @@ class Element extends Node {
 				addedNodes: nodeList([]), removedNodes: nodeList([]) });
 	}
 	removeAttributeNS(ns, name) { this.removeAttribute(name); }
-	hasAttribute(name) { return N.attr(this, lower(name)) !== null; }
+	hasAttribute(name) { return N.attr(this, this._an(name)) !== null; }
 	hasAttributeNS(ns, name) { return this.hasAttribute(name); }
 	hasAttributes() { return N.attrs(this).length > 0; }
 	toggleAttribute(name, force) {
@@ -2344,8 +2347,8 @@ class Element extends Node {
 		return m;
 	}
 	getAttributeNode(name) {
-		const v = N.attr(this, lower(name));
-		return v === null ? null : new Attr(this, lower(name), v);
+		const v = N.attr(this, this._an(name));
+		return v === null ? null : new Attr(this, this._an(name), v);
 	}
 	get innerHTML() { return innerHTML(this); }
 	set innerHTML(v) {
@@ -3131,6 +3134,10 @@ G.Audio = function Audio(src) { const a = N.create('audio'); if (src) a.src = sr
 
 /* SVG elements: their own classes (no rendering yet) */
 class SVGElement extends Element {
+	_an(name) { return String(name); }
+	get tagName() { return N.name(this); }
+	get localName() { return N.name(this); }
+	get namespaceURI() { return 'http://www.w3.org/2000/svg'; }
 	get dataset() { return HTMLElement.prototype.__lookupGetter__('dataset').call(this); }
 	get style() { return HTMLElement.prototype.__lookupGetter__('style').call(this); }
 	get className() { return { baseVal: N.attr(this, 'class') || '', animVal: N.attr(this, 'class') || '' }; }
@@ -3142,10 +3149,10 @@ class SVGElement extends Element {
 defineHandlers(SVGElement.prototype);
 G.SVGElement = SVGElement;
 G.SVGSVGElement = class SVGSVGElement extends SVGElement {};
-for (const t of ['svg'])
-	TAGS[t] = G.SVGSVGElement.prototype;
-for (const t of ['path', 'g', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'use', 'defs', 'symbol', 'text', 'tspan', 'lineargradient', 'radialgradient', 'stop', 'clippath', 'mask', 'pattern', 'image', 'foreignobject'])
-	TAGS[t] = SVGElement.prototype;
+/* (Onyx: the elements in the SVG namespace get these, whatever their name -- qjs.c's
+ * qjs_proto_for looks "#svg:<name>" up, then "#svg") */
+TAGS['#svg:svg'] = G.SVGSVGElement.prototype;
+TAGS['#svg'] = SVGElement.prototype;
 
 /* ---- Document ------------------------------------------------------------------------ */
 
@@ -3233,7 +3240,12 @@ class Document extends Node {
 	getElementById(id) { return N.byId(String(id)); }
 	getElementsByName(name) { return nodeList(N.descendants(this).filter(e => N.attr(e, 'name') === name)); }
 	createElement(tag) { return N.create(lower(tag)); }
-	createElementNS(ns, tag) { return N.create(tag.replace(/^.*:/, '').toLowerCase()); }
+	createElementNS(ns, tag) {
+		tag = String(tag);
+		if (ns == null || ns === '' || ns === 'http://www.w3.org/1999/xhtml')
+			return N.create(tag.replace(/^.*:/, '').toLowerCase());
+		return N.create(tag, String(ns));	/* (Onyx: in its namespace: React's <svg>) */
+	}
 	createTextNode(s) { return N.createText(String(s)); }
 	createComment(s) { return N.createComment(String(s)); }
 	createDocumentFragment() { return N.createFragment(); }

@@ -81,6 +81,11 @@ for s in "dynimport string kept true" "dynimport method 1" "dynimport module 2" 
 	expect "$L" "$s"
 done
 
+echo "js-svgns.html (createElementNS: SVG elements made by a script)"
+L=$OUT/js-svgns.log
+run js-svgns.html "$(waits 40)" "$L"
+expect "$L" "ns http://www.w3.org/2000/svg true linearGradient 0 0 10 10 0 0 10 10 true"
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"
