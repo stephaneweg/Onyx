@@ -66,6 +66,14 @@ for s in "script error" "script load 42" "link load" "detached load 480x270 true
 	expect "$L" "$s"
 done
 
+echo "js-url.html (URL, URLSearchParams)"
+L=$OUT/js-url.log
+run js-url.html "$(waits 20)" "$L"
+n_ok=$(grep -c "^console: OK " "$L")
+grep "^console: FAIL \|^JS " "$L" | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL " "$L" || [ "$n_ok" -lt 9 ]; then fail=1; fi
+echo "  $n_ok checks passed"
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"

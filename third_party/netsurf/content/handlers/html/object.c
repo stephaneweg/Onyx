@@ -768,6 +768,11 @@ html_fetch_object(html_content *c,
 	if (c->aborted)
 		return true;
 
+	/* Onyx: boxes made while the document is parsed (a script's geometry): no fetch --
+	 * the conversion's boxes fetch their objects (a fetch here held the conversion) */
+	if (c->early_layout && !c->conversion_begun)
+		return true;
+
 	/* Onyx: boxes built again (a script changed the DOM): the object the old
 	 * boxes had for this URL taken over -- no fetch, the image there at once */
 	if (box != NULL && c->rebox_objects != NULL) {
