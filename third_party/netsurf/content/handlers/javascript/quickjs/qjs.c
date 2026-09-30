@@ -1279,9 +1279,13 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 
 	/* the fragment's nodes into the target */
 	while (dom_node_get_first_child(fragment, &child) == DOM_NO_ERR && child != NULL) {
+		/* (Onyx: res reset -- an append refused, e.g. a doctype into a shadow root,
+		 * left the removal's result, unreferenced twice: a freed node) */
+		res = NULL;
 		dom_node_remove_child(fragment, child, &res);
 		if (res != NULL)
 			dom_node_unref(res);
+		res = NULL;
 		dom_node_append_child(target, child, &res);
 		if (res != NULL)
 			dom_node_unref(res);

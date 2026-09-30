@@ -338,6 +338,23 @@ static void html_rebox_unlink(dom_node *n)
 	}
 }
 
+/** Onyx: the links of every node the old tree boxes cleared -- the DOM walk above misses
+ * the nodes no longer in the document (removed, a shadow root emptied or replaced, a light
+ * child no slot takes now) whose freed boxes the scripts then read (getBoundingClientRect:
+ * reddit's components) */
+static void html_rebox_unlink_boxes(struct box *b)
+{
+	void *old = NULL;
+
+	for (; b != NULL; b = b->next) {
+		if (b->node != NULL && b->type != BOX_TEXT && box_for_node(b->node) == b)
+			dom_node_set_user_data(b->node,
+					corestring_dom___ns_key_box_node_data,
+					NULL, NULL, &old);
+		html_rebox_unlink_boxes(b->children);
+	}
+}
+
 /** the nodes linked to their boxes again (the old tree kept) */
 static void html_rebox_relink(struct box *b)
 {
@@ -407,6 +424,7 @@ static void html_rebox(html_content *c)
 	c->num_objects = 0;
 	c->iframe = NULL;
 	html_rebox_gadgets(old_layout, false);
+	html_rebox_unlink_boxes(old_layout);
 	html_rebox_unlink(html);
 	html_rebox_success = false;
 	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
@@ -600,6 +618,7 @@ static void html_early_discard(html_content *c, dom_node *html)
 		c->selection_owner.none = true;
 	}
 	html_rebox_gadgets(c->layout, false);
+	html_rebox_unlink_boxes(c->layout);
 	html_rebox_unlink(html);
 	if (c->iframe != NULL) {
 		html_destroy_iframe(c->iframe);
