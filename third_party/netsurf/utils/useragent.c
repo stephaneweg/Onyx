@@ -26,6 +26,7 @@
 #include "desktop/version.h"
 #include "utils/log.h"
 #include "utils/useragent.h"
+#include "utils/nsoption.h"
 
 static const char *core_user_agent_string = NULL;
 
@@ -78,9 +79,16 @@ user_agent_build_string(void)
 const char *
 user_agent_string(void)
 {
-        if (core_user_agent_string == NULL)
-                user_agent_build_string();
-	return core_user_agent_string;
+	/* Onyx: a current Chrome's (sites serve their full pages, their WOFF2 fonts, and do
+	 * not turn "an unknown browser" away), unless Choices' user_agent says otherwise --
+	 * the HTTP requests (user/netsurf/onyx_fetch.c) and navigator.userAgent alike */
+	const char *choice = nsoption_charp(user_agent);
+
+	if (choice != NULL && choice[0] != '\0')
+		return choice;
+	return "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 "
+		"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+	(void) user_agent_build_string;
 }
 
 /* Public API documented in useragent.h */

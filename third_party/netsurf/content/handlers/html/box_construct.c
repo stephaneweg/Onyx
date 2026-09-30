@@ -45,6 +45,7 @@
 #include "html/box.h"
 #include "html/box_manipulate.h"
 #include "html/box_construct.h"
+#include "html/onyx_hover.h"
 #include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
 #include "html/box_normalise.h"
@@ -293,17 +294,31 @@ box_get_style(html_content *c,
 	/* Select style for element (Onyx: with the node under the pointer, CSS :hover) */
 	nscss_hover_node = c->hover_node;
 	nscss_hover_used = false;
+	nscss_hover_note = onyx_hover_note;	/* (the nodes :hover is tried on) */
+	nscss_hover_note_ctx = c;
+	nscss_styled_node = n;
 	styles = nscss_get_style(&ctx, n, &c->media, &c->unit_len_ctx,
 			inline_style);
 	if (nscss_hover_used)
 		c->uses_hover = true;
 	nscss_hover_node = NULL;
+	nscss_hover_note = NULL;
+	nscss_styled_node = NULL;
 
 	/* No longer need inline style */
 	if (inline_style != NULL)
 		css_stylesheet_destroy(inline_style);
 
 	return styles;
+}
+
+
+/* exported interface documented in html/box_construct.h (Onyx) */
+css_select_results *box_style_select(html_content *c,
+		const css_computed_style *parent_style,
+		const css_computed_style *root_style, dom_node *n)
+{
+	return box_get_style(c, parent_style, root_style, n);
 }
 
 

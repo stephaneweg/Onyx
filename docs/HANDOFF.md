@@ -671,6 +671,38 @@ restyle; deployed on the Pi, the flicker not yet confirmed gone by the user). Th
 in WSL again (`build-essential`, `libpng-dev`, `zlib1g-dev`); `jstest.sh` covers them all
 (js-fetch, js-hover, js-hovercss, js-storage).
 
+**Performance and the network (2026-09-30, built for the Pi, NOT yet tried there -- the Pi did
+not answer; deploy `sdcard/kernel8-rpi4.img` (kernel + Circle changed) and
+`sdcard/apps/netsurf.app/main`, update the card's `SD:/res/Choices` to `max_fetchers:8` /
+`max_fetchers_per_host:6` -- staging keeps the card's own file):** measured first (docs/06 §9:
+`onyx_perf.h`, the file `SD:/apps/netsurf.app/perf` logs the timings) -- the painting was the
+wall (a full redraw 12.6 ms on the PC), now 4.9 ms (`onyx_paint.c`: spans, tables, the same
+pixels); **CSS `:hover` restyles only what changed** and repaints only those boxes
+(`onyx_hover.c`; on both sites every hover is a restyle, pixel-identical to a rebox); one
+present per main-loop iteration; the loop waits on `kapi_pump_wait`. **The fetcher** rewritten:
+HTTP/1.1 keep-alive pool, chunked, streaming, **cookies sent and stored** (the old one sent none
+and dropped every Set-Cookie: the user's m.facebook.com consent page came back for ever),
+Referer / Origin, a Chrome User-Agent (Choices `user_agent`), no path limit
+(`tools/tests/netsurf/httptest.sh` checks it on the PC). **Kernel / Circle**: the socket slot
+race of concurrent connects (the "several connects fail" bug) fixed, a DNS cache, 32 KB recv
+gather; Circle's DNS polled (it slept 1 s per lookup), TCP window 64 KB (docs/05 §18-19). To try
+on the Pi: page load times (kotonviolins, kotonstudio), hovers, scrolling, m.facebook.com's
+cookie consent. Found on the PC and not fixed: a full rebox lays kotonstudio's hero button out
+3 px lower than the first layout (a jump when a script changes the DOM); a scroll can leave a
+100 px band blank now and then (a race, seen once in a capture before these changes).
+
+**Facebook, the user's next goal ("afficher facebook et que ça soit confortable")** -- the gaps
+(audit 2026-09-30), in order: (1) done: cookies, UA, Referer, long URLs; (2) certificate checks
+(`MBEDTLS_SSL_VERIFY_NONE` in `onyx_tls.hpp`: `SD:/res/ca-bundle` is on the card, needs a clock
+for expiry) -- before typing a password; (3) `history.pushState` / `replaceState` changing the
+URL + `popstate` (dom.js only stores the state); (4) an `Intl` subset (QuickJS-ng is built
+without it); (5) inline SVG and `.svg` images (libsvgtiny is not vendored: Facebook's icons);
+(6) incremental relayout for script DOM changes (today a full rebox 10 ms after each script
+turn: React updates constantly) -- the hover restyle's machinery (`onyx_hover.c`) is the start:
+restyle the changed subtree, relayout only when a layout property changed; (7) `position: fixed`
+pinned to the viewport, `opacity`, `mask-image`; (8) WebSocket (chat) and brotli (cheap: the
+decoder is linked). `CSS.supports` answers true for everything: make it honest.
+
 **Open bug (2026-09-30, start here):** on the Pi, kotonviolins' header line turned **opaque
 brown** (90, 62, 43) where it was light grey (225, 219, 211) -- seen after the back-buffer build
 was deployed (the capture just before it, CSS `:hover` build, was right). The rule:

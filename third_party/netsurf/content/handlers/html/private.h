@@ -220,6 +220,15 @@ typedef struct html_content {
 	struct dom_node *hover_node;
 	/** Onyx: the style sheets have :hover rules (the styles made again when it moves) */
 	bool uses_hover;
+	/** Onyx: the nodes a :hover selector was tried on (a set: html/onyx_hover.c) */
+	struct dom_node **hover_tested;
+	unsigned int hover_tested_cap, hover_tested_n;
+	/** Onyx: a :hover tried on a node neither the styled one nor its ancestor */
+	bool hover_other;
+	/** Onyx: the style results a hover replaced (css_select_results *), freed with the
+	 * box tree they may still be seen from (html/onyx_hover.c) */
+	void **hover_old;
+	unsigned int hover_old_n, hover_old_cap;
 
 	/** Onyx: while the boxes are built again, the old boxes' objects to take over */
 	struct content_html_object *rebox_objects;

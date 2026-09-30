@@ -22,7 +22,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript) |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree. `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -33,14 +33,32 @@ turned some warnings NetSurf has into errors: the makefile keeps them warnings.
 
 **The network** (`user/netsurf/onyx_fetch.c`): each download runs in a **thread** of its own
 (kernel v67) -- the DNS, the connect, the TLS handshake and every read block there, not the
-UI; the UI thread gets the finished ones in the fetcher's poll (every 10 ms) and hands them to
-NetSurf (the head parsed, the redirects, the inflate, the callbacks). 8 at once; an aborted
-fetch whose thread still runs is freed by that thread. The request is a GET, a POST (a
-url-encoded or text body) or any method a script asks for (`X-Onyx-Method`, taken off), with
-the caller's headers; the response goes to the core with its status line and headers (not the
-cache-control ones, nor those the inflate makes wrong). Without threads (an older kernel, the
-PC bench) it is the one-step-per-poll state machine. mbedTLS's session cache is locked
-(`onyx_tls.hpp`). The cache (`content/llcache.c`, Onyx changes): a request's own headers
+UI. **HTTP/1.1 with keep-alive**: a response is framed by its `Content-Length` or its chunks
+(read to the close only when it has neither), then its connection goes back to a **pool** (8,
+per host / port / scheme, kept 10 s idle) for the next request there -- no DNS, TCP or TLS
+handshake again; a pooled connection the server closed meanwhile is noticed at its first
+request (nothing back) and the request sent again on a new one. **Streaming**: the head goes to
+the core as soon as it is in (its headers, a redirect), then the body as it comes, inflated on
+the fly (zlib): the HTML parser finds the style sheets, scripts and images while the page still
+downloads. The worker posts (`kapi_post`) when the head has come, every 32 KB, and at the end:
+the UI thread, waiting in `kapi_pump_wait`, wakes at once. **Cookies**: the jar's
+(`urldb_get_cookie`, read on the UI thread when the fetch is set up) sent, and every
+`Set-Cookie` of a response -- a redirect's too (a login's session) -- given to NetSurf's jar
+(`fetch_set_cookie`). **Referer** as Chrome (strict-origin-when-cross-origin: the whole URL
+within its origin, its origin elsewhere, nothing from https to http) and an `Origin` on the
+methods other than GET / HEAD (`fetch_get_referer`, an Onyx addition to `content/fetch.c`).
+**User-Agent**: a current Chrome's (`utils/useragent.c`; Choices' `user_agent` replaces it),
+the same in `navigator.userAgent`; `Accept-Language`: Choices' `accept_language`, else
+French then English. No length limit on a URL's path (it was 1024). 8 downloads at once; the
+connects one at a time (short now: the kernel caches the DNS answers). An aborted fetch whose
+thread still runs is freed by that thread. The request is a GET, a POST (a url-encoded or text
+body) or any method a script asks for (`X-Onyx-Method`, taken off), with the caller's headers;
+the response goes to the core with its status line and headers (not the cache-control ones,
+nor those the inflate makes wrong). Without threads (an older kernel) it is the
+one-step-per-poll state machine (HTTP/1.1 with `Connection: close`, its chunks undone, the
+response delivered whole). mbedTLS (`user/tls/onyx_tls.hpp`): its session cache is locked (16
+hosts, replaced in turn), its receive buffer 16 KB (a whole record: fewer round trips to the
+network core). The cache (`content/llcache.c`, Onyx changes): a request's own headers
 (`llcache_handle_retrieve_ex`), its HTTP status kept (`llcache_handle_get_http_code`), its
 headers in order (`llcache_handle_get_header_at`).
 
@@ -54,7 +72,13 @@ headers in order (`llcache_handle_get_header_at`).
   off-screen buffer of the page's size, and `update` copies the rectangle it redrew into the
   window's canvas -- the compositor, the apps being preempted, showed half-drawn redraws (a
   background cleared, then painted: the page flickered at each restyle). Made again at a resize,
-  from what the canvas shows.
+  from what the canvas shows. **One present a main-loop iteration**, after all its redraws
+  (`onyx_chrome_present_later` / `onyx_chrome_flush`, called at the end of `framebuffer_run`):
+  a scroll's moved pixels and its new band are shown together (they were two presents, the first
+  with the band not yet drawn).
+- **The main loop waits for an event** (`onyx_input` -> `onyx_chrome_pump_wait` ->
+  `kapi_pump_wait`), up to the next timer: the pointer, a key, a fetch thread's post or the
+  close box wakes it at once -- it slept in blind 20 ms slices.
 - **History** — a native dialog (most recent first, Find, Delete, Clear all); the pages
   visited kept in `SD:/apps/netsurf.app/History`, the cookies in `.../Cookies`
   (`ONYX_NS_DATAPATH`, written a few seconds after each page and on exit; never committed).
@@ -146,7 +170,12 @@ headers in order (`llcache_handle_get_header_at`).
   (rounded boxes, rings, blurred shadows, gradients), `onyx_round_clip`, `onyx_text_paint`
   (text in a gradient); the framebuffer's in `frontends/framebuffer/onyx_paint.c` —
   anti-aliased by signed distance, Gaussian (erfc) shadows, linear / radial / conic /
-  repeating gradients.
+  repeating gradients. Made fast (a full redraw of kotonviolins.com: 12.6 ms -> 4.9 ms on the
+  PC, the same pixels): the rows' fully covered spans filled without a distance a pixel (a
+  shadow's too: 3 sigma inside), the insides of a ring's hole and of a shadow's caster skipped,
+  the blur's coverage from a table (`blur_lut`: no `expf` a pixel), a gradient's colours from a
+  table of 1025 made once per gradient and kept (`glut_get`, keyed by its stops), a linear
+  gradient's position stepped along the row, the blend without a division (`div255`).
 - `border-radius`, `box-shadow` (outer and inset), gradient backgrounds, rounded clips of
   a box's content; `background-clip: text` paints the descendants' text with the box's
   background.
@@ -233,6 +262,37 @@ optional chaining...) with the DOM written in JavaScript:
 - **libdom**: a changed `class` attribute updates the element's classes (`element.c`: they
   were cached when the attribute was made, so a `classList` change did not restyle).
 - The Duktape backend (`javascript/duktape`, `user/netsurf/gen/duktape`) is no longer built.
+
+## 9. Performance
+
+- **Timings** (`user/netsurf/onyx_perf.h`): with the file `SD:/apps/netsurf.app/perf` (the PC
+  bench: `NS_PERF=1`), each step longer than 1 ms is printed -- `ONYX-PERF rebox:boxes`,
+  `rebox:reformat`, `layout`, `redraw WxH`, `hover:restyle`, and why a hover built the boxes
+  again (`hover:rebox (<reason>)`) -- on stderr, the kernel log on the Pi.
+- **CSS `:hover` without the whole page** (`content/handlers/html/onyx_hover.c`): the
+  selection notes each node a `:hover` selector is tried on (`nscss_hover_note`, `select.c`);
+  when the node under the pointer changes, only the topmost element that left (entered) the
+  hover chain among those has its subtree styled again (`box_style_select`, the construction's
+  own), without building the boxes. When the new styles differ only in how boxes are painted
+  (libcss's `css_computed_style_paint_only_change`: colours, backgrounds, border colours and
+  radii, outline, shadows, text decoration, visibility, opacity, z-index, cursor), the boxes
+  take them in place -- an element's own boxes and those without a node (text, `::before`,
+  markers, an inline's end) matched by owning element *and* style, libcss interning styles --
+  the borders' colours copied again, the anonymous boxes' styles derived again, and only their
+  rectangles are redrawn. A change of `transform` / `translate` (a card lifted on hover) moves
+  the box (its descendants follow) as the layout would, its ancestors' descendant bounds grown.
+  Anything else (a layout property, a pseudo-element appearing, a background image to fetch, a
+  `:hover` tried on a sibling, a table's borders) builds the boxes again as before
+  (`html_script_dom_changed`). On the two sites every hover is now a restyle: no rebox, the
+  pixels those of a rebox (`NS_HOVER_FULL=1`: always the rebox, to compare). The replaced style
+  results are kept until the next rebox (a box the walk missed would still point at them).
+- **libcss**: `css_computed_style_paint_only_change (a, b, &moved)` (`src/select/arena.c`) copies
+  the paint properties' bits and values of b over a copy of a's, then compares the rest as the
+  interning does; the bits' positions are in `src/select/onyx_propbits.h`, copied from
+  `autogenerated_propget.h` (which `#undef`s them): make it again if `select_config.py`
+  changes the layout.
+- The windows' `dom.js` checkout: the makefiles strip the CRs before embedding it (a Windows
+  checkout, `core.autocrlf`, broke `qjs_dom_js.h`).
 
 ## 8. Known gaps
 

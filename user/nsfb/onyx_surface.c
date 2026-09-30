@@ -12,7 +12,8 @@
  *                  a redraw clears then paints, and the compositor -- the apps are preempted
  *                  -- showed those half-drawn states (the page flickered at each restyle).
  *   - update     : the rectangle NetSurf redrew is copied from the back buffer into the
- *                  canvas, then onyx_chrome_present() flushes the window to screen.
+ *                  canvas; the main loop presents the window once an iteration, after its
+ *                  redraws (onyx_chrome_flush: a scroll's copy and its new band together).
  *   - input      : the chrome owns the kapi pointer / key handlers; it hands the page's events
  *                  to ours (their y relative to the page), which we translate into a ring of
  *                  nsfb_event_t served to libnsfb's poll-style nsfb_event()/input(). A resize
@@ -282,7 +283,7 @@ static int onyx_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 			memcpy(s_page + (size_t) y * s_pstride + x0,
 			       s_back + (size_t) y * s_bw + x0, (size_t) (x1 - x0) * 4);
 	}
-	onyx_chrome_present();		/* (no dirty-rect kapi: the window whole) */
+	onyx_chrome_present_later();	/* (the loop presents: onyx_chrome_flush) */
 	return 0;
 }
 
@@ -301,10 +302,10 @@ static bool onyx_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
 	}
 
 	if (ring.tail == ring.head && timeout != 0) {
-		/* nothing yet: wait a little (capped) and pump again. -1 == forever. */
-		int slice = (timeout < 0 || timeout > 20) ? 20 : timeout;
-		kapi_msleep(slice);
-		if (onyx_chrome_pump()) {
+		/* nothing yet: wait for an event -- the pointer, a key, a fetch thread's post
+		 * (onyx_fetch.c), the close box -- up to the next timer (capped; -1 forever) */
+		int slice = (timeout < 0 || timeout > 100) ? 100 : timeout;
+		if (onyx_chrome_pump_wait(slice)) {
 			int w, h;
 			onyx_chrome_page(NULL, &w, &h);
 			event->type = NSFB_EVENT_RESIZE;

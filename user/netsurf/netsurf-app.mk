@@ -134,7 +134,7 @@ $(foreach s,$(ALL_SRC),$(eval $(call CC_RULE,$(s))))
 $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
 	@mkdir -p $(dir $@)
 	{ echo '/* generated from dom.js by netsurf-app.mk */'; echo 'static const char qjs_dom_js[] ='; \
-	  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 QJS_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs.c))
 $(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h
 $(QJS_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
@@ -226,7 +226,7 @@ stage: link
 	for d in $(LIBROOT)/fonts/*/; do cp $$d/LICENSE $(SDCARD)/res/fonts/LICENSE-$$(basename $$d); done
 	# Options (Choices) -- created only if missing so the user's edits survive a re-stage.
 	# Set foreground_images:0 for a fast text + alt-text browse (skips image fetches).
-	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:4\nmax_fetchers_per_host:4\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
+	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:8\nmax_fetchers_per_host:6\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
 	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
 
 # ---- nstest: console smoke test of the library bricks (-> sdcard/bin/nstest) -------

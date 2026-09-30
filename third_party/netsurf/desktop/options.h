@@ -86,6 +86,9 @@ NSOPTION_STRING(font_fantasy, NULL)
 /** Accept-Language header. */
 NSOPTION_STRING(accept_language, NULL)
 
+/** Onyx: the User-Agent sent (and navigator.userAgent); unset: a current Chrome's */
+NSOPTION_STRING(user_agent, NULL)
+
 /** Accept-Charset header. */
 NSOPTION_STRING(accept_charset, NULL)
 

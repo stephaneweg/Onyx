@@ -61,6 +61,8 @@
 #include "html/private.h"
 #include "html/imagemap.h"
 #include "html/interaction.h"
+#include "html/onyx_hover.h"
+#include "netsurf/onyx_perf.h"
 #include "html/onyx_webfont.h"
 
 /**
@@ -1584,11 +1586,19 @@ mouse_action_drag_none(html_content *html,
 		/* CSS :hover -- the styles made again when the node under the pointer changes,
 		 * if the style sheets have :hover rules (a :hover selector was tried) */
 		if (mas.node != html->hover_node) {
-			if (html->hover_node != NULL)
-				dom_node_unref(html->hover_node);
+			struct dom_node *old_hover = html->hover_node;
+
 			html->hover_node = mas.node != NULL ? dom_node_ref(mas.node) : NULL;
-			if (html->uses_hover)
-				html_script_dom_changed(html);
+			/* only the elements whose :hover changed, repainted when they
+			 * can be (html/onyx_hover.c), else the boxes built again */
+			if (html->uses_hover) {
+				uint64_t t0 = onyx_perf_now();
+				if (!onyx_hover_restyle(html, old_hover))
+					html_script_dom_changed(html);
+				onyx_perf_log("hover:restyle", t0);
+			}
+			if (old_hover != NULL)
+				dom_node_unref(old_hover);
 		}
 	}
 

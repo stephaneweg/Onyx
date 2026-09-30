@@ -88,6 +88,13 @@ static inline uint32_t *fbpix_at(const struct fbpix *f, int x, int y)
 	return (uint32_t *) (f->base + (size_t) y * f->stride) + x;
 }
 
+/** v / 255, rounded (v <= 255 * 255): no division. */
+static inline unsigned div255(unsigned v)
+{
+	v += 128;
+	return (v + (v >> 8)) >> 8;
+}
+
 /** Blend (r, g, b) at opacity a (0..255) over the pixel. */
 static inline void fbpix_blend(const struct fbpix *f, uint32_t *p,
 		unsigned r, unsigned g, unsigned b, unsigned a)
@@ -111,14 +118,29 @@ static inline void fbpix_blend(const struct fbpix *f, uint32_t *p,
 		dg = g;
 		db = b;
 	} else {
-		dr = (r * a + dr * (255 - a) + 127) / 255;
-		dg = (g * a + dg * (255 - a) + 127) / 255;
-		db = (b * a + db * (255 - a) + 127) / 255;
+		dr = div255(r * a + dr * (255 - a));
+		dg = div255(g * a + dg * (255 - a));
+		db = div255(b * a + db * (255 - a));
 	}
 	if (f->bgr)
 		*p = (d & 0xff000000) | (db << 16) | (dg << 8) | dr;
 	else
 		*p = (d & 0xff000000) | (dr << 16) | (dg << 8) | db;
+}
+
+/** Blend 0xAARRGGBB c at coverage cov (0..256) over the pixel. */
+static inline void fbpix_blend_argb(const struct fbpix *f, uint32_t *p, uint32_t c,
+		unsigned cov)
+{
+	unsigned a = ((c >> 24) * cov + 128) >> 8;
+
+	if (a == 0)
+		return;
+	if (a >= 255 && !f->bgr) {
+		*p = (*p & 0xff000000) | (c & 0xffffff);
+		return;
+	}
+	fbpix_blend(f, p, (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff, a);
 }
 
 /* ---- colours ------------------------------------------------------------------------- */
@@ -172,8 +194,74 @@ static uint32_t grad_at(const struct onyx_gradient *g, float t)
 		((uint32_t) (gg + 0.5f) << 8) | (uint32_t) (b + 0.5f);
 }
 
-/** The gradient's colour at the pixel centre (px, py). */
-static uint32_t grad_colour(const struct onyx_gradient *g, float px, float py)
+/*
+ * A gradient's colours at GLUT_N + 1 evenly spaced t over its stops' span, made once per
+ * gradient (they depend on the stops only, not on the box: a small cache keyed by them), so
+ * a pixel's colour is a table read. (A hard stop is blurred over 1/GLUT_N of the span.)
+ */
+#define GLUT_N 1024
+#define GLUT_CACHE 8
+
+struct glut {
+	int nstops;
+	bool repeating;
+	float pos[ONYX_GRAD_MAX_STOPS];
+	uint32_t argb[ONYX_GRAD_MAX_STOPS];
+	float t0, scale;		/* index = (t - t0) * scale */
+	uint32_t c[GLUT_N + 1];
+};
+
+static struct glut glut_cache[GLUT_CACHE];
+static int glut_next;
+
+static const struct glut *glut_get(const struct onyx_gradient *g)
+{
+	int n = g->nstops;
+	struct glut *L;
+	float span;
+
+	if (n < 1 || n > ONYX_GRAD_MAX_STOPS)
+		return NULL;
+	for (int k = 0; k < GLUT_CACHE; k++) {
+		L = &glut_cache[k];
+		if (L->nstops == n && L->repeating == g->repeating &&
+		    memcmp(L->pos, g->pos, n * sizeof(float)) == 0 &&
+		    memcmp(L->argb, g->argb, n * sizeof(uint32_t)) == 0)
+			return L;
+	}
+	L = &glut_cache[glut_next];
+	glut_next = (glut_next + 1) % GLUT_CACHE;
+	L->nstops = n;
+	L->repeating = g->repeating;
+	memcpy(L->pos, g->pos, n * sizeof(float));
+	memcpy(L->argb, g->argb, n * sizeof(uint32_t));
+	span = g->pos[n - 1] - g->pos[0];
+	L->t0 = g->pos[0];
+	L->scale = span > 1e-6f ? GLUT_N / span : 0;
+	for (int i = 0; i <= GLUT_N; i++)
+		L->c[i] = grad_at(g, span > 1e-6f ? g->pos[0] + i / L->scale : g->pos[0]);
+	return L;
+}
+
+/** The colour at t from the table (t outside the stops: the end colours, or repeated). */
+static inline uint32_t glut_at(const struct glut *L, float t)
+{
+	float u = (t - L->t0) * L->scale;
+
+	if (L->repeating && L->scale > 0) {
+		u = fmodf(u, (float) GLUT_N);
+		if (u < 0)
+			u += GLUT_N;
+	}
+	if (u <= 0)
+		return L->c[0];
+	if (u >= GLUT_N)
+		return L->c[GLUT_N];
+	return L->c[(int) (u + 0.5f)];
+}
+
+/** A gradient's t at the pixel centre (px, py). */
+static inline float grad_t(const struct onyx_gradient *g, float px, float py)
 {
 	float t = 0;
 
@@ -200,7 +288,15 @@ static uint32_t grad_colour(const struct onyx_gradient *g, float px, float py)
 		break;
 	}
 	}
-	return grad_at(g, t);
+	return t;
+}
+
+/** The gradient's colour at the pixel centre (px, py): from its table if it has one. */
+static uint32_t grad_colour(const struct onyx_gradient *g, const struct glut *L,
+		float px, float py)
+{
+	float t = grad_t(g, px, py);
+	return L != NULL ? glut_at(L, t) : grad_at(g, t);
 }
 
 /* ---- shapes ---------------------------------------------------------------------------- */
@@ -266,18 +362,39 @@ static float erfc_f(float x)
 	return x >= 0 ? r : 2 - r;
 }
 
+/*
+ * A blurred edge's coverage, 0.5 erfc (v / sqrt 2) for v = d / sigma over [-3, 3], as a
+ * table read with a linear interpolation: no expf a pixel.
+ */
+#define BLUR_LUT_N 512
+static float blur_lut[BLUR_LUT_N + 2];
+static bool blur_lut_made;
+
+static void blur_lut_make(void)
+{
+	for (int i = 0; i <= BLUR_LUT_N + 1; i++) {
+		float v = -3.0f + 6.0f * i / BLUR_LUT_N;
+		blur_lut[i] = 0.5f * erfc_f(v / 1.41421356f);
+	}
+	blur_lut_made = true;
+}
+
 /** A blurred edge's coverage (a Gaussian of sigma blur / 2 across it). */
 static inline float blur_cov(float d, float blur)
 {
-	float sigma = blur * 0.5f;
+	float sigma = blur * 0.5f, u, fr;
+	int i;
 
 	if (sigma < 0.5f)
 		return aa_cov(d);
-	if (d < -3 * sigma)
+	if (d <= -3 * sigma)
 		return 1;
-	if (d > 3 * sigma)
+	if (d >= 3 * sigma)
 		return 0;
-	return 0.5f * erfc_f(d / (sigma * 1.41421356f));
+	u = (d / sigma + 3.0f) * (BLUR_LUT_N / 6.0f);
+	i = (int) u;
+	fr = u - i;
+	return blur_lut[i] + (blur_lut[i + 1] - blur_lut[i]) * fr;
 }
 
 /** A ring pixel's side (TOP, RIGHT, BOTTOM, LEFT): the side it is least deep into. */
@@ -302,6 +419,25 @@ static int ring_side(const struct onyx_shape *s, float px, float py)
 	return best;
 }
 
+/**
+ * The columns [*a, *b) of row py whose pixels are inside the rounded box r by at least
+ * `margin` all over (0: fully covered): only on the rows between its corners' arcs.
+ */
+static void rrect_span(const struct onyx_rrect *r, float py, float margin, int *a, int *b)
+{
+	float top = r->y0 + (r->ry[ONYX_TL] > r->ry[ONYX_TR] ? r->ry[ONYX_TL] : r->ry[ONYX_TR]);
+	float bot = r->y1 - (r->ry[ONYX_BL] > r->ry[ONYX_BR] ? r->ry[ONYX_BL] : r->ry[ONYX_BR]);
+
+	*a = *b = 0;
+	if (py - 0.5f - margin >= r->y0 && py + 0.5f + margin <= r->y1 &&
+	    py >= top && py <= bot) {
+		*a = (int) ceilf(r->x0 + 0.5f + margin);
+		*b = (int) floorf(r->x1 - 0.5f - margin);
+		if (*b < *a)
+			*a = *b = 0;
+	}
+}
+
 /* exported function documented in framebuffer/onyx_paint.h */
 bool onyx_fb_shape(nsfb_t *nsfb, const struct onyx_shape *s)
 {
@@ -311,10 +447,15 @@ bool onyx_fb_shape(nsfb_t *nsfb, const struct onyx_shape *s)
 	float ext;
 	int x0, y0, x1, y1;
 	const struct onyx_rrect *o = &s->outer;
+	const struct onyx_gradient *g = s->paint.gradient;
+	const struct glut *L = NULL;
+	float sigma3 = s->blur > 0 ? s->blur * 1.5f : 0;	/* 3 sigma: fully covered past it */
+	/* the rounded box whose inside paints nothing: a ring's hole, a shadow's caster */
+	const struct onyx_rrect *skip = s->ring ? &s->inner : s->hole ? &s->hole_rect : NULL;
 
 	if (!fbpix_get(nsfb, &f))
 		return false;
-	if (s->paint.gradient == NULL) {
+	if (g == NULL) {
 		solid = ns_to_argb(s->paint.colour);
 		if ((solid >> 24) == 0 && !s->per_side)
 			return true;
@@ -322,6 +463,10 @@ bool onyx_fb_shape(nsfb_t *nsfb, const struct onyx_shape *s)
 	if (s->per_side)
 		for (int k = 0; k < 4; k++)
 			sides[k] = ns_to_argb(s->side_colour[k]);
+	else if (g != NULL)
+		L = glut_get(g);
+	if (s->blur > 0 && !blur_lut_made)
+		blur_lut_make();
 
 	ext = s->blur > 0 ? s->blur * 1.5f + 1 : 1;
 	x0 = (int) floorf(o->x0 - ext);
@@ -338,40 +483,65 @@ bool onyx_fb_shape(nsfb_t *nsfb, const struct onyx_shape *s)
 	for (int y = y0; y < y1; y++) {
 		float py = y + 0.5f;
 		uint32_t *row = fbpix_at(&f, 0, y);
-		/* a row of the box's straight part: its inside is fully covered, and for a
-		 * ring the inner box's inside not at all */
-		float top = o->y0 + (o->ry[ONYX_TL] > o->ry[ONYX_TR] ? o->ry[ONYX_TL] : o->ry[ONYX_TR]);
-		float bot = o->y1 - (o->ry[ONYX_BL] > o->ry[ONYX_BR] ? o->ry[ONYX_BL] : o->ry[ONYX_BR]);
-		int in0 = x1, in1 = x1;	/* [in0, in1): fully inside (fill) */
-		int sk0 = x1, sk1 = x1;	/* [sk0, sk1): nothing (a ring's hole) */
+		int in0, in1;	/* [in0, in1): fully covered (fill) */
+		int sk0, sk1;	/* [sk0, sk1): nothing (a ring's or a shadow's hole) */
+		/* a linear gradient's t along the row: lt0 + x * ldt */
+		float lt0 = 0, ldt = 0;
+		bool lin = L != NULL && g->kind == ONYX_GRAD_LINEAR;
 
-		if (s->blur <= 0 && py - 0.5f >= o->y0 && py + 0.5f <= o->y1 &&
-		    py >= top && py <= bot) {
-			in0 = (int) ceilf(o->x0 + 0.5f);
-			in1 = (int) floorf(o->x1 - 0.5f);
-		}
-		if (s->ring) {
-			const struct onyx_rrect *i = &s->inner;
-			float itop = i->y0 + (i->ry[ONYX_TL] > i->ry[ONYX_TR] ? i->ry[ONYX_TL] : i->ry[ONYX_TR]);
-			float ibot = i->y1 - (i->ry[ONYX_BL] > i->ry[ONYX_BR] ? i->ry[ONYX_BL] : i->ry[ONYX_BR]);
-			if (py - 0.5f >= i->y0 && py + 0.5f <= i->y1 && py >= itop && py <= ibot) {
-				sk0 = (int) ceilf(i->x0 + 0.5f);
-				sk1 = (int) floorf(i->x1 - 0.5f);
+		rrect_span(o, py, sigma3, &in0, &in1);
+		if (s->ring)
+			in0 = in1 = 0;
+		sk0 = sk1 = 0;
+		if (skip != NULL)
+			rrect_span(skip, py, 0, &sk0, &sk1);
+		if (lin) {
+			float dd = g->dx * g->dx + g->dy * g->dy;
+			if (dd > 0) {
+				ldt = g->dx / dd;
+				lt0 = ((0.5f - g->x0) * g->dx + (py - g->y0) * g->dy) / dd;
 			}
 		}
 
 		for (int x = x0; x < x1; x++) {
 			float px = x + 0.5f, cov;
 			uint32_t c;
-			unsigned a;
 
 			if (x >= sk0 && x < sk1) {
 				x = sk1 - 1;
 				continue;
 			}
-			if (x >= in0 && x < in1 && !s->ring) {
-				cov = 1;
-			} else if (s->blur > 0) {
+			if (x >= in0 && x < in1) {
+				/* the fully covered span, up to the hole */
+				int e = in1;
+				if (sk1 > sk0 && sk0 > x && sk0 < e)
+					e = sk0;
+				if (s->per_side) {
+					for (; x < e; x++)
+						fbpix_blend_argb(&f, row + x,
+							sides[ring_side(s, x + 0.5f, py)], 256);
+				} else if (g == NULL) {
+					if ((solid >> 24) == 0xff && !f.bgr) {
+						uint32_t rgb = solid & 0xffffff;
+						for (; x < e; x++)
+							row[x] = (row[x] & 0xff000000) | rgb;
+					} else {
+						for (; x < e; x++)
+							fbpix_blend_argb(&f, row + x, solid, 256);
+					}
+				} else if (lin) {
+					for (; x < e; x++)
+						fbpix_blend_argb(&f, row + x,
+							glut_at(L, lt0 + x * ldt), 256);
+				} else {
+					for (; x < e; x++)
+						fbpix_blend_argb(&f, row + x,
+							grad_colour(g, L, x + 0.5f, py), 256);
+				}
+				x--;
+				continue;
+			}
+			if (s->blur > 0) {
 				cov = blur_cov(rrect_dist(o, px, py), s->blur);
 				if (cov > 0 && s->hole)
 					cov *= 1 - aa_cov(rrect_dist(&s->hole_rect, px, py));
@@ -384,13 +554,13 @@ bool onyx_fb_shape(nsfb_t *nsfb, const struct onyx_shape *s)
 				continue;
 			if (s->per_side)
 				c = sides[ring_side(s, px, py)];
-			else if (s->paint.gradient != NULL)
-				c = grad_colour(s->paint.gradient, px, py);
+			else if (lin)
+				c = glut_at(L, lt0 + x * ldt);
+			else if (g != NULL)
+				c = grad_colour(g, L, px, py);
 			else
 				c = solid;
-			a = (unsigned) ((c >> 24) * cov + 0.5f);
-			fbpix_blend(&f, row + x, (c >> 16) & 0xff, (c >> 8) & 0xff,
-					c & 0xff, a);
+			fbpix_blend_argb(&f, row + x, c, (unsigned) (cov * 256 + 0.5f));
 		}
 	}
 	return true;
@@ -515,11 +685,14 @@ bool onyx_fb_glyph(nsfb_t *nsfb, const nsfb_bbox_t *loc, const uint8_t *pixels,
 {
 	struct fbpix f;
 	uint32_t solid = 0;
+	const struct glut *L = NULL;
 
 	if (!fbpix_get(nsfb, &f))
 		return false;
 	if (paint->gradient == NULL)
 		solid = ns_to_argb(paint->colour);
+	else
+		L = glut_get(paint->gradient);
 	for (int y = loc->y0; y < loc->y1; y++) {
 		const uint8_t *src;
 		if (y < f.clip.y0 || y >= f.clip.y1)
@@ -535,9 +708,9 @@ bool onyx_fb_glyph(nsfb_t *nsfb, const nsfb_bbox_t *loc, const uint8_t *pixels,
 			v = mono ? ((src[i >> 3] & (0x80 >> (i & 7))) ? 255 : 0) : src[i];
 			if (v == 0)
 				continue;
-			c = paint->gradient ? grad_colour(paint->gradient, x + 0.5f, y + 0.5f)
-					    : solid;
-			a = ((c >> 24) * v + 127) / 255;
+			c = paint->gradient ? grad_colour(paint->gradient, L, x + 0.5f,
+					y + 0.5f) : solid;
+			a = div255((c >> 24) * v);
 			fbpix_blend(&f, fbpix_at(&f, x, y), (c >> 16) & 0xff,
 					(c >> 8) & 0xff, c & 0xff, a);
 		}

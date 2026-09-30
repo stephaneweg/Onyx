@@ -116,4 +116,12 @@ struct box *box_for_node(struct dom_node *node);
  */
 bool box_extract_link(const struct html_content *content, const struct dom_string *dsrel, struct nsurl *base, struct nsurl **result);
 
+/**
+ * Onyx: an element's styles selected (with its inline style, CSS :hover), as the box tree's
+ * construction does -- html/onyx_hover.c restyles a subtree with it.
+ */
+struct css_select_results *box_style_select(struct html_content *c,
+		const struct css_computed_style *parent_style,
+		const struct css_computed_style *root_style, struct dom_node *n);
+
 #endif

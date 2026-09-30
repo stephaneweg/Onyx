@@ -816,6 +816,12 @@ nserror fetch_set_http_code(struct fetch *fetch, http_response_code http_code)
 
 
 /* exported interface documented in content/fetch.h */
+/* exported interface documented in content/fetch.h (Onyx) */
+struct nsurl *fetch_get_referer(struct fetch *fetch)
+{
+	return fetch != NULL ? fetch->referer : NULL;
+}
+
 void fetch_set_cookie(struct fetch *fetch, const char *data)
 {
 	assert(fetch && data);

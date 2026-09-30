@@ -42,6 +42,7 @@
 #include "utils/utils.h"
 #include "utils/log.h"
 #include "utils/nsurl.h"
+#include "utils/useragent.h"
 #include "utils/corestrings.h"
 #include "utils/nsoption.h"
 #include "netsurf/browser_window.h"
@@ -1400,7 +1401,7 @@ static JSValue n_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 
 static JSValue n_user_agent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-	return JS_NewString(ctx, "Mozilla/5.0 (Onyx; aarch64) NetSurf/3.11");
+	return JS_NewString(ctx, user_agent_string());	/* (the HTTP requests' too) */
 }
 
 

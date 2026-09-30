@@ -11,6 +11,7 @@
 #include "select/arena.h"
 #include "select/arena_hash.h"
 #include "select/computed.h"
+#include "select/onyx_propbits.h"
 
 #define TU_SIZE 3037
 #define TS_SIZE 5101
@@ -229,4 +230,95 @@ enum css_error css__arena_remove_style(struct css_computed_style *style)
 	}
 
 	return CSS_OK;
+}
+
+/* Onyx: a paint property's bits (and value fields) of b copied into t */
+#define PAINT_BITS(P) (t.bits[ONYX_##P##_INDEX] = 		(t.bits[ONYX_##P##_INDEX] & ~(uint32_t) ONYX_##P##_MASK) | 		(bi->bits[ONYX_##P##_INDEX] & (uint32_t) ONYX_##P##_MASK))
+
+/* exported function documented in include/libcss/computed.h */
+bool css_computed_style_paint_only_change(const css_computed_style *a,
+		const css_computed_style *b, bool *moved)
+{
+	struct css_computed_style_i t;
+	const struct css_computed_style_i *bi;
+
+	if (moved != NULL)
+		*moved = false;
+	if (a == b)
+		return true;
+	if (a == NULL || b == NULL)
+		return false;
+	bi = &b->i;
+	t = a->i;
+
+	PAINT_BITS(COLOR);			t.color = bi->color;
+	PAINT_BITS(BACKGROUND_COLOR);		t.background_color = bi->background_color;
+	PAINT_BITS(BACKGROUND_IMAGE);		t.background_image = bi->background_image;
+	PAINT_BITS(BACKGROUND_ATTACHMENT);
+	PAINT_BITS(BACKGROUND_CLIP);
+	PAINT_BITS(BACKGROUND_REPEAT);
+	PAINT_BITS(BACKGROUND_POSITION);
+	t.background_position_a = bi->background_position_a;
+	t.background_position_b = bi->background_position_b;
+	PAINT_BITS(BACKGROUND_SIZE);
+	t.background_size_a = bi->background_size_a;
+	t.background_size_b = bi->background_size_b;
+	PAINT_BITS(BORDER_TOP_COLOR);		t.border_top_color = bi->border_top_color;
+	PAINT_BITS(BORDER_RIGHT_COLOR);		t.border_right_color = bi->border_right_color;
+	PAINT_BITS(BORDER_BOTTOM_COLOR);	t.border_bottom_color = bi->border_bottom_color;
+	PAINT_BITS(BORDER_LEFT_COLOR);		t.border_left_color = bi->border_left_color;
+	PAINT_BITS(BORDER_TOP_LEFT_RADIUS);
+	t.border_top_left_radius = bi->border_top_left_radius;
+	PAINT_BITS(BORDER_TOP_RIGHT_RADIUS);
+	t.border_top_right_radius = bi->border_top_right_radius;
+	PAINT_BITS(BORDER_BOTTOM_LEFT_RADIUS);
+	t.border_bottom_left_radius = bi->border_bottom_left_radius;
+	PAINT_BITS(BORDER_BOTTOM_RIGHT_RADIUS);
+	t.border_bottom_right_radius = bi->border_bottom_right_radius;
+	PAINT_BITS(BOX_SHADOW);
+	t.box_shadow_a = bi->box_shadow_a;
+	t.box_shadow_b = bi->box_shadow_b;
+	t.box_shadow_c = bi->box_shadow_c;
+	t.box_shadow_d = bi->box_shadow_d;
+	t.box_shadow_e = bi->box_shadow_e;
+	PAINT_BITS(TEXT_SHADOW);
+	t.text_shadow_a = bi->text_shadow_a;
+	t.text_shadow_b = bi->text_shadow_b;
+	t.text_shadow_c = bi->text_shadow_c;
+	t.text_shadow_d = bi->text_shadow_d;
+	PAINT_BITS(COLUMN_RULE_COLOR);		t.column_rule_color = bi->column_rule_color;
+	PAINT_BITS(OUTLINE_COLOR);		t.outline_color = bi->outline_color;
+	PAINT_BITS(OUTLINE_STYLE);
+	PAINT_BITS(OUTLINE_WIDTH);		t.outline_width = bi->outline_width;
+	PAINT_BITS(TEXT_DECORATION);
+	PAINT_BITS(VISIBILITY);
+	PAINT_BITS(OPACITY);			t.opacity = bi->opacity;
+	PAINT_BITS(FILL_OPACITY);		t.fill_opacity = bi->fill_opacity;
+	PAINT_BITS(STROKE_OPACITY);		t.stroke_opacity = bi->stroke_opacity;
+	PAINT_BITS(Z_INDEX);			t.z_index = bi->z_index;
+	PAINT_BITS(CURSOR);
+
+	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;	/* (not drawn) */
+	PAINT_BITS(SCALE);			t.scale = bi->scale;	/* (not drawn) */
+	if (moved != NULL) {
+		/* a translation: the box moved, its layout the same */
+		PAINT_BITS(TRANSFORM);		t.transform = bi->transform;
+		PAINT_BITS(TRANSLATE);		t.translate = bi->translate;
+		*moved = t.transform != a->i.transform || t.translate != a->i.translate ||
+			(t.bits[ONYX_TRANSFORM_INDEX] & ONYX_TRANSFORM_MASK) !=
+			(a->i.bits[ONYX_TRANSFORM_INDEX] & ONYX_TRANSFORM_MASK) ||
+			(t.bits[ONYX_TRANSLATE_INDEX] & ONYX_TRANSLATE_MASK) !=
+			(a->i.bits[ONYX_TRANSLATE_INDEX] & ONYX_TRANSLATE_MASK);
+	}
+
+	if (memcmp(&t, bi, sizeof t) != 0)
+		return false;
+	/* the lists: all but the cursor's */
+	return arena__compare_string_list(a->font_family, b->font_family) &&
+		arena__compare_css_computed_counter(a->counter_increment,
+				b->counter_increment) &&
+		arena__compare_css_computed_counter(a->counter_reset,
+				b->counter_reset) &&
+		arena__compare_computed_content_item(a->content, b->content) &&
+		arena__compare_string_list(a->quotes, b->quotes);
 }

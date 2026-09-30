@@ -85,6 +85,18 @@ css_error css_computed_style_compose(
 		const css_unit_ctx *unit_ctx,
 		css_computed_style **restrict result);
 
+/**
+ * Onyx: whether two computed styles differ only in properties that change how a box is
+ * painted, never its layout (colours, backgrounds, border colours and radii, outline,
+ * shadows, text decoration, visibility, opacity, z-index, cursor). A browser may then swap
+ * the styles and repaint, without laying the document out again. (The background image is
+ * among them: an image that must be fetched is the caller's to check.) With moved non-NULL,
+ * a change of transform / translate is allowed too -- the box moves, its layout stays (they
+ * are applied as a relative offset) -- and *moved tells whether they changed.
+ */
+bool css_computed_style_paint_only_change(const css_computed_style *a,
+		const css_computed_style *b, bool *moved);
+
 /******************************************************************************
  * speciality formatters                                                      *
  ******************************************************************************/

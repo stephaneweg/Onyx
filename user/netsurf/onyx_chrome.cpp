@@ -766,8 +766,16 @@ void onyx_chrome_set_page_handlers (onyx_chrome_handler ptr, onyx_chrome_handler
 
 int onyx_chrome_pump (void)
 {
+	return onyx_chrome_pump_wait (0);
+}
+
+// Pump the window's events, first waiting up to ms for one (an input event, a post from a
+// fetch thread, the close box) -- not a blind sleep. 1: the window was resized.
+int onyx_chrome_pump_wait (int ms)
+{
 	if (g_win == 0) return 0;
-	kapi_pump_events ();
+	if (ms > 0) kapi_pump_wait ((unsigned) ms);
+	else kapi_pump_events ();
 	if (!g_win->valid || !g_shown)
 	{
 		g_win->draw ();
@@ -783,6 +791,22 @@ void onyx_chrome_present (void)
 {
 	if (g_win && !g_win->valid) g_win->draw ();
 	kapi_present ();
+}
+
+// The page's redraws say only that the window changed; the main loop presents once an
+// iteration, after all of them (a scroll's moved pixels and its new band shown together).
+static bool g_present_due;
+
+void onyx_chrome_present_later (void)
+{
+	g_present_due = true;
+}
+
+void onyx_chrome_flush (void)
+{
+	if (!g_present_due) return;
+	g_present_due = false;
+	onyx_chrome_present ();
 }
 
 void onyx_chrome_set_url (const char *url)

@@ -1539,6 +1539,9 @@ css_error node_is_visited(void *pw, void *node, bool *match)
  */
 struct dom_node *nscss_hover_node = NULL;	/* (Onyx: see select.h) */
 bool nscss_hover_used = false;
+void (*nscss_hover_note)(void *ctx, struct dom_node *tested, struct dom_node *styled);
+void *nscss_hover_note_ctx;
+struct dom_node *nscss_styled_node;
 
 css_error node_is_hover(void *pw, void *node, bool *match)
 {
@@ -1547,6 +1550,8 @@ css_error node_is_hover(void *pw, void *node, bool *match)
 
 	(void) pw;
 	nscss_hover_used = true;
+	if (nscss_hover_note != NULL)
+		nscss_hover_note(nscss_hover_note_ctx, node, nscss_styled_node);
 	*match = false;
 	if (n == NULL)
 		return CSS_OK;

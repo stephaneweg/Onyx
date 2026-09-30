@@ -24,6 +24,7 @@
 #define ONYX_TLS_HPP
 
 #include "kapi.h"
+#include <string.h>		// memcpy
 
 #include <mbedtls/ssl.h>
 #include <mbedtls/ctr_drbg.h>
@@ -55,8 +56,10 @@ namespace onyx_tls
 		// truncate to nLength, then `delete pNetBuffer`). mbedTLS reads tiny 5-byte record
 		// headers, so we must capture a WHOLE segment here and feed mbedTLS its small reads
 		// from this buffer -- otherwise the rest of each segment is lost and the record
-		// stream desyncs ("unknown record type"). Big enough for one MSS (~1460).
-		unsigned char             rxbuf[4096];
+		// stream desyncs ("unknown record type"). Big enough for one MSS (~1460) -- and more:
+		// the kernel gathers the segments that fit into one read (fewer round trips to the
+		// network core), 16 KB holds a whole TLS record.
+		unsigned char             rxbuf[16384];
 		int                       rxlen, rxpos;
 	};
 
@@ -97,7 +100,7 @@ namespace onyx_tls
 		}
 		int avail = s->rxlen - s->rxpos;
 		int give = (int) len < avail ? (int) len : avail;
-		for (int i = 0; i < give; i++) buf[i] = s->rxbuf[s->rxpos + i];
+		memcpy (buf, s->rxbuf + s->rxpos, (size_t) give);
 		s->rxpos += give;
 		return give;
 	}
@@ -107,7 +110,7 @@ namespace onyx_tls
 	// RESUME -- skipping the full ECDHE + signature -- which is a big win for pages
 	// that fetch many resources from the same host over separate connections (the
 	// current per-resource-connection model). Per-app (one cache per linked app).
-	enum { TLS_SESS_CACHE_N = 6 };
+	enum { TLS_SESS_CACHE_N = 16 };
 	struct SessCacheEntry { char host[128]; mbedtls_ssl_session sess; bool valid; };
 
 	inline bool sess_streq (const char *a, const char *b)
@@ -138,9 +141,10 @@ namespace onyx_tls
 	inline void sess_save (const char *host, mbedtls_ssl_context *ssl)
 	{
 		SessCacheEntry *c = sess_cache (), *e = sess_find (host);
-		if (e == 0) {					// reuse host slot, else a free one, else evict #0
+		if (e == 0) {					// reuse host slot, else a free one, else in turn
+			static unsigned s_next;
 			for (int i = 0; i < TLS_SESS_CACHE_N; i++) if (!c[i].valid) { e = &c[i]; break; }
-			if (e == 0) e = &c[0];
+			if (e == 0) e = &c[s_next++ % TLS_SESS_CACHE_N];
 		}
 		if (e->valid) mbedtls_ssl_session_free (&e->sess);
 		mbedtls_ssl_session_init (&e->sess);

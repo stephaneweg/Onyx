@@ -63,5 +63,10 @@ css_error node_is_visited(void *pw, void *node, bool *match);
  * and whether a :hover selector was tried (the document then has :hover rules). */
 extern struct dom_node *nscss_hover_node;
 extern bool nscss_hover_used;
+/* Onyx: told each node a :hover selector is tried on (tested) while `styled`'s style is
+ * selected (html/onyx_hover.c keeps them: only their hover changes restyle anything) */
+extern void (*nscss_hover_note)(void *ctx, struct dom_node *tested, struct dom_node *styled);
+extern void *nscss_hover_note_ctx;
+extern struct dom_node *nscss_styled_node;
 
 #endif

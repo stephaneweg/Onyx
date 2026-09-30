@@ -9,9 +9,9 @@
 foreground_images:1
 background_images:1
 
-# --- JavaScript (Duktape) ---------------------------------------------------
-# 1 = run page JavaScript (Duktape engine). NOTE: it is old/limited (~ES5) and the
-#     fetch is synchronous, so JS-heavy sites stay slow; 0 disables it.
+# --- JavaScript (QuickJS, ES2023) ---------------------------------------------
+# 1 = run page JavaScript; 0 disables it (faster on heavy pages, but menus and forms
+#     that need scripts stop working).
 enable_javascript:1
 
 # --- Fetch / memory ---------------------------------------------------------
@@ -19,6 +19,13 @@ enable_javascript:1
 # (the latter = size/4). Too small => images get evicted then re-fetched AND
 # re-decoded on every redraw (page stuck "fetching/processing"). RAM is ample
 # here, so keep it generous: 64 MB => 16 MB image cache.
-max_fetchers:4
-max_fetchers_per_host:4
+# Downloads at once (each in a thread; a site's connections are kept: keep-alive).
+max_fetchers:8
+max_fetchers_per_host:6
+
+# --- Identity ---------------------------------------------------------------
+# The User-Agent sent (and navigator.userAgent); unset = a current Chrome's.
+# user_agent:Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36
+# The languages asked for; unset = French, then English.
+# accept_language:fr-FR,fr;q=0.9,en;q=0.8
 memory_cache_size:67108864

@@ -629,6 +629,25 @@ a member of `CKernel` — before the SD card is mounted, so before `SD:/etc/syst
 `m_Hostname` replaced), called by the kernel before the network's bring-up task starts
 (`Initialize` makes the DHCP client with the name). Header only: no library to rebuild.
 
+## 18. DNS: the answer polled, not a second slept
+
+**Why.** `CDNSClient::Resolve` sent its query, slept 1000 ms, then read the answer once: every
+name lookup cost a second even when the answer came in 5 ms (a web page asks for several hosts:
+NetSurf spent seconds in DNS alone, its connects one after another).
+
+**What.** `lib/net/dnsclient.cpp`: after each send, the socket is read every 5 ms
+(`MSG_DONTWAIT`) for up to 1000 ms; the three tries are kept. (The kernel also caches the
+answers: `kernel/sys/net.cpp`, docs/02.)
+
+## 19. TCP: a 64 KB receive window
+
+**Why.** The advertised receive window was 10 segments (14600 bytes), with no window scaling: a
+connection could not carry more than 14.6 KB a round trip (about 730 KB/s at 20 ms, 290 KB/s at
+50 ms) -- well under the Wi-Fi's rate.
+
+**What.** `lib/net/tcpconnection.cpp`: `TCP_CONFIG_WINDOW` is 44 segments (64240 bytes, the most
+a 16-bit window field holds); the reassembly queue follows it. Rebuild `lib/net`.
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on

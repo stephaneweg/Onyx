@@ -37,9 +37,13 @@ void onyx_chrome_set_page_handlers(onyx_chrome_handler ptr, onyx_chrome_handler 
  * the band when it changed. Returns 1 when the window was resized (the page's geometry
  * changed: onyx_chrome_page), 0 else. */
 int onyx_chrome_pump(void);
+int onyx_chrome_pump_wait(int ms);	/* the same, waiting up to ms for an event / a post */
 
 /* Show the window's pixels. */
 void onyx_chrome_present(void);
+/* the page redrawn: presented by onyx_chrome_flush(), once a main-loop iteration */
+void onyx_chrome_present_later(void);
+void onyx_chrome_flush(void);
 
 /* A page size for a new window that fits the screen (the band, the frame, the menu bar
  * and the dock left out). */

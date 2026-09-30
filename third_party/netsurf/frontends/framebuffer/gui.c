@@ -354,6 +354,8 @@ fb_pan(fbtk_widget_t *widget,
 	bwidget->pany = 0;
 }
 
+#include "netsurf/onyx_perf.h"
+
 static void
 fb_redraw(fbtk_widget_t *widget,
 	  struct browser_widget_s *bwidget,
@@ -387,10 +389,17 @@ fb_redraw(fbtk_widget_t *widget,
 	clip.x1 = bwidget->redraw_box.x1;
 	clip.y1 = bwidget->redraw_box.y1;
 
-	browser_window_redraw(bw,
-			x - bwidget->scrollx,
-			y - bwidget->scrolly,
-			&clip, &ctx);
+	{
+		uint64_t t0 = onyx_perf_now();	/* Onyx: onyx_perf.h */
+		char what[48];
+		browser_window_redraw(bw,
+				x - bwidget->scrollx,
+				y - bwidget->scrolly,
+				&clip, &ctx);
+		snprintf(what, sizeof what, "redraw %dx%d", clip.x1 - clip.x0,
+				clip.y1 - clip.y0);
+		onyx_perf_log(what, t0);
+	}
 
 	if (fbtk_get_caret(widget, &caret_x, &caret_y, &caret_h)) {
 		/* This widget has caret, so render it */
@@ -667,6 +676,7 @@ static void framebuffer_run(void)
 		}
 
 		fbtk_redraw(fbtk);
+		onyx_chrome_flush();	/* Onyx: one present, after the redraws */
 	}
 }
 

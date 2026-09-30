@@ -46,6 +46,58 @@ struct TSocketSlot
 
 static TSocketSlot s_Sockets[MAX_SOCKETS];		// zero-initialised (BSS)
 
+// A slot taken by a connect still under way (its DNS lookup, its handshake: they block, and
+// the net core's other workers run meanwhile -- two connects at once got the same slot).
+#define SLOT_CONNECTING	((CSocket *) 1)
+
+// ---- a DNS cache: a page's resources ask for the same few hosts again and again ----
+#define DNS_CACHE	32
+#define DNS_CACHE_TTL	300		// seconds (the answer's own TTL is not read)
+
+struct TDNSCacheEntry
+{
+	char	 szName[128];
+	u8	 IP[4];
+	unsigned nExpires;			// CTimer::GetUptime () seconds
+};
+
+static TDNSCacheEntry s_DNSCache[DNS_CACHE];
+static unsigned s_nDNSNext;
+
+static boolean LookupCached (const char *pHost, CIPAddress *pIP)
+{
+	unsigned nNow = CTimer::Get ()->GetUptime ();
+	for (unsigned i = 0; i < DNS_CACHE; i++)
+	{
+		TDNSCacheEntry &e = s_DNSCache[i];
+		if (e.szName[0] != '\0' && nNow < e.nExpires && strcasecmp (e.szName, pHost) == 0)
+		{
+			pIP->Set (e.IP);
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static void RememberHost (const char *pHost, const CIPAddress &IP)
+{
+	if (strlen (pHost) >= sizeof s_DNSCache[0].szName) return;
+	TDNSCacheEntry &e = s_DNSCache[s_nDNSNext++ % DNS_CACHE];
+	strcpy (e.szName, pHost);
+	IP.CopyTo (e.IP);
+	e.nExpires = CTimer::Get ()->GetUptime () + DNS_CACHE_TTL;
+}
+
+// A host name to its address: the cache, else a DNS lookup (blocks), remembered.
+static boolean ResolveName (const char *pHost, CIPAddress *pIP)
+{
+	if (LookupCached (pHost, pIP)) return TRUE;
+	CDNSClient DNS (g_pNet);
+	if (!DNS.Resolve (pHost, pIP)) return FALSE;
+	RememberHost (pHost, *pIP);
+	return TRUE;
+}
+
 // Parse "a.b.c.d" into four bytes. Returns TRUE only for a well-formed dotted quad
 // (so a hostname like "irc.libera.chat" falls through to DNS).
 static boolean ParseDottedIP (const char *s, u8 ip[4])
@@ -73,7 +125,7 @@ static boolean ParseDottedIP (const char *s, u8 ip[4])
 static CSocket *SockOf (int h)
 {
 	if (h < 0 || h >= MAX_SOCKETS) return 0;
-	return s_Sockets[h].pSocket;
+	return s_Sockets[h].pSocket == SLOT_CONNECTING ? 0 : s_Sockets[h].pSocket;
 }
 
 static int DoConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
@@ -84,32 +136,35 @@ static int DoConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 	for (int i = 0; i < MAX_SOCKETS; i++)
 		if (s_Sockets[i].pSocket == 0) { h = i; break; }
 	if (h < 0) return -2;					// table full
+	s_Sockets[h].pSocket   = SLOT_CONNECTING;		// (ours, before anything blocks)
+	s_Sockets[h].nOwnerPid = nOwnerPid;
+	s_Sockets[h].bListen   = FALSE;
 
-	// Resolve the host: dotted-quad literal, else a DNS lookup (blocks).
+	// Resolve the host: dotted-quad literal, else the cache or a DNS lookup (blocks).
 	CIPAddress IP;
 	u8 raw[4];
 	if (ParseDottedIP (pHost, raw))
 	{
 		IP.Set (raw);
 	}
-	else
+	else if (!ResolveName (pHost, &IP))
 	{
-		CDNSClient DNS (g_pNet);
-		if (!DNS.Resolve (pHost, &IP)) return -3;	// name resolution failed
+		s_Sockets[h].pSocket = 0;
+		return -3;					// name resolution failed
 	}
 
 	CSocket *pSock = new CSocket (g_pNet, IPPROTO_TCP);
-	if (pSock == 0) return -4;
+	if (pSock == 0) { s_Sockets[h].pSocket = 0; return -4; }
 
 	if (pSock->Connect (IP, (u16) nPort) < 0)		// TCP handshake (blocks)
 	{
 		delete pSock;
+		s_Sockets[h].pSocket = 0;
 		return -5;					// refused / timed out / no route
 	}
 	pSock->SetOptionSendTimeout (5000000);			// 5 s: never hang the app forever
 
 	s_Sockets[h].pSocket   = pSock;
-	s_Sockets[h].nOwnerPid = nOwnerPid;
 	return h;
 }
 
@@ -130,7 +185,7 @@ static int DoRecv (int hSock, void *pBuf, unsigned nLen)
 static void DoClose (int hSock)
 {
 	if (hSock < 0 || hSock >= MAX_SOCKETS) return;
-	if (s_Sockets[hSock].pSocket != 0)
+	if (s_Sockets[hSock].pSocket != 0 && s_Sockets[hSock].pSocket != SLOT_CONNECTING)
 	{
 		delete s_Sockets[hSock].pSocket;		// dtor terminates the connection
 		s_Sockets[hSock].pSocket   = 0;
@@ -247,8 +302,7 @@ static boolean ResolveHost (const char *pHost, CIPAddress &rIP)
 {
 	u8 ip[4];
 	if (ParseDottedIP (pHost, ip)) { rIP.Set (ip); return TRUE; }
-	CDNSClient DNS (g_pNet);
-	return DNS.Resolve (pHost, &rIP);
+	return ResolveName (pHost, &rIP);
 }
 
 static int DoResolve (const char *pHost, char *pIPOut, unsigned nIPLen)
@@ -335,7 +389,7 @@ static int DoInfo (char *pBuf, unsigned nCap)
 	for (int h = 0; h < MAX_SOCKETS; h++)
 	{
 		CSocket *p = s_Sockets[h].pSocket;
-		if (p == 0) continue;
+		if (p == 0 || p == SLOT_CONNECTING) continue;
 		put ("tcp "); putu ((unsigned) h); put (s_Sockets[h].bListen ? " listen " : " conn ");
 		putu (p->GetOwnPort ()); put (" ");
 		const u8 *f = p->GetForeignIP ();
@@ -517,7 +571,7 @@ enum { NR_CONNECT = 1, NR_SEND, NR_RECV, NR_CLOSE, NR_LISTEN, NR_ACCEPT, NR_RESO
 enum { RQ_FREE, RQ_POSTED, RQ_CLAIMED, RQ_DONE, RQ_ORPHAN };
 
 #define NET_REQS	32
-#define NET_REQBUF	8192
+#define NET_REQBUF	32768		// (a recv gathers the segments that fit: fewer round trips)
 #define NET_WORKERS	6		// at start; more when all are busy (an accept waits for long)
 #define NET_WORKERS_MAX	24
 #define NET_CLOSES	64

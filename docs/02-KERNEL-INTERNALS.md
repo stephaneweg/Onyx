@@ -979,10 +979,16 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
 - **Globals.** `g_pNet` (the `CNetSubSystem`) and `g_bNetUp` are published in
   `net.h`; `NetIsUp()` gates the socket calls.
 - **Sockets.** `sys/net.cpp` keeps a small table of Circle `CSocket`s behind integer
-  handles. `tcp_connect` resolves a dotted-quad or a DNS name (`CDNSClient`) and
-  connects (blocking, cooperative); `tcp_send` blocks with a 5 s timeout; `tcp_recv`
-  is **non-blocking** (so a GUI app polls it from its frame loop); `tcp_close` drops
-  it. Each socket records its **owner pid**, and `AddressSpaceTaskTerminate` calls
+  handles. `tcp_connect` resolves a dotted-quad or a DNS name and connects (blocking,
+  cooperative); `tcp_send` blocks with a 5 s timeout; `tcp_recv` is **non-blocking** (so a
+  GUI app polls it from its frame loop; with `netcore=1` one call gathers the segments that
+  fit in its 32 KB request buffer, `NET_REQBUF`); `tcp_close` drops it. A connect **takes its
+  slot before it blocks** (`SLOT_CONNECTING`, invisible to the other calls): the net core's
+  workers run other connects during a DNS lookup or a handshake, and two of them once got the
+  same slot (both fetches then read one connection: NetSurf's style sheets failed). **DNS
+  cache**: 32 names kept 5 minutes (`ResolveName`, used by `tcp_connect`, `net_resolve`,
+  `net_ping`) in front of Circle's `CDNSClient` -- which answers in milliseconds now (it slept
+  1 s per query: docs/05 §18). Each socket records its **owner pid**, and `AddressSpaceTaskTerminate` calls
   `NetCloseByPid` so a process that dies without closing does not leak its
   connections or table slots.
 - **Clock.** Once the link is up the bring-up task starts a `CNTPDaemon`

@@ -285,6 +285,9 @@ static void html_box_convert_done(html_content *c, bool success)
 
 /* ---- Onyx: a DOM changed by a script, its boxes built again ---- */
 
+#include "netsurf/onyx_perf.h"
+#include "html/onyx_hover.h"
+
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
 static bool html_rebox_success;
@@ -359,6 +362,7 @@ static void html_rebox(html_content *c)
 	struct content_html_iframe *old_iframes = c->iframe;
 	struct form_control *focus_gadget = NULL, *sel_gadget = NULL;
 	dom_node *html = NULL;
+	uint64_t t0;	/* (Onyx: onyx_perf.h) */
 
 	if (c->layout == NULL || c->box_conversion_context != NULL ||
 	    c->aborted || c->base.locked ||
@@ -389,8 +393,11 @@ static void html_rebox(html_content *c)
 	html_rebox_unlink(html);
 	html_rebox_success = false;
 	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
+	onyx_hover_reset(c);	/* (the :hover notes made again with the styles) */
+	t0 = onyx_perf_now();
 	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
 		html_rebox_success = false;
+	onyx_perf_log("rebox:boxes", t0);
 	dom_node_unref(html);
 	old_objects = c->rebox_objects;	/* the ones left */
 	c->rebox_objects = NULL;
@@ -399,6 +406,7 @@ static void html_rebox(html_content *c)
 		struct content_html_object **prev = &c->object_list, *o;
 
 		NSLOG(netsurf, INFO, "rebox failed: the old boxes kept");
+		c->hover_other = true;	/* (the :hover notes partial: rebox at each change) */
 		/* the objects taken over given back to the old boxes */
 		while ((o = *prev) != NULL) {
 			if (o->rebox_old_box != NULL) {
@@ -443,6 +451,7 @@ static void html_rebox(html_content *c)
 	html_object_free_list(c, old_objects);	/* (the ones not taken over) */
 	if (old_bctx != NULL)
 		talloc_free(old_bctx);
+	onyx_hover_release(c);	/* (the styles hovers replaced: no box sees them now) */
 	{
 		struct content_html_object *o;
 
@@ -470,8 +479,10 @@ static void html_rebox(html_content *c)
 		c->selection_owner.none = true;
 	}
 
+	t0 = onyx_perf_now();
 	content__reformat(&c->base, false, c->base.available_width,
 			c->base.available_height);
+	onyx_perf_log("rebox:reformat", t0);
 }
 
 /**
@@ -1382,7 +1393,11 @@ static void html_reformat(struct content *c, int width, int height)
 			INTTOFIX(height), htmlc->unit_len_ctx.device_dpi);
 	htmlc->unit_len_ctx.root_style = htmlc->layout->style;
 
-	layout_document(htmlc, width, height);
+	{
+		uint64_t t0 = onyx_perf_now();	/* Onyx */
+		layout_document(htmlc, width, height);
+		onyx_perf_log("layout", t0);
+	}
 	layout = htmlc->layout;
 
 	/* width and height are at least margin box of document */
@@ -1539,6 +1554,7 @@ static void html_destroy(struct content *c)
 		html->script_changed = NULL;
 	}
 	html->rebox_pending = false;
+	onyx_hover_fini(html);		/* (Onyx) */
 	if (html->hover_node != NULL) {		/* (Onyx) */
 		dom_node_unref(html->hover_node);
 		html->hover_node = NULL;

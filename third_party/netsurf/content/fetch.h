@@ -261,6 +261,12 @@ nserror fetch_set_http_code(struct fetch *fetch, http_response_code http_code);
 void fetch_set_cookie(struct fetch *fetch, const char *data);
 
 /**
+ * Onyx: the URL the fetch was asked from (its referer), or NULL -- the Onyx fetcher sends it
+ * (user/netsurf/onyx_fetch.c). Not a reference: valid while the fetch lives.
+ */
+struct nsurl *fetch_get_referer(struct fetch *fetch);
+
+/**
  * Get the set of file descriptors the fetchers are currently using.
  *
  * This obtains the file descriptors the fetch system is using to
