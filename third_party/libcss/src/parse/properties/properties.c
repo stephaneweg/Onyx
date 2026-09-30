@@ -250,7 +250,19 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_grid_column,
 	css__parse_grid_area,
 	css__parse_grid,
-	css__parse_background_clip
+	css__parse_background_clip,
+	/* Onyx: SVG's presentation properties (onyx_svg.c) */
+	css__parse_fill,
+	css__parse_stroke,
+	css__parse_stroke_width,
+	css__parse_fill_rule,
+	css__parse_stroke_linecap,
+	css__parse_stroke_linejoin,
+	css__parse_stroke_miterlimit,
+	css__parse_stroke_dasharray,
+	css__parse_stroke_dashoffset,
+	css__parse_stop_color,
+	css__parse_stop_opacity
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */
@@ -356,6 +368,8 @@ const uint32_t property_unit_mask[CSS_N_PROPERTIES] = {
 	[CSS_PROP_Z_INDEX]               = UNIT_MASK_Z_INDEX,
 	[CSS_PROP_OPACITY]               = UNIT_MASK_OPACITY,
 	[CSS_PROP_FILL_OPACITY]          = UNIT_MASK_FILL_OPACITY,
+	[CSS_PROP_STROKE_WIDTH]          = UNIT_LENGTH | UNIT_PCT,	/* Onyx */
+	[CSS_PROP_STROKE_DASHOFFSET]     = UNIT_LENGTH | UNIT_PCT,
 	[CSS_PROP_STROKE_OPACITY]        = UNIT_MASK_STROKE_OPACITY,
 	[CSS_PROP_BREAK_AFTER]           = UNIT_MASK_BREAK_AFTER,
 	[CSS_PROP_BREAK_BEFORE]          = UNIT_MASK_BREAK_BEFORE,

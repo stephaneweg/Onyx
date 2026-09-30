@@ -63,9 +63,19 @@ typedef enum css_selector_detail_value_type {
 } css_selector_detail_value_type;
 
 /** Onyx: the argument of :is() / :where() / :not(): a list of complex selectors */
+/* Onyx: what a selector list stands for */
+enum css_onyx_selector_list_kind {
+	ONYX_SL_IS = 0,			/* :is() / :where() / :not(): matches one of them */
+	ONYX_SL_NTH_CHILD,		/* :nth-child(An+B of S): a, b */
+	ONYX_SL_NTH_LAST_CHILD,		/* :nth-last-child(An+B of S) */
+	ONYX_SL_NEVER			/* :has(), :host(), ::slotted()...: never matches */
+};
+
 typedef struct css_onyx_selector_list {
 	uint32_t n;
 	uint32_t specificity;		/**< its most specific selector's; 0 for :where() */
+	uint8_t kind;			/**< enum css_onyx_selector_list_kind */
+	int32_t a, b;			/**< An+B (ONYX_SL_NTH_*) */
 	css_selector *sel[];
 } css_onyx_selector_list;
 
@@ -146,6 +156,11 @@ typedef struct css_rule_media {
 
 	css_rule *first_child;
 	css_rule *last_child;
+
+	/* Onyx: 0, or the kind (ONYX_AT_*, parse/onyx_atrules.h) of the at-rule this media
+	 * rule stands for -- @keyframes, @counter-style, @property, @scope... -- kept (their
+	 * media never matches: their content does not apply) */
+	uint8_t onyx_kind;
 } css_rule_media;
 
 typedef struct css_rule_font_face {
@@ -223,6 +238,11 @@ struct css_stylesheet {
 						 * length in entries */
 	uint32_t string_vector_c;               /**< The number of string
 						 * vector entries used */
+
+	/* Onyx: the valid at-rule descriptors seen (@font-face, @page, @counter-style,
+	 * @property...: parse/onyx_atrules.c), counted with the declarations by
+	 * css_stylesheet_onyx_kept */
+	uint32_t onyx_desc_words;
 };
 
 css_error css__stylesheet_style_create(css_stylesheet *sheet,

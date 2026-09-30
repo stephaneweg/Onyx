@@ -1055,6 +1055,66 @@ uint8_t css_computed_grid_auto_flow(const css_computed_style *style)
 	return get_grid_auto_flow(style);
 }
 
+/* Onyx: SVG's presentation properties (select/properties/onyx_svg.c) */
+uint8_t css_computed_fill(const css_computed_style *style, css_color *color,
+		lwc_string **url)
+{
+	return get_fill(style, color, url);
+}
+
+uint8_t css_computed_stroke(const css_computed_style *style, css_color *color,
+		lwc_string **url)
+{
+	return get_stroke(style, color, url);
+}
+
+uint8_t css_computed_stroke_width(const css_computed_style *style, css_fixed *length,
+		css_unit *unit)
+{
+	return get_stroke_width(style, length, unit);
+}
+
+uint8_t css_computed_stroke_dashoffset(const css_computed_style *style, css_fixed *length,
+		css_unit *unit)
+{
+	return get_stroke_dashoffset(style, length, unit);
+}
+
+uint8_t css_computed_stroke_miterlimit(const css_computed_style *style, css_fixed *limit)
+{
+	return get_stroke_miterlimit(style, limit);
+}
+
+uint8_t css_computed_stroke_dasharray(const css_computed_style *style, lwc_string **text)
+{
+	return get_stroke_dasharray(style, text);
+}
+
+uint8_t css_computed_fill_rule(const css_computed_style *style)
+{
+	return get_fill_rule(style);
+}
+
+uint8_t css_computed_stroke_linecap(const css_computed_style *style)
+{
+	return get_stroke_linecap(style);
+}
+
+uint8_t css_computed_stroke_linejoin(const css_computed_style *style)
+{
+	return get_stroke_linejoin(style);
+}
+
+uint8_t css_computed_stop_color(const css_computed_style *style, css_color *color)
+{
+	return get_stop_color(style, color);
+}
+
+uint8_t css_computed_stop_opacity(const css_computed_style *style, css_fixed *opacity)
+{
+	return get_stop_opacity(style, opacity);
+}
+
 uint8_t css_computed_transform(const css_computed_style *style, lwc_string **text)
 {
 	return get_transform(style, text);

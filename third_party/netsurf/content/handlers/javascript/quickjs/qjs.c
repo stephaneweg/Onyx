@@ -60,6 +60,8 @@
 #include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
 #include "html/private.h"
+#include "html/html.h"		/* Onyx: struct html_stylesheet (n_sheet_text) */
+#include "netsurf/content.h"	/* Onyx: content_get_source_data, hlcache_handle_get_url */
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/form_internal.h"
@@ -964,6 +966,39 @@ static JSValue n_css_kept(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	return a;
 }
 
+/**
+ * Onyx: sheetText(link): the text of the style sheet a <link rel=stylesheet> loaded and its
+ * URL, [text, url]; null if it has none (not loaded, not a style sheet). The CSSOM's
+ * document.styleSheets (dom.js) reads the linked sheets' rules from it.
+ */
+static JSValue n_sheet_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	unsigned int i;
+	QJS_NODE_ARG(n, 0);
+
+	(void) this_val;
+	if (t->htmlc == NULL || t->htmlc->stylesheets == NULL)
+		return JS_NULL;
+	for (i = 0; i < t->htmlc->stylesheet_count; i++) {
+		struct html_stylesheet *s = &t->htmlc->stylesheets[i];
+		const uint8_t *data;
+		size_t size = 0;
+		JSValue a;
+		if (s->node != n || s->sheet == NULL)
+			continue;
+		data = content_get_source_data(s->sheet, &size);
+		a = JS_NewArray(ctx);
+		JS_SetPropertyUint32(ctx, a, 0, data != NULL ?
+				JS_NewStringLen(ctx, (const char *) data, size) :
+				JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, a, 1, JS_NewString(ctx,
+				nsurl_access(hlcache_handle_get_url(s->sheet))));
+		return a;
+	}
+	return JS_NULL;
+}
+
 /* Onyx: the <script> element running (document.currentScript), set around js_exec */
 static struct dom_node *qjs_current_script;
 
@@ -1307,6 +1342,29 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		css_fixed o = INTTOFIX(1);
 		css_computed_opacity(box->style, &o);
 		snprintf(buf, sizeof(buf), "%g", FIXTOFLT(o));
+	} else if (strcmp(prop, "fill") == 0 || strcmp(prop, "stroke") == 0) {
+		/* Onyx: SVG's paints (libcss computes them) */
+		css_color c = 0, cur = 0;
+		lwc_string *url = NULL;
+		uint8_t pt = prop[0] == 'f' ? css_computed_fill(box->style, &c, &url) :
+				css_computed_stroke(box->style, &c, &url);
+		css_computed_color(box->style, &cur);
+		if (pt == CSS_PAINT_CURRENT_COLOR)
+			c = cur;
+		if (pt == CSS_PAINT_NONE)
+			snprintf(buf, sizeof(buf), "none");
+		else if ((pt == CSS_PAINT_URL || pt == CSS_PAINT_URL_COLOR ||
+				pt == CSS_PAINT_URL_CURRENT_COLOR) && url != NULL)
+			snprintf(buf, sizeof(buf), "url(\"%.50s\")", lwc_string_data(url));
+		else if (pt == CSS_PAINT_COLOR || pt == CSS_PAINT_CURRENT_COLOR)
+			snprintf(buf, sizeof(buf), "rgb(%u, %u, %u)",
+				 (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
+	} else if (strcmp(prop, "stroke-width") == 0) {
+		css_fixed len = 0;
+		css_unit unit = CSS_UNIT_PX;
+		css_computed_stroke_width(box->style, &len, &unit);
+		snprintf(buf, sizeof(buf), "%g%s", FIXTOFLT(len),
+				unit == CSS_UNIT_PCT ? "%" : unit == CSS_UNIT_EM ? "em" : "px");
 	} else if (strcmp(prop, "width") == 0) {
 		snprintf(buf, sizeof(buf), "%dpx", box->width);
 	} else if (strcmp(prop, "height") == 0) {
@@ -2191,6 +2249,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
 	JS_CFUNC_DEF("image", 1, n_image),
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
+	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),

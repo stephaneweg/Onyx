@@ -639,5 +639,49 @@ struct prop_table prop_dispatch[CSS_N_PROPERTIES] = {
 	{
 		PROPERTY_FUNCS(background_clip),
 		0,
-	}
+	},
+	{
+		PROPERTY_FUNCS(fill),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke_width),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(fill_rule),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke_linecap),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke_linejoin),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke_miterlimit),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke_dasharray),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stroke_dashoffset),
+		1,
+	},
+	{
+		PROPERTY_FUNCS(stop_color),
+		0,
+	},
+	{
+		PROPERTY_FUNCS(stop_opacity),
+		0,
+	},
 };

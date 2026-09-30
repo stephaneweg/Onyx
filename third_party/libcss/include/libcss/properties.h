@@ -170,6 +170,18 @@ enum css_properties_e {
 	CSS_PROP_GRID_COLUMN_START		= 0x098,
 	CSS_PROP_GRID_COLUMN_END		= 0x099,
 	CSS_PROP_BACKGROUND_CLIP		= 0x09a,
+	/* Onyx: SVG's presentation properties (SVG 2, CSS Fill and Stroke) */
+	CSS_PROP_FILL				= 0x09b,
+	CSS_PROP_STROKE				= 0x09c,
+	CSS_PROP_STROKE_WIDTH			= 0x09d,
+	CSS_PROP_FILL_RULE			= 0x09e,
+	CSS_PROP_STROKE_LINECAP			= 0x09f,
+	CSS_PROP_STROKE_LINEJOIN		= 0x0a0,
+	CSS_PROP_STROKE_MITERLIMIT		= 0x0a1,
+	CSS_PROP_STROKE_DASHARRAY		= 0x0a2,
+	CSS_PROP_STROKE_DASHOFFSET		= 0x0a3,
+	CSS_PROP_STOP_COLOR			= 0x0a4,
+	CSS_PROP_STOP_OPACITY			= 0x0a5,
 
 	CSS_N_PROPERTIES
 };
@@ -1054,5 +1066,66 @@ enum css_z_index_e {
 #ifdef __cplusplus
 }
 #endif
+
+/* Onyx: SVG's paints (fill, stroke): css_computed_fill / css_computed_stroke */
+enum css_paint_e {
+	CSS_PAINT_INHERIT			= 0x0,
+	CSS_PAINT_NONE				= 0x1,
+	CSS_PAINT_COLOR				= 0x2,	/* the colour */
+	CSS_PAINT_CURRENT_COLOR			= 0x3,
+	CSS_PAINT_URL				= 0x4,	/* the URL (a paint server), else none */
+	CSS_PAINT_URL_COLOR			= 0x5,	/* the URL, else the colour */
+	CSS_PAINT_URL_CURRENT_COLOR		= 0x6,	/* the URL, else currentColor */
+	CSS_PAINT_CONTEXT_FILL			= 0x7,
+	CSS_PAINT_CONTEXT_STROKE		= 0x8
+};
+
+enum css_stroke_width_e {
+	CSS_STROKE_WIDTH_INHERIT		= 0x0,
+	CSS_STROKE_WIDTH_SET			= 0x1
+};
+
+enum css_fill_rule_e {
+	CSS_FILL_RULE_INHERIT			= 0x0,
+	CSS_FILL_RULE_NONZERO			= 0x1,
+	CSS_FILL_RULE_EVENODD			= 0x2
+};
+
+enum css_stroke_linecap_e {
+	CSS_STROKE_LINECAP_INHERIT		= 0x0,
+	CSS_STROKE_LINECAP_BUTT			= 0x1,
+	CSS_STROKE_LINECAP_ROUND		= 0x2,
+	CSS_STROKE_LINECAP_SQUARE		= 0x3
+};
+
+enum css_stroke_linejoin_e {
+	CSS_STROKE_LINEJOIN_INHERIT		= 0x0,
+	CSS_STROKE_LINEJOIN_MITER		= 0x1,
+	CSS_STROKE_LINEJOIN_MITER_CLIP		= 0x2,
+	CSS_STROKE_LINEJOIN_ROUND		= 0x3,
+	CSS_STROKE_LINEJOIN_BEVEL		= 0x4,
+	CSS_STROKE_LINEJOIN_ARCS		= 0x5
+};
+
+enum css_stroke_miterlimit_e {
+	CSS_STROKE_MITERLIMIT_INHERIT		= 0x0,
+	CSS_STROKE_MITERLIMIT_SET		= 0x1
+};
+
+enum css_stroke_dashoffset_e {
+	CSS_STROKE_DASHOFFSET_INHERIT		= 0x0,
+	CSS_STROKE_DASHOFFSET_SET		= 0x1
+};
+
+enum css_stop_color_e {
+	CSS_STOP_COLOR_INHERIT			= 0x0,
+	CSS_STOP_COLOR_COLOR			= 0x1,
+	CSS_STOP_COLOR_CURRENT_COLOR		= 0x2
+};
+
+enum css_stop_opacity_e {
+	CSS_STOP_OPACITY_INHERIT		= 0x0,
+	CSS_STOP_OPACITY_SET			= 0x1
+};
 
 #endif

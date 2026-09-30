@@ -2595,6 +2595,127 @@ static css_error onyx_match_list(css_select_ctx *ctx, void *node,
 	return CSS_OK;
 }
 
+/* Onyx: :nth-child(An+B of S): the element matches S, and so do An+B - 1 of its previous
+ * siblings */
+static css_error onyx_match_nth_of(css_select_ctx *ctx, void *node,
+		const css_onyx_selector_list *l, css_select_state *state, bool *match)
+{
+	css_error error;
+	bool m = false;
+	int32_t count = 1;
+	void *s = node;
+
+	*match = false;
+	error = onyx_match_list(ctx, node, l, state, &m);
+	if (error != CSS_OK || !m)
+		return error;
+	for (;;) {
+		void *prev = NULL;
+		error = state->handler->sibling_node(state->pw, s, &prev);
+		if (error != CSS_OK)
+			return error;
+		if (prev == NULL)
+			break;
+		s = prev;
+		error = onyx_match_list(ctx, s, l, state, &m);
+		if (error != CSS_OK)
+			return error;
+		if (m)
+			count++;
+	}
+	*match = match_nth(l->a, l->b, count);
+	return CSS_OK;
+}
+
+/* Onyx: the form pseudo-classes, :defined, :scope, :dir(): true if the detail is one of them
+ * (*match set) */
+static bool onyx_match_form_pseudo(css_select_ctx *ctx, void *node,
+		const css_selector_detail *detail, css_select_state *state, bool *match,
+		css_error *error)
+{
+	lwc_string *const *o = ctx->str.onyx;
+	lwc_string *name = detail->qname.name;
+	const css_select_handler *h = state->handler;
+	css_qname q;
+	bool is_input = false, is_textarea = false, is_select = false, b = false;
+	int k;
+
+	*error = CSS_OK;
+	if (name == o[ONYX_STR_DEFINED]) {
+		*match = true;
+		return true;
+	}
+	if (name == o[ONYX_STR_SCOPE]) {
+		*error = h->node_is_root(state->pw, node, match);
+		return true;
+	}
+	if (name == o[ONYX_STR_DIR]) {
+		bool ltr = false;
+		lwc_string_caseless_isequal(detail->value.string, o[ONYX_STR_LTR], &ltr);
+		*match = ltr;		/* (the default direction) */
+		return true;
+	}
+	if (name != o[ONYX_STR_READ_ONLY] && name != o[ONYX_STR_READ_WRITE] &&
+			name != o[ONYX_STR_REQUIRED] && name != o[ONYX_STR_OPTIONAL] &&
+			name != o[ONYX_STR_PLACEHOLDER_SHOWN])
+		return false;
+
+	q.ns = NULL;
+	q.name = o[ONYX_STR_INPUT];
+	h->node_has_name(state->pw, node, &q, &is_input);
+	q.name = o[ONYX_STR_TEXTAREA];
+	h->node_has_name(state->pw, node, &q, &is_textarea);
+	q.name = o[ONYX_STR_SELECT];
+	h->node_has_name(state->pw, node, &q, &is_select);
+
+	if (name == o[ONYX_STR_REQUIRED] || name == o[ONYX_STR_OPTIONAL]) {
+		q.name = o[ONYX_STR_REQUIRED];
+		if (is_input || is_textarea || is_select)
+			h->node_has_attribute(state->pw, node, &q, &b);
+		*match = (is_input || is_textarea || is_select) &&
+				(name == o[ONYX_STR_REQUIRED] ? b : !b);
+		return true;
+	}
+	if (name == o[ONYX_STR_PLACEHOLDER_SHOWN]) {
+		*match = false;
+		if (!is_input && !is_textarea)
+			return true;
+		q.name = o[ONYX_STR_PLACEHOLDER];
+		h->node_has_attribute(state->pw, node, &q, &b);
+		if (!b)
+			return true;
+		if (is_textarea) {
+			h->node_is_empty(state->pw, node, match);
+		} else {
+			q.name = o[ONYX_STR_VALUE];
+			h->node_has_attribute(state->pw, node, &q, &b);
+			*match = !b;	/* (no value given: the placeholder shows) */
+		}
+		return true;
+	}
+	/* :read-write: a text field one can edit, or a contenteditable element */
+	b = false;
+	if (is_input || is_textarea) {
+		bool ro = false, dis = false;
+		q.name = o[ONYX_STR_READONLY];
+		h->node_has_attribute(state->pw, node, &q, &ro);
+		h->node_is_disabled(state->pw, node, &dis);
+		b = !ro && !dis;
+		for (k = ONYX_STR_CHECKBOX; b && is_input && k <= ONYX_STR_RANGE; k++) {
+			bool t = false;
+			q.name = o[ONYX_STR_TYPE];
+			h->node_has_attribute_equal(state->pw, node, &q, o[k], &t);
+			if (t)
+				b = false;
+		}
+	} else {
+		q.name = o[ONYX_STR_CONTENTEDITABLE];
+		h->node_has_attribute(state->pw, node, &q, &b);
+	}
+	*match = (name == o[ONYX_STR_READ_WRITE]) ? b : !b;
+	return true;
+}
+
 css_error match_detail(css_select_ctx *ctx, void *node,
 		const css_selector_detail *detail, css_select_state *state,
 		bool *match, css_pseudo_element *pseudo_element)
@@ -2622,10 +2743,22 @@ css_error match_detail(css_select_ctx *ctx, void *node,
 				detail->qname.name, match);
 		break;
 	case CSS_SELECTOR_PSEUDO_CLASS:
-		/* Onyx: :is() / :where() / :not() of a selector list */
+		/* Onyx: :is() / :where() / :not() of a selector list; :nth-child(An+B of
+		 * S); :has(), :host()... never */
 		if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_LIST) {
-			error = onyx_match_list(ctx, node, detail->value.list,
-					state, match);
+			const css_onyx_selector_list *l = detail->value.list;
+			if (l->kind == ONYX_SL_IS) {
+				error = onyx_match_list(ctx, node, l, state, match);
+			} else if (l->kind == ONYX_SL_NTH_CHILD) {
+				error = onyx_match_nth_of(ctx, node, l, state, match);
+			} else {
+				*match = false;		/* (never: :has(), nth-last-child of) */
+			}
+			break;
+		}
+		if (detail->qname.name != NULL && onyx_match_form_pseudo(ctx, node,
+				detail, state, match, &error)) {
+			add_node_flags(node, state, CSS_NODE_FLAGS_TAINT_PSEUDO_CLASS);
 			break;
 		}
 

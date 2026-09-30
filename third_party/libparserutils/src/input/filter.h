@@ -9,6 +9,7 @@
 #define parserutils_input_filter_h_
 
 #include <inttypes.h>
+#include <stdbool.h>
 
 #include <parserutils/errors.h>
 #include <parserutils/functypes.h>
@@ -49,6 +50,10 @@ parserutils_error parserutils__filter_setopt(parserutils_filter *input,
 parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 		const uint8_t **data, size_t *len,
 		uint8_t **output, size_t *outlen);
+
+/* Onyx: does the filter hold converted data it had no room to write (written by the next
+ * process_chunk, even with no more input)? */
+bool parserutils__filter_pending(parserutils_filter *input);
 
 /* Reset an input filter's state */
 parserutils_error parserutils__filter_reset(parserutils_filter *input);

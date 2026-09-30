@@ -662,6 +662,41 @@ css_error css__parse_z_index(css_language *c,
 		css_style *result);
 
 /** Mapping from property bytecode index to bytecode unit class mask. */
+/* Onyx: SVG's presentation properties (onyx_svg.c) */
+css_error css__parse_fill(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke_width(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_fill_rule(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke_linecap(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke_linejoin(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke_miterlimit(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke_dasharray(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stroke_dashoffset(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stop_color(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_stop_opacity(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+
 extern const uint32_t property_unit_mask[CSS_N_PROPERTIES];
 
 #define UNIT_MASK_AZIMUTH               (UNIT_ANGLE)

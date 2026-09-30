@@ -1,0 +1,183 @@
+# tools/tests/netsurf/css-values.txt -- what libcss must keep (+) or drop (-): csscheck.c's
+# input (make -f tools/tests/netsurf/host.mk css-check). "+ prop: value" an inline declaration,
+# "S+ text" a sheet with a rule kept.
+
+# ---- libcss's own properties (unchanged)
++ color: red
++ width: calc(100% - 2em)
+- width: red
+- color: 10px
++ margin: 0 auto
++ display: grid
+
+# ---- the grammars (onyx_grammar): properties libcss does not compute
++ anchor-name: --foo
++ anchor-name: --foo, --bar
+- anchor-name: foo
++ scroll-snap-type: x mandatory
++ scroll-snap-type: both proximity
+- scroll-snap-type: mandatory x
++ scroll-snap-align: start end
++ text-wrap: balance
++ mask-image: linear-gradient(red, blue)
++ mask-image: url(a.png), none
++ transition: opacity 0.3s ease-in-out, transform 1s
+- transition: opacity foo
++ will-change: transform, opacity
++ user-select: none
++ touch-action: pan-x pan-y pinch-zoom
+- touch-action: auto none
++ inset-inline: 10px auto
++ accent-color: auto
++ accent-color: rebeccapurple
++ font-feature-settings: "liga" 1, "kern"
++ font-variation-settings: "wght" 400
++ backdrop-filter: blur(12px)
++ filter: drop-shadow(0 0 2px red) brightness(1.2)
+- filter: blur(red)
++ clip-path: circle(50% at 50% 50%)
++ clip-path: polygon(0 0, 100% 0, 50% 100%)
++ animation: spin 1s linear infinite
++ animation-timeline: scroll(root block)
++ container: sidebar / inline-size
++ content-visibility: auto
++ grid-template-areas: "a b" "c d"
++ hyphens: auto
++ tab-size: 4
++ caret-color: transparent
+- caret-color: 4px
++ overscroll-behavior: contain none
++ scroll-behavior: smooth
++ offset-path: path("M 0 0 L 10 10")
++ scrollbar-gutter: stable both-edges
++ view-transition-name: hero
+- view-transition-name: 12
+- inherit-this: inherit
+- nonsense-property: 1px
+
+# CSS-wide keywords, var(), !important
++ anchor-name: inherit
++ anchor-name: revert-layer
++ anchor-name: var(--x)
++ anchor-name: --a !important
+- anchor-name: --a !imp
+
+# ---- values libcss's parser does not take, valid by the grammar (no effect)
++ display: ruby
++ width: fit-content(10px)
++ color: color(display-p3 1 0 0)
++ color: light-dark(white, black)
++ background-image: image-set("a.png" 1x, "b.png" 2x)
+- width: 10deg
+
+# a 65-byte inline style whose last character was lost (libparserutils' filter)
++ color: rgb(1,                                               2, 3)
++ border-image-source: linear-gradient(in hsl to right, #A37, #595)
+
+# a function left open at the end of the value is closed there
++ width: calc(1px * sin(45deg)
++ color: color-mix(in srgb, currentColor 10%, rgba(0, 0, 0, .5) 65%
+# relative colours, calc-size(), anchor positioning, substitution functions
++ color: rgb(from indianred 255 g b)
++ color: hsl(from lightseagreen calc(h + 180) s l)
++ color: oklch(from oklch(52.6% 0.115 44.6deg) l c  calc(h + 90))
+- color: rgb(indianred 255 g b)
++ width: calc-size(auto, size)
++ width: calc-size(fit-content, 30px + size / 2)
+- width: calc-size(auto, size + red)
++ inset-block-start: anchor(--anchor top)
++ justify-items: anchor-center
++ position-area: x-self-end
++ width: attr(data-value px)
++ width: if(style(--x): 100px; else: 200px)
++ cursor: image-set(url("foo.png") 1x, url("foo-2x.png") 2x) 2 2, auto
+
+# ---- at-rules kept without effect (S: the sheet keeps a rule), their descriptors (D: the
+# sheet's valid declarations and descriptors are counted)
+S+ @keyframes foo { from { color: blue } to { color: red } }
+S+ @keyframes "foo" { 50% { color: green } }
+S- @keyframes none { from { color: blue } }
+S+ @counter-style foo { system: numeric; symbols: '0' '1' '2'; }
+S- @counter-style none { system: numeric; }
+S+ @property --cool-color { syntax: '<color>'; inherits: true; initial-value: red; }
+S- @property cool { syntax: '<color>'; }
+S+ @font-feature-values Jupiter Sans { @styleset { some-style: 1; } }
+S+ @font-palette-values --custom-palette { font-family: Handover Sans; base-palette: 3; }
+S+ @position-try --p { top: anchor(--button bottom); }
+S+ @view-transition { navigation: auto; }
+S+ @scope (#hero) { img { border-radius: 50%; } }
+S+ @scope ([data-scope="main-component"]) to ([data-scope]) { p { color: red } }
+S- @scope (#hero) to { img { color: red } }
+S+ @starting-style { h1 { background-color: red; } }
+S+ @media screen { @keyframes spin { to { transform: rotate(1turn) } } }
+D+ @counter-style x { system: cyclic }
+D- @counter-style x { system: foo }
+D+ @counter-style x { range: 2 5 }
+D+ @counter-style x { additive-symbols: 3 '0', 2 url(a.svg) }
+D+ @property --x { inherits: false }
+D- @property --x { inherits: maybe }
+D+ @font-face { font-display: swap }
+D- @font-face { font-display: sometimes }
+D+ @font-face { size-adjust: 125% }
+D+ @font-face { src: url(a.woff2) format("woff2") tech(color-COLRv1) }
+D+ @page { size: 4in 6in }
+D- @page { size: red }
+D+ @view-transition { types: slide forward }
+D+ @font-feature-values Font One { @styleset { nice-style: 12; } }
+D- @font-feature-values Font One { @styleset { nice-style: -1; } }
+D+ @keyframes k { from { color: red } }
+D- @keyframes k { from { color: 12px } }
+
+# ---- SVG's presentation properties (libcss computes them: css_computed_fill...)
++ fill: currentColor
++ fill: url(#grad) red
++ fill: none
++ stroke: context-stroke
+- fill: 10px
++ stroke-width: 2
++ stroke-width: 1.5px
++ stroke-width: calc(1px + 1em)
+# (a negative width: refused by libcss, valid by the spec grammar -- kept without effect)
++ stroke-width: -1px
++ stroke-dasharray: 5, 10%
++ stroke-dasharray: 4 2 1
++ stroke-dasharray: -4
++ fill-rule: evenodd
++ stroke-linecap: round
++ stroke-linejoin: miter-clip
++ stroke-miterlimit: 4
++ stop-color: rgb(0 0 255 / 50%)
++ stop-opacity: 50%
+
+# ---- selectors (S: the rule kept)
+S+ a:has(> img) { color: red }
+S+ dt:has(+ dt) { color: red }
+S+ section:not(:has(h1, h2)) { color: red }
+S- a:has() { color: red }
+S+ li:nth-child(-n+3 of .important) { color: red }
+S+ :nth-last-child(even of :not([hidden])) { color: red }
+S+ input:read-only, input:placeholder-shown, :required, :defined { color: red }
+S+ ::marker, ::placeholder, ::selection { color: red }
+S+ ::before::marker { color: red }
+S+ ::part(label):hover { color: red }
+S+ ::view-transition-group(*.x.y) { color: red }
+S+ ::scroll-button(inline-start) { color: red }
+S+ :dir(rtl) { color: red }
+S- :dir(up) { color: red }
+S+ :lang(en) { color: red }
+S+ *|html { color: red }
+S+ [*|attr=val] { color: red }
+S+ [att$=val i] { color: red }
+S+ .x::-webkit-scrollbar { display: none }
+S- ::-webkit-unknown-pseudo { color: red }
+S- :hover::marker2 { color: red }
+
+# ---- the newer units and math functions, computed by libcss (a value libcss folds)
++ height: 100dvh
++ width: calc(100cqi - 2rex)
++ margin: 1cap 2ic 3rlh 4ric
++ width: round(down, 57.5px, 10px)
++ width: calc(100px * sin(30deg))
++ width: calc(1px * pow(2, pi))
+- width: calc(1px * sin(30px))
+- width: mod(10px, 3)

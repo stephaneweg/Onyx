@@ -148,5 +148,51 @@ else
 	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
 fi
 
+echo "js-cssom.html (the CSSOM: sheets, rule classes, insertRule, constructed / adopted / linked sheets)"
+L=$OUT/js-cssom.log
+run js-cssom.html "$(waits 80)" "$L"
+expect "$L" "cssom: done"
+if grep -q '^console: FAIL \|^JS ' "$L"; then
+	echo "  FAIL: $(grep -c '^console: FAIL ' "$L") check(s) failed"; grep '^console: FAIL \|^JS ' "$L" | head -10; fail=1
+else
+	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
+fi
+
+echo "css-svgprops.html (SVG's fill / stroke... computed by libcss, the attributes as hints)"
+L=$OUT/css-svgprops.log
+run css-svgprops.html "$(waits 60)" "$L"
+expect "$L" "svgprops a fill rgb(0, 128, 0)"
+expect "$L" "svgprops a stroke-width 2px"
+expect "$L" "svgprops b stroke none"
+expect "$L" "svgprops s fill rgb(255, 0, 0)"
+expect "$L" "svgprops s stroke-width 3px"
+expect "$L" "svgprops v fill rgb(0, 0, 255)"
+
+echo "css-selectors.html (Selectors 4: :nth-child(of S), the form pseudo-classes, :has() in a list, :dir())"
+L=$OUT/css-selectors.log
+run css-selectors.html "$(waits 60)" "$L"
+expect "$L" "sel l1 rgb(0, 0, 0)"
+expect "$L" "sel l3 rgb(255, 0, 0)"
+expect "$L" "sel i1 rgb(0, 128, 0)"
+expect "$L" "sel i2 rgb(0, 0, 255)"
+expect "$L" "sel i1 rgb(255, 255, 0)"
+expect "$L" "sel i3 rgb(0, 255, 255)"
+expect "$L" "sel k rgb(0, 0, 0)"
+expect "$L" "sel k2 rgb(128, 0, 128)"
+expect "$L" "sel d rgb(1, 2, 3)"
+expect "$L" "sel w rgb(4, 5, 6)"
+
+echo "css-math.html (CSS Values 4: round(), mod(), sin(), pow(), pi, hypot(); the dv* / cq* units)"
+L=$OUT/css-math.log
+run css-math.html "$(waits 60)" "$L"
+expect "$L" "math a 50px"
+expect "$L" "math b 50px"
+expect "$L" "math c 18px"
+expect "$L" "math d 80px"
+expect "$L" "math e 31px"
+expect "$L" "math g 40px"
+expect "$L" "math h 50px"
+if grep -q "^console: math f 81px" "$L" && grep -q "^console: math i 40px" "$L"; then echo "  ok    10dvw, 5cqi"; else echo "  FAIL  10dvw, 5cqi: $(grep '^console: math [fi]' "$L" | tr '\n' ' ')"; fail=1; fi
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"
