@@ -65,7 +65,7 @@ public:
 		// the grid
 		int gy = 76;
 		grid = makeGrid (16, gy, width - 32, height - gy - 6);
-		grid->rows = 96; grid->rowH = 13; grid->labelW = 56;
+		grid->rows = 96; grid->rowH = 26; grid->labelW = 52; grid->pxPerCol = 26; grid->pads = true;	// (Koton Studio's pads)
 		grid->bottomUp = true; grid->keyboard = true;
 		grid->headerH = 22;
 		grid->rowLabel = keyLabel; grid->rowShade = shade; grid->drawHeader = header; grid->onAudition = audition;
@@ -79,12 +79,11 @@ public:
 		grid->beatsPerBar = imax (1, p.barBeats ());
 		applySnap ();
 		segs = segments (p, startBeat (), lenBeats ());
-		grid->fitWidth ();
-		if (grid->pxPerCol < 3) grid->pxPerCol = 3;
-		// the notes in view (else middle C)
-		int lo = 127, hi = -1;
-		if (r) for (int i = 0; i < r->notes.size (); i++) { lo = imin (lo, r->notes[i].note); hi = imax (hi, r->notes[i].note); }
-		grid->centreRow (hi >= 0 ? (lo + hi) / 2 : 48);
+		// the first note in view (else middle C)
+		// (the rows are tall: the first note's pitch, what shows first at the left)
+		int first = -1;
+		if (r) for (int i = 0; i < r->notes.size (); i++) if (first < 0 || r->notes[i].start < r->notes[first].start) first = i;
+		grid->centreRow (first >= 0 ? r->notes[first].note : 48);
 	}
 	const char *title () override { return "Riff"; }
 	PlayRiffModule *pr () { return (PlayRiffModule *) module (); }
@@ -123,7 +122,7 @@ public:
 		RiffEditor *e = (RiffEditor *) g.ctx;
 		const Project &p = g_doc.p;
 		int pc = (row + 12) % 12;
-		unsigned base = (col / imax (1, g.spb)) & 1 ? 0x262B34 : 0x2A303A;
+		unsigned base = g.padColour (row, col);
 		double beat = col / (double) imax (1, g.spb);
 		for (int i = 0; i < e->segs.size (); i++)
 		{
@@ -136,7 +135,7 @@ public:
 					if (iv[k] % 12 == pc)
 					{
 						unsigned fc = funcColour (chordFunction (p.key, imod (s.root, 12), s.quality));
-						return mixc (base, fc, k == 0 ? 90 : 55);
+						return mixc (base, fc, k == 0 ? 70 : 40);
 					}
 				break;
 			}
@@ -144,7 +143,7 @@ public:
 		const int *sc = modeScale (effectiveMode (p.key));
 		int t = tonicPc (p.key);
 		for (int k = 0; k < 7; k++) if ((t + sc[k]) % 12 == pc) return base;
-		return darker (base, 60);
+		return darker (base, 30);
 	}
 	// the chords over the grid
 	static void header (NoteGrid &g, Canvas &cv, int x0, int w)

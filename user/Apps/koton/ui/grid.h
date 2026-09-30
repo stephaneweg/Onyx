@@ -31,6 +31,8 @@ public:
 	bool bottomUp;			// row 0 at the bottom (the piano roll)
 	bool keyboard;			// the rows are pitches: a keyboard as labels
 	bool readOnly;			// shown, not edited
+	bool pads;			// Koton Studio's look (the piano roll): a rounded pad per cell, tinted by its
+					// pitch class, the beat's first slice lighter; the notes teal; every row named
 	int tool;
 	int playCol;			// the playhead (-1: none)
 	int colOffsetBeats;		// (for the callbacks: the grid's column 0 is this absolute beat * spb)
@@ -46,7 +48,7 @@ public:
 	Vec<int> selected;		// selected note indices
 
 	NoteGrid (int l, int t, int w, int h) : Widget (l, t, w, h), notes (0), rows (8), rowH (22), labelW (70), headerH (0), cols (64), spb (4),
-		beatsPerBar (4), pxPerCol (18), drawLen (1), snapCols (1), oneShot (false), bottomUp (false), keyboard (false), readOnly (false), tool (TOOL_DRAW), playCol (-1),
+		beatsPerBar (4), pxPerCol (18), drawLen (1), snapCols (1), oneShot (false), bottomUp (false), keyboard (false), readOnly (false), pads (false), tool (TOOL_DRAW), playCol (-1),
 		colOffsetBeats (0), noteColour (GREEN), ctx (0), rowLabel (0), rowShade (0), rowColour (0), drawHeader (0), onChange (0), onBegin (0), onAudition (0),
 		m_sx (0), m_sy (0), m_drag (0), m_note (-1), m_grabCol (0), m_grabRow (0), m_orig (), m_auditionRow (-1)
 	{ canFocus = true; anchor = ANCHOR_FILL; }
@@ -77,7 +79,7 @@ public:
 	void onDraw () override
 	{
 		Canvas &cv = canvas;
-		cv.clear (LANE);
+		cv.clear (pads ? 0x1C1C22 : LANE);
 		int gw = gridW (), gh = gridH ();
 		int beat = imax (1, spb), bar = beat * imax (1, beatsPerBar);
 		int firstRow = m_sy / rowH, lastRow = imin (rows - 1, (m_sy + gh) / rowH + 1);
@@ -91,7 +93,9 @@ public:
 			{
 				int x = colX (c);
 				unsigned bg = (c / beat) & 1 ? 0x262B34 : 0x2A303A;
+				if (pads) bg = padColour (r, c);
 				if (rowShade) { unsigned s = rowShade (*this, r, c); if (s) bg = s; }
+				if (pads) { box (cv, x + 1, y + 1, pxPerCol - 2, rowH - 2, pxPerCol >= 10 ? 3 : 0, bg); continue; }
 				if (pxPerCol >= 6) cv.fillRect (x + 1, y + 1, pxPerCol - 1, rowH - 1, bg);
 				else cv.fillRect (x, y + 1, pxPerCol, rowH - 1, bg);		// (narrow columns: no gaps)
 			}
@@ -100,7 +104,7 @@ public:
 		for (int c = imax (0, colAt (labelW)); c <= imin (cols, colAt (labelW + gw) + 1); c++)
 		{
 			int x = colX (c);
-			if (x < labelW || x > labelW + gw) continue;
+			if (x < labelW || x > labelW + gw || pads) continue;
 			if (c % bar == 0) vline (cv, x, headerH, headerH + gh, GRID_BAR);
 			else if (c % beat == 0) vline (cv, x, headerH, headerH + gh, GRID_BEAT);
 		}
@@ -119,8 +123,9 @@ public:
 				if (x + w < labelW || x > labelW + gw) continue;
 				bool sel = selected.contains (i);
 				unsigned rc = rowColour ? rowColour (*this, n.note) : 0;
-				unsigned c = sel ? NOTE_SEL : rc ? rc : noteColour;
+				unsigned c = sel ? NOTE_SEL : rc ? rc : pads ? PAD_ON : noteColour;
 				int x0 = imax (x + 1, labelW), x1 = imin (x + w - 1, labelW + gw);
+				if (pads) { box (cv, x0, y + 1, x1 - x0, rowH - 2, 3, c); continue; }
 				box (cv, x0, y + 2, x1 - x0, rowH - 3, 3, c);
 				if (x0 == x + 1) box (cv, x0, y + 2, imin (3, x1 - x0), rowH - 3, 1, lighter (c, 130));
 			}
@@ -145,7 +150,15 @@ public:
 			int r = bottomUp ? rows - 1 - k : k;
 			int y = headerH + k * rowH - m_sy;
 			if (y + rowH <= headerH || y >= headerH + gh) continue;
-			if (keyboard)
+			if (keyboard && pads)
+			{
+				int pc = (r + 12) % 12;
+				bool black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+				static const char *const nm[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+				char b[8]; snprintf (b, sizeof b, "%s%d", nm[pc], (r + 12) / 12 - 1);
+				textL (cv, 6, y, rowH, b, pc == 0 ? 0xF2F2FF : black ? 0x808088 : 0xBBBBBB, pc == 0 ? 2 : 0);
+			}
+			else if (keyboard)
 			{
 				int pc = (r + 12) % 12;
 				bool black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
@@ -153,6 +166,7 @@ public:
 				hline (cv, 0, labelW, y, 0x7C8086);
 				if (rowLabel) { const char *s = rowLabel (*this, r); if (s && s[0]) textR (cv, labelW - 4, y, rowH, s, black ? 0xC8C8CD : 0x28282C); }
 			}
+			else if (pads) { if (rowLabel) textL (cv, 8, y, rowH, rowLabel (*this, r), 0xBBBBBB); }
 			else
 			{
 				hline (cv, 0, labelW, y + rowH - 1, LINE);
@@ -173,6 +187,18 @@ public:
 		cv.fillRect (0, height - 10, width, 10, PANEL);
 		if (thh.show) wk_scroll_bar (cv, labelW, height - 10, gw, 10, false, thh.y, thh.h, PANEL, WK_NORMAL);
 		frame (cv, 0, 0, width, height, 0, LINE);
+	}
+
+	// a pad's colour (Koton Studio's): C rows lighter, the black keys' darker; the beat's first slice lighter
+	// (rows with their own colour -- the drum lanes' families: that colour, dark, behind)
+	unsigned padColour (int row, int col)
+	{
+		if (!keyboard && rowColour) { unsigned c = rowColour (*this, row); if (c) return mixc (0x232429, c, col % imax (1, spb) == 0 ? 56 : 28); }
+		int pc = keyboard ? (row + 12) % 12 : 2;
+		bool down = col % imax (1, spb) == 0;
+		if (pc == 0) return down ? 0x41414F : 0x343440;
+		if (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10) return down ? 0x2E2E38 : 0x22222A;
+		return down ? 0x393946 : 0x2C2C36;
 	}
 
 	int noteAt (int col, int row) const

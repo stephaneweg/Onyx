@@ -361,11 +361,15 @@ bass*). As the chords change, the cell moves with them.
 A **riff** holds real notes. Its editor is a piano roll that knows the harmony.
 
 ![The riff editor](images/riff.png)
-*A riff over F♯m9, Bm7 and C♯9: the chord's tones shaded.*
+*A riff over F♯m9: its first note, F♯4; the chord's tones tinted.*
 
 - Above the notes, **the chords** under the riff. In the rows, **the chord's tones are shaded** in its
   function's colour (the root stronger), the **key's scale** is lighter than the notes outside it: you see
   at once which notes "belong".
+- The grid looks as in Koton Studio for Windows: a **square pad per slice** (26 pixels), the first slice
+  of each beat lighter, the **C** rows lighter and the black keys' darker, every row named on the left, the
+  notes in teal. The editor opens on the riff's **first note**; `Shift`+wheel or the bar at the bottom
+  moves in time, `Ctrl`+wheel makes the pads narrower or wider.
 - **Draw**, **Select**, **Erase**: the tool. (A right-click always erases.)
 - **Snap**: where notes start — *Bar* … *1/32*, the triplets, *Off*. **Length**: the length of a new note.
 - **Beats**: the riff's length. **Name**: type it and press `Enter`.
@@ -403,8 +407,11 @@ The drum kit is the **track's**: choose it in the track's header.
 *A customised groove: one row per percussion sound.*
 
 The rows are the 47 General MIDI percussion sounds — kick, snare, hi-hats, toms, cymbals, then the Latin
-percussion —, coloured by family. **A click puts a hit, a click on a hit removes it.** **Resolution**,
-**Save motif…** (it then appears under *Custom (drawn)*), **Clear**.
+percussion —, coloured by family. The grid looks as in Koton Studio for Windows: **a square pad per step**,
+in its row's colour (dark when empty, the beat's first step lighter; bright when it plays). **A click puts
+a hit, a click on a hit removes it.** **Customise** draws the groove on the coarsest grid that keeps every
+hit in its place — 4 steps a beat for a groove of sixteenths; **Resolution** changes it (24 / beat for the
+finest placing). **Save motif…** (it then appears under *Custom (drawn)*), **Clear**.
 
 ### 10.2 Euclidean rhythms
 

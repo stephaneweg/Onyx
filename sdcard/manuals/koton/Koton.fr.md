@@ -402,11 +402,16 @@ accords changent, la cellule suit.
 Un **riff** contient de vraies notes. Son éditeur est un piano roll qui connaît l'harmonie.
 
 ![L'éditeur de riff](images/riff.png)
-*Un riff sur F♯m9, Bm7 et C♯9 : les notes de l'accord ombrées.*
+*Un riff sur F♯m9 : sa première note, F♯4 ; les notes de l'accord teintées.*
 
 - Au-dessus des notes, **les accords** sous le riff. Dans les rangées, **les notes de l'accord sont
   ombrées** dans la couleur de sa fonction (la fondamentale plus fort), la **gamme** est plus claire que
   les notes hors gamme : on voit d'un coup d'œil quelles notes « vont bien ».
+- La grille a l'apparence de Koton Studio pour Windows : **un carré par tranche** (26 pixels), la première
+  tranche de chaque temps plus claire, les rangées de **C** plus claires et celles des touches noires plus
+  sombres, chaque rangée nommée à gauche, les notes en turquoise. L'éditeur s'ouvre sur la **première
+  note** du riff ; `Shift`+molette ou la barre du bas avance dans le temps, `Ctrl`+molette rétrécit ou
+  élargit les carrés.
 - **Draw** (dessiner), **Select** (sélectionner), **Erase** (gommer) : l'outil. (Un clic droit gomme
   toujours.)
 - **Snap** : où commencent les notes — *Bar* (mesure) … *1/32*, les triolets, *Off*. **Length** : la
@@ -447,8 +452,12 @@ Le kit de batterie est celui de **la piste** : choisissez-le dans son en-tête.
 *Un groove personnalisé : une rangée par percussion.*
 
 Les rangées sont les 47 percussions General MIDI — grosse caisse, caisse claire, charleys, toms, cymbales,
-puis les percussions latines —, colorées par famille. **Un clic pose un coup, un clic sur un coup
-l'enlève.** **Resolution**, **Save motif…** (il apparaît ensuite sous *Custom (drawn)*), **Clear**.
+puis les percussions latines —, colorées par famille. La grille a l'apparence de Koton Studio pour
+Windows : **un carré par pas**, dans la couleur de sa rangée (sombre quand il est vide, le premier pas de
+chaque temps plus clair ; vif quand il joue). **Un clic pose un coup, un clic sur un coup l'enlève.**
+**Customise** dessine le groove sur la grille la plus grossière qui garde chaque coup à sa place — 4 pas par
+temps pour un groove en doubles croches ; **Resolution** (résolution) la change (24 / beat pour le
+placement le plus fin). **Save motif…** (il apparaît ensuite sous *Custom (drawn)*), **Clear**.
 
 ### 10.2 Les rythmes euclidiens
 

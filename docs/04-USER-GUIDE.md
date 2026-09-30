@@ -1940,7 +1940,8 @@ exported as a WAV file. The AI (Gemini and others) composes a whole piece, a new
   *Resolution*, *Start from* a style, *Save style…* (in the song's style list), *Apply to all* (every
   accompaniment with that style). Its **Melodic cell** tab: a second voice over the chords, drawn on
   the key's degrees (1 … 7″), its octave and where degree 1 is.
-- **Riff**: the piano roll — the chords over it, their tones shaded in the rows (the root stronger),
+- **Riff**: the piano roll, drawn as Koton Studio's (a square pad per slice, 26 px, every row named,
+  teal notes; it opens on the first note) — the chords over it, their tones shaded in the rows (the root stronger),
   the key's scale lighter than the notes outside it. Tools **Draw** / **Select** / **Erase**, the
   **snap** and the drawn **length** (bar … 1/32, triplets), the riff's length and name; **±1 / ±12**
   transpose (the selection, else all); **Fit to the chords** moves every note to the nearest tone of
@@ -1950,7 +1951,8 @@ exported as a WAV file. The AI (Gemini and others) composes a whole piece, a new
 - **Drums**: a **category** and a **motif** of the catalog (the built-in grooves — rock, pop, funk,
   disco, swing, shuffle, bossa, hip-hop, reggae, trap… — and the shipped ones, `drums.json`), the
   density, a fill on the last bar, beats a bar, repeats; **Customise** makes it a grid of the 47
-  General MIDI percussion lanes you draw (a click puts / removes a hit), *Save motif…*. **Euclid**:
+  General MIDI percussion lanes you draw (a click puts / removes a hit; Koton Studio's square pads in
+  each lane's family colour, 4 steps a beat when the groove allows), *Save motif…*. **Euclid**:
   E(hits, steps) with a rotation on one lane (its pattern and name shown: tresillo, cinquillo…),
   **<** / **>** shift a lane a step.
 - **Melodic line**: you draw only its **rhythm** (up to three voices); the engine chooses the pitches

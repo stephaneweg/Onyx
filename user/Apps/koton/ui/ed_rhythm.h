@@ -17,18 +17,33 @@ namespace kui {
 static const char *const s_unitNames[3] = { "Eighths", "Sixteenths", "Eighth triplets" };
 static const int s_unitSlices[3] = { 12, 6, 8 };		// at 24 slices a beat
 
-// a drum lane's family colour (Koton's DrumColors)
+// a drum lane's family colour (Koton Studio's DrumColors): the family's hue, its lanes spread from 0.82 to
+// 1.18 of its lightness
 static inline unsigned laneColour (int lane)
 {
-	switch (lane)
+	static const unsigned char fam[DRUM_LANES] = {
+		0, 1, 2, 2, 2, 1, 5, 3, 3, 3, 4, 4,  0, 1, 3, 3, 3, 4, 4, 4, 4, 4,  5, 7, 5,  6, 6, 6, 6, 6,  6, 6, 7, 7,
+		5, 5, 5, 5, 5, 5,  7, 7, 7, 5, 5,  7, 7 };
+	static const unsigned base[8] = { 0xE8654E, 0xE8A24B, 0x26C6D9, 0x57C766, 0xC66CEA, 0xDDB36E, 0xE8825A, 0xC9C24E };
+	static unsigned lane_[DRUM_LANES]; static bool made;
+	if (!made)
 	{
-	case 0: case 12: return 0xE2604C;				// kicks
-	case 1: case 5: case 6: case 13: return 0xE8A04A;		// snares, rim, clap
-	case 2: case 3: case 4: return 0xE2CE5C;			// hi-hats
-	case 7: case 8: case 9: case 14: case 15: case 16: return 0x7CC86E;	// toms
-	case 10: case 11: case 17: case 18: case 19: case 20: case 21: return 0x6CB4E8;	// cymbals
+		for (int f = 0; f < 8; f++)
+		{
+			int count = 0, i = 0;
+			for (int l = 0; l < DRUM_LANES; l++) if (fam[l] == f) count++;
+			for (int l = 0; l < DRUM_LANES; l++)
+				if (fam[l] == f)
+				{
+					double k = count <= 1 ? 1.0 : 0.82 + 0.36 * i++ / (count - 1);
+					unsigned c = 0;
+					for (int sh = 0; sh <= 16; sh += 8) c |= (unsigned) iclamp ((int) (((base[f] >> sh) & 0xFF) * k), 0, 255) << sh;
+					lane_[l] = c;
+				}
+		}
+		made = true;
 	}
-	return 0xB08CE0;						// percussion
+	return lane >= 0 && lane < DRUM_LANES ? lane_[lane] : base[1];
 }
 
 // the preview line of a euclidean rhythm: "x.x..x.. tresillo - on the beats: 2"
@@ -122,10 +137,10 @@ public:
 		euclidPreview (s_k, s_n, s_rot, s_unit, m_eu, sizeof m_eu);
 		int gy = 102, gh = height - gy - 8;
 		grid = makeGrid (x, gy, w, gh);
-		grid->rows = DRUM_LANES; grid->rowH = 16; grid->labelW = 120;
+		grid->rows = DRUM_LANES; grid->rowH = 28; grid->labelW = 120; grid->pxPerCol = 26; grid->pads = true;	// (Koton Studio's pads)
 		grid->oneShot = true; grid->rowLabel = laneLabel; grid->rowColour = laneRowColour;
 		grid->spb = spb; grid->beatsPerBar = imax (1, p.barBeats ());
-		grid->snapCols = spb >= 8 ? spb / 4 : 1;
+		grid->snapCols = 1;			// (a pad a click)
 		grid->onAudition = audition;
 		if (custom) { grid->notes = &dp->custom.notes; grid->cols = drumUnit (*dp); }
 		else
@@ -133,8 +148,10 @@ public:
 			if (dp->custom.notes.size ()) { m_preview = dp->custom.notes; grid->spb = dp->custom.spq > 0 ? dp->custom.spq : SPQ; grid->cols = drumUnit (*dp); }
 			else { m_preview = laneNotesForStyle (dp->style, imax (1, dp->beatsPerBar)); grid->cols = imax (1, dp->beatsPerBar) * SPQ; }
 			grid->notes = &m_preview; grid->readOnly = true;
+			// (shown on the coarsest grid that keeps it, as Customise will make it)
+			int to = drumCoarsest (m_preview, grid->spb);
+			if (to != grid->spb && grid->cols % grid->spb == 0) { drumToResolution (m_preview, grid->spb, to); grid->cols = grid->cols / grid->spb * to; grid->spb = to; }
 		}
-		grid->fitWidth ();
 	}
 	const char *title () override { return "Drums"; }
 	DrumModule *drum () { return (DrumModule *) module (); }

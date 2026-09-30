@@ -39,6 +39,7 @@ static const unsigned
 	GRID_SUB = 0x252A32,
 	NOTE = 0x3CD6E2,
 	NOTE_SEL = 0xFFD66E,
+	PAD_ON = 0x2FC7D4,		// a note in the piano roll (Koton Studio's teal)
 	GREEN = 0x56CE96,
 	BLUE_NOTE = 0x78BEEC,
 	FUNC_T = 0x4888E2,

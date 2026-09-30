@@ -132,6 +132,25 @@ static inline void applyDrumCatalog (Project &p, DrumModule &dp, const char *cat
 	dp.custom.setNotes (m->notes, m->spq, m->lengthSlices ());
 }
 
+// the coarsest resolution (slices a beat) that keeps every hit on its place -- 4 a beat for a groove of
+// sixteenths, as Koton Studio draws it -- and the hits moved to it (the length: `cols` at `spb`)
+static inline int drumCoarsest (const Vec<RiffNote> &n, int spb)
+{
+	static const int cand[] = { 4, 3, 6, 8, 12, 24 };
+	for (int c = 0; c < 6; c++)
+	{
+		int r = cand[c]; bool ok = r <= spb;
+		for (int i = 0; i < n.size () && ok; i++) if ((n[i].start * r) % imax (1, spb)) ok = false;
+		if (ok) return r;
+	}
+	return spb;
+}
+static inline void drumToResolution (Vec<RiffNote> &n, int from, int to)
+{
+	if (from == to || from <= 0) return;
+	for (int i = 0; i < n.size (); i++) { n[i].start = n[i].start * to / from; n[i].length = imax (1, n[i].length * to / from); }
+}
+
 // "Customise": the current motif copied into an editable one
 static inline void customizeDrum (DrumModule &dp)
 {
@@ -142,6 +161,14 @@ static inline void customizeDrum (DrumModule &dp)
 		int style = dp.style != DRUM_CUSTOM_STYLE ? dp.style : 0;
 		Vec<RiffNote> n = laneNotesForStyle (style, dp.beatsPerBar);
 		dp.custom.setNotes (n, SPQ, dp.beatsPerBar * SPQ);
+	}
+	// (drawn on the coarsest grid that keeps it: squares a sixteenth wide, not 24 a beat)
+	int from = dp.custom.spq > 0 ? dp.custom.spq : SPQ, to = drumCoarsest (dp.custom.notes, from);
+	int len = dp.custom.slices.size ();
+	if (to != from && len > 0 && len % from == 0)
+	{
+		Vec<RiffNote> n = dp.custom.notes; drumToResolution (n, from, to);
+		dp.custom.setNotes (n, to, len / from * to);
 	}
 	dp.style = DRUM_CUSTOM_STYLE;
 	dp.catCategory = CUSTOM_CAT; dp.catMotif = CUSTOM_CAT;
