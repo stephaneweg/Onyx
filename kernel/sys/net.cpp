@@ -590,7 +590,9 @@ struct TNetReq
 	u8	 Buf[NET_REQBUF];
 };
 
-static TNetReq s_Req[NET_REQS];
+// On the heap (NetCoreStart), not in the BSS: NET_REQS x NET_REQBUF is 1 MB, and the kernel's
+// image + BSS must end below 2 MB (KERNEL_MAX_SIZE: kernel/Makefile's sizecheck).
+static TNetReq *s_Req;
 static u32 s_ClosePid[NET_CLOSES];
 static u32 s_nCloseIn, s_nCloseOut;		// core 0 / core 3 (atomic)
 static CTask *(*s_pfnBringup) (void) = 0;
@@ -714,6 +716,9 @@ void NetCoreMain (void)
 // ---- core 0 side ----
 void NetCoreStart (CTask *(*pfnBringup) (void))
 {
+	s_Req = new TNetReq[NET_REQS];			// (before the net core runs: all RQ_FREE)
+	assert (s_Req != 0);
+	memset (s_Req, 0, sizeof (TNetReq) * NET_REQS);
 	s_pfnBringup = pfnBringup;
 	asm volatile ("dmb ish" ::: "memory");
 	s_bGo = TRUE;
