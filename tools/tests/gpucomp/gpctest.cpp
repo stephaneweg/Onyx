@@ -322,11 +322,10 @@ int main (void)
 		int lost = gpc_tex_lost (t), be = gpc_backend (g);
 		int r4 = gpc_tex_update (g, t, 0, 0, 64, 64, a.data (), 64);
 		int r5 = gpc_composite (g, &tg, &L, 1, 0, GPC_C_CLEAR);
-		bool same = memcmp (out.data (), a.data (), 64) != 0 || true;
 		int ok = 1;
 		for (int i = 0; i < 64 * 64; i++) if ((out[i] & 0xFFFFFF) != (a[i] & 0xFFFFFF)) { ok = 0; break; }
 		char det[120]; snprintf (det, sizeof det, "(composites %d %d %d, lost %d, backend %d, update %d, composite %d, picture %s)", r1, r2, r3, lost, be, r4, r5, ok ? "right" : "wrong");
-		check ("the GPU lost in the middle", r1 == 0 && r2 == 0 && r3 == GPC_LOST && lost && be == GPC_BACKEND_CPU && r4 == 0 && r5 == 0 && !gpc_tex_lost (t) && ok && same, det);
+		check ("the GPU lost in the middle", r1 == 0 && r2 == 0 && r3 == GPC_LOST && lost && be == GPC_BACKEND_CPU && r4 == 0 && r5 == 0 && !gpc_tex_lost (t) && ok, det);
 		gpc_destroy (g);
 	}
 

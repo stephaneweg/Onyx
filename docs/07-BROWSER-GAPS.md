@@ -98,7 +98,62 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
   Onyx NetSurf already fetches in threads; next: image decoding in a thread (the decoders are
   pure C over a buffer), a raster thread for the compositing layers, workers on their own
   thread (a second QuickJS runtime -- runtimes are independent).
-- **GPU compositing**: the V3D driver could blit the layers (the compositor's own is CPU).
+- **GPU compositing** -- stage 1 done: the **compositing service** `user/gpucomp` (kapi v70;
+  docs/02 §15, docs/03 *GPU compositing*, `/bin/gpcdemo`). An app uploads layers (premultiplied
+  ARGB, any size: tiles of 2048 with a seamless border past that) once, then has a list of them
+  composited by the V3D into its canvas: per layer a 2D affine matrix (CSS `matrix(a..f)`), a clip
+  rectangle, an opacity, premultiplied source-over, bilinear filtering; scrolling = the layer's
+  source rectangle moved (fractions: smooth), nothing uploaded again; a damaged rectangle =
+  `gpc_tex_update` (kapi `gpu_texture_rect`: only those texels re-tiled). The same API runs on the
+  CPU (NEON loops) when there is no GPU or it stopped (`GPC_LOST`), so the browser never depends
+  on it. What it costs: each composite is one `gpu_render` frame straight into the canvas (the
+  kernel cleans / invalidates the target's span before and after); its GPU time is shared with any
+  other program using the V3D (frames are served one at a time). Measured on the Pi by
+  `gpcdemo bench` (1920 x 1080, GPU vs CPU) -- to be filled in from the first run.
+
+  **Stage 2 -- plugging NetSurf's layers in** (after the compositing-layers work in
+  `content/handlers/html/redraw.c` / `frontends/framebuffer/onyx_paint.c` is merged; nothing of
+  it is touched by stage 1):
+  1. *A layer = a `gpc_tex`.* Each stacking context the redraw promotes to a layer (opacity < 1, a
+     non-translation `transform`, `filter`, `will-change`, a fixed / sticky box, an overflow
+     scroller) keeps its off-screen ARGB buffer -- premultiplied, as `gpucomp` wants it (convert
+     where the painter keeps straight alpha) -- and a `gpc_tex` of the same size. Painting a
+     layer stays the CPU plotters' job (text, borders, images, gradients: `onyx_paint.c`); what
+     changes is who assembles them.
+  2. *Uploads follow the damage.* The redraw's dirty rectangles of a layer become
+     `gpc_tex_update (g, tex, x, y, w, h, buf + y * stride + x, stride)` calls; a layer whose
+     content did not change uploads nothing. A resized layer: `gpc_tex_destroy` + `gpc_tex_create`.
+  3. *The layer list at present time.* In paint order (the root / page layer first), each
+     `gpc_layer`: `m` = the layer's transform in page pixels (the CSS `transform` about its
+     `transform-origin`, times its offset in the page, minus the scroll -- the same matrix the
+     hit-testing inverts: `gpc_matrix_invert`), `clip` = the ancestors' overflow clip in the page
+     area, `opacity` = the effective opacity, `GPC_L_OPAQUE` for layers known opaque (the root's
+     background). Then one `gpc_composite` into the page area of the canvas
+     (`onyx_chrome_page`'s pixels and stride: the GPU writes the canvas directly -- the back
+     buffer's copy to the canvas in `onyx_surface.c` goes away for composited frames).
+  4. *Scrolling without repainting.* The root layer is a band of the page taller than the view
+     (say 3 viewports: 1920 x 3240 = two textures high); scrolling moves `src_y` (fractions for
+     smooth scrolling); when the view nears the band's edge the band is re-centred (repaint + a
+     band upload, spread over frames). Fixed elements are layers of their own (they do not move).
+     Overflow scrollers: the same, one layer each.
+  5. *Animations are composites.* `transform` / `opacity` transitions and `@keyframes` (wave 1
+     item 2) change `m` / `opacity` only: a frame is one `gpc_composite` (milliseconds on the
+     GPU), no layout, no paint, no upload -- the payoff of the whole design. `requestAnimationFrame`
+     paces them; `GPC_F_ASYNC` + `gpc_submit` lets the JS / layout of the next frame run while
+     the GPU composes this one (call `gpc_wait` before touching the canvas or the layers).
+  6. *Groups.* A layer with children layers and opacity < 1 (or a filter) cannot be applied to
+     each child (overlaps would show through): composite the children into the group's own ARGB
+     target (`GPC_T_ALPHA`, from `gpc_target_alloc` so the GPU renders it directly), then
+     `gpc_tex_update` the group's texture from it and draw the group with its opacity. (The GPU
+     cannot sample what it just rendered without that re-upload: the texture unit reads tiled
+     layouts only -- a render-to-texture path is a later kernel addition.)
+  7. *Budget.* Handles: 512 textures a program (a 2048-tile each); memory: the GPU's copies live
+     below 1 GB (`HEAP_LOW`), shared with the kernel -- keep the layers' textures to ~128 MB (drop
+     the off-screen ones first; a layer whose `gpc_tex_create` fails is drawn by the CPU, in
+     order, automatically). `GPC_LOST`: re-create the textures (the CPU path from then on).
+  8. *Checks.* `gpcdemo test` first on each Pi; then NetSurf's `NS_PERF` / `NS_PROF` before /
+     after on the sweep's sites, and the layoutdiff pages (the composited frame must match the
+     CPU one: `gpc_create` with `GPC_F_CPU` gives the reference on the same machine).
 
 ## 7. Order of work (what will be done, in parallel where independent)
 
