@@ -672,6 +672,15 @@ launches `jet`: `user/dockconf.h`, `user/Apps/setup/main.cpp`, `sdcard/etc/dock.
 About box, docs (docs/06 renamed accordingly), screenshots; the source paths
 (`third_party/netsurf/`) stay as they are (comparable with upstream).
 
+**Feature tests on the Pi (2026-09-30 late, docs/06 §22):** the Pi's css3test.com "100 %" /
+browserscore.dev "0 %" were the script time limit (10 s) cutting both test runs off on the
+slower CPU (css3test's 100 % is its CSS 2.2 / 2007 / 2010 filter, kept in localStorage) -- now
+60 s (`script_timeout`) and the runs 2x faster; the detection is honest (`js-cssdetect.html`
+against Chromium). PC bench: css3test 83 %, browserscore 86 % (Chromium 71 %, 75 %). Also the
+Popover API (`:popover-open` / `:modal` in libcss), matchMedia by libcss (aspect-ratio,
+orientation, hover...), `NS_JSPROF` + `jsprof.py` (a sampling profiler of the scripts). The
+Pi's `libcss.a` rebuilt; the NetSurf binary for the card NOT restaged by this work.
+
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more
 out of memory on bbc.co.uk, HTML5).** Built and tried on the PC bench only; the Pi binaries

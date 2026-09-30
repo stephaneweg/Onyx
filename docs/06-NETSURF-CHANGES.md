@@ -571,7 +571,8 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
   declarations, `@font-face` with the descriptors libcss reads -- font-family, src, font-style,
   font-weight, unicode-range --, `@page`, `@media` / `@supports` with their rules, `@import`,
   `@namespace`; what libcss drops is not there), `document.styleSheets` (the `<style>`s').
-  Since made a real, writable CSSOM with the linked sheets (§14).
+  Since made a real, writable CSSOM with the linked sheets (§14); matchMedia answered by
+  libcss, and the answers' honesty checked against Chromium (`js-cssdetect.html`): §22.
 - css3test.com (Lea Verou's) now runs -- its engine is a module graph of 156 modules -- and
   scores **23%** (1154 of 6419 tests), honestly (what libcss parses; Chrome ~ 75%). It found a
   double free in libcss's Onyx gradient parser (a prefixed legacy `radial-gradient` such as
@@ -798,6 +799,8 @@ an invalid value is still dropped.
   `css-values.txt`: 157 declarations, sheets and descriptors kept or dropped; `csscheck -b N
   sheet.css`: a parse-speed bench); `jstest.sh`: `js-cssom.html` (26 CSSOM checks),
   `css-svgprops.html`, `css-selectors.html`, `css-math.html`.
+- **Since** (§22): 83 % on the live site; the Pi's run no longer cut off by the script time
+  limit; libcss evaluates most media features; `:popover-open` / `:modal`.
 - **Not done**: the Typed OM (`CSSStyleValue`, `attributeStyleMap`...), Web Animations,
   CSSOM View's interfaces; `:has()` matching (libcss's handler has no child walk);
   `@container` against a real container; the pseudo-elements' drawing (`::marker`,
@@ -1485,6 +1488,102 @@ context, with all it holds -- through a layer of the framebuffer.
   fade with the group's opacity when the group is apart; a blend mode inside an isolated
   group (its black / white passes then differ non-linearly); the text caret and a form
   field's click position inside a transformed box; `will-change`.
+
+## 22. The feature tests on the Pi: css3test.com, browserscore.dev; the Popover API; `matchMedia` by libcss
+
+**What the Pi showed** (branch `claude/busy-ramanujan-5enakb`): css3test.com "100 %" and
+browserscore.dev "0 %". On the PC bench the live css3test.com scored 82 % and browserscore.dev
+85 % -- the detection itself was right. The cause was the **script time limit**: NetSurf stops a
+script, an event handler or a promise job after `script_timeout` seconds (10), and the Pi runs
+QuickJS some five times slower than the PC. css3test.com's test run is one `load` handler (2.8 s
+on the PC), browserscore.dev's first render one Vue job (9.6 s on the PC); both were cut off on
+the Pi ("InternalError: interrupted"), leaving css3test at its page's "0%" and browserscore with
+no score at all (reproduced on the PC under `valgrind --tool=none`, ~7x slower). css3test's
+"100 %" is its score with the "CSS 2.2", "CSS 2007" or "CSS 2010" filter (NetSurf passes all
+of those): the site keeps the filter chosen in `localStorage`, so a filter picked once on the
+Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with the Pi's
+`libcss.a` and run under qemu gives the PC's answers.
+
+- **The time limit** 10 -> **60 s** (`desktop/options.h`; `script_timeout` in `SD:/res/Choices`,
+  0 = none). Browsers do not stop a script at all; the limit only ends a loop that never does.
+- **Faster** (the PC; the Pi in proportion): css3test's run 2834 -> 1390 ms, browserscore's
+  render job 9.6 -> 6.6 s.
+  - `console.*` formats its arguments only when the log is read (`N.logOn`: `NS_JSDEBUG` /
+    `jsdebug`, or NetSurf's verbose log), and as bounded JSON (2000 values; no `toJSON()` but
+    a `Date`'s): Vue's development build passes whole component trees to `console.warn`
+    (browserscore.dev: 1500 warnings, each its features' `toJSON()` of a whole subtree -- 64 %
+    of its time, a minute with the log on).
+  - `querySelector('#id')` from libdom's `getElementById`; `querySelector` walks with
+    `N.nextElement` and stops at the first match (it wrapped every element of the tree first:
+    bliss's `$('#x')` thousands of times on css3test).
+  - `new URL(url, base)`: the parses kept (a copy handed out), a base parsed once, a
+    `"#fragment"` of a base without the parser (browserscore.dev: a quarter of its time).
+  - `html_rebox` (`html.c` `html_rebox_index`, `object.c`): the old boxes' objects found by
+    their URL's hash, not by a walk of the whole list for each new box (O(n^2): 23 % of
+    browserscore.dev's time with its thousands of status icons).
+- **The bench**: `NS_JSPROF=<file>` samples the scripts (qjs.c, from the interrupt handler, at
+  most once a millisecond: the running script's stack) and `tools/tests/netsurf/jsprof.py`
+  sums them up (self / total per function); `NS_PERF` logs each job over 50 ms (`js:job`).
+- **Honest answers** found wrong by the new `js-cssdetect.html` (checked against Chromium):
+  `CSS.supports('color', 'red !important')` was true (a value holds no `!`);
+  `CSS.supports('selector()')` was true; `CSS.supports('color: red')` was false (the spec tries a
+  condition again in parentheses); the end of a condition now closes its blocks, as CSS Syntax
+  does (`selector(:nth-child(even of :not([hidden]))` -- browserscore.dev's test).
+- **`matchMedia` by libcss** (`N.mediaMatch` -> `nscss_media_match`, `css/select.c` ->
+  libcss's new `css_select_onyx_media_match`): the query list parsed and evaluated by libcss for
+  the page's viewport (the window's size until the page is laid out); `.media` is its text with
+  `not all` for a query that does not parse, as a browser serializes it; an unknown feature is
+  kept and false (Media Queries 4's `<general-enclosed>`, as Chrome). The JS matcher before read
+  no range syntax. `MediaQueryList`'s attributes on its prototype, `MediaQueryListEvent`.
+- **libcss evaluates the other media features** (`src/select/mq.h`, `mq_onyx_match_feature`):
+  it answered `width`, `height`, `prefers-color-scheme` only. Now `aspect-ratio` /
+  `device-aspect-ratio` (and their `min-` / `max-`), `device-width` / `device-height`,
+  `orientation`, `resolution`, `-webkit-(min-|max-)device-pixel-ratio`, `color`, `color-index`,
+  `monochrome`, `grid`, `hover` / `any-hover` (hover), `pointer` / `any-pointer` (fine),
+  `prefers-reduced-motion`, `prefers-contrast`, `prefers-reduced-transparency` /`-data`
+  (no-preference), `forced-colors`, `inverted-colors` (none), `display-mode` (browser),
+  `scripting` (enabled), `update` (fast), `color-gamut` (srgb), `dynamic-range` (standard),
+  `overflow-block` / `-inline` (scroll); `(width)` as a boolean; and Media Queries 4's
+  three-valued logic: a feature libcss does not know is *unknown*, so `not (bogus)` is false.
+  Style sheets' `@media` rules match by the same code.
+- **The Popover API** (`html5.js`; GitHub's `<tool-tip popover="manual">` texts showed on the
+  page): `showPopover` / `hidePopover` / `togglePopover` (`force`, `{ source }`),
+  `beforetoggle` (cancellable when showing) and `toggle` (`ToggleEvent`, a task, coalesced), the
+  `auto` popovers' stack (showing one hides the others but its ancestors and its invoker's),
+  `popovertarget` / `popovertargetaction` buttons (`popoverTargetElement`,
+  `popoverTargetAction`), the light dismiss (the user's click outside) and Escape (the user's --
+  a script's events do not dismiss, as in Chrome), `showModal()` hiding the auto popovers,
+  `onbeforetoggle`. The UA sheet (`resources/default.css`) hides
+  `[popover]:not(:popover-open):not(dialog[open])` and gives a showing one Chrome's style (fixed,
+  centred, `z-index` the top layer's stand-in); `dialog:modal` fixed too.
+- **`:popover-open` and `:modal` in libcss**: `css_select_handler` gained `onyx_node_state`
+  (appended; NULL: the states never match) -- libcss asks the client for a state only the
+  scripts know. NetSurf keeps it on the node (`nscss_node_state_set`: libdom's user data
+  `__ns_onyx_state`, `NSCSS_STATE_POPOVER_OPEN` / `NSCSS_STATE_MODAL`), set by the scripts
+  (`N.setState`), the page laid out again.
+- **The IDL attributes on the prototypes** (feature tests look for `'clientX' in
+  MouseEvent.prototype`): the events' (`protoFields`: a constructor's value kept in a symbol),
+  `Screen`, `ResizeObserverEntry` / `ResizeObserverSize`, `FontFace` (with
+  `variationSettings`, `ascentOverride`...), `MediaQueryList`; `AnimationEvent`,
+  `TransitionEvent` and their `on*` handlers (NetSurf runs no animation; a script can make and
+  dispatch them), `window.visualViewport` (the layout viewport), `moveTo` / `resizeTo`... (no
+  effect, as for a tab in a browser), `CSSRule.type`, `HTMLImageElement.x` / `.y`; libcss reads
+  `@font-face`'s `font-stretch` (`font-width`'s legacy name).
+- **Scores** (the PC bench, the live sites, Chromium 141 headless beside it):
+
+  | | before | after | Chromium |
+  |---|---|---|---|
+  | css3test.com | 82 % (5166 / 6419) | 83 % (5218 / 6419) | 71 % (4375 / 6419) |
+  | browserscore.dev | 85 % (1261 / 1489 features) | 86 % (1274 / 1489) | 75 % (1121 / 1489) |
+
+  NetSurf is above Chromium for the reason §14 gives: libcss parses by the specifications'
+  grammars the properties of drafts no browser ships (css-speech, corner shapes,
+  fill-stroke-3...) -- 1248 css3test tests / 1291 browserscore tests NetSurf passes and Chromium
+  fails; Chromium passes 464 / 390 NetSurf fails (the Typed OM, Web Animations, CSS Values 5's
+  `if()` / `progress()` / `sibling-index()`, CSSOM View's `caretPositionFromPoint`).
+- **Tests**: `jstest.sh`: `js-popover.html` (22 checks, then the user's click and Escape),
+  `js-cssdetect.html` (24: `CSS.supports`, `element.style`, the CSSOM, `matchMedia` say no to
+  garbage). `libcss-test`, `css-check` pass; `csscheck` with the Pi's `libcss.a` under qemu too.
 
 ## 8. Known gaps
 
