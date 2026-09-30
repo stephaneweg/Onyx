@@ -669,7 +669,6 @@ content_add_user(struct content *c,
 		return false;
 	user->callback = callback;
 	user->pw = pw;
-	user->onyx_told = 0;	/* (Onyx) */
 	user->next = c->user_list->next;
 	c->user_list->next = user;
 
@@ -757,23 +756,40 @@ void content_broadcast(struct content *c, content_msg msg,
 	 * script asks for a layout, the boxes are made again, the old boxes' objects -- other
 	 * users of the same image -- released): the next user kept before the call was then
 	 * freed (reddit's feed, twice the same preview). Each user is told once, the list
-	 * walked again from its head after each call. */
-	static unsigned int generation;
+	 * walked again from its head after each call; the users told are this broadcast's own
+	 * list -- a broadcast made by a callback (a nested one: DONE -> a reformat -> ...)
+	 * must not mark them for the outer one (a mark per broadcast in the user looped for
+	 * ever on an <iframe src="about:blank">) */
 	struct content_user *user;
-	unsigned int gen = ++generation;
+	struct content_user *told_local[16], **told = told_local;
+	unsigned int ntold = 0, cap = 16, k;
 	assert(c);
 
 	NSLOG(netsurf, DEEPDEBUG, "%p -> msg:%d", c, msg);
 	for (user = c->user_list->next; user != 0; ) {
-		if (user->onyx_told == gen) {
+		for (k = 0; k < ntold && told[k] != user; k++)
+			;
+		if (k < ntold) {
 			user = user->next;
 			continue;
 		}
-		user->onyx_told = gen;
+		if (ntold == cap) {
+			struct content_user **n = malloc(2 * cap * sizeof *n);
+			if (n == NULL)
+				break;
+			memcpy(n, told, ntold * sizeof *n);
+			if (told != told_local)
+				free(told);
+			told = n;
+			cap *= 2;
+		}
+		told[ntold++] = user;
 		if (user->callback != 0)
 			user->callback(c, msg, data, user->pw);
 		user = c->user_list->next;
 	}
+	if (told != told_local)
+		free(told);
 }
 
 

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>effects on hover</title>
+<!-- Onyx: a hover that changes a box's effects (docs/06 §21): the partial redraw (the
+     restyle's rectangles, through the transforms) must give the pixels of a full one --
+     fxtest.sh hovers the card and compares with NS_HOVER_FULL=1. -->
+<style>
+html, body { margin: 0; background: #fff; }
+.mark { position: absolute; left: 0; top: 0; width: 6px; height: 6px; background: #f0f; }
+.bg { position: absolute; left: 10px; top: 10px; width: 440px; height: 280px;
+	background: repeating-linear-gradient(45deg, #ddd 0 10px, #fff 10px 20px); }
+.card { position: absolute; left: 60px; top: 60px; width: 160px; height: 120px; background: #06c;
+	border-radius: 12px; transform: rotate(-5deg); }
+.card:hover { transform: scale(1.3) rotate(12deg); opacity: .6; filter: drop-shadow(6px 6px 4px #000); }
+.card .in { position: absolute; left: 20px; top: 20px; width: 60px; height: 40px; background: #fc0; }
+.card:hover .in { opacity: .5; }
+.other { position: absolute; left: 300px; top: 80px; width: 100px; height: 100px; background: #c30; }
+.other:hover { filter: blur(3px) grayscale(1); }
+</style></head><body>
+<div class="mark"></div>
+<div class="bg"></div>
+<div class="card"><div class="in"></div></div>
+<div class="other"></div>
+</body></html>

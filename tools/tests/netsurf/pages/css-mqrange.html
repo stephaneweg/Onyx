@@ -1,0 +1,11 @@
+<!DOCTYPE html><html><head><title>media query ranges</title><style>
+/* Media Queries 4's range syntax (Onyx: "width >= X" stored with its value and its operator's
+   sides swapped -- GitHub's Primer header, @media (width >= 1012px), never matched) */
+#a{display:block} @media (min-width: 400px){#a{display:none}}
+#c{display:block} @media (width >= 400px){#c{display:none}}
+#d{display:none} @media (width < 400px){#d{display:block}}
+#e{display:block} @media (400px <= width){#e{display:none}}
+#f{display:block} @media (300px < width <= 5000px){#f{display:none}}
+#g{display:none} @media (width > 5000px){#g{display:block}}
+</style></head><body><div id=a>a</div><div id=c>c</div><div id=d>d</div><div id=e>e</div><div id=f>f</div><div id=g>g</div>
+<script>setTimeout(function(){console.log('mqrange '+['a','c','d','e','f','g'].map(function(i){return i+'='+getComputedStyle(document.getElementById(i)).display}).join(' '))},100)</script></body></html>

@@ -167,6 +167,14 @@ box_contains_point(const css_unit_ctx *unit_len_ctx,
 		*physically = true;
 		return true;
 	}
+	/* Onyx: a fixed descendant (its containing block the viewport) is
+	 * reached whatever this box's size and overflow */
+	if ((box->flags & HAS_FIXED) &&
+	    box->descendant_x0 <= x && x < box->descendant_x1 &&
+	    box->descendant_y0 <= y && y < box->descendant_y1) {
+		*physically = false;
+		return true;
+	}
 	if ((box->style && css_computed_overflow_x(box->style) ==
 	     CSS_OVERFLOW_VISIBLE) || !box->style) {
 		if (box->descendant_x0 <= x &&

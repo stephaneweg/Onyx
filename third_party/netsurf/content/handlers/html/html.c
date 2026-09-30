@@ -463,6 +463,8 @@ static void html_rebox_unindex(html_content *c)
  * an attribute, nodes). The old tree's objects are released once the new one has
  * fetched its own (the same images, from the cache); form controls are kept by node.
  */
+static bool html_focus_control_box(html_content *c, dom_node *node);
+
 static void html_rebox(html_content *c)
 {
 	int *old_bctx = c->bctx;
@@ -600,6 +602,15 @@ static void html_rebox(html_content *c)
 				c->base.available_height);
 	}
 	onyx_perf_log("rebox:reformat", t0);
+
+	/* Onyx: a text field a script focused before it had a box */
+	if (c->focus_pending != NULL && !c->early_layout) {
+		dom_node *n = c->focus_pending;
+
+		c->focus_pending = NULL;
+		html_focus_control_box(c, n);
+		dom_node_unref(n);
+	}
 }
 
 /**
@@ -624,6 +635,35 @@ static void html_rebox_scheduled(void *p)
 	}
 	c->rebox_pending = false;
 	html_rebox(c);
+}
+
+/** Onyx: the caret in a text control's box; false if it has none (yet) */
+static bool html_focus_control_box(html_content *c, dom_node *node)
+{
+	struct box *box = box_for_node(node);
+
+	if (box == NULL || box->gadget == NULL || c->bw == NULL ||
+	    (box->gadget->type != GADGET_TEXTBOX &&
+	     box->gadget->type != GADGET_PASSWORD &&
+	     box->gadget->type != GADGET_TEXTAREA) ||
+	    box->gadget->data.text.ta == NULL)
+		return false;
+	textarea_set_caret(box->gadget->data.text.ta, 1 << 30);
+	return true;
+}
+
+/* exported interface documented in html/private.h */
+bool html_script_focus_control(html_content *c, dom_node *node)
+{
+	if (c->focus_pending != NULL) {
+		dom_node_unref(c->focus_pending);
+		c->focus_pending = NULL;
+	}
+	if (c->layout != NULL && !c->rebox_pending &&
+	    html_focus_control_box(c, node))
+		return true;
+	c->focus_pending = dom_node_ref(node);
+	return true;
 }
 
 /* exported interface documented in html/private.h */
@@ -1820,6 +1860,10 @@ static void html_destroy(struct content *c)
 	html->rebox_pending = false;
 	onyx_hover_fini(html);		/* (Onyx) */
 	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
+	if (html->focus_pending != NULL) {	/* (Onyx) */
+		dom_node_unref(html->focus_pending);
+		html->focus_pending = NULL;
+	}
 	if (html->hover_node != NULL) {		/* (Onyx) */
 		dom_node_unref(html->hover_node);
 		html->hover_node = NULL;
@@ -2158,7 +2202,8 @@ html_get_contextual_content(struct content *c, int x, int y,
  * \param scry	number of px try to scroll something in y direction
  * \return true iff scroll was consumed by something in the content
  */
-static bool
+/* (Onyx: exported, html/private.h: the scrolling keys) */
+bool
 html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 {
 	html_content *html = (html_content *) c;
@@ -2168,7 +2213,56 @@ html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 	int box_x = 0, box_y = 0;
 	bool handled_scroll = false;
 
-	/* TODO: invert order; visit deepest box first */
+	/* Onyx: the boxes under the point as a click finds them (the last
+	 * painted: an overlay's, a fixed box's), the deepest first: the first
+	 * that scrolls in that direction takes it (a scroller at its end hands
+	 * it to its ancestors, as in Chrome) */
+	if (box != NULL) {
+		int n = 0, i;
+		struct box **path = html_hit_path(html, x, y, &n);
+
+		if (path != NULL) {
+			bool done = false;
+
+			for (i = n - 1; i >= 0 && !done; i--) {
+				struct box *b = path[i];
+
+				if (b->style && css_computed_visibility(b->style) ==
+						CSS_VISIBILITY_HIDDEN)
+					continue;
+				if (b->iframe) {
+					float scale = browser_window_get_scale(
+							b->iframe);
+					box_coords(b, &box_x, &box_y);
+					done = browser_window_scroll_at_point(
+							b->iframe,
+							(x - box_x) * scale,
+							(y - box_y) * scale,
+							scrx, scry);
+				} else if (b->gadget &&
+				    (b->gadget->type == GADGET_TEXTAREA ||
+				     b->gadget->type == GADGET_PASSWORD ||
+				     b->gadget->type == GADGET_TEXTBOX)) {
+					done = textarea_scroll(
+							b->gadget->data.text.ta,
+							scrx, scry);
+				} else if (b->object != NULL) {
+					box_coords(b, &box_x, &box_y);
+					done = content_scroll_at_point(b->object,
+							x - box_x, y - box_y,
+							scrx, scry);
+				}
+				if (!done && b->scroll_y &&
+				    scrollbar_scroll(b->scroll_y, scry))
+					done = true;
+				if (!done && b->scroll_x &&
+				    scrollbar_scroll(b->scroll_x, scrx))
+					done = true;
+			}
+			free(path);
+			return done;
+		}
+	}
 
 	while ((next = box_at_point(&html->unit_len_ctx, box, x, y,
 			&box_x, &box_y)) != NULL) {

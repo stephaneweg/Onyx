@@ -267,7 +267,11 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_mask_size,
 	css__parse_mask_position,
 	css__parse_mask_repeat,
-	css__parse_mask
+	css__parse_mask,
+	css__parse_filter,	/* Onyx: compositing */
+	css__parse_backdrop_filter,
+	css__parse_transform_origin,
+	css__parse_mix_blend_mode
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */

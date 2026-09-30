@@ -308,10 +308,15 @@ bool css_computed_style_paint_only_change(const css_computed_style *a,
 	PAINT_BITS(STOP_COLOR);			t.stop_color = bi->stop_color;
 	PAINT_BITS(STOP_OPACITY);		t.stop_opacity = bi->stop_opacity;
 	PAINT_BITS(Z_INDEX);			t.z_index = bi->z_index;
+	/* Onyx: compositing (a layer's effects: its boxes stay where they are) */
+	PAINT_BITS(FILTER);			t.filter = bi->filter;
+	PAINT_BITS(BACKDROP_FILTER);		t.backdrop_filter = bi->backdrop_filter;
+	PAINT_BITS(TRANSFORM_ORIGIN);		t.transform_origin = bi->transform_origin;
+	PAINT_BITS(MIX_BLEND_MODE);		t.mix_blend_mode = bi->mix_blend_mode;
 	PAINT_BITS(CURSOR);
 
-	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;	/* (not drawn) */
-	PAINT_BITS(SCALE);			t.scale = bi->scale;	/* (not drawn) */
+	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;	/* (a layer: nothing moves) */
+	PAINT_BITS(SCALE);			t.scale = bi->scale;	/* (a layer: nothing moves) */
 	if (moved != NULL) {
 		/* a translation: the box moved, its layout the same */
 		PAINT_BITS(TRANSFORM);		t.transform = bi->transform;

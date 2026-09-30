@@ -54,6 +54,7 @@
 #include "html/box_construct.h"
 #include "html/onyx_hover.h"
 #include "html/onyx_paint.h"
+#include "html/onyx_fx.h"	/* Onyx: effects' rectangles */
 #include "html/onyx_svg_inline.h"	/* (Onyx: inline <svg> colours) */
 #include "netsurf/onyx_perf.h"
 
@@ -466,6 +467,23 @@ static int hv_reach(const html_content *c, const css_computed_style *style)
 	return e;
 }
 
+/** A rectangle of the box's (page px) redrawn where it is painted: through the transforms
+ * and filters of the box and its ancestors (html/onyx_fx.c). */
+static void hv_request(html_content *c, const struct box *b, int x, int y, int w, int h)
+{
+	float r[4] = { x, y, x + w, y + h };
+
+	if (w <= 0 || h <= 0)
+		return;
+	if (onyx_fx_page_rect(c, b, true, true, r)) {
+		x = (int) floorf(r[0]) - 1;
+		y = (int) floorf(r[1]) - 1;
+		w = (int) ceilf(r[2]) + 1 - x;
+		h = (int) ceilf(r[3]) + 1 - y;
+	}
+	content__request_redraw(&c->base, x, y, w, h);
+}
+
 /** The box's painted rectangle (its border box, reach e around) redrawn. */
 static void hv_redraw_box(html_content *c, struct box *b, int e)
 {
@@ -495,8 +513,7 @@ static void hv_redraw_box(html_content *c, struct box *b, int e)
 			}
 		}
 	}
-	if (w > 0 && h > 0)
-		content__request_redraw(&c->base, x, y, w, h);
+	hv_request(c, b, x, y, w, h);
 }
 
 /** The box and all it holds (its descendants' bounds) redrawn, reach e around. */
@@ -513,8 +530,7 @@ static void hv_redraw_all(html_content *c, struct box *b, int e)
 	if (b->descendant_y0 < y0) y0 = b->descendant_y0;
 	if (b->descendant_x1 > x1) x1 = b->descendant_x1;
 	if (b->descendant_y1 > y1) y1 = b->descendant_y1;
-	content__request_redraw(&c->base, x + x0 - e, y + y0 - e,
-			x1 - x0 + 2 * e, y1 - y0 + 2 * e);
+	hv_request(c, b, x + x0 - e, y + y0 - e, x1 - x0 + 2 * e, y1 - y0 + 2 * e);
 }
 
 /** The box's translation by style (rounded as the layout does), 0 when it has none. */
@@ -535,7 +551,7 @@ static void hv_translation(const html_content *c, const struct box *b,
 }
 
 /** Its ancestors' descendant bounds grown to hold the moved box. */
-static void hv_grow_ancestors(struct box *b)
+static void hv_grow_ancestors(const html_content *c, struct box *b)
 {
 	int x0 = b->x + (b->descendant_x0 < -b->border[LEFT].width ? b->descendant_x0 :
 			-b->border[LEFT].width);
@@ -550,6 +566,9 @@ static void hv_grow_ancestors(struct box *b)
 
 	if (bx1 > x1) x1 = bx1;
 	if (by1 > y1) y1 = by1;
+	/* Onyx: transformed or filtered, where it paints (html/onyx_fx.c) */
+	if (onyx_fx_box(b) && onyx_fx_style(b->style))
+		onyx_fx_child_bounds(&c->unit_len_ctx, b, &x0, &y0, &x1, &y1);
 	for (struct box *p = b->parent; p != NULL; p = p->parent) {
 		bool grew = false;
 		if (x0 < p->descendant_x0) { p->descendant_x0 = x0; grew = true; }
@@ -626,7 +645,10 @@ static bool hv_box(struct hv *h, struct box *b, struct dom_node *own, bool pchan
 			hv_translation(h->c, b, nw, &nx, &ny);
 			moves = ox != nx || oy != ny;
 		}
-		if (moves)
+		/* Onyx: its effects changed (opacity, transform, filter...: html/onyx_fx.c):
+		 * all it holds redrawn, where it was painted and where it is */
+		bool fx = onyx_fx_box(b) && onyx_fx_style_differs(b->style, nw);
+		if (moves || fx)
 			hv_redraw_all(h->c, b, e > e2 ? e : e2);	/* where it was */
 		b->style = (css_computed_style *) nw;
 		if (b->type != BOX_TABLE_CELL) {
@@ -635,10 +657,10 @@ static bool hv_box(struct hv *h, struct box *b, struct dom_node *own, bool pchan
 			css_computed_border_bottom_color(nw, &b->border[BOTTOM].c);
 			css_computed_border_left_color(nw, &b->border[LEFT].c);
 		}
-		if (moves) {
+		if (moves || fx) {
 			b->x += nx - ox;
 			b->y += ny - oy;
-			hv_grow_ancestors(b);
+			hv_grow_ancestors(h->c, b);
 			hv_redraw_all(h->c, b, e > e2 ? e : e2);	/* where it is */
 		} else {
 			hv_redraw_box(h->c, b, e > e2 ? e : e2);

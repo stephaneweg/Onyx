@@ -69,6 +69,7 @@
 #include "html/layout.h"
 #include "html/layout_internal.h"
 #include "html/onyx_paint.h"	/* Onyx: the transform translation */
+#include "html/onyx_fx.h"	/* Onyx: transformed and filtered bounds */
 #include "html/table.h"
 
 /** Array of per-side access functions for computed style margins. */
@@ -5906,6 +5907,10 @@ layout_absolute(struct box *box,
  * \param  content           memory pool for any new boxes
  * \return  true on success, false on memory exhaustion
  */
+/** Onyx: the viewport's height (layout_document), a fixed box's containing
+ * block's */
+static int layout_viewport_height = -1;
+
 static bool
 layout_position_absolute(struct box *box,
 			 struct box *containing_block,
@@ -5919,10 +5924,53 @@ layout_position_absolute(struct box *box,
 				c->type == BOX_INLINE_BLOCK ||
 				c->type == BOX_FLEX ||
 				c->type == BOX_INLINE_FLEX) &&
+				css_computed_position(c->style) ==
+						CSS_POSITION_FIXED &&
+				content->layout != NULL &&
+				containing_block != content->layout) {
+			/* Onyx: a fixed box's containing block is the
+			 * viewport, not its positioned ancestor (Google's
+			 * search overlay, width / height: 100% inside a
+			 * fixed body, was the body's shrunk width) */
+			struct box *doc = content->layout;
+			struct box *p;
+			int ax, ay, dx, dy, saved = doc->height;
+			bool ok;
+
+			for (p = c->parent; p != NULL && !(p->flags & HAS_FIXED);
+					p = p->parent)
+				p->flags |= HAS_FIXED;
+
+			box_coords(containing_block, &ax, &ay);
+			box_coords(doc, &dx, &dy);
+			if (layout_viewport_height > 0)
+				doc->height = layout_viewport_height;
+			ok = layout_absolute(c, doc, cx + ax - dx, cy + ay - dy,
+					content);
+			doc->height = saved;
+			if (!ok)
+				return false;
+			if (!layout_position_absolute(c, c, 0, 0, content))
+				return false;
+		} else if ((c->type == BOX_BLOCK || c->type == BOX_TABLE ||
+				c->type == BOX_INLINE_BLOCK ||
+				c->type == BOX_FLEX ||
+				c->type == BOX_INLINE_FLEX) &&
 				(css_computed_position(c->style) ==
 						CSS_POSITION_ABSOLUTE ||
 				 css_computed_position(c->style) ==
 						CSS_POSITION_FIXED)) {
+			if (css_computed_position(c->style) ==
+					CSS_POSITION_FIXED) {
+				/* (Onyx: its ancestors' overflow does not
+				 * hide it: HAS_FIXED) */
+				struct box *p;
+
+				for (p = c->parent;
+				     p != NULL && !(p->flags & HAS_FIXED);
+				     p = p->parent)
+					p->flags |= HAS_FIXED;
+			}
 			if (!layout_absolute(c, containing_block,
 					cx, cy, content))
 				return false;
@@ -6246,18 +6294,40 @@ layout_update_descendant_bbox(
 		overflow_y = css_computed_overflow_y(child->style);
 	}
 
+	/* Onyx: a child transformed or filtered (html/onyx_fx.c) paints where its
+	 * matrix and its filters take it */
+	if (!html_object && onyx_fx_box(child) && onyx_fx_style(child->style)) {
+		onyx_fx_child_bounds(unit_len_ctx, child, &child_desc_x0,
+				&child_desc_y0, &child_desc_x1, &child_desc_y1);
+		child_desc_x0 -= off_x;
+		child_desc_y0 -= off_y;
+		child_desc_x1 -= off_x;
+		child_desc_y1 -= off_y;
+		if (child_desc_x0 < box->descendant_x0)
+			box->descendant_x0 = child_desc_x0;
+		if (child_desc_y0 < box->descendant_y0)
+			box->descendant_y0 = child_desc_y0;
+		if (box->descendant_x1 < child_desc_x1)
+			box->descendant_x1 = child_desc_x1;
+		if (box->descendant_y1 < child_desc_y1)
+			box->descendant_y1 = child_desc_y1;
+		return;
+	}
+
 	/* Get child's border edge */
 	layout_get_box_bbox(unit_len_ctx, child,
 			&child_desc_x0, &child_desc_y0,
 			&child_desc_x1, &child_desc_y1);
 
-	if (overflow_x == CSS_OVERFLOW_VISIBLE &&
+	if ((overflow_x == CSS_OVERFLOW_VISIBLE ||
+	     (child->flags & HAS_FIXED)) &&	/* (Onyx) */
 			html_object == false) {
 		/* get child's descendant bbox relative to box */
 		child_desc_x0 = child->descendant_x0;
 		child_desc_x1 = child->descendant_x1;
 	}
-	if (overflow_y == CSS_OVERFLOW_VISIBLE &&
+	if ((overflow_y == CSS_OVERFLOW_VISIBLE ||
+	     (child->flags & HAS_FIXED)) &&
 			html_object == false) {
 		/* get child's descendant bbox relative to box */
 		child_desc_y0 = child->descendant_y0;
@@ -6426,6 +6496,7 @@ bool layout_document(html_content *content, int width, int height)
 	}
 
 	layout_lists(content, doc);
+	layout_viewport_height = height;
 	layout_position_absolute(doc, doc, 0, 0, content);
 	layout_position_relative(&content->unit_len_ctx, doc, doc, 0, 0);
 

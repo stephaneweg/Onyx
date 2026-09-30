@@ -102,7 +102,12 @@
 //      timezone= does at boot. Also WIN_FLAG_FIXED (kern/gui/window.h): a window the user
 //      cannot move, without minimise / maximise / close buttons, kept centred when the screen's
 //      resolution changes (the first-run wizard's).
-#define KAPI_ABI_VERSION	69
+// v70: + gpu_texture_rect -- a rectangle of a texture's pixels replaced (no whole re-upload: the
+//      GPU compositing service, user/gpucomp); KAPI_GPU_F_ALPHA -- a GPU frame's target keeps its
+//      alpha (premultiplied ARGB: loaded, blended, stored, cleared to clear's top byte). The
+//      texture handles are shared by the programs using the GPU at once: 1024 in all (was 256),
+//      512 at most a program; the gpu_vbuf blocks 32 in all, 8 a program (was 8 in all).
+#define KAPI_ABI_VERSION	70
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -378,6 +383,9 @@ struct kapi_gpu_frame
 	unsigned flags;
 };
 #define KAPI_GPU_F_KEEP		(1u << 0)
+#define KAPI_GPU_F_ALPHA	(1u << 1)	// (v70) the target is 0xAARRGGBB (premultiplied): its alpha
+						// loaded (KEEP), blended and stored; cleared to clear's top
+						// byte. Without it: alpha not kept (0x00RRGGBB, as before)
 #define KAPI_GPU_MAX_BATCHES	4096
 
 // kapi v61 (gpu_program / gpu_render2): draws with the app's own QPU shaders (user/v3d/qpu.h
@@ -436,7 +444,8 @@ struct kapi_gpu_batch3
 	(1u | ((cSrc) & 15u) << 4 | ((cDst) & 15u) << 8 | ((aSrc) & 15u) << 12 | ((aDst) & 15u) << 16 \
 	 | ((cEq) & 7u) << 20 | ((aEq) & 7u) << 24)
 #define KAPI_GPU_MAX_UNIFORMS	(1 << 20)
-#define KAPI_GPU_MAX_TEXTURES	256
+#define KAPI_GPU_MAX_TEXTURES	1024		// handles in all (v70; 256 before), shared by the programs
+#define KAPI_GPU_MAX_TEXTURES_AS 512		// (v70) of them at most a program (the others' share)
 #define KAPI_GPU_MAX_TEXSIZE	2048
 
 struct TKApiTable
@@ -1061,6 +1070,11 @@ struct TKApiTable
 	// set_timezone: the local time's offset from UTC, minutes (-720 .. 840), at once (the clock,
 	// kapi_get_datetime); system.ini's timezone= sets it at boot -> 1 ok, 0 out of range. (v69)
 	int (*set_timezone) (int minutes);
+	// --- v70 ---
+	// gpu_texture_rect: the pixels (0xAARRGGBB, stride in pixels) of the rectangle x, y, w x h of
+	// texture `handle` (the caller's) replaced -- the rest kept, nothing re-uploaded -> 0, -1 no
+	// GPU, -2 bad arguments (not the caller's handle, the rectangle not inside the texture).
+	int (*gpu_texture_rect) (int handle, int x, int y, int w, int h, const unsigned *pixels, int stride);
 };
 
 #ifdef __cplusplus

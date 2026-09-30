@@ -2437,7 +2437,7 @@ class Element extends Node {
 			if (matchList(n, list, n)) return n;
 		return null;
 	}
-	getBoundingClientRect() { const r = N.rect(this); return new DOMRect(r[0], r[1], r[2], r[3]); }
+	getBoundingClientRect() { const r = N.rect(this, true); return new DOMRect(r[0], r[1], r[2], r[3]); }
 	getClientRects() { const r = this.getBoundingClientRect(); return r.width || r.height ? [r] : []; }
 	get offsetWidth() { return N.rect(this)[2]; }
 	get offsetHeight() { return N.rect(this)[3]; }
@@ -2454,27 +2454,32 @@ class Element extends Node {
 	}
 	get clientTop() { return 0; }
 	get clientLeft() { return 0; }
+	/* (Onyx: an element's own scroller's -- overflow: auto / scroll -- N.boxScroll) */
 	get scrollWidth() {
 		if (this === G.document.documentElement || this === G.document.body) return N.scroll()[4];
-		return N.rect(this)[2];
+		return N.boxScroll(this)[2];
 	}
 	get scrollHeight() {
 		if (this === G.document.documentElement || this === G.document.body) return N.scroll()[5];
-		return N.rect(this)[3];
+		return N.boxScroll(this)[3];
 	}
 	get scrollTop() {
-		return this === G.document.documentElement || this === G.document.body ? N.scroll()[1] : 0;
+		return this === G.document.documentElement || this === G.document.body ? N.scroll()[1] : N.boxScroll(this)[1];
 	}
 	set scrollTop(v) {
 		if (this === G.document.documentElement || this === G.document.body)
 			N.scrollTo(N.scroll()[0], +v || 0);
+		else
+			N.boxScrollTo(this, N.boxScroll(this)[0], Math.round(+v || 0));
 	}
 	get scrollLeft() {
-		return this === G.document.documentElement || this === G.document.body ? N.scroll()[0] : 0;
+		return this === G.document.documentElement || this === G.document.body ? N.scroll()[0] : N.boxScroll(this)[0];
 	}
 	set scrollLeft(v) {
 		if (this === G.document.documentElement || this === G.document.body)
 			N.scrollTo(+v || 0, N.scroll()[1]);
+		else
+			N.boxScrollTo(this, Math.round(+v || 0), N.boxScroll(this)[1]);
 	}
 	scrollIntoView(arg) {
 		const r = N.rect(this);
@@ -2486,9 +2491,18 @@ class Element extends Node {
 		N.scrollTo(s[0], Math.max(0, Math.round(y)));
 		scheduleObservers();
 	}
-	scroll(x, y) {}
-	scrollTo(x, y) {}
-	scrollBy(x, y) {}
+	/* (Onyx: an element's scroller moved) */
+	scroll(x, y) { this.scrollTo(x, y); }
+	scrollTo(x, y) {
+		const s = N.boxScroll(this);
+		if (x !== null && typeof x === 'object') { y = x.top === undefined ? s[1] : x.top; x = x.left === undefined ? s[0] : x.left; }
+		N.boxScrollTo(this, Math.round(+x || 0), Math.round(+y || 0));
+	}
+	scrollBy(x, y) {
+		const s = N.boxScroll(this);
+		if (x !== null && typeof x === 'object') { y = x.top || 0; x = x.left || 0; }
+		N.boxScrollTo(this, s[0] + Math.round(+x || 0), s[1] + Math.round(+y || 0));
+	}
 	requestFullscreen() { return Promise.reject(new DOMException('no', 'NotAllowedError')); }
 	attachShadow() { return this; }
 	get shadowRoot() { return null; }
@@ -2587,6 +2601,9 @@ class HTMLElement extends Element {
 	set tabIndex(v) { this.setAttribute('tabindex', String(v)); }
 	focus() {
 		const old = activeElement;
+		/* (Onyx: a text field's: the browser's caret in it too) */
+		if (this.localName === 'input' || this.localName === 'textarea')
+			N.focusControl(this);
 		if (old === this) return;
 		activeElement = this;
 		if (old) { dispatch(old, new FocusEvent('blur')); dispatch(old, new FocusEvent('focusout', { bubbles: true })); }
@@ -3301,7 +3318,7 @@ class Document extends Node {
 	elementFromPoint(x, y) {
 		let best = null;
 		for (const e of N.descendants(this)) {
-			const r = N.rect(e);
+			const r = N.rect(e, true);
 			if (r[2] > 0 && r[3] > 0 && x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3])
 				best = e;
 		}
@@ -4747,14 +4764,14 @@ class IntersectionObserver {
 		const [mt, mr, mb, ml] = [m[0], m[1] || m[0], m[2] || m[0], m[3] || m[1] || m[0]];
 		let root = { x: 0, y: 0, w: s[2], h: s[3] };
 		if (this.root && this.root.getBoundingClientRect) {
-			const r = N.rect(this.root);
+			const r = N.rect(this.root, true);
 			root = { x: r[0], y: r[1], w: r[2], h: r[3] };
 		}
 		const top = root.y - marginPx(mt, root.h), bottom = root.y + root.h + marginPx(mb, root.h);
 		const left = root.x - marginPx(ml, root.w), right = root.x + root.w + marginPx(mr, root.w);
 		const entries = [];
 		for (const [el, last] of this._targets) {
-			const r = N.rect(el);
+			const r = N.rect(el, true);
 			const boxed = N.boxed(el);
 			const ix = Math.max(0, Math.min(right, r[0] + r[2]) - Math.max(left, r[0]));
 			const iy = Math.max(0, Math.min(bottom, r[1] + r[3]) - Math.max(top, r[1]));

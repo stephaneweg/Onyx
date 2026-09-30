@@ -13,7 +13,9 @@
  *
  *   transform     functions separated by spaces, their arguments by commas, in px % em rem
  *                 vw vh (lengths), deg (angles) or plain numbers: translate(x,y) scale(x,y)
- *                 rotate(a) skew(ax,ay) matrix(a,b,c,d,e,f)
+ *                 rotate(a) skew(ax,ay) matrix(a,b,c,d,e,f) (Onyx: the 3D functions flattened
+ *                 -- rotateX/Y a scale, rotate3d and matrix3d their 2D part, perspective and
+ *                 the z parts dropped)
  *   track list    space separated: <len> (px % em rem vw vh fr) auto min-content
  *                 max-content minmax(a,b) fit-content(len) repeat(<n>|auto-fill|auto-fit,
  *                 <tracks>) [line names]
@@ -21,6 +23,7 @@
  *   grid line     auto | <n> | span <n> | <name> | span <name> | <n> <name>
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -393,9 +396,80 @@ static bool onyx_transform_fn(css_language *c, const parserutils_vector *vector,
 			ob_puts(out, ")");
 		}
 		onyx_free_vals(v, 6);
-	} else if (onyx_fn(t, "rotatex") || onyx_fn(t, "rotatey") || onyx_fn(t, "rotate3d") ||
-			onyx_fn(t, "perspective") || onyx_fn(t, "matrix3d")) {
-		/* 3D: accepted, not drawn (a flat projection keeps the box in place) */
+	} else if (onyx_fn(t, "rotatex") || onyx_fn(t, "rotatey")) {
+		/* Onyx: 3D flattened (no perspective): the plane's projection, a scale by
+		 * the cosine across the axis */
+		n = onyx_args(c, vector, ctx, ONYX_ANGLE, 1, 1, v, true);
+		if (n < 0) {
+			ok = false;
+		} else {
+			float k = cosf(strtof(v[0].p, NULL) * 0.01745329f);
+			bool x = onyx_fn(t, "rotatex");
+			ob_puts(out, "scale(");
+			ob_num(out, x ? 1 : k);
+			ob_puts(out, ",");
+			ob_num(out, x ? k : 1);
+			ob_puts(out, ")");
+		}
+		onyx_free_vals(v, 6);
+	} else if (onyx_fn(t, "rotate3d")) {
+		/* Onyx: the rotation's 2D part (Rodrigues' formula), flattened */
+		for (n = 0; n < 3; n++) {
+			consumeWhitespace(vector, ctx);
+			if (!onyx_value(c, vector, ctx, ONYX_NUM, &v[n]) ||
+			    !onyx_comma(vector, ctx))
+				break;
+		}
+		if (n == 3) {
+			float ax = strtof(v[0].p, NULL), ay = strtof(v[1].p, NULL),
+					az = strtof(v[2].p, NULL), l, s, k, q;
+			onyx_buf a = { NULL, 0, 0, false };
+			l = sqrtf(ax * ax + ay * ay + az * az);
+			if (!onyx_value(c, vector, ctx, ONYX_ANGLE, &a) ||
+			    !onyx_close(vector, ctx) || l == 0) {
+				ok = false;
+			} else {
+				float r = strtof(a.p, NULL) * 0.01745329f;
+				ax /= l; ay /= l; az /= l;
+				s = sinf(r);
+				k = cosf(r);
+				q = 1 - k;
+				ob_puts(out, "matrix(");
+				ob_num(out, k + ax * ax * q);
+				ob_puts(out, ",");
+				ob_num(out, ay * ax * q + az * s);
+				ob_puts(out, ",");
+				ob_num(out, ax * ay * q - az * s);
+				ob_puts(out, ",");
+				ob_num(out, k + ay * ay * q);
+				ob_puts(out, ",0,0)");
+			}
+			free(a.p);
+		} else {
+			ok = false;
+		}
+		onyx_free_vals(v, 6);
+	} else if (onyx_fn(t, "matrix3d")) {
+		/* Onyx: flattened -- the 2D part of the 4x4 (column-major) matrix */
+		onyx_buf m[16];
+		memset(m, 0, sizeof(m));
+		n = onyx_args(c, vector, ctx, ONYX_NUM, 16, 16, m, true);
+		if (n < 0) {
+			ok = false;
+		} else {
+			static const int pick[6] = { 0, 1, 4, 5, 12, 13 };
+			int i;
+			ob_puts(out, "matrix(");
+			for (i = 0; i < 6; i++) {
+				if (i > 0)
+					ob_puts(out, ",");
+				ob_puts(out, m[pick[i]].p);
+			}
+			ob_puts(out, ")");
+		}
+		onyx_free_vals(m, 16);
+	} else if (onyx_fn(t, "perspective")) {
+		/* 3D: accepted, not drawn (flattened: no perspective) */
 		int depth = 1;
 		while (depth > 0 && (t = parserutils_vector_iterate(vector, ctx)) != NULL) {
 			if (t->type == CSS_TOKEN_FUNCTION || tokenIsChar(t, '('))
@@ -502,13 +576,15 @@ css_error css__parse_scale(css_language *c, const parserutils_vector *vector,
 	return error;
 }
 
-/* rotate: none | <angle> | [x | y | z | <number>{3}] && <angle> (only z drawn) */
+/* rotate: none | <angle> | [x | y | z | <number>{3}] && <angle> (z drawn; x and y flattened
+ * to a scale; an axis vector not drawn) */
 css_error css__parse_rotate(css_language *c, const parserutils_vector *vector,
 		int32_t *ctx, css_style *result)
 {
 	int32_t orig_ctx = *ctx;
 	onyx_buf a = { NULL, 0, 0, false }, b = { NULL, 0, 0, false }, dummy = { NULL, 0, 0, false };
 	bool flat = true;
+	char axis = 'z';	/* (Onyx: x and y flattened, a scale) */
 	css_error error;
 
 	if (onyx_text_start(c, vector, ctx, result, CSS_PROP_ROTATE, true, &error))
@@ -516,7 +592,7 @@ css_error css__parse_rotate(css_language *c, const parserutils_vector *vector,
 	while (!onyx_at_end(vector, ctx)) {
 		const css_token *t = parserutils_vector_peek(vector, *ctx);
 		if (onyx_word(t, "x") || onyx_word(t, "y")) {
-			flat = false;
+			axis = onyx_word(t, "x") ? 'x' : 'y';
 			parserutils_vector_iterate(vector, ctx);
 		} else if (onyx_word(t, "z")) {
 			parserutils_vector_iterate(vector, ctx);
@@ -536,9 +612,18 @@ css_error css__parse_rotate(css_language *c, const parserutils_vector *vector,
 		*ctx = orig_ctx;
 		return CSS_INVALID;
 	}
-	ob_puts(&b, "rotate(");
-	ob_puts(&b, flat ? a.p : "0deg");
-	ob_puts(&b, ")");
+	if (flat && axis != 'z') {
+		float k = cosf(strtof(a.p, NULL) * 0.01745329f);
+		ob_puts(&b, "scale(");
+		ob_num(&b, axis == 'x' ? 1 : k);
+		ob_puts(&b, ",");
+		ob_num(&b, axis == 'x' ? k : 1);
+		ob_puts(&b, ")");
+	} else {
+		ob_puts(&b, "rotate(");
+		ob_puts(&b, flat ? a.p : "0deg");
+		ob_puts(&b, ")");
+	}
 	free(a.p);
 	error = onyx_emit_text(c, result, CSS_PROP_ROTATE, &b);
 	free(b.p);
@@ -1691,6 +1776,285 @@ fail:
 	free(pos.p);
 	free(size.p);
 	free(rep.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+}
+
+/* ---- the compositing properties ------------------------------------------------------------
+ * filter, backdrop-filter, transform-origin and mix-blend-mode are kept as text too, which the
+ * painting reads (NetSurf: content/handlers/html/onyx_fx.c):
+ *   filter / backdrop-filter  the functions separated by spaces: blur(<len>),
+ *                  brightness(n) contrast(n) grayscale(n) invert(n) opacity(n) saturate(n)
+ *                  sepia(n) (a percentage as a number, 1 when omitted), hue-rotate(<n>deg),
+ *                  drop-shadow(<x>,<y>,<blur>,<#aarrggbb> | currentcolor); a url() is not
+ *                  kept (the declaration is then checked by its grammar only)
+ *   transform-origin  "<x> <y>": lengths or percentages, the keywords as percentages (the z
+ *                  length dropped: 3D is flattened)
+ *   mix-blend-mode    its keyword (normal: none)
+ */
+
+/* One filter function (ctx at its token): its canonical form appended. */
+static bool onyx_filter_fn(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, onyx_buf *out)
+{
+	static const char *const amounts[] = { "brightness", "contrast", "grayscale",
+			"invert", "opacity", "saturate", "sepia", NULL };
+	const css_token *t = parserutils_vector_iterate(vector, ctx);
+	onyx_buf v[1];
+	int n, i;
+
+	memset(v, 0, sizeof(v));
+	if (onyx_fn(t, "blur")) {
+		n = onyx_args(c, vector, ctx, ONYX_LEN, 0, 1, v, true);
+		if (n < 0 || (n == 1 && (v[0].p[0] == '-' || strchr(v[0].p, '%') != NULL))) {
+			onyx_free_vals(v, 1);
+			return false;
+		}
+		ob_puts(out, "blur(");
+		ob_puts(out, n == 1 ? v[0].p : "0px");
+		ob_puts(out, ")");
+		onyx_free_vals(v, 1);
+		return true;
+	}
+	if (onyx_fn(t, "hue-rotate")) {
+		n = onyx_args(c, vector, ctx, ONYX_ANGLE, 0, 1, v, true);
+		if (n < 0)
+			return false;
+		ob_puts(out, "hue-rotate(");
+		ob_puts(out, n == 1 ? v[0].p : "0deg");
+		ob_puts(out, ")");
+		onyx_free_vals(v, 1);
+		return true;
+	}
+	for (i = 0; amounts[i] != NULL; i++) {
+		float a;
+		if (!onyx_fn(t, amounts[i]))
+			continue;
+		n = onyx_args(c, vector, ctx, ONYX_NUM | ONYX_PCTNUM, 0, 1, v, true);
+		if (n < 0)
+			return false;
+		a = n == 1 ? strtof(v[0].p, NULL) : 1;
+		onyx_free_vals(v, 1);
+		if (a < 0)
+			return false;
+		/* (grayscale, invert, opacity and sepia are clamped to 1) */
+		if (a > 1 && (i == 2 || i == 3 || i == 4 || i == 6))
+			a = 1;
+		ob_puts(out, amounts[i]);
+		ob_puts(out, "(");
+		ob_num(out, a);
+		ob_puts(out, ")");
+		return true;
+	}
+	if (onyx_fn(t, "drop-shadow")) {
+		onyx_buf len[3];
+		int nl = 0;
+		bool have_colour = false, current = false;
+		uint32_t colour = 0xff000000;
+		char hex[16];
+
+		memset(len, 0, sizeof(len));
+		for (;;) {
+			const css_token *p;
+			consumeWhitespace(vector, ctx);
+			p = parserutils_vector_peek(vector, *ctx);
+			if (p == NULL) {
+				onyx_free_vals(len, 3);
+				return false;
+			}
+			if (tokenIsChar(p, ')')) {
+				parserutils_vector_iterate(vector, ctx);
+				break;
+			}
+			if (nl < 3 && onyx_value(c, vector, ctx, ONYX_LEN, &len[nl])) {
+				if (strchr(len[nl].p, '%') != NULL ||
+				    (nl == 2 && len[nl].p[0] == '-')) {
+					onyx_free_vals(len, 3);
+					return false;
+				}
+				nl++;
+				continue;
+			}
+			if (!have_colour) {
+				int32_t save = *ctx;
+				uint16_t value = 0;
+				if (css__parse_colour_specifier(c, vector, ctx, &value,
+						&colour) == CSS_OK) {
+					have_colour = true;
+					current = (value == COLOR_CURRENT_COLOR);
+					continue;
+				}
+				*ctx = save;
+			}
+			onyx_free_vals(len, 3);
+			return false;
+		}
+		if (nl < 2) {
+			onyx_free_vals(len, 3);
+			return false;
+		}
+		ob_puts(out, "drop-shadow(");
+		ob_puts(out, len[0].p);
+		ob_puts(out, ",");
+		ob_puts(out, len[1].p);
+		ob_puts(out, ",");
+		ob_puts(out, nl > 2 ? len[2].p : "0px");
+		ob_puts(out, ",");
+		if (!have_colour || current) {
+			ob_puts(out, "currentcolor");
+		} else {
+			snprintf(hex, sizeof(hex), "#%08x", (unsigned) colour);
+			ob_puts(out, hex);
+		}
+		ob_puts(out, ")");
+		onyx_free_vals(len, 3);
+		return true;
+	}
+	return false;
+}
+
+static css_error onyx_filter_prop(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result, opcode_t op)
+{
+	int32_t orig_ctx = *ctx;
+	onyx_buf b = { NULL, 0, 0, false };
+	css_error error;
+
+	if (onyx_text_start(c, vector, ctx, result, op, true, &error))
+		return error;
+	while (!onyx_at_end(vector, ctx)) {
+		if (b.n > 0)
+			ob_puts(&b, " ");
+		if (!onyx_filter_fn(c, vector, ctx, &b)) {
+			free(b.p);
+			*ctx = orig_ctx;
+			return CSS_INVALID;
+		}
+	}
+	if (b.n == 0) {
+		*ctx = orig_ctx;
+		return CSS_INVALID;
+	}
+	error = onyx_emit_text(c, result, op, &b);
+	free(b.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+}
+
+css_error css__parse_filter(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return onyx_filter_prop(c, vector, ctx, result, CSS_PROP_FILTER);
+}
+
+css_error css__parse_backdrop_filter(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return onyx_filter_prop(c, vector, ctx, result, CSS_PROP_BACKDROP_FILTER);
+}
+
+/* transform-origin: [ left | center | right | top | bottom | <length-percentage> ]{1,2}
+ * <length>? (the keywords in either order when two) */
+css_error css__parse_transform_origin(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	int32_t orig_ctx = *ctx;
+	onyx_buf v[3], b = { NULL, 0, 0, false };
+	/* each value: 'x' (left / right), 'y' (top / bottom), 'c' (center), 'l' (a length) */
+	char kind[3];
+	int n = 0;
+	css_error error;
+
+	if (onyx_text_start(c, vector, ctx, result, CSS_PROP_TRANSFORM_ORIGIN, false, &error))
+		return error;
+	memset(v, 0, sizeof(v));
+	while (!onyx_at_end(vector, ctx)) {
+		const css_token *t = parserutils_vector_peek(vector, *ctx);
+		if (n == 3)
+			goto invalid;
+		if (onyx_word(t, "left") || onyx_word(t, "right")) {
+			ob_puts(&v[n], onyx_word(t, "left") ? "0%" : "100%");
+			kind[n] = 'x';
+		} else if (onyx_word(t, "top") || onyx_word(t, "bottom")) {
+			ob_puts(&v[n], onyx_word(t, "top") ? "0%" : "100%");
+			kind[n] = 'y';
+		} else if (onyx_word(t, "center")) {
+			ob_puts(&v[n], "50%");
+			kind[n] = 'c';
+		} else if (onyx_value(c, vector, ctx, ONYX_LEN, &v[n])) {
+			kind[n++] = 'l';
+			continue;
+		} else {
+			goto invalid;
+		}
+		parserutils_vector_iterate(vector, ctx);
+		n++;
+	}
+	if (n == 0 || (n == 3 && (kind[2] != 'l' || strchr(v[2].p, '%') != NULL)))
+		goto invalid;
+	if (n == 1) {
+		if (kind[0] == 'y') {
+			ob_puts(&b, "50% ");
+			ob_puts(&b, v[0].p);
+		} else {
+			ob_puts(&b, v[0].p);
+			ob_puts(&b, " 50%");
+		}
+	} else {
+		/* vertical first: "top left", "bottom 10px"... */
+		bool swap = kind[0] == 'y' || kind[1] == 'x';
+		if ((kind[0] == 'x' && kind[1] == 'x') || (kind[0] == 'y' && kind[1] == 'y') ||
+		    (swap && (kind[0] == 'l' || kind[1] == 'l')))
+			goto invalid;
+		ob_puts(&b, v[swap ? 1 : 0].p);
+		ob_puts(&b, " ");
+		ob_puts(&b, v[swap ? 0 : 1].p);
+	}
+	onyx_free_vals(v, 3);
+	error = onyx_emit_text(c, result, CSS_PROP_TRANSFORM_ORIGIN, &b);
+	free(b.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+invalid:
+	onyx_free_vals(v, 3);
+	free(b.p);
+	*ctx = orig_ctx;
+	return CSS_INVALID;
+}
+
+/* mix-blend-mode: normal | multiply | screen | ... (normal kept as none) */
+css_error css__parse_mix_blend_mode(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	static const char *const modes[] = { "multiply", "screen", "overlay", "darken",
+			"lighten", "color-dodge", "color-burn", "hard-light", "soft-light",
+			"difference", "exclusion", "hue", "saturation", "color", "luminosity",
+			"plus-darker", "plus-lighter", NULL };
+	int32_t orig_ctx = *ctx;
+	onyx_buf b = { NULL, 0, 0, false };
+	const css_token *t;
+	css_error error;
+	int i;
+
+	if (onyx_text_start(c, vector, ctx, result, CSS_PROP_MIX_BLEND_MODE, false, &error))
+		return error;
+	t = parserutils_vector_iterate(vector, ctx);
+	if (onyx_word(t, "normal") && onyx_at_end(vector, ctx))
+		return css__stylesheet_style_appendOPV(result, CSS_PROP_MIX_BLEND_MODE, 0,
+				ONYX_TEXT_NONE);
+	for (i = 0; modes[i] != NULL; i++)
+		if (onyx_word(t, modes[i]))
+			break;
+	if (modes[i] == NULL || !onyx_at_end(vector, ctx)) {
+		*ctx = orig_ctx;
+		return CSS_INVALID;
+	}
+	ob_puts(&b, modes[i]);
+	error = onyx_emit_text(c, result, CSS_PROP_MIX_BLEND_MODE, &b);
+	free(b.p);
 	if (error != CSS_OK)
 		*ctx = orig_ctx;
 	return error;

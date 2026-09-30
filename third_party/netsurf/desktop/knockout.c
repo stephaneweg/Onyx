@@ -1057,6 +1057,30 @@ static nserror knockout_plot_onyx_text_paint(const struct redraw_context *ctx,
 	return real_plot.onyx_text_paint(ctx, fstyle, x, y, text, length, paint);
 }
 
+/* Onyx: a compositing group's passes (netsurf/onyx_paint.h): what is queued is drawn first
+ * (into the surface the group starts or ends on) */
+static nserror knockout_plot_onyx_layer_begin(const struct redraw_context *ctx,
+		const struct onyx_layer *layer, int pass)
+{
+	nserror res = knockout_plot_flush(ctx);
+	if (res != NSERROR_OK)
+		return res;
+	if (real_plot.onyx_layer_begin == NULL)
+		return NSERROR_NOT_IMPLEMENTED;
+	return real_plot.onyx_layer_begin(ctx, layer, pass);
+}
+
+static nserror knockout_plot_onyx_layer_end(const struct redraw_context *ctx,
+		const struct onyx_layer *layer, int pass)
+{
+	nserror res = knockout_plot_flush(ctx);
+	if (res != NSERROR_OK)
+		return res;
+	if (real_plot.onyx_layer_end == NULL)
+		return NSERROR_NOT_IMPLEMENTED;
+	return real_plot.onyx_layer_end(ctx, layer, pass);
+}
+
 const struct plotter_table knockout_plotters = {
 	.rectangle = knockout_plot_rectangle,
 	.line = knockout_plot_line,
@@ -1073,5 +1097,7 @@ const struct plotter_table knockout_plotters = {
 	.onyx_shape = knockout_plot_onyx_shape,		/* Onyx */
 	.onyx_round_clip = knockout_plot_onyx_round_clip,
 	.onyx_text_paint = knockout_plot_onyx_text_paint,
+	.onyx_layer_begin = knockout_plot_onyx_layer_begin,
+	.onyx_layer_end = knockout_plot_onyx_layer_end,
 	.option_knockout = true,
 };

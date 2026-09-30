@@ -128,6 +128,22 @@ answer in French. The docs stay in English.
   the router after a restart, the services started / stopped at Start Onyx.
 - **Next (asked), in this order**: **PRIORITY -- apps in EL0** (protected mode: a faulting app killed, not the OS; plan in docs/EL0-PROTECTED-MODE.md; trigger: a panic closing Ledger, not reproduced -- the exception report now names EC/ELR/FAR/task); then redesign every app icon; then games and emulators with 1- or 2-stick pads.
 
+## GPU compositing, stage 1 -- the service (2026-09-30, kernel v70, not yet tried on the Pi)
+
+- `user/gpucomp/gpucomp.{h,c}` (+ `libgpucomp.a`): layers (premultiplied ARGB textures, tiled past
+  2048) composited by the V3D into a canvas -- affine matrix, clip, opacity, source-over, bilinear,
+  scrolling by the source rectangle -- or by the CPU (NEON loops) with the same API and pixels.
+  Kernel v70: `gpu_texture_rect` (damaged rectangles only), `KAPI_GPU_F_ALPHA` (ARGB targets), fair
+  shares of the GPU's handles between programs (1024 textures / 512 a program; 32 vbufs / 8 a
+  program). docs/02 §15 (*Sharing the GPU*, *The compositing service*), docs/03 *GPU compositing*,
+  docs/07 §6 (the stage 2 plan: NetSurf's layers into it).
+- Tests: `sh tools/tests/run_gpucomp_test.sh` (the PC: CPU and software-V3D paths against a
+  reference, tiles, updates, a refused texture, the GPU lost, qemu-aarch64 NEON = PC bit for bit).
+- **On the Pi, first**: `gpcdemo test` (must end `ALL PASS`), `gpcdemo bench` (write the numbers
+  into docs/07 §6), `gpcdemo` (the window) -- also while gcemu runs (the sharing), and `v3dprog`
+  (must still pass: the kernel's GPU paths were touched for F_ALPHA). kmsg after a failure.
+- Next: stage 2 (docs/07 §6), after the compositing-layers work in NetSurf is merged.
+
 ## Done recently (all pushed)
 
 - **The random N64 freeze on the Pi — fixed.** Root cause (found with the crash record):
@@ -646,6 +662,15 @@ The goal, in the user's words: the two sites (theirs) drawn "comme sur Chrome" -
 Windows, which they compare with on the Pi (portrait and landscape screens) -- and JavaScript
 for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
 `docs/06-NETSURF-CHANGES.md` (read it first: it is the map of what changed and why).
+
+**Decided (the user, 2026-09-30): the browser is renamed "Jet Browser"** ("Jet" in the window,
+"Jet Browser -- the Onyx web browser, based on NetSurf" in its About box; the GPL v2 notices,
+NetSurf's copyrights and the libraries' licences kept and credited). To do once the running
+work is merged: the app (`netsurf.app` -> `jet.app`, no `netsurf` alias; the dock's default Internet button
+launches `jet`: `user/dockconf.h`, `user/Apps/setup/main.cpp`, `sdcard/etc/dock.ini`,
+`sdcard/etc/quicklaunch.txt`), its title,
+About box, docs (docs/06 renamed accordingly), screenshots; the source paths
+(`third_party/netsurf/`) stay as they are (comparable with upstream).
 
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more

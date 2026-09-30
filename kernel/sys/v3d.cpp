@@ -338,6 +338,7 @@ static boolean WaitCounter (CSynchronizationEvent &Ev, uintptr nReg, u32 nOld)
 struct TTarget
 {
 	boolean bDirect;
+	boolean bAlpha;			// (v70 KAPI_GPU_F_ALPHA) the target's top byte is its alpha: kept
 	u32 nBus, nStrideBytes;		// where the GPU stores / loads, bytes a row
 	uintptr ulVA; u32 nSpan;	// (direct: the caller's span, for the cache maintenance)
 };
@@ -352,9 +353,10 @@ static u64 PhysOf (uintptr ulVA)
 
 boolean g_bGpuDirect = TRUE;				// cmdline.txt gpudirect=0: always through s_Target
 
-static void ResolveTarget (unsigned *pPx, int w, int h, int nStride, TTarget &T)
+static void ResolveTarget (unsigned *pPx, int w, int h, int nStride, TTarget &T, boolean bAlpha = FALSE)
 {
 	T.bDirect = FALSE;
+	T.bAlpha = bAlpha;
 	T.nBus = s_Target.Bus (); T.nStrideBytes = (u32) w * 4;
 	if (!g_bGpuDirect) return;
 	uintptr ulVA = (uintptr) pPx;
@@ -388,10 +390,11 @@ static void TargetBefore (const TTarget &T, const unsigned *pPx, int w, int h, i
 		{
 			const unsigned *src = pPx + (long) y * nStride;
 			u32 *d = (u32 *) (s_Target.p + (u32) y * (u32) w * 4);
+			u32 nA = T.bAlpha ? 0 : 0xFF000000;		// (F_ALPHA: the target's own alpha)
 			for (int x = 0; x < w; x++)
 			{
 				u32 c = src[x];
-				d[x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+				d[x] = nA | (c & 0xFF000000) | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
 			}
 		}
 	CleanAndInvalidateDataCacheRange ((uintptr) s_Target.p, (u32) (w * h * 4));
@@ -406,10 +409,11 @@ static void TargetAfter (const TTarget &T, unsigned *pPx, int w, int h, int nStr
 	{
 		const u32 *src = (const u32 *) (s_Target.p + (u32) y * (u32) w * 4);
 		unsigned *d = pPx + (long) y * nStride;
+		u32 nA = T.bAlpha ? 0xFF000000 : 0;			// (F_ALPHA: the alpha kept)
 		for (int x = 0; x < w; x++)
 		{
 			u32 c = src[x];
-			d[x] = ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+			d[x] = (c & nA) | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
 		}
 	}
 }
@@ -437,7 +441,8 @@ static void Fail (const char *pWhat)
 static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boolean bLoad, const TTarget &T)
 {
 	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64;
-	u32 nClearRGBA = (T.bDirect ? 0 : 0xFF000000) | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
+	u32 nClearA = T.bAlpha ? nClear & 0xFF000000 : T.bDirect ? 0 : 0xFF000000;	// (F_ALPHA: clear's top byte)
+	u32 nClearRGBA = nClearA | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
 	R << TileRenderingModeCfgCommon (1, (u16) w, (u16) h, 0, false, false, 0, false, 2, false);
 	R << TileRenderingModeCfgClearColorsPart1 (0, nClearRGBA, 0);
 	R << TileRenderingModeCfgColor (0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -466,7 +471,7 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	Ind << OP_TILE_COORDINATES_IMPLICIT;
 	if (bLoad)							// the target's pixels first
 		Ind << LoadTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DECIMATE_MODE_SAMPLE_0,
-					      V3D_OUTPUT_IMAGE_FORMAT_RGBA8, !T.bDirect, false, T.bDirect, T.nStrideBytes, 0, T.nBus);
+					      V3D_OUTPUT_IMAGE_FORMAT_RGBA8, !T.bDirect && !T.bAlpha, false, T.bDirect, T.nStrideBytes, 0, T.nBus);
 	Ind << OP_END_OF_LOADS;
 	Ind << PrimListFormat (LIST_TRIANGLES, false);
 	Ind << BranchToImplicitTileList (0);
@@ -667,9 +672,15 @@ static int Texture (int nHandle, const unsigned *pPx, int w, int h, int nStride)
 	if (pPx == 0 || w <= 0 || h <= 0 || w > KAPI_GPU_MAX_TEXSIZE || h > KAPI_GPU_MAX_TEXSIZE || nStride < w) return -2;
 	if (nHandle < 0)
 	{
+		// (v70) the handles are shared by the programs using the GPU at once (an emulator's
+		// texture cache, the browser's layers): one program gets half of them at most
+		int nMine = 0;
 		for (int i = 0; i < KAPI_GPU_MAX_TEXTURES; i++)
-			if (s_Tex[i].pOwner == 0) { nHandle = i; break; }
-		if (nHandle < 0) return -4;
+		{
+			if (s_Tex[i].pOwner == pAS) nMine++;
+			else if (s_Tex[i].pOwner == 0 && nHandle < 0) nHandle = i;
+		}
+		if (nHandle < 0 || nMine >= KAPI_GPU_MAX_TEXTURES_AS) return -4;
 	}
 	TTexture &t = s_Tex[nHandle];
 	TLayout L; Layout ((u32) w, (u32) h, L);
@@ -708,6 +719,23 @@ static int Texture (int nHandle, const unsigned *pPx, int w, int h, int nStride)
 	return nHandle;
 }
 
+// (v70) A rectangle of a texture's pixels replaced where the TMU reads them (the layout of its
+// size, StoreRect: kern/v3d_tiling.h), then the CPU cache cleaned over the bytes touched only
+// (a band of the texture, not the whole of it).
+static int TextureRect (int nHandle, int x0, int y0, int w, int h, const unsigned *pPx, int nStride)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || nHandle < 0 || nHandle >= KAPI_GPU_MAX_TEXTURES || s_Tex[nHandle].pOwner != pAS) return -2;
+	TTexture &t = s_Tex[nHandle];
+	if (pPx == 0 || w <= 0 || h <= 0 || x0 < 0 || y0 < 0 || x0 + w > t.w || y0 + h > t.h || nStride < w) return -2;
+	TLayout L; Layout (t.w, t.h, L);
+	u8 *pT = t.Mem.p + TEX_TEXELS;
+	u32 nLo, nHi;
+	StoreRect (L, pT, (u32) x0, (u32) y0, (u32) w, (u32) h, pPx, nStride, &nLo, &nHi);
+	if (nHi > nLo) CleanDataCacheRange ((uintptr) (pT + nLo), nHi - nLo);
+	return 0;
+}
+
 static void ReleaseProgs (CAddressSpace *pAS);
 static void ReleaseVBufs (CAddressSpace *pAS);
 
@@ -740,7 +768,7 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	memcpy (s_Verts3.p, pV, nV * sizeof (kapi_gpu_vertex3));
 	CleanDataCacheRange ((uintptr) s_Verts3.p, nV * sizeof (kapi_gpu_vertex3));
 	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
-	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T);
+	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T, (F.flags & KAPI_GPU_F_ALPHA) != 0);
 	TargetBefore (T, F.pixels, w, h, F.stride, bKeep);
 
 	f32 fXs = (f32) (w / 2) * 256.0f, fYs = (f32) (h / 2) * -256.0f;
@@ -759,7 +787,7 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	B << ClipperZScaleAndOffset (0.5f, 0.5f);
 	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
 	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
-	B << ColorWriteMasks (T.bDirect ? 0x8 : 0);		// (direct: alpha not written, stays 0)
+	B << ColorWriteMasks (T.bDirect && !T.bAlpha ? 0x8 : 0);	// (direct: alpha not written, stays 0 -- unless F_ALPHA)
 	B << BlendConstantColor (0, 0, 0, 0);
 	B << OP_ZERO_ALL_FLAT_SHADE_FLAGS;
 	B << OP_ZERO_ALL_NON_PERSPECTIVE_FLAGS;
@@ -926,6 +954,20 @@ extern "C" int kapi_gpu_texture (int nHandle, const unsigned *pPixels, int w, in
 	CScheduler::Get ()->EnterNoKill ();
 	CrashLogCrumb (CRUMB_V3D, 4);
 	int r = s_nState > 0 ? Texture (nHandle, pPixels, w, h, nStride) : -1;
+	CrashLogCrumb (CRUMB_V3D, 0);
+	s_bBusy = FALSE;
+	CScheduler::Get ()->LeaveNoKill ();
+	return r;
+}
+
+extern "C" int kapi_gpu_texture_rect (int nHandle, int x, int y, int w, int h, const unsigned *pPixels, int nStride)
+{
+	if (!Up ()) return -1;
+	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame reads it)
+	s_bBusy = TRUE;
+	CScheduler::Get ()->EnterNoKill ();
+	CrashLogCrumb (CRUMB_V3D, 4);
+	int r = s_nState > 0 ? TextureRect (nHandle, x, y, w, h, pPixels, nStride) : -1;
 	CrashLogCrumb (CRUMB_V3D, 0);
 	s_bBusy = FALSE;
 	CScheduler::Get ()->LeaveNoKill ();
@@ -1132,8 +1174,9 @@ static boolean CopiedRuns (unsigned nB)
 }
 
 // ---- v63: GPU-visible memory an app writes (gpu_vbuf): low, physically contiguous, mapped into it
+// (v70: 32 blocks in all, 8 a program -- two programs using the GPU at once each get theirs)
 struct TVBuf { CAddressSpace *pOwner; u8 *pRaw, *p; u32 nSize; u64 ulVA; };
-enum { MAX_VBUFS = 8 };
+enum { MAX_VBUFS = 32, MAX_VBUFS_AS = 8 };
 static TVBuf s_VBuf[MAX_VBUFS];
 
 extern "C" void *kapi_gpu_vbuf (unsigned nBytes)
@@ -1141,9 +1184,13 @@ extern "C" void *kapi_gpu_vbuf (unsigned nBytes)
 	if (!Up ()) return 0;
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS == 0 || nBytes == 0 || nBytes > (64u << 20)) return 0;
-	int k = -1;
-	for (int i = 0; i < MAX_VBUFS; i++) if (s_VBuf[i].pOwner == 0) { k = i; break; }
-	if (k < 0) return 0;
+	int k = -1, nMine = 0;
+	for (int i = 0; i < MAX_VBUFS; i++)
+	{
+		if (s_VBuf[i].pOwner == pAS) nMine++;
+		else if (s_VBuf[i].pOwner == 0 && k < 0) k = i;
+	}
+	if (k < 0 || nMine >= MAX_VBUFS_AS) return 0;
 	u32 nSize = (nBytes + KPAGE_SIZE - 1) & ~(u32) (KPAGE_SIZE - 1);
 	u8 *pRaw = (u8 *) CMemorySystem::HeapAllocate (nSize + KPAGE_SIZE, HEAP_LOW);
 	if (pRaw == 0) return 0;
@@ -1329,7 +1376,7 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 	    || !Alloc (s_BCL, 1024 + nB * 96 + s_nRuns * 16) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
 		return -2;
 	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
-	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T);
+	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T, (F.flags & KAPI_GPU_F_ALPHA) != 0);
 	TargetBefore (T, F.pixels, w, h, F.stride, bKeep);
 
 	CList Ind (s_Ind);
@@ -1456,7 +1503,7 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 			B << BlendCfg ((v >> 24) & 7, (v >> 12) & 15, (v >> 16) & 15, (v >> 20) & 7, (v >> 4) & 15, (v >> 8) & 15, 0xF);
 			nPrevBlend = v;
 		}
-		u32 nMask = (b.wmask & 15) | (T.bDirect ? 0x8 : 0);		// (direct: alpha not written, stays 0)
+		u32 nMask = (b.wmask & 15) | (T.bDirect && !T.bAlpha ? 0x8 : 0);	// (direct: alpha not written, stays 0 -- unless F_ALPHA)
 		if (nMask != nPrevMask) { B << ColorWriteMasks (nMask); nPrevMask = nMask; }
 		int C[4] = { 0, 0, w, h };
 		if (b.scissor[2] > 0 && b.scissor[3] > 0)

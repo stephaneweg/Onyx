@@ -837,6 +837,15 @@ void kapi_exit (int nStatus)
 
 	ThreadsEndProcess ();				// (v67) its other threads end with it
 
+	// Its TCP sockets closed now, not when the janitor reaps it (after all its tasks
+	// are gone): the kernel has MAX_SOCKETS in all, and a browser relaunched at once
+	// found them still held by the one closing -- its pages waited for sockets (10 s).
+	// NetCloseByPid waits for nothing; the reaper's call later finds none left.
+	if (pAS != 0)
+	{
+		NetCloseByPid (pAS->GetPid ());
+	}
+
 	// Leave the app's page table before terminating (kernel code on the kernel
 	// stack from here on).
 	ActivateKernelAddressSpace ();
