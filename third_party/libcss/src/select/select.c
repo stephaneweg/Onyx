@@ -184,6 +184,24 @@ static void css__destroy_node_data(struct css_node_data *node_data)
 }
 
 
+/* Onyx: exported function documented in public select.h header. */
+lwc_string *css_onyx_node_var(void *libcss_node_data, const char *name, size_t len)
+{
+	struct css_node_data *node_data = libcss_node_data;
+	uint32_t i;
+
+	if (node_data == NULL || node_data->onyx_vars == NULL)
+		return NULL;
+	for (i = 0; i < node_data->onyx_vars->n; i++) {
+		lwc_string *n = node_data->onyx_vars->v[i].name;
+
+		if (lwc_string_length(n) == len &&
+		    memcmp(lwc_string_data(n), name, len) == 0)
+			return lwc_string_ref(node_data->onyx_vars->v[i].value);
+	}
+	return NULL;
+}
+
 /* Exported function documented in public select.h header. */
 css_error css_libcss_node_data_handler(css_select_handler *handler,
 		css_node_data_action action, void *pw, void *node,

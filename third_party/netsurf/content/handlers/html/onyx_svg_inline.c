@@ -44,6 +44,7 @@
 
 #include "utils/log.h"
 #include "utils/nsurl.h"
+#include "utils/corestrings.h"
 #include "utils/nsoption.h"
 #include "content/content_factory.h"
 #include "css/utils.h"
@@ -65,7 +66,38 @@ struct svgbuf {
 	bool failed;
 	/* the ids the text defines, and those it names (#id), each '\0'-terminated in a list */
 	struct svgbuf *defined, *named;
+	void *vars;		/* the <svg>'s libcss node data: its custom properties */
+	float font_px;		/* the <svg>'s font size (its width="2em") */
 };
+
+static void sb_str(struct svgbuf *b, const char *s);
+
+/** a root width / height in em / rem / ex written in px (the element's font size, as the
+ * browsers' presentational width / height); false: not such a length */
+static bool svg_put_font_length(struct svgbuf *b, const char *v, size_t n)
+{
+	char num[32], *end;
+	float f, k;
+
+	if (n == 0 || n >= sizeof num || b->font_px <= 0)
+		return false;
+	memcpy(num, v, n);
+	num[n] = '\0';
+	f = strtof(num, &end);
+	if (end == num)
+		return false;
+	if (strcmp(end, "em") == 0)
+		k = b->font_px;
+	else if (strcmp(end, "rem") == 0)
+		k = 16.f;
+	else if (strcmp(end, "ex") == 0)
+		k = b->font_px / 2;
+	else
+		return false;
+	snprintf(num, sizeof num, "%g", f * k);
+	sb_str(b, num);
+	return true;
+}
 
 static void sb_put(struct svgbuf *b, const char *s, size_t n)
 {
@@ -143,6 +175,75 @@ static void svg_note_refs(struct svgbuf *b, const char *v, size_t n)
 					;
 				sb_add_word(b->named, v + j, k - j);
 			}
+		}
+	}
+}
+
+/**
+ * A value written with its var(--x[, fallback]) replaced by the <svg>'s custom property
+ * (libcss keeps them in the element's node data), else the fallback -- `fill: var(--c)`
+ * in an icon's style is common. `depth` bounds a fallback's own var().
+ */
+static void svg_put_value(struct svgbuf *b, const char *v, size_t n, int depth)
+{
+	size_t i = 0;
+
+	while (i < n) {
+		const char *p = NULL;
+		size_t k;
+
+		for (k = i; k + 6 < n; k++) {
+			if (memcmp(v + k, "var(", 4) == 0) {
+				p = v + k;
+				break;
+			}
+		}
+		if (p == NULL || b->vars == NULL || depth > 4) {
+			sb_put(b, v + i, n - i);
+			return;
+		}
+		sb_put(b, v + i, p - (v + i));
+		{
+			size_t s = (p - v) + 4, e, nb, ne;
+			int paren = 1;
+			lwc_string *val;
+
+			while (s < n && v[s] == ' ')
+				s++;
+			nb = s;
+			while (s < n && v[s] != ',' && v[s] != ')' && v[s] != ' ')
+				s++;
+			ne = s;
+			for (e = s; e < n && paren > 0; e++) {
+				if (v[e] == '(')
+					paren++;
+				else if (v[e] == ')')
+					paren--;
+			}
+			/* e: past the closing ')' */
+			val = css_onyx_node_var(b->vars, v + nb, ne - nb);
+			if (val != NULL) {
+				svg_put_value(b, lwc_string_data(val), lwc_string_length(val),
+						depth + 1);
+				lwc_string_unref(val);
+			} else {
+				size_t f = ne;
+
+				while (f < n && v[f] == ' ')
+					f++;
+				if (f < n && v[f] == ',') {
+					size_t fe = e > 0 ? e - 1 : e;	/* before ')' */
+
+					f++;
+					while (f < fe && v[f] == ' ')
+						f++;
+					svg_put_value(b, v + f, fe - f, depth + 1);
+				} else {
+					/* undefined, no fallback: as written (PlutoSVG's own) */
+					sb_put(b, p, (v + e) - p);
+				}
+			}
+			i = e;
 		}
 	}
 }
@@ -230,7 +331,10 @@ static void svg_write(struct svgbuf *b, dom_node *n, const char *color_attr, int
 				sb_str(b, "=");
 				if (q != 0) {
 					sb_put(b, &q, 1);
-					sb_put(b, v, vn);
+					if (color_attr == NULL || !(svg_name_is(an, "width") ||
+							svg_name_is(an, "height")) ||
+					    !svg_put_font_length(b, v, vn))
+						svg_put_value(b, v, vn, 0);
 					sb_put(b, &q, 1);
 				} else {
 					/* both quotes in the value: its double ones made single */
@@ -388,6 +492,17 @@ bool onyx_svg_box(dom_node *n, html_content *content, struct box *box,
 	snprintf(color, sizeof color, "#%06x", (unsigned) (cc & 0xffffff));
 	text.defined = &defined;
 	text.named = &named;
+	if (dom_node_get_user_data(n, corestring_dom___ns_key_libcss_node_data,
+			&text.vars) != DOM_NO_ERR)
+		text.vars = NULL;
+	{
+		css_fixed fs = 0;
+		css_unit fu = CSS_UNIT_PX;
+
+		css_computed_font_size(box->style, &fs, &fu);
+		text.font_px = FIXTOFLT(css_unit_len2device_px(box->style,
+				&content->unit_len_ctx, fs, fu));
+	}
 	svg_write(&text, n, color, 0);
 
 	/* the elements it names that are elsewhere in the page, into a <defs> */

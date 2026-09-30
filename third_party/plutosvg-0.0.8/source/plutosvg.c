@@ -689,6 +689,24 @@ static bool parse_length_value(const char** begin, const char* end, length_t* le
         length->type = length_type_fixed;
         it += 2;
         break;
+    case 'e':   /* Onyx: em / ex, of a 16 px font (no CSS font size here) */
+        if(units[1] == 'm')
+            length->value = value * 16.f;
+        else if(units[1] == 'x')
+            length->value = value * 8.f;
+        else
+            return false;
+        length->type = length_type_fixed;
+        it += 2;
+        break;
+    case 'r':   /* Onyx: rem */
+        if(units[1] == 'e' && it + 2 < end && it[2] == 'm')
+            length->value = value * 16.f;
+        else
+            return false;
+        length->type = length_type_fixed;
+        it += 3;
+        break;
     default:
         length->value = value;
         length->type = length_type_fixed;
