@@ -43,6 +43,10 @@ void free_user_agent_string(void);
  */
 const char *user_agent_for_host(const char *host);
 
+/** Onyx: the full version of the Chrome the User-Agents name ("142.0.7444.176": the
+ * high-entropy client hints, navigator.userAgentData) */
+const char *user_agent_chrome_full(void);
+
 /** Onyx: whether a host's site gets the desktop version */
 bool user_agent_is_desktop(const char *host);
 

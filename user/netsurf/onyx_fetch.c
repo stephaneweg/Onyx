@@ -217,8 +217,76 @@ static bool onyx_split_url(const char *url, char *host, size_t hcap, unsigned *p
 	return host[0] != '\0';
 }
 
+/* Onyx: a request header's place in Chrome's order (its HTTP/1.1 and HTTP/2 requests: some
+ * bot checks look at it) -- name: n bytes, any case. Unknown ones go after Accept. */
+static int onyx_hdr_rank(const char *name, size_t n)
+{
+	static const struct { const char *n; int r; } ranks[] = {
+		{ "host", 0 }, { "connection", 1 }, { "content-length", 2 }, { "pragma", 3 },
+		{ "cache-control", 4 }, { "sec-ch-ua", 5 }, { "sec-ch-ua-mobile", 5 },
+		{ "sec-ch-ua-full-version", 5 }, { "sec-ch-ua-arch", 5 },
+		{ "sec-ch-ua-full-version-list", 5 }, { "sec-ch-ua-bitness", 5 },
+		{ "sec-ch-ua-model", 5 }, { "sec-ch-ua-platform", 6 },
+		{ "sec-ch-ua-platform-version", 6 }, { "sec-ch-ua-wow64", 6 },
+		{ "sec-ch-ua-form-factors", 6 }, { "origin", 7 }, { "content-type", 8 },
+		{ "upgrade-insecure-requests", 9 }, { "user-agent", 10 }, { "accept", 11 },
+		{ "sec-fetch-site", 13 }, { "sec-fetch-mode", 14 }, { "sec-fetch-user", 15 },
+		{ "sec-fetch-dest", 16 }, { "referer", 17 }, { "accept-encoding", 18 },
+		{ "accept-language", 19 }, { "cookie", 20 }, { "if-none-match", 21 },
+		{ "if-modified-since", 22 }, { "priority", 23 },
+	};
+	size_t i;
+	for (i = 0; i < sizeof ranks / sizeof ranks[0]; i++)
+		if (strlen(ranks[i].n) == n && strncasecmp(ranks[i].n, name, n) == 0)
+			return ranks[i].r;
+	return 12;
+}
+
+/* Onyx: header lines ("Name: value\r\n"...) put in Chrome's order in place (a stable sort) */
+static void onyx_order_headers(char *block)
+{
+	char *line[96], *copy, *o;
+	int rank[96], n = 0, i, j;
+	size_t len = strlen(block);
+	char *p = block;
+
+	while (*p != '\0' && n < 96) {
+		char *eol = strchr(p, '\n'), *colon = strchr(p, ':');
+		line[n] = p;
+		rank[n] = colon != NULL && (eol == NULL || colon < eol) ?
+			onyx_hdr_rank(p, (size_t) (colon - p)) : 12;
+		n++;
+		if (eol == NULL)
+			break;
+		p = eol + 1;
+	}
+	if (*p != '\0' && n == 96)
+		return;			/* (too many: as they are) */
+	copy = malloc(len + 1);
+	if (copy == NULL)
+		return;
+	o = copy;
+	for (j = 0; j <= 23; j++)
+		for (i = 0; i < n; i++) {
+			if (rank[i] != j)
+				continue;
+			{
+				char *eol = strchr(line[i], '\n');
+				size_t l = eol != NULL ? (size_t) (eol - line[i]) + 1 : strlen(line[i]);
+				memcpy(o, line[i], l);
+				o += l;
+			}
+		}
+	*o = '\0';
+	if ((size_t) (o - copy) == len)
+		memcpy(block, copy, len + 1);
+	free(copy);
+}
+
 /* The request: "METHOD path HTTP/1.1", our headers, the caller's, the body. malloc'd; *len its
- * length (the body may hold any byte but NUL). The path stops at a fragment. */
+ * length (the body may hold any byte but NUL). The path stops at a fragment. Onyx: the
+ * headers in Chrome's order and casing (Host, Connection first; the client hints' names in
+ * lower case). */
 static char *onyx_request(const char *method, const char *path, const char *host,
 		unsigned port, bool tls, const char *ua, const char *lang, const char *hdrs,
 		const char *body, bool keepalive, int *len)
@@ -248,16 +316,30 @@ static char *onyx_request(const char *method, const char *path, const char *host
 	r = malloc(cap);
 	if (r == NULL)
 		return NULL;
-	n = snprintf(r, cap,
-		"%s %.*s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n%s%s%s%s"
-		"Accept-Encoding: " ONYX_ACCEPT_ENCODING "\r\nConnection: %s\r\n%s%s\r\n",
-		method, (int) plen, path, hostport, ua,
-		has_accept ? "" : "Accept: */*\r\n",
-		has_lang ? "" : "Accept-Language: ", has_lang ? "" : lang,
-		has_lang ? "" : "\r\n",
-		keepalive ? "keep-alive" : "close",
-		hdrs != NULL ? hdrs : "", extra);
-	if (n <= 0 || (size_t) n + blen >= cap) {
+	{
+		int rl = snprintf(r, cap, "%s %.*s HTTP/1.1\r\n", method, (int) plen, path), hl;
+		if (rl <= 0 || (size_t) rl >= cap) {
+			free(r);
+			return NULL;
+		}
+		hl = snprintf(r + rl, cap - (size_t) rl,
+			"Host: %s\r\nUser-Agent: %s\r\n%s%s%s%s"
+			"Accept-Encoding: " ONYX_ACCEPT_ENCODING "\r\nConnection: %s\r\n%s%s",
+			hostport, ua,
+			has_accept ? "" : "Accept: */*\r\n",
+			has_lang ? "" : "Accept-Language: ", has_lang ? "" : lang,
+			has_lang ? "" : "\r\n",
+			keepalive ? "keep-alive" : "close",
+			hdrs != NULL ? hdrs : "", extra);
+		if (hl <= 0 || (size_t) (rl + hl) + 2 >= cap) {
+			free(r);
+			return NULL;
+		}
+		onyx_order_headers(r + rl);		/* (Onyx: Chrome's order) */
+		memcpy(r + rl + hl, "\r\n", 3);
+		n = rl + hl + 2;
+	}
+	if ((size_t) n + blen >= cap) {
 		free(r);
 		return NULL;
 	}
@@ -490,6 +572,130 @@ static const char *onyx_site_of(const char *host)
 	return n >= 2 ? dots[1] + 1 : host;
 }
 
+/* ---- Onyx: the User-Agent client hints as Chrome sends them ------------------------------
+ * sec-ch-ua: its brand list with Chrome's GREASE brand -- the name, version and order drawn
+ * from the major version as Chromium does (user_agent_utils.cc, GenerateBrandVersionList);
+ * a hand-made list is a bot's mark. The high-entropy hints (the full version list, the
+ * architecture, the platform's version...) only to the origins that asked for them by
+ * Accept-CH (Google does), as Chrome: remembered per origin for the app's life. */
+static int onyx_ua_brands(char *b, size_t n, const char *major, const char *full)
+{
+	static const char chars[] = " (:-./);=?_";
+	static const char *const gver[] = { "8", "99", "24" };
+	static const int order[6][3] = { {0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1},
+		{2, 1, 0} };
+	int seed = atoi(major);
+	const int *o = order[seed % 6];
+	char e[3][80];
+
+	snprintf(e[o[0]], sizeof e[0], "\"Not%cA%cBrand\";v=\"%s%s\"", chars[seed % 11],
+			chars[(seed + 1) % 11], gver[seed % 3], full != NULL ? ".0.0.0" : "");
+	snprintf(e[o[1]], sizeof e[1], "\"Chromium\";v=\"%s\"", full != NULL ? full : major);
+	snprintf(e[o[2]], sizeof e[2], "\"Google Chrome\";v=\"%s\"", full != NULL ? full : major);
+	return snprintf(b, n, "%s, %s, %s", e[0], e[1], e[2]);
+}
+
+#define ONYX_CH_ORIGINS	32
+enum { CH_FULL_LIST = 1, CH_FULL = 2, CH_ARCH = 4, CH_BITNESS = 8, CH_MODEL = 16,
+	CH_PLATFORM_VERSION = 32, CH_WOW64 = 64, CH_FORM_FACTORS = 128 };
+static struct { char host[128]; unsigned hints; } onyx_ch[ONYX_CH_ORIGINS];
+static unsigned onyx_ch_next;
+
+/* (the UI thread) a response's Accept-CH: the hints its origin wants from now on */
+static void onyx_accept_ch(const char *host, const char *v)
+{
+	static const struct { const char *n; unsigned bit; } names[] = {
+		{ "sec-ch-ua-full-version-list", CH_FULL_LIST }, { "sec-ch-ua-full-version", CH_FULL },
+		{ "sec-ch-ua-arch", CH_ARCH }, { "sec-ch-ua-bitness", CH_BITNESS },
+		{ "sec-ch-ua-model", CH_MODEL }, { "sec-ch-ua-platform-version", CH_PLATFORM_VERSION },
+		{ "sec-ch-ua-wow64", CH_WOW64 }, { "sec-ch-ua-form-factors", CH_FORM_FACTORS },
+	};
+	unsigned hints = 0, i;
+	int slot = -1;
+
+	for (i = 0; i < sizeof names / sizeof names[0]; i++) {
+		const char *p = v;
+		size_t l = strlen(names[i].n);
+		while ((p = strcasestr(p, names[i].n)) != NULL) {
+			if (p[l] == '\0' || p[l] == ',' || p[l] == ' ') {
+				hints |= names[i].bit;
+				break;
+			}
+			p += l;
+		}
+	}
+	for (i = 0; i < ONYX_CH_ORIGINS; i++)
+		if (strcasecmp(onyx_ch[i].host, host) == 0)
+			slot = (int) i;
+	if (slot < 0) {
+		if (hints == 0)
+			return;
+		slot = (int) (onyx_ch_next++ % ONYX_CH_ORIGINS);
+		snprintf(onyx_ch[slot].host, sizeof onyx_ch[slot].host, "%s", host);
+	}
+	onyx_ch[slot].hints = hints;
+}
+
+static unsigned onyx_ch_hints(const char *host)
+{
+	unsigned i;
+	for (i = 0; i < ONYX_CH_ORIGINS; i++)
+		if (onyx_ch[i].host[0] != '\0' && strcasecmp(onyx_ch[i].host, host) == 0)
+			return onyx_ch[i].hints;
+	return 0;
+}
+
+/* the client hints of a request to host (https only), for its User-Agent */
+static void onyx_add_client_hints(char **hdrs, const char *host, const char *ua)
+{
+	const char *cv = strstr(ua, "Chrome/"), *full = user_agent_chrome_full();
+	char v[16] = "142", b[256];
+	bool mobile = strstr(ua, "Mobile") != NULL, android = strstr(ua, "Android") != NULL;
+	bool windows = strstr(ua, "Windows") != NULL;
+	unsigned hints = host != NULL ? onyx_ch_hints(host) : 0;
+	int k;
+
+	if (cv != NULL) {
+		for (k = 0, cv += 7; k < 15 && cv[k] >= '0' && cv[k] <= '9'; k++)
+			v[k] = cv[k];
+		if (k > 0) v[k] = '\0';
+	}
+	if (strncmp(full, v, strlen(v)) != 0 || full[strlen(v)] != '.')
+		full = NULL;		/* (a User-Agent of Choices' naming another Chrome) */
+	k = onyx_ua_brands(b, sizeof b, v, NULL);
+	hdrs_add(hdrs, "sec-ch-ua", b, (size_t) k);
+	hdrs_add(hdrs, "sec-ch-ua-mobile", mobile ? "?1" : "?0", 2);
+	{
+		const char *pf = android ? "\"Android\"" : windows ? "\"Windows\"" :
+			strstr(ua, "Mac OS") ? "\"macOS\"" : "\"Linux\"";
+		hdrs_add(hdrs, "sec-ch-ua-platform", pf, strlen(pf));
+	}
+	if (hints & CH_ARCH)
+		hdrs_add(hdrs, "sec-ch-ua-arch", android ? "\"\"" : "\"x86\"", android ? 2 : 5);
+	if (hints & CH_BITNESS)
+		hdrs_add(hdrs, "sec-ch-ua-bitness", "\"64\"", 4);
+	if ((hints & CH_FULL) && full != NULL) {
+		k = snprintf(b, sizeof b, "\"%s\"", full);
+		hdrs_add(hdrs, "sec-ch-ua-full-version", b, (size_t) k);
+	}
+	if ((hints & CH_FULL_LIST) && full != NULL) {
+		k = onyx_ua_brands(b, sizeof b, v, full);
+		hdrs_add(hdrs, "sec-ch-ua-full-version-list", b, (size_t) k);
+	}
+	if (hints & CH_MODEL)
+		hdrs_add(hdrs, "sec-ch-ua-model", android ? "\"K\"" : "\"\"", android ? 3 : 2);
+	if (hints & CH_PLATFORM_VERSION) {
+		const char *pv = android ? "\"10.0.0\"" : windows ? "\"19.0.0\"" : "\"6.12.0\"";
+		hdrs_add(hdrs, "sec-ch-ua-platform-version", pv, strlen(pv));
+	}
+	if (hints & CH_WOW64)
+		hdrs_add(hdrs, "sec-ch-ua-wow64", "?0", 2);
+	if (hints & CH_FORM_FACTORS) {
+		const char *ff = mobile ? "\"Mobile\"" : "\"Desktop\"";
+		hdrs_add(hdrs, "sec-ch-ua-form-factors", ff, strlen(ff));
+	}
+}
+
 /* Onyx: Chrome's Fetch Metadata request headers (Sec-Fetch-Site / -Mode / -Dest / -User,
  * Upgrade-Insecure-Requests), an Accept header by destination, and on https the User-Agent
  * client hints (sec-ch-ua...) -- m.facebook.com answers "Sorry, something went wrong" (a 400)
@@ -541,33 +747,13 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 	if (nav)
 		hdrs_add(hdrs, "Upgrade-Insecure-Requests", "1", 1);
 	if (us != NULL && strcasecmp(lwc_string_data(us), "https") == 0) {
-		/* the client hints a Chrome sends everywhere on https (its version and whether
-		 * mobile from the User-Agent) */
-		const char *ua, *cv;
-		{	/* (Onyx: the site's -- desktop or mobile: the toolbar's "Desktop site") */
-			lwc_string *hh = nsurl_get_component(url, NSURL_HOST);
-			ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
-			if (hh != NULL)
-				lwc_string_unref(hh);
-		}
-		cv = strstr(ua, "Chrome/");
-		char v[16] = "126", b[160];
-		int k;
-		if (cv != NULL) {
-			for (k = 0, cv += 7; k < 15 && cv[k] >= '0' && cv[k] <= '9'; k++)
-				v[k] = cv[k];
-			if (k > 0) v[k] = '\0';
-		}
-		k = snprintf(b, sizeof b, "\"Chromium\";v=\"%s\", \"Google Chrome\";v=\"%s\", "
-				"\"Not-A.Brand\";v=\"99\"", v, v);
-		hdrs_add(hdrs, "sec-ch-ua", b, (size_t) k);
-		hdrs_add(hdrs, "sec-ch-ua-mobile", strstr(ua, "Mobile") ? "?1" : "?0", 2);
-		{
-			const char *pf = strstr(ua, "Android") ? "\"Android\"" :
-				strstr(ua, "Windows") ? "\"Windows\"" :
-				strstr(ua, "Mac OS") ? "\"macOS\"" : "\"Linux\"";
-			hdrs_add(hdrs, "sec-ch-ua-platform", pf, strlen(pf));
-		}
+		/* the client hints a Chrome sends on https (Onyx: for the site's User-Agent --
+		 * desktop or mobile: the toolbar's "Desktop site") */
+		lwc_string *hh = nsurl_get_component(url, NSURL_HOST);
+		const char *h = hh != NULL ? lwc_string_data(hh) : NULL;
+		onyx_add_client_hints(hdrs, h, user_agent_for_host(h));
+		if (hh != NULL)
+			lwc_string_unref(hh);
 	}
 	hdrs_add(hdrs, "Sec-Fetch-Site", site, strlen(site));
 	hdrs_add(hdrs, "Sec-Fetch-Mode", mode, strlen(mode));
@@ -847,6 +1033,18 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 		const char *eol = memchr(p, '\n', (size_t)(end - p));
 		size_t ll = eol ? (size_t)(eol - p) : (size_t)(end - p);
 		if (ll > 0 && p[ll - 1] == '\r') ll--;
+		if (ll > 10 && hdr_is(p, "Accept-CH") && p[9] == ':') {
+			/* (Onyx: the client hints this origin wants: onyx_add_client_hints) */
+			char v[512];
+			size_t vl = ll - 10 < sizeof v - 1 ? ll - 10 : sizeof v - 1;
+			lwc_string *hh = nsurl_get_component(c->url, NSURL_HOST);
+			memcpy(v, p + 10, vl);
+			v[vl] = '\0';
+			if (hh != NULL) {
+				onyx_accept_ch(lwc_string_data(hh), v);
+				lwc_string_unref(hh);
+			}
+		}
 		if (ll > 11 && !c->no_cookies && hdr_is(p, "Set-Cookie")) {
 			char *v = malloc(ll + 1);
 			if (v != NULL) {
@@ -2155,7 +2353,7 @@ static bool h2_submit(struct onyx_h2 *e, struct onyx_job *j)
 			if (*l == '\n')
 				nh++;
 	}
-	nv = calloc(nh + 8, sizeof *nv);
+	nv = calloc(nh + 13, sizeof *nv);	/* (8 ours, nh + 1 the caller's, 2 the body's, priority) */
 	s = calloc(1, sizeof *s);
 	if (nv == NULL || s == NULL) {
 		free(nv); free(s); free(hd);
@@ -2175,7 +2373,7 @@ static bool h2_submit(struct onyx_h2 *e, struct onyx_job *j)
 	H2_NV(nv[n], "accept-encoding", 15, ONYX_ACCEPT_ENCODING, strlen(ONYX_ACCEPT_ENCODING)); n++;
 	/* the caller's headers (the cookies, the referer, the fetch metadata...), their names
 	 * in lower case; those HTTP/2 forbids left out */
-	for (l = hd; l != NULL && *l != '\0' && n < (int) nh + 6; ) {
+	for (l = hd; l != NULL && *l != '\0' && n < (int) nh + 9; ) {
 		char *eol = strchr(l, '\n'), *colon = strchr(l, ':'), *v, *ve, *k;
 		size_t nl;
 		if (eol == NULL)
@@ -2218,6 +2416,31 @@ static bool h2_submit(struct onyx_h2 *e, struct onyx_job *j)
 		H2_NV(nv[n], "content-length", 14, clen, strlen(clen)); n++;
 		prd.source.ptr = s;
 		prd.read_callback = h2_body_read;
+	}
+	/* (Onyx: the regular headers in Chrome's order, after the pseudo-headers -- a stable
+	 * insertion sort by onyx_hdr_rank -- and its priority header, by destination) */
+	{
+		const char *dest = NULL;
+		int a, b;
+		for (a = 4; a < n; a++)
+			if (nv[a].namelen == 14 && memcmp(nv[a].name, "sec-fetch-dest", 14) == 0)
+				dest = (const char *) nv[a].value;
+		if (dest != NULL) {
+			const char *pr = strncmp(dest, "document", 8) == 0 ||
+				strncmp(dest, "iframe", 6) == 0 ? "u=0, i" :
+				strncmp(dest, "style", 5) == 0 || strncmp(dest, "font", 4) == 0 ? "u=0" :
+				strncmp(dest, "script", 6) == 0 ? "u=1" : "u=1, i";
+			H2_NV(nv[n], "priority", 8, pr, strlen(pr));
+			n++;
+		}
+		for (a = 5; a < n; a++) {
+			nghttp2_nv t = nv[a];
+			int r = onyx_hdr_rank((const char *) t.name, t.namelen);
+			for (b = a - 1; b >= 4 &&
+			     onyx_hdr_rank((const char *) nv[b].name, nv[b].namelen) > r; b--)
+				nv[b + 1] = nv[b];
+			nv[b + 1] = t;
+		}
 	}
 	/* (Chrome's priority on its HEADERS: exclusive, on stream 0, weight 256) */
 	nghttp2_priority_spec_init(&pri, 0, 256, 1);

@@ -75,6 +75,14 @@ user_agent_build_string(void)
               core_user_agent_string);
 }
 
+/* Onyx: the Chrome the User-Agents name -- one version for the headers, the client hints
+ * (user/netsurf/onyx_fetch.c) and navigator.userAgentData (quickjs/dom.js). Chrome's
+ * reduced User-Agent (since Chrome 110): "Chrome/<major>.0.0.0", "Android 10; K", "Windows
+ * NT 10.0"; the full version only in the high-entropy client hints. An old version stands
+ * out (Google's "unusual traffic"): bump it now and then. */
+#define ONYX_CHROME_MAJOR "142"
+#define ONYX_CHROME_FULL "142.0.7444.176"
+
 /* This is a function so that later we can override it trivially */
 const char *
 user_agent_string(void)
@@ -89,9 +97,15 @@ user_agent_string(void)
 
 	if (choice != NULL && choice[0] != '\0')
 		return choice;
-	return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
-		"(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+	return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+		"(KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Mobile Safari/537.36";
 	(void) user_agent_build_string;
+}
+
+/* Public API documented in useragent.h */
+const char *user_agent_chrome_full(void)
+{
+	return ONYX_CHROME_FULL;
 }
 
 /* Public API documented in useragent.h */
@@ -118,7 +132,7 @@ free_user_agent_string(void)
 #define UA_SITES_MAX 256
 
 static const char ua_desktop[] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Safari/537.36";
 static char *ua_sites[UA_SITES_MAX];
 static int ua_nsites = -1;		/* (-1: the file not read yet) */
 
