@@ -33,7 +33,9 @@ typedef enum hubbub_parser_opttype {
 	HUBBUB_PARSER_TREE_HANDLER,
 	HUBBUB_PARSER_DOCUMENT_NODE,
 	HUBBUB_PARSER_ENABLE_SCRIPTING,
-	HUBBUB_PARSER_PAUSE
+	HUBBUB_PARSER_PAUSE,
+	HUBBUB_PARSER_LAST_START_TAG,	/**< Onyx: the tokeniser's last start tag */
+	HUBBUB_PARSER_FRAGMENT_CONTEXT	/**< Onyx: parse a fragment in this context */
 } hubbub_parser_opttype;
 
 /**
@@ -61,6 +63,20 @@ typedef union hubbub_parser_optparams {
 	bool enable_scripting;		/**< Whether to enable scripting */
 
 	bool pause_parse;		/**< Pause parsing */
+
+	const char *last_start_tag;	/**< Onyx: a start tag's name, or NULL */
+
+	/** Onyx: the context element of a fragment (innerHTML, the tests): its namespace,
+	 * its name (lower case for HTML), its node (the tree handler's) and the form element
+	 * it is in, if any (node and form may be NULL) */
+	struct {
+		hubbub_ns ns;
+		const char *name;
+		void *node;
+		void *form;
+		bool html_integration_point;	/**< an annotation-xml with an HTML encoding */
+		bool quirks;		/**< the context's document is in quirks mode */
+	} fragment_context;
 } hubbub_parser_optparams;
 
 /* Create a hubbub parser */

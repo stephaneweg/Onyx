@@ -27,7 +27,8 @@ typedef enum hubbub_treebuilder_opttype {
 	HUBBUB_TREEBUILDER_ERROR_HANDLER,
 	HUBBUB_TREEBUILDER_TREE_HANDLER,
 	HUBBUB_TREEBUILDER_DOCUMENT_NODE,
-	HUBBUB_TREEBUILDER_ENABLE_SCRIPTING
+	HUBBUB_TREEBUILDER_ENABLE_SCRIPTING,
+	HUBBUB_TREEBUILDER_FRAGMENT_CONTEXT	/**< Onyx: a fragment's context element */
 } hubbub_treebuilder_opttype;
 
 /**
@@ -44,6 +45,15 @@ typedef union hubbub_treebuilder_optparams {
 	void *document_node;			/**< The document node */
 
 	bool enable_scripting;			/**< Enable scripting */
+
+	struct {
+		hubbub_ns ns;
+		const char *name;
+		void *node;
+		void *form;
+		bool html_integration_point;
+		bool quirks;		/**< the context's document is in quirks mode */
+	} fragment_context;			/**< Onyx: as the parser's option */
 } hubbub_treebuilder_optparams;
 
 /* Create a hubbub treebuilder */
@@ -52,6 +62,9 @@ hubbub_error hubbub_treebuilder_create(hubbub_tokeniser *tokeniser,
 
 /* Destroy a hubbub treebuilder */
 hubbub_error hubbub_treebuilder_destroy(hubbub_treebuilder *treebuilder);
+
+/* Onyx: put the text gathered so far into the tree (after a run of the tokeniser) */
+void hubbub_treebuilder_flush(hubbub_treebuilder *treebuilder);
 
 /* Configure a hubbub treebuilder */
 hubbub_error hubbub_treebuilder_setopt(hubbub_treebuilder *treebuilder,

@@ -157,6 +157,23 @@ expect "$L" "reveal content true"
 expect "$L" "reveal fallback gone true"
 expect "$L" "reveal after kept true"
 
+# Onyx: the HTML5 checks -- each page logs "OK <area> name" / "FAIL <area> name" and ends
+# with "<area> done N" (N checks)
+html5page() {	# html5page <page> <area> <what>
+	echo "$1 ($3)"
+	L=$OUT/${1%.html}.log
+	run "$1" "$(waits 150)" "$L"
+	grep "^console: FAIL $2 " "$L" | sed 's/^console: /  /'
+	if grep -q "^console: FAIL $2 " "$L" || ! grep -q "^console: $2 done" "$L"; then
+		echo "  FAIL  ($2: not all run: $L)"; fail=1
+	else
+		echo "  ok: $(grep -c "^console: OK $2 " "$L") checks"
+	fi
+}
+html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, templates, DOMParser; messaging"
+html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
+html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs, microdata, performance marks, XHR documents"
+html5page js-ce.html ce "custom elements: define, upgrades (the parser's too), lifecycle callbacks"
 echo "canvas-api.html (<canvas> 2D: state, paths, pixels, text, images, OffscreenCanvas)"
 L=$OUT/canvas-api.log
 run canvas-api.html "$(waits 80)" "$L"

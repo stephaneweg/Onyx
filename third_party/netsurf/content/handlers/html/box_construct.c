@@ -1259,6 +1259,33 @@ static bool box_construct_text(struct box_construct_ctx *ctx)
 
 
 /**
+ * Onyx: is this text a child of a closed <details> (its text is hidden with the rest of its
+ * contents but the summary; the elements are hidden by default.css)?
+ */
+static bool onyx_in_closed_details(dom_node *text)
+{
+	dom_node *p = NULL;
+	dom_html_element_type type;
+	bool closed = false, open = false;
+	dom_node_type nt;
+
+	if (dom_node_get_parent_node(text, &p) != DOM_NO_ERR || p == NULL)
+		return false;
+	if (dom_node_get_node_type(p, &nt) == DOM_NO_ERR && nt == DOM_ELEMENT_NODE &&
+			dom_html_element_get_tag_type(p, &type) == DOM_NO_ERR &&
+			type == DOM_HTML_ELEMENT_TYPE_DETAILS) {
+		static dom_string *s_open;
+		if (s_open == NULL)
+			dom_string_create((const uint8_t *) "open", 4, &s_open);
+		if (s_open != NULL &&
+				dom_element_has_attribute((dom_element *) p, s_open, &open) == DOM_NO_ERR)
+			closed = !open;
+	}
+	dom_node_unref(p);
+	return closed;
+}
+
+/**
  * Convert an ELEMENT node to a box tree fragment,
  * then schedule conversion of the next ELEMENT node
  */
@@ -1298,7 +1325,7 @@ static void convert_xml_to_box(struct box_construct_ctx *ctx)
 			if (type == DOM_ELEMENT_NODE)
 				break;
 
-			if (type == DOM_TEXT_NODE) {
+			if (type == DOM_TEXT_NODE && !onyx_in_closed_details(next)) {
 				ctx->n = next;
 				if (box_construct_text(ctx) == false) {
 					ctx->cb(ctx->content, false);

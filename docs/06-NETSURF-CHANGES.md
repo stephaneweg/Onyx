@@ -21,11 +21,12 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17) |
+| `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -244,8 +245,8 @@ optional chaining...) with the DOM written in JavaScript:
   (`qjs.c`): NetSurf's low-level cache with `LLCACHE_RETRIEVE_FORCE_FETCH`, the callback on the
   page's thread (the promises' jobs run after it, a changed DOM laid out again); the requests
   in flight are cancelled when the document goes. Not yet: synchronous XHR (it runs async),
-  streams (`body` is null), multipart bodies, `responseXML`, CORS checks (every origin
-  answers).
+  multipart bodies, CORS checks (every origin answers); streams, `responseXML` and
+  `responseType = 'document'`: html5.js (§17).
 - **A changed DOM is laid out again** (`html.c`, `html_script_dom_changed`): once a script
   is done, NetSurf builds the document's boxes again (`dom_to_box_now`, synchronously) and
   lays it out — a menu a script opens, a class toggled, nodes added. The old boxes' objects
@@ -665,10 +666,166 @@ now has its own implementation, in JavaScript:
   run pass, 92.6%; Temporal, DurationFormat and a few features are skipped). Live: bbc.co.uk,
   bbc.com and youtube.com no longer stop on `Intl`.
 
+## 16. The HTML parser (libhubbub, libdom's binding, libparserutils)
+
+NetSurf's parser, hubbub, followed the HTML5 drafts of about 2008: no `<template>`, a
+different `<select>` and `<table>` handling, the character references of that time, no
+fragment parsing in a context element. It now follows the current standard (the WHATWG
+tokenizer and tree construction), measured by the **html5lib-tests** (the test suite the
+browsers' parsers share; `tools/tests/netsurf/html5lib.sh`):
+
+| | Before | After |
+|---|---|---|
+| Tokenizer (`tokenizer/*.test`) | 6739 / 7032 (95.8%) | 7024 / 7028 (99.9%) |
+| Tree construction (`tree-construction/*.dat`, documents and fragments, scripting on and off) | 930 / 1716 (54.2%) | 1792 / 1792 (100%) |
+
+(The old count missed the tests with a NUL in them: 1716 of the 1792. The 4 tokenizer tests
+left start with a U+FEFF that libparserutils' decoder takes off as a byte order mark, as a
+browser does for a document; `xmlViolation.test` is for XML-style parsers and is skipped. The
+tree tests also pass fed in chunks of 1, 2, 3, 7 and 64 bytes, and under valgrind.)
+
+- **The tokenizer** (`libhubbub/src/tokeniser/tokeniser.c`) is written again from the
+  standard's state machine: every state, the character reference states with the standard's
+  **2231 named references** (`onyx_entities.inc`, generated by `build/make-onyx-entities.py`
+  from the standard's `entities.json`; searched by bisection -- the old trie, `entities.c`,
+  and its Perl generator are gone), the numeric references' replacement table, CR / CRLF
+  made LF, the script data escape states, CDATA sections in foreign content. The text runs
+  between markup are handed on without a copy (a table of the bytes that stop each text
+  state). New options: `HUBBUB_TOKENISER_LAST_START_TAG` (an appropriate end tag in RCDATA /
+  RAWTEXT / script data when a fragment starts in such an element) and the content models
+  `SCRIPTDATA` and `CDATA_SECTION` (`include/hubbub/types.h`).
+- **The tree builder** (`src/treebuilder/treebuilder.c`, one file: the old per-mode files,
+  `element-type.*`, `internal.h`, `modes.h` are gone) has every insertion mode of the
+  standard: the stack of open elements and the list of active formatting elements (with the
+  Noah's ark clause), the adoption agency algorithm, foster parenting, `<template>` (its own
+  insertion modes; its children go to the template's contents fragment), foreign content
+  (SVG and MathML, their attribute and tag name adjustments, the integration points), the
+  "in select" handling of the current standard (the relaxed `<select>` parser: other
+  elements allowed in a select) with **`<selectedcontent>`** (a copy of the selected
+  option's contents), frameset, quirks mode from the doctype, and **fragment parsing** in
+  a context element (innerHTML, `createContextualFragment`...). Consecutive characters are
+  gathered and inserted as one text node (`insert_text`, not one call per character).
+- **The API** (`include/hubbub/tree.h`, `parser.h`; appended, the old fields kept): the tree
+  handler's `template_content` (a template's contents fragment) and `insert_text` (append to
+  the preceding text node); the parser options `HUBBUB_PARSER_LAST_START_TAG` and
+  `HUBBUB_PARSER_FRAGMENT_CONTEXT` (the context element: namespace, name, node, form
+  element, whether it is an HTML integration point, the quirks mode);
+  `hubbub_treebuilder_flush` (the text gathered so far inserted -- `parser.c` calls it at the
+  end of each chunk and when a script pauses the parser).
+- **libdom's binding** (`libdom/bindings/hubbub/parser.c`, its copy in
+  `libdom/include/dom/bindings/hubbub/`): `add_attributes` adds only the missing ones (the
+  standard's `<html>` / `<body>` merge); the templates' contents are a document fragment held
+  as the element's user data (`dom_hubbub_template_content`); `insert_text`;
+  `dom_hubbub_fragment_parser_create_ctx` (a fragment parser in a context element: qjs.c's
+  `setHTML`); the elements made as the parser names them (`_dom_html_document_create_element_parser`:
+  no prefix split of `xlink:href`-like names; attribute names that are not XML names -- the
+  standard allows them -- are kept, `_dom_element_parser_attrs`).
+- **libdom**: an element in another namespace than HTML keeps its name's case (`viewBox`,
+  `foreignObject`: they were made upper case) and has no HTML type (only `<style>` keeps
+  its type: its sheet); attribute names are lower-cased on HTML elements only; the document
+  element and the doctype can be removed (`node.c`).
+- **libparserutils**: the input filter emptied its decoder after a full output buffer (the
+  last character of a 65-byte input was lost: `filter.c`, `inputstream.c`); U+FFFE / U+FFFF
+  are valid UTF-8 (`utf8impl.h`).
+- **Speed** (the PC, `html5lib.sh time <page>`, best of 20, fed in 32 KB chunks as the
+  fetcher gives them): bbc.co.uk (668 KB) 15.7 -> 10.7 ms, bbc.com/news 8.1 -> 6.2 ms,
+  a Wikipedia article 24.1 -> 17.5 ms, google.com 3.0 -> 2.2 ms.
+- `html/box_construct.c`: the text of a closed `<details>` other than its `<summary>` makes
+  no boxes (`onyx_in_closed_details`).
+- The PC tests (`tools/tests/netsurf/`): `html5lib.sh [tree|tok|time <page>] [-v] [files]`
+  (the tests are cloned once, at the last html5lib-tests commit that has the
+  tree-construction tests); the drivers `html5lib_tree.c` (`-c N`: fed N bytes at a time),
+  `html5lib_tok.c` + `html5lib_tok.py`, `html5lib_time.c`; `html5lib.mk` builds them.
+
+## 17. The HTML5 DOM (`quickjs/html5.js`)
+
+**`html5.js`** is a second prelude, run after dom.js (compiled in the same way:
+`qjs_html5_js.h`); qjs.c calls it with the natives and dom.js's table of element classes
+(`TAGS`). It extends and corrects dom.js's classes, and lists what it does in its header.
+Measured by **html5test.co** (Niels Leenheer's test, `tools/tests/netsurf/html5test.sh`: its
+engine run in the PC NetSurf, the score and every missing feature printed): **252 -> 314 of
+588** (Chrome about 530). Every feature it counts works; nothing answers "supported" without
+doing it. dom.js changed in two places only: `N.internals` (its mutation queue, observers,
+dispatch, for html5.js) and its selector engine asking `N.internals.pseudo` for the
+pseudo-classes it does not know.
+
+- **Namespaces**: `namespaceURI`, `localName`, `tagName`, `prefix`, the `*NS` methods; SVG
+  and MathML elements get their own classes (qjs.c's `qjs_proto_for` looks up `svg:<name>`,
+  `svg:*`, `math:*`), an unknown HTML name is an `HTMLUnknownElement`, a valid custom
+  element name an `HTMLElement` (`*custom`); attribute names lower-cased on HTML elements only.
+- **Fragments on the new parser**: `innerHTML` (qjs.c's `setHTML`: parsed in its context
+  element -- a `<tr>` into a `<tbody>`, text into a `<textarea>` or `<title>` decoded, a
+  `<script>` or `<style>` raw), `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`,
+  `getHTML`, `Range.createContextualFragment`; the standard's serialization (escaping,
+  void elements, raw text); `<template>`'s `content` (cloned and imported with the
+  template); `DOMParser` (HTML, and XML with a small parser: `parsererror` on bad XML),
+  `XMLSerializer`, `Document.parseHTMLUnsafe`, `document.implementation.createHTMLDocument`
+  / `createDocument`; `ownerDocument`, `importNode`, `adoptNode`, `cloneNode` across
+  documents (qjs.c: `createDocument`, `createIn`, `importTo`, `parseDocument`).
+- **Messaging**: `MessageChannel` / `MessagePort` (`port1` / `port2`, `postMessage`,
+  `onmessage`, `start`, `close`), `window.postMessage` with a `MessageEvent` (`origin`,
+  `source`), `BroadcastChannel` -- delivered in a task, not a microtask -- and
+  `structuredClone` (the structured clone algorithm: cycles, `Map`, `Set`, `Date`, `RegExp`,
+  typed arrays, errors; a `DataCloneError` for functions and nodes).
+- **Forms**: the input types (email, url, tel, search, number, range, date, month, week,
+  time, datetime-local, color) with the standard's value sanitization, `valueAsNumber`,
+  `valueAsDate`, `stepUp` / `stepDown`; the constraint validation API (`validity` with every
+  flag, `willValidate`, `checkValidity`, `reportValidity`, `setCustomValidity`,
+  `validationMessage`, the `invalid` event); an invalid form is not sent (a capture listener
+  on `submit`; `novalidate`, `formnovalidate`); the `form` attribute; `<output>`,
+  `<fieldset>` `elements`, `<datalist>`, `<meter>`, `<progress>`; the pseudo-classes
+  `:valid`, `:invalid`, `:in-range`, `:out-of-range`, `:read-write`, `:read-only`,
+  `:indeterminate`, `:default`, `:open`, `:modal`, `:defined`.
+- **`<dialog>`, `<details>`, `hidden`**: `show`, `showModal`, `close`, `returnValue`, a
+  `<form method="dialog">` closing its dialog, the `close` / `cancel` / `toggle` events;
+  `<details>` `open` with its `toggle` event; the global attributes (`hidden`, `translate`,
+  `accessKey`, `contentEditable`, `isContentEditable`, `draggable`, `spellcheck`; the
+  `popover` attribute reflected, no popover behaviour). The drawing: `default.css`'s block marked "Onyx HTML5" (`[hidden]`,
+  `<template>`, `<datalist>` not drawn; a closed `<dialog>` not drawn, an open one centred;
+  a closed `<details>` shows its summary only); `getComputedStyle` of an element without a
+  box (display: none, a hidden subtree, a script's reading before the first layout) is its
+  selected style (qjs.c: `qjs_unboxed_style`, with the style sheets already loaded --
+  `html_css_new_selection_context` skips those still coming); a script's reading of a size
+  lays out its changes first (`qjs_layout_now`, 16 times a turn at most).
+- **Custom elements**: `customElements.define` / `get` / `getName` / `whenDefined` /
+  `upgrade`; the element's constructor runs on `createElement` and `new`, and on the elements
+  already there once they are in the document (an upgrade); `connectedCallback` /
+  `disconnectedCallback` on insertion and removal, `attributeChangedCallback` for the
+  `observedAttributes`; `attachInternals` (`ElementInternals`: a value, a validity). The
+  parser's elements: libdom's `DOMNodeInserted` calls `js_handle_new_element`, which keeps
+  the element (the DOM is read-only during a mutation event) for html5.js' hook
+  (`N.ceHook`), run before the next script or from the scheduler; the scripts' insertions are
+  seen by html5.js itself (it wraps the natives `insert`, `remove`, `setHTML`, `setText`).
+  Customized built-in elements (`{ extends }`) are recorded but not upgraded, as in Safari.
+- **The session history**: `history.pushState` / `replaceState` change the document's URL
+  (qjs.c's `setURL`: `location` and the address bar show it; no navigation), `back` /
+  `forward` / `go` between the entries the page made fire `popstate` (and `hashchange`),
+  past them NetSurf's own history; `location.hash` set makes an entry and scrolls.
+- **Streams**: `ReadableStream` (its reader, a BYOB reader -- a byte stream reads as a
+  default one and the BYOB reader copies --, `tee`,
+  `pipeTo`, `pipeThrough`, async iteration, `ReadableStream.from`), `WritableStream`,
+  `TransformStream`, the queuing strategies, `TextEncoderStream` / `TextDecoderStream`,
+  `Response.body` and `Blob.stream()`.
+- **Files**: `Blob` holds bytes (`size`, `type`, `slice`, `text`, `arrayBuffer`, `bytes`,
+  `stream`), `File`, `FileReader` (text, data URL, array buffer, binary string, its events),
+  `FileList`, `URL.createObjectURL` / `revokeObjectURL` (`fetch` reads `blob:` URLs).
+- **Smaller APIs**: microdata (`itemScope`, `itemProp`, `itemValue`, `properties`,
+  `document.getItems`), `<ol reversed>` (NetSurf's layout already numbers it backwards),
+  `performance.mark` / `measure` / `getEntries*` and `PerformanceObserver`,
+  `XMLHttpRequest`'s `responseType = 'document'` and `responseXML`.
+- `tools/tests/netsurf/pages/js-html5.html`, `js-forms.html`, `js-apis.html`, `js-ce.html`
+  (in `jstest.sh`): 44 + 45 + 26 + 17 checks. `html5test.sh` starts the run at the load, as
+  html5test.co does (it waits for its browser detection script).
+- Not done (html5test counts them): Web Workers, EventSource and WebSocket (the requests are
+  delivered whole), IndexedDB, the editing APIs (`designMode`, `execCommand`), a real shadow
+  tree (`attachShadow` returns the host, whose children are drawn), `<input type="image">`'s
+  sizes, and what is out of this work: canvas, SVG, audio and video, WebRTC, WebGL.
+
 ## 8. Known gaps
 
-- JavaScript: no streams (`fetch`'s `body`), synchronous XHR (runs async),
-  multipart request bodies, `responseXML`; CSS `:active` / `:focus`; a form control
+- JavaScript: synchronous XHR (runs async), multipart request bodies; no Workers,
+  EventSource, WebSocket, IndexedDB, editing APIs, shadow trees (§17); CSS `:active` /
+  `:focus`; a form control
   outside a form is made again at each layout the scripts cause (its old one leaks).
 - `opacity`, filters, animations and transitions.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph

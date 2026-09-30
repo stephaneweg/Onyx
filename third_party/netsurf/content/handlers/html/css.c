@@ -683,6 +683,10 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 	if (c->stylesheets[STYLESHEET_BASE].sheet == NULL) {
 		return NSERROR_CSS_BASE;
 	}
+	/* Onyx: (nor before it is fetched: a script's getComputedStyle during the parse) */
+	if (hlcache_handle_get_content(c->stylesheets[STYLESHEET_BASE].sheet) == NULL) {
+		return NSERROR_CSS_BASE;
+	}
 
 	/* Create selection context */
 	css_ret = css_select_ctx_create(&select_ctx);

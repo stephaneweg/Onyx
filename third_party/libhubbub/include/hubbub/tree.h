@@ -268,6 +268,32 @@ typedef hubbub_error (*hubbub_tree_encoding_change)(void *ctx,
 typedef hubbub_error (*hubbub_tree_complete_script)(void *ctx, void *script);
 
 /**
+ * Onyx: the contents of a template element (a document fragment the parser fills, not the
+ * element's children)
+ *
+ * \param ctx     Client's context
+ * \param node    The template element
+ * \param result  Pointer to location to receive the fragment (a reference is taken)
+ * \return HUBBUB_OK on success, appropriate error otherwise.
+ */
+typedef hubbub_error (*hubbub_tree_template_content)(void *ctx, void *node,
+		void **result);
+
+/**
+ * Onyx: insert text into parent before ref_child (NULL: at the end) -- appended to the
+ * text node just before that place if there is one, else a new text node (the standard's
+ * "insert a character")
+ *
+ * \param ctx        Client's context
+ * \param parent     The parent node
+ * \param ref_child  The node to insert before, or NULL
+ * \param data       The text
+ * \return HUBBUB_OK on success, appropriate error otherwise.
+ */
+typedef hubbub_error (*hubbub_tree_insert_text)(void *ctx, void *parent,
+		void *ref_child, const hubbub_string *data);
+
+/**
  * Hubbub tree handler
  */
 typedef struct hubbub_tree_handler {
@@ -290,6 +316,11 @@ typedef struct hubbub_tree_handler {
 	hubbub_tree_encoding_change encoding_change;	/**< Change encoding */
 	hubbub_tree_complete_script complete_script;	/**< Script Complete */
 	void *ctx;					/**< Context pointer */
+
+	/* Onyx: added for the HTML standard's tree construction (optional: NULL falls
+	 * back to the calls above) */
+	hubbub_tree_template_content template_content;	/**< A template's contents */
+	hubbub_tree_insert_text insert_text;		/**< Insert / append text */
 } hubbub_tree_handler;
 
 #ifdef __cplusplus

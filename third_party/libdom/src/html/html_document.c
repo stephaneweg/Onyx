@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include <dom/dom.h>	/* Onyx: dom_namespaces */
 #include <dom/html/html_elements.h>
 
 #include "html/html_document.h"
@@ -70,7 +71,6 @@
 #include "core/attr.h"
 #include "core/string.h"
 #include "utils/namespace.h"
-#include <dom/dom.h>	/* (Onyx: dom_namespaces) */
 #include "utils/utils.h"
 
 static const struct dom_html_document_vtable html_document_vtable = {
@@ -558,22 +558,27 @@ _dom_html_document_create_element_internal(
 	if (dom_string_length(in_tag_name) == 0)
 		return DOM_INVALID_CHARACTER_ERR;
 
-	/* Onyx: an element outside the HTML namespace (SVG, MathML) keeps its name as
-	 * given -- linearGradient, foreignObject -- and is of no HTML type */
-	if (namespace != NULL && !dom_string_isequal(namespace,
-			dom_namespaces[DOM_NAMESPACE_HTML])) {
-		params.name = dom_string_ref(in_tag_name);
-		params.type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
-	} else {
-		exc = dom_string_toupper(in_tag_name, true, &params.name);
-		if (exc != DOM_NO_ERR)
-			return exc;
+	exc = dom_string_toupper(in_tag_name, true, &params.name);
+	if (exc != DOM_NO_ERR)
+		return exc;
 
-		params.type = _dom_html_document_get_element_type(html, params.name);
-	}
+	params.type = _dom_html_document_get_element_type(html, params.name);
 	params.doc = html;
 	params.namespace = namespace;
 	params.prefix = prefix;
+
+	/* Onyx: an element of another namespace (SVG, MathML: the HTML parser's foreign
+	 * content, createElementNS) keeps its name's case ("foreignObject", "clipPath") and is
+	 * none of HTML's element types but <style> (its sheet applies in an HTML document);
+	 * it is still an HTMLElement object underneath (NetSurf asks every element its tag
+	 * type). */
+	if (namespace != NULL &&
+			!dom_string_isequal(namespace, dom_namespaces[DOM_NAMESPACE_HTML])) {
+		if (params.type != DOM_HTML_ELEMENT_TYPE_STYLE)
+			params.type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
+		dom_string_unref(params.name);
+		params.name = dom_string_ref(in_tag_name);
+	}
 
 	switch(params.type) {
 	case DOM_HTML_ELEMENT_TYPE__COUNT:
@@ -895,6 +900,15 @@ dom_exception _dom_html_document_create_element(dom_document *doc,
 	return _dom_html_document_create_element_internal(html,
 			tag_name, NULL, NULL,
 			(dom_html_element **)result);
+}
+
+/* Onyx: an element as the HTML parser makes it (no qualified name split) */
+dom_exception _dom_html_document_create_element_parser(dom_document *doc,
+		dom_string *namespace, dom_string *name, dom_element **result)
+{
+	return _dom_html_document_create_element_internal(
+			(dom_html_document *) doc, name, namespace, NULL,
+			(dom_html_element **) result);
 }
 
 dom_exception _dom_html_document_create_element_ns(dom_document *doc,

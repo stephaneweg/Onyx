@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Custom elements</title>
+<!-- tools/tests/netsurf/jstest.sh: custom elements -- define, the upgrades of the elements
+     already there and of those the parser makes afterwards, the lifecycle callbacks,
+     observedAttributes, whenDefined, :defined. "OK ce name" / "FAIL ce name", then
+     "ce done N". -->
+<script>
+let n = 0;
+function check(name, cond) { n++; console.log((cond ? 'OK ' : 'FAIL ') + 'ce ' + name); }
+const log = [];
+</script>
+</head><body>
+<x-early id="early" data-v="1">early</x-early>
+<script>
+try {
+  const early = document.getElementById('early');
+  check('undefined before define', Object.getPrototypeOf(early) === HTMLElement.prototype &&
+    document.querySelector('x-early:defined') === null && document.querySelector('body:defined') !== null);
+  let whenDone = null;
+  customElements.whenDefined('x-early').then(c => { whenDone = c; });
+  class XEarly extends HTMLElement {
+    static get observedAttributes() { return ['data-v']; }
+    constructor() { super(); this.built = (this.built || 0) + 1; log.push('ctor ' + this.id); }
+    connectedCallback() { log.push('connected ' + this.id); }
+    disconnectedCallback() { log.push('disconnected ' + this.id); }
+    attributeChangedCallback(k, o, v) { log.push('attr ' + k + ' ' + o + ' ' + v); }
+    hello() { return 'hi ' + this.id; }
+  }
+  customElements.define('x-early', XEarly);
+  check('upgrade existing', early instanceof XEarly && early.hello() === 'hi early' && early.built === 1);
+  check('upgrade callbacks', log.join('|') === 'ctor early|attr data-v null 1|connected early');
+  check(':defined', document.querySelector('x-early:defined') === early);
+  log.length = 0;
+  early.setAttribute('data-v', '2');
+  early.setAttribute('data-other', 'x');
+  check('attributeChangedCallback', log.join('|') === 'attr data-v 1 2');
+  log.length = 0;
+  early.remove();
+  document.body.appendChild(early);
+  check('disconnected / connected', log.join('|') === 'disconnected early|connected early');
+  const made = document.createElement('x-early');
+  check('createElement constructs', made instanceof XEarly && made.built === 1 && made.localName === 'x-early');
+  const nw = new XEarly();
+  check('new', nw.localName === 'x-early' && nw instanceof HTMLElement && nw.tagName === 'X-EARLY');
+  let threw = '';
+  try { customElements.define('x-early', class extends HTMLElement {}); } catch (e) { threw = e.name; }
+  check('define twice', threw === 'NotSupportedError');
+  threw = '';
+  try { customElements.define('nodash', class extends HTMLElement {}); } catch (e) { threw = e.name; }
+  check('invalid name', threw === 'SyntaxError');
+  threw = '';
+  try { new (class extends HTMLElement {})(); } catch (e) { threw = e.name; }
+  check('illegal constructor', threw === 'TypeError');
+  check('get / getName', customElements.get('x-early') === XEarly && customElements.getName(XEarly) === 'x-early');
+  const div = document.createElement('div');
+  div.innerHTML = '<x-early id="inner"></x-early>';
+  check('not upgraded while detached', !(div.firstChild instanceof XEarly));
+  log.length = 0;
+  document.body.appendChild(div);
+  check('upgraded when connected', div.firstChild instanceof XEarly && log.join('|') === 'ctor inner|connected inner');
+  customElements.define('x-late', class extends HTMLElement {
+    connectedCallback() { this.setAttribute('data-ok', this.childNodes.length); }
+  });
+  setTimeout(() => {
+    check('whenDefined', whenDone === XEarly);
+    const lates = document.querySelectorAll('x-late');
+    check('parser-made elements upgraded', lates.length === 2 && [...lates].every(e => e.getAttribute('data-ok') !== null && /parsed/.test(e.textContent)));
+    class FormLike extends HTMLElement {
+      static formAssociated = true;
+      constructor() { super(); this.i = this.attachInternals(); }
+    }
+    customElements.define('x-form', FormLike);
+    const f = document.createElement('x-form');
+    f.i.setValidity({ valueMissing: true }, 'fill it');
+    check('ElementInternals', !f.i.validity.valid && f.i.validationMessage === 'fill it');
+    console.log('ce done ' + n);
+  }, 30);
+} catch (e) {
+  console.log('FAIL ce exception ' + e + ' ' + e.stack);
+}
+</script>
+<p><x-late>parsed</x-late> and <x-late>parsed again</x-late></p>
+</body></html>

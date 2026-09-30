@@ -170,6 +170,34 @@ hubbub_error hubbub_parser_setopt(hubbub_parser *parser,
 		result = hubbub_tokeniser_setopt(parser->tok,
 				HUBBUB_TOKENISER_PAUSE,
 				(hubbub_tokeniser_optparams *) params);
+		/* Onyx: an unpause runs the tokeniser: its text into the tree */
+		hubbub_treebuilder_flush(parser->tb);
+		break;
+
+	case HUBBUB_PARSER_LAST_START_TAG: {
+		/* Onyx: the tokeniser's last start tag (tests, fragments) */
+		hubbub_tokeniser_optparams tp;
+		tp.last_start_tag = params->last_start_tag;
+		result = hubbub_tokeniser_setopt(parser->tok,
+				HUBBUB_TOKENISER_LAST_START_TAG, &tp);
+		break;
+	}
+
+	case HUBBUB_PARSER_FRAGMENT_CONTEXT:
+		/* Onyx: parse a fragment in its context element (after the tree handler
+		 * and the document node are set) */
+		if (parser->tb != NULL) {
+			hubbub_treebuilder_optparams tp;
+			tp.fragment_context.ns = params->fragment_context.ns;
+			tp.fragment_context.name = params->fragment_context.name;
+			tp.fragment_context.node = params->fragment_context.node;
+			tp.fragment_context.form = params->fragment_context.form;
+			tp.fragment_context.html_integration_point =
+					params->fragment_context.html_integration_point;
+			tp.fragment_context.quirks = params->fragment_context.quirks;
+			result = hubbub_treebuilder_setopt(parser->tb,
+					HUBBUB_TREEBUILDER_FRAGMENT_CONTEXT, &tp);
+		}
 		break;
 
 	case HUBBUB_PARSER_TREE_HANDLER:
@@ -264,6 +292,9 @@ hubbub_error hubbub_parser_parse_chunk(hubbub_parser *parser,
 		error = hubbub_tokeniser_run(parser->tok);
 	}
 
+	/* Onyx: the text gathered so far into the tree (the page may be shown now) */
+	hubbub_treebuilder_flush(parser->tb);
+
 	if (error != HUBBUB_OK)
 		return error;
 
@@ -289,6 +320,7 @@ hubbub_error hubbub_parser_completed(hubbub_parser *parser)
 		return hubbub_error_from_parserutils_error(perror);
 
 	error = hubbub_tokeniser_run(parser->tok);
+	hubbub_treebuilder_flush(parser->tb);	/* Onyx */
 	if (error != HUBBUB_OK)
 		return error;
 

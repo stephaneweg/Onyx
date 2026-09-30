@@ -2195,8 +2195,7 @@ function matchPseudo(e, p, scope) {
 		N.attr(e, 'disabled') === null;
 	case 'required': return N.attr(e, 'required') !== null;
 	case 'optional': return ['input', 'select', 'textarea'].includes(e.localName) && N.attr(e, 'required') === null;
-	case 'read-only': return N.attr(e, 'readonly') !== null;
-	case 'read-write': return ['input', 'textarea'].includes(e.localName) && N.attr(e, 'readonly') === null;
+	/* (Onyx: read-only, read-write, defined: html5.js, N.internals.pseudo) */
 	case 'placeholder-shown': return N.attr(e, 'placeholder') !== null && !e.value;
 	case 'link': case 'any-link': return ['a', 'area', 'link'].includes(e.localName) && N.attr(e, 'href') !== null;
 	case 'visited': case 'hover': case 'active': case 'focus-visible': case 'target-within':
@@ -2204,7 +2203,6 @@ function matchPseudo(e, p, scope) {
 	case 'focus': return G.document.activeElement === e;
 	case 'focus-within': { const a = G.document.activeElement; return !!a && e.contains(a); }
 	case 'target': { const h = decodeURIComponent((G.location.hash || '').slice(1)); return !!h && N.attr(e, 'id') === h; }
-	case 'defined': return true;
 	case 'lang': {
 		for (let n = e; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
 			const l = N.attr(n, 'lang');
@@ -2213,7 +2211,8 @@ function matchPseudo(e, p, scope) {
 		return false;
 	}
 	case 'dir': return lower(p.arg) === 'ltr';
-	default: return false;
+	/* Onyx: the pseudo-classes html5.js knows (:valid, :invalid, :in-range, :open...) */
+	default: return !!(N.internals && N.internals.pseudo && N.internals.pseudo(e, p.name, p.arg));
 	}
 }
 
@@ -3149,10 +3148,7 @@ class SVGElement extends Element {
 defineHandlers(SVGElement.prototype);
 G.SVGElement = SVGElement;
 G.SVGSVGElement = class SVGSVGElement extends SVGElement {};
-/* (Onyx: the elements in the SVG namespace get these, whatever their name -- qjs.c's
- * qjs_proto_for looks "#svg:<name>" up, then "#svg") */
-TAGS['#svg:svg'] = G.SVGSVGElement.prototype;
-TAGS['#svg'] = SVGElement.prototype;
+/* (the SVG namespace's classes: html5.js's TAGS['svg:*'], TAGS['svg:svg']) */
 
 /* ---- Document ------------------------------------------------------------------------ */
 
@@ -5313,6 +5309,9 @@ function browserDispatch(target, type, init) {
 }
 
 /* ---- the natives' setup ------------------------------------------------------------------- */
+
+/* Onyx: dom.js's internals html5.js builds on (MutationObserver records, dispatch...) */
+N.internals = { queueMutation, observers, childListRecord, dispatch, report, activate };
 
 N.setup({
 	node: Node.prototype,

@@ -10,6 +10,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include <dom/dom.h>	/* Onyx: dom_namespaces */
+
 #include "html/html_document.h"
 #include "html/html_element.h"
 
@@ -174,6 +176,14 @@ SIMPLE_GET_SET(lang,lang)
 SIMPLE_GET_SET(dir,dir)
 SIMPLE_GET_SET(class_name,class)
 
+/* Onyx: is the element in the HTML namespace (or in none: createElement)? */
+static bool onyx_html_ns(struct dom_element *element)
+{
+	dom_node_internal *n = (dom_node_internal *) element;
+	return n->namespace == NULL ||
+		dom_string_isequal(n->namespace, dom_namespaces[DOM_NAMESPACE_HTML]);
+}
+
 dom_exception _dom_html_element_get_attribute(
 		struct dom_element *element,
 		dom_string *name, dom_string **value)
@@ -181,7 +191,13 @@ dom_exception _dom_html_element_get_attribute(
 	dom_exception exc;
 	dom_string *lower_case_name;
 
-	exc = dom_string_tolower(name, true, &lower_case_name);
+	/* Onyx: only an HTML element's attribute names are made lower case (an SVG /
+	 * MathML element keeps "viewBox", "definitionURL") */
+	exc = DOM_NO_ERR;
+	if (!onyx_html_ns(element))
+		lower_case_name = dom_string_ref(name);
+	else
+		exc = dom_string_tolower(name, true, &lower_case_name);
 	if (exc != DOM_NO_ERR) {
 		return exc;
 	}
@@ -199,7 +215,13 @@ dom_exception _dom_html_element_set_attribute(
 	dom_exception exc;
 	dom_string *lower_case_name;
 
-	exc = dom_string_tolower(name, true, &lower_case_name);
+	/* Onyx: only an HTML element's attribute names are made lower case (an SVG /
+	 * MathML element keeps "viewBox", "definitionURL") */
+	exc = DOM_NO_ERR;
+	if (!onyx_html_ns(element))
+		lower_case_name = dom_string_ref(name);
+	else
+		exc = dom_string_tolower(name, true, &lower_case_name);
 	if (exc != DOM_NO_ERR) {
 		return exc;
 	}
@@ -217,7 +239,13 @@ dom_exception _dom_html_element_remove_attribute(
 	dom_exception exc;
 	dom_string *lower_case_name;
 
-	exc = dom_string_tolower(name, true, &lower_case_name);
+	/* Onyx: only an HTML element's attribute names are made lower case (an SVG /
+	 * MathML element keeps "viewBox", "definitionURL") */
+	exc = DOM_NO_ERR;
+	if (!onyx_html_ns(element))
+		lower_case_name = dom_string_ref(name);
+	else
+		exc = dom_string_tolower(name, true, &lower_case_name);
 	if (exc != DOM_NO_ERR) {
 		return exc;
 	}
@@ -235,7 +263,13 @@ dom_exception _dom_html_element_has_attribute(
 	dom_exception exc;
 	dom_string *lower_case_name;
 
-	exc = dom_string_tolower(name, true, &lower_case_name);
+	/* Onyx: only an HTML element's attribute names are made lower case (an SVG /
+	 * MathML element keeps "viewBox", "definitionURL") */
+	exc = DOM_NO_ERR;
+	if (!onyx_html_ns(element))
+		lower_case_name = dom_string_ref(name);
+	else
+		exc = dom_string_tolower(name, true, &lower_case_name);
 	if (exc != DOM_NO_ERR) {
 		return exc;
 	}

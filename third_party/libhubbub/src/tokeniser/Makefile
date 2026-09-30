@@ -1,14 +1,5 @@
 # Sources
-DIR_SOURCES := entities.c tokeniser.c
-
-$(DIR)entities.c: $(DIR)entities.inc
-
-$(DIR)entities.inc: build/make-entities.pl build/Entities
-	$(VQ)$(ECHO) "ENTITIES: $@"
-	$(Q)$(PERL) build/make-entities.pl
-
-ifeq ($(findstring clean,$(MAKECMDGOALS)),clean)
-  CLEAN_ITEMS := $(CLEAN_ITEMS) $(DIR)entities.inc
-endif
+# Onyx: the named character references are onyx_entities.inc (build/make-onyx-entities.py)
+DIR_SOURCES := tokeniser.c
 
 include $(NSBUILD)/Makefile.subdir
