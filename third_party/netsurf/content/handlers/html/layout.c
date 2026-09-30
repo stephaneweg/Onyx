@@ -228,6 +228,72 @@ layout_get_object_dimensions(struct box *box,
  * \param  width  width of containing block
  * \return  length of indent
  */
+
+static int line_height(const css_unit_ctx *unit_len_ctx,
+		const css_computed_style *style);
+
+/**
+ * Onyx: an element's integer attribute (a text control's size, cols, rows), or def.
+ */
+static int layout_attr_int(const struct box *box, dom_string *name, int def)
+{
+	dom_string *v = NULL;
+	int n = def;
+
+	if (box->node == NULL)
+		return def;
+	if (dom_element_get_attribute(box->node, name, &v) == DOM_NO_ERR &&
+			v != NULL) {
+		n = atoi(dom_string_data(v));
+		dom_string_unref(v);
+		if (n <= 0)
+			n = def;
+	}
+	return n;
+}
+
+/**
+ * Onyx: a text control's default content size, as Chrome's: a text field's width from
+ * its size attribute (20) -- that many average characters of its font (Arial's
+ * metrics: 0.574 em, rounded) and the widest one's excess (1.26 em); a textarea's from
+ * cols (20) monospace advances (0.602 em) and a scroll bar (15 px), its height from rows
+ * (2) lines. *w / *h are set only when AUTO.
+ */
+static void layout_text_control_size(const css_unit_ctx *unit_len_ctx,
+		const struct box *box, int *w, int *h)
+{
+	float fs;
+
+	if (box->gadget == NULL || box->style == NULL)
+		return;
+	fs = FIXTOFLT(css_unit_len2device_px(box->style, unit_len_ctx,
+			INTTOFIX(1), CSS_UNIT_EM));
+
+	switch (box->gadget->type) {
+	case GADGET_TEXTBOX:
+	case GADGET_PASSWORD:
+	case GADGET_FILE:
+		if (w != NULL && *w == AUTO) {
+			int size = layout_attr_int(box, corestring_dom_size, 20);
+			*w = size * (int) lroundf(0.574f * fs) +
+					(int) lroundf(1.26f * fs);
+		}
+		break;
+	case GADGET_TEXTAREA:
+		if (w != NULL && *w == AUTO) {
+			int cols = layout_attr_int(box, corestring_dom_cols, 20);
+			*w = (int) lroundf(cols * 0.602f * fs) + 15;
+		}
+		if (h != NULL && *h == AUTO) {
+			int rows = layout_attr_int(box, corestring_dom_rows, 2);
+			*h = rows * line_height(unit_len_ctx, box->style);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static int layout_text_indent(
 		const css_unit_ctx *unit_len_ctx,
 		const css_computed_style *style, int width)
@@ -944,11 +1010,12 @@ static void layout_minmax_block(
 			block->gadget->type == GADGET_FILE ||
 			block->gadget->type == GADGET_TEXTAREA) &&
 			block->style && wtype == CSS_WIDTH_AUTO) {
-		css_fixed size = INTTOFIX(10);
-		css_unit unit = CSS_UNIT_EM;
+		int w = AUTO;
 
-		min = max = FIXTOINT(css_unit_len2device_px(block->style,
-				&content->unit_len_ctx, size, unit));
+		/* Onyx: Chrome's default size (size, cols) */
+		layout_text_control_size(&content->unit_len_ctx, block, &w,
+				NULL);
+		min = max = w;
 
 		block->flags |= HAS_HEIGHT;
 	}
@@ -1539,6 +1606,9 @@ layout_block_find_dimensions(const css_unit_ctx *unit_len_ctx,
 		layout_get_object_dimensions(box, &width, &height,
 				min_width, max_width, min_height, max_height);
 	}
+	/* Onyx: a block-level text control keeps its intrinsic size (it does
+	 * not fill the line: Chrome's) */
+	layout_text_control_size(unit_len_ctx, box, &width, &height);
 
 	box->width = layout_solve_width(box, available_width, width, lm, rm,
 			max_width, min_width);
@@ -2443,43 +2513,16 @@ layout_float_find_dimensions(
 			box->gadget->type == GADGET_PASSWORD ||
 			box->gadget->type == GADGET_FILE ||
 			box->gadget->type == GADGET_TEXTAREA)) {
+		/* Onyx: Chrome's default sizes (size, cols, rows) */
 		css_fixed size = 0;
 		css_unit unit = CSS_UNIT_EM;
 
-		/* Give sensible dimensions to gadgets, with auto width/height,
-		 * that don't shrink to fit contained text. */
 		assert(box->style);
-
-		if (box->gadget->type == GADGET_TEXTBOX ||
-				box->gadget->type == GADGET_PASSWORD ||
-				box->gadget->type == GADGET_FILE) {
-			if (width == AUTO) {
-				size = INTTOFIX(10);
-				width = FIXTOINT(css_unit_len2device_px(
-						box->style, unit_len_ctx,
-						size, unit));
-			}
-			if (box->gadget->type == GADGET_FILE &&
-					height == AUTO) {
-				size = FLTTOFIX(1.5);
-				height = FIXTOINT(css_unit_len2device_px(
-						box->style, unit_len_ctx,
-						size, unit));
-			}
-		}
-		if (box->gadget->type == GADGET_TEXTAREA) {
-			if (width == AUTO) {
-				size = INTTOFIX(10);
-				width = FIXTOINT(css_unit_len2device_px(
-						box->style, unit_len_ctx,
-						size, unit));
-			}
-			if (height == AUTO) {
-				size = INTTOFIX(4);
-				height = FIXTOINT(css_unit_len2device_px(
-						box->style, unit_len_ctx,
-						size, unit));
-			}
+		layout_text_control_size(unit_len_ctx, box, &width, &height);
+		if (box->gadget->type == GADGET_FILE && height == AUTO) {
+			size = FLTTOFIX(1.5);
+			height = FIXTOINT(css_unit_len2device_px(
+					box->style, unit_len_ctx, size, unit));
 		}
 	} else if (width == AUTO) {
 		/* CSS 2.1 section 10.3.5 */
@@ -2770,7 +2813,22 @@ static void layout_line_box_ab(struct box *d, const css_unit_ctx *unit_len_ctx,
 		int base;
 
 		*above = h;
-		if (d->object == NULL && !(d->flags & IFRAME) &&
+		if (d->gadget != NULL && d->style != NULL &&
+		    (d->gadget->type == GADGET_TEXTBOX ||
+		     d->gadget->type == GADGET_PASSWORD)) {
+			/* Onyx: a text field's baseline is its text line's, the
+			 * line centred in its content box (Chrome's) */
+			int lh = line_height(unit_len_ctx, d->style);
+			int a, b2;
+			layout_text_ab(unit_len_ctx, d->style, lh, &a, &b2);
+			*above = d->margin[TOP] + d->border[TOP].width +
+					d->padding[TOP] + (d->height - lh) / 2 + a;
+		} else if (d->gadget != NULL &&
+			   (d->gadget->type == GADGET_CHECKBOX ||
+			    d->gadget->type == GADGET_RADIO)) {
+			/* Onyx: a check box's: its border box's bottom */
+			*above = h - d->margin[BOTTOM];
+		} else if (d->object == NULL && !(d->flags & IFRAME) &&
 		    d->style != NULL && (d->gadget != NULL ||
 		    css_computed_overflow_y(d->style) == CSS_OVERFLOW_VISIBLE) &&
 		    layout_box_baseline(d, unit_len_ctx,
@@ -4173,6 +4231,13 @@ bool layout_block_context(
 
 	if (block->height == AUTO) {
 		block->height = cy - block->padding[TOP];
+		/* Onyx: a textarea's intrinsic height (rows) */
+		if (block->gadget != NULL &&
+				block->gadget->type == GADGET_TEXTAREA) {
+			block->height = AUTO;
+			layout_text_control_size(&content->unit_len_ctx, block,
+					NULL, &block->height);
+		}
 		if (block->type == BOX_BLOCK)
 			layout_block_add_scrollbar(block, BOTTOM);
 	}
@@ -4181,6 +4246,19 @@ bool layout_block_context(
 			CSS_POSITION_ABSOLUTE) {
 		/* Block is in normal flow */
 		layout_apply_minmax_height(&content->unit_len_ctx, block, NULL);
+	}
+
+	/* Onyx: a button's content is centred in its height (Chrome's: a
+	 * sized button's label sits in its middle, and its baseline with it) */
+	if (block->gadget != NULL && block->type != BOX_FLEX &&
+	    block->type != BOX_INLINE_FLEX &&
+	    (block->gadget->type == GADGET_SUBMIT ||
+	     block->gadget->type == GADGET_RESET ||
+	     block->gadget->type == GADGET_BUTTON)) {
+		int used = cy - block->padding[TOP];
+		if (block->height > used && used >= 0)
+			layout_move_children(block, 0,
+					(block->height - used) / 2);
 	}
 
 	if (block->gadget &&
