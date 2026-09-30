@@ -949,9 +949,23 @@ static void present(const struct onyx_comp_view *v)
 		g->clip[3] = c.y1 - c.y0;
 		n++;
 	}
-	r = gpc_composite(C.g, &t, L, n, 0, 0);
+	{
+		/* the GPU stopped since the last frame (an upload found it): its textures
+		 * are lost -- all of them again, for the CPU path */
+		static int was = -1;
+		int now = gpc_backend(C.g);
+		if (was == GPC_BACKEND_GPU && now != GPC_BACKEND_GPU) {
+			fprintf(stderr, "netsurf: compositing: %s\n", gpc_info(C.g));
+			reupload_all();
+		}
+		was = now;
+	}
+	/* (the band covers the view, opaque: the GPU need not load the canvas first --
+	 * a clear is cheaper; the CPU path copies over it anyway) */
+	r = gpc_composite(C.g, &t, L, n, 0, gpc_backend(C.g) == GPC_BACKEND_GPU ?
+			GPC_C_CLEAR : 0);
 	if (r == GPC_LOST) {
-		fprintf(stderr, "netsurf: compositing: %s\n", gpc_info(C.g));
+		/* (during this composite: again, on the CPU) */
 		reupload_all();
 		gpc_composite(C.g, &t, L, n, 0, 0);
 	}
