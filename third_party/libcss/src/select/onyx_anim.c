@@ -11,6 +11,7 @@
  *   - a property's value between two styles' at a progress p, into a style being made
  *     (css_computed_style_onyx_blend): colours in premultiplied RGBA, lengths of one unit,
  *     numbers, the transform texts function by function (else through their 2D matrices),
+ *     the filters' function lists,
  *     box-shadow, visibility; any other property flips at p = 0.5 (discrete);
  *   - whether two styles have the same value of a property (css_computed_style_onyx_same);
  *   - the @keyframes of a selection context's sheets (css_select_ctx_onyx_keyframes, in
@@ -487,7 +488,10 @@ static void tf_identity(const tf_fn *f, tf_fn *id)
 	*id = *f;
 	for (i = 0; i < id->n; i++)
 		id->v[i] = 0;
-	if (strcmp(f->name, "scale") == 0) {
+	if (strcmp(f->name, "scale") == 0 || strcmp(f->name, "brightness") == 0 ||
+			strcmp(f->name, "contrast") == 0 || strcmp(f->name, "opacity") == 0 ||
+			strcmp(f->name, "saturate") == 0) {
+		/* (and the filters whose identity is 1) */
 		for (i = 0; i < id->n; i++)
 			id->v[i] = 1;
 	} else if (strcmp(f->name, "matrix") == 0) {
@@ -820,6 +824,8 @@ static int onyx_blend(css_computed_style *work, uint32_t prop, const css_compute
 	ONYX_TEXT_BLEND(TRANSLATE, translate)
 	ONYX_TEXT_BLEND(SCALE, scale)
 	ONYX_TEXT_BLEND(ROTATE, rotate)
+	ONYX_TEXT_BLEND(FILTER, filter)			/* (the same function lists) */
+	ONYX_TEXT_BLEND(BACKDROP_FILTER, backdrop_filter)
 
 	case CSS_PROP_WIDTH: {
 		css_fixed_or_calc la, lb;

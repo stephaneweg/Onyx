@@ -133,6 +133,8 @@ static const struct oa_prop oa_props[] = {
 	{ "scale", CSS_PROP_SCALE, false },
 	{ "rotate", CSS_PROP_ROTATE, false },
 	{ "box-shadow", CSS_PROP_BOX_SHADOW, false },
+	{ "filter", CSS_PROP_FILTER, false },
+	{ "backdrop-filter", CSS_PROP_BACKDROP_FILTER, false },
 	{ "visibility", CSS_PROP_VISIBILITY, true },
 	{ "z-index", CSS_PROP_Z_INDEX, false },
 	{ "fill", CSS_PROP_FILL, true },
@@ -1700,7 +1702,7 @@ static bool oa_paint_prop(uint16_t prop)
 	case CSS_PROP_BORDER_TOP_RIGHT_RADIUS: case CSS_PROP_BORDER_BOTTOM_LEFT_RADIUS:
 	case CSS_PROP_BORDER_BOTTOM_RIGHT_RADIUS: case CSS_PROP_FILL: case CSS_PROP_STROKE:
 	case CSS_PROP_FILL_OPACITY: case CSS_PROP_STROKE_OPACITY: case CSS_PROP_STOP_COLOR:
-	case CSS_PROP_STOP_OPACITY:
+	case CSS_PROP_STOP_OPACITY: case CSS_PROP_FILTER: case CSS_PROP_BACKDROP_FILTER:
 		return true;
 	default:
 		return false;

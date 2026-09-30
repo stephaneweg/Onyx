@@ -1521,8 +1521,10 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   (a `none` end a transparent shadow of no size), the SVG paints and opacities, and the
   transform texts (`transform`, `translate`, `scale`, `rotate`): function by function when
   both lists have the same kinds (the shorter completed with identity functions, a `none` end
-  too), else through their 2D matrices (decomposed and recomposed as CSS Transforms 1 says);
-  any other value flips at the middle (discrete). `css_computed_style_onyx_same` compares one
+  too), else through their 2D matrices (decomposed and recomposed as CSS Transforms 1 says),
+  and the filters' lists (`filter`, `backdrop-filter`: the same functions, a `none` end their
+  identities -- `blur(0px)`, `brightness(1)`...); any other value flips at the middle
+  (discrete). `css_computed_style_onyx_same` compares one
   property of two styles. `css_stylesheet_onyx_inline_decls` gives an inline sheet's
   declarations (a script's keyframes).
 - **The timeline** (`onyx_anim.c`): the style selection (`box_get_style`: the construction's, a
@@ -1599,16 +1601,16 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   scripts' are the same, and none run when nothing asks.
 - **`getComputedStyle`** answers the animated values (the boxes' styles) and more properties:
   `transform` as a `matrix(...)` (the lengths against the box), `translate` / `scale` /
-  `rotate`, `left` / `top` / `right` / `bottom`, the margins, paddings, border colours and
+  `rotate`, `filter` / `backdrop-filter`, `left` / `top` / `right` / `bottom`, the margins, paddings, border colours and
   widths, `outline-color`, `letter-spacing`, `z-index`, `box-shadow`, and the transition /
   animation lists (`transitionDuration: "0.4s, 0.4s"`).
 - **Measured** (the PC bench, `NS_PERF=1`: `ONYX-PERF anim:frames 120 in <ms>, <n> elements:
   <us> a frame on average, <us> at most; <n> laid out again, <n> reboxed` every 120 frames;
   `NS_NO_ANIM=1` switches the engine off, to compare): `pages/anim-perf.html` (a spinner, a
   pulse, a colour cycle, a sliding bar: paint only) runs at 62 frames a second, the animations'
-  work 55 us a frame, the whole frame (with the redraw of the ~590 x 170 rectangle they cover
-  and the window's update) ~1 ms of CPU (0.64 s of CPU over 9.8 s, 0.07 s without the
-  animations); with a width animation too (`?layout`: the page laid out at each frame) 95 us +
+  work 55 us a frame, the whole frame (with the redraw of the ~600 x 180 rectangle they cover,
+  the spinner's rotation drawn through its layer (§21), and the window's update) ~1.1 ms of CPU
+  (0.72 s of CPU over 9.6 s, 0.07 s without the animations); with a width animation too (`?layout`: the page laid out at each frame) 95 us +
   ~1.9 ms a frame. kotonstudio.com (its local copy: 32 animated elements after the scroll
   reveals, a pulsing dot running forever): 60-90 us of animation work a frame, ~5 % of a PC
   core while idle (the dot's redraws); the scroll reveals' transitions are paint-only. On the
@@ -1616,9 +1618,9 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   a frame with its redraw -- 60 frames a second for paint-only animations of a few elements, the
   adaptive pacing lowering it (to ~40-50) when a layout per frame is needed on a bigger page.
   `sitesweep.sh`: no crash, the same script errors as before.
-- **Tests** (`jstest.sh`): `pages/css-transition.html` (27 checks: opacity, colours, transform,
-  a width laid out, a delay, `all`, a reversal cancelled, a `:hover` rule's transition, the four
-  events), `pages/css-animation.html` (27: iterations and `alternate`, `forwards`, `paused` then
+- **Tests** (`jstest.sh`): `pages/css-transition.html` (30 checks: opacity, colours, transform,
+  a width laid out, a delay, `all`, a filter, `rotate`, a reversal cancelled, a `:hover` rule's
+  transition, the four events), `pages/css-animation.html` (27: iterations and `alternate`, `forwards`, `paused` then
   resumed, a negative delay, two animations on one element, `steps()`, a keyframe's own timing
   function, a missing `@keyframes`, the four events, `getAnimations()`), `pages/js-animate.html`
   (`element.animate`, the promises and handlers, pause / play / `currentTime` / `reverse` /

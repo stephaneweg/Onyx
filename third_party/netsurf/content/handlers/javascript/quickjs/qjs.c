@@ -1864,6 +1864,12 @@ static void qjs_cstyle_more(jsthread *t, const css_computed_style *style, struct
 			css_computed_rotate(style, &text);
 		snprintf(buf, size, "%s", ty == CSS_ONYX_TEXT_SET && text != NULL ?
 				lwc_string_data(text) : "none");
+	} else if (strcmp(prop, "filter") == 0 || strcmp(prop, "backdrop-filter") == 0) {
+		/* (their canonical texts: "blur(4px) brightness(1.2)") */
+		ty = prop[0] == 'f' ? css_computed_filter(style, &text) :
+			css_computed_backdrop_filter(style, &text);
+		snprintf(buf, size, "%s", ty == CSS_ONYX_TEXT_SET && text != NULL ?
+				lwc_string_data(text) : "none");
 	} else if (strcmp(prop, "left") == 0) {
 		ty = css_computed_left(style, &len, &unit);
 		qjs_len_text(ty, CSS_LEFT_SET, len, unit, buf, size);
