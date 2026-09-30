@@ -63,6 +63,11 @@
 
 #include "html/private.h"
 #include "html/box.h"
+#include "html/box_inspect.h"
+#include "netsurf/types.h"
+#include "netsurf/browser_window.h"
+#include "netsurf/window.h"
+#include "desktop/browser_private.h"
 #include "html/box_construct.h"
 #include "html/onyx_hover.h"
 #include "html/onyx_anim.h"
@@ -554,6 +559,7 @@ struct oa_rec {
 	unsigned int gen;
 	bool pending;			/* (a frame's new style) */
 	css_computed_style *next_style;
+	double last_apply;		/* (off screen: a few frames a second) */
 };
 
 struct oa_event {
@@ -584,12 +590,14 @@ struct onyx_anim {
 	bool reboxing;
 	bool applying;		/* (a frame's styles given to the boxes: records stay) */
 	bool dirty;		/* (a script changed an animation: its style before a read) */
+	bool slow;		/* (only off-screen animations run: a few frames a second) */
 	struct oa_event *ev;
 	int nev, capev;
 	unsigned int frames;
 	/* NS_PERF: the frames' work (us), printed every 120 frames */
-	unsigned int stat_n;
+	unsigned int stat_n, stat_layouts, stat_reboxes;
 	uint64_t stat_sum, stat_max;
+	double stat_start;
 };
 
 static double oa_clock(void)
@@ -1204,6 +1212,8 @@ static void oa_schedule(struct onyx_anim *a)
 		return;
 	if (a->last_work > 10)
 		interval = a->last_work * 1.5;
+	if (a->slow && !a->raf && a->nev == 0 && !a->dirty)
+		interval = 250;
 	wait = a->last_tick + interval - now;
 	if (wait < 1)
 		wait = 1;
@@ -1492,7 +1502,11 @@ void onyx_anim_styled(struct html_content *c, struct dom_node *n,
 	double now;
 	bool wants;
 
-	if (res == NULL || (nw = res->styles[CSS_PSEUDO_ELEMENT_NONE]) == NULL ||
+	static int off = -1;
+
+	if (off < 0)	/* (NS_NO_ANIM: no transitions nor animations -- to compare) */
+		off = getenv("NS_NO_ANIM") != NULL;
+	if (off || res == NULL || (nw = res->styles[CSS_PSEUDO_ELEMENT_NONE]) == NULL ||
 	    c->onyx_anim_probe)
 		return;
 	if (a == NULL) {
@@ -1636,6 +1650,47 @@ static bool oa_inherited_changed(const css_computed_style *a, const css_computed
 	return false;
 }
 
+/* the properties that only change how a box is painted, not where: off screen, such an
+ * animation is shown a few times a second only (nothing to see; the Pi's CPU) */
+static bool oa_paint_prop(uint16_t prop)
+{
+	switch (prop) {
+	case CSS_PROP_OPACITY: case CSS_PROP_COLOR: case CSS_PROP_BACKGROUND_COLOR:
+	case CSS_PROP_BORDER_TOP_COLOR: case CSS_PROP_BORDER_RIGHT_COLOR:
+	case CSS_PROP_BORDER_BOTTOM_COLOR: case CSS_PROP_BORDER_LEFT_COLOR:
+	case CSS_PROP_OUTLINE_COLOR: case CSS_PROP_COLUMN_RULE_COLOR: case CSS_PROP_BOX_SHADOW:
+	case CSS_PROP_VISIBILITY: case CSS_PROP_BORDER_TOP_LEFT_RADIUS:
+	case CSS_PROP_BORDER_TOP_RIGHT_RADIUS: case CSS_PROP_BORDER_BOTTOM_LEFT_RADIUS:
+	case CSS_PROP_BORDER_BOTTOM_RIGHT_RADIUS: case CSS_PROP_FILL: case CSS_PROP_STROKE:
+	case CSS_PROP_FILL_OPACITY: case CSS_PROP_STROKE_OPACITY: case CSS_PROP_STOP_COLOR:
+	case CSS_PROP_STOP_OPACITY:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/* whether the record's element is out of the window's view and animates only painting */
+static bool oa_off_screen(html_content *c, struct oa_rec *r, struct box *b)
+{
+	int sx = 0, sy = 0, x, y, x0, y0, x1, y1, m = 64;
+
+	for (struct oa_effect *e = r->effects; e != NULL; e = e->next)
+		for (int t = 0; t < e->ntracks; t++)
+			if (!oa_paint_prop(e->tracks[t].prop))
+				return false;
+	if (c->bw == NULL || c->bw->window == NULL || c->bw->parent != NULL ||
+	    !guit->window->get_scroll(c->bw->window, &sx, &sy))
+		return false;
+	box_coords(b, &x, &y);
+	x0 = x + (b->descendant_x0 < 0 ? b->descendant_x0 : 0) - m;
+	y0 = y + (b->descendant_y0 < 0 ? b->descendant_y0 : 0) - m;
+	x1 = x + (b->descendant_x1 > b->width ? b->descendant_x1 : b->width) + m;
+	y1 = y + (b->descendant_y1 > b->height ? b->descendant_y1 : b->height) + m;
+	return x1 < sx || y1 < sy || x0 > sx + c->base.available_width ||
+		y0 > sy + c->base.available_height;
+}
+
 /* each record's style at now, given to its boxes */
 static void oa_update(html_content *c, struct onyx_anim *a, double now)
 {
@@ -1644,6 +1699,8 @@ static void oa_update(html_content *c, struct onyx_anim *a, double now)
 	int n = 0, cap = 0;
 	bool can_apply = c->layout != NULL && c->box_conversion_context == NULL &&
 			!c->base.locked && !c->rebox_pending && !c->aborted;
+
+	a->slow = can_apply;
 
 	for (unsigned int k = 0; k < a->cap; k++) {
 		for (struct oa_rec *r = a->tab[k]; r != NULL; r = r->next) {
@@ -1661,6 +1718,15 @@ static void oa_update(html_content *c, struct onyx_anim *a, double now)
 			}
 			if (!had || !can_apply)
 				continue;
+			if (box_for_node(r->node) == NULL ||
+			    !oa_off_screen(c, r, box_for_node(r->node))) {
+				for (e = r->effects; e != NULL && a->slow; e = e->next)
+					if (oa_effect_running(e, now))
+						a->slow = false;
+			} else if (a->in_tick && now - r->last_apply < 240) {
+				continue;
+			}
+			r->last_apply = now;
 			s = oa_compose(r, now);
 			if (s == r->cur || box_for_node(r->node) == NULL) {
 				css_computed_style_destroy(s);
@@ -1716,9 +1782,11 @@ static void oa_update(html_content *c, struct onyx_anim *a, double now)
 		if (rebox && now - a->last_rebox >= 200) {
 			/* (the selection gives the boxes their animated styles) */
 			a->last_rebox = now;
+			a->stat_reboxes++;
 			html_script_dom_changed(c);
 		}
 		if (relayout && !c->rebox_pending) {
+			a->stat_layouts++;
 			t0 = onyx_perf_now();
 			content__reformat(&c->base, false, c->base.available_width,
 					c->base.available_height);
@@ -1765,12 +1833,15 @@ static void oa_tick(void *p)
 		a->stat_sum += d;
 		if (d > a->stat_max)
 			a->stat_max = d;
+		if (a->stat_n == 1)
+			a->stat_start = start;
 		if (a->stat_n == 120) {
-			fprintf(stderr, "ONYX-PERF anim:frames 120, %u elements: %lu us a frame on "
-					"average, %lu at most\n", a->n,
+			fprintf(stderr, "ONYX-PERF anim:frames 120 in %.0f ms, %u elements: %lu us a "
+					"frame on average, %lu at most; %u laid out again, %u "
+					"reboxed\n", start - a->stat_start, a->n,
 					(unsigned long) (a->stat_sum / a->stat_n),
-					(unsigned long) a->stat_max);
-			a->stat_n = 0;
+					(unsigned long) a->stat_max, a->stat_layouts, a->stat_reboxes);
+			a->stat_n = a->stat_layouts = a->stat_reboxes = 0;
 			a->stat_sum = a->stat_max = 0;
 		}
 		if (d >= ONYX_PERF_MIN_US)
