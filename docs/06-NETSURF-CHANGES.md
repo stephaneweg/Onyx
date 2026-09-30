@@ -1029,6 +1029,11 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
 - **The box tree is built in slices of 15 ms**, not of 10 elements (box_construct.c): the
   scheduler runs the next slice at the main loop's next turn only, and a 5000-element page
   (Wikipedia) took hundreds of turns -- the throbber turned for seconds, the early boxes shown.
+- **The connects wait asleep** (onyx_fetch.c): the downloads' connects are made one at a time
+  and the other workers spun on `kapi_lock` meanwhile (a connect: DNS + TCP, 100 ms and more)
+  -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
+  -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
+  SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
 - **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
   first context of the process, their bytecode kept and read back in the next ones
   (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms
