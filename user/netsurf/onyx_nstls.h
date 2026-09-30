@@ -20,6 +20,10 @@ typedef struct onyx_tls_sess onyx_tls_sess;
 /* TCP connect to host:port, then run the TLS handshake. NULL on any failure. */
 onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port);
 
+/* The same over a socket already connected (the fetcher connects itself: one connect at a
+ * time); the socket is the session's from then on (closed with it, or here on a failure). */
+onyx_tls_sess *onyx_nstls_start(int sock, const char *host);
+
 /* Write all `len` bytes (encrypted). Returns len, or <0 on error. */
 int onyx_nstls_send(onyx_tls_sess *s, const void *buf, int len);
 

@@ -119,6 +119,9 @@ typedef struct {
 	bool tried_with_tls_downgrade;	/**< Whether we've tried TLS 1.2 */
 
 	bool tainted_tls;		/**< Whether the TLS transport is tainted */
+
+	char **extra_headers;		/**< Onyx: the request's own headers (JS
+					 * fetch / XMLHttpRequest), NULL-terminated */
 } llcache_fetch_ctx;
 
 /**
@@ -195,6 +198,8 @@ struct llcache_object {
 
 	llcache_header *headers;     /**< Fetch headers */
 	size_t num_headers;	     /**< Number of fetch headers */
+
+	long http_code;		     /**< Onyx: the response's HTTP status (0: none) */
 
 	/* Instrumentation. These elements are strictly for information
 	 * to improve the cache performance and to provide performance
@@ -916,8 +921,14 @@ static nserror llcache_object_refetch(llcache_object *object)
 		}
 	}
 
-	/* Generate headers */
-	headers = malloc(4 * sizeof(char *));
+	/* Generate headers (Onyx: + the request's own ones) */
+	{
+		size_t n_extra = 0;
+		while (object->fetch.extra_headers != NULL &&
+		       object->fetch.extra_headers[n_extra] != NULL)
+			n_extra++;
+		headers = malloc((4 + n_extra) * sizeof(char *));
+	}
 	if (headers == NULL) {
 		return NSERROR_NOMEM;
 	}
@@ -964,6 +975,15 @@ static nserror llcache_object_refetch(llcache_object *object)
 				       object->fetch.referer,
 				       &headers[header_idx]) == NSERROR_OK) {
 			header_idx++;
+		}
+	}
+	/* Onyx: the request's own headers (copies: freed below with the others) */
+	if (object->fetch.extra_headers != NULL) {
+		char **x;
+		for (x = object->fetch.extra_headers; *x != NULL; x++) {
+			headers[header_idx] = strdup(*x);
+			if (headers[header_idx] != NULL)
+				header_idx++;
 		}
 	}
 	headers[header_idx] = NULL;
@@ -1016,6 +1036,36 @@ static nserror llcache_object_refetch(llcache_object *object)
  * \param hsts_in_use     Whether HSTS applies to this fetch
  * \return NSERROR_OK on success, appropriate error otherwise
  */
+/* Onyx: the extra headers of the request llcache_handle_retrieve_ex is making (the
+ * cache runs on one thread: set around the retrieve, copied by the fetch it starts) */
+static const char *const *llcache_pending_headers = NULL;
+
+static char **llcache_headers_dup(const char *const *h)
+{
+	size_t n = 0, i;
+	char **d;
+	if (h == NULL)
+		return NULL;
+	while (h[n] != NULL)
+		n++;
+	d = calloc(n + 1, sizeof(char *));
+	if (d == NULL)
+		return NULL;
+	for (i = 0; i < n; i++)
+		d[i] = strdup(h[i]);
+	return d;
+}
+
+static void llcache_headers_free(char **h)
+{
+	char **x;
+	if (h == NULL)
+		return;
+	for (x = h; *x != NULL; x++)
+		free(*x);
+	free(h);
+}
+
 static nserror llcache_object_fetch(llcache_object *object, uint32_t flags,
 		nsurl *referer, const llcache_post_data *post,
 		uint32_t redirect_count, bool hsts_in_use)
@@ -1041,6 +1091,8 @@ static nserror llcache_object_fetch(llcache_object *object, uint32_t flags,
 	object->fetch.redirect_count = redirect_count;
 	object->fetch.retries_remaining = llcache->fetch_attempts;
 	object->fetch.hsts_in_use = hsts_in_use;
+	if (llcache_pending_headers != NULL && object->fetch.extra_headers == NULL)
+		object->fetch.extra_headers = llcache_headers_dup(llcache_pending_headers);
 
 	return llcache_object_refetch(object);
 }
@@ -1092,6 +1144,8 @@ static nserror llcache_object_destroy(llcache_object *object)
 
 		free(object->fetch.post);
 	}
+
+	llcache_headers_free(object->fetch.extra_headers);	/* Onyx */
 
 	free(object->cache.etag);
 
@@ -3106,6 +3160,13 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 
 	NSLOG(llcache, DEBUG, "Fetch event %d for %p", msg->type, object);
 
+	/* Onyx: the response's status, kept (the fetch is gone after FINISHED) */
+	if (object->fetch.fetch != NULL) {
+		long code = (long) fetch_http_code(object->fetch.fetch);
+		if (code != 0)
+			object->http_code = code;
+	}
+
 	switch (msg->type) {
 	case FETCH_HEADER:
 		/* Received a fetch header */
@@ -3630,6 +3691,7 @@ llcache_object_snapshot(llcache_object *object,	llcache_object **snapshot)
 		return error;
 
 	newobj->source_alloc = newobj->source_len = object->source_len;
+	newobj->http_code = object->http_code;		/* Onyx */
 
 	if (object->source_len > 0) {
 		newobj->source_data = malloc(newobj->source_alloc);
@@ -4085,6 +4147,21 @@ llcache_handle_retrieve(nsurl *url,
 }
 
 
+/* Exported interface documented in content/llcache.h (Onyx) */
+nserror llcache_handle_retrieve_ex(nsurl *url, uint32_t flags,
+		nsurl *referer, const llcache_post_data *post,
+		const char *const *headers,
+		llcache_handle_callback cb, void *pw,
+		llcache_handle **result)
+{
+	nserror error;
+	llcache_pending_headers = headers;
+	error = llcache_handle_retrieve(url, flags, referer, post, cb, pw, result);
+	llcache_pending_headers = NULL;
+	return error;
+}
+
+
 /* Exported interface documented in content/llcache.h */
 nserror llcache_handle_change_callback(llcache_handle *handle,
 		llcache_handle_callback cb, void *pw)
@@ -4265,6 +4342,24 @@ const char *llcache_handle_get_header(const llcache_handle *handle,
 	}
 
 	return NULL;
+}
+
+/* See llcache.h for documentation (Onyx) */
+long llcache_handle_get_http_code(const llcache_handle *handle)
+{
+	return handle->object != NULL ? handle->object->http_code : 0;
+}
+
+/* See llcache.h for documentation (Onyx) */
+bool llcache_handle_get_header_at(const llcache_handle *handle, size_t i,
+		const char **name, const char **value)
+{
+	const llcache_object *object = handle->object;
+	if (object == NULL || i >= object->num_headers)
+		return false;
+	*name = object->headers[i].name;
+	*value = object->headers[i].value;
+	return true;
 }
 
 /* See llcache.h for documentation */

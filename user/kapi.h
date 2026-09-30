@@ -446,26 +446,32 @@ static inline int kapi_pump_wait (unsigned timeout_ms)
 // and a yield while another thread holds it -- nothing to create, a zeroed int is free. Not
 // recursive. (Threads all run on core 0; the swap is still an exclusive load / store pair,
 // since the timer may preempt a thread anywhere in its own code.)
-// (An app built for the PC -- tools/tests/desktop_sim -- gets the compiler's atomics instead of
-// the AArch64 instructions.)
-#ifdef __aarch64__
+// (The PC builds of the apps -- the desktop simulator, the NetSurf bench -- get the compiler's
+// atomics and no cores.)
 static inline int kapi__xchg (volatile int *p, int v)
 {
+#if defined(__aarch64__)
 	int old; unsigned fail;
 	__asm__ volatile ("1: ldaxr %w0, [%2]\n\tstxr %w1, %w3, [%2]\n\tcbnz %w1, 1b"
 			  : "=&r" (old), "=&r" (fail) : "r" (p), "r" (v) : "memory");
 	return old;
+#else
+	return __atomic_exchange_n (p, v, __ATOMIC_ACQUIRE);
+#endif
 }
 static inline unsigned kapi__core (void)
 {
+#if defined(__aarch64__)
 	unsigned long m; __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m)); return (unsigned) (m & 3);
+#else
+	return 0;
+#endif
 }
+#if defined(__aarch64__)
 static inline void kapi__pause (void) { __asm__ volatile ("yield"); }
 static inline void kapi__release (volatile int *l) { __asm__ volatile ("stlr wzr, [%0]" :: "r" (l) : "memory"); }
 static inline void kapi__dmb (void) { __asm__ volatile ("dmb ish" ::: "memory"); }
 #else
-static inline int kapi__xchg (volatile int *p, int v) { return __atomic_exchange_n (p, v, __ATOMIC_ACQUIRE); }
-static inline unsigned kapi__core (void) { return 0; }
 static inline void kapi__pause (void) { }
 static inline void kapi__release (volatile int *l) { __atomic_store_n (l, 0, __ATOMIC_RELEASE); }
 static inline void kapi__dmb (void) { __atomic_thread_fence (__ATOMIC_SEQ_CST); }

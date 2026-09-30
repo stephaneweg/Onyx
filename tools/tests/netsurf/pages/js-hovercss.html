@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>CSS hover</title>
+<style>
+body { margin: 0; }
+#box { position: absolute; left: 0; top: 0; width: 400px; height: 200px; background: #cde; }
+#inner { position: absolute; left: 50px; top: 50px; width: 100px; height: 100px; background: #89a; }
+#tip { display: none; }
+#box:hover #tip { display: block; }
+#far { position: absolute; left: 0; top: 300px; width: 400px; height: 100px; background: #dca; }
+</style></head>
+<body>
+<div id="box"><div id="inner">inner</div><div id="tip">tip</div></div>
+<div id="far">far</div>
+<script>
+/* The simulator moves the pointer onto #inner (a child of #box: #box is hovered too), then
+ * onto #far. #tip is shown only while #box is hovered (CSS :hover, restyled at each change). */
+const tip = document.getElementById('tip');
+console.log('hovercss before ' + getComputedStyle(tip).display);
+document.getElementById('inner').addEventListener('mouseenter', () =>
+  setTimeout(() => console.log('hovercss over ' + getComputedStyle(tip).display), 100));
+document.getElementById('far').addEventListener('mouseenter', () =>
+  setTimeout(() => console.log('hovercss after ' + getComputedStyle(tip).display), 100));
+</script>
+</body></html>

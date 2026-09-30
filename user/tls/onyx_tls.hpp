@@ -120,6 +120,13 @@ namespace onyx_tls
 		static SessCacheEntry s_cache[TLS_SESS_CACHE_N];	// zero-init -> valid=false
 		return s_cache;
 	}
+	// The cache is shared by an app's threads (NetSurf: a handshake per fetch thread):
+	// kapi_lock around every use (sess_find + set_session, sess_save).
+	inline volatile int *sess_lock (void)
+	{
+		static volatile int s_lock;
+		return &s_lock;
+	}
 	inline SessCacheEntry *sess_find (const char *host)
 	{
 		SessCacheEntry *c = sess_cache ();
@@ -201,8 +208,10 @@ namespace onyx_tls
 
 		// Resume a cached session for this host if we have one (abbreviated handshake).
 		{
+			kapi_lock (sess_lock ());
 			SessCacheEntry *resume = sess_find (host);
 			if (resume != 0) mbedtls_ssl_set_session (&s.ssl, &resume->sess);
+			kapi_unlock (sess_lock ());
 		}
 
 		unsigned start_t = kapi_get_ticks ();
@@ -217,7 +226,9 @@ namespace onyx_tls
 			}
 			return -1;
 		}
+		kapi_lock (sess_lock ());
 		sess_save (host, &s.ssl);		// cache the (resumable) session for next time
+		kapi_unlock (sess_lock ());
 		return 0;
 	}
 

@@ -1537,11 +1537,32 @@ css_error node_is_visited(void *pw, void *node, bool *match)
  *
  * \post \a match will contain true if the node matches and false otherwise.
  */
+struct dom_node *nscss_hover_node = NULL;	/* (Onyx: see select.h) */
+bool nscss_hover_used = false;
+
 css_error node_is_hover(void *pw, void *node, bool *match)
 {
-	/** \todo Support hovering */
+	/* Onyx: the node under the pointer and its ancestors are hovered */
+	dom_node *n = nscss_hover_node;
 
+	(void) pw;
+	nscss_hover_used = true;
 	*match = false;
+	if (n == NULL)
+		return CSS_OK;
+	dom_node_ref(n);
+	while (n != NULL) {
+		dom_node *parent = NULL;
+		if (n == (dom_node *) node) {
+			*match = true;
+			dom_node_unref(n);
+			break;
+		}
+		if (dom_node_get_parent_node(n, &parent) != DOM_NO_ERR)
+			parent = NULL;
+		dom_node_unref(n);
+		n = parent;
+	}
 
 	return CSS_OK;
 }

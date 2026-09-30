@@ -21,12 +21,28 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript) |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
-| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree |
+| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree. `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
-what includes it (the rules do not track headers): the libcss objects, `/tmp/nsbuild`.
+what includes it (the rules do not track headers): the libcss objects, `/tmp/nsbuild`. The
+codegen tools need a host compiler (`BUILD_CC`, `gcc` by default: `build-essential` in WSL; a
+WSL without one: `BUILD_CC=$PWD/tools/wsl-build-cc.sh`, the Windows MinGW gcc). GCC 14
+turned some warnings NetSurf has into errors: the makefile keeps them warnings.
+
+**The network** (`user/netsurf/onyx_fetch.c`): each download runs in a **thread** of its own
+(kernel v67) -- the DNS, the connect, the TLS handshake and every read block there, not the
+UI; the UI thread gets the finished ones in the fetcher's poll (every 10 ms) and hands them to
+NetSurf (the head parsed, the redirects, the inflate, the callbacks). 8 at once; an aborted
+fetch whose thread still runs is freed by that thread. The request is a GET, a POST (a
+url-encoded or text body) or any method a script asks for (`X-Onyx-Method`, taken off), with
+the caller's headers; the response goes to the core with its status line and headers (not the
+cache-control ones, nor those the inflate makes wrong). Without threads (an older kernel, the
+PC bench) it is the one-step-per-poll state machine. mbedTLS's session cache is locked
+(`onyx_tls.hpp`). The cache (`content/llcache.c`, Onyx changes): a request's own headers
+(`llcache_handle_retrieve_ex`), its HTTP status kept (`llcache_handle_get_http_code`), its
+headers in order (`llcache_handle_get_header_at`).
 
 ## 2. The window and the frontend
 
@@ -34,6 +50,11 @@ what includes it (the rules do not track headers): the libcss objects, `/tmp/nsb
   forward, reload/stop, home, History, the address field), the frame's close box closes
   NetSurf; no fbtk toolbar (`frontends/framebuffer/gui.c`). Keys: F5, Esc, Alt+Left/Right,
   F6 / Ctrl+L, Ctrl+H.
+- **A back buffer** (`user/nsfb/onyx_surface.c`, the libnsfb surface): NetSurf draws into an
+  off-screen buffer of the page's size, and `update` copies the rectangle it redrew into the
+  window's canvas -- the compositor, the apps being preempted, showed half-drawn redraws (a
+  background cleared, then painted: the page flickered at each restyle). Made again at a resize,
+  from what the canvas shows.
 - **History** — a native dialog (most recent first, Find, Delete, Clear all); the pages
   visited kept in `SD:/apps/netsurf.app/History`, the cookies in `.../Cookies`
   (`ONYX_NS_DATAPATH`, written a few seconds after each page and on exit; never committed).
@@ -165,9 +186,24 @@ optional chaining...) with the DOM written in JavaScript:
   `preventDefault`), `querySelector`/`matches`/`closest` (its own selector engine: `:is`,
   `:not`, `:has`, `:nth-*`...), `classList`, `dataset`, `style`, `innerHTML`/`outerHTML`,
   `MutationObserver`, `IntersectionObserver`, `ResizeObserver`, `matchMedia`,
-  `getComputedStyle`, `localStorage` (in memory), `URL`, `URLSearchParams`, `FormData`,
-  `TextEncoder`, timers, `requestAnimationFrame`, `location`, `history`, `navigator`.
-  `fetch` and `XMLHttpRequest` fail (as offline) for now.
+  `getComputedStyle`, `localStorage` (kept: a file per origin next to the cookie file,
+  `ls-<origin>.json`, written a turn after a change; `sessionStorage` in memory), `URL`,
+  `URLSearchParams`, `FormData`, `TextEncoder` / `TextDecoder` (UTF-8 in C: `N.utf8`), timers,
+  `requestAnimationFrame`, `location`, `history`, `navigator`.
+- **`fetch` and `XMLHttpRequest`**: `fetch` (a promise of a `Response`: `ok`, `status`,
+  `statusText`, `url`, `redirected`, `headers`; `text()`, `json()`, `arrayBuffer()`,
+  `bytes()`, `blob()`, `formData()`, `clone()`; an `AbortSignal` cancels it), `Headers`,
+  `Request`, `Response` (`Response.json`, `.error`, `.redirect`), and `XMLHttpRequest`
+  (`readyState` 1 → 4 with `readystatechange`, `loadstart` / `progress` / `load` / `error` /
+  `abort` / `timeout` / `loadend`, `responseType` `''` / `text` / `json` / `arraybuffer` /
+  `blob`, `setRequestHeader`, `getResponseHeader`, `getAllResponseHeaders`, `timeout`,
+  `abort`). Bodies: a string, `URLSearchParams`, `FormData` (url-encoded), a `Blob`, bytes
+  (as text: no NUL). On one native, `request(method, url, body, headers, binary, cb)`
+  (`qjs.c`): NetSurf's low-level cache with `LLCACHE_RETRIEVE_FORCE_FETCH`, the callback on the
+  page's thread (the promises' jobs run after it, a changed DOM laid out again); the requests
+  in flight are cancelled when the document goes. Not yet: synchronous XHR (it runs async),
+  streams (`body` is null), multipart bodies, `responseXML`, CORS checks (every origin
+  answers).
 - **A changed DOM is laid out again** (`html.c`, `html_script_dom_changed`): once a script
   is done, NetSurf builds the document's boxes again (`dom_to_box_now`, synchronously) and
   lays it out — a menu a script opens, a class toggled, nodes added. The old boxes' objects
@@ -177,7 +213,13 @@ optional chaining...) with the DOM written in JavaScript:
   the new layout at once (`html_script_layout_now`).
 - **The browser's events** reach the scripts (`html_script_event`): `mousedown`, `mouseup`,
   `click` at the element under the pointer — a click a script prevents neither follows its
-  link nor sends its form —; `keydown`/`keypress`/`keyup` at the focused control or the
+  link nor sends its form —; the pointer's moves (`onyx:hover` from `interaction.c`, every
+  move: dom.js makes `mouseover` / `mouseout` with their `relatedTarget`, `mouseenter` /
+  `mouseleave` for each ancestor entered or left, and `mousemove`); **CSS `:hover`** -- the
+  node under the pointer is kept (`html_content.hover_node`); libcss asks `node_is_hover`
+  (`css/select.c`: that node and its ancestors), and when it changes the styles are made again
+  (`html_script_dom_changed`) -- only when the style sheets have `:hover` rules (a `:hover`
+  selector was tried: `uses_hover`); `keydown`/`keypress`/`keyup` at the focused control or the
   document (a key prevented is not typed); `input` (typing; deferred a turn: the text area
   is not changed under its feet), `change` (checkboxes, radios, a select's menu), `submit`
   (a submit button, Enter; prevented: not sent); the window's `scroll` (the frontend tells
@@ -194,8 +236,8 @@ optional chaining...) with the DOM written in JavaScript:
 
 ## 8. Known gaps
 
-- JavaScript: `fetch` / `XMLHttpRequest` (no request is made), `localStorage` is not kept,
-  no `canvas`, no hover events (`mouseover`...); a form control outside a form is made again
-  at each layout the scripts cause (its old one leaks).
+- JavaScript: no `canvas`; no streams (`fetch`'s `body`), synchronous XHR (runs async),
+  multipart request bodies, `responseXML`; CSS `:active` / `:focus`; a form control
+  outside a form is made again at each layout the scripts cause (its old one leaks).
 - SVG (inline `<svg>` and `.svg` images), `opacity`, filters, animations and transitions.
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.

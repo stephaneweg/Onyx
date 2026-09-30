@@ -51,5 +51,44 @@ L=$OUT/js-recursion.log
 run js-recursion.html "$(waits 60)" "$L"
 expect "$L" "recursion: RangeError"
 
+echo "js-fetch.html (fetch, XMLHttpRequest, Headers, Response)"
+L=$OUT/js-fetch.log
+run js-fetch.html "$(waits 200)" "$L"
+expect "$L" "fetch: done"
+if grep -q '^console: FAIL \|^JS ' "$L"; then
+	echo "  FAIL: $(grep -c '^console: FAIL ' "$L") check(s) failed"; grep '^console: FAIL \|^JS ' "$L" | head -10; fail=1
+else
+	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
+fi
+
+echo "js-hover.html (mouseover / mouseenter / mouseleave / mousemove)"
+L=$OUT/js-hover.log
+run js-hover.html "$(waits 40)move 300 110;$(waits 20)move 100 130;$(waits 20)move 100 390;$(waits 20)" "$L"
+expect "$L" "hover mouseenter outer"
+expect "$L" "hover mouseenter inner"
+expect "$L" "hover over inner from outer"
+expect "$L" "hover mouseleave inner"
+expect "$L" "hover mouseleave outer"
+expect "$L" "hover mouseenter other"
+expect "$L" "hover mousemove"
+refuse "$L" "hover mouseleave outer.*inner"
+
+echo "js-hovercss.html (CSS :hover, the styles made again)"
+L=$OUT/js-hovercss.log
+run js-hovercss.html "$(waits 40)move 100 130;$(waits 30)move 100 390;$(waits 30)" "$L"
+expect "$L" "hovercss before none"
+expect "$L" "hovercss over block"
+expect "$L" "hovercss after none"
+
+echo "js-storage.html (localStorage kept across two runs)"
+L=$OUT/js-storage.log
+run js-storage.html "$(waits 40)" "$L"
+a=$(sed -n 's/^console: storage count //p' "$L")
+run js-storage.html "$(waits 40)" "$L"
+b=$(sed -n 's/^console: storage count //p' "$L")
+expect "$L" "storage proxy proxy"
+expect "$L" "storage keys ok"
+if [ -n "$a" ] && [ "$b" = "$((a + 1))" ]; then echo "  ok    kept: $a -> $b"; else echo "  FAIL  kept: '$a' -> '$b'"; fail=1; fi
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

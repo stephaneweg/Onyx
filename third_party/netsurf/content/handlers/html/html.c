@@ -1539,6 +1539,10 @@ static void html_destroy(struct content *c)
 		html->script_changed = NULL;
 	}
 	html->rebox_pending = false;
+	if (html->hover_node != NULL) {		/* (Onyx) */
+		dom_node_unref(html->hover_node);
+		html->hover_node = NULL;
+	}
 
 	/* If we're still converting a layout, cancel it */
 	if (html->box_conversion_context != NULL) {

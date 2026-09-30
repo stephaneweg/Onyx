@@ -216,6 +216,11 @@ typedef struct html_content {
 	/** Onyx: a script changed the DOM: its boxes to build again (html_rebox) */
 	bool rebox_pending;
 
+	/** Onyx: the node under the pointer (CSS :hover: it and its ancestors), a ref */
+	struct dom_node *hover_node;
+	/** Onyx: the style sheets have :hover rules (the styles made again when it moves) */
+	bool uses_hover;
+
 	/** Onyx: while the boxes are built again, the old boxes' objects to take over */
 	struct content_html_object *rebox_objects;
 

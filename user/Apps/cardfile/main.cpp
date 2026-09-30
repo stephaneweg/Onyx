@@ -762,7 +762,7 @@ static void cmd_mail_merge ()
 	else j.puts ("output = open\n");
 	if (ok) ok = kapi_save_file (MERGE_JOB, j.b, (unsigned) j.n) >= 0;
 	char args[240] = "--merge "; scat (args, MERGE_JOB, sizeof args);
-	if (!ok || kapi_exec ("SD:/apps/writer.app/main", args) < 0) ask ("Mail Merge", "Writer could not be started.", MB_OK, 2);
+	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) ask ("Mail Merge", "Writer could not be started.", MB_OK, 2);
 	else { char s[96] = "Mail merge: "; scat_num (s, n, sizeof s); scat (s, n == 1 ? " record sent to Writer" : " records sent to Writer", sizeof s); status (s); }
 	refresh ();
 	focus_view ();

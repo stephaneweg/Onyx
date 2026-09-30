@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>JS storage</title></head>
+<body>
+<h1>localStorage kept</h1>
+<script>
+/* Run twice: the second run must see the first's counter + 1 (localStorage kept in a file). */
+const n = Number(localStorage.getItem('onyx-test-count') || 0);
+console.log('storage count ' + n);
+localStorage.setItem('onyx-test-count', String(n + 1));
+localStorage.onyxKey = 'proxy';
+console.log('storage proxy ' + localStorage.getItem('onyxKey'));
+sessionStorage.setItem('s', '1');
+console.log('storage keys ' + (localStorage.length >= 2 ? 'ok' : 'few'));
+</script>
+</body></html>

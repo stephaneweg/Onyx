@@ -7,9 +7,12 @@
  * window is user/netsurf/onyx_chrome.cpp's (a wtk window, the native toolbar in its top band),
  * the page is its canvas below the band:
  *
- *   - initialise : onyx_chrome_open() -> the page's first pixel IS nsfb->ptr (the window's
- *                  stride: linelen).
- *   - update     : onyx_chrome_present() flushes the window to screen.
+ *   - initialise : onyx_chrome_open() -> the page's area in the window's canvas. NetSurf draws
+ *                  into a BACK BUFFER of the page's size (nsfb->ptr), never into the canvas:
+ *                  a redraw clears then paints, and the compositor -- the apps are preempted
+ *                  -- showed those half-drawn states (the page flickered at each restyle).
+ *   - update     : the rectangle NetSurf redrew is copied from the back buffer into the
+ *                  canvas, then onyx_chrome_present() flushes the window to screen.
  *   - input      : the chrome owns the kapi pointer / key handlers; it hands the page's events
  *                  to ours (their y relative to the page), which we translate into a ring of
  *                  nsfb_event_t served to libnsfb's poll-style nsfb_event()/input(). A resize
@@ -25,6 +28,8 @@
  */
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
 #include "libnsfb.h"
 #include "libnsfb_plot.h"
@@ -157,6 +162,40 @@ static void onyx_key(unsigned long sender, int event, long value)
 	ring_push(&e);
 }
 
+/* The page in the window's canvas (its first pixel, its stride in pixels, its size) and the
+ * back buffer NetSurf draws into (the page's size, packed rows). */
+static unsigned *s_page;
+static int s_pstride;
+static uint32_t *s_back;
+static int s_bw, s_bh;
+
+/* A back buffer for a page of w x h at page / stride (its pixels taken from the canvas: what
+ * is on screen stays). nsfb->ptr / linelen / width / height set. */
+static int onyx_back(nsfb_t *nsfb, unsigned *page, int stride, int w, int h)
+{
+	uint32_t *b;
+	int y;
+
+	if (w <= 0 || h <= 0)
+		return -1;
+	b = malloc((size_t) w * (size_t) h * 4);
+	if (b == NULL)
+		return -1;
+	for (y = 0; y < h; y++)
+		memcpy(b + (size_t) y * w, page + (size_t) y * stride, (size_t) w * 4);
+	free(s_back);
+	s_back = b;
+	s_bw = w;
+	s_bh = h;
+	s_page = page;
+	s_pstride = stride;
+	nsfb->ptr = (uint8_t *) b;
+	nsfb->width = w;
+	nsfb->height = h;
+	nsfb->linelen = w * 4;
+	return 0;
+}
+
 static int onyx_defaults(nsfb_t *nsfb)
 {
 	int sw = 800, sh = 600;
@@ -185,12 +224,8 @@ onyx_set_geometry(nsfb_t *nsfb, int width, int height, enum nsfb_format_e format
 		/* the window was resized by the chrome (maximise): take the page as it is now */
 		int stride, w, h;
 		unsigned *c = onyx_chrome_page(&stride, &w, &h);
-		if (c != NULL) {
-			nsfb->ptr = (uint8_t *) c;
-			nsfb->width = w;
-			nsfb->height = h;
-			nsfb->linelen = stride * 4;
-		}
+		if (c != NULL)
+			onyx_back(nsfb, c, stride, w, h);	/* (a new back buffer of the new size) */
 		return 0;
 	}
 	nsfb->linelen = (nsfb->width * nsfb->bpp) / 8;
@@ -209,8 +244,8 @@ static int onyx_initialise(nsfb_t *nsfb)
 	if (canvas == NULL)
 		return -1;
 
-	nsfb->ptr = (uint8_t *) canvas;
-	nsfb->linelen = stride * 4;		/* the window's rows (bpp 32: select_plotters) */
+	if (onyx_back(nsfb, canvas, stride, nsfb->width, nsfb->height) != 0)
+		return -1;
 
 	ring.head = ring.tail = 0;
 	nsfb->surface_priv = &ring;
@@ -221,17 +256,33 @@ static int onyx_initialise(nsfb_t *nsfb)
 
 static int onyx_finalise(nsfb_t *nsfb)
 {
-	/* The canvas is owned by the kernel window; it is released when the app exits.
-	 * Just drop our reference so the core does not free() a non-malloc'd pointer. */
+	/* The canvas is owned by the kernel window; it is released when the app exits. The back
+	 * buffer is ours. */
+	free(s_back);
+	s_back = NULL;
 	nsfb->ptr = NULL;
 	return 0;
 }
 
 static int onyx_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 {
+	int x0 = 0, y0 = 0, x1 = s_bw, y1 = s_bh, y;
+
 	UNUSED(nsfb);
-	UNUSED(box);			/* no dirty-rect kapi yet: present the whole canvas */
-	onyx_chrome_present();
+	if (s_back == NULL || s_page == NULL)
+		return 0;
+	if (box != NULL) {		/* the rectangle redrawn, clipped to the page */
+		x0 = box->x0 < 0 ? 0 : box->x0;
+		y0 = box->y0 < 0 ? 0 : box->y0;
+		x1 = box->x1 > s_bw ? s_bw : box->x1;
+		y1 = box->y1 > s_bh ? s_bh : box->y1;
+	}
+	if (x1 > x0 && y1 > y0) {
+		for (y = y0; y < y1; y++)
+			memcpy(s_page + (size_t) y * s_pstride + x0,
+			       s_back + (size_t) y * s_bw + x0, (size_t) (x1 - x0) * 4);
+	}
+	onyx_chrome_present();		/* (no dirty-rect kapi: the window whole) */
 	return 0;
 }
 

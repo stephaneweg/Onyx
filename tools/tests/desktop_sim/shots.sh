@@ -53,7 +53,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet koton"
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
 $CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
@@ -166,6 +166,23 @@ if want cardfile; then			# (the sample: a record; the list sorted by title, a ro
 	png cardfile-list
 	sim cardfile cardfile-design "wait;key 0x116;wait;down 100 157;up 100 157;$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile-design
 	sim cardfile cardfile-merge "wait;menu 21;$W" $P SIM_ARGS=SD:/docs/contacts.card; png cardfile-merge	# (Record > Mail Merge)
+fi
+if want ledger; then			# (the demo company: its overview, its sales, an invoice, the quotes and orders, a quote, the bank's
+					#  CODA statement imported, the general ledger, the VAT; a quote printed: Ledger writes the merge's data
+					#  and request, Writer makes the document from its template)
+	L=SIM_ARGS=SD:/docs/demo-company.ledger
+	sim ledger ledger "$W" $P $L; png ledger
+	sim ledger ledger-sales "wait;down 60 172;up 60 172;$W" $P $L; png ledger-sales
+	sim ledger ledger-invoice "wait;down 60 172;up 60 172;wait;down 400 150;up 400 150;wait;key 13;$W" $P $L; png ledger-invoice
+	sim ledger ledger-quotes "wait;down 60 316;up 60 316;$W" $P $L; png ledger-quotes
+	sim ledger ledger-quote "wait;down 60 316;up 60 316;wait;down 400 218;up 400 218;wait;key 13;$W" $P $L; png ledger-quote
+	sim ledger ledger-coda "wait;down 60 233;up 60 233;wait;down 756 28;up 756 28;wait;down 499 441;up 499 441;wait;$(typ demo-bank-statement.cod);wait;down 540 478;up 540 478;$W" $P $L
+	png ledger-coda
+	sim ledger ledger-reports "wait;down 60 485;up 60 485;$W" $P $L; png ledger-reports
+	sim ledger ledger-vat "wait;down 60 515;up 60 515;$W" $P $L; png ledger-vat
+	sim ledger ledger-print0 "wait;down 60 316;up 60 316;wait;down 400 218;up 400 218;wait;key 13;wait;down 592 28;up 592 28;$W" $P $L
+	sim writer ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
+	png ledger-print
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want applist; then sim applist applist "$W" $P; png applist; fi
