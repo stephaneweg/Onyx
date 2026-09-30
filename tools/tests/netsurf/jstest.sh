@@ -105,7 +105,7 @@ L=$OUT/js-restyle.log
 run js-restyle.html "$(waits 150)" "$L"
 grep "^console: FAIL " "$L" | sed 's/^/  FAIL  /'
 if grep -q "^console: FAIL " "$L"; then fail=1; fi
-expect "$L" "restyle checks 45"
+expect "$L" "restyle checks 46"
 
 echo "css-bodyoverflow.html (the body's overflow is the viewport's)"
 L=$OUT/css-bodyoverflow.log

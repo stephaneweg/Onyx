@@ -42,12 +42,14 @@
  * css_onyx_node_vars_ref / css_onyx_vars_same), the :hover state of each node their
  * selection tried :hover on (the element itself and ancestors; a :hover tried on another
  * node is not kept) -- whose notes for onyx_hover.c are replayed --, and an epoch that a
- * new selection context, a media change or a shadow DOM switch moves. When the new
- * context only adds sheets to the old one (a late <link>, a script's <style>: GitHub
- * loads its sheets after the page), a kept selection of an epoch since stays when no
- * selector of the added sheets matches the element (css_select_style_onyx_probe on a
- * context of those sheets only; a probe that looks at :hover on another node or at the
- * structure counts as a match). Never kept: the elements in a shadow tree, shadow hosts
+ * new selection context or a media change moves (the first shadow root does not: a light
+ * element's selection is the same through onyx_shadow_style -- NS_RESTYLE_CHECK on
+ * reddit.com). When the new context only adds or takes out sheets (a late <link>, a
+ * script's <style>: GitHub loads its sheets after the page; a <style>'s text changed),
+ * a kept selection of an epoch since stays when no selector of those sheets matches the
+ * element (css_select_style_onyx_probe on a context of those sheets only; a probe that
+ * looks at :hover on another node or at the structure counts as a match); the sheets
+ * taken out are kept alive meanwhile. Never kept: the elements in a shadow tree, shadow hosts
  * and their light children (the scoping has more inputs). :has() never matches in
  * libcss, and the other state pseudo-classes answer no.
  *
@@ -72,6 +74,8 @@
 
 #include "html/private.h"
 #include "html/html.h"
+#include "html/box.h"
+#include "html/box_construct.h"
 #include "html/onyx_shadow.h"
 #include "html/onyx_restyle.h"
 #include "html/onyx_hover.h"
@@ -90,6 +94,7 @@ struct osr_memo {
 	 * was hovered: kept while they are the same */
 	dom_node *tested[OSR_TESTED];
 	uint8_t ntested, hovered;
+	bool none;		/* display: none in the box tree of its serial */
 	css_select_results *res;	/* the cascade's (NULL: not kept) */
 	css_computed_style *parent, *root;
 	const void *pvars;	/* its parent's custom properties (libcss, a reference) */
@@ -316,13 +321,11 @@ void onyx_restyle_begin(html_content *c)
 	    c->restyle_media_h != c->media.height ||
 	    c->restyle_vw != c->unit_len_ctx.viewport_width ||
 	    c->restyle_vh != c->unit_len_ctx.viewport_height ||
-	    c->restyle_shadow != c->onyx_shadow ||
 	    c->restyle_base != c->base_url) {
 		c->restyle_media_w = c->media.width;
 		c->restyle_media_h = c->media.height;
 		c->restyle_vw = c->unit_len_ctx.viewport_width;
 		c->restyle_vh = c->unit_len_ctx.viewport_height;
-		c->restyle_shadow = c->onyx_shadow;
 		c->restyle_base = c->base_url;
 		onyx_restyle_invalidate_all(c);
 	}
@@ -694,6 +697,9 @@ void onyx_restyle_store(html_content *c, dom_node *n, const css_select_results *
 	m->epoch = c->restyle_epoch;
 	m->structural = structural;
 	m->ntested = m->hovered = 0;
+	m->none = res != NULL && res->styles[CSS_PSEUDO_ELEMENT_NONE] != NULL &&
+			css_computed_display(res->styles[CSS_PSEUDO_ELEMENT_NONE], false) ==
+			CSS_DISPLAY_NONE;
 	if (!cacheable || res == NULL || osr_tested_over)
 		return;
 	for (i = 0; i < (int) osr_ntested; i++) {
@@ -837,4 +843,40 @@ void onyx_restyle_check(html_content *c, dom_node *n, const css_select_results *
 		}
 	}
 	css_select_results_destroy(fresh);
+}
+
+/* exported function documented in html/onyx_restyle.h */
+bool onyx_restyle_node_hidden(html_content *c, dom_node *n)
+{
+	dom_node *a = NULL, *next;
+	bool hidden = false;
+
+	if (c->restyle_serial == 0)
+		return false;
+	/* (a shadow tree's content is shown: its root is not the document) */
+	if (dom_node_get_parent_node(n, &a) != DOM_NO_ERR)
+		return false;
+	while (a != NULL) {
+		struct osr_memo *m = osr_get(a);
+		dom_node_type type;
+
+		/* (no box: an animation may show what the cascade hides) */
+		if (m != NULL && m->serial == c->restyle_serial && m->none &&
+		    box_for_node(a) == NULL) {
+			hidden = true;
+			dom_node_unref(a);
+			break;
+		}
+		if (dom_node_get_node_type(a, &type) == DOM_NO_ERR &&
+		    type != DOM_ELEMENT_NODE) {
+			dom_node_unref(a);
+			break;
+		}
+		next = NULL;
+		if (dom_node_get_parent_node(a, &next) != DOM_NO_ERR)
+			next = NULL;
+		dom_node_unref(a);
+		a = next;
+	}
+	return hidden;
 }

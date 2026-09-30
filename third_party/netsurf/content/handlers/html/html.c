@@ -443,6 +443,8 @@ static void html_rebox(html_content *c)
 	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
 	onyx_hover_reset(c);	/* (the :hover notes made again with the styles) */
 	t0 = onyx_perf_now();
+	nsu_getmonotonic_ms(&c->rebox_last_start);
+	c->rebox_mut_events = c->rebox_mut_shown = 0;
 	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
 		html_rebox_success = false;
 	onyx_perf_log("rebox:boxes", t0);
@@ -536,6 +538,11 @@ static void html_rebox(html_content *c)
 				c->base.available_height);
 	}
 	onyx_perf_log("rebox:reformat", t0);
+	{
+		uint64_t now;
+		nsu_getmonotonic_ms(&now);
+		c->rebox_last_cost = now - c->rebox_last_start;
+	}
 
 	/* Onyx: a text field a script focused before it had a box */
 	if (c->focus_pending != NULL && !c->early_layout) {
@@ -603,14 +610,54 @@ bool html_script_focus_control(html_content *c, dom_node *node)
 /* exported interface documented in html/private.h */
 void html_script_dom_changed(html_content *c)
 {
+	uint64_t now, interval, delay = 10;
+
 	if (c->layout == NULL && c->box_conversion_context == NULL)
 		return;	/* not boxed yet: the boxes will see the change */
 	if (c->early_layout && !c->conversion_begun) {
 		c->early_stale = true;	/* (Onyx: made again when asked, or at the conversion) */
 		return;
 	}
+	/* Onyx: one rebox for the changes of the turns that come meanwhile -- the first
+	 * change sets when (a later one no longer puts it off: a script changing the DOM
+	 * every few ms kept it from ever coming) -- and while the scripts keep changing
+	 * the DOM, one every max(50 ms, twice its cost) at most: the scripts get the time
+	 * between (a script asking for a geometry has its rebox at once:
+	 * html_script_layout_now) */
+	if (c->rebox_pending)
+		return;
+	nsu_getmonotonic_ms(&now);
+	interval = c->rebox_last_cost * 2 > 50 ? c->rebox_last_cost * 2 : 50;
+	if (c->rebox_last_start != 0 && now < c->rebox_last_start + interval &&
+	    c->rebox_last_start + interval - now > delay)
+		delay = c->rebox_last_start + interval - now;
 	c->rebox_pending = true;
-	guit->misc->schedule(10, html_rebox_scheduled, c);
+	guit->misc->schedule((int) delay, html_rebox_scheduled, c);
+}
+
+/* exported interface documented in html/private.h */
+void html_script_mutation(html_content *c, struct dom_node *node)
+{
+	if (c->layout == NULL)
+		return;
+	c->rebox_mut_events++;
+	if (c->rebox_mut_shown == 0 && !onyx_restyle_node_hidden(c, node))
+		c->rebox_mut_shown++;
+}
+
+/* exported interface documented in html/private.h */
+void html_script_dom_changed_by_script(html_content *c)
+{
+	if (c->layout != NULL && !c->rebox_pending && !c->early_layout &&
+	    c->rebox_mut_events > 0 && c->rebox_mut_shown == 0) {
+		/* (nothing shown changed: no rebox) */
+		if (onyx_perf_on())
+			fprintf(stderr, "ONYX-PERF rebox:skipped (%u hidden changes) 0 us\n",
+					c->rebox_mut_events);
+		c->rebox_mut_events = 0;
+		return;
+	}
+	html_script_dom_changed(c);
 }
 
 /* Onyx: the viewport's size in device pixels (the browser window's), as the first

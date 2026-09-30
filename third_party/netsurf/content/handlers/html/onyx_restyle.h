@@ -82,6 +82,10 @@ void onyx_restyle_check(struct html_content *c, dom_node *n, const css_select_re
 struct hlcache_handle;
 void onyx_restyle_keep_sheet(struct html_content *c, struct hlcache_handle *old);
 
+/** Whether a DOM change of n cannot show: an ancestor of it was display: none in the last
+ * box tree (its kept selection says so: head, script, template, a hidden panel...) */
+bool onyx_restyle_node_hidden(struct html_content *c, dom_node *n);
+
 /** The content goes */
 void onyx_restyle_fini(struct html_content *c);
 

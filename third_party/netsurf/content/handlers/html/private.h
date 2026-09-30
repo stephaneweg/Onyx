@@ -218,6 +218,11 @@ typedef struct html_content {
 
 	/** Onyx: a script changed the DOM: its boxes to build again (html_rebox) */
 	bool rebox_pending;
+	/** Onyx: the last rebox's start and cost (ms: its successors wait while the
+	 * scripts keep changing the DOM), and the DOM changes since it -- how many, how
+	 * many of them could show (not in a display: none subtree) */
+	uint64_t rebox_last_start, rebox_last_cost;
+	unsigned int rebox_mut_events, rebox_mut_shown;
 	/** Onyx: boxes built and laid out while the document is still parsed (a script
 	 * asked for a geometry), and whether the parser added nodes since */
 	bool early_layout;
@@ -268,7 +273,6 @@ typedef struct html_content {
 	 * or the media moves, and the media the last tree was selected with */
 	unsigned int restyle_serial, restyle_epoch;
 	css_fixed restyle_media_w, restyle_media_h, restyle_vw, restyle_vh;
-	bool restyle_shadow;
 	struct nsurl *restyle_base;
 	struct onyx_restyle *onyx_rs;	/* the sheets added since an epoch */
 
@@ -370,6 +374,16 @@ nserror html_proceed_to_done(html_content *html);
  * out again (soon: the changes of one script run together).
  */
 void html_script_dom_changed(html_content *htmlc);
+
+/**
+ * Onyx: the scripts' DOM changes of a turn (quickjs's): as html_script_dom_changed, but
+ * nothing when every change since the last rebox was in a display: none subtree (head,
+ * script, template, a hidden panel: onyx_restyle_node_hidden).
+ */
+void html_script_dom_changed_by_script(html_content *htmlc);
+
+/** Onyx: a DOM change (dom_event.c): counted for html_script_dom_changed_by_script */
+void html_script_mutation(html_content *htmlc, struct dom_node *node);
 
 /**
  * Onyx: a subtree taken out of the document forgets its boxes (they are freed at the next

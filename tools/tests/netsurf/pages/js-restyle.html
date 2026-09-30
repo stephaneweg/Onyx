@@ -24,6 +24,7 @@ ul { margin: 0; padding: 0 }
 #nl li:nth-last-child(1) { width: 33px }
 #VL li:first-child { --w: 18px }
 #VL span { width: var(--w, 11px) }
+.hc { width: 97px }
 </style></head>
 <body>
 <div id="P"><div id="C" class="c"></div><div id="D" class="d"></div></div>
@@ -37,6 +38,7 @@ ul { margin: 0; padding: 0 }
 <div id="GP"><div id="HP"><div id="KID" class="kid"></div></div></div>
 <div id="ST"></div>
 <ul id="nl"><li id="N1"></li><li id="N2"></li></ul>
+<div id="HB" class="hide"><div id="HC"></div></div>
 <ul id="VL"><li id="V1"><span id="VS"></span></li></ul>
 <script>
 const $ = id => document.getElementById(id);
@@ -121,6 +123,10 @@ async function run() {
 	check('sheet taken out', $('KID'), 95);
 	s.textContent = '#ST { width: 91px }'; await tick(); await tick();
 	check('sheet text changed', $('ST'), 91); check('sheet text changed others kept', $('D'), 10);
+
+	$('HC').className = 'hc'; $('HC').appendChild(document.createElement('p')); await tick();
+	$('HB').className = ''; await tick();
+	check('changed in a hidden subtree', $('HC'), 97);
 
 	check('custom property', $('VS'), 18);
 	$('VL').insertBefore(document.createElement('li'), $('V1')); await tick();

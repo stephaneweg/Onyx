@@ -606,6 +606,7 @@ dom_default_action_DOMNodeInserted_cb(struct dom_event *evt, void *pw)
 	}
 
 	onyx_restyle_child_changed(htmlc, (dom_node *) node, true);	/* (Onyx) */
+	html_script_mutation(htmlc, (dom_node *) node);
 
 	exc = dom_node_get_node_type(node, &type);
 	if ((exc == DOM_NO_ERR) && (type == DOM_ELEMENT_NODE)) {
@@ -776,6 +777,7 @@ dom_default_action_DOMNodeRemoved_cb(struct dom_event *evt, void *pw)
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
 	onyx_restyle_child_changed(htmlc, (dom_node *) node, false);
+	html_script_mutation(htmlc, (dom_node *) node);
 	if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
 	    type == DOM_ELEMENT_NODE) {
 		html_css_node_removed(htmlc, (dom_node *) node);
@@ -796,6 +798,7 @@ dom_default_action_DOMAttrModified_cb(struct dom_event *evt, void *pw)
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
 	onyx_restyle_attr_changed(htmlc, (dom_node *) node);
+	html_script_mutation(htmlc, (dom_node *) node);
 	dom_node_unref(node);
 }
 
@@ -809,6 +812,7 @@ dom_default_action_DOMCharacterDataModified_cb(struct dom_event *evt, void *pw)
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
 	onyx_restyle_text_changed(htmlc, (dom_node *) node);
+	html_script_mutation(htmlc, (dom_node *) node);
 	dom_node_unref(node);
 }
 

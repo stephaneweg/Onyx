@@ -312,6 +312,8 @@ box_extract_properties(html_content *c, dom_node *n,
  * \param  memo            Onyx: a box tree's selection (onyx_restyle.c keeps it)
  * \return  the new style, or NULL on memory exhaustion
  */
+static bool box_style_raw;	/* (Onyx: the cascade's only: NS_RESTYLE_CHECK) */
+
 static css_select_results *
 box_get_style(html_content *c,
 	      const css_computed_style *parent_style,
@@ -328,10 +330,17 @@ box_get_style(html_content *c,
 	if (memo) {
 		styles = onyx_restyle_lookup(c, n, parent_style, root_style);
 		if (styles != NULL) {
+			if (onyx_restyle_checking()) {
+				/* (the PC bench: compared with a new selection, both
+				 * before the animations) */
+				css_select_results *fresh;
+				box_style_raw = true;
+				fresh = box_get_style(c, parent_style, root_style, n,
+						false);
+				box_style_raw = false;
+				onyx_restyle_check(c, n, styles, fresh);
+			}
 			onyx_anim_styled(c, n, styles, parent_style);
-			if (onyx_restyle_checking())
-				onyx_restyle_check(c, n, styles, box_get_style(c,
-						parent_style, root_style, n, false));
 			return styles;
 		}
 	}
@@ -395,7 +404,7 @@ box_get_style(html_content *c,
 				true, nscss_struct_used);
 
 	/* Onyx: transitions and animations (their styles in place of the cascade's) */
-	if (styles != NULL)
+	if (styles != NULL && !box_style_raw)
 		onyx_anim_styled(c, n, styles, parent_style);
 
 	/* No longer need inline style */

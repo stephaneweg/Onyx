@@ -258,7 +258,7 @@ static void qjs_leave(jsthread *t)
 	if (t->dirty) {
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
-			html_script_dom_changed(t->htmlc);
+			html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
 	}
 	if (t->pending_destroy)
 		qjs_thread_free(t);
@@ -1393,7 +1393,7 @@ static void qjs_layout_now(jsthread *t)
 	if (t->dirty && !t->closed && t->forced_layouts < 16) {
 		t->forced_layouts++;
 		t->dirty = false;
-		html_script_dom_changed(t->htmlc);
+		html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
 	}
 	html_script_layout_now(t->htmlc);
 	onyx_anim_flush(t->htmlc);	/* (Onyx: an animation a script changed) */
