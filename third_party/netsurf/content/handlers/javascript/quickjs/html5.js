@@ -18,6 +18,8 @@
  *    validation API (validity, checkValidity, reportValidity, setCustomValidity) and the
  *    submission it blocks, <output>, <datalist>, <meter>, <progress>;
  *  - custom elements (define, upgrades, the lifecycle callbacks, ElementInternals);
+ *  - shadow DOM (attachShadow, ShadowRoot, slots, declarative shadow roots, the events'
+ *    path and retargeting across the shadow trees);
  *  - smaller APIs: the session history (pushState changing the URL shown), streams,
  *    Blob / File / FileReader / FileList, URL.createObjectURL, microdata, performance
  *    marks and PerformanceObserver, XMLHttpRequest's documents...
@@ -2205,7 +2207,8 @@ function ceCall(el, def, cb, args) {
 	}
 }
 function ceIsConnected(el) {
-	for (let n = el; n; n = N.parent(n))
+	/* (Onyx: shadow-including -- a shadow root's elements through its host) */
+	for (let n = el; n; n = N.parent(n) || N.shadowHost(n))
 		if (N.type(n) === DOCUMENT_NODE)
 			return n === G.document;
 	return false;
@@ -2252,15 +2255,25 @@ function ceCheck(n) {
 	if (!ceDefs.size || !n) return;
 	const t = N.type(n);
 	if (t === ELEMENT_NODE) ceCheckOne(n);
-	if (t === ELEMENT_NODE || t === DOCUMENT_FRAGMENT_NODE || t === DOCUMENT_NODE)
-		for (const e of Element.prototype.querySelectorAll.call(n, '*'))
+	if (t === ELEMENT_NODE || t === DOCUMENT_FRAGMENT_NODE || t === DOCUMENT_NODE) {
+		const all = Element.prototype.querySelectorAll.call(n, '*');
+		for (const e of all)
 			ceCheckOne(e);
+		/* (Onyx: and the shadow trees in it, shadow-including tree order) */
+		if (shadowSeen) {
+			if (t === ELEMENT_NODE && N.shadowRoot(n)) ceCheck(N.shadowRoot(n));
+			for (const e of all) if (N.shadowRoot(e)) ceCheck(N.shadowRoot(e));
+		}
+	}
 }
 /* the elements a removal took out of the document: their disconnectedCallback */
 function ceRemoved(n) {
-	if (!ceDefs.size || N.type(n) !== ELEMENT_NODE) return;
-	const all = [n, ...Element.prototype.querySelectorAll.call(n, '*')];
-	for (const e of all) if (ceState.has(e)) ceCheckOne(e);
+	if (!ceDefs.size || (N.type(n) !== ELEMENT_NODE && N.type(n) !== DOCUMENT_FRAGMENT_NODE)) return;
+	const all = [...(N.type(n) === ELEMENT_NODE ? [n] : []), ...Element.prototype.querySelectorAll.call(n, '*')];
+	for (const e of all) {
+		if (ceState.has(e)) ceCheckOne(e);
+		if (shadowSeen && N.shadowRoot(e)) ceRemoved(N.shadowRoot(e));	/* (Onyx) */
+	}
 }
 
 /* the natives the DOM calls go through: insertion and removal seen */
@@ -2441,7 +2454,7 @@ class ElementInternals {
 	reportValidity() { return this.checkValidity(); }
 	get labels() { return []; }
 	get states() { return this._states || (this._states = new Set()); }
-	get shadowRoot() { return null; }
+	get shadowRoot() { return N.shadowRoot(this._el); }	/* (Onyx: open or closed) */
 }
 G.ElementInternals = ElementInternals;
 def(HTMLElement.prototype, {
@@ -2452,6 +2465,504 @@ def(HTMLElement.prototype, {
 		return (s.internals = new ElementInternals(this));
 	},
 });
+
+/* ---- shadow DOM: attachShadow, ShadowRoot, slots, events across the shadow trees -----------
+ * A shadow root is a libdom document fragment its host keeps (qjs.c's N.attachShadow...;
+ * the parser's <template shadowrootmode> makes them too): no child of its host, so the
+ * host's children, its serialization and the document's selectors never see it. NetSurf
+ * draws the flat tree and scopes the styles to each tree (html/onyx_shadow.c). Here the DOM
+ * of it: ShadowRoot (mode, host, innerHTML, adoptedStyleSheets, getHTML...), <slot> (the
+ * named assignment and the manual one: assignedNodes / assignedElements / assign(),
+ * slotchange), element.slot / assignedSlot / part, getRootNode({ composed }), isConnected
+ * through the hosts, the events' path through the slots and the hosts with their target
+ * (and relatedTarget) retargeted at each node, composedPath() hiding the closed trees, a
+ * non-composed event stopping at its shadow root, document.activeElement retargeted,
+ * delegatesFocus; the custom elements of a shadow tree upgraded and connected. */
+const SR_CLOSED = 1, SR_DELEGATES_FOCUS = 2, SR_CLONABLE = 4, SR_SERIALIZABLE = 8,
+	SR_MANUAL = 16, SR_DECLARATIVE = 32;
+let shadowSeen = false;
+/* the document has shadow roots (a script attached one, or the parser) */
+function shadowOn() { return shadowSeen || (shadowSeen = N.hasShadow()); }
+function isShadowRoot(n) {
+	return n !== null && n !== undefined && N.type(n) === DOCUMENT_FRAGMENT_NODE &&
+		N.shadowHost(n) !== null;
+}
+function treeRoot(n) { let r = n; for (let p; (p = N.parent(r));) r = p; return r; }
+function composedParent(n) { const p = N.parent(n); return p !== null ? p : N.shadowHost(n); }
+function shadowIncludingRoot(n) { let r = n; for (let p; (p = composedParent(r));) r = p; return r; }
+/* a is a shadow-including inclusive ancestor of b */
+function shadowIncludingAncestor(a, b) {
+	for (let n = b; n; n = composedParent(n)) if (n === a) return true;
+	return false;
+}
+/* the DOM standard's retarget: a, as seen from b */
+function retarget(a, b) {
+	for (;;) {
+		if (!(a instanceof Node)) return a;
+		const root = treeRoot(a), host = N.shadowHost(root);
+		if (host === null) return a;
+		if (b instanceof Node && shadowIncludingAncestor(root, b)) return a;
+		a = host;
+	}
+}
+
+/* slots: the named assignment (the first slot of the name in tree order), the manual one */
+function isSlot(n) { return N.type(n) === ELEMENT_NODE && N.nsURI(n) === NS_HTML && N.lname(n) === 'slot'; }
+function slotName(s) { return N.attr(s, 'name') || ''; }
+function slotsOf(root) {
+	return N.descendants(root).filter(e => N.nsURI(e) === NS_HTML && N.lname(e) === 'slot');
+}
+function slottableName(n) {
+	const t = N.type(n);
+	return t === ELEMENT_NODE ? N.attr(n, 'slot') || '' : t === TEXT_NODE ? '' : null;
+}
+const manualSlots = new WeakMap();	/* slot -> the nodes assign() gave it */
+function assignedSlotOf(n) {
+	const p = N.parent(n);
+	if (p === null || N.type(p) !== ELEMENT_NODE) return null;
+	const root = N.shadowRoot(p);
+	if (root === null) return null;
+	const name = slottableName(n);
+	if (name === null) return null;
+	if (N.shadowFlags(root) & SR_MANUAL) {
+		for (const s of slotsOf(root)) {
+			const m = manualSlots.get(s);
+			if (m && m.includes(n)) return s;
+		}
+		return null;
+	}
+	for (const s of slotsOf(root)) if (slotName(s) === name) return s;
+	return null;
+}
+function slotAssigned(slot) {
+	const root = treeRoot(slot), host = N.shadowHost(root), out = [];
+	if (host === null) return out;
+	if (N.shadowFlags(root) & SR_MANUAL) {
+		for (const n of manualSlots.get(slot) || [])
+			if (N.parent(n) === host && assignedSlotOf(n) === slot) out.push(n);
+		return out;
+	}
+	const name = slotName(slot);
+	if (slotsOf(root).find(s => slotName(s) === name) !== slot) return out;
+	for (const c of N.children(host)) if (slottableName(c) === name) out.push(c);
+	return out;
+}
+/* the flattened slottables: a slot assigned is replaced by its own, a slot without any by
+ * its fallback content */
+function slotFlattened(slot) {
+	if (!isShadowRoot(treeRoot(slot))) return [];
+	let list = slotAssigned(slot);
+	if (list.length === 0)
+		list = N.children(slot).filter(c => slottableName(c) !== null);
+	const out = [];
+	for (const n of list) {
+		if (isSlot(n) && isShadowRoot(treeRoot(n))) out.push(...slotFlattened(n));
+		else out.push(n);
+	}
+	return out;
+}
+
+/* slotchange: the slots whose assigned nodes changed, told at the next microtask */
+const slotLast = new WeakMap();
+const slotPending = new Set();
+let slotQueued = false;
+function scheduleSlots(root) {
+	if (!isShadowRoot(root)) return;
+	slotPending.add(root);
+	if (!slotQueued) {
+		slotQueued = true;
+		Promise.resolve().then(flushSlots);
+	}
+}
+function flushSlots() {
+	slotQueued = false;
+	const roots = [...slotPending];
+	slotPending.clear();
+	for (const root of roots) {
+		for (const s of slotsOf(root)) {
+			const now = slotAssigned(s), old = slotLast.get(s) || [];
+			slotLast.set(s, now);
+			if (now.length !== old.length || now.some((n, i) => n !== old[i])) {
+				try { s.dispatchEvent(new G.Event('slotchange', { bubbles: true })); }
+				catch (e) { report(e); }
+			}
+		}
+	}
+}
+/* a change under p: its shadow tree's slots (p a host), p's own tree's (a slot moved) */
+function slotsTouched(p) {
+	if (p === null || p === undefined) return;
+	if (N.type(p) === ELEMENT_NODE) {
+		const r = N.shadowRoot(p);
+		if (r !== null) scheduleSlots(r);
+	}
+	const root = treeRoot(p);
+	if (N.type(root) === DOCUMENT_FRAGMENT_NODE) scheduleSlots(root);
+}
+{
+	const insert = N.insert, remove = N.remove, setHTML = N.setHTML, setText = N.setText,
+		setAttr = N.setAttr, removeAttr = N.removeAttr;
+	N.insert = function (p, c, ref) {
+		const old = shadowSeen ? N.parent(c) : null;
+		const r = insert(p, c, ref);
+		if (shadowOn()) { slotsTouched(p); if (old) slotsTouched(old); }
+		return r;
+	};
+	N.remove = function (p, c) {
+		const r = remove(p, c);
+		if (shadowSeen) slotsTouched(p);
+		return r;
+	};
+	N.setHTML = function (el, ...args) {
+		const r = setHTML(el, ...args);
+		if (shadowOn()) slotsTouched(el);
+		return r;
+	};
+	N.setText = function (el, ...args) {
+		const r = setText(el, ...args);
+		if (shadowSeen) slotsTouched(el);
+		return r;
+	};
+	const attrTouched = (el, k) => {
+		if (shadowSeen && (k === 'slot' || k === 'name')) {
+			slotsTouched(N.parent(el));
+			slotsTouched(el);
+		}
+	};
+	N.setAttr = function (el, k, v) { const r = setAttr(el, k, v); attrTouched(el, k); return r; };
+	N.removeAttr = function (el, k) { const r = removeAttr(el, k); attrTouched(el, k); return r; };
+}
+
+/* a shadow root's children replaced by html parsed in its host's context */
+function setRootHTML(root, html) {
+	const removed = I.observers && I.observers.size ? N.children(root) : [];
+	N.setHTML(root, String(html), N.shadowHost(root));
+	if (I.observers && I.observers.size)
+		I.childListRecord(root, N.children(root), removed);
+}
+/* getHTML({ serializableShadowRoots, shadowRoots }): the shadow roots asked for serialized
+ * as declarative shadow roots */
+function getHTMLOf(n, opts) {
+	const want = new Set(opts && opts.shadowRoots ? opts.shadowRoots : []);
+	const ser = !!(opts && opts.serializableShadowRoots);
+	if (!shadowSeen || (!ser && want.size === 0)) return innerHTMLOf(n);
+	const out = [];
+	const inner = (e) => {
+		const r = N.type(e) === ELEMENT_NODE ? N.shadowRoot(e) : null;
+		if (r !== null && ((ser && (N.shadowFlags(r) & SR_SERIALIZABLE)) || want.has(r))) {
+			const f = N.shadowFlags(r);
+			out.push('<template shadowrootmode="', f & SR_CLOSED ? 'closed' : 'open', '"');
+			if (f & SR_DELEGATES_FOCUS) out.push(' shadowrootdelegatesfocus=""');
+			if (f & SR_SERIALIZABLE) out.push(' shadowrootserializable=""');
+			if (f & SR_CLONABLE) out.push(' shadowrootclonable=""');
+			out.push('>');
+			kids(r);
+			out.push('</template>');
+		}
+		kids(isTemplate(e) ? N.templateContent(e) || e : e);
+	};
+	const kids = (p) => {
+		for (const c of N.children(p)) {
+			if (N.type(c) !== ELEMENT_NODE) { serializeNode(c, out); continue; }
+			const ns = N.nsURI(c);
+			const tag = ns === NS_HTML || ns === NS_SVG || ns === NS_MATHML ? N.lname(c) : N.qname(c);
+			out.push('<', tag);
+			for (const [q, v, ans, local] of N.attrsNS(c))
+				out.push(' ', attrName(q, ans, local), '="', escapeAttr(v), '"');
+			out.push('>');
+			if (ns === NS_HTML && VOID.has(tag)) continue;
+			inner(c);
+			out.push('</', tag, '>');
+		}
+	};
+	inner(n);
+	return out.join('');
+}
+
+class ShadowRoot extends G.DocumentFragment {
+	constructor() { throw new TypeError('Illegal constructor'); }
+	get mode() { return N.shadowFlags(this) & SR_CLOSED ? 'closed' : 'open'; }
+	get host() { return N.shadowHost(this); }
+	get delegatesFocus() { return !!(N.shadowFlags(this) & SR_DELEGATES_FOCUS); }
+	get clonable() { return !!(N.shadowFlags(this) & SR_CLONABLE); }
+	get serializable() { return !!(N.shadowFlags(this) & SR_SERIALIZABLE); }
+	get slotAssignment() { return N.shadowFlags(this) & SR_MANUAL ? 'manual' : 'named'; }
+	get innerHTML() { return innerHTMLOf(this); }
+	set innerHTML(v) { setRootHTML(this, v === null ? '' : String(v)); }
+	setHTMLUnsafe(html) { setRootHTML(this, String(html)); }
+	getHTML(opts) { return getHTMLOf(this, opts); }
+	get activeElement() {
+		for (let a = rawActive(); a;) {
+			const r = treeRoot(a);
+			if (r === this) return a;
+			const h = N.shadowHost(r);
+			if (h === null) return null;
+			a = h;
+		}
+		return null;
+	}
+	get styleSheets() {
+		const out = [];
+		for (const e of N.descendants(this))
+			if (N.nsURI(e) === NS_HTML && N.lname(e) === 'style' && e.sheet) out.push(e.sheet);
+		return out;
+	}
+	get adoptedStyleSheets() { return this._adopted || (this._adopted = []); }
+	set adoptedStyleSheets(v) {
+		const list = Array.from(v || []);
+		for (const s of list)
+			if (!(s instanceof G.CSSStyleSheet) || !s._constructed)
+				throw domError('not a constructed sheet', 'NotAllowedError');
+		for (const s of this._adopted || []) {
+			const set = sheetRoots.get(s);
+			if (set) set.delete(this);
+		}
+		for (const s of list) {
+			let set = sheetRoots.get(s);
+			if (!set) sheetRoots.set(s, set = new Set());
+			set.add(this);
+		}
+		Object.defineProperty(this, '_adopted', { value: list, writable: true, configurable: true });
+		N.shadowSheets(this, list.map(s => s._src || ''));
+	}
+	get fullscreenElement() { return null; }
+	get pictureInPictureElement() { return null; }
+	get pointerLockElement() { return null; }
+	getAnimations() { return []; }
+	elementFromPoint(x, y) { const e = G.document.elementFromPoint(x, y); return e ? retarget(e, this) : null; }
+	elementsFromPoint(x, y) { const e = this.elementFromPoint(x, y); return e ? [e] : []; }
+	getSelection() { return G.getSelection ? G.getSelection() : null; }
+	get onslotchange() { return this._onslotchange || null; }
+	set onslotchange(fn) { setHandler(this, 'slotchange', fn); }
+}
+G.ShadowRoot = ShadowRoot;
+N.shadowProto(ShadowRoot.prototype);
+
+/* an on* property kept as a listener */
+const handlerFns = new WeakMap();
+function setHandler(el, type, fn) {
+	let m = handlerFns.get(el);
+	if (!m) handlerFns.set(el, m = new Map());
+	const old = m.get(type);
+	if (old) el.removeEventListener(type, old);
+	m.set(type, typeof fn === 'function' ? fn : null);
+	if (typeof fn === 'function') el.addEventListener(type, fn);
+	Object.defineProperty(el, '_on' + type, { value: m.get(type), writable: true, configurable: true });
+}
+
+/* a constructed sheet changed (replaceSync, insertRule...): the shadow roots that adopted
+ * it take its new text */
+const sheetRoots = new WeakMap();	/* CSSStyleSheet -> Set of shadow roots */
+{
+	const write = G.CSSStyleSheet.prototype._write;
+	def(G.CSSStyleSheet.prototype, {
+		_write() {
+			write.call(this);
+			const set = sheetRoots.get(this);
+			if (set)
+				for (const r of set)
+					N.shadowSheets(r, (r._adopted || []).map(s => s._src || ''));
+		},
+	});
+}
+
+/* the element's own document.activeElement (dom.js keeps it: the focused element) */
+const activeDesc = Object.getOwnPropertyDescriptor(G.Document.prototype, 'activeElement');
+function rawActive() { return activeDesc && G.document ? activeDesc.get.call(G.document) : null; }
+def(G.Document.prototype, {
+	get activeElement() {
+		const a = activeDesc.get.call(this);
+		return shadowSeen && a ? retarget(a, this) : a;
+	},
+});
+
+def(Element.prototype, {
+	attachShadow(init) {
+		if (init === null || typeof init !== 'object')
+			throw new TypeError("Failed to execute 'attachShadow' on 'Element': 1 argument required");
+		const mode = String(init.mode);
+		if (mode !== 'open' && mode !== 'closed')
+			throw new TypeError("attachShadow: the mode must be 'open' or 'closed'");
+		if (N.nsURI(this) !== NS_HTML)
+			throw domError('attachShadow: this element does not support it', 'NotSupportedError');
+		const d = ceDefs.get(N.lname(this));
+		if (d && d.ctor && Array.isArray(d.ctor.disabledFeatures) && d.ctor.disabledFeatures.includes('shadow'))
+			throw domError('attachShadow: disabled for this custom element', 'NotSupportedError');
+		const cur = N.shadowRoot(this);
+		if (cur !== null) {
+			const f = N.shadowFlags(cur);
+			if ((f & SR_DECLARATIVE) && ((f & SR_CLOSED) ? 'closed' : 'open') === mode && !cur._undeclared) {
+				/* a declarative shadow root: emptied and given to the script */
+				for (let c; (c = N.first(cur));) N.remove(cur, c);
+				Object.defineProperty(cur, '_undeclared', { value: true });
+				return cur;
+			}
+			throw domError('attachShadow: the element is already a shadow host', 'NotSupportedError');
+		}
+		let flags = mode === 'closed' ? SR_CLOSED : 0;
+		if (init.delegatesFocus) flags |= SR_DELEGATES_FOCUS;
+		if (init.clonable) flags |= SR_CLONABLE;
+		if (init.serializable) flags |= SR_SERIALIZABLE;
+		if (init.slotAssignment === 'manual') flags |= SR_MANUAL;
+		const r = N.attachShadow(this, flags);
+		if (r === null)
+			throw domError("attachShadow: '" + N.lname(this) + "' cannot be a shadow host", 'NotSupportedError');
+		shadowSeen = true;
+		return r;
+	},
+	get shadowRoot() {
+		const r = N.shadowRoot(this);
+		return r !== null && !(N.shadowFlags(r) & SR_CLOSED) ? r : null;
+	},
+	get slot() { return N.attr(this, 'slot') || ''; },
+	set slot(v) { this.setAttribute('slot', v); },
+	get assignedSlot() { return openSlot(assignedSlotOf(this)); },
+	get part() {
+		let l = this._partList;
+		if (!l) Object.defineProperty(this, '_partList', { value: l = new G.DOMTokenList(this, 'part') });
+		return l;
+	},
+	set part(v) { this.setAttribute('part', v); },
+	getHTML(opts) { return getHTMLOf(this, opts); },
+});
+/* assignedSlot: null for a slot in a closed shadow tree */
+function openSlot(s) {
+	return s !== null && !(N.shadowFlags(treeRoot(s)) & SR_CLOSED) ? s : null;
+}
+def(G.Text.prototype, {
+	get assignedSlot() { return openSlot(assignedSlotOf(this)); },
+});
+def(Node.prototype, {
+	getRootNode(opts) {
+		return opts && opts.composed ? shadowIncludingRoot(this) : treeRoot(this);
+	},
+	get isConnected() {
+		for (let n = this; n; n = composedParent(n))
+			if (N.type(n) === DOCUMENT_NODE) return true;
+		return false;
+	},
+});
+def(HTMLElement.prototype, {
+	get onslotchange() { return this._onslotchange || null; },
+	set onslotchange(fn) { setHandler(this, 'slotchange', fn); },
+});
+{
+	const focus = HTMLElement.prototype.focus;
+	def(HTMLElement.prototype, {
+		focus(opts) {
+			const r = shadowSeen ? N.shadowRoot(this) : null;
+			if (r !== null && (N.shadowFlags(r) & SR_DELEGATES_FOCUS)) {
+				const f = r.querySelector('a[href], area[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable]');
+				if (f) return f.focus(opts);
+			}
+			return focus.call(this, opts);
+		},
+	});
+}
+
+class HTMLSlotElement extends HTMLElement {
+	get name() { return N.attr(this, 'name') || ''; }
+	set name(v) { this.setAttribute('name', v); }
+	assignedNodes(opts) {
+		return opts && opts.flatten ? slotFlattened(this) : slotAssigned(this);
+	}
+	assignedElements(opts) {
+		return this.assignedNodes(opts).filter(n => N.type(n) === ELEMENT_NODE);
+	}
+	assign(...nodes) {
+		for (const n of nodes)
+			if (!(n instanceof G.Element) && !(n instanceof G.Text))
+				throw new TypeError("assign: not an Element or a Text");
+		/* a node is assigned to one slot at a time */
+		const root = treeRoot(this);
+		for (const s of isShadowRoot(root) ? slotsOf(root) : []) {
+			const m = manualSlots.get(s);
+			if (m && s !== this) manualSlots.set(s, m.filter(n => !nodes.includes(n)));
+		}
+		manualSlots.set(this, [...new Set(nodes)]);
+		scheduleSlots(root);
+		N.setAttr(this, 'data-onyx-assign', String(Date.now()));	/* (drawn again) */
+		N.removeAttr(this, 'data-onyx-assign');
+	}
+}
+elementClass('HTMLSlotElement', ['slot'], HTMLElement, HTMLSlotElement);
+
+/* the events: their path through the slots and the hosts (the DOM standard's "get the
+ * parent"), their target retargeted at each node, a non-composed event stopping at the
+ * shadow root of its target's tree */
+function eventParentOf(n, ev, root0) {
+	if (n === G) return null;
+	const t = N.type(n);
+	if (t === DOCUMENT_NODE) return n === G.document ? G : null;
+	const p = N.parent(n);
+	if (p !== null) {
+		if (N.type(p) === ELEMENT_NODE && N.shadowRoot(p) !== null) {
+			const s = assignedSlotOf(n);
+			if (s !== null) return s;
+		}
+		return p;
+	}
+	const host = N.shadowHost(n);
+	if (host !== null) return !ev.composed && n === root0 ? null : host;
+	return null;
+}
+function shadowDispatch(target, ev, invoke) {
+	const root0 = treeRoot(target), path = [];
+	for (let n = target; n; n = eventParentOf(n, ev, root0)) {
+		if (n === G && ev.type === 'load' && target !== G) break;
+		path.push(n);
+	}
+	const rel = ev.relatedTarget instanceof Node ? ev.relatedTarget : null;
+	const tg = path.map(n => retarget(target, n));
+	ev._path = path;
+	ev._shadow = true;
+	ev._stop = ev._stopNow = false;
+	for (let i = path.length - 1; i >= 0 && !ev._stop; i--) {
+		ev.target = tg[i];
+		if (rel !== null) ev.relatedTarget = retarget(rel, path[i]);
+		ev.eventPhase = tg[i] === path[i] ? 2 : 1;
+		invoke(path[i], ev, true);
+	}
+	for (let i = 0; i < path.length && !ev._stop; i++) {
+		const at = tg[i] === path[i];
+		if (!at && !ev.bubbles) continue;
+		ev.target = tg[i];
+		if (rel !== null) ev.relatedTarget = retarget(rel, path[i]);
+		ev.eventPhase = at ? 2 : 3;
+		invoke(path[i], ev, false);
+	}
+	ev.eventPhase = 0;
+	ev.currentTarget = null;
+	ev.target = retarget(target, G.document);
+	if (rel !== null) ev.relatedTarget = retarget(rel, G.document);
+	return !ev.defaultPrevented;
+}
+if (I.shadowHook) {
+	I.shadowHook.dispatch = shadowDispatch;
+	I.shadowHook.on = shadowOn;
+}
+/* composedPath(): the path as its current target may see it (the closed trees it is not in
+ * hidden) */
+{
+	const composedPath = G.Event.prototype.composedPath;
+	const visible = (n, cur) => {
+		for (let r = treeRoot(n); ;) {
+			const host = N.shadowHost(r);
+			if (host === null) return true;
+			if ((N.shadowFlags(r) & SR_CLOSED) && !(cur instanceof Node && shadowIncludingAncestor(r, cur)))
+				return false;
+			r = treeRoot(host);
+		}
+	};
+	def(G.Event.prototype, {
+		composedPath() {
+			if (!this._shadow || !this._path) return composedPath.call(this);
+			const cur = this.currentTarget;
+			if (!cur) return [];
+			return this._path.filter(n => !(n instanceof Node) || visible(n, cur));
+		},
+	});
+}
 
 /* ---- microdata: itemScope / itemProp / itemValue, properties, document.getItems ------------ */
 {

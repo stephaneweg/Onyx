@@ -326,7 +326,12 @@ function invoke(node, ev, capture) {
 	}
 }
 
+/* Onyx: shadow DOM -- html5.js's dispatch across the shadow trees (the event's path through
+ * the slots and the hosts, its target retargeted at each), once the document has some */
+const shadowHook = { dispatch: null, on: () => false };
 function dispatch(target, ev) {
+	if (shadowHook.dispatch !== null && target instanceof Node && shadowHook.on())
+		return shadowHook.dispatch(target, ev, invoke);
 	const path = [];
 	for (let n = target; n; n = eventParent(n)) {
 		/* (Onyx: an element's load event stops at the document -- the window is not in
@@ -5073,18 +5078,18 @@ function browserEvent(target, type, init) {
 	let ev;
 	switch (type) {
 	case 'click': case 'dblclick': case 'mousedown': case 'mouseup': case 'contextmenu':
-		ev = new MouseEvent(type, Object.assign({ bubbles: true, cancelable: true, view: G, detail: 1 }, init));
+		ev = new MouseEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G, detail: 1 }, init));
 		break;
 	case 'mousemove': case 'mouseover': case 'mouseout':
-		ev = new MouseEvent(type, Object.assign({ bubbles: true, cancelable: true, view: G }, init));
+		ev = new MouseEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G }, init));
 		break;
 	case 'pointerdown': case 'pointerup':
-		ev = new PointerEvent(type, Object.assign({ bubbles: true, cancelable: true, view: G }, init));
+		ev = new PointerEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G }, init));
 		break;
 	case 'keydown': case 'keyup': case 'keypress': {
 		const key = init.key || '';
 		const code = KEY_CODES[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
-		ev = new KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true, view: G, keyCode: code,
+		ev = new KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G, keyCode: code,
 			code: key.length === 1 ? (/[a-z]/i.test(key) ? 'Key' + key.toUpperCase() : /\d/.test(key) ? 'Digit' + key : '') : key }, init, { keyCode: code }));
 		break;
 	}
@@ -5100,17 +5105,20 @@ function browserEvent(target, type, init) {
 	case 'resize':
 		ev = new UIEvent(type);
 		break;
-	case 'input': case 'change':
+	case 'input':
+		ev = new InputEvent(type, { bubbles: true, composed: true });
+		break;
+	case 'change':
 		ev = new Event(type, { bubbles: true });
 		break;
 	case 'submit':
 		ev = new SubmitEvent(type, { bubbles: true, cancelable: true });
 		break;
 	case 'focus': case 'blur':
-		ev = new FocusEvent(type);
+		ev = new FocusEvent(type, { composed: true });
 		break;
 	case 'wheel':
-		ev = new WheelEvent(type, Object.assign({ bubbles: true, cancelable: true }, init));
+		ev = new WheelEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init));
 		break;
 	default:
 		ev = new Event(type, { bubbles: true, cancelable: true });
@@ -5127,10 +5135,11 @@ function hoverTo(el, init) {
 	const old = hovered;
 	if (el !== old) {
 		hovered = el;
-		const path = n => { const a = []; for (; n; n = n.parentNode) if (n instanceof Element) a.push(n); return a; };
+		/* (Onyx: through the shadow roots to their hosts) */
+		const path = n => { const a = []; for (; n; n = n.parentNode || N.shadowHost(n)) if (n instanceof Element) a.push(n); return a; };
 		const oldPath = old && old.isConnected ? path(old) : [], newPath = path(el);
 		const mev = (type, rel, bubbles) =>
-			new MouseEvent(type, Object.assign({ bubbles, cancelable: bubbles, view: G }, init, { relatedTarget: rel }));
+			new MouseEvent(type, Object.assign({ bubbles, cancelable: bubbles, composed: true, view: G }, init, { relatedTarget: rel }));
 		if (oldPath.length) {
 			dispatch(old, mev('mouseout', el, true));
 			for (const n of oldPath) if (!newPath.includes(n)) dispatch(n, mev('mouseleave', el, false));
@@ -5311,7 +5320,8 @@ function browserDispatch(target, type, init) {
 /* ---- the natives' setup ------------------------------------------------------------------- */
 
 /* Onyx: dom.js's internals html5.js builds on (MutationObserver records, dispatch...) */
-N.internals = { queueMutation, observers, childListRecord, dispatch, report, activate };
+N.internals = { queueMutation, observers, childListRecord, dispatch, report, activate,
+	shadowHook };
 
 N.setup({
 	node: Node.prototype,

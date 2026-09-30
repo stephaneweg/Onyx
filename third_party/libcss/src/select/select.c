@@ -825,6 +825,7 @@ static css_error css_select_style__get_sharable_node_data_for_candidate(
 			CSS_NODE_FLAGS_TAINT_PSEUDO_CLASS |
 			CSS_NODE_FLAGS_TAINT_ATTRIBUTE |
 			CSS_NODE_FLAGS_TAINT_SIBLING |
+			CSS_NODE_FLAGS_ONYX_NO_SHARE |
 			CSS_NODE_FLAGS_HAS_INLINE_STYLE)) {
 #ifdef DEBUG_STYLE_SHARING
 		printf("      \t%s\tno share: candidate flags: %s%s%s%s\n",
@@ -985,6 +986,8 @@ printf("      \t%s\tno share: inline style\n");
 #endif
 		return CSS_OK;
 	}
+	if (state->node_data->flags & CSS_NODE_FLAGS_ONYX_NO_SHARE)
+		return CSS_OK;		/* Onyx: shadow DOM */
 
 	while (true) {
 		void *share_candidate_node;
@@ -1285,6 +1288,115 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		css_select_handler *handler, void *pw,
 		css_select_results **result)
 {
+	return css_select_style_onyx(ctx, node, unit_ctx, media, inline_style,
+			handler, pw, NULL, false, NULL, 0, result);
+}
+
+/* Onyx shadow DOM: a bloom filter that rejects nothing (the rules of another tree are
+ * matched on another node than the one whose ancestors the node's bloom holds) */
+static css_bloom onyx_full_bloom[CSS_BLOOM_SIZE] = {
+	0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu,
+#if CSS_BLOOM_SIZE > 4
+	0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu,
+#endif
+#if CSS_BLOOM_SIZE > 8
+	0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu,
+	0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu,
+#endif
+};
+
+/* Onyx shadow DOM: the author rules of another tree (a css_select_onyx_scope) matched on
+ * its node, cascaded into the element's style with the scope's encapsulation context */
+static css_error onyx_select_scope(css_select_ctx *ctx, const css_select_onyx_scope *sc,
+		css_select_state *state)
+{
+	void *save_node = state->node, *save_pw = state->pw;
+	css_qname save_element = state->element;
+	lwc_string *save_id = state->id, **save_classes = state->classes;
+	uint32_t save_n_classes = state->n_classes, i;
+	css_bloom *save_bloom = state->node_data->bloom;
+	css_error error = CSS_OK;
+
+	if (sc->ctx == NULL || sc->node == NULL || sc->pw == NULL)
+		return CSS_OK;
+
+	state->id = NULL;
+	state->classes = NULL;
+	state->n_classes = 0;
+	state->element.ns = NULL;
+	state->element.name = NULL;
+	if (sc->kind == CSS_ONYX_SCOPE_HOST) {
+		/* the host is featureless in its shadow tree: only the universal
+		 * selectors (:host...) are candidates */
+		state->element.name = lwc_string_ref(ctx->str.onyx[ONYX_STR_FEATURELESS]);
+	} else {
+		error = state->handler->node_name(sc->pw, sc->node, &state->element);
+		if (error == CSS_OK)
+			error = state->handler->node_id(sc->pw, sc->node, &state->id);
+		if (error == CSS_OK)
+			error = state->handler->node_classes(sc->pw, sc->node,
+					&state->classes, &state->n_classes);
+		if (error != CSS_OK)
+			goto done;
+	}
+
+	state->node = sc->node;
+	state->pw = sc->pw;
+	state->node_data->bloom = onyx_full_bloom;
+	state->next_reject = state->reject_cache +
+			(N_ELEMENTS(state->reject_cache) - 1);
+	state->current_level = sc->level;
+	state->onyx_pass = sc->kind + 1;
+	state->onyx_arg_node = save_node;
+	state->onyx_arg_pw = save_pw;
+	state->onyx_parts = sc->parts;
+	state->onyx_n_parts = sc->n_parts;
+
+	for (i = 0; i < sc->ctx->n_sheets && error == CSS_OK; i++) {
+		const css_select_sheet s = sc->ctx->sheets[i];
+		if (s.origin != CSS_ORIGIN_AUTHOR || s.sheet->disabled)
+			continue;
+		if (mq__list_match(s.media, state->unit_ctx, state->media, &ctx->str))
+			error = select_from_sheet(ctx, s.sheet, s.origin, state);
+	}
+
+done:
+	if (state->element.name != NULL)
+		lwc_string_unref(state->element.name);
+	if (state->element.ns != NULL)
+		lwc_string_unref(state->element.ns);
+	if (state->id != NULL)
+		lwc_string_unref(state->id);
+	if (state->classes != NULL) {
+		/* (the array is the handler's: only the references are ours) */
+		for (i = 0; i < state->n_classes; i++)
+			lwc_string_unref(state->classes[i]);
+	}
+	state->element = save_element;
+	state->id = save_id;
+	state->classes = save_classes;
+	state->n_classes = save_n_classes;
+	state->node = save_node;
+	state->pw = save_pw;
+	state->node_data->bloom = save_bloom;
+	state->current_level = 0;
+	state->onyx_pass = 0;
+	state->onyx_arg_node = NULL;
+	state->onyx_arg_pw = NULL;
+	state->onyx_parts = NULL;
+	state->onyx_n_parts = 0;
+	return error;
+}
+
+/* exported function documented in libcss/select.h (Onyx) */
+css_error css_select_style_onyx(css_select_ctx *ctx, void *node,
+		const css_unit_ctx *unit_ctx,
+		const css_media *media, const css_stylesheet *inline_style,
+		css_select_handler *handler, void *pw,
+		void *inherit_parent, bool no_share,
+		const css_select_onyx_scope *scopes, uint32_t n_scopes,
+		css_select_results **result)
+{
 	css_origin origin = CSS_ORIGIN_UA;
 	uint32_t i, j, nhints;
 	css_error error;
@@ -1317,6 +1429,9 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	if (inline_style != NULL) {
 		state.node_data->flags |= CSS_NODE_FLAGS_HAS_INLINE_STYLE;
 	}
+	/* Onyx shadow DOM: a style of its own, not shared nor to share */
+	if (no_share || n_scopes > 0)
+		state.node_data->flags |= CSS_NODE_FLAGS_ONYX_NO_SHARE;
 
 	/* Check if we can share another node's style */
 	error = css_select_style__get_sharable_node_data(node, &state, &share);
@@ -1408,6 +1523,13 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		}
 	}
 
+	/* Onyx shadow DOM: the other trees' rules (:host, ::slotted(), ::part()) */
+	for (i = 0; i < n_scopes; i++) {
+		error = onyx_select_scope(ctx, &scopes[i], &state);
+		if (error != CSS_OK)
+			goto cleanup;
+	}
+
 	/* Consider any inline style for the node */
 	if (inline_style != NULL) {
 		css_rule_selector *sel =
@@ -1443,7 +1565,8 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	}
 
 	/* Onyx: the element's custom properties; its values with var() completed */
-	error = css__onyx_resolve(&state, parent);
+	error = css__onyx_resolve(&state,
+			inherit_parent != NULL ? inherit_parent : parent);
 	if (error != CSS_OK)
 		goto cleanup;
 
@@ -1748,6 +1871,7 @@ css_error set_hint(css_select_state *state, css_hint *hint)
 	existing->specificity = 0;
 	existing->origin = CSS_ORIGIN_AUTHOR;
 	existing->important = 0;
+	existing->level = 127;	/* Onyx: under every author rule, a shadow tree's too */
 	existing->explicit_default = (hint->status == 0) ?
 			FLAG_VALUE_INHERIT : FLAG_VALUE__NONE;
 
@@ -2214,12 +2338,18 @@ css_error match_selector_chain(css_select_ctx *ctx,
 	 * any selector chains containing pseudo elements anywhere
 	 * else.
 	 */
+	state->onyx_special = false;
 	error = match_details(ctx, node, detail, state, &match, &pseudo);
 	if (error != CSS_OK)
 		return error;
 
 	/* Details don't match, so reject selector chain */
 	if (match == false)
+		return CSS_OK;
+
+	/* Onyx shadow DOM: another tree's rules apply through :host, ::slotted() or
+	 * ::part() only (a featureless host matches nothing else: not even '*') */
+	if (state->onyx_pass != 0 && state->onyx_special == false)
 		return CSS_OK;
 
 	/* Iterate up the selector chain, matching combinators */
@@ -2716,6 +2846,99 @@ static bool onyx_match_form_pseudo(css_select_ctx *ctx, void *node,
 	return true;
 }
 
+/* Onyx shadow DOM: a pseudo's name (as written) is this one */
+static inline bool onyx_is(lwc_string *name, lwc_string *lower)
+{
+	bool m = false;
+	if (name == lower)
+		return true;
+	return lwc_string_caseless_isequal(name, lower, &m) == lwc_error_ok && m;
+}
+
+/* Onyx shadow DOM: every name of ::part(a b) is one of the element's part names */
+static bool onyx_parts_match(lwc_string *names, const css_select_state *state)
+{
+	const char *p, *end;
+
+	if (names == NULL || state->onyx_n_parts == 0)
+		return false;
+	p = lwc_string_data(names);
+	end = p + lwc_string_length(names);
+	while (p < end) {
+		const char *q = p;
+		uint32_t i;
+		bool found = false;
+		while (q < end && *q != ' ')
+			q++;
+		for (i = 0; i < state->onyx_n_parts && !found; i++) {
+			lwc_string *pn = state->onyx_parts[i];
+			found = lwc_string_length(pn) == (size_t) (q - p) &&
+					memcmp(lwc_string_data(pn), p, q - p) == 0;
+		}
+		if (!found)
+			return false;
+		p = q + 1;
+	}
+	return true;
+}
+
+/* Onyx shadow DOM: :host, :host(<compound>), :host-context(<compound>) -- the node is the
+ * shadow host of the tree whose rules are matched (featureless there: its argument is
+ * matched in the host's own tree, and for :host-context() its shadow-including
+ * ancestors' too) */
+static css_error onyx_match_host(css_select_ctx *ctx, void *node,
+		const css_onyx_selector_list *l, css_select_state *state, bool *match)
+{
+	const css_select_handler *h = state->handler;
+	void *save = state->pw, *p, *n;
+	css_error error = CSS_OK;
+	bool is = false;
+
+	*match = false;
+	if (h->onyx_node_is_scope_host == NULL || h->onyx_host_pw == NULL)
+		return CSS_OK;
+	error = h->onyx_node_is_scope_host(state->pw, node, &is);
+	if (error != CSS_OK || is == false)
+		return error;
+	if (l == NULL) {
+		*match = true;
+		state->onyx_special = true;
+		return CSS_OK;
+	}
+	p = h->onyx_host_pw(state->pw);
+	if (p == NULL)
+		return CSS_OK;
+	if (l->kind == ONYX_SL_HOST) {
+		state->pw = p;
+		error = onyx_match_list(ctx, node, l, state, match);
+	} else {
+		int guard = 0;
+		n = node;
+		while (n != NULL && p != NULL && guard++ < 4096) {
+			bool sh = false;
+			state->pw = p;
+			error = h->onyx_node_is_scope_host(p, n, &sh);
+			if (error != CSS_OK)
+				break;
+			if (sh) {
+				/* the host of an outer shadow tree: in its own tree */
+				p = h->onyx_host_pw(p);
+				continue;
+			}
+			error = onyx_match_list(ctx, n, l, state, match);
+			if (error != CSS_OK || *match)
+				break;
+			error = h->parent_node(p, n, &n);
+			if (error != CSS_OK)
+				break;
+		}
+	}
+	state->pw = save;
+	if (*match)
+		state->onyx_special = true;
+	return error;
+}
+
 css_error match_detail(css_select_ctx *ctx, void *node,
 		const css_selector_detail *detail, css_select_state *state,
 		bool *match, css_pseudo_element *pseudo_element)
@@ -2751,6 +2974,9 @@ css_error match_detail(css_select_ctx *ctx, void *node,
 				error = onyx_match_list(ctx, node, l, state, match);
 			} else if (l->kind == ONYX_SL_NTH_CHILD) {
 				error = onyx_match_nth_of(ctx, node, l, state, match);
+			} else if (l->kind == ONYX_SL_HOST ||
+					l->kind == ONYX_SL_HOST_CONTEXT) {
+				error = onyx_match_host(ctx, node, l, state, match);
 			} else {
 				*match = false;		/* (never: :has(), nth-last-child of) */
 			}
@@ -2914,6 +3140,9 @@ css_error match_detail(css_select_ctx *ctx, void *node,
 		} else if (detail->qname.name == ctx->str.checked) {
 			error = state->handler->node_is_checked(state->pw,
 					node, match);
+		} else if (onyx_is(detail->qname.name,
+				ctx->str.onyx[ONYX_STR_HOST])) {
+			error = onyx_match_host(ctx, node, NULL, state, match);
 		} else {
 			*match = false;
 		}
@@ -2921,6 +3150,31 @@ css_error match_detail(css_select_ctx *ctx, void *node,
 		break;
 	case CSS_SELECTOR_PSEUDO_ELEMENT:
 		*match = true;
+
+		/* Onyx shadow DOM: ::slotted(), ::part() -- in their passes only */
+		if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_LIST &&
+				detail->value.list->kind == ONYX_SL_SLOTTED) {
+			*match = false;
+			if (state->onyx_pass == CSS_ONYX_SCOPE_SLOTTED + 1) {
+				void *save = state->pw;
+				state->pw = state->onyx_arg_pw;
+				error = onyx_match_list(ctx, state->onyx_arg_node,
+						detail->value.list, state, match);
+				state->pw = save;
+				if (*match)
+					state->onyx_special = true;
+			}
+			break;
+		}
+		if (detail->value_type == CSS_SELECTOR_DETAIL_VALUE_STRING &&
+				onyx_is(detail->qname.name,
+					ctx->str.onyx[ONYX_STR_PART])) {
+			*match = state->onyx_pass == CSS_ONYX_SCOPE_PART + 1 &&
+					onyx_parts_match(detail->value.string, state);
+			if (*match)
+				state->onyx_special = true;
+			break;
+		}
 
 		if (detail->qname.name == ctx->str.first_line) {
 			*pseudo_element = CSS_PSEUDO_ELEMENT_FIRST_LINE;
@@ -3107,6 +3361,13 @@ bool css__outranks_prop_state(prop_state *existing, bool important,
 				outranks = true;
 			} else if (existing->important && important == false) {
 				/* Old is more important than new */
+			} else if (existing->level != state->current_level) {
+				/* Onyx shadow DOM: the encapsulation contexts (CSS
+				 * Cascade 4): the outer one's normal declarations
+				 * win, the inner one's !important ones */
+				outranks = important ?
+					state->current_level > existing->level :
+					state->current_level < existing->level;
 			} else {
 				/* Same importance, consider specificity */
 				if (state->current_specificity >=
@@ -3133,6 +3394,7 @@ bool css__outranks_prop_state(prop_state *existing, bool important,
 		existing->origin = state->current_origin;
 		existing->important = important;
 		existing->explicit_default = explicit_default;
+		existing->level = state->current_level;
 	}
 
 	return outranks;

@@ -287,6 +287,7 @@ static void html_box_convert_done(html_content *c, bool success)
 
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_hover.h"
+#include "html/onyx_shadow.h"
 
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
@@ -313,6 +314,19 @@ static void html_rebox_unlink(dom_node *n)
 		return;
 	dom_node_set_user_data(n, corestring_dom___ns_key_box_node_data, NULL,
 			NULL, &old);
+	{
+		/* Onyx: a shadow host's shadow tree has boxes too */
+		dom_node *root = dom_onyx_shadow_root(n);
+		if (root != NULL && dom_node_get_first_child(root, &c) == DOM_NO_ERR) {
+			while (c != NULL) {
+				html_rebox_unlink(c);
+				next = NULL;
+				dom_node_get_next_sibling(c, &next);
+				dom_node_unref(c);
+				c = next;
+			}
+		}
+	}
 	if (dom_node_get_first_child(n, &c) != DOM_NO_ERR)
 		return;
 	while (c != NULL) {
@@ -1708,6 +1722,7 @@ static void html_destroy(struct content *c)
 	}
 	html->rebox_pending = false;
 	onyx_hover_fini(html);		/* (Onyx) */
+	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
 	if (html->hover_node != NULL) {		/* (Onyx) */
 		dom_node_unref(html->hover_node);
 		html->hover_node = NULL;

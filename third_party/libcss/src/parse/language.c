@@ -1728,6 +1728,16 @@ static css_error onyx_parse_extra_pseudo(css_language *c, const parserutils_vect
 		if (error != CSS_OK)
 			return error;
 		value.list->kind = ONYX_SL_NEVER;
+		/* Onyx shadow DOM: :host(), :host-context(), ::slotted() match (select.c) */
+		if (onyx_is_name(token, "host")) {
+			value.list->kind = ONYX_SL_HOST;
+			value.list->specificity += CSS_SPECIFICITY_C;
+		} else if (onyx_is_name(token, "host-context")) {
+			value.list->kind = ONYX_SL_HOST_CONTEXT;
+			value.list->specificity += CSS_SPECIFICITY_C;
+		} else if (onyx_is_name(token, "slotted")) {
+			value.list->kind = ONYX_SL_SLOTTED;
+		}
 		vtype = CSS_SELECTOR_DETAIL_VALUE_LIST;
 		break;
 	case ONYX_ARG_DIR: {
@@ -1745,10 +1755,33 @@ static css_error onyx_parse_extra_pseudo(css_language *c, const parserutils_vect
 			return error;
 		vtype = CSS_SELECTOR_DETAIL_VALUE_NTH;
 		break;
-	default:
+	default: {
+		int32_t start = *ctx;
 		if (!onyx_check_simple_arg(vector, ctx, fns[i].arg))
 			return CSS_INVALID;
+		/* Onyx shadow DOM: ::part(a b) keeps its names, "a b" (select.c) */
+		if (fns[i].arg == ONYX_ARG_IDENTS) {
+			char buf[256];
+			size_t len = 0;
+			const css_token *t;
+			while (start < *ctx) {
+				t = parserutils_vector_iterate(vector, &start);
+				if (t == NULL || t->type != CSS_TOKEN_IDENT)
+					continue;
+				if (len + lwc_string_length(t->idata) + 2 > sizeof buf)
+					return CSS_INVALID;
+				if (len > 0)
+					buf[len++] = ' ';
+				memcpy(buf + len, lwc_string_data(t->idata),
+						lwc_string_length(t->idata));
+				len += lwc_string_length(t->idata);
+			}
+			if (len > 0 && lwc_intern_string(buf, len, &value.string) !=
+					lwc_error_ok)
+				return CSS_NOMEM;
+		}
 		break;
+	}
 	}
 	consumeWhitespace(vector, ctx);
 	token = parserutils_vector_iterate(vector, ctx);
@@ -2086,8 +2119,14 @@ css_error parseAppendSpecific(css_language *c,
 	if (error != CSS_OK)
 		return error;
 
-	return css__stylesheet_selector_append_specific(c->sheet, parent,
+	error = css__stylesheet_selector_append_specific(c->sheet, parent,
 			&specific);
+	/* Onyx: ::part()'s names were interned for it (the copy took its own reference) */
+	if (specific.type == CSS_SELECTOR_PSEUDO_ELEMENT &&
+			specific.value_type == CSS_SELECTOR_DETAIL_VALUE_STRING &&
+			specific.value.string != NULL)
+		lwc_string_unref(specific.value.string);
+	return error;
 }
 
 css_error parseSelectorSpecifics(css_language *c,

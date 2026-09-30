@@ -68,7 +68,10 @@ enum css_onyx_selector_list_kind {
 	ONYX_SL_IS = 0,			/* :is() / :where() / :not(): matches one of them */
 	ONYX_SL_NTH_CHILD,		/* :nth-child(An+B of S): a, b */
 	ONYX_SL_NTH_LAST_CHILD,		/* :nth-last-child(An+B of S) */
-	ONYX_SL_NEVER			/* :has(), :host(), ::slotted()...: never matches */
+	ONYX_SL_NEVER,			/* :has(), ::cue()...: never matches */
+	ONYX_SL_HOST,			/* Onyx shadow DOM: :host(<compound>) */
+	ONYX_SL_HOST_CONTEXT,		/* :host-context(<compound>) */
+	ONYX_SL_SLOTTED			/* ::slotted(<compound>) */
 };
 
 typedef struct css_onyx_selector_list {

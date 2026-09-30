@@ -174,6 +174,14 @@ html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, template
 html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
 html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs, microdata, performance marks, XHR documents"
 html5page js-ce.html ce "custom elements: define, upgrades (the parser's too), lifecycle callbacks"
+html5page js-shadow.html shadow "shadow DOM: ShadowRoot, slots, declarative roots, events, style scoping, the flat tree's boxes"
+echo "js-shadow-click.html (clicks and the pointer on a shadow tree: retargeting, :hover inside)"
+L=$OUT/js-shadow-click.log
+run js-shadow-click.html "$(waits 40)$(click 50 60)$(click 30 105)" "$L"
+for s in "shadow hover rgb(255, 0, 0)" "shadow click inner in" "shadow click host host 7" \
+	 "shadow click doc host" "shadow click host light 9" "shadow click doc light"; do
+	expect "$L" "$s"
+done
 echo "canvas-api.html (<canvas> 2D: state, paths, pixels, text, images, OffscreenCanvas)"
 L=$OUT/canvas-api.log
 run canvas-api.html "$(waits 80)" "$L"

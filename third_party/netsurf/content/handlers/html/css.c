@@ -45,6 +45,7 @@
 #include "html/private.h"
 #include "html/onyx_webfont.h"
 #include "html/css.h"
+#include "html/onyx_shadow.h"
 
 static nsurl *html_default_stylesheet_url;
 static nsurl *html_adblock_stylesheet_url;
@@ -705,6 +706,12 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 		 *       libcss handle the filtering.
 		 */
 		if (hsheet->unused) {
+			continue;
+		}
+		/* Onyx: a shadow tree's <style> is its own (html/onyx_shadow.c) */
+		if (i >= STYLESHEET_START && hsheet->node != NULL &&
+				dom_onyx_has_shadow(c->document) &&
+				onyx_shadow_in_shadow_tree(hsheet->node)) {
 			continue;
 		}
 

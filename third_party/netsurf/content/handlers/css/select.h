@@ -39,6 +39,11 @@ typedef struct nscss_select_ctx
 	lwc_string *universal;
 	const css_computed_style *root_style;
 	const css_computed_style *parent_style;
+	/* Onyx shadow DOM (html/onyx_shadow.c; NULL in the document's own context): the
+	 * shadow host of the tree matched -- featureless there but for :host --, and the
+	 * context of the host's own tree */
+	struct dom_node *scope_host;
+	struct nscss_select_ctx *host_ctx;
 } nscss_select_ctx;
 
 /**
@@ -56,6 +61,16 @@ css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		const css_media *media,
 		const css_unit_ctx *unit_len_ctx,
 		const css_stylesheet *inline_style);
+
+/**
+ * Onyx shadow DOM: nscss_get_style for an element of a document with shadow trees: ctx
+ * its own tree's context (ctx->scope_host set in a shadow tree), inherit_parent its flat
+ * tree parent, the other trees' rules it takes (libcss's css_select_style_onyx).
+ */
+css_select_results *nscss_get_style_onyx(nscss_select_ctx *ctx, dom_node *n,
+		const css_media *media, const css_unit_ctx *unit_len_ctx,
+		const css_stylesheet *inline_style, dom_node *inherit_parent, bool no_share,
+		const css_select_onyx_scope *scopes, uint32_t n_scopes);
 
 css_computed_style *nscss_get_blank_style(nscss_select_ctx *ctx,
 		const css_unit_ctx *unit_len_ctx,
