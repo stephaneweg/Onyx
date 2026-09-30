@@ -244,9 +244,58 @@ class SubmitEvent extends Event {
 class PromiseRejectionEvent extends Event {
 	constructor(type, init = {}) { super(type, init); this.promise = init.promise; this.reason = init.reason; }
 }
+/* Onyx: CSS animations' and transitions' events (the animations' timeline sends them:
+ * onyx_anim.c; a script can make and dispatch them too) */
+class AnimationEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.animationName = String(init.animationName ?? '');
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = String(init.pseudoElement ?? '');
+	}
+}
+class TransitionEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.propertyName = String(init.propertyName ?? '');
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = String(init.pseudoElement ?? '');
+	}
+}
+/* Onyx: the attributes on the prototypes, as the IDL has them ('clientX' in
+ * MouseEvent.prototype: feature tests -- browserscore.dev -- look there); a constructor's
+ * value kept in a symbol of the object */
+function protoFields(C, names) {
+	for (const k of names) {
+		if (Object.getOwnPropertyDescriptor(C.prototype, k)) continue;
+		const slot = Symbol(k);
+		Object.defineProperty(C.prototype, k, { configurable: true, enumerable: true,
+			get() { return this[slot]; },
+			set(v) { Object.defineProperty(this, slot, { value: v, writable: true, configurable: true }); } });
+	}
+}
+protoFields(UIEvent, ['view', 'detail']);
+protoFields(MouseEvent, ['clientX', 'clientY', 'screenX', 'screenY', 'pageX', 'pageY', 'offsetX',
+	'offsetY', 'x', 'y', 'button', 'buttons', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey', 'relatedTarget']);
+protoFields(PointerEvent, ['pointerId', 'pointerType', 'isPrimary', 'width', 'height', 'pressure']);
+protoFields(WheelEvent, ['deltaX', 'deltaY', 'deltaZ', 'deltaMode']);
+protoFields(KeyboardEvent, ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat',
+	'isComposing', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey']);
+protoFields(FocusEvent, ['relatedTarget']);
+protoFields(InputEvent, ['data', 'inputType', 'isComposing']);
+protoFields(ErrorEvent, ['message', 'error']);
+protoFields(ProgressEvent, ['lengthComputable', 'loaded', 'total']);
+protoFields(PopStateEvent, ['state']);
+protoFields(HashChangeEvent, ['oldURL', 'newURL']);
+protoFields(MessageEvent, ['data', 'origin', 'source']);
+protoFields(SubmitEvent, ['submitter']);
+protoFields(PromiseRejectionEvent, ['promise', 'reason']);
+protoFields(AnimationEvent, ['animationName', 'elapsedTime', 'pseudoElement']);
+protoFields(TransitionEvent, ['propertyName', 'elapsedTime', 'pseudoElement']);
 Object.assign(G, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent,
 	KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, ProgressEvent, PopStateEvent,
-	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, TouchEvent: undefined });
+	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, AnimationEvent,
+	TransitionEvent, TouchEvent: undefined });
 delete G.TouchEvent;
 
 /* the event's path: its target, its ancestors, the document, the window */
@@ -438,10 +487,10 @@ const HANDLER_TYPES = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove',
 	'select', 'pointerdown', 'pointerup', 'pointermove', 'animationend', 'transitionend',
 	'beforeunload', 'unload',
 	'animationstart', 'animationiteration', 'animationcancel', 'transitionrun',
-	'transitionstart', 'transitioncancel',
+	'transitionstart', 'transitioncancel', 'beforetoggle',	/* (the Popover API's) */
 	'hashchange', 'popstate', 'message', 'toggle', 'play', 'pause', 'ended'];
-function defineHandlers(proto) {
-	for (const t of HANDLER_TYPES) {
+function defineHandlers(proto, types = HANDLER_TYPES) {
+	for (const t of types) {
 		Object.defineProperty(proto, 'on' + t, {
 			configurable: true,
 			get() { const m = this[HANDLERS]; return (m && m.get(t)) || null; },
@@ -721,8 +770,18 @@ const ParentNode = {
 		this.append(...nodes);
 	},
 	querySelector(sel) {
+		/* Onyx: "#id" from libdom's getElementById (bliss's $('#x'): css3test.com asks
+		 * it thousands of times, each a walk of the whole tree in JS) */
+		const id = typeof sel === 'string' && /^#[a-zA-Z_][-\w]*$/.test(sel) ? sel.slice(1) : null;
+		if (id !== null && (this === G.document || this.getRootNode() === G.document)) {
+			const e = G.document.getElementById(id);
+			if (e && e !== this && (this === G.document || this.contains(e)))
+				return e;
+			if (!e || this === G.document)
+				return null;
+		}
 		const list = parseSelector(sel);
-		for (const e of N.descendants(this))
+		for (let e = N.nextElement(this, this); e; e = N.nextElement(e, this))
 			if (matchList(e, list, this))
 				return e;
 		return null;
@@ -928,7 +987,8 @@ function cssValid(k, v) {
 	if (k.startsWith('--'))
 		return true;
 	v = String(v);
-	if (/[;{}]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
+	/* (Onyx: nor "!important" -- a value, not a declaration: CSS.supports("color", "red !important") is false) */
+	if (/[;{}!]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
 		return false;
 	const r = N.cssKept(k + ': ' + v, true);
 	return r !== null && r[1] > 0;
@@ -958,7 +1018,9 @@ function cssSupports(text) {
 			if (s[i] === '(') depth++;
 			else if (s[i] === ')' && --depth === 0) { i++; return s.slice(start, i - 1); }
 		}
-		return null;
+		/* (Onyx: the end of the text closes the blocks still open, as CSS Syntax does:
+		 * "selector(:nth-child(even of :not([hidden]))" is supported in a browser) */
+		return s.slice(start) + ')'.repeat(Math.max(0, depth - 1));
 	};
 	const cond = () => {
 		ws();
@@ -978,7 +1040,7 @@ function cssSupports(text) {
 		if (/^selector\(/i.test(s.slice(i))) {
 			i += 8;
 			const g = group();
-			return g !== null && cssSelectorValid(g);
+			return g !== null && g.trim() !== "" && cssSelectorValid(g);
 		}
 		if (s[i] !== '(') return false;
 		const g = group();
@@ -1147,6 +1209,13 @@ class CSSRule {
 	}
 	get parentRule() { return this._parent; }
 	get parentStyleSheet() { return this._sheet; }
+	/* (Onyx: the legacy type numbers, 0 for the newer rules) */
+	get type() {
+		return ({ CSSStyleRule: 1, CSSImportRule: 3, CSSMediaRule: 4, CSSFontFaceRule: 5,
+			CSSPageRule: 6, CSSKeyframesRule: 7, CSSKeyframeRule: 8, CSSMarginRule: 9,
+			CSSNamespaceRule: 10, CSSCounterStyleRule: 11, CSSSupportsRule: 12,
+			CSSFontFeatureValuesRule: 14 })[this.constructor.name] || 0;
+	}
 	get cssText() { return ''; }
 	set cssText(v) { /* (no effect, as in browsers) */ }
 	_changed() { if (this._sheet) this._sheet._changed(); }
@@ -2703,6 +2772,9 @@ htmlClass('HTMLAnchorElement', ['a'], HTMLAnchorElement);
 htmlClass('HTMLAreaElement', ['area'], class extends HTMLAnchorElement {});
 
 class HTMLImageElement extends HTMLElement {
+	/* (Onyx: CSSOM View's x / y: the image's border box in the page) */
+	get x() { return Math.round(this.getBoundingClientRect().left + (G.scrollX || 0)); }
+	get y() { return Math.round(this.getBoundingClientRect().top + (G.scrollY || 0)); }
 	/* (Onyx: the picture's state and natural size, NetSurf's for a displayed image; an image
 	 * a script loads -- new Image() -- is canvas.js's) */
 	_img() { return this.isConnected ? N.image(this) : null; }
@@ -3609,7 +3681,7 @@ const navigator = {
 	productSub: '20030107',
 	vendor: 'Google Inc.',
 	vendorSub: '',
-	platform: 'Linux armv8l',
+	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux armv8l'; },	/* (Onyx: "Desktop site") */
 	language: 'fr-FR',
 	languages: ['fr-FR', 'fr', 'en-US', 'en'],
 	cookieEnabled: true,
@@ -3637,15 +3709,22 @@ const navigator = {
 	},
 };
 
-const screen = {
-	get width() { return N.scroll()[2]; },
-	get height() { return N.scroll()[3]; },
-	get availWidth() { return N.scroll()[2]; },
-	get availHeight() { return N.scroll()[3]; },
-	colorDepth: 24,
-	pixelDepth: 24,
-	orientation: { type: 'landscape-primary', angle: 0, addEventListener() {}, removeEventListener() {} },
-};
+/* (Onyx: a Screen, its attributes on the prototype) */
+class Screen extends EventTarget {
+	get width() { return N.scroll()[2]; }
+	get height() { return N.scroll()[3]; }
+	get availWidth() { return N.scroll()[2]; }
+	get availHeight() { return N.scroll()[3]; }
+	get availLeft() { return 0; }
+	get availTop() { return 0; }
+	get colorDepth() { return 24; }
+	get pixelDepth() { return 24; }
+	get isExtended() { return false; }
+	get orientation() { return SCREEN_ORIENTATION; }
+}
+const SCREEN_ORIENTATION = { type: 'landscape-primary', angle: 0, addEventListener() {}, removeEventListener() {} };
+G.Screen = Screen;
+const screen = new Screen();
 
 /* timers */
 const timers = new Map();
@@ -3694,22 +3773,7 @@ function runFrames(time) {
 	}
 }
 
-class TransitionEvent extends Event {
-	constructor(type, init = {}) {
-		super(type, init);
-		this.propertyName = init.propertyName || '';
-		this.elapsedTime = +init.elapsedTime || 0;
-		this.pseudoElement = init.pseudoElement || '';
-	}
-}
-class AnimationEvent extends Event {
-	constructor(type, init = {}) {
-		super(type, init);
-		this.animationName = init.animationName || '';
-		this.elapsedTime = +init.elapsedTime || 0;
-		this.pseudoElement = init.pseudoElement || '';
-	}
-}
+/* (AnimationEvent / TransitionEvent: defined with the other events, above) */
 class AnimationPlaybackEvent extends Event {
 	constructor(type, init = {}) {
 		super(type, init);
@@ -4190,24 +4254,69 @@ function mediaMatches(q) {
 		return not ? !ok : ok;
 	});
 }
+/* Onyx: a media query list as libcss reads and evaluates it (N.mediaMatch: the page's
+ * viewport; libcss's range syntax, aspect-ratio, orientation, hover...): { media, matches } --
+ * media its text with "not all" for a query libcss could not read, as a browser serializes
+ * it. mediaMatches above without a page's style context. */
+const MEDIA_INFO = new Map();
+function mediaInfo(q) {
+	q = String(q);
+	if (q.trim() === '') return { media: '', matches: true };
+	const key = q + '\u0000' + G.innerWidth + 'x' + G.innerHeight;
+	let info = MEDIA_INFO.get(key);
+	if (info) return info;
+	const r = N.mediaMatch(q, G.innerWidth, G.innerHeight);
+	if (r === null) return { media: q, matches: mediaMatches(q) };
+	const parts = [];
+	let depth = 0, start = 0;
+	for (let i = 0; i <= q.length; i++) {
+		const ch = q[i];
+		if (ch === '(' || ch === '[' || ch === '{') depth++;
+		else if (ch === ')' || ch === ']' || ch === '}') depth--;
+		else if (i === q.length || (ch === ',' && depth <= 0)) {
+			parts.push(q.slice(start, i).trim().replace(/\s+/g, ' '));
+			start = i + 1;
+		}
+	}
+	const media = parts.map((p, i) => i >= r[1] || ((r[2] >>> i) & 1) ? 'not all' : p).join(', ');
+	info = { media, matches: r[0] };
+	if (MEDIA_INFO.size > 256) MEDIA_INFO.clear();
+	MEDIA_INFO.set(key, info);
+	return info;
+}
 const mediaLists = new Set();
 class MediaQueryList extends EventTarget {
-	constructor(q) { super(); this.media = String(q); this._last = mediaMatches(q); this.onchange = null; }
-	get matches() { return mediaMatches(this.media); }
+	constructor(q) {
+		super();
+		Object.defineProperty(this, '_q', { value: String(q) });
+		Object.defineProperty(this, '_last', { value: mediaInfo(q).matches, writable: true });
+		Object.defineProperty(this, '_oc', { value: null, writable: true });
+	}
+	get media() { return mediaInfo(this._q).media; }
+	get matches() { return mediaInfo(this._q).matches; }
+	get onchange() { return this._oc; }
+	set onchange(fn) { this._oc = typeof fn === 'function' ? fn : null; }
 	addListener(fn) { this.addEventListener('change', fn); mediaLists.add(this); }
 	removeListener(fn) { this.removeEventListener('change', fn); }
 }
+class MediaQueryListEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		Object.defineProperty(this, '_m', { value: { media: String(init.media ?? ''), matches: !!init.matches } });
+	}
+	get media() { return this._m.media; }
+	get matches() { return this._m.matches; }
+}
+G.MediaQueryListEvent = MediaQueryListEvent;
 function matchMedia(q) { const m = new MediaQueryList(q); mediaLists.add(m); return m; }
 G.MediaQueryList = MediaQueryList;
 
 function checkMedia() {
 	for (const m of mediaLists) {
-		const now = mediaMatches(m.media);
+		const now = mediaInfo(m._q).matches;
 		if (now !== m._last) {
 			m._last = now;
-			const ev = new Event('change');
-			ev.matches = now;
-			ev.media = m.media;
+			const ev = new MediaQueryListEvent('change', { matches: now, media: m.media });
 			dispatch(m, ev);
 			if (typeof m.onchange === 'function') try { m.onchange(ev); } catch (e) { report(e); }
 		}
@@ -4302,35 +4411,80 @@ function storageProxy(origin) {
 }
 G.Storage = Storage;
 
-/* console */
+/* console (Onyx: its arguments made text only when the log is read -- N.logOn -- and an
+ * object's text bounded: JSON's, but 2000 values at most and no toJSON() but a Date's --
+ * Vue's development build hands console.warn whole component trees, browserscore.dev's
+ * features' toJSON() each made its whole subtree: a minute) */
+const FMT_CUT = {};
+function fmtJSON(a) {
+	let n = 0;
+	const stack = [];
+	const val = (v, inArray) => {
+		if (++n > 2000) throw FMT_CUT;
+		if (v instanceof Date) v = v.toJSON();
+		switch (typeof v) {
+		case 'string': return JSON.stringify(v);
+		case 'number': return isFinite(v) ? String(v) : 'null';
+		case 'boolean': return String(v);
+		case 'bigint': throw new TypeError('BigInt');
+		case 'undefined': case 'function': case 'symbol': return inArray ? 'null' : undefined;
+		}
+		if (v === null) return 'null';
+		if (stack.includes(v)) throw new TypeError('cyclic');
+		stack.push(v);
+		let out;
+		if (Array.isArray(v)) {
+			const items = [];
+			for (let i = 0; i < v.length; i++) items.push(val(v[i], true));
+			out = '[' + items.join(',') + ']';
+		} else {
+			const items = [];
+			for (const k of Object.keys(v)) {
+				const s = val(v[k], false);
+				if (s !== undefined) items.push(JSON.stringify(k) + ':' + s);
+			}
+			out = '{' + items.join(',') + '}';
+		}
+		stack.pop();
+		return out;
+	};
+	return val(a, false);
+}
 function fmt(args) {
 	return args.map(a => {
 		if (typeof a === 'string') return a;
 		if (a instanceof Error) return a + (a.stack ? '\n' + a.stack : '');
 		if (a instanceof Node) return '<' + (a.nodeName || 'node') + '>';
-		try { return JSON.stringify(a); } catch (e) { return String(a); }
+		try {
+			return fmtJSON(a);
+		} catch (e) {
+			if (e === FMT_CUT)
+				return '[' + ((a && a.constructor && a.constructor.name) || 'object') + ' ...]';
+			return String(a);
+		}
 	}).join(' ');
 }
 const counts = new Map(), times = new Map();
+const clog = (pre, a) => { if (N.logOn()) N.log(pre + fmt(a)); };
 const console = {
-	log: (...a) => N.log(fmt(a)),
-	info: (...a) => N.log(fmt(a)),
-	debug: (...a) => N.log(fmt(a)),
-	warn: (...a) => N.log('warning: ' + fmt(a)),
-	error: (...a) => N.log('error: ' + fmt(a)),
-	trace: (...a) => N.log('trace: ' + fmt(a)),
-	dir: (...a) => N.log(fmt(a)),
-	dirxml: (...a) => N.log(fmt(a)),
-	table: (...a) => N.log(fmt(a)),
-	group: (...a) => N.log(fmt(a)),
-	groupCollapsed: (...a) => N.log(fmt(a)),
+	log: (...a) => clog('', a),
+	info: (...a) => clog('', a),
+	debug: (...a) => clog('', a),
+	warn: (...a) => clog('warning: ', a),
+	error: (...a) => clog('error: ', a),
+	trace: (...a) => clog('trace: ', a),
+	dir: (...a) => clog('', a),
+	dirxml: (...a) => clog('', a),
+	table: (...a) => clog('', a),
+	group: (...a) => clog('', a),
+	groupCollapsed: (...a) => clog('', a),
 	groupEnd() {},
-	assert: (c, ...a) => { if (!c) N.log('assertion failed: ' + fmt(a)); },
-	count: (l = 'default') => { counts.set(l, (counts.get(l) || 0) + 1); N.log(l + ': ' + counts.get(l)); },
+	assert: (c, ...a) => { if (!c) clog('assertion failed: ', a); },
+	count: (l = 'default') => { counts.set(l, (counts.get(l) || 0) + 1); clog(l + ': ' + counts.get(l), []); },
 	countReset: (l = 'default') => counts.delete(l),
 	time: (l = 'default') => times.set(l, N.now()),
-	timeEnd: (l = 'default') => { N.log(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms'); times.delete(l); },
-	timeLog: (l = 'default') => N.log(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms'),
+	timeEnd: (l = 'default') => { clog(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms', []); times.delete(l); },
+	timeLog: (l = 'default') => clog(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms', []),
 	clear() {},
 };
 
@@ -5028,16 +5182,39 @@ function stripTrailingSpaces(u) {
 	u.path = u.path.replace(/ +$/, '');
 }
 
-class URL {
-	constructor(url, base) {
+/* Onyx: new URL(url, base)'s parses kept (a copy handed out each time): the spec's parser in
+ * JS is slow, and pages make the same URLs again and again (browserscore.dev: a quarter of
+ * its time in new URL, its features' links made at each render) */
+const URL_PARSED = new Map();
+function urlParseCached(url, base) {
+	const key = base === undefined ? url : url + '\u0000' + base;
+	let u = URL_PARSED.get(key);
+	if (u === undefined) {
 		let b = null;
 		if (base !== undefined) {
-			b = basicParse(toUSV(base), null);
+			b = URL_PARSED.get(base);
+			if (b === undefined) {
+				b = basicParse(base, null);
+				URL_PARSED.set(base, b);
+			}
 			if (!b) throw new TypeError("Failed to construct 'URL': Invalid base URL");
 		}
-		const u = basicParse(toUSV(url), b);
-		if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
-		this._u = u;
+		/* "#fragment" of a base (no code point to percent-encode): the base, that fragment */
+		if (b && /^#[\x21\x23-\x3b\x3d\x3f-\x5f\x61-\x7e]*$/.test(url))
+			u = { ...b, path: Array.isArray(b.path) ? b.path.slice() : b.path, fragment: url.slice(1) };
+		else
+			u = basicParse(url, b);
+		if (URL_PARSED.size >= 1024)
+			URL_PARSED.clear();
+		URL_PARSED.set(key, u);
+	}
+	if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
+	return { ...u, path: Array.isArray(u.path) ? u.path.slice() : u.path };
+}
+
+class URL {
+	constructor(url, base) {
+		this._u = urlParseCached(toUSV(url), base === undefined ? undefined : toUSV(base));
 		this._q = null;
 	}
 	static parse(url, base) { try { return new URL(url, base); } catch (e) { return null; } }
@@ -5223,6 +5400,25 @@ G.IntersectionObserver = IntersectionObserver;
 G.IntersectionObserverEntry = function IntersectionObserverEntry() {};
 
 const resizeObservers = new Set();
+/* (Onyx: the entries and sizes as their classes, the attributes on the prototypes) */
+class ResizeObserverSize {
+	constructor(i, b) { Object.defineProperty(this, '_s', { value: [i, b] }); }
+	get inlineSize() { return this._s[0]; }
+	get blockSize() { return this._s[1]; }
+}
+class ResizeObserverEntry {
+	constructor(el, w, h) {
+		const size = Object.freeze([new ResizeObserverSize(w, h)]);
+		Object.defineProperty(this, '_e', { value: { target: el, rect: new DOMRect(0, 0, w, h), size } });
+	}
+	get target() { return this._e.target; }
+	get contentRect() { return this._e.rect; }
+	get borderBoxSize() { return this._e.size; }
+	get contentBoxSize() { return this._e.size; }
+	get devicePixelContentBoxSize() { return this._e.size; }
+}
+G.ResizeObserverSize = ResizeObserverSize;
+G.ResizeObserverEntry = ResizeObserverEntry;
 class ResizeObserver {
 	constructor(cb) { this._cb = cb; this._targets = new Map(); }
 	observe(el) { this._targets.set(el, null); resizeObservers.add(this); scheduleObservers(); }
@@ -5235,9 +5431,7 @@ class ResizeObserver {
 			const key = r[2] + 'x' + r[3];
 			if (key === last) continue;
 			this._targets.set(el, key);
-			const size = [{ inlineSize: r[2], blockSize: r[3] }];
-			entries.push({ target: el, contentRect: new DOMRect(0, 0, r[2], r[3]),
-				borderBoxSize: size, contentBoxSize: size, devicePixelContentBoxSize: size });
+			entries.push(new ResizeObserverEntry(el, r[2], r[3]));
 		}
 		if (entries.length)
 			try { this._cb(entries, this); } catch (e) { report(e); }
@@ -5556,6 +5750,10 @@ class FontFace {
 		this.display = desc.display || 'auto';
 		this.featureSettings = desc.featureSettings || 'normal';
 		this.variant = desc.variant || 'normal';
+		this.variationSettings = desc.variationSettings || 'normal';
+		this.ascentOverride = desc.ascentOverride || 'normal';
+		this.descentOverride = desc.descentOverride || 'normal';
+		this.lineGapOverride = desc.lineGapOverride || 'normal';
 		this.status = 'unloaded';
 		this._src = source;
 		this._bytes = null;
@@ -5600,6 +5798,9 @@ class FontFace {
 		N.addFontFace(this.family, w1, w2, /italic|oblique/.test(this.style), this._bytes);
 	}
 }
+protoFields(FontFace, ['family', 'style', 'weight', 'stretch', 'unicodeRange', 'display',
+	'featureSettings', 'variant', 'variationSettings', 'ascentOverride', 'descentOverride',
+	'lineGapOverride', 'status', 'loaded']);
 class FontFaceSet extends EventTarget {
 	constructor() {
 		super();
@@ -5658,6 +5859,19 @@ const fontFaces = new FontFaceSet();
 G.FontFace = FontFace;
 G.FontFaceSet = FontFaceSet;
 
+/* Onyx: the visual viewport -- the layout viewport (no pinch zoom) */
+class VisualViewport extends EventTarget {
+	get offsetLeft() { return 0; }
+	get offsetTop() { return 0; }
+	get pageLeft() { return G.scrollX || 0; }
+	get pageTop() { return G.scrollY || 0; }
+	get width() { return G.innerWidth; }
+	get height() { return G.innerHeight; }
+	get scale() { return 1; }
+}
+defineHandlers(VisualViewport.prototype, ['resize', 'scroll', 'scrollend']);
+G.VisualViewport = VisualViewport;
+
 /* ---- the global object ------------------------------------------------------------------- */
 
 Object.assign(G, {
@@ -5673,6 +5887,9 @@ Object.assign(G, {
 	cancelIdleCallback: clearTimeout,
 	queueMicrotask: fn => { NativePromise.resolve().then(fn).catch(report); },
 	matchMedia, getComputedStyle, atob, btoa,
+	/* (Onyx: a tab's window is not moved or resized by its scripts, as in browsers) */
+	moveTo() {}, moveBy() {}, resizeTo() {}, resizeBy() {},
+	visualViewport: new VisualViewport(),
 	URL, URLSearchParams, TextEncoder, TextDecoder, fetch, XMLHttpRequest, Headers, Request, Response,
 	AbortController, AbortSignal, Blob, File,
 	Location, Storage,
@@ -5690,7 +5907,10 @@ Object.assign(G, {
 		randomUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }); },
 		subtle: {},
 	},
-	CSS: { supports: (a, b) => b === undefined ? cssSupports(a) :
+	CSS: { supports: (a, b) => b === undefined ?
+		/* (Onyx: as the spec, a condition that does not parse is tried again in parentheses:
+		 * CSS.supports("color: red")) */
+		cssSupports(a) || cssSupports("(" + a + ")") :
 		cssValid(String(a).trim().toLowerCase(), b), escape: s => String(s).replace(/([^a-zA-Z0-9_ -￿-])/g, '\\$1') },
 	customElements: {
 		_d: new Map(),

@@ -12,10 +12,13 @@
 // SECURITY / TODO:
 //   * Entropy comes from the Pi's HARDWARE RNG via kapi_random (ABI v30, backed by
 //     Circle's CBcmRandomNumberGenerator) -- see onyx_entropy below. Good seeding.
-//   * Certificate verification is still OFF (MBEDTLS_SSL_VERIFY_NONE) -- there is no CA
-//     bundle on the system yet, so the server identity is NOT checked (open to MITM).
-//     Ship a CA bundle on the SD card and switch to MBEDTLS_SSL_VERIFY_REQUIRED. This
-//     is the remaining gap before HTTPS can be trusted.
+//   * Certificate verification: OPT-IN. start (s, sock, host) keeps the old behaviour
+//     (MBEDTLS_SSL_VERIFY_NONE: the server identity is NOT checked -- open to MITM); an app
+//     that sets the trusted roots (set_ca_bundle: a PEM bundle, NetSurf's SD:/res/ca-bundle)
+//     and passes START_VERIFY to start () gets the chain checked against them, the host name
+//     (SNI + the certificate's SAN / CN) and the validity dates against the Onyx clock
+//     (mbedTLS is built without MBEDTLS_HAVE_TIME_DATE: the dates are checked here, and only
+//     when the clock is set -- a year >= 2025). NetSurf does (user/netsurf/onyx_nstls.cpp).
 //
 // Built for mbedTLS 3.6.x configured bare-metal (no NET/FS/TIMING, TLS 1.2). See
 // user/tls/README and the onyx_mbedtls_config.h that pins the configuration.
@@ -25,6 +28,7 @@
 
 #include "kapi.h"
 #include <string.h>		// memcpy
+#include <stdlib.h>		// malloc / free (the check's record, the roots)
 
 #include <mbedtls/ssl.h>
 #include <mbedtls/ctr_drbg.h>
@@ -44,6 +48,8 @@
 
 namespace onyx_tls
 {
+	struct Verify;
+
 	struct Session
 	{
 		int                       sock;	// kapi TCP handle
@@ -61,7 +67,113 @@ namespace onyx_tls
 		// network core), 16 KB holds a whole TLS record.
 		unsigned char             rxbuf[16384];
 		int                       rxlen, rxpos;
+		Verify                   *vr;		// (Onyx) the check's record, or 0
+		long                      now;		// (Onyx) the clock in seconds since 1970, 0 unset
+		volatile int             *cancel;	// (Onyx) set by another thread: stop waiting, fail
+		int                       vrfy_calls;	// (Onyx) certificates the check looked at
+		bool                      resumed;	// (Onyx) the handshake resumed a cached session
 	};
+
+	// (Onyx) an app-wide "stop now" for the handshakes and writes in progress (NetSurf's end:
+	// they give their sockets back at once instead of waiting up to 20 s)
+	inline volatile int *&cancel_flag (void) { static volatile int *f; return f; }
+
+	// ---- certificate verification (Onyx) ------------------------------------
+	enum { START_VERIFY = 1,		// check the server's certificate (the roots: set_ca_bundle)
+	       START_INSECURE = 2,		// ... but go on when it fails (the user said so)
+	       START_ALPN_H2 = 4,		// offer HTTP/2 by ALPN ("h2", then "http/1.1")
+	       START_ALPN_H1 = 8 };		// name HTTP/1.1 by ALPN
+	enum { CHAIN_MAX = 8 };
+	// What the check saw: each certificate of the chain it built ([0] the server's, the root
+	// last), its DER copy (malloc'd) and its own mbedTLS MBEDTLS_X509_BADCERT_* flags; the
+	// flags of the whole check (0: trusted). Free with verify_free.
+	struct Verify
+	{
+		uint32_t flags;
+		int depth;
+		struct { uint32_t flags; unsigned char *der; size_t len; bool self_signed; } cert[CHAIN_MAX];
+	};
+	inline void verify_free (Verify *v)
+	{
+		for (int i = 0; i < CHAIN_MAX; i++) { free (v->cert[i].der); v->cert[i].der = 0; }
+		v->depth = 0;
+	}
+
+	// The trusted roots: a PEM bundle's bytes, given once (set_ca_bundle, the app's own thread:
+	// it reads the file), parsed at the first check (a handshake in any thread) under a lock and
+	// shared read-only by every session from then on.
+	struct Trust { mbedtls_x509_crt ca; unsigned char *pem; size_t len; int state; volatile int lk; };
+	inline Trust *trust (void) { static Trust t; return &t; }	// zero-init: state 0
+	// The PEM bytes (NUL-terminated, len counts the NUL, as mbedtls_x509_crt_parse wants them);
+	// the trust takes the malloc'd buffer.
+	inline void set_ca_bundle (unsigned char *pem, size_t len)
+	{
+		Trust *t = trust ();
+		kapi_lock (&t->lk);
+		if (t->state == 0 && t->pem == 0) { t->pem = pem; t->len = len; pem = 0; }
+		kapi_unlock (&t->lk);
+		free (pem);
+	}
+	inline mbedtls_x509_crt *ca_chain (void)
+	{
+		Trust *t = trust ();
+		kapi_lock (&t->lk);
+		if (t->state == 0) {
+			mbedtls_x509_crt_init (&t->ca);
+			// (> 0: that many certificates of the bundle not understood -- the rest kept)
+			int r = t->pem != 0 ? mbedtls_x509_crt_parse (&t->ca, t->pem, t->len) : -1;
+			t->state = r >= 0 && t->ca.raw.p != 0 ? 1 : -1;
+			free (t->pem);
+			t->pem = 0;
+		}
+		kapi_unlock (&t->lk);
+		return t->state == 1 ? &t->ca : 0;
+	}
+
+	// Days since 1970-01-01 of a civil date (proleptic Gregorian).
+	inline long days_from_civil (long y, int m, int d)
+	{
+		y -= m <= 2;
+		long era = (y >= 0 ? y : y - 399) / 400;
+		long yoe = y - era * 400;
+		long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+		long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+		return era * 146097 + doe - 719468;
+	}
+	inline long x509_secs (const mbedtls_x509_time &t)
+	{
+		return days_from_civil (t.year, t.mon, t.day) * 86400L + t.hour * 3600L + t.min * 60L + t.sec;
+	}
+	// The clock (kapi_get_datetime: the local time the Setup app set) -> seconds, 0 when unset.
+	inline long clock_secs (void)
+	{
+		int y, mo, d, h, mi, se;
+		if (kapi_get_datetime (&y, &mo, &d, &h, &mi, &se) == 0 || y < 2025) return 0;
+		return days_from_civil (y, mo, d) * 86400L + h * 3600L + mi * 60L + se;
+	}
+	// mbedTLS's callback for each certificate of the chain (the root first): the dates -- a day
+	// of slack both ways: the clock is the local time, the certificates' UTC --, and the record.
+	static int verify_cb (void *ctx, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
+	{
+		Session *s = (Session *) ctx;
+		s->vrfy_calls++;
+		if (s->now != 0) {
+			if (s->now - 86400L > x509_secs (crt->valid_to)) *flags |= MBEDTLS_X509_BADCERT_EXPIRED;
+			if (s->now + 86400L < x509_secs (crt->valid_from)) *flags |= MBEDTLS_X509_BADCERT_FUTURE;
+		}
+		if (s->vr != 0 && depth >= 0 && depth < CHAIN_MAX) {
+			Verify *v = s->vr;
+			free (v->cert[depth].der);
+			v->cert[depth].der = (unsigned char *) malloc (crt->raw.len);
+			if (v->cert[depth].der != 0) memcpy (v->cert[depth].der, crt->raw.p, crt->raw.len);
+			v->cert[depth].len = v->cert[depth].der != 0 ? crt->raw.len : 0;
+			v->cert[depth].flags = *flags;
+			v->cert[depth].self_signed = crt->subject_raw.len == crt->issuer_raw.len &&
+				memcmp (crt->subject_raw.p, crt->issuer_raw.p, crt->subject_raw.len) == 0;
+			if (depth + 1 > v->depth) v->depth = depth + 1;
+		}
+		return 0;
+	}
 
 	// ---- entropy: the Pi hardware RNG via kapi_random (ABI v30) ------------
 	static int onyx_entropy (void *data, unsigned char *out, size_t len, size_t *olen)
@@ -110,8 +222,8 @@ namespace onyx_tls
 	// RESUME -- skipping the full ECDHE + signature -- which is a big win for pages
 	// that fetch many resources from the same host over separate connections (the
 	// current per-resource-connection model). Per-app (one cache per linked app).
-	enum { TLS_SESS_CACHE_N = 16 };
-	struct SessCacheEntry { char host[128]; mbedtls_ssl_session sess; bool valid; };
+	enum { TLS_SESS_CACHE_N = 32 };
+	struct SessCacheEntry { char host[128]; mbedtls_ssl_session sess; bool valid; bool trusted; };
 
 	inline bool sess_streq (const char *a, const char *b)
 	{
@@ -160,11 +272,19 @@ namespace onyx_tls
 	}
 
 	// ---- session lifecycle -------------------------------------------------
-	// Returns 0 on a completed handshake, -1 on any failure (caller closes the sock).
-	inline int start (Session &s, int sock, const char *host)
+	// Returns 0 on a completed handshake, -1 on any failure (caller closes the sock), -2 (Onyx,
+	// START_VERIFY) the server's certificate refused (*vr says why; stop () the session).
+	// opts: START_* (0: no check, as before); vr: the check's record, or 0.
+	inline int start (Session &s, int sock, const char *host, unsigned opts, Verify *vr)
 	{
 		s.sock = sock;
 		s.rxlen = 0; s.rxpos = 0;		// reset the RX stream buffer
+		s.vr = vr;
+		s.now = 0;
+		s.cancel = cancel_flag ();
+		s.vrfy_calls = 0;
+		s.resumed = false;
+		bool offered = false;
 		mbedtls_ssl_init (&s.ssl);
 		mbedtls_ssl_config_init (&s.conf);
 		mbedtls_ctr_drbg_init (&s.drbg);
@@ -178,8 +298,23 @@ namespace onyx_tls
 						 MBEDTLS_SSL_TRANSPORT_STREAM,
 						 MBEDTLS_SSL_PRESET_DEFAULT) != 0) return -1;
 
-		mbedtls_ssl_conf_authmode (&s.conf, MBEDTLS_SSL_VERIFY_NONE);	// TODO: CA bundle
+		if (opts & START_VERIFY) {
+			// (Onyx) OPTIONAL: the handshake completes and the result is judged below -- the
+			// chain is kept for the caller's error page, "go on anyway" possible
+			mbedtls_x509_crt *ca = ca_chain ();
+			mbedtls_ssl_conf_authmode (&s.conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+			if (ca != 0) mbedtls_ssl_conf_ca_chain (&s.conf, ca, 0);
+			mbedtls_ssl_conf_verify (&s.conf, verify_cb, &s);
+			s.now = clock_secs ();
+		} else {
+			mbedtls_ssl_conf_authmode (&s.conf, MBEDTLS_SSL_VERIFY_NONE);
+		}
 		mbedtls_ssl_conf_rng (&s.conf, mbedtls_ctr_drbg_random, &s.drbg);
+		// (Onyx) ALPN, when asked: HTTP/2 offered, or HTTP/1.1 named
+		static const char *s_alpn_h2[] = { "h2", "http/1.1", 0 };
+		static const char *s_alpn_h1[] = { "http/1.1", 0 };
+		if (opts & (START_ALPN_H2 | START_ALPN_H1))
+			mbedtls_ssl_conf_alpn_protocols (&s.conf, (opts & START_ALPN_H2) ? s_alpn_h2 : s_alpn_h1);
 
 		// The Pi 4's Cortex-A72 has NO ARMv8 crypto extensions, so AES-GCM is slow in
 		// software (no hardware AES, and no PMULL for GHASH). Prefer ChaCha20-Poly1305 --
@@ -199,9 +334,13 @@ namespace onyx_tls
 		// Prefer X25519 for the ECDHE key exchange (fastest curve in pure software), then
 		// secp256r1 as fallback. (network lever 3; MBEDTLS_HAVE_ASM -- the assembly bignum
 		// -- stays enabled in the mbedTLS config for the rest of the handshake math.)
+		// (Onyx) secp384r1 / secp521r1 too: with TLS 1.2 mbedTLS refuses a server certificate
+		// whose EC key is on a curve not in this list (BADCERT_BAD_KEY) -- P-384 keys are common.
 		static const uint16_t s_groups[] = {
 			MBEDTLS_SSL_IANA_TLS_GROUP_X25519,
 			MBEDTLS_SSL_IANA_TLS_GROUP_SECP256R1,
+			MBEDTLS_SSL_IANA_TLS_GROUP_SECP384R1,
+			MBEDTLS_SSL_IANA_TLS_GROUP_SECP521R1,
 			0
 		};
 		mbedtls_ssl_conf_groups (&s.conf, s_groups);
@@ -214,7 +353,7 @@ namespace onyx_tls
 		{
 			kapi_lock (sess_lock ());
 			SessCacheEntry *resume = sess_find (host);
-			if (resume != 0) mbedtls_ssl_set_session (&s.ssl, &resume->sess);
+			if (resume != 0) offered = mbedtls_ssl_set_session (&s.ssl, &resume->sess) == 0;
 			kapi_unlock (sess_lock ());
 		}
 
@@ -225,15 +364,100 @@ namespace onyx_tls
 			if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
 			{
 				if ((kapi_get_ticks () - start_t) * 10 > 20000) return -1;
+				if (s.cancel != 0 && *s.cancel) return -1;
 				kapi_msleep (5);
 				continue;
 			}
 			return -1;
 		}
+		if (opts & START_VERIFY) {		// (Onyx) the check's verdict
+			uint32_t f = mbedtls_ssl_get_verify_result (&s.ssl);
+			if (vr != 0) {
+				vr->flags = f;
+				// (the secondary checks -- the key's curve, its usage -- are the server's)
+				if (f != 0 && vr->depth > 0) {
+					uint32_t seen = 0;
+					for (int i = 0; i < vr->depth && i < CHAIN_MAX; i++) seen |= vr->cert[i].flags;
+					vr->cert[0].flags |= f & ~seen;
+				}
+			}
+			if (f != 0 && !(opts & START_INSECURE)) return -2;
+			// (Onyx) resumed: a cached session offered and no certificate to check (the
+			// server took it: an abbreviated handshake)
+			s.resumed = offered && s.vrfy_calls == 0;
+		}
 		kapi_lock (sess_lock ());
 		sess_save (host, &s.ssl);		// cache the (resumable) session for next time
+		{
+			SessCacheEntry *e = sess_find (host);	// (Onyx) kept on the card only if trusted
+			if (e != 0) e->trusted = (opts & START_VERIFY) && mbedtls_ssl_get_verify_result (&s.ssl) == 0;
+		}
 		kapi_unlock (sess_lock ());
 		return 0;
+	}
+
+	// ---- (Onyx) the session cache kept across launches ---------------------------------
+	// The trusted sessions written as bytes (the app saves them on the card and gives them back
+	// at its next launch: a first connection to a known host resumes -- one round trip less,
+	// no certificate chain to check): "OTLS1", then per session its host's length (1 byte), the
+	// host, its data's length (4 bytes, little-endian), mbedtls_ssl_session_save's bytes.
+	// sess_export (0, 0) -> the size needed; sess_export (buf, cap) -> the bytes written.
+	inline size_t sess_export (unsigned char *buf, size_t cap)
+	{
+		size_t n = 5;
+		kapi_lock (sess_lock ());
+		SessCacheEntry *c = sess_cache ();
+		if (buf != 0 && cap >= 5) memcpy (buf, "OTLS1", 5);
+		for (int i = 0; i < TLS_SESS_CACHE_N; i++) {
+			if (!c[i].valid || !c[i].trusted) continue;
+			size_t hl = strlen (c[i].host), dl = 0;
+			mbedtls_ssl_session_save (&c[i].sess, 0, 0, &dl);	// (the size)
+			if (dl == 0 || hl > 127) continue;
+			if (buf != 0) {
+				if (n + 1 + hl + 4 + dl > cap) break;
+				buf[n] = (unsigned char) hl;
+				memcpy (buf + n + 1, c[i].host, hl);
+				buf[n + 1 + hl] = (unsigned char) dl; buf[n + 2 + hl] = (unsigned char) (dl >> 8);
+				buf[n + 3 + hl] = (unsigned char) (dl >> 16); buf[n + 4 + hl] = (unsigned char) (dl >> 24);
+				size_t out = 0;
+				if (mbedtls_ssl_session_save (&c[i].sess, buf + n + 5 + hl, dl, &out) != 0 || out != dl)
+					continue;
+			}
+			n += 1 + hl + 4 + dl;
+		}
+		kapi_unlock (sess_lock ());
+		return n;
+	}
+	inline void sess_import (const unsigned char *buf, size_t len)
+	{
+		if (len < 5 || memcmp (buf, "OTLS1", 5) != 0) return;
+		size_t n = 5;
+		kapi_lock (sess_lock ());
+		SessCacheEntry *c = sess_cache ();
+		for (int i = 0; i < TLS_SESS_CACHE_N && n < len; ) {
+			size_t hl = buf[n];
+			if (n + 1 + hl + 4 > len) break;
+			size_t dl = buf[n + 1 + hl] | (size_t) buf[n + 2 + hl] << 8 |
+				(size_t) buf[n + 3 + hl] << 16 | (size_t) buf[n + 4 + hl] << 24;
+			if (n + 5 + hl + dl > len) break;
+			if (!c[i].valid) {
+				mbedtls_ssl_session_init (&c[i].sess);
+				if (mbedtls_ssl_session_load (&c[i].sess, buf + n + 5 + hl, dl) == 0) {
+					memcpy (c[i].host, buf + n + 1, hl);
+					c[i].host[hl] = '\0';
+					c[i].valid = c[i].trusted = true;
+				} else {
+					mbedtls_ssl_session_free (&c[i].sess);
+				}
+			}
+			n += 5 + hl + dl;
+			i++;
+		}
+		kapi_unlock (sess_lock ());
+	}
+	inline int start (Session &s, int sock, const char *host)
+	{
+		return start (s, sock, host, 0, 0);
 	}
 
 	// Write all `len` bytes. Returns len, or <0 on error.
@@ -249,6 +473,7 @@ namespace onyx_tls
 			if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
 			{
 				if ((kapi_get_ticks () - start_t) * 10 > 15000) return -1;
+				if (s.cancel != 0 && *s.cancel) return -1;
 				kapi_msleep (5);
 				continue;
 			}

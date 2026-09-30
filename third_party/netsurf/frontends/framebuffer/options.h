@@ -67,6 +67,11 @@ NSOPTION_STRING(fb_face_fantasy, NULL)
  * other frontends' url_file */
 NSOPTION_STRING(url_file, NULL)
 
+/* Onyx: the page composited (onyx_comp.c: a band kept between redraws, the retained layers,
+ * one composite a frame -- by the GPU on the Pi, else gpucomp's CPU path); 0: the back buffer
+ * as before (the PC bench: NS_GPU=0 / 1 / cpu) */
+NSOPTION_BOOL(gpu_compositing, true)
+
 /*
  * Local Variables:
  * c-basic-offset:8

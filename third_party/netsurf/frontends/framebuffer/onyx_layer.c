@@ -51,6 +51,7 @@
 struct fbtk_bitmap;	/* (framebuffer.h names it) */
 #include "framebuffer/framebuffer.h"
 #include "framebuffer/onyx_paint.h"
+#include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing (retained layers) */
 
 #define LAYER_DEPTH 8
 
@@ -883,11 +884,20 @@ static nsfb_t *pass_surface(nsfb_t *s, int w, int h, enum nsfb_format_e fmt)
 }
 
 /* exported function documented in framebuffer/onyx_paint.h */
+int onyx_fb_layer_depth(void)
+{
+	return depth;
+}
+
+/* exported function documented in framebuffer/onyx_paint.h */
 bool onyx_fb_layer_begin(nsfb_t *nsfb, const struct onyx_layer *l, int pass)
 {
 	struct fb_layer *L;
 	struct surf d;
 
+	if (pass == ONYX_LAYER_OFFER)	/* a retained layer offered (onyx_comp.c): the
+					 * compositor writes its answer into it */
+		return onyx_comp_offer((struct onyx_layer *) l);
 	if (pass == 0) {
 		if (depth >= LAYER_DEPTH || !surf_get(nsfb, &d))
 			return false;
@@ -962,6 +972,10 @@ bool onyx_fb_layer_end(nsfb_t *nsfb, const struct onyx_layer *l, int pass)
 	struct surf d, k, wt;
 	int w, h;
 
+	if (pass == ONYX_LAYER_OFFER) {
+		onyx_comp_offer_end(l);
+		return true;
+	}
 	if (depth <= 0)
 		return false;
 	L = &levels[depth - 1];
@@ -970,6 +984,8 @@ bool onyx_fb_layer_end(nsfb_t *nsfb, const struct onyx_layer *l, int pass)
 		/* blended back with what was under, at 1 - opacity */
 		unsigned op = (unsigned) (l->opacity * 256 + 0.5f);
 		depth--;
+		if (onyx_comp_noting)	/* (over a retained layer painted before it?) */
+			onyx_comp_note(nsfb, L->x0, L->y0, L->x1, L->y1);
 		if (l->opacity >= 1 || !surf_get(nsfb, &d))
 			return true;
 		for (int y = L->y0; y < L->y1; y++) {
@@ -1059,6 +1075,11 @@ bool onyx_fb_layer_end(nsfb_t *nsfb, const struct onyx_layer *l, int pass)
 		}
 	}
 filtered:
+	if (l->retain) {
+		/* a retained layer's pixels: kept by the compositor, not drawn here */
+		onyx_comp_store(l, L->argb, l->x0, l->y0, w, h);
+		return true;
+	}
 	if (l->nfilter > 0)
 		apply_filters(L, L->argb, w, h, l->filter, l->nfilter, false);
 	if (l->nbackdrop > 0 && !l->transformed)
@@ -1070,6 +1091,8 @@ filtered:
 		int cy1 = l->cy1 < d.clip.y1 ? l->cy1 : d.clip.y1;
 		if (cx0 < cx1 && cy0 < cy1)
 			composite(l, L->argb, &d, cx0, cy0, cx1, cy1);
+		if (onyx_comp_noting)
+			onyx_comp_note(L->under, cx0, cy0, cx1, cy1);
 	}
 	return true;
 }

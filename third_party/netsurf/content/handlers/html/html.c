@@ -392,6 +392,74 @@ static void html_rebox_gadgets(struct box *b, bool attach)
 }
 
 /**
+ * Onyx: the old objects (c->rebox_objects) indexed by their URL's hash for
+ * html_fetch_object_ex while the boxes are built again: each new box found its object by
+ * walking the whole list, a page with thousands of images (browserscore.dev's status icons)
+ * spent seconds there at each rebox. Without memory: no index, the list is walked.
+ */
+static void html_rebox_index(html_content *c)
+{
+	struct content_html_object *o, **tail;
+	unsigned int n = 0, size = 16, i;
+
+	c->rebox_all = c->rebox_index = NULL;
+	c->rebox_count = c->rebox_mask = 0;
+	for (o = c->rebox_objects; o != NULL; o = o->next) {
+		o->rebox_taken = false;
+		n++;
+	}
+	if (n < 8)
+		return;
+	while (size < 2 * n)
+		size *= 2;
+	c->rebox_all = malloc(n * sizeof *c->rebox_all);
+	c->rebox_index = calloc(size, sizeof *c->rebox_index);
+	if (c->rebox_all == NULL || c->rebox_index == NULL) {
+		free(c->rebox_all);
+		free(c->rebox_index);
+		c->rebox_all = c->rebox_index = NULL;
+		return;
+	}
+	c->rebox_count = n;
+	c->rebox_mask = size - 1;
+	for (i = 0, o = c->rebox_objects; o != NULL; o = o->next, i++) {
+		o->rebox_taken = false;
+		o->rebox_hnext = NULL;
+		c->rebox_all[i] = o;
+		if (o->content == NULL)
+			continue;
+		/* (appended: the first in the list found first, as the walk did) */
+		tail = &c->rebox_index[nsurl_hash(hlcache_handle_get_url(o->content)) &
+				c->rebox_mask];
+		while (*tail != NULL)
+			tail = &(*tail)->rebox_hnext;
+		*tail = o;
+	}
+}
+
+/** Onyx: the index dropped, c->rebox_objects made the list of the objects not taken over */
+static void html_rebox_unindex(html_content *c)
+{
+	struct content_html_object **prev = &c->rebox_objects;
+	unsigned int i;
+
+	if (c->rebox_all == NULL)
+		return;
+	for (i = 0; i < c->rebox_count; i++) {
+		if (c->rebox_all[i]->rebox_taken)
+			continue;
+		*prev = c->rebox_all[i];
+		prev = &c->rebox_all[i]->next;
+	}
+	*prev = NULL;
+	free(c->rebox_all);
+	free(c->rebox_index);
+	c->rebox_all = c->rebox_index = NULL;
+	c->rebox_count = c->rebox_mask = 0;
+}
+
+
+/**
  * The box tree built again from the DOM, then laid out: a script changed it (a class,
  * an attribute, nodes). The old tree's objects are released once the new one has
  * fetched its own (the same images, from the cache); form controls are kept by node.
@@ -440,6 +508,7 @@ static void html_rebox(html_content *c)
 	html_rebox_unlink(html);
 	html_rebox_success = false;
 	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
+	html_rebox_index(c);
 	onyx_hover_reset(c);	/* (the :hover notes made again with the styles) */
 	t0 = onyx_perf_now();
 	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
@@ -447,6 +516,7 @@ static void html_rebox(html_content *c)
 	onyx_perf_log("rebox:boxes", t0);
 	onyx_anim_rebox_end(c, html_rebox_success && c->layout != old_layout);
 	dom_node_unref(html);
+	html_rebox_unindex(c);		/* (rebox_objects: the ones left) */
 	old_objects = c->rebox_objects;	/* the ones left */
 	c->rebox_objects = NULL;
 

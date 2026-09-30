@@ -589,6 +589,12 @@ static struct rclip rclip_stack[RCLIP_DEPTH];
 static int rclip_depth;		/* (may pass RCLIP_DEPTH: those are not kept) */
 
 /* exported function documented in framebuffer/onyx_paint.h */
+int onyx_fb_round_clip_depth(void)
+{
+	return rclip_depth;
+}
+
+/* exported function documented in framebuffer/onyx_paint.h */
 bool onyx_fb_round_clip(nsfb_t *nsfb, const struct onyx_rrect *r)
 {
 	struct fbpix f;

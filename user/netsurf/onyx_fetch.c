@@ -48,8 +48,12 @@
 #include <string.h>
 #include <strings.h>		/* strncasecmp */
 #include <stdio.h>		/* snprintf */
+#include <time.h>		/* (Onyx) time: the HTTP/1.1-only origins' day */
 
 #include <zlib.h>
+#include <brotli/decode.h>	/* Onyx: Content-Encoding: br */
+#include <zstd.h>		/* Onyx: Content-Encoding: zstd */
+#include <nghttp2/nghttp2.h>	/* Onyx: HTTP/2 */
 #include <libwapcaplet/libwapcaplet.h>
 
 #include "utils/nsurl.h"
@@ -58,13 +62,17 @@
 #include "utils/corestrings.h"
 #include "utils/ring.h"
 #include "utils/log.h"
+#include "utils/messages.h"
 
 #include "content/fetch.h"
 #include "content/fetchers.h"
 #include "content/urldb.h"
+#include "netsurf/ssl_certs.h"
 
 #include "kapi.h"		/* Onyx TCP transport */
 #include "onyx_nstls.h"		/* C-callable TLS transport (https) */
+#include "onyx_ws.h"		/* Onyx: onyx_ws_shutdown (the app's end) */
+#include "netsurf/onyx_perf.h"	/* Onyx: NS_PERF timings (net:connect, net:done) */
 
 /* Per-fetch state machine phases (the path without threads). */
 enum onyx_phase {
@@ -101,20 +109,52 @@ struct fetch_onyx_context {
 	/* --- the response, as it comes (threads) --- */
 	bool head_done;			/* its head handed to the core */
 	bool redirected;		/* ... and it was a redirect: nothing more to hand */
-	z_stream zs;			/* the Content-Encoding's inflate, when zs_on */
-	bool zs_on, zs_end;
+	/* the Content-Encoding's decoder (Onyx: gzip / deflate with zlib, br with Brotli's,
+	 * zstd with Zstandard's), streamed: the body is decoded as it comes */
+	int enc;			/* ENC_NONE, ENC_ZLIB, ENC_BR, ENC_ZSTD */
+	z_stream zs;
+	BrotliDecoderState *br;
+	ZSTD_DStream *zd;
+	bool dec_end;			/* the encoded stream ended (or was corrupt) */
 	size_t delivered;		/* body bytes handed to the core */
 	bool script;			/* Onyx: a script's request (fetch / XHR: X-Onyx-Dest: empty) */
+	bool insecure;			/* Onyx: the user accepted this host's bad certificate */
+	bool no_cookies;		/* Onyx: a script's request without credentials (CORS):
+					 * no Cookie sent, its Set-Cookie ignored */
+	int retries;			/* Onyx: its job started again (HTTP/2: JOB_RETRY) */
+	int status;			/* Onyx: the response's status (the perf log) */
+	bool not_modified;		/* Onyx: a 304 -- FETCH_NOTMODIFIED given */
 };
 
 static struct fetch_onyx_context *ring = NULL;
+
+/* Onyx: the bench's NS_NETDEBUG=1 -- each response's head and each HTTP/2 frame on stderr */
+static bool onyx_netdebug(void)
+{
+	static int v = -1;
+	if (v < 0)
+		v = getenv("NS_NETDEBUG") != NULL;
+	return v != 0;
+}
+
+/* Onyx: the app is ending (onyx_fetch_shutdown); the download / connection threads alive */
+static volatile int onyx_quit;
+static volatile int onyx_threads;
 
 /* Idle timeout of a download: no byte for 30 s (kapi_get_ticks counts at 100 Hz). */
 #define ONYX_IDLE_TICKS	3000
 /* Onyx: a script's request (fetch / XHR): 5 min (a long poll, a stream) */
 #define ONYX_SCRIPT_IDLE_TICKS	30000
 
-#define ONYX_MAX_WORKERS	8	/* downloads at once (the kernel has 16 sockets in all) */
+/* Onyx: the kernel has 16 TCP sockets in all (kernel/sys/net.cpp MAX_SOCKETS), for every app:
+ * NetSurf keeps to about 12 of them -- 6 downloads at once, 4 connections kept alive, 4
+ * HTTP/2 connections (their streams need no socket of their own), the WebSockets aside. A
+ * connect that finds the table full closes the idle connections and waits for a socket
+ * (onyx_connect); the app's end closes them all (onyx_fetch_shutdown). */
+#define ONYX_MAX_WORKERS	6	/* downloads at once, each its own thread and socket */
+
+/* Onyx: what the requests accept, as Chrome: every coding the fetcher decodes */
+#define ONYX_ACCEPT_ENCODING "gzip, deflate, br, zstd"
 
 /* ---- the request's pieces --------------------------------------------------- */
 
@@ -210,7 +250,7 @@ static char *onyx_request(const char *method, const char *path, const char *host
 		return NULL;
 	n = snprintf(r, cap,
 		"%s %.*s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n%s%s%s%s"
-		"Accept-Encoding: gzip, deflate\r\nConnection: %s\r\n%s%s\r\n",
+		"Accept-Encoding: " ONYX_ACCEPT_ENCODING "\r\nConnection: %s\r\n%s%s\r\n",
 		method, (int) plen, path, hostport, ua,
 		has_accept ? "" : "Accept: */*\r\n",
 		has_lang ? "" : "Accept-Language: ", has_lang ? "" : lang,
@@ -285,47 +325,99 @@ static void onyx_add_referer(char **hdrs, nsurl *url, nsurl *ref, bool origin_to
 	}
 }
 
-/* ---- gzip / deflate body inflate (zlib) ------------------------------- */
-/* On success returns 0 and replaces the body/len with a fresh malloc'd plain buffer. */
-static int onyx_inflate(const char *encoding, uint8_t **body, size_t *len)
+/* ---- the Content-Encoding (Onyx: gzip, deflate, br, zstd) ------------------------- */
+
+enum { ENC_NONE = 0, ENC_ZLIB, ENC_BR, ENC_ZSTD };
+
+
+/* The decoder of a response's Content-Encoding (its value in cenc), set up on the context:
+ * false when it is none the fetcher knows (the body goes as it is). */
+static bool onyx_decoder_start(struct fetch_onyx_context *c, const char *cenc)
 {
-	z_stream zs;
-	size_t cap, have = 0;
-	uint8_t *out;
-	int wbits, ret;
+	c->enc = ENC_NONE;
+	c->dec_end = false;
+	if (cenc == NULL || cenc[0] == '\0')
+		return false;
+	if (ci_has(cenc, "gzip") || ci_has(cenc, "deflate")) {
+		memset(&c->zs, 0, sizeof c->zs);
+		if (inflateInit2(&c->zs, ci_has(cenc, "gzip") ? 16 + MAX_WBITS : MAX_WBITS) != Z_OK)
+			return false;
+		c->enc = ENC_ZLIB;
+	} else if (ci_has(cenc, "br")) {
+		c->br = BrotliDecoderCreateInstance(NULL, NULL, NULL);
+		if (c->br == NULL)
+			return false;
+		c->enc = ENC_BR;
+	} else if (ci_has(cenc, "zstd")) {
+		c->zd = ZSTD_createDStream();
+		if (c->zd == NULL)
+			return false;
+		/* (a window of 8 MB at most, as Chrome's: a bigger one is an error) */
+		ZSTD_DCtx_setParameter(c->zd, ZSTD_d_windowLogMax, 23);
+		c->enc = ENC_ZSTD;
+	}
+	return c->enc != ENC_NONE;
+}
 
-	if (encoding == NULL) return 0;
-	if (strstr(encoding, "gzip") != NULL)      wbits = 16 + MAX_WBITS;	/* gzip */
-	else if (strstr(encoding, "deflate") != NULL) wbits = MAX_WBITS;		/* zlib */
-	else return 0;							/* identity */
+static void onyx_decoder_end(struct fetch_onyx_context *c)
+{
+	if (c->enc == ENC_ZLIB)
+		inflateEnd(&c->zs);
+	if (c->br != NULL)
+		BrotliDecoderDestroyInstance(c->br);
+	if (c->zd != NULL)
+		ZSTD_freeDStream(c->zd);
+	c->br = NULL;
+	c->zd = NULL;
+	c->enc = ENC_NONE;
+}
 
-	memset(&zs, 0, sizeof zs);
-	if (inflateInit2(&zs, wbits) != Z_OK)
-		return -1;
-
-	cap = (*len ? *len : 1) * 4 + 64;
-	out = malloc(cap);
-	if (out == NULL) { inflateEnd(&zs); return -1; }
-
-	zs.next_in = *body;
-	zs.avail_in = (uInt)*len;
-	do {
-		if (have + 4096 > cap) {
-			uint8_t *nb = realloc(out, cap * 2);
-			if (nb == NULL) { free(out); inflateEnd(&zs); return -1; }
-			out = nb; cap *= 2;
-		}
-		zs.next_out = out + have;
-		zs.avail_out = (uInt)(cap - have);
-		ret = inflate(&zs, Z_NO_FLUSH);
-		if (ret != Z_OK && ret != Z_STREAM_END) { free(out); inflateEnd(&zs); return -1; }
-		have = cap - zs.avail_out;
-	} while (ret != Z_STREAM_END && zs.avail_in > 0);
-	inflateEnd(&zs);
-
-	free(*body);
-	*body = out;
-	*len = have;
+/* One step of the decoder: in -> out; *used the input taken, *made the output written.
+ * Returns 1 more output may come from this input (call again), 0 the input is used up (or
+ * the stream ended: c->dec_end). */
+static int onyx_decode(struct fetch_onyx_context *c, const uint8_t *in, size_t n, size_t *used,
+		uint8_t *out, size_t cap, size_t *made, bool last)
+{
+	*used = *made = 0;
+	if (c->dec_end)
+		return 0;
+	if (c->enc == ENC_ZLIB) {
+		int ret;
+		c->zs.next_in = (Bytef *) in;
+		c->zs.avail_in = (uInt) n;
+		c->zs.next_out = out;
+		c->zs.avail_out = (uInt) cap;
+		ret = inflate(&c->zs, Z_NO_FLUSH);
+		*used = n - c->zs.avail_in;
+		*made = cap - c->zs.avail_out;
+		if (ret == Z_STREAM_END || (ret != Z_OK && ret != Z_BUF_ERROR))
+			c->dec_end = true;	/* (corrupt: what came is kept) */
+		return !c->dec_end && c->zs.avail_out == 0 ? 1 : 0;
+	}
+	if (c->enc == ENC_BR) {
+		size_t ain = n, aout = cap;
+		const uint8_t *nin = in;
+		uint8_t *nout = out;
+		BrotliDecoderResult r = BrotliDecoderDecompressStream(c->br, &ain, &nin, &aout,
+				&nout, NULL);
+		*used = n - ain;
+		*made = cap - aout;
+		if (r == BROTLI_DECODER_RESULT_SUCCESS || r == BROTLI_DECODER_RESULT_ERROR)
+			c->dec_end = true;
+		return r == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT ? 1 : 0;
+	}
+	if (c->enc == ENC_ZSTD) {
+		ZSTD_inBuffer ib = { in, n, 0 };
+		ZSTD_outBuffer ob = { out, cap, 0 };
+		size_t r = ZSTD_decompressStream(c->zd, &ob, &ib);
+		*used = ib.pos;
+		*made = ob.pos;
+		if (ZSTD_isError(r))
+			c->dec_end = true;
+		/* (r == 0: a frame ended -- another may follow in the same body) */
+		return !c->dec_end && (ob.pos == ob.size || ib.pos < ib.size) ? 1 : 0;
+	}
+	(void) last;
 	return 0;
 }
 
@@ -337,15 +429,37 @@ static void onyx_conn_close(struct fetch_onyx_context *c)
 }
 
 /* ---- fetcher operations ----------------------------------------------- */
+static void onyx_state_load(void);
+
 static bool fetch_onyx_initialise(lwc_string *scheme)
 {
+	static bool ca_read;
+
 	NSLOG(netsurf, INFO, "onyx fetcher init: %s", lwc_string_data(scheme));
+	/* Onyx: the trusted roots for the certificate check (Choices' ca_bundle, else the card's
+	 * SD:/res/ca-bundle) -- read here, on the UI thread, once */
+	if (!ca_read) {
+		char path[512];
+		const char *rp = NETSURF_FB_RESPATH;
+		ca_read = true;
+		if (nsoption_charp(ca_bundle) != NULL && nsoption_charp(ca_bundle)[0] != '\0')
+			snprintf(path, sizeof path, "%s", nsoption_charp(ca_bundle));
+		else
+			snprintf(path, sizeof path, "%s%sca-bundle", rp,
+					rp[0] != '\0' && rp[strlen(rp) - 1] == '/' ? "" : "/");
+		onyx_nstls_ca_bundle(path);
+		onyx_nstls_cancel_flag(&onyx_quit);	/* (the app's end: onyx_fetch_shutdown) */
+		onyx_state_load();
+	}
 	return true;
 }
+
+static void onyx_fetch_shutdown(void);
 
 static void fetch_onyx_finalise(lwc_string *scheme)
 {
 	(void)scheme;
+	onyx_fetch_shutdown();		/* (Onyx: once, at the first scheme) */
 }
 
 static bool fetch_onyx_can_fetch(const nsurl *url)
@@ -382,7 +496,7 @@ static const char *onyx_site_of(const char *host)
  * to a navigation without Sec-Fetch-Mode. `dest`: X-Onyx-Dest, set by the cache from what the
  * caller accepts ("document", "iframe", "style", "script", "image", "font", "empty"...). */
 static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const char *dest,
-		bool user)
+		bool user, const char *smode)
 {
 	const char *site = "none", *mode = "no-cors", *accept = NULL;
 	bool nav = false;
@@ -420,8 +534,8 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 		if (rh != NULL)
 			lwc_string_unref(rh);
 	}
-	if (strcmp(site, "same-origin") == 0 && strcmp(mode, "cors") == 0)
-		mode = "cors";
+	if (smode != NULL && smode[0] != '\0')
+		mode = smode;		/* (a script's request: its fetch mode, X-Onyx-Mode) */
 	if (accept != NULL && !hdrs_have(*hdrs, "Accept"))
 		hdrs_add(hdrs, "Accept", accept, strlen(accept));
 	if (nav)
@@ -429,7 +543,14 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 	if (us != NULL && strcasecmp(lwc_string_data(us), "https") == 0) {
 		/* the client hints a Chrome sends everywhere on https (its version and whether
 		 * mobile from the User-Agent) */
-		const char *ua = user_agent_string(), *cv = strstr(ua, "Chrome/");
+		const char *ua, *cv;
+		{	/* (Onyx: the site's -- desktop or mobile: the toolbar's "Desktop site") */
+			lwc_string *hh = nsurl_get_component(url, NSURL_HOST);
+			ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
+			if (hh != NULL)
+				lwc_string_unref(hh);
+		}
+		cv = strstr(ua, "Chrome/");
 		char v[16] = "126", b[160];
 		int k;
 		if (cv != NULL) {
@@ -459,6 +580,39 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 		lwc_string_unref(us);
 }
 
+/* Onyx: the hosts whose bad certificate the user accepted, as the threads see them (urldb is
+ * the UI thread's): onyx_ws.c's connections to them go on as the fetches do */
+#define ONYX_INSECURE_MAX 16
+static char onyx_insecure[ONYX_INSECURE_MAX][128];
+static volatile int onyx_insecure_lk;
+
+static void onyx_insecure_add(const char *host)
+{
+	int i, free_at = -1;
+
+	kapi_lock(&onyx_insecure_lk);
+	for (i = 0; i < ONYX_INSECURE_MAX; i++) {
+		if (strcasecmp(onyx_insecure[i], host) == 0)
+			break;
+		if (onyx_insecure[i][0] == '\0' && free_at < 0)
+			free_at = i;
+	}
+	if (i == ONYX_INSECURE_MAX && free_at >= 0)
+		snprintf(onyx_insecure[free_at], sizeof onyx_insecure[0], "%s", host);
+	kapi_unlock(&onyx_insecure_lk);
+}
+
+int onyx_fetch_insecure_host(const char *host)
+{
+	int i, r = 0;
+
+	kapi_lock(&onyx_insecure_lk);
+	for (i = 0; i < ONYX_INSECURE_MAX && !r; i++)
+		r = onyx_insecure[i][0] != '\0' && strcasecmp(onyx_insecure[i], host) == 0;
+	kapi_unlock(&onyx_insecure_lk);
+	return r;
+}
+
 static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		bool only_2xx, bool downgrade_tls, const char *post_urlenc,
 		const struct fetch_multipart_data *post_multipart,
@@ -466,7 +620,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 {
 	struct fetch_onyx_context *ctx = calloc(1, sizeof(*ctx));
 	size_t hlen = 0;
-	char dest[16] = "";
+	char dest[16] = "", smode[16] = "";
 	int i;
 	(void)only_2xx; (void)downgrade_tls; (void)post_multipart;	/* (multipart: not yet) */
 	if (ctx == NULL)
@@ -474,8 +628,8 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 	ctx->parent_fetch = parent_fetch;
 	ctx->url = nsurl_ref(url);
 
-	/* the request: its method, its headers (not the conditional ones: a 304 would need
-	 * FETCH_NOTMODIFIED, which this fetcher does not send), its body */
+	/* the request: its method, its headers (Onyx: the conditional ones too -- llcache's
+	 * revalidation of a stale object, a 304 answered with FETCH_NOTMODIFIED), its body */
 	for (i = 0; headers != NULL && headers[i] != NULL; i++)
 		hlen += strlen(headers[i]) + 2;
 	ctx->hdrs = calloc(1, hlen + 1);
@@ -495,8 +649,16 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 			ctx->script = strcmp(dest, "empty") == 0;
 			continue;
 		}
-		if (hdr_is(h, "If-None-Match") || hdr_is(h, "If-Modified-Since"))
+		if (hdr_is(h, "X-Onyx-Mode")) {		/* (Onyx: a script's fetch mode) */
+			const char *v = h + 12;
+			while (*v == ' ') v++;
+			snprintf(smode, sizeof smode, "%s", v);
 			continue;
+		}
+		if (hdr_is(h, "X-Onyx-Credentials")) {	/* (Onyx: CORS, "omit") */
+			ctx->no_cookies = true;
+			continue;
+		}
 		if (ctx->hdrs != NULL) {
 			strcat(ctx->hdrs, h);
 			strcat(ctx->hdrs, "\r\n");
@@ -508,7 +670,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		ctx->method = strdup(post_urlenc != NULL ? "POST" : "GET");
 
 	/* the cookies (read here, on the UI thread: urldb is not the workers'), the referer */
-	if (!hdrs_have(ctx->hdrs, "Cookie")) {
+	if (!ctx->no_cookies && !hdrs_have(ctx->hdrs, "Cookie")) {
 		char *ck = urldb_get_cookie(url, true);
 		if (ck != NULL && ck[0] != '\0')
 			hdrs_add(&ctx->hdrs, "Cookie", ck, strlen(ck));
@@ -518,7 +680,19 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 			ctx->method != NULL && strcmp(ctx->method, "GET") != 0 &&
 			strcmp(ctx->method, "HEAD") != 0);
 	onyx_add_fetch_metadata(&ctx->hdrs, url, fetch_get_referer(parent_fetch), dest,
-			fetch_is_verifiable(parent_fetch));
+			fetch_is_verifiable(parent_fetch), smode);
+
+	/* Onyx: a host whose bad certificate the user accepted ("proceed" on the certificate
+	 * error page: urldb, the UI thread's) is fetched without failing the check */
+	ctx->insecure = strncasecmp(nsurl_access(url), "https:", 6) == 0 &&
+		urldb_get_cert_permissions(url);
+	if (ctx->insecure) {
+		lwc_string *h = nsurl_get_component(url, NSURL_HOST);
+		if (h != NULL) {
+			onyx_insecure_add(lwc_string_data(h));
+			lwc_string_unref(h);
+		}
+	}
 
 	ctx->phase = PH_INIT;
 	ctx->sock = -1;
@@ -539,8 +713,7 @@ static void fetch_onyx_free(void *ctx)
 	struct fetch_onyx_context *c = ctx;
 	onyx_job_drop(c);		/* a download still in its thread: orphaned */
 	onyx_conn_close(c);
-	if (c->zs_on)
-		inflateEnd(&c->zs);
+	onyx_decoder_end(c);
 	free(c->buf);
 	free(c->method);
 	free(c->hdrs);
@@ -568,6 +741,42 @@ static void fetch_onyx_error(struct fetch_onyx_context *c, const char *err)
 	msg.type = FETCH_ERROR;
 	msg.data.error = err;
 	fetch_onyx_send(&msg, c);
+}
+
+/* Onyx: the server's certificate refused -- the chain the check built to the core
+ * (FETCH_CERTS: the certificate error page lists it, about:certificate shows each), then
+ * FETCH_CERT_ERR: a page's own fetch becomes that error page, with its "proceed anyway" (which
+ * sets urldb's cert permission for the host: fetch_onyx_setup's insecure) */
+static void onyx_cert_error(struct fetch_onyx_context *c, const struct onyx_tls_chain *oc)
+{
+	struct cert_chain chain;
+	fetch_msg msg;
+	unsigned i;
+
+	memset(&chain, 0, sizeof chain);
+	chain.depth = oc->depth < MAX_CERT_DEPTH ? oc->depth : MAX_CERT_DEPTH;
+	for (i = 0; i < chain.depth; i++) {
+		int e = oc->cert[i].err;
+		chain.certs[i].err = e >= ONYX_CERT_OK && e <= ONYX_CERT_HOSTNAME_MISMATCH ?
+			(ssl_cert_err) e : SSL_CERT_ERR_UNKNOWN;	/* (the same values) */
+		chain.certs[i].der = oc->cert[i].der;
+		chain.certs[i].der_length = oc->cert[i].len;
+		if (chain.certs[i].der == NULL)
+			chain.certs[i].err = SSL_CERT_ERR_CERT_MISSING;
+		printf("ONYX-TLS refused %s: certificate %u/%u: %s\n", nsurl_access(c->url),
+				i, (unsigned) chain.depth, chain.certs[i].err == SSL_CERT_ERR_OK ?
+				"ok" : messages_get_sslcode(chain.certs[i].err));
+	}
+	fflush(stdout);
+	if (chain.depth > 0 && !c->aborted) {
+		msg.type = FETCH_CERTS;
+		msg.data.chain = &chain;
+		fetch_onyx_send(&msg, c);
+	}
+	if (!c->aborted) {
+		msg.type = FETCH_CERT_ERR;
+		fetch_onyx_send(&msg, c);
+	}
 }
 
 /* Locate a header value (case-insensitive) within the response head. Writes a
@@ -618,21 +827,27 @@ static int head_status(const char *head, size_t headlen)
 static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t headlen,
 		char *cenc, size_t cenccap)
 {
+	/* (Onyx: the cache-control headers go to the core now -- Cache-Control, Expires, ETag,
+	 * Last-Modified, Age, Date: llcache keeps a fresh object without a request and
+	 * revalidates a stale one, in memory and on the card: onyx_cache.c) */
 	static const char *const skip[] = { "Content-Encoding", "Content-Length",
-		"Transfer-Encoding", "Cache-Control", "Expires", "ETag", "Last-Modified",
-		"Age", "Pragma", "Date", "Vary", "Set-Cookie", "Location", "Connection",
+		"Transfer-Encoding", "Set-Cookie", "Location", "Connection",
 		"Keep-Alive", NULL };
 	const char *p = head, *end = head + headlen;
 	int code = head_status(head, headlen);
 	bool first = true;
 	fetch_msg msg;
 
+	c->status = code;		/* (Onyx: the perf log) */
+	if (onyx_netdebug())		/* (Onyx, the bench: NS_NETDEBUG=1) */
+		fprintf(stderr, "ONYX-NET head %s\n%.*s\n", nsurl_access(c->url), (int) headlen, head);
+
 	/* every Set-Cookie to NetSurf's jar (a redirect's too: a login's session) */
 	while (p < end) {
 		const char *eol = memchr(p, '\n', (size_t)(end - p));
 		size_t ll = eol ? (size_t)(eol - p) : (size_t)(end - p);
 		if (ll > 0 && p[ll - 1] == '\r') ll--;
-		if (ll > 11 && hdr_is(p, "Set-Cookie")) {
+		if (ll > 11 && !c->no_cookies && hdr_is(p, "Set-Cookie")) {
 			char *v = malloc(ll + 1);
 			if (v != NULL) {
 				const char *s = p + 11;
@@ -669,6 +884,8 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 	cenc[0] = '\0';
 	header_value(head, headlen, "Content-Encoding", cenc, cenccap);
 	fetch_set_http_code(c->parent_fetch, code);
+	if (code == 304 && c->body == NULL)
+		c->not_modified = true;		/* (Onyx: sent after the headers, below) */
 
 	/* The status line, then the headers, one FETCH_HEADER each (the core keeps them:
 	 * scripts read them, llcache_handle_get_header_at). Left out: the cache-control ones
@@ -695,6 +912,13 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 		if (eol == NULL) break;
 		p = eol + 1;
 	}
+	if (c->not_modified && !c->aborted) {
+		/* Onyx: a 304 to llcache's revalidation -- its stored object is still good (the
+		 * headers above bring its new cache data); llcache aborts this fetch */
+		msg.type = FETCH_NOTMODIFIED;
+		fetch_onyx_send(&msg, c);
+		return false;
+	}
 	return !c->aborted;
 }
 
@@ -716,14 +940,26 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 	}
 
 	if (c->tls) {
-		c->ts = onyx_nstls_open(host, port);		/* connect + (resumed) handshake */
-		if (c->ts == NULL) { fetch_onyx_error(c, "Connection failed"); return false; }
+		/* connect + (resumed) handshake, the certificate checked (Onyx) */
+		struct onyx_tls_chain ch;
+		int sock = kapi_tcp_connect(host, port);
+		if (sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
+		c->ts = onyx_nstls_connect(sock, host, ONYX_TLS_VERIFY |
+				(c->insecure ? ONYX_TLS_INSECURE : 0), &ch);
+		if (c->ts == NULL) {
+			if (ch.failed)
+				onyx_cert_error(c, &ch);
+			else
+				fetch_onyx_error(c, "Connection failed");
+			onyx_nstls_chain_free(&ch);
+			return false;
+		}
 	} else {
 		c->sock = kapi_tcp_connect(host, port);
 		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
 	}
 
-	req = onyx_request(c->method, path, host, port, c->tls, user_agent_string(),
+	req = onyx_request(c->method, path, host, port, c->tls, user_agent_for_host(host),
 			nsoption_charp(accept_language) != NULL ? nsoption_charp(accept_language) :
 			"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7", c->hdrs, c->body, false, &len);
 	if (req == NULL) {
@@ -778,6 +1014,8 @@ static size_t onyx_unchunk(uint8_t *b, size_t n)
 
 /* PH_DONE (no threads): parse the accumulated response (status / headers / body), follow
  * a redirect, inflate gzip/deflate, and deliver it to the NetSurf core. */
+static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, bool last);
+
 static void fetch_onyx_deliver(struct fetch_onyx_context *c)
 {
 	uint8_t *resp = c->buf, *body;
@@ -807,29 +1045,13 @@ static void fetch_onyx_deliver(struct fetch_onyx_context *c)
 	    strstr(te, "chunked") != NULL)
 		bodylen = onyx_unchunk(body, bodylen);
 
-	/* inflate gzip/deflate in place (body is a slice of resp; copy out) */
-	if (cenc[0] != '\0') {
-		uint8_t *b = malloc(bodylen ? bodylen : 1);
-		if (b != NULL) {
-			memcpy(b, body, bodylen);
-			if (onyx_inflate(cenc, &b, &bodylen) == 0)
-				body = b;	/* b now owned; freed below */
-			else { free(b); }
-		}
-	}
-	if (!c->aborted) {
-		msg.type = FETCH_DATA;
-		msg.data.header_or_data.buf = body;
-		msg.data.header_or_data.len = bodylen;
-		fetch_onyx_send(&msg, c);
-	}
+	/* the body decoded (its Content-Encoding) and handed on */
+	onyx_decoder_start(c, cenc);
+	onyx_data(c, body, bodylen, true);
 	if (!c->aborted) {
 		msg.type = FETCH_FINISHED;
 		fetch_onyx_send(&msg, c);
 	}
-
-	if (body < resp || body >= resp + resplen)
-		free(body);		/* inflated copy */
 }
 
 /* Advance one fetch by a single non-blocking step. Returns true when the fetch is
@@ -878,7 +1100,9 @@ static bool fetch_onyx_step(struct fetch_onyx_context *c)
 
 /* ==== the threaded path ==================================================== */
 
-enum { JOB_RUNNING = 0, JOB_DONE };
+enum { JOB_RUNNING = 0, JOB_DONE, JOB_RETRY };	/* (JOB_RETRY: Onyx, HTTP/2 -- start again) */
+
+struct onyx_h2;
 
 struct onyx_job {
 	char *url;			/* a copy: the worker never touches an nsurl */
@@ -895,6 +1119,16 @@ struct onyx_job {
 	size_t total;			/* body bytes in all */
 	const char *err;		/* a failure (a static string), or 0 */
 	unsigned idle;			/* Onyx: ticks without a byte before it fails */
+	bool insecure;			/* Onyx: the host's bad certificate accepted */
+	struct onyx_tls_chain *chain;	/* Onyx: the certificate refused (its chain), or 0 */
+	/* Onyx: HTTP/2 */
+	bool threaded;			/* a thread of its own (counted in onyx_workers) */
+	struct onyx_h2 *h2open;		/* its thread opens this origin's connection, h2 offered */
+	struct onyx_job *h2next;	/* the connection's queue */
+	const char *proto;		/* "h2" / "http/1.1" (NS_PERF) */
+	uint64_t t0;			/* started (NS_PERF) */
+	uint64_t t_head;		/* its head came (NS_PERF: the time to the first byte) */
+	bool reused;			/* on a connection kept alive (NS_PERF) */
 };
 
 static int onyx_workers;		/* jobs running (UI thread's count) */
@@ -907,6 +1141,10 @@ static void onyx_job_free(struct onyx_job *j)
 	free(j->body);
 	free(j->head);
 	free(j->buf);
+	if (j->chain != NULL) {
+		onyx_nstls_chain_free(j->chain);
+		free(j->chain);
+	}
 	free(j);
 }
 
@@ -938,9 +1176,10 @@ struct onyx_conn {
 	unsigned port;
 	unsigned idle_at;		/* kapi_get_ticks when it went back to the pool */
 	unsigned uses;			/* requests it carried */
+	bool insecure;			/* Onyx: its certificate not trusted (the user went on) */
 };
 
-#define ONYX_POOL		8
+#define ONYX_POOL		4
 #define ONYX_POOL_IDLE_TICKS	1000	/* kept 10 s idle (servers keep 5 .. 60 s) */
 
 static struct onyx_conn onyx_pool[ONYX_POOL];
@@ -959,7 +1198,8 @@ static void conn_close(struct onyx_conn *k)
 }
 
 /* A connection kept for host / port / scheme -> true and *out (it is the caller's now). */
-static bool pool_take(const char *host, unsigned port, bool tls, struct onyx_conn *out)
+static bool pool_take(const char *host, unsigned port, bool tls, bool insecure,
+		struct onyx_conn *out)
 {
 	struct onyx_conn stale[ONYX_POOL];
 	int nstale = 0, i;
@@ -977,6 +1217,7 @@ static bool pool_take(const char *host, unsigned port, bool tls, struct onyx_con
 	}
 	for (i = onyx_pool_n - 1; i >= 0; i--) {	/* (the most recent: the likeliest alive) */
 		if (onyx_pool[i].tls == tls && onyx_pool[i].port == port &&
+		    (insecure || !onyx_pool[i].insecure) &&
 		    strcasecmp(onyx_pool[i].host, host) == 0) {
 			*out = onyx_pool[i];
 			onyx_pool[i] = onyx_pool[--onyx_pool_n];
@@ -993,6 +1234,10 @@ static bool pool_take(const char *host, unsigned port, bool tls, struct onyx_con
 /* A connection back to the pool (the oldest one closed when it is full). */
 static void pool_put(struct onyx_conn *k)
 {
+	if (onyx_quit) {		/* (Onyx: the app ends: nothing kept) */
+		conn_close(k);
+		return;
+	}
 	struct onyx_conn old;
 	bool drop = false;
 
@@ -1030,19 +1275,70 @@ static int conn_recv(struct onyx_conn *k, void *b, int n)
  * tried again once. */
 static volatile int onyx_connect_lk;
 
-static int onyx_connect(const char *host, unsigned port)
+static void onyx_sockets_free(void);
+
+
+/* Onyx: a connection's timings for the perf log (NS_PERF / SD:/apps/netsurf.app/perf) */
+struct onyx_ctime {
+	uint64_t queue;		/* waiting for the connects' turn */
+	uint64_t dns;		/* the name resolved (the kernel caches it: then ~0) */
+	uint64_t tcp;		/* the TCP connect */
+	uint64_t wait;		/* waiting for a free socket (the kernel's table full) */
+};
+
+static int onyx_connect(const char *host, unsigned port, struct onyx_ctime *ct)
 {
-	int sock, tries;
-	for (tries = 0; tries < 2; tries++) {
+	int sock = -1, tries;
+	unsigned waited = 0;
+	uint64_t t0 = onyx_perf_now(), t1;
+
+	for (tries = 0; tries < 2 && !onyx_quit; tries++) {
 		/* (a connect takes 100 ms and more: the others wait asleep -- kapi_lock spun,
 		 * seven workers burning the cores the page needs) */
 		while (kapi__xchg(&onyx_connect_lk, 1) != 0)
 			kapi_msleep(5);
+		t1 = onyx_perf_now();
+		if (ct != NULL && tries == 0) {
+			ct->queue = t1 - t0;
+			if (t1 != 0 && KT->net_resolve != 0) {	/* (the perf log: DNS apart) */
+				char ip[64];
+				kapi_net_resolve(host, ip, sizeof ip);
+				ct->dns = onyx_perf_now() - t1;
+				t1 = onyx_perf_now();
+			}
+		}
 		sock = kapi_tcp_connect(host, port);
+		if (ct != NULL)
+			ct->tcp = onyx_perf_now() - t1;
 		kapi_unlock(&onyx_connect_lk);
 		if (sock >= 0)
-			return sock;
+			break;
+		if (sock == -2) {
+			/* Onyx: the kernel's socket table is full (16 sockets for every app: another
+			 * app's, or ours kept idle) -- ours closed, then a socket waited for (5 s at
+			 * most), not a network error */
+			onyx_sockets_free();
+			while (sock == -2 && waited < 5000 && !onyx_quit) {
+				kapi_msleep(50);
+				waited += 50;
+				while (kapi__xchg(&onyx_connect_lk, 1) != 0)
+					kapi_msleep(5);
+				sock = kapi_tcp_connect(host, port);
+				kapi_unlock(&onyx_connect_lk);
+			}
+			if (sock >= 0 || sock == -2)
+				break;
+		}
+		if (sock == -3)
+			break;			/* (the name does not resolve: no second try) */
 		kapi_msleep(200);
+	}
+	if (ct != NULL)
+		ct->wait = (uint64_t) waited * 1000;
+	if (onyx_perf_on() && (sock < 0 || waited)) {
+		fprintf(stderr, "ONYX-PERF net:tcp %s:%u %s %lu us%s\n", host, port,
+				sock >= 0 ? "ok" : sock == -2 ? "no socket free" : sock == -3 ? "no DNS" : "failed",
+				(unsigned long) (onyx_perf_now() - t0), waited ? " (waited for a socket)" : "");
 	}
 	return sock;
 }
@@ -1051,24 +1347,53 @@ static int onyx_connect(const char *host, unsigned port)
  * turn as the downloads' */
 int onyx_fetch_connect(const char *host, unsigned port)
 {
-	return onyx_connect(host, port);
+	return onyx_connect(host, port, NULL);
 }
 
-static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool tls)
+/* A new connection (TLS: the certificate checked -- *chain set when it is refused). */
+static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool tls,
+		bool insecure, struct onyx_tls_chain **chain, bool h2)
 {
+	struct onyx_ctime ct;
+	uint64_t t0;
+
 	memset(k, 0, sizeof *k);
+	memset(&ct, 0, sizeof ct);
 	k->tls = tls;
 	k->sock = -1;
 	k->port = port;
 	snprintf(k->host, sizeof k->host, "%s", host);
-	k->sock = onyx_connect(host, port);		/* DNS + connect */
+	k->sock = onyx_connect(host, port, &ct);	/* DNS + connect */
 	if (k->sock < 0)
 		return false;
+	t0 = onyx_perf_now();
 	if (tls) {
-		k->ts = onyx_nstls_start(k->sock, host);	/* (resumed) handshake */
+		struct onyx_tls_chain ch;
+		k->ts = onyx_nstls_connect(k->sock, host, ONYX_TLS_VERIFY |	/* (resumed) handshake */
+				(insecure ? ONYX_TLS_INSECURE : 0) | (h2 ? ONYX_TLS_H2 : 0), &ch);
 		k->sock = -1;				/* (the session's, closed with it) */
-		if (k->ts == NULL)
+		k->insecure = insecure;
+		if (k->ts == NULL) {
+			if (ch.failed && chain != NULL && *chain == NULL) {
+				*chain = malloc(sizeof ch);
+				if (*chain != NULL) {
+					**chain = ch;	/* (its DER copies with it) */
+					return false;
+				}
+			}
+			onyx_nstls_chain_free(&ch);
 			return false;
+		}
+	}
+	/* Onyx: the perf log -- where a new connection's time went */
+	if (onyx_perf_on()) {
+		const char *alpn = tls ? onyx_nstls_alpn(k->ts) : NULL;
+		fprintf(stderr, "ONYX-PERF net:conn %s:%u queue %lu dns %lu tcp %lu%s tls %lu %s %s us\n",
+				host, port, (unsigned long) ct.queue, (unsigned long) ct.dns,
+				(unsigned long) ct.tcp, ct.wait ? " (waited for a socket)" : "",
+				(unsigned long) (tls ? onyx_perf_now() - t0 : 0),
+				!tls ? "-" : onyx_nstls_resumed(k->ts) ? "resumed" : "full",
+				alpn != NULL ? alpn : "http/1.1");
 	}
 	return true;
 }
@@ -1312,6 +1637,7 @@ static int onyx_exchange(struct onyx_job *j, struct onyx_conn *k, const char *re
 	kapi_lock(&j->lk);
 	j->head = head;
 	j->headlen = headlen;
+	j->t_head = onyx_perf_now();
 	kapi_unlock(&j->lk);
 	onyx_post_wake();
 
@@ -1333,37 +1659,797 @@ static int onyx_exchange(struct onyx_job *j, struct onyx_conn *k, const char *re
 	return ok ? 1 : -1;
 }
 
+/* A job's end, in its thread (or its HTTP/2 connection's): the UI thread told, or the job
+ * freed when its fetch is gone. state: JOB_DONE, JOB_RETRY (Onyx: HTTP/2, to start again). */
+static void job_finish(struct onyx_job *j, int state)
+{
+	int orphan;
+
+	kapi_lock(&j->lk);
+	j->state = state;
+	orphan = j->orphan;
+	kapi_unlock(&j->lk);
+	if (orphan) onyx_job_free(j);			/* its fetch was aborted and freed */
+	else onyx_post_wake();
+}
+
+/* ==== HTTP/2 (Onyx) ==========================================================
+ *
+ * An origin whose server chooses "h2" by ALPN gets ONE connection, run by a thread: the
+ * download thread that opened it becomes its owner (h2_run) for as long as it lives. Every
+ * request to that origin is a stream multiplexed on it -- nghttp2 does the framing, HPACK and
+ * the flow control. The UI thread gives the next jobs for the origin straight to the
+ * connection (h2_queue: no thread, no connect, no handshake of their own); the owner submits
+ * them and fills each stream's job as a download thread fills its own (the head, then the
+ * body as it comes: job_append; job_finish), so the UI side (fetch_onyx_step_threaded, the
+ * streaming to the core, the decoders) is the same for both protocols. While the first
+ * connection to an origin is being made (its ALPN not known yet) the other fetches for it
+ * wait a poll or two; a server that chose http/1.1 is noted (onyx_h1_only) and its fetches go
+ * as before (a connection each, kept alive). Server push is refused (SETTINGS_ENABLE_PUSH 0).
+ * A stream refused (the server's GOAWAY, REFUSED_STREAM) or a connection lost before a
+ * stream's head came makes its job JOB_RETRY: the UI thread starts the fetch again.
+ */
+enum { H2_CONNECTING = 0, H2_READY, H2_GONE };
+
+/* (the Pi's kernel has 16 sockets in all: the HTTP/2 connections are few, an idle one is
+ * closed for a new origin's -- h2_evict -- and all the idle ones when a connect fails) */
+#define ONYX_H2_MAX		4		/* origins with an HTTP/2 connection at once */
+#define ONYX_H2_IDLE_TICKS	3000		/* a connection without a stream for 30 s: closed */
+#define ONYX_H1_ONLY		32		/* the origins that chose http/1.1, remembered */
+#define ONYX_H2_WINDOW		6291456		/* a stream's receive window: 6 MB (Chrome's) */
+#define ONYX_H2_CONN_WINDOW	15728640	/* the connection's: 15 MB (Chrome's) */
+
+struct onyx_h2;
+
+struct h2_stream {
+	struct onyx_job *j;
+	struct onyx_h2 *e;
+	int32_t id;
+	char *head;			/* the head being read: "HTTP/2 200\r\nname: value\r\n"... */
+	size_t hlen, hcap;
+	bool interim;			/* ... a 1xx one (dropped at its end) */
+	bool head_done;			/* the final head given to the job */
+	bool rst;			/* RST_STREAM sent: its fetch was aborted, or it timed out */
+	bool retry;			/* its job to start again over HTTP/1.1 (a 403: below) */
+	size_t since_post;
+	size_t boff, blen;		/* the request's body: sent so far, in all */
+	unsigned t_last;		/* kapi_get_ticks at its last frame */
+	struct h2_stream *next;
+};
+
+struct onyx_h2 {
+	char host[256];
+	unsigned port;
+	volatile int state;		/* H2_CONNECTING, H2_READY, H2_GONE (onyx_h2_lk) */
+	bool insecure;			/* its certificate not trusted (the user went on) */
+	onyx_tls_sess *ts;
+	nghttp2_session *ng;
+	volatile int lk;		/* pending, pend_tail */
+	struct onyx_job *pending, *pend_tail;	/* queued by the UI thread (j->h2next) */
+	volatile unsigned wake;		/* bumped when a job is queued (kapi_wake_word) */
+	struct h2_stream *streams;	/* the owner thread's */
+	int nstreams;
+	bool dead;			/* the connection failed */
+	bool goaway;			/* the server said GOAWAY: no new stream on it */
+	bool closing;			/* the owner is tearing it down: callbacks do nothing */
+	volatile int evict;		/* out of the table for another origin: close when idle */
+	volatile unsigned idle_at;	/* kapi_get_ticks when its last stream ended */
+};
+
+static struct onyx_h2 *onyx_h2s[ONYX_H2_MAX];
+static struct { char host[256]; unsigned port; long day; } onyx_h1_only[ONYX_H1_ONLY];
+static unsigned onyx_h1_next;
+static volatile int onyx_h2_lk;		/* the two tables, an entry's state */
+
+/* HTTP/2 on (NS_H2=0 on the PC bench: off -- the before / after of loadtime.sh) */
+static bool onyx_h2_enabled(void)
+{
+	static int v = -1;
+	if (v < 0) {
+		const char *e = getenv("NS_H2");
+		v = e == NULL || atoi(e) != 0;
+	}
+	return v != 0;
+}
+
+/* (onyx_h2_lk held) the live entry of an origin, or NULL */
+static struct onyx_h2 *h2_find(const char *host, unsigned port)
+{
+	int i;
+	for (i = 0; i < ONYX_H2_MAX; i++)
+		if (onyx_h2s[i] != NULL && onyx_h2s[i]->port == port &&
+		    strcasecmp(onyx_h2s[i]->host, host) == 0)
+			return onyx_h2s[i];
+	return NULL;
+}
+
+/* (onyx_h2_lk held) whether an origin chose http/1.1 */
+static bool h1_only(const char *host, unsigned port)
+{
+	int i;
+	for (i = 0; i < ONYX_H1_ONLY; i++)
+		if (onyx_h1_only[i].port == port && strcasecmp(onyx_h1_only[i].host, host) == 0)
+			return true;
+	return false;
+}
+
+static void h1_only_add(const char *host, unsigned port)
+{
+	kapi_lock(&onyx_h2_lk);
+	if (!h1_only(host, port)) {
+		unsigned i = onyx_h1_next++ % ONYX_H1_ONLY;
+		snprintf(onyx_h1_only[i].host, sizeof onyx_h1_only[i].host, "%s", host);
+		onyx_h1_only[i].port = port;
+		onyx_h1_only[i].day = (long) (time(NULL) / 86400);
+	}
+	kapi_unlock(&onyx_h2_lk);
+}
+
+/* The entry out of the table: no job is queued to it any more (the UI thread queues with
+ * onyx_h2_lk held). */
+static void h2_retire(struct onyx_h2 *e)
+{
+	int i;
+	kapi_lock(&onyx_h2_lk);
+	for (i = 0; i < ONYX_H2_MAX; i++)
+		if (onyx_h2s[i] == e)
+			onyx_h2s[i] = NULL;
+	e->state = H2_GONE;
+	kapi_unlock(&onyx_h2_lk);
+}
+
+/* (onyx_h2_lk held) the idle connections closed -- the one idle longest (all: every idle one):
+ * out of the table, their owners told (they close them once idle). Returns a free slot, or -1. */
+static int h2_evict(bool all)
+{
+	int i, best = -1;
+	unsigned now = kapi_get_ticks();
+
+	for (i = 0; i < ONYX_H2_MAX; i++) {
+		struct onyx_h2 *e = onyx_h2s[i];
+		if (e == NULL || e->state != H2_READY || e->nstreams > 0 || e->pending != NULL)
+			continue;
+		if (all) {
+			e->evict = 1;
+			e->state = H2_GONE;
+			onyx_h2s[i] = NULL;
+			e->wake++;
+			kapi_wake_word(&e->wake);
+			best = i;
+		} else if (best < 0 || now - e->idle_at > now - onyx_h2s[best]->idle_at) {
+			best = i;
+		}
+	}
+	if (!all && best >= 0) {
+		struct onyx_h2 *e = onyx_h2s[best];
+		e->evict = 1;
+		e->state = H2_GONE;
+		onyx_h2s[best] = NULL;
+		e->wake++;
+		kapi_wake_word(&e->wake);
+	}
+	return best;
+}
+
+/* Onyx: a connect failed -- the kernel's sockets (16 in all on the Pi) may be taken by the
+ * idle connections: the kept HTTP/1.1 ones closed, the idle HTTP/2 ones told to close */
+static void onyx_sockets_free(void)
+{
+	struct onyx_conn k;
+
+	kapi_lock(&onyx_h2_lk);
+	h2_evict(true);
+	kapi_unlock(&onyx_h2_lk);
+	for (;;) {
+		kapi_lock(&onyx_pool_lk);
+		if (onyx_pool_n == 0) {
+			kapi_unlock(&onyx_pool_lk);
+			break;
+		}
+		k = onyx_pool[--onyx_pool_n];
+		kapi_unlock(&onyx_pool_lk);
+		conn_close(&k);
+	}
+}
+
+/* Onyx: what the fetcher remembers across launches, on the card beside the app
+ * (SD:/apps/netsurf.app/): the TLS sessions (TLSSessions: the first connection to a known
+ * host resumes -- one round trip less, no certificate chain) and the origins that answer over
+ * HTTP/1.1 only (HTTP1Hosts, "host port day" -- kept a week: their fetches need not wait for
+ * the ALPN of a first connection, and a CDN that refused HTTP/2 with a 403 is not tried again) */
+#define ONYX_STATE_TLS	ONYX_NS_DATAPATH "TLSSessions"
+#define ONYX_STATE_H1	ONYX_NS_DATAPATH "HTTP1Hosts"
+
+static void onyx_state_load(void)
+{
+	FILE *f;
+	char line[300], host[256];
+	unsigned port;
+	long day, today = (long) (time(NULL) / 86400);
+
+	onyx_nstls_sessions_load(ONYX_STATE_TLS);
+	f = fopen(ONYX_STATE_H1, "r");
+	if (f == NULL)
+		return;
+	while (fgets(line, sizeof line, f) != NULL)
+		if (sscanf(line, "%255s %u %ld", host, &port, &day) == 3 &&
+		    (today < 20000 || day > today - 7)) {	/* (a week; no clock: kept) */
+			unsigned i = onyx_h1_next++ % ONYX_H1_ONLY;
+			snprintf(onyx_h1_only[i].host, sizeof onyx_h1_only[i].host, "%s", host);
+			onyx_h1_only[i].port = port;
+			onyx_h1_only[i].day = day;
+		}
+	fclose(f);
+}
+
+/* Onyx: the state written (the app's end; gui.c after a page's load, with the cookies) */
+void onyx_fetch_save_state(void)
+{
+	FILE *f;
+	int i;
+
+	onyx_nstls_sessions_save(ONYX_STATE_TLS);
+	f = fopen(ONYX_STATE_H1, "w");
+	if (f == NULL)
+		return;
+	kapi_lock(&onyx_h2_lk);
+	for (i = 0; i < ONYX_H1_ONLY; i++)
+		if (onyx_h1_only[i].host[0] != '\0')
+			fprintf(f, "%s %u %ld\n", onyx_h1_only[i].host, onyx_h1_only[i].port,
+					onyx_h1_only[i].day);
+	kapi_unlock(&onyx_h2_lk);
+	fclose(f);
+}
+
+/* Onyx: fetch.c -- whether a host's fetches are streams on an HTTP/2 connection (they are
+ * not limited by max_fetchers_per_host then) */
+bool onyx_fetch_multiplexed(lwc_string *host)
+{
+	bool r = false;
+	int i;
+
+	if (host == NULL || !onyx_h2_enabled())
+		return false;
+	kapi_lock(&onyx_h2_lk);
+	for (i = 0; i < ONYX_H2_MAX && !r; i++)
+		r = onyx_h2s[i] != NULL && onyx_h2s[i]->state == H2_READY &&
+			!onyx_h2s[i]->dead && strcasecmp(onyx_h2s[i]->host, lwc_string_data(host)) == 0;
+	kapi_unlock(&onyx_h2_lk);
+	return r;
+}
+
+/* A job to the connection (onyx_h2_lk held: the entry is READY) */
+static void h2_queue(struct onyx_h2 *e, struct onyx_job *j)
+{
+	j->h2next = NULL;
+	kapi_lock(&e->lk);
+	if (e->pend_tail != NULL)
+		e->pend_tail->h2next = j;
+	else
+		e->pending = j;
+	e->pend_tail = j;
+	kapi_unlock(&e->lk);
+	e->wake++;
+	kapi_wake_word(&e->wake);
+}
+
+static struct onyx_job *h2_take_pending(struct onyx_h2 *e)
+{
+	struct onyx_job *q;
+	kapi_lock(&e->lk);
+	q = e->pending;
+	e->pending = e->pend_tail = NULL;
+	kapi_unlock(&e->lk);
+	return q;
+}
+
+static void h2_head_add(struct h2_stream *s, const char *a, size_t an, const char *b, size_t bn,
+		const char *c, size_t cn)
+{
+	size_t need = s->hlen + an + bn + cn + 1;
+	if (need > s->hcap) {
+		size_t cap = s->hcap ? s->hcap * 2 : 1024;
+		char *h;
+		while (cap < need) cap *= 2;
+		h = realloc(s->head, cap);
+		if (h == NULL)
+			return;
+		s->head = h;
+		s->hcap = cap;
+	}
+	memcpy(s->head + s->hlen, a, an); s->hlen += an;
+	memcpy(s->head + s->hlen, b, bn); s->hlen += bn;
+	memcpy(s->head + s->hlen, c, cn); s->hlen += cn;
+	s->head[s->hlen] = '\0';
+}
+
+static int h2_on_header(nghttp2_session *ng, const nghttp2_frame *frame, nghttp2_rcbuf *name,
+		nghttp2_rcbuf *value, uint8_t flags, void *user)
+{
+	struct onyx_h2 *e = user;
+	struct h2_stream *s;
+	nghttp2_vec n = nghttp2_rcbuf_get_buf(name), v = nghttp2_rcbuf_get_buf(value);
+
+	(void) flags;
+	if (e->closing || frame->hd.type != NGHTTP2_HEADERS)
+		return 0;
+	s = nghttp2_session_get_stream_user_data(ng, frame->hd.stream_id);
+	if (s == NULL || s->head_done)
+		return 0;		/* (a trailer) */
+	s->t_last = kapi_get_ticks();
+	if (n.len == 7 && memcmp(n.base, ":status", 7) == 0) {
+		s->hlen = 0;
+		s->interim = v.len > 0 && v.base[0] == '1';
+		h2_head_add(s, "HTTP/2 ", 7, (const char *) v.base, v.len, "\r\n", 2);
+	} else if (n.len > 0 && n.base[0] != ':') {
+		h2_head_add(s, (const char *) n.base, n.len, ": ", 2, (const char *) v.base, v.len);
+		h2_head_add(s, "\r\n", 2, "", 0, "", 0);
+	}
+	return 0;
+}
+
+static int h2_on_frame_recv(nghttp2_session *ng, const nghttp2_frame *frame, void *user)
+{
+	struct onyx_h2 *e = user;
+	struct h2_stream *s;
+
+	if (onyx_netdebug())
+		fprintf(stderr, "ONYX-NET h2 %s frame type %d stream %d flags %x length %u\n", e->host,
+				frame->hd.type, frame->hd.stream_id, frame->hd.flags, (unsigned) frame->hd.length);
+	if (e->closing)
+		return 0;
+	if (frame->hd.type == NGHTTP2_GOAWAY) {
+		/* no new stream on it: the next jobs get a new connection (the streams above
+		 * its last stream id are closed REFUSED_STREAM: retried) */
+		e->goaway = true;
+		h2_retire(e);
+		return 0;
+	}
+	if (frame->hd.type != NGHTTP2_HEADERS || !(frame->hd.flags & NGHTTP2_FLAG_END_HEADERS))
+		return 0;
+	s = nghttp2_session_get_stream_user_data(ng, frame->hd.stream_id);
+	if (s == NULL || s->head_done || s->head == NULL)
+		return 0;
+	if (s->interim) {		/* (100 Continue, 103 Early Hints: not the answer) */
+		s->hlen = 0;
+		s->interim = false;
+		return 0;
+	}
+	if (s->id == 1 && s->hlen > 10 && strncmp(s->head, "HTTP/2 403", 10) == 0) {
+		/* the first answer on the connection is a 403: some CDNs (Fastly: www.bbc.com)
+		 * refuse a Chrome User-Agent whose TLS and HTTP/2 do not look like Chrome's --
+		 * over HTTP/1.1 they answer. The origin noted as HTTP/1.1 only, the connection
+		 * given up, the fetch started again. */
+		h1_only_add(e->host, e->port);
+		e->goaway = true;
+		h2_retire(e);
+		s->retry = true;
+		s->rst = true;
+		nghttp2_submit_rst_stream(ng, NGHTTP2_FLAG_NONE, s->id, NGHTTP2_CANCEL);
+		return 0;
+	}
+	if (s->hlen >= 2)
+		s->hlen -= 2;		/* (no final CRLF: the head's lines, as HTTP/1.1's) */
+	s->head[s->hlen] = '\0';
+	kapi_lock(&s->j->lk);
+	s->j->head = s->head;
+	s->j->t_head = onyx_perf_now();
+	s->j->headlen = s->hlen;
+	kapi_unlock(&s->j->lk);
+	s->head = NULL;
+	s->hlen = s->hcap = 0;
+	s->head_done = true;
+	onyx_post_wake();
+	return 0;
+}
+
+static int h2_on_data(nghttp2_session *ng, uint8_t flags, int32_t id, const uint8_t *data,
+		size_t len, void *user)
+{
+	struct onyx_h2 *e = user;
+	struct h2_stream *s;
+
+	(void) flags;
+	if (e->closing)
+		return 0;
+	s = nghttp2_session_get_stream_user_data(ng, id);
+	if (s == NULL || s->rst)
+		return 0;
+	s->t_last = kapi_get_ticks();
+	if (!job_append(s->j, data, len, &s->since_post)) {
+		s->j->err = "Out of memory";
+		nghttp2_submit_rst_stream(ng, NGHTTP2_FLAG_NONE, id, NGHTTP2_INTERNAL_ERROR);
+		s->rst = true;
+	}
+	return 0;
+}
+
+/* A stream's end: its job finished (retried when nothing of the answer came and the server
+ * refused it or the connection went) */
+static void h2_stream_end(struct onyx_h2 *e, struct h2_stream *s, uint32_t error)
+{
+	struct h2_stream **p;
+	int state = JOB_DONE;
+
+	for (p = &e->streams; *p != NULL; p = &(*p)->next)
+		if (*p == s) {
+			*p = s->next;
+			e->nstreams--;
+			break;
+		}
+	if (s->retry && !s->j->cancel)
+		state = JOB_RETRY;
+	else if (error != NGHTTP2_NO_ERROR && !s->j->cancel) {
+		if (!s->head_done && (error == NGHTTP2_REFUSED_STREAM || e->dead || e->goaway))
+			state = JOB_RETRY;
+		else if (s->j->err == NULL)
+			s->j->err = "HTTP/2 stream reset";
+	}
+	if (s->since_post > 0)
+		onyx_post_wake();
+	free(s->head);
+	job_finish(s->j, state);
+	free(s);
+}
+
+static int h2_on_close(nghttp2_session *ng, int32_t id, uint32_t error, void *user)
+{
+	struct onyx_h2 *e = user;
+	struct h2_stream *s;
+
+	if (e->closing)
+		return 0;
+	s = nghttp2_session_get_stream_user_data(ng, id);
+	if (s != NULL)
+		h2_stream_end(e, s, error);
+	return 0;
+}
+
+static nghttp2_ssize h2_body_read(nghttp2_session *ng, int32_t id, uint8_t *buf, size_t len,
+		uint32_t *flags, nghttp2_data_source *src, void *user)
+{
+	struct h2_stream *s = src->ptr;
+	size_t n = s->blen - s->boff;
+
+	(void) ng; (void) id; (void) user;
+	if (n > len)
+		n = len;
+	memcpy(buf, s->j->body + s->boff, n);
+	s->boff += n;
+	if (s->boff == s->blen)
+		*flags |= NGHTTP2_DATA_FLAG_EOF;
+	return (nghttp2_ssize) n;
+}
+
+#define H2_NV(nv, n, nl, v, vl) do { (nv).name = (uint8_t *) (n); (nv).namelen = (nl); \
+	(nv).value = (uint8_t *) (v); (nv).valuelen = (vl); (nv).flags = NGHTTP2_NV_FLAG_NONE; } while (0)
+
+/* A job's request, a new stream: false when it cannot be (the job is then retried) */
+static bool h2_submit(struct onyx_h2 *e, struct onyx_job *j)
+{
+	char host[256], auth[300], clen[24], *hd = NULL, *l;
+	const char *path;
+	unsigned port;
+	size_t nh = 8, pl;
+	nghttp2_nv *nv;
+	int n = 0;
+	int32_t id;
+	struct h2_stream *s;
+	nghttp2_data_provider2 prd;
+	nghttp2_priority_spec pri;
+	bool has_accept, has_lang, has_ctype;
+
+	if (!onyx_split_url(j->url, host, sizeof host, &port, &path, 443))
+		return false;
+	pl = strcspn(path, "#");
+	if (port == 443)
+		snprintf(auth, sizeof auth, "%s", host);
+	else
+		snprintf(auth, sizeof auth, "%s:%u", host, port);
+	if (j->hdrs != NULL) {
+		hd = strdup(j->hdrs);		/* (the names lower-cased in place) */
+		if (hd == NULL)
+			return false;
+		for (l = hd; *l != '\0'; l++)
+			if (*l == '\n')
+				nh++;
+	}
+	nv = calloc(nh + 8, sizeof *nv);
+	s = calloc(1, sizeof *s);
+	if (nv == NULL || s == NULL) {
+		free(nv); free(s); free(hd);
+		return false;
+	}
+	has_accept = hdrs_have(j->hdrs, "Accept");
+	has_lang = hdrs_have(j->hdrs, "Accept-Language");
+	has_ctype = hdrs_have(j->hdrs, "Content-Type");
+	/* (Chrome's order of the pseudo-headers: some CDNs' bot checks look at it) */
+	H2_NV(nv[n], ":method", 7, j->method, strlen(j->method)); n++;
+	H2_NV(nv[n], ":authority", 10, auth, strlen(auth)); n++;
+	H2_NV(nv[n], ":scheme", 7, "https", 5); n++;
+	H2_NV(nv[n], ":path", 5, path, pl); n++;
+	H2_NV(nv[n], "user-agent", 10, j->ua, strlen(j->ua)); n++;
+	if (!has_accept) { H2_NV(nv[n], "accept", 6, "*/*", 3); n++; }
+	if (!has_lang) { H2_NV(nv[n], "accept-language", 15, j->lang, strlen(j->lang)); n++; }
+	H2_NV(nv[n], "accept-encoding", 15, ONYX_ACCEPT_ENCODING, strlen(ONYX_ACCEPT_ENCODING)); n++;
+	/* the caller's headers (the cookies, the referer, the fetch metadata...), their names
+	 * in lower case; those HTTP/2 forbids left out */
+	for (l = hd; l != NULL && *l != '\0' && n < (int) nh + 6; ) {
+		char *eol = strchr(l, '\n'), *colon = strchr(l, ':'), *v, *ve, *k;
+		size_t nl;
+		if (eol == NULL)
+			eol = l + strlen(l);
+		if (colon == NULL || colon > eol || colon == l) {
+			l = *eol ? eol + 1 : eol;
+			continue;
+		}
+		for (k = l; k < colon; k++)
+			if (*k >= 'A' && *k <= 'Z')
+				*k = (char) (*k - 'A' + 'a');
+		nl = (size_t) (colon - l);
+		v = colon + 1;
+		while (v < eol && (*v == ' ' || *v == '\t')) v++;
+		ve = eol;
+		while (ve > v && (ve[-1] == '\r' || ve[-1] == ' ')) ve--;
+		if (!((nl == 4 && memcmp(l, "host", 4) == 0) ||
+		      (nl == 10 && memcmp(l, "connection", 10) == 0) ||
+		      (nl == 10 && memcmp(l, "keep-alive", 10) == 0) ||
+		      (nl == 16 && memcmp(l, "proxy-connection", 16) == 0) ||
+		      (nl == 17 && memcmp(l, "transfer-encoding", 17) == 0) ||
+		      (nl == 7 && memcmp(l, "upgrade", 7) == 0) ||
+		      (nl == 2 && memcmp(l, "te", 2) == 0) ||
+		      (nl == 14 && memcmp(l, "content-length", 14) == 0))) {
+			H2_NV(nv[n], l, nl, v, (size_t) (ve - v));
+			n++;
+		}
+		l = *eol ? eol + 1 : eol;
+	}
+	s->j = j;
+	s->e = e;
+	s->t_last = kapi_get_ticks();
+	if (j->body != NULL) {
+		s->blen = strlen(j->body);
+		if (!has_ctype) {
+			H2_NV(nv[n], "content-type", 12, "application/x-www-form-urlencoded", 33);
+			n++;
+		}
+		snprintf(clen, sizeof clen, "%u", (unsigned) s->blen);
+		H2_NV(nv[n], "content-length", 14, clen, strlen(clen)); n++;
+		prd.source.ptr = s;
+		prd.read_callback = h2_body_read;
+	}
+	/* (Chrome's priority on its HEADERS: exclusive, on stream 0, weight 256) */
+	nghttp2_priority_spec_init(&pri, 0, 256, 1);
+	id = nghttp2_submit_request2(e->ng, &pri, nv, (size_t) n, j->body != NULL ? &prd : NULL, s);
+	free(nv);
+	free(hd);
+	if (id < 0) {
+		free(s);
+		return false;
+	}
+	s->id = id;
+	s->next = e->streams;
+	e->streams = s;
+	e->nstreams++;
+	return true;
+}
+
+/* The connection's session: nghttp2 as a client, push refused, big windows */
+static bool h2_session_new(struct onyx_h2 *e)
+{
+	nghttp2_session_callbacks *cb;
+	/* (Chrome's SETTINGS and connection window: a CDN (Fastly: bbc.com) answered 403 to a
+	 * Chrome User-Agent whose HTTP/2 settings were not Chrome's) */
+	nghttp2_settings_entry iv[4] = {
+		{ NGHTTP2_SETTINGS_HEADER_TABLE_SIZE, 65536 },
+		{ NGHTTP2_SETTINGS_ENABLE_PUSH, 0 },
+		{ NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE, ONYX_H2_WINDOW },
+		{ NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE, 262144 },
+	};
+	int rv;
+
+	if (nghttp2_session_callbacks_new(&cb) != 0)
+		return false;
+	nghttp2_session_callbacks_set_on_header_callback2(cb, h2_on_header);
+	nghttp2_session_callbacks_set_on_frame_recv_callback(cb, h2_on_frame_recv);
+	nghttp2_session_callbacks_set_on_data_chunk_recv_callback(cb, h2_on_data);
+	nghttp2_session_callbacks_set_on_stream_close_callback(cb, h2_on_close);
+	rv = nghttp2_session_client_new(&e->ng, cb, e);
+	nghttp2_session_callbacks_del(cb);
+	if (rv != 0)
+		return false;
+	nghttp2_submit_settings(e->ng, NGHTTP2_FLAG_NONE, iv, 4);
+	nghttp2_session_set_local_window_size(e->ng, NGHTTP2_FLAG_NONE, 0, ONYX_H2_CONN_WINDOW);
+	return true;
+}
+
+/* The owner thread: the connection's life -- the jobs queued submitted as streams, the frames
+ * sent and read, the aborted fetches' streams reset -- until it fails, the server ends it or
+ * it has been idle ONYX_H2_IDLE_TICKS. Then its jobs are finished (or retried) and it is
+ * freed. */
+static void h2_run(struct onyx_h2 *e)
+{
+	static const unsigned nap_max = 10;
+	uint8_t *buf = malloc(16384);
+	unsigned idle_since = kapi_get_ticks(), nap = 1;
+	struct h2_stream *s, *sn;
+	struct onyx_job *q, *qn;
+
+	while (buf != NULL && !onyx_quit) {
+		unsigned seen = e->wake, now;
+		bool busy = false;
+		const uint8_t *data;
+		nghttp2_ssize n;
+		int r;
+
+		/* the jobs the UI thread queued */
+		for (q = h2_take_pending(e); q != NULL; q = qn) {
+			qn = q->h2next;
+			busy = true;
+			if (q->cancel)
+				job_finish(q, JOB_DONE);
+			else if (e->dead || e->goaway || !h2_submit(e, q))
+				job_finish(q, JOB_RETRY);
+		}
+		/* the streams of the aborted fetches, those silent too long */
+		now = kapi_get_ticks();
+		for (s = e->streams; s != NULL; s = s->next) {
+			if (s->rst)
+				continue;
+			if (s->j->cancel || now - s->t_last > s->j->idle) {
+				if (!s->j->cancel && s->j->err == NULL)
+					s->j->err = "Timeout";
+				nghttp2_submit_rst_stream(e->ng, NGHTTP2_FLAG_NONE, s->id,
+						NGHTTP2_CANCEL);
+				s->rst = true;
+			}
+		}
+		/* out */
+		while ((n = nghttp2_session_mem_send2(e->ng, &data)) > 0) {
+			if (onyx_nstls_send(e->ts, data, (int) n) < 0) {
+				e->dead = true;
+				break;
+			}
+			busy = true;
+		}
+		if (n < 0)
+			e->dead = true;
+		/* in */
+		if (!e->dead) {
+			r = onyx_nstls_recv(e->ts, buf, 16384);
+			if (r > 0) {
+				if (nghttp2_session_mem_recv2(e->ng, buf, (size_t) r) < 0)
+					e->dead = true;
+				busy = true;
+			} else if (r < 0) {
+				e->dead = true;		/* (the server closed it) */
+			}
+		}
+		if (e->dead || (e->goaway && e->nstreams == 0))
+			break;
+		if (!nghttp2_session_want_read(e->ng) && !nghttp2_session_want_write(e->ng))
+			break;
+		if (e->nstreams > 0 || e->pending != NULL) {
+			idle_since = now;
+			e->idle_at = now;
+		} else if (e->evict || now - idle_since > ONYX_H2_IDLE_TICKS) {
+			h2_retire(e);		/* (no job queued from now on) */
+			if (e->pending != NULL)
+				continue;	/* (one came meanwhile: served first) */
+			nghttp2_session_terminate_session(e->ng, NGHTTP2_NO_ERROR);
+			while ((n = nghttp2_session_mem_send2(e->ng, &data)) > 0)
+				if (onyx_nstls_send(e->ts, data, (int) n) < 0)
+					break;
+			break;
+		}
+		if (busy) {
+			nap = 1;
+			continue;
+		}
+		/* nothing to do: a nap, cut short when a job is queued (a socket's recv does not
+		 * block on Onyx: this is the connection's wait) */
+		if (kapi_wait_word(&e->wake, seen, nap) < 0)
+			kapi_msleep(nap);
+		if (nap < nap_max)
+			nap *= 2;
+	}
+	/* the end */
+	h2_retire(e);
+	e->dead = true;
+	for (s = e->streams; s != NULL; s = sn) {
+		sn = s->next;
+		h2_stream_end(e, s, NGHTTP2_CANCEL);
+	}
+	for (q = h2_take_pending(e); q != NULL; q = qn) {
+		qn = q->h2next;
+		job_finish(q, q->cancel ? JOB_DONE : JOB_RETRY);
+	}
+	e->closing = true;
+	nghttp2_session_del(e->ng);
+	onyx_nstls_close(e->ts);
+	free(buf);
+	free(e);
+}
+
 /* The download thread: a connection (kept or new), the request, the response -- blocking,
- * in its own thread. It touches its job only; the UI thread delivers (fetch_onyx_poll). */
+ * in its own thread. It touches its job only; the UI thread delivers (fetch_onyx_poll).
+ * Onyx: the first download to an origin (j->h2open) offers HTTP/2 -- when the server takes
+ * it, this thread runs the connection from then on (h2_run) and its job is its first stream. */
 static int fetch_onyx_worker(void *arg)
 {
 	struct onyx_job *j = arg;
-	char host[256], *req;
+	struct onyx_h2 *e = j->h2open;
+	char host[256], *req = NULL;
 	const char *path;
 	unsigned port;
-	bool tls = strncasecmp(j->url, "https:", 6) == 0, keep = false;
-	int len, orphan, r = -1, attempt;
+	bool tls = strncasecmp(j->url, "https:", 6) == 0, keep = false, have = false;
+	int len, r = -1, attempt;
 	struct onyx_conn k;
 
 	if (!onyx_split_url(j->url, host, sizeof host, &port, &path, tls ? 443 : 80)) {
 		j->err = "Malformed URL";
 		goto done;
 	}
+	if (e != NULL) {
+		/* Onyx: HTTP/2 offered by ALPN */
+		const char *alpn;
+		if (!conn_open(&k, host, port, true, j->insecure, &j->chain, true)) {
+			conn_close(&k);
+			h2_retire(e);
+			free(e);
+			j->err = j->chain != NULL ? "Certificate not trusted" : "Connection failed";
+			goto done;
+		}
+		alpn = onyx_nstls_alpn(k.ts);
+		if (alpn != NULL && strcmp(alpn, "h2") == 0) {
+			e->ts = k.ts;
+			e->insecure = j->insecure;
+			if (!h2_session_new(e)) {
+				h2_retire(e);
+				free(e);
+				conn_close(&k);
+				j->err = "Out of memory";
+				goto done;
+			}
+			j->proto = "h2";
+			kapi_lock(&onyx_h2_lk);
+			e->state = H2_READY;
+			h2_queue(e, j);			/* (this job: the first stream) */
+			kapi_unlock(&onyx_h2_lk);
+			h2_run(e);			/* (the connection's life; e freed) */
+			__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+			return 0;
+		}
+		/* http/1.1: the origin noted, the fetches waiting for it go as before */
+		h1_only_add(host, port);
+		h2_retire(e);
+		free(e);
+		have = true;
+	}
+	j->proto = "http/1.1";
 	req = onyx_request(j->method, path, host, port, tls, j->ua, j->lang, j->hdrs, j->body,
 			true, &len);
 	if (req == NULL) {
+		if (have)
+			conn_close(&k);
 		j->err = "Request too large";
 		goto done;
 	}
 	for (attempt = 0; attempt < 3 && !j->cancel; attempt++) {
-		bool pooled = attempt < 2 && pool_take(host, port, tls, &k);
-		if (!pooled && !conn_open(&k, host, port, tls)) {
-			conn_close(&k);
-			j->err = "Connection failed";
-			r = -1;
-			break;
+		bool pooled = !have && attempt < 2 && pool_take(host, port, tls, j->insecure, &k);
+		if (have) {
+			have = false;			/* (the connection HTTP/2 was offered on) */
+		} else if (!pooled) {
+			if (!conn_open(&k, host, port, tls, j->insecure, &j->chain, false)) {
+				conn_close(&k);
+				j->err = j->chain != NULL ? "Certificate not trusted" :
+					"Connection failed";
+				r = -1;
+				break;
+			}
 		}
 		k.uses++;
+		j->reused = k.uses > 1;
 		r = onyx_exchange(j, &k, req, len, &keep);
 		if (r == 0 && pooled) {		/* the server closed it while idle: again */
 			conn_close(&k);
@@ -1379,38 +2465,272 @@ static int fetch_onyx_worker(void *arg)
 	}
 	free(req);
 done:
-	kapi_lock(&j->lk);
-	j->state = JOB_DONE;
-	orphan = j->orphan;
-	kapi_unlock(&j->lk);
-	if (orphan) onyx_job_free(j);			/* its fetch was aborted and freed */
-	else onyx_post_wake();
+	job_finish(j, JOB_DONE);
+	__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);	/* (its socket closed) */
 	return 0;
 }
 
-/* The UI thread: start a download's thread. false: none (the state machine takes it). */
-static bool onyx_job_start(struct fetch_onyx_context *c)
+/* The UI thread: start a download -- 1 started (a thread of its own, or a stream on its
+ * origin's HTTP/2 connection), 0 not yet (a later poll: the downloads at their limit, or the
+ * origin's first connection still being made), -1 no thread (the state machine takes it). */
+static int onyx_job_start(struct fetch_onyx_context *c)
 {
-	struct onyx_job *j = calloc(1, sizeof *j);
-	if (j == NULL) return false;
+	struct onyx_job *j;
+	struct onyx_h2 *e = NULL;
+	char host[256];
+	const char *path;
+	unsigned port = 0;
+	bool https = strncasecmp(nsurl_access(c->url), "https:", 6) == 0;
+
+	/* Onyx: HTTP/2 -- the origin's connection, if it has one (onyx_h2_lk held while it
+	 * is used: it stays in the table) */
+	if (https && onyx_h2_enabled() &&
+	    onyx_split_url(nsurl_access(c->url), host, sizeof host, &port, &path, 443)) {
+		kapi_lock(&onyx_h2_lk);
+		e = h2_find(host, port);
+		if (e != NULL && e->state == H2_CONNECTING) {
+			kapi_unlock(&onyx_h2_lk);
+			return 0;		/* (its ALPN in a moment) */
+		}
+		if (e != NULL && (e->state != H2_READY || e->dead || e->goaway ||
+				(e->insecure && !c->insecure)))
+			e = NULL;
+		if (e == NULL)
+			kapi_unlock(&onyx_h2_lk);
+	}
+	if (e == NULL && onyx_workers >= ONYX_MAX_WORKERS)
+		return 0;			/* (a later poll) */
+	j = calloc(1, sizeof *j);
+	if (j == NULL) {
+		if (e != NULL)
+			kapi_unlock(&onyx_h2_lk);
+		return e != NULL ? 0 : -1;
+	}
 	j->url = strdup(nsurl_access(c->url));
 	j->method = strdup(c->method);
 	j->hdrs = c->hdrs != NULL ? strdup(c->hdrs) : NULL;
 	j->body = c->body != NULL ? strdup(c->body) : NULL;
-	j->ua = user_agent_string();
+	{	/* (Onyx: the host's -- "Desktop site") */
+		lwc_string *hh = nsurl_get_component(c->url, NSURL_HOST);
+		j->ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
+		if (hh != NULL)
+			lwc_string_unref(hh);
+	}
 	/* Onyx: a script's request may wait long for its answer (a long poll: a chat's server
 	 * holds it till something happens, a streamed response between its events) */
 	j->idle = c->script ? ONYX_SCRIPT_IDLE_TICKS : ONYX_IDLE_TICKS;
+	j->insecure = c->insecure;
 	j->lang = nsoption_charp(accept_language) != NULL ? nsoption_charp(accept_language) :
 		"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7";
-	if (j->url == NULL || j->method == NULL) { onyx_job_free(j); return false; }
-	if (kapi_thread_create(fetch_onyx_worker, j, 0, "fetch") < 0) {
+	j->t0 = onyx_perf_now();
+	if (j->url == NULL || j->method == NULL) {
+		if (e != NULL) kapi_unlock(&onyx_h2_lk);
 		onyx_job_free(j);
-		return false;
+		return -1;
+	}
+	if (e != NULL) {			/* a stream on the origin's connection */
+		j->proto = "h2";
+		h2_queue(e, j);
+		kapi_unlock(&onyx_h2_lk);
+		c->job = j;
+		return 1;
+	}
+	/* the first download to an https origin not known to be http/1.1 only: HTTP/2 offered,
+	 * the origin's other fetches wait for its answer */
+	if (https && onyx_h2_enabled() && port != 0) {
+		kapi_lock(&onyx_h2_lk);
+		if (h2_find(host, port) == NULL && !h1_only(host, port)) {
+			int i;
+			for (i = 0; i < ONYX_H2_MAX && onyx_h2s[i] != NULL; i++)
+				;
+			if (i == ONYX_H2_MAX)
+				i = h2_evict(false);	/* (-1: none idle -- HTTP/1.1) */
+			if (i >= 0) {
+				e = calloc(1, sizeof *e);
+				if (e != NULL) {
+					snprintf(e->host, sizeof e->host, "%s", host);
+					e->port = port;
+					e->state = H2_CONNECTING;
+					e->idle_at = kapi_get_ticks();
+					onyx_h2s[i] = e;
+					j->h2open = e;
+				}
+			}
+		}
+		kapi_unlock(&onyx_h2_lk);
+	}
+	j->threaded = true;
+	__atomic_add_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+	if (kapi_thread_create(fetch_onyx_worker, j, 0, "fetch") < 0) {
+		__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+		if (j->h2open != NULL) {
+			h2_retire(j->h2open);
+			free(j->h2open);
+		}
+		onyx_job_free(j);
+		return -1;
 	}
 	c->job = j;
 	onyx_workers++;
-	return true;
+	return 1;
+}
+
+/* ---- Onyx: <link rel=preconnect> / <link rel=dns-prefetch> ------------------------------
+ * A preconnect opens the origin's connection in a thread of its own while the page is parsed:
+ * HTTP/2 offered as a first download would (the entry is H2_CONNECTING meanwhile: the
+ * origin's fetches wait for it, then go as its streams; idle, it closes after 30 s like any),
+ * an http/1.1 one goes to the pool. A dns-prefetch only resolves the name (the kernel caches
+ * the answer). Few at once (the kernel's sockets): 2 in flight, an HTTP/2 slot free (none
+ * evicted for it), the origin not already connected. */
+#define ONYX_PRECONNECT_MAX	2
+
+struct onyx_preconn {
+	char host[256];
+	unsigned port;
+	bool tls, dns_only;
+	struct onyx_h2 *e;		/* HTTP/2 offered: its entry (H2_CONNECTING) */
+};
+
+static volatile int onyx_preconns;
+
+static int onyx_preconnect_worker(void *arg)
+{
+	struct onyx_preconn *p = arg;
+	struct onyx_conn k;
+	uint64_t t0 = onyx_perf_now();
+	const char *what = "failed";
+
+	if (p->dns_only) {
+		char ip[64];
+		what = KT->net_resolve != 0 && kapi_net_resolve(p->host, ip, sizeof ip) > 0 ?
+			"resolved" : "not resolved";
+	} else if (!conn_open(&k, p->host, p->port, p->tls, false, NULL, p->e != NULL)) {
+		conn_close(&k);
+		if (p->e != NULL) {
+			h2_retire(p->e);
+			free(p->e);
+		}
+	} else if (p->e != NULL && onyx_nstls_alpn(k.ts) != NULL &&
+			strcmp(onyx_nstls_alpn(k.ts), "h2") == 0) {
+		struct onyx_h2 *e = p->e;
+		e->ts = k.ts;
+		if (!h2_session_new(e)) {
+			h2_retire(e);
+			free(e);
+			conn_close(&k);
+		} else {
+			kapi_lock(&onyx_h2_lk);
+			e->state = H2_READY;
+			kapi_unlock(&onyx_h2_lk);
+			if (onyx_perf_on())
+				fprintf(stderr, "ONYX-PERF net:preconnect %s:%u h2 %lu us\n", p->host,
+						p->port, (unsigned long) (onyx_perf_now() - t0));
+			__atomic_sub_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+			onyx_post_wake();		/* (the fetches waiting for it) */
+			free(p);
+			h2_run(e);			/* (the connection's life; e freed) */
+			__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+			return 0;
+		}
+	} else {
+		if (p->e != NULL) {		/* (http/1.1 chosen: noted, the connection kept) */
+			h1_only_add(p->host, p->port);
+			h2_retire(p->e);
+			free(p->e);
+		}
+		pool_put(&k);
+		what = "http/1.1";
+	}
+	if (onyx_perf_on())
+		fprintf(stderr, "ONYX-PERF net:preconnect %s:%u %s %lu us\n", p->host, p->port,
+				what, (unsigned long) (onyx_perf_now() - t0));
+	__atomic_sub_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+	onyx_post_wake();
+	free(p);
+	__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+	return 0;
+}
+
+/* The UI thread (html/css.c: the page's <link>) */
+void onyx_fetch_preconnect(const char *url, bool dns_only)
+{
+	static struct { char host[256]; unsigned port; } done[16];
+	static unsigned done_n;
+	struct onyx_preconn *p;
+	const char *path;
+	bool tls = strncasecmp(url, "https:", 6) == 0;
+	unsigned port, i;
+	int s;
+
+	if (onyx_quit || !onyx_threads_ok() || getenv("NS_NOPRECONNECT") != NULL ||
+	    (!tls && strncasecmp(url, "http:", 5) != 0) ||
+	    __atomic_load_n(&onyx_preconns, __ATOMIC_SEQ_CST) >= ONYX_PRECONNECT_MAX)
+		return;
+	p = calloc(1, sizeof *p);
+	if (p == NULL)
+		return;
+	if (!onyx_split_url(url, p->host, sizeof p->host, &port, &path, tls ? 443 : 80))
+		goto no;
+	p->port = port;
+	p->tls = tls;
+	p->dns_only = dns_only;
+	for (i = 0; i < 16; i++)		/* (once per origin: the pages repeat them) */
+		if (done[i].port == port && strcasecmp(done[i].host, p->host) == 0)
+			goto no;
+	if (!dns_only) {
+		struct onyx_conn *q;
+		bool pooled = false;
+		kapi_lock(&onyx_pool_lk);
+		for (s = 0; s < onyx_pool_n; s++) {
+			q = &onyx_pool[s];
+			if (q->port == port && q->tls == tls && strcasecmp(q->host, p->host) == 0)
+				pooled = true;
+		}
+		kapi_unlock(&onyx_pool_lk);
+		if (pooled)
+			goto no;
+		if (tls && onyx_h2_enabled()) {
+			kapi_lock(&onyx_h2_lk);
+			if (h2_find(p->host, port) != NULL) {
+				kapi_unlock(&onyx_h2_lk);
+				goto no;
+			}
+			if (!h1_only(p->host, port)) {
+				for (s = 0; s < ONYX_H2_MAX && onyx_h2s[s] != NULL; s++)
+					;
+				if (s == ONYX_H2_MAX) {		/* (no slot free: not worth one) */
+					kapi_unlock(&onyx_h2_lk);
+					goto no;
+				}
+				p->e = calloc(1, sizeof *p->e);
+				if (p->e != NULL) {
+					snprintf(p->e->host, sizeof p->e->host, "%s", p->host);
+					p->e->port = port;
+					p->e->state = H2_CONNECTING;
+					p->e->idle_at = kapi_get_ticks();
+					onyx_h2s[s] = p->e;
+				}
+			}
+			kapi_unlock(&onyx_h2_lk);
+		}
+	}
+	i = done_n++ % 16;
+	snprintf(done[i].host, sizeof done[i].host, "%s", p->host);
+	done[i].port = port;
+	__atomic_add_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+	__atomic_add_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+	if (kapi_thread_create(onyx_preconnect_worker, p, 0, "preconnect") < 0) {
+		__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+		__atomic_sub_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+		if (p->e != NULL) {
+			h2_retire(p->e);
+			free(p->e);
+		}
+		goto no;
+	}
+	return;
+no:
+	free(p);
 }
 
 /* The UI thread: the fetch goes (aborted, freed, redirected) while its job may still run. */
@@ -1420,20 +2740,22 @@ static void onyx_job_drop(struct fetch_onyx_context *c)
 	bool done;
 	if (j == NULL) return;
 	c->job = NULL;
-	onyx_workers--;
+	if (j->threaded)
+		onyx_workers--;
 	kapi_lock(&j->lk);
-	done = j->state == JOB_DONE;
+	done = j->state != JOB_RUNNING;
 	if (!done) { j->cancel = 1; j->orphan = 1; }	/* the worker frees it when it ends */
 	kapi_unlock(&j->lk);
 	if (done) onyx_job_free(j);
 }
 
-/* The UI thread: body bytes to the core, inflated when the response is encoded. */
+/* The UI thread: body bytes to the core, decoded when the response is encoded (Onyx:
+ * gzip / deflate, br, zstd -- onyx_decode). last: no more bytes will come. */
 static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, bool last)
 {
 	fetch_msg msg;
 
-	if (!c->zs_on) {
+	if (c->enc == ENC_NONE) {
 		if (n > 0 && !c->aborted) {
 			msg.type = FETCH_DATA;
 			msg.data.header_or_data.buf = b;
@@ -1443,27 +2765,21 @@ static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, 
 		}
 		return;
 	}
-	c->zs.next_in = (Bytef *) b;
-	c->zs.avail_in = (uInt) n;
-	while (!c->zs_end && !c->aborted && (c->zs.avail_in > 0 || last)) {
-		uint8_t out[32768];
-		int ret;
-		c->zs.next_out = out;
-		c->zs.avail_out = sizeof out;
-		ret = inflate(&c->zs, Z_NO_FLUSH);
-		if (ret == Z_STREAM_END)
-			c->zs_end = true;
-		else if (ret != Z_OK && ret != Z_BUF_ERROR)
-			c->zs_end = true;	/* (corrupt: what came is kept) */
-		if (sizeof out - c->zs.avail_out > 0) {
+	while (!c->dec_end && !c->aborted) {
+		static uint8_t out[32768];	/* (the UI thread's only) */
+		size_t used, made;
+		int more = onyx_decode(c, b, n, &used, out, sizeof out, &made, last);
+		b += used;
+		n -= used;
+		if (made > 0) {
 			msg.type = FETCH_DATA;
 			msg.data.header_or_data.buf = out;
-			msg.data.header_or_data.len = sizeof out - c->zs.avail_out;
+			msg.data.header_or_data.len = made;
 			fetch_onyx_send(&msg, c);
-			c->delivered += msg.data.header_or_data.len;
-		} else if (ret == Z_BUF_ERROR || c->zs.avail_in == 0) {
-			break;
+			c->delivered += made;
 		}
+		if (!more)
+			break;
 	}
 }
 
@@ -1478,8 +2794,7 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 	fetch_msg msg;
 
 	if (j == NULL) {
-		if (onyx_workers >= ONYX_MAX_WORKERS) return false;	/* (a later poll) */
-		if (!onyx_job_start(c)) c->nothread = true;		/* the state machine */
+		if (onyx_job_start(c) < 0) c->nothread = true;		/* the state machine */
 		return false;
 	}
 
@@ -1488,7 +2803,7 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 	headlen = j->headlen;
 	b = j->buf;
 	n = j->len;
-	done = j->state == JOB_DONE;
+	done = j->state != JOB_RUNNING;
 	if (head != NULL) j->head = NULL;
 	if (c->head_done || head != NULL) {	/* (the body only after its head) */
 		j->buf = NULL;
@@ -1502,18 +2817,20 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 	if (head != NULL) {
 		char cenc[64];
 		c->head_done = true;
-		if (!onyx_head(c, head, headlen, cenc, sizeof cenc)) {
+		if (!onyx_head(c, head, headlen, cenc, sizeof cenc))
 			c->redirected = true;
-		} else if (cenc[0] != '\0' && (strstr(cenc, "gzip") != NULL ||
-				strstr(cenc, "deflate") != NULL)) {
-			memset(&c->zs, 0, sizeof c->zs);
-			if (inflateInit2(&c->zs, strstr(cenc, "gzip") != NULL ?
-					16 + MAX_WBITS : MAX_WBITS) == Z_OK)
-				c->zs_on = true;
-		}
+		else
+			onyx_decoder_start(c, cenc);	/* (Onyx: gzip, deflate, br, zstd) */
 		free(head);
 	}
 	if (c->redirected || c->aborted) {
+		if (c->not_modified && onyx_perf_on())	/* (Onyx: the perf log) */
+			fprintf(stderr, "ONYX-PERF net:done %s %lu us ttfb %lu us %s%s 0 bytes "
+					"revalidated (304)\n", nsurl_access(c->url),
+					(unsigned long) (onyx_perf_now() - j->t0),
+					(unsigned long) (j->t_head != 0 ? j->t_head - j->t0 : 0),
+					j->proto != NULL ? j->proto : "?",
+					j->reused ? " (kept connection)" : "");
 		free(b);
 		onyx_job_drop(c);		/* (a redirect's body: the worker drains or drops it) */
 		return true;
@@ -1526,10 +2843,28 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 		return false;
 
 	kapi__dmb();
-	if (!c->head_done) {
+	if (j->state == JOB_RETRY && !c->head_done && c->retries < 3 && !c->aborted) {
+		/* Onyx: HTTP/2 -- its stream refused or its connection gone before the answer:
+		 * started again at the next poll (a new connection, or HTTP/1.1) */
+		c->retries++;
+		onyx_job_drop(c);
+		return false;
+	}
+	if (onyx_perf_on()) {
+		unsigned long us = (unsigned long) (onyx_perf_now() - j->t0);
+		fprintf(stderr, "ONYX-PERF net:done %s %lu us ttfb %lu us %s%s %lu bytes%s\n",
+				nsurl_access(c->url), us,
+				(unsigned long) (j->t_head != 0 ? j->t_head - j->t0 : 0),
+				j->proto != NULL ? j->proto : "?", j->reused ? " (kept connection)" : "",
+				(unsigned long) j->total,
+				c->status == 304 ? " revalidated (304)" : "");
+	}
+	if (!c->head_done && j->chain != NULL) {
+		onyx_cert_error(c, j->chain);		/* (Onyx) */
+	} else if (!c->head_done) {
 		fetch_onyx_error(c, j->err != NULL ? j->err : "Empty response");
 	} else if (!c->aborted) {
-		if (c->zs_on)
+		if (c->enc != ENC_NONE)
 			onyx_data(c, NULL, 0, true);
 		if (!c->aborted) {
 			msg.type = FETCH_FINISHED;
@@ -1586,6 +2921,56 @@ static void fetch_onyx_poll(lwc_string *scheme)
 	}
 
 	ring = active;
+}
+
+/* Onyx: the app ends (netsurf_exit -> fetcher_quit -> finalise) -- its sockets closed now, not
+ * when the kernel reaps the process: the kernel has 16 in all, and a NetSurf launched again
+ * soon after found them taken (its connects failed and waited: 10 s loads). The kept
+ * connections closed (TLS close_notify, then the socket), the downloads and the HTTP/2
+ * connections told to stop, the WebSockets too; their threads waited for 300 ms at most. */
+static void onyx_fetch_shutdown(void)
+{
+	struct fetch_onyx_context *c;
+	int ws = 0, ms = 0;
+	bool again = true;
+
+	if (onyx_quit)
+		return;
+	onyx_quit = 1;
+	for (c = ring; c != NULL; c = c->r_next) {
+		if (c->job != NULL) {
+			kapi_lock(&c->job->lk);
+			c->job->cancel = 1;
+			kapi_unlock(&c->job->lk);
+		}
+		if (c->r_next == ring)
+			break;
+	}
+	if (onyx_threads_ok()) {
+		int i;
+		kapi_lock(&onyx_h2_lk);
+		for (i = 0; i < ONYX_H2_MAX; i++)
+			if (onyx_h2s[i] != NULL) {
+				onyx_h2s[i]->wake++;
+				kapi_wake_word(&onyx_h2s[i]->wake);
+			}
+		kapi_unlock(&onyx_h2_lk);
+	}
+	onyx_sockets_free();
+	while (again && ms < 300) {
+		ws = onyx_ws_shutdown();
+		again = ws > 0 || __atomic_load_n(&onyx_threads, __ATOMIC_SEQ_CST) > 0;
+		if (again) {
+			kapi_msleep(10);
+			ms += 10;
+		}
+	}
+	onyx_sockets_free();		/* (what the threads kept meanwhile) */
+	onyx_fetch_save_state();
+	if (onyx_perf_on())
+		fprintf(stderr, "ONYX-PERF net:shutdown %d ms, %d download / connection threads "
+				"and %d WebSocket ones still running\n", ms,
+				__atomic_load_n(&onyx_threads, __ATOMIC_SEQ_CST), ws);
 }
 
 nserror fetch_onyx_register(void)

@@ -97,6 +97,14 @@ css_error css_computed_style_compose(
 bool css_computed_style_paint_only_change(const css_computed_style *a,
 		const css_computed_style *b, bool *moved);
 
+/**
+ * Onyx: whether styles a and b differ only in a compositing layer's opacity and transform
+ * (opacity, transform, translate, rotate, scale, transform-origin): a browser that keeps
+ * the layer's pixels (GPU compositing) then composites it again, nothing painted.
+ */
+bool css_computed_style_effects_only_change(const css_computed_style *a,
+		const css_computed_style *b);
+
 /******************************************************************************
  * speciality formatters                                                      *
  ******************************************************************************/

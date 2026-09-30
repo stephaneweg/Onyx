@@ -38,12 +38,12 @@ turned some warnings NetSurf has into errors: the makefile keeps them warnings.
 **The network** (`user/netsurf/onyx_fetch.c`): each download runs in a **thread** of its own
 (kernel v67) -- the DNS, the connect, the TLS handshake and every read block there, not the
 UI. **HTTP/1.1 with keep-alive**: a response is framed by its `Content-Length` or its chunks
-(read to the close only when it has neither), then its connection goes back to a **pool** (8,
+(read to the close only when it has neither), then its connection goes back to a **pool** (4,
 per host / port / scheme, kept 10 s idle) for the next request there -- no DNS, TCP or TLS
 handshake again; a pooled connection the server closed meanwhile is noticed at its first
 request (nothing back) and the request sent again on a new one. **Streaming**: the head goes to
 the core as soon as it is in (its headers, a redirect), then the body as it comes, inflated on
-the fly (zlib): the HTML parser finds the style sheets, scripts and images while the page still
+the fly (gzip / deflate, brotli, zstd: §24): the HTML parser finds the style sheets, scripts and images while the page still
 downloads. The worker posts (`kapi_post`) when the head has come, every 32 KB, and at the end:
 the UI thread, waiting in `kapi_pump_wait`, wakes at once. **Cookies**: the jar's
 (`urldb_get_cookie`, read on the UI thread when the fetch is set up) sent, and every
@@ -55,15 +55,16 @@ methods other than GET / HEAD (`fetch_get_referer`, an Onyx addition to `content
 replaces it): the big sites send their light mobile pages -- their desktop script applications
 (google.com, yahoo.com's Next.js) are too heavy for QuickJS on the Pi; the same in
 `navigator.userAgent`; `Accept-Language`: Choices' `accept_language`, else
-French then English. No length limit on a URL's path (it was 1024). 8 downloads at once; the
+French then English. No length limit on a URL's path (it was 1024). 6 download threads at
+once (and the streams of 4 HTTP/2 connections, §24); the
 connects one at a time (short now: the kernel caches the DNS answers). An aborted fetch whose
 thread still runs is freed by that thread. The request is a GET, a POST (a url-encoded or text
 body) or any method a script asks for (`X-Onyx-Method`, taken off), with the caller's headers;
-the response goes to the core with its status line and headers (not the cache-control ones,
-nor those the inflate makes wrong). Without threads (an older kernel) it is the
+the response goes to the core with its status line and headers (the cache's ones too since
+§22, not those the decoding makes wrong). Without threads (an older kernel) it is the
 one-step-per-poll state machine (HTTP/1.1 with `Connection: close`, its chunks undone, the
-response delivered whole). mbedTLS (`user/tls/onyx_tls.hpp`): its session cache is locked (16
-hosts, replaced in turn), its receive buffer 16 KB (a whole record: fewer round trips to the
+response delivered whole). mbedTLS (`user/tls/onyx_tls.hpp`): its session cache is locked (32
+hosts, replaced in turn, kept across launches: §22), its receive buffer 16 KB (a whole record: fewer round trips to the
 network core); after the handshake its reads do not wait (`onyx_nstls.cpp`: the callers poll
 with their own idle rules -- a quiet connection was cut after 20 s). A script's request (fetch /
 XHR) waits 5 min for its answer (a long poll), the others 30 s. **WebSocket and event streams**
@@ -590,7 +591,8 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
   declarations, `@font-face` with the descriptors libcss reads -- font-family, src, font-style,
   font-weight, unicode-range --, `@page`, `@media` / `@supports` with their rules, `@import`,
   `@namespace`; what libcss drops is not there), `document.styleSheets` (the `<style>`s').
-  Since made a real, writable CSSOM with the linked sheets (§14).
+  Since made a real, writable CSSOM with the linked sheets (§14); matchMedia answered by
+  libcss, and the answers' honesty checked against Chromium (`js-cssdetect.html`): §23.
 - css3test.com (Lea Verou's) now runs -- its engine is a module graph of 156 modules -- and
   scores **23%** (1154 of 6419 tests), honestly (what libcss parses; Chrome ~ 75%). It found a
   double free in libcss's Onyx gradient parser (a prefixed legacy `radial-gradient` such as
@@ -817,6 +819,8 @@ an invalid value is still dropped.
   `css-values.txt`: 157 declarations, sheets and descriptors kept or dropped; `csscheck -b N
   sheet.css`: a parse-speed bench); `jstest.sh`: `js-cssom.html` (26 CSSOM checks),
   `css-svgprops.html`, `css-selectors.html`, `css-math.html`.
+- **Since** (§23): 83 % on the live site; the Pi's run no longer cut off by the script time
+  limit; libcss evaluates most media features; `:popover-open` / `:modal`.
 - **Not done**: the Typed OM (`CSSStyleValue`, `attributeStyleMap`...), Web Animations,
   CSSOM View's interfaces; `:has()` matching (libcss's handler has no child walk);
   `@container` against a real container; the pseudo-elements' drawing (`::marker`,
@@ -1130,6 +1134,18 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
   -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
   SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
+- **A style sheet given in parts** (libparserutils `inputstream.c`): the HTML parser work's
+  "the filter still holds data" refill ran in the middle of a stream too, left the cursor past
+  the buffer's end and the CSS lexer read and wrote beyond it -- a sheet that arrived in
+  several network reads (more of them on the Pi's slower link) could come out broken. Only at
+  the end of the input now (found by the network work, on github.com's Brotli-decoded sheets).
+- **"Desktop Site / Mobile Site"** (the Navigate menu): the User-Agent is a mobile Chrome's
+  by default (the light pages of the big sites); a site the user switches gets a desktop
+  Chrome's (Windows) -- in its requests, its client hints (`sec-ch-ua-mobile`,
+  `sec-ch-ua-platform`) and its scripts' `navigator.userAgent` / `platform` -- and the page is
+  loaded again. The sites are kept on the card (`SD:/apps/netsurf.app/desktop-sites`, one
+  registrable domain a line: m.facebook.com and www.facebook.com are one site;
+  `user_agent_for_host`, utils/useragent.c).
 - **Media queries' range syntax** (libcss `src/parse/mq.c`, an upstream bug): with the name
   first (`(width >= 1012px)`) the stored value was the name itself and the operator was negated
   instead of having its sides swapped -- the query never matched: GitHub's Primer showed its
@@ -1497,8 +1513,8 @@ context, with all it holds -- through a layer of the framebuffer.
   kotonstudio.com ~8 -> ~15 ms (the hero glow's blur 7 ms, the app mock-up's flattened
   `perspective() rotateY() rotateX()` with a shadow 5 ms, two small backdrops 1-2 ms). A page
   without effects pays nothing (a few style reads a box). On the Pi count ~5x.
-- **Not done**: a real perspective (the 3D functions flattened); a layer kept between
-  redraws (each redraw paints its groups again); `clip-path` and `mask` on the layer; the
+- **Not done**: a real perspective (the 3D functions flattened); (a layer kept between
+  redraws: §25, GPU compositing -- opacity and transforms); `clip-path` and `mask` on the layer; the
   non-separable blend modes (`hue`, `saturation`, `color`, `luminosity`: drawn normal);
   `isolation`; `filter: url()`; `backdrop-filter` of a transformed box (not drawn) or its
   fade with the group's opacity when the group is apart; a blend mode inside an isolated
@@ -1657,6 +1673,366 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   only); `@keyframes` in shadow trees' sheets; scroll-driven animations
   (`animation-timeline`); `var()` inside keyframes.
 
+## 23. The feature tests on the Pi: css3test.com, browserscore.dev; the Popover API; `matchMedia` by libcss
+
+**What the Pi showed** (branch `claude/busy-ramanujan-5enakb`): css3test.com "100 %" and
+browserscore.dev "0 %". On the PC bench the live css3test.com scored 82 % and browserscore.dev
+85 % -- the detection itself was right. The cause was the **script time limit**: NetSurf stops a
+script, an event handler or a promise job after `script_timeout` seconds (10), and the Pi runs
+QuickJS some five times slower than the PC. css3test.com's test run is one `load` handler (2.8 s
+on the PC), browserscore.dev's first render one Vue job (9.6 s on the PC); both were cut off on
+the Pi ("InternalError: interrupted"), leaving css3test at its page's "0%" and browserscore with
+no score at all (reproduced on the PC under `valgrind --tool=none`, ~7x slower). css3test's
+"100 %" is its score with the "CSS 2.2", "CSS 2007" or "CSS 2010" filter (NetSurf passes all
+of those): the site keeps the filter chosen in `localStorage`, so a filter picked once on the
+Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with the Pi's
+`libcss.a` and run under qemu gives the PC's answers.
+
+- **The time limit** 10 -> **60 s** (`desktop/options.h`; `script_timeout` in `SD:/res/Choices`,
+  0 = none). Browsers do not stop a script at all; the limit only ends a loop that never does.
+- **Faster** (the PC; the Pi in proportion): css3test's run 2834 -> 1390 ms, browserscore's
+  render job 9.6 -> 6.6 s.
+  - `console.*` formats its arguments only when the log is read (`N.logOn`: `NS_JSDEBUG` /
+    `jsdebug`, or NetSurf's verbose log), and as bounded JSON (2000 values; no `toJSON()` but
+    a `Date`'s): Vue's development build passes whole component trees to `console.warn`
+    (browserscore.dev: 1500 warnings, each its features' `toJSON()` of a whole subtree -- 64 %
+    of its time, a minute with the log on).
+  - `querySelector('#id')` from libdom's `getElementById`; `querySelector` walks with
+    `N.nextElement` and stops at the first match (it wrapped every element of the tree first:
+    bliss's `$('#x')` thousands of times on css3test).
+  - `new URL(url, base)`: the parses kept (a copy handed out), a base parsed once, a
+    `"#fragment"` of a base without the parser (browserscore.dev: a quarter of its time).
+  - `html_rebox` (`html.c` `html_rebox_index`, `object.c`): the old boxes' objects found by
+    their URL's hash, not by a walk of the whole list for each new box (O(n^2): 23 % of
+    browserscore.dev's time with its thousands of status icons).
+- **The bench**: `NS_JSPROF=<file>` samples the scripts (qjs.c, from the interrupt handler, at
+  most once a millisecond: the running script's stack) and `tools/tests/netsurf/jsprof.py`
+  sums them up (self / total per function); `NS_PERF` logs each job over 50 ms (`js:job`).
+- **Honest answers** found wrong by the new `js-cssdetect.html` (checked against Chromium):
+  `CSS.supports('color', 'red !important')` was true (a value holds no `!`);
+  `CSS.supports('selector()')` was true; `CSS.supports('color: red')` was false (the spec tries a
+  condition again in parentheses); the end of a condition now closes its blocks, as CSS Syntax
+  does (`selector(:nth-child(even of :not([hidden]))` -- browserscore.dev's test).
+- **`matchMedia` by libcss** (`N.mediaMatch` -> `nscss_media_match`, `css/select.c` ->
+  libcss's new `css_select_onyx_media_match`): the query list parsed and evaluated by libcss for
+  the page's viewport (the window's size until the page is laid out); `.media` is its text with
+  `not all` for a query that does not parse, as a browser serializes it; an unknown feature is
+  kept and false (Media Queries 4's `<general-enclosed>`, as Chrome). The JS matcher before read
+  no range syntax. `MediaQueryList`'s attributes on its prototype, `MediaQueryListEvent`.
+- **libcss evaluates the other media features** (`src/select/mq.h`, `mq_onyx_match_feature`):
+  it answered `width`, `height`, `prefers-color-scheme` only. Now `aspect-ratio` /
+  `device-aspect-ratio` (and their `min-` / `max-`), `device-width` / `device-height`,
+  `orientation`, `resolution`, `-webkit-(min-|max-)device-pixel-ratio`, `color`, `color-index`,
+  `monochrome`, `grid`, `hover` / `any-hover` (hover), `pointer` / `any-pointer` (fine),
+  `prefers-reduced-motion`, `prefers-contrast`, `prefers-reduced-transparency` /`-data`
+  (no-preference), `forced-colors`, `inverted-colors` (none), `display-mode` (browser),
+  `scripting` (enabled), `update` (fast), `color-gamut` (srgb), `dynamic-range` (standard),
+  `overflow-block` / `-inline` (scroll); `(width)` as a boolean; and Media Queries 4's
+  three-valued logic: a feature libcss does not know is *unknown*, so `not (bogus)` is false.
+  Style sheets' `@media` rules match by the same code.
+- **The Popover API** (`html5.js`; GitHub's `<tool-tip popover="manual">` texts showed on the
+  page): `showPopover` / `hidePopover` / `togglePopover` (`force`, `{ source }`),
+  `beforetoggle` (cancellable when showing) and `toggle` (`ToggleEvent`, a task, coalesced), the
+  `auto` popovers' stack (showing one hides the others but its ancestors and its invoker's),
+  `popovertarget` / `popovertargetaction` buttons (`popoverTargetElement`,
+  `popoverTargetAction`), the light dismiss (the user's click outside) and Escape (the user's --
+  a script's events do not dismiss, as in Chrome), `showModal()` hiding the auto popovers,
+  `onbeforetoggle`. The UA sheet (`resources/default.css`) hides
+  `[popover]:not(:popover-open):not(dialog[open])` and gives a showing one Chrome's style (fixed,
+  centred, `z-index` the top layer's stand-in); `dialog:modal` fixed too.
+- **`:popover-open` and `:modal` in libcss**: `css_select_handler` gained `onyx_node_state`
+  (appended; NULL: the states never match) -- libcss asks the client for a state only the
+  scripts know. NetSurf keeps it on the node (`nscss_node_state_set`: libdom's user data
+  `__ns_onyx_state`, `NSCSS_STATE_POPOVER_OPEN` / `NSCSS_STATE_MODAL`), set by the scripts
+  (`N.setState`), the page laid out again.
+- **The IDL attributes on the prototypes** (feature tests look for `'clientX' in
+  MouseEvent.prototype`): the events' (`protoFields`: a constructor's value kept in a symbol),
+  `Screen`, `ResizeObserverEntry` / `ResizeObserverSize`, `FontFace` (with
+  `variationSettings`, `ascentOverride`...), `MediaQueryList`; `AnimationEvent`,
+  `TransitionEvent` and their `on*` handlers (NetSurf runs no animation; a script can make and
+  dispatch them), `window.visualViewport` (the layout viewport), `moveTo` / `resizeTo`... (no
+  effect, as for a tab in a browser), `CSSRule.type`, `HTMLImageElement.x` / `.y`; libcss reads
+  `@font-face`'s `font-stretch` (`font-width`'s legacy name).
+- **Scores** (the PC bench, the live sites, Chromium 141 headless beside it):
+
+  | | before | after | Chromium |
+  |---|---|---|---|
+  | css3test.com | 82 % (5166 / 6419) | 83 % (5218 / 6419) | 71 % (4375 / 6419) |
+  | browserscore.dev | 85 % (1261 / 1489 features) | 86 % (1274 / 1489) | 75 % (1121 / 1489) |
+
+  NetSurf is above Chromium for the reason §14 gives: libcss parses by the specifications'
+  grammars the properties of drafts no browser ships (css-speech, corner shapes,
+  fill-stroke-3...) -- 1248 css3test tests / 1291 browserscore tests NetSurf passes and Chromium
+  fails; Chromium passes 464 / 390 NetSurf fails (the Typed OM, Web Animations, CSS Values 5's
+  `if()` / `progress()` / `sibling-index()`, CSSOM View's `caretPositionFromPoint`).
+- **Tests**: `jstest.sh`: `js-popover.html` (22 checks, then the user's click and Escape),
+  `js-cssdetect.html` (24: `CSS.supports`, `element.style`, the CSSOM, `matchMedia` say no to
+  garbage). `libcss-test`, `css-check` pass; `csscheck` with the Pi's `libcss.a` under qemu too.
+
+## 24. The network as in Chrome: certificates, brotli / zstd, HTTP/2, a disk cache, CORS
+
+The fetcher (`user/netsurf/onyx_fetch.c`), its TLS (`user/netsurf/onyx_nstls.cpp` on
+`user/tls/onyx_tls.hpp`, mbedTLS 3.6) and NetSurf's cache (`content/llcache.c`) brought near
+a current browser's. Every change is marked `Onyx:` in the sources.
+
+**Certificates checked.** The server's chain is verified against the trusted roots of
+`SD:/res/ca-bundle` (the Mozilla bundle as curl.se publishes it, Sept 2026: 121 roots; read
+once, parsed at the first TLS connection), its name against the host (SNI sent, the SAN DNS
+names and IP addresses matched, wildcards as RFC 6125), its dates against the Onyx clock
+(`kapi_get_datetime`, a day of slack either way; skipped while the clock is not set -- a year
+before 2025). mbedTLS is built without its own clock (`MBEDTLS_HAVE_TIME_DATE` off): the
+handshake runs with `VERIFY_OPTIONAL` and a verify callback checks the dates and records each
+certificate of the chain (its DER and its fault). The EC keys of every curve the bundle uses
+(secp256r1, secp384r1, secp521r1) are accepted. A refused certificate goes to NetSurf's own
+flow: `FETCH_CERTS` (the chain, for `about:certificate`) then `FETCH_CERT_ERR` -- the
+"Privacy error" page with the reason, "View certificate details" and "Proceed" (the host is
+then accepted for the session: `urldb_set_cert_permissions`; its connections are made
+without the check and kept apart from the checked ones). `about:certificate` has an mbedTLS
+implementation (`content/fetchers/about/certificate.c`, `WITH_MBEDTLS`: the names, the
+validity, the serial, the signature algorithm, the SHA-1 / SHA-256 fingerprints, the SAN
+names, the RSA / EC key). The perf log / stderr shows `ONYX-TLS refused <url>: certificate
+i/n: <reason>`. WebSocket and EventSource (`onyx_ws.c`) check the same, and follow a host the
+user accepted. The PC bench verifies too (`tools/tests/netsurf/host_stubs.c`: OpenSSL with the
+same bundle, plus the proxy's CA when the machine has one; `NS_MBEDTLS=1` runs the Pi's mbedTLS
+code instead). `tools/tests/netsurf/tlstest.sh`: badssl.com's expired, wrong.host,
+self-signed and untrusted-root refused with their reasons, badssl.com, en.wikipedia.org and
+github.com trusted, "Proceed" and the viewer -- with both TLS stacks.
+
+**Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
+comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
+1.5.7's decompressor vendored in `third_party/zstd-1.5.7`, `libzstddec.a`, ~70 KB).
+
+**HTTP/2** (nghttp2 1.70, vendored in `third_party/nghttp2-1.70.0`, `libnghttp2.a`,
+~115 KB). The first download to an https origin offers `h2, http/1.1` by ALPN; when the server
+takes h2, that download's thread becomes the **connection's owner** (`h2_run`): the origin's
+other fetches wait for the answer, then go as **streams** on it, queued by the UI thread
+(`h2_queue`, a word the owner waits on). One connection per origin, 4 origins at once (an
+idle one closed for a new origin, after 30 s idle anyway); push disabled; flow control with
+Chrome's windows (6 MB per stream, 15 MB for the connection) and Chrome's SETTINGS, pseudo-
+header order and priority (some CDNs tell browsers apart by them). The same streaming
+callbacks reach the core (the head, the body as it comes, decoded). `content/fetch.c` lets
+the fetches of a multiplexed origin past the per-host limit (32 per host, 64 in all). A
+server that chooses http/1.1 is remembered (`HTTP1Hosts`, a week), and so is one that answers
+the first stream 403: Fastly (bbc.com) refuses HTTP/2 from mbedTLS' TLS 1.2 fingerprint with
+a Chrome User-Agent -- the request is sent again over HTTP/1.1. `NS_H2=0` turns HTTP/2 off
+(the before / after), `NS_NETDEBUG=1` dumps each head and frame.
+
+**The sockets.** The Pi's kernel had 16 TCP sockets for every app (64 since, closed at the
+app's exit): the fetcher keeps to about 12 (6 download threads, 4 pooled HTTP/1.1
+connections, 4 HTTP/2 ones). At the app's end (`fetch_onyx_finalise` ->
+`onyx_fetch_shutdown`) every job is cancelled (the TLS handshakes and sends watch a cancel
+flag), the pooled and HTTP/2 connections closed, the threads waited for 300 ms at most, and
+`onyx_ws_shutdown` does the same for the WebSockets (`net:shutdown` in the perf log). A
+connect that finds the kernel's table full (`kapi_tcp_connect` -2) closes our idle
+connections and waits for a socket (5 s at most) instead of failing.
+
+**TLS sessions kept across launches.** The session cache (32 hosts) is saved to
+`SD:/apps/netsurf.app/TLSSessions` (`mbedtls_ssl_session_save`) with the user data and loaded
+at start: a known host's first connection is a resumed (abbreviated) handshake.
+
+**Timings.** With the perf log on (`NS_PERF=1`, or the file `SD:/apps/netsurf.app/perf`):
+`net:conn host:port queue dns tcp tls full|resumed h2|http/1.1` per new connection,
+`net:done url total ttfb protocol (kept connection) bytes (revalidated 304)` per response,
+`net:cache url fresh (card|memory)` per answer from the cache, `page:load` from the throbber's
+start to its stop, `cache:*` for the disk cache, `net:preconnect`, `net:tcp` for a failed or
+delayed connect.
+
+**A disk cache** (`user/netsurf/onyx_cache.c`: NetSurf's `gui_llcache_table` backing store,
+replacing the upstream `fs_backing_store.c`). The objects and their metadata go to
+`SD:/apps/netsurf.app/cache/<id>.d|.m` with an `index` (id, sizes, last use, URL), written by a
+thread of their own (the UI never waits for the card); 64 MB (Choices' `disc_cache_size`),
+the least recently used out beyond it. In `llcache.c`: an object is written to the card when
+it is complete and not `no-store`, and it is either fresh for a while or has a **validator**
+(`ETag`, `Last-Modified`) -- such an object stale or `no-cache` is kept (on the card, and in
+memory until it is written) and **revalidated** on its next use (`If-None-Match` /
+`If-Modified-Since`: a `304` is `FETCH_NOTMODIFIED`, the bytes kept); `max-age` / `Expires` /
+`immutable` are honoured (a fresh object is not asked for at all); a URL with a query but
+no explicit lifetime is revalidated rather than dropped (RFC 9111; RFC 2616's rule dropped
+it); a status other than 200 / 203 is not kept. The fetcher now gives the core the cache's
+headers and lets the conditional ones through. The write bandwidth allowed is 32 MB/s (the
+upstream 1 MB/s left most objects unwritten).
+
+**Preconnect.** `<link rel=preconnect>` opens the origin's connection while the page is
+parsed (HTTP/2 offered: the origin's fetches then go on it; an http/1.1 one goes to the
+pool), `<link rel=dns-prefetch>` resolves the name (the kernel caches the answer) -- 2 at
+once, only when an HTTP/2 slot is free, once per origin (`html/css.c` calls
+`onyx_fetch_preconnect`; `NS_NOPRECONNECT=1` turns it off).
+
+**CORS** for the scripts' `fetch` and `XMLHttpRequest` (`quickjs/net.js`), as the Fetch
+Standard: a cross-origin request carries `Origin`; a non-simple one (a method other than GET /
+HEAD / POST, a header not safelisted, a non-form `Content-Type`) is preceded by a preflight
+(`OPTIONS` with `Access-Control-Request-Method` / `-Headers`, its answer cached for its
+`Access-Control-Max-Age`); the response reaches the script only when its
+`Access-Control-Allow-Origin` names the page's origin (or `*` without credentials, and
+`Access-Control-Allow-Credentials: true` with them); the script sees the safelisted headers
+and those of `Access-Control-Expose-Headers` (`Response.type` `cors`). `credentials`
+(`same-origin` by default, `include`, `omit`) and XHR's `withCredentials` decide the cookies:
+without them the fetcher sends no `Cookie` and keeps no `Set-Cookie` (the request header
+`X-Onyx-Credentials: omit`, taken off). `mode: 'same-origin'` refuses another origin,
+`'no-cors'` allows a simple request only and gives an opaque response (status 0, no headers,
+no body). nettest.sh's `net-cors.html` checks each case against a second server (another
+origin of the same site).
+
+**Two fixes found on the way.** libparserutils (`src/input/inputstream.c`): the Onyx
+"filter pending" refill of `peek_slow` ran before the end of the input and overran its buffer
+when a style sheet came in several parts (github.com's sheets, decoded from brotli: "Error
+processing CSS") -- it now waits for the end (`had_eof`). The C library
+(`user/libc/onyx_syscalls.c`): `gettimeofday` took the kernel's 100 Hz ticks for
+milliseconds -- the clock of every app ran ten times slow (`time()`, `Date.now()`, the cache's
+ages); it reads the generic timer (`cntpct_el0` / `cntfrq_el0`) in microseconds now.
+
+**Measured** on the PC bench (live sites through the proxy, `NS_MBEDTLS=1`,
+`tools/tests/netsurf/loadtime.sh`: the first run cold -- no cache, no TLS session --, the
+next ones a second launch):
+
+| Site | Run | `page:load` | Responses (304) | From the card | Connections (TLS resumed) |
+|---|---|---|---|---|---|
+| bbc.com | cold | 32.9 s | 343 (0) | 0 | 17 HTTP/1.1, 39 HTTP/2 (13) |
+| bbc.com | warm | 7.0 / 7.7 s | 57 (1-2) | 186-188 | 11-14 HTTP/1.1, 32 HTTP/2 (19-22) |
+| github.com | cold | 2.1 s (one run; others had not settled in 40 s) | 152 (0) | 0 | 2 HTTP/1.1, 2 HTTP/2 (0) |
+| github.com | warm | 1.5-3.1 s | 102 (0) | 50 | 2 HTTP/1.1, 1 HTTP/2 (1) |
+| en.wikipedia.org | cold | 5.2-6.1 s | 74-105 | 0 | 3-4 HTTP/2 (0) |
+| en.wikipedia.org | warm | 5.2-7.2 s | 3-8 (2-5) | 57-60 | 2-4 HTTP/2 (0: wikimedia resumes no TLS 1.2 session) |
+
+A second launch downloads 5-20 % of what the first did (bbc.com: 57 responses instead of
+343, en.wikipedia.org: 5 instead of 105) and resumes most of its TLS handshakes; the bench's
+`page:load` gains little beyond bbc.com because the scripts and the layout dominate it (the
+cold bbc.com run also had a slow network: its sizes vary from one run to the next).
+
+Before this work (HTTP/1.1 only, no disk cache): bbc.com 21.4-22.7 s with about 107
+connections, en.wikipedia.org 7.6-10 s, github.com 3.9-4.7 s; HTTP/2 alone: bbc.com about 15 s
+(16 HTTP/2 and about 35 HTTP/1.1 connections), en.wikipedia.org 5.9-8.0 s. The bench's page
+times are dominated by the scripts and the layout (QuickJS, one core), not the network; the
+Pi's gain is in the connections (a TLS handshake costs ~100-150 ms of the Pi's CPU) and in
+what is not downloaded again.
+
+**Not done.** TLS 1.3 (mbedTLS' TLS 1.3 needs its PSA crypto: a TLS 1.2-only client is
+told apart by some CDNs -- the reason of Fastly's 403 over HTTP/2); OCSP / CRL revocation,
+Certificate Transparency, HSTS preload; HTTP/3; CSP; CORS for EventSource, `<img
+crossorigin>`, fonts and module scripts (their loads are the core's, not `net.js`'); the cache
+partitioned by top-level site; `Vary` beyond NetSurf's; a back-forward cache; preload hints
+(`<link rel=preload>`, `modulepreload`, 103 Early Hints).
+
+## 25. GPU compositing: the page in a band, retained layers, one composite a frame
+
+Stage 2 of docs/07 §6: the frames of the browser's view are assembled by the compositing service
+`user/gpucomp` (the V3D on the Pi, its CPU path elsewhere or when the GPU fails), from pixels kept
+between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GPU=0 / 1 / cpu`);
+`gpu_compositing:0` is the painting as before (the back buffer copied into the canvas). The code:
+`frontends/framebuffer/onyx_comp.c` (+ `.h`), the core's offer in `html/redraw.c`
+(`onyx_fx_retain`), the plotters' hooks (`framebuffer.c`, `onyx_layer.c`), `gui.c`'s redraw,
+`user/nsfb/onyx_surface.c` (the canvas's part the compositor writes: `onyx_surface_hole`).
+
+- **The band.** The page is painted by the core (the CPU plotters, as ever) into a RAM surface as
+  wide as the view and three views high (at most 8 M pixels), a **ring** of document rows: row y
+  is the band's row y mod its height. Its valid rows are one run that always holds the view's. A
+  **scroll paints nothing** already there: the view moves over the band (one or two pieces of the
+  ring, whole texels, `GPC_L_OPAQUE | GPC_L_NEAREST`); the rows that come into view are painted; in
+  idle turns (30 ms after the last redraw) the rows around the view are painted ahead, a third of
+  a view a turn, more of them in the direction of the last scroll. A sideways scroll, a resize or
+  a new page start a new band. The band is a gpucomp texture updated **only where it was
+  painted** (`gpc_tex_update` of the painted rectangle).
+- **Damage.** The core's rectangles (`fb_window_invalidate_area`) are kept in document px and
+  painted where the band holds them, in view or not -- but damage farther than half a view from
+  the view waits until the view comes near (an animation out of view costs nothing, as when only
+  the view was painted). A whole-document invalidation (a reformat) paints the view now, the rest
+  of the band ahead later.
+- **Retained layers.** A group the frontend can composite itself -- an opacity and / or a
+  transform, no filter, no blend mode, no backdrop (§21) -- is **offered** by the core
+  (`onyx_layer_begin (ctx, l, ONYX_LAYER_OFFER)`, `struct onyx_layer`'s `retain`, `key` = the box,
+  `lm` / `ox, oy` = its matrix about its origin; netsurf/onyx_paint.h). Accepted, it is left out of
+  the band; its pixels -- its whole rectangle, untransformed -- are painted apart as an isolated
+  group's (over black then white: premultiplied ARGB; one pass when it is known opaque) into a
+  buffer of its own, uploaded, and each frame composites it over the band through its matrix, in
+  its clip, at its opacity (bilinear when transformed, whole pixels else). Its pixels are painted
+  again only where damage reaches them (the rectangle in its own px, and through its inverse
+  matrix). Refused: painted as ever -- inside a group the CPU paints (in place or apart), under a
+  rounded clip, larger than 4 M pixels, past the budget.
+  - *Painting order.* A plot operation painted into the band **after** a retained layer and over
+    it would come out under it: every operation's rectangle is noted while the band is painted
+    (`onyx_comp_note`, from the plotters); one over a layer offered earlier in the same piece
+    **demotes** it (painted in place from then on; its area painted again). The layers keep the
+    order they were offered in.
+  - *The clip.* The core gives a layer its clip within the piece being painted; a side on the
+    piece's edge is not known (open) until a piece shows it.
+  - *Stale layers.* A layer not offered again where the band was painted over all it covers is
+    dropped (its box lost its effect, or its box is gone); a new one's area is painted again (it
+    may be there in place).
+  - *Churn.* A layer whose pixels are painted again frame after frame (what it holds animates, it
+    moves by a translation) is demoted: its passes would cost more than the in-place painting.
+  - *The CPU path* retains a layer only once it was animated (below): there a transformed layer
+    would be resampled at each frame, where painted into the band it costs nothing more.
+- **Composite-only animations and hovers.** When a box's style changes only in its opacity or
+  transform (`css_computed_style_effects_only_change`, libcss -- an animation's frame through
+  `onyx_hover_restyle_elements`, a `:hover`), `onyx_hover.c` gives the box its new style and asks
+  `html_redraw_layer_update` (html/private.h): the frontend's hook (`onyx_layer_props`,
+  netsurf/onyx_paint.h = `onyx_comp_layer_update`) updates the retained layer's matrix / opacity
+  and asks for a frame -- **nothing is painted** (the element's other boxes, its text, are not
+  redrawn either: a transform or an opacity paints the group, not them). Refused (no layer, or
+  its new footprint would reach what was painted after it -- a turned layer may use the square its
+  rectangle sweeps about its centre, when nothing painted later lies there), the rectangles are
+  redrawn as before. `pages/anim-layers.html` (a spin and a pulse): 133 frames of 150 a
+  composite, 17 painted.
+- **The frame.** The band's pieces in view, then the layers that reach the view, **one
+  `gpc_composite` straight into the window's canvas** (its page area; `GPC_C_CLEAR` on the GPU:
+  the band covers it, the canvas need not be loaded); the back buffer's copies leave that part
+  alone (`onyx_surface_hole`); the caret is drawn into the band.
+- **Safety.** At start, a **self-test** composes a small scene by the GPU and by gpucomp's CPU path
+  -- the band alone (texels copied: at most 1 apart), the layers (the GPU filtering's allowance),
+  and the layers **over what the target holds** (no clear: the V3D loads the target first --
+  the path that was wrong on the Pi, kern/v3d_cl.h); a mismatch, or the GPU lost, and the CPU path
+  is used for the session. The kernel log (stderr) says `netsurf: compositing on: GPU: V3D 4.2 ...`
+  (or `... the GPU failed its self-test (<why>): the CPU`, `compositing off`). A GPU lost later
+  (`GPC_LOST`): every texture uploaded again, the CPU from then on. No memory for the band:
+  compositing off, painting as before. **Budget**: the band (at most 8 M pixels) and the layers
+  (24 M pixels, ~96 MB of textures) -- the layers out of the band's rows dropped first.
+- **Fixed boxes** scroll with the page here as before (NetSurf lays `position: fixed` out in the
+  document), so they are part of the band and repaint nothing on a scroll either; a fixed box
+  that stays in the view would be a layer without the scroll's translation (with the hit test
+  and the scripts' rectangles following) -- not done.
+- **Two bugs of the CPU painting found on the way** (both modes): a box whose **shadow** reached
+  the redraw's clip but not its border box set an upside-down clip, which the knockout refused --
+  **the rest of that redraw was dropped** (cards cut or missing after a scroll: kotonstudio.com's,
+  github.com's lists; `html_redraw_box_inner`); a redraw queued before a scroll kept its window
+  coordinates (`fb_pan`: now moved with the pixels).
+- **Tests** (`tools/tests/netsurf/gputest.sh`): the composited frames against the CPU painting
+  (`NS_GPU=0`), pixel by pixel (at most 0.1 % of pixels off by more than 16), for the layer pages
+  (opacity, transforms, filters, hovers, transitions, animations stopped), loaded and scrolled;
+  hovers of a layer's transform / opacity (`pages/css-fxlayer.html`); composite-only animation
+  frames (`pages/anim-layers.html`); a long page scrolled notch by notch against one jump
+  (`pages/gpu-scroll.html`: a 720 x 740 `mix-blend-mode` group, a blur, rotated and faded cards);
+  the **software V3D** (host.mk `SOFTGPU=1`, `GPC_SOFTGPU=1`: gpucomp's GPU path, the kernel's
+  fragment shader in the QPU simulator and its own target packets) and the self-test's fallback
+  when the GPU hangs (`GPC_SOFTGPU=hang`); the scroll frames' cost. All pass; `fxtest.sh` (against
+  Chromium) and `jstest.sh` pass composited (the default); `sitesweep.sh` (which now scrolls 12
+  notches down and 4 up): no crash.
+- **Timings** (`NS_PERF`): `ONYX-SCROLL <us>` for each frame of a scroll (both modes),
+  `frame painted / composite`, `present WxH gpu|cpu N layers`, `band ahead`, `layer WxH
+  retained`, and every 50 frames `ONYX-COMP n frames: painted, composite only, present`.
+  The PC bench (1280 x 800 window, gpucomp's **CPU** path; 20 wheel notches after loading):
+
+  | page | CPU painting, a scroll frame | composited |
+  |---|---|---|
+  | kotonviolins.com (copy) | mean 5.9 ms, max 70 ms | mean 0.8 ms, max 1.1 ms |
+  | kotonstudio.com (copy) | mean 2.6 ms, max 14.7 ms | mean 2.1 ms, max 5.7 ms (its scroll handler and header repaint each frame) |
+  | github.com/stephaneweg/Onyx | mean 2.4 ms, max 6.9 ms | mean 1.0 ms, max 2.9 ms |
+  | bbc.com | mean 3.5 ms, max 33 ms | mean 2.2 ms, max 7.3 ms |
+  | pages/gpu-scroll.html | mean 3.0 ms, max 7.9 ms | mean 0.9 ms, max 1.3 ms |
+
+  A composited scroll frame is the present (a copy of the view on the CPU path: ~0.5-1 ms on the
+  PC); the rows ahead are painted in idle turns (5-8 ms a piece on the PC). On the Pi (5-8 times
+  slower at painting, the V3D composing a 1920 x 1080 frame in a few ms: `gpcdemo bench`), a scroll
+  frame over rows already in the band goes from the redraw of a strip -- 5 to 25 ms, 50 to 350 ms
+  when a blurred or blended group is in it (github.com's hero: 11-20 ms a redraw on the PC) -- to
+  one composite, and animated transforms and fades from a redraw of their rectangles to a
+  composite.
+- **Not done**: overflow scrollers as layers (an inner scroller's scroll paints its box again,
+  in the band); groups with retained layers inside (a filter or opacity group holding layers: the
+  CPU paints what it holds, into the band or the parent layer -- docs/07 §6 step 6's ARGB target
+  and re-upload are not used); `will-change` (not parsed); fixed boxes that stay in view (above);
+  `GPC_F_ASYNC` (the composite waits); a translation animated as a composite (it moves the box as
+  the layout does: its rectangles are redrawn).
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -1669,11 +2045,15 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
   worker, no `OffscreenCanvas`, `SharedArrayBuffer` / `Atomics` between workers; the
   WebSocket client sends its messages uncompressed (permessage-deflate inflates only) and
   never pings; CORS is not checked for EventSource either.
+- The network (§24): TLS 1.2 only, no revocation checks, no CSP, no SameSite cookies, no
+  CORS for the core's loads (EventSource, fonts, `<img crossorigin>`, module scripts), no
+  HTTP/3, no back-forward cache.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
-- The compositing layers' gaps (§21: a real perspective, a layer kept between redraws,
-  `clip-path` / `mask` on it, the non-separable blend modes); animations: §22's "Not done".
+- The compositing layers' gaps (§21: a real perspective, `clip-path` / `mask` on a layer, the
+  non-separable blend modes); animations: §22's "Not done"; GPU compositing: §25's (scrollers
+  and groups as layers, fixed boxes that stay in view).
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
   CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss

@@ -591,6 +591,118 @@ if (Resp) {
 	};
 }
 
+/* ---- CORS (Onyx): the scripts' cross-origin requests, as the Fetch Standard says ----------------
+ * A request from the page's origin to another (http / https) is a CORS request (fetch's `mode`
+ * 'cors', XMLHttpRequest): it carries an Origin header; one that is not "simple" (a method other
+ * than GET / HEAD / POST, a header not CORS-safelisted, a Content-Type other than the three form
+ * ones) is preceded by a preflight (OPTIONS with Access-Control-Request-Method / -Headers, its
+ * answer cached for its Access-Control-Max-Age); the answer is given to the script only when its
+ * Access-Control-Allow-Origin names the page's origin (or "*" without credentials, and
+ * Access-Control-Allow-Credentials: true with them), and the script sees its CORS-safelisted
+ * headers and those of Access-Control-Expose-Headers only (Response.type 'cors'). The
+ * credentials (cookies): fetch's `credentials` ('same-origin' by default: none to another
+ * origin; 'include'; 'omit'), XHR's withCredentials -- without them the fetcher sends no Cookie
+ * and keeps no Set-Cookie (X-Onyx-Credentials: omit). `mode` 'same-origin' refuses another
+ * origin; 'no-cors' allows only a simple request and gives an opaque response (status 0, no
+ * headers, no body). Same-origin requests, file:, data: and blob: are as before. */
+const CORS_SAFE_HEADERS = new Set(['accept', 'accept-language', 'content-language', 'content-type', 'range']);
+const CORS_SAFE_TYPES = new Set(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain']);
+const CORS_SAFE_RESPONSE = new Set(['cache-control', 'content-language', 'content-length', 'content-type',
+	'expires', 'last-modified', 'pragma']);
+const corsPreflights = new Map();		/* key -> expiry (Date.now() ms) */
+
+function pageOrigin() {
+	try { return new URL(G.location.href).origin; } catch (e) { return 'null'; }
+}
+/* the request's CORS state: null when it is not cross-origin (or not http(s)) */
+function corsOf(url) {
+	let u;
+	try { u = new URL(url); } catch (e) { return null; }
+	if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+	const origin = pageOrigin();
+	if (u.origin === origin) return null;
+	return { origin };
+}
+function corsUnsafeHeaders(h) {
+	const names = [];
+	for (const [k, v] of h) {
+		const n = k.toLowerCase();
+		if (!CORS_SAFE_HEADERS.has(n) || String(v).length > 128) { names.push(n); continue; }
+		if (n === 'content-type' && !CORS_SAFE_TYPES.has(String(v).split(';')[0].trim().toLowerCase()))
+			names.push(n);
+		else if (n === 'range' && !/^bytes=\d+-\d*$/.test(String(v).trim()))
+			names.push(n);
+	}
+	return names.sort();
+}
+const corsSimpleMethod = m => m === 'GET' || m === 'HEAD' || m === 'POST';
+/* a response head's [[name, value]...] -> a lower-cased name -> value lookup */
+function headGet(headers, name) {
+	const v = [];
+	for (const [k, x] of headers || []) if (String(k).toLowerCase() === name) v.push(String(x));
+	return v.length ? v.join(', ') : null;
+}
+/* the CORS check of a response (its head's headers): true when the script may read it */
+function corsAllows(headers, origin, cred) {
+	const acao = headGet(headers, 'access-control-allow-origin');
+	if (acao == null) return false;
+	const a = acao.trim();
+	if (a === '*') return !cred;
+	if (a !== origin) return false;
+	return !cred || (headGet(headers, 'access-control-allow-credentials') || '').trim() === 'true';
+}
+/* the headers a script sees of a CORS response */
+function corsFilter(headers, cred) {
+	const expose = new Set();
+	let all = false;
+	for (const n of (headGet(headers, 'access-control-expose-headers') || '').split(',')) {
+		const t = n.trim().toLowerCase();
+		if (t === '*') all = !cred; else if (t) expose.add(t);
+	}
+	return (headers || []).filter(([k]) => {
+		const n = String(k).toLowerCase();
+		if (n === 'set-cookie' || n === 'set-cookie2') return false;
+		return all || CORS_SAFE_RESPONSE.has(n) || expose.has(n);
+	});
+}
+/* a preflight when the request needs one: resolves when the server allows it */
+function corsPreflight(method, url, h, origin, cred) {
+	const unsafe = corsUnsafeHeaders(h);
+	if (corsSimpleMethod(method) && unsafe.length === 0) return Promise.resolve();
+	const key = origin + ' ' + (cred ? 'c ' : '- ') + method + ' ' + url + ' ' + unsafe.join(',');
+	const exp = corsPreflights.get(key);
+	if (exp !== undefined && exp > Date.now()) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		const lines = ['Origin: ' + origin, 'Access-Control-Request-Method: ' + method,
+			'X-Onyx-Credentials: omit', 'X-Onyx-Mode: cors', 'Accept: */*'];
+		if (unsafe.length) lines.push('Access-Control-Request-Headers: ' + unsafe.join(','));
+		const id = N.request('OPTIONS', url, null, lines, false, (err, r) => {
+			if (err != null || !r || r.status < 200 || r.status > 299 ||
+			    !corsAllows(r.headers, origin, cred)) {
+				reject(new TypeError('Failed to fetch (CORS preflight)'));
+				return;
+			}
+			const list = n => (headGet(r.headers, n) || '').split(',').map(s => s.trim()).filter(s => s);
+			const methods = list('access-control-allow-methods');
+			const hdrs = list('access-control-allow-headers').map(s => s.toLowerCase());
+			const star = !cred;
+			if (!corsSimpleMethod(method) && !methods.includes(method) && !(star && methods.includes('*'))) {
+				reject(new TypeError('Failed to fetch (CORS: method not allowed)'));
+				return;
+			}
+			for (const n of unsafe)
+				if (!hdrs.includes(n) && !(star && hdrs.includes('*') && n !== 'authorization')) {
+					reject(new TypeError('Failed to fetch (CORS: header ' + n + ' not allowed)'));
+					return;
+				}
+			const ma = parseInt(headGet(r.headers, 'access-control-max-age') || '5', 10);
+			corsPreflights.set(key, Date.now() + Math.min(isNaN(ma) ? 5 : Math.max(ma, 0), 7200) * 1000);
+			resolve();
+		});
+		if (id < 0) reject(new TypeError('Failed to fetch'));
+	});
+}
+
 function streamingFetch(input, init) {
 	init = init || {};
 	if (G.ReadableStream && init.body instanceof G.ReadableStream) {
@@ -599,19 +711,58 @@ function streamingFetch(input, init) {
 	}
 	let req;
 	try { req = new Req(input, init); } catch (e) { return Promise.reject(e); }
+	/* Onyx: CORS -- the mode, the credentials, the preflight */
+	const cors = corsOf(req.url), mode = req.mode || 'cors';
+	const cred = req.credentials === 'include' || (!cors && req.credentials !== 'omit');
+	const lines = hdrLines(req.headers);
+	if (!cred) lines.push('X-Onyx-Credentials: omit');
+	if (cors) {
+		if (mode === 'same-origin')
+			return Promise.reject(new TypeError('Failed to fetch (mode: same-origin)'));
+		if (mode === 'no-cors') {
+			if (!corsSimpleMethod(req.method))
+				return Promise.reject(new TypeError('Failed to fetch (mode: no-cors)'));
+			lines.push('X-Onyx-Mode: no-cors');
+			cors.opaque = true;
+		} else {
+			lines.push('Origin: ' + cors.origin);
+			return corsPreflight(req.method, req.url, req.headers, cors.origin, cred)
+				.then(() => netFetch(req, lines, cors, cred));
+		}
+	}
+	return netFetch(req, lines, cors, cred);
+}
+function netFetch(req, lines, cors, cred) {
 	return new Promise((resolve, reject) => {
 		const sig = req.signal;
 		const aborted = () => sig.reason !== undefined ? sig.reason : domError('The operation was aborted.', 'AbortError');
 		if (sig.aborted) { reject(aborted()); return; }
 		let id = 0, res = null, st = null;
 		const head = h => {
+			if (cors && cors.opaque) {		/* (no-cors: an opaque response) */
+				res = new Resp(null, { status: 0 });
+				res.type = 'opaque';
+				if (id > 0) N.abortRequest(id);
+				id = 0;
+				resolve(res);
+				return false;
+			}
+			if (cors && !corsAllows(h.headers, cors.origin, cred)) {
+				if (id > 0) N.abortRequest(id);
+				id = 0;
+				reject(new TypeError('Failed to fetch (CORS: no Access-Control-Allow-Origin for ' +
+					cors.origin + ')'));
+				return false;
+			}
 			res = new Resp(null, { status: h.status, statusText: h.statusText || STATUS_TEXT[h.status] || '',
-				headers: h.headers });
+				headers: cors ? corsFilter(h.headers, cred) : h.headers });
 			res.url = h.url;
 			res.redirected = h.url.replace(/#.*$/, '') !== req.url.replace(/#.*$/, '');
+			if (cors) res.type = 'cors';
 			st = netState(id);
 			res[NET] = st;
 			resolve(res);
+			return true;
 		};
 		const onAbort = () => {
 			const e = aborted();
@@ -620,17 +771,18 @@ function streamingFetch(input, init) {
 			if (!res) reject(e);
 			else netFinish(st, e, null);
 		};
-		id = N.request(req.method, req.url, req._body, hdrLines(req.headers), true, (err, r) => {
+		id = N.request(req.method, req.url, req._body, lines, true, (err, r) => {
 			sig.removeEventListener('abort', onAbort);
 			if (id === 0) return;			/* (aborted) */
-			id = 0;
 			if (err != null) {
+				id = 0;
 				const e = new TypeError('Failed to fetch');
 				if (!res) reject(e);
 				else netFinish(st, e, null);
 				return;
 			}
-			if (!res) head(r);
+			if (!res && !head(r)) return;
+			id = 0;
 			netFinish(st, null, r.body);
 		}, (kind, v) => {
 			if (id === 0) return;
@@ -674,22 +826,48 @@ if (G.XMLHttpRequest && Req) {
 		this._loaded = 0;
 		this._total = 0;
 		this._upN = b != null ? enc.encode(b).length : 0;
+		/* Onyx: CORS -- withCredentials, the Origin, the preflight, the check of the answer */
+		const cors = corsOf(rq.url), cred = !cors || !!this.withCredentials;
+		const lines = hdrLines(rq.headers);
+		this._cors = cors;
+		this._cred = cred;
+		if (!cred) lines.push('X-Onyx-Credentials: omit');
+		if (cors) lines.push('Origin: ' + cors.origin);
 		this._fire('loadstart');
 		if (this._upN) upEvent(this, 'loadstart', 0);
-		const id = N.request(this._m, rq.url, b, hdrLines(rq.headers), bin,
-			(err, r) => this._done(id, err, r),
-			(kind, v) => { if (this._id === id) { if (kind === 0) this._head(v); else if (kind === 2) this._progress(v); } },
-			2);
-		this._id = id;
-		if (id < 0) { this._id = 0; setTimeout(() => this._fail('error'), 0); return; }
-		if (this.timeout > 0)
-			this._to = setTimeout(() => {
-				if (this._id !== id) return;
-				N.abortRequest(id); this._id = 0; this._fail('timeout');
-			}, this.timeout);
+		const go = () => {
+			const id = N.request(this._m, rq.url, b, lines, bin,
+				(err, r) => this._done(id, err, r),
+				(kind, v) => { if (this._id === id) { if (kind === 0) this._head(v); else if (kind === 2) this._progress(v); } },
+				2);
+			this._id = id;
+			if (id < 0) { this._id = 0; setTimeout(() => this._fail('error'), 0); return; }
+			if (this.timeout > 0)
+				this._to = setTimeout(() => {
+					if (this._id !== id) return;
+					N.abortRequest(id); this._id = 0; this._fail('timeout');
+				}, this.timeout);
+		};
+		if (!cors) { go(); return; }
+		const gen = this._gen = (this._gen || 0) + 1;
+		corsPreflight(this._m, rq.url, rq.headers, cors.origin, cred).then(() => {
+			if (this._gen === gen && this._sent && this.readyState !== 0) go();
+		}, () => {
+			if (this._gen === gen && this._sent && this.readyState !== 0) this._fail('error');
+		});
 	};
 	X._head = function (h) {
 		if (this._headSeen) return;
+		if (this._cors && !corsAllows(h.headers, this._cors.origin, this._cred)) {
+			/* Onyx: CORS -- the answer not for this origin: a network error */
+			const id = this._id;
+			this._id = 0;
+			if (id > 0) N.abortRequest(id);
+			if (this._to) { clearTimeout(this._to); this._to = 0; }
+			this._fail('error');
+			return;
+		}
+		if (this._cors) h = Object.assign({}, h, { headers: corsFilter(h.headers, this._cred) });
 		this._headSeen = true;
 		if (this._upN) {
 			upEvent(this, 'progress', this._upN);
@@ -713,6 +891,12 @@ if (G.XMLHttpRequest && Req) {
 	const origDone = X._done;
 	X._done = function (id, err, r) {
 		if (this._id !== id) return;
+		if (err == null && r && this._cors) {		/* (Onyx: CORS) */
+			if (!this._headSeen && !corsAllows(r.headers, this._cors.origin, this._cred))
+				err = 'CORS';
+			else
+				r = Object.assign({}, r, { headers: corsFilter(r.headers, this._cred) });
+		}
 		if (err != null || !this._headSeen) {
 			if (err == null && this._upN) { upEvent(this, 'progress', this._upN); upEvent(this, 'load', this._upN); upEvent(this, 'loadend', this._upN); }
 			return origDone.call(this, id, err, r);

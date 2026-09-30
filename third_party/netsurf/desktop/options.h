@@ -133,8 +133,12 @@ NSOPTION_BOOL(enable_javascript, false)
 /** Whether to allow Author level CSS. */
 NSOPTION_BOOL(author_level_css, true)
 
-/** Maximum time (in seconds) to wait for a script to run */
-NSOPTION_INTEGER(script_timeout, 10)
+/** Maximum time (in seconds) to wait for a script to run.
+ * Onyx: 60, not 10 -- a script, an event handler or a promise job stopped after that; the Pi
+ * runs QuickJS some five times slower than the PC, and css3test.com's test run (1.5 s on the
+ * PC) or browserscore.dev's first render (7 s) were cut off there, the page left at 0 %.
+ * Browsers do not stop a script at all; this only ends a loop that never does. */
+NSOPTION_INTEGER(script_timeout, 60)
 
 /** How many days to retain URL data for */
 NSOPTION_INTEGER(expire_url, 28)

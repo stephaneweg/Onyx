@@ -181,10 +181,10 @@ expect "$L" "reveal after kept true"
 
 # Onyx: the HTML5 checks -- each page logs "OK <area> name" / "FAIL <area> name" and ends
 # with "<area> done N" (N checks)
-html5page() {	# html5page <page> <area> <what>
+html5page() {	# html5page <page> <area> <what> [the sim script: else 150 waits]
 	echo "$1 ($3)"
 	L=$OUT/${1%.html}.log
-	run "$1" "$(waits 150)" "$L"
+	run "$1" "${4:-$(waits 150)}" "$L"
 	grep "^console: FAIL $2 " "$L" | sed 's/^console: /  /'
 	if grep -q "^console: FAIL $2 " "$L" || ! grep -q "^console: $2 done" "$L"; then
 		echo "  FAIL  ($2: not all run: $L)"; fail=1
@@ -196,6 +196,9 @@ html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, template
 html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
 html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs, microdata, performance marks, XHR documents"
 html5page js-ce.html ce "custom elements: define, upgrades (the parser's too), lifecycle callbacks"
+html5page js-popover.html popover "the Popover API: show / hide / toggle, beforetoggle and toggle, the auto stack, popovertarget, :popover-open and :modal in libcss, Escape, light dismiss" \
+	"$(waits 120)$(click 800 800)key 27;$(waits 30)"
+html5page js-cssdetect.html detect "feature detection's honest answers: CSS.supports, element.style, the CSSOM, matchMedia"
 html5page js-shadow.html shadow "shadow DOM: ShadowRoot, slots, declarative roots, events, style scoping, the flat tree's boxes"
 echo "js-shadow-click.html (clicks and the pointer on a shadow tree: retargeting, :hover inside)"
 L=$OUT/js-shadow-click.log

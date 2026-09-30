@@ -32,6 +32,7 @@
 
 #include "utils/utils.h"
 #include "utils/nsoption.h"
+#include "utils/useragent.h"	/* (Onyx: "Desktop Site") */
 #include "utils/filepath.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -61,6 +62,7 @@
 #include "framebuffer/bitmap.h"
 #include "framebuffer/local_history.h"
 #include "framebuffer/corewindow.h"
+#include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing */
 
 /* Onyx: the window, its native toolbar (user/netsurf/onyx_chrome.cpp) */
 #include "desktop/searchweb.h"
@@ -91,6 +93,8 @@ struct browser_widget_s {
 			    * needs to pan the window.
 			    */
 	int panx, pany; /**< Panning required. */
+	int comp_dy;	/**< Onyx: the last scroll's direction (onyx_comp.c) */
+	bool comp_prepaint; /**< Onyx: an idle turn: the band painted ahead */
 };
 
 static struct gui_drag {
@@ -139,6 +143,16 @@ static void
 fb_queue_redraw(struct fbtk_widget_s *widget, int x0, int y0, int x1, int y1)
 {
 	struct browser_widget_s *bwidget = fbtk_get_userpw(widget);
+
+	if (onyx_comp_on()) {
+		/* Onyx: composited -- the document's rectangle, painted again where
+		 * the band holds it, in view or not (onyx_comp.c) */
+		onyx_comp_damage(x0 + bwidget->scrollx, y0 + bwidget->scrolly,
+				x1 + bwidget->scrollx, y1 + bwidget->scrolly);
+		bwidget->redraw_required = true;
+		fbtk_request_redraw(widget);
+		return;
+	}
 
 	bwidget->redraw_box.x0 = min(bwidget->redraw_box.x0, x0);
 	bwidget->redraw_box.y0 = min(bwidget->redraw_box.y0, y0);
@@ -253,6 +267,22 @@ fb_pan(fbtk_widget_t *widget,
 
 	x = fbtk_get_absx(widget);
 	y = fbtk_get_absy(widget);
+
+	/* Onyx: a redraw queued before the pan (widget coordinates) is of the document
+	 * where it was: moved with the pixels the pan moves (else the rectangle drawn
+	 * was the wrong one, and what it meant stayed as it was -- boxes laid out while
+	 * the page scrolled came out cut, or not at all) */
+	if (bwidget->redraw_required) {
+		bwidget->redraw_box.x0 -= bwidget->panx;
+		bwidget->redraw_box.x1 -= bwidget->panx;
+		bwidget->redraw_box.y0 -= bwidget->pany;
+		bwidget->redraw_box.y1 -= bwidget->pany;
+		if (!fbtk_clip_to_widget(widget, &bwidget->redraw_box)) {
+			bwidget->redraw_box.y0 = bwidget->redraw_box.x0 = INT_MAX;
+			bwidget->redraw_box.y1 = bwidget->redraw_box.x1 = -(INT_MAX);
+			bwidget->redraw_required = false;
+		}
+	}
 
 	/* if the pan exceeds the viewport size just redraw the whole area */
 	if (bwidget->pany >= height || bwidget->pany <= -height ||
@@ -425,11 +455,76 @@ fb_redraw(fbtk_widget_t *widget,
 	bwidget->redraw_required = false;
 }
 
+/* Onyx: the window the compositor shows (its last composited view) */
+static struct gui_window *fb_comp_gw;
+
+/* Onyx: a frame wanted by the compositor (a retained layer's transform / opacity changed) */
+static void fb_comp_request(void)
+{
+	if (fb_comp_gw != NULL)
+		fbtk_request_redraw(fb_comp_gw->browser);
+}
+
+/* Onyx: an idle turn -- the band's rows around the view painted ahead (onyx_comp.c) */
+static void fb_comp_prepaint(void *p)
+{
+	struct gui_window *gw = p;
+	struct browser_widget_s *bwidget = fbtk_get_userpw(gw->browser);
+
+	if (bwidget == NULL)
+		return;
+	bwidget->comp_prepaint = true;
+	fbtk_request_redraw(gw->browser);
+}
+
+/* Onyx: the view composited -- a scroll moves it over the band (nothing painted), the damage
+ * and the rows that come into view are painted into the band, one composite into the canvas.
+ * False: compositing is off (the view is then painted as ever). */
+static bool fb_comp_redraw(fbtk_widget_t *widget, struct browser_widget_s *bwidget,
+		struct gui_window *gw)
+{
+	struct onyx_comp_view v;
+	bool prepaint = bwidget->comp_prepaint;
+
+	bwidget->comp_prepaint = false;
+	fb_comp_gw = gw;
+	if (bwidget->pan_required) {
+		if (bwidget->pany != 0)
+			bwidget->comp_dy = bwidget->pany > 0 ? 1 : -1;
+		bwidget->scrollx += bwidget->panx;
+		bwidget->scrolly += bwidget->pany;
+		bwidget->panx = bwidget->pany = 0;
+		bwidget->pan_required = false;
+		browser_window_scrolled(gw->bw);
+	}
+	memset(&v, 0, sizeof v);
+	v.bw = gw->bw;
+	v.x = fbtk_get_absx(widget);
+	v.y = fbtk_get_absy(widget);
+	v.w = fbtk_get_width(widget);
+	v.h = fbtk_get_height(widget);
+	v.sx = bwidget->scrollx;
+	v.sy = bwidget->scrolly;
+	v.dy = bwidget->comp_dy;
+	v.caret = fbtk_get_caret(widget, &v.cx, &v.cy, &v.ch);
+	if (onyx_comp_redraw(&v, prepaint))
+		framebuffer_schedule(30, fb_comp_prepaint, gw);
+	bwidget->redraw_box.y0 = bwidget->redraw_box.x0 = INT_MAX;
+	bwidget->redraw_box.y1 = bwidget->redraw_box.x1 = INT_MIN;
+	bwidget->redraw_required = false;
+	return onyx_comp_on();
+}
+
+static void fb_browser_view(fbtk_widget_t *widget, struct browser_widget_s *bwidget,
+		struct gui_window *gw);
+
 static int
 fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 {
 	struct gui_window *gw = cbi->context;
 	struct browser_widget_s *bwidget;
+	uint64_t t0;
+	bool pan;
 
 	bwidget = fbtk_get_userpw(widget);
 	if (bwidget == NULL) {
@@ -437,6 +532,22 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 		      "browser widget from widget %p was null", widget);
 		return -1;
 	}
+	/* Onyx (NS_PERF): each frame of a scroll timed, whatever it costs -- "ONYX-SCROLL
+	 * <us>" (the pan, what is painted, the copy or composite into the canvas) */
+	t0 = onyx_perf_now();
+	pan = bwidget->pan_required;
+	fb_browser_view(widget, bwidget, gw);
+	if (t0 != 0 && pan)
+		fprintf(stderr, "ONYX-SCROLL %lu us\n",
+				(unsigned long) (onyx_perf_now() - t0));
+	return 0;
+}
+
+static void fb_browser_view(fbtk_widget_t *widget, struct browser_widget_s *bwidget,
+		struct gui_window *gw)
+{
+	if (onyx_comp_on() && fb_comp_redraw(widget, bwidget, gw))
+		return;	/* (Onyx: composited) */
 
 	if (bwidget->pan_required) {
 		fb_pan(widget, bwidget, gw->bw);
@@ -452,7 +563,6 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 		bwidget->redraw_box.y1 = fbtk_get_height(widget);
 		fb_redraw(widget, bwidget, gw->bw);
 	}
-	return 0;
 }
 
 static int fb_browser_window_destroy(fbtk_widget_t *widget,
@@ -632,6 +742,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
 		defaults[sys_colour_defaults[idx].nsc].value.c = sys_colour_defaults[idx].c;
 	}
 
+	/* Onyx: the disc cache (user/netsurf/onyx_cache.c, SD:/apps/netsurf.app/cache/): 64 MB
+	 * (NetSurf's 1 GB is too much for a card shared with everything else) */
+	defaults[NSOPTION_disc_cache_size].value.u = 64u << 20;
+
 	/* Onyx: the default font size as the other browsers': 12 pt, 16 px at 96 dpi
 	 * (NetSurf's 12.8 pt made every rem / em 7 % larger) */
 	defaults[NSOPTION_font_size].value.i = 120;
@@ -686,6 +800,7 @@ static void gui_quit(void)
 
 	urldb_save(nsoption_charp(url_file));	/* Onyx: the global history */
 	urldb_save_cookies(nsoption_charp(cookie_jar));
+	onyx_comp_finalise();	/* Onyx */
 
 	framebuffer_finalise();
 }
@@ -1899,6 +2014,9 @@ static void
 gui_window_destroy(struct gui_window *gw)
 {
 	gui_window_remove_from_window_list(gw);
+	framebuffer_schedule(-1, fb_comp_prepaint, gw);	/* (Onyx) */
+	if (fb_comp_gw == gw)
+		fb_comp_gw = NULL;
 
 	fbtk_destroy_widget(gw->window);
 
@@ -1918,6 +2036,13 @@ fb_window_invalidate_area(struct gui_window *g, const struct rect *rect)
 {
 	struct browser_widget_s *bwidget = fbtk_get_userpw(g->browser);
 
+	if (rect == NULL && onyx_comp_on()) {
+		/* Onyx: the whole document (the view now, the band's rest later) */
+		onyx_comp_damage_all();
+		bwidget->redraw_required = true;
+		fbtk_request_redraw(g->browser);
+		return NSERROR_OK;
+	}
 	if (rect != NULL) {
 		fb_queue_redraw(g->browser,
 				rect->x0 - bwidget->scrollx,
@@ -2104,28 +2229,41 @@ throbber_advance(void *pw)
 	}
 }
 
+/* Onyx: a page's load timed, from the throbber's start to its stop (NS_PERF: "ONYX-PERF
+ * page:load <us>" -- the page and everything it fetched, its scripts run) */
+static uint64_t onyx_load_t0;
+
 static void
 gui_window_start_throbber(struct gui_window *g)
 {
+	onyx_load_t0 = onyx_perf_now();
 	g->throbber_index = 0;
 	onyx_chrome_set_busy(1);	/* Onyx: the native toolbar's reload becomes stop */
 	if (g->throbber != NULL)
 		framebuffer_schedule(100, throbber_advance, g);
 }
 
-/* Onyx: the pages visited and the cookies, written to the card a few seconds after a
- * page is loaded (not only at the end: a Pi is often switched off rather than quit) */
+/* Onyx: the pages visited, the cookies and the fetcher's state, written to the card a few
+ * seconds after a page is loaded (not only at the end: a Pi is often switched off rather than quit) */
+void onyx_fetch_save_state(void);	/* user/netsurf/onyx_fetch.c */
+extern struct gui_llcache_table *onyx_llcache_table;	/* user/netsurf/onyx_cache.c */
+
 static void onyx_save_user_data(void *p)
 {
 	(void) p;
 	urldb_save(nsoption_charp(url_file));
 	urldb_save_cookies(nsoption_charp(cookie_jar));
+	onyx_fetch_save_state();	/* (the TLS sessions, the HTTP/1.1-only origins) */
 }
 
 static void
 gui_window_stop_throbber(struct gui_window *gw)
 {
 	gw->throbber_index = -1;
+	if (onyx_load_t0 != 0) {
+		onyx_perf_log("page:load", onyx_load_t0);	/* Onyx */
+		onyx_load_t0 = 0;
+	}
 	onyx_chrome_set_busy(0);
 	framebuffer_schedule(3000, onyx_save_user_data, NULL);	/* Onyx */
 	if (gw->throbber != NULL)
@@ -2276,6 +2414,7 @@ main(int argc, char** argv)
 		.utf8 = framebuffer_utf8_table,
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
+		.llcache = onyx_llcache_table,	/* Onyx: the disc cache on the card */
 	};
 
         ret = netsurf_register(&framebuffer_table);
@@ -2349,6 +2488,9 @@ main(int argc, char** argv)
 		    NETSURF_FB_FONTPATH " (copy the card's res/fonts folder)");
 
 	fbtk = fbtk_init(nsfb);
+
+	onyx_comp_init();	/* Onyx: GPU compositing (Choices: gpu_compositing) */
+	onyx_comp_set_request(fb_comp_request);
 
 	fbtk_enable_oskb(fbtk);
 
@@ -2452,6 +2594,30 @@ void onyx_browser_reload(void)
 #endif
 	if (window_list != NULL)
 		browser_window_reload(window_list->bw, true);
+}
+
+/* Onyx: the page's site in its desktop version or back to the mobile one (the menu's
+ * "Desktop Site / Mobile Site"; the list is kept on the card: utils/useragent.c), then the
+ * page loaded again with the other User-Agent */
+void onyx_browser_toggle_desktop(void)
+{
+	struct browser_window *bw;
+	nsurl *url;
+	lwc_string *host;
+
+	if (window_list == NULL)
+		return;
+	bw = window_list->bw;
+	url = browser_window_access_url(bw);
+	if (url == NULL)
+		return;
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host == NULL)
+		return;
+	user_agent_set_desktop(lwc_string_data(host),
+			!user_agent_is_desktop(lwc_string_data(host)));
+	lwc_string_unref(host);
+	browser_window_reload(bw, true);
 }
 
 void onyx_browser_stop(void)
