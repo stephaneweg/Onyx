@@ -31,6 +31,7 @@ int onyx_mb_send(onyx_tls_sess *s, const void *buf, int len);
 int onyx_mb_recv(onyx_tls_sess *s, void *buf, int len);
 void onyx_mb_close(onyx_tls_sess *s);
 const char *onyx_mb_alpn(onyx_tls_sess *s);
+const char *onyx_mb_version(onyx_tls_sess *s);
 
 struct onyx_tls_sess { SSL *ssl; int fd; onyx_tls_sess *mb; struct onyx_tls_chain *rec; };
 
@@ -194,6 +195,13 @@ const char *onyx_nstls_alpn(onyx_tls_sess *s)
 	if (n == 2 && memcmp(p, "h2", 2) == 0) return h2;
 	if (n == 8 && memcmp(p, "http/1.1", 8) == 0) return h1;
 	return NULL;
+}
+
+const char *onyx_nstls_version(onyx_tls_sess *s)
+{
+	if (s == NULL) return NULL;
+	if (s->mb != NULL) return onyx_mb_version(s->mb);
+	return SSL_get_version(s->ssl);
 }
 
 onyx_tls_sess *onyx_nstls_start(int sock, const char *host)

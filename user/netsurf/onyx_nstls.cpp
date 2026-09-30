@@ -214,6 +214,11 @@ extern "C" const char *onyx_nstls_alpn(onyx_tls_sess *h)
 	return h != 0 ? mbedtls_ssl_get_alpn_protocol(&h->s.ssl) : 0;
 }
 
+extern "C" const char *onyx_nstls_version(onyx_tls_sess *h)
+{
+	return h != 0 ? mbedtls_ssl_get_version(&h->s.ssl) : 0;
+}
+
 extern "C" onyx_tls_sess *onyx_nstls_start(int sock, const char *host)
 {
 	return onyx_nstls_connect(sock, host, ONYX_TLS_VERIFY, 0);

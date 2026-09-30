@@ -316,7 +316,7 @@ endif
 # renamed onyx_mb_* -- host_stubs.c uses it with NS_MBEDTLS=1
 MB_REN := -Donyx_tls_sess=onyx_mb_sess -Donyx_nstls_connect=onyx_mb_connect \
 	-Donyx_nstls_ca_bundle=onyx_mb_ca_bundle -Donyx_nstls_send=onyx_mb_send \
-	-Donyx_nstls_recv=onyx_mb_recv -Donyx_nstls_close=onyx_mb_close -Donyx_nstls_alpn=onyx_mb_alpn \
+	-Donyx_nstls_recv=onyx_mb_recv -Donyx_nstls_close=onyx_mb_close -Donyx_nstls_alpn=onyx_mb_alpn -Donyx_nstls_version=onyx_mb_version \
 	-Donyx_nstls_chain_free=onyx_mb_chain_free -Donyx_nstls_start=onyx_mb_start \
 	-Donyx_nstls_open=onyx_mb_open -Donyx_nstls_cancel_flag=onyx_mb_cancel_flag \
 	-Donyx_nstls_resumed=onyx_mb_resumed -Donyx_nstls_sessions_load=onyx_mb_sessions_load \

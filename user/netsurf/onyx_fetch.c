@@ -1388,12 +1388,13 @@ static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool
 	/* Onyx: the perf log -- where a new connection's time went */
 	if (onyx_perf_on()) {
 		const char *alpn = tls ? onyx_nstls_alpn(k->ts) : NULL;
-		fprintf(stderr, "ONYX-PERF net:conn %s:%u queue %lu dns %lu tcp %lu%s tls %lu %s %s us\n",
+		fprintf(stderr, "ONYX-PERF net:conn %s:%u queue %lu dns %lu tcp %lu%s tls %lu %s %s us %s\n",
 				host, port, (unsigned long) ct.queue, (unsigned long) ct.dns,
 				(unsigned long) ct.tcp, ct.wait ? " (waited for a socket)" : "",
 				(unsigned long) (tls ? onyx_perf_now() - t0 : 0),
 				!tls ? "-" : onyx_nstls_resumed(k->ts) ? "resumed" : "full",
-				alpn != NULL ? alpn : "http/1.1");
+				alpn != NULL ? alpn : "http/1.1",
+				tls && onyx_nstls_version(k->ts) != NULL ? onyx_nstls_version(k->ts) : "");
 	}
 	return true;
 }

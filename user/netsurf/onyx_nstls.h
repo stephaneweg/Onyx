@@ -76,6 +76,9 @@ void onyx_nstls_chain_free(struct onyx_tls_chain *chain);
 /* The protocol ALPN chose ("h2", "http/1.1"), or NULL. */
 const char *onyx_nstls_alpn(onyx_tls_sess *s);
 
+/* Onyx: the TLS version negotiated ("TLSv1.3", "TLSv1.2"), for the perf log */
+const char *onyx_nstls_version(onyx_tls_sess *s);
+
 /* TCP connect to host:port, then run the TLS handshake (the certificate checked). NULL on any
  * failure. */
 onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port);

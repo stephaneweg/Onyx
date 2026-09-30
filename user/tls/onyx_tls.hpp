@@ -20,7 +20,8 @@
 //     (mbedTLS is built without MBEDTLS_HAVE_TIME_DATE: the dates are checked here, and only
 //     when the clock is set -- a year >= 2025). NetSurf does (user/netsurf/onyx_nstls.cpp).
 //
-// Built for mbedTLS 3.6.x configured bare-metal (no NET/FS/TIMING, TLS 1.2). See
+// Built for mbedTLS 3.6.x configured bare-metal (no NET/FS/TIMING; TLS 1.2 and 1.3 -- 1.3 on
+// PSA crypto, its random generator ours: mbedtls_psa_external_get_random below). See
 // user/tls/README and the onyx_mbedtls_config.h that pins the configuration.
 //
 #ifndef ONYX_TLS_HPP
@@ -28,11 +29,33 @@
 
 #include "kapi.h"
 #include <string.h>		// memcpy
-#include <stdlib.h>		// malloc / free (the check's record, the roots)
+#include <stdlib.h>		// malloc / free (the check's record, the roots), getenv
+#include <stdio.h>		// (the debug lines)
 
 #include <mbedtls/ssl.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
+#include <psa/crypto.h>
+
+// (Onyx) TLS 1.3 runs on PSA crypto, built with MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG: its random
+// bytes are the app's -- kapi_random, as the TLS 1.2 DRBG's seed (see the security note). Weak:
+// every app that includes this header has it, the linker keeps one.
+#if defined(MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG)
+extern "C" __attribute__((weak)) psa_status_t mbedtls_psa_external_get_random (
+	mbedtls_psa_external_random_context_t *ctx, uint8_t *out, size_t size, size_t *olen)
+{
+	(void) ctx;
+	size_t got = 0;
+	while (got < size) {
+		unsigned want = size - got > 4096 ? 4096u : (unsigned) (size - got);
+		int n = kapi_random (out + got, want);
+		if (n <= 0) { *olen = got; return PSA_ERROR_INSUFFICIENT_ENTROPY; }
+		got += (size_t) n;
+	}
+	*olen = got;
+	return PSA_SUCCESS;
+}
+#endif
 
 // These live in mbedtls/net_sockets.h, which is empty when MBEDTLS_NET_C is off
 // (we provide our own BIO). Define the canonical values if absent.
@@ -72,6 +95,8 @@ namespace onyx_tls
 		volatile int             *cancel;	// (Onyx) set by another thread: stop waiting, fail
 		int                       vrfy_calls;	// (Onyx) certificates the check looked at
 		bool                      resumed;	// (Onyx) the handshake resumed a cached session
+		char                      host[128];	// (Onyx) for the TLS 1.3 tickets that come later
+		bool                      trusted;	// (Onyx) its certificate checked and good
 	};
 
 	// (Onyx) an app-wide "stop now" for the handshakes and writes in progress (NetSurf's end:
@@ -271,6 +296,26 @@ namespace onyx_tls
 		}
 	}
 
+	// (Onyx) NS_TLSDEBUG=1 (the PC bench): each handshake's version and resumption on stderr
+	inline bool debug (void)
+	{
+		static int d = -1;
+		if (d < 0) { const char *e = getenv ("NS_TLSDEBUG"); d = e != 0 && *e == '1'; }
+		return d > 0;
+	}
+
+	// (Onyx) PSA crypto set up once per app (TLS 1.3's key exchange and record protection)
+	inline bool psa_ready (void)
+	{
+		static volatile int s_lk, s_state;		// 0 not yet, 1 ready, -1 failed
+		if (s_state == 0) {
+			kapi_lock (&s_lk);
+			if (s_state == 0) s_state = psa_crypto_init () == PSA_SUCCESS ? 1 : -1;
+			kapi_unlock (&s_lk);
+		}
+		return s_state > 0;
+	}
+
 	// ---- session lifecycle -------------------------------------------------
 	// Returns 0 on a completed handshake, -1 on any failure (caller closes the sock), -2 (Onyx,
 	// START_VERIFY) the server's certificate refused (*vr says why; stop () the session).
@@ -284,7 +329,14 @@ namespace onyx_tls
 		s.cancel = cancel_flag ();
 		s.vrfy_calls = 0;
 		s.resumed = false;
-		bool offered = false;
+		s.trusted = false;
+		{
+			unsigned i = 0;
+			for (; host[i] != '\0' && i < sizeof s.host - 1; i++) s.host[i] = host[i];
+			s.host[i] = '\0';
+		}
+		bool offered = false, offered_trusted = false;
+		bool tls13 = psa_ready ();		// (no PSA: TLS 1.2 only)
 		mbedtls_ssl_init (&s.ssl);
 		mbedtls_ssl_config_init (&s.conf);
 		mbedtls_ctr_drbg_init (&s.drbg);
@@ -310,37 +362,71 @@ namespace onyx_tls
 			mbedtls_ssl_conf_authmode (&s.conf, MBEDTLS_SSL_VERIFY_NONE);
 		}
 		mbedtls_ssl_conf_rng (&s.conf, mbedtls_ctr_drbg_random, &s.drbg);
+		// (Onyx) TLS 1.2 and 1.3, as the browsers
+		mbedtls_ssl_conf_min_tls_version (&s.conf, MBEDTLS_SSL_VERSION_TLS1_2);
+		mbedtls_ssl_conf_max_tls_version (&s.conf, tls13 ? MBEDTLS_SSL_VERSION_TLS1_3 :
+						  MBEDTLS_SSL_VERSION_TLS1_2);
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3) && defined(MBEDTLS_SSL_SESSION_TICKETS)
+		// the TLS 1.3 tickets (sent after the handshake) handed to recv: kept for the next time
+		mbedtls_ssl_conf_tls13_enable_signal_new_session_tickets (&s.conf,
+				MBEDTLS_SSL_TLS1_3_SIGNAL_NEW_SESSION_TICKETS_ENABLED);
+#endif
 		// (Onyx) ALPN, when asked: HTTP/2 offered, or HTTP/1.1 named
 		static const char *s_alpn_h2[] = { "h2", "http/1.1", 0 };
 		static const char *s_alpn_h1[] = { "http/1.1", 0 };
 		if (opts & (START_ALPN_H2 | START_ALPN_H1))
 			mbedtls_ssl_conf_alpn_protocols (&s.conf, (opts & START_ALPN_H2) ? s_alpn_h2 : s_alpn_h1);
 
-		// The Pi 4's Cortex-A72 has NO ARMv8 crypto extensions, so AES-GCM is slow in
-		// software (no hardware AES, and no PMULL for GHASH). Prefer ChaCha20-Poly1305 --
-		// a pure-software AEAD that's fast without any crypto hardware -- and fall back to
-		// AES-GCM only if the server doesn't offer ChaCha. (network lever 1)
+		// (Onyx) the cipher suites in Chrome's order (its ClientHello on a desktop: the TLS 1.3
+		// ones, then 1.2's) -- a client whose list is its own is told apart from the browser
+		// it names in its User-Agent (Google's "unusual traffic", CDNs' 403). The Pi 4's
+		// Cortex-A72 has no AES instructions: AES-GCM is slower than ChaCha20 in software,
+		// still far faster than the network. (The suites this mbedTLS lacks are skipped.)
 		static const int s_ciphersuites[] = {
-			MBEDTLS_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-			MBEDTLS_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+			MBEDTLS_TLS1_3_AES_128_GCM_SHA256,
+			MBEDTLS_TLS1_3_AES_256_GCM_SHA384,
+			MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
+#endif
 			MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 			MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			MBEDTLS_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			MBEDTLS_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			MBEDTLS_TLS_RSA_WITH_AES_128_GCM_SHA256,
+			MBEDTLS_TLS_RSA_WITH_AES_256_GCM_SHA384,
+			MBEDTLS_TLS_RSA_WITH_AES_128_CBC_SHA,
+			MBEDTLS_TLS_RSA_WITH_AES_256_CBC_SHA,
 			0
 		};
 		mbedtls_ssl_conf_ciphersuites (&s.conf, s_ciphersuites);
+		// (Onyx) the signature algorithms in Chrome's order
+		static const uint16_t s_sig_algs[] = {
+			MBEDTLS_TLS1_3_SIG_ECDSA_SECP256R1_SHA256,
+			MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA256,
+			MBEDTLS_TLS1_3_SIG_RSA_PKCS1_SHA256,
+			MBEDTLS_TLS1_3_SIG_ECDSA_SECP384R1_SHA384,
+			MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA384,
+			MBEDTLS_TLS1_3_SIG_RSA_PKCS1_SHA384,
+			MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA512,
+			MBEDTLS_TLS1_3_SIG_RSA_PKCS1_SHA512,
+			MBEDTLS_TLS1_3_SIG_NONE
+		};
+		mbedtls_ssl_conf_sig_algs (&s.conf, s_sig_algs);
 
-		// Prefer X25519 for the ECDHE key exchange (fastest curve in pure software), then
-		// secp256r1 as fallback. (network lever 3; MBEDTLS_HAVE_ASM -- the assembly bignum
-		// -- stays enabled in the mbedTLS config for the rest of the handshake math.)
-		// (Onyx) secp384r1 / secp521r1 too: with TLS 1.2 mbedTLS refuses a server certificate
-		// whose EC key is on a curve not in this list (BADCERT_BAD_KEY) -- P-384 keys are common.
+		// Prefer X25519 for the ECDHE key exchange (fastest curve in pure software; the TLS
+		// 1.3 key share is sent for it), then secp256r1 and secp384r1 -- Chrome's groups (less
+		// its post-quantum hybrid, X25519MLKEM768, which mbedTLS lacks). (network lever 3;
+		// MBEDTLS_HAVE_ASM -- the assembly bignum -- stays enabled for the handshake math.)
+		// (Onyx) with TLS 1.2 mbedTLS refuses a server certificate whose EC key is on a curve
+		// not in this list (BADCERT_BAD_KEY): P-384 keys are common, P-521 ones rare.
 		static const uint16_t s_groups[] = {
 			MBEDTLS_SSL_IANA_TLS_GROUP_X25519,
 			MBEDTLS_SSL_IANA_TLS_GROUP_SECP256R1,
 			MBEDTLS_SSL_IANA_TLS_GROUP_SECP384R1,
-			MBEDTLS_SSL_IANA_TLS_GROUP_SECP521R1,
 			0
 		};
 		mbedtls_ssl_conf_groups (&s.conf, s_groups);
@@ -354,6 +440,7 @@ namespace onyx_tls
 			kapi_lock (sess_lock ());
 			SessCacheEntry *resume = sess_find (host);
 			if (resume != 0) offered = mbedtls_ssl_set_session (&s.ssl, &resume->sess) == 0;
+			offered_trusted = offered && resume->trusted;
 			kapi_unlock (sess_lock ());
 		}
 
@@ -372,6 +459,9 @@ namespace onyx_tls
 		}
 		if (opts & START_VERIFY) {		// (Onyx) the check's verdict
 			uint32_t f = mbedtls_ssl_get_verify_result (&s.ssl);
+			// (a resumed session -- a TLS 1.3 ticket -- has no certificate to check: its first
+			// connection's was, and only a trusted one is offered as trusted)
+			if (offered && s.vrfy_calls == 0 && offered_trusted) f = 0;
 			if (vr != 0) {
 				vr->flags = f;
 				// (the secondary checks -- the key's curve, its usage -- are the server's)
@@ -386,13 +476,19 @@ namespace onyx_tls
 			// server took it: an abbreviated handshake)
 			s.resumed = offered && s.vrfy_calls == 0;
 		}
-		kapi_lock (sess_lock ());
-		sess_save (host, &s.ssl);		// cache the (resumable) session for next time
-		{
+		if (debug ())
+			fprintf (stderr, "ONYX-TLS %s: %s, a session offered %d (trusted %d), %d certificates\n",
+				 host, mbedtls_ssl_get_version (&s.ssl), offered, offered_trusted, s.vrfy_calls);
+		s.trusted = (opts & START_VERIFY) && (mbedtls_ssl_get_verify_result (&s.ssl) == 0 ||
+				(s.resumed && offered_trusted));
+		if (mbedtls_ssl_get_version_number (&s.ssl) != MBEDTLS_SSL_VERSION_TLS1_3) {
+			// (TLS 1.3: the session comes later, as a ticket -- recv)
+			kapi_lock (sess_lock ());
+			sess_save (host, &s.ssl);		// cache the (resumable) session for next time
 			SessCacheEntry *e = sess_find (host);	// (Onyx) kept on the card only if trusted
-			if (e != 0) e->trusted = (opts & START_VERIFY) && mbedtls_ssl_get_verify_result (&s.ssl) == 0;
+			if (e != 0) e->trusted = s.trusted;
+			kapi_unlock (sess_lock ());
 		}
-		kapi_unlock (sess_lock ());
 		return 0;
 	}
 
@@ -489,6 +585,17 @@ namespace onyx_tls
 		int ret = mbedtls_ssl_read (&s.ssl, (unsigned char *) buf, (size_t) len);
 		if (ret > 0) return ret;
 		if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) return 0;
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3) && defined(MBEDTLS_SSL_SESSION_TICKETS)
+		if (ret == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
+			// (Onyx) a TLS 1.3 ticket: the session to resume next time
+			kapi_lock (sess_lock ());
+			sess_save (s.host, &s.ssl);
+			SessCacheEntry *e = sess_find (s.host);
+			if (e != 0) e->trusted = s.trusted;
+			kapi_unlock (sess_lock ());
+			return 0;
+		}
+#endif
 		return -1;	// PEER_CLOSE_NOTIFY, 0, or any error -> closed
 	}
 
