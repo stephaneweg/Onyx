@@ -547,6 +547,58 @@ static inline int layout_pct_height_base(
 }
 
 /**
+ * Onyx: a box's preferred aspect ratio (width / height, CSS Sizing 4 aspect-ratio) for a
+ * non-replaced box, or 0; and the other dimension of its content box from one (box-sizing:
+ * the ratio is of its border box's with border-box). bp: its borders and paddings across
+ * (the dimension given) and along (the one computed).
+ */
+static inline float lh__aspect_ratio(const struct box *b)
+{
+	css_fixed rw = 0, rh = 0;
+	uint8_t t;
+
+	if (b->style == NULL || b->object != NULL || b->gadget != NULL)
+		return 0;
+	t = css_computed_aspect_ratio(b->style, &rw, &rh);
+	if ((t == CSS_ASPECT_RATIO_SET || t == CSS_ASPECT_RATIO_AUTO_SET) &&
+	    rw > 0 && rh > 0)
+		return FIXTOFLT(rw) / FIXTOFLT(rh);
+	return 0;
+}
+
+/** Onyx: the content width from a content height and the ratio (see lh__aspect_ratio) */
+static inline int lh__ratio_width(const struct box *b, float r, int height)
+{
+	int bpx = b->padding[LEFT] + b->padding[RIGHT] + b->border[LEFT].width +
+			b->border[RIGHT].width;
+	int bpy = b->padding[TOP] + b->padding[BOTTOM] + b->border[TOP].width +
+			b->border[BOTTOM].width;
+	int w;
+
+	if (css_computed_box_sizing(b->style) == CSS_BOX_SIZING_BORDER_BOX)
+		w = (int) lroundf((height + bpy) * r) - bpx;
+	else
+		w = (int) lroundf(height * r);
+	return w > 0 ? w : 0;
+}
+
+/** Onyx: the content height from a content width and the ratio */
+static inline int lh__ratio_height(const struct box *b, float r, int width)
+{
+	int bpx = b->padding[LEFT] + b->padding[RIGHT] + b->border[LEFT].width +
+			b->border[RIGHT].width;
+	int bpy = b->padding[TOP] + b->padding[BOTTOM] + b->border[TOP].width +
+			b->border[BOTTOM].width;
+	int h;
+
+	if (css_computed_box_sizing(b->style) == CSS_BOX_SIZING_BORDER_BOX)
+		h = (int) lroundf((width + bpx) / r) - bpy;
+	else
+		h = (int) lroundf(width / r);
+	return h > 0 ? h : 0;
+}
+
+/**
  * Calculate width, height, and thickness of margins, paddings, and borders.
  *
  * \param  unit_len_ctx     Length conversion context

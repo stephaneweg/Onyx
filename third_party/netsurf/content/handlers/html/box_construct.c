@@ -649,6 +649,24 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		return false;
 	}
 
+	/* Onyx: display: contents -- the element has no box of its own: its
+	 * box is kept off the tree (its style, which its children inherit), an
+	 * inline's type so that its children find its parent's box as theirs
+	 * (box_extract_properties), with no inline end */
+	if (!props.node_is_root && !(box->flags & IS_REPLACED) &&
+	    box->type != BOX_NONE &&
+	    ns_computed_display(box->style, false) == CSS_DISPLAY_CONTENTS) {
+		box->type = BOX_INLINE;
+		box->width = box->height = 0;
+		err = dom_node_set_user_data(ctx->n,
+				corestring_dom___ns_key_box_node_data, box, NULL,
+				(void *) &old_box);
+		if (err != DOM_NO_ERR)
+			return false;
+		box->node = dom_node_ref(ctx->n);
+		return true;
+	}
+
 	/* Handle the :before pseudo element */
 	if (!(box->flags & IS_REPLACED)) {
 		box_construct_generate(ctx->n, ctx->content, box,
@@ -809,6 +827,12 @@ static void box_construct_element_after(dom_node *n, html_content *content)
 	assert(box != NULL);
 
 	box_extract_properties(n, &props);
+
+	/* Onyx: display: contents (no box on the tree: no inline end) */
+	if (box->parent == NULL && box->style != NULL &&
+	    !props.node_is_root &&
+	    ns_computed_display(box->style, false) == CSS_DISPLAY_CONTENTS)
+		return;
 
 	if (box->type == BOX_INLINE || box->type == BOX_BR) {
 		/* Insert INLINE_END into containing block */

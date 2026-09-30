@@ -1138,6 +1138,26 @@ static void layout_minmax_block(
 		layout_minmax_grid(block, &content->unit_len_ctx, &min, &max);
 	}
 
+	/* Onyx: aspect-ratio and a definite height: the content width (as a
+	 * replaced element's) */
+	if (block->object == NULL && block->style != NULL &&
+	    lh__aspect_ratio(block) > 0) {
+		css_fixed hv = 0, wv = 0;
+		css_unit hu = CSS_UNIT_PX, wu = CSS_UNIT_PX;
+		if (css_computed_width(block->style, &wv, &wu) ==
+				CSS_WIDTH_AUTO &&
+		    css_computed_height(block->style, &hv, &hu) ==
+				CSS_HEIGHT_SET && hu != CSS_UNIT_PCT) {
+			int h = FIXTOINT(css_unit_len2device_px(block->style,
+					&content->unit_len_ctx, hv, hu));
+			int w = (int) lroundf(h * lh__aspect_ratio(block));
+			if (w > min)
+				min = w;
+			if (w > max)
+				max = w;
+		}
+	}
+
 	/* Onyx: a flex container's widths are its items' contributions
 	 * (layout_flex.c: CSS Flexbox 9.9.1, the gaps) */
 	if (block->object == NULL && lh__box_is_flex_container(block)) {
@@ -1643,10 +1663,20 @@ layout_block_find_dimensions(const css_unit_ctx *unit_len_ctx,
 	 * not fill the line: Chrome's) */
 	layout_text_control_size(unit_len_ctx, box, &width, &height);
 
+	/* Onyx: aspect-ratio -- an auto width from a definite height */
+	{
+		float r = lh__aspect_ratio(box);
+		if (r > 0 && width == AUTO && height != AUTO)
+			width = lh__ratio_width(box, r, height);
+	}
+
 	box->width = layout_solve_width(box, available_width, width, lm, rm,
 			max_width, min_width);
 	/* Onyx: a specified height within min-height / max-height (it was
 	 * clamped only when it came from the content) */
+	/* Onyx: aspect-ratio -- an auto height from the width */
+	if (height == AUTO && lh__aspect_ratio(box) > 0)
+		height = lh__ratio_height(box, lh__aspect_ratio(box), box->width);
 	if (height != AUTO) {
 		if (max_height >= 0 && height > max_height)
 			height = max_height;
@@ -2643,6 +2673,12 @@ layout_float_find_dimensions(
 			height = FIXTOINT(css_unit_len2device_px(
 					box->style, unit_len_ctx, size, unit));
 		}
+	} else if (width == AUTO && height != AUTO &&
+			lh__aspect_ratio(box) > 0) {
+		/* Onyx: aspect-ratio -- the width from the height */
+		width = lh__ratio_width(box, lh__aspect_ratio(box), height);
+		if (max_width >= 0 && width > max_width) width = max_width;
+		if (min_width >  0 && width < min_width) width = min_width;
 	} else if (width == AUTO) {
 		/* CSS 2.1 section 10.3.5 */
 		width = min(max(box->min_width, available_width),
@@ -2681,6 +2717,9 @@ layout_float_find_dimensions(
 	}
 
 	box->width = width;
+	/* Onyx: aspect-ratio -- an auto height from the width */
+	if (height == AUTO && box->object == NULL && lh__aspect_ratio(box) > 0)
+		height = lh__ratio_height(box, lh__aspect_ratio(box), width);
 	box->height = height;
 
 	if (margin[TOP] == AUTO)
