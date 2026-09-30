@@ -1,3 +1,0 @@
-# Onyx application metadata
-name = httpc
-category = Internet
