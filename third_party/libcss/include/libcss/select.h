@@ -199,6 +199,13 @@ css_error css_libcss_node_data_handler(css_select_handler *handler,
 		css_node_data_action action, void *pw, void *node,
 		void *clone_node, void *libcss_node_data);
 
+/**
+ * Onyx: a custom property's value on an element (its var() already substituted), from
+ * the node data its selection stored; NULL if it has none. The caller unrefs it.
+ * (Inline <svg>: `fill: var(--x)` resolved when the SVG text is made.)
+ */
+lwc_string *css_onyx_node_var(void *libcss_node_data, const char *name, size_t len);
+
 css_error css_select_ctx_create(css_select_ctx **result);
 css_error css_select_ctx_destroy(css_select_ctx *ctx);
 

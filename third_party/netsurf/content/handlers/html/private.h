@@ -170,6 +170,9 @@ typedef struct html_content {
 	struct content_html_object *object_list;
 	/** Forms, in reverse order to document. */
 	struct form *forms;
+	/** Onyx: the form controls outside any form (a React app's inputs), kept for the
+	 * document's life so a rebox finds them again (linked by their next) */
+	struct form_control *orphan_controls;
 	/** Hash table of imagemaps. */
 	struct imagemap **imagemaps;
 
@@ -389,6 +392,8 @@ dom_hubbub_error html_process_script(void *ctx, dom_node *node);
 
 /* in html/forms.c */
 struct form *html_forms_get_forms(const char *docenc, dom_html_document *doc);
+/** Onyx: a node's control -- a form's, or one outside any form, kept (orphan_controls) */
+struct form_control *html_forms_control_for_node(struct html_content *c, dom_node *node);
 struct form_control *html_forms_get_control_for_node(struct form *forms,
 		dom_node *node);
 

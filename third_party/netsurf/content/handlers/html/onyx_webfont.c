@@ -231,9 +231,13 @@ static void onyx_webfont_face(void *pw, const css_font_face *face)
 	wf->next = c->webfonts;
 	c->webfonts = wf;
 
-	err = llcache_handle_retrieve(url, LLCACHE_RETRIEVE_NO_ERROR_PAGES,
-			content_get_url(&c->base), NULL,
-			onyx_webfont_fetched, wf, &wf->handle);
+	{
+		/* (its destination: a font, a CORS request -- Fetch Metadata) */
+		static const char *const hdrs[] = { "X-Onyx-Dest: font", NULL };
+		err = llcache_handle_retrieve_ex(url, LLCACHE_RETRIEVE_NO_ERROR_PAGES,
+				content_get_url(&c->base), NULL, hdrs,
+				onyx_webfont_fetched, wf, &wf->handle);
+	}
 	if (err != NSERROR_OK) {
 		wf->handle = NULL;
 		return;

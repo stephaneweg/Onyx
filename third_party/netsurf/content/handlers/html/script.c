@@ -46,6 +46,14 @@
 typedef bool (script_handler_t)(struct jsthread *jsthread, const uint8_t *data, size_t size, const char *name);
 
 
+/* Onyx: a <script src>'s load / error event, when it has run or failed to come (script
+ * loaders wait for them: Facebook's bootloader, Google's) */
+static void html_script_fire(html_content *c, struct dom_node *node, bool ok)
+{
+	if (c->jsthread != NULL && node != NULL)
+		js_fire_event(c->jsthread, ok ? "load" : "error", c->document, node);
+}
+
 static script_handler_t *select_script_handler(content_type ctype)
 {
 	if (ctype == CONTENT_JS) {
@@ -108,6 +116,8 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 				s = &(c->scripts[i]);
 
 				s->already_started = true;
+				html_script_fire(c, s->node, true);	/* (Onyx) */
+				s = &(c->scripts[i]);
 
 			}
 		}
@@ -198,8 +208,10 @@ convert_script_async_cb(hlcache_handle *script,
 
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
+		s->already_started = true;	/* (Onyx: no run for it) */
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		html_script_fire(parent, s->node, false);	/* (Onyx) */
 
 		break;
 
@@ -261,8 +273,10 @@ convert_script_defer_cb(hlcache_handle *script,
 
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
+		s->already_started = true;	/* (Onyx: no run for it) */
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		html_script_fire(parent, s->node, false);	/* (Onyx) */
 
 		break;
 
@@ -331,6 +345,8 @@ convert_script_sync_cb(hlcache_handle *script,
 			script_handler(parent->jsthread, data, size,
 				       nsurl_access(hlcache_handle_get_url(s->data.handle)));
 			js_set_current_script(parent->jsthread, NULL);
+			s = &(parent->scripts[i]);	/* (Onyx: may have moved) */
+			html_script_fire(parent, s->node, true);
 		}
 
 		/* continue parse */
@@ -355,6 +371,7 @@ convert_script_sync_cb(hlcache_handle *script,
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
 
 		s->already_started = true;
+		html_script_fire(parent, s->node, false);	/* (Onyx) */
 
 		/* continue parse */
 		if (parent->parser != NULL && active_sync_scripts == 0) {

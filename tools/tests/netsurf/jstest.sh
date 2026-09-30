@@ -55,7 +55,16 @@ echo "js-rawtext.html (innerHTML of a script, a textarea)"
 L=$OUT/js-rawtext.log
 run js-rawtext.html "$(waits 30)" "$L"
 expect "$L" "inner script ran 3"
+expect "$L" "inserted script changed the DOM 1"
 expect "$L" "textarea a & <b>"
+
+echo "js-loadevents.html (load / error events of scripts, sheets, images)"
+L=$OUT/js-loadevents.log
+run js-loadevents.html "$(waits 60)" "$L"
+for s in "script error" "script load 42" "link load" "detached load 480x270 true" "detached error" \
+	 "img b error" "img a load 480x270 true"; do
+	expect "$L" "$s"
+done
 
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
@@ -120,6 +129,16 @@ run js-reactreveal.html "$(waits 60)" "$L"
 expect "$L" "reveal content true"
 expect "$L" "reveal fallback gone true"
 expect "$L" "reveal after kept true"
+
+echo "canvas-api.html (<canvas> 2D: state, paths, pixels, text, images, OffscreenCanvas)"
+L=$OUT/canvas-api.log
+run canvas-api.html "$(waits 80)" "$L"
+grep "^console: FAIL \|^JS " "$L" | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL \|^JS " "$L" || ! grep -q "^console: canvas: done 40" "$L"; then
+	echo "  FAIL: $(grep -c '^console: OK ' "$L") of 40 checks"; fail=1
+else
+	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
+fi
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

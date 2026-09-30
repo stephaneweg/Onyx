@@ -41,6 +41,7 @@
 #include "desktop/gui_internal.h"
 
 #include "html/html.h"
+#include "javascript/js.h"
 #include "html/private.h"
 #include "html/css.h"
 
@@ -115,6 +116,9 @@ html_convert_css_callback(hlcache_handle *css,
 		      nsurl_access(hlcache_handle_get_url(css)));
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		/* Onyx: the <link> / <style>'s load event (async CSS loaders wait for it) */
+		if (parent->jsthread != NULL && s->node != NULL)
+			js_fire_event(parent->jsthread, "load", parent->document, s->node);
 		break;
 
 	case CONTENT_MSG_ERROR:
@@ -130,6 +134,8 @@ html_convert_css_callback(hlcache_handle *css,
 		s->sheet = NULL;
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		if (parent->jsthread != NULL && s->node != NULL)	/* (Onyx) */
+			js_fire_event(parent->jsthread, "error", parent->document, s->node);
 		break;
 
 	case CONTENT_MSG_POINTER:
@@ -466,7 +472,8 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	}
 
 	htmlc->stylesheets = stylesheets;
-	htmlc->stylesheets[htmlc->stylesheet_count].node = NULL;
+	/* Onyx: its <link>, for its load / error events (a ref, released with the sheets) */
+	htmlc->stylesheets[htmlc->stylesheet_count].node = dom_node_ref(node);
 	htmlc->stylesheets[htmlc->stylesheet_count].modified = false;
 	htmlc->stylesheets[htmlc->stylesheet_count].unused = false;
 

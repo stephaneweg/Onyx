@@ -359,7 +359,9 @@ class EventTarget {
 		if (!fn)
 			return;
 		const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture);
-		const l = listenersOf(this, true);
+		/* (Onyx: called unbound -- const add = addEventListener; add(...) -- it is the
+		 * window's, as in a browser) */
+		const l = listenersOf(this == null ? G : this, true);
 		let list = l.get(type);
 		if (!list)
 			l.set(type, list = []);
@@ -373,7 +375,7 @@ class EventTarget {
 	}
 	removeEventListener(type, fn, opts) {
 		const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture);
-		const l = listenersOf(this, false);
+		const l = listenersOf(this == null ? G : this, false);
 		const list = l && l.get(type);
 		if (!list)
 			return;
@@ -386,7 +388,7 @@ class EventTarget {
 	dispatchEvent(ev) {
 		if (!(ev instanceof Event))
 			throw new TypeError('not an Event');
-		return dispatch(this, ev);
+		return dispatch(this == null ? G : this, ev);
 	}
 }
 G.EventTarget = EventTarget;
@@ -1767,10 +1769,14 @@ function reflectNumber(proto, prop, attr, dflt) {
 		set(v) { this.setAttribute(attr, String(v)); } });
 }
 
+class DOMStringMap {}
+G.DOMStringMap = DOMStringMap;
+
 class HTMLElement extends Element {
 	get dataset() {
 		const el = this;
-		return new Proxy({}, {
+		/* (Onyx: an instance of DOMStringMap -- Facebook's loader checks) */
+		return new Proxy(Object.create(DOMStringMap.prototype), {
 			get(t, p) {
 				if (typeof p !== 'string') return undefined;
 				const v = N.attr(el, 'data-' + p.replace(/[A-Z]/g, c => '-' + c.toLowerCase()));
@@ -1926,17 +1932,44 @@ htmlClass('HTMLAnchorElement', ['a'], HTMLAnchorElement);
 htmlClass('HTMLAreaElement', ['area'], class extends HTMLAnchorElement {});
 
 class HTMLImageElement extends HTMLElement {
-	get complete() { return true; }
-	get naturalWidth() { return N.rect(this)[2]; }
-	get naturalHeight() { return N.rect(this)[3]; }
-	get width() { const v = parseInt(N.attr(this, 'width'), 10); return isNaN(v) ? N.rect(this)[2] : v; }
+	/* (Onyx: the picture's state and natural size, NetSurf's for a displayed image; an image
+	 * a script loads -- new Image() -- is canvas.js's) */
+	_img() { return this.isConnected ? N.image(this) : null; }
+	get complete() {
+		if (!N.attr(this, 'src')) return true;
+		const st = this._img();
+		return st ? st[0] !== 0 : true;
+	}
+	get naturalWidth() { const st = this._img(); return st ? st[1] : 0; }
+	get naturalHeight() { const st = this._img(); return st ? st[2] : 0; }
+	get width() {
+		const v = parseInt(N.attr(this, 'width'), 10);
+		if (!isNaN(v)) return v;
+		if (this.isConnected && N.boxed(this)) return N.rect(this)[2];
+		return this.naturalWidth;
+	}
 	set width(v) { this.setAttribute('width', String(v)); }
-	get height() { const v = parseInt(N.attr(this, 'height'), 10); return isNaN(v) ? N.rect(this)[3] : v; }
+	get height() {
+		const v = parseInt(N.attr(this, 'height'), 10);
+		if (!isNaN(v)) return v;
+		if (this.isConnected && N.boxed(this)) return N.rect(this)[3];
+		return this.naturalHeight;
+	}
 	set height(v) { this.setAttribute('height', String(v)); }
 	get currentSrc() { return this.src; }
-	decode() { return Promise.resolve(); }
+	get src() { const v = N.attr(this, 'src'); try { return v ? new URL(v, N.url()).href : ''; } catch (e) { return v || ''; } }
+	set src(v) { this.setAttribute('src', v); }
+	decode() {
+		if (this.complete) return this.naturalWidth || !N.attr(this, 'src') ? Promise.resolve() :
+			Promise.reject(new DOMException('The source image cannot be decoded.', 'EncodingError'));
+		return new Promise((res, rej) => {
+			const ok = () => { this.removeEventListener('error', ko); res(); };
+			const ko = () => { this.removeEventListener('load', ok); rej(new DOMException('The source image cannot be decoded.', 'EncodingError')); };
+			this.addEventListener('load', ok, { once: true });
+			this.addEventListener('error', ko, { once: true });
+		});
+	}
 }
-reflectURL(HTMLImageElement.prototype, 'src');
 for (const p of ['alt', 'srcset', 'sizes', 'loading', 'decoding', 'crossOrigin', 'useMap', 'referrerPolicy'])
 	reflectString(HTMLImageElement.prototype, p);
 reflectBool(HTMLImageElement.prototype, 'isMap');
@@ -2833,15 +2866,21 @@ function storageOrigin() {
 	} catch (e) { return null; }
 }
 function storageProxy(origin) {
-	return new Proxy(new Storage(origin), {
+	/* (Onyx: the proxy's target is an empty object -- the Storage's own non-configurable
+	 * fields left out of ownKeys broke the Proxy invariants: Object.keys(localStorage)
+	 * threw "target property must be present in proxy ownKeys" on Facebook) */
+	const st = new Storage(origin);
+	return new Proxy(Object.create(Storage.prototype), {
 		get(t, p) {
-			if (p in t || typeof p !== 'string') { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; }
-			return t.getItem(p) ?? undefined;
+			if (p in st || typeof p !== 'string') { const v = st[p]; return typeof v === 'function' ? v.bind(st) : v; }
+			return st.getItem(p) ?? undefined;
 		},
-		set(t, p, v) { t.setItem(p, v); return true; },
-		deleteProperty(t, p) { t.removeItem(p); return true; },
-		ownKeys(t) { return [...t._m.keys()]; },
-		getOwnPropertyDescriptor(t, p) { const v = t.getItem(p); return v === null ? undefined : { value: v, enumerable: true, configurable: true, writable: true }; },
+		set(t, p, v) { st.setItem(p, v); return true; },
+		has(t, p) { return p in st || (typeof p === 'string' && st.getItem(p) !== null); },
+		deleteProperty(t, p) { st.removeItem(p); return true; },
+		ownKeys(t) { return [...st._m.keys()]; },
+		getOwnPropertyDescriptor(t, p) { const v = typeof p === 'string' ? st.getItem(p) : null; return v === null ? undefined : { value: v, enumerable: true, configurable: true, writable: true }; },
+		defineProperty(t, p, d) { if ('value' in d) st.setItem(p, d.value); return true; },
 	});
 }
 G.Storage = Storage;

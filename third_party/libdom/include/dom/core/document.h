@@ -468,4 +468,7 @@ static inline dom_exception dom_document_set_quirks_mode(
 #define dom_document_set_quirks_mode(d, q) \
 	dom_document_set_quirks_mode((dom_document *) (d), (q))
 
+/* Onyx: set the mutation-event guard (see document.c), the old value returned */
+uint32_t dom_document_onyx_mutation_guard(dom_document *doc, uint32_t depth);
+
 #endif

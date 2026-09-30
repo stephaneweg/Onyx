@@ -822,6 +822,12 @@ struct nsurl *fetch_get_referer(struct fetch *fetch)
 	return fetch != NULL ? fetch->referer : NULL;
 }
 
+/* Onyx: whether the user asked for this fetch (a navigation: Sec-Fetch-User) */
+bool fetch_is_verifiable(struct fetch *fetch)
+{
+	return fetch != NULL && fetch->verifiable;
+}
+
 void fetch_set_cookie(struct fetch *fetch, const char *data)
 {
 	assert(fetch && data);
