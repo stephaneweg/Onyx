@@ -74,6 +74,13 @@ grep "^console: FAIL \|^JS " "$L" | sed 's/^/  FAIL  /'
 if grep -q "^console: FAIL " "$L" || [ "$n_ok" -lt 9 ]; then fail=1; fi
 echo "  $n_ok checks passed"
 
+echo "js-dynimport.html (import() by a URL computed when it runs)"
+L=$OUT/js-dynimport.log
+run js-dynimport.html "$(waits 60)" "$L"
+for s in "dynimport string kept true" "dynimport module 2" "dynimport classic c-loaded"; do
+	expect "$L" "$s"
+done
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"

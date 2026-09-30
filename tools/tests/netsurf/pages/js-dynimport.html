@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>dynamic import() by a computed URL</title></head><body>
+<!-- import() with a URL known only when it runs, from a classic script and from a module
+     (qjs.c rewrites it to __onyxImport: the graph fetched, then imported) -->
+<script>
+var name = 'js-mod-' + 'c.js';
+import('./' + name).then(function (m) { console.log('dynimport classic ' + m.c); },
+	function (e) { console.log('dynimport classic failed ' + e); });
+var s = "import('not rewritten in a string')";
+console.log('dynimport string kept ' + (s.indexOf("import(") === 0));
+</script>
+<script type="module">
+const n = 'js-mod-' + 'b.js';
+const m = await import(`./${n}`);
+console.log('dynimport module ' + Object.keys(m).length);
+</script>
+</body></html>

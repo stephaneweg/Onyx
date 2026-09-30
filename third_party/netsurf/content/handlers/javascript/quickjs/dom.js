@@ -5066,6 +5066,20 @@ function modGraph(url, text, seen) {
 	return NativePromise.all(deps);
 }
 
+/* Onyx: a dynamic import() (qjs.c rewrites it): the module graph fetched first, then the
+ * engine's own import (a classic Function's: not rewritten) finds every source */
+const nativeImport = new Function('u', 'return import(u)');
+G.__onyxImport = (base, spec) => {
+	let url;
+	try { url = new URL(String(spec), base || document.baseURI || location.href).href; }
+	catch (e) { return NativePromise.reject(new TypeError('Failed to resolve module specifier ' + spec)); }
+	return modFetch(url).then(t => {
+		if (t === null)
+			throw new TypeError('Failed to fetch dynamically imported module: ' + url);
+		return modGraph(url, t, new Set([url]));
+	}).then(() => nativeImport(url));
+};
+
 async function modRun(url, text) {
 	await modGraph(url, text, new Set([url]));
 	for (let i = 0; i < 20; i++) {

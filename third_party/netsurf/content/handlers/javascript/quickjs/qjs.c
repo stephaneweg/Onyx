@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <strings.h>
 #include <stdint.h>
 
@@ -823,6 +824,75 @@ static void qjs_mod_meta(JSContext *ctx, JSValueConst func, const char *url)
 }
 
 /** a module compiled from its source in t->modsrc, else named in t->modmissing */
+/* Onyx: a script's dynamic imports -- import(x) becomes __onyxImport(<base>, x) (dom.js): it
+ * fetches the module graph, then imports it (QuickJS's loader cannot wait for the network:
+ * developer.mozilla.org's chunks, import()ed by URL, were "not loaded yet"). <base>: the
+ * module's import.meta.url, null in a classic script (the document's URL). Strings and
+ * comments are skipped. NULL: nothing to change. */
+static char *qjs_rewrite_import(const char *src, size_t len, bool module, size_t *outlen)
+{
+	const char *ins = module ? "import.meta.url, " : "null, ";
+	size_t insl = strlen(ins), cap = 0, o = 0, i, from = 0;
+	char *out = NULL;
+	char q = 0;
+
+	if (len < 8)
+		return NULL;
+	for (i = 0; i + 6 < len; i++) {
+		char c = src[i];
+		if (q != 0) {
+			if (c == '\\') { i++; continue; }
+			if (c == q) q = 0;
+			continue;
+		}
+		if (c == '"' || c == '\'' || c == '`') { q = c; continue; }
+		if (c == '/' && src[i + 1] == '/') {
+			while (i < len && src[i] != '\n') i++;
+			continue;
+		}
+		if (c == '/' && src[i + 1] == '*') {
+			i += 2;
+			while (i + 1 < len && !(src[i] == '*' && src[i + 1] == '/')) i++;
+			i++;
+			continue;
+		}
+		if (c == 'i' && memcmp(src + i, "import", 6) == 0 &&
+		    (i == 0 || !(isalnum((unsigned char) src[i - 1]) || src[i - 1] == '_' ||
+				 src[i - 1] == '$' || src[i - 1] == '.'))) {
+			size_t j = i + 6;
+			while (j < len && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r'))
+				j++;
+			if (j < len && src[j] == '(') {
+				size_t need = o + (i - from) + 12 + (j + 1 - (i + 6)) + insl + (len - j) + 1;
+				if (need > cap) {
+					char *n;
+					cap = need + len / 4 + 64;
+					n = realloc(out, cap);
+					if (n == NULL) { free(out); return NULL; }
+					out = n;
+				}
+				memcpy(out + o, src + from, i - from); o += i - from;
+				memcpy(out + o, "__onyxImport", 12); o += 12;
+				memcpy(out + o, src + i + 6, j + 1 - (i + 6)); o += j + 1 - (i + 6);
+				memcpy(out + o, ins, insl); o += insl;
+				from = j + 1;
+				i = j;
+			}
+		}
+	}
+	if (out == NULL)
+		return NULL;
+	if (o + (len - from) + 1 > cap) {
+		char *n = realloc(out, o + (len - from) + 1);
+		if (n == NULL) { free(out); return NULL; }
+		out = n;
+	}
+	memcpy(out + o, src + from, len - from); o += len - from;
+	out[o] = '\0';
+	*outlen = o;
+	return out;
+}
+
 static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaque)
 {
 	jsthread *t = QJS_T(ctx);
@@ -847,7 +917,13 @@ static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaqu
 	JS_FreeValue(ctx, src);
 	if (text == NULL)
 		return NULL;
-	func = JS_Eval(ctx, text, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(text, len, true, &rl);	/* (Onyx) */
+		func = JS_Eval(ctx, rw ? rw : text, rw ? rl : len, name,
+				JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+		free(rw);
+	}
 	JS_FreeCString(ctx, text);
 	if (JS_IsException(func))
 		return NULL;
@@ -898,7 +974,13 @@ static JSValue n_module_run(JSContext *ctx, JSValueConst this_val, int argc,
 	}
 	JS_FreeValue(ctx, t->modmissing);
 	t->modmissing = JS_NewArray(ctx);
-	func = JS_Eval(ctx, text, len, url, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(text, len, true, &rl);	/* (Onyx) */
+		func = JS_Eval(ctx, rw ? rw : text, rw ? rl : len, url,
+				JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+		free(rw);
+	}
 	JS_FreeCString(ctx, text);
 	if (!JS_IsException(func)) {
 		qjs_mod_meta(ctx, func, url);
@@ -2487,6 +2569,15 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	uint64_t t0 = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 
 	qjs_enter(thread);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(src, txtlen, false, &rl);	/* (Onyx) */
+		if (rw != NULL) {
+			free(src);
+			src = rw;
+			txtlen = rl;
+		}
+	}
 	r = JS_Eval(thread->ctx, src, txtlen, name != NULL ? name : "script",
 			JS_EVAL_TYPE_GLOBAL);
 	if (JS_IsException(r)) {
