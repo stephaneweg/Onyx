@@ -148,3 +148,26 @@ D- @keyframes k { from { color: 12px } }
 + stroke-miterlimit: 4
 + stop-color: rgb(0 0 255 / 50%)
 + stop-opacity: 50%
+
+# ---- selectors (S: the rule kept)
+S+ a:has(> img) { color: red }
+S+ dt:has(+ dt) { color: red }
+S+ section:not(:has(h1, h2)) { color: red }
+S- a:has() { color: red }
+S+ li:nth-child(-n+3 of .important) { color: red }
+S+ :nth-last-child(even of :not([hidden])) { color: red }
+S+ input:read-only, input:placeholder-shown, :required, :defined { color: red }
+S+ ::marker, ::placeholder, ::selection { color: red }
+S+ ::before::marker { color: red }
+S+ ::part(label):hover { color: red }
+S+ ::view-transition-group(*.x.y) { color: red }
+S+ ::scroll-button(inline-start) { color: red }
+S+ :dir(rtl) { color: red }
+S- :dir(up) { color: red }
+S+ :lang(en) { color: red }
+S+ *|html { color: red }
+S+ [*|attr=val] { color: red }
+S+ [att$=val i] { color: red }
+S+ .x::-webkit-scrollbar { display: none }
+S- ::-webkit-unknown-pseudo { color: red }
+S- :hover::marker2 { color: red }

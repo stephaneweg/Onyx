@@ -1059,6 +1059,9 @@ css_error lookupNamespace(css_language *c, lwc_string *prefix, lwc_string **uri)
 
 	if (prefix == NULL) {
 		*uri = NULL;
+	} else if (lwc_string_length(prefix) == 1 && lwc_string_data(prefix)[0] == '*') {
+		/* Onyx: *| -- any namespace (NetSurf's matching ignores them) */
+		*uri = c->strings[UNIVERSAL];
 	} else {
 		for (idx = 0; idx < c->num_namespaces; idx++) {
 			if (lwc_string_isequal(c->namespaces[idx].prefix,
@@ -1202,6 +1205,17 @@ css_error parseAttrib(css_language *c, const parserutils_vector *vector,
 		consumeWhitespace(vector, ctx);
 
 		token = parserutils_vector_iterate(vector, ctx);
+		/* Onyx: the case flag, [a=b i] / [a=b s] (NetSurf compares attribute
+		 * values without case already) */
+		if (token != NULL && token->type == CSS_TOKEN_IDENT &&
+				lwc_string_length(token->idata) == 1 &&
+				(lwc_string_data(token->idata)[0] == 'i' ||
+				 lwc_string_data(token->idata)[0] == 'I' ||
+				 lwc_string_data(token->idata)[0] == 's' ||
+				 lwc_string_data(token->idata)[0] == 'S')) {
+			consumeWhitespace(vector, ctx);
+			token = parserutils_vector_iterate(vector, ctx);
+		}
 		if (token == NULL || tokenIsChar(token, ']') == false)
 			return CSS_INVALID;
 	}
@@ -1419,7 +1433,7 @@ css_error parseNth(css_language *c,
  * is skipped; else it invalidates the list. Pseudo elements are not allowed. */
 static css_error onyx_parse_selector_list_arg(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx, bool where,
-		bool forgiving, css_onyx_selector_list **out)
+		bool forgiving, bool relative, css_onyx_selector_list **out)
 {
 	css_selector *sel[64];
 	uint32_t n = 0, i, spec = 0;
@@ -1432,6 +1446,15 @@ static css_error onyx_parse_selector_list_arg(css_language *c,
 		bool ok;
 
 		consumeWhitespace(vector, ctx);
+		if (relative) {
+			/* :has()'s relative selectors: a leading combinator */
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t != NULL && (tokenIsChar(t, '>') || tokenIsChar(t, '+') ||
+					tokenIsChar(t, '~'))) {
+				parserutils_vector_iterate(vector, ctx);
+				consumeWhitespace(vector, ctx);
+			}
+		}
 		error = parseSelector(c, vector, ctx, &s);
 		ok = (error == CSS_OK);
 		if (ok) {
@@ -1501,6 +1524,8 @@ static css_error onyx_parse_selector_list_arg(css_language *c,
 	}
 	list->n = n;
 	list->specificity = where ? 0 : spec;
+	list->kind = ONYX_SL_IS;
+	list->a = list->b = 0;
 	for (i = 0; i < n; i++)
 		list->sel[i] = sel[i];
 	*out = list;
@@ -1510,6 +1535,231 @@ fail:
 	for (i = 0; i < n; i++)
 		css__stylesheet_selector_destroy(c->sheet, sel[i]);
 	return error;
+}
+
+/* Onyx: the pseudo-classes and pseudo-elements of Selectors 4, CSS Pseudo 4 and the other
+ * specifications that libcss does not know. Parsed and checked (a functional one's argument
+ * too); matched when libcss can say (select.c: :read-only, :read-write, :required, :optional,
+ * :placeholder-shown, :defined, :scope, :dir(), :nth-child(An+B of S)), else never matching
+ * -- a rule "a:has(b), c" keeps its c, as in a browser, where libcss dropped the whole rule.
+ * The pseudo-elements never match (NetSurf draws none of them). */
+static const char *const onyx_pc_plain[] = {
+	"read-only", "read-write", "required", "optional", "placeholder-shown",
+	"default", "indeterminate", "defined", "scope", "valid", "invalid", "user-valid",
+	"user-invalid", "in-range", "out-of-range", "autofill", "-webkit-autofill", "modal",
+	"fullscreen", "-webkit-full-screen", "picture-in-picture", "popover-open", "future",
+	"past", "current", "target-within", "target-current", "blank", "host",
+	"xr-overlay", "active-view-transition", "open", "closed", "playing", "paused",
+	"seeking", "buffering", "stalled", "muted", "volume-locked", "local-link",
+	"has-slotted", "-webkit-any-link", "backdrop"
+};
+static const char *const onyx_pe_plain[] = {
+	"marker", "placeholder", "selection", "backdrop", "file-selector-button",
+	"grammar-error", "spelling-error", "target-text", "details-content", "checkmark",
+	"picker-icon", "color-swatch", "column", "scroll-marker", "scroll-marker-group",
+	"cue", "cue-region", "view-transition", "first-line", "first-letter",
+	/* the -webkit- ones the engines ship (pages hide scrollbars with them) */
+	"-webkit-scrollbar", "-webkit-scrollbar-thumb", "-webkit-scrollbar-track",
+	"-webkit-scrollbar-track-piece", "-webkit-scrollbar-button",
+	"-webkit-scrollbar-corner", "-webkit-resizer", "-webkit-input-placeholder",
+	"-webkit-search-cancel-button", "-webkit-search-decoration",
+	"-webkit-search-results-button", "-webkit-inner-spin-button",
+	"-webkit-outer-spin-button", "-webkit-file-upload-button", "-webkit-details-marker",
+	"-webkit-slider-thumb", "-webkit-slider-runnable-track", "-webkit-progress-bar",
+	"-webkit-progress-value", "-webkit-progress-inner-element", "-webkit-meter-bar",
+	"-webkit-meter-optimum-value", "-webkit-meter-suboptimum-value",
+	"-webkit-meter-even-less-good-value", "-webkit-calendar-picker-indicator",
+	"-webkit-datetime-edit", "-webkit-datetime-edit-fields-wrapper",
+	"-webkit-datetime-edit-text", "-webkit-datetime-edit-year-field",
+	"-webkit-datetime-edit-month-field", "-webkit-datetime-edit-day-field",
+	"-webkit-datetime-edit-hour-field", "-webkit-datetime-edit-minute-field",
+	"-webkit-datetime-edit-second-field", "-webkit-datetime-edit-ampm-field",
+	"-webkit-clear-button", "-webkit-color-swatch", "-webkit-color-swatch-wrapper",
+	"-webkit-media-controls", "-webkit-media-controls-panel",
+	"-webkit-media-controls-play-button", "-webkit-media-controls-enclosure",
+	"-webkit-textfield-decoration-container", "-webkit-validation-bubble"
+};
+
+static bool onyx_in(const css_token *t, const char *const *names, size_t n)
+{
+	size_t i, len = lwc_string_length(t->idata);
+	for (i = 0; i < n; i++)
+		if (strlen(names[i]) == len &&
+				strncasecmp(lwc_string_data(t->idata), names[i], len) == 0)
+			return true;
+	return false;
+}
+
+static bool onyx_is_name(const css_token *t, const char *name)
+{
+	size_t len = lwc_string_length(t->idata);
+	return strlen(name) == len && strncasecmp(lwc_string_data(t->idata), name, len) == 0;
+}
+
+/* a functional pseudo's argument, [*ctx, the ')'): its kind of check */
+enum { ONYX_ARG_IDENT, ONYX_ARG_IDENTS, ONYX_ARG_IDENT_LIST, ONYX_ARG_DIR,
+	ONYX_ARG_SELECTOR, ONYX_ARG_RELATIVE, ONYX_ARG_PT_NAME, ONYX_ARG_SCROLL_BUTTON,
+	ONYX_ARG_NTH_LIST };
+
+static bool onyx_check_simple_arg(const parserutils_vector *vector, int32_t *ctx, int kind)
+{
+	const css_token *t;
+	int n = 0;
+
+	for (;;) {
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_peek(vector, *ctx);
+		if (t == NULL)
+			return false;
+		if (tokenIsChar(t, ')'))
+			break;
+		switch (kind) {
+		case ONYX_ARG_IDENT:
+		case ONYX_ARG_DIR:
+			if (n > 0 || t->type != CSS_TOKEN_IDENT)
+				return false;
+			if (kind == ONYX_ARG_DIR && !onyx_is_name(t, "ltr") &&
+					!onyx_is_name(t, "rtl"))
+				return false;
+			break;
+		case ONYX_ARG_IDENTS:
+			if (t->type != CSS_TOKEN_IDENT)
+				return false;
+			break;
+		case ONYX_ARG_IDENT_LIST:
+			if ((n & 1) == 0 ? t->type != CSS_TOKEN_IDENT : !tokenIsChar(t, ','))
+				return false;
+			break;
+		case ONYX_ARG_SCROLL_BUTTON:
+			if (n > 0 || (!tokenIsChar(t, '*') && t->type != CSS_TOKEN_IDENT))
+				return false;
+			break;
+		case ONYX_ARG_PT_NAME:
+			/* '*' | <custom-ident>, then .class* -- or .class+ alone */
+			if (n == 0 && (tokenIsChar(t, '*') || t->type == CSS_TOKEN_IDENT)) {
+				n++;
+				parserutils_vector_iterate(vector, ctx);
+				continue;
+			}
+			if (!tokenIsChar(t, '.'))
+				return false;
+			parserutils_vector_iterate(vector, ctx);
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t == NULL || t->type != CSS_TOKEN_IDENT)
+				return false;
+			break;
+		default:
+			return false;
+		}
+		n++;
+		parserutils_vector_iterate(vector, ctx);
+	}
+	if (kind == ONYX_ARG_IDENT_LIST && (n & 1) == 0)
+		return false;
+	return n > 0;
+}
+
+static css_error onyx_parse_selector_list_arg(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx, bool where,
+		bool forgiving, bool relative, css_onyx_selector_list **out);
+
+/* Onyx: a pseudo-class / pseudo-element libcss's table has not (token: its IDENT or
+ * FUNCTION, *ctx past it); CSS_INVALID if not one of the known ones */
+static css_error onyx_parse_extra_pseudo(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, const css_token *token, bool element, bool in_not,
+		css_selector_detail *specific)
+{
+	static const struct { const char *name; bool element; int arg; } fns[] = {
+		{ "has", false, ONYX_ARG_RELATIVE }, { "dir", false, ONYX_ARG_DIR },
+		{ "state", false, ONYX_ARG_IDENT }, { "host", false, ONYX_ARG_SELECTOR },
+		{ "host-context", false, ONYX_ARG_SELECTOR },
+		{ "active-view-transition-type", false, ONYX_ARG_IDENT_LIST },
+		{ "nth-col", false, ONYX_ARG_NTH_LIST },
+		{ "nth-last-col", false, ONYX_ARG_NTH_LIST },
+		{ "highlight", true, ONYX_ARG_IDENT }, { "part", true, ONYX_ARG_IDENTS },
+		{ "slotted", true, ONYX_ARG_SELECTOR }, { "picker", true, ONYX_ARG_IDENT },
+		{ "scroll-button", true, ONYX_ARG_SCROLL_BUTTON },
+		{ "view-transition-group", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-image-pair", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-old", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-new", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-group-children", true, ONYX_ARG_PT_NAME },
+		{ "cue", true, ONYX_ARG_SELECTOR }, { "cue-region", true, ONYX_ARG_SELECTOR },
+	};
+	css_selector_detail_value value;
+	css_selector_detail_value_type vtype = CSS_SELECTOR_DETAIL_VALUE_STRING;
+	css_selector_type type;
+	css_qname qname;
+	css_error error;
+	size_t i;
+
+	value.string = NULL;
+	qname.ns = NULL;
+	qname.name = token->idata;
+
+	if (token->type == CSS_TOKEN_IDENT) {
+		if (element && onyx_in(token, onyx_pe_plain,
+				sizeof(onyx_pe_plain) / sizeof(onyx_pe_plain[0])))
+			type = CSS_SELECTOR_PSEUDO_ELEMENT;
+		else if (!element && onyx_in(token, onyx_pc_plain,
+				sizeof(onyx_pc_plain) / sizeof(onyx_pc_plain[0])))
+			type = CSS_SELECTOR_PSEUDO_CLASS;
+		else
+			return CSS_INVALID;
+		if (in_not && type == CSS_SELECTOR_PSEUDO_ELEMENT)
+			return CSS_INVALID;
+		return css__stylesheet_selector_detail_init(c->sheet, type, &qname, value,
+				vtype, false, specific);
+	}
+
+	for (i = 0; i < sizeof(fns) / sizeof(fns[0]); i++)
+		if (fns[i].element == element && onyx_is_name(token, fns[i].name))
+			break;
+	if (i == sizeof(fns) / sizeof(fns[0]) || (in_not && fns[i].element))
+		return CSS_INVALID;
+	type = fns[i].element ? CSS_SELECTOR_PSEUDO_ELEMENT : CSS_SELECTOR_PSEUDO_CLASS;
+
+	consumeWhitespace(vector, ctx);
+	switch (fns[i].arg) {
+	case ONYX_ARG_SELECTOR:
+	case ONYX_ARG_RELATIVE:
+		error = onyx_parse_selector_list_arg(c, vector, ctx, false, false,
+				fns[i].arg == ONYX_ARG_RELATIVE, &value.list);
+		if (error != CSS_OK)
+			return error;
+		value.list->kind = ONYX_SL_NEVER;
+		vtype = CSS_SELECTOR_DETAIL_VALUE_LIST;
+		break;
+	case ONYX_ARG_DIR: {
+		int32_t k = *ctx;
+		if (!onyx_check_simple_arg(vector, &k, ONYX_ARG_DIR))
+			return CSS_INVALID;
+		value.string = ((const css_token *) parserutils_vector_peek(vector,
+				*ctx))->idata;
+		*ctx = k;
+		break;
+	}
+	case ONYX_ARG_NTH_LIST:
+		error = parseNth(c, vector, ctx, &value);
+		if (error != CSS_OK)
+			return error;
+		vtype = CSS_SELECTOR_DETAIL_VALUE_NTH;
+		break;
+	default:
+		if (!onyx_check_simple_arg(vector, ctx, fns[i].arg))
+			return CSS_INVALID;
+		break;
+	}
+	consumeWhitespace(vector, ctx);
+	token = parserutils_vector_iterate(vector, ctx);
+	if (token == NULL || !tokenIsChar(token, ')')) {
+		if (vtype == CSS_SELECTOR_DETAIL_VALUE_LIST)
+			css__onyx_selector_list_destroy(c->sheet, value.list);
+		return CSS_INVALID;
+	}
+	/* (:dir(): its value the direction; the others never match) */
+	return css__stylesheet_selector_detail_init(c->sheet, type, &qname, value, vtype,
+			false, specific);
 }
 
 css_error parsePseudo(css_language *c, const parserutils_vector *vector,
@@ -1607,9 +1857,10 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 		}
 	}
 
-	/* Not found: invalid */
+	/* Not found: Onyx -- the newer ones, else invalid */
 	if (lut_idx == N_ELEMENTS(pseudo_lut))
-		return CSS_INVALID;
+		return onyx_parse_extra_pseudo(c, vector, ctx, token, require_element,
+				in_not, specific);
 
 	/* Required a pseudo element, but didn't find one: invalid */
 	if (require_element && type != CSS_SELECTOR_PSEUDO_ELEMENT)
@@ -1651,7 +1902,7 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 				fun_type == PC_MOZ_ANY) {
 			/* Onyx: :is(<forgiving selector list>), :where() */
 			error = onyx_parse_selector_list_arg(c, vector, ctx,
-					fun_type == PC_WHERE, true,
+					fun_type == PC_WHERE, true, false,
 					&detail_value.list);
 			if (error != CSS_OK)
 				return error;
@@ -1677,6 +1928,24 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 				return error;
 
 			value_type = CSS_SELECTOR_DETAIL_VALUE_NTH;
+
+			/* Onyx: :nth-child(An+B of <selector list>) */
+			token = parserutils_vector_peek(vector, *ctx);
+			if (token != NULL && token->type == CSS_TOKEN_IDENT &&
+					(fun_type == NTH_CHILD || fun_type == NTH_LAST_CHILD) &&
+					onyx_is_name(token, "of")) {
+				int32_t a = detail_value.nth.a, b = detail_value.nth.b;
+				parserutils_vector_iterate(vector, ctx);
+				error = onyx_parse_selector_list_arg(c, vector, ctx, false,
+						false, false, &detail_value.list);
+				if (error != CSS_OK)
+					return error;
+				detail_value.list->kind = fun_type == NTH_CHILD ?
+						ONYX_SL_NTH_CHILD : ONYX_SL_NTH_LAST_CHILD;
+				detail_value.list->a = a;
+				detail_value.list->b = b;
+				value_type = CSS_SELECTOR_DETAIL_VALUE_LIST;
+			}
 		} else if (fun_type == NOT) {
 			/* type_selector | specific */
 			token = parserutils_vector_peek(vector, *ctx);
@@ -1728,7 +1997,7 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 			if (token == NULL || tokenIsChar(token, ')') == false) {
 				*ctx = arg_ctx;
 				error = onyx_parse_selector_list_arg(c, vector, ctx,
-						false, false, &detail_value.list);
+						false, false, false, &detail_value.list);
 				if (error != CSS_OK)
 					return error;
 				qname.name = c->strings[PC_IS];

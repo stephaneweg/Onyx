@@ -63,9 +63,19 @@ typedef enum css_selector_detail_value_type {
 } css_selector_detail_value_type;
 
 /** Onyx: the argument of :is() / :where() / :not(): a list of complex selectors */
+/* Onyx: what a selector list stands for */
+enum css_onyx_selector_list_kind {
+	ONYX_SL_IS = 0,			/* :is() / :where() / :not(): matches one of them */
+	ONYX_SL_NTH_CHILD,		/* :nth-child(An+B of S): a, b */
+	ONYX_SL_NTH_LAST_CHILD,		/* :nth-last-child(An+B of S) */
+	ONYX_SL_NEVER			/* :has(), :host(), ::slotted()...: never matches */
+};
+
 typedef struct css_onyx_selector_list {
 	uint32_t n;
 	uint32_t specificity;		/**< its most specific selector's; 0 for :where() */
+	uint8_t kind;			/**< enum css_onyx_selector_list_kind */
+	int32_t a, b;			/**< An+B (ONYX_SL_NTH_*) */
 	css_selector *sel[];
 } css_onyx_selector_list;
 
