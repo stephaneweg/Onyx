@@ -103,9 +103,10 @@ static void html_css_restyle(html_content *c)
 		return;
 	if (html_css_new_selection_context(c, &ctx) != NSERROR_OK)
 		return;
+	/* (Onyx: the kept selections were the old context's) */
+	onyx_restyle_sheets_changed(c, c->select_ctx, ctx);
 	css_select_ctx_destroy(c->select_ctx);
 	c->select_ctx = ctx;
-	onyx_restyle_invalidate_all(c);	/* (Onyx: the kept selections were the old's) */
 	html_script_dom_changed(c);
 }
 

@@ -329,6 +329,9 @@ box_get_style(html_content *c,
 		styles = onyx_restyle_lookup(c, n, parent_style, root_style);
 		if (styles != NULL) {
 			onyx_anim_styled(c, n, styles, parent_style);
+			if (onyx_restyle_checking())
+				onyx_restyle_check(c, n, styles, box_get_style(c,
+						parent_style, root_style, n, false));
 			return styles;
 		}
 	}

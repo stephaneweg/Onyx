@@ -1796,6 +1796,7 @@ static void html_destroy(struct content *c)
 	html->rebox_pending = false;
 	onyx_anim_fini(html);		/* (Onyx: transitions, animations) */
 	onyx_hover_fini(html);		/* (Onyx) */
+	onyx_restyle_fini(html);	/* (Onyx) */
 	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
 	if (html->focus_pending != NULL) {	/* (Onyx) */
 		dom_node_unref(html->focus_pending);

@@ -65,6 +65,21 @@ void onyx_restyle_hover_note(void *ctx, struct dom_node *tested, struct dom_node
 /** Every element's selection made again at the next box tree (the sheets, media) */
 void onyx_restyle_invalidate_all(struct html_content *c);
 
+/** The selection context made again (html_css_restyle, before old_ctx goes): when
+ * sheets were only added, a kept selection stays for the elements none of theirs
+ * matches; anything else selects every element again */
+void onyx_restyle_sheets_changed(struct html_content *c, css_select_ctx *old_ctx,
+		css_select_ctx *new_ctx);
+
+/** The PC bench's check (NS_RESTYLE_CHECK=1): each kept selection compared with a
+ * selection made again (fresh: freed here), a difference printed (RESTYLE-MISMATCH) */
+bool onyx_restyle_checking(void);
+void onyx_restyle_check(struct html_content *c, dom_node *n, const css_select_results *kept,
+		css_select_results *fresh);
+
+/** The content goes */
+void onyx_restyle_fini(struct html_content *c);
+
 /** DOM changes (dom_event.c): an element's attribute, a node inserted or removed from
  * its parent, a text node's data */
 void onyx_restyle_attr_changed(struct html_content *c, dom_node *el);

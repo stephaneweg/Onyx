@@ -57,6 +57,13 @@ bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *
 css_stylesheet *nscss_create_inline_style(const uint8_t *data, size_t len,
 		const char *charset, const char *url, bool allow_quirks);
 
+/**
+ * Onyx: whether a selector of the sheets of probe (a context of the sheets added since an
+ * element's selection) matches it -- true on failure (html/onyx_restyle.c)
+ */
+bool nscss_probe_style(nscss_select_ctx *ctx, css_select_ctx *probe, dom_node *n,
+		const css_media *media, const css_unit_ctx *unit_len_ctx);
+
 css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		const css_media *media,
 		const css_unit_ctx *unit_len_ctx,

@@ -22,6 +22,8 @@ ul { margin: 0; padding: 0 }
 .gp .kid { width: 95px }
 .hide { display: none }
 #nl li:nth-last-child(1) { width: 33px }
+#VL li:first-child { --w: 18px }
+#VL span { width: var(--w, 11px) }
 </style></head>
 <body>
 <div id="P"><div id="C" class="c"></div><div id="D" class="d"></div></div>
@@ -35,6 +37,7 @@ ul { margin: 0; padding: 0 }
 <div id="GP"><div id="HP"><div id="KID" class="kid"></div></div></div>
 <div id="ST"></div>
 <ul id="nl"><li id="N1"></li><li id="N2"></li></ul>
+<ul id="VL"><li id="V1"><span id="VS"></span></li></ul>
 <script>
 const $ = id => document.getElementById(id);
 const tick = () => new Promise(r => setTimeout(r, 20));
@@ -110,6 +113,14 @@ async function run() {
 	s.textContent = '#ST { width: 90px }';
 	document.head.appendChild(s); await tick(); await tick();
 	check('late sheet', $('ST'), 90);
+	const s2 = document.createElement('style');
+	s2.textContent = '.nomatch-xyz { width: 1px } #GP .kid { width: 96px }';
+	document.head.appendChild(s2); await tick(); await tick();
+	check('late sheet descendant', $('KID'), 96); check('late sheet others kept', $('C'), 10);
+
+	check('custom property', $('VS'), 18);
+	$('VL').insertBefore(document.createElement('li'), $('V1')); await tick();
+	check('custom property of a restyled parent', $('VS'), 11);
 	console.log('restyle checks ' + n);
 }
 run();

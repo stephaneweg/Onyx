@@ -311,6 +311,18 @@ css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 }
 
 /* exported function documented in css/select.h (Onyx) */
+bool nscss_probe_style(nscss_select_ctx *ctx, css_select_ctx *probe, dom_node *n,
+		const css_media *media, const css_unit_ctx *unit_len_ctx)
+{
+	bool matched = true;
+
+	if (css_select_style_onyx_probe(probe, n, unit_len_ctx, media,
+			&selection_handler, ctx, &matched) != CSS_OK)
+		return true;
+	return matched;
+}
+
+/* exported function documented in css/select.h (Onyx) */
 css_select_results *nscss_get_style_onyx(nscss_select_ctx *ctx, dom_node *n,
 		const css_media *media, const css_unit_ctx *unit_len_ctx,
 		const css_stylesheet *inline_style, dom_node *inherit_parent, bool no_share,

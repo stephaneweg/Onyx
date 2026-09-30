@@ -115,6 +115,8 @@ typedef struct css_select_state {
 	void *onyx_arg_pw;		/* SLOTTED: the handler data of its own tree */
 	lwc_string *const *onyx_parts;	/* PART: the element's part names */
 	uint32_t onyx_n_parts;
+
+	uint32_t onyx_matched;		/* Onyx: the selector chains matched (a probe's) */
 } css_select_state;
 
 static inline void advance_bytecode(css_style *style, uint32_t n_bytes)

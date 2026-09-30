@@ -37,11 +37,22 @@
  * An element selected again for a mark gives its subtree the mark ("subtree": its
  * descendants' older selections are stale). Kept selections are also checked against
  * their parent's and the root's computed styles (interned by libcss: the same pointer is
- * the same style; references held) -- the inheritance; and an epoch that a new selection
- * context (the sheets), a media change or a shadow DOM switch moves. Never kept: the
- * elements whose selection tried :hover (the pointer moves without a DOM change), those
- * in a shadow tree, shadow hosts and their light children (the scoping has more inputs).
- * css:has() never matches in libcss, and the other state pseudo-classes answer no.
+ * the same style; references held) -- the inheritance --, their parent's custom
+ * properties (libcss keeps them in the node data, not in the computed style:
+ * css_onyx_node_vars_ref / css_onyx_vars_same), the :hover state of each node their
+ * selection tried :hover on (the element itself and ancestors; a :hover tried on another
+ * node is not kept) -- whose notes for onyx_hover.c are replayed --, and an epoch that a
+ * new selection context, a media change or a shadow DOM switch moves. When the new
+ * context only adds sheets to the old one (a late <link>, a script's <style>: GitHub
+ * loads its sheets after the page), a kept selection of an epoch since stays when no
+ * selector of the added sheets matches the element (css_select_style_onyx_probe on a
+ * context of those sheets only; a probe that looks at :hover on another node or at the
+ * structure counts as a match). Never kept: the elements in a shadow tree, shadow hosts
+ * and their light children (the scoping has more inputs). :has() never matches in
+ * libcss, and the other state pseudo-classes answer no.
+ *
+ * The PC bench: NS_NORESTYLE=1 selects every element; NS_RESTYLE_CHECK=1 compares each
+ * kept selection with a new one (RESTYLE-MISMATCH lines).
  */
 
 #include <stdint.h>
@@ -77,6 +88,17 @@ struct osr_memo {
 	uint8_t ntested, hovered;
 	css_select_results *res;	/* the cascade's (NULL: not kept) */
 	css_computed_style *parent, *root;
+	const void *pvars;	/* its parent's custom properties (libcss, a reference) */
+};
+
+/* The sheets added since an epoch (html_css_restyle): the kept selections of that epoch
+ * or later are still right for an element no selector of the added sheets matches */
+struct onyx_restyle {
+	css_select_ctx *probe;		/* the sheets added since probe_epoch, or NULL */
+	unsigned int probe_epoch;
+	const css_stylesheet **base;	/* the context's sheets at probe_epoch */
+	uint32_t nbase;
+	bool chained;			/* base holds them */
 };
 
 static unsigned int osr_hits, osr_misses;
@@ -162,6 +184,9 @@ static bool osr_ancestor_or_self(dom_node *a, dom_node *n)
 
 static void osr_release(struct osr_memo *m)
 {
+	if (m->pvars != NULL)
+		css_onyx_vars_release(m->pvars);
+	m->pvars = NULL;
 	if (m->res != NULL)
 		css_select_results_destroy(m->res);
 	if (m->parent != NULL)
@@ -243,6 +268,17 @@ static dom_node *osr_parent(dom_node *n)
 	return p;
 }
 
+/** p's custom properties (its selection's node data): a reference, or NULL */
+static const void *osr_vars_ref(dom_node *p)
+{
+	void *data = NULL;
+
+	if (p == NULL || dom_node_get_user_data(p, corestring_dom___ns_key_libcss_node_data,
+			&data) != DOM_NO_ERR || data == NULL)
+		return NULL;
+	return css_onyx_node_vars_ref(data);
+}
+
 /** The serial of the next box tree: the marks' */
 static inline unsigned int osr_pending(const html_content *c)
 {
@@ -276,7 +312,7 @@ void onyx_restyle_begin(html_content *c)
 		c->restyle_vh = c->unit_len_ctx.viewport_height;
 		c->restyle_shadow = c->onyx_shadow;
 		c->restyle_base = c->base_url;
-		c->restyle_epoch++;
+		onyx_restyle_invalidate_all(c);
 	}
 	c->restyle_serial++;
 	osr_hits = osr_misses = 0;
@@ -292,9 +328,169 @@ void onyx_restyle_end(html_content *c)
 }
 
 /* exported function documented in html/onyx_restyle.h */
+static void osr_chain_reset(html_content *c)
+{
+	struct onyx_restyle *st = c->onyx_rs;
+
+	if (st == NULL)
+		return;
+	if (st->probe != NULL)
+		css_select_ctx_destroy(st->probe);
+	st->probe = NULL;
+	free(st->base);
+	st->base = NULL;
+	st->nbase = 0;
+	st->chained = false;
+}
+
 void onyx_restyle_invalidate_all(html_content *c)
 {
 	c->restyle_epoch++;
+	osr_chain_reset(c);
+}
+
+/** A context's sheets (malloc'd), or NULL */
+static const css_stylesheet **osr_sheets(css_select_ctx *ctx, uint32_t *n)
+{
+	const css_stylesheet **v;
+	uint32_t i;
+
+	*n = 0;
+	if (ctx == NULL || css_select_ctx_count_sheets(ctx, n) != CSS_OK)
+		return NULL;
+	v = malloc((*n + 1) * sizeof(*v));
+	if (v == NULL)
+		return NULL;
+	for (i = 0; i < *n; i++) {
+		if (css_select_ctx_get_sheet(ctx, i, &v[i]) != CSS_OK)
+			v[i] = NULL;
+	}
+	return v;
+}
+
+/* exported function documented in html/onyx_restyle.h */
+void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
+		css_select_ctx *new_ctx)
+{
+	struct onyx_restyle *st = c->onyx_rs;
+	const css_stylesheet **ov, **nv;
+	uint32_t on, nn, i, j, k;
+	bool sub = true;
+
+	if (st == NULL) {
+		st = c->onyx_rs = calloc(1, sizeof(*st));
+		if (st == NULL) {
+			c->restyle_epoch++;
+			return;
+		}
+	}
+	ov = osr_sheets(old_ctx, &on);
+	nv = osr_sheets(new_ctx, &nn);
+	/* the old sheets all there, in the same order: sheets were added only */
+	if (ov == NULL || nv == NULL) {
+		sub = false;
+	} else {
+		for (i = 0, j = 0; i < on && sub; i++) {
+			while (j < nn && nv[j] != ov[i])
+				j++;
+			if (j == nn)
+				sub = false;
+			else
+				j++;
+		}
+	}
+	if (!sub) {
+		free(ov);
+		free(nv);
+		onyx_restyle_invalidate_all(c);
+		return;
+	}
+	if (!st->chained) {
+		/* (the chain starts at the old context's epoch) */
+		st->base = ov;
+		st->nbase = on;
+		st->probe_epoch = c->restyle_epoch;
+		st->chained = true;
+		ov = NULL;
+	}
+	free(ov);
+	c->restyle_epoch++;
+
+	/* the probe: the sheets now that the chain's base had not */
+	if (st->probe != NULL)
+		css_select_ctx_destroy(st->probe);
+	st->probe = NULL;
+	if (css_select_ctx_create(&st->probe) != CSS_OK) {
+		st->probe = NULL;
+		free(nv);
+		osr_chain_reset(c);
+		return;
+	}
+	for (i = 0; i < nn; i++) {
+		bool in_base = false;
+		for (k = 0; k < st->nbase && !in_base; k++)
+			in_base = st->base[k] == nv[i];
+		if (!in_base && nv[i] != NULL &&
+		    css_select_ctx_append_sheet(st->probe, nv[i], CSS_ORIGIN_AUTHOR,
+				"screen") != CSS_OK) {
+			free(nv);
+			osr_chain_reset(c);
+			return;
+		}
+	}
+	free(nv);
+}
+
+/* exported function documented in html/onyx_restyle.h */
+void onyx_restyle_fini(html_content *c)
+{
+	osr_chain_reset(c);
+	free(c->onyx_rs);
+	c->onyx_rs = NULL;
+}
+
+/* the probe tried :hover on another node than the one styled (libcss's selection state
+ * tries it on the node itself always: the kept selection's own :hover state covers it) */
+static bool osr_probe_hover_other;
+
+static void osr_probe_note(void *ctx, struct dom_node *tested, struct dom_node *styled)
+{
+	(void) ctx;
+	if (tested != styled)
+		osr_probe_hover_other = true;
+}
+
+/** Whether a selector of the sheets added since the memo's epoch matches n (or the probe
+ * looked at :hover on another node or at the tree's structure: its selection is made
+ * again) */
+static bool osr_probe(html_content *c, dom_node *n,
+		const css_computed_style *parent_style,
+		const css_computed_style *root_style)
+{
+	struct onyx_restyle *st = c->onyx_rs;
+	nscss_select_ctx ctx;
+	bool matched;
+
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.ctx = st->probe;
+	ctx.quirks = (c->quirks == DOM_DOCUMENT_QUIRKS_MODE_FULL);
+	ctx.base_url = c->base_url;
+	ctx.universal = c->universal;
+	ctx.root_style = root_style;
+	ctx.parent_style = parent_style;
+	nscss_hover_node = c->hover_node;
+	nscss_hover_note = osr_probe_note;
+	nscss_hover_note_ctx = c;
+	osr_probe_hover_other = false;
+	nscss_struct_used = 0;
+	nscss_styled_node = n;
+	matched = nscss_probe_style(&ctx, st->probe, n, &c->media, &c->unit_len_ctx);
+	if (osr_probe_hover_other || nscss_struct_used != 0)
+		matched = true;
+	nscss_hover_note = NULL;
+	nscss_hover_node = NULL;
+	nscss_styled_node = NULL;
+	return matched;
 }
 
 /** Whether the shadow DOM's scoping may enter n's selection */
@@ -323,6 +519,14 @@ css_select_results *onyx_restyle_lookup(html_content *c, dom_node *n,
 
 	if (m == NULL)
 		return NULL;
+	{
+		/* (the PC bench: NS_NORESTYLE=1 selects every element, to compare) */
+		static int off = -1;
+		if (off < 0)
+			off = getenv("NS_NORESTYLE") != NULL;
+		if (off)
+			return NULL;
+	}
 	p = osr_parent(n);
 	pm = osr_get(p);
 	if (pm != NULL)
@@ -333,7 +537,6 @@ css_select_results *onyx_restyle_lookup(html_content *c, dom_node *n,
 	if (forced)
 		m->subtree = cur;
 	valid = !forced && m->res != NULL && m->serial != 0 &&
-			m->epoch == c->restyle_epoch &&
 			m->parent == parent_style && m->root == root_style &&
 			!((m->structural & NSCSS_STRUCT_SELF) && pm != NULL &&
 			  pm->kids_mark > m->serial) &&
@@ -345,8 +548,29 @@ css_select_results *onyx_restyle_lookup(html_content *c, dom_node *n,
 				valid = false;
 		}
 	}
+	if (valid) {
+		/* its parent's custom properties (not in its computed style) */
+		const void *pv = osr_vars_ref(p);
+		valid = css_onyx_vars_same(pv, m->pvars);
+		if (valid && pv != m->pvars) {
+			/* (the same, made again: a getComputedStyle's selection) */
+			css_onyx_vars_release(m->pvars);
+			m->pvars = pv;
+		} else if (pv != NULL) {
+			css_onyx_vars_release(pv);
+		}
+	}
 	if (p != NULL)
 		dom_node_unref(p);
+	if (valid && m->epoch != c->restyle_epoch) {
+		/* sheets added since: kept when none of theirs matches it */
+		struct onyx_restyle *st = c->onyx_rs;
+		if (st == NULL || st->probe == NULL || m->epoch < st->probe_epoch ||
+		    osr_probe(c, n, parent_style, root_style))
+			valid = false;
+		else
+			m->epoch = c->restyle_epoch;
+	}
 	if (!valid) {
 		osr_misses++;
 		return NULL;
@@ -407,6 +631,12 @@ void onyx_restyle_store(html_content *c, dom_node *n, const css_select_results *
 		m->parent = css_computed_style_onyx_ref(parent_style);
 	if (root_style != NULL)
 		m->root = css_computed_style_onyx_ref(root_style);
+	{
+		dom_node *p = osr_parent(n);
+		m->pvars = osr_vars_ref(p);
+		if (p != NULL)
+			dom_node_unref(p);
+	}
 }
 
 /* exported function documented in html/onyx_restyle.h */
@@ -481,4 +711,45 @@ void onyx_restyle_text_changed(html_content *c, dom_node *text)
 		dom_node_unref(pp);
 	}
 	dom_node_unref(p);
+}
+
+/* exported function documented in html/onyx_restyle.h */
+bool onyx_restyle_checking(void)
+{
+	static int on = -1;
+
+	if (on < 0)
+		on = getenv("NS_RESTYLE_CHECK") != NULL;
+	return on;
+}
+
+/* exported function documented in html/onyx_restyle.h */
+void onyx_restyle_check(html_content *c, dom_node *n, const css_select_results *kept,
+		css_select_results *fresh)
+{
+	int i;
+
+	(void) c;
+	if (fresh == NULL)
+		return;
+	for (i = 0; i < CSS_PSEUDO_ELEMENT_COUNT; i++) {
+		if (kept->styles[i] != fresh->styles[i]) {
+			dom_string *name = NULL, *id = NULL, *cls = NULL;
+			dom_node_get_node_name(n, &name);
+			dom_element_get_attribute(n, corestring_dom_id, &id);
+			dom_element_get_attribute(n, corestring_dom_class, &cls);
+			fprintf(stderr, "RESTYLE-MISMATCH %s id=%s class=%s pseudo %d\n",
+					name ? dom_string_data(name) : "?",
+					id ? dom_string_data(id) : "",
+					cls ? dom_string_data(cls) : "", i);
+			if (name != NULL)
+				dom_string_unref(name);
+			if (id != NULL)
+				dom_string_unref(id);
+			if (cls != NULL)
+				dom_string_unref(cls);
+			break;
+		}
+	}
+	css_select_results_destroy(fresh);
 }

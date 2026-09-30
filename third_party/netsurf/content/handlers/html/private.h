@@ -270,6 +270,7 @@ typedef struct html_content {
 	css_fixed restyle_media_w, restyle_media_h, restyle_vw, restyle_vh;
 	bool restyle_shadow;
 	struct nsurl *restyle_base;
+	struct onyx_restyle *onyx_rs;	/* the sheets added since an epoch */
 
 	/** Onyx: transitions, animations, animation frames (html/onyx_anim.c: NULL until
 	 * the page has one); while set, a selection's style is not an element's (the scripts'
