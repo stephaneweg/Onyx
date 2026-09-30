@@ -60,6 +60,10 @@ bool Menu::shortcut (long key)
 	if (modal_open ()) return false;
 	if (key == WK_CTRL ('Q')) { kapi_menu_command (MENU_QUIT); return true; }	// Quit
 	if (key <= 0) return false;
+	// ^H, ^I and ^M share their codes with Backspace, Tab and Enter: without Ctrl held, the
+	// key is the editing key and goes to the focused widget, not to the menu.
+	if ((key == KEY_BACKSPACE || key == KEY_TAB || key == KEY_ENTER) && !(kapi_get_modifiers () & MOD_CTRL))
+		return false;
 	for (int i = 0; i < m_count; i++)
 		if (m_key[i] == key && m_cb[i]) { m_cb[i] (); if (Root::current ()) Root::current ()->invalidate (true); return true; }
 	return false;

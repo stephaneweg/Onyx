@@ -1342,7 +1342,9 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > chosen item back (`GUI_EVENT_MENU`); `wtk::Menu` runs the callback, then invalidates the
 > root. Every key goes through `Menu::shortcut` first (so item shortcuts work anywhere in
 > the app); **Ctrl-Q** quits. Commands and shortcuts are ignored while a modal dialog is
-> open. Avoid `^I` (= Tab), `^H` (= Backspace), `^M` (= Enter) as shortcuts.
+> open. `^I`, `^H`, `^M` share their key codes with Tab, Backspace and Enter: `Menu::shortcut`
+> only takes them while **Ctrl** is actually held, so the plain key still reaches the focused
+> text box (still, prefer other letters).
 
 
 Minimal skeleton (window with kernel-managed widgets):
