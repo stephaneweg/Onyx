@@ -632,6 +632,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
 		defaults[sys_colour_defaults[idx].nsc].value.c = sys_colour_defaults[idx].c;
 	}
 
+	/* Onyx: the disc cache (user/netsurf/onyx_cache.c, SD:/apps/netsurf.app/cache/): 64 MB
+	 * (NetSurf's 1 GB is too much for a card shared with everything else) */
+	defaults[NSOPTION_disc_cache_size].value.u = 64u << 20;
+
 	/* Onyx: the default font size as the other browsers': 12 pt, 16 px at 96 dpi
 	 * (NetSurf's 12.8 pt made every rem / em 7 % larger) */
 	defaults[NSOPTION_font_size].value.i = 120;
@@ -2121,6 +2125,7 @@ gui_window_start_throbber(struct gui_window *g)
 /* Onyx: the pages visited, the cookies and the fetcher's state, written to the card a few
  * seconds after a page is loaded (not only at the end: a Pi is often switched off rather than quit) */
 void onyx_fetch_save_state(void);	/* user/netsurf/onyx_fetch.c */
+extern struct gui_llcache_table *onyx_llcache_table;	/* user/netsurf/onyx_cache.c */
 
 static void onyx_save_user_data(void *p)
 {
@@ -2288,6 +2293,7 @@ main(int argc, char** argv)
 		.utf8 = framebuffer_utf8_table,
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
+		.llcache = onyx_llcache_table,	/* Onyx: the disc cache on the card */
 	};
 
         ret = netsurf_register(&framebuffer_table);

@@ -48,9 +48,9 @@ for tls in openssl mbedtls; do
 			echo "  ok    $u trusted"
 		fi
 	done
-	# "Proceed" on the error page (its button, client coordinates of the 900x700 window)
+	# "Proceed" on the error page (its button, client coordinates of the default window)
 	L="$OUT/tls/$tls-proceed"
-	run "https://self-signed.badssl.com/" "$L" "down 679 347;up 679 347;$(waits 250)"
+	run "https://self-signed.badssl.com/" "$L" "down 684 316;up 684 316;$(waits 250)"
 	n=$(grep -a -c "sim: tcp_connect self-signed.badssl.com" "$L.log")
 	if [ "$n" -ge 2 ] && [ "$(grep -a -c 'ONYX-FETCH FAIL https://self-signed' "$L.log")" = 1 ]; then
 		echo "  ok    proceed: the page fetched again, accepted"
@@ -61,7 +61,7 @@ done
 unset NS_MBEDTLS
 # the certificate viewer (mbedTLS): "View certificate details" on the error page
 L="$OUT/tls/viewer"
-run "https://expired.badssl.com/" "$L" "down 180 306;up 180 306;$(waits 150)"
+run "https://expired.badssl.com/" "$L" "down 180 282;up 180 282;$(waits 150)"
 python3 tools/tests/desktop_sim/shot.py "$L.elsm" "$L.png" >/dev/null 2>&1
 echo "  (the certificate viewer: $L.png)"
 [ $fail = 0 ] && echo "all passed" || exit 1

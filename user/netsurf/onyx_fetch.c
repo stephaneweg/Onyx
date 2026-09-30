@@ -123,6 +123,7 @@ struct fetch_onyx_context {
 					 * no Cookie sent, its Set-Cookie ignored */
 	int retries;			/* Onyx: its job started again (HTTP/2: JOB_RETRY) */
 	int status;			/* Onyx: the response's status (the perf log) */
+	bool not_modified;		/* Onyx: a 304 -- FETCH_NOTMODIFIED given */
 };
 
 static struct fetch_onyx_context *ring = NULL;
@@ -620,8 +621,8 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 	ctx->parent_fetch = parent_fetch;
 	ctx->url = nsurl_ref(url);
 
-	/* the request: its method, its headers (not the conditional ones: a 304 would need
-	 * FETCH_NOTMODIFIED, which this fetcher does not send), its body */
+	/* the request: its method, its headers (Onyx: the conditional ones too -- llcache's
+	 * revalidation of a stale object, a 304 answered with FETCH_NOTMODIFIED), its body */
 	for (i = 0; headers != NULL && headers[i] != NULL; i++)
 		hlen += strlen(headers[i]) + 2;
 	ctx->hdrs = calloc(1, hlen + 1);
@@ -651,8 +652,6 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 			ctx->no_cookies = true;
 			continue;
 		}
-		if (hdr_is(h, "If-None-Match") || hdr_is(h, "If-Modified-Since"))
-			continue;
 		if (ctx->hdrs != NULL) {
 			strcat(ctx->hdrs, h);
 			strcat(ctx->hdrs, "\r\n");
@@ -821,9 +820,11 @@ static int head_status(const char *head, size_t headlen)
 static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t headlen,
 		char *cenc, size_t cenccap)
 {
+	/* (Onyx: the cache-control headers go to the core now -- Cache-Control, Expires, ETag,
+	 * Last-Modified, Age, Date: llcache keeps a fresh object without a request and
+	 * revalidates a stale one, in memory and on the card: onyx_cache.c) */
 	static const char *const skip[] = { "Content-Encoding", "Content-Length",
-		"Transfer-Encoding", "Cache-Control", "Expires", "ETag", "Last-Modified",
-		"Age", "Pragma", "Date", "Vary", "Set-Cookie", "Location", "Connection",
+		"Transfer-Encoding", "Set-Cookie", "Location", "Connection",
 		"Keep-Alive", NULL };
 	const char *p = head, *end = head + headlen;
 	int code = head_status(head, headlen);
@@ -876,6 +877,8 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 	cenc[0] = '\0';
 	header_value(head, headlen, "Content-Encoding", cenc, cenccap);
 	fetch_set_http_code(c->parent_fetch, code);
+	if (code == 304 && c->body == NULL)
+		c->not_modified = true;		/* (Onyx: sent after the headers, below) */
 
 	/* The status line, then the headers, one FETCH_HEADER each (the core keeps them:
 	 * scripts read them, llcache_handle_get_header_at). Left out: the cache-control ones
@@ -901,6 +904,13 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 		first = false;
 		if (eol == NULL) break;
 		p = eol + 1;
+	}
+	if (c->not_modified && !c->aborted) {
+		/* Onyx: a 304 to llcache's revalidation -- its stored object is still good (the
+		 * headers above bring its new cache data); llcache aborts this fetch */
+		msg.type = FETCH_NOTMODIFIED;
+		fetch_onyx_send(&msg, c);
+		return false;
 	}
 	return !c->aborted;
 }
@@ -2644,6 +2654,13 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 		free(head);
 	}
 	if (c->redirected || c->aborted) {
+		if (c->not_modified && onyx_perf_on())	/* (Onyx: the perf log) */
+			fprintf(stderr, "ONYX-PERF net:done %s %lu us ttfb %lu us %s%s 0 bytes "
+					"revalidated (304)\n", nsurl_access(c->url),
+					(unsigned long) (onyx_perf_now() - j->t0),
+					(unsigned long) (j->t_head != 0 ? j->t_head - j->t0 : 0),
+					j->proto != NULL ? j->proto : "?",
+					j->reused ? " (kept connection)" : "");
 		free(b);
 		onyx_job_drop(c);		/* (a redirect's body: the worker drains or drops it) */
 		return true;

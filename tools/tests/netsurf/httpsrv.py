@@ -1,8 +1,9 @@
 # httpsrv.py <root> <port> -- the HTTP/1.1 server of httptest.sh: keep-alive, some answers chunked,
 # encoded (the pages gzip, the style sheets br, the PNG images zstd), a redirect (/redir) with a
 # Set-Cookie, a Set-Cookie on each page; logs each connection (CONN n), request (REQ n path
-# cookie= referer=) and coding (ENC n path coding).
-import gzip, http.server, os, socketserver, sys, threading
+# cookie= referer=) and coding (ENC n path coding); the cache: the style sheets no-cache with an
+# ETag (a 304 to a matching If-None-Match: NOTMOD n path), the PNG images max-age=3600.
+import gzip, http.server, os, socketserver, sys, threading, zlib
 try:
     import brotli
 except ImportError:
@@ -63,8 +64,23 @@ class H(http.server.BaseHTTPRequestHandler):
             'application/javascript' if f.endswith('.js') else 'image/png' if f.endswith('.png') else \
             'image/jpeg' if f.endswith('.jpg') else 'font/ttf' if f.endswith('.ttf') else \
             'application/octet-stream'
+        # the cache: the style sheets always revalidated (no-cache + an ETag: a 304 when it
+        # matches), the PNG images fresh for an hour (no request at all), the pages uncached
+        etag = '"%08x"' % (zlib.crc32(data) & 0xffffffff)
+        if f.endswith('.css') and self.headers.get('If-None-Match') == etag:
+            log('NOTMOD', self.cid, self.path)
+            self.send_response(304)
+            self.send_header('ETag', etag)
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header('Content-Type', ctype)
+        if f.endswith('.css'):
+            self.send_header('ETag', etag)
+            self.send_header('Cache-Control', 'no-cache')
+        elif f.endswith('.png'):
+            self.send_header('Cache-Control', 'max-age=3600')
         if f.endswith('.html'):
             self.send_header('Set-Cookie', 'sid=abc123; Path=/')
         # the codings: the pages gzip, the style sheets br, the PNG images zstd -- each when the

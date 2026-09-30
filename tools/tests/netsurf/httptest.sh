@@ -3,8 +3,9 @@
 # on the PC: a local HTTP/1.1 server (httpsrv.py: keep-alive, chunked, gzip / br / zstd, a
 # redirect, cookies) serves the copy of kotonviolins.com (getsites.sh), NetSurf loads it through
 # /redir, then again (F5). Checks: the connections kept (fewer connections than requests), the
-# redirect's cookie and the page's sent back, the Referer, the codings, and the page drawn as the
-# file:// copy is. Then HTTP/2 (docs/06 section 22; needs Python's h2: pip install h2): an HTTPS
+# redirect's cookie and the page's sent back, the Referer, the codings, the page drawn as the
+# file:// copy is, and launched again, the disc cache (docs/06 section 22: the images fresh, no
+# request; the style sheet revalidated, a 304). Then HTTP/2 (docs/06 section 22; needs Python's h2: pip install h2): an HTTPS
 # server with ALPN h2 (h2srv.py, a certificate made here for 127.0.0.1 and added to the bench's
 # trusted roots) serves the same copy -- one connection, the requests multiplexed, drawn the
 # same, with the bench's OpenSSL and with the Pi's mbedTLS code (NS_MBEDTLS=1); the scripts'
@@ -32,11 +33,18 @@ SRV3=
 trap 'kill $SRV $SRV2 $SRV3 2>/dev/null' EXIT
 sleep 1
 W=$(i=0; while [ $i -lt 150 ]; do printf 'wait;'; i=$((i + 1)); done)
+# (the disc cache and the rest of the app's files: a folder of this test's, emptied first)
+export SIM_WRITES="$OUT/httptest-writes"
+rm -rf "$SIM_WRITES"
+Q="quit;$W"	# (the app ends as when its window is closed: the disc cache written)
 run() {
 	SIM_REALNET=1 SIM_SCREEN=1024x768 SIM_SLEEP=1 SIM_POS=0,0 SIM_ARGS="$1" SIM="$2" \
 		timeout 300 "$OUT/build/netsurf" >"$OUT/httptest-$3.log" 2>&1
 }
-run "http://127.0.0.1:$PORT/redir" "${W}dump $OUT/http1.elsm;key 276;${W}dump $OUT/http2.elsm;exit" http
+run "http://127.0.0.1:$PORT/redir" "${W}dump $OUT/http1.elsm;key 276;${W}dump $OUT/http2.elsm;${Q}exit" http
+n1=$(wc -l < "$OUT/httpsrv.log")
+# launched again: the page from the disc cache (the images fresh, the style sheet revalidated)
+run "http://127.0.0.1:$PORT/kotonviolins.com/index.html" "${W}dump $OUT/http3.elsm;${Q}exit" http3
 run "file://$(realpath "$SITES")/kotonviolins.com/index.html" "${W}dump $OUT/file.elsm;exit" file
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
@@ -70,6 +78,10 @@ if python3 -c 'import zstandard' 2>/dev/null; then
 	check "the images sent zstd (decoded: the drawing below)" "grep -q '^ENC .*\.png zstd' $L"
 else echo "  skip  zstd (pip install zstandard)"; fi
 check "drawn as the file:// copy (gzip, chunked)" "drawn http1.elsm http2.elsm"
+tail -n +$((n1 + 1)) "$L" > "$OUT/httpsrv-3.log"
+check "launched again: the style sheet revalidated (a 304)" "grep -q '^NOTMOD .*style.css' $OUT/httpsrv-3.log"
+check "launched again: the images from the card (no request)" "! grep -q '^REQ .*\.png' $OUT/httpsrv-3.log"
+check "launched again: drawn the same" "drawn http3.elsm"
 
 # ---- HTTP/2 ----------------------------------------------------------------------------------
 if python3 -c 'import h2' 2>/dev/null; then

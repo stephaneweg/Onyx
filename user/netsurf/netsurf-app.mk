@@ -94,7 +94,7 @@ include $(HERE)netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 
 # Onyx glue
-ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
+ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_cache.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
 GENFONT := $(OUT)/font-ns-sans.c
 

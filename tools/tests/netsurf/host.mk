@@ -107,7 +107,7 @@ FB := $(NS)/frontends/framebuffer
 include $(UN)/netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 
-ONYX_SRC   := $(UN)/onyx_fetch.c $(UN)/onyx_ws.c $(UN)/onyx_main.c $(HERE)/host_stubs.c
+ONYX_SRC   := $(UN)/onyx_fetch.c $(UN)/onyx_cache.c $(UN)/onyx_ws.c $(UN)/onyx_main.c $(HERE)/host_stubs.c
 ONYX_CXX   := $(ONYX_CXX_FILES)
 
 GENFONT := $(OUT)/font-ns-sans.c
