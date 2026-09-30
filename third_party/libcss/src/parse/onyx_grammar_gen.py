@@ -398,7 +398,7 @@ def resolve_type(name, ctx):
 def compile_node(n, ctx):
     k = n[0]
     if k == 'kw':
-        return new_node(OPS['kw'], 0, sidx(n[1]))
+        return new_node(OPS['kw'], 0, sidx(n[1]), len(n[1].encode('utf-8')))
     if k == 'char':
         return new_node(OPS['char'], 0, ord(n[1]))
     if k == 'num':

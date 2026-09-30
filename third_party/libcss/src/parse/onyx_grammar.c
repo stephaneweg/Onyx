@@ -847,10 +847,13 @@ static bool g_match(gm *m, uint16_t node, int pos, const gk *k)
 		size_t len;
 		const char *d;
 		const char *kw = onyx_grammar_strings + nd->a;
+		char c0;
 		if (t == NULL || t->type != CSS_TOKEN_IDENT)
 			return false;
 		d = tdata(t, &len);
-		if (strlen(kw) != len || strncasecmp(d, kw, len) != 0)
+		/* (the length -- nd->b -- and the first letter first: most keywords fail) */
+		c0 = (d[0] >= 'A' && d[0] <= 'Z') ? (char) (d[0] + 32) : d[0];
+		if (nd->b != len || c0 != kw[0] || strncasecmp(d, kw, len) != 0)
 			return false;
 		return k->fn(m, pos + 1, k);
 	}
