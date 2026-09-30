@@ -41,6 +41,7 @@
 #include "desktop/gui_internal.h"
 
 #include "html/html.h"
+#include "javascript/js.h"
 #include "html/private.h"
 #include "html/interaction.h"
 #include "html/box.h"
@@ -198,6 +199,10 @@ html_object_callback(hlcache_handle *object,
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
 		html_object_done(box, object, o->background);
+		/* Onyx: the <img> / <object>'s load event (lazy loaders, galleries) */
+		if (!o->background && box != NULL && box->node != NULL &&
+				c->jsthread != NULL)
+			js_fire_event(c->jsthread, "load", c->document, box->node);
 
 		if (c->base.status != CONTENT_STATUS_LOADING &&
 				box->flags & REPLACE_DIM) {
@@ -230,6 +235,9 @@ html_object_callback(hlcache_handle *object,
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
 		html_object_failed(box, c, o->background);
+		if (!o->background && box != NULL && box->node != NULL &&
+				c->jsthread != NULL)	/* (Onyx) */
+			js_fire_event(c->jsthread, "error", c->document, box->node);
 
 		break;
 

@@ -1147,6 +1147,37 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	return arr;
 }
 
+/** image(n): an <img>'s picture as the page has it -- [state (0 loading, 1 loaded, 2 broken),
+ * natural width, natural height], or null when it has no box (not displayed) (Onyx) */
+static JSValue n_image(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	struct box *box;
+	JSValue arr;
+	int st = 0, w = 0, h = 0;
+	QJS_NODE_ARG(n, 0);
+
+	box = qjs_box(n);
+	if (box == NULL)
+		return JS_NULL;
+	if (box->object != NULL) {
+		content_status cs = content_get_status(box->object);
+		if (cs == CONTENT_STATUS_DONE || cs == CONTENT_STATUS_READY) {
+			st = 1;
+			w = content_get_width(box->object);
+			h = content_get_height(box->object);
+		} else if (cs == CONTENT_STATUS_ERROR) {
+			st = 2;
+		}
+	} else {
+		st = 2;		/* (a box without its picture: failed or none) */
+	}
+	arr = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, st));
+	JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, w));
+	JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, h));
+	return arr;
+}
+
 /** boxed(n): whether the node has a box (it is displayed) */
 static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -1891,8 +1922,10 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 		JS_FreeValue(ctx, len);
 		nh = l > 0 && l < 200 ? (uint32_t) l : 0;
 	}
-	hv = calloc(nh + 2, sizeof(char *));
+	hv = calloc(nh + 3, sizeof(char *));
 	get = strcasecmp(method, "GET") == 0 || strcasecmp(method, "HEAD") == 0;
+	if (hv != NULL)
+		hv[k++] = strdup("X-Onyx-Dest: empty");	/* (Onyx: fetch / XHR, Fetch Metadata) */
 	if (hv != NULL && !get && strcasecmp(method, "POST") != 0) {
 		size_t ml = strlen(method) + 16;
 		hv[k] = malloc(ml);
@@ -2127,6 +2160,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("clone", 2, n_clone),
 	JS_CFUNC_DEF("byId", 1, n_by_id),
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
+	JS_CFUNC_DEF("image", 1, n_image),
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
@@ -2446,8 +2480,12 @@ static void qjs_load_later(void *p)
 
 	if (t->closed || t->htmlc == NULL)
 		return;
+	/* Onyx: and the fetches the page still waits for (base.active): a script a script
+	 * inserted delays the load, as in a browser (Facebook's bootloader: its modules were
+	 * not in when load fired, a handler used what they set up) */
 	if ((!t->htmlc->had_initial_layout ||
-	     t->htmlc->base.status != CONTENT_STATUS_DONE) &&
+	     t->htmlc->base.status != CONTENT_STATUS_DONE ||
+	     t->htmlc->base.active > 0) &&
 	    ++t->load_waits < 600) {
 		guit->misc->schedule(50, qjs_load_later, t);
 		return;

@@ -265,6 +265,8 @@ void fetch_set_cookie(struct fetch *fetch, const char *data);
  * (user/netsurf/onyx_fetch.c). Not a reference: valid while the fetch lives.
  */
 struct nsurl *fetch_get_referer(struct fetch *fetch);
+/** Onyx: whether the user asked for the fetch (a navigation) */
+bool fetch_is_verifiable(struct fetch *fetch);
 
 /**
  * Get the set of file descriptors the fetchers are currently using.

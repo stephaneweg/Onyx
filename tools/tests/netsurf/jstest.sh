@@ -57,6 +57,14 @@ run js-rawtext.html "$(waits 30)" "$L"
 expect "$L" "inner script ran 3"
 expect "$L" "textarea a & <b>"
 
+echo "js-loadevents.html (load / error events of scripts, sheets, images)"
+L=$OUT/js-loadevents.log
+run js-loadevents.html "$(waits 60)" "$L"
+for s in "script error" "script load 42" "link load" "detached load 480x270 true" "detached error" \
+	 "img b error" "img a load 480x270 true"; do
+	expect "$L" "$s"
+done
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"
