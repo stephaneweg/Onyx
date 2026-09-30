@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head><title>SVG presentation properties</title>
+<style>
+.icon { fill: currentColor; color: rgb(0, 128, 0); stroke: url(#g) red; stroke-width: 2 }
+.c { stroke: none }
+#v { fill: blue }
+</style></head>
+<body>
+<div class="icon"><span id="a">inherited</span></div>
+<div class="icon c" id="b">b</div>
+<svg id="s" width="20" height="20" fill="#f00" stroke-width="3"><rect width="10" height="10"/></svg>
+<svg id="v" width="20" height="20" fill="rgb(255, 0, 0)"><rect width="10" height="10"/></svg>
+<script>
+function log(id, p) { console.log('svgprops ' + id + ' ' + p + ' ' + getComputedStyle(document.getElementById(id)).getPropertyValue(p)); }
+window.addEventListener('load', () => {
+	log('a', 'fill'); log('a', 'stroke'); log('a', 'stroke-width'); log('b', 'stroke');
+	log('s', 'fill'); log('s', 'stroke-width'); log('v', 'fill');
+});
+</script>
+</body></html>

@@ -255,7 +255,10 @@ parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 		input->leftover = false;
 	}
 
-	while (*len > 0) {
+	/* Onyx: go on while the read codec holds characters it decoded but the pivot had no
+	 * room for -- even when the input is all read (they were lost: the last character of
+	 * a 65-byte inline style, a stylesheet's last bytes...) */
+	for (bool more = *len > 0; more; ) {
 		parserutils_error read_error, write_error;
 		size_t pivot_len = sizeof(input->pivot_buf);
 		uint8_t *pivot = (uint8_t *) input->pivot_buf;
@@ -286,9 +289,22 @@ parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 		if (read_error != PARSERUTILS_OK && 
 				read_error != PARSERUTILS_NOMEM)
 			return read_error;
+
+		more = *len > 0 || read_error == PARSERUTILS_NOMEM;
 	}
 
 	return PARSERUTILS_OK;
+#endif
+}
+
+/* Onyx: documented in filter.h */
+bool parserutils__filter_pending(parserutils_filter *input)
+{
+#ifndef WITHOUT_ICONV_FILTER
+	(void) input;
+	return false;
+#else
+	return input != NULL && input->leftover;
 #endif
 }
 

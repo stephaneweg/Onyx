@@ -458,6 +458,27 @@ uint8_t css_computed_object_position(const css_computed_style *style,
 		css_fixed *vlength, css_unit *vunit);
 /* the text properties (css_onyx_text_e): the canonical text, when SET (see
  * src/parse/properties/onyx_css3b.c) */
+/* Onyx: SVG's presentation properties. fill / stroke: a CSS_PAINT_* -- the colour for
+ * CSS_PAINT_COLOR / _URL_COLOR, the (resolved) URL for the CSS_PAINT_URL* (a paint server:
+ * its fragment names the element), currentColor left to the caller (css_computed_color);
+ * stroke-width / -dashoffset: a length as specified (a number was px; em and % as given);
+ * stroke-dasharray: CSS_ONYX_TEXT_NONE, or _SET and the values separated by commas ("5,10%");
+ * fill-rule, stroke-linecap / -linejoin: their enums; stop-color: CSS_STOP_COLOR_*. */
+uint8_t css_computed_fill(const css_computed_style *style, css_color *color,
+		lwc_string **url);
+uint8_t css_computed_stroke(const css_computed_style *style, css_color *color,
+		lwc_string **url);
+uint8_t css_computed_stroke_width(const css_computed_style *style, css_fixed *length,
+		css_unit *unit);
+uint8_t css_computed_stroke_dashoffset(const css_computed_style *style, css_fixed *length,
+		css_unit *unit);
+uint8_t css_computed_stroke_miterlimit(const css_computed_style *style, css_fixed *limit);
+uint8_t css_computed_stroke_dasharray(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_fill_rule(const css_computed_style *style);
+uint8_t css_computed_stroke_linecap(const css_computed_style *style);
+uint8_t css_computed_stroke_linejoin(const css_computed_style *style);
+uint8_t css_computed_stop_color(const css_computed_style *style, css_color *color);
+uint8_t css_computed_stop_opacity(const css_computed_style *style, css_fixed *opacity);
 uint8_t css_computed_transform(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_translate(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_scale(const css_computed_style *style, lwc_string **text);

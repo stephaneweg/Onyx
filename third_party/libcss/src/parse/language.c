@@ -23,6 +23,7 @@
 #include "parse/properties/properties.h"
 #include "parse/properties/utils.h"
 #include "parse/onyx_vars.h"
+#include "parse/onyx_grammar.h"
 #include "parse/onyx_atrules.h"
 
 #include "utils/parserutilserror.h"
@@ -103,6 +104,7 @@ static css_error parseSelectorList(css_language *c,
 		const parserutils_vector *vector, css_rule *rule);
 
 /* Declaration parsing */
+static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes);
 static css_error parseProperty(css_language *c,
 		const css_token *property, const parserutils_vector *vector,
 		int32_t *ctx, css_rule *rule);
@@ -674,7 +676,51 @@ css_error handleStartAtRule(css_language *c, const parserutils_vector *vector)
 
 		c->state = HAD_RULE;
 	} else {
-		return CSS_INVALID;
+		/* Onyx: @keyframes, @counter-style, @property, @scope... (parse/onyx_atrules.h):
+		 * kept as a media rule whose media never matches -- their content does not
+		 * apply --, their descriptors checked against their grammars */
+		css_mq_query *media;
+		css_rule *parent_rule = NULL;
+		context_entry *cur;
+		int parent = ONYX_AT_NONE, kind;
+
+		cur = parserutils_stack_get_current(c->context);
+		if (cur != NULL && cur->type != CSS_PARSER_START_STYLESHEET &&
+				cur->data != NULL) {
+			css_rule *pr = cur->data;
+			if (pr->type == CSS_RULE_MEDIA) {
+				parent = ((css_rule_media *) pr)->onyx_kind;
+				parent_rule = pr;
+			} else {
+				parent = (pr->type == CSS_RULE_PAGE) ? -1 : 99;
+			}
+		}
+		kind = css__onyx_at_kind(atkeyword, parent);
+		if (kind == ONYX_AT_NONE || kind == ONYX_AT_PAGE_MARGIN ||
+				!css__onyx_at_prelude(c, kind, vector, ctx))
+			return CSS_INVALID;
+
+		media = calloc(1, sizeof(*media));	/* (type 0: matches nothing) */
+		if (media == NULL)
+			return CSS_NOMEM;
+		error = css__stylesheet_rule_create(c->sheet, CSS_RULE_MEDIA, &rule);
+		if (error != CSS_OK) {
+			css__mq_query_destroy(media);
+			return error;
+		}
+		error = css__stylesheet_rule_set_media(c->sheet, rule, media);
+		if (error != CSS_OK) {
+			css__stylesheet_rule_destroy(c->sheet, rule);
+			css__mq_query_destroy(media);
+			return error;
+		}
+		((css_rule_media *) rule)->onyx_kind = (uint8_t) kind;
+		error = css__stylesheet_add_rule(c->sheet, rule, parent_rule);
+		if (error != CSS_OK) {
+			css__stylesheet_rule_destroy(c->sheet, rule);
+			return error;
+		}
+		c->state = HAD_RULE;
 	}
 
 	entry.data = rule;
@@ -811,6 +857,21 @@ css_error handleBlockContent(css_language *c, const parserutils_vector *vector)
 			return error;
 		}
 
+		/* Onyx: in the at-rules kept without effect (parse/onyx_atrules.h) */
+		switch (((css_rule_media *) rule)->onyx_kind) {
+		case ONYX_AT_NONE:
+		case ONYX_AT_SCOPE:
+		case ONYX_AT_STARTING_STYLE:
+			break;
+		case ONYX_AT_KEYFRAMES:
+			return onyx_start_keyframe(c, rule);
+		default:
+			if (css__onyx_at_declaration(c, ((css_rule_media *) rule)->onyx_kind,
+					vector))
+				c->sheet->onyx_desc_words++;
+			return CSS_OK;
+		}
+
 		/* Expect rulesets */
 		return handleStartRuleset(c, vector);
 	} else {
@@ -899,11 +960,22 @@ css_error handleDeclaration(css_language *c, const parserutils_vector *vector)
 		css_rule_font_face * ff_rule = (css_rule_font_face *) rule;
 		error = css__parse_font_descriptor(
 				c, ident, vector, &ctx, ff_rule);
+		/* Onyx: the descriptors libcss does not read (font-display, size-adjust...)
+		 * checked against their grammars; the valid ones counted (the CSSOM) */
+		if (error == CSS_INVALID &&
+				css__onyx_descriptor_valid(c, "@font-face", vector))
+			error = CSS_OK;
 	} else {
 		error = parseProperty(c, ident, vector, &ctx, rule);
+		/* Onyx: @page's descriptors (size, marks, bleed...) */
+		if (error == CSS_INVALID && rule->type == CSS_RULE_PAGE &&
+				css__onyx_descriptor_valid(c, "@page", vector))
+			error = CSS_OK;
 	}
 	if (error != CSS_OK)
 		return error;
+	if (rule->type != CSS_RULE_SELECTOR)
+		c->sheet->onyx_desc_words++;
 
 	return CSS_OK;
 }
@@ -987,6 +1059,9 @@ css_error lookupNamespace(css_language *c, lwc_string *prefix, lwc_string **uri)
 
 	if (prefix == NULL) {
 		*uri = NULL;
+	} else if (lwc_string_length(prefix) == 1 && lwc_string_data(prefix)[0] == '*') {
+		/* Onyx: *| -- any namespace (NetSurf's matching ignores them) */
+		*uri = c->strings[UNIVERSAL];
 	} else {
 		for (idx = 0; idx < c->num_namespaces; idx++) {
 			if (lwc_string_isequal(c->namespaces[idx].prefix,
@@ -1130,6 +1205,17 @@ css_error parseAttrib(css_language *c, const parserutils_vector *vector,
 		consumeWhitespace(vector, ctx);
 
 		token = parserutils_vector_iterate(vector, ctx);
+		/* Onyx: the case flag, [a=b i] / [a=b s] (NetSurf compares attribute
+		 * values without case already) */
+		if (token != NULL && token->type == CSS_TOKEN_IDENT &&
+				lwc_string_length(token->idata) == 1 &&
+				(lwc_string_data(token->idata)[0] == 'i' ||
+				 lwc_string_data(token->idata)[0] == 'I' ||
+				 lwc_string_data(token->idata)[0] == 's' ||
+				 lwc_string_data(token->idata)[0] == 'S')) {
+			consumeWhitespace(vector, ctx);
+			token = parserutils_vector_iterate(vector, ctx);
+		}
 		if (token == NULL || tokenIsChar(token, ']') == false)
 			return CSS_INVALID;
 	}
@@ -1347,7 +1433,7 @@ css_error parseNth(css_language *c,
  * is skipped; else it invalidates the list. Pseudo elements are not allowed. */
 static css_error onyx_parse_selector_list_arg(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx, bool where,
-		bool forgiving, css_onyx_selector_list **out)
+		bool forgiving, bool relative, css_onyx_selector_list **out)
 {
 	css_selector *sel[64];
 	uint32_t n = 0, i, spec = 0;
@@ -1360,6 +1446,15 @@ static css_error onyx_parse_selector_list_arg(css_language *c,
 		bool ok;
 
 		consumeWhitespace(vector, ctx);
+		if (relative) {
+			/* :has()'s relative selectors: a leading combinator */
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t != NULL && (tokenIsChar(t, '>') || tokenIsChar(t, '+') ||
+					tokenIsChar(t, '~'))) {
+				parserutils_vector_iterate(vector, ctx);
+				consumeWhitespace(vector, ctx);
+			}
+		}
 		error = parseSelector(c, vector, ctx, &s);
 		ok = (error == CSS_OK);
 		if (ok) {
@@ -1429,6 +1524,8 @@ static css_error onyx_parse_selector_list_arg(css_language *c,
 	}
 	list->n = n;
 	list->specificity = where ? 0 : spec;
+	list->kind = ONYX_SL_IS;
+	list->a = list->b = 0;
 	for (i = 0; i < n; i++)
 		list->sel[i] = sel[i];
 	*out = list;
@@ -1438,6 +1535,231 @@ fail:
 	for (i = 0; i < n; i++)
 		css__stylesheet_selector_destroy(c->sheet, sel[i]);
 	return error;
+}
+
+/* Onyx: the pseudo-classes and pseudo-elements of Selectors 4, CSS Pseudo 4 and the other
+ * specifications that libcss does not know. Parsed and checked (a functional one's argument
+ * too); matched when libcss can say (select.c: :read-only, :read-write, :required, :optional,
+ * :placeholder-shown, :defined, :scope, :dir(), :nth-child(An+B of S)), else never matching
+ * -- a rule "a:has(b), c" keeps its c, as in a browser, where libcss dropped the whole rule.
+ * The pseudo-elements never match (NetSurf draws none of them). */
+static const char *const onyx_pc_plain[] = {
+	"read-only", "read-write", "required", "optional", "placeholder-shown",
+	"default", "indeterminate", "defined", "scope", "valid", "invalid", "user-valid",
+	"user-invalid", "in-range", "out-of-range", "autofill", "-webkit-autofill", "modal",
+	"fullscreen", "-webkit-full-screen", "picture-in-picture", "popover-open", "future",
+	"past", "current", "target-within", "target-current", "blank", "host",
+	"xr-overlay", "active-view-transition", "open", "closed", "playing", "paused",
+	"seeking", "buffering", "stalled", "muted", "volume-locked", "local-link",
+	"has-slotted", "-webkit-any-link", "backdrop"
+};
+static const char *const onyx_pe_plain[] = {
+	"marker", "placeholder", "selection", "backdrop", "file-selector-button",
+	"grammar-error", "spelling-error", "target-text", "details-content", "checkmark",
+	"picker-icon", "color-swatch", "column", "scroll-marker", "scroll-marker-group",
+	"cue", "cue-region", "view-transition", "first-line", "first-letter",
+	/* the -webkit- ones the engines ship (pages hide scrollbars with them) */
+	"-webkit-scrollbar", "-webkit-scrollbar-thumb", "-webkit-scrollbar-track",
+	"-webkit-scrollbar-track-piece", "-webkit-scrollbar-button",
+	"-webkit-scrollbar-corner", "-webkit-resizer", "-webkit-input-placeholder",
+	"-webkit-search-cancel-button", "-webkit-search-decoration",
+	"-webkit-search-results-button", "-webkit-inner-spin-button",
+	"-webkit-outer-spin-button", "-webkit-file-upload-button", "-webkit-details-marker",
+	"-webkit-slider-thumb", "-webkit-slider-runnable-track", "-webkit-progress-bar",
+	"-webkit-progress-value", "-webkit-progress-inner-element", "-webkit-meter-bar",
+	"-webkit-meter-optimum-value", "-webkit-meter-suboptimum-value",
+	"-webkit-meter-even-less-good-value", "-webkit-calendar-picker-indicator",
+	"-webkit-datetime-edit", "-webkit-datetime-edit-fields-wrapper",
+	"-webkit-datetime-edit-text", "-webkit-datetime-edit-year-field",
+	"-webkit-datetime-edit-month-field", "-webkit-datetime-edit-day-field",
+	"-webkit-datetime-edit-hour-field", "-webkit-datetime-edit-minute-field",
+	"-webkit-datetime-edit-second-field", "-webkit-datetime-edit-ampm-field",
+	"-webkit-clear-button", "-webkit-color-swatch", "-webkit-color-swatch-wrapper",
+	"-webkit-media-controls", "-webkit-media-controls-panel",
+	"-webkit-media-controls-play-button", "-webkit-media-controls-enclosure",
+	"-webkit-textfield-decoration-container", "-webkit-validation-bubble"
+};
+
+static bool onyx_in(const css_token *t, const char *const *names, size_t n)
+{
+	size_t i, len = lwc_string_length(t->idata);
+	for (i = 0; i < n; i++)
+		if (strlen(names[i]) == len &&
+				strncasecmp(lwc_string_data(t->idata), names[i], len) == 0)
+			return true;
+	return false;
+}
+
+static bool onyx_is_name(const css_token *t, const char *name)
+{
+	size_t len = lwc_string_length(t->idata);
+	return strlen(name) == len && strncasecmp(lwc_string_data(t->idata), name, len) == 0;
+}
+
+/* a functional pseudo's argument, [*ctx, the ')'): its kind of check */
+enum { ONYX_ARG_IDENT, ONYX_ARG_IDENTS, ONYX_ARG_IDENT_LIST, ONYX_ARG_DIR,
+	ONYX_ARG_SELECTOR, ONYX_ARG_RELATIVE, ONYX_ARG_PT_NAME, ONYX_ARG_SCROLL_BUTTON,
+	ONYX_ARG_NTH_LIST };
+
+static bool onyx_check_simple_arg(const parserutils_vector *vector, int32_t *ctx, int kind)
+{
+	const css_token *t;
+	int n = 0;
+
+	for (;;) {
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_peek(vector, *ctx);
+		if (t == NULL)
+			return false;
+		if (tokenIsChar(t, ')'))
+			break;
+		switch (kind) {
+		case ONYX_ARG_IDENT:
+		case ONYX_ARG_DIR:
+			if (n > 0 || t->type != CSS_TOKEN_IDENT)
+				return false;
+			if (kind == ONYX_ARG_DIR && !onyx_is_name(t, "ltr") &&
+					!onyx_is_name(t, "rtl"))
+				return false;
+			break;
+		case ONYX_ARG_IDENTS:
+			if (t->type != CSS_TOKEN_IDENT)
+				return false;
+			break;
+		case ONYX_ARG_IDENT_LIST:
+			if ((n & 1) == 0 ? t->type != CSS_TOKEN_IDENT : !tokenIsChar(t, ','))
+				return false;
+			break;
+		case ONYX_ARG_SCROLL_BUTTON:
+			if (n > 0 || (!tokenIsChar(t, '*') && t->type != CSS_TOKEN_IDENT))
+				return false;
+			break;
+		case ONYX_ARG_PT_NAME:
+			/* '*' | <custom-ident>, then .class* -- or .class+ alone */
+			if (n == 0 && (tokenIsChar(t, '*') || t->type == CSS_TOKEN_IDENT)) {
+				n++;
+				parserutils_vector_iterate(vector, ctx);
+				continue;
+			}
+			if (!tokenIsChar(t, '.'))
+				return false;
+			parserutils_vector_iterate(vector, ctx);
+			t = parserutils_vector_peek(vector, *ctx);
+			if (t == NULL || t->type != CSS_TOKEN_IDENT)
+				return false;
+			break;
+		default:
+			return false;
+		}
+		n++;
+		parserutils_vector_iterate(vector, ctx);
+	}
+	if (kind == ONYX_ARG_IDENT_LIST && (n & 1) == 0)
+		return false;
+	return n > 0;
+}
+
+static css_error onyx_parse_selector_list_arg(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx, bool where,
+		bool forgiving, bool relative, css_onyx_selector_list **out);
+
+/* Onyx: a pseudo-class / pseudo-element libcss's table has not (token: its IDENT or
+ * FUNCTION, *ctx past it); CSS_INVALID if not one of the known ones */
+static css_error onyx_parse_extra_pseudo(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, const css_token *token, bool element, bool in_not,
+		css_selector_detail *specific)
+{
+	static const struct { const char *name; bool element; int arg; } fns[] = {
+		{ "has", false, ONYX_ARG_RELATIVE }, { "dir", false, ONYX_ARG_DIR },
+		{ "state", false, ONYX_ARG_IDENT }, { "host", false, ONYX_ARG_SELECTOR },
+		{ "host-context", false, ONYX_ARG_SELECTOR },
+		{ "active-view-transition-type", false, ONYX_ARG_IDENT_LIST },
+		{ "nth-col", false, ONYX_ARG_NTH_LIST },
+		{ "nth-last-col", false, ONYX_ARG_NTH_LIST },
+		{ "highlight", true, ONYX_ARG_IDENT }, { "part", true, ONYX_ARG_IDENTS },
+		{ "slotted", true, ONYX_ARG_SELECTOR }, { "picker", true, ONYX_ARG_IDENT },
+		{ "scroll-button", true, ONYX_ARG_SCROLL_BUTTON },
+		{ "view-transition-group", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-image-pair", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-old", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-new", true, ONYX_ARG_PT_NAME },
+		{ "view-transition-group-children", true, ONYX_ARG_PT_NAME },
+		{ "cue", true, ONYX_ARG_SELECTOR }, { "cue-region", true, ONYX_ARG_SELECTOR },
+	};
+	css_selector_detail_value value;
+	css_selector_detail_value_type vtype = CSS_SELECTOR_DETAIL_VALUE_STRING;
+	css_selector_type type;
+	css_qname qname;
+	css_error error;
+	size_t i;
+
+	value.string = NULL;
+	qname.ns = NULL;
+	qname.name = token->idata;
+
+	if (token->type == CSS_TOKEN_IDENT) {
+		if (element && onyx_in(token, onyx_pe_plain,
+				sizeof(onyx_pe_plain) / sizeof(onyx_pe_plain[0])))
+			type = CSS_SELECTOR_PSEUDO_ELEMENT;
+		else if (!element && onyx_in(token, onyx_pc_plain,
+				sizeof(onyx_pc_plain) / sizeof(onyx_pc_plain[0])))
+			type = CSS_SELECTOR_PSEUDO_CLASS;
+		else
+			return CSS_INVALID;
+		if (in_not && type == CSS_SELECTOR_PSEUDO_ELEMENT)
+			return CSS_INVALID;
+		return css__stylesheet_selector_detail_init(c->sheet, type, &qname, value,
+				vtype, false, specific);
+	}
+
+	for (i = 0; i < sizeof(fns) / sizeof(fns[0]); i++)
+		if (fns[i].element == element && onyx_is_name(token, fns[i].name))
+			break;
+	if (i == sizeof(fns) / sizeof(fns[0]) || (in_not && fns[i].element))
+		return CSS_INVALID;
+	type = fns[i].element ? CSS_SELECTOR_PSEUDO_ELEMENT : CSS_SELECTOR_PSEUDO_CLASS;
+
+	consumeWhitespace(vector, ctx);
+	switch (fns[i].arg) {
+	case ONYX_ARG_SELECTOR:
+	case ONYX_ARG_RELATIVE:
+		error = onyx_parse_selector_list_arg(c, vector, ctx, false, false,
+				fns[i].arg == ONYX_ARG_RELATIVE, &value.list);
+		if (error != CSS_OK)
+			return error;
+		value.list->kind = ONYX_SL_NEVER;
+		vtype = CSS_SELECTOR_DETAIL_VALUE_LIST;
+		break;
+	case ONYX_ARG_DIR: {
+		int32_t k = *ctx;
+		if (!onyx_check_simple_arg(vector, &k, ONYX_ARG_DIR))
+			return CSS_INVALID;
+		value.string = ((const css_token *) parserutils_vector_peek(vector,
+				*ctx))->idata;
+		*ctx = k;
+		break;
+	}
+	case ONYX_ARG_NTH_LIST:
+		error = parseNth(c, vector, ctx, &value);
+		if (error != CSS_OK)
+			return error;
+		vtype = CSS_SELECTOR_DETAIL_VALUE_NTH;
+		break;
+	default:
+		if (!onyx_check_simple_arg(vector, ctx, fns[i].arg))
+			return CSS_INVALID;
+		break;
+	}
+	consumeWhitespace(vector, ctx);
+	token = parserutils_vector_iterate(vector, ctx);
+	if (token == NULL || !tokenIsChar(token, ')')) {
+		if (vtype == CSS_SELECTOR_DETAIL_VALUE_LIST)
+			css__onyx_selector_list_destroy(c->sheet, value.list);
+		return CSS_INVALID;
+	}
+	/* (:dir(): its value the direction; the others never match) */
+	return css__stylesheet_selector_detail_init(c->sheet, type, &qname, value, vtype,
+			false, specific);
 }
 
 css_error parsePseudo(css_language *c, const parserutils_vector *vector,
@@ -1535,9 +1857,10 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 		}
 	}
 
-	/* Not found: invalid */
+	/* Not found: Onyx -- the newer ones, else invalid */
 	if (lut_idx == N_ELEMENTS(pseudo_lut))
-		return CSS_INVALID;
+		return onyx_parse_extra_pseudo(c, vector, ctx, token, require_element,
+				in_not, specific);
 
 	/* Required a pseudo element, but didn't find one: invalid */
 	if (require_element && type != CSS_SELECTOR_PSEUDO_ELEMENT)
@@ -1579,7 +1902,7 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 				fun_type == PC_MOZ_ANY) {
 			/* Onyx: :is(<forgiving selector list>), :where() */
 			error = onyx_parse_selector_list_arg(c, vector, ctx,
-					fun_type == PC_WHERE, true,
+					fun_type == PC_WHERE, true, false,
 					&detail_value.list);
 			if (error != CSS_OK)
 				return error;
@@ -1605,6 +1928,24 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 				return error;
 
 			value_type = CSS_SELECTOR_DETAIL_VALUE_NTH;
+
+			/* Onyx: :nth-child(An+B of <selector list>) */
+			token = parserutils_vector_peek(vector, *ctx);
+			if (token != NULL && token->type == CSS_TOKEN_IDENT &&
+					(fun_type == NTH_CHILD || fun_type == NTH_LAST_CHILD) &&
+					onyx_is_name(token, "of")) {
+				int32_t a = detail_value.nth.a, b = detail_value.nth.b;
+				parserutils_vector_iterate(vector, ctx);
+				error = onyx_parse_selector_list_arg(c, vector, ctx, false,
+						false, false, &detail_value.list);
+				if (error != CSS_OK)
+					return error;
+				detail_value.list->kind = fun_type == NTH_CHILD ?
+						ONYX_SL_NTH_CHILD : ONYX_SL_NTH_LAST_CHILD;
+				detail_value.list->a = a;
+				detail_value.list->b = b;
+				value_type = CSS_SELECTOR_DETAIL_VALUE_LIST;
+			}
 		} else if (fun_type == NOT) {
 			/* type_selector | specific */
 			token = parserutils_vector_peek(vector, *ctx);
@@ -1656,7 +1997,7 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 			if (token == NULL || tokenIsChar(token, ')') == false) {
 				*ctx = arg_ctx;
 				error = onyx_parse_selector_list_arg(c, vector, ctx,
-						false, false, &detail_value.list);
+						false, false, false, &detail_value.list);
 				if (error != CSS_OK)
 					return error;
 				qname.name = c->strings[PC_IS];
@@ -2103,15 +2444,101 @@ static int onyx_unprefixed_property(css_language *c, lwc_string *name)
 	return -1;
 }
 
+/**
+ * Onyx: a declaration of a property libcss does not compute -- or a value its parser does
+ * not take -- checked against the property's grammar (parse/onyx_grammar.h, gidx its index
+ * in onyx_grammar_props): valid, it is kept as CSS_ONYX_OP_GENERIC (no computed effect);
+ * else CSS_INVALID, as before. A CSS-wide keyword is valid for every property, and so is a
+ * value with var() or env() (known only when substituted).
+ */
+static css_error onyx_parse_generic(css_language *c, int gidx,
+		const parserutils_vector *vector, int32_t *ctx, css_rule *rule)
+{
+	int32_t start = *ctx, end, i, depth = 0, n = 0;
+	const css_token *t, *first = NULL;
+	uint8_t flags = 0, important = 0;
+	bool subst = false, match;
+	css_style *style = NULL;
+	css_error error;
+
+	/* the value: to the end, or to a top-level '!' (its "! important") */
+	consumeWhitespace(vector, &start);
+	for (i = start; (t = parserutils_vector_peek(vector, i)) != NULL; i++) {
+		if (t->type == CSS_TOKEN_FUNCTION || tokenIsChar(t, '(') ||
+				tokenIsChar(t, '['))
+			depth++;
+		else if (tokenIsChar(t, ')') || tokenIsChar(t, ']'))
+			depth--;
+		else if (depth == 0 && tokenIsChar(t, '!'))
+			break;
+		if (t->type == CSS_TOKEN_FUNCTION && (lwc_string_caseless_isequal(t->idata,
+				c->strings[FN_VAR], &match) == lwc_error_ok && match))
+			subst = true;
+		if (t->type == CSS_TOKEN_FUNCTION && ((lwc_string_length(t->idata) == 3 &&
+				(strncasecmp(lwc_string_data(t->idata), "env", 3) == 0 ||
+				 strncasecmp(lwc_string_data(t->idata), "var", 3) == 0)) ||
+				(lwc_string_length(t->idata) == 4 &&
+				 strncasecmp(lwc_string_data(t->idata), "attr", 4) == 0) ||
+				(lwc_string_length(t->idata) == 2 &&
+				 strncasecmp(lwc_string_data(t->idata), "if", 2) == 0)))
+			subst = true;	/* (the substitution functions) */
+		if (t->type != CSS_TOKEN_S) {
+			if (first == NULL)
+				first = t;
+			n++;
+		}
+	}
+	end = i;
+	if (first == NULL)
+		return CSS_INVALID;
+
+	if (n == 1 && first->type == CSS_TOKEN_IDENT) {
+		const char *d = lwc_string_data(first->idata);
+		size_t len = lwc_string_length(first->idata);
+		if (len == 7 && strncasecmp(d, "inherit", 7) == 0)
+			flags = FLAG_INHERIT;
+		else if (len == 7 && strncasecmp(d, "initial", 7) == 0)
+			flags = FLAG_INITIAL;
+		else if (len == 5 && strncasecmp(d, "unset", 5) == 0)
+			flags = FLAG_UNSET;
+		else if ((len == 6 && strncasecmp(d, "revert", 6) == 0) ||
+				(len == 12 && strncasecmp(d, "revert-layer", 12) == 0))
+			flags = FLAG_REVERT;
+	}
+	if (flags == 0 && !subst && !css__onyx_grammar_match(
+			onyx_grammar_props[gidx].root, vector, start, end))
+		return CSS_INVALID;
+
+	*ctx = end;
+	error = css__parse_important(c, vector, ctx, &important);
+	if (error != CSS_OK)
+		return error;
+	consumeWhitespace(vector, ctx);
+	if (parserutils_vector_peek(vector, *ctx) != NULL)
+		return CSS_INVALID;
+
+	error = css__stylesheet_style_create(c->sheet, &style);
+	if (error != CSS_OK)
+		return error;
+	error = css__stylesheet_style_append(style, buildOPV(
+			(opcode_t) CSS_ONYX_OP_GENERIC, flags | important, (uint16_t) gidx));
+	if (error == CSS_OK)
+		error = css__stylesheet_rule_append_style(c->sheet, rule, style);
+	if (error != CSS_OK)
+		css__stylesheet_style_destroy(style);
+	return error;
+}
+
 css_error parseProperty(css_language *c, const css_token *property,
 		const parserutils_vector *vector, int32_t *ctx, css_rule *rule)
 {
 	css_error error;
 	css_prop_handler handler = NULL;
-	int i = 0;
+	int i = 0, gidx;
 	uint8_t flags = 0;
 	css_style *style = NULL;
 	const css_token *token;
+	int32_t orig_ctx = *ctx;
 
 	/* Onyx: a custom property, --name: value (src/parse/onyx_vars.c) */
 	if (css__onyx_is_custom_name(property->idata))
@@ -2129,8 +2556,15 @@ css_error parseProperty(css_language *c, const css_token *property,
 	if (i == LAST_PROP + 1) {
 		/* Onyx: a vendor's prefixed property as the standard one */
 		i = onyx_unprefixed_property(c, property->idata);
-		if (i < 0)
-			return CSS_INVALID;
+		if (i < 0) {
+			/* Onyx: a property libcss does not compute: its grammar */
+			gidx = css__onyx_grammar_property(
+					lwc_string_data(property->idata),
+					lwc_string_length(property->idata));
+			if (gidx < 0)
+				return CSS_INVALID;
+			return onyx_parse_generic(c, gidx, vector, ctx, rule);
+		}
 	}
 
 	/* Get handler */
@@ -2151,25 +2585,34 @@ css_error parseProperty(css_language *c, const css_token *property,
 
 	/* Call the handler */
 	error = handler(c, vector, ctx, style);
+	if (error == CSS_OK) {
+		/* Determine if this declaration is important or not */
+		error = css__parse_important(c, vector, ctx, &flags);
+	}
+	if (error == CSS_OK) {
+		/* Ensure that we've exhausted all the input */
+		consumeWhitespace(vector, ctx);
+		token = parserutils_vector_iterate(vector, ctx);
+		if (token != NULL) {
+			/* Trailing junk, so discard declaration */
+			error = CSS_INVALID;
+		}
+	}
+	if (error == CSS_INVALID) {
+		/* Onyx: a value libcss's parser does not take (a newer syntax): valid if
+		 * the property's grammar says so, kept without a computed effect (an
+		 * earlier declaration the parser took keeps applying) */
+		css__stylesheet_style_destroy(style);
+		*ctx = orig_ctx;
+		gidx = css__onyx_grammar_property(lwc_string_data(c->strings[i]),
+				lwc_string_length(c->strings[i]));
+		if (gidx < 0)
+			return CSS_INVALID;
+		return onyx_parse_generic(c, gidx, vector, ctx, rule);
+	}
 	if (error != CSS_OK) {
 		css__stylesheet_style_destroy(style);
 		return error;
-	}
-
-	/* Determine if this declaration is important or not */
-	error = css__parse_important(c, vector, ctx, &flags);
-	if (error != CSS_OK) {
-		css__stylesheet_style_destroy(style);
-		return error;
-	}
-
-	/* Ensure that we've exhausted all the input */
-	consumeWhitespace(vector, ctx);
-	token = parserutils_vector_iterate(vector, ctx);
-	if (token != NULL) {
-		/* Trailing junk, so discard declaration */
-                css__stylesheet_style_destroy(style);
-		return CSS_INVALID;
 	}
 
 	/* If it's important, then mark the style appropriately */
@@ -2186,5 +2629,81 @@ css_error parseProperty(css_language *c, const css_token *property,
 	/* Style owned or destroyed by stylesheet, so forget about it */
 
 	return CSS_OK;
+}
+
+/* Onyx: a keyframe in a @keyframes rule ("from, 50% {"): a child kept without effect, whose
+ * declarations are checked as properties (the block's content, handleBlockContent). Made
+ * for any prelude (the context stays balanced); the CSSOM checks the keyframe selectors. */
+static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes)
+{
+	context_entry entry = { CSS_PARSER_START_ATRULE, NULL };
+	css_mq_query *media;
+	css_rule *rule;
+	css_error error;
+
+	media = calloc(1, sizeof(*media));
+	if (media == NULL)
+		return CSS_NOMEM;
+	error = css__stylesheet_rule_create(c->sheet, CSS_RULE_MEDIA, &rule);
+	if (error != CSS_OK) {
+		css__mq_query_destroy(media);
+		return error;
+	}
+	error = css__stylesheet_rule_set_media(c->sheet, rule, media);
+	if (error != CSS_OK) {
+		css__stylesheet_rule_destroy(c->sheet, rule);
+		css__mq_query_destroy(media);
+		return error;
+	}
+	((css_rule_media *) rule)->onyx_kind = ONYX_AT_KEYFRAME;
+	error = css__stylesheet_add_rule(c->sheet, rule, keyframes);
+	if (error != CSS_OK) {
+		css__stylesheet_rule_destroy(c->sheet, rule);
+		return error;
+	}
+	entry.data = rule;
+	if (parserutils_stack_push(c->context, (void *) &entry) != PARSERUTILS_OK)
+		return CSS_NOMEM;
+	return CSS_OK;
+}
+
+/* Onyx: do the tokens [start, end) of the vector make a valid selector list? (@scope) */
+bool css__onyx_selector_list_valid(css_language *c, const parserutils_vector *vector,
+		int32_t start, int32_t end)
+{
+	parserutils_vector *sub = NULL;
+	css_rule *rule = NULL;
+	int32_t i;
+	bool ok = false;
+
+	if (parserutils_vector_create(sizeof(css_token), 16, &sub) != PARSERUTILS_OK)
+		return false;
+	for (i = start; i < end; i++) {
+		css_token tok = *((const css_token *) parserutils_vector_peek(vector, i));
+		if (parserutils_vector_append(sub, &tok) != PARSERUTILS_OK)
+			goto done;
+	}
+	if (css__stylesheet_rule_create(c->sheet, CSS_RULE_SELECTOR, &rule) != CSS_OK)
+		goto done;
+	ok = parseSelectorList(c, sub, rule) == CSS_OK;
+	css__stylesheet_rule_destroy(c->sheet, rule);
+done:
+	parserutils_vector_destroy(sub);
+	return ok;
+}
+
+/* Onyx: is "property: value" (the value from ctx to the end of the vector) a declaration
+ * this parser keeps? (@supports, CSS.supports) */
+bool css__onyx_declaration_valid(css_language *c, const css_token *property,
+		const parserutils_vector *vector, int32_t ctx)
+{
+	css_rule *rule = NULL;
+	bool ok;
+
+	if (css__stylesheet_rule_create(c->sheet, CSS_RULE_SELECTOR, &rule) != CSS_OK)
+		return false;
+	ok = parseProperty(c, property, vector, &ctx, rule) == CSS_OK;
+	css__stylesheet_rule_destroy(c->sheet, rule);
+	return ok;
 }
 

@@ -1,0 +1,16 @@
+@webref/css 8.7.5 (https://github.com/w3c/webref, npm package @webref/css), MIT licence
+(LICENSE): the W3C's consolidation of the CSS features defined across the specifications,
+scraped from the specifications themselves -- properties, types, functions, at-rules and their
+descriptors, selectors, each with its value grammar ("Value Definition Syntax").
+
+Onyx keeps only what libcss's grammar generator reads: css-grammar.json, made from the
+package's css.json by trim.py (names and syntaxes). The generator,
+third_party/libcss/src/parse/onyx_grammar_gen.py, compiles it into
+third_party/libcss/src/parse/onyx_grammar_tables.c (committed: no Python at build time):
+
+    npm pack @webref/css@8.7.5 && tar xzf webref-css-8.7.5.tgz
+    python3 trim.py package/css.json > css-grammar.json
+    cd ../libcss/src/parse && python3 onyx_grammar_gen.py \
+        ../../../webref-css-8.7.5/css-grammar.json > onyx_grammar_tables.c
+
+See docs/06-NETSURF-CHANGES.md (CSS) for what libcss does with the grammars.

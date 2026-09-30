@@ -438,6 +438,8 @@ css_error css__onyx_cascade(uint32_t opv, css_style *style, css_select_state *st
 		return onyx_cascade_custom(opv, style, state);
 	case CSS_ONYX_OP_VAR:
 		return onyx_cascade_var(opv, style, state);
+	case CSS_ONYX_OP_GENERIC:
+		return CSS_OK;		/* (valid, not computed: parse/onyx_grammar.h) */
 	default:
 		return CSS_INVALID;	/* (unknown opcode: stop the style) */
 	}

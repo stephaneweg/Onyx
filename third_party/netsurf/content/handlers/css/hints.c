@@ -1624,6 +1624,143 @@ static void css_hint_list(
 }
 
 
+
+/* Onyx: SVG's presentation attributes (fill="red", stroke-width="2"...) as hints -- the
+ * lowest author origin, so a page's CSS rule (.icon { fill: currentColor }) wins over them,
+ * as in a browser. SVG-namespace elements only. */
+static void css_hint_svg(nscss_select_ctx *ctx, dom_node *node)
+{
+	enum { A_FILL, A_STROKE, A_STROKE_WIDTH, A_FILL_OPACITY, A_STROKE_OPACITY,
+		A_FILL_RULE, A_LINECAP, A_LINEJOIN, A_MITERLIMIT, A_STOP_COLOR,
+		A_STOP_OPACITY, A_OPACITY, A_N };
+	static const char *const names[A_N] = { "fill", "stroke", "stroke-width",
+		"fill-opacity", "stroke-opacity", "fill-rule", "stroke-linecap",
+		"stroke-linejoin", "stroke-miterlimit", "stop-color", "stop-opacity",
+		"opacity" };
+	static dom_string *attr[A_N];
+	struct css_hint *hint = &hint_ctx.hints[hint_ctx.len];
+	dom_string *ns = NULL, *v;
+	bool svg;
+	int a;
+
+	(void) ctx;
+	if (dom_node_get_namespace(node, &ns) != DOM_NO_ERR || ns == NULL)
+		return;
+	svg = dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_SVG]);
+	dom_string_unref(ns);
+	if (!svg)
+		return;
+
+	for (a = 0; a < A_N; a++) {
+		const char *s;
+		char *end;
+		double d;
+
+		if (attr[a] == NULL && dom_string_create_interned(
+				(const uint8_t *) names[a], strlen(names[a]),
+				&attr[a]) != DOM_NO_ERR)
+			return;
+		if (dom_element_get_attribute(node, attr[a], &v) != DOM_NO_ERR || v == NULL)
+			continue;
+		s = dom_string_data(v);
+		while (*s == ' ')
+			s++;
+		switch (a) {
+		case A_FILL:
+		case A_STROKE:
+			hint->prop = (a == A_FILL) ? CSS_PROP_FILL : CSS_PROP_STROKE;
+			hint->data.color = 0;
+			if (strcasecmp(s, "none") == 0) {
+				hint->status = CSS_PAINT_NONE;
+				css_hint_advance(&hint);
+			} else if (strcasecmp(s, "currentColor") == 0) {
+				hint->status = CSS_PAINT_CURRENT_COLOR;
+				css_hint_advance(&hint);
+			} else if (strncasecmp(s, "url(", 4) != 0 &&
+					nscss_parse_colour(s, &hint->data.color)) {
+				hint->status = CSS_PAINT_COLOR;
+				css_hint_advance(&hint);
+			}
+			break;
+		case A_STROKE_WIDTH:
+			d = strtod(s, &end);
+			if (end != s && d >= 0) {
+				hint->prop = CSS_PROP_STROKE_WIDTH;
+				hint->status = CSS_STROKE_WIDTH_SET;
+				hint->data.length.value = FLTTOFIX(d);
+				hint->data.length.unit = *end == '%' ? CSS_UNIT_PCT :
+						strncasecmp(end, "em", 2) == 0 ? CSS_UNIT_EM :
+						CSS_UNIT_PX;
+				css_hint_advance(&hint);
+			}
+			break;
+		case A_FILL_OPACITY:
+		case A_STROKE_OPACITY:
+		case A_STOP_OPACITY:
+		case A_OPACITY:
+			d = strtod(s, &end);
+			if (end != s) {
+				if (*end == '%')
+					d /= 100;
+				d = d < 0 ? 0 : d > 1 ? 1 : d;
+				hint->prop = a == A_FILL_OPACITY ? CSS_PROP_FILL_OPACITY :
+						a == A_STROKE_OPACITY ? CSS_PROP_STROKE_OPACITY :
+						a == A_STOP_OPACITY ? CSS_PROP_STOP_OPACITY :
+						CSS_PROP_OPACITY;
+				hint->status = 1;	/* (the *_SET of each) */
+				hint->data.fixed = FLTTOFIX(d);
+				css_hint_advance(&hint);
+			}
+			break;
+		case A_MITERLIMIT:
+			d = strtod(s, &end);
+			if (end != s && d >= 1) {
+				hint->prop = CSS_PROP_STROKE_MITERLIMIT;
+				hint->status = CSS_STROKE_MITERLIMIT_SET;
+				hint->data.fixed = FLTTOFIX(d);
+				css_hint_advance(&hint);
+			}
+			break;
+		case A_FILL_RULE:
+			hint->prop = CSS_PROP_FILL_RULE;
+			hint->status = strcasecmp(s, "evenodd") == 0 ? CSS_FILL_RULE_EVENODD :
+					strcasecmp(s, "nonzero") == 0 ? CSS_FILL_RULE_NONZERO : 0;
+			if (hint->status != 0)
+				css_hint_advance(&hint);
+			break;
+		case A_LINECAP:
+			hint->prop = CSS_PROP_STROKE_LINECAP;
+			hint->status = strcasecmp(s, "butt") == 0 ? CSS_STROKE_LINECAP_BUTT :
+					strcasecmp(s, "round") == 0 ? CSS_STROKE_LINECAP_ROUND :
+					strcasecmp(s, "square") == 0 ? CSS_STROKE_LINECAP_SQUARE : 0;
+			if (hint->status != 0)
+				css_hint_advance(&hint);
+			break;
+		case A_LINEJOIN:
+			hint->prop = CSS_PROP_STROKE_LINEJOIN;
+			hint->status = strcasecmp(s, "miter") == 0 ? CSS_STROKE_LINEJOIN_MITER :
+					strcasecmp(s, "round") == 0 ? CSS_STROKE_LINEJOIN_ROUND :
+					strcasecmp(s, "bevel") == 0 ? CSS_STROKE_LINEJOIN_BEVEL : 0;
+			if (hint->status != 0)
+				css_hint_advance(&hint);
+			break;
+		case A_STOP_COLOR:
+			hint->prop = CSS_PROP_STOP_COLOR;
+			if (strcasecmp(s, "currentColor") == 0) {
+				hint->status = CSS_STOP_COLOR_CURRENT_COLOR;
+				css_hint_advance(&hint);
+			} else if (nscss_parse_colour(s, &hint->data.color)) {
+				hint->status = CSS_STOP_COLOR_COLOR;
+				css_hint_advance(&hint);
+			}
+			break;
+		default:
+			break;
+		}
+		dom_string_unref(v);
+	}
+}
+
 /* Exported function, documented in css/hints.h */
 css_error node_presentational_hint(void *pw, void *node,
 		uint32_t *nhints, css_hint **hints)
@@ -1727,6 +1864,9 @@ css_error node_presentational_hint(void *pw, void *node,
 	default:
 		break;
 	}
+
+	if (tag_type == DOM_HTML_ELEMENT_TYPE__UNKNOWN)
+		css_hint_svg(pw, node);		/* Onyx: <svg>, <path>... */
 
 	if (tag_type != DOM_HTML_ELEMENT_TYPE__UNKNOWN) {
 		css_hint_color(pw, node);

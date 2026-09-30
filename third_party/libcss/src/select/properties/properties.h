@@ -72,6 +72,18 @@ PROPERTY_FUNCS(direction);
 PROPERTY_FUNCS(display);
 PROPERTY_FUNCS(elevation);
 PROPERTY_FUNCS(empty_cells);
+/* Onyx: SVG (onyx_svg.c) */
+PROPERTY_FUNCS(fill);
+PROPERTY_FUNCS(stroke);
+PROPERTY_FUNCS(stroke_width);
+PROPERTY_FUNCS(fill_rule);
+PROPERTY_FUNCS(stroke_linecap);
+PROPERTY_FUNCS(stroke_linejoin);
+PROPERTY_FUNCS(stroke_miterlimit);
+PROPERTY_FUNCS(stroke_dasharray);
+PROPERTY_FUNCS(stroke_dashoffset);
+PROPERTY_FUNCS(stop_color);
+PROPERTY_FUNCS(stop_opacity);
 PROPERTY_FUNCS(fill_opacity);
 PROPERTY_FUNCS(flex_basis);
 PROPERTY_FUNCS(flex_direction);

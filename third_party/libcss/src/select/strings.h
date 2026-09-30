@@ -10,6 +10,38 @@
 
 #include <libcss/errors.h>
 
+/* Onyx: the strings of the pseudo-classes libcss matches since (select.c) */
+enum {
+	ONYX_STR_READ_ONLY,
+	ONYX_STR_READ_WRITE,
+	ONYX_STR_REQUIRED,
+	ONYX_STR_OPTIONAL,
+	ONYX_STR_PLACEHOLDER_SHOWN,
+	ONYX_STR_DEFINED,
+	ONYX_STR_SCOPE,
+	ONYX_STR_DIR,
+	ONYX_STR_LTR,
+	ONYX_STR_INPUT,
+	ONYX_STR_TEXTAREA,
+	ONYX_STR_SELECT,
+	ONYX_STR_READONLY,
+	ONYX_STR_PLACEHOLDER,
+	ONYX_STR_VALUE,
+	ONYX_STR_TYPE,
+	ONYX_STR_CONTENTEDITABLE,
+	ONYX_STR_CHECKBOX,
+	ONYX_STR_RADIO,
+	ONYX_STR_SUBMIT,
+	ONYX_STR_BUTTON,
+	ONYX_STR_RESET,
+	ONYX_STR_HIDDEN,
+	ONYX_STR_IMAGE,
+	ONYX_STR_FILE,
+	ONYX_STR_COLOR,
+	ONYX_STR_RANGE,
+	ONYX_STR_N
+};
+
 /** Useful interned strings */
 typedef struct {
 	lwc_string *universal;
@@ -43,6 +75,8 @@ typedef struct {
 	lwc_string *width;
 	lwc_string *height;
 	lwc_string *prefers_color_scheme;
+
+	lwc_string *onyx[ONYX_STR_N];		/* Onyx: ONYX_STR_* */
 } css_select_strings;
 
 css_error css_select_strings_intern(css_select_strings *str);

@@ -992,4 +992,47 @@ enum op_z_index {
 	Z_INDEX_AUTO			= 0x0000
 };
 
+/* Onyx: SVG's presentation properties */
+enum op_paint {
+	PAINT_NONE			= 0x0000,
+	PAINT_CURRENT_COLOR		= 0x0001,
+	PAINT_CONTEXT_FILL		= 0x0002,
+	PAINT_CONTEXT_STROKE		= 0x0003,
+	PAINT_COLOR			= 0x0080,	/* + colour */
+	PAINT_URL			= 0x0040	/* + string; | the fallback (none,
+						 * currentColor, PAINT_COLOR: + colour) */
+};
+
+enum op_svg_length {			/* stroke-width, stroke-dashoffset */
+	SVG_LENGTH_SET			= 0x0080	/* + length, unit */
+};
+
+enum op_svg_number {			/* stroke-miterlimit, stop-opacity */
+	SVG_NUMBER_SET			= 0x0080	/* + fixed */
+};
+
+enum op_fill_rule {
+	FILL_RULE_NONZERO		= 0x0000,
+	FILL_RULE_EVENODD		= 0x0001
+};
+
+enum op_stroke_linecap {
+	STROKE_LINECAP_BUTT		= 0x0000,
+	STROKE_LINECAP_ROUND		= 0x0001,
+	STROKE_LINECAP_SQUARE		= 0x0002
+};
+
+enum op_stroke_linejoin {
+	STROKE_LINEJOIN_MITER		= 0x0000,
+	STROKE_LINEJOIN_MITER_CLIP	= 0x0001,
+	STROKE_LINEJOIN_ROUND		= 0x0002,
+	STROKE_LINEJOIN_BEVEL		= 0x0003,
+	STROKE_LINEJOIN_ARCS		= 0x0004
+};
+
+enum op_stop_color {
+	STOP_COLOR_CURRENT_COLOR	= 0x0001,
+	STOP_COLOR_SET			= 0x0080	/* + colour */
+};
+
 #endif

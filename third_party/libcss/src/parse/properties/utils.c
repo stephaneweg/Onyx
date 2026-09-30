@@ -15,6 +15,11 @@
 #include "parse/properties/properties.h"
 #include "parse/properties/utils.h"
 #include "utils/parserutilserror.h"
+#include <math.h>
+#include <stdlib.h>
+
+static bool onyx_unit_alias(const char *ptr, size_t len, uint32_t *unit, css_fixed *scale);
+static bool onyx_is_math_fn(const css_token *t);
 
 
 /**
@@ -1383,8 +1388,14 @@ css_error css__parse_unit_specifier(css_language *c,
 		error = css__parse_unit_keyword(data + consumed, len - consumed,
 				&temp_unit);
 		if (error != CSS_OK) {
-			*ctx = orig_ctx;
-			return error;
+			/* Onyx: the newer units, as the ones libcss computes */
+			css_fixed scale;
+			if (!onyx_unit_alias(data + consumed, len - consumed,
+					&temp_unit, &scale)) {
+				*ctx = orig_ctx;
+				return error;
+			}
+			num = FMUL(num, scale);
 		}
 
 		*unit = temp_unit;
@@ -1437,6 +1448,41 @@ css_error css__parse_unit_specifier(css_language *c,
 	*length = num;
 
 	return CSS_OK;
+}
+
+/**
+ * Onyx: the units of CSS Values 4 libcss has no unit for, as the unit it computes that they
+ * equal here, and the factor: the small / large / dynamic viewport units are the viewport's
+ * (a fixed screen: no toolbar comes and goes); the container query units the small
+ * viewport's (the spec's fallback when no container applies -- containers are not
+ * modelled); cap, ic and the root font units the ratios libcss already uses for ex / ch
+ * (ex 0.6em, ch 0.4em, a cap height 0.7em, an ideograph 1em, a line 1.2em); x is dppx.
+ */
+static bool onyx_unit_alias(const char *ptr, size_t len, uint32_t *unit, css_fixed *scale)
+{
+	static const struct { const char *u; uint32_t unit; float f; } a[] = {
+		{ "svw", UNIT_VW, 1 }, { "svh", UNIT_VH, 1 }, { "svi", UNIT_VI, 1 },
+		{ "svb", UNIT_VB, 1 }, { "svmin", UNIT_VMIN, 1 }, { "svmax", UNIT_VMAX, 1 },
+		{ "lvw", UNIT_VW, 1 }, { "lvh", UNIT_VH, 1 }, { "lvi", UNIT_VI, 1 },
+		{ "lvb", UNIT_VB, 1 }, { "lvmin", UNIT_VMIN, 1 }, { "lvmax", UNIT_VMAX, 1 },
+		{ "dvw", UNIT_VW, 1 }, { "dvh", UNIT_VH, 1 }, { "dvi", UNIT_VI, 1 },
+		{ "dvb", UNIT_VB, 1 }, { "dvmin", UNIT_VMIN, 1 }, { "dvmax", UNIT_VMAX, 1 },
+		{ "cqw", UNIT_VW, 1 }, { "cqh", UNIT_VH, 1 }, { "cqi", UNIT_VI, 1 },
+		{ "cqb", UNIT_VB, 1 }, { "cqmin", UNIT_VMIN, 1 }, { "cqmax", UNIT_VMAX, 1 },
+		{ "cap", UNIT_EM, 0.7f }, { "ic", UNIT_EM, 1 },
+		{ "rex", UNIT_REM, 0.6f }, { "rch", UNIT_REM, 0.4f }, { "rcap", UNIT_REM, 0.7f },
+		{ "ric", UNIT_REM, 1 }, { "rlh", UNIT_REM, 1.2f },
+		{ "x", UNIT_DPPX, 1 },
+	};
+	size_t i;
+	for (i = 0; i < sizeof(a) / sizeof(a[0]); i++) {
+		if (strlen(a[i].u) == len && strncasecmp(ptr, a[i].u, len) == 0) {
+			*unit = a[i].unit;
+			*scale = FLTTOFIX(a[i].f);
+			return true;
+		}
+	}
+	return false;
 }
 
 /**
@@ -1844,7 +1890,7 @@ bool css__is_calc_function(css_language *c, const css_token *token)
 				&match) == lwc_error_ok && match)
 			return true;
 	}
-	return false;
+	return onyx_is_math_fn(token);	/* Onyx: round(), sin()... */
 }
 
 static bool css__is_fn(css_language *c, const css_token *token, int fn)
@@ -1853,6 +1899,368 @@ static bool css__is_fn(css_language *c, const css_token *token, int fn)
 	return token != NULL && token->type == CSS_TOKEN_FUNCTION &&
 			lwc_string_caseless_isequal(token->idata, c->strings[fn],
 				&match) == lwc_error_ok && match;
+}
+
+
+/* Onyx: the math functions of CSS Values 4 beyond calc() / min() / max() / clamp() --
+ * round(), mod(), rem(), abs(), sign(), sin() ... atan2(), pow(), sqrt(), hypot(), log(),
+ * exp() -- and the constants e, pi, infinity, NaN: folded to a number, or to a value of one
+ * unit, when the parser reads them (their arguments numbers, angles, times... or lengths
+ * all in one unit). One with a percentage or lengths of several units cannot be folded
+ * now: the declaration is then kept by its property's grammar, without effect. */
+typedef struct {
+	double v;
+	uint32_t unit;		/* UNIT_CALC_NUMBER, or a unit (angles in deg, times in ms) */
+} onyx_q;
+
+static const char *const onyx_math_fns[] = { "round", "mod", "rem", "abs", "sign", "sin",
+	"cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp" };
+
+static bool onyx_is_math_fn(const css_token *t)
+{
+	size_t i, len;
+	if (t == NULL || t->type != CSS_TOKEN_FUNCTION)
+		return false;
+	len = lwc_string_length(t->idata);
+	for (i = 0; i < sizeof(onyx_math_fns) / sizeof(onyx_math_fns[0]); i++)
+		if (strlen(onyx_math_fns[i]) == len &&
+				strncasecmp(lwc_string_data(t->idata), onyx_math_fns[i], len) == 0)
+			return true;
+	return false;
+}
+
+static bool onyx_math_const(const css_token *t, double *v)
+{
+	size_t len;
+	const char *d;
+	if (t == NULL || t->type != CSS_TOKEN_IDENT)
+		return false;
+	d = lwc_string_data(t->idata);
+	len = lwc_string_length(t->idata);
+	if (len == 1 && (d[0] == 'e' || d[0] == 'E')) *v = 2.718281828459045;
+	else if (len == 2 && strncasecmp(d, "pi", 2) == 0) *v = 3.141592653589793;
+	else if (len == 8 && strncasecmp(d, "infinity", 8) == 0) *v = 1e9;
+	else if (len == 9 && strncasecmp(d, "-infinity", 9) == 0) *v = -1e9;
+	else if (len == 3 && strncasecmp(d, "nan", 3) == 0) *v = 0;
+	else return false;
+	return true;
+}
+
+static bool onyx_fold_sum(css_language *c, const parserutils_vector *vector, int *ctx,
+		onyx_q *r, int depth);
+
+static const css_token *onyx_fold_peek(const parserutils_vector *vector, int *ctx)
+{
+	consumeWhitespace(vector, ctx);
+	return parserutils_vector_peek(vector, *ctx);
+}
+
+/* a number or a dimension token, normalised (angles to deg, times to ms, frequencies to
+ * Hz, resolutions to dppx; lengths as they are) */
+static bool onyx_fold_token(css_language *c, const css_token *t, onyx_q *r)
+{
+	size_t consumed = 0;
+	char buf[64];
+	size_t len = lwc_string_length(t->idata);
+	const char *d = lwc_string_data(t->idata);
+	uint32_t unit;
+	css_fixed scale = F_1;
+
+	(void) c;
+	if (len >= sizeof(buf))
+		return false;
+	css__number_from_lwc_string(t->idata, false, &consumed);
+	memcpy(buf, d, consumed);
+	buf[consumed] = '\0';
+	r->v = strtod(buf, NULL);
+	if (t->type == CSS_TOKEN_NUMBER) {
+		r->unit = UNIT_CALC_NUMBER;
+		return consumed == len;
+	}
+	if (t->type != CSS_TOKEN_DIMENSION)
+		return false;
+	if (css__parse_unit_keyword(d + consumed, len - consumed, &unit) != CSS_OK &&
+			!onyx_unit_alias(d + consumed, len - consumed, &unit, &scale))
+		return false;
+	r->v *= FIXTOFLT(scale);
+	switch (unit) {
+	case UNIT_GRAD: r->v *= 0.9; unit = UNIT_DEG; break;
+	case UNIT_RAD: r->v *= 180 / 3.141592653589793; unit = UNIT_DEG; break;
+	case UNIT_TURN: r->v *= 360; unit = UNIT_DEG; break;
+	case UNIT_S: r->v *= 1000; unit = UNIT_MS; break;
+	case UNIT_KHZ: r->v *= 1000; unit = UNIT_HZ; break;
+	default: break;
+	}
+	r->unit = unit;
+	return true;
+}
+
+/* the comma-separated arguments of a function (ctx past its token): at most max, the
+ * rounding keyword of round() in *strategy */
+static int onyx_fold_args(css_language *c, const parserutils_vector *vector, int *ctx,
+		onyx_q *a, int max, int depth, int *strategy)
+{
+	int n = 0;
+	const css_token *t = onyx_fold_peek(vector, ctx);
+	static const char *const rs[] = { "nearest", "up", "down", "to-zero" };
+
+	if (strategy != NULL && t != NULL && t->type == CSS_TOKEN_IDENT) {
+		size_t k, len = lwc_string_length(t->idata);
+		for (k = 0; k < 4; k++)
+			if (strlen(rs[k]) == len && strncasecmp(lwc_string_data(t->idata),
+					rs[k], len) == 0)
+				break;
+		if (k < 4) {
+			*strategy = (int) k;
+			parserutils_vector_iterate(vector, ctx);
+			t = onyx_fold_peek(vector, ctx);
+			if (t == NULL || !tokenIsChar(t, ','))
+				return -1;
+			parserutils_vector_iterate(vector, ctx);
+		}
+	}
+	for (;;) {
+		if (n == max || !onyx_fold_sum(c, vector, ctx, &a[n], depth))
+			return -1;
+		n++;
+		t = onyx_fold_peek(vector, ctx);
+		if (t != NULL && tokenIsChar(t, ')')) {
+			parserutils_vector_iterate(vector, ctx);
+			return n;
+		}
+		if (t == NULL || !tokenIsChar(t, ','))
+			return -1;
+		parserutils_vector_iterate(vector, ctx);
+	}
+}
+
+static double onyx_round(double a, double b, int strategy)
+{
+	double q;
+	if (b == 0)
+		return a;
+	q = a / b;
+	switch (strategy) {
+	case 1: q = ceil(q); break;
+	case 2: q = floor(q); break;
+	case 3: q = q < 0 ? ceil(q) : floor(q); break;
+	default: q = floor(q + 0.5); break;
+	}
+	return q * b;
+}
+
+/* a math function (its token read): its value */
+static bool onyx_fold_fn(css_language *c, const css_token *fn,
+		const parserutils_vector *vector, int *ctx, onyx_q *r, int depth)
+{
+	onyx_q a[16];
+	int strategy = 0, n;
+	const char *d = lwc_string_data(fn->idata);
+	size_t len = lwc_string_length(fn->idata);
+	double x;
+#define FN(s) (len == strlen(s) && strncasecmp(d, s, len) == 0)
+
+	if (depth > 16)
+		return false;
+	if (FN("calc")) {
+		if (!onyx_fold_sum(c, vector, ctx, r, depth + 1))
+			return false;
+		fn = onyx_fold_peek(vector, ctx);
+		if (fn == NULL || !tokenIsChar(fn, ')'))
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		return true;
+	}
+	n = onyx_fold_args(c, vector, ctx, a, 16, depth + 1, FN("round") ? &strategy : NULL);
+	if (n < 1)
+		return false;
+	r->unit = a[0].unit;
+	if (FN("min") || FN("max") || FN("hypot")) {
+		int k;
+		r->v = FN("hypot") ? 0 : a[0].v;
+		for (k = 0; k < n; k++) {
+			if (a[k].unit != r->unit)
+				return false;
+			if (FN("min") && a[k].v < r->v) r->v = a[k].v;
+			if (FN("max") && a[k].v > r->v) r->v = a[k].v;
+			if (FN("hypot")) r->v += a[k].v * a[k].v;
+		}
+		if (FN("hypot"))
+			r->v = sqrt(r->v);
+		return true;
+	}
+	if (FN("clamp")) {
+		if (n != 3 || a[1].unit != r->unit || a[2].unit != r->unit)
+			return false;
+		r->v = a[1].v < a[0].v ? a[0].v : a[1].v > a[2].v ? a[2].v : a[1].v;
+		if (r->v < a[0].v)
+			r->v = a[0].v;
+		return true;
+	}
+	if (FN("round") || FN("mod") || FN("rem")) {
+		double b = n > 1 ? a[1].v : 1;
+		if (n > 2 || (n == 2 && a[1].unit != r->unit) ||
+				(n == 1 && (!FN("round") || r->unit != UNIT_CALC_NUMBER)))
+			return false;
+		if (FN("round"))
+			r->v = onyx_round(a[0].v, b, strategy);
+		else if (b == 0)
+			r->v = 0;
+		else if (FN("rem"))
+			r->v = fmod(a[0].v, b);
+		else
+			r->v = a[0].v - b * floor(a[0].v / b);
+		return true;
+	}
+	if (n != 1 && !FN("atan2") && !FN("pow") && !FN("log"))
+		return false;
+	x = a[0].v;
+	if (FN("abs")) { r->v = fabs(x); return true; }
+	r->unit = UNIT_CALC_NUMBER;
+	if (FN("sign")) { r->v = x > 0 ? 1 : x < 0 ? -1 : 0; return true; }
+	if (FN("sin") || FN("cos") || FN("tan")) {
+		if (a[0].unit == UNIT_DEG)
+			x = x * 3.141592653589793 / 180;
+		else if (a[0].unit != UNIT_CALC_NUMBER)
+			return false;
+		r->v = FN("sin") ? sin(x) : FN("cos") ? cos(x) : tan(x);
+		return true;
+	}
+	if (FN("asin") || FN("acos") || FN("atan") || FN("atan2")) {
+		if (FN("atan2")) {
+			if (n != 2 || a[1].unit != a[0].unit)
+				return false;
+			r->v = atan2(x, a[1].v);
+		} else {
+			if (a[0].unit != UNIT_CALC_NUMBER)
+				return false;
+			r->v = FN("asin") ? asin(x) : FN("acos") ? acos(x) : atan(x);
+		}
+		r->v *= 180 / 3.141592653589793;
+		r->unit = UNIT_DEG;
+		return true;
+	}
+	if (a[0].unit != UNIT_CALC_NUMBER || (n > 1 && a[1].unit != UNIT_CALC_NUMBER))
+		return false;
+	if (FN("pow")) { if (n != 2) return false; r->v = pow(x, a[1].v); return true; }
+	if (FN("sqrt")) { r->v = sqrt(x); return true; }
+	if (FN("exp")) { r->v = exp(x); return true; }
+	if (FN("log")) {
+		if (n > 2) return false;
+		r->v = n == 2 ? log(x) / log(a[1].v) : log(x);
+		return true;
+	}
+#undef FN
+	return false;
+}
+
+static bool onyx_fold_value(css_language *c, const parserutils_vector *vector, int *ctx,
+		onyx_q *r, int depth)
+{
+	const css_token *t = onyx_fold_peek(vector, ctx);
+	if (t == NULL)
+		return false;
+	if (onyx_math_const(t, &r->v)) {
+		parserutils_vector_iterate(vector, ctx);
+		r->unit = UNIT_CALC_NUMBER;
+		return true;
+	}
+	if (t->type == CSS_TOKEN_NUMBER || t->type == CSS_TOKEN_DIMENSION) {
+		parserutils_vector_iterate(vector, ctx);
+		return onyx_fold_token(c, t, r);
+	}
+	if (tokenIsChar(t, '(')) {
+		parserutils_vector_iterate(vector, ctx);
+		if (!onyx_fold_sum(c, vector, ctx, r, depth + 1))
+			return false;
+		t = onyx_fold_peek(vector, ctx);
+		if (t == NULL || !tokenIsChar(t, ')'))
+			return false;
+		parserutils_vector_iterate(vector, ctx);
+		return true;
+	}
+	if (t->type == CSS_TOKEN_FUNCTION && (onyx_is_math_fn(t) ||
+			css__is_calc_function(c, t))) {
+		parserutils_vector_iterate(vector, ctx);
+		return onyx_fold_fn(c, t, vector, ctx, r, depth + 1);
+	}
+	return false;		/* (a percentage, var()...: not now) */
+}
+
+static bool onyx_fold_product(css_language *c, const parserutils_vector *vector, int *ctx,
+		onyx_q *r, int depth)
+{
+	const css_token *t;
+	if (!onyx_fold_value(c, vector, ctx, r, depth))
+		return false;
+	while ((t = onyx_fold_peek(vector, ctx)) != NULL &&
+			(tokenIsChar(t, '*') || tokenIsChar(t, '/'))) {
+		onyx_q b;
+		bool mul = tokenIsChar(t, '*');
+		parserutils_vector_iterate(vector, ctx);
+		if (!onyx_fold_value(c, vector, ctx, &b, depth))
+			return false;
+		if (mul) {
+			if (r->unit != UNIT_CALC_NUMBER && b.unit != UNIT_CALC_NUMBER)
+				return false;
+			if (r->unit == UNIT_CALC_NUMBER)
+				r->unit = b.unit;
+			r->v *= b.v;
+		} else {
+			if (b.unit != UNIT_CALC_NUMBER || b.v == 0)
+				return false;
+			r->v /= b.v;
+		}
+	}
+	return true;
+}
+
+static bool onyx_fold_sum(css_language *c, const parserutils_vector *vector, int *ctx,
+		onyx_q *r, int depth)
+{
+	const css_token *t;
+	if (depth > 32 || !onyx_fold_product(c, vector, ctx, r, depth))
+		return false;
+	while ((t = onyx_fold_peek(vector, ctx)) != NULL &&
+			(tokenIsChar(t, '+') || tokenIsChar(t, '-'))) {
+		onyx_q b;
+		bool add = tokenIsChar(t, '+');
+		parserutils_vector_iterate(vector, ctx);
+		if (!onyx_fold_product(c, vector, ctx, &b, depth) || b.unit != r->unit)
+			return false;
+		r->v = add ? r->v + b.v : r->v - b.v;
+	}
+	return true;
+}
+
+/* Onyx: a folded math function / constant at the calc value (its token at *ctx), pushed as
+ * a number or a value in the calc expression */
+static css_error onyx_calc_push_folded(css_language *c, enum css_properties_e property,
+		const parserutils_vector *vector, int *ctx, parserutils_buffer *result)
+{
+	int orig = *ctx;
+	onyx_q q;
+	css_fixed v;
+
+	if (!onyx_fold_value(c, vector, ctx, &q, 0)) {
+		*ctx = orig;
+		return CSS_INVALID;
+	}
+	if (q.v > 1e6) q.v = 1e6;
+	if (q.v < -1e6) q.v = -1e6;
+	v = FLTTOFIX(q.v + (q.v < 0 ? -0.5 : 0.5) / 1024);	/* (rounded to the fixed point) */
+	if (q.unit == UNIT_CALC_NUMBER) {
+		css_code_t push = CALC_PUSH_NUMBER;
+		return css_error_from_parserutils_error(parserutils_buffer_appendv(result, 2,
+				&push, sizeof(push), &v, sizeof(v)));
+	} else {
+		css_code_t push = CALC_PUSH_VALUE;
+		uint32_t unit = q.unit;
+		if (!(unit & property_unit_mask[property]))
+			return CSS_INVALID;
+		return css_error_from_parserutils_error(parserutils_buffer_appendv(result, 3,
+				&push, sizeof(push), &v, sizeof(v), &unit, sizeof(unit)));
+	}
 }
 
 static css_error
@@ -1912,6 +2320,12 @@ css__parse_calc_value(css_language *c,
 		}
 		/* Consume the close-paren to complete this value */
 		parserutils_vector_iterate(vector, ctx);
+	} else if (onyx_is_math_fn(token) || (token->type == CSS_TOKEN_IDENT &&
+			onyx_math_const(token, &(double){0}))) {
+		/* Onyx: round(), sin()..., pi, e: folded */
+		error = onyx_calc_push_folded(c, property, vector, ctx, result);
+		if (error != CSS_OK)
+			return error;
 	} else if (css__is_calc_function(c, token)) {
 		/* Onyx: a nested calc() (as parentheses), min(), max(), clamp() */
 		parserutils_vector_iterate(vector, ctx);
@@ -2185,10 +2599,19 @@ css_error css__parse_calc(css_language *c,
 	if (error != CSS_OK)
 		goto cleanup;
 
-	/* Onyx: the function token the caller consumed: calc(), or min() / max() / clamp() */
+	/* Onyx: the function token the caller consumed: calc(), or min() / max() / clamp(),
+	 * or round(), sin()... (folded: the value alone, its ')' read) */
 	{
 		const css_token *fn = (*ctx > 0) ?
 				parserutils_vector_peek(vector, *ctx - 1) : NULL;
+		if (fn != NULL && onyx_is_math_fn(fn)) {
+			(*ctx)--;
+			error = onyx_calc_push_folded(c, property, vector, ctx,
+					calc_buffer);
+			if (error != CSS_OK)
+				goto cleanup;
+			goto finished;
+		}
 		if (fn != NULL && css__is_calc_function(c, fn) && !css__is_fn(c, fn, CALC))
 			error = css__parse_calc_minmax(c, property, fn, vector, ctx,
 					calc_buffer);
@@ -2207,15 +2630,16 @@ css_error css__parse_calc(css_language *c,
 		goto cleanup;
 	}
 
+	/* Swallow that close paren */
+	parserutils_vector_iterate(vector, ctx);
+
+finished:
 	/* Append the indicator that the calc is finished */
 	error = css_error_from_parserutils_error(
 		parserutils_buffer_append(calc_buffer, (const uint8_t *)&finish, sizeof(finish))
 	);
 	if (error != CSS_OK)
 		goto cleanup;
-
-	/* Swallow that close paren */
-	parserutils_vector_iterate(vector, ctx);
 
 	/* Create the lwc string representing the calculation and store it in */
 	error = css_error_from_lwc_error(

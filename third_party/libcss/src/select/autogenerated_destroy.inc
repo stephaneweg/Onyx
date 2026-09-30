@@ -60,7 +60,9 @@
 /* set_direction(style, 0, 0, CSS_UNIT_PX); */
 /* set_display(style, 0, 0, CSS_UNIT_PX); */
 /* set_empty_cells(style, 0, 0, CSS_UNIT_PX); */
+/* set_fill(style, 0, 0, CSS_UNIT_PX); */
 /* set_fill_opacity(style, 0, 0, CSS_UNIT_PX); */
+/* set_fill_rule(style, 0, 0, CSS_UNIT_PX); */
 /* set_flex_basis(style, 0, 0, CSS_UNIT_PX); */
 /* set_flex_direction(style, 0, 0, CSS_UNIT_PX); */
 /* set_flex_grow(style, 0, 0, CSS_UNIT_PX); */
@@ -123,7 +125,16 @@
 /* set_rotate(style, 0, 0, CSS_UNIT_PX); */
 /* set_row_gap(style, 0, 0, CSS_UNIT_PX); */
 /* set_scale(style, 0, 0, CSS_UNIT_PX); */
+/* set_stop_color(style, 0, 0, CSS_UNIT_PX); */
+/* set_stop_opacity(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke_dasharray(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke_dashoffset(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke_linecap(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke_linejoin(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke_miterlimit(style, 0, 0, CSS_UNIT_PX); */
 /* set_stroke_opacity(style, 0, 0, CSS_UNIT_PX); */
+/* set_stroke_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_table_layout(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_align(style, 0, 0, CSS_UNIT_PX); */
 /* set_text_decoration(style, 0, 0, CSS_UNIT_PX); */
