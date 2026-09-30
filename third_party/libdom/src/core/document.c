@@ -1555,3 +1555,15 @@ dom_exception _dom_document_set_quirks_mode(dom_document *doc,
 	doc->quirks = quirks;
 	return DOM_NO_ERR;
 }
+
+
+/* Onyx: the document's mutation-event guard (while a mutation event is dispatched, libdom
+ * refuses every change: NO_MODIFICATION_ALLOWED) set to `depth`, its old value returned -- a
+ * script inserted runs from the DOMNodeInserted default action, and its own changes were all
+ * refused (yahoo.com's loaders: "bad attribute") */
+uint32_t dom_document_onyx_mutation_guard(dom_document *doc, uint32_t depth)
+{
+	uint32_t old = doc->dispatching_mutation;
+	doc->dispatching_mutation = depth;
+	return old;
+}

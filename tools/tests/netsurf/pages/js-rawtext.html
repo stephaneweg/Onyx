@@ -1,6 +1,6 @@
 <!-- innerHTML on raw text (script) and RCDATA (textarea) elements: the markup is their text -->
 <!doctype html><body><script>
-var s=document.createElement('script'); s.innerHTML='for(var i=0,n=0;i<3;i++)n+=i; if (n>2) console.log("inner script ran "+n);';
+var s=document.createElement('script'); s.innerHTML='for(var i=0,n=0;i<3;i++)n+=i; if (n>2) console.log("inner script ran "+n); document.body.setAttribute("data-x","1"); console.log("inserted script changed the DOM "+document.body.getAttribute("data-x"));';
 document.body.appendChild(s);
 var t=document.createElement('textarea'); t.innerHTML='a &amp; <b>'; console.log('textarea '+t.value);
 </script>

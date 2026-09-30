@@ -55,6 +55,7 @@ echo "js-rawtext.html (innerHTML of a script, a textarea)"
 L=$OUT/js-rawtext.log
 run js-rawtext.html "$(waits 30)" "$L"
 expect "$L" "inner script ran 3"
+expect "$L" "inserted script changed the DOM 1"
 expect "$L" "textarea a & <b>"
 
 echo "js-loadevents.html (load / error events of scripts, sheets, images)"

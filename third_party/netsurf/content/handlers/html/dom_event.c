@@ -287,7 +287,13 @@ dom_SCRIPT_showed_up(html_content *htmlc, dom_html_script_element *script)
 		return;
 	}
 
-	res = html_process_script(htmlc, (dom_node *) script);
+	{
+		/* Onyx: the script runs outside the mutation event's guard (its changes
+		 * to the document were all refused), as in a browser */
+		uint32_t guard = dom_document_onyx_mutation_guard(htmlc->document, 0);
+		res = html_process_script(htmlc, (dom_node *) script);
+		dom_document_onyx_mutation_guard(htmlc->document, guard);
+	}
 	if (res == DOM_HUBBUB_OK) {
 		NSLOG(netsurf, DEEPDEBUG, "Inserted script has finished running");
 	} else {

@@ -587,11 +587,13 @@ static JSValue n_set_attr(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	name = qjs_dstr(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
 	v = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
 	if (name != NULL && v != NULL) {
-		if (dom_element_set_attribute((dom_element *) n, name, v) !=
-				DOM_NO_ERR) {
+		dom_exception e = dom_element_set_attribute((dom_element *) n, name, v);
+		if (e != DOM_NO_ERR) {
+			JSValue r = JS_ThrowTypeError(ctx, "bad attribute %.40s (%d)",
+					dom_string_data(name), (int) e);
 			dom_string_unref(name);
 			dom_string_unref(v);
-			return JS_ThrowTypeError(ctx, "bad attribute");
+			return r;
 		}
 		QJS_T(ctx)->dirty = true;
 	}
