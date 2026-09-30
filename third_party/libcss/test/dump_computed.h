@@ -2409,6 +2409,15 @@ static void dump_computed_style(const css_computed_style *style, char *buf,
 
 	/* min-height */
 	val = css_computed_min_height(style, &len1, &unit1);
+	/* Onyx: the getter keeps auto; the expected data has upstream's
+	 * reading (0 unless the box is itself a flex container) */
+	if (val == CSS_MIN_HEIGHT_AUTO &&
+			css_computed_display_static(style) != CSS_DISPLAY_FLEX &&
+			css_computed_display_static(style) != CSS_DISPLAY_INLINE_FLEX) {
+		val = CSS_MIN_HEIGHT_SET;
+		len1 = 0;
+		unit1 = CSS_UNIT_PX;
+	}
 	switch (val) {
 	case CSS_MIN_HEIGHT_INHERIT:
 		wrote = snprintf(ptr, *len, "min-height: inherit\n");
@@ -2436,6 +2445,15 @@ static void dump_computed_style(const css_computed_style *style, char *buf,
 
 	/* min-width */
 	val = css_computed_min_width(style, &len1, &unit1);
+	/* Onyx: the getter keeps auto; the expected data has upstream's
+	 * reading (0 unless the box is itself a flex container) */
+	if (val == CSS_MIN_WIDTH_AUTO &&
+			css_computed_display_static(style) != CSS_DISPLAY_FLEX &&
+			css_computed_display_static(style) != CSS_DISPLAY_INLINE_FLEX) {
+		val = CSS_MIN_WIDTH_SET;
+		len1 = 0;
+		unit1 = CSS_UNIT_PX;
+	}
 	switch (val) {
 	case CSS_MIN_WIDTH_INHERIT:
 		wrote = snprintf(ptr, *len, "min-width: inherit\n");

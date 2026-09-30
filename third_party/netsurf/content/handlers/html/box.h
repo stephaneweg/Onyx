@@ -88,7 +88,11 @@ typedef enum {
 	REPLACE_DIM = 1 << 9,	/* replaced element has given dimensions */
 	IFRAME      = 1 << 10,	/* box contains an iframe */
 	CONVERT_CHILDREN = 1 << 11,  /* wanted children converting */
-	IS_REPLACED = 1 << 12	/* box is a replaced element */
+	IS_REPLACED = 1 << 12,	/* box is a replaced element */
+	/* Onyx: the box's height was given by its flex / grid container (a stretched,
+	 * flexed or grid-area size): definite for its children's percentages (CSS
+	 * Flexbox 9.8), and kept by its own layout */
+	DEF_HEIGHT  = 1 << 13
 } box_flags;
 
 

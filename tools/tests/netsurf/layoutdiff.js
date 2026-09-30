@@ -1,9 +1,9 @@
 /* tools/tests/netsurf/layoutdiff.js -- run in a page (NetSurf: NS_INJECT + F5; Chromium:
  * layoutdiff.sh's playwright script): each displayed element's border box, one line each
  * "LB <path> <x> <y> <w> <h>" (the page's coordinates; the path: tag#id.class up to 5 levels
- * with :nth-child where needed), then the box's position relative to its parent element's
- * (layoutdiff.sh's REL=1 compares those: one misplaced box does not move all that follow), for
- * layoutdiff.sh to compare */
+ * with :nth-child where needed), then the box's position relative to its previous displayed
+ * sibling element's, else its parent's (layoutdiff.sh's REL=1 compares those: one misplaced
+ * box does not move all that follow), for layoutdiff.sh to compare */
 (function () {
 	var out = [];
 	function name(e) {
@@ -37,8 +37,15 @@
 		if (e.closest && e.closest('svg') && t !== 'svg') continue;
 		var r = e.getBoundingClientRect();
 		if (!r || (r.width === 0 && r.height === 0)) continue;
-		var q = e.parentNode && e.parentNode.getBoundingClientRect ?
-			e.parentNode.getBoundingClientRect() : null;
+		var q = null;
+		for (var ps = e.previousElementSibling; ps && !q; ps = ps.previousElementSibling) {
+			var pt = ps.tagName.toLowerCase(), pr;
+			if (pt === 'script' || pt === 'style') continue;
+			pr = ps.getBoundingClientRect();
+			if (pr && (pr.width || pr.height)) q = pr;
+		}
+		if (!q && e.parentNode && e.parentNode.getBoundingClientRect)
+			q = e.parentNode.getBoundingClientRect();
 		out.push('LB ' + path(e) + ' ' + Math.round(r.left + sx) + ' ' + Math.round(r.top + sy) +
 			' ' + Math.round(r.width) + ' ' + Math.round(r.height) +
 			(q ? ' ' + Math.round(r.left - q.left) + ' ' + Math.round(r.top - q.top) : ''));

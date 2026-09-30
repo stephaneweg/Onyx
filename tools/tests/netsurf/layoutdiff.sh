@@ -29,7 +29,7 @@ NODE_PATH=$(npm root -g) UA="$UA" URL="$url" PW="$pw" JS="$T/layoutdiff.js" node
 const { chromium } = require("playwright");
 (async () => {
 	const b = await chromium.launch({ executablePath: process.env.CHROME || undefined });
-	const p = await b.newPage({ userAgent: process.env.UA, viewport: { width: +process.env.PW, height: 850 },
+	const p = await b.newPage({ userAgent: process.env.UA, viewport: { width: +process.env.PW, height: 790 },
 		locale: "fr-FR", ignoreHTTPSErrors: false });
 	const lines = [];
 	p.on("console", m => { for (const l of m.text().split("\n")) if (l.startsWith("LB ")) lines.push(l); });

@@ -75,7 +75,8 @@ bool layout_flex(
  * \param[in] grid             grid container to layout
  * \param[in] available_width  width of containing block
  * \param[in] content          memory pool for any new boxes
- * eturn  true on success, false on memory exhaustion
+ * 
+eturn  true on success, false on memory exhaustion
  */
 bool layout_grid(
 		struct box *grid,
@@ -91,6 +92,26 @@ void layout_minmax_grid(
 		const css_unit_ctx *unit_len_ctx,
 		int *min_width,
 		int *max_width);
+
+/**
+ * Onyx: a flex container's min-content / max-content widths (its content box), from its
+ * items' (already computed, content-based) min / max widths: CSS Flexbox 9.9.1. See
+ * layout_flex.c.
+ */
+void layout_minmax_flex(
+		struct box *flex,
+		const css_unit_ctx *unit_len_ctx,
+		int *min_width,
+		int *max_width);
+
+/**
+ * Onyx: a laid out box's first baseline, from its padding box's top (its first line's,
+ * or its first in-flow child's that has one). False when it has none.
+ */
+bool layout_onyx_first_baseline(
+		const struct box *box,
+		const css_unit_ctx *unit_len_ctx,
+		int *baseline);
 
 typedef uint8_t (*css_len_func)(
 		const css_computed_style *style,
@@ -478,6 +499,54 @@ static inline void layout_handle_box_sizing(
 }
 
 /**
+ * Onyx: the height a percentage height, min-height or max-height of a box resolves
+ * against (CSS 2.1 10.5), or -1 when it does not resolve (the box's is then auto / none):
+ * its containing block's height when that is definite -- specified, or given by a flex /
+ * grid container (DEF_HEIGHT, CSS Flexbox 9.8) -- an absolutely positioned box's always
+ * (its containing block's padding box, laid out); the root's and the body's: the
+ * viewport's when the containing block's is not.
+ */
+static inline int layout_pct_height_base(
+		const struct box *box,
+		int viewport_height)
+{
+	const struct box *cb = NULL;
+	bool abs = false;
+
+	if (box->style != NULL)
+		abs = css_computed_position(box->style) ==
+				CSS_POSITION_ABSOLUTE ||
+		      css_computed_position(box->style) ==
+				CSS_POSITION_FIXED;
+
+	if (abs && box->parent) {
+		cb = box->float_container;
+	} else if (box->float_container && box->style != NULL &&
+			(css_computed_float(box->style) == CSS_FLOAT_LEFT ||
+			 css_computed_float(box->style) == CSS_FLOAT_RIGHT)) {
+		if (box->parent && box->parent->parent)
+			cb = box->parent->parent->parent;
+	} else if (box->parent && box->parent->type != BOX_INLINE_CONTAINER) {
+		cb = box->parent;
+	} else if (box->parent) {
+		cb = box->parent->parent;
+	}
+
+	if (cb != NULL && cb->height != AUTO) {
+		css_fixed f = 0;
+		css_unit u = CSS_UNIT_PX;
+
+		if (abs || (cb->flags & DEF_HEIGHT) || (cb->style != NULL &&
+				css_computed_height(cb->style, &f, &u) ==
+						CSS_HEIGHT_SET))
+			return cb->height;
+	}
+	if ((!box->parent || !box->parent->parent) && viewport_height >= 0)
+		return viewport_height;
+	return -1;
+}
+
+/**
  * Calculate width, height, and thickness of margins, paddings, and borders.
  *
  * \param  unit_len_ctx     Length conversion context
@@ -512,7 +581,6 @@ static inline void layout_find_dimensions(
 		int padding[4],
 		struct box_border border[4])
 {
-	struct box *containing_block = NULL;
 	unsigned int i;
 
 	if (width) {
@@ -534,71 +602,12 @@ static inline void layout_find_dimensions(
 
 		if (htype == CSS_HEIGHT_SET) {
 			if (unit == CSS_UNIT_PCT) {
-				enum css_height_e cbhtype;
+				/* Onyx: layout_pct_height_base */
+				int base = layout_pct_height_base(box,
+						viewport_height);
 
-				if (css_computed_position(box->style) ==
-						CSS_POSITION_ABSOLUTE &&
-						box->parent) {
-					/* Box is absolutely positioned */
-					assert(box->float_container);
-					containing_block = box->float_container;
-				} else if (box->float_container &&
-					css_computed_position(box->style) !=
-						CSS_POSITION_ABSOLUTE &&
-					(css_computed_float(box->style) ==
-						CSS_FLOAT_LEFT ||
-					 css_computed_float(box->style) ==
-						CSS_FLOAT_RIGHT)) {
-					/* Box is a float */
-					assert(box->parent &&
-						box->parent->parent &&
-						box->parent->parent->parent);
-
-					containing_block =
-						box->parent->parent->parent;
-				} else if (box->parent && box->parent->type !=
-						BOX_INLINE_CONTAINER) {
-					/* Box is a block level element */
-					containing_block = box->parent;
-				} else if (box->parent && box->parent->type ==
-						BOX_INLINE_CONTAINER) {
-					/* Box is an inline block */
-					assert(box->parent->parent);
-					containing_block = box->parent->parent;
-				}
-
-				if (containing_block) {
-					css_fixed f = 0;
-					css_unit u = CSS_UNIT_PX;
-
-					cbhtype = css_computed_height(
-							containing_block->style,
-							&f, &u);
-				}
-
-				if (containing_block &&
-					containing_block->height != AUTO &&
-					(css_computed_position(box->style) ==
-							CSS_POSITION_ABSOLUTE ||
-						cbhtype == CSS_HEIGHT_SET)) {
-					/* Box is absolutely positioned or its
-					 * containing block has a valid
-					 * specified height.
-					 * (CSS 2.1 Section 10.5) */
-					*height = FPCT_OF_INT_TOINT(value,
-						containing_block->height);
-				} else if ((!box->parent ||
-						!box->parent->parent) &&
-						viewport_height >= 0) {
-					/* If root element or it's child
-					 * (HTML or BODY) */
-					*height = FPCT_OF_INT_TOINT(value,
-							viewport_height);
-				} else {
-					/* precentage height not permissible
-					 * treat height as auto */
-					*height = AUTO;
-				}
+				*height = base >= 0 ? FPCT_OF_INT_TOINT(value,
+						base) : AUTO;
 			} else {
 				*height = FIXTOINT(css_unit_len2device_px(
 						style, unit_len_ctx,
@@ -677,8 +686,12 @@ static inline void layout_find_dimensions(
 
 		if (type == CSS_MAX_HEIGHT_SET) {
 			if (unit == CSS_UNIT_PCT) {
-				/* TODO: handle percentage */
-				*max_height = -1;
+				/* Onyx: a percentage of a definite height */
+				int base = layout_pct_height_base(box,
+						viewport_height);
+
+				*max_height = base >= 0 ? FPCT_OF_INT_TOINT(
+						value, base) : -1;
 			} else {
 				*max_height = FIXTOINT(css_unit_len2device_px(
 						style, unit_len_ctx,
@@ -704,8 +717,12 @@ static inline void layout_find_dimensions(
 
 		if (type == CSS_MIN_HEIGHT_SET) {
 			if (unit == CSS_UNIT_PCT) {
-				/* TODO: handle percentage */
-				*min_height = 0;
+				/* Onyx: a percentage of a definite height */
+				int base = layout_pct_height_base(box,
+						viewport_height);
+
+				*min_height = base >= 0 ? FPCT_OF_INT_TOINT(
+						value, base) : 0;
 			} else {
 				*min_height = FIXTOINT(css_unit_len2device_px(
 						style, unit_len_ctx,

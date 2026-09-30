@@ -884,51 +884,6 @@ layout_minmax_inline_container(struct box *inline_container,
  * \post  block->min_width and block->max_width filled in,
  *        0 <= block->min_width <= block->max_width
  */
-/**
- * Onyx: a flex item's flex base size, when it is a length (its flex-basis, else -- basis
- * auto -- its width): in its content box. False when it depends on the content or on the
- * container (content, auto, a percentage).
- */
-static bool layout_minmax_flex_base(
-		const struct box *block,
-		const css_unit_ctx *unit_len_ctx,
-		int *base)
-{
-	css_fixed len = 0;
-	css_unit unit = CSS_UNIT_PX;
-	int px;
-
-	if (block->style == NULL)
-		return false;
-	switch (css_computed_flex_basis(block->style, &len, &unit)) {
-	case CSS_FLEX_BASIS_SET:
-		if (unit == CSS_UNIT_PCT)
-			return false;
-		px = FIXTOINT(css_unit_len2device_px(block->style,
-				unit_len_ctx, len, unit));
-		break;
-	case CSS_FLEX_BASIS_AUTO:
-		if (css_computed_width_px(block->style, unit_len_ctx, -1,
-				&px) != CSS_WIDTH_SET)
-			return false;
-		break;
-	default:
-		return false;
-	}
-	if (css_computed_box_sizing(block->style) ==
-			CSS_BOX_SIZING_BORDER_BOX) {
-		int pb = 0;
-		float frac = 0;
-		calculate_mbp_width(unit_len_ctx, block->style, LEFT,
-				false, true, true, &pb, &frac);
-		calculate_mbp_width(unit_len_ctx, block->style, RIGHT,
-				false, true, true, &pb, &frac);
-		px -= pb;
-	}
-	*base = px < 0 ? 0 : px;
-	return true;
-}
-
 static void layout_minmax_block(
 		struct box *block,
 		const struct gui_layout_table *font_func,
@@ -1073,24 +1028,10 @@ static void layout_minmax_block(
 				continue;
 			}
 
-			if (lh__box_is_flex_container(block) &&
-			    lh__flex_main_is_horizontal(block)) {
-				if (block->style != NULL &&
-				    css_computed_flex_wrap(block->style) ==
-						CSS_FLEX_WRAP_NOWRAP) {
-					min += child->min_width;
-				} else {
-					if (min < child->min_width)
-						min = child->min_width;
-				}
-				max += child->max_width;
-
-			} else {
-				if (min < child->min_width)
-					min = child->min_width;
-				if (max < child->max_width)
-					max = child->max_width;
-			}
+			if (min < child->min_width)
+				min = child->min_width;
+			if (max < child->max_width)
+				max = child->max_width;
 
 			if (child_has_height)
 				block->flags |= HAS_HEIGHT;
@@ -1102,31 +1043,10 @@ static void layout_minmax_block(
 		layout_minmax_grid(block, &content->unit_len_ctx, &min, &max);
 	}
 
-	/* Onyx: a row flex container's gaps between its items (in-flow ones)
-	 * widen it: always its max-content width, its min-content width when it
-	 * does not wrap */
-	if (block->object == NULL && lh__box_is_flex_container(block) &&
-	    lh__flex_main_is_horizontal(block)) {
-		int gap = lh__flex_gap(&content->unit_len_ctx, block, true, -1);
-		int n = 0;
-
-		for (child = block->children; child; child = child->next) {
-			if (child->style == NULL ||
-			    (css_computed_position(child->style) !=
-					CSS_POSITION_ABSOLUTE &&
-			     css_computed_position(child->style) !=
-					CSS_POSITION_FIXED)) {
-				n++;
-			}
-		}
-		if (gap > 0 && n > 1) {
-			max += gap * (n - 1);
-			if (block->style == NULL ||
-			    css_computed_flex_wrap(block->style) ==
-					CSS_FLEX_WRAP_NOWRAP) {
-				min += gap * (n - 1);
-			}
-		}
+	/* Onyx: a flex container's widths are its items' contributions
+	 * (layout_flex.c: CSS Flexbox 9.9.1, the gaps) */
+	if (block->object == NULL && lh__box_is_flex_container(block)) {
+		layout_minmax_flex(block, &content->unit_len_ctx, &min, &max);
 	}
 
 	if (max < min) {
@@ -1134,57 +1054,20 @@ static void layout_minmax_block(
 		assert(0);
 	}
 
-	/* fixed width takes priority -- Onyx: a flex item's too. When its width is the
-	 * cross size (a column's item), as for a block; when it is the main size, its
-	 * contributions are the larger of its content's and its width (when definite),
-	 * clamped by its flex base size -- as a maximum if it does not grow, as a
-	 * minimum if it does not shrink (CSS Flexbox 9.9.1): a width: 64px item
-	 * holding a 512 px wide image contributes 64 px, an empty width: 7px one 7 */
-	if (block->type != BOX_TABLE_CELL && block->style != NULL) {
+	/* fixed width takes priority -- Onyx: not a flex item's: its widths
+	 * stay its content's (its automatic minimum size, its flex base size);
+	 * its container takes its width, min-width and max-width into its
+	 * contributions (layout_minmax_flex) */
+	if (block->type != BOX_TABLE_CELL && block->style != NULL &&
+	    !lh__box_is_flex_item(block)) {
 		bool border_box = bs == CSS_BOX_SIZING_BORDER_BOX;
-		bool flex_main = lh__box_is_flex_item(block) &&
-				lh__flex_main_is_horizontal(block->parent);
 		enum css_max_width_e max_type;
 		enum css_min_width_e min_type;
 		css_unit unit = CSS_UNIT_PX;
 		css_fixed value = 0;
 		int width;
 
-		if (flex_main) {
-			css_fixed grow = 0, shrink = INTTOFIX(1);
-			int base;
-
-			if (css_computed_width_px(block->style,
-					&content->unit_len_ctx, -1, &width) ==
-					CSS_WIDTH_SET && width >= 0) {
-				if (border_box) {
-					int pb = 0;
-					float frac = 0;
-					calculate_mbp_width(&content->unit_len_ctx,
-							block->style, LEFT, false,
-							true, true, &pb, &frac);
-					calculate_mbp_width(&content->unit_len_ctx,
-							block->style, RIGHT, false,
-							true, true, &pb, &frac);
-					width = max(width - pb, 0);
-				}
-				min = max(min, width);
-				max = max(max, width);
-			}
-			if (layout_minmax_flex_base(block,
-					&content->unit_len_ctx, &base)) {
-				css_computed_flex_grow(block->style, &grow);
-				css_computed_flex_shrink(block->style, &shrink);
-				if (grow == 0) {
-					min = min(min, base);
-					max = min(max, base);
-				}
-				if (shrink == 0) {
-					min = max(min, base);
-					max = max(max, base);
-				}
-			}
-		} else if (css_computed_width_px(block->style,
+		if (css_computed_width_px(block->style,
 				&content->unit_len_ctx, -1, &width) ==
 				CSS_WIDTH_SET) {
 			min = max = width;
@@ -1320,7 +1203,11 @@ layout_next_margin_block(const css_unit_ctx *unit_len_ctx,
 
 			/* Check whether box is the box current margin collapses
 			 * to */
+			/* Onyx: a flex / grid container is a formatting
+			 * context root: its margins never collapse through it
+			 * (the next sibling's top margin with its bottom one) */
 			if (box->flags & MAKE_HEIGHT ||
+					box->type == BOX_FLEX ||
 					box->border[TOP].width ||
 					box->padding[TOP] ||
 					(box->style &&
@@ -1655,7 +1542,16 @@ layout_block_find_dimensions(const css_unit_ctx *unit_len_ctx,
 
 	box->width = layout_solve_width(box, available_width, width, lm, rm,
 			max_width, min_width);
+	/* Onyx: a specified height within min-height / max-height (it was
+	 * clamped only when it came from the content) */
+	if (height != AUTO) {
+		if (max_height >= 0 && height > max_height)
+			height = max_height;
+		if (min_height > 0 && height < min_height)
+			height = min_height;
+	}
 	box->height = height;
+	box->flags &= ~DEF_HEIGHT;	/* Onyx: (a flex / grid item's) */
 
 	if (margin[TOP] == AUTO)
 		margin[TOP] = 0;
@@ -2307,103 +2203,30 @@ static bool layout_apply_minmax_height(
 		struct box *box,
 		struct box *container)
 {
-	int h;
-	struct box *containing_block = NULL;
+	/* Onyx: the percentages as layout_find_dimensions resolves them
+	 * (layout_pct_height_base: a flex / grid item's container too), and
+	 * box-sizing (a border-box min-height holds the padding and border) */
+	int max_h = -1, min_h = 0;
 	bool updated = false;
+	struct box *fc = box->float_container;
 
-	/* Find containing block for percentage heights */
-	if (box->style != NULL && css_computed_position(box->style) ==
-			CSS_POSITION_ABSOLUTE) {
-		/* Box is absolutely positioned */
-		assert(container);
-		containing_block = container;
-	} else if (box->float_container && box->style != NULL &&
-			(css_computed_float(box->style) == CSS_FLOAT_LEFT ||
-			 css_computed_float(box->style) == CSS_FLOAT_RIGHT)) {
-		/* Box is a float */
-		assert(box->parent && box->parent->parent &&
-				box->parent->parent->parent);
-		containing_block = box->parent->parent->parent;
-	} else if (box->parent && box->parent->type != BOX_INLINE_CONTAINER) {
-		/* Box is a block level element */
-		containing_block = box->parent;
-	} else if (box->parent && box->parent->type == BOX_INLINE_CONTAINER) {
-		/* Box is an inline block */
-		assert(box->parent->parent);
-		containing_block = box->parent->parent;
+	if (box->style == NULL)
+		return false;
+	if (container != NULL)
+		box->float_container = container;
+	layout_find_dimensions(unit_len_ctx, box->parent != NULL &&
+			box->parent->width != AUTO ? box->parent->width : 0,
+			-1, box, box->style, NULL, NULL, NULL, NULL,
+			&max_h, &min_h, NULL, NULL, NULL);
+	box->float_container = fc;
+
+	if (max_h >= 0 && max_h < box->height) {
+		box->height = max_h;
+		updated = true;
 	}
-
-	if (box->style) {
-		enum css_height_e htype = CSS_HEIGHT_AUTO;
-		css_fixed value = 0;
-		css_unit unit = CSS_UNIT_PX;
-
-		if (containing_block) {
-			htype = css_computed_height(containing_block->style,
-					&value, &unit);
-		}
-
-		/* max-height */
-		if (css_computed_max_height(box->style, &value, &unit) ==
-				CSS_MAX_HEIGHT_SET) {
-			if (unit == CSS_UNIT_PCT) {
-				if (containing_block &&
-					containing_block->height != AUTO &&
-					(css_computed_position(box->style) ==
-							CSS_POSITION_ABSOLUTE ||
-						htype == CSS_HEIGHT_SET)) {
-					/* Box is absolutely positioned or its
-					 * containing block has a valid
-					 * specified height. (CSS 2.1
-					 * Section 10.5) */
-					h = FPCT_OF_INT_TOINT(value,
-						containing_block->height);
-					if (h < box->height) {
-						box->height = h;
-						updated = true;
-					}
-				}
-			} else {
-				h = FIXTOINT(css_unit_len2device_px(
-						box->style, unit_len_ctx,
-						value, unit));
-				if (h < box->height) {
-					box->height = h;
-					updated = true;
-				}
-			}
-		}
-
-		/* min-height */
-		if (ns_computed_min_height(box->style, &value, &unit) ==
-				CSS_MIN_HEIGHT_SET) {
-			if (unit == CSS_UNIT_PCT) {
-				if (containing_block &&
-					containing_block->height != AUTO &&
-					(css_computed_position(box->style) ==
-							CSS_POSITION_ABSOLUTE ||
-						htype == CSS_HEIGHT_SET)) {
-					/* Box is absolutely positioned or its
-					 * containing block has a valid
-					 * specified height. (CSS 2.1
-					 * Section 10.5) */
-					h = FPCT_OF_INT_TOINT(value,
-						containing_block->height);
-					if (h > box->height) {
-						box->height = h;
-						updated = true;
-					}
-				}
-			} else {
-				h = FIXTOINT(css_unit_len2device_px(
-						box->style, unit_len_ctx,
-						value, unit));
-				if (h > box->height) {
-					box->height = h;
-					updated = true;
-				}
-			}
-		}
+	if (min_h > 0 && min_h > box->height) {
+		box->height = min_h;
+		updated = true;
 	}
 	return updated;
 }
@@ -2721,7 +2544,9 @@ static bool layout_float(struct box *b, int width, html_content *content)
 	       b->type == BOX_FLEX ||
 	       b->type == BOX_INLINE_FLEX);
 	layout_float_find_dimensions(&content->unit_len_ctx, width, b->style, b);
-	if (b->type == BOX_TABLE || b->type == BOX_INLINE_FLEX) {
+	/* Onyx: a floated flex / grid container (BOX_FLEX) is laid out as one */
+	if (b->type == BOX_TABLE || b->type == BOX_INLINE_FLEX ||
+			b->type == BOX_FLEX) {
 		if (b->type == BOX_TABLE) {
 			if (!layout_table(b, width, content))
 				return false;
@@ -2907,6 +2732,13 @@ static bool layout_box_baseline(const struct box *box,
 			return true;
 	}
 	return found;
+}
+
+/* exported function documented in html/layout_internal.h */
+bool layout_onyx_first_baseline(const struct box *box,
+		const css_unit_ctx *unit_len_ctx, int *baseline)
+{
+	return layout_box_baseline(box, unit_len_ctx, true, baseline);
 }
 
 /**
