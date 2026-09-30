@@ -129,5 +129,15 @@ expect "$L" "reveal content true"
 expect "$L" "reveal fallback gone true"
 expect "$L" "reveal after kept true"
 
+echo "canvas-api.html (<canvas> 2D: state, paths, pixels, text, images, OffscreenCanvas)"
+L=$OUT/canvas-api.log
+run canvas-api.html "$(waits 80)" "$L"
+grep "^console: FAIL \|^JS " "$L" | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL \|^JS " "$L" || ! grep -q "^console: canvas: done 40" "$L"; then
+	echo "  FAIL: $(grep -c '^console: OK ' "$L") of 40 checks"; fail=1
+else
+	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
+fi
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="160" height="60" viewBox="0 0 160 60">
+  <title>A test logo</title>
+  <style>
+    .ring { fill: none; stroke: #1a73e8; stroke-width: 6 }
+    .word path { fill: #202124 }
+    #dot { fill: #ea4335 }
+  </style>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbbc04"/>
+      <stop offset="1" stop-color="#34a853"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="half"><rect x="0" y="0" width="160" height="30"/></clipPath>
+  </defs>
+  <rect x="2" y="2" width="56" height="56" rx="12" fill="url(#sky)"/>
+  <circle cx="30" cy="30" r="18" fill="url(#glow)"/>
+  <circle class="ring" cx="30" cy="30" r="14"/>
+  <g class="word" transform="translate(66 12)">
+    <path d="M0 0h8v28h-8z"/>
+    <path d="M14 0h8l10 16v-16h8v28h-8l-10-16v16h-8z"/>
+    <path d="M46 0h8v28h-8z" transform="translate(4 0)"/>
+  </g>
+  <circle id="dot" cx="148" cy="14" r="6"/>
+  <circle cx="148" cy="44" r="10" fill="#9334e6" clip-path="url(#half)"/>
+  <polyline points="66 50 80 44 94 52 108 46" fill="none" stroke="#5f6368" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 3"/>
+</svg>

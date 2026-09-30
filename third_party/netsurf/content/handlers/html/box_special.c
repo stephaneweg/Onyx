@@ -52,6 +52,7 @@
 #include "html/box_special.h"
 #include "html/box_textarea.h"
 #include "html/form_internal.h"
+#include "html/onyx_svg_inline.h"
 
 
 static const content_type image_types = CONTENT_IMAGE;
@@ -1950,7 +1951,8 @@ convert_special_elements(dom_node *node,
 		break;
 
 	default:
-		res = true;
+		/* Onyx: an inline <svg>, a replaced box (onyx_svg_inline.c) */
+		res = onyx_svg_box(node, content, box, convert_children);
 	}
 
 	return res;

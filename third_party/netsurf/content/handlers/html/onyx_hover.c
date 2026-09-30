@@ -54,6 +54,7 @@
 #include "html/box_construct.h"
 #include "html/onyx_hover.h"
 #include "html/onyx_paint.h"
+#include "html/onyx_svg_inline.h"	/* (Onyx: inline <svg> colours) */
 #include "netsurf/onyx_perf.h"
 
 #define HV_FAIL(h, reason) do { if (!(h)->fail) (h)->why = (reason); (h)->fail = true; } while (0)
@@ -603,6 +604,16 @@ static bool hv_box(struct hv *h, struct box *b, struct dom_node *own, bool pchan
 	if (m == NULL)
 		return false;
 	nw = m->nw;
+	if (!apply && b->object != NULL && onyx_svg_box_is_inline(b)) {
+		/* Onyx: an inline <svg>'s colour (its currentColor) is in its SVG text: a new
+		 * colour makes the boxes again (onyx_svg_inline.c) */
+		css_color ca = 0, cb = 0;
+
+		css_computed_color(b->style, &ca);
+		css_computed_color(nw, &cb);
+		if (ca != cb)
+			HV_FAIL(h, "inline svg colour");
+	}
 	if (apply) {
 		int e = hv_reach(h->c, b->style), e2 = hv_reach(h->c, nw);
 		/* moved as the layout moves it: not text, not a non-replaced inline */
