@@ -105,6 +105,11 @@ L=$OUT/css-bodyoverflow.log
 run css-bodyoverflow.html "$(waits 40)" "$L"
 expect "$L" "bodyoverflow page true"
 
+echo "js-iframeblank.html (an about:blank iframe: no endless broadcast)"
+L=$OUT/js-iframeblank.log
+run js-iframeblank.html "$(waits 40)" "$L"
+expect "$L" "iframeblank loaded"
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"

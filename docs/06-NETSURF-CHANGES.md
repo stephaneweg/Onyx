@@ -1083,6 +1083,11 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
   -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
   SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
+- **`content_broadcast` told each user once per broadcast with the list of users told
+  kept by that broadcast** (content.c): the shadow DOM work's mark in each user was a global
+  generation, overwritten by a broadcast a callback makes (DONE -> a reformat -> ...): the
+  outer broadcast told everyone again, for ever -- an `<iframe src="about:blank">` hung the
+  page. Test: js-iframeblank.
 - **Two crashes of the sweep fixed**: a subtree a script takes out of the document forgets its
   boxes (`html_box_unlink_subtree` from `DOMNodeRemoved`) -- the rebox unlinked only the nodes
   in the document, and `getBoundingClientRect` on a removed element walked a freed box
