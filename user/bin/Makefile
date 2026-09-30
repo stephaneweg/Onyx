@@ -88,7 +88,10 @@ CXX_PROGS = httpget.elf
 # with FP on.
 V3D_PROGS = v3dprog.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
+# C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
+GPC_PROGS = gpcdemo.elf
+
+all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -108,6 +111,9 @@ $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
 CXXFLAGS_FP = $(CFLAGS_FP) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 $(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
 	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../v3d/libv3d.a -o $@
+
+$(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../kapi.h ../applib.h ../umm.h ../gpucomp/libgpucomp.a ../gpucomp/gpucomp.h
+	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../gpucomp/libgpucomp.a -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.
