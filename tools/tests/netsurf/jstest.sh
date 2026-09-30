@@ -251,5 +251,19 @@ expect "$L" "intl default fr-FR string"
 expect "$L" "intl zone agrees true"
 expect "$L" "intl done"
 
+echo "net-worker.html (Worker, SharedWorker, BroadcastChannel, the structured clone between realms)"
+L=$OUT/net-worker.log
+run net-worker.html "$(waits 1000)" "$L"
+for s in "worker types function function function" "clone function DataCloneError" "worker says ready" \
+	 "worker says scope undefined undefined object true function true function undefined net-worker.js w1" \
+	 "worker says lib 42" "worker says sync lib2 ok" "worker says timer fired" \
+	 'worker says fetch {"name":"onyx","list":[1,2,3]}' "clone kinds true,true,true,true,true,true,true,true,true" \
+	 "clone back a 78 true r true 2" "clone blob hi" "worker error Uncaught TypeError: boom" \
+	 "bc page got from the worker" "worker says closing" "blob worker 42" "module 15 function" \
+	 "a shared count 1 conns 2" "b shared count 3 conns 2" "workers done"; do
+	expect "$L" "$s"
+done
+refuse "$L" "worker says after close (not delivered)"
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

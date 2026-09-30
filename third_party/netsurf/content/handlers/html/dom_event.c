@@ -773,8 +773,10 @@ dom_default_action_DOMNodeRemoved_cb(struct dom_event *evt, void *pw)
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
 	if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
-	    type == DOM_ELEMENT_NODE)
+	    type == DOM_ELEMENT_NODE) {
 		html_css_node_removed(htmlc, (dom_node *) node);
+		html_box_unlink_subtree((dom_node *) node);
+	}
 	dom_node_unref(node);
 }
 

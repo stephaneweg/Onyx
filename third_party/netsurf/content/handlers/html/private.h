@@ -343,6 +343,12 @@ nserror html_proceed_to_done(html_content *html);
  */
 void html_script_dom_changed(html_content *htmlc);
 
+/**
+ * Onyx: a subtree taken out of the document forgets its boxes (they are freed at the next
+ * rebox: a script's getBoundingClientRect on a removed element read a freed box).
+ */
+void html_box_unlink_subtree(dom_node *n);
+
 /** Onyx: boxes built and laid out from the nodes parsed so far (a script asks for a
  * geometry while the document is parsed); whether there are boxes */
 /** Onyx: a script waiting for the style sheets run once they are in */

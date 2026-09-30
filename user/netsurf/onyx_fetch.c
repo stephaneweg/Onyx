@@ -104,12 +104,15 @@ struct fetch_onyx_context {
 	z_stream zs;			/* the Content-Encoding's inflate, when zs_on */
 	bool zs_on, zs_end;
 	size_t delivered;		/* body bytes handed to the core */
+	bool script;			/* Onyx: a script's request (fetch / XHR: X-Onyx-Dest: empty) */
 };
 
 static struct fetch_onyx_context *ring = NULL;
 
 /* Idle timeout of a download: no byte for 30 s (kapi_get_ticks counts at 100 Hz). */
 #define ONYX_IDLE_TICKS	3000
+/* Onyx: a script's request (fetch / XHR): 5 min (a long poll, a stream) */
+#define ONYX_SCRIPT_IDLE_TICKS	30000
 
 #define ONYX_MAX_WORKERS	8	/* downloads at once (the kernel has 16 sockets in all) */
 
@@ -489,6 +492,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 			const char *v = h + 12;
 			while (*v == ' ') v++;
 			snprintf(dest, sizeof dest, "%s", v);
+			ctx->script = strcmp(dest, "empty") == 0;
 			continue;
 		}
 		if (hdr_is(h, "If-None-Match") || hdr_is(h, "If-Modified-Since"))
@@ -890,6 +894,7 @@ struct onyx_job {
 	size_t cap, len;
 	size_t total;			/* body bytes in all */
 	const char *err;		/* a failure (a static string), or 0 */
+	unsigned idle;			/* Onyx: ticks without a byte before it fails */
 };
 
 static int onyx_workers;		/* jobs running (UI thread's count) */
@@ -1042,6 +1047,13 @@ static int onyx_connect(const char *host, unsigned port)
 	return sock;
 }
 
+/* Onyx: the connects of onyx_ws.c (WebSocket, EventSource, importScripts) take the same
+ * turn as the downloads' */
+int onyx_fetch_connect(const char *host, unsigned port)
+{
+	return onyx_connect(host, port);
+}
+
 static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool tls)
 {
 	memset(k, 0, sizeof *k);
@@ -1097,7 +1109,7 @@ static int in_fill(struct onyx_in *in)
 			in->closed = true;
 			return 0;
 		}
-		if (kapi_get_ticks() - in->t_last > ONYX_IDLE_TICKS)
+		if (kapi_get_ticks() - in->t_last > in->j->idle)
 			return -1;
 		kapi_msleep(2);
 	}
@@ -1386,6 +1398,9 @@ static bool onyx_job_start(struct fetch_onyx_context *c)
 	j->hdrs = c->hdrs != NULL ? strdup(c->hdrs) : NULL;
 	j->body = c->body != NULL ? strdup(c->body) : NULL;
 	j->ua = user_agent_string();
+	/* Onyx: a script's request may wait long for its answer (a long poll: a chat's server
+	 * holds it till something happens, a streamed response between its events) */
+	j->idle = c->script ? ONYX_SCRIPT_IDLE_TICKS : ONYX_IDLE_TICKS;
 	j->lang = nsoption_charp(accept_language) != NULL ? nsoption_charp(accept_language) :
 		"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7";
 	if (j->url == NULL || j->method == NULL) { onyx_job_free(j); return false; }

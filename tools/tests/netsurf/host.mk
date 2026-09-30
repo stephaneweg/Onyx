@@ -90,7 +90,7 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
 QJS := $(TP)/quickjs-ng-0.17.0
 JSQ := $(NS)/content/handlers/javascript/quickjs
 QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c
 
 CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) $(wildcard $(NS)/utils/nsurl/*.c) \
@@ -107,7 +107,7 @@ FB := $(NS)/frontends/framebuffer
 include $(UN)/netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 
-ONYX_SRC   := $(UN)/onyx_fetch.c $(UN)/onyx_main.c $(HERE)/host_stubs.c
+ONYX_SRC   := $(UN)/onyx_fetch.c $(UN)/onyx_ws.c $(UN)/onyx_main.c $(HERE)/host_stubs.c
 ONYX_CXX   := $(ONYX_CXX_FILES)
 
 GENFONT := $(OUT)/font-ns-sans.c
@@ -253,6 +253,13 @@ $(OUT)/qjsgen/qjs_canvas_js.h: $(JSQ)/canvas.js
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 $(call obj,$(JSQ)/qjs_canvas.c): $(OUT)/qjsgen/qjs_canvas_js.h
 $(call obj,$(JSQ)/qjs_canvas.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
+# Onyx: WebSocket, EventSource, streamed fetch, Workers -- net.js as a C string for qjs_net.c
+$(OUT)/qjsgen/qjs_net_js.h: $(JSQ)/net.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from net.js by host.mk */'; echo 'static const char qjs_net_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs_net.c): $(OUT)/qjsgen/qjs_net_js.h
+$(call obj,$(JSQ)/qjs_net.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
 
 CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \
        -MMD -MP

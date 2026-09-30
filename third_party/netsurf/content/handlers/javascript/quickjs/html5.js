@@ -2637,10 +2637,21 @@ if (G.HTMLOListElement) {
 		for (const o of perfObservers)
 			if (o._types.has(e.entryType)) deliver(o, e);
 	};
+	const TIMING_NAMES = ['navigationStart', 'unloadEventStart', 'unloadEventEnd',
+		'redirectStart', 'redirectEnd', 'fetchStart', 'domainLookupStart', 'domainLookupEnd',
+		'connectStart', 'connectEnd', 'secureConnectionStart', 'requestStart', 'responseStart',
+		'responseEnd', 'domLoading', 'domInteractive', 'domContentLoadedEventStart',
+		'domContentLoadedEventEnd', 'domComplete', 'loadEventStart', 'loadEventEnd'];
 	const markTime = (v, what) => {
 		if (v === undefined) return undefined;
 		if (typeof v === 'number') return v;
 		const m = entries.filter(e => e.entryType === 'mark' && e.name === String(v)).pop();
+		/* a PerformanceTiming attribute's name ("navigationStart", bbc.com): its time
+		 * from the navigation's start (Onyx: the navigation's events are not timed, 0) */
+		if (!m && TIMING_NAMES.includes(String(v))) {
+			const tm = perf.timing || {};
+			return tm[v] > 0 && tm.navigationStart > 0 ? tm[v] - tm.navigationStart : 0;
+		}
 		if (!m) throw domError('performance.' + what + ': no mark "' + v + '"', 'SyntaxError');
 		return m.startTime;
 	};

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Live network APIs</title></head>
+<body><h1>WebSocket, EventSource, streamed fetch on public servers</h1>
+<pre id="out"></pre>
+<script>
+/* A manual check against public servers (the PC bench: SIM_REALNET=1; the Pi as is):
+ * wss://echo.websocket.org (an echo), https://stream.wikimedia.org (a busy event stream),
+ * a streamed fetch. The results are shown in the page and logged. */
+const out = document.getElementById('out');
+const log = s => { console.log(s); out.textContent += s + '\n'; };
+const t0 = Date.now();
+const ws = new WebSocket('wss://echo.websocket.org/');
+let got = 0;
+ws.onopen = () => { log('live ws open ' + (Date.now() - t0) + ' ms ext=' + ws.extensions); ws.send('onyx ping'); };
+ws.onmessage = ev => {
+	got++;
+	log('live ws message ' + String(ev.data).slice(0, 60));
+	if (ev.data === 'onyx ping') ws.send(new Uint8Array([1, 2, 3]));
+	else if (ev.data instanceof Blob) { log('live ws binary ' + ev.data.size); ws.close(1000, 'bye'); }
+};
+ws.onerror = () => log('live ws error');
+ws.onclose = ev => log('live ws close ' + ev.code + ' ' + ev.wasClean);
+
+const es = new EventSource('https://stream.wikimedia.org/v2/stream/recentchange');
+let n = 0;
+es.onopen = () => log('live sse open ' + (Date.now() - t0) + ' ms');
+es.onmessage = ev => {
+	n++;
+	if (n === 1 || n === 20) {
+		const d = JSON.parse(ev.data);
+		log('live sse event ' + n + ' ' + d.type + ' ' + d.wiki);
+	}
+	if (n === 20) { es.close(); log('live sse closed'); }
+};
+es.onerror = () => log('live sse error ' + es.readyState);
+
+fetch('https://stream.wikimedia.org/v2/stream/recentchange').then(async r => {
+	log('live fetch head ' + r.status + ' ' + r.headers.get('content-type'));
+	const rd = r.body.getReader();
+	let bytes = 0, parts = 0;
+	while (bytes < 20000) {
+		const { value, done } = await rd.read();
+		if (done) break;
+		bytes += value.byteLength;
+		parts++;
+	}
+	await rd.cancel();
+	log('live fetch streamed ' + parts + ' parts ' + bytes + ' bytes');
+}, e => log('live fetch failed ' + e));
+</script></body></html>

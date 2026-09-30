@@ -68,7 +68,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c
 
 # ---- source lists (excludes documented in README.md) -------------------
 CORE_SRC := \
@@ -91,7 +91,7 @@ include $(HERE)netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 
 # Onyx glue
-ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
+ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
 GENFONT := $(OUT)/font-ns-sans.c
 
@@ -164,6 +164,14 @@ $(OUT)/qjsgen/qjs_canvas_js.h: $(JSQ)/canvas.js
 QCV_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_canvas.c))
 $(QCV_OBJ_NS): $(OUT)/qjsgen/qjs_canvas_js.h
 $(QCV_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
+# Onyx: WebSocket, EventSource, streamed fetch, Workers -- net.js as a C string for qjs_net.c
+$(OUT)/qjsgen/qjs_net_js.h: $(JSQ)/net.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from net.js by netsurf-app.mk */'; echo 'static const char qjs_net_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+QNET_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_net.c))
+$(QNET_OBJ_NS): $(OUT)/qjsgen/qjs_net_js.h
+$(QNET_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(HERE)
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
