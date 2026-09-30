@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>consent screen</title>
+<style>
+html, body { margin: 0; height: 100%; font: 15px sans-serif; }
+/* Facebook's cookie screen (a "bloks" page): a viewport-high flex column -- the text and
+   cards in a middle part that scrolls (flex: 1, overflow-y: auto), the buttons pinned at
+   the bottom */
+#screen { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+#head { padding: 16px; font-weight: bold; font-size: 20px; }
+#middle { flex: 1; overflow-y: auto; padding: 0 16px; display: flex; flex-direction: column; }
+.card { height: 300px; margin: 12px 0; background: #eee; flex-shrink: 0; }
+#foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid #ccc; }
+#foot button { height: 40px; }
+</style></head>
+<body>
+<div id="screen">
+ <div id="head">Voulez-vous autoriser l'utilisation des cookies ?</div>
+ <div id="middle">
+  <p>Nous utilisons les cookies...</p>
+  <div class="card">Définition</div><div class="card">Pourquoi ?</div>
+  <div class="card">Produits Meta</div><div class="card">Vos préférences</div>
+ </div>
+ <div id="foot">
+  <button id="allow" type="button">Autoriser tous les cookies</button>
+  <button id="deny" type="button">Refuser les cookies optionnels</button>
+ </div>
+</div>
+<script>
+var m = document.getElementById('middle'), a = document.getElementById('allow');
+setTimeout(function () {
+	var r = a.getBoundingClientRect();
+	console.log('buttons ' + (r.bottom <= innerHeight && r.top > 0 ? 'visible' : 'hidden at ' + Math.round(r.top) + ' of ' + innerHeight));
+	console.log('middle ' + (m.scrollHeight > m.clientHeight ? 'scrolls' : 'does not scroll'));
+}, 200);
+m.addEventListener('scroll', function () { console.log('middle scrolled ' + (m.scrollTop > 0 ? 'down' : 'top')); });
+a.addEventListener('click', function () { console.log('allowed'); });
+</script>
+</body></html>

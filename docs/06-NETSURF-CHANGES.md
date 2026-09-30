@@ -412,6 +412,14 @@ centred; the headings', paragraphs', lists', `dl` / `dd`, `figure`, `blockquote`
   `scrollLeft` / `scrollHeight` / `scrollWidth` / `scrollTo()` / `scrollBy()` are its
   (`N.boxScroll`, `N.boxScrollTo`; they were 0 / no-ops). Also in an iframe. Tests:
   `pages/js-scrollers.html`, `js-scrollframe.html` (jstest.sh).
+- **The wheel event**: the scripts get a `wheel` event (a `WheelEvent`, `deltaX` / `deltaY` in
+  px) at the element under the pointer before anything scrolls; one they prevent scrolls
+  nothing (a page's own scroller: its content moved by the script). The wheel reached no
+  script before. A click also gives `pointerdown` / `pointerup` before `mousedown` /
+  `mouseup` (as Chrome). Tests: `pages/js-wheel.html`, `js-consent.html` (a flex column's
+  `overflow: auto` middle), `js-consent-body.html` (the body its own scroller).
+- **No touch screen**: `ontouchstart` / `ontouchend` / `ontouchmove` are gone from the
+  elements and the window (`'ontouchstart' in window` told the pages there was one).
 - **`element.focus()`** on a text field or a textarea puts the browser's caret in it
   (what is typed goes there, as after a click); in a handler that has just shown it (no box
   yet), after the next rebox (`html_script_focus_control`). Test: `pages/js-focus.html`.

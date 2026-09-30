@@ -3844,6 +3844,11 @@ bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *targ
 		JS_SetPropertyStr(ctx, o, "shiftKey", JS_NewBool(ctx, init->shift));
 		JS_SetPropertyStr(ctx, o, "ctrlKey", JS_NewBool(ctx, init->ctrl));
 		JS_SetPropertyStr(ctx, o, "altKey", JS_NewBool(ctx, init->alt));
+		/* (Onyx: a wheel's movement) */
+		JS_SetPropertyStr(ctx, o, "deltaX", JS_NewInt32(ctx, init->delta_x));
+		JS_SetPropertyStr(ctx, o, "deltaY", JS_NewInt32(ctx, init->delta_y));
+		JS_SetPropertyStr(ctx, o, "buttons",
+				JS_NewInt32(ctx, init->button == 0 ? 1 : 0));
 	}
 	args[0] = target != NULL ? qjs_wrap(thread, target) : JS_NULL;
 	args[1] = JS_NewString(ctx, type);

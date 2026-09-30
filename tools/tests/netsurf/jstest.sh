@@ -310,6 +310,15 @@ expect "$L" "accepted"
 L=$OUT/js-scrollers-drag.log
 run js-scrollers.html "$(waits 60)move 789 110;wait;down 789 110;wait;move 789 500;wait;up 789 500;$(waits 30)" "$L"
 expect "$L" "panel scrolled down"
+L=$OUT/js-consent.log
+run js-consent.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
+for s in "buttons visible" "middle scrolls" "middle scrolled down"; do expect "$L" "$s"; done
+L=$OUT/js-consent-body.log
+run js-consent-body.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
+expect "$L" "body scrolled"
+L=$OUT/js-wheel.log
+run js-wheel.html "$(waits 60)move 300 300;wheel 300 300 -30;$(waits 30)$(click 100 690)" "$L"
+for s in "wheel down true" "pointerdown" "allowed"; do expect "$L" "$s"; done
 L=$OUT/js-scrollframe.log
 run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 700)" "$L"
 expect "$L" "panel scrolled down"

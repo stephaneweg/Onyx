@@ -433,8 +433,10 @@ const HANDLER_TYPES = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove',
 	'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'contextmenu', 'wheel',
 	'keydown', 'keyup', 'keypress', 'focus', 'blur', 'focusin', 'focusout', 'input',
 	'change', 'submit', 'reset', 'load', 'error', 'abort', 'scroll', 'resize',
-	'select', 'pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend',
-	'touchmove', 'animationend', 'transitionend', 'beforeunload', 'unload',
+	/* (Onyx: no ontouchstart / ontouchend / ontouchmove: a mouse, not a touch screen,
+	 * as Chrome on a desktop -- 'ontouchstart' in window made google.com open its
+	 * phone's full-screen search at a click in its box) */
+	'select', 'pointerdown', 'pointerup', 'pointermove', 'animationend', 'transitionend', 'beforeunload', 'unload',
 	'hashchange', 'popstate', 'message', 'toggle', 'play', 'pause', 'ended'];
 function defineHandlers(proto) {
 	for (const t of HANDLER_TYPES) {
@@ -5317,7 +5319,7 @@ function browserEvent(target, type, init) {
 		ev = new FocusEvent(type, { composed: true });
 		break;
 	case 'wheel':
-		ev = new WheelEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init));
+		ev = new WheelEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G }, init));
 		break;
 	default:
 		ev = new Event(type, { bubbles: true, cancelable: true });
