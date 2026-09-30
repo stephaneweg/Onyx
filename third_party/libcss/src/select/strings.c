@@ -5,6 +5,8 @@
  * Copyright 2009 John-Mark Bell <jmb@netsurf-browser.org>
  */
 
+#include <string.h>
+
 #include <libwapcaplet/libwapcaplet.h>
 
 #include "select/strings.h"
