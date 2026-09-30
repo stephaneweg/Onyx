@@ -5,6 +5,8 @@
 # benchmark built for the PC (CPU, then the software V3D).
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
+# the control-list packets first (their layout: what the software V3D below decodes)
+sh "$here/run_v3d_cl_test.sh" | tail -1
 root=$(cd "$here/../.." && pwd)
 Q="$root/tools/qpu"
 T=$(mktemp -d)
@@ -12,7 +14,8 @@ trap 'rm -rf "$T"' EXIT
 for f in qpulib ralloc_stub mesa/broadcom/qpu/qpu_instr mesa/broadcom/qpu/qpu_pack mesa/broadcom/qpu/qpu_disasm; do
 	gcc -std=gnu11 -O1 -w -I"$Q/mesa" -I"$Q" -c "$Q/$f.c" -o "$T/$(basename $f).o"
 done
-g++ -std=gnu++17 -O2 -w -I"$root/kernel/include" -I"$Q" -I"$Q/mesa" -c "$here/gpucomp/hostkapi.cpp" -o "$T/hostkapi.o"
+# (C++20: kern/v3d_cl.h's packets, whose bytes the software V3D decodes; a stub <circle/types.h>)
+g++ -std=gnu++20 -O2 -w -I"$root/tools/tests/fs/stub" -I"$root/kernel/include" -I"$Q" -I"$Q/mesa" -c "$here/gpucomp/hostkapi.cpp" -o "$T/hostkapi.o"
 g++ -std=gnu++17 -O2 -w -I"$Q" -I"$Q/mesa" -c "$Q/qpusim.cpp" -o "$T/sim.o"
 gcc -std=gnu11 -O2 -ffp-contract=off -Wall -Wextra -I"$root/user" -I"$root/kernel/include" -c "$root/user/gpucomp/gpucomp.c" -o "$T/gpucomp.o"
 g++ -std=gnu++17 -O2 -w -I"$root/user" -I"$root/kernel/include" "$here/gpucomp/gpctest.cpp" "$T/gpucomp.o" "$T/hostkapi.o" "$T/sim.o" "$T"/qpu*.o "$T"/ralloc_stub.o -lpthread -o "$T/gpctest"
