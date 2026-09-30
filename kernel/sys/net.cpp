@@ -35,7 +35,7 @@
 #include <kern/ipc.h>
 #include <kern/addrspace.h>
 
-#define MAX_SOCKETS	16
+#define MAX_SOCKETS	64		// (16 until 2026-09-30: a browser keeps a dozen open)
 
 struct TSocketSlot
 {
