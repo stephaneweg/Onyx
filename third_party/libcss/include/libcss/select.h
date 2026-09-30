@@ -148,7 +148,45 @@ typedef struct css_select_handler {
 	 */
 	css_error (*get_libcss_node_data)(void *pw, void *node,
 			void **libcss_node_data);
+
+	/* Onyx: shadow trees -- appended, NULL in a handler without them (:host then
+	 * never matches) */
+	/**
+	 * Whether node is the shadow host of the tree whose rules pw matches: the host is
+	 * featureless there (the handler answers no to its name, classes, attributes...;
+	 * its parent is NULL) but for :host, :host(), :host-context().
+	 */
+	css_error (*onyx_node_is_scope_host)(void *pw, void *node, bool *match);
+	/**
+	 * The handler data matching in the tree of pw's shadow host (its own tree, where it
+	 * has its features: :host()'s argument), or NULL.
+	 */
+	void *(*onyx_host_pw)(void *pw);
 } css_select_handler;
+
+/**
+ * Onyx: shadow DOM -- the rules of another tree a node's style also takes (CSS Scoping)
+ */
+typedef enum css_select_onyx_scope_kind {
+	CSS_ONYX_SCOPE_HOST = 0,	/**< a shadow tree's :host rules; node: the host */
+	CSS_ONYX_SCOPE_SLOTTED = 1,	/**< a shadow tree's ::slotted() rules; node: the
+					 * slot the element is assigned to */
+	CSS_ONYX_SCOPE_PART = 2		/**< an outer tree's ::part() rules; node: the host
+					 * whose shadow tree holds the element */
+} css_select_onyx_scope_kind;
+
+typedef struct css_select_onyx_scope {
+	css_select_ctx *ctx;	/**< that tree's style sheets (the author ones apply) */
+	void *pw;		/**< handler data matching in that tree */
+	void *node;		/**< the node its selectors are matched on */
+	uint8_t kind;		/**< css_select_onyx_scope_kind */
+	int8_t level;		/**< its encapsulation context against the element's own
+				 * tree (0): < 0 outer (its normal declarations win over
+				 * the element's tree's, its !important ones lose), > 0
+				 * inner (the other way round) */
+	lwc_string *const *parts;	/**< PART: the element's part names */
+	uint32_t n_parts;
+} css_select_onyx_scope;
 
 /**
  * Font face selection result set
@@ -229,6 +267,20 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		const css_unit_ctx *unit_ctx,
 		const css_media *media, const css_stylesheet *inline_style,
 		css_select_handler *handler, void *pw,
+		css_select_results **result);
+/**
+ * Onyx: css_select_style for an element of a document with shadow trees: ctx and pw are
+ * its own tree's; inherit_parent the element whose custom properties it inherits (its
+ * flat tree parent: a slot, a host; NULL: the handler's parent_node); no_share: its style
+ * is its own (a host, an element assigned to a slot...); scopes: the other trees' rules
+ * it takes.
+ */
+css_error css_select_style_onyx(css_select_ctx *ctx, void *node,
+		const css_unit_ctx *unit_ctx,
+		const css_media *media, const css_stylesheet *inline_style,
+		css_select_handler *handler, void *pw,
+		void *inherit_parent, bool no_share,
+		const css_select_onyx_scope *scopes, uint32_t n_scopes,
 		css_select_results **result);
 css_error css_select_results_destroy(css_select_results *results);
 

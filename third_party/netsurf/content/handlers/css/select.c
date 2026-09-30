@@ -32,6 +32,8 @@
 #include "css/hints.h"
 #include "css/select.h"
 
+#include <dom/bindings/hubbub/parser.h>	/* Onyx: dom_onyx_shadow_host */
+
 static css_error node_name(void *pw, void *node, css_qname *qname);
 static css_error node_classes(void *pw, void *node,
 		lwc_string ***classes, uint32_t *n_classes);
@@ -279,14 +281,16 @@ static void nscss_dom_user_data_handler(dom_node_operation operation,
  * \return Pointer to selection results (containing computed styles),
  *         or NULL on failure
  */
+static css_select_results *nscss_compose(nscss_select_ctx *ctx,
+		const css_unit_ctx *unit_len_ctx, css_select_results *styles);
+static css_select_handler onyx_scoped_handler;
+
 css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		const css_media *media,
 		const css_unit_ctx *unit_len_ctx,
 		const css_stylesheet *inline_style)
 {
-	css_computed_style *composed;
 	css_select_results *styles;
-	int pseudo_element;
 	css_error error;
 
 	/* Select style for node */
@@ -297,6 +301,34 @@ css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		/* Failed selecting partial style -- bail out */
 		return NULL;
 	}
+	return nscss_compose(ctx, unit_len_ctx, styles);
+}
+
+/* exported function documented in css/select.h (Onyx) */
+css_select_results *nscss_get_style_onyx(nscss_select_ctx *ctx, dom_node *n,
+		const css_media *media, const css_unit_ctx *unit_len_ctx,
+		const css_stylesheet *inline_style, dom_node *inherit_parent, bool no_share,
+		const css_select_onyx_scope *scopes, uint32_t n_scopes)
+{
+	css_select_results *styles;
+	css_error error;
+
+	error = css_select_style_onyx(ctx->ctx, n, unit_len_ctx, media, inline_style,
+			&onyx_scoped_handler, ctx, inherit_parent, no_share, scopes,
+			n_scopes, &styles);
+	if (error != CSS_OK || styles == NULL)
+		return NULL;
+	return nscss_compose(ctx, unit_len_ctx, styles);
+}
+
+/* the partial styles completed: the element's with its parent's, the pseudo elements'
+ * with the element's */
+static css_select_results *nscss_compose(nscss_select_ctx *ctx,
+		const css_unit_ctx *unit_len_ctx, css_select_results *styles)
+{
+	css_computed_style *composed;
+	int pseudo_element;
+	css_error error;
 
 	/* If there's a parent style, compose with partial to obtain
 	 * complete computed style for element */
@@ -1574,7 +1606,8 @@ struct dom_node *nscss_styled_node;
 
 css_error node_is_hover(void *pw, void *node, bool *match)
 {
-	/* Onyx: the node under the pointer and its ancestors are hovered */
+	/* Onyx: the node under the pointer and its ancestors are hovered (its shadow
+	 * hosts' too: the shadow-including ancestors) */
 	dom_node *n = nscss_hover_node;
 
 	(void) pw;
@@ -1596,6 +1629,13 @@ css_error node_is_hover(void *pw, void *node, bool *match)
 			parent = NULL;
 		dom_node_unref(n);
 		n = parent;
+		if (n != NULL) {
+			dom_node *host = dom_onyx_shadow_host(n);
+			if (host != NULL) {
+				dom_node_unref(n);
+				n = dom_node_ref(host);
+			}
+		}
 	}
 
 	return CSS_OK;
@@ -1819,3 +1859,211 @@ css_error get_libcss_node_data(void *pw, void *node, void **libcss_node_data)
 
 	return CSS_OK;
 }
+
+
+/* ---- Onyx: shadow DOM -- the handler for the documents with shadow trees -------------- */
+
+/* The node is the shadow host of the tree whose rules are matched: featureless there */
+#define ONYX_FL(pw, node) (((nscss_select_ctx *) (pw))->scope_host != NULL && \
+		(void *) (node) == (void *) ((nscss_select_ctx *) (pw))->scope_host)
+
+/* the parent in the tree matched: a shadow tree's top-level elements' is its host (whose
+ * own parent is none there) */
+static css_error s_parent_node(void *pw, void *node, void **parent)
+{
+	nscss_select_ctx *ctx = pw;
+
+	*parent = NULL;
+	if (ONYX_FL(pw, node))
+		return CSS_OK;
+	parent_node(pw, node, parent);
+	if (*parent == NULL && ctx->scope_host != NULL) {
+		dom_node *p = NULL;
+		if (dom_node_get_parent_node(node, &p) == DOM_NO_ERR && p != NULL) {
+			if (dom_onyx_shadow_host(p) == ctx->scope_host)
+				*parent = ctx->scope_host;
+			dom_node_unref(p);
+		}
+	}
+	return CSS_OK;
+}
+
+static bool s_named(void *node, const css_qname *qname)
+{
+	dom_string *name = NULL;
+	bool m = false;
+	if (dom_node_get_node_name(node, &name) == DOM_NO_ERR && name != NULL) {
+		m = dom_string_caseless_lwc_isequal(name, qname->name);
+		dom_string_unref(name);
+	}
+	return m;
+}
+
+static css_error s_named_ancestor_node(void *pw, void *node,
+		const css_qname *qname, void **ancestor)
+{
+	void *n = node;
+
+	*ancestor = NULL;
+	if (((nscss_select_ctx *) pw)->scope_host == NULL)
+		return named_ancestor_node(pw, node, qname, ancestor);
+	for (;;) {
+		s_parent_node(pw, n, &n);
+		if (n == NULL || ONYX_FL(pw, n))
+			return CSS_OK;
+		if (s_named(n, qname)) {
+			*ancestor = n;
+			return CSS_OK;
+		}
+	}
+}
+
+static css_error s_named_parent_node(void *pw, void *node,
+		const css_qname *qname, void **parent)
+{
+	void *p = NULL;
+
+	*parent = NULL;
+	s_parent_node(pw, node, &p);
+	if (p != NULL && !ONYX_FL(pw, p) && s_named(p, qname))
+		*parent = p;
+	return CSS_OK;
+}
+
+static css_error s_named_sibling_node(void *pw, void *node,
+		const css_qname *qname, void **sibling)
+{
+	*sibling = NULL;
+	if (ONYX_FL(pw, node))
+		return CSS_OK;
+	return named_sibling_node(pw, node, qname, sibling);
+}
+
+static css_error s_named_generic_sibling_node(void *pw, void *node,
+		const css_qname *qname, void **sibling)
+{
+	*sibling = NULL;
+	if (ONYX_FL(pw, node))
+		return CSS_OK;
+	return named_generic_sibling_node(pw, node, qname, sibling);
+}
+
+static css_error s_sibling_node(void *pw, void *node, void **sibling)
+{
+	*sibling = NULL;
+	if (ONYX_FL(pw, node))
+		return CSS_OK;
+	return sibling_node(pw, node, sibling);
+}
+
+#define S_MATCH1(fn) \
+static css_error s_##fn(void *pw, void *node, bool *match) \
+{ \
+	if (ONYX_FL(pw, node)) { *match = false; return CSS_OK; } \
+	return fn(pw, node, match); \
+}
+#define S_MATCH_Q(fn) \
+static css_error s_##fn(void *pw, void *node, const css_qname *qname, bool *match) \
+{ \
+	if (ONYX_FL(pw, node)) { *match = false; return CSS_OK; } \
+	return fn(pw, node, qname, match); \
+}
+#define S_MATCH_QV(fn) \
+static css_error s_##fn(void *pw, void *node, const css_qname *qname, \
+		lwc_string *value, bool *match) \
+{ \
+	if (ONYX_FL(pw, node)) { *match = false; return CSS_OK; } \
+	return fn(pw, node, qname, value, match); \
+}
+#define S_MATCH_S(fn) \
+static css_error s_##fn(void *pw, void *node, lwc_string *name, bool *match) \
+{ \
+	if (ONYX_FL(pw, node)) { *match = false; return CSS_OK; } \
+	return fn(pw, node, name, match); \
+}
+
+S_MATCH_Q(node_has_name)
+S_MATCH_S(node_has_class)
+S_MATCH_S(node_has_id)
+S_MATCH_Q(node_has_attribute)
+S_MATCH_QV(node_has_attribute_equal)
+S_MATCH_QV(node_has_attribute_dashmatch)
+S_MATCH_QV(node_has_attribute_includes)
+S_MATCH_QV(node_has_attribute_prefix)
+S_MATCH_QV(node_has_attribute_suffix)
+S_MATCH_QV(node_has_attribute_substring)
+S_MATCH1(node_is_root)
+S_MATCH1(node_is_empty)
+S_MATCH1(node_is_link)
+S_MATCH1(node_is_visited)
+S_MATCH1(node_is_hover)
+S_MATCH1(node_is_active)
+S_MATCH1(node_is_focus)
+S_MATCH1(node_is_enabled)
+S_MATCH1(node_is_disabled)
+S_MATCH1(node_is_checked)
+S_MATCH1(node_is_target)
+S_MATCH_S(node_is_lang)
+
+static css_error s_node_count_siblings(void *pw, void *n, bool same_name,
+		bool after, int32_t *count)
+{
+	*count = 0;
+	if (ONYX_FL(pw, n))
+		return CSS_OK;
+	return node_count_siblings(pw, n, same_name, after, count);
+}
+
+static css_error s_onyx_node_is_scope_host(void *pw, void *node, bool *match)
+{
+	*match = ONYX_FL(pw, node);
+	return CSS_OK;
+}
+
+static void *s_onyx_host_pw(void *pw)
+{
+	return ((nscss_select_ctx *) pw)->host_ctx;
+}
+
+static css_select_handler onyx_scoped_handler = {
+	CSS_SELECT_HANDLER_VERSION_1,
+
+	node_name,
+	node_classes,
+	node_id,
+	s_named_ancestor_node,
+	s_named_parent_node,
+	s_named_sibling_node,
+	s_named_generic_sibling_node,
+	s_parent_node,
+	s_sibling_node,
+	s_node_has_name,
+	s_node_has_class,
+	s_node_has_id,
+	s_node_has_attribute,
+	s_node_has_attribute_equal,
+	s_node_has_attribute_dashmatch,
+	s_node_has_attribute_includes,
+	s_node_has_attribute_prefix,
+	s_node_has_attribute_suffix,
+	s_node_has_attribute_substring,
+	s_node_is_root,
+	s_node_count_siblings,
+	s_node_is_empty,
+	s_node_is_link,
+	s_node_is_visited,
+	s_node_is_hover,
+	s_node_is_active,
+	s_node_is_focus,
+	s_node_is_enabled,
+	s_node_is_disabled,
+	s_node_is_checked,
+	s_node_is_target,
+	s_node_is_lang,
+	node_presentational_hint,
+	ua_default_for_property,
+	set_libcss_node_data,
+	get_libcss_node_data,
+	s_onyx_node_is_scope_host,
+	s_onyx_host_pw,
+};

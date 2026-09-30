@@ -33,6 +33,7 @@ typedef struct prop_state {
 	                origin           : 2, /* Origin of property in result */
 	                important        : 1; /* Importance of property in result */
 	enum flag_value explicit_default : 3; /* Property is set to inherit */
+	int8_t level;	/* Onyx: its shadow encapsulation context (css_select_onyx_scope) */
 } prop_state;
 
 
@@ -48,6 +49,7 @@ typedef enum css_node_flags {
 	CSS_NODE_FLAGS_TAINT_PSEUDO_CLASS   = (1 <<  7),
 	CSS_NODE_FLAGS_TAINT_ATTRIBUTE      = (1 <<  8),
 	CSS_NODE_FLAGS_TAINT_SIBLING        = (1 <<  9),
+	CSS_NODE_FLAGS_ONYX_NO_SHARE        = (1 << 10),	/* Onyx: shadow DOM */
 	CSS_NODE_FLAGS__PSEUDO_CLASSES_MASK =
 			(CSS_NODE_FLAGS_PSEUDO_CLASS_ACTIVE |
 			 CSS_NODE_FLAGS_PSEUDO_CLASS_FOCUS  |
@@ -104,6 +106,15 @@ typedef struct css_select_state {
 	prop_state props[CSS_N_PROPERTIES][CSS_PSEUDO_ELEMENT_COUNT];
 
 	struct css_onyx_state *onyx;	/* Onyx: var() state, made on first use */
+
+	/* Onyx: shadow DOM (css_select_style_onyx) */
+	int8_t current_level;		/* the encapsulation context of the rules matched */
+	uint8_t onyx_pass;		/* 0, or the css_select_onyx_scope_kind + 1 matched */
+	bool onyx_special;		/* :host / ::slotted() / ::part() matched in the chain */
+	void *onyx_arg_node;		/* SLOTTED: the element assigned (::slotted()'s subject) */
+	void *onyx_arg_pw;		/* SLOTTED: the handler data of its own tree */
+	lwc_string *const *onyx_parts;	/* PART: the element's part names */
+	uint32_t onyx_n_parts;
 } css_select_state;
 
 static inline void advance_bytecode(css_style *style, uint32_t n_bytes)

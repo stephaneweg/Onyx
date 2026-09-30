@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Shadow DOM rendering</title>
+<!-- tools/tests/netsurf: the boxes of shadow trees against Chromium (layoutdiff.sh walks the
+     open shadow roots): a small Lit-like base class (one constructed sheet per component
+     class, adoptedStyleSheets, shadowRoot.innerHTML), slots named and default with their
+     fallback, ::slotted(), ::part(), :host / :host(), a flex host, nested components, a
+     declarative shadow root, display: contents. Logs "render done" when laid out. -->
+<style>
+  body { margin: 8px; font: 16px/1.25 sans-serif; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  x-button::part(btn) { padding: 4px 10px; }
+  x-button.wide::part(btn) { padding: 4px 30px; }
+  .contents { display: contents; }
+  .light-note { font-style: italic; }
+</style>
+<script>
+class MiniLit extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: 'open' }); }
+  static sheet() {
+    if (!Object.prototype.hasOwnProperty.call(this, '_sheet')) {
+      this._sheet = new CSSStyleSheet();
+      this._sheet.replaceSync(this.styles || '');
+    }
+    return this._sheet;
+  }
+  connectedCallback() {
+    if (this._done) return;
+    this._done = true;
+    this.shadowRoot.adoptedStyleSheets = [this.constructor.sheet()];
+    this.shadowRoot.innerHTML = this.render();
+  }
+}
+class XCard extends MiniLit {
+  static styles = ':host { display: block; border: 2px solid #468; border-radius: 6px; margin: 8px 0; width: 320px; background: #eef; }' +
+    ' header { background: #468; color: white; padding: 4px 8px; font-weight: bold; }' +
+    ' .body { padding: 8px; } footer { border-top: 1px solid #aac; padding: 4px 8px; font-size: 12px; }' +
+    ' ::slotted(p) { margin: 4px 0; } ::slotted(.hl) { background: yellow; } :host(.wide) { width: 480px; }';
+  render() {
+    return '<header><slot name="title">Untitled</slot></header><div class="body"><slot></slot></div>' +
+      '<footer><slot name="footer">no footer</slot></footer>';
+  }
+}
+customElements.define('x-card', XCard);
+class XButton extends MiniLit {
+  static styles = ':host { display: inline-block; margin: 2px; } button { font: inherit; border: 1px solid #555; border-radius: 3px; background: #ddd; }';
+  render() { return '<button part="btn"><slot>OK</slot></button>'; }
+}
+customElements.define('x-button', XButton);
+class XRow extends MiniLit {
+  static styles = ':host { display: flex; gap: 10px; align-items: center; border: 1px dashed #999; padding: 6px; width: 460px; } ::slotted(*) { flex: 1; }';
+  render() { return '<slot></slot>'; }
+}
+customElements.define('x-row', XRow);
+class XList extends MiniLit {
+  static styles = ':host { display: block; } ul { margin: 0; padding-left: 20px; }';
+  render() { return '<ul>' + (this.getAttribute('items') || '').split(',').map(s => '<li><x-item>' + s + '</x-item></li>').join('') + '</ul>'; }
+}
+customElements.define('x-list', XList);
+class XItem extends MiniLit {
+  static styles = ':host { display: inline-block; padding: 1px 6px; border: 1px solid #8a8; border-radius: 8px; }';
+  render() { return '<slot></slot>'; }
+}
+customElements.define('x-item', XItem);
+</script>
+</head><body>
+<h1>Shadow DOM rendering</h1>
+<x-card id="c1">
+  <span slot="title">First card</span>
+  <p>A paragraph in the default slot.</p>
+  <p class="hl">A highlighted one.</p>
+  <span class="light-note">Some inline light text.</span>
+</x-card>
+<x-card id="c2" class="wide">
+  <p>No title given: the fallback shows.</p>
+  <em slot="footer">A footer</em>
+</x-card>
+<x-row id="r1"><x-button id="b1">Save</x-button><x-button id="b2" class="wide">Cancel</x-button><x-button id="b3"></x-button></x-row>
+<x-list id="l1" items="one,two,three"></x-list>
+<div id="dsd"><template shadowrootmode="open"><style>:host { display: block; border: 3px double #a64; padding: 6px; width: 300px; } p { margin: 0; color: #a64; }</style><p>Declarative shadow root</p><slot></slot></template><b>light bold</b></div>
+<div id="cont"><span class="contents"><b>in display: contents</b> <i>parent</i></span></div>
+<p id="after">After the components.</p>
+<script>
+setTimeout(() => console.log('render done'), 50);
+</script>
+</body></html>

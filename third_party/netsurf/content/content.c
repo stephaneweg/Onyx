@@ -669,6 +669,7 @@ content_add_user(struct content *c,
 		return false;
 	user->callback = callback;
 	user->pw = pw;
+	user->onyx_told = 0;	/* (Onyx) */
 	user->next = c->user_list->next;
 	c->user_list->next = user;
 
@@ -752,14 +753,26 @@ bool content_is_shareable(struct content *c)
 void content_broadcast(struct content *c, content_msg msg,
 		       const union content_msg_data *data)
 {
-	struct content_user *user, *next;
+	/* Onyx: a callback may remove other users than its own (an image's load event: a
+	 * script asks for a layout, the boxes are made again, the old boxes' objects -- other
+	 * users of the same image -- released): the next user kept before the call was then
+	 * freed (reddit's feed, twice the same preview). Each user is told once, the list
+	 * walked again from its head after each call. */
+	static unsigned int generation;
+	struct content_user *user;
+	unsigned int gen = ++generation;
 	assert(c);
 
 	NSLOG(netsurf, DEEPDEBUG, "%p -> msg:%d", c, msg);
-	for (user = c->user_list->next; user != 0; user = next) {
-		next = user->next;  /* user may be destroyed during callback */
+	for (user = c->user_list->next; user != 0; ) {
+		if (user->onyx_told == gen) {
+			user = user->next;
+			continue;
+		}
+		user->onyx_told = gen;
 		if (user->callback != 0)
 			user->callback(c, msg, data, user->pw);
+		user = c->user_list->next;
 	}
 }
 

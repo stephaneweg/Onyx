@@ -294,6 +294,15 @@ typedef hubbub_error (*hubbub_tree_insert_text)(void *ctx, void *parent,
 		void *ref_child, const hubbub_string *data);
 
 /**
+ * Onyx: declarative shadow DOM -- attach a shadow root to host for a <template
+ * shadowrootmode> element (created, not inserted: its attributes say the mode and options),
+ * the template's contents (template_content) then being that shadow root. An error: the
+ * host cannot take one (the template is then inserted as any other).
+ */
+typedef hubbub_error (*hubbub_tree_attach_shadow)(void *ctx, void *host,
+		void *template_node);
+
+/**
  * Hubbub tree handler
  */
 typedef struct hubbub_tree_handler {
@@ -321,6 +330,7 @@ typedef struct hubbub_tree_handler {
 	 * back to the calls above) */
 	hubbub_tree_template_content template_content;	/**< A template's contents */
 	hubbub_tree_insert_text insert_text;		/**< Insert / append text */
+	hubbub_tree_attach_shadow attach_shadow;	/**< Declarative shadow root */
 } hubbub_tree_handler;
 
 #ifdef __cplusplus

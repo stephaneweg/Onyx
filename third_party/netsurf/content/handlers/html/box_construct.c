@@ -49,6 +49,7 @@
 #include <sys/time.h>
 #include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
+#include "html/onyx_shadow.h"	/* Onyx: shadow DOM, display: contents */
 #include "html/box_normalise.h"
 #include "html/form_internal.h"
 
@@ -121,6 +122,51 @@ static const box_type box_map[] = {
 };
 
 
+/*
+ * Onyx: the tree the boxes are built from -- the DOM tree, or the flat tree when the
+ * document has shadow roots (a host's children are its shadow root's, a slot's the nodes
+ * assigned to it: html/onyx_shadow.c). References returned, as libdom's.
+ */
+static inline dom_exception
+b_first_child(html_content *c, dom_node *n, dom_node **r)
+{
+	if (!c->onyx_shadow)
+		return dom_node_get_first_child(n, r);
+	*r = onyx_flat_first_child(c, n);
+	return DOM_NO_ERR;
+}
+
+static inline dom_exception
+b_next_sibling(html_content *c, dom_node *n, dom_node **r)
+{
+	if (!c->onyx_shadow)
+		return dom_node_get_next_sibling(n, r);
+	*r = onyx_flat_next_sibling(c, n);
+	return DOM_NO_ERR;
+}
+
+static inline dom_exception
+b_parent(html_content *c, dom_node *n, dom_node **r)
+{
+	if (!c->onyx_shadow)
+		return dom_node_get_parent_node(n, r);
+	*r = onyx_flat_parent(c, n);
+	return DOM_NO_ERR;
+}
+
+static inline dom_exception
+b_has_children(html_content *c, dom_node *n, bool *r)
+{
+	dom_node *f = NULL;
+	if (!c->onyx_shadow)
+		return dom_node_has_child_nodes(n, r);
+	f = onyx_flat_first_child(c, n);
+	*r = f != NULL;
+	if (f != NULL)
+		dom_node_unref(f);
+	return DOM_NO_ERR;
+}
+
 /**
  * determine if a box is the root node
  *
@@ -159,7 +205,8 @@ static inline bool box_is_root(dom_node *n)
  * \param props  Property object to populate
  */
 static void
-box_extract_properties(dom_node *n, struct box_construct_props *props)
+box_extract_properties(html_content *c, dom_node *n,
+		struct box_construct_props *props)
 {
 	memset(props, 0, sizeof(*props));
 
@@ -171,18 +218,30 @@ box_extract_properties(dom_node *n, struct box_construct_props *props)
 		dom_node *parent_node = NULL;
 		struct box *parent_box;
 		dom_exception err;
+		bool have_style = false;
 
 		/* Find ancestor node containing parent box */
 		while (true) {
-			err = dom_node_get_parent_node(current_node,
-					&parent_node);
+			err = b_parent(c, current_node, &parent_node);
 			if (err != DOM_NO_ERR || parent_node == NULL)
 				break;
 
 			parent_box = box_for_node(parent_node);
 
+			/* Onyx: a display: contents parent has no box: its
+			 * style is inherited all the same */
+			if (parent_box == NULL && !have_style && c->onyx_sh != NULL) {
+				const css_computed_style *cs =
+					onyx_contents_style(c, parent_node);
+				if (cs != NULL) {
+					props->parent_style = cs;
+					have_style = true;
+				}
+			}
+
 			if (parent_box != NULL) {
-				props->parent_style = parent_box->style;
+				if (!have_style)
+					props->parent_style = parent_box->style;
 				props->href = parent_box->href;
 				props->target = parent_box->target;
 				props->title = parent_box->title;
@@ -201,8 +260,7 @@ box_extract_properties(dom_node *n, struct box_construct_props *props)
 		while (true) {
 			struct box *b;
 
-			err = dom_node_get_parent_node(current_node,
-					&parent_node);
+			err = b_parent(c, current_node, &parent_node);
 			if (err != DOM_NO_ERR || parent_node == NULL) {
 				if (current_node != n)
 					dom_node_unref(current_node);
@@ -292,6 +350,8 @@ box_get_style(html_content *c,
 	ctx.universal = c->universal;
 	ctx.root_style = root_style;
 	ctx.parent_style = parent_style;
+	ctx.scope_host = NULL;		/* (Onyx: shadow DOM) */
+	ctx.host_ctx = NULL;
 
 	/* Select style for element (Onyx: with the node under the pointer, CSS :hover) */
 	nscss_hover_node = c->hover_node;
@@ -299,8 +359,11 @@ box_get_style(html_content *c,
 	nscss_hover_note = onyx_hover_note;	/* (the nodes :hover is tried on) */
 	nscss_hover_note_ctx = c;
 	nscss_styled_node = n;
-	styles = nscss_get_style(&ctx, n, &c->media, &c->unit_len_ctx,
-			inline_style);
+	if (c->onyx_shadow)	/* Onyx: the style scoped to its tree */
+		styles = onyx_shadow_style(c, &ctx, n, inline_style);
+	else
+		styles = nscss_get_style(&ctx, n, &c->media, &c->unit_len_ctx,
+				inline_style);
 	if (nscss_hover_used)
 		c->uses_hover = true;
 	nscss_hover_node = NULL;
@@ -509,7 +572,7 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 
 	assert(ctx->n != NULL);
 
-	box_extract_properties(ctx->n, &props);
+	box_extract_properties(ctx->content, ctx->n, &props);
 
 	if (props.containing_block != NULL) {
 		/* In case the containing block is a pre block, we clear
@@ -661,21 +724,17 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 			box->type = BOX_INLINE_BLOCK;
 	}
 
-	/* Onyx: display: contents -- the element has no box of its own: its
-	 * box is kept off the tree (its style, which its children inherit), an
-	 * inline's type so that its children find its parent's box as theirs
-	 * (box_extract_properties), with no inline end */
-	if (!props.node_is_root && !(box->flags & IS_REPLACED) &&
-	    box->type != BOX_NONE &&
-	    ns_computed_display(box->style, false) == CSS_DISPLAY_CONTENTS) {
-		box->type = BOX_INLINE;
-		box->width = box->height = 0;
-		err = dom_node_set_user_data(ctx->n,
-				corestring_dom___ns_key_box_node_data, box, NULL,
-				(void *) &old_box);
-		if (err != DOM_NO_ERR)
-			return false;
-		box->node = dom_node_ref(ctx->n);
+	/* Onyx: display: contents -- no box of its own: its children are its parent's (the
+	 * box made holds the style they inherit, out of the tree); a <slot>'s default (the
+	 * user agent's slot { display: contents }). Not for a replaced element or a
+	 * control. */
+	if (props.node_is_root == false && !(box->flags & IS_REPLACED) &&
+			box->gadget == NULL && box->object == NULL &&
+			(ns_computed_display(box->style, false) == CSS_DISPLAY_CONTENTS ||
+			 (ctx->content->onyx_shadow &&
+			  ns_computed_display(box->style, false) == CSS_DISPLAY_INLINE &&
+			  onyx_box_is_slot(ctx->n)))) {
+		onyx_contents_keep(ctx->content, ctx->n, box);
 		return true;
 	}
 
@@ -857,7 +916,7 @@ static void box_construct_element_after(dom_node *n, html_content *content)
 
 	assert(box != NULL);
 
-	box_extract_properties(n, &props);
+	box_extract_properties(content, n, &props);
 
 	/* Onyx: display: contents (no box on the tree: no inline end) */
 	if (box->parent == NULL && box->style != NULL &&
@@ -871,7 +930,7 @@ static void box_construct_element_after(dom_node *n, html_content *content)
 		bool has_children;
 		dom_exception err;
 
-		err = dom_node_has_child_nodes(n, &has_children);
+		err = b_has_children(content, n, &has_children);
 		if (err != DOM_NO_ERR)
 			return;
 
@@ -932,23 +991,33 @@ next_node(dom_node *n, html_content *content, bool convert_children)
 {
 	dom_node *next = NULL;
 	bool has_children;
-	dom_exception err;
+	dom_exception err = DOM_NO_ERR;
 
-	err = dom_node_has_child_nodes(n, &has_children);
-	if (err != DOM_NO_ERR) {
-		dom_node_unref(n);
-		return NULL;
+	/* Onyx: the flat tree when the document has shadow roots (b_*) */
+	if (content->onyx_shadow) {
+		has_children = false;
+		if (convert_children) {
+			next = onyx_flat_first_child(content, n);
+			has_children = next != NULL;
+		}
+	} else {
+		err = dom_node_has_child_nodes(n, &has_children);
+		if (err != DOM_NO_ERR) {
+			dom_node_unref(n);
+			return NULL;
+		}
 	}
 
 	if (convert_children && has_children) {
-		err = dom_node_get_first_child(n, &next);
+		if (!content->onyx_shadow)
+			err = dom_node_get_first_child(n, &next);
 		if (err != DOM_NO_ERR) {
 			dom_node_unref(n);
 			return NULL;
 		}
 		dom_node_unref(n);
 	} else {
-		err = dom_node_get_next_sibling(n, &next);
+		err = b_next_sibling(content, n, &next);
 		if (err != DOM_NO_ERR) {
 			dom_node_unref(n);
 			return NULL;
@@ -966,15 +1035,13 @@ next_node(dom_node *n, html_content *content, bool convert_children)
 				dom_node *parent = NULL;
 				dom_node *parent_next = NULL;
 
-				err = dom_node_get_parent_node(n, &parent);
-				if (err != DOM_NO_ERR) {
+				err = b_parent(content, n, &parent);
+				if (err != DOM_NO_ERR || parent == NULL) {
 					dom_node_unref(n);
 					return NULL;
 				}
 
-				assert(parent != NULL);
-
-				err = dom_node_get_next_sibling(parent,
+				err = b_next_sibling(content, parent,
 						&parent_next);
 				if (err != DOM_NO_ERR) {
 					dom_node_unref(parent);
@@ -1001,15 +1068,13 @@ next_node(dom_node *n, html_content *content, bool convert_children)
 			if (box_is_root(n) == false) {
 				dom_node *parent = NULL;
 
-				err = dom_node_get_parent_node(n, &parent);
-				if (err != DOM_NO_ERR) {
+				err = b_parent(content, n, &parent);
+				if (err != DOM_NO_ERR || parent == NULL) {
 					dom_node_unref(n);
 					return NULL;
 				}
 
-				assert(parent != NULL);
-
-				err = dom_node_get_next_sibling(parent, &next);
+				err = b_next_sibling(content, parent, &next);
 				if (err != DOM_NO_ERR) {
 					dom_node_unref(parent);
 					dom_node_unref(n);
@@ -1085,7 +1150,7 @@ static bool box_construct_text(struct box_construct_ctx *ctx)
 
 	assert(ctx->n != NULL);
 
-	box_extract_properties(ctx->n, &props);
+	box_extract_properties(ctx->content, ctx->n, &props);
 
 	assert(props.containing_block != NULL);
 
@@ -1470,6 +1535,7 @@ dom_to_box(dom_node *n,
 	ctx->cb = cb;
 	ctx->bctx = c->bctx;
 	ctx->now = false;
+	onyx_shadow_begin(c);	/* (Onyx: the flat tree's caches of the last tree emptied) */
 
 	*box_conversion_context = ctx;
 
@@ -1500,6 +1566,7 @@ nserror dom_to_box_now(dom_node *n, html_content *c, box_construct_complete_cb c
 	ctx->cb = cb;
 	ctx->bctx = c->bctx;
 	ctx->now = true;
+	onyx_shadow_begin(c);	/* (Onyx) */
 
 	/* the whole tree now: ctx is freed and cb called on the way out */
 	convert_xml_to_box(ctx);
