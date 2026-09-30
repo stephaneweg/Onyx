@@ -807,6 +807,7 @@ html_create_html_data(html_content *c, const http_parameter *params)
 	c->num_objects = 0;
 	c->object_list = NULL;
 	c->forms = NULL;
+	c->orphan_controls = NULL;	/* (Onyx) */
 	c->imagemaps = NULL;
 	c->bw = NULL;
 	c->frameset = NULL;
@@ -1574,6 +1575,12 @@ static void html_destroy(struct content *c)
 		g = f->prev;
 
 		form_free(f);
+	}
+	/* Onyx: and the controls outside any form */
+	while (html->orphan_controls != NULL) {
+		struct form_control *ctl = html->orphan_controls;
+		html->orphan_controls = ctl->next;
+		form_free_control(ctl);
 	}
 
 	imagemap_destroy(html);

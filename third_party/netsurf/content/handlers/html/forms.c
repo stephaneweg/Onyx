@@ -590,3 +590,24 @@ html_forms_get_control_for_node(struct form *forms, dom_node *node)
 
 	return ctl;
 }
+
+
+/* documented in private.h (Onyx): a control outside any form was made again at each rebox --
+ * what the user typed in a React app's input was lost, and the old control leaked */
+struct form_control *
+html_forms_control_for_node(struct html_content *c, dom_node *node)
+{
+	struct form_control *ctl;
+
+	for (ctl = c->orphan_controls; ctl != NULL; ctl = ctl->next) {
+		if (ctl->node == node)
+			return ctl;
+	}
+	ctl = html_forms_get_control_for_node(c->forms, node);
+	if (ctl != NULL && ctl->form == NULL) {
+		ctl->prev = NULL;
+		ctl->next = c->orphan_controls;
+		c->orphan_controls = ctl;
+	}
+	return ctl;
+}

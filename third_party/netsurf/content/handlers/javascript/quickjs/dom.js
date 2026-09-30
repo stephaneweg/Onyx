@@ -2933,15 +2933,21 @@ function storageOrigin() {
 	} catch (e) { return null; }
 }
 function storageProxy(origin) {
-	return new Proxy(new Storage(origin), {
+	/* (Onyx: the proxy's target is an empty object -- the Storage's own non-configurable
+	 * fields left out of ownKeys broke the Proxy invariants: Object.keys(localStorage)
+	 * threw "target property must be present in proxy ownKeys" on Facebook) */
+	const st = new Storage(origin);
+	return new Proxy(Object.create(Storage.prototype), {
 		get(t, p) {
-			if (p in t || typeof p !== 'string') { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; }
-			return t.getItem(p) ?? undefined;
+			if (p in st || typeof p !== 'string') { const v = st[p]; return typeof v === 'function' ? v.bind(st) : v; }
+			return st.getItem(p) ?? undefined;
 		},
-		set(t, p, v) { t.setItem(p, v); return true; },
-		deleteProperty(t, p) { t.removeItem(p); return true; },
-		ownKeys(t) { return [...t._m.keys()]; },
-		getOwnPropertyDescriptor(t, p) { const v = t.getItem(p); return v === null ? undefined : { value: v, enumerable: true, configurable: true, writable: true }; },
+		set(t, p, v) { st.setItem(p, v); return true; },
+		has(t, p) { return p in st || (typeof p === 'string' && st.getItem(p) !== null); },
+		deleteProperty(t, p) { st.removeItem(p); return true; },
+		ownKeys(t) { return [...st._m.keys()]; },
+		getOwnPropertyDescriptor(t, p) { const v = typeof p === 'string' ? st.getItem(p) : null; return v === null ? undefined : { value: v, enumerable: true, configurable: true, writable: true }; },
+		defineProperty(t, p, d) { if ('value' in d) st.setItem(p, d.value); return true; },
 	});
 }
 G.Storage = Storage;
