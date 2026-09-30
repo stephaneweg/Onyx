@@ -374,3 +374,6 @@ error, no leak). **Never run on the Pi yet**. To try there, in order:
 Left for later: the score view (by choice), automation lanes' editing (they play, they are not
 edited), the tempo lane's editing (the song dialog sets the main tempo), HDMI audio (the user's
 option), a mixer window.
+
+Why the sound and the UI are fast, the rules to keep, and the performance TODO (the playhead
+redrawn without the lanes, a lower live latency): **`PERFORMANCE.md`**.

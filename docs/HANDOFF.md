@@ -833,6 +833,12 @@ sound (WASAPI), a USB MIDI keyboard, the window's resize by hand.
 `sh tools/manuals/koton_shots.sh` (clicks at fixed places on the demo song: move them if the layout
 changes) -- docs/03 *Manuals*. Keep it in step when Koton changes.
 
+**Performance** (why there is no audible latency, why the UI stays fluid, the rules not to
+break): **`docs/daw/PERFORMANCE.md`**. Its TODO (none started): the arrangement's playhead drawn
+over a cached canvas instead of the whole view redrawn at each tick while playing, redraw only
+when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel, a 512-frame ring
+≈ 20 ms) for live MIDI.
+
 ## Other open items
 
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
