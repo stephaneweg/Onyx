@@ -744,6 +744,26 @@ def icon_ledger():		# Ledger: an open account book (its columns, debit and credi
     prect(px, 27, 30, 32, 30, (120, 84, 10)); prect(px, 27, 32, 32, 32, (120, 84, 10))
     return px
 
+def icon_courier():		# Courier (the HTTP client): a paper plane on a teal tile, a request's arrows
+    px = blank()
+    top, bot = (86, 170, 190), (40, 118, 140)
+    for y in range(3, 37):
+        t = (y - 3) / 33.0
+        c = tuple(int(top[i] + (bot[i] - top[i]) * t) for i in range(3))
+        for x in range(3, 37):
+            cx = min(x - 3, 36 - x); cy = min(y - 3, 36 - y)
+            if cx < 6 and cy < 6 and (6 - cx) ** 2 + (6 - cy) ** 2 > 36: continue
+            pset(px, x, y, c)
+    w, fold = (250, 252, 255), (196, 222, 230)
+    for i in range(22):                     # the plane: a wide triangle pointing right
+        x = 9 + i
+        a = 11 + i * 9 // 22; b = 29 - i * 9 // 22
+        for y in range(a, b + 1): pset(px, x, y, w)
+    for i in range(14):                     # its fold
+        pset(px, 9 + i, 20, fold); pset(px, 9 + i, 21, fold)
+    for y in (31, 33):                      # the lines of a message on its way
+        prect(px, 7, y, 7 + (12 if y == 31 else 7), y, (170, 214, 226))
+    return px
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -761,7 +781,7 @@ ICONS = {
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
     "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
-    "cardfile": icon_cardfile, "ledger": icon_ledger,
+    "cardfile": icon_cardfile, "ledger": icon_ledger, "courier": icon_courier,
 }
 
 

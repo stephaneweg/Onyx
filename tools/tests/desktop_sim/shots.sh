@@ -46,6 +46,9 @@ build () {
 		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libwtk.a" "$OUT/libft.a"
 		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
 	fi
+	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
+		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+	fi
 	if [ "$1" = writer ] || [ "$1" = sheet ]; then
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp "$OUT/libwtk.a" "$OUT/libft.a"; return
 	fi
@@ -53,7 +56,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton"
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
 $CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
@@ -159,6 +162,18 @@ if want sheet; then			# (the sample workbook: the Total column chosen -- its sum
 	sim sheet sheet-filter "wait;down 60 197;move 300 300;move 520 405;up 520 405;wait;down 372 17;up 372 17;wait;down 127 198;up 127 198;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx
 	png sheet-filter
 	sim sheet sheet-loan "wait;down 262 661;up 262 661;wait;down 200 228;up 200 228;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet-loan
+fi
+if want courier; then			# (the demo collection and environments of sd/courier, its tabs open; a POST sent: its
+					#  answer canned (SIM_NET); the tests' results; the environments)
+	# (a card of links to sdcard/, with the demo as its courier/: the card's folders win over the writes')
+	rm -rf "$OUT/csd"; mkdir -p "$OUT/csd"
+	for f in sdcard/*; do [ "$f" = sdcard/courier ] || ln -s "$PWD/$f" "$OUT/csd/"; done
+	cp -r $D/sd/courier "$OUT/csd/"; rm -rf "$OUT/writes/courier"
+	CN='HTTP/1.1 201 Created\r\nContent-Type: application/json; charset=utf-8\r\nSet-Cookie: session=7f3a9c; Path=/; HttpOnly\r\nLocation: /users/1024\r\nServer: onyx-demo\r\nContent-Length: 285\r\n\r\n{"id":1024,"name":"Grace","email":"grace.hopper@example.com","role":"admin","team":"onyx","createdAt":"2026-09-30T14:03:22Z","token":"eyJhbGciOiJIUzI1NiJ9.onyx","links":{"self":"/users/1024","team":"/teams/onyx"},"tags":["pioneer","compiler"],"active":true,"score":98.5,"manager":null}'
+	sim courier courier "wait;wait;mods 1;key 13;mods 0;$W;$W" $P SIM_SD="$OUT/csd" SIM_NET="$CN"; png courier
+	sim courier courier-tests "wait;wait;mods 1;key 13;mods 0;$W;down 614 364;up 614 364;$W" $P SIM_SD="$OUT/csd" SIM_NET="$CN"; png courier-tests
+	sim courier courier-env "wait;wait;down 40 160;up 40 160;wait;down 160 180;up 160 180;$W" $P SIM_SD="$OUT/csd"; png courier-env
+	rm -rf "$OUT/writes/courier" "$OUT/csd"
 fi
 if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
 	sim cardfile cardfile "$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile

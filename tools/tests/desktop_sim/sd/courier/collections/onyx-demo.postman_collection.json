@@ -1,0 +1,77 @@
+{
+  "info": {
+    "_postman_id": "7d1c0a52-3f0e-4c61-9d2b-0a1e5b9c0001",
+    "name": "Onyx Demo API",
+    "description": "Sample requests for Courier's screenshots, against a local echo server (tools/tests/desktop_sim).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Users", "id": "f0000000-0000-4000-8000-000000000001",
+      "item": [
+        {
+          "name": "List users", "id": "r0000000-0000-4000-8000-000000000001",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Accept", "value": "application/json" }, { "key": "X-Api-Version", "value": "{{apiVersion}}" } ],
+            "url": { "raw": "{{baseUrl}}/get?page=2&limit=10", "host": [ "{{baseUrl}}" ], "path": [ "get" ],
+                     "query": [ { "key": "page", "value": "2" }, { "key": "limit", "value": "10" }, { "key": "sort", "value": "name", "disabled": true } ] }
+          },
+          "response": [],
+          "onyx": { "tests": [ { "key": "status", "value": "200" }, { "key": "json.items[0].name", "value": "Ada" }, { "key": "header.Content-Type", "value": "contains json" }, { "key": "time", "value": "< 800" } ] }
+        },
+        {
+          "name": "Create user", "id": "r0000000-0000-4000-8000-000000000002",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{$randomFirstName}}\",\n  \"email\": \"{{$randomEmail}}\",\n  \"role\": \"admin\",\n  \"team\": \"{{team}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/users", "host": [ "{{baseUrl}}" ], "path": [ "users" ] }
+          },
+          "response": [],
+          "onyx": { "tests": [ { "key": "status", "value": "201" }, { "key": "header.Content-Type", "value": "contains json" } ],
+                    "captures": [ { "key": "token", "value": "json.token" } ] }
+        },
+        {
+          "name": "Delete user", "id": "r0000000-0000-4000-8000-000000000003",
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/users/42", "host": [ "{{baseUrl}}" ], "path": [ "users", "42" ] } },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth", "id": "f0000000-0000-4000-8000-000000000002",
+      "item": [
+        {
+          "name": "Login", "id": "r0000000-0000-4000-8000-000000000004",
+          "request": {
+            "method": "POST", "header": [],
+            "body": { "mode": "urlencoded", "urlencoded": [ { "key": "username", "value": "{{user}}", "type": "text" }, { "key": "password", "value": "hunter2", "type": "text" } ] },
+            "url": { "raw": "{{baseUrl}}/login", "host": [ "{{baseUrl}}" ], "path": [ "login" ] }
+          },
+          "response": []
+        },
+        {
+          "name": "My profile", "id": "r0000000-0000-4000-8000-000000000005",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{token}}", "type": "string" } ] },
+            "method": "PATCH", "header": [],
+            "url": { "raw": "{{baseUrl}}/me", "host": [ "{{baseUrl}}" ], "path": [ "me" ] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Compressed answer (gzip)", "id": "r0000000-0000-4000-8000-000000000006",
+      "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/gzip", "host": [ "{{baseUrl}}" ], "path": [ "gzip" ] } },
+      "response": []
+    },
+    {
+      "name": "Follow a redirect", "id": "r0000000-0000-4000-8000-000000000007",
+      "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/redirect", "host": [ "{{baseUrl}}" ], "path": [ "redirect" ] } },
+      "response": []
+    }
+  ],
+  "variable": [ { "key": "apiVersion", "value": "2" } ]
+}

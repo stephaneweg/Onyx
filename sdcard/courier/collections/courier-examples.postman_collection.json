@@ -1,0 +1,51 @@
+{
+  "info": {
+    "_postman_id": "c0de0000-0000-4000-8000-000000000001",
+    "name": "Courier Examples",
+    "description": "Public test APIs to try Courier with: JSONPlaceholder (fake REST data) and httpbin (echoes what it receives). Delete this collection when you no longer need it.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "JSONPlaceholder", "id": "c0de0000-0000-4000-8000-000000000010",
+      "item": [
+        { "name": "List posts", "id": "c0de0000-0000-4000-8000-000000000011",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{jsonph}}/posts?userId=1", "host": [ "{{jsonph}}" ], "path": [ "posts" ], "query": [ { "key": "userId", "value": "1" } ] } },
+          "response": [], "onyx": { "tests": [ { "key": "status", "value": "200" }, { "key": "json[0].userId", "value": "1" } ] } },
+        { "name": "Create a post", "id": "c0de0000-0000-4000-8000-000000000012",
+          "request": { "method": "POST", "header": [],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Hello from Onyx\",\n  \"body\": \"Sent by Courier at {{$isoTimestamp}}\",\n  \"userId\": 1\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{jsonph}}/posts", "host": [ "{{jsonph}}" ], "path": [ "posts" ] } },
+          "response": [], "onyx": { "tests": [ { "key": "status", "value": "201" } ], "captures": [ { "key": "postId", "value": "json.id" } ] } },
+        { "name": "Update a post", "id": "c0de0000-0000-4000-8000-000000000013",
+          "request": { "method": "PATCH", "header": [],
+            "body": { "mode": "raw", "raw": "{ \"title\": \"Updated by Courier\" }", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{jsonph}}/posts/1", "host": [ "{{jsonph}}" ], "path": [ "posts", "1" ] } }, "response": [] },
+        { "name": "Delete a post", "id": "c0de0000-0000-4000-8000-000000000014",
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{jsonph}}/posts/1", "host": [ "{{jsonph}}" ], "path": [ "posts", "1" ] } }, "response": [] }
+      ]
+    },
+    {
+      "name": "httpbin", "id": "c0de0000-0000-4000-8000-000000000020",
+      "item": [
+        { "name": "Echo my headers", "id": "c0de0000-0000-4000-8000-000000000021",
+          "request": { "method": "GET", "header": [ { "key": "X-Sent-By", "value": "Onyx {{$randomWord}}" } ], "url": { "raw": "{{httpbin}}/headers", "host": [ "{{httpbin}}" ], "path": [ "headers" ] } }, "response": [] },
+        { "name": "Form (urlencoded)", "id": "c0de0000-0000-4000-8000-000000000022",
+          "request": { "method": "POST", "header": [],
+            "body": { "mode": "urlencoded", "urlencoded": [ { "key": "name", "value": "{{$randomFirstName}}", "type": "text" }, { "key": "city", "value": "{{$randomCity}}", "type": "text" } ] },
+            "url": { "raw": "{{httpbin}}/post", "host": [ "{{httpbin}}" ], "path": [ "post" ] } }, "response": [] },
+        { "name": "Basic auth", "id": "c0de0000-0000-4000-8000-000000000023",
+          "request": { "auth": { "type": "basic", "basic": [ { "key": "username", "value": "onyx", "type": "string" }, { "key": "password", "value": "pi4", "type": "string" } ] },
+            "method": "GET", "header": [], "url": { "raw": "{{httpbin}}/basic-auth/onyx/pi4", "host": [ "{{httpbin}}" ], "path": [ "basic-auth", "onyx", "pi4" ] } },
+          "response": [], "onyx": { "tests": [ { "key": "json.authenticated", "value": "true" } ] } },
+        { "name": "Set a cookie", "id": "c0de0000-0000-4000-8000-000000000024",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{httpbin}}/cookies/set?flavour=chocolate", "host": [ "{{httpbin}}" ], "path": [ "cookies", "set" ], "query": [ { "key": "flavour", "value": "chocolate" } ] } }, "response": [] },
+        { "name": "Gzip answer", "id": "c0de0000-0000-4000-8000-000000000025",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{httpbin}}/gzip", "host": [ "{{httpbin}}" ], "path": [ "gzip" ] } }, "response": [] },
+        { "name": "An image (Preview)", "id": "c0de0000-0000-4000-8000-000000000026",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{httpbin}}/image/png", "host": [ "{{httpbin}}" ], "path": [ "image", "png" ] } }, "response": [] }
+      ]
+    }
+  ],
+  "variable": [ { "key": "jsonph", "value": "https://jsonplaceholder.typicode.com" }, { "key": "httpbin", "value": "https://httpbin.org" } ]
+}

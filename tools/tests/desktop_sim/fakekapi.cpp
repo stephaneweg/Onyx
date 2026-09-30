@@ -38,8 +38,18 @@
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
 // SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
+// SIM_REALNET=1: the TCP sockets are the PC's (a real connection: an HTTP client against a local
+// server); with SIM_SLEEP=1 the script's steps take real time, for the answers to come.
+// Threads (kapi v67) are the PC's too (pthreads); kapi_post runs at the next pump_events; a
+// thread's msleep only sleeps (the script is stepped by the app's main thread only).
 //
 #include <sys/mman.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -313,7 +323,62 @@ static void dump (const char *file)
 }
 
 // ---- the event script -------------------------------------------------------------------------------
-static void pump (void) {}
+// ---- threads (kapi v67): pthreads; kapi_post's calls run by the main thread's pump ------------------------
+static pthread_t g_mainThread;
+static bool g_mainSet;
+static bool on_main (void) { return !g_mainSet || pthread_equal (pthread_self (), g_mainThread); }
+struct Posted { void (*fn) (void *, long); void *ctx; long v; };
+static std::vector<Posted> g_posts;
+static pthread_mutex_t g_postLock = PTHREAD_MUTEX_INITIALIZER;
+static void run_posts (void)
+{
+	std::vector<Posted> q;
+	pthread_mutex_lock (&g_postLock); q.swap (g_posts); pthread_mutex_unlock (&g_postLock);
+	for (auto &p : q) p.fn (p.ctx, p.v);
+}
+static int h_post (void (*fn) (void *, long), void *ctx, long v)
+{
+	pthread_mutex_lock (&g_postLock); g_posts.push_back ({ fn, ctx, v }); pthread_mutex_unlock (&g_postLock);
+	return 0;
+}
+struct SimThread { int (*fn) (void *); void *arg; int code; volatile bool done; bool joined; pthread_t th; };
+static std::vector<SimThread *> g_threads;
+static pthread_mutex_t g_thrLock = PTHREAD_MUTEX_INITIALIZER;
+static void *thread_main (void *p) { SimThread *t = (SimThread *) p; t->code = t->fn (t->arg); t->done = true; return 0; }
+static int h_thread_create (int (*fn) (void *), void *arg, unsigned stack, const char *)
+{
+	SimThread *t = new SimThread { fn, arg, 0, false, false, pthread_t () };
+	pthread_attr_t a; pthread_attr_init (&a);
+	pthread_attr_setstacksize (&a, stack ? std::max (stack, 1u << 20) : 1u << 20);
+	pthread_mutex_lock (&g_thrLock);
+	if (pthread_create (&t->th, &a, thread_main, t) != 0) { pthread_mutex_unlock (&g_thrLock); delete t; return -1; }
+	g_threads.push_back (t);
+	int tid = (int) g_threads.size () + 1;
+	pthread_mutex_unlock (&g_thrLock);
+	return tid;
+}
+static void h_thread_exit (int code) { (void) code; pthread_exit (0); }
+static int h_thread_join (int tid, unsigned ms, int *code)
+{
+	pthread_mutex_lock (&g_thrLock);
+	SimThread *t = tid >= 2 && tid - 2 < (int) g_threads.size () ? g_threads[tid - 2] : 0;
+	pthread_mutex_unlock (&g_thrLock);
+	if (!t || t->joined) return -2;
+	if (ms != 0xFFFFFFFFu) { unsigned w = 0; while (!t->done && w < ms) { usleep (1000); w++; } if (!t->done) return -1; }
+	pthread_join (t->th, 0); t->joined = true;
+	if (code) *code = t->code;
+	return 0;
+}
+static int h_thread_self (void)
+{
+	if (on_main ()) return 1;
+	pthread_mutex_lock (&g_thrLock);
+	int r = 0;
+	for (size_t i = 0; i < g_threads.size (); i++) if (pthread_equal (g_threads[i]->th, pthread_self ())) r = (int) i + 2;
+	pthread_mutex_unlock (&g_thrLock);
+	return r;
+}
+static void pump (void) { if (on_main ()) run_posts (); }
 static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
@@ -354,12 +419,14 @@ static void step (void)
 }
 static void h_msleep (unsigned ms)
 {
+	if (!on_main ()) { usleep (ms * 1000); return; }	// (a thread's: the script is the main thread's)
 	g_ticks += ms / 10 + 1;
 	if (getenv ("SIM_SLEEP")) usleep (ms * 1000);	// real time (NetSurf's scheduler reads the clock)
 	step ();
 }
 static unsigned h_get_ticks (void) { return g_ticks; }
 static int h_should_exit (void) { return g_quit; }
+static int h_pump_wait (unsigned ms) { h_msleep (ms < 16 ? ms : 16); pump (); return 0; }
 static void yield (void) {}
 
 // ---- the system --------------------------------------------------------------------------------------
@@ -498,10 +565,37 @@ static int pipe_read (void *h, void *b, unsigned n)
 }
 // SIM_NET: what the server sends (irc) on a connection; none: no network
 static Canned g_netIn = { "SIM_NET" };
-static int tcp_connect (const char *host, unsigned port) { fprintf (stderr, "sim: tcp_connect %s:%u\n", host, port); return getenv ("SIM_NET") ? 3 : -5; }
-static int tcp_send (int, const void *, unsigned n) { return (int) n; }
-static int tcp_recv (int, void *b, unsigned n) { return canned_read (g_netIn, b, n); }
-static void tcp_close (int) {}
+// SIM_REALNET: the PC's sockets (the handle: the file descriptor + 1000)
+static int tcp_connect (const char *host, unsigned port)
+{
+	fprintf (stderr, "sim: tcp_connect %s:%u\n", host, port);
+	if (!getenv ("SIM_REALNET")) return getenv ("SIM_NET") ? 3 : -5;
+	struct addrinfo hints, *res = 0; memset (&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
+	char ps[16]; snprintf (ps, sizeof ps, "%u", port);
+	if (getaddrinfo (host, ps, &hints, &res) != 0 || !res) return -4;
+	int fd = socket (res->ai_family, res->ai_socktype, res->ai_protocol);
+	if (fd < 0 || connect (fd, res->ai_addr, res->ai_addrlen) != 0) { if (fd >= 0) close (fd); freeaddrinfo (res); return -5; }
+	freeaddrinfo (res);
+	int one = 1; setsockopt (fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+	return fd + 1000;
+}
+static int tcp_send (int s, const void *b, unsigned n)
+{
+	if (s < 1000) return (int) n;
+	unsigned o = 0;
+	while (o < n) { ssize_t k = send (s - 1000, (const char *) b + o, n - o, MSG_NOSIGNAL); if (k <= 0) return -1; o += (unsigned) k; }
+	return (int) n;
+}
+static int tcp_recv (int s, void *b, unsigned n)
+{
+	if (s < 1000) return canned_read (g_netIn, b, n);
+	ssize_t k = recv (s - 1000, b, n, MSG_DONTWAIT);
+	if (k > 0) return (int) k;
+	if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
+	return -1;
+}
+static void tcp_close (int s) { if (s >= 1000) close (s - 1000); }
 // the Wi-Fi around (the Wi-Fi menu)
 static int wlan_scan (struct kapi_wlan_ap *o, int max)
 {
@@ -721,6 +815,9 @@ static void setup (void)
 	T->sound_config = sound_config; T->sound_map = sound_map; T->wait_word = wait_word;
 	T->wake_word = wake_word; T->thread_priority = thread_priority;
 	T->midi_read = midi_read; T->midi_devices = midi_devices;
+	T->thread_create = h_thread_create; T->thread_exit = h_thread_exit; T->thread_join = h_thread_join; T->thread_self = h_thread_self;
+	T->post = h_post; T->pump_wait = h_pump_wait;
+	g_mainThread = pthread_self (); g_mainSet = true;
 	load_font ();
 	const char *sc = getenv ("SIM");
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";

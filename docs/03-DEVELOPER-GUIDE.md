@@ -1788,6 +1788,23 @@ libs — `make -C user/tls` then `make -C user/bin MBEDTLS_DIR=../tls/mbedtls` (
 `/bin/httpsget`. **Not yet secure:** the RNG is a software PRNG (not the HW RNG, which
 stalls on the Pi 4) and certificate verification is OFF — see the TLS README.
 
+**A full HTTP client app: Courier** ([`user/Apps/courier`](../user/Apps/courier), the user guide's
+*Courier, the HTTP client*) — Postman for Onyx. It keeps `http.hpp`'s `Transport` (plain / TLS) but
+has its own engine (`net.h`): the request prepared from the model (`{{variables}}` resolved,
+auth, raw / urlencoded / multipart / binary bodies, the cookie jar), sent on a **thread**
+(`kapi_thread_create`; the result handed to the UI with `kapi_post`; `Job::cancel` polled by the
+read loop), the response read into a growing buffer (to 16 MB; the end found by Content-Length
+or the last chunk, not only by the close), gzip / deflate inflated with `img_inflate`, redirects
+followed with their cookies, timed with `kapi_clock_us`. Its data are Postman's own formats
+(`model.h`: collection v2.1, environment), read and written with `json.hpp`. The pieces:
+`util.h` (Str, Vec), `model.h`, `vars.h`, `net.h`, `tools.h` (tests, snippets, cURL, JSON /
+XML formatting), `widgets.h` (LineEdit with `{{variable}}` pills, CodeEdit — a code editor with
+colours, undo, selection —, KVTable with Bulk Edit, TabBar, DocTabs, Btn, Choice), `views.h`,
+`rail.h` (the sidebar), `dialogs.h`, `main.cpp`. Built by `user/Makefile`'s `courier.elf`
+rule: a newlib app as Writer (FreeType's text through wtk) linking mbedTLS
+(`COURIER_MBEDTLS`, default `third_party/mbedtls-3.6.3`). On the PC it builds with
+`-DCOURIER_NO_TLS` (`shots.sh courier`).
+
 For **images** there is a reusable decoder, [`user/img/image.hpp`](../user/img/image.hpp)
 (`onyximg::decode(data, len, &w, &h)`) — built on the cross-compiled **zlib + libpng +
 libjpeg**. It sniffs the format (PNG signature / JPEG SOI) and decodes a byte buffer into
@@ -1973,6 +1990,12 @@ barwidth = 40
   `dump FILE`, `quit` (the window closed: the app's loop ends and what it does before leaving
   `main` runs — `exit` stops the process on the spot). Like the kernel, the simulator makes no
   window over 1024 × 768 (`kapi_create_window` returns 0).
+  **Threads and the network**: the simulator runs an app's threads (kapi v67) as pthreads —
+  `kapi_post`'s calls run at the main thread's next `pump_events`, a thread's `msleep` only
+  sleeps (the script is the main thread's) — and with **`SIM_REALNET=1`** its TCP sockets are the
+  PC's: an HTTP client against a local server (`python3 -m http.server`...), with `SIM_SLEEP=1`
+  for the answers to come in real time. Without it, `SIM_NET` is what any connection receives
+  (Courier's screenshots: a canned HTTP response).
   **The Pi's own binary on the PC**: `sh tools/tests/desktop_sim/elfrun.sh <app> [stack bytes]`
   (the same `SIM` script) runs `user/<app>.elf` — newlib and the code the Pi's compiler made —
   under `qemu-aarch64` with the simulator's kapi (`elfrun.cpp`: the ELF's segments at their

@@ -38,7 +38,7 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) writer.elf sheet.elf koton.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) writer.elf sheet.elf koton.elf courier.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -108,6 +108,13 @@ sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/writer/icons.h im
 	   wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
+
+# Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Writer (FreeType's text through
+# wtk), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/bin's
+# TLS tools link them).
+COURIER_MBEDTLS ?= ../third_party/mbedtls-3.6.3
+courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       wtk/libwtk.a ft/libft.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Writer (FreeType text through wtk's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,

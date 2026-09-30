@@ -93,6 +93,21 @@ answer in French. The docs stay in English.
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
+## Courier, the HTTP client -- Postman for Onyx (2026-09-30, not yet tried on the Pi)
+
+- **`user/Apps/courier`** (docs/04 *Courier, the HTTP client*, docs/03 after `http.hpp`): requests
+  with params / auth / headers / bodies (raw, urlencoded, multipart with files, binary), `{{vars}}`
+  (environment > collection > globals, `{{$guid}}`...), collections with folders, environments, the
+  history, a cookie jar, tests + captures, code snippets, Postman v2.1 import / export, cURL import.
+  A newlib app (FreeType) linking mbedTLS; each request on a **thread** (kapi v67) with `kapi_post`.
+  `SD:/courier/` holds its files; the card ships `courier/collections/courier-examples...json`
+  (JSONPlaceholder + httpbin over https).
+- **Tested on the PC**: the desktop simulator now has **threads** (pthreads, `kapi_post`) and
+  **`SIM_REALNET=1`** (real TCP): the engine was checked against a local echo server (gzip,
+  redirects, cookies, multipart, auth, tests, Postman round trip, cURL). HTTPS only on the Pi.
+- **To try on the Pi**: the examples collection (https, a thread doing TLS: its 512 KB stack), a
+  big response, Cancel during a slow request, the window maximised, import of a real Postman export.
+
 ## Done recently (all pushed)
 
 - **The random N64 freeze on the Pi — fixed.** Root cause (found with the crash record):

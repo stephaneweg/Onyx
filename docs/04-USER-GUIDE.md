@@ -999,6 +999,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
 | **Ledger** (`ledger`) | **Accounting** for a Belgian company or self-employed person, in the way of BOB 50 and GnuCash: the **PCMN** (French or Dutch), customers and suppliers, sales and purchase **invoices** and credit notes, **bank and cash** statements (a bank's **CODA** file imported: parties and invoices found), miscellaneous operations, **quotes, orders, delivery notes, purchase orders** (each becomes the next, then the invoice), documents **printed by Writer** from templates (French, Dutch, English), the suppliers **paid** by a SEPA file, the **VAT returns** as Intervat XML with the customer and intra-Community listings, **reports** (journals, general ledger, trial balance, balance sheet, income statement, ages) to Writer or the Spreadsheet, the fiscal years closed. Reads / writes `.ledger` files. See *Ledger, the accounts* below. |
+| **Courier** (`courier`) | An **HTTP client** in the way of **Postman**: requests (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) with their query params, headers, authorization (Bearer, Basic, API key, inherited from the folder or the collection) and body (raw JSON / XML / HTML / text / JavaScript, x-www-form-urlencoded, multipart form-data with files, a binary file); `{{variables}}` from **environments**, the collection and the globals; **collections** with folders; the **history**; the cookie jar; the response pretty-printed, previewed, its headers, cookies, tests; **tests and captures**; the request as **code** (cURL, HTTP, Python, JavaScript); Postman's collections and environments **imported and exported**, a cURL command imported. `http://` and `https://`. Reads / writes `SD:/courier/`. See *Courier, the HTTP client* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
 | **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Writer**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Writer keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
@@ -1678,6 +1679,102 @@ then its lines), `[returns]` (the VAT returns filed), `[documents]` (the quotes 
 lines), a tab between the cells (`\t`, `\n`, `\\` in a cell); the format is described at the top of
 `user/Apps/ledger/fileio.h`. Reports in `SD:/docs/Reports`, printed documents in `SD:/docs/Quotes`...,
 payments in `SD:/docs/Payments`.
+
+### Courier, the HTTP client (`courier`)
+
+![Courier](../screenshots/courier.png)
+*Courier with its demo collection: a POST sent, its JSON answer pretty-printed; `{{baseUrl}}` comes
+from the environment chosen, top right.*
+
+Courier builds, sends and tests **HTTP requests**, the way **Postman** does — to try a web API, a
+server of your own on the network, a device's REST interface. It is in the **Internet** drawer.
+The window: the **top bar** (New, Import, the **environment** chosen, the gear: the cookies, the
+history), the **sidebar** on the left (its rail: *Collections*, *Environments*, *History*; a filter
+above each list), the **open tabs** (a browser's: a request, an environment or a collection each;
+a dot: changes not saved; a middle click or × closes one; a right click: close the others, duplicate),
+and the tab's editor. The window can be maximised; the sidebar's and the response's dividers drag.
+
+**A request.** Its **name** (click it to rename it), **Save** (Ctrl+S) and **`</>`** (the code),
+then the **URL bar**: the **method** (its colour: GET green, POST amber, PUT blue, PATCH purple,
+DELETE red...), the **URL**, **Send** (or Enter in the URL, or Ctrl+Enter anywhere; while it is on
+its way the button is *Cancel*, Esc too). Below, its sections:
+
+- **Params** — the URL's query as a table, kept in step with the URL both ways; a row's check box
+  leaves it out (kept, not sent); **Bulk Edit** shows the rows as `key:value` lines (`//` before a
+  disabled one).
+- **Authorization** — *Inherit auth from parent* (the folder's, else the collection's: the panel
+  says which), *No Auth*, *Bearer Token*, *Basic Auth* (username, password), *API Key* (a header,
+  or a query parameter).
+- **Headers** — the table (and its Bulk Edit). Courier also sends *User-Agent*, *Accept*,
+  *Accept-Encoding: gzip, deflate*, *Host*, *Connection: close* and the jar's cookies, unless the
+  request sets them.
+- **Body** — *none*, *form-data* (a row is *Text* or *File*: its chip picks a file on the card; sent
+  as multipart), *x-www-form-urlencoded*, *raw* (a code editor: line numbers, colours for JSON / XML
+  / HTML / JavaScript, auto-indent, undo Ctrl+Z / redo Ctrl+Y; the language sets the Content-Type;
+  **Beautify** indents JSON and XML), *binary* (a file's bytes).
+- **Tests** — checks run on each response: a row = what (`status`, `time` in ms, `size`, `body`,
+  `header.Content-Type`, `cookie.session`, `json` / `json.data.items[0].id` / `$.token`) and what is
+  expected (`200`, `= x`, `!= x`, `< 800`, `>= 1`, `contains ok`, `exists`, `not exists`; empty:
+  exists). Below them, the **Captures**: a variable set from the response (`token` ← `json.token`),
+  in the environment chosen (else the globals) — a login's token then used by the other requests.
+- **Settings** — follow the redirects (on: 301 / 302 / 303 go on as GET, 307 / 308 keep the method
+  and the body; the cookies they set are kept), the request's timeout in ms (empty: 30 000).
+
+**Variables.** `{{name}}` anywhere — the URL, the params, the headers, the body, the auth — is
+replaced when the request is sent: from the **environment chosen** (top right), else the
+request's **collection**, else the **globals**; a value may hold other variables. In the fields they
+show as pills: orange = known, red = unknown (then sent as written); the pointer resting on one shows
+its value and where it comes from. Made on the spot: `{{$guid}}` / `{{$randomUUID}}`,
+`{{$timestamp}}`, `{{$isoTimestamp}}`, `{{$randomInt}}`, `{{$randomBoolean}}`,
+`{{$randomAlphaNumeric}}`, `{{$randomFirstName}}`, `{{$randomLastName}}`, `{{$randomEmail}}`,
+`{{$randomCity}}`, `{{$randomWord}}`, `{{$randomColor}}`.
+
+**The response**, below the divider: its **status** (a coloured pill), its **time** and its
+**size** (the pointer on them: connect, first byte, total, the bytes received), and its tabs:
+**Body** — *Pretty* (JSON and XML indented and coloured), *Raw* (as received; a binary body as
+hexadecimal), *Preview* (an image shown — PNG, JPEG, GIF, BMP, WebP —, an HTML page as its text);
+*Find in the body* (Enter: the next one), copy, save to a file; gzip and deflate answers are
+decompressed. **Cookies** (the ones it set), **Headers**, **Tests** (PASS / FAIL, what was found; the
+variables set), **Console** (the exchange as text: each request sent, each response's head, the
+redirects). An error (no network, an unknown host, a refused connection, the timeout) is written in
+full there.
+
+![Courier's tests](../screenshots/courier-tests.png)
+*The response's Tests: the checks passed, the token captured into the Local environment.*
+
+**Collections** (sidebar): a tree of folders and requests (their method in colour). **+** makes a
+collection; a request is saved into one with **Save** (the dialog: its name, the collection or
+folder). A row's menu (a right click, or its **⋯**): add a request or a folder, rename, duplicate,
+move up / down, export, delete. A double click on a collection opens its tab: its **Overview** (a
+description), its **Authorization** (inherited by its requests) and its **Variables**.
+**Environments**: the **Globals** first, then each environment (a tick: the one in use; its menu:
+use it, rename, duplicate, export, delete); its tab edits its variables (a check box disables one)
+and **Set Active**. **History**: the requests sent, by day, the most recent first (their status);
+a click opens one again in a new tab.
+
+![Courier's environments](../screenshots/courier-env.png)
+*An environment's variables; the tick in the sidebar: the environment in use.*
+
+**Import / export** (Ctrl+O, or drop a file on the window): a **Postman collection** (v2.0 / v2.1),
+a **Postman environment** or globals (`.json`), or a **cURL command** (a `.txt`, or pasted in the
+Import box — or straight into the URL field: the request is filled from it). A collection's
+**Export** writes a Postman v2.1 file; Courier's tests and captures go with it both as its own rows
+and as the equivalent `pm.test (...)` / `pm.environment.set (...)` JavaScript, so Postman runs them
+too; Postman's own scripts are kept (Courier does not run JavaScript). **Code** (`</>`) shows the
+request, its variables resolved, as **cURL**, raw **HTTP**, **Python** (requests) or **JavaScript**
+(fetch), with a Copy button.
+
+**Keys**: Ctrl+N a new request, Ctrl+S save, Ctrl+O import, Ctrl+W close the tab, Ctrl+Enter send,
+Esc cancel, Ctrl+B beautify the body, Ctrl+H the history; in the tables Tab / Shift+Tab, Enter and
+the arrows move between the cells.
+
+**Files**: `SD:/courier/collections/*.postman_collection.json`,
+`SD:/courier/environments/*.postman_environment.json`, `SD:/courier/globals.json`, `history.json`
+(the last 100), `cookies.json` (the ones that expire; a session's end with it) and `state.json` (the
+tabs open — a request not saved keeps its changes —, the environment chosen, the sidebar). A request
+runs on a thread of its own (kapi v67): the window keeps answering. `https://` uses mbedTLS; the
+server's certificate is **not verified** yet (Onyx has no certificate authorities' bundle): the
+connection is encrypted, not authenticated. A response is read up to 16 MB.
 
 ### The Spreadsheet (`sheet`)
 
