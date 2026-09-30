@@ -682,6 +682,26 @@ static bool hv_box(struct hv *h, struct box *b, struct dom_node *own, bool pchan
 		/* Onyx: its effects changed (opacity, transform, filter...: html/onyx_fx.c):
 		 * all it holds redrawn, where it was painted and where it is */
 		bool fx = onyx_fx_box(b) && onyx_fx_style_differs(b->style, nw);
+		if (fx && !moves && css_computed_style_effects_only_change(b->style, nw)) {
+			/* Onyx -- GPU compositing: only its transform / opacity changed and its
+			 * layer is retained: composited again, nothing redrawn (an animation's
+			 * frame: composite-only) */
+			const css_computed_style *was = b->style;
+			b->style = (css_computed_style *) nw;
+			if (html_redraw_layer_update(h->c, b)) {
+				hv_grow_ancestors(h->c, b);
+				return true;
+			}
+			b->style = (css_computed_style *) was;
+		}
+		if (!fx && !moves && onyx_layer_props != NULL && b->type != BOX_INLINE &&
+		    !onyx_fx_box(b) && css_computed_style_effects_only_change(b->style, nw)) {
+			/* Onyx -- GPU compositing: a box of the element that is not its group
+			 * (its text): a transform or an opacity do not paint it -- its
+			 * element's layer does (redrawn above when not composited) */
+			b->style = (css_computed_style *) nw;
+			return true;
+		}
 		if (moves || fx)
 			hv_redraw_all(h->c, b, e > e2 ? e : e2);	/* where it was */
 		b->style = (css_computed_style *) nw;

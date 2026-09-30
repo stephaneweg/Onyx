@@ -277,6 +277,18 @@ extern "C" void hostkapi_hang (void) { g_hang = 1; g_frames = 0; }
 extern "C" void hostkapi_refuse (int n) { g_refuse = n; }
 extern "C" int hostkapi_textures (void) { return (int) g_tex.size (); }
 
+// NetSurf on the desktop simulator (tools/tests/netsurf/host.mk SOFTGPU=1, -DHOSTKAPI_GPU_ONLY): fakekapi.cpp
+// makes the table, then this puts the software V3D's calls into it (GPC_SOFTGPU=1 at run time)
+extern "C" void hostkapi_install_gpu (TKApiTable *t)
+{
+	T = t;
+	T->gpu_info = h_gpu_info; T->gpu_texture = h_gpu_texture; T->gpu_texture_rect = h_gpu_texture_rect;
+	T->gpu_render = h_gpu_render; T->gpu_vbuf = h_gpu_vbuf;
+	const char *e = getenv ("GPC_SOFTGPU");
+	if (e && *e && strcmp (e, "0") != 0) { g_soft = 1; if (strcmp (e, "hang") == 0) g_hang = 1; }
+}
+
+#ifndef HOSTKAPI_GPU_ONLY
 static struct Setup
 {
 	Setup ()
@@ -299,3 +311,4 @@ static struct Setup
 		if (e && *e && strcmp (e, "0") != 0) { g_soft = 1; if (strcmp (e, "hang") == 0) g_hang = 1; }
 	}
 } s_setup;
+#endif

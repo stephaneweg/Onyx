@@ -236,6 +236,37 @@ enum css_error css__arena_remove_style(struct css_computed_style *style)
 #define PAINT_BITS(P) (t.bits[ONYX_##P##_INDEX] = 		(t.bits[ONYX_##P##_INDEX] & ~(uint32_t) ONYX_##P##_MASK) | 		(bi->bits[ONYX_##P##_INDEX] & (uint32_t) ONYX_##P##_MASK))
 
 /* exported function documented in include/libcss/computed.h */
+bool css_computed_style_effects_only_change(const css_computed_style *a,
+		const css_computed_style *b)
+{
+	struct css_computed_style_i t;
+	const struct css_computed_style_i *bi;
+
+	if (a == b)
+		return true;
+	if (a == NULL || b == NULL)
+		return false;
+	bi = &b->i;
+	t = a->i;
+	PAINT_BITS(OPACITY);			t.opacity = bi->opacity;
+	PAINT_BITS(TRANSFORM);			t.transform = bi->transform;
+	PAINT_BITS(TRANSLATE);			t.translate = bi->translate;
+	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;
+	PAINT_BITS(SCALE);			t.scale = bi->scale;
+	PAINT_BITS(TRANSFORM_ORIGIN);		t.transform_origin = bi->transform_origin;
+	if (memcmp(&t, bi, sizeof t) != 0)
+		return false;
+	return arena__compare_string_list(a->font_family, b->font_family) &&
+		arena__compare_css_computed_counter(a->counter_increment,
+				b->counter_increment) &&
+		arena__compare_css_computed_counter(a->counter_reset,
+				b->counter_reset) &&
+		arena__compare_computed_content_item(a->content, b->content) &&
+		arena__compare_string_list(a->quotes, b->quotes) &&
+		arena__compare_string_list(a->cursor, b->cursor);
+}
+
+/* exported function documented in include/libcss/computed.h */
 bool css_computed_style_paint_only_change(const css_computed_style *a,
 		const css_computed_style *b, bool *moved)
 {

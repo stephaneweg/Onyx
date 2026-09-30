@@ -267,6 +267,22 @@ fb_pan(fbtk_widget_t *widget,
 	x = fbtk_get_absx(widget);
 	y = fbtk_get_absy(widget);
 
+	/* Onyx: a redraw queued before the pan (widget coordinates) is of the document
+	 * where it was: moved with the pixels the pan moves (else the rectangle drawn
+	 * was the wrong one, and what it meant stayed as it was -- boxes laid out while
+	 * the page scrolled came out cut, or not at all) */
+	if (bwidget->redraw_required) {
+		bwidget->redraw_box.x0 -= bwidget->panx;
+		bwidget->redraw_box.x1 -= bwidget->panx;
+		bwidget->redraw_box.y0 -= bwidget->pany;
+		bwidget->redraw_box.y1 -= bwidget->pany;
+		if (!fbtk_clip_to_widget(widget, &bwidget->redraw_box)) {
+			bwidget->redraw_box.y0 = bwidget->redraw_box.x0 = INT_MAX;
+			bwidget->redraw_box.y1 = bwidget->redraw_box.x1 = -(INT_MAX);
+			bwidget->redraw_required = false;
+		}
+	}
+
 	/* if the pan exceeds the viewport size just redraw the whole area */
 	if (bwidget->pany >= height || bwidget->pany <= -height ||
 	    bwidget->panx >= width || bwidget->panx <= -width) {
@@ -438,6 +454,16 @@ fb_redraw(fbtk_widget_t *widget,
 	bwidget->redraw_required = false;
 }
 
+/* Onyx: the window the compositor shows (its last composited view) */
+static struct gui_window *fb_comp_gw;
+
+/* Onyx: a frame wanted by the compositor (a retained layer's transform / opacity changed) */
+static void fb_comp_request(void)
+{
+	if (fb_comp_gw != NULL)
+		fbtk_request_redraw(fb_comp_gw->browser);
+}
+
 /* Onyx: an idle turn -- the band's rows around the view painted ahead (onyx_comp.c) */
 static void fb_comp_prepaint(void *p)
 {
@@ -460,6 +486,7 @@ static bool fb_comp_redraw(fbtk_widget_t *widget, struct browser_widget_s *bwidg
 	bool prepaint = bwidget->comp_prepaint;
 
 	bwidget->comp_prepaint = false;
+	fb_comp_gw = gw;
 	if (bwidget->pan_required) {
 		if (bwidget->pany != 0)
 			bwidget->comp_dy = bwidget->pany > 0 ? 1 : -1;
@@ -487,11 +514,16 @@ static bool fb_comp_redraw(fbtk_widget_t *widget, struct browser_widget_s *bwidg
 	return onyx_comp_on();
 }
 
+static void fb_browser_view(fbtk_widget_t *widget, struct browser_widget_s *bwidget,
+		struct gui_window *gw);
+
 static int
 fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 {
 	struct gui_window *gw = cbi->context;
 	struct browser_widget_s *bwidget;
+	uint64_t t0;
+	bool pan;
 
 	bwidget = fbtk_get_userpw(widget);
 	if (bwidget == NULL) {
@@ -499,9 +531,22 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 		      "browser widget from widget %p was null", widget);
 		return -1;
 	}
+	/* Onyx (NS_PERF): each frame of a scroll timed, whatever it costs -- "ONYX-SCROLL
+	 * <us>" (the pan, what is painted, the copy or composite into the canvas) */
+	t0 = onyx_perf_now();
+	pan = bwidget->pan_required;
+	fb_browser_view(widget, bwidget, gw);
+	if (t0 != 0 && pan)
+		fprintf(stderr, "ONYX-SCROLL %lu us\n",
+				(unsigned long) (onyx_perf_now() - t0));
+	return 0;
+}
 
+static void fb_browser_view(fbtk_widget_t *widget, struct browser_widget_s *bwidget,
+		struct gui_window *gw)
+{
 	if (onyx_comp_on() && fb_comp_redraw(widget, bwidget, gw))
-		return 0;	/* (Onyx: composited) */
+		return;	/* (Onyx: composited) */
 
 	if (bwidget->pan_required) {
 		fb_pan(widget, bwidget, gw->bw);
@@ -517,7 +562,6 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 		bwidget->redraw_box.y1 = fbtk_get_height(widget);
 		fb_redraw(widget, bwidget, gw->bw);
 	}
-	return 0;
 }
 
 static int fb_browser_window_destroy(fbtk_widget_t *widget,
@@ -1966,6 +2010,8 @@ gui_window_destroy(struct gui_window *gw)
 {
 	gui_window_remove_from_window_list(gw);
 	framebuffer_schedule(-1, fb_comp_prepaint, gw);	/* (Onyx) */
+	if (fb_comp_gw == gw)
+		fb_comp_gw = NULL;
 
 	fbtk_destroy_widget(gw->window);
 
@@ -2425,6 +2471,7 @@ main(int argc, char** argv)
 	fbtk = fbtk_init(nsfb);
 
 	onyx_comp_init();	/* Onyx: GPU compositing (Choices: gpu_compositing) */
+	onyx_comp_set_request(fb_comp_request);
 
 	fbtk_enable_oskb(fbtk);
 

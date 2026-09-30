@@ -76,7 +76,8 @@ struct fbtk_bitmap;	/* (framebuffer.h names it) */
 #define PAINTED_MAX	64		/* rectangles painted in an update (the layers' coverage) */
 #define LAYER_MAX_PX	(4 * 1024 * 1024)	/* a layer larger: painted in place */
 #define LAYERS_BUDGET_PX (24 * 1024 * 1024)	/* the layers' pixels (~96 MB of textures) */
-#define UPDATE_LOOPS	4		/* (demotions, stale layers: paint again, that many times) */
+#define UPDATE_LOOPS	4
+#define ANIMATED_MAX	64		/* (the CPU path: the boxes seen animated) */		/* (demotions, stale layers: paint again, that many times) */
 
 struct crect {
 	int x0, y0, x1, y1;
@@ -139,6 +140,10 @@ struct clayer {
 	float opacity;
 	struct crect clip;		/* document px (open sides: +-INT_MAX / 2) */
 	struct crect fp;		/* where it shows: its bounds through m, in its clip */
+	struct crect efp;		/* where it may show turned about its centre (an animated
+					 * rotation): free of what is painted after it, unless
+					 * efp_blocked -- then only fp is */
+	bool efp_blocked;
 	uint32_t *px;			/* premultiplied 0xAARRGGBB, its rectangle's size */
 	gpc_tex *tex;
 	struct crect dmg;		/* its pixels to paint again (document px, untransformed) */
@@ -183,6 +188,14 @@ static struct {
 	/* the view (the last redraw's) */
 	struct onyx_comp_view view;
 	bool have_view;
+	void (*request)(void);		/* a frame wanted (gui.c: the view redrawn) */
+	/* the CPU path: a transformed layer is retained only once animated (each frame
+	 * would resample it; painted into the band it costs nothing more) */
+	const void *animated[ANIMATED_MAX];
+	int nanimated;
+	/* NS_PERF: the frames (painted / composite only), their time */
+	unsigned st_frames, st_painted, st_ahead;
+	uint64_t st_paint_us, st_present_us, st_ahead_us;
 } C;
 
 bool onyx_comp_noting;
@@ -376,6 +389,13 @@ void onyx_comp_init(void)
 	fprintf(stderr, "netsurf: compositing on: %s\n", gpc_info(C.g));
 	C.on = true;
 	C.bwin = NULL;
+	onyx_layer_props = onyx_comp_layer_update;	/* (the core's animations, hovers) */
+}
+
+/* exported interface documented in framebuffer/onyx_comp.h */
+void onyx_comp_set_request(void (*request)(void))
+{
+	C.request = request;
 }
 
 static void layer_free(struct clayer *l);
@@ -394,6 +414,7 @@ void onyx_comp_finalise(void)
 		gpc_destroy(C.g);
 	C.g = NULL;
 	C.on = false;
+	onyx_layer_props = NULL;
 	onyx_surface_hole(0, 0, 0, 0);
 }
 
@@ -559,6 +580,23 @@ static void layer_footprint(struct clayer *l)
 	struct crect f = l->transformed ? mat_bbox(l->m, &l->b) : l->b;
 
 	l->fp = cr_and(f, &l->clip);
+	l->efp = l->fp;
+	if (l->transformed) {
+		/* its rectangle turned about its centre, at its scale: a square */
+		float cx, cy, w = l->b.x1 - l->b.x0, h = l->b.y1 - l->b.y0;
+		float s1 = l->m[0] * l->m[0] + l->m[1] * l->m[1];
+		float s2 = l->m[2] * l->m[2] + l->m[3] * l->m[3];
+		float r = 0.5f * sqrtf((w * w + h * h) * (s1 > s2 ? s1 : s2)) + 2;
+		struct crect e;
+		mat_apply(l->m, (l->b.x0 + l->b.x1) * 0.5f, (l->b.y0 + l->b.y1) * 0.5f,
+				&cx, &cy);
+		e.x0 = (int) floorf(cx - r);
+		e.y0 = (int) floorf(cy - r);
+		e.x1 = (int) ceilf(cx + r);
+		e.y1 = (int) ceilf(cy + r);
+		e = cr_and(e, &l->clip);
+		cr_add(&l->efp, &e);
+	}
 }
 
 /* ---- damage --------------------------------------------------------------------------------- */
@@ -880,7 +918,7 @@ static void present(const struct onyx_comp_view *v)
 		struct crect c;
 		unsigned op;
 
-		if (l->demoted || l->tex == NULL || !cr_meet(&l->fp, &view))
+		if (l->demoted || l->tex == NULL || !cr_meet(&l->efp, &view))
 			continue;
 		op = (unsigned) (l->opacity * 255 + 0.5f);
 		if (op == 0)
@@ -1047,12 +1085,27 @@ bool onyx_comp_redraw(const struct onyx_comp_view *v, bool prepaint)
 	band_cover(v, v->sy, v->sy + v->h);
 	paint_damage(v);
 	if (!prepaint || C.npainted > 0 || C.ndmg > 0) {
+		uint64_t t1 = onyx_perf_now();
 		present(v);
 		if (t0 != 0) {
 			char what[64];
+			uint64_t t2 = onyx_perf_now();
 			snprintf(what, sizeof what, "frame %s", C.npainted ?
 					"painted" : "composite");
 			onyx_perf_log(what, t0);
+			C.st_frames++;
+			C.st_painted += C.npainted > 0;
+			C.st_paint_us += t1 - t0;
+			C.st_present_us += t2 - t1;
+			if (C.st_frames % 50 == 0)
+				fprintf(stderr, "ONYX-COMP %u frames: %u painted (%lu us "
+						"painting), %u composite only; present %lu us "
+						"a frame; %u pieces ahead (%lu us)\n",
+						C.st_frames, C.st_painted,
+						(unsigned long) C.st_paint_us,
+						C.st_frames - C.st_painted,
+						(unsigned long) (C.st_present_us / C.st_frames),
+						C.st_ahead, (unsigned long) C.st_ahead_us);
 		}
 	}
 
@@ -1091,6 +1144,10 @@ bool onyx_comp_redraw(const struct onyx_comp_view *v, bool prepaint)
 			band_cover(v, want0 > C.vy0 - chunk ? want0 : C.vy0 - chunk, C.vy0);
 		paint_damage(v);
 		onyx_perf_log("band ahead", t1);
+		if (t1 != 0) {
+			C.st_ahead++;
+			C.st_ahead_us += onyx_perf_now() - t1;
+		}
 	}
 	return !(want0 >= C.vy0 && want1 <= C.vy1);
 }
@@ -1113,9 +1170,12 @@ void onyx_comp_note(nsfb_t *surface, int x0, int y0, int x1, int y1)
 	/* (the layers offered in this piece so far: painted under this) */
 	for (int i = 0; i < C.nlayers; i++) {
 		struct clayer *l = C.layers[i];
-		if (l->seen == C.gen && !l->demoted && l->px != NULL &&
-		    l->in_piece && cr_meet(&r, &l->fp))
+		if (l->seen != C.gen || l->demoted || l->px == NULL || !l->in_piece)
+			continue;
+		if (cr_meet(&r, &l->fp))
 			l->conflict = true;
+		else if (cr_meet(&r, &l->efp))
+			l->efp_blocked = true;	/* (turned, it would cover that) */
 	}
 }
 
@@ -1192,6 +1252,14 @@ bool onyx_comp_offer(struct onyx_layer *l)
 	i = layer_find(l->key);
 	if (i >= 0 && C.layers[i]->demoted)
 		return false;
+	if (l->transformed && i < 0 && gpc_backend(C.g) != GPC_BACKEND_GPU) {
+		bool anim = false;
+		for (int k = 0; k < C.nanimated && k < ANIMATED_MAX; k++)
+			if (C.animated[k] == l->key)
+				anim = true;
+		if (!anim)
+			return false;
+	}
 	b.x0 = l->x0 + C.org_x;
 	b.y0 = l->y0 + C.org_y;
 	b.x1 = l->x1 + C.org_x;
@@ -1307,23 +1375,37 @@ bool onyx_comp_layer_update(const void *key, const float *lm, float opacity)
 	float m[6];
 	int i = layer_find(key);
 
-	if (!C.on || !C.have_view || C.painting || i < 0)
+	if (!C.on || !C.have_view || C.painting)
 		return false;
+	if (i < 0) {
+		/* (not retained: animated from now on -- the CPU path retains it) */
+		bool known = false;
+		for (int k = 0; k < C.nanimated && k < ANIMATED_MAX; k++)
+			if (C.animated[k] == key)
+				known = true;
+		if (!known)
+			C.animated[C.nanimated++ % ANIMATED_MAX] = key;
+		return false;
+	}
 	e = C.layers[i];
 	if (e->demoted || e->px == NULL || (lm != NULL) != e->transformed)
 		return false;
 	if (lm != NULL) {
+		const struct crect *free = e->efp_blocked ? &e->fp : &e->efp;
 		mat_about(lm, e->ox, e->oy, m);
 		fp = cr_and(mat_bbox(m, &e->b), &e->clip);
-		/* (it may only cover what it covered: nothing painted after it
-		 * lies over that) */
-		if (fp.x0 < e->fp.x0 || fp.y0 < e->fp.y0 || fp.x1 > e->fp.x1 ||
-		    fp.y1 > e->fp.y1)
+		/* (it may only cover what nothing painted after it lies over) */
+		if (fp.x0 < free->x0 || fp.y0 < free->y0 || fp.x1 > free->x1 ||
+		    fp.y1 > free->y1)
 			return false;
 		memcpy(e->lm, lm, sizeof(e->lm));
 		memcpy(e->m, m, sizeof(e->m));
 	}
 	e->opacity = opacity;
-	present(&C.view);
+	/* (the frame at the next redraw: one composite for all the layers changed) */
+	if (C.request != NULL)
+		C.request();
+	else
+		present(&C.view);
 	return true;
 }

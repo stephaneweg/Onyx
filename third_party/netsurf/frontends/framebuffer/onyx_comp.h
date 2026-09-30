@@ -51,6 +51,9 @@ struct onyx_comp_view {
  * path: a mismatch, or the GPU lost, and the CPU path is used for the session).
  */
 void onyx_comp_init(void);
+
+/** How the compositor asks for a frame (gui.c: the browser widget redrawn). */
+void onyx_comp_set_request(void (*request)(void));
 void onyx_comp_finalise(void);
 
 /** Whether the view is composited (else: the back buffer, as ever). */

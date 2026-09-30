@@ -275,8 +275,27 @@ endef
 $(foreach s,$(ONYX_CXX) $(WTK_SRC),$(eval $(call CXX_RULE,$(s))))
 
 # ---- link --------------------------------------------------------------------
-$(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ)
-	$(CXX) -o $@ $^ -lpng -lz -lm -lssl -lcrypto
+# Onyx: SOFTGPU=1 -- the software V3D linked in (tools/tests/gpucomp/hostkapi.cpp: the kernel's FS_TEX in
+# the QPU simulator; GPC_SOFTGPU=1 at run time): the compositor's GPU path, slowly (a small window)
+ifneq ($(SOFTGPU),)
+QPU := $(ROOT)/tools/qpu
+SG_OBJ := $(OUT)/sg/hostkapi.o $(OUT)/sg/qpusim.o $(addprefix $(OUT)/sg/,qpulib.o ralloc_stub.o qpu_instr.o qpu_pack.o qpu_disasm.o)
+$(OUT)/sg/hostkapi.o: $(ROOT)/tools/tests/gpucomp/hostkapi.cpp
+	@mkdir -p $(OUT)/sg
+	$(CXX) -std=gnu++20 -O2 -w -DHOSTKAPI_GPU_ONLY -I$(ROOT)/tools/tests/fs/stub -I$(ZKINC) -I$(QPU) -I$(QPU)/mesa -c $< -o $@
+$(OUT)/sg/qpusim.o: $(QPU)/qpusim.cpp
+	@mkdir -p $(OUT)/sg
+	$(CXX) -std=gnu++17 -O2 -w -I$(QPU) -I$(QPU)/mesa -c $< -o $@
+$(OUT)/sg/%.o: $(QPU)/%.c
+	@mkdir -p $(OUT)/sg
+	$(CC) -std=gnu11 -O1 -w -I$(QPU)/mesa -I$(QPU) -c $< -o $@
+$(OUT)/sg/%.o: $(QPU)/mesa/broadcom/qpu/%.c
+	@mkdir -p $(OUT)/sg
+	$(CC) -std=gnu11 -O1 -w -I$(QPU)/mesa -I$(QPU) -c $< -o $@
+endif
+
+$(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ) $(SG_OBJ)
+	$(CXX) -o $@ $^ -lpng -lz -lm -lssl -lcrypto -lpthread
 	@echo "host netsurf: $@"
 
 # ---- the resources (as netsurf-app.mk's stage, into $(OUT)/res) ------------------

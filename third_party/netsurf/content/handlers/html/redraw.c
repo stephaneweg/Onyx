@@ -1773,6 +1773,8 @@ static int onyx_fx_retain(const html_content *html, struct box *box,
 	int pass;
 	uint64_t t0;
 
+	if (onyx_layer_props == NULL)
+		return -1;	/* (no compositing frontend: painted as ever) */
 	if (fx->nfilter > 0 || fx->nbackdrop > 0 || fx->blend != ONYX_BLEND_NORMAL ||
 	    scale != 1.0f || onyx_fx_nest > 0 || html_redraw_printing || !ctx->interactive)
 		return -1;
@@ -1879,6 +1881,21 @@ static int onyx_fx_retain(const html_content *html, struct box *box,
 	ctx->plot->onyx_layer_end(ctx, l, ONYX_LAYER_OFFER);
 	free(l);
 	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
+}
+
+/* exported interface documented in netsurf/onyx_paint.h */
+bool (*onyx_layer_props)(const void *key, const float *lm, float opacity);
+
+/* exported interface documented in html/private.h */
+bool html_redraw_layer_update(const html_content *html, struct box *box)
+{
+	struct onyx_fx fx;
+
+	if (onyx_layer_props == NULL || !onyx_box_fx(html, box, 1, &fx) ||
+	    fx.nfilter > 0 || fx.nbackdrop > 0 || fx.blend != ONYX_BLEND_NORMAL ||
+	    fx.opacity <= 0)
+		return false;
+	return onyx_layer_props(box, fx.matrix ? fx.m : NULL, fx.opacity);
 }
 
 /** an inline's opacity (its pieces are its line's siblings: grouped from it to its end) */
@@ -2416,7 +2433,10 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			r.x0 = r.x1 = clip->x0;	/* (an empty clip, valid) */
 			r.y0 = r.y1 = clip->y0;
 		}
-		if ((r.x0 == r.x1 || r.y0 == r.y1) && !(box->flags & HAS_FIXED))
+		/* (Onyx: nor inverted ones -- a box whose shadow reaches the clip
+		 * but not its border box: its clip was set upside down, which the
+		 * knockout refused, and the rest of the redraw was dropped) */
+		if ((r.x0 >= r.x1 || r.y0 >= r.y1) && !(box->flags & HAS_FIXED))
 			/* not an error */
 			return ((!ctx->plot->group_end) ||
 				(ctx->plot->group_end(ctx) == NSERROR_OK));

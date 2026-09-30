@@ -191,4 +191,12 @@ struct onyx_layer {
 
 #define ONYX_LAYER_OFFER (-1)	/* (onyx_layer_begin / _end's pass: a retained layer) */
 
+/**
+ * Onyx -- GPU compositing: set by a frontend that retains layers (framebuffer/onyx_comp.c).
+ * A retained layer's matrix about its origin (lm, as onyx_layer's; NULL: none) or its opacity
+ * changed, nothing else: composited again without painting -> true; false: the caller redraws
+ * its rectangles as ever (html_redraw_layer_update, html/private.h).
+ */
+extern bool (*onyx_layer_props)(const void *key, const float *lm, float opacity);
+
 #endif

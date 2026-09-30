@@ -819,6 +819,9 @@ static void unimplemented (void)
 	exit (2);
 }
 
+// the software V3D (tools/tests/gpucomp/hostkapi.cpp), when linked in (NetSurf's host.mk SOFTGPU=1)
+extern "C" void hostkapi_install_gpu (TKApiTable *t) __attribute__ ((weak));
+
 static void setup (void)
 {
 	void *p = mmap ((void *) KAPI_TABLE_VA, 65536, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
@@ -875,6 +878,8 @@ static void setup (void)
 	std::string s = sc ? sc : "wait;dump out.elsm;exit";
 	size_t i = 0;
 	while (i <= s.size ()) { size_t j = s.find (';', i); if (j == std::string::npos) j = s.size (); if (j > i) g_script.push_back (s.substr (i, j - i)); i = j + 1; }
+	// GPC_SOFTGPU=1: the GPU compositing service's GPU path on the software V3D (when linked in)
+	if (hostkapi_install_gpu && getenv ("GPC_SOFTGPU")) hostkapi_install_gpu (T);
 }
 
 // (a static object's constructor, after the globals above: a constructor-attribute function would

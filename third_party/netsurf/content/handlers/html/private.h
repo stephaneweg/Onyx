@@ -505,4 +505,12 @@ extern struct dom_string *html_dom_string_text_javascript;
 extern struct dom_string *html_dom_string_type;
 extern struct dom_string *html_dom_string_src;
 
+/**
+ * Onyx -- GPU compositing: box's effects (its transform, its opacity) changed and nothing else
+ * (its style already the new one): when the frontend retains its layer, that layer is
+ * composited again, nothing painted -> true (an animation's frame, a hover: composite-only);
+ * false: redraw its rectangles as ever.
+ */
+bool html_redraw_layer_update(const html_content *html, struct box *box);
+
 #endif
