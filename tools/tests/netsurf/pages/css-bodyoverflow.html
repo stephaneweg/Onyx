@@ -1,0 +1,12 @@
+<!DOCTYPE html><html style="height:100%"><head><title>body overflow</title></head>
+<!-- the body's overflow goes to the viewport (CSS Overflow 3, 3.3): the body is not a
+     scroller of the window's height (Onyx: en.wikipedia.org's Minerva) -->
+<body style="height:100%; margin:0; overflow-y:scroll">
+<div id="tall" style="height:3000px">tall</div>
+<script>
+window.addEventListener('load', function () {
+	setTimeout(function () {
+		console.log('bodyoverflow page ' + (document.documentElement.scrollHeight >= 3000));
+	}, 100);
+});
+</script></body></html>

@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <strings.h>	/* (Onyx: strncasecmp) */
 
 #include <libwapcaplet/libwapcaplet.h>
 
@@ -22,6 +23,7 @@
 #include "select/hash.h"
 #include "select/mq.h"
 #include "select/propset.h"
+#include "select/propget.h"	/* (Onyx: the body's overflow) */
 #include "select/font_face.h"
 #include "select/select.h"
 #include "select/onyx_vars.h"
@@ -1658,6 +1660,30 @@ css_error css_select_style_onyx(css_select_ctx *ctx, void *node,
 				unit_ctx);
 		if (error != CSS_OK)
 			goto cleanup;
+	}
+
+	/* Onyx: the body's overflow goes to the viewport when the root's is visible (CSS
+	 * Overflow 3, 3.3): the body itself is then visible -- a body { height: 100%;
+	 * overflow-y: scroll } (en.wikipedia.org's Minerva) became a scroller of the window's
+	 * height and a body { overflow: hidden } cut the page. NetSurf's window scrolls. */
+	if (parent != NULL && state.element.name != NULL &&
+	    lwc_string_length(state.element.name) == 4 &&
+	    strncasecmp(lwc_string_data(state.element.name), "body", 4) == 0 &&
+	    state.results->styles[CSS_PSEUDO_ELEMENT_NONE] != NULL) {
+		void *gp = NULL;
+		struct css_node_data *pd = NULL;
+		css_computed_style *bs = state.results->styles[CSS_PSEUDO_ELEMENT_NONE];
+
+		if (handler->parent_node(pw, parent, &gp) == CSS_OK && gp == NULL &&
+		    handler->get_libcss_node_data(pw, parent, (void **) &pd) == CSS_OK &&
+		    pd != NULL && pd->partial.styles[CSS_PSEUDO_ELEMENT_NONE] != NULL &&
+		    get_overflow_x(pd->partial.styles[CSS_PSEUDO_ELEMENT_NONE]) ==
+				CSS_OVERFLOW_VISIBLE &&
+		    get_overflow_y(pd->partial.styles[CSS_PSEUDO_ELEMENT_NONE]) ==
+				CSS_OVERFLOW_VISIBLE) {
+			set_overflow_x(bs, CSS_OVERFLOW_VISIBLE);
+			set_overflow_y(bs, CSS_OVERFLOW_VISIBLE);
+		}
 	}
 
 	/* Intern the partial computed styles */

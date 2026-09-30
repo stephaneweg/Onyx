@@ -46,6 +46,7 @@
 #include "html/box_manipulate.h"
 #include "html/box_construct.h"
 #include "html/onyx_hover.h"
+#include <sys/time.h>
 #include "html/onyx_paint.h"	/* Onyx: gradients */
 #include "html/box_special.h"
 #include "html/onyx_shadow.h"	/* Onyx: shadow DOM, display: contents */
@@ -1378,6 +1379,12 @@ static void convert_xml_to_box(struct box_construct_ctx *ctx)
 	bool convert_children;
 	uint32_t num_processed = 0;
 	const uint32_t max_processed_before_yield = 10;
+	/* Onyx: a slice is a time (15 ms), not 10 elements -- the scheduler runs the next
+	 * slice at the main loop's next turn only: en.wikipedia.org's 5000 elements took
+	 * hundreds of turns and the page stayed blank (the early boxes shown) */
+	struct timeval t0, t1;
+
+	gettimeofday(&t0, NULL);
 
 	do {
 		convert_children = true;
@@ -1449,7 +1456,13 @@ static void convert_xml_to_box(struct box_construct_ctx *ctx)
 			free(ctx);
 			return;
 		}
-	} while (ctx->now || ++num_processed < max_processed_before_yield);
+		if (ctx->now || ++num_processed < max_processed_before_yield)
+			continue;
+		num_processed = 0;
+		gettimeofday(&t1, NULL);
+		if ((t1.tv_sec - t0.tv_sec) * 1000000L + (t1.tv_usec - t0.tv_usec) >= 15000)
+			break;
+	} while (true);
 
 	/* More work to do: schedule a continuation */
 	guit->misc->schedule(0, (void *)convert_xml_to_box, ctx);

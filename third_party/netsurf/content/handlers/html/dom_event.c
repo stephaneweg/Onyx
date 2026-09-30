@@ -761,6 +761,24 @@ dom_default_action_DOMSubtreeModified_cb(struct dom_event *evt, void *pw)
 }
 
 
+/* Onyx: an element about to be taken out of the document: the <style> and <link>s in it
+ * stop applying (html_css_node_removed) */
+static void
+dom_default_action_DOMNodeRemoved_cb(struct dom_event *evt, void *pw)
+{
+	html_content *htmlc = pw;
+	dom_event_target *node = NULL;
+	dom_node_type type;
+
+	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
+		return;
+	if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
+	    type == DOM_ELEMENT_NODE)
+		html_css_node_removed(htmlc, (dom_node *) node);
+	dom_node_unref(node);
+}
+
+
 /**
  * callback for default action finished
  */
@@ -790,6 +808,8 @@ html_dom_event_fetcher(dom_string *type,
 			return dom_default_action_DOMNodeInsertedIntoDocument_cb;
 		} else if (dom_string_isequal(type, corestring_dom_DOMSubtreeModified)) {
 			return dom_default_action_DOMSubtreeModified_cb;
+		} else if (dom_string_isequal(type, corestring_dom_DOMNodeRemoved)) {
+			return dom_default_action_DOMNodeRemoved_cb;	/* (Onyx) */
 		}
 	} else if (phase == DOM_DEFAULT_ACTION_FINISHED) {
 		return dom_default_action_finished_cb;

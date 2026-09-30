@@ -60,6 +60,7 @@ struct html_stylesheet {
 	struct hlcache_handle *sheet;
 	bool modified;
 	bool unused;
+	bool removed;	/**< Onyx: its node taken out of the document */
 };
 
 

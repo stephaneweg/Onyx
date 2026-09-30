@@ -70,6 +70,9 @@
 #define SIM_BORDER	4
 #endif
 
+/* the host program's last words before a SIM exit (the NetSurf bench: NS_PROF's samples) */
+extern "C" void onyx_host_exit_hook (void) __attribute__ ((weak));
+
 static TKApiTable *T;
 static unsigned *g_canvas; static int g_cw, g_ch, g_stride, g_x, g_y, g_lw, g_lh; static unsigned g_flags;
 static unsigned *g_act, *g_ina; static int g_ow, g_oh;			// the chrome copies
@@ -418,7 +421,7 @@ static void step (void)
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "quit")) g_quit = true;
-	else if (!strcmp (cmd, "exit")) exit (0);
+	else if (!strcmp (cmd, "exit")) { if (onyx_host_exit_hook) onyx_host_exit_hook (); exit (0); }
 }
 static void h_msleep (unsigned ms)
 {
@@ -675,7 +678,7 @@ static int stdin_read (void *, unsigned) { return 0; }
 static int f_seek (void *h, unsigned long long pos) { return fseek ((FILE *) h, (long) pos, SEEK_SET) == 0 ? 0 : -1; }
 static unsigned long long f_fsize64 (void *h) { return f_fsize (h); }
 static int net_info (char *b, unsigned n) { if (b && n) snprintf (b, n, "ip 192.168.1.42\n"); return 1; }
-static void h_exit (int st) { fprintf (stderr, "sim: exit %d\n", st); exit (0); }
+static void h_exit (int st) { fprintf (stderr, "sim: exit %d\n", st); if (onyx_host_exit_hook) onyx_host_exit_hook (); exit (0); }
 static int toggle_app (const char *n) { fprintf (stderr, "sim: toggle_app %s\n", n); return 1; }
 static int ram_detail (unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned *e)
 { if (a) *a = 4194304; if (b) *b = 3145728; if (c) *c = 2097152; if (d) *d = 0; if (e) *e = 1; return 1; }
