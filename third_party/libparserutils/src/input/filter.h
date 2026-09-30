@@ -46,6 +46,9 @@ parserutils_error parserutils__filter_setopt(parserutils_filter *input,
 		parserutils_filter_optparams *params);
 
 /* Process a chunk of data */
+/* Onyx: does the filter hold converted data it could not write yet? */
+bool parserutils__filter_pending(parserutils_filter *input);
+
 parserutils_error parserutils__filter_process_chunk(parserutils_filter *input,
 		const uint8_t **data, size_t *len,
 		uint8_t **output, size_t *outlen);

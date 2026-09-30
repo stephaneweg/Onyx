@@ -117,6 +117,10 @@ dom_exception _dom_html_document_get_elements_by_name(dom_html_document *doc,
 
 dom_exception _dom_html_document_create_element(dom_document *doc,
 		dom_string *tag_name, dom_element **result);
+/* Onyx: an element as the HTML parser makes it: the token's name is the local name
+ * (no prefix split: "xyz:abc", "rdar:" are names), in the given namespace */
+dom_exception _dom_html_document_create_element_parser(dom_document *doc,
+		dom_string *namespace, dom_string *name, dom_element **result);
 dom_exception _dom_html_document_create_element_ns(dom_document *doc,
 		dom_string *namespace, dom_string *qname,
 		dom_element **result);

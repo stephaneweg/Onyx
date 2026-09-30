@@ -27,7 +27,8 @@ typedef enum hubbub_tokeniser_opttype {
 	HUBBUB_TOKENISER_ERROR_HANDLER,
 	HUBBUB_TOKENISER_CONTENT_MODEL,
 	HUBBUB_TOKENISER_PROCESS_CDATA,
-	HUBBUB_TOKENISER_PAUSE
+	HUBBUB_TOKENISER_PAUSE,
+	HUBBUB_TOKENISER_LAST_START_TAG	/**< Onyx: the last start tag's name (fragments, tests) */
 } hubbub_tokeniser_opttype;
 
 /**
@@ -51,6 +52,8 @@ typedef union hubbub_tokeniser_optparams {
 	bool process_cdata;		/**< Whether to process CDATA sections*/
 
 	bool pause_parse;		/**< Pause parsing */
+
+	const char *last_start_tag;	/**< Onyx: a start tag's name, or NULL */
 } hubbub_tokeniser_optparams;
 
 /* Create a hubbub tokeniser */

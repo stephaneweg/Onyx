@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include <dom/dom.h>	/* Onyx: dom_namespaces */
 #include <dom/html/html_elements.h>
 
 #include "html/html_document.h"
@@ -566,6 +567,19 @@ _dom_html_document_create_element_internal(
 	params.namespace = namespace;
 	params.prefix = prefix;
 
+	/* Onyx: an element of another namespace (SVG, MathML: the HTML parser's foreign
+	 * content, createElementNS) keeps its name's case ("foreignObject", "clipPath") and is
+	 * none of HTML's element types but <style> (its sheet applies in an HTML document);
+	 * it is still an HTMLElement object underneath (NetSurf asks every element its tag
+	 * type). */
+	if (namespace != NULL &&
+			!dom_string_isequal(namespace, dom_namespaces[DOM_NAMESPACE_HTML])) {
+		if (params.type != DOM_HTML_ELEMENT_TYPE_STYLE)
+			params.type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
+		dom_string_unref(params.name);
+		params.name = dom_string_ref(in_tag_name);
+	}
+
 	switch(params.type) {
 	case DOM_HTML_ELEMENT_TYPE__COUNT:
 		assert(params.type != DOM_HTML_ELEMENT_TYPE__COUNT);
@@ -886,6 +900,15 @@ dom_exception _dom_html_document_create_element(dom_document *doc,
 	return _dom_html_document_create_element_internal(html,
 			tag_name, NULL, NULL,
 			(dom_html_element **)result);
+}
+
+/* Onyx: an element as the HTML parser makes it (no qualified name split) */
+dom_exception _dom_html_document_create_element_parser(dom_document *doc,
+		dom_string *namespace, dom_string *name, dom_element **result)
+{
+	return _dom_html_document_create_element_internal(
+			(dom_html_document *) doc, name, namespace, NULL,
+			(dom_html_element **) result);
 }
 
 dom_exception _dom_html_document_create_element_ns(dom_document *doc,
