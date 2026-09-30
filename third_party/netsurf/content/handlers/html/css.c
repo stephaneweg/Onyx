@@ -43,6 +43,7 @@
 #include "html/html.h"
 #include "javascript/js.h"
 #include "html/private.h"
+#include "html/onyx_webfont.h"
 #include "html/css.h"
 
 static nsurl *html_default_stylesheet_url;
@@ -149,6 +150,10 @@ html_convert_css_callback(hlcache_handle *css,
 	/* Onyx: a script waiting for the sheets runs now they are in */
 	if (event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR)
 		html_script_sheets_arrived(parent);
+	/* Onyx: a sheet come after the conversion (a script's <link>): its web fonts
+	 * (@font-face) too -- the conversion's scan saw only the sheets before it */
+	if (event->type == CONTENT_MSG_DONE && parent->conversion_begun)
+		onyx_webfont_scan(parent);
 
 	if (html_can_begin_conversion(parent)) {
 		html_begin_conversion(parent);
