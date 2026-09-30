@@ -22,7 +22,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | **Compositing: `opacity` on a subtree, stacking of translucent groups** | all | colours' alpha only; a subtree's `opacity` is not a group | paint the stacking context into an off-screen ARGB layer (`onyx_paint.c`), blend it with its alpha; skip when opacity = 1; cache the layer until its subtree changes | M | P1 |
 | **`transform` (rotate / scale / skew / matrix, 3D flattened)** | all | translation only | a transformed stacking context painted into a layer then drawn through the matrix (PlutoVG already draws a transformed image); hit-testing through the inverse matrix | M | P1 |
 | **`filter` / `backdrop-filter` (blur, brightness, drop-shadow...)** | all | parsed, not drawn | on the layer above: box blur (3 passes), colour matrices; `backdrop-filter` reads the pixels behind | M | P2 |
-| **Transitions and animations (`transition`, `@keyframes`, Web Animations API)** | all | parsed, no effect | a timeline in the content: interpolate the computed values (colours, lengths, transforms, opacity) each frame; redraw only the animated boxes' rectangles when paint-only, relayout otherwise; `element.animate()` on the same engine; `requestAnimationFrame` paced by the display | L | P1 |
+| Transitions and animations (`transition`, `@keyframes`, Web Animations API) | all | **done** (docs/06 §21): a timeline per content interpolates the computed values each frame (colours, lengths, opacity, transforms, shadows), redraws the animated boxes' rectangles when paint-only, lays out otherwise; the events; `element.animate()` / `Animation` / `getAnimations()` on the same engine; `requestAnimationFrame` paced by the frames (~60 Hz, slower when frames are long, none when idle) | left: `rotate` / `scale` / subtree `opacity` drawn (the compositing layers), pseudo-elements' animations, reversing shortening, keyframes recomputed on a base change, `composite` | S | P2 |
 | **Incremental restyle and relayout** | all (dirty bits per node) | a DOM change = full rebox + layout (10 ms after the turn); `:hover` already incremental | dirty flags on nodes; restyle the changed subtrees (libcss selection per node, the hover code's machinery); relayout from the nearest box whose size cannot change (a formatting-context root with fixed size); React pages would stop costing a full layout per update | L | P1 |
 | `position: fixed` / `sticky` in every case | all | fixed and sticky exist (z-layers), some cases wrong | layoutdiff pages per case | S | P2 |
 | **Text shaping (ligatures, kerning, Arabic, Indic, Thai...)** | HarfBuzz (Chromium, WebKit, Ladybird) | FreeType glyph by glyph | vendor HarfBuzz (C++, ~1 MB, no exceptions needed) in `font_freetype.c`: shape each run, cache shaped words | M | P2 |
@@ -107,7 +107,7 @@ with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layou
 1. Compositing layers: `opacity` groups, full `transform`, `filter` / `backdrop-filter`
    (redraw.c, onyx_paint.c).
 2. Transitions, `@keyframes`, Web Animations, `requestAnimationFrame` pacing (a new
-   `html/onyx_anim.c`, libcss computed-value interpolation).
+   `html/onyx_anim.c`, libcss computed-value interpolation) -- done (docs/06 §21).
 3. WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS.
 4. TLS certificate verification, HTTP/2 (nghttp2), `br` announced, CORS / CSP basics, a disk
    cache with validators.

@@ -1968,7 +1968,7 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	jsthread *t = QJS_T(ctx);
 	const char *prop;
 	struct box *box;
-	char buf[64];
+	char buf[512];	/* (Onyx: the transition / animation lists) */
 	JSValue v = JS_NewString(ctx, "");
 	/* Onyx: without a box, the style selected for it (qjs_unboxed_style) */
 	css_select_results *ures[QJS_UNBOXED_DEPTH];
