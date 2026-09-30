@@ -2908,7 +2908,7 @@ class ShadowRoot extends G.DocumentFragment {
 	set onslotchange(fn) { setHandler(this, 'slotchange', fn); }
 }
 G.ShadowRoot = ShadowRoot;
-N.shadowProto(ShadowRoot.prototype);
+if (N.shadowProto) N.shadowProto(ShadowRoot.prototype);	/* (Onyx: not in a worker's natives) */
 
 /* an on* property kept as a listener */
 const handlerFns = new WeakMap();
