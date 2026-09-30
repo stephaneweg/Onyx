@@ -2346,6 +2346,66 @@ static JSValue n_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
  * verbose log) -- console.* formats its arguments only then: Vue's development build passes
  * whole component trees to console.warn, and making text of them took browserscore.dev
  * minutes on the Pi, for a log nobody reads */
+/* Onyx: mediaMatch(query, width, height): [matches, number of queries, mask of the queries
+ * libcss could not read] -- libcss parses and evaluates the media query list for the page's
+ * media (the viewport: width x height CSS px until the page is laid out); null without a
+ * page. matchMedia answers from it. */
+static JSValue n_media_match(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	html_content *c = t->htmlc;
+	uint32_t n = 0, invalid = 0;
+	int32_t w = 0, h = 0;
+	bool match = false, ok;
+	css_media media;
+	css_unit_ctx unit;
+	const char *q;
+	size_t len;
+	JSValue a;
+
+	if (c == NULL || argc < 1)
+		return JS_NULL;
+	media = c->media;
+	memcpy(&unit, &c->unit_len_ctx, sizeof unit);	/* (a const member: no assignment) */
+	if (argc > 2 && JS_ToInt32(ctx, &w, argv[1]) == 0 && JS_ToInt32(ctx, &h, argv[2]) == 0 &&
+	    (media.width == 0 || media.height == 0) && w > 0 && h > 0) {
+		media.width = unit.viewport_width = INTTOFIX(w);
+		media.height = unit.viewport_height = INTTOFIX(h);
+	}
+	if (unit.device_dpi == 0)
+		unit.device_dpi = nscss_screen_dpi;
+	if (unit.font_size_default == 0)
+		unit.font_size_default = INTTOFIX(16);
+	q = JS_ToCStringLen(ctx, &len, argv[0]);
+	if (q == NULL)
+		return JS_EXCEPTION;
+	ok = nscss_media_match(c->select_ctx, &media, &unit, q, len, &match, &n, &invalid);
+	JS_FreeCString(ctx, q);
+	if (!ok)
+		return JS_NULL;
+	a = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, a, 0, JS_NewBool(ctx, match));
+	JS_SetPropertyUint32(ctx, a, 1, JS_NewUint32(ctx, n));
+	JS_SetPropertyUint32(ctx, a, 2, JS_NewUint32(ctx, invalid));
+	return a;
+}
+
+/* Onyx: setState(n, state, on): an element's state only the scripts know, for the style
+ * sheets' pseudo-classes (css/select.h NSCSS_STATE_*: 1 :popover-open, 2 :modal); the page
+ * laid out again */
+static JSValue n_set_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	uint32_t state = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (argc < 3 || JS_ToUint32(ctx, &state, argv[1]) != 0)
+		return JS_UNDEFINED;
+	nscss_node_state_set(n, state, JS_ToBool(ctx, argv[2]));
+	t->dirty = true;
+	return JS_UNDEFINED;
+}
+
 static JSValue n_log_on(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	return JS_NewBool(ctx, qjs_debug || verbose_log);
@@ -3573,6 +3633,8 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("setCookie", 1, n_set_cookie),
 	JS_CFUNC_DEF("log", 1, n_log),
 	JS_CFUNC_DEF("logOn", 0, n_log_on),
+	JS_CFUNC_DEF("setState", 3, n_set_state),
+	JS_CFUNC_DEF("mediaMatch", 3, n_media_match),
 	JS_CFUNC_DEF("now", 0, n_now),
 	JS_CFUNC_DEF("userAgent", 0, n_user_agent),
 	JS_CFUNC_DEF("timer", 3, n_timer),

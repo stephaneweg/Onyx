@@ -162,6 +162,15 @@ typedef struct css_select_handler {
 	 * has its features: :host()'s argument), or NULL.
 	 */
 	void *(*onyx_host_pw)(void *pw);
+
+	/* Onyx: appended, NULL in a handler without it (the states then never match) */
+	/**
+	 * Whether node is in a state only the client knows, named as its pseudo-class
+	 * (lower case, without the colon): "popover-open" (the Popover API's showing
+	 * popovers), "modal" (a dialog opened by showModal()).
+	 */
+	css_error (*onyx_node_state)(void *pw, void *node, lwc_string *state,
+			bool *match);
 } css_select_handler;
 
 /**
@@ -275,6 +284,15 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
  * is its own (a host, an element assigned to a slot...); scopes: the other trees' rules
  * it takes.
  */
+/**
+ * Onyx: matchMedia -- the media query list of sheet's first @media rule (a sheet made of
+ * "@media <list> { ... }"): *match whether it matches media, *n_queries its queries, bit i
+ * of *invalid set when libcss could not read query i (it became "not all").
+ */
+css_error css_select_onyx_media_match(css_select_ctx *ctx, const css_stylesheet *sheet,
+		const css_unit_ctx *unit_ctx, const css_media *media, bool *match,
+		uint32_t *n_queries, uint32_t *invalid);
+
 css_error css_select_style_onyx(css_select_ctx *ctx, void *node,
 		const css_unit_ctx *unit_ctx,
 		const css_media *media, const css_stylesheet *inline_style,

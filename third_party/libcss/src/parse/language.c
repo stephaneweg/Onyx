@@ -1540,7 +1540,8 @@ fail:
 /* Onyx: the pseudo-classes and pseudo-elements of Selectors 4, CSS Pseudo 4 and the other
  * specifications that libcss does not know. Parsed and checked (a functional one's argument
  * too); matched when libcss can say (select.c: :read-only, :read-write, :required, :optional,
- * :placeholder-shown, :defined, :scope, :dir(), :nth-child(An+B of S)), else never matching
+ * :placeholder-shown, :defined, :scope, :dir(), :nth-child(An+B of S); :popover-open and :modal
+ * by the client: onyx_node_state), else never matching
  * -- a rule "a:has(b), c" keeps its c, as in a browser, where libcss dropped the whole rule.
  * The pseudo-elements never match (NetSurf draws none of them). */
 static const char *const onyx_pc_plain[] = {

@@ -244,9 +244,58 @@ class SubmitEvent extends Event {
 class PromiseRejectionEvent extends Event {
 	constructor(type, init = {}) { super(type, init); this.promise = init.promise; this.reason = init.reason; }
 }
+/* Onyx: CSS animations' and transitions' events (NetSurf runs no animation; a script can
+ * make and dispatch them) */
+class AnimationEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.animationName = String(init.animationName ?? '');
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = String(init.pseudoElement ?? '');
+	}
+}
+class TransitionEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.propertyName = String(init.propertyName ?? '');
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = String(init.pseudoElement ?? '');
+	}
+}
+/* Onyx: the attributes on the prototypes, as the IDL has them ('clientX' in
+ * MouseEvent.prototype: feature tests -- browserscore.dev -- look there); a constructor's
+ * value kept in a symbol of the object */
+function protoFields(C, names) {
+	for (const k of names) {
+		if (Object.getOwnPropertyDescriptor(C.prototype, k)) continue;
+		const slot = Symbol(k);
+		Object.defineProperty(C.prototype, k, { configurable: true, enumerable: true,
+			get() { return this[slot]; },
+			set(v) { Object.defineProperty(this, slot, { value: v, writable: true, configurable: true }); } });
+	}
+}
+protoFields(UIEvent, ['view', 'detail']);
+protoFields(MouseEvent, ['clientX', 'clientY', 'screenX', 'screenY', 'pageX', 'pageY', 'offsetX',
+	'offsetY', 'x', 'y', 'button', 'buttons', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey', 'relatedTarget']);
+protoFields(PointerEvent, ['pointerId', 'pointerType', 'isPrimary', 'width', 'height', 'pressure']);
+protoFields(WheelEvent, ['deltaX', 'deltaY', 'deltaZ', 'deltaMode']);
+protoFields(KeyboardEvent, ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat',
+	'isComposing', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey']);
+protoFields(FocusEvent, ['relatedTarget']);
+protoFields(InputEvent, ['data', 'inputType', 'isComposing']);
+protoFields(ErrorEvent, ['message', 'error']);
+protoFields(ProgressEvent, ['lengthComputable', 'loaded', 'total']);
+protoFields(PopStateEvent, ['state']);
+protoFields(HashChangeEvent, ['oldURL', 'newURL']);
+protoFields(MessageEvent, ['data', 'origin', 'source']);
+protoFields(SubmitEvent, ['submitter']);
+protoFields(PromiseRejectionEvent, ['promise', 'reason']);
+protoFields(AnimationEvent, ['animationName', 'elapsedTime', 'pseudoElement']);
+protoFields(TransitionEvent, ['propertyName', 'elapsedTime', 'pseudoElement']);
 Object.assign(G, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent,
 	KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, ProgressEvent, PopStateEvent,
-	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, TouchEvent: undefined });
+	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, AnimationEvent,
+	TransitionEvent, TouchEvent: undefined });
 delete G.TouchEvent;
 
 /* the event's path: its target, its ancestors, the document, the window */
@@ -435,9 +484,13 @@ const HANDLER_TYPES = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove',
 	'change', 'submit', 'reset', 'load', 'error', 'abort', 'scroll', 'resize',
 	'select', 'pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend',
 	'touchmove', 'animationend', 'transitionend', 'beforeunload', 'unload',
-	'hashchange', 'popstate', 'message', 'toggle', 'play', 'pause', 'ended'];
-function defineHandlers(proto) {
-	for (const t of HANDLER_TYPES) {
+	'hashchange', 'popstate', 'message', 'toggle', 'play', 'pause', 'ended',
+	/* (Onyx: the Popover API's; CSS animations' and transitions' -- their events can be
+	 * dispatched, NetSurf runs no animation itself) */
+	'beforetoggle', 'animationstart', 'animationiteration', 'animationcancel',
+	'transitionstart', 'transitionrun', 'transitioncancel'];
+function defineHandlers(proto, types = HANDLER_TYPES) {
+	for (const t of types) {
 		Object.defineProperty(proto, 'on' + t, {
 			configurable: true,
 			get() { const m = this[HANDLERS]; return (m && m.get(t)) || null; },
@@ -934,7 +987,8 @@ function cssValid(k, v) {
 	if (k.startsWith('--'))
 		return true;
 	v = String(v);
-	if (/[;{}]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
+	/* (Onyx: nor "!important" -- a value, not a declaration: CSS.supports("color", "red !important") is false) */
+	if (/[;{}!]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
 		return false;
 	const r = N.cssKept(k + ': ' + v, true);
 	return r !== null && r[1] > 0;
@@ -964,7 +1018,9 @@ function cssSupports(text) {
 			if (s[i] === '(') depth++;
 			else if (s[i] === ')' && --depth === 0) { i++; return s.slice(start, i - 1); }
 		}
-		return null;
+		/* (Onyx: the end of the text closes the blocks still open, as CSS Syntax does:
+		 * "selector(:nth-child(even of :not([hidden]))" is supported in a browser) */
+		return s.slice(start) + ')'.repeat(Math.max(0, depth - 1));
 	};
 	const cond = () => {
 		ws();
@@ -984,7 +1040,7 @@ function cssSupports(text) {
 		if (/^selector\(/i.test(s.slice(i))) {
 			i += 8;
 			const g = group();
-			return g !== null && cssSelectorValid(g);
+			return g !== null && g.trim() !== "" && cssSelectorValid(g);
 		}
 		if (s[i] !== '(') return false;
 		const g = group();
@@ -1153,6 +1209,13 @@ class CSSRule {
 	}
 	get parentRule() { return this._parent; }
 	get parentStyleSheet() { return this._sheet; }
+	/* (Onyx: the legacy type numbers, 0 for the newer rules) */
+	get type() {
+		return ({ CSSStyleRule: 1, CSSImportRule: 3, CSSMediaRule: 4, CSSFontFaceRule: 5,
+			CSSPageRule: 6, CSSKeyframesRule: 7, CSSKeyframeRule: 8, CSSMarginRule: 9,
+			CSSNamespaceRule: 10, CSSCounterStyleRule: 11, CSSSupportsRule: 12,
+			CSSFontFeatureValuesRule: 14 })[this.constructor.name] || 0;
+	}
 	get cssText() { return ''; }
 	set cssText(v) { /* (no effect, as in browsers) */ }
 	_changed() { if (this._sheet) this._sheet._changed(); }
@@ -2714,6 +2777,9 @@ htmlClass('HTMLAnchorElement', ['a'], HTMLAnchorElement);
 htmlClass('HTMLAreaElement', ['area'], class extends HTMLAnchorElement {});
 
 class HTMLImageElement extends HTMLElement {
+	/* (Onyx: CSSOM View's x / y: the image's border box in the page) */
+	get x() { return Math.round(this.getBoundingClientRect().left + (G.scrollX || 0)); }
+	get y() { return Math.round(this.getBoundingClientRect().top + (G.scrollY || 0)); }
 	/* (Onyx: the picture's state and natural size, NetSurf's for a displayed image; an image
 	 * a script loads -- new Image() -- is canvas.js's) */
 	_img() { return this.isConnected ? N.image(this) : null; }
@@ -3645,15 +3711,22 @@ const navigator = {
 	},
 };
 
-const screen = {
-	get width() { return N.scroll()[2]; },
-	get height() { return N.scroll()[3]; },
-	get availWidth() { return N.scroll()[2]; },
-	get availHeight() { return N.scroll()[3]; },
-	colorDepth: 24,
-	pixelDepth: 24,
-	orientation: { type: 'landscape-primary', angle: 0, addEventListener() {}, removeEventListener() {} },
-};
+/* (Onyx: a Screen, its attributes on the prototype) */
+class Screen extends EventTarget {
+	get width() { return N.scroll()[2]; }
+	get height() { return N.scroll()[3]; }
+	get availWidth() { return N.scroll()[2]; }
+	get availHeight() { return N.scroll()[3]; }
+	get availLeft() { return 0; }
+	get availTop() { return 0; }
+	get colorDepth() { return 24; }
+	get pixelDepth() { return 24; }
+	get isExtended() { return false; }
+	get orientation() { return SCREEN_ORIENTATION; }
+}
+const SCREEN_ORIENTATION = { type: 'landscape-primary', angle: 0, addEventListener() {}, removeEventListener() {} };
+G.Screen = Screen;
+const screen = new Screen();
 
 /* timers */
 const timers = new Map();
@@ -3729,24 +3802,69 @@ function mediaMatches(q) {
 		return not ? !ok : ok;
 	});
 }
+/* Onyx: a media query list as libcss reads and evaluates it (N.mediaMatch: the page's
+ * viewport; libcss's range syntax, aspect-ratio, orientation, hover...): { media, matches } --
+ * media its text with "not all" for a query libcss could not read, as a browser serializes
+ * it. mediaMatches above without a page's style context. */
+const MEDIA_INFO = new Map();
+function mediaInfo(q) {
+	q = String(q);
+	if (q.trim() === '') return { media: '', matches: true };
+	const key = q + '\u0000' + G.innerWidth + 'x' + G.innerHeight;
+	let info = MEDIA_INFO.get(key);
+	if (info) return info;
+	const r = N.mediaMatch(q, G.innerWidth, G.innerHeight);
+	if (r === null) return { media: q, matches: mediaMatches(q) };
+	const parts = [];
+	let depth = 0, start = 0;
+	for (let i = 0; i <= q.length; i++) {
+		const ch = q[i];
+		if (ch === '(' || ch === '[' || ch === '{') depth++;
+		else if (ch === ')' || ch === ']' || ch === '}') depth--;
+		else if (i === q.length || (ch === ',' && depth <= 0)) {
+			parts.push(q.slice(start, i).trim().replace(/\s+/g, ' '));
+			start = i + 1;
+		}
+	}
+	const media = parts.map((p, i) => i >= r[1] || ((r[2] >>> i) & 1) ? 'not all' : p).join(', ');
+	info = { media, matches: r[0] };
+	if (MEDIA_INFO.size > 256) MEDIA_INFO.clear();
+	MEDIA_INFO.set(key, info);
+	return info;
+}
 const mediaLists = new Set();
 class MediaQueryList extends EventTarget {
-	constructor(q) { super(); this.media = String(q); this._last = mediaMatches(q); this.onchange = null; }
-	get matches() { return mediaMatches(this.media); }
+	constructor(q) {
+		super();
+		Object.defineProperty(this, '_q', { value: String(q) });
+		Object.defineProperty(this, '_last', { value: mediaInfo(q).matches, writable: true });
+		Object.defineProperty(this, '_oc', { value: null, writable: true });
+	}
+	get media() { return mediaInfo(this._q).media; }
+	get matches() { return mediaInfo(this._q).matches; }
+	get onchange() { return this._oc; }
+	set onchange(fn) { this._oc = typeof fn === 'function' ? fn : null; }
 	addListener(fn) { this.addEventListener('change', fn); mediaLists.add(this); }
 	removeListener(fn) { this.removeEventListener('change', fn); }
 }
+class MediaQueryListEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		Object.defineProperty(this, '_m', { value: { media: String(init.media ?? ''), matches: !!init.matches } });
+	}
+	get media() { return this._m.media; }
+	get matches() { return this._m.matches; }
+}
+G.MediaQueryListEvent = MediaQueryListEvent;
 function matchMedia(q) { const m = new MediaQueryList(q); mediaLists.add(m); return m; }
 G.MediaQueryList = MediaQueryList;
 
 function checkMedia() {
 	for (const m of mediaLists) {
-		const now = mediaMatches(m.media);
+		const now = mediaInfo(m._q).matches;
 		if (now !== m._last) {
 			m._last = now;
-			const ev = new Event('change');
-			ev.matches = now;
-			ev.media = m.media;
+			const ev = new MediaQueryListEvent('change', { matches: now, media: m.media });
 			dispatch(m, ev);
 			if (typeof m.onchange === 'function') try { m.onchange(ev); } catch (e) { report(e); }
 		}
@@ -3842,20 +3960,51 @@ function storageProxy(origin) {
 G.Storage = Storage;
 
 /* console (Onyx: its arguments made text only when the log is read -- N.logOn -- and an
- * object's text bounded: 2000 values at most, Vue's development build hands console.warn
- * whole component trees) */
+ * object's text bounded: JSON's, but 2000 values at most and no toJSON() but a Date's --
+ * Vue's development build hands console.warn whole component trees, browserscore.dev's
+ * features' toJSON() each made its whole subtree: a minute) */
 const FMT_CUT = {};
+function fmtJSON(a) {
+	let n = 0;
+	const stack = [];
+	const val = (v, inArray) => {
+		if (++n > 2000) throw FMT_CUT;
+		if (v instanceof Date) v = v.toJSON();
+		switch (typeof v) {
+		case 'string': return JSON.stringify(v);
+		case 'number': return isFinite(v) ? String(v) : 'null';
+		case 'boolean': return String(v);
+		case 'bigint': throw new TypeError('BigInt');
+		case 'undefined': case 'function': case 'symbol': return inArray ? 'null' : undefined;
+		}
+		if (v === null) return 'null';
+		if (stack.includes(v)) throw new TypeError('cyclic');
+		stack.push(v);
+		let out;
+		if (Array.isArray(v)) {
+			const items = [];
+			for (let i = 0; i < v.length; i++) items.push(val(v[i], true));
+			out = '[' + items.join(',') + ']';
+		} else {
+			const items = [];
+			for (const k of Object.keys(v)) {
+				const s = val(v[k], false);
+				if (s !== undefined) items.push(JSON.stringify(k) + ':' + s);
+			}
+			out = '{' + items.join(',') + '}';
+		}
+		stack.pop();
+		return out;
+	};
+	return val(a, false);
+}
 function fmt(args) {
 	return args.map(a => {
 		if (typeof a === 'string') return a;
 		if (a instanceof Error) return a + (a.stack ? '\n' + a.stack : '');
 		if (a instanceof Node) return '<' + (a.nodeName || 'node') + '>';
-		let n = 0;
 		try {
-			return JSON.stringify(a, (k, v) => {
-				if (++n > 2000) throw FMT_CUT;
-				return v;
-			});
+			return fmtJSON(a);
 		} catch (e) {
 			if (e === FMT_CUT)
 				return '[' + ((a && a.constructor && a.constructor.name) || 'object') + ' ...]';
@@ -4799,6 +4948,25 @@ G.IntersectionObserver = IntersectionObserver;
 G.IntersectionObserverEntry = function IntersectionObserverEntry() {};
 
 const resizeObservers = new Set();
+/* (Onyx: the entries and sizes as their classes, the attributes on the prototypes) */
+class ResizeObserverSize {
+	constructor(i, b) { Object.defineProperty(this, '_s', { value: [i, b] }); }
+	get inlineSize() { return this._s[0]; }
+	get blockSize() { return this._s[1]; }
+}
+class ResizeObserverEntry {
+	constructor(el, w, h) {
+		const size = Object.freeze([new ResizeObserverSize(w, h)]);
+		Object.defineProperty(this, '_e', { value: { target: el, rect: new DOMRect(0, 0, w, h), size } });
+	}
+	get target() { return this._e.target; }
+	get contentRect() { return this._e.rect; }
+	get borderBoxSize() { return this._e.size; }
+	get contentBoxSize() { return this._e.size; }
+	get devicePixelContentBoxSize() { return this._e.size; }
+}
+G.ResizeObserverSize = ResizeObserverSize;
+G.ResizeObserverEntry = ResizeObserverEntry;
 class ResizeObserver {
 	constructor(cb) { this._cb = cb; this._targets = new Map(); }
 	observe(el) { this._targets.set(el, null); resizeObservers.add(this); scheduleObservers(); }
@@ -4811,9 +4979,7 @@ class ResizeObserver {
 			const key = r[2] + 'x' + r[3];
 			if (key === last) continue;
 			this._targets.set(el, key);
-			const size = [{ inlineSize: r[2], blockSize: r[3] }];
-			entries.push({ target: el, contentRect: new DOMRect(0, 0, r[2], r[3]),
-				borderBoxSize: size, contentBoxSize: size, devicePixelContentBoxSize: size });
+			entries.push(new ResizeObserverEntry(el, r[2], r[3]));
 		}
 		if (entries.length)
 			try { this._cb(entries, this); } catch (e) { report(e); }
@@ -5132,6 +5298,10 @@ class FontFace {
 		this.display = desc.display || 'auto';
 		this.featureSettings = desc.featureSettings || 'normal';
 		this.variant = desc.variant || 'normal';
+		this.variationSettings = desc.variationSettings || 'normal';
+		this.ascentOverride = desc.ascentOverride || 'normal';
+		this.descentOverride = desc.descentOverride || 'normal';
+		this.lineGapOverride = desc.lineGapOverride || 'normal';
 		this.status = 'unloaded';
 		this._src = source;
 		this._bytes = null;
@@ -5176,6 +5346,9 @@ class FontFace {
 		N.addFontFace(this.family, w1, w2, /italic|oblique/.test(this.style), this._bytes);
 	}
 }
+protoFields(FontFace, ['family', 'style', 'weight', 'stretch', 'unicodeRange', 'display',
+	'featureSettings', 'variant', 'variationSettings', 'ascentOverride', 'descentOverride',
+	'lineGapOverride', 'status', 'loaded']);
 class FontFaceSet extends EventTarget {
 	constructor() {
 		super();
@@ -5234,6 +5407,19 @@ const fontFaces = new FontFaceSet();
 G.FontFace = FontFace;
 G.FontFaceSet = FontFaceSet;
 
+/* Onyx: the visual viewport -- the layout viewport (no pinch zoom) */
+class VisualViewport extends EventTarget {
+	get offsetLeft() { return 0; }
+	get offsetTop() { return 0; }
+	get pageLeft() { return G.scrollX || 0; }
+	get pageTop() { return G.scrollY || 0; }
+	get width() { return G.innerWidth; }
+	get height() { return G.innerHeight; }
+	get scale() { return 1; }
+}
+defineHandlers(VisualViewport.prototype, ['resize', 'scroll', 'scrollend']);
+G.VisualViewport = VisualViewport;
+
 /* ---- the global object ------------------------------------------------------------------- */
 
 Object.assign(G, {
@@ -5246,6 +5432,9 @@ Object.assign(G, {
 	cancelIdleCallback: clearTimeout,
 	queueMicrotask: fn => { NativePromise.resolve().then(fn).catch(report); },
 	matchMedia, getComputedStyle, atob, btoa,
+	/* (Onyx: a tab's window is not moved or resized by its scripts, as in browsers) */
+	moveTo() {}, moveBy() {}, resizeTo() {}, resizeBy() {},
+	visualViewport: new VisualViewport(),
 	URL, URLSearchParams, TextEncoder, TextDecoder, fetch, XMLHttpRequest, Headers, Request, Response,
 	AbortController, AbortSignal, Blob, File,
 	Location, Storage,
@@ -5263,7 +5452,10 @@ Object.assign(G, {
 		randomUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }); },
 		subtle: {},
 	},
-	CSS: { supports: (a, b) => b === undefined ? cssSupports(a) :
+	CSS: { supports: (a, b) => b === undefined ?
+		/* (Onyx: as the spec, a condition that does not parse is tried again in parentheses:
+		 * CSS.supports("color: red")) */
+		cssSupports(a) || cssSupports("(" + a + ")") :
 		cssValid(String(a).trim().toLowerCase(), b), escape: s => String(s).replace(/([^a-zA-Z0-9_ -￿-])/g, '\\$1') },
 	customElements: {
 		_d: new Map(),
