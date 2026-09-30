@@ -69,3 +69,25 @@
 + color: light-dark(white, black)
 + background-image: image-set("a.png" 1x, "b.png" 2x)
 - width: 10deg
+
+# a 65-byte inline style whose last character was lost (libparserutils' filter)
++ color: rgb(1,                                               2, 3)
++ border-image-source: linear-gradient(in hsl to right, #A37, #595)
+
+# a function left open at the end of the value is closed there
++ width: calc(1px * sin(45deg)
++ color: color-mix(in srgb, currentColor 10%, rgba(0, 0, 0, .5) 65%
+# relative colours, calc-size(), anchor positioning, substitution functions
++ color: rgb(from indianred 255 g b)
++ color: hsl(from lightseagreen calc(h + 180) s l)
++ color: oklch(from oklch(52.6% 0.115 44.6deg) l c  calc(h + 90))
+- color: rgb(indianred 255 g b)
++ width: calc-size(auto, size)
++ width: calc-size(fit-content, 30px + size / 2)
+- width: calc-size(auto, size + red)
++ inset-block-start: anchor(--anchor top)
++ justify-items: anchor-center
++ position-area: x-self-end
++ width: attr(data-value px)
++ width: if(style(--x): 100px; else: 200px)
++ cursor: image-set(url("foo.png") 1x, url("foo-2x.png") 2x) 2 2, auto

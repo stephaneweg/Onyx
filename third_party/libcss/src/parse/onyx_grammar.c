@@ -24,11 +24,21 @@
 #define G_MAX_TOKENS 512
 #define G_MAX_STEPS 200000
 
-/* a token of the value (whitespace dropped); pair: the matching bracket's index, else -1 */
+/* a token of the value (whitespace dropped); pair: the matching bracket's index, else -1
+ * (n, the value's end, for a function left open at the end: CSS closes it there); rel: in
+ * the arguments of a relative colour (rgb(from ...)), whose channel keywords are numbers */
 typedef struct {
 	const css_token *t;
 	int32_t pair;
+	uint8_t rel;
 } gtok;
+
+/* the position after the bracket closing at `close` (a function closed by the value's end
+ * has none) */
+static inline int g_after(int close, int n)
+{
+	return close >= n ? n : close + 1;
+}
 
 typedef struct {
 	const gtok *tok;
@@ -123,6 +133,7 @@ static int g_tokens(const parserutils_vector *vector, int32_t start, int32_t end
 			return -1;
 		out[n].t = t;
 		out[n].pair = -1;
+		out[n].rel = 0;
 		if (is_open(t)) {
 			if (sp == 64)
 				return -1;
@@ -139,7 +150,39 @@ static int g_tokens(const parserutils_vector *vector, int32_t start, int32_t end
 	/* (an unclosed function at the end of the value: closed there, as CSS does) */
 	while (sp > 0)
 		out[stack[--sp]].pair = n;
+
+	/* the relative colours: rgb(from <color> r g b), lch(from ... l c h)... */
+	for (i = 0; i < n; i++) {
+		static const char *const fns[] = { "rgb", "rgba", "hsl", "hsla", "hwb", "lab",
+				"lch", "oklab", "oklch", "color" };
+		size_t k;
+		if (out[i].t->type != CSS_TOKEN_FUNCTION || i + 1 >= n ||
+				!is_ident(out[i + 1].t, "from"))
+			continue;
+		for (k = 0; k < sizeof(fns) / sizeof(fns[0]); k++) {
+			if (is_function(out[i].t, fns[k])) {
+				int32_t j;
+				for (j = i + 1; j < out[i].pair && j < n; j++)
+					out[j].rel = 1;
+				break;
+			}
+		}
+	}
 	return n;
+}
+
+/* a relative colour's channel keyword (a number there) */
+static bool g_channel(const gtok *g)
+{
+	static const char *const ch[] = { "r", "g", "b", "h", "s", "l", "w", "a", "c", "x",
+			"y", "z", "alpha" };
+	size_t k;
+	if (!g->rel || g->t->type != CSS_TOKEN_IDENT)
+		return false;
+	for (k = 0; k < sizeof(ch) / sizeof(ch[0]); k++)
+		if (is_ident(g->t, ch[k]))
+			return true;
+	return false;
 }
 
 /* ---- numbers and units ---------------------------------------------------------------------- */
@@ -254,6 +297,8 @@ typedef struct {
 	const gtok *tok;
 	int end;		/* the ')' of the function being read */
 	int pct;
+	int n;			/* the value's end */
+	bool size_kw;		/* calc-size(): the keyword size is a length */
 } gmath;
 
 static int gm_sum(gmath *x, int *i);
@@ -283,9 +328,14 @@ static int gm_value(gmath *x, int *i)
 		return css__onyx_unit_kind(d + used, len - used);
 	case CSS_TOKEN_IDENT:
 		if (is_ident(t, "e") || is_ident(t, "pi") || is_ident(t, "infinity") ||
-				is_ident(t, "-infinity") || is_ident(t, "nan")) {
+				is_ident(t, "-infinity") || is_ident(t, "nan") ||
+				g_channel(&x->tok[*i])) {
 			(*i)++;
 			return ONYX_MT_NUMBER;
+		}
+		if (x->size_kw && is_ident(t, "size")) {
+			(*i)++;
+			return ONYX_MT_LENGTH;
 		}
 		return ONYX_MT_BAD;
 	case CSS_TOKEN_FUNCTION:
@@ -302,7 +352,7 @@ static int gm_value(gmath *x, int *i)
 		x->end = save;
 		if (r == ONYX_MT_BAD || *i != close)
 			return ONYX_MT_BAD;
-		*i = close + 1;
+		*i = g_after(close, x->n);
 		return r;
 	}
 	return ONYX_MT_BAD;
@@ -455,7 +505,7 @@ static int gm_fn(gmath *x, int i, int *next)
 	x->end = save;
 	if (r == GM_KW)
 		r = ONYX_MT_BAD;
-	*next = close + 1;
+	*next = g_after(close, x->n);
 	return r;
 }
 
@@ -466,8 +516,10 @@ static int g_math_type_at(const gtok *tok, int n, int i, int pct, int *next)
 	x.tok = tok;
 	x.end = n;
 	x.pct = pct;
-	if (tok[i].pair < 0 || tok[i].pair >= n)
-		return ONYX_MT_BAD;	/* (unclosed) */
+	x.n = n;
+	x.size_kw = false;
+	if (tok[i].pair < 0)
+		return ONYX_MT_BAD;
 	return gm_fn(&x, i, next);
 }
 
@@ -541,11 +593,9 @@ static bool g_prim(gm *m, const onyx_gnode *nd, int pos, const gk *k)
 					(is_char(t, ';') || is_char(t, '!')))
 				break;
 			if (is_open(t))
-				i = m->tok[i].pair + 1;
+				i = g_after(m->tok[i].pair, m->n);
 			else
 				i++;
-			if (i > m->n)
-				i = m->n;
 			ends[ne++] = i;
 		}
 		while (ne > 0) {
@@ -554,11 +604,35 @@ static bool g_prim(gm *m, const onyx_gnode *nd, int pos, const gk *k)
 		}
 		return false;
 	}
+	if (nd->a == ONYX_P_CALC_SUM) {
+		/* a calculation (calc-size()'s, ...): to the next ',' or the function's end */
+		gmath x;
+		int end, p = pos, r;
+		for (end = pos; end < m->n; ) {
+			t = m->tok[end].t;
+			if (is_char(t, ',') || (is_close(t) && m->tok[end].pair < pos))
+				break;
+			end = is_open(t) ? g_after(m->tok[end].pair, m->n) : end + 1;
+		}
+		if (end == pos)
+			return false;
+		x.tok = m->tok;
+		x.end = end;
+		x.pct = ONYX_MT_LENGTH;
+		x.n = m->n;
+		x.size_kw = true;
+		r = gm_sum(&x, &p);
+		if (r == ONYX_MT_BAD || p != end)
+			return false;
+		return k->fn(m, end, k);
+	}
 	if (pos >= m->n)
 		return false;
 	t = m->tok[pos].t;
 
 	if (g_numeric(nd->a, &want, &pct)) {
+		if (g_channel(&m->tok[pos]) && want == ONYX_MT_NUMBER)
+			return k->fn(m, pos + 1, k);
 		if (t->type == CSS_TOKEN_FUNCTION && css__onyx_is_math_function(t)) {
 			int next, r = g_math_type_at(m->tok, m->n, pos, pct, &next);
 			if (r == ONYX_MT_BAD || r != want)
@@ -619,7 +693,7 @@ static bool g_prim(gm *m, const onyx_gnode *nd, int pos, const gk *k)
 				m->tok[pos + 1].t->type == CSS_TOKEN_STRING &&
 				m->tok[pos].pair >= pos + 2) {
 			/* url( <string> <url-modifier>* ): the modifiers taken as they come */
-			return k->fn(m, m->tok[pos].pair + 1, k);
+			return k->fn(m, g_after(m->tok[pos].pair, m->n), k);
 		}
 		return false;
 	case ONYX_P_IDENT:
@@ -675,7 +749,7 @@ static bool g_prim(gm *m, const onyx_gnode *nd, int pos, const gk *k)
 		if (t->type != CSS_TOKEN_FUNCTION || len < 3 || d[0] != '-' || d[1] != '-' ||
 				m->tok[pos].pair < 0)
 			return false;
-		return k->fn(m, m->tok[pos].pair + 1, k);
+		return k->fn(m, g_after(m->tok[pos].pair, m->n), k);
 	default:
 		return false;	/* (an+b, ...: not in a value) */
 	}
@@ -747,7 +821,7 @@ static bool g_func_end(gm *m, int pos, const gk *k)
 {
 	if (pos != k->end)
 		return false;
-	return k->next->fn(m, pos + 1, k->next);
+	return k->next->fn(m, g_after(pos, m->n), k->next);
 }
 
 static bool g_bang_end(gm *m, int pos, const gk *k)
@@ -857,10 +931,10 @@ static bool g_match(gm *m, uint16_t node, int pos, const gk *k)
 		if (strlen(name) != len || strncasecmp(d, name, len) != 0)
 			return false;
 		close = m->tok[pos].pair;
-		if (close < 0 || close >= m->n)
+		if (close < 0)
 			return false;
 		if (nd->b == 0xffff)
-			return close == pos + 1 ? k->fn(m, close + 1, k) : false;
+			return close == pos + 1 ? k->fn(m, g_after(close, m->n), k) : false;
 		memset(&k2, 0, sizeof(k2));
 		k2.fn = g_func_end;
 		k2.next = k;

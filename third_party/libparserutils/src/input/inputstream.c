@@ -242,7 +242,8 @@ parserutils_error parserutils_inputstream_peek_slow(
 		return PARSERUTILS_BADPARM;
 
 	/* There's insufficient data in the buffer, so read some more */
-	if (s->raw->length == 0) {
+	if (s->raw->length == 0 && !parserutils__filter_pending(s->input)) {
+		/* (Onyx: unless the filter still holds converted data) */
 		/* No more data to be had */
 		return s->public.had_eof ? PARSERUTILS_EOF
 					 : PARSERUTILS_NEEDDATA;

@@ -28,6 +28,7 @@ PRIMS = [
     'dashed-ident', 'hex-color', 'urange', 'any-value', 'declaration-value', 'zero', 'id',
     'decibel', 'semitones', 'number-percentage', 'custom-property-name', 'an-plus-b',
     'function-token', 'unicode-range-token', 'dashed-function', 'ratio-number',
+    'calc-sum',
 ]
 PRIM_ALIAS = {
     'identifier': 'ident', 'ident-token': 'ident', 'string-token': 'string', 'uri': 'url',
@@ -35,7 +36,7 @@ PRIM_ALIAS = {
     'hash-token': 'id', 'unicode-range-token': 'urange', 'url-token': 'url',
     'an+b': 'an-plus-b', 'extension-name': 'dashed-ident', 'whole-value': 'declaration-value',
     'style-feature-value': 'declaration-value', 'style-feature-name': 'dashed-ident',
-    'target-name': 'string', 'integer': 'integer', 'calc-sum': 'number',
+    'target-name': 'string', 'integer': 'integer',
 }
 # types the specifications define in prose (or whose webref syntax is not usable here)
 OVERRIDES = {
@@ -52,7 +53,7 @@ OVERRIDES = {
     'padding-width': '<length-percentage [0,∞]>',
     'font-src-list': '[ <url> [ format( <font-format> ) ]? [ tech( <font-tech># ) ]? | '
                      'local( <family-name> ) ]#',
-    'url-set': '<url>#',
+    'url-set': '<image-set()>',     # (CSS UI 4: an image-set() of URLs)
     'age': 'child | young | old', 'gender': 'male | female | neutral',
     'voice-family-name': '<string> | <custom-ident>+',
     'level': 'x-weak | weak | medium | strong | x-strong',
@@ -60,7 +61,7 @@ OVERRIDES = {
     'timeline-range-center-subject': 'source | target',
     'animation-action': 'none | play | play-once | play-forwards | play-backwards | pause | reset | replay',
     'url-modifier': '<ident> | <function-token> <any-value>? )',
-    'size-keyword': 'xx-small | x-small | small | medium | large | x-large | xx-large | xxx-large',
+    'size-keyword': 'auto | min-content | max-content | fit-content | stretch | contain',
     'segment-options': 'segment <integer [1,∞]>',
     'integer': None, 'number': None,     # primitives
     'color-base': None,                  # (webref's is fine)
@@ -73,6 +74,29 @@ FUNC_FIXES = {
     'ellipse()': 'ellipse( [ <radial-extent> | <length-percentage [0,∞]> ]{2}? [ at <position> ]? )',
 }
 
+# properties / types whose webref syntax misses what the specifications (or the shipping
+# engines' aliases of renamed keywords) allow
+PROP_FIXES = {
+    # CSS Anchor Positioning: anchor() / anchor-size() in every inset property
+    'inset-block-start': "<'top'>", 'inset-block-end': "<'top'>",
+    'inset-inline-start': "<'top'>", 'inset-inline-end': "<'top'>",
+}
+PROP_APPEND = {
+    # anchor-center: the *-items properties too
+    'justify-items': ' | anchor-center', 'align-items': ' | anchor-center',
+}
+TYPE_REPLACE = {
+    # the names before CSS Anchor Positioning renamed them (x-self-start -> self-x-start...),
+    # still what the engines ship
+    'position-area': [('span-self-x-end |', 'span-self-x-end | x-self-start | x-self-end | '
+                       'span-x-self-start | span-x-self-end |'),
+                      ('span-self-y-end |', 'span-self-y-end | y-self-start | y-self-end | '
+                       'span-y-self-start | span-y-self-end |')],
+}
+PROP_REPLACE = {
+    'position-visibility': [('anchor-visible ||', 'anchor-visible || anchors-visible ||')],
+}
+
 types, funcs, props = {}, {}, {}
 for t in src['types']:
     types.setdefault(t['name'], []).append(t)
@@ -81,6 +105,19 @@ for f in src['functions']:
 for p in src['properties']:
     if 'syntax' in p:
         props[p['name']] = p['syntax']
+for k, v in PROP_FIXES.items():
+    props[k] = v
+for k, v in PROP_APPEND.items():
+    props[k] += v
+for k, reps in PROP_REPLACE.items():
+    for a, b in reps:
+        assert a in props[k], (k, a)
+        props[k] = props[k].replace(a, b)
+for k, reps in TYPE_REPLACE.items():
+    for t in types[k]:
+        for a, b in reps:
+            assert a in t['syntax'], (k, a)
+            t['syntax'] = t['syntax'].replace(a, b)
 
 def warn(*a):
     print('onyx_grammar_gen:', *a, file=sys.stderr)

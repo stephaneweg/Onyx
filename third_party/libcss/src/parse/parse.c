@@ -2112,8 +2112,11 @@ css_error parseAny(css_parser *parser)
 			if (error != CSS_OK)
 				return error;
 
-			/* parse error */
-			parser->parseError = true;
+			/* Onyx: the end of the input closes the open function or
+			 * bracket (CSS Syntax 3: a parse error, but the block -- and
+			 * its declaration -- are kept, as browsers do: an inline
+			 * style "width: calc(1px + 2px" is valid) */
+			parserutils_stack_pop(parser->open_items, NULL);
 
 			return done(parser);
 		}

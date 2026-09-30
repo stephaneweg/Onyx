@@ -2134,9 +2134,14 @@ static css_error onyx_parse_generic(css_language *c, int gidx,
 		if (t->type == CSS_TOKEN_FUNCTION && (lwc_string_caseless_isequal(t->idata,
 				c->strings[FN_VAR], &match) == lwc_error_ok && match))
 			subst = true;
-		if (t->type == CSS_TOKEN_FUNCTION && lwc_string_length(t->idata) == 3 &&
-				strncasecmp(lwc_string_data(t->idata), "env", 3) == 0)
-			subst = true;
+		if (t->type == CSS_TOKEN_FUNCTION && ((lwc_string_length(t->idata) == 3 &&
+				(strncasecmp(lwc_string_data(t->idata), "env", 3) == 0 ||
+				 strncasecmp(lwc_string_data(t->idata), "var", 3) == 0)) ||
+				(lwc_string_length(t->idata) == 4 &&
+				 strncasecmp(lwc_string_data(t->idata), "attr", 4) == 0) ||
+				(lwc_string_length(t->idata) == 2 &&
+				 strncasecmp(lwc_string_data(t->idata), "if", 2) == 0)))
+			subst = true;	/* (the substitution functions) */
 		if (t->type != CSS_TOKEN_S) {
 			if (first == NULL)
 				first = t;
