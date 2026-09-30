@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Animation frames</title>
+<!-- tools/tests/netsurf: frame times of a few animated elements (html/onyx_anim.c), to be
+     measured with NS_PERF=1 (the "ONYX-PERF anim:frame" lines): a spinner (transform), a
+     pulse (opacity), a colour cycle, a sliding bar (translate) -- paint-only frames -- and,
+     with ?layout, a width animation too (a layout at each frame). Some text around them. -->
+<style>
+body { margin: 0; font: 15px sans-serif; background: #f6f6f6; }
+header { background: #234; color: #fff; padding: 12px 20px; }
+.row { display: flex; gap: 20px; padding: 20px; }
+.card { width: 160px; height: 100px; background: #fff; border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); padding: 10px; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes cycle { 0% { background-color: #e33; } 33% { background-color: #3e3; }
+                   66% { background-color: #33e; } 100% { background-color: #e33; } }
+@keyframes slide { from { transform: translateX(0px); } to { transform: translateX(300px); } }
+@keyframes grow { from { width: 100px; } to { width: 400px; } }
+#spin { width: 40px; height: 40px; border: 4px solid #ccc; border-top-color: #36c;
+        border-radius: 50%; animation: spin 1s linear infinite; }
+#pulse { animation: pulse 1.2s ease-in-out infinite; }
+#cycle { animation: cycle 3s linear infinite; }
+#bar { width: 60px; height: 12px; background: #c63; animation: slide 2s ease-in-out infinite alternate; }
+#grow { height: 12px; background: #3a6; width: 100px; }
+.layout #grow { animation: grow 2s ease-in-out infinite alternate; }
+p { margin: 10px 20px; line-height: 1.5; }
+</style></head><body>
+<header>Onyx NetSurf: animation frames</header>
+<div class="row"><div class="card"><div id="spin"></div></div><div class="card" id="pulse">pulse</div>
+<div class="card" id="cycle">colours</div></div>
+<div style="padding: 0 20px"><div id="bar"></div><div id="grow"></div></div>
+<script>if (location.search.indexOf('layout') >= 0) document.body.className = 'layout';</script>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore
+et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse.</p>
+<p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id
+est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque
+laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto.</p>
+</body></html>

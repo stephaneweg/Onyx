@@ -762,7 +762,7 @@ static bool hv_finish(html_content *c, struct hv *hp, const char *what)
 	}
 	free(h.map);
 	free(h.job);
-	if (h.fail && onyx_perf_on())
+	if (h.fail && what != NULL && onyx_perf_on())
 		fprintf(stderr, "ONYX-PERF %s:rebox (%s)\n", what, h.why ? h.why : "memory");
 	return !h.fail;
 }
@@ -856,7 +856,7 @@ bool onyx_hover_restyle_elements(struct html_content *c,
 		}
 		hv_restyle(&h, items[k].node, ps, false, 0);
 	}
-	return hv_finish(c, &h, "anim");
+	return hv_finish(c, &h, NULL);	/* (onyx_anim.c tells) */
 }
 
 /* ---- the replaced results freed once no box sees them ---------------------------------- */

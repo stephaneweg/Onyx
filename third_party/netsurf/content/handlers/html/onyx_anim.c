@@ -576,7 +576,7 @@ struct onyx_anim {
 	int next_id;
 	double now;
 	bool in_tick, tick_scheduled, raf;
-	double last_tick, last_work;
+	double last_tick, last_work, last_rebox;
 	unsigned int gen;
 	/* a rebox's old styles */
 	struct oa_capture *capt;
@@ -587,6 +587,9 @@ struct onyx_anim {
 	struct oa_event *ev;
 	int nev, capev;
 	unsigned int frames;
+	/* NS_PERF: the frames' work (us), printed every 120 frames */
+	unsigned int stat_n;
+	uint64_t stat_sum, stat_max;
 };
 
 static double oa_clock(void)
@@ -1542,8 +1545,11 @@ void onyx_anim_styled(struct html_content *c, struct dom_node *n,
 	} else {
 		css_computed_style_destroy(cur);
 	}
-	oa_style_unref(r->cur);
-	r->cur = css_computed_style_onyx_ref(res->styles[CSS_PSEUDO_ELEMENT_NONE]);
+	if (!a->applying) {
+		/* (a frame's: the frame sets it once the boxes have it) */
+		oa_style_unref(r->cur);
+		r->cur = css_computed_style_onyx_ref(res->styles[CSS_PSEUDO_ELEMENT_NONE]);
+	}
 	if (a->nev > 0)
 		oa_schedule(a);
 	for (struct oa_effect *e = r->effects; e != NULL && !a->tick_scheduled; e = e->next)
@@ -1681,29 +1687,38 @@ static void oa_update(html_content *c, struct onyx_anim *a, double now)
 		}
 	}
 	if (n > 0) {
-		bool relayout = false, ok;
+		bool relayout = false, ok, rebox = false;
 		uint64_t t0 = onyx_perf_now();
 
+		/* all at once: their rectangles redrawn, else the page laid out again; else
+		 * one by one (an element this cannot restyle -- the root, a pseudo-element
+		 * appearing -- has its boxes built again, a few times a second at most) */
 		a->applying = true;
-		ok = onyx_hover_restyle_elements(c, items, n, false);
-		if (!ok) {
-			ok = onyx_hover_restyle_elements(c, items, n, true);
-			relayout = ok;
-		}
-		a->applying = false;
-		if (ok) {
-			for (int k = 0; k < n; k++) {
+		ok = onyx_hover_restyle_elements(c, items, n, false) ||
+				(relayout = onyx_hover_restyle_elements(c, items, n, true));
+		for (int k = 0; k < n; k++) {
+			bool done = ok;
+			if (!ok) {
+				done = onyx_hover_restyle_elements(c, &items[k], 1, false);
+				if (!done && onyx_hover_restyle_elements(c, &items[k], 1, true))
+					done = relayout = true;
+			}
+			if (done) {
 				oa_style_unref(recs[k]->cur);
 				recs[k]->cur = (css_computed_style *) items[k].style;
-			}
-		} else {
-			/* (the boxes built again: the selection gives them their styles) */
-			for (int k = 0; k < n; k++)
+			} else {
 				css_computed_style_destroy((css_computed_style *) items[k].style);
+				rebox = true;
+			}
+		}
+		a->applying = false;
+		onyx_perf_log(relayout ? "anim:restyle+layout" : "anim:restyle", t0);
+		if (rebox && now - a->last_rebox >= 200) {
+			/* (the selection gives the boxes their animated styles) */
+			a->last_rebox = now;
 			html_script_dom_changed(c);
 		}
-		onyx_perf_log(relayout ? "anim:restyle+layout" : "anim:restyle", t0);
-		if (relayout) {
+		if (relayout && !c->rebox_pending) {
 			t0 = onyx_perf_now();
 			content__reformat(&c->base, false, c->base.available_width,
 					c->base.available_height);
@@ -1721,7 +1736,7 @@ static void oa_tick(void *p)
 {
 	html_content *c = p;
 	struct onyx_anim *a = c->onyx_anim;
-	uint64_t t0 = onyx_perf_now();
+	uint64_t t0 = onyx_perf_now(), work = 0;
 	double now, start;
 
 	if (a == NULL)
@@ -1735,6 +1750,7 @@ static void oa_tick(void *p)
 	a->in_tick = true;
 	oa_update(c, a, now);
 	a->in_tick = false;
+	work = onyx_perf_now() - t0;	/* (the animations' work: not the scripts') */
 	oa_flush_events(c, a);
 	if (a->raf && c->jsthread != NULL) {
 		a->raf = false;
@@ -1743,8 +1759,23 @@ static void oa_tick(void *p)
 		c->script_hold--;
 	}
 	a->last_work = oa_clock() - start;
-	if (a->n > 0)
-		onyx_perf_log("anim:frame", t0);
+	if (onyx_perf_on() && a->n > 0) {
+		uint64_t d = work;
+		a->stat_n++;
+		a->stat_sum += d;
+		if (d > a->stat_max)
+			a->stat_max = d;
+		if (a->stat_n == 120) {
+			fprintf(stderr, "ONYX-PERF anim:frames 120, %u elements: %lu us a frame on "
+					"average, %lu at most\n", a->n,
+					(unsigned long) (a->stat_sum / a->stat_n),
+					(unsigned long) a->stat_max);
+			a->stat_n = 0;
+			a->stat_sum = a->stat_max = 0;
+		}
+		if (d >= ONYX_PERF_MIN_US)
+			fprintf(stderr, "ONYX-PERF anim:frame %lu us\n", (unsigned long) d);
+	}
 	if (a->raf || a->nev > 0 || oa_any_running(a, oa_clock()))
 		oa_schedule(a);
 }
