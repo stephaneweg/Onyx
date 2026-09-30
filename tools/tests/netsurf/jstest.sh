@@ -105,6 +105,16 @@ L=$OUT/css-bodyoverflow.log
 run css-bodyoverflow.html "$(waits 40)" "$L"
 expect "$L" "bodyoverflow page true"
 
+echo "js-iframeblank.html (an about:blank iframe: no endless broadcast)"
+L=$OUT/js-iframeblank.log
+run js-iframeblank.html "$(waits 40)" "$L"
+expect "$L" "iframeblank loaded"
+
+echo "css-mqrange.html (media queries' range syntax)"
+L=$OUT/css-mqrange.log
+run css-mqrange.html "$(waits 30)" "$L"
+expect "$L" "mqrange a=none c=none d=none e=none f=none g=none"
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"
@@ -286,6 +296,24 @@ for s in "worker types function function function" "clone function DataCloneErro
 	expect "$L" "$s"
 done
 refuse "$L" "worker says after close (not delivered)"
+
+echo "js-focus.html (element.focus() puts the caret in a textarea of a fixed overlay: google.com's search)"
+L=$OUT/js-focus.log
+run js-focus.html "$(waits 60)$(click 60 155)key a;wait;key b;$(waits 30)" "$L"
+for s in "active ta" "overlay full" "typed ab"; do expect "$L" "$s"; done
+
+echo "js-scrollers.html (a consent screen: the wheel, PageDown, a scrollbar drag reach its inner scroller)"
+L=$OUT/js-scrollers.log
+run js-scrollers.html "$(waits 60)move 300 300;key 0x107;$(waits 30)$(click 120 700)" "$L"
+expect "$L" "panel scrolled down"
+expect "$L" "accepted"
+L=$OUT/js-scrollers-drag.log
+run js-scrollers.html "$(waits 60)move 789 110;wait;down 789 110;wait;move 789 500;wait;up 789 500;$(waits 30)" "$L"
+expect "$L" "panel scrolled down"
+L=$OUT/js-scrollframe.log
+run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 700)" "$L"
+expect "$L" "panel scrolled down"
+expect "$L" "accepted"
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

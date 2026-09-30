@@ -335,8 +335,8 @@ static css_error mq_parse_range(lwc_string **strings,
 
 	if (value_or_name->type == CSS_TOKEN_NUMBER &&
 			tokenIsChar(parserutils_vector_peek(vector, *ctx), '/')) {
-		/* ratio */
-		error = mq_parse_ratio(vector, ctx, token, &ratio);
+		/* ratio (Onyx: of that token -- the operator's was given) */
+		error = mq_parse_ratio(vector, ctx, value_or_name, &ratio);
 		if (error != CSS_OK) {
 			return error;
 		}
@@ -380,10 +380,10 @@ static css_error mq_parse_range(lwc_string **strings,
 
 		consumeWhitespace(vector, ctx);
 
-		if (value_or_name->type == CSS_TOKEN_NUMBER &&
+		if (value2->type == CSS_TOKEN_NUMBER &&
 				tokenIsChar(parserutils_vector_peek(vector, *ctx), '/')) {
-			/* ratio */
-			error = mq_parse_ratio(vector, ctx, token, &ratio2);
+			/* ratio (Onyx: the second value's) */
+			error = mq_parse_ratio(vector, ctx, value2, &ratio2);
 			if (error != CSS_OK) {
 				return error;
 			}
@@ -399,15 +399,18 @@ static css_error mq_parse_range(lwc_string **strings,
 		return error;
 	}
 	if (name_first) {
-		/* Invert operator */
+		/* Onyx: "name op value" is stored as "value op' name": the operator's sides
+		 * swapped (width >= 1012px is 1012px <= width), not negated -- and the value is
+		 * the token after the operator, not the name (GitHub's Primer: its desktop
+		 * header's @media (width >= 1012px) never matched) */
 		if (op == CSS_MQ_FEATURE_OP_LT) {
-			op = CSS_MQ_FEATURE_OP_GTE;
-		} else if (op == CSS_MQ_FEATURE_OP_LTE) {
 			op = CSS_MQ_FEATURE_OP_GT;
+		} else if (op == CSS_MQ_FEATURE_OP_LTE) {
+			op = CSS_MQ_FEATURE_OP_GTE;
 		} else if (op == CSS_MQ_FEATURE_OP_GT) {
-			op = CSS_MQ_FEATURE_OP_LTE;
-		} else if (op == CSS_MQ_FEATURE_OP_GTE) {
 			op = CSS_MQ_FEATURE_OP_LT;
+		} else if (op == CSS_MQ_FEATURE_OP_GTE) {
+			op = CSS_MQ_FEATURE_OP_LTE;
 		}
 	}
 	result->op = op;
@@ -416,7 +419,8 @@ static css_error mq_parse_range(lwc_string **strings,
 		result->value.data.num_or_ratio = ratio;
 	} else {
 		/* num/dim/ident */
-		error = mq_populate_value(&result->value, name_or_value);
+		error = mq_populate_value(&result->value,
+				name_first ? value_or_name : name_or_value);
 		if (error != CSS_OK) {
 			css__mq_feature_destroy(result);
 			return error;
@@ -426,7 +430,7 @@ static css_error mq_parse_range(lwc_string **strings,
 		result->op2 = op2;
 		if (value2_is_ratio) {
 			result->value2.type = CSS_MQ_VALUE_TYPE_RATIO;
-			result->value2.data.num_or_ratio = ratio;
+			result->value2.data.num_or_ratio = ratio2;	/* (Onyx) */
 		} else {
 			/* num/dim/ident */
 			error = mq_populate_value(&result->value2, value2);

@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>focus, a fixed overlay</title></head>
+<body style="margin:0;font:16px sans-serif">
+<!-- google.com's search overlay: a fixed, full-viewport panel inside a zero-height
+     overflow: hidden block (its containing block is the viewport: not clipped, not shrunk) -->
+<div style="height:0;overflow:hidden">
+ <div id="ov" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:9">
+  <textarea id="ta" style="width:300px;height:40px"></textarea>
+ </div>
+</div>
+<button id="open" type="button" style="position:absolute;top:100px;left:20px;width:120px;height:30px">open</button>
+<script>
+var ov = document.getElementById('ov'), ta = document.getElementById('ta');
+document.getElementById('open').addEventListener('click', function () {
+	ov.style.display = 'block';
+	ta.focus();		/* the browser's caret in it: what is typed goes there */
+	console.log('active ' + document.activeElement.id);
+	setTimeout(function () {
+		var r = ov.getBoundingClientRect();
+		console.log('overlay ' + (r.width > 600 && r.height > 600 && r.left === 0 && r.top === 0 ? 'full' :
+			r.left + ',' + r.top + ' ' + r.width + 'x' + r.height));
+	}, 100);
+});
+ta.addEventListener('input', function () { console.log('typed ' + ta.value); });
+</script>
+</body></html>

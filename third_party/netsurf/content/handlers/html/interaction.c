@@ -830,6 +830,16 @@ static struct box **onyx_hit_path(html_content *html, int x, int y, int *n)
 	return path;
 }
 
+/* exported interface documented in html/private.h */
+struct box **html_hit_path(html_content *html, int x, int y, int *n)
+{
+	if (html->layout == NULL) {
+		*n = 0;
+		return NULL;
+	}
+	return onyx_hit_path(html, x, y, n);
+}
+
 /**
  * iterate the box tree for deepest node at coordinates
  *
@@ -1744,6 +1754,8 @@ html_mouse_action(struct content *c,
 	nserror res = NSERROR_OK;
 
 	onyx_webfont_scope(html);	/* Onyx: text positions in its fonts */
+	html->pointer_x = x;		/* (Onyx: the keys' scroller) */
+	html->pointer_y = y;
 
 	/* handle open select menu */
 	if (html->visible_select_menu != NULL) {
@@ -1918,6 +1930,29 @@ bool html_keypress(struct content *c, uint32_t key)
 	case NS_KEY_ESCAPE:
 		/* if there's no selection, leave Escape for the caller */
 		return selection_clear(sel, true);
+
+	/* Onyx: the scrolling keys scroll the scroller under the pointer (an
+	 * overflow: auto panel, a consent screen's), else the window (the
+	 * caller) */
+	case NS_KEY_UP:
+		return html_scroll_at_point(c, html->pointer_x,
+				html->pointer_y, 0, -40);
+	case NS_KEY_DOWN:
+		return html_scroll_at_point(c, html->pointer_x,
+				html->pointer_y, 0, 40);
+	case NS_KEY_PAGE_UP:
+		return html_scroll_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_PAGE_UP);
+	case NS_KEY_PAGE_DOWN:
+	case ' ':
+		return html_scroll_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_PAGE_DOWN);
+	case NS_KEY_TEXT_START:
+		return html_scroll_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_TOP);
+	case NS_KEY_TEXT_END:
+		return html_scroll_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_BOTTOM);
 	}
 
 	return false;
@@ -1947,6 +1982,9 @@ void html_overflow_scroll_callback(void *client_data,
 		}
 
 		html__redraw_a_box(html, box);
+		/* Onyx: the element's scroll event */
+		if (box->node != NULL && html->jsthread != NULL)
+			html_script_event(html, "scroll", box->node, NULL);
 		break;
 	case SCROLLBAR_MSG_SCROLL_START:
 	{
