@@ -135,8 +135,13 @@ $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
 	@mkdir -p $(dir $@)
 	{ echo '/* generated from dom.js by netsurf-app.mk */'; echo 'static const char qjs_dom_js[] ='; \
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+# Onyx: html5.js too (the HTML5 DOM: namespaces, fragments, forms, messaging...)
+$(OUT)/qjsgen/qjs_html5_js.h: $(JSQ)/html5.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from html5.js by netsurf-app.mk */'; echo 'static const char qjs_html5_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 QJS_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs.c))
-$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h
+$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h $(OUT)/qjsgen/qjs_html5_js.h
 $(QJS_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).

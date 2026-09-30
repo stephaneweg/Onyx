@@ -219,7 +219,12 @@ $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
 	@mkdir -p $(dir $@)
 	{ echo '/* generated from dom.js by host.mk */'; echo 'static const char qjs_dom_js[] ='; \
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
-$(call obj,$(JSQ)/qjs.c): $(OUT)/qjsgen/qjs_dom_js.h
+# Onyx: html5.js too (the HTML5 DOM: namespaces, fragments, forms, messaging...)
+$(OUT)/qjsgen/qjs_html5_js.h: $(JSQ)/html5.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from html5.js by host.mk */'; echo 'static const char qjs_html5_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs.c): $(OUT)/qjsgen/qjs_dom_js.h $(OUT)/qjsgen/qjs_html5_js.h
 $(call obj,$(JSQ)/qjs.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
 
 CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \

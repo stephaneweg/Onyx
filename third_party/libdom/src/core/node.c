@@ -970,11 +970,8 @@ dom_exception _dom_node_remove_child(dom_node_internal *node,
 	dom_exception err;
 	bool success = true;
 
-	/* We don't support removal of DocumentType or root Element nodes */
-	if (node->type == DOM_DOCUMENT_NODE &&
-			(old_child->type == DOM_DOCUMENT_TYPE_NODE ||
-			old_child->type == DOM_ELEMENT_NODE))
-		return DOM_NOT_SUPPORTED_ERR;
+	/* Onyx: the document element and the doctype may be removed, as the DOM says
+	 * (document.removeChild(document.documentElement); XML documents built by scripts) */
 
 	/* Ensure old_child is a child of node */
 	if (old_child->parent != node)

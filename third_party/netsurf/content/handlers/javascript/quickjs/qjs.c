@@ -68,6 +68,7 @@
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
+#include "qjs_html5_js.h"	/* Onyx: html5.js, the same way */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -289,22 +290,47 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 	dom_node_get_node_type(n, &type);
 	switch (type) {
 	case DOM_ELEMENT_NODE: {
-		dom_string *name = NULL;
+		dom_string *name = NULL, *ns = NULL;
 		JSValue p = JS_UNDEFINED;
+		/* Onyx: the element's namespace picks its class: "svg:<name>" / "svg:*",
+		 * "math:*" in dom.js's TAGS; an HTML name of no class and without a '-' (not
+		 * a custom element's) is an HTMLUnknownElement ("*unknown") */
+		const char *pfx = "";
+		bool unknown_ok = true;
 
+		dom_node_get_namespace(n, &ns);
+		if (ns != NULL) {
+			if (dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_SVG]))
+				pfx = "svg:";
+			else if (dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_MATHML]))
+				pfx = "math:";
+			dom_string_unref(ns);
+		}
 		if (dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
-			char tag[32];
-			size_t len = dom_string_byte_length(name), i;
+			char tag[48];
+			size_t len = dom_string_byte_length(name), i, o = strlen(pfx);
 
-			if (len < sizeof(tag)) {
+			if (len + o < sizeof(tag)) {
+				memcpy(tag, pfx, o);
 				for (i = 0; i < len; i++) {
 					char ch = dom_string_data(name)[i];
-					tag[i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
+					tag[o + i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
+					if (ch == '-')
+						unknown_ok = false;
 				}
-				tag[len] = '\0';
+				tag[o + len] = '\0';
 				p = JS_GetPropertyStr(t->ctx, t->tag_protos, tag);
 			}
 			dom_string_unref(name);
+		}
+		if (!JS_IsObject(p) && pfx[0] != '\0') {
+			char any[8];
+			JS_FreeValue(t->ctx, p);
+			snprintf(any, sizeof(any), "%s*", pfx);
+			p = JS_GetPropertyStr(t->ctx, t->tag_protos, any);
+		} else if (!JS_IsObject(p) && unknown_ok) {
+			JS_FreeValue(t->ctx, p);
+			p = JS_GetPropertyStr(t->ctx, t->tag_protos, "*unknown");
 		}
 		if (JS_IsObject(p))
 			return p;
@@ -944,8 +970,11 @@ static JSValue n_by_id(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 }
 
 /**
- * setHTML(n, html): n's children replaced by the fragment parsed (innerHTML); on a
- * fragment of the document, not attached.
+ * setHTML(n, html [, context]): n's children replaced by html parsed as a fragment (innerHTML).
+ * Onyx: the HTML standard's fragment parsing algorithm -- in the context of n (or of the
+ * given element: outerHTML, insertAdjacentHTML), so "<td>" in a <tr>, "<col>" in a <table>,
+ * script / style / textarea / title text all parse as in a browser; a template's contents
+ * receive its innerHTML. Scripts in the fragment do not run.
  */
 static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -953,8 +982,8 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	dom_hubbub_parser_params params;
 	dom_hubbub_parser *parser = NULL;
 	dom_document_fragment *fragment = NULL;
-	dom_node *child = NULL, *html = NULL, *body = NULL, *res = NULL;
-	dom_document_quirks_mode quirks = DOM_DOCUMENT_QUIRKS_MODE_NONE;
+	dom_node *child = NULL, *res = NULL, *target, *context = NULL;
+	dom_node_type type = DOM_ELEMENT_NODE;
 	size_t len;
 	const char *s;
 	QJS_NODE_ARG(n, 0);
@@ -962,12 +991,25 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	s = JS_ToCStringLen(ctx, &len, argc > 1 ? argv[1] : JS_UNDEFINED);
 	if (s == NULL)
 		return JS_EXCEPTION;
-	/* (a fragment parser sets its document's quirks mode: the page's kept) */
-	dom_document_get_quirks_mode(t->doc, &quirks);
+	if (argc > 2 && qjs_node(argv[2]) != NULL)
+		context = qjs_node(argv[2]);
+	dom_node_get_node_type(n, &type);
+	if (context == NULL && type == DOM_ELEMENT_NODE)
+		context = n;
+	target = dom_node_ref(n);
+	if (type == DOM_ELEMENT_NODE && context == n) {
+		/* a template: its contents take the nodes */
+		dom_document_fragment *c = NULL;
+		if (dom_hubbub_template_content((dom_element *) n, &c) == DOM_NO_ERR &&
+				c != NULL) {
+			dom_node_unref(target);
+			target = (dom_node *) c;
+		}
+	}
 
 	/* the old children out */
-	while (dom_node_get_first_child(n, &child) == DOM_NO_ERR && child != NULL) {
-		dom_node_remove_child(n, child, &res);
+	while (dom_node_get_first_child(target, &child) == DOM_NO_ERR && child != NULL) {
+		dom_node_remove_child(target, child, &res);
 		if (res != NULL)
 			dom_node_unref(res);
 		dom_node_unref(child);
@@ -977,38 +1019,31 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	memset(&params, 0, sizeof(params));
 	params.enc = "UTF-8";
 	params.fix_enc = true;
-	params.enable_script = false;
-	if (dom_hubbub_fragment_parser_create(&params, t->doc, &parser,
-			&fragment) != DOM_HUBBUB_OK) {
+	params.enable_script = true;	/* (<noscript> as raw text, as a browser) */
+	if (dom_hubbub_fragment_parser_create_ctx(&params, t->doc, (dom_element *) context,
+			&parser, &fragment) != DOM_HUBBUB_OK) {
 		JS_FreeCString(ctx, s);
-		dom_document_set_quirks_mode(t->doc, quirks);
+		dom_node_unref(target);
 		return JS_UNDEFINED;
 	}
 	dom_hubbub_parser_parse_chunk(parser, (const uint8_t *) s, len);
 	dom_hubbub_parser_completed(parser);
+	dom_hubbub_parser_destroy(parser);
 	JS_FreeCString(ctx, s);
 
-	/* the fragment parser builds <html><body>...: its body's children moved in */
-	if (dom_node_get_first_child(fragment, &html) == DOM_NO_ERR && html != NULL) {
-		if (dom_node_get_last_child(html, &body) == DOM_NO_ERR && body != NULL) {
-			while (dom_node_get_first_child(body, &child) == DOM_NO_ERR &&
-			       child != NULL) {
-				dom_node_remove_child(body, child, &res);
-				if (res != NULL)
-					dom_node_unref(res);
-				dom_node_append_child(n, child, &res);
-				if (res != NULL)
-					dom_node_unref(res);
-				dom_node_unref(child);
-				child = NULL;
-			}
-			dom_node_unref(body);
-		}
-		dom_node_unref(html);
+	/* the fragment's nodes into the target */
+	while (dom_node_get_first_child(fragment, &child) == DOM_NO_ERR && child != NULL) {
+		dom_node_remove_child(fragment, child, &res);
+		if (res != NULL)
+			dom_node_unref(res);
+		dom_node_append_child(target, child, &res);
+		if (res != NULL)
+			dom_node_unref(res);
+		dom_node_unref(child);
+		child = NULL;
 	}
-	dom_hubbub_parser_destroy(parser);
 	dom_node_unref(fragment);
-	dom_document_set_quirks_mode(t->doc, quirks);
+	dom_node_unref(target);
 	t->dirty = true;
 	return JS_UNDEFINED;
 }
@@ -2073,6 +2108,364 @@ static JSValue n_setup(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	return JS_UNDEFINED;
 }
 
+/* ---- Onyx: HTML5 natives (namespaces, templates, documents parsed) ----------------------
+ *
+ * nsURI(n): an element's namespace URI; lname(n): its local name (lower case for HTML);
+ * qname(n): its qualified name as the DOM's tagName wants it (upper case for HTML);
+ * attrsNS(n): [[qualified name, value, namespace, local name]...]; createNS(ns, qname);
+ * attrNS(n, ns, local); setAttrNS(n, ns, qname, value); removeAttrNS(n, ns, local);
+ * templateContent(n): a template's contents; parseDocument(html): a new document
+ * (DOMParser), parsed by the same parser. */
+
+static bool qjs_is_html_ns(dom_node *n)
+{
+	dom_string *ns = NULL;
+	bool r;
+	dom_node_get_namespace(n, &ns);
+	r = ns == NULL || dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_HTML]);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	return r;
+}
+
+static JSValue n_ns_uri(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns = NULL;
+	dom_node_type type = DOM_ELEMENT_NODE;
+	QJS_NODE_ARG(n, 0);
+	dom_node_get_node_type(n, &type);
+	if (type != DOM_ELEMENT_NODE)
+		return JS_NULL;
+	dom_node_get_namespace(n, &ns);
+	if (ns == NULL)	/* createElement in an HTML document: the HTML namespace */
+		return JS_NewString(ctx, "http://www.w3.org/1999/xhtml");
+	return qjs_str(ctx, ns);
+}
+
+static JSValue qjs_name_case(JSContext *ctx, dom_node *n, bool upper)
+{
+	dom_string *s = NULL;
+	char buf[128], *b = buf;
+	size_t len, i;
+	JSValue v;
+	bool html = qjs_is_html_ns(n);
+
+	dom_node_get_node_name(n, &s);
+	if (s == NULL)
+		return JS_NewString(ctx, "");
+	len = dom_string_byte_length(s);
+	if (!html) {
+		v = JS_NewStringLen(ctx, dom_string_data(s), len);
+		dom_string_unref(s);
+		return v;
+	}
+	if (len >= sizeof(buf) && (b = malloc(len + 1)) == NULL) {
+		dom_string_unref(s);
+		return JS_NewString(ctx, "");
+	}
+	for (i = 0; i < len; i++) {
+		char c = dom_string_data(s)[i];
+		b[i] = upper ? ((c >= 'a' && c <= 'z') ? c - 32 : c) :
+				((c >= 'A' && c <= 'Z') ? c + 32 : c);
+	}
+	v = JS_NewStringLen(ctx, b, len);
+	if (b != buf)
+		free(b);
+	dom_string_unref(s);
+	return v;
+}
+
+static JSValue n_lname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return qjs_name_case(ctx, n, false);
+}
+
+static JSValue n_qname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return qjs_name_case(ctx, n, true);
+}
+
+static JSValue n_attrs_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	JSValue arr = JS_NewArray(ctx);
+	dom_namednodemap *map = NULL;
+	uint32_t len = 0, i, k = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (dom_node_get_attributes(n, &map) != DOM_NO_ERR || map == NULL)
+		return arr;
+	dom_namednodemap_get_length(map, &len);
+	for (i = 0; i < len; i++) {
+		dom_node *a = NULL;
+		dom_string *name = NULL, *value = NULL, *ns = NULL, *local = NULL;
+		JSValue e;
+
+		if (dom_namednodemap_item(map, i, &a) != DOM_NO_ERR || a == NULL)
+			continue;
+		dom_attr_get_name((dom_attr *) a, &name);
+		dom_attr_get_value((dom_attr *) a, &value);
+		dom_node_get_namespace(a, &ns);
+		dom_node_get_local_name(a, &local);
+		e = JS_NewArray(ctx);
+		JS_SetPropertyUint32(ctx, e, 0, name ? qjs_str(ctx, name) : JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, e, 1, value ? qjs_str(ctx, value) : JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, e, 2, ns ? qjs_str(ctx, ns) : JS_NULL);
+		JS_SetPropertyUint32(ctx, e, 3, local ? qjs_str(ctx, local) : JS_NULL);
+		JS_SetPropertyUint32(ctx, arr, k++, e);
+		dom_node_unref(a);
+	}
+	dom_namednodemap_unref(map);
+	return arr;
+}
+
+/* a JS value as a dom_string, NULL for null / undefined / "" (a namespace) */
+static dom_string *qjs_ns_arg(JSContext *ctx, JSValueConst v)
+{
+	dom_string *s;
+	if (JS_IsNull(v) || JS_IsUndefined(v))
+		return NULL;
+	s = qjs_dstr(ctx, v);
+	if (s != NULL && dom_string_byte_length(s) == 0) {
+		dom_string_unref(s);
+		return NULL;
+	}
+	return s;
+}
+
+static JSValue n_create_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_string *ns = qjs_ns_arg(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+	dom_string *qn = qjs_dstr(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	dom_element *e = NULL;
+	dom_exception err;
+	JSValue v;
+
+	if (qn == NULL) {
+		if (ns != NULL)
+			dom_string_unref(ns);
+		return JS_NULL;
+	}
+	err = dom_document_create_element_ns(t->doc, ns, qn, &e);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	dom_string_unref(qn);
+	if (err != DOM_NO_ERR || e == NULL)
+		return JS_ThrowTypeError(ctx, err == DOM_NAMESPACE_ERR ? "NamespaceError" :
+				"InvalidCharacterError");
+	v = qjs_wrap(t, (dom_node *) e);
+	dom_node_unref(e);
+	return v;
+}
+
+static JSValue n_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns, *local, *v = NULL;
+	QJS_NODE_ARG(n, 0);
+	ns = qjs_ns_arg(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	local = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	if (local != NULL)
+		dom_element_get_attribute_ns((dom_element *) n, ns, local, &v);
+	if (ns != NULL)
+		dom_string_unref(ns);
+	if (local != NULL)
+		dom_string_unref(local);
+	return qjs_str(ctx, v);
+}
+
+static JSValue n_set_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns, *qn, *v;
+	dom_exception err = DOM_NO_ERR;
+	QJS_NODE_ARG(n, 0);
+	ns = qjs_ns_arg(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	qn = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	v = qjs_dstr(ctx, argc > 3 ? argv[3] : JS_UNDEFINED);
+	if (qn != NULL && v != NULL) {
+		if (ns == NULL)
+			err = dom_element_set_attribute((dom_element *) n, qn, v);
+		else
+			err = dom_element_set_attribute_ns((dom_element *) n, ns, qn, v);
+		QJS_T(ctx)->dirty = true;
+	}
+	if (ns != NULL)
+		dom_string_unref(ns);
+	if (qn != NULL)
+		dom_string_unref(qn);
+	if (v != NULL)
+		dom_string_unref(v);
+	if (err != DOM_NO_ERR)
+		return JS_ThrowTypeError(ctx, err == DOM_NAMESPACE_ERR ? "NamespaceError" :
+				"InvalidCharacterError");
+	return JS_UNDEFINED;
+}
+
+static JSValue n_remove_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *ns, *local;
+	QJS_NODE_ARG(n, 0);
+	ns = qjs_ns_arg(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	local = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	if (local != NULL) {
+		dom_element_remove_attribute_ns((dom_element *) n, ns, local);
+		QJS_T(ctx)->dirty = true;
+		dom_string_unref(local);
+	}
+	if (ns != NULL)
+		dom_string_unref(ns);
+	return JS_UNDEFINED;
+}
+
+static JSValue n_template_content(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_document_fragment *f = NULL;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+	if (dom_hubbub_template_content((dom_element *) n, &f) != DOM_NO_ERR || f == NULL)
+		return JS_NULL;
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) f);
+	dom_node_unref(f);
+	return v;
+}
+
+/* parseDocument(html): a new HTML document (DOMParser, createHTMLDocument), no scripts run */
+static JSValue n_parse_document(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_hubbub_parser_params params;
+	dom_hubbub_parser *parser = NULL;
+	dom_document *doc = NULL;
+	size_t len;
+	const char *s = JS_ToCStringLen(ctx, &len, argc > 0 ? argv[0] : JS_UNDEFINED);
+	JSValue v;
+
+	if (s == NULL)
+		return JS_EXCEPTION;
+	memset(&params, 0, sizeof(params));
+	params.enc = "UTF-8";
+	params.fix_enc = true;
+	params.enable_script = false;	/* (DOMParser: scripting disabled, <noscript> parsed) */
+	if (dom_hubbub_parser_create(&params, &parser, &doc) != DOM_HUBBUB_OK) {
+		JS_FreeCString(ctx, s);
+		return JS_NULL;
+	}
+	dom_hubbub_parser_parse_chunk(parser, (const uint8_t *) s, len);
+	dom_hubbub_parser_completed(parser);
+	dom_hubbub_parser_destroy(parser);
+	JS_FreeCString(ctx, s);
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) doc);
+	dom_node_unref(doc);
+	return v;
+}
+
+/* createDocument(): a new empty HTML document (no html element: DOMParser's XML documents) */
+static JSValue n_create_document(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_document *doc = NULL;
+	JSValue v;
+	if (dom_implementation_create_document(DOM_IMPLEMENTATION_HTML, NULL, NULL, NULL,
+			NULL, NULL, &doc) != DOM_NO_ERR || doc == NULL)
+		return JS_NULL;
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) doc);
+	dom_node_unref(doc);
+	return v;
+}
+
+/* createIn(doc, kind, a, b): a node of another document -- kind "element" (name a),
+ * "elementNS" (namespace a, qualified name b), "text" / "comment" (data a), "fragment" */
+static JSValue n_create_in(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_node *r = NULL;
+	dom_exception err = DOM_NO_ERR;
+	const char *kind;
+	JSValue v;
+	QJS_NODE_ARG(d, 0);
+
+	kind = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	if (kind == NULL)
+		return JS_EXCEPTION;
+	if (strcmp(kind, "fragment") == 0) {
+		err = dom_document_create_document_fragment((dom_document *) d,
+				(dom_document_fragment **) &r);
+	} else {
+		dom_string *a = qjs_ns_arg(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+		if (strcmp(kind, "elementNS") == 0) {
+			dom_string *b = qjs_dstr(ctx, argc > 3 ? argv[3] : JS_UNDEFINED);
+			if (b != NULL) {
+				err = dom_document_create_element_ns((dom_document *) d, a, b,
+						(dom_element **) &r);
+				dom_string_unref(b);
+			}
+		} else {
+			if (a == NULL)
+				dom_string_create((const uint8_t *) "", 0, &a);
+			if (strcmp(kind, "element") == 0)
+				err = dom_document_create_element((dom_document *) d, a,
+						(dom_element **) &r);
+			else if (strcmp(kind, "text") == 0)
+				err = dom_document_create_text_node((dom_document *) d, a,
+						(dom_text **) &r);
+			else if (strcmp(kind, "comment") == 0)
+				err = dom_document_create_comment((dom_document *) d, a,
+						(dom_comment **) &r);
+		}
+		if (a != NULL)
+			dom_string_unref(a);
+	}
+	JS_FreeCString(ctx, kind);
+	if (err != DOM_NO_ERR || r == NULL)
+		return JS_ThrowTypeError(ctx, "InvalidCharacterError");
+	v = qjs_wrap(QJS_T(ctx), r);
+	dom_node_unref(r);
+	return v;
+}
+
+/* importTo(doc, node, deep): a copy of node owned by doc */
+static JSValue n_import_to(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_node *r = NULL;
+	JSValue v;
+	QJS_NODE_ARG(d, 0);
+	QJS_NODE_ARG(n, 1);
+	if (dom_document_import_node((dom_document *) d, n,
+			argc > 2 && JS_ToBool(ctx, argv[2]), &r) != DOM_NO_ERR || r == NULL)
+		return JS_ThrowTypeError(ctx, "NotSupportedError");
+	v = qjs_wrap(QJS_T(ctx), r);
+	dom_node_unref(r);
+	return v;
+}
+
+/* ownerDoc(n): the document a node belongs to */
+static JSValue n_owner_doc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_document *d = NULL;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+	if (dom_node_get_owner_document(n, &d) != DOM_NO_ERR || d == NULL)
+		return JS_NULL;
+	v = qjs_wrap(QJS_T(ctx), (dom_node *) d);
+	dom_node_unref(d);
+	return v;
+}
+
+static const JSCFunctionListEntry qjs_natives_html5[] = {
+	JS_CFUNC_DEF("createDocument", 0, n_create_document),
+	JS_CFUNC_DEF("createIn", 4, n_create_in),
+	JS_CFUNC_DEF("importTo", 3, n_import_to),
+	JS_CFUNC_DEF("ownerDoc", 1, n_owner_doc),
+	JS_CFUNC_DEF("nsURI", 1, n_ns_uri),
+	JS_CFUNC_DEF("lname", 1, n_lname),
+	JS_CFUNC_DEF("qname", 1, n_qname),
+	JS_CFUNC_DEF("attrsNS", 1, n_attrs_ns),
+	JS_CFUNC_DEF("createNS", 2, n_create_ns),
+	JS_CFUNC_DEF("attrNS", 3, n_attr_ns),
+	JS_CFUNC_DEF("setAttrNS", 4, n_set_attr_ns),
+	JS_CFUNC_DEF("removeAttrNS", 3, n_remove_attr_ns),
+	JS_CFUNC_DEF("templateContent", 1, n_template_content),
+	JS_CFUNC_DEF("parseDocument", 1, n_parse_document),
+};
+
 static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("type", 1, n_type),
 	JS_CFUNC_DEF("name", 1, n_name),
@@ -2237,6 +2630,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	natives = JS_NewObject(t->ctx);
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives,
 			sizeof(qjs_natives) / sizeof(qjs_natives[0]));
+	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_html5,	/* Onyx: HTML5 */
+			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
 	qjs_enter(t);
 	prelude = JS_Eval(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
 			JS_EVAL_TYPE_GLOBAL);
@@ -2246,6 +2641,19 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 		r = JS_Call(t->ctx, prelude, JS_UNDEFINED, 1, (JSValueConst *) &natives);
 		if (JS_IsException(r))
 			qjs_report(t->ctx, "dom.js setup");
+		JS_FreeValue(t->ctx, r);
+	}
+	JS_FreeValue(t->ctx, prelude);
+	/* Onyx: html5.js, a function of the natives and dom.js's element classes (TAGS) */
+	prelude = JS_Eval(t->ctx, qjs_html5_js, sizeof(qjs_html5_js) - 1, "html5.js",
+			JS_EVAL_TYPE_GLOBAL);
+	if (JS_IsException(prelude)) {
+		qjs_report(t->ctx, "html5.js");
+	} else {
+		JSValue args[2] = { natives, t->tag_protos };
+		r = JS_Call(t->ctx, prelude, JS_UNDEFINED, 2, (JSValueConst *) args);
+		if (JS_IsException(r))
+			qjs_report(t->ctx, "html5.js setup");
 		JS_FreeValue(t->ctx, r);
 	}
 	JS_FreeValue(t->ctx, prelude);

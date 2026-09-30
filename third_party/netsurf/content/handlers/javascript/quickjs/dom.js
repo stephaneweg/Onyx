@@ -3762,6 +3762,9 @@ function browserDispatch(target, type, init) {
 
 /* ---- the natives' setup ------------------------------------------------------------------- */
 
+/* Onyx: dom.js's internals html5.js builds on (MutationObserver records, dispatch...) */
+N.internals = { queueMutation, observers, childListRecord, dispatch, report, activate };
+
 N.setup({
 	node: Node.prototype,
 	element: HTMLElement.prototype,
