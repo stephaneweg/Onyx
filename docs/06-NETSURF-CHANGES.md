@@ -419,6 +419,16 @@ centred; the headings', paragraphs', lists', `dl` / `dd`, `figure`, `blockquote`
   script before. A click also gives `pointerdown` / `pointerup` before `mousedown` /
   `mouseup` (as Chrome). Tests: `pages/js-wheel.html`, `js-consent.html` (a flex column's
   `overflow: auto` middle), `js-consent-body.html` (the body its own scroller).
+- **A dialog capped to the viewport** (Facebook's cookie dialog: a fixed backdrop,
+  `inset: 0`, centring a flex column with `max-height: 90%`, its middle `overflow: auto`,
+  the buttons pinned): an absolute / fixed box whose height is given by its insets (`top`
+  and `bottom` set, `height: auto`) now knows it before its content is laid out
+  (`layout_absolute`, `DEF_HEIGHT`): a flex container centres and flexes its items in it,
+  its children's percentages resolve against it. The dialog took its whole content's height
+  (the buttons below the screen, nothing to scroll). A stretched grid item that is a scroll
+  container is its area's height even when its content is taller (`layout_grid.c`: a
+  `minmax(0, 1fr)` middle row). Tests: `pages/layout/dialogs.html` (layouttest: 0 of 49
+  differ), `pages/js-dialog.html` (jstest).
 - **No touch screen**: `ontouchstart` / `ontouchend` / `ontouchmove` are gone from the
   elements and the window (`'ontouchstart' in window` told the pages there was one).
 - **`element.focus()`** on a text field or a textarea puts the browser's caret in it
