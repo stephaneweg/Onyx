@@ -205,6 +205,10 @@ css_error css_computed_style_destroy(css_computed_style *style)
 	lwc_string_unref(style->i.mask_size);
 	lwc_string_unref(style->i.mask_position);
 	lwc_string_unref(style->i.mask_repeat);
+	lwc_string_unref(style->i.filter);		/* Onyx: compositing */
+	lwc_string_unref(style->i.backdrop_filter);
+	lwc_string_unref(style->i.transform_origin);
+	lwc_string_unref(style->i.mix_blend_mode);
 	lwc_string_unref(style->i.grid_template_columns);
 	lwc_string_unref(style->i.grid_template_rows);
 	lwc_string_unref(style->i.grid_template_areas);
@@ -2241,4 +2245,25 @@ uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string *
 uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text)
 {
 	return get_mask_repeat(style, text);
+}
+
+/* Onyx: the compositing properties (as text: see src/parse/properties/onyx_css3b.c) */
+uint8_t css_computed_filter(const css_computed_style *style, lwc_string **text)
+{
+	return get_filter(style, text);
+}
+
+uint8_t css_computed_backdrop_filter(const css_computed_style *style, lwc_string **text)
+{
+	return get_backdrop_filter(style, text);
+}
+
+uint8_t css_computed_transform_origin(const css_computed_style *style, lwc_string **text)
+{
+	return get_transform_origin(style, text);
+}
+
+uint8_t css_computed_mix_blend_mode(const css_computed_style *style, lwc_string **text)
+{
+	return get_mix_blend_mode(style, text);
 }

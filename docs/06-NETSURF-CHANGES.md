@@ -26,7 +26,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -148,7 +148,8 @@ headers in order (`llcache_handle_get_header_at`).
 - **Properties added**: `row-gap`/`gap`, the four `border-*-radius`, `box-shadow`,
   `text-shadow`, `background-size`, `background-clip` (with `text`), `text-overflow`,
   `justify-items`/`justify-self`, `aspect-ratio`, `object-fit`/`object-position`,
-  `transform`/`translate`/`scale`/`rotate`, the grid properties, `mask-image` /
+  `transform`/`translate`/`scale`/`rotate`, `transform-origin`, `filter`,
+  `backdrop-filter`, `mix-blend-mode` (§21), the grid properties, `mask-image` /
   `mask-size` / `mask-position` / `mask-repeat` and the `mask` shorthand (the first layer,
   kept as canonical texts: `onyx_css3b.c`; `-webkit-mask-*` by the prefix rule below);
   logical properties and the CSS3 shorthands mapped to their physical longhands.
@@ -279,7 +280,8 @@ own `min_width` / `max_width` stay its content's (its automatic minimum, its con
   inline holding a block made a line of its own); a form control's value line always has.
 - **Line breaks only at break opportunities**: a space, an atomic inline -- `(<a>x.com</a>)`
   was broken between `(` and the link; a run without one stays on its line (overflowing).
-- `transform`'s translation moves a box as a relative offset (paint and hit-testing).
+- `transform`'s translation moves a box as a relative offset (paint and hit-testing); a
+  transform that is more than a translation is painted through a layer (§21).
 - The space after an inline-block, inline-flex, image or control is kept.
 
 ### 5.4 Form controls
@@ -486,7 +488,9 @@ optional chaining...) with the DOM written in JavaScript:
   markers, an inline's end) matched by owning element *and* style, libcss interning styles --
   the borders' colours copied again, the anonymous boxes' styles derived again, and only their
   rectangles are redrawn. A change of `transform` / `translate` (a card lifted on hover) moves
-  the box (its descendants follow) as the layout would, its ancestors' descendant bounds grown.
+  the box (its descendants follow) as the layout would, its ancestors' descendant bounds grown;
+  a change of its effects (opacity, a transform beyond a translation, filters: §21) redraws
+  all it holds where it was painted and where it is.
   Anything else (a layout property, a pseudo-element appearing, a background image to fetch, a
   `:hover` tried on a sibling, a table's borders) builds the boxes again as before
   (`html_script_dom_changed`). On the two sites every hover is now a restyle: no rebox, the
@@ -1345,6 +1349,107 @@ the styles scoped to each tree.
   `:host` in `querySelector` / `matches`; the focus navigation order of shadow trees;
   `::before` / `::after` of a `display: contents` element.
 
+## 21. Compositing layers: `opacity`, `transform`, `filter`, `backdrop-filter`, `mix-blend-mode`
+
+NetSurf drew a translucent colour, and a transform's translation (the layout moved the box);
+a subtree's `opacity`, a rotation, a scale, a skew, the filters and the blend modes were
+parsed and not drawn. A box with one of them is now painted as a **group** -- a stacking
+context, with all it holds -- through a layer of the framebuffer.
+
+- **libcss** (`src/parse/properties/onyx_css3b.c`, the compositing block): `filter` and
+  `backdrop-filter` (`-webkit-backdrop-filter` by the prefix rule), `transform-origin` and
+  `mix-blend-mode` are computed, kept as canonical texts (`select_config.py`, the
+  autogenerated headers and `onyx_propbits.h` made again; `css_computed_filter()`...
+  in `computed.h`): a filter's functions (`blur(4px) drop-shadow(2px,2px,3px,#ff000000)`,
+  a percentage as a number, `currentColor` kept as such, a `url()` refused -- the declaration
+  then kept by its grammar only, §14), the origin as two lengths / percentages (the
+  keywords in either order), the blend mode's keyword. They are paint properties for the
+  hover's restyle (`css_computed_style_paint_only_change`). The 3D functions are **flattened**
+  (no perspective, as Chrome draws a 3D transform without `perspective`): `rotateX(a)` /
+  `rotateY(a)` a scale by `cos a` across the axis, `rotate3d()` and `matrix3d()` their 2D part,
+  `perspective()` and the z parts dropped; `rotate: x 30deg` likewise.
+- **The effects of a box** (`content/handlers/html/onyx_fx.c`): its opacity, its matrix --
+  `translate`, `rotate`, `scale` then `transform`, composed, about its `transform-origin` (the
+  border box's; 50% 50%) -- its filters, its backdrop filters, its blend mode. A transform that
+  composes to a translation only stays **the layout's** (`onyx_box_translate`: the box moved as
+  a relative offset is, no layer: today's fast path); any other is painted.
+- **The stacking context** (`html_redraw_layer_z`): a static box with an effect (a translation
+  too, as in CSS) is put off and painted as a positioned box with `z-index: 0`, and its own
+  positioned descendants are painted inside it (`onyx_fx_paint_context`). The hit test follows
+  (it uses the same function).
+- **The group** (`redraw.c`, `onyx_fx_redraw`; the plotter's `onyx_layer_begin` /
+  `onyx_layer_end`, `struct onyx_layer` in `netsurf/onyx_paint.h`; the knockout plotter
+  flushes around them):
+  - *an opacity alone* is drawn **in place**: what is under the group's rectangle (its
+    bounds -- border box, descendants, shadow -- within the redraw's clip) is copied, the group
+    is painted where it is, then the copy is blended back at `1 - opacity`. This is exact (the
+    group over the page, mixed with the page at `1 - a`, is the group at `a` over the page)
+    and costs one pass, a copy and a blend of its rectangle; nested opacities nest.
+  - *a transform, a filter, a blend mode* paint the group **apart**, into a RAM surface the
+    size of the part of it that lands in the clip (the clip mapped back through the inverse
+    matrix, grown by what the filters read), twice: over black, then over white. No plotter
+    keeps an alpha channel, but every one blends linearly: a pixel's coverage is `1 - (white
+    - black)`, its premultiplied colour the black pass -- exact. The layer is then filtered
+    and drawn through its matrix (each target pixel's centre mapped back, bilinear; a scale's
+    columns and rows tabulated), at its opacity, with its blend mode.
+  - **One pass** when the box is known opaque in its (rounded) border box and clear outside
+    it: an opaque background colour under its borders, nothing past the border box, no
+    shadow, no mask (`onyx_fx_opaque`) -- its coverage is the rounded box's (a rotated card).
+  - **A large blur** (a standard deviation of 8 px and more) paints the layer at 1/2, 1/4 or
+    1/8 of its size (the core's scaled redraw, as a thumbnail's), its filters scaled, drawn
+    back through the matrix: what it leaves is smooth. kotonstudio.com's hero glow (a 900x700
+    radial gradient under `blur(20px)`): 30 ms -> 7 ms a full redraw on the PC.
+  - The layer's surfaces and work buffers are kept, a set for each nesting level (8 levels;
+    an isolated group within 3 others, or in a scaled redraw, is drawn without its transform
+    and filters). A layer larger than 8 M pixels is painted without its effects.
+  - **Opacity 0** paints nothing; the box is still hit (as in CSS).
+  - **An inline** with an opacity (a `<span>`: its pieces are its line's siblings) is a group
+    from its box to its end box, in place.
+- **The filters** (`frontends/framebuffer/onyx_layer.c`), on the premultiplied layer:
+  `brightness`, `contrast`, `invert` (a table), `grayscale`, `sepia`, `saturate`,
+  `hue-rotate` (Filter Effects' matrices, in sRGB as Chrome), `opacity`; `blur` as three box
+  blurs (the specification's approximation, its box sizes and offsets; a wide one on a reduced
+  copy: a power of 2 that leaves at least 1.5 px, brought back bilinearly); `drop-shadow` the
+  layer's alpha blurred at half its radius, coloured, moved, under it. **`backdrop-filter`**:
+  what is under the box (and what its blur reads around it, the page's edge repeated) copied,
+  filtered, and put back inside the rounded border box, before the box is painted (in place:
+  faded with the group's opacity, as in CSS). **`mix-blend-mode`**: the separable modes
+  (`multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`,
+  `hard-light`, `soft-light`, `difference`, `exclusion`, `plus-lighter`, `plus-darker`) against
+  what is under the group.
+- **Where a transformed box is**: the layout grows its ancestors' descendant bounds with the
+  transformed, filtered bounds (`onyx_fx_child_bounds`: a rotated card is not culled); the hit
+  test (`interaction.c`, `onyx_hit_box`) takes the point back through the inverse matrix for
+  the box and all it holds; `getBoundingClientRect()`, `elementFromPoint` and the
+  `IntersectionObserver` see the transformed box's bounding box, in fractions of a px
+  (`N.rect(n, true)`; `offsetWidth`... stay the layout's).
+- **The hover's restyle** (§9): a change of a box's effects (`onyx_fx_style_differs`) redraws
+  all it holds where it was painted and where it is (`hv_request`: the rectangles through the
+  transforms and filters of the box and its ancestors); its ancestors' bounds grow as the
+  layout's. `NS_HOVER_FULL=1` gives the same pixels (`fxtest.sh`).
+- **Timings**: `NS_PERF=1` prints each layer of 1 ms and more -- `layer WxH [transform]
+  [filter] [backdrop] [(one pass)]`, `layer WxH in place [backdrop]`.
+- **Tests** (`tools/tests/netsurf/`): `fxtest.sh` shoots `pages/css-opacity.html`,
+  `css-transform.html` and `css-filter.html` in NetSurf and in Chromium and compares them cell
+  by cell (38 cells: all within a mean of 0.3 per channel but the drop-shadow's 1.9 and the
+  backdrop blur's 3.5), then hovers `css-fxhover.html` (a card scaled, rotated, faded and
+  shadowed on `:hover`) and compares the partial redraw with the full one (identical);
+  `jstest.sh` checks an opacity-0 box's click, a rotated box's rectangle (`23,23,113,113` as
+  Chrome) and clicks through the rotation (a corner outside the diamond reaches the box under
+  it).
+- **Cost** (the PC bench, a full redraw of the first screen, 1262x792; noisy): kotonviolins.com
+  ~9 -> ~12 ms (its header's `backdrop-filter: blur(14px) saturate(140%)`: 3-5 ms);
+  kotonstudio.com ~8 -> ~15 ms (the hero glow's blur 7 ms, the app mock-up's flattened
+  `perspective() rotateY() rotateX()` with a shadow 5 ms, two small backdrops 1-2 ms). A page
+  without effects pays nothing (a few style reads a box). On the Pi count ~5x.
+- **Not done**: a real perspective (the 3D functions flattened); a layer kept between
+  redraws (each redraw paints its groups again); `clip-path` and `mask` on the layer; the
+  non-separable blend modes (`hue`, `saturation`, `color`, `luminosity`: drawn normal);
+  `isolation`; `filter: url()`; `backdrop-filter` of a transformed box (not drawn) or its
+  fade with the group's opacity when the group is apart; a blend mode inside an isolated
+  group (its black / white passes then differ non-linearly); the text caret and a form
+  field's click position inside a transformed box; `will-change`.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -1360,7 +1465,8 @@ the styles scoped to each tree.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
-- `opacity`, filters, animations and transitions.
+- Animations and transitions; the compositing layers' gaps (§21: a real perspective, a layer
+  kept between redraws, `clip-path` / `mask` on it, the non-separable blend modes).
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
   CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss

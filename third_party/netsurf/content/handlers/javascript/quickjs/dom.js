@@ -2427,7 +2427,7 @@ class Element extends Node {
 			if (matchList(n, list, n)) return n;
 		return null;
 	}
-	getBoundingClientRect() { const r = N.rect(this); return new DOMRect(r[0], r[1], r[2], r[3]); }
+	getBoundingClientRect() { const r = N.rect(this, true); return new DOMRect(r[0], r[1], r[2], r[3]); }
 	getClientRects() { const r = this.getBoundingClientRect(); return r.width || r.height ? [r] : []; }
 	get offsetWidth() { return N.rect(this)[2]; }
 	get offsetHeight() { return N.rect(this)[3]; }
@@ -3291,7 +3291,7 @@ class Document extends Node {
 	elementFromPoint(x, y) {
 		let best = null;
 		for (const e of N.descendants(this)) {
-			const r = N.rect(e);
+			const r = N.rect(e, true);
 			if (r[2] > 0 && r[3] > 0 && x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3])
 				best = e;
 		}
@@ -4700,14 +4700,14 @@ class IntersectionObserver {
 		const [mt, mr, mb, ml] = [m[0], m[1] || m[0], m[2] || m[0], m[3] || m[1] || m[0]];
 		let root = { x: 0, y: 0, w: s[2], h: s[3] };
 		if (this.root && this.root.getBoundingClientRect) {
-			const r = N.rect(this.root);
+			const r = N.rect(this.root, true);
 			root = { x: r[0], y: r[1], w: r[2], h: r[3] };
 		}
 		const top = root.y - marginPx(mt, root.h), bottom = root.y + root.h + marginPx(mb, root.h);
 		const left = root.x - marginPx(ml, root.w), right = root.x + root.w + marginPx(mr, root.w);
 		const entries = [];
 		for (const [el, last] of this._targets) {
-			const r = N.rect(el);
+			const r = N.rect(el, true);
 			const boxed = N.boxed(el);
 			const ix = Math.max(0, Math.min(right, r[0] + r[2]) - Math.max(left, r[0]));
 			const iy = Math.max(0, Math.min(bottom, r[1] + r[3]) - Math.max(top, r[1]));

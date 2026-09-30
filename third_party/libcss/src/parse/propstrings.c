@@ -341,6 +341,10 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("mask-position"),
 	SMAP("mask-repeat"),
 	SMAP("mask"),
+	SMAP("filter"),		/* Onyx: compositing */
+	SMAP("backdrop-filter"),
+	SMAP("transform-origin"),
+	SMAP("mix-blend-mode"),
 
 	SMAP("inherit"),
 	SMAP("unset"),

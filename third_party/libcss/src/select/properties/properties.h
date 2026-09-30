@@ -88,6 +88,10 @@ PROPERTY_FUNCS(mask_image);	/* Onyx: mask */
 PROPERTY_FUNCS(mask_size);
 PROPERTY_FUNCS(mask_position);
 PROPERTY_FUNCS(mask_repeat);
+PROPERTY_FUNCS(filter);		/* Onyx: compositing */
+PROPERTY_FUNCS(backdrop_filter);
+PROPERTY_FUNCS(transform_origin);
+PROPERTY_FUNCS(mix_blend_mode);
 PROPERTY_FUNCS(fill_opacity);
 PROPERTY_FUNCS(flex_basis);
 PROPERTY_FUNCS(flex_direction);

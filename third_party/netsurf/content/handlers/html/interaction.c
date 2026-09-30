@@ -25,6 +25,7 @@
  */
 
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +65,7 @@
 #include "html/onyx_hover.h"
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_webfont.h"
+#include "html/onyx_fx.h"	/* Onyx: the hit test through transforms */
 
 /**
  * Get pointer shape for given box
@@ -688,12 +690,40 @@ struct onyx_hit {
 };
 
 static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy);
+static void onyx_hit_layer(struct onyx_hit *h, int start);
 
 /** a box, its parent's origin at (ox, oy) (html_redraw_box) */
 static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 {
 	int bx = ox + box->x, by = oy + box->y;
 	bool physically = false;
+	float m[6], inv[6];
+
+	/* Onyx: a transformed box (html/onyx_fx.c) -- the point taken back through its
+	 * matrix, for it and all its stacking context holds (what it puts off) */
+	if (onyx_fx_box(box) && onyx_box_matrix(box->style, &h->html->unit_len_ctx, box, 1,
+			m)) {
+		int px = h->px, py = h->py, start = h->n;
+		float lx = px - bx, ly = py - by;
+
+		if (!onyx_matrix_invert(m, inv))
+			return;
+		h->px = bx + (int) floorf(inv[0] * lx + inv[2] * ly + inv[4]);
+		h->py = by + (int) floorf(inv[1] * lx + inv[3] * ly + inv[5]);
+		if (box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
+				h->py - by, &physically)) {
+			if (physically && (box->style == NULL || css_computed_visibility(
+					box->style) != CSS_VISIBILITY_HIDDEN))
+				h->box = box;
+			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
+					by - scrollbar_get_offset(box->scroll_y));
+			onyx_hit_layer(h, start);
+		}
+		h->n = start;
+		h->px = px;
+		h->py = py;
+		return;
+	}
 
 	if (!box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
 			h->py - by, &physically))

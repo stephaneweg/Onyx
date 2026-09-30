@@ -205,6 +205,11 @@ style = {
     ('mask_size', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     ('mask_position', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     ('mask_repeat', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    # Onyx: the compositing properties (as text)
+    ('filter', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('backdrop_filter', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('transform_origin', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('mix_blend_mode', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     # Uncommon group, arrays
     ('counter_increment', 1, 'counter_arr', None, 'CSS_COUNTER_INCREMENT_NONE',
         'Encode counter_increment as an array of name, value pairs, '

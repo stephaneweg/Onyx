@@ -36,4 +36,13 @@ bool onyx_fb_round_clip(nsfb_t *nsfb, const struct onyx_rrect *r);
 bool onyx_fb_glyph(nsfb_t *nsfb, const nsfb_bbox_t *loc, const uint8_t *pixels,
 		int pitch, bool mono, const struct onyx_paint *paint);
 
+/** A pixel's coverage (0..1) by a rounded box, its centre at (px, py). */
+float onyx_fb_rrect_cov(const struct onyx_rrect *r, float px, float py);
+
+struct onyx_layer;
+
+/** A compositing group's pass begins / ends (onyx_layer.c; netsurf/onyx_paint.h). */
+bool onyx_fb_layer_begin(nsfb_t *nsfb, const struct onyx_layer *layer, int pass);
+bool onyx_fb_layer_end(nsfb_t *nsfb, const struct onyx_layer *layer, int pass);
+
 #endif

@@ -19,9 +19,9 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Ladybird / Chromium / WebKit | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
-| **Compositing: `opacity` on a subtree, stacking of translucent groups** | all | colours' alpha only; a subtree's `opacity` is not a group | paint the stacking context into an off-screen ARGB layer (`onyx_paint.c`), blend it with its alpha; skip when opacity = 1; cache the layer until its subtree changes | M | P1 |
-| **`transform` (rotate / scale / skew / matrix, 3D flattened)** | all | translation only | a transformed stacking context painted into a layer then drawn through the matrix (PlutoVG already draws a transformed image); hit-testing through the inverse matrix | M | P1 |
-| **`filter` / `backdrop-filter` (blur, brightness, drop-shadow...)** | all | parsed, not drawn | on the layer above: box blur (3 passes), colour matrices; `backdrop-filter` reads the pixels behind | M | P2 |
+| ~~Compositing: `opacity` on a subtree, stacking of translucent groups~~ | all | **done (docs/06 §21)**: a group, a stacking context, blended in place (exact, one pass); nested, positioned, inline, the hover's partial redraws. Left: a layer kept between redraws | cache the layer until its subtree changes | S | P3 |
+| ~~`transform` (rotate / scale / skew / matrix, 3D flattened)~~ | all | **done (§21)**: painted apart (black and white passes, one when opaque), drawn through the matrix, bilinear; `transform-origin`, the individual properties, 3D flattened; hit test and `getBoundingClientRect` through it; translations still the layout's. Left: a real `perspective` | a projective composite (the layer mapped through a 3x3 homography) | S | P3 |
+| ~~`filter` / `backdrop-filter` (blur, brightness, drop-shadow...)~~ | all | **done (§21)**: every filter function but `url()`, `backdrop-filter`, the separable `mix-blend-mode`s; a large blur on a reduced layer. Left: `filter: url()`, the non-separable blend modes, `isolation` | SVG filter primitives on the layer | M | P3 |
 | **Transitions and animations (`transition`, `@keyframes`, Web Animations API)** | all | parsed, no effect | a timeline in the content: interpolate the computed values (colours, lengths, transforms, opacity) each frame; redraw only the animated boxes' rectangles when paint-only, relayout otherwise; `element.animate()` on the same engine; `requestAnimationFrame` paced by the display | L | P1 |
 | **Incremental restyle and relayout** | all (dirty bits per node) | a DOM change = full rebox + layout (10 ms after the turn); `:hover` already incremental | dirty flags on nodes; restyle the changed subtrees (libcss selection per node, the hover code's machinery); relayout from the nearest box whose size cannot change (a formatting-context root with fixed size); React pages would stop costing a full layout per update | L | P1 |
 | `position: fixed` / `sticky` in every case | all | fixed and sticky exist (z-layers), some cases wrong | layoutdiff pages per case | S | P2 |
@@ -33,7 +33,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | Multi-column layout (`columns`) | all | parsed | column balancing in layout.c | M | P3 |
 | `@container` queries | all | parsed, not evaluated | evaluate at layout (needs incremental relayout) | M | P3 |
 | Subgrid, masonry | Chromium / WebKit | grid without subgrid | layout_grid.c | M | P3 |
-| `clip-path` on HTML boxes, `mask` beyond images | all | SVG clip-path; mask-image on images (layout agent) | through the compositing layers above | M | P3 |
+| `clip-path` on HTML boxes, `mask` beyond images | all | SVG clip-path; mask-image on images (layout agent) | through the compositing layers (docs/06 §21: a group's layer multiplied by the clip's coverage before it is drawn) | M | P3 |
 | Scrolling: smooth, momentum, `scroll-snap`, `overscroll-behavior`, scroll-driven animations | all | wheel steps, overflow scrollers | a scroll animator per scroller; snap points at the end | M | P3 |
 | High-DPI / zoom | all | 1:1 | a device-pixel ratio through layout (CSS px -> device px) | M | P3 |
 | Printing, PDF export | all | none | NetSurf had a PDF plotter upstream | M | P4 |
@@ -99,13 +99,16 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
   pure C over a buffer), a raster thread for the compositing layers, workers on their own
   thread (a second QuickJS runtime -- runtimes are independent).
 - **GPU compositing**: the V3D driver could blit the layers (the compositor's own is CPU).
+  The compositing layers (docs/06 §21) are CPU: an effect costs its layer's pixels at each
+  redraw (a large blur is done at a reduced size; a page without effects pays nothing).
 
 ## 7. Order of work (what will be done, in parallel where independent)
 
 Wave 1 -- the P1 items, independent areas (an agent each, in worktrees, merged one by one
 with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layoutdiff.sh`):
-1. Compositing layers: `opacity` groups, full `transform`, `filter` / `backdrop-filter`
-   (redraw.c, onyx_paint.c).
+1. ~~Compositing layers: `opacity` groups, full `transform`, `filter` / `backdrop-filter`
+   (redraw.c, onyx_paint.c).~~ Done (docs/06 §21; left: a real perspective, a layer kept
+   between redraws, clip-path / mask on it).
 2. Transitions, `@keyframes`, Web Animations, `requestAnimationFrame` pacing (a new
    `html/onyx_anim.c`, libcss computed-value interpolation).
 3. WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS.

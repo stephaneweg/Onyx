@@ -187,6 +187,11 @@ enum css_properties_e {
 	CSS_PROP_MASK_SIZE			= 0x0a7,
 	CSS_PROP_MASK_POSITION			= 0x0a8,
 	CSS_PROP_MASK_REPEAT			= 0x0a9,
+	/* Onyx: the compositing properties, kept as text */
+	CSS_PROP_FILTER				= 0x0aa,
+	CSS_PROP_BACKDROP_FILTER		= 0x0ab,
+	CSS_PROP_TRANSFORM_ORIGIN		= 0x0ac,
+	CSS_PROP_MIX_BLEND_MODE			= 0x0ad,
 
 	CSS_N_PROPERTIES
 };

@@ -238,6 +238,20 @@ expect "$L" "sel k2 rgb(128, 0, 128)"
 expect "$L" "sel d rgb(1, 2, 3)"
 expect "$L" "sel w rgb(4, 5, 6)"
 
+echo "css-opacity.html, css-transform.html (compositing layers: opacity 0 still clicked, rectangles and clicks through a rotation; the pixels: fxtest.sh)"
+L=$OUT/css-opacity.log
+run css-opacity.html "$(waits 40)$(click 380 270)" "$L"
+expect "$L" "zero rect 340,190,80,80"
+expect "$L" "opacity 0 clicked"
+L=$OUT/css-transform.log
+run css-transform.html "$(waits 40)$(click 45 85)$(click 80 70)" "$L"
+expect "$L" "rot rect 23,23,113,113"
+expect "$L" "tr rect 500,210,80,80"
+expect "$L" "target cell"
+expect "$L" "rot clicked 1"
+expect "$L" "target rot"
+refuse "$L" "rot clicked 2"
+
 echo "css-math.html (CSS Values 4: round(), mod(), sin(), pow(), pi, hypot(); the dv* / cq* units)"
 L=$OUT/css-math.log
 run css-math.html "$(waits 60)" "$L"
