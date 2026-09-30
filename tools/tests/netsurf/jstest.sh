@@ -86,6 +86,13 @@ L=$OUT/js-svgns.log
 run js-svgns.html "$(waits 40)" "$L"
 expect "$L" "ns http://www.w3.org/2000/svg true linearGradient 0 0 10 10 0 0 10 10 true"
 
+echo "js-fontface.html (the CSS Font Loading API: FontFace, document.fonts)"
+L=$OUT/js-fontface.log
+run js-fontface.html "$(waits 80)" "$L"
+for s in "fontface status unloaded true" "fontface ready loaded 1" "fontface wider true"; do
+	expect "$L" "$s"
+done
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"

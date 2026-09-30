@@ -4867,21 +4867,125 @@ class File extends Blob {
 	constructor(parts, name, opts = {}) { super(parts, opts); this.name = name; this.lastModified = Date.now(); }
 }
 
-/* the fonts a document loads: always ready (NetSurf loads them itself) */
-const fontFaces = {
-	ready: Promise.resolve(),
-	status: 'loaded',
-	check() { return true; },
-	load() { return Promise.resolve([]); },
-	add() {}, delete() {}, clear() {},
-	forEach() {},
-	addEventListener() {}, removeEventListener() {},
-	[Symbol.iterator]() { return [][Symbol.iterator](); },
-};
-G.FontFace = class FontFace {
-	constructor(family, source) { this.family = family; this.status = 'loaded'; this.loaded = Promise.resolve(this); }
-	load() { return Promise.resolve(this); }
-};
+/* Onyx: the CSS Font Loading API -- FontFace (a font from a URL or bytes), document.fonts
+ * (the faces a script adds: fetched, given to NetSurf's font code, the page laid out again;
+ * the @font-face rules are NetSurf's own) */
+function fontWeights(w) {
+	const t = String(w == null ? '400' : w).trim().split(/\s+/).map(x =>
+		x === 'normal' ? 400 : x === 'bold' ? 700 : parseInt(x, 10)).filter(x => x > 0);
+	return t.length ? [t[0], t[t.length - 1]] : [400, 400];
+}
+class FontFace {
+	constructor(family, source, desc = {}) {
+		this.family = String(family).replace(/^["']|["']$/g, '');
+		this.style = desc.style || 'normal';
+		this.weight = String(desc.weight || 'normal');
+		this.stretch = desc.stretch || 'normal';
+		this.unicodeRange = desc.unicodeRange || 'U+0-10FFFF';
+		this.display = desc.display || 'auto';
+		this.featureSettings = desc.featureSettings || 'normal';
+		this.variant = desc.variant || 'normal';
+		this.status = 'unloaded';
+		this._src = source;
+		this._bytes = null;
+		let ok, ko;
+		this.loaded = new NativePromise((a, b) => { ok = a; ko = b; });
+		this.loaded.catch(() => {});
+		this._ok = ok; this._ko = ko;
+		if (typeof source !== 'string') {
+			const u8 = source instanceof ArrayBuffer ? new Uint8Array(source) :
+				ArrayBuffer.isView(source) ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength) : null;
+			if (u8) { this._bytes = u8; this.status = 'loaded'; ok(this); }
+			else { this.status = 'error'; ko(new DOMException('bad font source', 'SyntaxError')); }
+		}
+	}
+	load() {
+		if (this.status !== 'unloaded') return this.loaded;
+		this.status = 'loading';
+		/* the first url() of the source whose format NetSurf reads */
+		const urls = [...String(this._src).matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)(?:\s*format\(\s*['"]?([\w-]+)['"]?\s*\))?/g)]
+			.filter(m => !m[3] || /^(woff2?|truetype|opentype)(-variations)?$/i.test(m[3]) ||
+				/^(collection)$/i.test(m[3]) === false && !/embedded|svg/i.test(m[3]))
+			.map(m => m[2]);
+		const fail = () => { this.status = 'error'; this._ko(new DOMException('A network error occurred.', 'NetworkError')); };
+		if (!urls.length) { fail(); return this.loaded; }
+		let url;
+		try { url = new URL(urls[0], document.baseURI || location.href).href; } catch (e) { fail(); return this.loaded; }
+		const id = N.request('GET', url, null, ['X-Onyx-Dest: font'], true, (err, r) => {
+			if (err != null || !r || r.status >= 400 || !r.body) { fail(); return; }
+			const b = r.body;
+			this._bytes = b instanceof Uint8Array ? b : b instanceof ArrayBuffer ? new Uint8Array(b) :
+				Uint8Array.from(String(b), c => c.charCodeAt(0) & 255);
+			this.status = 'loaded';
+			this._ok(this);
+		});
+		if (id < 0) fail();
+		return this.loaded;
+	}
+	_register() {
+		if (this._given || !this._bytes) return;
+		this._given = true;
+		const [w1, w2] = fontWeights(this.weight);
+		N.addFontFace(this.family, w1, w2, /italic|oblique/.test(this.style), this._bytes);
+	}
+}
+class FontFaceSet extends EventTarget {
+	constructor() {
+		super();
+		this._set = new Set();
+		this._pending = 0;
+		this.status = 'loaded';
+		this._ready = NativePromise.resolve(this);
+	}
+	get ready() { return this._ready; }
+	get size() { return this._set.size; }
+	add(face) {
+		if (!(face instanceof FontFace)) throw new TypeError('not a FontFace');
+		if (this._set.has(face)) return this;
+		this._set.add(face);
+		if (face.status === 'loaded') face._register();
+		else this._track(face);
+		return this;
+	}
+	_track(face) {
+		if (face.status === 'unloaded') face.load();
+		if (face.status !== 'loading') { face._register(); return; }
+		if (this._pending++ === 0) {
+			this.status = 'loading';
+			let done;
+			this._ready = new NativePromise(r => { done = r; });
+			this._done = done;
+			dispatch(this, new Event('loading'));
+		}
+		const end = () => {
+			face._register();
+			if (--this._pending === 0) {
+				this.status = 'loaded';
+				dispatch(this, new Event('loadingdone'));
+				this._done(this);
+			}
+		};
+		face.loaded.then(end, end);
+	}
+	delete(face) { return this._set.delete(face); }
+	clear() { this._set.clear(); }
+	has(face) { return this._set.has(face); }
+	check() { return true; }
+	load(font) {
+		const fams = String(font || '').split(',').map(f => f.trim().split(/\s+/).pop().replace(/^["']|["']$/g, '').toLowerCase());
+		const faces = [...this._set].filter(f => fams.some(x => f.family.toLowerCase() === x || String(font).toLowerCase().includes(f.family.toLowerCase())));
+		for (const f of faces) if (f.status === 'unloaded') this._track(f);
+		return NativePromise.all(faces.map(f => f.loaded.catch(() => f))).then(() => faces);
+	}
+	forEach(fn, t) { for (const f of this._set) fn.call(t, f, f, this); }
+	entries() { return [...this._set].map(f => [f, f])[Symbol.iterator](); }
+	values() { return this._set.values(); }
+	keys() { return this._set.values(); }
+	[Symbol.iterator]() { return this._set.values(); }
+}
+const fontFaces = new FontFaceSet();
+G.FontFace = FontFace;
+G.FontFaceSet = FontFaceSet;
 
 /* ---- the global object ------------------------------------------------------------------- */
 

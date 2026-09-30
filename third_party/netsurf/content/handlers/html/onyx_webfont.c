@@ -292,3 +292,15 @@ void onyx_webfont_scope(html_content *c)
 	if (guit->layout->set_scope != NULL)
 		guit->layout->set_scope(c);
 }
+
+/* exported interface documented in html/onyx_webfont.h */
+bool onyx_webfont_add_script_face(html_content *c, const char *family, int wmin, int wmax,
+		bool italic, const uint8_t *data, size_t size)
+{
+	if (guit->layout->add_face == NULL || data == NULL || size == 0)
+		return false;
+	if (guit->layout->add_face(c, family, wmin, wmax, italic, data, size) != NSERROR_OK)
+		return false;
+	guit->misc->schedule(100, onyx_webfont_reflow, c);
+	return true;
+}

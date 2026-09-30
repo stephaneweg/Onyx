@@ -68,6 +68,7 @@
 #include "html/form_internal.h"
 
 #include "javascript/js.h"
+#include "html/onyx_webfont.h"
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
@@ -1398,6 +1399,47 @@ static JSValue n_image(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	return arr;
 }
 
+/** addFontFace(family, wmin, wmax, italic, bytes): a font a script loaded (the CSS Font
+ * Loading API) given to the document's font code -> whether it was read (Onyx) */
+static JSValue n_add_font_face(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *family;
+	int32_t wmin = 400, wmax = 400;
+	size_t size = 0;
+	uint8_t *data;
+	bool ok = false;
+
+	(void) this_val;
+	if (argc < 5 || t->htmlc == NULL || (family = JS_ToCString(ctx, argv[0])) == NULL)
+		return JS_FALSE;
+	JS_ToInt32(ctx, &wmin, argv[1]);
+	JS_ToInt32(ctx, &wmax, argv[2]);
+	data = JS_GetArrayBuffer(ctx, &size, argv[4]);
+	if (data == NULL) {
+		size_t off = 0, len = 0, bpe = 0;
+		JSValue ab;
+		JS_FreeValue(ctx, JS_GetException(ctx));
+		ab = JS_GetTypedArrayBuffer(ctx, argv[4], &off, &len, &bpe);
+		if (!JS_IsException(ab)) {
+			uint8_t *d = JS_GetArrayBuffer(ctx, &size, ab);
+			if (d != NULL && off + len <= size) {
+				data = d + off;
+				size = len;
+			}
+			JS_FreeValue(ctx, ab);
+		} else {
+			JS_FreeValue(ctx, JS_GetException(ctx));
+		}
+	}
+	if (data != NULL)
+		ok = onyx_webfont_add_script_face(t->htmlc, family, wmin, wmax,
+				JS_ToBool(ctx, argv[3]), data, size);
+	JS_FreeCString(ctx, family);
+	return JS_NewBool(ctx, ok);
+}
+
 /** boxed(n): whether the node has a box (it is displayed) */
 static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -2404,6 +2446,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("byId", 1, n_by_id),
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
 	JS_CFUNC_DEF("image", 1, n_image),
+	JS_CFUNC_DEF("addFontFace", 5, n_add_font_face),
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
 	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
