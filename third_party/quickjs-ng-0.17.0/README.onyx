@@ -8,6 +8,13 @@ Onyx patches (marked Onyx):
 - quickjs.c: __ONYX__'s clock (gettimeofday) is the local time: js_onyx_utc_offset_min (set by
   the embedder: NetSurf's qjs_intl.h, from SD:/etc/system.ini's timezone=) is taken off Date.now
   and is getTimezoneOffset's answer, so Date's time values are UTC.
+- quickjs.c, the interpreter's loop (JS_CallInternal), measured wins (callgrind instruction
+  counts, tools/tests/netsurf/jit/bench.sh; React server rendering -11.5 %, Octane -1..-6 %):
+  OP_strict_eq / OP_strict_neq decide ints, same-object / symbol pointers, strings of different
+  lengths or both unique atoms, and undefined / null inline (OP_STRICT_EQ, js_strict_eq_slow
+  otherwise); JS_FreeValue's decrement is inlined in the loop (js_free_value_inl); a string
+  atom is pushed as its own value (OP_push_atom_value, OP_typeof) without JS_AtomToValue;
+  js_poll_interrupts is always inlined.
 
 Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
 libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.
