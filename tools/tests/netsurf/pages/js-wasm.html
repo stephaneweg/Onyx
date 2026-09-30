@@ -75,7 +75,8 @@ ok('validate empty module', WebAssembly.validate(new Uint8Array([0, 0x61, 0x73, 
 	const bad = mod({ types: [functype([], ['i32'])], funcs: [0], codes: [code([], [...I.add])] });
 	ok('validate a bad body', WebAssembly.validate(bad) === false);
 	ok('Module of a bad body: CompileError', throwsKind(() => new WebAssembly.Module(bad), WebAssembly.CompileError) === true);
-	/* SIMD (v128.const): wasm3 has no fixed-width SIMD -- feature detection must say so */
+	/* SIMD (v128.const): wasm3 has no fixed-width SIMD -- feature detection must say so
+	 * (the one check Chromium answers otherwise: it has SIMD) */
 	const simd = mod({ types: [functype([], [])], funcs: [0], codes: [code([], [0xfd, 0x0c, ...new Array(16).fill(0), ...I.drop])] });
 	ok('validate SIMD is false', WebAssembly.validate(simd) === false);
 }
@@ -96,8 +97,8 @@ ok('Module.imports empty', WebAssembly.Module.imports(addMod).length === 0);
 ok('new required', throwsKind(() => WebAssembly.Module(addBytes), TypeError) === true);
 ok('CompileError on garbage', throwsKind(() => new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 2, 0, 0, 0])), WebAssembly.CompileError) === true);
 ok('error classes', new WebAssembly.LinkError('x') instanceof Error && new WebAssembly.RuntimeError('y').name === 'RuntimeError' && WebAssembly.CompileError.name === 'CompileError');
-ok('bytes from an ArrayBuffer and a DataView', new WebAssembly.Instance(new WebAssembly.Module(addBytes.buffer)).exports.add(1, 1) === 2 &&
-	new WebAssembly.Instance(new WebAssembly.Module(new DataView(addBytes.buffer))).exports.add(2, 2) === 4);
+ok('bytes from an ArrayBuffer and a view', new WebAssembly.Instance(new WebAssembly.Module(addBytes.buffer)).exports.add(1, 1) === 2 &&
+	new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(addBytes.buffer, 0))).exports.add(2, 2) === 4);
 
 /* ---- 2. memory: exported, a data segment, load / store, grow from both sides ---- */
 const memBytes = mod({

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Web Crypto</title>
+<script src="js-crypto-vectors.js"></script></head>
+<body>
+<p>Web Crypto: getRandomValues, randomUUID and crypto.subtle -- the standards' known answers
+(FIPS 180, RFC 4231, RFC 6070) and keys, signatures, ciphertexts and derived bits made by
+Chromium's API in Node (js-crypto-vectors.js, crypto/mkvectors.js), then round trips.</p>
+<script>
+'use strict';
+const S = crypto.subtle;
+let n = 0;
+function ok(name, cond, extra) {
+	n++;
+	console.log((cond ? 'OK crypto ' : 'FAIL crypto ') + name + (cond || extra === undefined ? '' : ' -- ' + extra));
+}
+const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+const unhex = h => new Uint8Array(h.match(/../g).map(x => parseInt(x, 16)));
+const enc = s => new TextEncoder().encode(s);
+const dec = b => new TextDecoder().decode(b);
+async function rejects(p, name) {
+	try { await p; return 'resolved'; } catch (e) { return e.name === name ? true : e.name + ': ' + e.message; }
+}
+function throwsName(fn, name) {
+	try { fn(); } catch (e) { return e.name === name ? true : e.name; }
+	return 'no exception';
+}
+const msg = unhex(VECTORS.msg);
+
+(async () => {
+	/* ---- Crypto, getRandomValues, randomUUID ---- */
+	ok('classes', crypto instanceof Crypto && S instanceof SubtleCrypto && String(crypto) === '[object Crypto]' &&
+		String(S) === '[object SubtleCrypto]' && throwsName(() => new CryptoKey(), 'TypeError') === true);
+	const r1 = crypto.getRandomValues(new Uint8Array(32)), r2 = crypto.getRandomValues(new Uint8Array(32));
+	ok('getRandomValues fills', r1.some(x => x) && hex(r1) !== hex(r2));
+	const u32 = new Uint32Array(8);
+	ok('getRandomValues returns its array', crypto.getRandomValues(u32) === u32 && u32.some(x => x > 0xffff));
+	ok('getRandomValues of floats: TypeMismatchError', throwsName(() => crypto.getRandomValues(new Float64Array(2)), 'TypeMismatchError') === true);
+	ok('getRandomValues past 65536 bytes: QuotaExceededError', throwsName(() => crypto.getRandomValues(new Uint8Array(65537)), 'QuotaExceededError') === true);
+	{
+		/* not Math.random: 4096 bytes of it look uniform (each value near 16 times) */
+		const b = crypto.getRandomValues(new Uint8Array(4096)), c = new Array(256).fill(0);
+		for (const x of b) c[x]++;
+		ok('getRandomValues spread', Math.max(...c) < 40 && Math.min(...c) > 2, Math.min(...c) + '..' + Math.max(...c));
+	}
+	const id = crypto.randomUUID();
+	ok('randomUUID', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) && id !== crypto.randomUUID(), id);
+
+	/* ---- digest (FIPS 180 answers) ---- */
+	const abc = enc('abc');
+	ok('SHA-1 abc', hex(await S.digest('SHA-1', abc)) === 'a9993e364706816aba3e25717850c26c9cd0d89d');
+	ok('SHA-256 abc', hex(await S.digest('SHA-256', abc)) === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+	ok('SHA-384 abc', hex(await S.digest({ name: 'sha-384' }, abc)) === 'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7');
+	ok('SHA-512 abc', hex(await S.digest('SHA-512', abc.buffer)) === 'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f');
+	ok('SHA-256 empty', hex(await S.digest('SHA-256', new Uint8Array(0))) === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+	ok('digest MD5: NotSupportedError', await rejects(S.digest('MD5', abc), 'NotSupportedError') === true);
+	ok('digest of a string: TypeError', await rejects(S.digest('SHA-256', 'abc'), 'TypeError') === true);
+
+	/* ---- HMAC (RFC 4231 test case 2; Node's) ---- */
+	const jefe = await S.importKey('raw', enc('Jefe'), { name: 'HMAC', hash: 'SHA-256' }, true, ['sign', 'verify']);
+	const mac = await S.sign('HMAC', jefe, enc('what do ya want for nothing?'));
+	ok('HMAC SHA-256 RFC 4231', hex(mac) === '5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843');
+	ok('HMAC verify', await S.verify('HMAC', jefe, mac, enc('what do ya want for nothing?')) === true &&
+		await S.verify('HMAC', jefe, mac, enc('what do ya want for nothing!')) === false);
+	const key32 = unhex(VECTORS.aes.key);
+	const h384 = await S.importKey('jwk', VECTORS.hmacJwk, { name: 'HMAC', hash: 'SHA-384' }, true, ['sign']);
+	ok('HMAC SHA-384 from a JWK as Chromium', hex(await S.sign('HMAC', h384, msg)) === VECTORS.hmac384);
+	const hj = await S.exportKey('jwk', h384);
+	ok('HMAC JWK export', hj.kty === 'oct' && hj.alg === 'HS384' && hj.k === VECTORS.hmacJwk.k && hj.ext === true);
+	const hg = await S.generateKey({ name: 'HMAC', hash: 'SHA-512' }, false, ['sign', 'verify']);
+	ok('HMAC generateKey', hg.type === 'secret' && hg.algorithm.length === 1024 && hg.algorithm.hash.name === 'SHA-512' &&
+		hg.extractable === false && hg.usages.join() === 'sign,verify' &&
+		await S.verify('HMAC', hg, await S.sign('HMAC', hg, msg), msg));
+	ok('export a non-extractable key: InvalidAccessError', await rejects(S.exportKey('raw', hg), 'InvalidAccessError') === true);
+
+	/* ---- AES (Node's ciphertexts) ---- */
+	const iv = unhex(VECTORS.aes.iv);
+	const gcm = await S.importKey('raw', key32, 'AES-GCM', true, ['encrypt', 'decrypt']);
+	ok('AES-GCM encrypt as Chromium', hex(await S.encrypt({ name: 'AES-GCM', iv, additionalData: enc('aad') }, gcm, msg)) === VECTORS.aes.gcm);
+	ok('AES-GCM decrypt', dec(await S.decrypt({ name: 'AES-GCM', iv, additionalData: enc('aad') }, gcm, unhex(VECTORS.aes.gcm))) === dec(msg));
+	ok('AES-GCM 96-bit tag', hex(await S.encrypt({ name: 'AES-GCM', iv, tagLength: 96 }, gcm, msg)) === VECTORS.aes.gcm96);
+	{
+		const bad = unhex(VECTORS.aes.gcm);
+		bad[3] ^= 1;
+		ok('AES-GCM tampered: OperationError', await rejects(S.decrypt({ name: 'AES-GCM', iv, additionalData: enc('aad') }, gcm, bad), 'OperationError') === true);
+	}
+	const cbc = await S.importKey('raw', key32, { name: 'AES-CBC' }, false, ['encrypt', 'decrypt']);
+	const civ = new Uint8Array(16).fill(3);
+	ok('AES-CBC as Chromium', hex(await S.encrypt({ name: 'AES-CBC', iv: civ }, cbc, msg)) === VECTORS.aes.cbc &&
+		dec(await S.decrypt({ name: 'AES-CBC', iv: civ }, cbc, unhex(VECTORS.aes.cbc))) === dec(msg));
+	ok('AES-CBC not whole blocks: OperationError', await rejects(S.decrypt({ name: 'AES-CBC', iv: civ }, cbc, unhex(VECTORS.aes.cbc).slice(0, 20)), 'OperationError') === true);
+	const ctr = await S.importKey('raw', key32, 'AES-CTR', false, ['encrypt', 'decrypt']);
+	const counter = new Uint8Array(16).fill(0xff);
+	ok('AES-CTR as Chromium (the counter wraps in 8 bits)', hex(await S.encrypt({ name: 'AES-CTR', counter, length: 8 }, ctr, msg)) === VECTORS.aes.ctr &&
+		dec(await S.decrypt({ name: 'AES-CTR', counter, length: 8 }, ctr, unhex(VECTORS.aes.ctr))) === dec(msg));
+	const kek = await S.importKey('raw', key32.slice(0, 16), 'AES-KW', false, ['wrapKey', 'unwrapKey']);
+	ok('AES-KW wrapKey as Chromium', hex(await S.wrapKey('raw', gcm, kek, 'AES-KW')) === VECTORS.aes.kw);
+	const unw = await S.unwrapKey('raw', unhex(VECTORS.aes.kw), kek, 'AES-KW', 'AES-GCM', true, ['decrypt']);
+	ok('AES-KW unwrapKey', hex(await S.exportKey('raw', unw)) === VECTORS.aes.key && unw.usages.join() === 'decrypt');
+	ok('AES-KW tampered: OperationError', await rejects(S.unwrapKey('raw', unhex(VECTORS.aes.kw).map((x, i) => i ? x : x ^ 1), kek, 'AES-KW', 'AES-GCM', true, ['decrypt']), 'OperationError') === true);
+	const ag = await S.generateKey({ name: 'AES-GCM', length: 128 }, true, ['encrypt', 'decrypt']);
+	const ct = await S.encrypt({ name: 'AES-GCM', iv }, ag, msg);
+	ok('AES-GCM generateKey round trip', ag.algorithm.length === 128 && ct.byteLength === msg.length + 16 &&
+		dec(await S.decrypt({ name: 'AES-GCM', iv }, ag, ct)) === dec(msg));
+	const aj = await S.exportKey('jwk', ag);
+	ok('AES JWK', aj.alg === 'A128GCM' && aj.key_ops.join() === 'encrypt,decrypt' &&
+		(await S.importKey('jwk', aj, 'AES-GCM', false, ['decrypt'])).algorithm.length === 128);
+	/* a JWK wrapped with AES-GCM and back */
+	const gw = await S.importKey('raw', key32, 'AES-GCM', false, ['wrapKey', 'unwrapKey']);
+	ok('wrapKey needs the wrapKey usage: InvalidAccessError', await rejects(S.wrapKey('jwk', ag, gcm, { name: 'AES-GCM', iv }), 'InvalidAccessError') === true);
+	const wrapped = await S.wrapKey('jwk', ag, gw, { name: 'AES-GCM', iv });
+	const back = await S.unwrapKey('jwk', wrapped, gw, { name: 'AES-GCM', iv }, 'AES-GCM', true, ['encrypt', 'decrypt']);
+	ok('wrapKey jwk with AES-GCM', hex(await S.exportKey('raw', back)) === hex(await S.exportKey('raw', ag)));
+	ok('AES key of 17 bytes: DataError', await rejects(S.importKey('raw', new Uint8Array(17), 'AES-CBC', false, ['encrypt']), 'DataError') === true);
+	ok('AES length 100: OperationError', await rejects(S.generateKey({ name: 'AES-CBC', length: 100 }, false, ['encrypt']), 'OperationError') === true);
+	ok('decrypt with an encrypt-only key: InvalidAccessError', await rejects(S.decrypt({ name: 'AES-GCM', iv }, await S.importKey('raw', key32, 'AES-GCM', false, ['encrypt']), ct), 'InvalidAccessError') === true);
+	ok('a secret key with no usages: SyntaxError', await rejects(S.importKey('raw', key32, 'AES-GCM', false, []), 'SyntaxError') === true);
+	ok('an unknown usage: TypeError', await rejects(S.importKey('raw', key32, 'AES-GCM', false, ['fly']), 'TypeError') === true);
+	ok('an unknown algorithm: NotSupportedError', await rejects(S.generateKey('ROT13', false, ['encrypt']), 'NotSupportedError') === true);
+
+	/* ---- KDFs (RFC 6070; Node's) ---- */
+	const pw = await S.importKey('raw', enc('password'), 'PBKDF2', false, ['deriveBits', 'deriveKey']);
+	ok('PBKDF2 SHA-1 RFC 6070', hex(await S.deriveBits({ name: 'PBKDF2', hash: 'SHA-1', salt: enc('salt'), iterations: 2 }, pw, 160)) ===
+		'ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957');
+	ok('PBKDF2 SHA-512 as Chromium', hex(await S.deriveBits({ name: 'PBKDF2', hash: 'SHA-512', salt: enc('NaCl'), iterations: 1000 }, pw, 512)) === VECTORS.pbkdf2);
+	ok('PBKDF2 extractable: SyntaxError', await rejects(S.importKey('raw', enc('x'), 'PBKDF2', true, ['deriveBits']), 'SyntaxError') === true);
+	const hk = await S.importKey('raw', key32, 'HKDF', false, ['deriveBits']);
+	ok('HKDF SHA-384 as Chromium', hex(await S.deriveBits({ name: 'HKDF', hash: 'SHA-384', salt: enc('salt'), info: enc('info') }, hk, 336)) === VECTORS.hkdf);
+	const dk = await S.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: enc('s'), iterations: 10 }, pw, { name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+	ok('deriveKey PBKDF2 to AES-GCM', dk.algorithm.name === 'AES-GCM' && (await S.exportKey('raw', dk)).byteLength === 32 &&
+		hex(await S.exportKey('raw', dk)) === hex(await S.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc('s'), iterations: 10 }, pw, 256)));
+
+	/* ---- ECDSA, ECDH on the three curves (Node's keys and signatures) ---- */
+	for (const curve of ['P-256', 'P-384', 'P-521']) {
+		const V = VECTORS['ecdsa_' + curve];
+		const pub = await S.importKey('spki', unhex(V.spki), { name: 'ECDSA', namedCurve: curve }, true, ['verify']);
+		ok('ECDSA ' + curve + ' verify Chromium\'s', await S.verify({ name: 'ECDSA', hash: V.hash }, pub, unhex(V.sig), msg) === true);
+		ok('ECDSA ' + curve + ' refuses a changed message', await S.verify({ name: 'ECDSA', hash: V.hash }, pub, unhex(V.sig), enc('x')) === false);
+		const raw = await S.importKey('raw', unhex(V.raw), { name: 'ECDSA', namedCurve: curve }, true, ['verify']);
+		ok('ECDSA ' + curve + ' raw import / export', hex(await S.exportKey('raw', raw)) === V.raw && hex(await S.exportKey('spki', raw)) === V.spki);
+		const priv = await S.importKey('jwk', V.jwk, { name: 'ECDSA', namedCurve: curve }, true, ['sign']);
+		const sig = await S.sign({ name: 'ECDSA', hash: V.hash }, priv, msg);
+		ok('ECDSA ' + curve + ' sign with a JWK key', sig.byteLength === (curve === 'P-521' ? 132 : curve === 'P-384' ? 96 : 64) &&
+			await S.verify({ name: 'ECDSA', hash: V.hash }, pub, sig, msg) === true);
+		const pj = await S.exportKey('jwk', priv);
+		ok('ECDSA ' + curve + ' JWK export', pj.kty === 'EC' && pj.crv === curve && pj.x === V.jwk.x && pj.y === V.jwk.y && pj.d === V.jwk.d);
+		const p8 = await S.importKey('pkcs8', unhex(V.pkcs8), { name: 'ECDSA', namedCurve: curve }, true, ['sign']);
+		const p8j = await S.exportKey('jwk', p8);
+		ok('ECDSA ' + curve + ' pkcs8 import', p8j.d === V.jwk.d && p8.type === 'private' && p8.algorithm.namedCurve === curve);
+		const E = VECTORS['ecdh_' + curve];
+		const a = await S.importKey('jwk', E.a_jwk, { name: 'ECDH', namedCurve: curve }, false, ['deriveBits']);
+		const b = await S.importKey('spki', unhex(E.b_spki), { name: 'ECDH', namedCurve: curve }, true, []);
+		ok('ECDH ' + curve + ' as Chromium', hex(await S.deriveBits({ name: 'ECDH', public: b }, a, null)) === E.bits);
+		ok('ECDH ' + curve + ' 128 bits', hex(await S.deriveBits({ name: 'ECDH', public: b }, a, 128)) === E.bits.slice(0, 32));
+	}
+	ok('ECDSA a key on another curve: DataError', await rejects(S.importKey('spki', unhex(VECTORS['ecdsa_P-256'].spki), { name: 'ECDSA', namedCurve: 'P-384' }, true, ['verify']), 'DataError') === true);
+	ok('ECDSA a bad point: DataError', await rejects(S.importKey('raw', new Uint8Array(65).fill(4), { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']), 'DataError') === true);
+	const kp = await S.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
+	ok('ECDSA generateKey', kp.privateKey.type === 'private' && kp.publicKey.type === 'public' && kp.publicKey.extractable === true &&
+		kp.privateKey.usages.join() === 'sign' && kp.publicKey.usages.join() === 'verify' &&
+		await S.verify({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, await S.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.privateKey, msg), msg));
+	ok('sign with a public key: InvalidAccessError', await rejects(S.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, msg), 'InvalidAccessError') === true);
+	const x1 = await S.generateKey({ name: 'ECDH', namedCurve: 'P-384' }, true, ['deriveKey']);
+	const x2 = await S.generateKey({ name: 'ECDH', namedCurve: 'P-384' }, true, ['deriveKey']);
+	const k12 = await S.deriveKey({ name: 'ECDH', public: x2.publicKey }, x1.privateKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+	const k21 = await S.deriveKey({ name: 'ECDH', public: x1.publicKey }, x2.privateKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+	ok('ECDH deriveKey agrees', hex(await S.exportKey('raw', k12)) === hex(await S.exportKey('raw', k21)));
+
+	/* ---- RSA (Node's 2048-bit key) ---- */
+	const R = VECTORS.rsa;
+	const pssPub = await S.importKey('spki', unhex(R.spki), { name: 'RSA-PSS', hash: 'SHA-256' }, true, ['verify']);
+	ok('RSA key info', pssPub.algorithm.modulusLength === 2048 && hex(pssPub.algorithm.publicExponent) === '010001' && pssPub.algorithm.hash.name === 'SHA-256');
+	ok('RSA-PSS verify Chromium\'s', await S.verify({ name: 'RSA-PSS', saltLength: 32 }, pssPub, unhex(R.pss), msg) === true &&
+		await S.verify({ name: 'RSA-PSS', saltLength: 32 }, pssPub, unhex(R.pss), enc('x')) === false);
+	const pssPriv = await S.importKey('pkcs8', unhex(R.pkcs8), { name: 'RSA-PSS', hash: 'SHA-256' }, true, ['sign']);
+	ok('RSA-PSS sign', await S.verify({ name: 'RSA-PSS', saltLength: 32 }, pssPub, await S.sign({ name: 'RSA-PSS', saltLength: 32 }, pssPriv, msg), msg) === true);
+	const v15 = await S.importKey('spki', unhex(R.spki), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+	ok('RSASSA-PKCS1-v1_5 verify Chromium\'s', await S.verify('RSASSA-PKCS1-v1_5', v15, unhex(R.pkcs1), msg) === true);
+	const v15p = await S.importKey('pkcs8', unhex(R.pkcs8), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+	ok('RSASSA-PKCS1-v1_5 sign as Chromium (deterministic)', hex(await S.sign('RSASSA-PKCS1-v1_5', v15p, msg)) === R.pkcs1);
+	const oaep = await S.importKey('jwk', Object.assign({}, R.jwk, { key_ops: undefined, alg: undefined }), { name: 'RSA-OAEP', hash: 'SHA-256' }, true, ['decrypt']);
+	ok('RSA-OAEP decrypt Chromium\'s (a JWK key, a label)', dec(await S.decrypt({ name: 'RSA-OAEP', label: enc('label') }, oaep, unhex(R.oaep))) === 'secret for OAEP');
+	ok('RSA-OAEP wrong label: OperationError', await rejects(S.decrypt({ name: 'RSA-OAEP', label: enc('lab') }, oaep, unhex(R.oaep)), 'OperationError') === true);
+	const oj = await S.exportKey('jwk', oaep);
+	ok('RSA JWK export', oj.kty === 'RSA' && oj.alg === 'RSA-OAEP-256' && oj.n === R.jwk.n && oj.d === R.jwk.d && oj.qi === R.jwk.qi && oj.e === 'AQAB');
+	const oPub = await S.importKey('spki', unhex(R.spki), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+	ok('RSA-OAEP round trip', dec(await S.decrypt({ name: 'RSA-OAEP' }, oaep, await S.encrypt({ name: 'RSA-OAEP' }, oPub, enc('hi')))) === 'hi');
+	const rk = await S.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 1024, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-1' }, true, ['sign', 'verify']);
+	ok('RSA generateKey (1024)', rk.publicKey.algorithm.modulusLength === 1024 &&
+		await S.verify('RSASSA-PKCS1-v1_5', rk.publicKey, await S.sign('RSASSA-PKCS1-v1_5', rk.privateKey, msg), msg) === true);
+	ok('RSA pkcs8 of the generated key', (await S.exportKey('pkcs8', rk.privateKey)).byteLength > 600 &&
+		(await S.importKey('pkcs8', await S.exportKey('pkcs8', rk.privateKey), { name: 'RSA-PSS', hash: 'SHA-1' }, false, ['sign'])).type === 'private');
+	ok('not a key: DataError', await rejects(S.importKey('spki', new Uint8Array([48, 3, 2, 1, 0]), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']), 'DataError') === true);
+	ok('a bad JWK: DataError', await rejects(S.importKey('jwk', { kty: 'oct', k: '***' }, 'AES-GCM', false, ['encrypt']), 'DataError') === true);
+
+	/* ---- in a worker ---- */
+	await new Promise(resolve => {
+		const src = 'crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(d => postMessage([...new Uint8Array(d)].map(x => x.toString(16).padStart(2, "0")).join("") + " " + crypto.getRandomValues(new Uint8Array(4)).length + " " + (typeof CryptoKey)));';
+		const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+		w.onmessage = ev => {
+			ok('in a worker', ev.data === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad 4 function', ev.data);
+			w.terminate();
+			resolve();
+		};
+		w.onerror = ev => { ok('in a worker', false, ev.message); resolve(); };
+	});
+	/* speed: logged for the bench (not checked) */
+	{
+		const big = new Uint8Array(1 << 20);
+		let t = performance.now();
+		await S.digest('SHA-256', big);
+		const tsha = performance.now() - t;
+		t = performance.now();
+		await S.encrypt({ name: 'AES-GCM', iv }, gcm, big);
+		const tgcm = performance.now() - t;
+		t = performance.now();
+		await S.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.privateKey, msg);
+		const tec = performance.now() - t;
+		t = performance.now();
+		await S.sign({ name: 'RSA-PSS', saltLength: 32 }, pssPriv, msg);
+		const trsa = performance.now() - t;
+		console.log('crypto timing SHA-256 1 MB ' + tsha.toFixed(1) + ' ms, AES-GCM 1 MB ' + tgcm.toFixed(1) +
+			' ms, ECDSA P-256 sign ' + tec.toFixed(1) + ' ms, RSA-2048 sign ' + trsa.toFixed(1) + ' ms');
+	}
+	console.log('crypto done ' + n);
+})().catch(e => console.log('FAIL crypto threw ' + e + ' ' + (e && e.stack)));
+</script>
+</body></html>

@@ -3542,6 +3542,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
 	qjs_net_setup(t->ctx, natives, NULL);	/* Onyx: WebSocket, EventSource, Workers */
 	qjs_wasm_setup(t->ctx, natives);	/* Onyx: WebAssembly (wasm.js, on wasm3) */
+	qjs_crypto_setup(t->ctx, natives);	/* Onyx: Web Crypto (crypto.js, on mbedTLS) */
 	JS_FreeValue(t->ctx, natives);
 	onyx_perf_log("js:prelude", t_prelude);	/* (a context's dom.js, html5.js, canvas.js, Intl) */
 	t->dirty = false;	/* (nothing laid out yet) */
@@ -3912,6 +3913,7 @@ JSContext *qjs_worker_create(JSContext *parent, const char *url)
 	JS_FreeValue(t->ctx, prelude);
 	qjs_net_setup(t->ctx, natives, parent);
 	qjs_wasm_setup(t->ctx, natives);	/* (Onyx: WebAssembly) */
+	qjs_crypto_setup(t->ctx, natives);	/* (Onyx: Web Crypto) */
 	JS_FreeValue(t->ctx, natives);
 	t->dirty = false;
 	qjs_leave(t);

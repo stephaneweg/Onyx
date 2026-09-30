@@ -68,7 +68,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c
 # Onyx: WebAssembly on wasm3 (libm3.a, user/netsurf/Makefile)
 W3     := $(LIBROOT)/wasm3-0.9.2
 
@@ -182,6 +182,14 @@ $(OUT)/qjsgen/qjs_wasm_js.h: $(JSQ)/wasm.js
 QWASM_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_wasm.c))
 $(QWASM_OBJ_NS): $(OUT)/qjsgen/qjs_wasm_js.h
 $(QWASM_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(W3)/src
+# Onyx: Web Crypto -- crypto.js as a C string for qjs_crypto.c (on mbedTLS: libmbedcrypto)
+$(OUT)/qjsgen/qjs_crypto_js.h: $(JSQ)/crypto.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from crypto.js by netsurf-app.mk */'; echo 'static const char qjs_crypto_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+QCRYPTO_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_crypto.c))
+$(QCRYPTO_OBJ_NS): $(OUT)/qjsgen/qjs_crypto_js.h
+$(QCRYPTO_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBEDTLS)/include
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main

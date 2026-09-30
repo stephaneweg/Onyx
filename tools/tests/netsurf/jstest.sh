@@ -275,6 +275,8 @@ refuse "$L" "worker says after close (not delivered)"
 
 html5page js-wasm.html wasm "WebAssembly on wasm3: modules, memory, imports, traps, tables, i64, globals, a compiled C program, a worker"
 sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
+html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"
+sed -n 's/^console: crypto timing /  timing (mbedTLS): /p' "$OUT/js-crypto.log"
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"
