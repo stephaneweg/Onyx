@@ -117,7 +117,11 @@ static int fd_w () { Root *r = Root::current (); int W = r ? r->width  : 360; in
 static int fd_h () { Root *r = Root::current (); int H = r ? r->height : 300; int h = 300; if (h > H - 20) h = H - 20; return h; }
 
 // The volumes the list shows above a volume root ("..": the SD card's FAT/exFAT partitions).
+#ifdef _WIN32		// (the Windows build of the apps, pc/Koton: SD: is the program's folder, then the PC's drives)
+static const char *const FD_VOLS[] = { "SD:", "C:", "D:", "E:", "F:", "G:", "H:", "I:", "J:", "K:" };
+#else
 static const char *const FD_VOLS[] = { "SD:", "SD1:", "SD2:", "SD3:", "USB:", "USB2:", "USB3:" };
+#endif
 
 FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bool folder)
   : Modal (fd_w (), fd_h ()), m_save (save), m_folder (folder)

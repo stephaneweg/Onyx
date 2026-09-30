@@ -1871,6 +1871,12 @@ next-chord co-pilot's cards, the track's sound chain at the right.*
 > questions and answers, the keys, the chord colours, the styles, every plugin's parameters. What
 > follows is its summary.
 
+> **Koton for Windows.** The same Koton runs on a PC: the folder `pc/dist/Koton` of the repository
+> (copy it whole; run `Koton.exe`, Windows 10 or 11, nothing to install). It is built from the same
+> sources, its plugins and its AI helper included; the folder is its "SD card" (`SD:/` in the manual),
+> its menus are the window's menu bar, the sound goes to Windows' default output, every MIDI input of
+> Windows plays. Its `README.txt` says the rest.
+
 Koton is Onyx's music studio: **Koton Studio** (a DAW for Windows) made again for Onyx. A song is
 thought **in harmony**: a silent **chord track**, pinned at the bottom, holds the chords — by their
 **degree** in the key, so they follow a change of key — and every other part reads it:

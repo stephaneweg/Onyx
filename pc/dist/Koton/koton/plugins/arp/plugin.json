@@ -1,0 +1,19 @@
+{
+  "name": "Arpeggiator",
+  "kind": "generator",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "The arpeggiator over the chord track: Koton's reference generator.",
+  "aliases": ["koton.arpeggiator"],
+  "params": [
+    {"id": "pattern", "name": "Pattern", "min": 0, "max": 5, "default": 0, "unit": "", "step": 1, "choices": ["Up", "Down", "Up-Down", "Down-Up", "Random", "Chord"]},
+    {"id": "notes_per_beat", "name": "Notes/beat", "min": 1, "max": 8, "default": 2, "unit": "", "step": 1},
+    {"id": "extend", "name": "Extend", "min": 0, "max": 4, "default": 0, "unit": "oct", "step": 1},
+    {"id": "articulation", "name": "Articulation", "min": 0, "max": 3, "default": 1, "unit": "", "step": 1, "choices": ["Legato", "Normal", "Detached", "Staccato"]},
+    {"id": "velocity", "name": "Velocity", "min": 1, "max": 127, "default": 100, "unit": "", "step": 1},
+    {"id": "octave", "name": "Octave", "min": 0, "max": 8, "default": 4, "unit": "", "step": 1},
+    {"id": "voice_leading", "name": "Voice leading", "min": 0, "max": 1, "default": 0, "unit": "", "step": 1, "choices": ["Off", "On"]},
+    {"id": "spread", "name": "Spread", "min": 0, "max": 3, "default": 0, "unit": "", "step": 1, "choices": ["Close", "Drop-2", "Wide", "One per octave"]},
+    {"id": "rhythm_mode", "name": "Rhythm", "min": 0, "max": 1, "default": 0, "unit": "", "step": 1, "choices": ["Regular", "Custom"]}
+  ]
+}

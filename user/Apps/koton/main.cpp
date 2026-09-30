@@ -446,7 +446,8 @@ static void openGeneratorEditor (int t, int i)
 	GeneratorModule *gm = (GeneratorModule *) m;
 	Root *r = Root::current ();
 	const PlugInfo *inf = g_plug->find (gm->generatorId);
-	int w = inf && inf->editorW ? inf->editorW : 420, h = inf && inf->editorH ? inf->editorH : 300;
+	int w, h; g_plug->editorSize (inf, &w, &h);			// (as an instrument's or an effect's: its knobs' rows)
+	w = imax (240, imin (w, r->width - 80)); h = imax (160, imin (h, r->height - 120));
 	PluginWindow *pw = new PluginWindow ((r->width - w) / 2, (r->height - h) / 2, w + 2, h + PluginWindow::TITLE + 1, inf ? inf->name.c () : gm->generatorId.c ());
 	PlugEditorView *v = g_plug->openGeneratorEditor (*gm, *pw, 1, PluginWindow::TITLE, w, h);
 	showPluginWindow (pw, v);

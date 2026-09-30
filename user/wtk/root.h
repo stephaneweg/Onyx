@@ -87,8 +87,8 @@ private:
 	void initApplet ();			// ... an applet's: the host's surface, no window
 	static Root *&active ();		// single active window per app (reachable from C callbacks)
 public:
-	static void ptrEvent (unsigned long, int ev, long v);	// (the kernel's event streams; an
-	static void keyEvent (unsigned long, int ev, long v);	// applet's host's, re-packed alike)
+	static void ptrEvent (unsigned long, int ev, gui_value v);	// (the kernel's event streams; an
+	static void keyEvent (unsigned long, int ev, gui_value v);	// applet's host's, re-packed alike)
 };
 
 } // namespace wtk

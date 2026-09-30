@@ -16,6 +16,9 @@
 //
 #ifndef _koton_audio_h
 #define _koton_audio_h
+#ifndef __aarch64__
+#include <chrono>			// (the PC builds: the DSP thread's load)
+#endif
 
 #include "engine/engine.h"
 #include "ui/doc.h"
@@ -163,7 +166,7 @@ struct AudioHost
 		__asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (f));
 		return f ? c * 1000000ull / f : 0;
 #else
-		return 0;
+		return (unsigned long long) std::chrono::duration_cast<std::chrono::microseconds> (std::chrono::steady_clock::now ().time_since_epoch ()).count ();
 #endif
 	}
 	static inline void cpuRelax ()

@@ -76,6 +76,10 @@ Cette édition n'a pas de vue partition.
   fournisseur — celles de Gemini sont gratuites sur `aistudio.google.com`.
 - En option : un **clavier MIDI USB** (n'importe quel modèle conforme à la norme), branché avant ou
   pendant que Koton tourne.
+- **Sous Windows** (10 ou 11) : le même Koton, dans le dossier `Koton` (`pc/dist/Koton` du dépôt
+  d'Onyx) — lancez `Koton.exe`. Ce dossier est sa carte : `SD:/` dans ce manuel, c'est ce dossier. Ses
+  menus sont la barre de menus de la fenêtre ; le son va à la sortie par défaut de Windows ; toutes les
+  entrées MIDI jouent.
 
 ### 1.3 À propos de ce manuel
 

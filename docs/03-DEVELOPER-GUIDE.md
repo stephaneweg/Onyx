@@ -2091,6 +2091,32 @@ barwidth = 40
   (`EditorForm.cs`: modules split / composed like `qbasic`) and the runtime (`Runner.cs`: the
   VM on a worker thread, the page drawn scaled into a bitmap, WinForms controls). Wine + wine-mono
   can run both on Linux for a check.
+- **Koton for Windows** (`pc/Koton`, built on Linux by `sh pc/Koton/build.sh` into `pc/dist/Koton/`,
+  committed; `pc/build.sh` runs it too). Not a port: **the Onyx sources, unchanged** -- `user/Apps/koton`,
+  `user/wtk`, FreeType, MeltySynth, the plugins `user/Apps/kp_*`, `user/bin/llm.cpp` + mbedTLS -- built with
+  MinGW-w64 over [`pc/Koton/winkapi.cpp`](../pc/Koton/winkapi.cpp), the kernel's ABI table on Win32: put
+  at `KAPI_TABLE_VA` (`VirtualAlloc`) by a constructor that runs before all the others
+  (`init_priority`), so `KT->...` works as on the Pi. What it gives: a Windows window whose client area is
+  the canvas (`get_chrome` answers "no frame": wtk draws none), the app's menu bar as a Windows menu
+  (`set_menu`), its size as the work area (`win_geometry`: a maximised wtk `Root` follows the window --
+  `GUI_EVENT_DISPLAY_RESIZE` on `WM_SIZE`), the events queued by the window procedure and handed out by
+  `pump_events` (the app's thread, as on Onyx); files with `SD:/` = the exe's folder (`ONYX_SD`, inherited
+  by the programs it starts) and `C:/...` a Windows path, `.../main` and `SD:/bin/llm` being `main.exe`,
+  `llm.exe`; threads, `wait_word` (`WaitOnAddress` re-checked every millisecond, as the Onyx kernel re-reads
+  a sleeping word: a word another process changed wakes its sleeper); the sound ring played by WASAPI
+  (shared mode, event driven; winmm, then a silent real-time drain, when not); winmm MIDI inputs as the
+  USB MIDI events; processes in a job (they end with Koton), pipes for `spawn`; named services, mailboxes
+  (a ring per process in a named mapping) and surfaces (named mappings) for the plugins; Winsock for
+  `tcp_*` (the AI helper's HTTPS). `pc/Koton/onyxwin.h` (forced first: `-include`) stands for `onyxpp.hpp`
+  (the C runtime's `new` / `delete`), `-DIMG_HOST_TEST` for the image codecs' libc stubs. Three things
+  in the shared sources exist for it, none changing Onyx: `gui_value` (`kapi_abi.h`: an event's 64-bit
+  value -- `long` on Onyx, `long long` where `long` has 32 bits) with the `GUI_PTR_*` macros in 64 bits,
+  wtk's handlers declared with it; `kapi_memset/memcpy/memmove`'s weak definitions left out on `_WIN32`
+  (PE has no weak symbols worth the name); wtk's file dialog lists `SD:` and the drives `C:`... on
+  `_WIN32`. Checked under Wine (`Xvfb` + `wine explorer /desktop=onyx,1920x1080 ...\Koton.exe`, driven by
+  `xdotool`): the demo song, playback, the editors, the plugins (a generator, an effect, an instrument:
+  processes, editors, their sound), Compose with AI (`llm.exe` over HTTPS), the file dialog, closing.
+  `pc/Koton/README.txt` is the user's page (copied into the folder).
 - **Volume and Wi-Fi from the menu bar** (ABI v60): `user/volume.h` (`volume_save` /
   `volume_restore`: `SD:/etc/sound.ini`) for the menu bar's volume box and `/bin/volume`
   (`kapi_sound_volume (vol, mute)`, −1 keeps). The Wi-Fi menu is its own app,

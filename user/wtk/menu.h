@@ -41,7 +41,7 @@ private:
 	long	   m_key[MAXITEMS];
 	int	   m_count;
 	void put (const char *s);
-	static void handler (unsigned long, int ev, long v);
+	static void handler (unsigned long, int ev, gui_value v);
 };
 
 } // namespace wtk

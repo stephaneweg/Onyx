@@ -37,6 +37,7 @@ public:
 	int track;
 	int open;				// the insert shown with its knobs (-1 none)
 	VuMeter *meter;
+	unsigned m_states = 0;		// (plugStates when made)
 	Knob *reverb;
 	ChainPanel (int l, int t, int h) : Widget (l, t, W, h), track (-1), open (0), meter (0), reverb (0) { anchor = ANCHOR_TOP | ANCHOR_BOTTOM | ANCHOR_RIGHT; }
 	unsigned bgColor () override { return PANEL; }
@@ -59,6 +60,7 @@ public:
 		clearChildren ();
 		const Project &p = g_doc.p;
 		track = iclamp (g_doc.sel.valid () ? g_doc.sel.track : g_doc.selTrack, -1, p.tracks.size () - 1);
+		m_states = plugStates ();
 		if (track < 0) { invalidate (true); return; }
 		const Track &tr = p.tracks[track];
 		int y = 38;
@@ -142,8 +144,20 @@ public:
 		if (!g_plug || !g_plug->available ())
 			wrapText (cv, 16, height - 150, width - 64, "Plugins (instruments, effects, generators) run as processes of their own: not available here.", FAINT, 17);
 	}
+	// the states of the track's plugins (a plugin still starting when the panel was made: made again
+	// once it runs -- or crashed)
+	unsigned plugStates () const
+	{
+		if (!g_plug || track < 0) return 0;
+		unsigned h = 0;
+		PlugInstance *pi = g_plug->trackInstrument (track);
+		h = h * 31 + (pi ? (unsigned) pi->state () + 1 : 0);
+		for (int s = 0; s < 4; s++) { PlugInstance *fx = g_plug->trackInsert (track, s); h = h * 31 + (fx ? (unsigned) fx->state () + 1 : 0); }
+		return h;
+	}
 	void tick ()
 	{
+		if (plugStates () != m_states) rebuild ();
 		if (meter && track >= 0 && track < ENGINE_MAX_TRACKS)
 			meter->set (g_audio.engine.peakL[track], g_audio.engine.peakR[track]);
 	}

@@ -614,17 +614,18 @@ bool PlugHost::pullGeneratorState (PlugInstance *p, GeneratorModule &m)
 }
 
 // ---- editors ------------------------------------------------------------------------------------------------------
-void PlugHost::editorSize (const PlugInstance *p, int *w, int *h) const
+void PlugHost::editorSize (const PlugInstance *p, int *w, int *h) const { editorSize (p ? &p->m_info : 0, w, h); }
+void PlugHost::editorSize (const PlugInfo *info, int *w, int *h) const
 {
 	int W = 480, H = 240;
-	if (p && p->m_info.editorW > 0 && p->m_info.editorH > 0) { W = p->m_info.editorW; H = p->m_info.editorH; }
-	else if (p)
+	if (info && info->editorW > 0 && info->editorH > 0) { W = info->editorW; H = info->editorH; }
+	else if (info)
 	{
 		// (as kplug.h lays its knobs out: 96 px a knob, 170 a drop-down, 150 a check box, rows of 600 px)
 		int fh = wtk::wk_fh (), x = 10, rows = 1, rowW = 600;
-		for (int i = 0; i < p->m_info.params.size (); i++)
+		for (int i = 0; i < info->params.size (); i++)
 		{
-			const PlugParam &q = p->m_info.params[i];
+			const PlugParam &q = info->params[i];
 			bool tog = q.choices.size () == 2 && q.choices[0] == "Off" && q.choices[1] == "On";
 			int cw = q.choices.size () && !tog ? 170 : tog ? 150 : 96;
 			if (x + cw > rowW - 6 && x > 10) { x = 10; rows++; }

@@ -38,7 +38,7 @@ answer in French. The docs stay in English.
   `-C circle/addon/fatfs`, `-C circle/addon/wlan`, `(cd circle/addon/wlan/hostap/wpa_supplicant &&
   make -f Makefile.circle)`. After any `ffconf.h` change: rebuild libfatfs, libwlan,
   libwpa_supplicant and the kernel clean (the `FIL` layout).
-- **Windows tools:** `sh pc/build.sh` → `pc/dist` (nemucore.dll with MinGW-w64 `g++`,
+- **Windows tools:** `sh pc/build.sh` → `pc/dist` (Koton: `sh pc/Koton/build.sh` → `pc/dist/Koton`, MinGW-w64 only; nemucore.dll with MinGW-w64 `g++`,
   `-lwinmm -lopengl32 -lgdi32`; the .NET Framework 4.8 WinForms exes with the .NET SDK). On
   Windows: MSYS2 (or WSL) with MinGW-w64 + the .NET SDK. The script rebuilds every exe; restore
   the unchanged ones (`git checkout pc/dist/<file>`) before committing.
@@ -807,6 +807,11 @@ studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section
 `sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
 `sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont
 (`sdcard/koton/soundfonts`, licence beside it).
+
+**Koton for Windows (2026-09-30):** `pc/dist/Koton` (`sh pc/Koton/build.sh`, MinGW-w64): the Onyx
+sources unchanged over `pc/Koton/winkapi.cpp`, the kernel's table on Win32 -- docs/03 *Koton for
+Windows*. Checked under Wine (no sound card there: the silent drain); to try on a real Windows: the
+sound (WASAPI), a USB MIDI keyboard, the window's resize by hand.
 
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
 (`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by

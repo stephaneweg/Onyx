@@ -195,6 +195,7 @@ public:
 	PlugEditorView *openEditor (PlugInstance *p, wtk::Widget &parent, int x, int y, int w, int h);
 	void closeEditor (PlugEditorView *v);		// removed from its parent, deleted
 	void editorSize (const PlugInstance *p, int *w, int *h) const;	// what it would like
+	void editorSize (const PlugInfo *info, int *w, int *h) const;	// (from its description: a generator's before it runs)
 
 	// ---- the loop (the UI thread)
 	bool handleMessage (int from, int type, const void *data, int len);	// true: a plugin's

@@ -71,6 +71,9 @@ There is no score (staff notation) view in this edition.
 - For the AI: the **network** up (see the Onyx User Guide) and an **API key** from a provider — Gemini's
   are free at `aistudio.google.com`.
 - Optional: a **USB MIDI keyboard** (any class-compliant one), plugged in before or while Koton runs.
+- **On Windows** (10 or 11): the same Koton, in the folder `Koton` (`pc/dist/Koton` of the Onyx
+  repository) — run `Koton.exe`. The folder is its card: `SD:/` in this manual is that folder. Its menus
+  are the window's menu bar; the sound goes to Windows' default output; every MIDI input plays.
 
 ## 2. Getting started
 

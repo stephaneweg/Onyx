@@ -648,6 +648,11 @@ v68 = `sound_config`/`sound_map` — low-latency sound and the mapped PCM ring (
 `wait_word`/`wake_word` — a futex (§7), `thread_priority` — "real time" threads (§5),
 `midi_read`/`midi_devices` — USB MIDI input (`struct kapi_midi_event`).
 
+The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
+(64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
+bits -- the Windows build of the apps (`pc/Koton`, docs/03 *Koton for Windows*), whose table is filled
+by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new version.
+
 ### Categories of exposed functions
 
 | Category | Examples |

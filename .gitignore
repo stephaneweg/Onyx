@@ -93,3 +93,6 @@ sdcard/doom/savegame/
 sdcard/doom/*.cfg
 user/doom/build/
 sdcard/etc/clock
+
+# Koton for Windows: what the app writes into its folder when tried from the repository
+pc/dist/Koton/koton/settings.json

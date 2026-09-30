@@ -65,7 +65,7 @@ bool Menu::shortcut (long key)
 	return false;
 }
 
-void Menu::handler (unsigned long, int ev, long v)
+void Menu::handler (unsigned long, int ev, gui_value v)
 {
 	Menu *m = s_current;
 	if (m == 0 || ev != GUI_EVENT_MENU || v < 0 || v >= m->m_count || m->m_cb[v] == 0) return;

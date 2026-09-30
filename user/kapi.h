@@ -53,8 +53,8 @@
 #define GUI_DISPLAY_H(v)	((int) ((v) & 0xFFFF))
 #define GUI_EVENT_WINCTL	18	// (v64) a title button: value KAPI_FRAME_MENU (the window menu)
 					// or KAPI_FRAME_MAXIMISE (also a double click on the title)
-#define GUI_DND_FLAGS(v)	((unsigned) (((unsigned long) (v) >> 32) & 0xFF))
-#define GUI_DND_PID(v)		((int) ((unsigned long) (v) & 0xFFFFFFFF))
+#define GUI_DND_FLAGS(v)	((unsigned) (((unsigned long long) (v) >> 32) & 0xFF))
+#define GUI_DND_PID(v)		((int) ((unsigned long long) (v) & 0xFFFFFFFF))
 #define DND_F_COPY		1	// Ctrl held: copy instead of move
 #define DND_F_CANCEL		2	// DRAG_DONE: cancelled (Esc)
 #define DND_F_DESKTOP		4	// DRAG_DONE: dropped on the desktop / no window
@@ -65,11 +65,11 @@
 #define MOD_SHIFT		2
 #define MOD_ALT			4
 #define WIN_MENU_MAX_USER	2048	// max menu spec length (= the kernel's WIN_MENU_MAX)
-#define GUI_PTR_Y(v)		((int) ((unsigned long) (v) & 0xFFFF))
-#define GUI_PTR_X(v)		((int) (((unsigned long) (v) >> 16) & 0xFFFF))
-#define GUI_PTR_BUTTONS(v)	((int) (((unsigned long) (v) >> 32) & 0xFF))	// held mask
-#define GUI_PTR_CHANGED(v)	((int) (((unsigned long) (v) >> 40) & 0xFF))	// 1 left/2 right/4 mid
-#define GUI_PTR_WHEEL(v)	((int) (signed char) (((unsigned long) (v) >> 48) & 0xFF)) // +fwd/-back
+#define GUI_PTR_Y(v)		((int) ((unsigned long long) (v) & 0xFFFF))
+#define GUI_PTR_X(v)		((int) (((unsigned long long) (v) >> 16) & 0xFFFF))
+#define GUI_PTR_BUTTONS(v)	((int) (((unsigned long long) (v) >> 32) & 0xFF))	// held mask
+#define GUI_PTR_CHANGED(v)	((int) (((unsigned long long) (v) >> 40) & 0xFF))	// 1 left/2 right/4 mid
+#define GUI_PTR_WHEEL(v)	((int) (signed char) (((unsigned long long) (v) >> 48) & 0xFF)) // +fwd/-back
 
 // Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 #define KEY_BACKSPACE		8
@@ -587,6 +587,7 @@ static inline int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsign
 // weak symbols (not static inline) so the linker can see them: the freestanding app
 // Makefiles alias the C names onto them (-Wl,--defsym,memset=kapi_memset ...), which
 // resolves the calls GCC emits on its own (array/struct init and copies).
+#ifndef _WIN32		// (the Windows build of the apps, pc/Koton: its C library's; no weak symbols there)
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -595,6 +596,7 @@ __attribute__ ((weak)) void *kapi_memcpy (void *dst, const void *src, unsigned l
 __attribute__ ((weak)) void *kapi_memmove (void *dst, const void *src, unsigned long n)      { return KT->memmove (dst, src, n); }
 #ifdef __cplusplus
 }
+#endif
 #endif
 
 // Friendly aliases used by the demos.

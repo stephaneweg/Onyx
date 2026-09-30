@@ -57,8 +57,8 @@ static void ap_pump ()
 			ApPtr e; unsigned char *d = (unsigned char *) &e;
 			for (unsigned i = 0; i < sizeof e; i++) d[i] = buf[i];
 			int x = e.x < 0 ? 0 : e.x, y = e.y < 0 ? 0 : e.y;
-			long v = ((long) (e.wheel & 0xFF) << 48) | ((long) (e.changed & 0xFF) << 40)
-			       | ((long) (e.buttons & 0xFF) << 32) | ((long) (x & 0xFFFF) << 16) | (long) (y & 0xFFFF);
+			gui_value v = ((gui_value) (e.wheel & 0xFF) << 48) | ((gui_value) (e.changed & 0xFF) << 40)
+			       | ((gui_value) (e.buttons & 0xFF) << 32) | ((gui_value) (x & 0xFFFF) << 16) | (gui_value) (y & 0xFFFF);
 			Root::ptrEvent (0, e.event, v);
 		}
 		else if (type == AP_KEY && n >= (int) sizeof (ApKey))
@@ -183,7 +183,7 @@ void Root::run ()
 Root *&Root::active () { static Root *p = 0; return p; }
 Root *Root::current () { return active (); }
 
-void Root::ptrEvent (unsigned long, int ev, long v)
+void Root::ptrEvent (unsigned long, int ev, gui_value v)
 {
 	static int bl = 0, br = 0, bm = 0;		// persistent button state across events
 	Root *r = active ();
@@ -245,7 +245,7 @@ void Root::ptrEvent (unsigned long, int ev, long v)
 	r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, 0);
 }
 
-void Root::keyEvent (unsigned long, int ev, long v)
+void Root::keyEvent (unsigned long, int ev, gui_value v)
 {
 	Root *r = active ();
 	if (r == 0 || ev != GUI_EVENT_KEY) return;

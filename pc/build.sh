@@ -2,7 +2,7 @@
 # build.sh -- the Onyx tools for Windows, built on Linux: obcore.dll (mingw-w64: the compiler, VM
 # and screen of user/basic), OnyxBasic.exe (the .NET Framework 4.8 editor + runtime) and OnyxRemote.exe
 # (the client of rdpd; the .NET SDK with EnableWindowsTargeting), NintendoEMU.exe + nemucore.dll (the
-# emulators of Onyx). Result: pc/dist/ -- copy it to the PC.
+# emulators of Onyx), and Koton (pc/Koton/build.sh: pc/dist/Koton/). Result: pc/dist/ -- copy it to the PC.
 #   sh pc/build.sh
 # On Windows (Git Bash / MSYS2): a MinGW-w64 g++ (e.g. WinLibs) and the .NET SDK on the PATH.
 set -e
@@ -30,4 +30,6 @@ x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libg
 "$STRIP" "$DIST/nemucore.dll"
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/NintendoEMU/NintendoEMU.csproj" -c Release -o "$HERE/NintendoEMU/bin/out" -v quiet -nologo
 cp "$HERE/NintendoEMU/bin/out/NintendoEMU.exe" "$HERE/NintendoEMU/bin/out/NintendoEMU.exe.config" "$DIST/"
+# Koton, the studio of Onyx, for Windows: pc/dist/Koton (its own script: the Onyx sources over a Win32 kapi)
+sh "$HERE/Koton/build.sh"
 echo "built: $DIST"

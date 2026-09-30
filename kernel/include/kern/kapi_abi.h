@@ -104,8 +104,15 @@
 extern "C" {
 #endif
 
-// Widget / key event callback: void (sender, GUI_EVENT_*, value).
-typedef void (*gui_handler) (unsigned long sender, int event, long value);
+// Widget / key event callback: void (sender, GUI_EVENT_*, value). The value is 64 bits (a pointer
+// event packs its wheel, buttons and x, y): `long` on Onyx, `long long` where long has 32 bits (the
+// Windows build of the apps, pc/Koton) -- the same type on Onyx, the same ABI.
+#if defined(_WIN32)
+typedef long long gui_value;
+#else
+typedef long gui_value;
+#endif
+typedef void (*gui_handler) (unsigned long sender, int event, gui_value value);
 
 // Sound (ABI v46): waveforms of kapi_sound_start, and the output format.
 #define SOUND_SQUARE	0
