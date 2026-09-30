@@ -1993,7 +1993,10 @@ barwidth = 40
   (`sdcard/res/fonts`), bookmarks from the headings. Translations: `<Name>.<lang>.md` next to it
   (`Ledger.fr.md`, `Ledger.nl.md` → `Ledger.fr.pdf`, `Ledger.nl.pdf`), the same pictures (the apps' screens
   are in English: the manual names their buttons as on the screen, then translates them). Ledger's:
-  `sdcard/manuals/ledger/Ledger.md`, `.fr.md`, `.nl.md`.
+  `sdcard/manuals/ledger/Ledger.md`, `.fr.md`, `.nl.md`. Koton's: `sdcard/manuals/koton/Koton.md`,
+  `.fr.md`, its pictures by [`tools/manuals/koton_shots.sh`](../tools/manuals/koton_shots.sh) (the app
+  in the simulator on its demo song, 1920x1080, clicks at fixed places; the plugin editors are the
+  pictures `tools/tests/koton/plug_host_run.sh` made, the simulator running no plugin).
 - **Word/PDF exports**: [`docs/build_docs.py`](build_docs.py) converts each `.md` in
   `docs/` into `.docx` (via `pandoc`) then into `.pdf` (via Word/`docx2pdf`), in
   `docs/exports/`. Run `python docs/build_docs.py` after any modification to the `.md` files.

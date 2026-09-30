@@ -1865,6 +1865,12 @@ summary with lookups and a pie chart, the espresso machine's loan).
 bottom (each chord's degree, coloured by its function), a chord selected — its editor below, the
 next-chord co-pilot's cards, the track's sound chain at the right.*
 
+> **The manual.** Koton has a complete user manual, with pictures, in English and French:
+> `SD:/manuals/koton/Koton.pdf`, `Koton.fr.pdf` (and their `.md`) — a first song in ten minutes, the
+> window, every kind of block and its editor, the sound chain and plugins, composing with AI, the files,
+> questions and answers, the keys, the chord colours, the styles, every plugin's parameters. What
+> follows is its summary.
+
 Koton is Onyx's music studio: **Koton Studio** (a DAW for Windows) made again for Onyx. A song is
 thought **in harmony**: a silent **chord track**, pinned at the bottom, holds the chords — by their
 **degree** in the key, so they follow a change of key — and every other part reads it:

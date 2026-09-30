@@ -808,6 +808,11 @@ studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section
 `sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont
 (`sdcard/koton/soundfonts`, licence beside it).
 
+**User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
+(`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by
+`sh tools/manuals/koton_shots.sh` (clicks at fixed places on the demo song: move them if the layout
+changes) -- docs/03 *Manuals*. Keep it in step when Koton changes.
+
 ## Other open items
 
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
