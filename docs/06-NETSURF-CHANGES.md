@@ -19,7 +19,8 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/freetype-2.14.3/` | FreeType (options and modules: `user/netsurf/freetype/`) |
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `intl.js` + `qjs_intl.h` (Intl, §12) |
+| `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
 | `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept |
@@ -357,6 +358,82 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
   graph, `import.meta.url`, `import()`, an inline module, the order, `CSS.supports`,
   `element.style`.
 
+## 12. Intl (ECMA-402) and the locale built-ins
+
+QuickJS-ng is built without `Intl`: bbc.co.uk's and bbc.com's Next.js applications stopped on
+"Intl is not defined" (their React tree crashed, the page went blank), youtube.com too. NetSurf
+now has its own implementation, in JavaScript:
+
+- **`quickjs/intl.js`**: `Intl.DateTimeFormat` (`dateStyle` / `timeStyle`, every component option,
+  `hour12` / `hourCycle`, `timeZoneName` in its six forms, `format`, `formatToParts`,
+  `formatRange`, `formatRangeToParts`, `resolvedOptions`), `Intl.NumberFormat` (decimal, percent,
+  currency with symbol / narrow symbol / code / name and accounting, unit with the simple units
+  and their `-per-` compounds; integer, fraction and significant digits, the nine rounding modes,
+  rounding increments and priorities, `trailingZeroDisplay`; grouping; standard, scientific,
+  engineering, compact short and long notations; `signDisplay`; strings and BigInts exactly;
+  `formatRange` with CLDR's collapsing), `Intl.PluralRules` (cardinal and ordinal, `selectRange`),
+  `Intl.RelativeTimeFormat`, `Intl.ListFormat`, `Intl.Collator` (a simplified Unicode collation:
+  base letters with accents folded at the primary level, accents, case; `numeric`, `caseFirst`,
+  `sensitivity`, `ignorePunctuation`; Spanish ñ and the Nordic letters after z), `Intl.Segmenter`
+  (graphemes with the Unicode properties of QuickJS's regular expressions; words and sentences
+  approximated, Chinese / Japanese / Thai a character at a time), `Intl.DisplayNames` (languages,
+  regions, scripts, currencies, calendars, date fields), `Intl.Locale` (with `maximize` /
+  `minimize` from CLDR's likely subtags), `Intl.getCanonicalLocales`, `Intl.supportedValuesOf`.
+  Language tags are parsed and canonicalised as UTS 35 says (aliases, extensions); the legacy
+  constructor behaviour (`Intl.NumberFormat.call (obj)`) is there.
+- **The built-ins** take their ECMA-402 versions: `Number.prototype.toLocaleString`,
+  `BigInt.prototype.toLocaleString`, `Date.prototype.toLocaleString` / `toLocaleDateString` /
+  `toLocaleTimeString`, `Array.prototype.toLocaleString` and the typed arrays', `String.prototype.
+  localeCompare`, `toLocaleLowerCase` / `toLocaleUpperCase` (Turkish, Azeri, Lithuanian). The
+  formatter of the calls without arguments is kept (a table of numbers formats fast).
+- **The locales**: English (US, GB, AU, CA, IN, IE, NZ, ZA; the other English regions as GB),
+  French (FR, CA, BE, CH), German (DE, AT, CH), Spanish (ES, MX, US, 419, AR; the other
+  Latin-American regions as 419), Italian, Dutch (NL, BE), Portuguese (BR, PT; the other regions as
+  PT), and, for formatting only (their units, display names and time zone names are English's):
+  Japanese, Chinese (simplified, traditional), Korean, Russian, Polish, Swedish, Danish, Norwegian
+  Bokmål, Finnish, Turkish, Czech. Any region of these languages is accepted (`fr-LU`).
+  Another language resolves to the default locale, as the specification says.
+- **The default locale is `navigator.language`** (dom.js: `fr-FR`), as in Chrome for a French
+  user. A page that formats without a locale gets French, as it would in Chrome in France.
+- **The data** (`third_party/cldr-48/intl-data.txt`, 450 KB, Unicode License v3) is CLDR 48 as
+  ICU 78 has it: `tools/tests/netsurf/intl/gendata.js` reads every pattern and name back from
+  Node.js's own `Intl` (full ICU, Chrome's data) by formatting probe values -- the date patterns
+  of ~160 option combinations per locale, the number templates, the compact and unit patterns
+  per plural category, the relative-time and list patterns, the display names, the time zone
+  names; a regional locale keeps only what differs from its language. CLDR's narrow no-break
+  space in times is a plain space, as Chrome shows it. The plural rules are code (`PLURAL`).
+- **Time zones**: every IANA zone (418, and the common links) with its standard offset and its
+  current daylight-saving rule (EU, US, Australian, New Zealand, Chilean, or the zone's own:
+  Cairo, Jerusalem, Havana...) found by the generator from the 2026-2028 transitions --
+  historical changes are not kept (a 1990 date gets today's rule). Offset time zones (`+05:30`),
+  `Etc/GMT±N`; a zone name is kept as written (case-normalised). **The default time zone**: the
+  host's name (the PC: `TZ`, `/etc/localtime`) when the `Date` agrees with it, else the zone of
+  the locale's region whose offset matches `Date`'s (`fr-FR`: Europe/Paris), else a popular one,
+  else `Etc/GMT±N`: `resolvedOptions ().timeZone` always agrees with `getTimezoneOffset ()`.
+- **Onyx's clock**: `gettimeofday` gives the local time (the kernel's clock is UTC + the
+  `timezone=` of `SD:/etc/system.ini`), so `Date.now ()` was off by that offset and
+  `getTimezoneOffset ()` was 0. `quickjs.c` (under `__ONYX__`, README.onyx) now takes
+  `js_onyx_utc_offset_min` off `Date.now` and answers it in `getTimezoneOffset`; `qjs_intl.h`
+  reads `timezone=` once. Onyx has no daylight-saving rule of its own: the offset is the one the
+  Setup wrote (a date in the other season is still shown at today's offset by `Date`; `Intl`
+  shows it with the zone's rule).
+- **Lazily loaded, compiled once**: `intl.js` has two parts, split at the line `//@@INTL-IMPL@@`
+  by `qjs_intl.h` (included by `qjs.c`; `qjs_intl_init (ctx)` before dom.js). The boot part runs
+  in every document's context: the `Intl` object, whose members are accessors that load the
+  implementation at their first use and then become ordinary data properties, and the
+  built-ins. Both parts are compiled once per process and kept as bytecode (`JS_WriteObject`,
+  the process's heap), read back in each context. The locale data stays a C string in the
+  binary: a record (`"en-GB/d"`) is found and `JSON.parse`d when a formatter first needs it.
+  Cost on the PC (`tools/tests/netsurf/intl/qjsintl -m`): a context 0.12 ms, + 0.09 ms for the
+  boot; the first `Intl` use in a context 2 ms (12 ms the very first time: compiling). The binary
+  grows by ~575 KB (the data and intl.js as strings).
+- **Tests**: `tools/tests/netsurf/pages/js-intl.html` (made by `intl/mkpage.js` from
+  `intl/cases.js`: 233 expressions with Node's answers as the expected values; in `jstest.sh`),
+  `intl/compare.sh` (the same cases in Node and in `qjsintl`, QuickJS with the Intl on the PC:
+  `intl/build.sh`), `intl/test262.js` (test262's intl402 in `qjsintl`: 1061 of the 1146 tests
+  run pass, 92.6%; Temporal, DurationFormat and a few features are skipped). Live: bbc.co.uk,
+  bbc.com and youtube.com no longer stop on `Intl`.
+
 ## 8. Known gaps
 
 - JavaScript: no `canvas`; no streams (`fetch`'s `body`), synchronous XHR (runs async),
@@ -364,3 +441,10 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
   outside a form is made again at each layout the scripts cause (its old one leaks).
 - SVG (inline `<svg>` and `.svg` images), `opacity`, filters, animations and transitions.
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.
+- Intl (§12): no `Intl.DurationFormat`, no Temporal; the Gregorian calendar only (another
+  `calendar` falls back to it, no `relatedYear` / `yearName`); a date range's CLDR interval
+  patterns are approximated (the shared fields, the locale's dash); no collation tailorings
+  but Spanish and Nordic, no `co` types (phonebook, pinyin...); word and sentence segmentation
+  without dictionaries; time zones with their current rules only (no history), four zones with
+  irregular rules (Casablanca, El Aaiun, Gaza, Hebron) at a fixed offset; the lean languages
+  (ja, zh, ko, ru, pl, sv, da, nb, fi, tr, cs) have English units, display names and zone names.
