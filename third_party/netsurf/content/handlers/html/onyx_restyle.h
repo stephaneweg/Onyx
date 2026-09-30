@@ -77,6 +77,11 @@ bool onyx_restyle_checking(void);
 void onyx_restyle_check(struct html_content *c, dom_node *n, const css_select_results *kept,
 		css_select_results *fresh);
 
+/** A <style>'s old sheet, its text changed (html_css_process_modified_style): kept
+ * alive while the kept selections may be probed with it (released here) */
+struct hlcache_handle;
+void onyx_restyle_keep_sheet(struct html_content *c, struct hlcache_handle *old);
+
 /** The content goes */
 void onyx_restyle_fini(struct html_content *c);
 

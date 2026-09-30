@@ -117,6 +117,10 @@ async function run() {
 	s2.textContent = '.nomatch-xyz { width: 1px } #GP .kid { width: 96px }';
 	document.head.appendChild(s2); await tick(); await tick();
 	check('late sheet descendant', $('KID'), 96); check('late sheet others kept', $('C'), 10);
+	s2.remove(); await tick(); await tick();
+	check('sheet taken out', $('KID'), 95);
+	s.textContent = '#ST { width: 91px }'; await tick(); await tick();
+	check('sheet text changed', $('ST'), 91); check('sheet text changed others kept', $('D'), 10);
 
 	check('custom property', $('VS'), 18);
 	$('VL').insertBefore(document.createElement('li'), $('V1')); await tick();

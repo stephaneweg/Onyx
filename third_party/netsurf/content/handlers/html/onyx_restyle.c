@@ -65,9 +65,13 @@
 #include "utils/corestrings.h"
 #include "utils/log.h"
 #include "css/select.h"
+#include "css/css.h"
+#include "content/hlcache.h"
+#include "content/content.h"
 #include "netsurf/onyx_perf.h"
 
 #include "html/private.h"
+#include "html/html.h"
 #include "html/onyx_shadow.h"
 #include "html/onyx_restyle.h"
 #include "html/onyx_hover.h"
@@ -91,17 +95,25 @@ struct osr_memo {
 	const void *pvars;	/* its parent's custom properties (libcss, a reference) */
 };
 
-/* The sheets added since an epoch (html_css_restyle): the kept selections of that epoch
- * or later are still right for an element no selector of the added sheets matches */
+/* The sheets added or taken out since an epoch (html_css_restyle): the kept selections
+ * of that epoch or later are still right for an element no selector of those sheets
+ * matches. The sheets taken out are kept alive meanwhile: a <style> whose text changed
+ * gives its old sheet here (onyx_restyle_keep_sheet); one taken out of the document stays
+ * in the content's list (unused). */
+#define OSR_PROBE_MAX 24
+
 struct onyx_restyle {
-	css_select_ctx *probe;		/* the sheets added since probe_epoch, or NULL */
+	bool chained;			/* since probe_epoch */
 	unsigned int probe_epoch;
-	const css_stylesheet **base;	/* the context's sheets at probe_epoch */
-	uint32_t nbase;
-	bool chained;			/* base holds them */
+	const css_stylesheet *probe_sheet[OSR_PROBE_MAX];
+	uint32_t nprobe;
+	css_select_ctx *probe;		/* a context of probe_sheet, or NULL */
+	struct hlcache_handle **kept;	/* the old sheets of the <style>s changed */
+	uint32_t nkept;
 };
 
 static unsigned int osr_hits, osr_misses;
+static bool osr_probe_alive(html_content *c);
 
 /* the nodes the selection being made tried :hover on */
 static dom_node *osr_tested[OSR_TESTED];
@@ -314,6 +326,9 @@ void onyx_restyle_begin(html_content *c)
 		c->restyle_base = c->base_url;
 		onyx_restyle_invalidate_all(c);
 	}
+	/* (a sheet the probe holds gone: every element selected again) */
+	if (c->onyx_rs != NULL && c->onyx_rs->chained && !osr_probe_alive(c))
+		onyx_restyle_invalidate_all(c);
 	c->restyle_serial++;
 	osr_hits = osr_misses = 0;
 }
@@ -327,26 +342,50 @@ void onyx_restyle_end(html_content *c)
 				osr_hits + osr_misses);
 }
 
-/* exported function documented in html/onyx_restyle.h */
 static void osr_chain_reset(html_content *c)
 {
 	struct onyx_restyle *st = c->onyx_rs;
+	uint32_t i;
 
 	if (st == NULL)
 		return;
 	if (st->probe != NULL)
 		css_select_ctx_destroy(st->probe);
 	st->probe = NULL;
-	free(st->base);
-	st->base = NULL;
-	st->nbase = 0;
+	st->nprobe = 0;
 	st->chained = false;
+	for (i = 0; i < st->nkept; i++)
+		hlcache_handle_release(st->kept[i]);
+	free(st->kept);
+	st->kept = NULL;
+	st->nkept = 0;
 }
 
+/* exported function documented in html/onyx_restyle.h */
 void onyx_restyle_invalidate_all(html_content *c)
 {
 	c->restyle_epoch++;
 	osr_chain_reset(c);
+}
+
+/* exported function documented in html/onyx_restyle.h */
+void onyx_restyle_keep_sheet(html_content *c, struct hlcache_handle *old)
+{
+	struct onyx_restyle *st = c->onyx_rs;
+	struct hlcache_handle **v;
+
+	if (st == NULL || !st->chained) {
+		hlcache_handle_release(old);
+		return;
+	}
+	v = realloc(st->kept, (st->nkept + 1) * sizeof(*v));
+	if (v == NULL) {
+		onyx_restyle_invalidate_all(c);
+		hlcache_handle_release(old);
+		return;
+	}
+	st->kept = v;
+	st->kept[st->nkept++] = old;
 }
 
 /** A context's sheets (malloc'd), or NULL */
@@ -368,14 +407,35 @@ static const css_stylesheet **osr_sheets(css_select_ctx *ctx, uint32_t *n)
 	return v;
 }
 
+static bool osr_in(const css_stylesheet *const *v, uint32_t n, const css_stylesheet *x)
+{
+	uint32_t i;
+
+	for (i = 0; i < n; i++) {
+		if (v[i] == x)
+			return true;
+	}
+	return false;
+}
+
+static bool osr_probe_add(struct onyx_restyle *st, const css_stylesheet *x)
+{
+	if (x == NULL || osr_in(st->probe_sheet, st->nprobe, x))
+		return true;
+	if (st->nprobe == OSR_PROBE_MAX)
+		return false;
+	st->probe_sheet[st->nprobe++] = x;
+	return true;
+}
+
 /* exported function documented in html/onyx_restyle.h */
 void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
 		css_select_ctx *new_ctx)
 {
 	struct onyx_restyle *st = c->onyx_rs;
 	const css_stylesheet **ov, **nv;
-	uint32_t on, nn, i, j, k;
-	bool sub = true;
+	uint32_t on, nn, i, j;
+	bool ok = true;
 
 	if (st == NULL) {
 		st = c->onyx_rs = calloc(1, sizeof(*st));
@@ -386,59 +446,84 @@ void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
 	}
 	ov = osr_sheets(old_ctx, &on);
 	nv = osr_sheets(new_ctx, &nn);
-	/* the old sheets all there, in the same order: sheets were added only */
-	if (ov == NULL || nv == NULL) {
-		sub = false;
-	} else {
-		for (i = 0, j = 0; i < on && sub; i++) {
-			while (j < nn && nv[j] != ov[i])
-				j++;
-			if (j == nn)
-				sub = false;
-			else
-				j++;
-		}
+	if (ov == NULL || nv == NULL)
+		ok = false;
+	/* the sheets in both in the same order (the cascade's): sheets were added or
+	 * taken out only */
+	for (i = 0, j = 0; ok && i < on; i++) {
+		if (!osr_in(nv, nn, ov[i]))
+			continue;
+		while (j < nn && !osr_in(ov, on, nv[j]))
+			j++;
+		if (j == nn || nv[j] != ov[i])
+			ok = false;
+		else
+			j++;
 	}
-	if (!sub) {
-		free(ov);
-		free(nv);
+	if (ok && !st->chained) {
+		/* (the chain starts at the old context's epoch) */
+		st->chained = true;
+		st->probe_epoch = c->restyle_epoch;
+		st->nprobe = 0;
+	}
+	for (i = 0; ok && i < on; i++) {
+		if (!osr_in(nv, nn, ov[i]))
+			ok = osr_probe_add(st, ov[i]);	/* taken out */
+	}
+	for (i = 0; ok && i < nn; i++) {
+		if (!osr_in(ov, on, nv[i]))
+			ok = osr_probe_add(st, nv[i]);	/* added */
+	}
+	free(ov);
+	free(nv);
+	if (!ok) {
 		onyx_restyle_invalidate_all(c);
 		return;
 	}
-	if (!st->chained) {
-		/* (the chain starts at the old context's epoch) */
-		st->base = ov;
-		st->nbase = on;
-		st->probe_epoch = c->restyle_epoch;
-		st->chained = true;
-		ov = NULL;
-	}
-	free(ov);
 	c->restyle_epoch++;
 
-	/* the probe: the sheets now that the chain's base had not */
 	if (st->probe != NULL)
 		css_select_ctx_destroy(st->probe);
 	st->probe = NULL;
 	if (css_select_ctx_create(&st->probe) != CSS_OK) {
 		st->probe = NULL;
-		free(nv);
 		osr_chain_reset(c);
 		return;
 	}
-	for (i = 0; i < nn; i++) {
-		bool in_base = false;
-		for (k = 0; k < st->nbase && !in_base; k++)
-			in_base = st->base[k] == nv[i];
-		if (!in_base && nv[i] != NULL &&
-		    css_select_ctx_append_sheet(st->probe, nv[i], CSS_ORIGIN_AUTHOR,
-				"screen") != CSS_OK) {
-			free(nv);
+	for (i = 0; i < st->nprobe; i++) {
+		if (css_select_ctx_append_sheet(st->probe, st->probe_sheet[i],
+				CSS_ORIGIN_AUTHOR, "screen") != CSS_OK) {
 			osr_chain_reset(c);
 			return;
 		}
 	}
-	free(nv);
+}
+
+/** Whether the probe's sheets are all alive: in the selection context, the content's
+ * sheets (one taken out stays there), or kept (onyx_restyle_keep_sheet) */
+static bool osr_probe_alive(html_content *c)
+{
+	struct onyx_restyle *st = c->onyx_rs;
+	const css_stylesheet **cv;
+	uint32_t cn, i, k;
+	bool ok = true;
+
+	cv = osr_sheets(c->select_ctx, &cn);
+	for (i = 0; i < st->nprobe && ok; i++) {
+		const css_stylesheet *x = st->probe_sheet[i];
+		bool found = cv != NULL && osr_in(cv, cn, x);
+		for (k = 0; !found && k < c->stylesheet_count; k++) {
+			struct hlcache_handle *h = c->stylesheets[k].sheet;
+			found = h != NULL && hlcache_handle_get_content(h) != NULL &&
+					content_get_status(h) == CONTENT_STATUS_DONE &&
+					nscss_get_stylesheet(h) == x;
+		}
+		for (k = 0; !found && k < st->nkept; k++)
+			found = nscss_get_stylesheet(st->kept[k]) == x;
+		ok = found;
+	}
+	free(cv);
+	return ok;
 }
 
 /* exported function documented in html/onyx_restyle.h */
