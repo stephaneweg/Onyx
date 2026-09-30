@@ -6,6 +6,7 @@
  * links cleanly next to the C fetcher (compiled by g++, linked with g++ + mbedTLS).
  */
 #include <stdlib.h>
+#include <string.h>
 
 #include "kapi.h"		/* kapi_tcp_connect / kapi_tcp_close */
 #include "onyx_tls.hpp"		/* user/tls: the mbedTLS-over-kapi transport */
@@ -15,6 +16,32 @@
 struct onyx_tls_sess {
 	onyx_tls::Session s;
 };
+
+/* Onyx: once the handshake is done, a read that finds nothing on the socket returns at once
+ * (MBEDTLS_ERR_SSL_WANT_READ: onyx_nstls_recv's 0) -- onyx_tls.hpp's own BIO waits for the
+ * data up to 20 s and then reports the connection reset: a WebSocket, an EventSource or a
+ * long poll quiet for 20 s was cut, and its thread could not send while it waited. The
+ * callers poll (the fetcher's in_fill, onyx_ws.c) with their own idle rules. mbedTLS keeps a
+ * record read in part and goes on with it at the next call. */
+static int onyx_nb_recv(void *ctx, unsigned char *buf, size_t len)
+{
+	onyx_tls::Session *s = (onyx_tls::Session *) ctx;
+
+	if (s->rxpos >= s->rxlen) {
+		int n = kapi_tcp_recv(s->sock, s->rxbuf, (unsigned) sizeof s->rxbuf);
+		if (n < 0)
+			return MBEDTLS_ERR_NET_CONN_RESET;
+		if (n == 0)
+			return MBEDTLS_ERR_SSL_WANT_READ;
+		s->rxlen = n;
+		s->rxpos = 0;
+	}
+	int avail = s->rxlen - s->rxpos;
+	int give = (int) len < avail ? (int) len : avail;
+	memcpy(buf, s->rxbuf + s->rxpos, (size_t) give);
+	s->rxpos += give;
+	return give;
+}
 
 extern "C" onyx_tls_sess *onyx_nstls_start(int sock, const char *host)
 {
@@ -30,6 +57,7 @@ extern "C" onyx_tls_sess *onyx_nstls_start(int sock, const char *host)
 		free(h);
 		return 0;
 	}
+	mbedtls_ssl_set_bio(&h->s.ssl, &h->s, onyx_tls::bio_send, onyx_nb_recv, 0);	/* (Onyx) */
 	return h;
 }
 

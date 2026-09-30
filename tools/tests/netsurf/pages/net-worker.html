@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Workers</title></head>
+<body><p>Worker, SharedWorker, BroadcastChannel (jstest.sh)</p>
+<script>
+const log = s => console.log(s);
+log('worker types ' + typeof Worker + ' ' + typeof SharedWorker + ' ' + typeof BroadcastChannel);
+
+const w = new Worker('net-worker.js', { name: 'w1' });
+const steps = ['scope', 'lib', 'sync-import', 'timer', 'fetch', 'clone', 'throw', 'bc', 'close'];
+let i = 0;
+function next() {
+	const s = steps[i++];
+	if (s === undefined) return;
+	if (s === 'clone') {
+		const o = { map: new Map([[1, 'a']]), set: new Set([2]), date: new Date(5), re: /x/g,
+			u8: new Uint8Array([7, 8]), blob: new Blob(['hi']), err: new RangeError('r'),
+			big: 12345678901234567890n, nested: [{ a: [1, 2] }] };
+		o.self = o;
+		w.postMessage(o);
+		return;
+	}
+	w.postMessage(s);
+}
+const bc = new BroadcastChannel('net-test');
+bc.onmessage = ev => { log('bc page got ' + ev.data); next(); };
+w.onmessage = ev => {
+	const d = ev.data;
+	if (d && typeof d === 'object') {
+		log('clone kinds ' + d.kinds.join(','));
+		log('clone back ' + (d.echo.map.get(1)) + ' ' + d.echo.u8.join('') + ' ' + (d.echo.blob instanceof Blob) +
+			' ' + d.echo.err.message + ' ' + (d.echo.self === d.echo) + ' ' + d.echo.nested[0].a[1]);
+		d.echo.blob.text().then(t => { log('clone blob ' + t); next(); });
+		return;
+	}
+	log('worker says ' + d);
+	if (d === 'closing') { setTimeout(others, 200); return; }
+	if (d !== 'timer fired' || true) next();
+};
+w.onerror = ev => { log('worker error ' + ev.message); ev.preventDefault(); next(); };
+try { w.postMessage(() => 1); } catch (e) { log('clone function ' + e.name); }
+
+function others() {
+	/* a blob: worker */
+	const src = 'onmessage = e => postMessage("blob worker " + e.data * 2);';
+	const bw = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+	bw.onmessage = ev => {
+		log(ev.data);
+		bw.terminate();
+		/* a module worker */
+		const mw = new Worker('net-worker-mod.js', { type: 'module' });
+		mw.onmessage = e => {
+			log(e.data);
+			shared();
+		};
+		mw.postMessage(5);
+	};
+	bw.postMessage(21);
+}
+
+function shared() {
+	const a = new SharedWorker('net-shared.js', 'sw'), b = new SharedWorker('net-shared.js', 'sw');
+	a.port.onmessage = ev => { log('a ' + ev.data); b.port.postMessage(2); };
+	b.port.onmessage = ev => { log('b ' + ev.data); log('workers done'); };
+	a.port.postMessage(1);
+}
+</script></body></html>

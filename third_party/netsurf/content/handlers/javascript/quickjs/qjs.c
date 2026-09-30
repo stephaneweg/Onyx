@@ -78,6 +78,7 @@
 #include "qjs_html5_js.h"	/* Onyx: html5.js, the same way */
 #include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
+#include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -115,7 +116,17 @@ struct qjs_req {
 	bool binary;			/* the body as an ArrayBuffer (else a string) */
 	llcache_handle *handle;
 	JSValue cb;			/* cb(error, { status, statusText, url, headers, body }) */
+	/* Onyx: the response as it comes (streams, XHR's progress) -- pcb(0, head) when its
+	 * head is in; pcb(1, ArrayBuffer) each part once the script reads the body as a stream
+	 * (flags & QJS_REQ_CHUNKS); pcb(2, bytes so far) at each part (flags & QJS_REQ_COUNTS) */
+	JSValue pcb;
+	int flags;
+	size_t given;			/* bytes given as parts */
+	bool in_cb;			/* its callback runs: an abort waits till it returns */
+	bool dead;			/* ... and one came */
 };
+#define QJS_REQ_CHUNKS	1
+#define QJS_REQ_COUNTS	2
 
 struct jsthread {
 	jsheap *heap;
@@ -146,6 +157,8 @@ struct jsthread {
 	int next_req;
 	JSValue modsrc;			/* ES modules' sources: { url: text } (dom.js fills it) */
 	JSValue modmissing;		/* the modules a moduleRun lacked: [url...] */
+	bool worker;			/* Onyx: a worker's scripts (qjs_net.c): no document; its URL
+					 * in url_override */
 };
 
 static JSClassID qjs_node_class;
@@ -2238,16 +2251,16 @@ static void qjs_req_free(struct qjs_req *r, bool abort)
 		llcache_handle_release(r->handle);
 	}
 	JS_FreeValue(r->t->ctx, r->cb);
+	JS_FreeValue(r->t->ctx, r->pcb);	/* (Onyx) */
 	free(r);
 }
 
-/** The response of a finished request, for dom.js. */
-static JSValue qjs_req_result(JSContext *ctx, struct qjs_req *r)
+/** The head of a request's response (status, statusText, url, headers), for dom.js. */
+static JSValue qjs_req_head(JSContext *ctx, struct qjs_req *r)
 {
 	JSValue o = JS_NewObject(ctx), hs = JS_NewArray(ctx);
 	const char *name, *value;
-	const uint8_t *data;
-	size_t size = 0, i;
+	size_t i;
 	uint32_t n = 0;
 	long code = llcache_handle_get_http_code(r->handle);
 	const char *text = "";
@@ -2265,16 +2278,70 @@ static JSValue qjs_req_result(JSContext *ctx, struct qjs_req *r)
 		JS_SetPropertyUint32(ctx, pair, 1, JS_NewString(ctx, value));
 		JS_SetPropertyUint32(ctx, hs, n++, pair);
 	}
-	data = llcache_handle_get_source_data(r->handle, &size);
 	JS_SetPropertyStr(ctx, o, "status", JS_NewInt32(ctx, (int32_t) (code != 0 ? code : 200)));
 	JS_SetPropertyStr(ctx, o, "statusText", JS_NewString(ctx, text));
 	JS_SetPropertyStr(ctx, o, "url", JS_NewString(ctx, u != NULL ? nsurl_access(u) : ""));
 	JS_SetPropertyStr(ctx, o, "headers", hs);
-	if (r->binary)
+	return o;
+}
+
+/** The response of a finished request, for dom.js (its body null when it went as parts). */
+static JSValue qjs_req_result(JSContext *ctx, struct qjs_req *r)
+{
+	JSValue o = qjs_req_head(ctx, r);
+	const uint8_t *data;
+	size_t size = 0;
+
+	data = llcache_handle_get_source_data(r->handle, &size);
+	if (r->flags & QJS_REQ_CHUNKS)
+		JS_SetPropertyStr(ctx, o, "body", JS_NULL);
+	else if (r->binary)
 		JS_SetPropertyStr(ctx, o, "body", JS_NewArrayBufferCopy(ctx, data, size));
 	else
 		JS_SetPropertyStr(ctx, o, "body", JS_NewStringLen(ctx, (const char *) data, size));
 	return o;
+}
+
+/* Onyx: pcb(kind, value) as the response comes -- an abort from the script waits till it
+ * returns (the llcache handle is in its callback); true: the request is gone */
+static bool qjs_req_progress(struct qjs_req *r, int kind, JSValue v)
+{
+	jsthread *t = r->t;
+	JSContext *ctx = t->ctx;
+	JSValue args[2], res, fn = JS_DupValue(ctx, r->pcb);
+
+	args[0] = JS_NewInt32(ctx, kind);
+	args[1] = v;
+	r->in_cb = true;
+	qjs_enter(t);
+	res = JS_Call(ctx, fn, JS_UNDEFINED, 2, args);
+	if (JS_IsException(res))
+		qjs_report(ctx, "request");
+	JS_FreeValue(ctx, res);
+	JS_FreeValue(ctx, v);
+	JS_FreeValue(ctx, fn);
+	r->in_cb = false;
+	if (r->dead) {				/* (aborted meanwhile: unlinked already) */
+		qjs_req_free(r, true);
+		qjs_leave(t);
+		return true;
+	}
+	qjs_leave(t);
+	return false;
+}
+
+/* Onyx: the parts of the body not given yet, as an ArrayBuffer */
+static JSValue qjs_req_rest(JSContext *ctx, struct qjs_req *r)
+{
+	size_t size = 0;
+	const uint8_t *data = llcache_handle_get_source_data(r->handle, &size);
+	JSValue v;
+
+	if (data == NULL || size <= r->given)
+		return JS_NewArrayBufferCopy(ctx, (const uint8_t *) "", 0);
+	v = JS_NewArrayBufferCopy(ctx, data + r->given, size - r->given);
+	r->given = size;
+	return v;
 }
 
 static nserror qjs_req_cb(llcache_handle *handle, const llcache_event *event, void *pw)
@@ -2284,13 +2351,41 @@ static nserror qjs_req_cb(llcache_handle *handle, const llcache_event *event, vo
 	JSValue args[2];
 
 	(void) handle;
+	/* Onyx: the head and the body's parts, as they come, to a script that asked for them */
+	if ((event->type == LLCACHE_EVENT_HAD_HEADERS || event->type == LLCACHE_EVENT_HAD_DATA) &&
+	    !t->closed && JS_IsFunction(t->ctx, r->pcb)) {
+		if (event->type == LLCACHE_EVENT_HAD_HEADERS) {
+			qjs_req_progress(r, 0, qjs_req_head(t->ctx, r));
+		} else if (r->flags & QJS_REQ_CHUNKS) {
+			qjs_req_progress(r, 1, qjs_req_rest(t->ctx, r));
+		} else if (r->flags & QJS_REQ_COUNTS) {
+			size_t size = 0;
+			llcache_handle_get_source_data(r->handle, &size);
+			qjs_req_progress(r, 2, JS_NewFloat64(t->ctx, (double) size));
+		}
+		return NSERROR_OK;
+	}
 	if (event->type != LLCACHE_EVENT_DONE && event->type != LLCACHE_EVENT_ERROR)
-		return NSERROR_OK;		/* (headers, data, progress, redirects: the end only) */
+		return NSERROR_OK;		/* (progress, redirects: the end only) */
 
 	qjs_req_unlink(t, r);
 	if (t->closed) {			/* (the document went meanwhile) */
 		qjs_req_free(r, false);
 		return NSERROR_OK;
+	}
+	/* Onyx: a body given as parts: its last part first */
+	if (event->type == LLCACHE_EVENT_DONE && (r->flags & QJS_REQ_CHUNKS) &&
+	    JS_IsFunction(t->ctx, r->pcb)) {
+		size_t size = 0;
+		llcache_handle_get_source_data(r->handle, &size);
+		if (size > r->given) {
+			/* (no abort can reach it now: it is unlinked) */
+			qjs_req_progress(r, 1, qjs_req_rest(t->ctx, r));
+			if (t->closed) {
+				qjs_req_free(r, false);
+				return NSERROR_OK;
+			}
+		}
 	}
 	if (event->type == LLCACHE_EVENT_DONE) {
 		args[0] = JS_NULL;
@@ -2318,13 +2413,14 @@ static nserror qjs_req_cb(llcache_handle *handle, const llcache_event *event, vo
 	return NSERROR_OK;
 }
 
-/** request(method, url, body | null, [ "Name: value", ... ], binary, cb(error, response)) -> id,
- *  or -1: a bad URL (the caller reports a network error). */
+/** request(method, url, body | null, [ "Name: value", ... ], binary, cb(error, response)
+ *  [, pcb(kind, value), flags]) -> id, or -1: a bad URL (the caller reports a network error).
+ *  (Onyx: pcb and flags, the response as it comes: see struct qjs_req) */
 static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
 	const char *method, *urls, *body = NULL;
-	nsurl *base, *url = NULL;
+	nsurl *base, *url = NULL, *referer;
 	llcache_post_data post;
 	char **hv = NULL;
 	uint32_t nh = 0, i, k = 0;
@@ -2333,7 +2429,16 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 	bool get;
 
 	(void) this_val;
-	if (argc < 6 || t->closed || t->htmlc == NULL || !JS_IsFunction(ctx, argv[5]))
+	if (argc < 6 || t->closed || (t->htmlc == NULL && !t->worker) ||
+	    !JS_IsFunction(ctx, argv[5]))
+		return JS_NewInt32(ctx, -1);
+	if (t->htmlc != NULL) {
+		base = t->htmlc->base_url != NULL ? t->htmlc->base_url : content_get_url(&t->htmlc->base);
+		referer = content_get_url(&t->htmlc->base);
+	} else {
+		base = referer = t->url_override;	/* (Onyx: a worker's: its script's URL) */
+	}
+	if (base == NULL)
 		return JS_NewInt32(ctx, -1);
 	method = JS_ToCString(ctx, argv[0]);
 	urls = JS_ToCString(ctx, argv[1]);
@@ -2342,7 +2447,6 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 		JS_FreeCString(ctx, urls);
 		return JS_NewInt32(ctx, -1);
 	}
-	base = t->htmlc->base_url != NULL ? t->htmlc->base_url : content_get_url(&t->htmlc->base);
 	err = nsurl_join(base, urls, &url);
 	JS_FreeCString(ctx, urls);
 	if (err != NSERROR_OK) {
@@ -2390,13 +2494,18 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 	r->id = ++t->next_req;
 	r->binary = JS_ToBool(ctx, argv[4]);
 	r->cb = JS_DupValue(ctx, argv[5]);
+	r->pcb = JS_UNDEFINED;			/* (Onyx: the response as it comes) */
+	if (argc > 6 && JS_IsFunction(ctx, argv[6]))
+		r->pcb = JS_DupValue(ctx, argv[6]);
+	if (argc > 7)
+		JS_ToInt32(ctx, &r->flags, argv[7]);
 
 	/* a body (or a method with one): as a POST's url-encoded data -- any text (not NUL) */
 	post.type = LLCACHE_POST_URL_ENCODED;
 	post.data.urlenc = (char *) (body != NULL ? body : "");
 	err = llcache_handle_retrieve_ex(url,
 		LLCACHE_RETRIEVE_FORCE_FETCH | LLCACHE_RETRIEVE_NO_ERROR_PAGES,
-		content_get_url(&t->htmlc->base), (!get || body != NULL) ? &post : NULL,
+		referer, (!get || body != NULL) ? &post : NULL,
 		(const char *const *) hv, qjs_req_cb, r, &r->handle);
 	nsurl_unref(url);
 	if (body) JS_FreeCString(ctx, body);
@@ -2425,11 +2534,62 @@ static JSValue n_abort_request(JSContext *ctx, JSValueConst this_val, int argc, 
 	for (r = t->reqs; r != NULL; r = r->next) {
 		if (r->id == id) {
 			qjs_req_unlink(t, r);
-			qjs_req_free(r, true);
+			if (r->in_cb)		/* (Onyx: in its callback: freed once it returns) */
+				r->dead = true;
+			else
+				qjs_req_free(r, true);
 			break;
 		}
 	}
 	return JS_UNDEFINED;
+}
+
+/* Onyx: the request of an id still in flight (not aborted) */
+static struct qjs_req *qjs_req_find(jsthread *t, JSValueConst v)
+{
+	int32_t id = 0;
+	struct qjs_req *r;
+
+	if (JS_ToInt32(t->ctx, &id, v) < 0)
+		return NULL;
+	for (r = t->reqs; r != NULL; r = r->next)
+		if (r->id == id && !r->dead)
+			return r;
+	return NULL;
+}
+
+/** requestMode(id, flags) -> (Onyx) the parts wanted from now (QJS_REQ_CHUNKS, _COUNTS); when
+ *  the parts begin, the body come so far (an ArrayBuffer), else undefined */
+static JSValue n_request_mode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct qjs_req *r = argc > 1 ? qjs_req_find(t, argv[0]) : NULL;
+	int32_t flags = 0;
+	bool begin;
+
+	(void) this_val;
+	if (r == NULL)
+		return JS_UNDEFINED;
+	JS_ToInt32(ctx, &flags, argv[1]);
+	begin = (flags & QJS_REQ_CHUNKS) && !(r->flags & QJS_REQ_CHUNKS);
+	r->flags = flags;
+	return begin ? qjs_req_rest(ctx, r) : JS_UNDEFINED;
+}
+
+/** requestSoFar(id) -> (Onyx) the body come so far, as text (XHR's responseText while it
+ *  loads), or null */
+static JSValue n_request_so_far(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct qjs_req *r = argc > 0 ? qjs_req_find(t, argv[0]) : NULL;
+	const uint8_t *data;
+	size_t size = 0;
+
+	(void) this_val;
+	if (r == NULL || r->handle == NULL)
+		return JS_NULL;
+	data = llcache_handle_get_source_data(r->handle, &size);
+	return JS_NewStringLen(ctx, data != NULL ? (const char *) data : "", data != NULL ? size : 0);
 }
 
 /** utf8(ArrayBuffer | typed array | string) -> the string its UTF-8 bytes make (TextDecoder,
@@ -2544,7 +2704,10 @@ static void qjs_reqs_stop(jsthread *t)
 	while (t->reqs != NULL) {
 		struct qjs_req *r = t->reqs;
 		t->reqs = r->next;
-		qjs_req_free(r, true);
+		if (r->in_cb)			/* (Onyx: in its callback: freed once it returns) */
+			r->dead = true;
+		else
+			qjs_req_free(r, true);
 	}
 }
 
@@ -3068,6 +3231,8 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("timer", 3, n_timer),
 	JS_CFUNC_DEF("clearTimer", 1, n_clear_timer),
 	JS_CFUNC_DEF("request", 6, n_request),
+	JS_CFUNC_DEF("requestMode", 2, n_request_mode),		/* (Onyx) */
+	JS_CFUNC_DEF("requestSoFar", 1, n_request_so_far),	/* (Onyx) */
 	JS_CFUNC_DEF("abortRequest", 1, n_abort_request),
 	JS_CFUNC_DEF("utf8", 1, n_utf8),
 	JS_CFUNC_DEF("storage", 2, n_storage),
@@ -3210,6 +3375,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	}
 	JS_FreeValue(t->ctx, prelude);
 	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
+	qjs_net_setup(t->ctx, natives, NULL);	/* Onyx: WebSocket, EventSource, Workers */
 	JS_FreeValue(t->ctx, natives);
 	t->dirty = false;	/* (nothing laid out yet) */
 	qjs_leave(t);
@@ -3226,6 +3392,7 @@ nserror js_closethread(jsthread *thread)
 	thread->closed = true;
 	qjs_timers_stop(thread);
 	qjs_reqs_stop(thread);
+	qjs_net_stop(thread->ctx);	/* (Onyx: its sockets, streams, workers) */
 	guit->misc->schedule(-1, qjs_load_later, thread);
 	return NSERROR_OK;
 }
@@ -3239,6 +3406,7 @@ static void qjs_thread_free(jsthread *t)
 	guit->misc->schedule(-1, qjs_jobs_later, t);	/* (Onyx) */
 	qjs_timers_stop(t);
 	qjs_reqs_stop(t);
+	qjs_net_stop(t->ctx);	/* (Onyx: its sockets, streams, workers) */
 	guit->misc->schedule(-1, qjs_load_later, t);
 	guit->misc->schedule(-1, qjs_ce_later, t);	/* (Onyx: custom elements) */
 	while (t->ce_npending > 0)
@@ -3464,4 +3632,121 @@ void js_event_cleanup(jsthread *thread, struct dom_event *evt)
 {
 	(void) thread;
 	(void) evt;
+}
+
+
+/* ---- Onyx: the workers' contexts (qjs_net.c) ---------------------------------------------------
+ * A worker's scripts run in a context of their own in the window's runtime, on the UI thread
+ * (NetSurf's scheduler: its timers and messages are tasks as the page's are): a jsthread
+ * with no document (htmlc, doc NULL; worker set), its URL in url_override (location, the
+ * base of its requests). The same preludes as a page's -- Intl, dom.js, html5.js -- then
+ * net.js makes its global a worker's (no DOM, self, postMessage, importScripts). */
+
+/* exported interface documented in qjs_net.h */
+struct nsurl *qjs_ctx_url(JSContext *ctx)
+{
+	jsthread *t = QJS_T(ctx);
+
+	if (t == NULL)
+		return NULL;
+	if (t->url_override != NULL)
+		return t->url_override;
+	return t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+}
+
+/* exported interface documented in qjs_net.h */
+bool qjs_ctx_closed(JSContext *ctx)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return t == NULL || t->closed;
+}
+
+/* exported interface documented in qjs_net.h */
+JSContext *qjs_worker_create(JSContext *parent, const char *url)
+{
+	jsthread *pt = QJS_T(parent), *t;
+	jsheap *heap = pt != NULL ? pt->heap : NULL;
+	JSValue natives, prelude, r;
+	nsurl *u = NULL;
+	int i;
+
+	if (heap == NULL || pt->closed || nsurl_create(url, &u) != NSERROR_OK)
+		return NULL;
+	t = calloc(1, sizeof(*t));
+	if (t == NULL) {
+		nsurl_unref(u);
+		return NULL;
+	}
+	t->heap = heap;
+	t->worker = true;
+	t->url_override = u;
+	t->ctx = JS_NewContext(heap->rt);
+	if (t->ctx == NULL) {
+		nsurl_unref(u);
+		free(t);
+		return NULL;
+	}
+	for (i = 0; i < QP_COUNT; i++)
+		t->protos[i] = JS_UNDEFINED;
+	t->tag_protos = JS_UNDEFINED;
+	t->dispatch = JS_UNDEFINED;
+	JS_SetContextOpaque(t->ctx, t);
+	t->modsrc = JS_NewObject(t->ctx);
+	t->modmissing = JS_NewArray(t->ctx);
+	t->ce_hook = JS_UNDEFINED;
+	heap->threads++;
+
+	natives = JS_NewObject(t->ctx);
+	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives,
+			sizeof(qjs_natives) / sizeof(qjs_natives[0]));
+	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_html5,
+			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
+	qjs_enter(t);
+	qjs_intl_init(t->ctx);
+	prelude = JS_Eval(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
+			JS_EVAL_TYPE_GLOBAL);
+	if (JS_IsException(prelude)) {
+		qjs_report(t->ctx, "worker dom.js");
+	} else {
+		r = JS_Call(t->ctx, prelude, JS_UNDEFINED, 1, (JSValueConst *) &natives);
+		if (JS_IsException(r))
+			qjs_report(t->ctx, "worker dom.js setup");
+		JS_FreeValue(t->ctx, r);
+	}
+	JS_FreeValue(t->ctx, prelude);
+	{	/* (html5.js listens to the document as it sets up: a stand-in, net.js removes it) */
+		static const char stub[] = "Object.defineProperty(globalThis, 'document', "
+			"{ configurable: true, writable: true, value: new EventTarget() });";
+		JS_FreeValue(t->ctx, JS_Eval(t->ctx, stub, sizeof(stub) - 1, "worker",
+				JS_EVAL_TYPE_GLOBAL));
+	}
+	prelude = JS_Eval(t->ctx, qjs_html5_js, sizeof(qjs_html5_js) - 1, "html5.js",
+			JS_EVAL_TYPE_GLOBAL);
+	if (JS_IsException(prelude)) {
+		qjs_report(t->ctx, "worker html5.js");
+	} else {
+		JSValue args[2] = { natives, t->tag_protos };
+		r = JS_Call(t->ctx, prelude, JS_UNDEFINED, 2, (JSValueConst *) args);
+		if (JS_IsException(r))
+			qjs_report(t->ctx, "worker html5.js setup");
+		JS_FreeValue(t->ctx, r);
+	}
+	JS_FreeValue(t->ctx, prelude);
+	qjs_net_setup(t->ctx, natives, parent);
+	JS_FreeValue(t->ctx, natives);
+	t->dirty = false;
+	qjs_leave(t);
+	return t->ctx;
+}
+
+/* exported interface documented in qjs_net.h */
+void qjs_worker_destroy(JSContext *wctx)
+{
+	jsthread *t = QJS_T(wctx);
+
+	if (t == NULL || !t->worker)
+		return;
+	js_closethread(t);
+	js_destroythread(t);
 }

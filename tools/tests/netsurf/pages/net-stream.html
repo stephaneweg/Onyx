@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Streams</title></head>
+<body><p>EventSource, streamed fetch, XHR progress (nettest.sh: wssrv.py)</p>
+<script>
+const log = s => console.log(s);
+
+/* EventSource: events, a named one, ids, the reconnection with Last-Event-ID */
+const es = new EventSource('/sse');
+log('sse state ' + es.readyState + ' ' + EventSource.CLOSED);
+let opens = 0;
+es.onopen = () => log('sse open ' + (++opens) + ' ' + es.readyState);
+es.onmessage = ev => log('sse message ' + JSON.stringify(ev.data) + ' id=' + ev.lastEventId);
+es.addEventListener('tick', ev => log('sse tick ' + JSON.parse(ev.data).n + ' id=' + ev.lastEventId));
+es.addEventListener('resumed', ev => log('sse resumed ' + ev.data));
+es.addEventListener('done', ev => { log('sse done ' + ev.data); es.close(); log('sse closed ' + es.readyState); sse404(); });
+es.onerror = () => log('sse error ' + es.readyState);
+
+function sse404() {
+	const e = new EventSource('/sse404');
+	e.onerror = () => { log('sse404 error ' + e.readyState); streamFetch(); };
+}
+
+/* fetch: the Response before the body, its body read as it comes */
+async function streamFetch() {
+	const t0 = Date.now();
+	const r = await fetch('/chunks');
+	log('fetch head ' + r.status + ' ' + r.headers.get('content-type') + ' early=' + (Date.now() - t0 < 500));
+	const reader = r.body.getReader();
+	let parts = 0, bytes = 0;
+	for (;;) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		parts++;
+		bytes += value.byteLength;
+	}
+	log('fetch stream parts>1=' + (parts > 1) + ' bytes=' + bytes);
+	const r2 = await fetch('/chunks');
+	const t = await r2.text();
+	log('fetch text ' + t.length + ' ' + t.slice(0, 6));
+	const r3 = await fetch('/chunks');
+	const c = r3.clone();
+	const [a, b] = await Promise.all([r3.text(), c.arrayBuffer()]);
+	log('fetch clone ' + a.length + ' ' + b.byteLength);
+	const body = new ReadableStream({ start(ctl) { ctl.enqueue(new TextEncoder().encode('from a stream')); ctl.close(); } });
+	const r4 = await fetch('/echo', { method: 'POST', body, duplex: 'half' });
+	log('fetch stream body ' + r4.status + ' ' + await r4.text());
+	const ac = new AbortController();
+	const r5 = await fetch('/chunks', { signal: ac.signal });
+	const rd = r5.body.getReader();
+	await rd.read();
+	ac.abort();
+	try { await rd.read(); log('fetch abort not seen'); } catch (e) { log('fetch abort ' + e.name); }
+	xhr();
+}
+
+/* XHR: HEADERS_RECEIVED, LOADING with the bytes come, responseText while loading */
+function xhr() {
+	const x = new XMLHttpRequest();
+	const states = [];
+	let progress = 0, partial = false;
+	x.onreadystatechange = () => {
+		if (states[states.length - 1] !== x.readyState) states.push(x.readyState);
+		if (x.readyState === 2) log('xhr headers ' + x.status + ' ' + x.getResponseHeader('content-type'));
+		if (x.readyState === 3 && x.responseText.length > 0 && x.responseText.length < 6000) partial = true;
+	};
+	x.onprogress = ev => { progress++; };
+	x.onload = () => {
+		log('xhr states ' + states.join(','));
+		log('xhr progress>1=' + (progress > 1) + ' partial=' + partial + ' length=' + x.responseText.length);
+		log('stream done');
+	};
+	x.open('GET', '/chunks');
+	x.send();
+}
+</script></body></html>
