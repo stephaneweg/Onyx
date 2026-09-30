@@ -1066,6 +1066,33 @@ static inline hubbub_error insert_html(hubbub_treebuilder *tb, const hubbub_tag 
 	return insert_foreign(tb, tag, HUBBUB_NS_HTML, false, NULL);
 }
 
+/* Onyx: declarative shadow DOM -- a <template shadowrootmode> start tag: the template is
+ * made and pushed; its contents are a shadow root attached to the adjusted current node,
+ * and it is not inserted -- unless that node cannot take one: then as any template */
+static hubbub_error insert_shadow_template(hubbub_treebuilder *tb, const hubbub_tag *tag)
+{
+	loc l = appropriate_place(tb, NULL);
+	const elem *host = adjusted_current(tb);
+	void *node = NULL;
+	hubbub_error err;
+
+	err = create_element(tb, tag, HUBBUB_NS_HTML, T_TEMPLATE, &node);
+	if (err == HUBBUB_OK && (host->ns != HUBBUB_NS_HTML ||
+			TH->attach_shadow(CTX, host->node, node) != HUBBUB_OK))
+		err = insert_node_at(tb, &l, node);
+	loc_release(tb, &l);
+	if (err != HUBBUB_OK) {
+		unref(tb, node);
+		return err;
+	}
+	err = push(tb, node, HUBBUB_NS_HTML, T_TEMPLATE, tag->name.ptr, tag->name.len,
+			false);
+	if (err != HUBBUB_OK)
+		return err;
+	cur(tb)->flag = false;
+	return HUBBUB_OK;
+}
+
 /* an HTML element for a start tag with this name and no attributes */
 static hubbub_error insert_html_named(hubbub_treebuilder *tb, const char *name)
 {
@@ -1734,7 +1761,12 @@ static hubbub_error in_head(hubbub_treebuilder *tb, token *tk)
 			tb->mode = M_TEXT;
 			return HUBBUB_OK;
 		case T_TEMPLATE:
-			err = insert_html(tb, TAG(tk));
+			/* Onyx: declarative shadow DOM (the document parser only) */
+			if (TH->attach_shadow != NULL && !tb->fragment && tb->n > 1 &&
+					find_attr(TAG(tk), "shadowrootmode") != NULL)
+				err = insert_shadow_template(tb, TAG(tk));
+			else
+				err = insert_html(tb, TAG(tk));
 			if (err != HUBBUB_OK)
 				return err;
 			err = insert_marker(tb);

@@ -287,6 +287,7 @@ static void html_box_convert_done(html_content *c, bool success)
 
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_hover.h"
+#include "html/onyx_shadow.h"
 
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
@@ -321,6 +322,19 @@ static void html_rebox_unlink(dom_node *n)
 		return;
 	dom_node_set_user_data(n, corestring_dom___ns_key_box_node_data, NULL,
 			NULL, &old);
+	{
+		/* Onyx: a shadow host's shadow tree has boxes too */
+		dom_node *root = dom_onyx_shadow_root(n);
+		if (root != NULL && dom_node_get_first_child(root, &c) == DOM_NO_ERR) {
+			while (c != NULL) {
+				html_rebox_unlink(c);
+				next = NULL;
+				dom_node_get_next_sibling(c, &next);
+				dom_node_unref(c);
+				c = next;
+			}
+		}
+	}
 	if (dom_node_get_first_child(n, &c) != DOM_NO_ERR)
 		return;
 	while (c != NULL) {
@@ -329,6 +343,23 @@ static void html_rebox_unlink(dom_node *n)
 		dom_node_get_next_sibling(c, &next);
 		dom_node_unref(c);
 		c = next;
+	}
+}
+
+/** Onyx: the links of every node the old tree boxes cleared -- the DOM walk above misses
+ * the nodes no longer in the document (removed, a shadow root emptied or replaced, a light
+ * child no slot takes now) whose freed boxes the scripts then read (getBoundingClientRect:
+ * reddit's components) */
+static void html_rebox_unlink_boxes(struct box *b)
+{
+	void *old = NULL;
+
+	for (; b != NULL; b = b->next) {
+		if (b->node != NULL && b->type != BOX_TEXT && box_for_node(b->node) == b)
+			dom_node_set_user_data(b->node,
+					corestring_dom___ns_key_box_node_data,
+					NULL, NULL, &old);
+		html_rebox_unlink_boxes(b->children);
 	}
 }
 
@@ -401,6 +432,7 @@ static void html_rebox(html_content *c)
 	c->num_objects = 0;
 	c->iframe = NULL;
 	html_rebox_gadgets(old_layout, false);
+	html_rebox_unlink_boxes(old_layout);
 	html_rebox_unlink(html);
 	html_rebox_success = false;
 	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
@@ -594,6 +626,7 @@ static void html_early_discard(html_content *c, dom_node *html)
 		c->selection_owner.none = true;
 	}
 	html_rebox_gadgets(c->layout, false);
+	html_rebox_unlink_boxes(c->layout);
 	html_rebox_unlink(html);
 	if (c->iframe != NULL) {
 		html_destroy_iframe(c->iframe);
@@ -1716,6 +1749,7 @@ static void html_destroy(struct content *c)
 	}
 	html->rebox_pending = false;
 	onyx_hover_fini(html);		/* (Onyx) */
+	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
 	if (html->hover_node != NULL) {		/* (Onyx) */
 		dom_node_unref(html->hover_node);
 		html->hover_node = NULL;

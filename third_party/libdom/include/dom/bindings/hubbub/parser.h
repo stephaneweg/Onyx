@@ -89,6 +89,34 @@ dom_hubbub_error dom_hubbub_fragment_parser_create_ctx(dom_hubbub_parser_params 
 dom_exception dom_hubbub_template_content(dom_element *template_element,
 		dom_document_fragment **result);
 
+/* Onyx: shadow roots (the DOM standard's attachShadow; declarative shadow roots: the
+ * document parser's <template shadowrootmode>). The root is a document fragment the host
+ * keeps (user data); it is no child of the host. */
+#define DOM_HUBBUB_HAVE_SHADOW 1
+enum {
+	DOM_ONYX_SHADOW_CLOSED = 1,		/* mode "closed" (else "open") */
+	DOM_ONYX_SHADOW_DELEGATES_FOCUS = 2,
+	DOM_ONYX_SHADOW_CLONABLE = 4,
+	DOM_ONYX_SHADOW_SERIALIZABLE = 8,
+	DOM_ONYX_SHADOW_MANUAL = 16,		/* slotAssignment "manual" */
+	DOM_ONYX_SHADOW_DECLARATIVE = 32,	/* made by the parser */
+	DOM_ONYX_SHADOW_ANY_NAME = 64		/* (attach: no check of the host's name) */
+};
+/* a shadow root for the host (a reference in *result); DOM_NOT_SUPPORTED_ERR if the host
+ * has one or cannot have one */
+dom_exception dom_onyx_attach_shadow(dom_element *host, unsigned int flags,
+		dom_document_fragment **result);
+/* the host's shadow root, NULL if none (no reference) */
+struct dom_node *dom_onyx_shadow_root(struct dom_node *host);
+/* the shadow root's host, NULL if the node is none (no reference) */
+struct dom_node *dom_onyx_shadow_host(struct dom_node *root);
+/* the shadow root's DOM_ONYX_SHADOW_* flags */
+unsigned int dom_onyx_shadow_flags(struct dom_node *root);
+/* whether an element of the document has a shadow root (or had one) */
+bool dom_onyx_has_shadow(struct dom_document *doc);
+/* the node's root: the top of its parent chain (no reference) */
+struct dom_node *dom_onyx_node_root(struct dom_node *node);
+
 /* Destroy a Hubbub parser instance */
 void dom_hubbub_parser_destroy(dom_hubbub_parser *parser);
 

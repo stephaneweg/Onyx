@@ -1495,13 +1495,18 @@ browser_window_callback(hlcache_handle *c, const hlcache_event *event, void *pw)
 		break;
 
 	case CONTENT_MSG_READY:
-		assert(bw->loading_content == c);
+		/* Onyx: not the content loading now -- a script navigated while it was
+		 * converted (reddit's JS challenge): the new one has no content yet (the
+		 * asserts are off: its NULL content was laid out) */
+		if (bw->loading_content != c)
+			break;
 
 		res = browser_window_content_ready(bw);
 		break;
 
 	case CONTENT_MSG_DONE:
-		assert(bw->current_content == c);
+		if (bw->current_content != c)	/* (Onyx: as above) */
+			break;
 
 		res = browser_window_content_done(bw);
 		break;

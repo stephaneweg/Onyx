@@ -39,6 +39,11 @@ enum {
 	ONYX_STR_FILE,
 	ONYX_STR_COLOR,
 	ONYX_STR_RANGE,
+	ONYX_STR_HOST,			/* shadow DOM: :host, :host(), :host-context() */
+	ONYX_STR_HOST_CONTEXT,
+	ONYX_STR_SLOTTED,		/* ::slotted() */
+	ONYX_STR_PART,			/* ::part() */
+	ONYX_STR_FEATURELESS,		/* the name a featureless shadow host is looked up by */
 	ONYX_STR_N
 };
 

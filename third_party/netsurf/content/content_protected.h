@@ -172,6 +172,7 @@ struct content_user
 	void *pw;
 
 	struct content_user *next;
+	unsigned int onyx_told;	/**< Onyx: the broadcast it was last told (content_broadcast) */
 };
 
 /**

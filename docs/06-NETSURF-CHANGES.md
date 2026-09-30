@@ -821,8 +821,8 @@ pseudo-classes it does not know.
 - `tools/tests/netsurf/pages/js-html5.html`, `js-forms.html`, `js-apis.html`, `js-ce.html`
   (in `jstest.sh`): 44 + 45 + 26 + 17 checks. `html5test.sh` starts the run at the load, as
   html5test.co does (it waits for its browser detection script).
-- Not done (html5test counts them): IndexedDB, the editing APIs (`designMode`, `execCommand`), a real shadow
-  tree (`attachShadow` returns the host, whose children are drawn), `<input type="image">`'s
+- Not done (html5test counts them): IndexedDB, the editing APIs (`designMode`, `execCommand`) (shadow DOM:
+  §20), `<input type="image">`'s
   sizes, and what is out of this work: canvas, SVG, audio and video, WebRTC, WebGL.
 
 ## 18. The big sites: memory, requests, events, early layout (bbc.co.uk, google.com, m.facebook.com)
@@ -1028,10 +1028,148 @@ canvas.js is). html5test.co: +31 points (338 -> 369 of 588: `eventSource`, `webs
   `pages/net-live.html` against public servers (wss://echo.websocket.org, Wikimedia's event
   stream: its events and a streamed fetch of it). Valgrind: no invalid access in these pages.
 
+## 20. Shadow DOM (web components: Lit, Stencil, reddit's shreddit)
+
+`attachShadow` returned the host, whose light children were drawn; `ShadowRoot` did not exist
+(reddit.com's scripts stopped on "ShadowRoot is not defined"). NetSurf now has real shadow
+trees: the DOM of them, the parser's declarative ones, the boxes built from the flat tree, and
+the styles scoped to each tree.
+
+- **Where a shadow root lives** (libdom's hubbub binding, `bindings/hubbub/parser.c`, its copy
+  in `include/dom/bindings/hubbub/`): a document fragment the host keeps as user data (a
+  reference; the host kept on the fragment, its mode and options too), made by
+  `dom_onyx_attach_shadow` -- the DOM standard's rules for the host (a valid custom element
+  name or one of `article` ... `span`; one root per host). It is no child of the host, so the
+  host's `children`, `innerHTML`, the document's `querySelector`, `getElementById` and the
+  document's own walks never see it; `dom_onyx_shadow_root` / `dom_onyx_shadow_host` /
+  `dom_onyx_shadow_flags` link them, `dom_onyx_has_shadow(doc)` says whether a document has
+  any (NetSurf does nothing of this otherwise).
+- **Declarative shadow roots** (libhubbub `treebuilder.c`, `insert_shadow_template`; the tree
+  handler's new `attach_shadow`): a `<template shadowrootmode="open|closed">` in the document
+  parser (not in `innerHTML`) is pushed but not inserted, its contents are a shadow root
+  attached to the element it is in (`shadowrootdelegatesfocus`, `-clonable`,
+  `-serializable` kept); a host that cannot take one gets the template as any other. The
+  html5lib-tests stay at 100%.
+- **The DOM** (`quickjs/html5.js`, "shadow DOM"; qjs.c's natives `attachShadow`,
+  `shadowRoot`, `shadowHost`, `shadowFlags`, `hasShadow`, `shadowProto`, `shadowSheets`):
+  `Element.attachShadow` (open / closed, `delegatesFocus`, `clonable`, `serializable`,
+  `slotAssignment`; a declarative root handed to its custom element emptied; the errors of
+  the standard), `element.shadowRoot` (open ones), `ShadowRoot` (a `DocumentFragment`: `mode`,
+  `host`, `innerHTML` parsed in the host's context, `setHTMLUnsafe`, `getHTML`,
+  `activeElement`, `styleSheets`, `adoptedStyleSheets`, `getElementById`, `querySelector`...),
+  `getHTML({ serializableShadowRoots, shadowRoots })` writing declarative roots,
+  `getRootNode({ composed })`, `isConnected` through the hosts, `ElementInternals.shadowRoot`;
+  `<slot>` (`HTMLSlotElement`: `name`, `assignedNodes` / `assignedElements` with `flatten`,
+  `assign()` for the manual mode), `element.slot`, `assignedSlot`, `part` (a `DOMTokenList`),
+  `slotchange` (the slots whose assigned nodes changed, at the next microtask); custom elements
+  in a shadow tree upgraded and connected through their host.
+- **Events** (dom.js' dispatch asks html5.js once the document has shadow roots:
+  `N.internals.shadowHook`): the path goes from a slotted node to its slot, from a shadow root
+  to its host (a non-composed event stops at its target's shadow root); the target and
+  `relatedTarget` are retargeted at each node (a listener outside sees the host);
+  `composedPath()` hides the closed trees from outside and is empty after the dispatch; the
+  browser's own events are composed (clicks, keys, focus, input, the pointer's);
+  `document.activeElement` is the host of a focused shadow element; `delegatesFocus`.
+- **The boxes from the flat tree** (`html/onyx_shadow.c`, `box_construct.c`): when the document
+  has shadow roots, the box tree's walk asks for a node's first child, next sibling and parent
+  in the flat tree -- a host's children are its shadow root's, a slot's are the nodes assigned
+  to it (else its own: the fallback), a light child assigned to no slot is not drawn. Slot
+  assignment is the standard's named one, worked out per host once per box tree. The parent
+  box, the containing block and the inherited style follow the flat tree (`b_parent`), so do
+  `getComputedStyle` of an unboxed element and the CSS `:hover` chain (through the hosts).
+  Hit testing and the events need nothing more: the boxes point at the shadow tree's nodes.
+  `html_rebox_unlink` clears the shadow trees' box links too.
+- **`display: contents`** (all documents; it was a block): the element makes no box, its
+  children are its parent's; its style is kept in a box out of the tree (freed with the box
+  tree) for its children to inherit (`onyx_contents_keep` / `onyx_contents_style`,
+  `box_extract_properties`). A `<slot>` is `display: contents` by default (its style's inline,
+  in a document with shadow roots). Not for replaced elements and form controls;
+  `::before` / `::after` of such an element are not drawn.
+- **Style scoping** (libcss `select.c`, `css_select_style_onyx`; NetSurf `css/select.c`,
+  `onyx_shadow.c`): each shadow tree has its own selection context -- the user agent's and the
+  user's sheets, then its `<style>` elements' (in tree order, their `media`) and its adopted
+  sheets' (`adoptedStyleSheets`: the constructed sheets' texts given to C, again at each
+  `replaceSync` / `insertRule`), each text parsed once for the document's life. The
+  document's author sheets never match inside a shadow tree, and a shadow tree's `<style>` is
+  not the document's (`html_css_new_selection_context` leaves it out; `document.styleSheets`
+  does not list it). An element's style is selected in its own tree's context, with:
+  - `:host`, `:host(<compound>)`, `:host-context(<compound>)` -- the host is featureless in
+    its shadow tree (only these match it; its parent is none there): a second handler
+    (`onyx_scoped_handler`: the document's own pages keep the plain one) answers no for its
+    name, classes, attributes and states and stops the ancestor walks at it, and gives the
+    host's own tree's context for the arguments (`onyx_node_is_scope_host`, `onyx_host_pw`:
+    handler functions appended to `css_select_handler`); the host's style takes its shadow
+    tree's `:host` rules;
+  - `::slotted(<compound>)` -- an element assigned to a slot takes the slot's tree's
+    `::slotted()` rules whose selector matches the slot (and the argument the element), and
+    those of the slots that slot is assigned to (flattened);
+  - `::part(<ident>+)` -- an element of a shadow tree with a `part` attribute takes the
+    `::part()` rules of the tree around its host whose selector matches the host;
+  - the cascade's **encapsulation contexts** (CSS Cascade 4): each of these other trees' rules
+    has a context level (`prop_state.level`); between two declarations of the same origin
+    and importance, the outer context's normal one wins and the inner one's `!important`
+    (a document rule beats a `:host` rule whatever their specificities; presentational hints
+    stay under every author rule). The other tree's rules are matched on their node (the
+    host, the slot) with a bloom filter that rejects nothing, without the reject cache;
+  - a host, an element assigned to a slot or with a part takes no other element's style
+    (`CSS_NODE_FLAGS_ONYX_NO_SHARE`), and inherits its custom properties from its flat tree
+    parent (the slot).
+- **Cost**: a document without shadow roots takes none of these paths (a flag per box tree,
+  the selection's plain handler; `css_select_style` is `css_select_style_onyx` without
+  scopes); the flat tree's lookups (a hash of the hosts' assignments, the trees' contexts) are
+  made once per box tree. Measured with callgrind on a saved en.wikipedia.org article (no
+  shadow roots, 3400 elements styled): box building costs ~1-2% more instructions per styled
+  element (libcss's selection behind the new entry point, the contexts' comparison in the
+  cascade); a page with shadow roots pays for its trees' selection contexts (made per box
+  tree), the other trees' passes of the hosts and slotted elements, and no style sharing
+  for them.
+- **Tests**: `jstest.sh` -- `js-shadow.html` (58 checks: the API, the encapsulation, slots,
+  declarative roots, events, custom elements in shadow trees, `:host` / `:host()` /
+  `:host-context()` / `::slotted()` / `::part()` / adopted sheets / the contexts' cascade,
+  the boxes of the flat tree), `js-shadow-click.html` (clicks on a shadow tree's element and
+  on a slotted one through the simulator, `:hover` inside a shadow tree);
+  `pages/js-shadow-render.html`, a Lit-like page (one constructed sheet per component class,
+  named / default slots with fallback, `::slotted`, `::part`, a flex host, nested components,
+  a declarative root, `display: contents`) against Chromium with `layoutdiff.sh` (which now
+  walks the open shadow roots too): the boxes agree but for NetSurf's general line-height
+  and whitespace differences. **web-platform-tests**: `wpt.sh` (new) runs WPT's testharness
+  pages in the PC NetSurf (a sparse clone, served on 127.0.0.1, a `testharnessreport.js`
+  that logs each subtest; the testdriver ones and the reftests skipped): `shadow-dom/`
+  999 of 1666 subtests pass (60.0%; before: `ShadowRoot` undefined, next to none), with the
+  build before the TreeWalker and `DOMException` fixes. The misses: the testdriver-less focus
+  and selection tests, manual slot assignment's rendering, `elementFromPoint` across trees,
+  the imperative slot API's corner cases, `:host` in `matches()`. One page crashed: a shadow
+  root's `innerHTML` whose markup a fragment could not take (`n_set_html` unreferenced a node
+  twice when an append failed) -- fixed.
+- **reddit.com** (shreddit, Lit components): "ShadowRoot is not defined" gone; its JS
+  challenge now passes and its components render (their shadow trees, slots, adopted
+  sheets). Found on the way: `TreeWalker` was a snapshot of the root's nodes and ignored a
+  `currentNode` set outside the root -- Lit's template preparation does exactly that (the
+  template's contents walked from a walker on the document): its slots kept their
+  `name$lit$` marker names. `TreeWalker` and `NodeIterator` now walk live as the DOM
+  standard says. With its feed now built, three crashes of the core showed and are fixed: a
+  script navigating while the page was converted (the JS challenge) -- the old content's
+  READY laid out the new, contentless one (`browser_window_callback` ignores a message from
+  a content no longer loading); an image's `load` event whose script asked for a layout, the
+  rebox releasing other users of the same image while `content_broadcast` held the next one
+  (each user now told once, the list walked again from its head); a node the new box tree
+  no longer boxes (removed, unslotted) keeping its freed box (`html_rebox_unlink_boxes`
+  clears the links of every node the old tree boxed). `sitesweep.sh`: no crash, reddit's 3
+  errors gone. Left for reddit: its feed
+  is laid out at x = -2147483648 -- the children of its `display: grid` container
+  (`.grid-container.grid-full`, named grid lines) get no x from `layout_grid.c` (not a shadow
+  DOM matter: the grid layout).
+- Also: `DOMException` has its legacy `code` and constants (`NOT_SUPPORTED_ERR`...).
+- Not done: the manual slot assignment (`assign()`) is the DOM's only (the boxes use the
+  named assignment); `exportparts`; a clonable shadow root copied by `cloneNode`; `<link
+  rel=stylesheet>` and `@import` in a shadow tree; `@font-face` in a shadow tree's sheets;
+  `:host` in `querySelector` / `matches`; the focus navigation order of shadow trees;
+  `::before` / `::after` of a `display: contents` element.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
-  (sent as text: a NUL ends them); no IndexedDB, editing APIs, shadow trees (§17), Service
+  (sent as text: a NUL ends them); no IndexedDB, editing APIs, Service
   Workers; CSS `:active` / `:focus`.
 - The network APIs (§19): a worker runs on the UI thread (a long computation in a worker
   holds the window as a page's script does; `script_timeout` stops it); an `importScripts`
@@ -1040,6 +1178,9 @@ canvas.js is). html5test.co: +31 points (338 -> 369 of 588: `eventSource`, `webs
   worker, no `OffscreenCanvas`, `SharedArrayBuffer` / `Atomics` between workers; the
   WebSocket client sends its messages uncompressed (permessage-deflate inflates only) and
   never pings; CORS is not checked for EventSource either.
+- Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
+  cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
+  `::before` / `::after` of a `display: contents` element.
 - `opacity`, filters, animations and transitions.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's

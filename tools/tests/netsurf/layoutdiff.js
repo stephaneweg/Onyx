@@ -28,15 +28,20 @@
 		return a.join('>');
 	}
 	var sx = window.scrollX || 0, sy = window.scrollY || 0;
-	var all = document.body ? document.body.getElementsByTagName('*') : [];
-	for (var i = 0; i < all.length; i++) {
-		var e = all[i], t = e.tagName.toLowerCase();
-		if (t === 'script' || t === 'style' || t === 'noscript' || t === 'template') continue;
-		if (e.closest && e.closest('svg') && t !== 'svg') continue;
-		var r = e.getBoundingClientRect();
-		if (!r || (r.width === 0 && r.height === 0)) continue;
-		out.push('LB ' + path(e) + ' ' + Math.round(r.left + sx) + ' ' + Math.round(r.top + sy) +
-			' ' + Math.round(r.width) + ' ' + Math.round(r.height));
+	/* (Onyx: the open shadow trees' elements too, their paths after their host's) */
+	function walk(all, prefix) {
+		for (var i = 0; i < all.length; i++) {
+			var e = all[i], t = e.tagName.toLowerCase();
+			if (e.shadowRoot)
+				walk(e.shadowRoot.querySelectorAll('*'), prefix + path(e) + '>#shadow>');
+			if (t === 'script' || t === 'style' || t === 'noscript' || t === 'template') continue;
+			if (e.closest && e.closest('svg') && t !== 'svg') continue;
+			var r = e.getBoundingClientRect();
+			if (!r || (r.width === 0 && r.height === 0)) continue;
+			out.push('LB ' + prefix + path(e) + ' ' + Math.round(r.left + sx) + ' ' +
+				Math.round(r.top + sy) + ' ' + Math.round(r.width) + ' ' + Math.round(r.height));
+		}
 	}
+	walk(document.body ? document.body.getElementsByTagName('*') : [], '');
 	console.log(out.join('\n'));
 })();

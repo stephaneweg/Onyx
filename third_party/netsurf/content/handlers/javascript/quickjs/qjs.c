@@ -69,6 +69,7 @@
 #include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
 #include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
 #include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
+#include "html/onyx_shadow.h"	/* Onyx: shadow DOM (adopted sheets) */
 
 #include "javascript/js.h"
 #include "html/onyx_webfont.h"
@@ -155,6 +156,7 @@ struct jsthread {
 	int load_waits;			/* the window's load: turns waited */
 	struct qjs_req *reqs;		/* fetch / XMLHttpRequest in flight */
 	int next_req;
+	JSValue shadow_proto;		/* Onyx: ShadowRoot.prototype (html5.js) */
 	JSValue modsrc;			/* ES modules' sources: { url: text } (dom.js fills it) */
 	JSValue modmissing;		/* the modules a moduleRun lacked: [url...] */
 	bool worker;			/* Onyx: a worker's scripts (qjs_net.c): no document; its URL
@@ -410,6 +412,9 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 	case DOM_DOCUMENT_NODE:
 		return JS_DupValue(t->ctx, t->protos[QP_DOCUMENT]);
 	case DOM_DOCUMENT_FRAGMENT_NODE:
+		/* Onyx: a shadow root (libdom keeps it on its host) is a ShadowRoot */
+		if (JS_IsObject(t->shadow_proto) && dom_onyx_shadow_host(n) != NULL)
+			return JS_DupValue(t->ctx, t->shadow_proto);
 		return JS_DupValue(t->ctx, t->protos[QP_FRAGMENT]);
 	case DOM_DOCUMENT_TYPE_NODE:
 		return JS_DupValue(t->ctx, t->protos[QP_DOCTYPE]);
@@ -1287,9 +1292,13 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 
 	/* the fragment's nodes into the target */
 	while (dom_node_get_first_child(fragment, &child) == DOM_NO_ERR && child != NULL) {
+		/* (Onyx: res reset -- an append refused, e.g. a doctype into a shadow root,
+		 * left the removal's result, unreferenced twice: a freed node) */
+		res = NULL;
 		dom_node_remove_child(fragment, child, &res);
 		if (res != NULL)
 			dom_node_unref(res);
+		res = NULL;
 		dom_node_append_child(target, child, &res);
 		if (res != NULL)
 			dom_node_unref(res);
@@ -1569,7 +1578,10 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 	if (dom_document_get_document_element(c->document, &root) != DOM_NO_ERR ||
 	    root == NULL)
 		return NULL;
-	/* the element and its ancestors, up to the root element */
+	/* the element and its ancestors, up to the root element (Onyx: its flat tree
+	 * ancestors when the document has shadow roots: a slot, a host) */
+	if (dom_onyx_has_shadow(c->document))
+		c->onyx_shadow = true;
 	cur = n;
 	dom_node_ref(cur);
 	while (cur != NULL && cur != root) {
@@ -1581,7 +1593,9 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 			break;
 		}
 		chain[depth++] = cur;
-		if (dom_node_get_parent_node(cur, &next) != DOM_NO_ERR)
+		if (c->onyx_shadow)
+			next = onyx_flat_parent(c, cur);
+		else if (dom_node_get_parent_node(cur, &next) != DOM_NO_ERR)
 			next = NULL;
 		cur = next;
 	}
@@ -1680,7 +1694,7 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 			"inline-table", "table-row-group", "table-header-group",
 			"table-footer-group", "table-row", "table-column-group",
 			"table-column", "table-cell", "table-caption", "none",
-			"flex", "inline-flex", "grid", "inline-grid" };
+			"flex", "inline-flex", "grid", "inline-grid", "contents" };
 		uint8_t dv = css_computed_display(style, false);
 		snprintf(buf, sizeof(buf), "%s", dv < sizeof(d) / sizeof(d[0]) ?
 				d[dv] : "block");
@@ -3154,6 +3168,121 @@ static void qjs_ce_later(void *p)
 	}
 }
 
+/* ---- Onyx: shadow DOM ---------------------------------------------------------------------
+ *
+ * The shadow roots are libdom document fragments kept on their hosts (the hubbub binding's
+ * dom_onyx_attach_shadow; the parser's <template shadowrootmode> too); NetSurf builds the
+ * boxes from the flat tree and scopes the styles (html/onyx_shadow.c). html5.js is the DOM.
+ *
+ * attachShadow(host, flags): its new shadow root (DOM_ONYX_SHADOW_* flags), null if the
+ * host cannot have one or has one; shadowRoot(host): its shadow root (any mode) or null;
+ * shadowHost(node): the host if node is a shadow root, else null; shadowFlags(root);
+ * hasShadow(): whether the document has shadow roots; shadowProto(proto): the ShadowRoot
+ * prototype the wrappers of shadow roots get; shadowSheets(root, [texts]): the texts of its
+ * adopted style sheets (adoptedStyleSheets).
+ */
+static JSValue n_attach_shadow(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_document_fragment *f = NULL;
+	dom_node_type type = 0;
+	int32_t flags = 0;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+
+	if (dom_node_get_node_type(n, &type) != DOM_NO_ERR || type != DOM_ELEMENT_NODE)
+		return JS_NULL;
+	if (argc > 1)
+		JS_ToInt32(ctx, &flags, argv[1]);
+	if (dom_onyx_attach_shadow((dom_element *) n, (unsigned int) flags & 0x3f, &f) !=
+			DOM_NO_ERR || f == NULL)
+		return JS_NULL;
+	v = qjs_wrap(t, (dom_node *) f);
+	dom_node_unref(f);
+	t->dirty = true;	/* (its host now shows its shadow tree) */
+	return v;
+}
+
+static JSValue n_shadow_root(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return qjs_wrap(QJS_T(ctx), dom_onyx_shadow_root(n));
+}
+
+static JSValue n_shadow_host(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return qjs_wrap(QJS_T(ctx), dom_onyx_shadow_host(n));
+}
+
+static JSValue n_shadow_flags(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	QJS_NODE_ARG(n, 0);
+	return JS_NewInt32(ctx, (int32_t) dom_onyx_shadow_flags(n));
+}
+
+static JSValue n_has_shadow(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	return JS_NewBool(ctx, t->doc != NULL && dom_onyx_has_shadow(t->doc));
+}
+
+static JSValue n_shadow_proto(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+
+	JS_FreeValue(ctx, t->shadow_proto);
+	t->shadow_proto = argc > 0 && JS_IsObject(argv[0]) ? JS_DupValue(ctx, argv[0]) :
+		JS_UNDEFINED;
+	return JS_UNDEFINED;
+}
+
+static JSValue n_shadow_sheets(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *texts[64];
+	uint32_t n = 0, i, len = 0;
+	JSValue lv;
+	QJS_NODE_ARG(root, 0);
+
+	if (dom_onyx_shadow_host(root) == NULL)
+		return JS_UNDEFINED;
+	if (argc > 1 && JS_IsArray(argv[1])) {
+		lv = JS_GetPropertyStr(ctx, argv[1], "length");
+		JS_ToUint32(ctx, &len, lv);
+		JS_FreeValue(ctx, lv);
+	}
+	for (i = 0; i < len && n < 64; i++) {
+		JSValue e = JS_GetPropertyUint32(ctx, argv[1], i);
+		const char *s = JS_ToCString(ctx, e);
+		JS_FreeValue(ctx, e);
+		if (s != NULL)
+			texts[n++] = s;
+	}
+	onyx_shadow_set_adopted(root, texts, n);
+	for (i = 0; i < n; i++)
+		JS_FreeCString(ctx, texts[i]);
+	t->dirty = true;
+	return JS_UNDEFINED;
+}
+
+static const JSCFunctionListEntry qjs_natives_shadow[] = {
+	JS_CFUNC_DEF("attachShadow", 2, n_attach_shadow),
+	JS_CFUNC_DEF("shadowRoot", 1, n_shadow_root),
+	JS_CFUNC_DEF("shadowHost", 1, n_shadow_host),
+	JS_CFUNC_DEF("shadowFlags", 1, n_shadow_flags),
+	JS_CFUNC_DEF("hasShadow", 0, n_has_shadow),
+	JS_CFUNC_DEF("shadowProto", 1, n_shadow_proto),
+	JS_CFUNC_DEF("shadowSheets", 2, n_shadow_sheets),
+};
+
 static const JSCFunctionListEntry qjs_natives_html5[] = {
 	JS_CFUNC_DEF("ceHook", 1, n_ce_hook),
 	JS_CFUNC_DEF("setURL", 1, n_set_url),
@@ -3371,6 +3500,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	t->modsrc = JS_NewObject(t->ctx);	/* (Onyx: ES modules) */
 	t->modmissing = JS_NewArray(t->ctx);
 	t->ce_hook = JS_UNDEFINED;	/* (Onyx: custom elements) */
+	t->shadow_proto = JS_UNDEFINED;	/* (Onyx: shadow DOM) */
 	heap->threads++;
 
 	/* the prelude: a function of the natives, run once */
@@ -3379,6 +3509,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 			sizeof(qjs_natives) / sizeof(qjs_natives[0]));
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_html5,	/* Onyx: HTML5 */
 			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
+	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_shadow,	/* Onyx: shadow DOM */
+			sizeof(qjs_natives_shadow) / sizeof(qjs_natives_shadow[0]));
 	qjs_enter(t);
 	uint64_t t_prelude = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
@@ -3457,6 +3589,7 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->modsrc);
 	JS_FreeValue(t->ctx, t->modmissing);
 	JS_FreeValue(t->ctx, t->ce_hook);
+	JS_FreeValue(t->ctx, t->shadow_proto);
 	qjs_canvas_context_gone(t->ctx);	/* Onyx: its canvases, images */
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)

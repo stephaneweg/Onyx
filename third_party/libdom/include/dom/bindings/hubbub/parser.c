@@ -707,6 +707,236 @@ dom_exception dom_hubbub_template_content(dom_element *template_element,
 	return DOM_NO_ERR;
 }
 
+/* Onyx: shadow roots (the DOM standard's): a document fragment the host keeps as user data
+ * (a reference), the host kept on the fragment (no reference), the root's mode and options
+ * on it too; the document notes it has shadow roots (NetSurf then builds its boxes from the
+ * flat tree) */
+static dom_string *shadow_root_key, *shadow_host_key, *shadow_flags_key, *shadow_doc_key;
+
+static dom_exception shadow_keys(void)
+{
+	dom_exception err = DOM_NO_ERR;
+	if (shadow_root_key == NULL)
+		err = dom_string_create_interned((const uint8_t *) "__onyx_shadow_root", 18,
+				&shadow_root_key);
+	if (err == DOM_NO_ERR && shadow_host_key == NULL)
+		err = dom_string_create_interned((const uint8_t *) "__onyx_shadow_host", 18,
+				&shadow_host_key);
+	if (err == DOM_NO_ERR && shadow_flags_key == NULL)
+		err = dom_string_create_interned((const uint8_t *) "__onyx_shadow_flags", 19,
+				&shadow_flags_key);
+	if (err == DOM_NO_ERR && shadow_doc_key == NULL)
+		err = dom_string_create_interned((const uint8_t *) "__onyx_has_shadow", 17,
+				&shadow_doc_key);
+	return err;
+}
+
+static void shadow_root_handler(dom_node_operation operation,
+		dom_string *key, void *data, struct dom_node *src,
+		struct dom_node *dst)
+{
+	UNUSED(key);
+	UNUSED(src);
+	UNUSED(dst);
+	if (operation == DOM_NODE_DELETED && data != NULL) {
+		/* the host goes: its shadow root forgets it, and goes too unless a script
+		 * still holds it (as template_content_handler: the document held) */
+		struct dom_document *doc = ((dom_node_internal *) data)->owner;
+		void *prev = NULL;
+		dom_node_set_user_data((struct dom_node *) data, shadow_host_key, NULL, NULL,
+				&prev);
+		if (doc != NULL)
+			doc->base.base.refcnt++;
+		dom_node_unref((struct dom_node *) data);
+		if (doc != NULL)
+			doc->base.base.refcnt--;
+	}
+}
+
+static bool shadow_host_name_ok(dom_element *host)
+{
+	static const char *const ok[] = { "article", "aside", "blockquote", "body",
+		"div", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "main",
+		"nav", "p", "section", "span" };
+	dom_string *name = NULL;
+	const char *s;
+	size_t len, i;
+	bool res = false;
+
+	if ((dom_node_get_local_name(host, &name) != DOM_NO_ERR || name == NULL) &&
+			(dom_node_get_node_name(host, &name) != DOM_NO_ERR || name == NULL))
+		return false;
+	s = dom_string_data(name);
+	len = dom_string_byte_length(name);
+	for (i = 0; i < sizeof ok / sizeof ok[0] && !res; i++)
+		res = strlen(ok[i]) == len && strncasecmp(ok[i], s, len) == 0;
+	/* a valid custom element name: an ASCII letter first (libdom may keep an HTML
+	 * element's name upper case), a hyphen */
+	if (!res && len > 1 && ((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z')) &&
+			memchr(s, '-', len) != NULL)
+		res = true;
+	dom_string_unref(name);
+	return res;
+}
+
+/* exported function documented in parser.h (Onyx) */
+dom_exception dom_onyx_attach_shadow(dom_element *host, unsigned int flags,
+		dom_document_fragment **result)
+{
+	dom_document *doc = NULL;
+	dom_document_fragment *f = NULL;
+	void *data = NULL, *prev = NULL;
+	dom_exception err;
+
+	*result = NULL;
+	err = shadow_keys();
+	if (err != DOM_NO_ERR)
+		return err;
+	if (!(flags & DOM_ONYX_SHADOW_ANY_NAME) && !shadow_host_name_ok(host))
+		return DOM_NOT_SUPPORTED_ERR;
+	err = dom_node_get_user_data(host, shadow_root_key, &data);
+	if (err == DOM_NO_ERR && data != NULL)
+		return DOM_NOT_SUPPORTED_ERR;
+	err = dom_node_get_owner_document(host, &doc);
+	if (err != DOM_NO_ERR || doc == NULL)
+		return err != DOM_NO_ERR ? err : DOM_NOT_SUPPORTED_ERR;
+	err = dom_document_create_document_fragment(doc, &f);
+	if (err == DOM_NO_ERR)
+		err = dom_node_set_user_data(doc, shadow_doc_key, (void *) 1, NULL, &prev);
+	dom_node_unref(doc);
+	if (err != DOM_NO_ERR) {
+		if (f != NULL)
+			dom_node_unref(f);
+		return err;
+	}
+	err = dom_node_set_user_data(f, shadow_host_key, host, NULL, &prev);
+	if (err == DOM_NO_ERR)
+		err = dom_node_set_user_data(f, shadow_flags_key,
+				(void *) (uintptr_t) (flags | 0x100), NULL, &prev);
+	/* the host's user data holds the creation reference */
+	if (err == DOM_NO_ERR)
+		err = dom_node_set_user_data(host, shadow_root_key, f,
+				shadow_root_handler, &prev);
+	if (err != DOM_NO_ERR) {
+		dom_node_unref(f);
+		return err;
+	}
+	*result = (dom_document_fragment *) dom_node_ref((struct dom_node *) f);
+	return DOM_NO_ERR;
+}
+
+/* exported function documented in parser.h (Onyx) */
+struct dom_node *dom_onyx_shadow_root(struct dom_node *host)
+{
+	void *data = NULL;
+	if (shadow_root_key == NULL || host == NULL ||
+			((dom_node_internal *) host)->user_data == NULL)
+		return NULL;
+	dom_node_get_user_data(host, shadow_root_key, &data);
+	return data;
+}
+
+/* exported function documented in parser.h (Onyx) */
+struct dom_node *dom_onyx_shadow_host(struct dom_node *root)
+{
+	void *data = NULL;
+	if (shadow_host_key == NULL || root == NULL ||
+			((dom_node_internal *) root)->type != DOM_DOCUMENT_FRAGMENT_NODE ||
+			((dom_node_internal *) root)->user_data == NULL)
+		return NULL;
+	dom_node_get_user_data(root, shadow_host_key, &data);
+	return data;
+}
+
+/* exported function documented in parser.h (Onyx) */
+unsigned int dom_onyx_shadow_flags(struct dom_node *root)
+{
+	void *data = NULL;
+	if (shadow_flags_key == NULL || root == NULL)
+		return 0;
+	dom_node_get_user_data(root, shadow_flags_key, &data);
+	return (unsigned int) (uintptr_t) data & 0xff;
+}
+
+/* exported function documented in parser.h (Onyx) */
+bool dom_onyx_has_shadow(struct dom_document *doc)
+{
+	void *data = NULL;
+	if (shadow_doc_key == NULL || doc == NULL)
+		return false;
+	dom_node_get_user_data(doc, shadow_doc_key, &data);
+	return data != NULL;
+}
+
+/* exported function documented in parser.h (Onyx) */
+struct dom_node *dom_onyx_node_root(struct dom_node *node)
+{
+	dom_node_internal *n = (dom_node_internal *) node;
+	while (n != NULL && n->parent != NULL)
+		n = n->parent;
+	return (struct dom_node *) n;
+}
+
+/* Onyx: declarative shadow DOM -- <template shadowrootmode> in the document parser: a
+ * shadow root attached to the host, the template's contents (never inserted) */
+static hubbub_error attach_shadow(void *parser, void *host, void *template_node)
+{
+	dom_string *mode = NULL, *s = NULL, *key = NULL;
+	dom_document_fragment *f = NULL;
+	void *prev = NULL;
+	unsigned int flags = DOM_ONYX_SHADOW_DECLARATIVE;
+	dom_exception err;
+	static const struct { const char *name; unsigned int flag; } opts[] = {
+		{ "shadowrootdelegatesfocus", DOM_ONYX_SHADOW_DELEGATES_FOCUS },
+		{ "shadowrootclonable", DOM_ONYX_SHADOW_CLONABLE },
+		{ "shadowrootserializable", DOM_ONYX_SHADOW_SERIALIZABLE },
+	};
+	size_t i;
+
+	UNUSED(parser);
+	if (dom_string_create((const uint8_t *) "shadowrootmode", 14, &key) != DOM_NO_ERR)
+		return HUBBUB_UNKNOWN;
+	err = dom_element_get_attribute(template_node, key, &mode);
+	dom_string_unref(key);
+	if (err != DOM_NO_ERR || mode == NULL)
+		return HUBBUB_UNKNOWN;
+	if (dom_string_byte_length(mode) == 6 &&
+			strncasecmp(dom_string_data(mode), "closed", 6) == 0)
+		flags |= DOM_ONYX_SHADOW_CLOSED;
+	else if (dom_string_byte_length(mode) != 4 ||
+			strncasecmp(dom_string_data(mode), "open", 4) != 0) {
+		dom_string_unref(mode);
+		return HUBBUB_UNKNOWN;
+	}
+	dom_string_unref(mode);
+	for (i = 0; i < sizeof opts / sizeof opts[0]; i++) {
+		bool has = false;
+		if (dom_string_create((const uint8_t *) opts[i].name, strlen(opts[i].name),
+				&key) != DOM_NO_ERR)
+			return HUBBUB_UNKNOWN;
+		err = dom_element_has_attribute(template_node, key, &has);
+		dom_string_unref(key);
+		if (err == DOM_NO_ERR && has)
+			flags |= opts[i].flag;
+	}
+	UNUSED(s);
+	if (dom_onyx_attach_shadow(host, flags, &f) != DOM_NO_ERR)
+		return HUBBUB_UNKNOWN;
+	/* the template's contents are the shadow root (its user data holds a reference) */
+	if (template_content_key == NULL &&
+			dom_string_create_interned((const uint8_t *) "__onyx_template_content",
+				23, &template_content_key) != DOM_NO_ERR) {
+		dom_node_unref(f);
+		return HUBBUB_UNKNOWN;
+	}
+	if (dom_node_set_user_data(template_node, template_content_key, f,
+			template_content_handler, &prev) != DOM_NO_ERR) {
+		dom_node_unref(f);
+		return HUBBUB_UNKNOWN;
+	}
+	return HUBBUB_OK;
+}
+
 static hubbub_error template_content(void *parser, void *node, void **result)
 {
 	UNUSED(parser);
@@ -867,6 +1097,7 @@ static hubbub_tree_handler tree_handler = {
 	/* Onyx */
 	.template_content = template_content,
 	.insert_text = insert_text,
+	.attach_shadow = attach_shadow,
 };
 
 /**

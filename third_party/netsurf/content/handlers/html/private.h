@@ -250,6 +250,11 @@ typedef struct html_content {
 	/** Onyx: the viewport's size the scripts last saw (a change: 'resize') */
 	int script_width, script_height;
 
+	/** Onyx: shadow DOM -- the document has shadow roots (its boxes come from the flat
+	 * tree), and the flat tree's and the shadow trees' caches (html/onyx_shadow.c) */
+	bool onyx_shadow;
+	struct onyx_shadow *onyx_sh;
+
 	/** Onyx: a control the user changed: its input / change events due (soon) */
 	struct dom_node *script_changed;
 	unsigned int script_changed_events;
