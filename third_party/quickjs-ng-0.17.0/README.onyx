@@ -5,6 +5,9 @@ QuickJS-ng v0.17.0 (https://github.com/quickjs-ng/quickjs, tag v0.17.0): the eng
 Onyx patches (marked Onyx):
 - cutils.h: __ONYX__ has no threads (JS_HAVE_THREADS 0), its clock is gettimeofday.
 - quickjs.c: __ONYX__ has no Atomics (CONFIG_ATOMICS off).
+- quickjs.c: __ONYX__'s clock (gettimeofday) is the local time: js_onyx_utc_offset_min (set by
+  the embedder: NetSurf's qjs_intl.h, from SD:/etc/system.ini's timezone=) is taken off Date.now
+  and is getTimezoneOffset's answer, so Date's time values are UTC.
 
 Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
 libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.

@@ -68,6 +68,7 @@
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
+#include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -2238,6 +2239,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives,
 			sizeof(qjs_natives) / sizeof(qjs_natives[0]));
 	qjs_enter(t);
+	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
 	prelude = JS_Eval(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
 			JS_EVAL_TYPE_GLOBAL);
 	if (JS_IsException(prelude)) {

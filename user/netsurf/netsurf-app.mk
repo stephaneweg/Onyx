@@ -137,6 +137,14 @@ $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 QJS_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs.c))
 $(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h
+$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_intl_js.h
+# Onyx: intl.js (Intl) and its locale data (CLDR) as C strings for qjs_intl.h
+$(OUT)/qjsgen/qjs_intl_js.h: $(JSQ)/intl.js $(LIBROOT)/cldr-48/intl-data.txt
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from intl.js and intl-data.txt by netsurf-app.mk */'; echo 'static const char qjs_intl_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; \
+	  echo 'static const char qjs_intl_data[] ='; \
+	  sed -e 's/\r$$//' -e '/^#/d' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $(LIBROOT)/cldr-48/intl-data.txt; echo ';'; } > $@
 $(QJS_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
