@@ -9,8 +9,9 @@
 #   make -f tools/tests/netsurf/host.mk [OUT=/tmp/nshost] [-j8]      (from the repo root)
 #
 # Differences with the Pi build: the host's libc (no user/netsurf/compat headers but curl/, no
-# onyx_compat.c, no newlib glue), the host's libpng + zlib, no JPEG / WebP (test pages use
-# PNG / GIF), no https (onyx_nstls stubbed: host_stubs.c). Objects go to $(OUT)/o only.
+# onyx_compat.c, no newlib glue), the host's libpng + zlib (JPEG and WebP: the vendored
+# sources), https through the PC's OpenSSL (host_stubs.c, with SIM_REALNET=1: the real network).
+# Objects go to $(OUT)/o only.
 #
 ROOT     := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../..)
 OUT      ?= /tmp/nshost
@@ -38,6 +39,8 @@ BMP  := $(TP)/libnsbmp
 NSFB := $(TP)/libnsfb
 FT   := $(TP)/freetype-2.14.3
 FONTS := $(TP)/dejavu-fonts-ttf-2.37
+JPEG := $(TP)/jpeg-9f
+WEBP := $(TP)/libwebp-1.4.0
 
 # the resources NetSurf reads at run time (Messages, the UA stylesheets...): staged into $(OUT)/res
 RESPATH := $(OUT)/res/
@@ -48,14 +51,15 @@ BASEF = -O2 -g -fcommon -fno-strict-aliasing -w -D_DEFAULT_SOURCE -D_POSIX_C_SOU
 CF    = $(BASEF) -std=c99
 
 # -- NetSurf (as netsurf-app.mk; only compat/curl from the Onyx compat headers)
-NS_CF = $(CF) -Dnsframebuffer -DWITH_PNG -DWITH_GIF -DWITH_BMP \
+NS_CF = $(CF) -Dnsframebuffer -DWITH_PNG -DWITH_GIF -DWITH_BMP -DWITH_JPEG -DWITH_WEBP \
         -DNETSURF_FB_RESPATH=\"$(RESPATH)\" -DNETSURF_FB_FONTPATH=\"$(RESPATH)fonts\" \
         -DONYX_NS_DATAPATH=\"$(OUT)/data/\" -DONYX_HOST_SIM -include $(UN)/compat/onyx_nsconfig.h
 NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
          -I$(OUT)/hostinc -I$(UN) -I$(UN)/gen -I$(OUT) -I$(ZUSER) -I$(ZKINC) \
          -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \
          -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
-         -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF)
+         -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF) \
+         -I$(JPEG) -I$(WEBP)/src
 
 # ---- sources -------------------------------------------------------------
 WAP_SRC := $(shell find $(WAP)/src -name '*.c')
@@ -90,7 +94,7 @@ CORE_SRC := \
   $(wildcard $(NS)/desktop/*.c) \
   $(wildcard $(NS)/content/handlers/css/*.c) $(wildcard $(NS)/content/handlers/html/*.c) \
   $(wildcard $(NS)/content/handlers/text/*.c) \
-  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c png.c) \
+  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c png.c jpeg.c webp.c) \
   $(wildcard $(NS)/content/handlers/javascript/*.c) $(JS_SRC)
 
 FB := $(NS)/frontends/framebuffer
@@ -113,10 +117,17 @@ BRO := $(TP)/brotli-1.1.0
 BRO_SRC := $(wildcard $(BRO)/c/common/*.c $(BRO)/c/dec/*.c)
 I_BRO := -I$(BRO)/c/include
 # (zlib: the PC's own, as the link's -lz)
+# JPEG (the IJG's libjpeg 9f) and WebP's decoder, as the Pi build links them
+JPEG_SRC := $(addprefix $(JPEG)/,$(addsuffix .c,jaricom jcapimin jcapistd jcarith jccoefct jccolor \
+            jcdctmgr jchuff jcinit jcmainct jcmarker jcmaster jcomapi jcparam jcprepct jcsample \
+            jctrans jdapimin jdapistd jdarith jdatadst jdatasrc jdcoefct jdcolor jddctmgr jdhuff \
+            jdinput jdmainct jdmarker jdmaster jdmerge jdpostct jdsample jdtrans jerror jfdctflt \
+            jfdctfst jfdctint jidctflt jidctfst jidctint jquant1 jquant2 jutils jmemmgr jmemnobs))
+WEBP_SRC := $(wildcard $(WEBP)/src/dec/*.c $(WEBP)/src/dsp/*.c $(WEBP)/src/utils/*.c)
 I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
         '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include $(I_BRO)
 
-LIB_ALL := $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+LIB_ALL := $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -175,6 +186,8 @@ $(call obj,$(1)): $(1)
 	$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
 $(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
+$(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
+$(foreach s,$(WEBP_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(WEBP) -I$(WEBP)/src)))
 $(foreach s,$(FT_SRC),$(eval $(call LIB_RULE,$(s),$(I_FT))))
 $(foreach s,$(BRO_SRC),$(eval $(call LIB_RULE,$(s),$(I_BRO))))
 $(foreach s,$(WAP_SRC),$(eval $(call LIB_RULE,$(s),$(I_WAP))))
@@ -220,7 +233,7 @@ $(foreach s,$(ONYX_CXX) $(WTK_SRC),$(eval $(call CXX_RULE,$(s))))
 
 # ---- link --------------------------------------------------------------------
 $(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ)
-	$(CXX) -o $@ $^ -lpng -lz -lm
+	$(CXX) -o $@ $^ -lpng -lz -lm -lssl -lcrypto
 	@echo "host netsurf: $@"
 
 # ---- the resources (as netsurf-app.mk's stage, into $(OUT)/res) ------------------

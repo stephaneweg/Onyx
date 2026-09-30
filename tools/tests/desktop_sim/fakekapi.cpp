@@ -210,11 +210,13 @@ static void make_chrome (void)
 	g_ow = g_lw + 2 * SIM_BORDER; g_oh = g_lh + SIM_TITLE_H + SIM_BORDER;
 	g_act = (unsigned *) calloc ((size_t) g_ow * g_oh, 4); g_ina = (unsigned *) calloc ((size_t) g_ow * g_oh, 4);
 }
+static void screen_size (int *w, int *h);
 static unsigned *create_ex (int x, int y, int w, int h, const char *t, unsigned f)
 {
-	if (w <= 0 || h <= 0 || w > 1024 || h > 768)		// (the kernel's limits: no window)
+	int sw, sh; screen_size (&sw, &sh);
+	if (w <= 0 || h <= 0 || w > (sw > 1024 ? sw : 1024) || h > (sh > 768 ? sh : 768))	// (the kernel's limits: the screen)
 	{
-		fprintf (stderr, "sim: no window for %d x %d (the kernel makes none over 1024 x 768)\n", w, h);
+		fprintf (stderr, "sim: no window for %d x %d (the kernel makes none bigger than the screen)\n", w, h);
 		return 0;
 	}
 	g_canvas = (unsigned *) calloc ((size_t) w * h, 4); g_cw = w; g_ch = h; g_stride = w; g_lw = w; g_lh = h; g_flags = f;
@@ -579,14 +581,33 @@ static int tcp_connect (const char *host, unsigned port)
 {
 	fprintf (stderr, "sim: tcp_connect %s:%u\n", host, port);
 	if (!getenv ("SIM_REALNET")) return getenv ("SIM_NET") ? 3 : -5;
+	// behind an HTTPS_PROXY (http://host:port): a CONNECT tunnel, except to this machine
+	const char *px = getenv ("HTTPS_PROXY");
+	char phost[256]; unsigned pport = 0;
+	bool local = !strcmp (host, "localhost") || !strncmp (host, "127.", 4);
+	if (px && !local && sscanf (px, "http://%255[^:/]:%u", phost, &pport) == 2) {}
+	else pport = 0;
 	struct addrinfo hints, *res = 0; memset (&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
-	char ps[16]; snprintf (ps, sizeof ps, "%u", port);
-	if (getaddrinfo (host, ps, &hints, &res) != 0 || !res) return -4;
+	char ps[16]; snprintf (ps, sizeof ps, "%u", pport ? pport : port);
+	if (getaddrinfo (pport ? phost : host, ps, &hints, &res) != 0 || !res) return -4;
 	int fd = socket (res->ai_family, res->ai_socktype, res->ai_protocol);
 	if (fd < 0 || connect (fd, res->ai_addr, res->ai_addrlen) != 0) { if (fd >= 0) close (fd); freeaddrinfo (res); return -5; }
 	freeaddrinfo (res);
 	int one = 1; setsockopt (fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+	if (pport) {
+		char rq[600]; int n = snprintf (rq, sizeof rq, "CONNECT %s:%u HTTP/1.1\r\nHost: %s:%u\r\n\r\n", host, port, host, port);
+		if (send (fd, rq, (size_t) n, MSG_NOSIGNAL) != n) { close (fd); return -5; }
+		// the proxy's answer, up to its blank line
+		char ans[2048]; int got = 0;
+		while (got < (int) sizeof ans - 1) {
+			ssize_t k = recv (fd, ans + got, 1, 0);
+			if (k <= 0) { close (fd); return -5; }
+			got++; ans[got] = 0;
+			if (got >= 4 && !memcmp (ans + got - 4, "\r\n\r\n", 4)) break;
+		}
+		if (strncmp (ans + 8, " 200", 4)) { fprintf (stderr, "sim: proxy refused %s:%u: %.60s\n", host, port, ans); close (fd); return -5; }
+	}
 	return fd + 1000;
 }
 static int tcp_send (int s, const void *b, unsigned n)
