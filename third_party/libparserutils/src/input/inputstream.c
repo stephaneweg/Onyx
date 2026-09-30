@@ -242,8 +242,12 @@ parserutils_error parserutils_inputstream_peek_slow(
 		return PARSERUTILS_BADPARM;
 
 	/* There's insufficient data in the buffer, so read some more
-	 * (Onyx: or the filter still holds some: it is written by the refill) */
-	if (s->raw->length == 0 && !(s->done_first_chunk &&
+	 * (Onyx: or, at the end of the input, the filter still holds some: it is written by
+	 * the refill. Only at the end: in the middle of a stream -- a style sheet given in
+	 * parts -- that refill with no raw data left the cursor past the buffer's end and
+	 * the lexer read and wrote beyond it (github.com's sheets given as Brotli decodes
+	 * them); the next part flushes the filter anyway) */
+	if (s->raw->length == 0 && !(s->public.had_eof && s->done_first_chunk &&
 			parserutils__filter_pending(s->input))) {
 		/* No more data to be had */
 		return s->public.had_eof ? PARSERUTILS_EOF

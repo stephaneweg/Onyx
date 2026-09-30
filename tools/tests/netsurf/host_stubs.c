@@ -23,6 +23,7 @@
  * ALPN, reads, exercised on the PC */
 onyx_tls_sess *onyx_mb_connect(int sock, const char *host, unsigned flags, struct onyx_tls_chain *chain);
 void onyx_mb_ca_bundle(const char *path);
+void onyx_mb_cancel_flag(volatile int *flag);
 int onyx_mb_send(onyx_tls_sess *s, const void *buf, int len);
 int onyx_mb_recv(onyx_tls_sess *s, void *buf, int len);
 void onyx_mb_close(onyx_tls_sess *s);
@@ -105,6 +106,11 @@ static SSL_CTX *ctx(void)
 	return c;
 }
 
+void onyx_nstls_cancel_flag(volatile int *flag)
+{
+	onyx_mb_cancel_flag(flag);	/* (OpenSSL's handshakes block: not cancelled on the bench) */
+}
+
 onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
 		struct onyx_tls_chain *chain)
 {
@@ -149,7 +155,7 @@ fail:
 		*chain = rec;		/* (the chain's DER copies are the caller's) */
 	else
 		onyx_nstls_chain_free(&rec);
-	SSL_free(s->ssl); close(s->fd); free(s);
+	SSL_free(s->ssl); kapi_tcp_close(s->fd + 1000); free(s);
 	return NULL;
 }
 
@@ -227,7 +233,7 @@ void onyx_nstls_close(onyx_tls_sess *s)
 	}
 	SSL_shutdown(s->ssl);
 	SSL_free(s->ssl);
-	close(s->fd);
+	kapi_tcp_close(s->fd + 1000);
 	free(s);
 }
 

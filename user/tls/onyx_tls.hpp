@@ -69,7 +69,12 @@ namespace onyx_tls
 		int                       rxlen, rxpos;
 		Verify                   *vr;		// (Onyx) the check's record, or 0
 		long                      now;		// (Onyx) the clock in seconds since 1970, 0 unset
+		volatile int             *cancel;	// (Onyx) set by another thread: stop waiting, fail
 	};
+
+	// (Onyx) an app-wide "stop now" for the handshakes and writes in progress (NetSurf's end:
+	// they give their sockets back at once instead of waiting up to 20 s)
+	inline volatile int *&cancel_flag (void) { static volatile int *f; return f; }
 
 	// ---- certificate verification (Onyx) ------------------------------------
 	enum { START_VERIFY = 1,		// check the server's certificate (the roots: set_ca_bundle)
@@ -273,6 +278,7 @@ namespace onyx_tls
 		s.rxlen = 0; s.rxpos = 0;		// reset the RX stream buffer
 		s.vr = vr;
 		s.now = 0;
+		s.cancel = cancel_flag ();
 		mbedtls_ssl_init (&s.ssl);
 		mbedtls_ssl_config_init (&s.conf);
 		mbedtls_ctr_drbg_init (&s.drbg);
@@ -352,6 +358,7 @@ namespace onyx_tls
 			if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
 			{
 				if ((kapi_get_ticks () - start_t) * 10 > 20000) return -1;
+				if (s.cancel != 0 && *s.cancel) return -1;
 				kapi_msleep (5);
 				continue;
 			}
@@ -393,6 +400,7 @@ namespace onyx_tls
 			if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
 			{
 				if ((kapi_get_ticks () - start_t) * 10 > 15000) return -1;
+				if (s.cancel != 0 && *s.cancel) return -1;
 				kapi_msleep (5);
 				continue;
 			}

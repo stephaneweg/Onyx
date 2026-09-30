@@ -151,6 +151,11 @@ extern "C" onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigne
 	return h;
 }
 
+extern "C" void onyx_nstls_cancel_flag(volatile int *flag)
+{
+	onyx_tls::cancel_flag() = flag;
+}
+
 extern "C" void onyx_nstls_chain_free(struct onyx_tls_chain *chain)
 {
 	unsigned i;

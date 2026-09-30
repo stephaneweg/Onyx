@@ -2104,9 +2104,14 @@ throbber_advance(void *pw)
 	}
 }
 
+/* Onyx: a page's load timed, from the throbber's start to its stop (NS_PERF: "ONYX-PERF
+ * page:load <us>" -- the page and everything it fetched, its scripts run) */
+static uint64_t onyx_load_t0;
+
 static void
 gui_window_start_throbber(struct gui_window *g)
 {
+	onyx_load_t0 = onyx_perf_now();
 	g->throbber_index = 0;
 	onyx_chrome_set_busy(1);	/* Onyx: the native toolbar's reload becomes stop */
 	if (g->throbber != NULL)
@@ -2126,6 +2131,10 @@ static void
 gui_window_stop_throbber(struct gui_window *gw)
 {
 	gw->throbber_index = -1;
+	if (onyx_load_t0 != 0) {
+		onyx_perf_log("page:load", onyx_load_t0);	/* Onyx */
+		onyx_load_t0 = 0;
+	}
 	onyx_chrome_set_busy(0);
 	framebuffer_schedule(3000, onyx_save_user_data, NULL);	/* Onyx */
 	if (gw->throbber != NULL)

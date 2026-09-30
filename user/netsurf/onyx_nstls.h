@@ -57,6 +57,10 @@ void onyx_nstls_ca_bundle(const char *path);
 onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
 		struct onyx_tls_chain *chain);
 
+/* Onyx: a flag another thread sets to stop the handshakes and writes in progress (the app's
+ * end: their sockets given back at once) */
+void onyx_nstls_cancel_flag(volatile int *flag);
+
 /* The chain's DER copies freed. */
 void onyx_nstls_chain_free(struct onyx_tls_chain *chain);
 

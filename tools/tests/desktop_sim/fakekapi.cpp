@@ -588,10 +588,17 @@ static int pipe_read (void *h, void *b, unsigned n)
 // SIM_NET: what the server sends (irc) on a connection; none: no network
 static Canned g_netIn = { "SIM_NET" };
 // SIM_REALNET: the PC's sockets (the handle: the file descriptor + 1000)
+// SIM_SOCKETS=N: the kernel's socket table (16 on the Pi, for every app) -- a connect past N
+// open sockets fails as the kernel's does (-2: the table full)
+static int g_socks;
 static int tcp_connect (const char *host, unsigned port)
 {
 	fprintf (stderr, "sim: tcp_connect %s:%u\n", host, port);
 	if (!getenv ("SIM_REALNET")) return getenv ("SIM_NET") ? 3 : -5;
+	if (getenv ("SIM_SOCKETS") && __atomic_load_n (&g_socks, __ATOMIC_SEQ_CST) >= atoi (getenv ("SIM_SOCKETS"))) {
+		fprintf (stderr, "sim: tcp_connect %s:%u: no socket free\n", host, port);
+		return -2;
+	}
 	// behind an HTTPS_PROXY (http://host:port): a CONNECT tunnel, except to this machine
 	const char *px = getenv ("HTTPS_PROXY");
 	char phost[256]; unsigned pport = 0;
@@ -619,6 +626,7 @@ static int tcp_connect (const char *host, unsigned port)
 		}
 		if (strncmp (ans + 8, " 200", 4)) { fprintf (stderr, "sim: proxy refused %s:%u: %.60s\n", host, port, ans); close (fd); return -5; }
 	}
+	__atomic_add_fetch (&g_socks, 1, __ATOMIC_SEQ_CST);
 	return fd + 1000;
 }
 static int tcp_send (int s, const void *b, unsigned n)
@@ -636,7 +644,7 @@ static int tcp_recv (int s, void *b, unsigned n)
 	if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
 	return -1;
 }
-static void tcp_close (int s) { if (s >= 1000) close (s - 1000); }
+static void tcp_close (int s) { if (s >= 1000) { close (s - 1000); __atomic_sub_fetch (&g_socks, 1, __ATOMIC_SEQ_CST); } }
 // the Wi-Fi around (the Wi-Fi menu)
 static int wlan_scan (struct kapi_wlan_ap *o, int max)
 {
