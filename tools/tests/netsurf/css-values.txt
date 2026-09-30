@@ -91,3 +91,39 @@
 + width: attr(data-value px)
 + width: if(style(--x): 100px; else: 200px)
 + cursor: image-set(url("foo.png") 1x, url("foo-2x.png") 2x) 2 2, auto
+
+# ---- at-rules kept without effect (S: the sheet keeps a rule), their descriptors (D: the
+# sheet's valid declarations and descriptors are counted)
+S+ @keyframes foo { from { color: blue } to { color: red } }
+S+ @keyframes "foo" { 50% { color: green } }
+S- @keyframes none { from { color: blue } }
+S+ @counter-style foo { system: numeric; symbols: '0' '1' '2'; }
+S- @counter-style none { system: numeric; }
+S+ @property --cool-color { syntax: '<color>'; inherits: true; initial-value: red; }
+S- @property cool { syntax: '<color>'; }
+S+ @font-feature-values Jupiter Sans { @styleset { some-style: 1; } }
+S+ @font-palette-values --custom-palette { font-family: Handover Sans; base-palette: 3; }
+S+ @position-try --p { top: anchor(--button bottom); }
+S+ @view-transition { navigation: auto; }
+S+ @scope (#hero) { img { border-radius: 50%; } }
+S+ @scope ([data-scope="main-component"]) to ([data-scope]) { p { color: red } }
+S- @scope (#hero) to { img { color: red } }
+S+ @starting-style { h1 { background-color: red; } }
+S+ @media screen { @keyframes spin { to { transform: rotate(1turn) } } }
+D+ @counter-style x { system: cyclic }
+D- @counter-style x { system: foo }
+D+ @counter-style x { range: 2 5 }
+D+ @counter-style x { additive-symbols: 3 '0', 2 url(a.svg) }
+D+ @property --x { inherits: false }
+D- @property --x { inherits: maybe }
+D+ @font-face { font-display: swap }
+D- @font-face { font-display: sometimes }
+D+ @font-face { size-adjust: 125% }
+D+ @font-face { src: url(a.woff2) format("woff2") tech(color-COLRv1) }
+D+ @page { size: 4in 6in }
+D- @page { size: red }
+D+ @view-transition { types: slide forward }
+D+ @font-feature-values Font One { @styleset { nice-style: 12; } }
+D- @font-feature-values Font One { @styleset { nice-style: -1; } }
+D+ @keyframes k { from { color: red } }
+D- @keyframes k { from { color: 12px } }

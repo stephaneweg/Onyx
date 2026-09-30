@@ -6,6 +6,8 @@
  *   - prop: value        dropped
  *   S+ sheet text        a sheet with at least one rule kept (a selector, an at-rule)
  *   S- sheet text        no rule kept
+ *   D+ sheet text        a sheet with a valid declaration or at-rule descriptor counted
+ *   D- sheet text        none
  *   # comment
  *
  * as CSS.supports() / element.style / the CSSOM ask it (NetSurf's nscss_text_kept). Prints
@@ -105,7 +107,7 @@ int main(int argc, char **argv)
 		rewind(f);
 		while (fgets(line, sizeof line, f) != NULL) {
 			size_t len = strlen(line);
-			int sheet = 0, want, got;
+			int sheet = 0, desc = 0, want, got;
 			const char *text;
 			uint32_t rules = 0, words = 0;
 
@@ -114,8 +116,9 @@ int main(int argc, char **argv)
 			if (len == 0 || line[0] == '#')
 				continue;
 			text = line;
-			if (text[0] == 'S') {
+			if (text[0] == 'S' || text[0] == 'D') {
 				sheet = 1;
+				desc = text[0] == 'D';
 				text++;
 			}
 			if (text[0] != '+' && text[0] != '-')
@@ -127,11 +130,12 @@ int main(int argc, char **argv)
 			if (!kept(text, !sheet, &rules, &words))
 				got = 0;
 			else
-				got = sheet ? rules > 0 : words > 0;
+				got = (sheet && !desc) ? rules > 0 : words > 0;
 			if (r == 0) {
 				n++;
 				if (got != want) {
-					printf("FAIL %s%c %s\n", sheet ? "S" : "", want ? '+' : '-', text);
+					printf("FAIL %s%c %s\n", desc ? "D" : sheet ? "S" : "",
+							want ? '+' : '-', text);
 					fails++;
 				}
 			}

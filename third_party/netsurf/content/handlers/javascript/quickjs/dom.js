@@ -952,87 +952,784 @@ function cssSupports(text) {
 	}
 }
 
-/* ---- a minimal CSSOM (read-only, from a <style>'s text): what libcss keeps ----------------- */
-const FONT_FACE_DESC = new Set(['font-family', 'src', 'font-style', 'font-weight', 'unicode-range']);
+/* ---- the CSSOM (Onyx): style sheets and their rules ------------------------------------------
+ * A sheet's rules are read from its text -- a <style>'s content, a <link>'s loaded sheet
+ * (N.sheetText), a constructed sheet's replace() text -- when first asked for, and kept as
+ * libcss keeps them: a rule, a declaration or a descriptor libcss drops (an invalid selector,
+ * an unknown at-rule, a value its property's grammar refuses) is not there (N.cssKept).
+ * Changes -- insertRule, deleteRule, replaceSync, a rule's style -- are written back to the
+ * sheet's text: a <style>'s content (NetSurf styles the page again), a constructed sheet's
+ * adopted <style> (document.adoptedStyleSheets); a linked sheet changes in memory only. */
 
-function cssSplit(text) {	/* the top-level rules: [{ prelude, body (null: a statement) }] */
+/* the top-level items of a CSS text: [{ prelude, body }] (body null: a statement ending
+ * with ';'; the comments dropped, the strings and brackets kept whole) */
+function cssItems(text) {
 	const out = [];
-	text = String(text).replace(/\/\*[\s\S]*?\*\//g, '');
-	let i = 0, start = 0, quote = null, depth = 0, bodyStart = -1, prelude = '';
-	for (; i < text.length; i++) {
+	text = String(text);
+	let i = 0, start = 0, quote = null, depth = 0, paren = 0, bodyStart = -1, prelude = '';
+	const n = text.length;
+	for (; i < n; i++) {
 		const c = text[i];
-		if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+		if (quote) {
+			if (c === '\\') i++;
+			else if (c === quote) quote = null;
+			continue;
+		}
+		if (c === '/' && text[i + 1] === '*') {
+			const e = text.indexOf('*/', i + 2);
+			if (depth === 0) {
+				text = text.slice(0, i) + ' ' + (e < 0 ? '' : text.slice(e + 2));
+				i--;
+				continue;
+			}
+			i = e < 0 ? n : e + 1;
+			continue;
+		}
 		if (c === '"' || c === "'") { quote = c; continue; }
+		if (c === '(' || c === '[') { paren++; continue; }
+		if ((c === ')' || c === ']') && paren > 0) { paren--; continue; }
 		if (c === '{') {
 			if (depth++ === 0) { prelude = text.slice(start, i).trim(); bodyStart = i + 1; }
 		} else if (c === '}') {
 			if (depth > 0 && --depth === 0) {
 				out.push({ prelude, body: text.slice(bodyStart, i) });
 				start = i + 1;
+				paren = 0;
 			}
-		} else if (c === ';' && depth === 0) {
+		} else if (c === ';' && depth === 0 && paren === 0) {
 			const st = text.slice(start, i).trim();
 			if (st) out.push({ prelude: st, body: null });
 			start = i + 1;
 		}
 	}
+	if (depth > 0)		/* (an unclosed block at the end: closed there) */
+		out.push({ prelude, body: text.slice(bodyStart) });
+	else {
+		const st = text.slice(start).trim();
+		if (st) out.push({ prelude: st, body: null });
+	}
 	return out;
 }
 
-function cssDeclObject(body, ok) {	/* a rule's declarations kept (ok (name, value)) */
-	const o = { length: 0, cssText: '' };
-	const vals = new Map();
-	for (const [k, d] of parseDecls(body)) {
-		if (!ok(k, d.v)) continue;
-		vals.set(k, d.v);
-		o[o.length++] = k;
-		o[k.replace(/-([a-z])/g, (m, c) => c.toUpperCase())] = d.v;
-	}
-	o.cssText = [...vals].map(([k, v]) => k + ': ' + v + ';').join(' ');
-	o.getPropertyValue = k => vals.get(String(k).toLowerCase()) || '';
-	o.item = i => o[i] || '';
-	return o;
+/* a declaration's name and value ("color: red !important" -> ['color', 'red !important']) */
+function cssDeclSplit(t) {
+	const i = t.indexOf(':');
+	if (i < 0) return null;
+	const k = t.slice(0, i).trim();
+	return k ? [k.startsWith('--') ? k : k.toLowerCase(), t.slice(i + 1).trim()] : null;
 }
 
-function cssRuleList(text) {
-	const rules = [];
-	for (const r of cssSplit(text)) {
-		const whole = r.prelude + (r.body === null ? ';' : ' {' + r.body + '}');
-		const kept = N.cssKept(whole, false);
-		if (kept === null || kept[0] === 0)
-			continue;		/* (libcss dropped it: an unknown rule, a bad selector) */
-		const at = /^@([\w-]+)\s*(.*)$/s.exec(r.prelude);
-		let rule;
-		if (!at) {
-			rule = { type: 1, selectorText: r.prelude, style: cssDeclObject(r.body || '', cssValid) };
-		} else {
-			const name = at[1].toLowerCase();
-			if (name === 'font-face')
-				rule = { type: 5, style: cssDeclObject(r.body || '', k => FONT_FACE_DESC.has(k)) };
-			else if (name === 'page')
-				rule = { type: 6, selectorText: at[2], style: cssDeclObject(r.body || '', cssValid) };
-			else if (name === 'media')
-				rule = { type: 4, media: { mediaText: at[2] }, conditionText: at[2], cssRules: cssRuleList(r.body || '') };
-			else if (name === 'supports')
-				rule = { type: 12, conditionText: at[2], cssRules: cssRuleList(r.body || '') };
-			else if (name === 'import')
-				rule = { type: 3, href: at[2].replace(/^url\(|\)$|["']/g, '') };
-			else if (name === 'namespace')
-				rule = { type: 10 };
-			else
-				continue;
+function cssKeptText(text) {
+	const r = N.cssKept(text, false);
+	return r === null ? [0, 0] : r;
+}
+
+/* ---- MediaList, CSSRuleList, StyleSheetList ---- */
+class MediaList {
+	constructor(text, onchange) {
+		Object.defineProperty(this, '_l', { value: [], writable: true });
+		Object.defineProperty(this, '_c', { value: onchange || null });
+		this._set(text || '');
+	}
+	_set(text) {
+		const l = [];
+		let depth = 0, s = 0;
+		text = String(text);
+		for (let i = 0; i <= text.length; i++) {
+			const c = text[i];
+			if (c === '(') depth++;
+			else if (c === ')') depth--;
+			else if ((c === ',' && depth === 0) || i === text.length) {
+				const m = text.slice(s, i).trim().replace(/\s+/g, ' ');
+				if (m) l.push(m);
+				s = i + 1;
+			}
 		}
-		rule.cssText = whole;
-		rules.push(rule);
+		for (let i = 0; i < this._l.length; i++) delete this[i];
+		this._l = l;
+		l.forEach((m, i) => Object.defineProperty(this, i, { value: m, configurable: true, enumerable: true }));
+	}
+	get mediaText() { return this._l.join(', '); }
+	set mediaText(v) { this._set(v === null ? '' : v); if (this._c) this._c(); }
+	get length() { return this._l.length; }
+	item(i) { return this._l[i] === undefined ? null : this._l[i]; }
+	appendMedium(m) { m = String(m).trim(); if (m && !this._l.includes(m)) { this._set(this._l.concat([m]).join(',')); if (this._c) this._c(); } }
+	deleteMedium(m) {
+		const i = this._l.indexOf(String(m).trim());
+		if (i < 0) throw new DOMException('not in the list', 'NotFoundError');
+		const l = this._l.slice(); l.splice(i, 1); this._set(l.join(',')); if (this._c) this._c();
+	}
+	toString() { return this.mediaText; }
+	[Symbol.iterator]() { return this._l[Symbol.iterator](); }
+}
+G.MediaList = MediaList;
+
+class CSSRuleList {
+	constructor(rules) {
+		Object.defineProperty(this, '_r', { value: rules || [], writable: true });
+		this._fill();
+	}
+	_fill() {
+		for (const k of Object.keys(this)) delete this[k];
+		this._r.forEach((r, i) => Object.defineProperty(this, i, { value: r, configurable: true, enumerable: true }));
+	}
+	get length() { return this._r.length; }
+	item(i) { return this._r[i] || null; }
+	[Symbol.iterator]() { return this._r[Symbol.iterator](); }
+}
+G.CSSRuleList = CSSRuleList;
+
+class StyleSheetList {
+	constructor(sheets) {
+		sheets.forEach((s, i) => Object.defineProperty(this, i, { value: s, enumerable: true }));
+		Object.defineProperty(this, '_s', { value: sheets });
+	}
+	get length() { return this._s.length; }
+	item(i) { return this._s[i] || null; }
+	[Symbol.iterator]() { return this._s[Symbol.iterator](); }
+}
+G.StyleSheetList = StyleSheetList;
+
+/* ---- the rules ---- */
+const RULE_OWN = Symbol('rule');
+class CSSRule {
+	constructor(key) {
+		if (key !== RULE_OWN) throw new TypeError('Illegal constructor');
+		Object.defineProperty(this, '_parent', { value: null, writable: true });
+		Object.defineProperty(this, '_sheet', { value: null, writable: true });
+	}
+	get parentRule() { return this._parent; }
+	get parentStyleSheet() { return this._sheet; }
+	get cssText() { return ''; }
+	set cssText(v) { /* (no effect, as in browsers) */ }
+	_changed() { if (this._sheet) this._sheet._changed(); }
+}
+Object.assign(CSSRule, { STYLE_RULE: 1, CHARSET_RULE: 2, IMPORT_RULE: 3, MEDIA_RULE: 4,
+	FONT_FACE_RULE: 5, PAGE_RULE: 6, KEYFRAMES_RULE: 7, KEYFRAME_RULE: 8, MARGIN_RULE: 9,
+	NAMESPACE_RULE: 10, COUNTER_STYLE_RULE: 11, SUPPORTS_RULE: 12, FONT_FEATURE_VALUES_RULE: 14 });
+for (const k of Object.keys(CSSRule)) Object.defineProperty(CSSRule.prototype, k, { value: CSSRule[k] });
+G.CSSRule = CSSRule;
+
+function cssRuleType(r) { return r.constructor.TYPE || 0; }
+
+/* rules that hold declarations (a style rule, @font-face, @page, a keyframe, @position-try...):
+ * rule.style over its valid declarations */
+function declMixin(cls, validOf) {
+	Object.defineProperty(cls.prototype, 'style', {
+		get() {
+			let s = this._style;
+			if (!s) Object.defineProperty(this, '_style', { value: s = styleProxyOf(new CSSStyleDeclaration(null, this)) });
+			return s;
+		},
+		set(v) { this.style.cssText = v; },
+		configurable: true,
+	});
+	cls.prototype._declValid = validOf;
+	cls.prototype._decls = function () {
+		if (!this._dm) {
+			const m = new Map();
+			for (const it of cssItems(this._body || '')) {
+				if (it.body !== null) continue;
+				const d = cssDeclSplit(it.prelude);
+				if (!d) continue;
+				let v = d[1], pri = '';
+				const im = v.match(/\s*!\s*important\s*$/i);
+				if (im) { pri = 'important'; v = v.slice(0, im.index).trim(); }
+				if (this._declValid(d[0], v))
+					m.set(d[0], { v, pri });
+			}
+			Object.defineProperty(this, '_dm', { value: m, writable: true });
+		}
+		return this._dm;
+	};
+	cls.prototype._setDecls = function (m) {
+		if (!this._dm) Object.defineProperty(this, '_dm', { value: m, writable: true });
+		else this._dm = m;
+		this._body = serializeDecls(m);
+		this._changed();
+	};
+}
+const propValid = (k, v) => k.startsWith('--') || cssValid(k, v);
+
+class CSSGroupingRule extends CSSRule {
+	get cssRules() {
+		if (!this._rl) Object.defineProperty(this, '_rl', { value: new CSSRuleList(cssParseRules(this._body || '', this, this._sheet, this._childKind())) });
+		return this._rl;
+	}
+	_childKind() { return 'rules'; }
+	insertRule(text, index) {
+		const l = this.cssRules;
+		index = index === undefined ? 0 : index >>> 0;
+		if (index > l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		const r = cssParseRules(String(text), this, this._sheet, this._childKind());
+		if (r.length !== 1) throw new DOMException('invalid rule', 'SyntaxError');
+		l._r.splice(index, 0, r[0]);
+		l._fill();
+		this._changed();
+		return index;
+	}
+	deleteRule(index) {
+		const l = this.cssRules;
+		index >>>= 0;
+		if (index >= l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		l._r[index]._parent = null;
+		l._r.splice(index, 1);
+		l._fill();
+		this._changed();
+	}
+	_inner() { return this._rl ? this._rl._r.map(r => '  ' + r.cssText).join('\n') : (this._body || '').trim(); }
+}
+G.CSSGroupingRule = CSSGroupingRule;
+
+class CSSConditionRule extends CSSGroupingRule {
+	get conditionText() { return this._cond; }
+}
+G.CSSConditionRule = CSSConditionRule;
+
+class CSSStyleRule extends CSSGroupingRule {
+	static get TYPE() { return 1; }
+	get type() { return 1; }
+	get selectorText() { return this._sel; }
+	set selectorText(v) {
+		v = String(v).trim();
+		if (cssSelectorValid(v)) { this._sel = v; this._changed(); }
+	}
+	get cssText() {
+		const d = serializeDecls(this._decls());
+		const nested = this._rl && this._rl._r.length ? ' ' + this._rl._r.map(r => r.cssText).join(' ') : '';
+		return this._sel + ' { ' + (d ? d + ' ' : '') + (nested ? nested.trim() + ' ' : '') + '}';
+	}
+	_childKind() { return 'nested'; }
+}
+declMixin(CSSStyleRule, propValid);
+G.CSSStyleRule = CSSStyleRule;
+
+class CSSMediaRule extends CSSConditionRule {
+	static get TYPE() { return 4; }
+	get type() { return 4; }
+	get media() {
+		if (!this._ml) Object.defineProperty(this, '_ml', { value: new MediaList(this._cond, () => { this._cond = this._ml.mediaText; this._changed(); }) });
+		return this._ml;
+	}
+	get cssText() { return '@media ' + this.media.mediaText + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSMediaRule = CSSMediaRule;
+
+class CSSSupportsRule extends CSSConditionRule {
+	static get TYPE() { return 12; }
+	get type() { return 12; }
+	get cssText() { return '@supports ' + this._cond + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSSupportsRule = CSSSupportsRule;
+
+class CSSContainerRule extends CSSConditionRule {
+	get type() { return 0; }
+	get containerName() { const m = /^\s*(?!not\b|style\b|scroll-state\b)([-\w]+)\s+/i.exec(this._cond); return m && !this._cond.trim().startsWith('(') ? m[1] : ''; }
+	get containerQuery() { const nm = this.containerName; return nm ? this._cond.trim().slice(nm.length).trim() : this._cond.trim(); }
+	get cssText() { return '@container ' + this._cond + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSContainerRule = CSSContainerRule;
+
+class CSSLayerBlockRule extends CSSGroupingRule {
+	get type() { return 0; }
+	get name() { return this._name; }
+	get cssText() { return '@layer' + (this._name ? ' ' + this._name : '') + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSLayerBlockRule = CSSLayerBlockRule;
+
+class CSSLayerStatementRule extends CSSRule {
+	get type() { return 0; }
+	get nameList() { return Object.freeze(this._name.split(',').map(s => s.trim()).filter(Boolean)); }
+	get cssText() { return '@layer ' + this.nameList.join(', ') + ';'; }
+}
+G.CSSLayerStatementRule = CSSLayerStatementRule;
+
+class CSSScopeRule extends CSSGroupingRule {
+	get type() { return 0; }
+	get start() { const m = /^\s*\(([\s\S]*?)\)/.exec(this._cond); return m ? m[1].trim() : null; }
+	get end() { const m = /\bto\s*\(([\s\S]*)\)\s*$/i.exec(this._cond); return m ? m[1].trim() : null; }
+	get cssText() { return '@scope' + (this._cond ? ' ' + this._cond : '') + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSScopeRule = CSSScopeRule;
+
+class CSSStartingStyleRule extends CSSGroupingRule {
+	get type() { return 0; }
+	get cssText() { return '@starting-style {\n' + this._inner() + '\n}'; }
+}
+G.CSSStartingStyleRule = CSSStartingStyleRule;
+
+class CSSImportRule extends CSSRule {
+	static get TYPE() { return 3; }
+	get type() { return 3; }
+	get href() { return this._href; }
+	get media() {
+		if (!this._ml) Object.defineProperty(this, '_ml', { value: new MediaList(this._media) });
+		return this._ml;
+	}
+	get layerName() { return this._layer; }
+	get supportsText() { return this._supports; }
+	get styleSheet() { return null; }
+	get cssText() { return '@import url("' + this._href + '")' + (this._layer !== null ? ' layer' + (this._layer ? '(' + this._layer + ')' : '') : '') + (this._supports !== null ? ' supports(' + this._supports + ')' : '') + (this._media ? ' ' + this._media : '') + ';'; }
+}
+G.CSSImportRule = CSSImportRule;
+
+class CSSNamespaceRule extends CSSRule {
+	static get TYPE() { return 10; }
+	get type() { return 10; }
+	get namespaceURI() { return this._uri; }
+	get prefix() { return this._prefix; }
+	get cssText() { return '@namespace ' + (this._prefix ? this._prefix + ' ' : '') + 'url("' + this._uri + '");'; }
+}
+G.CSSNamespaceRule = CSSNamespaceRule;
+
+/* descriptor rules: valid as libcss keeps "@rule prelude { name: value }" */
+function descValid(at) {
+	return function (k, v) { return cssKeptText(at + ' ' + (this._name || '') + ' { ' + k + ': ' + v + ' }')[1] > 0; };
+}
+
+class CSSFontFaceRule extends CSSRule {
+	static get TYPE() { return 5; }
+	get type() { return 5; }
+	get cssText() { const d = serializeDecls(this._decls()); return '@font-face { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSFontFaceRule, function (k, v) { return cssKeptText('@font-face { ' + k + ': ' + v + ' }')[1] > 0; });
+G.CSSFontFaceRule = CSSFontFaceRule;
+
+class CSSPageRule extends CSSGroupingRule {
+	static get TYPE() { return 6; }
+	get type() { return 6; }
+	get selectorText() { return this._sel; }
+	set selectorText(v) { this._sel = String(v).trim(); this._changed(); }
+	get cssText() { const d = serializeDecls(this._decls()); return '@page' + (this._sel ? ' ' + this._sel : '') + ' { ' + (d ? d + ' ' : '') + '}'; }
+	_childKind() { return 'margins'; }
+}
+declMixin(CSSPageRule, function (k, v) { return cssKeptText('@page { ' + k + ': ' + v + ' }')[1] > 0; });
+G.CSSPageRule = CSSPageRule;
+
+class CSSMarginRule extends CSSRule {
+	static get TYPE() { return 9; }
+	get type() { return 9; }
+	get name() { return this._name; }
+	get cssText() { const d = serializeDecls(this._decls()); return '@' + this._name + ' { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSMarginRule, propValid);
+G.CSSMarginRule = CSSMarginRule;
+
+class CSSKeyframeRule extends CSSRule {
+	static get TYPE() { return 8; }
+	get type() { return 8; }
+	get keyText() { return this._sel; }
+	set keyText(v) {
+		v = String(v).trim();
+		if (!keyframeSelectorValid(v)) throw new DOMException('invalid keyframe selector', 'SyntaxError');
+		this._sel = v; this._changed();
+	}
+	get cssText() { const d = serializeDecls(this._decls()); return this._sel + ' { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSKeyframeRule, (k, v) => !/!\s*important/i.test(v) && propValid(k, v));
+G.CSSKeyframeRule = CSSKeyframeRule;
+
+function keyframeSelectorValid(t) {
+	return String(t).split(',').every(s => /^\s*(from|to|(?:[a-z-]+\s+)?[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?%)\s*$/i.test(s) &&
+		(!/%/.test(s) || (v => v >= 0 && v <= 100)(parseFloat(s.replace(/^[^\d.+-]*/, '')))));
+}
+
+class CSSKeyframesRule extends CSSRule {
+	static get TYPE() { return 7; }
+	get type() { return 7; }
+	get name() { return this._name; }
+	set name(v) { this._name = String(v); this._changed(); }
+	get cssRules() {
+		if (!this._rl) Object.defineProperty(this, '_rl', { value: new CSSRuleList(cssParseRules(this._body || '', this, this._sheet, 'keyframes')) });
+		return this._rl;
+	}
+	get length() { return this.cssRules.length; }
+	appendRule(text) {
+		const r = cssParseRules(String(text), this, this._sheet, 'keyframes');
+		if (r.length === 1) { this.cssRules._r.push(r[0]); this.cssRules._fill(); this._changed(); }
+	}
+	_find(k) {
+		const want = String(k).split(',').map(s => s.trim().toLowerCase().replace(/^from$/, '0%').replace(/^to$/, '100%')).join(',');
+		const l = this.cssRules._r;
+		for (let i = l.length - 1; i >= 0; i--) {
+			const got = l[i]._sel.split(',').map(s => s.trim().toLowerCase().replace(/^from$/, '0%').replace(/^to$/, '100%')).join(',');
+			if (got === want) return i;
+		}
+		return -1;
+	}
+	findRule(k) { const i = this._find(k); return i < 0 ? null : this.cssRules._r[i]; }
+	deleteRule(k) { const i = this._find(k); if (i >= 0) { this.cssRules._r.splice(i, 1); this.cssRules._fill(); this._changed(); } }
+	get cssText() { return '@keyframes ' + this._name + ' {\n' + this.cssRules._r.map(r => '  ' + r.cssText).join('\n') + '\n}'; }
+	[Symbol.iterator]() { return this.cssRules[Symbol.iterator](); }
+}
+G.CSSKeyframesRule = CSSKeyframesRule;
+
+/* the descriptor at-rules: their descriptors as attributes (camelCase), '' when absent */
+function descRule(name, cls, at, descs, type) {
+	Object.defineProperty(cls, 'TYPE', { get: () => type || 0 });
+	Object.defineProperty(cls.prototype, 'type', { get: () => type || 0, configurable: true });
+	declMixin(cls, descValid(at));
+	for (const d of descs) {
+		const js = d.replace(/-([a-z])/g, (m, c) => c.toUpperCase());
+		Object.defineProperty(cls.prototype, js, {
+			get() { const x = this._decls().get(d); return x ? x.v : ''; },
+			set(v) {
+				v = String(v);
+				if (!this._declValid(d, v)) return;
+				const m = new Map(this._decls()); m.set(d, { v, pri: '' }); this._setDecls(m);
+			},
+			configurable: true,
+		});
+	}
+	Object.defineProperty(cls.prototype, 'cssText', {
+		get() { const d = serializeDecls(this._decls()); return at + (this._name ? ' ' + this._name : '') + ' { ' + (d ? d + ' ' : '') + '}'; },
+		configurable: true,
+	});
+	G[name] = cls;
+}
+class CSSCounterStyleRule extends CSSRule {
+	get name() { return this._name; }
+	set name(v) { this._name = String(v); this._changed(); }
+}
+descRule('CSSCounterStyleRule', CSSCounterStyleRule, '@counter-style', ['system', 'symbols',
+	'additive-symbols', 'negative', 'prefix', 'suffix', 'range', 'pad', 'speak-as', 'fallback'], 11);
+class CSSPropertyRule extends CSSRule {
+	get name() { return this._name; }
+	get inherits() { const x = this._decls().get('inherits'); return x ? x.v.trim() === 'true' : false; }
+	get initialValue() { const x = this._decls().get('initial-value'); return x ? x.v : null; }
+}
+descRule('CSSPropertyRule', CSSPropertyRule, '@property', ['syntax']);
+class CSSFontPaletteValuesRule extends CSSRule {
+	get name() { return this._name; }
+}
+descRule('CSSFontPaletteValuesRule', CSSFontPaletteValuesRule, '@font-palette-values', ['font-family', 'base-palette', 'override-colors']);
+class CSSViewTransitionRule extends CSSRule {
+	get types() { const x = this._decls().get('types'); return x && x.v !== 'none' ? x.v.split(/\s+/) : []; }
+}
+descRule('CSSViewTransitionRule', CSSViewTransitionRule, '@view-transition', ['navigation']);
+class CSSPositionTryRule extends CSSRule {
+	get type() { return 0; }
+	get name() { return this._name; }
+	get cssText() { const d = serializeDecls(this._decls()); return '@position-try ' + this._name + ' { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSPositionTryRule, (k, v) => !/!\s*important/i.test(v) && propValid(k, v));
+G.CSSPositionTryRule = CSSPositionTryRule;
+
+class CSSFontFeatureValuesMap extends Map {}
+G.CSSFontFeatureValuesMap = CSSFontFeatureValuesMap;
+class CSSFontFeatureValuesRule extends CSSRule {
+	static get TYPE() { return 14; }
+	get type() { return 14; }
+	get fontFamily() { return this._name; }
+	set fontFamily(v) { this._name = String(v); this._changed(); }
+	_map(at) {
+		const m = new CSSFontFeatureValuesMap();
+		for (const it of cssItems(this._body || '')) {
+			if (it.body === null || it.prelude.toLowerCase() !== '@' + at) continue;
+			for (const d of cssItems(it.body)) {
+				const kv = d.body === null && cssDeclSplit(d.prelude);
+				if (kv && /^\d+(\s+\d+)*$/.test(kv[1])) m.set(kv[0], kv[1].split(/\s+/).map(Number));
+			}
+		}
+		return m;
+	}
+	get annotation() { return this._map('annotation'); }
+	get ornaments() { return this._map('ornaments'); }
+	get stylistic() { return this._map('stylistic'); }
+	get swash() { return this._map('swash'); }
+	get characterVariant() { return this._map('character-variant'); }
+	get styleset() { return this._map('styleset'); }
+	get historicalForms() { return this._map('historical-forms'); }
+	get cssText() { return '@font-feature-values ' + this._name + ' { ' + (this._body || '').trim() + ' }'; }
+}
+G.CSSFontFeatureValuesRule = CSSFontFeatureValuesRule;
+
+class CSSNestedDeclarations extends CSSRule {
+	get type() { return 0; }
+	get cssText() { return serializeDecls(this._decls()); }
+}
+declMixin(CSSNestedDeclarations, propValid);
+G.CSSNestedDeclarations = CSSNestedDeclarations;
+
+/* a rule object of a class, its fields set */
+function mkRule(cls, fields, parent, sheet) {
+	const r = Object.create(cls.prototype);
+	Object.defineProperty(r, '_parent', { value: parent && parent instanceof CSSRule ? parent : null, writable: true });
+	Object.defineProperty(r, '_sheet', { value: sheet || null, writable: true });
+	for (const k of Object.keys(fields))
+		Object.defineProperty(r, k, { value: fields[k], writable: true });
+	return r;
+}
+
+/* The rules of a text (kind: 'sheet', 'rules' -- in a grouping rule --, 'nested' -- in a
+ * style rule --, 'keyframes', 'margins' -- in @page), as libcss keeps them. */
+function cssParseRules(text, parent, sheet, kind) {
+	const rules = [];
+	const top = kind === 'sheet';
+	for (const it of cssItems(text)) {
+		const whole = it.prelude + (it.body === null ? ';' : ' {' + it.body + '}');
+		const at = /^@([\w-]+)\s*([\s\S]*)$/.exec(it.prelude);
+		if (kind === 'keyframes') {
+			if (it.body !== null && !at && keyframeSelectorValid(it.prelude))
+				rules.push(mkRule(CSSKeyframeRule, { _sel: it.prelude.replace(/\s+/g, ' '), _body: it.body }, parent, sheet));
+			continue;
+		}
+		if (kind === 'margins') {
+			if (at && it.body !== null && /^(top|bottom|left|right)-/.test(at[1].toLowerCase()) && cssKeptText('@page { @' + at[1] + ' {} }')[0] >= 0)
+				rules.push(mkRule(CSSMarginRule, { _name: at[1].toLowerCase(), _body: it.body }, parent, sheet));
+			continue;
+		}
+		if (!at) {
+			if (it.body === null) {
+				if (kind === 'nested' && cssDeclSplit(it.prelude)) continue;	/* (the rule's own) */
+				continue;
+			}
+			let sel = it.prelude.replace(/\s+/g, ' ').trim();
+			if (kind === 'nested') {
+				/* a nested rule: its selector as libcss reads it with & as the parent */
+				const test = /&/.test(sel) ? sel.replace(/&/g, ':root') : ':root ' + sel;
+				if (!cssSelectorValid(test)) continue;
+			} else if (cssKeptText(sel + ' {}')[0] === 0) {
+				continue;
+			}
+			rules.push(mkRule(CSSStyleRule, { _sel: sel, _body: it.body }, parent, sheet));
+			continue;
+		}
+		const name = at[1].toLowerCase(), pre = at[2].trim();
+		const kept = () => cssKeptText(whole)[0] > 0;
+		let r = null;
+		switch (name) {
+		case 'media':
+			if (it.body !== null && kept()) r = mkRule(CSSMediaRule, { _cond: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'supports':
+			/* (kept in the CSSOM whether its condition holds or not) */
+			if (it.body !== null && pre) r = mkRule(CSSSupportsRule, { _cond: pre.replace(/\s+/g, ' '), _body: it.body }, parent, sheet);
+			break;
+		case 'container':
+			if (it.body !== null && kept()) r = mkRule(CSSContainerRule, { _cond: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'layer':
+			if (it.body === null) {
+				if (pre && /^[-\w]+(\.[-\w]+)*(\s*,\s*[-\w]+(\.[-\w]+)*)*$/.test(pre)) r = mkRule(CSSLayerStatementRule, { _name: pre }, parent, sheet);
+			} else if (!pre || /^[-\w]+(\.[-\w]+)*$/.test(pre)) {
+				r = mkRule(CSSLayerBlockRule, { _name: pre, _body: it.body }, parent, sheet);
+			}
+			break;
+		case 'scope':
+			if (it.body !== null && kept()) r = mkRule(CSSScopeRule, { _cond: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'starting-style':
+			if (it.body !== null && kept()) r = mkRule(CSSStartingStyleRule, { _body: it.body }, parent, sheet);
+			break;
+		case 'font-face':
+			if (it.body !== null && top) r = mkRule(CSSFontFaceRule, { _body: it.body }, parent, sheet);
+			break;
+		case 'page':
+			if (it.body !== null && kept()) r = mkRule(CSSPageRule, { _sel: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'keyframes': case '-webkit-keyframes':
+			if (it.body !== null && kept()) r = mkRule(CSSKeyframesRule, { _name: pre.replace(/^["']|["']$/g, ''), _body: it.body }, parent, sheet);
+			break;
+		case 'counter-style':
+			if (it.body !== null && kept()) r = mkRule(CSSCounterStyleRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'property':
+			if (it.body !== null && kept()) r = mkRule(CSSPropertyRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'font-feature-values':
+			if (it.body !== null && kept()) r = mkRule(CSSFontFeatureValuesRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'font-palette-values':
+			if (it.body !== null && kept()) r = mkRule(CSSFontPaletteValuesRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'position-try':
+			if (it.body !== null && kept()) r = mkRule(CSSPositionTryRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'view-transition':
+			if (it.body !== null && kept()) r = mkRule(CSSViewTransitionRule, { _body: it.body }, parent, sheet);
+			break;
+		case 'import': {
+			if (!top || it.body !== null || rules.some(x => !(x instanceof CSSImportRule || x instanceof CSSLayerStatementRule))) break;
+			const m = /^(?:url\(\s*["']?([^"')]*)["']?\s*\)|["']([^"']*)["'])\s*([\s\S]*)$/i.exec(pre);
+			if (!m) break;
+			let rest = m[3], layer = null, sup = null;
+			const lm = /^layer(?:\(\s*([^)]*)\))?\s*/i.exec(rest);
+			if (lm) { layer = lm[1] ? lm[1].trim() : ''; rest = rest.slice(lm[0].length); }
+			const sm = /^supports\(([\s\S]*?)\)\s*(?=$|[^)])/i.exec(rest);
+			if (sm) { sup = sm[1].trim(); rest = rest.slice(sm[0].length); }
+			let href = m[1] !== undefined ? m[1] : m[2];
+			try { href = new URL(href, (sheet && sheet.href) || N.url()).href; } catch (e) { /* (as written) */ }
+			r = mkRule(CSSImportRule, { _href: href, _media: rest.trim(), _layer: layer, _supports: sup }, parent, sheet);
+			break;
+		}
+		case 'namespace': {
+			if (!top || it.body !== null) break;
+			const m = /^(?:([-\w]+)\s+)?(?:url\(\s*["']?([^"')]*)["']?\s*\)|["']([^"']*)["'])\s*$/i.exec(pre);
+			if (m) r = mkRule(CSSNamespaceRule, { _prefix: m[1] || '', _uri: m[2] !== undefined ? m[2] : m[3] }, parent, sheet);
+			break;
+		}
+		default:
+			break;		/* (@charset, an unknown at-rule: not in the CSSOM) */
+		}
+		if (r) rules.push(r);
 	}
 	return rules;
 }
 
+/* ---- the style sheets ---- */
+class StyleSheet {
+	constructor(key) { if (key !== RULE_OWN) throw new TypeError('Illegal constructor'); }
+	get type() { return 'text/css'; }
+	get href() { return this._href || null; }
+	get ownerNode() { return this._owner || null; }
+	get parentStyleSheet() { return null; }
+	get title() { return this._owner ? N.attr(this._owner, 'title') : null; }
+	get media() {
+		if (!this._ml) Object.defineProperty(this, '_ml', { value: new MediaList(this._owner ? N.attr(this._owner, 'media') || '' : this._mediaText || '') });
+		return this._ml;
+	}
+	get disabled() { return !!this._disabled; }
+	set disabled(v) { this._disabled = !!v; }
+}
+G.StyleSheet = StyleSheet;
+
+class CSSStyleSheet extends StyleSheet {
+	constructor(options) {
+		super(RULE_OWN);
+		options = options || {};
+		Object.defineProperty(this, '_constructed', { value: true });
+		Object.defineProperty(this, '_src', { value: '', writable: true });
+		this._mediaText = typeof options.media === 'string' ? options.media : '';
+		this._disabled = !!options.disabled;
+		this._href = null;
+	}
+	/* the text the rules come from */
+	_text() {
+		if (this._owner) {
+			if (this._owner.localName === 'link') {
+				const r = N.sheetText(this._owner);
+				return r ? r[0] : '';
+			}
+			return this._owner.textContent || '';
+		}
+		return this._src;
+	}
+	get cssRules() {
+		const t = this._text();
+		if (!this._rl || (this._owner && this._owner.localName === 'style' && t !== this._seen)) {
+			Object.defineProperty(this, '_rl', { value: new CSSRuleList(cssParseRules(t, this, this, 'sheet')), writable: true, configurable: true });
+			Object.defineProperty(this, '_seen', { value: t, writable: true, configurable: true });
+		}
+		return this._rl;
+	}
+	get rules() { return this.cssRules; }
+	get ownerRule() { return null; }
+	insertRule(text, index) {
+		const l = this.cssRules;
+		index = index === undefined ? 0 : index >>> 0;
+		if (index > l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		const r = cssParseRules(String(text), this, this, 'sheet');
+		if (r.length !== 1) throw new DOMException('invalid rule: ' + text, 'SyntaxError');
+		l._r.splice(index, 0, r[0]);
+		l._fill();
+		this._changed();
+		return index;
+	}
+	deleteRule(index) {
+		const l = this.cssRules;
+		index >>>= 0;
+		if (index >= l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		l._r[index]._sheet = null;
+		l._r.splice(index, 1);
+		l._fill();
+		this._changed();
+	}
+	addRule(sel, style, index) {
+		this.insertRule((sel || 'undefined') + ' { ' + (style || '') + ' }', index === undefined ? this.cssRules.length : index);
+		return -1;
+	}
+	removeRule(index) { this.deleteRule(index === undefined ? 0 : index); }
+	replaceSync(text) {
+		if (!this._constructed) throw new DOMException('not a constructed sheet', 'NotAllowedError');
+		this._src = String(text).replace(/@import[^;]*;/gi, '');
+		this._rl = null;
+		this._write();
+	}
+	replace(text) {
+		try { this.replaceSync(text); return NativePromise.resolve(this); }
+		catch (e) { return NativePromise.reject(e); }
+	}
+	/* a rule changed: the text again from the rules, written back */
+	_changed() {
+		if (!this._rl) return;
+		const t = this._rl._r.map(r => r.cssText).join('\n');
+		if (this._owner && this._owner.localName === 'style') {
+			this._seen = t;
+			this._owner.textContent = t;
+		} else if (!this._owner) {
+			this._src = t;
+			this._write();
+		}
+	}
+	/* a constructed sheet adopted by the document: its <style> (NetSurf styles with it) */
+	_write() {
+		for (const el of adoptedEls) if (el._onyxSheet === this) el.textContent = this._src;
+	}
+}
+G.CSSStyleSheet = CSSStyleSheet;
+
+const sheetOfEl = new WeakMap();
 function cssSheetOf(el) {
-	const rules = cssRuleList(el.textContent || '');
-	return { type: 'text/css', disabled: false, ownerNode: el, href: null, title: null,
-		cssRules: rules, rules, media: { mediaText: N.attr(el, 'media') || '' },
-		insertRule() { return 0; }, deleteRule() {} };
+	let s = sheetOfEl.get(el);
+	if (!s) {
+		s = Object.create(CSSStyleSheet.prototype);
+		Object.defineProperty(s, '_owner', { value: el });
+		Object.defineProperty(s, '_constructed', { value: false });
+		if (el.localName === 'link') {
+			const r = N.sheetText(el);
+			Object.defineProperty(s, '_href', { value: r ? r[1] : el.href || null, writable: true });
+		}
+		sheetOfEl.set(el, s);
+	}
+	return s;
+}
+
+/* the sheets of the document, in its order: <style>s, <link rel=stylesheet>s loaded */
+function documentSheets(doc) {
+	const out = [];
+	for (const el of doc.querySelectorAll('style, link')) {
+		if (el.hasAttribute('data-onyx-adopted')) continue;
+		if (el.localName === 'link') {
+			if (!/(^|\s)stylesheet(\s|$)/i.test(N.attr(el, 'rel') || '') || !N.sheetText(el)) continue;
+		}
+		out.push(cssSheetOf(el));
+	}
+	return new StyleSheetList(out);
+}
+
+/* document.adoptedStyleSheets: each sheet realized as a <style data-onyx-adopted> at the end
+ * of the <head> (NetSurf styles the page with it) */
+const adoptedEls = new Set();
+let adoptedList = [];
+function setAdopted(list) {
+	list = Array.from(list || []);
+	for (const s of list)
+		if (!(s instanceof CSSStyleSheet) || !s._constructed)
+			throw new DOMException('not a constructed sheet', 'NotAllowedError');
+	for (const el of adoptedEls) el.remove();
+	adoptedEls.clear();
+	adoptedList = list;
+	const head = document.head || document.documentElement;
+	if (!head) return;
+	for (const s of list) {
+		const el = document.createElement('style');
+		el.setAttribute('data-onyx-adopted', '');
+		el._onyxSheet = s;
+		el.textContent = s._src;
+		head.appendChild(el);
+		adoptedEls.add(el);
+	}
 }
 
 function parseDecls(text) {
@@ -1070,19 +1767,39 @@ function serializeDecls(map) {
 	return out.join(' ');
 }
 
+/* an element's style attribute, or (Onyx) a CSSOM rule's declarations (rule: its _decls /
+ * _setDecls / _declValid) */
 class CSSStyleDeclaration {
-	constructor(el) {
+	constructor(el, rule) {
 		Object.defineProperty(this, '_el', { value: el });
+		Object.defineProperty(this, '_rule', { value: rule || null });
 	}
-	_map() { return this._el ? parseDecls(N.attr(this._el, 'style')) : new Map(); }
+	_map() {
+		if (this._rule) return new Map(this._rule._decls());
+		return this._el ? parseDecls(N.attr(this._el, 'style')) : new Map();
+	}
+	_valid(k, v) { return this._rule ? this._rule._declValid(k, v) : cssValid(k, v); }
 	_write(map) {
+		if (this._rule) { this._rule._setDecls(map); return; }
 		if (!this._el) return;
 		const s = serializeDecls(map);
 		if (s) N.setAttr(this._el, 'style', s);
 		else N.removeAttr(this._el, 'style');
 	}
-	get cssText() { return this._el ? (N.attr(this._el, 'style') || '') : ''; }
-	set cssText(v) { if (this._el) N.setAttr(this._el, 'style', String(v)); }
+	get parentRule() { return this._rule; }
+	get cssText() {
+		if (this._rule) return serializeDecls(this._rule._decls());
+		return this._el ? (N.attr(this._el, 'style') || '') : '';
+	}
+	set cssText(v) {
+		if (this._rule) {
+			const m = new Map();
+			for (const [k, d] of parseDecls(String(v))) if (this._valid(k, d.v)) m.set(k, d);
+			this._rule._setDecls(m);
+			return;
+		}
+		if (this._el) N.setAttr(this._el, 'style', String(v));
+	}
 	get length() { return this._map().size; }
 	item(i) { return [...this._map().keys()][i] || ''; }
 	getPropertyValue(p) {
@@ -1098,7 +1815,7 @@ class CSSStyleDeclaration {
 		const map = this._map();
 		if (v === null || v === undefined || v === '')
 			map.delete(k);
-		else if (cssValid(k, v))
+		else if (this._valid(k, String(v)))
 			map.set(k, { v: String(v), pri: pri ? 'important' : '' });
 		else
 			return;		/* (an invalid value is not set: the old one stays) */
@@ -1116,11 +1833,12 @@ class CSSStyleDeclaration {
 G.CSSStyleDeclaration = CSSStyleDeclaration;
 
 const STYLE_OWN = new Set(['cssText', 'length', 'item', 'getPropertyValue',
-	'getPropertyPriority', 'setProperty', 'removeProperty', '_el', '_map', '_write',
-	'parentRule', 'constructor']);
+	'getPropertyPriority', 'setProperty', 'removeProperty', '_el', '_rule', '_map', '_write',
+	'_valid', 'parentRule', 'constructor']);
 
-function styleProxy(el) {
-	return new Proxy(new CSSStyleDeclaration(el), {
+function styleProxy(el) { return styleProxyOf(new CSSStyleDeclaration(el)); }
+function styleProxyOf(decl) {
+	return new Proxy(decl, {
 		get(t, p, r) {
 			if (typeof p !== 'string' || STYLE_OWN.has(p) || p in Object.prototype)
 				return Reflect.get(t, p, t);
@@ -2247,7 +2965,10 @@ htmlClass('HTMLLinkElement', ['link'], class extends HTMLElement {
 	get rel() { return N.attr(this, 'rel') || ''; }
 	set rel(v) { this.setAttribute('rel', v); }
 	get relList() { return new DOMTokenList(this, 'rel'); }
-	get sheet() { return null; }
+	get sheet() {
+		return /(^|\s)stylesheet(\s|$)/i.test(N.attr(this, 'rel') || '') && N.sheetText(this) ?
+			cssSheetOf(this) : null;
+	}
 });
 htmlClass('HTMLStyleElement', ['style'], class extends HTMLElement {
 	get sheet() { return cssSheetOf(this); }
@@ -2432,7 +3153,14 @@ class Document extends Node {
 	get images() { return this.getElementsByTagName('img'); }
 	get links() { return htmlCollection(this.querySelectorAll('a[href],area[href]')); }
 	get scripts() { return this.getElementsByTagName('script'); }
-	get styleSheets() { return [...this.querySelectorAll('style')].map(cssSheetOf); }
+	get styleSheets() { return documentSheets(this); }
+	get adoptedStyleSheets() {
+		/* (a live array: a push() adopts the sheet, as the ObservableArray does) */
+		return new Proxy(adoptedList.slice(), {
+			set(t, k, v) { t[k] = v; if (k !== 'length' || v < adoptedList.length) NativePromise.resolve().then(() => setAdopted(t)); return true; },
+		});
+	}
+	set adoptedStyleSheets(v) { setAdopted(v); }
 	get fonts() { return fontFaces; }
 	get currentScript() { return N.currentScript(); }
 	get fullscreenElement() { return null; }

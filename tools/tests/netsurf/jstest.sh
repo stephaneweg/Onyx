@@ -109,5 +109,15 @@ expect "$L" "reveal content true"
 expect "$L" "reveal fallback gone true"
 expect "$L" "reveal after kept true"
 
+echo "js-cssom.html (the CSSOM: sheets, rule classes, insertRule, constructed / adopted / linked sheets)"
+L=$OUT/js-cssom.log
+run js-cssom.html "$(waits 80)" "$L"
+expect "$L" "cssom: done"
+if grep -q '^console: FAIL \|^JS ' "$L"; then
+	echo "  FAIL: $(grep -c '^console: FAIL ' "$L") check(s) failed"; grep '^console: FAIL \|^JS ' "$L" | head -10; fail=1
+else
+	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
+fi
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

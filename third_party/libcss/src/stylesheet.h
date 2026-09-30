@@ -146,6 +146,11 @@ typedef struct css_rule_media {
 
 	css_rule *first_child;
 	css_rule *last_child;
+
+	/* Onyx: 0, or the kind (ONYX_AT_*, parse/onyx_atrules.h) of the at-rule this media
+	 * rule stands for -- @keyframes, @counter-style, @property, @scope... -- kept (their
+	 * media never matches: their content does not apply) */
+	uint8_t onyx_kind;
 } css_rule_media;
 
 typedef struct css_rule_font_face {
@@ -223,6 +228,11 @@ struct css_stylesheet {
 						 * length in entries */
 	uint32_t string_vector_c;               /**< The number of string
 						 * vector entries used */
+
+	/* Onyx: the valid at-rule descriptors seen (@font-face, @page, @counter-style,
+	 * @property...: parse/onyx_atrules.c), counted with the declarations by
+	 * css_stylesheet_onyx_kept */
+	uint32_t onyx_desc_words;
 };
 
 css_error css__stylesheet_style_create(css_stylesheet *sheet,

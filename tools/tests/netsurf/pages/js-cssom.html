@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html><head><title>CSSOM</title>
+<style id="s1">
+@import url("x.css") screen;
+body { color: black; margin: 0 }
+p:hover, .bad[ { color: red }
+.a { color: red; bogus: 1; width: 10deg; }
+@media screen and (min-width: 100px) { .b { color: blue } .c { margin: 1px } }
+@supports (display: grid) { .d { display: grid } }
+@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(1turn) } }
+@font-face { font-family: X; src: url(x.woff2) format("woff2"); font-display: swap; size-adjust: 90%; }
+@counter-style thumbs { system: cyclic; symbols: "👍"; suffix: " "; }
+@property --size { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@layer base, theme;
+@layer base { .e { color: green } }
+@unknown-rule { x: y }
+#t { background: rgb(0, 128, 0) }
+</style>
+<link rel="stylesheet" href="js-cssom.css">
+</head>
+<body>
+<div id="t">cssom</div>
+<script>
+function check(c, what) { console.log((c ? 'OK ' : 'FAIL ') + what); }
+function run() {
+	const s = document.getElementById('s1').sheet;
+	check(s instanceof CSSStyleSheet && s instanceof StyleSheet, 'sheet is a CSSStyleSheet');
+	check(document.styleSheets instanceof StyleSheetList, 'document.styleSheets is a StyleSheetList');
+	check(document.styleSheets.length === 2 && document.styleSheets[0] === s, 'two sheets, the <style> first: ' + document.styleSheets.length);
+	const r = s.cssRules;
+	check(r instanceof CSSRuleList, 'cssRules is a CSSRuleList');
+	const kinds = Array.from(r).map(x => x.constructor.name).join(',');
+	check(kinds === 'CSSImportRule,CSSStyleRule,CSSStyleRule,CSSMediaRule,CSSSupportsRule,CSSKeyframesRule,CSSFontFaceRule,CSSCounterStyleRule,CSSPropertyRule,CSSLayerStatementRule,CSSLayerBlockRule,CSSStyleRule', 'rule classes: ' + kinds);
+	check(r[1] instanceof CSSStyleRule && r[1] instanceof CSSRule && r[1].type === CSSRule.STYLE_RULE, 'instanceof CSSStyleRule, type 1');
+	check(r[1].selectorText === 'body' && r[1].style.color === 'black' && r[1].style.length === 2, 'body rule: ' + r[1].cssText);
+	check(r[2].style.length === 1 && r[2].style.getPropertyValue('color') === 'red' && r[2].style.width === '', 'invalid declarations dropped: ' + r[2].cssText);
+	check(r[0].href.endsWith('x.css') && r[0].media.mediaText === 'screen', '@import: ' + r[0].href + ' ' + r[0].media.mediaText);
+	check(r[3] instanceof CSSMediaRule && r[3] instanceof CSSConditionRule && r[3] instanceof CSSGroupingRule && r[3].cssRules.length === 2 && r[3].media.length === 1, '@media: ' + r[3].conditionText);
+	check(r[3].cssRules[0].parentRule === r[3] && r[3].cssRules[0].parentStyleSheet === s, 'parentRule, parentStyleSheet');
+	check(r[4] instanceof CSSSupportsRule && r[4].conditionText === '(display: grid)', '@supports');
+	check(r[5] instanceof CSSKeyframesRule && r[5].name === 'spin' && r[5].cssRules.length === 2 && r[5].findRule('to') instanceof CSSKeyframeRule, '@keyframes: ' + r[5].cssRules.length);
+	check(r[6].style.getPropertyValue('font-display') === 'swap' && r[6].style.getPropertyValue('size-adjust') === '90%', '@font-face descriptors: ' + r[6].cssText);
+	check(r[7].name === 'thumbs' && r[7].system === 'cyclic' && r[7].suffix === '" "', '@counter-style: ' + r[7].system);
+	check(r[8].name === '--size' && r[8].syntax === "'<length>'" && r[8].inherits === false && r[8].initialValue === '0px', '@property');
+	check(r[9].nameList.join() === 'base,theme' && r[10].name === 'base', '@layer');
+	check(s.insertRule('.new { color: red }', 1) === 1 && s.cssRules[1].selectorText === '.new', 'insertRule');
+	let threw = false;
+	try { s.insertRule('.x[ { color: red }'); } catch (e) { threw = e.name === 'SyntaxError'; }
+	check(threw, 'insertRule of an invalid rule throws SyntaxError');
+	s.deleteRule(1);
+	check(s.cssRules[1].selectorText === 'body', 'deleteRule');
+	const last = s.cssRules[s.cssRules.length - 1];
+	last.style.setProperty('background', 'rgb(0, 0, 255)');
+	check(/rgb\(0, 0, 255\)/.test(document.getElementById('s1').textContent), 'a rule\'s style written back to the <style>');
+	const c = new CSSStyleSheet();
+	c.replaceSync('.x { color: red } .y { color: blue }');
+	check(c.cssRules.length === 2 && c.cssRules[0].selectorText === '.x', 'constructed sheet, replaceSync');
+	document.adoptedStyleSheets = [c];
+	check(document.adoptedStyleSheets.length === 1 && document.adoptedStyleSheets[0] === c, 'adoptedStyleSheets');
+	check(document.styleSheets.length === 2, 'adopted sheets not in document.styleSheets');
+	const l = document.styleSheets[1];
+	check(l.href && l.href.endsWith('js-cssom.css') && l.cssRules.length === 1 && l.cssRules[0].selectorText === '.linked', 'linked sheet: ' + l.href + ' ' + l.cssRules.length);
+	check(typeof CSSRule.KEYFRAMES_RULE === 'number' && CSSRule.prototype.MEDIA_RULE === 4, 'CSSRule constants');
+	console.log('cssom: done');
+}
+window.addEventListener('load', run);
+</script>
+</body></html>

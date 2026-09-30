@@ -104,6 +104,7 @@ static css_error parseSelectorList(css_language *c,
 		const parserutils_vector *vector, css_rule *rule);
 
 /* Declaration parsing */
+static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes);
 static css_error parseProperty(css_language *c,
 		const css_token *property, const parserutils_vector *vector,
 		int32_t *ctx, css_rule *rule);
@@ -675,7 +676,51 @@ css_error handleStartAtRule(css_language *c, const parserutils_vector *vector)
 
 		c->state = HAD_RULE;
 	} else {
-		return CSS_INVALID;
+		/* Onyx: @keyframes, @counter-style, @property, @scope... (parse/onyx_atrules.h):
+		 * kept as a media rule whose media never matches -- their content does not
+		 * apply --, their descriptors checked against their grammars */
+		css_mq_query *media;
+		css_rule *parent_rule = NULL;
+		context_entry *cur;
+		int parent = ONYX_AT_NONE, kind;
+
+		cur = parserutils_stack_get_current(c->context);
+		if (cur != NULL && cur->type != CSS_PARSER_START_STYLESHEET &&
+				cur->data != NULL) {
+			css_rule *pr = cur->data;
+			if (pr->type == CSS_RULE_MEDIA) {
+				parent = ((css_rule_media *) pr)->onyx_kind;
+				parent_rule = pr;
+			} else {
+				parent = (pr->type == CSS_RULE_PAGE) ? -1 : 99;
+			}
+		}
+		kind = css__onyx_at_kind(atkeyword, parent);
+		if (kind == ONYX_AT_NONE || kind == ONYX_AT_PAGE_MARGIN ||
+				!css__onyx_at_prelude(c, kind, vector, ctx))
+			return CSS_INVALID;
+
+		media = calloc(1, sizeof(*media));	/* (type 0: matches nothing) */
+		if (media == NULL)
+			return CSS_NOMEM;
+		error = css__stylesheet_rule_create(c->sheet, CSS_RULE_MEDIA, &rule);
+		if (error != CSS_OK) {
+			css__mq_query_destroy(media);
+			return error;
+		}
+		error = css__stylesheet_rule_set_media(c->sheet, rule, media);
+		if (error != CSS_OK) {
+			css__stylesheet_rule_destroy(c->sheet, rule);
+			css__mq_query_destroy(media);
+			return error;
+		}
+		((css_rule_media *) rule)->onyx_kind = (uint8_t) kind;
+		error = css__stylesheet_add_rule(c->sheet, rule, parent_rule);
+		if (error != CSS_OK) {
+			css__stylesheet_rule_destroy(c->sheet, rule);
+			return error;
+		}
+		c->state = HAD_RULE;
 	}
 
 	entry.data = rule;
@@ -812,6 +857,21 @@ css_error handleBlockContent(css_language *c, const parserutils_vector *vector)
 			return error;
 		}
 
+		/* Onyx: in the at-rules kept without effect (parse/onyx_atrules.h) */
+		switch (((css_rule_media *) rule)->onyx_kind) {
+		case ONYX_AT_NONE:
+		case ONYX_AT_SCOPE:
+		case ONYX_AT_STARTING_STYLE:
+			break;
+		case ONYX_AT_KEYFRAMES:
+			return onyx_start_keyframe(c, rule);
+		default:
+			if (css__onyx_at_declaration(c, ((css_rule_media *) rule)->onyx_kind,
+					vector))
+				c->sheet->onyx_desc_words++;
+			return CSS_OK;
+		}
+
 		/* Expect rulesets */
 		return handleStartRuleset(c, vector);
 	} else {
@@ -900,11 +960,22 @@ css_error handleDeclaration(css_language *c, const parserutils_vector *vector)
 		css_rule_font_face * ff_rule = (css_rule_font_face *) rule;
 		error = css__parse_font_descriptor(
 				c, ident, vector, &ctx, ff_rule);
+		/* Onyx: the descriptors libcss does not read (font-display, size-adjust...)
+		 * checked against their grammars; the valid ones counted (the CSSOM) */
+		if (error == CSS_INVALID &&
+				css__onyx_descriptor_valid(c, "@font-face", vector))
+			error = CSS_OK;
 	} else {
 		error = parseProperty(c, ident, vector, &ctx, rule);
+		/* Onyx: @page's descriptors (size, marks, bleed...) */
+		if (error == CSS_INVALID && rule->type == CSS_RULE_PAGE &&
+				css__onyx_descriptor_valid(c, "@page", vector))
+			error = CSS_OK;
 	}
 	if (error != CSS_OK)
 		return error;
+	if (rule->type != CSS_RULE_SELECTOR)
+		c->sheet->onyx_desc_words++;
 
 	return CSS_OK;
 }
@@ -2289,6 +2360,67 @@ css_error parseProperty(css_language *c, const css_token *property,
 	/* Style owned or destroyed by stylesheet, so forget about it */
 
 	return CSS_OK;
+}
+
+/* Onyx: a keyframe in a @keyframes rule ("from, 50% {"): a child kept without effect, whose
+ * declarations are checked as properties (the block's content, handleBlockContent). Made
+ * for any prelude (the context stays balanced); the CSSOM checks the keyframe selectors. */
+static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes)
+{
+	context_entry entry = { CSS_PARSER_START_ATRULE, NULL };
+	css_mq_query *media;
+	css_rule *rule;
+	css_error error;
+
+	media = calloc(1, sizeof(*media));
+	if (media == NULL)
+		return CSS_NOMEM;
+	error = css__stylesheet_rule_create(c->sheet, CSS_RULE_MEDIA, &rule);
+	if (error != CSS_OK) {
+		css__mq_query_destroy(media);
+		return error;
+	}
+	error = css__stylesheet_rule_set_media(c->sheet, rule, media);
+	if (error != CSS_OK) {
+		css__stylesheet_rule_destroy(c->sheet, rule);
+		css__mq_query_destroy(media);
+		return error;
+	}
+	((css_rule_media *) rule)->onyx_kind = ONYX_AT_KEYFRAME;
+	error = css__stylesheet_add_rule(c->sheet, rule, keyframes);
+	if (error != CSS_OK) {
+		css__stylesheet_rule_destroy(c->sheet, rule);
+		return error;
+	}
+	entry.data = rule;
+	if (parserutils_stack_push(c->context, (void *) &entry) != PARSERUTILS_OK)
+		return CSS_NOMEM;
+	return CSS_OK;
+}
+
+/* Onyx: do the tokens [start, end) of the vector make a valid selector list? (@scope) */
+bool css__onyx_selector_list_valid(css_language *c, const parserutils_vector *vector,
+		int32_t start, int32_t end)
+{
+	parserutils_vector *sub = NULL;
+	css_rule *rule = NULL;
+	int32_t i;
+	bool ok = false;
+
+	if (parserutils_vector_create(sizeof(css_token), 16, &sub) != PARSERUTILS_OK)
+		return false;
+	for (i = start; i < end; i++) {
+		css_token tok = *((const css_token *) parserutils_vector_peek(vector, i));
+		if (parserutils_vector_append(sub, &tok) != PARSERUTILS_OK)
+			goto done;
+	}
+	if (css__stylesheet_rule_create(c->sheet, CSS_RULE_SELECTOR, &rule) != CSS_OK)
+		goto done;
+	ok = parseSelectorList(c, sub, rule) == CSS_OK;
+	css__stylesheet_rule_destroy(c->sheet, rule);
+done:
+	parserutils_vector_destroy(sub);
+	return ok;
 }
 
 /* Onyx: is "property: value" (the value from ctx to the end of the vector) a declaration

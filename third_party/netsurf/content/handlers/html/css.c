@@ -466,7 +466,8 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	}
 
 	htmlc->stylesheets = stylesheets;
-	htmlc->stylesheets[htmlc->stylesheet_count].node = NULL;
+	/* Onyx: the <link> element kept with its sheet (the CSSOM: link.sheet reads its rules) */
+	htmlc->stylesheets[htmlc->stylesheet_count].node = dom_node_ref(node);
 	htmlc->stylesheets[htmlc->stylesheet_count].modified = false;
 	htmlc->stylesheets[htmlc->stylesheet_count].unused = false;
 
@@ -482,8 +483,10 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 
 	nsurl_unref(joined);
 
-	if (ns_error != NSERROR_OK)
+	if (ns_error != NSERROR_OK) {
+		dom_node_unref(htmlc->stylesheets[htmlc->stylesheet_count].node);
 		goto no_memory;
+	}
 
 	htmlc->stylesheet_count++;
 

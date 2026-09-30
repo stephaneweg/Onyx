@@ -60,6 +60,8 @@
 #include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
 #include "html/private.h"
+#include "html/html.h"		/* Onyx: struct html_stylesheet (n_sheet_text) */
+#include "netsurf/content.h"	/* Onyx: content_get_source_data, hlcache_handle_get_url */
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/form_internal.h"
@@ -906,6 +908,39 @@ static JSValue n_css_kept(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	JS_SetPropertyUint32(ctx, a, 0, JS_NewUint32(ctx, rules));
 	JS_SetPropertyUint32(ctx, a, 1, JS_NewUint32(ctx, words));
 	return a;
+}
+
+/**
+ * Onyx: sheetText(link): the text of the style sheet a <link rel=stylesheet> loaded and its
+ * URL, [text, url]; null if it has none (not loaded, not a style sheet). The CSSOM's
+ * document.styleSheets (dom.js) reads the linked sheets' rules from it.
+ */
+static JSValue n_sheet_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	unsigned int i;
+	QJS_NODE_ARG(n, 0);
+
+	(void) this_val;
+	if (t->htmlc == NULL || t->htmlc->stylesheets == NULL)
+		return JS_NULL;
+	for (i = 0; i < t->htmlc->stylesheet_count; i++) {
+		struct html_stylesheet *s = &t->htmlc->stylesheets[i];
+		const uint8_t *data;
+		size_t size = 0;
+		JSValue a;
+		if (s->node != n || s->sheet == NULL)
+			continue;
+		data = content_get_source_data(s->sheet, &size);
+		a = JS_NewArray(ctx);
+		JS_SetPropertyUint32(ctx, a, 0, data != NULL ?
+				JS_NewStringLen(ctx, (const char *) data, size) :
+				JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, a, 1, JS_NewString(ctx,
+				nsurl_access(hlcache_handle_get_url(s->sheet))));
+		return a;
+	}
+	return JS_NULL;
 }
 
 /* Onyx: the <script> element running (document.currentScript), set around js_exec */
@@ -2101,6 +2136,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("byId", 1, n_by_id),
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
+	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
