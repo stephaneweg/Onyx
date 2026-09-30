@@ -1041,7 +1041,35 @@ static void layout_minmax_block(
 			min = html_get_box_tree(block->object)->min_width;
 			max = html_get_box_tree(block->object)->max_width;
 		} else {
-			min = max = content_get_width(block->object);
+			css_fixed v = 0;
+			css_unit u = CSS_UNIT_PX;
+			int iw = content_get_width(block->object);
+			int ih = content_get_height(block->object);
+
+			min = max = iw;
+			/* Onyx: a definite height and an auto width: the
+			 * width from the natural ratio */
+			if (block->style != NULL && iw > 0 && ih > 0 &&
+			    css_computed_width(block->style, &v, &u) ==
+					CSS_WIDTH_AUTO &&
+			    css_computed_height(block->style, &v, &u) ==
+					CSS_HEIGHT_SET && u != CSS_UNIT_PCT) {
+				int h = FIXTOINT(css_unit_len2device_px(
+						block->style,
+						&content->unit_len_ctx, v, u));
+				min = max = h * iw / ih;
+			}
+			/* Onyx: a compressible replaced element -- a
+			 * percentage width or max-width -- contributes
+			 * nothing to a min-content size (CSS Sizing 3 5.2.2:
+			 * an img { max-width: 100% } in a grid / flex track,
+			 * a table cell, a float) */
+			if (block->style != NULL &&
+			    ((css_computed_width(block->style, &v, &u) ==
+					CSS_WIDTH_SET && u == CSS_UNIT_PCT) ||
+			     (css_computed_max_width(block->style, &v, &u) ==
+					CSS_MAX_WIDTH_SET && u == CSS_UNIT_PCT)))
+				min = 0;
 		}
 
 		block->flags |= HAS_HEIGHT;
@@ -3663,6 +3691,32 @@ layout_line(struct box *first,
 					d->y = *y + used_height - (ab + bl) + top;
 				else
 					d->y = *y + above + shift - ab + top;
+
+				/* Onyx: a text or an inline box is its font's
+				 * content area (ascent + descent) around its
+				 * baseline, not its line-height box: its
+				 * background, its rectangle (getBoundingClientRect)
+				 * as Chrome's; the text is drawn on the same
+				 * baseline (font_baseline of that height) */
+				if ((d->type == BOX_TEXT ||
+				     d->type == BOX_INLINE_END ||
+				     (d->type == BOX_INLINE &&
+				      !lh__box_is_replace(d)))) {
+					const struct box *sb = d->type ==
+						BOX_INLINE_END && d->inline_end
+						!= NULL ? d->inline_end : d;
+					const css_computed_style *ss =
+						sb->style != NULL ? sb->style :
+						d->parent->parent->style;
+					plot_font_style_t ipf;
+					int ia, id, ig;
+
+					font_plot_style_from_css(ulc, ss, &ipf);
+					if (font_metrics(&ipf, &ia, &id, &ig)) {
+						d->y += ab - ia;
+						d->height = ia + id;
+					}
+				}
 			}
 		}
 	}
