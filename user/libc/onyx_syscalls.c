@@ -416,14 +416,29 @@ static int x_gettimeofday (struct timeval *tv, void *tz)
 	if (!tv)
 		return 0;
 
-	// Build the time from the monotonic millisecond tick counter, offset ONCE to the RTC
+	// Build the time from a monotonic clock with microseconds, offset ONCE to the RTC
 	// wall-clock epoch. The RTC alone has only 1-second resolution (tv_usec would be 0),
 	// which throttles every millisecond-scheduled callback to the next whole second -- that
 	// cripples schedulers like NetSurf's (it adds ms deltas to gettimeofday and compares),
-	// making incremental parsing/layout/redraw crawl. Ticks give true ms resolution and are
-	// strictly monotonic; base_sec keeps tv_sec close to real wall-clock seconds.
-	static long base_sec = -1;	// wall-clock second at tick 0 (computed once per process)
-	unsigned ms = kapi_get_ticks ();
+	// making incremental parsing/layout/redraw crawl. base_sec keeps tv_sec close to real
+	// wall-clock seconds.
+	// The clock: the ARM generic timer (CNTPCT_EL0 / CNTFRQ_EL0, readable at EL0 -- as
+	// kapi_clock_us reads it), in 64 bits. (It was kapi_get_ticks taken as milliseconds:
+	// the kernel's ticks are 100 Hz (Circle's HZ), so the time ran ten times slower than
+	// real -- every timer of an app (NetSurf's scheduler, a page's setTimeout, Date.now)
+	// fired ten times late.)
+	static long base_sec = -1;	// wall-clock second at clock 0 (computed once per process)
+	unsigned long long us;
+#ifdef __aarch64__
+	{
+		unsigned long c, f;
+		__asm__ volatile ("isb\n\tmrs %0, cntpct_el0\n\tmrs %1, cntfrq_el0" : "=r" (c), "=r" (f));
+		us = f != 0 ? (unsigned long long) (c / f) * 1000000ull +
+			(unsigned long long) (c % f) * 1000000ull / f : 0;
+	}
+#else
+	us = (unsigned long long) kapi_get_ticks () * 10000ull;	// (100 Hz ticks)
+#endif
 
 	if (base_sec < 0)
 	{
@@ -432,14 +447,14 @@ static int x_gettimeofday (struct timeval *tv, void *tz)
 		{
 			long days = days_from_civil (y, mo, d);
 			long now  = ((days * 24 + h) * 60 + mi) * 60 + s;
-			base_sec  = now - (long) (ms / 1000);
+			base_sec  = now - (long) (us / 1000000ull);
 		}
 		else
 			base_sec = 0;		// no RTC -> seconds since boot
 	}
 
-	tv->tv_sec  = base_sec + (long) (ms / 1000);
-	tv->tv_usec = (long) (ms % 1000) * 1000;	// millisecond resolution, monotonic
+	tv->tv_sec  = base_sec + (long) (us / 1000000ull);
+	tv->tv_usec = (long) (us % 1000000ull);			// microsecond resolution, monotonic
 	return 0;
 }
 
