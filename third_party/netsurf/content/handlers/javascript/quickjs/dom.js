@@ -214,9 +214,15 @@ class MessageEvent extends Event {
 class SubmitEvent extends Event {
 	constructor(type, init = {}) { super(type, init); this.submitter = init.submitter || null; }
 }
+/* Onyx: core-js (bundled by many sites: bbc.co.uk's consent script) replaces the native
+ * Promise with its own when PromiseRejectionEvent is missing -- and its polyfill looped
+ * through microtasks for ever (1.5 GB in a minute: the Pi's "out of memory") */
+class PromiseRejectionEvent extends Event {
+	constructor(type, init = {}) { super(type, init); this.promise = init.promise; this.reason = init.reason; }
+}
 Object.assign(G, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent,
 	KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, ProgressEvent, PopStateEvent,
-	HashChangeEvent, MessageEvent, SubmitEvent, TouchEvent: undefined });
+	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, TouchEvent: undefined });
 delete G.TouchEvent;
 
 /* the event's path: its target, its ancestors, the document, the window */
@@ -1518,6 +1524,8 @@ function serialize(n, out) {
 	}
 }
 
+const RAW_TEXT = new Set(['script', 'style', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext']);
+
 function innerHTML(n) {
 	const out = [];
 	for (const c of N.children(n))
@@ -1616,7 +1624,20 @@ class Element extends Node {
 	get innerHTML() { return innerHTML(this); }
 	set innerHTML(v) {
 		const removed = observers.size ? N.children(this) : [];
-		N.setHTML(this, v === null ? '' : String(v));
+		v = v === null ? '' : String(v);
+		/* Onyx: the fragment parser's context -- a raw text element's markup is its text
+		 * (a tag manager's script.innerHTML = code lost every "<...>" of the code: bbc's
+		 * consent stub became a SyntaxError), an RCDATA one's has its entities decoded */
+		const tag = N.name(this).toLowerCase();
+		if (RAW_TEXT.has(tag)) {
+			this.textContent = v;
+		} else if (tag === 'textarea' || tag === 'title') {
+			const d = N.create('div');
+			N.setHTML(d, v.replace(/</g, '&lt;'));
+			this.textContent = N.text(d);
+		} else {
+			N.setHTML(this, v);
+		}
 		if (observers.size)
 			childListRecord(this, N.children(this), removed);
 	}

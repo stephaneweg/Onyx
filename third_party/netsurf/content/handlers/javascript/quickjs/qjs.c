@@ -183,6 +183,8 @@ static void qjs_enter(jsthread *t)
 		t->heap->start = qjs_now_ms();
 }
 
+static void qjs_jobs_later(void *p);
+
 /** Leaving JS: the promises' jobs run, a changed DOM laid out again. */
 static void qjs_leave(jsthread *t)
 {
@@ -190,11 +192,25 @@ static void qjs_leave(jsthread *t)
 		return;
 	if (!t->closed) {
 		JSContext *jctx;
-		int r;
+		JSRuntime *rt = JS_GetRuntime(t->ctx);
+		uint64_t t0 = qjs_now_ms();
+		int r, n = 0;
 
-		while ((r = JS_ExecutePendingJob(JS_GetRuntime(t->ctx), &jctx)) != 0) {
+		/* Onyx: the jobs run for 200 ms at most, then the rest a turn later (the window
+		 * answers): a chain of promises that never ends (bbc.co.uk's consent script, its
+		 * Promise polyfill) held the loop for ever -- each job "interrupted" at once once
+		 * the script's time was out, the next one queued again -- and took memory till
+		 * none was left. Each turn gives the jobs their own time. */
+		while ((r = JS_ExecutePendingJob(rt, &jctx)) != 0) {
 			if (r < 0)
 				qjs_report(jctx, "job");
+			if ((++n & 63) == 0 && qjs_now_ms() - t0 > 200 &&
+					JS_IsJobPending(rt)) {
+				guit->misc->schedule(10, qjs_jobs_later, t);
+				break;
+			}
+			if (t->heap != NULL)
+				t->heap->start = qjs_now_ms();
 		}
 	}
 	if (t->dirty) {
@@ -204,6 +220,17 @@ static void qjs_leave(jsthread *t)
 	}
 	if (t->pending_destroy)
 		qjs_thread_free(t);
+}
+
+/** the promises' jobs left over by qjs_leave (Onyx) */
+static void qjs_jobs_later(void *p)
+{
+	jsthread *t = p;
+
+	if (t->closed)
+		return;
+	qjs_enter(t);
+	qjs_leave(t);
 }
 
 /** a call into JS, its exception reported; the result (JS_UNDEFINED on error) */
@@ -2175,6 +2202,9 @@ nserror js_newheap(int timeout, jsheap **heap)
 	/* a script's recursion stopped (RangeError) past 4 MB of stack -- the Onyx app's is
 	 * 8 MB (its app.txt: stack = 8M), NetSurf's own frames below the JS */
 	JS_SetMaxStackSize(h->rt, 4 * 1024 * 1024);
+	/* Onyx: a window's scripts take 384 MB at most -- past it an allocation throws
+	 * (InternalError: out of memory) where it would stop the whole app on the Pi */
+	JS_SetMemoryLimit(h->rt, 384 * 1024 * 1024);
 	JS_SetInterruptHandler(h->rt, qjs_interrupt, h);
 	JS_SetModuleLoaderFunc(h->rt, qjs_mod_normalize, qjs_mod_loader, NULL);	/* (Onyx) */
 	JS_NewClassID(h->rt, &qjs_node_class);
@@ -2275,6 +2305,7 @@ static void qjs_thread_free(jsthread *t)
 	size_t i;
 	int k;
 
+	guit->misc->schedule(-1, qjs_jobs_later, t);	/* (Onyx) */
 	qjs_timers_stop(t);
 	qjs_reqs_stop(t);
 	guit->misc->schedule(-1, qjs_load_later, t);
@@ -2336,6 +2367,19 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 			JS_EVAL_TYPE_GLOBAL);
 	if (JS_IsException(r)) {
 		qjs_report(thread->ctx, name != NULL ? name : "script");
+#ifdef ONYX_HOST_SIM
+		/* Onyx (the PC bench): NS_JSDUMP=<dir> -- a script that failed is written there */
+		if (getenv("NS_JSDUMP") != NULL) {
+			static int nd;
+			char path[512];
+			FILE *f;
+			snprintf(path, sizeof path, "%s/failed-%d.js", getenv("NS_JSDUMP"), nd++);
+			if ((f = fopen(path, "w")) != NULL) {
+				fwrite(src, 1, txtlen, f);
+				fclose(f);
+			}
+		}
+#endif
 	} else {
 		ok = JS_ToBool(thread->ctx, r);
 	}

@@ -84,3 +84,30 @@ void onyx_nstls_close(onyx_tls_sess *s)
 	close(s->fd);
 	free(s);
 }
+
+/* NS_MEMSTAT=<seconds>: the heap in use (glibc's mallinfo2) printed on stderr every so many
+ * seconds, and its peak -- the bench's view of how much memory a page takes */
+#include <malloc.h>
+#include <pthread.h>
+#include <stdio.h>
+static void *memstat_run(void *arg)
+{
+	unsigned s = (unsigned) (unsigned long) arg;
+	size_t peak = 0;
+	for (;;) {
+		struct mallinfo2 m;
+		sleep(s);
+		m = mallinfo2();
+		if (m.uordblks + m.hblkhd > peak) peak = m.uordblks + m.hblkhd;
+		fprintf(stderr, "ONYX-MEM in use %zu KB (mmap %zu KB), peak %zu KB, heap %zu KB\n",
+				(m.uordblks + m.hblkhd) / 1024, m.hblkhd / 1024, peak / 1024, m.arena / 1024);
+	}
+	return NULL;
+}
+__attribute__((constructor)) static void memstat_start(void)
+{
+	const char *e = getenv("NS_MEMSTAT");
+	pthread_t t;
+	if (e != NULL && atoi(e) > 0)
+		pthread_create(&t, NULL, memstat_run, (void *) (unsigned long) atoi(e));
+}

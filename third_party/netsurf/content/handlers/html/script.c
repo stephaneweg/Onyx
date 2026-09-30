@@ -554,11 +554,28 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 	lwc_string_unref(lwcmimetype);
 
 	if (script_handler != NULL) {
+		/* Onyx: the script named by its first characters (its errors, NS_PERF's timings:
+		 * which of a page's inline scripts) */
+		char name[64];
+		const char *src = dom_string_data(script);
+		size_t len = dom_string_byte_length(script), i, k = 0;
+
+		k = (size_t) snprintf(name, sizeof name, "inline:");
+		for (i = 0; i < len && k < sizeof name - 1; i++) {
+			unsigned char ch = (unsigned char) src[i];
+			if (ch <= ' ') {
+				if (k > 7 && name[k - 1] != ' ')
+					name[k++] = ' ';
+			} else if (ch < 0x80) {
+				name[k++] = (char) ch;
+			}
+		}
+		name[k] = '\0';
 		js_set_current_script(c->jsthread, node);
 		script_handler(c->jsthread,
 			       (const uint8_t *)dom_string_data(script),
 			       dom_string_byte_length(script),
-			       "?inline script?");
+			       name);
 		js_set_current_script(c->jsthread, NULL);
 	}
 	return DOM_HUBBUB_OK;

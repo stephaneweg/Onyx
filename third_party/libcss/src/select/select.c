@@ -1409,6 +1409,14 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 			state.current_pseudo = CSS_PSEUDO_ELEMENT_NONE;
 			state.computed = state.results->styles[
 					CSS_PSEUDO_ELEMENT_NONE];
+			/* Onyx: a style attribute is the author's, with the
+			 * specificity (1,0,0,0) -- it kept the last sheet's
+			 * origin and selector's specificity: after the user
+			 * sheet (NetSurf's user.css comes last) it lost to the
+			 * presentational hints (an <img width=240>'s own size
+			 * beat style="width:100%") */
+			state.current_origin = CSS_ORIGIN_AUTHOR;
+			state.current_specificity = CSS_SPECIFICITY_A;
 
 			error = cascade_style(sel->style, &state);
 			if (error != CSS_OK)

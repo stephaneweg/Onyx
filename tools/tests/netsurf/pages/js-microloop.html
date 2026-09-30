@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><title>microtasks that never end</title></head><body>
+<p>A chain of promises that never ends (as bbc.co.uk's consent script did with its Promise
+polyfill): the timers, the events and the page must go on, and the memory stay bounded.</p>
+<script>
+var n = 0;
+function spin() { n++; Promise.resolve().then(spin); }
+spin();
+setTimeout(function () { console.log('microloop timer ran ' + (n > 1000)); }, 50);
+console.log('microloop PromiseRejectionEvent ' + (typeof PromiseRejectionEvent));
+</script>
+</body></html>

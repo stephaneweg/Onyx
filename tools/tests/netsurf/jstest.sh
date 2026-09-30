@@ -51,6 +51,18 @@ L=$OUT/js-recursion.log
 run js-recursion.html "$(waits 60)" "$L"
 expect "$L" "recursion: RangeError"
 
+echo "js-rawtext.html (innerHTML of a script, a textarea)"
+L=$OUT/js-rawtext.log
+run js-rawtext.html "$(waits 30)" "$L"
+expect "$L" "inner script ran 3"
+expect "$L" "textarea a & <b>"
+
+echo "js-microloop.html (a chain of promises that never ends)"
+L=$OUT/js-microloop.log
+run js-microloop.html "$(waits 60)" "$L"
+expect "$L" "microloop PromiseRejectionEvent function"
+expect "$L" "microloop timer ran true"
+
 echo "js-fetch.html (fetch, XMLHttpRequest, Headers, Response)"
 L=$OUT/js-fetch.log
 run js-fetch.html "$(waits 200)" "$L"
