@@ -3599,6 +3599,57 @@ layout_line(struct box *first,
 				first->parent->parent->gadget ||
 				content->quirks == DOM_DOCUMENT_QUIRKS_MODE_NONE;
 		css_fixed strut_exact = line_height_fixed(ulc, bs);
+		bool phantom = true;
+
+		/* Onyx: a line with no text, no atomic inline, no <br> and no
+		 * inline with a horizontal margin, border or padding is
+		 * zero-height (CSS 2.1 9.4.2): the empty start of an inline that
+		 * holds a block (google's <g-popup><div>) made a line of its own */
+		for (d = first; d != b && phantom; d = d->next) {
+			if (lh__box_is_float_box(d))
+				continue;
+			if (d->type == BOX_TEXT) {
+				size_t k;
+				bool pre = d->style != NULL &&
+					css_computed_white_space(d->style) !=
+						CSS_WHITE_SPACE_NORMAL &&
+					css_computed_white_space(d->style) !=
+						CSS_WHITE_SPACE_NOWRAP;
+				for (k = 0; k < d->length && d->text; k++) {
+					if (pre || (d->text[k] != ' ' &&
+					    d->text[k] != '\t' &&
+					    d->text[k] != '\n' &&
+					    d->text[k] != '\r')) {
+						phantom = false;
+						break;
+					}
+				}
+				if (d->space != 0 && d->length > 0 && pre)
+					phantom = false;
+			} else if (d->type == BOX_INLINE ||
+				   d->type == BOX_INLINE_END) {
+				if (lh__box_is_replace(d) ||
+				    d->padding[LEFT] || d->padding[RIGHT] ||
+				    d->border[LEFT].width ||
+				    d->border[RIGHT].width ||
+				    (d->margin[LEFT] != AUTO && d->margin[LEFT]) ||
+				    (d->margin[RIGHT] != AUTO && d->margin[RIGHT]))
+					phantom = false;
+			} else if (d->type == BOX_INLINE_BLOCK ||
+				   d->type == BOX_INLINE_FLEX) {
+				if (d->style == NULL ||
+				    (css_computed_position(d->style) !=
+						CSS_POSITION_ABSOLUTE &&
+				     css_computed_position(d->style) !=
+						CSS_POSITION_FIXED))
+					phantom = false;
+			} else {
+				phantom = false;	/* <br>, anything else */
+			}
+		}
+		if (phantom) {
+			strut = false;
+		}
 
 		if (strut)
 			layout_text_ab(ulc, bs, FIXTOINT(strut_exact),
@@ -3674,6 +3725,13 @@ layout_line(struct box *first,
 					break;
 				default:
 					break;
+				}
+				if (phantom) {
+					/* (a zero-height line: its empty
+					 * inlines at its top) */
+					if (pass == 1)
+						d->y = *y + top;
+					continue;
 				}
 				if (pass == 0) {
 					if (va == CSS_VERTICAL_ALIGN_TOP ||
