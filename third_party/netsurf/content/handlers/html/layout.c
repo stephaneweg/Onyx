@@ -1143,6 +1143,11 @@ static void layout_minmax_block(
 	if (block->object == NULL && lh__box_is_flex_container(block)) {
 		layout_minmax_flex(block, &content->unit_len_ctx, &min, &max);
 	}
+	/* Onyx: a flex / grid container is a formatting context root, never
+	 * collapsed through (layout_next_margin_block): its ancestors hold it,
+	 * the margins before it go above them */
+	if (block->type == BOX_FLEX || block->type == BOX_INLINE_FLEX)
+		block->flags |= HAS_HEIGHT;
 
 	if (max < min) {
 		box_dump(stderr, block, 0, true);
@@ -3599,7 +3604,8 @@ layout_line(struct box *first,
 				first->parent->parent->gadget ||
 				content->quirks == DOM_DOCUMENT_QUIRKS_MODE_NONE;
 		css_fixed strut_exact = line_height_fixed(ulc, bs);
-		bool phantom = true;
+		bool phantom = first->parent->parent->gadget == NULL;	/* (a
+				 * control's value line is always there) */
 
 		/* Onyx: a line with no text, no atomic inline, no <br> and no
 		 * inline with a horizontal margin, border or padding is
