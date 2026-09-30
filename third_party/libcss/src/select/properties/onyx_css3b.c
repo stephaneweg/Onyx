@@ -101,6 +101,10 @@ ONYX_TEXT_PROP(grid_row_start)
 ONYX_TEXT_PROP(grid_row_end)
 ONYX_TEXT_PROP(grid_column_start)
 ONYX_TEXT_PROP(grid_column_end)
+ONYX_TEXT_PROP(mask_image)	/* Onyx: mask */
+ONYX_TEXT_PROP(mask_size)
+ONYX_TEXT_PROP(mask_position)
+ONYX_TEXT_PROP(mask_repeat)
 
 /* ---- aspect-ratio ---------------------------------------------------------------------------- */
 

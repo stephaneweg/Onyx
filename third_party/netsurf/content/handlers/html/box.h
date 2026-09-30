@@ -455,6 +455,12 @@ struct box {
 	 */
 	struct browser_window *iframe;
 
+	/**
+	 * Onyx: the box's mask-image (its alpha paints the background
+	 * colour), or NULL if none
+	 */
+	struct hlcache_handle *mask;
+
 };
 
 

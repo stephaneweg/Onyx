@@ -182,6 +182,11 @@ enum css_properties_e {
 	CSS_PROP_STROKE_DASHOFFSET		= 0x0a3,
 	CSS_PROP_STOP_COLOR			= 0x0a4,
 	CSS_PROP_STOP_OPACITY			= 0x0a5,
+	/* Onyx: mask-image / -size / -position / -repeat, kept as text */
+	CSS_PROP_MASK_IMAGE			= 0x0a6,
+	CSS_PROP_MASK_SIZE			= 0x0a7,
+	CSS_PROP_MASK_POSITION			= 0x0a8,
+	CSS_PROP_MASK_REPEAT			= 0x0a9,
 
 	CSS_N_PROPERTIES
 };

@@ -769,6 +769,25 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		}
 	}
 
+	/* Onyx: the mask-image (an icon: its shape in the background colour) */
+	{
+		lwc_string *mask_text = NULL;
+
+		if (css_computed_mask_image(box->style, &mask_text) ==
+				CSS_ONYX_TEXT_SET && mask_text != NULL &&
+				nsoption_bool(background_images) == true) {
+			nsurl *url;
+
+			if (nsurl_create(lwc_string_data(mask_text), &url) ==
+					NSERROR_OK) {
+				bool ok = html_fetch_mask(ctx->content, url, box);
+				nsurl_unref(url);
+				if (!ok)
+					return false;
+			}
+		}
+	}
+
 	if (*convert_children)
 		box->flags |= CONVERT_CHILDREN;
 

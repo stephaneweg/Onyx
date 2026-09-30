@@ -201,6 +201,10 @@ css_error css_computed_style_destroy(css_computed_style *style)
 	lwc_string_unref(style->i.translate);
 	lwc_string_unref(style->i.scale);
 	lwc_string_unref(style->i.rotate);
+	lwc_string_unref(style->i.mask_image);		/* Onyx: mask */
+	lwc_string_unref(style->i.mask_size);
+	lwc_string_unref(style->i.mask_position);
+	lwc_string_unref(style->i.mask_repeat);
 	lwc_string_unref(style->i.grid_template_columns);
 	lwc_string_unref(style->i.grid_template_rows);
 	lwc_string_unref(style->i.grid_template_areas);
@@ -2216,4 +2220,25 @@ css_error compute_absolute_length_pair(css_computed_style *style,
 uint8_t css_computed_background_clip(const css_computed_style *style)
 {
 	return get_background_clip(style);
+}
+
+/* Onyx: mask (its first layer, as text: see src/parse/properties/onyx_css3b.c) */
+uint8_t css_computed_mask_image(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_image(style, text);
+}
+
+uint8_t css_computed_mask_size(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_size(style, text);
+}
+
+uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_position(style, text);
+}
+
+uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_repeat(style, text);
 }

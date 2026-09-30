@@ -144,8 +144,10 @@ headers in order (`llcache_handle_get_header_at`).
 - **Properties added**: `row-gap`/`gap`, the four `border-*-radius`, `box-shadow`,
   `text-shadow`, `background-size`, `background-clip` (with `text`), `text-overflow`,
   `justify-items`/`justify-self`, `aspect-ratio`, `object-fit`/`object-position`,
-  `transform`/`translate`/`scale`/`rotate`, the grid properties; logical properties and
-  the CSS3 shorthands mapped to their physical longhands.
+  `transform`/`translate`/`scale`/`rotate`, the grid properties, `mask-image` /
+  `mask-size` / `mask-position` / `mask-repeat` and the `mask` shorthand (the first layer,
+  kept as canonical texts: `onyx_css3b.c`; `-webkit-mask-*` by the prefix rule below);
+  logical properties and the CSS3 shorthands mapped to their physical longhands.
 - **Rules and selectors**: `@supports`, `@layer`, `@container` (their content kept),
   `:is()`, `:where()`, `:focus-within`, `:focus-visible`, `:any-link`.
 - **Vendor prefixes**: `-webkit-`, `-moz-`, `-ms-`, `-o-` properties whose standard name
@@ -241,7 +243,16 @@ own `min_width` / `max_width` stay its content's (its automatic minimum, its con
 - **Compressible replaced elements** (CSS Sizing 3 5.2.2): an image with a percentage width
   or max-width contributes nothing to a min-content width (a `max-width: 100%` image in a
   grid or flex track, a table cell); an image with a definite height and an auto width
-  contributes its height times its ratio.
+  contributes its height times its ratio; an image with an auto width and a `max-height`
+  (or `min-height`) is as wide as that height times its ratio (Facebook's logo, `max-height:
+  60px`, was 180 px wide).
+- A **replaced element with `display: flex` / `grid`** (an `<img>`, an `<object>`) is a
+  block (an inline-block when inline-flex): Facebook's icons were empty flex containers, 0 px
+  high.
+- **Absolute boxes**: the containing block of an absolute child of a positioned flex / grid
+  container is its padding box; the available width is taken after the padding; the static
+  position of an absolute child of a flex container follows `justify-content` /
+  `align-items` / `align-self` (`layout_abs_flex_static`).
 
 ### 5.3 Lines and inline boxes
 
@@ -336,6 +347,25 @@ centred; the headings', paragraphs', lists', `dl` / `dd`, `figure`, `blockquote`
   layer — the page, or the positioned box it is in — is painted, then painted after that
   layer's in-flow content, sorted by `z-index` (auto: 0), each a layer of its own; a
   negative `z-index` is painted in place (`html_redraw_layer_z`, `onyx_layer_*`).
+- **Floats inside a positioned layer** are painted with that layer, in the tree's order
+  (`onyx_float_layered`, `onyx_float_container`): they were painted with the page's floats,
+  under the layer's content or not at all when the layer was put off (Wikipedia's article
+  images).
+- **A clip outside the surface** (`framebuffer_plot_clip`): a box entirely above or left of
+  the screen gave a clip the framebuffer refused -- the plot failed and the rest of the
+  redraw was dropped (nothing inside Wikipedia's `#content` was painted: a mask element
+  at y = -99821). Such a clip is now an empty one-pixel clip.
+- **`mask-image`** (`html/onyx_mask.c`): pages draw icons as a box with a background colour
+  and a mask image (Facebook's `<img>`s, their own picture pushed away with
+  `object-position: 10000px 10000px`; Wikipedia's icons, `-webkit-mask-image` SVGs): what
+  shows is the mask's shape in that colour. The mask image is fetched as the box's
+  `box->mask` (`html_fetch_mask`, `object.c`); the redraw paints, over the border box,
+  the image at its `mask-size` (`cover`, `contain`, lengths, `auto`), `mask-position` and
+  `mask-repeat`, through a plotter table whose bitmap plot draws a copy of the bitmap in
+  the background colour with the bitmap's alpha (an SVG mask is a bitmap too: PlutoSVG
+  rasterises it). The box's own background and image are not painted; nothing is while
+  the mask loads or if it failed (as in Chrome). The children are painted unmasked. Test
+  page: `pages/css-mask.html`.
 - **The box under the pointer** follows the same order (`interaction.c`, `onyx_hit_*`): the
   last box painted there, then its ancestors' links, controls and titles, root first — a
   click on an open menu reaches its link, not the page under it. A click on a link's text
@@ -634,7 +664,7 @@ an invalid value is still dropped.
   `x-self-start` / `anchors-visible` names, `url-set`).
 - **How libcss uses them** (`parseProperty`, `language.c`): a property libcss computes is
   parsed by its own parser as before; if that parser refuses the value, or the property is one
-  libcss does not compute (anchor-name, scroll-snap-type, mask-image, text-wrap, the
+  libcss does not compute (anchor-name, scroll-snap-type, mask-mode, text-wrap, the
   `transition-*` / `animation-*` longhands...), the value is checked against the property's
   grammar: valid, it is kept as `CSS_ONYX_OP_GENERIC` (one bytecode word, the grammar's index;
   its cascade does nothing -- an earlier declaration libcss computes keeps applying), invalid,

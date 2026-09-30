@@ -148,6 +148,7 @@ box_create(css_select_results *styles,
 	box->usemap = NULL;
 	box->id = id;
 	box->background = NULL;
+	box->mask = NULL;	/* Onyx */
 	box->object = NULL;
 	box->object_params = NULL;
 	box->iframe = NULL;

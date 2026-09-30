@@ -60,6 +60,7 @@
 #include "html/box_inspect.h"
 #include "html/onyx_paint.h"	/* Onyx: radii, shadows, gradients */
 #include "html/onyx_webfont.h"	/* Onyx: web fonts */
+#include "html/onyx_mask.h"	/* Onyx: mask-image */
 #include "html/box_manipulate.h"
 #include "html/font.h"
 #include "html/form_internal.h"
@@ -1530,6 +1531,7 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 	/* Onyx: CSS3 painting -- the border box, rounded; the box-shadow */
 	struct onyx_rrect orr;
 	bool rounded = false, has_shadow = false, round_clipped = false;
+	bool masked = false;	/* Onyx: a mask-image (html/onyx_mask.c) */
 	struct onyx_box_shadow shadow;
 
 
@@ -1826,6 +1828,15 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			bg_box = NULL;	/* no box background */
 	}
 
+	/* Onyx: a mask-image: the box's background colour through the mask
+	 * (below), in place of its background and its object */
+	if (box->type != BOX_TEXT && box->type != BOX_INLINE_END &&
+	    box->type != BOX_BR && onyx_mask_set(box)) {
+		masked = true;
+		if (bg_box == box)
+			bg_box = NULL;
+	}
+
 	/* bg_box == NULL implies that this box should not have
 	* its background rendered. Otherwise filter out linebreaks,
 	* optimize away non-differing inlines, only plot background
@@ -1923,6 +1934,15 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 				return false;
 		}
 	}
+
+	/* Onyx: the mask (the background colour through its alpha) */
+	if (masked && (box->type != BOX_INLINE || box->object ||
+			box->flags & REPLACE_DIM) &&
+	    !onyx_mask_redraw(html, box, x - border_left, y - border_top,
+			padding_width + border_left + border_right,
+			padding_height + border_top + border_bottom,
+			scale, &r, ctx))
+		return false;
 
 	/* borders for block level content and replaced inlines */
 	if (box->style &&
@@ -2188,7 +2208,7 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		tag_type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
 	}
 
-	if (box->object && width != 0 && height != 0) {
+	if (box->object && !masked && width != 0 && height != 0) {
 		struct content_redraw_data obj_data;
 
 		x_scrolled = x - scrollbar_get_offset(box->scroll_x) * scale;
