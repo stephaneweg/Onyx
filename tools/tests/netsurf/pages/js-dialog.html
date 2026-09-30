@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>a cookie dialog</title>
+<style>
+body { margin: 0; font: 15px sans-serif; }
+/* Facebook's cookie dialog: a fixed backdrop (inset: 0) centring a flex column capped at
+   90% of it, the header and the buttons pinned, the middle scrolling */
+#bd { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+#dlg { display: flex; flex-direction: column; background: #fff; width: 600px; max-height: 90%; }
+#hd { padding: 12px; font-weight: bold; }
+#mid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.card { height: 300px; margin: 8px; background: #eee; }
+#ft { display: flex; gap: 8px; padding: 12px; }
+#ft button { flex: 1; height: 36px; }
+</style></head><body>
+<div id="bd"><div id="dlg">
+ <div id="hd">Voulez-vous autoriser l'utilisation des cookies ?</div>
+ <div id="mid"><div class="card"></div><div class="card"></div><div class="card"></div></div>
+ <div id="ft"><button id="deny" type="button">Refuser</button><button id="allow" type="button">Autoriser</button></div>
+</div></div>
+<script>
+var m = document.getElementById('mid'), a = document.getElementById('allow');
+setTimeout(function () {
+	var r = a.getBoundingClientRect();
+	console.log('dialog buttons ' + (r.bottom <= innerHeight && r.top > 0 ? 'visible' : 'hidden at ' + Math.round(r.top)));
+}, 200);
+m.addEventListener('scroll', function () { console.log('dialog middle scrolled'); });
+a.addEventListener('click', function () { console.log('dialog allowed'); });
+</script>
+</body></html>

@@ -1679,6 +1679,14 @@ bool layout_grid(struct box *grid, int available_width, html_content *content)
 		    b->style != NULL &&
 		    css_computed_height(b->style, &hv, &hu) == CSS_HEIGHT_AUTO) {
 			int h = area_h - lh__delta_outer_height(b);
+			/* Onyx: a scroll container (overflow not visible) has no
+			 * content-based minimum: stretched, it is its area's
+			 * height even if its content is taller (a dialog's middle
+			 * row, minmax(0, 1fr): its content scrolls) */
+			if (h >= 0 && h < b->height &&
+			    css_computed_overflow_y(b->style) !=
+					CSS_OVERFLOW_VISIBLE)
+				b->height = h;
 			if (h > b->height) {
 				b->height = h;
 				if (b->type == BOX_FLEX) {

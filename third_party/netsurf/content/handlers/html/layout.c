@@ -5756,6 +5756,36 @@ layout_absolute(struct box *box,
 	box->width = width;
 	box->height = height;
 
+	/* Onyx: a height given by the insets (top and bottom set, height auto:
+	 * a fixed backdrop's inset: 0, a dialog between top: 40px and bottom:
+	 * 40px) is known before the content is laid out: a flex / grid
+	 * container flexes its items in it (Facebook's cookie dialog: its
+	 * middle scrolls, its buttons stay in view), its children's
+	 * percentages resolve against it (DEF_HEIGHT) */
+	if (height == AUTO && box->style != NULL &&
+	    (box->type == BOX_FLEX || box->type == BOX_INLINE_FLEX ||
+	     box->type == BOX_BLOCK) && !box->object &&
+	    !(box->flags & IFRAME)) {
+		int t, b;
+		css_fixed v = 0;
+		css_unit u = CSS_UNIT_PX;
+
+		if (css_computed_top(box->style, &v, &u) == CSS_TOP_SET &&
+		    css_computed_bottom(box->style, &v, &u) ==
+				CSS_BOTTOM_SET &&
+		    top != AUTO && bottom != AUTO) {
+			t = top + (margin[TOP] == AUTO ? 0 : margin[TOP]);
+			b = bottom + (margin[BOTTOM] == AUTO ? 0 :
+					margin[BOTTOM]);
+			box->height = containing_block->height - t - b -
+					border[TOP].width - padding[TOP] -
+					padding[BOTTOM] - border[BOTTOM].width;
+			if (box->height < 0)
+				box->height = 0;
+			box->flags |= DEF_HEIGHT;
+		}
+	}
+
 	if (box->type == BOX_BLOCK || box->type == BOX_INLINE_BLOCK ||
 			box->object || box->flags & IFRAME) {
 		if (!layout_block_context(box, -1, content))

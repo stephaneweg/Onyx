@@ -337,6 +337,9 @@ expect "$L" "panel scrolled down"
 L=$OUT/js-consent.log
 run js-consent.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
 for s in "buttons visible" "middle scrolls" "middle scrolled down"; do expect "$L" "$s"; done
+L=$OUT/js-dialog.log
+run js-dialog.html "$(waits 60)move 400 300;wheel 400 300 -5;$(waits 30)" "$L"
+for s in "dialog buttons visible" "dialog middle scrolled"; do expect "$L" "$s"; done
 L=$OUT/js-consent-body.log
 run js-consent-body.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
 expect "$L" "body scrolled"
