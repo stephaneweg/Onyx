@@ -38,12 +38,12 @@ turned some warnings NetSurf has into errors: the makefile keeps them warnings.
 **The network** (`user/netsurf/onyx_fetch.c`): each download runs in a **thread** of its own
 (kernel v67) -- the DNS, the connect, the TLS handshake and every read block there, not the
 UI. **HTTP/1.1 with keep-alive**: a response is framed by its `Content-Length` or its chunks
-(read to the close only when it has neither), then its connection goes back to a **pool** (8,
+(read to the close only when it has neither), then its connection goes back to a **pool** (4,
 per host / port / scheme, kept 10 s idle) for the next request there -- no DNS, TCP or TLS
 handshake again; a pooled connection the server closed meanwhile is noticed at its first
 request (nothing back) and the request sent again on a new one. **Streaming**: the head goes to
 the core as soon as it is in (its headers, a redirect), then the body as it comes, inflated on
-the fly (zlib): the HTML parser finds the style sheets, scripts and images while the page still
+the fly (gzip / deflate, brotli, zstd: §24): the HTML parser finds the style sheets, scripts and images while the page still
 downloads. The worker posts (`kapi_post`) when the head has come, every 32 KB, and at the end:
 the UI thread, waiting in `kapi_pump_wait`, wakes at once. **Cookies**: the jar's
 (`urldb_get_cookie`, read on the UI thread when the fetch is set up) sent, and every
@@ -55,15 +55,16 @@ methods other than GET / HEAD (`fetch_get_referer`, an Onyx addition to `content
 replaces it): the big sites send their light mobile pages -- their desktop script applications
 (google.com, yahoo.com's Next.js) are too heavy for QuickJS on the Pi; the same in
 `navigator.userAgent`; `Accept-Language`: Choices' `accept_language`, else
-French then English. No length limit on a URL's path (it was 1024). 8 downloads at once; the
+French then English. No length limit on a URL's path (it was 1024). 6 download threads at
+once (and the streams of 4 HTTP/2 connections, §24); the
 connects one at a time (short now: the kernel caches the DNS answers). An aborted fetch whose
 thread still runs is freed by that thread. The request is a GET, a POST (a url-encoded or text
 body) or any method a script asks for (`X-Onyx-Method`, taken off), with the caller's headers;
-the response goes to the core with its status line and headers (not the cache-control ones,
-nor those the inflate makes wrong). Without threads (an older kernel) it is the
+the response goes to the core with its status line and headers (the cache's ones too since
+§22, not those the decoding makes wrong). Without threads (an older kernel) it is the
 one-step-per-poll state machine (HTTP/1.1 with `Connection: close`, its chunks undone, the
-response delivered whole). mbedTLS (`user/tls/onyx_tls.hpp`): its session cache is locked (16
-hosts, replaced in turn), its receive buffer 16 KB (a whole record: fewer round trips to the
+response delivered whole). mbedTLS (`user/tls/onyx_tls.hpp`): its session cache is locked (32
+hosts, replaced in turn, kept across launches: §22), its receive buffer 16 KB (a whole record: fewer round trips to the
 network core); after the handshake its reads do not wait (`onyx_nstls.cpp`: the callers poll
 with their own idle rules -- a quiet connection was cut after 20 s). A script's request (fetch /
 XHR) waits 5 min for its answer (a long poll), the others 30 s. **WebSocket and event streams**
@@ -1758,6 +1759,150 @@ Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with
   `js-cssdetect.html` (24: `CSS.supports`, `element.style`, the CSSOM, `matchMedia` say no to
   garbage). `libcss-test`, `css-check` pass; `csscheck` with the Pi's `libcss.a` under qemu too.
 
+## 24. The network as in Chrome: certificates, brotli / zstd, HTTP/2, a disk cache, CORS
+
+The fetcher (`user/netsurf/onyx_fetch.c`), its TLS (`user/netsurf/onyx_nstls.cpp` on
+`user/tls/onyx_tls.hpp`, mbedTLS 3.6) and NetSurf's cache (`content/llcache.c`) brought near
+a current browser's. Every change is marked `Onyx:` in the sources.
+
+**Certificates checked.** The server's chain is verified against the trusted roots of
+`SD:/res/ca-bundle` (the Mozilla bundle as curl.se publishes it, Sept 2026: 121 roots; read
+once, parsed at the first TLS connection), its name against the host (SNI sent, the SAN DNS
+names and IP addresses matched, wildcards as RFC 6125), its dates against the Onyx clock
+(`kapi_get_datetime`, a day of slack either way; skipped while the clock is not set -- a year
+before 2025). mbedTLS is built without its own clock (`MBEDTLS_HAVE_TIME_DATE` off): the
+handshake runs with `VERIFY_OPTIONAL` and a verify callback checks the dates and records each
+certificate of the chain (its DER and its fault). The EC keys of every curve the bundle uses
+(secp256r1, secp384r1, secp521r1) are accepted. A refused certificate goes to NetSurf's own
+flow: `FETCH_CERTS` (the chain, for `about:certificate`) then `FETCH_CERT_ERR` -- the
+"Privacy error" page with the reason, "View certificate details" and "Proceed" (the host is
+then accepted for the session: `urldb_set_cert_permissions`; its connections are made
+without the check and kept apart from the checked ones). `about:certificate` has an mbedTLS
+implementation (`content/fetchers/about/certificate.c`, `WITH_MBEDTLS`: the names, the
+validity, the serial, the signature algorithm, the SHA-1 / SHA-256 fingerprints, the SAN
+names, the RSA / EC key). The perf log / stderr shows `ONYX-TLS refused <url>: certificate
+i/n: <reason>`. WebSocket and EventSource (`onyx_ws.c`) check the same, and follow a host the
+user accepted. The PC bench verifies too (`tools/tests/netsurf/host_stubs.c`: OpenSSL with the
+same bundle, plus the proxy's CA when the machine has one; `NS_MBEDTLS=1` runs the Pi's mbedTLS
+code instead). `tools/tests/netsurf/tlstest.sh`: badssl.com's expired, wrong.host,
+self-signed and untrusted-root refused with their reasons, badssl.com, en.wikipedia.org and
+github.com trusted, "Proceed" and the viewer -- with both TLS stacks.
+
+**Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
+comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
+1.5.7's decompressor vendored in `third_party/zstd-1.5.7`, `libzstddec.a`, ~70 KB).
+
+**HTTP/2** (nghttp2 1.70, vendored in `third_party/nghttp2-1.70.0`, `libnghttp2.a`,
+~115 KB). The first download to an https origin offers `h2, http/1.1` by ALPN; when the server
+takes h2, that download's thread becomes the **connection's owner** (`h2_run`): the origin's
+other fetches wait for the answer, then go as **streams** on it, queued by the UI thread
+(`h2_queue`, a word the owner waits on). One connection per origin, 4 origins at once (an
+idle one closed for a new origin, after 30 s idle anyway); push disabled; flow control with
+Chrome's windows (6 MB per stream, 15 MB for the connection) and Chrome's SETTINGS, pseudo-
+header order and priority (some CDNs tell browsers apart by them). The same streaming
+callbacks reach the core (the head, the body as it comes, decoded). `content/fetch.c` lets
+the fetches of a multiplexed origin past the per-host limit (32 per host, 64 in all). A
+server that chooses http/1.1 is remembered (`HTTP1Hosts`, a week), and so is one that answers
+the first stream 403: Fastly (bbc.com) refuses HTTP/2 from mbedTLS' TLS 1.2 fingerprint with
+a Chrome User-Agent -- the request is sent again over HTTP/1.1. `NS_H2=0` turns HTTP/2 off
+(the before / after), `NS_NETDEBUG=1` dumps each head and frame.
+
+**The sockets.** The Pi's kernel had 16 TCP sockets for every app (64 since, closed at the
+app's exit): the fetcher keeps to about 12 (6 download threads, 4 pooled HTTP/1.1
+connections, 4 HTTP/2 ones). At the app's end (`fetch_onyx_finalise` ->
+`onyx_fetch_shutdown`) every job is cancelled (the TLS handshakes and sends watch a cancel
+flag), the pooled and HTTP/2 connections closed, the threads waited for 300 ms at most, and
+`onyx_ws_shutdown` does the same for the WebSockets (`net:shutdown` in the perf log). A
+connect that finds the kernel's table full (`kapi_tcp_connect` -2) closes our idle
+connections and waits for a socket (5 s at most) instead of failing.
+
+**TLS sessions kept across launches.** The session cache (32 hosts) is saved to
+`SD:/apps/netsurf.app/TLSSessions` (`mbedtls_ssl_session_save`) with the user data and loaded
+at start: a known host's first connection is a resumed (abbreviated) handshake.
+
+**Timings.** With the perf log on (`NS_PERF=1`, or the file `SD:/apps/netsurf.app/perf`):
+`net:conn host:port queue dns tcp tls full|resumed h2|http/1.1` per new connection,
+`net:done url total ttfb protocol (kept connection) bytes (revalidated 304)` per response,
+`net:cache url fresh (card|memory)` per answer from the cache, `page:load` from the throbber's
+start to its stop, `cache:*` for the disk cache, `net:preconnect`, `net:tcp` for a failed or
+delayed connect.
+
+**A disk cache** (`user/netsurf/onyx_cache.c`: NetSurf's `gui_llcache_table` backing store,
+replacing the upstream `fs_backing_store.c`). The objects and their metadata go to
+`SD:/apps/netsurf.app/cache/<id>.d|.m` with an `index` (id, sizes, last use, URL), written by a
+thread of their own (the UI never waits for the card); 64 MB (Choices' `disc_cache_size`),
+the least recently used out beyond it. In `llcache.c`: an object is written to the card when
+it is complete and not `no-store`, and it is either fresh for a while or has a **validator**
+(`ETag`, `Last-Modified`) -- such an object stale or `no-cache` is kept (on the card, and in
+memory until it is written) and **revalidated** on its next use (`If-None-Match` /
+`If-Modified-Since`: a `304` is `FETCH_NOTMODIFIED`, the bytes kept); `max-age` / `Expires` /
+`immutable` are honoured (a fresh object is not asked for at all); a URL with a query but
+no explicit lifetime is revalidated rather than dropped (RFC 9111; RFC 2616's rule dropped
+it); a status other than 200 / 203 is not kept. The fetcher now gives the core the cache's
+headers and lets the conditional ones through. The write bandwidth allowed is 32 MB/s (the
+upstream 1 MB/s left most objects unwritten).
+
+**Preconnect.** `<link rel=preconnect>` opens the origin's connection while the page is
+parsed (HTTP/2 offered: the origin's fetches then go on it; an http/1.1 one goes to the
+pool), `<link rel=dns-prefetch>` resolves the name (the kernel caches the answer) -- 2 at
+once, only when an HTTP/2 slot is free, once per origin (`html/css.c` calls
+`onyx_fetch_preconnect`; `NS_NOPRECONNECT=1` turns it off).
+
+**CORS** for the scripts' `fetch` and `XMLHttpRequest` (`quickjs/net.js`), as the Fetch
+Standard: a cross-origin request carries `Origin`; a non-simple one (a method other than GET /
+HEAD / POST, a header not safelisted, a non-form `Content-Type`) is preceded by a preflight
+(`OPTIONS` with `Access-Control-Request-Method` / `-Headers`, its answer cached for its
+`Access-Control-Max-Age`); the response reaches the script only when its
+`Access-Control-Allow-Origin` names the page's origin (or `*` without credentials, and
+`Access-Control-Allow-Credentials: true` with them); the script sees the safelisted headers
+and those of `Access-Control-Expose-Headers` (`Response.type` `cors`). `credentials`
+(`same-origin` by default, `include`, `omit`) and XHR's `withCredentials` decide the cookies:
+without them the fetcher sends no `Cookie` and keeps no `Set-Cookie` (the request header
+`X-Onyx-Credentials: omit`, taken off). `mode: 'same-origin'` refuses another origin,
+`'no-cors'` allows a simple request only and gives an opaque response (status 0, no headers,
+no body). nettest.sh's `net-cors.html` checks each case against a second server (another
+origin of the same site).
+
+**Two fixes found on the way.** libparserutils (`src/input/inputstream.c`): the Onyx
+"filter pending" refill of `peek_slow` ran before the end of the input and overran its buffer
+when a style sheet came in several parts (github.com's sheets, decoded from brotli: "Error
+processing CSS") -- it now waits for the end (`had_eof`). The C library
+(`user/libc/onyx_syscalls.c`): `gettimeofday` took the kernel's 100 Hz ticks for
+milliseconds -- the clock of every app ran ten times slow (`time()`, `Date.now()`, the cache's
+ages); it reads the generic timer (`cntpct_el0` / `cntfrq_el0`) in microseconds now.
+
+**Measured** on the PC bench (live sites through the proxy, `NS_MBEDTLS=1`,
+`tools/tests/netsurf/loadtime.sh`: the first run cold -- no cache, no TLS session --, the
+next ones a second launch):
+
+| Site | Run | `page:load` | Responses (304) | From the card | Connections (TLS resumed) |
+|---|---|---|---|---|---|
+| bbc.com | cold | 32.9 s | 343 (0) | 0 | 17 HTTP/1.1, 39 HTTP/2 (13) |
+| bbc.com | warm | 7.0 / 7.7 s | 57 (1-2) | 186-188 | 11-14 HTTP/1.1, 32 HTTP/2 (19-22) |
+| github.com | cold | 2.1 s (one run; others had not settled in 40 s) | 152 (0) | 0 | 2 HTTP/1.1, 2 HTTP/2 (0) |
+| github.com | warm | 1.5-3.1 s | 102 (0) | 50 | 2 HTTP/1.1, 1 HTTP/2 (1) |
+| en.wikipedia.org | cold | 5.2-6.1 s | 74-105 | 0 | 3-4 HTTP/2 (0) |
+| en.wikipedia.org | warm | 5.2-7.2 s | 3-8 (2-5) | 57-60 | 2-4 HTTP/2 (0: wikimedia resumes no TLS 1.2 session) |
+
+A second launch downloads 5-20 % of what the first did (bbc.com: 57 responses instead of
+343, en.wikipedia.org: 5 instead of 105) and resumes most of its TLS handshakes; the bench's
+`page:load` gains little beyond bbc.com because the scripts and the layout dominate it (the
+cold bbc.com run also had a slow network: its sizes vary from one run to the next).
+
+Before this work (HTTP/1.1 only, no disk cache): bbc.com 21.4-22.7 s with about 107
+connections, en.wikipedia.org 7.6-10 s, github.com 3.9-4.7 s; HTTP/2 alone: bbc.com about 15 s
+(16 HTTP/2 and about 35 HTTP/1.1 connections), en.wikipedia.org 5.9-8.0 s. The bench's page
+times are dominated by the scripts and the layout (QuickJS, one core), not the network; the
+Pi's gain is in the connections (a TLS handshake costs ~100-150 ms of the Pi's CPU) and in
+what is not downloaded again.
+
+**Not done.** TLS 1.3 (mbedTLS' TLS 1.3 needs its PSA crypto: a TLS 1.2-only client is
+told apart by some CDNs -- the reason of Fastly's 403 over HTTP/2); OCSP / CRL revocation,
+Certificate Transparency, HSTS preload; HTTP/3; CSP; CORS for EventSource, `<img
+crossorigin>`, fonts and module scripts (their loads are the core's, not `net.js`'); the cache
+partitioned by top-level site; `Vary` beyond NetSurf's; a back-forward cache; preload hints
+(`<link rel=preload>`, `modulepreload`, 103 Early Hints).
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -1770,6 +1915,9 @@ Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with
   worker, no `OffscreenCanvas`, `SharedArrayBuffer` / `Atomics` between workers; the
   WebSocket client sends its messages uncompressed (permessage-deflate inflates only) and
   never pings; CORS is not checked for EventSource either.
+- The network (§24): TLS 1.2 only, no revocation checks, no CSP, no SameSite cookies, no
+  CORS for the core's loads (EventSource, fonts, `<img crossorigin>`, module scripts), no
+  HTTP/3, no back-forward cache.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
