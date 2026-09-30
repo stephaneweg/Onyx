@@ -87,8 +87,9 @@ static struct qnet_ctx *qnet_ctxs;
 static struct qnet_worker *qnet_workers;
 static int qnet_next_wid;
 
-/* the worker being made (qjs_worker_create runs qjs_net_setup for it) */
-static struct {
+/* the worker being made (qjs_worker_create runs qjs_net_setup for it; its leaving runs the
+ * runtime's pending jobs, the page's among them: another worker may be made meanwhile) */
+static struct qnet_making {
 	struct qnet_worker *w;
 	char *name, *type, *kind, *source;
 	size_t srclen;
@@ -740,9 +741,10 @@ static JSValue n_worker_new(JSContext *ctx, JSValueConst this_val, int argc, JSV
 	struct qnet_worker *w;
 	const char *url;
 	JSContext *wctx;
+	struct qnet_making saved = qnet_making;
 
 	(void) this_val;
-	if (c == NULL || argc < 6 || !JS_IsFunction(ctx, argv[5]) || qnet_making.w != NULL)
+	if (c == NULL || argc < 6 || !JS_IsFunction(ctx, argv[5]))
 		return JS_NewInt32(ctx, 0);
 	url = JS_ToCString(ctx, argv[0]);
 	if (url == NULL)
@@ -776,7 +778,7 @@ static JSValue n_worker_new(JSContext *ctx, JSValueConst this_val, int argc, JSV
 	free(qnet_making.type);
 	free(qnet_making.kind);
 	free(qnet_making.source);
-	memset(&qnet_making, 0, sizeof qnet_making);
+	qnet_making = saved;
 	JS_FreeCString(ctx, url);
 	if (wctx == NULL) {
 		qnet_worker_free(w);
@@ -1028,6 +1030,9 @@ static void qnet_report(JSContext *ctx, const char *where)
 	JS_FreeValue(ctx, e);
 }
 
+static uint8_t *qnet_bc;		/* net.js' bytecode (compiled once: qjs.c) */
+static size_t qnet_bc_len;
+
 /* exported interface documented in qjs_net.h */
 void qjs_net_setup(JSContext *ctx, JSValueConst natives, JSContext *parent)
 {
@@ -1054,7 +1059,8 @@ void qjs_net_setup(JSContext *ctx, JSValueConst natives, JSContext *parent)
 
 	JS_SetPropertyFunctionList(ctx, natives, qnet_natives,
 			sizeof(qnet_natives) / sizeof(qnet_natives[0]));
-	fn = JS_Eval(ctx, qjs_net_js, sizeof(qjs_net_js) - 1, "net.js", JS_EVAL_TYPE_GLOBAL);
+	fn = qjs_eval_cached(ctx, qjs_net_js, sizeof(qjs_net_js) - 1, "net.js", &qnet_bc,
+			&qnet_bc_len);
 	if (JS_IsException(fn)) {
 		qnet_report(ctx, "net.js");
 		JS_FreeValue(ctx, info);

@@ -21,12 +21,12 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §18) |
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
-| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17) |
+| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §18), `onyx_main.c`, the makefiles |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §18) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -64,7 +64,11 @@ nor those the inflate makes wrong). Without threads (an older kernel) it is the
 one-step-per-poll state machine (HTTP/1.1 with `Connection: close`, its chunks undone, the
 response delivered whole). mbedTLS (`user/tls/onyx_tls.hpp`): its session cache is locked (16
 hosts, replaced in turn), its receive buffer 16 KB (a whole record: fewer round trips to the
-network core). The cache (`content/llcache.c`, Onyx changes): a request's own headers
+network core); after the handshake its reads do not wait (`onyx_nstls.cpp`: the callers poll
+with their own idle rules -- a quiet connection was cut after 20 s). A script's request (fetch /
+XHR) waits 5 min for its answer (a long poll), the others 30 s. **WebSocket and event streams**
+(`onyx_ws.c`, §18): long-lived connections outside the fetch queue and the cache, each in a
+thread of its own, their connects in the downloads' turn. The cache (`content/llcache.c`, Onyx changes): a request's own headers
 (`llcache_handle_retrieve_ex`), its HTTP status kept (`llcache_handle_get_http_code`), its
 headers in order (`llcache_handle_get_header_at`).
 
@@ -244,9 +248,10 @@ optional chaining...) with the DOM written in JavaScript:
   (as text: no NUL). On one native, `request(method, url, body, headers, binary, cb)`
   (`qjs.c`): NetSurf's low-level cache with `LLCACHE_RETRIEVE_FORCE_FETCH`, the callback on the
   page's thread (the promises' jobs run after it, a changed DOM laid out again); the requests
-  in flight are cancelled when the document goes. Not yet: synchronous XHR (it runs async),
-  multipart bodies, CORS checks (every origin answers); streams, `responseXML` and
-  `responseType = 'document'`: html5.js (§17).
+  in flight are cancelled when the document goes. The response as it comes -- `Response.body`
+  a stream fed as the bytes arrive, XHR's `LOADING` and progress --, WebSocket, EventSource and
+  Workers: §18. Not yet: synchronous XHR (it runs async), multipart bodies, CORS checks
+  (every origin answers); `responseXML` and `responseType = 'document'`: html5.js (§17).
 - **A changed DOM is laid out again** (`html.c`, `html_script_dom_changed`): once a script
   is done, NetSurf builds the document's boxes again (`dom_to_box_now`, synchronously) and
   lays it out — a menu a script opens, a class toggled, nodes added. The old boxes' objects
@@ -816,17 +821,131 @@ pseudo-classes it does not know.
 - `tools/tests/netsurf/pages/js-html5.html`, `js-forms.html`, `js-apis.html`, `js-ce.html`
   (in `jstest.sh`): 44 + 45 + 26 + 17 checks. `html5test.sh` starts the run at the load, as
   html5test.co does (it waits for its browser detection script).
-- Not done (html5test counts them): Web Workers, EventSource and WebSocket (the requests are
-  delivered whole), IndexedDB, the editing APIs (`designMode`, `execCommand`), a real shadow
+- Not done (html5test counts them): IndexedDB, the editing APIs (`designMode`, `execCommand`), a real shadow
   tree (`attachShadow` returns the host, whose children are drawn), `<input type="image">`'s
   sizes, and what is out of this work: canvas, SVG, audio and video, WebRTC, WebGL.
 
+## 18. The scripts' real-time and background APIs (WebSocket, EventSource, streams, Workers)
+
+What chats, notifications and live pages need (Facebook's chat is MQTT over a WebSocket):
+**WebSocket**, **EventSource**, the **streamed fetch / XHR** and **Web Workers**. The C side is
+`user/netsurf/onyx_ws.c` (the connections) and `quickjs/qjs_net.c` (the natives); the API is
+`quickjs/net.js`, a third prelude run after html5.js (compiled in as `qjs_net_js.h`, as
+canvas.js is). html5test.co: +31 points (338 -> 369 of 588: `eventSource`, `websocket.basic`,
+`websocket.binary`, `worker`, `sharedWorker`).
+
+- **The connections** (`onyx_ws.c`): a WebSocket or an event stream is a long-lived socket,
+  outside the fetch queue and the low-level cache -- it takes no download slot (8 at once),
+  keeps no body in memory (llcache keeps every byte of a response), and has no idle timeout.
+  Each runs in a **thread** of its own (kernel v67), as the downloads do: the DNS and the
+  connect (in the downloads' turn: `onyx_fetch_connect`, "the connects one at a time"), the
+  TLS handshake (onyx_nstls), the HTTP handshake, then the frames. The thread posts
+  (`kapi_post`) when an event is ready; on the UI thread a scheduler callback gives the events
+  to the scripts. Messages to send wait in a queue; the thread sleeps between reads -- 1 ms
+  after some traffic, doubling to 50 ms (a socket's recv does not block on Onyx) -- and
+  `kapi_wake_word` wakes it at once when a message is queued. No NetSurf call in the thread:
+  the UI thread builds the request's headers (the Origin, the jar's cookies -- urldb is the UI
+  thread's --, the User-Agent, Accept-Language, the subprotocols, Last-Event-ID) and gives
+  the handshake's `Set-Cookie` to the jar.
+- **WebSocket** (RFC 6455, `ws:` and `wss:`): the opening handshake (`Sec-WebSocket-Key`,
+  the `Sec-WebSocket-Accept` checked with SHA-1, the subprotocol chosen among those asked,
+  `permessage-deflate` offered); client frames masked (the key from `kapi_random`); the
+  messages reassembled from their fragments, pings answered with pongs, control frames
+  between fragments; **permessage-deflate** inflated with zlib (the context kept between
+  messages unless `server_no_context_takeover`; the client's messages are sent
+  uncompressed, which the extension allows); text checked as UTF-8 (1007), a masked server
+  frame, reserved bits, an unknown opcode, a bad close code fail the connection (1002), a
+  message past 64 MB closes it (1009); the closing handshake both ways (the peer's close
+  answered with its code; ours waits 5 s for the answer). net.js: `WebSocket` (`url`,
+  `readyState`, `protocol`, `extensions`, `binaryType` `blob` / `arraybuffer`,
+  `bufferedAmount` -- the bytes queued in C and not yet sent --, `send` of a string, an
+  `ArrayBuffer`, a view or a `Blob`, `close(code, reason)` with its checks, the `open` /
+  `message` / `error` / `close` events, `CloseEvent` with `code`, `reason`, `wasClean`); a
+  failure before the open is `error` then `close` 1006.
+- **EventSource**: the stream (`Accept: text/event-stream`, redirects followed, chunked
+  undone) is given in parts cut after a line's end; net.js parses it as the standard says
+  (`data` lines joined, `event`, `id` -- the last event ID kept and sent back as
+  `Last-Event-ID` on a reconnection --, `retry`, comments, a CRLF cut between two parts, the
+  BOM), dispatches `message` and named events (`MessageEvent` with `lastEventId`, `origin`),
+  reconnects after `retry` ms (default 3 s) when the stream ends or fails, and fails for good
+  (CLOSED, no reconnection) on a status other than 200 or another content type;
+  `withCredentials` (cross-origin: the cookies only with it).
+- **The streamed response** (qjs.c's `request`): a request may give its head and body as they
+  come -- `pcb(0, head)` at `LLCACHE_EVENT_HAD_HEADERS`, `pcb(1, ArrayBuffer)` for each part
+  once the script reads the body as a stream (`N.requestMode`: the bytes come so far first),
+  `pcb(2, bytes)` for XHR's progress; an abort from inside the callback waits until it
+  returns (the llcache handle is in its callback). `fetch` resolves its `Response` when the
+  head is in; `Response.body` is a real `ReadableStream` fed as the bytes arrive
+  (`getReader`, `tee`, `pipeTo`...); `text()` / `json()` / `arrayBuffer()` / `blob()` wait for
+  the whole body (nothing crosses to JavaScript before, unless the stream is read);
+  `clone()` tees; an `AbortSignal` errors the stream; a `ReadableStream` request body is read
+  whole, then sent. `blob()` keeps a binary body's bytes. `XMLHttpRequest`:
+  `HEADERS_RECEIVED` (its status and headers) when the head is in, `LOADING` and a
+  `progress` event (the bytes come so far, `total` from `Content-Length` when there is no
+  `Content-Encoding`) at each part, `responseText` while it loads (`N.requestSoFar`), the
+  `upload` events. A script's request (fetch / XHR) waits 5 min for its answer, not 30 s: a
+  long poll holds its request till something happens.
+- **TLS reads no longer wait** (`onyx_nstls.cpp`): after the handshake, a read that finds
+  nothing returns at once (mbedTLS goes on with a record read in part at the next call).
+  onyx_tls.hpp's BIO waited up to 20 s and then reported the connection reset: a WebSocket or
+  a long poll quiet for 20 s was cut, and its thread could not send while it waited. The
+  callers poll with their own idle rules (the fetcher's 30 s / 5 min).
+- **Workers**: a `Worker` is a QuickJS **context of its own** in the window's runtime, run on
+  the UI thread by NetSurf's scheduler (its timers and messages are tasks, cooperative as the
+  page's): a jsthread without a document (qjs.c's `qjs_worker_create`: its URL is its
+  location and the base of its requests), with the same preludes (Intl, dom.js, html5.js --
+  a stand-in document while html5.js sets up), then net.js makes its global a worker's: the
+  DOM, `window`, `document`, the storages and the element classes removed; `self`,
+  `WorkerGlobalScope` / `DedicatedWorkerGlobalScope` (the global's prototype), `name`,
+  `postMessage`, `close`, `onmessage` / `onmessageerror` / `onerror`, `importScripts`, and
+  `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, timers, `Intl`, `crypto`,
+  `TextEncoder`, `Blob`, streams from the page's preludes. The page fetches the script
+  (`blob:` and `data:` URLs too), then the context is made and the script runs a task later;
+  the `importScripts` with literal URLs are fetched first, in parallel; another is read when
+  it runs (file:, or a blocking http(s) GET: `onyx_http_get_sync`). **Module workers**
+  (`{ type: 'module' }`): the module and what it imports, fetched as QuickJS asks
+  (`N.moduleRun`). A message is written by QuickJS's object serializer (`JS_WriteObject2`:
+  objects, arrays, typed arrays and buffers, `Map`, `Set`, `Date`, `RegExp`, `BigInt`, cycles)
+  in the sender's context and read into the receiver's (`JS_ReadObject`) -- the structured
+  clone between realms; net.js wraps what the serializer does not know (`Blob`, `File`,
+  `Error`, `ImageData`) and refuses a function, a symbol or a node (`DataCloneError`);
+  transferred `ArrayBuffer`s are detached. An exception in the worker's script or message
+  listeners is the worker's `error` event, then the `Worker`'s (`ErrorEvent` with its message,
+  file, line). `terminate()` ends it at once (its messages dropped); `close()` from inside
+  ends it once the task is done (the messages it sent still arrive).
+- **SharedWorker**: shared by the `SharedWorker`s of the document with the same URL and
+  name (one window: no other documents to share with); each gets a `port` (`postMessage`,
+  `onmessage`, `start`, `close`); the worker's `onconnect` gets the port in `ev.ports[0]`.
+- **BroadcastChannel**: html5.js' channels (within a context) also reach the page's other
+  contexts -- the page and all its workers, and theirs (`N.broadcast`).
+- **The end**: when the document goes (`js_closethread`, the context's free:
+  `qjs_net_stop`), its sockets and streams are dropped (their threads stop, they free what is
+  left), its workers ended (and theirs), the messages still queued freed; a callback running
+  then finishes first (the records are freed after it). The JS values are freed with the
+  runtime once a context may be gone.
+- Tests: `tools/tests/netsurf/nettest.sh` (a local server, `wssrv.py`, Python's standard
+  library: WebSocket with permessage-deflate and fragments, an event stream with a
+  reconnection, a chunked body; `pages/net-ws.html`, `net-stream.html`, `net-teardown.html`:
+  54 checks), `pages/net-worker.html` in `jstest.sh` (20 checks: the worker's scope,
+  `importScripts` fetched first and read when asked, timers, fetch, the structured clone of
+  `Map` / `Set` / `Date` / `RegExp` / typed arrays / `Blob` / errors / `BigInt` / cycles,
+  errors, BroadcastChannel, `close`, a `blob:` worker, a module worker, a SharedWorker);
+  `pages/net-live.html` against public servers (wss://echo.websocket.org, Wikimedia's event
+  stream: its events and a streamed fetch of it). Valgrind: no invalid access in these pages.
+
 ## 8. Known gaps
 
-- JavaScript: synchronous XHR (runs async), multipart request bodies; no Workers,
-  EventSource, WebSocket, IndexedDB, editing APIs, shadow trees (§17); CSS `:active` /
-  `:focus`; a form control
+- JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
+  (sent as text: a NUL ends them); no IndexedDB, editing APIs, shadow trees (§17), Service
+  Workers; CSS `:active` / `:focus`; a form control
   outside a form is made again at each layout the scripts cause (its old one leaks).
+- The network APIs (§18): a worker runs on the UI thread (a long computation in a worker
+  holds the window as a page's script does; `script_timeout` stops it); an `importScripts`
+  whose URL is not a literal in the script, over http(s), blocks the UI thread while it is
+  read; a SharedWorker is shared within its document only; no `MessagePort` transferred to a
+  worker, no `OffscreenCanvas`, `SharedArrayBuffer` / `Atomics` between workers; the
+  WebSocket client sends its messages uncompressed (permessage-deflate inflates only) and
+  never pings; CORS is not checked for EventSource either.
 - `opacity`, filters, animations and transitions.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's

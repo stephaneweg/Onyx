@@ -14,6 +14,8 @@
 #define NETSURF_QJS_NET_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include "quickjs.h"
 
 struct nsurl;
@@ -38,6 +40,11 @@ void qjs_worker_destroy(JSContext *wctx);
 
 /** The URL of a context's scripts: its document's, or its worker script's (not a ref). */
 struct nsurl *qjs_ctx_url(JSContext *ctx);
+
+/** A prelude (dom.js, html5.js, net.js...) evaluated: its value; compiled once per process,
+ * its bytecode kept in *bc and read back in the next contexts. */
+JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char *name,
+		uint8_t **bc, size_t *bclen);
 
 /** Whether a context's scripts are stopped. */
 bool qjs_ctx_closed(JSContext *ctx);
