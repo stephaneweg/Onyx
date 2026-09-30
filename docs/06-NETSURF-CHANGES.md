@@ -26,7 +26,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -114,7 +114,10 @@ headers in order (`llcache_handle_get_header_at`).
 - **Matching** as CSS Fonts says: the style first (an italic with no italic face is its
   roman slanted, x += y/4), then the nearest weight (600 and up is bold with two faces).
 - **Per-character fallback**: the families of the list in turn, then DejaVu Sans.
-- **Advances**: unhinted (fractional), each glyph drawn at its pen position rounded;
+- **Advances**: unhinted (fractional), at the exact size -- from the font's units (FreeType
+  rounds the pixel size to a whole ppem for the TrueType fonts that ask for it: DejaVu's 10pt
+  text was measured at 13 px, 2.5 % narrower than Chrome's) --, each glyph drawn at its pen
+  position rounded;
   glyphs hinted lightly (`FT_LOAD_TARGET_LIGHT`, vertically only). `letter-spacing`,
   `word-spacing` (new `plot_font_style_t` fields) and `font-variant: small-caps` apply.
 - **Vertical metrics** (`fb_font_metrics`, the layout table's `metrics`): as DirectWrite
@@ -129,6 +132,8 @@ headers in order (`llcache_handle_get_header_at`).
   the weight asked (its `wght` axis). `onyx_fetch.c` asks `fonts.googleapis.com` with a
   current browser's user agent (WOFF2 subsets, ~50 KB a weight, rather than 300 KB TTFs).
 - FreeType is built with the TrueType and CFF drivers, zlib (WOFF) and Brotli (WOFF2).
+- **No minimum font size** by default (`font_min_size` 1pt, `desktop/options.h`): Chrome has
+  none -- 8pt text was drawn at 8.5pt.
 
 ## 4. CSS (libcss)
 
@@ -153,26 +158,155 @@ headers in order (`llcache_handle_get_header_at`).
   compute is checked against its official grammar and kept without effect; @keyframes,
   @counter-style, @property, @scope... kept; Selectors 4; the newer units and math functions
   computed; SVG's fill / stroke... computed.
+- **`flex` shorthand**: `<grow> <shrink>? || <basis>` -- the shrink factor right after the
+  grow one (`flex: 1 0 auto` read its `0` as the basis, then failed on `auto`: the whole
+  declaration was dropped; google.com's header).
+- **`min-width` / `min-height: auto`** stay `auto` in the computed style (upstream made them
+  0 unless the box itself was a flex container): the layout reads them as 0
+  (`ns_computed_min_*`) except for a flex / grid item's automatic minimum size.
 - libcss's own selection tests still pass: `make -f tools/tests/netsurf/host.mk
-  libcss-test`.
+  libcss-test` (its dump prints the old reading of `min-*: auto`; `flex: 0 0`'s expected
+  shrink factor corrected to 0).
 
 ## 5. Layout (`content/handlers/html/layout*.c`)
 
-- **Flexbox**: inline children blockified; the automatic minimum size; item contributions
-  as Flexbox 9.9.1 (the larger of content and definite width, clamped by the flex base);
-  `gap`; `justify-content`, `align-content`; `min-height`/`max-height` with auto height.
-- **Grid** (`layout_grid.c`, new): templates, `repeat()`, `fr`, `minmax()`, auto tracks,
-  placement, areas, `auto-fill`/`auto-fit`, gaps, alignment. A grid container is a
-  `BOX_FLEX`/`BOX_INLINE_FLEX` box whose display is grid.
+Measured against Chromium box by box: `tools/tests/netsurf/layouttest.sh` runs
+`layoutdiff.sh` over the reduced pages of `pages/layout/` (one feature each: flex rows and
+columns, grid, heights, abs-pos, inline, lines, forms, tables / floats, text, misc, google.com's
+home and bar) and prints, per page, the boxes that differ (the page's coordinates, and "local":
+relative to the previous sibling or the parent, so that one misplaced box does not count all
+that follow). layoutdiff gives Chromium NetSurf's fonts and substitutions
+(`nsfonts-conf.sh`: Verdana is DejaVu Sans, Segoe UI Selawik... as `fb_font_aliases`), unhinted
+at fractional sizes as Chrome on Windows, and a viewport as high as NetSurf's page: the boxes
+differ by their layout, not by the fonts a Linux Chromium has. At the start of this work: 380
+of 491 boxes differed (238 local); now 38 of 608 (28 local, most of them text rounding and
+things NetSurf does not draw: `<video>`, the scroll bar's width); news.ycombinator.com 797 of
+799 -> 52.
+
+### 5.1 Flexbox (`layout_flex.c`, rewritten)
+
+The upstream flex layout (a partial CSS Flexbox 9.7) is replaced by the specification's
+algorithm, section 9, as Blink, Taffy and Yoga implement it:
+
+1. the items: the in-flow children in `order` (a stable sort); their margins, borders,
+   paddings, specified sizes and min / max sizes (percentages of the container);
+2. each item's **flex base size** -- `flex-basis` (a length, a percentage of a definite main
+   size), `auto` (its width / height), `content` (its max-content width in a row; in a column
+   its height laid out at its cross size) -- or the size transferred through a ratio (an image's
+   natural ratio, `aspect-ratio`) from a definite or stretched cross size (an image with no
+   size in a 100 px high row is 100 px high, its width from its ratio); its **automatic minimum
+   size** (4.5: its min-content size, no larger than its specified or transferred size, for an
+   item that is not a scroll container); its hypothetical main size;
+3. a column with an auto height: its items' hypothetical sizes, within `min-height` /
+   `max-height` -- and the items flexed in that height (a `min-height: 100%` page column whose
+   `flex: 1` middle pushes the footer down: google.com);
+4. the lines (`flex-wrap`), then the flexible lengths resolved line by line (9.7: the
+   inflexible items frozen, the free space shared by `flex-grow` or by `flex-shrink` scaled by
+   the base size, min / max violations frozen) in floating point;
+5. the cross sizes: each item laid out at its main size; the lines' cross sizes (baseline
+   alignment: the largest ascent plus the largest descent), a single line as tall as a definite
+   container, `align-content`; the items with `align-self: stretch` and an auto cross size
+   stretched to their line -- their height is then **definite** (`DEF_HEIGHT`, below) and
+   they are laid out again only when their content depends on it (percentage heights; a flex,
+   grid or table box, a form control when the height changed): the relayouts stay few;
+6. main-axis alignment (auto margins, `justify-content`, the gaps, `row-reverse` /
+   `column-reverse`), cross-axis alignment (auto margins, `align-self`, `wrap-reverse`).
+
+Sizes and positions are floating point until stored, each box's left edge and size rounded (as
+Chrome's rectangles are). The container's own width, height, margins, paddings and borders are
+its caller's (block context, flex / grid item, float, absolute box); `layout_flex` applies its
+`min-height` / `max-height`. A **flex container's intrinsic widths** are its items'
+contributions (`layout_minmax_flex`, 9.9.1: the larger of an item's content and its specified
+width, clamped by its flex base size -- a maximum if it does not grow, a minimum if it does not
+shrink -- then by its min / max-width; summed in a row, the widest in a column); a flex item's
+own `min_width` / `max_width` stay its content's (its automatic minimum, its content basis).
+
+### 5.2 Heights and blocks
+
+- **Percentage heights** (`layout_pct_height_base`, `layout_internal.h`): against a
+  containing block whose height is specified, or given by its flex / grid container
+  (`DEF_HEIGHT`, a new box flag: a stretched or flexed item's height, definite for its
+  children -- CSS Flexbox 9.8), an absolute box's always; `min-height` and `max-height` in
+  percentages too (they were ignored), with `box-sizing`; a specified height is kept within
+  `min-height` / `max-height`.
+- **`aspect-ratio`**: an auto width from a definite height, an auto height from the width
+  (blocks, floats, inline-blocks, flex items, intrinsic widths; the ratio of the border box
+  with `box-sizing: border-box`).
+- **`display: contents`** (`box_construct.c`): the element's box is kept off the tree (its
+  style, which its children inherit), its children are its parent's (flex items of the
+  parent's flex container).
+- A flex / grid container never collapses margins through it, and gives its ancestors
+  `HAS_HEIGHT` (the margins before it go above them, not inside); it avoids the floats
+  beside it (a formatting context root); a floated flex container is laid out as one.
+- **Compressible replaced elements** (CSS Sizing 3 5.2.2): an image with a percentage width
+  or max-width contributes nothing to a min-content width (a `max-width: 100%` image in a
+  grid or flex track, a table cell); an image with a definite height and an auto width
+  contributes its height times its ratio.
+
+### 5.3 Lines and inline boxes
+
 - **Lines on their baseline** (CSS 2.1 10.8): the block's strut, text (its font's ascent
-  below the half leading), inline-blocks and buttons (their last / first line's
-  baseline), images (their bottom edge), `vertical-align` (sub, super, middle, text-top,
-  text-bottom, top, bottom, lengths) — NetSurf put each box at the top of the line and a
-  text's baseline three quarters down. `line-height: normal` is the font's spacing (was
-  1.3 em); a run of lines keeps its fractions of a pixel.
+  below the half leading), inline-blocks and buttons (their last / first line's baseline),
+  images (their bottom edge), `vertical-align` (sub, super, middle, text-top, text-bottom,
+  top, bottom, lengths) -- NetSurf put each box at the top of the line and a text's baseline
+  three quarters down. `line-height: normal` is the font's spacing (was 1.3 em); a run of
+  lines keeps its fractions of a pixel. A block's own `vertical-align` (a table cell's
+  `middle`) is not its text's.
+- **Text and inline boxes are their font's content area** (ascent + descent) around the
+  baseline, not their line-height box: their background and their rectangle
+  (`getBoundingClientRect`) are Chrome's; the text is drawn on the same baseline.
+- **Zero-height lines** (9.4.2): a line with no text, no atomic inline, no `<br>` and no
+  inline with a horizontal margin, border or padding has no height (the empty start of an
+  inline holding a block made a line of its own); a form control's value line always has.
+- **Line breaks only at break opportunities**: a space, an atomic inline -- `(<a>x.com</a>)`
+  was broken between `(` and the link; a run without one stays on its line (overflowing).
 - `transform`'s translation moves a box as a relative offset (paint and hit-testing).
 - The space after an inline-block, inline-flex, image or control is kept.
-- `<button>` keeps a flex / grid / block box.
+
+### 5.4 Form controls
+
+- The UA sheet (`resources/default.css`) has Chrome's controls: 13.333px Arial, no margins;
+  text fields `padding: 1px 2px; border: 2px inset`; buttons `padding: 1px 6px; border: 2px
+  outset`, border-box; textareas `padding: 2px; border: 1px solid`, monospace; selects
+  border-box with a 1 px border; check boxes and radios 13 px with Chrome's margins.
+- **Intrinsic sizes** (`layout_text_control_size`): a text field's width from its `size`
+  (20) -- that many average characters of its font (Arial's 0.574 em, rounded) plus the
+  widest one's excess (1.26 em); a textarea's from `cols` (20) monospace advances plus a 15 px
+  scroll bar and its height from `rows` (2) lines. They are no longer CSS width / height hints
+  (`css/hints.c`): a style's width or a flex stretch overrides them, as in Chrome. A
+  block-level control keeps its intrinsic width.
+- **Baselines**: a text field's is its text line's, centred in its content box; a check
+  box's is its border box's bottom; a button's content is centred in its height and its
+  baseline follows.
+- `<button>` keeps a flex / grid / block box; inputs and selects stay flex / grid items
+  (`box_special.c`: they were made inline-blocks again).
+
+### 5.5 Tables
+
+- A cell's `width` is its content box's: the column holds its padding and border
+  (`table.c`); a table's `width` follows `box-sizing` (the UA sheet sets `border-box` on
+  tables, as Chrome's).
+- A table wider than its columns' max-content widths gives the spare width to the auto
+  columns in proportion to their max-content widths (it was shared equally: Hacker News'
+  header put its "login" column at 212 px instead of 84).
+- `table-layout: fixed`: the columns from the first row's cells, the rest shared equally.
+- Row groups and rows span the cells, not the border spacing around them (their boxes as
+  Chrome's; the cells are moved to match, nothing moves on screen).
+
+### 5.6 Grid
+
+`layout_grid.c` (new): templates, `repeat()`, `fr`, `minmax()`, auto tracks, placement,
+areas, `auto-fill`/`auto-fit`, gaps, alignment. A grid container is a `BOX_FLEX` /
+`BOX_INLINE_FLEX` box whose display is grid. Its items' automatic minimum is their content's
+(libcss now keeps `min-width: auto`, below).
+
+### 5.7 UA sheet (HTML5)
+
+`[hidden]`, `template`, `datalist`, `dialog:not([open])` and the other non-rendered elements
+are hidden (google.com's screen-reader text showed in its search box); an open `dialog` is
+centred; the headings', paragraphs', lists', `dl` / `dd`, `figure`, `blockquote`,
+`fieldset` / `legend` margins and paddings are the HTML standard's; `body` has no
+`line-height` (it was 1.33).
 
 ## 6. Painting (`content/handlers/html/redraw.c`, `onyx_paint.c`)
 
