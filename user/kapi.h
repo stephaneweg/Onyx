@@ -385,6 +385,11 @@ static inline int kapi_gpu_render3 (const struct kapi_gpu_frame *f, const float 
 // (v63) gpu_vbuf: memory the GPU reads too -- gpu_render3 draws vertices there in place (framed in
 // place: view 0 to draw them again; the clipped triangles into the room past nfloats) -> 0 none
 static inline void *kapi_gpu_vbuf (unsigned bytes) { return KT->version >= 63 ? KT->gpu_vbuf (bytes) : 0; }
+// (v70) gpu_texture_rect: a rectangle x, y, w x h of a texture's pixels (0xAARRGGBB) replaced, the
+// rest kept -> 0, -1 no GPU / older kernel, -2 bad arguments. (Also v70: KAPI_GPU_F_ALPHA, a frame's
+// target keeping its alpha; the GPU compositing service over these: user/gpucomp/gpucomp.h.)
+static inline int kapi_gpu_texture_rect (int handle, int x, int y, int w, int h, const unsigned *pixels, int stride)
+{ return KT->version >= 70 ? KT->gpu_texture_rect (handle, x, y, w, h, pixels, stride) : -1; }
 // (v64) the windows of the modernised CDE desktop: minimise one (0: mine; back with win_raise /
 // raise_app), my window's place and size and the work area (the screen less the menu bar and the
 // dock), resize my window letting its canvas grow (*stride: its pixels a row; redraw everything,
