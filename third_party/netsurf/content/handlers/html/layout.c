@@ -321,7 +321,7 @@ static int layout_text_indent(
  * \post  table->min_width and table->max_width filled in,
  *        0 <= table->min_width <= table->max_width
  */
-static void layout_minmax_table(struct box *table,
+static void layout_minmax_table_grid(struct box *table,
 		const struct gui_layout_table *font_func,
 		const html_content *content)
 {
@@ -494,6 +494,111 @@ static void layout_minmax_table(struct box *table,
 	table->max_width += (table->columns + 1) * border_spacing_h;
 
 	assert(0 <= table->min_width && table->min_width <= table->max_width);
+}
+
+/** Onyx: a table's captions (TABLE_CAPTION: its first and last children),
+ * taken off its children while its grid is measured or laid out */
+struct layout_captions {
+	struct box *top, *top_last, *bottom, *bottom_last;
+};
+
+static void layout_captions_detach(struct box *table,
+		struct layout_captions *cap)
+{
+	struct box *b;
+
+	cap->top = cap->top_last = cap->bottom = cap->bottom_last = NULL;
+	b = table->children;
+	if (b != NULL && (b->flags & TABLE_CAPTION)) {
+		cap->top = b;
+		while (b->next != NULL && (b->next->flags & TABLE_CAPTION))
+			b = b->next;
+		cap->top_last = b;
+		table->children = b->next;
+		if (b->next != NULL)
+			b->next->prev = NULL;
+		else
+			table->last = NULL;
+		b->next = NULL;
+	}
+	b = table->last;
+	if (b != NULL && (b->flags & TABLE_CAPTION)) {
+		cap->bottom_last = b;
+		while (b->prev != NULL && (b->prev->flags & TABLE_CAPTION))
+			b = b->prev;
+		cap->bottom = b;
+		table->last = b->prev;
+		if (b->prev != NULL)
+			b->prev->next = NULL;
+		else
+			table->children = NULL;
+		b->prev = NULL;
+	}
+}
+
+static void layout_captions_attach(struct box *table,
+		struct layout_captions *cap)
+{
+	if (cap->top != NULL) {
+		cap->top_last->next = table->children;
+		if (table->children != NULL)
+			table->children->prev = cap->top_last;
+		else
+			table->last = cap->top_last;
+		table->children = cap->top;
+	}
+	if (cap->bottom != NULL) {
+		cap->bottom->prev = table->last;
+		if (table->last != NULL)
+			table->last->next = cap->bottom;
+		else
+			table->children = cap->bottom;
+		table->last = cap->bottom_last;
+	}
+}
+
+/**
+ * A table's minimum and maximum widths: its grid's, at least its captions'
+ * minimum (Onyx: CSS 2.1 17.4, the table wrapper box).
+ */
+static void layout_minmax_table(struct box *table,
+		const struct gui_layout_table *font_func,
+		const html_content *content)
+{
+	struct layout_captions cap;
+	struct box *b;
+	int cap_min = 0, fixed = 0;
+	float frac = 0;
+
+	if (table->max_width != UNKNOWN_MAX_WIDTH)
+		return;
+	layout_captions_detach(table, &cap);
+	if (cap.top == NULL && cap.bottom == NULL) {
+		layout_minmax_table_grid(table, font_func, content);
+		return;
+	}
+	if (table->children != NULL)
+		layout_minmax_table_grid(table, font_func, content);
+	layout_captions_attach(table, &cap);
+	for (b = table->children; b != NULL; b = b->next) {
+		if (!(b->flags & TABLE_CAPTION))
+			continue;
+		layout_minmax_block(b, font_func, content);
+		if (cap_min < b->min_width)
+			cap_min = b->min_width;
+	}
+	if (table->max_width == UNKNOWN_MAX_WIDTH)
+		table->min_width = table->max_width = 0;
+	/* (the caption's width is the table's border box: plus its margins) */
+	calculate_mbp_width(&content->unit_len_ctx, table->style, LEFT,
+			true, false, false, &fixed, &frac);
+	calculate_mbp_width(&content->unit_len_ctx, table->style, RIGHT,
+			true, false, false, &fixed, &frac);
+	cap_min += fixed > 0 ? fixed : 0;
+	if (table->min_width < cap_min)
+		table->min_width = cap_min;
+	if (table->max_width < cap_min)
+		table->max_width = cap_min;
 }
 
 /**
@@ -993,8 +1098,10 @@ static void layout_minmax_block(
 			wtype != CSS_WIDTH_SET) {
 		/* box shrinks to fit; need minimum width */
 		block->flags |= NEED_MIN;
-	} else if (block->type == BOX_TABLE_CELL) {
-		/* box shrinks to fit; need minimum width */
+	} else if (block->type == BOX_TABLE_CELL ||
+			(block->flags & TABLE_CAPTION)) {
+		/* box shrinks to fit; need minimum width (Onyx: a caption's
+		 * widens its table) */
 		block->flags |= NEED_MIN;
 	} else if (block->parent && (block->parent->flags & NEED_MIN) &&
 			wtype != CSS_WIDTH_SET) {
@@ -1286,6 +1393,45 @@ static void layout_minmax_block(
 
 
 /**
+ * Onyx: whether an inline container followed by a sibling holds floats only
+ * (and collapsible white space): its line is empty (CSS 2.1 9.4.2), the
+ * margins collapse through it -- a floated figure between two paragraphs
+ * kept them apart by both margins.
+ */
+static bool layout_floats_only(const struct box *ic)
+{
+	const struct box *b;
+	bool floats = false;
+
+	if (ic->type != BOX_INLINE_CONTAINER || ic->next == NULL)
+		return false;
+	for (b = ic->children; b != NULL; b = b->next) {
+		if (b->type == BOX_FLOAT_LEFT || b->type == BOX_FLOAT_RIGHT) {
+			floats = true;
+			continue;
+		}
+		if (b->type == BOX_TEXT && b->text != NULL && b->style != NULL) {
+			enum css_white_space_e ws =
+					css_computed_white_space(b->style);
+			size_t i;
+
+			if (b->length > 0 && ws != CSS_WHITE_SPACE_NORMAL &&
+					ws != CSS_WHITE_SPACE_NOWRAP)
+				return false;
+			for (i = 0; i < b->length; i++)
+				if (b->text[i] != ' ' && b->text[i] != '\n' &&
+						b->text[i] != '\t' &&
+						b->text[i] != '\r')
+					return false;
+			continue;
+		}
+		return false;
+	}
+	return floats;
+}
+
+
+/**
  * Find next block that current margin collapses to.
  *
  * \param  unit_len_ctx  Length conversion context
@@ -1345,7 +1491,8 @@ layout_next_margin_block(const css_unit_ctx *unit_len_ctx,
 					css_computed_overflow_y(box->style) !=
 					CSS_OVERFLOW_VISIBLE) ||
 					(box->type == BOX_INLINE_CONTAINER &&
-					!box_is_first_child(box))) {
+					!box_is_first_child(box) &&
+					!layout_floats_only(box))) {
 				/* Collapse to this box; return it */
 				return box;
 			}
@@ -1774,8 +1921,11 @@ static void layout_move_children(struct box *box, int x, int y)
 }
 
 
-/* Documented in layout_internal.h */
-bool layout_table(
+/** Onyx: the width (content box) a table's captions need of its grid (their
+ * minimum: CSS 2.1 17.4), for layout_table_grid */
+static int layout_table_caption_min;
+
+static bool layout_table_grid(
 		struct box *table,
 		int available_width,
 		html_content *content)
@@ -2210,6 +2360,25 @@ bool layout_table(
 		}
 	}
 
+	/* Onyx: at least as wide as its captions (the extra shared equally) */
+	if (layout_table_caption_min - table->border[LEFT].width -
+			table->padding[LEFT] - table->padding[RIGHT] -
+			table->border[RIGHT].width > table_width && columns > 0) {
+		int need = layout_table_caption_min -
+				table->border[LEFT].width - table->padding[LEFT] -
+				table->padding[RIGHT] - table->border[RIGHT].width;
+		int extra = need - table_width, given = 0;
+
+		for (i = 0; i != columns; i++) {
+			int e = extra / (int) columns;
+			if (i + 1 == columns)
+				e = extra - given;
+			given += e;
+			col[i].width += e;
+		}
+		table_width = need;
+	}
+
 	xs[0] = x = border_spacing_h;
 	for (i = 0; i != columns; i++) {
 		if (!col[i].positioned)
@@ -2416,6 +2585,131 @@ bool layout_table(
 	table->height = table_height;
 
 	return true;
+}
+
+
+/**
+ * Onyx: lay out a table's caption: a block as wide as the table's border box.
+ *
+ * 
+eturn its margin box's height, or -1 on memory exhaustion
+ */
+static int layout_table_caption(struct box *b, int width,
+		html_content *content)
+{
+	int w;
+
+	layout_find_dimensions(&content->unit_len_ctx, width, -1, b, b->style,
+			0, 0, 0, 0, 0, 0, b->margin, b->padding, b->border);
+	if (b->margin[LEFT] == AUTO)
+		b->margin[LEFT] = 0;
+	if (b->margin[RIGHT] == AUTO)
+		b->margin[RIGHT] = 0;
+	if (b->margin[TOP] == AUTO)
+		b->margin[TOP] = 0;
+	if (b->margin[BOTTOM] == AUTO)
+		b->margin[BOTTOM] = 0;
+	w = width - b->margin[LEFT] - b->border[LEFT].width -
+			b->padding[LEFT] - b->padding[RIGHT] -
+			b->border[RIGHT].width - b->margin[RIGHT];
+	b->width = w > 0 ? w : 0;
+	b->height = AUTO;
+	b->float_children = NULL;
+	b->cached_place_below_level = 0;
+	if (!layout_block_context(b, -1, content))
+		return -1;
+	return b->margin[TOP] + b->border[TOP].width + b->padding[TOP] +
+			b->height + b->padding[BOTTOM] +
+			b->border[BOTTOM].width + b->margin[BOTTOM];
+}
+
+/**
+ * Onyx: place a list of captions from y (relative to the table's padding
+ * box), each as wide as the table's border box.
+ *
+ * 
+eturn the captions' total height, or -1 on memory exhaustion
+ */
+static int layout_table_captions(struct box *table, struct box *list, int y,
+		html_content *content)
+{
+	int width = table->border[LEFT].width + table->padding[LEFT] +
+			table->width + table->padding[RIGHT] +
+			table->border[RIGHT].width;
+	int total = 0;
+	struct box *b;
+
+	for (b = list; b != NULL; b = b->next) {
+		int h = layout_table_caption(b, width, content);
+
+		if (h < 0)
+			return -1;
+		b->x = -table->border[LEFT].width + b->margin[LEFT] +
+				b->border[LEFT].width;
+		b->y = y + total + b->margin[TOP] + b->border[TOP].width;
+		total += h;
+	}
+	return total;
+}
+
+/* Documented in layout_internal.h */
+bool layout_table(
+		struct box *table,
+		int available_width,
+		html_content *content)
+{
+	/* Onyx: the grid, then its captions (CSS 2.1 17.4): the top ones above
+	 * its border box, the bottom ones below -- the table's box holds them
+	 * (as Chrome's table wrapper box), the redraw paints its background
+	 * and borders around the grid only */
+	struct layout_captions cap;
+	int top = 0, bottom = 0;
+	bool ok;
+
+	layout_captions_detach(table, &cap);
+	if (cap.top == NULL && cap.bottom == NULL)
+		return layout_table_grid(table, available_width, content);
+	{
+		/* the captions' minimum width, less the table's border and
+		 * padding (known after layout_find_dimensions: the previous
+		 * layout's, or none) */
+		struct box *b;
+		int min = 0;
+
+		for (b = cap.top; b != NULL; b = b->next) {
+			layout_minmax_block(b, content->font_func, content);
+			if (min < b->min_width)
+				min = b->min_width;
+		}
+		for (b = cap.bottom; b != NULL; b = b->next) {
+			layout_minmax_block(b, content->font_func, content);
+			if (min < b->min_width)
+				min = b->min_width;
+		}
+		layout_table_caption_min = min;
+	}
+	ok = layout_table_grid(table, available_width, content);
+	layout_table_caption_min = 0;
+	if (ok && cap.top != NULL) {
+		top = layout_table_captions(table, cap.top,
+				-table->border[TOP].width, content);
+		if (top < 0)
+			ok = false;
+		else
+			layout_move_children(table, 0, top);
+	}
+	if (ok && cap.bottom != NULL) {
+		bottom = layout_table_captions(table, cap.bottom,
+				table->padding[TOP] + top + table->height +
+				table->padding[BOTTOM] +
+				table->border[BOTTOM].width, content);
+		if (bottom < 0)
+			ok = false;
+	}
+	if (ok)
+		table->height += top + bottom;
+	layout_captions_attach(table, &cap);
+	return ok;
 }
 
 
@@ -4306,7 +4600,8 @@ bool layout_block_context(
 		     box->type == BOX_FLEX ||
 		     box->type == BOX_TABLE ||
 		     (box->type == BOX_INLINE_CONTAINER &&
-		      !box_is_first_child(box)) ||
+		      !box_is_first_child(box) &&
+		      !layout_floats_only(box)) ||
 		     margin_collapse == box) &&
 		    in_margin == true) {
 			/* Margin goes above this box. */
@@ -4324,6 +4619,13 @@ bool layout_block_context(
 			/* box clears something*/
 			box->y += y - cy;
 			cy = y;
+			/* Onyx: the margins still pending (above a line of
+			 * floats only) end at the clearance */
+			if (in_margin && margin_collapse != box) {
+				in_margin = false;
+				max_pos_margin = max_neg_margin = 0;
+				margin_collapse = NULL;
+			}
 		}
 
 		/* Unless the box has an overflow style of visible, the box
@@ -4370,9 +4672,16 @@ bool layout_block_context(
 				return false;
 
 		} else if (box->type == BOX_INLINE_CONTAINER) {
+			/* Onyx: a line of floats only: the margin still pending
+			 * (it collapses with the next block's) is above its
+			 * floats all the same */
+			int pend = 0;
+
+			if (in_margin && layout_floats_only(box))
+				pend = max_pos_margin - max_neg_margin;
 			box->width = box->parent->width;
 			if (!layout_inline_container(box, box->width, block,
-					cx, cy, content))
+					cx, cy + pend, content))
 				return false;
 
 		} else if (box->type == BOX_TABLE) {

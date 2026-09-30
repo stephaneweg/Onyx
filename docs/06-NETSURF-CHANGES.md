@@ -270,6 +270,10 @@ own `min_width` / `max_width` stay its content's (its automatic minimum, its con
 - **Text and inline boxes are their font's content area** (ascent + descent) around the
   baseline, not their line-height box: their background and their rectangle
   (`getBoundingClientRect`) are Chrome's; the text is drawn on the same baseline.
+- **A line of floats only** between two blocks (a floated figure between paragraphs) no
+  longer stops the margins collapsing through it (`layout_floats_only`): the paragraphs were
+  apart by both margins. Its floats are placed below the pending margin all the same; a
+  clearance ends the pending margins.
 - **Zero-height lines** (9.4.2): a line with no text, no atomic inline, no `<br>` and no
   inline with a horizontal margin, border or padding has no height (the empty start of an
   inline holding a block made a line of its own); a form control's value line always has.
@@ -307,6 +311,17 @@ own `min_width` / `max_width` stay its content's (its automatic minimum, its con
 - `table-layout: fixed`: the columns from the first row's cells, the rest shared equally.
 - Row groups and rows span the cells, not the border spacing around them (their boxes as
   Chrome's; the cells are moved to match, nothing moves on screen).
+- **Captions** (`display: table-caption`, CSS 2.1 17.4): a caption was an inline, put in an
+  anonymous cell beside the table's content (Wikipedia's figures -- `display: table` with a
+  `table-caption` figcaption -- showed their caption beside the picture, not floated). A
+  caption is now a block (`TABLE_CAPTION`, a new box flag) that `box_normalise_table`
+  keeps out of the grid: the table's first children (`caption-side: top`) or last
+  (`bottom`). `layout_table` lays out the grid with them detached (`layout_captions_*`),
+  then each caption as wide as the table's border box, above or below it; the table's box
+  holds them (as Chrome's table wrapper box: `getBoundingClientRect` agrees), and the
+  redraw paints its background and borders around the grid only. A caption's minimum
+  width widens the table (its min / max widths, and its columns: the extra shared
+  equally). Test page: `pages/layout/captions.html`.
 
 ### 5.6 Grid
 

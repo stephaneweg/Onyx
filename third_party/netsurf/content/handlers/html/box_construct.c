@@ -110,7 +110,8 @@ static const box_type box_map[] = {
 	BOX_NONE,            /* CSS_DISPLAY_TABLE_COLUMN_GROUP */
 	BOX_NONE,            /* CSS_DISPLAY_TABLE_COLUMN */
 	BOX_TABLE_CELL,      /* CSS_DISPLAY_TABLE_CELL */
-	BOX_INLINE,          /* CSS_DISPLAY_TABLE_CAPTION */
+	BOX_BLOCK,           /* CSS_DISPLAY_TABLE_CAPTION (Onyx: a block; in a
+				table, box_normalise_table keeps it out of the grid) */
 	BOX_NONE,            /* CSS_DISPLAY_NONE */
 	BOX_FLEX,            /* CSS_DISPLAY_FLEX */
 	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_FLEX */

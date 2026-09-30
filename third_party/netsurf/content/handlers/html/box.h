@@ -92,7 +92,11 @@ typedef enum {
 	/* Onyx: the box's height was given by its flex / grid container (a stretched,
 	 * flexed or grid-area size): definite for its children's percentages (CSS
 	 * Flexbox 9.8), and kept by its own layout */
-	DEF_HEIGHT  = 1 << 13
+	DEF_HEIGHT  = 1 << 13,
+	/* Onyx: a table's caption (display: table-caption): one of the table's
+	 * first (caption-side: top) or last (bottom) children, outside its grid
+	 * and its border box (box_normalise_table, layout_table) */
+	TABLE_CAPTION = 1 << 14
 } box_flags;
 
 

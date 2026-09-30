@@ -1647,6 +1647,31 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		}
 	}
 
+	/* Onyx: a table's captions are outside its border box (layout_table):
+	 * its shadow, background and borders around its grid only */
+	if (box->type == BOX_TABLE && box->children != NULL &&
+	    ((box->children->flags & TABLE_CAPTION) ||
+	     (box->last->flags & TABLE_CAPTION))) {
+		int top = 0, bottom = 0;
+		struct box *c;
+
+		for (c = box->children; c != NULL && (c->flags & TABLE_CAPTION);
+				c = c->next)
+			top = c->y + c->padding[TOP] + c->height +
+					c->padding[BOTTOM] +
+					c->border[BOTTOM].width +
+					c->margin[BOTTOM] + box->border[TOP].width;
+		for (c = box->last; c != NULL && (c->flags & TABLE_CAPTION);
+				c = c->prev)
+			bottom = box->padding[TOP] + box->height +
+					box->padding[BOTTOM] +
+					box->border[BOTTOM].width -
+					(c->y - c->border[TOP].width -
+					 c->margin[TOP]);
+		y += top * scale;
+		padding_height -= (top + bottom) * scale;
+	}
+
 	/* Onyx: the border box, its corners' radii, its shadow (block-level boxes and
 	 * replaced ones: not an inline's pieces) */
 	if (box->style != NULL && ctx->plot->onyx_shape != NULL &&
