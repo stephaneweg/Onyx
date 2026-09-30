@@ -6,6 +6,9 @@
 // VEVENT (SUMMARY, LOCATION, DESCRIPTION, DTSTART / DTEND, RRULE, EXDATE, CATEGORIES, VALARM),
 // VTODO (SUMMARY, DUE, STATUS, CATEGORIES); the categories' colours in X-ONYX-CATEGORY lines.
 //
+// The text is UTF-8 in memory when the app draws with FreeType (g_utf8: its face installed), else
+// Latin-1 (the bitmap font's): read and written as UTF-8 either way.
+//
 // Times are local, in minutes: day number * 1440 + minutes into the day (day 0 = 1970-01-01). A
 // time in UTC (a "Z" -- Google's) is brought to local time by config.ini's utc_offset (minutes)
 // and eu_dst (the European summer time).
@@ -102,6 +105,7 @@ static Task    *g_tk = 0;
 static int      g_ntk = 0, g_captk = 0;
 static int      g_utcOffset = 60;		// minutes east of UTC (config.ini)
 static bool     g_euDst = true;
+static bool     g_utf8 = false;			// the text in memory is UTF-8 (FreeType's face)
 static unsigned g_uidSeq = 0;
 
 static void new_uid (char *o, int cap)
@@ -274,8 +278,8 @@ static void ics_unescape (const char *s, char *o, int cap)
 	}
 	o[n] = '\0';
 }
-// UTF-8 (the file) <-> Latin-1 (the screen's font).
-static void from_utf8 (const char *in, char *out, int cap)
+// UTF-8 -> Latin-1 (the bitmap font's; the agenda widget's, the notifications').
+static void to_latin1 (const char *in, char *out, int cap)
 {
 	int o = 0;
 	const unsigned char *s = (const unsigned char *) in;
@@ -293,6 +297,24 @@ static void from_utf8 (const char *in, char *out, int cap)
 		s += n + 1;
 	}
 	out[o] = '\0';
+}
+// Latin-1 -> UTF-8 (a byte that already starts a UTF-8 sequence is kept as it is).
+static void to_utf8 (const char *in, char *out, int cap)
+{
+	int o = 0;
+	for (const unsigned char *s = (const unsigned char *) in; *s && o + 2 < cap; s++)
+	{
+		if (*s < 0x80) { out[o++] = (char) *s; continue; }
+		if ((*s & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) { out[o++] = (char) *s++; out[o++] = (char) *s; continue; }
+		out[o++] = (char) (0xC0 | (*s >> 6)); out[o++] = (char) (0x80 | (*s & 0x3F));
+	}
+	out[o] = '\0';
+}
+// The file's UTF-8 -> what the app keeps.
+static void from_utf8 (const char *in, char *out, int cap)
+{
+	if (g_utf8) { int i = 0; for (; in[i] && i + 1 < cap; i++) out[i] = in[i]; out[i] = '\0'; }
+	else to_latin1 (in, out, cap);
 }
 
 static void parse_rrule (Event &e, const char *v)
@@ -492,7 +514,7 @@ struct Out
 			if (escape && (*s == '\\' || *s == ';' || *s == ',')) { t[k++] = '\\'; t[k++] = (char) *s; }
 			else if (escape && *s == '\n') { t[k++] = '\\'; t[k++] = 'n'; }
 			else if (*s == '\r') continue;
-			else if (*s >= 0x80) { t[k++] = (char) (0xC0 | (*s >> 6)); t[k++] = (char) (0x80 | (*s & 0x3F)); }
+			else if (*s >= 0x80 && !g_utf8) { t[k++] = (char) (0xC0 | (*s >> 6)); t[k++] = (char) (0x80 | (*s & 0x3F)); }
 			else t[k++] = (char) *s;
 		}
 		grow (k + k / 70 * 3 + 4);

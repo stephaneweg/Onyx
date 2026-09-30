@@ -33,12 +33,12 @@ APPS = tinycalc wpaconf tinypad applist panel cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
        tetris snake same terminal \
        2048 life pong sokoban \
-       calendar mandelbrot minesweeper paint \
+       mandelbrot minesweeper paint \
        eyes taskman voronoy theme config irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gamelib padconf gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock control dockconf soundconf displayconf keyconf cardfile ledger
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) writer.elf sheet.elf koton.elf courier.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -220,8 +220,12 @@ gcemu.elf: CXXFLAGS := $(CXXFLAGS_FP)
 gcemu.elf: Apps/gcemu/gxv3d.h v3d/gxtev.h v3d/shaders.h
 graphcalc.elf: Apps/graphcalc/expr.h
 cardfile.elf: $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h
-# The Calendar: its model (iCalendar), views and dialogs in Apps/calendar/*.h.
-calendar.elf: $(wildcard Apps/calendar/*.h) notify.h
+# The Calendar: a newlib app as Writer (FreeType's text through wtk's face); its model (iCalendar), views
+# and dialogs in Apps/calendar/*.h.
+calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h applib.h ft/libft.a ft/wtkface.h \
+	      wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a ft/libft.a -lm -o $@
 agenda.elf: notify.h
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
 # the reports' .xlsx: the PNG writer's zip / deflate).

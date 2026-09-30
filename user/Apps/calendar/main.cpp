@@ -12,7 +12,8 @@
 // weeks, month, year; until a date), a reminder (a notification, while the calendar runs), a
 // category, a place, notes.
 //
-// Kept as iCalendar in SD:/apps/calendar.app/calendar.ics (model.h); File > Import / Export
+// Its text is drawn with FreeType (DejaVu Sans; UTF-8 -- the bitmap font, Latin-1, without the card's
+// TrueType fonts). Kept as iCalendar in SD:/apps/calendar.app/calendar.ics (model.h); File > Import / Export
 // iCalendar exchange .ics files with Google Calendar, Outlook, Thunderbird. agenda.txt (the
 // coming appointments, "YYYYMMDD|HH:MM title") is written for the desktop's agenda widget; the
 // old calendar's notes in it are taken over the first time. An argument "YYYYMMDD" opens that day.
@@ -22,6 +23,7 @@
 #include "wtk/toolbar.h"
 #include "applib.h"
 #include "notify.h"
+#include "ft/wtkface.h"
 
 using namespace wtk;
 
@@ -90,7 +92,7 @@ static void take_over_agenda (void)
 		for (int i = 0; note[i]; i++)
 			if (note[i] >= '0' && note[i] <= '9' && (note[i + 1] == ':' || (note[i + 2] == ':' && note[i + 1] >= '0' && note[i + 1] <= '9')))
 			{ int m = parse_hm (note + i); if (m >= 0) { at = m; int k = i; while (note[k] && note[k] != ' ') k++; while (note[k] == ' ') k++; for (int j = i; ; j++) { note[j] = note[k + j - i]; if (!note[j]) break; } while (i > 0 && note[i - 1] == ' ') note[--i] = '\0'; } break; }
-		scpy (e.title, sizeof e.title, note);
+		if (g_utf8) to_utf8 (note, e.title, sizeof e.title); else scpy (e.title, sizeof e.title, note);
 		e.cat = cat_find ("Personal");
 		if (at >= 0) { e.start = dn * 1440 + at; e.end = e.start + 60; }
 		else { e.allDay = true; e.start = dn * 1440; e.end = e.start + 1440; }
@@ -122,7 +124,8 @@ static void write_agenda (void)
 		char l[140] = "";
 		scatn (l, sizeof l, dn_y (dn)); scat2 (l, sizeof l, dn_m (dn)); scat2 (l, sizeof l, dn_d (dn)); scat (l, sizeof l, "|");
 		if (!e.allDay && occ[i].end - occ[i].start < 1440) { char hm[8]; fmt_hm (occ[i].start, hm, sizeof hm); scat (l, sizeof l, hm); scat (l, sizeof l, " "); }
-		scat (l, sizeof l, e.title); scat (l, sizeof l, "\n");
+		char ti[100]; to_latin1 (e.title, ti, sizeof ti);
+		scat (l, sizeof l, ti); scat (l, sizeof l, "\n");
 		for (int k = 0; l[k] && len < cap - 1; k++) b[len++] = l[k];
 	}
 	kapi_save_file (AGENDA_TXT, b, (unsigned) len);
@@ -148,7 +151,8 @@ static void write_agenda (void)
 		char l[240] = "";
 		scatn (l, sizeof l, dn_y (at / 1440)); scat2 (l, sizeof l, dn_m (at / 1440)); scat2 (l, sizeof l, dn_d (at / 1440));
 		scat2 (l, sizeof l, at % 1440 / 60); scat2 (l, sizeof l, at % 60); scat (l, sizeof l, "|");
-		reminder_text (e, o.start, l + slen (l), (int) sizeof l - slen (l));
+		char rt[200], r1[200]; reminder_text (e, o.start, rt, sizeof rt); to_latin1 (rt, r1, sizeof r1);
+		scat (l, sizeof l, r1);
 		scat (l, sizeof l, "\n");
 		for (int k = 0; l[k] && len < cap - 1; k++) b[len++] = l[k];
 	}
@@ -457,11 +461,12 @@ int main (void)
 		const char *v = app_ini_get ("calendar", "view", "week");
 		if (n < 8) g_view = ieq (v, "day") ? 0 : ieq (v, "month") ? 2 : 1;
 	}
+	g_utf8 = ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	load ();
 
 	CalRoot root;
 	if (root.canvas.px == 0) return 1;
-	g_fh = wk_fh (); g_cw = wk_text_w ("M");
+	g_fh = wk_fh ();
 
 	// The toolbar: New event, Today, < >, the period; Day / Week / Month on the right.
 	ToolBar *tb = new ToolBar (0, 0, W, TB_H);

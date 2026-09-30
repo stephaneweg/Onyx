@@ -19,7 +19,7 @@ static void data_changed (bool save);
 static void task_edit (int i);
 static void sel_changed (void);
 
-static int g_fh = 16, g_cw = 8;
+static int g_fh = 16;
 #define DBL_TICKS	45
 
 // ---- colours ------------------------------------------------------------------------------------------
@@ -44,7 +44,7 @@ static void disc (Canvas &cv, int x, int y, int s, unsigned c)
 			if (a > 0) wk_blend_px (cv, x + i, y + j, c, a > 255 ? 255 : a);
 		}
 }
-// Text cut to w px ("..." when it does not fit).
+// Text cut to w px ("..." when it does not fit; never inside a UTF-8 character).
 static void fit (const char *s, int w, char *out, int cap, int style = 0)
 {
 	scpy (out, cap, s);
@@ -53,19 +53,24 @@ static void fit (const char *s, int w, char *out, int cap, int style = 0)
 	int n = slen (out);
 	while (n > 0)
 	{
-		out[--n] = '\0';
+		n = wk_u8_prev (out, n);
+		out[n] = '\0';
 		char t[300]; scpy (t, sizeof t, out); scat (t, sizeof t, "...");
 		if (wk_text_w (t, style) <= w) { scpy (out, cap, t); return; }
 	}
 }
-// Word wrap: the next row of s (maxc characters at most): its length; *next: where the next starts.
-static int wrap_row (const char *s, int maxc, const char **next)
+// Word wrap: the next row of s that fits in w px (style: the text's): its length in bytes; *next:
+// where the next row starts. A word too long for a row is cut between two characters.
+static int wrap_row (const char *s, int w, const char **next, int style = 0)
 {
-	if (maxc < 3) maxc = 3;
-	int n = 0; while (s[n] && s[n] != '\n' && n <= maxc) n++;
-	if (n <= maxc) { *next = s[n] == '\n' ? s + n + 1 : s + n; return n; }
-	int cut = maxc; while (cut > 0 && s[cut] != ' ') cut--;
-	if (cut < maxc / 3) cut = maxc;
+	int len = 0; while (s[len] && s[len] != '\n') len++;
+	if (wk_tw_n (s, len, style) <= w) { *next = s[len] == '\n' ? s + len + 1 : s + len; return len; }
+	int fit = 0;					// the most bytes that fit (whole characters)
+	for (int i = wk_u8_next (s, 0, len); i <= len && wk_tw_n (s, i, style) <= w; i = wk_u8_next (s, i, len))
+	{ fit = i; if (i == len) break; }
+	if (fit == 0) fit = wk_u8_next (s, 0, len);
+	int cut = fit; while (cut > 0 && s[cut] != ' ') cut--;
+	if (cut < fit / 3) cut = fit;			// (no space: the word cut)
 	const char *p = s + cut; while (*p == ' ') p++;
 	*next = p;
 	return cut;
@@ -245,7 +250,7 @@ public:
 		{
 			// The title (wrapped over the rows it may take), the time, the place -- what fits.
 			const char *ti = e.title[0] ? e.title : "(No title)";
-			int rows = (h - 4) / (g_fh + 1), tw = w - 11, ty = y + 2, maxc = tw / (g_cw > 0 ? g_cw : 8);
+			int rows = (h - 4) / (g_fh + 1), tw = w - 11, ty = y + 2;
 			char a[8], b[8], t[40]; fmt_hm (s, a, sizeof a); fmt_hm (en, b, sizeof b);
 			scpy (t, sizeof t, a); scat (t, sizeof t, " - "); scat (t, sizeof t, b);
 			if (wk_text_w (t) > tw) scpy (t, sizeof t, a);
@@ -254,8 +259,8 @@ public:
 			const char *p = ti;
 			for (int r = 0; r < trows && *p; r++)
 			{
-				const char *nx; int n = wrap_row (p, maxc, &nx);
-				char row[120]; int k = 0; for (; k < n && k < 119; k++) row[k] = p[k]; row[k] = '\0';
+				const char *nx; int n = wrap_row (p, tw, &nx, 2);
+				char row[200]; int k = 0; for (; k < n && k < 199; k++) row[k] = p[k]; row[k] = '\0';
 				if (r == trows - 1 && *nx) { scpy (row, sizeof row, p); }	// (the last row: cut with "...")
 				text_fit (canvas, x + 8, ty, tw, g_fh, row, ink, 2); ty += g_fh + 1;
 				p = nx;

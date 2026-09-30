@@ -1440,7 +1440,8 @@ type (kept as it is — the form asks for a valid one when the record is edited)
 same time side by side, a weekend away in the all-day row, now as a red line; on the left the
 month, the calendars and the tasks (one late, in red).*
 
-The **Calendar** keeps your **appointments** and your **tasks**. On top: **New event**, **Today**,
+The **Calendar** keeps your **appointments** and your **tasks** (its text drawn with FreeType's
+DejaVu Sans: accents and other scripts as typed). On top: **New event**, **Today**,
 **<** and **>** (the previous / next day, week or month), the period shown, and **Day / Week /
 Month**.
 
