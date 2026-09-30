@@ -218,6 +218,14 @@ typedef struct html_content {
 
 	/** Onyx: a script changed the DOM: its boxes to build again (html_rebox) */
 	bool rebox_pending;
+	/** Onyx: boxes built and laid out while the document is still parsed (a script
+	 * asked for a geometry), and whether the parser added nodes since */
+	bool early_layout;
+	bool early_stale;
+	/** Onyx: a parser-inserted inline script waiting for the style sheets before it (a
+	 * ref), the parser paused meanwhile; whether a script a script inserted runs */
+	struct dom_node *blocked_script;
+	bool dom_inserted_script;
 
 	/** Onyx: the node under the pointer (CSS :hover: it and its ancestors), a ref */
 	struct dom_node *hover_node;
@@ -334,6 +342,12 @@ nserror html_proceed_to_done(html_content *html);
  * out again (soon: the changes of one script run together).
  */
 void html_script_dom_changed(html_content *htmlc);
+
+/** Onyx: boxes built and laid out from the nodes parsed so far (a script asks for a
+ * geometry while the document is parsed); whether there are boxes */
+/** Onyx: a script waiting for the style sheets run once they are in */
+void html_script_sheets_arrived(struct html_content *c);
+bool html_early_layout(struct html_content *c);
 
 /**
  * Onyx: a script asks for the layout (a box's rectangle): a pending new layout is made now.

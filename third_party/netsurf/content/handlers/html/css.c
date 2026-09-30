@@ -146,6 +146,10 @@ html_convert_css_callback(hlcache_handle *css,
 		break;
 	}
 
+	/* Onyx: a script waiting for the sheets runs now they are in */
+	if (event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR)
+		html_script_sheets_arrived(parent);
+
 	if (html_can_begin_conversion(parent)) {
 		html_begin_conversion(parent);
 	}
@@ -698,7 +702,12 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 			origin = CSS_ORIGIN_USER;
 		}
 
-		if (hsheet->sheet != NULL) {
+		/* Onyx: only the sheets come (an early layout, while the others are
+		 * still fetched); the variable was kept from the sheet before */
+		sheet = NULL;
+		if (hsheet->sheet != NULL &&
+		    hlcache_handle_get_content(hsheet->sheet) != NULL &&
+		    content_get_status(hsheet->sheet) == CONTENT_STATUS_DONE) {
 			sheet = nscss_get_stylesheet(hsheet->sheet);
 		}
 

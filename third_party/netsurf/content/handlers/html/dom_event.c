@@ -291,7 +291,10 @@ dom_SCRIPT_showed_up(html_content *htmlc, dom_html_script_element *script)
 		/* Onyx: the script runs outside the mutation event's guard (its changes
 		 * to the document were all refused), as in a browser */
 		uint32_t guard = dom_document_onyx_mutation_guard(htmlc->document, 0);
+		bool was = htmlc->dom_inserted_script;
+		htmlc->dom_inserted_script = true;	/* (no waiting for sheets) */
 		res = html_process_script(htmlc, (dom_node *) script);
+		htmlc->dom_inserted_script = was;
 		dom_document_onyx_mutation_guard(htmlc->document, guard);
 	}
 	if (res == DOM_HUBBUB_OK) {
@@ -590,6 +593,10 @@ dom_default_action_DOMNodeInserted_cb(struct dom_event *evt, void *pw)
 	dom_node_type type;
 	dom_exception exc;
 	html_content *htmlc = pw;
+
+	/* Onyx: the early boxes (a script's geometry while parsing) are out of date */
+	if (htmlc->early_layout && !htmlc->conversion_begun)
+		htmlc->early_stale = true;
 
 	exc = dom_event_get_target(evt, &node);
 	if ((exc != DOM_NO_ERR) || (node == NULL)) {

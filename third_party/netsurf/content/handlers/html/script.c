@@ -599,6 +599,8 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 }
 
 
+static bool html_sheets_pending(html_content *c);
+
 /**
  * process script node parser callback
  *
@@ -660,6 +662,15 @@ html_process_script(void *ctx, dom_node *node)
 
 	exc = dom_element_get_attribute(node, corestring_dom_src, &src);
 	if (exc != DOM_NO_ERR || src == NULL) {
+		/* Onyx: a parser-inserted inline script waits for the style sheets before it
+		 * (as a browser: it may read the styles, the geometry) -- the parser paused
+		 * until they are in (html_script_sheets_arrived) */
+		if (!c->dom_inserted_script && c->parser != NULL &&
+		    c->blocked_script == NULL && html_sheets_pending(c)) {
+			c->blocked_script = dom_node_ref(node);
+			dom_string_unref(mimetype);
+			return DOM_HUBBUB_HUBBUB_ERR | HUBBUB_PAUSED;
+		}
 		err = exec_inline_script(c, node, mimetype);
 	} else {
 		err = exec_src_script(c, node, mimetype, src);
@@ -669,6 +680,48 @@ html_process_script(void *ctx, dom_node *node)
 	dom_string_unref(mimetype);
 
 	return err;
+}
+
+/* Onyx: whether an author style sheet is still fetched (a parser-inserted script waits) */
+static bool html_sheets_pending(html_content *c)
+{
+	unsigned int i;
+
+	for (i = 0; i < c->stylesheet_count; i++) {	/* (the browser's own too) */
+		struct html_stylesheet *s = &c->stylesheets[i];
+		if (s->unused || s->sheet == NULL)
+			continue;
+		if (hlcache_handle_get_content(s->sheet) == NULL)
+			return true;
+		switch (content_get_status(s->sheet)) {
+		case CONTENT_STATUS_DONE:
+		case CONTENT_STATUS_ERROR:
+			break;
+		default:
+			return true;
+		}
+	}
+	return false;
+}
+
+/* exported interface documented in html/private.h (Onyx) */
+void html_script_sheets_arrived(html_content *c)
+{
+	dom_node *node = c->blocked_script;
+	dom_string *mimetype = NULL;
+	dom_exception exc;
+
+	if (node == NULL || html_sheets_pending(c))
+		return;
+	c->blocked_script = NULL;
+	exc = dom_element_get_attribute(node, corestring_dom_type, &mimetype);
+	if (exc != DOM_NO_ERR || mimetype == NULL)
+		mimetype = dom_string_ref(corestring_dom_text_javascript);
+	exec_inline_script(c, node, mimetype);
+	dom_string_unref(mimetype);
+	dom_node_unref(node);
+	if (c->parser != NULL)
+		dom_hubbub_parser_pause(c->parser, false);
 }
 
 /* exported internal interface documented in html/html_internal.h */
