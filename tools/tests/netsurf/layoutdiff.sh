@@ -7,17 +7,21 @@
 #   sh tools/tests/netsurf/layoutdiff.sh <url | file> [page width] [waits] [tolerance px]
 #
 # Prints the first differing elements (NetSurf's box, then Chromium's), and a count. The page
-# width is the viewport's (default 720: site.sh's 800x1000 window). OUT as the others.
+# width is the viewport's (default 720: site.sh's 800x1000 window). OUT as the others. REL=1
+# compares each box's position relative to its parent element's (and its size) instead of the
+# page's: a box placed too low does not make all that follow it differ.
 cd "$(dirname "$0")/../../.."
 T=tools/tests/netsurf
 OUT=${OUT:-/tmp/nsbench}
 url=$1; pw=${2:-720}; waits=${3:-300}; tol=${4:-2}
 case "$url" in *://*) ;; *) url="file://$(realpath "$url")";; esac
 mkdir -p "$OUT"
+# LD_COMPARE=1: compare the last run's measures again (e.g. with REL=1), without running
+if [ -z "$LD_COMPARE" ]; then
 make -f $T/host.mk OUT="$OUT/build" -j"$(nproc)" >"$OUT/build.log" 2>&1 || { echo "build failed: $OUT/build.log"; exit 1; }
 W=$(i=0; while [ $i -lt "$waits" ]; do printf 'wait;'; i=$((i + 1)); done)
-# the window: the page width + the frame and the scroll bar (22 px), 1000 high
-SIM_REALNET=1 NS_JSDEBUG=1 NS_INJECT=$T/layoutdiff.js SIM_SCREEN=$((pw + 80))x1000 SIM_SLEEP=1 SIM_POS=0,0 \
+# the window: the page width + the frame and the scroll bar (82 px), 1000 high
+SIM_REALNET=1 NS_JSDEBUG=1 NS_INJECT=$T/layoutdiff.js SIM_SCREEN=$((pw + 82))x1000 SIM_SLEEP=1 SIM_POS=0,0 \
 	SIM_ARGS="$url" SIM="${W}key 276;wait;wait;exit" timeout "${TMO:-300}" "$OUT/build/netsurf" 2>&1 |
 	sed 's/^console: //' | grep '^LB ' > "$OUT/ld-ns.txt"
 UA=$(sed -n '/return "Mozilla/,/;/p' third_party/netsurf/utils/useragent.c | grep -o '"[^"]*"' | tr -d '"' | tr -d '\n')
@@ -36,14 +40,17 @@ const { chromium } = require("playwright");
 	console.log(lines.join("\n"));
 	await b.close();
 })();' > "$OUT/ld-ch.txt" 2>"$OUT/ld-ch.err"
-python3 - "$OUT/ld-ns.txt" "$OUT/ld-ch.txt" "$tol" <<'PY'
+fi
+python3 - "$OUT/ld-ns.txt" "$OUT/ld-ch.txt" "$tol" "${REL:-0}" <<'PY'
 import sys
+rel = sys.argv[4] == '1'
 def load(f):
     d = {}; order = []
     for l in open(f):
         p = l.split()
         if len(p) < 6: continue
         k = p[1]; v = tuple(map(int, p[2:6]))
+        if rel and len(p) >= 8: v = (int(p[6]), int(p[7])) + v[2:]
         n = 1
         while (k if n == 1 else k + '~' + str(n)) in d: n += 1
         k = k if n == 1 else k + '~' + str(n)
