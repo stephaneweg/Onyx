@@ -37,6 +37,9 @@ NSFB := $(LIBROOT)/libnsfb
 PNG  := $(LIBROOT)/libpng-1.6.44
 JPEG := $(LIBROOT)/jpeg-9f
 BRO  := $(LIBROOT)/brotli-1.1.0
+# Onyx: the fetcher's zstd decoder and HTTP/2 (user/netsurf/Makefile builds their .a)
+ZSTD := $(LIBROOT)/zstd-1.5.7
+NGH  := $(LIBROOT)/nghttp2-1.70.0
 ZLIB := $(LIBROOT)/zlib-1.3.1
 WEBP := $(LIBROOT)/libwebp-1.4.0
 FT   := $(LIBROOT)/freetype-2.14.3
@@ -175,6 +178,9 @@ $(QNET_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(HERE)
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
+# Onyx: the fetcher's decoders (br, zstd) and HTTP/2 (nghttp2)
+$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(HERE)onyx_fetch.c)): CF += -I$(BRO)/c/include -I$(ZSTD)/lib \
+	-I$(NGH)/lib/includes -DNGHTTP2_STATICLIB
 # Onyx: the certificate viewer (about:certificate) on mbedTLS
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(NS)/content/fetchers/about/certificate.c)): CF += -DWITH_MBEDTLS -I$(MBEDTLS)/include
 
@@ -209,9 +215,10 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
           -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) -L$(QJS) \
-          -L$(PSVG) -L$(PVG) \
+          -L$(PSVG) -L$(PVG) -L$(ZSTD) -L$(NGH) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg \
+          -lzstddec -lnghttp2 -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by

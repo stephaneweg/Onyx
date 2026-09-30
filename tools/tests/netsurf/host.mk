@@ -140,7 +140,13 @@ PSVG_SRC := $(PSVG)/source/plutosvg.c
 MBED := $(TP)/mbedtls-3.6.3
 MBED_SRC := $(wildcard $(MBED)/library/*.c)
 
-LIB_ALL := $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+# Onyx: the fetcher's zstd decoder and HTTP/2 (as user/netsurf/Makefile builds them)
+ZSTD := $(TP)/zstd-1.5.7
+ZSTD_SRC := $(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c)
+NGH := $(TP)/nghttp2-1.70.0
+NGH_SRC := $(wildcard $(NGH)/lib/*.c)
+
+LIB_ALL := $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -200,6 +206,8 @@ $(call obj,$(1)): $(1)
 endef
 $(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
 $(foreach s,$(MBED_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(MBED)/include -I$(MBED)/library)))
+$(foreach s,$(ZSTD_SRC),$(eval $(call LIB_RULE,$(s),-DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DDEBUGLEVEL=0 -DZSTD_NO_TRACE -I$(ZSTD)/lib -I$(ZSTD)/lib/common)))
+$(foreach s,$(NGH_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu99 -DHAVE_CONFIG_H -DNGHTTP2_STATICLIB -I$(NGH)/lib -I$(NGH)/lib/includes)))
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
 $(foreach s,$(PVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF))))
 $(foreach s,$(PSVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source)))
@@ -229,6 +237,8 @@ $(call obj,$(1)): $(1) $(OUT)/font-ns-sans.h $(OUT)/hostinc/curl/curl.h
 endef
 $(foreach s,$(NS_ALL),$(eval $(call NS_RULE,$(s))))
 $(call obj,$(FB)/gui.c): NS_CF += -Dmain=netsurf_main
+# Onyx: the fetcher's decoders (br, zstd) and HTTP/2 (nghttp2)
+$(call obj,$(UN)/onyx_fetch.c): NS_CF += $(I_BRO) -I$(ZSTD)/lib -I$(NGH)/lib/includes -DNGHTTP2_STATICLIB
 # Onyx: the certificate viewer (about:certificate) on mbedTLS, as on the Pi
 $(call obj,$(NS)/content/fetchers/about/certificate.c): NS_CF += -DWITH_MBEDTLS -I$(MBED)/include
 

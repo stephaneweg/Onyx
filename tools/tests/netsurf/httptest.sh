@@ -36,6 +36,13 @@ check "keep-alive (connections < requests / 2)" "[ $((conns * 2)) -lt $reqs ]"
 check "the redirect's cookie sent back" "grep -q 'REQ .*/kotonviolins.com/index.html cookie=redir=1' $L"
 check "the page's cookie sent back" "grep -q 'cookie=redir=1; sid=abc123' $L"
 check "the Referer sent" "grep -q 'referer=http://127.0.0.1:$PORT/kotonviolins.com/index.html' $L"
+# (the codings the server could use: Python's brotli / zstandard modules -- pip install them)
+if python3 -c 'import brotli' 2>/dev/null; then
+	check "a style sheet sent br (decoded: the drawing below)" "grep -q '^ENC .*\.css br' $L"
+else echo "  skip  br (pip install brotli)"; fi
+if python3 -c 'import zstandard' 2>/dev/null; then
+	check "the images sent zstd (decoded: the drawing below)" "grep -q '^ENC .*\.png zstd' $L"
+else echo "  skip  zstd (pip install zstandard)"; fi
 check "drawn as the file:// copy (gzip, chunked)" "python3 - $OUT <<'PY'
 import struct, sys
 def px(f):

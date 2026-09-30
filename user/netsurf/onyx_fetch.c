@@ -50,6 +50,8 @@
 #include <stdio.h>		/* snprintf */
 
 #include <zlib.h>
+#include <brotli/decode.h>	/* Onyx: Content-Encoding: br */
+#include <zstd.h>		/* Onyx: Content-Encoding: zstd */
 #include <libwapcaplet/libwapcaplet.h>
 
 #include "utils/nsurl.h"
@@ -103,8 +105,13 @@ struct fetch_onyx_context {
 	/* --- the response, as it comes (threads) --- */
 	bool head_done;			/* its head handed to the core */
 	bool redirected;		/* ... and it was a redirect: nothing more to hand */
-	z_stream zs;			/* the Content-Encoding's inflate, when zs_on */
-	bool zs_on, zs_end;
+	/* the Content-Encoding's decoder (Onyx: gzip / deflate with zlib, br with Brotli's,
+	 * zstd with Zstandard's), streamed: the body is decoded as it comes */
+	int enc;			/* ENC_NONE, ENC_ZLIB, ENC_BR, ENC_ZSTD */
+	z_stream zs;
+	BrotliDecoderState *br;
+	ZSTD_DStream *zd;
+	bool dec_end;			/* the encoded stream ended (or was corrupt) */
 	size_t delivered;		/* body bytes handed to the core */
 	bool script;			/* Onyx: a script's request (fetch / XHR: X-Onyx-Dest: empty) */
 	bool insecure;			/* Onyx: the user accepted this host's bad certificate */
@@ -118,6 +125,9 @@ static struct fetch_onyx_context *ring = NULL;
 #define ONYX_SCRIPT_IDLE_TICKS	30000
 
 #define ONYX_MAX_WORKERS	8	/* downloads at once (the kernel has 16 sockets in all) */
+
+/* Onyx: what the requests accept, as Chrome: every coding the fetcher decodes */
+#define ONYX_ACCEPT_ENCODING "gzip, deflate, br, zstd"
 
 /* ---- the request's pieces --------------------------------------------------- */
 
@@ -213,7 +223,7 @@ static char *onyx_request(const char *method, const char *path, const char *host
 		return NULL;
 	n = snprintf(r, cap,
 		"%s %.*s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n%s%s%s%s"
-		"Accept-Encoding: gzip, deflate\r\nConnection: %s\r\n%s%s\r\n",
+		"Accept-Encoding: " ONYX_ACCEPT_ENCODING "\r\nConnection: %s\r\n%s%s\r\n",
 		method, (int) plen, path, hostport, ua,
 		has_accept ? "" : "Accept: */*\r\n",
 		has_lang ? "" : "Accept-Language: ", has_lang ? "" : lang,
@@ -288,47 +298,99 @@ static void onyx_add_referer(char **hdrs, nsurl *url, nsurl *ref, bool origin_to
 	}
 }
 
-/* ---- gzip / deflate body inflate (zlib) ------------------------------- */
-/* On success returns 0 and replaces the body/len with a fresh malloc'd plain buffer. */
-static int onyx_inflate(const char *encoding, uint8_t **body, size_t *len)
+/* ---- the Content-Encoding (Onyx: gzip, deflate, br, zstd) ------------------------- */
+
+enum { ENC_NONE = 0, ENC_ZLIB, ENC_BR, ENC_ZSTD };
+
+
+/* The decoder of a response's Content-Encoding (its value in cenc), set up on the context:
+ * false when it is none the fetcher knows (the body goes as it is). */
+static bool onyx_decoder_start(struct fetch_onyx_context *c, const char *cenc)
 {
-	z_stream zs;
-	size_t cap, have = 0;
-	uint8_t *out;
-	int wbits, ret;
+	c->enc = ENC_NONE;
+	c->dec_end = false;
+	if (cenc == NULL || cenc[0] == '\0')
+		return false;
+	if (ci_has(cenc, "gzip") || ci_has(cenc, "deflate")) {
+		memset(&c->zs, 0, sizeof c->zs);
+		if (inflateInit2(&c->zs, ci_has(cenc, "gzip") ? 16 + MAX_WBITS : MAX_WBITS) != Z_OK)
+			return false;
+		c->enc = ENC_ZLIB;
+	} else if (ci_has(cenc, "br")) {
+		c->br = BrotliDecoderCreateInstance(NULL, NULL, NULL);
+		if (c->br == NULL)
+			return false;
+		c->enc = ENC_BR;
+	} else if (ci_has(cenc, "zstd")) {
+		c->zd = ZSTD_createDStream();
+		if (c->zd == NULL)
+			return false;
+		/* (a window of 8 MB at most, as Chrome's: a bigger one is an error) */
+		ZSTD_DCtx_setParameter(c->zd, ZSTD_d_windowLogMax, 23);
+		c->enc = ENC_ZSTD;
+	}
+	return c->enc != ENC_NONE;
+}
 
-	if (encoding == NULL) return 0;
-	if (strstr(encoding, "gzip") != NULL)      wbits = 16 + MAX_WBITS;	/* gzip */
-	else if (strstr(encoding, "deflate") != NULL) wbits = MAX_WBITS;		/* zlib */
-	else return 0;							/* identity */
+static void onyx_decoder_end(struct fetch_onyx_context *c)
+{
+	if (c->enc == ENC_ZLIB)
+		inflateEnd(&c->zs);
+	if (c->br != NULL)
+		BrotliDecoderDestroyInstance(c->br);
+	if (c->zd != NULL)
+		ZSTD_freeDStream(c->zd);
+	c->br = NULL;
+	c->zd = NULL;
+	c->enc = ENC_NONE;
+}
 
-	memset(&zs, 0, sizeof zs);
-	if (inflateInit2(&zs, wbits) != Z_OK)
-		return -1;
-
-	cap = (*len ? *len : 1) * 4 + 64;
-	out = malloc(cap);
-	if (out == NULL) { inflateEnd(&zs); return -1; }
-
-	zs.next_in = *body;
-	zs.avail_in = (uInt)*len;
-	do {
-		if (have + 4096 > cap) {
-			uint8_t *nb = realloc(out, cap * 2);
-			if (nb == NULL) { free(out); inflateEnd(&zs); return -1; }
-			out = nb; cap *= 2;
-		}
-		zs.next_out = out + have;
-		zs.avail_out = (uInt)(cap - have);
-		ret = inflate(&zs, Z_NO_FLUSH);
-		if (ret != Z_OK && ret != Z_STREAM_END) { free(out); inflateEnd(&zs); return -1; }
-		have = cap - zs.avail_out;
-	} while (ret != Z_STREAM_END && zs.avail_in > 0);
-	inflateEnd(&zs);
-
-	free(*body);
-	*body = out;
-	*len = have;
+/* One step of the decoder: in -> out; *used the input taken, *made the output written.
+ * Returns 1 more output may come from this input (call again), 0 the input is used up (or
+ * the stream ended: c->dec_end). */
+static int onyx_decode(struct fetch_onyx_context *c, const uint8_t *in, size_t n, size_t *used,
+		uint8_t *out, size_t cap, size_t *made, bool last)
+{
+	*used = *made = 0;
+	if (c->dec_end)
+		return 0;
+	if (c->enc == ENC_ZLIB) {
+		int ret;
+		c->zs.next_in = (Bytef *) in;
+		c->zs.avail_in = (uInt) n;
+		c->zs.next_out = out;
+		c->zs.avail_out = (uInt) cap;
+		ret = inflate(&c->zs, Z_NO_FLUSH);
+		*used = n - c->zs.avail_in;
+		*made = cap - c->zs.avail_out;
+		if (ret == Z_STREAM_END || (ret != Z_OK && ret != Z_BUF_ERROR))
+			c->dec_end = true;	/* (corrupt: what came is kept) */
+		return !c->dec_end && c->zs.avail_out == 0 ? 1 : 0;
+	}
+	if (c->enc == ENC_BR) {
+		size_t ain = n, aout = cap;
+		const uint8_t *nin = in;
+		uint8_t *nout = out;
+		BrotliDecoderResult r = BrotliDecoderDecompressStream(c->br, &ain, &nin, &aout,
+				&nout, NULL);
+		*used = n - ain;
+		*made = cap - aout;
+		if (r == BROTLI_DECODER_RESULT_SUCCESS || r == BROTLI_DECODER_RESULT_ERROR)
+			c->dec_end = true;
+		return r == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT ? 1 : 0;
+	}
+	if (c->enc == ENC_ZSTD) {
+		ZSTD_inBuffer ib = { in, n, 0 };
+		ZSTD_outBuffer ob = { out, cap, 0 };
+		size_t r = ZSTD_decompressStream(c->zd, &ob, &ib);
+		*used = ib.pos;
+		*made = ob.pos;
+		if (ZSTD_isError(r))
+			c->dec_end = true;
+		/* (r == 0: a frame ended -- another may follow in the same body) */
+		return !c->dec_end && (ob.pos == ob.size || ib.pos < ib.size) ? 1 : 0;
+	}
+	(void) last;
 	return 0;
 }
 
@@ -602,8 +664,7 @@ static void fetch_onyx_free(void *ctx)
 	struct fetch_onyx_context *c = ctx;
 	onyx_job_drop(c);		/* a download still in its thread: orphaned */
 	onyx_conn_close(c);
-	if (c->zs_on)
-		inflateEnd(&c->zs);
+	onyx_decoder_end(c);
 	free(c->buf);
 	free(c->method);
 	free(c->hdrs);
@@ -889,6 +950,8 @@ static size_t onyx_unchunk(uint8_t *b, size_t n)
 
 /* PH_DONE (no threads): parse the accumulated response (status / headers / body), follow
  * a redirect, inflate gzip/deflate, and deliver it to the NetSurf core. */
+static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, bool last);
+
 static void fetch_onyx_deliver(struct fetch_onyx_context *c)
 {
 	uint8_t *resp = c->buf, *body;
@@ -918,29 +981,13 @@ static void fetch_onyx_deliver(struct fetch_onyx_context *c)
 	    strstr(te, "chunked") != NULL)
 		bodylen = onyx_unchunk(body, bodylen);
 
-	/* inflate gzip/deflate in place (body is a slice of resp; copy out) */
-	if (cenc[0] != '\0') {
-		uint8_t *b = malloc(bodylen ? bodylen : 1);
-		if (b != NULL) {
-			memcpy(b, body, bodylen);
-			if (onyx_inflate(cenc, &b, &bodylen) == 0)
-				body = b;	/* b now owned; freed below */
-			else { free(b); }
-		}
-	}
-	if (!c->aborted) {
-		msg.type = FETCH_DATA;
-		msg.data.header_or_data.buf = body;
-		msg.data.header_or_data.len = bodylen;
-		fetch_onyx_send(&msg, c);
-	}
+	/* the body decoded (its Content-Encoding) and handed on */
+	onyx_decoder_start(c, cenc);
+	onyx_data(c, body, bodylen, true);
 	if (!c->aborted) {
 		msg.type = FETCH_FINISHED;
 		fetch_onyx_send(&msg, c);
 	}
-
-	if (body < resp || body >= resp + resplen)
-		free(body);		/* inflated copy */
 }
 
 /* Advance one fetch by a single non-blocking step. Returns true when the fetch is
@@ -1563,12 +1610,13 @@ static void onyx_job_drop(struct fetch_onyx_context *c)
 	if (done) onyx_job_free(j);
 }
 
-/* The UI thread: body bytes to the core, inflated when the response is encoded. */
+/* The UI thread: body bytes to the core, decoded when the response is encoded (Onyx:
+ * gzip / deflate, br, zstd -- onyx_decode). last: no more bytes will come. */
 static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, bool last)
 {
 	fetch_msg msg;
 
-	if (!c->zs_on) {
+	if (c->enc == ENC_NONE) {
 		if (n > 0 && !c->aborted) {
 			msg.type = FETCH_DATA;
 			msg.data.header_or_data.buf = b;
@@ -1578,27 +1626,21 @@ static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, 
 		}
 		return;
 	}
-	c->zs.next_in = (Bytef *) b;
-	c->zs.avail_in = (uInt) n;
-	while (!c->zs_end && !c->aborted && (c->zs.avail_in > 0 || last)) {
-		uint8_t out[32768];
-		int ret;
-		c->zs.next_out = out;
-		c->zs.avail_out = sizeof out;
-		ret = inflate(&c->zs, Z_NO_FLUSH);
-		if (ret == Z_STREAM_END)
-			c->zs_end = true;
-		else if (ret != Z_OK && ret != Z_BUF_ERROR)
-			c->zs_end = true;	/* (corrupt: what came is kept) */
-		if (sizeof out - c->zs.avail_out > 0) {
+	while (!c->dec_end && !c->aborted) {
+		static uint8_t out[32768];	/* (the UI thread's only) */
+		size_t used, made;
+		int more = onyx_decode(c, b, n, &used, out, sizeof out, &made, last);
+		b += used;
+		n -= used;
+		if (made > 0) {
 			msg.type = FETCH_DATA;
 			msg.data.header_or_data.buf = out;
-			msg.data.header_or_data.len = sizeof out - c->zs.avail_out;
+			msg.data.header_or_data.len = made;
 			fetch_onyx_send(&msg, c);
-			c->delivered += msg.data.header_or_data.len;
-		} else if (ret == Z_BUF_ERROR || c->zs.avail_in == 0) {
-			break;
+			c->delivered += made;
 		}
+		if (!more)
+			break;
 	}
 }
 
@@ -1637,15 +1679,10 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 	if (head != NULL) {
 		char cenc[64];
 		c->head_done = true;
-		if (!onyx_head(c, head, headlen, cenc, sizeof cenc)) {
+		if (!onyx_head(c, head, headlen, cenc, sizeof cenc))
 			c->redirected = true;
-		} else if (cenc[0] != '\0' && (strstr(cenc, "gzip") != NULL ||
-				strstr(cenc, "deflate") != NULL)) {
-			memset(&c->zs, 0, sizeof c->zs);
-			if (inflateInit2(&c->zs, strstr(cenc, "gzip") != NULL ?
-					16 + MAX_WBITS : MAX_WBITS) == Z_OK)
-				c->zs_on = true;
-		}
+		else
+			onyx_decoder_start(c, cenc);	/* (Onyx: gzip, deflate, br, zstd) */
 		free(head);
 	}
 	if (c->redirected || c->aborted) {
@@ -1666,7 +1703,7 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 	} else if (!c->head_done) {
 		fetch_onyx_error(c, j->err != NULL ? j->err : "Empty response");
 	} else if (!c->aborted) {
-		if (c->zs_on)
+		if (c->enc != ENC_NONE)
 			onyx_data(c, NULL, 0, true);
 		if (!c->aborted) {
 			msg.type = FETCH_FINISHED;

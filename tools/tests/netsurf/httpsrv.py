@@ -1,11 +1,26 @@
 # httpsrv.py <root> <port> -- the HTTP/1.1 server of httptest.sh: keep-alive, some answers chunked,
-# some gzip (the pages and style sheets), a redirect (/redir) with a Set-Cookie, a Set-Cookie on
-# each page; logs each connection (CONN n) and request (REQ n path cookie= referer=).
+# encoded (the pages gzip, the style sheets br, the PNG images zstd), a redirect (/redir) with a
+# Set-Cookie, a Set-Cookie on each page; logs each connection (CONN n), request (REQ n path
+# cookie= referer=) and coding (ENC n path coding).
 import gzip, http.server, os, socketserver, sys, threading
+try:
+    import brotli
+except ImportError:
+    brotli = None
+try:
+    import zstandard
+except ImportError:
+    zstandard = None
 
 root, port = sys.argv[1], int(sys.argv[2])
 conns = 0
 lock = threading.Lock()
+plock = threading.Lock()
+
+
+def log(*a):
+    with plock:	# (whole lines: the connections' threads print at once)
+        print(*a, flush=True)
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -17,7 +32,7 @@ class H(http.server.BaseHTTPRequestHandler):
         with lock:
             conns += 1
             self.cid = conns
-        print('CONN', self.cid, flush=True)
+        log('CONN', self.cid)
 
     def log_message(self, *a):
         pass
@@ -27,8 +42,8 @@ class H(http.server.BaseHTTPRequestHandler):
         f = os.path.join(root, path.lstrip('/'))
         if os.path.isdir(f):
             f = os.path.join(f, 'index.html')
-        print('REQ', self.cid, self.path, 'cookie=%s' % self.headers.get('Cookie'),
-              'referer=%s' % self.headers.get('Referer'), flush=True)
+        log('REQ', self.cid, self.path, 'cookie=%s' % self.headers.get('Cookie'),
+            'referer=%s' % self.headers.get('Referer'))
         if path == '/redir':
             self.send_response(302)
             self.send_header('Location', '/kotonviolins.com/index.html')
@@ -52,10 +67,19 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Type', ctype)
         if f.endswith('.html'):
             self.send_header('Set-Cookie', 'sid=abc123; Path=/')
-        gz = f.endswith('.css') or f.endswith('.html')
-        if gz:
-            data = gzip.compress(data)
-            self.send_header('Content-Encoding', 'gzip')
+        # the codings: the pages gzip, the style sheets br, the PNG images zstd -- each when the
+        # request accepts it (and Python has the module: pip install brotli zstandard)
+        acc = self.headers.get('Accept-Encoding') or ''
+        enc = None
+        if f.endswith('.css') and brotli is not None and 'br' in acc:
+            data, enc = brotli.compress(data), 'br'
+        elif f.endswith('.png') and zstandard is not None and 'zstd' in acc:
+            data, enc = zstandard.ZstdCompressor(level=10).compress(data), 'zstd'
+        elif f.endswith('.css') or f.endswith('.html'):
+            data, enc = gzip.compress(data), 'gzip'
+        if enc:
+            self.send_header('Content-Encoding', enc)
+        log('ENC', self.cid, self.path, enc)
         if hash(f) % 2 == 0 or f.endswith('.html'):
             self.send_header('Transfer-Encoding', 'chunked')
             self.end_headers()
