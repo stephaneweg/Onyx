@@ -1410,3 +1410,288 @@ css_error css__onyx_parse_text_decoration(css_language *c,
 		*ctx = orig_ctx;
 	return error;
 }
+
+
+/* ---- mask (Onyx) ---------------------------------------------------------------------------- */
+
+/*
+ * mask-image, mask-size, mask-position and mask-repeat are kept as text (their first layer):
+ *   mask-image     the image's resolved URL (none: none; a gradient or another image: none)
+ *   mask-size      "auto" | "cover" | "contain" | "<len> <len>" (auto: none)
+ *   mask-position  "<len|keyword> <len|keyword>" (0% 0%: none)
+ *   mask-repeat    the keywords ("no-repeat", "repeat-x"...; repeat: none)
+ * The painting reads them (content/handlers/html/redraw.c).
+ */
+
+/* A value of a layer (up to ',' or the end): keywords lowercased, lengths canonical, '/'
+ * kept; false at a token it does not take. */
+static bool onyx_mask_tokens(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, onyx_buf *out, bool slash)
+{
+	for (;;) {
+		const css_token *t;
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_peek(vector, *ctx);
+		if (t == NULL || tokenIsChar(t, '!'))
+			return true;
+		if (tokenIsChar(t, ',')) {
+			/* (the first layer only: the rest skipped) */
+			while ((t = parserutils_vector_peek(vector, *ctx)) != NULL &&
+					!tokenIsChar(t, '!'))
+				parserutils_vector_iterate(vector, ctx);
+			return true;
+		}
+		if (out->n > 0)
+			ob_puts(out, " ");
+		if (t->type == CSS_TOKEN_IDENT) {
+			size_t i, n = lwc_string_length(t->idata);
+			const char *d = lwc_string_data(t->idata);
+			for (i = 0; i < n; i++) {
+				char ch = d[i];
+				if (ch >= 'A' && ch <= 'Z')
+					ch += 'a' - 'A';
+				ob_putn(out, &ch, 1);
+			}
+			parserutils_vector_iterate(vector, ctx);
+		} else if (slash && tokenIsChar(t, '/')) {
+			ob_puts(out, "/");
+			parserutils_vector_iterate(vector, ctx);
+		} else if (!onyx_value(c, vector, ctx, ONYX_LEN, out)) {
+			return false;
+		}
+	}
+}
+
+static css_error onyx_mask_text(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result, opcode_t op)
+{
+	int32_t orig_ctx = *ctx;
+	onyx_buf b = { NULL, 0, 0, false };
+	css_error error;
+
+	if (onyx_text_start(c, vector, ctx, result, op, false, &error))
+		return error;
+	if (!onyx_mask_tokens(c, vector, ctx, &b, false) || b.n == 0) {
+		free(b.p);
+		*ctx = orig_ctx;
+		return CSS_INVALID;
+	}
+	error = onyx_emit_text(c, result, op, &b);
+	free(b.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+}
+
+/* An image token: a URL appended to out (resolved); another image (a gradient): skipped,
+ * *none set. False when it is not an image. */
+static bool onyx_mask_image_token(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, onyx_buf *out, bool *none, css_error *error)
+{
+	const css_token *t = parserutils_vector_peek(vector, *ctx);
+
+	*error = CSS_OK;
+	if (t == NULL)
+		return false;
+	if (t->type == CSS_TOKEN_URI) {
+		lwc_string *uri;
+		*error = c->sheet->resolve(c->sheet->resolve_pw, c->sheet->url,
+				t->idata, &uri);
+		if (*error != CSS_OK)
+			return true;
+		ob_putn(out, lwc_string_data(uri), lwc_string_length(uri));
+		lwc_string_unref(uri);
+		parserutils_vector_iterate(vector, ctx);
+		return true;
+	}
+	if (t->type == CSS_TOKEN_FUNCTION) {
+		/* (a gradient, image-set(), element()...: not drawn) */
+		int depth = 0;
+		do {
+			t = parserutils_vector_iterate(vector, ctx);
+			if (t == NULL)
+				break;
+			if (t->type == CSS_TOKEN_FUNCTION)
+				depth++;
+			else if (tokenIsChar(t, '('))
+				depth++;
+			else if (tokenIsChar(t, ')'))
+				depth--;
+		} while (depth > 0);
+		*none = true;
+		return true;
+	}
+	return false;
+}
+
+css_error css__parse_mask_image(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	int32_t orig_ctx = *ctx;
+	onyx_buf b = { NULL, 0, 0, false };
+	bool none = false;
+	css_error error;
+	const css_token *t;
+
+	if (onyx_text_start(c, vector, ctx, result, CSS_PROP_MASK_IMAGE, true, &error))
+		return error;
+	consumeWhitespace(vector, ctx);
+	if (!onyx_mask_image_token(c, vector, ctx, &b, &none, &error) ||
+			error != CSS_OK) {
+		free(b.p);
+		*ctx = orig_ctx;
+		return error != CSS_OK ? error : CSS_INVALID;
+	}
+	/* (the first layer only) */
+	while ((t = parserutils_vector_peek(vector, *ctx)) != NULL && !tokenIsChar(t, '!'))
+		parserutils_vector_iterate(vector, ctx);
+	if (none || b.n == 0)
+		error = css__stylesheet_style_appendOPV(result, CSS_PROP_MASK_IMAGE, 0,
+				ONYX_TEXT_NONE);
+	else
+		error = onyx_emit_text(c, result, CSS_PROP_MASK_IMAGE, &b);
+	free(b.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+}
+
+css_error css__parse_mask_size(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return onyx_mask_text(c, vector, ctx, result, CSS_PROP_MASK_SIZE);
+}
+
+css_error css__parse_mask_position(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return onyx_mask_text(c, vector, ctx, result, CSS_PROP_MASK_POSITION);
+}
+
+css_error css__parse_mask_repeat(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	return onyx_mask_text(c, vector, ctx, result, CSS_PROP_MASK_REPEAT);
+}
+
+static bool onyx_word_in(const css_token *t, const char *const *words)
+{
+	for (; *words != NULL; words++)
+		if (onyx_word(t, *words))
+			return true;
+	return false;
+}
+
+/* mask: <image> || <position> [ / <size> ]? || <repeat> || the rest (mode, origin, clip,
+ * composite: skipped) -- the first layer's longhands */
+css_error css__parse_mask(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	static const char *const repeats[] = { "repeat", "no-repeat", "repeat-x",
+			"repeat-y", "space", "round", NULL };
+	static const char *const others[] = { "alpha", "luminance", "match-source",
+			"border-box", "padding-box", "content-box", "margin-box", "fill-box",
+			"stroke-box", "view-box", "no-clip", "add", "subtract", "intersect",
+			"exclude", NULL };
+	int32_t orig_ctx = *ctx;
+	onyx_buf img = { NULL, 0, 0, false }, pos = { NULL, 0, 0, false },
+		size = { NULL, 0, 0, false }, rep = { NULL, 0, 0, false };
+	bool none = false, in_size = false;
+	const css_token *t = parserutils_vector_peek(vector, *ctx);
+	enum flag_value flag;
+	css_error error = CSS_OK;
+
+	if (t == NULL)
+		return CSS_INVALID;
+	flag = get_css_flag_value(c, t);
+	if (flag != FLAG_VALUE__NONE) {
+		parserutils_vector_iterate(vector, ctx);
+		error = css_stylesheet_style_flag_value(result, flag, CSS_PROP_MASK_IMAGE);
+		if (error == CSS_OK)
+			error = css_stylesheet_style_flag_value(result, flag, CSS_PROP_MASK_SIZE);
+		if (error == CSS_OK)
+			error = css_stylesheet_style_flag_value(result, flag,
+					CSS_PROP_MASK_POSITION);
+		if (error == CSS_OK)
+			error = css_stylesheet_style_flag_value(result, flag,
+					CSS_PROP_MASK_REPEAT);
+		return error;
+	}
+	for (;;) {
+		bool image;
+		consumeWhitespace(vector, ctx);
+		t = parserutils_vector_peek(vector, *ctx);
+		if (t == NULL || tokenIsChar(t, '!'))
+			break;
+		if (tokenIsChar(t, ',')) {
+			while ((t = parserutils_vector_peek(vector, *ctx)) != NULL &&
+					!tokenIsChar(t, '!'))
+				parserutils_vector_iterate(vector, ctx);
+			break;
+		}
+		if (onyx_word(t, "none")) {
+			none = true;
+			parserutils_vector_iterate(vector, ctx);
+			continue;
+		}
+		image = onyx_mask_image_token(c, vector, ctx, &img, &none, &error);
+		if (error != CSS_OK)
+			goto fail;
+		if (image)
+			continue;
+		if (onyx_word_in(t, repeats)) {
+			if (rep.n > 0)
+				ob_puts(&rep, " ");
+			ob_putn(&rep, lwc_string_data(t->idata), lwc_string_length(t->idata));
+			parserutils_vector_iterate(vector, ctx);
+			continue;
+		}
+		if (onyx_word_in(t, others)) {
+			parserutils_vector_iterate(vector, ctx);
+			continue;
+		}
+		if (tokenIsChar(t, '/')) {
+			in_size = true;
+			parserutils_vector_iterate(vector, ctx);
+			continue;
+		}
+		{
+			onyx_buf *o = in_size ? &size : &pos;
+			if (o->n > 0)
+				ob_puts(o, " ");
+			if (t->type == CSS_TOKEN_IDENT) {
+				ob_putn(o, lwc_string_data(t->idata),
+						lwc_string_length(t->idata));
+				parserutils_vector_iterate(vector, ctx);
+			} else if (!onyx_value(c, vector, ctx, ONYX_LEN, o)) {
+				error = CSS_INVALID;
+				goto fail;
+			}
+		}
+	}
+	if (none || img.n == 0)
+		error = css__stylesheet_style_appendOPV(result, CSS_PROP_MASK_IMAGE, 0,
+				ONYX_TEXT_NONE);
+	else
+		error = onyx_emit_text(c, result, CSS_PROP_MASK_IMAGE, &img);
+	if (error == CSS_OK)
+		error = size.n > 0 ? onyx_emit_text(c, result, CSS_PROP_MASK_SIZE, &size) :
+				css__stylesheet_style_appendOPV(result, CSS_PROP_MASK_SIZE, 0,
+				ONYX_TEXT_NONE);
+	if (error == CSS_OK)
+		error = pos.n > 0 ? onyx_emit_text(c, result, CSS_PROP_MASK_POSITION, &pos) :
+				css__stylesheet_style_appendOPV(result, CSS_PROP_MASK_POSITION,
+				0, ONYX_TEXT_NONE);
+	if (error == CSS_OK)
+		error = rep.n > 0 ? onyx_emit_text(c, result, CSS_PROP_MASK_REPEAT, &rep) :
+				css__stylesheet_style_appendOPV(result, CSS_PROP_MASK_REPEAT, 0,
+				ONYX_TEXT_NONE);
+fail:
+	free(img.p);
+	free(pos.p);
+	free(size.p);
+	free(rep.p);
+	if (error != CSS_OK)
+		*ctx = orig_ctx;
+	return error;
+}

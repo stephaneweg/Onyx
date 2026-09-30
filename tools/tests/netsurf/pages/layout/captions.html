@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><style>
+body{margin:8px;font:16px sans-serif}
+td,th{border:1px solid #888}
+figure{display:table;margin:10px 0 10px 22px;float:right;width:250px}
+figcaption{display:table-caption;caption-side:bottom;font-size:13px;line-height:1.5;margin-top:6px}
+</style></head><body>
+<p id="p1">Text before the figure, long enough to go beside the floated figure on the right and wrap onto a few lines there.</p>
+<figure id="f1"><a id="f1a" href="#"><img id="f1i" src="a.jpg" style="width:250px;height:163px"></a><figcaption id="f1c">A web browser (Safari) on a MacBook displaying the Wikipedia web page</figcaption></figure>
+<p id="p2">More text after it, beside the figure too, which keeps flowing on the left of the float until it ends.</p>
+<figure id="f2" style="width:auto"><a id="f2a" href="#"><img id="f2i" src="a.jpg" width="200" height="130" style="max-width:100%;height:auto"></a><figcaption id="f2c">A caption after inline content, as wide as the image</figcaption></figure>
+<p id="p3">A paragraph beside the second figure.</p>
+<table id="t1" border="1"><caption id="t1c">A caption above</caption><tr><td id="t1a">one</td><td id="t1b">two</td></tr></table>
+<table id="t2" style="border:2px solid #444"><caption id="t2c">A long caption over a narrow table: it wraps within the table's width</caption><tr><td id="t2a">x</td><td id="t2b">y</td></tr></table>
+<table id="t3" style="width:300px;margin:0 auto" border="1"><tr><td id="t3a">centred</td></tr><caption id="t3c" style="caption-side:bottom;text-align:left">Below, left</caption></table>
+<div id="t4" style="display:table;background:#eef"><div id="t4c" style="display:table-caption;background:#fe8">div caption</div><div style="display:table-row"><div id="t4a" style="display:table-cell;padding:4px">cell a</div><div id="t4b" style="display:table-cell;padding:4px">cell b</div></div></div>
+<table id="t5" style="border-collapse:collapse;border:1px solid #444;width:200px"><caption id="t5c" style="padding:4px;background:#ddd">Collapsed</caption><thead><tr><th id="t5h">H</th></tr></thead><tr><td id="t5a">a</td></tr></table>
+</body></html>

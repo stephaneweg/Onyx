@@ -262,7 +262,12 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_stroke_dasharray,
 	css__parse_stroke_dashoffset,
 	css__parse_stop_color,
-	css__parse_stop_opacity
+	css__parse_stop_opacity,
+	css__parse_mask_image,	/* Onyx */
+	css__parse_mask_size,
+	css__parse_mask_position,
+	css__parse_mask_repeat,
+	css__parse_mask
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */

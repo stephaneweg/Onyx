@@ -808,6 +808,36 @@ table_used_bottom_border_for_cell(const css_unit_ctx *unit_len_ctx,
 }
 
 
+/**
+ * Onyx: a cell's horizontal paddings and borders, in px (its percentages ignored).
+ */
+static int table_cell_hmbp(const css_unit_ctx *unit_len_ctx,
+		const css_computed_style *s)
+{
+	css_fixed v = 0;
+	css_unit u = CSS_UNIT_PX;
+	int px = 0;
+
+	css_computed_padding_left(s, &v, &u);
+	if (u != CSS_UNIT_PCT)
+		px += FIXTOINT(css_unit_len2device_px(s, unit_len_ctx, v, u));
+	css_computed_padding_right(s, &v, &u);
+	if (u != CSS_UNIT_PCT)
+		px += FIXTOINT(css_unit_len2device_px(s, unit_len_ctx, v, u));
+	if (css_computed_border_left_style(s) != CSS_BORDER_STYLE_NONE &&
+	    css_computed_border_left_style(s) != CSS_BORDER_STYLE_HIDDEN) {
+		css_computed_border_left_width(s, &v, &u);
+		px += FIXTOINT(css_unit_len2device_px(s, unit_len_ctx, v, u));
+	}
+	if (css_computed_border_right_style(s) != CSS_BORDER_STYLE_NONE &&
+	    css_computed_border_right_style(s) != CSS_BORDER_STYLE_HIDDEN) {
+		css_computed_border_right_width(s, &v, &u);
+		px += FIXTOINT(css_unit_len2device_px(s, unit_len_ctx, v, u));
+	}
+	return px;
+}
+
+
 /* exported interface documented in html/table.h */
 bool
 table_calculate_column_types(const css_unit_ctx *unit_len_ctx, struct box *table)
@@ -864,6 +894,15 @@ table_calculate_column_types(const css_unit_ctx *unit_len_ctx, struct box *table
 							value, unit));
 					if (col[i].width < 0)
 						col[i].width = 0;
+					/* Onyx: a cell's width is its content box's
+					 * (box-sizing): the column holds its padding
+					 * and border too (td width=100 cellpadding=5:
+					 * a 112 px column in Chrome) */
+					if (css_computed_box_sizing(cell->style) !=
+							CSS_BOX_SIZING_BORDER_BOX)
+						col[i].width += table_cell_hmbp(
+								unit_len_ctx,
+								cell->style);
 					continue;
 				}
 

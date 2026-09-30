@@ -647,6 +647,15 @@ Windows, which they compare with on the Pi (portrait and landscape screens) -- a
 for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
 `docs/06-NETSURF-CHANGES.md` (read it first: it is the map of what changed and why).
 
+**Decided (the user, 2026-09-30): the browser is renamed "Jet Browser"** ("Jet" in the window,
+"Jet Browser -- the Onyx web browser, based on NetSurf" in its About box; the GPL v2 notices,
+NetSurf's copyrights and the libraries' licences kept and credited). To do once the running
+work is merged: the app (`netsurf.app` -> `jet.app`, no `netsurf` alias; the dock's default Internet button
+launches `jet`: `user/dockconf.h`, `user/Apps/setup/main.cpp`, `sdcard/etc/dock.ini`,
+`sdcard/etc/quicklaunch.txt`), its title,
+About box, docs (docs/06 renamed accordingly), screenshots; the source paths
+(`third_party/netsurf/`) stay as they are (comparable with upstream).
+
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more
 out of memory on bbc.co.uk, HTML5).** Built and tried on the PC bench only; the Pi binaries

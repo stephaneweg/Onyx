@@ -201,6 +201,10 @@ css_error css_computed_style_destroy(css_computed_style *style)
 	lwc_string_unref(style->i.translate);
 	lwc_string_unref(style->i.scale);
 	lwc_string_unref(style->i.rotate);
+	lwc_string_unref(style->i.mask_image);		/* Onyx: mask */
+	lwc_string_unref(style->i.mask_size);
+	lwc_string_unref(style->i.mask_position);
+	lwc_string_unref(style->i.mask_repeat);
 	lwc_string_unref(style->i.grid_template_columns);
 	lwc_string_unref(style->i.grid_template_rows);
 	lwc_string_unref(style->i.grid_template_areas);
@@ -806,39 +810,19 @@ uint8_t css_computed_font_style(const css_computed_style *style)
 uint8_t css_computed_min_height(const css_computed_style *style,
 		css_fixed *length, css_unit *unit)
 {
-	uint8_t min_height = get_min_height(style, length, unit);
-
-	if (min_height == CSS_MIN_HEIGHT_AUTO) {
-		uint8_t display = get_display(style);
-
-		if (display != CSS_DISPLAY_FLEX &&
-				display != CSS_DISPLAY_INLINE_FLEX) {
-			min_height = CSS_MIN_HEIGHT_SET;
-			*length = 0;
-			*unit = CSS_UNIT_PX;
-		}
-	}
-
-	return min_height;
+	/* Onyx: auto stays auto: it is the automatic minimum size of a flex
+	 * or grid *item* (the parent's display decides, not the box's own);
+	 * elsewhere the layout reads it as 0 (ns_computed_min_height) */
+	return get_min_height(style, length, unit);
 }
 
 uint8_t css_computed_min_width(const css_computed_style *style,
 		css_fixed *length, css_unit *unit)
 {
-	uint8_t min_width = get_min_width(style, length, unit);
-
-	if (min_width == CSS_MIN_WIDTH_AUTO) {
-		uint8_t display = get_display(style);
-
-		if (display != CSS_DISPLAY_FLEX &&
-				display != CSS_DISPLAY_INLINE_FLEX) {
-			min_width = CSS_MIN_WIDTH_SET;
-			*length = 0;
-			*unit = CSS_UNIT_PX;
-		}
-	}
-
-	return min_width;
+	/* Onyx: auto stays auto: it is the automatic minimum size of a flex
+	 * or grid *item* (the parent's display decides, not the box's own);
+	 * elsewhere the layout reads it as 0 (ns_computed_min_width) */
+	return get_min_width(style, length, unit);
 }
 
 uint8_t css_computed_background_repeat(const css_computed_style *style)
@@ -2236,4 +2220,25 @@ css_error compute_absolute_length_pair(css_computed_style *style,
 uint8_t css_computed_background_clip(const css_computed_style *style)
 {
 	return get_background_clip(style);
+}
+
+/* Onyx: mask (its first layer, as text: see src/parse/properties/onyx_css3b.c) */
+uint8_t css_computed_mask_image(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_image(style, text);
+}
+
+uint8_t css_computed_mask_size(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_size(style, text);
+}
+
+uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_position(style, text);
+}
+
+uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text)
+{
+	return get_mask_repeat(style, text);
 }

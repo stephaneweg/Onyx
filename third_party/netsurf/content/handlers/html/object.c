@@ -92,10 +92,14 @@ html_object_failed(struct box *box, html_content *content, bool background)
 static void
 html_object_done(struct box *box,
 		 hlcache_handle *object,
-		 bool background)
+		 bool background, bool mask)
 {
 	struct box *b;
 
+	if (mask) {	/* Onyx: the box's mask-image */
+		box->mask = object;
+		return;
+	}
 	if (background) {
 		box->background = object;
 		return;
@@ -185,7 +189,7 @@ html_object_callback(hlcache_handle *object,
 							box->height : 0);
 
 			/* Adjust parent content for new object size */
-			html_object_done(box, object, o->background);
+			html_object_done(box, object, o->background, o->mask);
 			if (c->base.status == CONTENT_STATUS_READY ||
 					c->base.status == CONTENT_STATUS_DONE)
 				content__reformat(&c->base, false,
@@ -198,7 +202,7 @@ html_object_callback(hlcache_handle *object,
 		c->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
-		html_object_done(box, object, o->background);
+		html_object_done(box, object, o->background, o->mask);
 		/* Onyx: the <img> / <object>'s load event (lazy loaders, galleries) */
 		if (!o->background && box != NULL && box->node != NULL &&
 				c->jsthread != NULL)
@@ -254,7 +258,19 @@ html_object_callback(hlcache_handle *object,
 
 			box_coords(box, &x, &y);
 
-			if (object == box->background) {
+			if (object == box->mask) {
+				/* Onyx: the mask: the whole box again */
+				data.redraw.x = x - box->border[LEFT].width;
+				data.redraw.y = y - box->border[TOP].width;
+				data.redraw.width = box->padding[LEFT] +
+						box->width + box->padding[RIGHT] +
+						box->border[LEFT].width +
+						box->border[RIGHT].width;
+				data.redraw.height = box->padding[TOP] +
+						box->height + box->padding[BOTTOM] +
+						box->border[TOP].width +
+						box->border[BOTTOM].width;
+			} else if (object == box->background) {
 				/* Redraw request is for background */
 				css_fixed hpos = 0, vpos = 0;
 				css_unit hunit = CSS_UNIT_PX;
@@ -751,13 +767,13 @@ nserror html_object_free_objects(html_content *html)
 }
 
 
-/* exported interface documented in html/object.h */
-bool
-html_fetch_object(html_content *c,
+/** Onyx: html_fetch_object, or the box's mask-image (mask) */
+static bool
+html_fetch_object_ex(html_content *c,
 		  nsurl *url,
 		  struct box *box,
 		  content_type permitted_types,
-		  bool background)
+		  bool background, bool mask)
 {
 	struct content_html_object *object;
 	hlcache_handle_callback object_callback;
@@ -784,6 +800,7 @@ html_fetch_object(html_content *c,
 
 			if (object->content == NULL || object->box == NULL ||
 			    object->background != background ||
+			    object->mask != mask ||
 			    object->permitted_types != permitted_types ||
 			    !nsurl_compare(hlcache_handle_get_url(object->content),
 					url, NSURL_COMPLETE))
@@ -796,7 +813,8 @@ html_fetch_object(html_content *c,
 			c->num_objects++;
 			st = content_get_status(object->content);
 			if (st == CONTENT_STATUS_READY || st == CONTENT_STATUS_DONE)
-				html_object_done(box, object->content, background);
+				html_object_done(box, object->content, background,
+						mask);
 			return true;
 		}
 	}
@@ -821,6 +839,7 @@ html_fetch_object(html_content *c,
 	object->box = box;
 	object->permitted_types = permitted_types;
 	object->background = background;
+	object->mask = mask;
 
 	error = hlcache_handle_retrieve(url,
 					HLCACHE_RETRIEVE_SNIFF_TYPE,
@@ -847,4 +866,25 @@ html_fetch_object(html_content *c,
 	}
 
 	return true;
+}
+
+
+/* exported interface documented in html/object.h */
+bool
+html_fetch_object(html_content *c,
+		  nsurl *url,
+		  struct box *box,
+		  content_type permitted_types,
+		  bool background)
+{
+	return html_fetch_object_ex(c, url, box, permitted_types, background,
+			false);
+}
+
+
+/* exported interface documented in html/object.h */
+bool html_fetch_mask(html_content *c, nsurl *url, struct box *box)
+{
+	/* (as a background: no replacement, no load event) */
+	return html_fetch_object_ex(c, url, box, CONTENT_IMAGE, true, true);
 }

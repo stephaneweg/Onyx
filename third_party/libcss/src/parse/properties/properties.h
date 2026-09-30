@@ -696,6 +696,22 @@ css_error css__parse_stop_color(css_language *c,
 css_error css__parse_stop_opacity(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);
+/* Onyx: mask */
+css_error css__parse_mask_image(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask_size(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask_position(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask_repeat(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
 
 extern const uint32_t property_unit_mask[CSS_N_PROPERTIES];
 

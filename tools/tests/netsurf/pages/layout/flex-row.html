@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><style>
+body{margin:8px;font:16px sans-serif}
+.f{display:flex;width:600px;background:#eee;margin-bottom:10px}
+.f>div{background:#8af;border:1px solid #336}
+.h20{height:20px}
+</style></head><body>
+<!-- basis / grow / shrink -->
+<div class="f" id="g1"><div id="g1a" class="h20" style="flex:1"></div><div id="g1b" class="h20" style="flex:2"></div><div id="g1c" class="h20" style="width:100px"></div></div>
+<div class="f" id="g2"><div id="g2a" class="h20" style="flex:1 1 200px"></div><div id="g2b" class="h20" style="flex:3 1 100px"></div></div>
+<div class="f" id="g3"><div id="g3a" class="h20" style="flex:0 1 400px"></div><div id="g3b" class="h20" style="flex:0 2 400px"></div></div>
+<div class="f" id="g4"><div id="g4a" class="h20" style="flex:1 1 0;min-width:300px"></div><div id="g4b" class="h20" style="flex:1 1 0;max-width:100px"></div><div id="g4c" class="h20" style="flex:1 1 0"></div></div>
+<div class="f" id="g5"><div id="g5a" class="h20" style="flex-basis:30%"></div><div id="g5b" class="h20" style="flex:1 0 auto;padding:0 20px"></div><div id="g5c" class="h20" style="flex:0 0 50px;margin:0 10px"></div></div>
+<div class="f" id="g6"><div id="g6a" style="flex:0.5">half grow</div><div id="g6b" style="flex:0 0 auto">auto text</div></div>
+<div class="f" id="g7"><div id="g7a" style="width:500px;flex-shrink:1">shrinks</div><div id="g7b" style="width:300px;flex-shrink:0">keeps</div></div>
+<!-- min-content floor -->
+<div class="f" id="g8" style="width:200px"><div id="g8a">Supercalifragilistic word</div><div id="g8b" style="flex:1 1 0">x</div></div>
+<!-- auto margins -->
+<div class="f" id="m1"><div id="m1a" class="h20" style="width:50px;margin-left:auto"></div><div id="m1b" class="h20" style="width:50px"></div></div>
+<div class="f" id="m2"><div id="m2a" class="h20" style="width:50px;margin:0 auto"></div></div>
+<div class="f" id="m3" style="height:60px"><div id="m3a" class="h20" style="width:50px;margin:auto"></div><div id="m3b" class="h20" style="width:50px;margin-top:auto"></div></div>
+<!-- justify-content -->
+<div class="f" id="j1" style="justify-content:flex-end"><div id="j1a" class="h20" style="width:50px"></div><div id="j1b" class="h20" style="width:50px"></div></div>
+<div class="f" id="j2" style="justify-content:center"><div id="j2a" class="h20" style="width:50px"></div><div id="j2b" class="h20" style="width:50px"></div></div>
+<div class="f" id="j3" style="justify-content:space-between"><div id="j3a" class="h20" style="width:50px"></div><div id="j3b" class="h20" style="width:50px"></div><div id="j3c" class="h20" style="width:50px"></div></div>
+<div class="f" id="j4" style="justify-content:space-around"><div id="j4a" class="h20" style="width:50px"></div><div id="j4b" class="h20" style="width:50px"></div></div>
+<div class="f" id="j5" style="justify-content:space-evenly"><div id="j5a" class="h20" style="width:50px"></div><div id="j5b" class="h20" style="width:50px"></div></div>
+<div class="f" id="j6" style="flex-direction:row-reverse"><div id="j6a" class="h20" style="width:50px"></div><div id="j6b" class="h20" style="width:50px"></div></div>
+<div class="f" id="j7" style="flex-direction:row-reverse;justify-content:space-between"><div id="j7a" class="h20" style="width:50px"></div><div id="j7b" class="h20" style="width:50px"></div></div>
+<!-- align-items -->
+<div class="f" id="a1" style="height:80px"><div id="a1a" style="width:50px"></div><div id="a1b" style="width:50px;height:30px"></div></div>
+<div class="f" id="a2" style="height:80px;align-items:center"><div id="a2a" style="width:50px;height:20px"></div><div id="a2b" style="width:50px;height:30px;align-self:flex-end"></div><div id="a2c" style="width:50px;align-self:stretch"></div></div>
+<div class="f" id="a3" style="align-items:flex-start"><div id="a3a" style="width:50px;height:50px"></div><div id="a3b" style="width:50px"></div></div>
+<div class="f" id="a4"><div id="a4a" style="width:50px;height:50px"></div><div id="a4b" style="width:50px;margin:5px 0;padding:3px"></div></div>
+<div class="f" id="a5" style="align-items:baseline"><div id="a5a" style="width:80px;font-size:30px">Big</div><div id="a5b" style="width:80px;padding-top:10px">small</div></div>
+<div class="f" id="a6" style="height:60px;align-items:center"><div id="a6a" style="width:100px;max-height:20px;height:50px"></div><div id="a6b" style="width:100px;min-height:40px"></div></div>
+<!-- gap and wrap -->
+<div class="f" id="w1" style="flex-wrap:wrap;gap:10px 20px"><div id="w1a" class="h20" style="width:250px"></div><div id="w1b" class="h20" style="width:250px"></div><div id="w1c" class="h20" style="width:250px"></div><div id="w1d" style="width:100px;height:40px"></div></div>
+<div class="f" id="w2" style="flex-wrap:wrap;height:120px;align-content:space-between"><div id="w2a" class="h20" style="width:400px"></div><div id="w2b" class="h20" style="width:400px"></div></div>
+<div class="f" id="w3" style="flex-wrap:wrap;height:120px"><div id="w3a" style="width:400px"></div><div id="w3b" style="width:400px;height:20px"></div></div>
+<div class="f" id="w4" style="flex-wrap:wrap"><div id="w4a" style="flex:1 1 200px;height:20px"></div><div id="w4b" style="flex:1 1 200px;height:20px"></div><div id="w4c" style="flex:1 1 200px;height:20px"></div></div>
+<div class="f" id="w5" style="flex-wrap:wrap-reverse"><div id="w5a" style="width:400px;height:20px"></div><div id="w5b" style="width:400px;height:30px"></div></div>
+<!-- percent width item and box-sizing -->
+<div class="f" id="p1"><div id="p1a" style="width:50%;padding:0 10px;height:10px"></div><div id="p1b" style="width:50%;padding:0 10px;box-sizing:border-box;height:10px"></div></div>
+<!-- inline-flex -->
+<div id="if">before <span id="if1" style="display:inline-flex;background:#ccf"><span id="if1a" style="width:40px;height:30px;background:#88f"></span><span id="if1b" style="padding:5px">t</span></span> after</div>
+<!-- order -->
+<div class="f" id="o1"><div id="o1a" class="h20" style="width:50px;order:2"></div><div id="o1b" class="h20" style="width:60px;order:1"></div><div id="o1c" class="h20" style="width:70px"></div></div>
+<!-- abs child in flex -->
+<div class="f" id="ab" style="position:relative;height:40px;justify-content:center;align-items:center"><div id="aba" style="width:50px;height:20px"></div><div id="abb" style="position:absolute;width:20px;height:10px"></div></div>
+<!-- shrink-to-fit flex container (float) and text items -->
+<div style="float:left;display:flex;background:#ddd" id="fl"><div id="fla">one</div><div id="flb" style="margin-left:10px">two words</div></div>
+<div style="clear:both"></div>
+<div class="f" id="t1"><div id="t1a">A longer text item that will need to wrap because the row is too narrow for it all at once here</div><div id="t1b">Another text that competes with the first one for the space</div></div>
+</body></html>

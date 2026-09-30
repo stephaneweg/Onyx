@@ -336,6 +336,11 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("stroke-dashoffset"),
 	SMAP("stop-color"),
 	SMAP("stop-opacity"),
+	SMAP("mask-image"),	/* Onyx */
+	SMAP("mask-size"),
+	SMAP("mask-position"),
+	SMAP("mask-repeat"),
+	SMAP("mask"),
 
 	SMAP("inherit"),
 	SMAP("unset"),

@@ -988,9 +988,12 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   same slot (both fetches then read one connection: NetSurf's style sheets failed). **DNS
   cache**: 32 names kept 5 minutes (`ResolveName`, used by `tcp_connect`, `net_resolve`,
   `net_ping`) in front of Circle's `CDNSClient` -- which answers in milliseconds now (it slept
-  1 s per query: docs/05 §18). Each socket records its **owner pid**, and `AddressSpaceTaskTerminate` calls
-  `NetCloseByPid` so a process that dies without closing does not leak its
-  connections or table slots.
+  1 s per query: docs/05 §18). Each socket records its **owner pid**; `kapi_exit` calls
+  `NetCloseByPid` as soon as the app's other threads have ended (2026-09-30: it waited for
+  the janitor's reaping, `AddressSpaceTaskTerminate`, which calls it again and finds none
+  left), so a process that exits or dies without closing does not hold its connections or
+  table slots -- a browser relaunched at once found them still held and its pages waited
+  (10 s). The table has **64 slots** (`MAX_SOCKETS`; 16 before: a browser keeps a dozen open).
 - **Clock.** Once the link is up the bring-up task starts a `CNTPDaemon`
   (`system.ini ntp=`; `off` or `none`: no daemon, the clock is not set), which updates
   `CTimer`'s wall clock; the boot reads `system.ini timezone=` (minutes from UTC) and calls
