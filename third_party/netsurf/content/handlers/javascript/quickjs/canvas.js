@@ -586,6 +586,7 @@ if (IP) {
 	const height = Object.getOwnPropertyDescriptor(IP, 'height');
 	const nw = Object.getOwnPropertyDescriptor(IP, 'naturalWidth');
 	const nh = Object.getOwnPropertyDescriptor(IP, 'naturalHeight');
+	const cplt = Object.getOwnPropertyDescriptor(IP, 'complete');
 	const load = img => {
 		if (img.isConnected) return;
 		const url = img.getAttribute('src');
@@ -601,7 +602,7 @@ if (IP) {
 	def(IP, {
 		get src() { return src.get.call(this); },
 		set src(v) { src.set.call(this, v); load(this); },
-		get complete() { return this._cvdone !== false; },
+		get complete() { return this._cvimg ? this._cvdone !== false : cplt ? cplt.get.call(this) : true; },
 		get naturalWidth() { return this._cvimg ? (this._cvw || 0) : nw ? nw.get.call(this) : 0; },
 		get naturalHeight() { return this._cvimg ? (this._cvh || 0) : nh ? nh.get.call(this) : 0; },
 		get width() { return this._cvimg && !this.hasAttribute('width') ? (this._cvw || 0) : width.get.call(this); },

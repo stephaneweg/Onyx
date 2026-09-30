@@ -1931,81 +1931,17 @@ for (const p of ['target', 'rel', 'download', 'hreflang', 'type', 'referrerPolic
 htmlClass('HTMLAnchorElement', ['a'], HTMLAnchorElement);
 htmlClass('HTMLAreaElement', ['area'], class extends HTMLAnchorElement {});
 
-/* Onyx: an image's size from its first bytes (PNG, GIF, JPEG, WebP, BMP, SVG's width /
- * height), for an <img> the page does not display (new Image(): preloads, trackers) */
-function imageSize(b) {
-	const u8 = b instanceof Uint8Array ? b : b instanceof ArrayBuffer ? new Uint8Array(b) :
-		typeof b === 'string' ? Uint8Array.from(b.slice(0, 65536), c => c.charCodeAt(0) & 255) : null;
-	if (!u8 || u8.length < 10) return null;
-	const be16 = i => (u8[i] << 8) | u8[i + 1], le16 = i => u8[i] | (u8[i + 1] << 8);
-	const be32 = i => ((u8[i] << 24) >>> 0) + (u8[i + 1] << 16) + (u8[i + 2] << 8) + u8[i + 3];
-	if (u8[0] === 0x89 && u8[1] === 0x50 && u8.length >= 24) return [be32(16), be32(20)];
-	if (u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46) return [le16(6), le16(8)];
-	if (u8[0] === 0x42 && u8[1] === 0x4d && u8.length >= 26) return [le16(18) | (le16(20) << 16), Math.abs((le16(22) | (le16(24) << 16)) << 0)];
-	if (u8[0] === 0xff && u8[1] === 0xd8) {
-		for (let i = 2; i + 9 < u8.length;) {
-			if (u8[i] !== 0xff) { i++; continue; }
-			const m = u8[i + 1];
-			if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc)
-				return [be16(i + 7), be16(i + 5)];
-			i += 2 + be16(i + 2);
-		}
-		return null;
-	}
-	if (u8[0] === 0x52 && u8[1] === 0x49 && u8[8] === 0x57 && u8.length >= 30) {	/* RIFF....WEBP */
-		const f = String.fromCharCode(u8[12], u8[13], u8[14], u8[15]);
-		if (f === 'VP8X') return [1 + (u8[24] | (u8[25] << 8) | (u8[26] << 16)), 1 + (u8[27] | (u8[28] << 8) | (u8[29] << 16))];
-		if (f === 'VP8L') { const v = u8[21] | (u8[22] << 8) | (u8[23] << 16) | (u8[24] << 24); return [(v & 0x3fff) + 1, ((v >> 14) & 0x3fff) + 1]; }
-		if (f === 'VP8 ') return [le16(26) & 0x3fff, le16(28) & 0x3fff];
-	}
-	const t = new TextDecoder().decode(u8.subarray(0, 4096));
-	const m = /<svg[^>]*>/i.exec(t);
-	if (m) {
-		const w = /\bwidth\s*=\s*["']?([\d.]+)/.exec(m[0]), h = /\bheight\s*=\s*["']?([\d.]+)/.exec(m[0]);
-		const vb = /viewBox\s*=\s*["']?[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(m[0]);
-		if (w && h) return [Math.round(+w[1]), Math.round(+h[1])];
-		if (vb) return [Math.round(+vb[1]), Math.round(+vb[2])];
-		return [300, 150];
-	}
-	return null;
-}
-
-/* an image the page does not display: fetched here, its size read, load / error fired */
-function imageLoadDetached(img) {
-	const src = N.attr(img, 'src');
-	const gen = (img._ig = (img._ig || 0) + 1);
-	img._nat = null;
-	img._st = src ? 0 : 1;
-	if (!src) return;
-	let url;
-	try { url = new URL(src, location.href).href; } catch (e) { url = null; }
-	const done = (ok, size) => {
-		if (img._ig !== gen) return;
-		img._st = ok ? 1 : 2;
-		img._nat = ok ? size : null;
-		setTimeout(() => { if (img._ig === gen) dispatch(img, new Event(ok ? 'load' : 'error')); }, 0);
-	};
-	if (!url || !/^(https?|file|data):/.test(url)) { done(false); return; }
-	const id = N.request('GET', url, null, ['X-Onyx-Dest: image'], true, (err, r) => {
-		if (err != null || !r || r.status >= 400) { done(false); return; }
-		const size = imageSize(r.body);
-		done(!!size, size);
-	});
-	if (id < 0) done(false);
-}
-
 class HTMLImageElement extends HTMLElement {
-	/* (Onyx: the picture's state and natural size -- NetSurf's for a displayed image, the
-	 * detached loader's otherwise) */
+	/* (Onyx: the picture's state and natural size, NetSurf's for a displayed image; an image
+	 * a script loads -- new Image() -- is canvas.js's) */
 	_img() { return this.isConnected ? N.image(this) : null; }
 	get complete() {
 		if (!N.attr(this, 'src')) return true;
 		const st = this._img();
-		if (st) return st[0] !== 0;
-		return this._st === undefined ? true : this._st !== 0;
+		return st ? st[0] !== 0 : true;
 	}
-	get naturalWidth() { const st = this._img(); return st ? st[1] : this._nat ? this._nat[0] : 0; }
-	get naturalHeight() { const st = this._img(); return st ? st[2] : this._nat ? this._nat[1] : 0; }
+	get naturalWidth() { const st = this._img(); return st ? st[1] : 0; }
+	get naturalHeight() { const st = this._img(); return st ? st[2] : 0; }
 	get width() {
 		const v = parseInt(N.attr(this, 'width'), 10);
 		if (!isNaN(v)) return v;
@@ -2022,10 +1958,7 @@ class HTMLImageElement extends HTMLElement {
 	set height(v) { this.setAttribute('height', String(v)); }
 	get currentSrc() { return this.src; }
 	get src() { const v = N.attr(this, 'src'); try { return v ? new URL(v, N.url()).href : ''; } catch (e) { return v || ''; } }
-	set src(v) {
-		this.setAttribute('src', v);
-		if (!this.isConnected) imageLoadDetached(this);
-	}
+	set src(v) { this.setAttribute('src', v); }
 	decode() {
 		if (this.complete) return this.naturalWidth || !N.attr(this, 'src') ? Promise.resolve() :
 			Promise.reject(new DOMException('The source image cannot be decoded.', 'EncodingError'));
