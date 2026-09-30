@@ -79,15 +79,18 @@ user_agent_build_string(void)
 const char *
 user_agent_string(void)
 {
-	/* Onyx: a current Chrome's (sites serve their full pages, their WOFF2 fonts, and do
-	 * not turn "an unknown browser" away), unless Choices' user_agent says otherwise --
-	 * the HTTP requests (user/netsurf/onyx_fetch.c) and navigator.userAgent alike */
+	/* Onyx: a current Chrome's on Android -- sites serve their WOFF2 fonts and do not
+	 * turn "an unknown browser" away, and the big ones (Google, Facebook, Yahoo) send their
+	 * light mobile pages: their desktop script applications are too heavy for QuickJS on
+	 * the Pi -- unless Choices' user_agent says otherwise (a desktop Chrome's: see
+	 * SD:/res/Choices); the HTTP requests (user/netsurf/onyx_fetch.c) and
+	 * navigator.userAgent alike */
 	const char *choice = nsoption_charp(user_agent);
 
 	if (choice != NULL && choice[0] != '\0')
 		return choice;
-	return "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 "
-		"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+	return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
+		"(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
 	(void) user_agent_build_string;
 }
 

@@ -129,6 +129,12 @@ void js_destroythread(jsthread *thread);
 bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *name);
 
 /**
+ * Onyx: the <script> element whose code js_exec is about to run (document.currentScript),
+ * NULL after it. Not a reference: set around the one call.
+ */
+void js_set_current_script(jsthread *thread, struct dom_node *node);
+
+/**
  * fire an event at a dom node
  */
 bool js_fire_event(jsthread *thread, const char *type, struct dom_document *doc, struct dom_node *target);

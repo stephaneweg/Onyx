@@ -11,6 +11,7 @@
 'use strict';
 
 const G = globalThis;
+const NativePromise = Promise;	/* (a page's polyfill may replace Promise: queueMicrotask's own) */
 const LISTENERS = Symbol('listeners');
 const HANDLERS = Symbol('handlers');
 
@@ -2260,7 +2261,7 @@ class Document extends Node {
 	get scripts() { return this.getElementsByTagName('script'); }
 	get styleSheets() { return []; }
 	get fonts() { return fontFaces; }
-	get currentScript() { return null; }
+	get currentScript() { return N.currentScript(); }
 	get fullscreenElement() { return null; }
 	get pictureInPictureElement() { return null; }
 	get implementation() {
@@ -2433,7 +2434,7 @@ const navigator = {
 	productSub: '20030107',
 	vendor: 'Google Inc.',
 	vendorSub: '',
-	platform: 'Linux aarch64',
+	platform: 'Linux armv8l',
 	language: 'fr-FR',
 	languages: ['fr-FR', 'fr', 'en-US', 'en'],
 	cookieEnabled: true,
@@ -3285,7 +3286,7 @@ Object.assign(G, {
 	webkitRequestAnimationFrame: requestAnimationFrame,
 	requestIdleCallback: cb => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 10 }), 1),
 	cancelIdleCallback: clearTimeout,
-	queueMicrotask: fn => { Promise.resolve().then(fn).catch(report); },
+	queueMicrotask: fn => { NativePromise.resolve().then(fn).catch(report); },
 	matchMedia, getComputedStyle, atob, btoa,
 	URL, URLSearchParams, TextEncoder, TextDecoder, fetch, XMLHttpRequest, Headers, Request, Response,
 	AbortController, AbortSignal, Blob, File,

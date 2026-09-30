@@ -87,6 +87,28 @@ static const char *fetch_filetype(const char *unix_path)
 		return "image/svg";
 	if (2 < l && strcasecmp(unix_path + l - 3, "bmp") == 0)
 		return "image/bmp";
+	/* Onyx: a page saved with its scripts, fonts and images runs from the card as it
+	 * does from its site (a script typed text/html was never run) */
+	if (2 < l && strcasecmp(unix_path + l - 3, ".js") == 0)
+		return "application/javascript";
+	if (3 < l && strcasecmp(unix_path + l - 4, ".mjs") == 0)
+		return "application/javascript";
+	if (4 < l && strcasecmp(unix_path + l - 5, ".json") == 0)
+		return "application/json";
+	if (4 < l && strcasecmp(unix_path + l - 5, ".webp") == 0)
+		return "image/webp";
+	if (3 < l && strcasecmp(unix_path + l - 4, ".ico") == 0)
+		return "image/x-icon";
+	if (4 < l && strcasecmp(unix_path + l - 5, ".woff") == 0)
+		return "font/woff";
+	if (5 < l && strcasecmp(unix_path + l - 6, ".woff2") == 0)
+		return "font/woff2";
+	if (3 < l && strcasecmp(unix_path + l - 4, ".ttf") == 0)
+		return "font/ttf";
+	if (3 < l && strcasecmp(unix_path + l - 4, ".otf") == 0)
+		return "font/otf";
+	if (3 < l && strcasecmp(unix_path + l - 4, ".txt") == 0)
+		return "text/plain";
 	return "text/html";
 }
 

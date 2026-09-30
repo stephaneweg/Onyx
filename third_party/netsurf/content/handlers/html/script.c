@@ -96,8 +96,10 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 				size_t size;
 				data = content_get_source_data(
 						s->data.handle, &size );
+				js_set_current_script(c->jsthread, s->node);
 				script_handler(c->jsthread, data, size,
 					       nsurl_access(hlcache_handle_get_url(s->data.handle)));
+				js_set_current_script(c->jsthread, NULL);
 				have_run_something = true;
 				/* We have to re-acquire this here since the
 				 * c->scripts array may have been reallocated
@@ -122,7 +124,8 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 static struct html_script *
 html_process_new_script(html_content *c,
 			dom_string *mimetype,
-			enum html_script_type type)
+			enum html_script_type type,
+			dom_node *node)
 {
 	struct html_script *nscript;
 	/* add space for new script entry */
@@ -148,6 +151,7 @@ html_process_new_script(html_content *c,
 	nscript->type = type;
 
 	nscript->mimetype = dom_string_ref(mimetype); /* reference mimetype */
+	nscript->node = node != NULL ? dom_node_ref(node) : NULL;	/* (Onyx) */
 
 	return nscript;
 }
@@ -323,8 +327,10 @@ convert_script_sync_cb(hlcache_handle *script,
 			const uint8_t *data;
 			size_t size;
 			data = content_get_source_data(s->data.handle, &size );
+			js_set_current_script(parent->jsthread, s->node);
 			script_handler(parent->jsthread, data, size,
 				       nsurl_access(hlcache_handle_get_url(s->data.handle)));
+			js_set_current_script(parent->jsthread, NULL);
 		}
 
 		/* continue parse */
@@ -456,7 +462,7 @@ exec_src_script(html_content *c,
 		}
 	}
 
-	nscript = html_process_new_script(c, mimetype, script_type);
+	nscript = html_process_new_script(c, mimetype, script_type, node);
 	if (nscript == NULL) {
 		nsurl_unref(joined);
 		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
@@ -526,7 +532,7 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 		return DOM_HUBBUB_OK; /* no contents, skip */
 	}
 
-	nscript = html_process_new_script(c, mimetype, HTML_SCRIPT_INLINE);
+	nscript = html_process_new_script(c, mimetype, HTML_SCRIPT_INLINE, node);
 	if (nscript == NULL) {
 		dom_string_unref(script);
 
@@ -548,10 +554,12 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 	lwc_string_unref(lwcmimetype);
 
 	if (script_handler != NULL) {
+		js_set_current_script(c->jsthread, node);
 		script_handler(c->jsthread,
 			       (const uint8_t *)dom_string_data(script),
 			       dom_string_byte_length(script),
 			       "?inline script?");
+		js_set_current_script(c->jsthread, NULL);
 	}
 	return DOM_HUBBUB_OK;
 }
@@ -588,6 +596,20 @@ html_process_script(void *ctx, dom_node *node)
 
 	NSLOG(netsurf, INFO, "content %p parser %p node %p", c, c->parser,
 	      node);
+
+	/* Onyx: a <script nomodule> is for the browsers without ES modules; a modern one (as
+	 * Chrome) skips it -- run, its polyfills replaced the engine's own Promise (yahoo.com's
+	 * Next.js: an endless loop through queueMicrotask) */
+	{
+		static dom_string *nomodule;
+		bool has = false;
+
+		if (nomodule == NULL)
+			dom_string_create((const uint8_t *) "nomodule", 8, &nomodule);
+		if (nomodule != NULL &&
+		    dom_element_has_attribute(node, nomodule, &has) == DOM_NO_ERR && has)
+			return DOM_HUBBUB_OK;
+	}
 
 	exc = dom_element_get_attribute(node, corestring_dom_type, &mimetype);
 	if (exc != DOM_NO_ERR || mimetype == NULL) {
@@ -638,6 +660,8 @@ nserror html_script_free(html_content *html)
 	unsigned int i;
 
 	for (i = 0; i != html->scripts_count; i++) {
+		if (html->scripts[i].node != NULL)	/* (Onyx) */
+			dom_node_unref(html->scripts[i].node);
 		if (html->scripts[i].mimetype != NULL) {
 			dom_string_unref(html->scripts[i].mimetype);
 		}

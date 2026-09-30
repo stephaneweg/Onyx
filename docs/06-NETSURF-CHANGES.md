@@ -47,8 +47,10 @@ the UI thread, waiting in `kapi_pump_wait`, wakes at once. **Cookies**: the jar'
 (`fetch_set_cookie`). **Referer** as Chrome (strict-origin-when-cross-origin: the whole URL
 within its origin, its origin elsewhere, nothing from https to http) and an `Origin` on the
 methods other than GET / HEAD (`fetch_get_referer`, an Onyx addition to `content/fetch.c`).
-**User-Agent**: a current Chrome's (`utils/useragent.c`; Choices' `user_agent` replaces it),
-the same in `navigator.userAgent`; `Accept-Language`: Choices' `accept_language`, else
+**User-Agent**: a current Chrome's on Android (`utils/useragent.c`; Choices' `user_agent`
+replaces it): the big sites send their light mobile pages -- their desktop script applications
+(google.com, yahoo.com's Next.js) are too heavy for QuickJS on the Pi; the same in
+`navigator.userAgent`; `Accept-Language`: Choices' `accept_language`, else
 French then English. No length limit on a URL's path (it was 1024). 8 downloads at once; the
 connects one at a time (short now: the kernel caches the DNS answers). An aborted fetch whose
 thread still runs is freed by that thread. The request is a GET, a POST (a url-encoded or text
@@ -301,6 +303,24 @@ optional chaining...) with the DOM written in JavaScript:
   changes the layout.
 - The windows' `dom.js` checkout: the makefiles strip the CRs before embedding it (a Windows
   checkout, `core.autocrlf`, broke `qjs_dom_js.h`).
+
+## 10. Scripts of the big sites (yahoo.com's Next.js, 2026-09-30)
+
+Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBUG=1`):
+
+- **`<script nomodule>` is not run** (`html/script.c`), as in Chrome: it is for the browsers
+  without ES modules. Run, yahoo.com's polyfills replaced `Promise`, and `queueMicrotask`
+  (built on `Promise`) and the polyfill called each other for ever: the window froze.
+- **`queueMicrotask`** uses the engine's own `Promise`, kept when dom.js starts
+  (`NativePromise`), whatever a page's polyfill does to `Promise`.
+- **`document.currentScript`**: the `<script>` element whose code runs (`js_set_current_script`,
+  called around each run by `html/script.c`; `struct html_script` keeps its element) -- webpack
+  finds its chunks' path with it.
+- The file fetcher types `.js` / `.mjs` (JavaScript), `.json`, `.webp`, `.ico`, `.woff` /
+  `.woff2` / `.ttf` / `.otf`, `.txt` (`frontends/framebuffer/fetch.c`): a page saved with its
+  scripts runs from the card (they were typed `text/html`: never run).
+- `tools/tests/netsurf/pages/js-reactreveal.html`: React 18's streaming reveal (`$RC` / `$RV`),
+  its comments, `insertBefore (x, null)`.
 
 ## 8. Known gaps
 

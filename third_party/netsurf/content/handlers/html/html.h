@@ -84,6 +84,7 @@ struct html_script {
 	bool ready_exec;
 	bool async;
 	bool defer;
+	struct dom_node *node;	/**< Onyx: its element, a ref (document.currentScript) */
 };
 
 

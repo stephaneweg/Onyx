@@ -714,6 +714,24 @@ static JSValue n_clone(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	return v;
 }
 
+/* Onyx: the <script> element running (document.currentScript), set around js_exec */
+static struct dom_node *qjs_current_script;
+
+/* exported interface documented in js.h */
+void js_set_current_script(jsthread *thread, struct dom_node *node)
+{
+	(void) thread;
+	qjs_current_script = node;
+}
+
+/** currentScript(): the <script> element whose code runs, or null */
+static JSValue n_current_script(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	(void) this_val; (void) argc; (void) argv;
+	return qjs_current_script != NULL ? qjs_wrap(QJS_T(ctx), qjs_current_script) : JS_NULL;
+}
+
 static JSValue n_by_id(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
@@ -1887,6 +1905,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("remove", 2, n_remove),
 	JS_CFUNC_DEF("clone", 2, n_clone),
 	JS_CFUNC_DEF("byId", 1, n_by_id),
+	JS_CFUNC_DEF("currentScript", 0, n_current_script),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
 	JS_CFUNC_DEF("descendants", 1, n_descendants),
 	JS_CFUNC_DEF("formValue", 1, n_form_value),
