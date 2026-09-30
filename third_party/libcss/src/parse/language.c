@@ -23,6 +23,7 @@
 #include "parse/properties/properties.h"
 #include "parse/properties/utils.h"
 #include "parse/onyx_vars.h"
+#include "parse/onyx_grammar.h"
 #include "parse/onyx_atrules.h"
 
 #include "utils/parserutilserror.h"
@@ -2103,15 +2104,96 @@ static int onyx_unprefixed_property(css_language *c, lwc_string *name)
 	return -1;
 }
 
+/**
+ * Onyx: a declaration of a property libcss does not compute -- or a value its parser does
+ * not take -- checked against the property's grammar (parse/onyx_grammar.h, gidx its index
+ * in onyx_grammar_props): valid, it is kept as CSS_ONYX_OP_GENERIC (no computed effect);
+ * else CSS_INVALID, as before. A CSS-wide keyword is valid for every property, and so is a
+ * value with var() or env() (known only when substituted).
+ */
+static css_error onyx_parse_generic(css_language *c, int gidx,
+		const parserutils_vector *vector, int32_t *ctx, css_rule *rule)
+{
+	int32_t start = *ctx, end, i, depth = 0, n = 0;
+	const css_token *t, *first = NULL;
+	uint8_t flags = 0, important = 0;
+	bool subst = false, match;
+	css_style *style = NULL;
+	css_error error;
+
+	/* the value: to the end, or to a top-level '!' (its "! important") */
+	consumeWhitespace(vector, &start);
+	for (i = start; (t = parserutils_vector_peek(vector, i)) != NULL; i++) {
+		if (t->type == CSS_TOKEN_FUNCTION || tokenIsChar(t, '(') ||
+				tokenIsChar(t, '['))
+			depth++;
+		else if (tokenIsChar(t, ')') || tokenIsChar(t, ']'))
+			depth--;
+		else if (depth == 0 && tokenIsChar(t, '!'))
+			break;
+		if (t->type == CSS_TOKEN_FUNCTION && (lwc_string_caseless_isequal(t->idata,
+				c->strings[FN_VAR], &match) == lwc_error_ok && match))
+			subst = true;
+		if (t->type == CSS_TOKEN_FUNCTION && lwc_string_length(t->idata) == 3 &&
+				strncasecmp(lwc_string_data(t->idata), "env", 3) == 0)
+			subst = true;
+		if (t->type != CSS_TOKEN_S) {
+			if (first == NULL)
+				first = t;
+			n++;
+		}
+	}
+	end = i;
+	if (first == NULL)
+		return CSS_INVALID;
+
+	if (n == 1 && first->type == CSS_TOKEN_IDENT) {
+		const char *d = lwc_string_data(first->idata);
+		size_t len = lwc_string_length(first->idata);
+		if (len == 7 && strncasecmp(d, "inherit", 7) == 0)
+			flags = FLAG_INHERIT;
+		else if (len == 7 && strncasecmp(d, "initial", 7) == 0)
+			flags = FLAG_INITIAL;
+		else if (len == 5 && strncasecmp(d, "unset", 5) == 0)
+			flags = FLAG_UNSET;
+		else if ((len == 6 && strncasecmp(d, "revert", 6) == 0) ||
+				(len == 12 && strncasecmp(d, "revert-layer", 12) == 0))
+			flags = FLAG_REVERT;
+	}
+	if (flags == 0 && !subst && !css__onyx_grammar_match(
+			onyx_grammar_props[gidx].root, vector, start, end))
+		return CSS_INVALID;
+
+	*ctx = end;
+	error = css__parse_important(c, vector, ctx, &important);
+	if (error != CSS_OK)
+		return error;
+	consumeWhitespace(vector, ctx);
+	if (parserutils_vector_peek(vector, *ctx) != NULL)
+		return CSS_INVALID;
+
+	error = css__stylesheet_style_create(c->sheet, &style);
+	if (error != CSS_OK)
+		return error;
+	error = css__stylesheet_style_append(style, buildOPV(
+			(opcode_t) CSS_ONYX_OP_GENERIC, flags | important, (uint16_t) gidx));
+	if (error == CSS_OK)
+		error = css__stylesheet_rule_append_style(c->sheet, rule, style);
+	if (error != CSS_OK)
+		css__stylesheet_style_destroy(style);
+	return error;
+}
+
 css_error parseProperty(css_language *c, const css_token *property,
 		const parserutils_vector *vector, int32_t *ctx, css_rule *rule)
 {
 	css_error error;
 	css_prop_handler handler = NULL;
-	int i = 0;
+	int i = 0, gidx;
 	uint8_t flags = 0;
 	css_style *style = NULL;
 	const css_token *token;
+	int32_t orig_ctx = *ctx;
 
 	/* Onyx: a custom property, --name: value (src/parse/onyx_vars.c) */
 	if (css__onyx_is_custom_name(property->idata))
@@ -2129,8 +2211,15 @@ css_error parseProperty(css_language *c, const css_token *property,
 	if (i == LAST_PROP + 1) {
 		/* Onyx: a vendor's prefixed property as the standard one */
 		i = onyx_unprefixed_property(c, property->idata);
-		if (i < 0)
-			return CSS_INVALID;
+		if (i < 0) {
+			/* Onyx: a property libcss does not compute: its grammar */
+			gidx = css__onyx_grammar_property(
+					lwc_string_data(property->idata),
+					lwc_string_length(property->idata));
+			if (gidx < 0)
+				return CSS_INVALID;
+			return onyx_parse_generic(c, gidx, vector, ctx, rule);
+		}
 	}
 
 	/* Get handler */
@@ -2151,25 +2240,34 @@ css_error parseProperty(css_language *c, const css_token *property,
 
 	/* Call the handler */
 	error = handler(c, vector, ctx, style);
+	if (error == CSS_OK) {
+		/* Determine if this declaration is important or not */
+		error = css__parse_important(c, vector, ctx, &flags);
+	}
+	if (error == CSS_OK) {
+		/* Ensure that we've exhausted all the input */
+		consumeWhitespace(vector, ctx);
+		token = parserutils_vector_iterate(vector, ctx);
+		if (token != NULL) {
+			/* Trailing junk, so discard declaration */
+			error = CSS_INVALID;
+		}
+	}
+	if (error == CSS_INVALID) {
+		/* Onyx: a value libcss's parser does not take (a newer syntax): valid if
+		 * the property's grammar says so, kept without a computed effect (an
+		 * earlier declaration the parser took keeps applying) */
+		css__stylesheet_style_destroy(style);
+		*ctx = orig_ctx;
+		gidx = css__onyx_grammar_property(lwc_string_data(c->strings[i]),
+				lwc_string_length(c->strings[i]));
+		if (gidx < 0)
+			return CSS_INVALID;
+		return onyx_parse_generic(c, gidx, vector, ctx, rule);
+	}
 	if (error != CSS_OK) {
 		css__stylesheet_style_destroy(style);
 		return error;
-	}
-
-	/* Determine if this declaration is important or not */
-	error = css__parse_important(c, vector, ctx, &flags);
-	if (error != CSS_OK) {
-		css__stylesheet_style_destroy(style);
-		return error;
-	}
-
-	/* Ensure that we've exhausted all the input */
-	consumeWhitespace(vector, ctx);
-	token = parserutils_vector_iterate(vector, ctx);
-	if (token != NULL) {
-		/* Trailing junk, so discard declaration */
-                css__stylesheet_style_destroy(style);
-		return CSS_INVALID;
 	}
 
 	/* If it's important, then mark the style appropriately */
@@ -2186,5 +2284,20 @@ css_error parseProperty(css_language *c, const css_token *property,
 	/* Style owned or destroyed by stylesheet, so forget about it */
 
 	return CSS_OK;
+}
+
+/* Onyx: is "property: value" (the value from ctx to the end of the vector) a declaration
+ * this parser keeps? (@supports, CSS.supports) */
+bool css__onyx_declaration_valid(css_language *c, const css_token *property,
+		const parserutils_vector *vector, int32_t ctx)
+{
+	css_rule *rule = NULL;
+	bool ok;
+
+	if (css__stylesheet_rule_create(c->sheet, CSS_RULE_SELECTOR, &rule) != CSS_OK)
+		return false;
+	ok = parseProperty(c, property, vector, &ctx, rule) == CSS_OK;
+	css__stylesheet_rule_destroy(c->sheet, rule);
+	return ok;
 }
 

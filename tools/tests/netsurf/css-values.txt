@@ -1,0 +1,71 @@
+# tools/tests/netsurf/css-values.txt -- what libcss must keep (+) or drop (-): csscheck.c's
+# input (make -f tools/tests/netsurf/host.mk css-check). "+ prop: value" an inline declaration,
+# "S+ text" a sheet with a rule kept.
+
+# ---- libcss's own properties (unchanged)
++ color: red
++ width: calc(100% - 2em)
+- width: red
+- color: 10px
++ margin: 0 auto
++ display: grid
+
+# ---- the grammars (onyx_grammar): properties libcss does not compute
++ anchor-name: --foo
++ anchor-name: --foo, --bar
+- anchor-name: foo
++ scroll-snap-type: x mandatory
++ scroll-snap-type: both proximity
+- scroll-snap-type: mandatory x
++ scroll-snap-align: start end
++ text-wrap: balance
++ mask-image: linear-gradient(red, blue)
++ mask-image: url(a.png), none
++ transition: opacity 0.3s ease-in-out, transform 1s
+- transition: opacity foo
++ will-change: transform, opacity
++ user-select: none
++ touch-action: pan-x pan-y pinch-zoom
+- touch-action: auto none
++ inset-inline: 10px auto
++ accent-color: auto
++ accent-color: rebeccapurple
++ font-feature-settings: "liga" 1, "kern"
++ font-variation-settings: "wght" 400
++ backdrop-filter: blur(12px)
++ filter: drop-shadow(0 0 2px red) brightness(1.2)
+- filter: blur(red)
++ clip-path: circle(50% at 50% 50%)
++ clip-path: polygon(0 0, 100% 0, 50% 100%)
++ animation: spin 1s linear infinite
++ animation-timeline: scroll(root block)
++ container: sidebar / inline-size
++ content-visibility: auto
++ grid-template-areas: "a b" "c d"
++ hyphens: auto
++ tab-size: 4
++ caret-color: transparent
+- caret-color: 4px
++ overscroll-behavior: contain none
++ scroll-behavior: smooth
++ offset-path: path("M 0 0 L 10 10")
++ scrollbar-gutter: stable both-edges
++ view-transition-name: hero
+- view-transition-name: 12
+- inherit-this: inherit
+- nonsense-property: 1px
+
+# CSS-wide keywords, var(), !important
++ anchor-name: inherit
++ anchor-name: revert-layer
++ anchor-name: var(--x)
++ anchor-name: --a !important
+- anchor-name: --a !imp
+
+# ---- values libcss's parser does not take, valid by the grammar (no effect)
++ display: ruby
++ width: fit-content(10px)
++ color: color(display-p3 1 0 0)
++ color: light-dark(white, black)
++ background-image: image-set("a.png" 1x, "b.png" 2x)
+- width: 10deg

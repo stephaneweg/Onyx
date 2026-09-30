@@ -15,6 +15,11 @@
 #include "parse/mq.h"
 
 /** Does the @supports condition at *ctx (to the end of the vector) hold? */
+/* Is "property: value" (the value from ctx to the end of the vector) a declaration the
+ * parser keeps? (language.c) */
+bool css__onyx_declaration_valid(css_language *c, const css_token *property,
+		const parserutils_vector *vector, int32_t ctx);
+
 bool css__onyx_supports(css_language *c, const parserutils_vector *vector, int32_t *ctx);
 
 /** An @container's query (after its optional name), parsed as a media query list. */

@@ -96,6 +96,8 @@ void css__make_style_important(css_style *style)
 			offset += 2 + value;	/* text, property, longhands */
 			continue;
 		}
+		if (op == (opcode_t) CSS_ONYX_OP_GENERIC)
+			continue;		/* (no operand) */
 
 		/* Advance past any property-specific data */
 		if (hasFlagValue(opv) == false && value == VALUE_IS_CALC) {

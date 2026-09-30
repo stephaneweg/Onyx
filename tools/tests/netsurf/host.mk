@@ -263,3 +263,11 @@ $(OUT)/libcss-select-test: $(CSS)/test/select.c $(CSS)/test/dump_computed.h $(CS
 libcss-test: $(OUT)/libcss-select-test
 	@for t in $(CSS)/test/data/select/*.dat; do \
 		echo "$$(basename $$t): $$($(OUT)/libcss-select-test $$t 2>&1 | tail -1)"; done
+
+# ---- what libcss keeps (tools/tests/netsurf/csscheck.c on css-values.txt): the parser's
+# answers to CSS.supports() -- make -f tools/tests/netsurf/host.mk css-check
+$(OUT)/csscheck: $(HERE)/csscheck.c $(CSS_TEST_OBJ)
+	@$(CC) $(CF) $(I_CSS) -o $@ $< $(CSS_TEST_OBJ) -lm
+.PHONY: css-check
+css-check: $(OUT)/csscheck
+	@$(OUT)/csscheck $(HERE)/css-values.txt
