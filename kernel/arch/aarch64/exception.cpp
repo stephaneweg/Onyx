@@ -37,6 +37,24 @@ void SetPanicGraphics (C2DGraphics *p2D)
 	s_pPanicGraphics = p2D;
 }
 
+// Text without the heap: an exception handler runs with the FIQs masked, and the heap's spin lock
+// (IRQ level) asserts then -- the report was lost behind "synchronize64.cpp(64): assertion failed:
+// nTargetLevel == FIQ_LEVEL || !(nFlags & 0x40)". A small appender into a caller's buffer instead.
+struct TPanicText
+{
+	char *p; unsigned n, cap;
+	TPanicText (char *pBuf, unsigned nCap) : p (pBuf), n (0), cap (nCap) { p[0] = 0; }
+	TPanicText &s (const char *q) { while (q && *q && n + 1 < cap) p[n++] = *q++; p[n] = 0; return *this; }
+	TPanicText &x (u64 v)			// 0x..., the digits it needs
+	{
+		char d[20]; int k = 0;
+		do { d[k++] = "0123456789ABCDEF"[v & 15]; v >>= 4; } while (v);
+		s ("0x");
+		while (k && n + 1 < cap) p[n++] = d[--k];
+		p[n] = 0; return *this;
+	}
+};
+
 static void PanicToScreen (unsigned nEC, u64 ulELR, u64 ulFAR, u64 ulSPSR)
 {
 	if (s_pPanicGraphics == 0)
@@ -51,11 +69,11 @@ static void PanicToScreen (unsigned nEC, u64 ulELR, u64 ulFAR, u64 ulSPSR)
 	Img.Clear (0x00500000);						// dark red
 	Img.DrawText (16, 16, "*** KERNEL PANIC (exception) ***", 0x00FFFFFF);
 
-	CString Line;
-	Line.Format ("EC=0x%x  ELR=%lp", nEC, (void *) ulELR);
-	Img.DrawText (16, 40, (const char *) Line, 0x00FFFF00);
-	Line.Format ("FAR=%lp  SPSR=%lp", (void *) ulFAR, (void *) ulSPSR);
-	Img.DrawText (16, 56, (const char *) Line, 0x00FFFF00);
+	static char Line[96];
+	TPanicText (Line, sizeof Line).s ("EC=").x (nEC).s ("  ELR=").x (ulELR);
+	Img.DrawText (16, 40, Line, 0x00FFFF00);
+	TPanicText (Line, sizeof Line).s ("FAR=").x (ulFAR).s ("  SPSR=").x (ulSPSR);
+	Img.DrawText (16, 56, Line, 0x00FFFF00);
 
 	// Copied into the displayed frame buffer by the CPU, not by UpdateDisplay's DMA: the
 	// compositor's display DMA may be in flight (its channel taken, its completion never
@@ -131,13 +149,15 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 
 	unsigned nEC = (unsigned) ((Frame.esr_el1 >> 26) & 0x3F);
 
-	// The crash record first (read back after the watchdog reboot: SD:/etc/lastcrash.txt).
+	// The crash record first (read back after the watchdog reboot: SD:/etc/lastcrash.txt) --
+	// without the heap (the FIQs are masked here: its lock would assert, the report lost).
 	{
-		CString Line;
-		Line.Format ("EC=%#x ELR=%lp FAR=%lp SPSR=%lp LR=%lp SP=%lp task %s", nEC, (void *) pFrame->elr_el1,
-			     (void *) Frame.far_el1, (void *) pFrame->spsr_el1, (void *) pFrame->x[30], (void *) Frame.sp_el1,
-			     CScheduler::IsActive () && CScheduler::Get ()->GetCurrentTask ()
-			     ? CScheduler::Get ()->GetCurrentTask ()->GetName () : "-");
+		static char Line[200];
+		TPanicText (Line, sizeof Line).s ("an exception: EC=").x (nEC).s (" ELR=").x (pFrame->elr_el1)
+			.s (" FAR=").x (Frame.far_el1).s (" SPSR=").x (pFrame->spsr_el1).s (" LR=").x (pFrame->x[30])
+			.s (" SP=").x (Frame.sp_el1).s (" task ")
+			.s (CScheduler::IsActive () && CScheduler::Get ()->GetCurrentTask ()
+			    ? CScheduler::Get ()->GetCurrentTask ()->GetName () : "-");
 		CrashLogPanic (Line);
 		CrashLogStack (pFrame);		// (the return addresses on the faulting context's stack)
 	}
@@ -150,11 +170,9 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 	// display yet; kmsg is gone with the system), then blink SOS instead of Circle's
 	// ExceptionHandler, whose register dump would go to the same invisible console and
 	// then halt with a frozen LED -- indistinguishable from a hang when headless.
+	// (No CLogger here: it formats on the heap -- the assertion above. The crash record has it all.)
 	(void) nException;
-	PanicBlink (FALSE);			// one SOS first, in case logging itself hangs
-	CLogger::Get ()->Write ("exc", LogError, "KERNEL PANIC: EC=%#x ELR=%lp FAR=%lp SPSR=%lp LR=%lp",
-				nEC, (void *) pFrame->elr_el1, (void *) Frame.far_el1,
-				(void *) pFrame->spsr_el1, (void *) pFrame->x[30]);
+	PanicBlink (FALSE);			// one SOS first
 	CrashLogDumpNow ("an exception (kernel panic)");	// core 1: the report, then a restart
 	PanicBlink (TRUE);				// (hangreboot=0: SOS for ever)
 }
