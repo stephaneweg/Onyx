@@ -40,6 +40,9 @@ BRO  := $(LIBROOT)/brotli-1.1.0
 ZLIB := $(LIBROOT)/zlib-1.3.1
 WEBP := $(LIBROOT)/libwebp-1.4.0
 FT   := $(LIBROOT)/freetype-2.14.3
+# Onyx: PlutoVG + PlutoSVG (SVG images, inline <svg>, <canvas>; user/netsurf/Makefile)
+PVG  := $(LIBROOT)/plutovg-1.3.3
+PSVG := $(LIBROOT)/plutosvg-0.0.8
 FONTS := $(LIBROOT)/dejavu-fonts-ttf-2.37
 # mbedTLS for the https:// transport (user/tls/onyx_tls.hpp)
 MBEDTLS ?= $(LIBROOT)/mbedtls-3.6.3
@@ -56,7 +59,8 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
       -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \
       -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
       -I$(DOM)/bindings -I$(DOM)/src -I$(PNG) -I$(JPEG) -I$(ZLIB) -I$(WEBP)/src \
-      -I$(FT)/include -I$(HERE)freetype $(NS_FT_CF)
+      -I$(FT)/include -I$(HERE)freetype $(NS_FT_CF) \
+      -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source
 
 # --- JavaScript: QuickJS (libquickjs.a, user/netsurf/Makefile) and the DOM on it ----------
 # javascript/quickjs/qjs.c: NetSurf's js.h on QuickJS, the natives (libdom's tree, the
@@ -64,7 +68,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c
 
 # ---- source lists (excludes documented in README.md) -------------------
 CORE_SRC := \
@@ -78,7 +82,7 @@ CORE_SRC := \
   $(wildcard $(NS)/content/handlers/css/*.c) \
   $(wildcard $(NS)/content/handlers/html/*.c) \
   $(wildcard $(NS)/content/handlers/text/*.c) \
-  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c jpeg.c png.c webp.c) \
+  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c jpeg.c png.c webp.c onyx_svg.c onyx_vgfont.c) \
   $(wildcard $(NS)/content/handlers/javascript/*.c) \
   $(JS_SRC)
 
@@ -142,7 +146,24 @@ $(OUT)/qjsgen/qjs_html5_js.h: $(JSQ)/html5.js
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 QJS_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs.c))
 $(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h $(OUT)/qjsgen/qjs_html5_js.h
+$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_dom_js.h
+$(QJS_OBJ_NS): $(OUT)/qjsgen/qjs_intl_js.h
+# Onyx: intl.js (Intl) and its locale data (CLDR) as C strings for qjs_intl.h
+$(OUT)/qjsgen/qjs_intl_js.h: $(JSQ)/intl.js $(LIBROOT)/cldr-48/intl-data.txt
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from intl.js and intl-data.txt by netsurf-app.mk */'; echo 'static const char qjs_intl_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; \
+	  echo 'static const char qjs_intl_data[] ='; \
+	  sed -e 's/\r$$//' -e '/^#/d' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $(LIBROOT)/cldr-48/intl-data.txt; echo ';'; } > $@
 $(QJS_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
+# Onyx: <canvas> 2D -- canvas.js as a C string for qjs_canvas.c (as dom.js)
+$(OUT)/qjsgen/qjs_canvas_js.h: $(JSQ)/canvas.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from canvas.js by netsurf-app.mk */'; echo 'static const char qjs_canvas_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+QCV_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_canvas.c))
+$(QCV_OBJ_NS): $(OUT)/qjsgen/qjs_canvas_js.h
+$(QCV_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
@@ -178,8 +199,9 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
           -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) -L$(QJS) \
+          -L$(PSVG) -L$(PVG) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by

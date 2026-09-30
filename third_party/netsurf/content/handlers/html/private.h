@@ -170,6 +170,9 @@ typedef struct html_content {
 	struct content_html_object *object_list;
 	/** Forms, in reverse order to document. */
 	struct form *forms;
+	/** Onyx: the form controls outside any form (a React app's inputs), kept for the
+	 * document's life so a rebox finds them again (linked by their next) */
+	struct form_control *orphan_controls;
 	/** Hash table of imagemaps. */
 	struct imagemap **imagemaps;
 
@@ -215,6 +218,14 @@ typedef struct html_content {
 
 	/** Onyx: a script changed the DOM: its boxes to build again (html_rebox) */
 	bool rebox_pending;
+	/** Onyx: boxes built and laid out while the document is still parsed (a script
+	 * asked for a geometry), and whether the parser added nodes since */
+	bool early_layout;
+	bool early_stale;
+	/** Onyx: a parser-inserted inline script waiting for the style sheets before it (a
+	 * ref), the parser paused meanwhile; whether a script a script inserted runs */
+	struct dom_node *blocked_script;
+	bool dom_inserted_script;
 
 	/** Onyx: the node under the pointer (CSS :hover: it and its ancestors), a ref */
 	struct dom_node *hover_node;
@@ -332,6 +343,12 @@ nserror html_proceed_to_done(html_content *html);
  */
 void html_script_dom_changed(html_content *htmlc);
 
+/** Onyx: boxes built and laid out from the nodes parsed so far (a script asks for a
+ * geometry while the document is parsed); whether there are boxes */
+/** Onyx: a script waiting for the style sheets run once they are in */
+void html_script_sheets_arrived(struct html_content *c);
+bool html_early_layout(struct html_content *c);
+
 /**
  * Onyx: a script asks for the layout (a box's rectangle): a pending new layout is made now.
  */
@@ -389,6 +406,8 @@ dom_hubbub_error html_process_script(void *ctx, dom_node *node);
 
 /* in html/forms.c */
 struct form *html_forms_get_forms(const char *docenc, dom_html_document *doc);
+/** Onyx: a node's control -- a form's, or one outside any form, kept (orphan_controls) */
+struct form_control *html_forms_control_for_node(struct html_content *c, dom_node *node);
 struct form_control *html_forms_get_control_for_node(struct form *forms,
 		dom_node *node);
 

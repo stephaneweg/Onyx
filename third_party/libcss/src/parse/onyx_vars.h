@@ -31,6 +31,10 @@
 
 #define CSS_ONYX_OP_CUSTOM	0x3f0
 #define CSS_ONYX_OP_VAR		0x3f1
+/* Onyx: a declaration valid by its property's grammar but not computed by libcss
+ * (parse/onyx_grammar.h): OPV(flags, the property's index in onyx_grammar_props), nothing
+ * else; its cascade does nothing. */
+#define CSS_ONYX_OP_GENERIC	0x3f2
 
 /** Is the name a custom property's, "--" something? */
 bool css__onyx_is_custom_name(lwc_string *name);

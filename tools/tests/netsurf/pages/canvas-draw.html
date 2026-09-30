@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Canvas 2D</title>
+<style>
+body { margin: 16px; font: 14px sans-serif; background: #fff; }
+canvas { border: 1px solid #999; margin: 0 8px 8px 0; vertical-align: top; }
+</style></head>
+<body>
+<canvas id="a" width="240" height="160"></canvas>
+<canvas id="b" width="240" height="160"></canvas>
+<canvas id="c" width="240" height="160"></canvas>
+<canvas id="d" width="120" height="80" style="width:240px;height:160px"></canvas>
+<script>
+function $(id) { return document.getElementById(id).getContext('2d'); }
+
+/* a: rectangles, paths, strokes, arcs */
+var a = $('a');
+a.fillStyle = '#e8f0fe';
+a.fillRect(0, 0, 240, 160);
+a.fillStyle = 'rgba(234, 67, 53, 0.8)';
+a.fillRect(10, 10, 60, 40);
+a.strokeStyle = '#1a73e8';
+a.lineWidth = 4;
+a.strokeRect(80, 10, 60, 40);
+a.clearRect(20, 20, 20, 20);
+a.beginPath();
+a.arc(190, 30, 22, 0, Math.PI * 2);
+a.fillStyle = 'green';
+a.fill();
+a.beginPath();
+a.moveTo(10, 150);
+a.bezierCurveTo(40, 70, 80, 70, 110, 150);
+a.quadraticCurveTo(140, 90, 170, 150);
+a.lineWidth = 3;
+a.lineCap = 'round';
+a.strokeStyle = '#9334e6';
+a.stroke();
+a.beginPath();
+a.setLineDash([8, 4]);
+a.moveTo(10, 60);
+a.lineTo(230, 60);
+a.strokeStyle = '#5f6368';
+a.lineWidth = 2;
+a.stroke();
+a.setLineDash([]);
+a.beginPath();
+a.moveTo(180, 70);
+a.arcTo(230, 70, 230, 150, 20);
+a.lineTo(230, 150);
+a.strokeStyle = '#000';
+a.stroke();
+a.beginPath();
+a.ellipse(200, 120, 25, 12, Math.PI / 6, 0, Math.PI * 2);
+a.fillStyle = '#fbbc04';
+a.fill();
+
+/* b: gradients, transforms, save/restore, clip, alpha, even-odd */
+var b = $('b');
+var g = b.createLinearGradient(0, 0, 240, 0);
+g.addColorStop(0, '#4285f4');
+g.addColorStop(0.5, '#34a853');
+g.addColorStop(1, '#fbbc04');
+b.fillStyle = g;
+b.fillRect(0, 0, 240, 40);
+var r = b.createRadialGradient(60, 100, 5, 60, 100, 45);
+r.addColorStop(0, '#fff');
+r.addColorStop(1, '#ea4335');
+b.fillStyle = r;
+b.beginPath();
+b.arc(60, 100, 45, 0, Math.PI * 2);
+b.fill();
+b.save();
+b.translate(170, 100);
+b.rotate(Math.PI / 4);
+b.fillStyle = 'rgba(26, 115, 232, 0.6)';
+b.fillRect(-30, -30, 60, 60);
+b.restore();
+b.save();
+b.beginPath();
+b.rect(120, 45, 40, 110);
+b.clip();
+b.globalAlpha = 0.5;
+b.fillStyle = '#000';
+b.beginPath();
+b.arc(140, 100, 40, 0, Math.PI * 2);
+b.fill();
+b.restore();
+b.beginPath();
+b.rect(200, 50, 36, 36);
+b.rect(208, 58, 20, 20);
+b.fillStyle = '#9334e6';
+b.fill('evenodd');
+
+/* c: text, Path2D, patterns, drawImage from a canvas, image data */
+var c = $('c');
+c.font = 'bold 20px sans-serif';
+c.fillStyle = '#202124';
+c.fillText('Onyx canvas', 10, 30);
+c.font = '14px serif';
+c.textAlign = 'right';
+c.fillText('right aligned', 230, 50);
+c.textAlign = 'left';
+c.strokeStyle = '#ea4335';
+c.lineWidth = 1;
+c.font = '24px monospace';
+c.strokeText('mono', 10, 75);
+var p = new Path2D('M130 60 l20 30 l-40 0 z');
+c.fillStyle = '#34a853';
+c.fill(p);
+var star = new Path2D();
+star.moveTo(190, 60); star.lineTo(200, 90); star.lineTo(175, 72); star.lineTo(205, 72); star.lineTo(180, 90); star.closePath();
+c.fillStyle = '#fbbc04';
+c.fill(star, 'nonzero');
+c.drawImage(document.getElementById('a'), 0, 0, 240, 160, 10, 95, 60, 40);
+var id = c.createImageData(40, 40);
+for (var i = 0; i < id.data.length; i += 4) {
+	var x = (i / 4) % 40, y = Math.floor(i / 4 / 40);
+	id.data[i] = x * 6; id.data[i + 1] = y * 6; id.data[i + 2] = 128; id.data[i + 3] = 255;
+}
+c.putImageData(id, 90, 100);
+var pc = document.createElement('canvas');
+pc.width = 10; pc.height = 10;
+var pcx = pc.getContext('2d');
+pcx.fillStyle = '#1a73e8'; pcx.fillRect(0, 0, 5, 5); pcx.fillRect(5, 5, 5, 5);
+c.fillStyle = c.createPattern(pc, 'repeat');
+c.fillRect(150, 100, 80, 50);
+
+/* d: a small canvas shown twice its size (CSS) */
+var d = $('d');
+d.fillStyle = '#12b5cb';
+d.beginPath();
+d.arc(60, 40, 30, 0, Math.PI * 2);
+d.fill();
+d.strokeStyle = '#000';
+d.lineWidth = 1;
+d.strokeRect(0.5, 0.5, 119, 79);
+</script>
+</body></html>

@@ -52,6 +52,7 @@
 #include "html/box_special.h"
 #include "html/box_textarea.h"
 #include "html/form_internal.h"
+#include "html/onyx_svg_inline.h"
 
 
 static const content_type image_types = CONTENT_IMAGE;
@@ -801,7 +802,7 @@ box_button(dom_node *n,
 {
 	struct form_control *gadget;
 
-	gadget = html_forms_get_control_for_node(content->forms, n);
+	gadget = html_forms_control_for_node(content, n);
 	if (!gadget)
 		return false;
 
@@ -1245,7 +1246,7 @@ box_input(dom_node *n,
 	nsurl *url;
 	nserror error;
 
-	gadget = html_forms_get_control_for_node(content->forms, n);
+	gadget = html_forms_control_for_node(content, n);
 	if (gadget == NULL) {
 		return false;
 	}
@@ -1674,7 +1675,7 @@ box_select(dom_node *n,
 	dom_node *next, *next2;
 	dom_exception err;
 
-	gadget = html_forms_get_control_for_node(content->forms, n);
+	gadget = html_forms_control_for_node(content, n);
 	if (gadget == NULL)
 		return false;
 
@@ -1851,7 +1852,7 @@ static bool box_textarea(dom_node *n,
 			bool *convert_children)
 {
 	/* Get the form_control for the DOM node */
-	box->gadget = html_forms_get_control_for_node(content->forms, n);
+	box->gadget = html_forms_control_for_node(content, n);
 	if (box->gadget == NULL)
 		return false;
 
@@ -1950,7 +1951,8 @@ convert_special_elements(dom_node *node,
 		break;
 
 	default:
-		res = true;
+		/* Onyx: an inline <svg>, a replaced box (onyx_svg_inline.c) */
+		res = onyx_svg_box(node, content, box, convert_children);
 	}
 
 	return res;

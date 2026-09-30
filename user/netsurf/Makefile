@@ -50,7 +50,8 @@ I_HB  := -I$(NS)/libhubbub/include
 
 LIBS := libwapcaplet libparserutils libnsutils libnsgif libnsbmp libhubbub libcss libdom
 ARCHIVES := $(foreach l,$(LIBS),$(NS)/$(l)/$(l).a) $(NS)/freetype-2.14.3/libfreetype.a \
-            $(NS)/brotli-1.1.0/libbrotlidec.a $(NS)/quickjs-ng-0.17.0/libquickjs.a
+            $(NS)/brotli-1.1.0/libbrotlidec.a $(NS)/quickjs-ng-0.17.0/libquickjs.a \
+            $(NS)/plutovg-1.3.3/libplutovg.a $(NS)/plutosvg-0.0.8/libplutosvg.a
 
 .PHONY: all clean
 all: $(ARCHIVES)
@@ -144,7 +145,23 @@ QJS_OBJ := $(patsubst %.c,%.o,$(addprefix $(QJS)/,quickjs.c libregexp.c libunico
 $(QJS_OBJ): CINC := -std=gnu11 -D__ONYX__ -I$(QJS)
 $(QJS)/libquickjs.a: $(QJS_OBJ); $(AR) rcs $@ $^
 
+# ---- PlutoVG + PlutoSVG (Onyx: SVG images, inline <svg>, <canvas> 2D) -------------------
+# The vector rasteriser and the SVG renderer on it (MIT; PlutoSVG's Onyx patches marked
+# "Onyx:"). No font directory scan (the canvas loads the card's fonts by name), stb_image
+# for PNG / JPEG only (an SVG's embedded <image>). C11, as upstream builds them.
+PVG := $(NS)/plutovg-1.3.3
+PSVG := $(NS)/plutosvg-0.0.8
+PVG_CF := -std=gnu11 -DPLUTOVG_BUILD -DPLUTOVG_BUILD_STATIC -DPLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD \
+          -DSTBI_ONLY_PNG -DSTBI_ONLY_JPEG -I$(PVG)/include
+PVG_OBJ := $(patsubst %.c,%.o,$(wildcard $(PVG)/source/plutovg-*.c))
+$(PVG_OBJ): CINC := $(PVG_CF)
+$(PVG)/libplutovg.a: $(PVG_OBJ); $(AR) rcs $@ $^
+PSVG_OBJ := $(PSVG)/source/plutosvg.o
+$(PSVG_OBJ): CINC := $(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source
+$(PSVG)/libplutosvg.a: $(PSVG_OBJ); $(AR) rcs $@ $^
+
 clean:
+	rm -f $(PVG_OBJ) $(PSVG_OBJ)
 	rm -f $(QJS_OBJ) $(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ) $(ARCHIVES)
 	rm -f $(NS)/libcss/build/gen_parser $(CSS_AUTO_C)
 	rm -f $(NS)/libparserutils/src/charset/aliases.inc

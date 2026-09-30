@@ -5,6 +5,8 @@
  * Copyright 2009 John-Mark Bell <jmb@netsurf-browser.org>
  */
 
+#include <string.h>
+
 #include <libwapcaplet/libwapcaplet.h>
 
 #include "select/strings.h"
@@ -195,11 +197,55 @@ css_error css_select_strings_intern(css_select_strings *str)
 	if (error != lwc_error_ok)
 		return css_error_from_lwc_error(error);
 
+	/* Onyx */
+	{
+		static const char *const onyx[ONYX_STR_N] = {
+			"read-only",
+			"read-write",
+			"required",
+			"optional",
+			"placeholder-shown",
+			"defined",
+			"scope",
+			"dir",
+			"ltr",
+			"input",
+			"textarea",
+			"select",
+			"readonly",
+			"placeholder",
+			"value",
+			"type",
+			"contenteditable",
+			"checkbox",
+			"radio",
+			"submit",
+			"button",
+			"reset",
+			"hidden",
+			"image",
+			"file",
+			"color",
+			"range",
+		};
+		int i;
+		for (i = 0; i < ONYX_STR_N; i++) {
+			error = lwc_intern_string(onyx[i], strlen(onyx[i]),
+					&str->onyx[i]);
+			if (error != lwc_error_ok)
+				return css_error_from_lwc_error(error);
+		}
+	}
+
 	return CSS_OK;
 }
 
 void css_select_strings_unref(css_select_strings *str)
 {
+	int i;
+
+	for (i = 0; i < ONYX_STR_N; i++)
+		lwc_string_unref(str->onyx[i]);
 	lwc_string_unref(str->universal);
 	lwc_string_unref(str->first_child);
 	lwc_string_unref(str->link);

@@ -351,6 +351,111 @@ static bool fetch_onyx_can_fetch(const nsurl *url)
 	return true;
 }
 
+/* Onyx: two hosts on the same site -- the same registrable domain, approximated: the last
+ * two labels, or three under a two-letter country code's second level (co.uk, com.au...) */
+static const char *onyx_site_of(const char *host)
+{
+	const char *p = host + strlen(host), *dots[3] = { NULL, NULL, NULL };
+	int n = 0;
+
+	while (p > host && n < 3) {
+		p--;
+		if (*p == '.')
+			dots[n++] = p;
+	}
+	if (n < 1)
+		return host;
+	/* dots[0]: before the TLD, dots[1]: before the second level */
+	if (n >= 2 && strlen(dots[0] + 1) == 2 && (dots[0] - dots[1] - 1) <= 3) {
+		/* a ccTLD with a short second level: example.co.uk */
+		return n >= 3 ? dots[2] + 1 : host;
+	}
+	return n >= 2 ? dots[1] + 1 : host;
+}
+
+/* Onyx: Chrome's Fetch Metadata request headers (Sec-Fetch-Site / -Mode / -Dest / -User,
+ * Upgrade-Insecure-Requests), an Accept header by destination, and on https the User-Agent
+ * client hints (sec-ch-ua...) -- m.facebook.com answers "Sorry, something went wrong" (a 400)
+ * to a navigation without Sec-Fetch-Mode. `dest`: X-Onyx-Dest, set by the cache from what the
+ * caller accepts ("document", "iframe", "style", "script", "image", "font", "empty"...). */
+static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const char *dest,
+		bool user)
+{
+	const char *site = "none", *mode = "no-cors", *accept = NULL;
+	bool nav = false;
+	lwc_string *uh, *us;
+
+	if (dest[0] == '\0')
+		dest = ref == NULL ? "document" : "empty";
+	if (strcmp(dest, "document") == 0 || strcmp(dest, "iframe") == 0) {
+		nav = true;
+		mode = "navigate";
+		accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
+			"image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
+	} else if (strcmp(dest, "image") == 0) {
+		accept = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
+	} else if (strcmp(dest, "style") == 0) {
+		accept = "text/css,*/*;q=0.1";
+	} else if (strcmp(dest, "font") == 0 || strcmp(dest, "empty") == 0) {
+		mode = "cors";
+	}
+	if (strcmp(dest, "object") == 0)
+		dest = "empty";
+
+	uh = nsurl_get_component(url, NSURL_HOST);
+	us = nsurl_get_component(url, NSURL_SCHEME);
+	if (ref != NULL && strncasecmp(nsurl_access(ref), "http", 4) == 0) {
+		lwc_string *rh = nsurl_get_component(ref, NSURL_HOST);
+		if (nsurl_compare(url, ref, NSURL_SCHEME | NSURL_HOST | NSURL_PORT))
+			site = "same-origin";
+		else if (uh != NULL && rh != NULL && strcasecmp(
+				onyx_site_of(lwc_string_data(uh)),
+				onyx_site_of(lwc_string_data(rh))) == 0)
+			site = "same-site";
+		else
+			site = "cross-site";
+		if (rh != NULL)
+			lwc_string_unref(rh);
+	}
+	if (strcmp(site, "same-origin") == 0 && strcmp(mode, "cors") == 0)
+		mode = "cors";
+	if (accept != NULL && !hdrs_have(*hdrs, "Accept"))
+		hdrs_add(hdrs, "Accept", accept, strlen(accept));
+	if (nav)
+		hdrs_add(hdrs, "Upgrade-Insecure-Requests", "1", 1);
+	if (us != NULL && strcasecmp(lwc_string_data(us), "https") == 0) {
+		/* the client hints a Chrome sends everywhere on https (its version and whether
+		 * mobile from the User-Agent) */
+		const char *ua = user_agent_string(), *cv = strstr(ua, "Chrome/");
+		char v[16] = "126", b[160];
+		int k;
+		if (cv != NULL) {
+			for (k = 0, cv += 7; k < 15 && cv[k] >= '0' && cv[k] <= '9'; k++)
+				v[k] = cv[k];
+			if (k > 0) v[k] = '\0';
+		}
+		k = snprintf(b, sizeof b, "\"Chromium\";v=\"%s\", \"Google Chrome\";v=\"%s\", "
+				"\"Not-A.Brand\";v=\"99\"", v, v);
+		hdrs_add(hdrs, "sec-ch-ua", b, (size_t) k);
+		hdrs_add(hdrs, "sec-ch-ua-mobile", strstr(ua, "Mobile") ? "?1" : "?0", 2);
+		{
+			const char *pf = strstr(ua, "Android") ? "\"Android\"" :
+				strstr(ua, "Windows") ? "\"Windows\"" :
+				strstr(ua, "Mac OS") ? "\"macOS\"" : "\"Linux\"";
+			hdrs_add(hdrs, "sec-ch-ua-platform", pf, strlen(pf));
+		}
+	}
+	hdrs_add(hdrs, "Sec-Fetch-Site", site, strlen(site));
+	hdrs_add(hdrs, "Sec-Fetch-Mode", mode, strlen(mode));
+	if (nav && user)
+		hdrs_add(hdrs, "Sec-Fetch-User", "?1", 2);
+	hdrs_add(hdrs, "Sec-Fetch-Dest", dest, strlen(dest));
+	if (uh != NULL)
+		lwc_string_unref(uh);
+	if (us != NULL)
+		lwc_string_unref(us);
+}
+
 static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		bool only_2xx, bool downgrade_tls, const char *post_urlenc,
 		const struct fetch_multipart_data *post_multipart,
@@ -358,6 +463,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 {
 	struct fetch_onyx_context *ctx = calloc(1, sizeof(*ctx));
 	size_t hlen = 0;
+	char dest[16] = "";
 	int i;
 	(void)only_2xx; (void)downgrade_tls; (void)post_multipart;	/* (multipart: not yet) */
 	if (ctx == NULL)
@@ -377,6 +483,12 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 			while (*v == ' ') v++;
 			free(ctx->method);
 			ctx->method = strdup(v);
+			continue;
+		}
+		if (hdr_is(h, "X-Onyx-Dest")) {		/* (Onyx: Fetch Metadata) */
+			const char *v = h + 12;
+			while (*v == ' ') v++;
+			snprintf(dest, sizeof dest, "%s", v);
 			continue;
 		}
 		if (hdr_is(h, "If-None-Match") || hdr_is(h, "If-Modified-Since"))
@@ -401,6 +513,8 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 	onyx_add_referer(&ctx->hdrs, url, fetch_get_referer(parent_fetch),
 			ctx->method != NULL && strcmp(ctx->method, "GET") != 0 &&
 			strcmp(ctx->method, "HEAD") != 0);
+	onyx_add_fetch_metadata(&ctx->hdrs, url, fetch_get_referer(parent_fetch), dest,
+			fetch_is_verifiable(parent_fetch));
 
 	ctx->phase = PH_INIT;
 	ctx->sock = -1;

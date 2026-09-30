@@ -41,6 +41,7 @@
 #include "desktop/gui_internal.h"
 
 #include "html/html.h"
+#include "javascript/js.h"
 #include "html/private.h"
 #include "html/css.h"
 
@@ -115,6 +116,9 @@ html_convert_css_callback(hlcache_handle *css,
 		      nsurl_access(hlcache_handle_get_url(css)));
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		/* Onyx: the <link> / <style>'s load event (async CSS loaders wait for it) */
+		if (parent->jsthread != NULL && s->node != NULL)
+			js_fire_event(parent->jsthread, "load", parent->document, s->node);
 		break;
 
 	case CONTENT_MSG_ERROR:
@@ -130,6 +134,8 @@ html_convert_css_callback(hlcache_handle *css,
 		s->sheet = NULL;
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		if (parent->jsthread != NULL && s->node != NULL)	/* (Onyx) */
+			js_fire_event(parent->jsthread, "error", parent->document, s->node);
 		break;
 
 	case CONTENT_MSG_POINTER:
@@ -139,6 +145,10 @@ html_convert_css_callback(hlcache_handle *css,
 	default:
 		break;
 	}
+
+	/* Onyx: a script waiting for the sheets runs now they are in */
+	if (event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR)
+		html_script_sheets_arrived(parent);
 
 	if (html_can_begin_conversion(parent)) {
 		html_begin_conversion(parent);
@@ -466,7 +476,9 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	}
 
 	htmlc->stylesheets = stylesheets;
-	htmlc->stylesheets[htmlc->stylesheet_count].node = NULL;
+	/* Onyx: its <link>, for its load / error events and the CSSOM (link.sheet reads its
+	 * rules) -- a ref, released with the sheets */
+	htmlc->stylesheets[htmlc->stylesheet_count].node = dom_node_ref(node);
 	htmlc->stylesheets[htmlc->stylesheet_count].modified = false;
 	htmlc->stylesheets[htmlc->stylesheet_count].unused = false;
 
@@ -482,8 +494,10 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 
 	nsurl_unref(joined);
 
-	if (ns_error != NSERROR_OK)
+	if (ns_error != NSERROR_OK) {
+		dom_node_unref(htmlc->stylesheets[htmlc->stylesheet_count].node);
 		goto no_memory;
+	}
 
 	htmlc->stylesheet_count++;
 
@@ -695,12 +709,12 @@ html_css_new_selection_context(html_content *c, css_select_ctx **ret_select_ctx)
 			origin = CSS_ORIGIN_USER;
 		}
 
-		/* Onyx: only the sheets loaded (a script's getComputedStyle during the parse
-		 * makes a selection context while other sheets are still fetched) */
+		/* Onyx: only the sheets come (an early layout, while the others are
+		 * still fetched); the variable was kept from the sheet before */
+		sheet = NULL;
 		if (hsheet->sheet != NULL &&
 		    hlcache_handle_get_content(hsheet->sheet) != NULL &&
-		    (content_get_status(hsheet->sheet) == CONTENT_STATUS_READY ||
-		     content_get_status(hsheet->sheet) == CONTENT_STATUS_DONE)) {
+		    content_get_status(hsheet->sheet) == CONTENT_STATUS_DONE) {
 			sheet = nscss_get_stylesheet(hsheet->sheet);
 		}
 

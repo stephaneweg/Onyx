@@ -17,13 +17,16 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/libcss/` | CSS parser and selection engine (most of the CSS3 work) |
 | `third_party/libnsfb/` | the framebuffer library (`user/nsfb/onyx_surface.c`: its Onyx surface) |
 | `third_party/freetype-2.14.3/` | FreeType (options and modules: `user/netsurf/freetype/`) |
+| `third_party/webref-css-8.7.5/` | the CSS specifications' value grammars (W3C webref, MIT): libcss's grammar tables are made from them (§14) |
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `html5.js` (the HTML5 DOM: §13) |
-| `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §12), the DOM, the input decoding |
+| `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17) |
+| `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
+| `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §12), `html5test.sh` (the html5test.co score: §13) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -146,6 +149,10 @@ headers in order (`llcache_handle_get_header_at`).
   1–1000; `css_stylesheet_font_faces()` lists a sheet's rules.
 - **Units**: a length is its unit's exact size times its value (upstream rounded the unit
   to whole pixels first: 1em of a 12.48 px font was 12 px, 1pt was 1px).
+- **The specifications' grammars** (§14): every property and descriptor libcss does not
+  compute is checked against its official grammar and kept without effect; @keyframes,
+  @counter-style, @property, @scope... kept; Selectors 4; the newer units and math functions
+  computed; SVG's fill / stroke... computed.
 - libcss's own selection tests still pass: `make -f tools/tests/netsurf/host.mk
   libcss-test`.
 
@@ -179,6 +186,10 @@ headers in order (`llcache_handle_get_header_at`).
   the blur's coverage from a table (`blur_lut`: no `expf` a pixel), a gradient's colours from a
   table of 1025 made once per gradient and kept (`glut_get`, keyed by its stops), a linear
   gradient's position stepped along the row, the blend without a division (`div255`).
+- **`background-size`** (`contain`, `cover`, lengths, percentages, one side `auto` from the
+  image's ratio; `onyx_background_size` in `redraw.c`): libcss parsed it, the redraw drew
+  every background image at its own size -- the SVG backgrounds of the big sites (icons sized
+  by CSS) came out wrong.
 - `border-radius`, `box-shadow` (outer and inset), gradient backgrounds, rounded clips of
   a box's content; `background-clip: text` paints the descendants' text with the box's
   background.
@@ -235,7 +246,7 @@ optional chaining...) with the DOM written in JavaScript:
   page's thread (the promises' jobs run after it, a changed DOM laid out again); the requests
   in flight are cancelled when the document goes. Not yet: synchronous XHR (it runs async),
   multipart bodies, CORS checks (every origin answers); streams, `responseXML` and
-  `responseType = 'document'`: html5.js (§13).
+  `responseType = 'document'`: html5.js (§17).
 - **A changed DOM is laid out again** (`html.c`, `html_script_dom_changed`): once a script
   is done, NetSurf builds the document's boxes again (`dom_to_box_now`, synchronously) and
   lays it out — a menu a script opens, a class toggled, nodes added. The old boxes' objects
@@ -300,8 +311,8 @@ optional chaining...) with the DOM written in JavaScript:
 - **libcss**: `css_computed_style_paint_only_change (a, b, &moved)` (`src/select/arena.c`) copies
   the paint properties' bits and values of b over a copy of a's, then compares the rest as the
   interning does; the bits' positions are in `src/select/onyx_propbits.h`, copied from
-  `autogenerated_propget.h` (which `#undef`s them): make it again if `select_config.py`
-  changes the layout.
+  `autogenerated_propget.h` (which `#undef`s them) by `onyx_propbits.py`: run it (after
+  `select_generator.py`) whenever `select_config.py` changes the layout.
 - The windows' `dom.js` checkout: the makefiles strip the CRs before embedding it (a Windows
   checkout, `core.autocrlf`, broke `qjs_dom_js.h`).
 
@@ -347,8 +358,8 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
 - **A read-only CSSOM**: `<style>.sheet` (`cssRules`: the style rules with their valid
   declarations, `@font-face` with the descriptors libcss reads -- font-family, src, font-style,
   font-weight, unicode-range --, `@page`, `@media` / `@supports` with their rules, `@import`,
-  `@namespace`; what libcss drops is not there), `document.styleSheets` (the `<style>`s'). No
-  `insertRule`, no linked sheets yet.
+  `@namespace`; what libcss drops is not there), `document.styleSheets` (the `<style>`s').
+  Since made a real, writable CSSOM with the linked sheets (§14).
 - css3test.com (Lea Verou's) now runs -- its engine is a module graph of 156 modules -- and
   scores **23%** (1154 of 6419 tests), honestly (what libcss parses; Chrome ~ 75%). It found a
   double free in libcss's Onyx gradient parser (a prefixed legacy `radial-gradient` such as
@@ -358,7 +369,304 @@ Found by running a saved copy of yahoo.com on the PC bench (`NS_PERF=1 NS_JSDEBU
   graph, `import.meta.url`, `import()`, an inline module, the order, `CSS.supports`,
   `element.style`.
 
-## 12. The HTML parser (libhubbub, libdom's binding, libparserutils)
+## 12. SVG (images and inline `<svg>`, on PlutoSVG)
+
+NetSurf's own SVG handler (`image/svg.c`) needs libsvgtiny, never vendored: SVG images were
+not drawn, inline `<svg>` neither (the logos and icons of google.com, bbc.co.uk, Facebook).
+
+- **The image handler** (`content/handlers/image/onyx_svg.c`, registered in `image.c` for
+  `image/svg+xml` and `image/svg`; the file fetcher types `.svg`): the document is parsed once
+  by PlutoSVG; its intrinsic size is its `width` / `height`, else its viewBox's, else 300 x 150
+  (a width alone: 150 high, as Chrome). It is rasterised -- anti-aliased, into a NetSurf bitmap --
+  at the size a redraw asks for and kept for the next redraws (six sizes per image, the least
+  recently used replaced): a redraw is a bitmap plot, never a rasterisation. An SVG with a
+  viewBox is drawn in a viewport of the drawn size (its `preserveAspectRatio` applies), one
+  without is scaled, as browsers do for images; a drawing over 2048 x 2048 pixels is rasterised
+  smaller and scaled up. `currentColor` is black in an image. `<img>`, backgrounds (tiled too),
+  `list-style-image`, `<object>` and `<embed>` use it; a canvas' `drawImage` and favicons get
+  its last size (`get_internal`). A bitmap replaced during a redraw is destroyed once the main
+  loop turns: the knockout (`desktop/knockout.c`) may still have its plot queued.
+- **Inline `<svg>`** (`content/handlers/html/onyx_svg_inline.c`, one call in `box_special.c`'s
+  `convert_special_elements`): hubbub builds an `<svg>` and its descendants in the SVG namespace
+  (their camelCase names); an outer `<svg>` becomes a replaced box -- its children are not
+  converted -- whose object is the subtree written out as SVG text: the elements (their names
+  lower-cased: libdom upper-cases an HTML document's; the camelCase ones restored), their
+  attributes, a `<style>`'s text, the element's CSS `color` as the root's `color` (its
+  `currentColor`), a `var(--x[, fallback])` in a value replaced by the `<svg>`'s custom property
+  (libcss: `css_onyx_node_var` reads it from the node data its selection keeps -- google.com's
+  menu icon is `fill: var(--IXoxUe)`), the root's `width` / `height` in `em` / `rem` / `ex`
+  written in px with the element's font size (bbc.co.uk's logo is `width="7em"`). The elements
+  it names by `href="#id"` / `url(#id)` that are elsewhere in the page (an icon sprite's
+  `<symbol>`s, a shared gradient) are copied into a `<defs>` at its end. The text is the box's
+  object as a `data:image/svg+xml;base64,...` URL through the usual `html_fetch_object`: the
+  low-level cache shares one content between identical icons, and the SVG image handler draws
+  it at the box's size (CSS `width` / `height` size it as an image). A script's change builds
+  the boxes again (`html_script_dom_changed`): a new text, a new URL; so does a `:hover` that
+  changes the colour of an inline `<svg>` (`onyx_hover.c` asks `onyx_svg_box_is_inline`: its
+  `currentColor` is in its text, a restyle in place would keep the old one --
+  `pages/svg-hover.html`). Costs, kept low for the
+  reboxes the scripts cause: an element named by id is looked up (libdom walks the tree) and
+  written once per main-loop turn, the URLs are kept by their text (256, 512 KB) -- a page of 300
+  sprite icons: its rebox 4.4-6.9 ms -> 3.0-5.0 ms on the PC (2.2 ms without the icons).
+  `NS_SVGDEBUG=1` prints each SVG text on stderr (the PC bench).
+- **PlutoSVG's Onyx patches** (`third_party/plutosvg-0.0.8/README.onyx`): the `<style>` sheets
+  (type, class, id selectors, descendant and child combinators, specificity; below `style=""`,
+  above the attributes), `clip-path` (`clipPathUnits`, transforms), `<a>` and `<switch>`,
+  quoted `url('#id')`, `em` / `ex` / `rem` lengths, `set_size` / `has_view_box`, and
+  **`<text>` / `<tspan>`** (a chart's labels): glyph outlines of the card's fonts
+  (`image/onyx_vgfont.c`: a CSS family list to Liberation, Gelasio, Selawik or DejaVu, as
+  `font_freetype.c` maps Chrome's; shared with the canvas' text), `font-size`, `font-weight`,
+  `font-style`, `x` / `y` / `dx` / `dy`, `text-anchor`, filled and stroked as shapes.
+- Built for the Pi by `user/netsurf/Makefile` (`libplutovg.a`, `libplutosvg.a`, committed:
+  PlutoVG without the font directory scan, stb_image for PNG / JPEG only) and on the PC by
+  `host.mk`. Pages: `tools/tests/netsurf/pages/svg-img.html` (`<img>` at three sizes, a
+  viewBox-only icon, tiled and sized backgrounds, a `data:` SVG, list markers, `<object>`,
+  `<embed>`), `svg-chart.svg` (`<text>`: anchors, a tspan,
+  entities), `svg-inline.html` (a sprite's symbols through `<use>`, `currentColor` from the
+  link's colour, a gradient from the sprite, a `<style>`, `clip-path`, `var()`, an `<svg>` made
+  by `innerHTML`), each against Chromium (`chrome.sh`).
+
+## 13. Canvas 2D (on PlutoVG)
+
+`<canvas>` was a replaced box drawing nothing and `getContext` answered null.
+
+- **`quickjs/canvas.js`** (compiled in as `qjs_canvas_js.h` by both makefiles, as dom.js; run by
+  `qjs_canvas_setup` right after dom.js) is the API and keeps its state (the styles, the font,
+  the save stack): `HTMLCanvasElement.getContext('2d')`, `width` / `height` (a change clears the
+  canvas and its state), `toDataURL` / `toBlob` (PNG); `CanvasRenderingContext2D` --
+  `fillRect` / `strokeRect` / `clearRect`, paths (`moveTo`, `lineTo`, `quadraticCurveTo`,
+  `bezierCurveTo`, `arc`, `arcTo`, `ellipse`, `rect`, `roundRect` (one radius), `closePath`),
+  `fill` (non-zero, even-odd), `stroke`, `clip`, `isPointInPath` / `isPointInStroke`,
+  `fillStyle` / `strokeStyle` (CSS colours given back as Chrome does: `#rrggbb` or `rgba()`),
+  `createLinearGradient` / `createRadialGradient` / `createConicGradient` (its middle colour:
+  PlutoVG has no conic gradient), `createPattern`, `lineWidth`, `lineCap`, `lineJoin`,
+  `miterLimit`, `setLineDash` / `getLineDash` / `lineDashOffset`, `globalAlpha`,
+  `globalCompositeOperation` (the Porter-Duff ones and `copy`; the blend modes are kept but
+  drawn source-over), `save` / `restore`, `translate` / `rotate` / `scale` / `transform` /
+  `setTransform` / `resetTransform` / `getTransform` (a 2D `DOMMatrix`, defined if the page has
+  none), `drawImage` (3, 5 and 9 arguments), `createImageData` / `getImageData` / `putImageData`,
+  `fillText` / `strokeText` (`textAlign`, `textBaseline`, `maxWidth`) and `measureText` (a
+  `TextMetrics` with its bounding boxes); shadows, filters and `imageSmoothing*` are kept, not
+  drawn. `Path2D` (the path methods, `addPath`, SVG path data), `ImageData`, `OffscreenCanvas`
+  (`getContext`, `convertToBlob`, `transferToImageBitmap`), `createImageBitmap`.
+- **`quickjs/qjs_canvas.c`**, the natives (`N.cv*`, added to dom.js' natives): each draws on the
+  canvas' PlutoVG surface (premultiplied ARGB, anti-aliased) -- thin, one native per call. The
+  path is kept in device space, each point through the transform of the moment it is added
+  (the HTML canvas' rule); a fill draws it with the identity (the paint in the current user
+  space), a stroke maps it back through the current transform (the line width and dashes scale
+  with it). Fonts: the card's (`SD:/res/fonts`: a CSS family to Liberation, DejaVu, Gelasio or
+  Selawik, as `font_freetype.c` maps them: `image/onyx_vgfont.c`, shared with SVG `<text>`), read
+  once by PlutoVG's stb_truetype. `drawImage` /
+  `createPattern` take a canvas (its surface), an `<img>` NetSurf fetched (its content's bitmap,
+  converted once and kept: 8 images), an SVG image, or an `Image` a script made and never put in
+  the page: `canvas.js` completes `HTMLImageElement` -- its `src` fetches it through the
+  high-level cache (`cvLoadImage`), then `load` / `error`, `complete`, `naturalWidth`, `width`.
+- **The picture**: the element's node carries a NetSurf bitmap as its user data
+  (`__ns_key_canvas_node_data`, which `redraw.c` already plots into the canvas' box, scaled to
+  its CSS size); after drawing, the surface is copied into it (straight alpha, the client's
+  layout) once a main-loop turn -- a scheduled flush -- and the box redrawn
+  (`html__redraw_a_box`): a script drawing a thousand shapes costs one copy and one redraw.
+- `qjs.c` (Onyx blocks): the setup call, `qjs_node_of` / `qjs_html_of` / `qjs_invoke` for
+  `qjs_canvas.c`, and `qjs_canvas_context_gone` before a document's context is freed (its
+  canvases stop flushing, its image loads are released). A canvas is at most 4096 x 4096.
+- `tools/tests/netsurf/jstest.sh` runs `pages/canvas-api.html` (40 checks: the state, the
+  colours' text, pixels after fills / clears / alpha / transforms / gradients, paths, Path2D,
+  image data, text metrics, `toDataURL`, an OffscreenCanvas, a pattern, the reset on `width`,
+  `drawImage` of the page's SVG `<img>` and of an `Image` loaded by the script);
+  `pages/canvas-draw.html` is drawn against Chromium.
+
+## 14. CSS by the specifications' grammars, a real CSSOM, SVG's properties (css3test.com: 23% -> 81%)
+
+css3test.com asks, for 6419 tests over 1262 features, whether the browser *recognizes* a
+property, a value, a selector, an at-rule, a descriptor, a media query or a CSSOM interface.
+NetSurf now recognizes what the specifications define -- and checks it as a browser does:
+an invalid value is still dropped.
+
+- **The value grammars** (`src/parse/onyx_grammar*.c`, `onyx_grammar_gen.py`): the grammar of
+  every CSS property and at-rule descriptor ("Value Definition Syntax"), from the W3C's webref
+  consolidation of the specifications (`third_party/webref-css-8.7.5`, MIT; `css-grammar.json`
+  trimmed from the npm package by `trim.py`), is compiled by `onyx_grammar_gen.py` into one
+  node graph (`onyx_grammar_tables.c`, committed: 816 properties, 48 descriptors, ~70 KB of
+  tables). The types are shared nodes; the numeric and token types (`<length>`, `<number>`,
+  `<custom-ident>`, `<url>`...) are the matcher's primitives. The matcher (`onyx_grammar.c`)
+  is a backtracking matcher in continuation-passing style: juxtaposition, `&&`, `||`, `|`,
+  `[ ]`, `* + ? {A,B} # !` exactly as the syntax defines them, the omissible commas of CSS
+  Values 2.6, a step bound (a pathological value is refused, not a hang). The numeric
+  primitives take the math functions, type-checked (a length is not an angle; `px * px` is
+  not a value). A function left open at the end of a value is closed there (CSS Syntax), a
+  relative colour's channel keywords are numbers (`rgb(from x r g b)`), `calc-size()`'s `size`
+  a length. The generator's `FUNC_FIXES` / `PROP_FIXES` fill webref's gaps (circle() takes a
+  percentage, `anchor()` in the logical insets, `anchor-center` in the `*-items`, the engines'
+  `x-self-start` / `anchors-visible` names, `url-set`).
+- **How libcss uses them** (`parseProperty`, `language.c`): a property libcss computes is
+  parsed by its own parser as before; if that parser refuses the value, or the property is one
+  libcss does not compute (anchor-name, scroll-snap-type, mask-image, text-wrap, the
+  `transition-*` / `animation-*` longhands...), the value is checked against the property's
+  grammar: valid, it is kept as `CSS_ONYX_OP_GENERIC` (one bytecode word, the grammar's index;
+  its cascade does nothing -- an earlier declaration libcss computes keeps applying), invalid,
+  it is dropped. A CSS-wide keyword is valid everywhere, a value with `var()`, `env()`,
+  `attr()` or `if()` too (substitution functions). `@supports` asks the same thing
+  (`css__onyx_declaration_valid`), `selector()` really parses. So `CSS.supports`,
+  `element.style` and `@supports` answer as a browser does -- a page's feature detection now
+  takes its modern branch where the property exists in the specifications (NetSurf may not
+  draw it: that is the price of an honest "recognized").
+- **At-rules kept without effect** (`onyx_atrules.c`): `@keyframes`, `@counter-style`,
+  `@property`, `@font-feature-values` (and its `@styleset`...), `@font-palette-values`,
+  `@position-try`, `@view-transition`, `@scope`, `@starting-style`: their prelude checked,
+  kept as a media rule that never matches (`css_rule_media.onyx_kind`), their descriptors
+  checked against the descriptor grammars and counted (`css_stylesheet.onyx_desc_words`, read
+  by `css_stylesheet_onyx_kept`); @font-face's and @page's descriptors libcss does not read
+  (font-display, size-adjust, size, marks...) checked the same way.
+- **Selectors 4** (`parsePseudo`, `onyx_parse_extra_pseudo`; matching in `select.c`): the
+  pseudo-classes and pseudo-elements of Selectors 4, CSS Pseudo 4 and the other specifications
+  are parsed and checked, their arguments too (`:has()`'s relative selectors, `::part()`,
+  `::view-transition-*()`'s `<pt-name-selector>`...). Matched when libcss can say:
+  `:nth-child(An+B of S)`, `:read-only` / `:read-write`, `:required` / `:optional`,
+  `:placeholder-shown`, `:defined`, `:scope`, `:dir(ltr)`; the others (`:has()`, `:host()`,
+  `:invalid`..., every pseudo-element) never match -- a list `a:has(b), c` keeps its `c` (the
+  whole rule was dropped). Also `*|` namespaces and the `[a=b i]` / `s` flags; the common
+  `::-webkit-scrollbar...` pseudo-elements (pages hide scrollbars in lists with them).
+- **Units and math functions computed** (`parse/properties/utils.c`): `svh` / `lvh` / `dvh`
+  (and `w`, `i`, `b`, `min`, `max`) are the viewport's units; `cqw`... the small viewport's
+  (the spec's fallback: containers are not modelled); `cap`, `ic`, `rex`, `rch`, `rcap`,
+  `ric`, `rlh` from em / rem with libcss's ratios; `x` is `dppx`. `round()`, `mod()`,
+  `rem()`, `abs()`, `sign()`, `sin()`... `atan2()`, `pow()`, `sqrt()`, `hypot()`, `log()`,
+  `exp()`, `e`, `pi`, `infinity` are folded when parsed (numbers, angles, or lengths of one
+  unit), alone or inside `calc()`. `height: 100dvh` now sizes a box.
+- **SVG's presentation properties** (`parse/properties/onyx_svg.c`,
+  `select/properties/onyx_svg.c`): `fill`, `stroke` (none, a colour, `currentColor` kept as
+  such, `url()` and its fallback, `context-fill` / `-stroke`), `stroke-width`,
+  `stroke-dashoffset`, `stroke-miterlimit`, `stroke-dasharray` (a canonical text),
+  `fill-rule`, `stroke-linecap`, `stroke-linejoin` (inherited), `stop-color`, `stop-opacity`
+  are computed (`select_config.py`; the autogenerated headers made again; `onyx_propbits.py`
+  now makes `onyx_propbits.h`) and read by `css_computed_fill()`... (`computed.h`), so a
+  page's `.icon { fill: currentColor }` reaches an inline `<svg>`. An SVG element's
+  presentation attributes (`fill="#f00"`, `stroke-width="3"`...) are NetSurf hints
+  (`css/hints.c`, `css_hint_svg`): the lowest author precedence, as in browsers (a colour
+  attribute in `rgb()` is not read: `nscss_parse_colour`'s forms only). `getComputedStyle`
+  answers `fill`, `stroke`, `stroke-width`.
+- **A real CSSOM** (dom.js, "the CSSOM" block): `CSSRule` (its type constants) and its
+  classes as globals -- `CSSStyleRule`, `CSSMediaRule`, `CSSSupportsRule`, `CSSContainerRule`,
+  `CSSLayerBlockRule` / `StatementRule`, `CSSScopeRule`, `CSSStartingStyleRule`,
+  `CSSImportRule`, `CSSNamespaceRule`, `CSSFontFaceRule`, `CSSPageRule` / `MarginRule`,
+  `CSSKeyframesRule` / `KeyframeRule`, `CSSCounterStyleRule`, `CSSPropertyRule`,
+  `CSSFontFeatureValuesRule`, `CSSFontPaletteValuesRule`, `CSSPositionTryRule`,
+  `CSSViewTransitionRule`, `CSSNestedDeclarations`, `CSSGroupingRule` / `CSSConditionRule` --
+  `StyleSheet` / `CSSStyleSheet` (constructible; `replace` / `replaceSync`, `insertRule` /
+  `deleteRule` / `addRule` / `removeRule`), `StyleSheetList`, `CSSRuleList`, `MediaList`;
+  `rule.style` a `CSSStyleDeclaration` over the rule's valid declarations (or descriptors).
+  A sheet's rules are read from its text when first asked for, as libcss keeps them (each rule,
+  declaration and descriptor asked of `N.cssKept`); a change is written back to the text -- a
+  `<style>`'s: NetSurf styles the page again. `document.styleSheets` holds the `<link>` sheets
+  too (qjs.c `sheetText`: the loaded sheet's text and URL; `html/css.c` keeps a `<link>`'s node
+  with its sheet); `document.adoptedStyleSheets` realizes each constructed sheet as a
+  `<style data-onyx-adopted>` at the end of the `<head>`. (google.com's script stopped at
+  `x instanceof CSSStyleRule`.)
+- **Two bugs found on the way**: libparserutils' own charset filter lost the characters its
+  codec had decoded but the pivot had no room for when the input was all read -- the last
+  character of a 65-byte inline style (a `)`: the declaration dropped), possibly a sheet's
+  last bytes (`src/input/filter.c`); and the input stream reported the end while the filter
+  still held converted data (`inputstream.c`, `parserutils__filter_pending`). libcss's parser
+  now closes a function or bracket left open at the end of the input (`parse.c`: the
+  declaration is kept, as CSS Syntax says).
+- **The score** (`tools/tests/netsurf/css3test.sh [netsurf|chrome|both]`: fetches the site's
+  sources -- git branch v1 of github.com/LeaVerou/css3test, what css3test.com serves -- into
+  `$OUT/css3test`, runs them in NetSurf and in Chromium, prints the score and a line per spec
+  and per failed test): **81%** (5150 of 6419 tests; 23% before); Chromium 139 headless 71%
+  on the same copy. NetSurf passes 1245 tests Chromium fails -- features of drafts no browser
+  ships (css-speech, css-borders-4's corner shapes, fill-stroke-3...) whose grammar is in the
+  specifications -- and fails 471 Chromium passes (the Typed OM's interfaces, Web Animations,
+  CSSOM View: scripts' APIs, not parsing). Counting only what Chromium also passes, NetSurf
+  scores 64% (Chromium 71%).
+- **Cost**: parsing a big sheet takes 0.3% (bulma, 763 KB), 2.7% (bootstrap, 281 KB) to 8%
+  (material-components-web, 624 KB: many properties libcss does not compute, now checked and
+  kept) more instructions (`csscheck -b`, callgrind); libcss.a's code +114 KB on the Pi (the
+  tables ~70 KB). kotonviolins.com and kotonstudio.com draw pixel-identical.
+- **Tests**: `make -f tools/tests/netsurf/host.mk css-check` (`csscheck.c` on
+  `css-values.txt`: 157 declarations, sheets and descriptors kept or dropped; `csscheck -b N
+  sheet.css`: a parse-speed bench); `jstest.sh`: `js-cssom.html` (26 CSSOM checks),
+  `css-svgprops.html`, `css-selectors.html`, `css-math.html`.
+- **Not done**: the Typed OM (`CSSStyleValue`, `attributeStyleMap`...), Web Animations,
+  CSSOM View's interfaces; `:has()` matching (libcss's handler has no child walk);
+  `@container` against a real container; the pseudo-elements' drawing (`::marker`,
+  `::placeholder`...); a math function over relative lengths (`round(1em, 3px)`) computed.
+## 15. Intl (ECMA-402) and the locale built-ins
+
+QuickJS-ng is built without `Intl`: bbc.co.uk's and bbc.com's Next.js applications stopped on
+"Intl is not defined" (their React tree crashed, the page went blank), youtube.com too. NetSurf
+now has its own implementation, in JavaScript:
+
+- **`quickjs/intl.js`**: `Intl.DateTimeFormat` (`dateStyle` / `timeStyle`, every component option,
+  `hour12` / `hourCycle`, `timeZoneName` in its six forms, `format`, `formatToParts`,
+  `formatRange`, `formatRangeToParts`, `resolvedOptions`), `Intl.NumberFormat` (decimal, percent,
+  currency with symbol / narrow symbol / code / name and accounting, unit with the simple units
+  and their `-per-` compounds; integer, fraction and significant digits, the nine rounding modes,
+  rounding increments and priorities, `trailingZeroDisplay`; grouping; standard, scientific,
+  engineering, compact short and long notations; `signDisplay`; strings and BigInts exactly;
+  `formatRange` with CLDR's collapsing), `Intl.PluralRules` (cardinal and ordinal, `selectRange`),
+  `Intl.RelativeTimeFormat`, `Intl.ListFormat`, `Intl.Collator` (a simplified Unicode collation:
+  base letters with accents folded at the primary level, accents, case; `numeric`, `caseFirst`,
+  `sensitivity`, `ignorePunctuation`; Spanish ñ and the Nordic letters after z), `Intl.Segmenter`
+  (graphemes with the Unicode properties of QuickJS's regular expressions; words and sentences
+  approximated, Chinese / Japanese / Thai a character at a time), `Intl.DisplayNames` (languages,
+  regions, scripts, currencies, calendars, date fields), `Intl.Locale` (with `maximize` /
+  `minimize` from CLDR's likely subtags), `Intl.getCanonicalLocales`, `Intl.supportedValuesOf`.
+  Language tags are parsed and canonicalised as UTS 35 says (aliases, extensions); the legacy
+  constructor behaviour (`Intl.NumberFormat.call (obj)`) is there.
+- **The built-ins** take their ECMA-402 versions: `Number.prototype.toLocaleString`,
+  `BigInt.prototype.toLocaleString`, `Date.prototype.toLocaleString` / `toLocaleDateString` /
+  `toLocaleTimeString`, `Array.prototype.toLocaleString` and the typed arrays', `String.prototype.
+  localeCompare`, `toLocaleLowerCase` / `toLocaleUpperCase` (Turkish, Azeri, Lithuanian). The
+  formatter of the calls without arguments is kept (a table of numbers formats fast).
+- **The locales**: English (US, GB, AU, CA, IN, IE, NZ, ZA; the other English regions as GB),
+  French (FR, CA, BE, CH), German (DE, AT, CH), Spanish (ES, MX, US, 419, AR; the other
+  Latin-American regions as 419), Italian, Dutch (NL, BE), Portuguese (BR, PT; the other regions as
+  PT), and, for formatting only (their units, display names and time zone names are English's):
+  Japanese, Chinese (simplified, traditional), Korean, Russian, Polish, Swedish, Danish, Norwegian
+  Bokmål, Finnish, Turkish, Czech. Any region of these languages is accepted (`fr-LU`).
+  Another language resolves to the default locale, as the specification says.
+- **The default locale is `navigator.language`** (dom.js: `fr-FR`), as in Chrome for a French
+  user. A page that formats without a locale gets French, as it would in Chrome in France.
+- **The data** (`third_party/cldr-48/intl-data.txt`, 450 KB, Unicode License v3) is CLDR 48 as
+  ICU 78 has it: `tools/tests/netsurf/intl/gendata.js` reads every pattern and name back from
+  Node.js's own `Intl` (full ICU, Chrome's data) by formatting probe values -- the date patterns
+  of ~160 option combinations per locale, the number templates, the compact and unit patterns
+  per plural category, the relative-time and list patterns, the display names, the time zone
+  names; a regional locale keeps only what differs from its language. CLDR's narrow no-break
+  space in times is a plain space, as Chrome shows it. The plural rules are code (`PLURAL`).
+- **Time zones**: every IANA zone (418, and the common links) with its standard offset and its
+  current daylight-saving rule (EU, US, Australian, New Zealand, Chilean, or the zone's own:
+  Cairo, Jerusalem, Havana...) found by the generator from the 2026-2028 transitions --
+  historical changes are not kept (a 1990 date gets today's rule). Offset time zones (`+05:30`),
+  `Etc/GMT±N`; a zone name is kept as written (case-normalised). **The default time zone**: the
+  host's name (the PC: `TZ`, `/etc/localtime`) when the `Date` agrees with it, else the zone of
+  the locale's region whose offset matches `Date`'s (`fr-FR`: Europe/Paris), else a popular one,
+  else `Etc/GMT±N`: `resolvedOptions ().timeZone` always agrees with `getTimezoneOffset ()`.
+- **Onyx's clock**: `gettimeofday` gives the local time (the kernel's clock is UTC + the
+  `timezone=` of `SD:/etc/system.ini`), so `Date.now ()` was off by that offset and
+  `getTimezoneOffset ()` was 0. `quickjs.c` (under `__ONYX__`, README.onyx) now takes
+  `js_onyx_utc_offset_min` off `Date.now` and answers it in `getTimezoneOffset`; `qjs_intl.h`
+  reads `timezone=` once. Onyx has no daylight-saving rule of its own: the offset is the one the
+  Setup wrote (a date in the other season is still shown at today's offset by `Date`; `Intl`
+  shows it with the zone's rule).
+- **Lazily loaded, compiled once**: `intl.js` has two parts, split at the line `//@@INTL-IMPL@@`
+  by `qjs_intl.h` (included by `qjs.c`; `qjs_intl_init (ctx)` before dom.js). The boot part runs
+  in every document's context: the `Intl` object, whose members are accessors that load the
+  implementation at their first use and then become ordinary data properties, and the
+  built-ins. Both parts are compiled once per process and kept as bytecode (`JS_WriteObject`,
+  the process's heap), read back in each context. The locale data stays a C string in the
+  binary: a record (`"en-GB/d"`) is found and `JSON.parse`d when a formatter first needs it.
+  Cost on the PC (`tools/tests/netsurf/intl/qjsintl -m`): a context 0.12 ms, + 0.09 ms for the
+  boot; the first `Intl` use in a context 2 ms (12 ms the very first time: compiling). The binary
+  grows by ~575 KB (the data and intl.js as strings).
+- **Tests**: `tools/tests/netsurf/pages/js-intl.html` (made by `intl/mkpage.js` from
+  `intl/cases.js`: 233 expressions with Node's answers as the expected values; in `jstest.sh`),
+  `intl/compare.sh` (the same cases in Node and in `qjsintl`, QuickJS with the Intl on the PC:
+  `intl/build.sh`), `intl/test262.js` (test262's intl402 in `qjsintl`: 1061 of the 1146 tests
+  run pass, 92.6%; Temporal, DurationFormat and a few features are skipped). Live: bbc.co.uk,
+  bbc.com and youtube.com no longer stop on `Intl`.
+
+## 16. The HTML parser (libhubbub, libdom's binding, libparserutils)
 
 NetSurf's parser, hubbub, followed the HTML5 drafts of about 2008: no `<template>`, a
 different `<select>` and `<table>` handling, the character references of that time, no
@@ -429,7 +737,7 @@ tree tests also pass fed in chunks of 1, 2, 3, 7 and 64 bytes, and under valgrin
   tree-construction tests); the drivers `html5lib_tree.c` (`-c N`: fed N bytes at a time),
   `html5lib_tok.c` + `html5lib_tok.py`, `html5lib_time.c`; `html5lib.mk` builds them.
 
-## 13. The HTML5 DOM (`quickjs/html5.js`)
+## 17. The HTML5 DOM (`quickjs/html5.js`)
 
 **`html5.js`** is a second prelude, run after dom.js (compiled in the same way:
 `qjs_html5_js.h`); qjs.c calls it with the natives and dom.js's table of element classes
@@ -515,8 +823,33 @@ pseudo-classes it does not know.
 
 ## 8. Known gaps
 
-- JavaScript: no `canvas`; synchronous XHR (runs async), multipart request bodies; no
-  Workers, EventSource, WebSocket, IndexedDB, editing APIs, shadow trees (§13); CSS `:active` / `:focus`; a form control
+- JavaScript: synchronous XHR (runs async), multipart request bodies; no Workers,
+  EventSource, WebSocket, IndexedDB, editing APIs, shadow trees (§17); CSS `:active` /
+  `:focus`; a form control
   outside a form is made again at each layout the scripts cause (its old one leaks).
-- SVG (inline `<svg>` and `.svg` images), `opacity`, filters, animations and transitions.
+- `opacity`, filters, animations and transitions.
+- SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
+  position lists, the page's web fonts in `<text>`; the page's
+  CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss
+  has no `fill` / `stroke` properties (only `fill-opacity` / `stroke-opacity`): with them
+  (inherited, as text), `onyx_svg_inline.c` would write the `<svg>`'s computed ones on its
+  root; its `color`, its custom properties and the SVG's own attributes and `<style>` do. An
+  `<svg>` / SVG `<img>` with only a viewBox and no CSS size takes the viewBox's size (Chrome:
+  the containing block's width); a `list-style-image` SVG without a size is drawn at its
+  viewBox's size (Chrome: small). The scripts' SVG DOM is dom.js' generic one (`namespaceURI`,
+  `getBBox` from the box).
+- Canvas: no shadows, filters, blend modes (source-over), conic gradients (a solid colour),
+  per-corner `roundRect` radii; `drawImage` scales with the nearest pixel (PlutoVG's
+  textures), and a canvas shown at another CSS size too (the framebuffer's bitmap plot);
+  no `getContext('webgl')`, `captureStream`, video frames; the page's web fonts are not used
+  (the card's fonts by family); an `<img>` of the page is drawn once NetSurf has fetched it,
+  but it gets no `load` event (dom.js fires none for the page's images; an `Image` a script
+  makes and keeps out of the page does get one).
 - A face split by `unicode-range` outside Latin-1 falls back to the card's fonts.
+- Intl (§15): no `Intl.DurationFormat`, no Temporal; the Gregorian calendar only (another
+  `calendar` falls back to it, no `relatedYear` / `yearName`); a date range's CLDR interval
+  patterns are approximated (the shared fields, the locale's dash); no collation tailorings
+  but Spanish and Nordic, no `co` types (phonebook, pinyin...); word and sentence segmentation
+  without dictionaries; time zones with their current rules only (no history), four zones with
+  irregular rules (Casablanca, El Aaiun, Gaza, Hebron) at a fixed offset; the lean languages
+  (ja, zh, ko, ru, pl, sv, da, nb, fi, tr, cs) have English units, display names and zone names.

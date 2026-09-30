@@ -596,6 +596,65 @@ static bool html_redraw_file(int x, int y, int width, int height,
 
 
 /**
+ * Onyx: a background image's drawn size (CSS background-size: auto, contain, cover,
+ * lengths and percentages of the area; an auto side from the image's ratio), for an
+ * area of area_w x area_h CSS px. libcss parsed it; the redraw used the image's own size.
+ */
+static void onyx_background_size(const css_computed_style *style,
+		struct hlcache_handle *image, int area_w, int area_h,
+		const css_unit_ctx *unit_len_ctx, int *w, int *h)
+{
+	css_fixed sw = 0, sh = 0;
+	css_unit swu = CSS_UNIT_PX, shu = CSS_UNIT_PX;
+	int iw = content_get_width(image), ih = content_get_height(image);
+	float fw, fh;
+
+	*w = iw;
+	*h = ih;
+	if (iw <= 0 || ih <= 0)
+		return;
+	switch (css_computed_background_size(style, &sw, &swu, &sh, &shu)) {
+	case CSS_BACKGROUND_SIZE_CONTAIN:
+	case CSS_BACKGROUND_SIZE_COVER: {
+		float sx = (float) area_w / iw, sy = (float) area_h / ih, k;
+
+		if (css_computed_background_size(style, &sw, &swu, &sh, &shu) ==
+				CSS_BACKGROUND_SIZE_CONTAIN)
+			k = sx < sy ? sx : sy;
+		else
+			k = sx > sy ? sx : sy;
+		fw = iw * k;
+		fh = ih * k;
+		break;
+	}
+	case CSS_BACKGROUND_SIZE_SET:
+	case CSS_BACKGROUND_SIZE_SET_WIDTH:
+	case CSS_BACKGROUND_SIZE_SET_HEIGHT: {
+		uint8_t t = css_computed_background_size(style, &sw, &swu, &sh, &shu);
+		bool hasw = t != CSS_BACKGROUND_SIZE_SET_HEIGHT;
+		bool hash = t != CSS_BACKGROUND_SIZE_SET_WIDTH;
+
+		if (hasw)
+			fw = swu == CSS_UNIT_PCT ? area_w * FIXTOFLT(sw) / 100.f :
+				FIXTOFLT(css_unit_len2device_px(style, unit_len_ctx, sw, swu));
+		if (hash)
+			fh = shu == CSS_UNIT_PCT ? area_h * FIXTOFLT(sh) / 100.f :
+				FIXTOFLT(css_unit_len2device_px(style, unit_len_ctx, sh, shu));
+		if (!hasw)
+			fw = fh * iw / ih;
+		if (!hash)
+			fh = fw * ih / iw;
+		break;
+	}
+	default:
+		return;
+	}
+	*w = fw < 1 ? 1 : (int) (fw + 0.5f);
+	*h = fh < 1 ? 1 : (int) (fh + 0.5f);
+}
+
+
+/**
  * Plot background images.
  *
  * The reason for the presence of \a background is the backwards compatibility
@@ -628,6 +687,7 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 	struct box *clip_box = box;
 	int ox = x, oy = y;
 	int width, height;
+	int bg_w = 0, bg_h = 0;	/* (Onyx: the image's drawn size: background-size) */
 	css_fixed hpos = 0, vpos = 0;
 	css_unit hunit = CSS_UNIT_PX, vunit = CSS_UNIT_PX;
 	struct box *parent;
@@ -686,12 +746,14 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 			break;
 		}
 
+		onyx_background_size(background->style, background->background,
+				width, height, unit_len_ctx, &bg_w, &bg_h);
+
 		/* handle background-position */
 		css_computed_background_position(background->style,
 				&hpos, &hunit, &vpos, &vunit);
 		if (hunit == CSS_UNIT_PCT) {
-			x += (width -
-				content_get_width(background->background)) *
+			x += (width - bg_w) *
 				scale * FIXTOFLT(hpos) / 100.;
 		} else {
 			x += (int) (FIXTOFLT(css_unit_len2device_px(
@@ -700,8 +762,7 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 		}
 
 		if (vunit == CSS_UNIT_PCT) {
-			y += (height -
-				content_get_height(background->background)) *
+			y += (height - bg_h) *
 				scale * FIXTOFLT(vpos) / 100.;
 		} else {
 			y += (int) (FIXTOFLT(css_unit_len2device_px(
@@ -778,8 +839,8 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 		}
 		/* and plot the image */
 		if (plot_content) {
-			width = content_get_width(background->background);
-			height = content_get_height(background->background);
+			width = bg_w;	/* (Onyx: background-size) */
+			height = bg_h;
 
 			/* ensure clip area only as large as required */
 			if (!repeat_x) {
@@ -862,8 +923,13 @@ static bool html_redraw_inline_background(int x, int y, struct box *box,
 		.fill_colour = *background_colour,
 	};
 	nserror res;
+	int bg_w = 0, bg_h = 0;	/* (Onyx: background-size) */
 
 	plot_content = (box->background != NULL);
+	if (plot_content)
+		onyx_background_size(box->style, box->background,
+				(b.x1 - b.x0) / scale, (b.y1 - b.y0) / scale,
+				unit_len_ctx, &bg_w, &bg_h);
 
 	if (html_redraw_printing && nsoption_bool(remove_backgrounds))
 		return true;
@@ -899,7 +965,7 @@ static bool html_redraw_inline_background(int x, int y, struct box *box,
 				&hpos, &hunit, &vpos, &vunit);
 		if (hunit == CSS_UNIT_PCT) {
 			x += (b.x1 - b.x0 -
-					content_get_width(box->background) *
+					bg_w *
 					scale) * FIXTOFLT(hpos) / 100.;
 
 			if (!repeat_x && ((hpos < 2 && !first) ||
@@ -914,7 +980,7 @@ static bool html_redraw_inline_background(int x, int y, struct box *box,
 
 		if (vunit == CSS_UNIT_PCT) {
 			y += (b.y1 - b.y0 -
-					content_get_height(box->background) *
+					bg_h *
 					scale) * FIXTOFLT(vpos) / 100.;
 		} else {
 			y += (int) (FIXTOFLT(css_unit_len2device_px(
@@ -939,8 +1005,8 @@ static bool html_redraw_inline_background(int x, int y, struct box *box,
 	}
 	/* and plot the image */
 	if (plot_content) {
-		int width = content_get_width(box->background);
-		int height = content_get_height(box->background);
+		int width = bg_w;
+		int height = bg_h;
 
 		if (!repeat_x) {
 			if (r.x0 < x)

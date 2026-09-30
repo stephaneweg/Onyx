@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Canvas API</title>
+<!-- tools/tests/netsurf/jstest.sh: the canvas 2D API (each check logs "OK name" or "FAIL name";
+     "canvas: done N" at the end). -->
+</head><body>
+<canvas id="cv" width="100" height="50"></canvas>
+<img id="pic" src="svg-icon.svg" width="24" height="24">
+<script>
+let n = 0;
+function check(name, cond) { n++; console.log((cond ? 'OK ' : 'FAIL ') + name); }
+function px(ctx, x, y) { return Array.from(ctx.getImageData(x, y, 1, 1).data).join(','); }
+try {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  check('getContext', ctx instanceof CanvasRenderingContext2D && ctx.canvas === cv);
+  check('same context', cv.getContext('2d') === ctx);
+  check('webgl null', cv.getContext('webgl') === null);
+  check('size', cv.width === 100 && cv.height === 50);
+  check('initial fillStyle', ctx.fillStyle === '#000000');
+  ctx.fillStyle = 'red';
+  check('fillStyle named', ctx.fillStyle === '#ff0000');
+  ctx.fillStyle = 'rgba(0, 128, 255, 0.5)';
+  check('fillStyle rgba', ctx.fillStyle === 'rgba(0, 128, 255, 0.5)');
+  ctx.fillStyle = 'not a colour';
+  check('fillStyle invalid kept', ctx.fillStyle === 'rgba(0, 128, 255, 0.5)');
+  ctx.lineWidth = -3;
+  check('lineWidth invalid', ctx.lineWidth === 1);
+  ctx.lineWidth = 2.5;
+  check('lineWidth', ctx.lineWidth === 2.5);
+  ctx.lineCap = 'round'; ctx.lineCap = 'bogus';
+  check('lineCap', ctx.lineCap === 'round');
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalCompositeOperation = 'nope';
+  check('globalCompositeOperation', ctx.globalCompositeOperation === 'multiply');
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.setLineDash([5, 3, 2]);
+  check('setLineDash odd', ctx.getLineDash().join() === '5,3,2,5,3,2');
+  ctx.setLineDash([]);
+  ctx.save();
+  ctx.fillStyle = '#00ff00';
+  ctx.translate(10, 20);
+  ctx.restore();
+  check('save/restore', ctx.fillStyle === 'rgba(0, 128, 255, 0.5)' && ctx.getTransform().e === 0);
+  ctx.translate(5, 6); ctx.scale(2, 3);
+  const m = ctx.getTransform();
+  check('getTransform', m.a === 2 && m.d === 3 && m.e === 5 && m.f === 6);
+  ctx.resetTransform();
+  check('resetTransform', ctx.getTransform().isIdentity);
+
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(0, 0, 10, 10);
+  check('fillRect pixel', px(ctx, 5, 5) === '255,0,0,255');
+  check('outside pixel', px(ctx, 50, 25) === '0,0,0,0');
+  ctx.clearRect(0, 0, 5, 5);
+  check('clearRect', px(ctx, 2, 2) === '0,0,0,0' && px(ctx, 7, 7) === '255,0,0,255');
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = '#0000ff';
+  ctx.fillRect(20, 0, 10, 10);
+  ctx.globalAlpha = 1;
+  const half = ctx.getImageData(25, 5, 1, 1).data;
+  check('globalAlpha', half[2] === 255 && half[3] > 120 && half[3] < 135);
+  ctx.translate(40, 0);
+  ctx.fillStyle = '#00ff00';
+  ctx.fillRect(0, 0, 10, 10);
+  ctx.resetTransform();
+  check('translate fill', px(ctx, 45, 5) === '0,255,0,255');
+
+  ctx.beginPath();
+  ctx.rect(60, 10, 20, 20);
+  check('isPointInPath in', ctx.isPointInPath(70, 20));
+  check('isPointInPath out', !ctx.isPointInPath(90, 20));
+  ctx.beginPath();
+  ctx.arc(80, 30, 10, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffff00';
+  ctx.fill();
+  check('arc fill', px(ctx, 80, 30) === '255,255,0,255');
+
+  const p = new Path2D('M0 40 h10 v10 h-10 z');
+  ctx.fillStyle = '#00ffff';
+  ctx.fill(p);
+  check('Path2D svg', px(ctx, 5, 45) === '0,255,255,255');
+  check('Path2D isPointInPath', ctx.isPointInPath(p, 5, 45) && !ctx.isPointInPath(p, 15, 45));
+
+  const g = ctx.createLinearGradient(0, 0, 100, 0);
+  g.addColorStop(0, 'black'); g.addColorStop(1, 'white');
+  let threw = false;
+  try { g.addColorStop(2, 'red'); } catch (e) { threw = e.name === 'IndexSizeError'; }
+  check('gradient stop range', threw);
+  ctx.fillStyle = g;
+  check('fillStyle gradient', ctx.fillStyle === g);
+  ctx.fillRect(0, 12, 100, 4);
+  const mid = ctx.getImageData(50, 13, 1, 1).data;
+  check('gradient pixel', mid[0] > 100 && mid[0] < 155 && mid[3] === 255);
+
+  const id = ctx.createImageData(2, 2);
+  check('createImageData', id.width === 2 && id.data.length === 16 && id instanceof ImageData);
+  id.data.set([255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255]);
+  ctx.putImageData(id, 30, 40);
+  check('putImageData', px(ctx, 31, 41) === '255,0,255,255');
+
+  ctx.font = 'bold 20px Arial';
+  check('font', ctx.font === 'bold 20px Arial');
+  const tm = ctx.measureText('Hello');
+  check('measureText', tm.width > 30 && tm.width < 70 && tm.actualBoundingBoxAscent > 5);
+  ctx.fillStyle = '#000';
+  ctx.fillText('W', 50, 45);
+
+  const url = cv.toDataURL();
+  check('toDataURL', url.startsWith('data:image/png;base64,iVBOR'));
+
+  const oc = new OffscreenCanvas(20, 20);
+  const octx = oc.getContext('2d');
+  octx.fillStyle = '#123456';
+  octx.fillRect(0, 0, 20, 20);
+  ctx.drawImage(oc, 88, 0, 10, 10);
+  check('drawImage OffscreenCanvas', px(ctx, 92, 5) === '18,52,86,255');
+
+  const pat = ctx.createPattern(oc, 'repeat');
+  check('createPattern', pat instanceof CanvasPattern);
+
+  cv.width = 100;
+  check('width resets', px(ctx, 5, 5) === '0,0,0,0' && ctx.fillStyle === '#000000');
+
+  /* an <img> of the page (the SVG handler's bitmap) */
+  window.addEventListener('load', () => {
+    const pic = document.getElementById('pic');
+    ctx.drawImage(pic, 0, 0, 24, 24);
+    const d = ctx.getImageData(12, 6, 1, 1).data;
+    check('drawImage img', d[3] > 200);
+    /* an Image never in the page, loaded */
+    const im = new Image();
+    im.onload = () => {
+      check('Image onload', im.complete && im.naturalWidth === 160 && im.width === 160);
+      ctx.clearRect(0, 0, 100, 50);
+      ctx.drawImage(im, 0, 0);
+      const e = ctx.getImageData(30, 30, 1, 1).data;
+      check('drawImage Image', e[3] === 255);
+      console.log('canvas: done ' + n);
+    };
+    im.onerror = () => { check('Image onload', false); console.log('canvas: done ' + n); };
+    im.src = 'svg-logo.svg';
+  });
+} catch (e) {
+  console.log('FAIL exception ' + e + ' ' + e.stack);
+}
+</script>
+</body></html>

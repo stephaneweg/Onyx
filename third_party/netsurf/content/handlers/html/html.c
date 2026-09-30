@@ -291,6 +291,9 @@ static void html_box_convert_done(html_content *c, bool success)
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
 static bool html_rebox_success;
+static void html_early_reformat(html_content *c);
+static void html_get_dimensions(html_content *htmlc);
+static void html_reformat(struct content *c, int width, int height);
 
 static void html_rebox_converted(html_content *c, bool success)
 {
@@ -365,9 +368,9 @@ static void html_rebox(html_content *c)
 	uint64_t t0;	/* (Onyx: onyx_perf.h) */
 
 	if (c->layout == NULL || c->box_conversion_context != NULL ||
-	    c->aborted || c->base.locked ||
+	    c->aborted || (c->base.locked && !c->early_layout) ||
 	    (c->base.status != CONTENT_STATUS_READY &&
-	     c->base.status != CONTENT_STATUS_DONE))
+	     c->base.status != CONTENT_STATUS_DONE && !c->early_layout))
 		return;
 	if (dom_document_get_document_element(c->document, (void *) &html) !=
 			DOM_NO_ERR || html == NULL)
@@ -480,8 +483,12 @@ static void html_rebox(html_content *c)
 	}
 
 	t0 = onyx_perf_now();
-	content__reformat(&c->base, false, c->base.available_width,
-			c->base.available_height);
+	if (c->early_layout && !c->conversion_begun) {
+		html_early_reformat(c);		/* (Onyx: while parsing) */
+	} else {
+		content__reformat(&c->base, false, c->base.available_width,
+				c->base.available_height);
+	}
 	onyx_perf_log("rebox:reformat", t0);
 }
 
@@ -514,13 +521,144 @@ void html_script_dom_changed(html_content *c)
 {
 	if (c->layout == NULL && c->box_conversion_context == NULL)
 		return;	/* not boxed yet: the boxes will see the change */
+	if (c->early_layout && !c->conversion_begun) {
+		c->early_stale = true;	/* (Onyx: made again when asked, or at the conversion) */
+		return;
+	}
 	c->rebox_pending = true;
 	guit->misc->schedule(10, html_rebox_scheduled, c);
+}
+
+/* Onyx: the viewport's size in device pixels (the browser window's), as the first
+ * reformat will get it */
+static void html_early_size(html_content *c, int *w, int *h)
+{
+	unsigned vw = 0, vh = 0;
+	union content_msg_data msg_data = {
+		.getdims = { .viewport_width = &vw, .viewport_height = &vh },
+	};
+
+	content_broadcast(&c->base, CONTENT_MSG_GETDIMS, &msg_data);
+	*w = vw > 0 ? (int) vw : (c->base.available_width > 0 ? c->base.available_width : 800);
+	*h = vh > 0 ? (int) vh : 600;
+}
+
+/* Onyx: lay the early boxes out (html_reformat's work without telling the window: the
+ * content is not shown yet) */
+static void html_early_reformat(html_content *c)
+{
+	bool had = c->had_initial_layout;
+	int w, h;
+
+	html_early_size(c, &w, &h);
+	c->base.available_width = w;
+	c->base.available_height = h;
+	{
+		bool locked = c->base.locked;
+		c->base.locked = true;
+		html_reformat(&c->base, w, h);
+		c->base.locked = locked;
+	}
+	c->had_initial_layout = had;
+}
+
+static void html_early_converted(html_content *c, bool success)
+{
+	(void) c;
+	html_rebox_success = success;
+}
+
+/* the early boxes given up at the conversion (the whole document's are built as usual):
+ * the nodes' links to them cut, the controls' too; they fetched nothing */
+static void html_early_discard(html_content *c, dom_node *html)
+{
+	c->early_layout = false;
+	c->early_stale = false;
+	if (c->layout == NULL)
+		return;
+	if (c->focus_type == HTML_FOCUS_TEXTAREA) {
+		c->focus_type = HTML_FOCUS_SELF;
+		c->focus_owner.self = true;
+	}
+	if (c->selection_type != HTML_SELECTION_NONE &&
+	    c->selection_type != HTML_SELECTION_SELF) {
+		c->selection_type = HTML_SELECTION_NONE;
+		c->selection_owner.none = true;
+	}
+	html_rebox_gadgets(c->layout, false);
+	html_rebox_unlink(html);
+	if (c->iframe != NULL) {
+		html_destroy_iframe(c->iframe);
+		c->iframe = NULL;
+	}
+	html_object_free_list(c, c->object_list);
+	c->object_list = NULL;
+	c->num_objects = 0;
+	if (c->bctx != NULL)
+		talloc_free(c->bctx);
+	c->bctx = NULL;
+	c->layout = NULL;
+	c->had_initial_layout = false;
+	onyx_hover_reset(c);
+}
+
+/* exported interface documented in html/private.h (Onyx) */
+bool html_early_layout(html_content *c)
+{
+	dom_node *html = NULL;
+	nserror err;
+
+	/* (the content is locked while its data is processed: the early boxes are not
+	 * shown, a layout of them is safe then) */
+	if (c->conversion_begun || c->aborted ||
+	    c->box_conversion_context != NULL || c->script_hold > 0 ||
+	    c->document == NULL)
+		return c->layout != NULL;
+	if (c->layout != NULL && !c->early_stale)
+		return true;
+	if (dom_document_get_document_element(c->document, (void *) &html) !=
+			DOM_NO_ERR || html == NULL)
+		return false;
+	/* the style sheets come so far */
+	if (c->select_ctx != NULL) {
+		css_select_ctx_destroy(c->select_ctx);
+		c->select_ctx = NULL;
+	}
+	if (html_css_new_selection_context(c, &c->select_ctx) != NSERROR_OK) {
+		dom_node_unref(html);
+		return false;
+	}
+	html_get_dimensions(c);
+	c->early_layout = true;
+	c->early_stale = false;
+	if (c->layout == NULL) {
+		uint64_t t0 = onyx_perf_now();
+		html_rebox_success = false;
+		err = dom_to_box_now(html, c, html_early_converted);
+		onyx_perf_log("early:boxes", t0);
+		if (err != NSERROR_OK || !html_rebox_success || c->layout == NULL) {
+			dom_node_unref(html);
+			return false;
+		}
+		html_early_reformat(c);
+	} else {
+		html_rebox(c);
+	}
+	dom_node_unref(html);
+	return c->layout != NULL;
 }
 
 /* exported interface documented in html/private.h */
 void html_script_layout_now(html_content *c)
 {
+	/* Onyx: a script asks for a geometry while the document is still parsed: its boxes
+	 * built and laid out now, from the nodes parsed so far, as a browser does (google.com's
+	 * footer script read #gb-main's scrollHeight -- 0 without boxes -- and set that as its
+	 * min-height: the page's column collapsed) */
+	if (!c->conversion_begun && (c->layout == NULL || c->early_stale)) {
+		html_early_layout(c);
+		return;
+	}
 	if (c->rebox_pending && html_rebox_possible(c)) {
 		guit->misc->schedule(-1, html_rebox_scheduled, c);
 		c->rebox_pending = false;
@@ -682,6 +820,11 @@ void html_finish_conversion(html_content *htmlc)
 	 * NetSurf has no concept of dynamically changing documents, so this
 	 * would break badly.
 	 */
+	/* Onyx: an early layout's (a script's geometry while parsing) is replaced */
+	if (htmlc->select_ctx != NULL && htmlc->early_layout) {
+		css_select_ctx_destroy(htmlc->select_ctx);
+		htmlc->select_ctx = NULL;
+	}
 	if (htmlc->select_ctx != NULL) {
 		NSLOG(netsurf, INFO,
 				"Ignoring style change: NS layout is static.");
@@ -723,6 +866,11 @@ void html_finish_conversion(html_content *htmlc)
 	}
 
 	html_get_dimensions(htmlc);
+
+	/* Onyx: boxes made while parsing (a script's geometry): built again from the whole
+	 * document, their objects taken over, as a script's change does */
+	if (htmlc->early_layout)
+		html_early_discard(htmlc, html);
 
 	error = dom_to_box(html, htmlc, html_box_convert_done, &htmlc->box_conversion_context);
 	if (error != NSERROR_OK) {
@@ -802,11 +950,16 @@ html_create_html_data(html_content *c, const http_parameter *params)
 	c->stylesheet_count = 0;
 	c->stylesheets = NULL;
 	c->select_ctx = NULL;
+	c->blocked_script = NULL;	/* (Onyx) */
+	c->dom_inserted_script = false;
+	c->early_layout = false;
+	c->early_stale = false;
 	c->media.type = CSS_MEDIA_SCREEN;
 	c->universal = NULL;
 	c->num_objects = 0;
 	c->object_list = NULL;
 	c->forms = NULL;
+	c->orphan_controls = NULL;	/* (Onyx) */
 	c->imagemaps = NULL;
 	c->bw = NULL;
 	c->frameset = NULL;
@@ -1574,6 +1727,16 @@ static void html_destroy(struct content *c)
 		g = f->prev;
 
 		form_free(f);
+	}
+	if (html->blocked_script != NULL) {	/* (Onyx) */
+		dom_node_unref(html->blocked_script);
+		html->blocked_script = NULL;
+	}
+	/* Onyx: and the controls outside any form */
+	while (html->orphan_controls != NULL) {
+		struct form_control *ctl = html->orphan_controls;
+		html->orphan_controls = ctl->next;
+		form_free_control(ctl);
 	}
 
 	imagemap_destroy(html);
@@ -2755,3 +2918,20 @@ error:
 
 	return error;
 }
+
+#ifdef ONYX_HOST_SIM
+/* Onyx (the PC bench only): a script run in the page's context (NS_INJECT: F5 runs that
+ * file there -- tools/tests/netsurf/layoutdiff.sh measures the elements in NetSurf and in
+ * Chromium with the same script) */
+void onyx_debug_exec(struct hlcache_handle *h, const char *src, size_t len)
+{
+	struct content *c = h != NULL ? hlcache_handle_get_content(h) : NULL;
+	html_content *htmlc;
+
+	if (c == NULL || content_get_type(h) != CONTENT_HTML)
+		return;
+	htmlc = (html_content *) c;
+	if (htmlc->jsthread != NULL)
+		js_exec(htmlc->jsthread, (const uint8_t *) src, len, "inject");
+}
+#endif

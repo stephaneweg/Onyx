@@ -610,7 +610,7 @@ css_error css_stylesheet_onyx_kept(const css_stylesheet *sheet, uint32_t *rules,
 		}
 	}
 	*rules = sheet->rule_count;
-	*decl_words = words;
+	*decl_words = words + sheet->onyx_desc_words;
 	return CSS_OK;
 }
 

@@ -720,9 +720,30 @@ hlcache_handle_retrieve(nsurl *url,
 	ctx->handle->cb = cb;
 	ctx->handle->pw = pw;
 
-	error = llcache_handle_retrieve(url, flags, referer, post,
-			hlcache_llcache_callback, ctx,
-			&ctx->llcache);
+	{
+		/* Onyx: the request's destination, for the fetcher's Fetch Metadata
+		 * headers (Sec-Fetch-Dest / -Mode, Accept): what the caller accepts
+		 * tells it -- a page, a style sheet, a script, an image */
+		const char *dest = "X-Onyx-Dest: empty";
+		const char *hdrs[2];
+
+		if (accepted_types == CONTENT_ANY)
+			dest = child != NULL ? "X-Onyx-Dest: iframe" :
+					"X-Onyx-Dest: document";
+		else if (accepted_types == CONTENT_CSS)
+			dest = "X-Onyx-Dest: style";
+		else if (accepted_types == CONTENT_SCRIPT)
+			dest = "X-Onyx-Dest: script";
+		else if ((accepted_types & ~CONTENT_IMAGE) == 0)
+			dest = "X-Onyx-Dest: image";
+		else if (accepted_types & CONTENT_HTML)
+			dest = "X-Onyx-Dest: object";
+		hdrs[0] = dest;
+		hdrs[1] = NULL;
+		error = llcache_handle_retrieve_ex(url, flags, referer, post,
+				hdrs, hlcache_llcache_callback, ctx,
+				&ctx->llcache);
+	}
 	if (error != NSERROR_OK) {
 		/* error retrieving handle so free context and return error */
 		free((char *) ctx->child.charset);

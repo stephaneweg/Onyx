@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <strings.h>
 #include <stdint.h>
 
@@ -60,6 +61,8 @@
 #include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
 #include "html/private.h"
+#include "html/html.h"		/* Onyx: struct html_stylesheet (n_sheet_text) */
+#include "netsurf/content.h"	/* Onyx: content_get_source_data, hlcache_handle_get_url */
 #include "html/box.h"
 #include "html/box_inspect.h"
 #include "html/form_internal.h"
@@ -72,6 +75,8 @@
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
 #include "qjs_html5_js.h"	/* Onyx: html5.js, the same way */
+#include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
+#include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -200,6 +205,8 @@ static void qjs_enter(jsthread *t)
 		t->heap->start = qjs_now_ms();
 }
 
+static void qjs_jobs_later(void *p);
+
 /** Leaving JS: the promises' jobs run, a changed DOM laid out again. */
 static void qjs_leave(jsthread *t)
 {
@@ -207,11 +214,25 @@ static void qjs_leave(jsthread *t)
 		return;
 	if (!t->closed) {
 		JSContext *jctx;
-		int r;
+		JSRuntime *rt = JS_GetRuntime(t->ctx);
+		uint64_t t0 = qjs_now_ms();
+		int r, n = 0;
 
-		while ((r = JS_ExecutePendingJob(JS_GetRuntime(t->ctx), &jctx)) != 0) {
+		/* Onyx: the jobs run for 200 ms at most, then the rest a turn later (the window
+		 * answers): a chain of promises that never ends (bbc.co.uk's consent script, its
+		 * Promise polyfill) held the loop for ever -- each job "interrupted" at once once
+		 * the script's time was out, the next one queued again -- and took memory till
+		 * none was left. Each turn gives the jobs their own time. */
+		while ((r = JS_ExecutePendingJob(rt, &jctx)) != 0) {
 			if (r < 0)
 				qjs_report(jctx, "job");
+			if ((++n & 63) == 0 && qjs_now_ms() - t0 > 200 &&
+					JS_IsJobPending(rt)) {
+				guit->misc->schedule(10, qjs_jobs_later, t);
+				break;
+			}
+			if (t->heap != NULL)
+				t->heap->start = qjs_now_ms();
 		}
 	}
 	t->forced_layouts = 0;
@@ -222,6 +243,17 @@ static void qjs_leave(jsthread *t)
 	}
 	if (t->pending_destroy)
 		qjs_thread_free(t);
+}
+
+/** the promises' jobs left over by qjs_leave (Onyx) */
+static void qjs_jobs_later(void *p)
+{
+	jsthread *t = p;
+
+	if (t->closed)
+		return;
+	qjs_enter(t);
+	qjs_leave(t);
 }
 
 /** a call into JS, its exception reported; the result (JS_UNDEFINED on error) */
@@ -415,6 +447,32 @@ static dom_node *qjs_node(JSValueConst v)
 
 #define QJS_T(ctx) ((jsthread *) JS_GetContextOpaque(ctx))
 
+/* Onyx: for qjs_canvas.c (declared in qjs_canvas.h) */
+struct dom_node *qjs_node_of(JSValueConst v)
+{
+	return qjs_node(v);
+}
+
+struct html_content *qjs_html_of(JSContext *ctx)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return (t == NULL || t->closed) ? NULL : t->htmlc;
+}
+
+static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int argc,
+		JSValueConst *argv, const char *where);
+
+void qjs_invoke(JSContext *ctx, JSValueConst fn, int argc, JSValueConst *argv,
+		const char *where)
+{
+	jsthread *t = QJS_T(ctx);
+
+	if (t == NULL || t->closed)
+		return;
+	JS_FreeValue(ctx, qjs_call(t, fn, JS_UNDEFINED, argc, argv, where));
+}
+
 
 /* ---- strings ------------------------------------------------------------------------ */
 
@@ -578,11 +636,13 @@ static JSValue n_set_attr(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	name = qjs_dstr(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
 	v = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
 	if (name != NULL && v != NULL) {
-		if (dom_element_set_attribute((dom_element *) n, name, v) !=
-				DOM_NO_ERR) {
+		dom_exception e = dom_element_set_attribute((dom_element *) n, name, v);
+		if (e != DOM_NO_ERR) {
+			JSValue r = JS_ThrowTypeError(ctx, "bad attribute %.40s (%d)",
+					dom_string_data(name), (int) e);
 			dom_string_unref(name);
 			dom_string_unref(v);
-			return JS_ThrowTypeError(ctx, "bad attribute");
+			return r;
 		}
 		QJS_T(ctx)->dirty = true;
 	}
@@ -810,6 +870,98 @@ static void qjs_mod_meta(JSContext *ctx, JSValueConst func, const char *url)
 }
 
 /** a module compiled from its source in t->modsrc, else named in t->modmissing */
+/* Onyx: a script's dynamic imports -- import(x) becomes __onyxImport(<base>, x) (dom.js): it
+ * fetches the module graph, then imports it (QuickJS's loader cannot wait for the network:
+ * developer.mozilla.org's chunks, import()ed by URL, were "not loaded yet"). <base>: the
+ * module's import.meta.url, null in a classic script (the document's URL). Strings and
+ * comments are skipped. NULL: nothing to change. */
+static char *qjs_rewrite_import(const char *src, size_t len, bool module, size_t *outlen)
+{
+	const char *ins = module ? "import.meta.url, " : "null, ";
+	size_t insl = strlen(ins), cap = 0, o = 0, i, from = 0;
+	char *out = NULL;
+	char q = 0;
+
+	if (len < 8)
+		return NULL;
+	for (i = 0; i + 6 < len; i++) {
+		char c = src[i];
+		if (q != 0) {
+			if (c == '\\') { i++; continue; }
+			if (c == q) q = 0;
+			continue;
+		}
+		if (c == '"' || c == '\'' || c == '`') { q = c; continue; }
+		if (c == '/' && src[i + 1] == '/') {
+			while (i < len && src[i] != '\n') i++;
+			continue;
+		}
+		if (c == '/' && src[i + 1] == '*') {
+			i += 2;
+			while (i + 1 < len && !(src[i] == '*' && src[i + 1] == '/')) i++;
+			i++;
+			continue;
+		}
+		if (c == 'i' && memcmp(src + i, "import", 6) == 0 &&
+		    (i == 0 || !(isalnum((unsigned char) src[i - 1]) || src[i - 1] == '_' ||
+				 src[i - 1] == '$' || src[i - 1] == '.'))) {
+			size_t j = i + 6;
+			while (j < len && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r'))
+				j++;
+			if (j < len && src[j] == '(') {
+				/* not a method named import: import(a) { ... } */
+				size_t k = j + 1;
+				int depth = 1;
+				char kq = 0;
+				for (; k < len && depth > 0; k++) {
+					char d = src[k];
+					if (kq != 0) {
+						if (d == '\\') k++;
+						else if (d == kq) kq = 0;
+						continue;
+					}
+					if (d == '"' || d == '\'' || d == '`') kq = d;
+					else if (d == '(') depth++;
+					else if (d == ')') depth--;
+				}
+				while (k < len && (src[k] == ' ' || src[k] == '\t' || src[k] == '\n' || src[k] == '\r'))
+					k++;
+				if (k < len && src[k] == '{') {
+					i = j;
+					continue;
+				}
+			}
+			if (j < len && src[j] == '(') {
+				size_t need = o + (i - from) + 12 + (j + 1 - (i + 6)) + insl + (len - j) + 1;
+				if (need > cap) {
+					char *n;
+					cap = need + len / 4 + 64;
+					n = realloc(out, cap);
+					if (n == NULL) { free(out); return NULL; }
+					out = n;
+				}
+				memcpy(out + o, src + from, i - from); o += i - from;
+				memcpy(out + o, "__onyxImport", 12); o += 12;
+				memcpy(out + o, src + i + 6, j + 1 - (i + 6)); o += j + 1 - (i + 6);
+				memcpy(out + o, ins, insl); o += insl;
+				from = j + 1;
+				i = j;
+			}
+		}
+	}
+	if (out == NULL)
+		return NULL;
+	if (o + (len - from) + 1 > cap) {
+		char *n = realloc(out, o + (len - from) + 1);
+		if (n == NULL) { free(out); return NULL; }
+		out = n;
+	}
+	memcpy(out + o, src + from, len - from); o += len - from;
+	out[o] = '\0';
+	*outlen = o;
+	return out;
+}
+
 static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaque)
 {
 	jsthread *t = QJS_T(ctx);
@@ -834,7 +986,13 @@ static JSModuleDef *qjs_mod_loader(JSContext *ctx, const char *name, void *opaqu
 	JS_FreeValue(ctx, src);
 	if (text == NULL)
 		return NULL;
-	func = JS_Eval(ctx, text, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(text, len, true, &rl);	/* (Onyx) */
+		func = JS_Eval(ctx, rw ? rw : text, rw ? rl : len, name,
+				JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+		free(rw);
+	}
 	JS_FreeCString(ctx, text);
 	if (JS_IsException(func))
 		return NULL;
@@ -885,7 +1043,13 @@ static JSValue n_module_run(JSContext *ctx, JSValueConst this_val, int argc,
 	}
 	JS_FreeValue(ctx, t->modmissing);
 	t->modmissing = JS_NewArray(ctx);
-	func = JS_Eval(ctx, text, len, url, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(text, len, true, &rl);	/* (Onyx) */
+		func = JS_Eval(ctx, rw ? rw : text, rw ? rl : len, url,
+				JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+		free(rw);
+	}
 	JS_FreeCString(ctx, text);
 	if (!JS_IsException(func)) {
 		qjs_mod_meta(ctx, func, url);
@@ -951,6 +1115,39 @@ static JSValue n_css_kept(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	JS_SetPropertyUint32(ctx, a, 0, JS_NewUint32(ctx, rules));
 	JS_SetPropertyUint32(ctx, a, 1, JS_NewUint32(ctx, words));
 	return a;
+}
+
+/**
+ * Onyx: sheetText(link): the text of the style sheet a <link rel=stylesheet> loaded and its
+ * URL, [text, url]; null if it has none (not loaded, not a style sheet). The CSSOM's
+ * document.styleSheets (dom.js) reads the linked sheets' rules from it.
+ */
+static JSValue n_sheet_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	unsigned int i;
+	QJS_NODE_ARG(n, 0);
+
+	(void) this_val;
+	if (t->htmlc == NULL || t->htmlc->stylesheets == NULL)
+		return JS_NULL;
+	for (i = 0; i < t->htmlc->stylesheet_count; i++) {
+		struct html_stylesheet *s = &t->htmlc->stylesheets[i];
+		const uint8_t *data;
+		size_t size = 0;
+		JSValue a;
+		if (s->node != n || s->sheet == NULL)
+			continue;
+		data = content_get_source_data(s->sheet, &size);
+		a = JS_NewArray(ctx);
+		JS_SetPropertyUint32(ctx, a, 0, data != NULL ?
+				JS_NewStringLen(ctx, (const char *) data, size) :
+				JS_NewString(ctx, ""));
+		JS_SetPropertyUint32(ctx, a, 1, JS_NewString(ctx,
+				nsurl_access(hlcache_handle_get_url(s->sheet))));
+		return a;
+	}
+	return JS_NULL;
 }
 
 /* Onyx: the <script> element running (document.currentScript), set around js_exec */
@@ -1188,6 +1385,37 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	return arr;
 }
 
+/** image(n): an <img>'s picture as the page has it -- [state (0 loading, 1 loaded, 2 broken),
+ * natural width, natural height], or null when it has no box (not displayed) (Onyx) */
+static JSValue n_image(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	struct box *box;
+	JSValue arr;
+	int st = 0, w = 0, h = 0;
+	QJS_NODE_ARG(n, 0);
+
+	box = qjs_box(n);
+	if (box == NULL)
+		return JS_NULL;
+	if (box->object != NULL) {
+		content_status cs = content_get_status(box->object);
+		if (cs == CONTENT_STATUS_DONE || cs == CONTENT_STATUS_READY) {
+			st = 1;
+			w = content_get_width(box->object);
+			h = content_get_height(box->object);
+		} else if (cs == CONTENT_STATUS_ERROR) {
+			st = 2;
+		}
+	} else {
+		st = 2;		/* (a box without its picture: failed or none) */
+	}
+	arr = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, st));
+	JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, w));
+	JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, h));
+	return arr;
+}
+
 /** boxed(n): whether the node has a box (it is displayed) */
 static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -1390,6 +1618,29 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		css_fixed o = INTTOFIX(1);
 		css_computed_opacity(style, &o);
 		snprintf(buf, sizeof(buf), "%g", FIXTOFLT(o));
+	} else if (strcmp(prop, "fill") == 0 || strcmp(prop, "stroke") == 0) {
+		/* Onyx: SVG's paints (libcss computes them) */
+		css_color c = 0, cur = 0;
+		lwc_string *url = NULL;
+		uint8_t pt = prop[0] == 'f' ? css_computed_fill(box->style, &c, &url) :
+				css_computed_stroke(box->style, &c, &url);
+		css_computed_color(box->style, &cur);
+		if (pt == CSS_PAINT_CURRENT_COLOR)
+			c = cur;
+		if (pt == CSS_PAINT_NONE)
+			snprintf(buf, sizeof(buf), "none");
+		else if ((pt == CSS_PAINT_URL || pt == CSS_PAINT_URL_COLOR ||
+				pt == CSS_PAINT_URL_CURRENT_COLOR) && url != NULL)
+			snprintf(buf, sizeof(buf), "url(\"%.50s\")", lwc_string_data(url));
+		else if (pt == CSS_PAINT_COLOR || pt == CSS_PAINT_CURRENT_COLOR)
+			snprintf(buf, sizeof(buf), "rgb(%u, %u, %u)",
+				 (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
+	} else if (strcmp(prop, "stroke-width") == 0) {
+		css_fixed len = 0;
+		css_unit unit = CSS_UNIT_PX;
+		css_computed_stroke_width(box->style, &len, &unit);
+		snprintf(buf, sizeof(buf), "%g%s", FIXTOFLT(len),
+				unit == CSS_UNIT_PCT ? "%" : unit == CSS_UNIT_EM ? "em" : "px");
 	} else if (strcmp(prop, "width") == 0) {
 		if (box != NULL && box->style == style)
 			snprintf(buf, sizeof(buf), "%dpx", box->width);
@@ -2044,8 +2295,10 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 		JS_FreeValue(ctx, len);
 		nh = l > 0 && l < 200 ? (uint32_t) l : 0;
 	}
-	hv = calloc(nh + 2, sizeof(char *));
+	hv = calloc(nh + 3, sizeof(char *));
 	get = strcasecmp(method, "GET") == 0 || strcasecmp(method, "HEAD") == 0;
+	if (hv != NULL)
+		hv[k++] = strdup("X-Onyx-Dest: empty");	/* (Onyx: fetch / XHR, Fetch Metadata) */
 	if (hv != NULL && !get && strcasecmp(method, "POST") != 0) {
 		size_t ml = strlen(method) + 16;
 		hv[k] = malloc(ml);
@@ -2718,7 +2971,9 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("clone", 2, n_clone),
 	JS_CFUNC_DEF("byId", 1, n_by_id),
 	JS_CFUNC_DEF("currentScript", 0, n_current_script),
+	JS_CFUNC_DEF("image", 1, n_image),
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
+	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
@@ -2793,6 +3048,9 @@ nserror js_newheap(int timeout, jsheap **heap)
 	/* a script's recursion stopped (RangeError) past 4 MB of stack -- the Onyx app's is
 	 * 8 MB (its app.txt: stack = 8M), NetSurf's own frames below the JS */
 	JS_SetMaxStackSize(h->rt, 4 * 1024 * 1024);
+	/* Onyx: a window's scripts take 384 MB at most -- past it an allocation throws
+	 * (InternalError: out of memory) where it would stop the whole app on the Pi */
+	JS_SetMemoryLimit(h->rt, 384 * 1024 * 1024);
 	JS_SetInterruptHandler(h->rt, qjs_interrupt, h);
 	JS_SetModuleLoaderFunc(h->rt, qjs_mod_normalize, qjs_mod_loader, NULL);	/* (Onyx) */
 	JS_NewClassID(h->rt, &qjs_node_class);
@@ -2859,6 +3117,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_html5,	/* Onyx: HTML5 */
 			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
 	qjs_enter(t);
+	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
 	prelude = JS_Eval(t->ctx, qjs_dom_js, sizeof(qjs_dom_js) - 1, "dom.js",
 			JS_EVAL_TYPE_GLOBAL);
 	if (JS_IsException(prelude)) {
@@ -2883,6 +3142,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 		JS_FreeValue(t->ctx, r);
 	}
 	JS_FreeValue(t->ctx, prelude);
+	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
 	JS_FreeValue(t->ctx, natives);
 	t->dirty = false;	/* (nothing laid out yet) */
 	qjs_leave(t);
@@ -2909,6 +3169,7 @@ static void qjs_thread_free(jsthread *t)
 	size_t i;
 	int k;
 
+	guit->misc->schedule(-1, qjs_jobs_later, t);	/* (Onyx) */
 	qjs_timers_stop(t);
 	qjs_reqs_stop(t);
 	guit->misc->schedule(-1, qjs_load_later, t);
@@ -2928,6 +3189,7 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->modsrc);
 	JS_FreeValue(t->ctx, t->modmissing);
 	JS_FreeValue(t->ctx, t->ce_hook);
+	qjs_canvas_context_gone(t->ctx);	/* Onyx: its canvases, images */
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
@@ -2973,10 +3235,32 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	uint64_t t0 = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 
 	qjs_enter(thread);
+	{
+		size_t rl;
+		char *rw = qjs_rewrite_import(src, txtlen, false, &rl);	/* (Onyx) */
+		if (rw != NULL) {
+			free(src);
+			src = rw;
+			txtlen = rl;
+		}
+	}
 	r = JS_Eval(thread->ctx, src, txtlen, name != NULL ? name : "script",
 			JS_EVAL_TYPE_GLOBAL);
 	if (JS_IsException(r)) {
 		qjs_report(thread->ctx, name != NULL ? name : "script");
+#ifdef ONYX_HOST_SIM
+		/* Onyx (the PC bench): NS_JSDUMP=<dir> -- a script that failed is written there */
+		if (getenv("NS_JSDUMP") != NULL) {
+			static int nd;
+			char path[512];
+			FILE *f;
+			snprintf(path, sizeof path, "%s/failed-%d.js", getenv("NS_JSDUMP"), nd++);
+			if ((f = fopen(path, "w")) != NULL) {
+				fwrite(src, 1, txtlen, f);
+				fclose(f);
+			}
+		}
+#endif
 	} else {
 		ok = JS_ToBool(thread->ctx, r);
 	}
@@ -3043,8 +3327,12 @@ static void qjs_load_later(void *p)
 
 	if (t->closed || t->htmlc == NULL)
 		return;
+	/* Onyx: and the fetches the page still waits for (base.active): a script a script
+	 * inserted delays the load, as in a browser (Facebook's bootloader: its modules were
+	 * not in when load fired, a handler used what they set up) */
 	if ((!t->htmlc->had_initial_layout ||
-	     t->htmlc->base.status != CONTENT_STATUS_DONE) &&
+	     t->htmlc->base.status != CONTENT_STATUS_DONE ||
+	     t->htmlc->base.active > 0) &&
 	    ++t->load_waits < 600) {
 		guit->misc->schedule(50, qjs_load_later, t);
 		return;

@@ -214,9 +214,15 @@ class MessageEvent extends Event {
 class SubmitEvent extends Event {
 	constructor(type, init = {}) { super(type, init); this.submitter = init.submitter || null; }
 }
+/* Onyx: core-js (bundled by many sites: bbc.co.uk's consent script) replaces the native
+ * Promise with its own when PromiseRejectionEvent is missing -- and its polyfill looped
+ * through microtasks for ever (1.5 GB in a minute: the Pi's "out of memory") */
+class PromiseRejectionEvent extends Event {
+	constructor(type, init = {}) { super(type, init); this.promise = init.promise; this.reason = init.reason; }
+}
 Object.assign(G, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent,
 	KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, ProgressEvent, PopStateEvent,
-	HashChangeEvent, MessageEvent, SubmitEvent, TouchEvent: undefined });
+	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, TouchEvent: undefined });
 delete G.TouchEvent;
 
 /* the event's path: its target, its ancestors, the document, the window */
@@ -322,8 +328,14 @@ function invoke(node, ev, capture) {
 
 function dispatch(target, ev) {
 	const path = [];
-	for (let n = target; n; n = eventParent(n))
+	for (let n = target; n; n = eventParent(n)) {
+		/* (Onyx: an element's load event stops at the document -- the window is not in
+		 * its path (HTML): duckduckgo.com's capturing window load listener added itself
+		 * again at each image's load) */
+		if (n === G && ev.type === 'load' && target !== G)
+			break;
 		path.push(n);
+	}
 	ev.target = target;
 	ev._path = path;
 	ev._stop = ev._stopNow = false;
@@ -353,7 +365,9 @@ class EventTarget {
 		if (!fn)
 			return;
 		const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture);
-		const l = listenersOf(this, true);
+		/* (Onyx: called unbound -- const add = addEventListener; add(...) -- it is the
+		 * window's, as in a browser) */
+		const l = listenersOf(this == null ? G : this, true);
 		let list = l.get(type);
 		if (!list)
 			l.set(type, list = []);
@@ -367,7 +381,7 @@ class EventTarget {
 	}
 	removeEventListener(type, fn, opts) {
 		const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture);
-		const l = listenersOf(this, false);
+		const l = listenersOf(this == null ? G : this, false);
 		const list = l && l.get(type);
 		if (!list)
 			return;
@@ -380,7 +394,7 @@ class EventTarget {
 	dispatchEvent(ev) {
 		if (!(ev instanceof Event))
 			throw new TypeError('not an Event');
-		return dispatch(this, ev);
+		return dispatch(this == null ? G : this, ev);
 	}
 }
 G.EventTarget = EventTarget;
@@ -952,87 +966,784 @@ function cssSupports(text) {
 	}
 }
 
-/* ---- a minimal CSSOM (read-only, from a <style>'s text): what libcss keeps ----------------- */
-const FONT_FACE_DESC = new Set(['font-family', 'src', 'font-style', 'font-weight', 'unicode-range']);
+/* ---- the CSSOM (Onyx): style sheets and their rules ------------------------------------------
+ * A sheet's rules are read from its text -- a <style>'s content, a <link>'s loaded sheet
+ * (N.sheetText), a constructed sheet's replace() text -- when first asked for, and kept as
+ * libcss keeps them: a rule, a declaration or a descriptor libcss drops (an invalid selector,
+ * an unknown at-rule, a value its property's grammar refuses) is not there (N.cssKept).
+ * Changes -- insertRule, deleteRule, replaceSync, a rule's style -- are written back to the
+ * sheet's text: a <style>'s content (NetSurf styles the page again), a constructed sheet's
+ * adopted <style> (document.adoptedStyleSheets); a linked sheet changes in memory only. */
 
-function cssSplit(text) {	/* the top-level rules: [{ prelude, body (null: a statement) }] */
+/* the top-level items of a CSS text: [{ prelude, body }] (body null: a statement ending
+ * with ';'; the comments dropped, the strings and brackets kept whole) */
+function cssItems(text) {
 	const out = [];
-	text = String(text).replace(/\/\*[\s\S]*?\*\//g, '');
-	let i = 0, start = 0, quote = null, depth = 0, bodyStart = -1, prelude = '';
-	for (; i < text.length; i++) {
+	text = String(text);
+	let i = 0, start = 0, quote = null, depth = 0, paren = 0, bodyStart = -1, prelude = '';
+	const n = text.length;
+	for (; i < n; i++) {
 		const c = text[i];
-		if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+		if (quote) {
+			if (c === '\\') i++;
+			else if (c === quote) quote = null;
+			continue;
+		}
+		if (c === '/' && text[i + 1] === '*') {
+			const e = text.indexOf('*/', i + 2);
+			if (depth === 0) {
+				text = text.slice(0, i) + ' ' + (e < 0 ? '' : text.slice(e + 2));
+				i--;
+				continue;
+			}
+			i = e < 0 ? n : e + 1;
+			continue;
+		}
 		if (c === '"' || c === "'") { quote = c; continue; }
+		if (c === '(' || c === '[') { paren++; continue; }
+		if ((c === ')' || c === ']') && paren > 0) { paren--; continue; }
 		if (c === '{') {
 			if (depth++ === 0) { prelude = text.slice(start, i).trim(); bodyStart = i + 1; }
 		} else if (c === '}') {
 			if (depth > 0 && --depth === 0) {
 				out.push({ prelude, body: text.slice(bodyStart, i) });
 				start = i + 1;
+				paren = 0;
 			}
-		} else if (c === ';' && depth === 0) {
+		} else if (c === ';' && depth === 0 && paren === 0) {
 			const st = text.slice(start, i).trim();
 			if (st) out.push({ prelude: st, body: null });
 			start = i + 1;
 		}
 	}
+	if (depth > 0)		/* (an unclosed block at the end: closed there) */
+		out.push({ prelude, body: text.slice(bodyStart) });
+	else {
+		const st = text.slice(start).trim();
+		if (st) out.push({ prelude: st, body: null });
+	}
 	return out;
 }
 
-function cssDeclObject(body, ok) {	/* a rule's declarations kept (ok (name, value)) */
-	const o = { length: 0, cssText: '' };
-	const vals = new Map();
-	for (const [k, d] of parseDecls(body)) {
-		if (!ok(k, d.v)) continue;
-		vals.set(k, d.v);
-		o[o.length++] = k;
-		o[k.replace(/-([a-z])/g, (m, c) => c.toUpperCase())] = d.v;
-	}
-	o.cssText = [...vals].map(([k, v]) => k + ': ' + v + ';').join(' ');
-	o.getPropertyValue = k => vals.get(String(k).toLowerCase()) || '';
-	o.item = i => o[i] || '';
-	return o;
+/* a declaration's name and value ("color: red !important" -> ['color', 'red !important']) */
+function cssDeclSplit(t) {
+	const i = t.indexOf(':');
+	if (i < 0) return null;
+	const k = t.slice(0, i).trim();
+	return k ? [k.startsWith('--') ? k : k.toLowerCase(), t.slice(i + 1).trim()] : null;
 }
 
-function cssRuleList(text) {
-	const rules = [];
-	for (const r of cssSplit(text)) {
-		const whole = r.prelude + (r.body === null ? ';' : ' {' + r.body + '}');
-		const kept = N.cssKept(whole, false);
-		if (kept === null || kept[0] === 0)
-			continue;		/* (libcss dropped it: an unknown rule, a bad selector) */
-		const at = /^@([\w-]+)\s*(.*)$/s.exec(r.prelude);
-		let rule;
-		if (!at) {
-			rule = { type: 1, selectorText: r.prelude, style: cssDeclObject(r.body || '', cssValid) };
-		} else {
-			const name = at[1].toLowerCase();
-			if (name === 'font-face')
-				rule = { type: 5, style: cssDeclObject(r.body || '', k => FONT_FACE_DESC.has(k)) };
-			else if (name === 'page')
-				rule = { type: 6, selectorText: at[2], style: cssDeclObject(r.body || '', cssValid) };
-			else if (name === 'media')
-				rule = { type: 4, media: { mediaText: at[2] }, conditionText: at[2], cssRules: cssRuleList(r.body || '') };
-			else if (name === 'supports')
-				rule = { type: 12, conditionText: at[2], cssRules: cssRuleList(r.body || '') };
-			else if (name === 'import')
-				rule = { type: 3, href: at[2].replace(/^url\(|\)$|["']/g, '') };
-			else if (name === 'namespace')
-				rule = { type: 10 };
-			else
-				continue;
+function cssKeptText(text) {
+	const r = N.cssKept(text, false);
+	return r === null ? [0, 0] : r;
+}
+
+/* ---- MediaList, CSSRuleList, StyleSheetList ---- */
+class MediaList {
+	constructor(text, onchange) {
+		Object.defineProperty(this, '_l', { value: [], writable: true });
+		Object.defineProperty(this, '_c', { value: onchange || null });
+		this._set(text || '');
+	}
+	_set(text) {
+		const l = [];
+		let depth = 0, s = 0;
+		text = String(text);
+		for (let i = 0; i <= text.length; i++) {
+			const c = text[i];
+			if (c === '(') depth++;
+			else if (c === ')') depth--;
+			else if ((c === ',' && depth === 0) || i === text.length) {
+				const m = text.slice(s, i).trim().replace(/\s+/g, ' ');
+				if (m) l.push(m);
+				s = i + 1;
+			}
 		}
-		rule.cssText = whole;
-		rules.push(rule);
+		for (let i = 0; i < this._l.length; i++) delete this[i];
+		this._l = l;
+		l.forEach((m, i) => Object.defineProperty(this, i, { value: m, configurable: true, enumerable: true }));
+	}
+	get mediaText() { return this._l.join(', '); }
+	set mediaText(v) { this._set(v === null ? '' : v); if (this._c) this._c(); }
+	get length() { return this._l.length; }
+	item(i) { return this._l[i] === undefined ? null : this._l[i]; }
+	appendMedium(m) { m = String(m).trim(); if (m && !this._l.includes(m)) { this._set(this._l.concat([m]).join(',')); if (this._c) this._c(); } }
+	deleteMedium(m) {
+		const i = this._l.indexOf(String(m).trim());
+		if (i < 0) throw new DOMException('not in the list', 'NotFoundError');
+		const l = this._l.slice(); l.splice(i, 1); this._set(l.join(',')); if (this._c) this._c();
+	}
+	toString() { return this.mediaText; }
+	[Symbol.iterator]() { return this._l[Symbol.iterator](); }
+}
+G.MediaList = MediaList;
+
+class CSSRuleList {
+	constructor(rules) {
+		Object.defineProperty(this, '_r', { value: rules || [], writable: true });
+		this._fill();
+	}
+	_fill() {
+		for (const k of Object.keys(this)) delete this[k];
+		this._r.forEach((r, i) => Object.defineProperty(this, i, { value: r, configurable: true, enumerable: true }));
+	}
+	get length() { return this._r.length; }
+	item(i) { return this._r[i] || null; }
+	[Symbol.iterator]() { return this._r[Symbol.iterator](); }
+}
+G.CSSRuleList = CSSRuleList;
+
+class StyleSheetList {
+	constructor(sheets) {
+		sheets.forEach((s, i) => Object.defineProperty(this, i, { value: s, enumerable: true }));
+		Object.defineProperty(this, '_s', { value: sheets });
+	}
+	get length() { return this._s.length; }
+	item(i) { return this._s[i] || null; }
+	[Symbol.iterator]() { return this._s[Symbol.iterator](); }
+}
+G.StyleSheetList = StyleSheetList;
+
+/* ---- the rules ---- */
+const RULE_OWN = Symbol('rule');
+class CSSRule {
+	constructor(key) {
+		if (key !== RULE_OWN) throw new TypeError('Illegal constructor');
+		Object.defineProperty(this, '_parent', { value: null, writable: true });
+		Object.defineProperty(this, '_sheet', { value: null, writable: true });
+	}
+	get parentRule() { return this._parent; }
+	get parentStyleSheet() { return this._sheet; }
+	get cssText() { return ''; }
+	set cssText(v) { /* (no effect, as in browsers) */ }
+	_changed() { if (this._sheet) this._sheet._changed(); }
+}
+Object.assign(CSSRule, { STYLE_RULE: 1, CHARSET_RULE: 2, IMPORT_RULE: 3, MEDIA_RULE: 4,
+	FONT_FACE_RULE: 5, PAGE_RULE: 6, KEYFRAMES_RULE: 7, KEYFRAME_RULE: 8, MARGIN_RULE: 9,
+	NAMESPACE_RULE: 10, COUNTER_STYLE_RULE: 11, SUPPORTS_RULE: 12, FONT_FEATURE_VALUES_RULE: 14 });
+for (const k of Object.keys(CSSRule)) Object.defineProperty(CSSRule.prototype, k, { value: CSSRule[k] });
+G.CSSRule = CSSRule;
+
+function cssRuleType(r) { return r.constructor.TYPE || 0; }
+
+/* rules that hold declarations (a style rule, @font-face, @page, a keyframe, @position-try...):
+ * rule.style over its valid declarations */
+function declMixin(cls, validOf) {
+	Object.defineProperty(cls.prototype, 'style', {
+		get() {
+			let s = this._style;
+			if (!s) Object.defineProperty(this, '_style', { value: s = styleProxyOf(new CSSStyleDeclaration(null, this)) });
+			return s;
+		},
+		set(v) { this.style.cssText = v; },
+		configurable: true,
+	});
+	cls.prototype._declValid = validOf;
+	cls.prototype._decls = function () {
+		if (!this._dm) {
+			const m = new Map();
+			for (const it of cssItems(this._body || '')) {
+				if (it.body !== null) continue;
+				const d = cssDeclSplit(it.prelude);
+				if (!d) continue;
+				let v = d[1], pri = '';
+				const im = v.match(/\s*!\s*important\s*$/i);
+				if (im) { pri = 'important'; v = v.slice(0, im.index).trim(); }
+				if (this._declValid(d[0], v))
+					m.set(d[0], { v, pri });
+			}
+			Object.defineProperty(this, '_dm', { value: m, writable: true });
+		}
+		return this._dm;
+	};
+	cls.prototype._setDecls = function (m) {
+		if (!this._dm) Object.defineProperty(this, '_dm', { value: m, writable: true });
+		else this._dm = m;
+		this._body = serializeDecls(m);
+		this._changed();
+	};
+}
+const propValid = (k, v) => k.startsWith('--') || cssValid(k, v);
+
+class CSSGroupingRule extends CSSRule {
+	get cssRules() {
+		if (!this._rl) Object.defineProperty(this, '_rl', { value: new CSSRuleList(cssParseRules(this._body || '', this, this._sheet, this._childKind())) });
+		return this._rl;
+	}
+	_childKind() { return 'rules'; }
+	insertRule(text, index) {
+		const l = this.cssRules;
+		index = index === undefined ? 0 : index >>> 0;
+		if (index > l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		const r = cssParseRules(String(text), this, this._sheet, this._childKind());
+		if (r.length !== 1) throw new DOMException('invalid rule', 'SyntaxError');
+		l._r.splice(index, 0, r[0]);
+		l._fill();
+		this._changed();
+		return index;
+	}
+	deleteRule(index) {
+		const l = this.cssRules;
+		index >>>= 0;
+		if (index >= l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		l._r[index]._parent = null;
+		l._r.splice(index, 1);
+		l._fill();
+		this._changed();
+	}
+	_inner() { return this._rl ? this._rl._r.map(r => '  ' + r.cssText).join('\n') : (this._body || '').trim(); }
+}
+G.CSSGroupingRule = CSSGroupingRule;
+
+class CSSConditionRule extends CSSGroupingRule {
+	get conditionText() { return this._cond; }
+}
+G.CSSConditionRule = CSSConditionRule;
+
+class CSSStyleRule extends CSSGroupingRule {
+	static get TYPE() { return 1; }
+	get type() { return 1; }
+	get selectorText() { return this._sel; }
+	set selectorText(v) {
+		v = String(v).trim();
+		if (cssSelectorValid(v)) { this._sel = v; this._changed(); }
+	}
+	get cssText() {
+		const d = serializeDecls(this._decls());
+		const nested = this._rl && this._rl._r.length ? ' ' + this._rl._r.map(r => r.cssText).join(' ') : '';
+		return this._sel + ' { ' + (d ? d + ' ' : '') + (nested ? nested.trim() + ' ' : '') + '}';
+	}
+	_childKind() { return 'nested'; }
+}
+declMixin(CSSStyleRule, propValid);
+G.CSSStyleRule = CSSStyleRule;
+
+class CSSMediaRule extends CSSConditionRule {
+	static get TYPE() { return 4; }
+	get type() { return 4; }
+	get media() {
+		if (!this._ml) Object.defineProperty(this, '_ml', { value: new MediaList(this._cond, () => { this._cond = this._ml.mediaText; this._changed(); }) });
+		return this._ml;
+	}
+	get cssText() { return '@media ' + this.media.mediaText + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSMediaRule = CSSMediaRule;
+
+class CSSSupportsRule extends CSSConditionRule {
+	static get TYPE() { return 12; }
+	get type() { return 12; }
+	get cssText() { return '@supports ' + this._cond + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSSupportsRule = CSSSupportsRule;
+
+class CSSContainerRule extends CSSConditionRule {
+	get type() { return 0; }
+	get containerName() { const m = /^\s*(?!not\b|style\b|scroll-state\b)([-\w]+)\s+/i.exec(this._cond); return m && !this._cond.trim().startsWith('(') ? m[1] : ''; }
+	get containerQuery() { const nm = this.containerName; return nm ? this._cond.trim().slice(nm.length).trim() : this._cond.trim(); }
+	get cssText() { return '@container ' + this._cond + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSContainerRule = CSSContainerRule;
+
+class CSSLayerBlockRule extends CSSGroupingRule {
+	get type() { return 0; }
+	get name() { return this._name; }
+	get cssText() { return '@layer' + (this._name ? ' ' + this._name : '') + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSLayerBlockRule = CSSLayerBlockRule;
+
+class CSSLayerStatementRule extends CSSRule {
+	get type() { return 0; }
+	get nameList() { return Object.freeze(this._name.split(',').map(s => s.trim()).filter(Boolean)); }
+	get cssText() { return '@layer ' + this.nameList.join(', ') + ';'; }
+}
+G.CSSLayerStatementRule = CSSLayerStatementRule;
+
+class CSSScopeRule extends CSSGroupingRule {
+	get type() { return 0; }
+	get start() { const m = /^\s*\(([\s\S]*?)\)/.exec(this._cond); return m ? m[1].trim() : null; }
+	get end() { const m = /\bto\s*\(([\s\S]*)\)\s*$/i.exec(this._cond); return m ? m[1].trim() : null; }
+	get cssText() { return '@scope' + (this._cond ? ' ' + this._cond : '') + ' {\n' + this._inner() + '\n}'; }
+}
+G.CSSScopeRule = CSSScopeRule;
+
+class CSSStartingStyleRule extends CSSGroupingRule {
+	get type() { return 0; }
+	get cssText() { return '@starting-style {\n' + this._inner() + '\n}'; }
+}
+G.CSSStartingStyleRule = CSSStartingStyleRule;
+
+class CSSImportRule extends CSSRule {
+	static get TYPE() { return 3; }
+	get type() { return 3; }
+	get href() { return this._href; }
+	get media() {
+		if (!this._ml) Object.defineProperty(this, '_ml', { value: new MediaList(this._media) });
+		return this._ml;
+	}
+	get layerName() { return this._layer; }
+	get supportsText() { return this._supports; }
+	get styleSheet() { return null; }
+	get cssText() { return '@import url("' + this._href + '")' + (this._layer !== null ? ' layer' + (this._layer ? '(' + this._layer + ')' : '') : '') + (this._supports !== null ? ' supports(' + this._supports + ')' : '') + (this._media ? ' ' + this._media : '') + ';'; }
+}
+G.CSSImportRule = CSSImportRule;
+
+class CSSNamespaceRule extends CSSRule {
+	static get TYPE() { return 10; }
+	get type() { return 10; }
+	get namespaceURI() { return this._uri; }
+	get prefix() { return this._prefix; }
+	get cssText() { return '@namespace ' + (this._prefix ? this._prefix + ' ' : '') + 'url("' + this._uri + '");'; }
+}
+G.CSSNamespaceRule = CSSNamespaceRule;
+
+/* descriptor rules: valid as libcss keeps "@rule prelude { name: value }" */
+function descValid(at) {
+	return function (k, v) { return cssKeptText(at + ' ' + (this._name || '') + ' { ' + k + ': ' + v + ' }')[1] > 0; };
+}
+
+class CSSFontFaceRule extends CSSRule {
+	static get TYPE() { return 5; }
+	get type() { return 5; }
+	get cssText() { const d = serializeDecls(this._decls()); return '@font-face { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSFontFaceRule, function (k, v) { return cssKeptText('@font-face { ' + k + ': ' + v + ' }')[1] > 0; });
+G.CSSFontFaceRule = CSSFontFaceRule;
+
+class CSSPageRule extends CSSGroupingRule {
+	static get TYPE() { return 6; }
+	get type() { return 6; }
+	get selectorText() { return this._sel; }
+	set selectorText(v) { this._sel = String(v).trim(); this._changed(); }
+	get cssText() { const d = serializeDecls(this._decls()); return '@page' + (this._sel ? ' ' + this._sel : '') + ' { ' + (d ? d + ' ' : '') + '}'; }
+	_childKind() { return 'margins'; }
+}
+declMixin(CSSPageRule, function (k, v) { return cssKeptText('@page { ' + k + ': ' + v + ' }')[1] > 0; });
+G.CSSPageRule = CSSPageRule;
+
+class CSSMarginRule extends CSSRule {
+	static get TYPE() { return 9; }
+	get type() { return 9; }
+	get name() { return this._name; }
+	get cssText() { const d = serializeDecls(this._decls()); return '@' + this._name + ' { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSMarginRule, propValid);
+G.CSSMarginRule = CSSMarginRule;
+
+class CSSKeyframeRule extends CSSRule {
+	static get TYPE() { return 8; }
+	get type() { return 8; }
+	get keyText() { return this._sel; }
+	set keyText(v) {
+		v = String(v).trim();
+		if (!keyframeSelectorValid(v)) throw new DOMException('invalid keyframe selector', 'SyntaxError');
+		this._sel = v; this._changed();
+	}
+	get cssText() { const d = serializeDecls(this._decls()); return this._sel + ' { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSKeyframeRule, (k, v) => !/!\s*important/i.test(v) && propValid(k, v));
+G.CSSKeyframeRule = CSSKeyframeRule;
+
+function keyframeSelectorValid(t) {
+	return String(t).split(',').every(s => /^\s*(from|to|(?:[a-z-]+\s+)?[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?%)\s*$/i.test(s) &&
+		(!/%/.test(s) || (v => v >= 0 && v <= 100)(parseFloat(s.replace(/^[^\d.+-]*/, '')))));
+}
+
+class CSSKeyframesRule extends CSSRule {
+	static get TYPE() { return 7; }
+	get type() { return 7; }
+	get name() { return this._name; }
+	set name(v) { this._name = String(v); this._changed(); }
+	get cssRules() {
+		if (!this._rl) Object.defineProperty(this, '_rl', { value: new CSSRuleList(cssParseRules(this._body || '', this, this._sheet, 'keyframes')) });
+		return this._rl;
+	}
+	get length() { return this.cssRules.length; }
+	appendRule(text) {
+		const r = cssParseRules(String(text), this, this._sheet, 'keyframes');
+		if (r.length === 1) { this.cssRules._r.push(r[0]); this.cssRules._fill(); this._changed(); }
+	}
+	_find(k) {
+		const want = String(k).split(',').map(s => s.trim().toLowerCase().replace(/^from$/, '0%').replace(/^to$/, '100%')).join(',');
+		const l = this.cssRules._r;
+		for (let i = l.length - 1; i >= 0; i--) {
+			const got = l[i]._sel.split(',').map(s => s.trim().toLowerCase().replace(/^from$/, '0%').replace(/^to$/, '100%')).join(',');
+			if (got === want) return i;
+		}
+		return -1;
+	}
+	findRule(k) { const i = this._find(k); return i < 0 ? null : this.cssRules._r[i]; }
+	deleteRule(k) { const i = this._find(k); if (i >= 0) { this.cssRules._r.splice(i, 1); this.cssRules._fill(); this._changed(); } }
+	get cssText() { return '@keyframes ' + this._name + ' {\n' + this.cssRules._r.map(r => '  ' + r.cssText).join('\n') + '\n}'; }
+	[Symbol.iterator]() { return this.cssRules[Symbol.iterator](); }
+}
+G.CSSKeyframesRule = CSSKeyframesRule;
+
+/* the descriptor at-rules: their descriptors as attributes (camelCase), '' when absent */
+function descRule(name, cls, at, descs, type) {
+	Object.defineProperty(cls, 'TYPE', { get: () => type || 0 });
+	Object.defineProperty(cls.prototype, 'type', { get: () => type || 0, configurable: true });
+	declMixin(cls, descValid(at));
+	for (const d of descs) {
+		const js = d.replace(/-([a-z])/g, (m, c) => c.toUpperCase());
+		Object.defineProperty(cls.prototype, js, {
+			get() { const x = this._decls().get(d); return x ? x.v : ''; },
+			set(v) {
+				v = String(v);
+				if (!this._declValid(d, v)) return;
+				const m = new Map(this._decls()); m.set(d, { v, pri: '' }); this._setDecls(m);
+			},
+			configurable: true,
+		});
+	}
+	Object.defineProperty(cls.prototype, 'cssText', {
+		get() { const d = serializeDecls(this._decls()); return at + (this._name ? ' ' + this._name : '') + ' { ' + (d ? d + ' ' : '') + '}'; },
+		configurable: true,
+	});
+	G[name] = cls;
+}
+class CSSCounterStyleRule extends CSSRule {
+	get name() { return this._name; }
+	set name(v) { this._name = String(v); this._changed(); }
+}
+descRule('CSSCounterStyleRule', CSSCounterStyleRule, '@counter-style', ['system', 'symbols',
+	'additive-symbols', 'negative', 'prefix', 'suffix', 'range', 'pad', 'speak-as', 'fallback'], 11);
+class CSSPropertyRule extends CSSRule {
+	get name() { return this._name; }
+	get inherits() { const x = this._decls().get('inherits'); return x ? x.v.trim() === 'true' : false; }
+	get initialValue() { const x = this._decls().get('initial-value'); return x ? x.v : null; }
+}
+descRule('CSSPropertyRule', CSSPropertyRule, '@property', ['syntax']);
+class CSSFontPaletteValuesRule extends CSSRule {
+	get name() { return this._name; }
+}
+descRule('CSSFontPaletteValuesRule', CSSFontPaletteValuesRule, '@font-palette-values', ['font-family', 'base-palette', 'override-colors']);
+class CSSViewTransitionRule extends CSSRule {
+	get types() { const x = this._decls().get('types'); return x && x.v !== 'none' ? x.v.split(/\s+/) : []; }
+}
+descRule('CSSViewTransitionRule', CSSViewTransitionRule, '@view-transition', ['navigation']);
+class CSSPositionTryRule extends CSSRule {
+	get type() { return 0; }
+	get name() { return this._name; }
+	get cssText() { const d = serializeDecls(this._decls()); return '@position-try ' + this._name + ' { ' + (d ? d + ' ' : '') + '}'; }
+}
+declMixin(CSSPositionTryRule, (k, v) => !/!\s*important/i.test(v) && propValid(k, v));
+G.CSSPositionTryRule = CSSPositionTryRule;
+
+class CSSFontFeatureValuesMap extends Map {}
+G.CSSFontFeatureValuesMap = CSSFontFeatureValuesMap;
+class CSSFontFeatureValuesRule extends CSSRule {
+	static get TYPE() { return 14; }
+	get type() { return 14; }
+	get fontFamily() { return this._name; }
+	set fontFamily(v) { this._name = String(v); this._changed(); }
+	_map(at) {
+		const m = new CSSFontFeatureValuesMap();
+		for (const it of cssItems(this._body || '')) {
+			if (it.body === null || it.prelude.toLowerCase() !== '@' + at) continue;
+			for (const d of cssItems(it.body)) {
+				const kv = d.body === null && cssDeclSplit(d.prelude);
+				if (kv && /^\d+(\s+\d+)*$/.test(kv[1])) m.set(kv[0], kv[1].split(/\s+/).map(Number));
+			}
+		}
+		return m;
+	}
+	get annotation() { return this._map('annotation'); }
+	get ornaments() { return this._map('ornaments'); }
+	get stylistic() { return this._map('stylistic'); }
+	get swash() { return this._map('swash'); }
+	get characterVariant() { return this._map('character-variant'); }
+	get styleset() { return this._map('styleset'); }
+	get historicalForms() { return this._map('historical-forms'); }
+	get cssText() { return '@font-feature-values ' + this._name + ' { ' + (this._body || '').trim() + ' }'; }
+}
+G.CSSFontFeatureValuesRule = CSSFontFeatureValuesRule;
+
+class CSSNestedDeclarations extends CSSRule {
+	get type() { return 0; }
+	get cssText() { return serializeDecls(this._decls()); }
+}
+declMixin(CSSNestedDeclarations, propValid);
+G.CSSNestedDeclarations = CSSNestedDeclarations;
+
+/* a rule object of a class, its fields set */
+function mkRule(cls, fields, parent, sheet) {
+	const r = Object.create(cls.prototype);
+	Object.defineProperty(r, '_parent', { value: parent && parent instanceof CSSRule ? parent : null, writable: true });
+	Object.defineProperty(r, '_sheet', { value: sheet || null, writable: true });
+	for (const k of Object.keys(fields))
+		Object.defineProperty(r, k, { value: fields[k], writable: true });
+	return r;
+}
+
+/* The rules of a text (kind: 'sheet', 'rules' -- in a grouping rule --, 'nested' -- in a
+ * style rule --, 'keyframes', 'margins' -- in @page), as libcss keeps them. */
+function cssParseRules(text, parent, sheet, kind) {
+	const rules = [];
+	const top = kind === 'sheet';
+	for (const it of cssItems(text)) {
+		const whole = it.prelude + (it.body === null ? ';' : ' {' + it.body + '}');
+		const at = /^@([\w-]+)\s*([\s\S]*)$/.exec(it.prelude);
+		if (kind === 'keyframes') {
+			if (it.body !== null && !at && keyframeSelectorValid(it.prelude))
+				rules.push(mkRule(CSSKeyframeRule, { _sel: it.prelude.replace(/\s+/g, ' '), _body: it.body }, parent, sheet));
+			continue;
+		}
+		if (kind === 'margins') {
+			if (at && it.body !== null && /^(top|bottom|left|right)-/.test(at[1].toLowerCase()) && cssKeptText('@page { @' + at[1] + ' {} }')[0] >= 0)
+				rules.push(mkRule(CSSMarginRule, { _name: at[1].toLowerCase(), _body: it.body }, parent, sheet));
+			continue;
+		}
+		if (!at) {
+			if (it.body === null) {
+				if (kind === 'nested' && cssDeclSplit(it.prelude)) continue;	/* (the rule's own) */
+				continue;
+			}
+			let sel = it.prelude.replace(/\s+/g, ' ').trim();
+			if (kind === 'nested') {
+				/* a nested rule: its selector as libcss reads it with & as the parent */
+				const test = /&/.test(sel) ? sel.replace(/&/g, ':root') : ':root ' + sel;
+				if (!cssSelectorValid(test)) continue;
+			} else if (cssKeptText(sel + ' {}')[0] === 0) {
+				continue;
+			}
+			rules.push(mkRule(CSSStyleRule, { _sel: sel, _body: it.body }, parent, sheet));
+			continue;
+		}
+		const name = at[1].toLowerCase(), pre = at[2].trim();
+		const kept = () => cssKeptText(whole)[0] > 0;
+		let r = null;
+		switch (name) {
+		case 'media':
+			if (it.body !== null && kept()) r = mkRule(CSSMediaRule, { _cond: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'supports':
+			/* (kept in the CSSOM whether its condition holds or not) */
+			if (it.body !== null && pre) r = mkRule(CSSSupportsRule, { _cond: pre.replace(/\s+/g, ' '), _body: it.body }, parent, sheet);
+			break;
+		case 'container':
+			if (it.body !== null && kept()) r = mkRule(CSSContainerRule, { _cond: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'layer':
+			if (it.body === null) {
+				if (pre && /^[-\w]+(\.[-\w]+)*(\s*,\s*[-\w]+(\.[-\w]+)*)*$/.test(pre)) r = mkRule(CSSLayerStatementRule, { _name: pre }, parent, sheet);
+			} else if (!pre || /^[-\w]+(\.[-\w]+)*$/.test(pre)) {
+				r = mkRule(CSSLayerBlockRule, { _name: pre, _body: it.body }, parent, sheet);
+			}
+			break;
+		case 'scope':
+			if (it.body !== null && kept()) r = mkRule(CSSScopeRule, { _cond: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'starting-style':
+			if (it.body !== null && kept()) r = mkRule(CSSStartingStyleRule, { _body: it.body }, parent, sheet);
+			break;
+		case 'font-face':
+			if (it.body !== null && top) r = mkRule(CSSFontFaceRule, { _body: it.body }, parent, sheet);
+			break;
+		case 'page':
+			if (it.body !== null && kept()) r = mkRule(CSSPageRule, { _sel: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'keyframes': case '-webkit-keyframes':
+			if (it.body !== null && kept()) r = mkRule(CSSKeyframesRule, { _name: pre.replace(/^["']|["']$/g, ''), _body: it.body }, parent, sheet);
+			break;
+		case 'counter-style':
+			if (it.body !== null && kept()) r = mkRule(CSSCounterStyleRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'property':
+			if (it.body !== null && kept()) r = mkRule(CSSPropertyRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'font-feature-values':
+			if (it.body !== null && kept()) r = mkRule(CSSFontFeatureValuesRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'font-palette-values':
+			if (it.body !== null && kept()) r = mkRule(CSSFontPaletteValuesRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'position-try':
+			if (it.body !== null && kept()) r = mkRule(CSSPositionTryRule, { _name: pre, _body: it.body }, parent, sheet);
+			break;
+		case 'view-transition':
+			if (it.body !== null && kept()) r = mkRule(CSSViewTransitionRule, { _body: it.body }, parent, sheet);
+			break;
+		case 'import': {
+			if (!top || it.body !== null || rules.some(x => !(x instanceof CSSImportRule || x instanceof CSSLayerStatementRule))) break;
+			const m = /^(?:url\(\s*["']?([^"')]*)["']?\s*\)|["']([^"']*)["'])\s*([\s\S]*)$/i.exec(pre);
+			if (!m) break;
+			let rest = m[3], layer = null, sup = null;
+			const lm = /^layer(?:\(\s*([^)]*)\))?\s*/i.exec(rest);
+			if (lm) { layer = lm[1] ? lm[1].trim() : ''; rest = rest.slice(lm[0].length); }
+			const sm = /^supports\(([\s\S]*?)\)\s*(?=$|[^)])/i.exec(rest);
+			if (sm) { sup = sm[1].trim(); rest = rest.slice(sm[0].length); }
+			let href = m[1] !== undefined ? m[1] : m[2];
+			try { href = new URL(href, (sheet && sheet.href) || N.url()).href; } catch (e) { /* (as written) */ }
+			r = mkRule(CSSImportRule, { _href: href, _media: rest.trim(), _layer: layer, _supports: sup }, parent, sheet);
+			break;
+		}
+		case 'namespace': {
+			if (!top || it.body !== null) break;
+			const m = /^(?:([-\w]+)\s+)?(?:url\(\s*["']?([^"')]*)["']?\s*\)|["']([^"']*)["'])\s*$/i.exec(pre);
+			if (m) r = mkRule(CSSNamespaceRule, { _prefix: m[1] || '', _uri: m[2] !== undefined ? m[2] : m[3] }, parent, sheet);
+			break;
+		}
+		default:
+			break;		/* (@charset, an unknown at-rule: not in the CSSOM) */
+		}
+		if (r) rules.push(r);
 	}
 	return rules;
 }
 
+/* ---- the style sheets ---- */
+class StyleSheet {
+	constructor(key) { if (key !== RULE_OWN) throw new TypeError('Illegal constructor'); }
+	get type() { return 'text/css'; }
+	get href() { return this._href || null; }
+	get ownerNode() { return this._owner || null; }
+	get parentStyleSheet() { return null; }
+	get title() { return this._owner ? N.attr(this._owner, 'title') : null; }
+	get media() {
+		if (!this._ml) Object.defineProperty(this, '_ml', { value: new MediaList(this._owner ? N.attr(this._owner, 'media') || '' : this._mediaText || '') });
+		return this._ml;
+	}
+	get disabled() { return !!this._disabled; }
+	set disabled(v) { this._disabled = !!v; }
+}
+G.StyleSheet = StyleSheet;
+
+class CSSStyleSheet extends StyleSheet {
+	constructor(options) {
+		super(RULE_OWN);
+		options = options || {};
+		Object.defineProperty(this, '_constructed', { value: true });
+		Object.defineProperty(this, '_src', { value: '', writable: true });
+		this._mediaText = typeof options.media === 'string' ? options.media : '';
+		this._disabled = !!options.disabled;
+		this._href = null;
+	}
+	/* the text the rules come from */
+	_text() {
+		if (this._owner) {
+			if (this._owner.localName === 'link') {
+				const r = N.sheetText(this._owner);
+				return r ? r[0] : '';
+			}
+			return this._owner.textContent || '';
+		}
+		return this._src;
+	}
+	get cssRules() {
+		const t = this._text();
+		if (!this._rl || (this._owner && this._owner.localName === 'style' && t !== this._seen)) {
+			Object.defineProperty(this, '_rl', { value: new CSSRuleList(cssParseRules(t, this, this, 'sheet')), writable: true, configurable: true });
+			Object.defineProperty(this, '_seen', { value: t, writable: true, configurable: true });
+		}
+		return this._rl;
+	}
+	get rules() { return this.cssRules; }
+	get ownerRule() { return null; }
+	insertRule(text, index) {
+		const l = this.cssRules;
+		index = index === undefined ? 0 : index >>> 0;
+		if (index > l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		const r = cssParseRules(String(text), this, this, 'sheet');
+		if (r.length !== 1) throw new DOMException('invalid rule: ' + text, 'SyntaxError');
+		l._r.splice(index, 0, r[0]);
+		l._fill();
+		this._changed();
+		return index;
+	}
+	deleteRule(index) {
+		const l = this.cssRules;
+		index >>>= 0;
+		if (index >= l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
+		l._r[index]._sheet = null;
+		l._r.splice(index, 1);
+		l._fill();
+		this._changed();
+	}
+	addRule(sel, style, index) {
+		this.insertRule((sel || 'undefined') + ' { ' + (style || '') + ' }', index === undefined ? this.cssRules.length : index);
+		return -1;
+	}
+	removeRule(index) { this.deleteRule(index === undefined ? 0 : index); }
+	replaceSync(text) {
+		if (!this._constructed) throw new DOMException('not a constructed sheet', 'NotAllowedError');
+		this._src = String(text).replace(/@import[^;]*;/gi, '');
+		this._rl = null;
+		this._write();
+	}
+	replace(text) {
+		try { this.replaceSync(text); return NativePromise.resolve(this); }
+		catch (e) { return NativePromise.reject(e); }
+	}
+	/* a rule changed: the text again from the rules, written back */
+	_changed() {
+		if (!this._rl) return;
+		const t = this._rl._r.map(r => r.cssText).join('\n');
+		if (this._owner && this._owner.localName === 'style') {
+			this._seen = t;
+			this._owner.textContent = t;
+		} else if (!this._owner) {
+			this._src = t;
+			this._write();
+		}
+	}
+	/* a constructed sheet adopted by the document: its <style> (NetSurf styles with it) */
+	_write() {
+		for (const el of adoptedEls) if (el._onyxSheet === this) el.textContent = this._src;
+	}
+}
+G.CSSStyleSheet = CSSStyleSheet;
+
+const sheetOfEl = new WeakMap();
 function cssSheetOf(el) {
-	const rules = cssRuleList(el.textContent || '');
-	return { type: 'text/css', disabled: false, ownerNode: el, href: null, title: null,
-		cssRules: rules, rules, media: { mediaText: N.attr(el, 'media') || '' },
-		insertRule() { return 0; }, deleteRule() {} };
+	let s = sheetOfEl.get(el);
+	if (!s) {
+		s = Object.create(CSSStyleSheet.prototype);
+		Object.defineProperty(s, '_owner', { value: el });
+		Object.defineProperty(s, '_constructed', { value: false });
+		if (el.localName === 'link') {
+			const r = N.sheetText(el);
+			Object.defineProperty(s, '_href', { value: r ? r[1] : el.href || null, writable: true });
+		}
+		sheetOfEl.set(el, s);
+	}
+	return s;
+}
+
+/* the sheets of the document, in its order: <style>s, <link rel=stylesheet>s loaded */
+function documentSheets(doc) {
+	const out = [];
+	for (const el of doc.querySelectorAll('style, link')) {
+		if (el.hasAttribute('data-onyx-adopted')) continue;
+		if (el.localName === 'link') {
+			if (!/(^|\s)stylesheet(\s|$)/i.test(N.attr(el, 'rel') || '') || !N.sheetText(el)) continue;
+		}
+		out.push(cssSheetOf(el));
+	}
+	return new StyleSheetList(out);
+}
+
+/* document.adoptedStyleSheets: each sheet realized as a <style data-onyx-adopted> at the end
+ * of the <head> (NetSurf styles the page with it) */
+const adoptedEls = new Set();
+let adoptedList = [];
+function setAdopted(list) {
+	list = Array.from(list || []);
+	for (const s of list)
+		if (!(s instanceof CSSStyleSheet) || !s._constructed)
+			throw new DOMException('not a constructed sheet', 'NotAllowedError');
+	for (const el of adoptedEls) el.remove();
+	adoptedEls.clear();
+	adoptedList = list;
+	const head = document.head || document.documentElement;
+	if (!head) return;
+	for (const s of list) {
+		const el = document.createElement('style');
+		el.setAttribute('data-onyx-adopted', '');
+		el._onyxSheet = s;
+		el.textContent = s._src;
+		head.appendChild(el);
+		adoptedEls.add(el);
+	}
 }
 
 function parseDecls(text) {
@@ -1070,19 +1781,39 @@ function serializeDecls(map) {
 	return out.join(' ');
 }
 
+/* an element's style attribute, or (Onyx) a CSSOM rule's declarations (rule: its _decls /
+ * _setDecls / _declValid) */
 class CSSStyleDeclaration {
-	constructor(el) {
+	constructor(el, rule) {
 		Object.defineProperty(this, '_el', { value: el });
+		Object.defineProperty(this, '_rule', { value: rule || null });
 	}
-	_map() { return this._el ? parseDecls(N.attr(this._el, 'style')) : new Map(); }
+	_map() {
+		if (this._rule) return new Map(this._rule._decls());
+		return this._el ? parseDecls(N.attr(this._el, 'style')) : new Map();
+	}
+	_valid(k, v) { return this._rule ? this._rule._declValid(k, v) : cssValid(k, v); }
 	_write(map) {
+		if (this._rule) { this._rule._setDecls(map); return; }
 		if (!this._el) return;
 		const s = serializeDecls(map);
 		if (s) N.setAttr(this._el, 'style', s);
 		else N.removeAttr(this._el, 'style');
 	}
-	get cssText() { return this._el ? (N.attr(this._el, 'style') || '') : ''; }
-	set cssText(v) { if (this._el) N.setAttr(this._el, 'style', String(v)); }
+	get parentRule() { return this._rule; }
+	get cssText() {
+		if (this._rule) return serializeDecls(this._rule._decls());
+		return this._el ? (N.attr(this._el, 'style') || '') : '';
+	}
+	set cssText(v) {
+		if (this._rule) {
+			const m = new Map();
+			for (const [k, d] of parseDecls(String(v))) if (this._valid(k, d.v)) m.set(k, d);
+			this._rule._setDecls(m);
+			return;
+		}
+		if (this._el) N.setAttr(this._el, 'style', String(v));
+	}
 	get length() { return this._map().size; }
 	item(i) { return [...this._map().keys()][i] || ''; }
 	getPropertyValue(p) {
@@ -1098,7 +1829,7 @@ class CSSStyleDeclaration {
 		const map = this._map();
 		if (v === null || v === undefined || v === '')
 			map.delete(k);
-		else if (cssValid(k, v))
+		else if (this._valid(k, String(v)))
 			map.set(k, { v: String(v), pri: pri ? 'important' : '' });
 		else
 			return;		/* (an invalid value is not set: the old one stays) */
@@ -1116,11 +1847,12 @@ class CSSStyleDeclaration {
 G.CSSStyleDeclaration = CSSStyleDeclaration;
 
 const STYLE_OWN = new Set(['cssText', 'length', 'item', 'getPropertyValue',
-	'getPropertyPriority', 'setProperty', 'removeProperty', '_el', '_map', '_write',
-	'parentRule', 'constructor']);
+	'getPropertyPriority', 'setProperty', 'removeProperty', '_el', '_rule', '_map', '_write',
+	'_valid', 'parentRule', 'constructor']);
 
-function styleProxy(el) {
-	return new Proxy(new CSSStyleDeclaration(el), {
+function styleProxy(el) { return styleProxyOf(new CSSStyleDeclaration(el)); }
+function styleProxyOf(decl) {
+	return new Proxy(decl, {
 		get(t, p, r) {
 			if (typeof p !== 'string' || STYLE_OWN.has(p) || p in Object.prototype)
 				return Reflect.get(t, p, t);
@@ -1517,6 +2249,8 @@ function serialize(n, out) {
 	}
 }
 
+const RAW_TEXT = new Set(['script', 'style', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext']);
+
 function innerHTML(n) {
 	const out = [];
 	for (const c of N.children(n))
@@ -1615,7 +2349,20 @@ class Element extends Node {
 	get innerHTML() { return innerHTML(this); }
 	set innerHTML(v) {
 		const removed = observers.size ? N.children(this) : [];
-		N.setHTML(this, v === null ? '' : String(v));
+		v = v === null ? '' : String(v);
+		/* Onyx: the fragment parser's context -- a raw text element's markup is its text
+		 * (a tag manager's script.innerHTML = code lost every "<...>" of the code: bbc's
+		 * consent stub became a SyntaxError), an RCDATA one's has its entities decoded */
+		const tag = N.name(this).toLowerCase();
+		if (RAW_TEXT.has(tag)) {
+			this.textContent = v;
+		} else if (tag === 'textarea' || tag === 'title') {
+			const d = N.create('div');
+			N.setHTML(d, v.replace(/</g, '&lt;'));
+			this.textContent = N.text(d);
+		} else {
+			N.setHTML(this, v);
+		}
 		if (observers.size)
 			childListRecord(this, N.children(this), removed);
 	}
@@ -1745,10 +2492,14 @@ function reflectNumber(proto, prop, attr, dflt) {
 		set(v) { this.setAttribute(attr, String(v)); } });
 }
 
+class DOMStringMap {}
+G.DOMStringMap = DOMStringMap;
+
 class HTMLElement extends Element {
 	get dataset() {
 		const el = this;
-		return new Proxy({}, {
+		/* (Onyx: an instance of DOMStringMap -- Facebook's loader checks) */
+		return new Proxy(Object.create(DOMStringMap.prototype), {
 			get(t, p) {
 				if (typeof p !== 'string') return undefined;
 				const v = N.attr(el, 'data-' + p.replace(/[A-Z]/g, c => '-' + c.toLowerCase()));
@@ -1904,17 +2655,44 @@ htmlClass('HTMLAnchorElement', ['a'], HTMLAnchorElement);
 htmlClass('HTMLAreaElement', ['area'], class extends HTMLAnchorElement {});
 
 class HTMLImageElement extends HTMLElement {
-	get complete() { return true; }
-	get naturalWidth() { return N.rect(this)[2]; }
-	get naturalHeight() { return N.rect(this)[3]; }
-	get width() { const v = parseInt(N.attr(this, 'width'), 10); return isNaN(v) ? N.rect(this)[2] : v; }
+	/* (Onyx: the picture's state and natural size, NetSurf's for a displayed image; an image
+	 * a script loads -- new Image() -- is canvas.js's) */
+	_img() { return this.isConnected ? N.image(this) : null; }
+	get complete() {
+		if (!N.attr(this, 'src')) return true;
+		const st = this._img();
+		return st ? st[0] !== 0 : true;
+	}
+	get naturalWidth() { const st = this._img(); return st ? st[1] : 0; }
+	get naturalHeight() { const st = this._img(); return st ? st[2] : 0; }
+	get width() {
+		const v = parseInt(N.attr(this, 'width'), 10);
+		if (!isNaN(v)) return v;
+		if (this.isConnected && N.boxed(this)) return N.rect(this)[2];
+		return this.naturalWidth;
+	}
 	set width(v) { this.setAttribute('width', String(v)); }
-	get height() { const v = parseInt(N.attr(this, 'height'), 10); return isNaN(v) ? N.rect(this)[3] : v; }
+	get height() {
+		const v = parseInt(N.attr(this, 'height'), 10);
+		if (!isNaN(v)) return v;
+		if (this.isConnected && N.boxed(this)) return N.rect(this)[3];
+		return this.naturalHeight;
+	}
 	set height(v) { this.setAttribute('height', String(v)); }
 	get currentSrc() { return this.src; }
-	decode() { return Promise.resolve(); }
+	get src() { const v = N.attr(this, 'src'); try { return v ? new URL(v, N.url()).href : ''; } catch (e) { return v || ''; } }
+	set src(v) { this.setAttribute('src', v); }
+	decode() {
+		if (this.complete) return this.naturalWidth || !N.attr(this, 'src') ? Promise.resolve() :
+			Promise.reject(new DOMException('The source image cannot be decoded.', 'EncodingError'));
+		return new Promise((res, rej) => {
+			const ok = () => { this.removeEventListener('error', ko); res(); };
+			const ko = () => { this.removeEventListener('load', ok); rej(new DOMException('The source image cannot be decoded.', 'EncodingError')); };
+			this.addEventListener('load', ok, { once: true });
+			this.addEventListener('error', ko, { once: true });
+		});
+	}
 }
-reflectURL(HTMLImageElement.prototype, 'src');
 for (const p of ['alt', 'srcset', 'sizes', 'loading', 'decoding', 'crossOrigin', 'useMap', 'referrerPolicy'])
 	reflectString(HTMLImageElement.prototype, p);
 reflectBool(HTMLImageElement.prototype, 'isMap');
@@ -2246,7 +3024,10 @@ htmlClass('HTMLLinkElement', ['link'], class extends HTMLElement {
 	get rel() { return N.attr(this, 'rel') || ''; }
 	set rel(v) { this.setAttribute('rel', v); }
 	get relList() { return new DOMTokenList(this, 'rel'); }
-	get sheet() { return null; }
+	get sheet() {
+		return /(^|\s)stylesheet(\s|$)/i.test(N.attr(this, 'rel') || '') && N.sheetText(this) ?
+			cssSheetOf(this) : null;
+	}
 });
 htmlClass('HTMLStyleElement', ['style'], class extends HTMLElement {
 	get sheet() { return cssSheetOf(this); }
@@ -2431,7 +3212,14 @@ class Document extends Node {
 	get images() { return this.getElementsByTagName('img'); }
 	get links() { return htmlCollection(this.querySelectorAll('a[href],area[href]')); }
 	get scripts() { return this.getElementsByTagName('script'); }
-	get styleSheets() { return [...this.querySelectorAll('style')].map(cssSheetOf); }
+	get styleSheets() { return documentSheets(this); }
+	get adoptedStyleSheets() {
+		/* (a live array: a push() adopts the sheet, as the ObservableArray does) */
+		return new Proxy(adoptedList.slice(), {
+			set(t, k, v) { t[k] = v; if (k !== 'length' || v < adoptedList.length) NativePromise.resolve().then(() => setAdopted(t)); return true; },
+		});
+	}
+	set adoptedStyleSheets(v) { setAdopted(v); }
 	get fonts() { return fontFaces; }
 	get currentScript() { return N.currentScript(); }
 	get fullscreenElement() { return null; }
@@ -2811,15 +3599,21 @@ function storageOrigin() {
 	} catch (e) { return null; }
 }
 function storageProxy(origin) {
-	return new Proxy(new Storage(origin), {
+	/* (Onyx: the proxy's target is an empty object -- the Storage's own non-configurable
+	 * fields left out of ownKeys broke the Proxy invariants: Object.keys(localStorage)
+	 * threw "target property must be present in proxy ownKeys" on Facebook) */
+	const st = new Storage(origin);
+	return new Proxy(Object.create(Storage.prototype), {
 		get(t, p) {
-			if (p in t || typeof p !== 'string') { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; }
-			return t.getItem(p) ?? undefined;
+			if (p in st || typeof p !== 'string') { const v = st[p]; return typeof v === 'function' ? v.bind(st) : v; }
+			return st.getItem(p) ?? undefined;
 		},
-		set(t, p, v) { t.setItem(p, v); return true; },
-		deleteProperty(t, p) { t.removeItem(p); return true; },
-		ownKeys(t) { return [...t._m.keys()]; },
-		getOwnPropertyDescriptor(t, p) { const v = t.getItem(p); return v === null ? undefined : { value: v, enumerable: true, configurable: true, writable: true }; },
+		set(t, p, v) { st.setItem(p, v); return true; },
+		has(t, p) { return p in st || (typeof p === 'string' && st.getItem(p) !== null); },
+		deleteProperty(t, p) { st.removeItem(p); return true; },
+		ownKeys(t) { return [...st._m.keys()]; },
+		getOwnPropertyDescriptor(t, p) { const v = typeof p === 'string' ? st.getItem(p) : null; return v === null ? undefined : { value: v, enumerable: true, configurable: true, writable: true }; },
+		defineProperty(t, p, d) { if ('value' in d) st.setItem(p, d.value); return true; },
 	});
 }
 G.Storage = Storage;
@@ -2884,140 +3678,768 @@ function atob(s) {
 }
 
 /* URL, URLSearchParams */
+/* Onyx: URL and URLSearchParams as the WHATWG URL Standard says (the basic URL parser's state
+ * machine, its host parser -- IPv4 numbers, IPv6, IDN labels to punycode --, the percent-encode
+ * sets, the setters through the state overrides). The WPT's url tests guided it
+ * (tools/tests/netsurf/urltest.sh). */
+const SPECIAL = { 'ftp': 21, 'file': null, 'http': 80, 'https': 443, 'ws': 80, 'wss': 443 };
+const isSpecial = s => Object.prototype.hasOwnProperty.call(SPECIAL, s);
+const ALPHA = c => (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a);
+const DIGIT = c => c >= 0x30 && c <= 0x39;
+const HEXD = c => DIGIT(c) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66);
+const PE_C0 = c => c < 0x20 || c > 0x7e;
+const PE_FRAG = c => PE_C0(c) || c === 0x20 || c === 0x22 || c === 0x3c || c === 0x3e || c === 0x60;
+const PE_QUERY = c => PE_C0(c) || c === 0x20 || c === 0x22 || c === 0x23 || c === 0x3c || c === 0x3e;
+const PE_SQUERY = c => PE_QUERY(c) || c === 0x27;
+const PE_PATH = c => PE_QUERY(c) || c === 0x3f || c === 0x5e || c === 0x60 || c === 0x7b || c === 0x7d;
+const PE_USER = c => PE_PATH(c) || c === 0x2f || c === 0x3a || c === 0x3b || c === 0x3d || c === 0x40 ||
+	(c >= 0x5b && c <= 0x5d) || c === 0x7c;
+const PE_COMP = c => PE_USER(c) || (c >= 0x24 && c <= 0x26) || c === 0x2b || c === 0x2c;
+const PE_FORM = c => PE_COMP(c) || c === 0x21 || (c >= 0x27 && c <= 0x29) || c === 0x7e;
+
+function utf8Bytes(cp) {
+	if (cp < 0x80) return [cp];
+	if (cp < 0x800) return [0xc0 | (cp >> 6), 0x80 | (cp & 63)];
+	if (cp < 0x10000) return [0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)];
+	return [0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)];
+}
+const HEX = '0123456789ABCDEF';
+function pctByte(b) { return '%' + HEX[b >> 4] + HEX[b & 15]; }
+function pctEncodeCp(cp, set, spaceAsPlus) {
+	if (spaceAsPlus && cp === 0x20) return '+';
+	if (!set(cp)) return String.fromCodePoint(cp);
+	let s = '';
+	for (const b of utf8Bytes(cp)) s += pctByte(b);
+	return s;
+}
+function pctEncodeStr(str, set, spaceAsPlus) {
+	let out = '';
+	for (const ch of toUSV(str)) out += pctEncodeCp(ch.codePointAt(0), set, spaceAsPlus);
+	return out;
+}
+function toUSV(s) {	/* lone surrogates to U+FFFD */
+	return String(s).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
+}
+function pctDecodeBytes(s) {	/* the bytes of a string, its %XX decoded */
+	const bytes = [];
+	for (const ch of s) {
+		const cp = ch.codePointAt(0);
+		for (const b of utf8Bytes(cp)) bytes.push(b);
+	}
+	const out = [];
+	for (let i = 0; i < bytes.length; i++) {
+		if (bytes[i] === 0x25 && i + 2 < bytes.length && HEXD(bytes[i + 1]) && HEXD(bytes[i + 2])) {
+			out.push(parseInt(String.fromCharCode(bytes[i + 1], bytes[i + 2]), 16));
+			i += 2;
+		} else out.push(bytes[i]);
+	}
+	return out;
+}
+function utf8DecodeLossy(bytes) {
+	let s = '';
+	for (let i = 0; i < bytes.length;) {
+		const b = bytes[i];
+		let n = 0, cp = 0, min = 0;
+		if (b < 0x80) { s += String.fromCharCode(b); i++; continue; }
+		else if (b >= 0xc2 && b < 0xe0) { n = 1; cp = b & 31; min = 0x80; }
+		else if (b >= 0xe0 && b < 0xf0) { n = 2; cp = b & 15; min = 0x800; }
+		else if (b >= 0xf0 && b < 0xf5) { n = 3; cp = b & 7; min = 0x10000; }
+		else { s += '\ufffd'; i++; continue; }
+		let j = 1;
+		for (; j <= n; j++) {
+			const c = bytes[i + j];
+			if (c === undefined || (c & 0xc0) !== 0x80) break;
+			if (j === 1 && ((b === 0xe0 && c < 0xa0) || (b === 0xed && c > 0x9f) ||
+				(b === 0xf0 && c < 0x90) || (b === 0xf4 && c > 0x8f))) break;
+			cp = (cp << 6) | (c & 63);
+		}
+		if (j <= n) { s += '\ufffd'; i += j; continue; }
+		s += cp >= min ? String.fromCodePoint(cp) : '\ufffd';
+		i += n + 1;
+	}
+	return s;
+}
+
+/* ---- hosts ---- */
+function punyEncode(input) {	/* RFC 3492 */
+	const base = 36, tMin = 1, tMax = 26, skew = 38, damp = 700;
+	const cps = Array.from(input, c => c.codePointAt(0));
+	let n = 128, delta = 0, bias = 72, out = '';
+	for (const c of cps) if (c < 128) out += String.fromCharCode(c);
+	const b = out.length;
+	let h = b;
+	if (b > 0) out += '-';
+	const adapt = (d, numPoints, first) => {
+		d = first ? Math.floor(d / damp) : d >> 1;
+		d += Math.floor(d / numPoints);
+		let k = 0;
+		while (d > ((base - tMin) * tMax) >> 1) { d = Math.floor(d / (base - tMin)); k += base; }
+		return k + Math.floor((base - tMin + 1) * d / (d + skew));
+	};
+	const digit = d => String.fromCharCode(d + 22 + 75 * (d < 26));
+	while (h < cps.length) {
+		let m = Infinity;
+		for (const c of cps) if (c >= n && c < m) m = c;
+		delta += (m - n) * (h + 1);
+		n = m;
+		for (const c of cps) {
+			if (c < n) delta++;
+			if (c === n) {
+				let q = delta;
+				for (let k = base; ; k += base) {
+					const t = k <= bias ? tMin : k >= bias + tMax ? tMax : k - bias;
+					if (q < t) break;
+					out += digit(t + (q - t) % (base - t));
+					q = Math.floor((q - t) / (base - t));
+				}
+				out += digit(q);
+				bias = adapt(delta, h + 1, h === b);
+				delta = 0;
+				h++;
+			}
+		}
+		delta++; n++;
+	}
+	return out;
+}
+function punyDecodeValid(s) {	/* whether an xn-- label decodes (a label that does not: failure) */
+	const base = 36;
+	let i = 0, n = 128, bias = 72, out = [];
+	const d = s.lastIndexOf('-');
+	if (d > 0) for (let j = 0; j < d; j++) { const c = s.charCodeAt(j); if (c >= 128) return false; out.push(c); }
+	for (let p = d > 0 ? d + 1 : 0; p < s.length;) {
+		const oldi = i;
+		for (let w = 1, k = base; ; k += base) {
+			if (p >= s.length) return false;
+			const c = s.charCodeAt(p++);
+			const dg = c - 48 < 10 ? c - 22 : c - 65 < 26 ? c - 65 : c - 97 < 26 ? c - 97 : base;
+			if (dg >= base) return false;
+			i += dg * w;
+			const t = k <= bias ? 1 : k >= bias + 26 ? 26 : k - bias;
+			if (dg < t) break;
+			w *= base - t;
+		}
+		const len = out.length + 1;
+		let delta = i - oldi;
+		delta = oldi === 0 ? Math.floor(delta / 700) : delta >> 1;
+		delta += Math.floor(delta / len);
+		let k = 0;
+		while (delta > 455) { delta = Math.floor(delta / 35); k += 36; }
+		bias = k + Math.floor(36 * delta / (delta + 38));
+		n += Math.floor(i / len);
+		i %= len;
+		if (n > 0x10ffff) return false;
+		out.splice(i++, 0, n);
+	}
+	return true;
+}
+function domainToASCII(domain) {
+	/* UTS 46, simplified: mapped by NFC and lower case, the full stops folded, each
+	 * non-ASCII label as punycode */
+	let d = domain.normalize ? domain.normalize('NFKC') : domain;
+	d = d.replace(/[。．｡]/g, '.').replace(/[­​⁠﻿͏᠋-᠍︀-️]/g, '').toLowerCase();
+	/* disallowed: bidi and format controls, noncharacters, a few symbols UTS 46 refuses */
+	if (/[‎‏‪-‮⁦-⁩۝․-…⿰-⿿￹-￻﷐-﷯￾￿]|[\ud83f\ud87f\ud8bf\ud8ff\ud93f\ud97f\ud9bf\ud9ff\uda3f\uda7f\udabf\udaff\udb3f\udb7f\udbbf\udbff][\udffe\udfff]/.test(d))
+		return null;
+	if (d === '') return null;
+	const labels = d.split('.');
+	const out = [];
+	for (const l of labels) {
+		if (/[^\x00-\x7f]/.test(l)) {
+			if (/[�]/.test(l) || FORBIDDEN_DOMAIN.test(l)) return null;
+			if (/^[‌‍]|[‌‍]$/.test(l)) return null;
+			out.push('xn--' + punyEncode(l));
+		} else {
+			if (l.startsWith('xn--') && !punyDecodeValid(l.slice(4))) return null;
+			out.push(l);
+		}
+	}
+	return out.join('.');
+}
+const FORBIDDEN_HOST = /[\x00\t\n\r #/:<>?@[\\\]^|]/;
+const FORBIDDEN_DOMAIN = /[\x00-\x1f\t\n\r #%/:<>?@[\\\]^|\x7f]/;
+function parseIPv4Number(s) {
+	if (s === '') return NaN;
+	let r = 10;
+	if (s.length >= 2 && (s.startsWith('0x') || s.startsWith('0X'))) { s = s.slice(2); r = 16; }
+	else if (s.length >= 2 && s[0] === '0') { s = s.slice(1); r = 8; }
+	if (s === '') return 0;
+	const re = r === 10 ? /^[0-9]+$/ : r === 16 ? /^[0-9a-fA-F]+$/ : /^[0-7]+$/;
+	if (!re.test(s)) return NaN;
+	return parseInt(s, r);
+}
+function endsInNumber(host) {
+	const parts = host.split('.');
+	if (parts[parts.length - 1] === '') { if (parts.length === 1) return false; parts.pop(); }
+	const last = parts[parts.length - 1];
+	if (last !== '' && /^[0-9]+$/.test(last)) return true;
+	return !isNaN(parseIPv4Number(last));
+}
+function parseIPv4(host) {
+	const parts = host.split('.');
+	if (parts[parts.length - 1] === '' && parts.length > 1) parts.pop();
+	if (parts.length > 4) return null;
+	const nums = [];
+	for (const p of parts) {
+		const n = parseIPv4Number(p);
+		if (isNaN(n)) return null;
+		nums.push(n);
+	}
+	for (let i = 0; i < nums.length - 1; i++) if (nums[i] > 255) return null;
+	if (nums[nums.length - 1] >= 256 ** (5 - nums.length)) return null;
+	let ipv4 = nums[nums.length - 1];
+	for (let i = 0; i < nums.length - 1; i++) ipv4 += nums[i] * 256 ** (3 - i);
+	return ipv4;
+}
+function serializeIPv4(a) {
+	const out = [];
+	for (let i = 0; i < 4; i++) { out.unshift(String(a % 256)); a = Math.floor(a / 256); }
+	return out.join('.');
+}
+function parseIPv6(input) {
+	const addr = [0, 0, 0, 0, 0, 0, 0, 0];
+	let piece = 0, compress = null, p = 0;
+	const c = i => input.charCodeAt(i);
+	if (c(p) === 0x3a) {
+		if (c(p + 1) !== 0x3a) return null;
+		p += 2; piece++; compress = piece;
+	}
+	while (p < input.length) {
+		if (piece === 8) return null;
+		if (c(p) === 0x3a) {
+			if (compress !== null) return null;
+			p++; piece++; compress = piece; continue;
+		}
+		let value = 0, length = 0;
+		while (length < 4 && p < input.length && HEXD(c(p))) { value = value * 16 + parseInt(input[p], 16); p++; length++; }
+		if (c(p) === 0x2e) {
+			if (length === 0) return null;
+			p -= length;
+			if (piece > 6) return null;
+			let seen = 0;
+			while (p < input.length) {
+				let v4 = null;
+				if (seen > 0) { if (c(p) === 0x2e && seen < 4) p++; else return null; }
+				if (!DIGIT(c(p))) return null;
+				while (DIGIT(c(p))) {
+					const n = c(p) - 48;
+					if (v4 === null) v4 = n; else if (v4 === 0) return null; else v4 = v4 * 10 + n;
+					if (v4 > 255) return null;
+					p++;
+				}
+				addr[piece] = addr[piece] * 256 + v4;
+				seen++;
+				if (seen === 2 || seen === 4) piece++;
+			}
+			if (seen !== 4) return null;
+			break;
+		} else if (c(p) === 0x3a) {
+			p++;
+			if (p >= input.length) return null;
+		} else if (p < input.length) return null;
+		addr[piece] = value;
+		piece++;
+	}
+	if (compress !== null) {
+		let swaps = piece - compress;
+		piece = 7;
+		while (piece !== 0 && swaps > 0) {
+			const t = addr[compress + swaps - 1];
+			addr[compress + swaps - 1] = addr[piece];
+			addr[piece] = t;
+			piece--; swaps--;
+		}
+	} else if (piece !== 8) return null;
+	return addr;
+}
+function serializeIPv6(a) {
+	let best = -1, bestLen = 1;
+	for (let i = 0; i < 8;) {
+		if (a[i] !== 0) { i++; continue; }
+		let j = i;
+		while (j < 8 && a[j] === 0) j++;
+		if (j - i > bestLen) { best = i; bestLen = j - i; }
+		i = j;
+	}
+	let out = '', ignore0 = false;
+	for (let i = 0; i < 8; i++) {
+		if (ignore0 && a[i] === 0) continue;
+		ignore0 = false;
+		if (best === i) { out += i === 0 ? '::' : ':'; ignore0 = true; continue; }
+		out += a[i].toString(16);
+		if (i !== 7) out += ':';
+	}
+	return '[' + out + ']';
+}
+function parseHost(input, notSpecial) {
+	if (input[0] === '[') {
+		if (input[input.length - 1] !== ']') return null;
+		const a = parseIPv6(input.slice(1, -1));
+		return a ? serializeIPv6(a) : null;
+	}
+	if (notSpecial) {
+		if (FORBIDDEN_HOST.test(input)) return null;
+		return pctEncodeStr(input, PE_C0);
+	}
+	const domain = utf8DecodeLossy(pctDecodeBytes(input));
+	const ascii = domainToASCII(domain);
+	if (ascii === null || ascii === '' || FORBIDDEN_DOMAIN.test(ascii)) return null;
+	if (endsInNumber(ascii)) {
+		const v4 = parseIPv4(ascii);
+		return v4 === null ? null : serializeIPv4(v4);
+	}
+	return ascii;
+}
+
+/* ---- the basic URL parser ---- */
+function isWinLetter(s, normalizedOnly) {
+	return s.length === 2 && ALPHA(s.charCodeAt(0)) && (s[1] === ':' || (!normalizedOnly && s[1] === '|'));
+}
+function startsWithWinLetter(cps, p) {
+	if (cps.length - p < 2) return false;
+	if (!ALPHA(cps[p]) || (cps[p + 1] !== 0x3a && cps[p + 1] !== 0x7c)) return false;
+	if (cps.length - p === 2) return true;
+	const c = cps[p + 2];
+	return c === 0x2f || c === 0x5c || c === 0x3f || c === 0x23;
+}
+function shortenPath(u) {
+	const path = u.path;
+	if (u.scheme === 'file' && path.length === 1 && isWinLetter(path[0], true)) return;
+	path.pop();
+}
+const SINGLE_DOT = s => s === '.' || s.toLowerCase() === '%2e';
+const DOUBLE_DOT = s => { s = s.toLowerCase(); return s === '..' || s === '.%2e' || s === '%2e.' || s === '%2e%2e'; };
+
+function basicParse(input, base, url, stateOverride) {
+	if (!url) {
+		url = { scheme: '', username: '', password: '', host: null, port: null, path: [],
+			opaque: false, query: null, fragment: null };
+		input = input.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '');
+	}
+	input = input.replace(/[\t\n\r]/g, '');
+	let state = stateOverride || 'scheme start';
+	let buffer = '', atSign = false, inside = false, passwordSeen = false;
+	const cps = Array.from(toUSV(input), ch => ch.codePointAt(0));
+	const EOF = -1;
+	for (let p = 0; ; p++) {
+		const c = p < cps.length ? cps[p] : EOF;
+		const ch = c === EOF ? '' : String.fromCodePoint(c);
+		switch (state) {
+		case 'scheme start':
+			if (c !== EOF && ALPHA(c)) { buffer += ch.toLowerCase(); state = 'scheme'; }
+			else if (!stateOverride) { state = 'no scheme'; p--; }
+			else return null;
+			break;
+		case 'scheme':
+			if (c !== EOF && (ALPHA(c) || DIGIT(c) || c === 0x2b || c === 0x2d || c === 0x2e)) buffer += ch.toLowerCase();
+			else if (c === 0x3a) {
+				if (stateOverride) {
+					if (isSpecial(url.scheme) !== isSpecial(buffer)) return url;
+					if ((url.username !== '' || url.password !== '' || url.port !== null) && buffer === 'file') return url;
+					if (url.scheme === 'file' && url.host === '') return url;
+				}
+				url.scheme = buffer;
+				if (stateOverride) {
+					if (url.port === SPECIAL[url.scheme]) url.port = null;
+					return url;
+				}
+				buffer = '';
+				if (url.scheme === 'file') state = 'file';
+				else if (isSpecial(url.scheme) && base && base.scheme === url.scheme) state = 'special relative or authority';
+				else if (isSpecial(url.scheme)) state = 'special authority slashes';
+				else if (cps[p + 1] === 0x2f) { state = 'path or authority'; p++; }
+				else { url.opaque = true; url.path = ''; state = 'opaque path'; }
+			} else if (!stateOverride) { buffer = ''; state = 'no scheme'; p = -1; }
+			else return null;
+			break;
+		case 'no scheme':
+			if (!base || (base.opaque && c !== 0x23)) return null;
+			if (base.opaque && c === 0x23) {
+				url.scheme = base.scheme; url.path = base.path; url.opaque = true;
+				url.query = base.query; url.fragment = ''; state = 'fragment';
+			} else if (base.scheme !== 'file') { state = 'relative'; p--; }
+			else { state = 'file'; p--; }
+			break;
+		case 'special relative or authority':
+			if (c === 0x2f && cps[p + 1] === 0x2f) { state = 'special authority ignore slashes'; p++; }
+			else { state = 'relative'; p--; }
+			break;
+		case 'path or authority':
+			if (c === 0x2f) state = 'authority';
+			else { state = 'path'; p--; }
+			break;
+		case 'relative':
+			url.scheme = base.scheme;
+			if (c === 0x2f) state = 'relative slash';
+			else if (isSpecial(url.scheme) && c === 0x5c) state = 'relative slash';
+			else {
+				url.username = base.username; url.password = base.password; url.host = base.host;
+				url.port = base.port; url.path = base.path.slice(); url.query = base.query;
+				if (c === 0x3f) { url.query = ''; state = 'query'; }
+				else if (c === 0x23) { url.fragment = ''; state = 'fragment'; }
+				else if (c !== EOF) { url.query = null; shortenPath(url); state = 'path'; p--; }
+			}
+			break;
+		case 'relative slash':
+			if (isSpecial(url.scheme) && (c === 0x2f || c === 0x5c)) state = 'special authority ignore slashes';
+			else if (c === 0x2f) state = 'authority';
+			else {
+				url.username = base.username; url.password = base.password; url.host = base.host;
+				url.port = base.port; state = 'path'; p--;
+			}
+			break;
+		case 'special authority slashes':
+			if (c === 0x2f && cps[p + 1] === 0x2f) { state = 'special authority ignore slashes'; p++; }
+			else { state = 'special authority ignore slashes'; p--; }
+			break;
+		case 'special authority ignore slashes':
+			if (c !== 0x2f && c !== 0x5c) { state = 'authority'; p--; }
+			break;
+		case 'authority':
+			if (c === 0x40) {
+				if (atSign) buffer = '%40' + buffer;
+				atSign = true;
+				for (const bc of buffer) {
+					const bcp = bc.codePointAt(0);
+					if (bcp === 0x3a && !passwordSeen) { passwordSeen = true; continue; }
+					const enc = pctEncodeCp(bcp, PE_USER);
+					if (passwordSeen) url.password += enc; else url.username += enc;
+				}
+				buffer = '';
+			} else if (c === EOF || c === 0x2f || c === 0x3f || c === 0x23 || (isSpecial(url.scheme) && c === 0x5c)) {
+				if (atSign && buffer === '') return null;
+				p -= Array.from(buffer).length + 1;
+				buffer = '';
+				state = 'host';
+			} else buffer += ch;
+			break;
+		case 'host':
+		case 'hostname':
+			if (stateOverride && url.scheme === 'file') { p--; state = 'file host'; }
+			else if (c === 0x3a && !inside) {
+				if (buffer === '') return null;
+				if (stateOverride === 'hostname') return null;
+				const h = parseHost(buffer, !isSpecial(url.scheme));
+				if (h === null) return null;
+				url.host = h; buffer = ''; state = 'port';
+			} else if (c === EOF || c === 0x2f || c === 0x3f || c === 0x23 || (isSpecial(url.scheme) && c === 0x5c)) {
+				p--;
+				if (isSpecial(url.scheme) && buffer === '') return null;
+				if (stateOverride && buffer === '' && (url.username !== '' || url.password !== '' || url.port !== null)) return null;
+				const h = parseHost(buffer, !isSpecial(url.scheme));
+				if (h === null) return null;
+				url.host = h; buffer = ''; state = 'path start';
+				if (stateOverride) return url;
+			} else {
+				if (c === 0x5b) inside = true;
+				if (c === 0x5d) inside = false;
+				buffer += ch;
+			}
+			break;
+		case 'port':
+			if (c !== EOF && DIGIT(c)) buffer += ch;
+			else if (c === EOF || c === 0x2f || c === 0x3f || c === 0x23 || (isSpecial(url.scheme) && c === 0x5c) || stateOverride) {
+				if (buffer !== '') {
+					const port = parseInt(buffer, 10);
+					if (port > 65535) return null;
+					url.port = port === SPECIAL[url.scheme] ? null : port;
+					buffer = '';
+					if (stateOverride) return url;
+				}
+				if (stateOverride) return null;
+				state = 'path start'; p--;
+			} else return null;
+			break;
+		case 'file':
+			url.scheme = 'file';
+			url.host = '';
+			if (c === 0x2f || c === 0x5c) state = 'file slash';
+			else if (base && base.scheme === 'file') {
+				url.host = base.host; url.path = base.path.slice(); url.query = base.query;
+				if (c === 0x3f) { url.query = ''; state = 'query'; }
+				else if (c === 0x23) { url.fragment = ''; state = 'fragment'; }
+				else if (c !== EOF) {
+					url.query = null;
+					if (!startsWithWinLetter(cps, p)) shortenPath(url);
+					else url.path = [];
+					state = 'path'; p--;
+				}
+			} else { state = 'path'; p--; }
+			break;
+		case 'file slash':
+			if (c === 0x2f || c === 0x5c) state = 'file host';
+			else {
+				if (base && base.scheme === 'file') {
+					url.host = base.host;
+					if (!startsWithWinLetter(cps, p) && base.path.length > 0 && isWinLetter(base.path[0], true))
+						url.path.push(base.path[0]);
+				}
+				state = 'path'; p--;
+			}
+			break;
+		case 'file host':
+			if (c === EOF || c === 0x2f || c === 0x5c || c === 0x3f || c === 0x23) {
+				p--;
+				if (!stateOverride && isWinLetter(buffer, false)) state = 'path';
+				else if (buffer === '') {
+					url.host = '';
+					if (stateOverride) return url;
+					state = 'path start';
+				} else {
+					let h = parseHost(buffer, false);
+					if (h === null) return null;
+					if (h === 'localhost') h = '';
+					url.host = h;
+					if (stateOverride) return url;
+					buffer = ''; state = 'path start';
+				}
+			} else buffer += ch;
+			break;
+		case 'path start':
+			if (isSpecial(url.scheme)) { state = 'path'; if (c !== 0x2f && c !== 0x5c) p--; }
+			else if (!stateOverride && c === 0x3f) { url.query = ''; state = 'query'; }
+			else if (!stateOverride && c === 0x23) { url.fragment = ''; state = 'fragment'; }
+			else if (c !== EOF) { state = 'path'; if (c !== 0x2f) p--; }
+			else if (stateOverride && url.host === null) url.path.push('');
+			break;
+		case 'path':
+			if (c === EOF || c === 0x2f || (isSpecial(url.scheme) && c === 0x5c) ||
+			    (!stateOverride && (c === 0x3f || c === 0x23))) {
+				if (DOUBLE_DOT(buffer)) {
+					shortenPath(url);
+					if (c !== 0x2f && !(isSpecial(url.scheme) && c === 0x5c)) url.path.push('');
+				} else if (SINGLE_DOT(buffer) && c !== 0x2f && !(isSpecial(url.scheme) && c === 0x5c)) {
+					url.path.push('');
+				} else if (!SINGLE_DOT(buffer)) {
+					if (url.scheme === 'file' && url.path.length === 0 && isWinLetter(buffer, false))
+						buffer = buffer[0] + ':';
+					url.path.push(buffer);
+				}
+				buffer = '';
+				if (c === 0x3f) { url.query = ''; state = 'query'; }
+				if (c === 0x23) { url.fragment = ''; state = 'fragment'; }
+			} else buffer += pctEncodeCp(c, PE_PATH);
+			break;
+		case 'opaque path':
+			if (c === 0x3f) { url.query = ''; state = 'query'; }
+			else if (c === 0x23) { url.fragment = ''; state = 'fragment'; }
+			else if (c === 0x20) {
+				const nx = cps[p + 1];
+				if (nx === 0x3f || nx === 0x23) url.path += '%20'; else url.path += ' ';
+			} else if (c !== EOF) url.path += pctEncodeCp(c, PE_C0);
+			break;
+		case 'query':
+			if ((!stateOverride && c === 0x23) || c === EOF) {
+				url.query += pctEncodeStr(buffer, isSpecial(url.scheme) ? PE_SQUERY : PE_QUERY);
+				buffer = '';
+				if (c === 0x23) { url.fragment = ''; state = 'fragment'; }
+			} else if (c !== EOF) buffer += ch;
+			break;
+		case 'fragment':
+			if (c !== EOF) url.fragment += pctEncodeCp(c, PE_FRAG);
+			break;
+		}
+		if (c === EOF && p >= cps.length) break;
+	}
+	return url;
+}
+
+function serializePath(u) {
+	if (u.opaque) return u.path;
+	let s = '';
+	for (const seg of u.path) s += '/' + seg;
+	return s;
+}
+function serializeURL(u, noFragment) {
+	let out = u.scheme + ':';
+	if (u.host !== null) {
+		out += '//';
+		if (u.username !== '' || u.password !== '') {
+			out += u.username;
+			if (u.password !== '') out += ':' + u.password;
+			out += '@';
+		}
+		out += u.host;
+		if (u.port !== null) out += ':' + u.port;
+	}
+	if (u.host === null && !u.opaque && u.path.length > 1 && u.path[0] === '') out += '/.';
+	out += serializePath(u);
+	if (u.query !== null) out += '?' + u.query;
+	if (!noFragment && u.fragment !== null) out += '#' + u.fragment;
+	return out;
+}
+
+/* ---- application/x-www-form-urlencoded ---- */
+function formParse(s) {
+	const out = [];
+	for (const seq of String(s).split('&')) {
+		if (seq === '') continue;
+		const i = seq.indexOf('=');
+		let name = i < 0 ? seq : seq.slice(0, i), value = i < 0 ? '' : seq.slice(i + 1);
+		const dec = x => utf8DecodeLossy(pctDecodeBytes(x.replace(/\+/g, ' ')));
+		out.push([dec(name), dec(value)]);
+	}
+	return out;
+}
+const formSerialize = list => list.map(([k, v]) => pctEncodeStr(k, PE_FORM, true) + '=' + pctEncodeStr(v, PE_FORM, true)).join('&');
+
 class URLSearchParams {
 	constructor(init = '') {
 		this._e = [];
+		this._url = null;
 		if (init instanceof URLSearchParams) this._e = init._e.map(x => x.slice());
-		else if (init instanceof FormData) for (const [k, v] of init) this._e.push([k, v]);
-		else if (typeof init === 'object' && init !== null) {
-			if (Symbol.iterator in init) for (const [k, v] of init) this._e.push([String(k), String(v)]);
-			else for (const k of Object.keys(init)) this._e.push([k, String(init[k])]);
+		else if (typeof FormData !== 'undefined' && init instanceof FormData) for (const [k, v] of init) this._e.push([toUSV(k), toUSV(v)]);
+		else if ((typeof init === 'object' && init !== null) || typeof init === 'function') {
+			if (typeof init[Symbol.iterator] === 'function') {
+				for (const pair of init) {
+					const a = Array.from(pair);
+					if (a.length !== 2) throw new TypeError("Failed to construct 'URLSearchParams': a sequence must be of pairs");
+					this._e.push([toUSV(a[0]), toUSV(a[1])]);
+				}
+			} else for (const k of Object.keys(init)) this._e.push([toUSV(k), toUSV(init[k])]);
 		} else {
-			let s = String(init);
+			let s = toUSV(init);
 			if (s[0] === '?') s = s.slice(1);
-			for (const part of s.split('&')) {
-				if (!part) continue;
-				const i = part.indexOf('=');
-				const dec = x => { try { return decodeURIComponent(x.replace(/\+/g, ' ')); } catch (e) { return x; } };
-				this._e.push(i < 0 ? [dec(part), ''] : [dec(part.slice(0, i)), dec(part.slice(i + 1))]);
-			}
+			this._e = formParse(s);
 		}
 	}
-	append(k, v) { this._e.push([String(k), String(v)]); this._upd(); }
-	delete(k) { this._e = this._e.filter(x => x[0] !== k); this._upd(); }
-	get(k) { const e = this._e.find(x => x[0] === k); return e ? e[1] : null; }
-	getAll(k) { return this._e.filter(x => x[0] === k).map(x => x[1]); }
-	has(k) { return this._e.some(x => x[0] === k); }
-	set(k, v) {
-		const i = this._e.findIndex(x => x[0] === k);
-		if (i < 0) this._e.push([String(k), String(v)]);
-		else { this._e[i][1] = String(v); this._e = this._e.filter((x, j) => j <= i || x[0] !== k); }
+	append(k, v) { this._e.push([toUSV(k), toUSV(v)]); this._upd(); }
+	delete(k, v) {
+		k = toUSV(k);
+		this._e = this._e.filter(x => !(x[0] === k && (v === undefined || x[1] === toUSV(v))));
 		this._upd();
 	}
-	sort() { this._e.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0); this._upd(); }
-	get size() { return this._e.length; }
-	forEach(fn, t) { for (const [k, v] of this._e) fn.call(t, v, k, this); }
-	entries() { return this._e.map(x => x.slice())[Symbol.iterator](); }
-	keys() { return this._e.map(x => x[0])[Symbol.iterator](); }
-	values() { return this._e.map(x => x[1])[Symbol.iterator](); }
-	[Symbol.iterator]() { return this.entries(); }
-	toString() {
-		const enc = x => encodeURIComponent(x).replace(/%20/g, '+').replace(/[!'()~]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-		return this._e.map(([k, v]) => enc(k) + '=' + enc(v)).join('&');
+	get(k) { k = toUSV(k); const e = this._e.find(x => x[0] === k); return e ? e[1] : null; }
+	getAll(k) { k = toUSV(k); return this._e.filter(x => x[0] === k).map(x => x[1]); }
+	has(k, v) { k = toUSV(k); return this._e.some(x => x[0] === k && (v === undefined || x[1] === toUSV(v))); }
+	set(k, v) {
+		k = toUSV(k); v = toUSV(v);
+		const i = this._e.findIndex(x => x[0] === k);
+		if (i < 0) this._e.push([k, v]);
+		else { this._e[i][1] = v; this._e = this._e.filter((x, j) => j <= i || x[0] !== k); }
+		this._upd();
 	}
-	_upd() { if (this._url) { const s = this.toString(); this._url._search = s ? '?' + s : ''; } }
+	sort() {
+		/* stable, by UTF-16 code units */
+		this._e = this._e.map((x, i) => [x, i]).sort((a, b) => a[0][0] < b[0][0] ? -1 : a[0][0] > b[0][0] ? 1 : a[1] - b[1]).map(x => x[0]);
+		this._upd();
+	}
+	get size() { return this._e.length; }
+	forEach(fn, t) { for (let i = 0; i < this._e.length; i++) fn.call(t, this._e[i][1], this._e[i][0], this); }
+	*entries() { for (let i = 0; i < this._e.length; i++) yield [this._e[i][0], this._e[i][1]]; }
+	*keys() { for (let i = 0; i < this._e.length; i++) yield this._e[i][0]; }
+	*values() { for (let i = 0; i < this._e.length; i++) yield this._e[i][1]; }
+	[Symbol.iterator]() { return this.entries(); }
+	toString() { return formSerialize(this._e); }
+	_upd() {
+		if (!this._url) return;
+		const s = this.toString();
+		this._url._u.query = s === '' ? null : s;
+		if (s === '') stripTrailingSpaces(this._url._u);
+	}
+	get [Symbol.toStringTag]() { return 'URLSearchParams'; }
+}
+function stripTrailingSpaces(u) {
+	if (!u.opaque || u.fragment !== null || u.query !== null) return;
+	u.path = u.path.replace(/ +$/, '');
 }
 
-const DEFAULT_PORTS = { 'http:': '80', 'https:': '443', 'ftp:': '21', 'ws:': '80', 'wss:': '443' };
 class URL {
 	constructor(url, base) {
-		url = String(url).trim();
-		let m = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(url);
-		if (!m) {
-			if (base === undefined) throw new TypeError("Invalid URL: '" + url + "'");
-			const b = base instanceof URL ? base : new URL(String(base));
-			this._resolve(url, b);
-			return;
+		let b = null;
+		if (base !== undefined) {
+			b = basicParse(toUSV(base), null);
+			if (!b) throw new TypeError("Failed to construct 'URL': Invalid base URL");
 		}
-		this._parse(url);
+		const u = basicParse(toUSV(url), b);
+		if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
+		this._u = u;
+		this._q = null;
 	}
-	_parse(url) {
-		const m = /^([a-zA-Z][a-zA-Z0-9+.-]*:)(?:\/\/(?:([^:@\/?#]*)(?::([^@\/?#]*))?@)?(\[[^\]]*\]|[^:\/?#]*)(?::(\d*))?)?([^?#]*)(\?[^#]*)?(#.*)?$/.exec(url);
-		if (!m) throw new TypeError("Invalid URL: '" + url + "'");
-		this._protocol = m[1].toLowerCase();
-		this._username = m[2] || '';
-		this._password = m[3] || '';
-		this._hostname = (m[4] || '').toLowerCase();
-		this._port = m[5] && m[5] !== DEFAULT_PORTS[this._protocol] ? m[5] : '';
-		this._special = this._protocol in DEFAULT_PORTS || this._protocol === 'file:';
-		let path = m[6] || '';
-		if (this._special) path = normPath(path || '/');
-		this._pathname = path;
-		this._search = m[7] && m[7] !== '?' ? m[7] : '';
-		this._hash = m[8] && m[8] !== '#' ? m[8] : '';
-		this._opaque = !this._special && !url.slice(this._protocol.length).startsWith('//');
+	static parse(url, base) { try { return new URL(url, base); } catch (e) { return null; } }
+	static canParse(url, base) { try { new URL(url, base); return true; } catch (e) { return false; } }
+	get href() { return serializeURL(this._u); }
+	set href(v) {
+		const u = basicParse(toUSV(v), null);
+		if (!u) throw new TypeError("Failed to set the 'href' property on 'URL': Invalid URL");
+		this._u = u;
+		if (this._q) this._q._e = formParse(u.query || '');
 	}
-	_resolve(rel, b) {
-		Object.assign(this, { _protocol: b._protocol, _username: b._username, _password: b._password,
-			_hostname: b._hostname, _port: b._port, _special: b._special, _opaque: false });
-		const m = /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(rel);
-		let path = m[1];
-		if (rel.startsWith('//')) { this._parse(b._protocol + rel); return; }
-		if (path === '') {
-			this._pathname = b._pathname;
-			this._search = m[2] !== undefined ? (m[2] === '?' ? '' : m[2]) : b._search;
-		} else {
-			if (path[0] !== '/') path = b._pathname.replace(/[^/]*$/, '') + path;
-			this._pathname = normPath(path);
-			this._search = m[2] && m[2] !== '?' ? m[2] : '';
+	get origin() {
+		const u = this._u;
+		if (u.scheme === 'blob') {
+			try { const p = new URL(serializePath(u)); if (p.protocol === 'http:' || p.protocol === 'https:') return p.origin; } catch (e) {}
+			return 'null';
 		}
-		this._hash = m[3] && m[3] !== '#' ? m[3] : '';
+		if (u.scheme === 'file' || !isSpecial(u.scheme)) return 'null';
+		return u.scheme + '://' + u.host + (u.port !== null ? ':' + u.port : '');
 	}
-	get protocol() { return this._protocol; }
-	set protocol(v) { this._protocol = String(v).replace(/:?$/, ':').toLowerCase(); }
-	get username() { return this._username; }
-	get password() { return this._password; }
-	get hostname() { return this._hostname; }
-	set hostname(v) { this._hostname = String(v).toLowerCase(); }
-	get port() { return this._port; }
-	set port(v) { this._port = String(v) === DEFAULT_PORTS[this._protocol] ? '' : String(v); }
-	get host() { return this._hostname + (this._port ? ':' + this._port : ''); }
-	set host(v) { const [h, p] = String(v).split(':'); this._hostname = h.toLowerCase(); this._port = p || ''; }
-	get origin() { return this._special && this._protocol !== 'file:' ? this._protocol + '//' + this.host : 'null'; }
-	get pathname() { return this._pathname; }
-	set pathname(v) { this._pathname = normPath(String(v)[0] === '/' ? String(v) : '/' + v); }
-	get search() { return this._search; }
-	set search(v) { const s = String(v); this._search = s && s !== '?' ? (s[0] === '?' ? s : '?' + s) : ''; if (this._params) this._params._e = new URLSearchParams(this._search)._e; }
+	get protocol() { return this._u.scheme + ':'; }
+	set protocol(v) { basicParse(toUSV(v) + ':', null, this._u, 'scheme start'); }
+	get username() { return this._u.username; }
+	set username(v) {
+		const u = this._u;
+		if (u.host === null || u.host === '' || u.scheme === 'file') return;
+		u.username = pctEncodeStr(v, PE_USER);
+	}
+	get password() { return this._u.password; }
+	set password(v) {
+		const u = this._u;
+		if (u.host === null || u.host === '' || u.scheme === 'file') return;
+		u.password = pctEncodeStr(v, PE_USER);
+	}
+	get host() {
+		const u = this._u;
+		if (u.host === null) return '';
+		return u.port === null ? u.host : u.host + ':' + u.port;
+	}
+	set host(v) { if (!this._u.opaque) basicParse(toUSV(v), null, this._u, 'host'); }
+	get hostname() { return this._u.host === null ? '' : this._u.host; }
+	set hostname(v) { if (!this._u.opaque) basicParse(toUSV(v), null, this._u, 'hostname'); }
+	get port() { return this._u.port === null ? '' : String(this._u.port); }
+	set port(v) {
+		const u = this._u;
+		if (u.host === null || u.host === '' || u.scheme === 'file') return;
+		v = toUSV(v);
+		if (v === '') u.port = null;
+		else basicParse(v, null, this._u, 'port');
+	}
+	get pathname() { return serializePath(this._u); }
+	set pathname(v) {
+		const u = this._u;
+		if (u.opaque) return;
+		const save = u.path;
+		u.path = [];
+		if (basicParse(toUSV(v), null, u, 'path start') === null) u.path = save;
+	}
+	get search() { const q = this._u.query; return q === null || q === '' ? '' : '?' + q; }
+	set search(v) {
+		const u = this._u;
+		v = toUSV(v);
+		if (v === '') { u.query = null; if (this._q) this._q._e = []; stripTrailingSpaces(u); return; }
+		if (v[0] === '?') v = v.slice(1);
+		u.query = '';
+		basicParse(v, null, u, 'query');
+		if (this._q) this._q._e = formParse(v);
+	}
 	get searchParams() {
-		if (!this._params) { this._params = new URLSearchParams(this._search); this._params._url = this; }
-		return this._params;
+		if (!this._q) { this._q = new URLSearchParams(this._u.query || ''); this._q._url = this; }
+		return this._q;
 	}
-	get hash() { return this._hash; }
-	set hash(v) { const s = String(v); this._hash = s && s !== '#' ? (s[0] === '#' ? s : '#' + s) : ''; }
-	get href() {
-		if (this._opaque) return this._protocol + this._pathname + this._search + this._hash;
-		const auth = this._username ? this._username + (this._password ? ':' + this._password : '') + '@' : '';
-		return this._protocol + '//' + auth + this.host + this._pathname + this._search + this._hash;
+	get hash() { const f = this._u.fragment; return f === null || f === '' ? '' : '#' + f; }
+	set hash(v) {
+		const u = this._u;
+		v = toUSV(v);
+		if (v === '') { u.fragment = null; stripTrailingSpaces(u); return; }
+		if (v[0] === '#') v = v.slice(1);
+		u.fragment = '';
+		basicParse(v, null, u, 'fragment');
 	}
-	set href(v) { this._parse(String(v)); }
 	toString() { return this.href; }
 	toJSON() { return this.href; }
-	static canParse(u, b) { try { new URL(u, b); return true; } catch (e) { return false; } }
+	get [Symbol.toStringTag]() { return 'URL'; }
 	static createObjectURL() { return 'blob:onyx'; }
 	static revokeObjectURL() {}
-}
-function normPath(p) {
-	const out = [];
-	const parts = p.split('/');
-	for (let i = 0; i < parts.length; i++) {
-		const s = parts[i];
-		if (s === '..') { if (out.length > 1) out.pop(); if (i === parts.length - 1) out.push(''); }
-		else if (s === '.') { if (i === parts.length - 1) out.push(''); }
-		else out.push(s);
-	}
-	let r = out.join('/');
-	if (r[0] !== '/') r = '/' + r;
-	return r;
 }
 
 /* TextEncoder / TextDecoder (UTF-8) */
@@ -3648,6 +5070,20 @@ function modGraph(url, text, seen) {
 	}
 	return NativePromise.all(deps);
 }
+
+/* Onyx: a dynamic import() (qjs.c rewrites it): the module graph fetched first, then the
+ * engine's own import (a classic Function's: not rewritten) finds every source */
+const nativeImport = new Function('u', 'return import(u)');
+G.__onyxImport = (base, spec) => {
+	let url;
+	try { url = new URL(String(spec), base || document.baseURI || location.href).href; }
+	catch (e) { return NativePromise.reject(new TypeError('Failed to resolve module specifier ' + spec)); }
+	return modFetch(url).then(t => {
+		if (t === null)
+			throw new TypeError('Failed to fetch dynamically imported module: ' + url);
+		return modGraph(url, t, new Set([url]));
+	}).then(() => nativeImport(url));
+};
 
 async function modRun(url, text) {
 	await modGraph(url, text, new Set([url]));

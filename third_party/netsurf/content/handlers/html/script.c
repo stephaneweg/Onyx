@@ -46,6 +46,14 @@
 typedef bool (script_handler_t)(struct jsthread *jsthread, const uint8_t *data, size_t size, const char *name);
 
 
+/* Onyx: a <script src>'s load / error event, when it has run or failed to come (script
+ * loaders wait for them: Facebook's bootloader, Google's) */
+static void html_script_fire(html_content *c, struct dom_node *node, bool ok)
+{
+	if (c->jsthread != NULL && node != NULL)
+		js_fire_event(c->jsthread, ok ? "load" : "error", c->document, node);
+}
+
 static script_handler_t *select_script_handler(content_type ctype)
 {
 	if (ctype == CONTENT_JS) {
@@ -108,6 +116,8 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 				s = &(c->scripts[i]);
 
 				s->already_started = true;
+				html_script_fire(c, s->node, true);	/* (Onyx) */
+				s = &(c->scripts[i]);
 
 			}
 		}
@@ -198,8 +208,10 @@ convert_script_async_cb(hlcache_handle *script,
 
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
+		s->already_started = true;	/* (Onyx: no run for it) */
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		html_script_fire(parent, s->node, false);	/* (Onyx) */
 
 		break;
 
@@ -261,8 +273,10 @@ convert_script_defer_cb(hlcache_handle *script,
 
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
+		s->already_started = true;	/* (Onyx: no run for it) */
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
+		html_script_fire(parent, s->node, false);	/* (Onyx) */
 
 		break;
 
@@ -331,6 +345,8 @@ convert_script_sync_cb(hlcache_handle *script,
 			script_handler(parent->jsthread, data, size,
 				       nsurl_access(hlcache_handle_get_url(s->data.handle)));
 			js_set_current_script(parent->jsthread, NULL);
+			s = &(parent->scripts[i]);	/* (Onyx: may have moved) */
+			html_script_fire(parent, s->node, true);
 		}
 
 		/* continue parse */
@@ -355,6 +371,7 @@ convert_script_sync_cb(hlcache_handle *script,
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
 
 		s->already_started = true;
+		html_script_fire(parent, s->node, false);	/* (Onyx) */
 
 		/* continue parse */
 		if (parent->parser != NULL && active_sync_scripts == 0) {
@@ -554,16 +571,35 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 	lwc_string_unref(lwcmimetype);
 
 	if (script_handler != NULL) {
+		/* Onyx: the script named by its first characters (its errors, NS_PERF's timings:
+		 * which of a page's inline scripts) */
+		char name[64];
+		const char *src = dom_string_data(script);
+		size_t len = dom_string_byte_length(script), i, k = 0;
+
+		k = (size_t) snprintf(name, sizeof name, "inline:");
+		for (i = 0; i < len && k < sizeof name - 1; i++) {
+			unsigned char ch = (unsigned char) src[i];
+			if (ch <= ' ') {
+				if (k > 7 && name[k - 1] != ' ')
+					name[k++] = ' ';
+			} else if (ch < 0x80) {
+				name[k++] = (char) ch;
+			}
+		}
+		name[k] = '\0';
 		js_set_current_script(c->jsthread, node);
 		script_handler(c->jsthread,
 			       (const uint8_t *)dom_string_data(script),
 			       dom_string_byte_length(script),
-			       "?inline script?");
+			       name);
 		js_set_current_script(c->jsthread, NULL);
 	}
 	return DOM_HUBBUB_OK;
 }
 
+
+static bool html_sheets_pending(html_content *c);
 
 /**
  * process script node parser callback
@@ -626,6 +662,15 @@ html_process_script(void *ctx, dom_node *node)
 
 	exc = dom_element_get_attribute(node, corestring_dom_src, &src);
 	if (exc != DOM_NO_ERR || src == NULL) {
+		/* Onyx: a parser-inserted inline script waits for the style sheets before it
+		 * (as a browser: it may read the styles, the geometry) -- the parser paused
+		 * until they are in (html_script_sheets_arrived) */
+		if (!c->dom_inserted_script && c->parser != NULL &&
+		    c->blocked_script == NULL && html_sheets_pending(c)) {
+			c->blocked_script = dom_node_ref(node);
+			dom_string_unref(mimetype);
+			return DOM_HUBBUB_HUBBUB_ERR | HUBBUB_PAUSED;
+		}
 		err = exec_inline_script(c, node, mimetype);
 	} else {
 		err = exec_src_script(c, node, mimetype, src);
@@ -635,6 +680,52 @@ html_process_script(void *ctx, dom_node *node)
 	dom_string_unref(mimetype);
 
 	return err;
+}
+
+/* Onyx: whether an author style sheet is still fetched (a parser-inserted script waits) */
+static bool html_sheets_pending(html_content *c)
+{
+	unsigned int i;
+
+	for (i = 0; i < c->stylesheet_count; i++) {	/* (the browser's own too) */
+		struct html_stylesheet *s = &c->stylesheets[i];
+		if (s->unused)
+			continue;
+		if (s->modified)
+			return true;	/* (a <style> whose sheet is still to be made) */
+		if (s->sheet == NULL)
+			continue;
+		if (hlcache_handle_get_content(s->sheet) == NULL)
+			return true;
+		switch (content_get_status(s->sheet)) {
+		case CONTENT_STATUS_DONE:
+		case CONTENT_STATUS_ERROR:
+			break;
+		default:
+			return true;
+		}
+	}
+	return false;
+}
+
+/* exported interface documented in html/private.h (Onyx) */
+void html_script_sheets_arrived(html_content *c)
+{
+	dom_node *node = c->blocked_script;
+	dom_string *mimetype = NULL;
+	dom_exception exc;
+
+	if (node == NULL || html_sheets_pending(c))
+		return;
+	c->blocked_script = NULL;
+	exc = dom_element_get_attribute(node, corestring_dom_type, &mimetype);
+	if (exc != DOM_NO_ERR || mimetype == NULL)
+		mimetype = dom_string_ref(corestring_dom_text_javascript);
+	exec_inline_script(c, node, mimetype);
+	dom_string_unref(mimetype);
+	dom_node_unref(node);
+	if (c->parser != NULL)
+		dom_hubbub_parser_pause(c->parser, false);
 }
 
 /* exported internal interface documented in html/html_internal.h */

@@ -295,6 +295,18 @@ bool css_computed_style_paint_only_change(const css_computed_style *a,
 	PAINT_BITS(OPACITY);			t.opacity = bi->opacity;
 	PAINT_BITS(FILL_OPACITY);		t.fill_opacity = bi->fill_opacity;
 	PAINT_BITS(STROKE_OPACITY);		t.stroke_opacity = bi->stroke_opacity;
+	/* Onyx: SVG's presentation properties */
+	PAINT_BITS(FILL);	t.fill_a = bi->fill_a;		t.fill_b = bi->fill_b;
+	PAINT_BITS(STROKE);	t.stroke_a = bi->stroke_a;	t.stroke_b = bi->stroke_b;
+	PAINT_BITS(STROKE_WIDTH);		t.stroke_width = bi->stroke_width;
+	PAINT_BITS(STROKE_DASHOFFSET);		t.stroke_dashoffset = bi->stroke_dashoffset;
+	PAINT_BITS(STROKE_DASHARRAY);		t.stroke_dasharray = bi->stroke_dasharray;
+	PAINT_BITS(STROKE_MITERLIMIT);		t.stroke_miterlimit = bi->stroke_miterlimit;
+	PAINT_BITS(STROKE_LINECAP);
+	PAINT_BITS(STROKE_LINEJOIN);
+	PAINT_BITS(FILL_RULE);
+	PAINT_BITS(STOP_COLOR);			t.stop_color = bi->stop_color;
+	PAINT_BITS(STOP_OPACITY);		t.stop_opacity = bi->stop_opacity;
 	PAINT_BITS(Z_INDEX);			t.z_index = bi->z_index;
 	PAINT_BITS(CURSOR);
 
