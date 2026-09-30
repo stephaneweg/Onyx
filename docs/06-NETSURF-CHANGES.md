@@ -268,7 +268,15 @@ optional chaining...) with the DOM written in JavaScript:
 - **Timings** (`user/netsurf/onyx_perf.h`): with the file `SD:/apps/netsurf.app/perf` (the PC
   bench: `NS_PERF=1`), each step longer than 1 ms is printed -- `ONYX-PERF rebox:boxes`,
   `rebox:reformat`, `layout`, `redraw WxH`, `hover:restyle`, and why a hover built the boxes
-  again (`hover:rebox (<reason>)`) -- on stderr, the kernel log on the Pi.
+  again (`hover:rebox (<reason>)`), each script run (`js:exec <url> (<size>)`) and each call
+  into the scripts (`js:call <event>`) -- on stderr, the kernel log on the Pi. The file
+  `SD:/apps/netsurf.app/jsdebug` (the PC: `NS_JSDEBUG=1`) prints the scripts' errors and
+  `console.log` there too.
+- **The scripts do not keep the window from responding** (`frontends/framebuffer/schedule.c`):
+  the scheduler runs its due callbacks (the page's timers among them) for 40 ms at most, then
+  hands the main loop back to the events (it goes on at once after). A single script is still
+  cut off after Choices' `script_timeout` (10 s). Seen on google.com and yahoo.com with the
+  Chrome User-Agent (their full script applications): the window stopped responding.
 - **CSS `:hover` without the whole page** (`content/handlers/html/onyx_hover.c`): the
   selection notes each node a `:hover` selector is tried on (`nscss_hover_note`, `select.c`);
   when the node under the pointer changes, only the topmost element that left (entered) the

@@ -124,9 +124,14 @@ nserror framebuffer_schedule(int tival, void (*callback)(void *p), void *p)
 	return NSERROR_OK;
 }
 
+/* Onyx: the callbacks run in one go before the main loop takes its events again (the
+ * page's timers: a heavy page's scripts would otherwise keep the window from responding) */
+#define SCHEDULE_BUDGET_US 40000
+
 /* exported function documented in framebuffer/schedule.h */
 int schedule_run(void)
 {
+	struct timeval start, now;
 	struct timeval tv;
 	struct timeval nexttime;
 	struct timeval rettime;
@@ -143,6 +148,7 @@ int schedule_run(void)
 	nexttime = cur_nscb->tv;
 
 	gettimeofday(&tv, NULL);
+	start = tv;
 
         while (cur_nscb != NULL) {
                 if (timercmp(&tv, &cur_nscb->tv, >)) {
@@ -164,6 +170,12 @@ int schedule_run(void)
                         /* need to deal with callback modifying the list. */
 			if (schedule_list == NULL)
 				return -1; /* no more callbacks scheduled */
+
+			/* Onyx: past the budget, the events first (the rest at once after) */
+			gettimeofday(&now, NULL);
+			if ((now.tv_sec - start.tv_sec) * 1000000L +
+			    (now.tv_usec - start.tv_usec) > SCHEDULE_BUDGET_US)
+				return 0;
 			
                         /* reset enumeration to the start of the list */
                         cur_nscb = schedule_list;

@@ -43,6 +43,7 @@
 #include "utils/log.h"
 #include "utils/nsurl.h"
 #include "utils/useragent.h"
+#include "netsurf/onyx_perf.h"
 #include "utils/corestrings.h"
 #include "utils/nsoption.h"
 #include "netsurf/browser_window.h"
@@ -208,6 +209,8 @@ static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int
 {
 	JSValue r;
 
+	uint64_t t0 = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
+
 	qjs_enter(t);
 	r = JS_Call(t->ctx, fn, this_val, argc, argv);
 	if (JS_IsException(r)) {
@@ -215,6 +218,11 @@ static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int
 		r = JS_UNDEFINED;
 	}
 	qjs_leave(t);
+	if (onyx_perf_on()) {
+		char what[80];
+		snprintf(what, sizeof what, "js:call %s", where != NULL ? where : "?");
+		onyx_perf_log(what, t0);
+	}
 	return r;
 }
 
@@ -1917,6 +1925,15 @@ static const JSCFunctionListEntry qjs_natives[] = {
 void js_initialise(void)
 {
 	qjs_debug = getenv("NS_JSDEBUG") != NULL;
+#ifdef ONYX_NS_DATAPATH
+	{	/* Onyx: or the file SD:/apps/netsurf.app/jsdebug (no environment on the Pi) */
+		FILE *f = fopen(ONYX_NS_DATAPATH "jsdebug", "r");
+		if (f != NULL) {
+			qjs_debug = true;
+			fclose(f);
+		}
+	}
+#endif
 	NSLOG(netsurf, INFO, "JavaScript: QuickJS %s", JS_GetVersion());
 	javascript_init();	/* the script types: text/javascript... */
 }
@@ -2091,6 +2108,8 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	memcpy(src, txt, txtlen);
 	src[txtlen] = '\0';
 
+	uint64_t t0 = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
+
 	qjs_enter(thread);
 	r = JS_Eval(thread->ctx, src, txtlen, name != NULL ? name : "script",
 			JS_EVAL_TYPE_GLOBAL);
@@ -2102,6 +2121,12 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	JS_FreeValue(thread->ctx, r);
 	qjs_leave(thread);
 	free(src);
+	if (onyx_perf_on()) {
+		char what[160];
+		snprintf(what, sizeof what, "js:exec %.100s (%u KB)",
+				name != NULL ? name : "script", (unsigned) (txtlen / 1024));
+		onyx_perf_log(what, t0);
+	}
 	return ok;
 }
 
