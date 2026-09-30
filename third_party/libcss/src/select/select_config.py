@@ -200,6 +200,11 @@ style = {
     ('stroke_linejoin', 3, None, None, 'CSS_STROKE_LINEJOIN_MITER'),
     ('stop_color', 2, 'color', None, 'CSS_STOP_COLOR_COLOR'),
     ('stop_opacity', 1, 'fixed', 'CSS_STOP_OPACITY_SET', 'CSS_STOP_OPACITY_SET'),
+    # Onyx: mask (its first layer, as text)
+    ('mask_image', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('mask_size', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('mask_position', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('mask_repeat', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     # Uncommon group, arrays
     ('counter_increment', 1, 'counter_arr', None, 'CSS_COUNTER_INCREMENT_NONE',
         'Encode counter_increment as an array of name, value pairs, '

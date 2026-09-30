@@ -617,9 +617,24 @@ static FT_Fixed fb_advance(fb_faceid_t *face, FT_UInt size, FT_UInt gi)
 	if (e->face == face && e->size == size && e->gi == gi)
 		return e->advance;
 	fb_scaler(&srec, face, size);
-	if (FTC_Manager_LookupSize(ft_cmanager, &srec, &ftsize) != 0 ||
-	    FT_Get_Advance(ftsize->face, gi, FT_LOAD_NO_HINTING, &adv) != 0)
+	if (FTC_Manager_LookupSize(ft_cmanager, &srec, &ftsize) != 0)
 		return 0;
+	/* Onyx: the advance at the exact size, from the font's units (as Skia's):
+	 * FreeType rounds the pixel size to a whole ppem for the TrueType fonts
+	 * that ask for it (DejaVu's head flags) -- 10pt text measured at 13 px
+	 * instead of 13.33, 2.5 % narrower than in Chrome */
+	if (FT_IS_SCALABLE(ftsize->face) && ftsize->face->units_per_EM > 0) {
+		FT_Fixed units;
+		if (FT_Get_Advance(ftsize->face, gi, FT_LOAD_NO_SCALE,
+				&units) != 0)
+			return 0;
+		adv = (FT_Fixed)(((int64_t)units * size * browser_get_dpi() *
+				65536) / ((int64_t)64 * 72 *
+				ftsize->face->units_per_EM));
+	} else if (FT_Get_Advance(ftsize->face, gi, FT_LOAD_NO_HINTING,
+			&adv) != 0) {
+		return 0;
+	}
 	e->face = face;
 	e->size = size;
 	e->gi = gi;

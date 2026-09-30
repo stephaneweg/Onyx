@@ -67,7 +67,8 @@ NSOPTION_INTEGER(treeview_font_size, 110)
 NSOPTION_INTEGER(font_size, 128)
 
 /** Minimum font size. */
-NSOPTION_INTEGER(font_min_size, 85)
+/* Onyx: no minimum font size by default (Chrome has none: 8pt text is 8pt) */
+NSOPTION_INTEGER(font_min_size, 10)
 
 /** Default sans serif font */
 NSOPTION_STRING(font_sans, NULL)

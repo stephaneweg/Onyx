@@ -98,6 +98,10 @@
 /* set_margin_left(style, 0, 0, CSS_UNIT_PX); */
 /* set_margin_right(style, 0, 0, CSS_UNIT_PX); */
 /* set_margin_top(style, 0, 0, CSS_UNIT_PX); */
+/* set_mask_image(style, 0, 0, CSS_UNIT_PX); */
+/* set_mask_position(style, 0, 0, CSS_UNIT_PX); */
+/* set_mask_repeat(style, 0, 0, CSS_UNIT_PX); */
+/* set_mask_size(style, 0, 0, CSS_UNIT_PX); */
 /* set_max_height(style, 0, 0, CSS_UNIT_PX); */
 /* set_max_width(style, 0, 0, CSS_UNIT_PX); */
 /* set_min_height(style, 0, 0, CSS_UNIT_PX); */

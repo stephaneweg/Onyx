@@ -483,6 +483,13 @@ uint8_t css_computed_transform(const css_computed_style *style, lwc_string **tex
 uint8_t css_computed_translate(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_scale(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_rotate(const css_computed_style *style, lwc_string **text);
+/* Onyx: mask -- its first layer, as text (CSS_ONYX_TEXT_NONE: none / the initial value):
+ * mask-image the image's URL, mask-size "cover" | "contain" | "<len> <len>", mask-position
+ * "<len|keyword> <len|keyword>", mask-repeat its keywords */
+uint8_t css_computed_mask_image(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mask_size(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_grid_template_columns(const css_computed_style *style,
 		lwc_string **text);
 uint8_t css_computed_grid_template_rows(const css_computed_style *style,

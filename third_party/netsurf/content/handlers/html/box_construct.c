@@ -111,7 +111,8 @@ static const box_type box_map[] = {
 	BOX_NONE,            /* CSS_DISPLAY_TABLE_COLUMN_GROUP */
 	BOX_NONE,            /* CSS_DISPLAY_TABLE_COLUMN */
 	BOX_TABLE_CELL,      /* CSS_DISPLAY_TABLE_CELL */
-	BOX_INLINE,          /* CSS_DISPLAY_TABLE_CAPTION */
+	BOX_BLOCK,           /* CSS_DISPLAY_TABLE_CAPTION (Onyx: a block; in a
+				table, box_normalise_table keeps it out of the grid) */
 	BOX_NONE,            /* CSS_DISPLAY_NONE */
 	BOX_FLEX,            /* CSS_DISPLAY_FLEX */
 	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_FLEX */
@@ -713,6 +714,16 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		return false;
 	}
 
+	/* Onyx: a replaced element (an image, an object; not a form control) is
+	 * not a flex / grid container: a display: flex <img> is a block
+	 * (Facebook's icons were flex boxes with no content: 0 px high) */
+	if ((box->flags & IS_REPLACED) && box->gadget == NULL) {
+		if (box->type == BOX_FLEX)
+			box->type = BOX_BLOCK;
+		else if (box->type == BOX_INLINE_FLEX)
+			box->type = BOX_INLINE_BLOCK;
+	}
+
 	/* Onyx: display: contents -- no box of its own: its children are its parent's (the
 	 * box made holds the style they inherit, out of the tree); a <slot>'s default (the
 	 * user agent's slot { display: contents }). Not for a replaced element or a
@@ -818,6 +829,25 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		}
 	}
 
+	/* Onyx: the mask-image (an icon: its shape in the background colour) */
+	{
+		lwc_string *mask_text = NULL;
+
+		if (css_computed_mask_image(box->style, &mask_text) ==
+				CSS_ONYX_TEXT_SET && mask_text != NULL &&
+				nsoption_bool(background_images) == true) {
+			nsurl *url;
+
+			if (nsurl_create(lwc_string_data(mask_text), &url) ==
+					NSERROR_OK) {
+				bool ok = html_fetch_mask(ctx->content, url, box);
+				nsurl_unref(url);
+				if (!ok)
+					return false;
+			}
+		}
+	}
+
 	if (*convert_children)
 		box->flags |= CONVERT_CHILDREN;
 
@@ -887,6 +917,12 @@ static void box_construct_element_after(dom_node *n, html_content *content)
 	assert(box != NULL);
 
 	box_extract_properties(content, n, &props);
+
+	/* Onyx: display: contents (no box on the tree: no inline end) */
+	if (box->parent == NULL && box->style != NULL &&
+	    !props.node_is_root &&
+	    ns_computed_display(box->style, false) == CSS_DISPLAY_CONTENTS)
+		return;
 
 	if (box->type == BOX_INLINE || box->type == BOX_BR) {
 		/* Insert INLINE_END into containing block */

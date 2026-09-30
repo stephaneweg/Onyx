@@ -101,6 +101,7 @@ struct content_html_object {
 	/** Bitmap of acceptable content types */
 	content_type permitted_types;
 	bool background;  /**< This object is a background image. */
+	bool mask;	/**< Onyx: this object is the box's mask-image */
 	/** Onyx: taken over from the boxes before (html_rebox): its box there */
 	struct box *rebox_old_box;
 };

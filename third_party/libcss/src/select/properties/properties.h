@@ -84,6 +84,10 @@ PROPERTY_FUNCS(stroke_dasharray);
 PROPERTY_FUNCS(stroke_dashoffset);
 PROPERTY_FUNCS(stop_color);
 PROPERTY_FUNCS(stop_opacity);
+PROPERTY_FUNCS(mask_image);	/* Onyx: mask */
+PROPERTY_FUNCS(mask_size);
+PROPERTY_FUNCS(mask_position);
+PROPERTY_FUNCS(mask_repeat);
 PROPERTY_FUNCS(fill_opacity);
 PROPERTY_FUNCS(flex_basis);
 PROPERTY_FUNCS(flex_direction);

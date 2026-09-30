@@ -65,6 +65,14 @@ framebuffer_plot_clip(const struct redraw_context *ctx, const struct rect *clip)
 	nsfb_clip.y1 = clip->y1;
 
 	if (!nsfb_plot_set_clip(nsfb, &nsfb_clip)) {
+		/* Onyx: a clip wholly off the surface (a box off screen: an
+		 * off-canvas menu at x -264) is not an error -- the redraw of
+		 * the rest of its layer was abandoned (Wikipedia's article was
+		 * not drawn). Nothing is drawn: a one pixel clip in a corner
+		 * the box's content cannot reach */
+		nsfb_bbox_t none = { 0, 0, 1, 1 };
+		if (nsfb_plot_set_clip(nsfb, &none))
+			return NSERROR_OK;
 		return NSERROR_INVALID;
 	}
 	return NSERROR_OK;

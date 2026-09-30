@@ -245,6 +245,10 @@ void css__make_style_important(css_style *style)
 			case CSS_PROP_GRID_ROW_END:
 			case CSS_PROP_GRID_COLUMN_START:
 			case CSS_PROP_GRID_COLUMN_END:
+			case CSS_PROP_MASK_IMAGE:	/* Onyx: mask */
+			case CSS_PROP_MASK_SIZE:
+			case CSS_PROP_MASK_POSITION:
+			case CSS_PROP_MASK_REPEAT:
 				if (value == ONYX_TEXT_SET)
 					offset++; /* string index */
 				break;

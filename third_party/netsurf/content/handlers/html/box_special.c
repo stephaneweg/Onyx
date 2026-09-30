@@ -570,7 +570,9 @@ box_input_text(html_content *html, struct box *box, struct dom_node *node)
 		box->type = BOX_BLOCK;
 		break;
 	default:
-		box->type = BOX_INLINE_BLOCK;
+		/* Onyx: a flex / grid item (blockified) stays a block */
+		if (box->type != BOX_BLOCK)
+			box->type = BOX_INLINE_BLOCK;
 		break;
 	}
 
@@ -1272,7 +1274,8 @@ box_input(dom_node *n,
 			goto no_memory;
 
 	} else if (dom_string_caseless_lwc_isequal(type, corestring_lwc_file)) {
-		box->type = BOX_INLINE_BLOCK;
+		if (box->type != BOX_BLOCK)	/* Onyx: (a flex / grid item) */
+			box->type = BOX_INLINE_BLOCK;
 
 	} else if (dom_string_caseless_lwc_isequal(type,
 			corestring_lwc_hidden)) {
@@ -1794,7 +1797,8 @@ box_select(dom_node *n,
 		return true;
 	}
 
-	box->type = BOX_INLINE_BLOCK;
+	if (box->type != BOX_BLOCK)	/* Onyx: (a flex / grid item) */
+		box->type = BOX_INLINE_BLOCK;
 	box->gadget = gadget;
 	box->flags |= IS_REPLACED;
 	gadget->box = box;
