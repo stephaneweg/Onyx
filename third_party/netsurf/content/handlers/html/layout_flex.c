@@ -97,6 +97,9 @@ struct fx_item {
 	bool stretched;			/* its cross size was set by its container */
 	bool frozen, min_v, max_v;
 	int measured;			/* column: the height laid out, or AUTO */
+	/* Onyx: the inputs of its last layout (fx_ensure) */
+	bool laid, ldef;
+	int lw, lh, lavail;
 };
 
 struct fx_line {
@@ -153,11 +156,185 @@ static inline int fx_margin(const struct box *b, enum box_side side)
 }
 
 
+/*
+ * Onyx: the layout memo (layout_internal.h). Two open-addressing tables, their entries
+ * valid for the current pass only (lm_gen): the sizes a box's layout gave per inputs,
+ * and the inputs each box's subtree is laid out at now.
+ */
+struct lm_key {
+	int w, h, avail;
+	int def;
+	int p[4], bw[4];
+};
+
+struct lm_ent {
+	const struct box *box;
+	unsigned gen;
+	struct lm_key k;
+	int ow, oh;
+};
+
+struct lm_tab {
+	struct lm_ent *e;
+	size_t size, used;	/* size: a power of two */
+};
+
+static unsigned lm_gen;
+static bool lm_active;
+static struct lm_tab lm_sizes, lm_state;
+
+void layout_memo_begin(void)
+{
+	lm_gen++;
+	if (lm_gen == 0)
+		lm_gen = 1;
+	lm_sizes.used = lm_state.used = 0;
+	lm_active = true;
+}
+
+void layout_memo_end(void)
+{
+	lm_active = false;
+}
+
+static void lm_key_of(const struct box *b, int w, int h, bool def, int avail,
+		struct lm_key *k)
+{
+	int i;
+
+	memset(k, 0, sizeof(*k));
+	k->w = w;
+	k->h = h;
+	k->avail = avail;
+	k->def = def ? 1 : 0;
+	for (i = 0; i < 4; i++) {
+		k->p[i] = b->padding[i];
+		k->bw[i] = b->border[i].width;
+	}
+}
+
+static size_t lm_hash(const struct box *b, const struct lm_key *k, bool with_key)
+{
+	uint64_t h = (uint64_t) (uintptr_t) b * 0x9E3779B97F4A7C15ull;
+
+	if (with_key) {
+		const int *v = (const int *) k;
+		size_t i;
+		for (i = 0; i < sizeof(*k) / sizeof(int); i++)
+			h = (h ^ (uint32_t) v[i]) * 0x100000001B3ull;
+	}
+	return (size_t) (h ^ (h >> 29));
+}
+
+/** The entry of (box, key) -- by box alone when !with_key -- or a free slot */
+static struct lm_ent *lm_find(struct lm_tab *t, const struct box *b,
+		const struct lm_key *k, bool with_key)
+{
+	size_t i;
+
+	if (t->size == 0)
+		return NULL;
+	i = lm_hash(b, k, with_key) & (t->size - 1);
+	for (;;) {
+		struct lm_ent *e = &t->e[i];
+		if (e->gen != lm_gen)
+			return e;
+		if (e->box == b && (!with_key ||
+				memcmp(&e->k, k, sizeof(*k)) == 0))
+			return e;
+		i = (i + 1) & (t->size - 1);
+	}
+}
+
+static struct lm_ent *lm_insert(struct lm_tab *t, const struct box *b,
+		const struct lm_key *k, bool with_key)
+{
+	struct lm_ent *e;
+
+	if ((t->used + 1) * 2 > t->size) {
+		size_t n = t->size ? t->size * 2 : 1024, i, old = t->size;
+		struct lm_ent *oe = t->e, *ne = calloc(n, sizeof(*ne));
+		if (ne == NULL)
+			return NULL;
+		t->e = ne;
+		t->size = n;
+		for (i = 0; i < old; i++) {
+			if (oe[i].gen == lm_gen)
+				*lm_find(t, oe[i].box, &oe[i].k, with_key) = oe[i];
+		}
+		free(oe);
+	}
+	e = lm_find(t, b, k, with_key);
+	if (e->gen != lm_gen)
+		t->used++;
+	e->box = b;
+	e->gen = lm_gen;
+	e->k = *k;
+	return e;
+}
+
+bool layout_memo_state_is(const struct box *b, int w, int h, bool def, int avail)
+{
+	struct lm_key k;
+	struct lm_ent *e;
+
+	if (!lm_active)
+		return true;
+	lm_key_of(b, w, h, def, avail, &k);
+	e = lm_find(&lm_state, b, &k, false);
+	return e != NULL && e->gen == lm_gen &&
+			memcmp(&e->k, &k, sizeof(k)) == 0;
+}
+
+bool layout_memo_layout(struct box *b, int avail, bool size_only,
+		bool (*lay)(void *ctx, struct box *b, int avail), void *ctx)
+{
+	struct lm_key k;
+	struct lm_ent *e;
+
+	if (!lm_active || b->type == BOX_TABLE)
+		return lay(ctx, b, avail);
+
+	lm_key_of(b, b->width, b->height, (b->flags & DEF_HEIGHT) != 0, avail, &k);
+	e = lm_find(&lm_state, b, &k, false);
+	if (e != NULL && e->gen == lm_gen &&
+			memcmp(&e->k, &k, sizeof(k)) == 0) {
+		/* its subtree is laid out at these inputs */
+		e = lm_find(&lm_sizes, b, &k, true);
+		if (e != NULL && e->gen == lm_gen) {
+			b->width = e->ow;
+			b->height = e->oh;
+			return true;
+		}
+	} else if (size_only) {
+		e = lm_find(&lm_sizes, b, &k, true);
+		if (e != NULL && e->gen == lm_gen) {
+			b->width = e->ow;
+			b->height = e->oh;
+			return true;
+		}
+	}
+
+	if (!lay(ctx, b, avail))
+		return false;
+
+	e = lm_insert(&lm_sizes, b, &k, true);
+	if (e != NULL) {
+		e->ow = b->width;
+		e->oh = b->height;
+	}
+	if (e == NULL || lm_insert(&lm_state, b, &k, false) == NULL)
+		lm_active = false;	/* (no memory: every layout made) */
+	return true;
+}
+
+
 /**
  * Lay a flex item's contents out at its current width (and height, when not AUTO).
  */
-static bool fx_layout_item(struct fx *fx, struct box *b, int avail)
+static bool fx_layout_item_now(void *ctx, struct box *b, int avail)
 {
+	struct fx *fx = ctx;
 	bool ok = true;
 
 	switch (b->type) {
@@ -180,6 +357,22 @@ static bool fx_layout_item(struct fx *fx, struct box *b, int avail)
 		NSLOG(flex, ERROR, "box %p: layout failed", b);
 	}
 	return ok;
+}
+
+/**
+ * Onyx: lay an item out through the layout memo (size only: its subtree is made right
+ * by fx_ensure() at the end), its inputs noted for fx_ensure().
+ */
+static bool fx_layout_item(struct fx *fx, struct fx_item *it, int avail)
+{
+	struct box *b = it->box;
+
+	it->lw = b->width;
+	it->lh = b->height;
+	it->ldef = (b->flags & DEF_HEIGHT) != 0;
+	it->lavail = avail;
+	it->laid = true;
+	return layout_memo_layout(b, avail, true, fx_layout_item_now, fx);
 }
 
 
@@ -438,10 +631,38 @@ static bool fx_measure_column_item(struct fx *fx, struct fx_item *it)
 
 	b->width = fx_round(cross);
 	b->height = AUTO;
-	if (!fx_layout_item(fx, b, b->width + fx_round(it->mbp_cross)))
+	if (!fx_layout_item(fx, it, b->width + fx_round(it->mbp_cross)))
 		return false;
 	it->measured = b->height;
 	return true;
+}
+
+
+/**
+ * Onyx: an item's subtree laid out at the inputs of its last layout, when the memo gave
+ * that layout's size only (its current width, height and DEF_HEIGHT kept).
+ */
+static bool fx_ensure_item(struct fx *fx, struct fx_item *it)
+{
+	struct box *b = it->box;
+	int w = b->width, h = b->height;
+	unsigned int flags = b->flags;
+	bool ok;
+
+	if (!it->laid || b->type == BOX_TABLE ||
+	    layout_memo_state_is(b, it->lw, it->lh, it->ldef, it->lavail))
+		return true;
+	b->width = it->lw;
+	b->height = it->lh;
+	if (it->ldef)
+		b->flags |= DEF_HEIGHT;
+	else
+		b->flags &= ~DEF_HEIGHT;
+	ok = layout_memo_layout(b, it->lavail, false, fx_layout_item_now, fx);
+	b->width = w;
+	b->height = h;
+	b->flags = (b->flags & ~DEF_HEIGHT) | (flags & DEF_HEIGHT);
+	return ok;
 }
 
 
@@ -714,11 +935,17 @@ static bool fx_item_cross(struct fx *fx, struct fx_item *it)
 		} else {
 			b->height = AUTO;
 		}
-		if (!fx_layout_item(fx, b, b->width + fx_round(it->mbp_main)))
+		if (!fx_layout_item(fx, it, b->width + fx_round(it->mbp_main)))
 			return false;
 		it->cross = b->height;
-		if (it->align == CSS_ALIGN_SELF_BASELINE)
+		if (it->align == CSS_ALIGN_SELF_BASELINE) {
+			/* (read from its laid out subtree) */
+			int ch = b->height;
+			if (!fx_ensure_item(fx, it))
+				return false;
+			b->height = ch;
 			it->baseline = fx_item_baseline(fx, b);
+		}
 	} else {
 		/* the width was set when measured; the height is the main size */
 		int h = fx_round(it->target);
@@ -727,7 +954,7 @@ static bool fx_item_cross(struct fx *fx, struct fx_item *it)
 		if (fx->main_definite)
 			b->flags |= DEF_HEIGHT;
 		if (fx_relayout(b, h != it->measured)) {
-			if (!fx_layout_item(fx, b, b->width +
+			if (!fx_layout_item(fx, it, b->width +
 					fx_round(it->mbp_cross)))
 				return false;
 			b->height = h;
@@ -876,7 +1103,7 @@ static bool fx_stretch(struct fx *fx)
 				b->flags |= DEF_HEIGHT;
 				b->height = ci;
 				if (fx_relayout(b, changed)) {
-					if (!fx_layout_item(fx, b, b->width +
+					if (!fx_layout_item(fx, it, b->width +
 							fx_round(it->mbp_main)))
 						return false;
 					b->height = ci;
@@ -884,7 +1111,7 @@ static bool fx_stretch(struct fx *fx)
 			} else if (ci != b->width) {
 				int h = b->height;
 				b->width = ci;
-				if (!fx_layout_item(fx, b, ci +
+				if (!fx_layout_item(fx, it, ci +
 						fx_round(it->mbp_cross)))
 					return false;
 				b->height = h;
@@ -1214,6 +1441,12 @@ bool layout_flex(struct box *flex, int available_width, html_content *content)
 	fx_lines_cross(&fx);
 	if (!fx_stretch(&fx))
 		goto done;
+
+	/* Onyx: each item's subtree as its last layout made it (the memo) */
+	for (i = 0; i < fx.n; i++) {
+		if (!fx_ensure_item(&fx, &fx.item[i]))
+			goto done;
+	}
 
 	/* 6. positions */
 	fx_place(&fx);

@@ -1403,8 +1403,9 @@ static struct grid_item *grid_items(struct box *grid, int *count, bool in_flow_o
 /* ---- layout ------------------------------------------------------------------------------ */
 
 /** Lay an item out at its (content) width b->width. */
-static bool grid_layout_item(struct grid_ctx *g, struct box *b, int avail)
+static bool grid_layout_item_now(void *ctx, struct box *b, int avail)
 {
+	struct grid_ctx *g = ctx;
 	bool ok = true;
 
 	switch (b->type) {
@@ -1425,6 +1426,12 @@ static bool grid_layout_item(struct grid_ctx *g, struct box *b, int avail)
 		break;
 	}
 	return ok;
+}
+
+/** Onyx: through the layout memo (skipped when laid out at these inputs already) */
+static bool grid_layout_item(struct grid_ctx *g, struct box *b, int avail)
+{
+	return layout_memo_layout(b, avail, false, grid_layout_item_now, g);
 }
 
 /** The item's self-alignment on one axis (its own, else the container's). */
