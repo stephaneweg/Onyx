@@ -328,8 +328,14 @@ function invoke(node, ev, capture) {
 
 function dispatch(target, ev) {
 	const path = [];
-	for (let n = target; n; n = eventParent(n))
+	for (let n = target; n; n = eventParent(n)) {
+		/* (Onyx: an element's load event stops at the document -- the window is not in
+		 * its path (HTML): duckduckgo.com's capturing window load listener added itself
+		 * again at each image's load) */
+		if (n === G && ev.type === 'load' && target !== G)
+			break;
 		path.push(n);
+	}
 	ev.target = target;
 	ev._path = path;
 	ev._stop = ev._stopNow = false;
