@@ -18,6 +18,9 @@ cat <<EOF
 <dir>$dir</dir>
 <cachedir>$dir/.fccache</cachedir>
 <config><rescan><int>0</int></rescan></config>
+<match target="font"><edit name="hinting" mode="assign"><bool>false</bool></edit>
+<edit name="hintstyle" mode="assign"><const>hintnone</const></edit>
+<edit name="antialias" mode="assign"><bool>true</bool></edit></match>
 EOF
 for f in arial helvetica "helvetica neue" arimo tahoma "trebuchet ms" sans-serif; do alias "$f" "Liberation Sans"; done
 for f in "times new roman" times tinos serif; do alias "$f" "Liberation Serif"; done
