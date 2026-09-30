@@ -54,6 +54,8 @@
 #include "html/box.h"
 #include "html/box_special.h"
 #include "html/onyx_svg_inline.h"
+#include "desktop/gui_internal.h"
+#include "netsurf/misc.h"
 
 /** the most bytes of SVG text an inline <svg> makes (a bigger one is not drawn) */
 #define ONYX_SVG_MAX_TEXT (2 * 1024 * 1024)
@@ -468,6 +470,166 @@ static nsurl *svg_data_url(const char *data, size_t len)
 	return u;
 }
 
+/*
+ * The elements named by id (a sprite's <symbol>s): each looked up (libdom walks the
+ * tree) and written once per turn of the main loop -- a box construction is one turn, no
+ * script runs in it -- kept raw (their var() substituted when copied: they take the
+ * using <svg>'s custom properties), with the ids they define and name.
+ */
+#define SVG_REFS 128
+static struct svg_ref {
+	char *id;
+	struct svgbuf text, defined, named;
+	bool found;
+} svg_refs[SVG_REFS];
+static int svg_nrefs;
+static bool svg_refs_scheduled;
+static int svg_debug = -1;
+
+static void svg_refs_clear(void *p)
+{
+	int i;
+
+	(void) p;
+	for (i = 0; i < svg_nrefs; i++) {
+		free(svg_refs[i].id);
+		free(svg_refs[i].text.data);
+		free(svg_refs[i].defined.data);
+		free(svg_refs[i].named.data);
+	}
+	memset(svg_refs, 0, sizeof svg_refs);
+	svg_nrefs = 0;
+	svg_refs_scheduled = false;
+}
+
+/** the element of that id, if an SVG one, written into b (with its ids noted) */
+static bool svg_put_ref(struct svgbuf *b, html_content *content, const char *id, size_t l)
+{
+	struct svg_ref *r = NULL;
+	size_t i;
+	int k;
+
+	for (k = 0; k < svg_nrefs; k++) {
+		if (strlen(svg_refs[k].id) == l && memcmp(svg_refs[k].id, id, l) == 0) {
+			r = &svg_refs[k];
+			break;
+		}
+	}
+	if (r == NULL) {
+		dom_string *ds = NULL;
+		dom_element *e = NULL;
+
+		if (svg_nrefs == SVG_REFS)
+			svg_refs_clear(NULL);
+		r = &svg_refs[svg_nrefs];
+		memset(r, 0, sizeof *r);
+		r->id = malloc(l + 1);
+		if (r->id == NULL)
+			return false;
+		memcpy(r->id, id, l);
+		r->id[l] = '\0';
+		svg_nrefs++;
+		if (!svg_refs_scheduled) {
+			svg_refs_scheduled = true;
+			guit->misc->schedule(0, svg_refs_clear, NULL);
+		}
+		r->text.defined = &r->defined;
+		r->text.named = &r->named;
+		if (dom_string_create((const uint8_t *) id, l, &ds) == DOM_NO_ERR) {
+			if (dom_document_get_element_by_id(content->document, ds, &e) ==
+					DOM_NO_ERR && e != NULL &&
+			    svg_in_svg_namespace((dom_node *) e)) {
+				svg_write(&r->text, (dom_node *) e, NULL, 0);
+				r->found = !r->text.failed;
+			}
+			if (e != NULL)
+				dom_node_unref(e);
+			dom_string_unref(ds);
+		}
+	}
+	if (!r->found)
+		return false;
+	svg_put_value(b, r->text.data, r->text.len, 0);
+	for (i = 0; i < r->defined.len; i += strlen(r->defined.data + i) + 1)
+		sb_add_word(b->defined, r->defined.data + i, strlen(r->defined.data + i));
+	for (i = 0; i < r->named.len; i += strlen(r->named.data + i) + 1)
+		sb_add_word(b->named, r->named.data + i, strlen(r->named.data + i));
+	return true;
+}
+
+/*
+ * The data: URLs made, by their SVG text (the same icon many times in a page, and at each
+ * new box construction): a small table, the least recently used replaced.
+ */
+#define SVG_URLS 256
+#define SVG_URLS_BYTES (512 * 1024)
+static struct svg_url {
+	uint32_t hash;
+	char *text;
+	size_t len;
+	nsurl *url;
+	unsigned int used;
+} svg_urls[SVG_URLS];
+static size_t svg_urls_bytes;
+static unsigned int svg_urls_clock;
+
+static nsurl *svg_url_for(const char *text, size_t len)
+{
+	uint32_t h = 2166136261u;
+	struct svg_url *slot = &svg_urls[0];
+	size_t i;
+	nsurl *u;
+
+	for (i = 0; i < len; i++)
+		h = (h ^ (uint8_t) text[i]) * 16777619u;
+	svg_urls_clock++;
+	for (i = 0; i < SVG_URLS; i++) {
+		struct svg_url *e = &svg_urls[i];
+
+		if (e->url != NULL && e->hash == h && e->len == len &&
+		    memcmp(e->text, text, len) == 0) {
+			e->used = svg_urls_clock;
+			return nsurl_ref(e->url);
+		}
+		if (e->url == NULL || (slot->url != NULL && e->used < slot->used))
+			slot = e;
+	}
+	u = svg_data_url(text, len);
+	if (u == NULL || len > SVG_URLS_BYTES / 8)
+		return u;
+	if (slot->url != NULL) {
+		nsurl_unref(slot->url);
+		free(slot->text);
+		svg_urls_bytes -= slot->len;
+		slot->url = NULL;
+	}
+	while (svg_urls_bytes + len > SVG_URLS_BYTES) {
+		/* (over the bytes: the oldest dropped) */
+		struct svg_url *old = NULL;
+
+		for (i = 0; i < SVG_URLS; i++) {
+			if (svg_urls[i].url != NULL && (old == NULL || svg_urls[i].used < old->used))
+				old = &svg_urls[i];
+		}
+		if (old == NULL)
+			break;
+		nsurl_unref(old->url);
+		free(old->text);
+		svg_urls_bytes -= old->len;
+		old->url = NULL;
+	}
+	slot->text = malloc(len);
+	if (slot->text == NULL)
+		return u;
+	memcpy(slot->text, text, len);
+	slot->len = len;
+	slot->hash = h;
+	slot->url = nsurl_ref(u);
+	slot->used = svg_urls_clock;
+	svg_urls_bytes += len;
+	return u;
+}
+
 /* exported interface documented in html/onyx_svg_inline.h */
 bool onyx_svg_box(dom_node *n, html_content *content, struct box *box,
 		bool *convert_children)
@@ -481,6 +643,8 @@ bool onyx_svg_box(dom_node *n, html_content *content, struct box *box,
 
 	if (!svg_is_svg(n))
 		return true;
+	if (svg_debug < 0)
+		svg_debug = getenv("NS_SVGDEBUG") != NULL;
 	/* its children are the drawing's, not boxes */
 	*convert_children = false;
 	if (box->style == NULL ||
@@ -520,30 +684,17 @@ bool onyx_svg_box(dom_node *n, html_content *content, struct box *box,
 			if (sb_has(&defined, id, l) || sb_has(&done, id, l))
 				continue;
 			sb_add_word(&done, id, l);
-			{
-				dom_string *ds = NULL;
-				dom_element *e = NULL;
-
-				if (dom_string_create((const uint8_t *) id, l, &ds) == DOM_NO_ERR) {
-					if (dom_document_get_element_by_id(content->document, ds,
-							&e) == DOM_NO_ERR && e != NULL &&
-					    svg_in_svg_namespace((dom_node *) e)) {
-						/* (it may name more: named grows, the loop reads them) */
-						svg_write(&text, (dom_node *) e, NULL, 0);
-						refs++;
-					}
-					if (e != NULL)
-						dom_node_unref(e);
-					dom_string_unref(ds);
-				}
-			}
+			/* (it may name more: named grows, the loop reads them) */
+			if (svg_put_ref(&text, content, id, l))
+				refs++;
 		}
 		sb_str(&text, "</defs></svg>");
 	}
 
 	if (!text.failed && text.data != NULL) {
-		if (getenv("NS_SVGDEBUG")) fprintf(stderr, "ONYX-SVG %s\n", text.data);
-		url = svg_data_url(text.data, text.len);
+		if (svg_debug)
+			fprintf(stderr, "ONYX-SVG %s\n", text.data);
+		url = svg_url_for(text.data, text.len);
 		if (url != NULL) {
 			box->flags |= IS_REPLACED;
 			ok = html_fetch_object(content, url, box, CONTENT_IMAGE, false);

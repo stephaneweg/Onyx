@@ -43,6 +43,7 @@
 #include "netsurf/plotters.h"
 #include "netsurf/bitmap.h"
 #include "netsurf/content.h"
+#include "netsurf/misc.h"
 #include "content/content_protected.h"
 #include "content/content_factory.h"
 #include "desktop/gui_internal.h"
@@ -51,7 +52,7 @@
 #include "image/onyx_svg.h"
 
 /** the sizes kept rasterised per image */
-#define ONYX_SVG_KEEP 4
+#define ONYX_SVG_KEEP 6
 /** the most pixels rasterised (a larger drawing is rasterised smaller and scaled up) */
 #define ONYX_SVG_MAX_PIXELS (2048 * 2048)
 
@@ -174,6 +175,37 @@ static struct bitmap *onyx_svg_rasterise(onyx_svg_content *svg, int width, int h
 }
 
 
+/*
+ * A size's bitmap replaced during a redraw may still be in the knockout's queue of plots
+ * (desktop/knockout.c plots later): it is destroyed once the main loop turns.
+ */
+#define ONYX_SVG_LATER 32
+static struct bitmap *onyx_svg_later[ONYX_SVG_LATER];
+static int onyx_svg_nlater;
+
+static void onyx_svg_destroy_pending(void *p)
+{
+	int i;
+
+	(void) p;
+	for (i = 0; i < onyx_svg_nlater; i++)
+		guit->bitmap->destroy(onyx_svg_later[i]);
+	onyx_svg_nlater = 0;
+}
+
+static void onyx_svg_destroy_later(struct bitmap *bitmap)
+{
+	if (onyx_svg_nlater == ONYX_SVG_LATER) {
+		/* (32 replaced within one turn: this one leaked rather than freed under a
+		 * plot still queued) */
+		return;
+	}
+	if (onyx_svg_nlater == 0)
+		guit->misc->schedule(0, onyx_svg_destroy_pending, NULL);
+	onyx_svg_later[onyx_svg_nlater++] = bitmap;
+}
+
+
 /** the bitmap for a drawing of width x height, rasterised if not kept */
 static struct bitmap *onyx_svg_bitmap(onyx_svg_content *svg, int width, int height)
 {
@@ -202,7 +234,7 @@ static struct bitmap *onyx_svg_bitmap(onyx_svg_content *svg, int width, int heig
 			slot = s;
 	}
 	if (slot->bitmap != NULL)
-		guit->bitmap->destroy(slot->bitmap);
+		onyx_svg_destroy_later(slot->bitmap);
 	slot->bitmap = onyx_svg_rasterise(svg, width, height);
 	slot->width = width;
 	slot->height = height;
