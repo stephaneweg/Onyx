@@ -188,10 +188,10 @@ expect "$L" "reveal after kept true"
 
 # Onyx: the HTML5 checks -- each page logs "OK <area> name" / "FAIL <area> name" and ends
 # with "<area> done N" (N checks)
-html5page() {	# html5page <page> <area> <what>
+html5page() {	# html5page <page> <area> <what> [the sim script: else 150 waits]
 	echo "$1 ($3)"
 	L=$OUT/${1%.html}.log
-	run "$1" "$(waits 150)" "$L"
+	run "$1" "${4:-$(waits 150)}" "$L"
 	grep "^console: FAIL $2 " "$L" | sed 's/^console: /  /'
 	if grep -q "^console: FAIL $2 " "$L" || ! grep -q "^console: $2 done" "$L"; then
 		echo "  FAIL  ($2: not all run: $L)"; fail=1
@@ -203,6 +203,9 @@ html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, template
 html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
 html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs, microdata, performance marks, XHR documents"
 html5page js-ce.html ce "custom elements: define, upgrades (the parser's too), lifecycle callbacks"
+html5page js-popover.html popover "the Popover API: show / hide / toggle, beforetoggle and toggle, the auto stack, popovertarget, :popover-open and :modal in libcss, Escape, light dismiss" \
+	"$(waits 120)$(click 800 800)key 27;$(waits 30)"
+html5page js-cssdetect.html detect "feature detection's honest answers: CSS.supports, element.style, the CSSOM, matchMedia"
 html5page js-shadow.html shadow "shadow DOM: ShadowRoot, slots, declarative roots, events, style scoping, the flat tree's boxes"
 echo "js-shadow-click.html (clicks and the pointer on a shadow tree: retargeting, :hover inside)"
 L=$OUT/js-shadow-click.log
@@ -338,6 +341,18 @@ expect "$L" "accepted"
 L=$OUT/js-scrollers-drag.log
 run js-scrollers.html "$(waits 60)move 789 110;wait;down 789 110;wait;move 789 500;wait;up 789 500;$(waits 30)" "$L"
 expect "$L" "panel scrolled down"
+L=$OUT/js-consent.log
+run js-consent.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
+for s in "buttons visible" "middle scrolls" "middle scrolled down"; do expect "$L" "$s"; done
+L=$OUT/js-dialog.log
+run js-dialog.html "$(waits 60)move 400 300;wheel 400 300 -5;$(waits 30)" "$L"
+for s in "dialog buttons visible" "dialog middle scrolled"; do expect "$L" "$s"; done
+L=$OUT/js-consent-body.log
+run js-consent-body.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
+expect "$L" "body scrolled"
+L=$OUT/js-wheel.log
+run js-wheel.html "$(waits 60)move 300 300;wheel 300 300 -30;$(waits 30)$(click 100 690)" "$L"
+for s in "wheel down true" "pointerdown" "allowed"; do expect "$L" "$s"; done
 L=$OUT/js-scrollframe.log
 run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 700)" "$L"
 expect "$L" "panel scrolled down"

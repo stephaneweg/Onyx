@@ -54,6 +54,24 @@ typedef struct nscss_select_ctx
 bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *rules,
 		uint32_t *decl_words);
 
+/**
+ * Onyx: the states of an element only the scripts know, as the style sheets' pseudo-classes
+ * see them (css_select_handler's onyx_node_state): NSCSS_STATE_POPOVER_OPEN (:popover-open,
+ * the Popover API), NSCSS_STATE_MODAL (:modal, dialog.showModal()). Kept on the node
+ * (libdom's user data); the caller lays the page out again.
+ */
+#define NSCSS_STATE_POPOVER_OPEN 1u
+#define NSCSS_STATE_MODAL 2u
+void nscss_node_state_set(struct dom_node *n, unsigned int state, bool on);
+
+/**
+ * Onyx: matchMedia -- the media query list text as libcss reads and evaluates it for media
+ * (css_select_onyx_media_match): false if it could not be parsed at all.
+ */
+bool nscss_media_match(css_select_ctx *sctx, const css_media *media,
+		const css_unit_ctx *unit_ctx, const char *query, size_t len, bool *match,
+		uint32_t *n_queries, uint32_t *invalid);
+
 css_stylesheet *nscss_create_inline_style(const uint8_t *data, size_t len,
 		const char *charset, const char *url, bool allow_quirks);
 

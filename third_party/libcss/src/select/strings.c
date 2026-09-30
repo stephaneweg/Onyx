@@ -232,6 +232,8 @@ css_error css_select_strings_intern(css_select_strings *str)
 			"slotted",
 			"part",
 			"-onyx-featureless-host",
+			"popover-open",
+			"modal",
 		};
 		int i;
 		for (i = 0; i < ONYX_STR_N; i++) {

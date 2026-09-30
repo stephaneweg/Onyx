@@ -431,14 +431,20 @@ static bool onyx_desc_grammar(const char *at, const css_token *name,
 		const parserutils_vector *vector, int32_t ctx)
 {
 	char key[96];
+	const char *nd = lwc_string_data(name->idata);
 	size_t al = strlen(at), nl = lwc_string_length(name->idata);
 	int g;
 
+	/* @font-face's font-stretch: font-width's legacy name (CSS Fonts 4), as the property */
+	if (strcmp(at, "@font-face") == 0 && nl == 12 && strncasecmp(nd, "font-stretch", 12) == 0) {
+		nd = "font-width";
+		nl = 10;
+	}
 	if (al + 1 + nl >= sizeof(key))
 		return false;
 	memcpy(key, at, al);
 	key[al] = '/';
-	memcpy(key + al + 1, lwc_string_data(name->idata), nl);
+	memcpy(key + al + 1, nd, nl);
 	key[al + 1 + nl] = '\0';
 	g = css__onyx_grammar_descriptor(key, al + 1 + nl);
 	if (g < 0)

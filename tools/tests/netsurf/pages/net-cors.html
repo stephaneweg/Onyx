@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>CORS</title></head>
+<body><p>Cross-origin fetch and XHR (nettest.sh: wssrv.py's /cors; the target is the second
+server, on the next port: another origin of the same site, so that its cookies are the page's)</p>
+<script>
+const log = s => console.log(s);
+const T = 'http://127.0.0.1:' + (+location.port + 1) + '/cors';
+const err = e => (e && e.name) || String(e);
+
+async function step(name, f) {
+	try { await f(); } catch (e) { log(name + ' threw ' + err(e)); }
+}
+
+function xhr(url, cred) {
+	return new Promise(res => {
+		const x = new XMLHttpRequest();
+		x.open('GET', url);
+		x.withCredentials = !!cred;
+		x.onload = () => res('load ' + x.status + ' ' + x.responseText + ' secret=' + x.getResponseHeader('X-Secret'));
+		x.onerror = () => res('error ' + x.status);
+		x.send();
+	});
+}
+
+(async () => {
+	log('cors origin ' + location.origin);
+	/* allowed: the answer names the page's origin; X-Secret is not exposed */
+	await step('allowed', async () => {
+		const r = await fetch(T + '?acao=origin&t=1');
+		log('allowed ' + r.status + ' ' + r.type + ' ' + (await r.text()) + ' secret=' +
+			r.headers.get('x-secret') + ' type=' + r.headers.get('content-type'));
+	});
+	/* exposed */
+	await step('exposed', async () => {
+		const r = await fetch(T + '?acao=origin&expose=X-Secret&t=2');
+		log('exposed secret=' + r.headers.get('x-secret'));
+	});
+	/* no Access-Control-Allow-Origin: a network error */
+	await step('refused', async () => { await fetch(T + '?t=3'); log('refused NOT'); });
+	/* "*" : allowed without credentials, refused with them */
+	await step('star', async () => { const r = await fetch(T + '?acao=star&t=4'); log('star ' + r.status); });
+	await step('star cred', async () => {
+		await fetch(T + '?acao=star&t=5', { credentials: 'include' }); log('star cred NOT');
+	});
+	/* credentials: the site's cookie (set by the page's origin: cookies ignore the port), sent
+	 * to the other origin only with credentials: 'include' */
+	await step('cred set', async () => {
+		const r = await fetch('/cors?cookie=1&t=6');
+		log('cred set ' + r.status);
+	});
+	await step('cred send', async () => {
+		const r = await fetch(T + '?acao=origin&acac=1&t=7', { credentials: 'include' });
+		log('cred send ' + (await r.text()));
+	});
+	await step('cred omit', async () => {
+		const r = await fetch(T + '?acao=origin&t=8');
+		log('cred omit ' + (await r.text()));
+	});
+	await step('cred no acac', async () => {
+		await fetch(T + '?acao=origin&t=9', { credentials: 'include' }); log('cred no acac NOT');
+	});
+	/* a preflight: PUT with a custom header */
+	await step('preflight', async () => {
+		const r = await fetch(T + '?acao=origin&methods=PUT&headers=X-Custom&t=10',
+			{ method: 'PUT', headers: { 'X-Custom': '1' }, body: 'x' });
+		log('preflight ' + r.status + ' ' + (await r.text()));
+	});
+	await step('preflight refused', async () => {
+		await fetch(T + '?acao=origin&t=11', { method: 'PUT', headers: { 'X-Custom': '1' }, body: 'x' });
+		log('preflight refused NOT');
+	});
+	/* a simple POST needs none */
+	await step('simple post', async () => {
+		const r = await fetch(T + '?acao=origin&t=12', { method: 'POST', body: 'a=1',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+		log('simple post ' + (await r.text()));
+	});
+	/* the modes */
+	await step('mode same-origin', async () => { await fetch(T + '?acao=origin&t=13', { mode: 'same-origin' }); log('mode same-origin NOT'); });
+	await step('mode no-cors', async () => {
+		const r = await fetch(T + '?t=14', { mode: 'no-cors' });
+		log('mode no-cors ' + r.type + ' ' + r.status + ' ' + JSON.stringify(await r.text()));
+	});
+	/* same origin: as before, every header */
+	await step('same', async () => {
+		const r = await fetch('/cors?t=15');
+		log('same ' + r.status + ' ' + r.type + ' secret=' + r.headers.get('x-secret'));
+	});
+	/* XHR */
+	log('xhr allowed ' + await xhr(T + '?acao=origin&t=16'));
+	log('xhr refused ' + await xhr(T + '?t=17'));
+	log('xhr cred ' + await xhr(T + '?acao=origin&acac=1&t=18', true));
+	log('cors done');
+})();
+</script>
+</body></html>

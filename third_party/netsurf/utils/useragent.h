@@ -20,6 +20,8 @@
 #ifndef _NETSURF_UTILS_USERAGENT_H_
 #define _NETSURF_UTILS_USERAGENT_H_
 
+#include <stdbool.h>
+
 /** Retrieve the core user agent for this release.
  *
  * The string returned can be relied upon to exist for the duration of
@@ -33,5 +35,18 @@ const char * user_agent_string(void);
  * is to be considered invalid.
  */
 void free_user_agent_string(void);
+
+/**
+ * Onyx: the User-Agent for a host -- a desktop Chrome's for the sites the user asked the
+ * desktop version of (the toolbar's "Desktop site"), the default one (a mobile Chrome's)
+ * for the others.
+ */
+const char *user_agent_for_host(const char *host);
+
+/** Onyx: whether a host's site gets the desktop version */
+bool user_agent_is_desktop(const char *host);
+
+/** Onyx: the desktop version for a host's site, or not (the list kept on the card) */
+void user_agent_set_desktop(const char *host, bool desktop);
 
 #endif

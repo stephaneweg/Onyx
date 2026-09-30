@@ -105,6 +105,13 @@ struct fetch {
 static struct fetch *fetch_ring = NULL;	/**< Ring of active fetches. */
 static struct fetch *queue_ring = NULL;	/**< Ring of queued fetches */
 
+/* Onyx: a host the Onyx fetcher reaches over HTTP/2 (onyx_fetch.c) takes more fetches at
+ * once than max_fetchers_per_host, and they do not count in max_fetchers: its requests are
+ * streams multiplexed on one connection, not connections (Chrome: 100 streams and more) */
+bool onyx_fetch_multiplexed(lwc_string *host);
+#define ONYX_MUX_PER_HOST 32
+#define ONYX_MUX_ALL 64
+
 /******************************************************************************
  * fetch internals							      *
  ******************************************************************************/
@@ -170,7 +177,7 @@ static bool fetch_dispatch_job(struct fetch *fetch)
  * We don't check the overall dispatch size here because we're not called unless
  * there is room in the fetch queue for us.
  */
-static bool fetch_choose_and_dispatch(void)
+static bool fetch_choose_and_dispatch(int all_active, int plain_active)
 {
 	bool same_host;
 	struct fetch *queueitem;
@@ -180,9 +187,13 @@ static bool fetch_choose_and_dispatch(void)
 		 * fetch ring
 		 */
 		int countbyhost;
+		bool mux = queueitem->host != NULL &&
+			onyx_fetch_multiplexed(queueitem->host);	/* Onyx */
 		RING_COUNTBYLWCHOST(struct fetch, fetch_ring, countbyhost,
 				    queueitem->host);
-		if (countbyhost < nsoption_int(max_fetchers_per_host)) {
+		if (mux ? countbyhost < ONYX_MUX_PER_HOST && all_active < ONYX_MUX_ALL :
+		    countbyhost < nsoption_int(max_fetchers_per_host) &&
+		    plain_active < nsoption_int(max_fetchers)) {
 			/* We can dispatch this item in theory */
 			return fetch_dispatch_job(queueitem);
 		}
@@ -242,15 +253,27 @@ static bool fetch_dispatch_jobs(void)
 	      all_active);
 	dump_rings();
 
-	while ((all_queued != 0) &&
-	       (all_active < nsoption_int(max_fetchers)) &&
-	       fetch_choose_and_dispatch()) {
-			all_queued--;
-			all_active++;
-			NSLOG(fetch, DEBUG,
-			      "%d queued, %d fetching",
-			      all_queued,
-			      all_active);
+	/* Onyx: the fetches not multiplexed (HTTP/2) are limited by max_fetchers */
+	for (;;) {
+		int plain_active = 0;
+		struct fetch *f = fetch_ring;
+		if (f != NULL) {
+			do {
+				if (f->host == NULL ||
+				    !onyx_fetch_multiplexed(f->host))
+					plain_active++;
+				f = f->r_next;
+			} while (f != fetch_ring);
+		}
+		if (all_queued == 0 || all_active >= ONYX_MUX_ALL ||
+		    !fetch_choose_and_dispatch(all_active, plain_active))
+			break;
+		all_queued--;
+		all_active++;
+		NSLOG(fetch, DEBUG,
+		      "%d queued, %d fetching",
+		      all_queued,
+		      all_active);
 	}
 
 	NSLOG(fetch, DEBUG, "Fetch ring is now %d elements.", all_active);

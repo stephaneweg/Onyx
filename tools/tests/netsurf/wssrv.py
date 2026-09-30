@@ -10,6 +10,11 @@
 #   /sse404      an event stream refused (404: no reconnection)
 #   /chunks      a chunked text/plain in five parts 150 ms apart (streamed fetch, XHR progress)
 #   POST *       the body sent back
+#   /cors?...    a cross-origin target (any method, OPTIONS the preflight): acao=origin|star (its
+#                Access-Control-Allow-Origin: the request's Origin, "*"; none without), acac=1
+#                (Allow-Credentials: true), expose=<h>, methods=<m>, headers=<h> (Allow-Methods /
+#                -Headers), cookie=1 (a Set-Cookie); the body: "cors <method> cookie=<Cookie>";
+#                an X-Secret header always; logged "CORS <method> path cookie= origin= acrm= acrh="
 # Logs each request ("REQ path cookie= origin= last-event-id= protocol=") and each WebSocket
 # message ("WS got text|binary n"), each close ("WS close code").
 import base64, hashlib, http.server, os, socketserver, struct, sys, threading, time, zlib
@@ -125,8 +130,45 @@ class H(http.server.BaseHTTPRequestHandler):
         self.wfile.flush()
         return WS(self.connection, self.rfile, deflate)
 
+    def cors(self):
+        import urllib.parse
+        q = dict(urllib.parse.parse_qsl(self.path.partition('?')[2]))
+        n = int(self.headers.get('Content-Length') or 0)
+        if n:
+            self.rfile.read(n)
+        log('CORS', self.command, self.path, 'cookie=%s' % self.headers.get('Cookie'),
+            'origin=%s' % self.headers.get('Origin'),
+            'acrm=%s' % self.headers.get('Access-Control-Request-Method'),
+            'acrh=%s' % self.headers.get('Access-Control-Request-Headers'))
+        body = ('cors %s cookie=%s' % (self.command, self.headers.get('Cookie'))).encode()
+        self.send_response(204 if self.command == 'OPTIONS' else 200)
+        if q.get('acao') == 'origin':
+            self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin') or 'null')
+        elif q.get('acao') == 'star':
+            self.send_header('Access-Control-Allow-Origin', '*')
+        if q.get('acac'):
+            self.send_header('Access-Control-Allow-Credentials', 'true')
+        for k, h in (('expose', 'Expose-Headers'), ('methods', 'Allow-Methods'), ('headers', 'Allow-Headers')):
+            if q.get(k):
+                self.send_header('Access-Control-' + h, q[k])
+        if q.get('cookie') and self.command != 'OPTIONS':
+            self.send_header('Set-Cookie', 'corscookie=yes; Path=/')
+        self.send_header('X-Secret', 'hidden')
+        self.send_header('Content-Type', 'text/plain')
+        if self.command == 'OPTIONS':
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_OPTIONS = do_PUT = cors
+
     def do_GET(self):
         path = self.path.split('?')[0]
+        if path == '/cors':
+            return self.cors()
         log('REQ', self.path, 'cookie=%s' % self.headers.get('Cookie'),
             'origin=%s' % self.headers.get('Origin'),
             'last-event-id=%s' % self.headers.get('Last-Event-ID'),
@@ -247,6 +289,8 @@ class H(http.server.BaseHTTPRequestHandler):
 
 
     def do_POST(self):
+        if self.path.startswith('/cors'):
+            return self.cors()
         n = int(self.headers.get('Content-Length') or 0)
         body = self.rfile.read(n) if n else b''
         log('POST', self.path, len(body), body[:40].decode(errors='replace'))

@@ -256,6 +256,11 @@ typedef struct html_content {
 
 	/** Onyx: while the boxes are built again, the old boxes' objects to take over */
 	struct content_html_object *rebox_objects;
+	/** Onyx: rebox_objects indexed by their URL's hash (html_fetch_object: a page of
+	 * thousands of images searched the whole list for each new box) -- rebox_all: the
+	 * objects, rebox_index: rebox_mask + 1 buckets chained by rebox_hnext */
+	struct content_html_object **rebox_all, **rebox_index;
+	unsigned int rebox_count, rebox_mask;
 
 	/** Onyx: events dispatched to the scripts whose callers hold boxes: no rebox now */
 	int script_hold;
@@ -441,8 +446,8 @@ bool html_script_focus_control(html_content *htmlc, struct dom_node *node);
  */
 struct box **html_hit_path(html_content *html, int x, int y, int *n);
 
-/** Onyx: scroll what is under a point (html.c; the scrolling keys) */
-bool html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry);
+/** Onyx: scroll what is under a point, no wheel event (html.c; the scrolling keys) */
+bool html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry);
 
 
 /* in html/redraw.c */
@@ -527,5 +532,13 @@ extern struct dom_string *html_dom_string_polygon;
 extern struct dom_string *html_dom_string_text_javascript;
 extern struct dom_string *html_dom_string_type;
 extern struct dom_string *html_dom_string_src;
+
+/**
+ * Onyx -- GPU compositing: box's effects (its transform, its opacity) changed and nothing else
+ * (its style already the new one): when the frontend retains its layer, that layer is
+ * composited again, nothing painted -> true (an animation's frame, a hover: composite-only);
+ * false: redraw its rectangles as ever.
+ */
+bool html_redraw_layer_update(const html_content *html, struct box *box);
 
 #endif

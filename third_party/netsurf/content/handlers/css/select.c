@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <string.h>
 #include <strings.h>
+#include <stdint.h>
 
 #include "utils/nsoption.h"
 #include "utils/corestrings.h"
@@ -84,6 +85,7 @@ static css_error node_count_siblings(void *pw, void *node,
 static css_error node_is_empty(void *pw, void *node, bool *match);
 static css_error node_is_link(void *pw, void *node, bool *match);
 static css_error node_is_hover(void *pw, void *node, bool *match);
+static css_error node_onyx_state(void *pw, void *node, lwc_string *state, bool *match);
 static css_error node_is_active(void *pw, void *node, bool *match);
 static css_error node_is_focus(void *pw, void *node, bool *match);
 static css_error node_is_enabled(void *pw, void *node, bool *match);
@@ -141,7 +143,63 @@ static css_select_handler selection_handler = {
 	ua_default_for_property,
 	set_libcss_node_data,
 	get_libcss_node_data,
+	NULL,			/* (Onyx: onyx_node_is_scope_host, onyx_host_pw: none) */
+	NULL,
+	node_onyx_state,	/* (Onyx: :popover-open, :modal) */
 };
+
+/* Onyx: the states only the scripts know (nscss_node_state_set): the node's user data under
+ * this key, a mask of NSCSS_STATE_* */
+#define ONYX_SLEN(s) (sizeof(s) - 1)
+
+static dom_string *nscss_state_key(void)
+{
+	static dom_string *key = NULL;
+
+	if (key == NULL)
+		dom_string_create((const uint8_t *) "__ns_onyx_state",
+				ONYX_SLEN("__ns_onyx_state"), &key);
+	return key;
+}
+
+/* exported function documented in css/select.h (Onyx) */
+void nscss_node_state_set(struct dom_node *n, unsigned int state, bool on)
+{
+	dom_string *key = nscss_state_key();
+	void *old = NULL;
+	uintptr_t bits = 0;
+
+	if (key == NULL || n == NULL)
+		return;
+	if (dom_node_get_user_data(n, key, &old) == DOM_NO_ERR)
+		bits = (uintptr_t) old;
+	bits = on ? (bits | state) : (bits & ~(uintptr_t) state);
+	dom_node_set_user_data(n, key, (void *) bits, NULL, &old);
+}
+
+/** Onyx: css_select_handler's onyx_node_state */
+static css_error node_onyx_state(void *pw, void *node, lwc_string *state, bool *match)
+{
+	dom_string *key = nscss_state_key();
+	void *bits = NULL;
+	unsigned int want;
+
+	(void) pw;
+	*match = false;
+	if (key == NULL)
+		return CSS_OK;
+	if (lwc_string_length(state) == ONYX_SLEN("popover-open") &&
+	    memcmp(lwc_string_data(state), "popover-open", ONYX_SLEN("popover-open")) == 0)
+		want = NSCSS_STATE_POPOVER_OPEN;
+	else if (lwc_string_length(state) == ONYX_SLEN("modal") &&
+		 memcmp(lwc_string_data(state), "modal", ONYX_SLEN("modal")) == 0)
+		want = NSCSS_STATE_MODAL;
+	else
+		return CSS_OK;
+	if (dom_node_get_user_data(node, key, &bits) == DOM_NO_ERR)
+		*match = ((uintptr_t) bits & want) != 0;
+	return CSS_OK;
+}
 
 /**
  * Create an inline style
@@ -177,6 +235,47 @@ bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *
 	if ((error == CSS_OK || error == CSS_NEEDDATA) &&
 	    css_stylesheet_data_done(sheet) == CSS_OK &&
 	    css_stylesheet_onyx_kept(sheet, rules, decl_words) == CSS_OK)
+		ok = true;
+	css_stylesheet_destroy(sheet);
+	return ok;
+}
+
+/* exported function documented in css/select.h (Onyx) */
+bool nscss_media_match(css_select_ctx *sctx, const css_media *media,
+		const css_unit_ctx *unit_ctx, const char *query, size_t len, bool *match,
+		uint32_t *n_queries, uint32_t *invalid)
+{
+	static const char pre[] = "@media ", post[] = " { a { color: red } }";
+	css_stylesheet_params params;
+	static css_select_ctx *own = NULL;	/* (before the page's: its strings only) */
+	css_stylesheet *sheet;
+	css_error error;
+	bool ok = false;
+
+	if (sctx == NULL) {
+		if (own == NULL && css_select_ctx_create(&own) != CSS_OK)
+			return false;
+		sctx = own;
+	}
+	memset(&params, 0, sizeof params);
+	params.params_version = CSS_STYLESHEET_PARAMS_VERSION_1;
+	params.level = CSS_LEVEL_DEFAULT;
+	params.charset = "UTF-8";
+	params.url = "about:blank";
+	params.resolve = nscss_resolve_url;
+	params.color = ns_system_colour;
+	if (css_stylesheet_create(&params, &sheet) != CSS_OK)
+		return false;
+	error = css_stylesheet_append_data(sheet, (const uint8_t *) pre, sizeof pre - 1);
+	if (error == CSS_OK || error == CSS_NEEDDATA)
+		error = css_stylesheet_append_data(sheet, (const uint8_t *) query, len);
+	if (error == CSS_OK || error == CSS_NEEDDATA)
+		error = css_stylesheet_append_data(sheet, (const uint8_t *) post,
+				sizeof post - 1);
+	if ((error == CSS_OK || error == CSS_NEEDDATA) &&
+	    css_stylesheet_data_done(sheet) == CSS_OK &&
+	    css_select_onyx_media_match(sctx, sheet, unit_ctx, media, match, n_queries,
+			invalid) == CSS_OK)
 		ok = true;
 	css_stylesheet_destroy(sheet);
 	return ok;
@@ -2060,6 +2159,14 @@ static void *s_onyx_host_pw(void *pw)
 	return ((nscss_select_ctx *) pw)->host_ctx;
 }
 
+static css_error s_node_onyx_state(void *pw, void *node, lwc_string *state, bool *match)
+{
+	*match = false;
+	if (ONYX_FL(pw, node))
+		return CSS_OK;
+	return node_onyx_state(pw, node, state, match);
+}
+
 static css_select_handler onyx_scoped_handler = {
 	CSS_SELECT_HANDLER_VERSION_1,
 
@@ -2101,4 +2208,5 @@ static css_select_handler onyx_scoped_handler = {
 	get_libcss_node_data,
 	s_onyx_node_is_scope_host,
 	s_onyx_host_pw,
+	s_node_onyx_state,
 };

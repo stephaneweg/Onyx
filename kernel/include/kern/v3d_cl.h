@@ -441,6 +441,12 @@ struct LoadTileBufferGeneral : CLPacket
     u16 force_alpha_1 : 1;
     u16 channel_reverse : 1;
     u16 r_b_swap : 1;
+    // Onyx: the u16's last 3 bits (bits 21..23 of the packet). Without them the packed
+    // bit-fields that follow started at bit 21, not 24: the stride was written at bit 25
+    // instead of 28 and the GPU read it divided by 8 -- the target loaded for a frame drawn
+    // over its pixels (KAPI_GPU_F_KEEP) came from the wrong rows (seen on the Pi, gpcdemo
+    // test "over the target's pixels"). tools/tests/v3d/cl_test.cpp checks the layout.
+    UNUSED_BITS(u16, 3);
 
     UNUSED_BITS(u32, 4);
     u32 height_in_ub_or_stride : 20;
@@ -931,5 +937,21 @@ enum V3D41_Dither_Mode
     V3D_DITHER_MODE_A = 2,
     V3D_DITHER_MODE_RGBA = 3,
 };
+
+// Onyx: the render target's load and store, as the kernel's rendering list has them (sys/v3d.cpp
+// BuildRCL) -- raster RGBA8, nStrideBytes a row at nBus; direct (a canvas: memory 0x00RRGGBB)
+// R and B swapped; a load forces alpha 1 unless the target's top byte is its alpha. The PC's
+// software V3D decodes these same bytes (tools/tests/gpucomp/hostkapi.cpp).
+static inline LoadTileBufferGeneral V3dLoadTarget (bool bDirect, bool bAlpha, u32 nStrideBytes, u32 nBus)
+{
+    return LoadTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DECIMATE_MODE_SAMPLE_0,
+                                  V3D_OUTPUT_IMAGE_FORMAT_RGBA8, !bDirect && !bAlpha, false, bDirect, nStrideBytes, 0, nBus);
+}
+static inline StoreTileBufferGeneral V3dStoreTarget (bool bDirect, u32 nStrideBytes, u32 nBus)
+{
+    return StoreTileBufferGeneral (BUFFER_RENDER_TARGET_0, V3D_TILING_RASTER, false, V3D_DITHER_MODE_NONE,
+                                   V3D_DECIMATE_MODE_SAMPLE_0, V3D_OUTPUT_IMAGE_FORMAT_RGBA8, false, false, bDirect,
+                                   nStrideBytes, 0, nBus);
+}
 
 #endif

@@ -22,6 +22,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
+#include <math.h>
 
 #include <libnsfb.h>
 #include <libnsfb_plot.h>
@@ -42,6 +44,7 @@
 #include "netsurf/onyx_paint.h"	/* Onyx: CSS3 painting */
 #include "framebuffer/onyx_paint.h"
 #include "framebuffer/bitmap.h"
+#include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing */
 
 /* netsurf framebuffer library handle */
 static nsfb_t *nsfb;
@@ -95,6 +98,28 @@ static inline bool fb_invisible(colour c)
 }
 
 /**
+ * Onyx: what a plot operation may touch, told to the compositor while it paints its band
+ * (a retained layer painted before it and under it: painted in place instead). Within the
+ * plot clip.
+ */
+static void fb_note(int x0, int y0, int x1, int y1)
+{
+	nsfb_bbox_t c;
+
+	if (!onyx_comp_noting)
+		return;
+	if (nsfb_plot_get_clip(nsfb, &c)) {
+		if (x0 < c.x0) x0 = c.x0;
+		if (y0 < c.y0) y0 = c.y0;
+		if (x1 > c.x1) x1 = c.x1;
+		if (y1 > c.y1) y1 = c.y1;
+	}
+	if (x0 < x1 && y0 < y1)
+		onyx_comp_note(nsfb, x0, y0, x1, y1);
+}
+#define FB_NOTE_ALL() fb_note(INT_MIN / 2, INT_MIN / 2, INT_MAX / 2, INT_MAX / 2)
+
+/**
  * Plots an arc
  *
  * plot an arc segment around (x,y), anticlockwise from angle1
@@ -117,6 +142,7 @@ framebuffer_plot_arc(const struct redraw_context *ctx,
 {
 	if (fb_invisible(style->fill_colour))
 		return NSERROR_OK;
+	fb_note(x - radius - 1, y - radius - 1, x + radius + 2, y + radius + 2);
 	if (!nsfb_plot_arc(nsfb, x, y, radius, angle1, angle2, fb_col(style->fill_colour))) {
 		return NSERROR_INVALID;
 	}
@@ -146,6 +172,7 @@ framebuffer_plot_disc(const struct redraw_context *ctx,
 	ellipse.y0 = y - radius;
 	ellipse.x1 = x + radius;
 	ellipse.y1 = y + radius;
+	fb_note(x - radius - 1, y - radius - 1, x + radius + 2, y + radius + 2);
 
 	if (style->fill_type != PLOT_OP_TYPE_NONE && !fb_invisible(style->fill_colour)) {
 		nsfb_plot_ellipse_fill(nsfb, &ellipse, fb_col(style->fill_colour));
@@ -198,6 +225,13 @@ framebuffer_plot_line(const struct redraw_context *ctx,
 
 		pen.stroke_colour = fb_col(style->stroke_colour);
 		pen.stroke_width = plot_style_fixed_to_int(style->stroke_width);
+		{
+			int e = pen.stroke_width + 1;
+			fb_note((rect.x0 < rect.x1 ? rect.x0 : rect.x1) - e,
+				(rect.y0 < rect.y1 ? rect.y0 : rect.y1) - e,
+				(rect.x0 > rect.x1 ? rect.x0 : rect.x1) + e + 1,
+				(rect.y0 > rect.y1 ? rect.y0 : rect.y1) + e + 1);
+		}
 		nsfb_plot_line(nsfb, &rect, &pen);
 	}
 
@@ -233,6 +267,7 @@ framebuffer_plot_rectangle(const struct redraw_context *ctx,
 	rect.y1 = nsrect->y1;
 
 	if (style->fill_type != PLOT_OP_TYPE_NONE && !fb_invisible(style->fill_colour)) {
+		fb_note(rect.x0, rect.y0, rect.x1, rect.y1);
 		nsfb_plot_rectangle_fill(nsfb, &rect, fb_col(style->fill_colour));
 	}
 
@@ -246,6 +281,10 @@ framebuffer_plot_rectangle(const struct redraw_context *ctx,
 			dashed = true;
 		}
 
+		{
+			int e = plot_style_fixed_to_int(style->stroke_width) + 1;
+			fb_note(rect.x0 - e, rect.y0 - e, rect.x1 + e, rect.y1 + e);
+		}
 		nsfb_plot_rectangle(nsfb, &rect,
 				plot_style_fixed_to_int(style->stroke_width),
 				fb_col(style->stroke_colour), dotted, dashed);
@@ -276,6 +315,16 @@ framebuffer_plot_polygon(const struct redraw_context *ctx,
 {
 	if (fb_invisible(style->fill_colour))
 		return NSERROR_OK;
+	if (onyx_comp_noting && n > 0) {
+		int x0 = p[0], y0 = p[1], x1 = p[0], y1 = p[1];
+		for (unsigned int i = 1; i < n; i++) {
+			if (p[2 * i] < x0) x0 = p[2 * i];
+			if (p[2 * i] > x1) x1 = p[2 * i];
+			if (p[2 * i + 1] < y0) y0 = p[2 * i + 1];
+			if (p[2 * i + 1] > y1) y1 = p[2 * i + 1];
+		}
+		fb_note(x0 - 1, y0 - 1, x1 + 2, y1 + 2);
+	}
 	if (!nsfb_plot_polygon(nsfb, p, n, fb_col(style->fill_colour))) {
 		return NSERROR_INVALID;
 	}
@@ -365,6 +414,7 @@ framebuffer_plot_bitmap(const struct redraw_context *ctx,
 		loc.x1 = loc.x0 + width;
 		loc.y1 = loc.y0 + height;
 
+		fb_note(loc.x0, loc.y0, loc.x1, loc.y1);
 		if (!nsfb_plot_copy(bm, NULL, nsfb, &loc)) {
 			return NSERROR_INVALID;
 		}
@@ -372,6 +422,7 @@ framebuffer_plot_bitmap(const struct redraw_context *ctx,
 	}
 
 	nsfb_plot_get_clip(nsfb, &clipbox);
+	FB_NOTE_ALL();	/* (tiled: to the clip) */
 	nsfb_get_geometry(bm, &bmwidth, &bmheight, &bmformat);
 	nsfb_get_buffer(bm, &bmptr, &bmstride);
 
@@ -461,6 +512,7 @@ static void framebuffer_plot_glyph(void *pw, FT_Glyph glyph, int x)
 	loc.y0 = pen->y - bglyph->top;
 	loc.x1 = loc.x0 + bglyph->bitmap.width;
 	loc.y1 = loc.y0 + bglyph->bitmap.rows;
+	fb_note(loc.x0, loc.y0, loc.x1, loc.y1);
 
 	/* now, draw to our target surface */
 	if (bglyph->bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
@@ -566,6 +618,12 @@ static nserror
 framebuffer_onyx_shape(const struct redraw_context *ctx,
 		const struct onyx_shape *shape)
 {
+	if (onyx_comp_noting) {
+		/* (its outer box, and its shadow's blur) */
+		float e = shape->blur * 1.5f + 2;
+		fb_note((int) floorf(shape->outer.x0 - e), (int) floorf(shape->outer.y0 - e),
+			(int) ceilf(shape->outer.x1 + e), (int) ceilf(shape->outer.y1 + e));
+	}
 	onyx_fb_shape(nsfb, shape);
 	return NSERROR_OK;
 }
@@ -597,6 +655,7 @@ static void framebuffer_paint_glyph(void *pw, FT_Glyph glyph, int x)
 	loc.y0 = brush->y - bglyph->top;
 	loc.x1 = loc.x0 + bglyph->bitmap.width;
 	loc.y1 = loc.y0 + bglyph->bitmap.rows;
+	fb_note(loc.x0, loc.y0, loc.x1, loc.y1);
 	onyx_fb_glyph(nsfb, &loc, bglyph->bitmap.buffer, bglyph->bitmap.pitch,
 			bglyph->bitmap.pixel_mode == FT_PIXEL_MODE_MONO,
 			brush->paint);

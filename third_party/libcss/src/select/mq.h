@@ -9,6 +9,9 @@
 #ifndef css_select_mq_h_
 #define css_select_mq_h_
 
+#include <string.h>
+#include <strings.h>
+
 #include "select/helpers.h"
 #include "select/strings.h"
 #include "select/unit.h"
@@ -21,6 +24,9 @@ static inline bool mq_match_feature_range_length_op1(
 {
 	css_fixed v;
 
+	if (op == CSS_MQ_FEATURE_OP_BOOL) {
+		return client_len != 0;		/* (Onyx: "(width)") */
+	}
 	if (value->type != CSS_MQ_VALUE_TYPE_DIM) {
 		return false;
 	}
@@ -34,7 +40,6 @@ static inline bool mq_match_feature_range_length_op1(
 	}
 
 	switch (op) {
-	case CSS_MQ_FEATURE_OP_BOOL: return false;
 	case CSS_MQ_FEATURE_OP_LT:   return v <  client_len;
 	case CSS_MQ_FEATURE_OP_LTE:  return v <= client_len;
 	case CSS_MQ_FEATURE_OP_EQ:   return v == client_len;
@@ -104,6 +109,154 @@ static inline bool mq_match_feature_eq_ident_op1(
 	}
 }
 
+/* ---- Onyx: the other media features of Media Queries 4 / 5 -------------------------------
+ * libcss answered width, height and prefers-color-scheme only; every other feature never
+ * matched ("(orientation: landscape)", "(hover: hover)", "(aspect-ratio > 1)", "(color)"...).
+ * NetSurf on Onyx: a screen media->width x media->height, a CSS px a device pixel, 8 bits a
+ * colour, a mouse, the user's preferences left at their defaults. */
+
+static inline bool mq_onyx_is(const lwc_string *s, const char *name)
+{
+	size_t len = strlen(name);
+	return lwc_string_length(s) == len &&
+			strncasecmp(lwc_string_data(s), name, len) == 0;
+}
+
+/* a <number> / <ratio> / resolution value against the client's: "v op client" for the first
+ * operator (first true), "client op v" for the second */
+static inline bool mq_onyx_cmp(css_mq_feature_op op, css_fixed v, css_fixed client,
+		bool first)
+{
+	css_fixed a = first ? v : client, b = first ? client : v;
+
+	switch (op) {
+	case CSS_MQ_FEATURE_OP_BOOL:	/* (== OP_UNUSED: the second operator's none) */
+		return first ? client != 0 : true;
+	case CSS_MQ_FEATURE_OP_LT:     return a <  b;
+	case CSS_MQ_FEATURE_OP_LTE:    return a <= b;
+	case CSS_MQ_FEATURE_OP_EQ:     return a == b;
+	case CSS_MQ_FEATURE_OP_GTE:    return a >= b;
+	case CSS_MQ_FEATURE_OP_GT:     return a >  b;
+	default:                       return false;
+	}
+}
+
+/* a value as a number (resolution: in dppx), or false */
+static inline bool mq_onyx_value(const css_mq_value *value, bool resolution, css_fixed *v)
+{
+	if (value->type == CSS_MQ_VALUE_TYPE_NUM ||
+			value->type == CSS_MQ_VALUE_TYPE_RATIO) {
+		if (resolution)
+			return false;
+		*v = value->data.num_or_ratio;
+		return true;
+	}
+	if (value->type == CSS_MQ_VALUE_TYPE_DIM && resolution) {
+		switch (value->data.dim.unit) {
+		case UNIT_DPPX: *v = value->data.dim.len; return true;
+		case UNIT_DPI:  *v = FDIV(value->data.dim.len, INTTOFIX(96)); return true;
+		case UNIT_DPCM: *v = FDIV(FMUL(value->data.dim.len, FLTTOFIX(2.54)),
+					INTTOFIX(96)); return true;
+		default: return false;
+		}
+	}
+	return false;
+}
+
+static inline bool mq_onyx_range(const css_mq_feature *feat, css_fixed client, bool resolution)
+{
+	css_fixed v = 0, v2 = 0;
+
+	if (feat->op == CSS_MQ_FEATURE_OP_BOOL)
+		return client != 0;
+	if (!mq_onyx_value(&feat->value, resolution, &v))
+		return false;
+	if (!mq_onyx_cmp(feat->op, v, client, true))
+		return false;
+	if (feat->op2 == CSS_MQ_FEATURE_OP_UNUSED)
+		return true;
+	if (!mq_onyx_value(&feat->value2, resolution, &v2))
+		return false;
+	return mq_onyx_cmp(feat->op2, v2, client, false);
+}
+
+/* a discrete feature: its value is the client's (a bare "(name)": the client's is not the
+ * "none" one) */
+static inline bool mq_onyx_discrete(const css_mq_feature *feat, const char *client,
+		bool bool_value)
+{
+	if (feat->op == CSS_MQ_FEATURE_OP_BOOL)
+		return bool_value;
+	return feat->op == CSS_MQ_FEATURE_OP_EQ &&
+			feat->value.type == CSS_MQ_VALUE_TYPE_IDENT &&
+			feat->value.data.ident != NULL &&
+			mq_onyx_is(feat->value.data.ident, client);
+}
+
+static inline bool mq_onyx_match_feature(const css_mq_feature *feat,
+		const css_unit_ctx *unit_ctx, const css_media *media, bool *known)
+{
+	static const struct { const char *name, *client; bool b; } discrete[] = {
+		{ "hover", "hover", true }, { "any-hover", "hover", true },
+		{ "pointer", "fine", true }, { "any-pointer", "fine", true },
+		{ "prefers-reduced-motion", "no-preference", false },
+		{ "prefers-reduced-transparency", "no-preference", false },
+		{ "prefers-reduced-data", "no-preference", false },
+		{ "prefers-contrast", "no-preference", false },
+		{ "forced-colors", "none", false }, { "inverted-colors", "none", false },
+		{ "display-mode", "browser", true }, { "scripting", "enabled", true },
+		{ "update", "fast", true }, { "color-gamut", "srgb", true },
+		{ "dynamic-range", "standard", true },
+		{ "video-dynamic-range", "standard", true },
+		{ "overflow-block", "scroll", true }, { "overflow-inline", "scroll", true },
+	};
+	const lwc_string *n = feat->name;
+	size_t i;
+
+	*known = true;
+	if (mq_onyx_is(n, "device-width"))
+		return mq_match_feature_range_length_op1(feat->op, &feat->value,
+				media->width, unit_ctx) &&
+			mq_match_feature_range_length_op2(feat->op2, &feat->value2,
+				media->width, unit_ctx);
+	if (mq_onyx_is(n, "device-height"))
+		return mq_match_feature_range_length_op1(feat->op, &feat->value,
+				media->height, unit_ctx) &&
+			mq_match_feature_range_length_op2(feat->op2, &feat->value2,
+				media->height, unit_ctx);
+	if (mq_onyx_is(n, "aspect-ratio") || mq_onyx_is(n, "device-aspect-ratio")) {
+		if (media->height <= 0)
+			return false;
+		return mq_onyx_range(feat, FDIV(media->width, media->height), false);
+	}
+	if (mq_onyx_is(n, "orientation"))
+		return mq_onyx_discrete(feat, media->height >= media->width ?
+				"portrait" : "landscape", true);
+	if (mq_onyx_is(n, "resolution"))
+		return mq_onyx_range(feat, INTTOFIX(1), true);
+	if (mq_onyx_is(n, "-webkit-device-pixel-ratio"))
+		return mq_onyx_range(feat, INTTOFIX(1), false);
+	if (mq_onyx_is(n, "-webkit-min-device-pixel-ratio") ||
+			mq_onyx_is(n, "-webkit-max-device-pixel-ratio")) {
+		css_fixed v;
+		if (feat->op != CSS_MQ_FEATURE_OP_EQ ||
+				!mq_onyx_value(&feat->value, false, &v))
+			return false;
+		return lwc_string_data(n)[8] == 'm' && lwc_string_data(n)[9] == 'i' ?
+				INTTOFIX(1) >= v : INTTOFIX(1) <= v;
+	}
+	if (mq_onyx_is(n, "color"))
+		return mq_onyx_range(feat, INTTOFIX(8), false);
+	if (mq_onyx_is(n, "color-index") || mq_onyx_is(n, "monochrome") ||
+			mq_onyx_is(n, "grid"))
+		return mq_onyx_range(feat, 0, false);
+	for (i = 0; i < sizeof discrete / sizeof discrete[0]; i++)
+		if (mq_onyx_is(n, discrete[i].name))
+			return mq_onyx_discrete(feat, discrete[i].client, discrete[i].b);
+	*known = false;
+	return false;
+}
+
 /**
  * Match media query features.
  *
@@ -112,7 +265,7 @@ static inline bool mq_match_feature_eq_ident_op1(
  * \param[in] media     Current media spec, to check against feat.
  * \return true if condition matches, otherwise false.
  */
-static inline bool mq_match_feature(
+static inline int mq_match_feature(
 		const css_mq_feature *feat,
 		const css_unit_ctx *unit_ctx,
 		const css_media *media,
@@ -154,9 +307,12 @@ static inline bool mq_match_feature(
 		return false;
 	}
 
-	/* TODO: Look at other feature names. */
-
-	return false;
+	/* Onyx: the other feature names; -1 for a feature libcss does not know (unknown: Media
+	 * Queries 4's three-valued logic -- "not (bogus)" is not true) */
+	{
+		bool known, r = mq_onyx_match_feature(feat, unit_ctx, media, &known);
+		return known ? r : -1;
+	}
 }
 
 /**
@@ -167,16 +323,17 @@ static inline bool mq_match_feature(
  * \param[in] media     Current media spec, to check against cond.
  * \return true if condition matches, otherwise false.
  */
-static inline bool mq_match_condition(
+static inline int mq_match_condition(
 		const css_mq_cond *cond,
 		const css_unit_ctx *unit_ctx,
 		const css_media *media,
 		const css_select_strings *str)
 {
 	bool matched = !cond->op;
+	bool unknown = false;	/* (Onyx: a part unknown, -1 -- Kleene's logic) */
 
 	for (uint32_t i = 0; i < cond->nparts; i++) {
-		bool part_matched;
+		int part_matched;
 		if (cond->parts[i]->type == CSS_MQ_FEATURE) {
 			part_matched = mq_match_feature(
 					cond->parts[i]->data.feat,
@@ -188,21 +345,29 @@ static inline bool mq_match_condition(
 					unit_ctx, media, str);
 		}
 
+		if (part_matched < 0) {
+			unknown = true;
+			continue;
+		}
 		if (cond->op) {
 			/* OR */
 			matched |= part_matched;
 			if (matched) {
+				unknown = false;
 				break; /* Short-circuit */
 			}
 		} else {
 			/* AND */
 			matched &= part_matched;
 			if (!matched) {
+				unknown = false;
 				break; /* Short-circuit */
 			}
 		}
 	}
 
+	if (unknown)
+		return -1;
 	return matched != cond->negate;
 }
 
@@ -228,7 +393,7 @@ static inline bool mq__list_match(
 		if (!!(m->type & media->type) != m->negate_type) {
 			if (m->cond == NULL ||
 					mq_match_condition(m->cond,
-							unit_ctx, media, str)) {
+							unit_ctx, media, str) == 1) {
 				/* We have a match, no need to look further. */
 				return true;
 			}

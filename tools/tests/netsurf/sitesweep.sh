@@ -5,7 +5,8 @@
 #
 #   sh tools/tests/netsurf/sitesweep.sh [url ...]      (default: a list of big sites)
 #
-# WAITS (default 400) ~20 ms turns per site; logs in $OUT/sweep/<site>.log.
+# WAITS (default 400) ~20 ms turns per site, then SCROLLS (default 12) wheel notches down and 4 up
+# (the composited band, docs/06 §25); logs in $OUT/sweep/<site>.log.
 cd "$(dirname "$0")/../../.."
 T=tools/tests/netsurf
 OUT=${OUT:-/tmp/nsbench}
@@ -17,6 +18,8 @@ make -f $T/host.mk OUT="$OUT/build" -j"$(nproc)" >"$OUT/build.log" 2>&1 || { ech
 	https://www.leboncoin.fr/ https://www.yahoo.com/ https://duckduckgo.com/ \
 	https://developer.mozilla.org/fr/ https://translate.google.com/
 W=$(i=0; while [ $i -lt "${WAITS:-400}" ]; do printf 'wait;'; i=$((i + 1)); done)
+W="$W$(i=0; while [ $i -lt "${SCROLLS:-12}" ]; do printf 'wheel 400 500 -1;wait;wait;wait;'; i=$((i + 1)); done)"
+W="$W$(i=0; while [ $i -lt 4 ] && [ "${SCROLLS:-12}" -gt 0 ]; do printf 'wheel 400 500 1;wait;wait;wait;'; i=$((i + 1)); done)wait;wait;"
 crashed=0
 for u in "$@"; do
 	n=$(echo "$u" | sed 's#https\?://##; s#[^a-zA-Z0-9]#_#g' | cut -c1-40)

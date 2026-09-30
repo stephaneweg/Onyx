@@ -194,6 +194,17 @@ details:not([open]) > :not(summary) { display: none; }
 dialog:not([open]) { display: none; }
 dialog { position: absolute; left: 0; right: 0; width: fit-content; height: fit-content;
 	margin: auto; border: solid 2px; padding: 1em; background: white; color: black; }
+/* Onyx: the Popover API (html5.js; :popover-open and :modal answered by NetSurf, css/select.c):
+ * a popover not showing is not rendered; a showing one and a modal dialog as Chrome's UA
+ * sheet has them -- fixed, centred --, over the page (z-index: the top layer's stand-in) */
+[popover]:not(:popover-open):not(dialog[open]) { display: none; }
+[popover] { position: fixed; top: 0; right: 0; bottom: 0; left: 0; width: fit-content;
+	height: fit-content; margin: auto; border: solid; padding: 0.25em; overflow: auto;
+	color: black; background-color: white; z-index: 2147483647; }
+dialog:popover-open { display: block; }
+dialog:modal { position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+	max-width: calc(100% - 6px - 2em); max-height: calc(100% - 6px - 2em); overflow: auto;
+	z-index: 2147483647; }
 rt { font-size: 50%; }
 meter, progress { display: inline-block; vertical-align: -0.2em; width: 10em; height: 1em;
 	background-color: #e6e6e6; border: 1px solid #b5b5b5; box-sizing: border-box; }

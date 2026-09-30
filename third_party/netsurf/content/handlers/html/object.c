@@ -792,20 +792,28 @@ html_fetch_object_ex(html_content *c,
 	/* Onyx: boxes built again (a script changed the DOM): the object the old
 	 * boxes had for this URL taken over -- no fetch, the image there at once */
 	if (box != NULL && c->rebox_objects != NULL) {
-		struct content_html_object **prev;
+		struct content_html_object **prev = &c->rebox_objects;
 
-		for (prev = &c->rebox_objects; (object = *prev) != NULL;
-		     prev = &object->next) {
+		/* (Onyx: through the index of the URLs' hashes if there is one --
+		 * html_rebox_index --, else the list) */
+		object = c->rebox_index != NULL ?
+			c->rebox_index[nsurl_hash(url) & c->rebox_mask] : *prev;
+		for (; object != NULL; object = c->rebox_index != NULL ?
+				object->rebox_hnext : *(prev = &object->next)) {
 			content_status st;
 
 			if (object->content == NULL || object->box == NULL ||
+			    object->rebox_taken ||
 			    object->background != background ||
 			    object->mask != mask ||
 			    object->permitted_types != permitted_types ||
 			    !nsurl_compare(hlcache_handle_get_url(object->content),
 					url, NSURL_COMPLETE))
 				continue;
-			*prev = object->next;
+			if (c->rebox_index != NULL)
+				object->rebox_taken = true;	/* (unlinked after) */
+			else
+				*prev = object->next;
 			object->rebox_old_box = object->box;
 			object->box = box;
 			object->next = c->object_list;

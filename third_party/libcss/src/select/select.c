@@ -2868,6 +2868,13 @@ static bool onyx_match_form_pseudo(css_select_ctx *ctx, void *node,
 	int k;
 
 	*error = CSS_OK;
+	/* :popover-open, :modal: the client knows (its scripts' state) */
+	if (name == o[ONYX_STR_POPOVER_OPEN] || name == o[ONYX_STR_MODAL]) {
+		*match = false;
+		if (h->onyx_node_state != NULL)
+			*error = h->onyx_node_state(state->pw, node, name, match);
+		return true;
+	}
 	if (name == o[ONYX_STR_DEFINED]) {
 		*match = true;
 		return true;
@@ -3622,4 +3629,33 @@ css_error css_select_ctx_onyx_keyframes(const css_select_ctx *ctx, lwc_string *n
 		if (!ctx->sheets[i].sheet->disabled)
 			css__onyx_keyframes_in_sheet(ctx->sheets[i].sheet, name, &found);
 	return css__onyx_keyframes_list(found, out, n);
+}
+
+/* exported function documented in include/libcss/select.h (Onyx) */
+css_error css_select_onyx_media_match(css_select_ctx *ctx, const css_stylesheet *sheet,
+		const css_unit_ctx *unit_ctx, const css_media *media, bool *match,
+		uint32_t *n_queries, uint32_t *invalid)
+{
+	const css_rule *r;
+	const css_mq_query *q;
+	uint32_t i = 0;
+
+	if (ctx == NULL || sheet == NULL || unit_ctx == NULL || media == NULL ||
+			match == NULL || n_queries == NULL || invalid == NULL)
+		return CSS_BADPARM;
+	*match = false;
+	*n_queries = *invalid = 0;
+	for (r = sheet->rule_list; r != NULL && r->type != CSS_RULE_MEDIA; r = r->next)
+		;
+	if (r == NULL)
+		return CSS_OK;
+	q = ((const css_rule_media *) r)->media;
+	*match = mq__list_match(q, unit_ctx, media, &ctx->str);
+	for (; q != NULL; q = q->next, i++) {
+		/* (a query that did not parse: "not all", without a condition) */
+		if (i < 32 && q->negate_type && q->type == CSS_MEDIA_ALL && q->cond == NULL)
+			*invalid |= 1u << i;
+	}
+	*n_queries = i;
+	return CSS_OK;
 }

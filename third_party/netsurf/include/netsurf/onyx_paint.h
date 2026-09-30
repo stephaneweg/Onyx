@@ -170,6 +170,33 @@ struct onyx_layer {
 	 * gives the colours */
 	bool single;
 	struct onyx_rrect opaque;
+	/* Onyx -- GPU compositing (docs/06 §25): a retained layer. The core offers a group the
+	 * frontend can composite itself (an opacity and / or a transform: no filter, no blend
+	 * mode, no backdrop) with onyx_layer_begin (ctx, l, ONYX_LAYER_OFFER): x0..y1 its whole
+	 * rectangle (untransformed), m its matrix, lm the same about its box's origin (ox, oy),
+	 * cx0..cy1 its clip, the opacity, key its box, tree the box tree. NSERROR_OK: the plotter
+	 * keeps the group's pixels between redraws and composites them over what is painted
+	 * under it (nothing of it is painted in place); it sets rx0..ry1, the part of its pixels
+	 * to paint again (target px; empty: they are still good), which the core paints through
+	 * the passes of an isolated group with retain set (the plotter keeps the passes' result
+	 * instead of drawing it); then onyx_layer_end (ctx, l, ONYX_LAYER_OFFER). Any other
+	 * answer: the group is painted as ever. */
+	bool retain;
+	const void *key;
+	const void *tree;
+	float lm[6];
+	float ox, oy;
+	int rx0, ry0, rx1, ry1;
 };
+
+#define ONYX_LAYER_OFFER (-1)	/* (onyx_layer_begin / _end's pass: a retained layer) */
+
+/**
+ * Onyx -- GPU compositing: set by a frontend that retains layers (framebuffer/onyx_comp.c).
+ * A retained layer's matrix about its origin (lm, as onyx_layer's; NULL: none) or its opacity
+ * changed, nothing else: composited again without painting -> true; false: the caller redraws
+ * its rectangles as ever (html_redraw_layer_update, html/private.h).
+ */
+extern bool (*onyx_layer_props)(const void *key, const float *lm, float opacity);
 
 #endif

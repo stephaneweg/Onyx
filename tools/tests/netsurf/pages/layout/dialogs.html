@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body { margin: 0; font: 15px sans-serif; }
+/* Facebook's cookie dialog: a centred popup capped to the viewport, a header and buttons
+   pinned, the middle scrolling (each variant a fixed backdrop, shown one at a time is not
+   needed: they overlap, the boxes are measured) */
+.bd { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+.dlg { display: flex; flex-direction: column; background: #fff; width: 600px; }
+.hd { padding: 12px; font-weight: bold; }
+.mid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.card { height: 300px; margin: 8px; background: #eee; }
+.ft { display: flex; gap: 8px; padding: 12px; }
+.ft div { flex: 1; height: 36px; background: #1877f2; }
+</style></head><body>
+<!-- A: max-height calc(100vh - 80px) -->
+<div class="bd" id="bdA"><div class="dlg" id="dA" style="max-height:calc(100vh - 80px)">
+ <div class="hd" id="hA">Cookies ?</div>
+ <div class="mid" id="mA"><div class="card"></div><div class="card"></div><div class="card"></div></div>
+ <div class="ft" id="fA"><div></div><div></div></div></div></div>
+<!-- B: max-height 90% of the fixed backdrop -->
+<div class="bd" id="bdB"><div class="dlg" id="dB" style="max-height:90%;width:500px">
+ <div class="hd" id="hB">Cookies ?</div>
+ <div class="mid" id="mB"><div class="card"></div><div class="card"></div><div class="card"></div></div>
+ <div class="ft" id="fB"><div></div><div></div></div></div></div>
+<!-- C: height from its insets (absolute, top / bottom) -->
+<div class="bd" id="bdC" style="display:block"><div class="dlg" id="dC" style="position:absolute;top:40px;bottom:40px;left:60px;width:400px">
+ <div class="hd" id="hC">Cookies ?</div>
+ <div class="mid" id="mC"><div class="card"></div><div class="card"></div><div class="card"></div></div>
+ <div class="ft" id="fC"><div></div><div></div></div></div></div>
+<!-- D: a grid, rows auto 1fr auto, max-height -->
+<div class="bd" id="bdD"><div id="dD" style="display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100vh - 100px);width:300px;background:#fff">
+ <div class="hd" id="hD">Cookies ?</div>
+ <div class="mid" id="mD" style="min-height:0"><div class="card"></div><div class="card"></div></div>
+ <div class="ft" id="fD"><div></div><div></div></div></div></div>
+<!-- E: max-height 100dvh with margins, centred by margin: auto in a block backdrop -->
+<div class="bd" id="bdE" style="display:block;overflow:auto"><div class="dlg" id="dE" style="margin:20px auto;max-height:calc(100dvh - 40px);width:200px">
+ <div class="hd" id="hE">Cookies ?</div>
+ <div class="mid" id="mE"><div class="card"></div><div class="card"></div><div class="card"></div></div>
+ <div class="ft" id="fE"><div></div><div></div></div></div></div>
+</body></html>

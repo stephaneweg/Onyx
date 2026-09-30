@@ -37,6 +37,9 @@ NSFB := $(LIBROOT)/libnsfb
 PNG  := $(LIBROOT)/libpng-1.6.44
 JPEG := $(LIBROOT)/jpeg-9f
 BRO  := $(LIBROOT)/brotli-1.1.0
+# Onyx: the fetcher's zstd decoder and HTTP/2 (user/netsurf/Makefile builds their .a)
+ZSTD := $(LIBROOT)/zstd-1.5.7
+NGH  := $(LIBROOT)/nghttp2-1.70.0
 ZLIB := $(LIBROOT)/zlib-1.3.1
 WEBP := $(LIBROOT)/libwebp-1.4.0
 FT   := $(LIBROOT)/freetype-2.14.3
@@ -91,7 +94,7 @@ include $(HERE)netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 
 # Onyx glue
-ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
+ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_cache.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
 GENFONT := $(OUT)/font-ns-sans.c
 
@@ -175,6 +178,11 @@ $(QNET_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(HERE)
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
+# Onyx: the fetcher's decoders (br, zstd) and HTTP/2 (nghttp2)
+$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(HERE)onyx_fetch.c)): CF += -I$(BRO)/c/include -I$(ZSTD)/lib \
+	-I$(NGH)/lib/includes -DNGHTTP2_STATICLIB
+# Onyx: the certificate viewer (about:certificate) on mbedTLS
+$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(NS)/content/fetchers/about/certificate.c)): CF += -DWITH_MBEDTLS -I$(MBEDTLS)/include
 
 # C++ TLS glue (https): onyx_nstls.cpp wraps user/tls/onyx_tls.hpp (mbedTLS). No STL /
 # exceptions / RTTI / static ctors, so it links next to the C objects (link driver = g++).
@@ -207,14 +215,21 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
           -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) -L$(QJS) \
-          -L$(PSVG) -L$(PVG) \
+          -L$(PSVG) -L$(PVG) -L$(ZSTD) -L$(NGH) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
-          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg -lz -lm
+          -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg \
+          -lzstddec -lnghttp2 -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by
 # gcc first (g++ would treat the .c/.S as C++), then all objects are linked with g++.
-link: objs $(NSTLS_OBJ)
+# Onyx: the GPU compositing service (user/gpucomp, frontends/framebuffer/onyx_comp.c): its
+# library as user/Makefile builds it (FP/SIMD, -O3: the CPU path's NEON loops)
+GPUCOMP_LIB := $(ZUSER)/gpucomp/libgpucomp.a
+$(GPUCOMP_LIB): $(ZUSER)/gpucomp/gpucomp.c $(ZUSER)/gpucomp/gpucomp.h
+	$(MAKE) -C $(ZUSER) gpucomp/libgpucomp.a
+
+link: objs $(NSTLS_OBJ) $(GPUCOMP_LIB)
 	$(CC) -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector -I$(ZUSER) -I$(ZKINC) \
 	  -c $(ZUSER)/libc/crt0libc.S -o $(OUT)/o/crt0libc.o
 	$(CC) -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector -I$(ZUSER) -I$(ZKINC) \
@@ -222,7 +237,7 @@ link: objs $(NSTLS_OBJ)
 	$(CXX) -mcpu=cortex-a72 -O2 -nostartfiles -fno-pic -fno-pie -fno-exceptions -fno-rtti \
 	  $(OUT)/o/crt0libc.o $(OUT)/o/onyx_syscalls.o \
 	  $(ALL_OBJ) $(CXX_OBJ) $(NSTLS_OBJ) -Wl,--whole-archive -L$(NSFB) -lnsfb -Wl,--no-whole-archive \
-	  $(OUT)/libwtk-ns.a \
+	  $(OUT)/libwtk-ns.a $(GPUCOMP_LIB) \
 	  $(LDLIBS) -L$(MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto \
 	  $(LDFLAGS) -o $(OUT)/netsurf.elf
 	@echo "netsurf.elf: $$(stat -c %s $(OUT)/netsurf.elf 2>/dev/null) bytes"
