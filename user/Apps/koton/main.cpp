@@ -545,6 +545,7 @@ public:
 	void onTick () override
 	{
 		unsigned now = kapi_get_ticks ();
+		if (g_pluginWindow && g_pluginWindow->closing) g_pluginWindow->closeMe ();
 		// the song compiled again once the edits pause (a drag recompiles a few times a second, not every move)
 		if (g_doc.revision != lastRev) { lastRev = g_doc.revision; lastRevTick = now; }
 		if (g_audio.compiledRev != g_doc.revision && (now - lastRevTick >= 6 || now - lastSyncTick >= 25)) { g_audio.sync (g_doc); lastSyncTick = now; }

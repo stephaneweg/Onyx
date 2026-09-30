@@ -224,13 +224,16 @@ public:
 	{
 		(void) br; (void) bm; (void) wheel;
 		int e = m_b.edge (bl, 0);
-		if (e == 1 && my < TITLE && mx >= width - 32) { closeMe (); return true; }
+		if (e == 1 && my < TITLE && mx >= width - 32) { closing = true; hidden = true; if (parent) parent->invalidate (true); return true; }
 		if (e == 1 && my < TITLE) { m_drag = true; m_dx = mx; m_dy = my; catchOutside = true; return true; }
 		if (m_drag && bl) { left += mx - m_dx; top += my - m_dy; if (parent) parent->invalidate (true); return true; }
 		if (m_drag && !bl) { m_drag = false; catchOutside = false; }
 		return true;
 	}
 	void closeMe ();
+	// (its x asks: closed by the app's next tick -- deleted here, it would still be in the mouse's
+	// dispatch, the parent keeping it as the last one that took the mouse: a crash on the next move)
+	bool closing = false;
 private:
 	Buttons m_b; bool m_drag = false; int m_dx = 0, m_dy = 0;
 };

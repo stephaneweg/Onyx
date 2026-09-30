@@ -34,7 +34,7 @@ void moduleLabel (const Project &p, const Module &m, char *buf, int cap)
 	case M_DRUMKIT:
 	{
 		const DrumModule &d = (const DrumModule &) m;
-		if (!d.catMotif.empty ()) snprintf (buf, cap, "%s", d.catMotif.c ());
+		if (!d.catMotif.empty () && d.catMotif != "Personnalisé") snprintf (buf, cap, "%s", d.catMotif.c ());
 		else if (d.custom.notes.size ()) snprintf (buf, cap, "Drawn groove");
 		else snprintf (buf, cap, "%s%s", g_drumStyleNames[iclamp (d.style, 0, DRUM_STYLE_COUNT - 1)], d.fillLast ? " + fill" : "");
 		return;
