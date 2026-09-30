@@ -91,8 +91,11 @@
 /** default minimum bandwidth for backing store writeout. (byte/s) */
 #define LLCACHE_STORE_MIN_BANDWIDTH (128 * 1024)
 
-/** default maximum bandwidth for backing store writeout. (byte/s) */
-#define LLCACHE_STORE_MAX_BANDWIDTH (1024 * 1024)
+/** default maximum bandwidth for backing store writeout. (byte/s)
+ * Onyx: 32 MB -- the Onyx store (user/netsurf/onyx_cache.c) only queues the objects, a thread
+ * of its own writes them: a run need not stop after 100 KB (at the app's end one run is all
+ * there is, and it left most of a page's objects unwritten) */
+#define LLCACHE_STORE_MAX_BANDWIDTH (32 * 1024 * 1024)
 
 /** default time quantum with which to calculate bandwidth (ms) */
 #define LLCACHE_STORE_TIME_QUANTUM (100)

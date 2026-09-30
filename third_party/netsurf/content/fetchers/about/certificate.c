@@ -842,6 +842,202 @@ convert_chain_to_cert_info(const struct cert_chain *chain,
 	return NSERROR_OK;
 }
 
+#elif defined(WITH_MBEDTLS)
+
+/* Onyx: the certificate viewer on mbedTLS (the Pi's TLS library: user/tls/onyx_tls.hpp) --
+ * the same information as the OpenSSL code above extracts */
+#include <mbedtls/x509_crt.h>
+#include <mbedtls/oid.h>
+#include <mbedtls/sha1.h>
+#include <mbedtls/sha256.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/rsa.h>
+#include <mbedtls/ecp.h>
+
+/* binary to "XX&#58;YY..." (as bindup above) */
+static char *mb_bindup(const unsigned char *bin, size_t binlen)
+{
+	static const char hex[] = "0123456789ABCDEF";
+	char *dst, *out;
+	size_t idx;
+
+	if (binlen == 0)
+		return NULL;
+	dst = malloc(binlen * 7);
+	if (dst == NULL)
+		return NULL;
+	out = dst;
+	for (idx = 0; idx < binlen; idx++) {
+		*out++ = hex[(bin[idx] & 0xf0) >> 4];
+		*out++ = hex[bin[idx] & 0xf];
+		memcpy(out, "&#58;", 5);
+		out += 5;
+	}
+	out -= 5;
+	*out = 0;
+	return dst;
+}
+
+static char *mb_strndup(const unsigned char *p, size_t n)
+{
+	char *s = malloc(n + 1);
+	if (s != NULL) {
+		memcpy(s, p, n);
+		s[n] = 0;
+	}
+	return s;
+}
+
+static void mb_name_to_info(const mbedtls_x509_name *n, struct ns_cert_name *iname)
+{
+	for (; n != NULL; n = n->next) {
+		char **field = NULL;
+		if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_CN, &n->oid) == 0)
+			field = &iname->common_name;
+		else if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_COUNTRY, &n->oid) == 0)
+			field = &iname->country;
+		else if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_LOCALITY, &n->oid) == 0)
+			field = &iname->locality;
+		else if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_STATE, &n->oid) == 0)
+			field = &iname->province;
+		else if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_ORGANIZATION, &n->oid) == 0)
+			field = &iname->organisation;
+		else if (MBEDTLS_OID_CMP(MBEDTLS_OID_AT_ORG_UNIT, &n->oid) == 0)
+			field = &iname->organisation_unit;
+		if (field != NULL && *field == NULL)
+			*field = mb_strndup(n->val.p, n->val.len);
+	}
+	if (iname->common_name == NULL)
+		iname->common_name = strdup("Unknown");
+}
+
+/* "Mar 21 20:44:09 2036 GMT", as OpenSSL's ASN1_TIME_print */
+static char *mb_time(const mbedtls_x509_time *t)
+{
+	static const char *const mon[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	char b[48];
+	snprintf(b, sizeof b, "%s %2d %02d:%02d:%02d %d GMT",
+		 mon[t->mon >= 1 && t->mon <= 12 ? t->mon - 1 : 0], t->day,
+		 t->hour, t->min, t->sec, t->year);
+	return strdup(b);
+}
+
+static void mb_pkey_to_info(const mbedtls_pk_context *pk, struct ns_cert_pkey *ikey)
+{
+	mbedtls_pk_type_t type = mbedtls_pk_get_type(pk);
+
+	ikey->size = (int) mbedtls_pk_get_bitlen(pk);
+	if (type == MBEDTLS_PK_RSA || type == MBEDTLS_PK_RSASSA_PSS) {
+		const mbedtls_rsa_context *rsa = mbedtls_pk_rsa(*pk);
+		size_t nlen = mbedtls_rsa_get_len(rsa);
+		unsigned char *nb = malloc(nlen), eb[8];
+		ikey->algor = strdup("RSA");
+		if (nb != NULL && mbedtls_rsa_export_raw(rsa, nb, nlen, NULL, 0, NULL, 0,
+				NULL, 0, eb, sizeof eb) == 0) {
+			unsigned long long e = 0;
+			char es[24];
+			size_t i;
+			ikey->modulus = mb_bindup(nb, nlen);
+			for (i = 0; i < sizeof eb; i++)
+				e = (e << 8) | eb[i];
+			snprintf(es, sizeof es, "%llu", e);
+			ikey->exponent = strdup(es);
+		}
+		free(nb);
+	} else if (type == MBEDTLS_PK_ECKEY || type == MBEDTLS_PK_ECKEY_DH ||
+		   type == MBEDTLS_PK_ECDSA) {
+		const mbedtls_ecp_keypair *ec = mbedtls_pk_ec(*pk);
+		const mbedtls_ecp_curve_info *ci =
+			mbedtls_ecp_curve_info_from_grp_id(mbedtls_ecp_keypair_get_group_id(ec));
+		unsigned char pt[MBEDTLS_ECP_MAX_PT_LEN];
+		size_t olen = 0;
+		ikey->algor = strdup("Elliptic Curve");
+		if (ci != NULL)
+			ikey->curve = strdup(ci->name);
+		if (mbedtls_ecp_write_public_key(ec, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen,
+				pt, sizeof pt) == 0)
+			ikey->public = mb_bindup(pt, olen);
+	} else {
+		ikey->algor = strdup(mbedtls_pk_get_name(pk));
+	}
+}
+
+static nserror
+der_to_certinfo(const uint8_t *der, size_t der_length, struct ns_cert_info *info)
+{
+	mbedtls_x509_crt crt;
+	const mbedtls_x509_sequence *san;
+	struct ns_cert_san **prev_next = &info->san;
+	const char *desc = NULL;
+	unsigned char dig[32];
+
+	if (der == NULL)
+		return NSERROR_OK;
+	mbedtls_x509_crt_init(&crt);
+	if (mbedtls_x509_crt_parse_der(&crt, der, der_length) != 0) {
+		mbedtls_x509_crt_free(&crt);
+		return NSERROR_INVALID;
+	}
+	info->version = crt.version;
+	info->not_before = mb_time(&crt.valid_from);
+	info->not_after = mb_time(&crt.valid_to);
+	if (mbedtls_oid_get_sig_alg_desc(&crt.sig_oid, &desc) == 0 && desc != NULL)
+		info->sig_algor = strdup(desc);
+	info->serialnum = mb_bindup(crt.serial.p, crt.serial.len);
+	if (mbedtls_sha1(der, der_length, dig) == 0)
+		info->sha1fingerprint = mb_bindup(dig, 20);
+	if (mbedtls_sha256(der, der_length, dig, 0) == 0)
+		info->sha256fingerprint = mb_bindup(dig, 32);
+	for (san = &crt.subject_alt_names; san != NULL; san = san->next) {
+		struct ns_cert_san *isan;
+		if (san->buf.p == NULL || san->buf.tag !=
+				(MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_X509_SAN_DNS_NAME))
+			continue;
+		isan = malloc(sizeof(struct ns_cert_san));
+		if (isan != NULL) {
+			isan->name = mb_strndup(san->buf.p, san->buf.len);
+			isan->next = NULL;
+			*prev_next = isan;
+			prev_next = &isan->next;
+		}
+	}
+	mb_name_to_info(&crt.issuer, &info->issuer_name);
+	mb_name_to_info(&crt.subject, &info->subject_name);
+	mb_pkey_to_info(&crt.pk, &info->public_key);
+	mbedtls_x509_crt_free(&crt);
+	return NSERROR_OK;
+}
+
+/* copy certificate data */
+static nserror
+convert_chain_to_cert_info(const struct cert_chain *chain,
+			   struct ns_cert_info **cert_info_out)
+{
+	struct ns_cert_info *certs;
+	size_t depth;
+	nserror res;
+
+	certs = calloc(chain->depth, sizeof(struct ns_cert_info));
+	if (certs == NULL) {
+		return NSERROR_NOMEM;
+	}
+
+	for (depth = 0; depth < chain->depth;depth++) {
+		res = der_to_certinfo(chain->certs[depth].der,
+				      chain->certs[depth].der_length,
+				      certs + depth);
+		if (res != NSERROR_OK) {
+			free(certs);
+			return res;
+		}
+		certs[depth].err = chain->certs[depth].err;
+	}
+
+	*cert_info_out = certs;
+	return NSERROR_OK;
+}
+
 #else
 static nserror
 convert_chain_to_cert_info(const struct cert_chain *chain,

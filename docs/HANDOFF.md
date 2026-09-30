@@ -142,7 +142,7 @@ answer in French. The docs stay in English.
 - **On the Pi, first**: `gpcdemo test` (must end `ALL PASS`), `gpcdemo bench` (write the numbers
   into docs/07 §6), `gpcdemo` (the window) -- also while gcemu runs (the sharing), and `v3dprog`
   (must still pass: the kernel's GPU paths were touched for F_ALPHA). kmsg after a failure.
-- Stage 2 done (docs/06 §23, docs/07 §6: the page in a band, retained layers, composite-only
+- Stage 2 done (docs/06 §25, docs/07 §6: the page in a band, retained layers, composite-only
   animations, `gpu_compositing` in Choices; `tools/tests/netsurf/gputest.sh`). The V3D's target
   load packet was wrong (stride / 8: frames drawn over the target) -- fixed, `run_v3d_cl_test.sh`.
   Next: the Pi's numbers (`gpcdemo test` / `bench`, NetSurf's `ONYX-SCROLL` with
@@ -675,6 +675,15 @@ launches `jet`: `user/dockconf.h`, `user/Apps/setup/main.cpp`, `sdcard/etc/dock.
 `sdcard/etc/quicklaunch.txt`), its title,
 About box, docs (docs/06 renamed accordingly), screenshots; the source paths
 (`third_party/netsurf/`) stay as they are (comparable with upstream).
+
+**Feature tests on the Pi (2026-09-30 late, docs/06 §23):** the Pi's css3test.com "100 %" /
+browserscore.dev "0 %" were the script time limit (10 s) cutting both test runs off on the
+slower CPU (css3test's 100 % is its CSS 2.2 / 2007 / 2010 filter, kept in localStorage) -- now
+60 s (`script_timeout`) and the runs 2x faster; the detection is honest (`js-cssdetect.html`
+against Chromium). PC bench: css3test 83 %, browserscore 86 % (Chromium 71 %, 75 %). Also the
+Popover API (`:popover-open` / `:modal` in libcss), matchMedia by libcss (aspect-ratio,
+orientation, hover...), `NS_JSPROF` + `jsprof.py` (a sampling profiler of the scripts). The
+Pi's `libcss.a` rebuilt; the NetSurf binary for the card NOT restaged by this work.
 
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more

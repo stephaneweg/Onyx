@@ -610,7 +610,7 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > `A64_GCC=`) and `qemu-aarch64`, the CPU path built for the Pi (NEON loops) must give the PC's
 > pixels bit for bit. On the Pi: `/bin/gpcdemo test` (the GPU's pictures against the CPU's),
 > `/bin/gpcdemo bench` (ms a frame at 1920 × 1080, GPU then CPU), `/bin/gpcdemo` (a window).
-> **NetSurf** composites its view with it (docs/06 §23: the page in a band, opacity / transform
+> **NetSurf** composites its view with it (docs/06 §25: the page in a band, opacity / transform
 > groups as retained layers, one composite a frame; Choices' `gpu_compositing`): `netsurf-app.mk`
 > links `$(ZUSER)/gpucomp/libgpucomp.a` (made by `make -C user gpucomp/libgpucomp.a` when
 > missing), and the `"onyx"` libnsfb surface (`user/nsfb/onyx_surface.c`, inside `libnsfb.a`:
@@ -1928,7 +1928,10 @@ tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.
 NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
 metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
 CSS3 painting, the native window: [`06-NETSURF-CHANGES.md`](06-NETSURF-CHANGES.md) lists the
-changes. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
+changes. The network (docs/06 §24) links two more vendored libraries, built by
+`make -C user/netsurf` like the others: `third_party/zstd-1.5.7` (the decompressor only,
+`libzstddec.a`) and `third_party/nghttp2-1.70.0` (`libnghttp2.a`, its `config.h` written by
+hand for newlib); the disk cache is `user/netsurf/onyx_cache.c`. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
 <out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
 `sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium.
 

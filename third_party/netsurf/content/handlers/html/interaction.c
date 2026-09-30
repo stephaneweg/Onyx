@@ -1655,8 +1655,11 @@ mouse_action_drag_none(html_content *html,
 		init.ctrl = (mouse & BROWSER_MOUSE_MOD_2) != 0;
 		init.alt = (mouse & BROWSER_MOUSE_MOD_3) != 0;
 		if (mouse & BROWSER_MOUSE_PRESS_1) {
+			/* (Onyx: the pointer events first, as Chrome) */
+			html_script_event(html, "pointerdown", mas.node, &init);
 			html_script_event(html, "mousedown", mas.node, &init);
 		} else {
+			html_script_event(html, "pointerup", mas.node, &init);
 			html_script_event(html, "mouseup", mas.node, &init);
 			if (!html_script_event(html, "click", mas.node, &init) &&
 			    (mas.result.action == ACTION_NAVIGATE ||
@@ -1935,23 +1938,23 @@ bool html_keypress(struct content *c, uint32_t key)
 	 * overflow: auto panel, a consent screen's), else the window (the
 	 * caller) */
 	case NS_KEY_UP:
-		return html_scroll_at_point(c, html->pointer_x,
+		return html_scroll_boxes_at_point(c, html->pointer_x,
 				html->pointer_y, 0, -40);
 	case NS_KEY_DOWN:
-		return html_scroll_at_point(c, html->pointer_x,
+		return html_scroll_boxes_at_point(c, html->pointer_x,
 				html->pointer_y, 0, 40);
 	case NS_KEY_PAGE_UP:
-		return html_scroll_at_point(c, html->pointer_x,
+		return html_scroll_boxes_at_point(c, html->pointer_x,
 				html->pointer_y, 0, SCROLL_PAGE_UP);
 	case NS_KEY_PAGE_DOWN:
 	case ' ':
-		return html_scroll_at_point(c, html->pointer_x,
+		return html_scroll_boxes_at_point(c, html->pointer_x,
 				html->pointer_y, 0, SCROLL_PAGE_DOWN);
 	case NS_KEY_TEXT_START:
-		return html_scroll_at_point(c, html->pointer_x,
+		return html_scroll_boxes_at_point(c, html->pointer_x,
 				html->pointer_y, 0, SCROLL_TOP);
 	case NS_KEY_TEXT_END:
-		return html_scroll_at_point(c, html->pointer_x,
+		return html_scroll_boxes_at_point(c, html->pointer_x,
 				html->pointer_y, 0, SCROLL_BOTTOM);
 	}
 

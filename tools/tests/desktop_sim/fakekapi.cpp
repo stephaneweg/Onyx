@@ -437,7 +437,15 @@ static void yield (void) {}
 
 // ---- the system --------------------------------------------------------------------------------------
 static int get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
-{ if (y) *y = 2026; if (mo) *mo = 9; if (d) *d = 28; if (h) *h = 12; if (mi) *mi = 34; if (s) *s = 0; return 1; }
+{
+	if (getenv ("SIM_REALNET")) {		// the real network: the real clock (TLS checks the dates)
+		time_t t = time (0); struct tm tm; localtime_r (&t, &tm);
+		if (y) *y = tm.tm_year + 1900; if (mo) *mo = tm.tm_mon + 1; if (d) *d = tm.tm_mday;
+		if (h) *h = tm.tm_hour; if (mi) *mi = tm.tm_min; if (s) *s = tm.tm_sec;
+		return 1;
+	}
+	if (y) *y = 2026; if (mo) *mo = 9; if (d) *d = 28; if (h) *h = 12; if (mi) *mi = 34; if (s) *s = 0; return 1;
+}
 static int net_status (char *ip, unsigned n) { if (ip && n) snprintf (ip, n, "192.168.1.42"); return 1; }
 static int sound_volume (int, int) { return 7; }
 static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1, n, stderr); }
@@ -580,10 +588,17 @@ static int pipe_read (void *h, void *b, unsigned n)
 // SIM_NET: what the server sends (irc) on a connection; none: no network
 static Canned g_netIn = { "SIM_NET" };
 // SIM_REALNET: the PC's sockets (the handle: the file descriptor + 1000)
+// SIM_SOCKETS=N: the kernel's socket table (16 on the Pi, for every app) -- a connect past N
+// open sockets fails as the kernel's does (-2: the table full)
+static int g_socks;
 static int tcp_connect (const char *host, unsigned port)
 {
 	fprintf (stderr, "sim: tcp_connect %s:%u\n", host, port);
 	if (!getenv ("SIM_REALNET")) return getenv ("SIM_NET") ? 3 : -5;
+	if (getenv ("SIM_SOCKETS") && __atomic_load_n (&g_socks, __ATOMIC_SEQ_CST) >= atoi (getenv ("SIM_SOCKETS"))) {
+		fprintf (stderr, "sim: tcp_connect %s:%u: no socket free\n", host, port);
+		return -2;
+	}
 	// behind an HTTPS_PROXY (http://host:port): a CONNECT tunnel, except to this machine
 	const char *px = getenv ("HTTPS_PROXY");
 	char phost[256]; unsigned pport = 0;
@@ -611,6 +626,7 @@ static int tcp_connect (const char *host, unsigned port)
 		}
 		if (strncmp (ans + 8, " 200", 4)) { fprintf (stderr, "sim: proxy refused %s:%u: %.60s\n", host, port, ans); close (fd); return -5; }
 	}
+	__atomic_add_fetch (&g_socks, 1, __ATOMIC_SEQ_CST);
 	return fd + 1000;
 }
 static int tcp_send (int s, const void *b, unsigned n)
@@ -628,7 +644,20 @@ static int tcp_recv (int s, void *b, unsigned n)
 	if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
 	return -1;
 }
-static void tcp_close (int s) { if (s >= 1000) close (s - 1000); }
+// net_resolve: the PC's resolver (SIM_REALNET; behind a proxy the name may not resolve here: 0)
+static int net_resolve (const char *host, char *ip, unsigned cap)
+{
+	if (!getenv ("SIM_REALNET") || host == 0) return 0;
+	struct addrinfo hints, *res = 0; memset (&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
+	if (getaddrinfo (host, "443", &hints, &res) != 0 || !res) return 0;
+	struct sockaddr_in *a = (struct sockaddr_in *) res->ai_addr;
+	const unsigned char *b = (const unsigned char *) &a->sin_addr;
+	if (ip && cap) snprintf (ip, cap, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
+	freeaddrinfo (res);
+	return 1;
+}
+static void tcp_close (int s) { if (s >= 1000) { close (s - 1000); __atomic_sub_fetch (&g_socks, 1, __ATOMIC_SEQ_CST); } }
 // the Wi-Fi around (the Wi-Fi menu)
 static int wlan_scan (struct kapi_wlan_ap *o, int max)
 {
@@ -863,6 +892,7 @@ static void setup (void)
 	T->list_procs = list_procs; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
+	T->net_resolve = net_resolve;
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
 	T->desk = desk; T->win_desk = win_desk;

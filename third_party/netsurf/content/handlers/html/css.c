@@ -45,6 +45,9 @@
 #include "html/private.h"
 #include "html/onyx_webfont.h"
 #include "html/css.h"
+
+/* Onyx: user/netsurf/onyx_fetch.c -- a page's <link rel=preconnect|dns-prefetch> */
+void onyx_fetch_preconnect(const char *url, bool dns_only);
 #include "html/onyx_shadow.h"
 
 static nsurl *html_default_stylesheet_url;
@@ -487,6 +490,24 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	exc = dom_element_get_attribute(node, corestring_dom_rel, &rel);
 	if (exc != DOM_NO_ERR || rel == NULL)
 		return true;
+
+	/* Onyx: <link rel=preconnect> / <link rel=dns-prefetch> -- the origin's connection
+	 * opened (or its name resolved) now, while the page is parsed (onyx_fetch.c) */
+	if (strcasestr(dom_string_data(rel), "preconnect") != NULL ||
+	    strcasestr(dom_string_data(rel), "dns-prefetch") != NULL) {
+		bool dns_only = strcasestr(dom_string_data(rel), "preconnect") == NULL;
+		dom_string_unref(rel);
+		exc = dom_element_get_attribute(node, corestring_dom_href, &href);
+		if (exc == DOM_NO_ERR && href != NULL) {
+			if (nsurl_join(htmlc->base_url, dom_string_data(href),
+					&joined) == NSERROR_OK) {
+				onyx_fetch_preconnect(nsurl_access(joined), dns_only);
+				nsurl_unref(joined);
+			}
+			dom_string_unref(href);
+		}
+		return true;
+	}
 
 	if (strcasestr(dom_string_data(rel), "stylesheet") == NULL) {
 		dom_string_unref(rel);

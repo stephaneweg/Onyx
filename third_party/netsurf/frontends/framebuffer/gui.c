@@ -32,6 +32,7 @@
 
 #include "utils/utils.h"
 #include "utils/nsoption.h"
+#include "utils/useragent.h"	/* (Onyx: "Desktop Site") */
 #include "utils/filepath.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -740,6 +741,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
 	for (idx=0; sys_colour_defaults[idx].nsc != NSOPTION_LISTEND; idx++) {
 		defaults[sys_colour_defaults[idx].nsc].value.c = sys_colour_defaults[idx].c;
 	}
+
+	/* Onyx: the disc cache (user/netsurf/onyx_cache.c, SD:/apps/netsurf.app/cache/): 64 MB
+	 * (NetSurf's 1 GB is too much for a card shared with everything else) */
+	defaults[NSOPTION_disc_cache_size].value.u = 64u << 20;
 
 	/* Onyx: the default font size as the other browsers': 12 pt, 16 px at 96 dpi
 	 * (NetSurf's 12.8 pt made every rem / em 7 % larger) */
@@ -2224,28 +2229,41 @@ throbber_advance(void *pw)
 	}
 }
 
+/* Onyx: a page's load timed, from the throbber's start to its stop (NS_PERF: "ONYX-PERF
+ * page:load <us>" -- the page and everything it fetched, its scripts run) */
+static uint64_t onyx_load_t0;
+
 static void
 gui_window_start_throbber(struct gui_window *g)
 {
+	onyx_load_t0 = onyx_perf_now();
 	g->throbber_index = 0;
 	onyx_chrome_set_busy(1);	/* Onyx: the native toolbar's reload becomes stop */
 	if (g->throbber != NULL)
 		framebuffer_schedule(100, throbber_advance, g);
 }
 
-/* Onyx: the pages visited and the cookies, written to the card a few seconds after a
- * page is loaded (not only at the end: a Pi is often switched off rather than quit) */
+/* Onyx: the pages visited, the cookies and the fetcher's state, written to the card a few
+ * seconds after a page is loaded (not only at the end: a Pi is often switched off rather than quit) */
+void onyx_fetch_save_state(void);	/* user/netsurf/onyx_fetch.c */
+extern struct gui_llcache_table *onyx_llcache_table;	/* user/netsurf/onyx_cache.c */
+
 static void onyx_save_user_data(void *p)
 {
 	(void) p;
 	urldb_save(nsoption_charp(url_file));
 	urldb_save_cookies(nsoption_charp(cookie_jar));
+	onyx_fetch_save_state();	/* (the TLS sessions, the HTTP/1.1-only origins) */
 }
 
 static void
 gui_window_stop_throbber(struct gui_window *gw)
 {
 	gw->throbber_index = -1;
+	if (onyx_load_t0 != 0) {
+		onyx_perf_log("page:load", onyx_load_t0);	/* Onyx */
+		onyx_load_t0 = 0;
+	}
 	onyx_chrome_set_busy(0);
 	framebuffer_schedule(3000, onyx_save_user_data, NULL);	/* Onyx */
 	if (gw->throbber != NULL)
@@ -2396,6 +2414,7 @@ main(int argc, char** argv)
 		.utf8 = framebuffer_utf8_table,
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
+		.llcache = onyx_llcache_table,	/* Onyx: the disc cache on the card */
 	};
 
         ret = netsurf_register(&framebuffer_table);
@@ -2575,6 +2594,30 @@ void onyx_browser_reload(void)
 #endif
 	if (window_list != NULL)
 		browser_window_reload(window_list->bw, true);
+}
+
+/* Onyx: the page's site in its desktop version or back to the mobile one (the menu's
+ * "Desktop Site / Mobile Site"; the list is kept on the card: utils/useragent.c), then the
+ * page loaded again with the other User-Agent */
+void onyx_browser_toggle_desktop(void)
+{
+	struct browser_window *bw;
+	nsurl *url;
+	lwc_string *host;
+
+	if (window_list == NULL)
+		return;
+	bw = window_list->bw;
+	url = browser_window_access_url(bw);
+	if (url == NULL)
+		return;
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host == NULL)
+		return;
+	user_agent_set_desktop(lwc_string_data(host),
+			!user_agent_is_desktop(lwc_string_data(host)));
+	lwc_string_unref(host);
+	browser_window_reload(bw, true);
 }
 
 void onyx_browser_stop(void)

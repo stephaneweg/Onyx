@@ -51,7 +51,8 @@ I_HB  := -I$(NS)/libhubbub/include
 LIBS := libwapcaplet libparserutils libnsutils libnsgif libnsbmp libhubbub libcss libdom
 ARCHIVES := $(foreach l,$(LIBS),$(NS)/$(l)/$(l).a) $(NS)/freetype-2.14.3/libfreetype.a \
             $(NS)/brotli-1.1.0/libbrotlidec.a $(NS)/quickjs-ng-0.17.0/libquickjs.a \
-            $(NS)/plutovg-1.3.3/libplutovg.a $(NS)/plutosvg-0.0.8/libplutosvg.a
+            $(NS)/plutovg-1.3.3/libplutovg.a $(NS)/plutosvg-0.0.8/libplutosvg.a \
+            $(NS)/zstd-1.5.7/libzstddec.a $(NS)/nghttp2-1.70.0/libnghttp2.a
 
 .PHONY: all clean
 all: $(ARCHIVES)
@@ -160,7 +161,25 @@ PSVG_OBJ := $(PSVG)/source/plutosvg.o
 $(PSVG_OBJ): CINC := $(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source
 $(PSVG)/libplutosvg.a: $(PSVG_OBJ); $(AR) rcs $@ $^
 
+# ---- zstd's decoder (Onyx: the fetcher's Content-Encoding: zstd) ------------------------
+# Zstandard 1.5.7 (BSD), the decompressor alone (lib/common + lib/decompress, no legacy
+# formats, no dictionary builder, no x86 assembly). third_party/zstd-1.5.7/README.onyx.
+ZSTD := $(NS)/zstd-1.5.7
+ZSTD_OBJ := $(patsubst %.c,%.o,$(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c))
+$(ZSTD_OBJ): CINC := -DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DDEBUGLEVEL=0 -DZSTD_NO_TRACE \
+                     -I$(ZSTD)/lib -I$(ZSTD)/lib/common
+$(ZSTD)/libzstddec.a: $(ZSTD_OBJ); $(AR) rcs $@ $^
+
+# ---- nghttp2 (Onyx: HTTP/2 in the fetcher) ------------------------------------------------
+# nghttp2 1.70.0 (MIT), the library alone (lib/: framing, HPACK, streams, flow control); its
+# nghttp2ver.h / config made by hand (third_party/nghttp2-1.70.0/README.onyx).
+NGH := $(NS)/nghttp2-1.70.0
+NGH_OBJ := $(patsubst %.c,%.o,$(wildcard $(NGH)/lib/*.c))
+$(NGH_OBJ): CINC := -std=gnu99 -DHAVE_CONFIG_H -DNGHTTP2_STATICLIB -I$(NGH)/lib -I$(NGH)/lib/includes
+$(NGH)/libnghttp2.a: $(NGH_OBJ); $(AR) rcs $@ $^
+
 clean:
+	rm -f $(ZSTD_OBJ) $(NGH_OBJ)
 	rm -f $(PVG_OBJ) $(PSVG_OBJ)
 	rm -f $(QJS_OBJ) $(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ) $(ARCHIVES)
 	rm -f $(NS)/libcss/build/gen_parser $(CSS_AUTO_C)

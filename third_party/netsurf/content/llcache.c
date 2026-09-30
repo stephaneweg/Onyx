@@ -54,6 +54,7 @@
 #include "content/fetch.h"
 #include "content/backing_store.h"
 #include "content/urldb.h"
+#include "netsurf/onyx_perf.h"	/* Onyx: the perf log (a cache hit) */
 
 /**
  * State of a low-level cache object fetch.
@@ -150,6 +151,8 @@ typedef struct {
 	llcache_validate no_cache;	/**< No-Cache Cache-control parameter */
 	char *etag;		/**< Etag: response header */
 	time_t last_modified;	/**< Last-Modified: response header */
+	bool no_store;		/**< Onyx: Cache-Control: no-store (never on disc) */
+	bool no_heuristic;	/**< Onyx: a query, no explicit expiry: revalidate */
 } llcache_cache_control;
 
 /** Representation of a fetch header */
@@ -603,6 +606,10 @@ llcache_fetch_parse_cache_control(llcache_object *object, char *value)
 		 */
 		object->cache.no_cache = LLCACHE_VALIDATE_ALWAYS;
 	}
+	/* Onyx: the disc cache (user/netsurf/onyx_cache.c) keeps a no-cache object to
+	 * revalidate it, never a no-store one */
+	if (http_cache_control_no_store(cc))
+		object->cache.no_store = true;
 
 	if (http_cache_control_has_max_age(cc)) {
 		object->cache.max_age = http_cache_control_max_age(cc);
@@ -1202,7 +1209,7 @@ llcache_object_rfc2616_remaining_lifetime(const llcache_cache_control *cd)
 		freshness_lifetime = cd->max_age;
 	} else if (cd->expires != 0) {
 		freshness_lifetime = cd->expires - cd->date;
-	} else if (cd->last_modified != 0) {
+	} else if (cd->last_modified != 0 && !cd->no_heuristic) {
 		freshness_lifetime = (now - cd->last_modified) / 10;
 	} else {
 		freshness_lifetime = 0;
@@ -1306,6 +1313,12 @@ static nserror llcache_object_clone_cache_data(llcache_object *source,
 
 	if (source->cache.last_modified != 0)
 		destination->cache.last_modified = source->cache.last_modified;
+
+	/* Onyx */
+	if (source->cache.no_store)
+		destination->cache.no_store = true;
+	if (source->cache.no_heuristic)
+		destination->cache.no_heuristic = true;
 
 	return NSERROR_OK;
 }
@@ -2025,6 +2038,10 @@ llcache_object_retrieve_from_cache(nsurl *url,
 	if ((newest != NULL) && (llcache_object_is_fresh(newest))) {
 		/* Found a suitable object, and it's still fresh */
 		NSLOG(llcache, DEBUG, "Found fresh %p", newest);
+		if (onyx_perf_on())	/* Onyx: the perf log -- no request at all */
+			fprintf(stderr, "ONYX-PERF net:cache fresh %s (%s)\n", nsurl_access(url),
+					newest->store_state == LLCACHE_STATE_DISC &&
+					newest->source_data == NULL ? "card" : "memory");
 
 		/* The client needs to catch up with the object's state.
 		 * This will occur the next time that llcache_poll is called.
@@ -2618,12 +2635,19 @@ llcache_fetch_process_data(llcache_object *object,
 		 */
 		long http_code = fetch_http_code(object->fetch.fetch);
 
-		if ((http_code != 200 && http_code != 203) ||
-		    (nsurl_has_component(object->url, NSURL_QUERY) &&
-		     (object->cache.max_age == INVALID_AGE &&
-		      object->cache.expires == 0))) {
+		/* Onyx: the query string rule is RFC 2616's (13.9); RFC 9111
+		 * dropped it -- with it, every image of a page that carries a
+		 * query (Wikipedia's thumbnails: ?utm_source=...) lost its
+		 * ETag / Last-Modified: never revalidated, never on disc.
+		 * Such a response without an explicit expiry keeps its
+		 * validators but no heuristic freshness (below). */
+		if (http_code != 200 && http_code != 203) {
 			/* Invalidate cache control data */
 			llcache_invalidate_cache_control_data(object);
+		} else if (nsurl_has_component(object->url, NSURL_QUERY) &&
+			   object->cache.max_age == INVALID_AGE &&
+			   object->cache.expires == 0) {
+			object->cache.no_heuristic = true;
 		}
 
 		/* Release candidate, if any */
@@ -2889,12 +2913,20 @@ build_candidate_list(struct llcache_object ***lst_out, int *lst_len_out)
 
 		/* cacehable objects with no pending fetches, not
 		 * already on disc and with sufficient lifetime to
-		 * make disc cache worthwhile
+		 * make disc cache worthwhile -- Onyx: or with a validator
+		 * (an ETag, a Last-Modified): the next launch revalidates
+		 * it (a 304 keeps the bytes) instead of fetching it whole;
+		 * never a no-store one, nor an empty one
 		 */
 		if ((object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
+		    (object->fetch.state == LLCACHE_FETCH_COMPLETE) &&
 		    (object->store_state == LLCACHE_STATE_RAM) &&
-		    (remaining_lifetime > llcache->minimum_lifetime)) {
+		    !object->cache.no_store &&
+		    (object->source_len > 0) &&
+		    ((remaining_lifetime > llcache->minimum_lifetime) ||
+		     (object->cache.etag != NULL) ||
+		     (object->cache.last_modified != 0))) {
 			lst[lst_len] = object;
 			lst_len++;
 			if (lst_len == MAX_PERSIST_PER_RUN)
@@ -3876,7 +3908,17 @@ void llcache_clean(bool purge)
 		if ((object->users == NULL) &&
 		    (object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
-		    (remaining_lifetime <= 0)) {
+		    (remaining_lifetime <= 0) &&
+		    /* Onyx: a stale object with a validator not yet on
+		     * disc is kept until llcache_persist writes it out
+		     * (the next launch revalidates it) */
+		    !(object->store_state == LLCACHE_STATE_RAM &&
+		      llcache__scheme_is_persistable(object->url) &&
+		      object->fetch.state == LLCACHE_FETCH_COMPLETE &&
+		      !object->cache.no_store &&
+		      object->source_len > 0 &&
+		      (object->cache.etag != NULL ||
+		       object->cache.last_modified != 0))) {
 			/* object is stale */
 			NSLOG(llcache, DEBUG, "discarding stale cacheable object with no "
 					"users or pending fetches (%p) %s",
@@ -3885,7 +3927,13 @@ void llcache_clean(bool purge)
 				llcache_object_remove_from_list(object,
 						&llcache->cached_objects);
 
-				if (object->store_state == LLCACHE_STATE_DISC) {
+				/* Onyx: a stale object with a validator stays
+				 * on disc: it is revalidated when asked again
+				 * (a 304 keeps its bytes) */
+				if (object->store_state == LLCACHE_STATE_DISC &&
+				    (object->cache.no_store ||
+				     (object->cache.etag == NULL &&
+				      object->cache.last_modified == 0))) {
 					guit->llcache->invalidate(object->url);
 				}
 

@@ -70,6 +70,7 @@ void onyx_browser_back(void);
 void onyx_browser_forward(void);
 void onyx_browser_reload(void);
 void onyx_browser_stop(void);
+void onyx_browser_toggle_desktop(void);		/* the site's desktop / mobile version */
 void onyx_browser_home(void);
 void onyx_browser_go(const char *text);		/* an address typed (a URL, or a host) */
 void onyx_browser_redraw(void);			/* the page covered by a pop-up: redraw it */

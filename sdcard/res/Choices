@@ -13,6 +13,10 @@ background_images:1
 # 1 = run page JavaScript; 0 disables it (faster on heavy pages, but menus and forms
 #     that need scripts stop working).
 enable_javascript:1
+# The seconds a script (a page's script, an event handler, a promise job) may run before it
+# is stopped; 0 = never. Unset = 60 (the Pi is ~5x slower than a PC: css3test.com's and
+# browserscore.dev's test runs take several seconds there).
+# script_timeout:60
 
 # --- GPU compositing ---------------------------------------------------------
 # 1 (default) = the page is kept in a band taller than the window, its layers (opacity,

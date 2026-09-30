@@ -249,7 +249,10 @@ static bool oc_open(struct ows_conn *c, const struct ows_url *u)
 	if (c->sock < 0)
 		return false;
 	if (u->tls) {
-		c->ts = onyx_nstls_start(c->sock, u->host);	/* (the socket is the session's) */
+		/* (the socket is the session's) -- Onyx: the certificate checked as the fetches
+		 * check it, a host the user accepted let through (onyx_fetch_insecure_host) */
+		c->ts = onyx_nstls_connect(c->sock, u->host, ONYX_TLS_VERIFY |
+			(onyx_fetch_insecure_host(u->host) ? ONYX_TLS_INSECURE : 0), NULL);
 		c->sock = -1;
 		if (c->ts == NULL)
 			return false;
@@ -1205,6 +1208,9 @@ static void ows_run_events(struct onyx_ws *w)
 
 /* ---- the thread, and the UI thread's calls ------------------------------------------------------------ */
 
+/* Onyx: the connections' threads alive (the app's end waits for them: onyx_ws_shutdown) */
+static volatile int ows_threads;
+
 static int ows_thread(void *arg)
 {
 	struct onyx_ws *w = arg;
@@ -1220,6 +1226,7 @@ static int ows_thread(void *arg)
 	kapi_unlock(&w->lk);
 	if (orphan)
 		ows_destroy(w);
+	__atomic_sub_fetch(&ows_threads, 1, __ATOMIC_SEQ_CST);	/* (its socket closed) */
 	return 0;
 }
 
@@ -1239,8 +1246,10 @@ onyx_ws *onyx_ws_open(int mode, const char *url, const char *hdrs,
 	w->hdrs = strdup(hdrs != NULL ? hdrs : "");
 	w->notify = notify;
 	w->pw = pw;
+	__atomic_add_fetch(&ows_threads, 1, __ATOMIC_SEQ_CST);
 	if (w->url == NULL || w->hdrs == NULL ||
 	    kapi_thread_create(ows_thread, w, 0, mode == ONYX_WS_SOCKET ? "websocket" : "events") < 0) {
+		__atomic_sub_fetch(&ows_threads, 1, __ATOMIC_SEQ_CST);
 		ows_destroy(w);
 		return NULL;
 	}
@@ -1333,6 +1342,22 @@ void onyx_ws_free(onyx_ws *w)
 		ows_destroy(w);
 	else
 		ows_wake(w);
+}
+
+/* Onyx: the app ends -- every connection told to stop; returns the threads still running
+ * (their sockets not closed yet). The kernel has 16 sockets in all: an app that leaves its
+ * sockets open until it is reaped starves the next one (a NetSurf launched again). */
+int onyx_ws_shutdown(void)
+{
+	struct onyx_ws *w;
+
+	for (w = ows_all; w != NULL; w = w->reg_next) {
+		kapi_lock(&w->lk);
+		w->cancel = 1;
+		kapi_unlock(&w->lk);
+		ows_wake(w);
+	}
+	return __atomic_load_n(&ows_threads, __ATOMIC_SEQ_CST);
 }
 
 /* ---- a blocking GET (importScripts) ------------------------------------------------------------------ */

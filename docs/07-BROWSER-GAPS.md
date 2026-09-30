@@ -78,12 +78,13 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
-| **TLS certificate verification** | all | `MBEDTLS_SSL_VERIFY_NONE` (the CA bundle is on the card, the clock is needed for expiry) | verify against `SD:/res/ca-bundle` with the Setup's clock (kernel v69 has it); an error page with "continue anyway" | S | P1 (before any login) |
-| **HTTP/2 (and HTTP/3 / QUIC)** | all | HTTP/1.1 keep-alive, 8 connections | nghttp2 (C, the client side ~100 KB) under the fetcher: one connection per origin, multiplexed -- big pages of 100+ resources load much faster; HTTP/3 needs QUIC (ngtcp2 + a TLS 1.3 QUIC stack): P4 | M | P2 |
-| Brotli / zstd content encoding | all | the brotli decoder is linked but the fetcher announces `gzip, deflate` only; no zstd | announce and decode `br` in `onyx_fetch.c` (~20 % smaller than gzip); zstd decoder (small) | S | P2 |
-| **Same-origin policy, CORS, CSP, cookies' SameSite / partitioning, mixed content** | all | no CORS checks, no CSP, cookies basic | CORS in `n_request` (preflight, response checks), CSP parsing and enforcement for scripts / frames, SameSite in the cookie jar | M | P2 (security of logins) |
+| ~~TLS certificate verification~~ (done, 06 §24) | all | the chain against `SD:/res/ca-bundle`, the host name, the dates against the Onyx clock; NetSurf's "Privacy error" page with "Proceed", `about:certificate`; WebSocket the same | left: OCSP / CRL revocation, Certificate Transparency | S | P3 |
+| **TLS 1.3** | all | TLS 1.2 only (mbedTLS' TLS 1.3 needs its PSA crypto): some CDNs tell the client apart (Fastly answers HTTP/2 with 403: the fetcher falls back to HTTP/1.1) | mbedTLS with `MBEDTLS_USE_PSA_CRYPTO` + `MBEDTLS_SSL_PROTO_TLS1_3` (a bigger library, `psa_crypto_init` at start) | M | P2 |
+| ~~HTTP/2~~ (done, 06 §24) / HTTP/3 (QUIC) | all | nghttp2: one connection per origin by ALPN, streams, Chrome's settings, fallback to HTTP/1.1 | HTTP/3 needs QUIC (ngtcp2 + a TLS 1.3 QUIC stack) | L | P4 |
+| ~~Brotli / zstd~~ (done, 06 §24) | all | `gzip, deflate, br, zstd` decoded as they come | -- | -- | -- |
+| **Same-origin policy, CSP, cookies' SameSite / partitioning, mixed content** | all | CORS done for fetch / XHR (06 §24: preflight, the Allow-Origin / -Credentials / -Headers / -Methods checks, modes, credentials, opaque responses); no CSP, no SameSite, no CORS for EventSource / fonts / `<img crossorigin>` | CSP parsing and enforcement for scripts / frames; SameSite in the cookie jar; CORS in the core's loads | M | P2 (security of logins) |
 | Site isolation, sandboxed renderer processes | Chromium, WebKit, Ladybird (multi-process) | one process, one context per page | Onyx has processes: one NetSurf per tab is already the model; within a page, iframes share the process | XL | P4 |
-| HTTP cache on disk, `Cache-Control` / validators, back-forward cache | all | memory cache; the fetcher drops validators | a disk cache on the card (llcache has a backing-store API upstream: `fs_backing_store.c`), 304 support in the fetcher | M | P2 |
+| ~~HTTP cache on disk, validators~~ (done, 06 §24) / back-forward cache | all | `SD:/apps/netsurf.app/cache` (64 MB, LRU), ETag / Last-Modified revalidated (304), max-age honoured; TLS sessions kept across launches; preconnect / dns-prefetch | a back-forward cache; the cache partitioned by site; preload hints (`rel=preload`, 103 Early Hints) | M | P3 |
 | DNS over HTTPS, HSTS preload | all | HSTS headers kept by NetSurf's urldb, no preload list | the preload list for the big sites | S | P3 |
 | Downloads manager, `download` attribute, file pickers (`<input type=file>`) | all | ? | the Onyx file dialog (wtk) | S | P2 |
 | Password manager, autofill, sync, extensions, devtools | all (Ladybird: devtools starting) | none | a JS console / DOM inspector window would help debugging on the Pi (the bench has NS_JSDEBUG) | M each | P3-P4 |
@@ -111,7 +112,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
   other program using the V3D (frames are served one at a time). Measured on the Pi by
   `gpcdemo bench` (1920 x 1080, GPU vs CPU) -- to be filled in from the first run.
 
-  **Stage 2 -- done** (docs/06 §23; `gpu_compositing` in Choices, default on): the page is
+  **Stage 2 -- done** (docs/06 §25; `gpu_compositing` in Choices, default on): the page is
   kept in a band three views high (a ring of rows), repainted where damaged, uploaded where
   painted; opacity / transform groups are retained layers (`gpc_tex`, damage-driven uploads,
   demoted to in-place painting when something painted after them covers them or when their
@@ -185,7 +186,8 @@ with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layou
    `html/onyx_anim.c`, libcss computed-value interpolation) -- done (docs/06 §22).
 3. WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS.
 4. TLS certificate verification, HTTP/2 (nghttp2), `br` announced, CORS / CSP basics, a disk
-   cache with validators.
+   cache with validators -- done but CSP (06 §24: also zstd, TLS sessions kept across
+   launches, preconnect, per-connection timings); left: CSP, TLS 1.3, SameSite.
 
 Wave 2 -- P1 / P2 depending on wave 1:
 5. Incremental restyle and relayout (after the layers, since both touch the redraw).

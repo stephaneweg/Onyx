@@ -1,46 +1,204 @@
 /*
  * host_stubs.c -- https for the PC build of NetSurf (host.mk): the Pi build's onyx_nstls.cpp
  * wraps mbedTLS over the Onyx TCP kapis; here the PC's OpenSSL over the simulator's real
- * sockets (SIM_REALNET=1: a socket handle is the file descriptor + 1000), the system's
- * certificates checked. Without SIM_REALNET there is no network: every call fails.
+ * sockets (SIM_REALNET=1: a socket handle is the file descriptor + 1000), the certificates
+ * checked against the bench's bundle as the Pi checks them (onyx_nstls_connect: the chain and
+ * each certificate's fault for NetSurf's certificate error page; NS_TLS_NOVERIFY=1: no check),
+ * ALPN h2 offered when the fetcher asks. NS_MBEDTLS=1: the Pi's mbedTLS glue instead. Without
+ * SIM_REALNET there is no network: every call fails.
  */
 #include <stddef.h>
 #include <poll.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #include "onyx_nstls.h"
 #include "kapi.h"
 
-struct onyx_tls_sess { SSL *ssl; int fd; };
+/* Onyx: NS_MBEDTLS=1 -- the Pi's own TLS instead (user/netsurf/onyx_nstls.cpp: mbedTLS over the
+ * simulator's sockets, compiled here with its calls renamed onyx_mb_*): its certificate check,
+ * ALPN, reads, exercised on the PC */
+onyx_tls_sess *onyx_mb_connect(int sock, const char *host, unsigned flags, struct onyx_tls_chain *chain);
+void onyx_mb_ca_bundle(const char *path);
+void onyx_mb_cancel_flag(volatile int *flag);
+int onyx_mb_resumed(onyx_tls_sess *s);
+void onyx_mb_sessions_load(const char *path);
+void onyx_mb_sessions_save(const char *path);
+int onyx_mb_send(onyx_tls_sess *s, const void *buf, int len);
+int onyx_mb_recv(onyx_tls_sess *s, void *buf, int len);
+void onyx_mb_close(onyx_tls_sess *s);
+const char *onyx_mb_alpn(onyx_tls_sess *s);
+
+struct onyx_tls_sess { SSL *ssl; int fd; onyx_tls_sess *mb; struct onyx_tls_chain *rec; };
+
+static int use_mb(void)
+{
+	static int v = -1;
+	if (v < 0) v = getenv("NS_MBEDTLS") != NULL && atoi(getenv("NS_MBEDTLS")) > 0;
+	return v;
+}
+
+static char ca_path[1024];
+
+/* Onyx: the trusted roots -- the bench's bundle ($(OUT)/res/ca-bundle: the card's, with the
+ * proxy's CA appended when there is one: host.mk), else the system's */
+void onyx_nstls_ca_bundle(const char *path)
+{
+	snprintf(ca_path, sizeof ca_path, "%s", path);
+	onyx_mb_ca_bundle(path);
+}
+
+/* OpenSSL's verdict on each certificate of the chain it built (the root first): recorded as
+ * the Pi's check records it, the handshake let through -- judged after it */
+static int verify_cb(int ok, X509_STORE_CTX *x)
+{
+	SSL *ssl = X509_STORE_CTX_get_ex_data(x, SSL_get_ex_data_X509_STORE_CTX_idx());
+	onyx_tls_sess *s = ssl != NULL ? SSL_get_app_data(ssl) : NULL;
+	int depth = X509_STORE_CTX_get_error_depth(x), e = X509_STORE_CTX_get_error(x), err;
+	X509 *c = X509_STORE_CTX_get_current_cert(x);
+
+	if (s == NULL || s->rec == NULL || depth < 0 || depth >= ONYX_TLS_CHAIN_MAX)
+		return 1;
+	switch (ok ? X509_V_OK : e) {
+	case X509_V_OK: err = ONYX_CERT_OK; break;
+	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+	case X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY:
+	case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE: err = ONYX_CERT_BAD_ISSUER; break;
+	case X509_V_ERR_CERT_SIGNATURE_FAILURE: err = ONYX_CERT_BAD_SIG; break;
+	case X509_V_ERR_CERT_NOT_YET_VALID: err = ONYX_CERT_TOO_YOUNG; break;
+	case X509_V_ERR_CERT_HAS_EXPIRED: err = ONYX_CERT_TOO_OLD; break;
+	case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT: err = ONYX_CERT_SELF_SIGNED; break;
+	case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN: err = ONYX_CERT_CHAIN_SELF_SIGNED; break;
+	case X509_V_ERR_CERT_REVOKED: err = ONYX_CERT_REVOKED; break;
+	case X509_V_ERR_HOSTNAME_MISMATCH: err = ONYX_CERT_HOSTNAME_MISMATCH; break;
+	default: err = ONYX_CERT_UNKNOWN; break;
+	}
+	if (s->rec->cert[depth].der == NULL && c != NULL) {
+		unsigned char *d = NULL;
+		int n = i2d_X509(c, &d);
+		if (n > 0) {
+			s->rec->cert[depth].der = malloc((size_t) n);
+			if (s->rec->cert[depth].der != NULL) memcpy(s->rec->cert[depth].der, d, (size_t) n);
+			s->rec->cert[depth].len = s->rec->cert[depth].der != NULL ? (unsigned long) n : 0;
+			OPENSSL_free(d);
+		}
+	}
+	if (s->rec->cert[depth].err == ONYX_CERT_OK)
+		s->rec->cert[depth].err = err;
+	if ((unsigned) depth + 1 > s->rec->depth)
+		s->rec->depth = (unsigned) depth + 1;
+	if (err != ONYX_CERT_OK)
+		s->rec->failed = 1;
+	return 1;
+}
 
 static SSL_CTX *ctx(void)
 {
 	static SSL_CTX *c;
 	if (c == NULL) {
 		c = SSL_CTX_new(TLS_client_method());
-		SSL_CTX_set_default_verify_paths(c);
-		SSL_CTX_set_verify(c, getenv("NS_TLS_NOVERIFY") ? SSL_VERIFY_NONE : SSL_VERIFY_PEER, NULL);
-		SSL_CTX_set_alpn_protos(c, (const unsigned char *) "\x08http/1.1", 9);
+		if (ca_path[0] == '\0' || SSL_CTX_load_verify_locations(c, ca_path, NULL) != 1)
+			SSL_CTX_set_default_verify_paths(c);
+		SSL_CTX_set_verify(c, getenv("NS_TLS_NOVERIFY") ? SSL_VERIFY_NONE : SSL_VERIFY_PEER,
+				verify_cb);
 	}
 	return c;
 }
 
-onyx_tls_sess *onyx_nstls_start(int sock, const char *host)
+int onyx_nstls_resumed(onyx_tls_sess *s)
 {
+	if (s == NULL) return 0;
+	return s->mb != NULL ? onyx_mb_resumed(s->mb) : SSL_session_reused(s->ssl);
+}
+
+/* (the sessions kept across launches: the Pi's code's, NS_MBEDTLS=1) */
+void onyx_nstls_sessions_load(const char *path) { if (use_mb()) onyx_mb_sessions_load(path); }
+void onyx_nstls_sessions_save(const char *path) { if (use_mb()) onyx_mb_sessions_save(path); }
+
+void onyx_nstls_cancel_flag(volatile int *flag)
+{
+	onyx_mb_cancel_flag(flag);	/* (OpenSSL's handshakes block: not cancelled on the bench) */
+}
+
+onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
+		struct onyx_tls_chain *chain)
+{
+	struct onyx_tls_chain rec;
+	onyx_tls_sess *s;
+
+	if (chain != NULL) memset(chain, 0, sizeof *chain);
 	if (sock < 1000) return NULL;
-	onyx_tls_sess *s = calloc(1, sizeof *s);
+	if (use_mb()) {
+		onyx_tls_sess *m = onyx_mb_connect(sock, host, flags, chain);
+		if (m == NULL) return NULL;
+		s = calloc(1, sizeof *s);
+		s->mb = m;
+		return s;
+	}
+	memset(&rec, 0, sizeof rec);
+	s = calloc(1, sizeof *s);
 	s->fd = sock - 1000;
 	s->ssl = SSL_new(ctx());
+	s->rec = &rec;
+	SSL_set_app_data(s->ssl, s);
 	SSL_set_fd(s->ssl, s->fd);
 	SSL_set_tlsext_host_name(s->ssl, host);
 	SSL_set1_host(s->ssl, host);
-	if (SSL_connect(s->ssl) != 1) {
-		SSL_free(s->ssl); close(s->fd); free(s);
-		return NULL;
-	}
+	if (flags & ONYX_TLS_H2)
+		SSL_set_alpn_protos(s->ssl, (const unsigned char *) "\x02h2\x08http/1.1", 12);
+	else
+		SSL_set_alpn_protos(s->ssl, (const unsigned char *) "\x08http/1.1", 9);
+	if (SSL_connect(s->ssl) != 1)
+		goto fail;
+	if (!(flags & ONYX_TLS_VERIFY) || (flags & ONYX_TLS_INSECURE) || getenv("NS_TLS_NOVERIFY"))
+		rec.failed = 0;
+	else if (SSL_get_verify_result(s->ssl) != X509_V_OK)
+		rec.failed = 1;
+	if (rec.failed)
+		goto fail;
+	s->rec = NULL;
+	onyx_nstls_chain_free(&rec);
 	return s;
+fail:
+	if (chain != NULL && rec.failed)
+		*chain = rec;		/* (the chain's DER copies are the caller's) */
+	else
+		onyx_nstls_chain_free(&rec);
+	SSL_free(s->ssl); kapi_tcp_close(s->fd + 1000); free(s);
+	return NULL;
+}
+
+void onyx_nstls_chain_free(struct onyx_tls_chain *chain)
+{
+	unsigned i;
+	if (chain == NULL) return;
+	for (i = 0; i < ONYX_TLS_CHAIN_MAX; i++) {
+		free(chain->cert[i].der);
+		chain->cert[i].der = NULL;
+	}
+	chain->depth = 0;
+}
+
+const char *onyx_nstls_alpn(onyx_tls_sess *s)
+{
+	static const char h2[] = "h2", h1[] = "http/1.1";
+	const unsigned char *p = NULL;
+	unsigned n = 0;
+	if (s == NULL) return NULL;
+	if (s->mb != NULL) return onyx_mb_alpn(s->mb);
+	SSL_get0_alpn_selected(s->ssl, &p, &n);
+	if (n == 2 && memcmp(p, "h2", 2) == 0) return h2;
+	if (n == 8 && memcmp(p, "http/1.1", 8) == 0) return h1;
+	return NULL;
+}
+
+onyx_tls_sess *onyx_nstls_start(int sock, const char *host)
+{
+	return onyx_nstls_connect(sock, host, ONYX_TLS_VERIFY, NULL);
 }
 
 onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port)
@@ -53,6 +211,7 @@ onyx_tls_sess *onyx_nstls_open(const char *host, unsigned port)
 int onyx_nstls_send(onyx_tls_sess *s, const void *buf, int len)
 {
 	if (s == NULL) return -1;
+	if (s->mb != NULL) return onyx_mb_send(s->mb, buf, len);
 	int o = 0;
 	while (o < len) {
 		int k = SSL_write(s->ssl, (const char *) buf + o, len - o);
@@ -65,6 +224,7 @@ int onyx_nstls_send(onyx_tls_sess *s, const void *buf, int len)
 int onyx_nstls_recv(onyx_tls_sess *s, void *buf, int len)
 {
 	if (s == NULL) return -1;
+	if (s->mb != NULL) return onyx_mb_recv(s->mb, buf, len);
 	if (SSL_pending(s->ssl) == 0) {
 		struct pollfd p = { s->fd, POLLIN, 0 };
 		if (poll(&p, 1, 0) <= 0) return 0;
@@ -79,9 +239,14 @@ int onyx_nstls_recv(onyx_tls_sess *s, void *buf, int len)
 void onyx_nstls_close(onyx_tls_sess *s)
 {
 	if (s == NULL) return;
+	if (s->mb != NULL) {
+		onyx_mb_close(s->mb);
+		free(s);
+		return;
+	}
 	SSL_shutdown(s->ssl);
 	SSL_free(s->ssl);
-	close(s->fd);
+	kapi_tcp_close(s->fd + 1000);
 	free(s);
 }
 
