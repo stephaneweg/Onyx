@@ -30,9 +30,8 @@
 		return a.join('>');
 	}
 	var sx = window.scrollX || 0, sy = window.scrollY || 0;
-	/* (Onyx: the open shadow trees' elements too, their paths after their host's;
-	 * each with its position relative to its previous displayed sibling, else its
-	 * parent) */
+	/* (Onyx: the open shadow trees' elements too, their paths after their host's; each box
+	 * also relative to its previous boxed sibling, or its parent) */
 	function walk(all, prefix) {
 		for (var i = 0; i < all.length; i++) {
 			var e = all[i], t = e.tagName.toLowerCase();
