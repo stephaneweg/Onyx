@@ -110,6 +110,11 @@ L=$OUT/js-iframeblank.log
 run js-iframeblank.html "$(waits 40)" "$L"
 expect "$L" "iframeblank loaded"
 
+echo "css-mqrange.html (media queries' range syntax)"
+L=$OUT/css-mqrange.log
+run css-mqrange.html "$(waits 30)" "$L"
+expect "$L" "mqrange a=none c=none d=none e=none f=none g=none"
+
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
 run js-microloop.html "$(waits 60)" "$L"
