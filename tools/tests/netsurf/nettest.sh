@@ -5,7 +5,8 @@
 # checked -- WebSocket (pages/net-ws.html: text, binary, Blob, a 100 KB compressed message,
 # fragments and a ping, the closing handshakes, a protocol error, a refused connection, the
 # handshake's cookie), EventSource and the streamed fetch / XHR (pages/net-stream.html), and a
-# page left with its sockets, streams and workers open (pages/net-teardown.html). Builds as
+# page left with its sockets, streams and workers open (pages/net-teardown.html), CORS against a
+# second server on the next port (pages/net-cors.html), preconnect (pages/net-preconnect.html). Builds as
 # jstest.sh (OUT, default /tmp/nsbench). Exit status 0: every check passed.
 #
 #   sh tools/tests/netsurf/nettest.sh
@@ -103,6 +104,18 @@ if grep -a -q "CORS PUT /cors?acao=origin&t=11\|CORS POST /cors?acao=origin&t=12
 	echo "  FAIL  server: a refused preflight's request sent, or a simple one preflighted"; fail=1
 else
 	echo "  ok    server: no request after a refused preflight"
+fi
+
+echo "net-preconnect.html (<link rel=preconnect>, <link rel=dns-prefetch>)"
+L=$OUT/net-preconnect.log
+NS_PERF=1 run net-preconnect.html 300 "$L"
+expect "$L" "preconnect fetch 200"
+n=$(grep -a -c "ONYX-PERF net:conn 127.0.0.1:$((PORT + 1)) " "$L")
+if grep -a -q "ONYX-PERF net:preconnect 127.0.0.1:$((PORT + 1)) http/1.1" "$L" && [ "$n" = 1 ] &&
+   grep -a -q "ONYX-PERF net:preconnect localhost:$PORT resolved" "$L"; then
+	echo "  ok    preconnected (the fetch on that connection), the name resolved"
+else
+	echo "  FAIL  preconnect: $n connections, $(grep -a 'net:preconnect' "$L" | tr '\n' ' ')"; fail=1
 fi
 
 [ $fail = 0 ] && echo "all passed" || exit 1

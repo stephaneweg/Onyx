@@ -2563,6 +2563,164 @@ static int onyx_job_start(struct fetch_onyx_context *c)
 	return 1;
 }
 
+/* ---- Onyx: <link rel=preconnect> / <link rel=dns-prefetch> ------------------------------
+ * A preconnect opens the origin's connection in a thread of its own while the page is parsed:
+ * HTTP/2 offered as a first download would (the entry is H2_CONNECTING meanwhile: the
+ * origin's fetches wait for it, then go as its streams; idle, it closes after 30 s like any),
+ * an http/1.1 one goes to the pool. A dns-prefetch only resolves the name (the kernel caches
+ * the answer). Few at once (the kernel's sockets): 2 in flight, an HTTP/2 slot free (none
+ * evicted for it), the origin not already connected. */
+#define ONYX_PRECONNECT_MAX	2
+
+struct onyx_preconn {
+	char host[256];
+	unsigned port;
+	bool tls, dns_only;
+	struct onyx_h2 *e;		/* HTTP/2 offered: its entry (H2_CONNECTING) */
+};
+
+static volatile int onyx_preconns;
+
+static int onyx_preconnect_worker(void *arg)
+{
+	struct onyx_preconn *p = arg;
+	struct onyx_conn k;
+	uint64_t t0 = onyx_perf_now();
+	const char *what = "failed";
+
+	if (p->dns_only) {
+		char ip[64];
+		what = KT->net_resolve != 0 && kapi_net_resolve(p->host, ip, sizeof ip) > 0 ?
+			"resolved" : "not resolved";
+	} else if (!conn_open(&k, p->host, p->port, p->tls, false, NULL, p->e != NULL)) {
+		conn_close(&k);
+		if (p->e != NULL) {
+			h2_retire(p->e);
+			free(p->e);
+		}
+	} else if (p->e != NULL && onyx_nstls_alpn(k.ts) != NULL &&
+			strcmp(onyx_nstls_alpn(k.ts), "h2") == 0) {
+		struct onyx_h2 *e = p->e;
+		e->ts = k.ts;
+		if (!h2_session_new(e)) {
+			h2_retire(e);
+			free(e);
+			conn_close(&k);
+		} else {
+			kapi_lock(&onyx_h2_lk);
+			e->state = H2_READY;
+			kapi_unlock(&onyx_h2_lk);
+			if (onyx_perf_on())
+				fprintf(stderr, "ONYX-PERF net:preconnect %s:%u h2 %lu us\n", p->host,
+						p->port, (unsigned long) (onyx_perf_now() - t0));
+			__atomic_sub_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+			onyx_post_wake();		/* (the fetches waiting for it) */
+			free(p);
+			h2_run(e);			/* (the connection's life; e freed) */
+			__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+			return 0;
+		}
+	} else {
+		if (p->e != NULL) {		/* (http/1.1 chosen: noted, the connection kept) */
+			h1_only_add(p->host, p->port);
+			h2_retire(p->e);
+			free(p->e);
+		}
+		pool_put(&k);
+		what = "http/1.1";
+	}
+	if (onyx_perf_on())
+		fprintf(stderr, "ONYX-PERF net:preconnect %s:%u %s %lu us\n", p->host, p->port,
+				what, (unsigned long) (onyx_perf_now() - t0));
+	__atomic_sub_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+	onyx_post_wake();
+	free(p);
+	__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+	return 0;
+}
+
+/* The UI thread (html/css.c: the page's <link>) */
+void onyx_fetch_preconnect(const char *url, bool dns_only)
+{
+	static struct { char host[256]; unsigned port; } done[16];
+	static unsigned done_n;
+	struct onyx_preconn *p;
+	const char *path;
+	bool tls = strncasecmp(url, "https:", 6) == 0;
+	unsigned port, i;
+	int s;
+
+	if (onyx_quit || !onyx_threads_ok() || getenv("NS_NOPRECONNECT") != NULL ||
+	    (!tls && strncasecmp(url, "http:", 5) != 0) ||
+	    __atomic_load_n(&onyx_preconns, __ATOMIC_SEQ_CST) >= ONYX_PRECONNECT_MAX)
+		return;
+	p = calloc(1, sizeof *p);
+	if (p == NULL)
+		return;
+	if (!onyx_split_url(url, p->host, sizeof p->host, &port, &path, tls ? 443 : 80))
+		goto no;
+	p->port = port;
+	p->tls = tls;
+	p->dns_only = dns_only;
+	for (i = 0; i < 16; i++)		/* (once per origin: the pages repeat them) */
+		if (done[i].port == port && strcasecmp(done[i].host, p->host) == 0)
+			goto no;
+	if (!dns_only) {
+		struct onyx_conn *q;
+		bool pooled = false;
+		kapi_lock(&onyx_pool_lk);
+		for (s = 0; s < onyx_pool_n; s++) {
+			q = &onyx_pool[s];
+			if (q->port == port && q->tls == tls && strcasecmp(q->host, p->host) == 0)
+				pooled = true;
+		}
+		kapi_unlock(&onyx_pool_lk);
+		if (pooled)
+			goto no;
+		if (tls && onyx_h2_enabled()) {
+			kapi_lock(&onyx_h2_lk);
+			if (h2_find(p->host, port) != NULL) {
+				kapi_unlock(&onyx_h2_lk);
+				goto no;
+			}
+			if (!h1_only(p->host, port)) {
+				for (s = 0; s < ONYX_H2_MAX && onyx_h2s[s] != NULL; s++)
+					;
+				if (s == ONYX_H2_MAX) {		/* (no slot free: not worth one) */
+					kapi_unlock(&onyx_h2_lk);
+					goto no;
+				}
+				p->e = calloc(1, sizeof *p->e);
+				if (p->e != NULL) {
+					snprintf(p->e->host, sizeof p->e->host, "%s", p->host);
+					p->e->port = port;
+					p->e->state = H2_CONNECTING;
+					p->e->idle_at = kapi_get_ticks();
+					onyx_h2s[s] = p->e;
+				}
+			}
+			kapi_unlock(&onyx_h2_lk);
+		}
+	}
+	i = done_n++ % 16;
+	snprintf(done[i].host, sizeof done[i].host, "%s", p->host);
+	done[i].port = port;
+	__atomic_add_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+	__atomic_add_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+	if (kapi_thread_create(onyx_preconnect_worker, p, 0, "preconnect") < 0) {
+		__atomic_sub_fetch(&onyx_threads, 1, __ATOMIC_SEQ_CST);
+		__atomic_sub_fetch(&onyx_preconns, 1, __ATOMIC_SEQ_CST);
+		if (p->e != NULL) {
+			h2_retire(p->e);
+			free(p->e);
+		}
+		goto no;
+	}
+	return;
+no:
+	free(p);
+}
+
 /* The UI thread: the fetch goes (aborted, freed, redirected) while its job may still run. */
 static void onyx_job_drop(struct fetch_onyx_context *c)
 {
