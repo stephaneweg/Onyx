@@ -38,6 +38,7 @@
 #include "image/rsvg.h"
 #include "image/svg.h"
 #include "image/webp.h"
+#include "image/onyx_svg.h"
 #include "image/image.h"
 
 /**
@@ -108,6 +109,11 @@ nserror image_init(void)
 	if (error != NSERROR_OK)
 		return error;
 #endif
+
+	/* Onyx: SVG images on PlutoSVG (onyx_svg.c; libsvgtiny is not built) */
+	error = onyx_svg_init();
+	if (error != NSERROR_OK)
+		return error;
 
 	return error;
 }

@@ -19,6 +19,9 @@ const char* plutosvg_version_string(void)
 
 enum {
     TAG_UNKNOWN = 0,
+    TAG_A,          /* Onyx: <a>, <switch> drawn as groups, <style> read */
+    TAG_STYLE,
+    TAG_SWITCH,
     TAG_CIRCLE,
     TAG_CLIP_PATH, // TODO
     TAG_DEFS,
@@ -40,6 +43,7 @@ enum {
 
 enum {
     ATTR_UNKNOWN = 0,
+    ATTR_CLASS,     /* Onyx: for the <style> sheets' selectors */
     ATTR_CLIP_PATH,
     ATTR_CLIP_PATH_UNITS,
     ATTR_CLIP_RULE,
@@ -121,6 +125,7 @@ static int lookupid(const char* data, size_t length, const name_entry_t* table, 
 static int elementid(const char* data, size_t length)
 {
     static const name_entry_t table[] = {
+        {"a", TAG_A},
         {"circle", TAG_CIRCLE},
         {"clipPath", TAG_CLIP_PATH},
         {"defs", TAG_DEFS},
@@ -135,7 +140,9 @@ static int elementid(const char* data, size_t length)
         {"radialGradient", TAG_RADIAL_GRADIENT},
         {"rect", TAG_RECT},
         {"stop", TAG_STOP},
+        {"style", TAG_STYLE},
         {"svg", TAG_SVG},
+        {"switch", TAG_SWITCH},
         {"symbol", TAG_SYMBOL},
         {"use", TAG_USE}
     };
@@ -146,6 +153,7 @@ static int elementid(const char* data, size_t length)
 static int attributeid(const char* data, size_t length)
 {
     static const name_entry_t table[] = {
+        {"class", ATTR_CLASS},
         {"clip-path", ATTR_CLIP_PATH},
         {"clip-rule", ATTR_CLIP_RULE},
         {"clipPathUnits", ATTR_CLIP_PATH_UNITS},
@@ -244,6 +252,7 @@ typedef struct element {
     struct element* first_child;
     struct element* next_sibling;
     struct attribute* attributes;
+    int nstyle;     /* Onyx: the first nstyle attributes came from its style="" */
 } element_t;
 
 typedef struct heap_chunk {
@@ -775,14 +784,22 @@ static bool parse_url_value(const char** begin, const char* end, string_t* id)
         return false;
     }
 
+    char quote = 0;     /* Onyx: url('#id') and url("#id") too */
+    if(it < end && (*it == '\'' || *it == '"'))
+        quote = *it++;
     if(!skip_delim(&it, end, '#'))
         return false;
     id->data = it;
     id->length = 0;
-    while(it < end && *it != ')') {
+    while(it < end && *it != ')' && *it != quote) {
         ++id->length;
         ++it;
     }
+
+    if(quote && !skip_delim(&it, end, quote))
+        return false;
+    id->length = rtrim(id->data, id->data + id->length) - id->data;
+    skip_ws(&it, end);
 
     if(!skip_delim(&it, end, ')'))
         return false;
@@ -1148,7 +1165,15 @@ struct plutosvg_document {
     void* closure;
     float width;
     float height;
+    struct style_sheet* sheets;     /* Onyx: the <style> elements' text, in order */
 };
+
+/* Onyx: a <style> element's text (it points into the document's data) */
+typedef struct style_sheet {
+    const char* data;
+    size_t length;
+    struct style_sheet* next;
+} style_sheet_t;
 
 static plutosvg_document_t* plutosvg_document_create(float width, float height, plutovg_destroy_func_t destroy_func, void* closure)
 {
@@ -1161,6 +1186,7 @@ static plutosvg_document_t* plutosvg_document_create(float width, float height, 
     document->closure = closure;
     document->width = width;
     document->height = height;
+    document->sheets = NULL;
     return document;
 }
 
@@ -1186,36 +1212,70 @@ static void add_attribute(element_t* element, plutosvg_document_t* document, int
     element->attributes = attribute;
 }
 
+/* Onyx: an attribute put after the element's first `skip` ones (a <style> sheet's
+ * declaration: below style="", above the presentation attributes) */
+static void insert_attribute(element_t* element, plutosvg_document_t* document, int skip, int id, const char* data, size_t length)
+{
+    attribute_t** link = &element->attributes;
+    while(skip-- > 0 && *link)
+        link = &(*link)->next;
+    attribute_t* attribute = heap_alloc(document->heap, sizeof(attribute_t));
+    attribute->id = id;
+    attribute->value.data = data;
+    attribute->value.length = length;
+    attribute->next = *link;
+    *link = attribute;
+}
+
 #define IS_CSS_STARTNAMECHAR(c) (IS_ALPHA(c) || c == '_')
 #define IS_CSS_NAMECHAR(c) (IS_CSS_STARTNAMECHAR(c) || IS_NUM(c) || c == '-')
 
-static void parse_style(const char* data, int length, element_t* element, plutosvg_document_t* document)
+/* Onyx: skip = -1: prepended (style=""), else inserted after the first `skip`
+ * attributes; "!important" dropped; returns the number added */
+static int parse_style(const char* data, int length, element_t* element, plutosvg_document_t* document, int skip)
 {
     const char* it = data;
     const char* end = it + length;
-    while(it < end && IS_CSS_STARTNAMECHAR(*it)) {
+    int added = 0;
+    skip_ws(&it, end);
+    while(it < end && (IS_CSS_STARTNAMECHAR(*it) || *it == '-')) {
         data = it++;
         while(it < end && IS_CSS_NAMECHAR(*it))
             ++it;
         int id = cssattributeid(data, it - data);
         skip_ws(&it, end);
         if(it >= end || *it != ':')
-            return;
+            return added;
         ++it;
         skip_ws(&it, end);
         data = it;
-        while(it < end && *it != ';')
+        int depth = 0;
+        while(it < end && (*it != ';' || depth > 0)) {
+            if(*it == '(') ++depth;
+            else if(*it == ')' && depth > 0) --depth;
             ++it;
-        length = rtrim(data, it) - data;
-        if(id && element)
-            add_attribute(element, document, id, data, length);
+        }
+        const char* vend = rtrim(data, it);
+        if(vend - data >= 10 && strncmp(vend - 10, "!important", 10) == 0)
+            vend = rtrim(data, vend - 10);
+        length = vend - data;
+        if(id && element) {
+            if(skip < 0)
+                add_attribute(element, document, id, data, length);
+            else
+                insert_attribute(element, document, skip, id, data, length);
+            added++;
+        }
         skip_ws_delim(&it, end, ';');
     }
+    return added;
 }
 
 static bool parse_attributes(const char** begin, const char* end, element_t* element, plutosvg_document_t* document)
 {
     const char* it = *begin;
+    const char* style = NULL;   /* Onyx: style="" read last: it wins over the attributes */
+    int style_length = 0;
     while(it < end && IS_STARTNAMECHAR(*it)) {
         const char* data = it++;
         while(it < end && IS_NAMECHAR(*it))
@@ -1241,8 +1301,10 @@ static bool parse_attributes(const char** begin, const char* end, element_t* ele
                 if(document->id_cache == NULL)
                     document->id_cache = hashmap_create();
                 hashmap_put(document->id_cache, document->heap, data, length, element);
+                add_attribute(element, document, id, data, length);    /* (Onyx: #id selectors) */
             } else if(id == ATTR_STYLE) {
-                parse_style(data, length, element, document);
+                style = data;
+                style_length = length;
             } else {
                 add_attribute(element, document, id, data, length);
             }
@@ -1252,8 +1314,292 @@ static bool parse_attributes(const char** begin, const char* end, element_t* ele
         skip_ws(&it, end);
     }
 
+    if(style && element)
+        element->nstyle = parse_style(style, style_length, element, document, -1);
     *begin = it;
     return true;
+}
+
+/*
+ * Onyx: the <style> elements' sheets. A small CSS subset, as the SVG icons and logos of
+ * the web use it: rules of selector lists -- compound selectors of a type, `*`, classes,
+ * an #id, joined by descendant (space) and child (>) combinators; a selector with
+ * anything else (pseudo-classes, attributes, + ~) never matches -- and their declarations
+ * of the presentation properties (fill, stroke, opacity, ...). At-rules are skipped. The
+ * declarations go below style="" and above the presentation attributes, in the order of
+ * specificity then of the sheets.
+ */
+
+#define MAX_COMPOUNDS 16
+#define MAX_RULES 1024
+
+typedef struct {
+    const char* sel;        /* the selector (one of a list) */
+    size_t sel_length;
+    const char* decl;       /* its block's declarations */
+    size_t decl_length;
+    int specificity;
+    int order;
+} css_rule_t;
+
+static const char* css_skip_ws(const char* it, const char* end)
+{
+    for(;;) {
+        while(it < end && (IS_WS(*it) || *it == '\f'))
+            ++it;
+        if(it + 1 < end && it[0] == '/' && it[1] == '*') {
+            const char* close = string_find(it + 2, end, "*/");
+            it = close ? close + 2 : end;
+        } else if(it + 8 < end && strncmp(it, "<![CDATA[", 9) == 0) {
+            it += 9;
+        } else if(it + 2 < end && strncmp(it, "]]>", 3) == 0) {
+            it += 3;
+        } else if(it + 3 < end && strncmp(it, "<!--", 4) == 0) {
+            it += 4;
+        } else if(it + 2 < end && strncmp(it, "-->", 3) == 0) {
+            it += 3;
+        } else {
+            return it;
+        }
+    }
+}
+
+/* past a {...} block (it at '{'), nested blocks and strings skipped */
+static const char* css_skip_block(const char* it, const char* end)
+{
+    int depth = 0;
+    while(it < end) {
+        char c = *it++;
+        if(c == '"' || c == '\'') {
+            while(it < end && *it != c)
+                ++it;
+            if(it < end)
+                ++it;
+        } else if(c == '{') {
+            ++depth;
+        } else if(c == '}') {
+            if(--depth <= 0)
+                return it;
+        }
+    }
+    return end;
+}
+
+#define IS_CSS_IDENT(c) (IS_ALPHA(c) || IS_NUM(c) || (c) == '-' || (c) == '_' || ((unsigned char)(c) >= 0x80))
+
+/* a compound selector (it..end, no combinator) matched against the element */
+static bool css_match_compound(const element_t* element, const char* it, const char* end)
+{
+    if(it < end && *it == '*')
+        ++it;
+    else if(it < end && IS_CSS_IDENT(*it)) {
+        const char* name = it;
+        while(it < end && IS_CSS_IDENT(*it))
+            ++it;
+        if(elementid(name, it - name) != element->id)
+            return false;
+    }
+
+    while(it < end) {
+        char c = *it++;
+        const char* name = it;
+        while(it < end && IS_CSS_IDENT(*it))
+            ++it;
+        size_t length = it - name;
+        if(length == 0)
+            return false;
+        if(c == '.') {
+            const string_t* value = find_attribute(element, ATTR_CLASS, false);
+            if(value == NULL)
+                return false;
+            const char* v = value->data;
+            const char* vend = v + value->length;
+            bool found = false;
+            while(v < vend && !found) {
+                while(v < vend && IS_WS(*v))
+                    ++v;
+                const char* word = v;
+                while(v < vend && !IS_WS(*v))
+                    ++v;
+                found = (size_t)(v - word) == length && strncmp(word, name, length) == 0;
+            }
+            if(!found)
+                return false;
+        } else if(c == '#') {
+            const string_t* value = find_attribute(element, ATTR_ID, false);
+            if(value == NULL || value->length != length || strncmp(value->data, name, length) != 0)
+                return false;
+        } else {
+            return false;   /* a pseudo-class, an attribute: not supported */
+        }
+    }
+
+    return true;
+}
+
+/* the selector's compounds, matched right to left */
+static bool css_match(const element_t* element, const char* sel, size_t sel_length)
+{
+    const char* cbeg[MAX_COMPOUNDS];
+    const char* cend[MAX_COMPOUNDS];
+    char comb[MAX_COMPOUNDS];      /* the combinator before compound i: ' ' or '>' */
+    int n = 0;
+    const char* it = sel;
+    const char* end = sel + sel_length;
+    char next_comb = 0;
+    while(it < end) {
+        while(it < end && IS_WS(*it))
+            ++it;
+        if(it < end && *it == '>') {
+            next_comb = '>';
+            ++it;
+            continue;
+        }
+        if(it >= end)
+            break;
+        if(*it == '+' || *it == '~')
+            return false;
+        if(n == MAX_COMPOUNDS)
+            return false;
+        cbeg[n] = it;
+        while(it < end && !IS_WS(*it) && *it != '>' && *it != '+' && *it != '~') {
+            if(*it == '[' || *it == '(')
+                return false;
+            ++it;
+        }
+        cend[n] = it;
+        comb[n] = n ? (next_comb ? next_comb : ' ') : 0;
+        next_comb = 0;
+        ++n;
+    }
+
+    if(n == 0 || !css_match_compound(element, cbeg[n - 1], cend[n - 1]))
+        return false;
+    /* the ancestors, greedily (enough for icons' sheets) */
+    const element_t* e = element->parent;
+    for(int i = n - 2; i >= 0; --i) {
+        if(comb[i + 1] == '>') {
+            if(e == NULL || !css_match_compound(e, cbeg[i], cend[i]))
+                return false;
+            e = e->parent;
+        } else {
+            while(e && !css_match_compound(e, cbeg[i], cend[i]))
+                e = e->parent;
+            if(e == NULL)
+                return false;
+            e = e->parent;
+        }
+    }
+
+    return true;
+}
+
+static int css_specificity(const char* sel, size_t length)
+{
+    const char* it = sel;
+    const char* end = sel + length;
+    int ids = 0, classes = 0, types = 0;
+    while(it < end) {
+        if(*it == '#') {
+            ++ids;
+            ++it;
+        } else if(*it == '.' || *it == ':') {
+            ++classes;
+            ++it;
+        } else if(IS_ALPHA(*it) && (it == sel || IS_WS(it[-1]) || it[-1] == '>')) {
+            ++types;
+        } else {
+            ++it;
+            continue;
+        }
+        while(it < end && IS_CSS_IDENT(*it))
+            ++it;
+    }
+
+    return ids * 10000 + classes * 100 + types;
+}
+
+static int css_rule_compare(const void* a, const void* b)
+{
+    const css_rule_t* x = a;
+    const css_rule_t* y = b;
+    if(x->specificity != y->specificity)
+        return x->specificity - y->specificity;
+    return x->order - y->order;
+}
+
+static void css_apply_rule(plutosvg_document_t* document, element_t* element, const css_rule_t* rule)
+{
+    for(; element; element = element->next_sibling) {
+        if(css_match(element, rule->sel, rule->sel_length))
+            parse_style(rule->decl, rule->decl_length, element, document, element->nstyle);
+        if(element->first_child)
+            css_apply_rule(document, element->first_child, rule);
+    }
+}
+
+static void apply_style_sheets(plutosvg_document_t* document)
+{
+    css_rule_t* rules = malloc(MAX_RULES * sizeof(css_rule_t));
+    int count = 0;
+    if(rules == NULL)
+        return;
+    for(const style_sheet_t* sheet = document->sheets; sheet; sheet = sheet->next) {
+        const char* it = sheet->data;
+        const char* end = it + sheet->length;
+        while(count < MAX_RULES) {
+            it = css_skip_ws(it, end);
+            if(it >= end)
+                break;
+            if(*it == '@') {
+                while(it < end && *it != ';' && *it != '{')
+                    ++it;
+                if(it < end && *it == '{')
+                    it = css_skip_block(it, end);
+                else if(it < end)
+                    ++it;
+                continue;
+            }
+            const char* sel = it;
+            while(it < end && *it != '{')
+                ++it;
+            if(it >= end)
+                break;
+            const char* sel_end = it;
+            const char* block = it + 1;
+            it = css_skip_block(it, end);
+            const char* block_end = (it > block && it[-1] == '}') ? it - 1 : it;
+            /* each selector of the list */
+            const char* s0 = sel;
+            while(s0 < sel_end && count < MAX_RULES) {
+                const char* s1 = s0;
+                while(s1 < sel_end && *s1 != ',')
+                    ++s1;
+                const char* a = css_skip_ws(s0, s1);
+                const char* b = rtrim(a, s1);
+                if(b > a) {
+                    rules[count].sel = a;
+                    rules[count].sel_length = b - a;
+                    rules[count].decl = block;
+                    rules[count].decl_length = block_end - block;
+                    rules[count].specificity = css_specificity(a, b - a);
+                    rules[count].order = count;
+                    ++count;
+                }
+                s0 = s1 + 1;
+            }
+        }
+    }
+
+    if(count > 0) {
+        /* lowest first: each rule's declarations inserted just below style="", above
+         * those of the rules before it */
+        qsort(rules, count, sizeof(css_rule_t), css_rule_compare);
+        for(int i = 0; i < count; ++i)
+            css_apply_rule(document, document->root_element, rules + i);
+    }
+
+    free(rules);
 }
 
 plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int length, float width, float height, plutovg_destroy_func_t destroy_func, void* closure)
@@ -1398,6 +1744,7 @@ plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int leng
                 element->first_child = NULL;
                 element->last_child = NULL;
                 element->attributes = NULL;
+                element->nstyle = 0;
                 if(document->root_element == NULL) {
                     if(element->id != TAG_SVG)
                         goto error;
@@ -1422,6 +1769,21 @@ plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int leng
             if(element)
                 current = element;
             ++it;
+            if(element && element->id == TAG_STYLE) {
+                /* Onyx: the sheet's text, up to </style> (read once parsed) */
+                const char* close = string_find(it, end, "</style");
+                if(close == NULL)
+                    goto error;
+                style_sheet_t* sheet = heap_alloc(document->heap, sizeof(style_sheet_t));
+                sheet->data = it;
+                sheet->length = close - it;
+                sheet->next = NULL;
+                style_sheet_t** link = &document->sheets;
+                while(*link)
+                    link = &(*link)->next;
+                *link = sheet;
+                it = close;
+            }
             continue;
         }
 
@@ -1439,6 +1801,8 @@ plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int leng
     }
 
     if(it == end && ignoring == 0 && current == NULL && document->root_element) {
+        if(document->sheets)
+            apply_style_sheets(document);   /* Onyx */
         length_t w = {100, length_type_percent};
         length_t h = {100, length_type_percent};
 
@@ -1618,6 +1982,7 @@ typedef struct {
     plutosvg_palette_func_t palette_func;
     void* closure;
     int depth;
+    plutovg_path_t* clip_path;  /* Onyx: a <clipPath>'s shapes gathered (render_mode_clipping) */
 } render_context_t;
 
 static float resolve_length(const render_state_t* state, const length_t* length, char mode)
@@ -1965,6 +2330,13 @@ static void draw_shape(const element_t* element, render_context_t* context, rend
         parse_line_cap(element, ATTR_STROKE_LINECAP, &line_cap);
         parse_line_join(element, ATTR_STROKE_LINEJOIN, &line_join);
         parse_number(element, ATTR_STROKE_MITERLIMIT, &miter_limit, false, true);
+    }
+
+    if(state->mode == render_mode_clipping) {
+        /* Onyx: a <clipPath>'s shape, in device space */
+        if(context->clip_path)
+            plutovg_path_add_path(context->clip_path, context->document->path, &state->matrix);
+        return;
     }
 
     if(state->mode == render_mode_bounding) {
@@ -2470,7 +2842,7 @@ static plutovg_surface_t* load_image(const element_t* element)
 
 static void draw_image(const element_t* element, render_context_t* context, render_state_t* state, float x, float y, float width, float height)
 {
-    if(state->mode == render_mode_bounding)
+    if(state->mode != render_mode_painting)     /* (Onyx: not in a clipPath either) */
         return;
     plutovg_surface_t* image = load_image(element);
     if(image == NULL)
@@ -2531,9 +2903,105 @@ static void render_image(const element_t* element, render_context_t* context, re
     render_state_end(&new_state);
 }
 
+static void render_element_clipped(const element_t* element, render_context_t* context, render_state_t* state);
+
+/* Onyx: clip-path="url(#id)" -- the <clipPath>'s shapes (their transforms, the element's,
+ * clipPathUnits) gathered into one path in device space, the canvas clipped to it while
+ * the element is drawn */
+static const element_t* clip_path_of(const element_t* element, const plutosvg_document_t* document)
+{
+    const string_t* value = find_attribute(element, ATTR_CLIP_PATH, false);
+    if(value == NULL)
+        return NULL;
+    const char* it = value->data;
+    const char* end = it + value->length;
+    string_t id;
+    if(!parse_url_value(&it, end, &id))
+        return NULL;
+    const element_t* ref = find_element(document, &id);
+    return (ref && ref->id == TAG_CLIP_PATH) ? ref : NULL;
+}
+
 static void render_element(const element_t* element, render_context_t* context, render_state_t* state)
 {
+    const element_t* clip;
+    if(state->mode == render_mode_painting && context->canvas && context->depth < 64
+        && (clip = clip_path_of(element, context->document)) != NULL) {
+        /* the element's user space: its transform on its parent's */
+        plutovg_matrix_t matrix = state->matrix;
+        plutovg_matrix_t local;
+        if(element->parent && parse_transform(element, ATTR_TRANSFORM, &local))
+            plutovg_matrix_multiply(&matrix, &local, &state->matrix);
+        units_type_t units = units_type_user_space_on_use;
+        parse_units_type(clip, ATTR_CLIP_PATH_UNITS, &units);
+        if(units == units_type_object_bounding_box) {
+            render_state_t bstate = *state;
+            bstate.parent = NULL;
+            bstate.mode = render_mode_bounding;
+            bstate.extents = INVALID_RECT;
+            plutovg_matrix_init_identity(&bstate.matrix);
+            render_context_t bcontext = *context;
+            bcontext.canvas = NULL;
+            render_state_t outer = bstate;
+            bstate.parent = &outer;
+            render_element_clipped(element, &bcontext, &bstate);
+            plutovg_rect_t box = outer.extents;
+            if(IS_INVALID_RECT(box))
+                box = bstate.extents;
+            if(IS_INVALID_RECT(box) || IS_EMPTY_RECT(box))
+                return;
+            plutovg_matrix_t bbox = {box.w, 0, 0, box.h, box.x, box.y};
+            plutovg_matrix_multiply(&matrix, &bbox, &state->matrix);
+        }
+        if(parse_transform(clip, ATTR_TRANSFORM, &local))
+            plutovg_matrix_multiply(&matrix, &local, &matrix);
+
+        plutovg_path_t* path = plutovg_path_create();
+        render_state_t cstate = *state;
+        cstate.parent = state;
+        cstate.element = clip;
+        cstate.mode = render_mode_clipping;
+        cstate.matrix = matrix;
+        render_context_t ccontext = *context;
+        ccontext.clip_path = path;
+        const element_t* child;
+        for(child = clip->first_child; child; child = child->next_sibling) {
+            ccontext.depth = context->depth + 1;
+            render_element_clipped(child, &ccontext, &cstate);
+        }
+
+        plutovg_fill_rule_t rule = PLUTOVG_FILL_RULE_NON_ZERO;
+        if(clip->first_child)
+            parse_fill_rule(clip->first_child, ATTR_CLIP_RULE, &rule);
+        plutovg_canvas_save(context->canvas);
+        plutovg_canvas_reset_matrix(context->canvas);
+        plutovg_canvas_set_fill_rule(context->canvas, rule);
+        plutovg_canvas_clip_path(context->canvas, path);
+        plutovg_path_destroy(path);
+        context->depth++;
+        render_element_clipped(element, context, state);
+        context->depth--;
+        plutovg_canvas_restore(context->canvas);
+        return;
+    }
+
+    render_element_clipped(element, context, state);
+}
+
+static void render_element_clipped(const element_t* element, render_context_t* context, render_state_t* state)
+{
     switch(element->id) {
+    case TAG_A:     /* Onyx: a link, drawn as a group */
+        render_g(element, context, state);
+        break;
+    case TAG_SWITCH:    /* Onyx: its first child (no conditions read) */
+        if(!is_display_none(element) && element->first_child) {
+            render_state_t new_state;
+            render_state_begin(element, &new_state, state);
+            render_element(element->first_child, context, &new_state);
+            render_state_end(&new_state);
+        }
+        break;
     case TAG_SVG:
         render_svg(element, context, state);
         break;
@@ -2603,7 +3071,7 @@ bool plutosvg_document_render(const plutosvg_document_t* document, const char* i
         state.element = element;
     }
 
-    render_context_t context = {document, canvas, current_color, palette_func, closure, 0};
+    render_context_t context = {document, canvas, current_color, palette_func, closure, 0, NULL};
     render_element(state.element, &context, &state);
     return true;
 }
@@ -2640,6 +3108,20 @@ plutovg_surface_t* plutosvg_document_render_to_surface(const plutosvg_document_t
     return surface;
 }
 
+/* Onyx: the viewport the root <svg> is drawn in (an <img> sized by CSS) */
+void plutosvg_document_set_size(plutosvg_document_t* document, float width, float height)
+{
+    document->width = width;
+    document->height = height;
+}
+
+/* Onyx: whether the root <svg> has a viewBox (else an image is scaled, as browsers do) */
+bool plutosvg_document_has_view_box(const plutosvg_document_t* document)
+{
+    plutovg_rect_t view_box;
+    return document->root_element && parse_view_box(document->root_element, ATTR_VIEW_BOX, &view_box);
+}
+
 float plutosvg_document_get_width(const plutosvg_document_t* document)
 {
     return document->width;
@@ -2673,7 +3155,7 @@ bool plutosvg_document_extents(const plutosvg_document_t* document, const char* 
         state.element = element;
     }
 
-    render_context_t context = {document, NULL, NULL, NULL, NULL, 0};
+    render_context_t context = {document, NULL, NULL, NULL, NULL, 0, NULL};
     render_element(state.element, &context, &state);
     if(IS_INVALID_RECT(state.extents)) {
         *extents = EMPTY_RECT;

@@ -41,6 +41,11 @@ FT   := $(TP)/freetype-2.14.3
 FONTS := $(TP)/dejavu-fonts-ttf-2.37
 JPEG := $(TP)/jpeg-9f
 WEBP := $(TP)/libwebp-1.4.0
+# Onyx: PlutoVG (the vector rasteriser) and PlutoSVG: SVG images, inline <svg>, <canvas>
+PVG  := $(TP)/plutovg-1.3.3
+PSVG := $(TP)/plutosvg-0.0.8
+PVG_CF := -std=gnu11 -DPLUTOVG_BUILD -DPLUTOVG_BUILD_STATIC -DPLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD \
+          -DSTBI_ONLY_PNG -DSTBI_ONLY_JPEG -I$(PVG)/include
 
 # the resources NetSurf reads at run time (Messages, the UA stylesheets...): staged into $(OUT)/res
 RESPATH := $(OUT)/res/
@@ -59,7 +64,8 @@ NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
          -I$(WAP)/include -I$(PU)/include -I$(CSS)/include -I$(DOM)/include -I$(HB)/include \
          -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
          -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF) \
-         -I$(JPEG) -I$(WEBP)/src
+         -I$(JPEG) -I$(WEBP)/src \
+         -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source
 
 # ---- sources -------------------------------------------------------------
 WAP_SRC := $(shell find $(WAP)/src -name '*.c')
@@ -94,7 +100,7 @@ CORE_SRC := \
   $(wildcard $(NS)/desktop/*.c) \
   $(wildcard $(NS)/content/handlers/css/*.c) $(wildcard $(NS)/content/handlers/html/*.c) \
   $(wildcard $(NS)/content/handlers/text/*.c) \
-  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c png.c jpeg.c webp.c) \
+  $(addprefix $(NS)/content/handlers/image/,bmp.c gif.c ico.c image.c image_cache.c png.c jpeg.c webp.c onyx_svg.c) \
   $(wildcard $(NS)/content/handlers/javascript/*.c) $(JS_SRC)
 
 FB := $(NS)/frontends/framebuffer
@@ -127,7 +133,10 @@ WEBP_SRC := $(wildcard $(WEBP)/src/dec/*.c $(WEBP)/src/dsp/*.c $(WEBP)/src/utils
 I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
         '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include $(I_BRO)
 
-LIB_ALL := $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+PVG_SRC := $(wildcard $(PVG)/source/plutovg-*.c)
+PSVG_SRC := $(PSVG)/source/plutosvg.c
+
+LIB_ALL := $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -187,6 +196,8 @@ $(call obj,$(1)): $(1)
 endef
 $(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
+$(foreach s,$(PVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF))))
+$(foreach s,$(PSVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source)))
 $(foreach s,$(WEBP_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(WEBP) -I$(WEBP)/src)))
 $(foreach s,$(FT_SRC),$(eval $(call LIB_RULE,$(s),$(I_FT))))
 $(foreach s,$(BRO_SRC),$(eval $(call LIB_RULE,$(s),$(I_BRO))))
