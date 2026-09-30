@@ -1120,6 +1120,11 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   -- on bbc.com 60 % of the process's CPU; they sleep 5 ms at a time now (the same run: 4080
   -> 1335 ms of CPU). Found with the bench's sampling profiler: `NS_PROF=<file>` (host_stubs.c,
   SIGPROF + backtrace) then `sh tools/tests/netsurf/prof.sh <file>` (self and total per function).
+- **A style sheet given in parts** (libparserutils `inputstream.c`): the HTML parser work's
+  "the filter still holds data" refill ran in the middle of a stream too, left the cursor past
+  the buffer's end and the CSS lexer read and wrote beyond it -- a sheet that arrived in
+  several network reads (more of them on the Pi's slower link) could come out broken. Only at
+  the end of the input now (found by the network work, on github.com's Brotli-decoded sheets).
 - **"Desktop Site / Mobile Site"** (the Navigate menu): the User-Agent is a mobile Chrome's
   by default (the light pages of the big sites); a site the user switches gets a desktop
   Chrome's (Windows) -- in its requests, its client hints (`sec-ch-ua-mobile`,
