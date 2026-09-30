@@ -119,5 +119,15 @@ else
 	echo "  ok: $(grep -c '^console: OK ' "$L") checks"
 fi
 
+echo "css-svgprops.html (SVG's fill / stroke... computed by libcss, the attributes as hints)"
+L=$OUT/css-svgprops.log
+run css-svgprops.html "$(waits 60)" "$L"
+expect "$L" "svgprops a fill rgb(0, 128, 0)"
+expect "$L" "svgprops a stroke-width 2px"
+expect "$L" "svgprops b stroke none"
+expect "$L" "svgprops s fill rgb(255, 0, 0)"
+expect "$L" "svgprops s stroke-width 3px"
+expect "$L" "svgprops v fill rgb(0, 0, 255)"
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

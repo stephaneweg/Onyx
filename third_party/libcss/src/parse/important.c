@@ -99,6 +99,43 @@ void css__make_style_important(css_style *style)
 		if (op == (opcode_t) CSS_ONYX_OP_GENERIC)
 			continue;		/* (no operand) */
 
+		/* Onyx: SVG's presentation properties */
+		if (hasFlagValue(opv) == false) {
+			switch (op) {
+			case CSS_PROP_FILL:
+			case CSS_PROP_STROKE:
+				if (value & PAINT_URL)
+					offset++;	/* the URL */
+				if (value & PAINT_COLOR)
+					offset++;	/* the colour */
+				continue;
+			case CSS_PROP_STROKE_WIDTH:
+			case CSS_PROP_STROKE_DASHOFFSET:
+				if (value == SVG_LENGTH_SET)
+					offset += 2;	/* length, unit */
+				continue;
+			case CSS_PROP_STROKE_MITERLIMIT:
+			case CSS_PROP_STOP_OPACITY:
+				if (value == SVG_NUMBER_SET)
+					offset++;
+				continue;
+			case CSS_PROP_STROKE_DASHARRAY:
+				if (value == ONYX_TEXT_SET)
+					offset++;	/* the text */
+				continue;
+			case CSS_PROP_STOP_COLOR:
+				if (value == STOP_COLOR_SET)
+					offset++;
+				continue;
+			case CSS_PROP_FILL_RULE:
+			case CSS_PROP_STROKE_LINECAP:
+			case CSS_PROP_STROKE_LINEJOIN:
+				continue;
+			default:
+				break;
+			}
+		}
+
 		/* Advance past any property-specific data */
 		if (hasFlagValue(opv) == false && value == VALUE_IS_CALC) {
 			/* All VALUE_IS_CALC have the form OPV UNIT STRIDX */

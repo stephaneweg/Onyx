@@ -1255,6 +1255,29 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		css_fixed o = INTTOFIX(1);
 		css_computed_opacity(box->style, &o);
 		snprintf(buf, sizeof(buf), "%g", FIXTOFLT(o));
+	} else if (strcmp(prop, "fill") == 0 || strcmp(prop, "stroke") == 0) {
+		/* Onyx: SVG's paints (libcss computes them) */
+		css_color c = 0, cur = 0;
+		lwc_string *url = NULL;
+		uint8_t pt = prop[0] == 'f' ? css_computed_fill(box->style, &c, &url) :
+				css_computed_stroke(box->style, &c, &url);
+		css_computed_color(box->style, &cur);
+		if (pt == CSS_PAINT_CURRENT_COLOR)
+			c = cur;
+		if (pt == CSS_PAINT_NONE)
+			snprintf(buf, sizeof(buf), "none");
+		else if ((pt == CSS_PAINT_URL || pt == CSS_PAINT_URL_COLOR ||
+				pt == CSS_PAINT_URL_CURRENT_COLOR) && url != NULL)
+			snprintf(buf, sizeof(buf), "url(\"%.50s\")", lwc_string_data(url));
+		else if (pt == CSS_PAINT_COLOR || pt == CSS_PAINT_CURRENT_COLOR)
+			snprintf(buf, sizeof(buf), "rgb(%u, %u, %u)",
+				 (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
+	} else if (strcmp(prop, "stroke-width") == 0) {
+		css_fixed len = 0;
+		css_unit unit = CSS_UNIT_PX;
+		css_computed_stroke_width(box->style, &len, &unit);
+		snprintf(buf, sizeof(buf), "%g%s", FIXTOFLT(len),
+				unit == CSS_UNIT_PCT ? "%" : unit == CSS_UNIT_EM ? "em" : "px");
 	} else if (strcmp(prop, "width") == 0) {
 		snprintf(buf, sizeof(buf), "%dpx", box->width);
 	} else if (strcmp(prop, "height") == 0) {

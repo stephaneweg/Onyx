@@ -186,6 +186,20 @@ style = {
     ('grid_auto_flow', 3, None, None, 'CSS_GRID_AUTO_FLOW_ROW'),
     ('background_clip', 3, None, None, 'CSS_BACKGROUND_CLIP_BORDER_BOX'),
     ('writing_mode', 2, None, None, 'CSS_WRITING_MODE_HORIZONTAL_TB'),
+    # Onyx: SVG's presentation properties
+    ('fill', 4, (('color',), ('string',)), None, 'CSS_PAINT_COLOR'),
+    ('stroke', 4, (('color',), ('string',)), None, 'CSS_PAINT_NONE'),
+    ('stroke_width', 1, 'length', 'CSS_STROKE_WIDTH_SET', 'CSS_STROKE_WIDTH_SET'),
+    ('stroke_dashoffset', 1, 'length', 'CSS_STROKE_DASHOFFSET_SET',
+        'CSS_STROKE_DASHOFFSET_SET'),
+    ('stroke_miterlimit', 1, 'fixed', 'CSS_STROKE_MITERLIMIT_SET',
+        'CSS_STROKE_MITERLIMIT_SET'),
+    ('stroke_dasharray', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
+    ('fill_rule', 2, None, None, 'CSS_FILL_RULE_NONZERO'),
+    ('stroke_linecap', 2, None, None, 'CSS_STROKE_LINECAP_BUTT'),
+    ('stroke_linejoin', 3, None, None, 'CSS_STROKE_LINEJOIN_MITER'),
+    ('stop_color', 2, 'color', None, 'CSS_STOP_COLOR_COLOR'),
+    ('stop_opacity', 1, 'fixed', 'CSS_STOP_OPACITY_SET', 'CSS_STOP_OPACITY_SET'),
     # Uncommon group, arrays
     ('counter_increment', 1, 'counter_arr', None, 'CSS_COUNTER_INCREMENT_NONE',
         'Encode counter_increment as an array of name, value pairs, '

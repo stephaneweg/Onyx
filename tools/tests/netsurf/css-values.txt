@@ -127,3 +127,24 @@ D+ @font-feature-values Font One { @styleset { nice-style: 12; } }
 D- @font-feature-values Font One { @styleset { nice-style: -1; } }
 D+ @keyframes k { from { color: red } }
 D- @keyframes k { from { color: 12px } }
+
+# ---- SVG's presentation properties (libcss computes them: css_computed_fill...)
++ fill: currentColor
++ fill: url(#grad) red
++ fill: none
++ stroke: context-stroke
+- fill: 10px
++ stroke-width: 2
++ stroke-width: 1.5px
++ stroke-width: calc(1px + 1em)
+# (a negative width: refused by libcss, valid by the spec grammar -- kept without effect)
++ stroke-width: -1px
++ stroke-dasharray: 5, 10%
++ stroke-dasharray: 4 2 1
++ stroke-dasharray: -4
++ fill-rule: evenodd
++ stroke-linecap: round
++ stroke-linejoin: miter-clip
++ stroke-miterlimit: 4
++ stop-color: rgb(0 0 255 / 50%)
++ stop-opacity: 50%
