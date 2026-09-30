@@ -200,6 +200,15 @@ expect "$L" "math e 31px"
 expect "$L" "math g 40px"
 expect "$L" "math h 50px"
 if grep -q "^console: math f 81px" "$L" && grep -q "^console: math i 40px" "$L"; then echo "  ok    10dvw, 5cqi"; else echo "  FAIL  10dvw, 5cqi: $(grep '^console: math [fi]' "$L" | tr '\n' ' ')"; fail=1; fi
+echo "js-intl.html (Intl and the locale built-ins, against Chrome's answers: intl/mkpage.js)"
+L=$OUT/js-intl.log
+run js-intl.html "$(waits 40)" "$L"
+grep "^console: FAIL \|^intl.js: \|^JS " "$L" | head -10 | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL \|^intl.js: " "$L"; then fail=1; fi
+sed -n 's/^console: \(intl [0-9]* \/ [0-9]* as Chrome\)$/  \1/p' "$L"
+expect "$L" "intl default fr-FR string"
+expect "$L" "intl zone agrees true"
+expect "$L" "intl done"
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

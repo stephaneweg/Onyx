@@ -231,6 +231,14 @@ $(OUT)/qjsgen/qjs_dom_js.h: $(JSQ)/dom.js
 	{ echo '/* generated from dom.js by host.mk */'; echo 'static const char qjs_dom_js[] ='; \
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 $(call obj,$(JSQ)/qjs.c): $(OUT)/qjsgen/qjs_dom_js.h
+$(call obj,$(JSQ)/qjs.c): $(OUT)/qjsgen/qjs_intl_js.h
+# Onyx: intl.js (Intl) and its locale data (CLDR) as C strings for qjs_intl.h
+$(OUT)/qjsgen/qjs_intl_js.h: $(JSQ)/intl.js $(TP)/cldr-48/intl-data.txt
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from intl.js and intl-data.txt by host.mk */'; echo 'static const char qjs_intl_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; \
+	  echo 'static const char qjs_intl_data[] ='; \
+	  sed -e 's/\r$$//' -e '/^#/d' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $(TP)/cldr-48/intl-data.txt; echo ';'; } > $@
 $(call obj,$(JSQ)/qjs.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
 # Onyx: <canvas> 2D -- canvas.js as a C string for qjs_canvas.c (as dom.js)
 $(OUT)/qjsgen/qjs_canvas_js.h: $(JSQ)/canvas.js
