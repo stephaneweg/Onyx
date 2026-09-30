@@ -52,7 +52,7 @@ doom: wtk/libwtk.a
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
-bin: v3d/libv3d.a
+bin: v3d/libv3d.a gpucomp/libgpucomp.a
 	@$(MAKE) --no-print-directory -C bin
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
@@ -205,6 +205,14 @@ v3d/shim.o: v3d/shim.c
 	$(CC) $(CFLAGS) -c $< -o $@
 v3d/libv3d.a: $(V3D_OBJS)
 	$(AR) rcs $@ $^
+# The GPU compositing service (gpucomp/: layers composited by the V3D, kapi v70, or by the CPU):
+# pure C without libc, FP/SIMD on and -O3 (the CPU path's row loops become NEON code), no fused
+# multiply-adds (-ffp-contract=off: the same pixels as the PC's build, tools/tests/run_gpucomp_test.sh).
+# Linked by freestanding apps (gpcdemo) and newlib ones (NetSurf, stage 2) alike.
+gpucomp/gpucomp.o: gpucomp/gpucomp.c gpucomp/gpucomp.h kapi.h ../kernel/include/kern/kapi_abi.h
+	$(CC) $(filter-out -mgeneral-regs-only -O2,$(CFLAGS)) -mcpu=cortex-a72 -O3 -ffp-contract=off -fno-math-errno -I. -c $< -o $@
+gpucomp/libgpucomp.a: gpucomp/gpucomp.o
+	$(AR) rcs $@ $^
 
 snes/libsnes.a: $(SNES_OBJS)
 	$(AR) rcs $@ $^
@@ -249,6 +257,6 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
 
 clean:
-	rm -f *.elf *.o ft/*.o ft/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a bin/basic.elf
+	rm -f *.elf *.o ft/*.o ft/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean
