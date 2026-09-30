@@ -27,4 +27,8 @@ struct dom_node;
 bool onyx_svg_box(struct dom_node *n, struct html_content *content, struct box *box,
 		bool *convert_children);
 
+/** Whether a box's object is an inline <svg>'s (its colour is in its SVG text: a CSS
+ * `color` change needs the boxes made again, not a restyle in place) */
+bool onyx_svg_box_is_inline(const struct box *box);
+
 #endif

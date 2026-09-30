@@ -47,6 +47,7 @@
 #include "utils/corestrings.h"
 #include "utils/nsoption.h"
 #include "content/content_factory.h"
+#include "netsurf/content.h"
 #include "css/utils.h"
 #include "html/html.h"
 #include "html/private.h"
@@ -628,6 +629,19 @@ static nsurl *svg_url_for(const char *text, size_t len)
 	slot->used = svg_urls_clock;
 	svg_urls_bytes += len;
 	return u;
+}
+
+/* exported interface documented in html/onyx_svg_inline.h */
+bool onyx_svg_box_is_inline(const struct box *box)
+{
+	static const char prefix[] = "data:image/svg+xml;base64,";
+	nsurl *u;
+
+	if (box->object == NULL || box->node == NULL)
+		return false;
+	u = hlcache_handle_get_url(box->object);
+	return u != NULL && strncmp(nsurl_access(u), prefix, sizeof(prefix) - 1) == 0 &&
+		svg_is_svg(box->node);
 }
 
 /* exported interface documented in html/onyx_svg_inline.h */

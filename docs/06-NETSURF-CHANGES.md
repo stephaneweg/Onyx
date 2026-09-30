@@ -394,7 +394,10 @@ not drawn, inline `<svg>` neither (the logos and icons of google.com, bbc.co.uk,
   object as a `data:image/svg+xml;base64,...` URL through the usual `html_fetch_object`: the
   low-level cache shares one content between identical icons, and the SVG image handler draws
   it at the box's size (CSS `width` / `height` size it as an image). A script's change builds
-  the boxes again (`html_script_dom_changed`): a new text, a new URL. Costs, kept low for the
+  the boxes again (`html_script_dom_changed`): a new text, a new URL; so does a `:hover` that
+  changes the colour of an inline `<svg>` (`onyx_hover.c` asks `onyx_svg_box_is_inline`: its
+  `currentColor` is in its text, a restyle in place would keep the old one --
+  `pages/svg-hover.html`). Costs, kept low for the
   reboxes the scripts cause: an element named by id is looked up (libdom walks the tree) and
   written once per main-loop turn, the URLs are kept by their text (256, 512 KB) -- a page of 300
   sprite icons: its rebox 4.4-6.9 ms -> 3.0-5.0 ms on the PC (2.2 ms without the icons).
