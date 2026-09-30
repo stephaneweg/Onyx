@@ -733,10 +733,8 @@ const ParentNode = {
 	},
 	getElementsByClassName(names) {
 		const want = String(names).split(/\s+/).filter(Boolean);
-		return htmlCollection(N.descendants(this).filter(e => {
-			const cls = (N.attr(e, 'class') || '').split(/\s+/);
-			return want.every(w => cls.includes(w));
-		}));
+		return htmlCollection(N.descendants(this).filter(e =>
+			N.type(e) === ELEMENT_NODE && want.every(w => N.hasToken(e, 'class', w))));
 	},
 };
 
@@ -860,7 +858,7 @@ class DOMTokenList {
 	get value() { return N.attr(this._el, this._attr) || ''; }
 	set value(v) { N.setAttr(this._el, this._attr, String(v)); }
 	item(i) { const l = this._get(); return i < l.length ? l[i] : null; }
-	contains(t) { return this._get().includes(String(t)); }
+	contains(t) { return N.hasToken(this._el, this._attr, String(t)); }
 	add(...ts) {
 		const l = this._get();
 		let changed = false;
@@ -2167,11 +2165,8 @@ function matchCompound(e, c, scope) {
 		return false;
 	for (const id of c.ids)
 		if (N.attr(e, 'id') !== id) return false;
-	if (c.classes.length) {
-		const cls = (N.attr(e, 'class') || '').split(/\s+/);
-		for (const k of c.classes)
-			if (!cls.includes(k)) return false;
-	}
+	for (let i = 0; i < c.classes.length; i++)	/* (Onyx: in C, no array per node) */
+		if (!N.hasToken(e, 'class', c.classes[i])) return false;
 	for (const a of c.attrs) {
 		let v = N.attr(e, a.name);
 		if (v === null) return false;
@@ -2180,7 +2175,7 @@ function matchCompound(e, c, scope) {
 		if (a.ci) { v = v.toLowerCase(); want = want.toLowerCase(); }
 		switch (a.op) {
 		case '=': if (v !== want) return false; break;
-		case '~=': if (!v.split(/\s+/).includes(want)) return false; break;
+		case '~=': if (a.ci ? !v.split(/\s+/).includes(want) : !N.hasToken(e, a.name, want)) return false; break;
 		case '|=': if (v !== want && !v.startsWith(want + '-')) return false; break;
 		case '^=': if (!want || !v.startsWith(want)) return false; break;
 		case '$=': if (!want || !v.endsWith(want)) return false; break;
@@ -5343,7 +5338,10 @@ const MOD_FETCHED = new Map();		/* url -> Promise<text | null> */
 let modInline = 0, modBusy = 0, modParsed = false;
 const MOD_QUEUE = [];
 let modChain = NativePromise.resolve();
-const MOD_IMPORT = /(?:^|[;\n\r}])\s*(?:import|export)\s*(?:[\w*{}\s,$]+?\s*from\s*)?(['"])([^'"\n]+)\1|\bimport\s*\(\s*(['"])([^'"\n]+)\3\s*\)/g;
+/* (the specifiers a module names: N.moduleImports, in C, finds what the regular expression
+ * /(?:^|[;\n\r}])\s*(?:import|export)\s*(?:[\w*{}\s,$]+?\s*from\s*)?(['"])([^'"\n]+)\1|
+ * \bimport\s*\(\s*(['"])([^'"\n]+)\3\s*\)/g finds -- its backtracking over a big module was
+ * 13 % of github.com's scripts) */
 
 function modFetch(url) {
 	let p = MOD_FETCHED.get(url);
@@ -5361,8 +5359,7 @@ function modFetch(url) {
 /* the module's imports, and theirs, fetched (in parallel) */
 function modGraph(url, text, seen) {
 	const deps = [];
-	for (const m of text.matchAll(MOD_IMPORT)) {
-		const spec = m[2] || m[4];
+	for (const spec of N.moduleImports(text)) {
 		if (!/^(\.{0,2}\/|[a-z][a-z0-9+.-]*:)/i.test(spec))
 			continue;		/* (a bare specifier: no import map) */
 		let u;

@@ -660,6 +660,45 @@ static JSValue n_attr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	return qjs_str(ctx, v);
 }
 
+/** hasToken(node, name, token): the attribute, split at ASCII whitespace, has the token
+ * (a class, a ~= selector, classList.contains: dom.js split the value into an array each
+ * time -- selector matching over a page's nodes) */
+static JSValue n_has_token(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *name, *v = NULL;
+	const char *tok, *s, *end;
+	size_t tlen;
+	bool found = false;
+	QJS_NODE_ARG(n, 0);
+	name = qjs_dstr(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	if (name == NULL)
+		return JS_FALSE;
+	dom_element_get_attribute((dom_element *) n, name, &v);
+	dom_string_unref(name);
+	if (v == NULL)
+		return JS_FALSE;
+	tok = JS_ToCStringLen(ctx, &tlen, argc > 2 ? argv[2] : JS_UNDEFINED);
+	if (tok == NULL) {
+		dom_string_unref(v);
+		return JS_EXCEPTION;
+	}
+	s = dom_string_data(v);
+	end = s + dom_string_byte_length(v);
+	while (s < end && !found) {
+		const char *w;
+
+		while (s < end && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r' || *s == '\f'))
+			s++;
+		for (w = s; s < end && !(*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r' ||
+				*s == '\f'); s++)
+			;
+		found = s > w && (size_t) (s - w) == tlen && memcmp(w, tok, tlen) == 0;
+	}
+	JS_FreeCString(ctx, tok);
+	dom_string_unref(v);
+	return JS_NewBool(ctx, found);
+}
+
 static JSValue n_set_attr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	dom_string *name, *v;
@@ -1059,6 +1098,115 @@ static JSValue n_module_source(JSContext *ctx, JSValueConst this_val, int argc,
 	JS_SetPropertyStr(ctx, t->modsrc, url, JS_DupValue(ctx, argv[1]));
 	JS_FreeCString(ctx, url);
 	return JS_UNDEFINED;
+}
+
+/* moduleImports' scanner: the regular expression dom.js had, by hand (its backtracking over
+ * a big module was 13 % of github.com's scripts) */
+static bool mi_space(char ch)
+{
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f';
+}
+
+static bool mi_word(char ch)
+{
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+		(ch >= '0' && ch <= '9') || ch == '_';
+}
+
+/* a quoted specifier at s[i] ('...' or "...", no newline): its end past the quote, or 0 */
+static size_t mi_quoted(const char *s, size_t len, size_t i, size_t *b, size_t *e)
+{
+	size_t j;
+
+	if (i >= len || (s[i] != '\'' && s[i] != '"'))
+		return 0;
+	for (j = i + 1; j < len && s[j] != '\'' && s[j] != '"' && s[j] != '\n'; j++)
+		;
+	if (j == i + 1 || j >= len || s[j] != s[i])
+		return 0;
+	*b = i + 1;
+	*e = j;
+	return j + 1;
+}
+
+/* the static form after "import" / "export" at s[k]: [names from] 'spec' */
+static size_t mi_static(const char *s, size_t len, size_t k, size_t *b, size_t *e)
+{
+	size_t i, j, end;
+
+	/* (names) from 'spec' -- the first "from" that one follows */
+	for (i = k; i < len && (mi_word(s[i]) || mi_space(s[i]) || s[i] == '*' ||
+			s[i] == '{' || s[i] == '}' || s[i] == ',' || s[i] == '$'); i++) {
+		if (i == k || len - i < 4 || memcmp(s + i, "from", 4) != 0)
+			continue;
+		for (j = i + 4; j < len && mi_space(s[j]); j++)
+			;
+		if ((end = mi_quoted(s, len, j, b, e)) != 0)
+			return end;
+	}
+	for (i = k; i < len && mi_space(s[i]); i++)
+		;
+	return mi_quoted(s, len, i, b, e);
+}
+
+/**
+ * moduleImports(text): the specifiers a module's import / export ... from and import()
+ * name, as dom.js's MOD_IMPORT found them
+ */
+static JSValue n_module_imports(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	const char *s;
+	size_t len, pos = 0, k, b, e, end;
+	uint32_t n = 0;
+	JSValue arr;
+
+	(void) this_val;
+	if (argc < 1 || (s = JS_ToCStringLen(ctx, &len, argv[0])) == NULL)
+		return JS_EXCEPTION;
+	arr = JS_NewArray(ctx);
+	for (k = pos; k + 6 <= len; k++) {
+		bool imp;
+		size_t i;
+
+		if (s[k] == 'i')
+			imp = memcmp(s + k, "import", 6) == 0;
+		else if (s[k] == 'e')
+			imp = false;
+		else
+			continue;
+		if (!imp && memcmp(s + k, "export", 6) != 0)
+			continue;
+		end = 0;
+		/* (^|[;\n\r}])\s* before it */
+		for (i = k; i > pos && mi_space(s[i - 1]) && s[i - 1] != '\n' && s[i - 1] != '\r'; i--)
+			;
+		if (i == 0 || (i > pos && (s[i - 1] == ';' || s[i - 1] == '}' ||
+				s[i - 1] == '\n' || s[i - 1] == '\r')))
+			end = mi_static(s, len, k + 6, &b, &e);
+		/* \bimport\s*\(\s*'spec'\s*\) */
+		if (end == 0 && imp && (k == 0 || !mi_word(s[k - 1]))) {
+			for (i = k + 6; i < len && mi_space(s[i]); i++)
+				;
+			if (i < len && s[i] == '(') {
+				for (i++; i < len && mi_space(s[i]); i++)
+					;
+				if ((i = mi_quoted(s, len, i, &b, &e)) != 0) {
+					for (; i < len && mi_space(s[i]); i++)
+						;
+					if (i < len && s[i] == ')')
+						end = i + 1;
+				}
+			}
+		}
+		if (end == 0)
+			continue;
+		JS_SetPropertyUint32(ctx, arr, n++, JS_NewStringLen(ctx, s + b, e - b));
+		pos = end;
+		k = end - 1;
+	}
+	JS_FreeCString(ctx, s);
+	return arr;
 }
 
 /**
@@ -3318,6 +3466,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("text", 1, n_text),
 	JS_CFUNC_DEF("setText", 2, n_set_text),
 	JS_CFUNC_DEF("attr", 2, n_attr),
+	JS_CFUNC_DEF("hasToken", 3, n_has_token),
 	JS_CFUNC_DEF("setAttr", 3, n_set_attr),
 	JS_CFUNC_DEF("removeAttr", 2, n_remove_attr),
 	JS_CFUNC_DEF("attrs", 1, n_attrs),
@@ -3335,6 +3484,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
 	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
+	JS_CFUNC_DEF("moduleImports", 1, n_module_imports),
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
 	JS_CFUNC_DEF("descendants", 1, n_descendants),

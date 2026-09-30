@@ -38,6 +38,9 @@ void onyx_chrome_set_page_handlers(onyx_chrome_handler ptr, onyx_chrome_handler 
  * changed: onyx_chrome_page), 0 else. */
 int onyx_chrome_pump(void);
 int onyx_chrome_pump_wait(int ms);	/* the same, waiting up to ms for an event / a post */
+/* Pump the events without waiting: 1 when a click, a wheel turn, a key, a resize or the close
+ * box came since (framebuffer/schedule.c: the main loop takes them before more callbacks). */
+int onyx_chrome_input_pending(void);
 
 /* Show the window's pixels. */
 void onyx_chrome_present(void);

@@ -615,10 +615,13 @@ long page_value (long v)
 	return (v & ~0xFFFFL) | (y & 0xFFFF);
 }
 
+unsigned g_inputs;	// the clicks, wheel turns and keys so far (onyx_chrome_input_pending)
+
 void ptr_event (unsigned long sender, int ev, long v)
 {
 	static int bl, br, bm;
 	if (g_win == 0) return;
+	if (ev == GUI_EVENT_PTR_DOWN || ev == GUI_EVENT_PTR_UP || ev == GUI_EVENT_PTR_WHEEL) g_inputs++;
 	if (ev == GUI_EVENT_WINCTL)			// a title button (v64)
 	{
 		if (v == KAPI_FRAME_MENU) { g_win->windowMenu (); onyx_browser_redraw (); }
@@ -666,6 +669,7 @@ void ptr_event (unsigned long sender, int ev, long v)
 void key_event (unsigned long sender, int ev, long k)
 {
 	if (g_win == 0 || ev != GUI_EVENT_KEY) return;
+	g_inputs++;
 	if (has_modal ()) { g_win->handleKey (k); return; }
 	unsigned mods = kapi_get_modifiers ();
 	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
@@ -785,6 +789,18 @@ int onyx_chrome_pump_wait (int ms)
 	int r = g_resized;
 	g_resized = false;
 	return r;
+}
+
+// The scheduler's question between two callbacks: did the user click, turn the wheel, type,
+// resize or close since? The events are taken (the page's wait in the surface's ring for the
+// main loop, which then runs before the next callbacks: a heavy page's timers and scripts
+// no longer keep a click waiting for the whole budget).
+int onyx_chrome_input_pending (void)
+{
+	unsigned before = g_inputs;
+	if (g_win == 0) return 0;
+	kapi_pump_events ();
+	return g_inputs != before || g_resized || kapi_should_exit ();
 }
 
 void onyx_chrome_present (void)
