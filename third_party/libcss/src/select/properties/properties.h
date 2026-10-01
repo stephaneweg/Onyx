@@ -84,6 +84,26 @@ PROPERTY_FUNCS(stroke_dasharray);
 PROPERTY_FUNCS(stroke_dashoffset);
 PROPERTY_FUNCS(stop_color);
 PROPERTY_FUNCS(stop_opacity);
+PROPERTY_FUNCS(mask_image);	/* Onyx: mask */
+PROPERTY_FUNCS(mask_size);
+PROPERTY_FUNCS(mask_position);
+PROPERTY_FUNCS(mask_repeat);
+PROPERTY_FUNCS(filter);		/* Onyx: compositing */
+PROPERTY_FUNCS(backdrop_filter);
+PROPERTY_FUNCS(transform_origin);
+PROPERTY_FUNCS(mix_blend_mode);
+PROPERTY_FUNCS(transition_property);	/* Onyx: transitions, animations */
+PROPERTY_FUNCS(transition_duration);
+PROPERTY_FUNCS(transition_timing_function);
+PROPERTY_FUNCS(transition_delay);
+PROPERTY_FUNCS(animation_name);
+PROPERTY_FUNCS(animation_duration);
+PROPERTY_FUNCS(animation_timing_function);
+PROPERTY_FUNCS(animation_delay);
+PROPERTY_FUNCS(animation_iteration_count);
+PROPERTY_FUNCS(animation_direction);
+PROPERTY_FUNCS(animation_fill_mode);
+PROPERTY_FUNCS(animation_play_state);
 PROPERTY_FUNCS(fill_opacity);
 PROPERTY_FUNCS(flex_basis);
 PROPERTY_FUNCS(flex_direction);

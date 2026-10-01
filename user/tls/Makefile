@@ -18,8 +18,11 @@ CFLAGS_TLS = -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector \
 	     -ffunction-sections -fdata-sections -I$(abspath $(MBEDTLS))/include
 
 # Strip the platform couplings from the upstream default config: no OS sockets / files
-# / timing / platform entropy, and TLS 1.2 only (TLS 1.3 would pull the PSA RNG setup).
-# Entropy is supplied at runtime by onyx_tls.hpp; see its security note.
+# / timing / platform entropy. TLS 1.2 and 1.3 (every current browser negotiates 1.3: a
+# 1.2-only client stands out): 1.3 runs on PSA crypto, whose random generator is the
+# application's (MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG: mbedtls_psa_external_get_random in
+# onyx_tls.hpp, over kapi_random) -- no entropy plumbing in PSA. Entropy is supplied at
+# runtime by onyx_tls.hpp; see its security note.
 #
 # CRUCIAL for the Pi 4: disable the ARMv8 hardware-crypto paths (AESCE / SHA A64 crypto).
 # The Pi 4's Cortex-A72 does NOT implement the ARMv8 Crypto Extensions, so an AES/SHA
@@ -28,7 +31,6 @@ CFLAGS_TLS = -mcpu=cortex-a72 -O2 -fno-pic -fno-pie -fno-stack-protector \
 CONFIG_UNSET = MBEDTLS_NET_C MBEDTLS_TIMING_C MBEDTLS_FS_IO \
 	       MBEDTLS_PSA_ITS_FILE_C MBEDTLS_PSA_CRYPTO_STORAGE_C \
 	       MBEDTLS_HAVE_TIME MBEDTLS_HAVE_TIME_DATE \
-	       MBEDTLS_SSL_PROTO_TLS1_3 \
 	       MBEDTLS_AESCE_C MBEDTLS_AESNI_C MBEDTLS_PADLOCK_C \
 	       MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT MBEDTLS_SHA256_USE_A64_CRYPTO_ONLY \
 	       MBEDTLS_SHA512_USE_A64_CRYPTO_IF_PRESENT MBEDTLS_SHA512_USE_A64_CRYPTO_ONLY \
@@ -43,6 +45,8 @@ config:
 	@test -d $(MBEDTLS)/library || { echo "mbedTLS source missing at $(MBEDTLS)/ -- see README.md"; exit 1; }
 	@for u in $(CONFIG_UNSET); do $(PY) $(MBEDTLS)/scripts/config.py unset $$u; done
 	$(PY) $(MBEDTLS)/scripts/config.py set MBEDTLS_NO_PLATFORM_ENTROPY
+	$(PY) $(MBEDTLS)/scripts/config.py set MBEDTLS_SSL_PROTO_TLS1_3
+	$(PY) $(MBEDTLS)/scripts/config.py set MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG
 
 libs: config
 	$(MAKE) -C $(MBEDTLS)/library CC=$(PREFIX)gcc AR=$(PREFIX)ar CFLAGS="$(CFLAGS_TLS)"

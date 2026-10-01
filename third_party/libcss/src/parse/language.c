@@ -104,7 +104,10 @@ static css_error parseSelectorList(css_language *c,
 		const parserutils_vector *vector, css_rule *rule);
 
 /* Declaration parsing */
-static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes);
+static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes,
+		const parserutils_vector *vector);
+static css_error onyx_keyframe_declaration(css_language *c, css_rule *rule,
+		const parserutils_vector *vector);
 static css_error parseProperty(css_language *c,
 		const css_token *property, const parserutils_vector *vector,
 		int32_t *ctx, css_rule *rule);
@@ -715,6 +718,16 @@ css_error handleStartAtRule(css_language *c, const parserutils_vector *vector)
 			return error;
 		}
 		((css_rule_media *) rule)->onyx_kind = (uint8_t) kind;
+		if (kind == ONYX_AT_KEYFRAMES) {
+			/* Onyx: the @keyframes' name (an identifier or a string) */
+			const css_token *name;
+			int32_t k = ctx;
+			consumeWhitespace(vector, &k);
+			name = parserutils_vector_peek(vector, k);
+			if (name != NULL && name->idata != NULL)
+				((css_rule_media *) rule)->onyx_name =
+						lwc_string_ref(name->idata);
+		}
 		error = css__stylesheet_add_rule(c->sheet, rule, parent_rule);
 		if (error != CSS_OK) {
 			css__stylesheet_rule_destroy(c->sheet, rule);
@@ -864,7 +877,12 @@ css_error handleBlockContent(css_language *c, const parserutils_vector *vector)
 		case ONYX_AT_STARTING_STYLE:
 			break;
 		case ONYX_AT_KEYFRAMES:
-			return onyx_start_keyframe(c, rule);
+			return onyx_start_keyframe(c, rule, vector);
+		case ONYX_AT_KEYFRAME:
+			/* a keyframe's declaration: checked, and kept (NetSurf animates) */
+			if (onyx_keyframe_declaration(c, rule, vector) == CSS_OK)
+				c->sheet->onyx_desc_words++;
+			return CSS_OK;
 		default:
 			if (css__onyx_at_declaration(c, ((css_rule_media *) rule)->onyx_kind,
 					vector))
@@ -1540,7 +1558,8 @@ fail:
 /* Onyx: the pseudo-classes and pseudo-elements of Selectors 4, CSS Pseudo 4 and the other
  * specifications that libcss does not know. Parsed and checked (a functional one's argument
  * too); matched when libcss can say (select.c: :read-only, :read-write, :required, :optional,
- * :placeholder-shown, :defined, :scope, :dir(), :nth-child(An+B of S)), else never matching
+ * :placeholder-shown, :defined, :scope, :dir(), :nth-child(An+B of S); :popover-open and :modal
+ * by the client: onyx_node_state), else never matching
  * -- a rule "a:has(b), c" keeps its c, as in a browser, where libcss dropped the whole rule.
  * The pseudo-elements never match (NetSurf draws none of them). */
 static const char *const onyx_pc_plain[] = {
@@ -2673,7 +2692,92 @@ css_error parseProperty(css_language *c, const css_token *property,
 /* Onyx: a keyframe in a @keyframes rule ("from, 50% {"): a child kept without effect, whose
  * declarations are checked as properties (the block's content, handleBlockContent). Made
  * for any prelude (the context stays balanced); the CSSOM checks the keyframe selectors. */
-static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes)
+/* Onyx: a keyframe's selectors -- from | to | <percentage>, comma separated -- as offsets
+ * (0..1); none if one is invalid (the keyframe then never applies) */
+static void onyx_keyframe_offsets(css_rule_media *kf, const parserutils_vector *vector)
+{
+	const css_token *t;
+	float offs[64];
+	uint32_t n = 0;
+	int32_t ctx = 0;
+	bool item = false;
+
+	while ((t = parserutils_vector_iterate(vector, &ctx)) != NULL) {
+		if (t->type == CSS_TOKEN_S || tokenIsChar(t, '{'))
+			continue;
+		if (tokenIsChar(t, ',')) {
+			if (!item)
+				return;
+			item = false;
+			continue;
+		}
+		if (item || n == 64)
+			return;
+		if (t->type == CSS_TOKEN_IDENT && lwc_string_length(t->idata) == 4 &&
+				strncasecmp(lwc_string_data(t->idata), "from", 4) == 0) {
+			offs[n++] = 0;
+		} else if (t->type == CSS_TOKEN_IDENT && lwc_string_length(t->idata) == 2 &&
+				strncasecmp(lwc_string_data(t->idata), "to", 2) == 0) {
+			offs[n++] = 1;
+		} else if (t->type == CSS_TOKEN_PERCENTAGE) {
+			size_t consumed;
+			float v = FIXTOFLT(css__number_from_lwc_string(t->idata, false,
+					&consumed));
+			if (consumed != lwc_string_length(t->idata) || v < 0 || v > 100)
+				return;
+			offs[n++] = v / 100;
+		} else {
+			return;
+		}
+		item = true;
+	}
+	if (!item || n == 0)
+		return;
+	kf->onyx_offsets = malloc(n * sizeof(float));
+	if (kf->onyx_offsets == NULL)
+		return;
+	memcpy(kf->onyx_offsets, offs, n * sizeof(float));
+	kf->onyx_n_offsets = n;
+}
+
+/* Onyx: a declaration in a keyframe, parsed as a property's and appended to the keyframe's
+ * declarations (!important ones are ignored, as the spec says; custom properties and var()
+ * are not kept) */
+static css_error onyx_keyframe_declaration(css_language *c, css_rule *rule,
+		const parserutils_vector *vector)
+{
+	const css_token *ident, *t;
+	int32_t ctx = 0;
+	uint8_t flags = 0;
+	int32_t k;
+
+	consumeWhitespace(vector, &ctx);
+	ident = parserutils_vector_iterate(vector, &ctx);
+	if (ident == NULL || ident->type != CSS_TOKEN_IDENT)
+		return CSS_INVALID;
+	consumeWhitespace(vector, &ctx);
+	t = parserutils_vector_iterate(vector, &ctx);
+	if (t == NULL || !tokenIsChar(t, ':'))
+		return CSS_INVALID;
+	consumeWhitespace(vector, &ctx);
+	if (css__onyx_is_custom_name(ident->idata) || css__onyx_value_has_var(c, vector, ctx))
+		return css__onyx_at_declaration(c, ONYX_AT_KEYFRAME, vector) ? CSS_OK :
+				CSS_INVALID;
+	/* (!important: dropped) */
+	for (k = ctx; (t = parserutils_vector_peek(vector, k)) != NULL; k++) {
+		if (tokenIsChar(t, '!')) {
+			int32_t j = k;
+			if (css__parse_important(c, vector, &j, &flags) == CSS_OK &&
+					flags != 0)
+				return CSS_INVALID;
+			break;
+		}
+	}
+	return parseProperty(c, ident, vector, &ctx, rule);
+}
+
+static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes,
+		const parserutils_vector *vector)
 {
 	context_entry entry = { CSS_PARSER_START_ATRULE, NULL };
 	css_mq_query *media;
@@ -2695,6 +2799,7 @@ static css_error onyx_start_keyframe(css_language *c, css_rule *keyframes)
 		return error;
 	}
 	((css_rule_media *) rule)->onyx_kind = ONYX_AT_KEYFRAME;
+	onyx_keyframe_offsets((css_rule_media *) rule, vector);
 	error = css__stylesheet_add_rule(c->sheet, rule, keyframes);
 	if (error != CSS_OK) {
 		css__stylesheet_rule_destroy(c->sheet, rule);

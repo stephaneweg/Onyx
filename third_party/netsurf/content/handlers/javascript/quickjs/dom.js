@@ -244,9 +244,58 @@ class SubmitEvent extends Event {
 class PromiseRejectionEvent extends Event {
 	constructor(type, init = {}) { super(type, init); this.promise = init.promise; this.reason = init.reason; }
 }
+/* Onyx: CSS animations' and transitions' events (the animations' timeline sends them:
+ * onyx_anim.c; a script can make and dispatch them too) */
+class AnimationEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.animationName = String(init.animationName ?? '');
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = String(init.pseudoElement ?? '');
+	}
+}
+class TransitionEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.propertyName = String(init.propertyName ?? '');
+		this.elapsedTime = +init.elapsedTime || 0;
+		this.pseudoElement = String(init.pseudoElement ?? '');
+	}
+}
+/* Onyx: the attributes on the prototypes, as the IDL has them ('clientX' in
+ * MouseEvent.prototype: feature tests -- browserscore.dev -- look there); a constructor's
+ * value kept in a symbol of the object */
+function protoFields(C, names) {
+	for (const k of names) {
+		if (Object.getOwnPropertyDescriptor(C.prototype, k)) continue;
+		const slot = Symbol(k);
+		Object.defineProperty(C.prototype, k, { configurable: true, enumerable: true,
+			get() { return this[slot]; },
+			set(v) { Object.defineProperty(this, slot, { value: v, writable: true, configurable: true }); } });
+	}
+}
+protoFields(UIEvent, ['view', 'detail']);
+protoFields(MouseEvent, ['clientX', 'clientY', 'screenX', 'screenY', 'pageX', 'pageY', 'offsetX',
+	'offsetY', 'x', 'y', 'button', 'buttons', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey', 'relatedTarget']);
+protoFields(PointerEvent, ['pointerId', 'pointerType', 'isPrimary', 'width', 'height', 'pressure']);
+protoFields(WheelEvent, ['deltaX', 'deltaY', 'deltaZ', 'deltaMode']);
+protoFields(KeyboardEvent, ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat',
+	'isComposing', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey']);
+protoFields(FocusEvent, ['relatedTarget']);
+protoFields(InputEvent, ['data', 'inputType', 'isComposing']);
+protoFields(ErrorEvent, ['message', 'error']);
+protoFields(ProgressEvent, ['lengthComputable', 'loaded', 'total']);
+protoFields(PopStateEvent, ['state']);
+protoFields(HashChangeEvent, ['oldURL', 'newURL']);
+protoFields(MessageEvent, ['data', 'origin', 'source']);
+protoFields(SubmitEvent, ['submitter']);
+protoFields(PromiseRejectionEvent, ['promise', 'reason']);
+protoFields(AnimationEvent, ['animationName', 'elapsedTime', 'pseudoElement']);
+protoFields(TransitionEvent, ['propertyName', 'elapsedTime', 'pseudoElement']);
 Object.assign(G, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent,
 	KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, ProgressEvent, PopStateEvent,
-	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, TouchEvent: undefined });
+	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, AnimationEvent,
+	TransitionEvent, TouchEvent: undefined });
 delete G.TouchEvent;
 
 /* the event's path: its target, its ancestors, the document, the window */
@@ -433,11 +482,15 @@ const HANDLER_TYPES = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove',
 	'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'contextmenu', 'wheel',
 	'keydown', 'keyup', 'keypress', 'focus', 'blur', 'focusin', 'focusout', 'input',
 	'change', 'submit', 'reset', 'load', 'error', 'abort', 'scroll', 'resize',
-	'select', 'pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend',
-	'touchmove', 'animationend', 'transitionend', 'beforeunload', 'unload',
+	/* (Onyx: no ontouchstart / ontouchend / ontouchmove: a mouse, not a touch screen,
+	 * as Chrome on a desktop -- 'ontouchstart' in window told pages there was one) */
+	'select', 'pointerdown', 'pointerup', 'pointermove', 'animationend', 'transitionend',
+	'beforeunload', 'unload',
+	'animationstart', 'animationiteration', 'animationcancel', 'transitionrun',
+	'transitionstart', 'transitioncancel', 'beforetoggle',	/* (the Popover API's) */
 	'hashchange', 'popstate', 'message', 'toggle', 'play', 'pause', 'ended'];
-function defineHandlers(proto) {
-	for (const t of HANDLER_TYPES) {
+function defineHandlers(proto, types = HANDLER_TYPES) {
+	for (const t of types) {
 		Object.defineProperty(proto, 'on' + t, {
 			configurable: true,
 			get() { const m = this[HANDLERS]; return (m && m.get(t)) || null; },
@@ -717,8 +770,18 @@ const ParentNode = {
 		this.append(...nodes);
 	},
 	querySelector(sel) {
+		/* Onyx: "#id" from libdom's getElementById (bliss's $('#x'): css3test.com asks
+		 * it thousands of times, each a walk of the whole tree in JS) */
+		const id = typeof sel === 'string' && /^#[a-zA-Z_][-\w]*$/.test(sel) ? sel.slice(1) : null;
+		if (id !== null && (this === G.document || this.getRootNode() === G.document)) {
+			const e = G.document.getElementById(id);
+			if (e && e !== this && (this === G.document || this.contains(e)))
+				return e;
+			if (!e || this === G.document)
+				return null;
+		}
 		const list = parseSelector(sel);
-		for (const e of N.descendants(this))
+		for (let e = N.nextElement(this, this); e; e = N.nextElement(e, this))
 			if (matchList(e, list, this))
 				return e;
 		return null;
@@ -732,9 +795,10 @@ const ParentNode = {
 		return htmlCollection(N.descendants(this).filter(e => t === '*' || e.localName === t));
 	},
 	getElementsByClassName(names) {
-		const want = String(names).split(/\s+/).filter(Boolean);
-		return htmlCollection(N.descendants(this).filter(e =>
-			N.type(e) === ELEMENT_NODE && want.every(w => N.hasToken(e, 'class', w))));
+		/* Onyx: the classes matched by the native walk (qjs.c n_descendants) */
+		names = String(names);
+		if (!/[^\t\n\f\r ]/.test(names)) return htmlCollection([]);
+		return htmlCollection(N.descendants(this, names));
 	},
 };
 
@@ -922,7 +986,8 @@ function cssValid(k, v) {
 	if (k.startsWith('--'))
 		return true;
 	v = String(v);
-	if (/[;{}]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
+	/* (Onyx: nor "!important" -- a value, not a declaration: CSS.supports("color", "red !important") is false) */
+	if (/[;{}!]/.test(v) && /[;{}!]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))	/* (Onyx: the strings cut only when one is there) */
 		return false;
 	const r = N.cssKept(k + ': ' + v, true);
 	return r !== null && r[1] > 0;
@@ -952,7 +1017,9 @@ function cssSupports(text) {
 			if (s[i] === '(') depth++;
 			else if (s[i] === ')' && --depth === 0) { i++; return s.slice(start, i - 1); }
 		}
-		return null;
+		/* (Onyx: the end of the text closes the blocks still open, as CSS Syntax does:
+		 * "selector(:nth-child(even of :not([hidden]))" is supported in a browser) */
+		return s.slice(start) + ')'.repeat(Math.max(0, depth - 1));
 	};
 	const cond = () => {
 		ws();
@@ -972,7 +1039,7 @@ function cssSupports(text) {
 		if (/^selector\(/i.test(s.slice(i))) {
 			i += 8;
 			const g = group();
-			return g !== null && cssSelectorValid(g);
+			return g !== null && g.trim() !== "" && cssSelectorValid(g);
 		}
 		if (s[i] !== '(') return false;
 		const g = group();
@@ -1141,6 +1208,13 @@ class CSSRule {
 	}
 	get parentRule() { return this._parent; }
 	get parentStyleSheet() { return this._sheet; }
+	/* (Onyx: the legacy type numbers, 0 for the newer rules) */
+	get type() {
+		return ({ CSSStyleRule: 1, CSSImportRule: 3, CSSMediaRule: 4, CSSFontFaceRule: 5,
+			CSSPageRule: 6, CSSKeyframesRule: 7, CSSKeyframeRule: 8, CSSMarginRule: 9,
+			CSSNamespaceRule: 10, CSSCounterStyleRule: 11, CSSSupportsRule: 12,
+			CSSFontFeatureValuesRule: 14 })[this.constructor.name] || 0;
+	}
 	get cssText() { return ''; }
 	set cssText(v) { /* (no effect, as in browsers) */ }
 	_changed() { if (this._sheet) this._sheet._changed(); }
@@ -2422,7 +2496,7 @@ class Element extends Node {
 			if (matchList(n, list, n)) return n;
 		return null;
 	}
-	getBoundingClientRect() { const r = N.rect(this); return new DOMRect(r[0], r[1], r[2], r[3]); }
+	getBoundingClientRect() { const r = N.rect(this, true); return new DOMRect(r[0], r[1], r[2], r[3]); }
 	getClientRects() { const r = this.getBoundingClientRect(); return r.width || r.height ? [r] : []; }
 	get offsetWidth() { return N.rect(this)[2]; }
 	get offsetHeight() { return N.rect(this)[3]; }
@@ -2439,27 +2513,32 @@ class Element extends Node {
 	}
 	get clientTop() { return 0; }
 	get clientLeft() { return 0; }
+	/* (Onyx: an element's own scroller's -- overflow: auto / scroll -- N.boxScroll) */
 	get scrollWidth() {
 		if (this === G.document.documentElement || this === G.document.body) return N.scroll()[4];
-		return N.rect(this)[2];
+		return N.boxScroll(this)[2];
 	}
 	get scrollHeight() {
 		if (this === G.document.documentElement || this === G.document.body) return N.scroll()[5];
-		return N.rect(this)[3];
+		return N.boxScroll(this)[3];
 	}
 	get scrollTop() {
-		return this === G.document.documentElement || this === G.document.body ? N.scroll()[1] : 0;
+		return this === G.document.documentElement || this === G.document.body ? N.scroll()[1] : N.boxScroll(this)[1];
 	}
 	set scrollTop(v) {
 		if (this === G.document.documentElement || this === G.document.body)
 			N.scrollTo(N.scroll()[0], +v || 0);
+		else
+			N.boxScrollTo(this, N.boxScroll(this)[0], Math.round(+v || 0));
 	}
 	get scrollLeft() {
-		return this === G.document.documentElement || this === G.document.body ? N.scroll()[0] : 0;
+		return this === G.document.documentElement || this === G.document.body ? N.scroll()[0] : N.boxScroll(this)[0];
 	}
 	set scrollLeft(v) {
 		if (this === G.document.documentElement || this === G.document.body)
 			N.scrollTo(+v || 0, N.scroll()[1]);
+		else
+			N.boxScrollTo(this, Math.round(+v || 0), N.boxScroll(this)[1]);
 	}
 	scrollIntoView(arg) {
 		const r = N.rect(this);
@@ -2471,19 +2550,23 @@ class Element extends Node {
 		N.scrollTo(s[0], Math.max(0, Math.round(y)));
 		scheduleObservers();
 	}
-	scroll(x, y) {}
-	scrollTo(x, y) {}
-	scrollBy(x, y) {}
+	/* (Onyx: an element's scroller moved) */
+	scroll(x, y) { this.scrollTo(x, y); }
+	scrollTo(x, y) {
+		const s = N.boxScroll(this);
+		if (x !== null && typeof x === 'object') { y = x.top === undefined ? s[1] : x.top; x = x.left === undefined ? s[0] : x.left; }
+		N.boxScrollTo(this, Math.round(+x || 0), Math.round(+y || 0));
+	}
+	scrollBy(x, y) {
+		const s = N.boxScroll(this);
+		if (x !== null && typeof x === 'object') { y = x.top || 0; x = x.left || 0; }
+		N.boxScrollTo(this, s[0] + Math.round(+x || 0), s[1] + Math.round(+y || 0));
+	}
 	requestFullscreen() { return Promise.reject(new DOMException('no', 'NotAllowedError')); }
 	attachShadow() { return this; }
 	get shadowRoot() { return null; }
-	animate() {
-		const a = { finished: Promise.resolve(), onfinish: null, cancel() {}, play() {},
-			pause() {}, finish() {}, reverse() {}, playState: 'finished' };
-		setTimeout(() => { if (a.onfinish) a.onfinish(); }, 0);
-		return a;
-	}
-	getAnimations() { return []; }
+	animate(keyframes, options) { return elementAnimate(this, keyframes, options); }
+	getAnimations() { return animationsOf(this); }
 	releasePointerCapture() {}
 	setPointerCapture() {}
 	hasPointerCapture() { return false; }
@@ -2572,6 +2655,9 @@ class HTMLElement extends Element {
 	set tabIndex(v) { this.setAttribute('tabindex', String(v)); }
 	focus() {
 		const old = activeElement;
+		/* (Onyx: a text field's: the browser's caret in it too) */
+		if (this.localName === 'input' || this.localName === 'textarea')
+			N.focusControl(this);
 		if (old === this) return;
 		activeElement = this;
 		if (old) { dispatch(old, new FocusEvent('blur')); dispatch(old, new FocusEvent('focusout', { bubbles: true })); }
@@ -2682,6 +2768,9 @@ htmlClass('HTMLAnchorElement', ['a'], HTMLAnchorElement);
 htmlClass('HTMLAreaElement', ['area'], class extends HTMLAnchorElement {});
 
 class HTMLImageElement extends HTMLElement {
+	/* (Onyx: CSSOM View's x / y: the image's border box in the page) */
+	get x() { return Math.round(this.getBoundingClientRect().left + (G.scrollX || 0)); }
+	get y() { return Math.round(this.getBoundingClientRect().top + (G.scrollY || 0)); }
 	/* (Onyx: the picture's state and natural size, NetSurf's for a displayed image; an image
 	 * a script loads -- new Image() -- is canvas.js's) */
 	_img() { return this.isConnected ? N.image(this) : null; }
@@ -3178,6 +3267,9 @@ G.SVGSVGElement = class SVGSVGElement extends SVGElement {};
 
 class Document extends Node {
 	constructor() { super(); }
+	/* (Onyx: the Web Animations API) */
+	get timeline() { return documentTimeline; }
+	getAnimations() { return animationsOf(null); }
 	get documentElement() {
 		for (const c of N.children(this))
 			if (N.type(c) === ELEMENT_NODE) return c;
@@ -3286,7 +3378,7 @@ class Document extends Node {
 	elementFromPoint(x, y) {
 		let best = null;
 		for (const e of N.descendants(this)) {
-			const r = N.rect(e);
+			const r = N.rect(e, true);
 			if (r[2] > 0 && r[3] > 0 && x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3])
 				best = e;
 		}
@@ -3585,7 +3677,7 @@ const navigator = {
 	productSub: '20030107',
 	vendor: 'Google Inc.',
 	vendorSub: '',
-	platform: 'Linux armv8l',
+	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux armv8l'; },	/* (Onyx: "Desktop site") */
 	language: 'fr-FR',
 	languages: ['fr-FR', 'fr', 'en-US', 'en'],
 	cookieEnabled: true,
@@ -3613,15 +3705,22 @@ const navigator = {
 	},
 };
 
-const screen = {
-	get width() { return N.scroll()[2]; },
-	get height() { return N.scroll()[3]; },
-	get availWidth() { return N.scroll()[2]; },
-	get availHeight() { return N.scroll()[3]; },
-	colorDepth: 24,
-	pixelDepth: 24,
-	orientation: { type: 'landscape-primary', angle: 0, addEventListener() {}, removeEventListener() {} },
-};
+/* (Onyx: a Screen, its attributes on the prototype) */
+class Screen extends EventTarget {
+	get width() { return N.scroll()[2]; }
+	get height() { return N.scroll()[3]; }
+	get availWidth() { return N.scroll()[2]; }
+	get availHeight() { return N.scroll()[3]; }
+	get availLeft() { return 0; }
+	get availTop() { return 0; }
+	get colorDepth() { return 24; }
+	get pixelDepth() { return 24; }
+	get isExtended() { return false; }
+	get orientation() { return SCREEN_ORIENTATION; }
+}
+const SCREEN_ORIENTATION = { type: 'landscape-primary', angle: 0, addEventListener() {}, removeEventListener() {} };
+G.Screen = Screen;
+const screen = new Screen();
 
 /* timers */
 const timers = new Map();
@@ -3643,14 +3742,468 @@ const performance = {
 	getEntries() { return []; }, getEntriesByType() { return []; }, getEntriesByName() { return []; },
 };
 const startTime = N.now();
+
+/* ---- animations (Onyx: html/onyx_anim.c) --------------------------------------------------
+ * requestAnimationFrame paced by the content's frames (N.frame asks for one, "onyx:frame"
+ * runs the callbacks with the frame's time); the CSS transitions' and animations' events
+ * ("onyx:anim"); the Web Animations API on the same engine: element.animate() makes a
+ * script's animation there (N.animate), an Animation reads its state (N.animInfo) and
+ * controls it (N.animCtl); getAnimations() lists the transitions and CSS animations too. */
 let rafId = 0;
 const rafs = new Map();
 function requestAnimationFrame(cb) {
 	const id = ++rafId;
-	rafs.set(id, N.timer(() => { rafs.delete(id); cb(performance.now()); }, 16, false));
+	rafs.set(id, cb);
+	N.frame();
 	return id;
 }
-function cancelAnimationFrame(id) { const t = rafs.get(id); if (t) { N.clearTimer(t); rafs.delete(id); } }
+function cancelAnimationFrame(id) { rafs.delete(id); }
+function runFrames(time) {
+	if (!rafs.size)
+		return;
+	const ts = time - startTime;
+	const list = [...rafs.values()];
+	rafs.clear();
+	for (const cb of list) {
+		try { cb(ts); } catch (e) { report(e); }
+	}
+}
+
+/* (AnimationEvent / TransitionEvent: defined with the other events, above) */
+class AnimationPlaybackEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.currentTime = init.currentTime === undefined ? null : init.currentTime;
+		this.timelineTime = init.timelineTime === undefined ? null : init.timelineTime;
+	}
+}
+
+class AnimationTimeline {
+	get currentTime() { return performance.now(); }
+	get duration() { return null; }
+}
+class DocumentTimeline extends AnimationTimeline {
+	constructor(opts) {
+		super();
+		Object.defineProperty(this, '_origin', { value: (opts && +opts.originTime) || 0 });
+	}
+	get currentTime() { return performance.now() - this._origin; }
+}
+const documentTimeline = new DocumentTimeline();
+
+const ANIM_DIRS = ['normal', 'reverse', 'alternate', 'alternate-reverse'];
+const ANIM_FILLS = ['none', 'forwards', 'backwards', 'both'];
+const ANIMS = new Map();		/* id -> its Animation (those the scripts have) */
+
+/* an easing as the engine reads it (libcss's canonical spelling) */
+function easingText(e) {
+	let s = String(e === undefined ? 'linear' : e).trim().toLowerCase();
+	s = s.replace(/\s*,\s*/g, ',').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ');
+	s = s.replace(/^steps\((\d+),(start|end)\)$/, (m, n, p) => 'steps(' + n + ',jump-' + p + ')');
+	if (!/^(linear|ease|ease-in|ease-out|ease-in-out|step-start|step-end|cubic-bezier\([^)]*\)|steps\([^)]*\)|linear\([^)]*\))$/.test(s))
+		throw new TypeError("Failed to parse easing '" + e + "'");
+	return s;
+}
+
+function cssName(p) {
+	if (p === 'cssFloat') return 'float';
+	if (p === 'cssOffset') return 'offset';
+	return p.startsWith('--') ? p : kebab(p);
+}
+
+/* keyframes (the array or the property-indexed form) into [{offset, easing, obj, css}] */
+function normalizeKeyframes(k) {
+	let frames = [];
+	if (k == null)
+		return frames;
+	if (Array.isArray(k) || (typeof k[Symbol.iterator] === 'function' && typeof k !== 'string')) {
+		for (const f of k) {
+			const obj = {};
+			for (const p of Object.keys(f))
+				if (p !== 'offset' && p !== 'easing' && p !== 'composite')
+					obj[p] = f[p];
+			frames.push({ offset: f.offset == null ? null : +f.offset,
+				easing: f.easing === undefined ? 'linear' : easingText(f.easing), obj });
+		}
+	} else {
+		/* { opacity: [0, 1], transform: [...] }: the values spread evenly */
+		const props = Object.keys(k).filter(p => p !== 'offset' && p !== 'easing' && p !== 'composite');
+		let n = 0;
+		for (const p of props)
+			n = Math.max(n, Array.isArray(k[p]) ? k[p].length : 1);
+		for (let i = 0; i < n; i++)
+			frames.push({ offset: null, easing: 'linear', obj: {} });
+		for (const p of props) {
+			const vals = Array.isArray(k[p]) ? k[p] : [k[p]];
+			vals.forEach((v, i) => {
+				const at = vals.length === 1 ? n - 1 : Math.round(i * (n - 1) / (vals.length - 1));
+				frames[at].obj[p] = v;
+			});
+		}
+		const offs = Array.isArray(k.offset) ? k.offset : k.offset != null ? [k.offset] : [];
+		offs.forEach((o, i) => { if (frames[i] && o != null) frames[i].offset = +o; });
+		const eas = Array.isArray(k.easing) ? k.easing : k.easing != null ? [k.easing] : [];
+		frames.forEach((f, i) => { if (eas.length) f.easing = easingText(eas[i % eas.length]); });
+	}
+	/* the missing offsets: 0, 1 at the ends, evenly between (a single one: 1) */
+	if (frames.length === 1 && frames[0].offset == null)
+		frames[0].offset = 1;
+	else if (frames.length > 1) {
+		if (frames[0].offset == null) frames[0].offset = 0;
+		if (frames[frames.length - 1].offset == null) frames[frames.length - 1].offset = 1;
+		for (let i = 1; i < frames.length - 1; i++) {
+			if (frames[i].offset != null)
+				continue;
+			let j = i;
+			while (frames[j].offset == null) j++;
+			const a = frames[i - 1].offset, b = frames[j].offset;
+			for (let m = i; m < j; m++)
+				frames[m].offset = a + (b - a) * (m - i + 1) / (j - i + 1);
+			i = j;
+		}
+	}
+	for (let i = 0; i < frames.length; i++) {
+		const f = frames[i];
+		if (f.offset < 0 || f.offset > 1 || (i > 0 && f.offset < frames[i - 1].offset))
+			throw new TypeError('Offsets must be monotonically non-decreasing and in [0, 1]');
+		f.css = Object.keys(f.obj).map(p => cssName(p) + ':' + String(f.obj[p])).join(';');
+	}
+	return frames;
+}
+
+function normalizeTiming(o) {
+	const t = { delay: 0, endDelay: 0, duration: 0, durationRaw: 'auto', iterations: 1,
+		iterationStart: 0, direction: 0, fill: 0, fillName: 'auto', easing: 'linear',
+		playbackRate: 1, id: '' };
+	if (typeof o === 'number' || (o != null && typeof o !== 'object')) {
+		t.duration = +o || 0;
+		t.durationRaw = t.duration;
+	} else if (o) {
+		if (o.duration !== undefined && o.duration !== 'auto') {
+			t.duration = +o.duration;
+			t.durationRaw = t.duration;
+			if (!(t.duration >= 0))
+				throw new TypeError('Invalid duration');
+		}
+		if (o.delay !== undefined) t.delay = +o.delay || 0;
+		if (o.endDelay !== undefined) t.endDelay = +o.endDelay || 0;
+		if (o.iterations !== undefined) {
+			t.iterations = +o.iterations;
+			if (!(t.iterations >= 0))
+				throw new TypeError('Invalid iterations');
+		}
+		if (o.iterationStart !== undefined) t.iterationStart = +o.iterationStart || 0;
+		if (o.direction !== undefined) t.direction = Math.max(0, ANIM_DIRS.indexOf(o.direction));
+		if (o.fill !== undefined) {
+			t.fillName = String(o.fill);
+			t.fill = Math.max(0, ANIM_FILLS.indexOf(t.fillName));
+		}
+		if (o.easing !== undefined) t.easing = easingText(o.easing);
+		if (o.playbackRate !== undefined) t.playbackRate = +o.playbackRate;
+		if (o.id !== undefined) t.id = String(o.id);
+	}
+	return t;
+}
+
+class AnimationEffect {
+	getTiming() {
+		const t = this._timing;
+		return { delay: t.delay, endDelay: t.endDelay, fill: t.fillName,
+			iterationStart: t.iterationStart, iterations: t.iterations,
+			duration: t.durationRaw, direction: ANIM_DIRS[t.direction], easing: t.easing };
+	}
+	getComputedTiming() {
+		const t = this._timing, a = this._anim;
+		const i = a && a._id ? N.animInfo(a._id) : null;
+		const active = t.duration * t.iterations;
+		return Object.assign(this.getTiming(), {
+			fill: ANIM_FILLS[t.fill], duration: t.duration,
+			activeDuration: active, endTime: Math.max(0, t.delay + active + t.endDelay),
+			localTime: i && !isNaN(i[0]) ? i[0] : null,
+			progress: i && !isNaN(i[4]) ? i[4] : null,
+			currentIteration: i && !isNaN(i[5]) ? i[5] : null });
+	}
+	updateTiming(o) {
+		const cur = this.getTiming();
+		this._timing = normalizeTiming(Object.assign(cur, o || {}));
+		if (this._anim)
+			this._anim._remake();
+	}
+}
+class KeyframeEffect extends AnimationEffect {
+	constructor(target, keyframes, options) {
+		super();
+		if (target instanceof KeyframeEffect) {
+			const src = target;
+			this.target = src.target;
+			this._frames = src._frames.slice();
+			this._timing = Object.assign({}, src._timing);
+		} else {
+			this.target = target || null;
+			this._frames = normalizeKeyframes(keyframes);
+			this._timing = normalizeTiming(options);
+		}
+		this._anim = null;
+		this.composite = 'replace';
+		this.iterationComposite = 'replace';
+		this.pseudoElement = null;
+	}
+	getKeyframes() {
+		return this._frames.map(f => Object.assign({}, f.obj, { offset: f.offset,
+			computedOffset: f.offset, easing: f.easing, composite: 'auto' }));
+	}
+	setKeyframes(k) {
+		this._frames = normalizeKeyframes(k);
+		if (this._anim)
+			this._anim._remake();
+	}
+}
+
+class Animation extends EventTarget {
+	constructor(effect = null, timeline) {
+		super();
+		Object.defineProperty(this, '_id', { value: 0, writable: true });
+		this._effect = effect;
+		if (effect) effect._anim = this;
+		this.timeline = timeline === undefined ? documentTimeline : timeline;
+		this.id = effect && effect._timing ? effect._timing.id : '';
+		this.onfinish = null;
+		this.oncancel = null;
+		this.onremove = null;
+		this._rate = effect && effect._timing ? effect._timing.playbackRate : 1;
+		this._newPromises();
+	}
+	_newPromises() {
+		this._finished = new Promise((ok, no) => { this._fok = ok; this._fno = no; });
+		this._finished.catch(() => {});	/* (a cancel: not an unhandled rejection) */
+		this._ready = Promise.resolve(this);
+	}
+	_make(hold) {
+		const e = this._effect;
+		if (!e || !e.target || !e._frames.length)
+			return false;
+		const t = e._timing;
+		const id = N.animate(e.target, e._frames.map(f => f.css), e._frames.map(f => f.offset),
+			e._frames.map(f => f.easing), { delay: t.delay, endDelay: t.endDelay,
+			duration: t.duration, iterations: t.iterations, iterationStart: t.iterationStart,
+			direction: t.direction, fill: t.fill, easing: t.easing, playbackRate: this._rate });
+		if (!id)
+			return false;
+		this._id = id;
+		ANIMS.set(id, this);
+		if (hold !== undefined)
+			N.animCtl(id, 5, hold);
+		return true;
+	}
+	_remake() {
+		/* (new keyframes or timing: made again at the same time) */
+		if (!this._id)
+			return;
+		const i = N.animInfo(this._id);
+		const t = i ? i[0] : 0, state = i ? i[7] : 'idle';
+		if (state === 'idle')
+			return;
+		N.animCtl(this._id, 2);
+		ANIMS.delete(this._id);
+		this._id = 0;
+		this._make(isNaN(t) ? 0 : t);
+		if (state === 'paused')
+			N.animCtl(this._id, 1);
+	}
+	_info() {
+		/* (a finished animation without a fill is gone from the engine: its state kept
+		 * here, play() makes it again) */
+		const i = this._id ? N.animInfo(this._id) : null;
+		if (!i && this._id) {
+			ANIMS.delete(this._id);
+			this._id = 0;
+		}
+		return i;
+	}
+	get effect() { return this._effect; }
+	set effect(e) { this._effect = e; if (e) e._anim = this; this._remake(); }
+	get playState() { const i = this._info(); return i ? i[7] : (this._state || 'idle'); }
+	get pending() { return false; }
+	get replaceState() { return this._removed ? 'removed' : 'active'; }
+	get currentTime() {
+		const i = this._info();
+		if (i) return !isNaN(i[0]) ? i[0] : null;
+		return this._state === 'finished' ? this._held : null;
+	}
+	set currentTime(v) {
+		if (v === null)
+			return;
+		if (!this._id && !this._make())
+			return;
+		N.animCtl(this._id, 5, +v);
+		N.animCtl(this._id, 1);
+	}
+	get startTime() { const i = this._info(); return i && !isNaN(i[1]) ? i[1] - startTime : null; }
+	set startTime(v) {
+		if (v === null)
+			return;
+		if (!this._id && !this._make())
+			return;
+		N.animCtl(this._id, 7, +v + startTime);
+	}
+	get playbackRate() { const i = this._info(); return i ? i[2] : this._rate; }
+	set playbackRate(v) { this._rate = +v; if (this._id) N.animCtl(this._id, 6, +v); }
+	updatePlaybackRate(v) { this.playbackRate = v; }
+	get finished() { return this._finished; }
+	get ready() { return this._ready; }
+	play() {
+		if (!this._id || !this._info()) {
+			if (this._state === 'finished')
+				this._newPromises();
+			this._state = '';
+			this._make();
+			return;
+		}
+		if (this.playState === 'finished' || this.playState === 'idle')
+			this._newPromises();
+		N.animCtl(this._id, 0);
+	}
+	pause() {
+		if (!this._id && !this._make())
+			return;
+		N.animCtl(this._id, 1);
+	}
+	cancel() {
+		if (this._id && this._info() && this.playState !== 'idle')
+			N.animCtl(this._id, 2);
+		else if (this._state === 'finished') {
+			this._state = 'idle';
+			this._onCancel();
+		}
+	}
+	finish() {
+		if (!this._id && !this._make())
+			return;
+		if (!N.animCtl(this._id, 3) || this.effect && this.effect._timing &&
+		    this.effect._timing.iterations === Infinity && this.playbackRate > 0)
+			throw new DOMException('Cannot finish an infinite animation', 'InvalidStateError');
+	}
+	reverse() {
+		if (!this._info() && this._state === 'finished') {
+			/* (gone at its end: made again, playing backwards from there) */
+			this._rate = -this._rate;
+			this._state = '';
+			this._newPromises();
+			this._make();
+			return;
+		}
+		if (!this._id && !this._make())
+			return;
+		if (this.playState === 'finished')
+			this._newPromises();
+		N.animCtl(this._id, 4);
+	}
+	persist() {}
+	commitStyles() {
+		const e = this._effect;
+		if (!e || !e.target || !e.target.style)
+			return;
+		const cs = getComputedStyle(e.target);
+		const props = new Set();
+		for (const f of e._frames)
+			for (const p of Object.keys(f.obj))
+				props.add(cssName(p));
+		for (const p of props)
+			e.target.style.setProperty(p, cs.getPropertyValue(p));
+	}
+	_onFinish(held) {
+		this._state = 'finished';
+		this._held = held;
+		const ok = this._fok;
+		ok(this);
+		const ev = new AnimationPlaybackEvent('finish', { currentTime: this.currentTime,
+			timelineTime: documentTimeline.currentTime });
+		if (typeof this.onfinish === 'function')
+			try { this.onfinish.call(this, ev); } catch (e) { report(e); }
+		dispatch(this, ev);
+	}
+	_onCancel() {
+		const no = this._fno;
+		const err = new DOMException('The user aborted a request.', 'AbortError');
+		this._newPromises();
+		no(err);
+		const ev = new AnimationPlaybackEvent('cancel', { timelineTime: documentTimeline.currentTime });
+		if (typeof this.oncancel === 'function')
+			try { this.oncancel.call(this, ev); } catch (e) { report(e); }
+		dispatch(this, ev);
+		ANIMS.delete(this._id);
+	}
+}
+class CSSAnimation extends Animation {
+	get animationName() { const i = this._info(); return i ? i[8] : this._name; }
+}
+class CSSTransition extends Animation {
+	get transitionProperty() { const i = this._info(); return i ? i[8] : this._name; }
+}
+
+/* the Animation of an engine's id: the one the scripts have, else one made for it */
+function animationFor(id) {
+	let a = ANIMS.get(id);
+	if (a)
+		return a;
+	const i = N.animInfo(id);
+	if (!i)
+		return null;
+	const effect = new KeyframeEffect(i[9], [], { delay: i[10], duration: i[11],
+		iterations: i[12], endDelay: i[13], direction: ANIM_DIRS[i[14]] || 'normal',
+		fill: ANIM_FILLS[i[15]] || 'none' });
+	a = new (i[6] === 0 ? CSSTransition : i[6] === 1 ? CSSAnimation : Animation)(effect);
+	a._id = id;
+	a._name = i[8];
+	ANIMS.set(id, a);
+	return a;
+}
+
+function animationsOf(target) {
+	return N.animList(target).map(animationFor).filter(a => a && (a.playState !== 'finished' ||
+		(a.effect && a.effect._timing && (a.effect._timing.fill & 1))));
+}
+
+function elementAnimate(el, keyframes, options) {
+	const effect = new KeyframeEffect(el, keyframes, options);
+	const a = new Animation(effect);
+	a._make();
+	return a;
+}
+
+/* the engine's news: an event on an element, or an Animation's finish / cancel */
+function animEvent(target, init) {
+	const t = init.type;
+	if (t === 'finish' || t === 'cancel') {
+		const a = ANIMS.get(init.id);
+		if (a)
+			t === 'finish' ? a._onFinish(init.elapsed) : a._onCancel();
+		return;
+	}
+	if (t === 'remove') {
+		const a = ANIMS.get(init.id);
+		if (a) {
+			a._removed = true;
+			ANIMS.delete(init.id);
+			a._id = 0;
+			a._state = 'finished';
+			const ev = new AnimationPlaybackEvent('remove', { timelineTime: documentTimeline.currentTime });
+			if (typeof a.onremove === 'function')
+				try { a.onremove.call(a, ev); } catch (e) { report(e); }
+			dispatch(a, ev);
+		}
+		return;
+	}
+	if (!(target instanceof Element))
+		return;
+	const ev = t.startsWith('transition') ?
+		new TransitionEvent(t, { bubbles: true, cancelable: t === 'transitionend',
+			propertyName: init.name, elapsedTime: init.elapsed }) :
+		new AnimationEvent(t, { bubbles: true, animationName: init.name,
+			elapsedTime: init.elapsed });
+	ev.isTrusted = true;
+	dispatch(target, ev);
+}
 
 /* media queries: the viewport's width and height, a screen, no motion preference */
 function mediaMatches(q) {
@@ -3697,24 +4250,69 @@ function mediaMatches(q) {
 		return not ? !ok : ok;
 	});
 }
+/* Onyx: a media query list as libcss reads and evaluates it (N.mediaMatch: the page's
+ * viewport; libcss's range syntax, aspect-ratio, orientation, hover...): { media, matches } --
+ * media its text with "not all" for a query libcss could not read, as a browser serializes
+ * it. mediaMatches above without a page's style context. */
+const MEDIA_INFO = new Map();
+function mediaInfo(q) {
+	q = String(q);
+	if (q.trim() === '') return { media: '', matches: true };
+	const key = q + '\u0000' + G.innerWidth + 'x' + G.innerHeight;
+	let info = MEDIA_INFO.get(key);
+	if (info) return info;
+	const r = N.mediaMatch(q, G.innerWidth, G.innerHeight);
+	if (r === null) return { media: q, matches: mediaMatches(q) };
+	const parts = [];
+	let depth = 0, start = 0;
+	for (let i = 0; i <= q.length; i++) {
+		const ch = q[i];
+		if (ch === '(' || ch === '[' || ch === '{') depth++;
+		else if (ch === ')' || ch === ']' || ch === '}') depth--;
+		else if (i === q.length || (ch === ',' && depth <= 0)) {
+			parts.push(q.slice(start, i).trim().replace(/\s+/g, ' '));
+			start = i + 1;
+		}
+	}
+	const media = parts.map((p, i) => i >= r[1] || ((r[2] >>> i) & 1) ? 'not all' : p).join(', ');
+	info = { media, matches: r[0] };
+	if (MEDIA_INFO.size > 256) MEDIA_INFO.clear();
+	MEDIA_INFO.set(key, info);
+	return info;
+}
 const mediaLists = new Set();
 class MediaQueryList extends EventTarget {
-	constructor(q) { super(); this.media = String(q); this._last = mediaMatches(q); this.onchange = null; }
-	get matches() { return mediaMatches(this.media); }
+	constructor(q) {
+		super();
+		Object.defineProperty(this, '_q', { value: String(q) });
+		Object.defineProperty(this, '_last', { value: mediaInfo(q).matches, writable: true });
+		Object.defineProperty(this, '_oc', { value: null, writable: true });
+	}
+	get media() { return mediaInfo(this._q).media; }
+	get matches() { return mediaInfo(this._q).matches; }
+	get onchange() { return this._oc; }
+	set onchange(fn) { this._oc = typeof fn === 'function' ? fn : null; }
 	addListener(fn) { this.addEventListener('change', fn); mediaLists.add(this); }
 	removeListener(fn) { this.removeEventListener('change', fn); }
 }
+class MediaQueryListEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		Object.defineProperty(this, '_m', { value: { media: String(init.media ?? ''), matches: !!init.matches } });
+	}
+	get media() { return this._m.media; }
+	get matches() { return this._m.matches; }
+}
+G.MediaQueryListEvent = MediaQueryListEvent;
 function matchMedia(q) { const m = new MediaQueryList(q); mediaLists.add(m); return m; }
 G.MediaQueryList = MediaQueryList;
 
 function checkMedia() {
 	for (const m of mediaLists) {
-		const now = mediaMatches(m.media);
+		const now = mediaInfo(m._q).matches;
 		if (now !== m._last) {
 			m._last = now;
-			const ev = new Event('change');
-			ev.matches = now;
-			ev.media = m.media;
+			const ev = new MediaQueryListEvent('change', { matches: now, media: m.media });
 			dispatch(m, ev);
 			if (typeof m.onchange === 'function') try { m.onchange(ev); } catch (e) { report(e); }
 		}
@@ -3809,35 +4407,100 @@ function storageProxy(origin) {
 }
 G.Storage = Storage;
 
-/* console */
+/* console (Onyx: its arguments made text only when the log is read -- N.logOn -- and an
+ * object's text bounded hard: JSON's, but 40 values, 4 levels and 160 characters at most, and
+ * no toJSON() but a Date's. Vue's development build hands console.warn whole component trees
+ * (reactive proxies: each value read is a tracked get): browserscore.dev's 1600 warnings cost
+ * seconds with the log on at 2000 values each (and a minute before any bound); the kmsg line
+ * is cut at ~128 characters anyway. A string argument is kept whole: nothing to format.) */
+const FMT_CUT = {};
+const FMT_VALUES = 40, FMT_DEPTH = 4, FMT_CHARS = 160, FMT_LINE = 256;
+function fmtJSON(a, chars) {
+	let n = 0, left = chars;
+	const stack = [];
+	const room = s => { if ((left -= s.length) < 0) throw FMT_CUT; return s; };
+	const val = (v, inArray) => {
+		if (++n > FMT_VALUES) throw FMT_CUT;
+		if (v instanceof Date) v = v.toJSON();
+		switch (typeof v) {
+		case 'string': return room(JSON.stringify(v.length > left - 2 ? v.slice(0, Math.max(0, left - 6)) + '\u2026' : v));
+		case 'number': return room(isFinite(v) ? String(v) : 'null');
+		case 'boolean': return room(String(v));
+		case 'bigint': throw new TypeError('BigInt');
+		case 'undefined': case 'function': case 'symbol': return inArray ? room('null') : undefined;
+		}
+		if (v === null) return room('null');
+		if (stack.includes(v)) throw new TypeError('cyclic');
+		if (stack.length >= FMT_DEPTH) throw FMT_CUT;
+		room('{}');
+		stack.push(v);
+		let out;
+		if (Array.isArray(v)) {
+			const items = [];
+			for (let i = 0; i < v.length; i++) items.push(val(v[i], true));
+			out = '[' + items.join(',') + ']';
+		} else {
+			const items = [];
+			for (const k of Object.keys(v)) {
+				const s = val(v[k], false);
+				if (s !== undefined) items.push(room(JSON.stringify(k) + ':') + s);
+			}
+			out = '{' + items.join(',') + '}';
+		}
+		stack.pop();
+		return out;
+	};
+	return val(a, false);
+}
+function fmtName(a) {
+	let c;
+	try { c = a && a.constructor && a.constructor.name; } catch (e) {}
+	return '[' + (typeof c === 'string' && c ? c : 'object') + ' ...]';
+}
+/* (a line's objects formatted while it is under FMT_LINE characters, the others named: Vue's
+ * warning text alone is longer than what kmsg shows) */
 function fmt(args) {
+	let len = 0;
 	return args.map(a => {
-		if (typeof a === 'string') return a;
-		if (a instanceof Error) return a + (a.stack ? '\n' + a.stack : '');
-		if (a instanceof Node) return '<' + (a.nodeName || 'node') + '>';
-		try { return JSON.stringify(a); } catch (e) { return String(a); }
+		let s;
+		if (typeof a === 'string') s = a;
+		else if (a instanceof Error) s = a + (a.stack ? '\n' + a.stack : '');
+		else if (a instanceof Node) s = '<' + (a.nodeName || 'node') + '>';
+		else if (len >= FMT_LINE && a !== null && (typeof a === 'object' || typeof a === 'function')) s = fmtName(a);
+		else {
+			try {
+				s = fmtJSON(a, Math.max(16, Math.min(FMT_CHARS, FMT_LINE - len)));
+			} catch (e) {
+				if (e === FMT_CUT) s = fmtName(a);
+				else try { s = String(a); } catch (e2) { s = fmtName(a); }
+			}
+		}
+		if (s === undefined) s = typeof a === 'function' ? 'function ' + (a.name || '') + '()' : String(a);
+		len += s.length + 1;
+		return s;
 	}).join(' ');
 }
 const counts = new Map(), times = new Map();
+const clog = (pre, a) => { if (N.logOn()) N.log(pre + fmt(a)); };
 const console = {
-	log: (...a) => N.log(fmt(a)),
-	info: (...a) => N.log(fmt(a)),
-	debug: (...a) => N.log(fmt(a)),
-	warn: (...a) => N.log('warning: ' + fmt(a)),
-	error: (...a) => N.log('error: ' + fmt(a)),
-	trace: (...a) => N.log('trace: ' + fmt(a)),
-	dir: (...a) => N.log(fmt(a)),
-	dirxml: (...a) => N.log(fmt(a)),
-	table: (...a) => N.log(fmt(a)),
-	group: (...a) => N.log(fmt(a)),
-	groupCollapsed: (...a) => N.log(fmt(a)),
+	log: (...a) => clog('', a),
+	info: (...a) => clog('', a),
+	debug: (...a) => clog('', a),
+	warn: (...a) => clog('warning: ', a),
+	error: (...a) => clog('error: ', a),
+	trace: (...a) => clog('trace: ', a),
+	dir: (...a) => clog('', a),
+	dirxml: (...a) => clog('', a),
+	table: (...a) => clog('', a),
+	group: (...a) => clog('', a),
+	groupCollapsed: (...a) => clog('', a),
 	groupEnd() {},
-	assert: (c, ...a) => { if (!c) N.log('assertion failed: ' + fmt(a)); },
-	count: (l = 'default') => { counts.set(l, (counts.get(l) || 0) + 1); N.log(l + ': ' + counts.get(l)); },
+	assert: (c, ...a) => { if (!c) clog('assertion failed: ', a); },
+	count: (l = 'default') => { counts.set(l, (counts.get(l) || 0) + 1); clog(l + ': ' + counts.get(l), []); },
 	countReset: (l = 'default') => counts.delete(l),
 	time: (l = 'default') => times.set(l, N.now()),
-	timeEnd: (l = 'default') => { N.log(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms'); times.delete(l); },
-	timeLog: (l = 'default') => N.log(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms'),
+	timeEnd: (l = 'default') => { clog(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms', []); times.delete(l); },
+	timeLog: (l = 'default') => clog(l + ': ' + (N.now() - (times.get(l) || N.now())) + 'ms', []),
 	clear() {},
 };
 
@@ -3908,8 +4571,9 @@ function pctEncodeStr(str, set, spaceAsPlus) {
 	for (const ch of toUSV(str)) out += pctEncodeCp(ch.codePointAt(0), set, spaceAsPlus);
 	return out;
 }
-function toUSV(s) {	/* lone surrogates to U+FFFD */
-	return String(s).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
+function toUSV(s) {	/* lone surrogates to U+FFFD (Onyx: the native toWellFormed -- a regexp with a
+			 * look-behind made each new URL slow) */
+	return String(s).toWellFormed();
 }
 function pctDecodeBytes(s) {	/* the bytes of a string, its %XX decoded */
 	const bytes = [];
@@ -4535,21 +5199,60 @@ function stripTrailingSpaces(u) {
 	u.path = u.path.replace(/ +$/, '');
 }
 
-class URL {
-	constructor(url, base) {
+/* Onyx: new URL(url, base)'s parses kept (a copy handed out each time): the spec's parser in
+ * JS is slow, and pages make the same URLs again and again (browserscore.dev: a quarter of
+ * its time in new URL, its features' links made at each render) */
+const URL_PARSED = new Map();
+function urlParseCached(url, base) {
+	const key = base === undefined ? url : url + '\u0000' + base;
+	let u = URL_PARSED.get(key);
+	if (u === undefined) {
 		let b = null;
 		if (base !== undefined) {
-			b = basicParse(toUSV(base), null);
+			b = URL_PARSED.get(base);
+			if (b === undefined) {
+				b = basicParse(base, null);
+				URL_PARSED.set(base, b);
+			}
 			if (!b) throw new TypeError("Failed to construct 'URL': Invalid base URL");
 		}
-		const u = basicParse(toUSV(url), b);
-		if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
-		this._u = u;
+		/* "#fragment" of a base (no code point to percent-encode): the base, that fragment */
+		if (b && /^#[\x21\x23-\x3b\x3d\x3f-\x5f\x61-\x7e]*$/.test(url))
+			u = { ...b, path: Array.isArray(b.path) ? b.path.slice() : b.path, fragment: url.slice(1) };
+		else
+			u = basicParse(url, b);
+		/* Onyx: 8192 kept (1024 before: browserscore.dev's 3000 links each render cleared
+		 * the table again and again -- each URL parsed anew) */
+		if (URL_PARSED.size >= 8192)
+			URL_PARSED.clear();
+		URL_PARSED.set(key, u);
+	}
+	if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
+	return u;
+}
+function urlCopy(u) { return { ...u, path: Array.isArray(u.path) ? u.path.slice() : u.path }; }
+
+/* Onyx: a URL holds the kept parse (_c, shared, never changed) until something reads or
+ * changes its record (_u: a copy made then, its own); its href made once per kept parse --
+ * new URL(link, base).href is what pages do (browserscore.dev: 3000 of them a render) */
+const URL_HREF = new WeakMap();
+class URL {
+	constructor(url, base) {
+		this._c = urlParseCached(toUSV(url), base === undefined ? undefined : toUSV(base));
+		this._m = null;
 		this._q = null;
 	}
+	get _u() { return this._m || (this._m = urlCopy(this._c)); }
+	set _u(u) { this._m = u; }
+	get _r() { return this._m || this._c; }	/* (to read) */
 	static parse(url, base) { try { return new URL(url, base); } catch (e) { return null; } }
 	static canParse(url, base) { try { new URL(url, base); return true; } catch (e) { return false; } }
-	get href() { return serializeURL(this._u); }
+	get href() {
+		if (this._m) return serializeURL(this._m);
+		let h = URL_HREF.get(this._c);
+		if (h === undefined) URL_HREF.set(this._c, h = serializeURL(this._c));
+		return h;
+	}
 	set href(v) {
 		const u = basicParse(toUSV(v), null);
 		if (!u) throw new TypeError("Failed to set the 'href' property on 'URL': Invalid URL");
@@ -4557,7 +5260,7 @@ class URL {
 		if (this._q) this._q._e = formParse(u.query || '');
 	}
 	get origin() {
-		const u = this._u;
+		const u = this._r;
 		if (u.scheme === 'blob') {
 			try { const p = new URL(serializePath(u)); if (p.protocol === 'http:' || p.protocol === 'https:') return p.origin; } catch (e) {}
 			return 'null';
@@ -4565,29 +5268,29 @@ class URL {
 		if (u.scheme === 'file' || !isSpecial(u.scheme)) return 'null';
 		return u.scheme + '://' + u.host + (u.port !== null ? ':' + u.port : '');
 	}
-	get protocol() { return this._u.scheme + ':'; }
+	get protocol() { return this._r.scheme + ':'; }
 	set protocol(v) { basicParse(toUSV(v) + ':', null, this._u, 'scheme start'); }
-	get username() { return this._u.username; }
+	get username() { return this._r.username; }
 	set username(v) {
 		const u = this._u;
 		if (u.host === null || u.host === '' || u.scheme === 'file') return;
 		u.username = pctEncodeStr(v, PE_USER);
 	}
-	get password() { return this._u.password; }
+	get password() { return this._r.password; }
 	set password(v) {
 		const u = this._u;
 		if (u.host === null || u.host === '' || u.scheme === 'file') return;
 		u.password = pctEncodeStr(v, PE_USER);
 	}
 	get host() {
-		const u = this._u;
+		const u = this._r;
 		if (u.host === null) return '';
 		return u.port === null ? u.host : u.host + ':' + u.port;
 	}
 	set host(v) { if (!this._u.opaque) basicParse(toUSV(v), null, this._u, 'host'); }
-	get hostname() { return this._u.host === null ? '' : this._u.host; }
+	get hostname() { return this._r.host === null ? '' : this._r.host; }
 	set hostname(v) { if (!this._u.opaque) basicParse(toUSV(v), null, this._u, 'hostname'); }
-	get port() { return this._u.port === null ? '' : String(this._u.port); }
+	get port() { return this._r.port === null ? '' : String(this._r.port); }
 	set port(v) {
 		const u = this._u;
 		if (u.host === null || u.host === '' || u.scheme === 'file') return;
@@ -4595,7 +5298,7 @@ class URL {
 		if (v === '') u.port = null;
 		else basicParse(v, null, this._u, 'port');
 	}
-	get pathname() { return serializePath(this._u); }
+	get pathname() { return serializePath(this._r); }
 	set pathname(v) {
 		const u = this._u;
 		if (u.opaque) return;
@@ -4603,7 +5306,7 @@ class URL {
 		u.path = [];
 		if (basicParse(toUSV(v), null, u, 'path start') === null) u.path = save;
 	}
-	get search() { const q = this._u.query; return q === null || q === '' ? '' : '?' + q; }
+	get search() { const q = this._r.query; return q === null || q === '' ? '' : '?' + q; }
 	set search(v) {
 		const u = this._u;
 		v = toUSV(v);
@@ -4614,10 +5317,10 @@ class URL {
 		if (this._q) this._q._e = formParse(v);
 	}
 	get searchParams() {
-		if (!this._q) { this._q = new URLSearchParams(this._u.query || ''); this._q._url = this; }
+		if (!this._q) { this._q = new URLSearchParams(this._r.query || ''); this._q._url = this; }
 		return this._q;
 	}
-	get hash() { const f = this._u.fragment; return f === null || f === '' ? '' : '#' + f; }
+	get hash() { const f = this._r.fragment; return f === null || f === '' ? '' : '#' + f; }
 	set hash(v) {
 		const u = this._u;
 		v = toUSV(v);
@@ -4695,14 +5398,14 @@ class IntersectionObserver {
 		const [mt, mr, mb, ml] = [m[0], m[1] || m[0], m[2] || m[0], m[3] || m[1] || m[0]];
 		let root = { x: 0, y: 0, w: s[2], h: s[3] };
 		if (this.root && this.root.getBoundingClientRect) {
-			const r = N.rect(this.root);
+			const r = N.rect(this.root, true);
 			root = { x: r[0], y: r[1], w: r[2], h: r[3] };
 		}
 		const top = root.y - marginPx(mt, root.h), bottom = root.y + root.h + marginPx(mb, root.h);
 		const left = root.x - marginPx(ml, root.w), right = root.x + root.w + marginPx(mr, root.w);
 		const entries = [];
 		for (const [el, last] of this._targets) {
-			const r = N.rect(el);
+			const r = N.rect(el, true);
 			const boxed = N.boxed(el);
 			const ix = Math.max(0, Math.min(right, r[0] + r[2]) - Math.max(left, r[0]));
 			const iy = Math.max(0, Math.min(bottom, r[1] + r[3]) - Math.max(top, r[1]));
@@ -4730,6 +5433,25 @@ G.IntersectionObserver = IntersectionObserver;
 G.IntersectionObserverEntry = function IntersectionObserverEntry() {};
 
 const resizeObservers = new Set();
+/* (Onyx: the entries and sizes as their classes, the attributes on the prototypes) */
+class ResizeObserverSize {
+	constructor(i, b) { Object.defineProperty(this, '_s', { value: [i, b] }); }
+	get inlineSize() { return this._s[0]; }
+	get blockSize() { return this._s[1]; }
+}
+class ResizeObserverEntry {
+	constructor(el, w, h) {
+		const size = Object.freeze([new ResizeObserverSize(w, h)]);
+		Object.defineProperty(this, '_e', { value: { target: el, rect: new DOMRect(0, 0, w, h), size } });
+	}
+	get target() { return this._e.target; }
+	get contentRect() { return this._e.rect; }
+	get borderBoxSize() { return this._e.size; }
+	get contentBoxSize() { return this._e.size; }
+	get devicePixelContentBoxSize() { return this._e.size; }
+}
+G.ResizeObserverSize = ResizeObserverSize;
+G.ResizeObserverEntry = ResizeObserverEntry;
 class ResizeObserver {
 	constructor(cb) { this._cb = cb; this._targets = new Map(); }
 	observe(el) { this._targets.set(el, null); resizeObservers.add(this); scheduleObservers(); }
@@ -4742,9 +5464,7 @@ class ResizeObserver {
 			const key = r[2] + 'x' + r[3];
 			if (key === last) continue;
 			this._targets.set(el, key);
-			const size = [{ inlineSize: r[2], blockSize: r[3] }];
-			entries.push({ target: el, contentRect: new DOMRect(0, 0, r[2], r[3]),
-				borderBoxSize: size, contentBoxSize: size, devicePixelContentBoxSize: size });
+			entries.push(new ResizeObserverEntry(el, r[2], r[3]));
 		}
 		if (entries.length)
 			try { this._cb(entries, this); } catch (e) { report(e); }
@@ -5063,6 +5783,10 @@ class FontFace {
 		this.display = desc.display || 'auto';
 		this.featureSettings = desc.featureSettings || 'normal';
 		this.variant = desc.variant || 'normal';
+		this.variationSettings = desc.variationSettings || 'normal';
+		this.ascentOverride = desc.ascentOverride || 'normal';
+		this.descentOverride = desc.descentOverride || 'normal';
+		this.lineGapOverride = desc.lineGapOverride || 'normal';
 		this.status = 'unloaded';
 		this._src = source;
 		this._bytes = null;
@@ -5107,6 +5831,9 @@ class FontFace {
 		N.addFontFace(this.family, w1, w2, /italic|oblique/.test(this.style), this._bytes);
 	}
 }
+protoFields(FontFace, ['family', 'style', 'weight', 'stretch', 'unicodeRange', 'display',
+	'featureSettings', 'variant', 'variationSettings', 'ascentOverride', 'descentOverride',
+	'lineGapOverride', 'status', 'loaded']);
 class FontFaceSet extends EventTarget {
 	constructor() {
 		super();
@@ -5165,6 +5892,19 @@ const fontFaces = new FontFaceSet();
 G.FontFace = FontFace;
 G.FontFaceSet = FontFaceSet;
 
+/* Onyx: the visual viewport -- the layout viewport (no pinch zoom) */
+class VisualViewport extends EventTarget {
+	get offsetLeft() { return 0; }
+	get offsetTop() { return 0; }
+	get pageLeft() { return G.scrollX || 0; }
+	get pageTop() { return G.scrollY || 0; }
+	get width() { return G.innerWidth; }
+	get height() { return G.innerHeight; }
+	get scale() { return 1; }
+}
+defineHandlers(VisualViewport.prototype, ['resize', 'scroll', 'scrollend']);
+G.VisualViewport = VisualViewport;
+
 /* ---- the global object ------------------------------------------------------------------- */
 
 Object.assign(G, {
@@ -5173,10 +5913,16 @@ Object.assign(G, {
 	setTimeout, setInterval, clearTimeout, clearInterval: clearTimeout,
 	requestAnimationFrame, cancelAnimationFrame,
 	webkitRequestAnimationFrame: requestAnimationFrame,
+	webkitCancelAnimationFrame: cancelAnimationFrame,
+	TransitionEvent, AnimationEvent, AnimationPlaybackEvent, Animation, CSSAnimation,
+	CSSTransition, AnimationEffect, KeyframeEffect, AnimationTimeline, DocumentTimeline,
 	requestIdleCallback: cb => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 10 }), 1),
 	cancelIdleCallback: clearTimeout,
 	queueMicrotask: fn => { NativePromise.resolve().then(fn).catch(report); },
 	matchMedia, getComputedStyle, atob, btoa,
+	/* (Onyx: a tab's window is not moved or resized by its scripts, as in browsers) */
+	moveTo() {}, moveBy() {}, resizeTo() {}, resizeBy() {},
+	visualViewport: new VisualViewport(),
 	URL, URLSearchParams, TextEncoder, TextDecoder, fetch, XMLHttpRequest, Headers, Request, Response,
 	AbortController, AbortSignal, Blob, File,
 	Location, Storage,
@@ -5194,7 +5940,10 @@ Object.assign(G, {
 		randomUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }); },
 		subtle: {},
 	},
-	CSS: { supports: (a, b) => b === undefined ? cssSupports(a) :
+	CSS: { supports: (a, b) => b === undefined ?
+		/* (Onyx: as the spec, a condition that does not parse is tried again in parentheses:
+		 * CSS.supports("color: red")) */
+		cssSupports(a) || cssSupports("(" + a + ")") :
 		cssValid(String(a).trim().toLowerCase(), b), escape: s => String(s).replace(/([^a-zA-Z0-9_ -￿-])/g, '\\$1') },
 	customElements: {
 		_d: new Map(),
@@ -5295,7 +6044,7 @@ function browserEvent(target, type, init) {
 		ev = new FocusEvent(type, { composed: true });
 		break;
 	case 'wheel':
-		ev = new WheelEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init));
+		ev = new WheelEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G }, init));
 		break;
 	default:
 		ev = new Event(type, { bubbles: true, cancelable: true });
@@ -5481,6 +6230,14 @@ function browserDispatch(target, type, init) {
 		t = N.parent(t) || G;
 	if (type === 'onyx:hover') {
 		hoverTo(t instanceof Element ? t : null, init || {});
+		return true;
+	}
+	if (type === 'onyx:frame') {		/* (Onyx: requestAnimationFrame) */
+		runFrames(init.time);
+		return true;
+	}
+	if (type === 'onyx:anim') {		/* (Onyx: transitions, animations) */
+		animEvent(target, init);
 		return true;
 	}
 	if (type === 'mousedown' && t instanceof HTMLElement) {

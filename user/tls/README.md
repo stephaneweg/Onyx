@@ -58,14 +58,23 @@ This is a **functional** TLS bring-up, **not yet secure**:
   `CBcmRandomNumberGenerator` (BCM2835) and the BCM2711 RNG200 block stall the bus on
   this SoC and hang the kernel. Strengthening entropy is a kernel-side change to
   `kapi_random` only — `onyx_entropy()` stays as is.
-- **Certificate verification is OFF** (`MBEDTLS_SSL_VERIFY_NONE`): the server identity
-  is not checked, so this is open to man-in-the-middle. To fix: ship a CA bundle on the
-  SD card, `mbedtls_x509_crt_parse` it, `mbedtls_ssl_conf_ca_chain`, and switch to
-  `MBEDTLS_SSL_VERIFY_REQUIRED`.
+- **Certificate verification is available** (not the default of `start()`): pass
+  `START_VERIFY` after `set_ca_bundle(pem, len)` (the Mozilla bundle is `SD:/res/ca-bundle`)
+  -- the chain, the host name (SNI and the SAN names) and the dates against the Onyx clock
+  (`kapi_get_datetime`, skipped while the clock is unset: mbedTLS is built without
+  `MBEDTLS_HAVE_TIME_DATE`, so a verify callback checks them); `start()` returns -2 for a
+  refused certificate and fills a `Verify` record of the chain. `START_ALPN_H2` /
+  `START_ALPN_H1` offer ALPN; `sess_export` / `sess_import` keep the session cache across
+  launches. NetSurf uses all of it (`user/netsurf/onyx_nstls.cpp`, docs/06 §22); the other
+  users (`user/bin` tools, the courier) still connect without verification.
 
 ## Config notes
 
 The library is built from mbedTLS's default config with the platform couplings removed
 (`scripts/config.py`, see the `Makefile`): no `NET_C`/`FS_IO`/`TIMING_C`, no platform
-entropy, and TLS 1.3 disabled (it would pull the PSA RNG plumbing). TLS 1.2 client with
-the usual ECDHE/AES-GCM/SHA-2 suites and X.509 parsing remains enabled.
+entropy. TLS 1.2 and TLS 1.3 client: 1.3 runs on PSA crypto, built with
+`MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG` -- its random bytes come from
+`mbedtls_psa_external_get_random`, defined (weak) in `onyx_tls.hpp` over `kapi_random`, and
+`start()` calls `psa_crypto_init` once per app. The usual ECDHE/AES-GCM/ChaCha20/SHA-2
+suites and X.509 parsing remain enabled. Regenerating the library needs Python's
+`jsonschema` and `jinja2` (the PSA driver wrappers are generated).

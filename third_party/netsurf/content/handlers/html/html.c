@@ -288,10 +288,14 @@ static void html_box_convert_done(html_content *c, bool success)
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_hover.h"
 #include "html/onyx_shadow.h"
+#include "html/onyx_anim.h"
+#include "html/onyx_restyle.h"
 
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
 static bool html_rebox_success;
+static bool html_restyle_in_place(html_content *c);
+static void html_restyle_attr_clear(html_content *c, bool only);
 static void html_early_reformat(html_content *c);
 static void html_get_dimensions(html_content *htmlc);
 static void html_reformat(struct content *c, int width, int height);
@@ -391,10 +395,80 @@ static void html_rebox_gadgets(struct box *b, bool attach)
 }
 
 /**
+ * Onyx: the old objects (c->rebox_objects) indexed by their URL's hash for
+ * html_fetch_object_ex while the boxes are built again: each new box found its object by
+ * walking the whole list, a page with thousands of images (browserscore.dev's status icons)
+ * spent seconds there at each rebox. Without memory: no index, the list is walked.
+ */
+static void html_rebox_index(html_content *c)
+{
+	struct content_html_object *o, **tail;
+	unsigned int n = 0, size = 16, i;
+
+	c->rebox_all = c->rebox_index = NULL;
+	c->rebox_count = c->rebox_mask = 0;
+	for (o = c->rebox_objects; o != NULL; o = o->next) {
+		o->rebox_taken = false;
+		n++;
+	}
+	if (n < 8)
+		return;
+	while (size < 2 * n)
+		size *= 2;
+	c->rebox_all = malloc(n * sizeof *c->rebox_all);
+	c->rebox_index = calloc(size, sizeof *c->rebox_index);
+	if (c->rebox_all == NULL || c->rebox_index == NULL) {
+		free(c->rebox_all);
+		free(c->rebox_index);
+		c->rebox_all = c->rebox_index = NULL;
+		return;
+	}
+	c->rebox_count = n;
+	c->rebox_mask = size - 1;
+	for (i = 0, o = c->rebox_objects; o != NULL; o = o->next, i++) {
+		o->rebox_taken = false;
+		o->rebox_hnext = NULL;
+		c->rebox_all[i] = o;
+		if (o->content == NULL)
+			continue;
+		/* (appended: the first in the list found first, as the walk did) */
+		tail = &c->rebox_index[nsurl_hash(hlcache_handle_get_url(o->content)) &
+				c->rebox_mask];
+		while (*tail != NULL)
+			tail = &(*tail)->rebox_hnext;
+		*tail = o;
+	}
+}
+
+/** Onyx: the index dropped, c->rebox_objects made the list of the objects not taken over */
+static void html_rebox_unindex(html_content *c)
+{
+	struct content_html_object **prev = &c->rebox_objects;
+	unsigned int i;
+
+	if (c->rebox_all == NULL)
+		return;
+	for (i = 0; i < c->rebox_count; i++) {
+		if (c->rebox_all[i]->rebox_taken)
+			continue;
+		*prev = c->rebox_all[i];
+		prev = &c->rebox_all[i]->next;
+	}
+	*prev = NULL;
+	free(c->rebox_all);
+	free(c->rebox_index);
+	c->rebox_all = c->rebox_index = NULL;
+	c->rebox_count = c->rebox_mask = 0;
+}
+
+
+/**
  * The box tree built again from the DOM, then laid out: a script changed it (a class,
  * an attribute, nodes). The old tree's objects are released once the new one has
  * fetched its own (the same images, from the cache); form controls are kept by node.
  */
+static bool html_focus_control_box(html_content *c, dom_node *node);
+
 static void html_rebox(html_content *c)
 {
 	int *old_bctx = c->bctx;
@@ -431,17 +505,24 @@ static void html_rebox(html_content *c)
 	c->object_list = NULL;
 	c->num_objects = 0;
 	c->iframe = NULL;
+	onyx_anim_rebox_begin(c, old_layout);	/* (Onyx: the styles transitions start from) */
 	html_rebox_gadgets(old_layout, false);
 	html_rebox_unlink_boxes(old_layout);
 	html_rebox_unlink(html);
 	html_rebox_success = false;
 	c->rebox_objects = old_objects;	/* (html_fetch_object takes them over) */
+	html_rebox_index(c);
 	onyx_hover_reset(c);	/* (the :hover notes made again with the styles) */
 	t0 = onyx_perf_now();
+	nsu_getmonotonic_ms(&c->rebox_last_start);
+	c->rebox_mut_events = c->rebox_mut_shown = 0;
+	html_restyle_attr_clear(c, true);
 	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
 		html_rebox_success = false;
 	onyx_perf_log("rebox:boxes", t0);
+	onyx_anim_rebox_end(c, html_rebox_success && c->layout != old_layout);
 	dom_node_unref(html);
+	html_rebox_unindex(c);		/* (rebox_objects: the ones left) */
 	old_objects = c->rebox_objects;	/* the ones left */
 	c->rebox_objects = NULL;
 
@@ -530,6 +611,20 @@ static void html_rebox(html_content *c)
 				c->base.available_height);
 	}
 	onyx_perf_log("rebox:reformat", t0);
+	{
+		uint64_t now;
+		nsu_getmonotonic_ms(&now);
+		c->rebox_last_cost = now - c->rebox_last_start;
+	}
+
+	/* Onyx: a text field a script focused before it had a box */
+	if (c->focus_pending != NULL && !c->early_layout) {
+		dom_node *n = c->focus_pending;
+
+		c->focus_pending = NULL;
+		html_focus_control_box(c, n);
+		dom_node_unref(n);
+	}
 }
 
 /**
@@ -553,20 +648,213 @@ static void html_rebox_scheduled(void *p)
 		return;
 	}
 	c->rebox_pending = false;
+	if (html_restyle_in_place(c))
+		return;		/* (Onyx: attributes only: restyled in the boxes) */
 	html_rebox(c);
+}
+
+/** Onyx: the caret in a text control's box; false if it has none (yet) */
+static bool html_focus_control_box(html_content *c, dom_node *node)
+{
+	struct box *box = box_for_node(node);
+
+	if (box == NULL || box->gadget == NULL || c->bw == NULL ||
+	    (box->gadget->type != GADGET_TEXTBOX &&
+	     box->gadget->type != GADGET_PASSWORD &&
+	     box->gadget->type != GADGET_TEXTAREA) ||
+	    box->gadget->data.text.ta == NULL)
+		return false;
+	textarea_set_caret(box->gadget->data.text.ta, 1 << 30);
+	return true;
+}
+
+/* exported interface documented in html/private.h */
+bool html_script_focus_control(html_content *c, dom_node *node)
+{
+	if (c->focus_pending != NULL) {
+		dom_node_unref(c->focus_pending);
+		c->focus_pending = NULL;
+	}
+	if (c->layout != NULL && !c->rebox_pending &&
+	    html_focus_control_box(c, node))
+		return true;
+	c->focus_pending = dom_node_ref(node);
+	return true;
 }
 
 /* exported interface documented in html/private.h */
 void html_script_dom_changed(html_content *c)
 {
+	uint64_t now, interval, delay = 10;
+
 	if (c->layout == NULL && c->box_conversion_context == NULL)
 		return;	/* not boxed yet: the boxes will see the change */
 	if (c->early_layout && !c->conversion_begun) {
 		c->early_stale = true;	/* (Onyx: made again when asked, or at the conversion) */
 		return;
 	}
+	/* Onyx: one rebox for the changes of the turns that come meanwhile -- the first
+	 * change sets when (a later one no longer puts it off: a script changing the DOM
+	 * every few ms kept it from ever coming) -- and while the scripts keep changing
+	 * the DOM, one every max(50 ms, twice its cost) at most: the scripts get the time
+	 * between (a script asking for a geometry has its rebox at once:
+	 * html_script_layout_now) */
+	if (c->rebox_pending)
+		return;
+	nsu_getmonotonic_ms(&now);
+	interval = c->rebox_last_cost * 2 > 50 ? c->rebox_last_cost * 2 : 50;
+	if (c->rebox_last_start != 0 && now < c->rebox_last_start + interval &&
+	    c->rebox_last_start + interval - now > delay)
+		delay = c->rebox_last_start + interval - now;
 	c->rebox_pending = true;
-	guit->misc->schedule(10, html_rebox_scheduled, c);
+	guit->misc->schedule((int) delay, html_rebox_scheduled, c);
+}
+
+/** Onyx: the attribute-changed elements forgotten (a rebox, another kind of change) */
+static void html_restyle_attr_clear(html_content *c, bool only)
+{
+	for (unsigned int k = 0; k < c->restyle_attr_n; k++)
+		dom_node_unref(c->restyle_attr[k]);
+	c->restyle_attr_n = 0;
+	c->restyle_attr_only = only;
+}
+
+/* exported interface documented in html/private.h */
+void html_script_mutation(html_content *c, struct dom_node *node, bool attr)
+{
+	bool hidden;
+
+	if (c->layout == NULL)
+		return;
+	if (c->rebox_mut_events == 0)
+		html_restyle_attr_clear(c, true);	/* (the first change since a rebox) */
+	c->rebox_mut_events++;
+	hidden = onyx_restyle_node_hidden(c, node);
+	if (!hidden)
+		c->rebox_mut_shown++;
+	if (hidden || !c->restyle_attr_only)
+		return;
+	if (!attr || c->restyle_attr_n == sizeof(c->restyle_attr) /
+			sizeof(c->restyle_attr[0])) {
+		html_restyle_attr_clear(c, false);
+		return;
+	}
+	for (unsigned int k = 0; k < c->restyle_attr_n; k++)
+		if (c->restyle_attr[k] == node)
+			return;
+	c->restyle_attr[c->restyle_attr_n++] = dom_node_ref(node);
+}
+
+/**
+ * Onyx: the DOM changes since the last rebox only set attributes (a class toggled, a
+ * style attribute, aria-expanded...): the elements' subtrees styled again in their boxes
+ * (onyx_hover_restyle_nodes) -- with the following siblings whose selections looked at
+ * their previous siblings (onyx_restyle_sibling_dependent) -- redrawn when only how
+ * they are painted changed, else laid out again; no rebox. False: the boxes must be
+ * built again.
+ */
+static bool html_restyle_in_place(html_content *c)
+{
+	struct dom_node *roots[64];
+	unsigned int n = 0, k;
+	bool ok, layout = false;
+	uint64_t t0;
+
+	if (!c->restyle_attr_only || c->restyle_attr_n == 0 || c->layout == NULL ||
+	    c->early_layout || c->box_conversion_context != NULL ||
+	    getenv("NS_NOINPLACE") != NULL)
+		return false;
+	for (k = 0; k < c->restyle_attr_n; k++) {
+		struct dom_node *e = c->restyle_attr[k], *s = NULL, *next;
+
+		if (n == 64)
+			return false;
+		roots[n++] = e;
+		/* its following siblings that may depend on it */
+		if (dom_node_get_next_sibling(e, &s) != DOM_NO_ERR)
+			s = NULL;
+		while (s != NULL) {
+			dom_node_type type;
+			if (dom_node_get_node_type(s, &type) == DOM_NO_ERR &&
+			    type == DOM_ELEMENT_NODE) {
+				int dep = onyx_restyle_sibling_dependent(c, s);
+				if (dep != 0) {
+					if (dep < 0 || n == 64) {
+						dom_node_unref(s);
+						return false;
+					}
+					roots[n++] = s;
+				}
+			}
+			next = NULL;
+			dom_node_get_next_sibling(s, &next);
+			dom_node_unref(s);
+			s = next;
+		}
+	}
+	/* (a root inside another's subtree: restyled with it) */
+	for (k = 0; k < n; k++) {
+		for (unsigned int j = 0; j < n; j++) {
+			struct dom_node *a = NULL, *next;
+			bool inside = false;
+			if (j == k || roots[j] == NULL || roots[k] == NULL)
+				continue;
+			if (dom_node_get_parent_node(roots[k], &a) != DOM_NO_ERR)
+				a = NULL;
+			while (a != NULL) {
+				if (a == roots[j])
+					inside = true;
+				next = NULL;
+				if (inside || dom_node_get_parent_node(a, &next) != DOM_NO_ERR)
+					next = NULL;
+				dom_node_unref(a);
+				a = next;
+			}
+			if (inside) {
+				roots[k] = NULL;
+				break;
+			}
+		}
+	}
+	for (k = 0; k < n; ) {
+		if (roots[k] == NULL) {
+			roots[k] = roots[--n];
+			continue;
+		}
+		k++;
+	}
+
+	t0 = onyx_perf_now();
+	ok = onyx_hover_restyle_nodes(c, roots, (int) n, false);
+	if (!ok)
+		ok = layout = onyx_hover_restyle_nodes(c, roots, (int) n, true);
+	if (!ok)
+		return false;
+	html_restyle_attr_clear(c, true);
+	c->rebox_mut_events = c->rebox_mut_shown = 0;
+	onyx_perf_log("dom:restyle", t0);
+	if (layout) {
+		t0 = onyx_perf_now();
+		content__reformat(&c->base, false, c->base.available_width,
+				c->base.available_height);
+		onyx_perf_log("dom:layout", t0);
+	}
+	return true;
+}
+
+/* exported interface documented in html/private.h */
+void html_script_dom_changed_by_script(html_content *c)
+{
+	if (c->layout != NULL && !c->rebox_pending && !c->early_layout &&
+	    c->rebox_mut_events > 0 && c->rebox_mut_shown == 0) {
+		/* (nothing shown changed: no rebox) */
+		if (onyx_perf_on())
+			fprintf(stderr, "ONYX-PERF rebox:skipped (%u hidden changes) 0 us\n",
+					c->rebox_mut_events);
+		c->rebox_mut_events = 0;
+		return;
+	}
+	html_script_dom_changed(c);
 }
 
 /* Onyx: the viewport's size in device pixels (the browser window's), as the first
@@ -669,6 +957,7 @@ bool html_early_layout(html_content *c)
 		dom_node_unref(html);
 		return false;
 	}
+	onyx_restyle_invalidate_all(c);	/* (Onyx) */
 	html_get_dimensions(c);
 	c->early_layout = true;
 	c->early_stale = false;
@@ -703,7 +992,8 @@ void html_script_layout_now(html_content *c)
 	if (c->rebox_pending && html_rebox_possible(c)) {
 		guit->misc->schedule(-1, html_rebox_scheduled, c);
 		c->rebox_pending = false;
-		html_rebox(c);
+		if (!html_restyle_in_place(c))	/* (Onyx) */
+			html_rebox(c);
 	}
 }
 
@@ -874,6 +1164,7 @@ void html_finish_conversion(html_content *htmlc)
 
 	/* create new css selection context */
 	error = html_css_new_selection_context(htmlc, &htmlc->select_ctx);
+	onyx_restyle_invalidate_all(htmlc);	/* (Onyx) */
 	if (error != NSERROR_OK) {
 		content_broadcast_error(&htmlc->base, error, NULL);
 		content_set_error(&htmlc->base);
@@ -1748,8 +2039,15 @@ static void html_destroy(struct content *c)
 		html->script_changed = NULL;
 	}
 	html->rebox_pending = false;
+	onyx_anim_fini(html);		/* (Onyx: transitions, animations) */
 	onyx_hover_fini(html);		/* (Onyx) */
+	onyx_restyle_fini(html);	/* (Onyx) */
+	html_restyle_attr_clear(html, false);
 	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
+	if (html->focus_pending != NULL) {	/* (Onyx) */
+		dom_node_unref(html->focus_pending);
+		html->focus_pending = NULL;
+	}
 	if (html->hover_node != NULL) {		/* (Onyx) */
 		dom_node_unref(html->hover_node);
 		html->hover_node = NULL;
@@ -1889,6 +2187,7 @@ html_open(struct content *c,
 	html_content *html = (html_content *) c;
 
 	html->bw = bw;
+	html->onyx_closed = false;	/* (Onyx: its animations run again) */
 	html->page = (html_content *) page;
 
 	html->drag_type = HTML_DRAG_NONE;
@@ -1918,6 +2217,7 @@ static nserror html_close(struct content *c)
 
 	/* clear the html content reference to the browser window */
 	htmlc->bw = NULL;
+	htmlc->onyx_closed = true;	/* (Onyx: onyx_anim.c's frames paused) */
 
 	/* remove all object references from the html content */
 	html_object_close_objects(htmlc);
@@ -2088,8 +2388,9 @@ html_get_contextual_content(struct content *c, int x, int y,
  * \param scry	number of px try to scroll something in y direction
  * \return true iff scroll was consumed by something in the content
  */
-static bool
-html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
+/* (Onyx: exported, html/private.h: the scrolling keys -- no wheel event) */
+bool
+html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry)
 {
 	html_content *html = (html_content *) c;
 
@@ -2098,7 +2399,56 @@ html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 	int box_x = 0, box_y = 0;
 	bool handled_scroll = false;
 
-	/* TODO: invert order; visit deepest box first */
+	/* Onyx: the boxes under the point as a click finds them (the last
+	 * painted: an overlay's, a fixed box's), the deepest first: the first
+	 * that scrolls in that direction takes it (a scroller at its end hands
+	 * it to its ancestors, as in Chrome) */
+	if (box != NULL) {
+		int n = 0, i;
+		struct box **path = html_hit_path(html, x, y, &n);
+
+		if (path != NULL) {
+			bool done = false;
+
+			for (i = n - 1; i >= 0 && !done; i--) {
+				struct box *b = path[i];
+
+				if (b->style && css_computed_visibility(b->style) ==
+						CSS_VISIBILITY_HIDDEN)
+					continue;
+				if (b->iframe) {
+					float scale = browser_window_get_scale(
+							b->iframe);
+					box_coords(b, &box_x, &box_y);
+					done = browser_window_scroll_at_point(
+							b->iframe,
+							(x - box_x) * scale,
+							(y - box_y) * scale,
+							scrx, scry);
+				} else if (b->gadget &&
+				    (b->gadget->type == GADGET_TEXTAREA ||
+				     b->gadget->type == GADGET_PASSWORD ||
+				     b->gadget->type == GADGET_TEXTBOX)) {
+					done = textarea_scroll(
+							b->gadget->data.text.ta,
+							scrx, scry);
+				} else if (b->object != NULL) {
+					box_coords(b, &box_x, &box_y);
+					done = content_scroll_at_point(b->object,
+							x - box_x, y - box_y,
+							scrx, scry);
+				}
+				if (!done && b->scroll_y &&
+				    scrollbar_scroll(b->scroll_y, scry))
+					done = true;
+				if (!done && b->scroll_x &&
+				    scrollbar_scroll(b->scroll_x, scrx))
+					done = true;
+			}
+			free(path);
+			return done;
+		}
+	}
 
 	while ((next = box_at_point(&html->unit_len_ctx, box, x, y,
 			&box_x, &box_y)) != NULL) {
@@ -2145,6 +2495,47 @@ html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 	}
 
 	return false;
+}
+
+/**
+ * Onyx: the wheel: its event to the page's scripts first, at the element under the
+ * pointer (a script's own scroller: event.preventDefault() keeps the page still), then
+ * what is under the point scrolled.
+ */
+static bool
+html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
+{
+	html_content *html = (html_content *) c;
+
+	if (html->jsthread != NULL && html->layout != NULL &&
+	    (scrx != 0 || scry != 0)) {
+		int n = 0, i;
+		struct box **path = html_hit_path(html, x, y, &n);
+		dom_node *node = NULL;
+
+		if (path != NULL) {
+			for (i = n - 1; i >= 0 && node == NULL; i--)
+				if (path[i]->node != NULL)
+					node = dom_node_ref(path[i]->node);
+			free(path);
+		}
+		if (node != NULL) {
+			struct js_event_init init;
+			bool ok;
+
+			memset(&init, 0, sizeof(init));
+			init.x = x;
+			init.y = y;
+			init.button = -1;
+			init.delta_x = scrx;
+			init.delta_y = scry;
+			ok = html_script_event(html, "wheel", node, &init);
+			dom_node_unref(node);
+			if (!ok)
+				return true;	/* (prevented: the script scrolls) */
+		}
+	}
+	return html_scroll_boxes_at_point(c, x, y, scrx, scry);
 }
 
 /** Helper for file gadgets to store their filename unencoded on the

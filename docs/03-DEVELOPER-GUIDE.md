@@ -571,6 +571,54 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > Example: `user/Apps/gpudemo`. The kernel's shaders are QPU assembly (`kernel/sys/v3d_shaders.qasm`):
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.
+>
+> **GPU compositing (`user/gpucomp`, ABI v70)**: to assemble layers (a browser's, a desktop's)
+> link `gpucomp/libgpucomp.a` (built by `user/Makefile`; pure C without libc, FP on — freestanding
+> or newlib apps alike) and include `gpucomp/gpucomp.h`:
+> ```c
+> gpc_config cfg = { my_alloc, my_free, 0 };          // (umm_malloc / malloc...; GPC_F_CPU, GPC_F_ASYNC)
+> gpc_ctx *g = gpc_create (&cfg);                      // the GPU when usable (kapi v70), else the CPU
+> gpc_tex *page = gpc_tex_create (g, 1920, 4000, argb, 1920);   // premultiplied 0xAARRGGBB, any size
+> gpc_layer L; gpc_layer_init (&L, page);              // whole texture, identity, opacity 255
+> L.src_y = scroll; L.src_h = 1080;                    // scrolling: nothing uploaded again
+> gpc_matrix_translate (&L.m, cx, cy); gpc_matrix_rotate (&L.m, a); gpc_matrix_translate (&L.m, -w / 2, -h / 2);
+> L.clip[0] = x; ...; L.opacity = 200; L.flags = 0;    // GPC_L_NEAREST, GPC_L_OPAQUE
+> gpc_target t = { canvas, w, h, stride, 0 };          // GPC_T_ALPHA: an ARGB off-screen layer
+> gpc_composite (g, &t, &L, 1, 0xFFFFFF, GPC_C_CLEAR); // bottom layer first; the pixels are there on return
+> gpc_tex_update (g, page, x, y, w, h, px, stride);    // a damaged rectangle only (gpu_texture_rect)
+> ```
+> The matrices are CSS's `matrix(a, b, c, d, e, f)` (`gpc_matrix_translate / scale / rotate / skew /
+> multiply` post-multiply: the last one given applies first, as a CSS transform list). A layer
+> shows its texture's source rectangle (`src_x/y/w/h`, fractions allowed: smooth scrolling); its
+> texels past the texture are not drawn. **Targets**: the window's canvas (the GPU renders straight
+> into it) or `gpc_target_alloc (g, w, h, &stride)` (a `gpu_vbuf` block: the same; kept until the
+> program ends); any other buffer costs the kernel a copy there and back. A damaged rectangle only:
+> give a target of that rectangle (`pixels + y * stride + x`, its w / h) and translate the layers
+> by −x, −y. **Results**: 0; `GPC_LOST` (1) — the GPU stopped (a hang turns it off for everybody):
+> the CPU from then on, the textures that were on the GPU lost (`gpc_tex_lost`), upload them again;
+> < 0 `GPC_EINVAL` / `GPC_ENOMEM`. A texture the GPU refuses (no handle, no low memory) stays the
+> CPU's and is drawn by the CPU in its place in the order. `GPC_F_ASYNC` + `gpc_submit` / `gpc_wait`:
+> the composite on a thread of the program (kapi v67) — the app goes on meanwhile; the target and
+> the textures are not touched until `gpc_wait` (the texture calls wait by themselves).
+> `gpc_get_stats`: the last composite's µs, its `gpu_render` calls, the layers the CPU drew.
+> Tests: `sh tools/tests/run_gpucomp_test.sh` on the PC — the CPU path and the GPU path (on a
+> software V3D, `tools/tests/gpucomp/hostkapi.cpp`: the kernel's `FS_TEX` run in `tools/qpu/qpusim`)
+> against a reference in doubles, then partial updates across tiles, a refused texture, the GPU
+> lost, `gpcdemo test` / `bench` built for the PC (first `tools/tests/run_v3d_cl_test.sh`: the
+> control-list packets' fields against Mesa's positions — the software V3D decodes the kernel's
+> own target load / store packets); with `aarch64-none-elf-gcc` on the PATH (or
+> `A64_GCC=`) and `qemu-aarch64`, the CPU path built for the Pi (NEON loops) must give the PC's
+> pixels bit for bit. On the Pi: `/bin/gpcdemo test` (the GPU's pictures against the CPU's),
+> `/bin/gpcdemo bench` (ms a frame at 1920 × 1080, GPU then CPU), `/bin/gpcdemo` (a window).
+> **NetSurf** composites its view with it (docs/06 §25: the page in a band, opacity / transform
+> groups as retained layers, one composite a frame; Choices' `gpu_compositing`): `netsurf-app.mk`
+> links `$(ZUSER)/gpucomp/libgpucomp.a` (made by `make -C user gpucomp/libgpucomp.a` when
+> missing), and the `"onyx"` libnsfb surface (`user/nsfb/onyx_surface.c`, inside `libnsfb.a`:
+> `make -C user/nsfb NSFB=../../third_party/libnsfb` after changing it) leaves the composited
+> part of the canvas alone (`onyx_surface_hole`). On the PC: `sh tools/tests/netsurf/gputest.sh`
+> (the composited frames against the CPU painting, composite-only frames, the software V3D:
+> `host.mk SOFTGPU=1` links `hostkapi.cpp`'s V3D into the desktop simulator, `GPC_SOFTGPU=1`
+> uses it; `NS_GPU=0 / 1 / cpu` chooses the mode).
 > **App cores (ABI v51)**: an app may take a whole core (2 or 3) for a function of its own —
 > `int c = kapi_core_acquire ();` (−1: none free), `kapi_core_run (c, fn, arg, stack_top)` (the
 > stack is the app's memory, 16-byte aligned), poll `kapi_core_state (c)` (`KAPI_CORE_IDLE` once
@@ -1880,12 +1928,15 @@ tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.
 NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
 metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
 CSS3 painting, the native window: [`06-NETSURF-CHANGES.md`](06-NETSURF-CHANGES.md) lists the
-changes. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
+changes. The network (docs/06 §24) links two more vendored libraries, built by
+`make -C user/netsurf` like the others: `third_party/zstd-1.5.7` (the decompressor only,
+`libzstddec.a`) and `third_party/nghttp2-1.70.0` (`libnghttp2.a`, its `config.h` written by
+hand for newlib); the disk cache is `user/netsurf/onyx_cache.c`. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
 <out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
 `sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium. The
 scripts' engine is QuickJS (`third_party/quickjs-ng-0.17.0`, `libquickjs.a`), with
 WebAssembly on wasm3 (`third_party/wasm3-0.9.2`, `libm3.a`: both made by `make -C
-user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (docs/06 §21);
+user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (docs/06 §27);
 `sh tools/tests/netsurf/jstest.sh` runs their regression pages on the PC.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn

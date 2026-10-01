@@ -60,6 +60,9 @@
 #include "html/box_inspect.h"
 #include "html/onyx_paint.h"	/* Onyx: radii, shadows, gradients */
 #include "html/onyx_webfont.h"	/* Onyx: web fonts */
+#include "html/onyx_mask.h"	/* Onyx: mask-image */
+#include "html/onyx_fx.h"	/* Onyx: compositing layers */
+#include "netsurf/onyx_perf.h"	/* Onyx: a layer's time (NS_PERF) */
 #include "html/box_manipulate.h"
 #include "html/font.h"
 #include "html/form_internal.h"
@@ -1273,6 +1276,11 @@ struct onyx_layer_box {
 	int order;		/* (the tree's order, for equal z-indexes) */
 };
 
+/* Onyx: the redraw's own clip (the document's): a fixed box is not clipped by
+ * its ancestors' overflow (its containing block is the viewport) */
+static struct rect onyx_redraw_root_clip;
+static bool onyx_redraw_root_clip_set;
+
 static struct onyx_layer_box *onyx_layer_boxes;
 static int onyx_layer_count, onyx_layer_cap;
 static bool onyx_layering;	/* a redraw that paints by layers is going on */
@@ -1297,8 +1305,13 @@ bool html_redraw_layer_z(const struct box *box, int32_t *z)
 	if (pos == CSS_POSITION_STATIC &&
 	    (zt != CSS_Z_INDEX_SET || box->parent == NULL ||
 	     (box->parent->type != BOX_FLEX &&
-	      box->parent->type != BOX_INLINE_FLEX)))
-		return false;
+	      box->parent->type != BOX_INLINE_FLEX))) {
+		/* Onyx: a group (opacity, transform, filter...: html/onyx_fx.c) is a
+		 * stacking context, painted as a positioned box with z-index 0 is */
+		if (!onyx_fx_style(box->style) || !onyx_fx_box(box))
+			return false;
+		zt = CSS_Z_INDEX_AUTO;
+	}
 	*z = zt == CSS_Z_INDEX_SET ? zi : 0;
 	return *z >= 0;
 }
@@ -1325,6 +1338,9 @@ static bool onyx_layer_defer(struct box *c, int x_parent, int y_parent,
 	e->x_parent = x_parent;
 	e->y_parent = y_parent;
 	e->clip = *clip;
+	if (onyx_redraw_root_clip_set && c->style != NULL &&
+	    css_computed_position(c->style) == CSS_POSITION_FIXED)
+		e->clip = onyx_redraw_root_clip;
 	e->background = background;
 	e->z = z;
 	e->order = onyx_layer_count;
@@ -1379,24 +1395,642 @@ static bool onyx_layer_paint(const html_content *html, int start, float scale,
  * \return true if successful, false otherwise
  */
 
-static bool html_redraw_box_children(const html_content *html, struct box *box,
+/**
+ * Onyx: whether a float is inside a positioned box (a layer) below its float container:
+ * it is painted with that layer, in the tree's order, not with its container's floats
+ * (painted early, Wikipedia's figures were covered by their layer's background).
+ */
+static bool onyx_float_layered(const struct box *flt, const struct box *container)
+{
+	const struct box *p;
+	int32_t z;
+
+	for (p = flt->parent; p != NULL && p != container; p = p->parent)
+		if (html_redraw_layer_z(p, &z))
+			return true;
+	return false;
+}
+
+/**
+ * Onyx: a float child's float container (the ancestor of `from` whose floats it is in)
+ * and the offset of `from` in it; NULL when not found.
+ */
+static struct box *onyx_float_container(const struct box *flt, struct box *from,
+		int *dx, int *dy)
+{
+	struct box *p, *q;
+
+	*dx = *dy = 0;
+	for (p = from; p != NULL; p = p->parent) {
+		for (q = p->float_children; q != NULL; q = q->next_float)
+			if (q == flt)
+				return p;
+		*dx += p->x;
+		*dy += p->y;
+	}
+	return NULL;
+}
+
+/* ---- Onyx: compositing groups (opacity, transform, filter, backdrop-filter, blend mode) ----
+ * A box with effects (html/onyx_fx.c) is painted with all it holds -- its stacking context:
+ * its positioned descendants, put off, are painted inside it -- between the plotter's
+ * onyx_layer_begin and onyx_layer_end (netsurf/onyx_paint.h): in place over a copy of what is
+ * under it for an opacity alone (blended back), else into a layer of its own, twice (over
+ * black, over white), then filtered and drawn through its matrix. The layer covers only what
+ * lands in the redraw's clip (its inverse image through the matrix), grown by the filters'
+ * reach. Opacity 0: nothing is painted (the hit test still finds the box).
+ */
+
+#define ONYX_FX_MAX_PIXELS (4096 * 2048)	/* (a larger layer: painted without effects) */
+
+static int onyx_fx_nest;	/* isolated groups being painted (each paints twice) */
+
+static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		int x_parent, int y_parent,
-		const struct rect *clip, float scale,
+		const struct rect *clip, const float scale,
 		colour current_background_color,
+		const struct redraw_context *ctx);
+
+/** a box painted with its stacking context: what it put off painted after it */
+static bool onyx_fx_paint_context(const html_content *html, struct box *box,
+		int x_parent, int y_parent, const struct rect *clip, float scale,
+		colour background, const struct redraw_context *ctx)
+{
+	int start = onyx_layer_count;
+	bool ok = html_redraw_box_inner(html, box, x_parent, y_parent, clip, scale,
+			background, ctx);
+
+	if (ok && onyx_layering && onyx_layer_count > start)
+		ok = onyx_layer_paint(html, start, scale, ctx);
+	onyx_layer_count = start;
+	return ok;
+}
+
+/** what a box may paint (target px, its origin at x, y): its border box, its descendants
+ * (unless it clips them), its shadow */
+static void onyx_fx_bounds(const html_content *html, const struct box *box, float x,
+		float y, float scale, float b[4])
+{
+	struct onyx_box_shadow sh;
+	float x0 = -box->border[LEFT].width, y0 = -box->border[TOP].width;
+	float x1 = box->padding[LEFT] + box->width + box->padding[RIGHT] +
+			box->border[RIGHT].width;
+	float y1 = box->padding[TOP] + box->height + box->padding[BOTTOM] +
+			box->border[BOTTOM].width;
+	float e = 2;
+
+	if (css_computed_overflow_x(box->style) == CSS_OVERFLOW_VISIBLE) {
+		if (box->descendant_x0 < x0) x0 = box->descendant_x0;
+		if (box->descendant_x1 > x1) x1 = box->descendant_x1;
+	}
+	if (css_computed_overflow_y(box->style) == CSS_OVERFLOW_VISIBLE) {
+		if (box->descendant_y0 < y0) y0 = box->descendant_y0;
+		if (box->descendant_y1 > y1) y1 = box->descendant_y1;
+	}
+	if (onyx_box_shadow(box->style, &html->unit_len_ctx, 1, &sh) && !sh.inset)
+		e += fabsf(sh.x) + fabsf(sh.y) + sh.blur * 1.5f +
+				(sh.spread > 0 ? sh.spread : 0);
+	b[0] = x + (x0 - e) * scale;
+	b[1] = y + (y0 - e) * scale;
+	b[2] = x + (x1 + e) * scale;
+	b[3] = y + (y1 + e) * scale;
+}
+
+/** a rectangle's intersection with a clip (int), false when empty */
+static bool onyx_fx_clip(const float r[4], const struct rect *clip, struct rect *out)
+{
+	out->x0 = (int) floorf(r[0]);
+	out->y0 = (int) floorf(r[1]);
+	out->x1 = (int) ceilf(r[2]);
+	out->y1 = (int) ceilf(r[3]);
+	if (out->x0 < clip->x0) out->x0 = clip->x0;
+	if (out->y0 < clip->y0) out->y0 = clip->y0;
+	if (out->x1 > clip->x1) out->x1 = clip->x1;
+	if (out->y1 > clip->y1) out->y1 = clip->y1;
+	return out->x0 < out->x1 && out->y0 < out->y1;
+}
+
+/**
+ * Whether a box paints exactly its (rounded) border box, opaque: an opaque background under
+ * its borders, nothing past it (no shadow, its descendants inside it or clipped), no mask --
+ * a layer of it then needs one pass (its coverage is the box's).
+ */
+static bool onyx_fx_opaque(const html_content *html, const struct box *box)
+{
+	css_color bg = 0;
+	struct onyx_box_shadow sh;
+	int bw = box->padding[LEFT] + box->width + box->padding[RIGHT] +
+			box->border[RIGHT].width;
+	int bh = box->padding[TOP] + box->height + box->padding[BOTTOM] +
+			box->border[BOTTOM].width;
+	bool clip_x = css_computed_overflow_x(box->style) != CSS_OVERFLOW_VISIBLE;
+	bool clip_y = css_computed_overflow_y(box->style) != CSS_OVERFLOW_VISIBLE;
+
+	if (css_computed_background_color(box->style, &bg) != CSS_BACKGROUND_COLOR_COLOR ||
+	    (bg >> 24) != 0xff ||
+	    css_computed_background_clip(box->style) != CSS_BACKGROUND_CLIP_BORDER_BOX ||
+	    onyx_mask_set(box) || box->type == BOX_TABLE ||
+	    (onyx_box_shadow(box->style, &html->unit_len_ctx, 1, &sh) && !sh.inset))
+		return false;
+	if (!clip_x && (box->descendant_x0 < -box->border[LEFT].width ||
+			box->descendant_x1 > bw))
+		return false;
+	if (!clip_y && (box->descendant_y0 < -box->border[TOP].width ||
+			box->descendant_y1 > bh))
+		return false;
+	return true;
+}
+
+/** a box with effects painted as a group */
+static bool onyx_fx_redraw(const html_content *html, struct box *box,
+		int x_parent, int y_parent, const struct rect *clip, float scale,
+		colour background, const struct redraw_context *ctx, struct onyx_fx *fx)
+{
+	struct onyx_layer *l;
+	float x = (x_parent + box->x) * scale, y = (y_parent + box->y) * scale;
+	float b[4], out[4];
+	struct rect lr, lc, root_clip;
+	bool isolated, ok = true;
+	int pass, passes, s = 1, i;
+	uint64_t t0;
+
+	isolated = fx->matrix || fx->nfilter > 0 || fx->blend != ONYX_BLEND_NORMAL;
+	if (isolated && (scale != 1.0f || onyx_fx_nest >= 3 || html_redraw_printing)) {
+		/* (a scaled redraw -- a thumbnail --, groups too deep: those effects left) */
+		isolated = false;
+		fx->matrix = false;
+		fx->nfilter = 0;
+		fx->blend = ONYX_BLEND_NORMAL;
+		if (fx->opacity >= 1 && fx->nbackdrop == 0)
+			return onyx_fx_paint_context(html, box, x_parent, y_parent, clip,
+					scale, background, ctx);
+	}
+	onyx_fx_bounds(html, box, x, y, scale, b);
+
+	/* (the layer on the heap: the plotter keeps a pointer to it while it is painted) */
+	l = calloc(1, sizeof(*l));
+	if (l == NULL)
+		return onyx_fx_paint_context(html, box, x_parent, y_parent, clip, scale,
+				background, ctx);
+	l->opacity = fx->opacity;
+	l->blend = fx->blend;
+	l->cx0 = clip->x0;
+	l->cy0 = clip->y0;
+	l->cx1 = clip->x1;
+	l->cy1 = clip->y1;
+	l->m[0] = l->m[3] = 1;
+	if (fx->nbackdrop > 0) {
+		struct onyx_rrect *r = &l->backdrop_box;
+		r->x0 = x - box->border[LEFT].width * scale;
+		r->y0 = y - box->border[TOP].width * scale;
+		r->x1 = x + (box->padding[LEFT] + box->width + box->padding[RIGHT] +
+				box->border[RIGHT].width) * scale;
+		r->y1 = y + (box->padding[TOP] + box->height + box->padding[BOTTOM] +
+				box->border[BOTTOM].width) * scale;
+		onyx_box_radii(box->style, &html->unit_len_ctx, scale, r);
+		l->nbackdrop = fx->nbackdrop;
+		memcpy(l->backdrop, fx->backdrop, sizeof(fx->backdrop));
+	}
+
+	if (!isolated) {
+		/* in place: what is under the group kept, blended back at its opacity */
+		if (!onyx_fx_clip(b, clip, &lr)) {
+			free(l);
+			return true;
+		}
+		l->x0 = lr.x0;
+		l->y0 = lr.y0;
+		l->x1 = lr.x1;
+		l->y1 = lr.y1;
+		t0 = onyx_perf_now();
+		if (ctx->plot->onyx_layer_begin(ctx, l, 0) != NSERROR_OK) {
+			free(l);
+			return onyx_fx_paint_context(html, box, x_parent, y_parent, clip,
+					scale, background, ctx);
+		}
+		ok = onyx_fx_paint_context(html, box, x_parent, y_parent, clip, scale,
+				background, ctx);
+		ctx->plot->onyx_layer_end(ctx, l, 0);
+		if (t0 != 0) {
+			char what[80];
+			snprintf(what, sizeof(what), "layer %dx%d in place%s",
+					lr.x1 - lr.x0, lr.y1 - lr.y0,
+					l->nbackdrop > 0 ? " backdrop" : "");
+			onyx_perf_log(what, t0);
+		}
+		free(l);
+		return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
+	}
+
+	/* apart: the filters' reach, the matrix */
+	onyx_filter_outset(fx->filter, fx->nfilter, out);
+	b[0] -= out[0];
+	b[1] -= out[1];
+	b[2] += out[2];
+	b[3] += out[3];
+	if (fx->matrix) {
+		float d[4], need[4], inv[6];
+		memcpy(l->m, fx->m, sizeof(l->m));
+		l->m[4] += x - (l->m[0] * x + l->m[2] * y);
+		l->m[5] += y - (l->m[1] * x + l->m[3] * y);
+		l->transformed = true;
+		onyx_matrix_bbox(l->m, b[0], b[1], b[2], b[3], &d[0], &d[1], &d[2], &d[3]);
+		if (!onyx_fx_clip(d, clip, &lr) || !onyx_matrix_invert(l->m, inv)) {
+			free(l);
+			return true;
+		}
+		/* the layer's part that lands in the clip (and what its filters read) */
+		onyx_matrix_bbox(inv, clip->x0, clip->y0, clip->x1, clip->y1,
+				&need[0], &need[1], &need[2], &need[3]);
+		need[0] -= 2 + out[0] + out[2];
+		need[1] -= 2 + out[1] + out[3];
+		need[2] += 2 + out[0] + out[2];
+		need[3] += 2 + out[1] + out[3];
+		if (need[0] > b[0]) b[0] = need[0];
+		if (need[1] > b[1]) b[1] = need[1];
+		if (need[2] < b[2]) b[2] = need[2];
+		if (need[3] < b[3]) b[3] = need[3];
+		lr.x0 = (int) floorf(b[0]);
+		lr.y0 = (int) floorf(b[1]);
+		lr.x1 = (int) ceilf(b[2]);
+		lr.y1 = (int) ceilf(b[3]);
+	} else {
+		struct rect grown = *clip;
+		grown.x0 -= (int) (out[0] + out[2]) + 1;
+		grown.y0 -= (int) (out[1] + out[3]) + 1;
+		grown.x1 += (int) (out[0] + out[2]) + 1;
+		grown.y1 += (int) (out[1] + out[3]) + 1;
+		if (!onyx_fx_clip(b, &grown, &lr)) {
+			free(l);
+			return true;
+		}
+	}
+	if (lr.x1 <= lr.x0 || lr.y1 <= lr.y0) {
+		free(l);
+		return true;
+	}
+	if ((double) (lr.x1 - lr.x0) * (lr.y1 - lr.y0) > ONYX_FX_MAX_PIXELS) {
+		free(l);
+		return onyx_fx_paint_context(html, box, x_parent, y_parent, clip, scale,
+				background, ctx);
+	}
+	l->isolated = true;
+	l->nfilter = fx->nfilter;
+	memcpy(l->filter, fx->filter, sizeof(fx->filter));
+
+	/* a large blur: the layer painted at 1 / s of the size (what the blur leaves
+	 * is smooth), its filters scaled, drawn back through the matrix */
+	for (i = 0; i < fx->nfilter; i++)
+		if (fx->filter[i].op == ONYX_FILTER_BLUR)
+			while (fx->filter[i].v / (s * 2) >= 4 && s < 8)
+				s *= 2;
+	if (s > 1) {
+		float sm[6] = { s, 0, 0, s, 0, 0 };
+		for (i = 0; i < l->nfilter; i++) {
+			l->filter[i].v /= s;
+			l->filter[i].dx /= s;
+			l->filter[i].dy /= s;
+		}
+		lr.x0 = (int) floorf((float) lr.x0 / s);
+		lr.y0 = (int) floorf((float) lr.y0 / s);
+		lr.x1 = (int) ceilf((float) lr.x1 / s);
+		lr.y1 = (int) ceilf((float) lr.y1 / s);
+		onyx_matrix_mul(l->m, sm, l->m);
+		l->transformed = true;
+	}
+	l->x0 = lr.x0;
+	l->y0 = lr.y0;
+	l->x1 = lr.x1;
+	l->y1 = lr.y1;
+
+	/* known opaque in its border box: one pass */
+	if (s == 1 && onyx_fx_opaque(html, box)) {
+		struct onyx_rrect *r = &l->opaque;
+		r->x0 = x - box->border[LEFT].width - lr.x0;
+		r->y0 = y - box->border[TOP].width - lr.y0;
+		r->x1 = x + box->padding[LEFT] + box->width + box->padding[RIGHT] +
+				box->border[RIGHT].width - lr.x0;
+		r->y1 = y + box->padding[TOP] + box->height + box->padding[BOTTOM] +
+				box->border[BOTTOM].width - lr.y0;
+		onyx_box_radii(box->style, &html->unit_len_ctx, 1, r);
+		l->single = true;
+	}
+	passes = l->single ? 1 : 2;
+
+	lc.x0 = lc.y0 = 0;
+	lc.x1 = lr.x1 - lr.x0;
+	lc.y1 = lr.y1 - lr.y0;
+	t0 = onyx_perf_now();
+	onyx_fx_nest++;
+	for (pass = 0; pass < passes && ok; pass++) {
+		if (ctx->plot->onyx_layer_begin(ctx, l, pass) != NSERROR_OK) {
+			if (pass == 0)
+				ok = onyx_fx_paint_context(html, box, x_parent, y_parent,
+						clip, scale, background, ctx);
+			break;
+		}
+		/* (a fixed descendant's containing block is the transformed or
+		 * filtered box, as in CSS: clipped to the layer, not the viewport) */
+		root_clip = onyx_redraw_root_clip;
+		onyx_redraw_root_clip = lc;
+		ok = ctx->plot->clip(ctx, &lc) == NSERROR_OK &&
+				onyx_fx_paint_context(html, box, x_parent - lr.x0 * s,
+				y_parent - lr.y0 * s, &lc, scale / s, background, ctx);
+		onyx_redraw_root_clip = root_clip;
+		ctx->plot->onyx_layer_end(ctx, l, pass);
+	}
+	onyx_fx_nest--;
+	if (t0 != 0) {
+		char what[80];
+		snprintf(what, sizeof(what), "layer %dx%d%s%s%s%s", lc.x1, lc.y1,
+				l->transformed ? " transform" : "",
+				l->nfilter > 0 ? " filter" : "",
+				l->nbackdrop > 0 ? " backdrop" : "",
+				l->single ? " (one pass)" : "");
+		onyx_perf_log(what, t0);
+	}
+	free(l);
+	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
+}
+
+/**
+ * Onyx -- GPU compositing (docs/06 §25): a group the frontend can composite itself (an opacity
+ * and / or a transform, nothing else) offered as a retained layer (netsurf/onyx_paint.h,
+ * ONYX_LAYER_OFFER): accepted, its pixels are kept by the plotter between redraws and
+ * composited over what is painted under it; only the part of them it asks for is painted,
+ * apart (over black and white, as an isolated group's), and nothing is painted in place.
+ * -1: not offered, or refused (the group is then painted as ever); else whether it went well.
+ */
+static int onyx_fx_retain(const html_content *html, struct box *box,
+		int x_parent, int y_parent, const struct rect *clip, float scale,
+		colour background, const struct redraw_context *ctx, struct onyx_fx *fx)
+{
+	struct onyx_layer *l, *p;
+	float x = (x_parent + box->x) * scale, y = (y_parent + box->y) * scale;
+	float b[4];
+	struct rect lc, root_clip;
+	bool ok = true;
+	int pass;
+	uint64_t t0;
+
+	if (onyx_layer_props == NULL)
+		return -1;	/* (no compositing frontend: painted as ever) */
+	if (fx->nfilter > 0 || fx->nbackdrop > 0 || fx->blend != ONYX_BLEND_NORMAL ||
+	    scale != 1.0f || onyx_fx_nest > 0 || html_redraw_printing || !ctx->interactive)
+		return -1;
+	onyx_fx_bounds(html, box, x, y, scale, b);
+	{
+		/* (not where this redraw paints: nothing to do) */
+		float d[4];
+		struct rect cr;
+		if (fx->matrix) {
+			float m[6];
+			memcpy(m, fx->m, sizeof(m));
+			m[4] += x - (m[0] * x + m[2] * y);
+			m[5] += y - (m[1] * x + m[3] * y);
+			onyx_matrix_bbox(m, b[0], b[1], b[2], b[3], &d[0], &d[1],
+					&d[2], &d[3]);
+		} else {
+			memcpy(d, b, sizeof(d));
+		}
+		if (!onyx_fx_clip(d, clip, &cr))
+			return 1;
+	}
+	l = calloc(2, sizeof(*l));
+	if (l == NULL)
+		return -1;
+	p = l + 1;
+	l->x0 = (int) floorf(b[0]);
+	l->y0 = (int) floorf(b[1]);
+	l->x1 = (int) ceilf(b[2]);
+	l->y1 = (int) ceilf(b[3]);
+	l->cx0 = clip->x0;
+	l->cy0 = clip->y0;
+	l->cx1 = clip->x1;
+	l->cy1 = clip->y1;
+	l->opacity = fx->opacity;
+	l->m[0] = l->m[3] = 1;
+	l->lm[0] = l->lm[3] = 1;
+	if (fx->matrix) {
+		memcpy(l->lm, fx->m, sizeof(l->lm));
+		memcpy(l->m, fx->m, sizeof(l->m));
+		l->m[4] += x - (l->m[0] * x + l->m[2] * y);
+		l->m[5] += y - (l->m[1] * x + l->m[3] * y);
+		l->transformed = true;
+	}
+	l->ox = x;
+	l->oy = y;
+	l->retain = true;
+	l->key = box;
+	l->tree = html->layout;
+	if (ctx->plot->onyx_layer_begin(ctx, l, ONYX_LAYER_OFFER) != NSERROR_OK) {
+		free(l);
+		return -1;
+	}
+
+	/* the part of its pixels asked for, painted as an isolated group's passes */
+	if (l->rx1 > l->rx0 && l->ry1 > l->ry0) {
+		*p = *l;
+		p->x0 = l->rx0;
+		p->y0 = l->ry0;
+		p->x1 = l->rx1;
+		p->y1 = l->ry1;
+		p->isolated = true;
+		p->transformed = false;
+		p->opacity = 1;
+		p->m[0] = p->m[3] = 1;
+		p->m[1] = p->m[2] = p->m[4] = p->m[5] = 0;
+		if (onyx_fx_opaque(html, box)) {
+			/* known opaque in its border box: one pass */
+			struct onyx_rrect *r = &p->opaque;
+			r->x0 = x - box->border[LEFT].width - p->x0;
+			r->y0 = y - box->border[TOP].width - p->y0;
+			r->x1 = x + box->padding[LEFT] + box->width + box->padding[RIGHT] +
+					box->border[RIGHT].width - p->x0;
+			r->y1 = y + box->padding[TOP] + box->height + box->padding[BOTTOM] +
+					box->border[BOTTOM].width - p->y0;
+			onyx_box_radii(box->style, &html->unit_len_ctx, 1, r);
+			p->single = true;
+		}
+		lc.x0 = lc.y0 = 0;
+		lc.x1 = p->x1 - p->x0;
+		lc.y1 = p->y1 - p->y0;
+		t0 = onyx_perf_now();
+		onyx_fx_nest++;
+		for (pass = 0; pass < (p->single ? 1 : 2) && ok; pass++) {
+			if (ctx->plot->onyx_layer_begin(ctx, p, pass) != NSERROR_OK) {
+				ok = false;
+				break;
+			}
+			root_clip = onyx_redraw_root_clip;
+			onyx_redraw_root_clip = lc;
+			ok = ctx->plot->clip(ctx, &lc) == NSERROR_OK &&
+					onyx_fx_paint_context(html, box, x_parent - p->x0,
+					y_parent - p->y0, &lc, scale, background, ctx);
+			onyx_redraw_root_clip = root_clip;
+			ctx->plot->onyx_layer_end(ctx, p, pass);
+		}
+		onyx_fx_nest--;
+		if (t0 != 0) {
+			char what[80];
+			snprintf(what, sizeof(what), "layer %dx%d retained%s", lc.x1, lc.y1,
+					p->single ? " (one pass)" : "");
+			onyx_perf_log(what, t0);
+		}
+	}
+	ctx->plot->onyx_layer_end(ctx, l, ONYX_LAYER_OFFER);
+	free(l);
+	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
+}
+
+/* exported interface documented in netsurf/onyx_paint.h */
+bool (*onyx_layer_props)(const void *key, const float *lm, float opacity);
+
+/* exported interface documented in html/private.h */
+bool html_redraw_layer_update(const html_content *html, struct box *box)
+{
+	struct onyx_fx fx;
+
+	if (onyx_layer_props == NULL || !onyx_box_fx(html, box, 1, &fx) ||
+	    fx.nfilter > 0 || fx.nbackdrop > 0 || fx.blend != ONYX_BLEND_NORMAL ||
+	    fx.opacity <= 0)
+		return false;
+	return onyx_layer_props(box, fx.matrix ? fx.m : NULL, fx.opacity);
+}
+
+/** an inline's opacity (its pieces are its line's siblings: grouped from it to its end) */
+static bool onyx_inline_opacity(const struct box *c, float *a)
+{
+	css_fixed o = INTTOFIX(1);
+
+	if (c->type != BOX_INLINE || c->object != NULL || c->inline_end == NULL ||
+	    c->style == NULL || (c->flags & STYLE_OWNED) ||
+	    css_computed_opacity(c->style, &o) != CSS_OPACITY_SET || o >= INTTOFIX(1))
+		return false;
+	*a = o <= 0 ? 0 : FIXTOFLT(o);
+	return true;
+}
+
+static bool html_redraw_children_range(const html_content *html, struct box *box,
+		struct box *first, struct box *last, int x_parent, int y_parent,
+		const struct rect *clip, float scale, colour current_background_color,
+		const struct redraw_context *ctx);
+
+/** an inline with an opacity: its pieces (from it to its end) painted as a group */
+static bool onyx_inline_group(const html_content *html, struct box *box, struct box *c,
+		float a, int x_parent, int y_parent, const struct rect *clip, float scale,
+		colour background, const struct redraw_context *ctx)
+{
+	struct onyx_layer *l;
+	struct box *d;
+	float b[4] = { INFINITY, INFINITY, -INFINITY, -INFINITY };
+	int ox = x_parent + box->x - scrollbar_get_offset(box->scroll_x);
+	int oy = y_parent + box->y - scrollbar_get_offset(box->scroll_y);
+	struct rect lr;
+	bool ok;
+
+	if (a <= 0)
+		return true;
+	for (d = c; d != NULL; d = d->next) {
+		float x0 = d->x - d->border[LEFT].width, y0 = d->y - d->border[TOP].width;
+		float x1 = d->x + d->padding[LEFT] + d->width + d->padding[RIGHT] +
+				d->border[RIGHT].width;
+		float y1 = d->y + d->padding[TOP] + d->height + d->padding[BOTTOM] +
+				d->border[BOTTOM].width;
+		if (d->descendant_x0 + d->x < x0) x0 = d->descendant_x0 + d->x;
+		if (d->descendant_y0 + d->y < y0) y0 = d->descendant_y0 + d->y;
+		if (d->descendant_x1 + d->x > x1) x1 = d->descendant_x1 + d->x;
+		if (d->descendant_y1 + d->y > y1) y1 = d->descendant_y1 + d->y;
+		if (x0 < b[0]) b[0] = x0;
+		if (y0 < b[1]) b[1] = y0;
+		if (x1 > b[2]) b[2] = x1;
+		if (y1 > b[3]) b[3] = y1;
+		if (d == c->inline_end)
+			break;
+	}
+	b[0] = (ox + b[0] - 4) * scale;
+	b[1] = (oy + b[1] - 4) * scale;
+	b[2] = (ox + b[2] + 4) * scale;
+	b[3] = (oy + b[3] + 4) * scale;
+	if (!onyx_fx_clip(b, clip, &lr))
+		return true;
+	l = calloc(1, sizeof(*l));
+	if (l == NULL)
+		return html_redraw_children_range(html, box, c, c->inline_end, x_parent,
+				y_parent, clip, scale, background, ctx);
+	l->x0 = lr.x0;
+	l->y0 = lr.y0;
+	l->x1 = lr.x1;
+	l->y1 = lr.y1;
+	l->cx0 = clip->x0;
+	l->cy0 = clip->y0;
+	l->cx1 = clip->x1;
+	l->cy1 = clip->y1;
+	l->opacity = a;
+	l->m[0] = l->m[3] = 1;
+	if (ctx->plot->onyx_layer_begin(ctx, l, 0) != NSERROR_OK) {
+		free(l);
+		return html_redraw_children_range(html, box, c, c->inline_end, x_parent,
+				y_parent, clip, scale, background, ctx);
+	}
+	/* (the inline's own box painted plainly, then its pieces) */
+	ok = html_redraw_box_inner(html, c, ox, oy, clip, scale, background, ctx) &&
+			(c == c->inline_end || c->next == NULL ||
+			 html_redraw_children_range(html, box, c->next, c->inline_end,
+					x_parent, y_parent, clip, scale, background, ctx));
+	ctx->plot->onyx_layer_end(ctx, l, 0);
+	free(l);
+	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
+}
+
+/** a box's children from first to last (NULL: to the end) */
+static bool html_redraw_children_range(const html_content *html, struct box *box,
+		struct box *first, struct box *last, int x_parent, int y_parent,
+		const struct rect *clip, float scale, colour current_background_color,
 		const struct redraw_context *ctx)
 {
 	struct box *c;
 
-	for (c = box->children; c; c = c->next) {
+	for (c = first; c; c = c->next) {
+		float a;
 
-		if (c->type != BOX_FLOAT_LEFT && c->type != BOX_FLOAT_RIGHT) {
-			/* Onyx: a positioned child after its layer's content */
-			if (onyx_layer_defer(c, x_parent + box->x -
+		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT) {
+			/* Onyx: a float in a layer its container is outside of:
+			 * painted here, with its layer */
+			int dx, dy;
+			struct box *fc = onyx_float_container(c, box, &dx, &dy);
+
+			if (fc != NULL && fc != box && onyx_float_layered(c, fc) &&
+			    !html_redraw_box(html, c, x_parent + box->x - dx,
+					y_parent + box->y - dy, clip, scale,
+					current_background_color, ctx))
+				return false;
+		} else if (ctx->plot->onyx_layer_begin != NULL &&
+				onyx_inline_opacity(c, &a)) {
+			/* Onyx: an inline with an opacity, its pieces a group */
+			struct box *end = c->inline_end;
+			bool reached = false;
+			struct box *d;
+
+			if (!onyx_inline_group(html, box, c, a, x_parent, y_parent,
+					clip, scale, current_background_color, ctx))
+				return false;
+			for (d = c; last != NULL && d != NULL; d = d->next) {
+				if (d == last)
+					reached = true;
+				if (d == end)
+					break;
+			}
+			if (reached)
+				break;
+			c = end;
+		} else if (!onyx_layer_defer(c, x_parent + box->x -
 					scrollbar_get_offset(box->scroll_x),
 					y_parent + box->y -
 					scrollbar_get_offset(box->scroll_y),
-					clip, current_background_color))
-				continue;
+					clip, current_background_color)) {
+			/* (Onyx: a positioned child is put off: painted after its
+			 * layer's content) */
 			if (!html_redraw_box(html, c,
 					x_parent + box->x -
 					scrollbar_get_offset(box->scroll_x),
@@ -1406,9 +2040,26 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
 					ctx))
 				return false;
 		}
+		if (c == last)
+			break;
 	}
+	return true;
+}
+
+static bool html_redraw_box_children(const html_content *html, struct box *box,
+		int x_parent, int y_parent,
+		const struct rect *clip, float scale,
+		colour current_background_color,
+		const struct redraw_context *ctx)
+{
+	struct box *c;
+
+	if (!html_redraw_children_range(html, box, box->children, NULL, x_parent,
+			y_parent, clip, scale, current_background_color, ctx))
+		return false;
 	for (c = box->float_children; c; c = c->next_float)
-		if (!html_redraw_box(html, c,
+		if (!onyx_float_layered(c, box) &&	/* (Onyx) */
+		    !html_redraw_box(html, c,
 				x_parent + box->x -
 				scrollbar_get_offset(box->scroll_x),
 				y_parent + box->y -
@@ -1436,12 +2087,6 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
  * x, y, clip_[xy][01] are in target coordinates.
  */
 
-static bool html_redraw_box_inner(const html_content *html, struct box *box,
-		int x_parent, int y_parent,
-		const struct rect *clip, const float scale,
-		colour current_background_color,
-		const struct redraw_context *ctx);
-
 bool html_redraw_box(const html_content *html, struct box *box,
 		int x_parent, int y_parent,
 		const struct rect *clip, const float scale,
@@ -1450,8 +2095,28 @@ bool html_redraw_box(const html_content *html, struct box *box,
 {
 	/* Onyx: a background-clip: text paint lasts for the box's descendants */
 	const struct onyx_paint *fill = onyx_text_fill;
-	bool ok = html_redraw_box_inner(html, box, x_parent, y_parent, clip,
-			scale, current_background_color, ctx);
+	struct onyx_fx fx;
+	bool ok;
+
+	/* Onyx: a box with effects painted as a group (with its stacking context) */
+	if (onyx_box_fx(html, box, scale, &fx)) {
+		if (fx.opacity <= 0)
+			ok = true;	/* (opacity 0: nothing painted) */
+		else if (ctx->plot->onyx_layer_begin != NULL) {
+			/* (Onyx: a retained layer when the plotter composites) */
+			int r = onyx_fx_retain(html, box, x_parent, y_parent, clip,
+					scale, current_background_color, ctx, &fx);
+			ok = r >= 0 ? r != 0 : onyx_fx_redraw(html, box, x_parent,
+					y_parent, clip, scale,
+					current_background_color, ctx, &fx);
+		}
+		else
+			ok = onyx_fx_paint_context(html, box, x_parent, y_parent,
+					clip, scale, current_background_color, ctx);
+	} else {
+		ok = html_redraw_box_inner(html, box, x_parent, y_parent, clip,
+				scale, current_background_color, ctx);
+	}
 
 	onyx_text_fill = fill;
 	return ok;
@@ -1482,6 +2147,7 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 	/* Onyx: CSS3 painting -- the border box, rounded; the box-shadow */
 	struct onyx_rrect orr;
 	bool rounded = false, has_shadow = false, round_clipped = false;
+	bool masked = false;	/* Onyx: a mask-image (html/onyx_mask.c) */
 	struct onyx_box_shadow shadow;
 
 
@@ -1597,6 +2263,31 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		}
 	}
 
+	/* Onyx: a table's captions are outside its border box (layout_table):
+	 * its shadow, background and borders around its grid only */
+	if (box->type == BOX_TABLE && box->children != NULL &&
+	    ((box->children->flags & TABLE_CAPTION) ||
+	     (box->last->flags & TABLE_CAPTION))) {
+		int top = 0, bottom = 0;
+		struct box *c;
+
+		for (c = box->children; c != NULL && (c->flags & TABLE_CAPTION);
+				c = c->next)
+			top = c->y + c->padding[TOP] + c->height +
+					c->padding[BOTTOM] +
+					c->border[BOTTOM].width +
+					c->margin[BOTTOM] + box->border[TOP].width;
+		for (c = box->last; c != NULL && (c->flags & TABLE_CAPTION);
+				c = c->prev)
+			bottom = box->padding[TOP] + box->height +
+					box->padding[BOTTOM] +
+					box->border[BOTTOM].width -
+					(c->y - c->border[TOP].width -
+					 c->margin[TOP]);
+		y += top * scale;
+		padding_height -= (top + bottom) * scale;
+	}
+
 	/* Onyx: the border box, its corners' radii, its shadow (block-level boxes and
 	 * replaced ones: not an inline's pieces) */
 	if (box->style != NULL && ctx->plot->onyx_shape != NULL &&
@@ -1625,8 +2316,10 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			rc.x1 += e;
 			rc.y1 += e;
 		}
-		if (clip->y1 < rc.y0 || rc.y1 < clip->y0 ||
-				clip->x1 < rc.x0 || rc.x1 < clip->x0)
+		/* (Onyx: not a box holding a fixed box: the viewport's) */
+		if (!(box->flags & HAS_FIXED) &&
+				(clip->y1 < rc.y0 || rc.y1 < clip->y0 ||
+				clip->x1 < rc.x0 || rc.x1 < clip->x0))
 			return true;
 	}
 
@@ -1734,8 +2427,16 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		if (r.y0 < clip->y0) r.y0 = clip->y0;
 		if (clip->x1 < r.x1) r.x1 = clip->x1;
 		if (clip->y1 < r.y1) r.y1 = clip->y1;
-		/* no point trying to draw 0-width/height boxes */
-		if (r.x0 == r.x1 || r.y0 == r.y1)
+		/* no point trying to draw 0-width/height boxes (Onyx: unless
+		 * they hold a fixed box) */
+		if ((r.x0 >= r.x1 || r.y0 >= r.y1) && (box->flags & HAS_FIXED)) {
+			r.x0 = r.x1 = clip->x0;	/* (an empty clip, valid) */
+			r.y0 = r.y1 = clip->y0;
+		}
+		/* (Onyx: nor inverted ones -- a box whose shadow reaches the clip
+		 * but not its border box: its clip was set upside down, which the
+		 * knockout refused, and the rest of the redraw was dropped) */
+		if ((r.x0 >= r.x1 || r.y0 >= r.y1) && !(box->flags & HAS_FIXED))
 			/* not an error */
 			return ((!ctx->plot->group_end) ||
 				(ctx->plot->group_end(ctx) == NSERROR_OK));
@@ -1776,6 +2477,15 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		onyx_text_fill = &tf_paint;
 		if (bg_box == box)
 			bg_box = NULL;	/* no box background */
+	}
+
+	/* Onyx: a mask-image: the box's background colour through the mask
+	 * (below), in place of its background and its object */
+	if (box->type != BOX_TEXT && box->type != BOX_INLINE_END &&
+	    box->type != BOX_BR && onyx_mask_set(box)) {
+		masked = true;
+		if (bg_box == box)
+			bg_box = NULL;
 	}
 
 	/* bg_box == NULL implies that this box should not have
@@ -1875,6 +2585,15 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 				return false;
 		}
 	}
+
+	/* Onyx: the mask (the background colour through its alpha) */
+	if (masked && (box->type != BOX_INLINE || box->object ||
+			box->flags & REPLACE_DIM) &&
+	    !onyx_mask_redraw(html, box, x - border_left, y - border_top,
+			padding_width + border_left + border_right,
+			padding_height + border_top + border_bottom,
+			scale, &r, ctx))
+		return false;
 
 	/* borders for block level content and replaced inlines */
 	if (box->style &&
@@ -2070,8 +2789,14 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			if (clip->x1 < r.x1) r.x1 = clip->x1;
 			if (clip->y1 < r.y1) r.y1 = clip->y1;
 			if (r.x1 <= r.x0 || r.y1 <= r.y0) {
-				return (!ctx->plot->group_end ||
-					(ctx->plot->group_end(ctx) == NSERROR_OK));
+				/* Onyx: a fixed descendant is not clipped:
+				 * the children painted in an empty clip */
+				if (!(box->flags & HAS_FIXED))
+					return (!ctx->plot->group_end ||
+						(ctx->plot->group_end(ctx) ==
+						 NSERROR_OK));
+				r.x0 = r.x1 = clip->x0;
+				r.y0 = r.y1 = clip->y0;
 			}
 			need_clip = true;
 
@@ -2083,8 +2808,14 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			if (r.x0 < clip->x0) r.x0 = clip->x0;
 			if (clip->x1 < r.x1) r.x1 = clip->x1;
 			if (r.x1 <= r.x0) {
-				return (!ctx->plot->group_end ||
-					(ctx->plot->group_end(ctx) == NSERROR_OK));
+				/* Onyx: a fixed descendant is not clipped:
+				 * the children painted in an empty clip */
+				if (!(box->flags & HAS_FIXED))
+					return (!ctx->plot->group_end ||
+						(ctx->plot->group_end(ctx) ==
+						 NSERROR_OK));
+				r.x0 = r.x1 = clip->x0;
+				r.y0 = r.y1 = clip->y0;
 			}
 			need_clip = true;
 
@@ -2096,8 +2827,14 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			if (r.y0 < clip->y0) r.y0 = clip->y0;
 			if (clip->y1 < r.y1) r.y1 = clip->y1;
 			if (r.y1 <= r.y0) {
-				return (!ctx->plot->group_end ||
-					(ctx->plot->group_end(ctx) == NSERROR_OK));
+				/* Onyx: a fixed descendant is not clipped:
+				 * the children painted in an empty clip */
+				if (!(box->flags & HAS_FIXED))
+					return (!ctx->plot->group_end ||
+						(ctx->plot->group_end(ctx) ==
+						 NSERROR_OK));
+				r.x0 = r.x1 = clip->x0;
+				r.y0 = r.y1 = clip->y0;
 			}
 			need_clip = true;
 		}
@@ -2140,7 +2877,7 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		tag_type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
 	}
 
-	if (box->object && width != 0 && height != 0) {
+	if (box->object && !masked && width != 0 && height != 0) {
 		struct content_redraw_data obj_data;
 
 		x_scrolled = x - scrollbar_get_offset(box->scroll_x) * scale;
@@ -2379,7 +3116,11 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 		{
 			bool was = onyx_layering;
 			int start = onyx_layer_count;
+			struct rect was_clip = onyx_redraw_root_clip;
+			bool was_set = onyx_redraw_root_clip_set;
 
+			onyx_redraw_root_clip = *clip;
+			onyx_redraw_root_clip_set = true;
 			onyx_layering = !html_redraw_printing;
 			result &= html_redraw_box(html, box, data->x, data->y, clip,
 					data->scale, pstyle_fill_bg.fill_colour, ctx);
@@ -2388,6 +3129,8 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 						ctx);
 			onyx_layer_count = start;
 			onyx_layering = was;
+			onyx_redraw_root_clip = was_clip;
+			onyx_redraw_root_clip_set = was_set;
 		}
 	}
 

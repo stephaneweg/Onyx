@@ -725,6 +725,7 @@ void m_forward ()  { onyx_browser_forward (); }
 void m_reload ()   { onyx_browser_reload (); }
 void m_stop ()     { onyx_browser_stop (); }
 void m_home ()     { onyx_browser_home (); }
+void m_desktop ()  { onyx_browser_toggle_desktop (); }	// the site's desktop / mobile version
 
 // The History dialog: shown over the page (NetSurf waits meanwhile); a page chosen is opened.
 void open_history ()
@@ -760,6 +761,8 @@ unsigned *onyx_chrome_open (int w, int h, int *stride)
 	g_menu.separator ();
 	g_menu.item ("Reload", "^R", WK_CTRL ('R'), m_reload);
 	g_menu.item ("Stop", "Esc", 0, m_stop);
+	g_menu.separator ();
+	g_menu.item ("Desktop Site / Mobile Site", "", 0, m_desktop);
 	g_menu.separator ();
 	g_menu.item ("Home", "", 0, m_home);
 	g_menu.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)

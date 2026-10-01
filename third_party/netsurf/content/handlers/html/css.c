@@ -45,7 +45,11 @@
 #include "html/private.h"
 #include "html/onyx_webfont.h"
 #include "html/css.h"
+
+/* Onyx: user/netsurf/onyx_fetch.c -- a page's <link rel=preconnect|dns-prefetch> */
+void onyx_fetch_preconnect(const char *url, bool dns_only);
 #include "html/onyx_shadow.h"
+#include "html/onyx_restyle.h"	/* Onyx */
 
 static nsurl *html_default_stylesheet_url;
 static nsurl *html_adblock_stylesheet_url;
@@ -102,6 +106,8 @@ static void html_css_restyle(html_content *c)
 		return;
 	if (html_css_new_selection_context(c, &ctx) != NSERROR_OK)
 		return;
+	/* (Onyx: the kept selections were the old context's) */
+	onyx_restyle_sheets_changed(c, c->select_ctx, ctx);
 	css_select_ctx_destroy(c->select_ctx);
 	c->select_ctx = ctx;
 	html_script_dom_changed(c);
@@ -328,6 +334,10 @@ html_css_process_modified_style(html_content *c, struct html_stylesheet *s)
 		if (old != NULL) {
 			switch (content_get_status(old)) {
 			case CONTENT_STATUS_DONE:
+				/* Onyx: kept while the kept selections are probed
+				 * with it (onyx_restyle.c) */
+				onyx_restyle_keep_sheet(c, old);
+				old = NULL;
 				break;
 			default:
 				hlcache_handle_abort(old);
@@ -335,7 +345,8 @@ html_css_process_modified_style(html_content *c, struct html_stylesheet *s)
 				NSLOG(netsurf, INFO, "%d fetches active",
 				      c->base.active);
 			}
-			hlcache_handle_release(old);
+			if (old != NULL)
+				hlcache_handle_release(old);
 		}
 	}
 
@@ -487,6 +498,24 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	exc = dom_element_get_attribute(node, corestring_dom_rel, &rel);
 	if (exc != DOM_NO_ERR || rel == NULL)
 		return true;
+
+	/* Onyx: <link rel=preconnect> / <link rel=dns-prefetch> -- the origin's connection
+	 * opened (or its name resolved) now, while the page is parsed (onyx_fetch.c) */
+	if (strcasestr(dom_string_data(rel), "preconnect") != NULL ||
+	    strcasestr(dom_string_data(rel), "dns-prefetch") != NULL) {
+		bool dns_only = strcasestr(dom_string_data(rel), "preconnect") == NULL;
+		dom_string_unref(rel);
+		exc = dom_element_get_attribute(node, corestring_dom_href, &href);
+		if (exc == DOM_NO_ERR && href != NULL) {
+			if (nsurl_join(htmlc->base_url, dom_string_data(href),
+					&joined) == NSERROR_OK) {
+				onyx_fetch_preconnect(nsurl_access(joined), dns_only);
+				nsurl_unref(joined);
+			}
+			dom_string_unref(href);
+		}
+		return true;
+	}
 
 	if (strcasestr(dom_string_data(rel), "stylesheet") == NULL) {
 		dom_string_unref(rel);

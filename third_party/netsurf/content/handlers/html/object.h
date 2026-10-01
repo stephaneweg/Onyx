@@ -46,6 +46,14 @@ struct nsurl;
 bool html_fetch_object(struct html_content *c, struct nsurl *url, struct box *box, content_type permitted_types, bool background);
 
 /**
+ * Onyx: start fetching a box's mask-image (an image whose alpha paints the
+ * box's background colour); box->mask set once it is ready.
+ *
+ * \return true on success, false on memory exhaustion
+ */
+bool html_fetch_mask(struct html_content *c, struct nsurl *url, struct box *box);
+
+/**
  * Onyx: a list of objects released -- the old box tree's, the DOM changed by a script.
  *
  * \param html The containing HTML content

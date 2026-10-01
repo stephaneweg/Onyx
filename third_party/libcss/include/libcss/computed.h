@@ -97,6 +97,14 @@ css_error css_computed_style_compose(
 bool css_computed_style_paint_only_change(const css_computed_style *a,
 		const css_computed_style *b, bool *moved);
 
+/**
+ * Onyx: whether styles a and b differ only in a compositing layer's opacity and transform
+ * (opacity, transform, translate, rotate, scale, transform-origin): a browser that keeps
+ * the layer's pixels (GPU compositing) then composites it again, nothing painted.
+ */
+bool css_computed_style_effects_only_change(const css_computed_style *a,
+		const css_computed_style *b);
+
 /******************************************************************************
  * speciality formatters                                                      *
  ******************************************************************************/
@@ -483,6 +491,38 @@ uint8_t css_computed_transform(const css_computed_style *style, lwc_string **tex
 uint8_t css_computed_translate(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_scale(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_rotate(const css_computed_style *style, lwc_string **text);
+/* Onyx: mask -- its first layer, as text (CSS_ONYX_TEXT_NONE: none / the initial value):
+ * mask-image the image's URL, mask-size "cover" | "contain" | "<len> <len>", mask-position
+ * "<len|keyword> <len|keyword>", mask-repeat its keywords */
+uint8_t css_computed_mask_image(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mask_size(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mask_position(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mask_repeat(const css_computed_style *style, lwc_string **text);
+/* Onyx: the compositing properties, as text (CSS_ONYX_TEXT_NONE: none / the initial value;
+ * see src/parse/properties/onyx_css3b.c): filter and backdrop-filter their functions
+ * ("blur(4px) drop-shadow(2px,2px,3px,#ff000000)"), transform-origin "<x> <y>" (lengths,
+ * percentages), mix-blend-mode its keyword (normal: none) */
+uint8_t css_computed_filter(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_backdrop_filter(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_transform_origin(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_mix_blend_mode(const css_computed_style *style, lwc_string **text);
+/* Onyx: transitions and animations -- each list as a canonical text, the items separated by
+ * commas (CSS_ONYX_TEXT_NONE: the initial value): the properties' names (lowercase), the
+ * times in seconds ("0.3s,1s"), the timing functions ("ease", "cubic-bezier(0,0,1,1)",
+ * "steps(4,jump-end)", "linear(...)"), the animations' names, the iteration counts (a number
+ * or "infinite"), the directions, fill modes and play states (their keywords) */
+uint8_t css_computed_transition_property(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_transition_duration(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_transition_timing_function(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_transition_delay(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_name(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_duration(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_timing_function(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_delay(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_iteration_count(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_direction(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_fill_mode(const css_computed_style *style, lwc_string **text);
+uint8_t css_computed_animation_play_state(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_grid_template_columns(const css_computed_style *style,
 		lwc_string **text);
 uint8_t css_computed_grid_template_rows(const css_computed_style *style,
@@ -626,6 +666,34 @@ uint8_t css_computed_justify_content(
 uint8_t css_computed_order(
 		const css_computed_style *style,
 		int32_t *order);
+
+/*
+ * Onyx: what CSS transitions and animations need (src/select/onyx_anim.c).
+ *
+ * css_computed_style_onyx_ref: one more reference to an interned style (a selection
+ *   result's; css_computed_style_destroy drops it).
+ * css_computed_style_onyx_apply: a keyframe's declarations (css_select_ctx_onyx_keyframes,
+ *   css_stylesheet_onyx_inline_decls) cascaded over a copy of base, its values made absolute
+ *   against parent (may be NULL); *out interned. set (CSS_N_PROPERTIES bytes, may be NULL):
+ *   1 for each property the declarations set.
+ * css_computed_style_onyx_clone / _blend / _intern: a style being made -- a clone of a base,
+ *   each animated property set to its value between a and b at p (0..1, or beyond for a
+ *   timing function's overshoot), then interned. *interpolated false: the property flipped
+ *   from a to b at p = 0.5 (a discrete one, or values that do not interpolate).
+ * css_computed_style_onyx_same: whether a and b have the same value of prop.
+ */
+css_computed_style *css_computed_style_onyx_ref(const css_computed_style *style);
+css_error css_computed_style_onyx_apply(const css_computed_style *base,
+		const css_computed_style *parent, const void *decls,
+		const css_unit_ctx *unit_ctx, css_computed_style **out, uint8_t *set);
+css_error css_computed_style_onyx_clone(const css_computed_style *base,
+		css_computed_style **work);
+css_error css_computed_style_onyx_blend(css_computed_style *work, uint32_t prop,
+		const css_computed_style *a, const css_computed_style *b, float p,
+		bool *interpolated);
+css_error css_computed_style_onyx_intern(css_computed_style **work);
+bool css_computed_style_onyx_same(const css_computed_style *a, const css_computed_style *b,
+		uint32_t prop);
 
 #ifdef __cplusplus
 }

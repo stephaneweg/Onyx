@@ -1,0 +1,19 @@
+nghttp2 1.70.0 -- the HTTP/2 library, for Onyx's NetSurf
+=======================================================
+
+Source: https://github.com/nghttp2/nghttp2/releases/download/v1.70.0/nghttp2-1.70.0.tar.xz,
+MIT licence (COPYING, AUTHORS).
+
+Kept: lib/*.c, lib/*.h and lib/includes/nghttp2/nghttp2.h + nghttp2ver.h (the release's own,
+already generated). Not kept: the applications (nghttp, nghttpd, h2load), the Python and
+other bindings, the build system files, the tests, the documentation.
+
+Added: lib/config.h (Onyx) -- the configuration autotools / CMake would write: on the PC the C
+library's <arpa/inet.h>; on the Pi (newlib, no <arpa/inet.h>, little-endian) htonl / ntohl /
+htons / ntohs as __builtin_bswap32 / 16. No change to nghttp2's own sources.
+
+Built by user/netsurf/Makefile into libnghttp2.a (committed, as the other libraries) with
+-DHAVE_CONFIG_H -DNGHTTP2_STATICLIB; the PC bench (tools/tests/netsurf/host.mk) compiles the
+same files. About 115 KB of code on the Pi.
+
+Used by user/netsurf/onyx_fetch.c: HTTP/2 over TLS when ALPN chooses "h2" (docs/06 section 22).

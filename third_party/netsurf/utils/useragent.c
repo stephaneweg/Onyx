@@ -75,6 +75,14 @@ user_agent_build_string(void)
               core_user_agent_string);
 }
 
+/* Onyx: the Chrome the User-Agents name -- one version for the headers, the client hints
+ * (user/netsurf/onyx_fetch.c) and navigator.userAgentData (quickjs/dom.js). Chrome's
+ * reduced User-Agent (since Chrome 110): "Chrome/<major>.0.0.0", "Android 10; K", "Windows
+ * NT 10.0"; the full version only in the high-entropy client hints. An old version stands
+ * out (Google's "unusual traffic"): bump it now and then. */
+#define ONYX_CHROME_MAJOR "142"
+#define ONYX_CHROME_FULL "142.0.7444.176"
+
 /* This is a function so that later we can override it trivially */
 const char *
 user_agent_string(void)
@@ -89,9 +97,15 @@ user_agent_string(void)
 
 	if (choice != NULL && choice[0] != '\0')
 		return choice;
-	return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
-		"(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+	return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+		"(KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Mobile Safari/537.36";
 	(void) user_agent_build_string;
+}
+
+/* Public API documented in useragent.h */
+const char *user_agent_chrome_full(void)
+{
+	return ONYX_CHROME_FULL;
 }
 
 /* Public API documented in useragent.h */
@@ -103,4 +117,122 @@ free_user_agent_string(void)
 		free((void *)core_user_agent_string);
 		core_user_agent_string = NULL;
 	}
+}
+
+
+/* ---- Onyx: the desktop version for chosen sites ("Desktop site") -------------------- */
+
+#include <stdio.h>
+#include <strings.h>
+
+#ifndef ONYX_NS_DATAPATH
+#define ONYX_NS_DATAPATH ""
+#endif
+#define UA_SITES_FILE ONYX_NS_DATAPATH "desktop-sites"	/* one site per line */
+#define UA_SITES_MAX 256
+
+static const char ua_desktop[] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Safari/537.36";
+static char *ua_sites[UA_SITES_MAX];
+static int ua_nsites = -1;		/* (-1: the file not read yet) */
+
+/* a host's site: its registrable domain, approximated -- the last two labels, or three
+ * under a short second level of a country code (bbc.co.uk, x.com.au) */
+static const char *ua_site_of(const char *host)
+{
+	const char *p = host + strlen(host), *dots[3] = { NULL, NULL, NULL };
+	int n = 0;
+
+	while (p > host && n < 3) {
+		p--;
+		if (*p == '.')
+			dots[n++] = p;
+	}
+	if (n < 1)
+		return host;
+	if (n >= 2) {
+		size_t tld = strlen(dots[0] + 1), sld = (size_t) (dots[0] - dots[1] - 1);
+		if (tld == 2 && sld <= 3)	/* co.uk, com.au, ac.be... */
+			return n >= 3 ? dots[2] + 1 : host;
+		return dots[1] + 1;
+	}
+	return host;
+}
+
+static void ua_sites_load(void)
+{
+	FILE *f;
+	char line[256];
+
+	ua_nsites = 0;
+	f = fopen(UA_SITES_FILE, "r");
+	if (f == NULL)
+		return;
+	while (ua_nsites < UA_SITES_MAX && fgets(line, sizeof line, f) != NULL) {
+		size_t l = strcspn(line, " \t\r\n");
+		line[l] = '\0';
+		if (l > 0)
+			ua_sites[ua_nsites++] = strdup(line);
+	}
+	fclose(f);
+}
+
+static void ua_sites_save(void)
+{
+	FILE *f = fopen(UA_SITES_FILE, "w");
+	int i;
+
+	if (f == NULL)
+		return;
+	for (i = 0; i < ua_nsites; i++)
+		if (ua_sites[i] != NULL)
+			fprintf(f, "%s\n", ua_sites[i]);
+	fclose(f);
+}
+
+/* Public API documented in useragent.h */
+bool user_agent_is_desktop(const char *host)
+{
+	const char *site;
+	int i;
+
+	if (host == NULL || host[0] == '\0')
+		return false;
+	if (ua_nsites < 0)
+		ua_sites_load();
+	site = ua_site_of(host);
+	for (i = 0; i < ua_nsites; i++)
+		if (ua_sites[i] != NULL && strcasecmp(ua_sites[i], site) == 0)
+			return true;
+	return false;
+}
+
+/* Public API documented in useragent.h */
+void user_agent_set_desktop(const char *host, bool desktop)
+{
+	const char *site;
+	int i;
+
+	if (host == NULL || host[0] == '\0' || user_agent_is_desktop(host) == desktop)
+		return;
+	site = ua_site_of(host);
+	if (desktop) {
+		if (ua_nsites >= UA_SITES_MAX)
+			return;
+		ua_sites[ua_nsites++] = strdup(site);
+	} else {
+		for (i = 0; i < ua_nsites; i++)
+			if (ua_sites[i] != NULL && strcasecmp(ua_sites[i], site) == 0) {
+				free(ua_sites[i]);
+				ua_sites[i] = ua_sites[--ua_nsites];
+				i--;
+			}
+	}
+	ua_sites_save();
+}
+
+/* Public API documented in useragent.h */
+const char *user_agent_for_host(const char *host)
+{
+	return user_agent_is_desktop(host) ? ua_desktop : user_agent_string();
 }

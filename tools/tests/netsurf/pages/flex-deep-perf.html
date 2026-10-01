@@ -1,0 +1,58 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>deep flex</title>
+<!-- Onyx: the layout's cost with deeply nested flex containers (NS_PERF=1: "layout ...") --
+     m.facebook.com's cookie dialog as its Bloks screens build it: a fixed backdrop centring a
+     flex column capped at 90 %, a scrolling middle, 4 illustrated cards two by two, each a
+     stack of flex rows and columns 12 deep (wbloks-like wrappers: stretch, grow, shrink,
+     min-height: 0; beside each nested column a taller one it is stretched to), above them
+     a chain of 14 columns that grow in the dialog's definite middle, and a timer that
+     changes a text and reads a geometry every 300 ms (a layout each time). Without the flex layout memo (layout_flex.c) each level measured its
+     items twice: 2^depth. -->
+<style>
+body { margin: 0; font: 15px sans-serif; }
+#bd { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+#dlg { display: flex; flex-direction: column; background: #fff; width: 90%; max-width: 640px; max-height: 90%; border-radius: 8px; }
+#hd { padding: 12px; font-weight: bold; }
+#mid { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+#cards { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+.card { flex: 1 1 40%; display: flex; flex-direction: column; background: #f0f2f5; border-radius: 6px; }
+.card img { width: 100%; aspect-ratio: 16 / 9; background: #cde; }
+.c { display: flex; flex-direction: column; flex-grow: 1; flex-shrink: 1; min-height: 0; align-items: stretch; padding: 1px; }
+.r { display: flex; flex-direction: row; flex-grow: 1; align-items: stretch; min-width: 0; gap: 2px; }
+.t { flex: 1 1 auto; min-width: 0; }
+#ft { display: flex; gap: 8px; padding: 12px; }
+#ft button { flex: 1; height: 36px; }
+</style></head><body>
+<div id="bd"><div id="dlg">
+ <div id="hd">Autoriser l'utilisation des cookies de Facebook dans ce navigateur ?</div>
+ <div id="mid"><div class="c"><div class="c"><div id="cards"></div></div></div></div>
+ <div id="ft"><button type="button">Refuser les cookies optionnels</button><button type="button">Autoriser tous les cookies</button></div>
+</div></div>
+<script>
+function nest(depth, id) {
+	if (depth === 0)
+		return '<div class="t"' + (id ? ' id="' + id + '"' : '') + '>Les cookies nous aident a personnaliser les publicites.</div>';
+	/* a row: a column of text taller than the nested one beside it, which is stretched
+	 * to it (laid out again at each level), in a column that grows */
+	return '<div class="c"><div class="r"><div class="c"><div class="t">niveau ' + depth +
+		' : Facebook utilise des cookies pour ameliorer ses produits et vous montrer des' +
+		' publicites.</div></div><div class="c">' + nest(depth - 1, id) + '</div></div></div>';
+}
+/* wbloks' wrappers: columns that grow, 14 deep, in the dialog's definite middle */
+function grow(depth, inner) {
+	return depth === 0 ? inner : '<div class="c">' + grow(depth - 1, inner) + '</div>';
+}
+let html = '';
+for (let i = 0; i < 4; i++)
+	html += '<div class="card"><img alt=""><div class="c">' + nest(12, i === 0 ? 'leaf' : '') + '</div></div>';
+document.getElementById('cards').innerHTML = html;
+document.getElementById('mid').insertAdjacentHTML('afterbegin',
+	grow(14, '<div class="t">Choisissez comment nous utilisons les cookies.</div>'));
+let n = 0;
+setInterval(() => {
+	const leaf = document.getElementById('leaf');
+	leaf.textContent = 'Tour ' + (++n) + ' : les cookies nous aident.';
+	console.log('deep flex height ' + leaf.offsetHeight);
+}, 300);
+</script>
+</body></html>

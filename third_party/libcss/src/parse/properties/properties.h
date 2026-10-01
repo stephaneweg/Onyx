@@ -696,6 +696,78 @@ css_error css__parse_stop_color(css_language *c,
 css_error css__parse_stop_opacity(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);
+/* Onyx: mask */
+css_error css__parse_mask_image(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask_size(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask_position(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask_repeat(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mask(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+/* Onyx: compositing */
+css_error css__parse_filter(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_backdrop_filter(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_transform_origin(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_mix_blend_mode(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+/* Onyx: transitions and animations */
+css_error css__parse_transition_property(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_transition_duration(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_transition_timing_function(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_transition_delay(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_name(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_duration(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_timing_function(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_delay(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_iteration_count(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_direction(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_fill_mode(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation_play_state(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_transition(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
+css_error css__parse_animation(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
 
 extern const uint32_t property_unit_mask[CSS_N_PROPERTIES];
 

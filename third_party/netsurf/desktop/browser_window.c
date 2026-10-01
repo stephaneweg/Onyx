@@ -698,12 +698,31 @@ browser_window_convert_to_download(struct browser_window *bw,
  * \param bw browser window
  * \return true if the scroll was sucessful
  */
+/* Onyx: the window's scroll offset (a front end window, or a core-managed one's scrollbars) */
+static bool onyx_bw_get_scroll(struct browser_window *bw, int *sx, int *sy)
+{
+	if (bw->window != NULL)
+		return guit->window->get_scroll(bw->window, sx, sy);
+	*sx = bw->scroll_x != NULL ? scrollbar_get_offset(bw->scroll_x) : 0;
+	*sy = bw->scroll_y != NULL ? scrollbar_get_offset(bw->scroll_y) : 0;
+	return true;
+}
+
 static bool frag_scroll(struct browser_window *bw)
 {
 	struct rect rect;
+	int sx, sy;
 
 	if (bw->frag_id == NULL) {
 		return false;
+	}
+
+	/* Onyx: once the user has scrolled away from the fragment, leave the view where it
+	 * is (NetSurf scrolled back to it at every reformat: a page with animations or late
+	 * content could not be scrolled up) */
+	if (bw->onyx_frag_done && onyx_bw_get_scroll(bw, &sx, &sy) &&
+	    (sx != bw->onyx_frag_x || sy != bw->onyx_frag_y)) {
+		return true;
 	}
 
 	if (!html_get_id_offset(bw->current_content,
@@ -716,6 +735,9 @@ static bool frag_scroll(struct browser_window *bw)
 	rect.x1 = rect.x0;
 	rect.y1 = rect.y0;
 	if (browser_window_set_scroll(bw, &rect) == NSERROR_OK) {
+		/* (Onyx: where it landed -- clamped to the page's extent) */
+		bw->onyx_frag_done = onyx_bw_get_scroll(bw, &bw->onyx_frag_x,
+				&bw->onyx_frag_y);
 		if (bw->current_content != NULL &&
 		    bw->history != NULL &&
 		    bw->history->current != NULL) {
@@ -3414,6 +3436,7 @@ browser_window_navigate(struct browser_window *bw,
 
 	lwc_string_unref(bw->frag_id);
 	bw->frag_id = NULL;
+	bw->onyx_frag_done = false;	/* (Onyx: a new fragment is followed again) */
 
 	if (nsurl_has_component(url, NSURL_FRAGMENT)) {
 		bool same_url = false;

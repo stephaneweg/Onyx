@@ -178,6 +178,8 @@ typedef struct html_content {
 
 	/** Browser window containing this document, or NULL if not open. */
 	struct browser_window *bw;
+	/** Onyx: closed (another page shows in its window): its animations paused */
+	bool onyx_closed;
 
 	/** Frameset information */
 	struct content_html_frames *frameset;
@@ -218,6 +220,17 @@ typedef struct html_content {
 
 	/** Onyx: a script changed the DOM: its boxes to build again (html_rebox) */
 	bool rebox_pending;
+	/** Onyx: the last rebox's start and cost (ms: its successors wait while the
+	 * scripts keep changing the DOM), and the DOM changes since it -- how many, how
+	 * many of them could show (not in a display: none subtree) */
+	uint64_t rebox_last_start, rebox_last_cost;
+	unsigned int rebox_mut_events, rebox_mut_shown;
+	/** Onyx: the elements whose attributes changed since the last rebox (references),
+	 * while no other change came (html_restyle_in_place: their styles made again in
+	 * the boxes, no rebox) */
+	struct dom_node *restyle_attr[32];
+	unsigned int restyle_attr_n;
+	bool restyle_attr_only;
 	/** Onyx: boxes built and laid out while the document is still parsed (a script
 	 * asked for a geometry), and whether the parser added nodes since */
 	bool early_layout;
@@ -229,6 +242,14 @@ typedef struct html_content {
 
 	/** Onyx: the node under the pointer (CSS :hover: it and its ancestors), a ref */
 	struct dom_node *hover_node;
+
+	/** Onyx: a text field a script focused before it had a box (element.focus() in
+	 * the handler that shows it): the caret put in it after the next rebox */
+	struct dom_node *focus_pending;
+
+	/** Onyx: the pointer's last position in the page (the keys scroll the scroller
+	 * under it) */
+	int pointer_x, pointer_y;
 	/** Onyx: the style sheets have :hover rules (the styles made again when it moves) */
 	bool uses_hover;
 	/** Onyx: the nodes a :hover selector was tried on (a set: html/onyx_hover.c) */
@@ -243,6 +264,11 @@ typedef struct html_content {
 
 	/** Onyx: while the boxes are built again, the old boxes' objects to take over */
 	struct content_html_object *rebox_objects;
+	/** Onyx: rebox_objects indexed by their URL's hash (html_fetch_object: a page of
+	 * thousands of images searched the whole list for each new box) -- rebox_all: the
+	 * objects, rebox_index: rebox_mask + 1 buckets chained by rebox_hnext */
+	struct content_html_object **rebox_all, **rebox_index;
+	unsigned int rebox_count, rebox_mask;
 
 	/** Onyx: events dispatched to the scripts whose callers hold boxes: no rebox now */
 	int script_hold;
@@ -254,6 +280,20 @@ typedef struct html_content {
 	 * tree), and the flat tree's and the shadow trees' caches (html/onyx_shadow.c) */
 	bool onyx_shadow;
 	struct onyx_shadow *onyx_sh;
+
+	/** Onyx: the style selections kept from one box tree to the next
+	 * (html/onyx_restyle.c): the box trees' serial, the epoch a change of the sheets
+	 * or the media moves, and the media the last tree was selected with */
+	unsigned int restyle_serial, restyle_epoch;
+	css_fixed restyle_media_w, restyle_media_h, restyle_vw, restyle_vh;
+	struct nsurl *restyle_base;
+	struct onyx_restyle *onyx_rs;	/* the sheets added since an epoch */
+
+	/** Onyx: transitions, animations, animation frames (html/onyx_anim.c: NULL until
+	 * the page has one); while set, a selection's style is not an element's (the scripts'
+	 * getComputedStyle of an element without a box) */
+	struct onyx_anim *onyx_anim;
+	int onyx_anim_probe;
 
 	/** Onyx: a control the user changed: its input / change events due (soon) */
 	struct dom_node *script_changed;
@@ -349,6 +389,16 @@ nserror html_proceed_to_done(html_content *html);
 void html_script_dom_changed(html_content *htmlc);
 
 /**
+ * Onyx: the scripts' DOM changes of a turn (quickjs's): as html_script_dom_changed, but
+ * nothing when every change since the last rebox was in a display: none subtree (head,
+ * script, template, a hidden panel: onyx_restyle_node_hidden).
+ */
+void html_script_dom_changed_by_script(html_content *htmlc);
+
+/** Onyx: a DOM change (dom_event.c): counted for html_script_dom_changed_by_script */
+void html_script_mutation(html_content *htmlc, struct dom_node *node, bool attr);
+
+/**
  * Onyx: a subtree taken out of the document forgets its boxes (they are freed at the next
  * rebox: a script's getBoundingClientRect on a removed element read a freed box).
  */
@@ -386,6 +436,26 @@ bool html_script_event(html_content *htmlc, const char *type, struct dom_node *n
  * text area, the menu that tells it is not left under a script's changes).
  */
 void html_script_changed(html_content *htmlc, struct dom_node *node, unsigned int events);
+
+/**
+ * Onyx: element.focus() on a text field or a textarea: the browser's caret in it, at the
+ * end of its text (typing goes there, as after a click) -- now if it has a box, else
+ * after the next rebox.
+ *
+ * 
+eturn whether the node is (or will be tried as) a text control
+ */
+bool html_script_focus_control(html_content *htmlc, struct dom_node *node);
+
+/**
+ * Onyx: the boxes from the root down to the one painted last under a point (the box a
+ * click reaches: positioned layers, fixed boxes): a malloc'd array, root first, its
+ * length in *n (NULL: no memory).
+ */
+struct box **html_hit_path(html_content *html, int x, int y, int *n);
+
+/** Onyx: scroll what is under a point, no wheel event (html.c; the scrolling keys) */
+bool html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry);
 
 
 /* in html/redraw.c */
@@ -470,5 +540,13 @@ extern struct dom_string *html_dom_string_polygon;
 extern struct dom_string *html_dom_string_text_javascript;
 extern struct dom_string *html_dom_string_type;
 extern struct dom_string *html_dom_string_src;
+
+/**
+ * Onyx -- GPU compositing: box's effects (its transform, its opacity) changed and nothing else
+ * (its style already the new one): when the frontend retains its layer, that layer is
+ * composited again, nothing painted -> true (an animation's frame, a hover: composite-only);
+ * false: redraw its rectangles as ever.
+ */
+bool html_redraw_layer_update(const html_content *html, struct box *box);
 
 #endif

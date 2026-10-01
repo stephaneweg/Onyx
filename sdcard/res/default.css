@@ -8,16 +8,27 @@ html { display: block; }
 
 head { display: none; }
 
-body { display: block; margin: 8px; line-height: 1.33; }
+/* Onyx: the HTML Standard's rendering section as Chrome's UA sheet has it: body's
+ * line-height normal, the headings', paragraphs', lists' margins, [hidden], dialog, the
+ * form controls (13.333px Arial, no margins) */
+body { display: block; margin: 8px; }
+
+[hidden], area, base, basefont, datalist, link, meta, noscript, param, rp,
+script, source, style, template, track, title, dialog:not([open]) { display: none; }
+
+dialog[open] { display: block; position: absolute; left: 0; right: 0;
+	width: -webkit-fit-content; width: fit-content; height: -webkit-fit-content;
+	height: fit-content; margin: auto; border: solid; padding: 1em;
+	background-color: white; color: black; }
 
 div { display: block; }
 
 h1 { display: block; font-size: 2em; font-weight: bold; margin: .67em 0; }
-h2 { display: block; font-size: 1.5em; font-weight: bold; margin: .69em 0; }
-h3 { display: block; font-size: 1.17em; font-weight: bold; margin: .83em 0; }
-h4 { display: block; font-weight: bold; margin: 1.12em 0; }
-h5 { display: block; font-size: .83em; font-weight: bold; margin: 1.5em 0; }
-h6 { display: block; font-size: .75em; font-weight: bold; margin: 1.67em 0; }
+h2 { display: block; font-size: 1.5em; font-weight: bold; margin: .83em 0; }
+h3 { display: block; font-size: 1.17em; font-weight: bold; margin: 1em 0; }
+h4 { display: block; font-weight: bold; margin: 1.33em 0; }
+h5 { display: block; font-size: .83em; font-weight: bold; margin: 1.67em 0; }
+h6 { display: block; font-size: .67em; font-weight: bold; margin: 2.33em 0; }
 
 address { display: block; font-style: italic; }
 
@@ -32,27 +43,28 @@ cite { font-style: italic; }
 abbr { font-variant: small-caps; }
 acronym { font-variant: small-caps; }
 
-blockquote { display: block; margin: 1.12em 40px;}
+blockquote { display: block; margin: 1em 40px;}
+figure { display: block; margin: 1em 40px; }
 
 q { font-style: italic; }
 
 sub { vertical-align: sub; font-size: .83em; }
 sup { vertical-align: super; font-size: .83em; }
 
-p { display: block; margin: 1.12em 0; }
+p { display: block; margin: 1em 0; }
 
 br[clear=left] { clear: left; }
 br[clear=right] { clear: right; }
 br[clear=all] { clear: both; }
 
-pre { display: block; font-family: monospace; white-space: pre; margin-bottom: 1em; }
+pre { display: block; font-family: monospace; white-space: pre; margin: 1em 0; }
 
 ins { color: green; text-decoration: underline; }
 del { color: red; text-decoration: line-through; }
 
-ul { display: block; padding-left: 40px; margin: 1.12em 0;
+ul { display: block; padding-left: 40px; margin: 1em 0;
 	list-style-type: disc; }
-ol { display: block; padding-left: 40px; margin: 1.12em 0;
+ol { display: block; padding-left: 40px; margin: 1em 0;
 	list-style-type: decimal; }
 li { display: list-item; }
 
@@ -61,14 +73,15 @@ ul ul ul { list-style-type: square; }
 
 ol ul, ul ol, ul ul, ol ol { margin-top: 0; margin-bottom: 0; }
 
-dl { display: block; padding-left: 1.5em; margin: 1em; }
-dt { display: block; font-weight: bold; }
-dd { display: block; padding-left: 1em; margin-bottom: 0.3em; }
+dl { display: block; margin: 1em 0; }
+dt { display: block; }
+dd { display: block; margin-left: 40px; }
 
-dir { display: block; padding-left: 1.5em; margin: 1.12em 0; }
-menu { display: block; padding-left: 1.5em; margin: 1.12em 0; }
+dir { display: block; padding-left: 40px; margin: 1em 0; }
+menu { display: block; padding-left: 40px; margin: 1em 0; }
 
-table { display: table; border-spacing: 2px; }
+table { display: table; border-spacing: 2px; box-sizing: border-box;
+	border-collapse: separate; text-indent: 0; }
 
 table[border], table[border] td, table[border] tr { border-color: grey; }
 
@@ -102,7 +115,8 @@ small { font-size: .83em; }
 strike, s { text-decoration: line-through; }
 u { text-decoration: underline; }
 
-hr { display: block; margin: 0.5em auto; border: 1px inset #888; }
+hr { display: block; margin: 0.5em auto; border: 1px inset #888; color: gray;
+	overflow: hidden; }
 hr[noshade] { border-style: solid; }
 
 noframes { display: none; }
@@ -112,43 +126,86 @@ iframe { width: 19em; height: 10em; }
 form { display: block; }
 
 input, button { background-color: #fff; color: #000; text-align: left;
-	font-family: sans-serif; width: auto; height: auto; overflow: hidden;
-	border: 1px solid #444; padding: 2px 3px; line-height: 1.33;
-	margin: 1px; box-sizing: border-box; }
+	font-family: Arial, sans-serif; font-size: 13.3333px; width: auto;
+	height: auto; overflow: hidden; line-height: normal;
+	border: 2px inset #767676; padding: 1px 2px;
+	margin: 0; box-sizing: content-box; letter-spacing: normal;
+	word-spacing: normal; text-transform: none; text-indent: 0;
+	text-shadow: none; display: inline-block; }
 input[disabled] { background-color: #ddd; color: #333; }
+input[type=search] { box-sizing: border-box; }
 input[type=button], input[type=reset], input[type=submit], button {
-	background-color: #d9d9d9; color: #000; text-align: center;
-	border: 2px outset #d9d9d9; padding: 1px 0.5em; }
+	background-color: #efefef; color: #000; text-align: center;
+	border: 2px outset #767676; padding: 1px 6px; box-sizing: border-box; }
 input[type=image] { background-color: transparent; color: #000;
 	border: none; padding: 0 2px; box-sizing: content-box; }
 input[type=checkbox], input[type=radio] { background-color: transparent;
-	border: none; padding: 0 0.1em; }
+	border: none; padding: 0; box-sizing: border-box; margin: 3px 3px 3px 4px; }
+input[type=radio] { margin: 3px 3px 0 5px; }
+input[type=hidden] { display: none; }
 input[type=file] { background-color: #d9d9d9; color: #000; font-style: italic;
 	border: 2px inset #d9d9d9; padding: 1px 2px; }
 input[align=left] { float: left; }
 input[align=right] { float: right; }
 
-select { background-color: #d9d9d9; color: #000; text-align: left;
-	font-family: sans-serif; width: auto; height: auto; overflow: hidden;
-	border: medium inset #d9d9d9; padding: 1px 3px 1px 2px;
-	white-space: nowrap; margin: 1px; }
+select { background-color: #efefef; color: #000; text-align: left;
+	font-family: Arial, sans-serif; font-size: 13.3333px; width: auto;
+	height: auto; overflow: hidden; border: 1px solid #767676;
+	padding: 0 0 0 2px; white-space: nowrap; margin: 0; box-sizing: border-box;
+	line-height: normal; display: inline-block; }
 select:after { content: "\25bc"; border-left: 2px ridge #d9d9d9; }
 
 textarea { background-color: #fff; color: #000; text-align: left;
-	font-family: monospace; width: auto; height: auto; overflow: scroll;
-	margin: 1px; border: 1px solid #333; padding: 1px 3px; }
+	font-family: monospace; font-size: 13.3333px; width: auto; height: auto;
+	overflow: auto; margin: 0; border: 1px solid #767676; padding: 2px;
+	line-height: normal; white-space: pre-wrap; display: inline-block; }
 textarea[disabled] { background-color: #ddd; color: #333; }
 
-fieldset { display: block; border: thin solid #888; margin: 1.12em 0; }
+fieldset { display: block; border: 2px groove #efefef; margin: 0 2px;
+	padding: .35em .75em .625em; }
+legend { display: block; padding: 0 2px; }
 
-noembed, script, style, title { display: none; }
+/* (Onyx: the other hidden elements are with [hidden] at the top: a <link> in the
+ * body made a line) */
+noembed, noframes { display: none; }
 
 /* HTML5 elements */
-article, aside, figcaption, figure, footer, header, main, nav, section {
+article, aside, figcaption, footer, header, main, nav, section, hgroup,
+details, summary, search, address {
 	display: block;
 }
+summary { display: list-item; }
 
 mark {
 	background: yellow;
 	color: black;
 }
+
+/* Onyx: the HTML standard's rendering of the HTML5 elements (the HTML5 DOM work: a block of
+ * its own) */
+[hidden] { display: none; }
+template, datalist, rp { display: none; }
+dialog, details, summary, search, hgroup, menu, dir, legend, listing, plaintext, xmp {
+	display: block; }
+menu, dir { padding-left: 40px; margin: 1.12em 0; list-style-type: disc; }
+listing, plaintext, xmp { font-family: monospace; white-space: pre; margin: 1em 0; }
+details > summary:first-of-type { display: list-item; list-style-type: disc; cursor: pointer; }
+details:not([open]) > :not(summary) { display: none; }
+dialog:not([open]) { display: none; }
+dialog { position: absolute; left: 0; right: 0; width: fit-content; height: fit-content;
+	margin: auto; border: solid 2px; padding: 1em; background: white; color: black; }
+/* Onyx: the Popover API (html5.js; :popover-open and :modal answered by NetSurf, css/select.c):
+ * a popover not showing is not rendered; a showing one and a modal dialog as Chrome's UA
+ * sheet has them -- fixed, centred --, over the page (z-index: the top layer's stand-in) */
+[popover]:not(:popover-open):not(dialog[open]) { display: none; }
+[popover] { position: fixed; top: 0; right: 0; bottom: 0; left: 0; width: fit-content;
+	height: fit-content; margin: auto; border: solid; padding: 0.25em; overflow: auto;
+	color: black; background-color: white; z-index: 2147483647; }
+dialog:popover-open { display: block; }
+dialog:modal { position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+	max-width: calc(100% - 6px - 2em); max-height: calc(100% - 6px - 2em); overflow: auto;
+	z-index: 2147483647; }
+rt { font-size: 50%; }
+meter, progress { display: inline-block; vertical-align: -0.2em; width: 10em; height: 1em;
+	background-color: #e6e6e6; border: 1px solid #b5b5b5; box-sizing: border-box; }
+selectedcontent { display: contents; }

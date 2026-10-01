@@ -350,6 +350,12 @@ static inline float aa_cov(float d)
 	return c <= 0 ? 0 : c >= 1 ? 1 : c;
 }
 
+/* exported function documented in framebuffer/onyx_paint.h */
+float onyx_fb_rrect_cov(const struct onyx_rrect *r, float px, float py)
+{
+	return aa_cov(rrect_dist(r, px, py));
+}
+
 /** erfc(x) (Numerical Recipes' Chebyshev fit, |error| < 1.2e-7). */
 static float erfc_f(float x)
 {
@@ -581,6 +587,12 @@ struct rclip {
 
 static struct rclip rclip_stack[RCLIP_DEPTH];
 static int rclip_depth;		/* (may pass RCLIP_DEPTH: those are not kept) */
+
+/* exported function documented in framebuffer/onyx_paint.h */
+int onyx_fb_round_clip_depth(void)
+{
+	return rclip_depth;
+}
 
 /* exported function documented in framebuffer/onyx_paint.h */
 bool onyx_fb_round_clip(nsfb_t *nsfb, const struct onyx_rrect *r)

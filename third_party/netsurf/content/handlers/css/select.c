@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <string.h>
 #include <strings.h>
+#include <stdint.h>
 
 #include "utils/nsoption.h"
 #include "utils/corestrings.h"
@@ -33,6 +34,12 @@
 #include "css/select.h"
 
 #include <dom/bindings/hubbub/parser.h>	/* Onyx: dom_onyx_shadow_host */
+
+/* Onyx: the selection looked at node's structure */
+static const css_qname *nscss_state_qname;	/* the selected node's name in libcss's state */
+#define NSCSS_STRUCT(node, self) (nscss_struct_used |= \
+		(void *) (node) == (void *) nscss_styled_node ? \
+		(self) : NSCSS_STRUCT_ANC)
 
 static css_error node_name(void *pw, void *node, css_qname *qname);
 static css_error node_classes(void *pw, void *node,
@@ -78,6 +85,7 @@ static css_error node_count_siblings(void *pw, void *node,
 static css_error node_is_empty(void *pw, void *node, bool *match);
 static css_error node_is_link(void *pw, void *node, bool *match);
 static css_error node_is_hover(void *pw, void *node, bool *match);
+static css_error node_onyx_state(void *pw, void *node, lwc_string *state, bool *match);
 static css_error node_is_active(void *pw, void *node, bool *match);
 static css_error node_is_focus(void *pw, void *node, bool *match);
 static css_error node_is_enabled(void *pw, void *node, bool *match);
@@ -135,7 +143,63 @@ static css_select_handler selection_handler = {
 	ua_default_for_property,
 	set_libcss_node_data,
 	get_libcss_node_data,
+	NULL,			/* (Onyx: onyx_node_is_scope_host, onyx_host_pw: none) */
+	NULL,
+	node_onyx_state,	/* (Onyx: :popover-open, :modal) */
 };
+
+/* Onyx: the states only the scripts know (nscss_node_state_set): the node's user data under
+ * this key, a mask of NSCSS_STATE_* */
+#define ONYX_SLEN(s) (sizeof(s) - 1)
+
+static dom_string *nscss_state_key(void)
+{
+	static dom_string *key = NULL;
+
+	if (key == NULL)
+		dom_string_create((const uint8_t *) "__ns_onyx_state",
+				ONYX_SLEN("__ns_onyx_state"), &key);
+	return key;
+}
+
+/* exported function documented in css/select.h (Onyx) */
+void nscss_node_state_set(struct dom_node *n, unsigned int state, bool on)
+{
+	dom_string *key = nscss_state_key();
+	void *old = NULL;
+	uintptr_t bits = 0;
+
+	if (key == NULL || n == NULL)
+		return;
+	if (dom_node_get_user_data(n, key, &old) == DOM_NO_ERR)
+		bits = (uintptr_t) old;
+	bits = on ? (bits | state) : (bits & ~(uintptr_t) state);
+	dom_node_set_user_data(n, key, (void *) bits, NULL, &old);
+}
+
+/** Onyx: css_select_handler's onyx_node_state */
+static css_error node_onyx_state(void *pw, void *node, lwc_string *state, bool *match)
+{
+	dom_string *key = nscss_state_key();
+	void *bits = NULL;
+	unsigned int want;
+
+	(void) pw;
+	*match = false;
+	if (key == NULL)
+		return CSS_OK;
+	if (lwc_string_length(state) == ONYX_SLEN("popover-open") &&
+	    memcmp(lwc_string_data(state), "popover-open", ONYX_SLEN("popover-open")) == 0)
+		want = NSCSS_STATE_POPOVER_OPEN;
+	else if (lwc_string_length(state) == ONYX_SLEN("modal") &&
+		 memcmp(lwc_string_data(state), "modal", ONYX_SLEN("modal")) == 0)
+		want = NSCSS_STATE_MODAL;
+	else
+		return CSS_OK;
+	if (dom_node_get_user_data(node, key, &bits) == DOM_NO_ERR)
+		*match = ((uintptr_t) bits & want) != 0;
+	return CSS_OK;
+}
 
 /**
  * Create an inline style
@@ -171,6 +235,47 @@ bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *
 	if ((error == CSS_OK || error == CSS_NEEDDATA) &&
 	    css_stylesheet_data_done(sheet) == CSS_OK &&
 	    css_stylesheet_onyx_kept(sheet, rules, decl_words) == CSS_OK)
+		ok = true;
+	css_stylesheet_destroy(sheet);
+	return ok;
+}
+
+/* exported function documented in css/select.h (Onyx) */
+bool nscss_media_match(css_select_ctx *sctx, const css_media *media,
+		const css_unit_ctx *unit_ctx, const char *query, size_t len, bool *match,
+		uint32_t *n_queries, uint32_t *invalid)
+{
+	static const char pre[] = "@media ", post[] = " { a { color: red } }";
+	css_stylesheet_params params;
+	static css_select_ctx *own = NULL;	/* (before the page's: its strings only) */
+	css_stylesheet *sheet;
+	css_error error;
+	bool ok = false;
+
+	if (sctx == NULL) {
+		if (own == NULL && css_select_ctx_create(&own) != CSS_OK)
+			return false;
+		sctx = own;
+	}
+	memset(&params, 0, sizeof params);
+	params.params_version = CSS_STYLESHEET_PARAMS_VERSION_1;
+	params.level = CSS_LEVEL_DEFAULT;
+	params.charset = "UTF-8";
+	params.url = "about:blank";
+	params.resolve = nscss_resolve_url;
+	params.color = ns_system_colour;
+	if (css_stylesheet_create(&params, &sheet) != CSS_OK)
+		return false;
+	error = css_stylesheet_append_data(sheet, (const uint8_t *) pre, sizeof pre - 1);
+	if (error == CSS_OK || error == CSS_NEEDDATA)
+		error = css_stylesheet_append_data(sheet, (const uint8_t *) query, len);
+	if (error == CSS_OK || error == CSS_NEEDDATA)
+		error = css_stylesheet_append_data(sheet, (const uint8_t *) post,
+				sizeof post - 1);
+	if ((error == CSS_OK || error == CSS_NEEDDATA) &&
+	    css_stylesheet_data_done(sheet) == CSS_OK &&
+	    css_select_onyx_media_match(sctx, sheet, unit_ctx, media, match, n_queries,
+			invalid) == CSS_OK)
 		ok = true;
 	css_stylesheet_destroy(sheet);
 	return ok;
@@ -305,6 +410,31 @@ css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 }
 
 /* exported function documented in css/select.h (Onyx) */
+bool nscss_node_visited(struct dom_node *n, struct nsurl *base_url)
+{
+	nscss_select_ctx ctx;
+	bool match = false;
+
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.base_url = base_url;
+	if (node_is_visited(&ctx, n, &match) != CSS_OK)
+		return false;
+	return match;
+}
+
+/* exported function documented in css/select.h (Onyx) */
+bool nscss_probe_style(nscss_select_ctx *ctx, css_select_ctx *probe, dom_node *n,
+		const css_media *media, const css_unit_ctx *unit_len_ctx)
+{
+	bool matched = true;
+
+	if (css_select_style_onyx_probe(probe, n, unit_len_ctx, media,
+			&selection_handler, ctx, &matched) != CSS_OK)
+		return true;
+	return matched;
+}
+
+/* exported function documented in css/select.h (Onyx) */
 css_select_results *nscss_get_style_onyx(nscss_select_ctx *ctx, dom_node *n,
 		const css_media *media, const css_unit_ctx *unit_len_ctx,
 		const css_stylesheet *inline_style, dom_node *inherit_parent, bool no_share,
@@ -436,6 +566,9 @@ css_error node_name(void *pw, void *node, css_qname *qname)
 	dom_node *n = node;
 	dom_string *name;
 	dom_exception err;
+
+	if (node == (void *) nscss_styled_node)
+		nscss_state_qname = qname;	/* (Onyx: libcss's state) */
 
 	err = dom_node_get_node_name(n, &name);
 	if (err != DOM_NO_ERR)
@@ -574,6 +707,7 @@ css_error named_parent_node(void *pw, void *node,
 css_error named_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	NSCSS_STRUCT(node, NSCSS_STRUCT_SIB);	/* (Onyx) */
 	dom_node *n = node;
 	dom_node *prev;
 	dom_exception err;
@@ -642,6 +776,10 @@ css_error named_sibling_node(void *pw, void *node,
 css_error named_generic_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	/* (Onyx: not libcss's search of a sibling whose style to share -- the node's
+	 * own name, the selection state's: no dependence) */
+	if (qname != nscss_state_qname)
+		NSCSS_STRUCT(node, NSCSS_STRUCT_SIB);
 	dom_node *n = node;
 	dom_node *prev;
 	dom_exception err;
@@ -722,6 +860,7 @@ css_error parent_node(void *pw, void *node, void **parent)
  */
 css_error sibling_node(void *pw, void *node, void **sibling)
 {
+	NSCSS_STRUCT(node, NSCSS_STRUCT_SIB);	/* (Onyx) */
 	dom_node *n = node;
 	dom_node *prev;
 	dom_exception err;
@@ -1377,12 +1516,116 @@ node_count_siblings_check(dom_node *node,
  *
  * \post \a count will contain the number of siblings
  */
+/*
+ * Onyx: the element siblings before and after each element, found for all the children of
+ * a parent at once and kept until the DOM changes (nscss_dom_changed, from the mutation
+ * events): :nth-child() and :last-child counted the siblings for each element -- a list of
+ * 2500 rows striped by :nth-child(odd) took 3 million steps a box tree.
+ */
+struct nscss_sib {
+	const void *node;
+	unsigned int gen;
+	int32_t before, after;
+};
+static struct nscss_sib *nscss_sibs;
+static size_t nscss_sibs_size, nscss_sibs_used;
+static unsigned int nscss_dom_gen = 1, nscss_sibs_gen;
+
+/* exported function documented in css/select.h (Onyx) */
+void nscss_dom_changed(void)
+{
+	nscss_dom_gen++;
+	if (nscss_dom_gen == 0)
+		nscss_dom_gen = 1;
+}
+
+static struct nscss_sib *nscss_sib_slot(const void *node)
+{
+	size_t i = ((uintptr_t) node >> 4) * 0x9E3779B1u & (nscss_sibs_size - 1);
+
+	while (nscss_sibs[i].gen == nscss_sibs_gen && nscss_sibs[i].node != node)
+		i = (i + 1) & (nscss_sibs_size - 1);
+	return &nscss_sibs[i];
+}
+
+/** The siblings of n from the table (filled for its parent's children): false if none */
+static bool nscss_sib_count(dom_node *n, bool after, int32_t *count)
+{
+	struct nscss_sib *e;
+	dom_node *parent = NULL, *c = NULL, *next;
+	int32_t total = 0, k;
+
+	if (nscss_sibs_gen != nscss_dom_gen) {
+		nscss_sibs_gen = nscss_dom_gen;
+		nscss_sibs_used = 0;
+	}
+	if (nscss_sibs != NULL) {
+		e = nscss_sib_slot(n);
+		if (e->gen == nscss_sibs_gen) {
+			*count = after ? e->after : e->before;
+			return true;
+		}
+	}
+	/* all the parent's element children: counted, then numbered */
+	if (dom_node_get_parent_node(n, &parent) != DOM_NO_ERR || parent == NULL)
+		return false;
+	for (dom_node_get_first_child(parent, &c); c != NULL; c = next) {
+		total += node_count_siblings_check(c, false, NULL);
+		next = NULL;
+		dom_node_get_next_sibling(c, &next);
+		dom_node_unref(c);
+	}
+	if ((nscss_sibs_used + total + 1) * 2 > nscss_sibs_size) {
+		size_t size = nscss_sibs_size ? nscss_sibs_size : 1024;
+		while ((nscss_sibs_used + total + 1) * 2 > size)
+			size *= 2;
+		if (size != nscss_sibs_size || nscss_sibs_used > 0) {
+			/* (a new table: the old entries dropped) */
+			struct nscss_sib *t = calloc(size, sizeof(*t));
+			if (t == NULL) {
+				dom_node_unref(parent);
+				return false;
+			}
+			free(nscss_sibs);
+			nscss_sibs = t;
+			nscss_sibs_size = size;
+			nscss_sibs_used = 0;
+			nscss_sibs_gen = nscss_dom_gen;
+		}
+	}
+	k = 0;
+	for (dom_node_get_first_child(parent, &c); c != NULL; c = next) {
+		if (node_count_siblings_check(c, false, NULL)) {
+			e = nscss_sib_slot(c);
+			e->node = c;
+			e->gen = nscss_sibs_gen;
+			e->before = k;
+			e->after = total - k - 1;
+			k++;
+			nscss_sibs_used++;
+		}
+		next = NULL;
+		dom_node_get_next_sibling(c, &next);
+		dom_node_unref(c);
+	}
+	dom_node_unref(parent);
+	e = nscss_sib_slot(n);
+	if (e->gen != nscss_sibs_gen)
+		return false;
+	*count = after ? e->after : e->before;
+	return true;
+}
+
 css_error node_count_siblings(void *pw, void *n, bool same_name,
 		bool after, int32_t *count)
 {
+	NSCSS_STRUCT(n, NSCSS_STRUCT_SELF);	/* (Onyx) */
 	int32_t cnt = 0;
 	dom_exception exc;
 	dom_string *node_name = NULL;
+
+	if (!same_name && nscss_sib_count(n, after, count))
+		return CSS_OK;		/* (Onyx) */
 
 	if (same_name) {
 		dom_node *node = n;
@@ -1443,6 +1686,7 @@ css_error node_count_siblings(void *pw, void *n, bool same_name,
  */
 css_error node_is_empty(void *pw, void *node, bool *match)
 {
+	NSCSS_STRUCT(node, NSCSS_STRUCT_SELF);	/* (Onyx) */
 	dom_node *n = node, *next;
 	dom_exception err;
 
@@ -1585,6 +1829,12 @@ css_error node_is_visited(void *pw, void *node, bool *match)
 
 	nsurl_unref(url);
 
+	/* (Onyx: a kept selection depends on it: html/onyx_restyle.c) */
+	if (node != (void *) nscss_styled_node)
+		nscss_visited_seen = 3;		/* (an ancestor's: not kept) */
+	else if (nscss_visited_seen != 3)
+		nscss_visited_seen = *match ? 2 : 1;
+
 	return CSS_OK;
 }
 
@@ -1603,6 +1853,8 @@ bool nscss_hover_used = false;
 void (*nscss_hover_note)(void *ctx, struct dom_node *tested, struct dom_node *styled);
 void *nscss_hover_note_ctx;
 struct dom_node *nscss_styled_node;
+unsigned int nscss_struct_used;	/* (Onyx: see select.h) */
+int nscss_visited_seen;		/* (Onyx: see select.h) */
 
 css_error node_is_hover(void *pw, void *node, bool *match)
 {
@@ -1933,6 +2185,7 @@ static css_error s_named_parent_node(void *pw, void *node,
 static css_error s_named_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	NSCSS_STRUCT(node, NSCSS_STRUCT_SIB);	/* (Onyx) */
 	*sibling = NULL;
 	if (ONYX_FL(pw, node))
 		return CSS_OK;
@@ -1942,6 +2195,8 @@ static css_error s_named_sibling_node(void *pw, void *node,
 static css_error s_named_generic_sibling_node(void *pw, void *node,
 		const css_qname *qname, void **sibling)
 {
+	if (qname != nscss_state_qname)
+		NSCSS_STRUCT(node, NSCSS_STRUCT_SIB);	/* (Onyx) */
 	*sibling = NULL;
 	if (ONYX_FL(pw, node))
 		return CSS_OK;
@@ -1950,6 +2205,7 @@ static css_error s_named_generic_sibling_node(void *pw, void *node,
 
 static css_error s_sibling_node(void *pw, void *node, void **sibling)
 {
+	NSCSS_STRUCT(node, NSCSS_STRUCT_SIB);	/* (Onyx) */
 	*sibling = NULL;
 	if (ONYX_FL(pw, node))
 		return CSS_OK;
@@ -2008,6 +2264,7 @@ S_MATCH_S(node_is_lang)
 static css_error s_node_count_siblings(void *pw, void *n, bool same_name,
 		bool after, int32_t *count)
 {
+	NSCSS_STRUCT(n, NSCSS_STRUCT_SELF);	/* (Onyx) */
 	*count = 0;
 	if (ONYX_FL(pw, n))
 		return CSS_OK;
@@ -2023,6 +2280,14 @@ static css_error s_onyx_node_is_scope_host(void *pw, void *node, bool *match)
 static void *s_onyx_host_pw(void *pw)
 {
 	return ((nscss_select_ctx *) pw)->host_ctx;
+}
+
+static css_error s_node_onyx_state(void *pw, void *node, lwc_string *state, bool *match)
+{
+	*match = false;
+	if (ONYX_FL(pw, node))
+		return CSS_OK;
+	return node_onyx_state(pw, node, state, match);
 }
 
 static css_select_handler onyx_scoped_handler = {
@@ -2066,4 +2331,5 @@ static css_select_handler onyx_scoped_handler = {
 	get_libcss_node_data,
 	s_onyx_node_is_scope_host,
 	s_onyx_host_pw,
+	s_node_onyx_state,
 };

@@ -1192,7 +1192,7 @@ static void css_hint_width(
 	}
 }
 
-static void css_hint_height_width_textarea(
+static void __attribute__((unused)) css_hint_height_width_textarea(
 		nscss_select_ctx *ctx,
 		dom_node *node)
 {
@@ -1295,7 +1295,7 @@ static void css_hint_height_width_canvas(
 	}
 }
 
-static void css_hint_width_input(
+static void __attribute__((unused)) css_hint_width_input(
 		nscss_select_ctx *ctx,
 		dom_node *node)
 {
@@ -1840,11 +1840,12 @@ css_error node_presentational_hint(void *pw, void *node,
 		css_hint_width(pw, node);
 		css_hint_margin_left_right_hr(pw, node);
 		break;
+	/* Onyx: a textarea's rows / cols and an input's size are not CSS
+	 * lengths in Chrome: they give the control's intrinsic size, which a
+	 * style's width / height (or a flex / grid stretch) overrides; the
+	 * layout computes it (layout_text_control_size) */
 	case DOM_HTML_ELEMENT_TYPE_TEXTAREA:
-		css_hint_height_width_textarea(pw, node);
-		break;
 	case DOM_HTML_ELEMENT_TYPE_INPUT:
-		css_hint_width_input(pw, node);
 		break;
 	case DOM_HTML_ELEMENT_TYPE_A:
 		css_hint_anchor_color(pw, node);

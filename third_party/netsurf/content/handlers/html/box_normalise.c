@@ -613,6 +613,14 @@ box_normalise_table_spans(struct box *table,
 }
 
 
+/** Onyx: whether a table's child is a caption (display: table-caption) */
+static bool box_normalise_is_caption(const struct box *child)
+{
+	return child->type == BOX_BLOCK && child->style != NULL &&
+		css_computed_display(child->style, false) ==
+			CSS_DISPLAY_TABLE_CAPTION;
+}
+
 static bool
 box_normalise_table(struct box *table, const struct box *root, html_content * c)
 {
@@ -622,6 +630,9 @@ box_normalise_table(struct box *table, const struct box *root, html_content * c)
 	css_computed_style *style;
 	struct columns col_info;
 	nscss_select_ctx ctx;
+	/* Onyx: the captions, kept out of the grid (above it, below it) */
+	struct box *cap_top = NULL, *cap_top_last = NULL;
+	struct box *cap_bottom = NULL, *cap_bottom_last = NULL;
 
 	assert(table != NULL);
 	assert(table->type == BOX_TABLE);
@@ -645,6 +656,43 @@ box_normalise_table(struct box *table, const struct box *root, html_content * c)
 
 	for (child = table->children; child != NULL; child = next_child) {
 		next_child = child->next;
+		if (box_normalise_is_caption(child)) {
+			/* Onyx: a caption: taken off the children (put back
+			 * first or last below), a block of its own */
+			bool bottom = css_computed_caption_side(child->style) ==
+					CSS_CAPTION_SIDE_BOTTOM;
+
+			if (child->prev != NULL)
+				child->prev->next = child->next;
+			else
+				table->children = child->next;
+			if (child->next != NULL)
+				child->next->prev = child->prev;
+			else
+				table->last = child->prev;
+			child->next = NULL;
+			child->flags |= TABLE_CAPTION;
+			if (bottom) {
+				child->prev = cap_bottom_last;
+				if (cap_bottom_last != NULL)
+					cap_bottom_last->next = child;
+				else
+					cap_bottom = child;
+				cap_bottom_last = child;
+			} else {
+				child->prev = cap_top_last;
+				if (cap_top_last != NULL)
+					cap_top_last->next = child;
+				else
+					cap_top = child;
+				cap_top_last = child;
+			}
+			if (box_normalise_block(child, root, c) == false) {
+				free(col_info.spans);
+				return false;
+			}
+			continue;
+		}
 		switch (child->type) {
 		case BOX_TABLE_ROW_GROUP:
 			/* ok */
@@ -692,7 +740,7 @@ box_normalise_table(struct box *table, const struct box *root, html_content * c)
 
 			row_group->prev = child->prev;
 
-			while (child != NULL && (
+			while (child != NULL && !box_normalise_is_caption(child) && (
 					child->type == BOX_FLEX ||
 					child->type == BOX_BLOCK ||
 					child->type == BOX_INLINE_CONTAINER ||
@@ -807,6 +855,18 @@ box_normalise_table(struct box *table, const struct box *root, html_content * c)
 	}
 
 	free(col_info.spans);
+
+	/* Onyx: the captions back: the top ones first, the bottom ones last */
+	if (cap_top != NULL) {
+		cap_top_last->next = table->children;
+		table->children->prev = cap_top_last;
+		table->children = cap_top;
+	}
+	if (cap_bottom != NULL) {
+		cap_bottom->prev = table->last;
+		table->last->next = cap_bottom;
+		table->last = cap_bottom_last;
+	}
 
 #ifdef BOX_NORMALISE_DEBUG
 	NSLOG(netsurf, INFO, "table %p done", table);

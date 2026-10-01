@@ -245,6 +245,26 @@ void css__make_style_important(css_style *style)
 			case CSS_PROP_GRID_ROW_END:
 			case CSS_PROP_GRID_COLUMN_START:
 			case CSS_PROP_GRID_COLUMN_END:
+			case CSS_PROP_MASK_IMAGE:	/* Onyx: mask */
+			case CSS_PROP_MASK_SIZE:
+			case CSS_PROP_MASK_POSITION:
+			case CSS_PROP_MASK_REPEAT:
+			case CSS_PROP_FILTER:	/* Onyx: compositing */
+			case CSS_PROP_BACKDROP_FILTER:
+			case CSS_PROP_TRANSFORM_ORIGIN:
+			case CSS_PROP_MIX_BLEND_MODE:
+			case CSS_PROP_TRANSITION_PROPERTY:	/* Onyx: transitions, animations */
+			case CSS_PROP_TRANSITION_DURATION:
+			case CSS_PROP_TRANSITION_TIMING_FUNCTION:
+			case CSS_PROP_TRANSITION_DELAY:
+			case CSS_PROP_ANIMATION_NAME:
+			case CSS_PROP_ANIMATION_DURATION:
+			case CSS_PROP_ANIMATION_TIMING_FUNCTION:
+			case CSS_PROP_ANIMATION_DELAY:
+			case CSS_PROP_ANIMATION_ITERATION_COUNT:
+			case CSS_PROP_ANIMATION_DIRECTION:
+			case CSS_PROP_ANIMATION_FILL_MODE:
+			case CSS_PROP_ANIMATION_PLAY_STATE:
 				if (value == ONYX_TEXT_SET)
 					offset++; /* string index */
 				break;

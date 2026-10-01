@@ -1403,8 +1403,9 @@ static struct grid_item *grid_items(struct box *grid, int *count, bool in_flow_o
 /* ---- layout ------------------------------------------------------------------------------ */
 
 /** Lay an item out at its (content) width b->width. */
-static bool grid_layout_item(struct grid_ctx *g, struct box *b, int avail)
+static bool grid_layout_item_now(void *ctx, struct box *b, int avail)
 {
+	struct grid_ctx *g = ctx;
 	bool ok = true;
 
 	switch (b->type) {
@@ -1425,6 +1426,12 @@ static bool grid_layout_item(struct grid_ctx *g, struct box *b, int avail)
 		break;
 	}
 	return ok;
+}
+
+/** Onyx: through the layout memo (skipped when laid out at these inputs already) */
+static bool grid_layout_item(struct grid_ctx *g, struct box *b, int avail)
+{
+	return layout_memo_layout(b, avail, false, grid_layout_item_now, g);
 }
 
 /** The item's self-alignment on one axis (its own, else the container's). */
@@ -1679,6 +1686,14 @@ bool layout_grid(struct box *grid, int available_width, html_content *content)
 		    b->style != NULL &&
 		    css_computed_height(b->style, &hv, &hu) == CSS_HEIGHT_AUTO) {
 			int h = area_h - lh__delta_outer_height(b);
+			/* Onyx: a scroll container (overflow not visible) has no
+			 * content-based minimum: stretched, it is its area's
+			 * height even if its content is taller (a dialog's middle
+			 * row, minmax(0, 1fr): its content scrolls) */
+			if (h >= 0 && h < b->height &&
+			    css_computed_overflow_y(b->style) !=
+					CSS_OVERFLOW_VISIBLE)
+				b->height = h;
 			if (h > b->height) {
 				b->height = h;
 				if (b->type == BOX_FLEX) {

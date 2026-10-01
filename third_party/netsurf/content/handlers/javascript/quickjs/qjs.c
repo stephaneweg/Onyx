@@ -60,6 +60,7 @@
 #include "desktop/browser_history.h"	/* browser_window_history_back / _forward */
 #include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
+#include "desktop/scrollbar.h"	/* Onyx: an element's scroll position (n_box_scroll) */
 #include "html/private.h"
 #include "html/html.h"		/* Onyx: struct html_stylesheet (n_sheet_text) */
 #include "netsurf/content.h"	/* Onyx: content_get_source_data, hlcache_handle_get_url */
@@ -68,11 +69,14 @@
 #include "html/form_internal.h"
 #include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
 #include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
+#include "html/onyx_restyle.h"	/* Onyx: the kept selections (a state set) */
 #include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
 #include "html/onyx_shadow.h"	/* Onyx: shadow DOM (adopted sheets) */
+#include "html/onyx_anim.h"	/* Onyx: animations, requestAnimationFrame */
 
 #include "javascript/js.h"
 #include "html/onyx_webfont.h"
+#include "html/onyx_fx.h"		/* Onyx: transformed rectangles */
 #include "javascript/content.h"
 
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
@@ -95,7 +99,16 @@ struct jsheap {
 	uint64_t start;			/* ms: when the running script started */
 	int threads;
 	bool pending_destroy;
+	/* Onyx: the time limit spares a script still changing the page (qjs_interrupt) */
+	uint64_t busy;			/* ms: the running script's last DOM change seen */
+	uint64_t writes;		/* qjs_dom_writes then */
+	bool told;			/* (logged once a script) */
 };
+
+/* Onyx: the scripts' changes of the DOM, counted (QJS_DIRTY, where a change marks the page
+ * to lay out again): the time limit's sign that a long script is making progress */
+static uint64_t qjs_dom_writes;
+#define QJS_DIRTY(t) ((t)->dirty = true, qjs_dom_writes++)
 
 struct qjs_wrap {
 	dom_node *node;
@@ -214,13 +227,53 @@ static void qjs_load_later(void *p);
 static void qjs_ce_flush(jsthread *t);
 static void qjs_ce_later(void *p);
 
+/* Onyx (the PC bench): NS_JSPROF=<file> -- the scripts sampled: at most once a millisecond,
+ * from the interrupt handler, the running script's stack written as a line (its frames
+ * separated by '|'); tools/tests/netsurf/jsprof.py sums them up */
+static FILE *qjs_prof_f;
+static JSContext *qjs_prof_ctx;
+static uint64_t qjs_prof_last;
+
+static void qjs_prof_sample(void)
+{
+	JSValue e, st;
+	const char *s, *p;
+	uint64_t now = qjs_now_ms();
+
+	if (now == qjs_prof_last || qjs_prof_ctx == NULL)
+		return;
+	qjs_prof_last = now;
+	e = JS_NewError(qjs_prof_ctx);
+	if (JS_IsException(e))
+		return;
+	st = JS_GetPropertyStr(qjs_prof_ctx, e, "stack");
+	s = JS_ToCString(qjs_prof_ctx, st);
+	if (s != NULL) {
+		for (p = s; *p != '\0'; p++)
+			fputc(*p == '\n' ? '|' : *p, qjs_prof_f);
+		fputc('\n', qjs_prof_f);
+		JS_FreeCString(qjs_prof_ctx, s);
+	}
+	JS_FreeValue(qjs_prof_ctx, st);
+	JS_FreeValue(qjs_prof_ctx, e);
+}
+
+/* Onyx: a script (a call, a job) starts: its time counted from now */
+static void qjs_clock_start(jsheap *heap)
+{
+	heap->start = heap->busy = qjs_now_ms();
+	heap->writes = qjs_dom_writes;
+	heap->told = false;
+}
+
 static void qjs_enter(jsthread *t)
 {
 	/* Onyx: the custom elements the parser inserted since, upgraded before any script */
 	if (t->in_use == 0 && t->ce_npending > 0)
 		qjs_ce_flush(t);
 	if (t->in_use++ == 0 && t->heap != NULL)
-		t->heap->start = qjs_now_ms();
+		qjs_clock_start(t->heap);
+	qjs_prof_ctx = t->ctx;
 }
 
 static void qjs_jobs_later(void *p);
@@ -241,23 +294,30 @@ static void qjs_leave(jsthread *t)
 		 * Promise polyfill) held the loop for ever -- each job "interrupted" at once once
 		 * the script's time was out, the next one queued again -- and took memory till
 		 * none was left. Each turn gives the jobs their own time. */
+		uint64_t tj = onyx_perf_now();
+
 		while ((r = JS_ExecutePendingJob(rt, &jctx)) != 0) {
 			if (r < 0)
 				qjs_report(jctx, "job");
+			if (onyx_perf_on()) {	/* (NS_PERF: the long jobs) */
+				if (onyx_perf_now() - tj > 50000)
+					onyx_perf_log("js:job", tj);
+				tj = onyx_perf_now();
+			}
 			if ((++n & 63) == 0 && qjs_now_ms() - t0 > 200 &&
 					JS_IsJobPending(rt)) {
 				guit->misc->schedule(10, qjs_jobs_later, t);
 				break;
 			}
 			if (t->heap != NULL)
-				t->heap->start = qjs_now_ms();
+				qjs_clock_start(t->heap);
 		}
 	}
 	t->forced_layouts = 0;
 	if (t->dirty) {
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
-			html_script_dom_changed(t->htmlc);
+			html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
 	}
 	if (t->pending_destroy)
 		qjs_thread_free(t);
@@ -301,21 +361,51 @@ static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int
  * after it) -- the system saw the browser frozen ("not pumping") in Google's 5 s script */
 extern void onyx_chrome_pump_deferred(void) __attribute__((weak));
 #define QJS_PUMP_MS 100
+/* Onyx: the time limit (script_timeout) stops a script that is stuck, not one that works:
+ * past the limit a script still changing the page -- a DOM change less than a quarter of the
+ * limit ago -- runs on, up to QJS_TIMEOUT_MAX times the limit. A loop that never ends
+ * changes nothing (or never stops changing: the hard limit). Browsers do not stop a script
+ * at all; NetSurf has no "page unresponsive" dialog to ask. browserscore.dev's first render
+ * (Vue mounting 1500 features) is one job of ~7 s on the PC, 40-60 s on the Pi. */
+#define QJS_TIMEOUT_MAX 4
 
 static int qjs_interrupt(JSRuntime *rt, void *opaque)
 {
 	jsheap *heap = opaque;
 	static uint64_t last_pump;
-	uint64_t now = qjs_now_ms();
+	uint64_t now, run, limit;
 
 	(void) rt;
+	if (qjs_prof_f != NULL)
+		qjs_prof_sample();
+	now = qjs_now_ms();
 	if (onyx_chrome_pump_deferred != NULL && now - heap->start > QJS_PUMP_MS &&
 	    now - last_pump > QJS_PUMP_MS) {
 		last_pump = now;
 		onyx_chrome_pump_deferred();
 	}
-	return heap->timeout > 0 &&
-		now - heap->start > (uint64_t) heap->timeout * 1000;
+	if (heap->timeout <= 0)
+		return 0;
+	if (heap->writes != qjs_dom_writes) {
+		heap->writes = qjs_dom_writes;
+		heap->busy = now;
+	}
+	limit = (uint64_t) heap->timeout * 1000;
+	run = now - heap->start;
+	if (run <= limit)
+		return 0;
+	if (run <= limit * QJS_TIMEOUT_MAX && now - heap->busy <= limit / 4) {
+		if (!heap->told) {
+			heap->told = true;
+			NSLOG(netsurf, INFO, "JS: a script past %d s still changing the page: "
+					"let run", heap->timeout);
+			if (qjs_debug)
+				fprintf(stderr, "JS: a script past %d s still changing the page: "
+						"let run\n", heap->timeout);
+		}
+		return 0;
+	}
+	return 1;
 }
 
 
@@ -633,7 +723,7 @@ static JSValue n_set_value(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	if (s != NULL) {
 		dom_node_set_node_value(n, s);
 		dom_string_unref(s);
-		QJS_T(ctx)->dirty = true;
+		QJS_DIRTY(QJS_T(ctx));
 	}
 	return JS_UNDEFINED;
 }
@@ -656,7 +746,7 @@ static JSValue n_set_text(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	if (s != NULL) {
 		dom_node_set_text_content(n, s);
 		dom_string_unref(s);
-		QJS_T(ctx)->dirty = true;
+		QJS_DIRTY(QJS_T(ctx));
 	}
 	return JS_UNDEFINED;
 }
@@ -727,7 +817,7 @@ static JSValue n_set_attr(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 			dom_string_unref(v);
 			return r;
 		}
-		QJS_T(ctx)->dirty = true;
+		QJS_DIRTY(QJS_T(ctx));
 	}
 	if (name != NULL)
 		dom_string_unref(name);
@@ -747,7 +837,7 @@ static JSValue n_remove_attr(JSContext *ctx, JSValueConst this_val, int argc, JS
 		dom_element_has_attribute((dom_element *) n, name, &had);
 		if (had) {
 			dom_element_remove_attribute((dom_element *) n, name);
-			QJS_T(ctx)->dirty = true;
+			QJS_DIRTY(QJS_T(ctx));
 		}
 		dom_string_unref(name);
 	}
@@ -885,7 +975,7 @@ static JSValue n_insert(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		return JS_ThrowTypeError(ctx, "cannot insert that node here (%d)", e);
 	if (res != NULL)
 		dom_node_unref(res);
-	QJS_T(ctx)->dirty = true;
+	QJS_DIRTY(QJS_T(ctx));
 	return JS_DupValue(ctx, argv[1]);
 }
 
@@ -899,7 +989,7 @@ static JSValue n_remove(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		return JS_ThrowTypeError(ctx, "not a child");
 	if (res != NULL)
 		dom_node_unref(res);
-	QJS_T(ctx)->dirty = true;
+	QJS_DIRTY(QJS_T(ctx));
 	return JS_DupValue(ctx, argv[1]);
 }
 
@@ -1469,7 +1559,7 @@ static JSValue n_set_html(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	}
 	dom_node_unref(fragment);
 	dom_node_unref(target);
-	t->dirty = true;
+	QJS_DIRTY(t);
 	return JS_UNDEFINED;
 }
 
@@ -1499,23 +1589,106 @@ static dom_node *qjs_following(dom_node *n, dom_node *root)
 	return NULL;
 }
 
-/** descendants(n): its descendant elements, in document order */
+/** Onyx: nextElement(n, root): the element after n in document order under root, or null --
+ * querySelector walks with it and stops at the first match (descendants() wrapped every
+ * element of the tree first) */
+static JSValue n_next_element(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_node *d;
+	JSValue v;
+	QJS_NODE_ARG(n, 0);
+	QJS_NODE_ARG(root, 1);
+
+	dom_node_ref(n);
+	for (d = qjs_following(n, root); d != NULL; d = qjs_following(d, root)) {
+		dom_node_type type = 0;
+
+		if (dom_node_get_node_type(d, &type) == DOM_NO_ERR &&
+		    type == DOM_ELEMENT_NODE) {
+			v = qjs_wrap(t, d);
+			dom_node_unref(d);
+			return v;
+		}
+	}
+	return JS_NULL;
+}
+
+/* Onyx: whether the class list (an attribute's text) holds every one of the names (a list
+ * separated by ASCII white space) -- getElementsByClassName */
+static bool qjs_has_classes(const char *list, size_t llen, const char *names, size_t nlen)
+{
+	size_t i = 0;
+
+#define QJS_WS(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\f' || (c) == '\r')
+	while (i < nlen) {
+		size_t s, w, j = 0;
+		bool found = false;
+
+		while (i < nlen && QJS_WS(names[i]))
+			i++;
+		if (i == nlen)
+			break;
+		s = i;
+		while (i < nlen && !QJS_WS(names[i]))
+			i++;
+		w = i - s;
+		while (j < llen && !found) {
+			size_t ts;
+			while (j < llen && QJS_WS(list[j]))
+				j++;
+			ts = j;
+			while (j < llen && !QJS_WS(list[j]))
+				j++;
+			found = j - ts == w && w > 0 && memcmp(list + ts, names + s, w) == 0;
+		}
+		if (!found)
+			return false;
+	}
+#undef QJS_WS
+	return true;
+}
+
+/** descendants(n[, classes]): its descendant elements, in document order -- Onyx: with
+ * classes, those whose class attribute holds them all (getElementsByClassName: the filter in
+ * JS wrapped every element of the document and split its classes -- carbon ads asks it of
+ * browserscore.dev's 10000 elements) */
 static JSValue n_descendants(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
 	JSValue arr = JS_NewArray(ctx);
 	dom_node *d;
 	uint32_t i = 0;
+	const char *names = NULL;
+	size_t nlen = 0;
 	QJS_NODE_ARG(root, 0);
 
+	if (argc > 1 && JS_IsString(argv[1]))
+		names = JS_ToCStringLen(ctx, &nlen, argv[1]);
 	dom_node_ref(root);
 	for (d = qjs_following(root, root); d != NULL; d = qjs_following(d, root)) {
 		dom_node_type type = 0;
 
-		if (dom_node_get_node_type(d, &type) == DOM_NO_ERR &&
-		    type == DOM_ELEMENT_NODE)
-			JS_SetPropertyUint32(ctx, arr, i++, qjs_wrap(t, d));
+		if (dom_node_get_node_type(d, &type) != DOM_NO_ERR ||
+		    type != DOM_ELEMENT_NODE)
+			continue;
+		if (names != NULL) {
+			dom_string *cls = NULL;
+			bool ok;
+
+			if (dom_element_get_attribute((dom_element *) d, corestring_dom_class,
+					&cls) != DOM_NO_ERR || cls == NULL)
+				continue;
+			ok = qjs_has_classes(dom_string_data(cls), dom_string_byte_length(cls),
+					names, nlen);
+			dom_string_unref(cls);
+			if (!ok)
+				continue;
+		}
+		JS_SetPropertyUint32(ctx, arr, i++, qjs_wrap(t, d));
 	}
+	if (names != NULL)
+		JS_FreeCString(ctx, names);
 	return arr;
 }
 
@@ -1541,7 +1714,8 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
 	}
 }
 
-/** rect(n): [x, y, width, height] of its border box in the viewport (0s: no box) */
+/** rect(n[, painted]): [x, y, width, height] of its border box in the viewport (0s: no box)
+ * -- Onyx: painted, where transforms put it (getBoundingClientRect) */
 /* Onyx: a layout asked for (a rectangle, a style): the changes of this script turn laid out
  * first (they used to wait for the turn's end: offsetHeight after details.open = true) */
 static void qjs_layout_now(jsthread *t)
@@ -1549,11 +1723,113 @@ static void qjs_layout_now(jsthread *t)
 	/* (at most 16 a turn: a script alternating writes and reads would rebuild the whole
 	 * layout at each read -- past that, the reads see the layout before the turn) */
 	if (t->dirty && !t->closed && t->forced_layouts < 16) {
+		uint64_t t0 = onyx_perf_now();
+
 		t->forced_layouts++;
+		t->dirty = false;
+		html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
+		html_script_layout_now(t->htmlc);
+		/* Onyx (NS_PERF): a long layout a script's read forced, and where (the script's
+		 * stack: its first frames) -- a whole rebox of a big page each time */
+		if (onyx_perf_on() && onyx_perf_now() - t0 > 50000) {
+			JSValue e = JS_NewError(t->ctx);
+			JSValue st = JS_GetPropertyStr(t->ctx, e, "stack");
+			const char *s = JS_ToCString(t->ctx, st);
+			char what[200];
+			size_t i;
+
+			snprintf(what, sizeof what, "js:forced-layout %s", s != NULL ? s : "?");
+			for (i = 0; what[i] != '\0'; i++)
+				if (what[i] == '\n')
+					what[i] = '|';
+			onyx_perf_log(what, t0);
+			if (s != NULL)
+				JS_FreeCString(t->ctx, s);
+			JS_FreeValue(t->ctx, st);
+			JS_FreeValue(t->ctx, e);
+		}
+	}
+	html_script_layout_now(t->htmlc);
+	onyx_anim_flush(t->htmlc);	/* (Onyx: an animation a script changed) */
+}
+
+/* Onyx: an element's scroll position and extent, its scroller's (overflow: auto / scroll):
+ * [scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight] */
+static JSValue n_box_scroll(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	JSValue arr = JS_NewArray(ctx);
+	int v[6] = { 0, 0, 0, 0, 0, 0 }, i;
+	struct box *box;
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc != NULL)
+		qjs_layout_now(t);
+	box = qjs_box(n);
+	if (box != NULL && t->htmlc != NULL && t->htmlc->layout != NULL) {
+		int w = box->padding[LEFT] + box->width + box->padding[RIGHT];
+		int h = box->padding[TOP] + box->height + box->padding[BOTTOM];
+
+		v[0] = scrollbar_get_offset(box->scroll_x);
+		v[1] = scrollbar_get_offset(box->scroll_y);
+		v[2] = box->descendant_x1 > w ? box->descendant_x1 : w;
+		v[3] = box->descendant_y1 > h ? box->descendant_y1 : h;
+		if (box->style != NULL &&
+		    css_computed_overflow_x(box->style) == CSS_OVERFLOW_VISIBLE)
+			v[2] = w;	/* (not a scroller: its own size) */
+		if (box->style != NULL &&
+		    css_computed_overflow_y(box->style) == CSS_OVERFLOW_VISIBLE)
+			v[3] = h;
+		v[4] = w - (box->scroll_y != NULL ? SCROLLBAR_WIDTH : 0);
+		v[5] = h - (box->scroll_x != NULL ? SCROLLBAR_WIDTH : 0);
+	}
+	for (i = 0; i < 6; i++)
+		JS_SetPropertyUint32(ctx, arr, i, JS_NewInt32(ctx, v[i]));
+	return arr;
+}
+
+/* Onyx: an element's scroller scrolled to (x, y) (its scroll event follows) */
+static JSValue n_box_scroll_to(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct box *box;
+	int32_t x = 0, y = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (argc > 1)
+		JS_ToInt32(ctx, &x, argv[1]);
+	if (argc > 2)
+		JS_ToInt32(ctx, &y, argv[2]);
+	if (t->htmlc == NULL)
+		return JS_UNDEFINED;
+	qjs_layout_now(t);
+	box = qjs_box(n);
+	if (box == NULL || t->htmlc->layout == NULL)
+		return JS_UNDEFINED;
+	if (box->scroll_x != NULL && x != scrollbar_get_offset(box->scroll_x))
+		scrollbar_set(box->scroll_x, x < 0 ? 0 : x, false);
+	if (box->scroll_y != NULL && y != scrollbar_get_offset(box->scroll_y))
+		scrollbar_set(box->scroll_y, y < 0 ? 0 : y, false);
+	return JS_UNDEFINED;
+}
+
+/* Onyx: element.focus() on a text field or a textarea: the browser's caret in it, at the
+ * end of its text (what the user types goes there, as after a click) */
+static JSValue n_focus_control(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc == NULL || t->closed)
+		return JS_FALSE;
+	/* (the DOM's changes of this turn: a rebox due, the caret put after it) */
+	if (t->dirty) {
 		t->dirty = false;
 		html_script_dom_changed(t->htmlc);
 	}
-	html_script_layout_now(t->htmlc);
+	return JS_NewBool(ctx, html_script_focus_control(t->htmlc, n));
 }
 
 static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -1576,16 +1852,72 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 		h = box->padding[TOP] + box->height + box->padding[BOTTOM] +
 			box->border[TOP].width + box->border[BOTTOM].width;
 		if (box->type == BOX_INLINE && box->inline_end != NULL) {
-			/* an inline: from its start to its end on the line */
-			int ex, ey;
+			/* an inline: from its start to its end on the line --
+			 * Onyx: on several lines, the union of its lines (its
+			 * content's extent across, its first line's top to its
+			 * last's bottom), as Chrome's getBoundingClientRect */
+			int ex, ey, x0 = INT_MAX, x1 = INT_MIN, y0 = INT_MAX, y1;
+			struct box *d, *e = box->inline_end;
 
-			box_coords(box->inline_end, &ex, &ey);
-			if (ey == y + box->border[TOP].width && ex > x)
+			box_coords(e, &ex, &ey);
+			ex += e->padding[RIGHT] + e->border[RIGHT].width;
+			if (ey == y + box->border[TOP].width && ex > x) {
 				w = ex - x;
+			} else if (ey > y + box->border[TOP].width &&
+					e->parent == box->parent) {
+				/* (its content's boxes: an empty start left at
+				 * the end of the line before is not a line of it) */
+				for (d = box->next; d != NULL && d != e; d = d->next) {
+					int dx, dy;
+					if ((d->type != BOX_TEXT || d->length == 0) &&
+					    d->type != BOX_INLINE_BLOCK &&
+					    d->type != BOX_INLINE_FLEX)
+						continue;
+					box_coords(d, &dx, &dy);
+					if (dx < x0)
+						x0 = dx;
+					if (dy < y0)
+						y0 = dy;
+					if (dx + d->width + d->padding[LEFT] +
+						d->padding[RIGHT] > x1)
+						x1 = dx + d->width +
+							d->padding[LEFT] +
+							d->padding[RIGHT];
+				}
+				if (x0 != INT_MAX) {
+					if (ex > x1)
+						x1 = ex;
+					if (y0 > y && y0 - box->padding[TOP] -
+						box->border[TOP].width > y)
+						y = y0 - box->padding[TOP] -
+							box->border[TOP].width;
+					y1 = ey + e->height + e->padding[BOTTOM] +
+						e->border[BOTTOM].width;
+					x = x0 - box->padding[LEFT] -
+						box->border[LEFT].width;
+					w = x1 - x;
+					h = y1 - y;
+				}
+			}
 		}
 		qjs_scroll(t, &sx, &sy);
 		x -= sx;
 		y -= sy;
+		/* Onyx: a box transformed (or in a transformed box): the bounding box of
+		 * where it is painted (html/onyx_fx.c), in fractions of a px as Chrome's */
+		{
+			float r[4] = { x + sx, y + sy, x + sx + w, y + sy + h };
+			if (argc > 1 && JS_ToBool(ctx, argv[1]) &&
+			    onyx_fx_page_rect(t->htmlc, box, true, false, r)) {
+				JS_SetPropertyUint32(ctx, arr, 0, JS_NewFloat64(ctx, r[0] - sx));
+				JS_SetPropertyUint32(ctx, arr, 1, JS_NewFloat64(ctx, r[1] - sy));
+				JS_SetPropertyUint32(ctx, arr, 2,
+						JS_NewFloat64(ctx, r[2] - r[0]));
+				JS_SetPropertyUint32(ctx, arr, 3,
+						JS_NewFloat64(ctx, r[3] - r[1]));
+				return arr;
+			}
+		}
 	}
 	JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, x));
 	JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, y));
@@ -1786,6 +2118,7 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 		c->unit_len_ctx.font_size_default = fdef;
 		c->unit_len_ctx.font_size_minimum = fmin;
 	}
+	c->onyx_anim_probe++;	/* (Onyx: not the elements' styles: no animation) */
 	if (c->select_ctx != NULL) {
 		for (i = depth - 1; i >= 0; i--) {
 			css_select_results *r = box_style_select(c, parent,
@@ -1802,6 +2135,7 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 				root_style = parent;
 		}
 	}
+	c->onyx_anim_probe--;
 	if (dpi != 0) {
 		c->unit_len_ctx.device_dpi = 0;
 		c->unit_len_ctx.font_size_default = 0;
@@ -1816,12 +2150,225 @@ static const css_computed_style *qjs_unboxed_style(jsthread *t, dom_node *n,
 	return parent;
 }
 
+/* Onyx: a length of a computed style as CSS text ("auto" for its other types) */
+static void qjs_len_text(uint8_t type, uint8_t set_type, css_fixed len, css_unit unit,
+		char *buf, size_t size)
+{
+	if (type != set_type) {
+		snprintf(buf, size, "auto");
+		return;
+	}
+	snprintf(buf, size, "%g%s", FIXTOFLT(len), unit == CSS_UNIT_PCT ? "%" :
+			unit == CSS_UNIT_EM ? "em" : "px");
+}
+
+static void qjs_color_text(css_color c, char *buf, size_t size)
+{
+	if ((c >> 24) == 0xff)
+		snprintf(buf, size, "rgb(%u, %u, %u)", (c >> 16) & 0xff, (c >> 8) & 0xff,
+				c & 0xff);
+	else
+		snprintf(buf, size, "rgba(%u, %u, %u, %g)", (c >> 16) & 0xff, (c >> 8) & 0xff,
+				c & 0xff, ((c >> 24) & 0xff) / 255.0);
+}
+
+/* Onyx: a list text of the transition / animation properties as CSS writes it */
+static void qjs_list_text(uint8_t type, lwc_string *text, const char *dflt, char *buf,
+		size_t size)
+{
+	const char *p;
+	size_t n = 0;
+
+	if (type != CSS_ONYX_TEXT_SET || text == NULL) {
+		snprintf(buf, size, "%s", dflt);
+		return;
+	}
+	for (p = lwc_string_data(text); *p != '\0' && n + 3 < size; p++) {
+		buf[n++] = *p;
+		if (*p == ',')
+			buf[n++] = ' ';
+	}
+	buf[n] = '\0';
+}
+
+/* Onyx: getComputedStyle's other properties (html/onyx_anim.c animates them) */
+static void qjs_cstyle_more(jsthread *t, const css_computed_style *style, struct box *box,
+		const char *prop, char *buf, size_t size)
+{
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+	css_color c = 0;
+	lwc_string *text = NULL;
+	uint8_t ty;
+
+	if (strcmp(prop, "transform") == 0) {
+		float w = 0, h = 0;
+		if (box != NULL) {
+			w = box->padding[LEFT] + box->width + box->padding[RIGHT] +
+				box->border[LEFT].width + box->border[RIGHT].width;
+			h = box->padding[TOP] + box->height + box->padding[BOTTOM] +
+				box->border[TOP].width + box->border[BOTTOM].width;
+		}
+		if (t->htmlc != NULL)
+			onyx_anim_transform_text(style, t->htmlc, w, h, buf, (int) size);
+	} else if (strcmp(prop, "translate") == 0 || strcmp(prop, "scale") == 0 ||
+		   strcmp(prop, "rotate") == 0) {
+		ty = prop[0] == 't' ? css_computed_translate(style, &text) :
+			prop[0] == 's' ? css_computed_scale(style, &text) :
+			css_computed_rotate(style, &text);
+		snprintf(buf, size, "%s", ty == CSS_ONYX_TEXT_SET && text != NULL ?
+				lwc_string_data(text) : "none");
+	} else if (strcmp(prop, "filter") == 0 || strcmp(prop, "backdrop-filter") == 0) {
+		/* (their canonical texts: "blur(4px) brightness(1.2)") */
+		ty = prop[0] == 'f' ? css_computed_filter(style, &text) :
+			css_computed_backdrop_filter(style, &text);
+		snprintf(buf, size, "%s", ty == CSS_ONYX_TEXT_SET && text != NULL ?
+				lwc_string_data(text) : "none");
+	} else if (strcmp(prop, "left") == 0) {
+		ty = css_computed_left(style, &len, &unit);
+		qjs_len_text(ty, CSS_LEFT_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "top") == 0) {
+		ty = css_computed_top(style, &len, &unit);
+		qjs_len_text(ty, CSS_TOP_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "right") == 0) {
+		ty = css_computed_right(style, &len, &unit);
+		qjs_len_text(ty, CSS_RIGHT_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "bottom") == 0) {
+		ty = css_computed_bottom(style, &len, &unit);
+		qjs_len_text(ty, CSS_BOTTOM_SET, len, unit, buf, size);
+	} else if (strncmp(prop, "margin-", 7) == 0) {
+		const char *side = prop + 7;
+		ty = side[0] == 't' ? css_computed_margin_top(style, &len, &unit) :
+			side[0] == 'r' ? css_computed_margin_right(style, &len, &unit) :
+			side[0] == 'b' ? css_computed_margin_bottom(style, &len, &unit) :
+			css_computed_margin_left(style, &len, &unit);
+		qjs_len_text(ty, CSS_MARGIN_SET, len, unit, buf, size);
+	} else if (strncmp(prop, "padding-", 8) == 0) {
+		const char *side = prop + 8;
+		ty = side[0] == 't' ? css_computed_padding_top(style, &len, &unit) :
+			side[0] == 'r' ? css_computed_padding_right(style, &len, &unit) :
+			side[0] == 'b' ? css_computed_padding_bottom(style, &len, &unit) :
+			css_computed_padding_left(style, &len, &unit);
+		qjs_len_text(ty, CSS_PADDING_SET, len, unit, buf, size);
+	} else if (strncmp(prop, "border-", 7) == 0 && strstr(prop, "-color") != NULL) {
+		const char *side = prop + 7;
+		if (side[0] == 'r') css_computed_border_right_color(style, &c);
+		else if (side[0] == 'b') css_computed_border_bottom_color(style, &c);
+		else if (side[0] == 'l') css_computed_border_left_color(style, &c);
+		else css_computed_border_top_color(style, &c);
+		qjs_color_text(c, buf, size);
+	} else if (strncmp(prop, "border-", 7) == 0 && strstr(prop, "-width") != NULL) {
+		const char *side = prop + 7;
+		if (side[0] == 'r') css_computed_border_right_width(style, &len, &unit);
+		else if (side[0] == 'b') css_computed_border_bottom_width(style, &len, &unit);
+		else if (side[0] == 'l') css_computed_border_left_width(style, &len, &unit);
+		else css_computed_border_top_width(style, &len, &unit);
+		snprintf(buf, size, "%gpx", FIXTOFLT(len));
+	} else if (strcmp(prop, "outline-color") == 0) {
+		css_computed_outline_color(style, &c);
+		qjs_color_text(c, buf, size);
+	} else if (strcmp(prop, "letter-spacing") == 0) {
+		ty = css_computed_letter_spacing(style, &len, &unit);
+		if (ty == CSS_LETTER_SPACING_SET)
+			qjs_len_text(ty, CSS_LETTER_SPACING_SET, len, unit, buf, size);
+		else
+			snprintf(buf, size, "normal");
+	} else if (strcmp(prop, "z-index") == 0) {
+		int32_t z = 0;
+		if (css_computed_z_index(style, &z) == CSS_Z_INDEX_SET)
+			snprintf(buf, size, "%d", (int) z);
+		else
+			snprintf(buf, size, "auto");
+	} else if (strcmp(prop, "box-shadow") == 0) {
+		snprintf(buf, size, "none");
+		{
+			css_fixed x = 0, y = 0, b = 0, sp = 0;
+			css_unit ux, uy, ub, us;
+			ty = css_computed_box_shadow(style, &x, &ux, &y, &uy, &b, &ub, &sp, &us, &c);
+			if (ty != CSS_BOX_SHADOW_NONE && ty != 0) {
+				char col[48];
+				qjs_color_text(c, col, sizeof(col));
+				snprintf(buf, size, "%s %gpx %gpx %gpx %gpx%s", col, FIXTOFLT(x),
+						FIXTOFLT(y), FIXTOFLT(b), FIXTOFLT(sp),
+						ty == CSS_BOX_SHADOW_SET_INSET ||
+						ty == CSS_BOX_SHADOW_SET_INSET_CURRENT_COLOR ?
+						" inset" : "");
+			}
+		}
+	} else if (strcmp(prop, "transition-property") == 0) {
+		ty = css_computed_transition_property(style, &text);
+		qjs_list_text(ty, text, "all", buf, size);
+	} else if (strcmp(prop, "transition-duration") == 0) {
+		ty = css_computed_transition_duration(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "transition-timing-function") == 0) {
+		ty = css_computed_transition_timing_function(style, &text);
+		qjs_list_text(ty, text, "ease",
+				buf, size);
+	} else if (strcmp(prop, "transition-delay") == 0) {
+		ty = css_computed_transition_delay(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "animation-name") == 0) {
+		ty = css_computed_animation_name(style, &text);
+		qjs_list_text(ty, text, "none", buf, size);
+	} else if (strcmp(prop, "animation-duration") == 0) {
+		ty = css_computed_animation_duration(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "animation-timing-function") == 0) {
+		ty = css_computed_animation_timing_function(style, &text);
+		qjs_list_text(ty, text, "ease",
+				buf, size);
+	} else if (strcmp(prop, "animation-delay") == 0) {
+		ty = css_computed_animation_delay(style, &text);
+		qjs_list_text(ty, text, "0s", buf, size);
+	} else if (strcmp(prop, "animation-iteration-count") == 0) {
+		ty = css_computed_animation_iteration_count(style, &text);
+		qjs_list_text(ty, text, "1",
+				buf, size);
+	} else if (strcmp(prop, "animation-direction") == 0) {
+		ty = css_computed_animation_direction(style, &text);
+		qjs_list_text(ty, text, "normal",
+				buf, size);
+	} else if (strcmp(prop, "animation-fill-mode") == 0) {
+		ty = css_computed_animation_fill_mode(style, &text);
+		qjs_list_text(ty, text, "none",
+				buf, size);
+	} else if (strcmp(prop, "animation-play-state") == 0) {
+		ty = css_computed_animation_play_state(style, &text);
+		qjs_list_text(ty, text, "running",
+				buf, size);
+	}
+}
+
+/* Onyx: whether cstyle answers a property (n_cstyle, qjs_cstyle_more) -- for the others
+ * (a custom property, one not computed here) the page is not laid out first: dom.js answers
+ * from the style attribute. browserscore.dev reads '--color' after each render: a whole
+ * rebox of its 10000 elements for nothing (0.4 s on the PC, seconds on the Pi). */
+static bool qjs_cstyle_known(const char *p)
+{
+	static const char *const names[] = { "display", "visibility", "position", "opacity",
+		"fill", "stroke", "stroke-width", "width", "height", "color", "background-color",
+		"font-size", "transform", "translate", "scale", "rotate", "filter",
+		"backdrop-filter", "left", "top", "right", "bottom", "outline-color",
+		"letter-spacing", "z-index", "box-shadow" };
+	size_t i;
+
+	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+		if (strcmp(p, names[i]) == 0)
+			return true;
+	if (strncmp(p, "margin-", 7) == 0 || strncmp(p, "padding-", 8) == 0 ||
+	    strncmp(p, "transition-", 11) == 0 || strncmp(p, "animation-", 10) == 0)
+		return true;
+	return strncmp(p, "border-", 7) == 0 &&
+		(strstr(p, "-color") != NULL || strstr(p, "-width") != NULL);
+}
+
 static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	jsthread *t = QJS_T(ctx);
 	const char *prop;
 	struct box *box;
-	char buf[64];
+	char buf[512];	/* (Onyx: the transition / animation lists) */
 	JSValue v = JS_NewString(ctx, "");
 	/* Onyx: without a box, the style selected for it (qjs_unboxed_style) */
 	css_select_results *ures[QJS_UNBOXED_DEPTH];
@@ -1829,12 +2376,16 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	const css_computed_style *style = NULL;
 	QJS_NODE_ARG(n, 0);
 
-	if (t->htmlc != NULL)
-		qjs_layout_now(t);
-	box = qjs_box(n);
 	prop = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
 	if (prop == NULL)
 		return v;
+	if (!qjs_cstyle_known(prop)) {
+		JS_FreeCString(ctx, prop);
+		return v;
+	}
+	if (t->htmlc != NULL)
+		qjs_layout_now(t);
+	box = qjs_box(n);
 	if (box != NULL && box->style != NULL)
 		style = box->style;
 	else
@@ -1877,9 +2428,9 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		/* Onyx: SVG's paints (libcss computes them) */
 		css_color c = 0, cur = 0;
 		lwc_string *url = NULL;
-		uint8_t pt = prop[0] == 'f' ? css_computed_fill(box->style, &c, &url) :
-				css_computed_stroke(box->style, &c, &url);
-		css_computed_color(box->style, &cur);
+		uint8_t pt = prop[0] == 'f' ? css_computed_fill(style, &c, &url) :
+				css_computed_stroke(style, &c, &url);
+		css_computed_color(style, &cur);
 		if (pt == CSS_PAINT_CURRENT_COLOR)
 			c = cur;
 		if (pt == CSS_PAINT_NONE)
@@ -1893,7 +2444,7 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	} else if (strcmp(prop, "stroke-width") == 0) {
 		css_fixed len = 0;
 		css_unit unit = CSS_UNIT_PX;
-		css_computed_stroke_width(box->style, &len, &unit);
+		css_computed_stroke_width(style, &len, &unit);
 		snprintf(buf, sizeof(buf), "%g%s", FIXTOFLT(len),
 				unit == CSS_UNIT_PCT ? "%" : unit == CSS_UNIT_EM ? "em" : "px");
 	} else if (strcmp(prop, "width") == 0) {
@@ -1925,12 +2476,176 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		css_unit unit = CSS_UNIT_PX;
 		css_computed_font_size(style, &len, &unit);
 		snprintf(buf, sizeof(buf), "%gpx", FIXTOFLT(len));
+	} else {
+		/* Onyx: the properties animations change (their animated values) */
+		qjs_cstyle_more(t, style, box != NULL && box->style == style ? box : NULL,
+				prop, buf, sizeof(buf));
 	}
 	JS_FreeCString(ctx, prop);
 	JS_FreeValue(ctx, v);
 	while (nures > 0)
 		css_select_results_destroy(ures[--nures]);
 	return JS_NewString(ctx, buf);
+}
+
+
+/* ---- natives: animations (Onyx: html/onyx_anim.c) ----------------------------------------- */
+
+/** frame(): an animation frame wanted (requestAnimationFrame) */
+static JSValue n_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+
+	if (t->htmlc != NULL)
+		onyx_anim_request_frame(t->htmlc);
+	return JS_UNDEFINED;
+}
+
+static double qjs_num_prop(JSContext *ctx, JSValueConst o, const char *name, double dflt)
+{
+	JSValue v = JS_GetPropertyStr(ctx, o, name);
+	double d = dflt;
+
+	if (!JS_IsUndefined(v) && !JS_IsNull(v))
+		JS_ToFloat64(ctx, &d, v);
+	JS_FreeValue(ctx, v);
+	return d;
+}
+
+/** animate(el, css[], offsets[], easings[], timing): a script's animation's id (0: none) */
+static JSValue n_animate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct onyx_anim_timing tm;
+	const char **css = NULL, **eas = NULL;
+	double *off = NULL;
+	const char *easing = NULL;
+	int64_t n = 0;
+	int k, id = 0;
+	JSValue v;
+	QJS_NODE_ARG(el, 0);
+
+	if (t->htmlc == NULL || argc < 5)
+		return JS_NewInt32(ctx, 0);
+	qjs_layout_now(t);
+	if (JS_GetLength(ctx, argv[1], &n) < 0 || n < 1 || n > 256)
+		return JS_NewInt32(ctx, 0);
+	css = calloc(n, sizeof(*css));
+	eas = calloc(n, sizeof(*eas));
+	off = calloc(n, sizeof(*off));
+	if (css == NULL || eas == NULL || off == NULL)
+		goto done;
+	for (k = 0; k < n; k++) {
+		v = JS_GetPropertyUint32(ctx, argv[1], k);
+		css[k] = JS_ToCString(ctx, v);
+		JS_FreeValue(ctx, v);
+		v = JS_GetPropertyUint32(ctx, argv[2], k);
+		JS_ToFloat64(ctx, &off[k], v);
+		JS_FreeValue(ctx, v);
+		v = JS_GetPropertyUint32(ctx, argv[3], k);
+		if (JS_IsString(v))
+			eas[k] = JS_ToCString(ctx, v);
+		JS_FreeValue(ctx, v);
+	}
+	memset(&tm, 0, sizeof(tm));
+	tm.delay = qjs_num_prop(ctx, argv[4], "delay", 0);
+	tm.end_delay = qjs_num_prop(ctx, argv[4], "endDelay", 0);
+	tm.duration = qjs_num_prop(ctx, argv[4], "duration", 0);
+	tm.iterations = qjs_num_prop(ctx, argv[4], "iterations", 1);
+	tm.iteration_start = qjs_num_prop(ctx, argv[4], "iterationStart", 0);
+	tm.rate = qjs_num_prop(ctx, argv[4], "playbackRate", 1);
+	tm.direction = (int) qjs_num_prop(ctx, argv[4], "direction", 0);
+	tm.fill = (int) qjs_num_prop(ctx, argv[4], "fill", 0);
+	v = JS_GetPropertyStr(ctx, argv[4], "easing");
+	if (JS_IsString(v))
+		easing = JS_ToCString(ctx, v);
+	JS_FreeValue(ctx, v);
+	tm.easing = easing;
+	id = onyx_anim_create(t->htmlc, el, css, off, eas, (int) n, &tm);
+done:
+	for (k = 0; k < n && css != NULL; k++) {
+		if (css[k] != NULL)
+			JS_FreeCString(ctx, css[k]);
+		if (eas != NULL && eas[k] != NULL)
+			JS_FreeCString(ctx, eas[k]);
+	}
+	if (easing != NULL)
+		JS_FreeCString(ctx, easing);
+	free(css);
+	free(eas);
+	free(off);
+	return JS_NewInt32(ctx, id);
+}
+
+/** animCtl(id, op, arg): play 0, pause 1, cancel 2, finish 3, reverse 4, currentTime 5,
+ * playbackRate 6, startTime 7; false if the animation is gone */
+static JSValue n_anim_ctl(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	int id = 0, op = 0;
+	double arg = 0;
+
+	if (t->htmlc == NULL || argc < 2)
+		return JS_FALSE;
+	JS_ToInt32(ctx, &id, argv[0]);
+	JS_ToInt32(ctx, &op, argv[1]);
+	if (argc > 2)
+		JS_ToFloat64(ctx, &arg, argv[2]);
+	return JS_NewBool(ctx, onyx_anim_control(t->htmlc, id, (enum onyx_anim_op) op, arg));
+}
+
+/** animInfo(id): [currentTime, startTime, rate, endTime, progress, iteration, kind,
+ * playState, name, node, delay, duration, iterations, endDelay, direction, fill] (times in
+ * ms, NaN unresolved, the start time on performance.now()'s clock), null if gone */
+static JSValue n_anim_info(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	struct onyx_anim_info in;
+	int id = 0, k = 0;
+	JSValue a;
+
+	if (t->htmlc == NULL || argc < 1)
+		return JS_NULL;
+	JS_ToInt32(ctx, &id, argv[0]);
+	if (!onyx_anim_info(t->htmlc, id, &in))
+		return JS_NULL;
+	a = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.current_time));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.start_time));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.rate));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.end_time));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.progress));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.iteration));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewInt32(ctx, in.kind));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewString(ctx, in.play_state));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewString(ctx, in.name != NULL ? in.name : ""));
+	JS_SetPropertyUint32(ctx, a, k++, in.node != NULL ? qjs_wrap(t, in.node) : JS_NULL);
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.delay));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.duration));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.iterations));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewFloat64(ctx, in.end_delay));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewInt32(ctx, in.direction));
+	JS_SetPropertyUint32(ctx, a, k++, JS_NewInt32(ctx, in.fill));
+	return a;
+}
+
+/** animList(el | null): the ids of the element's (the document's) animations */
+static JSValue n_anim_list(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_node *el = argc > 0 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0]) ?
+			qjs_node(argv[0]) : NULL;
+	int ids[512], n, k;
+	JSValue a = JS_NewArray(ctx);
+
+	if (t->htmlc == NULL)
+		return a;
+	if (argc > 0 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0]) && el == NULL)
+		return a;
+	n = onyx_anim_list(t->htmlc, el, ids, 512);
+	for (k = 0; k < n; k++)
+		JS_SetPropertyUint32(ctx, a, k, JS_NewInt32(ctx, ids[k]));
+	return a;
 }
 
 
@@ -2137,7 +2852,7 @@ static JSValue n_set_form_checked(JSContext *ctx, JSValueConst this_val, int arg
 					(dom_html_input_element *) n, on);
 			if (ctl->box != NULL && t->htmlc != NULL)
 				html__redraw_a_box(t->htmlc, ctl->box);
-			t->dirty = true;	/* (:checked) */
+			QJS_DIRTY(t);	/* (:checked) */
 		}
 		return JS_UNDEFINED;
 	}
@@ -2151,7 +2866,7 @@ static JSValue n_set_form_checked(JSContext *ctx, JSValueConst this_val, int arg
 		dom_html_option_element_set_selected((dom_html_option_element *) n, on);
 	else
 		dom_html_input_element_set_checked((dom_html_input_element *) n, on);
-	t->dirty = true;
+	QJS_DIRTY(t);
 	return JS_UNDEFINED;
 }
 
@@ -2300,6 +3015,80 @@ static JSValue n_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 	return JS_UNDEFINED;
 }
 
+/* Onyx: logOn(): whether console output goes anywhere (NS_JSDEBUG / jsdebug, or NetSurf's
+ * verbose log) -- console.* formats its arguments only then: Vue's development build passes
+ * whole component trees to console.warn, and making text of them took browserscore.dev
+ * minutes on the Pi, for a log nobody reads */
+/* Onyx: mediaMatch(query, width, height): [matches, number of queries, mask of the queries
+ * libcss could not read] -- libcss parses and evaluates the media query list for the page's
+ * media (the viewport: width x height CSS px until the page is laid out); null without a
+ * page. matchMedia answers from it. */
+static JSValue n_media_match(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	html_content *c = t->htmlc;
+	uint32_t n = 0, invalid = 0;
+	int32_t w = 0, h = 0;
+	bool match = false, ok;
+	css_media media;
+	css_unit_ctx unit;
+	const char *q;
+	size_t len;
+	JSValue a;
+
+	if (c == NULL || argc < 1)
+		return JS_NULL;
+	media = c->media;
+	memcpy(&unit, &c->unit_len_ctx, sizeof unit);	/* (a const member: no assignment) */
+	if (argc > 2 && JS_ToInt32(ctx, &w, argv[1]) == 0 && JS_ToInt32(ctx, &h, argv[2]) == 0 &&
+	    (media.width == 0 || media.height == 0) && w > 0 && h > 0) {
+		media.width = unit.viewport_width = INTTOFIX(w);
+		media.height = unit.viewport_height = INTTOFIX(h);
+	}
+	if (unit.device_dpi == 0)
+		unit.device_dpi = nscss_screen_dpi;
+	if (unit.font_size_default == 0)
+		unit.font_size_default = INTTOFIX(16);
+	q = JS_ToCStringLen(ctx, &len, argv[0]);
+	if (q == NULL)
+		return JS_EXCEPTION;
+	ok = nscss_media_match(c->select_ctx, &media, &unit, q, len, &match, &n, &invalid);
+	JS_FreeCString(ctx, q);
+	if (!ok)
+		return JS_NULL;
+	a = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, a, 0, JS_NewBool(ctx, match));
+	JS_SetPropertyUint32(ctx, a, 1, JS_NewUint32(ctx, n));
+	JS_SetPropertyUint32(ctx, a, 2, JS_NewUint32(ctx, invalid));
+	return a;
+}
+
+/* Onyx: setState(n, state, on): an element's state only the scripts know, for the style
+ * sheets' pseudo-classes (css/select.h NSCSS_STATE_*: 1 :popover-open, 2 :modal); the page
+ * laid out again */
+static JSValue n_set_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	uint32_t state = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (argc < 3 || JS_ToUint32(ctx, &state, argv[1]) != 0)
+		return JS_UNDEFINED;
+	nscss_node_state_set(n, state, JS_ToBool(ctx, argv[2]));
+	if (t->htmlc != NULL) {
+		/* (Onyx: its kept style selection made again, as for an attribute) */
+		onyx_restyle_attr_changed(t->htmlc, n);
+		html_script_mutation(t->htmlc, n, true);
+	}
+	QJS_DIRTY(t);
+	return JS_UNDEFINED;
+}
+
+static JSValue n_log_on(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	return JS_NewBool(ctx, qjs_debug || verbose_log);
+}
+
 static JSValue n_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	return JS_NewFloat64(ctx, (double) qjs_now_ms());
@@ -2307,7 +3096,15 @@ static JSValue n_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
 
 static JSValue n_user_agent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-	return JS_NewString(ctx, user_agent_string());	/* (the HTTP requests' too) */
+	/* (the HTTP requests' too -- Onyx: the page's site's, desktop or mobile) */
+	jsthread *t = QJS_T(ctx);
+	nsurl *url = t != NULL && t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+	lwc_string *h = url != NULL ? nsurl_get_component(url, NSURL_HOST) : NULL;
+	JSValue r = JS_NewString(ctx, user_agent_for_host(h != NULL ? lwc_string_data(h) : NULL));
+
+	if (h != NULL)
+		lwc_string_unref(h);
+	return r;
 }
 
 
@@ -3091,7 +3888,7 @@ static JSValue n_set_attr_ns(JSContext *ctx, JSValueConst this_val, int argc, JS
 			err = dom_element_set_attribute((dom_element *) n, qn, v);
 		else
 			err = dom_element_set_attribute_ns((dom_element *) n, ns, qn, v);
-		QJS_T(ctx)->dirty = true;
+		QJS_DIRTY(QJS_T(ctx));
 	}
 	if (ns != NULL)
 		dom_string_unref(ns);
@@ -3113,7 +3910,7 @@ static JSValue n_remove_attr_ns(JSContext *ctx, JSValueConst this_val, int argc,
 	local = qjs_dstr(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
 	if (local != NULL) {
 		dom_element_remove_attribute_ns((dom_element *) n, ns, local);
-		QJS_T(ctx)->dirty = true;
+		QJS_DIRTY(QJS_T(ctx));
 		dom_string_unref(local);
 	}
 	if (ns != NULL)
@@ -3362,7 +4159,7 @@ static JSValue n_attach_shadow(JSContext *ctx, JSValueConst this_val, int argc,
 		return JS_NULL;
 	v = qjs_wrap(t, (dom_node *) f);
 	dom_node_unref(f);
-	t->dirty = true;	/* (its host now shows its shadow tree) */
+	QJS_DIRTY(t);	/* (its host now shows its shadow tree) */
 	return v;
 }
 
@@ -3431,7 +4228,7 @@ static JSValue n_shadow_sheets(JSContext *ctx, JSValueConst this_val, int argc,
 	onyx_shadow_set_adopted(root, texts, n);
 	for (i = 0; i < n; i++)
 		JS_FreeCString(ctx, texts[i]);
-	t->dirty = true;
+	QJS_DIRTY(t);
 	return JS_UNDEFINED;
 }
 
@@ -3501,16 +4298,25 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
 	JS_CFUNC_DEF("descendants", 1, n_descendants),
+	JS_CFUNC_DEF("nextElement", 2, n_next_element),
 	JS_CFUNC_DEF("formValue", 1, n_form_value),
 	JS_CFUNC_DEF("setFormValue", 2, n_set_form_value),
 	JS_CFUNC_DEF("formChecked", 1, n_form_checked),
 	JS_CFUNC_DEF("setFormChecked", 2, n_set_form_checked),
 	JS_CFUNC_DEF("submit", 2, n_submit),
 	JS_CFUNC_DEF("rect", 1, n_rect),
+	JS_CFUNC_DEF("focusControl", 1, n_focus_control),
+	JS_CFUNC_DEF("boxScroll", 1, n_box_scroll),
+	JS_CFUNC_DEF("boxScrollTo", 3, n_box_scroll_to),
 	JS_CFUNC_DEF("boxed", 1, n_boxed),
 	JS_CFUNC_DEF("scroll", 0, n_scroll),
 	JS_CFUNC_DEF("scrollTo", 2, n_scroll_to),
 	JS_CFUNC_DEF("cstyle", 2, n_cstyle),
+	JS_CFUNC_DEF("frame", 0, n_frame),
+	JS_CFUNC_DEF("animate", 5, n_animate),
+	JS_CFUNC_DEF("animCtl", 3, n_anim_ctl),
+	JS_CFUNC_DEF("animInfo", 1, n_anim_info),
+	JS_CFUNC_DEF("animList", 1, n_anim_list),
 	JS_CFUNC_DEF("url", 0, n_url),
 	JS_CFUNC_DEF("navigate", 1, n_navigate),
 	JS_CFUNC_DEF("reload", 0, n_reload),
@@ -3519,6 +4325,9 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("cookie", 0, n_cookie),
 	JS_CFUNC_DEF("setCookie", 1, n_set_cookie),
 	JS_CFUNC_DEF("log", 1, n_log),
+	JS_CFUNC_DEF("logOn", 0, n_log_on),
+	JS_CFUNC_DEF("setState", 3, n_set_state),
+	JS_CFUNC_DEF("mediaMatch", 3, n_media_match),
 	JS_CFUNC_DEF("now", 0, n_now),
 	JS_CFUNC_DEF("userAgent", 0, n_user_agent),
 	JS_CFUNC_DEF("timer", 3, n_timer),
@@ -3539,6 +4348,8 @@ static const JSCFunctionListEntry qjs_natives[] = {
 void js_initialise(void)
 {
 	qjs_debug = getenv("NS_JSDEBUG") != NULL;
+	if (getenv("NS_JSPROF") != NULL)
+		qjs_prof_f = fopen(getenv("NS_JSPROF"), "w");
 #ifdef ONYX_NS_DATAPATH
 	{	/* Onyx: or the file SD:/apps/netsurf.app/jsdebug (no environment on the Pi) */
 		FILE *f = fopen(ONYX_NS_DATAPATH "jsdebug", "r");
@@ -3580,6 +4391,8 @@ nserror js_newheap(int timeout, jsheap **heap)
 		return NSERROR_NOMEM;
 	}
 	h->timeout = timeout;
+	if (getenv("NS_SCRIPT_TIMEOUT") != NULL)	/* (Onyx: the PC bench's tests) */
+		h->timeout = atoi(getenv("NS_SCRIPT_TIMEOUT"));
 	/* a script's recursion stopped (RangeError) past 4 MB of stack -- the Onyx app's is
 	 * 8 MB (its app.txt: stack = 8M), NetSurf's own frames below the JS */
 	JS_SetMaxStackSize(h->rt, 4 * 1024 * 1024);
@@ -3893,6 +4706,11 @@ bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *targ
 		JS_SetPropertyStr(ctx, o, "shiftKey", JS_NewBool(ctx, init->shift));
 		JS_SetPropertyStr(ctx, o, "ctrlKey", JS_NewBool(ctx, init->ctrl));
 		JS_SetPropertyStr(ctx, o, "altKey", JS_NewBool(ctx, init->alt));
+		/* (Onyx: a wheel's movement) */
+		JS_SetPropertyStr(ctx, o, "deltaX", JS_NewInt32(ctx, init->delta_x));
+		JS_SetPropertyStr(ctx, o, "deltaY", JS_NewInt32(ctx, init->delta_y));
+		JS_SetPropertyStr(ctx, o, "buttons",
+				JS_NewInt32(ctx, init->button == 0 ? 1 : 0));
 	}
 	args[0] = target != NULL ? qjs_wrap(thread, target) : JS_NULL;
 	args[1] = JS_NewString(ctx, type);
@@ -3906,6 +4724,52 @@ bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *targ
 	JS_FreeValue(ctx, args[1]);
 	JS_FreeValue(ctx, args[2]);
 	return ok;
+}
+
+/* exported interface documented in js.h (Onyx) */
+void js_dispatch_anim_event(jsthread *thread, const char *type, struct dom_node *target,
+		const char *name, double elapsed, int id)
+{
+	JSContext *ctx;
+	JSValue args[3], r, o;
+
+	if (thread == NULL || thread->closed || !JS_IsFunction(thread->ctx, thread->dispatch))
+		return;
+	ctx = thread->ctx;
+	o = JS_NewObject(ctx);
+	JS_SetPropertyStr(ctx, o, "type", JS_NewString(ctx, type));
+	JS_SetPropertyStr(ctx, o, "name", JS_NewString(ctx, name != NULL ? name : ""));
+	JS_SetPropertyStr(ctx, o, "elapsed", JS_NewFloat64(ctx, elapsed));
+	JS_SetPropertyStr(ctx, o, "id", JS_NewInt32(ctx, id));
+	args[0] = target != NULL ? qjs_wrap(thread, target) : JS_NULL;
+	args[1] = JS_NewString(ctx, "onyx:anim");
+	args[2] = o;
+	r = qjs_call(thread, thread->dispatch, JS_UNDEFINED, 3, (JSValueConst *) args, type);
+	JS_FreeValue(ctx, r);
+	JS_FreeValue(ctx, args[0]);
+	JS_FreeValue(ctx, args[1]);
+	JS_FreeValue(ctx, args[2]);
+}
+
+/* exported interface documented in js.h (Onyx) */
+void js_animation_frame(jsthread *thread, double now)
+{
+	JSContext *ctx;
+	JSValue args[3], r, o;
+
+	if (thread == NULL || thread->closed || !JS_IsFunction(thread->ctx, thread->dispatch))
+		return;
+	ctx = thread->ctx;
+	o = JS_NewObject(ctx);
+	JS_SetPropertyStr(ctx, o, "time", JS_NewFloat64(ctx, now));
+	args[0] = JS_NULL;
+	args[1] = JS_NewString(ctx, "onyx:frame");
+	args[2] = o;
+	r = qjs_call(thread, thread->dispatch, JS_UNDEFINED, 3, (JSValueConst *) args,
+			"requestAnimationFrame");
+	JS_FreeValue(ctx, r);
+	JS_FreeValue(ctx, args[1]);
+	JS_FreeValue(ctx, args[2]);
 }
 
 /**

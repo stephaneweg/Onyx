@@ -67,7 +67,8 @@ NSOPTION_INTEGER(treeview_font_size, 110)
 NSOPTION_INTEGER(font_size, 128)
 
 /** Minimum font size. */
-NSOPTION_INTEGER(font_min_size, 85)
+/* Onyx: no minimum font size by default (Chrome has none: 8pt text is 8pt) */
+NSOPTION_INTEGER(font_min_size, 10)
 
 /** Default sans serif font */
 NSOPTION_STRING(font_sans, NULL)
@@ -132,8 +133,12 @@ NSOPTION_BOOL(enable_javascript, false)
 /** Whether to allow Author level CSS. */
 NSOPTION_BOOL(author_level_css, true)
 
-/** Maximum time (in seconds) to wait for a script to run */
-NSOPTION_INTEGER(script_timeout, 10)
+/** Maximum time (in seconds) to wait for a script to run.
+ * Onyx: 60, not 10 -- a script, an event handler or a promise job stopped after that; the Pi
+ * runs QuickJS some five times slower than the PC, and css3test.com's test run (1.5 s on the
+ * PC) or browserscore.dev's first render (7 s) were cut off there, the page left at 0 %.
+ * Browsers do not stop a script at all; this only ends a loop that never does. */
+NSOPTION_INTEGER(script_timeout, 60)
 
 /** Onyx: the scripts' JIT (QuickJS on AArch64, quickjs-jit.c): a function is compiled to
  * machine code after this many calls; 0 (the default): the interpreter only */

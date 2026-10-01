@@ -162,6 +162,15 @@ typedef struct css_select_handler {
 	 * has its features: :host()'s argument), or NULL.
 	 */
 	void *(*onyx_host_pw)(void *pw);
+
+	/* Onyx: appended, NULL in a handler without it (the states then never match) */
+	/**
+	 * Whether node is in a state only the client knows, named as its pseudo-class
+	 * (lower case, without the colon): "popover-open" (the Popover API's showing
+	 * popovers), "modal" (a dialog opened by showModal()).
+	 */
+	css_error (*onyx_node_state)(void *pw, void *node, lwc_string *state,
+			bool *match);
 } css_select_handler;
 
 /**
@@ -244,6 +253,17 @@ css_error css_libcss_node_data_handler(css_select_handler *handler,
  */
 lwc_string *css_onyx_node_var(void *libcss_node_data, const char *name, size_t len);
 
+/**
+ * Onyx: the custom properties an element's selection stored in its node data (its own
+ * and those it inherits): an opaque handle with a reference -- the same handle as long as
+ * they are the same (NetSurf's kept selections compare their parent's); NULL if none.
+ * css_onyx_vars_release drops the reference.
+ */
+const void *css_onyx_node_vars_ref(void *libcss_node_data);
+void css_onyx_vars_release(const void *vars);
+/** Onyx: whether two such handles hold the same custom properties (in the same order) */
+bool css_onyx_vars_same(const void *a, const void *b);
+
 css_error css_select_ctx_create(css_select_ctx **result);
 css_error css_select_ctx_destroy(css_select_ctx *ctx);
 
@@ -255,6 +275,23 @@ css_error css_select_ctx_insert_sheet(css_select_ctx *ctx,
 		css_origin origin, const char *media);
 css_error css_select_ctx_remove_sheet(css_select_ctx *ctx,
 		const css_stylesheet *sheet);
+
+/*
+ * Onyx: a @keyframes' keyframes (NetSurf's animations): the last @keyframes <name> of the
+ * context's sheets (their imports, @media / @supports / @layer groups too), one entry per
+ * keyframe selector, sorted by offset (0..1; equal offsets in source order); decls the
+ * keyframe's declarations (css_computed_style_onyx_apply), alive as long as the sheet. The
+ * array is malloc'd (the caller frees it); *n 0 when there is no such @keyframes.
+ */
+typedef struct css_onyx_keyframe {
+	float offset;
+	uint32_t order;
+	const void *decls;
+} css_onyx_keyframe;
+css_error css_select_ctx_onyx_keyframes(const css_select_ctx *ctx, lwc_string *name,
+		css_onyx_keyframe **out, uint32_t *n);
+/* Onyx: an inline sheet's declarations (element.animate()'s keyframes), or NULL */
+const void *css_stylesheet_onyx_inline_decls(const css_stylesheet *sheet);
 
 css_error css_select_ctx_count_sheets(css_select_ctx *ctx, uint32_t *count);
 css_error css_select_ctx_get_sheet(css_select_ctx *ctx, uint32_t index,
@@ -269,12 +306,29 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		css_select_handler *handler, void *pw,
 		css_select_results **result);
 /**
+ * Onyx: whether any selector of the context's sheets matches the element (or one of its
+ * pseudo-elements) in the media -- NetSurf's kept selections after sheets were added:
+ * the context holds the new sheets only. The node's own node data is left as it is.
+ */
+css_error css_select_style_onyx_probe(css_select_ctx *ctx, void *node,
+		const css_unit_ctx *unit_ctx, const css_media *media,
+		css_select_handler *handler, void *pw, bool *matched);
+/**
  * Onyx: css_select_style for an element of a document with shadow trees: ctx and pw are
  * its own tree's; inherit_parent the element whose custom properties it inherits (its
  * flat tree parent: a slot, a host; NULL: the handler's parent_node); no_share: its style
  * is its own (a host, an element assigned to a slot...); scopes: the other trees' rules
  * it takes.
  */
+/**
+ * Onyx: matchMedia -- the media query list of sheet's first @media rule (a sheet made of
+ * "@media <list> { ... }"): *match whether it matches media, *n_queries its queries, bit i
+ * of *invalid set when libcss could not read query i (it became "not all").
+ */
+css_error css_select_onyx_media_match(css_select_ctx *ctx, const css_stylesheet *sheet,
+		const css_unit_ctx *unit_ctx, const css_media *media, bool *match,
+		uint32_t *n_queries, uint32_t *invalid);
+
 css_error css_select_style_onyx(css_select_ctx *ctx, void *node,
 		const css_unit_ctx *unit_ctx,
 		const css_media *media, const css_stylesheet *inline_style,

@@ -1350,11 +1350,17 @@ const pseudo = (e, name) => {
 		(tag === 'option' && N.attr(e, 'selected') !== null);
 	case 'open': return (tag === 'details' || tag === 'dialog') && N.attr(e, 'open') !== null;
 	case 'modal': return tag === 'dialog' && !!modalDialogs && modalDialogs.includes(e);
-	case 'autofill': case 'popover-open': return false;
+	case 'popover-open': return openPopovers.includes(e);
+	case 'autofill': return false;
 	}
 	return false;
 };
 let modalDialogs = [];
+/* Onyx: the showing popovers, in the order they were shown (the Popover API, below) */
+const openPopovers = [];
+/* the states the style sheets' :popover-open and :modal see (libcss asks NetSurf: N.setState) */
+const STATE_POPOVER_OPEN = 1, STATE_MODAL = 2;
+let hideAutoPopovers = () => {};	/* (showModal hides them: set by the Popover API below) */
 if (N.internals) N.internals.pseudo = pseudo;
 
 /* ---- <dialog>, <details>, hidden ---------------------------------------------------------- */
@@ -1382,8 +1388,10 @@ if (G.HTMLDialogElement) {
 				throw domError('already open', 'InvalidStateError');
 			}
 			if (!this.isConnected) throw domError('not connected', 'InvalidStateError');
+			hideAutoPopovers();
 			this.setAttribute('open', '');
 			modalDialogs.push(this);
+			N.setState(this, STATE_MODAL, true);
 			focusDialog(this);
 		},
 		close(result) {
@@ -1391,6 +1399,7 @@ if (G.HTMLDialogElement) {
 			this.removeAttribute('open');
 			if (result !== undefined) returnValues.set(this, String(result));
 			modalDialogs = modalDialogs.filter(d => d !== this);
+			N.setState(this, STATE_MODAL, false);
 			task(() => fire(this, 'close'));
 		},
 		requestClose(result) {
@@ -1421,6 +1430,170 @@ if (G.HTMLDialogElement) {
 	});
 }
 
+/* ---- the Popover API (Onyx) ----------------------------------------------------------------
+ * showPopover / hidePopover / togglePopover, the popovertarget buttons, beforetoggle (the
+ * showing can be cancelled) and toggle (a task, coalesced), the "auto" popovers' light
+ * dismiss (a click outside, Escape) and their stack (showing one hides the others but its
+ * ancestors). The UA sheet hides [popover]:not(:popover-open); the state reaches libcss
+ * through N.setState (css/select.c: :popover-open). */
+class ToggleEvent extends G.Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		Object.defineProperty(this, '_t', { value: {
+			oldState: String(init.oldState ?? ''), newState: String(init.newState ?? ''),
+			source: init.source ?? null } });
+	}
+	get oldState() { return this._t.oldState; }
+	get newState() { return this._t.newState; }
+	get source() { return this._t.source; }
+}
+G.ToggleEvent = ToggleEvent;
+{
+	const popoverKind = el => {
+		const v = N.attr(el, 'popover');
+		if (v === null) return null;
+		const k = v.toLowerCase();
+		return k === 'manual' ? 'manual' : k === 'hint' ? 'hint' : 'auto';
+	};
+	const pendingToggle = new WeakMap();
+	const queueToggle = (el, oldState, newState, source) => {
+		const rec = pendingToggle.get(el);
+		if (rec) { rec.newState = newState; return; }
+		const r = { oldState, newState };
+		pendingToggle.set(el, r);
+		task(() => {
+			pendingToggle.delete(el);
+			if (r.oldState !== r.newState)
+				el.dispatchEvent(new ToggleEvent('toggle', { oldState: r.oldState, newState: r.newState, source }));
+		});
+	};
+	const check = (el, showing) => {
+		if (popoverKind(el) === null) throw domError('Not a popover', 'NotSupportedError');
+		if (openPopovers.includes(el) !== showing) return false;
+		if (!el.isConnected) throw domError('The popover is not connected', 'InvalidStateError');
+		if (N.lname(el) === 'dialog' && modalDialogs.includes(el))
+			throw domError('The popover is a modal dialog', 'InvalidStateError');
+		return true;
+	};
+	/* the showing auto popovers an element (or its invoker) is inside: they stay */
+	const ancestors = (el, invoker) => {
+		const keep = new Set();
+		for (const start of [el, invoker]) {
+			for (let n = start && N.parent(start); n; n = N.parent(n))
+				if (openPopovers.includes(n)) keep.add(n);
+		}
+		return keep;
+	};
+	const hide = (el, events) => {
+		const i = openPopovers.indexOf(el);
+		if (i < 0) return;
+		/* the auto popovers shown after it (its descendants in the stack) go first */
+		if (popoverKind(el) === 'auto')
+			for (let j = openPopovers.length - 1; j > i; j--)
+				if (popoverKind(openPopovers[j]) === 'auto') hide(openPopovers[j], events);
+		if (events)
+			fire(el, 'beforetoggle', { oldState: 'open', newState: 'closed' });
+		const k = openPopovers.indexOf(el);
+		if (k < 0) return;
+		openPopovers.splice(k, 1);
+		N.setState(el, STATE_POPOVER_OPEN, false);
+		if (events) queueToggle(el, 'open', 'closed', null);
+	};
+	const hideAutoExcept = (keep) => {
+		for (let j = openPopovers.length - 1; j >= 0; j--) {
+			const p = openPopovers[j];
+			if (p && popoverKind(p) === 'auto' && !keep.has(p)) hide(p, true);
+		}
+	};
+	hideAutoPopovers = () => hideAutoExcept(new Set());
+	const show = (el, invoker) => {
+		if (!check(el, false)) return;
+		const ev = new ToggleEvent('beforetoggle', { cancelable: true, oldState: 'closed',
+			newState: 'open', source: invoker || null });
+		if (!el.dispatchEvent(ev)) return;
+		if (!check(el, false)) return;
+		if (popoverKind(el) === 'auto') hideAutoExcept(ancestors(el, invoker));
+		openPopovers.push(el);
+		N.setState(el, STATE_POPOVER_OPEN, true);
+		const f = el.querySelector('[autofocus]');
+		try { if (f) f.focus(); } catch (e) {}
+		queueToggle(el, 'closed', 'open', invoker || null);
+	};
+	def(HTMLElement.prototype, {
+		showPopover(opts) { show(this, opts && opts.source); },
+		hidePopover() { if (check(this, true)) hide(this, true); },
+		togglePopover(opts) {
+			const force = typeof opts === 'boolean' ? opts : opts && opts.force;
+			const open = openPopovers.includes(this);
+			if (open && force !== true) this.hidePopover();
+			else if (!open && force !== false) show(this, opts && typeof opts === 'object' ? opts.source : null);
+			else check(this, open);		/* (the exceptions) */
+			return openPopovers.includes(this);
+		},
+	});
+	/* the invokers: <button> / <input type=button...> popovertarget, popovertargetaction */
+	const invokerOf = n => {
+		const tag = N.lname(n);
+		if (tag !== 'button' && tag !== 'input') return false;
+		if (tag === 'input' && !['button', 'submit', 'reset', 'image'].includes((N.attr(n, 'type') || '').toLowerCase()))
+			return false;
+		return true;
+	};
+	const targets = new WeakMap();
+	const targetOf = n => {
+		const t = targets.get(n);
+		if (t) return t;
+		const id = N.attr(n, 'popovertarget');
+		return id === null ? null : G.document.getElementById(id);
+	};
+	for (const C of [G.HTMLButtonElement, G.HTMLInputElement]) {
+		if (!C) continue;
+		def(C.prototype, {
+			get popoverTargetElement() { return targetOf(this); },
+			set popoverTargetElement(el) {
+				if (el) { targets.set(this, el); this.setAttribute('popovertarget', ''); }
+				else { targets.delete(this); this.removeAttribute('popovertarget'); }
+			},
+			get popoverTargetAction() {
+				const v = (N.attr(this, 'popovertargetaction') || '').toLowerCase();
+				return v === 'show' || v === 'hide' ? v : 'toggle';
+			},
+			set popoverTargetAction(v) { this.setAttribute('popovertargetaction', v); },
+		});
+	}
+	/* a click: an invoker's action, else (the user's click, not a script's) the light dismiss
+	 * of the auto popovers it is outside */
+	G.document.addEventListener('click', ev => {
+		if (ev.defaultPrevented) return;
+		let t = ev.target;
+		for (let n = t; n && N.type(n) === ELEMENT_NODE; n = N.parent(n)) {
+			if (!invokerOf(n) || (N.attr(n, 'popovertarget') === null && !targets.has(n))) continue;
+			if (n.disabled) return;
+			const p = targetOf(n);
+			if (!p || popoverKind(p) === null) return;
+			const action = n.popoverTargetAction;
+			const open = openPopovers.includes(p);
+			if (open && action !== 'show') hide(p, true);
+			else if (!open && action !== 'hide') show(p, n);
+			return;
+		}
+		if (!ev.isTrusted) return;
+		for (let j = openPopovers.length - 1; j >= 0; j--) {
+			const p = openPopovers[j];
+			if (popoverKind(p) !== 'auto' && popoverKind(p) !== 'hint') continue;
+			if (t && (p === t || p.contains(t))) break;
+			hide(p, true);
+		}
+	});
+	/* Escape (the user's): the topmost auto popover hides */
+	G.document.addEventListener('keydown', ev => {
+		if (ev.key !== 'Escape' || ev.defaultPrevented || !ev.isTrusted) return;
+		for (let j = openPopovers.length - 1; j >= 0; j--) {
+			if (popoverKind(openPopovers[j]) !== 'manual') { hide(openPopovers[j], true); break; }
+		}
+	});
+}
+
 /* <details>: "toggle" after the open attribute changes (a task; coalesced); a click on its
  * summary toggles it (dom.js's activation) */
 const toggles = new WeakMap();
@@ -1437,10 +1610,7 @@ function openChanged(el, old, now) {
 	task(() => {
 		toggles.delete(el);
 		if (rec.oldState === rec.newState) return;
-		const ev = new G.Event('toggle');
-		ev.oldState = rec.oldState;
-		ev.newState = rec.newState;
-		el.dispatchEvent(ev);
+		el.dispatchEvent(new G.ToggleEvent('toggle', { oldState: rec.oldState, newState: rec.newState }));
 	});
 }
 if (G.HTMLDetailsElement) def(G.HTMLDetailsElement.prototype, {
@@ -2730,7 +2900,7 @@ class ShadowRoot extends G.DocumentFragment {
 	get fullscreenElement() { return null; }
 	get pictureInPictureElement() { return null; }
 	get pointerLockElement() { return null; }
-	getAnimations() { return []; }
+	getAnimations() { return G.document.getAnimations().filter(a => a.effect && a.effect.target && a.effect.target.getRootNode && a.effect.target.getRootNode() === this); }
 	elementFromPoint(x, y) { const e = G.document.elementFromPoint(x, y); return e ? retarget(e, this) : null; }
 	elementsFromPoint(x, y) { const e = this.elementFromPoint(x, y); return e ? [e] : []; }
 	getSelection() { return G.getSelection ? G.getSelection() : null; }
@@ -2738,7 +2908,7 @@ class ShadowRoot extends G.DocumentFragment {
 	set onslotchange(fn) { setHandler(this, 'slotchange', fn); }
 }
 G.ShadowRoot = ShadowRoot;
-N.shadowProto(ShadowRoot.prototype);
+if (N.shadowProto) N.shadowProto(ShadowRoot.prototype);	/* (Onyx: not in a worker's natives) */
 
 /* an on* property kept as a listener */
 const handlerFns = new WeakMap();

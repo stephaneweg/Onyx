@@ -25,6 +25,7 @@
  */
 
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +65,7 @@
 #include "html/onyx_hover.h"
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_webfont.h"
+#include "html/onyx_fx.h"	/* Onyx: the hit test through transforms */
 
 /**
  * Get pointer shape for given box
@@ -688,12 +690,40 @@ struct onyx_hit {
 };
 
 static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy);
+static void onyx_hit_layer(struct onyx_hit *h, int start);
 
 /** a box, its parent's origin at (ox, oy) (html_redraw_box) */
 static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 {
 	int bx = ox + box->x, by = oy + box->y;
 	bool physically = false;
+	float m[6], inv[6];
+
+	/* Onyx: a transformed box (html/onyx_fx.c) -- the point taken back through its
+	 * matrix, for it and all its stacking context holds (what it puts off) */
+	if (onyx_fx_box(box) && onyx_box_matrix(box->style, &h->html->unit_len_ctx, box, 1,
+			m)) {
+		int px = h->px, py = h->py, start = h->n;
+		float lx = px - bx, ly = py - by;
+
+		if (!onyx_matrix_invert(m, inv))
+			return;
+		h->px = bx + (int) floorf(inv[0] * lx + inv[2] * ly + inv[4]);
+		h->py = by + (int) floorf(inv[1] * lx + inv[3] * ly + inv[5]);
+		if (box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
+				h->py - by, &physically)) {
+			if (physically && (box->style == NULL || css_computed_visibility(
+					box->style) != CSS_VISIBILITY_HIDDEN))
+				h->box = box;
+			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
+					by - scrollbar_get_offset(box->scroll_y));
+			onyx_hit_layer(h, start);
+		}
+		h->n = start;
+		h->px = px;
+		h->py = py;
+		return;
+	}
 
 	if (!box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
 			h->py - by, &physically))
@@ -798,6 +828,16 @@ static struct box **onyx_hit_path(html_content *html, int x, int y, int *n)
 		path[--i] = b;
 	*n = depth;
 	return path;
+}
+
+/* exported interface documented in html/private.h */
+struct box **html_hit_path(html_content *html, int x, int y, int *n)
+{
+	if (html->layout == NULL) {
+		*n = 0;
+		return NULL;
+	}
+	return onyx_hit_path(html, x, y, n);
 }
 
 /**
@@ -1615,8 +1655,11 @@ mouse_action_drag_none(html_content *html,
 		init.ctrl = (mouse & BROWSER_MOUSE_MOD_2) != 0;
 		init.alt = (mouse & BROWSER_MOUSE_MOD_3) != 0;
 		if (mouse & BROWSER_MOUSE_PRESS_1) {
+			/* (Onyx: the pointer events first, as Chrome) */
+			html_script_event(html, "pointerdown", mas.node, &init);
 			html_script_event(html, "mousedown", mas.node, &init);
 		} else {
+			html_script_event(html, "pointerup", mas.node, &init);
 			html_script_event(html, "mouseup", mas.node, &init);
 			if (!html_script_event(html, "click", mas.node, &init) &&
 			    (mas.result.action == ACTION_NAVIGATE ||
@@ -1714,6 +1757,8 @@ html_mouse_action(struct content *c,
 	nserror res = NSERROR_OK;
 
 	onyx_webfont_scope(html);	/* Onyx: text positions in its fonts */
+	html->pointer_x = x;		/* (Onyx: the keys' scroller) */
+	html->pointer_y = y;
 
 	/* handle open select menu */
 	if (html->visible_select_menu != NULL) {
@@ -1888,6 +1933,29 @@ bool html_keypress(struct content *c, uint32_t key)
 	case NS_KEY_ESCAPE:
 		/* if there's no selection, leave Escape for the caller */
 		return selection_clear(sel, true);
+
+	/* Onyx: the scrolling keys scroll the scroller under the pointer (an
+	 * overflow: auto panel, a consent screen's), else the window (the
+	 * caller) */
+	case NS_KEY_UP:
+		return html_scroll_boxes_at_point(c, html->pointer_x,
+				html->pointer_y, 0, -40);
+	case NS_KEY_DOWN:
+		return html_scroll_boxes_at_point(c, html->pointer_x,
+				html->pointer_y, 0, 40);
+	case NS_KEY_PAGE_UP:
+		return html_scroll_boxes_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_PAGE_UP);
+	case NS_KEY_PAGE_DOWN:
+	case ' ':
+		return html_scroll_boxes_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_PAGE_DOWN);
+	case NS_KEY_TEXT_START:
+		return html_scroll_boxes_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_TOP);
+	case NS_KEY_TEXT_END:
+		return html_scroll_boxes_at_point(c, html->pointer_x,
+				html->pointer_y, 0, SCROLL_BOTTOM);
 	}
 
 	return false;
@@ -1917,6 +1985,9 @@ void html_overflow_scroll_callback(void *client_data,
 		}
 
 		html__redraw_a_box(html, box);
+		/* Onyx: the element's scroll event */
+		if (box->node != NULL && html->jsthread != NULL)
+			html_script_event(html, "scroll", box->node, NULL);
 		break;
 	case SCROLLBAR_MSG_SCROLL_START:
 	{

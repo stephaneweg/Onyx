@@ -119,18 +119,22 @@ css_error css__parse_flex(css_language *c,
 			goto css__parse_flex_cleanup;
 		}
 
+		/* Onyx: <flex-grow> <flex-shrink>? || <flex-basis> -- the
+		 * shrink factor right after the grow one, before a basis is
+		 * tried ("1 0 auto" read its 0 as the basis, then failed on
+		 * auto: the whole declaration was dropped) */
 		if ((grow) && 
 			   (error = css__parse_flex_grow(c, vector,
 				ctx, grow_style)) == CSS_OK) {
 			grow = false;
+		} else if ((shrink) && !grow &&
+			   (error = css__parse_flex_shrink(c, vector, 
+				ctx, shrink_style)) == CSS_OK) {
+			shrink = false;
 		} else if ((basis) && 
 			   (error = css__parse_flex_basis(c, vector, 
 				ctx, basis_style)) == CSS_OK) {
 			basis = false;
-		} else if ((shrink) && 
-			   (error = css__parse_flex_shrink(c, vector, 
-				ctx, shrink_style)) == CSS_OK) {
-			shrink = false;
 		}
 
 		if (error == CSS_OK) {

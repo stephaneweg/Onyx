@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><style>
+body{margin:8px;font:16px sans-serif}
+td,th{border:1px solid #888}
+</style></head><body>
+<table id="t1"><tr id="t1r1"><td id="t1a">a</td><td id="t1b">bbb bbb</td></tr><tr><td id="t1c">cc</td><td id="t1d">d</td></tr></table>
+<table id="t2" style="width:400px;border-collapse:collapse"><tr><th id="t2a">Head</th><th id="t2b" style="width:50%">Half</th></tr><tr><td id="t2c">x</td><td id="t2d">y</td></tr></table>
+<table id="t3" style="width:100%" cellpadding="5" cellspacing="0"><tr><td id="t3a" style="width:100px">fixed</td><td id="t3b">rest</td></tr></table>
+<table id="t4" border="1" cellspacing="4"><tr><td id="t4a" rowspan="2">span</td><td id="t4b">one</td></tr><tr><td id="t4c">two</td></tr><tr><td id="t4d" colspan="2">both</td></tr></table>
+<table id="t5" style="table-layout:fixed;width:300px"><tr><td id="t5a">aaaa</td><td id="t5b">b</td><td id="t5c">c</td></tr></table>
+<div id="tb" style="display:table;width:300px"><div style="display:table-cell;width:100px;background:#ccf" id="tbc1">cell</div><div style="display:table-cell;background:#fcc;vertical-align:middle" id="tbc2">cell two<br>two lines</div></div>
+<div id="fw" style="width:500px;background:#eee">
+ <div id="fl1" style="float:left;width:100px;height:50px;background:#8af"></div>
+ <div id="fr1" style="float:right;width:80px;height:80px;background:#f8a"></div>
+ <p id="fp">Text flowing around the floats: it wraps beside them and then continues below them when it is long enough to reach past them.</p>
+ <div id="fl2" style="float:left;width:50%;height:20px;background:#afa"></div>
+ <div id="cl" style="clear:both;height:10px;background:#555"></div>
+ <div id="ofl" style="overflow:hidden;background:#ffc"><div id="fl3" style="float:left;width:60px;height:60px;background:#8af"></div><div id="bfc" style="overflow:hidden;height:30px;background:#cfc"></div></div>
+</div>
+<div id="fsh" style="float:left;background:#ccc;padding:4px"><span id="fsht">shrink float</span></div>
+</body></html>

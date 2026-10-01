@@ -100,10 +100,27 @@ for s in "late added flex" "late removed block block" "late back flex"; do
 	expect "$L" "$s"
 done
 
+echo "js-restyle.html (the style selections a rebox keeps: each DOM change restyles right)"
+L=$OUT/js-restyle.log
+run js-restyle.html "$(waits 150)" "$L"
+grep "^console: FAIL " "$L" | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL " "$L"; then fail=1; fi
+expect "$L" "restyle checks 46"
+
 echo "css-bodyoverflow.html (the body's overflow is the viewport's)"
 L=$OUT/css-bodyoverflow.log
 run css-bodyoverflow.html "$(waits 40)" "$L"
 expect "$L" "bodyoverflow page true"
+
+echo "js-iframeblank.html (an about:blank iframe: no endless broadcast)"
+L=$OUT/js-iframeblank.log
+run js-iframeblank.html "$(waits 40)" "$L"
+expect "$L" "iframeblank loaded"
+
+echo "css-mqrange.html (media queries' range syntax)"
+L=$OUT/css-mqrange.log
+run css-mqrange.html "$(waits 30)" "$L"
+expect "$L" "mqrange a=none c=none d=none e=none f=none g=none"
 
 echo "js-microloop.html (a chain of promises that never ends)"
 L=$OUT/js-microloop.log
@@ -171,10 +188,10 @@ expect "$L" "reveal after kept true"
 
 # Onyx: the HTML5 checks -- each page logs "OK <area> name" / "FAIL <area> name" and ends
 # with "<area> done N" (N checks)
-html5page() {	# html5page <page> <area> <what>
+html5page() {	# html5page <page> <area> <what> [the sim script: else 150 waits]
 	echo "$1 ($3)"
 	L=$OUT/${1%.html}.log
-	run "$1" "$(waits 150)" "$L"
+	run "$1" "${4:-$(waits 150)}" "$L"
 	grep "^console: FAIL $2 " "$L" | sed 's/^console: /  /'
 	if grep -q "^console: FAIL $2 " "$L" || ! grep -q "^console: $2 done" "$L"; then
 		echo "  FAIL  ($2: not all run: $L)"; fail=1
@@ -186,6 +203,9 @@ html5page js-html5.html html5 "the parser's DOM: fragments, namespaces, template
 html5page js-forms.html forms "input types, constraint validation, submission, output, details, dialog"
 html5page js-apis.html apis "history.pushState, streams, Blob / File / FileReader, blob: URLs, microdata, performance marks, XHR documents"
 html5page js-ce.html ce "custom elements: define, upgrades (the parser's too), lifecycle callbacks"
+html5page js-popover.html popover "the Popover API: show / hide / toggle, beforetoggle and toggle, the auto stack, popovertarget, :popover-open and :modal in libcss, Escape, light dismiss" \
+	"$(waits 120)$(click 800 800)key 27;$(waits 30)"
+html5page js-cssdetect.html detect "feature detection's honest answers: CSS.supports, element.style, the CSSOM, matchMedia"
 html5page js-shadow.html shadow "shadow DOM: ShadowRoot, slots, declarative roots, events, style scoping, the flat tree's boxes"
 echo "js-shadow-click.html (clicks and the pointer on a shadow tree: retargeting, :hover inside)"
 L=$OUT/js-shadow-click.log
@@ -238,6 +258,20 @@ expect "$L" "sel k2 rgb(128, 0, 128)"
 expect "$L" "sel d rgb(1, 2, 3)"
 expect "$L" "sel w rgb(4, 5, 6)"
 
+echo "css-opacity.html, css-transform.html (compositing layers: opacity 0 still clicked, rectangles and clicks through a rotation; the pixels: fxtest.sh)"
+L=$OUT/css-opacity.log
+run css-opacity.html "$(waits 40)$(click 380 270)" "$L"
+expect "$L" "zero rect 340,190,80,80"
+expect "$L" "opacity 0 clicked"
+L=$OUT/css-transform.log
+run css-transform.html "$(waits 40)$(click 45 85)$(click 80 70)" "$L"
+expect "$L" "rot rect 23,23,113,113"
+expect "$L" "tr rect 500,210,80,80"
+expect "$L" "target cell"
+expect "$L" "rot clicked 1"
+expect "$L" "target rot"
+refuse "$L" "rot clicked 2"
+
 echo "css-math.html (CSS Values 4: round(), mod(), sin(), pow(), pi, hypot(); the dv* / cq* units)"
 L=$OUT/css-math.log
 run css-math.html "$(waits 60)" "$L"
@@ -249,6 +283,27 @@ expect "$L" "math e 31px"
 expect "$L" "math g 40px"
 expect "$L" "math h 50px"
 if grep -q "^console: math f 81px" "$L" && grep -q "^console: math i 40px" "$L"; then echo "  ok    10dvw, 5cqi"; else echo "  FAIL  10dvw, 5cqi: $(grep '^console: math [fi]' "$L" | tr '\n' ' ')"; fail=1; fi
+# Onyx: transitions, animations, the Web Animations API, requestAnimationFrame (html/onyx_anim.c):
+# the pages sample getComputedStyle at known times and log "OK <area> name" / "FAIL <area> name",
+# then "<area> done N"
+animpage() {	# animpage <page> <area> <sim script> <what>
+	echo "$1 ($4)"
+	L=$OUT/${1%.html}.log
+	run "$1" "$3" "$L"
+	grep "^console: FAIL $2 \|^JS " "$L" | sed 's/^console: /  /'
+	if grep -q "^console: FAIL $2 \|^JS " "$L" || ! grep -q "^console: $2 done" "$L"; then
+		echo "  FAIL  ($2: not all run: $L)"; fail=1
+	else
+		echo "  ok: $(grep -c "^console: OK $2 " "$L") checks"
+	fi
+}
+animpage css-transition.html trans "$(waits 90)move 100 380;$(waits 100)" \
+	"CSS transitions: opacity, colours, transform, width, delays, all, a reversal, :hover, the events"
+animpage css-animation.html anim "$(waits 150)" \
+	"CSS animations: @keyframes, iterations, direction, fill, play-state, steps(), the events, getAnimations()"
+animpage js-animate.html waapi "$(waits 120)" \
+	"the Web Animations API (element.animate, Animation) and requestAnimationFrame"
+
 echo "js-intl.html (Intl and the locale built-ins, against Chrome's answers: intl/mkpage.js)"
 L=$OUT/js-intl.log
 run js-intl.html "$(waits 40)" "$L"
@@ -273,10 +328,48 @@ for s in "worker types function function function" "clone function DataCloneErro
 done
 refuse "$L" "worker says after close (not delivered)"
 
+echo "js-focus.html (element.focus() puts the caret in a textarea of a fixed overlay: google.com's search)"
+L=$OUT/js-focus.log
+run js-focus.html "$(waits 60)$(click 60 155)key a;wait;key b;$(waits 30)" "$L"
+for s in "active ta" "overlay full" "typed ab"; do expect "$L" "$s"; done
+
+echo "js-scrollers.html (a consent screen: the wheel, PageDown, a scrollbar drag reach its inner scroller)"
+L=$OUT/js-scrollers.log
+run js-scrollers.html "$(waits 60)move 300 300;key 0x107;$(waits 30)$(click 120 700)" "$L"
+expect "$L" "panel scrolled down"
+expect "$L" "accepted"
+L=$OUT/js-scrollers-drag.log
+run js-scrollers.html "$(waits 60)move 789 110;wait;down 789 110;wait;move 789 500;wait;up 789 500;$(waits 30)" "$L"
+expect "$L" "panel scrolled down"
+L=$OUT/js-consent.log
+run js-consent.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
+for s in "buttons visible" "middle scrolls" "middle scrolled down"; do expect "$L" "$s"; done
+L=$OUT/js-dialog.log
+run js-dialog.html "$(waits 60)move 400 300;wheel 400 300 -5;$(waits 30)" "$L"
+for s in "dialog buttons visible" "dialog middle scrolled"; do expect "$L" "$s"; done
+L=$OUT/js-consent-body.log
+run js-consent-body.html "$(waits 60)move 300 300;wheel 300 300 -10;$(waits 30)" "$L"
+expect "$L" "body scrolled"
+L=$OUT/js-wheel.log
+run js-wheel.html "$(waits 60)move 300 300;wheel 300 300 -30;$(waits 30)$(click 100 690)" "$L"
+for s in "wheel down true" "pointerdown" "allowed"; do expect "$L" "$s"; done
+L=$OUT/js-scrollframe.log
+run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 700)" "$L"
+expect "$L" "panel scrolled down"
+expect "$L" "accepted"
 html5page js-wasm.html wasm "WebAssembly on wasm3: modules, memory, imports, traps, tables, i64, globals, a compiled C program, a worker"
 sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
 html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"
 sed -n 's/^console: crypto timing /  timing (mbedTLS): /p' "$OUT/js-crypto.log"
+
+echo "js-scripttime.html (the time limit spares a working script; console, getElementsByClassName)"
+L=$OUT/js-scripttime.log
+NS_SCRIPT_TIMEOUT=1 run js-scripttime.html "$(waits 700)" "$L"
+for s in "classes ab 2,3" "classes b 4" "classes c 2" "classes none 0" "classes miss 0" \
+	 "custom inline 4px" '{"a":1,"b":"two","c":[1,2,3],"d":null,"f":{"g":true}}' \
+	 "console big fast" "long 300 yyyyyyyyyy" "busy done" "after stuck false" "after runaway stopped"; do
+	expect "$L" "$s"
+done
 
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

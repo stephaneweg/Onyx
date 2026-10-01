@@ -504,6 +504,22 @@ css_error AtKeyword(css_lexer *lexer, css_token **token)
 
 		c = *cptr;
 
+		if (c == '-') {
+			/* Onyx: an identifier may start with '-' (CSS Syntax 3):
+			 * @-webkit-keyframes, @-moz-document... */
+			const uint8_t *nptr;
+			size_t nlen;
+			perror = parserutils_inputstream_peek(lexer->input,
+					lexer->bytesReadForToken + clen, &nptr, &nlen);
+			if (perror != PARSERUTILS_OK && perror != PARSERUTILS_EOF)
+				return css_error_from_parserutils_error(perror);
+			if (perror == PARSERUTILS_EOF ||
+					(*nptr != '-' && (!startNMStart(*nptr) || *nptr == '\\')))
+				return emitToken(lexer, CSS_TOKEN_CHAR, token);
+			APPEND(lexer, cptr, clen);
+			goto nmchar;
+		}
+
 		if (!startNMStart(c))
 			return emitToken(lexer, CSS_TOKEN_CHAR, token);
 

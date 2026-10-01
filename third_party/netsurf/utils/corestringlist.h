@@ -227,6 +227,7 @@ CORESTRING_DOM_STRING(data);
 CORESTRING_DOM_STRING(dblclick);
 CORESTRING_DOM_STRING(defer);
 CORESTRING_DOM_STRING(DOMAttrModified);
+CORESTRING_DOM_STRING(DOMCharacterDataModified);	/* (Onyx: onyx_restyle.c) */
 CORESTRING_DOM_STRING(DOMNodeInserted);
 CORESTRING_DOM_STRING(DOMNodeRemoved);	/* (Onyx: a style sheet's node gone) */
 CORESTRING_DOM_STRING(DOMNodeInsertedIntoDocument);
@@ -367,6 +368,7 @@ CORESTRING_DOM_STRING(toggle);
 /* DOM userdata keys, not really CSS */
 CORESTRING_DOM_STRING(__ns_key_box_node_data);
 CORESTRING_DOM_STRING(__ns_key_libcss_node_data);
+CORESTRING_DOM_STRING(__ns_key_onyx_style_memo);	/* (Onyx: onyx_restyle.c) */
 CORESTRING_DOM_STRING(__ns_key_file_name_node_data);
 CORESTRING_DOM_STRING(__ns_key_image_coords_node_data);
 CORESTRING_DOM_STRING(__ns_key_html_content_data);

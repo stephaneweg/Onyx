@@ -35,6 +35,7 @@ struct plotter_table;
 struct onyx_shape;	/* Onyx: netsurf/onyx_paint.h */
 struct onyx_rrect;
 struct onyx_paint;
+struct onyx_layer;
 
 typedef unsigned long bitmap_flags_t;
 #define BITMAPF_NONE 0
@@ -362,6 +363,24 @@ struct plotter_table {
 			const char *text,
 			size_t length,
 			const struct onyx_paint *paint);
+
+	/**
+	 * Onyx: a compositing group (netsurf/onyx_paint.h's struct onyx_layer) begins: pass
+	 * 0 (and pass 1 when isolated) of its painting. An error: the plotter cannot (no
+	 * memory, too deep); the core then paints the group plainly. NULL: no groups.
+	 */
+	nserror (*onyx_layer_begin)(
+			const struct redraw_context *ctx,
+			const struct onyx_layer *layer,
+			int pass);
+
+	/**
+	 * Onyx: the group's pass ends (after the last: it is drawn, filtered, blended).
+	 */
+	nserror (*onyx_layer_end)(
+			const struct redraw_context *ctx,
+			const struct onyx_layer *layer,
+			int pass);
 
 	/* flags */
 	/**

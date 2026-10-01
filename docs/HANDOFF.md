@@ -128,6 +128,26 @@ answer in French. The docs stay in English.
   the router after a restart, the services started / stopped at Start Onyx.
 - **Next (asked), in this order**: **PRIORITY -- apps in EL0** (protected mode: a faulting app killed, not the OS; plan in docs/EL0-PROTECTED-MODE.md; trigger: a panic closing Ledger, not reproduced -- the exception report now names EC/ELR/FAR/task); then redesign every app icon; then games and emulators with 1- or 2-stick pads.
 
+## GPU compositing, stage 1 -- the service (2026-09-30, kernel v70, not yet tried on the Pi)
+
+- `user/gpucomp/gpucomp.{h,c}` (+ `libgpucomp.a`): layers (premultiplied ARGB textures, tiled past
+  2048) composited by the V3D into a canvas -- affine matrix, clip, opacity, source-over, bilinear,
+  scrolling by the source rectangle -- or by the CPU (NEON loops) with the same API and pixels.
+  Kernel v70: `gpu_texture_rect` (damaged rectangles only), `KAPI_GPU_F_ALPHA` (ARGB targets), fair
+  shares of the GPU's handles between programs (1024 textures / 512 a program; 32 vbufs / 8 a
+  program). docs/02 §15 (*Sharing the GPU*, *The compositing service*), docs/03 *GPU compositing*,
+  docs/07 §6 (the stage 2 plan: NetSurf's layers into it).
+- Tests: `sh tools/tests/run_gpucomp_test.sh` (the PC: CPU and software-V3D paths against a
+  reference, tiles, updates, a refused texture, the GPU lost, qemu-aarch64 NEON = PC bit for bit).
+- **On the Pi, first**: `gpcdemo test` (must end `ALL PASS`), `gpcdemo bench` (write the numbers
+  into docs/07 §6), `gpcdemo` (the window) -- also while gcemu runs (the sharing), and `v3dprog`
+  (must still pass: the kernel's GPU paths were touched for F_ALPHA). kmsg after a failure.
+- Stage 2 done (docs/06 §25, docs/07 §6: the page in a band, retained layers, composite-only
+  animations, `gpu_compositing` in Choices; `tools/tests/netsurf/gputest.sh`). The V3D's target
+  load packet was wrong (stride / 8: frames drawn over the target) -- fixed, `run_v3d_cl_test.sh`.
+  Next: the Pi's numbers (`gpcdemo test` / `bench`, NetSurf's `ONYX-SCROLL` with
+  `gpu_compositing` 0 and 1), overflow scrollers and fixed boxes as layers, groups holding layers.
+
 ## Done recently (all pushed)
 
 - **The random N64 freeze on the Pi — fixed.** Root cause (found with the crash record):
@@ -647,6 +667,32 @@ Windows, which they compare with on the Pi (portrait and landscape screens) -- a
 for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
 `docs/06-NETSURF-CHANGES.md` (read it first: it is the map of what changed and why).
 
+**Decided (the user, 2026-09-30): the browser is renamed "Jet Browser"** ("Jet" in the window,
+"Jet Browser -- the Onyx web browser, based on NetSurf" in its About box; the GPL v2 notices,
+NetSurf's copyrights and the libraries' licences kept and credited). To do once the running
+work is merged: the app (`netsurf.app` -> `jet.app`, no `netsurf` alias; the dock's default Internet button
+launches `jet`: `user/dockconf.h`, `user/Apps/setup/main.cpp`, `sdcard/etc/dock.ini`,
+`sdcard/etc/quicklaunch.txt`), its title,
+About box, docs (docs/06 renamed accordingly), screenshots; the source paths
+(`third_party/netsurf/`) stay as they are (comparable with upstream).
+
+**Feature tests on the Pi (2026-09-30 late, docs/06 §23):** the Pi's css3test.com "100 %" /
+browserscore.dev "0 %" were the script time limit (10 s) cutting both test runs off on the
+slower CPU (css3test's 100 % is its CSS 2.2 / 2007 / 2010 filter, kept in localStorage) -- now
+60 s (`script_timeout`) and the runs 2x faster; the detection is honest (`js-cssdetect.html`
+against Chromium). PC bench: css3test 83 %, browserscore 86 % (Chromium 71 %, 75 %). Also the
+Popover API (`:popover-open` / `:modal` in libcss), matchMedia by libcss (aspect-ratio,
+orientation, hover...), `NS_JSPROF` + `jsprof.py` (a sampling profiler of the scripts). The
+Pi's `libcss.a` rebuilt; the NetSurf binary for the card NOT restaged by this work.
+**Then (2026-10-01, docs/06 §28)**: browserscore.dev still "0 of 0" on the Pi -- Vue's first
+render job hit the 60 s limit with the `jsdebug` log on. The console's formatting bounded hard,
+Map / WeakMap object keys hashed properly in QuickJS (Pi `libquickjs.a` rebuilt), `new URL`'s
+cache, no rebox for `getComputedStyle('--x')`, a native `getElementsByClassName`: the job 8.5 ->
+6.4 s (log on), 7.0 -> 6.5 s (off) on the PC; the rest is the interpreter. And the time limit now
+spares a script still changing the page (up to 4x the limit). To try on the Pi: browserscore.dev
+with `jsdebug` on (kmsg: `JS: a script past 60 s still changing the page` if it runs that long).
+Not restaged either.
+
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more
 out of memory on bbc.co.uk, HTML5).** Built and tried on the PC bench only; the Pi binaries
@@ -677,9 +723,13 @@ docs/06 §12-§19 describe each piece; read them first. Where it stands:
 - **To try on the Pi first**: kotonviolins.com / kotonstudio.com (regressions), bbc.co.uk (the
   memory), google.com (search, results), m.facebook.com (log in), en.wikipedia.org, a
   WebSocket echo. Watch `kmsg` for `app:` lines and `SD:/etc/apphang.txt`.
-- **Next**: incremental relayout for React (a restyle of the changed subtree instead of a full
-  rebox), `opacity` groups and filters, transitions / animations, a worker thread for Workers,
-  CORS, Google's results on the user's network.
+- **Layout / rebox performance (docs/06 §26)**: the flex layout memo (m.facebook.com's
+  layout pass 170 ms -> under 1 ms on the PC; its cookie dialog took 3.5 s a pass on the Pi),
+  the style selections kept between box trees (github.com's rebox 150 ms -> 6-20 ms),
+  attribute-only changes restyled in the boxes, reboxes coalesced / throttled.
+  `NS_RESTYLE_CHECK=1` / `NS_NORESTYLE=1` / `NS_NOINPLACE=1` on the bench to check them.
+- **Next**: an incremental layout and box construction (06 §26 "Left"), a worker thread for
+  Workers, Google's results on the user's network.
 
 **Done, in `main`, staged on the card:** CSS3 (calc / var / grid / flex / gradients /
 shadows / radii / background-clip: text / vendor prefixes), Chrome's Windows fonts

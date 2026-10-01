@@ -236,6 +236,37 @@ enum css_error css__arena_remove_style(struct css_computed_style *style)
 #define PAINT_BITS(P) (t.bits[ONYX_##P##_INDEX] = 		(t.bits[ONYX_##P##_INDEX] & ~(uint32_t) ONYX_##P##_MASK) | 		(bi->bits[ONYX_##P##_INDEX] & (uint32_t) ONYX_##P##_MASK))
 
 /* exported function documented in include/libcss/computed.h */
+bool css_computed_style_effects_only_change(const css_computed_style *a,
+		const css_computed_style *b)
+{
+	struct css_computed_style_i t;
+	const struct css_computed_style_i *bi;
+
+	if (a == b)
+		return true;
+	if (a == NULL || b == NULL)
+		return false;
+	bi = &b->i;
+	t = a->i;
+	PAINT_BITS(OPACITY);			t.opacity = bi->opacity;
+	PAINT_BITS(TRANSFORM);			t.transform = bi->transform;
+	PAINT_BITS(TRANSLATE);			t.translate = bi->translate;
+	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;
+	PAINT_BITS(SCALE);			t.scale = bi->scale;
+	PAINT_BITS(TRANSFORM_ORIGIN);		t.transform_origin = bi->transform_origin;
+	if (memcmp(&t, bi, sizeof t) != 0)
+		return false;
+	return arena__compare_string_list(a->font_family, b->font_family) &&
+		arena__compare_css_computed_counter(a->counter_increment,
+				b->counter_increment) &&
+		arena__compare_css_computed_counter(a->counter_reset,
+				b->counter_reset) &&
+		arena__compare_computed_content_item(a->content, b->content) &&
+		arena__compare_string_list(a->quotes, b->quotes) &&
+		arena__compare_string_list(a->cursor, b->cursor);
+}
+
+/* exported function documented in include/libcss/computed.h */
 bool css_computed_style_paint_only_change(const css_computed_style *a,
 		const css_computed_style *b, bool *moved)
 {
@@ -308,10 +339,28 @@ bool css_computed_style_paint_only_change(const css_computed_style *a,
 	PAINT_BITS(STOP_COLOR);			t.stop_color = bi->stop_color;
 	PAINT_BITS(STOP_OPACITY);		t.stop_opacity = bi->stop_opacity;
 	PAINT_BITS(Z_INDEX);			t.z_index = bi->z_index;
+	/* Onyx: compositing (a layer's effects: its boxes stay where they are) */
+	PAINT_BITS(FILTER);			t.filter = bi->filter;
+	PAINT_BITS(BACKDROP_FILTER);		t.backdrop_filter = bi->backdrop_filter;
+	PAINT_BITS(TRANSFORM_ORIGIN);		t.transform_origin = bi->transform_origin;
+	PAINT_BITS(MIX_BLEND_MODE);		t.mix_blend_mode = bi->mix_blend_mode;
+	/* Onyx: transitions and animations (they change no box) */
+	PAINT_BITS(TRANSITION_PROPERTY);	t.transition_property = bi->transition_property;
+	PAINT_BITS(TRANSITION_DURATION);	t.transition_duration = bi->transition_duration;
+	PAINT_BITS(TRANSITION_TIMING_FUNCTION);	t.transition_timing_function = bi->transition_timing_function;
+	PAINT_BITS(TRANSITION_DELAY);	t.transition_delay = bi->transition_delay;
+	PAINT_BITS(ANIMATION_NAME);	t.animation_name = bi->animation_name;
+	PAINT_BITS(ANIMATION_DURATION);	t.animation_duration = bi->animation_duration;
+	PAINT_BITS(ANIMATION_TIMING_FUNCTION);	t.animation_timing_function = bi->animation_timing_function;
+	PAINT_BITS(ANIMATION_DELAY);	t.animation_delay = bi->animation_delay;
+	PAINT_BITS(ANIMATION_ITERATION_COUNT);	t.animation_iteration_count = bi->animation_iteration_count;
+	PAINT_BITS(ANIMATION_DIRECTION);	t.animation_direction = bi->animation_direction;
+	PAINT_BITS(ANIMATION_FILL_MODE);	t.animation_fill_mode = bi->animation_fill_mode;
+	PAINT_BITS(ANIMATION_PLAY_STATE);	t.animation_play_state = bi->animation_play_state;
 	PAINT_BITS(CURSOR);
 
-	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;	/* (not drawn) */
-	PAINT_BITS(SCALE);			t.scale = bi->scale;	/* (not drawn) */
+	PAINT_BITS(ROTATE);			t.rotate = bi->rotate;	/* (a layer: nothing moves) */
+	PAINT_BITS(SCALE);			t.scale = bi->scale;	/* (a layer: nothing moves) */
 	if (moved != NULL) {
 		/* a translation: the box moved, its layout the same */
 		PAINT_BITS(TRANSFORM);		t.transform = bi->transform;
