@@ -259,7 +259,7 @@ class Modern:
 			if running: rrect (img, cx - 3, y0 + dh - 9, 6, 5, 2, p["hi"])		# an app of it is running
 			x += CW
 			if not last: sep (x - 1)
-		for k, c, r in (("tinypad", "Productivity", True), ("netsurf", "Internet", False), ("paint", "Graphics", True), ("tetris", "Games", False)):
+		for k, c, r in (("tinypad", "Productivity", True), ("jet", "Internet", False), ("paint", "Graphics", True), ("tetris", "Games", False)):
 			launcher (k, c, running = r)						# (the calculator, the fractal)
 		sx, sw_ = x + 6, 236; x = sx + sw_ + 6						# the switcher: the Shelf's tabs
 		rrect (img, sx, y0 + 8, sw_, dh - 16, 10, shade (p["dock"], 0.9), alpha = 200); ring (img, sx, y0 + 8, sw_, dh - 16, 10, shade (p["dock"], 0.6), alpha = 120)

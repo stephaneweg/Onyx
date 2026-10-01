@@ -7,7 +7,7 @@
  * in llcache.c) -- and reads it back when a page asks for its URL again, in this launch or a
  * later one: a fresh object needs no request at all, a stale one is revalidated
  * (If-None-Match / If-Modified-Since; a 304 keeps the stored bytes). Each object is two
- * files in the cache folder (SD:/apps/netsurf.app/cache/ by default): <id>.d its data and
+ * files in the cache folder (SD:/apps/jet.app/cache/ by default): <id>.d its data and
  * <id>.m its metadata (llcache's serialisation: the URL, the headers, the times); "index"
  * lists them ("id data-size meta-size last-use url"), read at the start, written after the
  * writes and at the end. The size is bounded (Choices' disc_cache_size, 64 MB by default on

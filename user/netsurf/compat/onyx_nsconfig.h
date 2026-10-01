@@ -39,10 +39,14 @@
 #endif
 
 /* the user's own files -- the pages visited (History, the History dialog) and the cookies
- * (Cookies) -- on the card beside the app: SD:/apps/netsurf.app/ (never committed: see
- * .gitignore). The PC bench (tools/tests/netsurf/host.mk) sets its own. */
+ * (Cookies) -- on the card beside the app: SD:/apps/jet.app/ (Jet Browser's folder; never
+ * committed: see .gitignore). The PC bench (tools/tests/netsurf/host.mk) sets its own. */
 #ifndef ONYX_NS_DATAPATH
-#define ONYX_NS_DATAPATH "/apps/netsurf.app/"
+#define ONYX_NS_DATAPATH "/apps/jet.app/"
+/* the browser's folder before its rename (NetSurf -> Jet Browser, 2026-10): at start, a
+ * user file missing from ONYX_NS_DATAPATH is copied from there once (gui.c,
+ * onyx_carry_old_data) -- data carried over, not a launch alias */
+#define ONYX_NS_OLDDATAPATH "/apps/netsurf.app/"
 #endif
 
 /* the fonts (FreeType, frontends/framebuffer/font_freetype.c), in /res/fonts, staged by

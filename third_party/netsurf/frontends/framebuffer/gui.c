@@ -742,7 +742,7 @@ static nserror set_defaults(struct nsoption_s *defaults)
 		defaults[sys_colour_defaults[idx].nsc].value.c = sys_colour_defaults[idx].c;
 	}
 
-	/* Onyx: the disc cache (user/netsurf/onyx_cache.c, SD:/apps/netsurf.app/cache/): 64 MB
+	/* Onyx: the disc cache (user/netsurf/onyx_cache.c, SD:/apps/jet.app/cache/): 64 MB
 	 * (NetSurf's 1 GB is too much for a card shared with everything else) */
 	defaults[NSOPTION_disc_cache_size].value.u = 64u << 20;
 
@@ -2390,6 +2390,40 @@ static struct gui_misc_table framebuffer_misc_table = {
 	.quit = gui_quit,
 };
 
+#ifdef ONYX_NS_OLDDATAPATH
+/**
+ * Onyx: the user's data carried over from the browser's folder before its rename
+ * (SD:/apps/netsurf.app/ -> SD:/apps/jet.app/, compat/onyx_nsconfig.h): a file missing
+ * from the new folder and present in the old one is copied, once, silently -- the
+ * cookies (the logins), the pages visited and the sites shown in their desktop version.
+ * The caches (jscache/, cache/, TLSSessions, HTTP1Hosts) are rebuilt by themselves.
+ */
+static void onyx_carry_old_data(void)
+{
+	static const char *const files[] = { "Cookies", "History", "desktop-sites" };
+	unsigned i;
+	for (i = 0; i < sizeof files / sizeof files[0]; i++) {
+		char to[96], from[96], buf[4096];
+		FILE *in, *out;
+		size_t n;
+		snprintf(to, sizeof to, "%s%s", ONYX_NS_DATAPATH, files[i]);
+		snprintf(from, sizeof from, "%s%s", ONYX_NS_OLDDATAPATH, files[i]);
+		if ((in = fopen(to, "rb")) != NULL) {	/* already there */
+			fclose(in);
+			continue;
+		}
+		if ((in = fopen(from, "rb")) == NULL)	/* nothing to carry */
+			continue;
+		out = fopen(to, "wb");
+		while (out != NULL && (n = fread(buf, 1, sizeof buf, in)) > 0)
+			fwrite(buf, 1, n, out);
+		fclose(in);
+		if (out != NULL)
+			fclose(out);
+	}
+}
+#endif
+
 /**
  * Entry point from OS.
  *
@@ -2429,6 +2463,10 @@ main(int argc, char** argv)
 	 * can do about it either.
 	 */
 	nslog_init(nslog_stream_configure, &argc, argv);
+
+#ifdef ONYX_NS_OLDDATAPATH
+	onyx_carry_old_data();	/* Onyx: the data of SD:/apps/netsurf.app/, once */
+#endif
 
 	/* user options setup */
 	ret = nsoption_init(set_defaults, &nsoptions, &nsoptions_default);

@@ -610,7 +610,7 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
 > `A64_GCC=`) and `qemu-aarch64`, the CPU path built for the Pi (NEON loops) must give the PC's
 > pixels bit for bit. On the Pi: `/bin/gpcdemo test` (the GPU's pictures against the CPU's),
 > `/bin/gpcdemo bench` (ms a frame at 1920 × 1080, GPU then CPU), `/bin/gpcdemo` (a window).
-> **NetSurf** composites its view with it (docs/06 §25: the page in a band, opacity / transform
+> **Jet Browser** (NetSurf) composites its view with it (docs/06 §25: the page in a band, opacity / transform
 > groups as retained layers, one composite a frame; Choices' `gpu_compositing`): `netsurf-app.mk`
 > links `$(ZUSER)/gpucomp/libgpucomp.a` (made by `make -C user gpucomp/libgpucomp.a` when
 > missing), and the `"onyx"` libnsfb surface (`user/nsfb/onyx_surface.c`, inside `libnsfb.a`:
@@ -1921,13 +1921,14 @@ drives the NetSurf fetch API over the Onyx TCP kapis (+ gzip via zlib), the curl
 role without libcurl. Brick 9 wires the whole **NetSurf core + its framebuffer frontend** to
 the `user/nsfb` `"onyx"` libnsfb surface + the `user/img` decoders: `make -f
 user/netsurf/netsurf-app.mk stage` builds `netsurf.elf` (182 TUs + the libs) and installs it
-as the `NetSurf` desktop app. **It runs on Onyx** — the window opens and real web pages render
+as a desktop app -- since 2026-10-01 **Jet Browser** (`apps/jet.app`, launched as `jet`;
+docs/06 §31). **It runs on Onyx** — the window opens and real web pages render
 through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
 `-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
 tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
 NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
 metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
-CSS3 painting, the native window: [`06-NETSURF-CHANGES.md`](06-NETSURF-CHANGES.md) lists the
+CSS3 painting, the native window: [`06-JET-BROWSER.md`](06-JET-BROWSER.md) lists the
 changes. The network (docs/06 §24) links two more vendored libraries, built by
 `make -C user/netsurf` like the others: `third_party/zstd-1.5.7` (the decompressor only,
 `libzstddec.a`) and `third_party/nghttp2-1.70.0` (`libnghttp2.a`, its `config.h` written by
@@ -1944,7 +1945,7 @@ user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (d
 (`test262.py --bin2`), and counts AArch64 instructions exactly (`icount.sh`: the JIT, which is
 AArch64 only -- `QJS_JIT=n` turns it on in `qjsrun`). A change to `quickjs.c` (or
 `quickjs-jit.c`) means `libquickjs.a` made again: delete `third_party/quickjs-ng-0.17.0/*.o`
-first. The scripts' compiled code is cached on the card (`SD:/apps/netsurf.app/jscache/`,
+first. The scripts' compiled code is cached on the card (`SD:/apps/jet.app/jscache/`,
 keyed by the engine's build: a new `libquickjs.a` starts it afresh).
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
@@ -2026,7 +2027,7 @@ stack    = 8M                    ; optional: the app's stack (bytes, K or M), re
 creates the app's task): an app runs on its kernel task's stack, **256 KB** by default; a
 bigger one is asked for here — rounded up to 64 KB, at most 64 MB (smaller: ignored). The
 stack is kernel memory (it must stay mapped when the address space switches), taken from
-the kernel heap and reused after the app ends. NetSurf asks for 8 MB (its JavaScript
+the kernel heap and reused after the app ends. Jet Browser asks for 8 MB (its JavaScript
 engine may use 4).
 
 The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show

@@ -36,7 +36,7 @@ static inline void dc_copy (char *d, const char *s, int cap) { int i = 0; for (;
 
 static inline void dockconf_defaults (DockConf &c)
 {
-	static const char *const D[5][2] = { { "Productivity", "tinypad" }, { "Internet", "netsurf" },
+	static const char *const D[5][2] = { { "Productivity", "tinypad" }, { "Internet", "jet" },
 		{ "Graphics", "paint" }, { "Games", "gamelib" }, { "Demos", "widgets" } };
 	c.ndrawers = 5;
 	for (int i = 0; i < 5; i++) { dc_copy (c.drawer[i].cat, D[i][0], 24); dc_copy (c.drawer[i].app, D[i][1], 32); }

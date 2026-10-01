@@ -82,7 +82,7 @@ void onyx_browser_go(const char *text);		/* an address typed (a URL, or a host) 
 void onyx_browser_redraw(void);			/* the page covered by a pop-up: redraw it */
 
 /* The History dialog's pages: NetSurf's global history (kept on the card, in
- * SD:/apps/netsurf.app/History), the most recent first. `fn` is called for each page with
+ * SD:/apps/jet.app/History), the most recent first. `fn` is called for each page with
  * its address, its title (UTF-8, "" if none) and the time of its last visit (seconds since
  * 1970); returns how many. */
 typedef void (*onyx_history_fn)(void *ctx, const char *url, const char *title, long long when);

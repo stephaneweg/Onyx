@@ -267,7 +267,7 @@ link: objs $(NSTLS_OBJ) $(GPUCOMP_LIB)
 	@echo "netsurf.elf: $$(stat -c %s $(OUT)/netsurf.elf 2>/dev/null) bytes"
 
 # ---- stage onto the Onyx SD card ---------------------------------------
-# Installs the browser as a desktop app (apps/netsurf.app) + its runtime resources under
+# Installs the browser as a desktop app (apps/jet.app) + its runtime resources under
 # res/ (NETSURF_FB_RESPATH=/res -> SD:/res). The NetSurf resources are GPL upstream content
 # regenerated here, so they are .gitignore'd, not committed. Messages is filtered out of
 # FatMessages directly (the buildsystem's split-messages.pl needs perl HTML::Entities).
@@ -275,11 +275,11 @@ SDCARD ?= $(abspath $(HERE)../../sdcard)
 PYTHON ?= python3
 .PHONY: stage
 stage: link
-	@mkdir -p $(SDCARD)/apps/netsurf.app $(SDCARD)/res/en
-	cp $(OUT)/netsurf.elf $(SDCARD)/apps/netsurf.app/main
+	@mkdir -p $(SDCARD)/apps/jet.app $(SDCARD)/res/en
+	cp $(OUT)/netsurf.elf $(SDCARD)/apps/jet.app/main
 	# stack: the kernel gives the app an 8 MB stack (256 KB by default): QuickJS may use 4
-	printf '# Onyx application metadata\nname = NetSurf\ncategory = Internet\nstack = 8M\n' > $(SDCARD)/apps/netsurf.app/app.txt
-	$(PYTHON) $(HERE)gen-icon.py $(SDCARD)/apps/netsurf.app/icon.bmp
+	printf '# Onyx application metadata\nname = Jet Browser\ncategory = Internet\nstack = 8M\n' > $(SDCARD)/apps/jet.app/app.txt
+	$(PYTHON) $(HERE)gen-icon.py $(SDCARD)/apps/jet.app/icon.bmp
 	grep -E '^en\.(all|framebuffer)\.' $(NS)/resources/FatMessages | sed -E 's/^en\.(all|framebuffer)\.//' > $(SDCARD)/res/Messages
 	for f in default.css quirks.css adblock.css internal.css; do cp $(NS)/resources/$$f $(SDCARD)/res/; done
 	# user.css: NetSurf loads it as a UA stylesheet but upstream ships none -> stage an EMPTY
@@ -300,8 +300,8 @@ stage: link
 	for d in $(LIBROOT)/fonts/*/; do cp $$d/LICENSE $(SDCARD)/res/fonts/LICENSE-$$(basename $$d); done
 	# Options (Choices) -- created only if missing so the user's edits survive a re-stage.
 	# Set foreground_images:0 for a fast text + alt-text browse (skips image fetches).
-	@[ -f $(SDCARD)/res/Choices ] || printf '# Onyx NetSurf options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:8\nmax_fetchers_per_host:6\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
-	@echo "staged NetSurf -> $(SDCARD)  (apps/netsurf.app + res/; resource path = /res)"
+	@[ -f $(SDCARD)/res/Choices ] || printf '# Jet Browser options (key:value). foreground_images:0 = text/alt only (fast).\nforeground_images:1\nbackground_images:1\nenable_javascript:1\nmax_fetchers:8\nmax_fetchers_per_host:6\nmemory_cache_size:67108864\n' > $(SDCARD)/res/Choices
+	@echo "staged Jet Browser -> $(SDCARD)  (apps/jet.app + res/; resource path = /res)"
 
 # ---- nstest: console smoke test of the library bricks (-> sdcard/bin/nstest) -------
 # Trimmed include set: NO -I$(DOM)/bindings here -- nstest.c includes the binding header

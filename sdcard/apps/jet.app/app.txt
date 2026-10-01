@@ -1,4 +1,4 @@
 # Onyx application metadata
-name = NetSurf
+name = Jet Browser
 category = Internet
 stack = 8M

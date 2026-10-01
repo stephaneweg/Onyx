@@ -13,4 +13,4 @@ third_party/libcss/src/parse/onyx_grammar_tables.c (committed: no Python at buil
     cd ../libcss/src/parse && python3 onyx_grammar_gen.py \
         ../../../webref-css-8.7.5/css-grammar.json > onyx_grammar_tables.c
 
-See docs/06-NETSURF-CHANGES.md (CSS) for what libcss does with the grammars.
+See docs/06-JET-BROWSER.md (CSS) for what libcss does with the grammars.

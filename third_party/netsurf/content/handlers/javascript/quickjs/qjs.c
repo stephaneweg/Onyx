@@ -4601,7 +4601,7 @@ void js_initialise(void)
 	if (getenv("NS_JSPROF") != NULL)
 		qjs_prof_f = fopen(getenv("NS_JSPROF"), "w");
 #ifdef ONYX_NS_DATAPATH
-	{	/* Onyx: or the file SD:/apps/netsurf.app/jsdebug (no environment on the Pi) */
+	{	/* Onyx: or the file SD:/apps/jet.app/jsdebug (no environment on the Pi) */
 		FILE *f = fopen(ONYX_NS_DATAPATH "jsdebug", "r");
 		if (f != NULL) {
 			qjs_debug = true;

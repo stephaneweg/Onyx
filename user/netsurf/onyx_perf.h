@@ -1,7 +1,7 @@
 /*
  * onyx_perf.h -- timing probes for NetSurf on Onyx (the cost of a rebox, a layout, a redraw).
  *
- * Off unless the file ONYX_NS_DATAPATH "perf" exists (SD:/apps/netsurf.app/perf on the Pi,
+ * Off unless the file ONYX_NS_DATAPATH "perf" exists (SD:/apps/jet.app/perf on the Pi,
  * $(OUT)/data/perf on the PC bench) or NS_PERF is set: then each probe longer than
  * ONYX_PERF_MIN_US prints "ONYX-PERF <what> <us> us" on stderr (the kernel log on the Pi).
  *

@@ -1,6 +1,6 @@
-# Onyx NetSurf against Ladybird, Chromium (Blink), WebKit (Safari) and Opera
+# Onyx: Jet Browser (NetSurf) against Ladybird, Chromium (Blink), WebKit (Safari) and Opera
 
-What the Onyx browser still lacks next to the big engines, why, how to close each gap, its
+What the Onyx browser (Jet Browser, based on NetSurf) still lacks next to the big engines, why, how to close each gap, its
 cost and its order. Opera is Chromium (Blink + V8) with its own shell; "Chromium" below stands
 for Chrome, Edge, Opera, Brave and Vivaldi. Ladybird is the independent engine (LibWeb +
 LibJS) written from the specifications since 2022. State of 2026-09-30 (the end of the
@@ -85,7 +85,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | ~~Brotli / zstd~~ (done, 06 §24) | all | `gzip, deflate, br, zstd` decoded as they come | -- | -- | -- |
 | **Same-origin policy, CSP, cookies' SameSite / partitioning, mixed content** | all | CORS done for fetch / XHR (06 §24: preflight, the Allow-Origin / -Credentials / -Headers / -Methods checks, modes, credentials, opaque responses); no CSP, no SameSite, no CORS for EventSource / fonts / `<img crossorigin>` | CSP parsing and enforcement for scripts / frames; SameSite in the cookie jar; CORS in the core's loads | M | P2 (security of logins) |
 | Site isolation, sandboxed renderer processes | Chromium, WebKit, Ladybird (multi-process) | one process; a tab's frames share one QuickJS runtime, a realm per document (docs/06 §29: cross-origin frames reach each other only through the WindowProxy's allowed fields and the serializer) | Onyx has processes: one NetSurf per tab is already the model; within a page, iframes share the process | XL | P4 |
-| ~~HTTP cache on disk, validators~~ (done, 06 §24) / back-forward cache | all | `SD:/apps/netsurf.app/cache` (64 MB, LRU), ETag / Last-Modified revalidated (304), max-age honoured; TLS sessions kept across launches; preconnect / dns-prefetch | a back-forward cache; the cache partitioned by site; preload hints (`rel=preload`, 103 Early Hints) | M | P3 |
+| ~~HTTP cache on disk, validators~~ (done, 06 §24) / back-forward cache | all | `SD:/apps/jet.app/cache` (64 MB, LRU), ETag / Last-Modified revalidated (304), max-age honoured; TLS sessions kept across launches; preconnect / dns-prefetch | a back-forward cache; the cache partitioned by site; preload hints (`rel=preload`, 103 Early Hints) | M | P3 |
 | DNS over HTTPS, HSTS preload | all | HSTS headers kept by NetSurf's urldb, no preload list | the preload list for the big sites | S | P3 |
 | Downloads manager, `download` attribute, file pickers (`<input type=file>`) | all | ? | the Onyx file dialog (wtk) | S | P2 |
 | Password manager, autofill, sync, extensions, devtools | all (Ladybird: devtools starting) | none | a JS console / DOM inspector window would help debugging on the Pi (the bench has NS_JSDEBUG) | M each | P3-P4 |

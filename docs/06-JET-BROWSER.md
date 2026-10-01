@@ -1,13 +1,21 @@
-# Onyx — the NetSurf changes
+# Onyx — Jet Browser, the Onyx web browser based on NetSurf
 
-NetSurf is Onyx's web browser: the upstream NetSurf 3.x core, its framebuffer frontend and
-its libraries, vendored in `third_party/` and changed for Onyx. This document lists what
-differs from upstream and why, as `05-CIRCLE-CHANGES.md` does for Circle. The aim of the
-changes: pages drawn as Chrome draws them (the user compares with Chrome on Windows).
+**Jet Browser** is Onyx's web browser: the upstream NetSurf 3.x core, its framebuffer
+frontend and its libraries, vendored in `third_party/` and changed for Onyx. It is launched as
+`jet` (`SD:/apps/jet.app`), its window is titled "Jet", and its About box (Help ▸ About Jet
+Browser...) reads "Jet Browser -- the Onyx web browser, based on NetSurf" and credits NetSurf
+(GPL v2, © The NetSurf Developers) and the libraries' licences (§31). Until 2026-10-01 the app
+was called NetSurf (`netsurf.app`); the engine, the libraries and the source paths
+(`third_party/netsurf/`, `user/netsurf/`) keep NetSurf's names, so that they stay comparable
+with upstream, and so does the rest of this document where it means the engine.
+
+This document lists what differs from upstream and why, as `05-CIRCLE-CHANGES.md` does for
+Circle. The aim of the changes: pages drawn as Chrome draws them (the user compares with
+Chrome on Windows).
 
 NetSurf is ours to change: the patches are marked `Onyx:` in the sources (a comment on the
 line or the block), and each is listed here. The user's guide entry is in
-`04-USER-GUIDE.md` (NetSurf), the build in `user/netsurf/README.md`.
+`04-USER-GUIDE.md` (Jet Browser), the build in `user/netsurf/README.md`.
 
 ## 1. Where things are
 
@@ -26,7 +34,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
-| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
+| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog, the About box), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
@@ -92,7 +100,7 @@ headers in order (`llcache_handle_get_header_at`).
   `kapi_pump_wait`), up to the next timer: the pointer, a key, a fetch thread's post or the
   close box wakes it at once -- it slept in blind 20 ms slices.
 - **History** — a native dialog (most recent first, Find, Delete, Clear all); the pages
-  visited kept in `SD:/apps/netsurf.app/History`, the cookies in `.../Cookies`
+  visited kept in `SD:/apps/jet.app/History`, the cookies in `.../Cookies`
   (`ONYX_NS_DATAPATH`, written a few seconds after each page and on exit; never committed).
   The local history's thumbnails are off (`desktop/browser_history.c`).
 - **Scrolling**: the mouse wheel; a scroll blits what stays on screen and redraws the strip
@@ -505,7 +513,7 @@ optional chaining...) with the DOM written in JavaScript:
 - **Speed**: the interpreter's measured wins, the code cache on the card, the window kept responsive, the JIT: §30.
 - A script runs at most `script_timeout` seconds (NetSurf's option); its recursion is
   stopped past **4 MB** of stack (a `RangeError`). The Onyx app has an 8 MB stack for it:
-  `stack = 8M` in `SD:/apps/netsurf.app/app.txt`, read by the kernel (`AppStackSize`,
+  `stack = 8M` in `SD:/apps/jet.app/app.txt`, read by the kernel (`AppStackSize`,
   `kernel/kernel.cpp`) — the default is 256 KB. `NS_JSDEBUG=1` (the PC bench) prints the
   scripts' errors and `console.log` on stderr.
 - **libdom**: a changed `class` attribute updates the element's classes (`element.c`: they
@@ -514,12 +522,12 @@ optional chaining...) with the DOM written in JavaScript:
 
 ## 9. Performance
 
-- **Timings** (`user/netsurf/onyx_perf.h`): with the file `SD:/apps/netsurf.app/perf` (the PC
+- **Timings** (`user/netsurf/onyx_perf.h`): with the file `SD:/apps/jet.app/perf` (the PC
   bench: `NS_PERF=1`), each step longer than 1 ms is printed -- `ONYX-PERF rebox:boxes`,
   `rebox:reformat`, `layout`, `redraw WxH`, `hover:restyle`, and why a hover built the boxes
   again (`hover:rebox (<reason>)`), each script run (`js:exec <url> (<size>)`) and each call
   into the scripts (`js:call <event>`) -- on stderr, the kernel log on the Pi. The file
-  `SD:/apps/netsurf.app/jsdebug` (the PC: `NS_JSDEBUG=1`) prints the scripts' errors and
+  `SD:/apps/jet.app/jsdebug` (the PC: `NS_JSDEBUG=1`) prints the scripts' errors and
   `console.log` there too.
 - **The scripts do not keep the window from responding** (`frontends/framebuffer/schedule.c`):
   the scheduler runs its due callbacks (the page's timers among them) for 40 ms at most, then
@@ -1152,7 +1160,7 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   by default (the light pages of the big sites); a site the user switches gets a desktop
   Chrome's (Windows) -- in its requests, its client hints (`sec-ch-ua-mobile`,
   `sec-ch-ua-platform`) and its scripts' `navigator.userAgent` / `platform` -- and the page is
-  loaded again. The sites are kept on the card (`SD:/apps/netsurf.app/desktop-sites`, one
+  loaded again. The sites are kept on the card (`SD:/apps/jet.app/desktop-sites`, one
   registrable domain a line: m.facebook.com and www.facebook.com are one site;
   `user_agent_for_host`, utils/useragent.c). The disk cache keys a desktop site's objects apart
   (`D|<url>`, `onyx_cache.c`): a site switched back to mobile found its desktop copies.
@@ -1928,10 +1936,10 @@ connect that finds the kernel's table full (`kapi_tcp_connect` -2) closes our id
 connections and waits for a socket (5 s at most) instead of failing.
 
 **TLS sessions kept across launches.** The session cache (32 hosts) is saved to
-`SD:/apps/netsurf.app/TLSSessions` (`mbedtls_ssl_session_save`) with the user data and loaded
+`SD:/apps/jet.app/TLSSessions` (`mbedtls_ssl_session_save`) with the user data and loaded
 at start: a known host's first connection is a resumed (abbreviated) handshake.
 
-**Timings.** With the perf log on (`NS_PERF=1`, or the file `SD:/apps/netsurf.app/perf`):
+**Timings.** With the perf log on (`NS_PERF=1`, or the file `SD:/apps/jet.app/perf`):
 `net:conn host:port queue dns tcp tls full|resumed h2|http/1.1` per new connection,
 `net:done url total ttfb protocol (kept connection) bytes (revalidated 304)` per response,
 `net:cache url fresh (card|memory)` per answer from the cache, `page:load` from the throbber's
@@ -1940,7 +1948,7 @@ delayed connect.
 
 **A disk cache** (`user/netsurf/onyx_cache.c`: NetSurf's `gui_llcache_table` backing store,
 replacing the upstream `fs_backing_store.c`). The objects and their metadata go to
-`SD:/apps/netsurf.app/cache/<id>.d|.m` with an `index` (id, sizes, last use, URL), written by a
+`SD:/apps/jet.app/cache/<id>.d|.m` with an `index` (id, sizes, last use, URL), written by a
 thread of their own (the UI never waits for the card); 64 MB (Choices' `disc_cache_size`),
 the least recently used out beyond it. In `llcache.c`: an object is written to the card when
 it is complete and not `no-store`, and it is either fresh for a while or has a **validator**
@@ -2669,7 +2677,7 @@ qemu logs one instruction a block -- slow, small workloads).
 ### The code cache (`quickjs/qjs_codecache.c`)
 
 A browser does not parse a script it has seen: V8 keeps its compiled code. Here the scripts'
-QuickJS bytecode is kept on the card, `SD:/apps/netsurf.app/jscache/<16 hex digits>.bc`:
+QuickJS bytecode is kept on the card, `SD:/apps/jet.app/jscache/<16 hex digits>.bc`:
 
 - **What**: every classic script of 8 KB or more (external or inline), and the preludes
   (`dom.js`, `html5.js`, `canvas.js`, `net.js`, `wasm.js`, `crypto.js`, `intl.js` -- their
@@ -2774,6 +2782,38 @@ WAMR (the Bytecode Alliance's runtime) was considered for compiled Wasm: its fas
 generates x86-64 code only (its build refuses other targets), its LLVM JIT / AOT is far too
 heavy for the Pi. wasm3 stays (§27: an interpreter 3.5-9x slower than V8); a template JIT of
 its operations, on this JIT's assembler, is the way if the sites need it.
+
+## 31. The name: Jet Browser (2026-10-01)
+
+Decided by the user on 2026-09-30: the browser is **Jet Browser**. What changed:
+
+- **The app**: `sdcard/apps/netsurf.app` became `sdcard/apps/jet.app` (`main`, `app.txt` --
+  `name = Jet Browser`, `category = Internet`, `stack = 8M` -- and the same `icon.bmp`); it
+  is launched as `jet` (`run jet [url]`). There is no `netsurf` alias: `run netsurf` no
+  longer exists. `user/netsurf/netsurf-app.mk`'s `stage` writes `apps/jet.app`; the binary
+  is still built as `netsurf.elf` and the sources stay in `third_party/netsurf/` and
+  `user/netsurf/` (comparable with upstream).
+- **The window**: titled "Jet" (`onyx_chrome.cpp`, `NsWindow`). **Help ▸ About Jet
+  Browser...** (`AboutDialog`): "Jet Browser -- the Onyx web browser, based on NetSurf",
+  NetSurf's copyright (2003-2023 The NetSurf Developers), the GPL v2 (with no warranty;
+  NetSurf's artwork MIT), the libraries and their licences (the NetSurf libraries MIT;
+  QuickJS-ng, wasm3, PlutoVG / PlutoSVG, brotli, nghttp2 MIT; Mbed TLS Apache 2.0; FreeType's
+  licence; zlib, libpng, IJG libjpeg, libwebp, zstd; the fonts' licences), and where the
+  full texts are (`about:licence`, `about:credits`, `SD:/res/fonts/LICENSE*`). The
+  User-Agent is unchanged (Chrome's, §18 / `utils/useragent.c`).
+- **The dock**: the Internet drawer's default app is `jet` (`user/dockconf.h`,
+  `sdcard/etc/dock.ini`; the Setup app's dock page, `user/Apps/setup/main.cpp`;
+  `sdcard/etc/quicklaunch.txt`).
+- **The user's files** moved with the app: `ONYX_NS_DATAPATH` is `/apps/jet.app/`
+  (`user/netsurf/compat/onyx_nsconfig.h`) -- `Cookies`, `History`, `desktop-sites`,
+  `TLSSessions`, `HTTP1Hosts`, `jscache/`, `cache/`, the `perf` and `jsdebug` flag files.
+  (`Choices` stays a resource: `SD:/res/Choices`.)
+- **The data carried over** (`gui.c`, `onyx_carry_old_data`, before the options are read): for
+  `Cookies`, `History` and `desktop-sites`, a file missing from `SD:/apps/jet.app/` and present
+  in `SD:/apps/netsurf.app/` (`ONYX_NS_OLDDATAPATH`) is copied, once, silently -- the logins,
+  the pages visited and the sites shown in their desktop version survive the rename. The
+  caches are not copied (they rebuild themselves); nothing is deleted, the old folder can be
+  removed by hand. Not on the PC bench (`host.mk` sets its own `ONYX_NS_DATAPATH`).
 
 ## 8. Known gaps
 

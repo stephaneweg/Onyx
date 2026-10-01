@@ -1,6 +1,7 @@
 # Onyx NetSurf core libraries (brick 7)
 
-The portable library stack the **NetSurf** browser is built on, cross-compiled for Onyx
+The portable library stack the **NetSurf** browser is built on -- on Onyx, **Jet Browser**
+(`apps/jet.app`, launched as `jet`; docs/06 §31) --, cross-compiled for Onyx
 (`aarch64-none-elf` + newlib). Same split as `user/tls/` and `user/img/`: the upstream
 sources are cross-built here (placed as `./<lib>` — git clones / submodules, **not**
 committed), and the `Makefile` compiles each library's translation units directly,
@@ -37,7 +38,7 @@ working around the two host tools this environment lacks (`gperf`, and no passwo
 
 - **libparserutils** `src/charset/aliases.inc` ← `perl build/make-aliases.pl`.
 - **libhubbub**: nothing to generate. Its tokeniser and tree builder are Onyx's (the current
-  HTML standard, `docs/06-NETSURF-CHANGES.md` §12); the named character references,
+  HTML standard, `docs/06-JET-BROWSER.md` §12); the named character references,
   `src/tokeniser/onyx_entities.inc`, are committed -- made again, if the standard's list
   changes, by `python3 build/make-onyx-entities.py` from `build/entities.json`; the element
   types are a table in `treebuilder.c` (no gperf).
@@ -149,10 +150,10 @@ Build + stage onto the card:
 
 ```sh
 make -f user/netsurf/netsurf-app.mk            # build netsurf.elf
-make -f user/netsurf/netsurf-app.mk stage      # -> sdcard/apps/netsurf.app + sdcard/res/
+make -f user/netsurf/netsurf-app.mk stage      # -> sdcard/apps/jet.app + sdcard/res/
 ```
 
-`stage` installs the browser as a desktop app (`apps/netsurf.app/{main,app.txt}`,
+`stage` installs the browser as a desktop app (`apps/jet.app/{main,app.txt}`,
 category *Internet*) and its runtime resources under `res/` (`NETSURF_FB_RESPATH=/res` →
 `SD:/res`): the `Messages` catalogue (filtered out of `FatMessages`), the default/quirks/
 adblock/internal CSS, the about: pages, the favicon, and the TLS `ca-bundle`. These GPL

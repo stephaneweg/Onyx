@@ -65,12 +65,13 @@ sources.
 - **Networking (WLAN).** TCP/IP stack + on-board Wi-Fi (BCM4343 / `wpa_supplicant`)
   brought up on the primary core, TCP sockets exposed to apps through the ABI, an
   **IRC client**, and NTP clock synchronisation.
-- **A modern web browser.** NetSurf, ported to Onyx: `http://` and `https://`,
+- **A modern web browser.** **Jet Browser** (`jet`), the Onyx web browser based on
+  NetSurf: `http://` and `https://`,
   **CSS3** (`calc()`, `var()`, flexbox, grid, gradients, shadows, rounded corners,
   gradient text, vendor prefixes), web fonts (WOFF/WOFF2, variable fonts) with Chrome's
   Windows fonts stood in by metric-compatible ones, and **JavaScript** on QuickJS
   (ES2023, the DOM, the page laid out again after a script's changes). Details in
-  [the NetSurf changes](06-NETSURF-CHANGES.md). (A dedicated network core is a
+  [Jet Browser, the NetSurf changes](06-JET-BROWSER.md). (A dedicated network core is a
   planned next step.)
 
 ## 4. The architecture at a glance

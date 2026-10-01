@@ -2,7 +2,7 @@ wasm3 for Onyx
 ==============
 
 The WebAssembly interpreter of NetSurf's JavaScript (content/handlers/javascript/quickjs/
-qjs_wasm.c: the WebAssembly namespace; docs/06-NETSURF-CHANGES.md section 21).
+qjs_wasm.c: the WebAssembly namespace; docs/06-JET-BROWSER.md section 21).
 
 Upstream: https://github.com/wasm3/wasm3 (MIT, LICENSE here), the `main` branch at commit
 28ecb9a (2026-09-29, "Implement Atomics"), which says it is version 0.9.2 (after the

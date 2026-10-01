@@ -63,7 +63,7 @@ info = struct.pack('<IiiHHIIiiII', 40, W, H, 1, 24, 0, len(data), 2835, 2835, 0,
 
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "sdcard", "apps",
-    "netsurf.app", "icon.bmp")
+    "jet.app", "icon.bmp")
 os.makedirs(os.path.dirname(out), exist_ok=True)
 open(out, "wb").write(hdr + info + data)
 print("wrote %s: %dx%d 24bpp, %d bytes" % (out, W, H, 54 + len(data)))

@@ -12,6 +12,8 @@
 //
 // The history is a native dialog (Navigate > History..., Ctrl+H, the clock button): the pages
 // visited, the most recent first, from NetSurf's global history (gui.c keeps it on the card).
+// The app is Jet Browser ("Jet" in the window's title): Onyx's web browser, based on NetSurf;
+// Help > About Jet Browser... credits NetSurf and the libraries (their licences).
 //
 #include <time.h>
 #include "wtk/wtk.h"
@@ -565,7 +567,7 @@ public:
 	ToolButton *back, *fwd, *reload, *home, *hist;
 	UrlField   *url;
 	bool        busy;
-	NsWindow (int w, int h) : Root (w, h + TB, "NetSurf"), busy (false)
+	NsWindow (int w, int h) : Root (w, h + TB, "Jet"), busy (false)
 	{
 		int x = PAD;
 		back   = new ToolButton (x, BTN_Y, WKG_CHEV_LEFT, onyx_browser_back);     x += BTN_W + GAP;
@@ -742,6 +744,64 @@ void open_history ()
 	if (go) { onyx_browser_go (go); delete [] go; }
 }
 
+// The About box (Help > About Jet Browser...): the name, NetSurf's copyright and licence (GPL v2),
+// the libraries' licences. Their full texts: about:licence, about:credits, SD:/res/fonts/LICENSE*.
+const char *const ABOUT[] = {
+	"NetSurf: Copyright (c) 2003-2023 The NetSurf Developers.",
+	"Free software under the GNU General Public License, version 2,",
+	"WITHOUT ANY WARRANTY; NetSurf's artwork under the MIT licence.",
+	"Jet Browser's changes to NetSurf are under the same terms.",
+	"",
+	"With: libcss, libdom, libhubbub, libparserutils, libwapcaplet,",
+	"libnsutils, libnsgif, libnsbmp, libnsfb (MIT, The NetSurf Developers);",
+	"QuickJS-ng (MIT), wasm3 (MIT), Mbed TLS (Apache 2.0),",
+	"FreeType (FreeType Licence), zlib (zlib), libpng (libpng),",
+	"libjpeg (IJG), libwebp (BSD), brotli (MIT), zstd (BSD),",
+	"nghttp2 (MIT), plutovg / plutosvg (MIT); the fonts DejaVu,",
+	"Liberation, Selawik, Gelasio (free font licences).",
+	"",
+	"The full texts: about:licence, about:credits, SD:/res/fonts/.",
+};
+const int ABOUT_N = (int) (sizeof ABOUT / sizeof ABOUT[0]);
+
+class AboutDialog : public Modal
+{
+public:
+	AboutDialog (int W, int H) : Modal (W < 600 + 40 ? W - 40 : 600,
+		H < box_h () + 40 ? H - 40 : box_h ())
+	{
+		left = (W - width) / 2; top = (H - height) / 2;
+		Button *b = new Button (width - 92, height - 38, 82, 28, "OK", hd_button);
+		b->tag = 0; addChild (b);
+	}
+	static int box_h () { return Modal::titleH () + 16 + (wk_fh () + 2) * (ABOUT_N + 2) + 50; }
+	bool onKey (long k) override
+	{
+		if (k == 27 || k == KEY_ENTER) { close (0); return true; }
+		return false;
+	}
+	bool onMouse (int, int, int, int, int, int) override { return true; }	// (modal: all of it)
+	void onDraw () override
+	{
+		drawBox ("About Jet Browser");
+		int fh = wk_fh (), y = titleH () + 10;
+		wk_text_l (canvas, 14, y, fh + 2, "Jet Browser -- the Onyx web browser, based on NetSurf", C_TEXT, 2);
+		y += 2 * (fh + 2);
+		for (int i = 0; i < ABOUT_N; i++, y += fh + 2)
+			wk_text_l (canvas, 14, y, fh + 2, ABOUT[i], C_TEXT);
+	}
+};
+
+void open_about ()
+{
+	if (g_win == 0 || has_modal ()) return;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	AboutDialog *d = new AboutDialog (g_win->width, g_win->height);
+	d->run ();
+	delete d;
+	onyx_browser_redraw ();			// (the page under the dialog)
+}
+
 Menu g_menu;
 
 } // namespace
@@ -766,6 +826,8 @@ unsigned *onyx_chrome_open (int w, int h, int *stride)
 	g_menu.separator ();
 	g_menu.item ("Home", "", 0, m_home);
 	g_menu.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
+	g_menu.menu ("Help");
+	g_menu.item ("About Jet Browser...", "", 0, open_about);
 	g_menu.publish ();
 	kapi_set_pointer_handler (ptr_event);
 	kapi_set_key_handler (key_event);

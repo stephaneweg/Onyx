@@ -30,7 +30,7 @@ DOCS = [
     "03-DEVELOPER-GUIDE.md",
     "04-USER-GUIDE.md",
     "05-CIRCLE-CHANGES.md",
-    "06-NETSURF-CHANGES.md",
+    "06-JET-BROWSER.md",
 ]
 
 

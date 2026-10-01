@@ -5,4 +5,4 @@ terminal
 fileviewer
 tinypad
 tinycalc
-netsurf
+jet

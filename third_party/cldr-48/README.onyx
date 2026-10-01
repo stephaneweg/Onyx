@@ -15,4 +15,4 @@ One record per line, "key<TAB>JSON" (lines starting with '#' are comments):
 
 The makefiles (user/netsurf/netsurf-app.mk, tools/tests/netsurf/host.mk) compile it into NetSurf
 as a C string with intl.js (qjs_intl_js.h); intl.js parses a record at its first use. See
-docs/06-NETSURF-CHANGES.md, "Intl".
+docs/06-JET-BROWSER.md, "Intl".

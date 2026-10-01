@@ -770,7 +770,7 @@ public:
 		win (180, 40, 250, 86, SCHEMES[g_scheme].c, "Text Editor", true);
 		int dw = 240, dx = (width - dw) / 2, dy = height - 30;
 		wk_rbox (canvas, dx, dy, dw, 24, 7, wk_tone (C_DOCK, 175), C_DOCK); wk_rline (canvas, dx, dy, dw, 24, 7, wk_tone (C_DOCK, 60), 140);
-		static Pic di[6]; static const char *const DI[] = { "tinypad", "netsurf", "paint", "tetris", "terminal", "fileviewer" };
+		static Pic di[6]; static const char *const DI[] = { "tinypad", "jet", "paint", "tetris", "terminal", "fileviewer" };
 		for (int k = 0; k < 6; k++) { if (!di[k].px) di[k] = icon (DI[k]); draw_pic (canvas, di[k], dx + 12 + k * 38, dy + 2, 20); }
 	}
 };

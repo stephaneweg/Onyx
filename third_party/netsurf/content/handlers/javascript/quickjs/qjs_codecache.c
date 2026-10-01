@@ -37,7 +37,7 @@
 #endif
 
 #ifndef ONYX_NS_DATAPATH
-#define ONYX_NS_DATAPATH "/apps/netsurf.app/"
+#define ONYX_NS_DATAPATH "/apps/jet.app/"
 #endif
 #define QJS_CC_DIR ONYX_NS_DATAPATH "jscache/"
 #define QJS_CC_BUDGET (32 * 1024 * 1024)

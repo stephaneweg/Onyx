@@ -1,4 +1,4 @@
-# Onyx NetSurf options -- NetSurf "Choices" format: one "key:value" per line.
+# Jet Browser options -- NetSurf "Choices" format: one "key:value" per line.
 # Read at startup from SD:/res/Choices. Edit on the card; no rebuild needed, and
 # re-staging keeps your edits (the build only creates this file if it is missing).
 

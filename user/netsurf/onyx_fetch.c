@@ -1476,7 +1476,7 @@ static volatile int onyx_connect_lk;
 static void onyx_sockets_free(void);
 
 
-/* Onyx: a connection's timings for the perf log (NS_PERF / SD:/apps/netsurf.app/perf) */
+/* Onyx: a connection's timings for the perf log (NS_PERF / SD:/apps/jet.app/perf) */
 struct onyx_ctime {
 	uint64_t queue;		/* waiting for the connects' turn */
 	uint64_t dns;		/* the name resolved (the kernel caches it: then ~0) */
@@ -2052,7 +2052,7 @@ static void onyx_sockets_free(void)
 }
 
 /* Onyx: what the fetcher remembers across launches, on the card beside the app
- * (SD:/apps/netsurf.app/): the TLS sessions (TLSSessions: the first connection to a known
+ * (SD:/apps/jet.app/): the TLS sessions (TLSSessions: the first connection to a known
  * host resumes -- one round trip less, no certificate chain) and the origins that answer over
  * HTTP/1.1 only (HTTP1Hosts, "host port day" -- kept a week: their fetches need not wait for
  * the ALPN of a first connection, and a CDN that refused HTTP/2 with a 403 is not tried again) */

@@ -7,7 +7,7 @@ paths like `Zircon/circle` as-is; no relation to Google/Fuchsia's Zircon).
 
 **Continuing the work? Read `docs/HANDOFF.md` first** (where things stand, the conventions, the
 next tasks: after the desktop redesign — a modernised CDE, `docs/gui-redesign/README.md`, done
-and in `main` — its next ideas, the GameCube emulator, and NetSurf "as in Chrome": its section
+and in `main` — its next ideas, the GameCube emulator, and Jet Browser (NetSurf) "as in Chrome": its section
 says where the code is, how to test on the PC, how to build, what is next).
 
 The reference documentation is in **`docs/`** and is written in **English**:
@@ -17,7 +17,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/03-DEVELOPER-GUIDE.md`
 - `docs/04-USER-GUIDE.md`
 - `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
-- `docs/06-NETSURF-CHANGES.md` (the Onyx changes to NetSurf, libcss, FreeType; the fonts)
+- `docs/06-JET-BROWSER.md` (Jet Browser, the Onyx web browser based on NetSurf: the Onyx changes to NetSurf, libcss, FreeType; the fonts)
 - `docs/07-BROWSER-GAPS.md` (what the browser lacks next to Ladybird / Chromium / WebKit, the plan)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by

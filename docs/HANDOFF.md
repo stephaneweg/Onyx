@@ -21,7 +21,7 @@ answer in French. The docs stay in English.
   `git diff --cached --name-only | grep -i -E "\.sfc$|\.smc$|\.nes$|\.gb|\.sav$|\.z64$|\.n64$|\.v64$|\.wav$|\.iso$|\.gcm$|wpa_supplicant|ftpfs.ini|shelf.ini|lisa.app/config"`
   must print nothing. Do not download commercial ROMs; the user's own ISO/ROMs stay local.
 - NetSurf is ours to change (the user lifted the old "do not modify NetSurf" rule): mark each
-  patch `Onyx:` in the source and list it in `docs/06-NETSURF-CHANGES.md`; check a change on the
+  patch `Onyx:` in the source and list it in `docs/06-JET-BROWSER.md`; check a change on the
   PC bench (`tools/tests/netsurf/shot.sh` / `chrome.sh`) against Chromium before staging it. No
   model identifiers in code or commits. Commits end with a `Co-Authored-By:` line.
 - Docs rule (CLAUDE.md): kapi / app changes → docs 02 / 03 / 04 (+ 05 for Circle patches),
@@ -665,16 +665,24 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
 The goal, in the user's words: the two sites (theirs) drawn "comme sur Chrome" -- Chrome on
 Windows, which they compare with on the Pi (portrait and landscape screens) -- and JavaScript
 for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
-`docs/06-NETSURF-CHANGES.md` (read it first: it is the map of what changed and why).
+`docs/06-JET-BROWSER.md` (read it first: it is the map of what changed and why).
 
-**Decided (the user, 2026-09-30): the browser is renamed "Jet Browser"** ("Jet" in the window,
-"Jet Browser -- the Onyx web browser, based on NetSurf" in its About box; the GPL v2 notices,
-NetSurf's copyrights and the libraries' licences kept and credited). To do once the running
-work is merged: the app (`netsurf.app` -> `jet.app`, no `netsurf` alias; the dock's default Internet button
-launches `jet`: `user/dockconf.h`, `user/Apps/setup/main.cpp`, `sdcard/etc/dock.ini`,
-`sdcard/etc/quicklaunch.txt`), its title,
-About box, docs (docs/06 renamed accordingly), screenshots; the source paths
-(`third_party/netsurf/`) stay as they are (comparable with upstream).
+**Done (2026-10-01): the browser is renamed "Jet Browser"** (decided by the user on
+2026-09-30; docs/06 §31). The app is `sdcard/apps/jet.app` (`name = Jet Browser`), launched as
+`jet` -- no `netsurf` alias, `run netsurf` no longer exists; the window is titled "Jet";
+Help > About Jet Browser... reads "Jet Browser -- the Onyx web browser, based on NetSurf" and
+credits NetSurf (GPL v2, its copyright) and the libraries' licences. The dock's default
+Internet button launches `jet` (`user/dockconf.h`, `user/Apps/setup/main.cpp`,
+`sdcard/etc/dock.ini`, `sdcard/etc/quicklaunch.txt`; dock / dockconf / theme / setup
+restaged). The user's files are under `SD:/apps/jet.app/` (`ONYX_NS_DATAPATH`); at start,
+`Cookies`, `History` and `desktop-sites` missing there are copied once from
+`SD:/apps/netsurf.app/` (`gui.c`, `onyx_carry_old_data`). docs/06 is now
+`docs/06-JET-BROWSER.md`. The source paths (`third_party/netsurf/`, `user/netsurf/`), the
+binary's build name (`netsurf.elf`), the PC bench (`tools/tests/netsurf/`, `build/netsurf`)
+and the kernel log's `netsurf:` lines keep NetSurf's name. On the Pi: copy
+`apps/jet.app/` to the card (main, app.txt, icon.bmp) and `apps/dock.app/main`; the old
+`SD:/apps/netsurf.app/` can be deleted after a first start of `jet`. In the history below,
+`netsurf.app` and `run netsurf` are the names of the time.
 
 **Feature tests on the Pi (2026-09-30 late, docs/06 §23):** the Pi's css3test.com "100 %" /
 browserscore.dev "0 %" were the script time limit (10 s) cutting both test runs off on the
@@ -927,15 +935,15 @@ late); log the redraw rectangles; check `onyx_paint.c`'s effects (they read the 
 ### Trying it on the Pi (from this PC)
 - The Pi answers at 192.168.0.10 (telnet 23, VNC 5900; telnetd serves several sessions now).
   Deploy: an FTP server on the PC (`pyftpdlib`, port 2121, the repo's `sdcard/` as its root,
-  allowing only the Pi), then in a telnet session `cat FTP:192.168.0.9:2121/apps/netsurf.app/main
-  > SD:/apps/netsurf.app/main.new` (7 MB: wait ~45 s before the next command, or the transfer is
-  cut), `wc -c < SD:/apps/netsurf.app/main.new` (the size), `cp` it over `main`. No reboot
+  allowing only the Pi), then in a telnet session `cat FTP:192.168.0.9:2121/apps/jet.app/main
+  > SD:/apps/jet.app/main.new` (7 MB: wait ~45 s before the next command, or the transfer is
+  cut), `wc -c < SD:/apps/jet.app/main.new` (the size), `cp` it over `main`. No reboot
   needed for an app.
 - **Its messages**: an app's stdout without a terminal goes to the kernel log as `app:` lines --
   NetSurf's `ONYX-FETCH FAIL <url> err=...`, `ONYX-CSS-ERR ...`, `ONYX-HLC type=... url=...`.
   One telnet session runs `kmsg` (it streams for ever: stop it with Ctrl-C, `\x03`; never pipe
   it into `grep`: that never ends and freezes the session), a second one runs
-  `run netsurf https://kotonviolins.com` (`run` passes the URL; a NetSurf already open is kept:
+  `run jet https://kotonviolins.com` (`run` passes the URL; a Jet Browser already open is kept:
   close it first for a new build). Screenshots: `python -m vncdotool.command -s 192.168.0.10
   capture x.png`; at 1024 x 768 (the user's setting now) `move x y` lands where asked (hover
   tests: compare pixels before / after).
