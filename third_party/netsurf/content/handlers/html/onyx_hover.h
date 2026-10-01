@@ -72,6 +72,15 @@ bool onyx_hover_restyle_elements(struct html_content *c,
  * The style results replaced (by hovers, by animations' frames) that no box points at any
  * more freed; the others kept until the next rebox.
  */
+/**
+ * Onyx: the scripts' attribute changes (html.c html_restyle_in_place) -- each node's
+ * subtree styled again by a selection, the boxes given the new styles: redrawn when only
+ * how they are painted changed; layout: any change taken, nothing redrawn -- the caller
+ * lays the boxes out again. False: nothing done (the boxes must be built again).
+ */
+bool onyx_hover_restyle_nodes(struct html_content *c, struct dom_node *const *nodes, int n,
+		bool layout);
+
 void onyx_hover_collect(struct html_content *c);
 
 #endif

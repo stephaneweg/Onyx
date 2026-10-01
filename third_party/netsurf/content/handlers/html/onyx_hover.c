@@ -901,6 +901,37 @@ bool onyx_hover_restyle_elements(struct html_content *c,
 	return hv_finish(c, &h, NULL);	/* (onyx_anim.c tells) */
 }
 
+/* exported function documented in html/onyx_hover.h */
+bool onyx_hover_restyle_nodes(struct html_content *c, struct dom_node *const *nodes, int n,
+		bool layout)
+{
+	struct hv h;
+
+	if (c->layout == NULL || c->box_conversion_context != NULL || c->base.locked ||
+	    c->rebox_pending || c->aborted)
+		return false;
+	if (c->hover_old_n > HV_KEEP_MAX / 2)
+		onyx_hover_collect(c);
+	if (c->hover_old_n > HV_KEEP_MAX)
+		return false;
+	memset(&h, 0, sizeof(h));
+	h.c = c;
+	h.layout_ok = layout;
+	for (int k = 0; k < n && !h.fail; k++) {
+		struct box *rb = hv_box_of(nodes[k]);
+		if (rb != NULL && rb == c->layout) {
+			hv_restyle(&h, nodes[k], NULL, true, 0);	/* the root */
+		} else {
+			const css_computed_style *ps = hv_parent_style(nodes[k]);
+			if (ps == NULL)
+				HV_FAIL(&h, "no parent style");
+			else
+				hv_restyle(&h, nodes[k], ps, false, 0);
+		}
+	}
+	return hv_finish(c, &h, layout ? "dom:restyle+layout" : "dom:restyle");
+}
+
 /* ---- the replaced results freed once no box sees them ---------------------------------- */
 
 struct hv_ptrset {

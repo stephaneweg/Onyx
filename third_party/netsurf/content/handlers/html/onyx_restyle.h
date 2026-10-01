@@ -87,6 +87,11 @@ void onyx_restyle_keep_sheet(struct html_content *c, struct hlcache_handle *old)
  * box tree (its kept selection says so: head, script, template, a hidden panel...) */
 bool onyx_restyle_node_hidden(struct html_content *c, dom_node *n);
 
+/** Whether n's selection, or one in its subtree, looked at previous siblings or the
+ * structure around another node (an attribute change of a previous sibling may restyle
+ * it): 1 yes, 0 no, -1 not known (never selected) */
+int onyx_restyle_sibling_dependent(struct html_content *c, dom_node *n);
+
 /** The content goes */
 void onyx_restyle_fini(struct html_content *c);
 

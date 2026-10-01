@@ -223,6 +223,12 @@ typedef struct html_content {
 	 * many of them could show (not in a display: none subtree) */
 	uint64_t rebox_last_start, rebox_last_cost;
 	unsigned int rebox_mut_events, rebox_mut_shown;
+	/** Onyx: the elements whose attributes changed since the last rebox (references),
+	 * while no other change came (html_restyle_in_place: their styles made again in
+	 * the boxes, no rebox) */
+	struct dom_node *restyle_attr[32];
+	unsigned int restyle_attr_n;
+	bool restyle_attr_only;
 	/** Onyx: boxes built and laid out while the document is still parsed (a script
 	 * asked for a geometry), and whether the parser added nodes since */
 	bool early_layout;
@@ -388,7 +394,7 @@ void html_script_dom_changed(html_content *htmlc);
 void html_script_dom_changed_by_script(html_content *htmlc);
 
 /** Onyx: a DOM change (dom_event.c): counted for html_script_dom_changed_by_script */
-void html_script_mutation(html_content *htmlc, struct dom_node *node);
+void html_script_mutation(html_content *htmlc, struct dom_node *node, bool attr);
 
 /**
  * Onyx: a subtree taken out of the document forgets its boxes (they are freed at the next

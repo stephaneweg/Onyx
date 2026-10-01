@@ -2764,7 +2764,7 @@ static JSValue n_set_state(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	if (t->htmlc != NULL) {
 		/* (Onyx: its kept style selection made again, as for an attribute) */
 		onyx_restyle_attr_changed(t->htmlc, n);
-		html_script_mutation(t->htmlc, n);
+		html_script_mutation(t->htmlc, n, true);
 	}
 	t->dirty = true;
 	return JS_UNDEFINED;

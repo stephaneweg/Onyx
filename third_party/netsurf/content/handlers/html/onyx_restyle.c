@@ -103,6 +103,7 @@ struct osr_memo {
 	uint8_t ntested, hovered;
 	bool none;		/* display: none in the box tree of its serial */
 	uint8_t visited;	/* nscss_visited_seen: a link's visited state */
+	bool desc_sib;		/* it or a descendant looked at siblings (sticky) */
 	css_select_results *res;	/* the cascade's (NULL: not kept) */
 	css_computed_style *parent, *root;
 	const void *pvars;	/* its parent's custom properties (libcss, a reference) */
@@ -719,6 +720,22 @@ void onyx_restyle_store(html_content *c, dom_node *n, const css_select_results *
 	m->epoch = c->restyle_epoch;
 	m->structural = structural;
 	m->visited = visited;
+	if ((structural & (NSCSS_STRUCT_SIB | NSCSS_STRUCT_ANC)) && !m->desc_sib) {
+		/* (its ancestors told: an attribute change of their previous sibling may
+		 * restyle it -- html_restyle_in_place) */
+		dom_node *a = dom_node_ref(n), *next;
+		while (a != NULL) {
+			struct osr_memo *am = osr_make(a);
+			if (am == NULL || am->desc_sib) {
+				dom_node_unref(a);
+				break;
+			}
+			am->desc_sib = true;
+			next = osr_parent(a);
+			dom_node_unref(a);
+			a = next;
+		}
+	}
 	m->ntested = m->hovered = 0;
 	m->none = res != NULL && res->styles[CSS_PSEUDO_ELEMENT_NONE] != NULL &&
 			css_computed_display(res->styles[CSS_PSEUDO_ELEMENT_NONE], false) ==
@@ -902,4 +919,14 @@ bool onyx_restyle_node_hidden(html_content *c, dom_node *n)
 		a = next;
 	}
 	return hidden;
+}
+
+/* exported function documented in html/onyx_restyle.h */
+int onyx_restyle_sibling_dependent(html_content *c, dom_node *n)
+{
+	struct osr_memo *m = osr_get(n);
+
+	if (m == NULL || m->serial == 0)
+		return -1;
+	return m->desc_sib ? 1 : 0;
 }
