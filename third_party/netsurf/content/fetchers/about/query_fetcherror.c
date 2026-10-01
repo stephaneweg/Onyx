@@ -35,6 +35,10 @@
 #include "private.h"
 #include "query.h"
 #include "query_fetcherror.h"
+#include "netsurf/onyx_jet.h"	/* Onyx: the status bar shows the error */
+
+/* Onyx: the frontend's (netsurf/onyx_jet.h) */
+void (*onyx_fetch_error_hook)(const char *url, const char *reason) = NULL;
 
 /**
  * Handler to generate about scheme fetch error query page
@@ -74,6 +78,10 @@ bool fetch_about_query_fetcherror_handler(struct fetch_about_context *ctx)
 	if (siteurl == NULL) {
 		return fetch_about_srverror(ctx);
 	}
+
+	/* Onyx (docs/06 §38): the status bar says why the page did not load */
+	if (onyx_fetch_error_hook != NULL)
+		onyx_fetch_error_hook(nsurl_access(siteurl), reason);
 
 	/* content is going to return ok */
 	fetch_about_set_http_code(ctx, 200);

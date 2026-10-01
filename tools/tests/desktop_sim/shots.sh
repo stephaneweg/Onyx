@@ -293,7 +293,10 @@ if want setup; then			# (Setup, the first-run wizard: its pages over the wallpap
 fi
 if want jet; then			# (Jet Browser: the bench's build, tools/tests/netsurf/host.mk -- a local https page,
 					#  sd/jet/index.html over h2srv.py with a certificate made here and trusted:
-					#  the green padlock, the Standard pill; then the pill's menu open)
+					#  the green padlock, the Standard pill, the zoom control, the status bar; then
+					#  the pill's menu open. Then the downloads (docs/06 §38): a link of
+					#  pages/jet-dl.html over httpsrv.py -- the Save dialog, the downloads' menu.
+					#  JETPORT: the servers' ports, JETPORT and JETPORT + 1)
 	NS=${NSBENCH:-/tmp/nsbench}
 	make -f tools/tests/netsurf/host.mk OUT="$NS/build" -j"$(nproc)" >"$OUT/jet-build.log" 2>&1 ||
 		{ echo "shots: jet's build failed ($OUT/jet-build.log)"; exit 1; }
@@ -303,15 +306,27 @@ if want jet; then			# (Jet Browser: the bench's build, tools/tests/netsurf/host.
 		-keyout "$OUT/jet/key.pem" -out "$OUT/jet/cert.pem" >/dev/null 2>&1
 	cat "$NS/build/res/ca-bundle" "$OUT/jet/cert.pem" > "$OUT/jet/ca.pem"
 	sed -i '/^ca_bundle:/d' "$NS/build/res/Choices"; echo "ca_bundle:$OUT/jet/ca.pem" >> "$NS/build/res/Choices"
-	rm -f "$NS/build/data/site-modes" "$NS/build/data/desktop-sites" "$NS/build/data/jet.ini"
-	python3 tools/tests/netsurf/h2srv.py $D/sd/jet 8447 "$OUT/jet/cert.pem" "$OUT/jet/key.pem" >"$OUT/jet/srv.log" 2>&1 &
+	rm -f "$NS/build/data/site-modes" "$NS/build/data/desktop-sites" "$NS/build/data/jet.ini" "$NS/build/data/view"
+	JP=${JETPORT:-8447}
+	python3 tools/tests/netsurf/h2srv.py $D/sd/jet $JP "$OUT/jet/cert.pem" "$OUT/jet/key.pem" >"$OUT/jet/srv.log" 2>&1 &
 	JSRV=$!; sleep 1
 	JW=$(i=0; while [ $i -lt 120 ]; do printf 'wait;'; i=$((i + 1)); done)
-	env SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" SIM_ARGS=https://localhost:8447/index.html \
-		SIM="${JW}dump $OUT/jet.elsm;move 940 19;wait;down 940 19;wait;wait;wait;move 860 114;wait;wait;dump $OUT/jet-menu.elsm;key 27;wait;exit" \
+	# (the pill: its right end at 852, left of the zoom control)
+	env SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" SIM_ARGS=https://localhost:$JP/index.html \
+		SIM="${JW}move 300 200;wait;dump $OUT/jet.elsm;move 835 19;wait;down 835 19;wait;wait;wait;move 760 114;wait;wait;dump $OUT/jet-menu.elsm;key 27;wait;exit" \
 		"$NS/build/netsurf" >>"$OUT/log.txt" 2>&1 || true
 	kill $JSRV 2>/dev/null
 	sed -i '/^ca_bundle:/d' "$NS/build/res/Choices"
-	png jet; png jet-menu
+	python3 tools/tests/netsurf/httpsrv.py tools/tests/netsurf/pages $((JP + 1)) >"$OUT/jet/srv2.log" 2>&1 &
+	JSRV=$!; sleep 1
+	rm -rf "$OUT/jet/writes"
+	# (the link "report 2026.pdf": the dialog; Enter: saved; the 3 MB one: saved; the downloads' menu)
+	env SIM_WRITES="$OUT/jet/writes" SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" \
+		SIM_ARGS=http://127.0.0.1:$((JP + 1))/jet-dl.html \
+		SIM="${JW}move 60 60;wait;down 60 60;up 60 60;${JW}dump $OUT/jet-save.elsm;key 13;${JW}move 60 140;wait;down 60 140;up 60 140;${JW}key 13;${JW}move 937 19;wait;down 937 19;up 937 19;wait;wait;wait;move 760 64;wait;wait;dump $OUT/jet-downloads.elsm;key 27;wait;exit" \
+		"$NS/build/netsurf" >>"$OUT/log.txt" 2>&1 || true
+	kill $JSRV 2>/dev/null
+	rm -f "$NS/build/data/view"
+	png jet; png jet-menu; png jet-save; png jet-downloads
 fi
 echo "shots: done"

@@ -34,9 +34,9 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
-| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog, the About box), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
+| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -3381,6 +3381,149 @@ applied no style at all (not even its own pages'), while the PC bench (built fro
 right. The objects now carry their header lists (`-MMD -MP -MF <obj>.o.d`, included by the
 Makefile; ignored by git): a header changed rebuilds its users. libdom and libcss were rebuilt
 from scratch.
+
+## 38. The page zoom, the status bar, the downloads (2026-10-01)
+
+Three things of every browser that Jet Browser lacked: Ctrl+ / Ctrl- (the user: "a zoom in the
+toolbar, Ctrl+ and Ctrl-, Ctrl+0 back to the original size"), a status bar ("Loading or Ready, the
+HTTP error, the link under the pointer") and downloads ("a dialog to save the file, its name filled
+in; SD:/Downloads made if missing").
+
+![The toolbar: the zoom control at its right; the status bar](../screenshots/jet.png)
+
+**The zoom.** NetSurf scales a whole browser window (`browser_window_set_scale`: the layout is done
+at the viewport's width / the scale, the plotters draw at the scale -- text at its real size, sharp,
+not a stretched bitmap; the frontend's fbtk keys for it never came on Onyx, whose keys are characters).
+The toolbar's **zoom control** (`ZoomCtl`, right of the pill: a framed **-**, the percentage, a
+framed **+**; the percentage in the accent when not 100 %) and the keys call
+`onyx_browser_zoom (step)` (gui.c): Chrome's steps -- 25, 33, 50, 67, 75, 80, 90, 100, 110, 125,
+150, 175, 200, 250, 300, 400, 500 % -- in or out, or back to 100 % (a click on the percentage,
+Ctrl+0); the scale is Choices' `scale` (100 by default) times the zoom; the view keeps the same part
+of the page at its top. Keys (`key_event`, before the address field and the page: Ctrl held, not
+Alt): **Ctrl++** / **Ctrl+=** (the keypad's + too), **Ctrl+-**, **Ctrl+0**; **Ctrl+wheel** over the
+page (`ptr_event`: not a scroll); View ▸ Zoom In / Zoom Out / Actual Size. **The kernel** had to
+change for the keys: Circle's keymap looks a key with Ctrl up in its Ctrl column (unless it is a
+letter) and the layouts (`SD:/etc/keymaps/*.kmap`) leave that column empty for - = 0 -- nothing
+came. `CInputTask::SetKeyMapData` (kernel.cpp) now fills the empty Ctrl entry of the key whose own
+character is `-`, `=` / `+`, or `0` (its own or, AZERTY, its Shift one) with the keypad's key of
+that character (`KeyKP_Subtract`, `KeyKP_Add`, `KeyKP_0`), whose string Circle sends with or
+without Ctrl: the app gets the character, `kapi_get_modifiers ()` says Ctrl (no kapi change; docs/02
+§ the keyboard). Ctrl+Shift+= (a US `+`) still gives nothing: Circle's Shift column wins. The
+Windows build sends the same characters from `WM_KEYDOWN` (VK_OEM_PLUS / MINUS, '0', the keypad's)
+and drops their `WM_CHAR` (Ctrl+- made a 0x1F).
+
+**Per site, kept.** The zoom belongs to the page's host (`www.example.com`; `file` / `about` for
+those pages), as in Chrome; `SD:/apps/jet.app/view` keeps it -- `zoom <site> <percent>` lines (100 %
+is not written), with the status bar's `status_bar 0|1` --, read at the start, written at each
+change. A new page gets its site's zoom **before its first layout**: a core hook
+(`netsurf/onyx_jet.h`, `onyx_zoom_hook`, called by `browser_window_content_ready` for a root
+window -- the new content is the current one, the page before is gone, its iframes follow), so a
+site keeps its zoom without being laid out twice; the hook also sets the toolbar's percentage.
+
+**What the page's scripts see** (qjs.c): CSS px are the scale's device px -- `qjs_scroll` divides
+the frontend's scroll offsets by the scale, `n_scroll` the viewport's size (`innerWidth`,
+`innerHeight`), `n_scroll_to` multiplies; so `getBoundingClientRect`, the events' `clientX` /
+`clientY`, `elementFromPoint`, `scrollX` are in CSS px (a click on a box at 200 % lands on it:
+`dltest.sh`). `devicePixelRatio` is the scale (a getter: `N.scroll ()[6]`, rounded to 1e-4), as
+Chrome's zoom makes it.
+
+**GPU compositing** (§25) at a scale other than 1: the band works as ever (the core paints it
+through the scaled plotters); the retained layers are not offered (`onyx_fx_retain` refuses when
+`scale != 1`: painted in the band, as on the CPU). `gputest.sh` §3a: gpu-scroll.html at 150 %,
+scrolled, composited = CPU.
+
+**The status bar** (`StatusBar`, a wtk widget at the window's bottom, `ONYX_STATUSBAR_H` = 22 px:
+the page's area is that much shorter -- `onyx_chrome_page` gives the page's height without it, the
+pointer's events below the page go to the wtk tree, and View ▸ Hide / Show Status Bar is a resize of
+the page, `g_resized`, kept in `view`; the window's size does not change). Left: the page's state --
+`onyx_status_start` (the throbber's start) "**Loading...**", four times a second "**Loading... 12 of
+30**" (the fetcher's fetches made and ended since: `onyx_fetch_counts`, onyx_fetch.c -- the page,
+its sheets, scripts, images); `onyx_status_stop` (the throbber's stop): "**Ready**", or in red the
+page's **HTTP status** when 4xx / 5xx (`onyx_browser_window_http_code`, browser_window.c: the
+current content's llcache code; the RFC's reason phrase: "404 Not Found", "500 Internal Server
+Error") or "**Error: <reason>**" when the fetch failed (about:query/fetcherror's reason, through
+`onyx_fetch_error_hook`: "Connection failed", a timeout...), kept until the next load. The
+**link under the pointer** replaces it: NetSurf's `set_status` texts are its own state messages
+("Loading", "Fetching...", "Done (0.3s)", "Processing": the bar shows its state again) or the
+pointer's (a link's address, a form field's hint): those are shown, cut in their middle with "..."
+when too long. Right: a download's progress or the last one's end. The widget is repainted only
+when its text changes; the page is not (a hover costs the bar's blit and a present). The fbtk status
+text left of the horizontal scroll bar is gone (`toolbar_status_size` 0).
+
+**Downloads.** NetSurf's core makes a **download context** (`desktop/download.c`) for a response
+not shown: a type it does not display (hlcache's `CONTENT_MSG_DOWNLOAD`), and now also a page load
+answered **`Content-Disposition: attachment`** whatever its type (`hlcache_migrate_ctx`, for a
+navigation that may download), and a **link with a `download` attribute** (`onyx_link_download`,
+html/interaction.c: the nearest `<a>` of the box clicked; `BW_NAVIGATE_DOWNLOAD`, the attribute's
+value as the name hint -- `download_onyx_hint`, taken by the next context; a Content-Disposition
+filename wins, as the spec says) -- a script's `a.click ()` too (dom.js `activate`: `N.download (url,
+name)`). A **`blob:`** link's bytes are the page's (html5.js keeps them): the click calls
+`__onyxBlobDownload` (html5.js), which hands them to `N.download (bytes, name, type)` ->
+`onyx_download_bytes_hook`; a **`data:`** link goes through NetSurf's data: fetcher. The name:
+`filename*=charset'lang'%..` (RFC 6266 / 5987, UTF-8 or ISO-8859-1) first, else `filename=`
+(quoted or not), its last path segment; else the link's; else the address's last segment,
+%-decoded; "download" when none (data: URLs). The address bar goes back to the page's address
+(it showed the download's while asked).
+
+The frontend's table (`frontends/framebuffer/onyx_download.c`): **create** answers at once -- the
+name made safe for the card (`dl_safe_name`: ASCII -- the card's names are code page 850 bytes on
+the Pi, UTF-16 on Windows; accented letters without accent, `€` "EUR", others `_` -- no
+`/ \ : * ? " < > |` nor control characters, no dots / spaces at the ends, 60 characters at most, the
+extension kept; one from the type when it has none: `.pdf`, `.zip`, `.txt`...) -- and the **Save
+dialog** is shown from the main loop a moment later (`framebuffer_schedule (0)`: never inside the
+core's callback): `SD:/Downloads` made when missing (`kapi_mkdir`), wtk's `FileDialog` in save mode
+(`onyx_chrome_save_dialog`: its name box focused, Enter = Save, Esc = Cancel -- wtk's FileDialog has
+those keys now -- and a question before a file is replaced). The bytes that came meanwhile are kept;
+NetSurf waits while the dialog is open, and the fetcher's HTTP/1.1 threads stop reading past 8 MB
+not taken (`ONYX_JOB_BACKLOG`, onyx_fetch.c): a big file waits in its socket, not in memory.
+**Cancel** aborts the fetch (`download_context_abort`, `_destroy`). **Saved**: the file is opened
+(`kapi_file_out`) and a **writer thread** (`jet:download`) writes the bytes as they come, 64 KB at a
+time -- the core's `data` callback only queues them (the card's writes never on the UI thread; 64 MB
+queued at most) --; `done`: the writer closes the file, then posts the end (`kapi_post`). Without
+threads (an older kernel) the UI thread writes. The core's context is destroyed at its `done` /
+`error`, or from the main loop when the user cancels.
+
+**Progress, cancel, the end.** `onyx_chrome_downloads` hands the list (16 at most, the newest first)
+to the chrome: the **downloads' button** (`DlButton`, an arrow at the toolbar's right end, shown
+from the first download: a bar of the running ones' progress along its foot; a green / red dot: the
+last one's end) opens its menu (`DlMenu`; also File ▸ Downloads...): each download's name and state
+("1.2 MB of 2.6 MB (45%)", "Done: 2.8 MB in SD:/Downloads/...", "Failed: ...", "Cancelled"); a
+running one clicked -- after a question -- is **cancelled** (`onyx_browser_download_cancel`: the
+fetch aborted, the writer stopped, the partial file removed); "Clear the list" forgets the ended
+ones. The status bar's right part: "Downloading x: ...", "Downloaded x (2.8 MB)". At the end a
+desktop notification ("Download complete", notifyd -- when it runs; not on the PC builds), a
+failure a message box. The log: `ONYX-DOWNLOAD start / ask / save / done / failed / cancelled`
+lines. Jet Browser closed: the running downloads stopped, their partial files removed
+(`onyx_download_finalise`). The fetcher now passes a plain 200 response's `Content-Length` to the
+core (it dropped them all: the inflate makes an encoded one wrong), so a download's size is known.
+
+**Windows** (§34): `SD:/Downloads` is the user's own `%USERPROFILE%\Downloads` (winkapi's
+`winpath`), else `Downloads\` beside Jet.exe.
+
+![The Save dialog of a download](../screenshots/jet-save.png)
+
+![The downloads' menu](../screenshots/jet-downloads.png)
+
+**Tests.** `tools/tests/netsurf/dltest.sh` (`httpsrv.py`'s new `/dl/<name>?n=&cd=` -- n bytes, a
+Content-Disposition per `cd`, chunked or slow on demand -- and `/status/<code>`; `pages/jet-zoom.html`,
+`pages/jet-dl.html`): the zoom's keys, buttons and Ctrl+wheel in Chrome's steps, `devicePixelRatio`
+/ `innerWidth`, a click mapped through 200 %, the zoom kept and applied at the next launch, the
+percentage resetting it; the status bar's "Ready", the link under the pointer, 404 / 500 / a refused
+connection, hidden and shown (the page 22 px taller, kept); downloads: SD:/Downloads made, the
+dialog's name (filename=, filename*=, the address, `download="..."`, data:, a script's blob:, an
+HTML page as an attachment, a dangerous name), the bytes exactly (a 3 MB chunked body), Esc: nothing,
+a slow download cancelled from the menu (the server sees the connection closed, no file left). The
+desktop simulator's stand-in kernel (`fakekapi.cpp`) got `kapi_file_out` (a file written in pieces
+in `SIM_WRITES`) and removes what an app wrote there. Logged for the bench (`ONYX_HOST_SIM`):
+`ONYX-STATUSBAR` (each repaint of the bar: its text), `ONYX-CHROME` (the band's places),
+`ONYX-STATUS` (the load's end); `ONYX-ZOOM` (a zoom changed) and `ONYX-DOWNLOAD` everywhere. `jstest.sh`'s two clicks at a panel's foot moved up 22 px; `uatest.sh`'s
+pill is left of the zoom control now; `gputest.sh`'s nav-fragment compares the page only (the
+address fields differ). Screenshots: `shots.sh jet` (`jet.png`, `jet-menu.png`, `jet-save.png`,
+`jet-downloads.png`).
+
+**Not done.** Pause / resume, a download's speed and time left, opening the file or its folder
+from the menu; a per-page (not per-site) zoom; the status bar's text in the page's font (the
+toolbar's bitmap font: Latin-1, a link's other characters as `?`); Ctrl+Shift+= (US `+`).
 
 ## 39. NetSurf's dead code removed (2026-10-01)
 

@@ -20,7 +20,7 @@ mkdir -p "$OUT/ua" "$SITES"
 make -f $T/host.mk OUT="$OUT/build" -j"$(nproc)" >"$OUT/build.log" 2>&1 ||
 	{ echo "build failed: $OUT/build.log"; exit 1; }
 DATA="$OUT/build/data"
-clean() { rm -f "$DATA/site-modes" "$DATA/desktop-sites" "$DATA/jet.ini"; }
+clean() { rm -f "$DATA/site-modes" "$DATA/desktop-sites" "$DATA/jet.ini" "$DATA/view"; }	# (view: the zoom, docs/06 §38)
 clean
 python3 $T/httpsrv.py "$SITES" $PORT > "$OUT/ua/srv.log" 2>&1 &
 SRV=$!
@@ -31,10 +31,10 @@ rm -rf "$SIM_WRITES" "$SIM_RAM"
 waits() { i=0; while [ "$i" -lt "$1" ]; do printf 'wait;'; i=$((i + 1)); done; }
 W=$(waits 100)
 Q="quit;$W"		# (the app ends as when its window is closed: the disk cache written)
-# the pill (client coordinates: its right end at the window's right less 6, the band 40 high)
+# the pill (client coordinates: its right end left of the zoom control -- docs/06 §38 -- at 852, the band 40 high)
 # and its menu's rows under it (Standard, Mobile, Desktop)
-PILL="move 940 19;wait;down 940 19;$(waits 20)"
-pick() { printf 'up 940 19;wait;wait;move 850 %s;wait;down 850 %s;up 850 %s;' "$1" "$1" "$1"; waits 100; }
+PILL="move 835 19;wait;down 835 19;$(waits 20)"
+pick() { printf 'up 835 19;wait;wait;move 780 %s;wait;down 780 %s;up 780 %s;' "$1" "$1" "$1"; waits 100; }
 MOBILE=114; DESKTOP=140
 UA_NS="Mozilla/5.0 (X11; Linux aarch64) NetSurf/3.12"
 UA_AND="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36"

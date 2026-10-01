@@ -17,6 +17,7 @@ namespace wtk {
 
 // A dialog control's parent IS the dialog (a Modal): route its callback there.
 static void dlg_btn (Widget &w) { if (w.parent) ((Modal *) w.parent)->onButton (w.tag); }
+static void dlg_enter (Widget &w) { if (w.parent) ((Modal *) w.parent)->onButton (1); }	// a box's Enter: OK
 static void dlg_scr (Widget &w) { if (w.parent) ((Modal *) w.parent)->onScroll (((Scrollbar &) w).value); }
 
 // ---- Modal -------------------------------------------------------------------
@@ -140,7 +141,8 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 
 	m_sb = new Scrollbar (m_lx + m_lw + 2, m_ly, 12, m_lh, true, 1, 0, dlg_scr); addChild (m_sb);
 	m_nameBox = 0;
-	if (!folder) { m_nameBox = new Textbox (10, m_ly + m_lh + 8, width - 20, fh + 8, defName ? defName : ""); addChild (m_nameBox); }
+	if (!folder) { m_nameBox = new Textbox (10, m_ly + m_lh + 8, width - 20, fh + 8, defName ? defName : "", dlg_enter); addChild (m_nameBox); }
+	if (m_nameBox && save) m_nameBox->hasFocus = true;	// (a save: the name typed at once; run () focuses the box)
 	int by = height - 36;
 	Button *b;
 	b = new Button (width - 180, by, 82, 28, folder ? "Choose" : save ? "Save" : "Open", dlg_btn); b->tag = 1; addChild (b);
@@ -221,6 +223,13 @@ void FileDialog::onButton (int tag)
 	if (tag == 0) { close (0); return; }			// Cancel
 	if (m_folder) { if (m_dir[0] != '\0') close (1); return; }	// Choose (needs a folder)
 	if (m_nameBox->text[0] != '\0' && m_dir[0] != '\0') close (1);	// OK (needs a filename)
+}
+
+bool FileDialog::onKey (long k)
+{
+	if (k == KEY_ENTER) { onButton (1); return true; }	// (the name box's: dlg_enter)
+	if (k == 27) { onButton (0); return true; }
+	return false;
 }
 
 bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)

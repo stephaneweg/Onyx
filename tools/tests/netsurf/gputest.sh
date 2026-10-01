@@ -32,14 +32,16 @@ shoot() {
 		timeout ${TMO:-300} "$OUT/build/netsurf" >"$3.log" 2>&1
 	python3 tools/tests/desktop_sim/shot.py "$3.elsm" "$3" >/dev/null
 }
-# same <a.png> <b.png> <what>
+# same <a.png> <b.png> <what> [rows left out at the top]
 same() {
-	python3 - "$1" "$2" "$3" <<'EOF'
+	python3 - "$1" "$2" "$3" "${4:-0}" <<'EOF'
 import sys
 import numpy as np
 from PIL import Image
 a = np.asarray(Image.open(sys.argv[1]).convert("RGB")).astype(np.int32)
 b = np.asarray(Image.open(sys.argv[2]).convert("RGB")).astype(np.int32)
+skip = int(sys.argv[4])	# (rows left out at the top: the window's frame and toolbar)
+a, b = a[skip:], b[skip:]
 if a.shape != b.shape:
     print("  FAIL  %s: sizes differ" % sys.argv[3]); sys.exit(1)
 d = np.abs(a - b).max(axis=2)
@@ -93,6 +95,16 @@ NS_GPU=0 shoot $T/pages/gpu-scroll.html "@W@W$N$N$N$N$N$N$N$N$N$N$N$N$N$N$N@W" "
 same "$G/band-notches.png" "$G/band-jump.png" "gpu-scroll: 15 notches = a jump of 15" || fail=1
 same "$G/band-notches.png" "$G/band-cpu.png" "gpu-scroll: 15 notches, composited = CPU" || fail=1
 
+echo "---- 3a. the page zoomed (docs/06 §38): the band at 150 % (Ctrl++ three times), scrolled"
+Z="mods 1;key +;mods 0;@Wmods 1;key +;mods 0;@Wmods 1;key +;mods 0;@W"
+rm -f "$OUT/build/data/view"		# (the zoom is kept per site: each run from 100 %)
+NS_GPU=1 shoot $T/pages/gpu-scroll.html "@W@W$Z$N$N$N$N$N@W" "$G/zoom-gpu.png" 1280x800
+rm -f "$OUT/build/data/view"
+NS_GPU=0 shoot $T/pages/gpu-scroll.html "@W@W$Z$N$N$N$N$N@W" "$G/zoom-cpu.png" 1280x800
+rm -f "$OUT/build/data/view"
+grep -q "zoom=150" "$G/zoom-gpu.png.log" || { echo "  FAIL  not zoomed to 150 %"; fail=1; }
+same "$G/zoom-gpu.png" "$G/zoom-cpu.png" "gpu-scroll at 150 %, scrolled: composited = CPU" || fail=1
+
 echo "---- 3b. a new page: the page before's layers gone; a fragment let go of once scrolled"
 # (gpu-nav-a.html: an animated layer and a link to gpu-nav-b.html, clicked)
 NAV="move 500 450;wait;down 500 450;wait;wait;up 500 450;@W@W@W"
@@ -108,7 +120,8 @@ frag() {
 }
 NS_GPU=1 frag "#target" "@Wwheel 400 300 60;@W@W@W@W@W" "$G/frag-up.png"
 NS_GPU=1 frag "" "@W@W@W@W@W@W" "$G/frag-top.png"
-same "$G/frag-up.png" "$G/frag-top.png" "nav-fragment: scrolled up from #target, stays up" || fail=1
+# (the page only: the address fields differ -- "#target" -- and a long path shows its tail)
+same "$G/frag-up.png" "$G/frag-top.png" "nav-fragment: scrolled up from #target, stays up" 72 || fail=1
 
 echo "---- 4. the software V3D (gpucomp's GPU path)"
 GPC_SOFTGPU=1 NS_GPU=1 TMO=900 shoot $T/pages/css-transform.html "@W" "$G/softgpu.png" 520x420
