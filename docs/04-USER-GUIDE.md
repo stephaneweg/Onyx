@@ -147,8 +147,9 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   screen whose Wi-Fi does not come up. The kernel starts `/bin/netlog` before anything else; it checks
   `etc/wpa_supplicant.conf` (a UTF-8 BOM, the `country=` line, the `ssid` / `psk` lines — the
   passphrase is never written, only its length) and the Wi-Fi firmware, then keeps the kernel log
-  (the `net:` lines, wpa_supplicant's, DHCP), the file rewritten every 2 s. It stops 15 s after the
-  link is up, or after 5 minutes, listing then the access points around. Put the card in the PC
+  (the `net:` lines, wpa_supplicant's, DHCP), the file rewritten every 2 s. It stops 30 s after the
+  link is up (the programs running then listed: are `telnetd`, `vncd`, `rdpd` there, did they say
+  *listening*?), or after 5 minutes, listing then the access points around. Put the card in the PC
   and read the file. Meanwhile `kmsg` shows nothing (netlog takes the log's events). Remove it
   (or `netlog=0`) once the network works.
 - **`netcore`**: `netcore=1` runs the whole **network** (Wi-Fi, wpa_supplicant, TCP/IP, DNS,
