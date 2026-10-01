@@ -71,7 +71,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # --- JavaScript: QuickJS (libquickjs.a, user/netsurf/Makefile) and the DOM on it ----------
 # javascript/quickjs/qjs.c: NetSurf's js.h on QuickJS, the natives (libdom's tree, the
 # boxes, the window); dom.js: the DOM in JavaScript, compiled in as a C string (qjs_dom_js.h,
-# made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
+# made below). (NetSurf's Duktape backend and its generated bindings are removed.)
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
 JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c
@@ -83,7 +83,7 @@ CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) \
   $(wildcard $(NS)/utils/nsurl/*.c) \
   $(wildcard $(NS)/content/*.c) \
-  $(filter-out %/curl.c,$(wildcard $(NS)/content/fetchers/*.c)) \
+  $(wildcard $(NS)/content/fetchers/*.c) \
   $(wildcard $(NS)/content/fetchers/about/*.c) \
   $(wildcard $(NS)/content/fetchers/file/*.c) \
   $(wildcard $(NS)/desktop/*.c) \
@@ -101,27 +101,20 @@ FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 # Onyx glue
 ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_cache.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
-GENFONT := $(OUT)/font-ns-sans.c
-
 # frontend toolbar/pointer/throbber bitmaps: res PNG -> image-NAME.c via a HOST convert_image
 # (needs host libpng); the name:respath pairs are in netsurf-src.mk.
 FB_IMG := $(NS_FB_IMAGES)
 IMG_C := $(foreach p,$(FB_IMG),$(OUT)/image-$(word 1,$(subst :, ,$(p))).c)
 
-ALL_SRC := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
+ALL_SRC := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(IMG_C)
 ALL_OBJ := $(patsubst %.c,$(OUT)/o/%.o,$(subst /,_,$(ALL_SRC)))
 
 .PHONY: all objs link
 all: link
 
-# ---- codegen: lib generators + the internal font ----------------------
-$(OUT)/tools/convert_font: $(NS)/tools/convert_font.c
-	@mkdir -p $(dir $@)
-	$(BUILD_CC) -O2 -o $@ $<
-$(GENFONT) $(OUT)/font-ns-sans.h: $(OUT)/tools/convert_font $(FB)/res/fonts/glyph_data
-	@mkdir -p $(OUT)
-	$(OUT)/tools/convert_font -H $(OUT)/font-ns-sans.h $(FB)/res/fonts/glyph_data $(GENFONT)
-
+# ---- codegen ------------------------------------------------------------
+# (the internal bitmap font, convert_font on res/fonts/glyph_data, is no longer built: only
+# font_internal.c used it, and every build draws text with FreeType)
 $(OUT)/tools/convert_image: $(NS)/tools/convert_image.c
 	@mkdir -p $(dir $@)
 	$(BUILD_CC) -O2 -I$(FB) -o $@ $< -lpng
@@ -136,7 +129,7 @@ $(foreach p,$(FB_IMG),$(eval $(call IMG_RULE,$(p))))
 
 # ---- compile: one rule, mangled object names (sources live in many trees) ----
 define CC_RULE
-$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(1))): $(1) $(OUT)/font-ns-sans.h
+$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(1))): $(1)
 	@mkdir -p $(OUT)/o
 	$$(CC) $$(CF) $$(INC) -c $$< -o $$@
 endef

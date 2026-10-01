@@ -340,7 +340,17 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
 > launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
-> `clip_set_files (path, cut)`, `clip_get_file` — the kernel keeps one shared clipboard.
+> `clip_set_files (paths, cut)`, `clip_get_file`, `clip_clear`, `clip_set_image (px, w, h)`,
+> `clip_get_image (&w, &h)`, and for several formats of one copy `clip_put (fmts, datas, lens, n)` /
+> `clip_get (fmts, nf, got, cap, &data, &len)` (formats: `text`, `rtf`, `image`, `files`, `files-cut`,
+> `url`, `x-<app>`; Writer would give `rtf` + `text`). **The shared clipboard** (`docs/clipboard/README.md`):
+> the service `clipd` keeps the last 10 copies in its memory, a cursor on the one Ctrl+V pastes (the
+> cursor's item in a format the app takes, else the newest that has one); every copy shows a
+> notification; the dock's clipboard button opens its widget (`apps/clipboard`). The protocol
+> (`clipproto.h`): mailboxes for the messages, files of `RAM:/clip` for the bytes (an app never reads
+> its own mailbox); the kernel's v40 clipboard is kept as the fallback. Test: `sh
+> tools/tests/run_clipboard_test.sh` (clipd and an app as threads over the simulator's in-process
+> mailboxes, `SIM_IPC=1`).
 > **Full-screen apps (ABI v41)**: `unsigned *fb = kapi_fullscreen_begin (&w, &h);` gives a
 > screen-sized buffer; draw into it and call `kapi_present_fb ()` once per frame (it also
 > yields). The desktop is not drawn meanwhile and all input comes to your key/pointer
@@ -1256,8 +1266,8 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 >   the installed one. The face holds no `fnt::Font *` between two calls (`fnt::trim` is safe).
 > - **Every new app uses the FreeType face** (unless told otherwise): add it to **`FT_APPS`** in
 >   `user/Makefile` — the newlib + `ft/libft.a` rule the Control Panel, its applets (Theme, Panel,
->   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library and Setup
->   share (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
+>   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup and
+>   the menu bar share (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
 >   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`wk_tw`, `wk_text_fit`),
 >   never in characters, and draw it through the face (`wk_text`, `canvas.text`), not `drawFont`
 >   (the bitmap fonts only).
@@ -1290,8 +1300,16 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 >   `C_MENUBAR`, `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by
 >   `wtk::init ()` (the `Root`'s constructor calls it): use them in drawing code, never copy them
 >   into a `static const` or a global initialised at start-up (that runs before the theme is
->   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate (the window in front's frame;
->   `active` = any colour instead), `inactive`, `window` (the content: the face; `face` still
+>   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate / Milk (the window in front's
+>   frame; `active` = any colour instead), `style` = cde / milk (**the style**, `WK_STYLE`: CDE's
+>   framed title buttons, or Milk's — Xfce's Milk theme, as OS X — the title buttons coloured
+>   beads, `wk_bead`, close red, minimise amber, maximise green, grey behind or for a button the
+>   window cannot use, and the frame melting into the window: the title's gradient from a light
+>   tone of the frame's colour down to the content's own, `C_BG`, the borders that colour,
+>   nothing between them — `wk_title_strip` likewise, down to `C_FACE`; a colour the file leaves
+>   out is the style's own, `wk_style_palette`; a scheme of another style chosen:
+>   `wk_theme_take_style (t, style)`),
+>   `inactive`, `window` (the content: the face; `face` still
 >   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
 >   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes
 >   it. As values: `WkTheme` (`WK_AUTO`: derived from the window's), `wk_theme_defaults`,
@@ -1484,6 +1502,35 @@ Key points:
 
 See the demos `demoD.c` (widget gallery), `demoE.c` (textarea + scrollview), and the
 apps `tinypad.c`, `paint.c`, `mandelbrot.c` for complete examples.
+
+### The Archiver (`user/Apps/archiver`)
+
+The archive manager (the plan and the user's decisions: `docs/archiver/README.md`; its use:
+docs/04 §9) is a **newlib** wtk app with FreeType text (`archiver.elf` in `user/Makefile`, with
+**zlib** built from `third_party/zlib-1.3.1` into `user/zlib/libz.a`), one translation unit:
+
+| File | What |
+|---|---|
+| `arc.h` (namespace `arc`) | The engine's base, no wtk: `Entry` (a path in UTF-8, sizes, CRC, DOS time, the format's fields), `Archive` (the interface a format implements: `open`, `extract (i, Sink &, Progress *)`, `rewrite (Plan, dest, Progress *)`, `writable`, `methodName`), `Plan` (a rewrite: the entries kept — renamed or not — and the new ones, a file of the disk or a folder), `Reader` (random access: `kapi_open` + `kapi_seek`, files of any size, not slurped like newlib's), `FileSink` (a `kapi_file_out` stream), CP437 → UTF-8, DOS dates, human sizes. |
+| `zip.h` | ZIP: the central directory (zip64, Info-ZIP's Unicode path, a self-extractor's offset, a UTF-8 name without its flag), extract (Store, Deflate through zlib, ZipCrypto), rewrite (the kept entries copied packed under a new local header; the new ones stored, deflated in memory when small — stored if that is not smaller —, streamed with a data descriptor when big; zip64 records when needed). |
+| `ops.h` | The operations whatever the format: `archive_open` (the format from the first bytes), `run_extract` (the layouts `LAY_FULL / LAY_FROM_CURRENT / LAY_FLAT`, the overwrite policy and its question, names made safe for FAT, no half file left), `apply_plan` (a new copy `*.part`, then swapped in), `op_add` / `op_delete` / `op_rename` / `op_new_folder`, `plan_add` (a folder walked, the names that exist replaced or kept). |
+| `model.h` (namespace `ui`) | The archive as a tree for the view: a node per path part (implicit folders too), totals, children sorted (folders first, by the list's column), the search. |
+| `icons.h`, `widgets.h`, `dialogs.h` | The vector icons; the widgets (`ToolStrip` of large buttons, `PathBar` with its `SearchBox`, `FolderTree`, `EntryList` — multiple selection, sort, drag out, the drop's banner —, `InfoCard`, `StatusBar`, `Welcome`); the dialogs (Extract, Add, progress, exists, text, properties). |
+| `main.cpp` | The app: the jobs (a thread per job, `kapi_post` for the progress and the end, a question to the main thread answered through an event), drag & drop both ways, files opened into `RAM:` and watched to be put back, the menus. |
+
+`/bin/zip` and `/bin/unzip` (`user/bin/zip.cpp`, `unzip.cpp`, `arccli.h`: the command line split,
+patterns) are C++ newlib tools on the same engine (`ops.h`: `plan_begin` / `plan_add_path` /
+`plan_finish` give each path its own folder in the archive, one rewrite for all), linked with the
+vendored `third_party/zlib-1.3.1/libz.a` (`ARC_PROGS` in `user/bin/Makefile`).
+
+A job works on **its own instance** of the archive (opened again): the view keeps reading the old one
+until the job ends and the archive is read again from the disk. **Host test**:
+`sh tools/tests/run_archiver_test.sh` — `tools/tests/archiver/arctool.cpp` (the engine on the
+simulator's kapi) driven by `test.py`: archives made by Python's `zipfile` and the `zip` tool (stored,
+deflated, a self-extractor, ZipCrypto, UTF-8 names), every result checked by `zipfile` and `unzip -t`;
+then `/bin/zip` and `/bin/unzip` built for the PC, driven by `cli_test.py`.
+The screenshots: `sh tools/tests/desktop_sim/shots.sh archiver` (a sample archive made by
+`arc_sample.py`).
 
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
@@ -1956,6 +2003,10 @@ docs/06 §31). **It runs on Onyx** — the window opens and real web pages rende
 through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
 `-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
 tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
+The NetSurf code Jet does not use was removed from the tree and the builds in 2026-10
+(docs/06 §39, [`JET-DEAD-CODE.md`](JET-DEAD-CODE.md)): only the framebuffer frontend is left, the
+three makefiles no longer generate the internal bitmap font, and a NetSurf file dropped from the
+tree drops out of the builds' `$(wildcard ...)` lists by itself.
 NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
 metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
 CSS3 painting, the native window: [`06-JET-BROWSER.md`](06-JET-BROWSER.md) lists the
@@ -2124,7 +2175,12 @@ barwidth = 40
   (the modifiers held from then on: 1 Ctrl, 2 Shift, 4 Alt — Shift+arrows select...), `menu N`
   (the app's menu item N: its items counted from 0 in the order the app adds them), `winctl N`,
   `dump FILE`, `quit` (the window closed: the app's loop ends and what it does before leaving
-  `main` runs — `exit` stops the process on the spot). Like the kernel, the simulator makes no
+  `main` runs — `exit` stops the process on the spot), and drag & drop from another app:
+  `dragover X Y [FLAGS]` (`GUI_EVENT_DRAG_OVER`; FLAGS 1 Ctrl, 4 the drag left) and
+  `drop X Y PATH|PATH... [FLAGS]` (`GUI_EVENT_DROP`, the paths a `DND_FILES` payload that
+  `kapi_drag_data` returns). Files: what an app writes goes to `SIM_WRITES` (never the card) —
+  `kapi_save_file`, `kapi_mkdir`, the streams `kapi_file_out` / `kapi_file_in` (a `FILE *` behind
+  the handle) —, and `kapi_remove` / `kapi_rename` work on `RAM:` and on those written files. Like the kernel, the simulator makes no
   window over 1024 × 768 (`kapi_create_window` returns 0).
   **Threads and the network**: the simulator runs an app's threads (kapi v67) as pthreads —
   `kapi_post`'s calls run at the main thread's next `pump_events`, a thread's `msleep` only

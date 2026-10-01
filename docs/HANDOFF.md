@@ -6,6 +6,11 @@ answer in French. The docs stay in English.
 
 ## Working conventions (keep them)
 
+- **Git (the user's rule, 2026-10-01)**: before each new development and each commit, fetch and
+  merge the latest `origin/main` into the working branch, commit, then push into `main`
+  (`git push origin HEAD:main`) and the branch. Delete the working branch only when the user
+  asks (CLAUDE.md).
+
 - Repo `stephaneweg/Onyx`; the cloud session worked on branch `claude/kind-rubin-vddz2w` and
   always pushed it to `main` as well. Circle is a submodule (`circle/`, fork
   `stephaneweg/circle`, branch `onyx`): commit there with
@@ -48,6 +53,27 @@ answer in French. The docs stay in English.
   `N64_GFX=prefix N64_GFXEVERY=n`, `N64_FRAMELOG=f`, `N64_CIMG=f` (see the file's header). With
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
+
+## Jet Browser: facebook.com's frozen login screen, fixed dialogs, the network (2026-10-01, PC bench only)
+
+- **The lag, the late Accept, the wheel doing nothing** on www.facebook.com (Desktop): `offsetParent`
+  was always the body (the body's own too) -- Facebook's visual-completion timer climbed the chain
+  for ever, 60 s until the script limit, the window's events held meanwhile. Now CSSOM View's
+  (`N.offset`, docs/06 §41). The login page's longest timer: 60 s -> 87 ms (PC).
+- **Fixed dialogs over a scrolled page**: hit test, drags, caret, redraws, wheel into frames and
+  `getBoundingClientRect` now use where fixed boxes are painted (`html_box_fixed_shift`).
+- **The network** (the user's "Jet eats the Pi's network" once logged in -- not reproducible here,
+  no account): `ONYX-PERF net:minute` (the perf file -> kmsg: requests, KB/s, sockets per host,
+  WebSockets), WebSocket / EventSource reconnections and failing hosts held back, a hidden
+  window's script requests one a second, idle kept-alive sockets closed after 10 s.
+  **To try on the Pi**: the cookie dialog (scroll, Accept at once), the login screen smooth; then
+  logged in, `SD:/apps/jet.app/perf` created, read the `net:minute` lines in `kmsg` to see what
+  loads the network (likely the feed's images: Jet Browser has no lazy image loading yet).
+- Tests: jstest (`js-fixed-scrolled`, `js-modal-doc`), nettest (`net-retry`, `net-hidden`). Only
+  Jet changes (no libcss / libdom header change): rebuild `sdcard/apps/jet.app/main`.
+- Pre-existing, not fixed: gputest 3a (gpu-scroll at 150 %: the fixed bar 1 px off composited,
+  same without these changes); layouttest's `dialogs` page (layoutdiff.sh gives Chromium a 790 px
+  viewport, NetSurf's is 770 since the status bar).
 
 ## Jet Browser: find in page, copy and paste, the context menu (2026-10-01, PC bench only)
 
@@ -253,6 +279,37 @@ answer in French. The docs stay in English.
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
+## The shared clipboard (2026-10-01, not yet tried on the Pi)
+
+- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/clipboard.h`**
+  (the apps' side, its old functions kept + images and formats), **`user/clipproto.h`** (messages by mailbox,
+  bytes by `RAM:/clip` files), **`user/Apps/clipboard`** (the widget, the dock's new button; the dock's small
+  buttons now: lock / gear at the left, power / clipboard at the right). Every wtk app gets it through
+  `textbox.cpp` / `textarea.cpp`: all the apps were rebuilt and staged. `autostart` runs clipd.
+- **Tested on the PC**: `sh tools/tests/run_clipboard_test.sh` (21 checks); the simulator has in-process
+  mailboxes (`SIM_IPC=1`) and the magenta key of `WIN_FLAG_TRANSPARENT` windows in its dumps.
+- **To do**: Jet's copy / paste through clipboard.h (docs/clipboard/README.md, *Still to do*); try on the
+  Pi: a copy in tinypad, the notification, the widget above the dock, an image (when an app copies one).
+
+## Archiver, the archive manager -- version 1, ZIP (2026-10-01, not yet tried on the Pi)
+
+- **`user/Apps/archiver`** (docs/04 §9 *Archiver*, docs/03 *The Archiver*, the plan and the user's
+  decisions in `docs/archiver/README.md`): ZIP opened (zip64, CP437 / UTF-8 names, self-extractors,
+  ZipCrypto), browsed as folders, extracted (the selection or all; the archive's folders kept, from
+  the current folder down, or flat; Ask / Replace / Skip / Keep both), changed by a rewrite into a
+  new copy swapped in (add, delete, rename, new folder). Files **dropped** from the File Viewer go
+  straight into the folder under the pointer; rows dragged out are extracted to `RAM:` and handed
+  over; a file opened (extracted to `RAM:`) and saved is put back. Jobs on a **thread**. A newlib
+  app (FreeType) with zlib (`user/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
+- **Tested on the PC**: `sh tools/tests/run_archiver_test.sh` (the engine, 51 checks against
+  `zipfile` and `unzip -t`) and the app in the desktop simulator (which now has `kapi_file_in /
+  file_out` streams, remove / rename of the files an app wrote, and the script's `dragover` / `drop`).
+- **To try on the Pi**: a big archive (hundreds of MB: the reads go through `kapi_seek`, the
+  central directory is read whole), extracting to the card while it writes slowly, a drop from the
+  File Viewer, Background / Cancel during a long add, a `.zip` opened from the File Viewer.
+- **Next**: 7z (the LZMA SDK), tar / .tar.gz / .tar.zst / .tar.xz, RAR read only through
+  libarchive's readers (BSD; unRAR's licence is not GPL-compatible: `docs/LICENSING.md` §4).
+
 ## Courier, the HTTP client -- Postman for Onyx (2026-09-30, not yet tried on the Pi)
 
 - **`user/Apps/courier`** (docs/04 *Courier, the HTTP client*, docs/03 after `http.hpp`): requests
@@ -273,7 +330,7 @@ answer in French. The docs stay in English.
 - **The rule now**: every new or redesigned app draws its text with **FreeType** (DejaVu Sans
   through wtk's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
   list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
-  its 8 applets and the Game Library (text measured in pixels, `drawFont` gone).
+  its 8 applets, the Game Library and (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone).
 - **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
@@ -359,7 +416,10 @@ answer in French. The docs stay in English.
   (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
   Terminal, File Viewer, Trash) instead of the Shelf and the panel, the see-through agenda, the
   menu bar restyled (its time opens a calendar), the **lock** screen, the **Theme** app
-  rewritten, every app's hard-coded dark colours converted.
+  rewritten, every app's hard-coded dark colours converted. Then (2026-10-01) a sixth theme,
+  **Milk** (Xfce's Milk / Mac OS X: soft greys, the title buttons as coloured beads, the frame
+  melting into the window with no line between them, `WK_STYLE`, `wk_bead`), chosen in the
+  Theme app (and in Setup) like the others.
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,
@@ -1214,6 +1274,10 @@ when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel
 ≈ 20 ms) for live MIDI.
 
 ## End-user apps roadmap (decided with the user, 2026-09-30; none started)
+
+**How (the user, 2026-10-01)**: Screenshot first (laid out as Windows' Snipping Tool:
+docs/screenshot/README.md), then the **Priority 1** apps **in their order**; for each, **mock-ups first**
+for the user to validate, then the app -- polished, **worthy of a commercial product**.
 
 Every new app: FreeType text through wtk's face, polished, its catalog entry in docs/04 and a
 `shots.sh` scenario. In the user's priority order:

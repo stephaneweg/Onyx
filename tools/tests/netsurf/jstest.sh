@@ -380,6 +380,21 @@ L=$OUT/js-scrollframe.log
 run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 678)" "$L"
 expect "$L" "panel scrolled down"
 expect "$L" "accepted"
+echo "js-fixed-scrolled.html (a fixed dialog over a page scrolled down: the pointer, the wheel, the keys, the rectangles find it where it is painted -- docs/06 §41)"
+L=$OUT/js-fixed-scrolled.log
+run js-fixed-scrolled.html "$(waits 60)$(click 80 96)key a;$(waits 20)move 300 300;wheel 300 300 -3;$(waits 30)$(click 150 459)" "$L"
+for s in "page at 500, panel top 40, offsetTop 40" "under the panel: the panel" "typed a" \
+	 "panel scrolled, page still" "accepted"; do
+	expect "$L" "$s"
+done
+echo "js-modal-doc.html (Facebook's desktop cookie dialog: the page detached, the dialog scrolls the document; offsetParent)"
+L=$OUT/js-modal-doc.log
+run js-modal-doc.html "$(waits 60)move 400 300;wheel 400 300 -5;$(waits 60)$(click 410 580)" "$L"
+for s in "doc taller than the view" "offsetParent chain ends at BODY after 3" "offsetTop sum is the page position" \
+	 "offsetParent: body null, fixed null, in relative content at 0, card content" \
+	 "document scrolled, page kept" "accepted, mask top 0"; do
+	expect "$L" "$s"
+done
 html5page js-wasm.html wasm "WebAssembly on wasm3: modules, memory, imports, traps, tables, i64, globals, a compiled C program, a worker"
 sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
 html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"

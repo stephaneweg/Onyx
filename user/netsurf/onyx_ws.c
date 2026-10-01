@@ -30,6 +30,7 @@
 #include "kapi.h"
 #include "onyx_nstls.h"
 #include "onyx_ws.h"
+#include "netsurf/onyx_perf.h"	/* Onyx: the perf log (net:ws-throttle) */
 
 #define OWS_MAX_MSG	(64u * 1024 * 1024)	/* a message past it: close 1009 */
 #define OWS_MAX_HEAD	(64 * 1024)
@@ -235,10 +236,12 @@ static char *ows_join(const char *base, const char *loc)
 
 /* ---- the connection --------------------------------------------------------------------- */
 
+struct onyx_ws;
 struct ows_conn {
 	bool tls;
 	int sock;
 	onyx_tls_sess *ts;
+	struct onyx_ws *w;	/* (Onyx: its bytes counted in it too -- 0: importScripts') */
 };
 
 static bool oc_open(struct ows_conn *c, const struct ows_url *u)
@@ -260,15 +263,35 @@ static bool oc_open(struct ows_conn *c, const struct ows_url *u)
 	return true;
 }
 
+/* Onyx (docs/06 §41): the bytes the connections moved, for the perf log's net:minute
+ * (onyx_ws_tally; the threads add, the UI thread reads and resets) */
+static unsigned long long ows_tally_in, ows_tally_out;
+static unsigned ows_tally_opens, ows_tally_throttled;
+static void ows_count(struct onyx_ws *w, unsigned in, unsigned out);	/* (below) */
+
 static int oc_send(struct ows_conn *c, const void *b, size_t n)
 {
-	return c->tls ? onyx_nstls_send(c->ts, b, (int) n) : kapi_tcp_send(c->sock, b, (unsigned) n);
+	int r = c->tls ? onyx_nstls_send(c->ts, b, (int) n) :
+			kapi_tcp_send(c->sock, b, (unsigned) n);
+	if (r > 0) {
+		__atomic_add_fetch(&ows_tally_out, (unsigned long long) r, __ATOMIC_RELAXED);
+		if (c->w != NULL)
+			ows_count(c->w, 0, (unsigned) r);
+	}
+	return r;
 }
 
 /* >0 bytes, 0 nothing yet, <0 closed */
 static int oc_recv(struct ows_conn *c, void *b, size_t n)
 {
-	return c->tls ? onyx_nstls_recv(c->ts, b, (int) n) : kapi_tcp_recv(c->sock, b, (unsigned) n);
+	int r = c->tls ? onyx_nstls_recv(c->ts, b, (int) n) :
+			kapi_tcp_recv(c->sock, b, (unsigned) n);
+	if (r > 0) {
+		__atomic_add_fetch(&ows_tally_in, (unsigned long long) r, __ATOMIC_RELAXED);
+		if (c->w != NULL)
+			ows_count(c->w, (unsigned) r, 0);
+	}
+	return r;
 }
 
 static void oc_close(struct ows_conn *c)
@@ -498,7 +521,17 @@ struct onyx_ws {
 	int posted;
 	volatile unsigned wake;			/* (a word the thread waits on) */
 	volatile int cancel, orphan, done;
+	unsigned nmsg;				/* (Onyx: messages / data come -- its thread's) */
+	unsigned long long nin, nout;		/* (Onyx: its bytes since the last net:minute) */
 };
+
+static void ows_count(struct onyx_ws *w, unsigned in, unsigned out)
+{
+	if (in)
+		__atomic_add_fetch(&w->nin, (unsigned long long) in, __ATOMIC_RELAXED);
+	if (out)
+		__atomic_add_fetch(&w->nout, (unsigned long long) out, __ATOMIC_RELAXED);
+}
 
 static struct onyx_ws *ows_all;
 static int ows_next_id;
@@ -546,6 +579,8 @@ static void ows_emit(struct onyx_ws *w, int type, int code, int clean, char *hea
 		free(head);
 		return;
 	}
+	if (type != OWS_OPEN && type != OWS_CLOSE && type != OWS_ERROR)
+		w->nmsg++;	/* (Onyx: the reconnections' throttle -- it served something) */
 	e->next = NULL;
 	e->type = type;
 	e->code = code;
@@ -771,7 +806,7 @@ static bool ows_inflate(z_stream *zs, uint8_t *msg, size_t mlen, uint8_t **out, 
 static void ows_run_socket(struct onyx_ws *w)
 {
 	struct ows_url u;
-	struct ows_conn c = { false, -1, NULL };
+	struct ows_conn c = { false, -1, NULL, w };
 	struct ows_rd r = { NULL, 0, 0, false };
 	uint8_t key[16], sum[20];
 	char key64[32], want[32], *req = NULL, *head = NULL;
@@ -1066,7 +1101,7 @@ static void ows_run_events(struct onyx_ws *w)
 {
 	char *url = strdup(w->url), *head = NULL, *req;
 	struct ows_url u;
-	struct ows_conn c = { false, -1, NULL };
+	struct ows_conn c = { false, -1, NULL, w };
 	struct ows_rd r = { NULL, 0, 0, false };
 	struct ows_chunk ck;
 	int status = 0, redirects, n;
@@ -1211,15 +1246,94 @@ static void ows_run_events(struct onyx_ws *w)
 /* Onyx: the connections' threads alive (the app's end waits for them: onyx_ws_shutdown) */
 static volatile int ows_threads;
 
+/* ---- Onyx (docs/06 §41): the reconnections throttled ------------------------------------
+ * A page whose WebSocket (or EventSource) is refused or cut at once and that opens it again at
+ * once -- a chat's client without a back-off, a server refusing a logged-out session -- made
+ * a DNS + TCP + TLS handshake a turn, for ever: the Pi's network and CPU (its TCP stack is
+ * the remote desktop's and telnet's too). As Chrome delays the connections to an endpoint
+ * that keeps failing: per host, the connections that failed, or ended within 10 s of their
+ * start without a message (an event), are counted; from the third in a row each new one
+ * waits 1, 2, 4 ... 60 s before it connects (a page that closes it meanwhile cancels it); one
+ * that lasted 10 s or brought something clears the count. */
+#define OWS_THR_HOSTS	8
+#define OWS_THR_SHORT	1000	/* ticks (100 Hz): a connection shorter is a failed one */
+static struct { char host[64]; unsigned short_n, last; } ows_thr[OWS_THR_HOSTS];
+static volatile int ows_thr_lk;
+
+/* the delay (ms) before a connection to host may start */
+static unsigned ows_throttle_delay(const char *host)
+{
+	unsigned d = 0;
+	int i;
+
+	kapi_lock(&ows_thr_lk);
+	for (i = 0; i < OWS_THR_HOSTS; i++)
+		if (strcasecmp(ows_thr[i].host, host) == 0) {
+			unsigned n = ows_thr[i].short_n;
+			if (n >= 3)
+				d = n - 3 >= 6 ? 60000 : 1000u << (n - 3);
+			break;
+		}
+	kapi_unlock(&ows_thr_lk);
+	return d;
+}
+
+/* a connection to host ended (or failed) after `ticks` */
+static void ows_throttle_note(const char *host, unsigned ticks)
+{
+	int i, slot = -1;
+	unsigned now = kapi_get_ticks();
+
+	kapi_lock(&ows_thr_lk);
+	for (i = 0; i < OWS_THR_HOSTS; i++) {
+		if (strcasecmp(ows_thr[i].host, host) == 0) {
+			slot = i;
+			break;
+		}
+		if (slot < 0 || now - ows_thr[i].last > now - ows_thr[slot].last)
+			slot = i;	/* (else the one unused longest) */
+	}
+	if (strcasecmp(ows_thr[slot].host, host) != 0) {
+		snprintf(ows_thr[slot].host, sizeof ows_thr[slot].host, "%s", host);
+		ows_thr[slot].short_n = 0;
+	}
+	if (ticks < OWS_THR_SHORT)
+		ows_thr[slot].short_n++;
+	else
+		ows_thr[slot].short_n = 0;
+	ows_thr[slot].last = now;
+	kapi_unlock(&ows_thr_lk);
+}
+
 static int ows_thread(void *arg)
 {
 	struct onyx_ws *w = arg;
+	struct ows_url u;
+	bool have_host = ows_parse_url(w->url, &u);
+	unsigned t0, wait = have_host ? ows_throttle_delay(u.host) : 0;
 	int orphan;
 
-	if (w->mode == ONYX_WS_SOCKET)
+	if (wait > 0) {
+		unsigned slept = 0;
+		__atomic_add_fetch(&ows_tally_throttled, 1, __ATOMIC_RELAXED);
+		if (onyx_perf_on())
+			fprintf(stderr, "ONYX-PERF net:ws-throttle %s %u ms (it keeps failing or "
+					"closing at once)\n", u.host, wait);
+		while (slept < wait && !w->cancel && !w->close_req) {
+			kapi_msleep(50);
+			slept += 50;
+		}
+	}
+	__atomic_add_fetch(&ows_tally_opens, 1, __ATOMIC_RELAXED);
+	t0 = kapi_get_ticks();
+	if (w->cancel || w->close_req)
+		ows_fail(w, 0, "closed before it connected");
+	else if (w->mode == ONYX_WS_SOCKET)
 		ows_run_socket(w);
 	else
 		ows_run_events(w);
+	if (have_host && !w->cancel)	/* (one that brought nothing and ended soon: failed) */
+		ows_throttle_note(u.host, w->nmsg > 0 ? OWS_THR_SHORT : kapi_get_ticks() - t0);
 	kapi_lock(&w->lk);
 	w->done = 1;
 	orphan = w->orphan;
@@ -1347,6 +1461,40 @@ void onyx_ws_free(onyx_ws *w)
 /* Onyx: the app ends -- every connection told to stop; returns the threads still running
  * (their sockets not closed yet). The kernel has 16 sockets in all: an app that leaves its
  * sockets open until it is reaped starves the next one (a NetSurf launched again). */
+/* Onyx (docs/06 §41): the perf log's net:minute -- the WebSockets and EventSources open now,
+ * the bytes moved, the connections made and throttled since the last call (reset) */
+void onyx_ws_tally(unsigned *ws_open, unsigned *sse_open, unsigned long long *in,
+		unsigned long long *out, unsigned *opens, unsigned *throttled, char *list,
+		size_t cap)
+{
+	struct onyx_ws *w;
+	size_t n = 0;
+
+	*ws_open = *sse_open = 0;
+	if (cap > 0)
+		list[0] = '\0';
+	for (w = ows_all; w != NULL; w = w->reg_next) {
+		unsigned long long wi = __atomic_exchange_n(&w->nin, 0, __ATOMIC_RELAXED);
+		unsigned long long wo = __atomic_exchange_n(&w->nout, 0, __ATOMIC_RELAXED);
+		struct ows_url u;
+
+		if (w->done)
+			continue;
+		if (w->mode == ONYX_WS_SOCKET)
+			(*ws_open)++;
+		else
+			(*sse_open)++;
+		if (n + 120 < cap && ows_parse_url(w->url, &u))	/* (each: its host, its bytes) */
+			n += (size_t) snprintf(list + n, cap - n, "%s%s %s %llu/%llu KB",
+					n ? ", " : "", w->mode == ONYX_WS_SOCKET ? "ws" : "sse",
+					u.host, wi / 1024, wo / 1024);
+	}
+	*in = __atomic_exchange_n(&ows_tally_in, 0, __ATOMIC_RELAXED);
+	*out = __atomic_exchange_n(&ows_tally_out, 0, __ATOMIC_RELAXED);
+	*opens = __atomic_exchange_n(&ows_tally_opens, 0, __ATOMIC_RELAXED);
+	*throttled = __atomic_exchange_n(&ows_tally_throttled, 0, __ATOMIC_RELAXED);
+}
+
 int onyx_ws_shutdown(void)
 {
 	struct onyx_ws *w;

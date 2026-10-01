@@ -31,6 +31,7 @@
 // item works too.
 //
 #include "kapi.h"
+#include "ft/wtkface.h"
 #include "applib.h"
 #include "launch.h"
 #include "wtk/wtk.h"
@@ -39,8 +40,6 @@
 using namespace wtk;
 
 #define BAR_H		30			// the bar's height (its last row: a dark line)
-#define INK_TOP		2			// the 8x16 font's cap ink spans cell rows 2..11:
-#define INK_H		10			// centre on the ink, not on the 16-px cell
 #define MAXMENUS	12
 #define MAXITEMS	24
 #define CLEAR		0xFF000000u		// a see-through pixel (the top byte: its transparency)
@@ -69,7 +68,6 @@ static bool g_volOpen = false, g_volDrag = false;	// the volume box (and its sli
 #define VW		236		// the volume box
 #define VH		92
 
-static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
 
 // ---- the apps, by category (app.txt), and the open windows: the Onyx menu's sub-menus -------
@@ -260,13 +258,14 @@ static void parse (const char *spec, const char *title)
 }
 
 // ---- geometry ------------------------------------------------------------------------------
+static int title_style (int i) { return i == (g_onyx ? 0 : 1) ? 2 : 0; }	// the app's name: bold
 static void layout_titles (void)
 {
 	int x = 10;
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		g_menus[i].x = x;
-		g_menus[i].w = slen (g_menus[i].title) * g_fw + 16;
+		g_menus[i].w = wk_tw (g_menus[i].title, title_style (i)) + 16;
 		x += g_menus[i].w;
 	}
 }
@@ -275,14 +274,12 @@ static int drop_w (const MenuDef &m)
 	int w = 120;
 	for (int i = 0; i < m.count; i++)
 	{
-		int ww = (slen (m.items[i].label) + slen (m.items[i].key) + 5) * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
+		int ww = wk_tw (m.items[i].label) + wk_tw (m.items[i].key) + 5 * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
 		if (ww > w) w = ww;
 	}
 	return w;
 }
 static int item_h (const Item &it) { return it.sep ? 9 : g_fh + 8; }
-// y of a text cell whose cap ink is vertically centred in a band [top, top+h)
-static int text_y (int top, int h) { return top + (h - INK_H + 1) / 2 - INK_TOP; }
 static int drop_h (const MenuDef &m) { int h = 10; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
 static int drop_x (const MenuDef &m) { int x = m.x; int w = drop_w (m); if (x + w > g_sw - 2) x = g_sw - 2 - w; return x; }
 
@@ -290,8 +287,8 @@ static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 5; for (int i =
 static int sub_w (const SubDef &sd)
 {
 	int w = 140;
-	for (int i = 0; i < sd.count; i++) { int ww = slen (sd.items[i].label) * g_fw + 28; if (ww > w) w = ww; }
-	if (sd.count == 0) w = 22 * g_fw;
+	for (int i = 0; i < sd.count; i++) { int ww = wk_tw (sd.items[i].label) + 28; if (ww > w) w = ww; }
+	if (sd.count == 0) w = wk_tw ("(no open window)") + 28;
 	return w;
 }
 static int sub_h (const SubDef &sd) { return 10 + (sd.count ? sd.count : 1) * (g_fh + 8); }
@@ -326,7 +323,8 @@ static int title_at (int x, int y)
 	return -1;
 }
 // the status icons on the right: the clock, the Wi-Fi state left of it, the speaker left of that
-static int clk_x (void) { return g_sw - 5 * g_fw - 14; }
+static int clk_w (void) { return wk_tw ("00:00", 2); }
+static int clk_x (void) { return g_sw - clk_w () - 14; }
 static bool on_clock (int x, int y) { return y >= 0 && y < BAR_H && x >= clk_x () - 6 && x < g_sw; }
 static int wifi_x (void) { return clk_x () - 27; }
 static int spk_x (void) { return wifi_x () - 26; }
@@ -427,13 +425,13 @@ static void draw_volume_box (void)
 	if (g_mute) { const char *m = "Muted"; while (m[n]) { v[n] = m[n]; n++; } }
 	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); }
 	v[n] = 0;
-	wk_text_l (g_cv, bx + VW - 14 - n * g_fw, by + 6, 24, v, C_DIM);
+	wk_text_l (g_cv, bx + VW - 14 - wk_tw (v), by + 6, 24, v, C_DIM);
 	int x0, x1, ty; vol_track (&x0, &x1, &ty);
 	int kx = x0 + (x1 - x0) * g_vol / 10;
 	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 10, 1, 3, C_DIM);
 	wk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? WK_DISABLED : g_volDrag ? WK_PRESSED : WK_NORMAL);
 	wk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, WK_NORMAL);
-	g_cv.text (bx + 42, text_y (by + 65, 15), "Mute", C_FIELD_TEXT);
+	wk_text_l (g_cv, bx + 42, by + 65, 15, "Mute", C_FIELD_TEXT);
 }
 
 // ---- the calendar (a click on the time) ----------------------------------------------------------
@@ -480,14 +478,13 @@ static void draw (void)
 	{
 		const MenuDef &m = g_menus[i];
 		if (i == g_open) wk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
-		bool bold = i == (g_onyx ? 0 : 1);				// the app's name
-		wk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, bold ? 2 : 0);
+		wk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
 	int clkX = clk_x ();
-	if (g_calOpen) wk_hilite (g_cv, clkX - 6, 3, 5 * g_fw + 12, BAR_H - 7, 5, true);
+	if (g_calOpen) wk_hilite (g_cv, clkX - 6, 3, clk_w () + 12, BAR_H - 7, 5, true);
 	wk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
 	g_lastMin = mm;
 	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
@@ -511,9 +508,8 @@ static void draw (void)
 			{
 				bool hot = i == g_hover || (g_sub >= 0 && i == g_subOwner);
 				if (hot) wk_hilite (g_cv, dx + 4, yy, dw - 8, ih, 5, true);
-				int iy = text_y (yy, ih);
-				g_cv.text (dx + 14, iy, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
-				if (it.key[0]) g_cv.text (dx + dw - 14 - slen (it.key) * g_fw, iy, it.key, hot ? C_SEL_TEXT : C_DIM);
+				wk_text_l (g_cv, dx + 14, yy, ih, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (it.key[0]) wk_text_l (g_cv, dx + dw - 14 - wk_tw (it.key), yy, ih, it.key, hot ? C_SEL_TEXT : C_DIM);
 				if (it.sub >= 0) wk_glyph (g_cv, WKG_CHEV_RIGHT, dx + dw - 16, yy + ih / 2, 8, hot ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 			yy += ih;
@@ -524,12 +520,12 @@ static void draw (void)
 			int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
 			panel (sx, sy, sw, sh);
 			int ih = g_fh + 8;
-			if (sd.count == 0) g_cv.text (sx + 14, text_y (sy + 5, ih), sd.windows ? "(no open window)" : "(empty)", C_DIM);
+			if (sd.count == 0) wk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? "(no open window)" : "(empty)", C_DIM);
 			for (int i = 0; i < sd.count; i++)
 			{
 				int iy = sy + 5 + i * ih;
 				if (i == g_subHover) wk_hilite (g_cv, sx + 4, iy, sw - 8, ih, 5, true);
-				g_cv.text (sx + 14, text_y (iy, ih), sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
+				wk_text_l (g_cv, sx + 14, iy, ih, sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 		}
 	}
@@ -717,6 +713,8 @@ int main (void)
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
 	wtk::init ();					// the fonts, the theme: the palette
+	if (ft_wtk_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
+		g_fh = wk_fh ();
 	C_BARTXT = wk_ink_on (wk_tone (C_MENUBAR, 176));
 	C_BARDIM = wk_mix (wk_tone (C_MENUBAR, 176), C_BARTXT, 110);
 	C_DROP = C_FIELD; C_DIM = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = wk_tone (C_MENUBAR, 70);

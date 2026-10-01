@@ -58,11 +58,8 @@ nserror fb_font_position(const struct plot_font_style *fstyle, const char *strin
 nserror fb_font_width(const struct plot_font_style *fstyle, const char *string, size_t length, int *width);
 
 
-#ifdef FB_USE_FREETYPE
+/* Onyx: FreeType only (font_internal.c, the bitmap font, is removed) */
 #include "framebuffer/font_freetype.h"
-#else
-#include "framebuffer/font_internal.h"
-#endif
 
 #endif /* NETSURF_FB_FONT_H */
 

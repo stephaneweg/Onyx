@@ -19,6 +19,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
 - `docs/06-JET-BROWSER.md` (Jet Browser, the Onyx web browser based on NetSurf: the Onyx changes to NetSurf, libcss, FreeType; the fonts)
 - `docs/07-BROWSER-GAPS.md` (what the browser lacks next to Ladybird / Chromium / WebKit, the plan)
+- `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by
 **`docs/build_docs.py`** (`python docs/build_docs.py` → `.docx` via pandoc using the themed
@@ -47,6 +48,13 @@ documentation in the same session**, without being asked again:
   by a dedicated chat.
 - After editing the `.md` (or the screenshots), **regenerate the exports**:
   `python docs/build_docs.py`. Keep the English wording and the "Onyx" name.
+
+## RULE — git workflow: always on top of `main`, commit into `main`
+
+Before **every new development** and before **every commit**: `git fetch origin main` and
+merge the latest `origin/main` into the working branch (`git merge origin/main`, resolve any
+conflict). Then commit and **push into `main`** (`git push origin HEAD:main`; also push the
+working branch). Delete the working branch (local and `origin`) **only when the user says so**.
 
 ## Build (reminder)
 

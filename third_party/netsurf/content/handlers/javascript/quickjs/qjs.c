@@ -2223,6 +2223,13 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 			}
 		}
 		qjs_scroll(t, &sx, &sy);
+		{	/* Onyx: in a fixed box, where it is painted (docs/06 §41) */
+			int fdx, fdy;
+			if (html_box_fixed_shift(t->htmlc, box, &fdx, &fdy)) {
+				x += fdx;
+				y += fdy;
+			}
+		}
 		x -= sx;
 		y -= sy;
 		/* Onyx: a box transformed (or in a transformed box): the bounding box of
@@ -2329,6 +2336,67 @@ static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	if (t->htmlc != NULL)
 		qjs_layout_now(t);
 	return JS_NewBool(ctx, qjs_box(n) != NULL);
+}
+
+/**
+ * offset(n, body): [offsetParent, offsetLeft, offsetTop] as CSSOM View defines them (Onyx,
+ * docs/06 §41), or null when the element has no box. The offsetParent: the nearest
+ * positioned ancestor, the body, or a td / th / table for a static element; none (null) for
+ * a fixed element. The offsets: its border box from that parent's padding box -- from the
+ * document's origin when the parent is the body or none -- the scrolls between left out
+ * (box_coords counts them). The offsetParent was always the body, the body's own included:
+ * a loop up the chain (`while (e.offsetParent) e = e.offsetParent`, Facebook's
+ * VisualCompletion) never ended -- 60 s of a frozen window on facebook.com's login page.
+ */
+static JSValue n_offset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_node *body = argc > 1 ? qjs_node(argv[1]) : NULL;
+	struct box *box, *b, *op = NULL;
+	dom_node *opn = NULL;
+	bool fixed, stat;
+	int x, y;
+	JSValue arr;
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc != NULL)
+		qjs_layout_now(t);
+	box = qjs_box(n);
+	if (box == NULL || box->style == NULL || t->htmlc == NULL || t->htmlc->layout == NULL)
+		return JS_NULL;
+	fixed = css_computed_position(box->style) == CSS_POSITION_FIXED;
+	stat = css_computed_position(box->style) == CSS_POSITION_STATIC;
+	x = box->x - box->border[LEFT].width;
+	y = box->y - box->border[TOP].width;
+	/* (up the boxes: a float's position is its float container's) */
+#define QJS_UP(b) ((((b)->type == BOX_FLOAT_LEFT || (b)->type == BOX_FLOAT_RIGHT) && \
+		(b)->float_container != NULL) ? (b)->float_container : (b)->parent)
+	for (b = box; b->parent != NULL; ) {
+		b = QJS_UP(b);
+		if (!fixed && b->node != NULL && b->node != n && b->style != NULL &&
+		    (b->node == body ||
+		     css_computed_position(b->style) != CSS_POSITION_STATIC ||
+		     (stat && (b->type == BOX_TABLE_CELL || b->type == BOX_TABLE)))) {
+			op = b;
+			opn = b->node;
+			break;
+		}
+		x += b->x;
+		y += b->y;
+	}
+	if (op != NULL && opn == body) {
+		/* (the body: from the document's origin) */
+		for (b = op; b != NULL; b = QJS_UP(b)) {
+			x += b->x;
+			y += b->y;
+		}
+	}
+#undef QJS_UP
+	arr = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, arr, 0, opn != NULL ? qjs_wrap(t, opn) : JS_NULL);
+	JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, x));
+	JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, y));
+	return arr;
 }
 
 /** scroll(): [x, y, viewport width, viewport height, page width, page height] */
@@ -4987,6 +5055,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("boxScroll", 1, n_box_scroll),
 	JS_CFUNC_DEF("boxScrollTo", 3, n_box_scroll_to),
 	JS_CFUNC_DEF("boxed", 1, n_boxed),
+	JS_CFUNC_DEF("offset", 2, n_offset),
 	JS_CFUNC_DEF("scroll", 0, n_scroll),
 	JS_CFUNC_DEF("scrollTo", 2, n_scroll_to),
 	JS_CFUNC_DEF("cstyle", 2, n_cstyle),

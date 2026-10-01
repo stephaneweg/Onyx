@@ -118,9 +118,9 @@ handlers + framebuffer frontend + Onyx glue) and links them with the eight libra
 `libnsfb` (onyx surface) + the codecs + newlib into a **~4.4 MB AArch64 `netsurf.elf`** —
 zero undefined symbols, with `_start` (crt0libc) and the frontend `main`.
 
-Codegen done at build time (host tools): the internal bitmap font (`convert_font` on
-`res/fonts/glyph_data`) and the toolbar/pointer/throbber bitmaps (`convert_image` on the res
-PNGs — needs host libpng). Excluded: `content/fetchers/curl.c` (replaced by `onyx_fetch`),
+Codegen done at build time (host tools): the toolbar/pointer/throbber bitmaps (`convert_image`
+on the res PNGs — needs host libpng); the internal bitmap font (`convert_font` on
+`res/fonts/glyph_data`) was generated too until 2026-10 (FreeType replaced it; docs/06 §39). Excluded: `content/fetchers/curl.c` (replaced by `onyx_fetch`),
 `font_freetype.c`, and the optional image formats (svg/webp/jxl/rosprite/gst).
 
 **Platform layer** (`compat/` + `gen/`) — the newlib/OS gaps the buildsystem normally fills:

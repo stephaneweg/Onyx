@@ -124,6 +124,5 @@ struct gui_llcache_table {
 };
 
 extern struct gui_llcache_table* null_llcache_table;
-extern struct gui_llcache_table* filesystem_llcache_table;
 
 #endif
