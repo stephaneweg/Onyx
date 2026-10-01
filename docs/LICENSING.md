@@ -81,6 +81,7 @@ Two weaknesses, worth fixing:
 | dr_flac, dr_wav | `third_party/dr_libs`, Media Player | Public domain / MIT-0 | — |
 | ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
 | Mesa (V3D / QPU headers) | `tools/qpu/mesa` | MIT | Keep the notices |
+| React 18.3.1, React DOM (their production builds, test pages only: not on the card) | `tools/tests/netsurf/pages/react` | MIT | Keep the notice (its `LICENSE` is there) |
 | newlib (libc of the C/C++ apps) | the toolchain | BSD-like (several) | Ship newlib's `COPYING.NEWLIB` notices with the binaries |
 | libgcc / libstdc++ | the toolchain | GPLv3 + **GCC Runtime Library Exception** | None for our binaries |
 | DejaVu | `third_party/dejavu-*`, `sdcard/res/fonts` | Bitstream Vera + public domain | Keep the licence; fonts not sold alone |

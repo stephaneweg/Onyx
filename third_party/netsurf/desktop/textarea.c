@@ -2128,6 +2128,58 @@ bool textarea_set_caret(struct textarea *ta, int caret)
 
 
 /* exported interface, documented in textarea.h */
+void textarea_onyx_get_selection(struct textarea *ta, int *start, int *end)
+{
+	size_t len = ta->show->len - 1;	/* (without its terminator) */
+	int b0, b1;
+
+	if (ta->sel_start != -1) {
+		b0 = ta->sel_start;
+		b1 = ta->sel_end;
+	} else if (ta->caret_pos.byte_off >= 0) {
+		b0 = b1 = textarea_get_caret(ta);
+	} else {
+		b0 = b1 = len;
+	}
+	if (b0 > (int) len) b0 = len;
+	if (b1 > (int) len) b1 = len;
+	*start = utf8_bounded_length(ta->show->data, b0);
+	*end = utf8_bounded_length(ta->show->data, b1);
+}
+
+
+/* exported interface, documented in textarea.h */
+void textarea_onyx_set_selection(struct textarea *ta, int start, int end)
+{
+	size_t len = ta->show->len - 1;
+	int b0, b1;
+
+	if (start < 0) start = 0;
+	if (end < start) end = start;
+	b0 = utf8_bounded_byte_length(ta->show->data, len, start);
+	b1 = utf8_bounded_byte_length(ta->show->data, len, end);
+	if (b0 == b1) {
+		textarea_clear_selection(ta);
+		textarea_set_caret_internal(ta, b0);
+	} else {
+		/* (the caret at its end, as a drag leaves it) */
+		textarea_set_caret_internal(ta, b1);
+		textarea_select(ta, b0, b1, false);
+	}
+}
+
+
+/* exported interface, documented in textarea.h */
+bool textarea_onyx_caret_refresh(struct textarea *ta)
+{
+	if (ta->caret_pos.byte_off < 0)
+		return false;	/* (no caret) */
+	textarea_set_caret_internal(ta, textarea_get_caret(ta));
+	return true;
+}
+
+
+/* exported interface, documented in textarea.h */
 void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 		const struct rect *clip, const struct redraw_context *ctx)
 {

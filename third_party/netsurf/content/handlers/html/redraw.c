@@ -1418,7 +1418,8 @@ bool html_redraw_box(const html_content *html, struct box *box,
  * positioned box (and a flex / grid item with a z-index) is put off while its layer is
  * painted -- the page, or the positioned box it is in -- and painted after that layer's
  * other content, the layer's put-off boxes sorted by z-index (auto: 0), each with its own
- * layer inside it. A negative z-index is painted in place. A positioned box with z-index
+ * layer inside it. A negative z-index: painted by its stacking context, under its in-flow
+ * content (onyx_negz_paint, docs/06 §45). A positioned box with z-index
  * auto is no stacking context (html_redraw_layer_context): the boxes above 0 it puts off
  * are sorted with its stacking context's (onyx_layer_paint_in, docs/06 §42).
  */
@@ -1445,8 +1446,8 @@ static struct onyx_layer_box *onyx_hoist_boxes;
 static int onyx_hoist_count, onyx_hoist_cap;
 static bool onyx_layering;	/* a redraw that paints by layers is going on */
 
-/* exported interface documented in html/private.h */
-bool html_redraw_layer_z(const struct box *box, int32_t *z)
+/** whether a box is a layer of its own (any z-index: a negative one too) */
+static bool onyx_layer_any(const struct box *box, int32_t *z)
 {
 	int32_t zi = 0;
 	uint8_t zt, pos;
@@ -1473,7 +1474,21 @@ bool html_redraw_layer_z(const struct box *box, int32_t *z)
 		zt = CSS_Z_INDEX_AUTO;
 	}
 	*z = zt == CSS_Z_INDEX_SET ? zi : 0;
-	return *z >= 0;
+	return true;
+}
+
+/* exported interface documented in html/private.h */
+bool html_redraw_layer_z(const struct box *box, int32_t *z)
+{
+	return onyx_layer_any(box, z) && *z >= 0;
+}
+
+/* exported interface documented in html/private.h */
+bool html_redraw_negz_box(const struct box *box)
+{
+	int32_t z;
+
+	return onyx_layer_any(box, &z) && z < 0;
 }
 
 /* exported interface documented in html/private.h */
@@ -1753,6 +1768,216 @@ static bool onyx_layer_paint(const html_content *html, int start, float scale,
 		const struct redraw_context *ctx)
 {
 	return onyx_layer_paint_in(html, start, true, 0, 1, scale, ctx);
+}
+
+/* ---- Onyx: negative z-index (CSS 2.1 appendix E, step 3) ------------------------------
+ * A box with a negative z-index was painted in place (in the tree's order, over what came
+ * before it) and was hit there too: a box behind a field (Netflix's code boxes: the field
+ * transparent over its "chrome", position: absolute; z-index: -1) took the field's
+ * clicks, and its background covered the field. Now a stacking context paints the boxes
+ * with a negative z-index it holds (not those of the stacking contexts inside it) right
+ * after its own background and borders, before its in-flow content -- the most negative
+ * first, then the tree's order -- and the in-flow walk passes over them; the hit test
+ * (interaction.c) looks at them first, under the rest.
+ */
+
+/* exported interface documented in html/private.h */
+bool html_redraw_stacking_context(const struct box *box)
+{
+	int32_t z;
+
+	if (box->parent == NULL)
+		return true;	/* (the root) */
+	return onyx_layer_any(box, &z) && html_redraw_layer_context(box);
+}
+
+/** whether a box clips its overflow (its descendants to its padding box) */
+static bool onyx_negz_clips(const struct box *box)
+{
+	return box->style != NULL &&
+		(css_computed_overflow_x(box->style) != CSS_OVERFLOW_VISIBLE ||
+		 css_computed_overflow_y(box->style) != CSS_OVERFLOW_VISIBLE);
+}
+
+/** the box a box is placed in (its float container for a float: box_coords) */
+static struct box *onyx_negz_up(const struct box *b)
+{
+	return (b->type == BOX_FLOAT_LEFT || b->type == BOX_FLOAT_RIGHT) &&
+			b->float_container != NULL ? b->float_container : b->parent;
+}
+
+/** a negative box found: where it is from the context's origin, the overflow clips
+ * between them (an absolute box: not those of static boxes between it and its
+ * containing block, as onyx_oclip_escape) -- false when the context is not reached */
+static bool onyx_negz_place(struct box *context, struct onyx_negz *e)
+{
+	const struct box *b, *up;
+	int dx = 0, dy = 0, px, py;
+	bool escaping;
+
+	/* its origin from the context's: the sum up to it (box_coords) */
+	for (b = e->box; b != context; b = up) {
+		up = onyx_negz_up(b);
+		if (up == NULL)
+			return false;
+		dx += b->x - scrollbar_get_offset(up->scroll_x);
+		dy += b->y - scrollbar_get_offset(up->scroll_y);
+	}
+	e->dx = dx - e->box->x;
+	e->dy = dy - e->box->y;
+	e->clipped = false;
+	escaping = e->box->style != NULL &&
+		css_computed_position(e->box->style) == CSS_POSITION_ABSOLUTE;
+	px = dx;	/* (the origin of b, from the context's) */
+	py = dy;
+	for (b = e->box; b != context; b = up) {
+		up = onyx_negz_up(b);
+		px -= b->x - scrollbar_get_offset(up->scroll_x);
+		py -= b->y - scrollbar_get_offset(up->scroll_y);
+		if (up == context)
+			break;	/* (its own clip: the redraw's) */
+		if (escaping && up->style != NULL &&
+		    (css_computed_position(up->style) != CSS_POSITION_STATIC ||
+		     (onyx_fx_style(up->style) && onyx_fx_box(up))))
+			escaping = false;	/* (its containing block) */
+		if (!escaping && onyx_negz_clips(up)) {
+			struct rect r = { px, py,
+				px + up->padding[LEFT] + up->width + up->padding[RIGHT],
+				py + up->padding[TOP] + up->height + up->padding[BOTTOM] };
+			if (!e->clipped) {
+				e->clip = r;
+				e->clipped = true;
+			} else {
+				if (r.x0 > e->clip.x0) e->clip.x0 = r.x0;
+				if (r.y0 > e->clip.y0) e->clip.y0 = r.y0;
+				if (r.x1 < e->clip.x1) e->clip.x1 = r.x1;
+				if (r.y1 < e->clip.y1) e->clip.y1 = r.y1;
+			}
+		}
+	}
+	return true;
+}
+
+struct onyx_negz_walk {
+	struct box *context;
+	const struct rect *cull;	/* (from the context's origin; NULL: all) */
+	struct onyx_negz *a;
+	int n, cap;
+};
+
+static void onyx_negz_walk(struct onyx_negz_walk *w, struct box *box, int ox, int oy,
+		bool known)
+{
+	struct box *c;
+	int32_t z;
+
+	for (c = box->children; c != NULL; c = c->next) {
+		/* (a float is placed in its float container: no culling below it) */
+		bool k = known && c->type != BOX_FLOAT_LEFT &&
+				c->type != BOX_FLOAT_RIGHT;
+		int cx = ox + c->x, cy = oy + c->y;
+
+		if (onyx_layer_any(c, &z)) {
+			if (z < 0) {
+				if (w->n == w->cap) {
+					int cap = w->cap ? w->cap * 2 : 8;
+					struct onyx_negz *a = realloc(w->a,
+							cap * sizeof(*a));
+					if (a == NULL)
+						continue;
+					w->a = a;
+					w->cap = cap;
+				}
+				w->a[w->n].box = c;
+				w->a[w->n].z = z;
+				w->a[w->n].order = w->n;
+				if (onyx_negz_place(w->context, &w->a[w->n]))
+					w->n++;
+				continue;
+			}
+			if (html_redraw_layer_context(c))
+				continue;	/* (its own, painted by it) */
+		}
+		if (c->children == NULL)
+			continue;
+		if (k && w->cull != NULL &&
+		    (cx + c->descendant_x1 < w->cull->x0 ||
+		     cx + c->descendant_x0 > w->cull->x1 ||
+		     cy + c->descendant_y1 < w->cull->y0 ||
+		     cy + c->descendant_y0 > w->cull->y1))
+			continue;
+		onyx_negz_walk(w, c, cx - scrollbar_get_offset(c->scroll_x),
+				cy - scrollbar_get_offset(c->scroll_y), k);
+	}
+}
+
+static int onyx_negz_cmp(const void *a, const void *b)
+{
+	const struct onyx_negz *x = a, *y = b;
+
+	if (x->z != y->z)
+		return x->z < y->z ? -1 : 1;
+	return x->order - y->order;
+}
+
+/* exported interface documented in html/private.h */
+int html_redraw_negz(struct box *context, const struct rect *cull, struct onyx_negz **out)
+{
+	struct onyx_negz_walk w = { context, cull, NULL, 0, 0 };
+
+	onyx_negz_walk(&w, context, -scrollbar_get_offset(context->scroll_x),
+			-scrollbar_get_offset(context->scroll_y), true);
+	if (w.n == 0) {
+		free(w.a);
+		w.a = NULL;
+	} else if (w.n > 1)
+		qsort(w.a, w.n, sizeof(*w.a), onyx_negz_cmp);
+	*out = w.a;
+	return w.n;
+}
+
+/** a stacking context's boxes with a negative z-index, painted (its origin at ox, oy;
+ * the clip its children are given), each with what it puts off */
+static bool onyx_negz_paint(const html_content *html, struct box *context, int ox, int oy,
+		const struct rect *clip, float scale, colour background,
+		const struct redraw_context *ctx)
+{
+	struct onyx_negz *a;
+	struct rect cull = {
+		(int) floorf(clip->x0 / scale) - ox - 1,
+		(int) floorf(clip->y0 / scale) - oy - 1,
+		(int) ceilf(clip->x1 / scale) - ox + 1,
+		(int) ceilf(clip->y1 / scale) - oy + 1 };
+	int n = html_redraw_negz(context, &cull, &a), i;
+	bool ok = true;
+
+	if (n == 0)
+		return true;
+	for (i = 0; i < n && ok; i++) {
+		struct rect r = *clip;
+		int start = onyx_layer_count;
+
+		if (a[i].clipped) {
+			struct rect c = {
+				(int) floorf((ox + a[i].clip.x0) * scale),
+				(int) floorf((oy + a[i].clip.y0) * scale),
+				(int) ceilf((ox + a[i].clip.x1) * scale),
+				(int) ceilf((oy + a[i].clip.y1) * scale) };
+			if (c.x0 > r.x0) r.x0 = c.x0;
+			if (c.y0 > r.y0) r.y0 = c.y0;
+			if (c.x1 < r.x1) r.x1 = c.x1;
+			if (c.y1 < r.y1) r.y1 = c.y1;
+			if (r.x0 >= r.x1 || r.y0 >= r.y1)
+				continue;
+		}
+		ok = html_redraw_box(html, a[i].box, ox + a[i].dx, oy + a[i].dy, &r,
+				scale, background, ctx);
+		if (ok && onyx_layer_count > start)
+			ok = onyx_layer_paint(html, start, scale, ctx);
+		onyx_layer_count = start;
+	}
+	free(a);
+	return ctx->plot->clip(ctx, clip) == NSERROR_OK && ok;
 }
 
 /**
@@ -2410,6 +2635,10 @@ static bool html_redraw_children_range(const html_content *html, struct box *box
 					false)) {
 			/* (Onyx: a line container: painted after the blocks'
 			 * backgrounds and the floats of its atomic box) */
+		} else if (onyx_layering && !html_redraw_printing &&
+				html_redraw_negz_box(c)) {
+			/* (Onyx: a negative z-index: painted by its stacking
+			 * context, under its in-flow content: onyx_negz_paint) */
 		} else if (!onyx_layer_defer(c, x_parent + box->x -
 					scrollbar_get_offset(box->scroll_x),
 					y_parent + box->y -
@@ -2440,6 +2669,12 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
 {
 	struct box *c;
 
+	/* Onyx: a stacking context: its boxes with a negative z-index first */
+	if (onyx_layering && !html_redraw_printing &&
+	    html_redraw_stacking_context(box) &&
+	    !onyx_negz_paint(html, box, x_parent + box->x, y_parent + box->y, clip,
+			scale, current_background_color, ctx))
+		return false;
 	if (!html_redraw_children_range(html, box, box->children, NULL, x_parent,
 			y_parent, clip, scale, current_background_color, ctx))
 		return false;

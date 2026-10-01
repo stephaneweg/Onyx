@@ -693,10 +693,49 @@ bool html_script_focus_control(html_content *c, dom_node *node)
 		dom_node_unref(c->focus_pending);
 		c->focus_pending = NULL;
 	}
-	if (c->layout != NULL && !c->rebox_pending &&
-	    html_focus_control_box(c, node))
+	/* (Onyx: the field's box there now, a rebox due or not -- the boxes built again
+	 * keep the focus on its control: a code's next box focused by the input event
+	 * of the one typed in takes the next key at once, not after the rebox) */
+	if (c->layout != NULL && html_focus_control_box(c, node))
 		return true;
 	c->focus_pending = dom_node_ref(node);
+	return true;
+}
+
+/** Onyx: the text area of a text control's box, if it is the focused one */
+static struct textarea *html_focused_textarea(html_content *c, dom_node *node)
+{
+	struct box *box = box_for_node(node);
+
+	if (box == NULL || box->gadget == NULL || c->layout == NULL ||
+	    (box->gadget->type != GADGET_TEXTBOX &&
+	     box->gadget->type != GADGET_PASSWORD &&
+	     box->gadget->type != GADGET_TEXTAREA) ||
+	    box->gadget->data.text.ta == NULL ||
+	    c->focus_type != HTML_FOCUS_TEXTAREA || c->focus_owner.textarea != box)
+		return NULL;
+	return box->gadget->data.text.ta;
+}
+
+/* exported interface documented in html/private.h */
+bool html_script_control_selection(html_content *c, dom_node *node, int *start, int *end)
+{
+	struct textarea *ta = html_focused_textarea(c, node);
+
+	if (ta == NULL)
+		return false;
+	textarea_onyx_get_selection(ta, start, end);
+	return true;
+}
+
+/* exported interface documented in html/private.h */
+bool html_script_control_select(html_content *c, dom_node *node, int start, int end)
+{
+	struct textarea *ta = html_focused_textarea(c, node);
+
+	if (ta == NULL)
+		return false;
+	textarea_onyx_set_selection(ta, start, end);
 	return true;
 }
 
@@ -1051,6 +1090,27 @@ static void html_scroll_event(void *p)
 	html_script_event(c, "scroll", (dom_node *) c->document, NULL);
 }
 
+/* Onyx: after a reformat (the browser window hid the caret: CONTENT_MSG_REFORMAT), the
+ * focused field's caret placed again, where the field is now -- a script changing the
+ * page at each keystroke (React re-rendering around a field) left the field with no
+ * caret while it was typed in */
+static void html_caret_refresh(void *p)
+{
+	html_content *c = p;
+	struct box *box;
+
+	if (c->focus_type != HTML_FOCUS_TEXTAREA || c->bw == NULL)
+		return;
+	box = c->focus_owner.textarea;
+	if (box == NULL || box->gadget == NULL ||
+	    (box->gadget->type != GADGET_TEXTBOX &&
+	     box->gadget->type != GADGET_PASSWORD &&
+	     box->gadget->type != GADGET_TEXTAREA) ||
+	    box->gadget->data.text.ta == NULL)
+		return;
+	textarea_onyx_caret_refresh(box->gadget->data.text.ta);
+}
+
 static void html_resize_event(void *p)
 {
 	html_content *c = p;
@@ -1068,11 +1128,27 @@ static void html_changed_event(void *p)
 		return;
 	c->script_changed = NULL;
 	c->script_changed_events = 0;
-	if (events & HTML_SCRIPT_INPUT)
-		html_script_event(c, "input", n, NULL);
+	if (events & HTML_SCRIPT_INPUT) {
+		/* (Onyx: an InputEvent telling the edit: inputType, data) */
+		struct js_event_init init;
+
+		memset(&init, 0, sizeof(init));
+		init.input_type = c->script_input_type;
+		init.data = c->script_input_data;
+		html_script_event(c, "input", n, init.input_type != NULL ? &init : NULL);
+	}
 	if (events & HTML_SCRIPT_CHANGE)
 		html_script_event(c, "change", n, NULL);
 	dom_node_unref(n);
+}
+
+/* exported interface documented in html/private.h */
+void html_script_changed_flush(html_content *c)
+{
+	if (c->script_changed == NULL)
+		return;
+	guit->misc->schedule(-1, html_changed_event, c);
+	html_changed_event(c);
 }
 
 /* exported interface documented in html/private.h */
@@ -2510,6 +2586,9 @@ static void html_reformat(struct content *c, int width, int height)
 		guit->misc->schedule(0, html_resize_event, htmlc);
 	htmlc->script_width = width;
 	htmlc->script_height = height;
+	/* (Onyx: the caret, hidden by the reformat, placed again) */
+	if (htmlc->focus_type == HTML_FOCUS_TEXTAREA)
+		guit->misc->schedule(0, html_caret_refresh, htmlc);
 
 	/* calculate next reflow time at three times what it took to reflow */
 	nsu_getmonotonic_ms(&ms_after);
@@ -2644,6 +2723,9 @@ static void html_destroy(struct content *c)
 	guit->misc->schedule(-1, html_rebox_scheduled, html);	/* (Onyx) */
 	guit->misc->schedule(-1, html_scroll_event, html);
 	guit->misc->schedule(-1, html_resize_event, html);
+	guit->misc->schedule(-1, html_caret_refresh, html);	/* (Onyx) */
+	free(html->script_input_data);
+	html->script_input_data = NULL;
 	guit->misc->schedule(-1, html_changed_event, html);
 	if (html->script_changed != NULL) {
 		dom_node_unref(html->script_changed);
