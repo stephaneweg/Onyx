@@ -1,9 +1,11 @@
 # Screenshot for Onyx — a screen capture tool (study, first mock-ups)
 
-> **Status (2026-10-01): mock-ups, to be validated by the user.** Asked by the user: a screenshot tool
-> "as Windows 10's" (Snip & Sketch): capture **the screen, a window or a region**, **with or without a
-> delay**; then **draw on the capture with a marker**, **save** it and **copy it to the clipboard**.
-> Name: **Screenshot** (app folder `screenshot`; the user's choice).
+> **Status (2026-10-01): second mock-ups, to be validated by the user.** The first ones (an options
+> window, then an editor with a pen and a marker) were not kept: the user wants the layout of Windows'
+> **Snipping Tool** (*Outil Capture d'écran*): **one toolbar** -- **New** (starts a capture), the **mode**
+> as a drop-down button (**Rectangle** by default, **Window**, **Full screen**), the **delay** as a
+> drop-down button, then, once a capture is made, **Copy** and **Save As...** at the left, next to them;
+> the capture shown below. Name: **Screenshot** (app folder `screenshot`).
 
 The mock-ups are made by `python3 tools/screenshot/mockup_screenshot.py` → `docs/screenshot/mockups/*.png`
 (1024 × 768, the Pi's default screen; what is captured is the real desktop, `screenshots/desktop.png`;
@@ -11,11 +13,13 @@ the drawing helpers and the look are `mockup_archiver.py`'s).
 
 | | |
 |---|---|
-| ![](mockups/screenshot-start.png) | **The app's window.** *What*: **Region**, **Window** or **Screen**; *Delay*: none, 3, 5, 10 s; *Show the pointer*. **New capture** (its arrow: now, in 3 / 5 / 10 seconds, *Open a picture...* to draw on an existing image). The window hides itself during the capture. |
-| ![](mockups/screenshot-region.png) | **A region.** The screen **frozen** (grabbed first) and darkened, the region chosen bright, with its handles (it can be moved, resized, before Enter), its size, a **magnifier** at the pointer (the pixels enlarged, their coordinates). The bar on top switches the mode, the delay, closes. Enter: the whole screen; Esc: cancel. |
-| ![](mockups/screenshot-window.png) | **A window.** The window under the pointer lit, its name and size; a click takes it (its frame included, its rounded corners see-through), Tab goes to the next one. |
-| ![](mockups/screenshot-delay.png) | **The delay.** A countdown (a ring, the seconds), so a menu or a tooltip can be opened before; Esc stops it. The countdown is gone from the screen before the grab. |
-| ![](mockups/screenshot-editor.png) | **The editor**, once the capture is made: it is **copied to the clipboard at once** and a notification says so (a click on it opens the editor). Tools: **Pen** (opaque) and **Marker** (see-through, a highlighter) — each its colour (8) and size, **Shift** a straight line —, **Eraser** (a stroke at a time), **Crop**, **Undo / Redo**, the zoom. At the right: open it in **Paint**, **Copy** (again, with the drawings), **Save** (PNG, in `SD:/Pictures/Screenshots/Screenshot <date> <time>.png`), **Save As...** (PNG, JPEG, BMP). **New** starts another capture (its arrow: with a delay). |
+| ![](mockups/screenshot-start.png) | **The window, nothing captured yet.** The toolbar: **New** (the main action), the **mode** (its icon and an arrow) and the **delay** (a struck clock: none). Below: *Press **Print Screen** to start a capture*. |
+| ![](mockups/screenshot-mode.png) | **The mode's menu**: **Rectangle** (Print Screen), **Window** (Alt+Print Screen), **Full screen**; a tick at the one chosen, kept for the next time. |
+| ![](mockups/screenshot-delay-menu.png) | **The delay's menu**: none, 3, 5, 10 seconds. Chosen, the button shows it (**3 s** in a pill). |
+| ![](mockups/screenshot-region.png) | **A rectangle.** The window hides itself, the screen is **frozen** (grabbed first) and darkened, the rectangle dragged is bright, its size under it, a **magnifier** at the pointer (the pixels enlarged, their coordinates). The small bar on top switches the mode or cancels. Enter: the whole screen; Esc: cancel. |
+| ![](mockups/screenshot-window.png) | **A window.** The window under the pointer lit, its name and size; a click takes it (its frame included), Tab goes to the next one. |
+| ![](mockups/screenshot-delay.png) | **The delay.** A countdown (a ring, the seconds), so a menu can be opened before; Esc stops it. The countdown is gone from the screen before the grab. |
+| ![](mockups/screenshot-result.png) | **The capture made.** The window comes back with the picture, fitted (its zoom in the status bar); it is **copied to the clipboard at once** (a notification says so). **Copy** and **Save As...** (^S: PNG, JPEG or BMP, in `SD:/Pictures/Screenshots` by default, named `Screenshot <date> <time>.png`) appear at the left, after the mode and the delay. |
 
 ## How it would be built — what Onyx has, what it lacks
 
@@ -32,6 +36,8 @@ the drawing helpers and the look are `mockup_archiver.py`'s).
 
 ## Decided with the user (2026-10-01)
 
+0. **The layout**: Windows' Snipping Tool's (above) -- no options window, no drawing editor for now.
+
 1. The name: **Screenshot**.
 2. **Print Screen** starts the app and captures at once **with the last options** (the screen, a window
    or a region; the delay) — a global key: the kernel routes it to the menu bar, which launches
@@ -43,5 +49,6 @@ the drawing helpers and the look are `mockup_archiver.py`'s).
 
 ## Still open
 
-4. Every capture **saved automatically** in `SD:/Pictures/Screenshots`, or only on *Save*?
-5. More tools in the editor: text, arrows, rectangles, a blur (to hide a password)?
+4. Every capture **saved automatically** in `SD:/Pictures/Screenshots`, or only on *Save As*? (The
+   mock-ups: only on *Save As*; copied to the clipboard at once.)
+5. Drawing on the capture (a pen, a marker, a crop: Snipping Tool's middle tools) -- later, or now?

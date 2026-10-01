@@ -6,6 +6,11 @@ answer in French. The docs stay in English.
 
 ## Working conventions (keep them)
 
+- **Git (the user's rule, 2026-10-01)**: before each new development and each commit, fetch and
+  merge the latest `origin/main` into the working branch, commit, then push into `main`
+  (`git push origin HEAD:main`) and the branch. Delete the working branch only when the user
+  asks (CLAUDE.md).
+
 - Repo `stephaneweg/Onyx`; the cloud session worked on branch `claude/kind-rubin-vddz2w` and
   always pushed it to `main` as well. Circle is a submodule (`circle/`, fork
   `stephaneweg/circle`, branch `onyx`): commit there with
@@ -430,7 +435,10 @@ answer in French. The docs stay in English.
   (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
   Terminal, File Viewer, Trash) instead of the Shelf and the panel, the see-through agenda, the
   menu bar restyled (its time opens a calendar), the **lock** screen, the **Theme** app
-  rewritten, every app's hard-coded dark colours converted.
+  rewritten, every app's hard-coded dark colours converted. Then (2026-10-01) a sixth theme,
+  **Milk** (Xfce's Milk / Mac OS X: soft greys, the title buttons as coloured beads, the frame
+  melting into the window with no line between them, `WK_STYLE`, `wk_bead`), chosen in the
+  Theme app (and in Setup) like the others.
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,
@@ -1285,6 +1293,10 @@ when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel
 ≈ 20 ms) for live MIDI.
 
 ## End-user apps roadmap (decided with the user, 2026-09-30; none started)
+
+**How (the user, 2026-10-01)**: Screenshot first (laid out as Windows' Snipping Tool:
+docs/screenshot/README.md), then the **Priority 1** apps **in their order**; for each, **mock-ups first**
+for the user to validate, then the app -- polished, **worthy of a commercial product**.
 
 Every new app: FreeType text through wtk's face, polished, its catalog entry in docs/04 and a
 `shots.sh` scenario. In the user's priority order:

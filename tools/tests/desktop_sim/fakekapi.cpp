@@ -26,7 +26,7 @@
 //   exit                 the process ends here (what follows the app's loop never runs)
 // SIM_POS="x,y": the window's outer top-left (else centred); SIM_ARGS: the app's arguments;
 // SIM_SD: the SD card's directory (default sdcard), only read; SIM_WRITES: where what the apps
-// save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: a directory whose files are read
+// save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: directories ("a:b") whose files are read
 // instead of the card's (sample data: tools/tests/desktop_sim/sd); SIM_PIPE: what a spawned
 // program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
@@ -115,8 +115,14 @@ static std::string sdpath (const char *p)
 	bool onCard = stat (card.c_str (), &cs) == 0;
 	if (stat ((writes () + "/" + s).c_str (), &st) == 0 && (S_ISREG (st.st_mode) || !onCard))	// (a folder of
 		return writes () + "/" + s;						// the card's: the card's)
-	const char *ov = getenv ("SIM_OVERLAY");			// (sample files, not folders: looked for there next)
-	if (ov && stat ((std::string (ov) + "/" + s).c_str (), &st) == 0 && S_ISREG (st.st_mode)) return std::string (ov) + "/" + s;
+	const char *ov = getenv ("SIM_OVERLAY");			// (sample files, not folders: looked for there next;
+	for (std::string dirs = ov ? ov : ""; !dirs.empty (); )	// "a:b": in a, then in b)
+	{
+		size_t colon = dirs.find (':');
+		std::string dir = dirs.substr (0, colon), f = dir + "/" + s;
+		if (!dir.empty () && stat (f.c_str (), &st) == 0 && S_ISREG (st.st_mode)) return f;
+		dirs = colon == std::string::npos ? "" : dirs.substr (colon + 1);
+	}
 	return card;
 }
 static std::string wpath (const char *p)				// where a write goes (its folders made)
@@ -502,7 +508,14 @@ static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1,
 static void *h_sbrk (long n) { static char *arena = (char *) malloc (512u << 20), *top = arena; char *p = top; top += n; return p; }
 static int pad_state (int, struct kapi_pad *) { return 0; }
 static unsigned get_mods (void) { return g_mods; }
-static int launch (const char *n) { fprintf (stderr, "sim: launch %s\n", n); return 1; }
+static int launch (const char *n)
+{
+	fprintf (stderr, "sim: launch %s\n", n);
+	// (no services without SIM_IPC: clipd cannot come -- clipboard.h falls back at once to the
+	// kernel's clipboard instead of waiting a second for it)
+	if (!getenv ("SIM_IPC") && n && !strcmp (n, "clipd")) return 0;
+	return 1;
+}
 static int raise_app (const char *n) { fprintf (stderr, "sim: raise_app %s\n", n); return 0; }
 static int exec (const char *p, const char *a) { fprintf (stderr, "sim: exec %s %s\n", p, a); return 1; }
 static int exec_as (const char *p, const char *a, const char *n) { fprintf (stderr, "sim: exec_as %s %s (%s)\n", p, a, n); return 1; }
@@ -860,8 +873,46 @@ static int get_args (char *b, unsigned n)
 	snprintf (b, n, "%s", a ? a : "");
 	return (int) strlen (b);
 }
-static int clipboard_set (int, const void *, unsigned) { return 1; }
-static int clipboard_get (int *t, void *, unsigned, unsigned *serial) { if (t) *t = 0; if (serial) *serial = 0; return 0; }
+// The clipboard: one typed blob, 64 KB at most, as the kernel's (kapi.cpp). SIM_CLIP: what it
+// holds at the start ("text", or "files:PATH" -- CLIP_FILES); SIM_CLIPFILE: each set written
+// there (its bytes exactly; its type on stdout: "SIM-CLIPBOARD type=T len=N").
+static std::string g_clip;
+static int g_clipType = -1;		// (-1: SIM_CLIP not read yet)
+static unsigned g_clipSerial;
+static void clip_init (void)
+{
+	if (g_clipType >= 0) return;
+	g_clipType = 0;
+	const char *c = getenv ("SIM_CLIP");
+	if (!c || !*c) return;
+	if (!strncmp (c, "files:", 6)) { g_clip = c + 6; g_clipType = 2; }
+	else { g_clip = c; g_clipType = 1; }
+}
+static int clipboard_set (int type, const void *d, unsigned n)
+{
+	clip_init ();
+	if (n > 64 * 1024) n = 64 * 1024;
+	if (!d) n = 0;
+	g_clip.assign ((const char *) (d ? d : ""), n);
+	g_clipType = n ? type : 0;
+	g_clipSerial++;
+	printf ("SIM-CLIPBOARD type=%d len=%u\n", g_clipType, n); fflush (stdout);
+	if (getenv ("SIM_CLIPFILE"))
+	{
+		FILE *f = fopen (getenv ("SIM_CLIPFILE"), "wb");
+		if (f) { fwrite (g_clip.data (), 1, g_clip.size (), f); fclose (f); }
+	}
+	return (int) n;
+}
+static int clipboard_get (int *t, void *b, unsigned cap, unsigned *serial)
+{
+	clip_init ();
+	if (t) *t = g_clipType;
+	if (serial) *serial = g_clipSerial;
+	unsigned n = (unsigned) g_clip.size () < cap ? (unsigned) g_clip.size () : cap;
+	if (b && n) memcpy (b, g_clip.data (), n);
+	return (int) g_clip.size ();
+}
 static void set_click (gui_handler h) { g_click = h; }
 static int key_held (int) { return 0; }
 // SIM_CURSOR="x,y": the pointer, relative to the client area (the eyes look at it); none: away

@@ -5,8 +5,11 @@
 // is computed from those (wtk/paint.h: the grey profile). Read once by wtk::init () from
 // SD:/etc/theme.txt:
 //
-//     theme    = Peach        a named colour theme: Peach, Steel, Sage, Brick, Slate (the frame
-//                             of the window in front; the ones behind: Grey)
+//     theme    = Peach        a named theme: Peach, Steel, Sage, Brick, Slate (the frame of the
+//                             window in front; the ones behind: Grey) -- or Milk (soft greys,
+//                             OS X's coloured beads for the title buttons, the frame melting
+//                             into the window: no line between them)
+//     style    = cde          the frames' look, if not the theme's: cde or milk
 //     active   = 0xF0B07A     or the colours themselves (they override the theme's)
 //     inactive = 0xACACB0
 //     window   = 0xD0C2BA     the windows' content: the apps' face, their background ("face"
@@ -18,8 +21,9 @@
 //     menubar  = 0xD0C2BA     the menu bar (default: the window's)
 //     dock     = 0xA4BACE     the dock's face
 //
-// Without the file (or a key), the defaults below: Peach over CDE's beige, a teal accent. Each
-// text colour is black or white by the brightness of what it is written on.
+// Without the file (or a key), the defaults below: Peach over CDE's beige, a teal accent; a colour
+// left out takes the style's own (wk_style_palette: Milk's greys, its Aqua blue...). Each text
+// colour is black or white by the brightness of what it is written on.
 //
 #ifndef _wtk_theme_h
 #define _wtk_theme_h
@@ -46,9 +50,18 @@ extern unsigned C_BUTTON;		// a push button's / a drop-down's face (the window's
 extern unsigned C_BUTTON_TEXT;		// ... its text
 extern unsigned C_MENUBAR;		// the menu bar's face (the window's by default)
 
-// The named colour themes (the active frame's colour).
-struct WkNamedTheme { const char *name; unsigned frame; };
-extern const WkNamedTheme wk_themes[];	// ..., { 0, 0 }
+// The frames' look: CDE's (framed title buttons) or Milk's (Xfce's Milk theme, as OS X: the title
+// buttons coloured beads -- close red, minimise amber, maximise green --, the title's gradient
+// down to the window's colour, C_BG, the borders that colour: the frame melts into the window).
+enum { WK_STYLE_CDE = 0, WK_STYLE_MILK = 1 };
+extern int	WK_STYLE;
+// A style's own colours: what a theme of it takes when theme.txt does not say.
+struct WkPalette { unsigned face, accent, inactive, dock; };
+const WkPalette &wk_style_palette (int style);
+
+// The named themes (the active frame's colour, the frames' style).
+struct WkNamedTheme { const char *name; unsigned frame; int style; };
+extern const WkNamedTheme wk_themes[];	// ..., { 0, 0, 0 }
 static const unsigned WK_GREY = 0x00ACACB0;	// the inactive frames
 
 void wk_theme_load ();			// (wtk::init () calls it; idempotent)
@@ -63,7 +76,12 @@ struct WkTheme
 	int theme;				// wk_themes[] index of the active frame's colour, -1: `active`
 	unsigned active, inactive, window, button, field, accent, menubar, dock;
 	int outline;				// 0 none, 1 dark, 2 black
+	int style;				// the frames' look: WK_STYLE_CDE / WK_STYLE_MILK
 };
+// A theme's style changed (a scheme chosen): the colours that are the style's own -- the window,
+// the accent, the frames behind, the dock -- become the new style's (what the user set otherwise
+// is kept); the buttons, the fields and the menu bar follow the window's.
+void wk_theme_take_style (WkTheme &t, int style);
 void wk_theme_defaults (WkTheme &t);
 void wk_theme_parse (const char *text, WkTheme &t);	// theme.txt's keys over t
 void wk_theme_get (WkTheme &t);			// the palette in use

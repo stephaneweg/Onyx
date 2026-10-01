@@ -1300,8 +1300,16 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 >   `C_MENUBAR`, `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by
 >   `wtk::init ()` (the `Root`'s constructor calls it): use them in drawing code, never copy them
 >   into a `static const` or a global initialised at start-up (that runs before the theme is
->   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate (the window in front's frame;
->   `active` = any colour instead), `inactive`, `window` (the content: the face; `face` still
+>   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate / Milk (the window in front's
+>   frame; `active` = any colour instead), `style` = cde / milk (**the style**, `WK_STYLE`: CDE's
+>   framed title buttons, or Milk's — Xfce's Milk theme, as OS X — the title buttons coloured
+>   beads, `wk_bead`, close red, minimise amber, maximise green, grey behind or for a button the
+>   window cannot use, and the frame melting into the window: the title's gradient from a light
+>   tone of the frame's colour down to the content's own, `C_BG`, the borders that colour,
+>   nothing between them — `wk_title_strip` likewise, down to `C_FACE`; a colour the file leaves
+>   out is the style's own, `wk_style_palette`; a scheme of another style chosen:
+>   `wk_theme_take_style (t, style)`),
+>   `inactive`, `window` (the content: the face; `face` still
 >   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
 >   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes
 >   it. As values: `WkTheme` (`WK_AUTO`: derived from the window's), `wk_theme_defaults`,

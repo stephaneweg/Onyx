@@ -77,6 +77,12 @@ The user's decisions:
    `cde-modern-colours.png` are **kept as the colour themes**: Peach `0xF0B07A` (CDE's), Steel
    `0x7A98C0`, Sage `0x80AA76`, Brick `0xC45450`, Slate `0x3A4458`; the inactive frames Grey
    `0xACACB0`.
+6. **Later (2026-10-01): the Milk theme**, beside them — after Xfce's Milk (itself in the spirit
+   of Mac OS X): soft greys, the frame melting into the window (the title's gradient ends on
+   the content's colour, the borders are that colour: no line between them), the title buttons
+   as glossy coloured beads (red close, amber minimise, green maximise; grey behind), Aqua's
+   blue accent, a silver dock. A style of its own (`theme.txt`: `theme = Milk`, `style = milk`), the buttons at the
+   same places (nothing changes in the kernel); `screenshots/milk.png`.
 
 ## 3. How it is drawn: by code, no bitmap
 
