@@ -67,6 +67,7 @@
 #include "html/font.h"
 #include "html/form_internal.h"
 #include "html/private.h"
+#include "html/html.h"	/* Onyx: html_box_viewport_fixed */
 #include "html/layout.h"
 
 
@@ -682,6 +683,10 @@ static void onyx_background_size(const css_computed_style *style,
  * \return true if successful, false otherwise
  */
 
+/* Onyx: the viewport of the document being painted (CSS px: its scroll offset, its size;
+ * html_redraw) -- what position: fixed and background-attachment: fixed are relative to */
+static int onyx_view_sx, onyx_view_sy, onyx_view_w, onyx_view_h;
+
 static bool html_redraw_background(int x, int y, struct box *box, float scale,
 		const struct rect *clip, colour *background_colour,
 		struct box *background,
@@ -713,6 +718,21 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 
 	plot_content = (background->background != NULL);
 
+	if (plot_content && onyx_view_w > 0 &&
+	    css_computed_background_attachment(background->style) ==
+			CSS_BACKGROUND_ATTACHMENT_FIXED) {
+		/* Onyx: background-attachment: fixed -- its positioning area is
+		 * the viewport (the box's painting area clips it as ever):
+		 * Acid2's eyes and chin */
+		int bx, by;
+
+		box_coords(box, &bx, &by);
+		x += (onyx_view_sx - bx) * scale;
+		y += (onyx_view_sy - by) * scale;
+		width = onyx_view_w;
+		height = onyx_view_h;
+		goto onyx_positioned_area;
+	}
 	if (plot_content) {
 		if (!box->parent) {
 			/* Root element, special case:
@@ -731,6 +751,7 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 			height = box->padding[TOP] + box->height +
 					box->padding[BOTTOM];
 		}
+	onyx_positioned_area:
 		/* handle background-repeat */
 		switch (css_computed_background_repeat(background->style)) {
 		case CSS_BACKGROUND_REPEAT_REPEAT:
@@ -1361,6 +1382,97 @@ static int onyx_layer_cmp(const void *a, const void *b)
 	if (x->z != y->z)
 		return x->z < y->z ? -1 : 1;
 	return x->order - y->order;
+}
+
+/* ---- Onyx: the painting phases of CSS 2.1 appendix E within a stacking context ----
+ * NetSurf painted each block whole (its background, then its content) in the tree's
+ * order: a later block's background covered an earlier block's text, and the floats
+ * came after all the in-flow content. Now, within each atomically painted box (the
+ * page, a positioned box or a stacking context, a float, an inline-block, a table, a
+ * flex item...), the in-flow blocks' backgrounds and borders are painted first in the
+ * tree's order, then the floats, then the inline content (the lines: text, images,
+ * inline-blocks) -- the positioned boxes after that, as before (onyx_layer_*). Acid2's
+ * eyes: a block's background under a float under an image in a line.
+ */
+
+/** a float or a line container put off to its phase */
+struct onyx_phase_box {
+	struct box *box;
+	int x_parent, y_parent;
+	struct rect clip;
+	colour background;
+	bool is_float;
+};
+
+static struct onyx_phase_box *onyx_phase_boxes;
+static int onyx_phase_count, onyx_phase_cap;
+static int onyx_phase_depth;	/* atomic boxes being painted (phases open) */
+
+/** a block painted in its enclosing atomic box's phases (not atomic itself) */
+static bool onyx_phase_transparent(const struct box *box)
+{
+	int32_t z;
+
+	if (box->type != BOX_BLOCK || box->style == NULL || box->parent == NULL ||
+	    box->object != NULL || box->gadget != NULL || (box->flags & IFRAME))
+		return false;
+	if (css_computed_position(box->style) != CSS_POSITION_STATIC)
+		return false;
+	if (box->parent->type == BOX_FLEX || box->parent->type == BOX_INLINE_FLEX)
+		return false;	/* (a flex / grid item: as an inline-block) */
+	if (html_redraw_layer_z(box, &z))
+		return false;	/* (a stacking context) */
+	return true;
+}
+
+/** a float or a line container put off to the end of the atomic box's phases */
+static bool onyx_phase_defer(struct box *c, int x_parent, int y_parent,
+		const struct rect *clip, float scale, colour background, bool is_float)
+{
+	struct onyx_phase_box *e;
+
+	if (onyx_phase_depth == 0 || !onyx_layering)
+		return false;
+	if (onyx_phase_count == onyx_phase_cap) {
+		int cap = onyx_phase_cap ? onyx_phase_cap * 2 : 64;
+
+		e = realloc(onyx_phase_boxes, cap * sizeof(*e));
+		if (e == NULL)
+			return false;	/* (painted in place) */
+		onyx_phase_boxes = e;
+		onyx_phase_cap = cap;
+	}
+	e = &onyx_phase_boxes[onyx_phase_count++];
+	e->box = c;
+	e->x_parent = x_parent;
+	e->y_parent = y_parent;
+	e->clip = *clip;
+	e->background = background;
+	e->is_float = is_float;
+	return true;
+}
+
+/** the floats, then the line containers, an atomic box put off (from start on) */
+static bool onyx_phase_paint(const html_content *html, int start, float scale,
+		const struct redraw_context *ctx)
+{
+	int end = onyx_phase_count, i, pass;
+	bool ok = true;
+
+	for (pass = 0; pass < 2 && ok; pass++) {
+		for (i = start; i < end && ok; i++) {
+			/* (a copy: the array grows with what this one puts off) */
+			struct onyx_phase_box e = onyx_phase_boxes[i];
+
+			if (e.is_float != (pass == 0))
+				continue;
+			ok = html_redraw_box(html, e.box, e.x_parent, e.y_parent,
+					&e.clip, scale, e.background, ctx);
+			onyx_phase_count = end;
+		}
+	}
+	onyx_phase_count = start;
+	return ok;
 }
 
 /** the boxes a layer put off (from start on), painted in their order; each a layer */
@@ -2007,6 +2119,9 @@ static bool html_redraw_children_range(const html_content *html, struct box *box
 			struct box *fc = onyx_float_container(c, box, &dx, &dy);
 
 			if (fc != NULL && fc != box && onyx_float_layered(c, fc) &&
+			    !onyx_phase_defer(c, x_parent + box->x - dx,
+					y_parent + box->y - dy, clip, scale,
+					current_background_color, true) &&
 			    !html_redraw_box(html, c, x_parent + box->x - dx,
 					y_parent + box->y - dy, clip, scale,
 					current_background_color, ctx))
@@ -2030,6 +2145,15 @@ static bool html_redraw_children_range(const html_content *html, struct box *box
 			if (reached)
 				break;
 			c = end;
+		} else if (c->type == BOX_INLINE_CONTAINER &&
+				onyx_phase_defer(c, x_parent + box->x -
+					scrollbar_get_offset(box->scroll_x),
+					y_parent + box->y -
+					scrollbar_get_offset(box->scroll_y),
+					clip, scale, current_background_color,
+					false)) {
+			/* (Onyx: a line container: painted after the blocks'
+			 * backgrounds and the floats of its atomic box) */
 		} else if (!onyx_layer_defer(c, x_parent + box->x -
 					scrollbar_get_offset(box->scroll_x),
 					y_parent + box->y -
@@ -2063,16 +2187,20 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
 	if (!html_redraw_children_range(html, box, box->children, NULL, x_parent,
 			y_parent, clip, scale, current_background_color, ctx))
 		return false;
-	for (c = box->float_children; c; c = c->next_float)
-		if (!onyx_float_layered(c, box) &&	/* (Onyx) */
-		    !html_redraw_box(html, c,
-				x_parent + box->x -
-				scrollbar_get_offset(box->scroll_x),
-				y_parent + box->y -
-				scrollbar_get_offset(box->scroll_y),
-				clip, scale, current_background_color,
-				ctx))
+	for (c = box->float_children; c; c = c->next_float) {
+		int fx = x_parent + box->x - scrollbar_get_offset(box->scroll_x);
+		int fy = y_parent + box->y - scrollbar_get_offset(box->scroll_y);
+
+		if (onyx_float_layered(c, box))	/* (Onyx) */
+			continue;
+		/* (Onyx: after the blocks' backgrounds, before the lines) */
+		if (onyx_phase_defer(c, fx, fy, clip, scale,
+				current_background_color, true))
+			continue;
+		if (!html_redraw_box(html, c, fx, fy, clip, scale,
+				current_background_color, ctx))
 			return false;
+	}
 
 	return true;
 }
@@ -2104,6 +2232,15 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	struct onyx_fx fx;
 	bool ok;
 
+	/* Onyx: a fixed box is where the viewport is (laid out at its scroll 0) */
+	if (box->style != NULL &&
+	    css_computed_position(box->style) == CSS_POSITION_FIXED &&
+	    (onyx_view_sx != 0 || onyx_view_sy != 0) &&
+	    html_box_viewport_fixed(box)) {
+		x_parent += onyx_view_sx;
+		y_parent += onyx_view_sy;
+	}
+
 	/* Onyx: a box with effects painted as a group (with its stacking context) */
 	if (onyx_box_fx(html, box, scale, &fx)) {
 		if (fx.opacity <= 0)
@@ -2128,7 +2265,42 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	return ok;
 }
 
+static bool html_redraw_box_body(const html_content *html, struct box *box,
+		int x_parent, int y_parent,
+		const struct rect *clip, const float scale,
+		colour current_background_color,
+		const struct redraw_context *ctx);
+
+/* Onyx: a box; an atomic one (not a plain in-flow block) with its phases (above) */
 static bool html_redraw_box_inner(const html_content *html, struct box *box,
+		int x_parent, int y_parent,
+		const struct rect *clip, const float scale,
+		colour current_background_color,
+		const struct redraw_context *ctx)
+{
+	int start;
+	bool ok;
+
+	if (!onyx_layering || html_redraw_printing ||
+	    (onyx_phase_depth > 0 && onyx_phase_transparent(box)))
+		return html_redraw_box_body(html, box, x_parent, y_parent, clip,
+				scale, current_background_color, ctx);
+	start = onyx_phase_count;
+	onyx_phase_depth++;
+	ok = html_redraw_box_body(html, box, x_parent, y_parent, clip, scale,
+			current_background_color, ctx);
+	if (ok && onyx_phase_count > start) {
+		ok = onyx_phase_paint(html, start, scale, ctx);
+		/* (the clip as the box was given it; an empty one -- a box holding
+		 * a fixed box, out of the redraw -- is refused, harmlessly) */
+		ctx->plot->clip(ctx, clip);
+	}
+	onyx_phase_count = start;
+	onyx_phase_depth--;
+	return ok;
+}
+
+static bool html_redraw_box_body(const html_content *html, struct box *box,
 		int x_parent, int y_parent,
 		const struct rect *clip, const float scale,
 		colour current_background_color,
@@ -2322,8 +2494,9 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 			rc.x1 += e;
 			rc.y1 += e;
 		}
-		/* (Onyx: not a box holding a fixed box: the viewport's) */
-		if (!(box->flags & HAS_FIXED) &&
+		/* (Onyx: not a box holding a fixed box: the viewport's; nor a
+		 * line holding floats: theirs) */
+		if (!(box->flags & (HAS_FIXED | HAS_FLOATS)) &&
 				(clip->y1 < rc.y0 || rc.y1 < clip->y0 ||
 				clip->x1 < rc.x0 || rc.x1 < clip->x0))
 			return true;
@@ -3089,10 +3262,18 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 		.fill_colour = data->background_colour,
 	};
 
+	int was_sx = onyx_view_sx, was_sy = onyx_view_sy;	/* (Onyx: an iframe's */
+	int was_w = onyx_view_w, was_h = onyx_view_h;		/* redraw inside) */
+
 	box = html->layout;
 	assert(box);
 
 	onyx_webfont_scope(html);	/* Onyx: drawn with its web fonts */
+	if (html->bw != NULL && !html_redraw_printing)
+		browser_window_onyx_viewport(html->bw, &onyx_view_sx, &onyx_view_sy,
+				&onyx_view_w, &onyx_view_h);
+	else
+		onyx_view_sx = onyx_view_sy = onyx_view_w = onyx_view_h = 0;
 
 	/* The select menu needs special treating because, when opened, it
 	 * reaches beyond its layout box.
@@ -3153,6 +3334,10 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 				data->scale, clip, ctx);
 	}
 
+	onyx_view_sx = was_sx;	/* (Onyx) */
+	onyx_view_sy = was_sy;
+	onyx_view_w = was_w;
+	onyx_view_h = was_h;
 	return result;
 
 }

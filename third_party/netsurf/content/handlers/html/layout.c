@@ -4378,6 +4378,13 @@ bool layout_block_context(
 	int lm, rm;
 	struct box *margin_collapse = NULL;
 	bool in_margin = false;
+	/* Onyx: the pending margin's part met so far in tree order (the
+	 * bottom margins of the boxes before, the top margins of those
+	 * entered): what lies above a line of floats only -- the margins after
+	 * it, which the pending margin also collapses with, are below it
+	 * (CSS 2.1 8.3.1: an empty box's top border edge is placed as if it had
+	 * a bottom border; Acid2's nose) */
+	int walk_pos = 0, walk_neg = 0;
 	css_fixed gadget_size;
 	css_unit gadget_unit; /* Checkbox / radio buttons */
 
@@ -4488,6 +4495,12 @@ bool layout_block_context(
 					&max_pos_margin, &max_neg_margin);
 			/* We have a margin that has not yet been applied. */
 			in_margin = true;
+		}
+		if (in_margin && box->style) {
+			if (walk_pos < box->margin[TOP])
+				walk_pos = box->margin[TOP];
+			else if (walk_neg < -box->margin[TOP])
+				walk_neg = -box->margin[TOP];
 		}
 
 		/* Clearance. */
@@ -4612,6 +4625,7 @@ bool layout_block_context(
 			/* Current margin has been applied. */
 			in_margin = false;
 			max_pos_margin = max_neg_margin = 0;
+			walk_pos = walk_neg = 0;
 		}
 
 		/* Handle clearance */
@@ -4627,6 +4641,7 @@ bool layout_block_context(
 				max_pos_margin = max_neg_margin = 0;
 				margin_collapse = NULL;
 			}
+			walk_pos = walk_neg = 0;
 		}
 
 		/* Unless the box has an overflow style of visible, the box
@@ -4679,7 +4694,7 @@ bool layout_block_context(
 			int pend = 0;
 
 			if (in_margin && layout_floats_only(box))
-				pend = max_pos_margin - max_neg_margin;
+				pend = walk_pos - walk_neg;
 			box->width = box->parent->width;
 			if (!layout_inline_container(box, box->width, block,
 					cx, cy + pend, content))
@@ -4774,6 +4789,10 @@ bool layout_block_context(
 					max_pos_margin = box->margin[BOTTOM];
 				else if (max_neg_margin < -box->margin[BOTTOM])
 					max_neg_margin = -box->margin[BOTTOM];
+				if (walk_pos < box->margin[BOTTOM])
+					walk_pos = box->margin[BOTTOM];
+				else if (walk_neg < -box->margin[BOTTOM])
+					walk_neg = -box->margin[BOTTOM];
 
 				box = box->parent;
 				if (box == block)
@@ -4786,10 +4805,15 @@ bool layout_block_context(
 					margin_collapse = NULL;
 					in_margin = false;
 					max_pos_margin = max_neg_margin = 0;
+					walk_pos = walk_neg = 0;
 				}
 
 				if (box->height == AUTO) {
 					box->height = y - box->padding[TOP];
+					if (box->height < 0) {	/* (Onyx) */
+						cy -= box->height;
+						box->height = 0;
+					}
 
 					if (box->type == BOX_BLOCK)
 						layout_block_add_scrollbar(box,
@@ -4836,6 +4860,10 @@ bool layout_block_context(
 			max_pos_margin = box->margin[BOTTOM];
 		else if (max_neg_margin < -box->margin[BOTTOM])
 			max_neg_margin = -box->margin[BOTTOM];
+		if (walk_pos < box->margin[BOTTOM])
+			walk_pos = box->margin[BOTTOM];
+		else if (walk_neg < -box->margin[BOTTOM])
+			walk_neg = -box->margin[BOTTOM];
 
 		box = box->next;
 		box->y = y;
@@ -4854,6 +4882,10 @@ bool layout_block_context(
 
 	if (block->height == AUTO) {
 		block->height = cy - block->padding[TOP];
+		/* Onyx: never negative (a last child's negative bottom
+		 * margin that does not collapse through: Acid2's smile) */
+		if (block->height < 0)
+			block->height = 0;
 		/* Onyx: a textarea's intrinsic height (rows) */
 		if (block->gadget != NULL &&
 				block->gadget->type == GADGET_TEXTAREA) {
@@ -6536,10 +6568,13 @@ static void layout_calculate_descendant_bboxes_1(
 		/* Box's children aren't displayed if the box is replaced */
 		return;
 
+	box->flags &= ~HAS_FLOATS;
 	for (child = box->children; child; child = child->next) {
 		if (child->type == BOX_FLOAT_LEFT ||
-				child->type == BOX_FLOAT_RIGHT)
+				child->type == BOX_FLOAT_RIGHT) {
+			box->flags |= HAS_FLOATS;	/* (Onyx) */
 			continue;
+		}
 
 		layout_calculate_descendant_bboxes(unit_len_ctx, child);
 

@@ -309,6 +309,7 @@ imagemap_addtolist(const struct html_content *c,
 	dom_exception exc;
 	dom_string *href = NULL, *target = NULL, *shape = NULL;
 	dom_string *coords = NULL;
+	char *coords_copy = NULL;	/* (Onyx: strtok's own copy) */
 	struct mapentry *new_map, *temp;
 	bool ret = true;
 
@@ -392,8 +393,16 @@ imagemap_addtolist(const struct html_content *c,
 	if (new_map->type != IMAGEMAP_DEFAULT) {
 		int x, y;
 		float *xcoords, *ycoords;
-		/* coordinates are a comma-separated list of values */
-		char *val = strtok((char *)dom_string_data(coords), ",");
+		/* coordinates are a comma-separated list of values -- Onyx: of a
+		 * copy (strtok wrote its NULs into the DOM's attribute: a script read
+		 * coords "2\0002\0004\0004": Acid3's test 63) */
+		char *val;
+
+		coords_copy = strndup(dom_string_data(coords),
+				dom_string_byte_length(coords));
+		if (coords_copy == NULL)
+			goto bad_out;
+		val = strtok(coords_copy, ",");
 		int num = 1;
 
 		switch (new_map->type) {
@@ -520,6 +529,7 @@ ok_out:
 		dom_string_unref(shape);
 	if (coords != NULL)
 		dom_string_unref(coords);
+	free(coords_copy);
 
 	return ret;
 }

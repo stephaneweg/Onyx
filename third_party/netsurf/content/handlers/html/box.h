@@ -100,7 +100,11 @@ typedef enum {
 	/* Onyx: a descendant is position: fixed -- its containing block is the
 	 * viewport: neither this box's overflow nor its size hides it (the
 	 * redraw does not skip this box's children) */
-	HAS_FIXED   = 1 << 15
+	HAS_FIXED   = 1 << 15,
+	/* Onyx: a line container holding floats (their bounds are their float
+	 * container's, not its: the redraw does not skip it for its own bounds --
+	 * a float in a positioned box is painted from its line, html/redraw.c) */
+	HAS_FLOATS  = 1 << 16
 } box_flags;
 
 

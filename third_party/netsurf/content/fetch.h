@@ -294,4 +294,10 @@ bool fetch_is_verifiable(struct fetch *fetch);
  */
 nserror fetch_fdset(fd_set *read_fd_set, fd_set *write_fd_set, fd_set *except_fd_set, int *maxfd);
 
+/**
+ * Onyx: poll the fetcher of one scheme now (and start the jobs queued), outside the
+ * scheduled poll: its fetches' data delivered at once.
+ */
+void fetch_poll_scheme(lwc_string *scheme);
+
 #endif

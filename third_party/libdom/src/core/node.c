@@ -456,6 +456,13 @@ dom_exception _dom_node_set_node_value(dom_node_internal *node,
 	if (node->type == DOM_ATTRIBUTE_NODE)
 		return dom_attr_set_value((struct dom_attr *) node, value);
 
+	/* Onyx: a text's, comment's, CDATA section's data through its own setter --
+	 * its DOMCharacterDataModified event dispatched (the page restyled: :empty) */
+	if ((node->type == DOM_TEXT_NODE || node->type == DOM_COMMENT_NODE ||
+	     node->type == DOM_CDATA_SECTION_NODE) && value != NULL)
+		return dom_characterdata_set_data((struct dom_characterdata *) node,
+				value);
+
 	if (node->value != NULL)
 		dom_string_unref(node->value);
 

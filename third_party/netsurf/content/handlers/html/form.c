@@ -2036,12 +2036,14 @@ void form_radio_set(struct form_control *radio)
 			control->selected = false;
 			dom_html_input_element_set_checked(control->node, false);
 			html__redraw_a_box(radio->html, control->box);
+			html_state_restyle(radio->html, control->node);	/* (Onyx) */
 		}
 	}
 
 	radio->selected = true;
 	dom_html_input_element_set_checked(radio->node, true);
 	html__redraw_a_box(radio->html, radio->box);
+	html_state_restyle(radio->html, radio->node);	/* (Onyx: :checked) */
 }
 
 

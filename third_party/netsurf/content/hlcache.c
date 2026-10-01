@@ -822,6 +822,27 @@ struct content *hlcache_handle_get_content(const hlcache_handle *handle)
 }
 
 /* See hlcache.h for documentation */
+nserror hlcache_handle_catch_up(hlcache_handle *handle)
+{
+	/* Onyx: the low-level object behind a handle -- its content's, or its
+	 * retrieval's while no content is made yet -- has its users told now */
+	hlcache_retrieval_ctx *ctx;
+
+	if (handle == NULL)
+		return NSERROR_BAD_PARAMETER;
+	if (handle->entry != NULL && handle->entry->content != NULL)
+		return llcache_handle_catch_up(handle->entry->content->llcache);
+	ctx = hlcache->retrieval_ctx_ring;
+	if (ctx != NULL) {
+		do {
+			if (ctx->handle == handle)
+				return llcache_handle_catch_up(ctx->llcache);
+			ctx = ctx->r_next;
+		} while (ctx != hlcache->retrieval_ctx_ring);
+	}
+	return NSERROR_NOT_FOUND;
+}
+
 nserror hlcache_handle_abort(hlcache_handle *handle)
 {
 	struct hlcache_entry *entry = handle->entry;

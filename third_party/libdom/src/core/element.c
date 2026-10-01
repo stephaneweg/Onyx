@@ -92,6 +92,10 @@ static void _dom_element_destroy_classes(struct dom_element *ele)
 static dom_exception _dom_element_create_classes(struct dom_element *ele,
 		const char *value)
 {
+	/* Onyx: the classes are split at ASCII whitespace -- space, tab, line feed,
+	 * form feed, carriage return (HTML): "a\nb" was one class */
+#define DOM_CLASS_WS(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || \
+		(c) == '\f' || (c) == '\r')
 	const char *pos;
 	lwc_string **classes = NULL;
 	uint32_t n_classes = 0;
@@ -101,12 +105,12 @@ static dom_exception _dom_element_create_classes(struct dom_element *ele,
 
 	/* Count number of classes */
 	for (pos = value; *pos != '\0'; ) {
-		if (*pos != ' ') {
-			while (*pos != ' ' && *pos != '\0')
+		if (!DOM_CLASS_WS(*pos)) {
+			while (!DOM_CLASS_WS(*pos) && *pos != '\0')
 				pos++;
 			n_classes++;
 		} else {
-			while (*pos == ' ')
+			while (DOM_CLASS_WS(*pos))
 				pos++;
 		}
 	}
@@ -119,16 +123,16 @@ static dom_exception _dom_element_create_classes(struct dom_element *ele,
 
 		for (pos = value, n_classes = 0;
 				*pos != '\0'; ) {
-			if (*pos != ' ') {
+			if (!DOM_CLASS_WS(*pos)) {
 				const char *s = pos;
-				while (*pos != ' ' && *pos != '\0')
+				while (!DOM_CLASS_WS(*pos) && *pos != '\0')
 					pos++;
 				if (lwc_intern_string(s, pos - s, 
 						&classes[n_classes++]) !=
 						lwc_error_ok)
 					goto error;
 			} else {
-				while (*pos == ' ')
+				while (DOM_CLASS_WS(*pos))
 					pos++;
 			}
 		}
