@@ -49,7 +49,7 @@ git -C circle diff Step51..onyx
 | 20 | **TCP: real duplicate ACKs only** (RFC 5681 §2) — the peer's data segments no longer start a fast retransmit | `lib/net/tcpconnection.cpp` | `libnet` |
 | 21 | **TCP: RTO 1 s initial** (was 3 s; the 1 s minimum kept — 200 ms was tried and undone), Karn after a fast retransmit | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
-| 23 | **Wi-Fi: the firmware's `wsec` from the IE's ciphers** (group + pairwise: TKIP 2, AES 4, as Linux's brcmfmac) -- WPA2 was always "aes": a WPA/WPA2 mixed-mode network (pairwise CCMP, group TKIP, common on 2.4 GHz) associated but no broadcast was decoded (no DHCP offer: the link stayed down) | `addon/wlan/ether4330.c` (`iewsec`, `setauth`) | `libwlan` |
+| 23 | ~~**Wi-Fi: the firmware's `wsec` from the IE's ciphers**~~ -- **reverted** (2026-10-01, Circle `daff21f`): with it the user's WPA2-PSK network no longer came up; back to upstream's fixed `wsec` (aes for WPA2, tkip for WPA). A WPA/WPA2 mixed-mode network (group TKIP) may again associate without an address | `addon/wlan/ether4330.c` | `libwlan` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
