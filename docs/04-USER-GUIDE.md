@@ -143,6 +143,15 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin
   (A/B testing).
+- **`netlog`**: `netlog=1` writes the network's start to **`SD:/netlog.txt`** — for a Pi without a
+  screen whose Wi-Fi does not come up. The kernel starts `/bin/netlog` before anything else; it checks
+  `etc/wpa_supplicant.conf` (a UTF-8 BOM, the `country=` line, the `ssid` / `psk` lines — the
+  passphrase is never written, only its length) and the Wi-Fi firmware, then keeps the kernel log
+  (the `net:` lines, wpa_supplicant's, DHCP), the file rewritten every 2 s. It stops 30 s after the
+  link is up (the programs running then listed: are `telnetd`, `vncd`, `rdpd` there, did they say
+  *listening*?), or after 5 minutes, listing then the access points around. Put the card in the PC
+  and read the file. Meanwhile `kmsg` shows nothing (netlog takes the log's events). Remove it
+  (or `netlog=0`) once the network works.
 - **`netcore`**: `netcore=1` runs the whole **network** (Wi-Fi, wpa_supplicant, TCP/IP, DNS,
   NTP) on **core 3**: the desktop and the network no longer slow each other down, and core 0
   can rest when nothing happens. Core 3 is then no longer an app core: one emulator (or Doom)
@@ -198,7 +207,7 @@ Onyx connects over the Pi's on-board Wi-Fi. Two files must be on the SD card:
   }
   ```
 
-The link comes up a few seconds after boot (watch the log, or run `net`). **2.4 GHz or 5 GHz**: both work; `wifiscan` shows each network's channel (1–13: 2.4 GHz, 36 and up: 5 GHz). The `country=` line must be set (no `#`): without it the driver does not join, and it decides the channels allowed (12 and 13 in Europe). A router with one name for both bands: the strongest is taken (often 5 GHz) — `freq_list=2412 2417 2422 2427 2432 2437 2442 2447 2452 2457 2462 2467 2472` in the `network={…}` block keeps the Pi on 2.4 GHz (or `bssid=` the 2.4 GHz radio's address). A router in WPA/WPA2 mixed mode (TKIP for the group key) works since 2026-10-01 (before: connected, but no address — the link stayed down); a WPA3-only network does not (set the router to WPA2/WPA3 mixed). It is fully
+The link comes up a few seconds after boot (watch the log, or run `net`). **2.4 GHz or 5 GHz**: both work; `wifiscan` shows each network's channel (1–13: 2.4 GHz, 36 and up: 5 GHz). The `country=` line must be set (no `#`): without it the driver does not join, and it decides the channels allowed (12 and 13 in Europe). A router with one name for both bands: the strongest is taken (often 5 GHz) — `freq_list=2412 2417 2422 2427 2432 2437 2442 2447 2452 2457 2462 2467 2472` in the `network={…}` block keeps the Pi on 2.4 GHz (or `bssid=` the 2.4 GHz radio's address). A router in WPA/WPA2 mixed mode (TKIP for the group key) may connect without getting an address (the link stays down): set it to WPA2 (AES) only; a WPA3-only network does not (set the router to WPA2/WPA3 mixed). It is fully
 optional: if the firmware/credentials are missing, the desktop still works — only the
 networked apps stay offline.
 
@@ -726,6 +735,7 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `rdpd` | `rdpd [port]` | **Remote windows** (port **3390**): the Onyx windows shown one by one on a Windows PC by `OnyxRemote.exe` (pc/dist). Started at boot by `SD:/etc/autostart`. **No password, no encryption.** See *Remote windows on a PC* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
 | `notifytest` | `notifytest [-t <title>] <message>` | Sends a **notification** (bubble under the menu bar) — handy to test `notifyd` from the terminal or telnet, e.g. `notifytest -t Build "Kernel staged"`. The title defaults to "Test". |
+| `netlog` | `netlog` | The network's start into `SD:/netlog.txt` (the Wi-Fi settings checked, the kernel log, the link's result, the access points if it failed): started at boot by `netlog=1` in `cmdline.txt` (§3), for a Pi without a screen. |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |

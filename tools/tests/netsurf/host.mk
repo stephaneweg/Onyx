@@ -371,8 +371,16 @@ $(MB_OBJ): $(UN)/onyx_nstls.cpp $(UN)/onyx_nstls.h $(ZUSER)/tls/onyx_tls.hpp
 	@mkdir -p $(OUT)/o
 	$(CXX) $(CXXF) $(MB_REN) -I$(UN) -I$(ZUSER)/tls -I$(MBED)/include -c $< -o $@
 
-$(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ) $(MB_OBJ) $(SG_OBJ)
-	$(CXX) -o $@ $^ -lpng -lz -lm -lssl -lcrypto -lpthread
+# (the link's kind, with or without the software V3D: a stamp, so that a build with SOFTGPU=1
+# after one without -- or the other way -- links again, its objects unchanged; gputest.sh)
+LINK_KIND := $(OUT)/link-$(if $(SOFTGPU),softgpu,plain).stamp
+$(LINK_KIND):
+	@mkdir -p $(OUT)
+	@rm -f $(OUT)/link-*.stamp
+	@touch $@
+
+$(OUT)/netsurf: $(LIB_OBJ) $(NSFB_OBJ) $(NS_OBJ) $(CXX_OBJ) $(WTK_OBJ) $(MB_OBJ) $(SG_OBJ) $(LINK_KIND)
+	$(CXX) -o $@ $(filter-out $(LINK_KIND),$^) -lpng -lz -lm -lssl -lcrypto -lpthread
 	@echo "host netsurf: $@"
 
 # ---- the resources (as netsurf-app.mk's stage, into $(OUT)/res) ------------------

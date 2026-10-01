@@ -42,6 +42,9 @@ __pycache__/
 # Wi-Fi settings (wpaconf) or the menu bar's Wi-Fi menu write it on the card.
 !/sdcard/
 !/sdcard/**
+# ... and the smallest card, sdcard_lite (the required packages only, made by tools/pkg/mkrepo.py --lite)
+!/sdcard_lite/
+!/sdcard_lite/**
 
 # Vendored third-party dependencies (sources + prebuilt .a) so the build is self-contained:
 # NetSurf + its library stack (libcss/libdom/libhubbub/...), mbedTLS, libwebp, libpng,

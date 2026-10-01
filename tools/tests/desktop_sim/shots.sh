@@ -70,6 +70,11 @@ build () {
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
+	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
+		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
+		$CXX -Iuser/ft -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
+			"$OUT/libwtk.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
@@ -85,7 +90,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media setup pkgman
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -369,6 +374,24 @@ if want media; then			# (Media Player over a sample library made by tools/tests/
 	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
 	mm media-welcome "$S0;menu 1;$W10"; png media-welcome
 	mm media-mini "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 841 581;up 841 581;$W10;$W10"; png media-mini
+fi
+if want pdf; then			# (the PDF Viewer over Onyx's own manuals, sdcard/manuals: reading, the contents, a search,
+					#  two pages and the zoom's menu, the home with recent documents, the Properties)
+	pv () { n=$1; shift; s=$1; shift
+		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_POS=12,30 "$@" SIM="$s;dump $OUT/$n.elsm;exit" "$OUT/pdf.bin" >>"$OUT/log.txt" 2>&1 || { echo "shots: pdf failed"; exit 1; }; }
+	W10="$W;$W;$W;$W"; P0="$W10;$W10"; LED="SIM_ARGS=SD:/manuals/ledger/Ledger.pdf"
+	rm -rf "$OUT/writes/etc/pdf"
+	GO8="down 185 57;up 185 57;key 0x08;key 8;key 13;$W10;$W10"
+	pv pdf "$P0;$GO8;wheel 600 300 -1;$W10;$W10;$W10" "$LED"; png pdf
+	pv pdf-contents "$P0;down 112 102;up 112 102;$W;down 26 245;up 26 245;$W;down 110 297;up 110 297;$W10;$W10;$W10;down 330 330;move 600 380;move 830 420;up 830 420;$W;rdown 700 420;rup 700 420;$W" "$LED"; png pdf-contents
+	pv pdf-find "$P0;down 800 57;up 800 57;wait;$(typ invoice);$W10;$W10;$W10;$W10;key 13;$W10;$W10;$W10" "$LED"; png pdf-find
+	pv pdf-zoom "$P0;down 28 57;up 28 57;$W;down 545 57;up 545 57;$W10;mods 1;key 0;mods 0;$W10;down 185 57;up 185 57;key 0x08;key 4;key 13;$W10;$W10;$W10;down 350 57;up 350 57;move 370 136;$W" SIM_ARGS=SD:/manuals/koton/Koton.pdf; png pdf-zoom
+	pv pdf-props "$P0;key 0x04;$W" "$LED"; png pdf-props
+	mkdir -p "$OUT/writes/etc/pdf"			# (the recent documents: where they were left, when -- the sim's day is 28 Sep 2026)
+	printf '%s\t%s\t%s\t%s\n' SD:/manuals/ledger/Ledger.pdf 8 55 202609281042 SD:/manuals/koton/Koton.pdf 3 33 202609280915 \
+		SD:/manuals/ledger/Ledger.fr.pdf 0 59 202609271810 SD:/manuals/koton/Koton.fr.pdf 11 36 202609261420 \
+		SD:/manuals/ledger/Ledger.nl.pdf 0 60 202609251130 > "$OUT/writes/etc/pdf/recent.tsv"
+	pv pdf-home "$P0;$W10;$W10;$W10;$W10;move 330 250;$W10"; png pdf-home
 fi
 if want clipboard; then			# (the shared clipboard's widget over the desktop: clipd's ring seeded,
 					#  the cursor on the image; the pointer over a row -- its x)

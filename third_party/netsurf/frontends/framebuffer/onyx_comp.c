@@ -169,6 +169,7 @@ static struct {
 	int bw, bh;			/* its size: the view's width, rows of the ring */
 	gpc_tex *tex;
 	int bx;				/* the document column of its column 0 */
+	int align;			/* (bx, the ring's rows: multiples of the scale's period) */
 	int vy0, vy1;			/* its valid rows (document) */
 	int vw, vh;			/* the view it was made for */
 	struct browser_window *bwin;
@@ -457,8 +458,25 @@ static void band_free(void)
 	C.ndmg = 0;
 }
 
-/** a band for a view of w x h -> false: none (the view is then painted as ever) */
-static bool band_make(int w, int h)
+/* exported interface documented in framebuffer/onyx_comp.h */
+int onyx_scale_period(float scale)
+{
+	if (scale <= 0 || fabsf(scale - 1.0f) < 1e-6f)
+		return 1;
+	for (int n = 1; n <= 400; n++) {
+		float d = n * scale;
+		int l = (int) lroundf(d);
+
+		if (fabsf(d - l) < 1e-3f)
+			return l < 1 ? 1 : l > 512 ? 1 : l;
+	}
+	return 1;	/* (no period: painted as ever) */
+}
+
+/** a band for a view of w x h -> false: none (the view is then painted as ever); al: the
+ * scale's period (onyx_scale_period) -- the ring's rows a multiple of it, its columns that
+ * many - 1 more than the view's (the band's origin on a multiple of it: docs/06 §38) */
+static bool band_make(int w, int h, int al)
 {
 	int bh = h * BAND_VIEWS, stride;
 	uint8_t *p;
@@ -466,10 +484,13 @@ static bool band_make(int w, int h)
 	band_free();
 	if (w <= 0 || h <= 0)
 		return false;
+	w += al - 1;
 	while (bh > h && (long long) w * bh > BAND_MAX_PX)
 		bh -= h / 2;
 	if (bh < h)
 		bh = h;
+	if (bh % al != 0)
+		bh += bh - bh % al >= h ? -(bh % al) : al - bh % al;
 	C.surf = nsfb_new(NSFB_SURFACE_RAM);
 	if (C.surf == NULL)
 		return false;
@@ -1155,7 +1176,7 @@ static void comp_reset(const struct onyx_comp_view *v)
 /* exported interface documented in framebuffer/onyx_comp.h */
 bool onyx_comp_redraw(const struct onyx_comp_view *v, bool prepaint)
 {
-	int top, bottom, want0, want1, margin;
+	int top, bottom, want0, want1, margin, al;
 	uint64_t t0 = onyx_perf_now();
 
 	if (!C.on)
@@ -1164,24 +1185,30 @@ bool onyx_comp_redraw(const struct onyx_comp_view *v, bool prepaint)
 		return false;
 	C.view = *v;
 	C.have_view = true;
-	if (C.px == NULL || v->w != C.vw || v->h != C.vh || v->bw != C.bwin) {
+	/* (Onyx: a scale other than 1 -- the zoom, docs/06 §38: the core takes the origin in CSS
+	 * px, so the band's origin is a multiple of the scale's period, the page in it where
+	 * the CPU painting puts it -- gui.c, fb_redraw) */
+	al = v->bw != NULL ? onyx_scale_period(browser_window_get_scale(v->bw)) : 1;
+	if (C.px == NULL || v->w != C.vw || v->h != C.vh || v->bw != C.bwin ||
+	    al != C.align) {
 		C.vw = v->w;
 		C.vh = v->h;
 		C.bwin = v->bw;
+		C.align = al;
 		for (int i = C.nlayers - 1; i >= 0; i--)
 			layer_remove(i);
-		if (!band_make(v->w, v->h)) {
+		if (!band_make(v->w, v->h, al)) {
 			/* no band: the view painted as ever (onyx_comp_on false) */
 			fprintf(stderr, "netsurf: compositing: no memory for the "
 					"band: off\n");
 			onyx_comp_finalise();
 			return false;
 		}
-		C.bx = v->sx;
+		C.bx = fdiv(v->sx, al) * al;
 		C.reset = true;
 	}
-	if (v->sx != C.bx) {
-		C.bx = v->sx;
+	if (fdiv(v->sx, al) * al != C.bx) {
+		C.bx = fdiv(v->sx, al) * al;
 		C.reset = true;		/* (a sideways scroll: a new band) */
 	}
 	C.gen++;

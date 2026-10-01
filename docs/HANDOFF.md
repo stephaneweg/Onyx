@@ -131,7 +131,7 @@ answer in French. The docs stay in English.
 - Tests: jstest (`js-fixed-scrolled`, `js-modal-doc`), nettest (`net-retry`, `net-hidden`). Only
   Jet changes (no libcss / libdom header change): rebuild `sdcard/apps/jet.app/main`.
 - Pre-existing, not fixed: gputest 3a (gpu-scroll at 150 %: the fixed bar 1 px off composited,
-  same without these changes); layouttest's `dialogs` page (layoutdiff.sh gives Chromium a 790 px
+  same without these changes -- since fixed: docs/06 §38, *The page's origin at a zoom*); layouttest's `dialogs` page (layoutdiff.sh gives Chromium a 790 px
   viewport, NetSurf's is 770 since the status bar).
 
 ## Screenshot, the screen capture tool (2026-10-01, not yet tried on the Pi)

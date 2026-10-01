@@ -3568,6 +3568,28 @@ through the scaled plotters); the retained layers are not offered (`onyx_fx_reta
 `scale != 1`: painted in the band, as on the CPU). `gputest.sh` §3a: gpu-scroll.html at 150 %,
 scrolled, composited = CPU.
 
+**The page's origin at a zoom** (gputest's 3a failed after §37: "the fixed bar 1 px off
+composited"). The core takes a redraw's origin in CSS px: `browser_window_redraw` divides the
+device px by the scale and truncates. The CPU painting's origin is minus the scroll offset, so at
+150 % scrolled 500 px the page was painted from -333 CSS px = -499.5 device px, half a pixel below
+where the compositor's band (origin 0) has it; each strip a scroll exposed was off its own way
+(the CPU's own seams), and the fixed boxes -- moved by the scroll in whole CSS px (§37) -- landed a
+pixel apart in the two modes. The bar's edge showed it; the page's gradients had hidden it. Now
+the origin is always a multiple of the scale's **period** (`onyx_scale_period`, onyx_comp.c: the
+fewest device px that are whole CSS px -- 3 at 150 %, 11 at 110 %, 5 at 125 %, 7 at 175 %, 2 at
+200 %): the CPU painting (`fb_redraw_page`, gui.c) paints such a redraw into a scratch surface
+whose origin is one and copies it in (only when the scale is not 1 and the origin is not one); the
+band's rows are a multiple of the period and its first column one (the band `period - 1` columns
+wider, remade when the zoom changes the period). `browser_window_redraw` rounds an origin within
+0.01 of whole CSS px (-495 / 1.1f is -449.99998); `html_redraw_box` floors a box's scaled position
+instead of truncating it (a box above the view, at a negative y, lands where it does at a positive
+one). The two modes are now the same pixels at every step (`gputest.sh` 3a: 110, 125, 150, 175,
+200 %, the view paged down before the zoom and two notches after -- 827, 912, 1054, 1196, 1338 px
+--, 100 px sideways at 175 / 200 %; before, 4 of the 5 failed). A fixed box can still sit up to a
+device px above its place at a zoom (whole CSS px), the same in both modes. `host.mk` stamps the
+link's kind (`link-softgpu.stamp` / `link-plain.stamp`): a `SOFTGPU=1` build after a plain one in
+the same folder links again (gputest's software-V3D checks used a stale binary).
+
 **The status bar** (`StatusBar`, a wtk widget at the window's bottom, `ONYX_STATUSBAR_H` = 22 px:
 the page's area is that much shorter -- `onyx_chrome_page` gives the page's height without it, the
 pointer's events below the page go to the wtk tree, and View ▸ Hide / Show Status Bar is a resize of

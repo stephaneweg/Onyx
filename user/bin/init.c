@@ -12,7 +12,7 @@
 #include "kapi.h"
 #include "applib.h"
 
-static char g_buf[2048];
+static char g_buf[32768];		// (the whole autostart: it was 2 KB, a longer file lost its last lines)
 
 static void run_line (char *line)
 {
@@ -63,7 +63,14 @@ int main (void)
 {
 	void *f = kapi_open ("SD:etc/autostart");
 	if (f == 0) { ax_putln ("init: no /etc/autostart"); return 1; }
-	int n = kapi_read (f, g_buf, sizeof (g_buf) - 1);
+	int n = 0;
+	for (;;)						// (a read may return less than asked: until the end)
+	{
+		int r = kapi_read (f, g_buf + n, (unsigned) (sizeof (g_buf) - 1 - n));
+		if (r <= 0) break;
+		n += r;
+		if (n >= (int) sizeof (g_buf) - 1) { ax_putln ("init: /etc/autostart too long: its end ignored"); break; }
+	}
 	kapi_close (f);
 	if (n <= 0) return 0;
 	g_buf[n] = '\0';

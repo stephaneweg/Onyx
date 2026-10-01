@@ -2745,8 +2745,15 @@ browser_window_redraw(struct browser_window *bw,
 		return false;
 	}
 
-	x /= bw->scale;
-	y /= bw->scale;
+	if (bw->scale != 1.0f) {
+		/* Onyx: an origin that is a whole number of CSS px divided exactly
+		 * (-495 / 1.1f is -449.99998: truncated, the page a CSS px off --
+		 * the framebuffer frontend paints at such origins: docs/06 §38) */
+		float fx = x / bw->scale, fy = y / bw->scale;
+
+		x = fabsf(fx - roundf(fx)) < 0.01f ? (int) roundf(fx) : (int) fx;
+		y = fabsf(fy - roundf(fy)) < 0.01f ? (int) roundf(fy) : (int) fy;
+	}
 
 	if ((bw->current_content == NULL) &&
 	    (bw->children == NULL)) {
