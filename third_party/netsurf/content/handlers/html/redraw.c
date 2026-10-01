@@ -1253,6 +1253,49 @@ static bool html_redraw_text_box(const html_content *html, struct box *box,
 	font_plot_style_from_css(&html->unit_len_ctx, box->style, &fstyle);
 	fstyle.background = current_background_color;
 
+	/* Onyx: text-shadow (libcss computes one) -- the text drawn first in the shadow's
+	 * colour at its offset; a blur is not drawn (a blurred shadow: its colour half way to
+	 * the background; none when it sits right under the text -- a glow) */
+	if (!excluded && box->style != NULL && box->length > 0) {
+		css_fixed sx, sy, sb;
+		css_unit sxu, syu, sbu;
+		css_color sc;
+
+		if (css_computed_text_shadow(box->style, &sx, &sxu, &sy, &syu,
+				&sb, &sbu, &sc) == CSS_TEXT_SHADOW_SET &&
+				(sc >> 24) != 0) {
+			int dx = FIXTOINT(css_unit_len2device_px(box->style,
+					&html->unit_len_ctx, sx, sxu));
+			int dy = FIXTOINT(css_unit_len2device_px(box->style,
+					&html->unit_len_ctx, sy, syu));
+			int blur = FIXTOINT(css_unit_len2device_px(box->style,
+					&html->unit_len_ctx, sb, sbu));
+			unsigned a = sc >> 24;
+
+			if (blur > 0)
+				a /= 2;
+			if ((dx != 0 || dy != 0 || blur == 0) && a > 0) {
+				plot_font_style_t sh = fstyle;
+				colour fg = nscss_color_to_ns(sc | 0xff000000u);
+				colour bg = current_background_color;
+				unsigned k;
+				colour mix = 0;
+
+				for (k = 0; k < 24; k += 8) {
+					unsigned f = (fg >> k) & 0xff, b = (bg >> k) & 0xff;
+					mix |= ((f * a + b * (255 - a)) / 255) << k;
+				}
+				sh.foreground = mix;
+				sh.size *= scale;
+				ctx->plot->text(ctx, &sh,
+						x + (int) (dx * scale),
+						y + (int) (dy * scale) +
+						(int) (font_baseline(&fstyle, box->height) * scale),
+						box->text, box->length);
+			}
+		}
+	}
+
 	if (!text_redraw(box->text,
 			 box->length,
 			 box->byte_offset,

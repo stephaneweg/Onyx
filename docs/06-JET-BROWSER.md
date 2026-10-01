@@ -3505,6 +3505,15 @@ not show) failed and the bar took that frame's error for the page's: it now keep
 only when the window shows that error page (its address `about:query/fetcherror...`, or the
 failed address itself).
 
+**text-shadow and font-weight: bolder (seen on the Pi).** Acid3's title is bolder with a silver
+shadow 3 px down-right: Jet showed neither. libcss computed `text-shadow` but NetSurf never drew
+it: `html_redraw_text_box` now draws the text first in the shadow's colour at its offset (one
+shadow; a blur is not drawn -- a blurred shadow's colour goes half way to the background, a blur
+with no offset (a glow) is skipped). And `bolder` / `lighter` stayed unresolved (the font code took
+them for normal): `css__compute_absolute_values` (libcss `computed.c`) resolves them against the
+parent's weight (CSS Fonts' table: bolder 100-300 -> 400, 400-500 -> 700, 600+ -> 900; lighter
+the reverse).
+
 ## 38. The page zoom, the status bar, the downloads (2026-10-01)
 
 Three things of every browser that Jet Browser lacked: Ctrl+ / Ctrl- (the user: "a zoom in the
