@@ -1077,6 +1077,9 @@ folder would leave it unmapped. **Adding a layout never needs a kernel rebuild**
 `tools/keymaps/genkeymaps.py`) and use `keyb <NAME>` — it also shows up in the Keyboard & Mouse
 applet.
 
+**Print Screen** is the system's: it starts a capture with **Screenshot** (its last mode and delay);
+**Alt+Print Screen** takes the window in front at once (§12, *Screenshot*).
+
 Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
 text field and editor. The **euro sign** is **AltGr+E** (`FR`, `BE`, `DE`, `ES`, `IT`), AltGr+4
 (`UK`), AltGr+5 (`US`); it is a key of its own (Windows' code 0x80, not Latin-1): the Spreadsheet
@@ -1260,8 +1263,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
 | ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
-| ![archiver](../screenshots/archiver.png) | | |
-| *archiver — archive manager* | | |
+| ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | |
+| *archiver — archive manager* | *screenshot — screen capture* | |
 
 ### Productivity and tools
 
@@ -1569,6 +1572,67 @@ line (`paint <file>`: the Image Viewer's File ▸ Edit in Paint), dropped on the
 double-clicked (a `.ora`: `fileassoc.ini`) opens; New, Open and a drop first ask to save unsaved
 changes. **Closed with unsaved changes**, the picture is kept in `SD:/apps/paint.app/recovered.ora`
 and offered back the next time Paint starts. **Undo** keeps the last 60 changes (a stroke is one).
+
+### Screenshot, the screen capture tool (`screenshot`)
+
+![Screenshot](../screenshots/screenshot.png)
+*Screenshot's window: New, the mode, the delay.*
+
+Screenshot takes a picture of the screen, laid out as Windows' Snipping Tool: **one toolbar**, the
+capture shown below it. Start it from the dock or the app list (*Graphics*), or press **Print Screen**
+anywhere.
+
+**The toolbar**, from the left:
+
+- **New** (^N): starts a capture, in the mode and after the delay chosen.
+- **The mode** (its arrow: a menu, the one chosen ticked, kept for the next time): **Rectangle** (the
+  default), **Window**, **Full screen**.
+- **The delay**: none, **3**, **5** or **10 seconds** (shown on the button: *3 s*). A ring counts the
+  seconds down in the window — time to open a menu in another app; **Esc** stops it.
+- Once a capture is made: **Copy** (^C) and **Save As...** (^S), then, at the right, the drawing tools
+  — **Pen** (P) and **Marker** (M), their arrow opening the colours (8 for the pen, 6 for the marker)
+  and the four sizes; **Eraser** (E): a click (or a drag) takes away a whole stroke, the one under it
+  lit first; **Crop** (R): drag the part to keep; **Undo** (^Z), **Redo** (^Y).
+
+| | |
+|:---:|:---:|
+| ![Choosing a rectangle](../screenshots/screenshot-select.png) | ![Choosing a window](../screenshots/screenshot-window.png) |
+| *A rectangle being dragged: its size, the magnifier* | *A window chosen: its name and size* |
+
+**A capture.** The window hides itself and the screen is **frozen** and darkened. The bar at the top
+switches the mode (the screen icon takes the whole screen at once) or cancels (×).
+
+- **Rectangle**: drag it — it is bright, its size under it, a **magnifier** shows the pixels around
+  the pointer and their coordinates; the capture is made when the button is released. **Enter**: the
+  whole screen.
+- **Window**: the window under the pointer is lit, with its name and size; a **click** takes it (its
+  frame too), **Tab** goes to the next one, **Enter** takes the one lit.
+- **Full screen**: taken at once.
+- **Esc** (or a right click) cancels.
+
+| | |
+|:---:|:---:|
+| ![Drawn on](../screenshots/screenshot-edit.png) | ![The pen's palette](../screenshots/screenshot-pen.png) |
+| *The capture drawn on: the pen, the marker* | *The pen's colours and sizes* |
+
+**After the capture** the window comes back, as large as the picture wants (the picture is never
+enlarged: its zoom is at the right of the status bar). The picture is **copied to the clipboard at
+once** (an *image* item of the shared clipboard: Ctrl+V pastes it in Paint, Writer...) and a
+notification says so. Draw on it: hold **Shift** for a straight line; the strokes are smoothed. Copy
+again to copy it with the drawing. It is **saved only with Save As**: in `SD:/Pictures/Screenshots` at
+first (then the folder used last), named `Screenshot <date> <time>.png`; the extension chooses the
+format — **.png**, **.jpg** (quality 92) or **.bmp**. The status bar: what was taken (*Rectangle*,
+*Window 'terminal'*, *Full screen*), its size, whether it is copied / saved (the dot: green, or amber
+when there is something not kept).
+
+**Print Screen**, from any app: a capture with the last mode and delay (Screenshot is started if it is
+not running). **Alt+Print Screen**: the window in front, at once.
+
+The menus: **File** (New Capture, New Rectangle / Window / Full Screen, Save As..., Copy), **Edit**
+(Undo, Redo, Clear the Drawing), **Tools** (Pen, Marker, Eraser, Crop).
+
+**Files:** writes `SD:/etc/screenshot.ini` (the mode, the delay, the pen's and the marker's colour and
+size, the last folder) and the pictures saved with Save As.
 
 ### Cardfile, a small database (`cardfile`)
 

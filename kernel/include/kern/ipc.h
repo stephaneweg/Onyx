@@ -60,4 +60,8 @@ boolean IpcPidAlive (unsigned nPid);
 // service (the notifyd app) if it is running, from pid 0. Safe from any task context.
 void IpcNotify (const char *pTitle, const char *pText);
 
+// Post a message (from pid 0) to the named service (kapi_ipc_register's) if it is running: TRUE
+// when it was queued. Safe from any task context (Print Screen: the "screenshot" service).
+boolean IpcPost (const char *pService, int nType, const void *pData, unsigned nLen);
+
 #endif // _kern_ipc_h

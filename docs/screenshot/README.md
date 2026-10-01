@@ -1,6 +1,8 @@
 # Screenshot for Onyx — a screen capture tool (study, first mock-ups)
 
-> **Status (2026-10-01): second mock-ups, to be validated by the user.** The first ones (an options
+> **Status (2026-10-01): implemented** (`user/Apps/screenshot`, docs/03 *Screenshot, the capture tool*; its
+> use: docs/04 §12; the real app: `screenshots/screenshot*.png`), **not yet tried on the Pi**. The mock-ups
+> below were validated with the drawing tools (the user's answers: 4, 5). The first ones (an options
 > window, then an editor with a pen and a marker) were not kept: the user wants the layout of Windows'
 > **Snipping Tool** (*Outil Capture d'écran*): **one toolbar** -- **New** (starts a capture), the **mode**
 > as a drop-down button (**Rectangle** by default, **Window**, **Full screen**), the **delay** as a
@@ -47,8 +49,12 @@ the drawing helpers and the look are `mockup_archiver.py`'s).
    [`docs/clipboard/README.md`](../clipboard/README.md). Screenshot copies its picture there as an
    **image** item.
 
-## Still open
+## Decided since (2026-10-01)
 
-4. Every capture **saved automatically** in `SD:/Pictures/Screenshots`, or only on *Save As*? (The
-   mock-ups: only on *Save As*; copied to the clipboard at once.)
-5. Drawing on the capture (a pen, a marker, a crop: Snipping Tool's middle tools) -- later, or now?
+4. **Saved only on *Save As*** (the user); copied to the clipboard at once.
+5. **The drawing tools now** (the user): a pen, a marker, an eraser (a stroke at a time), a crop, undo /
+   redo -- at the right of the toolbar.
+6. The notification: **notifyd's own**, no thumbnail (the user).
+7. As built: a rectangle is taken when the button is released (as Windows'), no handles to adjust it
+   first; the delay counts down **in the window** (an app has one window), which hides itself just
+   before the grab.

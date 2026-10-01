@@ -123,7 +123,7 @@ def tool_button (c, x, y, w, h, icon, label, hot = False):
 	icon (c, x + 9, y + (h - 18) / 2, 18)
 	c.text_l (x + 34, y, h, label, "ui")
 
-def snip_toolbar (c, cx, cy, cw, mode = "Rectangle", delay = None, captured = False, open_menu = None, hot = None):
+def snip_toolbar (c, cx, cy, cw, mode = "Rectangle", delay = None, captured = False, open_menu = None, hot = None, tool = 1):
 	"""The one toolbar; returns the places of its buttons (for the menus under them)."""
 	c.rect (cx, cy, cw, TB_H, FACE)
 	ty = cy + 9; th = 34
@@ -142,6 +142,20 @@ def snip_toolbar (c, cx, cy, cw, mode = "Rectangle", delay = None, captured = Fa
 		c.vline (x, ty + 4, ty + th - 4, M.shade (FACE, 0.8)); x += 8
 		tool_button (c, x, ty, 84, th, lambda c, a, b, s: ic_copy (c, a, b + 1, 17, TEXT), "Copy", hot == "copy"); x += 88
 		tool_button (c, x, ty, 118, th, lambda c, a, b, s: ic_save (c, a, b + 1, 17, TEXT), "Save As...", hot == "save"); x += 122
+		# the drawing tools, in the middle: pen, marker (their colour under them), eraser | crop | undo, redo
+		mx = cx + cw - 10 - (3 * 46 + 12 + 40 + 12 + 2 * 38)
+		c.vline (mx - 8, ty + 4, ty + th - 4, M.shade (FACE, 0.8))
+		for i, (fn, col) in enumerate (((lambda c, a, b, s: ic_pen (c, a, b, s, TEXT, (220, 60, 50)), (220, 60, 50)),
+						 (lambda c, a, b, s: ic_marker (c, a, b, s, (250, 220, 40)), (250, 220, 40)),
+						 (lambda c, a, b, s: ic_eraser (c, a, b, s, TEXT), None))):
+			bx = mx + i * 46; on = (i == tool)
+			if on: c.rect (bx, ty, 42, th, M.A ((255, 255, 255), 170), r = 6, outline = SEL, width = 2)
+			fn (c, bx + 6, ty + 5, 22)
+			if col: c.rect (bx + 8, ty + th - 6, 18, 3, col, r = 1); c.poly ([(bx + 32, ty + 15), (bx + 38, ty + 15), (bx + 35, ty + 19)], DIM)
+		x2 = mx + 3 * 46 + 4; c.vline (x2, ty + 4, ty + th - 4, M.shade (FACE, 0.8)); x2 += 8
+		ic_crop (c, x2 + 9, ty + 7, 20, TEXT); x2 += 44
+		c.vline (x2, ty + 4, ty + th - 4, M.shade (FACE, 0.8)); x2 += 8
+		ic_undo (c, x2 + 6, ty + 6, 22, TEXT); ic_undo (c, x2 + 44, ty + 6, 22, M.FAINT, True)
 	c.hline (cx, cx + cw, cy + TB_H, M.shade (FACE, 0.85))
 	return pos
 
@@ -267,7 +281,7 @@ def shot_delay ():
 # ---- 5. the capture made: shown, Copy and Save As at the left ----------------------------------------------------
 def shot_result ():
 	c = screen ()
-	x, y, w, h = 70, 44, 884, 600
+	x, y, w, h = 30, 40, 964, 610
 	cx, cy, cw, ch = M.window (c, x, y, w, h, "Screenshot")
 	snip_toolbar (c, cx, cy, cw, delay = "3 s", captured = True, hot = "save")
 	# the capture, fitted, on a soft backdrop
@@ -280,6 +294,13 @@ def shot_result ():
 	c.rect (ix + 3, iy + 5, iw, ih, M.A ((0, 0, 0), 40))
 	c.img.paste (cap.resize ((int (iw * K), int (ih * K)), Image.LANCZOS), (int (ix * K), int (iy * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
 	c.rect (ix, iy, iw, ih, None, outline = (150, 140, 132))
+	def P (px, py): return (ix + (px - 389) * S, iy + (py - 128) * S)
+	for (a, b) in (((394, 359), (566, 359)),):				# the marker over "echo onyx | wc -c"
+		c.line ([P (*a), P (*b)], M.A ((250, 220, 40), 120), 13 * S)
+	p0 = P (400, 375); c.d.ellipse ([(p0[0] - 12) * K, (p0[1] - 12) * K, (p0[0] + 14) * K, (p0[1] + 12) * K], outline = (220, 60, 50), width = int (3 * K))
+	a0, a1 = P (520, 430), P (416, 384)
+	c.line ([a0, ((a0[0] + a1[0]) / 2 + 6, (a0[1] + a1[1]) / 2 + 18), a1], (220, 60, 50), 3)
+	c.poly ([a1, (a1[0] + 15, a1[1] + 1), (a1[0] + 7, a1[1] + 13)], (220, 60, 50))
 	# the status bar
 	c.rect (cx, cy + ch - 24, cw, 24, FACE); c.hline (cx, cx + cw, cy + ch - 24, M.shade (FACE, 0.85))
 	c.ellipse (cx + 12, cy + ch - 12, 4, M.GREEN)
@@ -290,13 +311,6 @@ def shot_result ():
 	tip = "Save As... (^S)  -  PNG, JPEG or BMP"
 	tw = c.tw (tip, "small") + 16
 	c.rect (cx + 410, cy + 54, tw, 22, (252, 248, 236), r = 4, outline = (150, 140, 132)); c.text_c (cx + 410, cy + 54, tw, 22, tip, "small")
-	# the notification (notifyd's), bottom right
-	nx, ny, nw, nh = M.W - 400, M.H - 200, 380, 76
-	c.rect (nx, ny, nw, nh, M.A (MENU, 250), r = 10, outline = M.shade (FACE, 0.62))
-	c.img.paste (cap.resize ((80, 55)).resize ((80 * K, 55 * K), Image.LANCZOS), (int ((nx + 12) * K), int ((ny + 11) * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
-	c.rect (nx + 12, ny + 11, 80, 55, None, outline = (180, 170, 160))
-	c.text (nx + 104, ny + 14, "Screenshot copied to the clipboard", "uib")
-	c.text (nx + 104, ny + 36, "Ctrl+V pastes it in Paint, Writer...", "small", DIM)
 	c.save ("screenshot-result.png")
 
 if __name__ == "__main__":
