@@ -1,0 +1,169 @@
+<!doctype html><html><head><title>quadratic audit</title>
+<style>#c div.k { color: blue } .q1 .q2 { margin: 0 }</style></head><body>
+<!-- Onyx: the quadratic audit's micro-benchmarks (docs/06-JET-BROWSER.md §35). Each case runs
+     at n = 1000, 2000, 4000, 8000 in its own script turn and logs
+       "quad <case> <n> <ms>"
+     a linear case doubles its time with n, a quadratic one multiplies it by 4. The cases run
+     can be chosen with a global QUAD_ONLY = "childNodes,getById" set before this script
+     (tools/tests/netsurf/quadtest.sh [cases] runs them and checks the fixed ones stay
+     linear). -->
+<div id="c"></div>
+<script>
+var C = document.getElementById('c');
+var SIZES = [1000, 2000, 4000, 8000];
+function divs(n, tag) {
+	var f = document.createDocumentFragment();
+	for (var i = 0; i < n; i++) {
+		var d = document.createElement(tag || 'div');
+		d.id = 'd' + i; d.className = 'k'; d.textContent = 'x';
+		f.appendChild(d);
+	}
+	C.appendChild(f);
+	return C;
+}
+var sink = 0;
+var CASES = {
+	/* building and taking down */
+	append: { run: function (n) { for (var i = 0; i < n; i++) C.appendChild(document.createElement('div')); } },
+	appendObserved: { setup: function () { var mo = new MutationObserver(function () {}); mo.observe(document.body, { childList: true, subtree: true }); return mo; },
+		run: function (n) { for (var i = 0; i < n; i++) C.appendChild(document.createElement('div')); },
+		done: function (mo) { mo.disconnect(); } },
+	prepend: { run: function (n) { for (var i = 0; i < n; i++) C.insertBefore(document.createElement('div'), C.firstChild); } },
+	removeAll: { setup: function (n) { divs(n); }, run: function () { while (C.firstChild) C.removeChild(C.firstChild); } },
+	innerHTMLSet: { setup: function (n) { var s = ''; for (var i = 0; i < n; i++) s += '<div class="k">x' + i + '</div>'; return s; },
+		run: function (n, s) { C.innerHTML = s; } },
+	innerHTMLGet: { setup: function (n) { divs(n); }, run: function () { sink += C.innerHTML.length; } },
+	textContentGet: { setup: function (n) { divs(n); }, run: function () { sink += C.textContent.length; } },
+	insertAdjacentHTML: { run: function (n) { for (var i = 0; i < n; i++) C.insertAdjacentHTML('beforeend', '<p>x</p>'); } },
+	cloneDeep: { setup: function (n) { divs(n); }, run: function () { sink += C.cloneNode(true).childNodes.length; } },
+	/* collections read in a loop */
+	childNodes: { setup: function (n) { divs(n); }, run: function () { for (var i = 0; i < C.childNodes.length; i++) sink += C.childNodes[i].nodeType; } },
+	children: { setup: function (n) { divs(n); }, run: function () { for (var i = 0; i < C.children.length; i++) sink += C.children[i].nodeType; } },
+	childElementCount: { setup: function (n) { divs(n); }, run: function (n) { for (var i = 0; i < n; i++) sink += C.childElementCount; } },
+	byTagNameLoop: { setup: function (n) { divs(n); }, run: function () { for (var i = 0; i < C.getElementsByTagName('div').length; i++) sink += C.getElementsByTagName('div')[i].nodeType; } },
+	byTagNameOnce: { setup: function (n) { divs(n); }, run: function () { var l = C.getElementsByTagName('div'); for (var i = 0; i < l.length; i++) sink += l[i].nodeType; } },
+	selectOptions: { setup: function (n) { var s = document.createElement('select'); for (var i = 0; i < n; i++) s.appendChild(new Option('o' + i, 'v' + i)); C.appendChild(s); return s; },
+		run: function (n, s) { for (var i = 0; i < s.options.length; i++) if (s.options[i].value === 'none') sink++; } },
+	selectLength: { setup: function (n) { var s = document.createElement('select'); for (var i = 0; i < n; i++) s.appendChild(new Option('o' + i, 'v' + i)); C.appendChild(s); return s; },
+		run: function (n, s) { for (var i = 0; i < s.length; i++) sink += i; } },
+	optionIndex: { setup: function (n) { var s = document.createElement('select'); for (var i = 0; i < n; i++) s.appendChild(new Option('o' + i, 'v' + i)); C.appendChild(s); return Array.prototype.slice.call(s.options); },
+		run: function (n, o) { for (var i = 0; i < o.length; i++) sink += o[i].index; } },
+	/* lookups */
+	getById: { setup: function (n) { divs(n); }, run: function (n) { for (var i = 0; i < n; i++) sink += document.getElementById('d' + i) ? 1 : 0; } },
+	getByIdWrite: { setup: function (n) { divs(n); }, run: function (n) { for (var i = 0; i < n; i++) document.getElementById('d' + i).className = 'k w'; } },
+	getByIdAppend: { run: function (n) { for (var i = 0; i < n; i++) { var d = document.createElement('div'); d.id = 'a' + i; C.appendChild(d); sink += document.getElementById('a' + i) ? 1 : 0; } } },
+	getByIdMiss: { setup: function (n) { divs(n); }, run: function (n) { for (var i = 0; i < 1000; i++) sink += document.getElementById('none' + i) ? 1 : 0; } },
+	querySelectorId: { setup: function (n) { divs(n); }, run: function (n) { for (var i = 0; i < n; i++) sink += document.querySelector('#d' + i) ? 1 : 0; } },
+	querySelectorAll: { setup: function (n) { divs(n); }, run: function () { sink += document.querySelectorAll('#c div.k').length; } },
+	byClassName: { setup: function (n) { divs(n); }, run: function () { sink += document.getElementsByClassName('k').length; } },
+	matches: { setup: function (n) { divs(n); return Array.prototype.slice.call(C.children); }, run: function (n, l) { for (var i = 0; i < l.length; i++) sink += l[i].matches('#c > div.k') ? 1 : 0; } },
+	contains: { setup: function (n) { divs(n); return Array.prototype.slice.call(C.children); }, run: function (n, l) { for (var i = 0; i < l.length; i++) sink += document.body.contains(l[i]) ? 1 : 0; } },
+	compareSort: { setup: function (n) { divs(n); var l = Array.prototype.slice.call(C.children); l.reverse(); return l; },
+		run: function (n, l) { l.sort(function (a, b) { return a.compareDocumentPosition(b) & 4 ? -1 : 1; }); } },
+	queryNthChild: { setup: function (n) { divs(n); }, run: function () { sink += document.querySelectorAll('#c > div:nth-child(2n+1)').length + document.querySelectorAll('#c > div:last-child').length; } },
+	queryNthOfType: { setup: function (n) { divs(n); }, run: function () { sink += document.querySelectorAll('#c > div:nth-of-type(3n)').length + document.querySelectorAll('#c > div:last-of-type').length; } },
+	formElements: { setup: function (n) { var f = document.createElement('form'); for (var i = 0; i < n / 10; i++) f.appendChild(document.createElement('input')); C.appendChild(f); return f; },
+		run: function (n, f) { for (var i = 0; i < f.elements.length; i++) sink += f.elements[i].nodeType; } },
+	removeWithSheets: { setup: function (n) { for (var i = 0; i < 100; i++) { var s = document.createElement('style'); s.className = 'qs'; s.textContent = '.s' + i + ' { width: 1px }'; document.head.appendChild(s); } divs(n); },
+		run: function () { while (C.lastChild) C.removeChild(C.lastChild); },
+		done: function () { var l = document.querySelectorAll('style.qs'); for (var i = 0; i < l.length; i++) l[i].remove(); } },
+	/* attributes and styles */
+	classList: { setup: function (n) { divs(n); return Array.prototype.slice.call(C.children); }, run: function (n, l) { for (var i = 0; i < l.length; i++) l[i].classList.add('z'); } },
+	dataset: { setup: function (n) { divs(n); return Array.prototype.slice.call(C.children); }, run: function (n, l) { for (var i = 0; i < l.length; i++) l[i].dataset.v = i; } },
+	styleSet: { setup: function (n) { divs(n); return Array.prototype.slice.call(C.children); }, run: function (n, l) { for (var i = 0; i < l.length; i++) l[i].style.left = i + 'px'; } },
+	stylePropsOne: { run: function (n) { var s = document.documentElement.style; for (var i = 0; i < n / 10; i++) s.setProperty('--v' + i, i + 'px'); },
+		done: function () { document.documentElement.removeAttribute('style'); } },
+	attrsOne: { run: function (n) { var d = document.createElement('div'); C.appendChild(d); for (var i = 0; i < n / 10; i++) d.setAttribute('data-a' + i, i); } },
+	/* events */
+	addListener: { run: function (n) { for (var i = 0; i < n; i++) C.addEventListener('click', function () {}); } },
+	removeListener: { setup: function (n) { var f = []; for (var i = 0; i < n; i++) { f.push(function () {}); C.addEventListener('x', f[i]); } return f; },
+		run: function (n, f) { for (var i = 0; i < n; i++) C.removeEventListener('x', f[i]); } },
+	dispatchMany: { setup: function (n) { var d = document.createElement('div'); C.appendChild(d); return d; },
+		run: function (n, d) { for (var i = 0; i < n; i++) d.dispatchEvent(new Event('ping', { bubbles: true })); } },
+	/* timers and microtasks */
+	setTimeouts: { run: function (n) { var ids = []; for (var i = 0; i < n; i++) ids.push(setTimeout(function () {}, 1000 + (i * 7919) % 5000)); for (var i = 0; i < n; i++) clearTimeout(ids[i]); } },
+	promises: { run: function (n) { var p = Promise.resolve(); for (var i = 0; i < n; i++) p = p.then(function () {}); } },
+	microtasks: { run: function (n) { for (var i = 0; i < n; i++) queueMicrotask(function () {}); } },
+	/* CSSOM */
+	insertRule: { setup: function () { var s = document.createElement('style'); document.head.appendChild(s); return s; },
+		run: function (n, s) { var sh = s.sheet; for (var i = 0; i < n; i++) sh.insertRule('.r' + i + ' { width: 1px }', sh.cssRules.length); },
+		done: function (s) { s.remove(); } },
+	styleElements: { setup: function (n) { C.innerHTML = '<div class="s' + (n / 10 - 1) + '">x</div>'; },
+		run: function (n) { for (var i = 0; i < n / 10; i++) { var s = document.createElement('style'); s.className = 'qs'; s.textContent = '.s' + i + ' { width: ' + (i % 50 + 1) + 'px }'; document.head.appendChild(s); } },
+		check: function (n) { return C.firstChild.offsetWidth === (n / 10 - 1) % 50 + 1; },
+		done: function () { var l = document.querySelectorAll('style.qs'); for (var i = 0; i < l.length; i++) l[i].remove(); } },
+	styleSheetsLoop: { setup: function (n) { for (var i = 0; i < 200; i++) { var s = document.createElement('style'); s.className = 'qs'; document.head.appendChild(s); } },
+		run: function (n) { for (var j = 0; j < n / 100; j++) for (var i = 0; i < document.styleSheets.length; i++) sink += document.styleSheets[i] ? 1 : 0; },
+		done: function () { var l = document.querySelectorAll('style.qs'); for (var i = 0; i < l.length; i++) l[i].remove(); } },
+	computedStyle: { setup: function (n) { divs(n); sink += document.body.offsetHeight; return Array.prototype.slice.call(C.children); },
+		run: function (n, l) { for (var i = 0; i < l.length; i++) sink += getComputedStyle(l[i]).color.length; } },
+	/* CSS: sheets, custom properties */
+	bigSheet: { setup: function (n) { var t = ''; for (var i = 0; i < n; i++) t += '.r' + i + ' > a:hover, .r' + i + ' { width: ' + i + 'px }\n'; var s = document.createElement('style'); s.className = 'qs'; document.head.appendChild(s); C.innerHTML = '<div class="r' + (n - 1) + '">x</div>'; return [s, t]; },
+		run: function (n, st) { st[0].textContent = st[1]; },
+		check: function (n) { return C.firstChild.offsetWidth === n - 1; },
+		done: function (st) { st[0].remove(); } },
+	styleAppendText: { setup: function (n) { var s = document.createElement('style'); s.className = 'qs'; document.head.appendChild(s); C.innerHTML = '<div class="r' + (n / 4 - 1) + '">x</div>'; return s; },
+		run: function (n, s) { var i = 0; (function step() { for (var k = 0; k < 50 && i < n / 4; k++, i++) s.appendChild(document.createTextNode('.r' + i + ' { width: ' + (i % 300) + 'px }\n')); if (i < n / 4) setTimeout(step, 0); else s.done = true; })(); },
+		check: function (n, s) { return s.done && C.firstChild.offsetWidth === (n / 4 - 1) % 300; },
+		done: function (s) { s.remove(); } },
+	classRules: { setup: function (n) { var t = ''; for (var i = 0; i < n; i++) t += '.r' + i + ' { width: ' + (i % 50 + 1) + 'px }\n'; var s = document.createElement('style'); s.className = 'qs'; document.head.appendChild(s); var h = ''; for (var i = 0; i < n; i++) h += '<div class="r' + i + '">x</div>'; C.innerHTML = h; return [s, t]; },
+		run: function (n, st) { st[0].textContent = st[1]; },
+		check: function (n) { return C.lastChild.offsetWidth === (n - 1) % 50 + 1; },
+		done: function (st) { st[0].remove(); } },
+	varsChain: { setup: function (n) { var t = ':root { --v0: 7px'; for (var i = 1; i < n / 8; i++) t += '; --v' + i + ': var(--v' + (i - 1) + ')'; t += ' } #c div { width: var(--v' + (n / 8 - 1) + ') }'; var s = document.createElement('style'); s.className = 'qs'; document.head.appendChild(s); divs(100); return [s, t]; },
+		run: function (n, st) { st[0].textContent = st[1]; },
+		check: function () { return C.firstChild.offsetWidth === 7; },
+		done: function (st) { st[0].remove(); } },
+	varsInherited: { setup: function (n) { var t = ':root { --v0: 1px'; for (var i = 1; i < n / 8; i++) t += '; --v' + i + ': ' + i + 'px'; t += ' } #c div { width: var(--v3) }'; var s = document.createElement('style'); s.className = 'qs'; document.head.appendChild(s); divs(1000); return [s, t]; },
+		run: function (n, st) { st[0].textContent = st[1]; },
+		check: function () { return C.firstChild.offsetWidth === 3; },
+		done: function (st) { st[0].remove(); } },
+	/* layout */
+	layoutBlocks: { setup: function (n) { divs(n); }, run: function () { sink += document.body.offsetHeight; } },
+	layoutInline: { setup: function (n) { var s = ''; for (var i = 0; i < n; i++) s += '<span>w' + i + '</span> '; C.innerHTML = '<p>' + s + '</p>'; }, run: function () { sink += document.body.offsetHeight; } },
+	layoutLongWord: { setup: function (n) { var s = ''; for (var i = 0; i < n; i++) s += 'w' + i + ' '; C.textContent = s; }, run: function () { sink += document.body.offsetHeight; } },
+	layoutTable: { setup: function (n) { var s = ''; for (var i = 0; i < n / 4; i++) s += '<tr><td>a' + i + '</td><td>b</td></tr>'; C.innerHTML = '<table>' + s + '</table>'; }, run: function () { sink += document.body.offsetHeight; } },
+	layoutDeep: { setup: function (n) { var s = ''; for (var i = 0; i < n / 8; i++) s += '<div class="q1">'; s += 'x'; for (var i = 0; i < n / 8; i++) s += '</div>'; C.innerHTML = s; }, run: function () { sink += document.body.offsetHeight; } },
+	layoutSelect: { setup: function (n) { var s = ''; for (var i = 0; i < n; i++) s += '<option>o' + i + '</option>'; C.innerHTML = '<select>' + s + '</select>'; }, run: function () { sink += document.body.offsetHeight; } },
+	layoutFlex: { setup: function (n) { var s = ''; for (var i = 0; i < n; i++) s += '<div style="flex:1">x</div>'; C.innerHTML = '<div style="display:flex;flex-wrap:wrap">' + s + '</div>'; }, run: function () { sink += document.body.offsetHeight; } },
+	restyleClass: { setup: function (n) { divs(n); sink += document.body.offsetHeight; }, run: function () { C.className = 'q1'; sink += document.body.offsetHeight; } },
+	/* engine */
+	mapObjects: { run: function (n) { var m = new Map(); for (var i = 0; i < n * 4; i++) m.set({}, i); } },
+	weakMap: { run: function (n) { var m = new WeakMap(), k = []; for (var i = 0; i < n * 4; i++) { var o = {}; k.push(o); m.set(o, i); } } },
+	arrayShift: { run: function (n) { var a = []; for (var i = 0; i < n * 4; i++) a.push(i); while (a.length) sink += a.shift(); } },
+	stringConcat: { run: function (n) { var s = ''; for (var i = 0; i < n * 10; i++) s += 'abcdefgh'; sink += s.length; } },
+	jsonRound: { run: function (n) { var a = []; for (var i = 0; i < n; i++) a.push({ i: i, s: 'x' + i }); sink += JSON.parse(JSON.stringify(a)).length; } },
+	urlParse: { run: function (n) { for (var i = 0; i < n; i++) sink += new URL('https://e.com/p/' + i + '?q=' + i).pathname.length; } },
+};
+var only = window.QUAD_ONLY ? String(window.QUAD_ONLY).split(',') : null;
+var names = Object.keys(CASES).filter(function (k) { return !only || only.indexOf(k) >= 0; });
+var jobs = [];
+names.forEach(function (k) { SIZES.forEach(function (n) { jobs.push([k, n]); }); });
+var skip = {};
+function next() {
+	var j = jobs.shift();
+	if (!j) { console.log('quad done ' + names.length); return; }
+	var k = j[0], n = j[1], c = CASES[k];
+	if (skip[k]) { console.log('quad ' + k + ' ' + n + ' skipped'); setTimeout(next, 0); return; }
+	C.innerHTML = '';
+	var st = c.setup ? c.setup(n) : undefined;
+	var t0 = performance.now();
+	c.run(n, st);
+	function finish() {
+		var ms = performance.now() - t0;
+		if (c.done) c.done(st);
+		console.log('quad ' + k + ' ' + n + ' ' + ms.toFixed(1));
+		if (ms > 4000) skip[k] = true;
+		C.innerHTML = '';
+		setTimeout(next, 0);
+	}
+	/* (a case whose work ends in a later turn -- a sheet's conversion: polled) */
+	if (!c.check) finish();
+	else (function poll() {
+		if (c.check(n, st)) finish();
+		else if (performance.now() - t0 > 20000) { console.log('quad ' + k + ' ' + n + ' timeout'); skip[k] = true; if (c.done) c.done(st); C.innerHTML = ''; setTimeout(next, 0); }
+		else setTimeout(poll, 0);
+	})();
+}
+setTimeout(next, 50);
+</script></body></html>

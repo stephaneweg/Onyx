@@ -287,6 +287,7 @@ dom_exception _dom_document_initialise(dom_document *doc,
 	}
 
 	doc->dispatching_mutation = 0;
+	doc->onyx_ids = NULL;	/* (Onyx) */
 
 	/* We should not pass a NULL when all things hook up */
 	return _dom_document_event_internal_initialise(&doc->dei, daf, daf_ctx);
@@ -294,8 +295,12 @@ dom_exception _dom_document_initialise(dom_document *doc,
 
 
 /* Finalise the document */
+static void onyx_id_free(dom_document *doc);	/* (Onyx: getElementById's index) */
+
 bool _dom_document_finalise(dom_document *doc)
 {
+	onyx_id_free(doc);	/* (Onyx: before the tree's elements go) */
+
 	/* Finalise base class, delete the tree in force */
 	_dom_node_finalise(&doc->base);
 
@@ -847,17 +852,237 @@ dom_exception _dom_document_get_elements_by_tag_name_ns(
  * the responsibility of the caller to unref the node once it has
  * finished with it.
  */
+/* ---- Onyx: getElementById's index (document.h) ---- */
+
+static uint32_t onyx_id_hash(dom_string *id)
+{
+	const uint8_t *p = (const uint8_t *) dom_string_data(id);
+	size_t i, len = dom_string_byte_length(id);
+	uint32_t h = 2166136261u;
+
+	for (i = 0; i < len; i++)
+		h = (h ^ p[i]) * 16777619u;
+	return h;
+}
+
+/* the document a node belongs to (the document itself for a document) */
+static dom_document *onyx_doc_of(dom_node_internal *n)
+{
+	return n->type == DOM_DOCUMENT_NODE ? (dom_document *) n : n->owner;
+}
+
+/* is n in doc's tree? */
+static bool onyx_in_doc(dom_node_internal *n, dom_document *doc)
+{
+	while (n->parent != NULL)
+		n = n->parent;
+	return n == &doc->base;
+}
+
+void _dom_onyx_id_unlink(struct dom_element *e)
+{
+	struct dom_onyx_identry *x = e->onyx_id;
+
+	if (x == NULL)
+		return;
+	*x->pprev = x->next;
+	if (x->next != NULL)
+		x->next->pprev = x->pprev;
+	x->map->count--;
+	e->onyx_id = NULL;
+	free(x);
+}
+
+static void onyx_id_link(struct dom_onyx_idmap *m, struct dom_onyx_identry *x)
+{
+	struct dom_onyx_identry **b = &m->b[x->hash & (m->nb - 1)];
+
+	x->next = *b;
+	if (*b != NULL)
+		(*b)->pprev = &x->next;
+	x->pprev = b;
+	*b = x;
+}
+
+static void onyx_id_grow(struct dom_onyx_idmap *m)
+{
+	uint32_t nb = m->nb * 2, i;
+	struct dom_onyx_identry **old = m->b, **b = calloc(nb, sizeof(*b));
+
+	if (b == NULL)
+		return;
+	m->b = b;
+	m->nb = nb;
+	for (i = 0; i < nb / 2; i++) {
+		struct dom_onyx_identry *x = old[i], *next;
+		for (; x != NULL; x = next) {
+			next = x->next;
+			onyx_id_link(m, x);
+		}
+	}
+	free(old);
+}
+
+/* e's id is id: its entry (re)made in its document's index */
+static void onyx_id_put(struct dom_onyx_idmap *m, struct dom_element *e, dom_string *id)
+{
+	struct dom_onyx_identry *x;
+	uint32_t h;
+
+	if (id == NULL || dom_string_byte_length(id) == 0) {
+		_dom_onyx_id_unlink(e);
+		return;
+	}
+	h = onyx_id_hash(id);
+	if (e->onyx_id != NULL && e->onyx_id->map == m && e->onyx_id->hash == h)
+		return;
+	_dom_onyx_id_unlink(e);
+	x = malloc(sizeof(*x));
+	if (x == NULL) {
+		m->lost = true;	/* (out of memory: a miss is checked by the walk) */
+		return;
+	}
+	x->map = m;
+	x->ele = e;
+	x->hash = h;
+	onyx_id_link(m, x);
+	e->onyx_id = x;
+	if (++m->count > m->nb * 2)
+		onyx_id_grow(m);
+}
+
+void _dom_onyx_id_set(struct dom_element *e, dom_string *id)
+{
+	dom_document *doc = e->base.owner;
+
+	if (doc != NULL && doc->onyx_ids != NULL)
+		onyx_id_put(doc->onyx_ids, e, id);
+}
+
+/* the subtree's elements indexed in m */
+static void onyx_id_walk(struct dom_onyx_idmap *m, dom_node_internal *root)
+{
+	dom_node_internal *n = root;
+
+	while (n != NULL) {
+		if (n->type == DOM_ELEMENT_NODE) {
+			dom_string *id = NULL;
+			_dom_element_get_id((struct dom_element *) n, &id);
+			if (id != NULL) {
+				onyx_id_put(m, (struct dom_element *) n, id);
+				dom_string_unref(id);
+			}
+		}
+		if (n->first_child != NULL) {
+			n = n->first_child;
+			continue;
+		}
+		while (n != NULL && n != root && n->next == NULL)
+			n = n->parent;
+		if (n == NULL || n == root)
+			break;
+		n = n->next;
+	}
+}
+
+void _dom_onyx_id_index_tree(dom_node_internal *n)
+{
+	dom_document *doc = onyx_doc_of(n);
+
+	if (doc == NULL || doc->onyx_ids == NULL)
+		return;
+	if (n->type != DOM_ELEMENT_NODE && n->first_child == NULL)
+		return;
+	/* (only a subtree in the document: one outside is indexed when it is inserted) */
+	if (onyx_in_doc(n, doc))
+		onyx_id_walk(doc->onyx_ids, n);
+}
+
+/* the index freed (the document finalised): its elements told */
+static void onyx_id_free(dom_document *doc)
+{
+	struct dom_onyx_idmap *m = doc->onyx_ids;
+	uint32_t i;
+
+	if (m == NULL)
+		return;
+	doc->onyx_ids = NULL;
+	for (i = 0; i < m->nb; i++) {
+		struct dom_onyx_identry *x = m->b[i], *next;
+		for (; x != NULL; x = next) {
+			next = x->next;
+			x->ele->onyx_id = NULL;
+			free(x);
+		}
+	}
+	free(m->b);
+	free(m);
+}
+
 dom_exception _dom_document_get_element_by_id(dom_document *doc,
 		dom_string *id, dom_element **result)
 {
 	dom_node_internal *root;
 	dom_exception err;
+	struct dom_onyx_idmap *m = doc->onyx_ids;
 
 	*result = NULL;
 
 	err = dom_document_get_document_element(doc, (void *) &root);
 	if (err != DOM_NO_ERR)
 		return err;
+	if (root == NULL)
+		return DOM_NO_ERR;
+
+	/* Onyx: the index (made at the first lookup: a walk of the tree) */
+	if (m == NULL && id != NULL && dom_string_byte_length(id) > 0) {
+		m = calloc(1, sizeof(*m));
+		if (m != NULL) {
+			m->nb = 64;
+			m->b = calloc(m->nb, sizeof(*m->b));
+			if (m->b == NULL) {
+				free(m);
+				m = NULL;
+			} else {
+				doc->onyx_ids = m;
+				onyx_id_walk(m, &doc->base);
+			}
+		}
+	}
+	if (m != NULL && id != NULL && dom_string_byte_length(id) > 0) {
+		uint32_t h = onyx_id_hash(id), found = 0;
+		struct dom_onyx_identry *x;
+		struct dom_element *first = NULL;
+
+		for (x = m->b[h & (m->nb - 1)]; x != NULL; x = x->next) {
+			dom_string *real = NULL;
+
+			if (x->hash != h)
+				continue;
+			/* (the entry checked: that id still, in this document) */
+			_dom_element_get_id(x->ele, &real);
+			if (real == NULL)
+				continue;
+			if (dom_string_isequal(real, id) &&
+			    onyx_in_doc((dom_node_internal *) x->ele, doc)) {
+				if (first == NULL)
+					first = x->ele;
+				found++;
+			}
+			dom_string_unref(real);
+		}
+		if (found == 1 || (found == 0 && !m->lost)) {
+			/* (none: no element of the document has it -- each one that has
+			 * it was indexed when it got it or when it was inserted) */
+			dom_node_unref(root);
+			*result = first;
+			if (first != NULL)
+				dom_node_ref(first);
+			return DOM_NO_ERR;
+		}
+		/* (more than one element has it: the first in the tree's order, found
+		 * by the walk) */
+	}
 
 	err = _dom_find_element_by_id(root, id, result);
 	dom_node_unref(root);
@@ -1537,6 +1762,7 @@ void _dom_document_set_id_name(dom_document *doc, dom_string *name)
 	if (doc->id_name != NULL)
 		dom_string_unref(doc->id_name);
 	doc->id_name = dom_string_ref(name);
+	onyx_id_free(doc);	/* (Onyx: made again at the next lookup) */
 }
 
 /*-----------------------------------------------------------------------*/

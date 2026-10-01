@@ -474,4 +474,10 @@ uint32_t dom_document_onyx_mutation_guard(dom_document *doc, uint32_t depth);
 /* Onyx: node (out of its tree) and its subtree made doc's in place (see document.c) */
 dom_exception dom_document_onyx_adopt(dom_document *doc, struct dom_node *node);
 
+/* Onyx: counters of the changes of every document's trees (a node inserted or removed) and of
+ * their attributes (one set, changed or removed): a client's cache of a node list or of
+ * something computed from the attributes is good while the counter is unchanged */
+uint32_t dom_onyx_tree_generation(void);
+uint32_t dom_onyx_attr_generation(void);
+
 #endif

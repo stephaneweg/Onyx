@@ -20,6 +20,9 @@
 
 #include "utils/list.h"
 
+/* Onyx: the change counters (dom_onyx_tree_generation, dom_onyx_attr_generation) */
+extern uint32_t _dom_onyx_tree_gen, _dom_onyx_attr_gen;
+
 /**
  * User data context attached to a DOM node
  */

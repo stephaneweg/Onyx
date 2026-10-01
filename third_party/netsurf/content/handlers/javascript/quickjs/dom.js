@@ -448,12 +448,21 @@ class EventTarget {
 		 * window's, as in a browser) */
 		const l = listenersOf(this == null ? G : this, true);
 		let list = l.get(type);
-		if (!list)
+		if (!list) {
 			l.set(type, list = []);
-		if (list.some(r => r.fn === fn && r.capture === capture))
+			/* (Onyx: the list's records by function -- the duplicate check and the
+			 * removal were a search of the whole list: n listeners, n^2) */
+			Object.defineProperty(list, 'byFn', { value: new Map() });
+			Object.defineProperty(list, 'dead', { value: 0, writable: true });
+		}
+		const same = list.byFn.get(fn);
+		if (same && same.some(r => r.capture === capture))
 			return;
-		list.push({ fn, capture, once: !!(opts && opts.once),
-			passive: !!(opts && opts.passive) });
+		const rec = { fn, capture, once: !!(opts && opts.once),
+			passive: !!(opts && opts.passive) };
+		list.push(rec);
+		if (same) same.push(rec);
+		else list.byFn.set(fn, [rec]);
 		if (opts && opts.signal && typeof opts.signal.addEventListener === 'function')
 			opts.signal.addEventListener('abort', () =>
 				this.removeEventListener(type, fn, opts));
@@ -464,10 +473,22 @@ class EventTarget {
 		const list = l && l.get(type);
 		if (!list)
 			return;
-		const i = list.findIndex(r => r.fn === fn && r.capture === capture);
-		if (i >= 0) {
-			list[i].removed = true;
-			list.splice(i, 1);
+		const same = list.byFn.get(fn);
+		const k = same ? same.findIndex(r => r.capture === capture) : -1;
+		if (k < 0)
+			return;
+		const rec = same[k];
+		if (same.length === 1) list.byFn.delete(fn);
+		else same.splice(k, 1);
+		/* (marked, the list compacted once half of it is removed records: the dispatch
+		 * skips them) */
+		rec.removed = true;
+		if (++list.dead > 16 && list.dead * 2 > list.length) {
+			let j = 0;
+			for (let i = 0; i < list.length; i++)
+				if (!list[i].removed) list[j++] = list[i];
+			list.length = j;
+			list.dead = 0;
 		}
 	}
 	dispatchEvent(ev) {
@@ -519,6 +540,35 @@ class HTMLCollection extends NodeList {
 	}
 }
 function nodeList(arr) { const l = new NodeList(); for (const x of arr) l.push(x); return l; }
+
+/* Onyx: a node's children kept while no tree changed (libdom's counter, N.treeGen) -- a loop
+ * reading el.childNodes[i], el.children[i], sel.options[i] or matching :nth-child built the
+ * whole list again at each read (n^2: 1000 children, 0.4 s on the PC). The lists given to the
+ * scripts are the same object until the tree changes (as live lists are). */
+const KIDS = Symbol('kids'), TAG_LISTS = Symbol('tags'), OPT_IDX = Symbol('optidx'), OPT_COLL = Symbol('opts');
+function kidsOf(n) {
+	const g = N.treeGen();
+	let k = n[KIDS];
+	if (k === undefined || k.g !== g) {
+		k = { g, all: N.children(n), el: null, nl: null, hc: null, idx: null, eidx: null, types: null };
+		try { n[KIDS] = k; } catch (e) { /* (a frozen wrapper: not kept) */ }
+	}
+	return k;
+}
+function kidElements(k) { return k.el || (k.el = k.all.filter(isElement)); }
+function indexMap(list) { const m = new Map(); for (let i = 0; i < list.length; i++) m.set(list[i], i); return m; }
+/* c's index among p's child nodes (undefined: not one) */
+function childIndex(p, c) { const k = kidsOf(p); return (k.idx || (k.idx = indexMap(k.all))).get(c); }
+/* the element children of k's node of that local name, and their indexes */
+function kidsOfType(k, name) {
+	if (!k.types) k.types = new Map();
+	let t = k.types.get(name);
+	if (!t) {
+		const list = kidElements(k).filter(x => x.localName === name);
+		k.types.set(name, t = { list, idx: indexMap(list) });
+	}
+	return t;
+}
 function htmlCollection(arr) {
 	const l = new HTMLCollection();
 	for (const x of arr) l.push(x);
@@ -694,7 +744,7 @@ class Node extends EventTarget {
 		const p = N.parent(this);
 		return p && N.type(p) === ELEMENT_NODE ? p : null;
 	}
-	get childNodes() { return nodeList(N.children(this)); }
+	get childNodes() { const k = kidsOf(this); return k.nl || (k.nl = nodeList(k.all)); }
 	get firstChild() { return N.first(this); }
 	get lastChild() { return N.last(this); }
 	get previousSibling() { return N.prev(this); }
@@ -765,11 +815,18 @@ class Node extends EventTarget {
 			return 20;	/* CONTAINED_BY | FOLLOWING */
 		if (o.contains(this))
 			return 10;	/* CONTAINS | PRECEDING */
-		const all = allNodes(N.document());
-		const a = all.indexOf(this), b = all.indexOf(o);
-		if (a < 0 || b < 0)
+		/* Onyx: by the two ancestor chains and the children's indexes where they part
+		 * (the order of the whole document was listed at each call: jQuery's sort of a
+		 * set of n elements, n log n calls) */
+		const a = [], b = [];
+		for (let n = this; n; n = N.parent(n)) a.push(n);
+		for (let n = o; n; n = N.parent(n)) b.push(n);
+		const doc = N.document();
+		if (a[a.length - 1] !== doc || b[b.length - 1] !== doc)
 			return 1;	/* DISCONNECTED */
-		return a < b ? 4 : 2;
+		let i = a.length - 1, j = b.length - 1;
+		while (a[i - 1] === b[j - 1]) { i--; j--; }
+		return childIndex(a[i], a[i - 1]) < childIndex(a[i], b[j - 1]) ? 4 : 2;
 	}
 	normalize() {}
 	lookupNamespaceURI() { return 'http://www.w3.org/1999/xhtml'; }
@@ -783,16 +840,10 @@ def(Node.prototype, { ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE,
 	DOCUMENT_FRAGMENT_NODE });
 G.Node = Node;
 
-function allNodes(root) {
-	const out = [];
-	(function walk(n) { out.push(n); for (const c of N.children(n)) walk(c); })(root);
-	return out;
-}
-
 /* ---- the ParentNode / ChildNode mixins ------------------------------------------------ */
 
 const ParentNode = {
-	get children() { return htmlCollection(N.children(this).filter(isElement)); },
+	get children() { const k = kidsOf(this); return k.hc || (k.hc = htmlCollection(kidElements(k))); },
 	get firstElementChild() {
 		for (let c = N.first(this); c; c = N.next(c))
 			if (N.type(c) === ELEMENT_NODE) return c;
@@ -803,7 +854,7 @@ const ParentNode = {
 			if (N.type(c) === ELEMENT_NODE) return c;
 		return null;
 	},
-	get childElementCount() { return N.children(this).filter(isElement).length; },
+	get childElementCount() { return kidElements(kidsOf(this)).length; },
 	append(...nodes) { if (nodes.length) this.appendChild(nodesToNode(nodes)); },
 	prepend(...nodes) { if (nodes.length) this.insertBefore(nodesToNode(nodes), N.first(this)); },
 	replaceChildren(...nodes) {
@@ -833,8 +884,17 @@ const ParentNode = {
 		return nodeList(N.descendants(this).filter(e => matchList(e, list, this)));
 	},
 	getElementsByTagName(tag) {
-		const t = lower(tag);
-		return htmlCollection(N.descendants(this).filter(e => t === '*' || e.localName === t));
+		/* Onyx: kept while no tree changed, as the child lists (kidsOf): a loop asking
+		 * it (or select.options, select.length, document.forms) at each step */
+		const t = lower(tag), g = N.treeGen();
+		let m = this[TAG_LISTS];
+		if (m === undefined || m.g !== g) {
+			m = { g, map: new Map() };
+			try { this[TAG_LISTS] = m; } catch (e) { /* (not kept) */ }
+		}
+		let l = m.map.get(t);
+		if (!l) m.map.set(t, l = htmlCollection(N.descendants(this).filter(e => t === '*' || e.localName === t)));
+		return l;
 	},
 	getElementsByClassName(names) {
 		/* Onyx: the classes matched by the native walk (qjs.c n_descendants) */
@@ -1880,7 +1940,21 @@ function cssSheetOf(el) {
 }
 
 /* the sheets of the document, in its order: <style>s, <link rel=stylesheet>s loaded */
+/* Onyx: the list kept while no tree and no attribute changed, within one script run (a link's
+ * sheet arrives between the runs) -- it was a walk of the whole document at each read, and the
+ * CSS-in-JS libraries look for their <style>'s sheet in it at each rule inserted (emotion:
+ * for (i < document.styleSheets.length) ... document.styleSheets[i].ownerNode) */
+let sheetsKept = null;
 function documentSheets(doc) {
+	const g = N.treeGen(), a = N.attrGen();
+	if (sheetsKept !== null && sheetsKept.doc === doc && sheetsKept.g === g && sheetsKept.a === a)
+		return sheetsKept.list;
+	const list = documentSheetsNow(doc);
+	if (sheetsKept === null) NativePromise.resolve().then(() => { sheetsKept = null; });
+	sheetsKept = { doc, g, a, list };
+	return list;
+}
+function documentSheetsNow(doc) {
 	const out = [];
 	for (const el of doc.querySelectorAll('style, link')) {
 		if (el.hasAttribute('data-onyx-adopted')) continue;
@@ -1960,15 +2034,26 @@ class CSSStyleDeclaration {
 	}
 	_map() {
 		if (this._rule) return new Map(this._rule._decls());
-		return this._el ? parseDecls(N.attr(this._el, 'style')) : new Map();
+		if (!this._el) return new Map();
+		/* Onyx: the parsed attribute kept while it is the same text (each property set
+		 * parsed the whole attribute again: n custom properties on one element, n^2) --
+		 * the callers may change the map: _write keeps it with its new text */
+		const text = N.attr(this._el, 'style');
+		const c = this._kept;
+		if (c && c.text === text) return c.map;
+		const map = parseDecls(text);
+		Object.defineProperty(this, '_kept', { value: { text, map }, configurable: true, writable: true });
+		return map;
 	}
 	_valid(k, v) { return this._rule ? this._rule._declValid(k, v) : cssValid(k, v); }
 	_write(map) {
 		if (this._rule) { this._rule._setDecls(map); return; }
 		if (!this._el) return;
 		const s = serializeDecls(map);
+		if (this._kept !== undefined) this._kept = null;
 		if (s) N.setAttr(this._el, 'style', s);
 		else N.removeAttr(this._el, 'style');
+		if (this._kept !== undefined) this._kept = { text: N.attr(this._el, 'style'), map };
 	}
 	get parentRule() { return this._rule; }
 	get cssText() {
@@ -2018,7 +2103,7 @@ G.CSSStyleDeclaration = CSSStyleDeclaration;
 
 const STYLE_OWN = new Set(['cssText', 'length', 'item', 'getPropertyValue',
 	'getPropertyPriority', 'setProperty', 'removeProperty', '_el', '_rule', '_map', '_write',
-	'_valid', 'parentRule', 'constructor']);
+	'_valid', '_kept', 'parentRule', 'constructor']);
 
 function styleProxy(el) { return styleProxyOf(new CSSStyleDeclaration(el)); }
 function styleProxyOf(decl) {
@@ -2250,9 +2335,19 @@ function nthMatch(ab, pos) {
 	return Number.isInteger(n) && n >= 0;
 }
 
+/* (Onyx: the parent's kept list -- not to be changed) */
 function elementSiblings(e) {
 	const p = N.parent(e);
-	return p ? N.children(p).filter(isElement) : [e];
+	return p ? kidElements(kidsOf(p)) : [e];
+}
+/* e's index among its element siblings (of its type), and their count */
+function siblingPos(e, ofType) {
+	const p = N.parent(e);
+	if (!p) return [0, 1];
+	const k = kidsOf(p);
+	if (ofType) { const t = kidsOfType(k, e.localName); return [t.idx.get(e), t.list.length]; }
+	const el = kidElements(k);
+	return [(k.eidx || (k.eidx = indexMap(el))).get(e), el.length];
 }
 
 function matchList(e, list, scope) {
@@ -2346,10 +2441,16 @@ function matchPseudo(e, p, scope) {
 	case 'first-child': return elementSiblings(e)[0] === e;
 	case 'last-child': { const s = elementSiblings(e); return s[s.length - 1] === e; }
 	case 'only-child': return elementSiblings(e).length === 1;
-	case 'first-of-type': return elementSiblings(e).filter(s => s.localName === e.localName)[0] === e;
-	case 'last-of-type': { const s = elementSiblings(e).filter(x => x.localName === e.localName); return s[s.length - 1] === e; }
-	case 'only-of-type': return elementSiblings(e).filter(s => s.localName === e.localName).length === 1;
+	case 'first-of-type': return siblingPos(e, true)[0] === 0;
+	case 'last-of-type': { const [i, n] = siblingPos(e, true); return i === n - 1; }
+	case 'only-of-type': return siblingPos(e, true)[1] === 1;
 	case 'nth-child': case 'nth-last-child': case 'nth-of-type': case 'nth-last-of-type': {
+		if (!p.of) {
+			/* (Onyx: the kept index -- each element's position was a search of
+			 * its siblings: n^2 for a list) */
+			const [i, n] = siblingPos(e, p.name.endsWith('of-type'));
+			return nthMatch(p.arg, p.name.startsWith('nth-last') ? n - i : i + 1);
+		}
 		let s = elementSiblings(e);
 		if (p.name.endsWith('of-type')) s = s.filter(x => x.localName === e.localName);
 		if (p.of) { if (!matchList(e, p.of, scope)) return false; s = s.filter(x => matchList(x, p.of, scope)); }
@@ -2995,7 +3096,14 @@ class HTMLOptionElement extends HTMLElement {
 	get selected() { const c = N.formChecked(this); return c === null ? N.attr(this, 'selected') !== null : c; }
 	set selected(v) { N.setFormChecked(this, !!v); }
 	get defaultSelected() { return N.attr(this, 'selected') !== null; }
-	get index() { const s = this.closest('select'); return s ? [...s.options].indexOf(this) : 0; }
+	get index() {
+		const s = this.closest('select');
+		if (!s) return 0;
+		/* (Onyx: the kept option list's index map) */
+		const l = s.getElementsByTagName('option');
+		const i = (l[OPT_IDX] || (l[OPT_IDX] = indexMap(l))).get(this);
+		return i === undefined ? -1 : i;
+	}
 	get form() { return this.closest('form'); }
 }
 reflectBool(HTMLOptionElement.prototype, 'disabled');
@@ -3005,12 +3113,34 @@ G.Option = HTMLOptionElement;
 class HTMLSelectElement extends HTMLElement {
 	get type() { return N.attr(this, 'multiple') !== null ? 'select-multiple' : 'select-one'; }
 	get options() {
-		const opts = htmlCollection(this.getElementsByTagName('option'));
+		/* Onyx: one collection while the tree is unchanged (the kept tag list's) -- a
+		 * loop over sel.options[i] made it again at each step; writes to it are the
+		 * HTML options collection's (length cut, an option set at an index) */
+		const l = this.getElementsByTagName('option');
+		if (l[OPT_COLL]) return l[OPT_COLL];
+		const opts = htmlCollection(l);
 		const sel = this;
 		opts.add = (o, before) => sel.add(o, before);
 		opts.remove = i => sel.remove(i);
 		Object.defineProperty(opts, 'selectedIndex', { get: () => sel.selectedIndex, set: v => { sel.selectedIndex = v; } });
-		return opts;
+		return l[OPT_COLL] = new Proxy(opts, { set(t, k, v) {
+			if (k === 'length') {
+				const n = Math.max(0, Math.floor(+v) || 0);
+				for (let i = t.length - 1; i >= n; i--) t[i].remove();
+				for (let i = t.length; i < n; i++) sel.appendChild(G.document.createElement('option'));
+				return true;
+			}
+			if (typeof k === 'string' && /^(0|[1-9][0-9]*)$/.test(k)) {
+				const i = +k;
+				if (v === null || v === undefined) { if (t[i]) t[i].remove(); return true; }
+				if (!(v instanceof HTMLOptionElement)) return true;
+				if (i < t.length) { if (t[i] !== v) t[i].replaceWith(v); return true; }
+				for (let j = t.length; j < i; j++) sel.appendChild(G.document.createElement('option'));
+				sel.appendChild(v);
+				return true;
+			}
+			return Reflect.set(t, k, v);
+		} });
 	}
 	get length() { return this.getElementsByTagName('option').length; }
 	get selectedOptions() { return htmlCollection([...this.options].filter(o => o.selected)); }

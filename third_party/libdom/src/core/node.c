@@ -2077,6 +2077,19 @@ bool _dom_node_readonly(const dom_node_internal *node)
 	return false;
 }
 
+/* Onyx: the change counters (node.h) */
+uint32_t _dom_onyx_tree_gen, _dom_onyx_attr_gen;
+
+uint32_t dom_onyx_tree_generation(void)
+{
+	return _dom_onyx_tree_gen;
+}
+
+uint32_t dom_onyx_attr_generation(void)
+{
+	return _dom_onyx_attr_gen;
+}
+
 /**
  * Attach a node to the tree
  *
@@ -2142,8 +2155,15 @@ dom_exception _dom_node_attach_range(dom_node_internal *first,
 	else
 		parent->last_child = last;
 
-	for (n = first; n != last->next; n = n->next) {
+	/* Onyx: every node of the range given its parent, and their ids indexed, before the
+	 * first event (a script it runs finds the range's elements by their ids) */
+	for (n = first; n != last->next; n = n->next)
 		n->parent = parent;
+	_dom_onyx_tree_gen++;
+	for (n = first; n != last->next; n = n->next)
+		_dom_onyx_id_index_tree(n);
+
+	for (n = first; n != last->next; n = n->next) {
 		/* Dispatch a DOMNodeInserted event */
 		err = dom_node_dispatch_node_change_event(parent->owner, 
 				n, parent, DOM_MUTATION_ADDITION, &success);
@@ -2154,6 +2174,7 @@ dom_exception _dom_node_attach_range(dom_node_internal *first,
 	success = true;
 	err = _dom_dispatch_subtree_modified_event(parent->owner, parent,
 			&success);
+	_dom_onyx_tree_gen++;	/* (Onyx) */
 	if (err != DOM_NO_ERR)
 		return err;
 
@@ -2187,6 +2208,7 @@ dom_exception _dom_node_detach_range(dom_node_internal *first,
 		last->parent->last_child = first->previous;
 
 	parent = first->parent;
+	_dom_onyx_tree_gen++;	/* (Onyx) */
 	for (n = first; n != last->next; n = n->next) {
 		/* Dispatch a DOMNodeRemoval event */
 		err = dom_node_dispatch_node_change_event(n->owner, n,
@@ -2201,6 +2223,7 @@ dom_exception _dom_node_detach_range(dom_node_internal *first,
 
 	first->previous = NULL;
 	last->next = NULL;
+	_dom_onyx_tree_gen++;	/* (Onyx) */
 
 	return err;
 }
@@ -2242,6 +2265,7 @@ void _dom_node_replace(dom_node_internal *old,
 			old->parent->last_child = old->previous;
 		}
 		old->previous = old->next = old->parent = NULL;
+		_dom_onyx_tree_gen++;	/* (Onyx) */
 		return;
 	}
 
@@ -2264,6 +2288,9 @@ void _dom_node_replace(dom_node_internal *old,
 	}
 
 	old->previous = old->next = old->parent = NULL;
+	_dom_onyx_tree_gen++;	/* (Onyx) */
+	for (n = first; n != NULL && n != last->next; n = n->next)
+		_dom_onyx_id_index_tree(n);
 }
 
 /**

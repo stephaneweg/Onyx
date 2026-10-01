@@ -156,22 +156,26 @@ static void fetch_javascript_abort(void *ctx)
 /** callback to poll for additional resource fetch contents */
 static void fetch_javascript_poll(lwc_string *scheme)
 {
-	struct fetch_javascript_context *c, *next;
+	struct fetch_javascript_context *c;
+	unsigned int todo = 0;
 
 	if (ring == NULL) return;
 
-	/* Iterate over ring, processing each pending fetch */
-	c = ring;
-	do {
+	/* Onyx: every pending fetch processed (the loop ended after the first: see
+	 * html/css_fetcher.c) */
+	RING_GETSIZE(struct fetch_javascript_context, ring, todo);
+	while (todo-- > 0 && ring != NULL) {
 		/* Ignore fetches that have been flagged as locked.
 		 * This allows safe re-entrant calls to this function.
 		 * Re-entrancy can occur if, as a result of a callback,
 		 * the interested party causes fetch_poll() to be called
 		 * again.
 		 */
-		if (c->locked == true) {
-			next = c->r_next;
-			continue;
+		c = ring;
+		while (c->locked == true) {
+			c = c->r_next;
+			if (c == ring)
+				return;
 		}
 
 		/* Only process non-aborted fetches */
@@ -180,18 +184,9 @@ static void fetch_javascript_poll(lwc_string *scheme)
 			fetch_javascript_handler(c);
 		}
 
-		/* Compute next fetch item at the last possible moment
-		 * as processing this item may have added to the ring
-		 */
-		next = c->r_next;
-
 		fetch_remove_from_queues(c->fetchh);
-		fetch_free(c->fetchh);
-
-		/* Advance to next ring entry, exiting if we've reached
-		 * the start of the ring or the ring has become empty
-		 */
-	} while ( (c = next) != ring && ring != NULL);
+		fetch_free(c->fetchh);	/* (c out of the ring) */
+	}
 }
 
 /**

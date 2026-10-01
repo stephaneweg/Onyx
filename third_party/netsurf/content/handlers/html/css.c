@@ -454,8 +454,14 @@ bool html_css_process_style(html_content *c, dom_node *node)
 void html_css_node_removed(html_content *c, dom_node *node)
 {
 	unsigned int i;
+	dom_node *first = NULL;
+	bool changed = false, leaf;
 
-	bool changed = false;
+	/* Onyx: a node without children holds no sheet but its own -- no walk up from each
+	 * sheet (every node a script removes came here: n removals, S sheets, n x S walks) */
+	leaf = dom_node_get_first_child(node, &first) == DOM_NO_ERR && first == NULL;
+	if (first != NULL)
+		dom_node_unref(first);
 
 	/* the <style>s and <link>s in the subtree taken out of the document: their rules no
 	 * longer apply (a theme switched, a single-page app's view gone) */
@@ -464,6 +470,8 @@ void html_css_node_removed(html_content *c, dom_node *node)
 		dom_node *n, *p;
 
 		if (s->node == NULL || s->removed)
+			continue;
+		if (leaf && s->node != node)
 			continue;
 		n = dom_node_ref(s->node);
 		while (n != NULL && n != node) {

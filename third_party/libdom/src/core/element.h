@@ -39,6 +39,8 @@ struct dom_element {
 
 	lwc_string **classes;
 	uint32_t n_classes;
+
+	struct dom_onyx_identry *onyx_id;	/**< Onyx: its getElementById entry */
 };
 
 dom_exception _dom_element_create(struct dom_document *doc,
@@ -50,6 +52,9 @@ dom_exception _dom_element_initialise(struct dom_document *doc,
 		dom_string *namespace, dom_string *prefix);
 
 void _dom_element_finalise(struct dom_element *ele);
+
+/* Onyx: an attribute of e set, changed or removed (element.c) */
+void _dom_element_onyx_attrs_changed(struct dom_element *e);
 
 void _dom_element_destroy(struct dom_element *element);
 

@@ -126,6 +126,8 @@ struct qjs_wrap {
 
 struct qjs_timer {
 	struct qjs_timer *next;
+	struct qjs_timer *prev;		/* Onyx: its thread's list is doubly linked */
+	struct qjs_timer *hnext;	/* Onyx: in its id's bucket (jsthread.tbuck) */
 	struct jsthread *t;
 	int id;
 	int ms;
@@ -176,6 +178,10 @@ struct jsthread {
 	JSValue tag_protos;		/* { tag name: prototype } */
 	JSValue dispatch;		/* dom.js' dispatcher: (target, type, init) */
 	struct qjs_timer *timers;
+	/* Onyx: the timers by id (clearTimeout) -- the list was searched for the id, and
+	 * searched again to unlink a timer firing: n timers, n^2 */
+#define QJS_TBUCKETS 256
+	struct qjs_timer *tbuck[QJS_TBUCKETS];
 	int next_timer;
 	int load_waits;			/* the window's load: turns waited */
 	struct qjs_req *reqs;		/* fetch / XMLHttpRequest in flight */
@@ -710,6 +716,22 @@ QJS_REL(n_first, dom_node_get_first_child)
 QJS_REL(n_last, dom_node_get_last_child)
 QJS_REL(n_next, dom_node_get_next_sibling)
 QJS_REL(n_prev, dom_node_get_previous_sibling)
+
+/* Onyx: treeGen() / attrGen(): libdom's change counters (a node inserted or removed in any
+ * tree; an attribute set, changed or removed) -- dom.js keeps the child lists, the tag lists,
+ * the style sheet list while they are unchanged (a loop reading el.childNodes[i] built the
+ * whole list at each read: n^2) */
+static JSValue n_tree_gen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	(void) this_val; (void) argc; (void) argv;
+	return JS_NewUint32(ctx, dom_onyx_tree_generation());
+}
+
+static JSValue n_attr_gen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	(void) this_val; (void) argc; (void) argv;
+	return JS_NewUint32(ctx, dom_onyx_attr_generation());
+}
 
 /** children(n): an array of its child nodes */
 static JSValue n_children(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -3351,12 +3373,32 @@ static void qjs_timer_unlink(jsthread *t, struct qjs_timer *tm)
 {
 	struct qjs_timer **p;
 
-	for (p = &t->timers; *p != NULL; p = &(*p)->next) {
+	if (tm->prev != NULL)
+		tm->prev->next = tm->next;
+	else if (t->timers == tm)
+		t->timers = tm->next;
+	if (tm->next != NULL)
+		tm->next->prev = tm->prev;
+	tm->next = tm->prev = NULL;
+	for (p = &t->tbuck[(unsigned) tm->id % QJS_TBUCKETS]; *p != NULL; p = &(*p)->hnext) {
 		if (*p == tm) {
-			*p = tm->next;
-			return;
+			*p = tm->hnext;
+			break;
 		}
 	}
+}
+
+static void qjs_timer_link(jsthread *t, struct qjs_timer *tm)
+{
+	struct qjs_timer **b = &t->tbuck[(unsigned) tm->id % QJS_TBUCKETS];
+
+	tm->prev = NULL;
+	tm->next = t->timers;
+	if (t->timers != NULL)
+		t->timers->prev = tm;
+	t->timers = tm;
+	tm->hnext = *b;
+	*b = tm;
 }
 
 /* Onyx (docs/06 §32): a timer's delay -- while the window is hidden (minimised, on another
@@ -3417,8 +3459,7 @@ static JSValue n_timer(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	tm->repeat = argc > 2 && JS_ToBool(ctx, argv[2]);
 	tm->ms = tm->repeat && ms < 4 ? 4 : ms;
 	tm->fn = JS_DupValue(ctx, argv[0]);
-	tm->next = t->timers;
-	t->timers = tm;
+	qjs_timer_link(t, tm);
 	guit->misc->schedule(qjs_timer_delay(tm->ms, tm->repeat), qjs_timer_fire, tm);
 	return JS_NewInt32(ctx, tm->id);
 }
@@ -3431,7 +3472,7 @@ static JSValue n_clear_timer(JSContext *ctx, JSValueConst this_val, int argc, JS
 
 	if (argc > 0)
 		JS_ToInt32(ctx, &id, argv[0]);
-	for (tm = t->timers; tm != NULL; tm = tm->next) {
+	for (tm = t->tbuck[(unsigned) id % QJS_TBUCKETS]; tm != NULL; tm = tm->hnext) {
 		if (tm->id == id) {
 			guit->misc->schedule(-1, qjs_timer_fire, tm);
 			qjs_timer_unlink(t, tm);
@@ -3449,7 +3490,7 @@ static void qjs_timers_stop(jsthread *t)
 		struct qjs_timer *tm = t->timers;
 
 		guit->misc->schedule(-1, qjs_timer_fire, tm);
-		t->timers = tm->next;
+		qjs_timer_unlink(t, tm);
 		JS_FreeValue(t->ctx, tm->fn);
 		free(tm);
 	}
@@ -4547,6 +4588,8 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("next", 1, n_next),
 	JS_CFUNC_DEF("prev", 1, n_prev),
 	JS_CFUNC_DEF("children", 1, n_children),
+	JS_CFUNC_DEF("treeGen", 0, n_tree_gen),		/* (Onyx) */
+	JS_CFUNC_DEF("attrGen", 0, n_attr_gen),		/* (Onyx) */
 	JS_CFUNC_DEF("document", 0, n_document),
 	JS_CFUNC_DEF("value", 1, n_value),
 	JS_CFUNC_DEF("setValue", 2, n_set_value),
@@ -4928,6 +4971,7 @@ static void qjs_thread_free(jsthread *t)
 		t->wraps = NULL;
 		t->nwraps = t->capwraps = 0;
 		t->timers = NULL;
+		memset(t->tbuck, 0, sizeof(t->tbuck));
 		t->reqs = NULL;
 		t->ce_pending = NULL;
 		t->ce_npending = t->ce_cappending = 0;

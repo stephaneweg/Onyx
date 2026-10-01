@@ -607,6 +607,13 @@ dom_exception _dom_attr_set_value(struct dom_attr *attr,
 	/* Now the attribute node is specified */
 	attr->specified = true;
 
+	/* Onyx: the attribute counter, its element's getElementById entry (an attribute not
+	 * yet in its element's list is told when it is linked: element.c) */
+	if (a->parent != NULL && a->parent->type == DOM_ELEMENT_NODE)
+		_dom_element_onyx_attrs_changed((struct dom_element *) a->parent);
+	else
+		_dom_onyx_attr_gen++;
+
 	return DOM_NO_ERR;
 }
 

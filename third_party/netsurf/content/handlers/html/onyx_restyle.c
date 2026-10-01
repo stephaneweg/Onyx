@@ -439,6 +439,35 @@ static bool osr_in(const css_stylesheet *const *v, uint32_t n, const css_stylesh
 	return false;
 }
 
+/* Onyx: the sheet lists sorted (by address) for osr_has -- the lists compared each sheet
+ * with every other (osr_in): a page adding its n <style>s one by one, n^2 at each change */
+static int osr_ptr_cmp(const void *a, const void *b)
+{
+	uintptr_t x = (uintptr_t) *(const css_stylesheet *const *) a;
+	uintptr_t y = (uintptr_t) *(const css_stylesheet *const *) b;
+
+	return x < y ? -1 : x > y;
+}
+
+static const css_stylesheet **osr_sorted(const css_stylesheet *const *v, uint32_t n)
+{
+	const css_stylesheet **s;
+
+	if (v == NULL)
+		return NULL;
+	s = malloc((n + 1) * sizeof(*s));
+	if (s == NULL)
+		return NULL;
+	memcpy(s, v, n * sizeof(*s));
+	qsort(s, n, sizeof(*s), osr_ptr_cmp);
+	return s;
+}
+
+static bool osr_has(const css_stylesheet *const *sorted, uint32_t n, const css_stylesheet *x)
+{
+	return bsearch(&x, sorted, n, sizeof(*sorted), osr_ptr_cmp) != NULL;
+}
+
 static bool osr_probe_add(struct onyx_restyle *st, const css_stylesheet *x)
 {
 	if (x == NULL || osr_in(st->probe_sheet, st->nprobe, x))
@@ -454,7 +483,7 @@ void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
 		css_select_ctx *new_ctx)
 {
 	struct onyx_restyle *st = c->onyx_rs;
-	const css_stylesheet **ov, **nv;
+	const css_stylesheet **ov, **nv, **os, **ns;
 	uint32_t on, nn, i, j;
 	bool ok = true;
 
@@ -467,14 +496,16 @@ void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
 	}
 	ov = osr_sheets(old_ctx, &on);
 	nv = osr_sheets(new_ctx, &nn);
-	if (ov == NULL || nv == NULL)
+	os = osr_sorted(ov, on);
+	ns = osr_sorted(nv, nn);
+	if (ov == NULL || nv == NULL || os == NULL || ns == NULL)
 		ok = false;
 	/* the sheets in both in the same order (the cascade's): sheets were added or
 	 * taken out only */
 	for (i = 0, j = 0; ok && i < on; i++) {
-		if (!osr_in(nv, nn, ov[i]))
+		if (!osr_has(ns, nn, ov[i]))
 			continue;
-		while (j < nn && !osr_in(ov, on, nv[j]))
+		while (j < nn && !osr_has(os, on, nv[j]))
 			j++;
 		if (j == nn || nv[j] != ov[i])
 			ok = false;
@@ -488,15 +519,17 @@ void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
 		st->nprobe = 0;
 	}
 	for (i = 0; ok && i < on; i++) {
-		if (!osr_in(nv, nn, ov[i]))
+		if (!osr_has(ns, nn, ov[i]))
 			ok = osr_probe_add(st, ov[i]);	/* taken out */
 	}
 	for (i = 0; ok && i < nn; i++) {
-		if (!osr_in(ov, on, nv[i]))
+		if (!osr_has(os, on, nv[i]))
 			ok = osr_probe_add(st, nv[i]);	/* added */
 	}
 	free(ov);
 	free(nv);
+	free(os);
+	free(ns);
 	if (!ok) {
 		onyx_restyle_invalidate_all(c);
 		return;
@@ -525,14 +558,15 @@ void onyx_restyle_sheets_changed(html_content *c, css_select_ctx *old_ctx,
 static bool osr_probe_alive(html_content *c)
 {
 	struct onyx_restyle *st = c->onyx_rs;
-	const css_stylesheet **cv;
+	const css_stylesheet **cv, **cs;
 	uint32_t cn, i, k;
 	bool ok = true;
 
 	cv = osr_sheets(c->select_ctx, &cn);
+	cs = osr_sorted(cv, cn);	/* (Onyx) */
 	for (i = 0; i < st->nprobe && ok; i++) {
 		const css_stylesheet *x = st->probe_sheet[i];
-		bool found = cv != NULL && osr_in(cv, cn, x);
+		bool found = cs != NULL && osr_has(cs, cn, x);
 		for (k = 0; !found && k < c->stylesheet_count; k++) {
 			struct hlcache_handle *h = c->stylesheets[k].sheet;
 			found = h != NULL && hlcache_handle_get_content(h) != NULL &&
@@ -544,6 +578,7 @@ static bool osr_probe_alive(html_content *c)
 		ok = found;
 	}
 	free(cv);
+	free(cs);
 	return ok;
 }
 

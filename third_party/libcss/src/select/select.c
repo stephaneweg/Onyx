@@ -386,6 +386,19 @@ css_error css_select_ctx_insert_sheet(css_select_ctx *ctx,
 			(ctx->n_sheets - index) * sizeof(css_select_sheet));
 	}
 
+	/* Onyx: "screen" and "all" (the media NetSurf gives every sheet) without the
+	 * parser -- a parser made for each sheet each time a selection context is made: a
+	 * page adding its n <style>s one by one made n contexts of up to n sheets (100 <style>s,
+	 * 0.3 s on the PC) */
+	if (media != NULL && (strcasecmp(media, "screen") == 0 ||
+			strcasecmp(media, "all") == 0)) {
+		mq = calloc(1, sizeof(*mq));
+		if (mq == NULL)
+			return CSS_NOMEM;
+		mq->type = (media[0] == 's' || media[0] == 'S') ?
+				CSS_MEDIA_SCREEN : CSS_MEDIA_ALL;
+		error = CSS_OK;
+	} else
 	error = css_parse_media_query(sheet->propstrings,
 			(const uint8_t *)media,
 			(media == NULL) ? 0 : strlen(media), &mq);

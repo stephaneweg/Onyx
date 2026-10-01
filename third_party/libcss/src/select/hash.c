@@ -21,11 +21,19 @@ typedef struct hash_entry {
 	const css_selector *sel;
 	css_bloom sel_chain_bloom[CSS_BLOOM_SIZE];
 	struct hash_entry *next;
+	struct hash_entry *tail;	/**< Onyx: a chain's head: its last entry */
 } hash_entry;
 
+/* Onyx: the tables grow (more slots once they hold 4 selectors a slot) and a selector is
+ * put at the end of its chain at once when it goes there (the sheet's selectors come in
+ * the rule order: most of them do) -- the tables had 64 slots for ever and each insertion
+ * walked its chain: a sheet's n selectors of one element name ("... a:hover"), n^2 / 2
+ * steps (16000 rules: 3.7 s on the PC), and an element's lookup of its classes walked
+ * chains of (classes in the sheet) / 64 */
 typedef struct hash_t {
 #define DEFAULT_SLOTS (1<<6)
 	size_t n_slots;
+	size_t n_entries;	/**< Onyx: the selectors in it */
 
 	hash_entry *slots;
 } hash_t;
@@ -50,6 +58,9 @@ static css_error _insert_into_chain(css_selector_hash *ctx, hash_entry *head,
 		const css_selector *selector);
 static css_error _remove_from_chain(css_selector_hash *ctx, hash_entry *head,
 		const css_selector *selector);
+static inline lwc_string *_element_name(const css_selector *selector);
+static void _hash_grow(css_selector_hash *ctx, hash_t *t,
+		lwc_string *(*key)(const css_selector *));
 
 static css_error _iterate_elements(
 		const struct css_hash_selection_requirments *req,
@@ -242,26 +253,35 @@ css_error css__selector_hash_insert(css_selector_hash *hash,
 	/* Work out which hash to insert into */
 	if ((name = _id_name(selector)) != NULL) {
 		/* Named ID */
+		_hash_grow(hash, &hash->ids, _id_name);
 		mask = hash->ids.n_slots - 1;
 		index = _hash_name(name) & mask;
 
 		error = _insert_into_chain(hash, &hash->ids.slots[index],
 				selector);
+		if (error == CSS_OK)
+			hash->ids.n_entries++;
 	} else if ((name = _class_name(selector)) != NULL) {
 		/* Named class */
+		_hash_grow(hash, &hash->classes, _class_name);
 		mask = hash->classes.n_slots - 1;
 		index = _hash_name(name) & mask;
 
 		error = _insert_into_chain(hash, &hash->classes.slots[index],
 				selector);
+		if (error == CSS_OK)
+			hash->classes.n_entries++;
 	} else if (lwc_string_length(selector->data.qname.name) != 1 ||
 			lwc_string_data(selector->data.qname.name)[0] != '*') {
 		/* Named element */
+		_hash_grow(hash, &hash->elements, _element_name);
 		mask = hash->elements.n_slots - 1;
 		index = _hash_name(selector->data.qname.name) & mask;
 
 		error = _insert_into_chain(hash, &hash->elements.slots[index],
 				selector);
+		if (error == CSS_OK)
+			hash->elements.n_entries++;
 	} else {
 		/* Universal chain */
 		error = _insert_into_chain(hash, &hash->universal, selector);
@@ -295,6 +315,8 @@ css_error css__selector_hash_remove(css_selector_hash *hash,
 
 		error = _remove_from_chain(hash, &hash->ids.slots[index],
 				selector);
+		if (error == CSS_OK)
+			hash->ids.n_entries--;
 	} else if ((name = _class_name(selector)) != NULL) {
 		/* Named class */
 		mask = hash->classes.n_slots - 1;
@@ -302,6 +324,8 @@ css_error css__selector_hash_remove(css_selector_hash *hash,
 
 		error = _remove_from_chain(hash, &hash->classes.slots[index],
 				selector);
+		if (error == CSS_OK)
+			hash->classes.n_entries--;
 	} else if (lwc_string_length(selector->data.qname.name) != 1 ||
 			lwc_string_data(selector->data.qname.name)[0] != '*') {
 		/* Named element */
@@ -310,6 +334,8 @@ css_error css__selector_hash_remove(css_selector_hash *hash,
 
 		error = _remove_from_chain(hash, &hash->elements.slots[index],
 				selector);
+		if (error == CSS_OK)
+			hash->elements.n_entries--;
 	} else {
 		/* Universal chain */
 		error = _remove_from_chain(hash, &hash->universal, selector);
@@ -780,6 +806,72 @@ static void print_chain_bloom_details(css_bloom bloom[CSS_BLOOM_SIZE])
 }
 #endif
 
+/* Onyx: a selector's element name (the element table's key) */
+static inline lwc_string *_element_name(const css_selector *selector)
+{
+	return selector->data.qname.name;
+}
+
+/* Onyx: the table made 8 times bigger once it holds 4 selectors a slot (see hash_t) -- each
+ * chain's entries go, in their order, to the ends of the new chains: a new chain takes the
+ * entries of one old chain only (its index's low bits are the old one), so stays sorted */
+static void _hash_grow(css_selector_hash *ctx, hash_t *t,
+		lwc_string *(*key)(const css_selector *))
+{
+	size_t n = t->n_slots * 8, i;
+	hash_entry *slots, *e, *next;
+
+	if (t->n_entries < t->n_slots * 4 || n > (1u << 20))
+		return;
+	slots = calloc(n, sizeof(hash_entry));
+	if (slots == NULL)
+		return;	/* (longer chains) */
+	for (i = 0; i < t->n_slots; i++) {
+		hash_entry *old = &t->slots[i];
+
+		if (old->sel == NULL)
+			continue;
+		for (e = old; e != NULL; e = next) {
+			hash_entry *h = &slots[_hash_name(key(e->sel)) & (n - 1)];
+
+			next = e->next;
+			if (h->sel == NULL) {
+				/* (the new chain's head: in the table) */
+				h->sel = e->sel;
+				memcpy(h->sel_chain_bloom, e->sel_chain_bloom,
+						sizeof(h->sel_chain_bloom));
+				h->next = NULL;
+				h->tail = h;
+				if (e != old) {
+					free(e);
+					ctx->hash_size -= sizeof(hash_entry);
+				}
+			} else {
+				hash_entry *x = e;
+				if (e == old) {
+					/* (the old head was in the old table) */
+					x = malloc(sizeof(hash_entry));
+					if (x == NULL) {
+						/* (out of memory: the selector lost
+						 * from this sheet's lookups -- as
+						 * the insertion failing) */
+						continue;
+					}
+					*x = *e;
+					ctx->hash_size += sizeof(hash_entry);
+				}
+				x->next = NULL;
+				h->tail->next = x;
+				h->tail = x;
+			}
+		}
+	}
+	free(t->slots);
+	ctx->hash_size += (n - t->n_slots) * sizeof(hash_entry);
+	t->slots = slots;
+	t->n_slots = n;
+}
+
 /**
  * Insert a selector into a hash chain
  *
@@ -795,6 +887,7 @@ css_error _insert_into_chain(css_selector_hash *ctx, hash_entry *head,
 	if (head->sel == NULL) {
 		head->sel = selector;
 		head->next = NULL;
+		head->tail = head;	/* (Onyx) */
 		_chain_bloom_generate(selector, head->sel_chain_bloom);
 
 #ifdef PRINT_CHAIN_BLOOM_DETAILS
@@ -807,6 +900,15 @@ css_error _insert_into_chain(css_selector_hash *ctx, hash_entry *head,
 		if (entry == NULL)
 			return CSS_NOMEM;
 
+		/* Onyx: after the chain's last entry, if it goes there (the chain
+		 * is sorted: the others are before too) */
+		if (head->tail != NULL && head->tail->next == NULL &&
+				(head->tail->sel->specificity < selector->specificity ||
+				(head->tail->sel->specificity == selector->specificity &&
+				head->tail->sel->rule->index <= selector->rule->index))) {
+			search = NULL;
+			prev = head->tail;
+		} else
 		/* Find place to insert entry */
 		do {
 			/* Sort by ascending specificity */
@@ -826,11 +928,15 @@ css_error _insert_into_chain(css_selector_hash *ctx, hash_entry *head,
 		if (prev == NULL) {
 			*entry = *head;
 			head->next = entry;
+			if (head->tail == head || head->tail == NULL)
+				head->tail = entry;	/* (Onyx) */
 
 			entry = head;
 		} else {
 			entry->next = prev->next;
 			prev->next = entry;
+			if (entry->next == NULL)
+				head->tail = entry;	/* (Onyx) */
 		}
 
 		entry->sel = selector;
@@ -889,6 +995,13 @@ css_error _remove_from_chain(css_selector_hash *ctx, hash_entry *head,
 
 		ctx->hash_size -= sizeof(hash_entry);
 	}
+
+	/* Onyx: the chain's last entry found again */
+	head->tail = NULL;
+	if (head->sel != NULL)
+		for (head->tail = head; head->tail->next != NULL;
+				head->tail = head->tail->next)
+			;
 
 	return CSS_OK;
 }

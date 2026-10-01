@@ -46,6 +46,14 @@ struct dom_nodelist {
 	} data;
 
 	uint32_t refcnt;		/**< Reference count */
+
+	/* Onyx: where the last item() stopped, good while no tree changed
+	 * (_dom_onyx_tree_gen) -- item(i + 1) goes on from there; each item(i) walked the
+	 * list from its start: a loop over the list, n^2 */
+	uint32_t onyx_gen;
+	uint32_t onyx_idx;
+	dom_node_internal *onyx_cur;
+	bool onyx_ok;
 };
 
 /**
@@ -124,6 +132,9 @@ dom_exception _dom_nodelist_create(dom_document *doc, nodelist_type type,
 	} 
 
 	l->refcnt = 1;
+	l->onyx_ok = false;	/* (Onyx) */
+	l->onyx_cur = NULL;
+	l->onyx_idx = l->onyx_gen = 0;
 
 	*list = l;
 
@@ -308,6 +319,13 @@ dom_exception _dom_nodelist_item(dom_nodelist *list,
 	dom_node_internal *cur = list->root->first_child;
 	uint32_t count = 0;
 
+	/* Onyx: on from the last item asked, if it is before this one */
+	if (list->onyx_ok && list->onyx_gen == _dom_onyx_tree_gen &&
+			index >= list->onyx_idx) {
+		cur = list->onyx_cur;
+		count = list->onyx_idx;
+	}
+
 	/* Traverse data structure */
 	while (cur != NULL) {
 		/* Process current node */
@@ -396,6 +414,11 @@ dom_exception _dom_nodelist_item(dom_nodelist *list,
 
 	if (cur != NULL) {
 		dom_node_ref(cur);
+		/* (Onyx: the cursor) */
+		list->onyx_ok = true;
+		list->onyx_gen = _dom_onyx_tree_gen;
+		list->onyx_idx = index;
+		list->onyx_cur = cur;
 	}
 	*node = (dom_node *) cur;
 

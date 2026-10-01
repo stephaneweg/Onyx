@@ -165,6 +165,7 @@ void _dom_element_onyx_set_owner(struct dom_element *e, struct dom_document *doc
 {
 	dom_attr_list *a = e->attributes;
 
+	_dom_onyx_id_unlink(e);	/* (its entry was the old document's) */
 	if (a == NULL)
 		return;
 	do {
@@ -172,6 +173,22 @@ void _dom_element_onyx_set_owner(struct dom_element *e, struct dom_document *doc
 			((dom_node_internal *) a->attr)->owner = doc;
 		a = _dom_element_attr_list_next(a);
 	} while (a != NULL && a != e->attributes);
+}
+
+/* Onyx: an attribute of e set, changed or removed -- the attribute counter moved on, e's
+ * getElementById entry made again (its id read again: document.c) */
+void _dom_element_onyx_attrs_changed(struct dom_element *e)
+{
+	dom_document *doc = e->base.owner;
+
+	_dom_onyx_attr_gen++;
+	if (doc != NULL && doc->onyx_ids != NULL) {
+		dom_string *id = NULL;
+		_dom_element_get_id(e, &id);
+		_dom_onyx_id_set(e, id);
+		if (id != NULL)
+			dom_string_unref(id);
+	}
 }
 
 /**
@@ -619,6 +636,7 @@ dom_exception _dom_element_initialise(struct dom_document *doc,
 
 	el->n_classes = 0;
 	el->classes = NULL;
+	el->onyx_id = NULL;	/* (Onyx) */
 
 	return DOM_NO_ERR;
 }
@@ -630,6 +648,8 @@ dom_exception _dom_element_initialise(struct dom_document *doc,
  */
 void _dom_element_finalise(struct dom_element *ele)
 {
+	_dom_onyx_id_unlink(ele);	/* (Onyx: out of getElementById's index) */
+
 	/* Destroy attributes attached to this node */
 	if (ele->attributes != NULL) {
 		_dom_element_attr_list_destroy(ele->attributes);
@@ -1596,6 +1616,7 @@ dom_exception _dom_element_copy_internal(dom_element *old, dom_element *new)
 
 	new->id_ns = NULL;
 	new->id_name = NULL;
+	new->onyx_id = NULL;	/* (Onyx: indexed when it is inserted) */
 
 	/* TODO: deal with dom_type_info, it get no definition ! */
 
@@ -1770,6 +1791,7 @@ dom_exception _dom_element_set_attr(struct dom_element *element,
 		else
 			_dom_element_attr_list_insert(element->attributes,
 					list_node);
+		_dom_element_onyx_attrs_changed(element);	/* (Onyx) */
 
 		dom_node_unref(attr);
 		dom_node_remove_pending(attr);
@@ -1834,6 +1856,7 @@ dom_exception _dom_element_remove_attr(struct dom_element *element,
 		}
 		_dom_element_attr_list_node_unlink(match);
 		_dom_element_attr_list_node_destroy(match);
+		_dom_element_onyx_attrs_changed(element);	/* (Onyx) */
 
 		/* Dispatch a DOMAttrModified event */
 		success = true;
@@ -1965,6 +1988,7 @@ dom_exception _dom_element_set_attr_node(struct dom_element *element,
 
 		_dom_element_attr_list_node_unlink(match);
 		_dom_element_attr_list_node_destroy(match);
+		_dom_element_onyx_attrs_changed(element);	/* (Onyx) */
 
 		/* Dispatch a DOMAttrModified event */
 		success = true;
@@ -2052,6 +2076,7 @@ dom_exception _dom_element_set_attr_node(struct dom_element *element,
 		element->attributes = match;
 	else
 		_dom_element_attr_list_insert(element->attributes, match);
+	_dom_element_onyx_attrs_changed(element);	/* (Onyx) */
 
 	return DOM_NO_ERR;
 }
@@ -2125,6 +2150,7 @@ dom_exception _dom_element_remove_attr_node(struct dom_element *element,
 	}
 	_dom_element_attr_list_node_unlink(match);
 	_dom_element_attr_list_node_destroy(match);
+	_dom_element_onyx_attrs_changed(element);	/* (Onyx) */
 
 	/* Now, cleaup the dom_string */
 	dom_string_unref(name);
@@ -2236,6 +2262,7 @@ dom_exception _dom_element_set_id_attr(struct dom_element *element,
 	}
 
 	_dom_attr_set_isid(match->attr, is_id);
+	_dom_element_onyx_attrs_changed(element);	/* (Onyx: its id is another attribute) */
 
 	return DOM_NO_ERR;
 }

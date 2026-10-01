@@ -72,7 +72,33 @@ struct dom_document {
 	dom_string *_memo_domsubtreemodified; /**< DOMSubtreeModified */
 
 	uint32_t dispatching_mutation; /**< Mutation event semaphore */
+
+	struct dom_onyx_idmap *onyx_ids; /**< Onyx: getElementById's index */
 };
+
+/* Onyx: getElementById's index (document.c) -- made at the first lookup, then kept by the
+ * insertions (an inserted subtree's ids) and the id attributes set; an entry is checked at
+ * the lookup (the element still has that id and is in the document), so the removals and the
+ * id changes need no work; an element keeps its one entry (dom_element.onyx_id), taken out
+ * when it is destroyed. A lookup was a walk of the whole tree (a page asking each of its n
+ * ids: n^2 / 2 element visits -- 2.7 s for 8000 on the PC). */
+struct dom_onyx_identry {
+	struct dom_onyx_identry *next, **pprev;	/**< In its bucket */
+	struct dom_onyx_idmap *map;
+	struct dom_element *ele;
+	uint32_t hash;				/**< Of the id it was indexed with */
+};
+struct dom_onyx_idmap {
+	struct dom_onyx_identry **b;		/**< Buckets (a power of 2) */
+	uint32_t nb, count;
+	bool lost;				/**< An entry not made (no memory) */
+};
+/* an element's id is now id (NULL: none) -- indexed if the document has an index */
+void _dom_onyx_id_set(struct dom_element *e, dom_string *id);
+/* the elements of the subtree rooted at n (just inserted) indexed */
+void _dom_onyx_id_index_tree(dom_node_internal *n);
+/* the element's entry taken out */
+void _dom_onyx_id_unlink(struct dom_element *e);
 
 /* Create a DOM document */
 dom_exception _dom_document_create(dom_events_default_action_fetcher daf,
