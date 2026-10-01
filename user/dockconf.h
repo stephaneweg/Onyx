@@ -123,11 +123,27 @@ static inline bool dockconf_save (const DockConf &c)
 	return kapi_save_file (DOCK_INI, o, (unsigned) p) >= 0;
 }
 
-// Tell the dock to read its settings (and the theme) again.
+// The dock takes its settings (and the theme) again: it is started again -- a dock that only read
+// dock.ini again (DOCK_MSG_RELOAD) showed a new drawer or launcher but did not always act on it
+// (a click started nothing, a new group was not seen); a new one has them all. Nothing when no
+// dock runs (the user may have taken it out of etc/autostart).
+static inline int dock_running (void)
+{
+	static char t[4096];
+	kapi_list_tasks (t, sizeof t);
+	for (const char *p = t; *p; )
+	{
+		const char *e = p; while (*e && *e != '\n') e++;
+		if (e - p == 7 && p[2] == ' ' && p[3] == 'd' && p[4] == 'o' && p[5] == 'c' && p[6] == 'k') return 1;
+		p = *e ? e + 1 : e;
+	}
+	return 0;
+}
 static inline void dock_reload (void)
 {
-	int pid = kapi_ipc_lookup (DOCK_SERVICE);
-	if (pid) kapi_mailbox_send (pid, DOCK_MSG_RELOAD, 0, 0);
+	if (!kapi_kill ("dock")) return;
+	for (int i = 0; i < 30 && dock_running (); i++) kapi_msleep (50);	// (gone, its service too)
+	kapi_launch ("dock");
 }
 
 #endif
