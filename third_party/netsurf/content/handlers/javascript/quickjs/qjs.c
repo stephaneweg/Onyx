@@ -174,6 +174,8 @@ struct jsthread {
 	bool worker;			/* Onyx: a worker's scripts (qjs_net.c): no document; its URL
 					 * in url_override */
 	struct jsthread *hnext;		/* Onyx: its heap's live list, then its zombie list */
+	uint64_t activated;		/* Onyx: ms of the user's last click / key in it (a frame
+					 * may then navigate its top window: qjs_frames.c) */
 	bool zombie;			/* Onyx: freed, its record kept: a realm of a shared heap
 					 * whose functions another frame may still call (each
 					 * native finds it closed) */
@@ -4434,6 +4436,9 @@ bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *targ
 		return true;
 	ctx = thread->ctx;
 	o = JS_NewObject(ctx);
+	if (init != NULL && (strcmp(type, "click") == 0 || strcmp(type, "mousedown") == 0 ||
+			strcmp(type, "keydown") == 0 || strcmp(type, "pointerdown") == 0))
+		thread->activated = qjs_now_ms();	/* (Onyx: the user's activation) */
 	if (init != NULL) {
 		int sx, sy;
 
@@ -4631,6 +4636,15 @@ struct browser_window *qjs_ctx_window(JSContext *ctx)
 	jsthread *t = QJS_T(ctx);
 
 	return (t == NULL || t->closed || t->worker) ? NULL : t->bw;
+}
+
+/* exported interface documented in qjs_frames.h */
+bool qjs_ctx_activated(JSContext *ctx, unsigned int ms)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return t != NULL && !t->closed && t->activated != 0 &&
+		qjs_now_ms() - t->activated <= ms;
 }
 
 /* exported interface documented in qjs_frames.h */

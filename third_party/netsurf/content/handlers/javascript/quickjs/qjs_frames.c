@@ -55,6 +55,7 @@
 #include "desktop/browser_private.h"
 #include "desktop/frames.h"
 #include "html/private.h"
+#include "javascript/js.h"
 
 #include "javascript/quickjs/qjs_canvas.h"	/* qjs_html_of, qjs_invoke, qjs_node_of */
 #include "javascript/quickjs/qjs_frames.h"
@@ -621,8 +622,31 @@ static JSValue n_frame_post(JSContext *ctx, JSValueConst this_val, int argc, JSV
 	return JS_UNDEFINED;
 }
 
+/** whether the caller may send another window elsewhere: its own frames (and theirs), a
+ *  same-origin window; an ancestor (top, parent: "frame busting") or another frame only with
+ *  the user's activation (a click or a key in the caller's document in the last 5 s), and
+ *  from a sandboxed frame only with allow-top-navigation -- Chrome's rules, simplified */
+static bool qf_may_navigate(JSContext *ctx, struct browser_window *target)
+{
+	struct browser_window *self = qjs_ctx_window(ctx), *a;
+
+	if (self == NULL)
+		return false;
+	for (a = target; a != NULL; a = a->parent)
+		if (a == self)
+			return true;
+	if ((self->onyx_sandbox & ONYX_SANDBOX) && !(self->onyx_sandbox & ONYX_SANDBOX_TOP))
+		return false;
+	if (qf_same_origin(ctx, target))
+		return true;
+	if (qjs_ctx_activated(ctx, 5000))
+		return true;
+	NSLOG(netsurf, INFO, "a frame's navigation of another window refused (no user activation)");
+	return false;
+}
+
 /** frameNavigate(id, url): another window sent to a URL (its location set: allowed across
- *  origins) */
+ *  origins, within qf_may_navigate's rules) */
 static JSValue n_frame_navigate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	struct browser_window *bw = onyx_frame_by_id(qf_int(ctx, argc, argv, 0));
@@ -631,8 +655,10 @@ static JSValue n_frame_navigate(JSContext *ctx, JSValueConst this_val, int argc,
 	nsurl *url = NULL;
 
 	(void) this_val;
-	if (bw == NULL || argc < 2 || (s = JS_ToCString(ctx, argv[1])) == NULL)
+	if (bw == NULL || argc < 2 || !qf_may_navigate(ctx, bw))
 		return JS_UNDEFINED;
+	if ((s = JS_ToCString(ctx, argv[1])) == NULL)
+		return JS_EXCEPTION;
 	if (htmlc != NULL)
 		nsurl_join(content_get_url(&htmlc->base), s, &url);
 	else
@@ -787,7 +813,16 @@ static JSValue n_port_close(JSContext *ctx, JSValueConst this_val, int argc, JSV
 	return JS_UNDEFINED;
 }
 
+/** isNode(v) -> whether v is a node's wrapper, of any realm (a same-origin frame's node is
+ *  not an instance of this realm's Node) */
+static JSValue n_is_node(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	(void) this_val;
+	return JS_NewBool(ctx, argc > 0 && qjs_node_of(argv[0]) != NULL);
+}
+
 static const JSCFunctionListEntry qf_natives[] = {
+	JS_CFUNC_DEF("isNode", 1, n_is_node),
 	JS_CFUNC_DEF("frameSelf", 0, n_frame_self),
 	JS_CFUNC_DEF("frameRel", 2, n_frame_rel),
 	JS_CFUNC_DEF("frameCount", 1, n_frame_count),
@@ -808,6 +843,36 @@ static const JSCFunctionListEntry qf_natives[] = {
 	JS_CFUNC_DEF("portQueue", 2, n_port_queue),
 	JS_CFUNC_DEF("portClose", 1, n_port_close),
 };
+
+/* exported interface documented in javascript/js.h */
+void js_frames_changed(jsthread *thread)
+{
+	JSContext *ctx = qjs_thread_context(thread);
+	struct browser_window *bw;
+	struct qf_ctx *c;
+	JSValue args[5], r;
+	int k, n = 0;
+
+	if (ctx == NULL || (c = qf_ctx_of(ctx, false)) == NULL || !JS_IsFunction(ctx, c->hook) ||
+	    (bw = qjs_ctx_window(ctx)) == NULL)
+		return;
+	args[1] = JS_NewArray(ctx);
+	for (k = 0; k < bw->iframe_count; k++)
+		if (bw->iframes[k]->name != NULL && bw->iframes[k]->name[0] != '\0')
+			JS_SetPropertyUint32(ctx, args[1], (uint32_t) n++,
+					JS_NewString(ctx, bw->iframes[k]->name));
+	args[0] = JS_NewInt32(ctx, 9);
+	args[2] = JS_NewInt32(ctx, 0);
+	args[3] = JS_NewString(ctx, "");
+	args[4] = JS_NewArray(ctx);
+	/* (called from a layout: no microtask checkpoint here -- only net.js' own code runs) */
+	r = JS_Call(ctx, c->hook, JS_UNDEFINED, 5, (JSValueConst *) args);
+	if (JS_IsException(r))
+		JS_FreeValue(ctx, JS_GetException(ctx));
+	JS_FreeValue(ctx, r);
+	for (k = 0; k < 5; k++)
+		JS_FreeValue(ctx, args[k]);
+}
 
 /* exported interface documented in qjs_frames.h */
 void qjs_frames_natives(JSContext *ctx, JSValueConst natives)

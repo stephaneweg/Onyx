@@ -44,7 +44,7 @@ L=$OUT/frames-api.log
 run "file://$(realpath $T/pages/frames-api.html)" "$(waits 400)" "$L"
 grep -a "^console: FAIL frames \|^JS " "$L" | sed 's/^console: /  /'
 n_ok=$(grep -a -c "^console: OK frames " "$L")
-if grep -a -q "^console: FAIL frames \|^JS " "$L" || ! grep -a -q "^console: frames done" "$L" || [ "$n_ok" -lt 50 ]; then
+if grep -a -q "^console: FAIL frames \|^JS " "$L" || ! grep -a -q "^console: frames done" "$L" || [ "$n_ok" -lt 54 ]; then
 	echo "  FAIL  ($n_ok checks passed: $L)"; fail=1
 else
 	echo "  ok: $n_ok checks"
@@ -79,7 +79,7 @@ for s in "recap ready anchor anchor" "recap ready bframe bframe" \
 	 "recap bframe anchor says hello anchor" "recap anchor clicked" "recap challenge shown" \
 	 "recap bframe challenge given" "recap bframe tile t0" "recap bframe verified" \
 	 "recap anchor solved tok-t0-ok" "recap anchor checked" "recap challenge hidden" \
-	 "recap callback tok-t0-ok" "recap textarea tok-t0-ok"; do
+	 "recap callback tok-t0-ok at /recaptcha-outer.html" "recap textarea tok-t0-ok"; do
 	expect "$L" "$s"
 done
 refuse "$L" "recap anchor got a message for another origin"

@@ -96,6 +96,7 @@ struct nsurl;
 #define ONYX_SANDBOX		1u	/**< a sandbox attribute */
 #define ONYX_SANDBOX_SCRIPTS	2u	/**< ... with allow-scripts */
 #define ONYX_SANDBOX_ORIGIN	4u	/**< ... with allow-same-origin */
+#define ONYX_SANDBOX_TOP	8u	/**< ... with allow-top-navigation(-by-user-activation) */
 
 /**
  * The frames of a document brought in line with its <iframe> elements.
@@ -126,6 +127,10 @@ void onyx_frame_content_done(struct browser_window *bw);
 
 /** true while a frame of the window has not loaded its document (its load waits) */
 bool onyx_frames_loading(struct browser_window *bw);
+
+/** a document destroyed: the frames of its elements still there (made while it loaded,
+ *  the load stopped) destroyed too */
+void onyx_frames_owner_gone(void *htmlc);
 
 /** a window's frame records released (its destruction) */
 void onyx_frame_release(struct browser_window *bw);

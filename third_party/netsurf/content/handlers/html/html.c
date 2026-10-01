@@ -1855,6 +1855,7 @@ static void html_destroy(struct content *c)
 	NSLOG(netsurf, INFO, "content %p", c);
 
 	onyx_webfont_release(html);	/* Onyx: its web fonts */
+	onyx_frames_owner_gone(html);	/* Onyx: the frames its scripts made while it loaded */
 	guit->misc->schedule(-1, html_rebox_scheduled, html);	/* (Onyx) */
 	guit->misc->schedule(-1, html_scroll_event, html);
 	guit->misc->schedule(-1, html_resize_event, html);

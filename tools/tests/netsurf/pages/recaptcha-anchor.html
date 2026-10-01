@@ -41,5 +41,7 @@ box.addEventListener('click', function () {
 	if (toPage) toPage.postMessage({ type: 'show', id: 'c' + Date.now() % 1000 });
 });
 parent.postMessage({ type: 'ready', role: 'anchor' }, co);
+/* a cross-origin frame cannot send its top window elsewhere without the user's click */
+try { top.location.href = location.origin + '/frame-child.html?n=busted'; } catch (x) { log('bust threw ' + x.name); }
 </script>
 </body></html>

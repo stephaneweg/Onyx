@@ -17,7 +17,7 @@ form { position: absolute; left: 20px; top: 20px }</style></head>
 'use strict';
 function log(s) { console.log('recap ' + s); }
 window.onRecaptcha = function (token) {
-	log('callback ' + token);
+	log('callback ' + token + ' at ' + location.pathname);
 	log('textarea ' + document.getElementById('g-recaptcha-response').value);
 };
 

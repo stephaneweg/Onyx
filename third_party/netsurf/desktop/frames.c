@@ -322,6 +322,37 @@ void onyx_frame_release(struct browser_window *bw)
 }
 
 /* exported function documented in desktop/frames.h */
+void onyx_frames_owner_gone(void *htmlc)
+{
+	for (;;) {
+		struct browser_window *f = NULL, *p;
+		int i;
+
+		for (i = 0; i < onyx_nfids && f == NULL; i++)
+			if (onyx_fids[i]->onyx_owner == htmlc)
+				f = onyx_fids[i];
+		if (f == NULL)
+			return;
+		f->onyx_owner = NULL;
+		p = f->parent;
+		if (p == NULL)
+			continue;
+		for (i = 0; i < p->iframe_count; i++)
+			if (p->iframes[i] == f) {
+				memmove(&p->iframes[i], &p->iframes[i + 1],
+						(p->iframe_count - i - 1) * sizeof(*p->iframes));
+				p->iframe_count--;
+				if (f->box != NULL)
+					f->box->iframe = NULL;
+				f->box = NULL;
+				browser_window_destroy_internal(f);
+				free(f);
+				break;
+			}
+	}
+}
+
+/* exported function documented in desktop/frames.h */
 struct nsurl *onyx_frames_srcdoc_base(struct nsurl *url)
 {
 	int i;
@@ -506,6 +537,8 @@ static void onyx_frame_update(struct browser_window *bw, html_content *htmlc,
 					f->onyx_sandbox |= ONYX_SANDBOX_SCRIPTS;
 				else if (strcasecmp(tok, "allow-same-origin") == 0)
 					f->onyx_sandbox |= ONYX_SANDBOX_ORIGIN;
+				else if (strncasecmp(tok, "allow-top-navigation", 20) == 0)
+					f->onyx_sandbox |= ONYX_SANDBOX_TOP;
 			}
 			free(sb);
 		}
@@ -654,6 +687,9 @@ nserror onyx_frames_sync(struct browser_window *bw, void *pw, bool remove)
 		free(bw->iframes);
 		bw->iframes = NULL;
 	}
+	/* the window's named frames (window[name]) for its scripts */
+	if (htmlc->jsthread != NULL)
+		js_frames_changed(htmlc->jsthread);
 	return NSERROR_OK;
 }
 

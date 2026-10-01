@@ -86,9 +86,18 @@ void js_destroyheap(jsheap *heap);
  * by js_destroyheap; the heap goes with the last.
  *
  * \param heap The heap to share (NULL: none)
- * eturn the heap
+ * 
+eturn the heap
  */
 jsheap *js_heap_share(jsheap *heap);
+
+/**
+ * Onyx: a document's frames changed (desktop/frames.c): its window's named frames
+ * (window[name], frames[name]) defined again for its scripts.
+ *
+ * \param thread The document's thread
+ */
+void js_frames_changed(jsthread *thread);
 
 /**
  * Create a new javascript thread

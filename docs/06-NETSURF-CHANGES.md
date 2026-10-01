@@ -2125,8 +2125,24 @@ each use what the window's document is now (it follows its navigations):
 
 `window.parent`, `top`, `length`, `frameElement` (same origin only), `name` (the frame's target
 name, settable), `window[0..31]` and `iframe.contentDocument` (same origin) are defined per
-document; `window.open(url, name)` to a frame's name navigates that frame (and `_self`,
-`_parent`, `_top`).
+document; the **named frames** -- `window[name]`, `frames[name]` (the consent managers' stubs
+look for `frames['__tcfapiLocator']`) -- are getters the frames' sync defines on the window
+below its own properties (`js_frames_changed`), and the WindowProxy finds them by name too;
+`window.open(url, name)` to a frame's name navigates that frame (and `_self`, `_parent`,
+`_top`). **Navigating another window** (its `location` set through the WindowProxy): its own
+frames and a same-origin window freely; an ancestor (top, parent: "frame busting") or another
+frame only within 5 s of the user's click or key in the caller's document, and from a sandboxed
+frame only with `allow-top-navigation` -- Chrome's rules, simplified (an ad frame cannot send
+the page elsewhere by itself).
+
+**Nodes between documents** (`dom.js`: `insertAdopting`): a node of another document -- the
+parent's element appended into a same-origin frame's document (ad verification scripts do so),
+a frame's node into the parent's, a DOMParser document's -- is adopted when it is inserted, as in
+browsers. libdom cannot move a node between documents (its import keeps the old document as the
+copy's owner, and the insertion then fails: "not a Node" / WRONG_DOCUMENT before), so the
+subtree is made again by the target document (elements with their attributes, texts, comments)
+and the original taken out of its parent; the copy is inserted and returned. Another realm's
+node is a node (`isNode`: `N.isNode`).
 
 **postMessage between windows** (`framePost`): the value written by QuickJS's serializer in the
 sender's realm and read in the receiver's (net.js' `toWire` / `fromWire` around it: Blob, File,
@@ -2152,7 +2168,7 @@ challenge frames talk so). **BroadcastChannel** reaches the same-origin document
 their workers (`qjs_net.c`: `n_broadcast` looked at a page's own workers only).
 
 **The tests** (`tools/tests/netsurf/iframetest.sh`, checked against Chromium headless for the
-same pages): `pages/frames-api.html` (50 checks: the parser's and a script's frames, srcdoc,
+same pages): `pages/frames-api.html` (52 checks: the parser's and a script's frames, srcdoc,
 about:blank written by its parent, a `src` changed, a frame removed (`closed`), the parent's DOM
 changed (the frame kept with its state), a frame in a frame talking to the top window, sibling
 frames, sandbox, the structured clone each way, the targetOrigin checks, ports in the transfer
@@ -2164,13 +2180,14 @@ hidden challenge frame as api.js does, the frames say they are ready, the page g
 and the two of them a channel of their own, the anchor's checkbox clicked shows the challenge,
 its tile and "Verify" clicked, the token goes to the anchor, then to the page, which fills the
 hidden `g-recaptcha-response` and calls the site's callback; the cross-origin limits checked
-both ways, a message for another origin dropped). Google's own reCAPTCHA is not touched by the
+both ways, a message for another origin dropped, the anchor's try at sending the page elsewhere
+refused). Google's own reCAPTCHA is not touched by the
 tests.
 
 **Not done**: a frame's initial about:blank is not there synchronously (a script that writes
 into `contentDocument` right after inserting the iframe finds null until it has loaded, a few ms
--- the built-ins above aside); `window.frames[name]` / `window[name]` for a frame's name (no
-named properties on the global object: `window.open('', name)` finds it); `document.domain`;
+-- the built-ins above aside); `document.domain`; a node adopted from another document is a
+copy (its listeners and form state stay on the original, which a script may still hold);
 `location.href` of a srcdoc document is its data: URL (Chrome: about:srcdoc); the frames share
 the tab's process and runtime (no site isolation: a cross-origin frame's long script holds the
 page, as it did); `loading="lazy"` frames load at once; focus does not move between frames by
@@ -2192,8 +2209,8 @@ window; MessagePort to a worker.
 - The network (§24): no revocation checks, no CSP, no SameSite cookies, no
   CORS for the core's loads (EventSource, fonts, `<img crossorigin>`, module scripts), no
   HTTP/3, no back-forward cache.
-- Frames (§26): a frame's initial about:blank is not there synchronously, no `window[name]`
-  for a frame's name, no `document.domain`, a srcdoc's `location.href` is its data: URL, no
+- Frames (§26): a frame's initial about:blank is not there synchronously, no
+  `document.domain`, a srcdoc's `location.href` is its data: URL, no
   focus moved between frames by script, `loading="lazy"` frames load at once, no frames in
   shadow trees.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's

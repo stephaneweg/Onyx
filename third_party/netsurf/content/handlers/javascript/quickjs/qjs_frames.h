@@ -33,6 +33,9 @@ void qjs_frames_stop(JSContext *ctx);
 /** the window whose document a context's scripts are (NULL: a worker's, or stopped) */
 struct browser_window *qjs_ctx_window(JSContext *ctx);
 
+/** whether the user clicked or typed in a context's document in the last ms milliseconds */
+bool qjs_ctx_activated(JSContext *ctx, unsigned int ms);
+
 /** a thread's context, NULL once its scripts stopped */
 JSContext *qjs_thread_context(struct jsthread *t);
 

@@ -1275,7 +1275,12 @@ if (!isWorker && typeof N.frameSelf === 'function' && N.frameSelf()) {
 				if (g && typeof g === 'object') {
 					const c = common(k);
 					if (c !== undefined) return c;
-					return Reflect.get(g, k, g);
+					const v = Reflect.get(g, k, g);
+					if (v === undefined && typeof k === 'string' && !(k in g)) {
+						const named = N.frameNamed(id, k);	/* (its named frames) */
+						if (named) return winFor(named);
+					}
+					return v;
 				}
 				if (g === false) return cross(k);
 				/* (no document running scripts yet -- a frame just inserted, its
@@ -1347,7 +1352,25 @@ if (!isWorker && typeof N.frameSelf === 'function' && N.frameSelf()) {
 	};
 
 	/* the messages to this realm: a window's (kind 5; 7: it could not be read), a port's (6, 8) */
+	/* window[name] / frames[name]: the named frames as properties of the window (below its own) */
+	const named = new Set();
+	const namedFrames = names => {
+		const want = new Set(names);
+		for (const k of named)
+			if (!want.has(k)) { named.delete(k); delete G[k]; }
+		for (const k of want) {
+			if (named.has(k) || isIndex(k) || Object.prototype.hasOwnProperty.call(G, k)) continue;
+			named.add(k);
+			Object.defineProperty(G, k, { configurable: true, enumerable: false,
+				get: () => winFor(N.frameNamed(SELF, k)) || undefined,
+				set(v) {
+					named.delete(k);
+					Object.defineProperty(G, k, { value: v, writable: true, configurable: true, enumerable: true });
+				} });
+		}
+	};
 	N.frameHook((kind, data, a, origin, ids) => {
+		if (kind === 9) { namedFrames(data); return; }
 		const ports = ids.map(portIn);
 		if (kind === 5 || kind === 7) {
 			const ev = kind === 5 ?

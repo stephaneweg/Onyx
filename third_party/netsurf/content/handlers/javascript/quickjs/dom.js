@@ -32,7 +32,8 @@ function def(obj, props) {
 }
 
 function lower(s) { return String(s).toLowerCase(); }
-function isNode(v) { return v instanceof Node; }
+/* (Onyx: or another realm's node -- a same-origin frame's: N.isNode, qjs_frames.c) */
+function isNode(v) { return v instanceof Node || (N.isNode !== undefined && N.isNode(v)); }
 function isElement(v) { return v instanceof Element; }
 
 /* ---- errors -------------------------------------------------------------------------- */
@@ -604,12 +605,49 @@ function toNode(v) {
 	return isNode(v) ? v : N.createText(String(v));
 }
 
+/* Onyx: a node of another document (another frame's, a DOMParser's) is adopted when it is
+ * inserted, as in browsers: libdom cannot move a node between documents (its import keeps the
+ * old document as the copy's owner), so the subtree is made again by the target document and
+ * the original taken out of its parent; the copy is inserted (and returned) */
+function recreateIn(doc, n) {
+	const t = N.type(n);
+	let c;
+	if (t === 1) {
+		c = N.createIn(doc, 'elementNS', N.nsURI(n), N.qname(n));
+		for (const a of N.attrsNS(n)) N.setAttrNS(c, a[2], a[0], a[1]);
+	} else if (t === 3) {
+		c = N.createIn(doc, 'text', N.value(n));
+	} else if (t === 8) {
+		c = N.createIn(doc, 'comment', N.value(n));
+	} else if (t === 11) {
+		c = N.createIn(doc, 'fragment');
+	} else {
+		throw new DOMException('This node cannot be adopted.', 'NotSupportedError');
+	}
+	for (const k of N.children(n)) N.insert(c, recreateIn(doc, k), null);
+	return c;
+}
+function insertAdopting(p, c, ref) {
+	try {
+		N.insert(p, c, ref);
+		return c;
+	} catch (e) {
+		if (N.type(c) === 9) throw e;
+		const doc = N.type(p) === 9 ? p : N.ownerDoc(p), own = N.ownerDoc(c);
+		if (!doc || !own || own === doc) throw e;
+		const copy = recreateIn(doc, c), old = N.parent(c);
+		if (old) N.remove(old, c);
+		N.insert(p, copy, ref);
+		return copy;
+	}
+}
+
 function nodesToNode(args) {
 	if (args.length === 1)
 		return toNode(args[0]);
 	const f = N.createFragment();
 	for (const a of args)
-		N.insert(f, toNode(a), null);
+		insertAdopting(f, toNode(a), null);
 	return f;
 }
 
@@ -681,11 +719,15 @@ class Node extends EventTarget {
 	insertBefore(c, ref) {
 		if (!isNode(c))
 			throw new TypeError('not a Node');
-		const added = N.type(c) === DOCUMENT_FRAGMENT_NODE ? N.children(c) : [c];
+		let added = N.type(c) === DOCUMENT_FRAGMENT_NODE ? N.children(c) : [c];
 		const oldParent = N.parent(c);
 		if (oldParent && observers.size)
 			childListRecord(oldParent, [], [c]);
-		N.insert(this, c, ref || null);
+		const ins = insertAdopting(this, c, ref || null);	/* (Onyx) */
+		if (ins !== c) {
+			c = ins;
+			added = N.type(c) === DOCUMENT_FRAGMENT_NODE ? N.children(c) : [c];
+		}
 		if (observers.size)
 			childListRecord(this, added, [], null, ref || null);
 		return c;

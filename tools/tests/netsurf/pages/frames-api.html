@@ -56,9 +56,21 @@ want('ready-a', function (e) {
 	ok('same-origin document', a.contentDocument !== null && a.contentDocument.getElementById('p').textContent === 'child' &&
 		w.document === a.contentDocument);
 	ok('child relatives', w.parent === window && w.top === window && w.frameElement === a && w.length === 0);
+	ok('named frame', window.fa === w && frames['fa'] === w && !('fa' in Object.keys(window)));
 	a.contentDocument.getElementById('p').textContent = 'changed';
 	ok('child DOM changed from here', w.document.getElementById('p').textContent === 'changed');
 	w.keep = 42;
+	/* nodes moved between the two documents (adopted) */
+	var el = document.createElement('b');
+	el.id = 'adopted';
+	el.textContent = 'from the parent';
+	var put = a.contentDocument.body.appendChild(el);
+	var found = a.contentDocument.getElementById('adopted');
+	ok('node adopted by the frame', found !== null && found.textContent === 'from the parent' &&
+		found.ownerDocument === a.contentDocument && put.ownerDocument === a.contentDocument && !document.getElementById('adopted'));
+	var back = document.body.appendChild(a.contentDocument.createElement('i'));
+	ok('frame node adopted here', back.ownerDocument === document && back.parentNode === document.body);
+	back.remove();
 	step2();
 });
 
@@ -169,6 +181,7 @@ function step6() {
 	document.body.appendChild(d);
 	w = d.contentWindow;
 	ok('dynamic window at once', w !== null && window.length === 4 && window[3] === w, window.length);
+	ok('fresh frame built-ins', typeof w.JSON.stringify === 'function' && w.Array.isArray([]) === true);
 }
 
 function step7() {
