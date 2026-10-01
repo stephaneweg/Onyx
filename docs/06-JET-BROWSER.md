@@ -3371,6 +3371,16 @@ of over a second; css3test.com / browserscore.dev (jQuery-free, many `getElement
 loops); a long `<select>`; the NS_PERF lines `js:forced-layout` and the scripts' time. Not tried on
 the Pi yet (the bench only); the Pi's `libdom.a`, `libcss.a` and the app need a rebuild.
 
+
+**The Pi's libraries and the headers (fixed after the audit).** `user/netsurf/Makefile` (the Pi's
+`libdom.a`, `libcss.a`...) did not track headers: the audit's new fields in libdom's
+`struct dom_document` (`src/core/document.h`) recompiled `document.c` but not the files only
+including it -- `html_document.c` and the HTML elements kept the old layout, and the Pi's Jet
+applied no style at all (not even its own pages'), while the PC bench (built from scratch) was
+right. The objects now carry their header lists (`-MMD -MP -MF <obj>.o.d`, included by the
+Makefile; ignored by git): a header changed rebuilds its users. libdom and libcss were rebuilt
+from scratch.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies

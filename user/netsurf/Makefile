@@ -59,8 +59,10 @@ ARCHIVES := $(foreach l,$(LIBS),$(NS)/$(l)/$(l).a) $(NS)/freetype-2.14.3/libfree
 all: $(ARCHIVES)
 
 # generic compile -- each object group sets its own -I via the target-specific CINC below.
+# -MMD -MP: each object's headers in its .o.d (included at the end) -- a struct changed in a header
+# rebuilds every file using it (without: objects of two layouts in one .a, the Pi's Jet broken)
 %.o: %.c
-	$(CC) $(CF) $(CINC) -c $< -o $@
+	$(CC) $(CF) $(CINC) -MMD -MP -MF $@.d -c $< -o $@
 
 # ---- leaf libraries (no codegen) ---------------------------------------
 WAP_OBJ := $(patsubst %.c,%.o,$(shell find $(NS)/libwapcaplet/src -name '*.c'))
@@ -192,5 +194,11 @@ clean:
 	rm -f $(ZSTD_OBJ) $(NGH_OBJ)
 	rm -f $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ)
 	rm -f $(QJS_OBJ) $(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ) $(ARCHIVES)
+	rm -f $(ALL_DEPS)
 	rm -f $(NS)/libcss/build/gen_parser $(CSS_AUTO_C)
 	rm -f $(NS)/libparserutils/src/charset/aliases.inc
+
+# the headers each object was built from (-MMD): a changed header rebuilds its users
+ALL_DEPS := $(patsubst %.o,%.o.d,$(ZSTD_OBJ) $(NGH_OBJ) $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ) $(QJS_OBJ) \
+	$(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ))
+-include $(wildcard $(ALL_DEPS))
