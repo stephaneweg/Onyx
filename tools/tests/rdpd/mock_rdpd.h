@@ -13,7 +13,13 @@
 #define KEY_RIGHT 0x103
 #define KAPI_WIN_KEYS 1
 #define KAPI_WIN_FULLSCREEN 2
+#define KAPI_WIN_MINIMISED 4
+#define KAPI_WIN_OFFDESK 8
 #define KAPI_WIN_DESKTOP 0xFFFFFFFFu
+#define WIN_FLAG_ALPHA 32
+#define WIN_FLAG_TOPMOST 4
+static inline unsigned kapi_clock_us (void) { struct timespec t; clock_gettime (CLOCK_MONOTONIC, &t); return (unsigned) (t.tv_sec * 1000000ull + t.tv_nsec / 1000); }
+static inline int kapi_write (int fd, const void *b, unsigned n) { (void) fd; fprintf (stderr, "%.*s\n", (int) n, (const char *) b); return (int) n; }
 struct kapi_win_info { unsigned id, pid; int x, y, w, h; unsigned flags; int alpha; unsigned gen, state; char title[48]; int ow, oh, il, it; unsigned chromeGen; };
 static int mock_lists;
 static unsigned mock_px (unsigned id, int part, int x, int y)

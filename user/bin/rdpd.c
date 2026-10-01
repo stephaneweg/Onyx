@@ -22,7 +22,7 @@
 // Protocol (TCP, little-endian). Hello: the server sends "ONYXRDP1", u16 screen w, h, u16 the
 // kernel's kapi version (below 56: no window can be listed -- an old kernel image); the
 // client answers "ONYXRDP1", u8 options (bit 0: 16-bit pixels, bit 1: no frames -- the client
-// shows the contents in native windows). Then messages:
+// shows the contents in native windows, bit 2: pipelined -- see below). Then messages:
 //   server -> client: u8 type, u32 length, payload
 //     1 WIN     u32 id, s16 x y (client area on the Pi's screen), u16 w h (client area),
 //               u16 ow oh il it (the whole window with its frame, the client area's place
@@ -38,6 +38,10 @@
 //     5 END     (one round of updates is complete: the client shows it, then asks again)
 //     8 SCREEN  u16 w h (the screen's new size: kapi_screen_set, kernel v66; an older client
 //               skips it)
+//     9 CAPS    u8 protocol (1), u8 rounds in flight (the window: sent once, first, only to a
+//               client that set option bit 2)
+//    10 PING    u32 the server's clock in ms (between rounds, never inside one; a client
+//               skips an unknown type, so an older one ignores it)
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
 //     2 PTR     u32 id, s16 x y (in the window's client area: negative on its frame, e.g.
@@ -50,6 +54,26 @@
 //               wallpaper + the backmost windows, screen-sized; off by default)
 //     4 RAISE   u32 id (the PC window got the focus: the Onyx window takes the keyboard)
 //     5 CLOSE   u32 id (its close box)
+//     8 PONG    u32 the PING's value echoed (pipelined clients only: an older rdpd would
+//               end the session on it)
+//
+// Rounds and credits. A round is sent only when something changed (no empty rounds: an idle
+// screen costs no traffic), and only while the server has credit: each READY gives one, each
+// round (... END) takes one. Lock-step (an older client): its first READY, then one per END
+// handled -- one round in flight. Pipelined (option bit 2): the server answers CAPS and counts
+// PIPE_ROUNDS - 1 more credits itself; the client still sends one READY per END handled, so up
+// to PIPE_ROUNDS rounds are in flight and one lost READY no longer stops the screen (its
+// following READYs, once TCP has the hole filled, catch up).
+// Loss recovery. Over a lossy link (Wi-Fi) a lost TCP segment is resent either after a timeout
+// (Circle: 1 s at least, doubling; Windows: ~300 ms, doubling) or, much sooner, once the sender
+// sees duplicate ACKs -- which only come when MORE data follows the lost segment. A lock-step
+// protocol is the worst case (each side sends one small message, then waits), so when a round
+// is in flight and nothing came back for PROBE_QUIET, rdpd sends a few small PINGs: if its own
+// last segment was lost they arrive out of order and the PC's dup ACKs make Circle resend it at
+// once; a pipelined client answers each with a PONG, whose segments do the same for a READY the
+// PC lost (Windows resends after the Pi's dup ACKs). A pipelined client also gets a PING every
+// 2 s while idle (it answers: the session is alive) and is dropped after SILENT_LIMIT without a
+// byte (a half-open connection: the PC gone) -- so a reconnecting client is accepted soon.
 //
 #include <stdlib.h>
 #include <stdio.h>
@@ -68,7 +92,7 @@ static struct {
 	unsigned t0, rounds, bytes, sends, partial, input;
 	unsigned send_us, send_max, round_us, round_max, read_us, lz_us;
 	unsigned ans_us, ans_max, ans_n, rect, px;
-	unsigned end_at;			// (kapi_clock_us when the last END went: 0 none pending)
+	unsigned stall_us, inflight_max, probes, ping_us, ping_max, ping_n, idle;
 } g_st;
 static void rdlog (const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 static void rdlog (const char *fmt, ...)
@@ -79,6 +103,20 @@ static void rdlog (const char *fmt, ...)
 	va_end (a);
 	if (n > 0) kapi_write (2, b, (unsigned) (n < (int) sizeof b ? n : (int) sizeof b - 1));
 }
+// rounds in flight: the window (1 lock-step, PIPE_ROUNDS pipelined), the credit left, the
+// send times of the ENDs not answered yet (oldest first: a READY answers the oldest)
+#define PIPE_ROUNDS	3
+#define PROBE_QUIET	250000u		// us: a round in flight and nothing heard -> probe
+#define PROBE_FAST	4		// ... that many PINGs PROBE_STEP apart, then one every PROBE_SLOW
+#define PROBE_STEP	50000u
+#define PROBE_SLOW	500000u
+#define IDLE_PING	2000000u	// us: a pipelined client idle -> a PING (liveness)
+#define SILENT_LIMIT	12000000u	// us: a pipelined client silent that long -> the session ends
+static int g_window, g_credit, g_endn;
+static unsigned g_endq[PIPE_ROUNDS];
+static unsigned g_lastRx, g_lastEnd, g_lastPing;
+static int g_probes;			// PINGs since the client was last heard
+
 static void stats_tick (int force)
 {
 	unsigned now = kapi_clock_us (), el = now - g_st.t0;
@@ -92,10 +130,12 @@ static void stats_tick (int force)
 		rdlog ("rdpd   read+cmp %ums lz4 %ums, %u rects %uKpx; client answer avg %ums max %ums; %u input",
 			g_st.read_us / 1000, g_st.lz_us / 1000, g_st.rect, g_st.px / 1000,
 			g_st.ans_n ? g_st.ans_us / g_st.ans_n / 1000 : 0, g_st.ans_max / 1000, g_st.input);
+		rdlog ("rdpd   credit %d of %d, in flight max %u, no credit %ums; %u idle checks, %u probes, ping avg %ums max %ums",
+			g_credit, g_window, g_st.inflight_max, g_st.stall_us / 1000, g_st.idle, g_st.probes,
+			g_st.ping_n ? g_st.ping_us / g_st.ping_n / 1000 : 0, g_st.ping_max / 1000);
 	}
-	unsigned end_at = g_st.end_at;
 	memset (&g_st, 0, sizeof g_st);
-	g_st.t0 = now; g_st.end_at = end_at;
+	g_st.t0 = now;
 }
 
 #define TILE		64
@@ -103,7 +143,8 @@ static void stats_tick (int force)
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
-static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop, g_noFrames;
+static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop, g_noFrames, g_pipe;
+static int g_roundMsgs;			// messages in this round but its END (0: nothing changed)
 
 // ---- output -------------------------------------------------------------------------------
 
@@ -121,8 +162,18 @@ static void flush_out (void)
 		g_st.sends++; g_st.send_us += t; if (t > g_st.send_max) g_st.send_max = t;
 		if (t > 500000u) rdlog ("rdpd: a send of %d bytes took %u ms (-> %d)", g_outlen - off, t / 1000, n);
 		if (n <= 0) { rdlog ("rdpd: send failed (%d): the session ends", n); g_dead = 1; break; }
-		if (n < g_outlen - off) g_st.partial++;
 		g_st.bytes += (unsigned) n;
+		if (n < g_outlen - off)
+		{
+			// A short count is an error part-way (the kernel's send: a 32 KB request whose
+			// Circle send timed out -- 5 s with its queue full -- after some of its segments
+			// were queued; those are NOT counted). Sending the rest again would put those bytes
+			// twice in the stream: the client would read garbage (a message cut, its fields
+			// out of range). The stream is lost: the session ends (the client reconnects).
+			g_st.partial++;
+			rdlog ("rdpd: a send stopped after %d of %d bytes (timed out?): the session ends", n, g_outlen - off);
+			g_dead = 1; break;
+		}
 		off += n;
 	}
 	g_outlen = 0;
@@ -142,7 +193,7 @@ static void put (const void *p, int n)
 static void put8 (unsigned v)  { unsigned char b = (unsigned char) v; put (&b, 1); }
 static void put16 (unsigned v) { unsigned char b[2] = { (unsigned char) v, (unsigned char) (v >> 8) }; put (b, 2); }
 static void put32 (unsigned v) { unsigned char b[4] = { (unsigned char) v, (unsigned char) (v >> 8), (unsigned char) (v >> 16), (unsigned char) (v >> 24) }; put (b, 4); }
-static void msg (unsigned type, unsigned len) { put8 (type); put32 (len); }
+static void msg (unsigned type, unsigned len) { if (type != 5 && type != 10) g_roundMsgs++; put8 (type); put32 (len); }
 
 // ---- input --------------------------------------------------------------------------------
 
@@ -151,9 +202,10 @@ static int g_inlen;
 
 static int fill_in (void)
 {
-	if (g_inlen >= (int) sizeof g_in) return 1;
+	if (g_inlen >= (int) sizeof g_in) { g_lastRx = kapi_clock_us (); return 1; }	// (full: the client is talking)
 	int n = kapi_tcp_recv (g_sock, g_in + g_inlen, (unsigned) ((int) sizeof g_in - g_inlen));
 	if (n < 0) return 0;
+	if (n > 0) { g_lastRx = kapi_clock_us (); g_probes = 0; }
 	g_inlen += n;
 	return 1;
 }
@@ -318,9 +370,11 @@ static void send_chrome (struct Win *w)
 	free (b);
 }
 
-// One round: what changed in the windows since the last one.
-static void round_send (void)
+// One round: what changed in the windows since the last one -> 1 sent, 0 nothing changed
+// (nothing sent: the credit is kept).
+static int round_send (void)
 {
+	g_roundMsgs = 0;
 	{								// the screen's new size (v66)
 		int w = g_W, h = g_H;
 		kapi_screen_size (&w, &h);
@@ -363,15 +417,49 @@ static void round_send (void)
 		for (int i = 0; i < n; i++) { put32 (L[i].id); g_order[i] = L[i].id; }
 		g_norder = n;
 	}
+	if (g_roundMsgs == 0) { g_outlen = 0; return 0; }		// (nothing put: an empty round)
 	msg (5, 0);
 	flush_out ();
-	g_st.end_at = kapi_clock_us ();
-	if (!g_st.end_at) g_st.end_at = 1;
+	g_lastEnd = kapi_clock_us ();
+	if (g_endn < PIPE_ROUNDS) g_endq[g_endn++] = g_lastEnd;
+	if ((unsigned) g_endn > g_st.inflight_max) g_st.inflight_max = (unsigned) g_endn;
+	return 1;
+}
+
+// A round in flight and the client quiet: PINGs (see the top); a pipelined client idle: one
+// every IDLE_PING.
+static void keepalive (unsigned now)
+{
+	unsigned from = g_endn && (int) (g_lastEnd - g_lastRx) > 0 ? g_lastEnd : g_lastRx;
+	int due = 0;
+	if (g_endn && now - from >= PROBE_QUIET)
+		due = g_probes == 0 || now - g_lastPing >= (g_probes < PROBE_FAST ? PROBE_STEP : PROBE_SLOW);
+	else if (g_pipe && now - g_lastRx >= IDLE_PING)
+		due = now - g_lastPing >= IDLE_PING;
+	if (!due) return;
+	msg (10, 4); put32 (now / 1000); flush_out ();
+	g_lastPing = now; g_probes++;
+	if (g_endn) g_st.probes++;
 }
 
 // ---- input: the pointer back on the Pi's screen -------------------------------------------
 
 static unsigned g_btn;
+static unsigned char g_held[0x110];		// the held-key codes down (released when the session ends)
+
+static void held (int code, int down)
+{
+	if (code <= 0 || code >= (int) sizeof g_held) return;
+	g_held[code] = (unsigned char) (down != 0);
+	kapi_inject_key_held (code, down);
+}
+static void release_all (void)
+{
+	for (int i = 1; i < (int) sizeof g_held; i++) if (g_held[i]) kapi_inject_key_held (i, 0);
+	memset (g_held, 0, sizeof g_held);
+	if (g_mods) { g_mods = 0; g_ctrl = 0; kapi_inject_modifiers (0); }
+	if (g_btn) { kapi_inject_pointer (0, 0, 0, 0); g_btn = 0; }	// (no button left held)
+}
 
 static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 {
@@ -389,18 +477,24 @@ static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 static void session (void)
 {
 	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
+	memset (g_held, 0, sizeof g_held);
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
 	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (KT->version); flush_out ();
 	if (!need (9) || memcmp (g_in, "ONYXRDP1", 8) != 0) return;
-	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0;
+	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0; g_pipe = (g_in[8] & 4) != 0;
 	consume (9);
+	g_window = g_pipe ? PIPE_ROUNDS : 1;
+	g_credit = g_window - 1;			// (+ the client's first READY)
+	g_endn = 0; g_probes = 0;
+	g_lastRx = g_lastEnd = g_lastPing = kapi_clock_us ();
+	if (g_pipe) { msg (9, 2); put8 (1); put8 ((unsigned) g_window); flush_out (); }
 	memset (&g_st, 0, sizeof g_st); g_st.t0 = kapi_clock_us ();
-	rdlog ("rdpd: session start (%d bits a pixel%s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "");
-	int ready = 0;
-	unsigned last = kapi_get_ticks () - 100, wait = MIN_ROUND_TICKS;
+	rdlog ("rdpd: session start (%d bits a pixel%s, %s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "",
+	       g_pipe ? "pipelined: 3 rounds in flight" : "lock-step: an older client");
+	unsigned last = kapi_get_ticks () - 100, wait = MIN_ROUND_TICKS, loopAt = kapi_clock_us ();
 	while (!g_dead)
 	{
-		if (!fill_in ()) break;
+		if (!fill_in ()) { rdlog ("rdpd: the client closed the connection"); break; }
 		for (;;)
 		{
 			if (g_inlen < 1) break;
@@ -410,24 +504,35 @@ static void session (void)
 			else if (t == 3) len = 6;
 			else if (t == 4 || t == 5 || t == 6) len = 5;
 			else if (t == 7) len = 2;
-			else { g_dead = 1; break; }
+			else if (t == 8 && g_pipe) len = 5;
+			else { rdlog ("rdpd: unknown message %d: the session ends", t); g_dead = 1; break; }
 			if (g_inlen < len) break;
 			const unsigned char *m = g_in + 1;
-			if (t != 1) g_st.input++;
+			if (t != 1 && t != 8) g_st.input++;
 			if (t == 1)
 			{
-				ready = 1;
-				if (g_st.end_at)
+				if (g_credit < g_window) g_credit++;
+				if (g_endn > 0)				// (it answers the oldest round in flight)
 				{
-					unsigned a = kapi_clock_us () - g_st.end_at;
+					unsigned a = kapi_clock_us () - g_endq[0];
 					g_st.ans_us += a; g_st.ans_n++; if (a > g_st.ans_max) g_st.ans_max = a;
 					if (a > 2000000u) rdlog ("rdpd: the client answered after %u ms", a / 1000);
-					g_st.end_at = 0;
+					memmove (g_endq, g_endq + 1, (size_t) (--g_endn) * sizeof g_endq[0]);
 				}
 			}
+			else if (t == 8)				// PONG: the round trip, retransmissions included
+			{
+				unsigned a = (kapi_clock_us () / 1000 - get32 (m)) * 1000;
+				if (a < 60000000u) { g_st.ping_us += a; g_st.ping_n++; if (a > g_st.ping_max) g_st.ping_max = a; }
+			}
 			else if (t == 2) pointer (get32 (m), (short) get16 (m + 4), (short) get16 (m + 6), m[8], (signed char) m[9]);
-			else if (t == 3 && (m[0] & 2)) { int hc = held_code (get32 (m + 1)); if (hc) kapi_inject_key_held (hc, m[0] & 1); }
-			else if (t == 3) key_event (m[0] & 1, get32 (m + 1));
+			else if (t == 3 && (m[0] & 2)) held (held_code (get32 (m + 1)), m[0] & 1);
+			else if (t == 3)
+			{
+				int hc = held_code (get32 (m + 1));
+				if (hc > 0 && hc < (int) sizeof g_held) g_held[hc] = (unsigned char) (m[0] & 1);
+				key_event (m[0] & 1, get32 (m + 1));
+			}
 			else if (t == 6) { unsigned c = get32 (m); char one[2] = { (char) c, 0 }; if (c > 0 && c < 256) kapi_inject_key (one); }
 			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) kapi_win_raise (get32 (m)); }
 			else if (t == 5) kapi_win_close (get32 (m));
@@ -435,24 +540,43 @@ static void session (void)
 			consume (len);
 		}
 		if (g_dead) break;
-		unsigned now = kapi_get_ticks ();
-		if (ready && (int) (now - last) >= (int) wait)
+		unsigned now = kapi_get_ticks (), us = kapi_clock_us ();
+		if (g_credit == 0) g_st.stall_us += us - loopAt;
+		loopAt = us;
+		if (g_credit > 0 && (int) (now - last) >= (int) wait)
 		{
-			ready = 0;
 			unsigned tr = kapi_clock_us ();
-			round_send ();
+			int sent = round_send ();
 			tr = kapi_clock_us () - tr;
-			g_st.rounds++; g_st.round_us += tr; if (tr > g_st.round_max) g_st.round_max = tr;
-			if (tr > 1000000u) rdlog ("rdpd: a round took %u ms", tr / 1000);
+			if (sent)
+			{
+				g_credit--;
+				g_st.rounds++; g_st.round_us += tr; if (tr > g_st.round_max) g_st.round_max = tr;
+				if (tr > 1000000u) rdlog ("rdpd: a round took %u ms", tr / 1000);
+			}
+			else g_st.idle++;
 			unsigned took = kapi_get_ticks () - now;
 			wait = took * BUSY_FACTOR > MIN_ROUND_TICKS ? took * BUSY_FACTOR : MIN_ROUND_TICKS;
 			last = now;
+		}
+		if (g_dead) break;
+		us = kapi_clock_us ();
+		keepalive (us);
+		if (g_pipe && us - g_lastRx > SILENT_LIMIT)
+		{
+			if (!fill_in ()) break;			// (what came during a long send counts)
+			us = kapi_clock_us ();
+			if (us - g_lastRx > SILENT_LIMIT)
+			{
+				rdlog ("rdpd: the client was silent %u s: the session ends", (us - g_lastRx) / 1000000u);
+				break;
+			}
 		}
 		stats_tick (0);
 		kapi_msleep (5);
 	}
 	stats_tick (1);
-	if (g_btn) kapi_inject_pointer (0, 0, 0, 0);		// (no button left held)
+	release_all ();					// (no button, key or modifier left held)
 }
 
 int main (void)

@@ -161,6 +161,7 @@ namespace OnyxRemote
 		Overlay barDrop; int[] dropPx = new int[0];			// (the bar's drop-downs)
 		List<Overlay> stacked = new List<Overlay> ();					// (their order, bottom to top)
 		int rounds; DateTime since = DateTime.Now;
+		string link;						// (the connection lost: what is being done; null: connected)
 		static readonly string SettingsPath = Path.Combine (Environment.GetFolderPath (Environment.SpecialFolder.ApplicationData), "OnyxRemote.txt");
 
 		public MainForm ()
@@ -206,15 +207,32 @@ namespace OnyxRemote
 			}
 			catch { }
 			var tick = new Timer { Interval = 1000 };
-			tick.Tick += (s, e) =>
-			{
-				if (Conn == null) return;
-				double sec = (DateTime.Now - since).TotalSeconds;
-				if (Conn.KernelAbi < 56) status.Text = "The Onyx kernel is too old (kapi v" + Conn.KernelAbi + ", rdpd needs v56)";
-				else status.Text = string.Format ("{0}: {1} windows, {2:0.0} updates / s", host.Text, wins.Count, rounds / Math.Max (sec, 0.001));
-				rounds = 0; since = DateTime.Now;
-			};
+			tick.Tick += (s, e) => ShowStatus ();
 			tick.Start ();
+		}
+
+		// The status line, every second: the updates a second (rounds shown), how the rounds flow
+		// (pipelined, or lock-step with an older rdpd), the PINGs answered (the server's probes
+		// after a loss, its liveness checks), the reconnections; or, the connection lost, what is
+		// being done about it.
+		void ShowStatus ()
+		{
+			var c = Conn;
+			if (c == null) return;
+			double sec = (DateTime.Now - since).TotalSeconds;
+			if (link != null) status.Text = link;
+			else if (c.KernelAbi < 56) status.Text = "The Onyx kernel is too old (kapi v" + c.KernelAbi + ", rdpd needs v56)";
+			else
+			{
+				string s = string.Format ("{0}: {1} windows, {2:0.0} updates / s, ", host.Text, wins.Count, rounds / Math.Max (sec, 0.001));
+				s += c.Pipelined ? c.InFlight + " rounds in flight" : "lock-step (an older rdpd)";
+				if (c.Pings > 0) s += ", " + c.Pings + " pings";
+				if (c.Damaged > 0) s += ", " + c.Damaged + " damaged messages skipped";
+				if (c.Reconnects > 0) s += ", reconnected " + c.Reconnects + (c.Reconnects == 1 ? " time" : " times");
+				status.Text = s;
+			}
+			Text = link != null ? "Onyx Remote (reconnecting)" : "Onyx Remote";
+			rounds = 0; since = DateTime.Now;
 		}
 
 		// a telnet console on the Pi: its own window (the address typed, port 23 -- "host:port" for another)
@@ -237,9 +255,10 @@ namespace OnyxRemote
 			Refresh ();
 			try { c.Open (host.Text.Trim (), p, bits16.Checked, desktop.Checked, frames.Checked); }
 			catch (Exception e) { status.Text = "Cannot connect: " + e.Message; return; }
-			Conn = c;
-			c.RoundDone += () => BeginInvoke ((Action) (() => { if (Conn != c) return; Sync (); rounds++; c.Ready (); }));
+			Conn = c; link = null;
+			c.RoundDone += session => BeginInvoke ((Action) (() => { if (Conn != c) return; Sync (); rounds++; c.Ready (session); }));
 			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
+			c.LinkChanged += what => BeginInvoke ((Action) (() => { if (Conn != c) return; link = what; ShowStatus (); }));
 			go.Text = "Disconnect";
 			scroller.AutoScrollPosition = Point.Empty;
 			desk.Location = Point.Empty;
@@ -274,9 +293,11 @@ namespace OnyxRemote
 			Point p = Cursor.Position;
 			bool onEdge = p.Y <= scr.Top && p.X >= scr.Left && p.X < scr.Right;
 			bool onBar = fullBar.Visible && fullBar.Bounds.Contains (p);
-			if (onEdge || onBar || fullBar.Pinned) fullAway = DateTime.Now;
-			if (onEdge && !fullBar.Visible) fullBar.ShowOn (scr, host.Text.Trim ());
-			else if (fullBar.Visible && (DateTime.Now - fullAway).TotalMilliseconds > 1000) fullBar.Hide ();
+			bool lost = link != null;			// (reconnecting: the bar shows it)
+			if (onEdge || onBar || fullBar.Pinned || lost) fullAway = DateTime.Now;
+			string name = host.Text.Trim () + (lost ? " (reconnecting...)" : "");
+			if (fullBar.Visible && (DateTime.Now - fullAway).TotalMilliseconds > 1000) fullBar.Hide ();
+			else if (onEdge || lost || fullBar.Visible) fullBar.ShowOn (scr, name);
 		}
 
 		// F11: the full screen on and off (the keys go to the Pi otherwise)
@@ -363,7 +384,7 @@ namespace OnyxRemote
 			desk.Back = null; desk.Visible = false;
 			go.Text = "Connect";
 			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = true;
-			status.Text = why;
+			status.Text = why; link = null; Text = "Onyx Remote";
 		}
 
 		// An overlay where the Pi has its window (x, y on the Pi's screen, w x h), cut to the part of

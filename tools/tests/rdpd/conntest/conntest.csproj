@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- conntest: Onyx Remote's Connection (pc/OnyxRemote/Connection.cs, no WinForms in it) against
+       rdpd built for the PC (../build_host.sh). See Program.cs. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../pc/OnyxRemote/Connection.cs" />
+    <Compile Include="../../../../pc/OnyxRemote/Lz4.cs" />
+  </ItemGroup>
+</Project>
