@@ -309,20 +309,45 @@ static bool _dom_is_form_control(struct dom_node_internal *node, void *ctx)
 	assert(node->type == DOM_ELEMENT_NODE);
 	
         /* Form controls are INPUT TEXTAREA SELECT and BUTTON*/
+	/* (Onyx: their form owner -- the parser's association, else the nearest
+	 * ancestor form: a control a script made is its form's too) */
         if (dom_string_caseless_isequal(node->name,
 					doc->elements[DOM_HTML_ELEMENT_TYPE_INPUT]))
-		return ((dom_html_input_element *)node)->form == form;
+		return _dom_html_form_owner(node,
+				((dom_html_input_element *)node)->form) == form;
 	if (dom_string_caseless_isequal(node->name,
 					doc->elements[DOM_HTML_ELEMENT_TYPE_TEXTAREA]))
-		return ((dom_html_text_area_element *)node)->form == form;
+		return _dom_html_form_owner(node,
+				((dom_html_text_area_element *)node)->form) == form;
 	if (dom_string_caseless_isequal(node->name,
 					doc->elements[DOM_HTML_ELEMENT_TYPE_SELECT]))
-		return ((dom_html_select_element *)node)->form == form;
+		return _dom_html_form_owner(node,
+				((dom_html_select_element *)node)->form) == form;
 	if (dom_string_caseless_isequal(node->name,
 					doc->elements[DOM_HTML_ELEMENT_TYPE_BUTTON])) {
-		return ((dom_html_button_element *)node)->form == form;
+		return _dom_html_form_owner(node,
+				((dom_html_button_element *)node)->form) == form;
 	}
 
 	return false;
+}
+
+/* Onyx: documented in html_form_element.h */
+dom_html_form_element *_dom_html_form_owner(struct dom_node_internal *node,
+		dom_html_form_element *assoc)
+{
+	struct dom_html_document *doc =
+		(struct dom_html_document *)(node->owner);
+	struct dom_node_internal *p;
+
+	if (assoc != NULL || doc == NULL)
+		return assoc;
+	for (p = node->parent; p != NULL; p = p->parent) {
+		if (p->type == DOM_ELEMENT_NODE &&
+		    dom_string_caseless_isequal(p->name,
+				doc->elements[DOM_HTML_ELEMENT_TYPE_FORM]))
+			return (dom_html_form_element *) p;
+	}
+	return NULL;
 }
 

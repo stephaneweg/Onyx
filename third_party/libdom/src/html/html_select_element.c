@@ -12,6 +12,7 @@
 #include <dom/html/html_options_collection.h>
 
 #include "html/html_document.h"
+#include "html/html_form_element.h"
 #include "html/html_select_element.h"
 
 #include "core/node.h"
@@ -465,7 +466,9 @@ dom_exception dom_html_select_element_set_length(
 dom_exception dom_html_select_element_get_form(
 		dom_html_select_element *select, dom_html_form_element **form)
 {
-	*form = select->form;
+	/* (Onyx: else its nearest ancestor form -- a control a script made) */
+	*form = _dom_html_form_owner((struct dom_node_internal *) select,
+			select->form);
 
 	if (*form != NULL)
 		dom_node_ref(*form);

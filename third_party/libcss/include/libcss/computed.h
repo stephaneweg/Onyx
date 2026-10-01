@@ -483,6 +483,8 @@ uint8_t css_computed_stroke_dashoffset(const css_computed_style *style, css_fixe
 uint8_t css_computed_stroke_miterlimit(const css_computed_style *style, css_fixed *limit);
 uint8_t css_computed_stroke_dasharray(const css_computed_style *style, lwc_string **text);
 uint8_t css_computed_fill_rule(const css_computed_style *style);
+/* Onyx: pointer-events (CSS_POINTER_EVENTS_AUTO / _NONE) */
+uint8_t css_computed_pointer_events(const css_computed_style *style);
 uint8_t css_computed_stroke_linecap(const css_computed_style *style);
 uint8_t css_computed_stroke_linejoin(const css_computed_style *style);
 uint8_t css_computed_stop_color(const css_computed_style *style, css_color *color);

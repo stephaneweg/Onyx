@@ -205,6 +205,7 @@ enum css_properties_e {
 	CSS_PROP_ANIMATION_DIRECTION	= 0x0b7,
 	CSS_PROP_ANIMATION_FILL_MODE	= 0x0b8,
 	CSS_PROP_ANIMATION_PLAY_STATE	= 0x0b9,
+	CSS_PROP_POINTER_EVENTS		= 0x0ba,	/* Onyx */
 
 	CSS_N_PROPERTIES
 };
@@ -1122,6 +1123,14 @@ enum css_paint_e {
 enum css_stroke_width_e {
 	CSS_STROKE_WIDTH_INHERIT		= 0x0,
 	CSS_STROKE_WIDTH_SET			= 0x1
+};
+
+/* Onyx: pointer-events (auto; none: the box and its content not hit -- an overlay the
+ * clicks go through; SVG's values are auto) */
+enum css_pointer_events_e {
+	CSS_POINTER_EVENTS_INHERIT		= 0x0,
+	CSS_POINTER_EVENTS_AUTO			= 0x1,
+	CSS_POINTER_EVENTS_NONE			= 0x2
 };
 
 enum css_fill_rule_e {

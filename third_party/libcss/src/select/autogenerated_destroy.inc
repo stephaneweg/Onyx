@@ -134,6 +134,7 @@
 /* set_page_break_after(style, 0, 0, CSS_UNIT_PX); */
 /* set_page_break_before(style, 0, 0, CSS_UNIT_PX); */
 /* set_page_break_inside(style, 0, 0, CSS_UNIT_PX); */
+/* set_pointer_events(style, 0, 0, CSS_UNIT_PX); */
 /* set_position(style, 0, 0, CSS_UNIT_PX); */
 /* set_quotes(style, 0, 0, CSS_UNIT_PX); */
 /* set_right(style, 0, 0, CSS_UNIT_PX); */
