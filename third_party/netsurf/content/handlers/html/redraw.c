@@ -149,6 +149,72 @@ static struct box *html_redraw_find_bg_box(struct box *box)
 }
 
 /**
+ * Onyx (docs/06 §40): a text with the find's matches in it -- the text as ever, then each
+ * match on its colour (Chrome's: the current one orange, the others yellow), in black,
+ * clipped to the match.
+ */
+static bool
+onyx_find_redraw(const char *utf8_text, size_t utf8_len, int space,
+		 const plot_font_style_t *fstyle,
+		 const plot_font_style_t *plot_fstyle,
+		 int x, int y, int baseline, const struct rect *clip,
+		 int height, float scale,
+		 const struct content_textsearch_range *r, int n,
+		 const struct redraw_context *ctx)
+{
+	int i;
+
+	if (ctx->plot->text(ctx, plot_fstyle, x, y + baseline, utf8_text,
+			utf8_len) != NSERROR_OK)
+		return false;
+	for (i = 0; i < n; i++) {
+		plot_style_t fill = *plot_style_fill_white;
+		plot_font_style_t hl = *plot_fstyle;
+		unsigned s = r[i].start, e = r[i].end;
+		unsigned et = e > utf8_len ? utf8_len : e;
+		int sx = 0, ex = 0;
+		struct rect rc, cl;
+
+		if (s > utf8_len)
+			s = utf8_len;
+		if (guit->layout->width(fstyle, utf8_text, s, &sx) != NSERROR_OK)
+			sx = 0;
+		if (guit->layout->width(fstyle, utf8_text, et, &ex) != NSERROR_OK)
+			ex = 0;
+		if (e > utf8_len)
+			ex += space;	/* (the trailing space) */
+		if (scale != 1.0) {
+			sx *= scale;
+			ex *= scale;
+		}
+		if (ex <= sx)
+			continue;
+		fill.fill_colour = r[i].current ? 0x3296ff : 0x00ffff;
+		rc.x0 = x + sx;
+		rc.y0 = y;
+		rc.x1 = x + ex;
+		rc.y1 = y + height * scale;
+		if (ctx->plot->rectangle(ctx, &fill, &rc) != NSERROR_OK)
+			return false;
+		cl.x0 = max(rc.x0, clip->x0);
+		cl.y0 = clip->y0;
+		cl.x1 = min(rc.x1, clip->x1);
+		cl.y1 = clip->y1;
+		if (cl.x0 >= cl.x1)
+			continue;
+		hl.foreground = 0x000000;
+		hl.background = fill.fill_colour;
+		if (ctx->plot->clip(ctx, &cl) != NSERROR_OK ||
+		    ctx->plot->text(ctx, &hl, x, y + baseline, utf8_text,
+				utf8_len) != NSERROR_OK ||
+		    ctx->plot->clip(ctx, clip) != NSERROR_OK)
+			return false;
+	}
+	return true;
+}
+
+
+/**
  * Redraw a short text string, complete with highlighting
  * (for selection/search)
  *
@@ -211,15 +277,19 @@ text_redraw(const char *utf8_text,
 			highlighted = true;
 		}
 
-		/* what about the current search operation, if any? */
+		/* what about the current search operation, if any? (Onyx: all
+		 * of its matches in the text, each in its colour: §40) */
 		if (!highlighted &&
-		    (c->textsearch.context != NULL) &&
-		    content_textsearch_ishighlighted(c->textsearch.context,
-						     offset,
-						     offset + len,
-						     &start_idx,
-						     &end_idx)) {
-			highlighted = true;
+		    (c->textsearch.context != NULL)) {
+			struct content_textsearch_range r[16];
+			int n = content_textsearch_onyx_ranges(
+					c->textsearch.context,
+					offset, offset + len, r, 16);
+			if (n > 0)
+				return onyx_find_redraw(utf8_text, utf8_len,
+						space, fstyle, &plot_fstyle,
+						x, y, baseline, clip, height,
+						scale, r, n, ctx);
 		}
 
 		/* \todo make search terms visible within selected text */

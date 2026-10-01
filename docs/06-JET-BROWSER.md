@@ -34,9 +34,9 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
-| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
+| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38; the find bar, the context menu: §40), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -3523,6 +3523,134 @@ address fields differ). Screenshots: `shots.sh jet` (`jet.png`, `jet-menu.png`, 
 **Not done.** Pause / resume, a download's speed and time left, opening the file or its folder
 from the menu; a per-page (not per-site) zoom; the status bar's text in the page's font (the
 toolbar's bitmap font: Latin-1, a link's other characters as `?`); Ctrl+Shift+= (US `+`).
+
+## 40. Find in page, copy and paste, the context menu (2026-10-01)
+
+The user: "a Ctrl+F; and a Ctrl+C to copy the selected text or a selected image (to paste it into
+Paint)". NetSurf has a free text search in its core and a text selection; Jet Browser had no way to
+reach the first, and the second copied into a buffer of the framebuffer frontend's own that no other
+app could read.
+
+![Find in page: the find bar, every match highlighted, the current one in orange](../screenshots/jet-find.png)
+
+**The find bar** (`FindBar`, onyx_chrome.cpp: 30 px above the status bar while shown -- the page that
+much shorter, a resize of the page as for the status bar): **Ctrl+F** (Edit ▸ Find in Page..., the
+context menu) shows it and focuses its field with its words selected; the field (`FindField`, a
+`LineEdit` -- the address field's editor, now shared: Latin-1, UTF-8 to the search and the clipboard)
+says **"3 of 17"** in its right end, or "No matches" with the field tinted red; **^ / v** buttons,
+**Match case**, **×**. Keys: **Enter** / **Shift+Enter** in the field, **F3** / **Shift+F3** and
+**Ctrl+G** / **Ctrl+Shift+G** anywhere (key_event, before the page); **Esc** in the field or × closes
+the bar and clears the highlights (its words kept: the next Ctrl+F finds them again). A new page loaded
+while the bar is open is searched again (`onyx_find_page_loaded`, from the status bar's "load ended",
+without moving the view).
+
+**The search** (frontends/framebuffer/onyx_edit.c, `onyx_browser_find`): `browser_window_search` with
+the words in UTF-8 -- a new search when the words, the case or the page changed (the same words again:
+cleared first, so a search starts at the first match), else a step. **Typed words are searched at
+once** while a search costs little; when the last one took more than 30 ms (a long page on the Pi)
+the next waits for a pause of 300 ms in the typing (`framebuffer_schedule`, replaced at each key).
+The core asks to scroll the current match into view (`CONTENT_MSG_SCROLL` -> `gui_window_set_scroll`,
+which put its top left corner at the view's): taken while a find runs (`onyx_find_take_scroll`) and
+done as Chrome does -- nothing when the match is all in view, else the match in the view's middle (the
+zoom's scale applied: the core's rectangle is in CSS px).
+
+**content/textsearch.c, rewritten for the Pi.** NetSurf kept the matches in a list, **each with a
+selection object** (`selection_create` + `selection_init`, a walk of the whole box tree to count its
+text, then `selection_set_position`, another walk to repaint it) -- a search for "e" on a long page
+was O(boxes × matches); and **each text box painted looked through every match**
+(`content_textsearch_ishighlighted`) -- again O(boxes × matches) per paint. Now:
+
+- the matches are an **array in document order** (the box walk finds them in order; one out of
+  order would be put in place), no selection objects;
+- a painted text's matches are found by a **binary search** (`content_textsearch_onyx_ranges`:
+  every match in the text -- NetSurf highlighted only the first --, the current one told apart);
+- a new search repaints **the matches' boxes** (the content's `textsearch_bounds`: `box_coords`, no
+  walk), or the whole content past 64 matches; a step repaints **the two current ones**; closing
+  repaints what was highlighted. With GPU compositing (§25) these are damage rectangles like any:
+  the band is painted again there (findtest.sh compares the composited frame with the CPU's);
+- the search is **literal** (NetSurf's `#` and `*` wildcards are gone: "C#" finds C#) and, unless
+  Match case, **ignores case and accents**: `fold_next` folds ASCII and Latin-1 letters to their
+  lower-case base letter (é è ê ë É -> e, ç -> c, ñ -> n, Œ -> œ), the typographic quotes to `'`
+  and `"`; the no-break space is a space either way. A match's bytes in the page may be longer or
+  shorter than the typed ones (é is two bytes, e one): the match's length is the page's;
+- a step **wraps around** at the ends (NetSurf stopped);
+- **a layout made after the search** (the page changed, the window resized, the find bar shown)
+  left the matches' boxes freed and their text offsets stale: html_reformat now bumps
+  `content->textsearch.layout_gen`; the matches are found again at the next paint, step or count
+  (`refresh_matches`, the current one kept at its place) and the bar told the new count (the core's
+  `CONTENT_TEXTSEARCH_MATCH` -> the frontend's `gui_search_table.status` -> the count, from the main
+  loop).
+
+The highlight (html/redraw.c, `onyx_find_redraw`): the text drawn as ever, then each match in it on
+**yellow** (`#ffff00`), the current one **orange** (`#ff9632`, Chrome's), the text in black clipped to
+the match. A selection still wins over a match (as before). Text in a plain-text page (textplain.c)
+is searched and highlighted as before (its first match a line, through the old call).
+
+Cost: the bench's 4000-paragraph page (88 000 "e"s): the search with its repaint requests 8 ms on the
+PC, so ~0.1 s on the Pi -- past 30 ms, the typing is then waited for; a paint's lookups are a binary
+search a text box.
+
+**The clipboard** (frontends/framebuffer/clipboard.c): the kernel's (`kapi_clipboard_set / _get`,
+`CLIP_TEXT`, UTF-8; 64 KB at most: a longer copy is cut at a character's start) both ways -- the
+core's copy of a selection (`selection_copy_to_clipboard`: Ctrl+C = `NS_KEY_COPY_SELECTION`, already
+mapped by `onyx_key_to_ucs4`) reaches every app, and the core's paste into a form's field (Ctrl+V,
+`NS_KEY_PASTE`) reads what another app copied; Ctrl+X, Ctrl+A in fields as before. **Edit ▸ Cut /
+Copy / Paste / Select All** send those keys where the keys go (the address field, the find field,
+else the page). The log: `ONYX-CLIPBOARD text <n> bytes`.
+
+**The context menu** (a right press on the page: `ptr_event` takes it -- the page does not get it,
+nor its release): `onyx_browser_context_menu` asks the core what is there
+(`browser_window_get_features`: a link, an object, a text field; `browser_window_get_editor_flags`:
+a selection, cut allowed) and the chrome shows wtk's `PopupMenu` (`onyx_chrome_context_menu`):
+
+| Under the pointer | Items |
+|---|---|
+| a link | Open Link, Save Link As... (`BW_NAVIGATE_DOWNLOAD`: §38's Save dialog), Copy Link Address |
+| an image | Open Image, Save Image As..., **Copy Image** (greyed for an image without pixels: SVG), Copy Image Address |
+| a text field | Cut, Copy (greyed without a selection), Paste (greyed without text on the clipboard), Select All |
+| selected text | Copy |
+| none of those | Back, Forward (greyed when not possible), Reload |
+| always | Select All, Find in Page... |
+
+Paste or Select All on a field without a selection first clicks it (the caret there). The menu is
+driven by the arrows and Enter too. The log: `ONYX-CONTEXT at x,y flags=...`, `... command n`.
+
+![The context menu of an image](../screenshots/jet-context.png)
+
+**Copy Image.** The kernel's clipboard holds 64 KB -- not a picture -- but Paint's Paste already reads
+**an image file copied** (`clip_get_file` + `img_is_image_name` + `img_load`: the File Viewer's
+Copy). So the image's **decoded bitmap** (as the page shows it: a GIF's current frame, the alpha
+kept; `content_get_bitmap`, the frontend's nsfb surface, R G B A bytes) is written as a **PNG**
+(img/pngsave.hpp's encoder, `onyx_chrome_save_png`: RGB when opaque) to **`RAM:/jet/clip/image-1.png`**
+or **`image-2.png`** in turn (the copy before stays readable while a new one is written; two files at
+most) and the clipboard set to that path (`CLIP_FILES`). In Paint, Ctrl+V pastes it as a floating
+selection. On **Windows** the pixels go to the Windows clipboard as a **DIB** (`CF_DIB`, laid on white:
+`onyx_win_clip_image`, pc/Jet/winkapi.cpp) -- Paint, Word, a mail take it; Windows' text clipboard
+(CF_UNICODETEXT) was already the kapi's.
+
+**Also fixed**: a page made shorter (the status bar shown again, now the find bar) left the
+horizontal scroll bar's arrows unpainted: the compositor's hole (§25: the canvas it writes itself)
+still covered the old page's height when the frame after the resize copied the back buffer --
+`gui_resize` now clears it (the next composite sets it again).
+
+**Tests.** `tools/tests/netsurf/findtest.sh` (`pages/jet-find.html`, `pages/jet-find.png`; the
+stand-in kernel's clipboard is real now: `SIM_CLIP` -- its text at the start, or `files:PATH` --,
+`SIM_CLIPFILE` -- each copy written there --, `SIM-CLIPBOARD type= len=` logged): the bar opened, the
+words found as typed ("c" 9, "cafe" 5: Café, cafe, CAFE, café, cafeteria), the highlights' pixels
+(yellow, orange), Enter / Shift+Enter / F3 / Shift+F3 around the ends, Match case (2), `a*b` and `#`
+literal, `l'ete` finding l’été, a match 3000 px down scrolled into view, Esc clearing, Ctrl+F finding
+the kept words again, the composited frame = the CPU's, a 4000-paragraph page's time; a line selected
+by a drag + Ctrl+C (its exact UTF-8), the menu's Copy, Copy Link Address, Copy Image (the PNG's
+pixels = the image's, alpha included; `image-1` / `image-2` in turn), **Paint** (the desktop
+simulator's build) pasting it with Ctrl+V, the menu's Paste into an unfocused field, Ctrl+V, Ctrl+A +
+Ctrl+C and Ctrl+X in a field. Screenshots: `shots.sh jet` (`jet-find.png`, `jet-context.png`).
+
+**Not done.** A search across a tag (`foo <b>bar</b>`: NetSurf searches each text box) and in a
+page's frames; a new search starts at the page's top (Chrome: after the view's top); the selection is
+not set to the current match on Esc; double / triple click to select a word / a line (NetSurf has
+neither); a drag past the end of a shrink-to-fit block's line selects nothing more (NetSurf's
+`box_pick_text_box` looks only inside the line's container); Copy Image of an SVG; Ctrl+C on a
+clicked image (Chrome does not either).
 
 ## 8. Known gaps
 

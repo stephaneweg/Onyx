@@ -945,8 +945,46 @@ static int clipboard_get (int *type, void *buf, unsigned cap, unsigned *serial)
 	std::string o; for (char c : u) if (c != '\r') o += c;
 	if (o.empty ()) return 0;
 	if (type) *type = 1;
-	memcpy (buf, o.data (), o.size () < cap ? o.size () : cap);
+	if (buf) memcpy (buf, o.data (), o.size () < cap ? o.size () : cap);
 	return (int) o.size ();
+}
+
+// Jet Browser's Copy Image (docs/06 §40, frontends/framebuffer/onyx_edit.c): the picture -- w x h pixels
+// 0xAARRGGBB -- on the Windows clipboard as a DIB (CF_DIB: 32-bit, bottom-up; Paint, Word, mail take it).
+// 1 done.
+extern "C" int onyx_win_clip_image (const unsigned *px, int w, int h)
+{
+	if (!px || w <= 0 || h <= 0) return 0;
+	SIZE_T bytes = sizeof (BITMAPINFOHEADER) + (SIZE_T) w * h * 4;
+	HGLOBAL g = GlobalAlloc (GMEM_MOVEABLE, bytes);
+	if (!g) return 0;
+	unsigned char *p = (unsigned char *) GlobalLock (g);
+	BITMAPINFOHEADER bi = {};
+	bi.biSize = sizeof bi; bi.biWidth = w; bi.biHeight = h;	// (positive: bottom-up)
+	bi.biPlanes = 1; bi.biBitCount = 32; bi.biCompression = BI_RGB;
+	bi.biSizeImage = (DWORD) ((SIZE_T) w * h * 4);
+	memcpy (p, &bi, sizeof bi);
+	unsigned *d = (unsigned *) (p + sizeof bi);
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++)
+		{
+			unsigned c = px[(size_t) (h - 1 - y) * w + x], a = c >> 24;
+			if (a != 255)		// (laid on white: CF_DIB's readers ignore the alpha)
+			{
+				unsigned r = (((c >> 16) & 255) * a + 255 * (255 - a)) / 255;
+				unsigned gg = (((c >> 8) & 255) * a + 255 * (255 - a)) / 255;
+				unsigned b = ((c & 255) * a + 255 * (255 - a)) / 255;
+				c = r << 16 | gg << 8 | b;
+			}
+			d[(size_t) y * w + x] = c | 0xFF000000u;	// (BGRA in memory: 0xAARRGGBB as a word)
+		}
+	GlobalUnlock (g);
+	if (!OpenClipboard (g_hwnd)) { GlobalFree (g); return 0; }
+	EmptyClipboard ();
+	bool ok = SetClipboardData (CF_DIB, g) != 0;
+	CloseClipboard ();
+	if (!ok) GlobalFree (g);
+	return ok ? 1 : 0;
 }
 
 // ---- the network (Winsock) ----------------------------------------------------------------------------------------------------

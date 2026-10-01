@@ -66,6 +66,7 @@
 #include "framebuffer/corewindow.h"
 #include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing */
 #include "framebuffer/onyx_download.h"	/* Onyx: the downloads (docs/06 §38) */
+#include "framebuffer/onyx_edit.h"	/* Onyx: find, the context menu (docs/06 §40) */
 #include "netsurf/onyx_jet.h"		/* Onyx: the zoom per site, the status bar */
 #include "html/onyx_anim.h"		/* Onyx: the window's state (onyx_anim_set_view_state) */
 
@@ -2157,6 +2158,9 @@ gui_window_set_scroll(struct gui_window *gw, const struct rect *rect)
 
 	assert(bwidget);
 
+	if (onyx_find_take_scroll(rect))
+		return NSERROR_OK;	/* Onyx: a find's match, shown by onyx_edit.c */
+
 	widget_scroll_x(gw, rect->x0, true);
 	widget_scroll_y(gw, rect->y0, true);
 
@@ -2541,6 +2545,7 @@ main(int argc, char** argv)
 		.layout = framebuffer_layout_table,
 		.llcache = onyx_llcache_table,	/* Onyx: the disc cache on the card */
 		.download = onyx_download_table,	/* Onyx: docs/06 §38 */
+		.search = onyx_search_table,	/* Onyx: find in page, docs/06 §40 */
 	};
 
         ret = netsurf_register(&framebuffer_table);
@@ -3007,6 +3012,33 @@ void onyx_browser_go(const char *text)
 	nsurl_unref(url);
 }
 
+/* Onyx (docs/06 §40, onyx_edit.c): the root window's view -- its scroll offsets (where it
+ * is going) and its size, device px */
+void onyx_view_get(int *sx, int *sy, int *w, int *h)
+{
+	struct browser_widget_s *bwidget;
+
+	if (window_list == NULL)
+		return;
+	bwidget = fbtk_get_userpw(window_list->browser);
+	if (sx != NULL)
+		*sx = bwidget->scrollx + bwidget->panx;
+	if (sy != NULL)
+		*sy = bwidget->scrolly + bwidget->pany;
+	if (w != NULL)
+		*w = fbtk_get_width(window_list->browser);
+	if (h != NULL)
+		*h = fbtk_get_height(window_list->browser);
+}
+
+void onyx_view_scroll(int sx, int sy)
+{
+	if (window_list == NULL)
+		return;
+	widget_scroll_x(window_list, sx, true);
+	widget_scroll_y(window_list, sy, true);
+}
+
 /* The page was covered (a pop-up of the window): draw it again. */
 void onyx_browser_redraw(void)
 {
@@ -3282,6 +3314,7 @@ static void onyx_status_stop(struct browser_window *bw)
 	} else {
 		onyx_chrome_set_state("Ready", 0);
 	}
+	onyx_find_page_loaded();	/* (a new page, the find bar open: its words found) */
 #ifdef ONYX_HOST_SIM	/* (the PC bench's log; not the Pi's kernel log at each page) */
 	printf("ONYX-STATUS %s\n", onyx_fail[0] ? onyx_fail : code >= 400 && code < 600 ?
 	       onyx_http_reason(code) : "Ready");
@@ -3447,6 +3480,10 @@ void gui_resize(fbtk_widget_t *root, int width, int height)
 				nsoption_int(fb_furniture_size));
 	}
 
+	/* Onyx: the composited view's hole (the canvas the compositor writes) was the old
+	 * page's -- a shorter page (the status bar, the find bar shown) left the scroll bar's
+	 * arrows out of the copies: none until the next composite (docs/06 §40) */
+	onyx_surface_hole(0, 0, 0, 0);
 	fbtk_request_redraw(root);
 }
 
