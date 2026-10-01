@@ -137,6 +137,7 @@ struct content_html_frames {
  */
 struct content_html_iframe {
 	struct box *box;
+	struct dom_node *node;	/** Onyx: its element (the frame kept by it: desktop/frames.c) */
 
 	int margin_width;	/** frame margin width */
 	int margin_height;	/** frame margin height */

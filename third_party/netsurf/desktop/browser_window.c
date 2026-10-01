@@ -379,7 +379,7 @@ static bool browser_window_check_throbber(struct browser_window *bw)
 
 	if (bw->iframes) {
 		for (index = 0; index < bw->iframe_count; index++) {
-			if (browser_window_check_throbber(&bw->iframes[index]))
+			if (browser_window_check_throbber(bw->iframes[index]))
 				return true;
 		}
 	}
@@ -966,6 +966,10 @@ browser_window_content_done(struct browser_window *bw)
 				     browser_window_refresh, bw);
 	}
 
+	/* Onyx: an iframe's document with no scripts (an image, text, scripts off): its
+	 * element's load event now (a page's: after its window's load, qjs.c) */
+	onyx_frame_content_done(bw);
+
 	return NSERROR_OK;
 }
 
@@ -1513,6 +1517,7 @@ browser_window_callback(hlcache_handle *c, const hlcache_event *event, void *pw)
 
 	case CONTENT_MSG_ERROR:
 		res = browser_window__handle_error(bw, c, event);
+		onyx_frame_loaded(bw);	/* (Onyx: a frame that failed is loaded too, as in Chrome) */
 		break;
 
 	case CONTENT_MSG_REDIRECT:
@@ -1609,6 +1614,10 @@ browser_window_callback(hlcache_handle *c, const hlcache_event *event, void *pw)
 			jsthread *thread;
 			assert(bw->loading_content == c);
 
+			/* Onyx: a sandboxed iframe without allow-scripts runs none */
+			if ((bw->onyx_sandbox & (ONYX_SANDBOX | ONYX_SANDBOX_SCRIPTS)) ==
+					ONYX_SANDBOX)
+				break;
 			if (js_newthread(bw->jsheap,
 					 bw,
 					 hlcache_handle_get_content(c),
@@ -1840,6 +1849,7 @@ nserror browser_window_destroy_internal(struct browser_window *bw)
 
 	browser_window_destroy_children(bw);
 	browser_window_destroy_iframes(bw);
+	onyx_frame_release(bw);	/* (Onyx: its frame id, its element) */
 
 	/* Destroy scrollbars */
 	if (bw->scroll_x != NULL) {
@@ -1965,7 +1975,7 @@ browser_window_set_scale_internal(struct browser_window *bw, float scale)
 
 	/* scale iframes */
 	for (i = 0; i < bw->iframe_count; i++) {
-		res = browser_window_set_scale_internal(&bw->iframes[i], scale);
+		res = browser_window_set_scale_internal(bw->iframes[i], scale);
 	}
 
 	return res;
@@ -2025,7 +2035,7 @@ browser_window_find_target_internal(struct browser_window *bw,
 
 	if (bw->iframes != NULL) {
 		for (i = 0; i < bw->iframe_count; i++) {
-			browser_window_find_target_internal(&bw->iframes[i],
+			browser_window_find_target_internal(bw->iframes[i],
 							    target,
 							    depth,
 							    page,
@@ -3195,10 +3205,13 @@ browser_window_initialise_common(enum browser_window_create_flags flags,
 	nserror err;
 	assert(bw);
 
-	/* new javascript context for each window/(i)frame */
-	err = js_newheap(nsoption_int(script_timeout), &bw->jsheap);
-	if (err != NSERROR_OK)
-		return err;
+	/* new javascript context for each window/(i)frame -- Onyx: an iframe's window
+	 * comes with its tab's (desktop/frames.c: js_heap_share) */
+	if (bw->jsheap == NULL) {
+		err = js_newheap(nsoption_int(script_timeout), &bw->jsheap);
+		if (err != NSERROR_OK)
+			return err;
+	}
 
 	if (flags & BW_CREATE_CLONE) {
 		assert(existing != NULL);
@@ -3460,6 +3473,7 @@ browser_window_navigate(struct browser_window *bw,
 	browser_window_remove_caret(bw, false);
 	browser_window_destroy_children(bw);
 	browser_window_destroy_iframes(bw);
+	bw->onyx_loaded = false;	/* (Onyx: its element's load event comes again) */
 
 	/* Set up the fetch parameters */
 	memset(&params, 0, sizeof(params));
@@ -4114,7 +4128,7 @@ void browser_window_stop(struct browser_window *bw)
 	if (bw->iframes) {
 		children = bw->iframe_count;
 		for (index = 0; index < children; index++)
-			browser_window_stop(&bw->iframes[index]);
+			browser_window_stop(bw->iframes[index]);
 	}
 
 	if (bw->current_content != NULL) {

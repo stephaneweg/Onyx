@@ -3212,12 +3212,19 @@ htmlClass('HTMLDialogElement', ['dialog'], class extends HTMLElement {
 });
 reflectBool(G.HTMLDialogElement.prototype, 'open');
 htmlClass('HTMLIFrameElement', ['iframe', 'frame'], class extends HTMLElement {
+	/* (Onyx: net.js gives the frame's WindowProxy and, same-origin, its document) */
 	get contentWindow() { return null; }
 	get contentDocument() { return null; }
+	get sandbox() { return new DOMTokenList(this, 'sandbox'); }
+	set sandbox(v) { this.setAttribute('sandbox', String(v)); }
+	getSVGDocument() { return null; }
 });
 reflectURL(G.HTMLIFrameElement.prototype, 'src');
-for (const k of ['name', 'width', 'height', 'allow', 'loading', 'srcdoc'])
+for (const k of ['name', 'width', 'height', 'allow', 'loading', 'srcdoc', 'referrerPolicy',
+		'scrolling', 'frameBorder', 'marginWidth', 'marginHeight', 'align', 'longDesc'])
 	reflectString(G.HTMLIFrameElement.prototype, k);
+reflectBool(G.HTMLIFrameElement.prototype, 'allowFullscreen');
+reflectBool(G.HTMLIFrameElement.prototype, 'credentialless');
 htmlClass('HTMLCanvasElement', ['canvas'], class extends HTMLElement {
 	getContext() { return null; }
 	toDataURL() { return 'data:,'; }

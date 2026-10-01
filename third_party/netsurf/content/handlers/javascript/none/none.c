@@ -46,6 +46,12 @@ void js_destroyheap(jsheap *heap)
 {
 }
 
+/* Onyx: as js.h asks */
+jsheap *js_heap_share(jsheap *heap)
+{
+	return heap;
+}
+
 nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **thread)
 {
 	*thread = NULL;

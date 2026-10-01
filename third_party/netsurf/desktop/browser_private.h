@@ -245,9 +245,21 @@ struct browser_window {
 	struct browser_window *children;
 	struct browser_window *parent;
 
-	/** [iframe_count] iframes */
+	/** [iframe_count] iframes -- Onyx: an array of pointers (each iframe's window its
+	 * own allocation: they are kept, added and removed one by one as the document's
+	 * <iframe> elements change, desktop/frames.c) */
 	int iframe_count;
-	struct browser_window *iframes;
+	struct browser_window **iframes;
+
+	/** Onyx: the browsing context's side (desktop/frames.c, javascript/quickjs/qjs_frames.c) */
+	int onyx_fid;			/**< its frame id for the scripts (0: none yet) */
+	struct dom_node *onyx_el;	/**< an iframe's element in its parent's document */
+	void *onyx_owner;		/**< ... that document's html content */
+	char *onyx_src;			/**< what it was last navigated for: "U:<url>" / "D:<srcdoc>" */
+	struct nsurl *onyx_srcdoc_url;	/**< a srcdoc frame's data: URL ... */
+	struct nsurl *onyx_srcdoc_base;	/**< ... and the base URL its document takes */
+	unsigned int onyx_sandbox;	/**< ONYX_SANDBOX_* (frames.h) */
+	bool onyx_loaded;		/**< its document loaded (its element's load event sent) */
 
 	/** browser window child of root browser window which has input focus */
 	struct browser_window *focus;

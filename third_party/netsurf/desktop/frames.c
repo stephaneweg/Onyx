@@ -36,6 +36,11 @@
 #include "html/html.h"
 #include "html/box.h"
 #include "html/box_inspect.h"
+#include "html/private.h"		/* Onyx: the document's iframes (onyx_frames_sync) */
+#include "utils/corestrings.h"
+#include "utils/nsurl.h"
+#include "javascript/js.h"
+#include <dom/dom.h>
 
 #include "desktop/browser_private.h"
 #include "desktop/frames.h"
@@ -60,7 +65,8 @@ void browser_window_scroll_callback(void *client_data,
 	switch(scrollbar_data->msg) {
 	case SCROLLBAR_MSG_MOVED:
 		if (bw->browser_window_type == BROWSER_WINDOW_IFRAME) {
-			html_redraw_a_box(bw->parent->current_content, bw->box);
+			browser_window_invalidate_iframe(bw);	/* (Onyx: no box: none) */
+			browser_window_scrolled(bw);	/* (Onyx: its scripts' scroll event) */
 		} else {
 			struct rect rect;
 
@@ -116,15 +122,13 @@ void browser_window_handle_scrollbars(struct browser_window *bw)
 		scroll_y = true;
 	} else if (bw->scrolling == BW_SCROLLING_AUTO &&
 			bw->current_content) {
-		int bw_width = bw->width;
-		int bw_height = bw->height;
-
-		/* subtract existing scrollbar width */
-		bw_width -= bw->scroll_y ? SCROLLBAR_WIDTH : 0;
-		bw_height -= bw->scroll_x ? SCROLLBAR_WIDTH : 0;
-
-		scroll_y = (c_height > bw_height) ? true : false;
-		scroll_x = (c_width > bw_width) ? true : false;
+		/* Onyx: decided from the content alone (the scrollbars it had before -- a
+		 * frame first laid out at another size -- kept one that was not needed any
+		 * more): a scrollbar takes room from the other direction only when there */
+		scroll_y = c_height > bw->height;
+		scroll_x = c_width > bw->width - (scroll_y ? SCROLLBAR_WIDTH : 0);
+		if (scroll_x && !scroll_y)
+			scroll_y = c_height > bw->height - SCROLLBAR_WIDTH;
 	} else {
 		/* No scrollbars */
 		scroll_x = false;
@@ -184,106 +188,21 @@ void browser_window_handle_scrollbars(struct browser_window *bw)
 /* exported function documented in desktop/frames.h */
 nserror browser_window_invalidate_iframe(struct browser_window *bw)
 {
-	html_redraw_a_box(bw->parent->current_content, bw->box);
+	/* Onyx: a frame whose element has no box (not shown) has nothing to redraw */
+	if (bw->box != NULL && bw->parent != NULL && bw->parent->current_content != NULL)
+		html_redraw_a_box(bw->parent->current_content, bw->box);
 	return NSERROR_OK;
 }
 
 /* exported function documented in desktop/frames.h */
 nserror browser_window_create_iframes(struct browser_window *bw)
 {
-	nserror ret = NSERROR_OK;
-	struct browser_window *window;
-	struct content_html_iframe *cur;
-	struct rect rect;
-	int iframes = 0;
-	int index;
-	struct content_html_iframe *iframe;
-
-	bw->iframe_count = 0;
-
-	/* only html contents can have iframes */
-	if (content_get_type(bw->current_content) != CONTENT_HTML) {
+	/* Onyx: the frames follow the document's <iframe> elements (onyx_frames_sync); the
+	 * ones its scripts made while it loaded are kept */
+	if (bw->current_content == NULL ||
+	    content_get_type(bw->current_content) != CONTENT_HTML)
 		return NSERROR_OK;
-	}
-
-	/* obtain the iframes for this content */
-	iframe = html_get_iframe(bw->current_content);
-	if (iframe == NULL) {
-		return NSERROR_OK;
-	}
-
-	/* Count iframe list and allocate enough space within the
-	 * browser window.
-	 */
-	for (cur = iframe; cur; cur = cur->next) {
-		iframes++;
-	}
-	bw->iframes = calloc(iframes, sizeof(*bw));
-	if (!bw->iframes) {
-		return NSERROR_NOMEM;
-	}
-	bw->iframe_count = iframes;
-
-	index = 0;
-	for (cur = iframe; cur; cur = cur->next) {
-		window = &(bw->iframes[index++]);
-
-		/* Initialise common parts */
-		browser_window_initialise_common(BW_CREATE_NONE,
-				window, NULL);
-
-		/* window characteristics */
-		window->browser_window_type = BROWSER_WINDOW_IFRAME;
-		window->scrolling = cur->scrolling;
-		window->border = cur->border;
-		window->border_colour = cur->border_colour;
-		window->no_resize = true;
-		window->margin_width = cur->margin_width;
-		window->margin_height = cur->margin_height;
-		window->scale = bw->scale;
-		if (cur->name != NULL) {
-			window->name = strdup(cur->name);
-			if (window->name == NULL) {
-				free(bw->iframes) ;
-				bw->iframes = 0;
-				bw->iframe_count = 0;
-				return NSERROR_NOMEM;
-			}
-		}
-
-		/* linking */
-		window->box = cur->box;
-		window->parent = bw;
-		window->box->iframe = window;
-
-		/* iframe dimensions */
-		box_bounds(window->box, &rect);
-
-		browser_window_set_position(window, rect.x0, rect.y0);
-		browser_window_set_dimensions(window, rect.x1 - rect.x0,
-				rect.y1 - rect.y0);
-	}
-
-	/* calculate dimensions */
-	browser_window_update_extent(bw);
-	browser_window_recalculate_iframes(bw);
-
-	index = 0;
-	for (cur = iframe; cur; cur = cur->next) {
-		window = &(bw->iframes[index++]);
-		if (cur->url) {
-			/* fetch iframe's content */
-			ret = browser_window_navigate(window,
-				cur->url,
-				hlcache_handle_get_url(bw->current_content),
-				BW_NAVIGATE_UNVERIFIABLE,
-				NULL,
-				NULL,
-				bw->current_content);
-		}
-	}
-
-	return ret;
+	return onyx_frames_sync(bw, hlcache_handle_get_content(bw->current_content), true);
 }
 
 
@@ -294,7 +213,7 @@ void browser_window_recalculate_iframes(struct browser_window *bw)
 	int index;
 
 	for (index = 0; index < bw->iframe_count; index++) {
-		window = &(bw->iframes[index]);
+		window = bw->iframes[index];
 
 		if (window != NULL) {
 			browser_window_handle_scrollbars(window);
@@ -309,18 +228,493 @@ nserror browser_window_destroy_iframes(struct browser_window *bw)
 	int i;
 
 	if (bw->iframes != NULL) {
-		for (i = 0; i < bw->iframe_count; i++) {
-			if (bw->iframes[i].box != NULL) {
-				bw->iframes[i].box->iframe = NULL;
-				bw->iframes[i].box = NULL;
-			}
-			browser_window_destroy_internal(&bw->iframes[i]);
-		}
-		free(bw->iframes);
+		struct browser_window **frames = bw->iframes;
+		int n = bw->iframe_count;
+
+		/* (Onyx: unlinked first: a frame's destruction may look at its siblings) */
 		bw->iframes = NULL;
 		bw->iframe_count = 0;
+		for (i = 0; i < n; i++) {
+			if (frames[i] == NULL)
+				continue;
+			if (frames[i]->box != NULL) {
+				frames[i]->box->iframe = NULL;
+				frames[i]->box = NULL;
+			}
+			browser_window_destroy_internal(frames[i]);
+			free(frames[i]);
+		}
+		free(frames);
 	}
 	return NSERROR_OK;
+}
+
+
+/* ---- Onyx: iframes as browsing contexts ------------------------------------------------
+ * A document's frames are its <iframe> elements -- all of them, shown or not (display:
+ * none, visibility: hidden: a hidden frame loads and runs as in Chrome), with a src, a
+ * srcdoc or neither (about:blank) --, each a browser window kept by its element. The box
+ * tree made again (html_rebox) only links the windows to the new boxes; a window is
+ * navigated when what its element asks for changes (src, srcdoc), destroyed when its
+ * element leaves the document. Each window has a frame id for the scripts. */
+
+static struct browser_window **onyx_fids;
+static int onyx_nfids, onyx_capfids, onyx_next_fid;
+
+/* exported function documented in desktop/frames.h */
+int onyx_frame_id(struct browser_window *bw)
+{
+	if (bw == NULL)
+		return 0;
+	if (bw->onyx_fid != 0)
+		return bw->onyx_fid;
+	if (onyx_nfids == onyx_capfids) {
+		int cap = onyx_capfids ? onyx_capfids * 2 : 32;
+		struct browser_window **a = realloc(onyx_fids, cap * sizeof(*a));
+		if (a == NULL)
+			return 0;
+		onyx_fids = a;
+		onyx_capfids = cap;
+	}
+	onyx_fids[onyx_nfids++] = bw;
+	bw->onyx_fid = ++onyx_next_fid;
+	return bw->onyx_fid;
+}
+
+/* exported function documented in desktop/frames.h */
+struct browser_window *onyx_frame_by_id(int fid)
+{
+	int i;
+
+	if (fid <= 0)
+		return NULL;
+	for (i = 0; i < onyx_nfids; i++)
+		if (onyx_fids[i]->onyx_fid == fid)
+			return onyx_fids[i];
+	return NULL;
+}
+
+/* exported function documented in desktop/frames.h */
+void onyx_frame_release(struct browser_window *bw)
+{
+	int i;
+
+	if (bw->onyx_fid != 0) {
+		for (i = 0; i < onyx_nfids; i++)
+			if (onyx_fids[i] == bw) {
+				onyx_fids[i] = onyx_fids[--onyx_nfids];
+				break;
+			}
+		bw->onyx_fid = 0;
+	}
+	if (bw->onyx_el != NULL) {
+		dom_node_unref(bw->onyx_el);
+		bw->onyx_el = NULL;
+	}
+	free(bw->onyx_src);
+	bw->onyx_src = NULL;
+	if (bw->onyx_srcdoc_url != NULL)
+		nsurl_unref(bw->onyx_srcdoc_url);
+	if (bw->onyx_srcdoc_base != NULL)
+		nsurl_unref(bw->onyx_srcdoc_base);
+	bw->onyx_srcdoc_url = bw->onyx_srcdoc_base = NULL;
+	bw->onyx_owner = NULL;
+}
+
+/* exported function documented in desktop/frames.h */
+struct nsurl *onyx_frames_srcdoc_base(struct nsurl *url)
+{
+	int i;
+
+	if (url == NULL)
+		return NULL;
+	for (i = 0; i < onyx_nfids; i++)
+		if (onyx_fids[i]->onyx_srcdoc_url != NULL &&
+		    nsurl_compare(onyx_fids[i]->onyx_srcdoc_url, url, NSURL_COMPLETE))
+			return onyx_fids[i]->onyx_srcdoc_base;
+	return NULL;
+}
+
+static dom_string *onyx_ds(dom_string **cache, const char *s)
+{
+	if (*cache == NULL)
+		dom_string_create_interned((const uint8_t *) s, strlen(s), cache);
+	return *cache;
+}
+static dom_string *onyx_ds_iframe, *onyx_ds_srcdoc, *onyx_ds_sandbox;
+
+/** an attribute's value as a C string (NULL: none); free() it */
+static char *onyx_attr(dom_node *el, dom_string *name)
+{
+	dom_string *s = NULL;
+	char *r;
+
+	if (name == NULL || dom_element_get_attribute(el, name, &s) != DOM_NO_ERR || s == NULL)
+		return NULL;
+	r = strndup(dom_string_data(s), dom_string_byte_length(s));
+	dom_string_unref(s);
+	return r;
+}
+
+/** a new frame for an element of the window's document */
+static struct browser_window *onyx_frame_new(struct browser_window *bw, html_content *htmlc,
+		dom_node *el)
+{
+	struct browser_window *f = calloc(1, sizeof(*f));
+
+	if (f == NULL)
+		return NULL;
+	/* the frames of a tab share its scripts' runtime: their windows reach each other
+	 * (same-origin access, postMessage, MessagePort) -- javascript/js.h */
+	f->jsheap = js_heap_share(bw->jsheap);
+	if (browser_window_initialise_common(BW_CREATE_NONE, f, NULL) != NSERROR_OK) {
+		browser_window_destroy_internal(f);
+		free(f);
+		return NULL;
+	}
+	f->browser_window_type = BROWSER_WINDOW_IFRAME;
+	f->scrolling = BW_SCROLLING_AUTO;
+	f->border = true;
+	f->no_resize = true;
+	f->scale = bw->scale;
+	f->parent = bw;
+	f->onyx_el = el;
+	dom_node_ref(el);
+	f->onyx_owner = htmlc;
+	/* (a frame with no box: the default size of an iframe, its document laid out at it) */
+	browser_window_set_dimensions(f, 300, 150);
+	onyx_frame_id(f);
+	return f;
+}
+
+/** true if a window up the frame's ancestors shows the URL (a frame of itself) */
+static bool onyx_frame_recursive(struct browser_window *f, nsurl *url)
+{
+	struct browser_window *a;
+	int depth = 0;
+
+	for (a = f->parent; a != NULL; a = a->parent) {
+		struct hlcache_handle *h = a->current_content != NULL ?
+				a->current_content : a->loading_content;
+		if (++depth > 10)
+			return true;
+		if (h != NULL && nsurl_compare(hlcache_handle_get_url(h), url,
+				NSURL_SCHEME | NSURL_HOST | NSURL_PORT | NSURL_PATH | NSURL_QUERY))
+			return true;
+	}
+	return false;
+}
+
+/** a srcdoc as a data: URL (its text percent-encoded) */
+static nsurl *onyx_srcdoc_url(const char *doc)
+{
+	static const char pre[] = "data:text/html;charset=utf-8,";
+	size_t n = strlen(doc), i, o = sizeof(pre) - 1;
+	char *s = malloc(o + n * 3 + 1);
+	nsurl *u = NULL;
+
+	if (s == NULL)
+		return NULL;
+	memcpy(s, pre, o);
+	for (i = 0; i < n; i++) {
+		unsigned char c = (unsigned char) doc[i];
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+		    c == '-' || c == '_' || c == '.' || c == '~') {
+			s[o++] = c;
+		} else {
+			s[o++] = '%';
+			s[o++] = "0123456789ABCDEF"[c >> 4];
+			s[o++] = "0123456789ABCDEF"[c & 15];
+		}
+	}
+	s[o] = '\0';
+	if (nsurl_create(s, &u) != NSERROR_OK)
+		u = NULL;
+	free(s);
+	return u;
+}
+
+/** the frame's name, sandbox and document as its element says; navigated if that changed */
+static void onyx_frame_update(struct browser_window *bw, html_content *htmlc,
+		struct browser_window *f, bool current)
+{
+	dom_node *el = f->onyx_el;
+	char *v, *key = NULL;
+	nsurl *url = NULL;
+	bool srcdoc = false;
+
+	/* its name (targets: <a target>, <form target>, window.frames[name]) */
+	v = onyx_attr(el, corestring_dom_name);
+	if (v != NULL && (f->name == NULL || strcmp(v, f->name) != 0)) {
+		free(f->name);
+		f->name = v;
+	} else {
+		free(v);
+	}
+
+	/* what its document is: the srcdoc, else the src, else about:blank */
+	v = onyx_attr(el, onyx_ds(&onyx_ds_srcdoc, "srcdoc"));
+	if (v != NULL) {
+		size_t n = strlen(v);
+		key = malloc(n + 3);
+		if (key != NULL) {
+			memcpy(key, "D:", 2);
+			memcpy(key + 2, v, n + 1);
+		}
+		srcdoc = true;
+	} else {
+		v = onyx_attr(el, corestring_dom_src);
+		if (v != NULL) {
+			char *p = v, *e = v + strlen(v);
+			while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == '\f')
+				p++;
+			while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\n' ||
+					e[-1] == '\r' || e[-1] == '\f'))
+				*--e = '\0';
+			if (*p != '\0' && htmlc->base_url != NULL &&
+			    nsurl_join(htmlc->base_url, p, &url) != NSERROR_OK)
+				url = NULL;
+		}
+		if (url == NULL)
+			url = nsurl_ref(corestring_nsurl_about_blank);
+		key = malloc(strlen(nsurl_access(url)) + 3);
+		if (key != NULL) {
+			memcpy(key, "U:", 2);
+			strcpy(key + 2, nsurl_access(url));
+		}
+	}
+	if (key == NULL || (f->onyx_src != NULL && strcmp(key, f->onyx_src) == 0)) {
+		free(key);
+		free(v);
+		if (url != NULL)
+			nsurl_unref(url);
+		return;
+	}
+	free(f->onyx_src);
+	f->onyx_src = key;
+
+	/* the sandbox, as it is when the frame is navigated */
+	{
+		char *sb = onyx_attr(el, onyx_ds(&onyx_ds_sandbox, "sandbox"));
+		f->onyx_sandbox = 0;
+		if (sb != NULL) {
+			char *tok, *save = NULL;
+			f->onyx_sandbox = ONYX_SANDBOX;
+			for (tok = strtok_r(sb, " \t\n\r\f", &save); tok != NULL;
+			     tok = strtok_r(NULL, " \t\n\r\f", &save)) {
+				if (strcasecmp(tok, "allow-scripts") == 0)
+					f->onyx_sandbox |= ONYX_SANDBOX_SCRIPTS;
+				else if (strcasecmp(tok, "allow-same-origin") == 0)
+					f->onyx_sandbox |= ONYX_SANDBOX_ORIGIN;
+			}
+			free(sb);
+		}
+	}
+
+	if (f->onyx_srcdoc_url != NULL)
+		nsurl_unref(f->onyx_srcdoc_url);
+	if (f->onyx_srcdoc_base != NULL)
+		nsurl_unref(f->onyx_srcdoc_base);
+	f->onyx_srcdoc_url = f->onyx_srcdoc_base = NULL;
+	if (srcdoc) {
+		url = onyx_srcdoc_url(v);
+		if (url != NULL) {
+			f->onyx_srcdoc_url = nsurl_ref(url);
+			f->onyx_srcdoc_base = nsurl_ref(htmlc->base_url != NULL ?
+					htmlc->base_url : content_get_url(&htmlc->base));
+		}
+	}
+	free(v);
+	if (url == NULL)
+		return;
+	if (!srcdoc && onyx_frame_recursive(f, url)) {
+		/* (a page in a frame of itself: left empty, as in Chrome) */
+		NSLOG(netsurf, INFO, "iframe of itself refused: %s", nsurl_access(url));
+		nsurl_unref(url);
+		url = nsurl_ref(corestring_nsurl_about_blank);
+	}
+	f->onyx_loaded = false;
+	browser_window_navigate(f, url, content_get_url(&htmlc->base),
+			BW_NAVIGATE_UNVERIFIABLE, NULL, NULL,
+			current ? bw->current_content : NULL);
+	nsurl_unref(url);
+}
+
+/** the frames linked to the boxes of their elements (the document laid out) */
+static void onyx_frames_link(struct browser_window *bw, html_content *htmlc)
+{
+	struct content_html_iframe *cur;
+	int k;
+
+	for (k = 0; k < bw->iframe_count; k++)
+		bw->iframes[k]->box = NULL;
+	for (cur = htmlc->iframe; cur != NULL; cur = cur->next) {
+		for (k = 0; k < bw->iframe_count; k++) {
+			struct browser_window *f = bw->iframes[k];
+			struct rect rect;
+
+			if (f->onyx_el != cur->node || cur->box == NULL)
+				continue;
+			f->box = cur->box;
+			cur->box->iframe = f;
+			f->scrolling = cur->scrolling;
+			f->border = cur->border;
+			f->border_colour = cur->border_colour;
+			f->margin_width = cur->margin_width;
+			f->margin_height = cur->margin_height;
+			box_bounds(cur->box, &rect);
+			browser_window_set_position(f, rect.x0, rect.y0);
+			browser_window_set_dimensions(f, rect.x1 - rect.x0, rect.y1 - rect.y0);
+			break;
+		}
+	}
+	browser_window_update_extent(bw);
+	browser_window_recalculate_iframes(bw);
+}
+
+/* exported function documented in desktop/frames.h */
+nserror onyx_frames_sync(struct browser_window *bw, void *pw, bool remove)
+{
+	html_content *htmlc = pw;
+	dom_nodelist *list = NULL;
+	struct browser_window **nf, **old;
+	uint32_t n = 0, i;
+	int nn = 0, nold, k;
+	bool current;
+
+	if (bw == NULL || htmlc == NULL || htmlc->document == NULL)
+		return NSERROR_OK;
+	current = bw->current_content != NULL &&
+		hlcache_handle_get_content(bw->current_content) == &htmlc->base;
+	if (onyx_ds(&onyx_ds_iframe, "iframe") != NULL &&
+	    dom_document_get_elements_by_tag_name(htmlc->document, onyx_ds_iframe,
+			&list) == DOM_NO_ERR && list != NULL)
+		dom_nodelist_get_length(list, &n);
+	if (n == 0 && bw->iframe_count == 0) {
+		if (list != NULL)
+			dom_nodelist_unref(list);
+		return NSERROR_OK;
+	}
+
+	/* the frames in the document's order: kept by element, made for new elements */
+	nf = calloc(n + bw->iframe_count + 1, sizeof(*nf));
+	if (nf == NULL) {
+		if (list != NULL)
+			dom_nodelist_unref(list);
+		return NSERROR_NOMEM;
+	}
+	old = bw->iframes;
+	nold = bw->iframe_count;
+	for (i = 0; i < n; i++) {
+		dom_node *el = NULL;
+		struct browser_window *f = NULL;
+
+		if (dom_nodelist_item(list, i, &el) != DOM_NO_ERR || el == NULL)
+			continue;
+		for (k = 0; k < nold; k++)
+			if (old[k] != NULL && old[k]->onyx_el == el) {
+				f = old[k];
+				old[k] = NULL;
+				break;
+			}
+		if (f == NULL)
+			f = onyx_frame_new(bw, htmlc, el);
+		if (f != NULL)
+			nf[nn++] = f;
+		dom_node_unref(el);
+	}
+	if (list != NULL)
+		dom_nodelist_unref(list);
+	/* the frames whose element left the document (kept when asked: a script's sync) */
+	for (k = 0; k < nold; k++) {
+		if (old[k] != NULL && !remove) {
+			nf[nn++] = old[k];
+			old[k] = NULL;
+		}
+	}
+	bw->iframes = nf;
+	bw->iframe_count = nn;
+	for (k = 0; k < nold; k++) {
+		if (old[k] == NULL)
+			continue;
+		if (old[k]->box != NULL)
+			old[k]->box->iframe = NULL;
+		old[k]->box = NULL;
+		browser_window_destroy_internal(old[k]);
+		free(old[k]);
+	}
+	free(old);
+
+	/* their boxes, then their documents */
+	if (current)
+		onyx_frames_link(bw, htmlc);
+	for (k = 0; k < bw->iframe_count; k++)
+		onyx_frame_update(bw, htmlc, bw->iframes[k], current);
+	if (bw->iframe_count == 0) {
+		free(bw->iframes);
+		bw->iframes = NULL;
+	}
+	return NSERROR_OK;
+}
+
+/* exported function documented in desktop/frames.h */
+struct browser_window *onyx_frame_for_element(struct browser_window *bw, void *htmlc,
+		struct dom_node *el)
+{
+	int k, pass;
+
+	if (bw == NULL || el == NULL)
+		return NULL;
+	for (pass = 0; pass < 2; pass++) {
+		for (k = 0; k < bw->iframe_count; k++)
+			if (bw->iframes[k]->onyx_el == el)
+				return bw->iframes[k];
+		/* (an element added since the last sync: its frame made now, as a script
+		 * expects contentWindow right after appendChild) */
+		if (pass == 0)
+			onyx_frames_sync(bw, htmlc, false);
+	}
+	return NULL;
+}
+
+/* exported function documented in desktop/frames.h */
+void onyx_frame_loaded(struct browser_window *bw)
+{
+	html_content *owner;
+
+	if (bw == NULL || bw->browser_window_type != BROWSER_WINDOW_IFRAME ||
+	    bw->onyx_loaded || bw->onyx_el == NULL)
+		return;
+	bw->onyx_loaded = true;
+	owner = bw->onyx_owner;
+	if (owner != NULL && owner->jsthread != NULL)
+		js_fire_event(owner->jsthread, "load", owner->document, bw->onyx_el);
+}
+
+/* exported function documented in desktop/frames.h */
+void onyx_frame_content_done(struct browser_window *bw)
+{
+	struct content *c;
+
+	if (bw->browser_window_type != BROWSER_WINDOW_IFRAME || bw->current_content == NULL)
+		return;
+	c = hlcache_handle_get_content(bw->current_content);
+	if (content_get_type(bw->current_content) != CONTENT_HTML ||
+	    ((html_content *) c)->jsthread == NULL)
+		onyx_frame_loaded(bw);
+}
+
+/* exported function documented in desktop/frames.h */
+bool onyx_frames_loading(struct browser_window *bw)
+{
+	int k;
+
+	if (bw == NULL)
+		return false;
+	for (k = 0; k < bw->iframe_count; k++)
+		if (!bw->iframes[k]->onyx_loaded)
+			return true;
+	return false;
 }
 
 
@@ -1028,7 +1422,7 @@ static bool browser_window_resize_frames(struct browser_window *bw,
 	}
 	if (bw->iframes) {
 		for (i = 0; i < bw->iframe_count; i++)
-			if (browser_window_resize_frames(&bw->iframes[i],
+			if (browser_window_resize_frames(bw->iframes[i],
 					mouse, x, y, pointer))
 				return true;
 	}

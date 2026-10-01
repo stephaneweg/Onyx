@@ -553,18 +553,14 @@ static void html_rebox(html_content *c)
 		return;
 	}
 
-	/* the iframes' windows were on the old boxes: made again on the new ones */
-	if ((old_iframes != NULL || c->iframe != NULL) && c->bw != NULL &&
-	    c->bw->current_content != NULL &&
-	    hlcache_handle_get_content(c->bw->current_content) == &c->base) {
-		browser_window_destroy_iframes(c->bw);
-		if (old_iframes != NULL)
-			html_destroy_iframe(old_iframes);
-		old_iframes = NULL;
-		browser_window_create_iframes(c->bw);
-	} else if (old_iframes != NULL) {
+	/* the iframes' windows were on the old boxes: linked to the new ones -- Onyx: kept
+	 * with their documents and scripts (by element: desktop/frames.c); the frames of the
+	 * elements a script removed go, the new ones come */
+	if (c->bw != NULL && c->bw->current_content != NULL &&
+	    hlcache_handle_get_content(c->bw->current_content) == &c->base)
+		onyx_frames_sync(c->bw, c, true);
+	if (old_iframes != NULL)
 		html_destroy_iframe(old_iframes);
-	}
 
 	html_object_free_list(c, old_objects);	/* (the ones not taken over) */
 	if (old_bctx != NULL)
@@ -1093,6 +1089,13 @@ html_create_html_data(html_content *c, const http_parameter *params)
 	c->quirks = DOM_DOCUMENT_QUIRKS_MODE_NONE;
 	c->encoding = NULL;
 	c->base_url = nsurl_ref(content_get_url(&c->base));
+	{	/* Onyx: an iframe's srcdoc (a data: URL) takes its parent's base URL */
+		nsurl *b = onyx_frames_srcdoc_base(c->base_url);
+		if (b != NULL) {
+			nsurl_unref(c->base_url);
+			c->base_url = nsurl_ref(b);
+		}
+	}
 	c->base_target = NULL;
 	c->aborted = false;
 	c->refresh = false;

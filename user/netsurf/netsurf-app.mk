@@ -71,7 +71,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_frames.c
 
 # ---- source lists (excludes documented in README.md) -------------------
 CORE_SRC := \
@@ -175,6 +175,9 @@ $(OUT)/qjsgen/qjs_net_js.h: $(JSQ)/net.js
 QNET_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_net.c))
 $(QNET_OBJ_NS): $(OUT)/qjsgen/qjs_net_js.h
 $(QNET_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(HERE)
+# Onyx: the frames' windows, postMessage between them, MessagePort across realms
+QFR_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_frames.c))
+$(QFR_OBJ_NS): INC += -I$(QJS)
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main

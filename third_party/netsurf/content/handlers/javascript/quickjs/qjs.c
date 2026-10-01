@@ -83,6 +83,8 @@
 #include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 #include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
+#include "javascript/quickjs/qjs_frames.h"	/* Onyx: the frames' windows (qjs_frames.c) */
+#include "desktop/frames.h"		/* Onyx: an iframe's load (onyx_frame_loaded) */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -96,6 +98,13 @@ struct jsheap {
 	uint64_t start;			/* ms: when the running script started */
 	int threads;
 	bool pending_destroy;
+	/* Onyx: a tab's iframes share its heap (js_heap_share): one runtime, the realms of
+	 * its frames reach each other's objects */
+	int refs;			/* its windows (js_destroyheap gives one back) */
+	bool shared;			/* ever shared: a thread's record outlives it (zombies) */
+	struct jsthread *live;		/* its threads (each one's hnext) */
+	struct jsthread *zombies;	/* the threads freed while their realm may still be
+					 * reached from another (freed with the heap) */
 };
 
 struct qjs_wrap {
@@ -164,6 +173,10 @@ struct jsthread {
 	JSValue modmissing;		/* the modules a moduleRun lacked: [url...] */
 	bool worker;			/* Onyx: a worker's scripts (qjs_net.c): no document; its URL
 					 * in url_override */
+	struct jsthread *hnext;		/* Onyx: its heap's live list, then its zombie list */
+	bool zombie;			/* Onyx: freed, its record kept: a realm of a shared heap
+					 * whose functions another frame may still call (each
+					 * native finds it closed) */
 };
 
 static JSClassID qjs_node_class;
@@ -298,6 +311,17 @@ static void qjs_leave(jsthread *t)
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
 			html_script_dom_changed(t->htmlc);
+	}
+	/* Onyx: the other frames' documents a script changed (a same-origin frame's DOM, or
+	 * their promises' jobs above: the runtime's queue is shared) */
+	if (t->heap != NULL && t->heap->shared) {
+		jsthread *o;
+		for (o = t->heap->live; o != NULL; o = o->hnext)
+			if (o != t && o->dirty && o->in_use == 0) {
+				o->dirty = false;
+				if (!o->closed && o->htmlc != NULL)
+					html_script_dom_changed(o->htmlc);
+			}
 	}
 	if (t->pending_destroy)
 		qjs_thread_free(t);
@@ -473,7 +497,7 @@ static JSValue qjs_wrap(jsthread *t, dom_node *n)
 	JSValue obj, proto;
 	size_t h;
 
-	if (n == NULL)
+	if (n == NULL || t->zombie)	/* (Onyx: a zombie has no wrappers any more) */
 		return JS_NULL;
 	if (t->capwraps != 0) {
 		for (h = qjs_hash(n, t->capwraps); t->wraps[h].node != NULL;
@@ -1445,6 +1469,10 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
 	if (t->bw != NULL && t->bw->window != NULL &&
 	    !guit->window->get_scroll(t->bw->window, sx, sy)) {
 		*sx = *sy = 0;
+	} else if (t->bw != NULL && t->bw->window == NULL) {
+		/* Onyx: an iframe's window (the core's): its scrollbars */
+		*sx = scrollbar_get_offset(t->bw->scroll_x);
+		*sy = scrollbar_get_offset(t->bw->scroll_y);
 	}
 }
 
@@ -1731,6 +1759,8 @@ static JSValue n_scroll(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	qjs_scroll(t, &sx, &sy);
 	if (t->bw != NULL && t->bw->window != NULL)
 		guit->window->get_dimensions(t->bw->window, &w, &h);
+	else if (t->bw != NULL)	/* (Onyx: an iframe's window: its size, innerWidth) */
+		browser_window_get_dimensions(t->bw, &w, &h);
 	if (t->htmlc != NULL && t->htmlc->layout != NULL) {
 		pw = t->htmlc->layout->descendant_x1;
 		ph = t->htmlc->layout->descendant_y1;
@@ -1758,6 +1788,12 @@ static JSValue n_scroll_to(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 		r.x0 = r.x1 = x < 0 ? 0 : x;
 		r.y0 = r.y1 = y < 0 ? 0 : y;
 		guit->window->set_scroll(t->bw->window, &r);
+	} else if (t->bw != NULL && !t->closed) {
+		/* Onyx: an iframe's window: its scrollbars (the scroll event comes from them) */
+		if (t->bw->scroll_x != NULL)
+			scrollbar_set(t->bw->scroll_x, x < 0 ? 0 : x, false);
+		if (t->bw->scroll_y != NULL)
+			scrollbar_set(t->bw->scroll_y, y < 0 ? 0 : y, false);
 	}
 	return JS_UNDEFINED;
 }
@@ -4059,6 +4095,7 @@ nserror js_newheap(int timeout, jsheap **heap)
 		return NSERROR_NOMEM;
 	}
 	h->timeout = timeout;
+	h->refs = 1;	/* (Onyx: js_heap_share) */
 	/* a script's recursion stopped (RangeError) past 4 MB of stack -- the Onyx app's is
 	 * 8 MB (its app.txt: stack = 8M), NetSurf's own frames below the JS */
 	JS_SetMaxStackSize(h->rt, 4 * 1024 * 1024);
@@ -4076,13 +4113,30 @@ nserror js_newheap(int timeout, jsheap **heap)
 static void qjs_heap_free(jsheap *h)
 {
 	JS_FreeRuntime(h->rt);
+	while (h->zombies != NULL) {	/* (Onyx) */
+		jsthread *z = h->zombies;
+		h->zombies = z->hnext;
+		free(z);
+	}
 	free(h);
+}
+
+/* exported interface documented in js.h */
+jsheap *js_heap_share(jsheap *heap)
+{
+	if (heap != NULL) {
+		heap->refs++;
+		heap->shared = true;
+	}
+	return heap;
 }
 
 /* exported interface documented in js.h */
 void js_destroyheap(jsheap *heap)
 {
 	if (heap == NULL)
+		return;
+	if (--heap->refs > 0)	/* (Onyx: still a frame's, js_heap_share) */
 		return;
 	if (heap->threads > 0) {
 		heap->pending_destroy = true;
@@ -4155,6 +4209,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	t->ce_hook = JS_UNDEFINED;	/* (Onyx: custom elements) */
 	t->shadow_proto = JS_UNDEFINED;	/* (Onyx: shadow DOM) */
 	heap->threads++;
+	t->hnext = heap->live;		/* (Onyx: the heap's threads) */
+	heap->live = t;
 
 	/* the prelude: a function of the natives, run once */
 	natives = JS_NewObject(t->ctx);
@@ -4164,6 +4220,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 			sizeof(qjs_natives_html5) / sizeof(qjs_natives_html5[0]));
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_shadow,	/* Onyx: shadow DOM */
 			sizeof(qjs_natives_shadow) / sizeof(qjs_natives_shadow[0]));
+	qjs_frames_natives(t->ctx, natives);	/* Onyx: the frames' windows (qjs_frames.c) */
 	qjs_enter(t);
 	uint64_t t_prelude = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
@@ -4211,6 +4268,7 @@ nserror js_closethread(jsthread *thread)
 	qjs_timers_stop(thread);
 	qjs_reqs_stop(thread);
 	qjs_net_stop(thread->ctx);	/* (Onyx: its sockets, streams, workers) */
+	qjs_frames_stop(thread->ctx);	/* (Onyx: its message hook, its ports) */
 	guit->misc->schedule(-1, qjs_load_later, thread);
 	return NSERROR_OK;
 }
@@ -4225,6 +4283,7 @@ static void qjs_thread_free(jsthread *t)
 	qjs_timers_stop(t);
 	qjs_reqs_stop(t);
 	qjs_net_stop(t->ctx);	/* (Onyx: its sockets, streams, workers) */
+	qjs_frames_stop(t->ctx);	/* (Onyx: its message hook, its ports) */
 	guit->misc->schedule(-1, qjs_load_later, t);
 	guit->misc->schedule(-1, qjs_ce_later, t);	/* (Onyx: custom elements) */
 	while (t->ce_npending > 0)
@@ -4249,7 +4308,39 @@ static void qjs_thread_free(jsthread *t)
 		dom_node_unref(t->doc);
 	if (t->url_override != NULL)
 		nsurl_unref(t->url_override);
-	free(t);
+	{	/* Onyx: out of the heap's live threads */
+		jsthread **pp;
+		for (pp = &heap->live; *pp != NULL; pp = &(*pp)->hnext)
+			if (*pp == t) {
+				*pp = t->hnext;
+				break;
+			}
+	}
+	if (heap->shared) {
+		/* Onyx: another frame may hold this realm's objects (its context lives on
+		 * while they do) and call its functions: their natives find a closed thread
+		 * with nothing in it, not freed memory -- the record goes with the heap */
+		t->zombie = true;
+		t->closed = true;
+		t->htmlc = NULL;
+		t->bw = NULL;
+		t->doc = NULL;
+		t->url_override = NULL;
+		t->wraps = NULL;
+		t->nwraps = t->capwraps = 0;
+		t->timers = NULL;
+		t->reqs = NULL;
+		t->ce_pending = NULL;
+		t->ce_npending = t->ce_cappending = 0;
+		for (k = 0; k < QP_COUNT; k++)
+			t->protos[k] = JS_UNDEFINED;
+		t->tag_protos = t->dispatch = t->modsrc = t->modmissing = JS_UNDEFINED;
+		t->ce_hook = t->shadow_proto = JS_UNDEFINED;
+		t->hnext = heap->zombies;
+		heap->zombies = t;
+	} else {
+		free(t);
+	}
 	heap->threads--;
 	if (heap->pending_destroy && heap->threads == 0)
 		qjs_heap_free(heap);
@@ -4442,7 +4533,15 @@ static void qjs_load_later(void *p)
 		guit->misc->schedule(50, qjs_load_later, t);
 		return;
 	}
+	/* Onyx: and its iframes' documents (a window's load comes after its frames') */
+	if (t->bw != NULL && onyx_frames_loading(t->bw) && ++t->load_waits < 600) {
+		guit->misc->schedule(50, qjs_load_later, t);
+		return;
+	}
 	js_dispatch_event(t, "onyx:complete", NULL, NULL);
+	/* Onyx: an iframe's document loaded: its element's load event in its parent */
+	if (!t->closed && t->bw != NULL)
+		onyx_frame_loaded(t->bw);
 }
 
 /* exported interface documented in js.h */
@@ -4522,6 +4621,32 @@ struct nsurl *qjs_ctx_url(JSContext *ctx)
 	if (t->url_override != NULL)
 		return t->url_override;
 	return t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+}
+
+/* ---- Onyx: what qjs_frames.c uses ------------------------------------------------------- */
+
+/* exported interface documented in qjs_frames.h */
+struct browser_window *qjs_ctx_window(JSContext *ctx)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return (t == NULL || t->closed || t->worker) ? NULL : t->bw;
+}
+
+/* exported interface documented in qjs_frames.h */
+JSContext *qjs_thread_context(struct jsthread *t)
+{
+	return (t == NULL || t->closed) ? NULL : t->ctx;
+}
+
+/* exported interface documented in qjs_frames.h */
+JSValue qjs_wrap_node(JSContext *ctx, struct dom_node *n)
+{
+	jsthread *t = QJS_T(ctx);
+
+	if (t == NULL || t->closed)
+		return JS_NULL;
+	return qjs_wrap(t, n);
 }
 
 /* exported interface documented in qjs_net.h */
