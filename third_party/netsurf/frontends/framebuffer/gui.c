@@ -3199,6 +3199,7 @@ void onyx_browser_set_status_bar(int shown)
 static bool onyx_loading;		/* a page loads (the throbber's) */
 static unsigned onyx_made0, onyx_ended0;	/* the fetcher's counts at its start */
 static char onyx_fail[200];		/* a fetch error of this load (about:query/fetcherror) */
+static char onyx_fail_url[512];		/* ... whose address (a frame's: not the page's) */
 void onyx_fetch_counts(unsigned *made, unsigned *ended);	/* user/netsurf/onyx_fetch.c */
 
 /* The reason phrase of an HTTP status (the RFC's; the response's own is not kept) */
@@ -3259,6 +3260,7 @@ static void onyx_status_start(void)
 {
 	onyx_loading = true;
 	onyx_fail[0] = '\0';
+	onyx_fail_url[0] = '\0';
 	onyx_fetch_counts(&onyx_made0, &onyx_ended0);
 	framebuffer_schedule(-1, onyx_status_progress, NULL);
 	onyx_status_progress(NULL);
@@ -3270,9 +3272,16 @@ static void onyx_status_stop(struct browser_window *bw)
 {
 	long code = onyx_browser_window_http_code(bw);
 	char text[256];
+	nsurl *at = bw != NULL ? browser_window_access_url(bw) : NULL;
+	const char *page = at != NULL ? nsurl_access(at) : "";
 
 	onyx_loading = false;
 	framebuffer_schedule(-1, onyx_status_progress, NULL);
+	/* only the page's own failure (its error page shown): a frame's or a resource's (an
+	 * iframe of a type not shown -- Acid3's svg.xml: "UnacceptableType") is not the page's */
+	if (onyx_fail[0] != '\0' && strncmp(page, "about:query/fetcherror", 22) != 0 &&
+			strcmp(page, onyx_fail_url) != 0)
+		onyx_fail[0] = '\0';
 	if (onyx_fail[0] != '\0') {
 		snprintf(text, sizeof text, "Error: %s", onyx_fail);
 		onyx_chrome_set_state(text, 1);
@@ -3292,7 +3301,7 @@ static void onyx_status_stop(struct browser_window *bw)
 /* (the core's hook: about:query/fetcherror shows why a page did not load) */
 static void onyx_status_fetch_error(const char *url, const char *reason)
 {
-	(void) url;
+	snprintf(onyx_fail_url, sizeof onyx_fail_url, "%s", url != NULL ? url : "");
 	snprintf(onyx_fail, sizeof onyx_fail, "%s", reason != NULL && reason[0] ? reason :
 		 "the page could not be loaded");
 }
