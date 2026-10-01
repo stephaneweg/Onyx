@@ -356,30 +356,47 @@ static inline void add_walk (const Archive &a, AddSet &s, const char *disk, cons
 	}
 	free (sub);
 }
-static inline void plan_add (const Archive &a, AddSet &s, const char *const *paths, int np, const char *into,
-			     bool keepFolders, bool replace)
+static inline void plan_begin (const Archive &a, AddSet &s)
 {
 	free (s.drop); s.drop = (char *) calloc ((size_t) (a.n ? a.n : 1), 1);
-	for (int i = 0; i < np; i++)
+}
+// One path of the disk (a file, or a folder: walked when `recurse`, else only its own entry) into
+// the archive's folder `into`
+static inline void plan_add_path (const Archive &a, AddSet &s, const char *path, const char *into, bool keepFolders,
+				  bool replace, bool recurse = true)
+{
+	char p[300]; scopy (p, path, sizeof p);
+	int pl = (int) strlen (p); while (pl > 1 && p[pl - 1] == '/' && p[pl - 2] != ':') p[--pl] = 0;
+	char an[600]; scopy (an, into, sizeof an);
+	if (an[0]) scat (an, "/", sizeof an);
+	scat (an, base_of (p), sizeof an);
+	if (path_is_dir (p))
 	{
-		char p[300]; scopy (p, paths[i], sizeof p);
-		int pl = (int) strlen (p); while (pl > 1 && p[pl - 1] == '/' && p[pl - 2] != ':') p[--pl] = 0;
-		char an[600]; scopy (an, into, sizeof an);
-		if (an[0]) scat (an, "/", sizeof an);
-		scat (an, base_of (p), sizeof an);
-		if (path_is_dir (p)) add_walk (a, s, p, an, keepFolders, replace, 0);
-		else
-		{
-			add_name (a, s, p, an, replace);
-			void *h = kapi_open (p); if (h) { s.bytes += kapi_fsize64 (h); kapi_close (h); }
-		}
+		if (recurse) add_walk (a, s, p, an, keepFolders, replace, 0);
+		else if (keepFolders) add_name (a, s, 0, an, replace);
 	}
-	// the kept entries go first (the old order), the new ones after
+	else
+	{
+		add_name (a, s, p, an, replace);
+		void *h = kapi_open (p); if (h) { s.bytes += kapi_fsize64 (h); kapi_close (h); }
+	}
+}
+// The plan made: the kept entries first (the old order), the new ones after
+static inline void plan_finish (const Archive &a, AddSet &s)
+{
 	Plan &pl = s.plan;
 	int *keep = 0; int nk = 0;
 	for (int i = 0; i < a.n; i++) if (!s.drop[i]) { keep = (int *) realloc (keep, sizeof (int) * (nk + 1)); keep[nk++] = i; }
+	free (pl.keep); for (int i = 0; i < pl.nkeep; i++) free (pl.rename[i]); free (pl.rename);
 	pl.keep = keep; pl.nkeep = nk;
 	pl.rename = (char **) calloc ((size_t) (nk ? nk : 1), sizeof (char *));
+}
+static inline void plan_add (const Archive &a, AddSet &s, const char *const *paths, int np, const char *into,
+			     bool keepFolders, bool replace)
+{
+	plan_begin (a, s);
+	for (int i = 0; i < np; i++) plan_add_path (a, s, paths[i], into, keepFolders, replace);
+	plan_finish (a, s);
 }
 // How many of the names given exist in the archive (to ask before adding)
 static inline int add_conflicts (const Archive &a, const char *const *paths, int np, const char *into, bool keepFolders)

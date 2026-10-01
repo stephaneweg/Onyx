@@ -1500,11 +1500,17 @@ docs/04 §9) is a **newlib** wtk app with FreeType text (`archiver.elf` in `user
 | `icons.h`, `widgets.h`, `dialogs.h` | The vector icons; the widgets (`ToolStrip` of large buttons, `PathBar` with its `SearchBox`, `FolderTree`, `EntryList` — multiple selection, sort, drag out, the drop's banner —, `InfoCard`, `StatusBar`, `Welcome`); the dialogs (Extract, Add, progress, exists, text, properties). |
 | `main.cpp` | The app: the jobs (a thread per job, `kapi_post` for the progress and the end, a question to the main thread answered through an event), drag & drop both ways, files opened into `RAM:` and watched to be put back, the menus. |
 
+`/bin/zip` and `/bin/unzip` (`user/bin/zip.cpp`, `unzip.cpp`, `arccli.h`: the command line split,
+patterns) are C++ newlib tools on the same engine (`ops.h`: `plan_begin` / `plan_add_path` /
+`plan_finish` give each path its own folder in the archive, one rewrite for all), linked with the
+vendored `third_party/zlib-1.3.1/libz.a` (`ARC_PROGS` in `user/bin/Makefile`).
+
 A job works on **its own instance** of the archive (opened again): the view keeps reading the old one
 until the job ends and the archive is read again from the disk. **Host test**:
 `sh tools/tests/run_archiver_test.sh` — `tools/tests/archiver/arctool.cpp` (the engine on the
 simulator's kapi) driven by `test.py`: archives made by Python's `zipfile` and the `zip` tool (stored,
-deflated, a self-extractor, ZipCrypto, UTF-8 names), every result checked by `zipfile` and `unzip -t`.
+deflated, a self-extractor, ZipCrypto, UTF-8 names), every result checked by `zipfile` and `unzip -t`;
+then `/bin/zip` and `/bin/unzip` built for the PC, driven by `cli_test.py`.
 The screenshots: `sh tools/tests/desktop_sim/shots.sh archiver` (a sample archive made by
 `arc_sample.py`).
 
