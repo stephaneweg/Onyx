@@ -135,6 +135,10 @@ NSOPTION_BOOL(author_level_css, true)
 /** Maximum time (in seconds) to wait for a script to run */
 NSOPTION_INTEGER(script_timeout, 10)
 
+/** Onyx: the scripts' JIT (QuickJS on AArch64, quickjs-jit.c): a function is compiled to
+ * machine code after this many calls; 0 (the default): the interpreter only */
+NSOPTION_INTEGER(js_jit, 0)
+
 /** How many days to retain URL data for */
 NSOPTION_INTEGER(expire_url, 28)
 

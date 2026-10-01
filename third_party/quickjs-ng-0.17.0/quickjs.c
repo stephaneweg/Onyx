@@ -54,6 +54,12 @@
 #define DIRECT_DISPATCH  1
 #endif
 
+/* Onyx: the baseline JIT (quickjs-jit.c): AArch64 (the Pi), with the direct dispatch its
+   single steps need; off until JS_SetJIT */
+#if defined(__aarch64__) && DIRECT_DISPATCH && !defined(CONFIG_QJS_NO_JIT)
+#define CONFIG_QJS_JIT 1
+#endif
+
 #if defined(__APPLE__)
 #define MALLOC_OVERHEAD  0
 #else
@@ -342,6 +348,10 @@ typedef struct JSClass {
 
 struct JSRuntime {
     JSMallocFunctions mf;
+#ifdef CONFIG_QJS_JIT
+    int jit_threshold; /* Onyx: calls before a function is compiled (0: no JIT) */
+    struct JitStep *jit_steps; /* Onyx: the JIT's steps under way (quickjs-jit.c) */
+#endif
     JSMallocState malloc_state;
     JSArenaState arena_state;
     const char *rt_info;
@@ -894,6 +904,10 @@ typedef struct JSFunctionBytecode {
     int pc2line_len;
     uint8_t *pc2line_buf;
     char *source;
+#ifdef CONFIG_QJS_JIT
+    void *jit_code; /* Onyx: the machine code (quickjs-jit.c), or NULL */
+    uint32_t jit_count; /* calls so far; UINT32_MAX: not compiled (failed) */
+#endif
 } JSFunctionBytecode;
 
 typedef struct JSBoundFunction {
@@ -8192,6 +8206,29 @@ static bool can_store_error_stack(JSValueConst obj)
 
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
+#ifdef CONFIG_QJS_JIT
+#define OP_JIT_STEP_END 255 /* (an invalid opcode: after a step's copy of its instruction) */
+/* a step's copy of its instruction (on the C stack; rt->jit_steps: the steps under way) */
+typedef struct JitStep {
+    struct JitStep *prev;
+    const uint8_t *real;  /* the instruction in the bytecode */
+    uint8_t copy[16];
+} JitStep;
+#endif
+
+/* Onyx: a frame's pc; one in a JIT step's copy of its instruction is that instruction's */
+static const uint8_t *js_frame_pc(JSRuntime *rt, const uint8_t *pc)
+{
+#ifdef CONFIG_QJS_JIT
+    JitStep *s;
+    for (s = rt->jit_steps; s != NULL; s = s->prev) {
+        if (pc >= s->copy && pc <= s->copy + sizeof(s->copy))
+            return s->real + (pc - s->copy);
+    }
+#endif
+    return pc;
+}
+
 static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                             JSValueConst filter_func, const char *filename,
                             int line_num, int col_num, int backtrace_flags)
@@ -8312,7 +8349,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                 int line_num1, col_num1;
                 uint32_t pc;
 
-                pc = sf->cur_pc - b->byte_code_buf - 1;
+                pc = js_frame_pc(ctx->rt, sf->cur_pc) - b->byte_code_buf - 1;
                 line_num1 = find_line_num(ctx, b, pc, &col_num1);
                 atom_str = b->filename ? JS_AtomToCString(ctx, b->filename) : NULL;
                 dbuf_printf(&dbuf, " (%s", atom_str ? atom_str : "<null>");
@@ -17851,6 +17888,24 @@ static void close_lexical_var(JSContext *ctx, JSFunctionBytecode *b,
 
 #define JS_CALL_FLAG_COPY_ARGV   (1 << 1)
 #define JS_CALL_FLAG_GENERATOR   (1 << 2)
+#define JS_CALL_FLAG_JIT_STEP    (1 << 4) /* Onyx: one instruction of the current frame */
+
+#ifdef CONFIG_QJS_JIT
+enum { JIT_RET, JIT_EXC, JIT_EXIT };
+/* where the machine code left the frame (not the interpreter's own sp / pc: their
+   addresses taken, the compiler would keep them in memory) */
+typedef struct JitOut {
+    JSValue *sp;
+    uint8_t *pc;
+    JSValue ret_val;
+} JitOut;
+static bool jit_should_compile(JSContext *ctx, JSFunctionBytecode *b);
+static int jit_enter(JSContext *caller_ctx, JSContext *ctx, JSStackFrame *sf,
+                     JSFunctionBytecode *b, JSValueConst this_obj,
+                     JSValueConst new_target, int argc, JSValueConst *argv,
+                     JSValue *sp, JitOut *out);
+static void jit_free_code(void *code);
+#endif
 
 static JSValue js_call_c_function(JSContext *ctx, JSValueConst func_obj,
                                   JSValueConst this_obj,
@@ -18071,6 +18126,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     JSValue *local_buf, *stack_buf, *var_buf, *arg_buf, *sp, ret_val, *pval;
     JSVarRef **var_refs;
     size_t alloca_size;
+#ifdef CONFIG_QJS_JIT
+    bool jit_step; /* Onyx: one instruction for the JIT (JS_CALL_FLAG_JIT_STEP) */
+#endif
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
 #define DUMP_BYTECODE_OR_DONT(pc) \
@@ -18097,6 +18155,26 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #define BREAK           SWITCH(pc)
 #endif
 
+#ifdef CONFIG_QJS_JIT
+    jit_step = false;
+    if (unlikely(flags & JS_CALL_FLAG_JIT_STEP)) {
+        /* Onyx: the instruction at sf->cur_pc of the running frame (a copy of it, followed
+           by OP_JIT_STEP_END: quickjs-jit.c's jh_step), its stack at sf->cur_sp (the
+           JIT's): after it, the same fields say where it left them */
+        jit_step = true;
+        sf = rt->current_stack_frame;
+        p = JS_VALUE_GET_OBJ(sf->cur_func);
+        b = p->u.func.function_bytecode;
+        ctx = b->realm;
+        var_refs = p->u.func.var_refs;
+        local_buf = arg_buf = sf->arg_buf;
+        var_buf = sf->var_buf;
+        stack_buf = var_buf + b->var_count;
+        sp = sf->cur_sp;
+        pc = sf->cur_pc;
+        goto *dispatch_table[opcode = *pc++];
+    }
+#endif
     if (js_poll_interrupts(caller_ctx))
         return JS_EXCEPTION;
     if (unlikely(JS_VALUE_GET_TAG(func_obj) != JS_TAG_OBJECT)) {
@@ -18192,6 +18270,26 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
     if (check_dump_flag(ctx->rt, JS_DUMP_BYTECODE_STEP))
         print_func_name(b);
+#endif
+
+#ifdef CONFIG_QJS_JIT
+    /* Onyx: the function's machine code, when it has some (or is called enough to get
+       it): it leaves by a return, an exception, or at an instruction the interpreter
+       goes on from */
+    if (b->jit_code != NULL ||
+        (unlikely(rt->jit_threshold > 0) && jit_should_compile(ctx, b))) {
+        JitOut jo;
+        int r = jit_enter(caller_ctx, ctx, sf, b, this_obj, new_target, argc, argv,
+                          sp, &jo);
+        sp = jo.sp;
+        pc = jo.pc;
+        ret_val = jo.ret_val;
+        if (r == JIT_RET)
+            goto done;
+        if (r == JIT_EXC)
+            goto exception;
+        goto restart;
+    }
 #endif
 
  restart:
@@ -20993,12 +21091,27 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             BREAK;
         CASE(OP_invalid):
         DEFAULT:
+#ifdef CONFIG_QJS_JIT
+            if (opcode == OP_JIT_STEP_END && jit_step) {
+                /* (Onyx: the JIT's step done: the instruction after it in the copy) */
+                sf->cur_sp = sp;
+                sf->cur_pc = pc - 1;
+                return JS_MKVAL(JS_TAG_CATCH_OFFSET, -1);
+            }
+#endif
             JS_ThrowInternalError(ctx, "invalid opcode: pc=%u opcode=0x%02x",
                                   (int)(pc - b->byte_code_buf - 1), opcode);
             goto exception;
         }
     }
  exception:
+#ifdef CONFIG_QJS_JIT
+    if (unlikely(jit_step)) {
+        sf->cur_sp = sp; /* (Onyx: a step: the JIT's caller unwinds) */
+        sf->cur_pc = pc;
+        return JS_EXCEPTION;
+    }
+#endif
     if (needs_backtrace(rt->current_exception)
     || JS_IsUndefined(ctx->error_back_trace)) {
         sf->cur_pc = pc;
@@ -21037,6 +21150,12 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         sf->cur_sp = sp;
     } else {
     done:
+#ifdef CONFIG_QJS_JIT
+        if (unlikely(jit_step)) {
+            sf->cur_sp = sp; /* (Onyx: a step returned: the JIT's caller frees) */
+            return ret_val;
+        }
+#endif
         if (unlikely(sf->var_ref_count != 0)) {
             /* variable references reference the stack: must close them */
             close_var_refs(rt, sf);
@@ -37254,6 +37373,11 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
 {
     int i;
+
+#ifdef CONFIG_QJS_JIT
+    if (b->jit_code)
+        jit_free_code(b->jit_code);
+#endif
 
     if (b->byte_code_buf)
         free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, true);
@@ -63633,7 +63757,7 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
         JSFunctionBytecode *b = p->u.func.function_bytecode;
         int line_num1, col_num1;
         line_num1 = find_line_num(ctx, b,
-                                  sf->cur_pc - b->byte_code_buf - 1,
+                                  js_frame_pc(ctx->rt, sf->cur_pc) - b->byte_code_buf - 1,
                                   &col_num1);
         csd->native = false;
         csd->line_num = line_num1;
@@ -65042,3 +65166,6 @@ uintptr_t js_std_cmd(int cmd, ...) {
 #undef malloc
 #undef free
 #undef realloc
+
+/* Onyx: the baseline JIT (AArch64), and JS_SetJIT */
+#include "quickjs-jit.c"
