@@ -404,6 +404,66 @@ fb_pan(fbtk_widget_t *widget,
 
 #include "netsurf/onyx_perf.h"
 
+/* Onyx: the page painted at a zoom (docs/06 §38). The core takes a redraw's origin in CSS px
+ * (browser_window_redraw: device px / scale, truncated), so at an origin that is not a
+ * multiple of the scale's period (onyx_scale_period: 3 device px at 150 %) the page lands up
+ * to a device px off: each strip a scroll exposes a different way, and not where the
+ * compositor's band (its origin always one) puts it. Such a redraw is painted into a scratch
+ * surface whose origin is one, then copied into the window's. */
+static bool fb_redraw_page(struct browser_window *bw, nsfb_t *nsfb, int ox, int oy,
+		const struct rect *clip, const struct redraw_context *ctx)
+{
+	static nsfb_t *scratch;
+	int al = onyx_scale_period(browser_window_get_scale(bw));
+	int px, py, w, h, fw, fh, sw, sh, ss, ds;
+	enum nsfb_format_e fmt, sfmt;
+	uint8_t *sp, *dp;
+	struct rect sc;
+	nsfb_t *was;
+	bool ok;
+
+	px = ((clip->x0 - ox) % al + al) % al;
+	py = ((clip->y0 - oy) % al + al) % al;
+	w = clip->x1 - clip->x0;
+	h = clip->y1 - clip->y0;
+	if (al == 1 || (ox % al == 0 && oy % al == 0) || w <= 0 || h <= 0 ||
+	    clip->x0 < 0 || clip->y0 < 0 ||
+	    nsfb_get_geometry(nsfb, &fw, &fh, &fmt) != 0 ||
+	    clip->x1 > fw || clip->y1 > fh ||
+	    (fmt != NSFB_FMT_XRGB8888 && fmt != NSFB_FMT_XBGR8888 &&
+	     fmt != NSFB_FMT_ARGB8888 && fmt != NSFB_FMT_ABGR8888))
+		return browser_window_redraw(bw, ox, oy, clip, ctx);
+
+	/* the scratch: column u, row v = the window's clip->x0 - px + u, clip->y0 - py + v */
+	if (scratch == NULL) {
+		scratch = nsfb_new(NSFB_SURFACE_RAM);
+		if (scratch == NULL || nsfb_set_geometry(scratch, w + px, h + py, fmt) != 0 ||
+		    nsfb_init(scratch) != 0) {
+			if (scratch != NULL)
+				nsfb_free(scratch);
+			scratch = NULL;
+			return browser_window_redraw(bw, ox, oy, clip, ctx);
+		}
+	} else if ((nsfb_get_geometry(scratch, &sw, &sh, &sfmt) != 0 || sw != w + px ||
+		    sh != h + py || sfmt != fmt) &&
+		   nsfb_set_geometry(scratch, w + px, h + py, fmt) != 0) {
+		return browser_window_redraw(bw, ox, oy, clip, ctx);
+	}
+	if (nsfb_get_buffer(scratch, &sp, &ss) != 0 || nsfb_get_buffer(nsfb, &dp, &ds) != 0)
+		return browser_window_redraw(bw, ox, oy, clip, ctx);
+	sc.x0 = px;
+	sc.y0 = py;
+	sc.x1 = px + w;
+	sc.y1 = py + h;
+	was = framebuffer_set_surface(scratch);
+	ok = browser_window_redraw(bw, ox - (clip->x0 - px), oy - (clip->y0 - py), &sc, ctx);
+	framebuffer_set_surface(was);
+	for (int r = 0; r < h; r++)
+		memcpy(dp + (size_t) (clip->y0 + r) * ds + (size_t) clip->x0 * 4,
+				sp + (size_t) (py + r) * ss + (size_t) px * 4, (size_t) w * 4);
+	return ok;
+}
+
 static void
 fb_redraw(fbtk_widget_t *widget,
 	  struct browser_widget_s *bwidget,
@@ -440,7 +500,7 @@ fb_redraw(fbtk_widget_t *widget,
 	{
 		uint64_t t0 = onyx_perf_now();	/* Onyx: onyx_perf.h */
 		char what[48];
-		browser_window_redraw(bw,
+		fb_redraw_page(bw, nsfb,	/* (Onyx: browser_window_redraw) */
 				x - bwidget->scrollx,
 				y - bwidget->scrolly,
 				&clip, &ctx);

@@ -104,6 +104,25 @@ NS_GPU=0 shoot $T/pages/gpu-scroll.html "@W@W$Z$N$N$N$N$N@W" "$G/zoom-cpu.png" 1
 rm -f "$OUT/build/data/view"
 grep -q "zoom=150" "$G/zoom-gpu.png.log" || { echo "  FAIL  not zoomed to 150 %"; fail=1; }
 same "$G/zoom-gpu.png" "$G/zoom-cpu.png" "gpu-scroll at 150 %, scrolled: composited = CPU" || fail=1
+# every zoom step around, the view at offsets that are not a multiple of the scale's period (the
+# core's origin in CSS px: docs/06 §38): paged down at 100 % (the track clicked), zoomed (the view
+# keeps its place: 827, 912, 1054, 1196, 1338 px once two notches down), at 175 / 200 % also
+# 100 px sideways (Right); composited = CPU
+PG="move 1211 500;wait;down 1211 500;wait;up 1211 500;@W"
+k=0
+for pct in 110 125 150 175 200; do
+	k=$((k + 1)); Zk=""; i=0
+	while [ $i -lt $k ]; do Zk="${Zk}mods 1;key +;mods 0;@W"; i=$((i + 1)); done
+	side=""
+	[ $pct -ge 175 ] && side="key 0x103;@W"
+	for g in 0 1; do
+		rm -f "$OUT/build/data/view"
+		NS_GPU=$g shoot $T/pages/gpu-scroll.html "@W@W$PG$Zk$N$N$side@W" "$G/zoom$pct-$g.png" 1280x800
+	done
+	rm -f "$OUT/build/data/view"
+	grep -q "zoom=$pct" "$G/zoom$pct-1.png.log" || { echo "  FAIL  not zoomed to $pct %"; fail=1; }
+	same "$G/zoom$pct-1.png" "$G/zoom$pct-0.png" "gpu-scroll at $pct %, odd offsets: comp. = CPU" || fail=1
+done
 
 echo "---- 3b. a new page: the page before's layers gone; a fragment let go of once scrolled"
 # (gpu-nav-a.html: an animated layer and a link to gpu-nav-b.html, clicked)
