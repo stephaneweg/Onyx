@@ -1104,6 +1104,14 @@ G.CharacterData = CharacterData;
 G.Text = Text;
 G.Comment = Comment;
 G.CDATASection = CDATASection;
+/* Onyx: ProcessingInstruction (the class: YouTube's ShadyDOM patches its prototype; the XML
+ * parser's nodes are another matter) */
+if (!G.ProcessingInstruction) {
+	class ProcessingInstruction extends CharacterData {
+		get target() { return N.name(this); }
+	}
+	G.ProcessingInstruction = ProcessingInstruction;
+}
 
 class DocumentType extends Node {
 	get name() { return N.name(this); }
@@ -6862,6 +6870,16 @@ Object.assign(G, {
 	removeEventListener: EventTarget.prototype.removeEventListener,
 	dispatchEvent: EventTarget.prototype.dispatchEvent,
 });
+/* Onyx: Window, the global's class (window instanceof Window / EventTarget,
+ * Window.prototype: YouTube's ShadyDOM patches it) */
+if (!G.Window) {
+	const Window = function Window() { throw new TypeError('Illegal constructor'); };
+	Window.prototype = Object.create(EventTarget.prototype, {
+		constructor: { value: Window, writable: true, configurable: true },
+		[Symbol.toStringTag]: { value: 'Window', configurable: true } });
+	try { Object.setPrototypeOf(G, Window.prototype); } catch (e) { }
+	Object.defineProperty(G, 'Window', { value: Window, writable: true, configurable: true });
+}
 G.scroll = G.scrollTo;
 for (const [k, i] of [['scrollX', 0], ['scrollY', 1], ['pageXOffset', 0], ['pageYOffset', 1],
 		['innerWidth', 2], ['innerHeight', 3], ['outerWidth', 2], ['outerHeight', 3]])

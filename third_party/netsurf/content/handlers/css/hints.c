@@ -27,6 +27,7 @@
 
 #include "css/hints.h"
 #include "css/select.h"
+#include "javascript/quickjs/qjs_media.h"	/* Onyx: a video's natural size */
 
 #define LOG_STATS
 #undef LOG_STATS
@@ -1295,6 +1296,64 @@ static void css_hint_height_width_canvas(
 	}
 }
 
+/**
+ * Onyx: a <video>'s size (as a canvas': presentational hints): its width / height
+ * attributes, else its natural size once the player knows it (qjs_media.c), else 300 x 150;
+ * one attribute alone: the other from the natural aspect ratio. An <audio> with controls:
+ * 300 x 54 (Chrome's).
+ */
+static void css_hint_height_width_media(nscss_select_ctx *ctx, dom_node *node, bool audio)
+{
+	struct css_hint *hint = &hint_ctx.hints[hint_ctx.len];
+	dom_string *attr = NULL;
+	css_fixed wv = 0, hv = 0;
+	css_unit wu = CSS_UNIT_PX, hu = CSS_UNIT_PX;
+	bool has_w = false, has_h = false;
+	int nw = 300, nh = 150;
+
+	(void) ctx;
+	if (audio) {
+		bool controls = false;
+		dom_string *c = NULL;
+		if (dom_string_create((const uint8_t *) "controls", 8, &c) == DOM_NO_ERR) {
+			dom_element_has_attribute(node, c, &controls);
+			dom_string_unref(c);
+		}
+		if (!controls)
+			return;
+		nh = 54;
+	} else {
+		onyx_media_natural_size(node, &nw, &nh);
+	}
+	if (dom_element_get_attribute(node, corestring_dom_width, &attr) == DOM_NO_ERR && attr != NULL) {
+		has_w = parse_dimension((const char *) dom_string_data(attr), true, &wv, &wu);
+		dom_string_unref(attr);
+	}
+	attr = NULL;
+	if (dom_element_get_attribute(node, corestring_dom_height, &attr) == DOM_NO_ERR && attr != NULL) {
+		has_h = parse_dimension((const char *) dom_string_data(attr), true, &hv, &hu);
+		dom_string_unref(attr);
+	}
+	if (!has_w && !has_h) {
+		wv = INTTOFIX(nw);
+		hv = INTTOFIX(nh);
+	} else if (!has_h) {
+		hv = nw > 0 ? FDIV(FMUL(wv, INTTOFIX(nh)), INTTOFIX(nw)) : INTTOFIX(nh);
+	} else if (!has_w) {
+		wv = nh > 0 ? FDIV(FMUL(hv, INTTOFIX(nw)), INTTOFIX(nh)) : INTTOFIX(nw);
+	}
+	hint->prop = CSS_PROP_WIDTH;
+	hint->data.length.value = wv;
+	hint->data.length.unit = CSS_UNIT_PX;
+	hint->status = CSS_WIDTH_SET;
+	css_hint_advance(&hint);
+	hint->prop = CSS_PROP_HEIGHT;
+	hint->data.length.value = hv;
+	hint->data.length.unit = CSS_UNIT_PX;
+	hint->status = CSS_HEIGHT_SET;
+	css_hint_advance(&hint);
+}
+
 static void __attribute__((unused)) css_hint_width_input(
 		nscss_select_ctx *ctx,
 		dom_node *node)
@@ -1858,6 +1917,12 @@ css_error node_presentational_hint(void *pw, void *node,
 		break;
 	case DOM_HTML_ELEMENT_TYPE_CANVAS:
 		css_hint_height_width_canvas(pw, node);
+		break;
+	case DOM_HTML_ELEMENT_TYPE_VIDEO:	/* (Onyx) */
+		css_hint_height_width_media(pw, node, false);
+		break;
+	case DOM_HTML_ELEMENT_TYPE_AUDIO:	/* (Onyx) */
+		css_hint_height_width_media(pw, node, true);
 		break;
 	case DOM_HTML_ELEMENT_TYPE_OL:
 		css_hint_list(pw, node);

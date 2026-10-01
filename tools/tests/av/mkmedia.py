@@ -46,6 +46,21 @@ def frame_yuv(i):
     v = bytes(int(128 + 40 * math.sin(i / 5.0)) & 255 for _ in range(cw * ch))
     return bytes(y) + u + v
 
+def rgb_sum(fr):
+    """the sum of R + G + B of a frame converted as user/av/av_yuv.c does (BT.601, limited)"""
+    cw, ch = (W + 1) // 2, (H + 1) // 2
+    Y, U, V = fr[:W * H], fr[W * H:W * H + cw * ch], fr[W * H + cw * ch:]
+    sat = lambda v: 32767 if v > 32767 else -32768 if v < -32768 else v
+    o8 = lambda v: min(255, max(0, (v + 32) >> 6))
+    s = 0
+    for r in range(H):
+        for c in range(W):
+            yy = ((Y[r * W + c] * 149) >> 1) - 1192
+            uu = U[(r >> 1) * cw + (c >> 1)] - 128
+            vv = V[(r >> 1) * cw + (c >> 1)] - 128
+            s += o8(sat(yy + 102 * vv)) + o8(sat(yy - (25 * uu + 52 * vv))) + o8(sat(yy + 129 * uu))
+    return s
+
 def audio_pcm(seconds, rate, ch):
     out = bytearray()
     n = int(seconds * rate)
@@ -469,6 +484,7 @@ def write_flac(path, refpath):
         f.write(b''.join(struct.pack('<hh', a, b) for a, b in zip(L, R)))
 
 def main():
+    global SECONDS
     out = sys.argv[1] if len(sys.argv) > 1 else '.'
     os.makedirs(out, exist_ok=True)
     nfr = SECONDS * FPS
@@ -476,7 +492,7 @@ def main():
     pcm = audio_pcm(SECONDS, AR, ACH)
     with open(os.path.join(out, 'frames.txt'), 'w') as f:
         for i, fr in enumerate(frames):
-            f.write('%d %d %d\n' % (i, i * 1000000 // FPS, sum(fr)))
+            f.write('%d %d %d %d\n' % (i, i * 1000000 // FPS, sum(fr), rgb_sum(fr)))
     write_webm(os.path.join(out, 'clip.webm'), frames, pcm)
     write_mse_webm(os.path.join(out, 'mse.webm'), frames, pcm)
     write_mp4(os.path.join(out, 'clip.mp4'), frames, pcm, True)
@@ -484,6 +500,14 @@ def main():
     write_frag_mp4(os.path.join(out, 'frag.mp4'), frames, pcm)
     write_wav(os.path.join(out, 'tone.wav'))
     write_flac(os.path.join(out, 'tone.flac'), os.path.join(out, 'tone-ref.raw'))
+    # long.webm / long.mp4: 10 s of the same (4 MB: loaded by ranges, seeking where nothing came yet)
+
+    SECONDS = 10
+    frames = [frames[i % len(frames)] for i in range(SECONDS * FPS)]
+    pcm = audio_pcm(SECONDS, AR, ACH)
+    write_webm(os.path.join(out, 'long.webm'), frames, pcm)
+    write_mp4(os.path.join(out, 'long.mp4'), frames, pcm, True)
+    SECONDS = 2
 
 if __name__ == '__main__':
     main()

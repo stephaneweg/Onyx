@@ -192,6 +192,10 @@ listing, plaintext, xmp { font-family: monospace; white-space: pre; margin: 1em 
 details > summary:first-of-type { display: list-item; list-style-type: disc; cursor: pointer; }
 details:not([open]) > :not(summary) { display: none; }
 dialog:not([open]) { display: none; }
+/* Onyx: an <audio> shows only with its controls (Chrome's 300 x 54: css/hints.c); a <video>
+ * is an inline replaced box (qjs_media.c paints it) */
+audio:not([controls]) { display: none; }
+audio[controls], video { display: inline-block; }
 dialog { position: absolute; left: 0; right: 0; width: fit-content; height: fit-content;
 	margin: auto; border: solid 2px; padding: 1em; background: white; color: black; }
 /* Onyx: the Popover API (html5.js; :popover-open and :modal answered by NetSurf, css/select.c):

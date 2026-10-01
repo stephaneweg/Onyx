@@ -50,6 +50,7 @@
 #include "html/box_manipulate.h"
 #include "html/box_construct.h"
 #include "html/box_special.h"
+#include "javascript/quickjs/qjs_media.h"	/* Onyx: <video>, <audio> */
 #include "html/box_textarea.h"
 #include "html/form_internal.h"
 #include "html/onyx_svg_inline.h"
@@ -847,6 +848,29 @@ box_canvas(dom_node *n,
 	/* This is replaced content */
 	box->flags |= IS_REPLACED | REPLACE_DIM;
 
+	return true;
+}
+
+
+/**
+ * Onyx: <video>, <audio> -- replaced content painted by qjs_media.c (the frame, the native
+ * controls); their children (<source>, <track>, the fallback) are not shown. Without scripts:
+ * the fallback content, as a canvas'.
+ */
+static bool
+box_media(dom_node *n,
+	  html_content *content,
+	  struct box *box,
+	  bool *convert_children)
+{
+	if (!content->enable_scripting)
+		return true;
+	*convert_children = false;
+	if (box->style && ns_computed_display(box->style,
+			box_is_root(n)) == CSS_DISPLAY_NONE)
+		return true;
+	box->flags |= IS_REPLACED | REPLACE_DIM;
+	onyx_media_box_made(n, content);
 	return true;
 }
 
@@ -1911,6 +1935,11 @@ convert_special_elements(dom_node *node,
 
 	case DOM_HTML_ELEMENT_TYPE_EMBED:
 		res = box_embed(node, content, box, convert_children);
+		break;
+
+	case DOM_HTML_ELEMENT_TYPE_VIDEO:	/* (Onyx) */
+	case DOM_HTML_ELEMENT_TYPE_AUDIO:
+		res = box_media(node, content, box, convert_children);
 		break;
 
 	case DOM_HTML_ELEMENT_TYPE_FRAMESET:

@@ -31,6 +31,7 @@ struct vslot {
 	int w, h;
 	av_us pts, dur;
 	unsigned serial;
+	unsigned seek;			/* the seek it was decoded after (older ones are not shown) */
 };
 
 struct av_player {
@@ -91,6 +92,8 @@ struct av_player {
 	unsigned dec_n;
 	int shown_since_seek;
 	av_us last_end;			/* end of the last frame shown */
+	av_us sync_sum;			/* |frame - audio heard| summed at each frame shown */
+	unsigned sync_n;
 	int error;
 
 	/* the file mode */
@@ -117,7 +120,7 @@ static int k_open(void *c, int *rate)
 	if (kapi_sound_acquire() != 1)
 		return 0;
 	lat = kapi_sound_config(1024, 3);
-	k_lat = lat > 0 ? (unsigned) lat : 4096;
+	k_lat = lat >= 0 ? (unsigned) lat : 4096;
 	kapi_sound_status(&r, &f, &o);
 	*rate = r ? (int) r : SOUND_RATE;
 	k_cap = f;			/* (just acquired: the queue is empty) */
@@ -368,6 +371,15 @@ static int audio_main(void *arg)
 		if (p->pcm_off >= p->pcm_n) {
 			int r = audio_fill(p, rate, muted ? 0.0f : vol);
 			p->a_starved = r == AV_AGAIN;
+			if (r == AV_EOF && !p->a_eof && p->rs != NULL && p->rs_ch > 0 && p->rs_ch <= 8) {
+				/* the end: the resampler's last frames pushed out (it holds 3) */
+				static const float zero[8 * 4];
+				p->pcm_off = p->pcm_n = 0;
+				p->pcm_n = av_resample(p->rs, zero, 4, p->pcm, PCM_MAX, rate, muted ? 0.0f : vol);
+				p->a_eof = 1;
+				if (p->pcm_n > 0)
+					continue;
+			}
 			p->a_eof = r == AV_EOF;
 			if (r != AV_OK) {
 				av_sleep_ms(5);
@@ -487,6 +499,7 @@ static int video_frame(struct av_player *p, const struct av_frame *f, unsigned s
 		v->pts = f->pts;
 		v->dur = f->dur > 0 ? f->dur : 33333;
 		v->serial = ++p->serial;
+		v->seek = seek;
 		v->state = SLOT_READY;
 		if (p->width == 0 || p->width != f->width || p->height != f->height) {
 			p->width = f->width;
@@ -767,6 +780,10 @@ void av_player_seek(struct av_player *p, av_us t)
 	p->ended = 0;
 	p->waiting = 0;
 	p->seek_serial++;
+	/* what the threads knew before is stale until they see the seek */
+	p->shown_since_seek = 0;
+	p->v_eof = p->a_eof = 0;
+	p->v_starved = p->a_starved = 0;
 	clock_set(p, t, 0);
 	av_unlock(&p->lock);
 	/* the file mode: the demuxer sent there when t is not buffered */
@@ -859,6 +876,10 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 			shown = i;
 		if (s->state != SLOT_READY)
 			continue;
+		if (s->seek != p->seek_serial) {
+			s->state = SLOT_FREE;	/* (decoded before a seek) */
+			continue;
+		}
 		if (p->clock_running) {
 			if (s->pts <= now + 5000 && (best < 0 || s->pts > p->slot[best].pts))
 				best = i;
@@ -879,6 +900,14 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 		p->slot[best].state = SLOT_SHOWN;
 		p->shown_since_seek = 1;
 		p->last_end = p->slot[best].pts + p->slot[best].dur;
+		if (p->clock_running && p->sound && p->out_open && p->has_audio) {
+			/* the audio heard now (what was written less the output's queue) */
+			av_us q = (av_us) p->ao->queued(p->ao->ctx) * AV_US / p->out_rate;
+			av_us heard = p->a_end - (av_us) ((double) q * p->rate);
+			av_us d = p->slot[best].pts - heard;
+			p->sync_sum += d < 0 ? -d : d;
+			p->sync_n++;
+		}
 		v->pixels = p->slot[best].px;
 		v->width = p->slot[best].w;
 		v->height = p->slot[best].h;
@@ -929,6 +958,7 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 	st->decoded = p->decoded;
 	st->dropped = p->dropped;
 	st->decode_us = p->dec_n ? p->dec_sum / p->dec_n : 0;
+	st->sync_us = p->sync_n ? p->sync_sum / p->sync_n : 0;
 	st->error = p->error;
 	if (!has_init)
 		st->ready = AV_HAVE_NOTHING;

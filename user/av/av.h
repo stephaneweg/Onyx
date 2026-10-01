@@ -220,6 +220,8 @@ void av_store_set_offset(struct av_store *s, int src, av_us offset);
 av_us av_store_get_offset(struct av_store *s, int src);
 void av_store_set_mode(struct av_store *s, int src, int sequence);
 void av_store_set_window(struct av_store *s, int src, av_us start, av_us end);
+/* MSE changeType(): the source's next bytes are of another type (its frames kept) */
+int av_store_change_type(struct av_store *s, int src, const char *mime);
 /* MSE abort(): the parser reset (a partial segment dropped) */
 void av_store_reset_parser(struct av_store *s, int src);
 /* MSE remove(start, end) */
@@ -272,6 +274,7 @@ struct av_player_status {
 	int sound;		/* 1: the audio is heard (the output was free) */
 	unsigned decoded, dropped;	/* video frames, since the start */
 	av_us decode_us;	/* the mean time of a video frame's decoding (us) */
+	av_us sync_us;		/* A/V sync: the mean |a frame's time - the audio heard| when shown */
 	int error;		/* 0, or AV_E* (MEDIA_ERR_DECODE / SRC_NOT_SUPPORTED) */
 	int64_t want;		/* the file mode: an offset to feed from (a seek outside what came), -1 */
 };

@@ -626,9 +626,15 @@ int av_type_supported(const char *mime, int mse, int *smooth)
 	} else {
 		/* no codecs: is there a decoder for anything this container holds */
 		all_ok = 0;
-		for (i = 0; i < NIMPL; i++)
+		for (i = 0; i < NIMPL; i++) {
+			/* (a video type: a video codec of the web; the tests' I420 does not count) */
+			if (impls[i]->codec == AV_C_I420)
+				continue;
+			if (!audio_type && !strncmp(type, "video/", 6) && impls[i]->kind != AV_VIDEO)
+				continue;
 			if (fits(fmt, impls[i]->codec, audio_type))
 				all_ok = 1;
+		}
 		if (!all_ok)
 			return 0;
 	}

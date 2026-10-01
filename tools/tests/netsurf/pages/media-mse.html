@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- mediatest.sh: Media Source Extensions -- a MediaSource attached by a blob: URL, a
+     SourceBuffer fed the segments of ?file= (their byte ranges in ?json=, as mkmedia.py
+     writes them) out of order, buffered ranges, remove(), endOfStream, playback to the end. -->
+<html><head><title>media-mse</title></head>
+<body style="margin:0;background:#fff">
+<video id="v" width="192" height="128"></video>
+<script>
+const q = new URLSearchParams(location.search);
+const file = q.get('file') || 'mse.webm', json = q.get('json') || 'mse.json';
+const mime = q.get('mime') || 'video/webm; codecs="i420, pcm"';
+const v = document.getElementById('v');
+const seen = [];
+for (const e of ['loadstart', 'durationchange', 'loadedmetadata', 'loadeddata', 'canplay', 'play', 'playing',
+		'pause', 'waiting', 'ended', 'error', 'seeking', 'seeked'])
+	v.addEventListener(e, () => { seen.push(e); console.log('ev ' + e + ' t=' + v.currentTime.toFixed(2) + ' rs=' + v.readyState); });
+const rs = r => { let s = ''; for (let i = 0; i < r.length; i++) s += '[' + r.start(i).toFixed(2) + ',' + r.end(i).toFixed(2) + ']'; return s; };
+const once = (t, e) => new Promise(res => t.addEventListener(e, res, { once: true }));
+console.log('isTypeSupported ' + MediaSource.isTypeSupported(mime) + ' vp9=' + MediaSource.isTypeSupported('video/webm; codecs="vp9"'));
+const ms = new MediaSource();
+console.log('ms ' + ms.readyState + ' ' + Object.prototype.toString.call(ms));
+ms.addEventListener('sourceopen', async () => {
+	console.log('sourceopen ' + ms.readyState + ' duration=' + ms.duration);
+	const sb = ms.addSourceBuffer(mime);
+	const sbev = [];
+	for (const e of ['updatestart', 'update', 'updateend', 'error', 'abort'])
+		sb.addEventListener(e, () => sbev.push(e));
+	const data = new Uint8Array(await (await fetch(file)).arrayBuffer());
+	const ranges = await (await fetch(json)).json();
+	const append = async i => { sb.appendBuffer(data.subarray(ranges[i][0], ranges[i][1])); await once(sb, 'updateend'); };
+	await append(0);
+	console.log('init updating=' + sb.updating + ' events=' + sbev.join(',') + ' duration=' + ms.duration.toFixed(2) + ' rs=' + v.readyState);
+	/* a partial segment, a second append while updating, then abort(): the part dropped */
+	const part = data.subarray(ranges[1][0], ranges[1][0] + 1000);
+	try { sb.appendBuffer(part); sb.appendBuffer(part); } catch (e) { console.log('appendBuffer while updating: ' + e.name); }
+	await once(sb, 'updateend');
+	sb.abort();
+	console.log('after abort ' + rs(sb.buffered) + ' updating=' + sb.updating);
+	for (const i of [3, 4]) await append(i);
+	console.log('buffered after 3,4 ' + rs(sb.buffered));
+	for (const i of [1, 2]) await append(i);
+	console.log('buffered all ' + rs(sb.buffered) + ' element ' + rs(v.buffered));
+	sb.remove(0.5, 1.0);
+	await once(sb, 'updateend');
+	console.log('buffered after remove ' + rs(sb.buffered));
+	await append(2);
+	console.log('buffered again ' + rs(sb.buffered));
+	ms.endOfStream();
+	console.log('ended ' + ms.readyState + ' duration=' + ms.duration.toFixed(2) + ' rs=' + v.readyState);
+	v.play().then(() => console.log('play resolved'), e => console.log('play rejected ' + e.name));
+});
+ms.addEventListener('sourceended', () => console.log('sourceended'));
+v.addEventListener('ended', () => {
+	const pq = v.getVideoPlaybackQuality();
+	const s = __onyxMediaStats(v);
+	console.log('summary t=' + v.currentTime.toFixed(2) + ' decoded=' + pq.totalVideoFrames + ' dropped=' + pq.droppedVideoFrames +
+		' sound=' + s.sound + ' sync_ms=' + (s.syncUs / 1000).toFixed(1));
+	console.log('order ' + seen.join(','));
+	console.log('done');
+});
+v.src = URL.createObjectURL(ms);
+console.log('src ' + (v.src.startsWith('blob:') ? 'blob' : v.src));
+</script>
+</body></html>

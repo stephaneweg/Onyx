@@ -69,6 +69,7 @@
 #include "html/private.h"
 #include "html/html.h"	/* Onyx: html_box_viewport_fixed */
 #include "html/layout.h"
+#include "javascript/quickjs/qjs_media.h"	/* Onyx: <video>, <audio> */
 
 
 bool html_redraw_debug = false;
@@ -3376,6 +3377,13 @@ static bool html_redraw_box_body(const html_content *html, struct box *box,
 		    ctx->plot->bitmap(ctx, bitmap, x + padding_left, y + padding_top,
 				      width, height, current_background_color,
 				      BITMAPF_NONE) != NSERROR_OK)
+			return false;
+	} else if ((tag_type == DOM_HTML_ELEMENT_TYPE_VIDEO ||
+		    tag_type == DOM_HTML_ELEMENT_TYPE_AUDIO) &&
+		   box->node != NULL && box->flags & REPLACE_DIM) {
+		/* Onyx: a <video>'s frame, the native controls (qjs_media.c) */
+		if (!onyx_media_redraw(box->node, x + padding_left, y + padding_top,
+				width, height, scale, &r, ctx))
 			return false;
 	} else if (box->iframe) {
 		/* Offset is passed to browser window redraw unscaled */

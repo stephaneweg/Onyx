@@ -1685,7 +1685,11 @@ html_begin_conversion(html_content *htmlc)
 		NSLOG(netsurf, INFO, "Completing parse (%p)", htmlc);
 		/* complete parsing */
 		error = dom_hubbub_parser_completed(htmlc->parser);
-		if (error == DOM_HUBBUB_HUBBUB_ERR_PAUSED && htmlc->base.active > 0) {
+		/* Onyx: or the parser is paused under a running script (a sheet that
+		 * finished during its getComputedStyle -- html_css_flush_sync -- calls this
+		 * with nothing active: YouTube's page became "Error: OK"); the parse
+		 * completes when the script returns */
+		if (error == DOM_HUBBUB_HUBBUB_ERR_PAUSED) {
 			/* The act of completing the parse failed because we've
 			 * encountered a sync script which needs to run
 			 */

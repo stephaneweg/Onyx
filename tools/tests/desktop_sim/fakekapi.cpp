@@ -675,14 +675,64 @@ static int list_tasks (char *b, unsigned n)
 			     "Sa notifyd\nRa terminal\nSa tinycalc\nRa taskman\n");
 	return 12;
 }
-static int sound_acquire (void) { return -1; }
-static void sound_release (void) {}
+// Sound: none, unless SIM_SOUND=1 -- then a stand-in output: the PCM stream is "played" at
+// 44100 frames a second of real time from a 0.5 s queue (sound_write takes what fits,
+// sound_status gives the free frames), with SIM_SOUNDOUT=<file> the frames played written to
+// the file (s16 L R) -- the media tests (tools/tests/netsurf/mediatest.sh) hear with it.
+static pthread_mutex_t g_sndLock = PTHREAD_MUTEX_INITIALIZER;
+static bool g_sndOwned;
+static double g_sndStart;		// when the queue's frame 0 plays (s)
+static long long g_sndQueued;		// frames written since the start
+static FILE *g_sndOut;
+static const unsigned SND_CAP = 22050;
+static double snd_now (void) { struct timespec t; clock_gettime (CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
+static long long snd_played (void) { return (long long) ((snd_now () - g_sndStart) * 44100); }
+static int sound_acquire (void)
+{
+	if (!getenv ("SIM_SOUND")) return -1;
+	pthread_mutex_lock (&g_sndLock);
+	int r = g_sndOwned ? 0 : 1;
+	if (r) { g_sndOwned = true; g_sndStart = snd_now (); g_sndQueued = 0; }
+	if (r && !g_sndOut && getenv ("SIM_SOUNDOUT")) g_sndOut = fopen (getenv ("SIM_SOUNDOUT"), "wb");
+	pthread_mutex_unlock (&g_sndLock);
+	if (r) fprintf (stderr, "sim: sound acquired\n");
+	return r;
+}
+static void sound_release (void) { pthread_mutex_lock (&g_sndLock); g_sndOwned = false; pthread_mutex_unlock (&g_sndLock); }
 static int sound_start (int, unsigned, int, int) { return -1; }
 static int sound_stop (int) { return -1; }
-static int sound_write (const short *, unsigned) { return -1; }
-static int sound_status (unsigned *r, unsigned *f, unsigned *o) { if (r) *r = 44100; if (f) *f = 0; if (o) *o = 0; return -1; }
-// (v68) low-latency sound, word waits, priorities, MIDI: no sound, no MIDI, a single thread
-static int sound_config (int, int) { return -1; }
+static int sound_write (const short *p, unsigned n)
+{
+	if (!getenv ("SIM_SOUND")) return -1;
+	pthread_mutex_lock (&g_sndLock);
+	long long played = snd_played ();
+	if (g_sndQueued < played)
+	{	// an underrun: silence was played meanwhile
+		if (g_sndOut) { static short z[2048]; for (long long k = g_sndQueued; k < played; k += 1024) fwrite (z, 4, (size_t) std::min (1024LL, played - k), g_sndOut); }
+		g_sndQueued = played;
+	}
+	long long q = g_sndQueued - played;
+	unsigned room = q >= SND_CAP ? 0 : (unsigned) (SND_CAP - q);
+	if (n > room) n = room;
+	if (g_sndOut && n) fwrite (p, 4, n, g_sndOut);
+	g_sndQueued += n;
+	pthread_mutex_unlock (&g_sndLock);
+	return (int) n;
+}
+static int sound_status (unsigned *r, unsigned *f, unsigned *o)
+{
+	if (r) *r = 44100;
+	if (!getenv ("SIM_SOUND")) { if (f) *f = 0; if (o) *o = 0; return -1; }
+	pthread_mutex_lock (&g_sndLock);
+	long long q = g_sndQueued - snd_played ();
+	if (q < 0) q = 0;
+	if (f) *f = (unsigned) (q >= SND_CAP ? 0 : SND_CAP - q);
+	if (o) *o = g_sndOwned ? 1 : 0;
+	pthread_mutex_unlock (&g_sndLock);
+	return 0;
+}
+// (v68) low-latency sound, word waits, priorities, MIDI: no MIDI, a single thread
+static int sound_config (int chunk, int ahead) { return getenv ("SIM_SOUND") ? 0 * (chunk + ahead) : -1; }
 static struct kapi_sound_ring *sound_map (void) { return 0; }
 static int wait_word (volatile unsigned *a, unsigned v, unsigned ms)
 {

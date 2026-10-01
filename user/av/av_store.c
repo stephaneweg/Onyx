@@ -429,6 +429,38 @@ int av__store_seek_file(struct av_store *s, int src, av_us t)
 	return r >= 0 ? 0 : -1;
 }
 
+int av_store_change_type(struct av_store *s, int src, const char *mime)
+{
+	struct source *so;
+	struct av_demux *dx;
+	int fmt = av_format_of_mime(mime), k;
+
+	if (fmt == AV_FMT_UNKNOWN)
+		return AV_EUNSUP;
+	dx = av_demux_new(fmt);
+	if (dx == NULL)
+		return AV_ENOMEM;
+	av_lock(&s->lock);
+	so = get(s, src);
+	if (so == NULL) {
+		av_unlock(&s->lock);
+		av_demux_free(dx);
+		return AV_ERR;
+	}
+	/* the frames stay; the next bytes are an initialization segment of the new type */
+	av_demux_free(so->dx);
+	so->dx = dx;
+	so->fmt = fmt;
+	for (k = 0; k < AV_MAX_TRACKS; k++) {
+		so->tr[k].last_dts = AV_NOTIME;
+		so->tr[k].need_rap = 1;
+	}
+	so->gen++;
+	s->serial++;
+	av_unlock(&s->lock);
+	return AV_OK;
+}
+
 void av_store_set_offset(struct av_store *s, int src, av_us offset)
 {
 	struct source *so;

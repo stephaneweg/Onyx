@@ -84,6 +84,8 @@
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
 #include "qjs_html5_js.h"	/* Onyx: html5.js, the same way */
 #include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
+#define QJS_MEDIA_JS
+#include "javascript/quickjs/qjs_media.h"	/* Onyx: <video>, <audio>, MSE (qjs_media.c) */
 #include "javascript/quickjs/qjs_wasm.h"	/* Onyx: WebAssembly, Web Crypto */
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 #include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
@@ -3434,6 +3436,8 @@ static JSValue n_navigate(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 		nsurl_join(base, s, &url);
 	else
 		nsurl_create(s, &url);
+	if (qjs_debug)	/* Onyx: which script moved the page away (NS_JSDEBUG) */
+		fprintf(stderr, "JS navigate %s\n", s);
 	JS_FreeCString(ctx, s);
 	if (url != NULL && t->bw != NULL && !t->closed) {
 		browser_window_navigate(t->bw, url, base, BW_NAVIGATE_HISTORY,
@@ -3511,6 +3515,8 @@ static JSValue n_reload(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 {
 	jsthread *t = QJS_T(ctx);
 
+	if (qjs_debug)
+		fprintf(stderr, "JS reload\n");
 	if (t->bw != NULL && !t->closed)
 		browser_window_reload(t->bw, false);
 	return JS_UNDEFINED;
@@ -5260,6 +5266,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	qjs_net_setup(t->ctx, natives, NULL);	/* Onyx: WebSocket, EventSource, Workers */
 	qjs_wasm_setup(t->ctx, natives);	/* Onyx: WebAssembly (wasm.js, on wasm3) */
 	qjs_crypto_setup(t->ctx, natives);	/* Onyx: Web Crypto (crypto.js, on mbedTLS) */
+	qjs_media_setup(t->ctx, natives);	/* Onyx: <video>, <audio>, MSE (media.js) */
 	JS_FreeValue(t->ctx, natives);
 	onyx_perf_log("js:prelude", t_prelude);	/* (a context's dom.js, html5.js, canvas.js, Intl) */
 	t->dirty = false;	/* (nothing laid out yet) */
@@ -5314,6 +5321,7 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->shadow_proto);
 	qjs_canvas_context_gone(t->ctx);	/* Onyx: its canvases, images */
 	qjs_wasm_context_gone(t->ctx);	/* Onyx: its WebAssembly store */
+	qjs_media_context_gone(t->ctx);	/* Onyx: its players */
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
