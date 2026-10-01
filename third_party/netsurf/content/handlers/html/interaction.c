@@ -29,6 +29,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>	/* (Onyx: strcasecmp) */
 
 #include <dom/dom.h>
 
@@ -66,6 +67,7 @@
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_webfont.h"
 #include "html/onyx_fx.h"	/* Onyx: the hit test through transforms */
+#include "netsurf/onyx_jet.h"	/* Onyx: <a download> (docs/06 §38) */
 
 /**
  * Get pointer shape for given box
@@ -1389,6 +1391,100 @@ link_mouse_action(html_content *html,
 }
 
 
+/**
+ * Onyx (docs/06 §38): a link with a download attribute (<a download>, <a download="name">)
+ * is saved, not opened -- a download, its name the attribute's (a Content-Disposition
+ * filename wins); a blob: link's bytes are the page script's (html5.js:
+ * __onyxBlobDownload). False: not such a link.
+ */
+static bool onyx_link_download(struct content *c, struct browser_window *bw,
+		struct box *box, nsurl *url, nserror *res)
+{
+	static dom_string *attr_download;
+	dom_node *n, *next;
+	dom_string *name = NULL, *v = NULL;
+	char *hint = NULL;
+	lwc_string *scheme;
+	bool found = false;
+	int depth;
+
+	if (box == NULL || url == NULL)
+		return false;
+	if (attr_download == NULL &&
+	    dom_string_create((const uint8_t *) "download", 8, &attr_download) != DOM_NO_ERR)
+		return false;
+	n = box->node != NULL ? dom_node_ref(box->node) : NULL;
+	for (depth = 0; n != NULL && depth < 32 && !found; depth++) {
+		dom_node_type type;
+		if (dom_node_get_node_type(n, &type) == DOM_NO_ERR &&
+		    type == DOM_ELEMENT_NODE &&
+		    dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
+			bool a = dom_string_caseless_lwc_isequal(name, corestring_lwc_a);
+			dom_string_unref(name);
+			name = NULL;
+			if (a) {
+				if (dom_element_get_attribute(n, attr_download, &v) == DOM_NO_ERR &&
+				    v != NULL) {
+					found = true;
+					hint = strndup(dom_string_data(v), dom_string_byte_length(v));
+					dom_string_unref(v);
+				}
+				break;	/* (the nearest link: its attribute or none) */
+			}
+		}
+		next = NULL;
+		dom_node_get_parent_node(n, &next);
+		dom_node_unref(n);
+		n = next;
+	}
+	if (n != NULL)
+		dom_node_unref(n);
+	if (!found)
+		return false;
+	scheme = nsurl_get_component(url, NSURL_SCHEME);
+	if (scheme != NULL && strcasecmp(lwc_string_data(scheme), "blob") == 0) {
+		/* the page's script made the bytes: its blob: URL is html5.js's */
+		const char *u = nsurl_access(url), *h = hint != NULL ? hint : "";
+		size_t len = 64 + 2 * strlen(u) + 6 * strlen(h);
+		char *src = malloc(len), *o = src;
+		const char *parts[2] = { u, h };
+		int i;
+		if (src != NULL) {
+			o += sprintf(o, "__onyxBlobDownload(");
+			for (i = 0; i < 2; i++) {
+				const unsigned char *q;
+				*o++ = '"';
+				for (q = (const unsigned char *) parts[i]; *q; q++) {
+					if (*q == '"' || *q == '\\') {
+						*o++ = '\\';
+						*o++ = (char) *q;
+					} else if (*q < 0x20) {
+						o += sprintf(o, "\\u%04x", *q);
+					} else {
+						*o++ = (char) *q;
+					}
+				}
+				*o++ = '"';
+				*o++ = i == 0 ? ',' : ')';
+			}
+			*o = '\0';
+			html_exec(c, src, o - src);
+			free(src);
+		}
+		*res = NSERROR_OK;
+	} else {
+		download_onyx_hint(hint);
+		*res = browser_window_navigate(bw, url, content_get_url(c),
+				BW_NAVIGATE_DOWNLOAD, NULL, NULL, NULL);
+		download_onyx_hint(NULL);	/* (taken, or not: never the next one's) */
+	}
+	if (scheme != NULL)
+		lwc_string_unref(scheme);
+	free(hint);
+	return true;
+}
+
+
 static nserror
 default_mouse_action_focus(html_content *html, browser_mouse_state mouse)
 {
@@ -1712,6 +1808,8 @@ mouse_action_drag_none(html_content *html,
 		break;
 
 	case ACTION_NAVIGATE:
+		if (onyx_link_download(c, bw, mas.link.box, mas.link.url, &res))
+			break;		/* (Onyx: <a download>: saved, not opened) */
 		res = browser_window_navigate(
 				browser_window_find_target(bw,
 							   mas.link.target,

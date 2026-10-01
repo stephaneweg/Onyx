@@ -90,6 +90,7 @@
 #include "javascript/quickjs/qjs_codecache.h"	/* Onyx: the scripts' bytecode on the card */
 #include "javascript/quickjs/qjs_frames.h"	/* Onyx: the frames' windows (qjs_frames.c) */
 #include "desktop/frames.h"		/* Onyx: an iframe's load (onyx_frame_loaded) */
+#include "netsurf/onyx_jet.h"		/* Onyx: <a download> (n_download) */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -1924,12 +1925,22 @@ static struct box *qjs_box(dom_node *n)
 	return box;
 }
 
+/* Onyx (docs/06 §38): the page zoom -- the window's scale (CSS px are scale device px) */
+static float qjs_scale(jsthread *t)
+{
+	return t->bw != NULL && t->bw->scale > 0 ? t->bw->scale : 1.0f;
+}
+
 static void qjs_scroll(jsthread *t, int *sx, int *sy)
 {
 	*sx = *sy = 0;
 	if (t->bw != NULL && t->bw->window != NULL &&
 	    !guit->window->get_scroll(t->bw->window, sx, sy)) {
 		*sx = *sy = 0;
+	} else if (t->bw != NULL && t->bw->window != NULL && qjs_scale(t) != 1.0f) {
+		/* (the frontend's scroll offsets are device px: in CSS px, zoomed) */
+		*sx = (int) (*sx / qjs_scale(t) + 0.5f);
+		*sy = (int) (*sy / qjs_scale(t) + 0.5f);
 	} else if (t->bw != NULL && t->bw->window == NULL) {
 		/* Onyx: an iframe's window (the core's): its scrollbars */
 		*sx = scrollbar_get_offset(t->bw->scroll_x);
@@ -2301,9 +2312,11 @@ static JSValue n_scroll(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	int sx, sy, w = 0, h = 0, pw = 0, ph = 0;
 
 	qjs_scroll(t, &sx, &sy);
-	if (t->bw != NULL && t->bw->window != NULL)
+	if (t->bw != NULL && t->bw->window != NULL) {
 		guit->window->get_dimensions(t->bw->window, &w, &h);
-	else if (t->bw != NULL)	/* (Onyx: an iframe's window: its size, innerWidth) */
+		w = (int) (w / qjs_scale(t));	/* (Onyx: zoomed, in CSS px) */
+		h = (int) (h / qjs_scale(t));
+	} else if (t->bw != NULL)	/* (Onyx: an iframe's window: its size, innerWidth) */
 		browser_window_get_dimensions(t->bw, &w, &h);
 	if (t->htmlc != NULL && t->htmlc->layout != NULL) {
 		pw = t->htmlc->layout->descendant_x1;
@@ -2315,6 +2328,8 @@ static JSValue n_scroll(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	JS_SetPropertyUint32(ctx, arr, 3, JS_NewInt32(ctx, h));
 	JS_SetPropertyUint32(ctx, arr, 4, JS_NewInt32(ctx, pw));
 	JS_SetPropertyUint32(ctx, arr, 5, JS_NewInt32(ctx, ph));
+	JS_SetPropertyUint32(ctx, arr, 6, JS_NewFloat64(ctx,	/* (Onyx: the zoom, as 1.1 not 1.10000002) */
+			(double) (long) (qjs_scale(t) * 10000.0f + 0.5f) / 10000.0));
 	return arr;
 }
 
@@ -2329,8 +2344,9 @@ static JSValue n_scroll_to(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	if (argc > 1)
 		JS_ToInt32(ctx, &y, argv[1]);
 	if (t->bw != NULL && t->bw->window != NULL) {
-		r.x0 = r.x1 = x < 0 ? 0 : x;
-		r.y0 = r.y1 = y < 0 ? 0 : y;
+		float sc = qjs_scale(t);	/* (Onyx: CSS px -> the window's, zoomed) */
+		r.x0 = r.x1 = x < 0 ? 0 : (int) (x * sc + 0.5f);
+		r.y0 = r.y1 = y < 0 ? 0 : (int) (y * sc + 0.5f);
 		guit->window->set_scroll(t->bw->window, &r);
 	} else if (t->bw != NULL && !t->closed) {
 		/* Onyx: an iframe's window: its scrollbars (the scroll event comes from them) */
@@ -3354,6 +3370,69 @@ static JSValue n_navigate(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	}
 	if (url != NULL)
 		nsurl_unref(url);
+	return JS_UNDEFINED;
+}
+
+/** download(url | bytes, name[, mime]): Onyx (docs/06 §38) -- <a download>'s default action
+ * from a script's click(): an address saved as a download (its name the attribute's), or a
+ * blob:'s bytes (html5.js) handed to the frontend, which asks where to save them */
+static JSValue n_download(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	const char *name = argc > 1 ? JS_ToCString(ctx, argv[1]) : NULL;
+	const char *mime = argc > 2 && JS_IsString(argv[2]) ? JS_ToCString(ctx, argv[2]) : NULL;
+
+	(void) this_val;
+	if (t->bw == NULL || t->closed || argc < 1) {
+		/* (nothing to save into) */
+	} else if (JS_IsString(argv[0])) {
+		nsurl *base = t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
+		nsurl *url = NULL;
+		const char *s = JS_ToCString(ctx, argv[0]);
+		if (s != NULL) {
+			if (base != NULL)
+				nsurl_join(base, s, &url);
+			else
+				nsurl_create(s, &url);
+			JS_FreeCString(ctx, s);
+		}
+		if (url != NULL) {
+			download_onyx_hint(name);
+			browser_window_navigate(t->bw, url, base, BW_NAVIGATE_DOWNLOAD,
+					NULL, NULL, NULL);
+			download_onyx_hint(NULL);
+			nsurl_unref(url);
+		}
+	} else if (onyx_download_bytes_hook != NULL) {
+		size_t size = 0, off = 0, len = 0, bpe = 0;
+		uint8_t *p = JS_GetArrayBuffer(ctx, &size, argv[0]);
+		if (p != NULL) {
+			off = 0;
+			len = size;
+		} else {
+			JSValue buf;
+			JS_FreeValue(ctx, JS_GetException(ctx));
+			buf = JS_GetTypedArrayBuffer(ctx, argv[0], &off, &len, &bpe);
+			if (JS_IsException(buf)) {
+				JS_FreeValue(ctx, JS_GetException(ctx));
+			} else {
+				p = JS_GetArrayBuffer(ctx, &size, buf);
+				JS_FreeValue(ctx, buf);
+				if (p == NULL || off + len > size) {
+					JS_FreeValue(ctx, JS_GetException(ctx));
+					p = NULL;
+				}
+			}
+		}
+		if (p != NULL)
+			onyx_download_bytes_hook(p + off, len, name, mime,
+					t->htmlc != NULL ? nsurl_access(content_get_url(
+						&t->htmlc->base)) : "");
+	}
+	if (name != NULL)
+		JS_FreeCString(ctx, name);
+	if (mime != NULL)
+		JS_FreeCString(ctx, mime);
 	return JS_UNDEFINED;
 }
 
@@ -4863,6 +4942,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("animList", 1, n_anim_list),
 	JS_CFUNC_DEF("url", 0, n_url),
 	JS_CFUNC_DEF("navigate", 1, n_navigate),
+	JS_CFUNC_DEF("download", 3, n_download),
 	JS_CFUNC_DEF("reload", 0, n_reload),
 	JS_CFUNC_DEF("write", 1, n_write),
 	JS_CFUNC_DEF("history", 1, n_history),

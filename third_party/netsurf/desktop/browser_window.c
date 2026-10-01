@@ -56,6 +56,8 @@
 #include "desktop/scrollbar.h"
 #include "desktop/gui_internal.h"
 #include "desktop/download.h"
+#include "netsurf/onyx_jet.h"	/* Onyx: the zoom per site, the status bar */
+#include "content/content_protected.h"	/* Onyx: the page's HTTP status */
 #include "desktop/frames.h"
 #include "desktop/global_history.h"
 #include "desktop/textinput.h"
@@ -82,6 +84,11 @@
  * maximum frame depth
  */
 #define FRAME_DEPTH 8
+
+/* Onyx: used before their definitions (the zoom per site, a download's address bar) */
+static nserror browser_window_set_scale_internal(struct browser_window *bw, float scale);
+static inline nserror browser_window_refresh_url_bar_internal(struct browser_window *bw,
+		nsurl *url);
 
 /* Forward declare internal navigation function */
 static nserror browser_window__navigate_internal(
@@ -689,6 +696,12 @@ browser_window_convert_to_download(struct browser_window *bw,
 	bw->loading_content = NULL;
 
 	browser_window_stop_throbber(bw);
+
+	/* Onyx: the page stays -- its address back in the address bar (the download's was
+	 * shown while it was asked for) */
+	if (bw->current_content != NULL)
+		browser_window_refresh_url_bar_internal(bw,
+				hlcache_handle_get_url(bw->current_content));
 }
 
 
@@ -864,6 +877,20 @@ static nserror browser_window_content_ready(struct browser_window *bw)
 		cert_chain_free(bw->current_cert_chain);
 		bw->current_cert_chain = bw->loading_cert_chain;
 		bw->loading_cert_chain = NULL;
+	}
+
+	/* Onyx (docs/06 §38): the zoom of the new page's site, before its first layout -- the
+	 * page before is gone, so no layout of it at the new scale; its iframes follow */
+	if (onyx_zoom_hook != NULL &&
+	    bw->browser_window_type == BROWSER_WINDOW_NORMAL) {
+		float s = onyx_zoom_hook(hlcache_handle_get_url(bw->current_content),
+				bw->scale);
+		if (s > 0 && fabs(s - bw->scale) >= 0.0001) {
+			int i;
+			bw->scale = s;
+			for (i = 0; i < bw->iframe_count; i++)
+				browser_window_set_scale_internal(bw->iframes[i], s);
+		}
 	}
 
 	/* Format the new content to the correct dimensions */
@@ -2014,6 +2041,23 @@ browser_window_set_scale_internal(struct browser_window *bw, float scale)
 	}
 
 	return res;
+}
+
+
+/* Onyx (netsurf/onyx_jet.h): the zoom per site, set by the frontend */
+float (*onyx_zoom_hook)(struct nsurl *url, float scale) = NULL;
+
+/* Onyx (netsurf/onyx_jet.h): the HTTP status of the window's page */
+long onyx_browser_window_http_code(struct browser_window *bw)
+{
+	struct content *c;
+
+	if (bw == NULL || bw->current_content == NULL)
+		return 0;
+	c = hlcache_handle_get_content(bw->current_content);
+	if (c == NULL || c->llcache == NULL)
+		return 0;
+	return llcache_handle_get_http_code(c->llcache);
 }
 
 

@@ -2981,6 +2981,13 @@ function activate(el) {
 		const tag = n.localName;
 		if (tag === 'a' && N.attr(n, 'href') !== null) {
 			const href = N.attr(n, 'href');
+			if (N.attr(n, 'download') !== null && !/^javascript:/i.test(href) && !href.startsWith('#')) {
+				/* (Onyx: <a download>: saved, not opened -- a blob:'s bytes are html5.js') */
+				const u = n.href, name = N.attr(n, 'download');
+				if (/^blob:/i.test(u)) G.__onyxBlobDownload(u, name);
+				else N.download(u, name);
+				return;
+			}
 			if (/^javascript:/i.test(href)) {
 				try { (0, eval)(decodeURIComponent(href.slice(11))); } catch (e) { report(e); }
 			} else if (href.startsWith('#')) {
@@ -6796,7 +6803,6 @@ Object.assign(G, {
 	closed: false,
 	isSecureContext: true,
 	origin: location.origin,
-	devicePixelRatio: 1,
 	crossOriginIsolated: false,
 	crypto: {
 		getRandomValues(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256 ** (a.BYTES_PER_ELEMENT || 1)); return a; },
@@ -6850,6 +6856,9 @@ G.scroll = G.scrollTo;
 for (const [k, i] of [['scrollX', 0], ['scrollY', 1], ['pageXOffset', 0], ['pageYOffset', 1],
 		['innerWidth', 2], ['innerHeight', 3], ['outerWidth', 2], ['outerHeight', 3]])
 	Object.defineProperty(G, k, { configurable: true, get: () => N.scroll()[i] });
+/* (Onyx: the page zoom -- Ctrl+ / Ctrl- -- as Chrome: the device pixels a CSS px) */
+Object.defineProperty(G, 'devicePixelRatio', { configurable: true, enumerable: true,
+	get: () => N.scroll()[6] || 1 });
 Object.defineProperty(G, 'screenX', { value: 0, configurable: true });
 Object.defineProperty(G, 'screenY', { value: 0, configurable: true });
 Object.defineProperty(G, 'document', { configurable: true, get: () => N.document() });

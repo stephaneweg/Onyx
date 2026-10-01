@@ -2389,6 +2389,12 @@ let streamOfBytes = null;	/* (a stream of the bytes a promise gives: Blob.stream
 		},
 		revokeObjectURL(u) { blobURLs.delete(String(u)); },
 	});
+	/* (Onyx: <a download href="blob:...">, clicked or click()ed: the bytes saved -- the
+	 * frontend asks where; qjs.c n_download) */
+	Object.defineProperty(G, '__onyxBlobDownload', { configurable: true, value(u, name) {
+		const b = blobURLs.get(String(u).replace(/#.*$/, ''));
+		if (b) N.download(bytesOf(b), name || '', b.type || '');
+	} });
 	const nativeFetch = G.fetch;
 	G.fetch = function fetch(input, init) {
 		const u = typeof input === 'string' ? input : input && input.url !== undefined ? input.url : String(input);
