@@ -83,4 +83,59 @@ void browser_window_scroll_callback(void *client_data,
  */
 void browser_window_handle_scrollbars(struct browser_window *bw);
 
+
+/* ---- Onyx: iframes as browsing contexts (desktop/frames.c) ------------------------------
+ * Each <iframe> element of a document (in its tree, shown or not) has a browser window of
+ * its own, kept by element: the document's boxes made again (html_rebox) keep the frames
+ * and their scripts; a frame is navigated when its src / srcdoc changes, removed with its
+ * element. The scripts know each window by a frame id (javascript/quickjs/qjs_frames.c). */
+
+struct dom_node;
+struct nsurl;
+
+#define ONYX_SANDBOX		1u	/**< a sandbox attribute */
+#define ONYX_SANDBOX_SCRIPTS	2u	/**< ... with allow-scripts */
+#define ONYX_SANDBOX_ORIGIN	4u	/**< ... with allow-same-origin */
+#define ONYX_SANDBOX_TOP	8u	/**< ... with allow-top-navigation(-by-user-activation) */
+
+/**
+ * The frames of a document brought in line with its <iframe> elements.
+ *
+ * \param bw       The window showing (or loading) the document
+ * \param htmlc    The document's html content
+ * \param remove   Frames whose element left the document are destroyed
+ * \return NSERROR_OK or an error code
+ */
+nserror onyx_frames_sync(struct browser_window *bw, void *htmlc, bool remove);
+
+/** a window's frame id (given the first time) */
+int onyx_frame_id(struct browser_window *bw);
+
+/** the window of a frame id, or NULL (gone) */
+struct browser_window *onyx_frame_by_id(int fid);
+
+/** the frame of an <iframe> element of the window's document (made now if it has none
+ *  yet), or NULL */
+struct browser_window *onyx_frame_for_element(struct browser_window *bw, void *htmlc,
+		struct dom_node *el);
+
+/** a frame's document loaded: its element's load event (once per document) */
+void onyx_frame_loaded(struct browser_window *bw);
+
+/** a window's document done: an iframe's with no scripts sends its element's load */
+void onyx_frame_content_done(struct browser_window *bw);
+
+/** true while a frame of the window has not loaded its document (its load waits) */
+bool onyx_frames_loading(struct browser_window *bw);
+
+/** a document destroyed: the frames of its elements still there (made while it loaded,
+ *  the load stopped) destroyed too */
+void onyx_frames_owner_gone(void *htmlc);
+
+/** a window's frame records released (its destruction) */
+void onyx_frame_release(struct browser_window *bw);
+
+/** the base URL of a srcdoc document by its data: URL, or NULL */
+struct nsurl *onyx_frames_srcdoc_base(struct nsurl *url);
+
 #endif

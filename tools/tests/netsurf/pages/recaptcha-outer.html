@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html><head><title>recaptcha mimic</title>
+<style>body { margin: 0; font: 14px sans-serif } .g-recaptcha { position: absolute; left: 20px; top: 80px }
+form { position: absolute; left: 20px; top: 20px }</style></head>
+<body>
+<!-- Onyx: a local mimic of reCAPTCHA v2's frames (iframetest.sh; nothing of Google's): this page
+     (origin A, the server's port) renders, as api.js does, an "anchor" iframe and a hidden
+     "bframe" iframe from origin B (the next port). The anchor says it is ready, the page gives
+     each frame a MessagePort and the two of them a channel of their own (two ports transferred to
+     two other realms); the checkbox clicked in the anchor asks the page to show the challenge;
+     the bframe's tile and "Verify" clicked, its token goes to the anchor over their channel, the
+     anchor posts it to the page, which fills the hidden g-recaptcha-response and calls the
+     site's callback. -->
+<form id="form" action="#"><input name="q" value="x"> <b>I'm not a robot</b></form>
+<div class="g-recaptcha" data-sitekey="test-site-key" data-callback="onRecaptcha"></div>
+<script>
+'use strict';
+function log(s) { console.log('recap ' + s); }
+window.onRecaptcha = function (token) {
+	log('callback ' + token + ' at ' + location.pathname);
+	log('textarea ' + document.getElementById('g-recaptcha-response').value);
+};
+
+/* "api.js": render the widget */
+(function () {
+	var B = location.protocol + '//' + location.hostname + ':' + (+location.port + 1);
+	var div = document.querySelector('.g-recaptcha');
+	var key = div.getAttribute('data-sitekey');
+	var co = location.origin;
+	var anchor = document.createElement('iframe');
+	anchor.title = 'reCAPTCHA';
+	anchor.name = 'a-onyx1';
+	anchor.width = 304; anchor.height = 78;
+	anchor.setAttribute('frameborder', '0');
+	anchor.setAttribute('scrolling', 'no');
+	anchor.setAttribute('role', 'presentation');
+	anchor.setAttribute('sandbox', 'allow-forms allow-popups allow-same-origin allow-scripts allow-top-navigation allow-modals allow-popups-to-escape-sandbox allow-storage-access-by-user-activation');
+	anchor.setAttribute('allow', 'private-state-token-redemption; private-state-token-issuance');
+	anchor.src = B + '/recaptcha-anchor.html?k=' + encodeURIComponent(key) + '&co=' + encodeURIComponent(co);
+	div.appendChild(anchor);
+	var ta = document.createElement('textarea');
+	ta.id = ta.name = 'g-recaptcha-response';
+	ta.style.display = 'none';
+	div.appendChild(ta);
+	/* the challenge's frame: loaded now, hidden off the page until asked for */
+	var holder = document.createElement('div');
+	holder.style.cssText = 'visibility: hidden; position: absolute; left: 20px; top: -10000px; width: 400px; height: 300px; z-index: 2000000000';
+	var bframe = document.createElement('iframe');
+	bframe.title = 'recaptcha challenge expires in two minutes';
+	bframe.name = 'c-onyx1';
+	bframe.width = 400; bframe.height = 300;
+	bframe.setAttribute('frameborder', '0');
+	bframe.setAttribute('sandbox', 'allow-forms allow-popups allow-same-origin allow-scripts allow-top-navigation allow-modals allow-popups-to-escape-sandbox');
+	bframe.src = B + '/recaptcha-bframe.html?k=' + encodeURIComponent(key);
+	holder.appendChild(bframe);
+	document.body.appendChild(holder);
+
+	var ready = {}, ports = {};
+	function connect() {
+		/* each frame its own port to the page, and a channel between the two frames */
+		var ca = new MessageChannel(), cb = new MessageChannel(), between = new MessageChannel();
+		ports.anchor = ca.port1;
+		ports.bframe = cb.port1;
+		ca.port1.onmessage = function (m) {
+			var d = m.data;
+			if (d.type === 'show') {
+				holder.style.visibility = 'visible';
+				holder.style.top = '170px';
+				log('challenge shown');
+				ports.bframe.postMessage({ type: 'challenge', id: d.id });
+			} else if (d.type === 'checked') {
+				log('anchor checked');
+			}
+		};
+		cb.port1.onmessage = function (m) {
+			if (m.data.type === 'verified') {
+				holder.style.visibility = 'hidden';
+				holder.style.top = '-10000px';
+				log('challenge hidden');
+			}
+		};
+		anchor.contentWindow.postMessage({ type: 'init', role: 'anchor', key: key }, B, [ca.port2, between.port1]);
+		bframe.contentWindow.postMessage({ type: 'init', role: 'bframe', key: key }, B, [cb.port2, between.port2]);
+	}
+	window.addEventListener('message', function (e) {
+		var d = e.data;
+		if (e.origin !== B || !d || typeof d !== 'object') return;
+		if (d.type === 'ready') {
+			var which = e.source === anchor.contentWindow ? 'anchor' : e.source === bframe.contentWindow ? 'bframe' : '?';
+			log('ready ' + which + ' ' + d.role);
+			ready[which] = true;
+			if (ready.anchor && ready.bframe) connect();
+		} else if (d.type === 'token') {
+			if (e.source !== anchor.contentWindow) { log('token from the wrong window'); return; }
+			ta.value = d.token;
+			var cb = div.getAttribute('data-callback');
+			if (typeof window[cb] === 'function') window[cb](d.token);
+		}
+	});
+	/* what another origin's frame lets a page do */
+	anchor.addEventListener('load', function () {
+		var w = anchor.contentWindow, r = [];
+		r.push(anchor.contentDocument === null ? 'nodoc' : 'DOC');
+		try { void w.document; r.push('DOCUMENT'); } catch (x) { r.push(x.name); }
+		try { void w.location.href; r.push('HREF'); } catch (x) { r.push('href-' + x.name); }
+		r.push(w.parent === window ? 'parent' : 'PARENT?');
+		r.push(typeof w.postMessage);
+		r.push(w.closed ? 'CLOSED' : 'open');
+		log('cross-origin ' + r.join(' '));
+		/* a message for another origin: dropped */
+		w.postMessage({ type: 'wrong' }, location.origin);
+	});
+})();
+</script>
+</body></html>

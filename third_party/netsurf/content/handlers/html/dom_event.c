@@ -23,6 +23,7 @@
  */
 
 #include <string.h>
+#include <strings.h>
 
 #include "utils/config.h"
 #include "utils/utils.h"
@@ -790,6 +791,28 @@ dom_default_action_DOMNodeRemoved_cb(struct dom_event *evt, void *pw)
 }
 
 
+/* Onyx: an attribute the box construction reads, or that loads something (an iframe's or an
+ * image's src, a srcdoc, an object's data, an input's type, a cell's colspan...): its change
+ * builds the boxes again -- not a restyle in place (html_restyle_in_place), which would keep
+ * the old frame, image or form control */
+static bool onyx_attr_builds_boxes(dom_mutation_event *evt)
+{
+	static const char *const names[] = { "src", "srcdoc", "srcset", "sizes", "data", "type",
+		"colspan", "rowspan", "span", "alt", "value", "multiple", "size", "rows", "cols",
+		"usemap", "poster", "href", "rel", "media", "placeholder", "start", "reversed" };
+	dom_string *an = NULL;
+	bool hit = false;
+	unsigned int i;
+
+	if (dom_mutation_event_get_attr_name(evt, &an) != DOM_NO_ERR || an == NULL)
+		return true;	/* (unknown: as before the in-place restyle) */
+	for (i = 0; i < sizeof names / sizeof names[0] && !hit; i++)
+		hit = dom_string_byte_length(an) == strlen(names[i]) &&
+			strncasecmp(dom_string_data(an), names[i], strlen(names[i])) == 0;
+	dom_string_unref(an);
+	return hit;
+}
+
 /* Onyx: an element's attribute set or removed: its selection and its subtree's made
  * again at the next box tree (onyx_restyle.c) */
 static void
@@ -801,7 +824,8 @@ dom_default_action_DOMAttrModified_cb(struct dom_event *evt, void *pw)
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
 	onyx_restyle_attr_changed(htmlc, (dom_node *) node);
-	html_script_mutation(htmlc, (dom_node *) node, true);
+	html_script_mutation(htmlc, (dom_node *) node,
+			!onyx_attr_builds_boxes((dom_mutation_event *) evt));
 	nscss_dom_changed();	/* (Onyx: :nth-child()'s counts) */
 	dom_node_unref(node);
 }

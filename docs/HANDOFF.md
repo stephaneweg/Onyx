@@ -718,7 +718,8 @@ docs/06 §12-§19 describe each piece; read them first. Where it stands:
   script errors -- run it after any core change), `site.sh <url> <name>` (NetSurf and Chromium
   side by side), `layoutdiff.sh` (box by box against Chromium), `prof.sh` (a sampling profiler:
   `NS_PROF=<file>`), `NS_BOXDUMP=<file>` / `NS_INJECT=<file.js>` then F5 (`key 276`),
-  `html5lib.sh`, `css3test.sh`, `html5test.sh`, `urltest.sh`, `wpt.sh`. The container reaches the
+  `html5lib.sh`, `css3test.sh`, `html5test.sh`, `urltest.sh`, `wpt.sh`, `iframetest.sh` (iframes,
+  postMessage, MessagePort across frames, a local reCAPTCHA v2 mimic on two origins: docs/06 §26). The container reaches the
   web through a proxy (`fakekapi.cpp` tunnels with CONNECT); OpenSSL gives the bench https.
 - **To try on the Pi first**: kotonviolins.com / kotonstudio.com (regressions), bbc.co.uk (the
   memory), google.com (search, results), m.facebook.com (log in), en.wikipedia.org, a
@@ -728,6 +729,9 @@ docs/06 §12-§19 describe each piece; read them first. Where it stands:
   the style selections kept between box trees (github.com's rebox 150 ms -> 6-20 ms),
   attribute-only changes restyled in the boxes, reboxes coalesced / throttled.
   `NS_RESTYLE_CHECK=1` / `NS_NORESTYLE=1` / `NS_NOINPLACE=1` on the bench to check them.
+- **Iframes as windows (docs/06 §29)**: postMessage, MessagePort across frames: Google's captcha
+  page (www.google.com/sorry/, reCAPTCHA's "I'm not a robot") -- the bench's mimic of its frames
+  passes; the real one is to be tried on the Pi by the user, not by the tests.
 - **Next**: an incremental layout and box construction (06 §26 "Left"), a worker thread for
   Workers, Google's results on the user's network.
 
