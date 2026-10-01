@@ -44,9 +44,11 @@ public:
 	char title[96];				// the first track's name (FF 03), "" if none
 	int program[16]; bool used[16];		// each channel's first instrument; channels with notes
 	int lowKey, highKey;
-	MidiSong () : ev (0), nev (0), notes (0), nnotes (0), length (0), lowKey (127), highKey (0)
+	int bpm;				// the first tempo (quarter notes a minute)
+	i64 *bars; int nbars;			// each bar's start, in frames (the view's lines and numbers)
+	MidiSong () : ev (0), nev (0), notes (0), nnotes (0), length (0), lowKey (127), highKey (0), bpm (120), bars (0), nbars (0)
 	{ title[0] = 0; for (int i = 0; i < 16; i++) { program[i] = 0; used[i] = false; } }
-	~MidiSong () { delete[] ev; delete[] notes; }
+	~MidiSong () { delete[] ev; delete[] notes; delete[] bars; }
 
 	bool load (const char *path, char *err, int cap)
 	{
@@ -90,6 +92,7 @@ private:
 		int fps = smpte ? -(signed char) (div >> 8) : 0, tpf = smpte ? (div & 0xFF) : 0;
 		unsigned p = 8 + hl;
 		int cap = 4096, nr = 0; Raw *raw = (Raw *) malloc (sizeof (Raw) * cap);
+		int tsNum = 0, tsDen = 2;
 		int seq = 0;
 		for (unsigned t = 0; t < ntr && p + 8 <= n; t++)
 		{
@@ -108,6 +111,7 @@ private:
 					unsigned char type = b[q + 1]; q += 2; unsigned ml; if (!vlq (b, end, &q, &ml) || q + ml > end) break;
 					if (type == 0x51 && ml == 3) { if (nr == cap) { cap *= 2; raw = (Raw *) realloc (raw, sizeof (Raw) * cap); }
 						raw[nr++] = Raw { tick, seq++, 0, 0, 0, 1, (unsigned) b[q] << 16 | b[q + 1] << 8 | b[q + 2] }; }
+					if (type == 0x58 && ml >= 2 && !tsNum) { tsNum = b[q]; tsDen = b[q + 1]; }
 					if (type == 0x03 && t == 0 && !title[0]) { unsigned k = ml < sizeof title - 1 ? ml : sizeof title - 1; memcpy (title, b + q, k); title[k] = 0; }
 					if (type == 0x2F) { q = end; break; }
 					q += ml; continue;
@@ -138,6 +142,27 @@ private:
 			at += (long double) (raw[i].tick - lastTick) * perTick; lastTick = raw[i].tick;
 			if (raw[i].tempo) { us = raw[i].us ? raw[i].us : 500000; if (!smpte) perTick = (long double) us * SOUND_RATE / 1e6L / div; continue; }
 			ev[nev++] = MidiEv { (i64) at, raw[i].st, raw[i].d1, raw[i].d2 };
+		}
+		// the bars: their ticks (the time signature: 4/4 if none) through the tempo changes again
+		if (!smpte)
+		{
+			unsigned perBar = (unsigned) div * 4 * (tsNum ? tsNum : 4) >> (tsDen < 6 ? tsDen : 2);
+			unsigned lastT = raw && nr ? raw[nr - 1].tick : 0;
+			nbars = perBar ? (int) (lastT / perBar) + 2 : 0;
+			bars = new i64[nbars > 0 ? nbars : 1];
+			unsigned u2 = 500000, lt = 0; long double a2 = 0, pt = (long double) u2 * SOUND_RATE / 1e6L / div; int ti = 0;
+			bool firstTempo = true;
+			for (int k = 0; k < nbars; k++)
+			{
+				unsigned tk = (unsigned) k * perBar;
+				while (ti < nr && raw[ti].tick <= tk)
+				{
+					if (raw[ti].tempo) { a2 += (long double) (raw[ti].tick - lt) * pt; lt = raw[ti].tick; u2 = raw[ti].us ? raw[ti].us : 500000; pt = (long double) u2 * SOUND_RATE / 1e6L / div;
+						if (firstTempo) { bpm = (int) (60000000u / u2); firstTempo = false; } }
+					ti++;
+				}
+				bars[k] = (i64) (a2 + (long double) (tk - lt) * pt);
+			}
 		}
 		free (raw);
 		length = nev ? ev[nev - 1].at : 0;

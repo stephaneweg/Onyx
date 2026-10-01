@@ -1754,9 +1754,10 @@ also *Remove from this playlist*. A playlist's **⋯** renames or deletes it.
 
 **Now playing** (the cover at the bottom left, the queue button, or ^L): the cover large over its own
 colours, the song, its format (MP3 at so many kbit/s, FLAC 44.1 kHz 16 bit...), and **Up next** — a
-click plays one of them. **A MIDI file** shows **its notes as coloured lines** instead of a cover — a
-colour an instrument, the keyboard at the left, the notes sounding outlined, scrolling under the
-playhead —, its instruments under it, and the SoundFont that plays it.
+click plays one of them. **A MIDI file** shows **its notes scrolling** instead (in *Now playing* and on
+its album's page): the file's facts (its instruments, its tempo, the SoundFont that plays it), then its
+notes as coloured lines — a colour an instrument, the keyboard at the left, the bars numbered, the
+notes sounding outlined — passing under the playhead, and the instruments' colours under them.
 
 | | |
 |:---:|:---:|

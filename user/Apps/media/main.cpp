@@ -2,7 +2,7 @@
 // Apps/media/main.cpp -- Media Player, Onyx's music library (docs/media/README.md: the mock-ups and the user's
 // decisions), in the way of Windows Media Player / iTunes: the songs of the folders it watches (SD:/Music),
 // MP3, OGG, FLAC, WAV and MIDI, by artists, albums, songs, genres, folders and playlists; a now-playing
-// view (a MIDI file: its notes as coloured lines); a mini player at the bottom right of the screen.
+// view (a MIDI file: its notes scrolling as coloured lines); a mini player at the bottom right of the screen.
 // Closing the window stops the music. Tags are read, never written; covers come from the files and their
 // folders, nothing is downloaded. (The videos come later, in the same app.)
 //
@@ -66,6 +66,7 @@ static void navigate (int kind, int arg = 0);
 static void play_list (const IntList &ids, int start, bool shuffle);
 static void refresh_all ();
 static void save_settings ();
+static MidiSong *roll_for (int id);
 
 // ---- settings -------------------------------------------------------------------------------------------
 static void load_settings ()
@@ -774,6 +775,12 @@ public:
 		const Page &pg = page ();
 		if (!L || pg.arg < 0 || pg.arg >= L->nal) return y;
 		const Album &a = L->al[pg.arg];
+		if (midi_here (pg.arg))
+		{
+			int hRoll = height - 122 - 22 - 60; if (hRoll < 160) hRoll = 160;
+			y = draw_midi (x, y, w, hRoll);
+			return song_table (x, y + 8, w, rows, false, true);
+		}
 		char meta[160], d[24]; fmt_long (d, sizeof d, a.durMs);
 		const Song &f = L->s[a.songs[0]];
 		char yr[16] = ""; if (a.year) snprintf (yr, sizeof yr, "%d  \xC2\xB7  ", a.year);
@@ -919,50 +926,102 @@ public:
 		return fy + 60;
 	}
 	// ---- now playing: the cover large (a MIDI file: its notes), up next ----
-	void piano_roll (int x, int y, int w, int h, MidiSong *m, long long posMs)
+	static unsigned roll_colour (int ch)
 	{
-		wk_rbox (canvas, x, y, w, h, 10, 0x18161F, 0x18161F);
-		if (!m) return;
 		static const unsigned CH[16] = { 0xF06E5A, 0xFABE46, 0x78D26E, 0x50BEE6, 0xAA82FA, 0xFA78C8, 0x5ADCC8, 0xE6E66E, 0xF09650, 0x9696A0,
 						 0x6E96FA, 0xDC6EDC, 0x96DC50, 0x50C8A0, 0xC8A078, 0xA0B4DC };
-		int lo = m->lowKey - 2, hi = m->highKey + 2; if (hi - lo < 24) { int c = (lo + hi) / 2; lo = c - 12; hi = c + 12; }
-		int keys = hi - lo + 1, kx = x + 46, kw = w - 56;
-		double rowH = (double) (h - 16) / keys;
-		for (int k = 0; k < keys; k++)			// the keyboard
+		return CH[ch & 15];
+	}
+	// a MIDI file's notes, scrolling under the playhead: a line a note, a colour a channel, the bars numbered
+	void piano_roll (int x, int y, int w, int h, MidiSong *m, long long posMs)
+	{
+		const unsigned BG = 0x18161F;
+		wk_rbox (canvas, x, y, w, h, 10, BG, BG);
+		if (!m) return;
+		int lo = m->lowKey - 1, hi = m->highKey + 1; if (hi - lo < 24) { int c = (lo + hi) / 2; lo = c - 12; hi = c + 12; }
+		int keys = hi - lo + 1, kx = x + 50, kw = w - 60, top = y + 26, kh = h - 34;
+		int rowH = kh / keys; if (rowH < 3) rowH = 3;
+		int rows = kh / rowH; if (rows < keys) { hi = lo + rows - 1; keys = rows; }
+		top = y + 26 + (kh - keys * rowH) / 2;
+		for (int k = 0; k < keys; k++)					// the keyboard
 		{
-			int key = hi - k; bool black = ((key % 12) == 1 || (key % 12) == 3 || (key % 12) == 6 || (key % 12) == 8 || (key % 12) == 10);
-			int ky = y + 8 + (int) (k * rowH);
-			canvas.fillRect (x + 8, ky, black ? 20 : 30, (int) rowH > 1 ? (int) rowH - 1 : 1, black ? 0x3C3A46 : 0xE6E4EC);
+			int key = hi - k, n = key % 12; bool black = n == 1 || n == 3 || n == 6 || n == 8 || n == 10;
+			canvas.fillRect (x + 10, top + k * rowH, black ? 22 : 32, rowH - 1, black ? 0x3C3A46 : 0xE6E4EC);
 		}
-		i64 now = posMs * SOUND_RATE / 1000, span = SOUND_RATE * 8;	// 8 s across, now at 30 %
+		i64 now = posMs * SOUND_RATE / 1000;
+		// the span: about 8 bars (else 10 s), the playhead at 30 %
+		i64 span = SOUND_RATE * 10;
+		if (m->nbars > 2) { int b = 0; while (b + 1 < m->nbars && m->bars[b + 1] <= now) b++; int e = b + 8 < m->nbars ? b + 8 : m->nbars - 1; if (e > b) span = (m->bars[e] - m->bars[b]) * 8 / (e - b); }
+		if (span < SOUND_RATE * 3) span = SOUND_RATE * 3;
 		i64 t0 = now - span * 3 / 10;
+		auto X = [&] (i64 t) { return kx + (int) ((t - t0) * kw / span); };
+		for (int b = 0; b < m->nbars; b++)				// the bars
+		{
+			int bx = X (m->bars[b]);
+			if (bx < kx || bx > kx + kw) continue;
+			canvas.fillRect (bx, y + 8, 1, h - 16, wk_mix (BG, 0xFFFFFF, 34));
+			char t[12]; snprintf (t, sizeof t, "%d", b + 1); text (canvas, bx + 4, y + 7, t, 0x8A889A, F_SMALL);
+		}
 		for (int i = 0; i < m->nnotes; i++)
 		{
 			const MidiNote &n = m->notes[i];
-			if (n.off < t0 || n.on > t0 + span || n.ch == 9) continue;
-			int nx0 = kx + (int) ((n.on - t0) * kw / span), nx1 = kx + (int) ((n.off - t0) * kw / span);
-			if (nx0 < kx) nx0 = kx; if (nx1 > kx + kw) nx1 = kx + kw; if (nx1 - nx0 < 3) nx1 = nx0 + 3;
-			int ky = y + 8 + (int) ((hi - n.key) * rowH);
+			if (n.off < t0 || n.on > t0 + span || n.ch == 9 || n.key > hi || n.key < lo) continue;
+			int nx0 = X (n.on), nx1 = X (n.off);
+			if (nx0 < kx) nx0 = kx; if (nx1 > kx + kw) nx1 = kx + kw; if (nx1 - nx0 < 4) nx1 = nx0 + 4;
+			int ny = top + (hi - n.key) * rowH;
 			bool sounding = n.on <= now && n.off > now, past = n.off <= now;
-			unsigned c = CH[n.ch & 15]; if (past) c = wk_mix (c, 0x18161F, 120);
-			wk_rbox (canvas, nx0, ky, nx1 - nx0, (int) rowH > 2 ? (int) rowH - 1 : 2, 2, c, c);
-			if (sounding) wk_rline (canvas, nx0 - 1, ky - 1, nx1 - nx0 + 2, (int) rowH + 1, 3, 0xFFFFFF);
+			unsigned c = roll_colour (n.ch); if (past) c = wk_mix (c, BG, 110);
+			int nh = rowH > 4 ? rowH - 1 : rowH;
+			wk_rbox (canvas, nx0, ny, nx1 - nx0 - 1, nh, nh / 2 < 3 ? nh / 2 : 3, c, c);
+			if (sounding) wk_rline (canvas, nx0 - 1, ny - 1, nx1 - nx0 + 1, nh + 2, 3, 0xFFFFFF);
 		}
-		int ph = kx + kw * 3 / 10;
-		canvas.fillRect (ph - 1, y + 4, 2, h - 8, 0xFFFFFF);
-		// the instruments, a dot of their colour
-		int lx = x + 8, ly = y + h + 8;
+		int ph = kx + kw * 3 / 10;					// the playhead
+		canvas.fillRect (ph - 1, y + 6, 2, h - 12, 0xFFFFFF);
+		VPath tri; int tp[] = { V (ph - 6), V (y + 6), V (ph + 6), V (y + 6), V (ph), V (y + 13) }; tri.poly (tp, 3); tri.fill (canvas, 0xFFFFFF);
+	}
+	// the instruments of the file: a dot of their colour, their name -> the height used
+	int roll_legend (int x, int y, int w, MidiSong *m, unsigned ink)
+	{
+		if (!m) return 0;
+		int lx = x, ly = y;
 		for (int c = 0; c < 16; c++)
 		{
 			if (!m->used[c] || c == 9) continue;
 			const char *nm = m->instrument (c);
-			int ww = tw (nm, F_SMALL) + 26;
-			if (lx + ww > x + w) { lx = x + 8; ly += 20; if (ly > y + h + 30) break; }
-			VPath d; d.circle (V (lx + 6), V (ly + 9), V (5)); d.fill (canvas, CH[c]);
-			text (canvas, lx + 16, ly + 2, nm, 0xD0D0D8, F_SMALL);
+			int ww = tw (nm, F_SMALL) + 30;
+			if (lx + ww > x + w) { lx = x; ly += 20; }
+			VPath d; d.circle (V (lx + 6), V (ly + 9), V (5)); d.fill (canvas, roll_colour (c));
+			text (canvas, lx + 16, ly + 2, nm, ink, F_SMALL);
 			lx += ww;
 		}
+		return ly - y + 20;
 	}
+	// a MIDI file playing: its header (cover, title, what plays it), its notes large, its instruments
+	int draw_midi (int x, int y, int w, int hRoll)
+	{
+		const Song *s = song (g_playing);
+		MidiSong *m = roll_for (g_playing);
+		if (!s) return y;
+		if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, x, y, 104, 6, C_FIELD);
+		int tx = x + 124;
+		text (canvas, tx, y + 2, g_player.state == PS_PLAYING ? "MIDI  \xC2\xB7  NOW PLAYING" : "MIDI  \xC2\xB7  PAUSED", 0x7860C4, F_SMALL, 2);
+		text (canvas, tx, y + 19, s->title, C_FIELD_TEXT, F_H2, 2, w - 124);
+		int ninst = 0; if (m) for (int c = 0; c < 16; c++) if (m->used[c] && c != 9) ninst++;
+		char line[200];
+		snprintf (line, sizeof line, "%s  \xC2\xB7  %d instrument%s%s  \xC2\xB7  \xE2\x99\xA9 = %d", g_playing >= 0 ? L->artist_of (*s) : s->artist, ninst, ninst == 1 ? "" : "s",
+			  m && m->used[9] ? " and drums" : "", m ? m->bpm : 120);
+		text (canvas, tx, y + 48, line, col_dim (), F_SMALL, 0, w - 124);
+		text_v (canvas, tx, y + 70, 28, "Played by", col_dim (), F_SMALL);
+		int fx = tx + 64, fw = tw (g_sfName[0] ? g_sfName : "a SoundFont") + 24;
+		wk_rbox (canvas, fx, y + 70, fw, 28, 6, wk_mix (C_FIELD, C_BG, 60), wk_mix (C_FIELD, C_BG, 110)); wk_rline (canvas, fx, y + 70, fw, 28, 6, wk_tone (C_BG, 96));
+		text_v (canvas, fx + 12, y + 70, 28, g_sfName[0] ? g_sfName : "a SoundFont", C_FIELD_TEXT);
+		y += 122;
+		piano_roll (x, y, w, hRoll, m, g_player.posMs);
+		y += hRoll + 12;
+		y += roll_legend (x, y, w, m, col_dim ());
+		return y + 8;
+	}
+	bool midi_here (int album) { const Song *s = song (g_playing); return s && g_playing >= 0 && s->fmt == FMT_MIDI && s->alb == album && album >= 0; }
 	int draw_now (int x, int y, int w);
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
@@ -983,6 +1042,11 @@ static MidiSong *roll_for (int id)
 int Content::draw_now (int x, int y, int w)
 {
 	const Song *s = song (g_playing);
+	if (s && s->fmt == FMT_MIDI)
+	{
+		int hRoll = height - 122 - 22 - 60; if (hRoll < 160) hRoll = 160;
+		return draw_midi (x, y, w, hRoll);
+	}
 	unsigned tone = s && s->alb >= 0 && g_playing >= 0 ? g_covers.tone (s->alb) : 0x2A3448;
 	unsigned top = wk_mix (tone, 0x0A0E18, 150), bot = wk_mix (tone, 0x0A0E18, 215);
 	for (int yy = 0; yy < height; yy++) canvas.fillRect (0, scrollY + yy, width, 1, wk_mix (top, bot, yy * 256 / (height ? height : 1)));
@@ -1660,7 +1724,8 @@ public:
 		// what moves: the bars of the song playing (5 a second), the notes of a MIDI file (30 a second)
 		bool playing = g_player.state == PS_PLAYING;
 		const Song *s = song (g_playing);
-		unsigned every = page ().kind == P_NOW && s && s->fmt == FMT_MIDI ? 3 : 20;
+		bool roll = s && s->fmt == FMT_MIDI && (page ().kind == P_NOW || (page ().kind == P_ALBUM && page ().arg == s->alb && g_playing >= 0));
+		unsigned every = roll ? 3 : 20;
 		if (playing && g_tick - lastAnim >= every && !g_miniMode) { lastAnim = g_tick; g_content->invalidate (true); }
 		if (g_scan && g_tick - lastSide >= 50) { lastSide = g_tick; g_side->invalidate (true); if (page ().kind == P_WELCOME) g_content->invalidate (true); }
 		// the search

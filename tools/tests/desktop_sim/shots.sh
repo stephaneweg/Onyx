@@ -366,7 +366,7 @@ if want media; then			# (Media Player over a sample library made by tools/tests/
 	mm media-album "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$W10;move 400 360;$W"; png media-album
 	mm media-songs "$S0;down 100 142;up 100 142;$W10;down 300 333;up 300 333;mods 2;down 300 397;up 300 397;mods 0;$W;rdown 300 365;rup 300 365;$W;move 380 400;$W;$W"; png media-songs
 	mm media-nowplaying "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 40 585;up 40 585;$W10;$W10"; png media-nowplaying
-	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10"; png media-midi
+	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
 	mm media-welcome "$S0;menu 1;$W10"; png media-welcome
 	mm media-mini "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 841 581;up 841 581;$W10;$W10"; png media-mini
 fi
