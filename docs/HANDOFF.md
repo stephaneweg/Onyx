@@ -1283,7 +1283,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 `shots.sh` scenario. In the user's priority order:
 
 **Priority 1**
-- **Music library** (audio player as a polished library app, in the way of iTunes / Rhythmbox):
+- **Music library** -- mock-ups proposed (2026-10-01, `docs/media/README.md`: *Media Player*, its questions to the user) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
   MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
   is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
   tags and cover art, a now-playing view, file associations.
