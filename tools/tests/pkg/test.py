@@ -124,6 +124,20 @@ check ("[sim: reboot]" in o and os.path.exists (card ("kernel8-rpi4.img")) and o
 check (os.path.exists (card ("var/pkg/db/onyx.ini")) and not os.path.exists (card ("var/pkg/stage")), "commit: the database, the stage gone")
 rc, o = pkg ("delete", "onyx"); check (rc == 2 and "part of the system" in o, "the system cannot be removed")
 
+print ("a file moved into a package of its own (pkgman's own package)")
+ini = open (OUT + "/packages.ini").read ().replace ("[onyx]\n", "[mover]\ntitle = Mover\ncategory = System\nrequired = 1\nfiles = bin/hello\n[onyx]\nneeds = mover\n", 1)
+open (OUT + "/packages.ini", "w").write (ini)
+put (SRC + "/etc/wpa_supplicant.conf", 'network={\n\tssid="home"\n\tpsk="secret"\n}\n')	# the user's: never packaged
+check (mkrepo ("--bump") == 0, "mkrepo --bump: onyx without bin/hello, mover with it")
+import zipfile
+onyx_opk = sorted (f for f in os.listdir (CARD + "/repo/pkgs") if f.startswith ("onyx-"))[-1]
+check ("etc/wpa_supplicant.conf" not in zipfile.ZipFile (CARD + "/repo/pkgs/" + onyx_opk).namelist (), "the Wi-Fi settings never packaged")
+rc, o = pkg ("update", "onyx"); print (o)
+check (rc == 0 and os.path.exists (card ("var/pkg/db/mover.ini")) and "staged" in o, "update onyx: mover first (its need, at once), onyx staged")
+rc, o = pkg ("commit"); print (o)
+check (os.path.exists (card ("bin/hello")), "commit: the file onyx dropped is kept, mover has it")
+rc, o = pkg ("delete", "mover"); check (rc == 2, "mover cannot be removed")
+
 print ("trust")
 idx = open (CARD + "/repo/index.txt").read ()
 open (CARD + "/repo/index.txt", "w").write (idx.replace ("title = Alpha", "title = Evil"))
